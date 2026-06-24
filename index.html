@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b4ea2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -132,6 +132,10 @@
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
+  html{color-scheme:light}
+  body.dark{color-scheme:dark}
+  input::placeholder,select::placeholder,textarea::placeholder{color:#8aa0b5;opacity:1}
+  body.dark input::placeholder,body.dark select::placeholder,body.dark textarea::placeholder{color:#9fb3c6;opacity:1}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
   .proj-item:hover{background:#e8f1fd}
@@ -536,7 +540,7 @@ function pad(n){return String(n).padStart(2,'0');}
 function fmtDate(d){if(!d)return'날짜 없음';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;}
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
-const IMG=['jpg','jpeg','png','heic','webp','gif','bmp','tif','tiff'];
+const IMG=['jpg','jpeg','png','heic','heif','webp','gif','bmp','tif','tiff'];
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
@@ -888,16 +892,36 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   state.files.push(rec);
 }
-function extractImage(file,rec){
+async function extractImage(file,rec){
+  const e=ext(file.name);
+  if(e==='heic'||e==='heif'){   // 직접 고른 HEIC도 zip처럼: GPS·날짜 보존 + JPEG 썸네일 변환
+    try{
+      const ab=await file.arrayBuffer();
+      const m=await readHeicMeta(ab);                 // 변환 전 원본에서 GPS·촬영시간 확보
+      if(m.when)rec.when=m.when;
+      if(m.lat!=null){rec.lat=m.lat;rec.lng=m.lng;rec.place=m.lat.toFixed(4)+', '+m.lng.toFixed(4);}
+      await ensureHeic2any();
+      const r=await heic2any({blob:new Blob([ab]),toType:'image/jpeg',quality:0.9});
+      const jpg=Array.isArray(r)?r[0]:r;
+      rec.thumb=URL.createObjectURL(jpg);             // 변환된 JPEG로 썸네일(안드로이드/PC에서도 보임)
+    }catch(_){ rec.thumb=URL.createObjectURL(file); } // 변환 실패 시 원본 유지(멈추지 않음)
+    return;
+  }
+  // 비-HEIC: EXIF.js + 4초 안전장치(읽기 오류여도 반드시 진행 → import 무한멈춤 방지)
   return new Promise(res=>{
     rec.thumb=URL.createObjectURL(file);
+    let done=false; const fin=()=>{if(done)return; done=true; clearTimeout(timer); res();};
+    const timer=setTimeout(fin, 4000);
     try{EXIF.getData(file,function(){
-      const dt=EXIF.getTag(this,'DateTimeOriginal')||EXIF.getTag(this,'DateTime');
-      if(dt){const d=parseExifDate(dt);if(d)rec.when=d;}
-      const la=EXIF.getTag(this,'GPSLatitude'),lo=EXIF.getTag(this,'GPSLongitude');
-      const lr=EXIF.getTag(this,'GPSLatitudeRef'),or=EXIF.getTag(this,'GPSLongitudeRef');
-      if(la&&lo){rec.lat=dms(la,lr);rec.lng=dms(lo,or);rec.place=rec.lat.toFixed(4)+', '+rec.lng.toFixed(4);}
-      res();});}catch(e){res();}
+      try{
+        const dt=EXIF.getTag(this,'DateTimeOriginal')||EXIF.getTag(this,'DateTime');
+        if(dt){const d=parseExifDate(dt);if(d)rec.when=d;}
+        const la=EXIF.getTag(this,'GPSLatitude'),lo=EXIF.getTag(this,'GPSLongitude');
+        const lr=EXIF.getTag(this,'GPSLatitudeRef'),or=EXIF.getTag(this,'GPSLongitudeRef');
+        if(la&&lo){rec.lat=dms(la,lr);rec.lng=dms(lo,or);rec.place=rec.lat.toFixed(4)+', '+rec.lng.toFixed(4);}
+      }catch(_){}
+      fin();
+    });}catch(e){fin();}
   });
 }
 /* ===== 압축(zip) 사진 불러오기: HEIC는 자동 JPG 변환 ===== */
@@ -1029,7 +1053,7 @@ $('#btnInstall').onclick=installApp;
 // 다크모드 · 글자크기
 let __fontStep=0;const FONT_SCALES=['100%','112%','125%'];
 $('#btnDark').onclick=()=>{document.body.classList.toggle('dark');const on=document.body.classList.contains('dark');$('#btnDark').textContent=on?'☀️':'🌙';try{idbSet('pref_dark',on);}catch(e){}};
-$('#btnFont').onclick=()=>{__fontStep=(__fontStep+1)%FONT_SCALES.length;document.documentElement.style.setProperty('--fs',FONT_SCALES[__fontStep]);try{idbSet('pref_font',__fontStep);}catch(e){}};
+$('#btnFont').onclick=()=>{__fontStep=(__fontStep+1)%FONT_SCALES.length;document.body.style.zoom=[1,1.12,1.25][__fontStep];try{idbSet('pref_font',__fontStep);}catch(e){}};
 window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveProject(false);}});
 async function runBatchOCR(){
   const targets=state.files.filter(f=>f.ocr==='pending');
@@ -1555,7 +1579,7 @@ function viewDashboard(){
   html+=`</div>`;
   // 현장별 표
   html+=`<div class="dash-sec">현장별 현황 <span style="font-size:11px;color:#6a86a3;font-weight:400">· 수금액을 입력하면 미수금이 자동 계산됩니다</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th><th class="amt">미수금</th></tr></thead><tbody>`;
+  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th><th class="amt">미수금</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     html+=`<tr>
       <td><b style="color:var(--blueprint);cursor:pointer" data-open="${escapeAttr(s.name)}">${escapeHtml(s.name)}</b></td>
@@ -1569,10 +1593,10 @@ function viewDashboard(){
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td>
     <td class="amt"><b>${won(totEst)}</b></td><td class="amt"><b>${won(totRecv)}</b></td>
     <td class="amt" style="color:var(--warn)"><b>${won(totDue)}</b></td></tr>`;
-  html+=`</tbody></table>`;
+  html+=`</tbody></table></div>`;
   // 현장별 지출·마진 표
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:#6a86a3;font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
+  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
@@ -1586,7 +1610,7 @@ function viewDashboard(){
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
     <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
-  html+=`</tbody></table>`;
+  html+=`</tbody></table></div>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   return html;
 }
@@ -1873,7 +1897,7 @@ function viewEstimates(){
   const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
-  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
+  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>파일</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
       <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
@@ -1884,7 +1908,7 @@ function viewEstimates(){
       <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
       <td style="white-space:nowrap"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
     </tr>`;});
-  html+=`</tbody></table>`;
+  html+=`</tbody></table></div>`;
   const total=Object.values(byProj).reduce((a,b)=>a+b,0);
   html+=`<div style="margin-top:18px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:6px">현장별 합계</div>`;
   Object.entries(byProj).forEach(([k,v])=>{html+=`<div class="sumbar" style="justify-content:space-between;border-bottom:1px dashed var(--line);padding:5px 0"><span>${escapeHtml(k)}</span><b style="font-size:15px">${won(v)}</b></div>`;});
@@ -2396,16 +2420,31 @@ function setupDelegation(){
     if(t.id==='qmVat'){setQuoteField('vatIncluded',t.value);return render();}
     if(t.id==='qmAcct'){setQuoteField('accountIdx',t.value);return render();}
     if(t.id==='qmProj'){setQuoteField('project',t.value);return;}
-    // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
-    if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);if(d.qf==='qty'||d.qf==='price')render();return;}
+    // 견적 품목: change는 값만 커밋(전체 재렌더 안 함 → 포커스/키보드 유지)
+    if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);return;}
     if(t.id==='phaseProjSel'){__phaseProj=t.value;return render();}
   });
-  // ---- 공정 입력 엔터 위임 ----
+  // ---- 견적 품목 입력 중 실시간 합계(전체 재렌더 없이 해당 셀·합계만) ----
+  view.addEventListener('input',e=>{
+    const t=e.target,d=t.dataset;
+    if(t.matches('input[data-qi]')&&(d.qf==='qty'||d.qf==='price')){
+      setQuoteItem(+d.qi,d.qf,t.value);
+      const q=state.editingQuote; if(!q)return; const it=q.items[+d.qi];
+      const row=t.closest('tr'); const amt=row&&row.querySelector('.qm-amt');
+      if(amt&&it)amt.textContent=won(num(it.qty)*num(it.price));
+      const c=quoteCalc(q); const card=document.querySelector('.qm-preview-card');
+      if(card){const bs=card.querySelectorAll('.qm-sum-row b');
+        if(bs[0])bs[0].textContent=won(c.sub); if(bs[1])bs[1].textContent=won(c.supply);
+        if(bs[2])bs[2].textContent=won(c.vat); if(bs[3])bs[3].textContent=won(c.total);
+        const kor=card.querySelector('.qm-kor'); if(kor)kor.textContent=won2kor(c.total);}
+    }
+  });
+  // ---- 엔터 위임 ----
   view.addEventListener('keydown',e=>{
     const t=e.target;
     if(t.matches('input[data-phaseinput]')&&e.key==='Enter')addPhase(t.dataset.phaseinput,t.value);
     if(t.id==='phaseProjInput'&&e.key==='Enter'){const sel=view.querySelector('#phaseProjSel');if(sel){__phaseProj=sel.value;addPhase(sel.value,t.value);}}
-    if(t.matches('input[data-qf="price"]')&&e.key==='Enter'){e.preventDefault();addQuoteItem();}
+    if((t.matches('input[data-qf="price"]')||t.matches('input[data-qf="qty"]'))&&e.key==='Enter'){e.preventDefault();setQuoteItem(+t.dataset.qi,t.dataset.qf,t.value);addQuoteItem();}
   });
 }
 function attachDrop(d, onDrop){
@@ -2477,7 +2516,7 @@ function quoteHTML(q){
   const acct=COMPANY.accounts[q.accountIdx]||COMPANY.accounts[0];
   const vatLabel=q.vatIncluded?'부가세 포함':'부가세 별도';
   const d=new Date(q.date);
-  const dateStr=`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+  const dateStr=isNaN(d.getTime())?escapeHtml(q.date||''):`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
   const minRows=Math.max(8,q.items.length);
   let body='';
   q.items.forEach((it,i)=>{
@@ -2981,6 +3020,7 @@ function pickBizImage(which){
     if(!durl){toast('이 사진은 못 읽었습니다. JPG/PNG 사진을 써주세요(HEIC면 먼저 변환).');return;}
     __biz[which]=durl;
     try{await idbSet(which==='img1'?'biz_사업자':'biz_명함',durl);}catch(e){}
+    __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){}  // 입력 중이던 글 보존
     shareBizCard(); toast('사진 등록·저장됨');
   };
   inp.click();
@@ -2992,11 +3032,12 @@ function addBizExtra(){
     const files=[...inp.files];if(!files.length)return;
     for(const f of files){const durl=await resizeToDataURL(f,1800,0.85);if(durl)__biz.extras.push(durl);}
     try{await idbSet('biz_extras',__biz.extras);}catch(e){}
+    __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){}  // 입력 중이던 글 보존
     shareBizCard();toast(files.length+'장 추가됨');
   };
   inp.click();
 }
-async function delBizExtra(i){__biz.extras.splice(i,1);try{await idbSet('biz_extras',__biz.extras);}catch(e){}shareBizCard();}
+async function delBizExtra(i){__biz.extras.splice(i,1);try{await idbSet('biz_extras',__biz.extras);}catch(e){}__biz.text=curBizText();try{await idbSet('biz_text',__biz.text);}catch(e){}shareBizCard();}
 // 텍스트 프리셋 선택/저장/추가/삭제
 async function selectPreset(i){
   __biz.presetIdx=+i;__biz.text=__biz.presets[i]?.text||'';
@@ -3073,8 +3114,8 @@ async function shareBizCard(){
 }
 async function saveBizText(){ __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){} toast('글·사진 저장됨 — 다음에 자동으로 불러옵니다.'); }
 async function sendBiz(){
-  const text=curBizText(); __biz.text=text; try{await idbSet('biz_text',text);}catch(e){}
-  const files=bizImageFiles();
+  const text=curBizText(); __biz.text=text;
+  const files=bizImageFiles();          // share 호출 전에 동기로 준비(iOS 사용자제스처 유지)
   try{
     if(files.length && navigator.canShare && navigator.canShare({files})){
       await navigator.share({files,text,title:`${COMPANY.name} 사업자·명함`}); return;
@@ -3082,13 +3123,16 @@ async function sendBiz(){
     if(navigator.share){ await navigator.share({text,title:`${COMPANY.name} 사업자·명함`}); toast('이 폰은 사진 공유를 못 해 글만 보냈습니다. 사진은 ‘이미지 저장’ 후 첨부하세요.'); return; }
     saveBizImages(); copyBiz(); toast('공유 미지원 기기 — 사진 저장+글 복사했습니다. 카톡/문자에 붙여 보내세요.');
   }catch(e){ if(e&&e.name!=='AbortError')toast('보내기 취소/오류: '+(e&&e.message||e)); }
+  finally{ idbSet('biz_text',text).catch(()=>{}); }   // 저장은 share 뒤에서 await 없이
 }
 function smsBiz(){ const t=curBizText(); try{location.href='sms:?body='+encodeURIComponent(t);}catch(e){toast('문자앱을 열 수 없습니다(PC).');} }
 function saveBizImages(){
   let n=0;
   [['img1','사업자등록증'],['img2','명함']].forEach(([k,nm])=>{ if(__biz[k]){ const a=document.createElement('a');a.href=__biz[k];a.download=`${COMPANY.name}_${nm}.jpg`;document.body.appendChild(a);a.click();a.remove();n++; } });
   (__biz.extras||[]).forEach((d,i)=>{const a=document.createElement('a');a.href=d;a.download=`${COMPANY.name}_사진${i+1}.jpg`;document.body.appendChild(a);a.click();a.remove();n++;});
-  toast(n?`이미지 ${n}장 저장됨 — 카톡/문자에서 첨부하세요.`:'등록된 사진이 없습니다. 먼저 사진을 등록하세요.');
+  if(!n){toast('등록된 사진이 없습니다. 먼저 사진을 등록하세요.');}
+  else if(n===1){toast('이미지 저장됨 — 카톡/문자에서 첨부하세요.');}
+  else{toast('사진은 ‘📤 카톡·문자로 보내기’로 한 번에 보내는 게 확실합니다. (폰은 여러 장 자동저장이 막혀 1장만 될 수 있어요)');}
 }
 function copyBiz(){ const t=curBizText(); if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast('글 복사됨 — 카톡/문자에 붙여넣기')).catch(()=>toast('복사 실패'));}else toast('자동 복사 미지원 브라우저'); }
 function openModal(title,body,btns,wide){
@@ -3180,7 +3224,7 @@ tryRestoreDir();
 // 저장된 화면 설정 복원
 (async()=>{try{
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
-  const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
+  const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.body.style.zoom=[1,1.12,1.25][fstep];}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
   const mm=await idbGet('pref_movemode');if(mm==='instant'){__moveMode='instant';const b=$('#btnMoveMode');if(b){b.textContent='📁 공정이동: 즉시';b.classList.remove('ghost');b.classList.add('clay');}}
   // 모바일 모드: 저장값 우선, 없으면 화면 폭으로 자동 판단
