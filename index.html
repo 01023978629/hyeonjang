@@ -2210,9 +2210,31 @@ function exportQuoteXlsx(){
   toast('엑셀(.xlsx)로 저장했습니다.');
 }
 
+// 폰 연락처 가져오기(안드로이드 Contact Picker API). 아이폰 Safari는 미지원 → 안내.
+async function importPhoneContacts(){
+  if(!(navigator.contacts && navigator.contacts.select)){
+    toast('이 폰(아이폰 등)은 웹에서 연락처를 직접 못 불러옵니다. → 명함을 촬영해 추가하면 이름·전화가 자동 추출됩니다.');
+    return;
+  }
+  try{
+    let props=['name','tel','email'];
+    try{ if(navigator.contacts.getProperties){ const sup=await navigator.contacts.getProperties(); const f=props.filter(p=>sup.includes(p)); if(f.length)props=f; } }catch(e){}
+    const sel=await navigator.contacts.select(props,{multiple:true});
+    if(!sel||!sel.length)return;
+    let n=0;
+    sel.forEach(c=>{
+      const name=(c.name&&c.name[0])||''; const tel=c.tel||[]; const email=(c.email&&c.email[0])||'';
+      state.files.push({id:uid(),name:(name||'연락처')+'.vcf',ext:'vcf',kind:'card',_virtual:true,
+        contact:{name:name,phone:tel[0]||'',tel:tel[1]||'',email:email,title:'',dept:'',company:'',_edited:true}});
+      n++;
+    });
+    markDirty();state.tab='contacts';render();if(typeof syncMobileNav==='function')syncMobileNav();
+    toast(n+'명 연락처를 가져왔습니다. (CSV 내보내기로 옮길 수 있어요)');
+  }catch(e){ if(e&&e.name!=='AbortError')toast('연락처 가져오기 오류: '+(e.message||e)); }
+}
 function viewContacts(){  const list=state.files.filter(f=>f.kind==='card');
-  if(!list.length)return `<div class="empty"><b>명함이 없습니다</b>명함 사진을 불러오고 ‘일괄 글자 읽기’를 누르면 이름·전화·상호를 뽑아 연락처로 정리합니다.</div>`;
-  let html=`<div class="toolbar"><button class="moss tiny" id="btnCsv">연락처 CSV 내보내기</button><span class="hint" style="margin:0;align-self:center">추출이 비었으면 명함 카드를 다시 OCR하거나 직접 메모하세요.</span></div>`;
+  if(!list.length)return `<div class="empty"><b>연락처가 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰 연락처를 가져오거나(안드로이드), 명함을 촬영해 추가하세요. (아이폰은 연락처 직접접근 불가 → 명함 촬영)</div><button class="blue" id="btnImportContacts" style="font-size:15px;padding:12px 20px;width:auto">📇 폰 연락처 가져오기</button></div>`;
+  let html=`<div class="toolbar"><button class="blue tiny" id="btnImportContacts">📇 폰 연락처 가져오기</button><button class="moss tiny" id="btnCsv">연락처 CSV 내보내기</button><span class="hint" style="margin:0;align-self:center">폰 연락처(안드로이드) 또는 명함 촬영으로 추가</span></div>`;
   list.forEach(f=>{const c=f.contact||parseCard(f.text);f.contact=c;
     const initial=(c.name||'명').slice(0,1);
     const role=[c.title,c.dept].filter(Boolean).join(' · ');
@@ -2384,7 +2406,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnImportContacts,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -2392,6 +2414,7 @@ function setupDelegation(){
     if(t.id==='btnTrimDup')return trimDuplicates();
     if(t.id==='btnAddGallery')return addPhotosFromGallery();
     if(t.id==='btnCsv')return exportContactsCSV();
+    if(t.id==='btnImportContacts')return importPhoneContacts();
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmNew')return startNewQuote();
