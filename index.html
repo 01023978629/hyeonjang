@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0b4ea2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -73,6 +73,14 @@
   .more-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:54;display:none}
   .more-backdrop.open{display:block}
   .biz-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:var(--warn);color:#fff;font-size:13px;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+  /* 모바일 일괄 공정 큰 버튼 */
+  .bulk-phase-btns{display:none;width:100%;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .bulk-phase-btn{padding:12px 16px;border:1.5px solid var(--clay);background:var(--paper);color:var(--clay);border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;flex:1 1 calc(33% - 8px);min-width:90px}
+  .bulk-phase-btn:active,.bulk-phase-btn:hover{background:var(--clay);color:#fff;transform:none}
+  body.mobile-mode .bulk-phase-btns{display:flex}
+  body.mobile-mode .bulk-phase-sel{display:none}
+  body.mobile-mode .bulkbar{position:sticky;bottom:64px;z-index:30;background:var(--paper);box-shadow:0 -2px 10px rgba(0,0,0,.1);padding:10px;border-radius:12px;flex-wrap:wrap}
+  body.mobile-mode .bulk-n{font-size:14px;font-weight:700;width:100%;margin-bottom:4px}
   /* ===== 견적 작성 모바일 카드형 ===== */
   body.mobile-mode .qm-wrap{grid-template-columns:1fr}
   body.mobile-mode .qm-side{position:static;order:-1}
@@ -132,10 +140,6 @@
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
-  html{color-scheme:light}
-  body.dark{color-scheme:dark}
-  input::placeholder,select::placeholder,textarea::placeholder{color:#8aa0b5;opacity:1}
-  body.dark input::placeholder,body.dark select::placeholder,body.dark textarea::placeholder{color:#9fb3c6;opacity:1}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
   .proj-item:hover{background:#e8f1fd}
@@ -317,6 +321,7 @@
   .help li{margin:3px 0;color:#3a4d5e}
   .help-note{margin-top:16px;padding:12px 14px;background:rgba(14,122,107,.08);border-left:3px solid var(--moss);border-radius:6px;font-size:12.5px;color:#2a4a44}
   .contact{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);margin-bottom:8px;box-shadow:var(--shadow)}
+  .con-tools{display:flex;gap:4px;align-items:center;margin-left:auto;flex-shrink:0}
   .contact .av{width:40px;height:40px;border-radius:50%;background:var(--blueprint);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
   .contact .ci{flex:1;min-width:0}
   .contact .ci b{font-size:14px} .contact .ci div{font-size:12px;color:#6a86a3}
@@ -348,6 +353,70 @@
   .stage-prog-row .spl{font-weight:600}
   .stage-prog-row .spc{color:var(--moss);font-weight:700;margin-left:auto}
   .day-selbtn{font-size:10.5px;padding:3px 9px;border:1px solid var(--line);background:var(--paper);color:var(--blueprint);border-radius:20px;cursor:pointer;font-weight:600;margin-left:4px}
+  body.mobile-mode .day-selbtn{font-size:13px;padding:7px 14px}
+  /* 월별 견적 현황 */
+  .month-table{width:100%;border-collapse:collapse;margin-bottom:14px}
+  .month-table th{background:var(--paper-2);border:1px solid var(--line-soft);padding:8px;font-size:11px;color:#5a7186;text-align:left}
+  .month-table td{border:1px solid var(--line-soft);padding:9px 8px;font-size:13px}
+  .month-table .c{text-align:center}
+  .month-table .amt{text-align:right;font-weight:600;color:var(--clay)}
+  .month-table tfoot td{background:var(--paper-2);font-size:14px}
+  .month-table tfoot .amt{color:var(--blueprint)}
+  .month-cards{display:flex;gap:10px;flex-wrap:wrap}
+  .month-card{flex:1;min-width:100px;border:1.5px solid var(--line);border-radius:12px;padding:14px;text-align:center;background:var(--paper-2)}
+  .mc-ym{font-size:12px;color:#6a86a3;font-weight:600}
+  .mc-amt{font-size:17px;font-weight:800;color:var(--clay);margin:4px 0}
+  .mc-cnt{font-size:11px;color:#6a86a3}
+  /* 일정표 */
+  .sch-day{margin-bottom:16px}
+  .sch-day-h{font-size:13px;font-weight:700;color:var(--blueprint);padding:6px 0;border-bottom:2px solid var(--line);margin-bottom:8px}
+  .sch-today{font-size:10.5px;background:var(--clay);color:#fff;padding:1px 8px;border-radius:20px;margin-left:6px}
+  .sch-item{display:flex;gap:12px;align-items:flex-start;padding:10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:8px;background:var(--paper-2)}
+  .sch-time{font-size:13px;font-weight:700;color:var(--clay);min-width:48px;padding-top:2px}
+  .sch-body{flex:1}
+  .sch-title{font-size:14px;font-weight:600}
+  .sch-proj{font-size:11px;color:var(--blueprint);font-weight:500;margin-left:4px}
+  .sch-meta{font-size:11.5px;color:#6a86a3;margin-top:3px}
+  .sch-tools{display:flex;gap:3px;flex-shrink:0}
+  .sch-form{display:flex;flex-direction:column;gap:10px}
+  .sch-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#6a86a3;font-weight:600}
+  .sch-form input,.sch-form select,.sch-form textarea{font-size:13px;padding:8px;border:1px solid var(--line-soft);border-radius:6px;background:#fff;color:#16202c;-webkit-text-fill-color:#16202c}
+  .sch-form textarea{height:70px;resize:vertical}
+  .sch-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sch-report{margin-top:8px;padding:8px 10px;background:rgba(14,122,107,.08);border-radius:8px;border-left:3px solid var(--moss)}
+  .sr-h{font-size:12px;font-weight:700;color:var(--moss);margin-bottom:4px}
+  .sr-prog{font-size:10.5px;background:var(--moss);color:#fff;padding:1px 8px;border-radius:20px;margin-left:4px}
+  .sr-line{font-size:12px;color:var(--ink);margin:2px 0}
+  .sr-line b{color:#5a7186;font-weight:600;margin-right:4px}
+  .sr-line.warn b{color:var(--warn)}
+  .mini-btn.rep-done{background:var(--moss);color:#fff}
+  .mini-btn.rep-todo{border:1px dashed var(--moss);color:var(--moss)}
+  /* 월 달력 */
+  .calendar{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--paper-2);margin-bottom:6px}
+  .cal-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .cal-title{font-size:15px;font-weight:700;color:var(--blueprint)}
+  .cal-nav{width:30px;height:30px;border:1px solid var(--line-soft);background:var(--paper);border-radius:7px;cursor:pointer;font-size:16px;color:var(--ink);display:flex;align-items:center;justify-content:center;padding:0}
+  .cal-nav:hover{background:var(--clay);color:#fff;border-color:var(--clay);transform:none}
+  .cal-today-btn{width:auto;padding:0 12px;font-size:12px;margin-left:auto}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .cal-dow{text-align:center;font-size:11px;color:#6a86a3;font-weight:600;padding:4px 0}
+  .cal-dow.sun{color:#d04545}.cal-dow.sat{color:#3060c0}
+  .cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;cursor:pointer;position:relative;border:1px solid transparent;min-height:38px}
+  .cal-cell:not(.empty):hover{background:var(--paper);border-color:var(--line-soft)}
+  .cal-cell.empty{cursor:default}
+  .cal-d{font-size:12.5px;color:var(--ink)}
+  .cal-cell.sun .cal-d{color:#d04545}.cal-cell.sat .cal-d{color:#3060c0}
+  .cal-cell.today{background:rgba(29,111,224,.1)}
+  .cal-cell.today .cal-d{font-weight:800;color:var(--clay)}
+  .cal-cell.sel{background:var(--clay);border-color:var(--clay)}
+  .cal-cell.sel .cal-d{color:#fff;font-weight:700}
+  .cal-dot{font-size:9px;color:var(--clay);font-weight:700;margin-top:1px;line-height:1}
+  .cal-dot.rep{color:var(--moss)}
+  .cal-cell.sel .cal-dot{color:#fff}
+  /* 보고서 사진 */
+  .sr-photos{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center}
+  .sr-photos img{width:52px;height:52px;border-radius:6px;object-fit:cover;border:1px solid var(--line-soft);cursor:zoom-in}
+  .sr-more{font-size:11px;color:#6a86a3;font-weight:600}
   .day-selbtn:hover{background:var(--clay);color:#fff;border-color:var(--clay);transform:none}
   .margin-card{border:1.5px solid var(--line);border-radius:12px;padding:16px;background:var(--paper-2);max-width:420px}
   .mc-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px solid var(--line-soft)}
@@ -453,10 +522,11 @@
 
     <p class="eyebrow" style="margin-top:18px">PC · 모바일 연동</p>
     <div style="display:flex;flex-direction:column;gap:6px">
-      <button class="moss tiny" id="btnExport">📤 드라이브에 내보내기</button>
-      <button class="ghost tiny" id="btnImport">📥 드라이브에서 불러오기</button>
+      <button class="blue tiny" id="btnGdrive">☁️ 구글드라이브 자동연동 (PC↔폰)</button>
+      <button class="moss tiny" id="btnExport">📤 내보내기(백업 파일)</button>
+      <button class="ghost tiny" id="btnImport">📥 불러오기</button>
     </div>
-    <p class="hint">입력한 현장·연락처·견적은 <b>이 기기에 자동 저장</b>돼 새로고침해도 남습니다.<br>다른 기기와 맞추려면: <b>내보내기</b>로 만든 <b>현장데이터.json</b>을 구글드라이브 <b>만물인테리어 ▸ 데이터</b> 폴더에 두고, 상대 기기에서 <b>불러오기</b>로 그 파일을 고르면 됩니다.</p>
+    <p class="hint">내보낸 <b>현장데이터.json</b>을 구글 드라이브·카톡에 두면, 폰이나 다른 PC에서 ‘불러오기’로 현장·견적·수금 현황을 그대로 봅니다.</p>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px">
       <button class="moss tiny" id="btnBizCard" style="width:100%">📇 사업자·명함 보내기 (사진+글·카톡/문자)</button>
@@ -474,11 +544,11 @@
 
     <div class="tabs" id="tabs">
       <div class="tab active" data-tab="dashboard">대시보드 <span class="b" id="bDash">0</span></div>
-      <div class="tab" data-tab="inbox">미분류 인박스 <span class="b" id="bInbox">0</span></div>
       <div class="tab" data-tab="docs">서류 <span class="b" id="bDocs">0</span></div>
       <div class="tab" data-tab="photos">현장 사진 <span class="b" id="bPhotos">0</span></div>
       <div class="tab" data-tab="estimates">견적·정산 <span class="b" id="bEst">0</span></div>
       <div class="tab" data-tab="quotemaker">✍ 견적 작성</div>
+      <div class="tab" data-tab="schedule">📅 일정표</div>
       <div class="tab" data-tab="contacts">연락처 <span class="b" id="bCon">0</span></div>
       <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
     </div>
@@ -499,7 +569,7 @@
 <nav id="mobileNav" class="mobile-nav">
   <button class="mnav-btn" data-mnav="dashboard"><span class="mi">📊</span><span>대시보드</span></button>
   <button class="mnav-btn" data-mnav="photos"><span class="mi">📷</span><span>현장사진</span></button>
-  <button class="mnav-btn mnav-cam" data-mnav="__drive"><span class="mi">📂</span><span>드라이브</span></button>
+  <button class="mnav-btn" data-mnav="schedule"><span class="mi">📅</span><span>일정표</span></button>
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
@@ -509,7 +579,7 @@
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const FS_OK='showDirectoryPicker' in window;
 
-const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null};
+const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null,schedule:[],contacts:[]};
 // 공급자 고정 정보 + 계좌 목록 (만물인테리어)
 const COMPANY={
   name:'만물인테리어', bizno:'895-48-01132', owner:'전병덕', tel:'010-5439-8629',
@@ -540,7 +610,7 @@ function pad(n){return String(n).padStart(2,'0');}
 function fmtDate(d){if(!d)return'날짜 없음';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;}
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
-const IMG=['jpg','jpeg','png','heic','heif','webp','gif','bmp','tif','tiff'];
+const IMG=['jpg','jpeg','png','heic','webp','gif','bmp','tif','tiff'];
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
@@ -557,6 +627,36 @@ function classify(rec){
 
 /* ---------- 견적서 정보 추출 (강화) ---------- */
 function won2num(s){return +String(s).replace(/[^\d]/g,'')||0;}
+// 견적 날짜 문자열 → YYYY-MM (다양한 형식 대응: 2025.03.05, 2025-03-05, 2025/03/05)
+function ymOf(dateStr){
+  if(!dateStr)return null;
+  const s=String(dateStr).replace(/[./]/g,'-');
+  const m=s.match(/(\d{4})-(\d{1,2})/);
+  if(!m)return null;
+  return `${m[1]}-${String(+m[2]).padStart(2,'0')}`;
+}
+// 모든 견적(외부 견적서 + 앱 작성 견적)을 월별로 집계
+function collectQuotesByMonth(){
+  const map={}; // 'YYYY-MM' → {count, total, items:[]}
+  const add=(ym,amount,label,src)=>{
+    if(!ym)return;
+    if(!map[ym])map[ym]={count:0,total:0,items:[]};
+    map[ym].count++; map[ym].total+=amount; map[ym].items.push({amount,label,src});
+  };
+  // 1) 외부 견적서 (kind==='estimate')
+  state.files.filter(f=>f.kind==='estimate'&&f.est).forEach(f=>{
+    const ym=ymOf(f.est.date)||(f.when?ymOf(f.when.toISOString()):null);
+    add(ym, f.est.amount||0, f.est.customer||f.name, '외부');
+  });
+  // 2) 앱에서 작성한 견적 (state.quotes) — 단, 현장 연결로 이미 estimate 파일이 된 건 중복 제외
+  (state.quotes||[]).forEach(q=>{
+    const vid='quote_'+q.id;
+    if(state.files.some(f=>f.id===vid))return; // 이미 외부 집계에 포함됨
+    const c=quoteCalc(q);
+    add(ymOf(q.date), c.total, q.title||q.no, '작성');
+  });
+  return map;
+}
 
 /* ===== 추출 학습: 사용자가 명시적으로 기억시킨 보정만 적용 ===== */
 // state.learn = { estimateByBiz: { '123-45-67890': {customer:'...'} } }
@@ -687,7 +787,8 @@ let __photoCache={key:null,clusters:null,dupSets:null};
 function markDirty(){state.dirty=true;__photoCache.key=null;const b=$('#btnSave');if(b){b.classList.add('clay');b.textContent='● 저장하기';}
   // 자동 저장: 자동 모드 + 연결 폴더일 때만, 3분 간격
   if(__autoSaveOn&&state.dirHandle&&FS_OK){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
-  persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적 유지
+  persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적·일정 유지
+  if(typeof cloudAutoSave==='function')cloudAutoSave(); // 클라우드(Supabase) 연결 시 자동 올리기
 }
 // 이 기기 안에 작업을 자동 저장(서버 없이). 데모는 저장 안 함(실제 자료 보호).
 let __idbSaveTimer=null;
@@ -716,6 +817,8 @@ function serializeData(){
     version:2, app:'현장', savedAt:new Date().toISOString(),
     learn:state.learn||{estimateByBiz:{}},
     quotes:state.quotes||[],
+    schedule:state.schedule||[],
+    contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
       text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,
@@ -727,6 +830,8 @@ function applyData(data){
   state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
   state.learn=data.learn||{estimateByBiz:{}};
   state.quotes=data.quotes||[];
+  state.schedule=data.schedule||[];
+  state.contacts=data.contacts||[];
   state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
@@ -808,6 +913,136 @@ function importData(){
 }
 function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(p){p.received=won2num(val);markDirty();render();}}
 
+/* ========== 구글 드라이브 자동 동기화 (Drive API) ========== */
+let __gdCfg=null;        // {clientId} — 사용자의 OAuth 클라이언트 ID
+let __gdToken=null;      // 액세스 토큰(세션)
+let __gdTokenClient=null;
+let __gdFileId=null;     // 현장데이터.json 의 Drive 파일 id
+let __gdAutoTimer=null;
+const GD_FILE='현장데이터.json';
+const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
+function gdLoadGIS(){
+  return new Promise((res,rej)=>{
+    if(window.google&&google.accounts&&google.accounts.oauth2)return res();
+    const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';
+    s.onload=()=>res();s.onerror=()=>rej(new Error('구글 로그인 모듈 로드 실패(인터넷 확인)'));
+    document.head.appendChild(s);
+  });
+}
+async function gdInitClient(){
+  if(!__gdCfg||!__gdCfg.clientId)throw new Error('먼저 클라이언트 ID를 입력하세요');
+  await gdLoadGIS();
+  if(!__gdTokenClient){__gdTokenClient=google.accounts.oauth2.initTokenClient({client_id:__gdCfg.clientId,scope:GD_SCOPE,callback:()=>{}});}
+}
+function gdGetToken(interactive){
+  return new Promise((res,rej)=>{
+    gdInitClient().then(()=>{
+      __gdTokenClient.callback=(resp)=>{
+        if(resp&&resp.access_token){__gdToken=resp.access_token;res(__gdToken);}
+        else rej(new Error(resp&&resp.error?resp.error:'로그인 실패'));
+      };
+      try{ __gdTokenClient.requestAccessToken({prompt:interactive?'consent':''}); }catch(e){ rej(e); }
+    }).catch(rej);
+  });
+}
+async function gdFindFile(){
+  const q=encodeURIComponent("name='"+GD_FILE+"' and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime desc',{headers:{Authorization:'Bearer '+__gdToken}});
+  if(r.status===401){__gdToken=null;await gdGetToken(false);return gdFindFile();}
+  const j=await r.json();
+  return (j.files&&j.files[0])?j.files[0].id:null;
+}
+async function gdSave(silent){
+  if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
+  try{
+    if(!__gdToken)await gdGetToken(false);
+    const content=JSON.stringify(serializeData());
+    if(!__gdFileId)__gdFileId=await gdFindFile();
+    let r;
+    if(__gdFileId){
+      r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+__gdFileId+'?uploadType=media',
+        {method:'PATCH',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:content});
+    }else{
+      const b='gc314159boundary';
+      const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name:GD_FILE,mimeType:'application/json'})+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+b+'--';
+      r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        {method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'multipart/related; boundary='+b},body});
+    }
+    if(r.status===401){__gdToken=null;await gdGetToken(false);return gdSave(silent);}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json().catch(()=>({}));
+    if(j&&j.id)__gdFileId=j.id;
+    const dot=document.getElementById('gdDot');if(dot)dot.textContent='☁️ 저장됨';
+    if(!silent)toast('☁️ 구글드라이브에 저장됨');
+    return true;
+  }catch(e){ if(!silent)toast('드라이브 저장 실패: '+(e.message||e)); return false; }
+}
+async function gdLoad(silent){
+  if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
+  try{
+    if(!__gdToken)await gdGetToken(false);
+    if(!__gdFileId)__gdFileId=await gdFindFile();
+    if(!__gdFileId){if(!silent)toast('드라이브에 저장된 자료가 없습니다(먼저 올리기).');return false;}
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+__gdFileId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
+    if(r.status===401){__gdToken=null;await gdGetToken(false);return gdLoad(silent);}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    applyData(data);render();
+    if(!silent)toast('☁️ 구글드라이브에서 불러왔습니다.');
+    return true;
+  }catch(e){ if(!silent)toast('드라이브 불러오기 실패: '+(e.message||e)); return false; }
+}
+// 변경 시 자동 올리기(로그인된 상태에서만, 디바운스)
+function cloudAutoSave(){
+  if(state._demo)return;
+  if(!__gdCfg||!__gdCfg.clientId||!__gdToken)return;
+  clearTimeout(__gdAutoTimer);
+  __gdAutoTimer=setTimeout(()=>{gdSave(true);},3000);
+}
+// 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
+async function gdBootSync(){
+  try{
+    const cfg=await idbGet('gd_config');
+    if(!cfg||!cfg.clientId)return;
+    __gdCfg=cfg;
+    try{ await gdGetToken(false); await gdLoad(true); }catch(e){}
+  }catch(e){}
+}
+// 연동 설정 모달
+function openGdriveSetup(){
+  const cid=(__gdCfg&&__gdCfg.clientId)||'';
+  const origin=location.origin;
+  const body=`<div style="font-size:13px;line-height:1.7">
+    <p style="margin:0 0 10px">구글드라이브에 <b>현장데이터.json</b>을 자동 저장해 PC↔폰을 맞춥니다. 처음 한 번만 ‘클라이언트 ID’를 넣고 ‘구글 로그인’ 하세요.</p>
+    <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
+      <input type="text" id="gdCid" value="${escapeAttr(cid)}" placeholder="000000-xxxx.apps.googleusercontent.com" style="width:100%;margin-top:4px">
+    </label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+      <button class="blue tiny" id="gdLogin">🔑 구글 로그인 & 연결</button>
+      <button class="moss tiny" id="gdUp">☁️ 올리기</button>
+      <button class="ghost tiny" id="gdDown">⬇️ 내려받기</button>
+      <span id="gdDot" style="align-self:center;font-size:12px;color:#5a7186">${__gdToken?'☁️ 연결됨':(cid?'설정됨':'미설정')}</span>
+    </div>
+    <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--clay)">📋 클라이언트 ID 만드는 법 (처음 1회, 약 5분)</summary>
+      <ol style="padding-left:18px;margin:8px 0">
+        <li>console.cloud.google.com 접속(<b>3dncjf@gmail.com</b>으로 로그인) → ‘새 프로젝트’ 만들기</li>
+        <li>‘API 및 서비스’ → ‘라이브러리’ → <b>Google Drive API</b> 검색 → 사용 설정</li>
+        <li>‘OAuth 동의 화면’ → 외부 → 앱이름(만물인테리어)·이메일 입력 → 테스트 사용자에 <b>3dncjf@gmail.com</b> 추가</li>
+        <li>‘사용자 인증 정보’ → ‘+ 만들기’ → <b>OAuth 클라이언트 ID</b> → 유형 ‘웹 애플리케이션’</li>
+        <li><b>승인된 자바스크립트 원본</b>에 추가: <code>${escapeHtml(origin)}</code></li>
+        <li>만들기 → 나온 <b>클라이언트 ID</b>를 위 칸에 붙여넣고 ‘구글 로그인 & 연결’</li>
+      </ol>
+    </details>
+  </div>`;
+  openModal('☁️ 구글드라이브 자동연동',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  const cidEl=root.querySelector('#gdCid');
+  const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
+  root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);toast('구글드라이브 연결됨 — 자동 저장 시작');const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';gdSave(false);}catch(e){toast('연결 실패: '+(e.message||e));}};
+  root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
+  root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdLoad(false);};
+}
+
 /* ---------- 사용법 도움말 ---------- */
 function showHelp(){
   const body=`
@@ -886,10 +1121,17 @@ function loadDemo(){
     mk({name:'사업자등록증.pdf',ext:'pdf',kind:'bizreg',project:'대치동 아파트',when:D('2025-02-01')}),
     mk({name:'대치_시공1.jpg',ext:'jpg',kind:'photo',project:'대치동 아파트',when:D('2025-02-15T10:00'),lat:37.499,lng:127.057,thumb:svg('철거','#a5683a')}),
     mk({name:'대치_시공2.jpg',ext:'jpg',kind:'photo',project:'대치동 아파트',when:D('2025-02-28T15:00'),lat:37.499,lng:127.057,thumb:svg('완공','#3a7aa5')}),
-    // 성수동 사무실: 견적만, 미배정 인박스 파일
+    // 성수동 사무실: 견적만, 미배정 사진 파일
     mk({name:'성수_견적서.pdf',ext:'pdf',kind:'estimate',project:'성수동 사무실',when:D('2025-03-18'),est:{amount:8500000,supply:7727273,vat:772727,customer:'성수동 사무실',date:'2025.03.18',bizno:''}}),
-    mk({name:'IMG_4821.jpg',ext:'jpg',kind:'photo',project:null,when:D('2025-03-19T11:00'),thumb:svg('미분류','#888')}),
+    mk({name:'IMG_4821.jpg',ext:'jpg',kind:'photo',project:null,when:D('2025-03-19T11:00'),thumb:svg('미배정','#888')}),
     mk({name:'스캔_0001.pdf',ext:'pdf',kind:'other',project:null,when:D('2025-03-19')}),
+  ];
+  // 데모 일정 (망원동 카페 사진 날짜에 맞춰 사진 자동 매칭 시연)
+  state.schedule=[
+    {id:uid(),date:'2025-03-10',time:'09:00',title:'철거 작업',project:'망원동 카페',workers:'3',memo:'기존 마감재 철거',hours:8,
+      report:{done:'바닥·벽 철거 완료, 폐기물 반출',actualWorkers:'3',material:'마대 20장',issue:'배관 노후 확인 — 교체 검토',progress:'완료',weather:'맑음',filledAt:new Date().toISOString()}},
+    {id:uid(),date:'2025-03-12',time:'09:00',title:'방수 1차',project:'망원동 카페',workers:'2',memo:'화장실·베란다',hours:6,report:null},
+    {id:uid(),date:new Date().toISOString().slice(0,10),time:'10:00',title:'현장 실측',project:'성수동 사무실',workers:'1',memo:'견적용 실측',hours:2,report:null},
   ];
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
@@ -917,36 +1159,16 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   state.files.push(rec);
 }
-async function extractImage(file,rec){
-  const e=ext(file.name);
-  if(e==='heic'||e==='heif'){   // 직접 고른 HEIC도 zip처럼: GPS·날짜 보존 + JPEG 썸네일 변환
-    try{
-      const ab=await file.arrayBuffer();
-      const m=await readHeicMeta(ab);                 // 변환 전 원본에서 GPS·촬영시간 확보
-      if(m.when)rec.when=m.when;
-      if(m.lat!=null){rec.lat=m.lat;rec.lng=m.lng;rec.place=m.lat.toFixed(4)+', '+m.lng.toFixed(4);}
-      await ensureHeic2any();
-      const r=await heic2any({blob:new Blob([ab]),toType:'image/jpeg',quality:0.9});
-      const jpg=Array.isArray(r)?r[0]:r;
-      rec.thumb=URL.createObjectURL(jpg);             // 변환된 JPEG로 썸네일(안드로이드/PC에서도 보임)
-    }catch(_){ rec.thumb=URL.createObjectURL(file); } // 변환 실패 시 원본 유지(멈추지 않음)
-    return;
-  }
-  // 비-HEIC: EXIF.js + 4초 안전장치(읽기 오류여도 반드시 진행 → import 무한멈춤 방지)
+function extractImage(file,rec){
   return new Promise(res=>{
     rec.thumb=URL.createObjectURL(file);
-    let done=false; const fin=()=>{if(done)return; done=true; clearTimeout(timer); res();};
-    const timer=setTimeout(fin, 4000);
     try{EXIF.getData(file,function(){
-      try{
-        const dt=EXIF.getTag(this,'DateTimeOriginal')||EXIF.getTag(this,'DateTime');
-        if(dt){const d=parseExifDate(dt);if(d)rec.when=d;}
-        const la=EXIF.getTag(this,'GPSLatitude'),lo=EXIF.getTag(this,'GPSLongitude');
-        const lr=EXIF.getTag(this,'GPSLatitudeRef'),or=EXIF.getTag(this,'GPSLongitudeRef');
-        if(la&&lo){rec.lat=dms(la,lr);rec.lng=dms(lo,or);rec.place=rec.lat.toFixed(4)+', '+rec.lng.toFixed(4);}
-      }catch(_){}
-      fin();
-    });}catch(e){fin();}
+      const dt=EXIF.getTag(this,'DateTimeOriginal')||EXIF.getTag(this,'DateTime');
+      if(dt){const d=parseExifDate(dt);if(d)rec.when=d;}
+      const la=EXIF.getTag(this,'GPSLatitude'),lo=EXIF.getTag(this,'GPSLongitude');
+      const lr=EXIF.getTag(this,'GPSLatitudeRef'),or=EXIF.getTag(this,'GPSLongitudeRef');
+      if(la&&lo){rec.lat=dms(la,lr);rec.lng=dms(lo,or);rec.place=rec.lat.toFixed(4)+', '+rec.lng.toFixed(4);}
+      res();});}catch(e){res();}
   });
 }
 /* ===== 압축(zip) 사진 불러오기: HEIC는 자동 JPG 변환 ===== */
@@ -1070,6 +1292,7 @@ function toggleMoveMode(){
 }
 $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
+{const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
 $('#btnZipPhotos').onclick=importPhotoZip;
 $('#btnDemo').onclick=loadDemo;
 $('#btnBizCard').onclick=shareBizCard;
@@ -1078,7 +1301,7 @@ $('#btnInstall').onclick=installApp;
 // 다크모드 · 글자크기
 let __fontStep=0;const FONT_SCALES=['100%','112%','125%'];
 $('#btnDark').onclick=()=>{document.body.classList.toggle('dark');const on=document.body.classList.contains('dark');$('#btnDark').textContent=on?'☀️':'🌙';try{idbSet('pref_dark',on);}catch(e){}};
-$('#btnFont').onclick=()=>{__fontStep=(__fontStep+1)%FONT_SCALES.length;document.body.style.zoom=[1,1.12,1.25][__fontStep];try{idbSet('pref_font',__fontStep);}catch(e){}};
+$('#btnFont').onclick=()=>{__fontStep=(__fontStep+1)%FONT_SCALES.length;document.documentElement.style.setProperty('--fs',FONT_SCALES[__fontStep]);try{idbSet('pref_font',__fontStep);}catch(e){}};
 window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveProject(false);}});
 async function runBatchOCR(){
   const targets=state.files.filter(f=>f.ocr==='pending');
@@ -1346,7 +1569,7 @@ $('#btnMobile').onclick=toggleMobile;
 // 하단 메뉴 클릭
 document.querySelectorAll('.mnav-btn').forEach(b=>b.onclick=()=>{
   const tgt=b.dataset.mnav;
-  if(tgt==='__drive')return openDrive();
+  if(tgt==='__camera')return openCamera();
   if(tgt==='__more')return openMoreSheet();
   state.tab=tgt;if(tgt==='project'&&!state.activeProject){/* 현장 미선택 시 대시보드 유지 */}
   render();syncMobileNav();
@@ -1358,18 +1581,17 @@ function openMoreSheet(){
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='moreBackdrop';
   sheet=document.createElement('div');sheet.className='more-sheet open';sheet.id='moreSheet';
   const items=[
-    {t:'inbox',i:'📥',l:'미분류 인박스'},
     {t:'docs',i:'📁',l:'서류'},
     {t:'estimates',i:'🧾',l:'견적·정산'},
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>구글드라이브 열기</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();if(el.dataset.moreaction==='biz')shareBizCard();});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();});
 }
 // 카메라 촬영
 function openCamera(){
@@ -1430,17 +1652,17 @@ function render(){
   });
   const c=counts();
   $('#bDash').textContent=state.projects.length;
-  $('#bInbox').textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
+  const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
   $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
   tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
-  $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미분류 ${c.inbox} · 배정완료 ${c.assigned}`:'';
+  $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
-  const titles={dashboard:['운영 ','대시보드'],inbox:['분류 대기 ','함'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],contacts:['명함 ','연락처'],project:['현장별 ','정리함']};
+  const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함']};
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(!state.files.length&&state.tab!=='dashboard'&&state.tab!=='quotemaker'){v.innerHTML=emptyState();bindDrop();return;}
-  const map={dashboard:viewDashboard,inbox:viewInbox,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,contacts:viewContacts,project:viewProject};
+  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject};
   v.innerHTML=map[state.tab]();
   bindDrop();bindEvents();
   if(typeof syncMobileNav==='function')syncMobileNav();
@@ -1604,7 +1826,7 @@ function viewDashboard(){
   html+=`</div>`;
   // 현장별 표
   html+=`<div class="dash-sec">현장별 현황 <span style="font-size:11px;color:#6a86a3;font-weight:400">· 수금액을 입력하면 미수금이 자동 계산됩니다</span></div>`;
-  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th><th class="amt">미수금</th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th><th class="amt">미수금</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     html+=`<tr>
       <td><b style="color:var(--blueprint);cursor:pointer" data-open="${escapeAttr(s.name)}">${escapeHtml(s.name)}</b></td>
@@ -1618,10 +1840,10 @@ function viewDashboard(){
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td>
     <td class="amt"><b>${won(totEst)}</b></td><td class="amt"><b>${won(totRecv)}</b></td>
     <td class="amt" style="color:var(--warn)"><b>${won(totDue)}</b></td></tr>`;
-  html+=`</tbody></table></div>`;
+  html+=`</tbody></table>`;
   // 현장별 지출·마진 표
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:#6a86a3;font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
-  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
@@ -1635,16 +1857,9 @@ function viewDashboard(){
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
     <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
-  html+=`</tbody></table></div>`;
+  html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   return html;
-}
-function viewInbox(){
-  let list=state.files.filter(f=>!f.project&&matchSearch(f));
-  let head=`<div class="drop" id="drop"><b>파일을 끌어다 놓아</b> 인박스에 추가할 수 있습니다.</div>`;
-  if(!list.length)return head+`<div class="empty"><b>${state.search?'검색 결과 없음':'인박스가 비었습니다'}</b>${state.search?'다른 검색어를 입력해 보세요.':'모든 파일이 현장에 배정되었습니다.'}</div>`;
-  head+=`<div class="legend"><span><i style="background:var(--clay)"></i>견적서</span><span><i style="background:var(--blueprint)"></i>사업자등록증</span><span><i style="background:var(--moss)"></i>명함</span><span><i style="background:var(--ink)"></i>현장 사진</span><span>각 카드에서 종류·현장을 지정하세요.</span></div>`;
-  return head+`<div class="grid">${list.map(cardHtml).join('')}</div>`;
 }
 function viewDocs(){
   let html=`<div class="drop" id="drop"><b>서류 파일을 끌어다 놓으세요.</b> 내용을 읽어 자동 분류합니다.</div>`;let any=false;
@@ -1687,7 +1902,7 @@ function viewPhotos(){
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 대표만 남기기</button>`:''}
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
-  // 사진 추가(폰=갤러리/카메라) + 드래그 드롭존
+  // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
   html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 구글드라이브 열기 (사진 올리기)</button><span class="hint" style="margin:0">폰은 드라이브 만물인테리어▸현장사진에 올리고, 컴퓨터는 아래 끌어다 놓기</span></div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
@@ -1747,20 +1962,55 @@ function bulkBar(scopeProj){
   if(!n)return '';
   // 공정 옵션(현장별 보기일 때 그 현장 공정)
   let phaseOpts='';
-  if(scopeProj){const p=state.projects.find(x=>x.name===scopeProj);(p?.phases||[]).forEach(ph=>phaseOpts+=`<option value="${escapeAttr(ph)}">${escapeHtml(ph)}</option>`);}
+  let phaseList=[];
+  if(scopeProj){const p=state.projects.find(x=>x.name===scopeProj);phaseList=(p?.phases||[]);phaseList.forEach(ph=>phaseOpts+=`<option value="${escapeAttr(ph)}">${escapeHtml(ph)}</option>`);}
+  // 모바일: 공정을 큰 버튼으로 (누르면 선택 사진 전체에 지정)
+  let mobileChips='';
+  if(scopeProj&&phaseList.length){
+    mobileChips=`<div class="bulk-phase-btns">${phaseList.map(ph=>`<button class="bulk-phase-btn" data-bulkphase="${escapeAttr(ph)}">${escapeHtml(ph)}</button>`).join('')}</div>`;
+  }
   return `<div class="bulkbar">
     <span class="bulk-n">${n}장 선택됨</span>
-    ${scopeProj&&phaseOpts?`<select id="bulkPhase"><option value="">공정 일괄지정…</option>${phaseOpts}</select>`:''}
+    ${scopeProj&&phaseOpts?`<select id="bulkPhase" class="bulk-phase-sel"><option value="">공정 일괄지정…</option>${phaseOpts}</select>`:''}
     <button class="ghost tiny" id="bulkMove">일괄 이동</button>
     <button class="ghost tiny" id="bulkRename">자동 이름정리</button>
     <button class="ghost tiny" id="bulkClear">선택 해제</button>
+    ${mobileChips}
   </div>`;
 }
 function bindBulk(scopeProj){
-  const bp=$('#bulkPhase');if(bp)bp.onchange=()=>{if(!bp.value)return;const fs=selFiles();fs.forEach(f=>{if(f.project===scopeProj)f._phase=bp.value;});markDirty();toast(fs.length+'장에 공정 “'+bp.value+'” 지정');clearSel();};
+  const bp=$('#bulkPhase');if(bp)bp.onchange=()=>{if(!bp.value)return;applyBulkPhase(scopeProj,bp.value);};
   const bm=$('#bulkMove');if(bm)bm.onclick=()=>bulkMove();
   const br=$('#bulkRename');if(br)br.onclick=()=>bulkRename();
   const bc=$('#bulkClear');if(bc)bc.onclick=clearSel;
+  // 모바일 공정 큰 버튼
+  document.querySelectorAll('[data-bulkphase]').forEach(b=>b.onclick=()=>applyBulkPhase(scopeProj,b.dataset.bulkphase));
+}
+// 선택 사진 전체에 공정 지정 (+ 즉시이동 모드면 실제 폴더 이동)
+async function applyBulkPhase(scopeProj,phase){
+  const fs=selFiles().filter(f=>f.project===scopeProj);
+  if(!fs.length){toast('이 현장의 선택된 사진이 없습니다.');return;}
+  fs.forEach(f=>f._phase=phase);
+  markDirty();
+  // 즉시이동 모드 + 폴더연결이면 실제 이동
+  if(typeof __moveMode!=='undefined' && __moveMode==='instant' && state.dirHandle && FS_OK){
+    let moved=0;
+    for(const f of fs){ if(f._virtual)continue;
+      try{ const dir=await ensurePhaseDir(scopeProj,phase);
+        let nm=safeName(f.name);
+        try{await dir.getFileHandle(nm);const dot=nm.lastIndexOf('.');nm=dot>0?nm.slice(0,dot)+'_'+Date.now()+nm.slice(dot):nm+'_'+Date.now();}catch(e){}
+        const srcFile=await getFileOf(f);
+        const nh=await dir.getFileHandle(nm,{create:true});
+        const w=await nh.createWritable();await w.write(srcFile);await w.close();
+        await deleteOriginal(f);
+        f.handle=nh;f.name=nm;f.prefix='_정리완료/'+scopeProj+'/'+phase+'/';moved++;
+      }catch(e){}
+    }
+    toast(`${fs.length}장에 “${phase}” 지정${moved?` · ${moved}장 폴더 이동`:''}`);
+  }else{
+    toast(`${fs.length}장에 공정 “${phase}” 지정`);
+  }
+  clearSel();
 }
 // 일괄 이동: 대상 선택 후 순차 이동
 // 일괄 작업 직전 체크포인트(백업 파일 저장)
@@ -1924,12 +2174,16 @@ function photoCell(p){
 }
 function viewEstimates(){
   const list=state.files.filter(f=>f.kind==='estimate');
-  if(!list.length)return `<div class="empty"><b>견적서가 없습니다</b>견적서를 불러오고 ‘일괄 글자 읽기’를 누르면 고객·금액·날짜를 뽑아 정산표를 만듭니다.</div>`;
+  if(!list.length){
+    const m=monthlyQuoteHTML();
+    if(m)return `<div class="empty" style="margin-bottom:20px"><b>불러온 견적서가 없습니다</b>폴더에서 견적서를 불러오면 여기 정산표가 생깁니다. 아래는 앱에서 작성한 견적 기준 월별 현황입니다.</div>`+m;
+    return `<div class="empty"><b>견적서가 없습니다</b>견적서를 불러오고 ‘일괄 글자 읽기’를 누르면 고객·금액·날짜를 뽑아 정산표를 만듭니다.</div>`;
+  }
   // 현장별 합계
   const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
-  html+=`<div class="qm-table-wrap"><table class="estimate-table"><thead><tr><th>파일</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
       <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
@@ -1940,11 +2194,45 @@ function viewEstimates(){
       <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
       <td style="white-space:nowrap"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
     </tr>`;});
-  html+=`</tbody></table></div>`;
+  html+=`</tbody></table>`;
   const total=Object.values(byProj).reduce((a,b)=>a+b,0);
   html+=`<div style="margin-top:18px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:6px">현장별 합계</div>`;
   Object.entries(byProj).forEach(([k,v])=>{html+=`<div class="sumbar" style="justify-content:space-between;border-bottom:1px dashed var(--line);padding:5px 0"><span>${escapeHtml(k)}</span><b style="font-size:15px">${won(v)}</b></div>`;});
   html+=`<div class="sumbar"><span>총 견적 합계</span><b>${won(total)}</b></div></div>`;
+  html+=monthlyQuoteHTML();
+  return html;
+}
+// 월별 견적 현황 HTML (외부 견적서 + 앱 작성 견적 통합)
+function monthlyQuoteHTML(){
+  const map=collectQuotesByMonth();
+  const yms=Object.keys(map).sort((a,b)=>b.localeCompare(a)); // 최신월 먼저
+  if(!yms.length)return '';
+  const grand=yms.reduce((a,ym)=>a+map[ym].total,0);
+  const grandCnt=yms.reduce((a,ym)=>a+map[ym].count,0);
+  let html=`<div style="margin-top:26px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📅 월별 견적 현황 <span style="text-transform:none;letter-spacing:0;color:#6a86a3;font-weight:400">· 외부 견적서 + 앱 작성 견적 합산</span></div>`;
+  html+=`<table class="month-table"><thead><tr><th>월</th><th class="c">건수</th><th class="amt">견적 합계</th><th>비고</th></tr></thead><tbody>`;
+  yms.forEach(ym=>{
+    const m=map[ym];
+    const [y,mm]=ym.split('-');
+    const srcMix=[...new Set(m.items.map(i=>i.src))].join('+');
+    html+=`<tr>
+      <td><b>${y}년 ${+mm}월</b></td>
+      <td class="c">${m.count}건</td>
+      <td class="amt">${won(m.total)}</td>
+      <td style="font-size:11px;color:#6a86a3">${srcMix}</td>
+    </tr>`;
+  });
+  html+=`</tbody><tfoot><tr><td><b>전체</b></td><td class="c"><b>${grandCnt}건</b></td><td class="amt"><b>${won(grand)}</b></td><td></td></tr></tfoot></table>`;
+  // 최근 3개월 요약 카드
+  const recent=yms.slice(0,3);
+  if(recent.length){
+    html+=`<div class="month-cards">`;
+    recent.forEach(ym=>{const m=map[ym];const [y,mm]=ym.split('-');
+      html+=`<div class="month-card"><div class="mc-ym">${+mm}월</div><div class="mc-amt">${won(m.total)}</div><div class="mc-cnt">${m.count}건</div></div>`;
+    });
+    html+=`</div>`;
+  }
+  html+=`</div>`;
   return html;
 }
 
@@ -2134,8 +2422,7 @@ function importQuoteXlsx(){
       const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
       const q=parseQuoteFromGrid(grid,file.name);
       state.editingQuote=q;state.tab='quotemaker';markDirty();render();
-      if(q._matched) toast('엑셀 견적서를 불러왔습니다 · 품목 '+q.items.length+'개. (총액은 부가세 별도 기준 — 10% 필요시 ‘부가세 포함’으로)');
-      else toast('이 엑셀에서 품목을 못 찾았습니다. 양식이 특이하면 그 파일을 캡처해 알려주세요(품명·단가 칸 위치).');
+      toast('엑셀 견적서를 불러왔습니다 · 품목 '+q.items.length+'개. (총액은 원본과 동일한 부가세 별도 기준 — 10% 추가가 필요하면 ‘부가세 포함’으로 변경)');
     }catch(e){toast('엑셀 읽기 오류: '+e.message);}
   };
   inp.click();
@@ -2143,48 +2430,36 @@ function importQuoteXlsx(){
 // 헤더(품명/규격/수량/단가/공급가액)를 키워드로 자동 탐지하는 견고한 파서
 function parseQuoteFromGrid(grid,filename){
   const norm=s=>String(s==null?'':s).replace(/\s+/g,'');
-  // 헤더 키워드를 폭넓게(다양한 견적서 양식 호환): 정확일치 또는 시작일치
-  const hasK=(c,ks)=>{const t=norm(c);return t&&ks.some(k=>t===k||t.startsWith(k));};
-  const NAME=['품명','품목','내역','공사명','항목','명칭','공종','공정'];
-  const PRICE=['단가'];
-  const AMT=['공급가액','공급대가','공급가','금액','가격'];
-  const SPEC=['규격','모델명','모델','사양','사이즈','비고'];
-  const QTY=['수량','수','갯수','개수','qty'];
-  const STOP=['합계','총액','소계','합 계','총 액','소 계'];
   const q=newQuote();
   const base=String(filename||'').replace(/\.[^.]+$/,'');
   const dm=base.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
   if(dm){q.date=`${dm[1]}-${dm[2]}-${dm[3]}`;q.no='견'+dm[1]+dm[2]+dm[3];}
   q.title=base.replace(/20\d{2}[.\-_ ]?\d{2}[.\-_ ]?\d{2}/,'').replace(/[-_]+/g,' ').trim()||base;
-  const findCol=(row,ks)=>row.findIndex(c=>hasK(c,ks));
-  // 헤더 행 = 이름열 + (단가열 또는 금액열)이 같은 줄에 있는 첫 행
   let hr=-1,cN=-1,cS=-1,cQ=-1,cP=-1,cA=-1;
   for(let r=0;r<grid.length;r++){
     const row=grid[r]||[];
-    const n=findCol(row,NAME), p=findCol(row,PRICE), a=findCol(row,AMT);
-    if(n>=0&&(p>=0||a>=0)){hr=r;cN=n;cP=p;cA=a;cS=findCol(row,SPEC);cQ=findCol(row,QTY);break;}
+    const find=(...ks)=>row.findIndex(c=>ks.includes(norm(c)));
+    const n=find('품명'),p=find('단가');
+    if(n>=0&&p>=0){hr=r;cN=n;cP=p;cS=find('규격');cQ=find('수량');cA=find('공급가액','금액');break;}
   }
   const items=[];
   if(hr>=0){
-    let lastName='';
-    for(let r=hr+1;r<grid.length&&items.length<300;r++){
+    for(let r=hr+1;r<grid.length&&items.length<200;r++){
       const row=grid[r]||[];
-      if(row.some(c=>STOP.includes(norm(c))))break;
-      let nm=cN>=0?String(row[cN]==null?'':row[cN]).trim():'';
+      if(row.some(c=>['합계','총액','소계'].includes(norm(c))))break;
+      let nm=String(row[cN]==null?'':row[cN]).trim();
       let spec=cS>=0?String(row[cS]==null?'':row[cS]).trim():'';
       const qty=cQ>=0?(num(row[cQ])||1):1;
-      let price=cP>=0?num(row[cP]):0;
+      let price=num(row[cP]);
       if(!price&&cA>=0&&qty)price=Math.round(num(row[cA])/qty);
-      if(nm==='-')nm=''; if(spec==='-')spec='';
-      if(!nm&&!spec&&!price)continue;            // 완전 빈 행만 건너뜀
-      if(nm)lastName=nm; else if(price||spec)nm=lastName;  // 병합된 품명(카테고리) 이어받기
-      if(!nm&&spec){nm=spec;spec='';}            // 품명이 비고 규격만 있으면 규격을 품명으로
+      if(nm==='-')nm='';
+      if(spec==='-')spec='';
+      if(!nm&&!price)continue;
       items.push({name:nm,spec:spec,qty:qty||1,price:price});
     }
   }
   if(items.length)q.items=items;
   q.vatIncluded=false; // 원본 합계와 동일하게 별도 기준으로 가져옴
-  q._matched=items.length>0;
   return q;
 }
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
@@ -2220,29 +2495,266 @@ function exportQuoteXlsx(){
   toast('엑셀(.xlsx)로 저장했습니다.');
 }
 
-// 폰 연락처 가져오기(안드로이드 Contact Picker API). 아이폰 Safari는 미지원 → 안내.
-async function importPhoneContacts(){
-  if(!(navigator.contacts && navigator.contacts.select)){
-    toast('이 폰(아이폰 등)은 웹에서 연락처를 직접 못 불러옵니다. → 명함을 촬영해 추가하면 이름·전화가 자동 추출됩니다.');
-    return;
+/* ==================== 일정표 (작업 일정 → 폰 캘린더 .ics) ==================== */
+let __calYM=null; // 'YYYY-MM' 현재 보는 달 (null=이번달)
+let __calSelDate=null; // 선택된 날짜 'YYYY-MM-DD'
+function calMonth(){return __calYM||new Date().toISOString().slice(0,7);}
+function viewSchedule(){
+  const today=new Date().toISOString().slice(0,10);
+  let html=`<div class="panel-head" style="margin-bottom:12px"><h2 style="font-size:18px">📅 작업 일정표</h2>
+    <button class="clay tiny" id="schAdd">+ 일정 추가</button></div>`;
+  // ===== 월 달력 =====
+  html+=calendarHTML();
+  html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
+  const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  if(sch.length){
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="moss tiny" id="schExportAll">📲 전체 폰 캘린더에 추가</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
-  try{
-    let props=['name','tel','email'];
-    try{ if(navigator.contacts.getProperties){ const sup=await navigator.contacts.getProperties(); const f=props.filter(p=>sup.includes(p)); if(f.length)props=f; } }catch(e){}
-    const sel=await navigator.contacts.select(props,{multiple:true});
-    if(!sel||!sel.length)return;
-    let n=0;
-    sel.forEach(c=>{
-      const name=(c.name&&c.name[0])||''; const tel=c.tel||[]; const email=(c.email&&c.email[0])||'';
-      state.files.push({id:uid(),name:(name||'연락처')+'.vcf',ext:'vcf',kind:'card',_virtual:true,
-        contact:{name:name,phone:tel[0]||'',tel:tel[1]||'',email:email,title:'',dept:'',company:'',_edited:true}});
-      n++;
+  if(!sch.length){
+    html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
+    return html;
+  }
+  // 선택 날짜 필터
+  let showSch=sch;
+  if(__calSelDate)showSch=sch.filter(s=>s.date===__calSelDate);
+  if(__calSelDate&&!showSch.length){
+    const dd=new Date(__calSelDate);const wd=['일','월','화','수','목','금','토'][dd.getDay()];
+    html+=`<div class="empty"><b>${dd.getMonth()+1}월 ${dd.getDate()}일 (${wd}) 일정이 없습니다</b>‘+ 일정 추가’로 이 날 일정을 만드세요.</div>`;
+    return html;
+  }
+  // 날짜별 그룹
+  const byDate={};showSch.forEach(s=>{(byDate[s.date]=byDate[s.date]||[]).push(s);});
+  Object.keys(byDate).sort().forEach(d=>{
+    const dd=new Date(d);const wd=['일','월','화','수','목','금','토'][dd.getDay()];
+    const isToday=d===today;
+    html+=`<div class="sch-day"><div class="sch-day-h">${dd.getFullYear()}.${String(dd.getMonth()+1).padStart(2,'0')}.${String(dd.getDate()).padStart(2,'0')} (${wd})${isToday?' <span class="sch-today">오늘</span>':''}</div>`;
+    byDate[d].forEach(s=>{
+      const r=s.report;
+      const repPhotos=reportPhotos(s);
+      html+=`<div class="sch-item">
+        <div class="sch-time">${s.time||'종일'}</div>
+        <div class="sch-body">
+          <div class="sch-title">${escapeHtml(s.title||'(제목 없음)')}${s.project?` <span class="sch-proj">🏗️ ${escapeHtml(s.project)}</span>`:''}</div>
+          ${s.workers?`<div class="sch-meta">👷 예정 인원 ${escapeHtml(String(s.workers))}명${s.memo?' · '+escapeHtml(s.memo):''}</div>`:(s.memo?`<div class="sch-meta">${escapeHtml(s.memo)}</div>`:'')}
+          ${r?`<div class="sch-report">
+            <div class="sr-h">📋 작업 보고 ${r.progress?`<span class="sr-prog">${r.progress}</span>`:''}</div>
+            ${r.done?`<div class="sr-line"><b>작업</b> ${escapeHtml(r.done)}</div>`:''}
+            ${r.actualWorkers?`<div class="sr-line"><b>실제 인원</b> ${escapeHtml(String(r.actualWorkers))}명</div>`:''}
+            ${r.material?`<div class="sr-line"><b>자재</b> ${escapeHtml(r.material)}</div>`:''}
+            ${r.issue?`<div class="sr-line warn"><b>특이사항</b> ${escapeHtml(r.issue)}</div>`:''}
+            ${repPhotos.length?`<div class="sr-photos">${repPhotos.slice(0,6).map(p=>`<img src="${p.thumb}" data-light="${p.id}" title="${escapeAttr(p.name)}">`).join('')}${repPhotos.length>6?`<span class="sr-more">+${repPhotos.length-6}</span>`:''}</div>`:''}
+          </div>`:''}
+        </div>
+        <div class="sch-tools">
+          <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고">📋</button>
+          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가">📲</button>
+          <button class="mini-btn" data-schedit="${s.id}">✎</button>
+          <button class="mini-btn" data-schdel="${s.id}">🗑</button>
+        </div>
+      </div>`;
     });
-    markDirty();state.tab='contacts';render();if(typeof syncMobileNav==='function')syncMobileNav();
-    toast(n+'명 연락처를 가져왔습니다. (CSV 내보내기로 옮길 수 있어요)');
-  }catch(e){ if(e&&e.name!=='AbortError')toast('연락처 가져오기 오류: '+(e.message||e)); }
+    html+=`</div>`;
+  });
+  return html;
 }
-// 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (아이폰 연락처 대안)
+// 그 일정의 현장+날짜에 해당하는 사진 자동 매칭
+function reportPhotos(s){
+  if(!s.project)return [];
+  return state.files.filter(f=>{
+    if(f.kind!=='photo'||f.project!==s.project||!f.thumb)return false;
+    if(!f.when)return false;
+    const fd=`${f.when.getFullYear()}-${String(f.when.getMonth()+1).padStart(2,'0')}-${String(f.when.getDate()).padStart(2,'0')}`;
+    return fd===s.date;
+  });
+}
+// 월 달력 HTML
+function calendarHTML(){
+  const ym=calMonth();
+  const [y,m]=ym.split('-').map(Number);
+  const first=new Date(y,m-1,1);
+  const startDow=first.getDay(); // 0=일
+  const daysInMonth=new Date(y,m,0).getDate();
+  const today=new Date().toISOString().slice(0,10);
+  // 날짜별 일정 수 + 보고 여부
+  const dayInfo={};
+  (state.schedule||[]).forEach(s=>{if(s.date.startsWith(ym)){const d=+s.date.split('-')[2];if(!dayInfo[d])dayInfo[d]={cnt:0,rep:false};dayInfo[d].cnt++;if(s.report)dayInfo[d].rep=true;}});
+  let cells='';
+  // 빈 칸 (월 시작 전)
+  for(let i=0;i<startDow;i++)cells+=`<div class="cal-cell empty"></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const ds=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dow=(startDow+day-1)%7;
+    const info=dayInfo[day];
+    const isToday=ds===today;
+    const isSel=ds===__calSelDate;
+    cells+=`<div class="cal-cell${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" data-calday="${ds}">
+      <span class="cal-d">${day}</span>
+      ${info?`<span class="cal-dot${info.rep?' rep':''}">${info.cnt>1?info.cnt:'●'}</span>`:''}
+    </div>`;
+  }
+  const ymLabel=`${y}년 ${m}월`;
+  return `<div class="calendar">
+    <div class="cal-head">
+      <button class="cal-nav" data-calnav="-1">‹</button>
+      <span class="cal-title">${ymLabel}</span>
+      <button class="cal-nav" data-calnav="1">›</button>
+      <button class="cal-nav cal-today-btn" data-calnav="0">오늘</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-dow sun">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div><div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow sat">토</div>
+      ${cells}
+    </div>
+  </div>`;
+}
+// 달력 이동
+function calNav(dir){
+  if(dir==='0'||dir===0){__calYM=null;__calSelDate=null;render();return;}
+  const ym=calMonth();let [y,m]=ym.split('-').map(Number);
+  m+=(+dir);if(m<1){m=12;y--;}if(m>12){m=1;y++;}
+  __calYM=`${y}-${String(m).padStart(2,'0')}`;render();
+}
+function calSelectDay(ds){__calSelDate=(__calSelDate===ds)?null:ds;render();}
+function newSchedule(){
+  return {id:uid(),date:new Date().toISOString().slice(0,10),time:'09:00',title:'',project:'',workers:'',memo:'',hours:8,
+    report:null}; // report: {done, actualWorkers, material, issue, progress, weather, filledAt}
+}
+function openScheduleEdit(id){
+  const s=id?state.schedule.find(x=>x.id===id):newSchedule();
+  if(!s)return;
+  const isNew=!id;
+  const projOpts=`<option value="">현장 선택 안 함</option>`+state.projects.map(p=>`<option value="${escapeAttr(p.name)}"${s.project===p.name?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
+  const body=`<div class="sch-form">
+    <label>제목<input type="text" id="schTitle" value="${escapeAttr(s.title)}" placeholder="예: 방수 2차 작업"></label>
+    <div class="sch-row2">
+      <label>날짜<input type="date" id="schDate" value="${escapeAttr(s.date)}"></label>
+      <label>시작 시간<input type="time" id="schTime" value="${escapeAttr(s.time)}"></label>
+    </div>
+    <div class="sch-row2">
+      <label>작업 시간(시간)<input type="number" id="schHours" value="${s.hours||8}" min="1" max="24"></label>
+      <label>인부 수(명)<input type="number" id="schWorkers" value="${escapeAttr(String(s.workers||''))}" min="0" placeholder="예: 3"></label>
+    </div>
+    <label>현장<select id="schProj">${projOpts}</select></label>
+    <label>메모<textarea id="schMemo" placeholder="작업 내용·자재·특이사항">${escapeHtml(s.memo||'')}</textarea></label>
+  </div>`;
+  openModal(isNew?'일정 추가':'일정 수정', body, [
+    {label:'저장',cls:'blue',fn:()=>saveScheduleEdit(s.id,isNew)},
+    {label:'취소',cls:'ghost',fn:closeModal}
+  ], true);
+}
+function saveScheduleEdit(id,isNew){
+  const g=i=>document.getElementById(i);
+  const s={
+    id, date:g('schDate').value, time:g('schTime').value,
+    title:g('schTitle').value.trim(), project:g('schProj').value,
+    workers:g('schWorkers').value, memo:g('schMemo').value.trim(),
+    hours:+g('schHours').value||8
+  };
+  if(!s.title){toast('제목을 입력하세요.');return;}
+  if(isNew)state.schedule.push(s);
+  else{const i=state.schedule.findIndex(x=>x.id===id);if(i>=0)state.schedule[i]=s;}
+  markDirty();closeModal();render();toast('일정 저장됨');
+}
+// 일일 작업 보고서 작성
+function openReportEdit(id){
+  const s=state.schedule.find(x=>x.id===id);if(!s)return;
+  const r=s.report||{done:'',actualWorkers:s.workers||'',material:'',issue:'',progress:'',weather:''};
+  const progOpts=['','시작','진행중','50%','80%','완료','보류'].map(p=>`<option value="${p}"${r.progress===p?' selected':''}>${p||'진행률 선택'}</option>`).join('');
+  const wOpts=['','맑음','흐림','비','눈','바람','더움','추움'].map(w=>`<option value="${w}"${r.weather===w?' selected':''}>${w||'날씨'}</option>`).join('');
+  const dd=new Date(s.date);const wd=['일','월','화','수','목','금','토'][dd.getDay()];
+  const photos=reportPhotos(s);
+  const photoBlock=photos.length
+    ? `<div style="font-size:11px;color:#6a86a3;font-weight:600;margin-top:4px">📷 이 날 현장 사진 ${photos.length}장 (자동 연결)</div><div class="sr-photos">${photos.slice(0,8).map(p=>`<img src="${p.thumb}" data-light="${p.id}" title="${escapeAttr(p.name)}">`).join('')}${photos.length>8?`<span class="sr-more">+${photos.length-8}</span>`:''}</div>`
+    : (s.project?`<div class="hint" style="margin-top:4px">이 날(${s.date}) ${escapeHtml(s.project)} 현장 사진이 없습니다. 사진을 불러오면 자동으로 여기 표시됩니다.</div>`:`<div class="hint" style="margin-top:4px">일정에 현장이 연결되면 그날 사진이 자동 표시됩니다.</div>`);
+  const body=`<div class="sch-form">
+    <div style="font-size:12px;color:#6a86a3;margin-bottom:2px">${s.date} (${wd}) · ${escapeHtml(s.title)}${s.project?' · '+escapeHtml(s.project):''}</div>
+    <label>오늘 한 작업<textarea id="rDone" placeholder="예: 화장실 방수 2차 완료, 거실 목공 골조">${escapeHtml(r.done||'')}</textarea></label>
+    <div class="sch-row2">
+      <label>실제 투입 인원(명)<input type="number" id="rWorkers" value="${escapeAttr(String(r.actualWorkers||''))}" min="0" placeholder="예: 3"></label>
+      <label>진행률<select id="rProgress">${progOpts}</select></label>
+    </div>
+    <div class="sch-row2">
+      <label>날씨<select id="rWeather">${wOpts}</select></label>
+      <label>자재/투입<input type="text" id="rMaterial" value="${escapeAttr(r.material||'')}" placeholder="예: 방수액 2통, 합판 10장"></label>
+    </div>
+    <label>특이사항<textarea id="rIssue" placeholder="예: 누수 추가 발견, 자재 추가 발주 필요">${escapeHtml(r.issue||'')}</textarea></label>
+    ${photoBlock}
+  </div>`;
+  openModal('📋 일일 작업 보고', body, [
+    {label:'저장',cls:'blue',fn:()=>saveReport(id)},
+    {label:r.done!==undefined&&s.report?'보고 삭제':'',cls:'warn',fn:s.report?()=>{s.report=null;markDirty();closeModal();render();toast('보고 삭제됨');}:null},
+    {label:'취소',cls:'ghost',fn:closeModal}
+  ].filter(b=>b.label&&b.fn), true);
+}
+function saveReport(id){
+  const s=state.schedule.find(x=>x.id===id);if(!s)return;
+  const g=i=>document.getElementById(i);
+  s.report={
+    done:g('rDone').value.trim(),
+    actualWorkers:g('rWorkers').value,
+    material:g('rMaterial').value.trim(),
+    issue:g('rIssue').value.trim(),
+    progress:g('rProgress').value,
+    weather:g('rWeather').value,
+    filledAt:new Date().toISOString()
+  };
+  markDirty();closeModal();render();toast('작업 보고 저장됨');
+}
+function deleteSchedule(id){  const s=state.schedule.find(x=>x.id===id);if(!s)return;
+  openModal('일정 삭제',`<p style="font-size:13px">‘${escapeHtml(s.title)}’ 일정을 삭제할까요?</p>`,
+    [{label:'취소',cls:'ghost',fn:closeModal},{label:'삭제',cls:'warn',fn:()=>{state.schedule=state.schedule.filter(x=>x.id!==id);markDirty();closeModal();render();toast('삭제됨');}}]);
+}
+// .ics 생성 (구글/아이폰 캘린더 호환)
+function pad2(n){return String(n).padStart(2,'0');}
+function icsDateTime(dateStr,timeStr,addHours){
+  const [y,m,d]=dateStr.split('-').map(Number);
+  let [hh,mi]=(timeStr||'09:00').split(':').map(Number);
+  const dt=new Date(y,m-1,d,hh,mi||0);
+  if(addHours)dt.setHours(dt.getHours()+addHours);
+  return dt.getFullYear()+pad2(dt.getMonth()+1)+pad2(dt.getDate())+'T'+pad2(dt.getHours())+pad2(dt.getMinutes())+'00';
+}
+function escapeICS(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');}
+function buildICS(items){
+  let lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//만물인테리어//현장//KO','CALSCALE:GREGORIAN'];
+  const stamp=icsDateTime(new Date().toISOString().slice(0,10),new Date().toTimeString().slice(0,5),0);
+  items.forEach(s=>{
+    const start=icsDateTime(s.date,s.time,0);
+    const end=icsDateTime(s.date,s.time,s.hours||8);
+    let desc=[];
+    if(s.workers)desc.push('예정 인원 '+s.workers+'명');
+    if(s.project)desc.push('현장: '+s.project);
+    if(s.memo)desc.push(s.memo);
+    if(s.report){const r=s.report;
+      if(r.done)desc.push('[작업] '+r.done);
+      if(r.actualWorkers)desc.push('실제 인원 '+r.actualWorkers+'명');
+      if(r.issue)desc.push('[특이] '+r.issue);
+    }
+    const summary=(s.project?'['+s.project+'] ':'')+(s.title||'작업');
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:'+s.id+'@manmul');
+    lines.push('DTSTAMP:'+stamp);
+    lines.push('DTSTART:'+start);
+    lines.push('DTEND:'+end);
+    lines.push('SUMMARY:'+escapeICS(summary));
+    if(desc.length)lines.push('DESCRIPTION:'+escapeICS(desc.join(' / ')));
+    if(s.project)lines.push('LOCATION:'+escapeICS(s.project));
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+function downloadICS(items,filename){
+  if(!items.length){toast('내보낼 일정이 없습니다.');return;}
+  const ics=buildICS(items);
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename||'일정.ics';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast('캘린더 파일(.ics) 생성 — 열어서 ‘추가’하면 폰 캘린더에 등록됩니다.');
+}
+function exportScheduleICS(id){const s=state.schedule.find(x=>x.id===id);if(s)downloadICS([s],`일정_${(s.title||'작업').replace(/[^\w가-힣]/g,'')}.ics`);}
+function exportAllICS(){downloadICS(state.schedule||[],'만물인테리어_작업일정.ics');}
+
+// 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (모바일에서 연락처 추가)
 async function addCardPhoto(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async()=>{
@@ -2260,13 +2772,13 @@ async function addCardPhoto(){
     }
     if(typeof __photoCache!=='undefined')__photoCache.key=null;
     markDirty();state.tab='contacts';render();if(typeof syncMobileNav==='function')syncMobileNav();
-    toast('명함 추가 완료 — 이름·전화가 비면 카드를 눌러 직접 고치세요.');
+    toast('명함 추가 완료 — 이름·전화가 비면 ✎로 직접 고치세요.');
     inp.value='';
   };
   inp.click();
 }
-// 명함 연락처 손으로 고치기 (OCR이 틀렸을 때)
-function editContact(id){
+// 명함 OCR 연락처 손수정
+function editCardContact(id){
   const f=state.files.find(x=>x.id===id);if(!f)return;
   const c=f.contact||parseCard(f.text||'')||{};
   const name=prompt('이름',c.name||'');if(name===null)return;
@@ -2276,10 +2788,35 @@ function editContact(id){
   f.contact=Object.assign({},c,{name:name.trim(),phone:phone.trim(),company:company.trim(),title:title.trim()});
   markDirty();render();toast('연락처 수정됨');
 }
-function viewContacts(){  const list=state.files.filter(f=>f.kind==='card');
-  if(!list.length)return `<div class="empty"><b>연락처가 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰 연락처를 가져오거나(안드로이드), 명함을 촬영해 추가하세요. (아이폰은 연락처 직접접근 불가 → 명함 촬영)</div><button class="blue" id="btnImportContacts" style="font-size:15px;padding:12px 20px;width:auto">📇 폰 연락처 가져오기</button> <button class="moss" id="btnAddCard" style="font-size:15px;padding:12px 20px;width:auto">📷 명함 촬영(연락처 추출)</button></div>`;
-  let html=`<div class="toolbar"><button class="blue tiny" id="btnImportContacts">📇 폰 연락처 가져오기</button><button class="moss tiny" id="btnAddCard">📷 명함 촬영</button><button class="moss tiny" id="btnCsv">연락처 CSV 내보내기</button><span class="hint" style="margin:0;align-self:center">폰 연락처(안드로이드) 또는 명함 촬영으로 추가</span></div>`;
-  list.forEach(f=>{const c=f.contact||parseCard(f.text);f.contact=c;
+function viewContacts(){
+  const cards=state.files.filter(f=>f.kind==='card');
+  const manual=state.contacts||[];
+  const total=cards.length+manual.length;
+  let html=`<div class="panel-head" style="margin-bottom:10px"><h2 style="font-size:18px">👤 연락처 <span style="font-size:13px;color:#6a86a3;font-weight:400">${total}명</span></h2>
+    <button class="clay tiny" id="conAdd">+ 연락처 추가</button></div>`;
+  html+=`<div class="toolbar" style="margin-bottom:10px">
+    <button class="blue tiny" id="btnAddCard">📷 명함 촬영(연락처 추출)</button>
+    ${total?`<button class="moss tiny" id="conVcfAll">📲 전체 폰에 저장(.vcf)</button>`:''}
+    ${cards.length?`<button class="ghost tiny" id="btnCsv">CSV 내보내기</button>`:''}
+  </div>`;
+  html+=`<p class="hint" style="margin:0 0 14px">‘+ 연락처 추가’로 직접 입력하거나, ‘📷 명함 촬영’으로 명함을 찍으면 이름·전화가 자동 추출됩니다. 각 연락처의 📲로 폰 주소록에 저장(.vcf)할 수 있습니다.</p>`;
+  if(!total)return html+`<div class="empty"><b>연락처가 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">‘+ 연락처 추가’로 직접 만들거나, ‘📷 명함 촬영’으로 명함을 찍어 추가하세요.</div><button class="blue" id="btnAddCard" style="font-size:15px;padding:12px 20px;width:auto">📷 명함 촬영(연락처 추출)</button></div>`;
+  // 직접 입력 연락처
+  manual.forEach(c=>{
+    const initial=(c.name||'명').slice(0,1);
+    const role=[c.title,c.company].filter(Boolean).join(' · ');
+    html+=`<div class="contact"><div class="av">${escapeHtml(initial)}</div>
+      <div class="ci"><b>${escapeHtml(c.name||'(이름 미상)')}</b>${role?` <span style="font-size:11px;color:var(--moss);font-weight:600">${escapeHtml(role)}</span>`:''}
+      <div>${escapeHtml(c.phone||'')}</div>
+      ${c.memo?`<div style="font-size:11px;color:#6a86a3">${escapeHtml(c.memo)}</div>`:''}</div>
+      <div class="con-tools">
+        <button class="mini-btn" data-convcf="${c.id}" title="폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-conedit="${c.id}">✎</button>
+        <button class="mini-btn" data-condel="${c.id}">🗑</button>
+      </div></div>`;
+  });
+  // 명함 OCR 연락처
+  cards.forEach(f=>{const c=f.contact||parseCard(f.text);f.contact=c;
     const initial=(c.name||'명').slice(0,1);
     const role=[c.title,c.dept].filter(Boolean).join(' · ');
     const phones=[c.phone,c.tel].filter(Boolean).join(' / ');
@@ -2287,8 +2824,75 @@ function viewContacts(){  const list=state.files.filter(f=>f.kind==='card');
       <div class="ci"><b>${escapeHtml(c.name||'(이름 미상)')}</b>${role?` <span style="font-size:11px;color:var(--moss);font-weight:600">${escapeHtml(role)}</span>`:''}
       <div>${escapeHtml(c.company||'')}</div>
       <div>${phones}${c.email?' · '+escapeHtml(c.email):''}</div></div>
-      <div style="display:flex;align-items:center;gap:6px">${f.thumb?`<div class="ph" style="width:48px;height:48px"><img src="${f.thumb}"></div>`:''}<button class="ghost tiny" data-editc="${escapeAttr(f.id)}">✏️ 수정</button></div></div>`;});
+      <div class="con-tools">
+        <button class="mini-btn" data-convcfcard="${f.id}" title="폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-cardedit="${f.id}" title="이름·전화 고치기">✎</button>
+        ${f.thumb?`<div class="ph" style="width:44px;height:44px"><img src="${f.thumb}"></div>`:''}
+      </div></div>`;});
   return html;
+}
+// 직접 입력 연락처 추가/수정
+function openContactEdit(id){
+  const c=id?state.contacts.find(x=>x.id===id):{id:uid(),name:'',phone:'',company:'',title:'',memo:''};
+  if(!c)return;
+  const isNew=!id;
+  const body=`<div class="sch-form">
+    <label>이름<input type="text" id="cName" value="${escapeAttr(c.name||'')}" placeholder="홍길동"></label>
+    <label>전화<input type="tel" id="cPhone" value="${escapeAttr(c.phone||'')}" placeholder="010-0000-0000"></label>
+    <div class="sch-row2">
+      <label>회사<input type="text" id="cCompany" value="${escapeAttr(c.company||'')}" placeholder="○○건설"></label>
+      <label>직급<input type="text" id="cTitle" value="${escapeAttr(c.title||'')}" placeholder="대표/팀장"></label>
+    </div>
+    <label>메모<textarea id="cMemo" placeholder="거래 내용·특이사항">${escapeHtml(c.memo||'')}</textarea></label>
+  </div>`;
+  openModal(isNew?'연락처 추가':'연락처 수정', body, [
+    {label:'저장',cls:'blue',fn:()=>saveContactEdit(c.id,isNew)},
+    {label:'취소',cls:'ghost',fn:closeModal}
+  ], true);
+}
+function saveContactEdit(id,isNew){
+  const g=i=>document.getElementById(i);
+  const c={id,name:g('cName').value.trim(),phone:g('cPhone').value.trim(),company:g('cCompany').value.trim(),title:g('cTitle').value.trim(),memo:g('cMemo').value.trim()};
+  if(!c.name&&!c.phone){toast('이름이나 전화 중 하나는 입력하세요.');return;}
+  if(isNew)state.contacts.push(c);
+  else{const i=state.contacts.findIndex(x=>x.id===id);if(i>=0)state.contacts[i]=c;}
+  markDirty();closeModal();render();toast('연락처 저장됨');
+}
+function deleteContact(id){
+  const c=state.contacts.find(x=>x.id===id);if(!c)return;
+  openModal('연락처 삭제',`<p style="font-size:13px">‘${escapeHtml(c.name||c.phone)}’ 연락처를 삭제할까요?</p>`,
+    [{label:'취소',cls:'ghost',fn:closeModal},{label:'삭제',cls:'warn',fn:()=>{state.contacts=state.contacts.filter(x=>x.id!==id);markDirty();closeModal();render();toast('삭제됨');}}]);
+}
+// vCard(.vcf) 생성
+function vcardEscape(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');}
+function buildVCard(c){
+  // c: {name, phone, company, title, email, memo}
+  let lines=['BEGIN:VCARD','VERSION:3.0'];
+  lines.push('FN:'+vcardEscape(c.name||c.phone||'연락처'));
+  if(c.name)lines.push('N:'+vcardEscape(c.name)+';;;;');
+  if(c.company||c.title)lines.push('ORG:'+vcardEscape(c.company||''));
+  if(c.title)lines.push('TITLE:'+vcardEscape(c.title));
+  if(c.phone)lines.push('TEL;TYPE=CELL:'+vcardEscape(c.phone));
+  if(c.tel)lines.push('TEL;TYPE=WORK:'+vcardEscape(c.tel));
+  if(c.email)lines.push('EMAIL:'+vcardEscape(c.email));
+  if(c.memo)lines.push('NOTE:'+vcardEscape(c.memo));
+  lines.push('END:VCARD');
+  return lines.join('\r\n');
+}
+function downloadVCF(contacts,filename){
+  if(!contacts.length){toast('저장할 연락처가 없습니다.');return;}
+  const vcf=contacts.map(buildVCard).join('\r\n');
+  const blob=new Blob([vcf],{type:'text/vcard;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename||'연락처.vcf';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast('연락처 파일(.vcf) 생성 — 열어서 ‘추가’하면 폰 주소록에 저장됩니다.');
+}
+function exportContactVCF(id){const c=state.contacts.find(x=>x.id===id);if(c)downloadVCF([c],`${(c.name||'연락처').replace(/[^\w가-힣]/g,'')}.vcf`);}
+function exportCardVCF(fileId){const f=state.files.find(x=>x.id===fileId);if(f&&f.contact)downloadVCF([f.contact],`${(f.contact.name||'연락처').replace(/[^\w가-힣]/g,'')}.vcf`);}
+function exportAllVCF(){
+  const all=[...(state.contacts||[]), ...state.files.filter(f=>f.kind==='card'&&f.contact).map(f=>f.contact)];
+  downloadVCF(all,'만물인테리어_연락처.vcf');
 }
 function viewProject(){
   if(state.activeProject===null){
@@ -2300,7 +2904,7 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:#6a86a3;font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="moss tiny" data-gdrive="${escapeAttr(p.name)}">📂드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
@@ -2316,7 +2920,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="moss tiny" data-gdrive="${escapeAttr(state.activeProject)}">📤 구글드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=stageBar(p);
 
   // 필터 헬퍼: 현재 보기(__projView)에서 해당 섹션을 표시할지
@@ -2336,7 +2940,7 @@ function viewProject(){
   }
 
   if(!list.length){
-    if(__projView===null)return html+`<div class="empty"><b>비어 있습니다</b>인박스·사진·견적 탭에서 이 현장으로 배정하세요.</div>`;
+    if(__projView===null)return html+`<div class="empty"><b>비어 있습니다</b>서류·사진·견적 탭에서 이 현장으로 배정하세요.</div>`;
   }
   // 견적 합계 요약 (상담)
   const tot=list.filter(f=>f.kind==='estimate').reduce((a,f)=>a+(f.est?.amount||0),0);
@@ -2450,20 +3054,35 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnGotoDrive,#btnImportContacts,#btnAddCard,[data-editc],#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnToggleDup'){__showDup=!__showDup;return render();}
     if(t.id==='btnTrimDup')return trimDuplicates();
-    if(t.id==='btnGotoDrive')return openDrive();
     if(t.id==='btnCsv')return exportContactsCSV();
-    if(t.id==='btnImportContacts')return importPhoneContacts();
-    if(t.id==='btnAddCard')return addCardPhoto();
-    if(d.editc!==undefined)return editContact(d.editc);
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmNew')return startNewQuote();
+    if(t.id==='schAdd')return openScheduleEdit(null);
+    if(t.id==='schExportAll')return exportAllICS();
+    if(t.id==='schShowAll'){__calSelDate=null;return render();}
+    if(d.calday!==undefined)return calSelectDay(d.calday);
+    if(d.calnav!==undefined)return calNav(d.calnav);
+    if(t.id==='conAdd')return openContactEdit(null);
+    if(t.id==='conVcfAll')return exportAllVCF();
+    if(d.convcf!==undefined)return exportContactVCF(d.convcf);
+    if(d.convcfcard!==undefined)return exportCardVCF(d.convcfcard);
+    if(t.id==='btnAddCard')return addCardPhoto();
+    if(d.cardedit!==undefined)return editCardContact(d.cardedit);
+    if(t.id==='btnGotoDrive')return openDrive();
+    if(t.id==='btnGdrive')return openGdriveSetup();
+    if(d.conedit!==undefined)return openContactEdit(d.conedit);
+    if(d.condel!==undefined)return deleteContact(d.condel);
+    if(d.schics!==undefined)return exportScheduleICS(d.schics);
+    if(d.schreport!==undefined)return openReportEdit(d.schreport);
+    if(d.schedit!==undefined)return openScheduleEdit(d.schedit);
+    if(d.schdel!==undefined)return deleteSchedule(d.schdel);
     if(t.id==='qmClose')return closeQuoteEdit();
     if(t.id==='qmSave')return saveQuoteEdit();
     if(t.id==='qmPdf')return printQuote(null);
@@ -2489,7 +3108,6 @@ function setupDelegation(){
     if(d.save!==undefined)return previewMove(d.save);
     if(d.pdf!==undefined)return exportProjectPDF(d.pdf);
     if(d.zip!==undefined)return exportProjectZIP(d.zip);
-    if(d.gdrive!==undefined)return openDrive();
     if(d.portfolio!==undefined)return exportPortfolio(d.portfolio);
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
@@ -2526,31 +3144,16 @@ function setupDelegation(){
     if(t.id==='qmVat'){setQuoteField('vatIncluded',t.value);return render();}
     if(t.id==='qmAcct'){setQuoteField('accountIdx',t.value);return render();}
     if(t.id==='qmProj'){setQuoteField('project',t.value);return;}
-    // 견적 품목: change는 값만 커밋(전체 재렌더 안 함 → 포커스/키보드 유지)
-    if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);return;}
+    // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
+    if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);if(d.qf==='qty'||d.qf==='price')render();return;}
     if(t.id==='phaseProjSel'){__phaseProj=t.value;return render();}
   });
-  // ---- 견적 품목 입력 중 실시간 합계(전체 재렌더 없이 해당 셀·합계만) ----
-  view.addEventListener('input',e=>{
-    const t=e.target,d=t.dataset;
-    if(t.matches('input[data-qi]')&&(d.qf==='qty'||d.qf==='price')){
-      setQuoteItem(+d.qi,d.qf,t.value);
-      const q=state.editingQuote; if(!q)return; const it=q.items[+d.qi];
-      const row=t.closest('tr'); const amt=row&&row.querySelector('.qm-amt');
-      if(amt&&it)amt.textContent=won(num(it.qty)*num(it.price));
-      const c=quoteCalc(q); const card=document.querySelector('.qm-preview-card');
-      if(card){const bs=card.querySelectorAll('.qm-sum-row b');
-        if(bs[0])bs[0].textContent=won(c.sub); if(bs[1])bs[1].textContent=won(c.supply);
-        if(bs[2])bs[2].textContent=won(c.vat); if(bs[3])bs[3].textContent=won(c.total);
-        const kor=card.querySelector('.qm-kor'); if(kor)kor.textContent=won2kor(c.total);}
-    }
-  });
-  // ---- 엔터 위임 ----
+  // ---- 공정 입력 엔터 위임 ----
   view.addEventListener('keydown',e=>{
     const t=e.target;
     if(t.matches('input[data-phaseinput]')&&e.key==='Enter')addPhase(t.dataset.phaseinput,t.value);
     if(t.id==='phaseProjInput'&&e.key==='Enter'){const sel=view.querySelector('#phaseProjSel');if(sel){__phaseProj=sel.value;addPhase(sel.value,t.value);}}
-    if((t.matches('input[data-qf="price"]')||t.matches('input[data-qf="qty"]'))&&e.key==='Enter'){e.preventDefault();setQuoteItem(+t.dataset.qi,t.dataset.qf,t.value);addQuoteItem();}
+    if(t.matches('input[data-qf="price"]')&&e.key==='Enter'){e.preventDefault();addQuoteItem();}
   });
 }
 function attachDrop(d, onDrop){
@@ -2622,7 +3225,7 @@ function quoteHTML(q){
   const acct=COMPANY.accounts[q.accountIdx]||COMPANY.accounts[0];
   const vatLabel=q.vatIncluded?'부가세 포함':'부가세 별도';
   const d=new Date(q.date);
-  const dateStr=isNaN(d.getTime())?escapeHtml(q.date||''):`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
+  const dateStr=`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;
   const minRows=Math.max(8,q.items.length);
   let body='';
   q.items.forEach((it,i)=>{
@@ -2786,27 +3389,6 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
 }
 
 /* ---------- 현장별 ZIP (종류별 폴더) ---------- */
-/* ===== 현장 사진을 구글드라이브로 (모바일: 공유창 → 구글드라이브 앱 업로드) ===== */
-async function shareProjectToDrive(proj){
-  const photos=state.files.filter(f=>f.project===proj&&f.kind==='photo');
-  if(!photos.length){toast('이 현장에 사진이 없습니다.');return;}
-  toast('사진 준비 중...');
-  const files=[];
-  for(const p of photos){ try{ const f=await getFileOf(p); if(f)files.push(f); }catch(e){} }
-  if(!files.length){toast('보낼 사진 파일이 없습니다(폰에선 압축으로 불러온 사진만 가능).');return;}
-  try{
-    if(navigator.canShare && navigator.canShare({files})){
-      await navigator.share({files,title:proj+' 현장사진',text:`[${COMPANY.name}] ${proj} 현장사진 ${files.length}장`});
-      return;  // 공유창에서 '구글 드라이브' 선택 → 만물인테리어 현장사진 폴더에 업로드
-    }
-    toast('이 기기는 사진 한번에 공유가 안 돼요. ZIP로 받아 구글드라이브 앱에서 올리세요.');
-    exportProjectZIP(proj);
-  }catch(e){
-    if(e&&e.name==='AbortError')return;
-    toast('사진이 많아 한 번에 안 될 수 있어요 — ZIP로 받아 구글드라이브 앱에 올리세요.');
-    exportProjectZIP(proj);
-  }
-}
 async function exportProjectZIP(proj){
   const list=state.files.filter(f=>f.project===proj);
   if(!list.length){toast('배정된 파일이 없습니다.');return;}
@@ -3147,7 +3729,6 @@ function pickBizImage(which){
     if(!durl){toast('이 사진은 못 읽었습니다. JPG/PNG 사진을 써주세요(HEIC면 먼저 변환).');return;}
     __biz[which]=durl;
     try{await idbSet(which==='img1'?'biz_사업자':'biz_명함',durl);}catch(e){}
-    __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){}  // 입력 중이던 글 보존
     shareBizCard(); toast('사진 등록·저장됨');
   };
   inp.click();
@@ -3159,12 +3740,11 @@ function addBizExtra(){
     const files=[...inp.files];if(!files.length)return;
     for(const f of files){const durl=await resizeToDataURL(f,1800,0.85);if(durl)__biz.extras.push(durl);}
     try{await idbSet('biz_extras',__biz.extras);}catch(e){}
-    __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){}  // 입력 중이던 글 보존
     shareBizCard();toast(files.length+'장 추가됨');
   };
   inp.click();
 }
-async function delBizExtra(i){__biz.extras.splice(i,1);try{await idbSet('biz_extras',__biz.extras);}catch(e){}__biz.text=curBizText();try{await idbSet('biz_text',__biz.text);}catch(e){}shareBizCard();}
+async function delBizExtra(i){__biz.extras.splice(i,1);try{await idbSet('biz_extras',__biz.extras);}catch(e){}shareBizCard();}
 // 텍스트 프리셋 선택/저장/추가/삭제
 async function selectPreset(i){
   __biz.presetIdx=+i;__biz.text=__biz.presets[i]?.text||'';
@@ -3241,8 +3821,8 @@ async function shareBizCard(){
 }
 async function saveBizText(){ __biz.text=curBizText(); try{await idbSet('biz_text',__biz.text);}catch(e){} toast('글·사진 저장됨 — 다음에 자동으로 불러옵니다.'); }
 async function sendBiz(){
-  const text=curBizText(); __biz.text=text;
-  const files=bizImageFiles();          // share 호출 전에 동기로 준비(iOS 사용자제스처 유지)
+  const text=curBizText(); __biz.text=text; try{await idbSet('biz_text',text);}catch(e){}
+  const files=bizImageFiles();
   try{
     if(files.length && navigator.canShare && navigator.canShare({files})){
       await navigator.share({files,text,title:`${COMPANY.name} 사업자·명함`}); return;
@@ -3250,16 +3830,13 @@ async function sendBiz(){
     if(navigator.share){ await navigator.share({text,title:`${COMPANY.name} 사업자·명함`}); toast('이 폰은 사진 공유를 못 해 글만 보냈습니다. 사진은 ‘이미지 저장’ 후 첨부하세요.'); return; }
     saveBizImages(); copyBiz(); toast('공유 미지원 기기 — 사진 저장+글 복사했습니다. 카톡/문자에 붙여 보내세요.');
   }catch(e){ if(e&&e.name!=='AbortError')toast('보내기 취소/오류: '+(e&&e.message||e)); }
-  finally{ idbSet('biz_text',text).catch(()=>{}); }   // 저장은 share 뒤에서 await 없이
 }
 function smsBiz(){ const t=curBizText(); try{location.href='sms:?body='+encodeURIComponent(t);}catch(e){toast('문자앱을 열 수 없습니다(PC).');} }
 function saveBizImages(){
   let n=0;
   [['img1','사업자등록증'],['img2','명함']].forEach(([k,nm])=>{ if(__biz[k]){ const a=document.createElement('a');a.href=__biz[k];a.download=`${COMPANY.name}_${nm}.jpg`;document.body.appendChild(a);a.click();a.remove();n++; } });
   (__biz.extras||[]).forEach((d,i)=>{const a=document.createElement('a');a.href=d;a.download=`${COMPANY.name}_사진${i+1}.jpg`;document.body.appendChild(a);a.click();a.remove();n++;});
-  if(!n){toast('등록된 사진이 없습니다. 먼저 사진을 등록하세요.');}
-  else if(n===1){toast('이미지 저장됨 — 카톡/문자에서 첨부하세요.');}
-  else{toast('사진은 ‘📤 카톡·문자로 보내기’로 한 번에 보내는 게 확실합니다. (폰은 여러 장 자동저장이 막혀 1장만 될 수 있어요)');}
+  toast(n?`이미지 ${n}장 저장됨 — 카톡/문자에서 첨부하세요.`:'등록된 사진이 없습니다. 먼저 사진을 등록하세요.');
 }
 function copyBiz(){ const t=curBizText(); if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast('글 복사됨 — 카톡/문자에 붙여넣기')).catch(()=>toast('복사 실패'));}else toast('자동 복사 미지원 브라우저'); }
 function openModal(title,body,btns,wide){
@@ -3284,9 +3861,11 @@ render();
   if(saved&&((saved.projects&&saved.projects.length)||(saved.files&&saved.files.length))){
     applyData(saved);
     const mn=document.getElementById('mountName'); if(mn)mn.textContent='📦 저장된 작업(이 기기)';
-    const mh=document.getElementById('mountHint'); if(mh)mh.textContent='이 기기에 저장해 둔 현장·연락처·견적을 불러왔습니다. 자동 저장됩니다. (사진 원본은 구글드라이브에)';
+    const mh=document.getElementById('mountHint'); if(mh)mh.textContent='이 기기에 저장해 둔 현장·연락처·견적·일정을 불러왔습니다. 자동 저장됩니다. (사진 원본은 구글드라이브에)';
     render();
   }
+  // 클라우드(구글드라이브) 설정이 있으면 조용히 동기화 시도
+  if(typeof gdBootSync==='function')gdBootSync();
 }catch(e){} })();
 
 /* ========== PWA: 설치형 앱 + 오프라인 + 폴더 기억 ========== */
@@ -3303,18 +3882,16 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v2';
+    const C='hyeonjang-v3';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
       if(e.request.method!=='GET')return;
       const isDoc=e.request.mode==='navigate'||e.request.destination==='document';
-      if(isDoc){
-        // 페이지(HTML)는 네트워크 우선 → 업데이트 즉시 반영(오프라인이면 캐시)
+      if(isDoc){ // HTML은 네트워크 우선 → 업데이트 즉시 반영(옛 캐시로 안 막힘)
         e.respondWith(fetch(e.request).then(res=>{const cp=res.clone();caches.open(C).then(c=>c.put(e.request,cp));return res;}).catch(()=>caches.match(e.request)));
         return;
       }
-      // 그 외(CDN 라이브러리 등)는 캐시 우선(빠름)
       e.respondWith(
         caches.open(C).then(cache=>cache.match(e.request).then(hit=>{
           const net=fetch(e.request).then(res=>{try{cache.put(e.request,res.clone());}catch(_){}return res;}).catch(()=>hit);
@@ -3370,7 +3947,7 @@ tryRestoreDir();
 // 저장된 화면 설정 복원
 (async()=>{try{
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
-  const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.body.style.zoom=[1,1.12,1.25][fstep];}
+  const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
   const mm=await idbGet('pref_movemode');if(mm==='instant'){__moveMode='instant';const b=$('#btnMoveMode');if(b){b.textContent='📁 공정이동: 즉시';b.classList.remove('ghost');b.classList.add('clay');}}
   // 모바일 모드: 저장값 우선, 없으면 화면 폭으로 자동 판단
