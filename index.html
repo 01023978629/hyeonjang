@@ -1632,9 +1632,30 @@ function viewDocs(){
 let __showDup=false;
 let __phaseProj=null;
 function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')).join('|')+'#'+state.search;}
+// 갤러리/카메라에서 사진 추가 (capture 없음 → 폰에서 사진 보관함 선택 가능)
+function addPhotosFromGallery(){
+  let inp=document.getElementById('galInput');
+  if(!inp){
+    inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;inp.id='galInput';inp.style.display='none';
+    document.body.appendChild(inp);
+    inp.onchange=async()=>{
+      const files=[...inp.files];if(!files.length)return;
+      toast(files.length+'장 불러오는 중...');
+      const before=state.files.length;
+      for(const f of files){try{await ingestFile(f);}catch(e){}}
+      const added=state.files.slice(before);
+      if(state.activeProject){added.forEach(f=>{if(f.kind==='photo')f.project=state.activeProject;});}
+      if(typeof __photoCache!=='undefined')__photoCache.key=null;
+      markDirty();state.tab='photos';render();if(typeof syncMobileNav==='function')syncMobileNav();
+      toast(added.length+'장 추가'+(state.activeProject?` · ${state.activeProject}`:''));
+      inp.value='';
+    };
+  }
+  inp.click();
+}
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진이 없습니다</b>사진을 불러오면 촬영 시간(+GPS)으로 방문별 묶음을 만듭니다.</div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진이 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 아래 버튼으로 갤러리·카메라에서 추가 / 컴퓨터: 끌어다 놓기</div><button class="blue" id="btnAddGallery" style="font-size:15px;padding:13px 22px;width:auto">📷 갤러리에서 사진 추가</button></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -1656,7 +1677,8 @@ function viewPhotos(){
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 대표만 남기기</button>`:''}
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
-  // 탐색기 드래그 드롭존
+  // 사진 추가(폰=갤러리/카메라) + 드래그 드롭존
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnAddGallery" style="font-size:13px;padding:9px 16px">📷 갤러리에서 사진 추가</button><span class="hint" style="margin:0">폰은 이 버튼, 컴퓨터는 아래 끌어다 놓기</span></div>`;
   html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
@@ -2362,12 +2384,13 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnToggleDup'){__showDup=!__showDup;return render();}
     if(t.id==='btnTrimDup')return trimDuplicates();
+    if(t.id==='btnAddGallery')return addPhotosFromGallery();
     if(t.id==='btnCsv')return exportContactsCSV();
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
