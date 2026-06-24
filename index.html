@@ -1015,7 +1015,7 @@ function cloudAutoSave(){
 // 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
 async function gdBootSync(){
   try{
-    const cfg=await idbGet('gd_config'); if(cfg&&cfg.clientId)__gdCfg=cfg; // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
+     // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
     const fid=await idbGet('gd_fileid'); if(fid)__gdFileId=fid;            // 저장해 둔 파일 재사용(중복 생성 방지)
     if(!__gdCfg||!__gdCfg.clientId)return;
     // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
