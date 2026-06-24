@@ -914,13 +914,16 @@ function importData(){
 function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(p){p.received=won2num(val);markDirty();render();}}
 
 /* ========== 구글 드라이브 자동 동기화 (Drive API) ========== */
-let __gdCfg=null;        // {clientId} — 사용자의 OAuth 클라이언트 ID
+const GD_CLIENT_ID='468613653109-a7o2m2c7cpk574ijrb7bc76fga6akili.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
+const GD_FILE='현장데이터.json';
+const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
+let __gdCfg={clientId:GD_CLIENT_ID};  // 기본 연결(사용자가 바꾸면 idb로 덮어씀)
 let __gdToken=null;      // 액세스 토큰(세션)
+let __gdTokenExp=0;      // 토큰 만료 시각(ms) — 만료 전 선제 갱신
+let __gdTokenPromise=null; // 진행 중 토큰 요청(동시성 직렬화)
 let __gdTokenClient=null;
 let __gdFileId=null;     // 현장데이터.json 의 Drive 파일 id
 let __gdAutoTimer=null;
-const GD_FILE='현장데이터.json';
-const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
 function gdLoadGIS(){
   return new Promise((res,rej)=>{
     if(window.google&&google.accounts&&google.accounts.oauth2)return res();
@@ -935,24 +938,34 @@ async function gdInitClient(){
   if(!__gdTokenClient){__gdTokenClient=google.accounts.oauth2.initTokenClient({client_id:__gdCfg.clientId,scope:GD_SCOPE,callback:()=>{}});}
 }
 function gdGetToken(interactive){
-  return new Promise((res,rej)=>{
+  // 유효 토큰 있으면 재사용(만료 60초 전까지)
+  if(__gdToken && Date.now()<__gdTokenExp-60000) return Promise.resolve(__gdToken);
+  // 진행 중 요청이 있으면 그걸 공유(동시성 → 콜백 덮어쓰기 방지)
+  if(__gdTokenPromise) return __gdTokenPromise;
+  __gdTokenPromise=new Promise((res,rej)=>{
     gdInitClient().then(()=>{
       __gdTokenClient.callback=(resp)=>{
-        if(resp&&resp.access_token){__gdToken=resp.access_token;res(__gdToken);}
+        if(resp&&resp.access_token){__gdToken=resp.access_token;__gdTokenExp=Date.now()+((resp.expires_in||3600)*1000);res(__gdToken);}
         else rej(new Error(resp&&resp.error?resp.error:'로그인 실패'));
       };
+      // 팝업 닫힘·차단·거부 등은 callback이 아니라 error_callback으로 옴 → 없으면 영영 안 끝남(멈춤)
+      __gdTokenClient.error_callback=(err)=>rej(new Error((err&&(err.type||err.message))||'로그인 취소/실패'));
       try{ __gdTokenClient.requestAccessToken({prompt:interactive?'consent':''}); }catch(e){ rej(e); }
     }).catch(rej);
-  });
+  }).finally(()=>{__gdTokenPromise=null;});
+  return __gdTokenPromise;
 }
-async function gdFindFile(){
-  const q=encodeURIComponent("name='"+GD_FILE+"' and trashed=false");
+async function gdFindFile(retried){
+  const q=encodeURIComponent("name='"+GD_FILE+"' and trashed=false and 'me' in owners");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime desc',{headers:{Authorization:'Bearer '+__gdToken}});
-  if(r.status===401){__gdToken=null;await gdGetToken(false);return gdFindFile();}
+  if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdFindFile(true);}
+  if(!r.ok)return null;
   const j=await r.json();
-  return (j.files&&j.files[0])?j.files[0].id:null;
+  const id=(j.files&&j.files[0])?j.files[0].id:null;
+  if(id)try{idbSet('gd_fileid',id);}catch(e){}  // 같은 파일 재사용 → 중복 생성 방지
+  return id;
 }
-async function gdSave(silent){
+async function gdSave(silent,retried){
   if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
   try{
     if(!__gdToken)await gdGetToken(false);
@@ -964,27 +977,27 @@ async function gdSave(silent){
         {method:'PATCH',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:content});
     }else{
       const b='gc314159boundary';
-      const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name:GD_FILE,mimeType:'application/json'})+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+b+'--';
+      const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name:GD_FILE,mimeType:'application/json',appProperties:{hyeonjang:'1'}})+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+b+'--';
       r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
         {method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'multipart/related; boundary='+b},body});
     }
-    if(r.status===401){__gdToken=null;await gdGetToken(false);return gdSave(silent);}
+    if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdSave(silent,true);}
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json().catch(()=>({}));
-    if(j&&j.id)__gdFileId=j.id;
+    if(j&&j.id){__gdFileId=j.id;try{idbSet('gd_fileid',j.id);}catch(e){}}
     const dot=document.getElementById('gdDot');if(dot)dot.textContent='☁️ 저장됨';
     if(!silent)toast('☁️ 구글드라이브에 저장됨');
     return true;
   }catch(e){ if(!silent)toast('드라이브 저장 실패: '+(e.message||e)); return false; }
 }
-async function gdLoad(silent){
+async function gdLoad(silent,retried){
   if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
   try{
     if(!__gdToken)await gdGetToken(false);
     if(!__gdFileId)__gdFileId=await gdFindFile();
     if(!__gdFileId){if(!silent)toast('드라이브에 저장된 자료가 없습니다(먼저 올리기).');return false;}
     const r=await fetch('https://www.googleapis.com/drive/v3/files/'+__gdFileId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
-    if(r.status===401){__gdToken=null;await gdGetToken(false);return gdLoad(silent);}
+    if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdLoad(silent,true);}
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     applyData(data);render();
@@ -1002,10 +1015,12 @@ function cloudAutoSave(){
 // 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
 async function gdBootSync(){
   try{
-    const cfg=await idbGet('gd_config');
-    if(!cfg||!cfg.clientId)return;
-    __gdCfg=cfg;
-    try{ await gdGetToken(false); await gdLoad(true); }catch(e){}
+    const cfg=await idbGet('gd_config'); if(cfg&&cfg.clientId)__gdCfg=cfg; // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
+    const fid=await idbGet('gd_fileid'); if(fid)__gdFileId=fid;            // 저장해 둔 파일 재사용(중복 생성 방지)
+    if(!__gdCfg||!__gdCfg.clientId)return;
+    // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
+    const tok=await Promise.race([gdGetToken(false).catch(()=>null), new Promise(r=>setTimeout(()=>r(null),8000))]);
+    if(tok) await gdLoad(true);
   }catch(e){}
 }
 // 연동 설정 모달
@@ -1013,7 +1028,7 @@ function openGdriveSetup(){
   const cid=(__gdCfg&&__gdCfg.clientId)||'';
   const origin=location.origin;
   const body=`<div style="font-size:13px;line-height:1.7">
-    <p style="margin:0 0 10px">구글드라이브에 <b>현장데이터.json</b>을 자동 저장해 PC↔폰을 맞춥니다. 처음 한 번만 ‘클라이언트 ID’를 넣고 ‘구글 로그인’ 하세요.</p>
+    <p style="margin:0 0 10px">구글드라이브에 <b>현장데이터.json</b>을 자동 저장해 PC↔폰을 맞춥니다. <b>이미 연결 준비됨</b> — 아래 <b>‘🔑 구글 로그인 & 연결’</b>만 누르세요. (클라이언트 ID 기본값이 들어 있습니다.)</p>
     <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
       <input type="text" id="gdCid" value="${escapeAttr(cid)}" placeholder="000000-xxxx.apps.googleusercontent.com" style="width:100%;margin-top:4px">
     </label>
