@@ -453,10 +453,10 @@
 
     <p class="eyebrow" style="margin-top:18px">PC · 모바일 연동</p>
     <div style="display:flex;flex-direction:column;gap:6px">
-      <button class="moss tiny" id="btnExport">데이터 내보내기</button>
-      <button class="ghost tiny" id="btnImport">데이터 불러오기</button>
+      <button class="moss tiny" id="btnExport">📤 드라이브에 내보내기</button>
+      <button class="ghost tiny" id="btnImport">📥 드라이브에서 불러오기</button>
     </div>
-    <p class="hint">내보낸 <b>현장데이터.json</b>을 구글 드라이브·카톡에 두면, 폰이나 다른 PC에서 ‘불러오기’로 현장·견적·수금 현황을 그대로 봅니다.</p>
+    <p class="hint">입력한 현장·연락처·견적은 <b>이 기기에 자동 저장</b>돼 새로고침해도 남습니다.<br>다른 기기와 맞추려면: <b>내보내기</b>로 만든 <b>현장데이터.json</b>을 구글드라이브 <b>만물인테리어 ▸ 데이터</b> 폴더에 두고, 상대 기기에서 <b>불러오기</b>로 그 파일을 고르면 됩니다.</p>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px">
       <button class="moss tiny" id="btnBizCard" style="width:100%">📇 사업자·명함 보내기 (사진+글·카톡/문자)</button>
@@ -687,6 +687,14 @@ let __photoCache={key:null,clusters:null,dupSets:null};
 function markDirty(){state.dirty=true;__photoCache.key=null;const b=$('#btnSave');if(b){b.classList.add('clay');b.textContent='● 저장하기';}
   // 자동 저장: 자동 모드 + 연결 폴더일 때만, 3분 간격
   if(__autoSaveOn&&state.dirHandle&&FS_OK){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
+  persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적 유지
+}
+// 이 기기 안에 작업을 자동 저장(서버 없이). 데모는 저장 안 함(실제 자료 보호).
+let __idbSaveTimer=null;
+function persistLocal(){
+  if(state._demo)return;
+  clearTimeout(__idbSaveTimer);
+  __idbSaveTimer=setTimeout(()=>{try{idbSet('appState',serializeData());}catch(e){}},800);
 }
 function clearDirty(){state.dirty=false;const b=$('#btnSave');if(b){b.classList.remove('clay');b.textContent='저장됨';setTimeout(()=>{if(!state.dirty&&$('#btnSave'))$('#btnSave').textContent='저장하기';},1500);}}
 function toggleAutoSave(){
@@ -699,6 +707,9 @@ function toggleAutoSave(){
 }
 // 창 닫기 전 경고
 window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue='';}});
+// 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
+window.addEventListener('pagehide',()=>{try{if(!state._demo)idbSet('appState',serializeData());}catch(e){}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo)idbSet('appState',serializeData());}catch(e){}}});
 function fileKey(f){return (f.prefix||'')+f.name+'|'+(f.size||0);}
 function serializeData(){
   return {
@@ -713,6 +724,7 @@ function serializeData(){
 }
 function applyData(data){
   if(!data||!data.files)return 0;
+  state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
   state.learn=data.learn||{estimateByBiz:{}};
   state.quotes=data.quotes||[];
   state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
@@ -760,8 +772,20 @@ function exportData(){
   const data=serializeData();
   const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='현장데이터_'+stamp+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  clearDirty();toast('현장데이터 파일을 내보냈습니다 (드라이브·카톡으로 옮겨 다른 기기에서 불러오세요)');
+  const fname='현장데이터_'+stamp+'.json';
+  // 폰: 공유 시트로 구글드라이브에 바로 보내기 시도 (await 없이 = 아이폰 제스처 유지)
+  try{
+    if(navigator.canShare){
+      const file=new File([blob],fname,{type:'application/json'});
+      if(navigator.canShare({files:[file]})){
+        navigator.share({files:[file],title:fname,text:'만물인테리어 현장데이터'}).then(()=>clearDirty()).catch(()=>{});
+        toast('보내기 → 구글드라이브 만물인테리어▸데이터에 저장하세요');
+        return;
+      }
+    }
+  }catch(e){}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  clearDirty();toast('현장데이터 파일을 내보냈습니다 — 구글드라이브 만물인테리어▸데이터에 두세요');
 }
 /* 데이터 불러오기: 폰·다른 PC에서 파일 선택 → 복원 */
 function importData(){
@@ -867,7 +891,7 @@ function loadDemo(){
     mk({name:'IMG_4821.jpg',ext:'jpg',kind:'photo',project:null,when:D('2025-03-19T11:00'),thumb:svg('미분류','#888')}),
     mk({name:'스캔_0001.pdf',ext:'pdf',kind:'other',project:null,when:D('2025-03-19')}),
   ];
-  state.activeProject=null;state.tab='dashboard';markDirty();
+  state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
   $('#mountHint').textContent='테스트용 가상 현장 3곳이 로드됐습니다. 각 탭을 눌러 확인하세요. 실제 사용 시에는 폴더를 연결하세요.';
   $('#btnOcrAll').disabled=true;
@@ -883,6 +907,7 @@ async function walk(dir,prefix){
   }
 }
 async function ingestFile(file,handle=null,prefix=''){
+  state._demo=false; // 실제 파일 추가 → 데모 모드 해제
   const e=ext(file.name),isImg=IMG.includes(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
@@ -3266,6 +3291,18 @@ function escapeAttr(s){return escapeHtml(s);}
 
 if(!FS_OK){$('#btnMount').textContent='파일 선택';$('#mountHint').textContent='이 브라우저는 폴더 직접 연결·이동이 제한됩니다. ‘파일 선택’으로 분류·OCR 미리보기를 쓰세요. 실제 이동은 Chrome·Edge에서.';}
 render();
+
+// 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
+(async()=>{ try{
+  if(state.projects.length||state.files.length)return; // 이미 데이터가 있으면 건너뜀
+  const saved=await idbGet('appState');
+  if(saved&&((saved.projects&&saved.projects.length)||(saved.files&&saved.files.length))){
+    applyData(saved);
+    const mn=document.getElementById('mountName'); if(mn)mn.textContent='📦 저장된 작업(이 기기)';
+    const mh=document.getElementById('mountHint'); if(mh)mh.textContent='이 기기에 저장해 둔 현장·연락처·견적을 불러왔습니다. 자동 저장됩니다. (사진 원본은 구글드라이브에)';
+    render();
+  }
+}catch(e){} })();
 
 /* ========== PWA: 설치형 앱 + 오프라인 + 폴더 기억 ========== */
 // manifest를 동적으로 주입 (단일 HTML 유지)
