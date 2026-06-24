@@ -499,7 +499,7 @@
 <nav id="mobileNav" class="mobile-nav">
   <button class="mnav-btn" data-mnav="dashboard"><span class="mi">📊</span><span>대시보드</span></button>
   <button class="mnav-btn" data-mnav="photos"><span class="mi">📷</span><span>현장사진</span></button>
-  <button class="mnav-btn mnav-cam" data-mnav="__camera"><span class="mi">📸</span><span>촬영</span></button>
+  <button class="mnav-btn mnav-cam" data-mnav="__drive"><span class="mi">📂</span><span>드라이브</span></button>
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
@@ -1346,7 +1346,7 @@ $('#btnMobile').onclick=toggleMobile;
 // 하단 메뉴 클릭
 document.querySelectorAll('.mnav-btn').forEach(b=>b.onclick=()=>{
   const tgt=b.dataset.mnav;
-  if(tgt==='__camera')return openCamera();
+  if(tgt==='__drive')return openDrive();
   if(tgt==='__more')return openMoreSheet();
   state.tab=tgt;if(tgt==='project'&&!state.activeProject){/* 현장 미선택 시 대시보드 유지 */}
   render();syncMobileNav();
@@ -1657,30 +1657,15 @@ function viewDocs(){
 let __showDup=false;
 let __phaseProj=null;
 function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')).join('|')+'#'+state.search;}
-// 갤러리/카메라에서 사진 추가 (capture 없음 → 폰에서 사진 보관함 선택 가능)
-function addPhotosFromGallery(){
-  let inp=document.getElementById('galInput');
-  if(!inp){
-    inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;inp.id='galInput';inp.style.display='none';
-    document.body.appendChild(inp);
-    inp.onchange=async()=>{
-      const files=[...inp.files];if(!files.length)return;
-      toast(files.length+'장 불러오는 중...');
-      const before=state.files.length;
-      for(const f of files){try{await ingestFile(f);}catch(e){}}
-      const added=state.files.slice(before);
-      if(state.activeProject){added.forEach(f=>{if(f.kind==='photo')f.project=state.activeProject;});}
-      if(typeof __photoCache!=='undefined')__photoCache.key=null;
-      markDirty();state.tab='photos';render();if(typeof syncMobileNav==='function')syncMobileNav();
-      toast(added.length+'장 추가'+(state.activeProject?` · ${state.activeProject}`:''));
-      inp.value='';
-    };
-  }
-  inp.click();
+// 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
+function openDrive(){
+  toast('구글드라이브 → 만물인테리어 ▸ 현장사진 폴더에서 ＋ 로 올리세요');
+  try{ window.open('https://drive.google.com/','_blank','noopener'); }
+  catch(e){ location.href='https://drive.google.com/'; }
 }
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진이 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 아래 버튼으로 갤러리·카메라에서 추가 / 컴퓨터: 끌어다 놓기</div><button class="blue" id="btnAddGallery" style="font-size:15px;padding:13px 22px;width:auto">📷 갤러리에서 사진 추가</button></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 구글드라이브 열기</button></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -1703,8 +1688,8 @@ function viewPhotos(){
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 추가(폰=갤러리/카메라) + 드래그 드롭존
-  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnAddGallery" style="font-size:13px;padding:9px 16px">📷 갤러리에서 사진 추가</button><span class="hint" style="margin:0">폰은 이 버튼, 컴퓨터는 아래 끌어다 놓기</span></div>`;
-  html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 구글드라이브 열기 (사진 올리기)</button><span class="hint" style="margin:0">폰은 드라이브 만물인테리어▸현장사진에 올리고, 컴퓨터는 아래 끌어다 놓기</span></div>`;
+  if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
     let popt=state.projects.map(p=>`<option value="${escapeAttr(p.name)}"${p.name===__phaseProj?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
@@ -2315,7 +2300,7 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:#6a86a3;font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="moss tiny" data-gdrive="${escapeAttr(p.name)}">📤드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="moss tiny" data-gdrive="${escapeAttr(p.name)}">📂드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
@@ -2465,13 +2450,13 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnImportContacts,#btnAddCard,[data-editc],#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnGotoDrive,#btnImportContacts,#btnAddCard,[data-editc],#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnToggleDup'){__showDup=!__showDup;return render();}
     if(t.id==='btnTrimDup')return trimDuplicates();
-    if(t.id==='btnAddGallery')return addPhotosFromGallery();
+    if(t.id==='btnGotoDrive')return openDrive();
     if(t.id==='btnCsv')return exportContactsCSV();
     if(t.id==='btnImportContacts')return importPhoneContacts();
     if(t.id==='btnAddCard')return addCardPhoto();
@@ -2504,7 +2489,7 @@ function setupDelegation(){
     if(d.save!==undefined)return previewMove(d.save);
     if(d.pdf!==undefined)return exportProjectPDF(d.pdf);
     if(d.zip!==undefined)return exportProjectZIP(d.zip);
-    if(d.gdrive!==undefined)return shareProjectToDrive(d.gdrive);
+    if(d.gdrive!==undefined)return openDrive();
     if(d.portfolio!==undefined)return exportPortfolio(d.portfolio);
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
