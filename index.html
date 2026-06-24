@@ -2232,9 +2232,43 @@ async function importPhoneContacts(){
     toast(n+'명 연락처를 가져왔습니다. (CSV 내보내기로 옮길 수 있어요)');
   }catch(e){ if(e&&e.name!=='AbortError')toast('연락처 가져오기 오류: '+(e.message||e)); }
 }
+// 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (아이폰 연락처 대안)
+async function addCardPhoto(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=async()=>{
+    const files=[...inp.files];if(!files.length)return;
+    toast('명함 '+files.length+'장 인식 중... (글자 읽기는 10~30초 걸려요)');
+    for(const f of files){
+      try{ await ingestFile(f); }catch(e){ continue; }
+      const rec=state.files[state.files.length-1]; if(!rec)continue;
+      rec.kind='card';
+      try{
+        const w=await getWorker();
+        const r=await w.recognize(rec.thumb||await getFileOf(rec));
+        rec.text=(r&&r.data&&r.data.text)||''; rec.ocr='done'; rec.contact=parseCard(rec.text);
+      }catch(e){ rec.contact=rec.contact||{name:'',phone:'',tel:'',email:'',title:'',dept:'',company:''}; }
+    }
+    if(typeof __photoCache!=='undefined')__photoCache.key=null;
+    markDirty();state.tab='contacts';render();if(typeof syncMobileNav==='function')syncMobileNav();
+    toast('명함 추가 완료 — 이름·전화가 비면 카드를 눌러 직접 고치세요.');
+    inp.value='';
+  };
+  inp.click();
+}
+// 명함 연락처 손으로 고치기 (OCR이 틀렸을 때)
+function editContact(id){
+  const f=state.files.find(x=>x.id===id);if(!f)return;
+  const c=f.contact||parseCard(f.text||'')||{};
+  const name=prompt('이름',c.name||'');if(name===null)return;
+  const phone=prompt('휴대전화',c.phone||'');if(phone===null)return;
+  const company=prompt('상호(회사)',c.company||'');if(company===null)return;
+  const title=prompt('직급(선택)',c.title||'');if(title===null)return;
+  f.contact=Object.assign({},c,{name:name.trim(),phone:phone.trim(),company:company.trim(),title:title.trim()});
+  markDirty();render();toast('연락처 수정됨');
+}
 function viewContacts(){  const list=state.files.filter(f=>f.kind==='card');
-  if(!list.length)return `<div class="empty"><b>연락처가 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰 연락처를 가져오거나(안드로이드), 명함을 촬영해 추가하세요. (아이폰은 연락처 직접접근 불가 → 명함 촬영)</div><button class="blue" id="btnImportContacts" style="font-size:15px;padding:12px 20px;width:auto">📇 폰 연락처 가져오기</button></div>`;
-  let html=`<div class="toolbar"><button class="blue tiny" id="btnImportContacts">📇 폰 연락처 가져오기</button><button class="moss tiny" id="btnCsv">연락처 CSV 내보내기</button><span class="hint" style="margin:0;align-self:center">폰 연락처(안드로이드) 또는 명함 촬영으로 추가</span></div>`;
+  if(!list.length)return `<div class="empty"><b>연락처가 없습니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰 연락처를 가져오거나(안드로이드), 명함을 촬영해 추가하세요. (아이폰은 연락처 직접접근 불가 → 명함 촬영)</div><button class="blue" id="btnImportContacts" style="font-size:15px;padding:12px 20px;width:auto">📇 폰 연락처 가져오기</button> <button class="moss" id="btnAddCard" style="font-size:15px;padding:12px 20px;width:auto">📷 명함 촬영(연락처 추출)</button></div>`;
+  let html=`<div class="toolbar"><button class="blue tiny" id="btnImportContacts">📇 폰 연락처 가져오기</button><button class="moss tiny" id="btnAddCard">📷 명함 촬영</button><button class="moss tiny" id="btnCsv">연락처 CSV 내보내기</button><span class="hint" style="margin:0;align-self:center">폰 연락처(안드로이드) 또는 명함 촬영으로 추가</span></div>`;
   list.forEach(f=>{const c=f.contact||parseCard(f.text);f.contact=c;
     const initial=(c.name||'명').slice(0,1);
     const role=[c.title,c.dept].filter(Boolean).join(' · ');
@@ -2243,7 +2277,7 @@ function viewContacts(){  const list=state.files.filter(f=>f.kind==='card');
       <div class="ci"><b>${escapeHtml(c.name||'(이름 미상)')}</b>${role?` <span style="font-size:11px;color:var(--moss);font-weight:600">${escapeHtml(role)}</span>`:''}
       <div>${escapeHtml(c.company||'')}</div>
       <div>${phones}${c.email?' · '+escapeHtml(c.email):''}</div></div>
-      <div>${f.thumb?`<div class="ph" style="width:48px;height:48px"><img src="${f.thumb}"></div>`:''}</div></div>`;});
+      <div style="display:flex;align-items:center;gap:6px">${f.thumb?`<div class="ph" style="width:48px;height:48px"><img src="${f.thumb}"></div>`:''}<button class="ghost tiny" data-editc="${escapeAttr(f.id)}">✏️ 수정</button></div></div>`;});
   return html;
 }
 function viewProject(){
@@ -2406,7 +2440,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnImportContacts,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnAddGallery,#btnImportContacts,#btnAddCard,[data-editc],#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -2415,6 +2449,8 @@ function setupDelegation(){
     if(t.id==='btnAddGallery')return addPhotosFromGallery();
     if(t.id==='btnCsv')return exportContactsCSV();
     if(t.id==='btnImportContacts')return importPhoneContacts();
+    if(t.id==='btnAddCard')return addCardPhoto();
+    if(d.editc!==undefined)return editContact(d.editc);
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmNew')return startNewQuote();
