@@ -2102,7 +2102,8 @@ function importQuoteXlsx(){
       const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
       const q=parseQuoteFromGrid(grid,file.name);
       state.editingQuote=q;state.tab='quotemaker';markDirty();render();
-      toast('엑셀 견적서를 불러왔습니다 · 품목 '+q.items.length+'개. (총액은 원본과 동일한 부가세 별도 기준 — 10% 추가가 필요하면 ‘부가세 포함’으로 변경)');
+      if(q._matched) toast('엑셀 견적서를 불러왔습니다 · 품목 '+q.items.length+'개. (총액은 부가세 별도 기준 — 10% 필요시 ‘부가세 포함’으로)');
+      else toast('이 엑셀에서 품목을 못 찾았습니다. 양식이 특이하면 그 파일을 캡처해 알려주세요(품명·단가 칸 위치).');
     }catch(e){toast('엑셀 읽기 오류: '+e.message);}
   };
   inp.click();
@@ -2110,36 +2111,48 @@ function importQuoteXlsx(){
 // 헤더(품명/규격/수량/단가/공급가액)를 키워드로 자동 탐지하는 견고한 파서
 function parseQuoteFromGrid(grid,filename){
   const norm=s=>String(s==null?'':s).replace(/\s+/g,'');
+  // 헤더 키워드를 폭넓게(다양한 견적서 양식 호환): 정확일치 또는 시작일치
+  const hasK=(c,ks)=>{const t=norm(c);return t&&ks.some(k=>t===k||t.startsWith(k));};
+  const NAME=['품명','품목','내역','공사명','항목','명칭','공종','공정'];
+  const PRICE=['단가'];
+  const AMT=['공급가액','공급대가','공급가','금액','가격'];
+  const SPEC=['규격','모델명','모델','사양','사이즈','비고'];
+  const QTY=['수량','수','갯수','개수','qty'];
+  const STOP=['합계','총액','소계','합 계','총 액','소 계'];
   const q=newQuote();
   const base=String(filename||'').replace(/\.[^.]+$/,'');
   const dm=base.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
   if(dm){q.date=`${dm[1]}-${dm[2]}-${dm[3]}`;q.no='견'+dm[1]+dm[2]+dm[3];}
   q.title=base.replace(/20\d{2}[.\-_ ]?\d{2}[.\-_ ]?\d{2}/,'').replace(/[-_]+/g,' ').trim()||base;
+  const findCol=(row,ks)=>row.findIndex(c=>hasK(c,ks));
+  // 헤더 행 = 이름열 + (단가열 또는 금액열)이 같은 줄에 있는 첫 행
   let hr=-1,cN=-1,cS=-1,cQ=-1,cP=-1,cA=-1;
   for(let r=0;r<grid.length;r++){
     const row=grid[r]||[];
-    const find=(...ks)=>row.findIndex(c=>ks.includes(norm(c)));
-    const n=find('품명'),p=find('단가');
-    if(n>=0&&p>=0){hr=r;cN=n;cP=p;cS=find('규격');cQ=find('수량');cA=find('공급가액','금액');break;}
+    const n=findCol(row,NAME), p=findCol(row,PRICE), a=findCol(row,AMT);
+    if(n>=0&&(p>=0||a>=0)){hr=r;cN=n;cP=p;cA=a;cS=findCol(row,SPEC);cQ=findCol(row,QTY);break;}
   }
   const items=[];
   if(hr>=0){
-    for(let r=hr+1;r<grid.length&&items.length<200;r++){
+    let lastName='';
+    for(let r=hr+1;r<grid.length&&items.length<300;r++){
       const row=grid[r]||[];
-      if(row.some(c=>['합계','총액','소계'].includes(norm(c))))break;
-      let nm=String(row[cN]==null?'':row[cN]).trim();
+      if(row.some(c=>STOP.includes(norm(c))))break;
+      let nm=cN>=0?String(row[cN]==null?'':row[cN]).trim():'';
       let spec=cS>=0?String(row[cS]==null?'':row[cS]).trim():'';
       const qty=cQ>=0?(num(row[cQ])||1):1;
-      let price=num(row[cP]);
+      let price=cP>=0?num(row[cP]):0;
       if(!price&&cA>=0&&qty)price=Math.round(num(row[cA])/qty);
-      if(nm==='-')nm='';
-      if(spec==='-')spec='';
-      if(!nm&&!price)continue;
+      if(nm==='-')nm=''; if(spec==='-')spec='';
+      if(!nm&&!spec&&!price)continue;            // 완전 빈 행만 건너뜀
+      if(nm)lastName=nm; else if(price||spec)nm=lastName;  // 병합된 품명(카테고리) 이어받기
+      if(!nm&&spec){nm=spec;spec='';}            // 품명이 비고 규격만 있으면 규격을 품명으로
       items.push({name:nm,spec:spec,qty:qty||1,price:price});
     }
   }
   if(items.length)q.items=items;
   q.vatIncluded=false; // 원본 합계와 동일하게 별도 기준으로 가져옴
+  q._matched=items.length>0;
   return q;
 }
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
@@ -2199,7 +2212,7 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:#6a86a3;font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="moss tiny" data-gdrive="${escapeAttr(p.name)}">📤드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
@@ -2215,7 +2228,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="moss tiny" data-gdrive="${escapeAttr(state.activeProject)}">📤 구글드라이브</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=stageBar(p);
 
   // 필터 헬퍼: 현재 보기(__projView)에서 해당 섹션을 표시할지
@@ -2349,7 +2362,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-gdrive],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -2384,6 +2397,7 @@ function setupDelegation(){
     if(d.save!==undefined)return previewMove(d.save);
     if(d.pdf!==undefined)return exportProjectPDF(d.pdf);
     if(d.zip!==undefined)return exportProjectZIP(d.zip);
+    if(d.gdrive!==undefined)return shareProjectToDrive(d.gdrive);
     if(d.portfolio!==undefined)return exportPortfolio(d.portfolio);
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
@@ -2680,6 +2694,27 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
 }
 
 /* ---------- 현장별 ZIP (종류별 폴더) ---------- */
+/* ===== 현장 사진을 구글드라이브로 (모바일: 공유창 → 구글드라이브 앱 업로드) ===== */
+async function shareProjectToDrive(proj){
+  const photos=state.files.filter(f=>f.project===proj&&f.kind==='photo');
+  if(!photos.length){toast('이 현장에 사진이 없습니다.');return;}
+  toast('사진 준비 중...');
+  const files=[];
+  for(const p of photos){ try{ const f=await getFileOf(p); if(f)files.push(f); }catch(e){} }
+  if(!files.length){toast('보낼 사진 파일이 없습니다(폰에선 압축으로 불러온 사진만 가능).');return;}
+  try{
+    if(navigator.canShare && navigator.canShare({files})){
+      await navigator.share({files,title:proj+' 현장사진',text:`[${COMPANY.name}] ${proj} 현장사진 ${files.length}장`});
+      return;  // 공유창에서 '구글 드라이브' 선택 → 만물인테리어 현장사진 폴더에 업로드
+    }
+    toast('이 기기는 사진 한번에 공유가 안 돼요. ZIP로 받아 구글드라이브 앱에서 올리세요.');
+    exportProjectZIP(proj);
+  }catch(e){
+    if(e&&e.name==='AbortError')return;
+    toast('사진이 많아 한 번에 안 될 수 있어요 — ZIP로 받아 구글드라이브 앱에 올리세요.');
+    exportProjectZIP(proj);
+  }
+}
 async function exportProjectZIP(proj){
   const list=state.files.filter(f=>f.project===proj);
   if(!list.length){toast('배정된 파일이 없습니다.');return;}
