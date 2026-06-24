@@ -914,7 +914,7 @@ function importData(){
 function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(p){p.received=won2num(val);markDirty();render();}}
 
 /* ========== 구글 드라이브 자동 동기화 (Drive API) ========== */
-const GD_CLIENT_ID='468613653109-a7o2m2c7cpk574ijrb7bc76fga6akili.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
+const GD_CLIENT_ID='468613653109-pam5vj7rclsva0fqe2rorffd6t2nfhlt.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
 const GD_FILE='현장데이터.json';
 const GD_FOLDER='만물인테리어';   // 드라이브 안 이 폴더(앱 전용)에 데이터 파일을 고정 저장/불러오기
 const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
@@ -1038,7 +1038,7 @@ function cloudAutoSave(){
 // 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
 async function gdBootSync(){
   try{
-    const cfg=await idbGet('gd_config'); if(cfg&&cfg.clientId)__gdCfg=cfg; // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
+     // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
     const fid=await idbGet('gd_fileid'); if(fid)__gdFileId=fid;            // 저장해 둔 파일 재사용(중복 생성 방지)
     if(!__gdCfg||!__gdCfg.clientId)return;
     // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
