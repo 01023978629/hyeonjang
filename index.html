@@ -914,7 +914,7 @@ function importData(){
 function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(p){p.received=won2num(val);markDirty();render();}}
 
 /* ========== 구글 드라이브 자동 동기화 (Drive API) ========== */
-const GD_CLIENT_ID='468613653109-a7o2m2c7cpk574ijrb7bc76fga6akili.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
+const GD_CLIENT_ID='468613653109-pam5vj7rclsva0fqe2rorffd6t2nfhlt.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
 const GD_FILE='현장데이터.json';
 const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
 let __gdCfg={clientId:GD_CLIENT_ID};  // 기본 연결(사용자가 바꾸면 idb로 덮어씀)
