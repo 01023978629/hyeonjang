@@ -969,7 +969,9 @@ async function gdEnsureFolder(retried){
   if(r.ok){const j=await r.json(); if(j.files&&j.files[0])__gdFolderId=j.files[0].id;}
   if(!__gdFolderId){ // 앱이 접근 가능한(=앱이 만든) 폴더가 없으면 새로 만듦
     const cr=await fetch('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:JSON.stringify({name:GD_FOLDER,mimeType:'application/vnd.google-apps.folder'})});
-    if(cr.ok){const cj=await cr.json(); if(cj&&cj.id)__gdFolderId=cj.id;}
+    if(cr.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdEnsureFolder(true);}
+    if(!cr.ok)throw new Error('드라이브 폴더 생성 실패 '+cr.status);   // 실패를 삼키지 않음(루트에 저장 방지)
+    const cj=await cr.json(); if(cj&&cj.id)__gdFolderId=cj.id;
   }
   if(__gdFolderId)try{idbSet('gd_folderid',__gdFolderId);}catch(e){}
   return __gdFolderId;
@@ -1006,6 +1008,7 @@ async function gdSave(silent,retried){
         {method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'multipart/related; boundary='+b},body});
     }
     if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdSave(silent,true);}
+    if((r.status===404||r.status===403)&&__gdFileId&&!retried){__gdFileId=null;try{idbSet('gd_fileid',null);}catch(e){}return gdSave(silent,true);}  // 저장돼있던 파일 삭제됨 → 새로 생성
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json().catch(()=>({}));
     if(j&&j.id){__gdFileId=j.id;try{idbSet('gd_fileid',j.id);}catch(e){}}
@@ -1024,6 +1027,7 @@ async function gdLoad(silent,retried){
     if(!__gdFileId){if(!silent)toast('드라이브에 저장된 자료가 없습니다(먼저 올리기).');return false;}
     const r=await fetch('https://www.googleapis.com/drive/v3/files/'+__gdFileId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
     if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdLoad(silent,true);}
+    if((r.status===404||r.status===400)&&__gdFileId&&!retried){__gdFileId=null;try{idbSet('gd_fileid',null);}catch(e){}return gdLoad(silent,true);}  // 캐시된 파일 삭제됨 → 다시 찾기
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     applyData(data);render();
@@ -1888,7 +1892,7 @@ function render(){
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
-  if(!state.files.length&&state.tab!=='dashboard'&&state.tab!=='quotemaker'){v.innerHTML=emptyState();bindDrop();return;}
+  if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates'].includes(state.tab)){v.innerHTML=emptyState();bindDrop();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject};
   v.innerHTML=map[state.tab]();
   bindDrop();bindEvents();
@@ -2116,19 +2120,20 @@ function voiceMemo(){
   const body='<div style="font-size:13px">'+
     (supported?'<button class="clay" id="vmStart" style="width:100%;padding:12px">🎙 녹음 시작 (말하면 글로 적힘)</button><button class="warn" id="vmStop" style="width:100%;padding:10px;margin-top:6px;display:none">⏹ 멈춤</button><textarea id="vmText" placeholder="말한 내용이 여기에 적힙니다. 직접 수정도 가능." style="width:100%;height:120px;margin-top:8px"></textarea><div style="display:flex;gap:6px;margin-top:6px"><button class="blue tiny" id="vmSave">💾 회의록 저장</button><button class="moss tiny" id="vmShare">📤 공유</button></div>':'<p style="color:var(--clay)">이 브라우저는 음성인식을 지원하지 않습니다. (안드로이드 크롬에서 잘 됩니다 · 아이폰은 제한적)</p>')+
     '<div style="margin-top:12px;border-top:1px dashed var(--line-soft);padding-top:8px"><b style="font-size:12px">저장된 회의록</b>'+list+'</div></div>';
-  openModal('🎙 음성 회의록',body,[{label:'닫기',cls:'ghost',fn:()=>{try{if(__vrec)__vrec.stop();}catch(e){}closeModal();}}]);
+  openModal('🎙 음성 회의록',body,[{label:'닫기',cls:'ghost',fn:()=>{window.__vrecOn=false;try{if(__vrec)__vrec.stop();}catch(e){}closeModal();}}]);
   const root=document.getElementById('modalRoot'); const ta=root.querySelector('#vmText');
   if(supported){
     root.querySelector('#vmStart').onclick=()=>{
       try{
-        __vrec=new SR(); __vrec.lang='ko-KR'; __vrec.continuous=true; __vrec.interimResults=true; __vtext=ta.value||'';
+        __vrec=new SR(); __vrec.lang='ko-KR'; __vrec.continuous=true; __vrec.interimResults=true; __vtext=ta.value||''; window.__vrecOn=true;
         __vrec.onresult=(e)=>{let fin='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;}if(fin){__vtext+=(__vtext&&!/\s$/.test(__vtext)?' ':'')+fin;ta.value=__vtext;}};
         __vrec.onerror=(e)=>{toast('음성인식 오류: '+(e.error||''));};
+        __vrec.onend=()=>{ if(window.__vrecOn){ try{__vrec.start();}catch(e){} } };  // 침묵으로 끊겨도 멈춤 누를 때까지 자동 재개
         __vrec.start(); root.querySelector('#vmStart').style.display='none'; root.querySelector('#vmStop').style.display='block'; toast('녹음 중... 말씀하세요');
       }catch(e){toast('음성인식 시작 실패: '+(e.message||e));}
     };
-    root.querySelector('#vmStop').onclick=()=>{try{if(__vrec)__vrec.stop();}catch(e){}root.querySelector('#vmStop').style.display='none';root.querySelector('#vmStart').style.display='block';};
-    root.querySelector('#vmSave').onclick=()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}try{if(__vrec)__vrec.stop();}catch(e){}state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t});markDirty();toast('회의록 저장됨');voiceMemo();};
+    root.querySelector('#vmStop').onclick=()=>{window.__vrecOn=false;try{if(__vrec)__vrec.stop();}catch(e){}root.querySelector('#vmStop').style.display='none';root.querySelector('#vmStart').style.display='block';};
+    root.querySelector('#vmSave').onclick=()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}window.__vrecOn=false;try{if(__vrec)__vrec.stop();}catch(e){}state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t});markDirty();toast('회의록 저장됨');voiceMemo();};
     root.querySelector('#vmShare').onclick=async()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}try{if(navigator.share)await navigator.share({title:'회의록',text:t});else toast('공유 미지원 — 글을 복사해 보내세요');}catch(e){}};
   }
   root.querySelectorAll('[data-notedel]').forEach(el=>el.onclick=()=>{const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id);markDirty();voiceMemo();});
@@ -2145,10 +2150,12 @@ async function geminiAsk(prompt){
         const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
+        if(r.status===400||r.status===403){lastErr='요청 오류('+r.status+')';break;}  // 키/요청 문제 → 다른 모델 시도 무의미
         if(!r.ok)throw new Error('Gemini '+r.status);
         const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
         const t=c&&c.content&&c.content.parts&&c.content.parts.map(p=>p.text||'').join('');
-        return t||'';   // 성공 → 예약 유지
+        if(!t){const br=j&&j.promptFeedback&&j.promptFeedback.blockReason; throw new Error(br?('내용이 차단됨('+br+')'):'AI 응답 없음');}  // 빈/차단 → throw(예약 환불)
+        return t;   // 성공 → 예약 유지
       }catch(e){ lastErr=e.message||String(e); if(/429/.test(lastErr))break; }
     }
     throw new Error(lastErr||'실패');
@@ -3105,7 +3112,7 @@ function addToGoogleCalendar(id){
   const text=encodeURIComponent((s.title||'현장 일정')+(s.project?(' - '+s.project):''));
   const details=encodeURIComponent([s.project?('현장: '+s.project):'', s.workers?('예정 인원: '+s.workers+'명'):'', s.memo||''].filter(Boolean).join('\n'));
   const loc=encodeURIComponent(s.project||'');
-  const url='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+text+'&dates='+start+'/'+end+'&details='+details+'&location='+loc;
+  const url='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+text+'&dates='+start+'/'+end+'&ctz=Asia/Seoul&details='+details+'&location='+loc;
   toast('구글 캘린더 — 저장 누르면 추가됩니다');
   try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
 }
@@ -3124,8 +3131,10 @@ function quotaReserve(api){
     const q=await quotaState(api);
     if((q.count||0)>=cfg.cap) return {ok:false,msg:cfg.label+' 이번 '+(cfg.period==='month'?'달':'날')+' 무료 한도('+cfg.cap+') 도달 — 보호를 위해 중단했습니다.'};
     if(cfg.perMin && q.min.length>=cfg.perMin) return {ok:false,msg:cfg.label+' 분당 한도 — 1분 뒤 다시 하세요.'};
-    q.count=(q.count||0)+1; q.min.push(Date.now()); try{await idbSet('quota_'+api,q);}catch(e){}
-    return {ok:true,release:async()=>{ try{const q2=await quotaState(api); q2.count=Math.max(0,(q2.count||0)-1); if(q2.min.length)q2.min.pop(); await idbSet('quota_'+api,q2);}catch(e){} }};
+    const ts=Date.now(); const rkey=q.key;     // 이 예약의 정확한 타임스탬프·기간 기록
+    q.count=(q.count||0)+1; q.min.push(ts); try{await idbSet('quota_'+api,q);}catch(e){}
+    const release=()=>{ const rb=async()=>{ try{const q2=await quotaState(api); if(q2.key!==rkey)return; q2.count=Math.max(0,(q2.count||0)-1); q2.min=(q2.min||[]).filter(x=>x!==ts); await idbSet('quota_'+api,q2);}catch(e){} }; const r=__qLock.then(rb,rb); __qLock=r.then(()=>{},()=>{}); return r; }; // 락 안에서·기간일치 시만·정확한 ts 제거
+    return {ok:true,release};
   };
   const p=__qLock.then(run,run); __qLock=p.then(()=>{},()=>{}); return p;
 }
