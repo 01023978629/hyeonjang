@@ -1403,8 +1403,11 @@ async function __importTree(roots, tok){
 function __finishImport(okData,r){
   window.__lastImportProj=r.nProj; window.__importChg=r.chg;
   if(typeof __photoCache!=='undefined')__photoCache.key=null;
-  if(okData||r.nImg||r.nPdf||r.chg)markDirty();   // 새 사진 없어도 현장 생성·배정 있으면 저장
+  const changed=okData||r.nImg||r.nPdf||r.chg;
+  if(changed)markDirty();   // 이 기기 저장 + (드라이브 토큰 있으면) 자동저장 예약
   state.tab=(r.nImg?'photos':'dashboard'); render(); try{hydrateThumbs();}catch(e){}
+  // PC↔폰 통합: 불러온 현장·사진을 드라이브 공유파일(현장데이터.json)에 즉시 저장 → 다른 기기도 자동으로 같은 자료
+  if(changed){ (async()=>{ try{ if(!__gdToken)await gdGetToken(false); await gdSave(true); }catch(e){} })(); }
 }
 // 내 드라이브 통합 불러오기(drive.readonly): 현장데이터.json + 만물인테리어 폴더 하위 전체
 async function gdImportAll(){
