@@ -628,6 +628,15 @@ function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${p
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
 const IMG=['jpg','jpeg','png','heic','webp','gif','bmp','tif','tiff'];
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
+// 확장자 보정: 끝에 확장자가 없을 때(예: 'IMG_3544.HEIC의 사본')도 중간 확장자/마임으로 실제 형식을 찾음 → 사진 오분류 방지
+function bestExt(name,type){
+  let e=ext(name); if(IMG.includes(e)||DOCEXT.includes(e))return e;
+  const mm=(name||'').toLowerCase().match(/\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?|pdf|hwpx?|docx?|xlsx?|pptx?|txt)(?![a-z0-9])/);
+  if(mm)return (mm[1]==='jpeg')?'jpg':mm[1];
+  if((type||'').indexOf('image/')===0)return (type.split('/')[1]||'jpg').replace('jpeg','jpg').replace('heif','heic');
+  if(type==='application/pdf')return 'pdf';
+  return e;
+}
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
 function classify(rec){
@@ -869,8 +878,11 @@ function applyData(data){
     if(used.has(s))return;
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
     if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)))return;  // 이름+경로+크기 중복 방지(driveId 없는 가상 무한증식 차단)
-    state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:s.size||0,
-      kind:s.kind||'other',project:s.project||null,when:s.when?new Date(s.when):null,
+    const xe=bestExt(s.name,'');   // 'IMG.HEIC의 사본' 같은 깨진 이름도 실제 확장자 인식
+    let kind=s.kind||'other';
+    if((kind==='other')&&IMG.includes(xe))kind=classify({name:s.name,ext:xe,text:s.text||''});   // 사진을 other로 저장해뒀던 것 재분류 → 현장사진 탭에 표시
+    state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:xe,size:s.size||0,
+      kind:kind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
       est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true});
     restored++;
@@ -1231,8 +1243,12 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip){
   const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId);
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
-  const blob=await dr.blob();
-  const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
+  let blob=await dr.blob(), fname=name;
+  // HEIC/HEIF(아이폰 사진)는 브라우저가 못 그리므로 JPG로 변환 + '의 사본'으로 깨진 확장자 정리 → 현장사진 탭에 정상 표시
+  if(/heic|heif/i.test(mime||'')||/\.heic|\.heif/i.test(name||'')){
+    try{ await ensureHeic2any(); const out=await heic2any({blob,toType:'image/jpeg',quality:0.85}); blob=Array.isArray(out)?out[0]:out; fname=(name||'img').replace(/\.heic.*$/i,'').replace(/\.heif.*$/i,'')+'.jpg'; }catch(e){}
+  }
+  const rec=await ingestFile(new File([blob],fname,{type:blob.type||mime||'application/octet-stream'})); if(!rec)return 0;
   rec._driveId=id;
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
   if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
@@ -1683,7 +1699,8 @@ async function walk(dir,prefix){
 }
 async function ingestFile(file,handle=null,prefix=''){
   state._demo=false; // 실제 파일 추가 → 데모 모드 해제
-  const e=ext(file.name),isImg=IMG.includes(e);
+  const e=bestExt(file.name,file.type);
+  const isImg=IMG.includes(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
     lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':(e==='pdf'?'pending':'na'),
