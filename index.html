@@ -1059,6 +1059,7 @@ function openGdriveSetup(){
       <button class="blue tiny" id="gdLogin">🔑 구글 로그인 & 연결</button>
       <button class="moss tiny" id="gdUp">☁️ 올리기</button>
       <button class="ghost tiny" id="gdDown">⬇️ 내려받기</button>
+      <button class="ghost tiny" id="gdOpen">📂 만물인테리어 폴더 열기</button>
       <span id="gdDot" style="align-self:center;font-size:12px;color:#5a7186">${__gdToken?'☁️ 연결됨':(cid?'설정됨':'미설정')}</span>
     </div>
     <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--clay)">📋 클라이언트 ID 만드는 법 (처음 1회, 약 5분)</summary>
@@ -1079,6 +1080,7 @@ function openGdriveSetup(){
   root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);toast('구글드라이브 연결됨 — 자동 저장 시작');const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';gdSave(false);}catch(e){toast('연결 실패: '+(e.message||e));}};
   root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
   root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdLoad(false);};
+  root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
 }
 
 /* ---------- 사용법 도움말 ---------- */
@@ -1624,7 +1626,7 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>구글드라이브 열기</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
@@ -1911,14 +1913,16 @@ let __showDup=false;
 let __phaseProj=null;
 function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')).join('|')+'#'+state.search;}
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
-function openDrive(){
-  toast('구글드라이브 → 만물인테리어 ▸ 현장사진 폴더에서 ＋ 로 올리세요');
-  try{ window.open('https://drive.google.com/','_blank','noopener'); }
-  catch(e){ location.href='https://drive.google.com/'; }
+// 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
+function openManmulFolder(){
+  toast('구글드라이브 만물인테리어 — 사진은 현장사진 폴더에 ＋ 로 올리세요');
+  const url='https://drive.google.com/drive/search?q='+encodeURIComponent('만물인테리어');
+  try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
 }
+function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열기' 버튼들도 만물인테리어로
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 구글드라이브 열기</button></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 구글드라이브 만물인테리어 열기</button></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -1941,7 +1945,7 @@ function viewPhotos(){
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
-  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 구글드라이브 열기 (사진 올리기)</button><span class="hint" style="margin:0">폰은 드라이브 만물인테리어▸현장사진에 올리고, 컴퓨터는 아래 끌어다 놓기</span></div>`;
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기 (사진 올리기)</button><span class="hint" style="margin:0">폰은 드라이브 만물인테리어▸현장사진에 올리고, 컴퓨터는 아래 끌어다 놓기</span></div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
