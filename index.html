@@ -2963,7 +2963,7 @@ function photoCell(p){
   }
   const tools=(!p._virtual)?`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
-    ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:(p._driveId&&IMG.includes(p.ext)?`<div class="ph-load" data-light="${p.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
+    ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:(IMG.includes(p.ext)?`<div class="ph-load" data-light="${p.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
     ${selChk(p.id)}
     ${tools}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
@@ -3877,7 +3877,7 @@ function photoCellProj(f,phases){
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
   const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
-    ${f.thumb?`<img src="${f.thumb}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in">`:(f._driveId&&IMG.includes(f.ext)?`<div class="ph-load" data-light="${f.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
+    ${f.thumb?`<img src="${f.thumb}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in">`:(IMG.includes(f.ext)?`<div class="ph-load" data-light="${f.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
     ${selChk(f.id)}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
@@ -4439,6 +4439,32 @@ function renderLightbox(){
   } else if(!f.thumb && IMG.includes(f.ext) && (f.ext||'').toLowerCase().match(/heic|heif/) && f._file){
     // 로컬 HEIC인데 썸네일 아직 없음 → 변환해서 표시
     (async()=>{ try{ await ensureHeic2any(); const out=await heic2any({blob:f._file,toType:'image/jpeg',quality:0.9}); const jb=Array.isArray(out)?out[0]:out; const u=URL.createObjectURL(jb); const im=document.getElementById('lbImg'); if(im&&document.getElementById('lightbox')){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;} }catch(_){}})();
+  } else if(!f.thumb && !f._driveId && IMG.includes(f.ext)){
+    // driveId 없는 사진("IMG" 빈칸) → 드라이브 전체에서 같은 이름으로 찾아 받아오기(읽기전용 권한 사용)
+    const im0=document.getElementById('lbImg');
+    const stage=document.querySelector('.lb-stage');
+    if(stage){const note=document.createElement('div');note.id='lbNote';note.style.cssText='position:absolute;color:#cbd5e1;font-size:13px';note.textContent='드라이브에서 사진 찾는 중…';stage.appendChild(note);}
+    (async()=>{ try{
+      let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다'; return; } }
+      // 이름으로 검색(드라이브 전체). "의 사본" 등 꼬리표 포함 정확매칭 우선, 없으면 원래이름 contains
+      const nm=f.name.replace(/'/g,"\\'");
+      let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType)",tok);
+      if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType)",tok); }
+      if(!list.length){ const n=document.getElementById('lbNote'); if(n)n.textContent='드라이브에서 이 사진을 찾지 못했습니다('+escapeHtml(f.name)+')'; return; }
+      const hit=list[0];
+      const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+hit.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
+      if(!dr.ok){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 받기 실패'; return; }
+      let b=await dr.blob();
+      const e=(f.ext||'').toLowerCase();
+      if(e==='heic'||e==='heif'){ try{ await ensureHeic2any(); const out=await heic2any({blob:b,toType:'image/jpeg',quality:0.9}); b=Array.isArray(out)?out[0]:out; }catch(_){}}
+      const u=URL.createObjectURL(b); const im=document.getElementById('lbImg');
+      const n=document.getElementById('lbNote'); if(n)n.remove();
+      if(im&&document.getElementById('lightbox')){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;
+        // 찾은 driveId를 기록 → 다음부턴 바로 받음 + 썸네일 캐시
+        f._driveId=hit.id; try{ const t=await makeThumbDataUrl(b,480); if(t){f.thumb=t;await idbSet('thumb:'+hit.id,t);} }catch(_){}
+        markDirty();
+      }
+    }catch(err){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 표시 오류'; } })();
   }
   document.getElementById('lbClose').onclick=closeLightbox;
   root.querySelector('.lb-bg').onclick=(e)=>{if(e.target===root.querySelector('.lb-bg'))closeLightbox();};
