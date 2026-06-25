@@ -1209,13 +1209,22 @@ async function gdToggleAutoload(){
   if(on)gdLoadDriveFiles(false);
 }
 // '폴더 연결'의 구글드라이브 버전: 만물인테리어를 작업 소스로 연결 + 고정(자동 불러오기)
+// 드라이브에서 전체 불러오기: 데이터(현장·견적·일정·연락처) + 파일(사진·PDF) → 폰에서 프로젝트까지 한 번에
+async function gdPullAll(){
+  try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); openGdriveSetup(); return false; }
+  toast('구글드라이브에서 불러오는 중 — 현장·견적·일정·사진...');
+  let okData=false;
+  try{ okData=await gdLoad(true); }catch(e){}          // ① 데이터(현장/견적/일정/연락처)
+  try{ await gdLoadDriveFiles(true); }catch(e){}       // ② 파일(사진/PDF) — 가상분을 실제로 교체
+  state.tab='dashboard'; render();                     // 현장(프로젝트) 목록이 바로 보이게
+  toast(okData?'☁️ 드라이브에서 불러왔습니다 — 현장·견적·사진':'드라이브에 저장된 자료가 없습니다(먼저 PC에서 ☁️ 올리기)');
+  return okData;
+}
 async function gdConnectFolder(){
-  try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); openGdriveSetup(); return; }
-  const mn=document.getElementById('mountName'); if(mn)mn.textContent='☁️ 구글드라이브(만물인테리어)';
-  const mh=document.getElementById('mountHint'); if(mh)mh.textContent='드라이브 만물인테리어를 작업 소스로 연결(고정) — 사진·데이터 자동 동기화';
   try{ await idbSet('gd_autoload',true); }catch(e){}   // 고정(다음에도 자동 불러오기)
-  toast('구글드라이브 만물인테리어 연결 — 사진 불러오는 중...');
-  await gdLoadDriveFiles(false);
+  const mn=document.getElementById('mountName'); if(mn)mn.textContent='☁️ 구글드라이브(만물인테리어)';
+  const mh=document.getElementById('mountHint'); if(mh)mh.textContent='드라이브 만물인테리어 연결(고정) — 현장·견적·사진 자동 동기화';
+  await gdPullAll();   // 데이터 + 파일 전부
 }
 // 구글드라이브 파일 선택기(Picker): 드라이브의 '아무 사진'이나 골라 불러오기(구글드라이브앱 업로드분 포함)
 async function gdPickFiles(){
@@ -1353,7 +1362,7 @@ function openGdriveSetup(){
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="blue tiny" id="gdLogin">🔑 구글 로그인 & 연결</button>
       <button class="moss tiny" id="gdUp">☁️ 올리기</button>
-      <button class="ghost tiny" id="gdDown">⬇️ 내려받기</button>
+      <button class="clay tiny" id="gdDown">⬇️ 전체 불러오기(현장·견적·사진)</button>
       <button class="ghost tiny" id="gdOpen">📂 만물인테리어 폴더 열기</button>
       <button class="ghost tiny" id="gdRestore">⏮ 이전 버전 복원</button>
       <button class="moss tiny" id="gdSheet">📊 구글시트로 내보내기</button>
@@ -1385,9 +1394,14 @@ function openGdriveSetup(){
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
   const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
-  root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);toast('구글드라이브 연결됨 — 자동 저장 시작');const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';gdSave(false);}catch(e){toast('연결 실패: '+(e.message||e));}};
+  root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';toast('구글드라이브 연결됨 — 자료 확인 중...');try{await idbSet('gd_autoload',true);}catch(e){}
+    // 폰 보호: 드라이브에 자료가 있으면 내려받고, 비었을 때만 이 기기 자료로 시작(오덮어쓰기 방지)
+    let had=false; try{had=await gdLoad(true);}catch(e){}
+    if(had){ try{await gdLoadDriveFiles(true);}catch(e){} state.tab='dashboard'; render(); toast('☁️ 연결됨 — 드라이브 자료를 불러왔습니다(현장·견적·사진)'); }
+    else { gdSave(false); toast('☁️ 연결됨 — 이 기기 자료로 드라이브를 시작합니다(자동 저장)'); }
+  }catch(e){toast('연결 실패: '+(e.message||e));}};
   root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
-  root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdLoad(false);};
+  root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdPullAll();};
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
@@ -1646,7 +1660,7 @@ function toggleMoveMode(){
 $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
 {const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
-{const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdLoad(false);}
+{const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdPullAll();}
 {const _gc=$('#btnGdConnect');if(_gc)_gc.onclick=gdConnectFolder;}
 {const _gp2=$('#btnGdPick2');if(_gp2)_gp2.onclick=gdPickFiles;}
 $('#btnZipPhotos').onclick=importPhotoZip;
