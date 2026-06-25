@@ -1383,50 +1383,75 @@ async function roList(q,fields,tok){
   }while(token && guard<25);   // 폴더당 최대 ~25000개까지 페이지 넘기며 수집(1000개 초과 폴더 잘림 방지)
   return out;
 }
-// 내 드라이브(만물인테리어) 통합 불러오기: 현장데이터.json(어디 있든 최신) + 모든 '현장사진' 폴더 이미지 + 모든 '견적서' 폴더 PDF
+// 공통: 폴더(들)부터 하위 전체를 훑어 이미지·PDF를 앱에 반영 + 폴더명을 현장으로 인식·배정. tok=drive.readonly 또는 drive.file(Picker로 받은 폴더). 반환 {nImg,nPdf,nProj,chg}
+async function __importTree(roots, tok){
+  const GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더']);
+  const isProjName=(n)=>{ n=(n||'').trim(); if(!n||GENERIC.has(n))return false; if(/^[_.]/.test(n))return false; if(/^\d{1,4}[-_.년 ]?\d{0,2}/.test(n))return false; if(n.length>24)return false; return true; };
+  const ensureProj=(name)=>{ if(!state.projects.some(p=>p.name===name)){ state.projects.push({name:name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null}); return true;} return false; };
+  let queue=(roots||[]).filter(Boolean).map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0, chg=0, nImg=0, nPdf=0;
+  while(queue.length && visited<400){
+    const cur=queue.shift(); if(!cur||!cur.id||seen.has(cur.id))continue; seen.add(cur.id); visited++;
+    let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
+    for(const k of kids){
+      if(k.mimeType==='application/vnd.google-apps.folder'){ const kp=isProjName(k.name)?k.name:cur.proj; queue.push({id:k.id,proj:kp}); }
+      else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
+      else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
+    }
+  }
+  return {nImg,nPdf,nProj,chg};
+}
+function __finishImport(okData,r){
+  window.__lastImportProj=r.nProj; window.__importChg=r.chg;
+  if(typeof __photoCache!=='undefined')__photoCache.key=null;
+  if(okData||r.nImg||r.nPdf||r.chg)markDirty();   // 새 사진 없어도 현장 생성·배정 있으면 저장
+  state.tab=(r.nImg?'photos':'dashboard'); render(); try{hydrateThumbs();}catch(e){}
+}
+// 내 드라이브 통합 불러오기(drive.readonly): 현장데이터.json + 만물인테리어 폴더 하위 전체
 async function gdImportAll(){
   let tok;
   try{ tok=await getRoToken(true); }
-  catch(e){ toast('드라이브 읽기 권한 실패 — ①콘솔 동의화면에 drive.readonly 추가 ②게시상태는 "테스트", 테스트사용자에 3dncjf ③경고서 고급→계속. 급하면 사진은 🔍드라이브에서 선택으로 직접 골라도 됩니다'); return; }
+  catch(e){ toast('드라이브 읽기 권한 실패 — ①콘솔 동의화면에 drive.readonly 추가 ②게시상태 "테스트"+테스트사용자 3dncjf ③경고서 고급→계속. 또는 아래 "📁 폴더 한번에 선택"을 쓰세요'); return; }
   toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
   window.__lastImportProj=0; window.__importChg=0;
-  let okData=false, nImg=0, nPdf=0;
-  // 1) 데이터: 현장데이터.json(가장 최근) → 현장·견적·일정·연락처
+  let okData=false;
   try{
     const dj=await roList("name='현장데이터.json' and trashed=false",'files(id,name,modifiedTime)',tok);
     dj.sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''));
     if(dj[0]){ const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+dj[0].id+'?alt=media',{headers:{Authorization:'Bearer '+tok}}); if(dr.ok){ try{ applyData(await dr.json()); okData=true; }catch(e){} } }
   }catch(e){}
-  // 2~3) 만물인테리어 폴더부터 하위 전체를 훑어 이미지·PDF 통합 수집(중첩 폴더 _정리완료/현장별 대응)
+  let roots=[];
+  try{ const cfg=await idbGet('gd_import_root'); if(cfg)roots.push(cfg); }catch(e){}
+  if(!roots.length && typeof GD_IMPORT_ROOT==='string' && GD_IMPORT_ROOT) roots.push(GD_IMPORT_ROOT);
+  try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and name='만물인테리어' and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
+  if(!roots.length){ try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and (name='현장사진' or name='견적서') and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){} }
+  let r={nImg:0,nPdf:0,nProj:0,chg:0}; try{ r=await __importTree(roots,tok); }catch(e){}
+  __finishImport(okData,r);
+  if(!okData&&!r.nImg&&!r.nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정/폴더명(현장사진·견적서) 확인');
+  else toast('☁️ 통합 완료 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · 견적PDF '+r.nPdf+'개 (자동 저장됨)');
+}
+// 폴더 한 번 선택 → 그 폴더 전체 자동 불러오기(Picker 폴더 선택, 기존 drive.file 토큰 사용 — 스코프 추가 불필요)
+async function gdPickFolder(){
+  const key=window.__visionKey;
+  if(!key){ toast('폴더 선택기에는 API 키가 필요 — ☁️설정 🔎칸에 키 + 콘솔서 "Google Picker API" 사용설정. (없으면 📂 전체 통합 사용)'); openGdriveSetup(); return; }
+  let tok; try{ tok=await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
   try{
-    let roots=[];
-    try{ const cfg=await idbGet('gd_import_root'); if(cfg)roots.push(cfg); }catch(e){}   // 사장님이 지정한 폴더 우선
-    if(!roots.length && typeof GD_IMPORT_ROOT==='string' && GD_IMPORT_ROOT) roots.push(GD_IMPORT_ROOT);  // 기본: 지정된 실제 만물인테리어 폴더
-    try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and name='만물인테리어' and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
-    if(!roots.length){ // 만물인테리어 폴더가 없으면 현장사진/견적서 폴더명으로 직접 탐색
-      try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and (name='현장사진' or name='견적서') and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
-    }
-    // 폴더명을 현장(프로젝트)으로 인식: 일반/날짜 폴더는 제외, 의미있는 폴더명을 그 하위 사진의 현장으로 배정
-    const GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더']);
-    const isProjName=(n)=>{ n=(n||'').trim(); if(!n||GENERIC.has(n))return false; if(/^[_.]/.test(n))return false; if(/^\d{1,4}[-_.년 ]?\d{0,2}/.test(n))return false; if(n.length>24)return false; return true; };
-    const ensureProj=(name)=>{ if(!state.projects.some(p=>p.name===name)){ state.projects.push({name:name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null}); return true;} return false; };
-    let queue=roots.map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0, chg=0;
-    while(queue.length && visited<400){
-      const cur=queue.shift(); if(!cur||!cur.id||seen.has(cur.id))continue; seen.add(cur.id); visited++;
-      let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
-      for(const k of kids){
-        if(k.mimeType==='application/vnd.google-apps.folder'){ const kp=isProjName(k.name)?k.name:cur.proj; queue.push({id:k.id,proj:kp}); }
-        else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
-        else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
-      }
-    }
-    window.__lastImportProj=nProj; window.__importChg=chg;
-  }catch(e){}
-  if(typeof __photoCache!=='undefined')__photoCache.key=null;
-  if(okData||nImg||nPdf||window.__importChg)markDirty();   // 새 사진이 없어도 현장 생성·배정이 있으면 저장
-  state.tab=(nImg?'photos':'dashboard'); render(); try{hydrateThumbs();}catch(e){}
-  if(!okData&&!nImg&&!nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정인지/폴더명(현장사진·견적서) 확인');
-  else { const np=window.__lastImportProj||0; toast('☁️ 통합 완료 — 현장 '+state.projects.length+'곳'+(np?('(폴더에서 '+np+'곳 새로)'):'')+' · 사진 '+nImg+'장 · 견적PDF '+nPdf+'개 (자동 저장됨)'); }
+    await loadExtLib('https://apis.google.com/js/api.js',()=>window.gapi);
+    await new Promise((res,rej)=>{ try{gapi.load('picker',{callback:res});}catch(e){rej(e);} });
+    const view=new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
+    const picker=new google.picker.PickerBuilder().setOAuthToken(tok).setDeveloperKey(key).addView(view)
+      .setTitle('현장 사진이 든 폴더를 한 번 선택하세요(만물인테리어 또는 현장사진)')
+      .setCallback(async(data)=>{
+        if(!data||data.action!==google.picker.Action.PICKED)return;
+        const f=(data.docs||[])[0]; if(!f){return;}
+        toast('“'+(f.name||'폴더')+'” 에서 자동 불러오는 중...');
+        window.__lastImportProj=0; window.__importChg=0;
+        let r={nImg:0,nPdf:0,nProj:0,chg:0}; try{ r=await __importTree([f.id],tok); }catch(e){}
+        __finishImport(false,r);
+        if(!r.nImg&&!r.nPdf) toast('이 폴더에서 사진을 못 읽었습니다 — 폴더 권한이 안 열렸을 수 있어요. 📂 전체 통합(권한 추가)을 쓰거나, 사진을 직접 여러 장 선택해 보세요.');
+        else toast('☁️ 폴더 통합 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · PDF '+r.nPdf+'개 (자동 저장됨)');
+      }).build();
+    picker.setVisible(true);
+  }catch(e){ toast('폴더 선택기 오류: '+(e.message||e)); }
 }
 function getSheetToken(){
   if(__shTok && Date.now()<__shExp-60000) return Promise.resolve(__shTok);
@@ -2312,7 +2337,8 @@ function viewDashboard(){
     return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
-        <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합 불러오기</button>
+        <button class="moss" id="gdPickFolder" style="font-size:15px;padding:12px 20px">📁 폴더 한번에 선택(자동)</button>
+        <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button>
       </div>
       <small style="display:block;margin-top:10px;color:#6a86a3">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf). · ‘전체 통합’은 드라이브 앱으로 올린 사진까지 불러옵니다(권한 1회 추가).</small>
     </div>`;
@@ -2532,7 +2558,7 @@ function showBundleSender(chunks,label,size){
 }
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:13px 22px;width:auto">☁️ 앱에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="ghost" id="btnGotoDrive" style="font-size:14px;padding:13px 18px;width:auto">열기</button></div></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -3794,7 +3820,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3837,6 +3863,7 @@ function setupDelegation(){
     if(t.id==='btnSelMode')return toggleSelMode();
     if(t.id==='dashGdPull')return gdPullAll();
     if(t.id==='gdImportAll')return gdImportAll();
+    if(t.id==='gdPickFolder')return gdPickFolder();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmAi')return aiQuoteItems();
     if(t.id==='qmImport')return importQuoteXlsx();
