@@ -1159,6 +1159,41 @@ async function gdToggleAutoload(){
   toast(on?'고정됨 — 앱 열 때 드라이브 사진을 자동 불러옵니다':'자동 불러오기 해제');
   if(on)gdLoadDriveFiles(false);
 }
+// 구글드라이브 파일 선택기(Picker): 드라이브의 '아무 사진'이나 골라 불러오기(구글드라이브앱 업로드분 포함)
+async function gdPickFiles(){
+  const key=window.__visionKey;   // Picker 개발자 키 = GCP API 키(Vision 키 재사용, 콘솔서 Picker API 사용설정 필요)
+  if(!key){ toast('드라이브 선택기에는 API 키가 필요합니다 — ☁️설정 🔎칸에 키 + 콘솔서 "Google Picker API" 사용설정'); openGdriveSetup(); return; }
+  let tok; try{ tok=await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
+  try{
+    await loadExtLib('https://apis.google.com/js/api.js',()=>window.gapi);
+    await new Promise((res,rej)=>{ try{gapi.load('picker',{callback:res});}catch(e){rej(e);} });
+    const view=new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES).setIncludeFolders(true).setSelectFolderEnabled(false);
+    const picker=new google.picker.PickerBuilder()
+      .setOAuthToken(tok).setDeveloperKey(key).addView(view)
+      .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+      .setCallback(async(data)=>{
+        if(!data||data.action!==google.picker.Action.PICKED)return;
+        const docs=data.docs||[]; if(!docs.length)return;
+        toast(docs.length+'개 드라이브에서 불러오는 중...');
+        let n=0;
+        for(const doc of docs){
+          if(state.files.some(x=>x._driveId===doc.id))continue;
+          try{
+            const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+doc.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
+            if(!dr.ok)continue;
+            const blob=await dr.blob();
+            await ingestFile(new File([blob],doc.name||('img_'+doc.id),{type:doc.mimeType||blob.type||'image/jpeg'}));
+            const rec=state.files[state.files.length-1]; if(rec)rec._driveId=doc.id;
+            n++;
+          }catch(e){}
+        }
+        if(typeof __photoCache!=='undefined')__photoCache.key=null;
+        if(n){markDirty();state.tab='photos';render();}
+        toast(n?(n+'개 불러옴'):'불러오지 못함(권한/형식 확인)');
+      }).build();
+    picker.setVisible(true);
+  }catch(e){ toast('선택기 열기 실패: '+(e.message||e)); }
+}
 /* ----- 견적서 PDF 만들기(브라우저 렌더 → 한글 그대로) + 발송/드라이브저장 ----- */
 const QUOTE_PDF_CSS="*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#1a1a1a}.qtop{width:100%;border-collapse:collapse;margin-bottom:10px}.qtitle{vertical-align:top;width:40%;padding-top:6px}.qtitle h1{font-size:34px;letter-spacing:14px;font-weight:800}.qtitle .sub2{font-size:11px;color:#444;margin-top:16px}.qsupwrap{width:60%;vertical-align:top}.qsup{width:100%;border-collapse:collapse}.qsup td{border:1px solid #555;padding:4px 6px;font-size:10.5px}.qsup td.vlabel{background:#ececec;font-weight:700;text-align:center;width:20px;line-height:1.5}.qsup td.l{background:#ececec;font-weight:700;white-space:nowrap;text-align:center;width:62px}.qmeta{width:100%;border-collapse:collapse;margin-bottom:3px}.qmeta td{padding:3px 2px;font-size:11px;font-weight:700}.qmeta td.r2{text-align:right}.qinfo{width:100%;border-collapse:collapse}.qinfo td{border:1px solid #333;padding:6px 8px;font-size:11px}.qinfo td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap}.qinfo td.amt-kor{text-align:center;font-size:13px;font-weight:700}.qitems{width:100%;border-collapse:collapse}.qitems th{background:#dfe8cf;color:#46682a;border:1px solid #8a9a6a;padding:6px 4px;font-size:10.5px;font-weight:700}.qitems td{border:1px solid #b0b0b0;padding:4px 6px;font-size:10.5px;height:23px}.qitems td.c{text-align:center}.qitems td.r{text-align:right}.qitems td.nm{font-weight:700;text-align:center}.qitems td.neg{color:#c0392b}.qitems .foot td{font-weight:700;font-size:12px;height:26px}.qitems .tot-l{background:#fbe5d6;color:#c1622e;text-align:center}.qitems .tot-v{background:#fbe5d6;color:#c1622e;text-align:right}.qitems .sum-l{background:#e3edd3;color:#46682a;text-align:center}.qitems .sum-v{background:#e3edd3;color:#46682a;text-align:right}.qcond{width:100%;border-collapse:collapse}.qcond td{border:1px solid #333;padding:6px 8px;font-size:10.5px}.qcond td.vlabel2{background:#d8d8d8;font-weight:700;text-align:center;width:64px}.qcond td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap;width:100px}";
 async function quotePdfBlob(q){
@@ -2299,7 +2334,7 @@ function viewPhotos(){
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
-  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="clay tiny" id="btnGdPhotos" style="font-size:13px;padding:9px 16px">☁️ 사진 드라이브 업로드</button><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기</button><button class="moss tiny" id="btnPhotoBundle" style="font-size:13px;padding:9px 16px">📤 사진 묶음 발송</button><button class="ghost tiny" id="btnGdLoad" style="font-size:13px;padding:9px 16px">📥 드라이브에서 불러오기</button><button class="ghost tiny" id="btnGdPin" style="font-size:13px;padding:9px 16px">🔒 자동 불러오기 고정</button><span class="hint" style="margin:0">‘업로드’=드라이브에 · ‘불러오기’=앱으로 가져오기 · ‘묶음 발송’=카톡30/문자10장</span></div>`;
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="clay tiny" id="btnGdPhotos" style="font-size:13px;padding:9px 16px">☁️ 사진 드라이브 업로드</button><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기</button><button class="moss tiny" id="btnPhotoBundle" style="font-size:13px;padding:9px 16px">📤 사진 묶음 발송</button><button class="ghost tiny" id="btnGdLoad" style="font-size:13px;padding:9px 16px">📥 드라이브에서 불러오기</button><button class="ghost tiny" id="btnGdPick" style="font-size:13px;padding:9px 16px">🔍 드라이브에서 골라 불러오기</button><button class="ghost tiny" id="btnGdPin" style="font-size:13px;padding:9px 16px">🔒 자동 불러오기 고정</button><span class="hint" style="margin:0">‘업로드’=드라이브에 · ‘불러오기’=앱으로 가져오기 · ‘묶음 발송’=카톡30/문자10장</span></div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
@@ -3510,7 +3545,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3548,6 +3583,7 @@ function setupDelegation(){
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='btnGdLoad')return gdLoadDriveFiles(false);
+    if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmAi')return aiQuoteItems();
