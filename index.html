@@ -907,7 +907,7 @@ async function loadProject(){
 function exportData(){
   if(!state.projects.length && !state.files.length){toast('내보낼 데이터가 없습니다.');return;}
   const data=serializeData();
-  const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const stamp=localDate().replace(/-/g,'');
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const fname='현장데이터_'+stamp+'.json';
   // 폰: 공유 시트로 구글드라이브에 바로 보내기 시도 (await 없이 = 아이폰 제스처 유지)
@@ -1075,7 +1075,7 @@ async function gdLoad(silent,retried){
 async function gdBackup(){
   try{
     if(!__gdToken||!__gdFolderId)return;
-    const today=new Date().toISOString().slice(0,10);
+    const today=localDate();
     let last=null; try{last=await idbGet('gd_lastbackup');}catch(e){}
     if(last===today)return;                         // 오늘 이미 백업함 → 스킵(하루 1개)
     const meta={name:'현장데이터_백업_'+today+'.json',mimeType:'application/json',parents:[__gdFolderId],appProperties:{hjbak:'1'}};
@@ -2831,8 +2831,8 @@ function monthlyQuoteHTML(){
 /* ==================== 견적 작성 모듈 ==================== */
 function newQuote(){
   return {
-    id:uid(), title:'', no:'제'+new Date().toISOString().slice(0,10).replace(/-/g,''),
-    date:new Date().toISOString().slice(0,10), place:'', vatIncluded:true,
+    id:uid(), title:'', no:'제'+localDate().replace(/-/g,''),
+    date:localDate(), place:'', vatIncluded:true,
     accountIdx:0, memo:'', project:null,
     items:[{name:'',spec:'',qty:1,price:0}]
   };
