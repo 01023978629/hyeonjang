@@ -2174,6 +2174,27 @@ function aiHelper(){
   root.querySelector('#aiCopy').onclick=()=>{if(navigator.clipboard&&out.textContent)navigator.clipboard.writeText(out.textContent).then(()=>toast('복사됨'));};
   root.querySelector('#aiShare').onclick=async()=>{if(navigator.share&&out.textContent){try{await navigator.share({text:out.textContent});}catch(e){}}};
 }
+// AI 견적 항목 자동 작성: 공사 설명 → Gemini가 항목(JSON) 생성 → 견적서에 삽입
+async function aiQuoteItems(){
+  if(!window.__geminiKey){ toast('먼저 ☁️ 설정에서 Gemini 키를 넣으세요'); openGdriveSetup(); return; }
+  const q=state.editingQuote; if(!q){ toast('먼저 견적서를 여세요'); return; }
+  const desc=prompt('어떤 공사인가요? (예: 30평 아파트 도배+장판 전체)');
+  if(!desc||!desc.trim())return;
+  toast('AI가 견적 항목을 만드는 중...');
+  try{
+    const p='너는 한국 인테리어 견적 전문가다. 다음 공사의 견적 항목을 JSON 배열로만 출력해(설명·코드펜스 금지). 형식: [{"name":"품목명","spec":"규격/사양","qty":수량,"price":단가원}]. price는 한국 평균 시세의 대략값(숫자만, 원). 항목은 5~12개. 공사: '+desc.trim();
+    let t=await geminiAsk(p);
+    t=String(t).replace(/```json/gi,'').replace(/```/g,'').trim();
+    const s=t.indexOf('['), e=t.lastIndexOf(']'); if(s>=0&&e>s)t=t.slice(s,e+1);
+    const arr=JSON.parse(t);
+    if(!Array.isArray(arr)||!arr.length)throw new Error('형식 오류');
+    q.items=(q.items||[]).filter(it=>it.name||it.price);   // 빈 행 정리
+    arr.forEach(it=>q.items.push({name:String(it.name||''),spec:String(it.spec||''),qty:num(it.qty)||1,price:num(it.price)||0}));
+    if(!q.items.length)q.items.push({name:'',spec:'',qty:1,price:0});
+    markDirty();render();
+    toast(arr.length+'개 항목 추가 — 단가·수량은 AI 추정치이니 꼭 확인·수정하세요');
+  }catch(e){ toast('AI 항목 생성 실패: '+(e.message||e)); }
+}
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
 function sendPhotoBundles(){
   openModal('📤 사진 묶음 발송',
@@ -2675,7 +2696,7 @@ function viewQuoteMaker(){
         <label>연결 현장<select id="qmProj">${projOpts}</select></label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
       </div>
-      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button></div>
+      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
       <datalist id="qmItemNames">${['철거','화장실','방수','타일,기구','주방,베란다타일','몰딩','씽크대','붙박이장문','장판','도배(실크)','식대,부자재','폐기물','인건비','목공','시트지','중문','신발장','키큰장','샷시','마감재','실리콘','경비','장비대','스텐 물받이','용마루','NEGO'].map(n=>`<option value="${escapeAttr(n)}"></option>`).join('')}</datalist>
       <div class="qm-table-wrap"><table class="qm-table">
@@ -3455,7 +3476,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal]');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal]');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3493,6 +3514,7 @@ function setupDelegation(){
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='qmAddItem')return addQuoteItem();
+    if(t.id==='qmAi')return aiQuoteItems();
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmXlsx')return exportQuoteXlsx();
     if(d.qadd!==undefined)return addQuoteItemNamed(d.qadd);
