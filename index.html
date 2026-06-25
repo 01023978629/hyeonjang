@@ -652,11 +652,22 @@ function bestExt(name,type){
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
 function classify(rec){
   const hay=((rec.name||'')+' '+(rec.text||'')).toLowerCase();
+  const txt=(rec.text||'').toLowerCase();
   if(/사업자\s*등록증|사업자등록|등록번호[\s:]*\d{3}-?\d{2}-?\d{5}|business.?registration/.test(hay)) return 'bizreg';
-  if(/견적서|견적\s*금액|공급가액|합계금액|estimate|quotation|총\s*견적/.test(hay)) return 'estimate';
   if(/명함|대표\s*이사|☎|tel[\s:．.]|mobile|name.?card|代表/.test(hay) && IMG.includes(rec.ext)) return 'card';
   if(/명함|name.?card/.test((rec.name||'').toLowerCase())) return 'card';
   if(/도면|평면도|입면도|단면도|배치도|drawing|floor.?plan|평면/.test((rec.name||'').toLowerCase())) return 'drawing';
+  // 견적서: 파일명 신호 + OCR 내용 신호(내용을 읽어 판단)
+  if(/견적서|견적\s*금액|공급가액|합계금액|estimate|quotation|총\s*견적/.test(hay)) return 'estimate';
+  // OCR 내용 기반 견적서 판정: 견적/공급가/단가/수량/금액 같은 견적서 항목이 여러 개 보이면 견적서로
+  if(txt){
+    let sig=0;
+    if(/견적|estimate|quotation/.test(txt))sig+=2;
+    if(/공급\s*가|공급가액|단\s*가|수\s*량|품\s*명|규\s*격/.test(txt))sig++;
+    if(/합\s*계|소\s*계|부가세|vat|총\s*액|금\s*액/.test(txt))sig++;
+    if(/원정|₩|\d{1,3}(,\d{3}){1,}\s*원/.test(txt))sig++;   // 금액 표기
+    if(sig>=2) return 'estimate';
+  }
   if(IMG.includes(rec.ext)) return 'photo';
   return 'other';
 }
@@ -1211,10 +1222,14 @@ async function gdLoadDriveFiles(silent,bootSkip){
     try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }
     if(!silent)toast('드라이브에서 불러오는 중...');
     let n=0, hadImg=false;
-    // 1) 현장사진(이미지) — 읽기만(폴더 없으면 만들지 않음)
+    // 1) 현장사진 하위폴더(이미지) — 읽기만(폴더 없으면 만들지 않음)
     try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'",bootSkip); if(got)hadImg=true; n+=got; } }catch(e){}
-    // 2) 견적서·서류(PDF) — 폰에서도 드라이브의 견적서/문서를 가져와 볼 수 있게
+    // 1-2) 만물인테리어 폴더 '바로 아래' 사진도 가져오기(현장사진 하위가 아니라 폴더 직속에 올린 경우)
+    try{ await gdEnsureFolder(); if(__gdFolderId){ const got2=await __gdPullFrom(__gdFolderId,"mimeType contains 'image/'",bootSkip); if(got2)hadImg=true; n+=got2; } }catch(e){}
+    // 2) 견적서 하위폴더(PDF)
     try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'",bootSkip); }catch(e){}
+    // 2-2) 만물인테리어 폴더 '바로 아래' PDF도(견적서·서류)
+    try{ if(__gdFolderId){ n+=await __gdPullFrom(__gdFolderId,"mimeType='application/pdf'",bootSkip); } }catch(e){}
     if(typeof __photoCache!=='undefined')__photoCache.key=null;
     if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
     if(!silent)toast(n?(n+'개 불러옴 (사진+견적서/PDF)'):'새로 불러올 파일이 없습니다');
@@ -1975,6 +1990,52 @@ function addProject(){const v=$('#newProj').value.trim();if(!v)return;
   if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');return;}
   state.projects.push({name:v,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');}
 function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){p.stage=idx;markDirty();render();}}
+// 현장 이름 수정 — 연결된 파일·일정·활성현장도 함께 변경
+function renameProject(oldName){
+  const p=state.projects.find(x=>x.name===oldName);if(!p)return;
+  const body=`<div class="sch-form">
+    <label>현장 이름<input type="text" id="renProjInput" value="${escapeAttr(oldName)}" placeholder="현장명"></label>
+    <p class="hint" style="margin:0">이 현장에 배정된 사진·서류·일정의 현장명도 함께 바뀝니다.</p>
+  </div>`;
+  openModal('현장명 수정', body, [
+    {label:'저장',cls:'blue',fn:()=>{
+      const nv=document.getElementById('renProjInput').value.trim();
+      if(!nv){toast('이름을 입력하세요.');return;}
+      if(nv===oldName){closeModal();return;}
+      if(state.projects.some(x=>x.name===nv)){toast('이미 있는 현장 이름입니다.');return;}
+      p.name=nv;
+      // 연결된 모든 항목의 현장명 변경
+      state.files.forEach(f=>{if(f.project===oldName)f.project=nv;});
+      (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
+      if(state.activeProject===oldName)state.activeProject=nv;
+      markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”');
+    }},
+    {label:'취소',cls:'ghost',fn:closeModal}
+  ], true);
+}
+// 현장 삭제 — 배정된 파일은 미배정으로 되돌림(파일 자체는 안 지움)
+function deleteProject(name){
+  const p=state.projects.find(x=>x.name===name);if(!p)return;
+  const fileCount=state.files.filter(f=>f.project===name).length;
+  const schCount=(state.schedule||[]).filter(s=>s.project===name).length;
+  const body=`<div style="font-size:13px;line-height:1.7">
+    <p style="margin:0 0 8px">현장 <b>“${escapeHtml(name)}”</b>을(를) 삭제할까요?</p>
+    ${fileCount?`<p style="margin:0 0 4px">· 배정된 사진·서류 <b>${fileCount}개</b>는 <b>삭제되지 않고</b> ‘미배정’으로 돌아갑니다.</p>`:''}
+    ${schCount?`<p style="margin:0 0 4px">· 연결된 일정 <b>${schCount}개</b>는 현장 연결만 해제됩니다.</p>`:''}
+    <p style="margin:8px 0 0;color:var(--warn)">현장 정보(고객·공정·정산)는 삭제됩니다.</p>
+  </div>`;
+  openModal('현장 삭제', body, [
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'삭제',cls:'warn',fn:()=>{
+      // 파일은 미배정으로(삭제 안 함)
+      state.files.forEach(f=>{if(f.project===name)f.project=null;});
+      (state.schedule||[]).forEach(s=>{if(s.project===name)s.project='';});
+      state.projects=state.projects.filter(x=>x.name!==name);
+      if(state.activeProject===name)state.activeProject=null;
+      markDirty();closeModal();render();toast('현장 “'+name+'” 삭제됨 (파일은 미배정으로 보존)');
+    }}
+  ]);
+}
 
 function assignKind(id,k){const f=state.files.find(x=>x.id===id);if(f){f.kind=k;if(k==='estimate'&&!f.est)f.est=parseEstimate(f.text);if(k==='card'&&!f.contact)f.contact=parseCard(f.text);markDirty();render();}}
 function assignProject(id,p){const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();render();}}
@@ -3767,7 +3828,7 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:#6a86a3;font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
@@ -3783,7 +3844,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=stageBar(p);
 
   // 필터 헬퍼: 현재 보기(__projView)에서 해당 섹션을 표시할지
@@ -3917,7 +3978,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3972,6 +4033,8 @@ function setupDelegation(){
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
+    if(d.renproj!==undefined)return renameProject(d.renproj);
+    if(d.delproj!==undefined)return deleteProject(d.delproj);
     if(d.map!==undefined)return showProjectMap(d.map);
     if(d.organize!==undefined)return organizeByPhase(d.organize);
     if(d.pview!==undefined){__projView=(d.pview==='all')?null:+d.pview;return render();}
