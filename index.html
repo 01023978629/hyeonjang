@@ -1233,6 +1233,7 @@ function openGdriveSetup(){
       <button class="moss tiny" id="gdSheet">📊 구글시트로 내보내기</button>
       <span id="gdDot" style="align-self:center;font-size:12px;color:#5a7186">${__gdToken?'☁️ 연결됨':(cid?'설정됨':'미설정')}</span>
     </div>
+    <div id="gdQuota" style="font-size:11px;color:#6a86a3;margin:2px 0 6px"></div>
     <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--clay)">📋 클라이언트 ID 만드는 법 (처음 1회, 약 5분)</summary>
       <ol style="padding-left:18px;margin:8px 0">
         <li>console.cloud.google.com 접속(<b>3dncjf@gmail.com</b>으로 로그인) → ‘새 프로젝트’ 만들기</li>
@@ -1244,12 +1245,12 @@ function openGdriveSetup(){
       </ol>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
-      <p style="font-size:12px;color:#5a7186;margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지).</p>
+      <p style="font-size:12px;color:#5a7186;margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
       <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
       <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
-      <p style="font-size:12px;color:#5a7186;margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다.</p>
+      <p style="font-size:12px;color:#5a7186;margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
       <input type="text" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" style="width:100%">
       <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
     </details>
@@ -1266,6 +1267,7 @@ function openGdriveSetup(){
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
   {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
   {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=async()=>{const v=root.querySelector('#gdGemini').value.trim();window.__geminiKey=v||null;try{await idbSet('gemini_key',v||'');}catch(e){}toast(v?'Gemini 키 저장됨 — AI 도우미 사용 가능':'Gemini 키 지움');};}
+  {const qel=root.querySelector('#gdQuota');if(qel)quotaText().then(t=>{if(t)qel.textContent='📊 사용량 — '+t;});}
 }
 
 /* ---------- 사용법 도움말 ---------- */
@@ -2135,18 +2137,22 @@ function voiceMemo(){
 /* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
 async function geminiAsk(prompt){
   const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
-  const models=['gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-flash-latest']; let lastErr='';
-  for(const m of models){
-    try{
-      const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
-      if(r.status===404){lastErr='모델 없음('+m+')';continue;}
-      if(!r.ok)throw new Error('Gemini '+r.status);
-      const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
-      const t=c&&c.content&&c.content.parts&&c.content.parts.map(p=>p.text||'').join('');
-      return t||'';
-    }catch(e){ lastErr=e.message||String(e); }
-  }
-  throw new Error(lastErr||'실패');
+  const res=await quotaReserve('gemini'); if(!res.ok)throw new Error(res.msg);   // 무료 한도 보호(예약)
+  const models=['gemini-2.5-flash','gemini-flash-latest','gemini-2.5-flash-lite']; let lastErr='';  // 2.0/1.5는 2026 단종 → 2.5-flash
+  try{
+    for(const m of models){
+      try{
+        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+        if(r.status===404){lastErr='모델 없음('+m+')';continue;}
+        if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
+        if(!r.ok)throw new Error('Gemini '+r.status);
+        const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
+        const t=c&&c.content&&c.content.parts&&c.content.parts.map(p=>p.text||'').join('');
+        return t||'';   // 성공 → 예약 유지
+      }catch(e){ lastErr=e.message||String(e); if(/429/.test(lastErr))break; }
+    }
+    throw new Error(lastErr||'실패');
+  } catch(e){ await res.release(); throw e; }   // 모두 실패 → 예약 롤백
 }
 function aiHelper(){
   if(!window.__geminiKey){ toast('먼저 ☁️ 설정에서 Gemini 키를 넣으세요'); openGdriveSetup(); return; }
@@ -3106,14 +3112,37 @@ function addToGoogleCalendar(id){
 
 // 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (모바일에서 연락처 추가)
 // Cloud Vision OCR(정확도↑) — 사용자 키 있으면 사용. ⚠️키는 idb에만 저장(공개 코드에 안 박음)
+/* ----- 무료 한도 보호: 이 기기 사용량 카운터(예약→실패시 롤백 + 동시호출 직렬화) ----- */
+const QUOTA_CFG={ vision:{period:'month',cap:800,label:'글자인식(Vision)'}, gemini:{period:'day',cap:200,perMin:8,label:'AI(Gemini)'} };
+function __qKey(p){const d=new Date();const ym=d.getFullYear()+'-'+pad(d.getMonth()+1);return p==='month'?ym:(ym+'-'+pad(d.getDate()));}
+async function quotaState(api){ let q; try{q=await idbGet('quota_'+api);}catch(e){} q=q||{}; const cfg=QUOTA_CFG[api]; const pk=__qKey(cfg.period); if(q.key!==pk)q={key:pk,count:0,min:[]}; q.min=(q.min||[]).filter(t=>Date.now()-t<60000); return q; }
+let __qLock=Promise.resolve();
+// 예약: 직렬화해서 검사+1증가(경쟁 방지). 호출 실패 시 release()로 롤백.
+function quotaReserve(api){
+  const cfg=QUOTA_CFG[api]; if(!cfg)return Promise.resolve({ok:true,release:()=>{}});
+  const run=async()=>{
+    const q=await quotaState(api);
+    if((q.count||0)>=cfg.cap) return {ok:false,msg:cfg.label+' 이번 '+(cfg.period==='month'?'달':'날')+' 무료 한도('+cfg.cap+') 도달 — 보호를 위해 중단했습니다.'};
+    if(cfg.perMin && q.min.length>=cfg.perMin) return {ok:false,msg:cfg.label+' 분당 한도 — 1분 뒤 다시 하세요.'};
+    q.count=(q.count||0)+1; q.min.push(Date.now()); try{await idbSet('quota_'+api,q);}catch(e){}
+    return {ok:true,release:async()=>{ try{const q2=await quotaState(api); q2.count=Math.max(0,(q2.count||0)-1); if(q2.min.length)q2.min.pop(); await idbSet('quota_'+api,q2);}catch(e){} }};
+  };
+  const p=__qLock.then(run,run); __qLock=p.then(()=>{},()=>{}); return p;
+}
+async function quotaText(){ try{const v=await quotaState('vision'),g=await quotaState('gemini'); return '이번 달 글자인식 '+(v.count||0)+'/'+QUOTA_CFG.vision.cap+' · 오늘 AI '+(g.count||0)+'/'+QUOTA_CFG.gemini.cap;}catch(e){return '';} }
 async function visionOCR(file){
   const key=window.__visionKey; if(!key)throw new Error('NO_VISION_KEY');
-  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(new Error('read'));r.readAsDataURL(file);});
-  const r=await fetch('https://vision.googleapis.com/v1/images:annotate?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requests:[{image:{content:b64},features:[{type:'TEXT_DETECTION'}]}]})});
-  if(!r.ok)throw new Error('Vision '+r.status);
-  const j=await r.json(); const resp=j&&j.responses&&j.responses[0];
-  if(resp&&resp.error)throw new Error(resp.error.message||'Vision error');
-  return (resp&&(resp.fullTextAnnotation?resp.fullTextAnnotation.text:(resp.textAnnotations&&resp.textAnnotations[0]&&resp.textAnnotations[0].description)))||'';
+  const res=await quotaReserve('vision'); if(!res.ok)throw new Error(res.msg);   // 한도면 throw → Tesseract 대체
+  let ok=false;
+  try{
+    const b64=await new Promise((rs,rj)=>{const r=new FileReader();r.onload=()=>rs(String(r.result).split(',')[1]||'');r.onerror=()=>rj(new Error('read'));r.readAsDataURL(file);});
+    const r=await fetch('https://vision.googleapis.com/v1/images:annotate?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requests:[{image:{content:b64},features:[{type:'TEXT_DETECTION'}]}]})});
+    if(!r.ok)throw new Error('Vision '+r.status);
+    const j=await r.json(); const resp=j&&j.responses&&j.responses[0];
+    if(resp&&resp.error)throw new Error(resp.error.message||'Vision error');
+    ok=true;
+    return (resp&&(resp.fullTextAnnotation?resp.fullTextAnnotation.text:(resp.textAnnotations&&resp.textAnnotations[0]&&resp.textAnnotations[0].description)))||'';
+  } finally { if(!ok) await res.release(); }   // 실패 시 예약 롤백(과금 안전)
 }
 // 이미지 글자읽기: Vision 우선(키 있으면·빠르고 정확), 없거나 실패 시 Tesseract
 async function ocrImageFile(file,rec){
