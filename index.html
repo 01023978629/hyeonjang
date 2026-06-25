@@ -1229,9 +1229,12 @@ async function gdLoadDriveFiles(silent,bootSkip){
     try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'",bootSkip); if(got)hadImg=true; n+=got; } }catch(e){}
     // 1-2) 만물인테리어 폴더 '바로 아래' 사진도 가져오기(현장사진 하위가 아니라 폴더 직속에 올린 경우)
     try{ await gdEnsureFolder(); if(__gdFolderId){ const got2=await __gdPullFrom(__gdFolderId,"mimeType contains 'image/'",bootSkip); if(got2)hadImg=true; n+=got2; } }catch(e){}
-    // 2) 견적서 하위폴더(PDF)
-    try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'",bootSkip); }catch(e){}
-    // 2-2) 만물인테리어 폴더 '바로 아래' PDF도(견적서·서류)
+    // 2) 견적서 하위폴더 — PDF + 엑셀(xlsx/xls) 모두 가져오고 '견적서'로 강제 분류
+    try{ const qf=await gdFindSubfolder('견적서'); if(qf){
+      const estMime="mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='application/vnd.ms-excel' or mimeType='application/vnd.google-apps.spreadsheet'";
+      n+=await __gdPullFrom(qf,estMime,bootSkip,'estimate');
+    } }catch(e){}
+    // 2-2) 만물인테리어 폴더 '바로 아래' PDF도(견적서·서류 — 내용 OCR로 판단)
     try{ if(__gdFolderId){ n+=await __gdPullFrom(__gdFolderId,"mimeType='application/pdf'",bootSkip); } }catch(e){}
     if(typeof __photoCache!=='undefined')__photoCache.key=null;
     if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
@@ -1286,8 +1289,57 @@ async function hydrateThumbs(){
   }
   if(changed){ if(typeof __photoCache!=='undefined')__photoCache.key=null; render(); }
 }
+// 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
+let __fillThumbsRunning=false;
+async function fillThumbs(){
+  if(__fillThumbsRunning){toast('이미 썸네일을 채우는 중입니다…');return;}
+  // 대상: 썸네일 없고 이미지인 사진
+  const targets=state.files.filter(f=>!f.thumb && IMG.includes(f.ext));
+  if(!targets.length){toast('채울 썸네일이 없습니다 — 모든 사진이 이미 표시됩니다.');return;}
+  // 권한 토큰: 우선 readonly(전체 검색용), 없으면 일반
+  let roTok=null, gdTok=null;
+  try{ roTok=await getRoToken(false); }catch(e){ try{ roTok=await getRoToken(true); }catch(e2){} }
+  try{ if(!__gdToken)await gdGetToken(false); gdTok=__gdToken; }catch(e){}
+  if(!roTok && !gdTok){ toast('먼저 ☁️ 구글 로그인 또는 통합 불러오기 권한이 필요합니다'); return; }
+  __fillThumbsRunning=true;
+  let done=0, ok=0, total=targets.length;
+  toast('🖼 썸네일 채우는 중 0/'+total+' (잠시 걸립니다)');
+  for(const f of targets){
+    try{
+      // 1) driveId 있으면 캐시 먼저 확인
+      if(f._driveId){
+        try{ const c=await idbGet('thumb:'+f._driveId); if(c){f.thumb=c;ok++;done++;continue;} }catch(e){}
+      }
+      // 2) driveId 없으면 이름+크기로 드라이브에서 찾기(readonly 필요)
+      let driveId=f._driveId, useTok=f._driveId?(gdTok||roTok):roTok;
+      if(!driveId){
+        if(!roTok){done++;continue;}   // 검색은 readonly 필요
+        const nm=f.name.replace(/'/g,"\\'");
+        let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,size)",roTok);
+        if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,size)",roTok); }
+        if(!list.length){done++;continue;}
+        // 크기 매칭 우선
+        let hit=null; if(f.size){const ex=list.filter(x=>x.size&&Math.abs(+x.size-f.size)<=2);if(ex.length)hit=ex[0];}
+        hit=hit||list[0]; driveId=hit.id; useTok=roTok; f._driveId=driveId;
+      }
+      // 3) 원본 받아서 썸네일 생성(HEIC면 makeThumbDataUrl 내부에서 변환)
+      const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+driveId+'?alt=media',{headers:{Authorization:'Bearer '+useTok}});
+      if(!dr.ok){done++;continue;}
+      const blob=await dr.blob();
+      const file=new File([blob],f.name,{type:blob.type||'image/jpeg'});
+      const t=await makeThumbDataUrl(file,480);
+      if(t){ f.thumb=t; try{await idbSet('thumb:'+driveId,t);}catch(e){} ok++; }
+    }catch(e){}
+    done++;
+    if(done%3===0||done===total){ toast('🖼 썸네일 채우는 중 '+done+'/'+total); if(typeof __photoCache!=='undefined')__photoCache.key=null; render(); }
+  }
+  __fillThumbsRunning=false;
+  if(typeof __photoCache!=='undefined')__photoCache.key=null;
+  markDirty(); render();
+  toast('🖼 완료 — '+ok+'/'+total+'장 표시됨'+(ok<total?' (못 찾은 '+(total-ok)+'장은 드라이브에 없거나 권한 밖)':''));
+}
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
-async function __gdIngestOne(id,name,mime,tok,bootSkip){
+async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
   const existing=state.files.find(x=>x._driveId===id);
   if(existing&&!existing._virtual)return 0;            // 이미 실제 바이트 보유
   if(existing&&existing._virtual&&bootSkip){           // 부팅: 캐시 썸네일이 있으면 재다운로드 생략(탭 시 원본). 없으면 받아서 자동 표시
@@ -1304,19 +1356,20 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip){
   }
   const rec=await ingestFile(new File([blob],fname,{type:blob.type||mime||'application/octet-stream'})); if(!rec)return 0;
   rec._driveId=id;
+  if(forceKind)rec.kind=forceKind;   // 견적서 폴더 등 위치 기반 강제 분류
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
   if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
     rec.project=ph.project||rec.project;
     if(ph._phase)rec._phase=ph._phase;
     if(ph.est)rec.est=ph.est;
     if(ph.contact)rec.contact=ph.contact;
-    if(ph.kind&&ph.kind!=='other')rec.kind=ph.kind;
+    if(!forceKind && ph.kind&&ph.kind!=='other')rec.kind=ph.kind;   // forceKind면 그대로 유지
     state.files=state.files.filter(x=>x!==ph);
   }
   return 1;
 }
 // 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 반영(__gdIngestOne 위임) — 모든 페이지 처리
-async function __gdPullFrom(folderId,mimeClause,bootSkip){
+async function __gdPullFrom(folderId,mimeClause,bootSkip,forceKind){
   const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and ("+mimeClause+")");
   let n=0, token='', guard=0;
   do{
@@ -1325,7 +1378,7 @@ async function __gdPullFrom(folderId,mimeClause,bootSkip){
     if(!r.ok)break;
     const j=await r.json();
     const files=j.files||[];
-    for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip); }catch(e){} }
+    for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip,forceKind); }catch(e){} }
     token=j.nextPageToken||''; guard++;
   }while(token && guard<30);   // 최대 3만 개까지(안전 가드)
   return n;
@@ -1775,7 +1828,7 @@ async function ingestFile(file,handle=null,prefix=''){
   const e=bestExt(file.name,file.type),isImg=IMG.includes(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
-    lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':(e==='pdf'?'pending':'na'),
+    lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':((e==='pdf'||e==='xlsx'||e==='xls')?'pending':'na'),
     est:null,contact:null,_file:handle?null:file};
   if(isImg)await extractImage(file,rec);
   rec.kind=classify(rec);
@@ -1957,13 +2010,20 @@ async function runBatchOCR(){
   let done=0;
   for(const f of targets){
     stat.textContent=`(${done+1}/${targets.length}) ${f.name}`;
+    let xlsxQuote=null;
     try{
       if(f.ext==='pdf') f.text=await pdfText(f);
+      else if(f.ext==='xlsx'||f.ext==='xls'){ const r=await xlsxEstimate(f); f.text=r.text||''; xlsxQuote=r.quote||null; }
       else f.text=await imgOCR(f);
     }catch(e){f.text='';}
     f.ocr='done';
-    f.kind=classify(f);
-    if(f.kind==='estimate'&&!(f.est&&f.est._edited))f.est=applyLearning(parseEstimate(f.text),f);
+    // 견적서 폴더에서 강제 지정된 것(kind=estimate)은 유지, 아니면 내용으로 분류
+    if(f.kind!=='estimate') f.kind=classify(f);
+    if(f.kind==='estimate'&&!(f.est&&f.est._edited)){
+      // 엑셀이면 그리드에서 뽑은 견적, PDF면 텍스트 파싱
+      if(xlsxQuote){ f.est=applyLearning(quoteToEst(xlsxQuote),f); }
+      else f.est=applyLearning(parseEstimate(f.text),f);
+    }
     if(f.kind==='card'&&!(f.contact&&f.contact._edited))f.contact=parseCard(f.text);
     done++;bar.style.width=Math.round(done/targets.length*100)+'%';
     if(done%5===0||done===targets.length){__photoCache.key=null;render();} // 5개마다만 전체 렌더(대용량 속도)
@@ -1973,6 +2033,30 @@ async function runBatchOCR(){
   toast('일괄 OCR 완료 · 분류가 갱신되었습니다');
 }
 async function getFileOf(rec){return rec.handle?await rec.handle.getFile():rec._file;}
+// 엑셀(.xlsx/.xls) 견적서에서 견적 정보 추출 → {text(검색·분류용), quote(품목·금액)}
+async function xlsxEstimate(rec){
+  const file=await getFileOf(rec); if(!file)return {text:'',quote:null};
+  if(typeof XLSX==='undefined'){ try{ await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX); }catch(e){ return {text:'',quote:null}; } }
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]]; if(!ws)return {text:'',quote:null};
+    const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
+    // 검색·분류용 텍스트(셀 전체를 이어붙임) — classify가 '견적/금액' 등을 보고 estimate 확정
+    const text=grid.map(row=>(row||[]).join(' ')).join('\n');
+    const quote=parseQuoteFromGrid(grid,rec.name);
+    return {text, quote};
+  }catch(e){ return {text:'',quote:null}; }
+}
+// 견적(quote) → 파일 카드용 est 요약(고객/금액/날짜/품목수)
+function quoteToEst(q){
+  if(!q)return null;
+  const supply=(q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0);
+  const vat=q.vatIncluded?Math.round(supply/11):Math.round(supply*0.1);
+  const amount=q.vatIncluded?supply:supply+vat;
+  return { customer:q.title||q.customer||'', amount:amount, supply:q.vatIncluded?supply-vat:supply, vat:vat,
+           date:q.date||'', itemCount:(q.items||[]).length, _fromXlsx:true };
+}
 async function pdfText(rec){
   const file=await getFileOf(rec);if(!file)return'';
   const buf=await file.arrayBuffer();
@@ -2754,6 +2838,7 @@ function viewPhotos(){
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
       <button class="ghost tiny" id="btnGdPick" style="font-size:12.5px;padding:8px 12px">골라 불러오기</button>
+      ${(()=>{const need=photos.filter(p=>!p.thumb&&IMG.includes(p.ext)).length;return need?`<button class="moss tiny" id="btnFillThumbs" style="font-size:12.5px;padding:8px 12px">🖼 썸네일 채우기 (${need})</button>`:'';})()}
       <button class="ghost tiny" id="btnGdPin" style="font-size:12.5px;padding:8px 12px">🔒 고정</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
       <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>
@@ -3987,7 +4072,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnFillThumbs,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -4025,6 +4110,7 @@ function setupDelegation(){
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='btnGdLoad')return gdLoadDriveFiles(false);
+    if(t.id==='btnFillThumbs')return fillThumbs();
     if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
