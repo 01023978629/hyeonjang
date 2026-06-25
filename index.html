@@ -852,21 +852,24 @@ function applyData(data){
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
   let restored=0;
+  const used=new Set();
   // 실제 파일이 로드돼 있으면 매칭 복원
   state.files.forEach(f=>{
     let s=byKey[fileKey(f)];
     if(!s&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
-    if(s){f.kind=s.kind||f.kind;f.project=s.project||null;f.text=s.text||f.text;
+    if(s){used.add(s);f.kind=s.kind||f.kind;f.project=s.project||null;f.text=s.text||f.text;
       f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
-  // 실제 파일이 없을 때(폰에서 데이터만 보기): 저장된 파일 정보를 가상 항목으로 표시
-  if(!state.files.length && data.files.length){
-    state.files=data.files.map(s=>({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:0,
+  // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
+  data.files.forEach(s=>{
+    if(used.has(s))return;
+    if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // 이미 있는 것 중복 방지
+    state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:0,
       kind:s.kind||'other',project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
-      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true}));
-    restored=state.files.length;
-  }
+      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true});
+    restored++;
+  });
   return restored;
 }
 async function saveProject(silent){
@@ -1050,6 +1053,12 @@ async function gdLoad(silent,retried){
     if((r.status===404||r.status===400)&&__gdFileId&&!retried){__gdFileId=null;try{idbSet('gd_fileid',null);}catch(e){}return gdLoad(silent,true);}  // 캐시된 파일 삭제됨 → 다시 찾기
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
+    // 최신성 가드: 이 기기 자료가 더 최신이면 드라이브(더 오래됨)로 덮지 않음(오프라인 편집 손실 방지)
+    if(__dataAt && data.savedAt && data.savedAt < __dataAt && __lastData){
+      applyData(__lastData);render();
+      if(!silent)toast('이 기기 자료가 더 최신 — 드라이브 불러오기 건너뜀(덮어쓰기 방지)');
+      return true;
+    }
     applyData(data);render();
     if(!silent)toast('☁️ 구글드라이브에서 불러왔습니다.');
     return true;
@@ -1145,19 +1154,24 @@ function gdUploadPhotos(){
   };
   inp.click();
 }
-// 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기
+// 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
+let __gdPullInflight=null;
 async function gdLoadDriveFiles(silent){
-  try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }
-  if(!silent)toast('드라이브에서 불러오는 중...');
-  let n=0, hadImg=false;
-  // 1) 현장사진(이미지) — 읽기만(폴더 없으면 만들지 않음)
-  try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'"); if(got)hadImg=true; n+=got; } }catch(e){}
-  // 2) 견적서·서류(PDF) — 폰에서도 드라이브의 견적서/문서를 가져와 볼 수 있게
-  try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'"); }catch(e){}
-  if(typeof __photoCache!=='undefined')__photoCache.key=null;
-  if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
-  if(!silent)toast(n?(n+'개 불러옴 (사진+견적서/PDF)'):'새로 불러올 파일이 없습니다');
-  return n;
+  if(__gdPullInflight)return __gdPullInflight;            // 이미 진행 중이면 그 결과를 공유(중복 실행 차단)
+  __gdPullInflight=(async()=>{
+    try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }
+    if(!silent)toast('드라이브에서 불러오는 중...');
+    let n=0, hadImg=false;
+    // 1) 현장사진(이미지) — 읽기만(폴더 없으면 만들지 않음)
+    try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'"); if(got)hadImg=true; n+=got; } }catch(e){}
+    // 2) 견적서·서류(PDF) — 폰에서도 드라이브의 견적서/문서를 가져와 볼 수 있게
+    try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'"); }catch(e){}
+    if(typeof __photoCache!=='undefined')__photoCache.key=null;
+    if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
+    if(!silent)toast(n?(n+'개 불러옴 (사진+견적서/PDF)'):'새로 불러올 파일이 없습니다');
+    return n;
+  })();
+  try{ return await __gdPullInflight; } finally{ __gdPullInflight=null; }
 }
 // 읽기 전용 하위폴더 조회(없으면 null — 불러오기로 빈 폴더가 생기는 부작용 방지)
 async function gdFindSubfolder(name){
@@ -1178,8 +1192,7 @@ async function __gdIngestOne(id,name,mime,tok){
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
   const blob=await dr.blob();
-  await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'}));
-  const rec=state.files[state.files.length-1]; if(!rec)return 0;
+  const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
   rec._driveId=id;
   if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
     rec.project=ph.project||rec.project;
@@ -1216,8 +1229,9 @@ async function gdPullAll(){
   let okData=false;
   try{ okData=await gdLoad(true); }catch(e){}          // ① 데이터(현장/견적/일정/연락처)
   try{ await gdLoadDriveFiles(true); }catch(e){}       // ② 파일(사진/PDF) — 가상분을 실제로 교체
-  state.tab='dashboard'; render();                     // 현장(프로젝트) 목록이 바로 보이게
-  toast(okData?'☁️ 드라이브에서 불러왔습니다 — 현장·견적·사진':'드라이브에 저장된 자료가 없습니다(먼저 PC에서 ☁️ 올리기)');
+  if(okData||state.projects.length)state.tab='dashboard';   // 현장이 있을 때만 대시보드로(파일만 받았으면 그 탭 유지)
+  render();
+  toast(okData?'☁️ 드라이브에서 불러왔습니다 — 현장·견적·사진':(state.files.length?'☁️ 파일을 불러왔습니다':'드라이브에 저장된 자료가 없습니다(먼저 PC에서 ☁️ 올리기)'));
   return okData;
 }
 async function gdConnectFolder(){
@@ -1393,7 +1407,7 @@ function openGdriveSetup(){
   openModal('☁️ 구글드라이브 자동연동',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
-  const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
+  const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;__gdTokenPromise=null;__gdTokenExp=0;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
   root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';toast('구글드라이브 연결됨 — 자료 확인 중...');try{await idbSet('gd_autoload',true);}catch(e){}
     // 폰 보호: 드라이브에 자료가 있으면 내려받고, 비었을 때만 이 기기 자료로 시작(오덮어쓰기 방지)
     let had=false; try{had=await gdLoad(true);}catch(e){}
@@ -1525,6 +1539,7 @@ async function ingestFile(file,handle=null,prefix=''){
   if(isImg)await extractImage(file,rec);
   rec.kind=classify(rec);
   state.files.push(rec);
+  return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
 function extractImage(file,rec){
   return new Promise(res=>{
@@ -1617,9 +1632,8 @@ async function importPhotoZip(){
           }
           const lm=(meta&&meta.when)?meta.when.getTime():(e.date?e.date.getTime():Date.now());
           const f=new File([blob],outName,{type:blob.type||'image/jpeg',lastModified:lm});
-          await ingestFile(f);
+          const rec=await ingestFile(f);
           if(meta){                                        // 변환된 사진에 GPS·날짜 다시 붙임
-            const rec=state.files[state.files.length-1];
             if(rec){
               if(meta.lat!=null){rec.lat=meta.lat;rec.lng=meta.lng;rec.place=meta.lat.toFixed(4)+', '+meta.lng.toFixed(4);gpsKept++;}
               if(meta.when)rec.when=meta.when;
@@ -2391,7 +2405,7 @@ function showBundleSender(chunks,label,size){
 }
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 구글드라이브 만물인테리어 열기</button></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:13px 22px;width:auto">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 만물인테리어 열기</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -3357,8 +3371,8 @@ async function addCardPhoto(){
     const files=[...inp.files];if(!files.length)return;
     toast('명함 '+files.length+'장 인식 중...'+(window.__visionKey?'':' (글자 읽기는 10~30초)'));
     for(const f of files){
-      try{ await ingestFile(f); }catch(e){ continue; }
-      const rec=state.files[state.files.length-1]; if(!rec)continue;
+      let rec; try{ rec=await ingestFile(f); }catch(e){ continue; }
+      if(!rec)continue;
       rec.kind='card';
       try{
         rec.text=await ocrImageFile(f,rec); rec.ocr='done'; rec.contact=parseCard(rec.text);
