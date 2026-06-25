@@ -2350,7 +2350,7 @@ function voiceMemo(){
 async function geminiAsk(prompt){
   const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
   const res=await quotaReserve('gemini'); if(!res.ok)throw new Error(res.msg);   // 무료 한도 보호(예약)
-  const models=['gemini-2.5-flash','gemini-flash-latest','gemini-2.5-flash-lite']; let lastErr='';  // 2.0/1.5는 2026 단종 → 2.5-flash
+  const models=['gemini-2.5-flash','gemini-flash-latest','gemini-2.5-flash-lite']; let lastErr='', consumed=false;  // 2.0/1.5는 2026 단종 → 2.5-flash
   try{
     for(const m of models){
       try{
@@ -2359,14 +2359,15 @@ async function geminiAsk(prompt){
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
         if(r.status===400||r.status===403){lastErr='요청 오류('+r.status+')';break;}  // 키/요청 문제 → 다른 모델 시도 무의미
         if(!r.ok)throw new Error('Gemini '+r.status);
+        consumed=true;   // 200 도달 → 구글이 생성 카운트함. 차단/빈응답이어도 예약 환불하면 한도 과소집계 → 환불 금지
         const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
         const t=c&&c.content&&c.content.parts&&c.content.parts.map(p=>p.text||'').join('');
-        if(!t){const br=j&&j.promptFeedback&&j.promptFeedback.blockReason; throw new Error(br?('내용이 차단됨('+br+')'):'AI 응답 없음');}  // 빈/차단 → throw(예약 환불)
+        if(!t){const br=j&&j.promptFeedback&&j.promptFeedback.blockReason; throw new Error(br?('내용이 차단됨('+br+')'):'AI 응답 없음');}  // 빈/차단 → throw(예약 유지)
         return t;   // 성공 → 예약 유지
       }catch(e){ lastErr=e.message||String(e); if(/429/.test(lastErr))break; }
     }
     throw new Error(lastErr||'실패');
-  } catch(e){ await res.release(); throw e; }   // 모두 실패 → 예약 롤백
+  } catch(e){ if(!consumed) await res.release(); throw e; }   // 구글에 도달 못한 실패(네트워크·404·429·400/403)만 예약 롤백
 }
 function aiHelper(){
   if(!window.__geminiKey){ toast('먼저 ☁️ 설정에서 Gemini 키를 넣으세요'); openGdriveSetup(); return; }
@@ -2423,13 +2424,13 @@ function pickAndBundle(size,label){
   };
   inp.click();
 }
-let __pbSent=0;
+let __pbSent=new Set();
 function showBundleSender(chunks,label,size){
-  __pbSent=0;
+  __pbSent=new Set();
   const total=chunks.reduce((a,c)=>a+c.length,0);
   const draw=()=>{
     const rows=chunks.map((c,idx)=>{
-      const done=idx<__pbSent;
+      const done=__pbSent.has(idx);
       return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+'묶음 '+(idx+1)+'/'+chunks.length+' 보내기 ('+c.length+'장)</button>';
     }).join('');
     openModal('📤 '+label+'으로 묶음 발송',
@@ -2441,7 +2442,7 @@ function showBundleSender(chunks,label,size){
       try{
         if(!(navigator.canShare&&navigator.canShare({files:[files[0]]}))){ toast('이 기기는 사진 공유를 지원하지 않습니다(폰에서 사용).'); return; }
         await navigator.share({files,title:'현장 사진',text:'현장 사진 ('+(idx+1)+'/'+chunks.length+')'});
-        if(idx===__pbSent)__pbSent++; draw();
+        __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
       }catch(e){ if(String(e&&e.name)!=='AbortError')toast('보내기 실패: '+(e.message||e)); }
     });
   };
@@ -3385,7 +3386,8 @@ function quotaReserve(api){
     if((q.count||0)>=cfg.cap) return {ok:false,msg:cfg.label+' 이번 '+(cfg.period==='month'?'달':'날')+' 무료 한도('+cfg.cap+') 도달 — 보호를 위해 중단했습니다.'};
     if(cfg.perMin && q.min.length>=cfg.perMin) return {ok:false,msg:cfg.label+' 분당 한도 — 1분 뒤 다시 하세요.'};
     const ts=Date.now(); const rkey=q.key;     // 이 예약의 정확한 타임스탬프·기간 기록
-    q.count=(q.count||0)+1; q.min.push(ts); try{await idbSet('quota_'+api,q);}catch(e){}
+    q.count=(q.count||0)+1; q.min.push(ts);
+    try{await idbSet('quota_'+api,q);}catch(e){ return {ok:false,msg:'사용량을 저장할 수 없어 보호를 위해 중단했습니다(브라우저 시크릿/저장소 비활성?).'}; }   // 영구 기록 실패 → 캡 무력화 방지(fail-closed)
     const release=()=>{ const rb=async()=>{ try{const q2=await quotaState(api); if(q2.key!==rkey)return; q2.count=Math.max(0,(q2.count||0)-1); q2.min=(q2.min||[]).filter(x=>x!==ts); await idbSet('quota_'+api,q2);}catch(e){} }; const r=__qLock.then(rb,rb); __qLock=r.then(()=>{},()=>{}); return r; }; // 락 안에서·기간일치 시만·정확한 ts 제거
     return {ok:true,release};
   };
@@ -3859,6 +3861,7 @@ function exportContactsCSV(){
 async function exportProjectPDF(proj){
   const list=state.files.filter(f=>f.project===proj);
   if(!list.length){toast('배정된 파일이 없습니다.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){toast('PDF 모듈을 불러오지 못했습니다(네트워크 확인 후 다시).');return;}
   toast('“'+proj+'” PDF 묶는 중…');
   const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
@@ -3991,9 +3994,13 @@ function printQuote(id){
 
 /* ---------- 시공 포트폴리오 PDF (공정별 사진 + 내부정보) ---------- */
 async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===proj);
-  const photos=state.files.filter(f=>f.project===proj&&f.kind==='photo'&&(f.thumb||f._driveId));
-  if(!photos.length){toast('이 현장에 사진이 없습니다.');return;}
-  toast('“'+proj+'” 포트폴리오 만드는 중…');
+  const allPhotos=state.files.filter(f=>f.project===proj&&f.kind==='photo'&&(f.thumb||f._driveId));
+  if(!allPhotos.length){toast('이 현장에 사진이 없습니다.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){toast('PDF 모듈을 불러오지 못했습니다(네트워크 확인 후 다시).');return;}
+  const photos=allPhotos.filter(f=>f.thumb);   // 실제로 그릴 수 있는(썸네일 있는) 사진만 — 미다운로드분 빈칸 방지
+  if(!photos.length){toast('사진을 먼저 드라이브에서 불러오세요(사진을 한 번 열면 표지에 들어갑니다).');return;}
+  const skipped=allPhotos.length-photos.length;
+  toast('“'+proj+'” 포트폴리오 만드는 중…'+(skipped?` (${skipped}장은 미다운로드로 제외)`:''));
   const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
   const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
   const s=projStats(proj);
