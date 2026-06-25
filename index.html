@@ -1160,6 +1160,41 @@ async function saveQuoteToDrive(){
   try{ const pdf=await quotePdfBlob(q); await gdUploadBlob(pdf.blob,pdf.name,'application/pdf','견적서'); toast('☁️ 만물인테리어▸견적서에 저장됨'); }
   catch(e){ toast('드라이브 저장 실패: '+(e.message||e)); }
 }
+/* ----- 구글 시트로 내보내기 (견적·정산) — 시트 전용 권한 토큰(드라이브 로그인과 분리) ----- */
+let __shTok=null,__shExp=0,__shClient=null,__shP=null;
+function getSheetToken(){
+  if(__shTok && Date.now()<__shExp-60000) return Promise.resolve(__shTok);
+  if(__shP) return __shP;
+  __shP=new Promise((res,rej)=>{
+    gdLoadGIS().then(()=>{
+      if(!__shClient)__shClient=google.accounts.oauth2.initTokenClient({client_id:GD_CLIENT_ID,scope:'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',callback:()=>{}});
+      __shClient.callback=(resp)=>{ if(resp&&resp.access_token){__shTok=resp.access_token;__shExp=Date.now()+((resp.expires_in||3600)*1000);res(__shTok);} else rej(new Error(resp&&resp.error?resp.error:'권한 실패')); };
+      __shClient.error_callback=(e)=>rej(new Error((e&&(e.type||e.message))||'권한 취소'));
+      try{ __shClient.requestAccessToken({prompt:''}); }catch(e){ rej(e); }
+    }).catch(rej);
+  }).finally(()=>{__shP=null;});
+  return __shP;
+}
+async function exportToSheet(){
+  let tok; try{ tok=await getSheetToken(); }catch(e){ toast('구글 시트 권한이 필요합니다: '+(e.message||e)); return; }
+  toast('구글 시트로 내보내는 중...');
+  const hdr={Authorization:'Bearer '+tok,'Content-Type':'application/json'};
+  try{
+    let sid=null; try{ sid=await idbGet('gd_sheetid'); }catch(e){}
+    if(!sid){
+      const cr=await fetch('https://sheets.googleapis.com/v4/spreadsheets',{method:'POST',headers:hdr,body:JSON.stringify({properties:{title:'만물인테리어_견적정산'},sheets:[{properties:{title:'견적'}},{properties:{title:'정산'}}]})});
+      if(!cr.ok)throw new Error('시트 생성 실패 '+cr.status);
+      sid=(await cr.json()).spreadsheetId; try{idbSet('gd_sheetid',sid);}catch(e){}
+    }
+    const qrows=[['견적명','일자','현장','공급가액','부가세','합계']].concat((state.quotes||[]).map(q=>{const t=quoteCalc(q);return [q.title||q.no||'',q.date||'',q.project||'',t.supply,t.vat,t.total];}));
+    const prows=[['현장','단계','수금액','자재비','인건비','외주비']].concat((state.projects||[]).map(p=>[p.name,p.stage||0,p.received||0,(p.cost&&p.cost.material)||0,(p.cost&&p.cost.labor)||0,(p.cost&&p.cost.outsource)||0]));
+    const wr=async(range,values)=>{const r=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+sid+'/values/'+encodeURIComponent(range)+'?valueInputOption=RAW',{method:'PUT',headers:hdr,body:JSON.stringify({values})}); if(r.status===404){try{idbSet('gd_sheetid',null);}catch(e){} throw new Error('시트를 찾을 수 없어 초기화함 — 다시 눌러주세요');} if(!r.ok)throw new Error('쓰기 실패 '+r.status);};
+    await wr("'견적'!A1",qrows);
+    await wr("'정산'!A1",prows);
+    toast('☑️ 구글 시트로 내보냈습니다 (견적·정산)');
+    try{ window.open('https://docs.google.com/spreadsheets/d/'+sid,'_blank','noopener'); }catch(e){}
+  }catch(e){ toast('시트 내보내기 실패: '+(e.message||e)); }
+}
 // 변경 시 자동 올리기(로그인된 상태에서만, 디바운스)
 function cloudAutoSave(){
   if(state._demo)return;
@@ -1193,6 +1228,7 @@ function openGdriveSetup(){
       <button class="ghost tiny" id="gdDown">⬇️ 내려받기</button>
       <button class="ghost tiny" id="gdOpen">📂 만물인테리어 폴더 열기</button>
       <button class="ghost tiny" id="gdRestore">⏮ 이전 버전 복원</button>
+      <button class="moss tiny" id="gdSheet">📊 구글시트로 내보내기</button>
       <span id="gdDot" style="align-self:center;font-size:12px;color:#5a7186">${__gdToken?'☁️ 연결됨':(cid?'설정됨':'미설정')}</span>
     </div>
     <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--clay)">📋 클라이언트 ID 만드는 법 (처음 1회, 약 5분)</summary>
@@ -1205,6 +1241,11 @@ function openGdriveSetup(){
         <li>만들기 → 나온 <b>클라이언트 ID</b>를 위 칸에 붙여넣고 ‘구글 로그인 & 연결’</li>
       </ol>
     </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
+      <p style="font-size:12px;color:#5a7186;margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지).</p>
+      <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
+      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
+    </details>
   </div>`;
   openModal('☁️ 구글드라이브 자동연동',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
@@ -1215,6 +1256,8 @@ function openGdriveSetup(){
   root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdLoad(false);};
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
+  root.querySelector('#gdSheet').onclick=()=>exportToSheet();
+  {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
 }
 
 /* ---------- 사용법 도움말 ---------- */
@@ -1517,7 +1560,7 @@ async function pdfText(rec){
 }
 async function imgOCR(rec){
   const file=await getFileOf(rec);if(!file)return'';
-  const w=await getWorker();const{data}=await w.recognize(file);return data.text;
+  return await ocrImageFile(file,rec);   // Vision 우선(키 있으면), 없으면 Tesseract
 }
 
 /* ---------- 현장 ---------- */
@@ -1760,12 +1803,12 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();});
 }
 // 카메라 촬영
 function openCamera(){
@@ -2998,19 +3041,32 @@ function addToGoogleCalendar(id){
 }
 
 // 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (모바일에서 연락처 추가)
+// Cloud Vision OCR(정확도↑) — 사용자 키 있으면 사용. ⚠️키는 idb에만 저장(공개 코드에 안 박음)
+async function visionOCR(file){
+  const key=window.__visionKey; if(!key)throw new Error('NO_VISION_KEY');
+  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(new Error('read'));r.readAsDataURL(file);});
+  const r=await fetch('https://vision.googleapis.com/v1/images:annotate?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requests:[{image:{content:b64},features:[{type:'TEXT_DETECTION'}]}]})});
+  if(!r.ok)throw new Error('Vision '+r.status);
+  const j=await r.json(); const resp=j&&j.responses&&j.responses[0];
+  if(resp&&resp.error)throw new Error(resp.error.message||'Vision error');
+  return (resp&&(resp.fullTextAnnotation?resp.fullTextAnnotation.text:(resp.textAnnotations&&resp.textAnnotations[0]&&resp.textAnnotations[0].description)))||'';
+}
+// 이미지 글자읽기: Vision 우선(키 있으면·빠르고 정확), 없거나 실패 시 Tesseract
+async function ocrImageFile(file,rec){
+  if(window.__visionKey){ try{ const t=await visionOCR(file); if(t)return t; }catch(e){} }
+  try{ const w=await getWorker(); const r=await w.recognize((rec&&rec.thumb)||file); return (r&&r.data&&r.data.text)||''; }catch(e){ return ''; }
+}
 async function addCardPhoto(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async()=>{
     const files=[...inp.files];if(!files.length)return;
-    toast('명함 '+files.length+'장 인식 중... (글자 읽기는 10~30초 걸려요)');
+    toast('명함 '+files.length+'장 인식 중...'+(window.__visionKey?'':' (글자 읽기는 10~30초)'));
     for(const f of files){
       try{ await ingestFile(f); }catch(e){ continue; }
       const rec=state.files[state.files.length-1]; if(!rec)continue;
       rec.kind='card';
       try{
-        const w=await getWorker();
-        const r=await w.recognize(rec.thumb||await getFileOf(rec));
-        rec.text=(r&&r.data&&r.data.text)||''; rec.ocr='done'; rec.contact=parseCard(rec.text);
+        rec.text=await ocrImageFile(f,rec); rec.ocr='done'; rec.contact=parseCard(rec.text);
       }catch(e){ rec.contact=rec.contact||{name:'',phone:'',tel:'',email:'',title:'',dept:'',company:''}; }
     }
     if(typeof __photoCache!=='undefined')__photoCache.key=null;
@@ -4194,6 +4250,7 @@ async function tryRestoreDir(){
 tryRestoreDir();
 // 저장된 화면 설정 복원
 (async()=>{try{
+  try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
