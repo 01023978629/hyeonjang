@@ -1374,10 +1374,14 @@ function getRoToken(interactive){
   return __roP;
 }
 async function roList(q,fields,tok){
-  const u='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields='+encodeURIComponent(fields||'files(id,name,mimeType,modifiedTime)')+'&pageSize=1000';
-  const r=await fetch(u,{headers:{Authorization:'Bearer '+tok}});
-  if(!r.ok)throw new Error('목록 '+r.status);
-  return ((await r.json()).files)||[];
+  const base='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields='+encodeURIComponent('nextPageToken,'+(fields||'files(id,name,mimeType,modifiedTime)'))+'&pageSize=1000';
+  let out=[],token='',guard=0;
+  do{
+    const r=await fetch(base+(token?('&pageToken='+encodeURIComponent(token)):''),{headers:{Authorization:'Bearer '+tok}});
+    if(!r.ok)throw new Error('목록 '+r.status);
+    const j=await r.json(); out=out.concat(j.files||[]); token=j.nextPageToken||''; guard++;
+  }while(token && guard<25);   // 폴더당 최대 ~25000개까지 페이지 넘기며 수집(1000개 초과 폴더 잘림 방지)
+  return out;
 }
 // 내 드라이브(만물인테리어) 통합 불러오기: 현장데이터.json(어디 있든 최신) + 모든 '현장사진' 폴더 이미지 + 모든 '견적서' 폴더 PDF
 async function gdImportAll(){
@@ -1385,6 +1389,7 @@ async function gdImportAll(){
   try{ tok=await getRoToken(true); }
   catch(e){ toast('드라이브 읽기 권한 필요 — 구글 콘솔 동의화면에 drive.readonly 추가 후, "확인되지 않은 앱"에서 고급→계속 누르세요'); return; }
   toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
+  window.__lastImportProj=0; window.__importChg=0;
   let okData=false, nImg=0, nPdf=0;
   // 1) 데이터: 현장데이터.json(가장 최근) → 현장·견적·일정·연락처
   try{
@@ -1405,20 +1410,20 @@ async function gdImportAll(){
     const GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더']);
     const isProjName=(n)=>{ n=(n||'').trim(); if(!n||GENERIC.has(n))return false; if(/^[_.]/.test(n))return false; if(/^\d{1,4}[-_.년 ]?\d{0,2}/.test(n))return false; if(n.length>24)return false; return true; };
     const ensureProj=(name)=>{ if(!state.projects.some(p=>p.name===name)){ state.projects.push({name:name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null}); return true;} return false; };
-    let queue=roots.map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0;
+    let queue=roots.map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0, chg=0;
     while(queue.length && visited<400){
       const cur=queue.shift(); if(!cur||!cur.id||seen.has(cur.id))continue; seen.add(cur.id); visited++;
       let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
       for(const k of kids){
         if(k.mimeType==='application/vnd.google-apps.folder'){ const kp=isProjName(k.name)?k.name:cur.proj; queue.push({id:k.id,proj:kp}); }
-        else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj))nProj++; if(!rec.project)rec.project=cur.proj; } } }catch(e){} }
-        else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj))nProj++; if(!rec.project)rec.project=cur.proj; } } }catch(e){} }
+        else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
+        else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
       }
     }
-    window.__lastImportProj=nProj;
+    window.__lastImportProj=nProj; window.__importChg=chg;
   }catch(e){}
   if(typeof __photoCache!=='undefined')__photoCache.key=null;
-  if(okData||nImg||nPdf)markDirty();
+  if(okData||nImg||nPdf||window.__importChg)markDirty();   // 새 사진이 없어도 현장 생성·배정이 있으면 저장
   state.tab=(nImg?'photos':'dashboard'); render(); try{hydrateThumbs();}catch(e){}
   if(!okData&&!nImg&&!nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정인지/폴더명(현장사진·견적서) 확인');
   else { const np=window.__lastImportProj||0; toast('☁️ 통합 완료 — 현장 '+state.projects.length+'곳'+(np?('(폴더에서 '+np+'곳 새로)'):'')+' · 사진 '+nImg+'장 · 견적PDF '+nPdf+'개 (자동 저장됨)'); }
