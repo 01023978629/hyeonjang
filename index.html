@@ -1083,6 +1083,83 @@ async function gdShowRestore(){
   const root=document.getElementById('modalRoot');
   root.querySelectorAll('[data-restore]').forEach(el=>el.onclick=async()=>{ if(confirm('이 시점으로 되돌릴까요? 지금 자료는 덮어집니다.')){ closeModal(); await gdRestoreBackup(el.dataset.restore); } });
 }
+/* ----- 파일(사진·PDF) 업로드 헬퍼 (만물인테리어 하위 폴더) ----- */
+function loadExtLib(src,check){return new Promise((res,rej)=>{try{if(check())return res();}catch(e){}const s=document.createElement('script');s.src=src;s.onload=()=>res();s.onerror=()=>rej(new Error('라이브러리 로드 실패(인터넷 확인)'));document.head.appendChild(s);});}
+async function gdEnsureSubfolder(name){
+  await gdEnsureFolder(); if(!__gdFolderId)throw new Error('드라이브 폴더 준비 실패');
+  if(!window.__gdSub)window.__gdSub={};
+  if(window.__gdSub[name])return window.__gdSub[name];
+  const q=encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='"+name+"' and '"+__gdFolderId+"' in parents and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)&pageSize=1',{headers:{Authorization:'Bearer '+__gdToken}});
+  let id=null; if(r.ok){const j=await r.json(); if(j.files&&j.files[0])id=j.files[0].id;}
+  if(!id){const c=await fetch('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:JSON.stringify({name:name,mimeType:'application/vnd.google-apps.folder',parents:[__gdFolderId]})}); if(c.ok)id=(await c.json()).id;}
+  if(id)window.__gdSub[name]=id; return id;
+}
+async function gdUploadBlob(blob,name,mime,subName){
+  if(!__gdToken)await gdGetToken(true);
+  const parent = subName ? await gdEnsureSubfolder(subName) : (await gdEnsureFolder());
+  const m=await fetch('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:JSON.stringify({name:name,mimeType:mime||'application/octet-stream',parents:parent?[parent]:undefined})});
+  if(!m.ok)throw new Error('메타 '+m.status);
+  const id=(await m.json()).id;
+  const u=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+id+'?uploadType=media',{method:'PATCH',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':mime||'application/octet-stream'},body:blob});
+  if(!u.ok)throw new Error('업로드 '+u.status);
+  return id;
+}
+// 현장 사진을 구글드라이브 만물인테리어▸현장사진 에 직접 업로드(API)
+function gdUploadPhotos(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=async()=>{
+    const files=[...inp.files];if(!files.length)return;
+    try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
+    toast(files.length+'장 드라이브 업로드 중...');
+    let ok=0;
+    for(const f of files){ try{ await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진'); ok++; }catch(e){} }
+    toast(ok+'/'+files.length+'장 → 만물인테리어▸현장사진 업로드 완료');
+    inp.value='';
+  };
+  inp.click();
+}
+/* ----- 견적서 PDF 만들기(브라우저 렌더 → 한글 그대로) + 발송/드라이브저장 ----- */
+const QUOTE_PDF_CSS="*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;color:#1a1a1a}.qtop{width:100%;border-collapse:collapse;margin-bottom:10px}.qtitle{vertical-align:top;width:40%;padding-top:6px}.qtitle h1{font-size:34px;letter-spacing:14px;font-weight:800}.qtitle .sub2{font-size:11px;color:#444;margin-top:16px}.qsupwrap{width:60%;vertical-align:top}.qsup{width:100%;border-collapse:collapse}.qsup td{border:1px solid #555;padding:4px 6px;font-size:10.5px}.qsup td.vlabel{background:#ececec;font-weight:700;text-align:center;width:20px;line-height:1.5}.qsup td.l{background:#ececec;font-weight:700;white-space:nowrap;text-align:center;width:62px}.qmeta{width:100%;border-collapse:collapse;margin-bottom:3px}.qmeta td{padding:3px 2px;font-size:11px;font-weight:700}.qmeta td.r2{text-align:right}.qinfo{width:100%;border-collapse:collapse}.qinfo td{border:1px solid #333;padding:6px 8px;font-size:11px}.qinfo td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap}.qinfo td.amt-kor{text-align:center;font-size:13px;font-weight:700}.qitems{width:100%;border-collapse:collapse}.qitems th{background:#dfe8cf;color:#46682a;border:1px solid #8a9a6a;padding:6px 4px;font-size:10.5px;font-weight:700}.qitems td{border:1px solid #b0b0b0;padding:4px 6px;font-size:10.5px;height:23px}.qitems td.c{text-align:center}.qitems td.r{text-align:right}.qitems td.nm{font-weight:700;text-align:center}.qitems td.neg{color:#c0392b}.qitems .foot td{font-weight:700;font-size:12px;height:26px}.qitems .tot-l{background:#fbe5d6;color:#c1622e;text-align:center}.qitems .tot-v{background:#fbe5d6;color:#c1622e;text-align:right}.qitems .sum-l{background:#e3edd3;color:#46682a;text-align:center}.qitems .sum-v{background:#e3edd3;color:#46682a;text-align:right}.qcond{width:100%;border-collapse:collapse}.qcond td{border:1px solid #333;padding:6px 8px;font-size:10.5px}.qcond td.vlabel2{background:#d8d8d8;font-weight:700;text-align:center;width:64px}.qcond td.l{background:#ececec;font-weight:700;text-align:center;white-space:nowrap;width:100px}";
+async function quotePdfBlob(q){
+  await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>window.html2canvas);
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;left:-9999px;top:0;width:760px;background:#fff;padding:24px';
+  host.innerHTML='<style>'+QUOTE_PDF_CSS+'</style><div>'+quoteHTML(q)+'</div>';
+  document.body.appendChild(host);
+  let canvas;
+  try{ canvas=await window.html2canvas(host,{scale:2,backgroundColor:'#ffffff',useCORS:true}); }
+  finally{ host.remove(); }
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
+  const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
+  const iw=pw,ih=canvas.height*(pw/canvas.width);
+  const img=canvas.toDataURL('image/jpeg',0.92);
+  if(ih<=ph){ doc.addImage(img,'JPEG',0,0,iw,ih); }
+  else { let page=0; while(page*ph<ih){ if(page>0)doc.addPage(); doc.addImage(img,'JPEG',0,-(page*ph),iw,ih); page++; } }
+  return {blob:doc.output('blob'), name:'견적서_'+String(q.title||q.no||'').replace(/[^\w가-힣]+/g,'_')+'.pdf'};
+}
+function curQuote(){ return state.editingQuote||(state.quotes&&state.quotes.length?state.quotes[0]:null); }
+// 견적서 보내기(카톡/문자/메일 — PDF 첨부)
+async function sendQuote(){
+  const q=curQuote(); if(!q){toast('보낼 견적서가 없습니다.');return;}
+  toast('견적서 PDF 만드는 중...');
+  let pdf; try{ pdf=await quotePdfBlob(q); }catch(e){ toast('PDF 생성 실패: '+(e.message||e)); return; }
+  const file=new File([pdf.blob],pdf.name,{type:'application/pdf'});
+  const cn=(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.name)?COMPANY.name:'만물인테리어';
+  const text=cn+' 견적서'+(q.title?' - '+q.title:'');
+  try{ if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:pdf.name,text}); return; } }
+  catch(e){ if(String(e&&e.name)==='AbortError')return; }
+  const a=document.createElement('a');a.href=URL.createObjectURL(pdf.blob);a.download=pdf.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('PDF 저장됨 — 카톡/문자에 첨부해 보내세요.');
+}
+// 견적서 PDF를 구글드라이브 만물인테리어▸견적서 에 저장
+async function saveQuoteToDrive(){
+  const q=curQuote(); if(!q){toast('저장할 견적서가 없습니다.');return;}
+  try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
+  toast('견적서 PDF 드라이브 저장 중...');
+  try{ const pdf=await quotePdfBlob(q); await gdUploadBlob(pdf.blob,pdf.name,'application/pdf','견적서'); toast('☁️ 만물인테리어▸견적서에 저장됨'); }
+  catch(e){ toast('드라이브 저장 실패: '+(e.message||e)); }
+}
 // 변경 시 자동 올리기(로그인된 상태에서만, 디바운스)
 function cloudAutoSave(){
   if(state._demo)return;
@@ -2002,7 +2079,7 @@ function viewPhotos(){
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
-  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기 (사진 올리기)</button><span class="hint" style="margin:0">폰은 드라이브 만물인테리어▸현장사진에 올리고, 컴퓨터는 아래 끌어다 놓기</span></div>`;
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="clay tiny" id="btnGdPhotos" style="font-size:13px;padding:9px 16px">☁️ 사진 드라이브 업로드</button><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기</button><span class="hint" style="margin:0">‘업로드’=앱에서 바로 올리기 · ‘열기’=드라이브에서 보기</span></div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
@@ -2414,7 +2491,9 @@ function viewQuoteMaker(){
   </tr>`).join('');
   return `<div class="panel-head" style="margin-bottom:12px"><h2 style="font-size:18px">✍ 견적서 편집</h2>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="clay tiny" id="qmSend">📤 견적서 보내기</button>
       <button class="moss tiny" id="qmPdf">📄 PDF 출력</button>
+      <button class="moss tiny" id="qmDriveSave">☁️ 드라이브 저장</button>
       <button class="ghost tiny" id="qmXlsx">⬇ 엑셀로 저장</button>
       <button class="blue tiny" id="qmSave">저장</button>
       <button class="ghost tiny" id="qmClose">목록으로</button>
@@ -3153,7 +3232,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3185,6 +3264,9 @@ function setupDelegation(){
     if(t.id==='qmClose')return closeQuoteEdit();
     if(t.id==='qmSave')return saveQuoteEdit();
     if(t.id==='qmPdf')return printQuote(null);
+    if(t.id==='qmSend')return sendQuote();
+    if(t.id==='qmDriveSave')return saveQuoteToDrive();
+    if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmXlsx')return exportQuoteXlsx();
