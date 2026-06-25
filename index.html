@@ -1009,6 +1009,7 @@ async function gdSave(silent,retried){
     if(j&&j.id){__gdFileId=j.id;try{idbSet('gd_fileid',j.id);}catch(e){}}
     const dot=document.getElementById('gdDot');if(dot)dot.textContent='☁️ 저장됨';
     if(!silent)toast('☁️ 구글드라이브에 저장됨');
+    gdBackup();   // 하루 1회 날짜별 백업(안전)
     return true;
   }catch(e){ if(!silent)toast('드라이브 저장 실패: '+(e.message||e)); return false; }
 }
@@ -1027,6 +1028,60 @@ async function gdLoad(silent,retried){
     if(!silent)toast('☁️ 구글드라이브에서 불러왔습니다.');
     return true;
   }catch(e){ if(!silent)toast('드라이브 불러오기 실패: '+(e.message||e)); return false; }
+}
+/* ----- 날짜별 백업 + 복원 (만물인테리어 폴더 안, 데이터 안전) ----- */
+async function gdBackup(){
+  try{
+    if(!__gdToken||!__gdFolderId)return;
+    const today=new Date().toISOString().slice(0,10);
+    let last=null; try{last=await idbGet('gd_lastbackup');}catch(e){}
+    if(last===today)return;                         // 오늘 이미 백업함 → 스킵(하루 1개)
+    const meta={name:'현장데이터_백업_'+today+'.json',mimeType:'application/json',parents:[__gdFolderId],appProperties:{hjbak:'1'}};
+    const content=JSON.stringify(serializeData());
+    const b='gc314159boundary';
+    const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+b+'--';
+    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'multipart/related; boundary='+b},body});
+    if(r.ok){ try{idbSet('gd_lastbackup',today);}catch(e){} gdPruneBackups(); }
+  }catch(e){}
+}
+async function gdListBackups(){
+  if(!__gdToken)return [];
+  await gdEnsureFolder();
+  let qs="name contains '현장데이터_백업_' and trashed=false and 'me' in owners";
+  if(__gdFolderId)qs="'"+__gdFolderId+"' in parents and "+qs;
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(qs)+'&spaces=drive&fields=files(id,name,modifiedTime)&orderBy=name desc&pageSize=60',{headers:{Authorization:'Bearer '+__gdToken}});
+  if(!r.ok)return [];
+  const j=await r.json(); return j.files||[];
+}
+async function gdPruneBackups(keep){
+  keep=keep||14;
+  try{
+    const list=await gdListBackups();               // name desc → 최신 먼저
+    for(let i=keep;i<list.length;i++){
+      await fetch('https://www.googleapis.com/drive/v3/files/'+list[i].id,{method:'DELETE',headers:{Authorization:'Bearer '+__gdToken}});
+    }
+  }catch(e){}
+}
+async function gdRestoreBackup(fileId){
+  try{
+    if(!__gdToken)await gdGetToken(true);
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    applyData(data);render();markDirty();           // 복원본을 현재 자료로(자동저장됨)
+    toast('이전 버전으로 되돌렸습니다.');
+    return true;
+  }catch(e){ toast('복원 실패: '+(e.message||e)); return false; }
+}
+async function gdShowRestore(){
+  try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 구글 로그인하세요'); return; }
+  toast('백업 목록 불러오는 중...');
+  const list=await gdListBackups();
+  if(!list.length){ toast('백업이 아직 없습니다 (자료 저장 시 매일 자동 백업됩니다).'); return; }
+  const rows=list.map(f=>{const dt=(String(f.name).match(/(\d{4}-\d{2}-\d{2})/)||[])[1]||escapeHtml(f.name);return `<button class="ghost tiny" data-restore="${f.id}" style="display:block;width:100%;text-align:left;margin:4px 0">⏮ ${dt}</button>`;}).join('');
+  openModal('⏮ 이전 버전으로 되돌리기',`<p style="font-size:13px;line-height:1.6">되돌릴 날짜를 고르세요.<br><b style="color:var(--clay)">현재 자료는 그 시점으로 덮어집니다.</b> (만물인테리어 폴더에 매일 자동 백업된 것)</p>${rows}`,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  root.querySelectorAll('[data-restore]').forEach(el=>el.onclick=async()=>{ if(confirm('이 시점으로 되돌릴까요? 지금 자료는 덮어집니다.')){ closeModal(); await gdRestoreBackup(el.dataset.restore); } });
 }
 // 변경 시 자동 올리기(로그인된 상태에서만, 디바운스)
 function cloudAutoSave(){
@@ -1060,6 +1115,7 @@ function openGdriveSetup(){
       <button class="moss tiny" id="gdUp">☁️ 올리기</button>
       <button class="ghost tiny" id="gdDown">⬇️ 내려받기</button>
       <button class="ghost tiny" id="gdOpen">📂 만물인테리어 폴더 열기</button>
+      <button class="ghost tiny" id="gdRestore">⏮ 이전 버전 복원</button>
       <span id="gdDot" style="align-self:center;font-size:12px;color:#5a7186">${__gdToken?'☁️ 연결됨':(cid?'설정됨':'미설정')}</span>
     </div>
     <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--clay)">📋 클라이언트 ID 만드는 법 (처음 1회, 약 5분)</summary>
@@ -1081,6 +1137,7 @@ function openGdriveSetup(){
   root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
   root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdLoad(false);};
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
+  root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
 }
 
 /* ---------- 사용법 도움말 ---------- */
