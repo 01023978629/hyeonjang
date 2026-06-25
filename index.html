@@ -949,6 +949,7 @@ function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(
 const GD_CLIENT_ID='468613653109-pam5vj7rclsva0fqe2rorffd6t2nfhlt.apps.googleusercontent.com'; // 만물인테리어 OAuth 클라이언트 ID(클라이언트 ID는 공개돼도 되는 값)
 const GD_FILE='현장데이터.json';
 const GD_FOLDER='만물인테리어';   // 드라이브 안 이 폴더(앱 전용)에 데이터 파일을 고정 저장/불러오기
+const GD_IMPORT_ROOT='1VRtT1ACNgMZiNixABpUPENn5fWFXvUoT';   // 사장님 실제 드라이브 '만물인테리어' 폴더 ID — drive.readonly 통합 불러오기 기준(idb gd_import_root로 변경 가능, 공개돼도 되는 값)
 const GD_SCOPE='https://www.googleapis.com/auth/drive.file';
 let __gdCfg={clientId:GD_CLIENT_ID};  // 기본 연결(사용자가 바꾸면 idb로 덮어씀)
 let __gdToken=null;      // 액세스 토큰(세션)
@@ -1394,7 +1395,9 @@ async function gdImportAll(){
   // 2~3) 만물인테리어 폴더부터 하위 전체를 훑어 이미지·PDF 통합 수집(중첩 폴더 _정리완료/현장별 대응)
   try{
     let roots=[];
-    try{ roots=(await roList("mimeType='application/vnd.google-apps.folder' and name='만물인테리어' and trashed=false",'files(id)',tok)).map(f=>f.id); }catch(e){}
+    try{ const cfg=await idbGet('gd_import_root'); if(cfg)roots.push(cfg); }catch(e){}   // 사장님이 지정한 폴더 우선
+    if(!roots.length && typeof GD_IMPORT_ROOT==='string' && GD_IMPORT_ROOT) roots.push(GD_IMPORT_ROOT);  // 기본: 지정된 실제 만물인테리어 폴더
+    try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and name='만물인테리어' and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
     if(!roots.length){ // 만물인테리어 폴더가 없으면 현장사진/견적서 폴더명으로 직접 탐색
       try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and (name='현장사진' or name='견적서') and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
     }
@@ -1476,6 +1479,9 @@ function openGdriveSetup(){
     <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
       <input type="text" id="gdCid" value="${escapeAttr(cid)}" placeholder="000000-xxxx.apps.googleusercontent.com" style="width:100%;margin-top:4px">
     </label>
+    <label style="display:block;margin-bottom:6px">통합 불러올 드라이브 폴더 링크(선택 — 비우면 기본 만물인테리어 폴더)
+      <span style="display:flex;gap:6px;margin-top:4px"><input type="text" id="gdImpRoot" placeholder="https://drive.google.com/drive/folders/..." style="flex:1"><button class="ghost tiny" id="gdImpRootSave">저장</button></span>
+    </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="blue tiny" id="gdLogin">🔑 구글 로그인 & 연결</button>
       <button class="moss tiny" id="gdUp">☁️ 올리기</button>
@@ -1521,6 +1527,8 @@ function openGdriveSetup(){
   root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
   root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdPullAll();};
   {const gi=root.querySelector('#gdImp');if(gi)gi.onclick=async()=>{await saveCid();closeModal();gdImportAll();};}
+  {const ir=root.querySelector('#gdImpRoot');if(ir){idbGet('gd_import_root').then(v=>{if(v)ir.value='https://drive.google.com/drive/folders/'+v;}).catch(()=>{});}}
+  {const irs=root.querySelector('#gdImpRootSave');if(irs)irs.onclick=async()=>{const raw=(root.querySelector('#gdImpRoot').value||'').trim();const m=raw.match(/[-\w]{20,}/);const id=m?m[0]:'';try{await idbSet('gd_import_root',id||'');}catch(e){}toast(id?('통합 폴더 지정됨 — 이제 📂 통합 불러오기가 이 폴더에서 가져옵니다'):'통합 폴더 초기화(기본 만물인테리어)');};}
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
