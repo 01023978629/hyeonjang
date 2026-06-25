@@ -1431,14 +1431,15 @@ async function gdImportAll(){
 }
 // 폴더 한 번 선택 → 그 폴더 전체 자동 불러오기(Picker 폴더 선택, 기존 drive.file 토큰 사용 — 스코프 추가 불필요)
 async function gdPickFolder(){
-  const key=window.__visionKey;
-  if(!key){ toast('폴더 선택기에는 API 키가 필요 — ☁️설정 🔎칸에 키 + 콘솔서 "Google Picker API" 사용설정. (없으면 📂 전체 통합 사용)'); openGdriveSetup(); return; }
+  const key=window.__visionKey;   // 있으면 개발자 키로 사용, 없어도 시도(로그인 토큰만으로)
   let tok; try{ tok=await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
   try{
     await loadExtLib('https://apis.google.com/js/api.js',()=>window.gapi);
     await new Promise((res,rej)=>{ try{gapi.load('picker',{callback:res});}catch(e){rej(e);} });
     const view=new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
-    const picker=new google.picker.PickerBuilder().setOAuthToken(tok).setDeveloperKey(key).addView(view)
+    let pb=new google.picker.PickerBuilder().setOAuthToken(tok).addView(view);
+    if(key)pb=pb.setDeveloperKey(key);
+    const picker=pb
       .setTitle('현장 사진이 든 폴더를 한 번 선택하세요(만물인테리어 또는 현장사진)')
       .setCallback(async(data)=>{
         if(!data||data.action!==google.picker.Action.PICKED)return;
