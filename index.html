@@ -1387,7 +1387,7 @@ async function roList(q,fields,tok){
 async function gdImportAll(){
   let tok;
   try{ tok=await getRoToken(true); }
-  catch(e){ toast('드라이브 읽기 권한 필요 — 구글 콘솔 동의화면에 drive.readonly 추가 후, "확인되지 않은 앱"에서 고급→계속 누르세요'); return; }
+  catch(e){ toast('드라이브 읽기 권한 실패 — ①콘솔 동의화면에 drive.readonly 추가 ②게시상태는 "테스트", 테스트사용자에 3dncjf ③경고서 고급→계속. 급하면 사진은 🔍드라이브에서 선택으로 직접 골라도 됩니다'); return; }
   toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
   window.__lastImportProj=0; window.__importChg=0;
   let okData=false, nImg=0, nPdf=0;
