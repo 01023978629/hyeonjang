@@ -1429,7 +1429,7 @@ function __finishImport(okData,r){
 async function gdImportAll(){
   let tok;
   try{ tok=await getRoToken(true); }
-  catch(e){ toast('드라이브 읽기 권한 실패 — ①콘솔 동의화면에 drive.readonly 추가 ②게시상태 "테스트"+테스트사용자 3dncjf ③경고서 고급→계속. 또는 아래 "📁 폴더 한번에 선택"을 쓰세요'); return; }
+  catch(e){ toast('드라이브 읽기 권한을 승인하지 못했습니다. Google 로그인 창에서 권한을 허용한 뒤 다시 눌러주세요.'); return; }
   toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
   window.__lastImportProj=0; window.__importChg=0;
   let okData=false;
@@ -1448,30 +1448,12 @@ async function gdImportAll(){
   if(!okData&&!r.nImg&&!r.nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정/폴더명(현장사진·견적서) 확인');
   else toast('☁️ 통합 완료 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · 견적PDF '+r.nPdf+'개 (자동 저장됨)');
 }
-// 폴더 한 번 선택 → 그 폴더 전체 자동 불러오기(Picker 폴더 선택, 기존 drive.file 토큰 사용 — 스코프 추가 불필요)
+// 폴더 전체 불러오기:
+// drive.file은 Picker에서 폴더를 선택해도 그 폴더 안의 기존 파일 전체 권한을 주지 않는다.
+// 따라서 "폴더 한번에"는 drive.readonly 통합 방식으로 처리한다.
 async function gdPickFolder(){
-  const key=window.__visionKey;   // 있으면 개발자 키로 사용, 없어도 시도(로그인 토큰만으로)
-  let tok; try{ tok=await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
-  try{
-    await loadExtLib('https://apis.google.com/js/api.js',()=>window.gapi);
-    await new Promise((res,rej)=>{ try{gapi.load('picker',{callback:res});}catch(e){rej(e);} });
-    const view=new google.picker.DocsView(google.picker.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true);
-    let pb=new google.picker.PickerBuilder().setOAuthToken(tok).addView(view);
-    if(key)pb=pb.setDeveloperKey(key);
-    const picker=pb
-      .setTitle('현장 사진이 든 폴더를 한 번 선택하세요(만물인테리어 또는 현장사진)')
-      .setCallback(async(data)=>{
-        if(!data||data.action!==google.picker.Action.PICKED)return;
-        const f=(data.docs||[])[0]; if(!f){return;}
-        toast('“'+(f.name||'폴더')+'” 에서 자동 불러오는 중...');
-        window.__lastImportProj=0; window.__importChg=0;
-        let r={nImg:0,nPdf:0,nProj:0,chg:0}; try{ r=await __importTree([f.id],tok); }catch(e){}
-        __finishImport(false,r);
-        if(!r.nImg&&!r.nPdf) toast('이 폴더에서 사진을 못 읽었습니다 — 폴더 권한이 안 열렸을 수 있어요. 📂 전체 통합(권한 추가)을 쓰거나, 사진을 직접 여러 장 선택해 보세요.');
-        else toast('☁️ 폴더 통합 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · PDF '+r.nPdf+'개 (자동 저장됨)');
-      }).build();
-    picker.setVisible(true);
-  }catch(e){ toast('폴더 선택기 오류: '+(e.message||e)); }
+  toast('Google Drive 전체 읽기 권한을 확인합니다. 처음 한 번만 승인해 주세요.');
+  return gdImportAll();
 }
 function getSheetToken(){
   if(__shTok && Date.now()<__shExp-60000) return Promise.resolve(__shTok);
@@ -2358,10 +2340,9 @@ function viewDashboard(){
     return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
-        <button class="moss" id="gdPickFolder" style="font-size:15px;padding:12px 20px">📁 폴더 한번에 선택(자동)</button>
-        <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button>
+        <button class="moss" id="gdPickFolder" style="font-size:15px;padding:12px 20px">📁 드라이브 한번에 불러오기</button>
       </div>
-      <small style="display:block;margin-top:10px;color:#6a86a3">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf). · ‘전체 통합’은 드라이브 앱으로 올린 사진까지 불러옵니다(권한 1회 추가).</small>
+      <small style="display:block;margin-top:10px;color:#6a86a3">처음 한 번 Google Drive 읽기 권한을 승인하면 현장·견적·사진을 자동으로 찾습니다.</small>
     </div>`;
   }
   const stats=state.projects.map(p=>({name:p.name,...projStats(p.name)}));
@@ -2579,7 +2560,7 @@ function showBundleSender(chunks,label,size){
 }
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 드라이브 한번에 불러오기</button><button class="clay" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
