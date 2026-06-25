@@ -2039,7 +2039,8 @@ function render(){
   bindDrop();bindEvents();
   if(typeof syncMobileNav==='function')syncMobileNav();
 }
-function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓거나</b> 왼쪽에서 폴더를 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>아직 불러온 파일이 없습니다</b>정리할 폴더를 연결하면 자동 분류가 시작됩니다.</div>`;}
+function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓거나</b> 왼쪽에서 폴더를 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>아직 불러온 파일이 없습니다</b>폰이라면 아래로 드라이브의 현장·견적·사진을 한 번에 불러오세요.
+  <div style="margin-top:14px"><button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button></div></div>`;}
 function projectOptions(sel){let o='<option value="">현장 미지정</option>';state.projects.forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
@@ -2169,7 +2170,12 @@ async function showProjectMap(projName){
 }
 function viewDashboard(){
   if(!state.projects.length){
-    return `<div class="empty"><b>아직 현장이 없습니다</b>왼쪽 아래에서 현장을 추가하면, 여기에서 매출·수금·미수금과 진행 현황을 한눈에 봅니다.</div>`;
+    return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
+      </div>
+      <small style="display:block;margin-top:10px;color:#6a86a3">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf).</small>
+    </div>`;
   }
   const stats=state.projects.map(p=>({name:p.name,...projStats(p.name)}));
   const totEst=stats.reduce((a,s)=>a+s.est,0);
@@ -3642,7 +3648,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3683,6 +3689,7 @@ function setupDelegation(){
     if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
+    if(t.id==='dashGdPull')return gdPullAll();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmAi')return aiQuoteItems();
     if(t.id==='qmImport')return importQuoteXlsx();
