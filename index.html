@@ -239,6 +239,10 @@
   .ph-tag{position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;color:#fff;font-weight:700}
   .ph-tag.ok{background:var(--ok)} .ph-tag.warn{background:var(--warn)}
   .ph-tag.phase{background:var(--blueprint);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ph-tag.work{background:var(--moss);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cluster-work{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .cluster-work .work-input{flex:1;min-width:160px;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);border-radius:7px}
+  .cluster-work .work-name{font-size:11.5px;color:var(--moss);font-weight:700}
   .ph-phase{position:absolute;bottom:4px;left:4px;right:4px;width:calc(100% - 8px);font-size:10px;padding:3px 4px;border:1px solid var(--line-soft);border-radius:5px;background:rgba(255,255,255,.95);color:var(--ink)}
   .ph-hint{position:absolute;bottom:4px;left:4px;right:4px;font-size:9px;color:#9fb3c6;text-align:center;background:rgba(255,255,255,.9);border-radius:4px;padding:2px}
   .phasebar{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);margin-bottom:12px}
@@ -868,7 +872,7 @@ function serializeData(){
     contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,
+      text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
       driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
@@ -897,7 +901,7 @@ function applyData(data){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
@@ -911,7 +915,7 @@ function applyData(data){
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
       kind:fkind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
-      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true});
+      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_file:null,_virtual:true});
     restored++;
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
@@ -1192,6 +1196,56 @@ async function gdEnsureSubfolder(name){
   let id=null; if(r.ok){const j=await r.json(); if(j.files&&j.files[0])id=j.files[0].id;}
   if(!id){const c=await fetch('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'application/json'},body:JSON.stringify({name:name,mimeType:'application/vnd.google-apps.folder',parents:[__gdFolderId]})}); if(c.ok)id=(await c.json()).id;}
   if(id)window.__gdSub[name]=id; return id;
+}
+// 드라이브 파일을 분류(kind)에 맞는 하위 폴더로 실제 이동(견적서/사업자등록증/명함/도면)
+// 1차: drive.file(앱 파일), 실패 시 2차: 전체 쓰기권한(drive)으로 재시도(직접 올린 파일도 이동)
+// 사진·기타는 이동 안 함. 이동 결과는 file._gdFolder에 기록(다음 실행 시 반복 안 함)
+const KIND_MOVE_FOLDER={ estimate:'견적서', bizreg:'사업자등록증', card:'명함', drawing:'도면' };
+// 특정 토큰으로 이동 시도(내부)
+async function __gdTryMove(file,folderName,tok){
+  try{
+    if(!tok)return null;
+    // 목표 폴더 확보(이 토큰으로) — 만물인테리어 폴더 하위
+    let parentId=__gdFolderId; if(!parentId){ try{ parentId=await gdEnsureFolder(); }catch(e){} }
+    // 하위 폴더 찾기/만들기(이 토큰 권한으로)
+    let target=null;
+    try{
+      const q=encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='"+folderName+"'"+(parentId?(" and '"+parentId+"' in parents"):"")+" and trashed=false");
+      const fr=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)&pageSize=1',{headers:{Authorization:'Bearer '+tok}});
+      if(fr.ok){ const fj=await fr.json(); if(fj.files&&fj.files[0])target=fj.files[0].id; }
+      if(!target){ const cr=await fetch('https://www.googleapis.com/drive/v3/files?fields=id',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({name:folderName,mimeType:'application/vnd.google-apps.folder',parents:parentId?[parentId]:undefined})}); if(cr.ok)target=(await cr.json()).id; }
+    }catch(e){}
+    if(!target)return null;
+    // 현재 부모 조회
+    let curParents='';
+    const meta=await fetch('https://www.googleapis.com/drive/v3/files/'+file._driveId+'?fields=parents',{headers:{Authorization:'Bearer '+tok}});
+    if(meta.status===403||meta.status===404)return null;   // 이 토큰 권한 밖
+    if(meta.ok){ const mj=await meta.json(); curParents=(mj.parents||[]).join(','); }
+    if(curParents.split(',').includes(target)){ return 'already'; }   // 이미 거기 있음
+    const url='https://www.googleapis.com/drive/v3/files/'+file._driveId+'?addParents='+target+(curParents?('&removeParents='+encodeURIComponent(curParents)):'')+'&fields=id';
+    const r=await fetch(url,{method:'PATCH',headers:{Authorization:'Bearer '+tok}});
+    if(r.ok)return 'moved';
+    if(r.status===403||r.status===404)return null;   // 권한 밖 → 상위에서 다음 토큰 시도
+    return null;
+  }catch(e){ return null; }
+}
+async function gdMoveToKindFolder(file){
+  try{
+    if(!file||!file._driveId)return false;
+    const folderName=KIND_MOVE_FOLDER[file.kind];
+    if(!folderName)return false;
+    if(file._gdFolder===folderName)return false;   // 이미 이동 기록 있음 → 반복 안 함
+    // 1차: drive.file 토큰(앱이 올린 파일이면 이걸로 됨)
+    if(!__gdToken){ try{await gdGetToken(false);}catch(e){} }
+    let res=__gdToken?await __gdTryMove(file,folderName,__gdToken):null;
+    // 2차: 전체 쓰기권한(직접 올린 파일) — 1차가 권한 밖(null)일 때만
+    if(res===null){
+      let rwTok=null; try{ rwTok=await getRwToken(false); }catch(e){ try{ rwTok=await getRwToken(true); }catch(e2){} }
+      if(rwTok) res=await __gdTryMove(file,folderName,rwTok);
+    }
+    if(res==='moved'||res==='already'){ file._gdFolder=folderName; return res==='moved'; }
+    return false;
+  }catch(e){ return false; }
 }
 async function gdUploadBlob(blob,name,mime,subName){
   if(!__gdToken)await gdGetToken(true);
@@ -1510,6 +1564,22 @@ async function roList(q,fields,tok){
     const j=await r.json(); out=out.concat(j.files||[]); token=j.nextPageToken||''; guard++;
   }while(token && guard<25);   // 폴더당 최대 ~25000개까지 페이지 넘기며 수집(1000개 초과 폴더 잘림 방지)
   return out;
+}
+// ===== 전체 쓰기 권한(drive): 사장님이 직접 올린 파일도 폴더 이동하기 위함(drive.file은 앱 파일만) =====
+// ⚠️ 민감 권한 — 콘솔 동의화면에 'https://www.googleapis.com/auth/drive' 추가 필요. 경고 시 "고급→계속→허용"
+let __rwTok=null,__rwExp=0,__rwClient=null,__rwP=null;
+function getRwToken(interactive){
+  if(__rwTok && Date.now()<__rwExp-60000) return Promise.resolve(__rwTok);
+  if(__rwP) return __rwP;
+  __rwP=new Promise((res,rej)=>{
+    gdLoadGIS().then(()=>{
+      if(!__rwClient)__rwClient=google.accounts.oauth2.initTokenClient({client_id:GD_CLIENT_ID,scope:'https://www.googleapis.com/auth/drive',callback:()=>{}});
+      __rwClient.callback=(resp)=>{ if(resp&&resp.access_token){__rwTok=resp.access_token;__rwExp=Date.now()+((resp.expires_in||3600)*1000);res(__rwTok);} else rej(new Error(resp&&resp.error?resp.error:'권한 실패')); };
+      __rwClient.error_callback=(e)=>rej(new Error((e&&(e.type||e.message))||'권한 취소'));
+      try{ __rwClient.requestAccessToken({prompt:interactive?'consent':''}); }catch(e){ rej(e); }
+    }).catch(rej);
+  }).finally(()=>{__rwP=null;});
+  return __rwP;
 }
 // 공통: 폴더(들)부터 하위 전체를 훑어 이미지·PDF를 앱에 반영 + 폴더명을 현장으로 인식·배정. tok=drive.readonly 또는 drive.file(Picker로 받은 폴더). 반환 {nImg,nPdf,nProj,chg}
 async function __importTree(roots, tok){
@@ -2007,7 +2077,7 @@ async function runBatchOCR(){
   if(!targets.length){toast('읽을 새 파일이 없습니다.');return;}
   $('#ocrProg').style.display='block';$('#btnOcrAll').disabled=true;
   const bar=$('#ocrBar'),stat=$('#ocrStat');
-  let done=0;
+  let done=0, movedN=0;
   for(const f of targets){
     stat.textContent=`(${done+1}/${targets.length}) ${f.name}`;
     let xlsxQuote=null;
@@ -2025,12 +2095,14 @@ async function runBatchOCR(){
       else f.est=applyLearning(parseEstimate(f.text),f);
     }
     if(f.kind==='card'&&!(f.contact&&f.contact._edited))f.contact=parseCard(f.text);
+    // 분류 확정(견적서/사업자등록증/명함/도면)이면 드라이브에서 해당 폴더로 자동 이동(권한 밖이면 조용히 스킵)
+    if(KIND_MOVE_FOLDER[f.kind] && f._driveId){ try{ if(await gdMoveToKindFolder(f))movedN++; }catch(e){} }
     done++;bar.style.width=Math.round(done/targets.length*100)+'%';
     if(done%5===0||done===targets.length){__photoCache.key=null;render();} // 5개마다만 전체 렌더(대용량 속도)
   }
   stat.textContent=`완료 — ${done}개 읽음`;$('#btnOcrAll').disabled=false;markDirty();
   setTimeout(()=>{$('#ocrProg').style.display='none';},2500);
-  toast('일괄 OCR 완료 · 분류가 갱신되었습니다');
+  toast('일괄 OCR 완료 · 분류 갱신'+(movedN?(' · 드라이브 '+movedN+'개 폴더 정리됨'):''));
 }
 async function getFileOf(rec){return rec.handle?await rec.handle.getFile():rec._file;}
 // 엑셀(.xlsx/.xls) 견적서에서 견적 정보 추출 → {text(검색·분류용), quote(품목·금액)}
@@ -2130,9 +2202,19 @@ function deleteProject(name){
   ]);
 }
 
-function assignKind(id,k){const f=state.files.find(x=>x.id===id);if(f){f.kind=k;if(k==='estimate'&&!f.est)f.est=parseEstimate(f.text);if(k==='card'&&!f.contact)f.contact=parseCard(f.text);markDirty();render();}}
+function assignKind(id,k){const f=state.files.find(x=>x.id===id);if(f){f.kind=k;if(k==='estimate'&&!f.est)f.est=parseEstimate(f.text);if(k==='card'&&!f.contact)f.contact=parseCard(f.text);markDirty();render();
+  // 분류가 문서류면 드라이브에서 해당 폴더로 자동 이동(권한 밖이면 조용히 스킵)
+  if(KIND_MOVE_FOLDER[k]&&f._driveId){ gdMoveToKindFolder(f).then(moved=>{if(moved)toast('드라이브 “'+KIND_MOVE_FOLDER[k]+'” 폴더로 이동됨');}).catch(()=>{}); }
+}}
 function assignProject(id,p){const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();render();}}
 function assignProjectMany(ids,p){ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f)f.project=p||null;});markDirty();render();toast(ids.length+'장을 “'+p+'”에 배정');}
+// 작업명: 묶음 사진 전체에 _worklabel 저장(날짜+위치는 자동, 작업명만 입력)
+function setWorkLabel(ids,label){
+  let n=0;
+  ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f){f._worklabel=label||null;n++;}});
+  markDirty();render();
+  if(label)toast(n+'장에 작업명 “'+label+'” 지정');
+}
 
 /* ---------- 사진 클러스터: 시간 주력 + GPS 보조 ---------- */
 function clusterPhotos(photos){
@@ -2649,6 +2731,21 @@ function viewDashboard(){
     <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
+  // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시
+  const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
+  if(estFiles.length){
+    html+=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:#6a86a3;font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
+    html+=`<table class="estimate-table"><thead><tr><th>견적서</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th></tr></thead><tbody>`;
+    let ts=0,tv=0,ta=0;
+    estFiles.forEach(f=>{const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
+      html+=`<tr><td>${escapeHtml(e.customer||f.name)}</td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td></tr>`;
+    });
+    html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td></tr>`;
+    html+=`</tbody></table>`;
+    html+=`<p class="hint" style="margin:6px 0 0">견적서가 미배정이면 견적·정산 탭이나 서류 탭에서 현장을 지정할 수 있습니다. 금액이 비어 있으면 ‘일괄 글자 읽기(OCR)’를 누르세요.</p></div>`;
+  }
+  // 월별 견적 현황(외부 견적서 + 앱 작성 견적 합산)
+  html+=monthlyQuoteHTML();
   return html;
 }
 function viewDocs(){
@@ -2661,7 +2758,7 @@ function viewDocs(){
 }
 let __showDup=false;
 let __phaseProj=null;
-function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')).join('|')+'#'+state.search;}
+function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')+':'+(p._worklabel||'')).join('|')+'#'+state.search;}
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
 // 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
 function openManmulFolder(){
@@ -2887,12 +2984,18 @@ function viewPhotos(){
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
+    // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
+    const worklabel=mostCommon(c.items.map(p=>p._worklabel).filter(Boolean))||'';
+    // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
+    const placeShort=c.address?String(c.address).split(' ').slice(-2).join(' '):(c.place||'');
+    const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
       ${revisit}
       <span class="where">${where}</span>${geoBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
       <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
+      <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
       <div class="cluster-body">${visible.map(p=>photoCell(p)).join('')}</div></div>`;
   });
   return html;
@@ -3117,11 +3220,14 @@ function photoCell(p){
     sel=`<span class="ph-hint">현장 먼저</span>`;
   }
   const tools=(!p._virtual)?`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button></div>`:'';
+  // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
+  const tagText=p._worklabel||cur;
+  const tagCls=p._worklabel?'work':'phase';
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
     ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:(IMG.includes(p.ext)?`<div class="ph-load" data-light="${p.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
     ${selChk(p.id)}
     ${tools}
-    ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
+    ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
     ${sel}
   </div>`;
 }
@@ -4160,6 +4266,7 @@ function setupDelegation(){
     if(t.matches('select[data-act=kind]'))return assignKind(d.id,t.value);
     if(t.matches('select[data-act=proj]')){if(!state.projects.length){toast('먼저 현장을 추가하세요.');render();return;}return assignProject(d.id,t.value);}
     if(t.matches('select[data-act=cluster]')){if(!t.value)return;return assignProjectMany(d.ids.split(','),t.value);}
+    if(t.matches('input[data-worklabel]'))return setWorkLabel(d.worklabel.split(','),t.value.trim());
     if(t.matches('select[data-phase]'))return setPhase(d.phase,t.value);
     if(t.matches('input[data-sel]')){e.stopPropagation();return toggleSel(d.sel);}
     if(t.matches('input[data-ef]')){
