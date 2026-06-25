@@ -523,6 +523,7 @@
     <p class="eyebrow" style="margin-top:18px">PC · 모바일 연동</p>
     <div style="display:flex;flex-direction:column;gap:6px">
       <button class="blue tiny" id="btnGdrive">☁️ 구글드라이브 자동연동 (PC↔폰)</button>
+      <button class="clay tiny" id="btnGdSync">🔄 지금 동기화 (드라이브 최신 받기)</button>
       <button class="moss tiny" id="btnExport">📤 내보내기(백업 파일)</button>
       <button class="ghost tiny" id="btnImport">📥 불러오기</button>
     </div>
@@ -826,8 +827,10 @@ function serializeData(){
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
 }
+let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 function applyData(data){
   if(!data||!data.files)return 0;
+  __lastData=data; if(data.savedAt)__dataAt=data.savedAt;
   state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
   state.learn=data.learn||{estimateByBiz:{}};
   state.quotes=data.quotes||[];
@@ -869,8 +872,14 @@ async function loadProject(){
   try{
     const fh=await state.dirHandle.getFileHandle('_현장.json');
     const file=await fh.getFile();const data=JSON.parse(await file.text());
-    const n=applyData(data);
-    toast('저장된 작업 복원됨 — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
+    if(__dataAt && data.savedAt && data.savedAt < __dataAt && __lastData){
+      // 이 PC 로컬 저장본이 드라이브 최신본보다 오래됨 → 데이터는 드라이브 유지, 파일만 재매칭
+      applyData(__lastData);
+      toast('드라이브 최신 데이터 유지(로컬 저장본이 더 오래됨) — 파일만 연결');
+    } else {
+      const n=applyData(data);
+      toast('저장된 작업 복원됨 — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
+    }
   }catch(e){/* 저장 파일 없음 = 첫 사용 */}
 }
 /* 데이터 내보내기: 어디서나(폰 포함) 다운로드되는 파일 1개 */
@@ -1593,6 +1602,7 @@ function toggleMoveMode(){
 $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
 {const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
+{const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdLoad(false);}
 $('#btnZipPhotos').onclick=importPhotoZip;
 $('#btnDemo').onclick=loadDemo;
 $('#btnBizCard').onclick=shareBizCard;
