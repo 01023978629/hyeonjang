@@ -257,6 +257,8 @@
   .phase-group .cluster-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
   .phase-group .ph, .cluster-body .ph{min-height:108px}
   .ph.sel{outline:3px solid var(--clay);outline-offset:-1px}
+  .ph-load{width:100%;height:100%;min-height:108px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--paper-2);color:#6a86a3;font-size:20px}
+  .ph-load small{font-size:10px;font-weight:600}
   .ph-chk{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:5px;border:1.5px solid #fff;background:rgba(15,36,56,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
   .ph-chk input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0}
   .ph-chk span{color:#fff;font-size:12px;opacity:0;font-weight:800}
@@ -1159,16 +1161,16 @@ function gdUploadPhotos(){
 }
 // 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
 let __gdPullInflight=null;
-async function gdLoadDriveFiles(silent){
+async function gdLoadDriveFiles(silent,bootSkip){
   if(__gdPullInflight)return __gdPullInflight;            // 이미 진행 중이면 그 결과를 공유(중복 실행 차단)
   __gdPullInflight=(async()=>{
     try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }
     if(!silent)toast('드라이브에서 불러오는 중...');
     let n=0, hadImg=false;
     // 1) 현장사진(이미지) — 읽기만(폴더 없으면 만들지 않음)
-    try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'"); if(got)hadImg=true; n+=got; } }catch(e){}
+    try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'",bootSkip); if(got)hadImg=true; n+=got; } }catch(e){}
     // 2) 견적서·서류(PDF) — 폰에서도 드라이브의 견적서/문서를 가져와 볼 수 있게
-    try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'"); }catch(e){}
+    try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'",bootSkip); }catch(e){}
     if(typeof __photoCache!=='undefined')__photoCache.key=null;
     if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
     if(!silent)toast(n?(n+'개 불러옴 (사진+견적서/PDF)'):'새로 불러올 파일이 없습니다');
@@ -1186,10 +1188,42 @@ async function gdFindSubfolder(name){
   if(id){if(!window.__gdSub)window.__gdSub={};window.__gdSub[name]=id;}
   return id;
 }
-// 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상 placeholder(폰 복원분)면 다운로드해 교체(중복 방지+썸네일/미리보기 확보). 반환 1=반영,0=건너뜀
-async function __gdIngestOne(id,name,mime,tok){
+// 썸네일 캐시: 드라이브 이미지의 작은 미리보기를 IndexedDB에 저장 → 다음 부팅 때 원본 재다운로드 없이 표시
+function makeThumbDataUrl(file,max){
+  return new Promise(res=>{
+    try{
+      const url=URL.createObjectURL(file); const img=new Image();
+      img.onload=()=>{ try{
+        let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height; const m=max||480;
+        if(!w||!h){URL.revokeObjectURL(url);return res(null);}
+        if(w>h){ if(w>m){h=Math.round(h*m/w);w=m;} } else { if(h>m){w=Math.round(w*m/h);h=m;} }
+        const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        let d=null; try{d=cv.toDataURL('image/jpeg',0.7);}catch(e){}
+        URL.revokeObjectURL(url); res(d);
+      }catch(e){URL.revokeObjectURL(url);res(null);} };
+      img.onerror=()=>{URL.revokeObjectURL(url);res(null);};
+      img.src=url;
+    }catch(e){res(null);}
+  });
+}
+async function cacheThumb(driveId,file){ if(!driveId||!file)return; try{ const d=await makeThumbDataUrl(file,480); if(d)await idbSet('thumb:'+driveId,d); }catch(e){} }
+// 캐시된 썸네일을 가상(미다운로드) 이미지 항목에 채워넣어 그리드/라이트박스에 즉시 표시(원본 재다운로드 없이)
+async function hydrateThumbs(){
+  let changed=false;
+  for(const f of state.files){
+    if(f.thumb||!f._driveId||!IMG.includes(f.ext))continue;
+    try{ const t=await idbGet('thumb:'+f._driveId); if(t){f.thumb=t;changed=true;} }catch(e){}
+  }
+  if(changed){ if(typeof __photoCache!=='undefined')__photoCache.key=null; render(); }
+}
+// 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
+async function __gdIngestOne(id,name,mime,tok,bootSkip){
   const existing=state.files.find(x=>x._driveId===id);
   if(existing&&!existing._virtual)return 0;            // 이미 실제 바이트 보유
+  if(existing&&existing._virtual&&bootSkip){           // 부팅: 캐시 썸네일이 있으면 재다운로드 생략(탭 시 원본). 없으면 받아서 자동 표시
+    try{ const c=await idbGet('thumb:'+id); if(c)return 0; }catch(e){}
+  }
   // _driveId가 같은 가상분, 또는 (레거시: _driveId 없이 저장된) 같은 이름의 가상분을 교체 대상으로
   const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId);
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
@@ -1197,6 +1231,7 @@ async function __gdIngestOne(id,name,mime,tok){
   const blob=await dr.blob();
   const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
   rec._driveId=id;
+  if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
   if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
     rec.project=ph.project||rec.project;
     if(ph._phase)rec._phase=ph._phase;
@@ -1208,13 +1243,13 @@ async function __gdIngestOne(id,name,mime,tok){
   return 1;
 }
 // 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 반영(__gdIngestOne 위임)
-async function __gdPullFrom(folderId,mimeClause){
+async function __gdPullFrom(folderId,mimeClause,bootSkip){
   const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and ("+mimeClause+")");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,mimeType)&pageSize=300',{headers:{Authorization:'Bearer '+__gdToken}});
   if(!r.ok)return 0;
   const files=((await r.json()).files)||[];
   let n=0;
-  for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken); }catch(e){} }
+  for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip); }catch(e){} }
   return n;
 }
 // 고정: 다음에도 자동 불러오기 켜기/끄기
@@ -1234,6 +1269,7 @@ async function gdPullAll(){
   try{ await gdLoadDriveFiles(true); }catch(e){}       // ② 파일(사진/PDF) — 가상분을 실제로 교체
   if(okData||state.projects.length)state.tab='dashboard';   // 현장이 있을 때만 대시보드로(파일만 받았으면 그 탭 유지)
   render();
+  try{ hydrateThumbs(); }catch(e){}
   toast(okData?'☁️ 드라이브에서 불러왔습니다 — 현장·견적·사진':(state.files.length?'☁️ 파일을 불러왔습니다':'드라이브에 저장된 자료가 없습니다(먼저 PC에서 ☁️ 올리기)'));
   return okData;
 }
@@ -1364,8 +1400,9 @@ async function gdBootSync(){
     if(!__gdCfg||!__gdCfg.clientId)return;
     // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
     const tok=await Promise.race([gdGetToken(false).catch(()=>null), new Promise(r=>setTimeout(()=>r(null),8000))]);
-    if(tok){ await gdLoad(true); try{ if(await idbGet('gd_autoload')) await gdLoadDriveFiles(true); }catch(e){} }  // 고정 시 드라이브 사진 자동 불러오기
+    if(tok){ await gdLoad(true); try{ if(await idbGet('gd_autoload')) await gdLoadDriveFiles(true,true); }catch(e){} }  // 고정 시: 부팅은 재다운로드 없이(가상+캐시썸네일), 탭 시 원본
   }catch(e){}
+  try{ await hydrateThumbs(); }catch(e){}   // 캐시된 썸네일로 사진 즉시 표시
 }
 // 연동 설정 모달
 function openGdriveSetup(){
@@ -1917,7 +1954,9 @@ function trimDuplicates(){
     [{label:'취소',cls:'ghost',fn:closeModal},
      {label:`${dups.length}장 숨기기`,cls:'warn',fn:()=>{
        dups.forEach(p=>{p._hidden=true;});
+       const _rm=state.files.filter(f=>f._hidden&&f._driveId);
        state.files=state.files.filter(f=>!f._hidden);
+       _rm.forEach(f=>{try{idbDel('thumb:'+f._driveId);}catch(e){}});   // 고아 썸네일 캐시 정리
        markDirty();closeModal();render();toast(dups.length+'장의 중복을 목록에서 정리했습니다.');
      }}]);
 }
@@ -2716,7 +2755,7 @@ function photoCell(p){
   }
   const tools=(!p._virtual)?`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
-    ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:'<div>IMG</div>'}
+    ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:(p._driveId&&IMG.includes(p.ext)?`<div class="ph-load" data-light="${p.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
     ${selChk(p.id)}
     ${tools}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
@@ -3625,7 +3664,7 @@ function photoCellProj(f,phases){
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
   const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
-    ${f.thumb?`<img src="${f.thumb}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in">`:'<div>IMG</div>'}
+    ${f.thumb?`<img src="${f.thumb}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in">`:(f._driveId&&IMG.includes(f.ext)?`<div class="ph-load" data-light="${f.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
     ${selChk(f.id)}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
@@ -3946,7 +3985,7 @@ function printQuote(id){
 
 /* ---------- 시공 포트폴리오 PDF (공정별 사진 + 내부정보) ---------- */
 async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===proj);
-  const photos=state.files.filter(f=>f.project===proj&&f.kind==='photo'&&f.thumb);
+  const photos=state.files.filter(f=>f.project===proj&&f.kind==='photo'&&(f.thumb||f._driveId));
   if(!photos.length){toast('이 현장에 사진이 없습니다.');return;}
   toast('“'+proj+'” 포트폴리오 만드는 중…');
   const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
@@ -4144,7 +4183,7 @@ function safeName(n){return n.replace(/[\/\\:*?"<>|]/g,'_');}
 /* ---------- 사진 크게 보기 (라이트박스) ---------- */
 let __lightboxList=[], __lightboxIdx=0;
 function openLightbox(id, listIds){
-  __lightboxList=listIds&&listIds.length?listIds:state.files.filter(f=>f.kind==='photo'&&f.thumb).map(f=>f.id);
+  __lightboxList=listIds&&listIds.length?listIds:state.files.filter(f=>f.kind==='photo'&&(f.thumb||f._driveId)).map(f=>f.id);
   __lightboxIdx=Math.max(0,__lightboxList.indexOf(id));
   renderLightbox();
 }
@@ -4158,16 +4197,24 @@ function renderLightbox(){
   root.innerHTML=`<div class="lb-bg">
     <button class="lb-close" id="lbClose">✕</button>
     ${__lightboxList.length>1?`<button class="lb-nav lb-prev" id="lbPrev">‹</button><button class="lb-nav lb-next" id="lbNext">›</button>`:''}
-    <div class="lb-stage"><img src="${f.thumb}" class="lb-img"></div>
+    <div class="lb-stage"><img src="${f.thumb||''}" class="lb-img" id="lbImg"></div>
     <div class="lb-meta"><b>${escapeHtml(f.name)}</b>${meta?`<span>${escapeHtml(meta)}</span>`:''}<span class="lb-count">${__lightboxIdx+1} / ${__lightboxList.length}</span></div>
   </div>`;
+  // 가상(미다운로드) 이미지면 드라이브에서 원본을 받아 선명하게 교체(캐시 썸네일은 즉시, 원본은 곧)
+  if(f._virtual&&f._driveId&&IMG.includes(f.ext)){
+    (async()=>{ try{
+      if(!__gdToken)await gdGetToken(true);
+      const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+f._driveId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
+      if(dr.ok){ const b=await dr.blob(); const u=URL.createObjectURL(b); const im=document.getElementById('lbImg'); if(im&&document.getElementById('lightbox')){window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;im.src=u;} }
+    }catch(e){} })();
+  }
   document.getElementById('lbClose').onclick=closeLightbox;
   root.querySelector('.lb-bg').onclick=(e)=>{if(e.target===root.querySelector('.lb-bg'))closeLightbox();};
   const pv=document.getElementById('lbPrev'),nx=document.getElementById('lbNext');
   if(pv)pv.onclick=()=>{__lightboxIdx=(__lightboxIdx-1+__lightboxList.length)%__lightboxList.length;renderLightbox();};
   if(nx)nx.onclick=()=>{__lightboxIdx=(__lightboxIdx+1)%__lightboxList.length;renderLightbox();};
 }
-function closeLightbox(){const r=document.getElementById('lightbox');if(r)r.remove();}
+function closeLightbox(){const r=document.getElementById('lightbox');if(r)r.remove();if(window.__lbUrl){try{URL.revokeObjectURL(window.__lbUrl);}catch(e){}window.__lbUrl=null;}}
 window.addEventListener('keydown',e=>{
   if(!document.getElementById('lightbox'))return;
   if(e.key==='Escape')closeLightbox();
@@ -4497,6 +4544,7 @@ render();
     const mn=document.getElementById('mountName'); if(mn)mn.textContent='📦 저장된 작업(이 기기)';
     const mh=document.getElementById('mountHint'); if(mh)mh.textContent='이 기기에 저장해 둔 현장·연락처·견적·일정을 불러왔습니다. 자동 저장됩니다. (사진 원본은 구글드라이브에)';
     render();
+    try{ hydrateThumbs(); }catch(e){}   // 캐시된 썸네일로 사진 즉시 표시
   }
   // 클라우드(구글드라이브) 설정이 있으면 조용히 동기화 시도
   if(typeof gdBootSync==='function')gdBootSync();
@@ -4557,6 +4605,10 @@ function idbGet(key){return new Promise((res)=>{const r=indexedDB.open('hyeonjan
   r.onupgradeneeded=()=>r.result.createObjectStore('kv');
   r.onsuccess=()=>{const tx=r.result.transaction('kv','readonly');const g=tx.objectStore('kv').get(key);g.onsuccess=()=>res(g.result);g.onerror=()=>res(null);};
   r.onerror=()=>res(null);});}
+function idbDel(key){return new Promise((res)=>{const r=indexedDB.open('hyeonjang-db',1);
+  r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+  r.onsuccess=()=>{try{const tx=r.result.transaction('kv','readwrite');tx.objectStore('kv').delete(key);tx.oncomplete=()=>res();tx.onerror=()=>res();}catch(e){res();}};
+  r.onerror=()=>res();});}
 async function rememberDir(handle){try{await idbSet('lastDir',handle);}catch(e){}}
 async function tryRestoreDir(){
   if(!FS_OK)return;
