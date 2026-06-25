@@ -834,6 +834,7 @@ function serializeData(){
     projects:state.projects,
     files:state.files.map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
       text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,
+      driveId:f._driveId||null,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
 }
@@ -856,14 +857,14 @@ function applyData(data){
     let s=byKey[fileKey(f)];
     if(!s&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
     if(s){f.kind=s.kind||f.kind;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
   // 실제 파일이 없을 때(폰에서 데이터만 보기): 저장된 파일 정보를 가상 항목으로 표시
   if(!state.files.length && data.files.length){
     state.files=data.files.map(s=>({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:0,
       kind:s.kind||'other',project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
-      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_file:null,_virtual:true}));
+      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true}));
     restored=state.files.length;
   }
   return restored;
@@ -1149,33 +1150,55 @@ async function gdLoadDriveFiles(silent){
   try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }
   if(!silent)toast('드라이브에서 불러오는 중...');
   let n=0, hadImg=false;
-  // 1) 현장사진(이미지)
-  try{ const pf=await gdEnsureSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'"); if(got)hadImg=true; n+=got; } }catch(e){}
+  // 1) 현장사진(이미지) — 읽기만(폴더 없으면 만들지 않음)
+  try{ const pf=await gdFindSubfolder('현장사진'); if(pf){ const got=await __gdPullFrom(pf,"mimeType contains 'image/'"); if(got)hadImg=true; n+=got; } }catch(e){}
   // 2) 견적서·서류(PDF) — 폰에서도 드라이브의 견적서/문서를 가져와 볼 수 있게
-  try{ const qf=await gdEnsureSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'"); }catch(e){}
+  try{ const qf=await gdFindSubfolder('견적서'); if(qf)n+=await __gdPullFrom(qf,"mimeType='application/pdf'"); }catch(e){}
   if(typeof __photoCache!=='undefined')__photoCache.key=null;
-  if(n){ markDirty(); if(hadImg)state.tab='photos'; render(); }
+  if(n){ markDirty(); state.tab=hadImg?'photos':'docs'; render(); }   // 사진 있으면 사진탭, PDF만이면 서류탭으로
   if(!silent)toast(n?(n+'개 불러옴 (사진+견적서/PDF)'):'새로 불러올 파일이 없습니다');
   return n;
 }
-// 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 불러오기(중복은 _driveId로 건너뜀)
+// 읽기 전용 하위폴더 조회(없으면 null — 불러오기로 빈 폴더가 생기는 부작용 방지)
+async function gdFindSubfolder(name){
+  await gdEnsureFolder(); if(!__gdFolderId)return null;
+  if(window.__gdSub&&window.__gdSub[name])return window.__gdSub[name];
+  const q=encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='"+name+"' and '"+__gdFolderId+"' in parents and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)&pageSize=1',{headers:{Authorization:'Bearer '+__gdToken}});
+  let id=null; if(r.ok){const j=await r.json(); if(j.files&&j.files[0])id=j.files[0].id;}
+  if(id){if(!window.__gdSub)window.__gdSub={};window.__gdSub[name]=id;}
+  return id;
+}
+// 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상 placeholder(폰 복원분)면 다운로드해 교체(중복 방지+썸네일/미리보기 확보). 반환 1=반영,0=건너뜀
+async function __gdIngestOne(id,name,mime,tok){
+  const existing=state.files.find(x=>x._driveId===id);
+  if(existing&&!existing._virtual)return 0;            // 이미 실제 바이트 보유
+  // _driveId가 같은 가상분, 또는 (레거시: _driveId 없이 저장된) 같은 이름의 가상분을 교체 대상으로
+  const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId);
+  const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
+  if(!dr.ok)return 0;
+  const blob=await dr.blob();
+  await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'}));
+  const rec=state.files[state.files.length-1]; if(!rec)return 0;
+  rec._driveId=id;
+  if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
+    rec.project=ph.project||rec.project;
+    if(ph._phase)rec._phase=ph._phase;
+    if(ph.est)rec.est=ph.est;
+    if(ph.contact)rec.contact=ph.contact;
+    if(ph.kind&&ph.kind!=='other')rec.kind=ph.kind;
+    state.files=state.files.filter(x=>x!==ph);
+  }
+  return 1;
+}
+// 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 반영(__gdIngestOne 위임)
 async function __gdPullFrom(folderId,mimeClause){
   const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and ("+mimeClause+")");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,mimeType)&pageSize=300',{headers:{Authorization:'Bearer '+__gdToken}});
   if(!r.ok)return 0;
   const files=((await r.json()).files)||[];
   let n=0;
-  for(const f of files){
-    if(state.files.some(x=>x._driveId===f.id))continue;   // 이미 불러온 건 건너뜀
-    try{
-      const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
-      if(!dr.ok)continue;
-      const blob=await dr.blob();
-      await ingestFile(new File([blob],f.name,{type:f.mimeType||'application/octet-stream'}));
-      const rec=state.files[state.files.length-1]; if(rec)rec._driveId=f.id;
-      n++;
-    }catch(e){}
-  }
+  for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken); }catch(e){} }
   return n;
 }
 // 고정: 다음에도 자동 불러오기 켜기/끄기
@@ -1212,20 +1235,13 @@ async function gdPickFiles(){
         if(!data||data.action!==google.picker.Action.PICKED)return;
         const docs=data.docs||[]; if(!docs.length)return;
         toast(docs.length+'개 드라이브에서 불러오는 중...');
-        let n=0;
+        let n=0, anyImg=false;
         for(const doc of docs){
-          if(state.files.some(x=>x._driveId===doc.id))continue;
-          try{
-            const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+doc.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
-            if(!dr.ok)continue;
-            const blob=await dr.blob();
-            await ingestFile(new File([blob],doc.name||('img_'+doc.id),{type:doc.mimeType||blob.type||'image/jpeg'}));
-            const rec=state.files[state.files.length-1]; if(rec)rec._driveId=doc.id;
-            n++;
-          }catch(e){}
+          if((doc.mimeType||'').indexOf('image/')===0)anyImg=true;
+          try{ n+=await __gdIngestOne(doc.id,doc.name||('file_'+doc.id),doc.mimeType,tok); }catch(e){}
         }
         if(typeof __photoCache!=='undefined')__photoCache.key=null;
-        if(n){markDirty();state.tab='photos';render();}
+        if(n){markDirty();state.tab=anyImg?'photos':'docs';render();}
         toast(n?(n+'개 불러옴'):'불러오지 못함(권한/형식 확인)');
       }).build();
     picker.setVisible(true);
@@ -1973,6 +1989,8 @@ function counts(){
   return{inbox,docs,photos,est,con,assigned};
 }
 function render(){
+  // 선택 모드는 '현장 사진' 탭에서만 — 다른 탭으로 가면 자동 해제(다른 탭 사진보기 가로채기·갇힘 방지)
+  if(state.tab!=='photos'&&__selMode){__selMode=false;document.body.classList.remove('selmode');}
   const pl=$('#projList');pl.innerHTML='';
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
@@ -2018,11 +2036,13 @@ function cardHtml(f){
   let extra='';
   if(f.kind==='estimate'&&f.est)extra=`<div class="ext-info">${f.est.customer?escapeHtml(f.est.customer)+' · ':''}${won(f.est.amount)}</div>`;
   if(f.kind==='card'&&f.contact)extra=`<div class="ext-info">${escapeHtml(f.contact.name||'')} ${f.contact.phone||''}</div>`;
-  const preview=f.kind==='estimate'?`<button class="mini-btn" data-preview="${f.id}" title="견적서 미리보기">🔍 미리보기</button>`:'';
+  // 견적서뿐 아니라 PDF·이미지면 미리보기 제공(가상분은 드라이브 id가 있으면 즉석 다운로드해 표시)
+  const canPreview=(f.kind==='estimate'||isImg||f.ext==='pdf')&&(!f._virtual||f._driveId);
+  const preview=canPreview?`<button class="mini-btn" data-preview="${f.id}" title="미리보기">🔍 미리보기</button>`:'';
   const rename=(!f._virtual)?`<button class="mini-btn" data-rename="${f.id}" title="파일 이름 변경">✎ 이름</button>`:'';
   const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
   return `<div class="card" data-id="${f.id}">
-    <div class="thumb"${f.kind==='estimate'?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
+    <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
@@ -3676,7 +3696,7 @@ function setupDelegation(){
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
-    if(d.light!==undefined){e.stopPropagation();if(__selMode)return toggleSel(d.light);return openLightbox(d.light,null);}
+    if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
     if(d.stage!==undefined)return setStage(d.proj,+d.stage);
     if(d.learn!==undefined){const f=state.files.find(x=>x.id===d.learn);if(f)learnEstimate(f);return;}
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}
@@ -4136,8 +4156,20 @@ async function previewEstimate(id){
   // 렌더링
   const box=document.getElementById('pvCanvas');
   try{
-    if(f._virtual){ box.innerHTML='<div class="pv-loading">데모/보기 모드에서는 원본 미리보기를 표시할 수 없습니다.<br>추출 정보는 오른쪽에 표시됩니다.</div>'; return; }
-    const file=await getFileOf(f);
+    // 폰처럼 원본 파일이 없는 가상 항목이라도, 드라이브 id가 있으면 즉석에서 받아 미리보기(모바일에서 드라이브 파일 읽기)
+    let file=null;
+    if(f._virtual){
+      if(f._driveId){
+        try{
+          if(!__gdToken)await gdGetToken(true);
+          const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+f._driveId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
+          if(dr.ok){const blob=await dr.blob();file=new File([blob],f.name,{type:blob.type||''});}
+        }catch(e){}
+      }
+      if(!file){ box.innerHTML='<div class="pv-loading">원본을 보려면 ☁️ 구글 로그인(드라이브 연결)이 필요합니다.<br>추출 정보는 오른쪽에 표시됩니다.</div>'; return; }
+    }else{
+      file=await getFileOf(f);
+    }
     if(!file){box.innerHTML='<div class="pv-loading">원본 파일을 찾을 수 없습니다.</div>';return;}
     if(IMG.includes(f.ext)){
       const url=URL.createObjectURL(file);
