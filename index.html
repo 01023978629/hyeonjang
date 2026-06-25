@@ -1760,12 +1760,12 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();});
 }
 // 카메라 촬영
 function openCamera(){
@@ -2054,6 +2054,51 @@ function openManmulFolder(){
   try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
 }
 function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열기' 버튼들도 만물인테리어로
+/* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
+function sendPhotoBundles(){
+  openModal('📤 사진 묶음 발송',
+    '<p style="font-size:13px;line-height:1.6">보낼 방법을 고르면 사진을 골라 <b>묶음으로 나눠</b> 보냅니다.<br>(공유창에서 카톡/문자를 직접 선택)</p>'+
+    '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">'+
+    '<button class="clay" id="pbKakao" style="padding:13px;font-size:15px">💬 카톡으로 — 30장씩 묶음</button>'+
+    '<button class="blue" id="pbSms" style="padding:13px;font-size:15px">✉️ 문자로 — 10장씩 묶음</button>'+
+    '</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#pbKakao').onclick=()=>pickAndBundle(30,'카톡');
+  root.querySelector('#pbSms').onclick=()=>pickAndBundle(10,'문자');
+}
+function pickAndBundle(size,label){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=()=>{
+    const files=[...inp.files]; if(!files.length)return;
+    const chunks=[]; for(let i=0;i<files.length;i+=size)chunks.push(files.slice(i,i+size));
+    showBundleSender(chunks,label,size);
+  };
+  inp.click();
+}
+let __pbSent=0;
+function showBundleSender(chunks,label,size){
+  __pbSent=0;
+  const total=chunks.reduce((a,c)=>a+c.length,0);
+  const draw=()=>{
+    const rows=chunks.map((c,idx)=>{
+      const done=idx<__pbSent;
+      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+'묶음 '+(idx+1)+'/'+chunks.length+' 보내기 ('+c.length+'장)</button>';
+    }).join('');
+    openModal('📤 '+label+'으로 묶음 발송',
+      '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+chunks.length+'묶음</b> (묶음당 최대 '+size+'장).<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+label+'</b>을 선택해 보내세요.</p>'+rows,
+      [{label:'닫기',cls:'ghost',fn:closeModal}]);
+    const root=document.getElementById('modalRoot');
+    root.querySelectorAll('[data-pbsend]').forEach(el=>el.onclick=async()=>{
+      const idx=+el.dataset.pbsend; const files=chunks[idx];
+      try{
+        if(!(navigator.canShare&&navigator.canShare({files:[files[0]]}))){ toast('이 기기는 사진 공유를 지원하지 않습니다(폰에서 사용).'); return; }
+        await navigator.share({files,title:'현장 사진',text:'현장 사진 ('+(idx+1)+'/'+chunks.length+')'});
+        if(idx===__pbSent)__pbSent++; draw();
+      }catch(e){ if(String(e&&e.name)!=='AbortError')toast('보내기 실패: '+(e.message||e)); }
+    });
+  };
+  draw();
+}
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
   if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 구글드라이브 만물인테리어 열기</button></div>`;
@@ -2079,7 +2124,7 @@ function viewPhotos(){
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
-  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="clay tiny" id="btnGdPhotos" style="font-size:13px;padding:9px 16px">☁️ 사진 드라이브 업로드</button><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기</button><span class="hint" style="margin:0">‘업로드’=앱에서 바로 올리기 · ‘열기’=드라이브에서 보기</span></div>`;
+  html+=`<div style="margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="clay tiny" id="btnGdPhotos" style="font-size:13px;padding:9px 16px">☁️ 사진 드라이브 업로드</button><button class="blue tiny" id="btnGotoDrive" style="font-size:13px;padding:9px 16px">📂 만물인테리어 열기</button><button class="moss tiny" id="btnPhotoBundle" style="font-size:13px;padding:9px 16px">📤 사진 묶음 발송</button><span class="hint" style="margin:0">‘업로드’=드라이브에 · ‘묶음 발송’=카톡30/문자10장씩</span></div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
@@ -2725,7 +2770,8 @@ function viewSchedule(){
         </div>
         <div class="sch-tools">
           <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고">📋</button>
-          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가">📲</button>
+          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가">📅</button>
+          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)">📲</button>
           <button class="mini-btn" data-schedit="${s.id}">✎</button>
           <button class="mini-btn" data-schdel="${s.id}">🗑</button>
         </div>
@@ -2931,6 +2977,25 @@ function downloadICS(items,filename){
 }
 function exportScheduleICS(id){const s=state.schedule.find(x=>x.id===id);if(s)downloadICS([s],`일정_${(s.title||'작업').replace(/[^\w가-힣]/g,'')}.ics`);}
 function exportAllICS(){downloadICS(state.schedule||[],'만물인테리어_작업일정.ics');}
+// 구글 캘린더에 일정 추가 (캘린더 '일정 만들기' 화면을 미리 채워 열기 — 추가 권한/심사 불필요)
+function addToGoogleCalendar(id){
+  const s=(state.schedule||[]).find(x=>x.id===id); if(!s){toast('일정을 찾을 수 없습니다.');return;}
+  const dt=(s.date||new Date().toISOString().slice(0,10)); const tm=(s.time||'09:00');
+  let start, end;
+  try{
+    const sd=new Date(dt+'T'+tm+':00');
+    const hrs=parseFloat(s.hours)||2;
+    const ed=new Date(sd.getTime()+hrs*3600000);
+    const f=(D)=>D.getFullYear()+pad(D.getMonth()+1)+pad(D.getDate())+'T'+pad(D.getHours())+pad(D.getMinutes())+'00';
+    start=f(sd); end=f(ed);
+  }catch(e){ const d=dt.replace(/-/g,''); start=d; end=d; }
+  const text=encodeURIComponent((s.title||'현장 일정')+(s.project?(' - '+s.project):''));
+  const details=encodeURIComponent([s.project?('현장: '+s.project):'', s.workers?('예정 인원: '+s.workers+'명'):'', s.memo||''].filter(Boolean).join('\n'));
+  const loc=encodeURIComponent(s.project||'');
+  const url='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+text+'&dates='+start+'/'+end+'&details='+details+'&location='+loc;
+  toast('구글 캘린더 — 저장 누르면 추가됩니다');
+  try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
+}
 
 // 명함 사진(촬영/갤러리) → OCR로 이름·전화 자동 추출 (모바일에서 연락처 추가)
 async function addCardPhoto(){
@@ -3232,7 +3297,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal]');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3258,6 +3323,7 @@ function setupDelegation(){
     if(d.conedit!==undefined)return openContactEdit(d.conedit);
     if(d.condel!==undefined)return deleteContact(d.condel);
     if(d.schics!==undefined)return exportScheduleICS(d.schics);
+    if(d.gcal!==undefined)return addToGoogleCalendar(d.gcal);
     if(d.schreport!==undefined)return openReportEdit(d.schreport);
     if(d.schedit!==undefined)return openScheduleEdit(d.schedit);
     if(d.schdel!==undefined)return deleteSchedule(d.schdel);
@@ -3267,6 +3333,7 @@ function setupDelegation(){
     if(t.id==='qmSend')return sendQuote();
     if(t.id==='qmDriveSave')return saveQuoteToDrive();
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
+    if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmXlsx')return exportQuoteXlsx();
