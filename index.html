@@ -818,6 +818,7 @@ function serializeData(){
     learn:state.learn||{estimateByBiz:{}},
     quotes:state.quotes||[],
     schedule:state.schedule||[],
+    notes:state.notes||[],
     contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
@@ -831,6 +832,7 @@ function applyData(data){
   state.learn=data.learn||{estimateByBiz:{}};
   state.quotes=data.quotes||[];
   state.schedule=data.schedule||[];
+  state.notes=data.notes||[];
   state.contacts=data.contacts||[];
   state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
   const byKey={},byName={};
@@ -1246,6 +1248,11 @@ function openGdriveSetup(){
       <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
       <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
     </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
+      <p style="font-size:12px;color:#5a7186;margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다.</p>
+      <input type="text" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" style="width:100%">
+      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
+    </details>
   </div>`;
   openModal('☁️ 구글드라이브 자동연동',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
@@ -1258,6 +1265,7 @@ function openGdriveSetup(){
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
   {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
+  {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=async()=>{const v=root.querySelector('#gdGemini').value.trim();window.__geminiKey=v||null;try{await idbSet('gemini_key',v||'');}catch(e){}toast(v?'Gemini 키 저장됨 — AI 도우미 사용 가능':'Gemini 키 지움');};}
 }
 
 /* ---------- 사용법 도움말 ---------- */
@@ -1803,12 +1811,12 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();});
 }
 // 카메라 촬영
 function openCamera(){
@@ -2097,6 +2105,62 @@ function openManmulFolder(){
   try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
 }
 function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열기' 버튼들도 만물인테리어로
+/* ----- 음성 회의록 (브라우저 음성인식, 무료·키 불필요) ----- */
+let __vrec=null, __vtext='';
+function voiceMemo(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const supported=!!SR;
+  const notes=(state.notes||[]).slice().reverse();
+  const list=notes.length?notes.map(n=>'<div style="border:1px solid var(--line-soft);border-radius:8px;padding:8px;margin:6px 0"><div style="font-size:11px;color:#6a86a3">'+escapeHtml(n.date||'')+'</div><div style="white-space:pre-wrap;font-size:13px;margin:4px 0">'+escapeHtml((n.text||'').slice(0,500))+'</div><div style="display:flex;gap:6px"><button class="ghost tiny" data-noteshare="'+n.id+'">📤 공유</button><button class="ghost tiny" data-notedel="'+n.id+'">🗑 삭제</button></div></div>').join(''):'<div style="color:#6a86a3;font-size:13px">저장된 회의록이 없습니다.</div>';
+  const body='<div style="font-size:13px">'+
+    (supported?'<button class="clay" id="vmStart" style="width:100%;padding:12px">🎙 녹음 시작 (말하면 글로 적힘)</button><button class="warn" id="vmStop" style="width:100%;padding:10px;margin-top:6px;display:none">⏹ 멈춤</button><textarea id="vmText" placeholder="말한 내용이 여기에 적힙니다. 직접 수정도 가능." style="width:100%;height:120px;margin-top:8px"></textarea><div style="display:flex;gap:6px;margin-top:6px"><button class="blue tiny" id="vmSave">💾 회의록 저장</button><button class="moss tiny" id="vmShare">📤 공유</button></div>':'<p style="color:var(--clay)">이 브라우저는 음성인식을 지원하지 않습니다. (안드로이드 크롬에서 잘 됩니다 · 아이폰은 제한적)</p>')+
+    '<div style="margin-top:12px;border-top:1px dashed var(--line-soft);padding-top:8px"><b style="font-size:12px">저장된 회의록</b>'+list+'</div></div>';
+  openModal('🎙 음성 회의록',body,[{label:'닫기',cls:'ghost',fn:()=>{try{if(__vrec)__vrec.stop();}catch(e){}closeModal();}}]);
+  const root=document.getElementById('modalRoot'); const ta=root.querySelector('#vmText');
+  if(supported){
+    root.querySelector('#vmStart').onclick=()=>{
+      try{
+        __vrec=new SR(); __vrec.lang='ko-KR'; __vrec.continuous=true; __vrec.interimResults=true; __vtext=ta.value||'';
+        __vrec.onresult=(e)=>{let fin='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)fin+=e.results[i][0].transcript;}if(fin){__vtext+=(__vtext&&!/\s$/.test(__vtext)?' ':'')+fin;ta.value=__vtext;}};
+        __vrec.onerror=(e)=>{toast('음성인식 오류: '+(e.error||''));};
+        __vrec.start(); root.querySelector('#vmStart').style.display='none'; root.querySelector('#vmStop').style.display='block'; toast('녹음 중... 말씀하세요');
+      }catch(e){toast('음성인식 시작 실패: '+(e.message||e));}
+    };
+    root.querySelector('#vmStop').onclick=()=>{try{if(__vrec)__vrec.stop();}catch(e){}root.querySelector('#vmStop').style.display='none';root.querySelector('#vmStart').style.display='block';};
+    root.querySelector('#vmSave').onclick=()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}try{if(__vrec)__vrec.stop();}catch(e){}state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t});markDirty();toast('회의록 저장됨');voiceMemo();};
+    root.querySelector('#vmShare').onclick=async()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}try{if(navigator.share)await navigator.share({title:'회의록',text:t});else toast('공유 미지원 — 글을 복사해 보내세요');}catch(e){}};
+  }
+  root.querySelectorAll('[data-notedel]').forEach(el=>el.onclick=()=>{const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id);markDirty();voiceMemo();});
+  root.querySelectorAll('[data-noteshare]').forEach(el=>el.onclick=async()=>{const n=(state.notes||[]).find(x=>x.id===el.dataset.noteshare);if(n){try{if(navigator.share)await navigator.share({title:'회의록',text:n.text});else if(navigator.clipboard){navigator.clipboard.writeText(n.text);toast('복사됨');}}catch(e){}}});
+}
+/* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
+async function geminiAsk(prompt){
+  const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
+  const models=['gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-flash-latest']; let lastErr='';
+  for(const m of models){
+    try{
+      const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      if(r.status===404){lastErr='모델 없음('+m+')';continue;}
+      if(!r.ok)throw new Error('Gemini '+r.status);
+      const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
+      const t=c&&c.content&&c.content.parts&&c.content.parts.map(p=>p.text||'').join('');
+      return t||'';
+    }catch(e){ lastErr=e.message||String(e); }
+  }
+  throw new Error(lastErr||'실패');
+}
+function aiHelper(){
+  if(!window.__geminiKey){ toast('먼저 ☁️ 설정에서 Gemini 키를 넣으세요'); openGdriveSetup(); return; }
+  const body='<div style="font-size:13px"><p style="margin:0 0 8px">무엇을 도와드릴까요?<br><span style="color:#6a86a3">예) "도배 20평 견적 항목 뽑아줘" · "이 회의록 요약해줘"</span></p>'+
+    '<textarea id="aiIn" placeholder="질문/요청을 적으세요" style="width:100%;height:90px"></textarea>'+
+    '<button class="clay tiny" id="aiGo" style="margin-top:6px">🤖 물어보기</button>'+
+    '<div id="aiOut" style="white-space:pre-wrap;margin-top:10px;font-size:13px;background:var(--paper-2);border-radius:8px;padding:10px;min-height:40px"></div>'+
+    '<div style="display:flex;gap:6px;margin-top:6px"><button class="ghost tiny" id="aiCopy">복사</button><button class="ghost tiny" id="aiShare">공유</button></div></div>';
+  openModal('🤖 AI 도우미 (Gemini)',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot'); const out=root.querySelector('#aiOut');
+  root.querySelector('#aiGo').onclick=async()=>{const q=root.querySelector('#aiIn').value.trim();if(!q)return;out.textContent='생각 중...';try{out.textContent=(await geminiAsk(q))||'(응답 없음)';}catch(e){out.textContent='실패: '+(e.message||e);}};
+  root.querySelector('#aiCopy').onclick=()=>{if(navigator.clipboard&&out.textContent)navigator.clipboard.writeText(out.textContent).then(()=>toast('복사됨'));};
+  root.querySelector('#aiShare').onclick=async()=>{if(navigator.share&&out.textContent){try{await navigator.share({text:out.textContent});}catch(e){}}};
+}
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
 function sendPhotoBundles(){
   openModal('📤 사진 묶음 발송',
@@ -4251,6 +4315,7 @@ tryRestoreDir();
 // 저장된 화면 설정 복원
 (async()=>{try{
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
+  try{window.__geminiKey=(await idbGet('gemini_key'))||null;}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
