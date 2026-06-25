@@ -1058,8 +1058,11 @@ async function gdEnsureFolder(retried){
   return __gdFolderId;
 }
 async function gdFindFile(retried){
-  let qs="name='"+GD_FILE+"' and trashed=false and 'me' in owners";
-  if(__gdFolderId)qs="'"+__gdFolderId+"' in parents and "+qs;  // 고정 폴더 안에서만 찾기
+  // 폴더가 아직 없으면 먼저 확보(전체 드라이브 검색으로 동명 백업을 잘못 잡는 것 방지)
+  if(!__gdFolderId){ try{ await gdEnsureFolder(); }catch(e){} }
+  if(!__gdFolderId) return null;   // 폴더를 못 잡으면 검색하지 않음(안전)
+  // 반드시 지정 폴더 '안에서만' 현장데이터.json을 찾음 (백업 파일 '현장데이터_백업_*'는 이름이 달라 제외됨)
+  let qs="'"+__gdFolderId+"' in parents and name='"+GD_FILE+"' and trashed=false and 'me' in owners";
   const q=encodeURIComponent(qs);
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime desc',{headers:{Authorization:'Bearer '+__gdToken}});
   if(r.status===401&&!retried){__gdToken=null;await gdGetToken(false);return gdFindFile(true);}
@@ -1312,14 +1315,19 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip){
   }
   return 1;
 }
-// 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 반영(__gdIngestOne 위임)
+// 드라이브 하위폴더에서 조건에 맞는 파일을 받아 앱에 반영(__gdIngestOne 위임) — 모든 페이지 처리
 async function __gdPullFrom(folderId,mimeClause,bootSkip){
   const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and ("+mimeClause+")");
-  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,mimeType)&pageSize=300',{headers:{Authorization:'Bearer '+__gdToken}});
-  if(!r.ok)return 0;
-  const files=((await r.json()).files)||[];
-  let n=0;
-  for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip); }catch(e){} }
+  let n=0, token='', guard=0;
+  do{
+    const url='https://www.googleapis.com/drive/v3/files?q='+q+'&fields='+encodeURIComponent('nextPageToken,files(id,name,mimeType)')+'&pageSize=1000'+(token?('&pageToken='+encodeURIComponent(token)):'');
+    const r=await fetch(url,{headers:{Authorization:'Bearer '+__gdToken}});
+    if(!r.ok)break;
+    const j=await r.json();
+    const files=j.files||[];
+    for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip); }catch(e){} }
+    token=j.nextPageToken||''; guard++;
+  }while(token && guard<30);   // 최대 3만 개까지(안전 가드)
   return n;
 }
 // 고정: 다음에도 자동 불러오기 켜기/끄기
@@ -1480,7 +1488,7 @@ function __finishImport(okData,r){
 async function gdImportAll(){
   let tok;
   try{ tok=await getRoToken(true); }
-  catch(e){ toast('드라이브 읽기 권한 실패 — ①콘솔 동의화면에 drive.readonly 추가 ②게시상태 "테스트"+테스트사용자 3dncjf ③경고서 고급→계속. 또는 아래 "📁 폴더 한번에 선택"을 쓰세요'); return; }
+  catch(e){ toast('드라이브 읽기 권한이 필요합니다 — 권한 요청 창에서 "확인되지 않은 앱 → 고급 → 계속 → 허용"을 누르세요. 또는 아래 "📁 폴더 한번에 선택"을 쓰세요'); return; }
   toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
   window.__lastImportProj=0; window.__importChg=0;
   let okData=false;
@@ -1499,10 +1507,11 @@ async function gdImportAll(){
   if(!okData&&!r.nImg&&!r.nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정/폴더명(현장사진·견적서) 확인');
   else toast('☁️ 통합 완료 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · 견적PDF '+r.nPdf+'개 (자동 저장됨)');
 }
-// 폴더 한 번 선택 → 그 폴더 전체 자동 불러오기(Picker 폴더 선택, 기존 drive.file 토큰 사용 — 스코프 추가 불필요)
+// 폴더 한 번 선택 → 그 폴더 전체 자동 불러오기(Picker 폴더 선택)
+// ★ drive.readonly 토큰 사용 — 기존(앱이 안 만든) 폴더 안 사진까지 모두 읽기 위함(drive.file은 자기 파일만 보임)
 async function gdPickFolder(){
-  const key=window.__visionKey;   // 있으면 개발자 키로 사용, 없어도 시도(로그인 토큰만으로)
-  let tok; try{ tok=await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
+  const key=window.__visionKey;   // 있으면 개발자 키로 사용, 없어도 시도
+  let tok; try{ tok=await getRoToken(true); }catch(e){ toast('폴더 안 사진을 읽으려면 읽기권한이 필요합니다 — "확인되지 않은 앱 → 고급 → 계속 → 허용"'); return; }
   try{
     await loadExtLib('https://apis.google.com/js/api.js',()=>window.gapi);
     await new Promise((res,rej)=>{ try{gapi.load('picker',{callback:res});}catch(e){rej(e);} });
@@ -1518,7 +1527,7 @@ async function gdPickFolder(){
         window.__lastImportProj=0; window.__importChg=0;
         let r={nImg:0,nPdf:0,nProj:0,chg:0}; try{ r=await __importTree([f.id],tok); }catch(e){}
         __finishImport(false,r);
-        if(!r.nImg&&!r.nPdf) toast('이 폴더에서 사진을 못 읽었습니다 — 폴더 권한이 안 열렸을 수 있어요. 📂 전체 통합(권한 추가)을 쓰거나, 사진을 직접 여러 장 선택해 보세요.');
+        if(!r.nImg&&!r.nPdf) toast('이 폴더에서 사진을 못 읽었습니다 — 📂 전체 통합(권한 추가)을 쓰거나, 사진을 직접 여러 장 선택해 보세요.');
         else toast('☁️ 폴더 통합 — 현장 '+state.projects.length+'곳'+(r.nProj?('(폴더에서 '+r.nProj+'곳 새로)'):'')+' · 사진 '+r.nImg+'장 · PDF '+r.nPdf+'개 (자동 저장됨)');
       }).build();
     picker.setVisible(true);
@@ -4509,12 +4518,22 @@ function renderLightbox(){
     if(stage){const note=document.createElement('div');note.id='lbNote';note.style.cssText='position:absolute;color:#cbd5e1;font-size:13px';note.textContent='드라이브에서 사진 찾는 중…';stage.appendChild(note);}
     (async()=>{ try{
       let tok; try{ tok=await getRoToken(false); }catch(e){ try{ tok=await getRoToken(true); }catch(e2){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진을 찾으려면 ☁️설정 → 📂 통합 불러오기 권한이 필요합니다'; return; } }
-      // 이름으로 검색(드라이브 전체). "의 사본" 등 꼬리표 포함 정확매칭 우선, 없으면 원래이름 contains
+      // 이름으로 검색(size도 받아 크기 매칭). "의 사본" 등 꼬리표 포함 정확매칭 우선, 없으면 원래이름 contains
       const nm=f.name.replace(/'/g,"\\'");
-      let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType)",tok);
-      if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType)",tok); }
+      let list=await roList("name='"+nm+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok);
+      if(!list.length){ const base=f.name.replace(/(의 사본.*|의 복사본.*| \(\d+\).*| - copy.*)$/i,'').replace(/'/g,"\\'"); if(base&&base!==f.name) list=await roList("name contains '"+base+"' and trashed=false and mimeType contains 'image/'","files(id,name,mimeType,size)",tok); }
       if(!list.length){ const n=document.getElementById('lbNote'); if(n)n.textContent='드라이브에서 이 사진을 찾지 못했습니다('+escapeHtml(f.name)+')'; return; }
-      const hit=list[0];
+      // 크기(size)로 정확매칭 우선 — 같은 이름 사진이 여럿일 때 엉뚱한 것 방지
+      let hit=null;
+      if(f.size){ const exact=list.filter(x=>x.size&&Math.abs(+x.size-f.size)<=2); if(exact.length===1)hit=exact[0]; else if(exact.length>1)hit=exact[0]; }
+      if(!hit){
+        if(list.length===1) hit=list[0];
+        else {
+          // 이름 같은 게 여럿인데 크기로 못 좁힘 → 잘못 열 위험 → 사용자에게 알림
+          const n=document.getElementById('lbNote'); if(n)n.textContent='같은 이름의 사진이 '+list.length+'개라 정확히 못 고릅니다 — 📂 통합 불러오기로 연결하세요';
+          hit=list[0];   // 그래도 첫 번째를 시도(완전 실패보다는 나음)
+        }
+      }
       const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+hit.id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
       if(!dr.ok){ const n=document.getElementById('lbNote'); if(n)n.textContent='사진 받기 실패'; return; }
       let b=await dr.blob();
