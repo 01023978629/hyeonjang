@@ -832,9 +832,9 @@ function serializeData(){
     notes:state.notes||[],
     contacts:state.contacts||[],
     projects:state.projects,
-    files:state.files.map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
+    files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
       text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,
-      driveId:f._driveId||null,
+      driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
 }
@@ -863,13 +863,16 @@ function applyData(data){
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
     if(used.has(s))return;
-    if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // 이미 있는 것 중복 방지
-    state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:0,
+    if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
+    if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)))return;  // 이름+경로+크기 중복 방지(driveId 없는 가상 무한증식 차단)
+    state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:ext(s.name),size:s.size||0,
       kind:s.kind||'other',project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
       est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_driveId:s.driveId||null,_file:null,_virtual:true});
     restored++;
   });
+  // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
+  state.quotes.forEach(q=>{ if(q&&q.project){ try{syncQuoteToProject(q);}catch(e){} } });
   return restored;
 }
 async function saveProject(silent){
