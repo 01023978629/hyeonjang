@@ -57,7 +57,8 @@
   .mnav-cam .mi{background:var(--clay);color:#fff;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-top:-18px;box-shadow:0 3px 10px rgba(29,111,224,.4);font-size:20px}
   .mnav-cam span:last-child{margin-top:-2px}
   /* 모바일 모드: 사이드바·상단탭 숨기고 전체폭, 하단 여백 */
-  body.mobile-mode .wrap{grid-template-columns:1fr}
+  body.mobile-mode .wrap{grid-template-columns:minmax(0,1fr)}
+  body.mobile-mode #view{min-width:0;overflow-x:hidden}
   body.mobile-mode aside{display:none}
   body.mobile-mode .tabs{display:none}
   body.mobile-mode #view{padding-bottom:72px}
@@ -398,10 +399,11 @@
   .cal-nav{width:30px;height:30px;border:1px solid var(--line-soft);background:var(--paper);border-radius:7px;cursor:pointer;font-size:16px;color:var(--ink);display:flex;align-items:center;justify-content:center;padding:0}
   .cal-nav:hover{background:var(--clay);color:#fff;border-color:var(--clay);transform:none}
   .cal-today-btn{width:auto;padding:0 12px;font-size:12px;margin-left:auto}
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;width:100%}
   .cal-dow{text-align:center;font-size:11px;color:#6a86a3;font-weight:600;padding:4px 0}
   .cal-dow.sun{color:#d04545}.cal-dow.sat{color:#3060c0}
-  .cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;cursor:pointer;position:relative;border:1px solid transparent;min-height:38px}
+  .cal-cell{aspect-ratio:1;min-width:0;overflow:hidden;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;cursor:pointer;position:relative;border:1px solid transparent;min-height:34px}
+  .calendar{max-width:100%}
   .cal-cell:not(.empty):hover{background:var(--paper);border-color:var(--line-soft)}
   .cal-cell.empty{cursor:default}
   .cal-d{font-size:12.5px;color:var(--ink)}
@@ -491,7 +493,9 @@
       <b id="mountName">연결 안 됨</b>
       <small id="mountHint">정리할 파일이 든 폴더를 연결하세요. 견적서·서류·현장 사진이 섞여 있어도 됩니다.</small>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="blue tiny" id="btnMount">폴더 연결</button>
+        <button class="blue tiny" id="btnMount">📁 로컬 폴더 연결</button>
+        <button class="clay tiny" id="btnGdConnect">☁️ 구글드라이브 연결(만물인테리어)</button>
+        <button class="ghost tiny" id="btnGdPick2">🔍 드라이브에서 선택</button>
         <button class="ghost tiny" id="btnScan" disabled>다시 스캔</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
@@ -1168,6 +1172,15 @@ async function gdToggleAutoload(){
   toast(on?'고정됨 — 앱 열 때 드라이브 사진을 자동 불러옵니다':'자동 불러오기 해제');
   if(on)gdLoadDriveFiles(false);
 }
+// '폴더 연결'의 구글드라이브 버전: 만물인테리어를 작업 소스로 연결 + 고정(자동 불러오기)
+async function gdConnectFolder(){
+  try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); openGdriveSetup(); return; }
+  const mn=document.getElementById('mountName'); if(mn)mn.textContent='☁️ 구글드라이브(만물인테리어)';
+  const mh=document.getElementById('mountHint'); if(mh)mh.textContent='드라이브 만물인테리어를 작업 소스로 연결(고정) — 사진·데이터 자동 동기화';
+  try{ await idbSet('gd_autoload',true); }catch(e){}   // 고정(다음에도 자동 불러오기)
+  toast('구글드라이브 만물인테리어 연결 — 사진 불러오는 중...');
+  await gdLoadDriveFiles(false);
+}
 // 구글드라이브 파일 선택기(Picker): 드라이브의 '아무 사진'이나 골라 불러오기(구글드라이브앱 업로드분 포함)
 async function gdPickFiles(){
   const key=window.__visionKey;   // Picker 개발자 키 = GCP API 키(Vision 키 재사용, 콘솔서 Picker API 사용설정 필요)
@@ -1603,6 +1616,8 @@ $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
 {const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
 {const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdLoad(false);}
+{const _gc=$('#btnGdConnect');if(_gc)_gc.onclick=gdConnectFolder;}
+{const _gp2=$('#btnGdPick2');if(_gp2)_gp2.onclick=gdPickFiles;}
 $('#btnZipPhotos').onclick=importPhotoZip;
 $('#btnDemo').onclick=loadDemo;
 $('#btnBizCard').onclick=shareBizCard;
