@@ -1357,6 +1357,56 @@ async function saveQuoteToDrive(){
 }
 /* ----- 구글 시트로 내보내기 (견적·정산) — 시트 전용 권한 토큰(드라이브 로그인과 분리) ----- */
 let __shTok=null,__shExp=0,__shClient=null,__shP=null;
+// ===== 읽기 전용(drive.readonly): 앱 밖에서(드라이브앱·동기화 스크립트로) 올린 '실제 만물인테리어 폴더'의 현장데이터·사진·견적까지 통합 불러오기 =====
+let __roTok=null,__roExp=0,__roClient=null,__roP=null;
+function getRoToken(interactive){
+  if(__roTok && Date.now()<__roExp-60000) return Promise.resolve(__roTok);
+  if(__roP) return __roP;
+  __roP=new Promise((res,rej)=>{
+    gdLoadGIS().then(()=>{
+      if(!__roClient)__roClient=google.accounts.oauth2.initTokenClient({client_id:GD_CLIENT_ID,scope:'https://www.googleapis.com/auth/drive.readonly',callback:()=>{}});
+      __roClient.callback=(resp)=>{ if(resp&&resp.access_token){__roTok=resp.access_token;__roExp=Date.now()+((resp.expires_in||3600)*1000);res(__roTok);} else rej(new Error(resp&&resp.error?resp.error:'권한 실패')); };
+      __roClient.error_callback=(e)=>rej(new Error((e&&(e.type||e.message))||'권한 취소'));
+      try{ __roClient.requestAccessToken({prompt:interactive?'consent':''}); }catch(e){ rej(e); }
+    }).catch(rej);
+  }).finally(()=>{__roP=null;});
+  return __roP;
+}
+async function roList(q,fields,tok){
+  const u='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields='+encodeURIComponent(fields||'files(id,name,mimeType,modifiedTime)')+'&pageSize=1000';
+  const r=await fetch(u,{headers:{Authorization:'Bearer '+tok}});
+  if(!r.ok)throw new Error('목록 '+r.status);
+  return ((await r.json()).files)||[];
+}
+// 내 드라이브(만물인테리어) 통합 불러오기: 현장데이터.json(어디 있든 최신) + 모든 '현장사진' 폴더 이미지 + 모든 '견적서' 폴더 PDF
+async function gdImportAll(){
+  let tok;
+  try{ tok=await getRoToken(true); }
+  catch(e){ toast('드라이브 읽기 권한 필요 — 구글 콘솔 동의화면에 drive.readonly 추가 후, "확인되지 않은 앱"에서 고급→계속 누르세요'); return; }
+  toast('내 드라이브에서 통합 불러오는 중 — 현장·견적·사진...');
+  let okData=false, nImg=0, nPdf=0;
+  // 1) 데이터: 현장데이터.json(가장 최근) → 현장·견적·일정·연락처
+  try{
+    const dj=await roList("name='현장데이터.json' and trashed=false",'files(id,name,modifiedTime)',tok);
+    dj.sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''));
+    if(dj[0]){ const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+dj[0].id+'?alt=media',{headers:{Authorization:'Bearer '+tok}}); if(dr.ok){ try{ applyData(await dr.json()); okData=true; }catch(e){} } }
+  }catch(e){}
+  // 2) 사진: 이름이 '현장사진'인 모든 폴더의 이미지(실제 폴더 포함)
+  try{
+    const pf=await roList("mimeType='application/vnd.google-apps.folder' and name='현장사진' and trashed=false",'files(id)',tok);
+    for(const f of pf){ try{ const imgs=await roList("'"+f.id+"' in parents and mimeType contains 'image/' and trashed=false",'files(id,name,mimeType)',tok); for(const im of imgs){ try{ nImg+=await __gdIngestOne(im.id,im.name,im.mimeType,tok); }catch(e){} } }catch(e){} }
+  }catch(e){}
+  // 3) 견적서 PDF: 이름이 '견적서'인 모든 폴더
+  try{
+    const qf=await roList("mimeType='application/vnd.google-apps.folder' and name='견적서' and trashed=false",'files(id)',tok);
+    for(const f of qf){ try{ const pdfs=await roList("'"+f.id+"' in parents and mimeType='application/pdf' and trashed=false",'files(id,name,mimeType)',tok); for(const pd of pdfs){ try{ nPdf+=await __gdIngestOne(pd.id,pd.name,pd.mimeType,tok); }catch(e){} } }catch(e){} }
+  }catch(e){}
+  if(typeof __photoCache!=='undefined')__photoCache.key=null;
+  if(okData||nImg||nPdf)markDirty();
+  state.tab=(nImg?'photos':'dashboard'); render(); try{hydrateThumbs();}catch(e){}
+  if(!okData&&!nImg&&!nPdf) toast('내 드라이브에서 만물인테리어 자료를 못 찾았습니다 — 같은 계정인지/폴더명(현장사진·견적서) 확인');
+  else toast('☁️ 내 드라이브 통합 — 현장 '+state.projects.length+'곳 · 사진 '+nImg+'장 · 견적PDF '+nPdf+'개');
+}
 function getSheetToken(){
   if(__shTok && Date.now()<__shExp-60000) return Promise.resolve(__shTok);
   if(__shP) return __shP;
@@ -1422,6 +1472,7 @@ function openGdriveSetup(){
       <button class="blue tiny" id="gdLogin">🔑 구글 로그인 & 연결</button>
       <button class="moss tiny" id="gdUp">☁️ 올리기</button>
       <button class="clay tiny" id="gdDown">⬇️ 전체 불러오기(현장·견적·사진)</button>
+      <button class="blue tiny" id="gdImp">📂 내 드라이브 전체 통합(권한 추가)</button>
       <button class="ghost tiny" id="gdOpen">📂 만물인테리어 폴더 열기</button>
       <button class="ghost tiny" id="gdRestore">⏮ 이전 버전 복원</button>
       <button class="moss tiny" id="gdSheet">📊 구글시트로 내보내기</button>
@@ -1461,6 +1512,7 @@ function openGdriveSetup(){
   }catch(e){toast('연결 실패: '+(e.message||e));}};
   root.querySelector('#gdUp').onclick=async()=>{await saveCid();gdSave(false);};
   root.querySelector('#gdDown').onclick=async()=>{await saveCid();gdPullAll();};
+  {const gi=root.querySelector('#gdImp');if(gi)gi.onclick=async()=>{await saveCid();closeModal();gdImportAll();};}
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
@@ -2101,7 +2153,7 @@ function render(){
   if(typeof syncMobileNav==='function')syncMobileNav();
 }
 function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓거나</b> 왼쪽에서 폴더를 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>아직 불러온 파일이 없습니다</b>폰이라면 아래로 드라이브의 현장·견적·사진을 한 번에 불러오세요.
-  <div style="margin-top:14px"><button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button></div></div>`;}
+  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
 function projectOptions(sel){let o='<option value="">현장 미지정</option>';state.projects.forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
@@ -2234,8 +2286,9 @@ function viewDashboard(){
     return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
+        <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합 불러오기</button>
       </div>
-      <small style="display:block;margin-top:10px;color:#6a86a3">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf).</small>
+      <small style="display:block;margin-top:10px;color:#6a86a3">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf). · ‘전체 통합’은 드라이브 앱으로 올린 사진까지 불러옵니다(권한 1회 추가).</small>
     </div>`;
   }
   const stats=state.projects.map(p=>({name:p.name,...projStats(p.name)}));
@@ -2453,7 +2506,7 @@ function showBundleSender(chunks,label,size){
 }
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:13px 22px;width:auto">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="btnGotoDrive" style="font-size:15px;padding:13px 22px;width:auto">📂 만물인테리어 열기</button></div></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진은 구글드라이브에서 관리합니다</b><div style="margin:8px 0 14px;color:#6a86a3">폰: 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.<br>컴퓨터: 왼쪽 ‘폴더 연결’로 사진 폴더를 열어 정리합니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:13px 22px;width:auto">☁️ 앱에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="ghost" id="btnGotoDrive" style="font-size:14px;padding:13px 18px;width:auto">열기</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -3715,7 +3768,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -3757,6 +3810,7 @@ function setupDelegation(){
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
     if(t.id==='dashGdPull')return gdPullAll();
+    if(t.id==='gdImportAll')return gdImportAll();
     if(t.id==='qmAddItem')return addQuoteItem();
     if(t.id==='qmAi')return aiQuoteItems();
     if(t.id==='qmImport')return importQuoteXlsx();
