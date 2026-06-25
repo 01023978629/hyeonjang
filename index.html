@@ -1391,15 +1391,23 @@ async function gdImportAll(){
     dj.sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''));
     if(dj[0]){ const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+dj[0].id+'?alt=media',{headers:{Authorization:'Bearer '+tok}}); if(dr.ok){ try{ applyData(await dr.json()); okData=true; }catch(e){} } }
   }catch(e){}
-  // 2) 사진: 이름이 '현장사진'인 모든 폴더의 이미지(실제 폴더 포함)
+  // 2~3) 만물인테리어 폴더부터 하위 전체를 훑어 이미지·PDF 통합 수집(중첩 폴더 _정리완료/현장별 대응)
   try{
-    const pf=await roList("mimeType='application/vnd.google-apps.folder' and name='현장사진' and trashed=false",'files(id)',tok);
-    for(const f of pf){ try{ const imgs=await roList("'"+f.id+"' in parents and mimeType contains 'image/' and trashed=false",'files(id,name,mimeType)',tok); for(const im of imgs){ try{ nImg+=await __gdIngestOne(im.id,im.name,im.mimeType,tok); }catch(e){} } }catch(e){} }
-  }catch(e){}
-  // 3) 견적서 PDF: 이름이 '견적서'인 모든 폴더
-  try{
-    const qf=await roList("mimeType='application/vnd.google-apps.folder' and name='견적서' and trashed=false",'files(id)',tok);
-    for(const f of qf){ try{ const pdfs=await roList("'"+f.id+"' in parents and mimeType='application/pdf' and trashed=false",'files(id,name,mimeType)',tok); for(const pd of pdfs){ try{ nPdf+=await __gdIngestOne(pd.id,pd.name,pd.mimeType,tok); }catch(e){} } }catch(e){} }
+    let roots=[];
+    try{ roots=(await roList("mimeType='application/vnd.google-apps.folder' and name='만물인테리어' and trashed=false",'files(id)',tok)).map(f=>f.id); }catch(e){}
+    if(!roots.length){ // 만물인테리어 폴더가 없으면 현장사진/견적서 폴더명으로 직접 탐색
+      try{ roots=roots.concat((await roList("mimeType='application/vnd.google-apps.folder' and (name='현장사진' or name='견적서') and trashed=false",'files(id)',tok)).map(f=>f.id)); }catch(e){}
+    }
+    let queue=roots.slice(), seen=new Set(), visited=0;
+    while(queue.length && visited<300){
+      const fid=queue.shift(); if(!fid||seen.has(fid))continue; seen.add(fid); visited++;
+      let kids=[]; try{ kids=await roList("'"+fid+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
+      for(const k of kids){
+        if(k.mimeType==='application/vnd.google-apps.folder'){ queue.push(k.id); }
+        else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); }catch(e){} }
+        else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); }catch(e){} }
+      }
+    }
   }catch(e){}
   if(typeof __photoCache!=='undefined')__photoCache.key=null;
   if(okData||nImg||nPdf)markDirty();
