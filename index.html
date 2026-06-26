@@ -697,6 +697,7 @@ function bestExt(name,type){
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 function driveThumbUrl(id,w){ return 'https://drive.google.com/thumbnail?id='+id+'&sz=w'+(w||1000); }
 function photoSrc(f,w){ if(!f)return ''; if(f.thumb)return f.thumb; if(f._driveId)return driveThumbUrl(f._driveId,w); return ''; }
+let __removedIds=new Set();   // 사용자가 '제거'한 중복 사진의 driveId — 다시 불러와도 안 들어오게 기록(idb removed_ids)
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
 function classify(rec){
@@ -1432,6 +1433,7 @@ async function fillThumbs(){
 }
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
+  if(__removedIds.has(id))return 0;                    // 사용자가 '제거'한 중복 → 다시 안 불러옴
   const existing=state.files.find(x=>x._driveId===id);
   if(existing&&!existing._virtual)return 0;            // 이미 실제 바이트 보유
   if(existing&&existing._virtual&&bootSkip){           // 부팅: 캐시 썸네일이 있으면 재다운로드 생략(탭 시 원본). 없으면 받아서 자동 표시
@@ -2419,22 +2421,24 @@ async function organizeByPhase(projName){
      }}]);
 }
 
-/* 중복 대표만 남기고 나머지를 목록에서 제외(파일 삭제 아님, 미리보기 후) */
+/* 중복 대표만 남기고 나머지를 목록에서 '제거'(다시 불러와도 안 들어오게 기록). 드라이브 원본은 보존 */
 function trimDuplicates(){
   const photos=state.files.filter(f=>f.kind==='photo');
   const dupSets=markDuplicates(photos);
   const dups=photos.filter(p=>p._dup);
-  if(!dups.length){toast('정리할 중복이 없습니다.');return;}
-  const rows=dups.map(p=>`<div class="moveline"><span class="from">${escapeHtml(p.name)}</span><span class="arr">→</span><span class="to">목록에서 숨김(대표 1장 유지)</span></div>`).join('');
-  openModal('중복 사진 정리',
-    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 12px">같은 크기·촬영시간의 중복 ${dups.length}장을 목록에서 숨깁니다. 원본 파일은 삭제하지 않으며, 대표 1장만 남깁니다. (연결 폴더가 있으면 실제 파일 이동은 ‘정리(이동)’에서 합니다.)</p>${rows}`,
+  if(!dups.length){toast('제거할 중복이 없습니다.');return;}
+  const rows=dups.map(p=>`<div class="moveline"><span class="from">${escapeHtml(p.name)}</span><span class="arr">→</span><span class="to">제거(대표 1장 유지)</span></div>`).join('');
+  openModal('중복 사진 제거',
+    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 12px">같은 크기·촬영시간의 중복 ${dups.length}장을 <b>목록에서 완전히 제거</b>합니다(다시 불러와도 안 들어옵니다). 대표 1장만 남깁니다. ⚠️ 구글드라이브 <b>원본 파일은 그대로 둡니다</b>(필요하면 드라이브에서 직접 삭제).</p>${rows}`,
     [{label:'취소',cls:'ghost',fn:closeModal},
-     {label:`${dups.length}장 숨기기`,cls:'warn',fn:()=>{
-       dups.forEach(p=>{p._hidden=true;});
-       const _rm=state.files.filter(f=>f._hidden&&f._driveId);
-       state.files=state.files.filter(f=>!f._hidden);
-       _rm.forEach(f=>{try{idbDel('thumb:'+f._driveId);}catch(e){}});   // 고아 썸네일 캐시 정리
-       markDirty();closeModal();render();toast(dups.length+'장의 중복을 목록에서 정리했습니다.');
+     {label:`${dups.length}장 제거`,cls:'warn',fn:async()=>{
+       const rmSet=new Set(dups.map(p=>p.id));
+       const ids=dups.map(p=>p._driveId).filter(Boolean);
+       ids.forEach(id=>__removedIds.add(id));            // 다시 불러와도 안 들어오게 기록
+       try{ await idbSet('removed_ids',[...__removedIds]); }catch(e){}
+       state.files=state.files.filter(f=>!rmSet.has(f.id));
+       ids.forEach(id=>{try{idbDel('thumb:'+id);}catch(e){}});   // 썸네일 캐시 정리
+       markDirty();closeModal();render();toast(dups.length+'장의 중복을 제거했습니다(드라이브 원본은 유지).');
      }}]);
 }
 
@@ -2825,15 +2829,10 @@ function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+'
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
 // 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
 function openManmulFolder(){
-  // ★ 지정 폴더로 직접 열기(검색 대신) → 항상 같은 폴더가 뜸
-  let url;
-  if(typeof GD_FOLDER_ID==='string' && GD_FOLDER_ID){
-    url='https://drive.google.com/drive/folders/'+GD_FOLDER_ID;
-    toast('구글드라이브 만물인테리어 폴더 — 사진은 현장사진 하위에 ＋ 로 올리세요');
-  }else{
-    url='https://drive.google.com/drive/search?q='+encodeURIComponent('만물인테리어');
-    toast('구글드라이브 만물인테리어 — 사진은 현장사진 폴더에 ＋ 로 올리세요');
-  }
+  // ★ 지정한 만물 폴더로 바로 열기(검색 대신) → 모바일·PC 모두 항상 같은 만물 폴더 접속
+  const fid=(typeof GD_FOLDER_ID==='string'&&GD_FOLDER_ID)?GD_FOLDER_ID:((typeof GD_IMPORT_ROOT==='string'&&GD_IMPORT_ROOT)?GD_IMPORT_ROOT:'');
+  let url = fid ? ('https://drive.google.com/drive/folders/'+fid) : ('https://drive.google.com/drive/search?q='+encodeURIComponent('만물'));
+  toast('구글드라이브 만물 폴더를 엽니다 — 사진은 현장사진 하위에 ＋ 로 올리세요');
   try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
 }
 function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열기' 버튼들도 만물인테리어로
@@ -2988,7 +2987,7 @@ function viewPhotos(){
     <span class="pb-stat">묶음 <b>${clusters.length}</b></span>
     <span class="pb-stat">사진 <b>${photos.length}</b></span>
     <span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>
-    ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 대표만 남기기</button>`:''}
+    ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 제거</button>`:''}
   </div>`;
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
@@ -5227,6 +5226,8 @@ function escapeAttr(s){return escapeHtml(s);}
 if(!FS_OK){$('#btnMount').textContent='파일 선택';$('#mountHint').textContent='이 브라우저는 폴더 직접 연결·이동이 제한됩니다. ‘파일 선택’으로 분류·OCR 미리보기를 쓰세요. 실제 이동은 Chrome·Edge에서.';}
 render();
 
+// 제거한 중복 사진 driveId 목록 복원(다시 불러와도 안 들어오게)
+(async()=>{ try{ const a=await idbGet('removed_ids'); if(Array.isArray(a))a.forEach(x=>__removedIds.add(x)); }catch(e){} })();
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
 (async()=>{ try{
   if(state.projects.length||state.files.length)return; // 이미 데이터가 있으면 건너뜀
