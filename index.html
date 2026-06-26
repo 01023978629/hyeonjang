@@ -1757,30 +1757,14 @@ function cloudAutoSave(){
   clearTimeout(__gdAutoTimer);
   __gdAutoTimer=setTimeout(()=>{gdSave(true);},3000);
 }
-// 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
+// 부팅 시: 저장된 로컬/썸네일만 복원한다. OAuth 토큰 요청은 사용자 클릭 때만 수행한다.
 async function gdBootSync(){
   try{
-    // 사용자가 실제로 드라이브 연결/자동불러오기를 켠 적이 있을 때만 부팅 동기화한다.
-    // 기본 클라이언트 ID만으로 토큰을 요청하면 로컬/미등록 도메인에서 OAuth 오류 화면으로 튕길 수 있다.
     const fid=await idbGet('gd_fileid'); if(fid)__gdFileId=fid;            // 저장해 둔 파일 재사용(중복 생성 방지)
     const autoload=await idbGet('gd_autoload');
-    if(!fid && !autoload)return;
-    if(!__gdCfg||!__gdCfg.clientId)return;
-    const localBefore=__dataAt;   // 부팅 직전 로컬 데이터 시각 기억
-    // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
-    const tok=await Promise.race([gdGetToken(false).catch(()=>null), new Promise(r=>setTimeout(()=>r(null),8000))]);
-    if(tok){
-      const ok=await gdLoad(true);
-      // 동기화 결과를 화면에 표시(어느 쪽 데이터가 활성인지 명확히)
-      if(ok){
-        const driveWon = __dataAt && __dataAt!==localBefore;   // 드라이브 데이터로 갱신됨
-        const mh=document.getElementById('mountHint');
-        if(mh){
-          if(driveWon) mh.textContent='☁️ 구글드라이브 최신 데이터로 동기화됨 (현장 '+state.projects.length+'개). 자동 저장됩니다.';
-          else if(localBefore) mh.textContent='이 기기 데이터가 더 최신이라 유지 중 — 드라이브로 올리려면 ☁️설정 → ☁️올리기. (현장 '+state.projects.length+'개)';
-        }
-      }
-      try{ if(autoload) await gdLoadDriveFiles(true,true); }catch(e){}
+    if((fid||autoload)&&!__gdToken){
+      const mh=document.getElementById('mountHint');
+      if(mh)mh.textContent='☁️ 구글드라이브 자동연동 설정됨 — 최신 자료가 필요하면 “지금 동기화”를 누르세요.';
     }
   }catch(e){}
   try{ await hydrateThumbs(); }catch(e){}   // 캐시된 썸네일로 사진 즉시 표시
