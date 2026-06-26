@@ -694,6 +694,9 @@ function bestExt(name,type){
   if(type==='application/pdf')return 'pdf';
   return e;
 }
+// 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
+function driveThumbUrl(id,w){ return 'https://drive.google.com/thumbnail?id='+id+'&sz=w'+(w||1000); }
+function photoSrc(f,w){ if(!f)return ''; if(f.thumb)return f.thumb; if(f._driveId)return driveThumbUrl(f._driveId,w); return ''; }
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
 function classify(rec){
@@ -1375,16 +1378,9 @@ function makeThumbDataUrl(file,max){
     }catch(e){res(null);}
   });
 }
-async function cacheThumb(driveId,file){ if(!driveId||!file)return; try{ const d=await makeThumbDataUrl(file,480); if(d)await idbSet('thumb:'+driveId,d); }catch(e){} }
-// 캐시된 썸네일을 가상(미다운로드) 이미지 항목에 채워넣어 그리드/라이트박스에 즉시 표시(원본 재다운로드 없이)
-async function hydrateThumbs(){
-  let changed=false;
-  for(const f of state.files){
-    if(f.thumb||!f._driveId||!IMG.includes(f.ext))continue;
-    try{ const t=await idbGet('thumb:'+f._driveId); if(t){f.thumb=t;changed=true;} }catch(e){}
-  }
-  if(changed){ if(typeof __photoCache!=='undefined')__photoCache.key=null; render(); }
-}
+async function cacheThumb(driveId,file){ /* 썸네일 캐시 제거 — photoSrc가 드라이브 썸네일을 바로 표시 */ }
+// (제거) 썸네일 채우기 — 이제 photoSrc(f)가 드라이브 썸네일 URL로 바로 표시하므로 채우기 불필요
+async function hydrateThumbs(){ return; }
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 let __fillThumbsRunning=false;
 async function fillThumbs(){
@@ -1445,12 +1441,9 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
   const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId);
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
-  let blob=await dr.blob(), fname=name;
-  // HEIC/HEIF(아이폰 사진)는 브라우저가 직접 못 그림 → JPG로 변환 + '의 사본'으로 깨진 확장자 정리 → 현장사진 탭에 정상 표시
-  if(/heic|heif/i.test(mime||'')||/\.heic|\.heif/i.test(name||'')){
-    try{ await ensureHeic2any(); const out=await heic2any({blob,toType:'image/jpeg',quality:0.85}); blob=Array.isArray(out)?out[0]:out; fname=(name||'img').replace(/\.heic.*$/i,'').replace(/\.heif.*$/i,'')+'.jpg'; }catch(e){}
-  }
-  const rec=await ingestFile(new File([blob],fname,{type:blob.type||mime||'application/octet-stream'})); if(!rec)return 0;
+  const blob=await dr.blob();
+  // HEIC 원본 그대로 보관(변환 안 함) → EXIF(GPS·날짜) 보존. 표시는 드라이브 썸네일 URL(photoSrc)로 바로, GPS는 extractImage가 exifr로 읽음
+  const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
   rec._driveId=id;
   if(forceKind)rec.kind=forceKind;   // 견적서 폴더 등 위치 기반 강제 분류
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
@@ -1962,11 +1955,13 @@ function extractImage(file,rec){
           try{render();}catch(_){}
         }catch(err){ /* 변환 실패 시 미리보기 없음(목록엔 남음) */ }
       }).catch(()=>{});
-      // EXIF는 원본에서 시도(실패해도 무방)
-      try{EXIF.getData(file,function(){
-        const dt=EXIF.getTag(this,'DateTimeOriginal')||EXIF.getTag(this,'DateTime');
-        if(dt){const d=parseExifDate(dt);if(d)rec.when=d;}
-      });}catch(_){}
+      // GPS·촬영일시: HEIC는 EXIF.js가 못 읽음 → exifr로 원본에서 읽기(readHeicMeta)
+      (async()=>{ try{
+        const ab=await file.arrayBuffer(); const m=await readHeicMeta(ab);
+        if(m.when)rec.when=m.when;
+        if(m.lat!=null&&m.lng!=null){rec.lat=m.lat;rec.lng=m.lng;rec.place=m.lat.toFixed(4)+', '+m.lng.toFixed(4);}
+        if(typeof __photoCache!=='undefined')__photoCache.key=null; try{render();}catch(_){}
+      }catch(_){} })();
       return res();
     }
     // 일반 이미지(jpg/png/webp 등): 바로 미리보기
@@ -2604,7 +2599,7 @@ function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option valu
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
 function cardHtml(f){
   const isImg=IMG.includes(f.ext),k=KIND[f.kind];
-  const thumb=isImg&&f.thumb?`<img src="${f.thumb}" loading="lazy">`:`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
+  const thumb=(isImg&&photoSrc(f,600))?`<img src="${photoSrc(f,600)}" loading="lazy" referrerpolicy="no-referrer">`:`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
   const gps=f.address?`<div class="gps">📍 ${escapeHtml(f.address)}</div>`:(f.place?`<div class="gps">📍 ${f.place}</div>`:'');
   let extra='';
   if(f.kind==='estimate'&&f.est)extra=`<div class="ext-info">${f.est.customer?escapeHtml(f.est.customer)+' · ':''}${won(f.est.amount)}</div>`;
@@ -3037,7 +3032,7 @@ function viewPhotos(){
     if(!dupSets.length)html+=`<div class="empty">중복으로 의심되는 사진이 없습니다.</div>`;
     dupSets.forEach((g,i)=>{
       html+=`<div class="cluster"><div class="cluster-h"><span class="when">중복 묶음 ${i+1}</span><span class="where">같은 크기·촬영시간 ${g.length}장</span><span class="n">대표 1 + 중복 ${g.length-1}</span></div><div class="cluster-body">`;
-      g.forEach((p,idx)=>{html+=`<div class="ph ${idx>0?'dup':''}">${p.thumb?`<img src="${p.thumb}">`:'<div>IMG</div>'}${idx===0?'<span class="ph-tag ok">대표</span>':'<span class="ph-tag warn">중복</span>'}</div>`;});
+      g.forEach((p,idx)=>{html+=`<div class="ph ${idx>0?'dup':''}">${photoSrc(p,500)?`<img src="${photoSrc(p,500)}" referrerpolicy="no-referrer">`:'<div>IMG</div>'}${idx===0?'<span class="ph-tag ok">대표</span>':'<span class="ph-tag warn">중복</span>'}</div>`;});
       html+=`</div></div>`;
     });
     return html;
@@ -3292,7 +3287,7 @@ function photoCell(p){
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
-    ${p.thumb?`<img src="${p.thumb}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in">`:(IMG.includes(p.ext)?`<div class="ph-load" data-light="${p.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
+    ${photoSrc(p,800)?`<img src="${photoSrc(p,800)}" loading="lazy" data-light="${p.id}" style="cursor:zoom-in" referrerpolicy="no-referrer">`:'<div>IMG</div>'}
     ${selChk(p.id)}
     ${tools}
     ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
@@ -4282,7 +4277,7 @@ function photoCellProj(f,phases){
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
   const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
-    ${f.thumb?`<img src="${f.thumb}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in">`:(IMG.includes(f.ext)?`<div class="ph-load" data-light="${f.id}" style="cursor:zoom-in">☁️<small>탭하면 보기</small></div>`:'<div>IMG</div>')}
+    ${photoSrc(f,800)?`<img src="${photoSrc(f,800)}" loading="lazy" data-light="${f.id}" style="cursor:zoom-in" referrerpolicy="no-referrer">`:'<div>IMG</div>'}
     ${selChk(f.id)}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
@@ -4847,7 +4842,7 @@ function renderLightbox(){
   root.innerHTML=`<div class="lb-bg">
     <button class="lb-close" id="lbClose">✕</button>
     ${__lightboxList.length>1?`<button class="lb-nav lb-prev" id="lbPrev">‹</button><button class="lb-nav lb-next" id="lbNext">›</button>`:''}
-    <div class="lb-stage"><img src="${f.thumb||''}" class="lb-img" id="lbImg"></div>
+    <div class="lb-stage"><img src="${f.thumb||(f._driveId?driveThumbUrl(f._driveId,1600):'')}" class="lb-img" id="lbImg" referrerpolicy="no-referrer"></div>
     <div class="lb-meta"><b>${escapeHtml(f.name)}</b>${meta?`<span>${escapeHtml(meta)}</span>`:''}<span class="lb-count">${__lightboxIdx+1} / ${__lightboxList.length}</span></div>
   </div>`;
   // 가상(미다운로드) 이미지면 드라이브에서 원본을 받아 선명하게 교체(캐시 썸네일은 즉시, 원본은 곧)
