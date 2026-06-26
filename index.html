@@ -1625,17 +1625,35 @@ function getRwToken(interactive){
   return __rwP;
 }
 // 공통: 폴더(들)부터 하위 전체를 훑어 이미지·PDF를 앱에 반영 + 폴더명을 현장으로 인식·배정. tok=drive.readonly 또는 drive.file(Picker로 받은 폴더). 반환 {nImg,nPdf,nProj,chg}
+// 이름 정규화: 확장자·"의 사본"·복사본·(1) 꼬리 제거 → 같은 사진끼리 매칭
+function baseName(n){ n=(n||'').toString();
+  n=n.replace(/\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?|pdf)\b[^.]*$/i,'');   // 확장자(+의 사본 등 뒤꼬리) 제거
+  n=n.replace(/(의 사본|[-_ ]?복사본|[-_ ]?copy|\(\d+\))\s*$/i,'').trim();
+  return n.toLowerCase().replace(/\s+/g,'');
+}
 async function __importTree(roots, tok){
   const GENERIC=new Set(['만물인테리어','현장사진','견적서','명함','데이터','백업','정리완료','_정리완료','사진','photos','img','이미지','문서','기타','완료','원본','새 폴더']);
   const isProjName=(n)=>{ n=(n||'').trim(); if(!n||GENERIC.has(n))return false; if(/^[_.]/.test(n))return false; if(/^\d{1,4}[-_.년 ]?\d{0,2}/.test(n))return false; if(n.length>24)return false; return true; };
   const ensureProj=(name)=>{ if(!state.projects.some(p=>p.name===name)){ state.projects.push({name:name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null}); return true;} return false; };
+  // 이미 앱에 있는 미연결(가상) 사진을 이름으로 빠르게 찾도록 인덱스 — 다운로드 없이 driveId만 연결(표시는 썸네일 URL)
+  const unlinked=new Map();
+  state.files.forEach(x=>{ if(x._virtual && !x._driveId && !__removedIds.has(x._driveId)){ const b=baseName(x.name); if(b && !unlinked.has(b))unlinked.set(b,x); } });
   let queue=(roots||[]).filter(Boolean).map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0, chg=0, nImg=0, nPdf=0;
   while(queue.length && visited<400){
     const cur=queue.shift(); if(!cur||!cur.id||seen.has(cur.id))continue; seen.add(cur.id); visited++;
     let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
     for(const k of kids){
       if(k.mimeType==='application/vnd.google-apps.folder'){ const kp=isProjName(k.name)?k.name:cur.proj; queue.push({id:k.id,proj:kp}); }
-      else if((k.mimeType||'').indexOf('image/')===0){ try{ nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
+      else if((k.mimeType||'').indexOf('image/')===0){ try{
+        // 1) 이미 있는 사진이면 다운로드 없이 driveId만 연결 → 다운로드 실패와 무관하게 즉시 표시 + 통합 속도↑
+        const b=baseName(k.name); const rec0=unlinked.get(b);
+        if(rec0 && !rec0._driveId && !__removedIds.has(k.id) && !state.files.some(x=>x._driveId===k.id)){
+          rec0._driveId=k.id; if(!rec0.kind||rec0.kind==='other')rec0.kind='photo'; unlinked.delete(b); nImg++; chg++;
+          if(cur.proj){ if(ensureProj(cur.proj))nProj++; if(!rec0.project){rec0.project=cur.proj;} }
+          continue;
+        }
+        // 2) 새 사진이면 다운로드해서 반영
+        nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
       else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
     }
   }
