@@ -1760,8 +1760,11 @@ function cloudAutoSave(){
 // 부팅 시: 설정이 있으면 조용히 토큰 받아 최신 내려받기 시도(실패해도 조용히)
 async function gdBootSync(){
   try{
-     // 사용자가 바꾼 ID 우선, 없으면 기본 GD_CLIENT_ID
+    // 사용자가 실제로 드라이브 연결/자동불러오기를 켠 적이 있을 때만 부팅 동기화한다.
+    // 기본 클라이언트 ID만으로 토큰을 요청하면 로컬/미등록 도메인에서 OAuth 오류 화면으로 튕길 수 있다.
     const fid=await idbGet('gd_fileid'); if(fid)__gdFileId=fid;            // 저장해 둔 파일 재사용(중복 생성 방지)
+    const autoload=await idbGet('gd_autoload');
+    if(!fid && !autoload)return;
     if(!__gdCfg||!__gdCfg.clientId)return;
     const localBefore=__dataAt;   // 부팅 직전 로컬 데이터 시각 기억
     // 부팅 토큰은 타임아웃 가드 — 어떤 경우에도 부팅을 멈추지 않게(동의 전이면 조용히 패스)
@@ -1777,7 +1780,7 @@ async function gdBootSync(){
           else if(localBefore) mh.textContent='이 기기 데이터가 더 최신이라 유지 중 — 드라이브로 올리려면 ☁️설정 → ☁️올리기. (현장 '+state.projects.length+'개)';
         }
       }
-      try{ if(await idbGet('gd_autoload')) await gdLoadDriveFiles(true,true); }catch(e){}
+      try{ if(autoload) await gdLoadDriveFiles(true,true); }catch(e){}
     }
   }catch(e){}
   try{ await hydrateThumbs(); }catch(e){}   // 캐시된 썸네일로 사진 즉시 표시
@@ -2272,11 +2275,20 @@ function assignKind(id,k){const f=state.files.find(x=>x.id===id);if(f){f.kind=k;
 function assignProject(id,p){const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();render();}}
 function assignProjectMany(ids,p){ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f)f.project=p||null;});markDirty();render();toast(ids.length+'장을 “'+p+'”에 배정');}
 // 작업명: 묶음 사진 전체에 _worklabel 저장(날짜+위치는 자동, 작업명만 입력)
-function setWorkLabel(ids,label){
-  let n=0;
-  ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f){f._worklabel=label||null;n++;}});
-  markDirty();render();
-  if(label)toast(n+'장에 작업명 “'+label+'” 지정');
+function setWorkLabel(ids,label,opts){
+  opts=opts||{};
+  const next=label||null;
+  let n=0, changed=false;
+  ids.forEach(id=>{
+    const f=state.files.find(x=>x.id===id);
+    if(f){
+      n++;
+      if((f._worklabel||null)!==next){f._worklabel=next;changed=true;}
+    }
+  });
+  if(changed)markDirty();
+  if(opts.render!==false)render();
+  if(changed&&opts.notify!==false&&label)toast(n+'장에 작업명 “'+label+'” 지정');
 }
 
 /* ---------- 사진 클러스터: 시간 주력 + GPS 보조 ---------- */
@@ -4477,6 +4489,11 @@ function setupDelegation(){
     // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
     if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);if(d.qf==='qty'||d.qf==='price')render();return;}
     if(t.id==='phaseProjSel'){__phaseProj=t.value;return render();}
+  });
+  // 작업명은 입력 즉시 상태에 저장한다. 재렌더는 blur/change 때만 해서 타이핑이 끊기지 않게 한다.
+  view.addEventListener('input',e=>{
+    const t=e.target; const d=t.dataset;
+    if(t.matches('input[data-worklabel]'))return setWorkLabel(d.worklabel.split(','),t.value.trim(),{render:false,notify:false});
   });
   // ---- 공정 입력 엔터 위임 ----
   view.addEventListener('keydown',e=>{
