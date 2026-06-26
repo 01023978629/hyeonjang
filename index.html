@@ -2998,7 +2998,6 @@ function viewPhotos(){
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
       <button class="ghost tiny" id="btnGdPick" style="font-size:12.5px;padding:8px 12px">골라 불러오기</button>
-      ${(()=>{const need=photos.filter(p=>!p.thumb&&IMG.includes(p.ext)).length;return need?`<button class="moss tiny" id="btnFillThumbs" style="font-size:12.5px;padding:8px 12px">🖼 썸네일 채우기 (${need})</button>`:'';})()}
       <button class="ghost tiny" id="btnGdPin" style="font-size:12.5px;padding:8px 12px">🔒 고정</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
       <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>
