@@ -689,7 +689,7 @@ function localMonth(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth
 function fmtDate(d){if(!d)return'날짜 없음';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;}
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
-const IMG=['jpg','jpeg','png','heic','webp','gif','bmp','tif','tiff'];
+const IMG=['jpg','jpeg','png','heic','heif','webp','gif','bmp','tif','tiff'];
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
 const SHEETEXT=['xls','xlsx'];
 // 확장자 보정: 끝에 확장자가 없을 때(예: 'IMG_3544.HEIC의 사본')도 중간 확장자/마임으로 실제 형식을 찾음 → 사진 오분류('other') 방지
@@ -719,6 +719,8 @@ function photoSrc(f,w){ if(!f)return ''; if(f.thumb)return f.thumb; if(f._driveI
 function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return '<div>IMG</div>';
   const fb=f._driveId?driveThumbFallback(f._driveId,w):''; const oe=fb?` onerror="this.onerror=null;this.src='${fb}'"`:'';
   return `<img src="${ps}" loading="lazy"${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''} referrerpolicy="no-referrer"${oe}>`; }
+function revokeThumbUrl(f){const u=f&&f.thumb;if(typeof u==='string'&&u.startsWith('blob:')){try{URL.revokeObjectURL(u);}catch(e){} } }
+function clearFileList(){(state.files||[]).forEach(revokeThumbUrl);state.files=[];}
 let __removedIds=new Set();   // 사용자가 '제거'한 중복 사진의 driveId — 다시 불러와도 안 들어오게 기록(idb removed_ids)
 
 /* ---------- 분류: 파일명 + OCR/추출 텍스트 ---------- */
@@ -883,14 +885,14 @@ $('#btnMount').onclick=async()=>{
 $('#btnScan').onclick=()=>scanDir();
 function pickFilesFallback(){
   const inp=document.createElement('input');inp.type='file';inp.multiple=true;
-  inp.onchange=async()=>{const arr=[...inp.files];state.files=[];for(const f of arr)await ingestFile(f);
+  inp.onchange=async()=>{const arr=[...inp.files];clearFileList();for(const f of arr)await ingestFile(f);
     $('#mountName').textContent='📄 '+arr.length+'개 파일';
     $('#mountHint').textContent='이 브라우저는 폴더 이동이 제한됩니다. 분류·OCR 미리보기는 가능합니다.';
     $('#btnOcrAll').disabled=false;render();toast(arr.length+'개 파일 로드됨');};
   inp.click();
 }
 async function scanDir(){
-  if(!state.dirHandle)return;state.files=[];toast('폴더 읽는 중…');
+  if(!state.dirHandle)return;clearFileList();toast('폴더 읽는 중…');
   await walk(state.dirHandle,'');
   await loadProject(); // 저장된 작업 자동 복원
   $('#mountHint').textContent=state.files.length+'개 파일 인식됨.';
@@ -926,6 +928,7 @@ function toggleAutoSave(){
 }
 // 창 닫기 전 경고
 window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue='';}});
+window.addEventListener('unload',()=>{try{(state.files||[]).forEach(revokeThumbUrl);}catch(e){}});
 // 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
 window.addEventListener('pagehide',()=>{try{if(!state._demo)idbSet('appState',serializeData());}catch(e){}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo)idbSet('appState',serializeData());}catch(e){}}});
@@ -1477,6 +1480,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
     if(ph.est)rec.est=ph.est;
     if(ph.contact)rec.contact=ph.contact;
     if(!forceKind && ph.kind&&ph.kind!=='other')rec.kind=ph.kind;   // forceKind면 그대로 유지
+    revokeThumbUrl(ph);
     state.files=state.files.filter(x=>x!==ph);
   }
   return 1;
@@ -1906,6 +1910,7 @@ function showHelp(){
 
 /* ---------- 데모 데이터 (테스트용) ---------- */
 function loadDemo(){
+  clearFileList();
   state.projects=[
     {name:'망원동 카페',stage:2,received:8000000,phases:['철거','방수 1차','방수 2차','목공','타일'],cost:{material:4200000,labor:3000000,outsource:1200000},customer:{name:'김민수',phone:'010-2345-6789',addr:'서울 마포구 망원동'}},
     {name:'대치동 아파트',stage:3,received:24500000,phases:['철거','설비','도배'],cost:{material:12000000,labor:9000000,outsource:4000000}},
@@ -2030,6 +2035,7 @@ function pumpHeicPreviewQueue(){
         await ensureHeic2any();
         const out=await heic2any({blob:job.file,toType:'image/jpeg',quality:0.85});
         const jpg=Array.isArray(out)?out[0]:out;
+        revokeThumbUrl(job.rec);
         job.rec.thumb=URL.createObjectURL(jpg);
         scheduleHeicRender();
       }catch(err){ /* 변환 실패 시 미리보기 없음(목록엔 남음) */ }
@@ -2521,9 +2527,10 @@ function trimDuplicates(){
      {label:`${dups.length}장 제거`,cls:'warn',fn:async()=>{
        const rmSet=new Set(dups.map(p=>p.id));
        const ids=dups.map(p=>p._driveId).filter(Boolean);
-       ids.forEach(id=>__removedIds.add(id));            // 다시 불러와도 안 들어오게 기록
-       try{ await idbSet('removed_ids',[...__removedIds]); }catch(e){}
-       state.files=state.files.filter(f=>!rmSet.has(f.id));
+        ids.forEach(id=>__removedIds.add(id));            // 다시 불러와도 안 들어오게 기록
+        try{ await idbSet('removed_ids',[...__removedIds]); }catch(e){}
+        dups.forEach(revokeThumbUrl);
+        state.files=state.files.filter(f=>!rmSet.has(f.id));
        ids.forEach(id=>{try{idbDel('thumb:'+id);}catch(e){}});   // 썸네일 캐시 정리
        markDirty();closeModal();render();toast(dups.length+'장의 중복을 제거했습니다(드라이브 원본은 유지).');
      }}]);
@@ -3883,7 +3890,7 @@ function viewSchedule(){
             ${r.actualWorkers?`<div class="sr-line"><b>실제 인원</b> ${escapeHtml(String(r.actualWorkers))}명</div>`:''}
             ${r.material?`<div class="sr-line"><b>자재</b> ${escapeHtml(r.material)}</div>`:''}
             ${r.issue?`<div class="sr-line warn"><b>특이사항</b> ${escapeHtml(r.issue)}</div>`:''}
-            ${repPhotos.length?`<div class="sr-photos">${repPhotos.slice(0,6).map(p=>`<img src="${p.thumb}" data-light="${p.id}" title="${escapeAttr(p.name)}">`).join('')}${repPhotos.length>6?`<span class="sr-more">+${repPhotos.length-6}</span>`:''}</div>`:''}
+            ${repPhotos.length?`<div class="sr-photos">${repPhotos.slice(0,6).map(p=>photoImg(p,300,p.id)).join('')}${repPhotos.length>6?`<span class="sr-more">+${repPhotos.length-6}</span>`:''}</div>`:''}
           </div>`:''}
         </div>
         <div class="sch-tools">
@@ -3903,7 +3910,7 @@ function viewSchedule(){
 function reportPhotos(s){
   if(!s.project)return [];
   return state.files.filter(f=>{
-    if(f.kind!=='photo'||f.project!==s.project||!f.thumb)return false;
+    if(f.kind!=='photo'||f.project!==s.project||!(f.thumb||f._driveId))return false;
     if(!f.when)return false;
     const fd=`${f.when.getFullYear()}-${String(f.when.getMonth()+1).padStart(2,'0')}-${String(f.when.getDate()).padStart(2,'0')}`;
     return fd===s.date;
@@ -4005,7 +4012,7 @@ function openReportEdit(id){
   const dd=new Date(s.date);const wd=['일','월','화','수','목','금','토'][dd.getDay()];
   const photos=reportPhotos(s);
   const photoBlock=photos.length
-    ? `<div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:4px">📷 이 날 현장 사진 ${photos.length}장 (자동 연결)</div><div class="sr-photos">${photos.slice(0,8).map(p=>`<img src="${p.thumb}" data-light="${p.id}" title="${escapeAttr(p.name)}">`).join('')}${photos.length>8?`<span class="sr-more">+${photos.length-8}</span>`:''}</div>`
+    ? `<div style="font-size:11px;color:var(--muted);font-weight:600;margin-top:4px">📷 이 날 현장 사진 ${photos.length}장 (자동 연결)</div><div class="sr-photos">${photos.slice(0,8).map(p=>photoImg(p,300,p.id)).join('')}${photos.length>8?`<span class="sr-more">+${photos.length-8}</span>`:''}</div>`
     : (s.project?`<div class="hint" style="margin-top:4px">이 날(${s.date}) ${escapeHtml(s.project)} 현장 사진이 없습니다. 사진을 불러오면 자동으로 여기 표시됩니다.</div>`:`<div class="hint" style="margin-top:4px">일정에 현장이 연결되면 그날 사진이 자동 표시됩니다.</div>`);
   const body=`<div class="sch-form">
     <div style="font-size:12px;color:var(--muted);margin-bottom:2px">${s.date} (${wd}) · ${escapeHtml(s.title)}${s.project?' · '+escapeHtml(s.project):''}</div>
@@ -4708,20 +4715,43 @@ async function exportProjectPDF(proj){
   doc.text('Files: '+list.length+'    Estimate total: '+(est?est.toLocaleString('ko-KR')+' KRW':'-'),40,y);y+=24;
   ['estimate','bizreg','card','photo','other'].forEach(k=>{const n=list.filter(f=>f.kind===k).length;if(n)doc.text('· '+KIND[k].folder+': '+n,48,y),y+=18;});
   // 이미지 페이지
-  const imgs=list.filter(f=>IMG.includes(f.ext)&&f.thumb);
+  const imgs=list.filter(f=>IMG.includes(f.ext)&&(f.thumb||f._driveId||f._file||f.handle));
+  let skipped=0;
   for(const f of imgs){
-    doc.addPage();
+    let loaded=null;
     try{
-      const im=await loadImg(f.thumb);
+      loaded=await loadPhotoForExport(f);
+      if(!loaded){skipped++;continue;}
+      doc.addPage();
+      const im=loaded.img;
       const r=Math.min((W-80)/im.width,(H-120)/im.height);
       const w=im.width*r,h=im.height*r;
       doc.addImage(im,'JPEG',(W-w)/2,60,w,h);
       doc.setFontSize(9);doc.setTextColor(80,80,80);doc.text(f.name,40,H-30);
-    }catch(e){}
+    }catch(e){skipped++;}
+    finally{ if(loaded&&loaded.url)try{URL.revokeObjectURL(loaded.url);}catch(e){} }
   }
-  doc.save(proj+'_묶음.pdf');toast('“'+proj+'” PDF 저장됨');
+  doc.save(proj+'_묶음.pdf');toast('“'+proj+'” PDF 저장됨'+(skipped?` · 사진 ${skipped}장 제외`:''));
 }
 function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+async function loadPhotoForExport(f){
+  let file=null;
+  try{file=await photoShareFile(f);}catch(e){}
+  if(!file)return null;
+  let blob=file;
+  const e=(f.ext||bestExt(file.name,file.type)||'').toLowerCase();
+  const isHeic=e==='heic'||e==='heif'||file.type==='image/heic'||file.type==='image/heif';
+  if(isHeic){
+    try{
+      await ensureHeic2any();
+      const out=await heic2any({blob:file,toType:'image/jpeg',quality:0.9});
+      blob=Array.isArray(out)?out[0]:out;
+    }catch(err){return null;}
+  }
+  const url=URL.createObjectURL(blob);
+  try{return {img:await loadImg(url),url};}
+  catch(err){try{URL.revokeObjectURL(url);}catch(e){} return null;}
+}
 
 /* ---------- 견적서 HTML 양식 → 인쇄(PDF 저장) ---------- */
 function quoteHTML(q){
@@ -4831,10 +4861,9 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
   const allPhotos=state.files.filter(f=>f.project===proj&&f.kind==='photo'&&(f.thumb||f._driveId));
   if(!allPhotos.length){toast('이 현장에 사진이 없습니다.');return;}
   if(!window.jspdf||!window.jspdf.jsPDF){toast('PDF 모듈을 불러오지 못했습니다(네트워크 확인 후 다시).');return;}
-  const photos=allPhotos.filter(f=>f.thumb);   // 실제로 그릴 수 있는(썸네일 있는) 사진만 — 미다운로드분 빈칸 방지
-  if(!photos.length){toast('사진을 먼저 드라이브에서 불러오세요(사진을 한 번 열면 표지에 들어갑니다).');return;}
-  const skipped=allPhotos.length-photos.length;
-  toast('“'+proj+'” 포트폴리오 만드는 중…'+(skipped?` (${skipped}장은 미다운로드로 제외)`:''));
+  const photos=allPhotos;
+  let skipped=0;
+  toast('“'+proj+'” 포트폴리오 만드는 중…'+(photos.some(f=>!f.thumb&&f._driveId)?' (드라이브 사진 원본 준비 포함)':''));
   const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
   const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
   const s=projStats(proj);
@@ -4878,22 +4907,26 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
     const ch=cw*0.72;
     let x=mx,y=my,col=0;
     for(const f of g.items){
-      if(y+ch>Hp-40){doc.addPage();y=40;col=0;x=mx;}
+      let loaded=null;
       try{
-        const im=await loadImg(f.thumb);
+        loaded=await loadPhotoForExport(f);
+        if(!loaded){skipped++;continue;}
+        if(y+ch>Hp-40){doc.addPage();y=40;col=0;x=mx;}
+        const im=loaded.img;
         const r=Math.min(cw/im.width,ch/im.height);
         const w=im.width*r,hh=im.height*r;
         doc.setFillColor(238,238,238);doc.rect(x,y,cw,ch,'F');
         doc.addImage(im,'JPEG',x+(cw-w)/2,y+(ch-hh)/2,w,hh);
         doc.setFontSize(7.5);doc.setTextColor(120,120,120);doc.setFont('helvetica','normal');
         doc.text((f.when?fmtDay(f.when):'')+'  '+f.name.slice(0,28),x+2,y+ch+11);
-      }catch(e){}
+      }catch(e){skipped++;continue;}
+      finally{ if(loaded&&loaded.url)try{URL.revokeObjectURL(loaded.url);}catch(e){} }
       col++;
       if(col>=cols){col=0;x=mx;y+=ch+26;}else{x+=cw+gap;}
     }
   }
   doc.save(safeName(proj)+'_포트폴리오.pdf');
-  toast('“'+proj+'” 포트폴리오 저장됨');
+  toast('“'+proj+'” 포트폴리오 저장됨'+(skipped?` · 사진 ${skipped}장 제외`:''));
 }
 
 /* ---------- 현장별 ZIP (종류별 폴더) ---------- */
