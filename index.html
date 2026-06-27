@@ -334,6 +334,12 @@
   .pv-info{display:flex;flex-direction:column;gap:2px}
   .pv-row{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line-soft);font-size:12.5px}
   .pv-row span{color:var(--muted)}.pv-row b{color:var(--ink);text-align:right}
+  .pv-xlsx{width:100%;align-self:stretch;overflow:auto}
+  .pv-xlsx .pv-xsum{font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5}
+  .pv-xlsx table{width:100%;border-collapse:collapse;background:var(--paper);font-size:11.5px}
+  .pv-xlsx th,.pv-xlsx td{border:1px solid var(--line-soft);padding:5px 7px;vertical-align:top;min-width:70px;max-width:180px;word-break:break-word}
+  .pv-xlsx th{background:var(--paper-2);color:var(--blueprint);font-weight:700;position:sticky;top:0}
+  .est-content{font-size:12px;color:var(--muted);line-height:1.45;max-width:240px}
   @media(max-width:640px){.pv-wrap{grid-template-columns:1fr}}
   .photo-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);margin-bottom:12px}
   .pb-stat{font-size:12.5px;color:var(--muted-2)}.pb-stat b{color:var(--blueprint);font-size:15px;margin-left:3px}
@@ -685,6 +691,7 @@ function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${p
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
 const IMG=['jpg','jpeg','png','heic','webp','gif','bmp','tif','tiff'];
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
+const SHEETEXT=['xls','xlsx'];
 // 확장자 보정: 끝에 확장자가 없을 때(예: 'IMG_3544.HEIC의 사본')도 중간 확장자/마임으로 실제 형식을 찾음 → 사진 오분류('other') 방지
 function bestExt(name,type){
   let e=ext(name); if(IMG.includes(e)||DOCEXT.includes(e))return e;
@@ -933,7 +940,7 @@ function serializeData(){
     contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:f.text||'',ocr:f.ocr,est:f.est,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
+      text:f.text||'',ocr:f.ocr,est:f.est,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
       driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
@@ -962,7 +969,7 @@ function applyData(data){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
@@ -976,7 +983,7 @@ function applyData(data){
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
       kind:fkind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
-      est:s.est||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_file:null,_virtual:true});
+      est:s.est||null,quote:s.quote||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_file:null,_virtual:true});
     restored++;
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
@@ -2170,7 +2177,7 @@ async function runBatchOCR(){
     if(f.kind!=='estimate') f.kind=classify(f);
     if(f.kind==='estimate'&&!(f.est&&f.est._edited)){
       // 엑셀이면 그리드에서 뽑은 견적, PDF면 텍스트 파싱
-      if(xlsxQuote){ f.est=applyLearning(quoteToEst(xlsxQuote),f); }
+      if(xlsxQuote&&quoteRealItems(xlsxQuote).length){ f.quote=xlsxQuote; f.est=applyLearning(quoteToEst(xlsxQuote),f); }
       else f.est=applyLearning(parseEstimate(f.text),f);
     }
     if(f.kind==='card'&&!(f.contact&&f.contact._edited))f.contact=parseCard(f.text);
@@ -2200,13 +2207,44 @@ async function xlsxEstimate(rec){
   }catch(e){ return {text:'',quote:null}; }
 }
 // 견적(quote) → 파일 카드용 est 요약(고객/금액/날짜/품목수)
+function quoteRealItems(q){
+  return ((q&&q.items)||[]).filter(it=>String((it&&it.name)||'').trim()||String((it&&it.spec)||'').trim()||num(it&&it.price)||num(it&&it.qty)>1);
+}
+function quoteItemSummary(q){
+  const items=quoteRealItems(q);
+  const names=items.map(it=>String((it&&it.name)||'').trim()).filter(Boolean);
+  if(names.length)return names.slice(0,3).join(', ')+(names.length>3?' 외 '+(names.length-3)+'개':'');
+  return items.length?'품목 '+items.length+'개':'';
+}
 function quoteToEst(q){
   if(!q)return null;
   const supply=Math.round((q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
   const vat=q.vatIncluded?Math.round(supply/11):Math.round(supply*0.1);
   const amount=q.vatIncluded?supply:supply+vat;
   return { customer:q.title||q.customer||'', amount:amount, supply:q.vatIncluded?supply-vat:supply, vat:vat,
-           date:q.date||'', itemCount:(q.items||[]).length, _fromXlsx:true };
+           date:q.date||'', itemCount:quoteRealItems(q).length, summary:quoteItemSummary(q), _fromXlsx:true };
+}
+function estimateContentSummary(f){
+  if(!f)return '';
+  const e=f.est||{};
+  const q=f.quote||e.quote||null;
+  const qsum=quoteItemSummary(q);
+  if(qsum)return qsum;
+  if(e.summary)return e.summary;
+  if(e.itemCount)return '품목 '+e.itemCount+'개';
+  const lines=String(f.text||'').split(/\n/).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const hit=lines.find(ln=>/(철거|목공|도배|타일|설비|방수|전기|조명|도장|마감|공사|시공|자재|인건|품명|규격)/.test(ln)&&!/(합계|총액|견적금액|사업자|전화|주소|대표|부가세)/.test(ln));
+  if(hit)return hit.slice(0,42);
+  return e.customer||String(f.name||'').replace(/\.[^.]+$/,'');
+}
+function canPreviewFile(f){
+  const previewable=!!(f&&(IMG.includes(f.ext)||f.ext==='pdf'||SHEETEXT.includes(f.ext)));
+  return !!(previewable&&(!f._virtual||f._driveId));
+}
+function previewButtonHtml(f,label){
+  if(!canPreviewFile(f))return '';
+  const extLabel=SHEETEXT.includes(f.ext)?'엑셀 미리보기':(f.ext==='pdf'?'PDF 미리보기':'미리보기');
+  return `<button class="mini-btn" data-preview="${f.id}" title="${escapeAttr(extLabel)}">🔍 ${escapeHtml(label||extLabel)}</button>`;
 }
 async function pdfText(rec){
   const file=await getFileOf(rec);if(!file)return'';
@@ -2677,9 +2715,9 @@ function cardHtml(f){
   let extra='';
   if(f.kind==='estimate'&&f.est)extra=`<div class="ext-info">${f.est.customer?escapeHtml(f.est.customer)+' · ':''}${won(f.est.amount)}</div>`;
   if(f.kind==='card'&&f.contact)extra=`<div class="ext-info">${escapeHtml(f.contact.name||'')} ${f.contact.phone||''}</div>`;
-  // 견적서뿐 아니라 PDF·이미지면 미리보기 제공(가상분은 드라이브 id가 있으면 즉석 다운로드해 표시)
-  const canPreview=(f.kind==='estimate'||isImg||f.ext==='pdf')&&(!f._virtual||f._driveId);
-  const preview=canPreview?`<button class="mini-btn" data-preview="${f.id}" title="미리보기">🔍 미리보기</button>`:'';
+  // 견적서뿐 아니라 PDF·엑셀·이미지면 미리보기 제공(가상분은 드라이브 id가 있으면 즉석 다운로드해 표시)
+  const canPreview=canPreviewFile(f);
+  const preview=previewButtonHtml(f,'미리보기');
   const rename=(!f._virtual)?`<button class="mini-btn" data-rename="${f.id}" title="파일 이름 변경">✎ 이름</button>`:'';
   const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
   return `<div class="card" data-id="${f.id}">
@@ -2796,6 +2834,8 @@ async function showProjectMap(projName){
 }
 function viewDashboard(){
   if(!state.projects.length){
+    const estHtml=dashboardEstimateDetailsHTML();
+    const monthHtml=monthlyQuoteHTML();
     return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
@@ -2803,7 +2843,7 @@ function viewDashboard(){
         <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button>
       </div>
       <small style="display:block;margin-top:10px;color:var(--muted)">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf). · ‘전체 통합’은 드라이브 앱으로 올린 사진까지 불러옵니다(권한 1회 추가).</small>
-    </div>`;
+    </div>`+estHtml+monthHtml;
   }
   const stats=state.projects.map(p=>({name:p.name,...projStats(p.name)}));
   const totEst=stats.reduce((a,s)=>a+s.est,0);
@@ -2868,20 +2908,23 @@ function viewDashboard(){
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시
-  const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
-  if(estFiles.length){
-    html+=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
-    html+=`<table class="estimate-table"><thead><tr><th>견적서</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th></tr></thead><tbody>`;
-    let ts=0,tv=0,ta=0;
-    estFiles.forEach(f=>{const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
-      html+=`<tr><td>${escapeHtml(e.customer||f.name)}</td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td></tr>`;
-    });
-    html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td></tr>`;
-    html+=`</tbody></table>`;
-    html+=`<p class="hint" style="margin:6px 0 0">견적서가 미배정이면 견적·정산 탭이나 서류 탭에서 현장을 지정할 수 있습니다. 금액이 비어 있으면 ‘일괄 글자 읽기(OCR)’를 누르세요.</p></div>`;
-  }
+  html+=dashboardEstimateDetailsHTML();
   // 월별 견적 현황(외부 견적서 + 앱 작성 견적 합산)
   html+=monthlyQuoteHTML();
+  return html;
+}
+function dashboardEstimateDetailsHTML(){
+  const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
+  if(!estFiles.length)return '';
+  let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
+  html+=`<table class="estimate-table"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
+  let ts=0,tv=0,ta=0;
+  estFiles.forEach(f=>{const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
+    html+=`<tr><td>${escapeHtml(e.customer||f.name)}</td><td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td><td>${previewButtonHtml(f,'보기')}</td></tr>`;
+  });
+  html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td><td></td></tr>`;
+  html+=`</tbody></table>`;
+  html+=`<p class="hint" style="margin:6px 0 0">견적서가 미배정이면 견적·정산 탭이나 서류 탭에서 현장을 지정할 수 있습니다. 금액이 비어 있으면 ‘일괄 글자 읽기(OCR)’를 누르세요.</p></div>`;
   return html;
 }
 function viewDocs(){
@@ -3477,16 +3520,17 @@ function viewEstimates(){
   const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
-  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
       <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
+      <td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td>
       <td><input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></td>
       <td><input type="text" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}" style="width:96px"></td>
       <td><input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}" style="width:118px"></td>
       <td><select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select></td>
       <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
-      <td style="white-space:nowrap"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
+      <td style="white-space:nowrap">${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
     </tr>`;});
   html+=`</tbody></table>`;
   const total=Object.values(byProj).reduce((a,b)=>a+b,0);
@@ -5104,6 +5148,7 @@ async function previewEstimate(id){
     ${e.vat?`<div class="pv-row"><span>부가세</span><b>${won(e.vat)}</b></div>`:''}
     <div class="pv-row"><span>견적일</span><b>${escapeHtml(e.date||'-')}</b></div>
     <div class="pv-row"><span>사업자번호</span><b>${escapeHtml(e.bizno||'-')}</b></div>
+    <div class="pv-row"><span>내용</span><b>${escapeHtml(estimateContentSummary(f)||'-')}</b></div>
     <div class="pv-row"><span>파일</span><b style="font-size:11px;word-break:break-all">${escapeHtml(f.name)}</b></div>
   </div>`;
   openModal('견적서 미리보기',
@@ -5140,6 +5185,26 @@ async function previewEstimate(id){
       await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
       box.innerHTML='';box.appendChild(cv);
       if(pdf.numPages>1){const more=document.createElement('div');more.className='pv-more';more.textContent='총 '+pdf.numPages+'페이지 중 1페이지';box.appendChild(more);}
+    }else if(SHEETEXT.includes(f.ext)){
+      if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX);
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      if(!ws){box.innerHTML='<div class="pv-loading">엑셀 시트가 없습니다.</div>';return;}
+      const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
+      const q=parseQuoteFromGrid(grid,f.name);
+      if(q&&quoteRealItems(q).length){
+        f.quote=q;
+        if(!(f.est&&f.est._edited))f.est=applyLearning(quoteToEst(q),f);
+        markDirty();
+      }
+      const rows=grid.slice(0,40);
+      const maxCols=Math.min(10,Math.max(1,...rows.map(r=>(r||[]).length)));
+      const head='<tr>'+Array.from({length:maxCols},(_,i)=>'<th>'+String.fromCharCode(65+i)+'</th>').join('')+'</tr>';
+      const body=rows.map(r=>'<tr>'+Array.from({length:maxCols},(_,i)=>'<td>'+escapeHtml(String((r||[])[i]??''))+'</td>').join('')+'</tr>').join('');
+      const more=grid.length>40?' · '+(grid.length-40)+'행 더 있음':'';
+      const summary=quoteItemSummary(q)||estimateContentSummary(f)||'';
+      box.innerHTML='<div class="pv-xlsx"><p class="pv-xsum"><b>'+escapeHtml(wb.SheetNames[0])+'</b> 시트 미리보기'+more+(summary?'<br>내용: '+escapeHtml(summary):'')+'</p><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
     }else{
       box.innerHTML='<div class="pv-loading">이 형식은 미리보기를 지원하지 않습니다. 추출 정보를 확인하세요.</div>';
     }
