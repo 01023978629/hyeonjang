@@ -694,6 +694,15 @@ function bestExt(name,type){
   if(type==='application/pdf')return 'pdf';
   return e;
 }
+function kindFromSourceFolder(prefix){
+  const top=String(prefix||'').split('/').filter(Boolean)[0]||'';
+  if(top==='견적서')return 'estimate';
+  if(top==='사업자등록증')return 'bizreg';
+  if(top==='명함')return 'card';
+  if(top==='도면')return 'drawing';
+  if(top==='현장사진')return 'photo';
+  return null;
+}
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 // HEIC도 JPEG로 렌더해 주는 lh3 형식(drive.google.com/thumbnail은 HEIC 미지원) — 로그인된 브라우저에서 바로 표시
 function driveThumbUrl(id,w){ return 'https://lh3.googleusercontent.com/d/'+id+'=w'+(w||1000); }
@@ -1936,7 +1945,7 @@ function loadDemo(){
 async function walk(dir,prefix){
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      if(['견적서','사업자등록증','명함','현장사진','기타','_정리완료'].includes(name))continue;
+      if(name==='_정리완료')continue;
       await walk(handle,prefix+name+'/');
     }else{try{const f=await handle.getFile();await ingestFile(f,handle,prefix);}catch(e){}}
   }
@@ -1950,6 +1959,8 @@ async function ingestFile(file,handle=null,prefix=''){
     est:null,contact:null,_file:handle?null:file};
   if(isImg)await extractImage(file,rec);
   rec.kind=classify(rec);
+  const folderKind=kindFromSourceFolder(prefix);
+  if(folderKind)rec.kind=folderKind;
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -1959,15 +1970,7 @@ function extractImage(file,rec){
     // HEIC/HEIF는 브라우저가 직접 못 그림 → JPG로 변환해 미리보기 생성(없으면 빈 화면)
     if(e==='heic'||e==='heif'){
       rec.thumb=null; // 변환 전엔 미리보기 없음(깨진 이미지 대신)
-      ensureHeic2any().then(async()=>{
-        try{
-          const out=await heic2any({blob:file,toType:'image/jpeg',quality:0.85});
-          const jpg=Array.isArray(out)?out[0]:out;
-          rec.thumb=URL.createObjectURL(jpg);
-          if(typeof __photoCache!=='undefined')__photoCache.key=null;
-          try{render();}catch(_){}
-        }catch(err){ /* 변환 실패 시 미리보기 없음(목록엔 남음) */ }
-      }).catch(()=>{});
+      queueHeicPreview(file,rec);
       // GPS·촬영일시: HEIC는 EXIF.js가 못 읽음 → exifr로 원본에서 읽기(readHeicMeta)
       (async()=>{ try{
         const ab=await file.arrayBuffer(); const m=await readHeicMeta(ab);
@@ -2000,6 +2003,32 @@ function ensureHeic2any(){
     document.head.appendChild(s);
   });
   return __heicLoading;
+}
+let __heicPreviewQueue=[],__heicPreviewRunning=0,__heicRenderTimer=null;
+function queueHeicPreview(file,rec){
+  __heicPreviewQueue.push({file,rec});
+  pumpHeicPreviewQueue();
+}
+function scheduleHeicRender(){
+  if(typeof __photoCache!=='undefined')__photoCache.key=null;
+  clearTimeout(__heicRenderTimer);
+  __heicRenderTimer=setTimeout(()=>{try{render();}catch(_){}},450);
+}
+function pumpHeicPreviewQueue(){
+  while(__heicPreviewRunning<2&&__heicPreviewQueue.length){
+    const job=__heicPreviewQueue.shift();
+    __heicPreviewRunning++;
+    (async()=>{
+      try{
+        await ensureHeic2any();
+        const out=await heic2any({blob:job.file,toType:'image/jpeg',quality:0.85});
+        const jpg=Array.isArray(out)?out[0]:out;
+        job.rec.thumb=URL.createObjectURL(jpg);
+        scheduleHeicRender();
+      }catch(err){ /* 변환 실패 시 미리보기 없음(목록엔 남음) */ }
+      finally{__heicPreviewRunning--;pumpHeicPreviewQueue();}
+    })();
+  }
 }
 // exifr 지연 로드: HEIC EXIF(GPS·촬영일시)를 읽기 위함 (EXIF.js는 HEIC 미지원)
 let __exifrLoading=null;
