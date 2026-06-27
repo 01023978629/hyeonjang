@@ -805,6 +805,35 @@ function parseEstimate(text){
   const t=text||'';
   const lines=t.split(/\n/);
   let amount=0, supply=0, vat=0;
+  const moneyNums=(s,min,base)=>{
+    const out=[];let m;const rx=/[\d,]{3,}/g;
+    while((m=rx.exec(String(s||'')))){
+      const v=won2num(m[0]);
+      if(v>=(min||1000)&&v<10000000000)out.push({v,start:(base||0)+m.index,end:(base||0)+m.index+m[0].length});
+    }
+    return out;
+  };
+  const nearMoney=(re,min)=>{
+    let best=0,m;
+    const rx=new RegExp(re.source,re.flags.includes('g')?re.flags:re.flags+'g');
+    while((m=rx.exec(t))){
+      const from=Math.max(0,m.index-50), to=Math.min(t.length,m.index+180);
+      const nums=moneyNums(t.slice(from,to),min,from);
+      let picked=null,score=Infinity;
+      const labelEnd=m.index+m[0].length;
+      nums.forEach(n=>{
+        const after=n.start>=labelEnd;
+        const dist=after?n.start-labelEnd:m.index-n.end+30;
+        if(dist>=0&&dist<score){score=dist;picked=n;}
+      });
+      if(picked&&picked.v>best)best=picked.v;
+      if(rx.lastIndex===m.index)rx.lastIndex++;
+    }
+    return best;
+  };
+  amount=nearMoney(/합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|계\s*약\s*금\s*액|청구\s*금\s*액|받을\s*금액|Grand\s*Total|Total/gi,10000);
+  supply=nearMoney(/공\s*급\s*가\s*액|공급가|공급\s*금액|소\s*계|Subtotal/gi,10000);
+  vat=nearMoney(/부\s*가\s*세|세\s*액|V\.?\s*A\.?\s*T\.?/gi,1000);
   // 1) 합계/총액 류 라인에서 최댓값
   for(const ln of lines){
     if(/(합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|총\s*견\s*적|받을\s*금액|청구\s*금액)/.test(ln)){
@@ -816,6 +845,8 @@ function parseEstimate(text){
   }
   // 2) 합계가 없고 공급가액+부가세가 있으면 합산
   if(!amount && supply){ amount = supply + vat; }
+  if(amount && supply && !vat && amount>supply)vat=amount-supply;
+  if(amount && !supply && vat && amount>vat)supply=amount-vat;
   // 3) 폴백: 가장 큰 금액
   if(!amount){
     const nums=(t.match(/[\d,]{5,}/g)||[]).map(won2num);
@@ -2197,9 +2228,40 @@ async function runBatchOCR(){
   toast('일괄 OCR 완료 · 분류 갱신'+(movedN?(' · 드라이브 '+movedN+'개 폴더 정리됨'):''));
 }
 async function getFileOf(rec){return rec.handle?await rec.handle.getFile():rec._file;}
+function mimeFromExt(e){
+  e=String(e||'').toLowerCase();
+  if(e==='pdf')return 'application/pdf';
+  if(e==='xlsx')return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if(e==='xls')return 'application/vnd.ms-excel';
+  if(IMG.includes(e))return 'image/'+(e==='jpg'?'jpeg':e);
+  return 'application/octet-stream';
+}
+async function driveFileOf(rec,interactive){
+  if(!rec||!rec._driveId)return null;
+  const makeFile=async(tok)=>{
+    if(!tok)return null;
+    const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+rec._driveId+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
+    if(!dr.ok)return null;
+    const blob=await dr.blob();
+    return new File([blob],rec.name||('drive_'+rec._driveId),{type:blob.type||mimeFromExt(rec.ext)});
+  };
+  try{ if(__gdToken){const got=await makeFile(__gdToken); if(got)return got;} }catch(e){}
+  try{ if(!__gdToken)await gdGetToken(false); if(__gdToken){const got=await makeFile(__gdToken); if(got)return got;} }catch(e){}
+  try{ const ro=await getRoToken(false); const got=await makeFile(ro); if(got)return got; }catch(e){}
+  if(interactive){
+    try{ if(!__gdToken)await gdGetToken(true); if(__gdToken){const got=await makeFile(__gdToken); if(got)return got;} }catch(e){}
+    try{ const ro=await getRoToken(true); const got=await makeFile(ro); if(got)return got; }catch(e){}
+  }
+  return null;
+}
+async function readableFileOf(rec,interactive){
+  let file=null; try{file=await getFileOf(rec);}catch(e){}
+  if(file)return file;
+  return await driveFileOf(rec,interactive);
+}
 // 엑셀(.xlsx/.xls) 견적서에서 견적 정보 추출 → {text(검색·분류용), quote(품목·금액)}
-async function xlsxEstimate(rec){
-  const file=await getFileOf(rec); if(!file)return {text:'',quote:null};
+async function xlsxEstimate(rec,fileOverride){
+  const file=fileOverride||await getFileOf(rec); if(!file)return {text:'',quote:null};
   if(typeof XLSX==='undefined'){ try{ await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX); }catch(e){ return {text:'',quote:null}; } }
   try{
     const buf=await file.arrayBuffer();
@@ -2252,8 +2314,8 @@ function previewButtonHtml(f,label){
   const extLabel=SHEETEXT.includes(f.ext)?'엑셀 미리보기':(f.ext==='pdf'?'PDF 미리보기':'미리보기');
   return `<button class="mini-btn" data-preview="${f.id}" title="${escapeAttr(extLabel)}">🔍 ${escapeHtml(label||extLabel)}</button>`;
 }
-async function pdfText(rec){
-  const file=await getFileOf(rec);if(!file)return'';
+async function pdfText(rec,fileOverride){
+  const file=fileOverride||await getFileOf(rec);if(!file)return'';
   const buf=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:buf}).promise;
   let out='';const pages=Math.min(pdf.numPages,5);
@@ -2269,6 +2331,82 @@ async function pdfText(rec){
 async function imgOCR(rec){
   const file=await getFileOf(rec);if(!file)return'';
   return await ocrImageFile(file,rec);   // Vision 우선(키 있으면), 없으면 Tesseract
+}
+function guessProjectForEstimate(f){
+  if(!f||f.project||!state.projects.length)return;
+  const e=f.est||{};
+  const hay=[f.name,f.prefix,e.customer,f.text].join(' ');
+  const hits=state.projects.filter(p=>p&&p.name&&(hay.includes(p.name)||String(e.customer||'').includes(p.name)||p.name.includes(String(e.customer||'').trim())));
+  if(hits.length===1)f.project=hits[0].name;
+}
+function isEstimateCandidate(f){
+  if(!f)return false;
+  if(f.kind==='estimate')return true;
+  return (f.ext==='pdf'||SHEETEXT.includes(f.ext))&&/(견적|estimate|quotation|quote)/i.test((f.name||'')+' '+(f.prefix||''));
+}
+async function analyzeEstimateFile(f,opt){
+  opt=opt||{};
+  if(!f)return {ok:false,reason:'missing'};
+  if(f.est&&f.est._edited&&!opt.force)return {ok:false,skipped:true,reason:'edited'};
+  const file=await readableFileOf(f,!!opt.interactive);
+  if(!file)return {ok:false,reason:'file'};
+  const e=(f.ext||bestExt(file.name,file.type)||'').toLowerCase();
+  let xlsxQuote=null, text='';
+  try{
+    if(e==='xlsx'||e==='xls'){
+      const r=await xlsxEstimate(f,file);
+      text=r.text||''; xlsxQuote=r.quote||null;
+    }else if(e==='pdf'){
+      text=await pdfText(f,file);
+    }else if(IMG.includes(e)){
+      text=await ocrImageFile(file,f);
+    }else{
+      return {ok:false,reason:'type'};
+    }
+  }catch(err){return {ok:false,reason:err.message||'read'};}
+  f.text=text||f.text||'';
+  f.ocr='done';
+  f.kind='estimate';
+  if(xlsxQuote&&quoteRealItems(xlsxQuote).length){
+    f.quote=xlsxQuote;
+    f.est=applyLearning(quoteToEst(xlsxQuote),f);
+  }else{
+    const est=applyLearning(parseEstimate(f.text),f);
+    if(est){
+      const old=f.est||{};
+      f.est=Object.assign({},old,est);
+      delete f.est._edited;
+    }
+  }
+  guessProjectForEstimate(f);
+  return {ok:!!(f.est&&(f.est.amount||f.est.supply||f.est.customer||f.est.date)), amount:(f.est&&f.est.amount)||0};
+}
+async function analyzeEstimateById(id){
+  const f=state.files.find(x=>x.id===id);if(!f)return;
+  toast('견적서 분석 중... '+f.name);
+  const r=await analyzeEstimateFile(f,{force:true,interactive:true});
+  markDirty();render();
+  if(r.ok)toast('분석 완료 — '+(f.est?.amount?won(f.est.amount):'금액 확인 필요'));
+  else toast('분석 실패 — 원본 파일/권한 또는 PDF 내용을 확인하세요');
+}
+async function analyzeAllEstimates(){
+  const targets=state.files.filter(isEstimateCandidate);
+  if(!targets.length){toast('분석할 견적서가 없습니다.');return;}
+  const prog=$('#ocrProg'),bar=$('#ocrBar'),stat=$('#ocrStat');
+  if(prog)prog.style.display='block';
+  let ok=0,fail=0,skip=0;
+  for(let i=0;i<targets.length;i++){
+    const f=targets[i];
+    if(stat)stat.textContent=`견적서 분석 (${i+1}/${targets.length}) ${f.name}`;
+    if(bar)bar.style.width=Math.round(i/targets.length*100)+'%';
+    const r=await analyzeEstimateFile(f,{force:false,interactive:i===0});
+    if(r.ok)ok++; else if(r.skipped)skip++; else fail++;
+    if((i+1)%3===0)render();
+  }
+  if(bar)bar.style.width='100%';
+  if(prog)setTimeout(()=>{prog.style.display='none';if(bar)bar.style.width='0';},1800);
+  state.tab='estimates';markDirty();render();
+  toast('견적서 분석 완료 — 성공 '+ok+'개'+(skip?' · 수동수정 유지 '+skip+'개':'')+(fail?' · 확인필요 '+fail+'개':''));
 }
 
 /* ---------- 현장 ---------- */
@@ -3517,7 +3655,7 @@ function photoCell(p){
   </div>`;
 }
 function viewEstimates(){
-  const list=state.files.filter(f=>f.kind==='estimate');
+  const list=state.files.filter(isEstimateCandidate);
   if(!list.length){
     const m=monthlyQuoteHTML();
     if(m)return `<div class="empty" style="margin-bottom:20px"><b>불러온 견적서가 없습니다</b>폴더에서 견적서를 불러오면 여기 정산표가 생깁니다. 아래는 앱에서 작성한 견적 기준 월별 현황입니다.</div>`+m;
@@ -3525,8 +3663,8 @@ function viewEstimates(){
   }
   // 현장별 합계
   const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
-  let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
-  html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
+  let html=`<div class="toolbar"><button class="blue tiny" id="btnAnalyzeEst">PDF/엑셀 견적서 분석</button><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">분석하면 금액·날짜·내용이 표와 대시보드에 바로 반영됩니다.</span></div>`;
+  html+=`<p class="hint" style="margin-bottom:12px">미리보기를 열지 않아도 ‘분석’으로 PDF/엑셀 견적서 금액을 산출합니다. 추출값은 틀릴 수 있어 직접 수정 가능합니다.</p>`;
   html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
@@ -3537,7 +3675,7 @@ function viewEstimates(){
       <td><input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}" style="width:118px"></td>
       <td><select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select></td>
       <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
-      <td style="white-space:nowrap">${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
+      <td style="white-space:nowrap"><button class="mini-btn" data-estanalyze="${f.id}" title="금액/내용 분석">🔎 분석</button> ${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
     </tr>`;});
   html+=`</tbody></table>`;
   const total=Object.values(byProj).reduce((a,b)=>a+b,0);
@@ -4540,9 +4678,10 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
+    if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnToggleDup'){__showDup=!__showDup;return render();}
     if(t.id==='btnTrimDup')return trimDuplicates();
@@ -4619,6 +4758,7 @@ function setupDelegation(){
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
     if(d.stage!==undefined)return setStage(d.proj,+d.stage);
     if(d.learn!==undefined){const f=state.files.find(x=>x.id===d.learn);if(f)learnEstimate(f);return;}
+    if(d.estanalyze!==undefined)return analyzeEstimateById(d.estanalyze);
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}
     if(d.preview!==undefined){e.stopPropagation();return previewEstimate(d.preview);}
     if(d.rename!==undefined){e.stopPropagation();return renameFile(d.rename);}
