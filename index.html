@@ -2997,7 +2997,7 @@ function sendPhotoBundles(){
   const groups=photoBundleGroups(photos);
   const opts=groups.map(g=>`<option value="${escapeAttr(g.key)}"${state.activeProject===g.key?' selected':''}>${escapeHtml(g.label)} (${g.items.length}장)</option>`).join('');
   openModal('📤 사진 묶음 발송',
-    '<p style="font-size:13px;line-height:1.6">앱에 불러온 사진을 <b>현장별</b>로 묶어 보냅니다.<br>카톡은 30장씩, 문자는 10장씩 나누어 공유창을 엽니다.</p>'+
+    '<p style="font-size:13px;line-height:1.6">앱에 불러온 사진을 <b>현장별</b>로 묶어 보냅니다.<br>카톡은 30장씩, 문자는 10장씩 나누어 공유창을 엽니다.<br>초과하면 같은 현장 안에서 <b>묶음 1/2, 2/2</b>처럼 자동으로 나뉩니다.</p>'+
     '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);margin-top:10px">보낼 현장<select id="pbProject" style="font-size:14px;padding:9px">'+
     '<option value="__all__">전체 현장별로 보내기 ('+photos.length+'장)</option>'+opts+
     '</select></label>'+
@@ -3030,7 +3030,10 @@ function bundleProjectPhotos(size,label,projectKey){
   const bundles=[];
   groups.forEach(g=>{
     const ordered=[...g.items].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0)||String(a.name).localeCompare(String(b.name),'ko'));
-    for(let i=0;i<ordered.length;i+=size)bundles.push({project:g.label,items:ordered.slice(i,i+size),part:Math.floor(i/size)+1,total:Math.ceil(ordered.length/size)});
+    for(let i=0;i<ordered.length;i+=size){
+      const items=ordered.slice(i,i+size);
+      bundles.push({project:g.label,items,work:bundleWorkSummary(items),part:Math.floor(i/size)+1,total:Math.ceil(ordered.length/size)});
+    }
   });
   showBundleSender(bundles,label,size);
 }
@@ -3038,10 +3041,34 @@ function pickAndBundle(size,label){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=()=>{
     const files=[...inp.files]; if(!files.length)return;
-    const chunks=[]; for(let i=0;i<files.length;i+=size)chunks.push({project:'직접 선택',items:files.slice(i,i+size),part:Math.floor(i/size)+1,total:Math.ceil(files.length/size)});
+    const chunks=[]; for(let i=0;i<files.length;i+=size){const items=files.slice(i,i+size);chunks.push({project:'직접 선택',items,work:'작업 미지정',part:Math.floor(i/size)+1,total:Math.ceil(files.length/size)});}
     showBundleSender(chunks,label,size);
   };
   inp.click();
+}
+function photoWorkName(f){
+  return (f&&((f._worklabel||'').trim()||(f._phase||'').trim()))||'';
+}
+function bundleWorkSummary(items){
+  const names=[];
+  (items||[]).forEach(f=>{
+    const name=photoWorkName(f);
+    if(name&&!names.includes(name))names.push(name);
+  });
+  if(!names.length)return '작업 미지정';
+  if(names.length<=4)return names.join(', ');
+  return names.slice(0,4).join(', ')+' 외 '+(names.length-4)+'개';
+}
+function bundleShareTitle(bundle){
+  const work=bundle.work||bundleWorkSummary(bundle.items);
+  return bundle.project+(work&&work!=='작업 미지정'?' · '+work:'')+' 사진';
+}
+function bundleShareText(bundle){
+  const work=bundle.work||bundleWorkSummary(bundle.items);
+  return [
+    '프로젝트명: '+bundle.project,
+    '작업명: '+work
+  ].join('\n');
 }
 let __pbSent=new Set();
 async function photoShareFile(f){
@@ -3086,10 +3113,11 @@ function showBundleSender(bundles,label,size){
     const target=(label==='문자')?'문자':(label==='카톡'?'카톡':label);
     const rows=bundles.map((c,idx)=>{
       const done=__pbSent.has(idx);
-      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+c.items.length+'장)</button>';
+      const work=c.work||bundleWorkSummary(c.items);
+      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+c.items.length+'장)<span style="display:block;font-size:12px;opacity:.82;margin-top:3px">작업: '+escapeHtml(work)+'</span></button>';
     }).join('');
     openModal('📤 '+via+' 묶음 발송',
-      '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+bundles.length+'묶음</b> (묶음당 최대 '+size+'장).<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+target+'</b> 선택 후 보내세요.</p>'+rows,
+      '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+bundles.length+'묶음</b> (묶음당 최대 '+size+'장).<br>'+size+'장을 넘으면 자동으로 다음 묶음으로 나뉩니다.<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+target+'</b> 선택 후 보내세요.</p>'+rows,
       [{label:'닫기',cls:'ghost',fn:closeModal}]);
     const root=document.getElementById('modalRoot');
     root.querySelectorAll('[data-pbsend]').forEach(el=>el.onclick=async()=>{
@@ -3099,7 +3127,7 @@ function showBundleSender(bundles,label,size){
         const files=await filesForBundle(bundle.items);
         if(!files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.');return;}
         if(!(navigator.canShare&&navigator.canShare({files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); return; }
-        await navigator.share({files,title:bundle.project+' 현장 사진',text:bundle.project+' 현장 사진 '+bundle.part+'/'+bundle.total+' ('+files.length+'장)'});
+        await navigator.share({files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
         __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
       }catch(e){ if(String(e&&e.name)!=='AbortError')toast('보내기 실패: '+(e.message||e)); }
     });
