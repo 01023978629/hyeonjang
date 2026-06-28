@@ -243,6 +243,10 @@
   .ocrtag.done{background:rgba(14,122,107,.92)}
   .meta{padding:10px 11px;font-size:12px;flex:1;display:flex;flex-direction:column;gap:4px}
   .meta .nm{font-weight:600;font-size:12.5px;word-break:break-all;line-height:1.35}
+  .file-name{display:flex;align-items:flex-start;gap:5px}
+  .file-state-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 9px;margin-top:.28em;background:#b7c0ca;border:1px solid rgba(255,255,255,.85);box-shadow:0 0 0 1px rgba(15,36,56,.12)}
+  .file-state-dot.assigned{background:var(--blueprint)}
+  .file-state-dot.done{background:var(--ok)}
   .meta .sub{color:var(--muted);font-size:11px}
   .meta .gps{color:var(--blueprint);font-size:10.5px}
   .meta .ext-info{font-size:11px;color:var(--moss);font-weight:600}
@@ -264,6 +268,9 @@
   .ph-tag.ok{background:var(--ok)} .ph-tag.warn{background:var(--warn)}
   .ph-tag.phase{background:var(--blueprint);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ph-tag.work{background:var(--moss);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ph-file{position:absolute;left:4px;right:4px;bottom:28px;display:flex;align-items:center;gap:4px;padding:2px 5px;border-radius:5px;background:rgba(15,36,56,.78);color:#fff;font-size:9px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:1;pointer-events:none}
+  .ph-file span:last-child{overflow:hidden;text-overflow:ellipsis}
+  .ph-file .file-state-dot{width:8px;height:8px;flex-basis:8px;margin-top:0;box-shadow:none}
   .cluster-work{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
   .cluster-work .work-input{flex:1;min-width:160px;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);border-radius:7px}
   .cluster-work .work-name{font-size:11.5px;color:var(--moss);font-weight:700}
@@ -2916,6 +2923,22 @@ function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을
 function projectOptions(sel){let o='<option value="">현장 미지정</option>';state.projects.forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
+function photoSortState(f){
+  const done=String(f&&f.prefix||'').startsWith('_정리완료/');
+  const assigned=!!(f&&f.project&&(f._worklabel||f._phase));
+  if(done)return {cls:'done',label:'정리 완료'};
+  if(assigned)return {cls:'assigned',label:'현장/작업 지정'};
+  return {cls:'todo',label:'정리 전'};
+}
+function fileNameHtml(f){
+  if(!f||f.kind!=='photo')return escapeHtml(f&&f.name||'');
+  const s=photoSortState(f);
+  return `<span class="file-name" title="${escapeAttr(s.label)}"><span class="file-state-dot ${s.cls}"></span><span>${escapeHtml(f.name||'')}</span></span>`;
+}
+function photoFileNameBadge(f){
+  const s=photoSortState(f);
+  return `<div class="ph-file" title="${escapeAttr(s.label+' · '+(f.name||''))}"><span class="file-state-dot ${s.cls}"></span><span>${escapeHtml(f.name||'')}</span></div>`;
+}
 function cardHtml(f){
   const isImg=IMG.includes(f.ext),k=KIND[f.kind];
   const thumb=(isImg&&photoSrc(f,600))?photoImg(f,600):`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
@@ -2930,7 +2953,7 @@ function cardHtml(f){
   const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
   return `<div class="card" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
-    <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
+    <div class="meta"><div class="nm">${fileNameHtml(f)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
@@ -3763,6 +3786,7 @@ function photoCell(p){
     ${selChk(p.id)}
     ${tools}
     ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
+    ${photoFileNameBadge(p)}
     ${sel}
   </div>`;
 }
@@ -4782,6 +4806,7 @@ function photoCellProj(f,phases){
     ${selChk(f.id)}
     ${tag?`<span class="ph-tag ${tagCls}">${escapeHtml(tag)}</span>`:''}
     ${tools}
+    ${photoFileNameBadge(f)}
     ${sel}
   </div>`;
 }
