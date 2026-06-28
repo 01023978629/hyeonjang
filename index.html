@@ -153,6 +153,9 @@
   button.warn:hover{background:#b23a31;color:#fff}
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
+  button.main-action{padding:9px 13px;font-size:13px;font-weight:700}
+  .project-action-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;padding:10px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+  .project-list-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 4px}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
@@ -4588,13 +4591,13 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:var(--muted);font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${photos.length?`<button class="blue tiny main-action" data-openphoto="${escapeAttr(p.name)}">📷 사진 정리 화면</button>`:''}<button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
       // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
       if(photos.length){
-        html+=`<button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:8px 0">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 '+photos.length+'장 보기')}</button>`;
+        html+=`<div class="project-list-actions"><button class="blue tiny main-action" data-openphoto="${escapeAttr(p.name)}">📷 공정/작업별 보기</button><button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}">${open?('▼ 현장사진 '+photos.length+'장 숨기기'):('▶ 현장사진 '+photos.length+'장 펼치기')}</button></div>`;
         if(open)html+=`<div class="grid">${photos.map(cardHtml).join('')}</div>`;
       }
       if(!list.length)html+=`<div class="empty" style="padding:22px">아직 배정된 파일이 없습니다.</div>`;
@@ -4606,6 +4609,16 @@ function viewProject(){
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=stageBar(p);
+  const projectPhotoTotal=list.filter(f=>f.kind==='photo').length;
+  if(projectPhotoTotal){
+    const fullTop=__projFullPhotoOpen.has(p.name);
+    html+=`<div class="project-action-strip">
+      <button class="blue tiny main-action" data-openphoto="${escapeAttr(p.name)}">📷 사진 정리 화면</button>
+      <button class="moss tiny main-action" data-organize="${escapeAttr(p.name)}">📁 공정대로 폴더 정리</button>
+      <button class="${fullTop?'blue':'ghost'} tiny main-action" data-projfull="${escapeAttr(p.name)}">${fullTop?'3장 미리보기':'프로젝트 전체 보기'}</button>
+      <span class="hint" style="margin:0">현장 사진 ${projectPhotoTotal}장</span>
+    </div>`;
+  }
 
   // 필터 헬퍼: 현재 보기(__projView)에서 해당 섹션을 표시할지
   const showSec=(stage)=>__projView===null||__projView===stage;
@@ -4744,7 +4757,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4802,8 +4815,9 @@ function setupDelegation(){
     if(d.qdel!==undefined)return deleteQuote(d.qdel);
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
+    if(d.openphoto!==undefined){state.activeProject=d.openphoto;state.tab='project';__projView=2;return render();}
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
-    if(d.projfull!==undefined){const n=d.projfull;if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
+    if(d.projfull!==undefined){const n=d.projfull;state.activeProject=n;state.tab='project';__projView=2;if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
     if(d.renproj!==undefined)return renameProject(d.renproj);
     if(d.delproj!==undefined)return deleteProject(d.delproj);
     if(d.map!==undefined)return showProjectMap(d.map);
