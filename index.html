@@ -748,6 +748,45 @@ function classify(rec){
 
 /* ---------- 견적서 정보 추출 (강화) ---------- */
 function won2num(s){return +String(s).replace(/[^\d]/g,'')||0;}
+const MONEY_MAX=2000000000; // 계좌·사업자번호 오인 방지용 상한
+const MONEY_LABEL_RE=/합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|계\s*약\s*금\s*액|청구\s*금\s*액|받을\s*금액|공\s*급\s*가\s*액|공급가|공급\s*금액|부\s*가\s*세|세\s*액|금\s*액|단\s*가|소\s*계|Grand\s*Total|Subtotal|Total|Amount|Price|VAT/i;
+const NON_MONEY_RE=/사업자|등록번호|주민|전화|휴대|핸드폰|팩스|fax|tel|mobile|계좌|은행|예금주|주소|우편|견적번호|문서번호|고유번호|관리번호|품번|모델|규격|대표자|번호/i;
+function moneyCandidates(text,min,opt){
+  opt=opt||{};
+  const s=String(text||''),out=[];let m;const rx=/[\d,]{3,}/g;
+  while((m=rx.exec(s))){
+    const raw=m[0],v=won2num(raw),start=m.index,end=start+raw.length;
+    if(v<(min||1000)||v>MONEY_MAX)continue;
+    const head=s.slice(Math.max(0,start-14),start),tail=s.slice(end,Math.min(s.length,end+14));
+    const ctx=s.slice(Math.max(0,start-42),Math.min(s.length,end+42));
+    const hasComma=raw.includes(','), hasCurrency=/[₩￦]|원|KRW|won/i.test(head+tail+ctx);
+    const closeCtx=s.slice(Math.max(0,start-16),Math.min(s.length,end+18));
+    const closeMoneyWord=MONEY_LABEL_RE.test(closeCtx);
+    const hasMoneyWord=closeMoneyWord||MONEY_LABEL_RE.test(String(opt.labelContext||''));
+    const plain=/^\d+$/.test(raw.replace(/,/g,''));
+    const digits=String(v);
+    const hyphenated=((s[start-1]||'')==='-'||(s[end]||'')==='-')&&!hasCurrency&&!hasMoneyWord;
+    const likelyDate=(/^20\d{6}$/.test(digits)||/(날짜|일자|견적일|작성일|발행일)/.test(ctx))&&!hasCurrency&&!hasMoneyWord;
+    const unitBad=/^\s*(㎡|m2|m²|평|개|ea|EA|식|명|대|건|장|박스|mm|cm|kg|%)/.test(tail)&&!hasCurrency&&!hasMoneyWord;
+    const badContext=NON_MONEY_RE.test(ctx)&&!closeMoneyWord&&!MONEY_LABEL_RE.test(String(opt.labelContext||''));
+    if(hyphenated||likelyDate||unitBad||badContext)continue;
+    if(opt.strict&&!hasComma&&!hasCurrency&&!hasMoneyWord)continue;
+    if(plain&&digits.length>=9&&!hasComma&&!hasCurrency&&!hasMoneyWord)continue;
+    out.push({v,start:(opt.base||0)+start,end:(opt.base||0)+end,raw,hasComma,hasCurrency,hasMoneyWord});
+  }
+  return out;
+}
+function bestMoneyValue(text,min,opt){
+  const nums=moneyCandidates(text,min,opt);
+  return nums.reduce((a,n)=>Math.max(a,n.v),0);
+}
+function moneyCellValue(v,min,labelContext){
+  if(typeof v==='number'&&isFinite(v)){
+    const n=Math.abs(Math.round(v));
+    return (n>=(min||1)&&n<=MONEY_MAX)?n:0;
+  }
+  return bestMoneyValue(v,min||1,{labelContext:labelContext||'금액'});
+}
 // 견적 날짜 문자열 → YYYY-MM (다양한 형식 대응: 2025.03.05, 2025-03-05, 2025/03/05)
 function ymOf(dateStr){
   if(!dateStr)return null;
@@ -805,23 +844,17 @@ function parseEstimate(text){
   const t=text||'';
   const lines=t.split(/\n/);
   let amount=0, supply=0, vat=0;
-  const moneyNums=(s,min,base)=>{
-    const out=[];let m;const rx=/[\d,]{3,}/g;
-    while((m=rx.exec(String(s||'')))){
-      const v=won2num(m[0]);
-      if(v>=(min||1000)&&v<10000000000)out.push({v,start:(base||0)+m.index,end:(base||0)+m.index+m[0].length});
-    }
-    return out;
-  };
   const nearMoney=(re,min)=>{
     let best=0,m;
     const rx=new RegExp(re.source,re.flags.includes('g')?re.flags:re.flags+'g');
     while((m=rx.exec(t))){
       const from=Math.max(0,m.index-50), to=Math.min(t.length,m.index+180);
-      const nums=moneyNums(t.slice(from,to),min,from);
+      const nums=moneyCandidates(t.slice(from,to),min,{base:from,labelContext:m[0]});
       let picked=null,score=Infinity;
       const labelEnd=m.index+m[0].length;
-      nums.forEach(n=>{
+      const after=nums.filter(n=>n.start>=labelEnd);
+      const pool=after.length?after:nums.filter(n=>n.end<=m.index&&m.index-n.end<35);
+      pool.forEach(n=>{
         const after=n.start>=labelEnd;
         const dist=after?n.start-labelEnd:m.index-n.end+30;
         if(dist>=0&&dist<score){score=dist;picked=n;}
@@ -836,12 +869,12 @@ function parseEstimate(text){
   vat=nearMoney(/부\s*가\s*세|세\s*액|V\.?\s*A\.?\s*T\.?/gi,1000);
   // 1) 합계/총액 류 라인에서 최댓값
   for(const ln of lines){
-    if(/(합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|총\s*견\s*적|받을\s*금액|청구\s*금액)/.test(ln)){
-      const nums=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);
-      if(nums.length){const v=Math.max(...nums);if(v>amount)amount=v;}
+    if(!amount&&/(합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|총\s*견\s*적|받을\s*금액|청구\s*금액)/.test(ln)){
+      const v=bestMoneyValue(ln,10000,{labelContext:ln});
+      if(v)amount=v;
     }
-    if(/(공\s*급\s*가\s*액|공급가)/.test(ln)){const n=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);if(n.length)supply=Math.max(supply,Math.max(...n));}
-    if(/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const n=(ln.match(/[\d,]{3,}/g)||[]).map(won2num);if(n.length)vat=Math.max(vat,Math.max(...n));}
+    if(!supply&&/(공\s*급\s*가\s*액|공급가)/.test(ln)){const v=bestMoneyValue(ln,10000,{labelContext:ln});if(v)supply=v;}
+    if(!vat&&/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const v=bestMoneyValue(ln,1000,{labelContext:ln});if(v)vat=v;}
   }
   // 2) 합계가 없고 공급가액+부가세가 있으면 합산
   if(!amount && supply){ amount = supply + vat; }
@@ -849,8 +882,9 @@ function parseEstimate(text){
   if(amount && !supply && vat && amount>vat)supply=amount-vat;
   // 3) 폴백: 가장 큰 금액
   if(!amount){
-    const nums=(t.match(/[\d,]{5,}/g)||[]).map(won2num);
-    nums.forEach(v=>{if(v>amount&&v<10000000000)amount=v;});
+    const nums=moneyCandidates(t,10000,{strict:true});
+    const sane=nums.filter(n=>n.v<=300000000);
+    (sane.length?sane:nums).forEach(n=>{if(n.v>amount)amount=n.v;});
   }
   // 고객/현장명
   let customer='';
@@ -2287,6 +2321,17 @@ function quoteItemSummary(q){
 function quoteToEst(q){
   if(!q)return null;
   const supply=Math.round((q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
+  const fixedAmount=moneyCellValue(q._amount,10000,'합계금액');
+  if(fixedAmount){
+    const fixedVat=moneyCellValue(q._vat,1000,'부가세');
+    let fixedSupply=moneyCellValue(q._supply,10000,'공급가액');
+    if(!fixedSupply&&fixedVat&&fixedAmount>fixedVat)fixedSupply=fixedAmount-fixedVat;
+    if(!fixedSupply&&supply&&supply<=fixedAmount)fixedSupply=supply;
+    if(!fixedSupply)fixedSupply=fixedAmount;
+    const vat=fixedVat||Math.max(0,fixedAmount-fixedSupply);
+    return { customer:q.title||q.customer||'', amount:fixedAmount, supply:fixedSupply, vat:vat,
+             date:q.date||'', itemCount:quoteRealItems(q).length, summary:quoteItemSummary(q), _fromXlsx:true };
+  }
   const vat=q.vatIncluded?Math.round(supply/11):Math.round(supply*0.1);
   const amount=q.vatIncluded?supply:supply+vat;
   return { customer:q.title||q.customer||'', amount:amount, supply:q.vatIncluded?supply-vat:supply, vat:vat,
@@ -3917,6 +3962,10 @@ function importQuoteXlsx(){
 function parseQuoteFromGrid(grid,filename){
   const norm=s=>String(s==null?'':s).replace(/\s+/g,'');
   const q=newQuote();
+  const fullText=(grid||[]).map(row=>(row||[]).join(' ')).join('\n');
+  const hasStrongTotal=/합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|청구\s*금\s*액|받을\s*금액|Grand\s*Total|Total/i.test(fullText);
+  const hasSupplyVat=/(공\s*급\s*가\s*액|공급\s*금액|공급가)/.test(fullText)&&/(부\s*가\s*세|세\s*액|V\.?\s*A\.?\s*T\.?)/i.test(fullText);
+  const parsed=(hasStrongTotal||hasSupplyVat)?parseEstimate(fullText):{amount:0,supply:0,vat:0};
   const base=String(filename||'').replace(/\.[^.]+$/,'');
   const dm=base.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
   if(dm){q.date=`${dm[1]}-${dm[2]}-${dm[3]}`;q.no='견'+dm[1]+dm[2]+dm[3];}
@@ -3932,12 +3981,15 @@ function parseQuoteFromGrid(grid,filename){
   if(hr>=0){
     for(let r=hr+1;r<grid.length&&items.length<200;r++){
       const row=grid[r]||[];
-      if(row.some(c=>['합계','총액','소계'].includes(norm(c))))break;
+      const rowText=row.map(norm).join(' ');
+      if(/합계|총액|소계|공급가액|공급금액|부가세|세액|견적금액|청구금액|GrandTotal|Subtotal|Total|VAT/i.test(rowText))break;
       let nm=String(row[cN]==null?'':row[cN]).trim();
       let spec=cS>=0?String(row[cS]==null?'':row[cS]).trim():'';
-      const qty=cQ>=0?(num(row[cQ])||1):1;
-      let price=num(row[cP]);
-      if(!price&&cA>=0&&qty)price=Math.round(num(row[cA])/qty);
+      let qty=cQ>=0?(num(row[cQ])||1):1;
+      if(!isFinite(qty)||qty<=0||qty>100000)qty=1;
+      let price=moneyCellValue(row[cP],1,'단가');
+      const rowAmount=cA>=0?moneyCellValue(row[cA],1,'금액'):0;
+      if((!price||price>MONEY_MAX)&&rowAmount&&qty)price=Math.round(rowAmount/qty);
       if(nm==='-')nm='';
       if(spec==='-')spec='';
       if(!nm&&!price)continue;
@@ -3945,7 +3997,13 @@ function parseQuoteFromGrid(grid,filename){
     }
   }
   if(items.length)q.items=items;
-  q.vatIncluded=false; // 원본 합계와 동일하게 별도 기준으로 가져옴
+  const itemSupply=Math.round(items.reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
+  if(parsed.amount)q._amount=parsed.amount;
+  else if(itemSupply)q._amount=itemSupply;
+  if(parsed.supply)q._supply=parsed.supply;
+  else if(itemSupply)q._supply=Math.min(itemSupply,q._amount||itemSupply);
+  if(parsed.vat)q._vat=parsed.vat;
+  q.vatIncluded=true; // 엑셀 원본 합계를 우선 반영하고, 총액이 없으면 품목 합계를 그대로 사용
   return q;
 }
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
