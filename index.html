@@ -2600,12 +2600,35 @@ function groupRevisits(clusters){
 // 이동 모드: 'instant'(즉시 실제 이동) / 'batch'(모아서 일괄 이동). 기본 batch
 let __moveMode='batch';
 function projPhases(name){const p=state.projects.find(x=>x.name===name);return (p&&p.phases)?p.phases:[];}
-// 공정 폴더 경로 핸들 확보: _정리완료/현장명/공정명/
+function workFolderName(f, fallback){
+  return ((f&&f._worklabel)||fallback||(f&&f._phase)||'작업명 미지정').trim();
+}
+function assignedWorkName(f){
+  return ((f&&f._worklabel)||(f&&f._phase)||'').trim();
+}
+function workGroupName(f){
+  return workFolderName(f,'작업명 미지정');
+}
+// 작업 폴더 경로 핸들 확보: _정리완료/프로젝트명/작업명/
 async function ensurePhaseDir(projName, phaseName){
   if(!state.dirHandle||!FS_OK)return null;
   const root=await state.dirHandle.getDirectoryHandle('_정리완료',{create:true});
   const pd=await root.getDirectoryHandle(safeName(projName),{create:true});
-  return await pd.getDirectoryHandle(safeName(phaseName),{create:true});
+  return await pd.getDirectoryHandle(safeName(phaseName||'작업명 미지정'),{create:true});
+}
+async function movePhotoToWorkDir(f, projName, workName){
+  const dir=await ensurePhaseDir(projName,workName);
+  if(!dir)return false;
+  let nm=safeName(f.name);
+  try{await dir.getFileHandle(nm);const dot=nm.lastIndexOf('.');nm=dot>0?nm.slice(0,dot)+'_'+Date.now()+nm.slice(dot):nm+'_'+Date.now();}catch(e){}
+  const srcFile=await getFileOf(f);
+  const nh=await dir.getFileHandle(nm,{create:true});
+  const w=await nh.createWritable();await w.write(srcFile);await w.close();
+  await deleteOriginal(f);
+  f.handle=nh;f.name=nm;f.project=projName;
+  if(workName&&!f._worklabel)f._worklabel=workName;
+  f.prefix='_정리완료/'+projName+'/'+workName+'/';
+  return true;
 }
 async function addPhase(projName, phaseName){
   const p=state.projects.find(x=>x.name===projName);if(!p)return;
@@ -2633,17 +2656,8 @@ async function setPhase(id, phaseName){
   // 즉시 이동 모드 + 실제 파일 + 폴더 연결 + 공정 지정(해제 아님)일 때만 이동
   if(__moveMode==='instant' && ph && !f._virtual && state.dirHandle && FS_OK && f.project){
     try{
-      const dir=await ensurePhaseDir(f.project, ph);
-      if(dir){
-        let nm=safeName(f.name);
-        try{await dir.getFileHandle(nm);const dot=nm.lastIndexOf('.');nm=dot>0?nm.slice(0,dot)+'_'+Date.now()+nm.slice(dot):nm+'_'+Date.now();}catch(e){}
-        const srcFile=await getFileOf(f);
-        const nh=await dir.getFileHandle(nm,{create:true});
-        const w=await nh.createWritable();await w.write(srcFile);await w.close();
-        await deleteOriginal(f);
-        f.handle=nh;f.name=nm;f.prefix='_정리완료/'+f.project+'/'+ph+'/';
-        toast('“'+ph+'” 폴더로 이동됨');
-      }
+      const folder=workFolderName(f,ph);
+      if(await movePhotoToWorkDir(f,f.project,folder))toast('“'+f.project+'/'+folder+'” 폴더로 이동됨');
     }catch(e){toast('이동 오류(분류는 유지): '+e.message);}
     render();
   }else{
@@ -2669,28 +2683,21 @@ function updatePhaseCell(id, ph){
   const sel=cell.querySelector('.ph-phase');if(sel)sel.value=ph||'';
 }
 function phaseOf(p){return p._phase||null;}
-// 공정대로 일괄 정리(모아서 이동 모드): 각 사진을 _정리완료/현장/공정/ 로 실제 이동
+// 공정대로 일괄 정리(모아서 이동 모드): 각 사진을 _정리완료/프로젝트/작업명/ 로 실제 이동
 async function organizeByPhase(projName){
   if(!requireEditMode('공정별 폴더 정리'))return;
-  const photos=state.files.filter(f=>f.project===projName&&f.kind==='photo'&&f._phase&&!f._virtual);
-  if(!photos.length){toast('공정이 지정된 사진이 없습니다.');return;}
+  const photos=state.files.filter(f=>f.project===projName&&f.kind==='photo'&&!f._virtual&&assignedWorkName(f));
+  if(!photos.length){toast('작업명 또는 공정이 지정된 사진이 없습니다.');return;}
   openModal('공정대로 폴더 정리',
-    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 8px">공정이 지정된 <b>${photos.length}장</b>을 <b>_정리완료/${escapeHtml(projName)}/공정명/</b> 폴더로 실제 이동합니다. 작업 전 자동 백업됩니다.</p>
-     <div style="font-size:11.5px;color:var(--muted)">미지정 사진은 그대로 둡니다.</div>`,
+    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 8px">작업명/공정이 지정된 <b>${photos.length}장</b>을 <b>_정리완료/${escapeHtml(projName)}/작업명/</b> 폴더로 실제 이동합니다. 작업 전 자동 백업됩니다.</p>
+     <div style="font-size:11.5px;color:var(--muted)">작업명이 있으면 작업명을 우선하고, 없으면 공정명 폴더에 정리합니다. 미지정 사진은 그대로 둡니다.</div>`,
     [{label:'취소',cls:'ghost',fn:closeModal},
      {label:photos.length+'장 정리',cls:'warn',fn:async()=>{closeModal();await makeCheckpoint('공정정리 전');
        let done=0;
        for(const f of photos){
          try{
-           const dir=await ensurePhaseDir(projName,f._phase);
-           let nm=safeName(f.name);
-           try{await dir.getFileHandle(nm);const dot=nm.lastIndexOf('.');nm=dot>0?nm.slice(0,dot)+'_'+Date.now()+nm.slice(dot):nm+'_'+Date.now();}catch(e){}
-           const srcFile=await getFileOf(f);
-           const nh=await dir.getFileHandle(nm,{create:true});
-           const w=await nh.createWritable();await w.write(srcFile);await w.close();
-           await deleteOriginal(f);
-           f.handle=nh;f.name=nm;f.prefix='_정리완료/'+projName+'/'+f._phase+'/';
-           done++;
+            const folder=assignedWorkName(f);
+            if(folder&&await movePhotoToWorkDir(f,projName,folder))done++;
          }catch(e){}
        }
        markDirty();render();toast(done+'장을 공정 폴더로 정리했습니다.');
@@ -3520,14 +3527,9 @@ async function applyBulkPhase(scopeProj,phase){
   if(typeof __moveMode!=='undefined' && __moveMode==='instant' && state.dirHandle && FS_OK){
     let moved=0;
     for(const f of fs){ if(f._virtual)continue;
-      try{ const dir=await ensurePhaseDir(scopeProj,phase);
-        let nm=safeName(f.name);
-        try{await dir.getFileHandle(nm);const dot=nm.lastIndexOf('.');nm=dot>0?nm.slice(0,dot)+'_'+Date.now()+nm.slice(dot):nm+'_'+Date.now();}catch(e){}
-        const srcFile=await getFileOf(f);
-        const nh=await dir.getFileHandle(nm,{create:true});
-        const w=await nh.createWritable();await w.write(srcFile);await w.close();
-        await deleteOriginal(f);
-        f.handle=nh;f.name=nm;f.prefix='_정리완료/'+scopeProj+'/'+phase+'/';moved++;
+      try{
+        const folder=workFolderName(f,phase);
+        if(await movePhotoToWorkDir(f,scopeProj,folder))moved++;
       }catch(e){}
     }
     toast(`${fs.length}장에 “${phase}” 지정${moved?` · ${moved}장 폴더 이동`:''}`);
@@ -3633,8 +3635,8 @@ function bulkMove(){
   if(!requireEditMode('사진 일괄 이동'))return;
   let opts=`<option value="">대상 선택…</option>`;
   state.projects.forEach(p=>{
-    opts+=`<option value="proj::${escapeAttr(p.name)}">_정리완료 / ${escapeHtml(p.name)} / 현장사진</option>`;
-    (p.phases||[]).forEach(ph=>{opts+=`<option value="phase::${escapeAttr(p.name)}::${escapeAttr(ph)}">_정리완료 / ${escapeHtml(p.name)} / 현장사진 / ${escapeHtml(ph)}</option>`;});
+    opts+=`<option value="proj::${escapeAttr(p.name)}">_정리완료 / ${escapeHtml(p.name)} / 작업명 미지정</option>`;
+    (p.phases||[]).forEach(ph=>{opts+=`<option value="phase::${escapeAttr(p.name)}::${escapeAttr(ph)}">_정리완료 / ${escapeHtml(p.name)} / ${escapeHtml(ph)}</option>`;});
   });
   opts+=`<option value="pick">📁 임의 폴더 선택…</option>`;
   openModal('사진 일괄 이동',
@@ -4641,10 +4643,12 @@ function viewProject(){
   if(photos.length){
     const phases=p.phases||[];
     const gpsN=photos.filter(f=>f.lat!=null).length;
+    const fullPhotos=__projFullPhotoOpen.has(p.name);
     html+=`<div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px;flex-wrap:wrap">
-      <span style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)">현장 사진 · ${photos.length} · 날짜별 정리</span>
+      <span style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)">현장 사진 · ${photos.length} · 공정/작업별 미리보기</span>
       <button class="blue tiny" data-map="${escapeAttr(p.name)}">🗺️ 전체 위치 보기</button>
       <button class="moss tiny" data-organize="${escapeAttr(p.name)}">📁 공정대로 폴더 정리</button>
+      <button class="${fullPhotos?'blue':'ghost'} tiny" data-projfull="${escapeAttr(p.name)}">${fullPhotos?'3장 미리보기':'프로젝트 전체 보기'}</button>
       <span class="hint" style="margin:0">GPS ${gpsN}/${photos.length}장</span>
     </div>`;
     html+=bulkBar(p.name);
@@ -4653,25 +4657,26 @@ function viewProject(){
       <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
       <div class="phase-add"><input type="text" data-phaseinput="${escapeAttr(p.name)}" placeholder="공정 추가 (예: 방수 1차)" maxlength="20"><button class="clay tiny" data-addphase="${escapeAttr(p.name)}">추가</button></div>
     </div>`;
-    // ===== 날짜별 그룹 (날짜 1차 기준) =====
-    const dayKey=f=>f.when?`${f.when.getFullYear()}-${String(f.when.getMonth()+1).padStart(2,'0')}-${String(f.when.getDate()).padStart(2,'0')}`:'(날짜 없음)';
-    const dayMap={};
-    photos.forEach(f=>{const k=dayKey(f);(dayMap[k]=dayMap[k]||[]).push(f);});
-    // 날짜 정렬 (최신순), '날짜 없음'은 맨 뒤
-    const dayKeys=Object.keys(dayMap).sort((a,b)=>{if(a==='(날짜 없음)')return 1;if(b==='(날짜 없음)')return -1;return b.localeCompare(a);});
-    dayKeys.forEach(dk=>{
-      const items=dayMap[dk].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0));
-      // 그 날짜에 등장한 공정들 요약
-      const phasesInDay=[...new Set(items.map(f=>f._phase).filter(Boolean))];
-      const dayLabel=dk==='(날짜 없음)'?dk:(()=>{const d=new Date(dk);const wd=['일','월','화','수','목','금','토'][d.getDay()];return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${wd})`;})();
-      const phaseSummary=phasesInDay.length?phasesInDay.map(ph=>`<span class="day-phase-chip">${escapeHtml(ph)}</span>`).join(''):'<span class="day-phase-none">공정 미지정</span>';
-      const dayIds=items.map(f=>f.id).join(',');
-      const allSel=items.every(f=>__sel.has(f.id));
+    // ===== 작업명/공정별 그룹: 기본 3장 미리보기, 프로젝트 전체보기 시 전체 표시 =====
+    const gmap=new Map();
+    photos.forEach(f=>{const k=workGroupName(f);if(!gmap.has(k))gmap.set(k,[]);gmap.get(k).push(f);});
+    const order=new Map(phases.map((ph,i)=>[ph,i]));
+    const groups=[...gmap.entries()].map(([name,items])=>({name,items:items.sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0)||String(a.name).localeCompare(String(b.name),'ko'))}))
+      .sort((a,b)=>{
+        if(a.name==='작업명 미지정')return 1;if(b.name==='작업명 미지정')return -1;
+        const ai=order.has(a.name)?order.get(a.name):9999, bi=order.has(b.name)?order.get(b.name):9999;
+        return ai!==bi?ai-bi:a.name.localeCompare(b.name,'ko');
+      });
+    groups.forEach(g=>{
+      const shown=fullPhotos?g.items:g.items.slice(0,3);
+      const ids=g.items.map(f=>f.id).join(',');
+      const allSel=g.items.every(f=>__sel.has(f.id));
+      const more=g.items.length-shown.length;
       html+=`<div class="phase-group">
-        <div class="phase-group-h day-h">📅 ${dayLabel} <span>${items.length}장</span>
-          <button class="day-selbtn" data-dayselect="${dayIds}">${allSel?'✓ 선택됨':'이 날짜 전체 선택'}</button>
-          <span class="day-phases">${phaseSummary}</span></div>
-        <div class="cluster-body" style="padding:10px 0">${items.map(f=>photoCellProj(f,phases)).join('')}</div>
+        <div class="phase-group-h day-h">🗂 ${escapeHtml(g.name)} <span>${g.items.length}장</span>
+          <button class="day-selbtn" data-dayselect="${ids}">${allSel?'✓ 선택됨':'이 작업 전체 선택'}</button>
+          ${more>0?`<span class="day-phase-none">미리보기 3장 · ${more}장 더 있음</span>`:''}</div>
+        <div class="cluster-body" style="padding:10px 0">${shown.map(f=>photoCellProj(f,phases)).join('')}</div>
       </div>`;
     });
   }
@@ -4693,12 +4698,14 @@ function viewProject(){
 // 현장별 보기용 사진 셀 (공정 드롭다운 포함)
 function photoCellProj(f,phases){
   const cur=phaseOf(f);
+  const tag=f._worklabel||cur;
+  const tagCls=f._worklabel?'work':'phase';
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
   const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button></div>`:'';
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
     ${photoImg(f,800,f.id)}
     ${selChk(f.id)}
-    ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
+    ${tag?`<span class="ph-tag ${tagCls}">${escapeHtml(tag)}</span>`:''}
     ${tools}
     ${sel}
   </div>`;
@@ -4707,6 +4714,7 @@ function photoCellProj(f,phases){
 let __projView=null; // null|0|1|2|3
 // 현장별 보기(전체 목록)에서 프로젝트별 사진 펼침 상태 — 기본 접힘(숨김), 클릭 시 펼침
 let __projPhotoOpen=new Set();
+let __projFullPhotoOpen=new Set();
 const STAGE_VIEW=[
   {label:'상담',desc:'고객·견적'},
   {label:'실측',desc:'도면'},
@@ -4736,7 +4744,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4795,6 +4803,7 @@ function setupDelegation(){
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
+    if(d.projfull!==undefined){const n=d.projfull;if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
     if(d.renproj!==undefined)return renameProject(d.renproj);
     if(d.delproj!==undefined)return deleteProject(d.delproj);
     if(d.map!==undefined)return showProjectMap(d.map);
@@ -5488,8 +5497,8 @@ function moveSinglePhoto(id){
   // 대상 옵션: 연결 폴더 안 현장 폴더들 + 임의 폴더
   let opts=`<option value="">대상 선택…</option>`;
   state.projects.forEach(p=>{
-    opts+=`<option value="proj::${escapeAttr(p.name)}">_정리완료 / ${escapeHtml(p.name)} / 현장사진</option>`;
-    (p.phases||[]).forEach(ph=>{opts+=`<option value="phase::${escapeAttr(p.name)}::${escapeAttr(ph)}">_정리완료 / ${escapeHtml(p.name)} / 현장사진 / ${escapeHtml(ph)}</option>`;});
+    opts+=`<option value="proj::${escapeAttr(p.name)}">_정리완료 / ${escapeHtml(p.name)} / 작업명 미지정</option>`;
+    (p.phases||[]).forEach(ph=>{opts+=`<option value="phase::${escapeAttr(p.name)}::${escapeAttr(ph)}">_정리완료 / ${escapeHtml(p.name)} / ${escapeHtml(ph)}</option>`;});
   });
   opts+=`<option value="pick">📁 임의 폴더 선택…</option>`;
   openModal('사진 파일 이동',
@@ -5510,18 +5519,15 @@ async function doMovePhoto(f, target){
       destDir=await window.showDirectoryPicker({mode:'readwrite'});
       label=destDir.name;
     }else{
-      const root=await state.dirHandle.getDirectoryHandle('_정리완료',{create:true});
       if(target.startsWith('proj::')){
         const proj=target.slice(6);
-        const pd=await root.getDirectoryHandle(proj,{create:true});
-        destDir=await pd.getDirectoryHandle('현장사진',{create:true});
-        label=proj+'/현장사진';
+        const work='작업명 미지정';
+        destDir=await ensurePhaseDir(proj,work);
+        label=proj+'/'+work;
       }else{ // phase::proj::phase
         const [,proj,ph]=target.split('::');
-        const pd=await root.getDirectoryHandle(proj,{create:true});
-        const ps=await pd.getDirectoryHandle('현장사진',{create:true});
-        destDir=await ps.getDirectoryHandle(safeName(ph),{create:true});
-        label=proj+'/현장사진/'+ph;
+        destDir=await ensurePhaseDir(proj,ph);
+        label=proj+'/'+ph;
       }
     }
     // 같은 이름 충돌 회피
@@ -5533,8 +5539,8 @@ async function doMovePhoto(f, target){
     // 원본 삭제
     await deleteOriginal(f);
     f.handle=nh;f.name=nm;
-    if(target.startsWith('proj::'))f.project=target.slice(6);
-    else if(target.startsWith('phase::')){const[,proj,ph]=target.split('::');f.project=proj;f._phase=ph;}
+    if(target.startsWith('proj::')){f.project=target.slice(6);f._worklabel='작업명 미지정';f._phase='';}
+    else if(target.startsWith('phase::')){const[,proj,ph]=target.split('::');f.project=proj;f._phase=ph;if(!f._worklabel)f._worklabel=ph;}
     f.prefix='_정리완료/'+ (target.startsWith('pick')?'':label) +'/';
     markDirty();render();toast('“'+label+'”(으)로 이동 완료');
   }catch(e){ if(e.name!=='AbortError')toast('이동 오류: '+e.message); }
