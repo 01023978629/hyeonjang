@@ -156,6 +156,10 @@
   button.main-action{padding:9px 13px;font-size:13px;font-weight:700}
   .project-action-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;padding:10px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
   .project-list-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 4px}
+  .pc-photo-actions.pc-only-action{display:flex}
+  .pc-photo-actions{gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2)}
+  .pc-photo-actions .pc-photo-title{font-size:12px;font-weight:800;color:var(--blueprint);letter-spacing:.08em}
+  .pc-photo-actions select{min-width:170px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
@@ -3392,6 +3396,10 @@ function viewPhotos(){
   }
   const dupCount=dupSets.reduce((a,g)=>a+g.length-1,0);
   window.__clusters=clusters;
+  const projectNames=new Set(state.projects.map(p=>p.name));
+  const pcPhotoProject=(__phaseProj&&projectNames.has(__phaseProj))?__phaseProj:
+    ((state.activeProject&&projectNames.has(state.activeProject))?state.activeProject:
+    ((state.projects.find(p=>photos.some(f=>f.project===p.name))||state.projects[0]||{}).name||''));
 
   // 상단 요약 바
   let html=`<div class="photo-bar">
@@ -3400,6 +3408,22 @@ function viewPhotos(){
     <span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 제거</button>`:''}
   </div>`;
+  if(state.projects.length&&pcPhotoProject){
+    const pcCount=photos.filter(f=>f.project===pcPhotoProject).length;
+    const fullPc=__projFullPhotoOpen.has(pcPhotoProject);
+    const pcOpts=state.projects.map(p=>{
+      const n=photos.filter(f=>f.project===p.name).length;
+      return `<option value="${escapeAttr(p.name)}"${p.name===pcPhotoProject?' selected':''}>${escapeHtml(p.name)} (${n}장)</option>`;
+    }).join('');
+    html+=`<div class="pc-photo-actions pc-only-action">
+      <span class="pc-photo-title">PC 사진 정리</span>
+      <select id="pcPhotoProj">${pcOpts}</select>
+      <button class="blue tiny main-action" data-openphoto="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>📷 사진 정리 화면</button>
+      <button class="moss tiny main-action" data-organize="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>📁 공정대로 폴더 정리</button>
+      <button class="${fullPc?'blue':'ghost'} tiny main-action" data-projfull="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>${fullPc?'3장 미리보기':'프로젝트 전체 보기'}</button>
+      <span class="hint" style="margin:0">${pcCount?`${pcPhotoProject} 사진 ${pcCount}장`:'이 현장에 배정된 사진 없음'}</span>
+    </div>`;
+  }
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
   html+=`<div style="margin:0 0 10px">
@@ -3423,8 +3447,8 @@ function viewPhotos(){
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length){
-    let popt=state.projects.map(p=>`<option value="${escapeAttr(p.name)}"${p.name===__phaseProj?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
-    const selProj=__phaseProj||state.projects[0].name;
+    let popt=state.projects.map(p=>`<option value="${escapeAttr(p.name)}"${p.name===pcPhotoProject?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
+    const selProj=pcPhotoProject||state.projects[0].name;
     const curPhases=projPhases(selProj);
     html+=`<div class="phasebar">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -4872,6 +4896,7 @@ function setupDelegation(){
     if(t.id==='qmProj'){setQuoteField('project',t.value);return;}
     // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
     if(t.matches('input[data-qi]')){setQuoteItem(+d.qi,d.qf,t.value);if(d.qf==='qty'||d.qf==='price')render();return;}
+    if(t.id==='pcPhotoProj'){__phaseProj=t.value;state.activeProject=t.value;return render();}
     if(t.id==='phaseProjSel'){__phaseProj=t.value;return render();}
   });
   // 작업명은 입력 즉시 상태에 저장한다. 재렌더는 blur/change 때만 해서 타이핑이 끊기지 않게 한다.
