@@ -160,6 +160,10 @@
   .pc-photo-actions{gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2)}
   .pc-photo-actions .pc-photo-title{font-size:12px;font-weight:800;color:var(--blueprint);letter-spacing:.08em}
   .pc-photo-actions select{min-width:170px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  .pc-work-preview.pc-only-action{display:block}
+  .pc-work-preview{margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper)}
+  .pc-work-preview-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .pc-work-preview-h b{font-size:13px;color:var(--blueprint)}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
@@ -3381,6 +3385,39 @@ function showBundleSender(bundles,label,size){
   };
   draw();
 }
+function pcPhotoWorkPreview(projName, photos){
+  if(!projName)return '';
+  const items=photos.filter(f=>f.project===projName);
+  const full=__projFullPhotoOpen.has(projName);
+  if(!items.length){
+    return `<div class="pc-work-preview pc-only-action" id="pcWorkPreview"><div class="pc-work-preview-h"><b>공정/작업별 미리보기</b><span class="hint" style="margin:0">선택한 현장에 배정된 사진이 없습니다.</span></div></div>`;
+  }
+  const phases=projPhases(projName);
+  const order=new Map(phases.map((ph,i)=>[ph,i]));
+  const gmap=new Map();
+  items.forEach(f=>{const k=workGroupName(f);if(!gmap.has(k))gmap.set(k,[]);gmap.get(k).push(f);});
+  const groups=[...gmap.entries()].map(([name,rows])=>({name,items:rows.sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0)||String(a.name).localeCompare(String(b.name),'ko'))}))
+    .sort((a,b)=>{
+      if(a.name==='작업명 미지정')return 1;if(b.name==='작업명 미지정')return -1;
+      const ai=order.has(a.name)?order.get(a.name):9999, bi=order.has(b.name)?order.get(b.name):9999;
+      return ai!==bi?ai-bi:a.name.localeCompare(b.name,'ko');
+    });
+  let html=`<div class="pc-work-preview pc-only-action" id="pcWorkPreview">
+    <div class="pc-work-preview-h"><b>공정/작업별 미리보기</b><span class="hint" style="margin:0">${escapeHtml(projName)} · ${items.length}장 · ${full?'전체 보기':'그룹별 3장'}</span></div>`;
+  groups.forEach(g=>{
+    const shown=full?g.items:g.items.slice(0,3);
+    const ids=g.items.map(f=>f.id).join(',');
+    const allSel=g.items.every(f=>__sel.has(f.id));
+    const more=g.items.length-shown.length;
+    html+=`<div class="phase-group">
+      <div class="phase-group-h day-h">🗂 ${escapeHtml(g.name)} <span>${g.items.length}장</span>
+        <button class="day-selbtn" data-dayselect="${ids}">${allSel?'✓ 선택됨':'이 작업 전체 선택'}</button>
+        ${more>0?`<span class="day-phase-none">미리보기 3장 · ${more}장 더 있음</span>`:''}</div>
+      <div class="cluster-body" style="padding:10px 0">${shown.map(f=>photoCell(f)).join('')}</div>
+    </div>`;
+  });
+  return html+'</div>';
+}
 function viewPhotos(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
   if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)"><b>PC:</b> 왼쪽 ‘📁 로컬 폴더 연결’로 사진 폴더를 열어 정리합니다.<br><b>폰:</b> 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
@@ -3418,11 +3455,12 @@ function viewPhotos(){
     html+=`<div class="pc-photo-actions pc-only-action">
       <span class="pc-photo-title">PC 사진 정리</span>
       <select id="pcPhotoProj">${pcOpts}</select>
-      <button class="blue tiny main-action" data-openphoto="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>📷 사진 정리 화면</button>
+      <button class="blue tiny main-action" data-pcpreview="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>📷 사진 정리 화면</button>
       <button class="moss tiny main-action" data-organize="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>📁 공정대로 폴더 정리</button>
-      <button class="${fullPc?'blue':'ghost'} tiny main-action" data-projfull="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>${fullPc?'3장 미리보기':'프로젝트 전체 보기'}</button>
+      <button class="${fullPc?'blue':'ghost'} tiny main-action" data-pcprojfull="${escapeAttr(pcPhotoProject)}"${pcCount?'':' disabled'}>${fullPc?'3장 미리보기':'프로젝트 전체 보기'}</button>
       <span class="hint" style="margin:0">${pcCount?`${pcPhotoProject} 사진 ${pcCount}장`:'이 현장에 배정된 사진 없음'}</span>
     </div>`;
+    html+=pcPhotoWorkPreview(pcPhotoProject,photos);
   }
   html+=`<p class="hint" style="margin:0 0 12px">촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
@@ -4781,7 +4819,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4839,6 +4877,8 @@ function setupDelegation(){
     if(d.qdel!==undefined)return deleteQuote(d.qdel);
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
+    if(d.pcpreview!==undefined){__phaseProj=d.pcpreview;state.activeProject=d.pcpreview;state.tab='photos';render();setTimeout(()=>document.getElementById('pcWorkPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),0);return;}
+    if(d.pcprojfull!==undefined){const n=d.pcprojfull;__phaseProj=n;state.activeProject=n;state.tab='photos';if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
     if(d.openphoto!==undefined){state.activeProject=d.openphoto;state.tab='project';__projView=2;return render();}
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
     if(d.projfull!==undefined){const n=d.projfull;state.activeProject=n;state.tab='project';__projView=2;if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
