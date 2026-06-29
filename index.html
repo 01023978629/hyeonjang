@@ -3544,6 +3544,11 @@ function viewPhotos(){
     const where=c.address?('📍 '+escapeHtml(c.address)):(c.place?('📍 '+c.place):'위치 정보 없음');
     const cur=mostCommon(c.items.map(p=>p.project).filter(Boolean));
     const ids=c.items.map(p=>p.id).join(',');
+    const clusterKey=visible.map(p=>p.id).sort().join('|')||String(i);
+    const sortedGroup=visible.some(p=>photoSortState(p).cls!=='todo');
+    const clusterOpen=__photoClusterFullOpen.has(clusterKey);
+    const shown=(sortedGroup&&!clusterOpen)?visible.slice(0,3):visible;
+    const hiddenN=visible.length-shown.length;
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
@@ -3557,9 +3562,11 @@ function viewPhotos(){
       ${revisit}
       <span class="where">${where}</span>${geoBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
+      ${sortedGroup&&visible.length>3?`<button class="day-selbtn" data-clusterfull="${escapeAttr(clusterKey)}">${clusterOpen?'3장 미리보기':'전체 보기'}</button>`:''}
+      ${hiddenN>0?`<span class="day-phase-none">미리보기 3장 · ${hiddenN}장 더 있음</span>`:''}
       <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
       <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
-      <div class="cluster-body">${visible.map(p=>photoCell(p)).join('')}</div></div>`;
+      <div class="cluster-body">${shown.map(p=>photoCell(p)).join('')}</div></div>`;
   });
   return html;
 }
@@ -4815,6 +4822,7 @@ let __projView=null; // null|0|1|2|3
 // 현장별 보기(전체 목록)에서 프로젝트별 사진 펼침 상태 — 기본 접힘(숨김), 클릭 시 펼침
 let __projPhotoOpen=new Set();
 let __projFullPhotoOpen=new Set();
+let __photoClusterFullOpen=new Set();
 const STAGE_VIEW=[
   {label:'상담',desc:'고객·견적'},
   {label:'실측',desc:'도면'},
@@ -4844,7 +4852,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4902,6 +4910,7 @@ function setupDelegation(){
     if(d.qdel!==undefined)return deleteQuote(d.qdel);
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
+    if(d.clusterfull!==undefined){const k=d.clusterfull;if(__photoClusterFullOpen.has(k))__photoClusterFullOpen.delete(k);else __photoClusterFullOpen.add(k);return render();}
     if(d.pcpreview!==undefined){__phaseProj=d.pcpreview;state.activeProject=d.pcpreview;state.tab='photos';render();setTimeout(()=>document.getElementById('pcWorkPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),0);return;}
     if(d.pcprojfull!==undefined){const n=d.pcprojfull;__phaseProj=n;state.activeProject=n;state.tab='photos';if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
     if(d.openphoto!==undefined){state.activeProject=d.openphoto;state.tab='project';__projView=2;return render();}
