@@ -508,6 +508,10 @@
   .kpi .kv small{font-size:13px;font-weight:600;color:var(--muted);margin-left:3px}
   .kpi.ok{border-color:#bfe6d6}.kpi.ok .kv{color:var(--ok)}
   .kpi.due{border-color:#f3cfc9}.kpi.due .kv{color:var(--warn)}
+  .workflow-strip{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:0 0 16px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2)}
+  .workflow-step{display:flex;flex-direction:column;gap:2px;min-width:122px;flex:1;padding:10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--paper);color:var(--blueprint);text-align:left;cursor:pointer}
+  .workflow-step b{font-size:12.5px}.workflow-step span{font-size:10.5px;color:var(--muted);font-weight:500}
+  .workflow-step:hover{border-color:var(--line);box-shadow:var(--shadow);transform:translateY(-1px)}
   .ratewrap{margin:0 0 20px}
   .ratehead{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted-2);margin-bottom:5px}
   .ratehead b{color:var(--blueprint);font-size:14px}
@@ -607,13 +611,13 @@
 
     <div class="tabs" id="tabs">
       <div class="tab active" data-tab="dashboard">대시보드 <span class="b" id="bDash">0</span></div>
-      <div class="tab" data-tab="docs">서류 <span class="b" id="bDocs">0</span></div>
+      <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
       <div class="tab" data-tab="photos">현장 사진 <span class="b" id="bPhotos">0</span></div>
-      <div class="tab" data-tab="estimates">견적·정산 <span class="b" id="bEst">0</span></div>
+      <div class="tab" data-tab="docs">서류 <span class="b" id="bDocs">0</span></div>
       <div class="tab" data-tab="quotemaker">✍ 견적 작성</div>
+      <div class="tab" data-tab="estimates">견적·정산 <span class="b" id="bEst">0</span></div>
       <div class="tab" data-tab="schedule">📅 일정표</div>
       <div class="tab" data-tab="contacts">연락처 <span class="b" id="bCon">0</span></div>
-      <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
     </div>
 
     <div id="view"></div>
@@ -2818,10 +2822,10 @@ function openMoreSheet(){
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='moreBackdrop';
   sheet=document.createElement('div');sheet.className='more-sheet open';sheet.id='moreSheet';
   const items=[
+    {t:'project',i:'🏗️',l:'현장별 보기'},
     {t:'docs',i:'📁',l:'서류'},
     {t:'estimates',i:'🧾',l:'견적·정산'},
     {t:'contacts',i:'👤',l:'연락처'},
-    {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
   sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
@@ -3066,6 +3070,19 @@ async function showProjectMap(projName){
   else map.setView(pts[0],16);
   setTimeout(()=>map.invalidateSize(),100); // 모달 안 렌더 후 크기 보정
 }
+function dashboardWorkflowHTML(){
+  const photoN=state.files.filter(f=>f.kind==='photo').length;
+  const todoPhotoN=state.files.filter(f=>f.kind==='photo'&&photoSortState(f).cls==='todo').length;
+  const estN=state.files.filter(isEstimateCandidate).length+(state.quotes||[]).length;
+  return `<div class="workflow-strip">
+    <button class="workflow-step" data-gotab="project"><b>1. 현장 확인</b><span>${state.projects.length}곳 · 고객/단계</span></button>
+    <button class="workflow-step" data-gotab="photos"><b>2. 사진 정리</b><span>${photoN}장 · 정리 전 ${todoPhotoN}장</span></button>
+    <button class="workflow-step" data-gotab="docs"><b>3. 서류 분류</b><span>견적서·도면·명함</span></button>
+    <button class="workflow-step" data-gotab="quotemaker"><b>4. 견적 작성</b><span>작성/공유/PDF</span></button>
+    <button class="workflow-step" data-gotab="estimates"><b>5. 정산 확인</b><span>견적 ${estN}건 · 수금/마진</span></button>
+    <button class="workflow-step" data-gotab="schedule"><b>6. 일정 관리</b><span>작업 일정/보고</span></button>
+  </div>`;
+}
 function viewDashboard(){
   if(!state.projects.length){
     const estHtml=dashboardEstimateDetailsHTML();
@@ -3077,7 +3094,7 @@ function viewDashboard(){
         <button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button>
       </div>
       <small style="display:block;margin-top:10px;color:var(--muted)">처음이면 구글 로그인 화면이 한 번 뜹니다 (회사 계정 3dncjf). · ‘전체 통합’은 드라이브 앱으로 올린 사진까지 불러옵니다(권한 1회 추가).</small>
-    </div>`+estHtml+monthHtml;
+    </div>`+dashboardWorkflowHTML()+estHtml+monthHtml;
   }
   const stats=state.projects.map(p=>({name:p.name,...projStats(p.name)}));
   const totEst=stats.reduce((a,s)=>a+s.est,0);
@@ -3099,6 +3116,7 @@ function viewDashboard(){
     <div class="kpi ok"><span class="kl">수금 완료</span><span class="kv" style="font-size:20px">${(totRecv/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
     <div class="kpi due"><span class="kl">미수금</span><span class="kv" style="font-size:20px">${(totDue/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
   </div>`;
+  html+=dashboardWorkflowHTML();
   // 수금률 바
   const rate=totEst?Math.round(totRecv/totEst*100):0;
   html+=`<div class="ratewrap"><div class="ratehead"><span>전체 수금률</span><b>${rate}%</b></div><div class="ratebar"><i style="width:${rate}%"></i></div></div>`;
@@ -4870,7 +4888,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-photofilter],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-gotab],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-photofilter],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4928,6 +4946,7 @@ function setupDelegation(){
     if(d.qdel!==undefined)return deleteQuote(d.qdel);
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
+    if(d.gotab!==undefined){state.tab=d.gotab;if(d.gotab==='project')__projView=null;return render();}
     if(d.photofilter!==undefined){__photoStatusFilter=d.photofilter||'all';return render();}
     if(d.clusterfull!==undefined){const k=d.clusterfull;if(__photoClusterFullOpen.has(k))__photoClusterFullOpen.delete(k);else __photoClusterFullOpen.add(k);return render();}
     if(d.pcpreview!==undefined){__phaseProj=d.pcpreview;state.activeProject=d.pcpreview;state.tab='photos';render();setTimeout(()=>document.getElementById('pcWorkPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),0);return;}
