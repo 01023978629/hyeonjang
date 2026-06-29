@@ -580,6 +580,8 @@
 
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">
       <button class="blue tiny" id="btnSave" disabled>저장하기</button>
+      <button class="ghost tiny" id="btnCacheSave">💾 캐시 파일 저장</button>
+      <button class="ghost tiny" id="btnCacheLoad">📦 캐시 불러오기</button>
       <button class="blue tiny" id="btnAutoSave">⏱ 자동저장 ON</button>
       <button class="ghost tiny" id="btnMoveMode">📁 공정이동: 모아서</button>
       <button class="ghost tiny" id="btnRestore">↺ 백업에서 복원</button>
@@ -593,7 +595,7 @@
       <button class="moss tiny" id="btnExport">📤 내보내기(백업 파일)</button>
       <button class="ghost tiny" id="btnImport">📥 불러오기</button>
     </div>
-    <p class="hint">내보낸 <b>현장데이터.json</b>을 구글 드라이브·카톡에 두면, 폰이나 다른 PC에서 ‘불러오기’로 현장·견적·수금 현황을 그대로 봅니다.</p>
+    <p class="hint">내보낸 <b>현장데이터.json</b>을 구글 드라이브·카톡에 두면, 폰이나 다른 PC에서 ‘불러오기’로 현장·견적·수금 현황을 그대로 봅니다. PC 폴더 연결 시 <b>_현장캐시.json</b>도 함께 저장됩니다.</p>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px">
       <button class="moss tiny" id="btnBizCard" style="width:100%">📇 사업자·명함 보내기 (사진+글·카톡/문자)</button>
@@ -990,6 +992,8 @@ async function scanDir(){
 }
 
 /* ---------- 프로젝트 저장/복원 ---------- */
+const LOCAL_SAVE_FILE='_현장.json';
+const LOCAL_CACHE_FILE='_현장캐시.json';
 let __autosaveTimer=null;
 let __autoSaveOn=true; // 자동 저장 on/off (기본 on)
 const AUTOSAVE_MS=180000; // 3분
@@ -1037,6 +1041,56 @@ function serializeData(){
       driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
+}
+function cacheData(){
+  const data=serializeData();
+  data.cache=true;
+  data.cacheNote='사진 원본은 넣지 않고 현장·작업명·공정·견적·파일 연결 정보만 저장합니다.';
+  return data;
+}
+async function writeFolderJson(name,data){
+  if(!state.dirHandle||!FS_OK)throw new Error('폴더 연결 필요');
+  const fh=await state.dirHandle.getFileHandle(name,{create:true});
+  const w=await fh.createWritable();
+  await w.write(JSON.stringify(data,null,1));
+  await w.close();
+}
+async function readFolderJson(name){
+  if(!state.dirHandle||!FS_OK)throw new Error('폴더 연결 필요');
+  const fh=await state.dirHandle.getFileHandle(name);
+  const file=await fh.getFile();
+  return JSON.parse(await file.text());
+}
+function downloadCacheFile(){
+  if(!state.projects.length && !state.files.length){toast('저장할 캐시 데이터가 없습니다.');return;}
+  const stamp=localDate().replace(/-/g,'');
+  const blob=new Blob([JSON.stringify(cacheData(),null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='현장캐시_'+stamp+'.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('캐시 파일을 내려받았습니다. 폰/다른 PC에서는 불러오기로 선택하세요.');
+}
+async function saveCacheFile(silent){
+  if(!state.dirHandle||!FS_OK){if(!silent)downloadCacheFile();return false;}
+  try{
+    await writeFolderJson(LOCAL_CACHE_FILE,cacheData());
+    if(!silent)toast(LOCAL_CACHE_FILE+' 저장됨');
+    return true;
+  }catch(e){if(!silent)toast('캐시 저장 실패: '+(e.message||e));return false;}
+}
+async function loadCacheFile(silent){
+  if(!state.dirHandle||!FS_OK){if(!silent)importData();return false;}
+  try{
+    const data=await readFolderJson(LOCAL_CACHE_FILE);
+    const n=applyData(data);
+    state.tab='dashboard';
+    render();
+    try{hydrateThumbs();}catch(e){}
+    if(!silent)toast('캐시 불러오기 완료 — 현장 '+state.projects.length+'개 · 항목 '+n+'개');
+    return true;
+  }catch(e){if(!silent)toast('캐시 파일이 없습니다. 먼저 캐시를 저장하세요.');return false;}
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 function applyData(data){
@@ -1087,23 +1141,24 @@ async function saveProject(silent){
   if(!state.dirHandle||!FS_OK){if(!silent)toast('폴더 연결 시 폴더에 저장됩니다. 폰에서는 ‘데이터 내보내기’를 쓰세요.');return;}
   try{
     const data=serializeData();
-    const fh=await state.dirHandle.getFileHandle('_현장.json',{create:true});
-    const w=await fh.createWritable();await w.write(JSON.stringify(data,null,1));await w.close();
-    clearDirty();toast(silent?'자동 저장됨':'작업 내용을 _현장.json에 저장했습니다');
+    await writeFolderJson(LOCAL_SAVE_FILE,data);
+    try{await writeFolderJson(LOCAL_CACHE_FILE,Object.assign({},data,{cache:true,cacheNote:'사진 원본은 넣지 않고 현장·작업명·공정·견적·파일 연결 정보만 저장합니다.'}));}catch(e){}
+    clearDirty();toast(silent?'자동 저장됨':'작업 내용을 '+LOCAL_SAVE_FILE+'와 '+LOCAL_CACHE_FILE+'에 저장했습니다');
   }catch(e){if(!silent)toast('저장 오류: '+e.message);}
 }
 async function loadProject(){
   if(!state.dirHandle)return;
   try{
-    const fh=await state.dirHandle.getFileHandle('_현장.json');
-    const file=await fh.getFile();const data=JSON.parse(await file.text());
+    let data=null, source=LOCAL_SAVE_FILE;
+    try{data=await readFolderJson(LOCAL_SAVE_FILE);}
+    catch(e){data=await readFolderJson(LOCAL_CACHE_FILE);source=LOCAL_CACHE_FILE;}
     if(__dataAt && data.savedAt && data.savedAt < __dataAt && __lastData){
       // 이 PC 로컬 저장본이 드라이브 최신본보다 오래됨 → 데이터는 드라이브 유지, 파일만 재매칭
       applyData(__lastData);
       toast('드라이브 최신 데이터 유지(로컬 저장본이 더 오래됨) — 파일만 연결');
     } else {
       const n=applyData(data);
-      toast('저장된 작업 복원됨 — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
+      toast((source===LOCAL_CACHE_FILE?'캐시에서 복원됨':'저장된 작업 복원됨')+' — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
     }
     render();   // 로컬 불러오기 후에도 화면 갱신(드라이브 불러오기와 동작 일치)
   }catch(e){/* 저장 파일 없음 = 첫 사용 */}
@@ -2228,6 +2283,8 @@ async function getWorker(){
 }
 $('#btnOcrAll').onclick=runBatchOCR;
 $('#btnSave').onclick=()=>saveProject(false);
+$('#btnCacheSave').onclick=()=>saveCacheFile(false);
+$('#btnCacheLoad').onclick=()=>loadCacheFile(false);
 $('#btnRestore').onclick=openRestore;
 $('#btnAutoSave').onclick=toggleAutoSave;
 $('#btnMoveMode').onclick=toggleMoveMode;
@@ -5890,7 +5947,7 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v3';
+    const C='hyeonjang-v4';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
