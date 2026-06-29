@@ -157,9 +157,12 @@
   .project-action-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;padding:10px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
   .project-list-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 4px}
   .pc-photo-actions.pc-only-action{display:flex}
-  .pc-photo-actions{gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2)}
+  .pc-photo-actions{gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);position:sticky;top:6px;z-index:6;box-shadow:var(--shadow)}
   .pc-photo-actions .pc-photo-title{font-size:12px;font-weight:800;color:var(--blueprint);letter-spacing:.08em}
   .pc-photo-actions select{min-width:170px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  .photo-statusbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px;font-size:11.5px;color:var(--muted)}
+  .photo-status-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line-soft);border-radius:20px;background:var(--paper)}
+  .photo-status-pill b{color:var(--ink)}
   .pc-work-preview.pc-only-action{display:block}
   .pc-work-preview{margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper)}
   .pc-work-preview-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
@@ -3168,6 +3171,7 @@ function viewDocs(){
 }
 let __showDup=false;
 let __phaseProj=null;
+let __photoStatusFilter='all';
 function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')+':'+(p._worklabel||'')).join('|')+'#'+state.search;}
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
 // 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
@@ -3442,8 +3446,11 @@ function pcPhotoWorkPreview(projName, photos){
   return html+'</div>';
 }
 function viewPhotos(){
-  const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)"><b>PC:</b> 왼쪽 ‘📁 로컬 폴더 연결’로 사진 폴더를 열어 정리합니다.<br><b>폰:</b> 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
+  const allPhotos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
+  if(!allPhotos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)"><b>PC:</b> 왼쪽 ‘📁 로컬 폴더 연결’로 사진 폴더를 열어 정리합니다.<br><b>폰:</b> 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
+  const statusCounts={done:0,assigned:0,todo:0};
+  allPhotos.forEach(f=>{statusCounts[photoSortState(f).cls]++;});
+  const photos=__photoStatusFilter==='todo'?allPhotos.filter(f=>photoSortState(f).cls==='todo'):allPhotos;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -3464,9 +3471,16 @@ function viewPhotos(){
   // 상단 요약 바
   let html=`<div class="photo-bar">
     <span class="pb-stat">묶음 <b>${clusters.length}</b></span>
-    <span class="pb-stat">사진 <b>${photos.length}</b></span>
+    <span class="pb-stat">사진 <b>${photos.length}</b>${photos.length!==allPhotos.length?` / 전체 ${allPhotos.length}`:''}</span>
     <span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>
+    <button class="${__photoStatusFilter==='all'?'blue':'ghost'} tiny" data-photofilter="all">전체 보기</button>
+    <button class="${__photoStatusFilter==='todo'?'blue':'ghost'} tiny" data-photofilter="todo">정리 전만 보기</button>
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 제거</button>`:''}
+  </div>`;
+  html+=`<div class="photo-statusbar">
+    <span class="photo-status-pill"><span class="file-state-dot done"></span>정리 완료 <b>${statusCounts.done}</b></span>
+    <span class="photo-status-pill"><span class="file-state-dot assigned"></span>작업 지정 <b>${statusCounts.assigned}</b></span>
+    <span class="photo-status-pill"><span class="file-state-dot"></span>정리 전 <b>${statusCounts.todo}</b></span>
   </div>`;
   if(state.projects.length&&pcPhotoProject){
     const pcCount=photos.filter(f=>f.project===pcPhotoProject).length;
@@ -3522,6 +3536,10 @@ function viewPhotos(){
     </div>`;
   }
   html+=bulkBar(null);
+  if(!photos.length){
+    html+=`<div class="empty"><b>정리 전 사진이 없습니다</b>현재 검색/필터 기준에서는 남은 미정리 사진이 없습니다. 상단에서 <b>전체 보기</b>를 누르면 정리 완료 사진까지 다시 볼 수 있습니다.</div>`;
+    return html;
+  }
 
   if(__showDup){
     if(!dupSets.length)html+=`<div class="empty">중복으로 의심되는 사진이 없습니다.</div>`;
@@ -4852,7 +4870,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-open],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-photofilter],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -4910,6 +4928,7 @@ function setupDelegation(){
     if(d.qdel!==undefined)return deleteQuote(d.qdel);
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
+    if(d.photofilter!==undefined){__photoStatusFilter=d.photofilter||'all';return render();}
     if(d.clusterfull!==undefined){const k=d.clusterfull;if(__photoClusterFullOpen.has(k))__photoClusterFullOpen.delete(k);else __photoClusterFullOpen.add(k);return render();}
     if(d.pcpreview!==undefined){__phaseProj=d.pcpreview;state.activeProject=d.pcpreview;state.tab='photos';render();setTimeout(()=>document.getElementById('pcWorkPreview')?.scrollIntoView({behavior:'smooth',block:'start'}),0);return;}
     if(d.pcprojfull!==undefined){const n=d.pcprojfull;__phaseProj=n;state.activeProject=n;state.tab='photos';if(__projFullPhotoOpen.has(n))__projFullPhotoOpen.delete(n);else __projFullPhotoOpen.add(n);return render();}
