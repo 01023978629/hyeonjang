@@ -156,6 +156,21 @@
   button.main-action{padding:9px 13px;font-size:13px;font-weight:700}
   .project-action-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;padding:10px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
   .project-list-actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 4px}
+  .project-overview-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2)}
+  .project-overview-tools input{max-width:260px;font-size:12.5px;padding:7px 9px;background:var(--paper)}
+  .project-overview-tools .hint{margin:0;margin-left:auto}
+  .project-overview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:14px}
+  .project-card{border:1px solid var(--line-soft);border-radius:9px;background:var(--paper);padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px;min-width:0}
+  .project-card:hover{border-color:var(--line)}
+  .project-card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .project-card-title{min-width:0}
+  .project-card-title b{display:block;color:var(--blueprint);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .project-card-title span{font-size:11px;color:var(--muted);font-weight:700}
+  .project-mini-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .project-mini-stat{border:1px solid var(--line-soft);border-radius:7px;padding:6px;text-align:center;background:var(--paper-2)}
+  .project-mini-stat b{display:block;font-size:12.5px;color:var(--blueprint);line-height:1.1}.project-mini-stat span{font-size:10px;color:var(--muted);font-weight:700}
+  .project-card-actions{display:flex;gap:5px;flex-wrap:wrap}
+  .project-card-actions button{font-size:11px;padding:5px 8px}
   .pc-photo-actions.pc-only-action{display:flex}
   .pc-photo-actions{gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);position:sticky;top:6px;z-index:6;box-shadow:var(--shadow)}
   .pc-photo-actions .pc-photo-title{font-size:12px;font-weight:800;color:var(--blueprint);letter-spacing:.08em}
@@ -176,6 +191,18 @@
   .proj-item.active .pin{background:var(--clay-soft)}
   .proj-item .cnt{margin-left:auto;font-size:11px;color:var(--muted)}
   .proj-item.active .cnt{color:#cfe0f7}
+  .proj-main{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}
+  .proj-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+  .proj-meta{font-size:10.5px;color:var(--muted);font-weight:600}
+  .proj-item.active .proj-meta{color:#cfe0f7}
+  .proj-tools{display:flex;flex-direction:column;gap:7px;margin:0 0 9px}
+  .proj-tools input{font-size:12.5px;padding:7px 9px}
+  .proj-filter{display:flex;gap:4px;flex-wrap:wrap}
+  .proj-stage-btn{border:1px solid var(--line-soft);background:var(--paper);color:var(--blueprint);border-radius:14px;padding:3px 7px;font-size:10.5px;font-weight:800;cursor:pointer}
+  .proj-stage-btn.on{background:var(--blueprint);border-color:var(--blueprint);color:#fff}
+  .proj-group-h{display:flex;align-items:center;justify-content:space-between;margin:8px 2px 3px;font-size:10.5px;color:var(--muted);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+  .proj-group-h b{color:var(--blueprint);font-size:11px;letter-spacing:0;text-transform:none}
+  .proj-empty{border:1px dashed var(--line-soft);border-radius:8px;padding:10px;font-size:12px;color:var(--muted);background:var(--paper);text-align:center}
   .stage-row{display:flex;gap:3px;margin:2px 0 0 17px}
   .stage-dot{width:7px;height:7px;border-radius:50%;background:var(--line-soft)}
   .stage-dot.on{background:var(--moss)}
@@ -587,6 +614,16 @@
     </div>
 
     <p class="eyebrow">현장(프로젝트)</p>
+    <div class="proj-tools">
+      <input type="text" id="projSearch" placeholder="🔎 현장명 검색">
+      <div class="proj-filter" id="projStageFilters">
+        <button class="proj-stage-btn on" data-projstage="all">전체</button>
+        <button class="proj-stage-btn" data-projstage="0">상담</button>
+        <button class="proj-stage-btn" data-projstage="1">실측</button>
+        <button class="proj-stage-btn" data-projstage="2">시공</button>
+        <button class="proj-stage-btn" data-projstage="3">완료</button>
+      </div>
+    </div>
     <div class="proj" id="projList"></div>
     <div class="newproj">
       <input type="text" id="newProj" placeholder="예) 망원동 카페" maxlength="40">
@@ -689,7 +726,7 @@ function requireEditMode(action){
   return true;
 }
 
-const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null,schedule:[],contacts:[]};
+const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',projectSearch:'',projectStageFilter:'all',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null,schedule:[],contacts:[]};
 // 공급자 고정 정보 + 계좌 목록 (만물인테리어)
 const COMPANY={
   name:'만물인테리어', bizno:'895-48-01132', owner:'전병덕', tel:'010-5439-8629',
@@ -2588,6 +2625,12 @@ async function analyzeAllEstimates(){
 /* ---------- 현장 ---------- */
 $('#btnAddProj').onclick=addProject;
 $('#newProj').addEventListener('keydown',e=>{if(e.key==='Enter')addProject();});
+$('#projSearch').addEventListener('input',e=>{state.projectSearch=e.target.value||'';render();});
+$('#projStageFilters').addEventListener('click',e=>{
+  const b=e.target.closest('[data-projstage]');if(!b)return;
+  state.projectStageFilter=b.dataset.projstage||'all';
+  render();
+});
 function addProject(){const v=$('#newProj').value.trim();if(!v)return;
   if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');return;}
   state.projects.push({name:v,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');}
@@ -2998,22 +3041,39 @@ function render(){
   // 선택 모드는 '현장 사진' 탭에서만 — 다른 탭으로 가면 자동 해제(다른 탭 사진보기 가로채기·갇힘 방지)
   if(state.tab!=='photos'&&__selMode){__selMode=false;document.body.classList.remove('selmode');}
   const pl=$('#projList');pl.innerHTML='';
+  const fileCountByProject=new Map();
+  state.files.forEach(f=>{if(f.project)fileCountByProject.set(f.project,(fileCountByProject.get(f.project)||0)+1);});
+  const projectQ=String(state.projectSearch||'').trim().toLowerCase();
+  const projectStage=String(state.projectStageFilter||'all');
+  const projectMatches=p=>(!projectQ||String(p.name||'').toLowerCase().includes(projectQ))&&(projectStage==='all'||String(p.stage||0)===projectStage);
+  const matchedProjects=state.projects.filter(projectMatches);
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
-  all.innerHTML='<span class="pin" style="background:#6a86a3"></span> 전체 보기 <span class="cnt">'+state.files.length+'</span>';
+  all.innerHTML='<span class="pin" style="background:#6a86a3"></span><span class="proj-main"><span class="proj-name">전체 보기</span><span class="proj-meta">현장 '+state.projects.length+'곳 · 표시 '+matchedProjects.length+'곳</span></span><span class="cnt">'+state.files.length+'</span>';
   all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
-  state.projects.forEach(p=>{
-    const n=state.files.filter(f=>f.project===p.name).length;
-    const wrap=document.createElement('div');
-    const el=document.createElement('div');
-    el.className='proj-item'+(state.activeProject===p.name?' active':'');
-    el.innerHTML='<span class="pin"></span> '+escapeHtml(p.name)+' <span class="cnt">'+n+'</span>';
-    el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
-    wrap.appendChild(el);
-    const sr=document.createElement('div');sr.className='stage-row';
-    sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
-    wrap.appendChild(sr);pl.appendChild(wrap);
-  });
+  if(!matchedProjects.length&&state.projects.length){
+    const empty=document.createElement('div');empty.className='proj-empty';empty.textContent='검색/단계 조건에 맞는 현장이 없습니다.';pl.appendChild(empty);
+  }else{
+    STAGES.forEach((stageLabel,stageIdx)=>{
+      const group=matchedProjects.filter(p=>(p.stage||0)===stageIdx).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko'));
+      if(!group.length)return;
+      const gh=document.createElement('div');gh.className='proj-group-h';gh.innerHTML=`<span>${escapeHtml(stageLabel)}</span><b>${group.length}곳</b>`;pl.appendChild(gh);
+      group.forEach(p=>{
+        const n=fileCountByProject.get(p.name)||0;
+        const wrap=document.createElement('div');
+        const el=document.createElement('div');
+        el.className='proj-item'+(state.activeProject===p.name?' active':'');
+        el.innerHTML=`<span class="pin"></span><span class="proj-main"><span class="proj-name">${escapeHtml(p.name)}</span><span class="proj-meta">${escapeHtml(stageLabel)} · 파일 ${n}개</span></span><span class="cnt">${n}</span>`;
+        el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
+        wrap.appendChild(el);
+        const sr=document.createElement('div');sr.className='stage-row';
+        sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
+        wrap.appendChild(sr);pl.appendChild(wrap);
+      });
+    });
+  }
+  const ps=$('#projSearch');if(ps&&ps.value!==state.projectSearch)ps.value=state.projectSearch||'';
+  document.querySelectorAll('[data-projstage]').forEach(b=>b.classList.toggle('on',String(b.dataset.projstage)===(state.projectStageFilter||'all')));
   const c=counts();
   $('#bDash').textContent=state.projects.length;
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
@@ -4951,24 +5011,47 @@ async function importPhoneContacts(){
 function viewProject(){
   if(state.activeProject===null){
     if(!state.projects.length)return `<div class="empty"><b>현장이 없습니다</b>컴퓨터는 왼쪽 아래에서, 폰은 아래 <b>더보기 ▸ ➕ 현장 추가</b>로 현장명을 추가하세요. 예) 망원동 카페</div>`;
-    let html='';
-    state.projects.forEach(p=>{
+    const q=String(state.projectSearch||'').trim().toLowerCase();
+    const stageFilter=String(state.projectStageFilter||'all');
+    const visible=state.projects.filter(p=>(!q||String(p.name||'').toLowerCase().includes(q))&&(stageFilter==='all'||String(p.stage||0)===stageFilter))
+      .sort((a,b)=>(a.stage||0)-(b.stage||0)||String(a.name).localeCompare(String(b.name),'ko'));
+    let html=`<div class="project-overview-tools">
+      <input type="text" id="projViewSearch" value="${escapeAttr(state.projectSearch||'')}" placeholder="🔎 현장명 검색">
+      <div class="proj-filter">
+        <button class="proj-stage-btn ${stageFilter==='all'?'on':''}" data-projviewstage="all">전체</button>
+        ${STAGES.map((s,i)=>`<button class="proj-stage-btn ${stageFilter===String(i)?'on':''}" data-projviewstage="${i}">${s}</button>`).join('')}
+      </div>
+      <span class="hint">전체 ${state.projects.length}곳 · 표시 ${visible.length}곳</span>
+    </div>`;
+    if(!visible.length)return html+`<div class="empty"><b>조건에 맞는 현장이 없습니다</b>검색어나 단계 필터를 바꿔보세요.</div>`;
+    html+=`<div class="project-overview-grid">`;
+    visible.forEach(p=>{
       const list=state.files.filter(f=>f.project===p.name);
       const photos=list.filter(f=>f.kind==='photo');
-      const docs=list.filter(f=>f.kind!=='photo');
-      const open=__projPhotoOpen.has(p.name);
-      html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:var(--muted);font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${photos.length?`<button class="blue tiny main-action" data-openphoto="${escapeAttr(p.name)}">📷 사진 정리 화면</button>`:''}<button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
-      html+=stageBar(p);
-      // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
-      if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
-      // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
-      if(photos.length){
-        html+=`<div class="project-list-actions"><button class="blue tiny main-action" data-openphoto="${escapeAttr(p.name)}">📷 공정/작업별 보기</button><button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}">${open?('▼ 현장사진 '+photos.length+'장 숨기기'):('▶ 현장사진 '+photos.length+'장 펼치기')}</button></div>`;
-        if(open)html+=`<div class="grid">${photos.map(cardHtml).join('')}</div>`;
-      }
-      if(!list.length)html+=`<div class="empty" style="padding:22px">아직 배정된 파일이 없습니다.</div>`;
+      const docs=list.length-photos.length;
+      const s=projStats(p.name);
+      html+=`<div class="project-card">
+        <div class="project-card-h">
+          <div class="project-card-title"><b>${escapeHtml(p.name)}</b><span>${STAGES[p.stage||0]} · 파일 ${list.length}개</span></div>
+          <button class="blue tiny" data-open="${escapeAttr(p.name)}">열기</button>
+        </div>
+        <div class="stage-row" style="margin:0">${STAGES.map((st,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${st}"></span>`).join('')}</div>
+        <div class="project-mini-stats">
+          <div class="project-mini-stat"><b>${photos.length}</b><span>사진</span></div>
+          <div class="project-mini-stat"><b>${docs}</b><span>서류</span></div>
+          <div class="project-mini-stat"><b>${Math.round((s.est||0)/10000).toLocaleString('ko-KR')}</b><span>견적만원</span></div>
+          <div class="project-mini-stat"><b>${Math.round((s.due||0)/10000).toLocaleString('ko-KR')}</b><span>미수만원</span></div>
+        </div>
+        <div class="project-card-actions">
+          ${photos.length?`<button class="blue tiny" data-openphoto="${escapeAttr(p.name)}">사진</button>`:''}
+          <button class="ghost tiny" data-renproj="${escapeAttr(p.name)}">이름</button>
+          <button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">포트폴리오</button>
+          <button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF</button>
+          <button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리</button>
+        </div>
+      </div>`;
     });
+    html+=`</div>`;
     return html;
   }
   const p=state.projects.find(x=>x.name===state.activeProject);
@@ -5126,7 +5209,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-estanalyze],[data-audit],[data-cache],[data-folderstructure],[data-mount],[data-gofilter],[data-open],[data-gotab],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-photofilter],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-projviewstage],[data-learn],[data-estanalyze],[data-audit],[data-cache],[data-folderstructure],[data-mount],[data-gofilter],[data-open],[data-gotab],[data-openphoto],[data-pcpreview],[data-pcprojfull],[data-clusterfull],[data-photofilter],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-projfull],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],#btnAnalyzeEst,#btnXlsx,#btnXlsxDash,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnAnalyzeEst')return analyzeAllEstimates();
@@ -5200,6 +5283,7 @@ function setupDelegation(){
     if(d.delproj!==undefined)return deleteProject(d.delproj);
     if(d.map!==undefined)return showProjectMap(d.map);
     if(d.organize!==undefined)return organizeByPhase(d.organize);
+    if(d.projviewstage!==undefined){state.projectStageFilter=d.projviewstage||'all';return render();}
     if(d.pview!==undefined){__projView=(d.pview==='all')?null:+d.pview;return render();}
     if(d.dayselect!==undefined){
       const ids=d.dayselect.split(',');
@@ -5240,6 +5324,7 @@ function setupDelegation(){
     if(t.matches('input[data-recv]'))return setReceived(d.recv,t.value);
     if(t.matches('input[data-cost]'))return setCost(d.proj,d.cost,t.value);
     if(t.matches('input[data-cust]'))return setCustomer(d.proj,d.cust,t.value);
+    if(t.id==='projViewSearch'){state.projectSearch=t.value||'';return render();}
     // 견적 폼 필드
     if(t.id==='qmTitle')return setQuoteField('title',t.value);
     if(t.id==='qmNo')return setQuoteField('no',t.value);
@@ -5264,6 +5349,7 @@ function setupDelegation(){
     const t=e.target;
     if(t.matches('input[data-phaseinput]')&&e.key==='Enter')addPhase(t.dataset.phaseinput,t.value);
     if(t.id==='phaseProjInput'&&e.key==='Enter'){const sel=view.querySelector('#phaseProjSel');if(sel){__phaseProj=sel.value;addPhase(sel.value,t.value);}}
+    if(t.id==='projViewSearch'&&e.key==='Enter'){state.projectSearch=t.value||'';return render();}
     if(t.matches('input[data-qf="price"]')&&e.key==='Enter'){e.preventDefault();setQuoteItem(+t.dataset.qi,'price',t.value);addQuoteItem();}  // 입력값 먼저 반영 후 행 추가(Enter로 단가 유실 방지)
   });
 }
@@ -6133,7 +6219,7 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v6';
+    const C='hyeonjang-v7';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
