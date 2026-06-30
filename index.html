@@ -796,6 +796,18 @@ function kindFromSourceFolder(prefix){
   if(top==='현장사진')return 'photo';
   return null;
 }
+function applyOrganizedPrefix(rec,prefix){
+  const parts=String(prefix||'').split('/').filter(Boolean);
+  if(parts[0]!=='_정리완료'||parts.length<2)return;
+  rec.project=rec.project||parts[1];
+  const folder=parts[2]||'';
+  const kindKey=Object.keys(KIND).find(k=>KIND[k].folder===folder);
+  if(kindKey){rec.kind=kindKey;return;}
+  if(IMG.includes(rec.ext)){
+    rec.kind='photo';
+    if(folder&&!rec._worklabel)rec._worklabel=folder;
+  }
+}
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 // HEIC도 JPEG로 렌더해 주는 lh3 형식(drive.google.com/thumbnail은 HEIC 미지원) — 로그인된 브라우저에서 바로 표시
 function driveThumbUrl(id,w){ return 'https://lh3.googleusercontent.com/d/'+id+'=w'+(w||1000); }
@@ -2199,7 +2211,7 @@ function loadDemo(){
 async function walk(dir,prefix){
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      if(name==='_정리완료')continue;
+      if(name==='_백업')continue;
       await walk(handle,prefix+name+'/');
     }else{try{const f=await handle.getFile();await ingestFile(f,handle,prefix);}catch(e){}}
   }
@@ -2215,6 +2227,7 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
+  applyOrganizedPrefix(rec,prefix);
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -6242,7 +6255,7 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v10';
+    const C='hyeonjang-v11';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
