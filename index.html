@@ -184,7 +184,12 @@
   .pc-work-preview-h b{font-size:13px;color:var(--blueprint)}
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
-  .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
+  .proj{max-height:clamp(176px,32vh,360px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:3px 4px 3px 0;margin:0 -4px 0 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+  .proj::-webkit-scrollbar{width:8px}
+  .proj::-webkit-scrollbar-track{background:transparent}
+  .proj::-webkit-scrollbar-thumb{background:var(--line-soft);border-radius:10px}
+  .proj:hover::-webkit-scrollbar-thumb{background:var(--line)}
+  .proj-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13px;min-height:36px}
   .proj-item:hover{background:#e8f1fd}
   .proj-item.active{background:var(--blueprint);color:#fff}
   .proj-item .pin{width:9px;height:9px;border-radius:50%;background:var(--clay);flex:0 0 auto}
@@ -200,13 +205,13 @@
   .proj-filter{display:flex;gap:4px;flex-wrap:wrap}
   .proj-stage-btn{border:1px solid var(--line-soft);background:var(--paper);color:var(--blueprint);border-radius:14px;padding:3px 7px;font-size:10.5px;font-weight:800;cursor:pointer}
   .proj-stage-btn.on{background:var(--blueprint);border-color:var(--blueprint);color:#fff}
-  .proj-group-h{display:flex;align-items:center;justify-content:space-between;margin:8px 2px 3px;font-size:10.5px;color:var(--muted);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+  .proj-group-h{display:flex;align-items:center;justify-content:space-between;margin:5px 2px 2px;padding:4px 2px;font-size:10.5px;color:var(--muted);font-weight:800;letter-spacing:.08em;text-transform:uppercase;position:sticky;top:0;z-index:1;background:var(--paper-2)}
   .proj-group-h b{color:var(--blueprint);font-size:11px;letter-spacing:0;text-transform:none}
   .proj-empty{border:1px dashed var(--line-soft);border-radius:8px;padding:10px;font-size:12px;color:var(--muted);background:var(--paper);text-align:center}
-  .stage-row{display:flex;gap:3px;margin:2px 0 0 17px}
+  .stage-row{display:flex;gap:3px;margin:1px 0 3px 16px}
   .stage-dot{width:7px;height:7px;border-radius:50%;background:var(--line-soft)}
   .stage-dot.on{background:var(--moss)}
-  .newproj{display:flex;gap:6px;margin-top:12px}
+  .newproj{display:flex;gap:6px;margin-top:8px}
   .panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
   .panel-head h2{font-size:22px;margin:0;letter-spacing:-.01em;color:var(--blueprint)}
   .panel-head h2 span{color:var(--clay)}
@@ -6237,7 +6242,7 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v9';
+    const C='hyeonjang-v10';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
