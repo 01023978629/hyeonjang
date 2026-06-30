@@ -800,6 +800,13 @@ function photoSrc(f,w){ if(!f)return ''; if(f.thumb)return f.thumb; if(f._driveI
 function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return '<div>IMG</div>';
   const fb=f._driveId?driveThumbFallback(f._driveId,w):''; const oe=fb?` onerror="this.onerror=null;this.src='${fb}'"`:'';
   return `<img src="${ps}" loading="lazy" decoding="async"${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''} referrerpolicy="no-referrer"${oe}>`; }
+function photoShareReady(f){
+  return !!(f&&((typeof File!=='undefined'&&f instanceof File)||f._file||f.handle||f._driveId||f.thumb));
+}
+function photoShareNeedText(f){
+  if(photoShareReady(f))return '';
+  return f&&f._virtual?'원본/드라이브 연결 없음':'공유 파일 준비 필요';
+}
 function revokeThumbUrl(f){const u=f&&f.thumb;if(typeof u==='string'&&u.startsWith('blob:')){try{URL.revokeObjectURL(u);}catch(e){} } }
 function clearFileList(){(state.files||[]).forEach(revokeThumbUrl);state.files=[];}
 let __removedIds=new Set();   // 사용자가 '제거'한 중복 사진의 driveId — 다시 불러와도 안 들어오게 기록(idb removed_ids)
@@ -3179,18 +3186,19 @@ function auditData(){
   const unassigned=state.files.filter(f=>!f.project).length;
   const photoTodo=photos.filter(f=>photoSortState(f).cls==='todo').length;
   const missingWork=photos.filter(f=>f.project&&!photoWorkName(f)&&photoSortState(f).cls!=='done').length;
+  const shareBlocked=photos.filter(f=>!photoShareReady(f)).length;
   const estNeeds=estimates.filter(f=>estimateIssues(f).length);
   const orphanFiles=state.files.filter(f=>f.project&&!projectNames.has(f.project)).length;
   const orphanSchedules=(state.schedule||[]).filter(s=>s.project&&!projectNames.has(s.project)).length;
   const dup=duplicateLightCount(state.files);
-  const issues=unassigned+photoTodo+missingWork+estNeeds.length+orphanFiles+orphanSchedules+dup;
+  const issues=unassigned+photoTodo+missingWork+shareBlocked+estNeeds.length+orphanFiles+orphanSchedules+dup;
   const storage=[
     state.dirHandle?'작업 폴더 연결됨':'작업 폴더 미연결',
     state.dirty?'저장 안 된 변경 있음':'저장 상태 양호',
     __dataAt?('마지막 데이터 '+__dataAt.slice(0,10)):'저장 시각 정보 없음',
     '캐시 파일: '+LOCAL_CACHE_FILE
   ];
-  return {photos,estimates,unassigned,photoTodo,missingWork,estNeeds,orphanFiles,orphanSchedules,dup,issues,storage};
+  return {photos,estimates,unassigned,photoTodo,missingWork,shareBlocked,estNeeds,orphanFiles,orphanSchedules,dup,issues,storage};
 }
 function auditSummaryHTML(){
   const a=auditData();
@@ -3198,6 +3206,7 @@ function auditSummaryHTML(){
     <button class="health-card ${a.issues?'warn':'ok'}" data-audit="1"><span>전체 점검</span><b>${a.issues?'확인 필요':'양호'}</b><span>${a.issues?`${a.issues}개 항목`:'저장·분류 상태 정상'}</span></button>
     <button class="health-card ${state.dirty?'due':'ok'}" data-audit="1"><span>데이터 안정성</span><b>${state.dirty?'미저장':'저장됨'}</b><span>${state.dirHandle?'폴더 연결':'폴더 미연결'}</span></button>
     <button class="health-card ${a.photoTodo||a.missingWork?'warn':'ok'}" data-gotab="photos"><span>사진 구조</span><b>${a.photoTodo+a.missingWork}</b><span>정리/작업명 확인</span></button>
+    <button class="health-card ${a.shareBlocked?'warn':'ok'}" data-gotab="photos"><span>사진 발송</span><b>${a.shareBlocked?'확인 필요':'준비됨'}</b><span>${a.shareBlocked?`${a.shareBlocked}장 원본 연결 필요`:'묶음발송 가능'}</span></button>
     <button class="health-card ${a.estNeeds.length?'warn':'ok'}" data-gotab="estimates"><span>견적 검증</span><b>${a.estNeeds.length}</b><span>금액·날짜 확인 필요</span></button>
   </div>`;
 }
@@ -3208,6 +3217,7 @@ function nextActionPlan(){
   if(state.dirHandle&&state.projects.length)actions.push({label:'🧱 폴더 구조 확인',cls:'moss',attr:'data-folderstructure="1"',note:'_백업, _정리완료, 현장/공정 폴더를 맞춰둡니다.'});
   if(a.photoTodo)actions.push({label:`📷 정리 전 사진 ${a.photoTodo}장`,cls:'clay',attr:'data-gofilter="todo"',note:'정리 전 사진을 먼저 현장/작업명에 묶는 것이 좋습니다.'});
   if(a.missingWork)actions.push({label:`🏷 작업명 확인 ${a.missingWork}장`,cls:'ghost',attr:'data-gotab="photos"',note:'현장은 있으나 작업명/공정이 빠진 사진입니다.'});
+  if(a.shareBlocked)actions.push({label:`📤 발송 원본 확인 ${a.shareBlocked}장`,cls:'ghost',attr:'data-gotab="photos"',note:'묶음발송 전에 원본 폴더나 드라이브 사진을 다시 연결하세요.'});
   if(a.estNeeds.length)actions.push({label:`🧾 견적 검증 ${a.estNeeds.length}건`,cls:'warn',attr:'data-gotab="estimates"',note:'금액·날짜·고객명이 이상한 견적부터 확인하세요.'});
   if(a.estimates.length&&!a.estNeeds.length)actions.push({label:'📊 정산 확인',cls:'ghost',attr:'data-gotab="estimates"',note:'견적 검증이 끝났다면 수금/마진을 확인하세요.'});
   if(!actions.length)actions.push({label:'🔎 데이터 점검 열기',cls:'moss',attr:'data-audit="1"',note:'현재 큰 문제는 없고, 필요할 때 전체 점검만 열면 됩니다.'});
@@ -3249,6 +3259,7 @@ function openAudit(){
   const photoItems=[];
   if(a.photoTodo)photoItems.push(`정리 전 사진 <b>${a.photoTodo}</b>장`);
   if(a.missingWork)photoItems.push(`현장은 있으나 작업명/공정이 없는 사진 <b>${a.missingWork}</b>장`);
+  if(a.shareBlocked)photoItems.push(`묶음발송 전 원본 연결이 필요한 사진 <b>${a.shareBlocked}</b>장`);
   if(a.dup)photoItems.push(`중복 의심 파일 <b>${a.dup}</b>개`);
   const dataItems=[];
   if(a.unassigned)dataItems.push(`미배정 파일 <b>${a.unassigned}</b>개`);
@@ -3586,9 +3597,12 @@ function sendPhotoBundles(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
   if(!photos.length){toast('보낼 사진이 없습니다. 먼저 사진을 불러오세요.');return;}
   const groups=photoBundleGroups(photos);
+  const ready=photos.filter(photoShareReady).length;
+  const blocked=photos.length-ready;
   const opts=groups.map(g=>`<option value="${escapeAttr(g.key)}"${state.activeProject===g.key?' selected':''}>${escapeHtml(g.label)} (${g.items.length}장)</option>`).join('');
   openModal('📤 사진 묶음 발송',
     '<p style="font-size:13px;line-height:1.6">앱에 불러온 사진을 <b>현장별</b>로 묶어 보냅니다.<br>카톡은 30장씩, 문자는 10장씩 나누어 공유창을 엽니다.<br>초과하면 같은 현장 안에서 <b>묶음 1/2, 2/2</b>처럼 자동으로 나뉩니다.</p>'+
+    '<div class="hint" style="margin:8px 0 0">공유 가능 '+ready+'장'+(blocked?' · 원본 연결 필요 '+blocked+'장':' · 원본 준비 완료')+'</div>'+
     '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);margin-top:10px">보낼 현장<select id="pbProject" style="font-size:14px;padding:9px">'+
     '<option value="__all__">전체 현장별로 보내기 ('+photos.length+'장)</option>'+opts+
     '</select></label>'+
@@ -3705,7 +3719,10 @@ function showBundleSender(bundles,label,size){
     const rows=bundles.map((c,idx)=>{
       const done=__pbSent.has(idx);
       const work=c.work||bundleWorkSummary(c.items);
-      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+c.items.length+'장)<span style="display:block;font-size:12px;opacity:.82;margin-top:3px">작업: '+escapeHtml(work)+'</span></button>';
+      const ready=c.items.filter(photoShareReady).length;
+      const blocked=c.items.length-ready;
+      const status=blocked?`공유 가능 ${ready}/${c.items.length} · 원본 필요 ${blocked}`:'공유 준비 완료';
+      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+c.items.length+'장)<span style="display:block;font-size:12px;opacity:.82;margin-top:3px">작업: '+escapeHtml(work)+'</span><span style="display:block;font-size:11px;opacity:.7;margin-top:2px">'+status+'</span></button>';
     }).join('');
     openModal('📤 '+via+' 묶음 발송',
       '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+bundles.length+'묶음</b> (묶음당 최대 '+size+'장).<br>'+size+'장을 넘으면 자동으로 다음 묶음으로 나뉩니다.<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+target+'</b> 선택 후 보내세요.</p>'+rows,
@@ -3717,6 +3734,7 @@ function showBundleSender(bundles,label,size){
         toast('사진 준비 중... '+bundle.project+' '+bundle.items.length+'장');
         const files=await filesForBundle(bundle.items);
         if(!files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.');return;}
+        if(files.length<bundle.items.length){toast('사진 '+(bundle.items.length-files.length)+'장을 준비하지 못했습니다. 폴더/드라이브를 다시 연결한 뒤 보내세요.');return;}
         if(!(navigator.canShare&&navigator.canShare({files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); return; }
         await navigator.share({files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
         __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
@@ -6219,7 +6237,7 @@ render();
 // service worker (오프라인 캐시) — Blob으로 인라인 등록
 if('serviceWorker' in navigator){
   const swCode=`
-    const C='hyeonjang-v8';
+    const C='hyeonjang-v9';
     self.addEventListener('install',e=>{self.skipWaiting();});
     self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
     self.addEventListener('fetch',e=>{
