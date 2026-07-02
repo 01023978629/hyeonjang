@@ -2507,6 +2507,7 @@ function clusterPhotos(photos){
   }
   return clusters;
 }
+function clusterIsUnassigned(c){return !c.items.some(p=>p.project);}
 
 /* ---------- 중복 감지: 크기+촬영시간(±2초) 동일 ---------- */
 function markDuplicates(photos){
@@ -2832,6 +2833,14 @@ function render(){
   all.className='proj-item'+(state.activeProject===null?' active':'');
   all.innerHTML='<span class="pin" style="background:#6a86a3"></span><span class="proj-name">전체 보기</span><span class="cnt">'+state.files.length+'</span>';
   all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
+  const unassignedTopN=state.files.filter(f=>!f.project).length;
+  if(unassignedTopN){
+    const un=document.createElement('div');
+    un.className='proj-item';
+    un.innerHTML='<span class="pin" style="background:#c9583d"></span><span class="proj-name">미배정 먼저</span><span class="cnt">'+unassignedTopN+'</span>';
+    un.onclick=()=>{state.activeProject=null;state.tab='photos';__clusterShowN=12;__clusterShowKey='';render();};
+    pl.appendChild(un);
+  }
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
   const addProjItem=(p,dim)=>{
     const n=projCounts[p.name]||0;
@@ -3565,7 +3574,15 @@ function viewPhotos(){
   // 위치별(같은 위치끼리)→날짜순 정렬: 위치 있는 묶음 먼저, 같은 위치끼리 모은 뒤 날짜순
   const __locKey=c=>c.address||(c.lat!=null?(c.lat.toFixed(3)+','+c.lng.toFixed(3)):'~없음');
   const __cDate=c=>{const w=c.items.find(p=>p.when)?.when;return w?w.getTime():0;};
-  const ordered=[...clusters].sort((a,b)=>{ const la=(a.lat!=null||!!a.address), lb=(b.lat!=null||!!b.address); if(la!==lb)return la?-1:1; const ka=__locKey(a),kb=__locKey(b); if(ka!==kb)return ka<kb?-1:1; return __cDate(a)-__cDate(b); });
+  const ordered=[...clusters].sort((a,b)=>{
+    const ua=clusterIsUnassigned(a), ub=clusterIsUnassigned(b);
+    if(ua!==ub)return ua?-1:1;
+    const la=(a.lat!=null||!!a.address), lb=(b.lat!=null||!!b.address);
+    if(la!==lb)return la?-1:1;
+    const ka=__locKey(a),kb=__locKey(b);
+    if(ka!==kb)return ka<kb?-1:1;
+    return __cDate(a)-__cDate(b);
+  });
   window.__clusters=ordered;
   // 초대형 목록 최적화: 클러스터를 한꺼번에 다 그리지 않고 12개씩 점진 표시(1,000장+에서도 가볍게)
   const CHUNK=12;
@@ -3579,6 +3596,7 @@ function viewPhotos(){
     const cur=mostCommon(c.items.map(p=>p.project).filter(Boolean));
     const ids=c.items.map(p=>p.id).join(',');
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
+    const unassigned=clusterIsUnassigned(c)?`<span class="revisit">미배정</span>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
     // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
@@ -3588,6 +3606,7 @@ function viewPhotos(){
     const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
+      ${unassigned}
       ${revisit}
       <span class="where">${where}</span>${geoBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
@@ -4992,7 +5011,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,#btnMoreClusters,#btnOrganizeAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -5036,6 +5055,7 @@ function setupDelegation(){
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='btnGeoAll')return geocodeAllClusters();
+    if(t.id==='btnMoreClusters'){__clusterShowN+=12;render();return;}
     if(t.id==='btnOrganizeAll')return organizeAllProjects();
     if(t.id==='btnGdLoad')return gdLoadDriveFiles(false);
     if(t.id==='btnGdPick')return gdPickFiles();
@@ -5102,7 +5122,6 @@ function setupDelegation(){
     if(t.matches('select[data-qproj]')){if(t.value&&!state.projects.length){toast('먼저 현장을 추가하세요.');render();return;}return assignQuoteProject(d.qproj,t.value);}
     if(t.matches('select[data-act=cluster]')){if(!t.value)return;return assignProjectMany(d.ids.split(','),t.value);}
     if(t.matches('input[data-worklabel]'))return setWorkLabel(d.worklabel.split(','),t.value.trim());
-    if(t.id==='btnMoreClusters'){__clusterShowN+=12;render();return;}
     if(t.matches('button[data-phasebtn]')){
       // 경량 버튼 → 실제 select로 즉석 교체(열림 상태로)
       const id=t.dataset.phasebtn;
