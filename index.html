@@ -1907,12 +1907,12 @@ function openGdriveSetup(){
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
-      <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
+      <input type="password" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" autocomplete="off" spellcheck="false" style="width:100%">
       <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
-      <input type="text" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" style="width:100%">
+      <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" autocomplete="off" spellcheck="false" style="width:100%">
       <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
     </details>
   </div>`;
