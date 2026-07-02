@@ -2901,7 +2901,8 @@ function cardHtml(f){
   const canPreview=canPreviewFile(f);
   const preview=previewButtonHtml(f,'미리보기');
   const rename=(!f._virtual)?`<button class="mini-btn" data-rename="${f.id}" title="파일 이름 변경">✎ 이름</button>`:'';
-  const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
+  const delphoto=f.kind==='photo'?`<button class="mini-btn warn" data-delphoto="${f.id}" title="사진 삭제">삭제</button>`:'';
+  const actbtns=(preview||rename||delphoto)?`<div class="card-tools">${preview}${rename}${delphoto}</div>`:'';
   return `<div class="card" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${organizedDot(f)}${escapeHtml(f.name)}</div>
@@ -3886,7 +3887,8 @@ function photoCell(p){
   }else{
     sel=`<span class="ph-hint">현장 먼저</span>`;
   }
-  const tools=(!p._virtual)?`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button></div>`:'';
+  const editTools=(!p._virtual)?`<button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button>`:'';
+  const tools=`<div class="ph-tools">${editTools}<button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`;
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
@@ -4965,7 +4967,8 @@ function viewProject(){
 function photoCellProj(f,phases){
   const cur=phaseOf(f);
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
-  const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button></div>`:'';
+  const editTools=(!f._virtual)?`<button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button>`:'';
+  const tools=`<div class="ph-tools">${editTools}<button data-delphoto="${f.id}" title="사진 삭제">🗑</button></div>`;
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
     ${photoImg(f,800,f.id)}
     ${selChk(f.id)}
@@ -4974,6 +4977,36 @@ function photoCellProj(f,phases){
     ${tools}
     ${sel}
   </div>`;
+}
+function deletePhoto(id){
+  const f=state.files.find(x=>x.id===id&&x.kind==='photo');if(!f)return;
+  const deleteLocal=!!(f.handle&&canEditFiles());
+  const body=`<div style="font-size:13px;line-height:1.65">
+    <p style="margin:0 0 8px"><b>“${escapeHtml(f.name||'사진')}”</b> 사진을 삭제할까요?</p>
+    <div class="ph" style="width:150px;height:112px;margin:8px 0">${photoImg(f,300)}</div>
+    ${deleteLocal
+      ?'<p style="margin:8px 0;color:var(--warn)"><b>PC 원본 파일도 폴더에서 바로 삭제됩니다.</b> 삭제 후에는 앱에서 되돌릴 수 없습니다.</p>'
+      :(f._driveId
+        ?'<p style="margin:8px 0;color:var(--muted-2)">앱 목록에서 제거하고 다시 불러와도 제외합니다. 구글드라이브 원본 파일은 유지됩니다.</p>'
+        :'<p style="margin:8px 0;color:var(--muted-2)">앱 목록에서 제거합니다. 원본 파일은 유지됩니다.</p>')}
+  </div>`;
+  openModal('사진 삭제 확인', body, [
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'삭제',cls:'warn',fn:async()=>{
+      if(deleteLocal){
+        await makeCheckpoint('사진 삭제 전');
+        const ok=await deleteOriginal(f);
+        if(!ok){toast('원본 파일 삭제 실패 — 폴더 연결 상태를 확인하세요.');return;}
+      }
+      if(f._driveId){__removedIds.add(f._driveId);try{await idbSet('removed_ids',[...__removedIds]);}catch(e){}}
+      __sel.delete(f.id);
+      revokeThumbUrl(f);
+      state.files=state.files.filter(x=>x.id!==f.id);
+      if(typeof __photoCache!=='undefined')__photoCache.key=null;
+      markDirty();closeModal();render();
+      toast(deleteLocal?'사진 삭제됨 · PC 원본 파일 삭제':'사진 삭제됨 · 앱 목록에서 제거');
+    }}
+  ], true);
 }
 // 현장별 보기 내용 필터 (null=전체, 0~3=단계별)
 let __projView=null; // null|0|1|2|3
@@ -5011,7 +5044,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,#btnMoreClusters,#btnOrganizeAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,#btnMoreClusters,#btnOrganizeAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -5113,6 +5146,7 @@ function setupDelegation(){
     if(d.preview!==undefined){e.stopPropagation();return previewEstimate(d.preview);}
     if(d.rename!==undefined){e.stopPropagation();return renameFile(d.rename);}
     if(d.movephoto!==undefined){e.stopPropagation();return moveSinglePhoto(d.movephoto);}
+    if(d.delphoto!==undefined){e.stopPropagation();return deletePhoto(d.delphoto);}
   });
   // ---- change 위임 (select, 체크박스) ----
   view.addEventListener('change',e=>{
