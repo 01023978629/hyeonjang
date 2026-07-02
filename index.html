@@ -848,25 +848,26 @@ function ymOf(dateStr){
   if(!m)return null;
   return `${m[1]}-${String(+m[2]).padStart(2,'0')}`;
 }
-// 모든 견적(외부 견적서 + 앱 작성 견적)을 월별로 집계
+// 현장에 연결된 견적(외부 견적서 + 앱 작성 견적)만 월별로 집계
 function collectQuotesByMonth(){
   const map={}; // 'YYYY-MM' → {count, total, items:[]}
-  const add=(ym,amount,label,src)=>{
+  const add=(ym,amount,label,src,project)=>{
     if(!ym)return;
     if(!map[ym])map[ym]={count:0,total:0,items:[]};
-    map[ym].count++; map[ym].total+=amount; map[ym].items.push({amount,label,src});
+    map[ym].count++; map[ym].total+=amount; map[ym].items.push({amount,label,src,project});
   };
-  // 1) 외부 견적서 (kind==='estimate')
-  state.files.filter(f=>f.kind==='estimate'&&f.est).forEach(f=>{
+  // 1) 외부 견적서 (kind==='estimate') 중 현장 연결분만
+  state.files.filter(f=>f.kind==='estimate'&&f.est&&projectExists(f.project)).forEach(f=>{
     const ym=ymOf(f.est.date)||(f.when?ymOf(f.when.toISOString()):null);
-    add(ym, f.est.amount||0, f.est.customer||f.name, '외부');
+    add(ym, f.est.amount||0, f.est.customer||f.name, f._fromQuote?'작성':'외부', f.project);
   });
-  // 2) 앱에서 작성한 견적 (state.quotes) — 단, 현장 연결로 이미 estimate 파일이 된 건 중복 제외
+  // 2) 앱에서 작성한 견적(state.quotes) 중 현장 연결분만 — 이미 estimate 파일이 된 건 중복 제외
   (state.quotes||[]).forEach(q=>{
+    if(!projectExists(q.project))return;
     const vid='quote_'+q.id;
     if(state.files.some(f=>f.id===vid))return; // 이미 외부 집계에 포함됨
     const c=quoteCalc(q);
-    add(ymOf(q.date), c.total, q.title||q.no, '작성');
+    add(ymOf(q.date), c.total, q.title||q.no, '작성', q.project);
   });
   return map;
 }
@@ -1661,7 +1662,7 @@ async function quotePdfBlob(q){
   else { let page=0; while(page*ph<ih){ if(page>0)doc.addPage(); doc.addImage(img,'JPEG',0,-(page*ph),iw,ih); page++; } }
   return {blob:doc.output('blob'), name:'견적서_'+String(q.title||q.no||'').replace(/[^\w가-힣]+/g,'_')+'.pdf'};
 }
-function curQuote(){ return state.editingQuote||(state.quotes&&state.quotes.length?state.quotes[0]:null); }
+function curQuote(){ if(state.editingQuote)syncQuoteFormFromDom();return state.editingQuote||(state.quotes&&state.quotes.length?state.quotes[0]:null); }
 // 견적서 보내기(카톡/문자/메일 — PDF 첨부)
 async function sendQuote(){
   const q=curQuote(); if(!q){toast('보낼 견적서가 없습니다.');return;}
@@ -2427,6 +2428,7 @@ function renameProject(oldName){
       p.name=nv;
       // 연결된 모든 항목의 현장명 변경
       state.files.forEach(f=>{if(f.project===oldName)f.project=nv;});
+      (state.quotes||[]).forEach(q=>{if(q.project===oldName)q.project=nv;});
       (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
       if(state.activeProject===oldName)state.activeProject=nv;
       markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”');
@@ -2449,7 +2451,9 @@ function deleteProject(name){
     {label:'취소',cls:'ghost',fn:closeModal},
     {label:'삭제',cls:'warn',fn:()=>{
       // 파일은 미배정으로(삭제 안 함)
+      state.files=state.files.filter(f=>!(f._fromQuote&&f.project===name));
       state.files.forEach(f=>{if(f.project===name)f.project=null;});
+      (state.quotes||[]).forEach(q=>{if(q.project===name)q.project=null;});
       (state.schedule||[]).forEach(s=>{if(s.project===name)s.project='';});
       state.projects=state.projects.filter(x=>x.name!==name);
       if(state.activeProject===name)state.activeProject=null;
@@ -2872,6 +2876,7 @@ function render(){
 function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓거나</b> 왼쪽에서 폴더를 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>아직 불러온 파일이 없습니다</b>폰이라면 아래로 드라이브의 현장·견적·사진을 한 번에 불러오세요.
   <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
 function projectOptions(sel){let o=`<option value="">현장 미지정</option>`;state.projects.filter(p=>!p.archived||p.name===sel).forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
+function projectExists(name){return !!name&&state.projects.some(p=>p.name===name);}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
 function isOrganized(f){return !!(f&&String(f.prefix||'').startsWith('_정리완료/'));}
@@ -3082,9 +3087,9 @@ function viewDashboard(){
     <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><button class="ghost tiny" id="btnXlsxTax" title="공급가액·부가세를 분기별로 집계 — 세무사 전달용">🧾 세무용 분기 정산</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
-  // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시
+  // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 연결된 견적만 대시보드 합계에 표시
   html+=dashboardEstimateDetailsHTML();
-  // 월별 견적 현황(외부 견적서 + 앱 작성 견적 합산)
+  // 월별 견적 현황(현장 연결된 외부 견적서 + 앱 작성 견적 합산)
   html+=monthlyQuoteHTML();
   return html;
 }
@@ -3105,9 +3110,9 @@ function dashboardTodayHTML(){
   return h;
 }
 function dashboardEstimateDetailsHTML(){
-  const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
+  const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply)&&projectExists(f.project));
   if(!estFiles.length)return '';
-  let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
+  let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 현장 연결 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 현장에 들어간 견적만 대시보드 합계에 표시</span></div>`;
   html+=`<table class="estimate-table"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
   let ts=0,tv=0,ta=0;
   estFiles.forEach(f=>{const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
@@ -3115,7 +3120,7 @@ function dashboardEstimateDetailsHTML(){
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td><td></td></tr>`;
   html+=`</tbody></table>`;
-  html+=`<p class="hint" style="margin:6px 0 0">견적서가 미배정이면 견적·정산 탭이나 서류 탭에서 현장을 지정할 수 있습니다. 금액이 비어 있으면 ‘일괄 글자 읽기(OCR)’를 누르세요.</p></div>`;
+  html+=`<p class="hint" style="margin:6px 0 0">현장 미연결 견적서는 견적·정산 탭에서 보관되며 월 계산과 대시보드 합계에서는 제외됩니다.</p></div>`;
   return html;
 }
 function viewDocs(){
@@ -3141,20 +3146,20 @@ function openManmulFolder(){
 function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열기' 버튼들도 만물인테리어로
 /* ===== 세무용 분기 정산 xlsx: 공급가액·부가세를 월→분기로 집계 (세무사 전달용) ===== */
 async function exportTaxXlsx(){
-  // 수집: 외부 견적서 파일(f.est) + 앱 작성 견적(state.quotes). _fromQuote 파일은 quotes와 중복이라 제외.
-  const rows=[]; // {ym,supply,vat,total,label}
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
+  // 수집: 현장에 연결된 외부 견적서 + 앱 작성 견적만. _fromQuote 파일은 quotes와 중복이라 제외.
+  const rows=[]; // {ym,supply,vat,total,label,project}
+  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote&&projectExists(f.project)).forEach(f=>{
     const e=f.est;const d=String(e.date||'').slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');
     if(!d)return;
     const supply=num(e.supply)||0, vat=num(e.vat)||0, total=num(e.amount)||supply+vat;
-    rows.push({ym:d,supply:supply||Math.round(total/1.1),vat:vat||Math.round(total/11),total,label:(e.customer||f.name||'')});
+    rows.push({ym:d,supply:supply||Math.round(total/1.1),vat:vat||Math.round(total/11),total,label:(e.customer||f.name||''),project:f.project||''});
   });
-  (state.quotes||[]).forEach(q=>{
+  (state.quotes||[]).filter(q=>projectExists(q.project)).forEach(q=>{
     const d=String(q.date||'').slice(0,7);if(!d)return;
     const c=quoteCalc(q);
-    rows.push({ym:d,supply:c.supply,vat:c.vat,total:c.total,label:q.title||q.customer||'견적'});
+    rows.push({ym:d,supply:c.supply,vat:c.vat,total:c.total,label:q.title||q.customer||'견적',project:q.project||''});
   });
-  if(!rows.length){toast('집계할 견적 데이터가 없습니다.');return;}
+  if(!rows.length){toast('현장에 연결된 견적 데이터가 없습니다.');return;}
   await ensureXLSX();
   // 월별 → 분기별 집계
   const mMap={};rows.forEach(r=>{const m=mMap[r.ym]=mMap[r.ym]||{supply:0,vat:0,total:0,count:0};m.supply+=r.supply;m.vat+=r.vat;m.total+=r.total;m.count++;});
@@ -3166,14 +3171,14 @@ async function exportTaxXlsx(){
   s1.push(['합계',ts,tv,tt,tc]);
   const s2=[['연월','공급가액','부가세','합계','건수']];
   mKeys.forEach(k=>{const v=mMap[k];s2.push([k,v.supply,v.vat,v.total,v.count]);});
-  const s3=[['연월','내역','공급가액','부가세','합계']];
-  rows.sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s3.push([r.ym,r.label,r.supply,r.vat,r.total]));
+  const s3=[['연월','현장','내역','공급가액','부가세','합계']];
+  rows.sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s3.push([r.ym,r.project,r.label,r.supply,r.vat,r.total]));
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'분기요약');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'월별');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s3),'견적상세');
   XLSX.writeFile(wb,COMPANY.name+'_세무정산_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  toast('세무용 분기 정산 엑셀 저장됨 (분기요약·월별·상세 3시트)');
+  toast('세무용 분기 정산 엑셀 저장됨 (현장 연결 견적만 포함)');
 }
 /* ===== 입금 안내: 견적 금액 + 계좌를 담은 안내문 생성 → 공유/복사 ===== */
 async function sendPaymentInfo(qid){
@@ -3876,44 +3881,77 @@ function photoCell(p){
   </div>`;
 }
 function viewEstimates(){
-  const list=state.files.filter(f=>f.kind==='estimate');
-  if(!list.length){
-    const m=monthlyQuoteHTML();
-    if(m)return `<div class="empty" style="margin-bottom:20px"><b>불러온 견적서가 없습니다</b>폴더에서 견적서를 불러오면 여기 정산표가 생깁니다. 아래는 앱에서 작성한 견적 기준 월별 현황입니다.</div>`+m;
-    return `<div class="empty"><b>견적서가 없습니다</b>견적서를 불러오고 ‘일괄 글자 읽기’를 누르면 고객·금액·날짜를 뽑아 정산표를 만듭니다.</div>`;
+  const list=state.files.filter(f=>f.kind==='estimate'&&!f._fromQuote);
+  const quotes=state.quotes||[];
+  if(!list.length&&!quotes.length){
+    return `<div class="empty"><b>견적서가 없습니다</b>견적서를 불러오거나 작성하면 이곳에서 현장 연결을 선택할 수 있습니다. 현장에 연결한 견적만 월 계산에 들어갑니다.</div>`;
   }
-  // 현장별 합계
-  const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
-  let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
-  html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
-  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
-  list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
-    html+=`<tr data-id="${f.id}">
-      <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
-      <td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td>
-      <td><input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></td>
-      <td><input type="text" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}" style="width:96px"></td>
-      <td><input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}" style="width:118px"></td>
-      <td><select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select></td>
-      <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
-      <td style="white-space:nowrap">${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
-    </tr>`;});
-  html+=`</tbody></table>`;
-  const total=Object.values(byProj).reduce((a,b)=>a+b,0);
-  html+=`<div style="margin-top:18px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:6px">현장별 합계</div>`;
-  Object.entries(byProj).forEach(([k,v])=>{html+=`<div class="sumbar" style="justify-content:space-between;border-bottom:1px dashed var(--line);padding:5px 0"><span>${escapeHtml(k)}</span><b style="font-size:15px">${won(v)}</b></div>`;});
-  html+=`<div class="sumbar"><span>총 견적 합계</span><b>${won(total)}</b></div></div>`;
-  html+=monthlyQuoteHTML();
+  let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">현장 연결 견적 기준 정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
+  html+=`<p class="hint" style="margin-bottom:12px">작성만 해둔 견적은 계약 확정이 아닐 수 있으므로, 프로젝트를 선택한 견적만 월 계산·세무 정산·대시보드 합계에 포함됩니다.</p>`;
+  if(list.length){
+    html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
+    list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
+      html+=`<tr data-id="${f.id}">
+        <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
+        <td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td>
+        <td><input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></td>
+        <td><input type="text" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}" style="width:96px"></td>
+        <td><input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}" style="width:118px"></td>
+        <td><select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select></td>
+        <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
+        <td style="white-space:nowrap">${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
+      </tr>`;});
+    html+=`</tbody></table>`;
+    html+=estimateProjectSummaryHTML(list);
+  }else{
+    html+=`<div class="empty" style="margin-bottom:18px"><b>불러온 외부 견적서가 없습니다</b>아래 작성 견적서에서 프로젝트를 선택하면 월별 계산에 반영됩니다.</div>`;
+  }
+  html+=quoteProjectLinkHTML();
+  const month=monthlyQuoteHTML();
+  html+=month||`<div class="hint" style="margin-top:18px">현장에 연결된 견적이 없어 월별 계산표가 비어 있습니다.</div>`;
   return html;
 }
-// 월별 견적 현황 HTML (외부 견적서 + 앱 작성 견적 통합)
+function estimateProjectSummaryHTML(list){
+  const byProj={};let unlinked=0;
+  list.forEach(f=>{const amt=f.est?.amount||0;if(projectExists(f.project)){byProj[f.project]=(byProj[f.project]||0)+amt;}else unlinked++;});
+  const total=Object.values(byProj).reduce((a,b)=>a+b,0);
+  let html=`<div style="margin-top:18px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:6px">현장 연결 합계</div>`;
+  const entries=Object.entries(byProj);
+  if(entries.length)entries.forEach(([k,v])=>{html+=`<div class="sumbar" style="justify-content:space-between;border-bottom:1px dashed var(--line);padding:5px 0"><span>${escapeHtml(k)}</span><b style="font-size:15px">${won(v)}</b></div>`;});
+  else html+=`<div class="hint" style="margin:4px 0 8px">아직 현장에 연결된 외부 견적서가 없습니다.</div>`;
+  html+=`<div class="sumbar"><span>현장 연결 견적 합계</span><b>${won(total)}</b></div>`;
+  if(unlinked)html+=`<p class="hint" style="margin:6px 0 0">현장 미연결 외부 견적 ${unlinked}건은 월 계산에서 제외됩니다.</p>`;
+  return html+`</div>`;
+}
+function quoteProjectLinkHTML(){
+  const quotes=state.quotes||[];
+  if(!quotes.length)return '';
+  let linkedTotal=0,linkedCount=0;
+  let html=`<div style="margin-top:24px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">작성 견적서 프로젝트 연결 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 프로젝트를 선택한 것만 월 계산 포함</span></div>`;
+  html+=`<table class="estimate-table"><thead><tr><th>견적</th><th>날짜</th><th>현장 선택</th><th class="amt">금액</th><th>상태</th><th></th></tr></thead><tbody>`;
+  quotes.forEach(q=>{
+    const c=quoteCalc(q), isLinked=projectExists(q.project);
+    if(isLinked){linkedTotal+=c.total;linkedCount++;}
+    html+=`<tr>
+      <td><b>${escapeHtml(q.title||'(제목 없음)')}</b><br><span style="font-size:11px;color:var(--muted)">${escapeHtml(q.no||'')}</span></td>
+      <td>${escapeHtml(q.date||'')}</td>
+      <td><select data-qproj="${escapeAttr(q.id)}">${projectOptions(q.project)}</select></td>
+      <td class="amt">${won(c.total)}</td>
+      <td>${isLinked?'<span style="color:var(--ok);font-size:11px">월 계산 포함</span>':'<span style="color:var(--muted);font-size:11px">월 계산 제외</span>'}</td>
+      <td style="white-space:nowrap"><button class="mini-btn" data-qedit="${q.id}">편집</button> <button class="mini-btn" data-qpdf="${q.id}">PDF</button> <button class="mini-btn" data-qpay="${q.id}">입금안내</button> <button class="mini-btn" data-qdel="${q.id}">삭제</button></td>
+    </tr>`;
+  });
+  html+=`</tbody><tfoot><tr><td><b>월 계산 포함</b></td><td></td><td>${linkedCount}건</td><td class="amt"><b>${won(linkedTotal)}</b></td><td></td><td></td></tr></tfoot></table></div>`;
+  return html;
+}
+// 월별 견적 현황 HTML (현장 연결된 외부 견적서 + 앱 작성 견적 통합)
 function monthlyQuoteHTML(){
   const map=collectQuotesByMonth();
   const yms=Object.keys(map).sort((a,b)=>b.localeCompare(a)); // 최신월 먼저
   if(!yms.length)return '';
   const grand=yms.reduce((a,ym)=>a+map[ym].total,0);
   const grandCnt=yms.reduce((a,ym)=>a+map[ym].count,0);
-  let html=`<div style="margin-top:26px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📅 월별 견적 현황 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 외부 견적서 + 앱 작성 견적 합산</span></div>`;
+  let html=`<div style="margin-top:26px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📅 월별 견적 현황 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 현장 연결 견적만 합산</span></div>`;
   html+=`<table class="month-table"><thead><tr><th>월</th><th class="c">건수</th><th class="amt">견적 합계</th><th>비고</th></tr></thead><tbody>`;
   yms.forEach(ym=>{
     const m=map[ym];
@@ -3980,7 +4018,7 @@ function viewQuoteMaker(){
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px"><h2 style="font-size:18px">✍ 견적 작성</h2>
       <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button></div>`;
-    html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
+    html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 프로젝트를 선택한 것만 월 계산과 대시보드에 반영됩니다.</p>`;
     if(!state.quotes.length){
       html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
       return html;
@@ -3994,6 +4032,9 @@ function viewQuoteMaker(){
           <div class="sub">${q.no} · ${q.date}</div>
           <div class="ext-info" style="font-size:15px;color:var(--clay);font-weight:700">${won(c.total)}</div>
           <div class="sub">${q.vatIncluded?'부가세 포함':'부가세 별도'} · ${q.project?('🏗️ '+escapeHtml(q.project)):'현장 미연결'}</div>
+          <label class="sub" style="display:block;margin-top:8px">프로젝트 선택
+            <select data-qproj="${escapeAttr(q.id)}" style="width:100%;margin-top:4px">${projectOptions(q.project)}</select>
+          </label>
         </div>
         <div class="card-tools" style="padding:0 14px 12px">
           <button class="mini-btn" data-qedit="${q.id}">✎ 편집</button>
@@ -4079,7 +4120,20 @@ function quoteFromExisting(fileId){
   state.editingQuote=q;state.tab='quotemaker';render();
   toast('견적서를 편집기로 불러왔습니다. 품목을 나눠 편집하세요.');
 }function closeQuoteEdit(){state.editingQuote=null;render();}
+function syncQuoteFormFromDom(){
+  const q=state.editingQuote;if(!q||typeof document==='undefined')return;
+  const val=id=>{const el=document.getElementById(id);return el?el.value:null;};
+  [['qmTitle','title'],['qmNo','no'],['qmDate','date'],['qmPlace','place'],['qmMemo','memo']].forEach(([id,field])=>{const v=val(id);if(v!==null)q[field]=v;});
+  const vat=val('qmVat');if(vat!==null)q.vatIncluded=(vat==='1');
+  const acct=val('qmAcct');if(acct!==null)q.accountIdx=+acct||0;
+  const proj=val('qmProj');if(proj!==null)q.project=proj||null;
+  document.querySelectorAll('input[data-qi][data-qf]').forEach(el=>{
+    const it=q.items[+el.dataset.qi];const field=el.dataset.qf;
+    if(it&&['name','spec','qty','price'].includes(field))it[field]=el.value;
+  });
+}
 function saveQuoteEdit(){
+  syncQuoteFormFromDom();
   const q=state.editingQuote;if(!q)return;
   // 빈 행(품명·단가 모두 없음) 자동 정리
   q.items=q.items.filter(it=>String(it.name||'').trim()||num(it.price));
@@ -4090,7 +4144,7 @@ function saveQuoteEdit(){
   const idx=state.quotes.findIndex(x=>x.id===q.id);
   if(idx>=0)state.quotes[idx]=q;else state.quotes.push(q);
   if(q.project)syncQuoteToProject(q); else state.files=state.files.filter(f=>f.id!=='quote_'+q.id);  // 현장 연결 해제 시 유령 견적 파일 제거
-  markDirty();toast('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:''));
+  markDirty();toast('견적서 저장됨'+(q.project?` · ${q.project} 월 계산 반영`:' · 현장 미연결'));
   state.editingQuote=null;render();
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
@@ -4098,12 +4152,20 @@ function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
     [{label:'취소',cls:'ghost',fn:closeModal},{label:'삭제',cls:'warn',fn:()=>{state.quotes=state.quotes.filter(x=>x.id!==id);state.files=state.files.filter(x=>x.id!=='quote_'+id);markDirty();closeModal();render();toast('삭제됨');}}]);
 }
 function syncQuoteToProject(q){
+  if(!projectExists(q.project)){q.project=null;state.files=state.files.filter(f=>f.id!=='quote_'+q.id);return;}
   const c=quoteCalc(q);
   const vid='quote_'+q.id;
   let f=state.files.find(x=>x.id===vid);
   if(!f){f={id:vid,name:'[견적서] '+(q.title||q.no)+'.pdf',ext:'pdf',kind:'estimate',_virtual:true,_fromQuote:true};state.files.push(f);}
   f.project=q.project;
   f.est={amount:c.total,supply:c.supply,vat:c.vat,customer:q.title||'',date:q.date,bizno:COMPANY.bizno,_edited:true};
+}
+function assignQuoteProject(id,p){
+  const q=(state.quotes||[]).find(x=>x.id===id);if(!q)return;
+  if(p&&!projectExists(p)){toast('먼저 현장을 추가하세요.');render();return;}
+  q.project=p||null;
+  if(q.project)syncQuoteToProject(q);else state.files=state.files.filter(f=>f.id!=='quote_'+q.id);
+  markDirty();render();toast(q.project?('견적서가 “'+q.project+'” 현장에 연결되어 월 계산에 포함됩니다.'):'견적서 현장 연결 해제됨 · 월 계산에서 제외됩니다.');
 }
 function setQuoteField(field,val){const q=state.editingQuote;if(!q)return;
   if(field==='vatIncluded')q.vatIncluded=(val==='1');
@@ -4176,6 +4238,7 @@ function parseQuoteFromGrid(grid,filename){
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
 async function exportQuoteXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return;}
+  syncQuoteFormFromDom();
   const q=state.editingQuote;if(!q){toast('편집 중인 견적이 없습니다.');return;}
   const c=quoteCalc(q);
   const vatLabel=q.vatIncluded?'부가세 포함':'부가세 별도';
@@ -5036,6 +5099,7 @@ function setupDelegation(){
     const t=e.target; const d=t.dataset;
     if(t.matches('select[data-act=kind]'))return assignKind(d.id,t.value);
     if(t.matches('select[data-act=proj]')){if(!state.projects.length){toast('먼저 현장을 추가하세요.');render();return;}return assignProject(d.id,t.value);}
+    if(t.matches('select[data-qproj]')){if(t.value&&!state.projects.length){toast('먼저 현장을 추가하세요.');render();return;}return assignQuoteProject(d.qproj,t.value);}
     if(t.matches('select[data-act=cluster]')){if(!t.value)return;return assignProjectMany(d.ids.split(','),t.value);}
     if(t.matches('input[data-worklabel]'))return setWorkLabel(d.worklabel.split(','),t.value.trim());
     if(t.id==='btnMoreClusters'){__clusterShowN+=12;render();return;}
@@ -5229,6 +5293,7 @@ function quoteHTML(q){
   </div>`;
 }
 function printQuote(id){
+  if(!id)syncQuoteFormFromDom();
   const q=id?state.quotes.find(x=>x.id===id):state.editingQuote;
   if(!q){toast('견적서를 찾을 수 없습니다.');return;}
   // 편집 중인 견적은 인쇄 전에 자동 저장 → 인쇄·창닫기 후에도 목록에서 계속 수정 가능
@@ -5405,13 +5470,13 @@ async function exportEstimateXLSX(){
     sheet1.push([p.name,STAGES[p.stage||0],s.files,s.est,s.recv,s.due,rate]);
   });
   sheet1.push(['합계','','',tEst,tRecv,tDue, tEst?Math.round(tRecv/tEst*100):0]);
-  // 시트2: 견적 상세
+  // 시트2: 견적 상세 — 현장에 연결된 견적만 월/정산용으로 포함
   const sheet2=[['현장','파일명','고객/현장','견적일','공급가액','부가세','견적금액','사업자번호']];
-  state.files.filter(f=>f.kind==='estimate').forEach(f=>{
+  state.files.filter(f=>f.kind==='estimate'&&projectExists(f.project)).forEach(f=>{
     const e=f.est||{};
     sheet2.push([f.project||'(미지정)',f.name,e.customer||'',e.date||'',e.supply||'',e.vat||'',e.amount||0,e.bizno||'']);
   });
-  if(sheet2.length===1)sheet2.push(['(견적서 없음)','','','','','','','']);
+  if(sheet2.length===1)sheet2.push(['(현장 연결 견적서 없음)','','','','','','','']);
   const wb=XLSX.utils.book_new();
   const ws1=XLSX.utils.aoa_to_sheet(sheet1);
   ws1['!cols']=[{wch:18},{wch:9},{wch:7},{wch:14},{wch:14},{wch:14},{wch:10}];
@@ -5421,7 +5486,7 @@ async function exportEstimateXLSX(){
   XLSX.utils.book_append_sheet(wb,ws2,'견적상세');
   const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
   XLSX.writeFile(wb,'견적정산_'+stamp+'.xlsx');
-  toast('견적 정산 엑셀 저장됨');
+  toast('견적 정산 엑셀 저장됨 (현장 연결 견적만 포함)');
 }
 
 /* ---------- 전체 정리완료: 흩어진(배정된) 파일을 현장별로 한 번에 _정리완료로 이동 ---------- */
