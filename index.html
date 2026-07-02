@@ -159,6 +159,8 @@
   .proj-item.active{background:var(--blueprint);color:#fff}
   .proj-item .pin{width:9px;height:9px;border-radius:50%;background:var(--clay);flex:0 0 auto}
   .proj-item.active .pin{background:var(--clay-soft)}
+  .proj{max-height:clamp(190px,32vh,360px);overflow-y:auto;padding-right:3px;overscroll-behavior:contain;scrollbar-width:thin}
+  .proj-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .proj-item .cnt{margin-left:auto;font-size:11px;color:var(--muted)}
   .proj-item.active .cnt{color:#cfe0f7}
   .stage-row{display:flex;gap:3px;margin:2px 0 0 17px}
@@ -331,6 +333,14 @@
   .ph:hover .ph-tools{opacity:1}
   .ph-tools button{width:22px;height:22px;padding:0;font-size:11px;border-radius:5px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .ph-tools button:hover{background:var(--blueprint);transform:none}
+  .org-dot{display:inline-flex;width:9px;height:9px;border-radius:50%;background:var(--moss);box-shadow:0 0 0 2px rgba(14,122,107,.12);margin-right:6px;vertical-align:middle;flex:0 0 auto}
+  .ph-org-dot{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:var(--moss);box-shadow:0 0 0 2px rgba(255,255,255,.9);z-index:2}
+  .proj-photo-peek{display:grid;grid-template-columns:repeat(3,minmax(70px,1fr));gap:8px;margin:8px 0 4px;max-width:360px}
+  .proj-photo-peek .ph{min-height:76px}
+  .proj-more-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:7px 0 10px}
+  .proj-more-row .hint{margin:0;font-size:11.5px}
+  .group-more{display:flex;align-items:center;gap:8px;margin:8px 0 12px;flex-wrap:wrap}
+  .group-more .hint{margin:0;font-size:11.5px}
   .pv-wrap{display:grid;grid-template-columns:1fr 220px;gap:16px}
   .pv-canvas{background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;min-height:340px;max-height:60vh;overflow:auto;display:flex;align-items:center;justify-content:center;padding:8px}
   .pv-img{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 16px -8px rgba(13,78,162,.5)}
@@ -707,13 +717,68 @@ function bestExt(name,type){
   return e;
 }
 function kindFromSourceFolder(prefix){
-  const top=String(prefix||'').split('/').filter(Boolean)[0]||'';
-  if(top==='견적서')return 'estimate';
-  if(top==='사업자등록증')return 'bizreg';
-  if(top==='명함')return 'card';
-  if(top==='도면')return 'drawing';
-  if(top==='현장사진')return 'photo';
+  const parts=String(prefix||'').split('/').filter(Boolean);
+  const fromName=(name)=>{
+    if(name==='견적서')return 'estimate';
+    if(name==='사업자등록증')return 'bizreg';
+    if(name==='명함')return 'card';
+    if(name==='도면')return 'drawing';
+    if(name==='현장사진')return 'photo';
+    if(name==='기타')return 'other';
+    return null;
+  };
+  if(parts[0]==='_정리완료'){
+    const k=fromName(parts[2]||'');
+    if(k)return k;
+    if(parts.length>=3)return 'photo'; // _정리완료/현장명/공정명 형태
+    return null;
+  }
+  const top=parts[0]||'';
+  const k=fromName(top);
+  if(k)return k;
   return null;
+}
+function projectNameFromFolder(folder){
+  const raw=String(folder||'').trim();
+  if(!raw)return '';
+  const exact=state.projects.find(p=>p.name===raw);
+  if(exact)return exact.name;
+  const safe=state.projects.find(p=>safeName(p.name)===raw);
+  return safe?safe.name:raw;
+}
+function phaseNameFromFolder(projName, folder){
+  const raw=String(folder||'').trim();
+  if(!raw)return '';
+  const p=state.projects.find(x=>x.name===projName);
+  const phases=(p&&p.phases)||[];
+  const exact=phases.find(x=>x===raw);
+  if(exact)return exact;
+  const safe=phases.find(x=>safeName(x)===raw);
+  return safe||raw;
+}
+function ensureProjectShell(name){
+  if(!name||state.projects.some(p=>p.name===name))return;
+  state.projects.push({name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null,archived:false});
+}
+function ensurePhaseShell(projName, phaseName){
+  if(!projName||!phaseName)return;
+  const p=state.projects.find(x=>x.name===projName);
+  if(!p)return;
+  if(!p.phases)p.phases=[];
+  if(!p.phases.includes(phaseName))p.phases.push(phaseName);
+}
+function applyOrganizedPrefix(rec,prefix){
+  const parts=String(prefix||'').split('/').filter(Boolean);
+  if(parts[0]!=='_정리완료'||!parts[1])return;
+  const proj=projectNameFromFolder(parts[1]);
+  ensureProjectShell(proj);
+  rec.project=proj;
+  const folder=parts[2]||'';
+  const sub=parts[3]||'';
+  const folderKind=kindFromSourceFolder(prefix);
+  if(folderKind)rec.kind=folderKind;
+  if(folder==='현장사진'&&sub){rec._phase=phaseNameFromFolder(proj,sub);ensurePhaseShell(proj,rec._phase);}
+  else if(folder&&folderKind==='photo'){rec._phase=phaseNameFromFolder(proj,folder);ensurePhaseShell(proj,rec._phase);}
 }
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 // HEIC도 JPEG로 렌더해 주는 lh3 형식(drive.google.com/thumbnail은 HEIC 미지원) — 로그인된 브라우저에서 바로 표시
@@ -753,6 +818,28 @@ function classify(rec){
 
 /* ---------- 견적서 정보 추출 (강화) ---------- */
 function won2num(s){return +String(s).replace(/[^\d]/g,'')||0;}
+function moneyNums(line,opts={}){
+  const s=String(line||'');
+  const max=opts.max||2000000000;
+  const allowPlain=!!opts.allowPlain;
+  const hasMoneyWord=/(원|₩|금액|합계|총액|공급|부가|세액|VAT|vat|단가|소계|청구|견적|계\b)/.test(s);
+  const contactLine=/(사업자|등록번호|전화|연락|휴대|핸드폰|팩스|fax|tel|phone|mobile|계좌|은행|입금|우편|주소)/i.test(s);
+  const out=[];
+  const re=/(₩\s*)?(\d{1,3}(?:,\d{3})+|\d{4,10})(\s*원)?/g;
+  let m;
+  while((m=re.exec(s))){
+    const raw=m[0], digits=String(m[2]).replace(/[^\d]/g,'');
+    if(digits.length<4)continue;
+    const n=won2num(raw);
+    if(!n||n>max)continue;
+    const moneyMarked=!!(m[1]||m[3]||String(m[2]).includes(','));
+    if(contactLine&&!moneyMarked&&!hasMoneyWord)continue;
+    if(!moneyMarked&&!hasMoneyWord&&!allowPlain)continue;
+    if(!moneyMarked&&digits.length>=9&&!/(합계|총액|공급|부가|세액|금액|청구|견적)/.test(s))continue;
+    out.push(n);
+  }
+  return out;
+}
 // 견적 날짜 문자열 → YYYY-MM (다양한 형식 대응: 2025.03.05, 2025-03-05, 2025/03/05)
 function ymOf(dateStr){
   if(!dateStr)return null;
@@ -813,19 +900,25 @@ function parseEstimate(text){
   // 1) 합계/총액 류 라인에서 최댓값
   for(const ln of lines){
     if(/(합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|총\s*견\s*적|받을\s*금액|청구\s*금액)/.test(ln)){
-      const nums=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);
+      const nums=moneyNums(ln,{allowPlain:true});
       if(nums.length){const v=Math.max(...nums);if(v>amount)amount=v;}
     }
-    if(/(공\s*급\s*가\s*액|공급가)/.test(ln)){const n=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);if(n.length)supply=Math.max(supply,Math.max(...n));}
-    if(/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const n=(ln.match(/[\d,]{3,}/g)||[]).map(won2num);if(n.length)vat=Math.max(vat,Math.max(...n));}
+    if(/(공\s*급\s*가\s*액|공급가)/.test(ln)){const n=moneyNums(ln,{allowPlain:true});if(n.length)supply=Math.max(supply,Math.max(...n));}
+    if(/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const n=moneyNums(ln,{allowPlain:true,max:500000000});if(n.length)vat=Math.max(vat,Math.max(...n));}
   }
   // 2) 합계가 없고 공급가액+부가세가 있으면 합산
   if(!amount && supply){ amount = supply + vat; }
-  // 3) 폴백: 가장 큰 금액
+  // 3) 폴백: 금액 문맥이 있는 줄에서만 가장 큰 금액(전화·계좌·사업자번호 과대 산출 방지)
   if(!amount){
-    const nums=(t.match(/[\d,]{5,}/g)||[]).map(won2num);
+    const nums=[];
+    lines.forEach(ln=>{
+      if(/(원|₩|금액|합계|총액|공급|부가|세액|VAT|vat|단가|소계|청구|견적)/.test(ln))nums.push(...moneyNums(ln));
+    });
     nums.forEach(v=>{if(v>amount&&v<10000000000)amount=v;});
   }
+  if(amount&&supply&&vat&&amount>(supply+vat)*2)amount=supply+vat;
+  if(amount&&supply&&!vat&&amount>supply)vat=amount-supply;
+  if(amount&&vat&&!supply&&amount>vat)supply=amount-vat;
   // 고객/현장명
   let customer='';
   const cm=t.match(/(?:고\s*객|수\s*신|현\s*장\s*명?|상\s*호|받는\s*분|귀하)\s*[:：)]?\s*([가-힣A-Za-z0-9 ()&]{2,24})/);
@@ -971,7 +1064,7 @@ function applyData(data){
   state.priceBook=data.priceBook||state.priceBook||{};
   state.asLog=data.asLog||state.asLog||[];
   state.contacts=data.contacts||[];
-  state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
+  state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null,archived:!!p.archived}));
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
   let restored=0;
@@ -1425,9 +1518,24 @@ function makeThumbDataUrl(file,max){
     }catch(e){res(null);}
   });
 }
-async function cacheThumb(driveId,file){ /* 썸네일 캐시 제거 — photoSrc가 드라이브 썸네일을 바로 표시 */ }
-// (제거) 썸네일 채우기 — 이제 photoSrc(f)가 드라이브 썸네일 URL로 바로 표시하므로 채우기 불필요
-async function hydrateThumbs(){ return; }
+async function cacheThumb(driveId,file){
+  if(!driveId||!file)return;
+  try{
+    const data=await makeThumbDataUrl(file,480);
+    if(data)await idbSet('thumb:'+driveId,data);
+  }catch(e){}
+}
+async function hydrateThumbs(){
+  const targets=state.files.filter(f=>f._driveId&&IMG.includes(f.ext)&&!f.thumb);
+  let n=0;
+  for(const f of targets){
+    try{
+      const cached=await idbGet('thumb:'+f._driveId);
+      if(cached){f.thumb=cached;n++;if(n%20===0){if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();}}
+    }catch(e){}
+  }
+  if(n){if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();}
+}
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
@@ -1932,14 +2040,16 @@ let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기)
 async function walk(dir,prefix){
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      if(name==='_정리완료')continue;
+      if(name==='_백업'||name==='백업')continue;
       await walk(handle,prefix+name+'/');
     }else{try{
       const f=await handle.getFile();
       const k=(f.name||name)+'|'+(f.size||0);
       if(__walkSeen.has(k)){   // 같은 파일이 원본 폴더와 정리본 폴더에 둘 다 있으면 1번만
         const ex=__walkSeen.get(k), fk=kindFromSourceFolder(prefix);
-        if(ex&&fk&&(ex.kind==='other'||!ex.kind))ex.kind=fk;   // 폴더기반 분류가 더 명확하면 그쪽으로 보정
+        if(ex&&String(prefix||'').startsWith('_정리완료/')){
+          ex.handle=handle;ex.name=f.name||name;ex.prefix=prefix;applyOrganizedPrefix(ex,prefix);
+        }else if(ex&&fk&&(ex.kind==='other'||!ex.kind))ex.kind=fk;   // 폴더기반 분류가 더 명확하면 그쪽으로 보정
         continue;
       }
       const rec=await ingestFile(f,handle,prefix);
@@ -1960,6 +2070,7 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
+  applyOrganizedPrefix(rec,prefix);
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -2711,18 +2822,20 @@ function render(){
   // 선택 모드는 '현장 사진' 탭에서만 — 다른 탭으로 가면 자동 해제(다른 탭 사진보기 가로채기·갇힘 방지)
   if(state.tab!=='photos'&&__selMode){__selMode=false;document.body.classList.remove('selmode');}
   const pl=$('#projList');pl.innerHTML='';
+  const projCounts={};
+  state.files.forEach(f=>{if(f.project)projCounts[f.project]=(projCounts[f.project]||0)+1;});
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
-  all.innerHTML='<span class="pin" style="background:#6a86a3"></span> 전체 보기 <span class="cnt">'+state.files.length+'</span>';
+  all.innerHTML='<span class="pin" style="background:#6a86a3"></span><span class="proj-name">전체 보기</span><span class="cnt">'+state.files.length+'</span>';
   all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
   const addProjItem=(p,dim)=>{
-    const n=state.files.filter(f=>f.project===p.name).length;
+    const n=projCounts[p.name]||0;
     const wrap=document.createElement('div');
     const el=document.createElement('div');
     el.className='proj-item'+(state.activeProject===p.name?' active':'');
     if(dim)el.style.opacity='.55';
-    el.innerHTML='<span class="pin"></span> '+(dim?'📦 ':'')+escapeHtml(p.name)+' <span class="cnt">'+n+'</span>';
+    el.innerHTML='<span class="pin"></span><span class="proj-name">'+(dim?'📦 ':'')+escapeHtml(p.name)+'</span><span class="cnt">'+n+'</span>';
     el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
     wrap.appendChild(el);
     const sr=document.createElement('div');sr.className='stage-row';
@@ -2761,6 +2874,8 @@ function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을
 function projectOptions(sel){let o=`<option value="">현장 미지정</option>`;state.projects.filter(p=>!p.archived||p.name===sel).forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
+function isOrganized(f){return !!(f&&String(f.prefix||'').startsWith('_정리완료/'));}
+function organizedDot(f){return isOrganized(f)?'<span class="org-dot" title="정리완료"></span>':'';}
 function cardHtml(f){
   const isImg=IMG.includes(f.ext),k=KIND[f.kind];
   const thumb=(isImg&&photoSrc(f,600))?photoImg(f,600):`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
@@ -2775,13 +2890,17 @@ function cardHtml(f){
   const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
   return `<div class="card" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
-    <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
+    <div class="meta"><div class="nm">${organizedDot(f)}${escapeHtml(f.name)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
       <select data-act="kind" data-id="${f.id}">${kindOptions(f.kind)}</select>
       <select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select>
     </div></div>`;
+}
+function photoPeek(f){
+  const tag=isOrganized(f)?'<span class="ph-org-dot" title="정리완료"></span>':'';
+  return `<div class="ph">${photoImg(f,260,f.id)}${tag}${f._phase?`<span class="ph-tag phase">${escapeHtml(f._phase)}</span>`:''}</div>`;
 }
 /* ---------- 대시보드 ---------- */
 function projStats(name){
@@ -3357,6 +3476,7 @@ function showBundleSender(bundles,label,size){
         toast('사진 준비 중... '+bundle.project+' '+bundle.items.length+'장');
         const files=await filesForBundle(bundle.items);
         if(!files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.');return;}
+        if(files.length!==bundle.items.length){toast('사진 '+files.length+'/'+bundle.items.length+'장만 준비되어 발송을 중단했습니다. 누락 방지를 위해 다시 불러오기/동기화 후 시도하세요.');return;}
         if(!(navigator.canShare&&navigator.canShare({files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); return; }
         await navigator.share({files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
         __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
@@ -3749,6 +3869,7 @@ function photoCell(p){
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
     ${photoImg(p,800,p.id)}
     ${selChk(p.id)}
+    ${isOrganized(p)?'<span class="ph-org-dot" title="정리완료"></span>':''}
     ${tools}
     ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
     ${sel}
@@ -4640,7 +4761,9 @@ function viewProject(){
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
       // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
       if(photos.length){
-        html+=`<button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:8px 0">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 '+photos.length+'장 보기')}</button>`;
+        const peek=photos.slice(0,3);
+        html+=`<div class="proj-photo-peek">${peek.map(photoPeek).join('')}</div>`;
+        html+=`<div class="proj-more-row"><button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 전체 보기')}</button><span class="hint">미리보기 ${peek.length}/${photos.length}장</span></div>`;
         if(open)html+=`<div class="grid">${photos.map(cardHtml).join('')}</div>`;
       }
       if(!list.length)html+=`<div class="empty" style="padding:22px">아직 배정된 파일이 없습니다.</div>`;
@@ -4723,6 +4846,9 @@ function viewProject(){
     const dayKeys=Object.keys(dayMap).sort((a,b)=>{if(a==='(날짜 없음)')return 1;if(b==='(날짜 없음)')return -1;return b.localeCompare(a);});
     dayKeys.forEach(dk=>{
       const items=dayMap[dk].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0));
+      const gkey=state.activeProject+'::'+dk;
+      const open=__projDayOpen.has(gkey);
+      const visible=open?items:items.slice(0,3);
       // 그 날짜에 등장한 공정들 요약
       const phasesInDay=[...new Set(items.map(f=>f._phase).filter(Boolean))];
       const dayLabel=dk==='(날짜 없음)'?dk:(()=>{const d=new Date(dk);const wd=['일','월','화','수','목','금','토'][d.getDay()];return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${wd})`;})();
@@ -4733,7 +4859,8 @@ function viewProject(){
         <div class="phase-group-h day-h">📅 ${dayLabel} <span>${items.length}장</span>
           <button class="day-selbtn" data-dayselect="${dayIds}">${allSel?'✓ 선택됨':'이 날짜 전체 선택'}</button>
           <span class="day-phases">${phaseSummary}</span></div>
-        <div class="cluster-body" style="padding:10px 0">${items.map(f=>photoCellProj(f,phases)).join('')}</div>
+        <div class="cluster-body" style="padding:10px 0">${visible.map(f=>photoCellProj(f,phases)).join('')}</div>
+        ${items.length>3?`<div class="group-more"><button class="${open?'blue':'ghost'} tiny" data-projday="${escapeAttr(gkey)}">${open?'▲ 이 묶음 접기':'▶ 이 묶음 전체 보기'}</button><span class="hint">미리보기 ${visible.length}/${items.length}장</span></div>`:''}
       </div>`;
     });
   }
@@ -4760,6 +4887,7 @@ function photoCellProj(f,phases){
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
     ${photoImg(f,800,f.id)}
     ${selChk(f.id)}
+    ${isOrganized(f)?'<span class="ph-org-dot" title="정리완료"></span>':''}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
     ${sel}
@@ -4769,6 +4897,7 @@ function photoCellProj(f,phases){
 let __projView=null; // null|0|1|2|3
 // 현장별 보기(전체 목록)에서 프로젝트별 사진 펼침 상태 — 기본 접힘(숨김), 클릭 시 펼침
 let __projPhotoOpen=new Set();
+let __projDayOpen=new Set();
 const STAGE_VIEW=[
   {label:'상담',desc:'고객·견적'},
   {label:'실측',desc:'도면'},
@@ -4800,7 +4929,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-archive],[data-unarchive],#asAdd,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#phaseProjAdd,#schAdd,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -4875,6 +5004,7 @@ function setupDelegation(){
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
+    if(d.projday!==undefined){const n=d.projday;if(__projDayOpen.has(n))__projDayOpen.delete(n);else __projDayOpen.add(n);return render();}
     if(d.renproj!==undefined)return renameProject(d.renproj);
     if(d.delproj!==undefined)return deleteProject(d.delproj);
     if(d.map!==undefined)return showProjectMap(d.map);
