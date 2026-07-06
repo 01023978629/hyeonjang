@@ -83,6 +83,45 @@ index.html (≈700KB, 스크립트 1개)
 | v22 | 거래처 관리 | 대시 [📇 거래처]·더보기 | `supplierList, supplierStats, supplierAdd, suppliers` (state.suppliers 확장: category·items·memo) |
 | v22 | 연간 결산 | 대시 [📊 연간]·더보기 | `annualData, annualReport, annualExportXlsx` (12개월 pnlData 집계·완료현장·엑셀 3시트) |
 | v23 | 메뉴 정리 + AI 우선 | 경영 대시보드·더보기 | 대시보드를 💰돈/📊리포트/🗂현장 3카테고리로 재구성 + AI 비서 바로가기 배너(대시·더보기 상단). 라우팅 100%(70문항) 재검증 |
+| v24 | AI 먼저 제안 + 빠른명령 | 비서 첫 화면 | `aiSuggestions, aiWelcomeRich, AI_QUICK_CMDS` (상황 감지→제안 카드 + 자주 쓰는 명령 6버튼) |
+| v24 | 통합 검색 | 더보기 [🔍]·비서 | `hjGlobalSearch` (현장·사진·메모·거래처·견적·연락처, 실시간 필터, global_search 도구) |
+| v25 | 매출 목표 관리 | 대시 [🎯 목표]·더보기 | `goalGet, goalSet, goalProgress, goalManage` (월·연 목표+수금 기준 달성률·페이스, state.goals) |
+| v25 | 제안 알림 | 스마트 알림에 통합 | `hjSuggestNotifyItems` (aiSuggestions·목표 소식을 hjNotifyItems에 연결) |
+| v26 | 음성 현장일지 | 더보기 [📝]·비서 | `voiceWorkLog, workLogSave, aiAddWorkLog` (STT로 작업 기록→일정 report, add_worklog 도구) |
+| v26 | AI 경영 분석 | 대시 [📈 분석]·비서 | `bizAnalysisData, bizAnalysisSummary, bizAnalysis` (6개월 추이→규칙 인사이트+AI 조언) |
+| v26 | 현장 예산 관리 | 대시 [📅 예산]·더보기 | `budgetSet, budgetSpent, budgetData, budgetManage` (예산 대비 지출·초과 경고, projects.budget) |
+| v26 | **버그수정** | applyData | projects 병합 시 spread 추가 — budget 등 추가 필드 유실 방지 |
+| v27 | 일정 브리핑 강화 | 더보기 [📅]·비서 | `todayScheduleBrief, scheduleBrief` (시간순+주소·준비물 추정·연락처, AI 동선 조언) |
+| v27 | AI 견적 자동작성 | 더보기 [💸]·비서 | `aiQuoteFromText, aiQuoteDialog, priceHint` (설명→JSON 항목 구성, ai_quote 도구) |
+| v27 | 사진 AI 하자분석 | 더보기 [📷]·비서 | `photoDefectCheck, photoDefectDialog` (geminiVision으로 공정·하자 판단) |
+| v28 | 종합 사용 가이드 | 더보기 [📚]·비서 | `hjGuideHome, hjGuideCategory, HJ_GUIDE_CATS` (7개 분야·말하는 예시·바로실행, guide 도구) + 실기기 체크리스트 최신화 |
+| v29 | OpenAI(ChatGPT) 지원 | ☁️ 설정 | `openaiAsk, aiAsk, aiKeyReady, aiProviderName` (Gemini/OpenAI 선택, 둘 다면 ChatGPT 우선+Gemini 폴백, idb openai_key) |
+| v29 | AI 능동 브리핑 | 부팅 자동·더보기 [🤖] | `aiActiveBriefData, aiActiveBrief, aiActiveBriefMaybe` (앱 켜면 오늘 일정·미수·챙길일 먼저 요약+바로처리, active_brief 도구) |
+| v30 | 무료 Gemini 우선 | `aiAsk` | 두 키가 다 있어도 무료 Gemini 우선 사용(비용 절감), OpenAI는 명시 선택('openai') 또는 Gemini 실패 시만 |
+| v30 | AI 자동 실행 | `SAFE_AUTO, aiAutoAllowed` | 안전 작업(사진정리·메모·작업일지·공정태그)은 승인 없이 자동 실행. 삭제·발송·수금은 항상 확인 |
+| v30 | 주·월 운영 리포트 | 대시 [📊 운영]·더보기 | `opsReportData, opsReport` (수금·지출·손익·완료·견적·일정·사진·챙길일 종합 + AI 총평, ops_report 도구) |
+| v31 | AI 자동 모드 설정 | 더보기 [⚙️]·비서 | `AUTO_ACTIONS, autoDisabledSet, aiSafeAutoOn, aiAutoModeManage` (안전작업 5종 항목별 켜고끄기 + 전체 자동 토글, auto_mode 도구) |
+| v31 | 운영 리포트 자동 알림 | 부팅 자동·알림 | `opsReportDue, opsReportNotifyItems, opsReportMaybe` (일요일=주간/월말=월간, hjNotifyItems 연결) |
+| v32 | 고객 응대 AI | 더보기 [💬]·비서 | `CS_TEMPLATES, customerReplyDialog` (견적/일정/진행/결제/완공/감사 6종 문자 초안 + AI 다듬기 + SMS 발송, customer_reply 도구) |
+| v32 | AI 매출 예측 | 대시 [📈 예측]·비서 | `salesForecastData, salesForecast` (최근 3개월 가중평균+6개월 보정, 추세·신뢰도·현금흐름, sales_forecast 도구) |
+| v33 | 계약서 AI | 견적 [📜 계약] 내 버튼 | `contractScopeText, CONTRACT_STANDARD_TERMS, contractAiTerms, contractAiButtonInit` (기존 간이 계약서에 공사범위·표준특약 AI 자동작성, ai_contract 도구) |
+| v34 | 세금계산서 AI | 세금계산서 화면 내 버튼 | `taxItemSummary, taxInvoiceAiFill` (견적 항목을 세금계산서 품목으로 AI 정리) |
+| v34 | PC↔폰 동기화 안내 | 더보기 [🔄]·비서 | `syncGuide` (구글 드라이브로 PC 작업→폰 확인 단계 안내, sync_guide 도구) + 실기기 체크리스트 v29~v34 반영 |
+| v35 | ♿ 접근성(큰 글씨·고대비) | 더보기 [♿]·상단 가⁺·비서 | `a11yGet, a11ySave, a11yApply, a11yManage` (글씨 3단계 body 클래스 확대 + 고대비 CSS 변수 오버라이드, localStorage 저장, accessibility 도구) |
+| v35 | 대시보드 정리 | 더보기 시트 | 더보기에 기능 검색 필터 추가 — 43개 기능을 타이핑으로 즉시 찾기 |
+| v35 | AI 자율 재점검 | test_v28_autonomy | 89도구 환경에서 17 시나리오 재검증 통과 |
+| v36 | AI 비서 음성 입력 | 비서 입력창 [🎙] | `aiVoiceToggle` (SpeechRecognition으로 말→입력→자동전송, 토글) |
+| v36 | AI 두뇌 선택 | 더보기 [🔑]·비서 | `aiProviderLoad, aiProviderSet, aiProviderManage` (Gemini 무료/ChatGPT 유료 선택 + localStorage 저장, ai_provider 도구) |
+| v37 | 🦙 Llama·커스텀 모델 | 더보기 [🦙]·제공자 화면·비서 | `llamaAsk, llamaConfig, llamaConfigLoad/Save, llamaReady, llamaSetup, LLAMA_PRESETS` (Ollama·LM Studio·Groq·Together 등 OpenAI 호환 엔드포인트 등록, 연결 테스트, aiAsk 라우터 통합+폴백, llama_setup 도구) |
+| v38 | 🤖 OpenAI·Llama 스스로 도구 실행 | `aiFC` provider 분기 | `aiFC_openaiCompat, aiHistToOpenAI, aiToolsToOpenAI` (Gemini 전용이던 function calling을 OpenAI·Llama로 확장 — 세 두뇌 모두 89개 도구를 자율 실행. aiAgentSend의 키 체크도 aiKeyReady로 변경) |
+| v39 | 📊 AI 사용량·비용 대시보드 | 더보기 [📊]·비서 | `aiUsageTrack, aiUsageDashboard, AI_PRICING` (제공자별 호출 수·토큰 집계 + 예상 비용(₩), 6개월 추이. geminiAsk·openaiAsk·llamaAsk에 추적 심음, ai_usage 도구) |
+
+### 🤖 AI 자율 운영 검증 (v28 종합 점검)
+
+AI 도구 78종 환경에서 자율 운영 시나리오 15종을 전수 검증(`test_v28_autonomy.js`, 15/15):
+1. 아침 루틴(브리핑+일정) 2. 현장등록→견적(자율 2단계) 3. 수금→영수증 4. 지출→손익 5. 완공→청구서 6. 목표+예산 설정 7. 안전 삭제(사진 보존) 8. 조회 도구 10종 무오류 9. 잘못된 지시 방어 10. 자연어→도구 실행 관통(5/5).
+
+**전체 테스트 현황**: 통합 스모크 69/69 · 라우팅 70/70(100%) · AI 자율 종합 10/10 · AI 복합 6/6 · 리허설 20/20 · 장애복구 10/10 · 자동저장 6/6 · v25~v27 신기능 40/40. **총 171개 항목 전건 통과, 콘솔 에러 0.**
 
 기능 블록은 전부 마커 `/* ----- 사진 묶음 발송 … ----- */` **바로 앞**에 버전 순서대로 쌓여 있다.
 
@@ -166,6 +205,6 @@ index.html (≈700KB, 스크립트 1개)
 
 ## 10. 릴리스 노트(요약)
 
-v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → v11 데이터 이사 마법사 → v12 온보딩 → v13 오프라인·자동저장 강건 → v14 AI 복합작업 자율처리 + 경영 대시보드 → v15 선제적 아침 비서 + 매출 추이 차트 → v16 정산 문서 AI 발송 → v17 AI 삭제·메모 권한 + 수금 영수증 → v18 부가세 신고 준비 + AI 수금 대송 → v19 스마트 알림 + 세금계산서 + AI 사진 작업일지 → v20 AI 주간 브리핑 + 간편 지출 장부 → v21 월별 실손익 → v22 일정 충돌 감지 + 거래처 관리 + 연간 결산 → **v23 메뉴 카테고리 정리 + AI 비서 우선 배치**.
+v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → v11 데이터 이사 마법사 → v12 온보딩 → v13 오프라인·자동저장 강건 → v14 AI 복합작업 자율처리 + 경영 대시보드 → v15 선제적 아침 비서 + 매출 추이 차트 → v16 정산 문서 AI 발송 → v17 AI 삭제·메모 권한 + 수금 영수증 → v18 부가세 신고 준비 + AI 수금 대송 → v19 스마트 알림 + 세금계산서 + AI 사진 작업일지 → v20 AI 주간 브리핑 + 간편 지출 장부 → v21 월별 실손익 → v22 일정 충돌 감지 + 거래처 관리 + 연간 결산 → v23 메뉴 카테고리 정리 + AI 비서 우선 배치 → v24 AI 먼저 제안 + 빠른 명령 카드 + 통합 검색 → v25 매출 목표 관리 + 제안 알림 → v26 음성 현장일지 + AI 경영 분석 + 현장 예산 → v27 일정 브리핑 강화 + AI 견적 자동작성 + 사진 AI 하자분석 → v28 종합 사용 가이드 + 실기기 체크리스트 최신화 → v29 OpenAI(ChatGPT) 지원 + AI 능동 브리핑 → v30 무료 Gemini 우선 + AI 자동 실행 + 주·월 운영 리포트 → v31 AI 자동 모드 설정 + 운영 리포트 자동 알림 → v32 고객 응대 AI(문자 초안) + AI 매출 예측 → v33 계약서 AI + AI 자율 운영 재점검 → v34 세금계산서 AI + PC↔폰 동기화 안내 → v35 ♿ 접근성 + 대시보드 검색 → v36 AI 비서 음성 입력 + AI 두뇌 선택 → v37 🦙 Llama·커스텀 모델 등록 → v38 🤖 OpenAI·Llama도 스스로 도구 실행 → **v39 📊 AI 사용량·비용 대시보드**.
 
 *작성: Claude (Anthropic) — 2026-07-05, 리허설 20/20 · 도구 42종 전수 통과 시점 기준.*
