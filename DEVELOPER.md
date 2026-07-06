@@ -62,6 +62,27 @@ index.html (≈700KB, 스크립트 1개)
 | v10 | 고객 진행 페이지 | 진행보고 [🔗] | `customerPageHTML, customerPage` |
 | v10 | 캘린더 자동 | 일정 [📅] | `hjGcalUrl, hjGcalMaybeOpen, toggleGcalAuto` + 훅 2곳 |
 | v11 | 데이터 이사 | 더보기 [📥] | `importWizard, __iw*` (매핑 3종+전체장부 자동) |
+| v12 | 첫 사용 온보딩 | 부팅(빈 데이터) | `hjOnboardShow, hjSetupChecklist` |
+| v13 | 오프라인/자동저장 강건 | 부팅/저장 | `hjNetWatch/hjNetBanner`, `saveProject(__saving/__saveQueued)` |
+| v14 | AI 복합작업 자율처리 | ⚡자동 모드 | `aiSys(모드분기)`, `aiAgentSend(루프 10)` |
+| v14 | 경영 대시보드 | 대시 [📊 경영 현황] | `bizDashData, bizDashboard` |
+| v15 | 선제적 아침 비서 | 부팅(하루 1회) | `hjMorningBrief, hjMorningMaybe` (dailyCheck act로 실행 버튼) |
+| v15 | 매출 추이 차트 | 경영대시 [📉 추이] | `revenueTrendData, revenueTrendSVG, revenueTrend` (외부 라이브러리 없이 SVG) |
+| v16 | 정산 문서 3종 | 파일철/더보기 [📄 정산 문서] | `settleDocData, statementHTML, invoiceHTML, warrantyHTML, settleDocs, settleDocShare` (AI 발송: send_settle_doc) |
+| v17 | AI 삭제·메모 권한 | 비서 명령 | `aiDeleteProject, aiDeleteSchedule, aiAddNote, aiListNotes` (스냅샷 후 삭제) |
+| v17 | 수금 영수증 | 정산화면 [💵 영수증] | `receiptHTML, cashReceiptSMS(현금영수증 문자), receiptDialog, receiptShare` (AI 발송: send_receipt) |
+| v18 | 부가세 신고 준비 | 경영대시 [📊 부가세] | `vatPeriods, vatReportData(매출세액-매입세액공제→납부), vatReport, vatExportXlsx` |
+| v18 | AI 수금 대송 | 비서 명령 | `batchReceive` (일괄 입금 기록 + 영수증 + 현금영수증 문자, batch_receive) |
+| v19 | 스마트 알림 | 더보기 [🔔] | `hjNotifyItems, hjNotifyFire, notifySettings` (오늘 일정·장기 미수·A/S 만료, 하루 1회) |
+| v19 | 세금계산서 정보 | 더보기 [📇] | `taxInvoiceData, taxInvoiceInfo` (공급자·고객 bizno 저장·전체 복사) |
+| v19 | AI 사진 작업일지 | 더보기 [📷] | `photoReportData, photoReport, photoReportAISummary` (날짜·공정별 집계 + AI 요약) |
+| v20 | AI 주간 브리핑 | 대시 [🤖 주간]·월요일 자동 | `weekBriefData, weekBrief, weekBriefMaybe` (지난주 성과+이번주 계획+AI 코멘트) |
+| v20 | 간편 지출 장부 | 대시 [💳 지출]·더보기 | `expenseAdd, expenseData, expenseLedger, expenseExportXlsx` (state.expenses, 현금/카드·분류별) |
+| v21 | 월별 실손익 | 대시 [💰 손익]·더보기 | `pnlData, pnl, pnlTrend, pnlTrendSVG` (수금−지출 현금흐름, 6개월 추이 SVG) |
+| v22 | 일정 충돌 감지 | 대시 [📅 점검] | `scheduleConflicts, scheduleCheck` (시간 겹침 + 과부하 3건↑/10h↑) |
+| v22 | 거래처 관리 | 대시 [📇 거래처]·더보기 | `supplierList, supplierStats, supplierAdd, suppliers` (state.suppliers 확장: category·items·memo) |
+| v22 | 연간 결산 | 대시 [📊 연간]·더보기 | `annualData, annualReport, annualExportXlsx` (12개월 pnlData 집계·완료현장·엑셀 3시트) |
+| v23 | 메뉴 정리 + AI 우선 | 경영 대시보드·더보기 | 대시보드를 💰돈/📊리포트/🗂현장 3카테고리로 재구성 + AI 비서 바로가기 배너(대시·더보기 상단). 라우팅 100%(70문항) 재검증 |
 
 기능 블록은 전부 마커 `/* ----- 사진 묶음 발송 … ----- */` **바로 앞**에 버전 순서대로 쌓여 있다.
 
@@ -128,6 +149,15 @@ index.html (≈700KB, 스크립트 1개)
 | 1 | 사진 12묶음 초과분 "더 보기" 무반응 → 뒷사진 열람 불가 | 핸들러가 change 리스너에 위치 + 셀렉터 누락 | click 체인 이동 + `#btnMoreClusters` 등록 (v9) |
 | 2 | [📦 전체 정리완료] 무반응 | click 셀렉터 누락 | `#btnOrganizeAll` 등록 (v9) |
 | 3 | 사진별 "공정 ▾" 무반응 → 개별 공정 지정 불가 | phasebtn 블록이 change 리스너에 | 블록을 click 체인으로 이식 + `[data-phasebtn]` 등록, select 교체→적용 전 플로우 검증 (v9) |
+| 4 | 드라이브/백업 재불러오기마다 견적 파일이 무한 증식 | applyData 병합 중복판정이 name+prefix+size만 봐서 견적 가상파일(size 동일)이 매번 재-push | 안정 식별자 `key` 기준 중복 판정 추가 + kind 비교 보강. 반복 병합 멱등성 확보 (v12 감사) |
+| 5 | 손상된 백업(JSON) 열면 앱 크래시 | applyData가 배열이어야 할 필드의 타입을 검사 안 함 → `.map`/`.filter` 예외 | 진입부 타입 정규화 가드(배열 아니면 무시, 항목 필터). 손상 백업도 안전하게 부분 복원 (v13 감사) |
+
+## 8.5 품질 지표 (v13 감사 기준)
+
+- **AI 도구 라우팅 정확도 100%** (실사용 질문 50개, `test_airoute.js`) — 도구 설명문의 트리거·구분 문구가 올바른 도구를 유도. "정리" 같은 애매어는 대상 명시("사진 정리"/"매출 정리")로 충돌 제거.
+- **AI 자율운영 스트레스 0 발견** (`test_stress.js`) — 악성입력 방어·연쇄작업·대량 조회(≤45ms)·특수문자·XSS·병합 멱등.
+- **장애 복구 10/10** (`test_resilience.js`) — 손상 백업·IDB 실패·CDN 실패·오프라인·연타·중첩 모달.
+- **자동저장 6/6** (`test_autosave.js`) — 5000사진 108ms 완주, 재진입 방지(`__saving`/`__saveQueued`)로 동시 저장 경합 0.
 
 ## 9. 테스트 자산 (/home/claude, 컨테이너 기준)
 
@@ -136,6 +166,6 @@ index.html (≈700KB, 스크립트 1개)
 
 ## 10. 릴리스 노트(요약)
 
-v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → **v11 데이터 이사 마법사 + 본 문서**.
+v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → v11 데이터 이사 마법사 → v12 온보딩 → v13 오프라인·자동저장 강건 → v14 AI 복합작업 자율처리 + 경영 대시보드 → v15 선제적 아침 비서 + 매출 추이 차트 → v16 정산 문서 AI 발송 → v17 AI 삭제·메모 권한 + 수금 영수증 → v18 부가세 신고 준비 + AI 수금 대송 → v19 스마트 알림 + 세금계산서 + AI 사진 작업일지 → v20 AI 주간 브리핑 + 간편 지출 장부 → v21 월별 실손익 → v22 일정 충돌 감지 + 거래처 관리 + 연간 결산 → **v23 메뉴 카테고리 정리 + AI 비서 우선 배치**.
 
 *작성: Claude (Anthropic) — 2026-07-05, 리허설 20/20 · 도구 42종 전수 통과 시점 기준.*

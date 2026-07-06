@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="현장">
 <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
-<!-- 2026-07-05 통합 v11: 🤖 AI 비서(도구 42) · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
+<!-- 2026-07-05 통합 v23: 🤖 도구 67·메뉴 카테고리 정리·AI 비서 우선 배치·라우팅 100%(70문항)·일정충돌·거래처·연간 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
 <title>현장 — 인테리어 파일 정리</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
@@ -184,15 +184,13 @@
   button.warn:hover{background:#b23a31;color:#fff}
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
-  input[type=text],input[type=number],input[type=password]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
+  input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
   .proj-item:hover{background:#e8f1fd}
   .proj-item.active{background:var(--blueprint);color:#fff}
   .proj-item .pin{width:9px;height:9px;border-radius:50%;background:var(--clay);flex:0 0 auto}
   .proj-item.active .pin{background:var(--clay-soft)}
-  .proj{max-height:clamp(190px,32vh,360px);overflow-y:auto;padding-right:3px;overscroll-behavior:contain;scrollbar-width:thin}
-  .proj-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .proj-item .cnt{margin-left:auto;font-size:11px;color:var(--muted)}
   .proj-item.active .cnt{color:#cfe0f7}
   .stage-row{display:flex;gap:3px;margin:2px 0 0 17px}
@@ -365,12 +363,6 @@
   .ph:hover .ph-tools{opacity:1}
   .ph-tools button{width:22px;height:22px;padding:0;font-size:11px;border-radius:5px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .ph-tools button:hover{background:var(--blueprint);transform:none}
-  .org-dot{display:inline-flex;width:9px;height:9px;border-radius:50%;background:var(--moss);box-shadow:0 0 0 2px rgba(14,122,107,.12);margin-right:6px;vertical-align:middle;flex:0 0 auto}
-  .ph-org-dot{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:var(--moss);box-shadow:0 0 0 2px rgba(255,255,255,.9);z-index:2}
-  .proj-photo-peek{display:grid;grid-template-columns:repeat(3,minmax(70px,1fr));gap:8px;margin:8px 0 4px;max-width:360px}
-  .proj-photo-peek .ph{min-height:76px}
-  .proj-more-row,.group-more{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:7px 0 10px}
-  .proj-more-row .hint,.group-more .hint{margin:0;font-size:11.5px}
   .pv-wrap{display:grid;grid-template-columns:1fr 220px;gap:16px}
   .pv-canvas{background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;min-height:340px;max-height:60vh;overflow:auto;display:flex;align-items:center;justify-content:center;padding:8px}
   .pv-img{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 16px -8px rgba(13,78,162,.5)}
@@ -766,60 +758,13 @@ function bestExt(name,type){
   return e;
 }
 function kindFromSourceFolder(prefix){
-  const parts=String(prefix||'').split('/').filter(Boolean);
-  const fromName=(name)=>{
-    if(name==='견적서')return 'estimate';
-    if(name==='사업자등록증')return 'bizreg';
-    if(name==='명함')return 'card';
-    if(name==='도면')return 'drawing';
-    if(name==='현장사진')return 'photo';
-    if(name==='기타')return 'other';
-    return null;
-  };
-  if(parts[0]==='_정리완료'){
-    const k=fromName(parts[2]||'');
-    if(k)return k;
-    if(parts.length>=3)return 'photo';
-    return null;
-  }
-  const k=fromName(parts[0]||'');
-  if(k)return k;
+  const top=String(prefix||'').split('/').filter(Boolean)[0]||'';
+  if(top==='견적서')return 'estimate';
+  if(top==='사업자등록증')return 'bizreg';
+  if(top==='명함')return 'card';
+  if(top==='도면')return 'drawing';
+  if(top==='현장사진')return 'photo';
   return null;
-}
-function projectNameFromFolder(folder){
-  const raw=String(folder||'').trim();
-  if(!raw)return '';
-  const exact=state.projects.find(p=>p.name===raw);
-  if(exact)return exact.name;
-  const safe=state.projects.find(p=>safeName(p.name)===raw);
-  return safe?safe.name:raw;
-}
-function phaseNameFromFolder(projName,folder){
-  const raw=String(folder||'').trim();
-  if(!raw)return '';
-  const p=state.projects.find(x=>x.name===projName);
-  const phases=(p&&p.phases)||[];
-  return phases.find(x=>x===raw)||phases.find(x=>safeName(x)===raw)||raw;
-}
-function ensureProjectShell(name){
-  if(!name||state.projects.some(p=>p.name===name))return;
-  state.projects.push({name,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null,archived:false});
-}
-function ensurePhaseShell(projName,phaseName){
-  if(!projName||!phaseName)return;
-  const p=state.projects.find(x=>x.name===projName);if(!p)return;
-  if(!p.phases)p.phases=[];
-  if(!p.phases.includes(phaseName))p.phases.push(phaseName);
-}
-function applyOrganizedPrefix(rec,prefix){
-  const parts=String(prefix||'').split('/').filter(Boolean);
-  if(parts[0]!=='_정리완료'||!parts[1])return;
-  const proj=projectNameFromFolder(parts[1]);
-  ensureProjectShell(proj);rec.project=proj;
-  const folder=parts[2]||'',sub=parts[3]||'';
-  const folderKind=kindFromSourceFolder(prefix);if(folderKind)rec.kind=folderKind;
-  if(folder==='현장사진'&&sub){rec._phase=phaseNameFromFolder(proj,sub);ensurePhaseShell(proj,rec._phase);}
-  else if(folder&&folderKind==='photo'){rec._phase=phaseNameFromFolder(proj,folder);ensurePhaseShell(proj,rec._phase);}
 }
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 // HEIC도 JPEG로 렌더해 주는 lh3 형식(drive.google.com/thumbnail은 HEIC 미지원) — 로그인된 브라우저에서 바로 표시
@@ -1075,6 +1020,7 @@ function serializeData(){
     priceBook:state.priceBook||{},
     asLog:state.asLog||[],
     payLog:(state.payLog||[]).slice(-400),
+    expenses:(state.expenses||[]).slice(-600),
     suppliers:state.suppliers||[],
     supplierMap:state.supplierMap||{},
     brand:state.brand||null,
@@ -1088,12 +1034,17 @@ function serializeData(){
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 function applyData(data){
-  if(!data||!data.files)return 0;
+  if(!data||typeof data!=='object')return 0;
+  ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
+  if(data.files)data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
+  if(data.projects)data.projects=data.projects.filter(p=>p&&typeof p==='object'&&p.name);
+  if(!data.files)return 0;
   __lastData=data; if(data.savedAt)__dataAt=data.savedAt;
   state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
-  state.learn=data.learn||{estimateByBiz:{}};
+  state.learn=(data.learn&&typeof data.learn==='object')?data.learn:{estimateByBiz:{}};
   state.quotes=data.quotes||[];
   state.schedule=data.schedule||[];
+  state.expenses=Array.isArray(data.expenses)?data.expenses:(state.expenses||[]);
   state.notes=data.notes||[];
   state.priceBook=data.priceBook||state.priceBook||{};
   state.asLog=data.asLog||state.asLog||[];
@@ -1103,19 +1054,7 @@ function applyData(data){
   if(data.brand)state.brand=data.brand;
   try{hjBrandApplyUI();}catch(e){}
   state.contacts=data.contacts||[];
-  state.projects=(data.projects||[]).map(p=>({
-    ...p,
-    name:String(p.name||''),
-    stage:Number.isFinite(+p.stage)?Math.max(0,Math.min(3,+p.stage)):0,
-    received:Number(p.received)||0,
-    phases:Array.isArray(p.phases)?p.phases:[],
-    cost:p.cost||{material:0,labor:0,outsource:0},
-    customer:p.customer||{name:'',phone:'',addr:''},
-    geo:p.geo||null,
-    archived:!!p.archived,
-    doneAt:p.doneAt||null,
-    dueDate:p.dueDate||null
-  })).filter(p=>p.name);
+  state.projects=(data.projects||[]).map(p=>({name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
   let restored=0;
@@ -1135,7 +1074,8 @@ function applyData(data){
   data.files.forEach(s=>{
     if(used.has(s))return;
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
-    if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)))return;  // 이름+경로+크기 중복 방지(driveId 없는 가상 무한증식 차단)
+    if(s.key&&state.files.some(f=>f.key===s.key))return;   // key(안정 식별자) 중복 방지 — 견적 가상파일 재증식 차단
+    if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)&&(f.kind||'')===(s.kind||'')))return;  // 이름+경로+크기+종류 중복 방지
     const fext=bestExt(s.name,'');   // ext()는 'IMG.HEIC의 사본'에서 ''반환 → bestExt로 실제 확장자 인식(재분류가 실제로 먹게)
     // 교정: 저장된 kind가 'other'인데 실제로는 이미지 확장자면 photo로 바로잡음("의 사본" 등으로 과거에 오분류된 것 복구)
     let fkind=s.kind||'other';
@@ -1150,8 +1090,11 @@ function applyData(data){
   state.quotes.forEach(q=>{ if(q&&q.project){ try{syncQuoteToProject(q);}catch(e){} } });
   return restored;
 }
+let __saving=false,__saveQueued=null;
 async function saveProject(silent){
   if(!state.dirHandle||!FS_OK){if(!silent)toast('폴더 연결 시 폴더에 저장됩니다. 폰에서는 ‘데이터 내보내기’를 쓰세요.');return;}
+  if(__saving){__saveQueued=silent;return;}
+  __saving=true;
   try{
     const data=serializeData();
     const fh=await state.dirHandle.getFileHandle('_현장.json',{create:true});
@@ -1159,6 +1102,7 @@ async function saveProject(silent){
     clearDirty();toast(silent?'자동 저장됨':'작업 내용을 _현장.json에 저장했습니다');
     try{hjSnapshot(silent?'자동 저장':'수동 저장');}catch(e){}
   }catch(e){if(!silent)toast('저장 오류: '+e.message);}
+  finally{__saving=false;if(__saveQueued!==null){const s=__saveQueued;__saveQueued=null;setTimeout(()=>saveProject(s),0);}}
 }
 async function loadProject(){
   if(!state.dirHandle)return;
@@ -1258,7 +1202,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-05-v11-final';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-04d';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -1521,7 +1465,7 @@ async function gdShowRestore(){
   root.querySelectorAll('[data-restore]').forEach(el=>el.onclick=async()=>{ if(confirm('이 시점으로 되돌릴까요? 지금 자료는 덮어집니다.')){ closeModal(); await gdRestoreBackup(el.dataset.restore); } });
 }
 /* ----- 파일(사진·PDF) 업로드 헬퍼 (만물인테리어 하위 폴더) ----- */
-function loadExtLib(src,check){return new Promise((res,rej)=>{try{if(check())return res();}catch(e){}const s=document.createElement('script');s.src=src;s.onload=()=>res();s.onerror=()=>rej(new Error('라이브러리 로드 실패(인터넷 확인)'));document.head.appendChild(s);});}
+function loadExtLib(src,check){return new Promise((res,rej)=>{try{if(check())return res();}catch(e){}if(navigator.onLine===false){rej(new Error('오프라인 상태입니다 — 이 기능은 인터넷 연결이 필요해요'));return;}const s=document.createElement('script');s.src=src;let done=false;const to=setTimeout(()=>{if(!done){done=true;rej(new Error('연결이 느려 기능을 불러오지 못했어요 — 잠시 후 다시'));}},15000);s.onload=()=>{if(done)return;done=true;clearTimeout(to);res();};s.onerror=()=>{if(done)return;done=true;clearTimeout(to);rej(new Error('기능 모듈을 불러오지 못했어요(인터넷 확인)'));};document.head.appendChild(s);});}
 // 무거운 라이브러리 지연 로드(필요할 때만) — 초기 로딩 ~1.8MB 절감
 const _CDN={leaflet:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',tesseract:'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js',pdfjs:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',pdfworker:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',jspdf:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',jszip:'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'};
 function ensureXLSX(){return loadExtLib(_CDN.xlsx,()=>window.XLSX);}
@@ -1676,18 +1620,9 @@ function makeThumbDataUrl(file,max){
     }catch(e){res(null);}
   });
 }
-async function cacheThumb(driveId,file){
-  if(!driveId||!file)return;
-  try{const data=await makeThumbDataUrl(file,480);if(data)await idbSet('thumb:'+driveId,data);}catch(e){}
-}
-async function hydrateThumbs(){
-  const targets=state.files.filter(f=>f._driveId&&IMG.includes(f.ext)&&!f.thumb);
-  let n=0;
-  for(const f of targets){
-    try{const cached=await idbGet('thumb:'+f._driveId);if(cached){f.thumb=cached;n++;if(n%20===0){__photoCache.key=null;scheduleRender();}}}catch(e){}
-  }
-  if(n){__photoCache.key=null;scheduleRender();}
-}
+async function cacheThumb(driveId,file){ /* 썸네일 캐시 제거 — photoSrc가 드라이브 썸네일을 바로 표시 */ }
+// (제거) 썸네일 채우기 — 이제 photoSrc(f)가 드라이브 썸네일 URL로 바로 표시하므로 채우기 불필요
+async function hydrateThumbs(){ return; }
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
@@ -2061,12 +1996,12 @@ function openGdriveSetup(){
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
-      <input type="password" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" autocomplete="off" spellcheck="false" style="width:100%">
+      <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
       <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
-      <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" autocomplete="off" spellcheck="false" style="width:100%">
+      <input type="text" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" style="width:100%">
       <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
     </details>
   </div>`;
@@ -2195,16 +2130,14 @@ let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기)
 async function walk(dir,prefix){
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      if(name==='_백업'||name==='백업')continue;
+      if(name==='_정리완료')continue;
       await walk(handle,prefix+name+'/');
     }else{try{
       const f=await handle.getFile();
       const k=(f.name||name)+'|'+(f.size||0);
       if(__walkSeen.has(k)){   // 같은 파일이 원본 폴더와 정리본 폴더에 둘 다 있으면 1번만
         const ex=__walkSeen.get(k), fk=kindFromSourceFolder(prefix);
-        if(ex&&String(prefix||'').startsWith('_정리완료/')){
-          ex.handle=handle;ex.name=f.name||name;ex.prefix=prefix;applyOrganizedPrefix(ex,prefix);
-        }else if(ex&&fk&&(ex.kind==='other'||!ex.kind))ex.kind=fk;
+        if(ex&&fk&&(ex.kind==='other'||!ex.kind))ex.kind=fk;   // 폴더기반 분류가 더 명확하면 그쪽으로 보정
         continue;
       }
       const rec=await ingestFile(f,handle,prefix);
@@ -2225,7 +2158,6 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
-  applyOrganizedPrefix(rec,prefix);
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -2659,7 +2591,6 @@ function clusterPhotos(photos){
   }
   return clusters;
 }
-function clusterIsUnassigned(c){return !c.items.some(p=>p.project);}
 
 /* ---------- 중복 감지: 크기+촬영시간(±2초) 동일 ---------- */
 function markDuplicates(photos){
@@ -2940,12 +2871,12 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><div class="more-ai-hint" onclick="['moreSheet','moreBackdrop'].forEach(function(x){var e=document.getElementById(x);if(e)e.remove();});try{aiAgent()}catch(e){}" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0b4ea2,#1d6fd8);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">복잡한 메뉴 대신 "○○ 해줘"라고 하세요</span></span><span style="color:#fff;font-size:18px">›</span></div><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="settle"><span class="mi">📄</span>정산 문서</div><div class="more-item" data-moreaction="taxinv"><span class="mi">📇</span>세금계산서</div><div class="more-item" data-moreaction="photorep"><span class="mi">📷</span>사진 작업일지</div><div class="more-item" data-moreaction="notify"><span class="mi">🔔</span>스마트 알림</div><div class="more-item" data-moreaction="expense"><span class="mi">💳</span>간편 장부</div><div class="more-item" data-moreaction="pnl"><span class="mi">💰</span>월별 손익</div><div class="more-item" data-moreaction="suppliers"><span class="mi">📇</span>거래처</div><div class="more-item" data-moreaction="annual"><span class="mi">📊</span>연간 결산</div><div class="more-item" data-moreaction="weekbrief"><span class="mi">🤖</span>주간 브리핑</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}});
 }
 // 카메라 촬영
 function openCamera(){
@@ -3012,28 +2943,18 @@ function render(){
   // 선택 모드는 '현장 사진' 탭에서만 — 다른 탭으로 가면 자동 해제(다른 탭 사진보기 가로채기·갇힘 방지)
   if(state.tab!=='photos'&&__selMode){__selMode=false;document.body.classList.remove('selmode');}
   const pl=$('#projList');pl.innerHTML='';
-  const projCounts={};
-  state.files.forEach(f=>{if(f.project)projCounts[f.project]=(projCounts[f.project]||0)+1;});
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
-  all.innerHTML='<span class="pin" style="background:#6a86a3"></span><span class="proj-name">전체 보기</span><span class="cnt">'+state.files.length+'</span>';
+  all.innerHTML='<span class="pin" style="background:#6a86a3"></span> 전체 보기 <span class="cnt">'+state.files.length+'</span>';
   all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
-  const unassignedTopN=state.files.filter(f=>!f.project).length;
-  if(unassignedTopN){
-    const un=document.createElement('div');
-    un.className='proj-item';
-    un.innerHTML='<span class="pin" style="background:#c9583d"></span><span class="proj-name">미배정 먼저</span><span class="cnt">'+unassignedTopN+'</span>';
-    un.onclick=()=>{state.activeProject=null;state.tab='photos';__clusterShowN=12;__clusterShowKey='';render();};
-    pl.appendChild(un);
-  }
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
   const addProjItem=(p,dim)=>{
-    const n=projCounts[p.name]||0;
+    const n=state.files.filter(f=>f.project===p.name).length;
     const wrap=document.createElement('div');
     const el=document.createElement('div');
     el.className='proj-item'+(state.activeProject===p.name?' active':'');
     if(dim)el.style.opacity='.55';
-    el.innerHTML='<span class="pin"></span><span class="proj-name">'+(dim?'📦 ':'')+escapeHtml(p.name)+'</span><span class="cnt">'+n+'</span>';
+    el.innerHTML='<span class="pin"></span> '+(dim?'📦 ':'')+escapeHtml(p.name)+' <span class="cnt">'+n+'</span>';
     el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
     wrap.appendChild(el);
     const sr=document.createElement('div');sr.className='stage-row';
@@ -3073,8 +2994,6 @@ function emptyState(){return `<div class="drop" id="drop"><b>여기에 파일을
 function projectOptions(sel){let o=`<option value="">현장 미지정</option>`;state.projects.filter(p=>!p.archived||p.name===sel).forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
-function isOrganized(f){return !!(f&&String(f.prefix||'').startsWith('_정리완료/'));}
-function organizedDot(f){return isOrganized(f)?'<span class="org-dot" title="정리완료"></span>':'';}
 function cardHtml(f){
   const isImg=IMG.includes(f.ext),k=KIND[f.kind];
   const thumb=(isImg&&photoSrc(f,600))?photoImg(f,600):`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
@@ -3086,21 +3005,16 @@ function cardHtml(f){
   const canPreview=canPreviewFile(f);
   const preview=previewButtonHtml(f,'미리보기');
   const rename=(!f._virtual)?`<button class="mini-btn" data-rename="${f.id}" title="파일 이름 변경">✎ 이름</button>`:'';
-  const delphoto=f.kind==='photo'?`<button class="mini-btn warn" data-delphoto="${f.id}" title="사진 삭제">삭제</button>`:'';
-  const actbtns=(preview||rename||delphoto)?`<div class="card-tools">${preview}${rename}${delphoto}</div>`:'';
+  const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
   return `<div class="card" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
-    <div class="meta"><div class="nm">${organizedDot(f)}${escapeHtml(f.name)}</div>
+    <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
       <select data-act="kind" data-id="${f.id}">${kindOptions(f.kind)}</select>
       <select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select>
     </div></div>`;
-}
-function photoPeek(f){
-  const tag=isOrganized(f)?'<span class="ph-org-dot" title="정리완료"></span>':'';
-  return `<div class="ph">${photoImg(f,260,f.id)}${tag}${f._phase?`<span class="ph-tag phase">${escapeHtml(f._phase)}</span>`:''}</div>`;
 }
 /* ---------- 대시보드 ---------- */
 function projStats(name){
@@ -3227,7 +3141,7 @@ function viewDashboard(){
   const totMarginRate=totEst?Math.round(totMargin/totEst*100):0;
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
-  let html=`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="moss tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="clay tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="blue tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+dashboardTodayHTML();
+  let html=`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="moss tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="clay tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="hjMorningBrief()">🌅 브리핑</button><button class="blue tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="blue tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="blue tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+dashboardTodayHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
@@ -3548,27 +3462,27 @@ window.__aiAuto = localStorage.getItem('hj_ai_auto')==='1';
 window.__aiHist = window.__aiHist || [];          // Gemini contents 원형(세션 동안 유지)
 window.__aiBusy = false;
 
-const AI_WRITE = new Set(['add_project','assign_photos','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor']);
+const AI_WRITE = new Set(['add_project','assign_photos','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor','send_settle_doc','delete_project','delete_schedule','add_note','send_receipt','batch_receive','add_expense','add_supplier']);
 
 const AI_TOOLS = [
  {name:'get_overview',description:'앱 전체 현황(현장·견적·수금·미수금·오늘 일정·미배정 사진 수). 브리핑이나 현황 질문이면 먼저 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'list_projects',description:'현장 목록 + 현장별 견적·수금·미수금·진행단계·사진수·고객.',parameters:{type:'OBJECT',properties:{include_archived:{type:'BOOLEAN',description:'보관 현장 포함(기본 false)'}}}},
- {name:'list_photos',description:'사진 조회. 미배정/현장/공정/파일명/촬영일로 거를 수 있음.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},unassigned:{type:'BOOLEAN'},phase:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING',description:'YYYY-MM-DD'},date_to:{type:'STRING',description:'YYYY-MM-DD'},limit:{type:'INTEGER'}}}},
- {name:'list_quotes',description:'작성한 견적서 목록(번호·제목·현장·합계금액).',parameters:{type:'OBJECT',properties:{limit:{type:'INTEGER'}}}},
- {name:'list_schedule',description:'일정 조회(기간·현장별).',parameters:{type:'OBJECT',properties:{date_from:{type:'STRING'},date_to:{type:'STRING'},project:{type:'STRING'}}}},
- {name:'list_contacts',description:'연락처 검색(이름·전화·회사·메모).',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
- {name:'suggest_photo_organization',description:'미배정 사진을 촬영일·GPS·일정과 대조해 어느 현장 사진인지 자동 추측. "사진 정리" 요청이면 먼저 호출해 제안을 보여주고, 사용자가 동의하면 assign_photos의 실행힌트로 배정.',parameters:{type:'OBJECT',properties:{}}},
- {name:'add_project',description:'[변경] 새 현장 추가.',parameters:{type:'OBJECT',properties:{name:{type:'STRING'}},required:['name']}},
+ {name:'list_projects',description:'현장 목록과 현장별 견적·수금·미수금·진행단계·사진수·고객. "현장 목록/어디어디 있어/진행 상황"이면 호출. 특정 한 현장의 이력 타임라인은 project_history가 더 적합.',parameters:{type:'OBJECT',properties:{include_archived:{type:'BOOLEAN',description:'보관 현장 포함(기본 false)'}}}},
+ {name:'list_photos',description:'사진 조회: 미배정/현장/공정/파일명/촬영일로 거를 수 있음. "~사진 보여줘/몇 장"이면 호출. 정리·배정이 목적이면 suggest_photo_organization을, OCR 내용 검색이면 search_all을 쓸 것.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},unassigned:{type:'BOOLEAN'},phase:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING',description:'YYYY-MM-DD'},date_to:{type:'STRING',description:'YYYY-MM-DD'},limit:{type:'INTEGER'}}}},
+ {name:'list_quotes',description:'앱에서 작성한 견적서 목록(번호·제목·현장·합계금액). "견적 목록/뭐 썼지"면 호출. 새 견적 작성은 create_quote_draft, 발주는 material_order.',parameters:{type:'OBJECT',properties:{limit:{type:'INTEGER'}}}},
+ {name:'list_schedule',description:'일정 조회(기간·현장별). "이번주/오늘/다음주 일정", 특정 현장 일정이 궁금하면 호출. 날짜 범위나 project로 거를 수 있음. 알림 문안이 필요하면 schedule_notify를 대신 쓸 것.',parameters:{type:'OBJECT',properties:{date_from:{type:'STRING'},date_to:{type:'STRING'},project:{type:'STRING'}}}},
+ {name:'list_contacts',description:'저장된 연락처(사람) 검색: 이름·전화·회사·메모로 조회. "~번호 뭐야/연락처 찾아"면 호출. 자재 거래처는 material_order, 전체 자료 검색은 search_all이 더 적합.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'suggest_photo_organization',description:'미배정 "사진"을 촬영일·GPS·일정과 대조해 어느 현장 것인지 추측(사진 전용 — 매출/돈 정리와 무관). "사진 정리해줘"면 먼저 호출해 제안을 보여주고, 사용자가 동의하면 assign_photos의 실행힌트로 배정.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'add_project',description:'[변경] 새 현장(공사 건)을 만든다. name 필수(정확한 현장/고객 명칭). 이미 있으면 중복 생성하지 말 것 — 먼저 list_projects로 확인. 사진·견적을 붙이기 전 현장부터 생성.',parameters:{type:'OBJECT',properties:{name:{type:'STRING'}},required:['name']}},
  {name:'assign_photos',description:'[변경] 조건에 맞는 사진들을 지정 현장에 배정. 조건 없이 to_project만 주면 미배정 전체가 대상이 되므로 반드시 조건을 명확히.',parameters:{type:'OBJECT',properties:{to_project:{type:'STRING'},unassigned:{type:'BOOLEAN'},from_project:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},limit:{type:'INTEGER'}},required:['to_project']}},
  {name:'set_phase',description:'[변경] 현장 사진에 공정 이름을 붙임(예: 철거, 방수, 타일, 완료). 조건으로 대상 한정 가능.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},phase:{type:'STRING'},name_contains:{type:'STRING'},date_from:{type:'STRING'},date_to:{type:'STRING'},only_unphased:{type:'BOOLEAN'}},required:['project','phase']}},
- {name:'add_schedule',description:'[변경] 일정 추가.',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD'},time:{type:'STRING',description:'HH:MM (기본 09:00)'},project:{type:'STRING'},workers:{type:'STRING'},memo:{type:'STRING'}},required:['title','date']}},
+ {name:'add_schedule',description:'[변경] 일정을 추가한다. title·date(YYYY-MM-DD) 필수, time(HH:MM)·project·workers·memo 선택. 수금 예정일이 아니라 방문·작업 일정용. 캘린더 자동이 켜져 있으면 구글 캘린더도 함께 열림.',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD'},time:{type:'STRING',description:'HH:MM (기본 09:00)'},project:{type:'STRING'},workers:{type:'STRING'},memo:{type:'STRING'}},required:['title','date']}},
  {name:'set_stage',description:'[변경] 현장 진행 단계 변경. stage는 상담/실측/시공/완료 중 하나.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},stage:{type:'STRING'}},required:['project','stage']}},
  {name:'set_received',description:'[변경] 현장의 누적 수금액(원)을 이 값으로 설정. 미수금은 자동 재계산. 먼저 list_projects로 현재 금액 확인 권장.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},amount:{type:'NUMBER'}},required:['project','amount']}},
  {name:'create_quote_draft',description:'[변경] 견적서 초안을 만들고 견적 작성 화면을 엶. items의 price는 원 단위 숫자(부가세 전 단가).',parameters:{type:'OBJECT',properties:{title:{type:'STRING'},place:{type:'STRING'},project:{type:'STRING'},vat_included:{type:'BOOLEAN'},items:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},spec:{type:'STRING'},qty:{type:'NUMBER'},price:{type:'NUMBER'}},required:['name','price']}}},required:['title','items']}},
  {name:'auto_organize_photos',description:'[변경] 미배정 사진 자동 정리 파이프라인: GPS·촬영일·일정 단서로 현장에 일괄 배정하고, Gemini 키가 있으면 공정(비전)까지 자동 태깅. "사진 정리해줘" 요청이면 개별 assign_photos보다 이 도구가 빠름.',parameters:{type:'OBJECT',properties:{}}},
  {name:'weekly_report',description:'주간 리포트 화면을 열고 요약 수치를 반환(이번 주 수금·새 견적·미수금·다음 주 일정). week=last면 지난주.',parameters:{type:'OBJECT',properties:{week:{type:'STRING',description:"'this'(기본) 또는 'last'"}}}},
  {name:'review_quote',description:'현재 편집 중인 견적서를 검토(누락 항목·단가 이상·수량 점검)하고 검토 화면을 엶. 사용자가 "견적 검토/봐줘/빠진 거 없나" 하면 호출. 먼저 견적 작성 화면에 견적이 열려 있어야 함.',parameters:{type:'OBJECT',properties:{}}},
- {name:'monthly_closing',description:'월말 결산 화면을 열고 그 달 요약(매출·공급가·부가세·수금·완료 현장 마진·미수금)을 반환. month는 YYYY-MM(생략 시 최근 달).',parameters:{type:'OBJECT',properties:{month:{type:'STRING',description:'YYYY-MM (예: 2026-06). 생략하면 가장 최근 달.'}}}},
+ {name:'monthly_closing',description:'월말 결산: "이번 달/지난달 매출 정리, N월 결산, 부가세"면 호출. 그 달 요약(매출·공급가·부가세·수금·완료 현장 마진·미수금)을 반환. month는 YYYY-MM(생략 시 최근 달).',parameters:{type:'OBJECT',properties:{month:{type:'STRING',description:'YYYY-MM (예: 2026-06). 생략하면 가장 최근 달.'}}}},
  {name:'overdue_followup',description:'미수금 방치 현장을 자동 점검(완료 후 경과일·약속일 초과)하고 우선순위 목록과 팔로업 화면을 엶. "미수금/못 받은 돈/독촉" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_ledger',description:'거래처(고객)별 누적 매출·수금·미수·재거래 장부를 집계하고 화면을 엶. "거래처/고객별 매출/단골/재거래" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'project_history',description:'현장 파일철: 현장명 또는 고객명(query)으로 그 현장의 전체 이력(견적·수금·일정·작업일지·사진)을 타임라인으로 반환하고 화면을 엶. "이 현장/고객 지난번에 뭐 했지" 류 질문이면 호출. 여러 곳이 걸리면 후보 목록을 반환하니 사용자에게 고르게 할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING',description:'현장명 또는 고객 이름(일부 가능)'}},required:['query']}},
@@ -3592,12 +3506,41 @@ const AI_TOOLS = [
  {name:'brand_theme',description:'브랜드 테마 설정 화면(포인트 색·로고)을 엶. "브랜드/로고/색 바꾸기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_page',description:'고객 진행 페이지(읽기전용 HTML 한 파일: 단계·최근 작업·다음 일정·사진) 생성 화면을 엶. "고객 페이지/링크로 보내"면 호출. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
  {name:'calendar_sync',description:'구글 캘린더 자동 설정 조회/변경. enable=true/false로 켜고 끔(생략=현재 상태). 켜면 새 일정 저장 시 캘린더 추가 창이 자동으로 열림(단방향).',parameters:{type:'OBJECT',properties:{enable:{type:'BOOLEAN'}}}},
+ {name:'week_brief',description:'주간 브리핑: 지난주 성과(수금·완료·견적)와 이번주 일정·챙길 일을 요약해 엶. Gemini 키가 있으면 AI 코멘트도. "주간 브리핑/지난주 어땠어/이번주 계획"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'add_expense',description:'[변경] 지출(현금/카드)을 기록한다. amount=금액, category=자재/인건비/외주/장비/유류/식대/기타, method=현금/카드, date, project, memo. "○○에 5만원 썼어/지출 기록"이면 호출.',parameters:{type:'OBJECT',properties:{amount:{type:'NUMBER'},category:{type:'STRING'},method:{type:'STRING'},date:{type:'STRING'},project:{type:'STRING'},memo:{type:'STRING'}},required:['amount']}},
+ {name:'schedule_check',description:'일정 충돌 점검: 같은 시간 중복 예약과 과부하(하루 3건↑ 또는 10시간↑) 일정을 찾아 경고. "일정 겹치는 거 없어/일정 점검/충돌"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'suppliers',description:'거래처(자재상·외주 업체) 목록을 엶. 연락처·취급품목·거래이력. "거래처/자재상 목록/업체 연락처"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'add_supplier',description:'[변경] 거래처를 추가하거나 정보를 수정한다. name 필수, phone·category(자재/외주/장비/기타)·items(취급품목)·memo. "○○ 거래처 추가/업체 등록"이면 호출.',parameters:{type:'OBJECT',properties:{name:{type:'STRING'},phone:{type:'STRING'},category:{type:'STRING'},items:{type:'STRING'},memo:{type:'STRING'}},required:['name']}},
+ {name:'annual_report',description:'연간 결산 리포트: 한 해 수금·지출·실손익·완료 현장·월별 추이를 요약해 엶. year 지정 가능. "연간 결산/올해 얼마 벌었어/연말 정산/한 해 정리"면 호출.',parameters:{type:'OBJECT',properties:{year:{type:'STRING'}}}},
+ {name:'monthly_pnl',description:'월별 실손익: 그 달 수금(실입금)에서 지출(간편 장부)을 뺀 실제 현금흐름과 이익률, 지출 분류, 6개월 추이를 보여줌. month(YYYY-MM) 지정 가능. "이번달 손익/얼마 남았어/실수익/현금흐름"이면 호출.',parameters:{type:'OBJECT',properties:{month:{type:'STRING'}}}},
+ {name:'expense_ledger',description:'지출 장부를 엶. 월별 총지출·분류별·현금/카드 집계. month(YYYY-MM) 지정 가능. "지출 장부/이번달 얼마 썼어/지출 내역"이면 호출.',parameters:{type:'OBJECT',properties:{month:{type:'STRING'}}}},
+ {name:'notify_settings',description:'스마트 알림(오늘 일정·장기 미수금·무상 A/S 만료 임박) 설정 화면을 엶. "알림 켜줘/알림 설정/리마인더"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'tax_invoice_info',description:'세금계산서 발행 정보(공급자·공급받는 자·공급가액·세액)를 정리해 화면을 엶. 전자세금계산서 발행 준비용. query=현장/고객명(생략 시 완료 현장 목록). "세금계산서/계산서 발행 정보"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'photo_report',description:'현장 사진을 날짜별·공정별로 자동 정리해 작업 일지를 만든다. Gemini 키가 있으면 AI가 작업 내용을 요약. query=현장/고객명(생략 시 사진 있는 현장 목록). "사진 정리해서 일지/작업 일지/사진 보고서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'vat_report',description:'부가세 신고 준비: 분기(과세기간)별 매출세액·매입세액 공제·납부(환급) 예상세액을 집계해 화면을 엶. period 지정 가능(생략 시 최근). "부가세/세금신고/매출매입 정리/신고 자료"면 호출.',parameters:{type:'OBJECT',properties:{period:{type:'STRING',description:'예: 2026-1'}}}},
+ {name:'batch_receive',description:'[변경] 여러 입금을 한 번에 기록하고 영수증까지 자동 발송한다. payments=[{query:현장/고객명, amount:금액}], receipt=true면 영수증 발송, sms=true면 현금영수증 안내 문자도. "오늘 들어온 돈 정리/여러 건 입금"이면 호출.',parameters:{type:'OBJECT',properties:{payments:{type:'ARRAY',items:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'}}}},receipt:{type:'BOOLEAN'},sms:{type:'BOOLEAN'}},required:['payments']}},
+ {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
+ {name:'delete_schedule',description:'[변경] 일정을 삭제한다. 삭제 전 자동 백업됨. keyword=일정 제목/현장/날짜. "○○ 일정 취소/삭제"면 호출. 여러 건이면 되물어 확정.',parameters:{type:'OBJECT',properties:{keyword:{type:'STRING'}},required:['keyword']}},
+ {name:'add_note',description:'[변경] 메모·할 일을 기록한다. text=내용(들은 내용 전체), project=관련 현장(선택). 문장이 "~메모해줘/적어둬/기억해/잊지마"로 끝나면 내용이 무엇이든(자재 주문 포함) 이 도구를 쓴다. 실제 발주서 작성은 material_order.',parameters:{type:'OBJECT',properties:{text:{type:'STRING'},project:{type:'STRING'}},required:['text']}},
+ {name:'list_notes',description:'기록한 메모·할 일을 조회한다. query로 거를 수 있음. "메모 뭐 있지/적어둔 거"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'receipt',description:'수금 영수증 화면을 엶(입금 확인 후 고객 발송용, 현금영수증 안내 문자 포함). query=현장/고객명(생략 시 수금 현장 목록), amount=영수 금액(선택). "영수증/입금 확인서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'}}}},
+ {name:'send_receipt',description:'[변경] 수금 영수증을 바로 만들어 공유/저장하고, 필요 시 현금영수증 안내 문자도 보낸다. query=현장/고객명, amount=금액(선택), sms=true면 안내 문자도 발송. "○○ 영수증 보내줘"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'},sms:{type:'BOOLEAN'}},required:['query']}},
+ {name:'settle_docs',description:'정산 문서(거래명세서·청구서·하자보증서) 생성 화면을 엶. 공사 끝난 뒤 고객에게 보낼 문서. query=현장/고객명(생략 시 완료 현장 목록). "명세서/청구서/보증서/정산 문서/계산서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'send_settle_doc',description:'[변경] 특정 정산 문서를 바로 만들어 공유/저장한다. query=현장/고객명, kind=statement(거래명세서)|invoice(청구서)|warranty(하자보증서). "○○ 청구서 보내줘/보증서 발행"처럼 종류가 분명할 때.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},kind:{type:'STRING'}},required:['query','kind']}},
+ {name:'revenue_trend',description:'매출 추이 차트: 월별 매출(견적)·수금·완료 현장을 그래프로 보여줌. months(3/6/12) 지정 가능. "매출 추이/월별 매출/수금 흐름/추세/그래프"면 호출.',parameters:{type:'OBJECT',properties:{months:{type:'NUMBER',description:'3, 6, 또는 12'}}}},
+ {name:'morning_brief',description:'오늘의 브리핑: 인사말·오늘 일정·미수금·시공중·챙길 일을 실행 버튼과 함께 요약해 엶. "브리핑/오늘 뭐부터/아침 점검/오늘 요약"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'biz_dashboard',description:'경영 대시보드: 이번 달 수금·총 미수금·진행중 현장·오늘 일정·단계 분포·이번주 일정·챙길 일을 한 화면으로 요약해 엶. "경영 현황/이번달 요약/사장님 대시보드/전체 요약"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'onboarding',description:'첫 사용 안내(3장 소개)와 시작 준비 체크리스트를 다시 엶. "시작 가이드/온보딩/처음 사용법/셋업"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'import_wizard',description:'데이터 이사 마법사: 예전 엑셀(현장·고객/연락처/단가표), 우리 앱 전체장부 엑셀, 다른 기기(드라이브·JSON) 가져오기 화면을 엶. \"엑셀 가져오기/데이터 이사/옮기기\"면 호출. 실제 파일 선택·매핑은 사용자가 화면에서.',parameters:{type:'OBJECT',properties:{}}},
 ];
 
 function aiSys(){
   const projs=state.projects.filter(p=>!p.archived).map(p=>p.name).slice(0,40).join(', ')||'(없음)';
-  return '너는 대전의 1인 인테리어 업체 "만물인테리어" 사장님의 현장앱 운영 비서다. 반드시 도구로 실제 데이터를 확인·실행하라. 규칙: (1)수치·이름을 지어내지 말 것 — 모르면 조회 도구 (2)변경 도구를 부르기 전에 무엇을 할지 한 문장으로 말할 것 (3)금액은 원 단위 숫자 (4)답은 짧고 실용적으로, 존댓말 한국어 (5)"어제·이번주" 같은 상대 날짜는 오늘 기준으로 환산 (6)여러 건 변경은 한 번에 몰아서 하지 말고 묶음별로 확인. 오늘: '+localDate()+'. 진행단계 순서: 상담→실측→시공→완료. 현재 현장: '+projs;
+  const auto=!!window.__aiAuto;
+  const modeRule=auto
+    ? '(6)지금은 [자동 실행 모드]다 — 사장님이 전권을 위임했으니, 복합 지시("A하고 B해줘")는 필요한 도구를 스스로 순서대로 끝까지 실행해 완수하라. 중간에 멈춰 되묻지 말고, 정보가 부족하면 먼저 조회 도구로 알아내라. 다만 대상이 모호해 잘못 실행할 위험이 크면(예: 어느 현장인지 특정 불가) 그때만 확인하라. 모두 끝나면 무엇을 했는지 요약하라.'
+    : '(6)지금은 [승인 모드]다 — 각 변경은 사장님 확인을 거친다. 복합 지시는 단계로 나눠 순서대로 제안하라.';
+  return '너는 대전의 1인 인테리어 업체 "만물인테리어" 사장님의 현장앱 운영 비서다. 반드시 도구로 실제 데이터를 확인·실행하라. 규칙: (1)수치·이름을 지어내지 말 것 — 모르면 조회 도구로 먼저 확인 (2)변경 도구를 부르기 전에 무엇을 할지 한 문장으로 말할 것 (3)금액은 원 단위 숫자 (4)답은 짧고 실용적으로, 존댓말 한국어 (5)"어제·이번주·이번달" 같은 상대 날짜·기간은 오늘 기준으로 환산 '+modeRule+' 복합 작업 팁: "정산"=수금/미수 확인, "마감/완료 현장"=완료 단계 현장, "고객에게 알려"=customer_progress 또는 customer_page, "이번주 마감"=이번 주 완료된 현장. 오늘: '+localDate()+'. 진행단계 순서: 상담→실측→시공→완료. 현재 현장: '+projs;
 }
 
 function aiYmdOf(w){ if(!w)return null; const t=new Date(w); if(isNaN(t))return null; return t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate()); }
@@ -3924,6 +3867,31 @@ async function aiToolRun(name,a){
       const on=hjGcalAutoOn();render();
       return {상태:on?'켬':'끔',설명:on?'새 일정을 저장하면 구글 캘린더 추가 창이 함께 열립니다(단방향 · 팝업 허용 필요)':'꺼져 있음 — 일정마다 📅 버튼으로 수동 추가 가능'};
     }
+    case 'week_brief':{const r=await weekBrief();return Object.assign({결과:'주간 브리핑을 열었습니다'},r);}
+    case 'add_expense':{return expenseAdd(a);}
+    case 'schedule_check':{const r=scheduleCheck();return Object.assign({결과:'일정 점검을 열었습니다'},r);}
+    case 'suppliers':{const r=suppliers();return Object.assign({결과:'거래처 목록을 열었습니다'},r);}
+    case 'add_supplier':{return supplierAdd(a);}
+    case 'annual_report':{const r=annualReport(a.year);return Object.assign({결과:'연간 결산을 열었습니다'},r);}
+    case 'monthly_pnl':{const r=pnl(a.month);return Object.assign({결과:'월별 손익을 열었습니다'},r);}
+    case 'expense_ledger':{const r=expenseLedger(a.month);return Object.assign({결과:'지출 장부를 열었습니다'},r);}
+    case 'notify_settings':{const r=notifySettings();return Object.assign({결과:'알림 설정을 열었습니다'},r);}
+    case 'tax_invoice_info':{const ms=a.query?projectResolve(a.query):[];if(a.query&&!ms.length)throw new Error('"'+a.query+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'정확한 이름으로 다시.'};const r=taxInvoiceInfo(ms[0]||null);return Object.assign({결과:'세금계산서 정보를 열었습니다'},r);}
+    case 'photo_report':{const ms=a.query?projectResolve(a.query):[];if(a.query&&!ms.length)throw new Error('"'+a.query+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'정확한 이름으로 다시.'};const r=await photoReport(ms[0]||null);return Object.assign({결과:'사진 작업일지를 열었습니다'},r);}
+    case 'vat_report':{const r=vatReport(a.period);setTimeout(()=>{try{vatReport(a.period);}catch(e){}},60);return Object.assign({결과:'부가세 신고 준비 화면을 열었습니다'},r);}
+    case 'batch_receive':{return await batchReceive(a.payments,{receipt:a.receipt,sms:a.sms});}
+    case 'delete_project':{const ms=projectResolve(a.query);if(!ms.length)throw new Error('"'+String(a.query||'')+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 정확한 이름으로 다시.'};return aiDeleteProject(ms[0]);}
+    case 'delete_schedule':{return aiDeleteSchedule(a.keyword);}
+    case 'add_note':{return aiAddNote(a.text,a.project);}
+    case 'list_notes':{return aiListNotes(a.query);}
+    case 'receipt':{const ms=a.query?projectResolve(a.query):[];if(a.query&&!ms.length)throw new Error('"'+a.query+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'정확한 이름으로 다시.'};setTimeout(()=>{try{receiptDialog(ms[0]||null,a.amount);}catch(e){}},60);return {결과:'영수증 화면을 열었습니다',현장:ms[0]||'(선택 대기)'};}
+    case 'send_receipt':{const ms=projectResolve(a.query);if(!ms.length)throw new Error('"'+String(a.query||'')+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'정확한 이름으로 다시.'};const r=await receiptShare(ms[0],a.amount);if(a.sms){const p=state.projects.find(x=>x.name===ms[0]);try{hjSendSms((p&&p.customer&&p.customer.phone)||'',cashReceiptSMS(ms[0],a.amount));r.문자='발송';}catch(e){}}return Object.assign({현장:ms[0]},r);}
+    case 'settle_docs':{const ms=a.query?projectResolve(a.query):[];if(a.query&&!ms.length)throw new Error('"'+a.query+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 정확한 이름으로 다시.'};setTimeout(()=>{try{settleDocs(ms[0]||null);}catch(e){}},60);return {결과:'정산 문서 화면을 열었습니다',현장:ms[0]||'(선택 대기)'};}
+    case 'send_settle_doc':{const ms=projectResolve(a.query);if(!ms.length)throw new Error('"'+String(a.query||'')+'" 현장을 찾을 수 없습니다.');if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 정확한 이름으로 다시.'};const k=a.kind||'statement';if(!HJ_SETTLE_DOCS[k])throw new Error('문서 종류는 statement/invoice/warranty 중 하나여야 합니다.');const r=await settleDocShare(ms[0],k);return Object.assign({현장:ms[0],문서:HJ_SETTLE_DOCS[k].t},r);}
+    case 'revenue_trend':{const m=[3,6,12].includes(Math.round(num(a.months)))?Math.round(num(a.months)):6;const d=revenueTrendData(m);setTimeout(()=>{try{revenueTrend(m);}catch(e){}},60);return {결과:'매출 추이 차트를 열었습니다',개월:m,월별:d.rows.map(r=>({월:r.mm+'월',매출원:r.est,수금원:r.recv,완료:r.done})),추세퍼센트:d.trend};}
+    case 'morning_brief':{const r=hjMorningData();setTimeout(()=>{try{hjMorningBrief();}catch(e){}},60);return {결과:'오늘의 브리핑을 열었습니다',오늘일정:r.d.오늘일정.length,미수금원:r.d.미수금합계원,챙길일:r.checks.length,시공중:r.d.시공중현장.length};}
+    case 'biz_dashboard':{const d=bizDashData();setTimeout(()=>{try{bizDashboard();}catch(e){}},60);return {결과:'경영 대시보드를 열었습니다',이번달수금원:d.monthRecv,총미수금원:d.totalDue,진행중현장:d.inProgress.length,오늘일정:d.todaySched.length,미처리AS:d.asOpen,이번달완료:d.doneThisMonth.length};}
+    case 'onboarding':{setTimeout(()=>{try{hjOnboardShow(true);}catch(e){}},60);return {결과:'시작 가이드를 열었습니다'};}
     case 'import_wizard':{
       setTimeout(()=>{try{importWizard();}catch(e){}},60);
       return {결과:'데이터 이사 마법사를 열었습니다',경로:['다른 기기(드라이브·JSON)','전체장부 엑셀(자동 인식)','현장·고객 엑셀(열 매핑)','연락처 엑셀','단가표 엑셀'],메모:'가져오기 직전 상태가 스냅샷으로 남아 되돌릴 수 있음'};
@@ -3977,6 +3945,31 @@ function aiActionLabel(name,a){
     case 'brand_theme':return '브랜드 테마';
     case 'customer_page':return '고객 진행 페이지 "'+(a.query||'')+'"';
     case 'calendar_sync':return '캘린더 자동 '+(a.enable===true?'켜기':(a.enable===false?'끄기':'상태'));
+    case 'week_brief':return '주간 브리핑';
+    case 'add_expense':return '지출 기록'+(a.amount?' '+won(won2num(a.amount)):'');
+    case 'schedule_check':return '일정 점검';
+    case 'suppliers':return '거래처 목록';
+    case 'add_supplier':return '거래처 추가 "'+(a.name||'')+'"';
+    case 'annual_report':return '연간 결산'+(a.year?' '+a.year:'');
+    case 'monthly_pnl':return '월별 손익';
+    case 'expense_ledger':return '지출 장부';
+    case 'notify_settings':return '스마트 알림 설정';
+    case 'tax_invoice_info':return '세금계산서 정보'+(a.query?' "'+a.query+'"':'');
+    case 'photo_report':return '사진 작업일지'+(a.query?' "'+a.query+'"':'');
+    case 'vat_report':return '부가세 신고 준비';
+    case 'batch_receive':return '입금 일괄 처리 '+((a.payments||[]).length)+'건'+(a.receipt?' + 영수증':'');
+    case 'delete_project':return '현장 삭제 "'+(a.query||'')+'"';
+    case 'delete_schedule':return '일정 삭제 "'+(a.keyword||'')+'"';
+    case 'add_note':return '메모 기록';
+    case 'list_notes':return '메모 조회';
+    case 'receipt':return '수금 영수증'+(a.query?' "'+a.query+'"':'');
+    case 'send_receipt':return '영수증 발송 "'+(a.query||'')+'"'+(a.sms?' + 문자':'');
+    case 'settle_docs':return '정산 문서'+(a.query?' "'+a.query+'"':'');
+    case 'send_settle_doc':return (HJ_SETTLE_DOCS[a.kind]?HJ_SETTLE_DOCS[a.kind].t:'정산 문서')+' 발송 "'+(a.query||'')+'"';
+    case 'revenue_trend':return '매출 추이'+(a.months?' ('+a.months+'개월)':'');
+    case 'morning_brief':return '오늘의 브리핑';
+    case 'biz_dashboard':return '경영 대시보드';
+    case 'onboarding':return '시작 가이드';
     case 'import_wizard':return '데이터 이사 마법사';
     default:return name;
   }
@@ -4016,6 +4009,28 @@ function aiResultBrief(name,out){
   if(name==='customer_page')return out.여러곳?' — '+out.여러곳.length+'곳 일치':' — 사진 '+(out.사진||0)+'장';
   if(name==='calendar_sync')return ' — '+(out.상태||'');
   if(name==='import_wizard')return ' — 경로 '+((out.경로||[]).length)+'가지';
+  if(name==='biz_dashboard')return ' — 수금 '+won(out.이번달수금원||0)+'·미수 '+won(out.총미수금원||0);
+  if(name==='morning_brief')return ' — 할일 '+(out.챙길일||0)+'가지';
+  if(name==='revenue_trend')return out.추세퍼센트!=null?' — 추세 '+(out.추세퍼센트>=0?'+':'')+out.추세퍼센트+'%':'';
+  if(name==='send_settle_doc')return out.파일?' — '+(out.완료||'')+' '+out.문서:'';
+  if(name==='delete_project')return out.삭제?' — '+out.삭제+' 삭제(사진 '+out.사진서류_미배정전환+'개 보존)':'';
+  if(name==='delete_schedule')return out.삭제한일정?' — 삭제됨':'';
+  if(name==='add_note')return out.기록?' — 기록됨':'';
+  if(name==='list_notes')return ' — '+(out.개수||0)+'개';
+  if(name==='send_receipt')return out.파일?' — '+won(out.금액원||0)+' 영수'+(out.문자?'+문자':''):'';
+  if(name==='vat_report')return out.납부예상!=null?' — '+(out.납부예상>=0?'납부 ':'환급 ')+won(Math.abs(out.납부예상)):'';
+  if(name==='batch_receive')return ' — '+(out.처리||0)+'건 '+won(out.총입금액||0);
+  if(name==='notify_settings')return ' — '+(out.상태||'');
+  if(name==='tax_invoice_info')return out.공급가액?' — 공급가 '+won(out.공급가액):'';
+  if(name==='photo_report')return out.사진?' — '+out.사진+'장 '+(out.작업일수||0)+'일':'';
+  if(name==='week_brief')return ' — 지난주 수금 '+won(out.지난주수금||0);
+  if(name==='add_expense')return out.기록?' — '+won(out.기록)+' '+(out.분류||''):'';
+  if(name==='expense_ledger')return out.총지출!=null?' — '+won(out.총지출):'';
+  if(name==='monthly_pnl')return out.실손익!=null?' — 실손익 '+(out.실손익>=0?'+':'')+won(out.실손익):'';
+  if(name==='schedule_check')return out.이상?' — 충돌 '+(out.충돌||0)+'·과부하 '+(out.과부하일||0)+'일':' — 이상 없음';
+  if(name==='suppliers')return ' — '+(out.거래처수||0)+'곳';
+  if(name==='add_supplier')return out.추가?' — '+out.추가+' 추가':(out.수정?' — '+out.수정+' 수정':'');
+  if(name==='annual_report')return out.실손익!=null?' — '+out.연도+' 실손익 '+(out.실손익>=0?'+':'')+won(out.실손익):'';
   return '';
 }
 
@@ -4141,7 +4156,8 @@ async function aiAgentSend(text){
   window.__aiHist.push({role:'user',parts:[{text:text}]});
   aiMsg('u',text);
   try{
-    for(let round=0;round<6;round++){
+    const __maxRounds=window.__aiAuto?10:6;
+    for(let round=0;round<__maxRounds;round++){
       const parts=await aiFC(window.__aiHist);
       const calls=parts.filter(p=>p.functionCall);
       const said=parts.filter(p=>p.text).map(p=>p.text).join('\n').trim();
@@ -4164,7 +4180,7 @@ async function aiAgentSend(text){
         resps.push({functionResponse:{name:name,response:{result:out}}});
       }
       window.__aiHist.push({role:'user',parts:resps});
-      if(round===5)aiMsg('s','작업 단계가 많아 여기서 멈췄어요. 이어서 시키면 계속합니다.');
+      if(round===__maxRounds-1)aiMsg('s','작업 단계가 많아 여기서 멈췄어요. 이어서 시키면 계속합니다.');
     }
   }catch(e){
     const msg=String(e.message||e);
@@ -5250,6 +5266,7 @@ function customerProgress(name){
       '<button class="clay" id="cpSms" style="flex:1;min-width:120px;padding:12px">✉️ 고객에게 문자</button>'+
       '<button class="blue" id="cpImg" style="flex:1;min-width:130px;padding:12px">🖼 사진 리포트 이미지</button>'+
       '<button class="moss" id="cpPage" style="flex:1;min-width:110px;padding:12px">🔗 웹페이지</button>'+
+      '<button class="clay" id="cpSettle" style="flex:1;min-width:110px;padding:12px">📄 정산 문서</button>'+
       '<button class="ghost" id="cpCopy" style="flex:1;min-width:90px;padding:12px">📋 복사</button>'+
     '</div>';
   openModal('📨 고객 진행 보고 — '+escapeHtml(d.name),body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
@@ -5259,6 +5276,7 @@ function customerProgress(name){
   root.querySelector('#cpSms').onclick=()=>{const t=curText();closeModal();hjSendSms(d.cust.phone,t);};
   root.querySelector('#cpImg').onclick=()=>{makeProgressReport(d.name);};
   root.querySelector('#cpPage').onclick=()=>{closeModal();customerPage(d.name);};
+  const sdBtn=root.querySelector('#cpSettle');if(sdBtn)sdBtn.onclick=()=>{closeModal();settleDocs(d.name);};
   const ab=root.querySelector('#cpAiBtn');
   if(ab)ab.onclick=async()=>{
     ab.disabled=true;ab.textContent='🤖 다듬는 중…';
@@ -5751,6 +5769,7 @@ const HJ_HELP=[
  {t:'🚀 시작하기',items:[
   {k:'데이터 불러오기',d:'PC는 왼쪽 [📁 로컬 폴더 연결], 폰은 [☁️ 구글드라이브에서 불러오기] 한 번이면 사진·견적·현장이 들어옵니다.'},
   {k:'AI 켜기',d:'☁️ 설정에 무료 Gemini 키(AIza…)를 넣으면 비서·공정 태깅·검토·코멘트가 전부 살아납니다.'},
+  {k:'시작 가이드 다시 보기',d:'처음 안내 3장과 시작 준비 체크리스트를 다시 열려면 비서에게 “시작 가이드”라고 하세요.',say:'시작 가이드 다시 보여줘'},
   {k:'저장',d:'PC 폴더 연결 시 자동 저장(_현장.json), 폰은 드라이브 저장 버튼. 이 기기 안엔 🛡 스냅샷 12개가 별도로 자동 보관됩니다.'},
   {k:'데이터 이사',d:'더보기 [📥 데이터 이사] — 예전 엑셀(현장·연락처·단가표)을 열 매핑으로, 우리 전체장부 엑셀은 자동 인식으로 가져옵니다. 이사 직전 스냅샷이 남아 되돌리기 가능.',say:'엑셀 데이터 가져오기 열어줘'}]},
  {t:'🤖 AI 비서',items:[
@@ -5765,11 +5784,16 @@ const HJ_HELP=[
   {k:'대용량',d:'1,000장+도 가볍게: 12묶음씩 점진 표시, 화면 밖 묶음은 렌더 생략, 썸네일 지연 로딩.'}]},
  {t:'🧾 견적·발주',items:[
   {k:'견적 작성',d:'견적 탭에서 작성 → PDF/엑셀/드라이브. 품명을 고르면 📦 단가장에서 단가 자동 채움(저장할 때 학습).',say:'둔산동 도배 견적 초안 만들어줘'},
+  {k:'정산 문서',d:'공사 끝난 뒤 [📄 정산 문서](현장 상세 또는 더보기) — 거래명세서·청구서·하자보증서를 견적·수금·완료일에서 자동으로 채워 HTML로 발송. 브랜드 반영.',say:'둔산동 청구서 보내줘'},
+  {k:'수금 영수증',d:'입금을 받으면 [💵 수금 영수증](정산 문서 화면)으로 영수증 발행 + 현금영수증 안내 문자를 보냅니다. 비서에게 시키면 바로 처리해요.',say:'김성호님 300만원 영수증 보내줘'},
+  {k:'AI 삭제·메모',d:'비서에게 "○○ 현장 지워줘", "○○ 일정 취소", "창고 자재 주문 메모해줘"라고 하면 처리합니다. 삭제는 자동 백업 후 실행돼 되돌릴 수 있어요.',say:'내일 실측 일정 취소해줘'},
   {k:'AI 검토',d:'[🧾 AI 검토] — 단가 0·중복·표준공정 누락·과대 NEGO를 잡고, 키가 있으면 시세 검토까지.',say:'이 견적 빠진 거 없나 봐줘'},
   {k:'자재 발주',d:'[🚚 발주서] — 품목 체크→거래처별 주문 문자. 거래처는 품목별로 자동 기억.',say:'타일 발주 문자 만들어줘'}]},
  {t:'💰 돈 관리',items:[
   {k:'수금 기록',d:'현장별 수금액을 바꾸면 날짜별 이력이 자동 누적 → 주간·월말 수치의 근거.',say:'성산동 수금 300만원 처리해줘'},
   {k:'미수금 팔로업',d:'완료 후 방치·약속일 초과를 자동 감지, 3단계 독촉 문안(+AI 맞춤)을 바로 문자로.',say:'못 받은 돈 점검해줘'},
+  {k:'경영 대시보드',d:'대시보드 [📊 경영 현황] — 이번 달 수금·미수금·진행중·오늘 일정·단계 분포·챙길 일을 한 화면에. 사장님 아침 점검용.',say:'경영 현황 보여줘'},
+  {k:'매출 추이',d:'월별 매출·수금 흐름을 그래프로. 최근 3개월 추세(증가/감소)도 계산. 경영 대시보드 [📉 추이]에서도 열립니다.',say:'매출 추이 보여줘'},
   {k:'리포트',d:'📊 주간 리포트 · 🗓 월말 결산(부가세 분해) · 📊 수익 분석(유형별 마진·단가 전략) — 전부 카톡용 이미지 한 장 지원.',say:'6월 결산 보여줘'},
   {k:'인건비',d:'일정 탭 [👷 인건비]에서 일당 기록 → 현장 지출 반영 → 마진에 바로 연동.',say:'어제 목공 일당 45만원 기록'}]},
  {t:'👥 고객·영업',items:[
@@ -5780,13 +5804,20 @@ const HJ_HELP=[
  {t:'🗓 일정·현장',items:[
   {k:'일정 알림',d:'[🔔 알림 문자] — 내일 일정별 작업자용·고객용 안내 문안 자동.',say:'내일 일정 안내 문자 뽑아줘'},
   {k:'오늘 자동 점검',d:'앱을 열면 미수금·오늘 일정·일지 미작성·미배정 사진·AS를 훑어 카드로 알려줍니다.',say:'오늘 뭐 챙겨야 해?'},
+  {k:'아침 브리핑',d:'하루 한 번 앱을 처음 열면 🌅 브리핑이 자동으로 떠서 오늘 일정·미수금·챙길 일을 실행 버튼과 함께 보여줍니다. 대시보드 [🌅 브리핑]으로 다시 열 수 있어요.',say:'오늘 브리핑 보여줘'},
   {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료+1년) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
   {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장까지 9시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
   {k:'홈화면',d:'설치된 앱 아이콘을 길게 누르면 바로가기(오늘 일정/미수금/AI 비서), 열면 한눈 보기 카드, 아이콘엔 챙길 일 뱃지.'},
-  {k:'세무',d:'견적 탭 [세무 정산 엑셀]로 분기·월별 공급가/부가세 분해 시트를 뽑아 신고 준비.'}]}
+  {k:'세무',d:'견적 탭 [세무 정산 엑셀]로 분기·월별 공급가/부가세 분해 시트를 뽑아 신고 준비.'},
+  {k:'부가세 신고',d:'경영 대시보드 [📊 부가세] — 분기별 매출세액·매입세액 공제·납부(환급) 예상을 집계하고 신고 자료 엑셀을 뽑습니다.',say:'부가세 신고 자료 만들어줘'},
+  {k:'입금 일괄 처리',d:'비서에게 "오늘 들어온 돈 정리해줘"처럼 여러 입금을 한 번에 시키면 각각 수금 기록 + 영수증 발송까지 처리합니다.',say:'망원동 300, 대치동 500 입금됐어 영수증까지 보내줘'},
+  {k:'월별 손익',d:'경영 대시보드 [💰 손익] — 그 달 수금(실입금)에서 지출(간편 장부)을 뺀 실제 현금흐름과 이익률, 6개월 추이를 봅니다.',say:'이번달 얼마 남았어'},
+  {k:'일정 점검',d:'경영 대시보드 [📅 점검] — 같은 시간 중복이나 과부하 일정을 찾아 알려줍니다.',say:'일정 겹치는 거 없어?'},
+  {k:'거래처',d:'더보기 [📇 거래처] — 자재상·외주 업체 연락처·취급품목·거래이력을 관리. 자재발주 시 자동 등록됩니다.',say:'거래처 목록 보여줘'},
+  {k:'연간 결산',d:'경영 대시보드 [📊 연간] — 한 해 수금·지출·실손익·완료 현장을 결산. 세무·목표 점검용 엑셀도.',say:'올해 얼마 벌었어'}]}
 ];
 function helpSearch(topic){
   const q=String(topic||'').trim().toLowerCase();
@@ -6144,7 +6175,7 @@ function hjGcalUrl(s){
 function hjGcalAutoOn(){return localStorage.getItem('hj_gcal_auto')==='1';}
 function hjGcalMaybeOpen(s){
   if(!hjGcalAutoOn()||!s||/^💰/.test(s.title||''))return false;
-  try{window.open(hjGcalUrl(s),'_blank');return true;}catch(e){return false;}
+  try{window.open(hjGcalUrl(s),'_blank','noopener');return true;}catch(e){return false;}
 }
 function toggleGcalAuto(){
   const on=!hjGcalAutoOn();
@@ -6388,6 +6419,1444 @@ function __iwSummary(title,R){
   return R;
 }
 
+/* ═══════════ 🚀 첫 사용 온보딩 — 처음 열면 3장 안내 + 셋업 체크리스트 ═══════════ */
+const HJ_ONBOARD=[
+  {ic:'👋',big:COMPANY.name+' 운영을 한곳에서',
+   lines:['현장·사진·견적·수금·일정을 하나의 앱으로.','설치도 서버도 필요 없이 이 화면 그대로 씁니다.'],
+   tip:'홈 화면에 추가하면 진짜 앱처럼 열려요.'},
+  {ic:'🤖',big:'AI 비서에게 말로 시키세요',
+   lines:['“미배정 사진 둔산동에 넣어줘”, “이번 주 리포트”, “못 받은 돈 점검”','조회는 바로, 바꾸는 일은 확인 후 실행합니다.'],
+   tip:'Gemini 키(무료)를 넣으면 사진 공정 인식·문안 다듬기까지 켜집니다.'},
+  {ic:'🛡',big:'자료는 안전하게 지킵니다',
+   lines:['작업할 때마다 이 기기 안에 12개 시점이 자동 백업됩니다.','실수해도 “되돌리기”로 언제든 복구할 수 있어요.'],
+   tip:'PC는 폴더 연결, 폰은 구글 드라이브로 원본까지 저장하세요.'}
+];
+function hjOnboardShow(force){
+  if(!force&&localStorage.getItem('hj_onboard_done')==='1')return false;
+  let i=0;
+  const render=()=>{
+    const s=HJ_ONBOARD[i];const last=i===HJ_ONBOARD.length-1;
+    const dots=HJ_ONBOARD.map((_,k)=>'<i style="width:'+(k===i?'22px':'8px')+';height:8px;border-radius:5px;background:'+(k===i?hjBrandColor('#0b4ea2'):'var(--line-soft)')+';transition:.2s;display:inline-block"></i>').join(' ');
+    const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
+    const body=
+      '<div style="text-align:center;padding:6px 2px 2px">'+
+        '<div style="width:96px;height:96px;margin:0 auto 14px;border-radius:26px;background:linear-gradient(140deg,'+c1+','+c2+');display:flex;align-items:center;justify-content:center;font-size:52px">'+s.ic+'</div>'+
+        '<div style="font-size:20px;font-weight:800;line-height:1.35;margin-bottom:10px">'+escapeHtml(s.big)+'</div>'+
+        s.lines.map(l=>'<div style="font-size:13.5px;color:var(--ink);line-height:1.7">'+escapeHtml(l)+'</div>').join('')+
+        '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:9px 11px;margin-top:14px;line-height:1.6">💡 '+escapeHtml(s.tip)+'</div>'+
+        '<div style="margin-top:18px">'+dots+'</div>'+
+      '</div>';
+    const btns=[];
+    if(!last)btns.push({label:'다음',cls:'clay',fn:()=>{i++;render();}});
+    else btns.push({label:'✅ 시작하기',cls:'clay',fn:()=>{localStorage.setItem('hj_onboard_done','1');closeModal();hjSetupChecklist();}});
+    btns.push({label:last?'건너뛰기':'그만 보기',cls:'ghost',fn:()=>{localStorage.setItem('hj_onboard_done','1');closeModal();}});
+    openModal('',body,btns);
+    // 제목줄 숨김(빈 title) + 좌우 탭 네비게이션 도트 클릭
+    const root=document.getElementById('modalRoot');
+    const h3=root.querySelector('h3');if(h3)h3.style.display='none';
+  };
+  render();
+  return true;
+}
+function hjSetupChecklist(){
+  const has=(k)=>{
+    if(k==='data')return (state.projects||[]).length>0||(state.files||[]).length>0;
+    if(k==='ai')return !!(window.__geminiKey||localStorage.getItem('gemini_key'));
+    if(k==='save')return !!(state.dirHandle||localStorage.getItem('gd_folder')||localStorage.getItem('hj_gd_folder'));
+    if(k==='brand')return !!(state.brand&&(state.brand.color||state.brand.logo));
+    return false;
+  };
+  const rows=[
+    {k:'data',ic:'📂',t:'내 자료 불러오기',d:'폴더 연결 / 드라이브 / 데이터 이사',act:()=>{closeModal();importWizard();}},
+    {k:'ai',ic:'🤖',t:'AI 비서 켜기',d:'설정에 Gemini 무료 키 입력',act:()=>{closeModal();try{openSettings();}catch(e){toast('상단 ☁️ 설정에서 키를 넣어주세요.');}}},
+    {k:'save',ic:'💾',t:'저장 위치 정하기',d:'PC 폴더 또는 구글 드라이브',act:()=>{closeModal();toast('왼쪽 [📁 폴더 연결] 또는 [☁️ 드라이브]를 눌러주세요.');}},
+    {k:'brand',ic:'🎨',t:'브랜드 꾸미기 (선택)',d:'로고·색을 견적서·리포트에 반영',act:()=>{closeModal();brandSettings();}}
+  ];
+  const done=rows.filter(r=>has(r.k)).length;
+  const list=rows.map(r=>{const ok=has(r.k);
+    return '<button class="ocRow" data-k="'+r.k+'" style="display:flex;gap:11px;align-items:center;width:100%;text-align:left;border:1px solid var(--line-soft);border-radius:12px;padding:12px;background:var(--paper);margin-bottom:8px'+(ok?';opacity:.6':'')+'">'+
+      '<span style="font-size:22px;filter:'+(ok?'grayscale(1)':'none')+'">'+(ok?'✅':r.ic)+'</span>'+
+      '<span style="flex:1"><b style="font-size:13.5px;'+(ok?'text-decoration:line-through':'')+'">'+r.t+'</b><br><span style="font-size:11.5px;color:var(--muted)">'+r.d+'</span></span>'+
+      (ok?'':'<span style="font-size:12px;color:var(--clay);font-weight:700">시작 ›</span>')+
+    '</button>';
+  }).join('');
+  const pct=Math.round(done/rows.length*100);
+  openModal('🚀 시작 준비 ('+done+'/'+rows.length+')',
+    '<div style="height:8px;background:var(--paper-2);border-radius:5px;margin-bottom:12px"><div style="height:8px;width:'+pct+'%;border-radius:5px;background:'+hjBrandColor('#0b4ea2')+';transition:.3s"></div></div>'+
+    list+
+    '<div style="font-size:12px;color:var(--muted);margin-top:6px">지금 안 해도 괜찮아요 — 나중에 🤖 비서에게 “도움말”이라고 하면 다시 안내합니다.</div>',
+    [{label:'둘러보기 시작',cls:'clay',fn:()=>{closeModal();try{loadDemoPrompt();}catch(e){closeModal();}}},{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  root.querySelectorAll('.ocRow').forEach(b=>{const r=rows.find(x=>x.k===b.dataset.k);if(r&&!has(r.k))b.onclick=r.act;});
+  return {완료:done,전체:rows.length};
+}
+function loadDemoPrompt(){
+  if((state.projects||[]).length){closeModal();return;}
+  openModal('🧪 예시로 둘러볼까요?',
+    '<div style="font-size:13.5px;line-height:1.7">비어 있는 화면이 막막하다면, <b>가상의 현장·사진·견적 예시</b>를 넣어 기능을 구경할 수 있어요.<br><span style="color:var(--muted);font-size:12px">언제든 설정에서 지우고 내 자료로 시작하면 됩니다.</span></div>',
+    [{label:'예시 넣기',cls:'clay',fn:()=>{try{loadDemo();}catch(e){}closeModal();render();toast('예시 데이터를 넣었어요 — 마음껏 눌러보세요');}},
+     {label:'빈 화면으로',cls:'ghost',fn:closeModal}]);
+}
+
+/* ═══════════ 📶 네트워크 상태 감시 — 오프라인 안내 배너 ═══════════ */
+function hjNetBanner(show){
+  let el=document.getElementById('hjNetBar');
+  if(show){
+    if(!el){
+      el=document.createElement('div');el.id='hjNetBar';
+      el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99990;background:#7c2d12;color:#fff;font-size:12.5px;text-align:center;padding:8px calc(8px + env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px));font-family:inherit';
+      el.innerHTML='📴 오프라인 — 기록·조회는 그대로 됩니다. 지도·AI·엑셀·PDF는 연결되면 다시 쓸 수 있어요.';
+      document.body.appendChild(el);
+    }
+  }else if(el){el.remove();}
+}
+function hjNetWatch(){
+  const sync=()=>{const off=navigator.onLine===false;hjNetBanner(off);};
+  window.addEventListener('online',()=>{hjNetBanner(false);toast('🌐 다시 연결됐어요');});
+  window.addEventListener('offline',()=>{hjNetBanner(true);});
+  sync();
+}
+
+/* ═══════════ 📊 경영 대시보드 — 이번 달 한눈 요약 (사장님 전용) ═══════════ */
+function bizDashData(){
+  const today=hjToday0();const ym=localDate().slice(0,7);
+  const acts=state.projects.filter(p=>!p.archived);
+  // 이번 달 수금(payLog 기준)
+  let monthRecv=0;(state.payLog||[]).forEach(x=>{if(String(x.d||'').slice(0,7)===ym)monthRecv+=num(x.amt);});
+  // 전체 미수금
+  let totalDue=0;const dueList=[];
+  acts.forEach(p=>{const s=projStats(p.name);if(s.due>0){totalDue+=s.due;dueList.push({name:p.name,due:s.due,doneAt:p.doneAt||'',stage:p.stage||0});}});
+  dueList.sort((a,b)=>b.due-a.due);
+  // 이번 달 완료 현장
+  const doneThisMonth=acts.filter(p=>p.doneAt&&String(p.doneAt).slice(0,7)===ym);
+  // 진행 중 현장(시공 단계)
+  const inProgress=acts.filter(p=>(p.stage||0)===2);
+  // 단계 분포
+  const stageCount=[0,0,0,0];acts.forEach(p=>stageCount[Math.min(p.stage||0,3)]++);
+  // 이번 주 일정
+  const wd=new Date(today);const dow=(wd.getDay()+6)%7;const mon=new Date(wd);mon.setDate(wd.getDate()-dow);
+  const weekStart=localDate(mon),weekEnd=(()=>{const e=new Date(mon);e.setDate(mon.getDate()+6);return localDate(e);})();
+  const weekSched=(state.schedule||[]).filter(s=>s.date>=weekStart&&s.date<=weekEnd&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.date+a.time).localeCompare(String(b.date+b.time)));
+  // 오늘 일정
+  const todayStr=localDate();
+  const todaySched=weekSched.filter(s=>s.date===todayStr);
+  // 챙길 일
+  const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
+  // 이번 달 신규 견적/매출 추정
+  let monthEst=0;(state.quotes||[]).forEach(q=>{if(String(q.date||'').slice(0,7)===ym)monthEst+=quoteCalc(q).total;});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&String(f.est.date||'').slice(0,7)===ym)monthEst+=num(f.est.amount);});
+  // 미처리 AS
+  const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
+  return {ym,monthRecv,totalDue,dueList,doneThisMonth,inProgress,stageCount,weekSched,todaySched,checks,monthEst,asOpen,actN:acts.length};
+}
+function bizDashboard(){
+  const d=bizDashData();
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
+  const mm=+d.ym.split('-')[1];
+  // KPI 카드
+  const kpi=(label,val,sub,color)=>'<div style="background:var(--paper);border:1px solid var(--line-soft);border-radius:14px;padding:13px 14px">'+
+    '<div style="font-size:11.5px;color:var(--muted)">'+label+'</div>'+
+    '<div style="font-size:22px;font-weight:800;color:'+color+';line-height:1.15;margin-top:3px">'+val+'</div>'+
+    (sub?'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+sub+'</div>':'')+'</div>';
+  const grid='<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px">'+
+    kpi(mm+'월 수금',hjMan(d.monthRecv),d.doneThisMonth.length+'곳 완료',hjBrandColor('#0a7f43'))+
+    kpi('총 미수금',hjMan(d.totalDue),d.dueList.length+'곳',d.totalDue>0?'#c2410c':'#0a7f43')+
+    kpi('진행 중',d.inProgress.length+'곳',mm+'월 견적 '+hjMan(d.monthEst),'#1d6fd8')+
+    kpi('오늘 일정',d.todaySched.length+'건',d.asOpen?('AS 미처리 '+d.asOpen):'AS 없음',d.todaySched.length?'#b45309':'var(--muted)')+
+    '</div>';
+  // 단계 분포 바
+  const total=Math.max(1,d.actN);
+  const stageBar='<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:5px">현장 단계 ('+d.actN+'곳)</div>'+
+    '<div style="display:flex;height:26px;border-radius:8px;overflow:hidden;border:1px solid var(--line-soft)">'+
+    STAGES.map((s,i)=>{const w=d.stageCount[i]/total*100;return w>0?'<div style="width:'+w+'%;background:'+HJ_STAGE_COLOR[i]+';display:flex;align-items:center;justify-content:center;color:#fff;font-size:10.5px;font-weight:700" title="'+s+' '+d.stageCount[i]+'곳">'+(w>12?d.stageCount[i]:'')+'</div>':'';}).join('')+
+    '</div><div style="display:flex;gap:10px;margin-top:5px;flex-wrap:wrap;font-size:10.5px;color:var(--muted)">'+
+    STAGES.map((s,i)=>'<span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:'+HJ_STAGE_COLOR[i]+';vertical-align:-1px"></i> '+s+' '+d.stageCount[i]+'</span>').join('')+'</div></div>';
+  // 미수금 TOP
+  const dueRows=d.dueList.length?d.dueList.slice(0,4).map(x=>{
+    const overdue=x.doneAt&&x.stage>=3;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line-soft)"><span style="font-size:12.5px">'+(overdue?'🔴 ':'')+escapeHtml(x.name)+'</span><b style="font-size:12.5px;color:#c2410c">'+hjMan(x.due)+'</b></div>';
+  }).join('')+(d.dueList.length>4?'<div style="font-size:11px;color:var(--muted);text-align:center;padding-top:4px">외 '+(d.dueList.length-4)+'곳</div>':''):'<div style="font-size:12px;color:var(--muted);padding:6px 0">미수금 없음 👍</div>';
+  // 이번 주 일정
+  const schRows=d.weekSched.length?d.weekSched.slice(0,5).map(s=>'<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><b style="white-space:nowrap">'+hjKD(s.date).slice(0,-1).replace('(',' ')+'</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(s.time?s.time+' ':'')+escapeHtml(s.title)+(s.project?' <span style="color:var(--muted)">@'+escapeHtml(s.project)+'</span>':'')+'</span></div>').join('')+(d.weekSched.length>5?'<div style="font-size:11px;color:var(--muted);text-align:center;padding-top:4px">외 '+(d.weekSched.length-5)+'건</div>':''):'<div style="font-size:12px;color:var(--muted);padding:6px 0">이번 주 일정 없음</div>';
+  // 챙길 일
+  const checkRows=d.checks.length?d.checks.slice(0,4).map(c=>'<div style="font-size:12.5px;padding:4px 0;line-height:1.5">'+c.ic+' '+escapeHtml(c.t)+'</div>').join(''):'<div style="font-size:12px;color:var(--muted);padding:4px 0">✅ 급한 일 없음</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff">'+
+      '<div style="font-size:12px;opacity:.9">'+COMPANY.name+' · 경영 현황</div>'+
+      '<div style="font-size:19px;font-weight:800;margin-top:2px">'+mm+'월 한눈 요약</div>'+
+    '</div>'+
+    grid+stageBar+
+    '<div style="display:grid;grid-template-columns:1fr;gap:12px">'+
+      '<div><div style="font-size:12px;font-weight:700;margin-bottom:4px">💰 미수금 TOP</div>'+dueRows+'</div>'+
+      '<div><div style="font-size:12px;font-weight:700;margin-bottom:4px">🗓 이번 주 일정</div>'+schRows+'</div>'+
+      '<div><div style="font-size:12px;font-weight:700;margin-bottom:4px">🤖 챙길 일</div>'+checkRows+'</div>'+
+    '</div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');border-radius:12px;padding:12px 14px;margin-top:14px;display:flex;align-items:center;gap:10px;cursor:pointer" id="bdAiHint">'+
+      '<span style="font-size:24px">🤖</span>'+
+      '<span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시켜보세요</b><br><span style="font-size:11px;opacity:.9">"이번달 얼마 남았어", "못 받은 돈 점검"</span></span>'+
+      '<span style="color:#fff;font-size:18px">›</span>'+
+    '</div>'+
+    '<div style="margin-top:14px">'+
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px">💰 돈</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<button class="blue tiny" id="bdPnl" style="flex:1;min-width:76px;padding:9px">💰 손익</button>'+
+        '<button class="blue tiny" id="bdOverdue" style="flex:1;min-width:76px;padding:9px">💳 미수금</button>'+
+        '<button class="blue tiny" id="bdExp" style="flex:1;min-width:76px;padding:9px">💳 지출</button>'+
+        '<button class="blue tiny" id="bdVat" style="flex:1;min-width:76px;padding:9px">📊 부가세</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px">📊 리포트</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<button class="blue tiny" id="bdWeekly" style="flex:1;min-width:76px;padding:9px">📊 주간</button>'+
+        '<button class="blue tiny" id="bdWeek" style="flex:1;min-width:76px;padding:9px">🤖 리뷰</button>'+
+        '<button class="blue tiny" id="bdProfit" style="flex:1;min-width:76px;padding:9px">📈 수익</button>'+
+        '<button class="blue tiny" id="bdTrend" style="flex:1;min-width:76px;padding:9px">📉 추이</button>'+
+        '<button class="blue tiny" id="bdAnnual" style="flex:1;min-width:76px;padding:9px">📊 연간</button>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px">🗂 현장·거래처</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button class="blue tiny" id="bdSchk" style="flex:1;min-width:76px;padding:9px">📅 점검</button>'+
+        '<button class="blue tiny" id="bdMap" style="flex:1;min-width:76px;padding:9px">🗺 지도</button>'+
+        '<button class="blue tiny" id="bdSup" style="flex:1;min-width:76px;padding:9px">📇 거래처</button>'+
+      '</div>'+
+    '</div>';
+  openModal('📊 경영 대시보드',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  const aiHintBtn=root.querySelector('#bdAiHint');if(aiHintBtn)aiHintBtn.onclick=()=>{closeModal();try{aiAgent();}catch(e){}};
+  root.querySelector('#bdWeekly').onclick=()=>{closeModal();weeklyReport&&weeklyReport();};
+  root.querySelector('#bdProfit').onclick=()=>{closeModal();profitAnalysis();};
+  root.querySelector('#bdTrend').onclick=()=>{closeModal();revenueTrend(6);};
+  root.querySelector('#bdVat').onclick=()=>{closeModal();vatReport();};
+  root.querySelector('#bdWeek').onclick=()=>{closeModal();weekBrief();};
+  root.querySelector('#bdExp').onclick=()=>{closeModal();expenseLedger();};
+  root.querySelector('#bdPnl').onclick=()=>{closeModal();pnl();};
+  root.querySelector('#bdSchk').onclick=()=>{closeModal();scheduleCheck();};
+  root.querySelector('#bdSup').onclick=()=>{closeModal();suppliers();};
+  root.querySelector('#bdAnnual').onclick=()=>{closeModal();annualReport();};
+  root.querySelector('#bdOverdue').onclick=()=>{closeModal();overdueFollowup();};
+  root.querySelector('#bdMap').onclick=()=>{closeModal();allProjectsMap();};
+  return {월:d.ym,수금원:d.monthRecv,미수금원:d.totalDue,진행중:d.inProgress.length,오늘일정:d.todaySched.length};
+}
+
+/* ═══════════ 🌅 선제적 아침 비서 — 앱 열면 먼저 브리핑 + 할 일 실행 제안 ═══════════ */
+function hjMorningData(){
+  const d=aiBriefData();
+  const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
+  const hour=new Date().getHours();
+  const greet=hour<6?'늦은 밤이네요':hour<12?'좋은 아침입니다':hour<18?'좋은 오후입니다':'수고 많으셨어요';
+  return {d,checks,greet};
+}
+function hjMorningShouldShow(){
+  // 하루 1회(자정 기준), 데이터가 있을 때만
+  if(!(state.projects||[]).length&&!(state.schedule||[]).length)return false;
+  const last=localStorage.getItem('hj_morning_shown');
+  return last!==localDate();
+}
+function hjMorningBrief(opts){
+  opts=opts||{};
+  const {d,checks,greet}=hjMorningData();
+  localStorage.setItem('hj_morning_shown',localDate());
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
+  const now=new Date();
+  const dateStr=(now.getMonth()+1)+'월 '+now.getDate()+'일 '+'일월화수목금토'[now.getDay()]+'요일';
+  // 오늘 일정 요약
+  const schLine=d.오늘일정.length
+    ? d.오늘일정.map(s=>'<div style="font-size:13px;padding:3px 0">🗓 '+(s.시간?'<b>'+s.시간+'</b> ':'')+escapeHtml(s.제목)+(s.현장?' <span style="color:var(--muted)">@'+escapeHtml(s.현장)+'</span>':'')+'</div>').join('')
+    : '<div style="font-size:13px;color:var(--muted);padding:3px 0">🗓 오늘 등록된 일정이 없습니다</div>';
+  // 핵심 숫자
+  const numLine='<div style="display:flex;gap:8px;margin:10px 0">'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">미수금</div><div style="font-size:16px;font-weight:800;color:'+(d.미수금합계원>0?'#c2410c':'#0a7f43')+'">'+hjMan(d.미수금합계원)+'</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">시공 중</div><div style="font-size:16px;font-weight:800;color:#1d6fd8">'+d.시공중현장.length+'곳</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">오늘 일정</div><div style="font-size:16px;font-weight:800;color:'+(d.오늘일정.length?'#b45309':'var(--muted)')+'">'+d.오늘일정.length+'건</div></div>'+
+    '</div>';
+  // 할 일 제안(실행 버튼)
+  const sorted=checks.slice().sort((a,b)=>(a.w||9)-(b.w||9));
+  const todoBlock=sorted.length
+    ? '<div style="font-size:12.5px;font-weight:700;margin:12px 0 6px">👀 오늘 챙길 일 '+sorted.length+'가지</div>'+
+      sorted.slice(0,5).map((c,i)=>'<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line-soft)"><span style="flex:1;font-size:12.5px">'+c.ic+' '+escapeHtml(c.t)+'</span><button class="clay tiny mbTodo" data-i="'+i+'" style="padding:6px 12px;white-space:nowrap">처리 ›</button></div>').join('')
+    : '<div style="font-size:13px;color:#0a7f43;padding:10px 0;text-align:center">✅ 급히 챙길 일이 없습니다. 좋은 하루 되세요!</div>';
+  const aiHint=window.__geminiKey
+    ? '<button class="ghost tiny" id="mbAsk" style="width:100%;margin-top:10px;padding:10px">🤖 비서에게 물어보기</button>'
+    : '<div style="font-size:11.5px;color:var(--muted);margin-top:10px;text-align:center">💡 ☁️ 설정에 Gemini 키를 넣으면 AI가 브리핑을 더 다듬어줍니다</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:18px 16px;color:#fff">'+
+      '<div style="font-size:13px;opacity:.9">'+escapeHtml(greet)+', '+escapeHtml(COMPANY.owner)+'님</div>'+
+      '<div style="font-size:20px;font-weight:800;margin-top:2px">'+dateStr+'</div>'+
+    '</div>'+
+    schLine+numLine+todoBlock+aiHint;
+  openModal('🌅 오늘의 브리핑',body,[
+    {label:'📊 경영 현황 전체',cls:'ghost',fn:()=>{closeModal();try{bizDashboard();}catch(e){}}},
+    {label:'확인',cls:'clay',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  const h3=root.querySelector('h3');if(h3&&opts.hideTitle)h3.style.display='none';
+  root.querySelectorAll('.mbTodo').forEach(b=>b.onclick=()=>{
+    const c=sorted[+b.dataset.i];closeModal();
+    try{(new Function(c.act))();}catch(e){toast('바로 실행할 수 없어요 — 해당 화면에서 처리해 주세요.');}
+  });
+  const ask=root.querySelector('#mbAsk');
+  if(ask)ask.onclick=()=>{closeModal();try{aiAgent();setTimeout(()=>{const inp=document.getElementById('aiInput');if(inp){inp.value='오늘 뭐부터 하면 좋을까?';inp.focus();}},200);}catch(e){}};
+  return {할일:sorted.length,미수금원:d.미수금합계원,오늘일정:d.오늘일정.length};
+}
+function hjMorningMaybe(){
+  try{if(hjMorningShouldShow())setTimeout(()=>{try{hjMorningBrief();}catch(e){}},700);}catch(e){}
+}
+
+/* ═══════════ 📈 매출 추이 차트 — 월별 매출·수금 흐름 (SVG, 오프라인 작동) ═══════════ */
+function revenueTrendData(months){
+  months=months||6;
+  const now=new Date();
+  const keys=[];
+  for(let i=months-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);keys.push(d.getFullYear()+'-'+pad2(d.getMonth()+1));}
+  const est={},recv={},done={};keys.forEach(k=>{est[k]=0;recv[k]=0;done[k]=0;});
+  // 매출(견적): 앱 견적 + 외부 견적 파일
+  (state.quotes||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k in est)est[k]+=quoteCalc(q).total;});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=String(f.est.date||'').slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});
+  // 수금(payLog)
+  (state.payLog||[]).forEach(x=>{const k=String(x.d||'').slice(0,7);if(k in recv)recv[k]+=num(x.amt);});
+  // 완료 현장 수
+  state.projects.filter(p=>!p.archived&&p.doneAt).forEach(p=>{const k=String(p.doneAt).slice(0,7);if(k in done)done[k]++;});
+  const rows=keys.map(k=>({ym:k,mm:+k.split('-')[1],est:est[k],recv:recv[k],done:done[k]}));
+  const totalEst=rows.reduce((a,r)=>a+r.est,0),totalRecv=rows.reduce((a,r)=>a+r.recv,0);
+  // 추세: 최근 3개월 vs 이전 3개월 수금
+  let trend=null;
+  if(months>=6){const recent=rows.slice(-3).reduce((a,r)=>a+r.recv,0),prev=rows.slice(-6,-3).reduce((a,r)=>a+r.recv,0);if(prev>0)trend=Math.round((recent-prev)/prev*100);}
+  return {rows,totalEst,totalRecv,trend,months};
+}
+function revenueTrendSVG(d){
+  const W=340,H=180,padL=8,padR=8,padT=14,padB=22;
+  const rows=d.rows;const n=rows.length;
+  const maxV=Math.max(1,...rows.map(r=>Math.max(r.est,r.recv)));
+  const chartW=W-padL-padR,chartH=H-padT-padB;
+  const bw=chartW/n;
+  const x=i=>padL+bw*i+bw*0.5;
+  const yOf=v=>padT+chartH-(v/maxV)*chartH;
+  // 수금 막대 + 매출 라인
+  let bars='',line='',dots='',labels='';
+  const barW=Math.min(20,bw*0.44);
+  const bc=hjBrandColor('#0b4ea2');
+  rows.forEach((r,i)=>{
+    const cx=x(i);
+    // 수금 막대
+    const bh=(r.recv/maxV)*chartH;
+    bars+='<rect x="'+(cx-barW/2)+'" y="'+(padT+chartH-bh)+'" width="'+barW+'" height="'+Math.max(0,bh)+'" rx="3" fill="'+bc+'" opacity="0.85"/>';
+    // 월 라벨
+    labels+='<text x="'+cx+'" y="'+(H-7)+'" font-size="10" fill="#8b98ab" text-anchor="middle">'+r.mm+'월</text>';
+    // 매출 라인 점
+    const ey=yOf(r.est);
+    line+=(i===0?'M':'L')+cx+' '+ey+' ';
+    dots+='<circle cx="'+cx+'" cy="'+ey+'" r="3" fill="#e8912d"/>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+
+    '<line x1="'+padL+'" y1="'+(padT+chartH)+'" x2="'+(W-padR)+'" y2="'+(padT+chartH)+'" stroke="var(--line-soft)" stroke-width="1"/>'+
+    bars+
+    '<path d="'+line+'" fill="none" stroke="#e8912d" stroke-width="2.5" stroke-linejoin="round"/>'+
+    dots+labels+
+    '</svg>';
+}
+function revenueTrend(months){
+  months=months||6;
+  const d=revenueTrendData(months);
+  const btns=[3,6,12].map(m=>'<button class="'+(m===months?'blue':'ghost')+' tiny" onclick="revenueTrend('+m+')" style="padding:6px 12px">'+m+'개월</button>').join(' ');
+  const trendTxt=d.trend!=null
+    ? (d.trend>=0?'<span style="color:#0a7f43">▲ 최근 3개월 수금 '+d.trend+'% 증가</span>':'<span style="color:#c2410c">▼ 최근 3개월 수금 '+Math.abs(d.trend)+'% 감소</span>')
+    : '';
+  // 표
+  const tableRows=d.rows.slice().reverse().map(r=>'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="width:52px">'+r.mm+'월</span><span style="flex:1;text-align:right;color:#e8912d">'+hjMan(r.est)+'</span><span style="flex:1;text-align:right;color:'+hjBrandColor('#0b4ea2')+';font-weight:700">'+hjMan(r.recv)+'</span><span style="width:44px;text-align:right;color:var(--muted)">'+(r.done||'-')+'</span></div>').join('');
+  const body=
+    '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">'+btns+'<span style="flex:1"></span></div>'+
+    '<div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:6px"><span style="color:#e8912d">● 매출(견적)</span><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수금</span></div>'+
+    '<div style="background:var(--paper-2);border-radius:12px;padding:10px 6px 4px">'+revenueTrendSVG(d)+'</div>'+
+    (trendTxt?'<div style="font-size:13px;font-weight:700;text-align:center;margin:10px 0">'+trendTxt+'</div>':'')+
+    '<div style="display:flex;gap:8px;margin:10px 0">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+months+'개월 매출</div><div style="font-size:15px;font-weight:800;color:#e8912d">'+hjMan(d.totalEst)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+months+'개월 수금</div><div style="font-size:15px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.totalRecv)+'</div></div>'+
+    '</div>'+
+    '<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-weight:700;padding-bottom:4px;border-bottom:1px solid var(--line-soft)"><span style="width:52px">월</span><span style="flex:1;text-align:right">매출</span><span style="flex:1;text-align:right">수금</span><span style="width:44px;text-align:right">완료</span></div>'+tableRows+'</div>';
+  openModal('📈 매출 추이',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {개월:months,매출원:d.totalEst,수금원:d.totalRecv,추세:d.trend};
+}
+
+/* ═══════════ 📄 정산 문서 — 거래명세서 · 청구서 · 하자보증서 ═══════════ */
+function hjDocDate(d){const x=d?new Date(d):new Date();return x.getFullYear()+'년 '+(x.getMonth()+1)+'월 '+x.getDate()+'일';}
+function hjNum(n){return num(n).toLocaleString('ko-KR');}
+// 완공 현장에서 문서 데이터 수집
+function settleDocData(name){
+  const p=state.projects.find(x=>x.name===name);
+  if(!p)return null;
+  const s=projStats(name);
+  const cust=p.customer||{};
+  // 견적 품목: 앱 견적 우선, 없으면 견적 파일
+  let items=[];
+  const q=(state.quotes||[]).filter(x=>x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  if(q&&quoteRealItems){items=quoteRealItems(q).map(it=>({name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)}));}
+  const w=hjWarranty(p);
+  return {p,s,cust,items,quote:q,
+    est:s.est,recv:s.recv,due:s.due,
+    doneAt:p.doneAt||localDate(),warranty:w};
+}
+// 공통 문서 셸
+function hjDocShell(title,inner,accentDefault){
+  const [c1,c2]=hjBrandGrad(accentDefault||'#0b4ea2','#1d6fd8');
+  const logo=state.brand&&state.brand.logo;
+  const acct=COMPANY.accounts[0];
+  return '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>'+escapeHtml(title)+' — '+escapeHtml(COMPANY.name)+'</title>'+
+    '<style>*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Noto Sans KR",sans-serif;background:#f2f5f9;color:#1a2637;padding:14px}'+
+    '.doc{max-width:700px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)}'+
+    '.dhd{background:linear-gradient(120deg,'+c1+','+c2+');color:#fff;padding:22px 24px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}'+
+    '.dhd .co{display:flex;align-items:center;gap:10px}.dhd img{width:40px;height:40px;border-radius:9px;object-fit:cover;background:#fff}'+
+    '.dhd h1{margin:0;font-size:25px;letter-spacing:6px}.dhd .cn{font-size:14px;font-weight:800}.dhd .meta{text-align:right;font-size:12px;opacity:.92;line-height:1.6}'+
+    '.dbody{padding:22px 24px}'+
+    '.prow{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid #eef2f7}'+
+    '.prow b{color:#5b6b82;font-weight:600;margin-right:6px}'+
+    'table.items{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}'+
+    'table.items th{background:#f4f7fb;padding:9px 8px;text-align:center;font-size:12px;color:#5b6b82;border-bottom:2px solid #e5ebf2}'+
+    'table.items td{padding:8px;border-bottom:1px solid #eef2f7}.items .r{text-align:right}.items .c{text-align:center}.items .nm{font-weight:600}'+
+    '.sumbox{display:flex;justify-content:flex-end;margin-bottom:16px}.sumtab{font-size:14px;min-width:240px}'+
+    '.sumtab .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e5ebf2}'+
+    '.sumtab .total{font-size:18px;font-weight:800;color:'+c1+';border-bottom:none;padding-top:10px}'+
+    '.note{font-size:12.5px;color:#5b6b82;line-height:1.7;background:#f7fafd;border-radius:10px;padding:12px 14px;margin-bottom:14px}'+
+    '.acct{font-size:13px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:11px 14px;margin-bottom:14px}'+
+    '.stamp{text-align:right;font-size:14px;line-height:1.9;margin-top:18px}.stamp .big{font-size:16px;font-weight:800}'+
+    '.dft{text-align:center;padding:16px;font-size:12px;color:#8b98ab;border-top:1px solid #eef2f7}'+
+    '.warranty-badge{display:inline-block;background:'+c1+';color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:12px}'+
+    '@media print{body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0}}'+
+    '</style></head><body><div class="doc">'+
+    '<div class="dhd"><div class="co">'+(logo?'<img src="'+logo+'">':'')+'<div><div class="cn">'+escapeHtml(COMPANY.name)+'</div><h1 style="margin-top:6px">'+escapeHtml(title)+'</h1></div></div>'+
+    '<div class="meta">'+escapeHtml(COMPANY.owner)+'<br>'+escapeHtml(COMPANY.tel)+'<br>'+escapeHtml(COMPANY.addr)+'<br>사업자 '+escapeHtml(COMPANY.bizno)+'</div></div>'+
+    '<div class="dbody">'+inner+'</div>'+
+    '<div class="dft">본 문서는 '+escapeHtml(COMPANY.name)+'에서 발행하였습니다 · 문의 '+escapeHtml(COMPANY.tel)+'</div>'+
+    '</div></body></html>';
+}
+// ① 거래명세서
+function statementHTML(name){
+  const d=settleDocData(name);if(!d)return null;
+  const rows=d.items.length?d.items.map((it,i)=>{const amt=it.qty*it.price;return '<tr><td class="c">'+(i+1)+'</td><td class="nm">'+escapeHtml(it.name)+'</td><td class="c">'+escapeHtml(it.spec)+'</td><td class="c">'+hjNum(it.qty)+'</td><td class="r">'+hjNum(it.price)+'</td><td class="r">'+hjNum(amt)+'</td></tr>';}).join(''):'<tr><td class="c" colspan="6" style="padding:16px;color:#8b98ab">등록된 품목이 없습니다 — 견적서를 먼저 작성하면 자동으로 채워집니다</td></tr>';
+  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.est;
+  const vat=Math.round(supply*0.1);
+  const inner=
+    '<div class="prow"><span><b>공급받는 자</b>'+escapeHtml(d.cust.name||'—')+'</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+(d.cust.addr?'<span><b>현장</b>'+escapeHtml(d.cust.addr)+'</span>':'')+'<span><b>작성일</b>'+hjDocDate()+'</span><span><b>공사 완료</b>'+hjDocDate(d.doneAt)+'</span></div>'+
+    '<table class="items"><thead><tr><th style="width:34px">No</th><th>품목</th><th style="width:90px">규격</th><th style="width:56px">수량</th><th style="width:100px">단가</th><th style="width:110px">금액</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="sumbox"><div class="sumtab">'+
+      '<div class="row"><span>공급가액</span><b>'+hjNum(supply)+' 원</b></div>'+
+      '<div class="row"><span>부가세 (10%)</span><b>'+hjNum(vat)+' 원</b></div>'+
+      '<div class="row total"><span>합계</span><span>'+hjNum(supply+vat)+' 원</span></div>'+
+    '</div></div>'+
+    (d.recv>0?'<div class="note">💰 기수금 '+hjNum(d.recv)+'원'+(d.due>0?' · <b style="color:#c2410c">잔금 '+hjNum(d.due)+'원</b>':' · 완납 감사합니다')+'</div>':'')+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> <span style="color:#8b98ab">(인)</span></div>';
+  return hjDocShell('거 래 명 세 서',inner);
+}
+// ② 청구서
+function invoiceHTML(name){
+  const d=settleDocData(name);if(!d)return null;
+  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.est;
+  const vat=Math.round(supply*0.1);
+  const total=supply+vat;
+  const claim=d.due>0?d.due:total;   // 미수금 있으면 잔금, 없으면 전액
+  const acct=COMPANY.accounts[0];
+  const inner=
+    '<div class="prow"><span><b>받는 분</b>'+escapeHtml(d.cust.name||'—')+' 귀하</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+'<span><b>청구일</b>'+hjDocDate()+'</span></div>'+
+    '<div style="text-align:center;margin:20px 0"><div style="font-size:13px;color:#5b6b82;margin-bottom:6px">아래 금액을 청구합니다</div>'+
+      '<div style="font-size:34px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjNum(claim)+' 원</div>'+
+      '<div style="font-size:12px;color:#8b98ab;margin-top:4px">(부가세 포함)</div></div>'+
+    '<table class="items"><thead><tr><th>항목</th><th style="width:130px">금액</th></tr></thead><tbody>'+
+      '<tr><td class="nm">공사대금 (공급가)</td><td class="r">'+hjNum(supply)+'</td></tr>'+
+      '<tr><td class="nm">부가가치세 (10%)</td><td class="r">'+hjNum(vat)+'</td></tr>'+
+      '<tr><td class="nm">공사대금 합계</td><td class="r">'+hjNum(total)+'</td></tr>'+
+      (d.recv>0?'<tr><td class="nm" style="color:#0a7f43">기수금</td><td class="r" style="color:#0a7f43">- '+hjNum(d.recv)+'</td></tr>':'')+
+      '<tr style="background:#fff7ed"><td class="nm" style="font-weight:800">청구 금액</td><td class="r" style="font-weight:800;color:#c2410c">'+hjNum(claim)+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="acct">🏦 <b>입금 계좌</b><br>'+escapeHtml(acct.bank)+' '+escapeHtml(acct.no)+' ('+escapeHtml(acct.holder)+')</div>'+
+    '<div class="note">공사를 맡겨주셔서 감사합니다. 입금 확인 후 영수 처리해 드리며, 시공 후 1년간 무상 A/S를 제공합니다.</div>'+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> <span style="color:#8b98ab">(인)</span></div>';
+  return hjDocShell('청 구 서',inner,'#b45309');
+}
+// ③ 하자보증서
+function warrantyHTML(name){
+  const d=settleDocData(name);if(!d)return null;
+  const w=d.warranty;
+  const startStr=hjDocDate(d.doneAt);
+  const endStr=w?hjDocDate(w.end):'';
+  const inner=
+    '<div style="text-align:center"><span class="warranty-badge">시공 후 1년 무상 A/S</span></div>'+
+    '<div class="prow"><span><b>고객명</b>'+escapeHtml(d.cust.name||'—')+' 님</span>'+(d.cust.addr?'<span><b>시공 현장</b>'+escapeHtml(d.cust.addr)+'</span>':'<span><b>현장</b>'+escapeHtml(name)+'</span>')+'</div>'+
+    '<div style="font-size:14px;line-height:1.9;margin:16px 0">'+
+      '<p>본 <b>'+escapeHtml(COMPANY.name)+'</b>은(는) 위 현장의 시공 품질을 보증하며, 아래 기간 동안 시공 하자에 대해 <b>무상 A/S</b>를 제공할 것을 확인합니다.</p>'+
+    '</div>'+
+    '<table class="items"><tbody>'+
+      '<tr><td class="nm" style="width:120px;background:#f7fafd">공사 완료일</td><td>'+startStr+'</td></tr>'+
+      '<tr><td class="nm" style="background:#f7fafd">보증 기간</td><td><b>'+startStr+' ~ '+endStr+'</b> (1년)</td></tr>'+
+      '<tr><td class="nm" style="background:#f7fafd">보증 범위</td><td>시공 부위의 하자 (마감 들뜸, 누수, 시공 불량 등)</td></tr>'+
+      '<tr><td class="nm" style="background:#f7fafd">A/S 연락처</td><td>'+escapeHtml(COMPANY.owner)+' · '+escapeHtml(COMPANY.tel)+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="note">※ 고객 부주의·천재지변·정상 마모에 의한 손상은 보증에서 제외됩니다. 하자 발생 시 위 연락처로 알려주시면 신속히 처리해 드립니다.</div>'+
+    '<div class="stamp">발행일 '+hjDocDate()+'<br><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.owner)+' <span style="color:#8b98ab">(인)</span></div>';
+  return hjDocShell('하 자 보 증 서',inner,'#0e7a6b');
+}
+const HJ_SETTLE_DOCS={
+  statement:{t:'거래명세서',ic:'📋',fn:statementHTML,desc:'공급 품목·금액·기수금을 정리한 명세'},
+  invoice:{t:'청구서',ic:'💳',fn:invoiceHTML,desc:'잔금(또는 전액) 청구 + 입금 계좌'},
+  warranty:{t:'하자보증서',ic:'🛡',fn:warrantyHTML,desc:'시공 후 1년 무상 A/S 보증'}
+};
+async function settleDocShare(name,kind){
+  const def=HJ_SETTLE_DOCS[kind];if(!def)return {오류:'문서 종류 오류'};
+  const html=def.fn(name);
+  if(!html){toast('현장을 찾을 수 없습니다: '+name);return {오류:'현장 없음'};}
+  const fname=safeName(name)+'_'+def.t+'_'+localDate()+'.html';
+  const file=new File([html],fname,{type:'text/html'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name+' '+def.t});return {완료:'공유',파일:fname};}catch(e){}}
+  const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);
+  toast('저장됨 — 카톡·문자에 파일로 첨부해 보내세요');
+  return {완료:'저장',파일:fname};
+}
+function settleDocs(name,kind){
+  // 현장 미지정 시: 완료 현장 우선 선택
+  if(!name){
+    const done=state.projects.filter(p=>!p.archived&&(p.stage>=3||p.doneAt));
+    const list=done.length?done:state.projects.filter(p=>!p.archived);
+    if(!list.length){toast('현장이 없습니다.');return {오류:'현장 없음'};}
+    const opts=list.map(p=>'<button class="ghost sdPick" data-n="'+escapeAttr(p.name)+'" style="display:block;width:100%;text-align:left;padding:11px;margin-bottom:6px;border:1px solid var(--line-soft);border-radius:10px">'+
+      '<b style="font-size:13px">'+escapeHtml(p.name)+'</b> <span style="font-size:11px;color:var(--muted)">'+STAGES[p.stage||0]+(p.doneAt?' · 완료 '+p.doneAt:'')+'</span></button>').join('');
+    openModal('📄 정산 문서 — 현장 선택','<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">거래명세서·청구서·하자보증서를 만들 현장을 선택하세요.</div>'+opts,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+    document.getElementById('modalRoot').querySelectorAll('.sdPick').forEach(b=>b.onclick=()=>settleDocs(b.dataset.n));
+    return {열림:'현장 선택'};
+  }
+  const d=settleDocData(name);
+  if(!d){toast('현장을 찾을 수 없습니다: '+name);return {오류:'현장 없음'};}
+  const w=d.warranty;
+  const cards=Object.keys(HJ_SETTLE_DOCS).map(k=>{const x=HJ_SETTLE_DOCS[k];
+    return '<button class="sdCard" data-k="'+k+'" style="display:flex;gap:11px;align-items:center;width:100%;text-align:left;border:1px solid var(--line-soft);border-radius:12px;padding:13px;background:var(--paper);margin-bottom:8px">'+
+    '<span style="font-size:24px">'+x.ic+'</span><span style="flex:1"><b style="font-size:13.5px">'+x.t+'</b><br><span style="font-size:11.5px;color:var(--muted)">'+x.desc+'</span></span><span style="font-size:12px;color:var(--clay);font-weight:700">만들기 ›</span></button>';
+  }).join('');
+  const summary='<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+
+    '견적 '+hjMan(d.est)+' · 수금 '+hjMan(d.recv)+(d.due>0?' · <b style="color:#c2410c">잔금 '+hjMan(d.due)+'</b>':' · 완납')+
+    (w?' · 무상 A/S ~'+w.end+(w.dday>0?' (D-'+w.dday+')':' (만료)'):'')+'</div>';
+  openModal('📄 정산 문서 — '+escapeHtml(name),
+    summary+cards+
+    '<button id="sdReceipt" class="moss" style="width:100%;padding:11px;margin-top:2px">💵 수금 영수증 만들기</button>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin-top:8px">각 문서는 HTML 파일 하나로 만들어져 카톡·문자로 바로 보낼 수 있습니다. 로고·색은 브랜드 설정을 따릅니다.</div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  const rcb=root.querySelector('#sdReceipt');if(rcb)rcb.onclick=()=>{closeModal();receiptDialog(name);};
+  root.querySelectorAll('.sdCard').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k;const def=HJ_SETTLE_DOCS[k];const html=def.fn(name);
+    // 미리보기 + 공유
+    openModal(def.ic+' '+def.t+' — '+escapeHtml(name),
+      '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:56vh"><iframe srcdoc="'+escapeAttr(html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
+      [{label:'📤 공유·저장',cls:'clay',fn:()=>settleDocShare(name,k)},{label:'← 뒤로',cls:'ghost',fn:()=>settleDocs(name)}]);
+  });
+  return {열림:'정산 문서',현장:name,잔금원:d.due};
+}
+
+/* ═══════════ 🗑 AI 삭제(스냅샷 안전) · 📝 메모 기록 헬퍼 ═══════════ */
+// AI용 현장 삭제 — 스냅샷 후 실제 제거(확인은 AI 승인카드가 담당)
+function aiDeleteProject(name){
+  const p=state.projects.find(x=>x.name===name);
+  if(!p)return {오류:'현장을 찾을 수 없습니다: '+name};
+  const fileCount=state.files.filter(f=>f.project===name).length;
+  const schCount=(state.schedule||[]).filter(s=>s.project===name).length;
+  // 사진·서류는 미배정으로 되돌림(삭제하지 않음)
+  state.files.forEach(f=>{if(f.project===name)f.project=null;});
+  state.projects=state.projects.filter(x=>x.name!==name);
+  markDirty();render();
+  return {삭제:name,사진서류_미배정전환:fileCount,관련일정_유지:schCount,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
+}
+function aiDeleteSchedule(keyword){
+  const q=String(keyword||'').trim();
+  const cand=(state.schedule||[]).filter(s=>(s.title||'').includes(q)||(s.project||'').includes(q)||s.date===q);
+  if(!cand.length)return {오류:'"'+q+'"에 해당하는 일정이 없습니다.'};
+  if(cand.length>1)return {여러건:cand.map(s=>({날짜:s.date,시간:s.time||'',제목:s.title,현장:s.project||''})),안내:'일정이 여러 건입니다 — 날짜나 더 구체적인 제목으로 다시 지정하세요.'};
+  const s=cand[0];
+  state.schedule=state.schedule.filter(x=>x.id!==s.id);
+  markDirty();render();
+  return {삭제한일정:{날짜:s.date,제목:s.title,현장:s.project||''},안내:'되돌리려면 🛡 안전판에서 복구하세요.'};
+}
+function aiAddNote(text,project){
+  const t=String(text||'').trim();
+  if(!t)return {오류:'메모 내용이 비었습니다.'};
+  state.notes=state.notes||[];
+  const note={id:uid(),date:new Date().toLocaleString('ko-KR'),text:t,project:String(project||'')};
+  state.notes.push(note);
+  markDirty();render();
+  return {기록:t,현장:project||'(전체)',시각:note.date};
+}
+function aiListNotes(query){
+  const q=String(query||'').trim().toLowerCase();
+  const rows=(state.notes||[]).slice().reverse()
+    .filter(n=>!q||(n.text+' '+(n.project||'')).toLowerCase().includes(q))
+    .slice(0,20).map(n=>({시각:n.date,내용:n.text,현장:n.project||''}));
+  return {개수:rows.length,메모:rows};
+}
+
+/* ═══════════ 💵 수금 영수증 — 입금 확인 후 고객 발송 (현금영수증 안내 문자 포함) ═══════════ */
+function receiptData(name,amount){
+  const p=state.projects.find(x=>x.name===name);
+  if(!p)return null;
+  const s=projStats(name);
+  const amt=amount!=null?won2num(amount):null;
+  return {p,s,cust:p.customer||{},amt,est:s.est,recv:s.recv,due:s.due};
+}
+function receiptHTML(name,amount){
+  const d=receiptData(name,amount);if(!d)return null;
+  const amt=d.amt!=null?d.amt:d.recv;   // 지정 없으면 총 수금액
+  const supply=Math.round(amt/1.1),vat=amt-supply;
+  const inner=
+    '<div style="text-align:center;margin:6px 0 16px"><div style="font-size:13px;color:#5b6b82">입금해 주셔서 감사합니다</div></div>'+
+    '<div class="prow"><span><b>받는 분</b>'+escapeHtml(d.cust.name||'—')+' 님</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+'<span><b>영수일</b>'+hjDocDate()+'</span></div>'+
+    '<div style="text-align:center;margin:20px 0"><div style="font-size:13px;color:#5b6b82;margin-bottom:6px">아래 금액을 영수합니다</div>'+
+      '<div style="font-size:34px;font-weight:800;color:'+hjBrandColor('#0a7f43')+'">'+hjNum(amt)+' 원</div></div>'+
+    '<table class="items"><thead><tr><th>항목</th><th style="width:130px">금액</th></tr></thead><tbody>'+
+      '<tr><td class="nm">공급가액</td><td class="r">'+hjNum(supply)+'</td></tr>'+
+      '<tr><td class="nm">부가가치세 (10%)</td><td class="r">'+hjNum(vat)+'</td></tr>'+
+      '<tr style="background:#f0fdf4"><td class="nm" style="font-weight:800">영수 금액</td><td class="r" style="font-weight:800;color:#0a7f43">'+hjNum(amt)+'</td></tr>'+
+      (d.due>0?'<tr><td class="nm" style="color:#c2410c">공사 잔금</td><td class="r" style="color:#c2410c">'+hjNum(d.due)+'</td></tr>':'')+
+    '</tbody></table>'+
+    '<div class="note">현금영수증 발급을 원하시면 <b>휴대폰 번호 또는 사업자번호</b>를 알려주세요. 국세청 홈택스로 발급해 드립니다.'+(d.due>0?'<br>남은 잔금 '+hjNum(d.due)+'원은 공사 완료 후 정산 예정입니다.':' 거래해 주셔서 감사합니다.')+'</div>'+
+    '<div class="stamp">발행 '+hjDocDate()+'<br><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.owner)+' <span style="color:#8b98ab">(인)</span></div>';
+  return hjDocShell('영 수 증',inner,'#0a7f43');
+}
+// 현금영수증 안내 문자 문안
+function cashReceiptSMS(name,amount){
+  const d=receiptData(name,amount);
+  const amt=(d&&d.amt!=null)?d.amt:(d?d.recv:won2num(amount));
+  const custName=(d&&d.cust.name)?d.cust.name+'님, ':'';
+  return custName+hjNum(amt)+'원 입금 확인했습니다. 감사합니다.\n현금영수증이 필요하시면 휴대폰번호(또는 사업자번호)를 회신해 주시면 홈택스로 발급해 드리겠습니다.\n- '+COMPANY.name+' '+COMPANY.tel;
+}
+async function receiptShare(name,amount){
+  const html=receiptHTML(name,amount);
+  if(!html){toast('현장을 찾을 수 없습니다: '+name);return {오류:'현장 없음'};}
+  const d=receiptData(name,amount);const amt=(d.amt!=null?d.amt:d.recv);
+  const fname=safeName(name)+'_영수증_'+localDate()+'.html';
+  const file=new File([html],fname,{type:'text/html'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name+' 영수증'});return {완료:'공유',파일:fname,금액원:amt};}catch(e){}}
+  const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);
+  toast('영수증 저장됨 — 카톡·문자로 첨부해 보내세요');
+  return {완료:'저장',파일:fname,금액원:amt};
+}
+function receiptDialog(name,amount){
+  if(!name){
+    const list=state.projects.filter(p=>!p.archived&&projStats(p.name).recv>0);
+    const src=list.length?list:state.projects.filter(p=>!p.archived);
+    if(!src.length){toast('현장이 없습니다.');return {오류:'현장 없음'};}
+    const opts=src.map(p=>{const s=projStats(p.name);return '<button class="ghost rcPick" data-n="'+escapeAttr(p.name)+'" style="display:block;width:100%;text-align:left;padding:11px;margin-bottom:6px;border:1px solid var(--line-soft);border-radius:10px"><b style="font-size:13px">'+escapeHtml(p.name)+'</b> <span style="font-size:11px;color:var(--muted)">수금 '+hjMan(s.recv)+(s.due>0?' · 잔금 '+hjMan(s.due):'')+'</span></button>';}).join('');
+    openModal('💵 수금 영수증 — 현장 선택','<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">영수증을 만들 현장을 선택하세요.</div>'+opts,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+    document.getElementById('modalRoot').querySelectorAll('.rcPick').forEach(b=>b.onclick=()=>receiptDialog(b.dataset.n));
+    return {열림:'현장 선택'};
+  }
+  const d=receiptData(name,amount);
+  if(!d){toast('현장을 찾을 수 없습니다: '+name);return {오류:'현장 없음'};}
+  const defAmt=amount!=null?won2num(amount):d.recv;
+  const body=
+    '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+escapeHtml(name)+' · 총 수금 '+hjMan(d.recv)+(d.due>0?' · 잔금 '+hjMan(d.due):' · 완납')+'</div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">영수 금액</label>'+
+    '<input id="rcAmt" inputmode="numeric" value="'+defAmt+'" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px">'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button class="clay" id="rcMake" style="flex:1;min-width:130px;padding:12px">📄 영수증 만들기</button>'+
+      '<button class="moss" id="rcSms" style="flex:1;min-width:130px;padding:12px">💬 현금영수증 안내 문자</button>'+
+    '</div>';
+  openModal('💵 수금 영수증 — '+escapeHtml(name),body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  const getAmt=()=>root.querySelector('#rcAmt').value;
+  root.querySelector('#rcMake').onclick=()=>{
+    const html=receiptHTML(name,getAmt());
+    openModal('💵 영수증 — '+escapeHtml(name),
+      '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:54vh"><iframe srcdoc="'+escapeAttr(html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
+      [{label:'📤 공유·저장',cls:'clay',fn:()=>receiptShare(name,getAmt())},
+       {label:'💬 안내 문자',cls:'moss',fn:()=>{closeModal();hjSendSms((d.cust.phone||''),cashReceiptSMS(name,getAmt()));}},
+       {label:'← 뒤로',cls:'ghost',fn:()=>receiptDialog(name,amount)}]);
+  };
+  root.querySelector('#rcSms').onclick=()=>{
+    hjSendSms((d.cust.phone||''),cashReceiptSMS(name,getAmt()));
+  };
+  return {열림:'영수증',현장:name,금액원:defAmt};
+}
+
+/* ═══════════ 📊 부가세 신고 준비 — 분기별 매출·매입 집계 → 납부세액 ═══════════ */
+// 부가세 과세기간: 1기 예정(1~3월)/확정(4~6월), 2기 예정(7~9월)/확정(10~12월)
+function vatPeriods(){
+  const now=new Date();const y=now.getFullYear();
+  return [
+    {key:y+'-1',label:y+'년 1기 (1~6월)',from:y+'-01',to:y+'-06',due:y+'-07-25'},
+    {key:y+'-2',label:y+'년 2기 (7~12월)',from:y+'-07',to:y+'-12',due:(y+1)+'-01-25'},
+    {key:(y-1)+'-2',label:(y-1)+'년 2기 (7~12월)',from:(y-1)+'-07',to:(y-1)+'-12',due:y+'-01-25'}
+  ];
+}
+function vatReportData(from,to){
+  // 매출: 앱 견적 + 외부 견적 파일(중복 제외), 날짜 기준
+  const inRange=ym=>ym&&ym>=from&&ym<=to;
+  let salesSupply=0,salesVat=0;const salesRows=[];
+  (state.quotes||[]).forEach(q=>{const ym=String(q.date||'').slice(0,7);if(!inRange(ym))return;const c=quoteCalc(q);salesSupply+=c.supply;salesVat+=c.vat;salesRows.push({ym,label:q.title||q.project||'견적',supply:c.supply,vat:c.vat});});
+  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{const e=f.est;const ym=String(e.date||'').slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
+  // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
+  let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    // 자재·외주는 완료 시점(doneAt) 또는 현재 분기에 귀속. 완료일이 범위 내인 현장만 집계(단순화)
+    const ym=String(p.doneAt||'').slice(0,7);
+    if(p.doneAt&&inRange(ym)){
+      const c=p.cost||{};
+      if(num(c.material)>0){buyMaterial+=num(c.material);buyRows.push({ym,label:p.name+' 자재',amount:num(c.material),type:'자재'});}
+      if(num(c.outsource)>0){buyOutsource+=num(c.outsource);buyRows.push({ym,label:p.name+' 외주',amount:num(c.outsource),type:'외주'});}
+    }
+  });
+  // 인건비: 일정 labor는 날짜별이라 정확히 시기 귀속
+  (state.schedule||[]).forEach(s=>{if(s.labor&&num(s.labor.amount)>0){const ym=String(s.date||'').slice(0,7);if(inRange(ym)){buyLabor+=num(s.labor.amount);buyRows.push({ym,label:(s.project||s.title||'인건비')+' 인건비',amount:num(s.labor.amount),type:'인건비'});}}});
+  // 매입 세액공제: 자재·외주는 세금계산서 매입(10% 공제 가능)으로 가정, 인건비는 면세(공제 불가)
+  const buyDeductible=buyMaterial+buyOutsource;                 // 매입세액 공제 대상 공급가
+  const buyVatCredit=Math.round(buyDeductible/11);              // 그 안의 부가세(총액÷11)
+  const buyDeductSupply=buyDeductible-buyVatCredit;
+  const payable=salesVat-buyVatCredit;                          // 납부(환급)세액
+  return {from,to,
+    salesSupply,salesVat,salesTotal:salesSupply+salesVat,salesRows,salesCount:salesRows.length,
+    buyMaterial,buyOutsource,buyLabor,buyDeductible,buyDeductSupply,buyVatCredit,buyRows,buyCount:buyRows.length,
+    payable};
+}
+function vatReport(periodKey){
+  const periods=vatPeriods();
+  const pd=periods.find(x=>x.key===periodKey)||periods[0];
+  const d=vatReportData(pd.from,pd.to);
+  const pill=periods.map(x=>'<button class="'+(x.key===pd.key?'blue':'ghost')+' tiny" onclick="vatReport(\''+x.key+'\')" style="padding:6px 10px;font-size:11.5px">'+x.label.replace(/\(.*\)/,'').trim()+'</button>').join(' ');
+  const won=hjNum;
+  const box=(label,val,color,sub)=>'<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+label+'</div><div style="font-size:16px;font-weight:800;color:'+color+';margin-top:2px">'+won(val)+'</div>'+(sub?'<div style="font-size:10px;color:var(--muted)">'+sub+'</div>':'')+'</div>';
+  const payLabel=d.payable>=0?'납부 예상 세액':'환급 예상 세액';
+  const payColor=d.payable>=0?'#c2410c':'#0a7f43';
+  const body=
+    '<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">'+pill+'</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">신고 기간 '+pd.from+' ~ '+pd.to+' · 납부기한 '+pd.due+'</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:8px">'+box('매출세액',d.salesVat,hjBrandColor('#0b4ea2'),'공급가 '+hjMan(d.salesSupply))+box('매입세액 공제',d.buyVatCredit,'#0a7f43','공급가 '+hjMan(d.buyDeductSupply))+'</div>'+
+    '<div style="background:'+(d.payable>=0?'#fff7ed':'#f0fdf4')+';border-radius:12px;padding:14px;text-align:center;margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">'+payLabel+'</div><div style="font-size:26px;font-weight:800;color:'+payColor+';margin-top:2px">'+won(Math.abs(d.payable))+' 원</div><div style="font-size:11px;color:var(--muted);margin-top:2px">매출세액 '+won(d.salesVat)+' − 매입세액 '+won(d.buyVatCredit)+'</div></div>'+
+    // 매출 내역
+    '<div style="font-size:12.5px;font-weight:700;margin:10px 0 4px">📤 매출 ('+d.salesCount+'건 · '+hjMan(d.salesTotal)+')</div>'+
+    (d.salesRows.length?'<div style="max-height:110px;overflow:auto">'+d.salesRows.slice().sort((a,b)=>b.ym.localeCompare(a.ym)).map(r=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line-soft)"><span>'+r.ym.slice(5)+'월 '+escapeHtml(hjCut(r.label,14))+'</span><span>'+won(r.supply+r.vat)+'</span></div>').join('')+'</div>':'<div style="font-size:12px;color:var(--muted);padding:4px 0">매출 없음</div>')+
+    // 매입 내역
+    '<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">📥 매입 (자재 '+hjMan(d.buyMaterial)+' · 외주 '+hjMan(d.buyOutsource)+' · 인건비 '+hjMan(d.buyLabor)+')</div>'+
+    '<div style="font-size:11px;color:var(--muted);background:var(--paper-2);border-radius:8px;padding:8px">💡 자재·외주비는 세금계산서 매입으로 보아 부가세를 공제했고, 인건비는 면세로 공제에서 제외했습니다. 실제 신고 시 수취한 <b>세금계산서·계산서</b> 기준으로 확인하세요.</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+      '<button class="clay" id="vatXlsx" style="flex:1;min-width:130px;padding:12px">📊 신고 자료 엑셀</button>'+
+      '<button class="moss" id="vatCopy" style="flex:1;min-width:130px;padding:12px">📋 요약 복사</button>'+
+    '</div>';
+  openModal('📊 부가세 신고 준비',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#vatXlsx').onclick=()=>vatExportXlsx(pd.key);
+  root.querySelector('#vatCopy').onclick=()=>{
+    const txt=pd.label+' 부가세 신고 요약\n\n매출 공급가: '+won(d.salesSupply)+'원\n매출세액: '+won(d.salesVat)+'원\n매입세액 공제: '+won(d.buyVatCredit)+'원\n'+(d.payable>=0?'납부 예상: ':'환급 예상: ')+won(Math.abs(d.payable))+'원\n납부기한: '+pd.due+'\n\n- '+COMPANY.name;
+    navigator.clipboard.writeText(txt).then(()=>toast('📋 신고 요약을 복사했습니다')).catch(()=>toast('복사 실패'));
+  };
+  return {기간:pd.label,매출세액:d.salesVat,매입세액공제:d.buyVatCredit,납부예상:d.payable,매출건수:d.salesCount,매입건수:d.buyCount};
+}
+async function vatExportXlsx(periodKey){
+  const periods=vatPeriods();const pd=periods.find(x=>x.key===periodKey)||periods[0];
+  const d=vatReportData(pd.from,pd.to);
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return {오류:'모듈'};}
+  const wb=XLSX.utils.book_new();
+  // 요약
+  const sum=[['부가세 신고 요약',''],['사업자',COMPANY.name+' ('+COMPANY.bizno+')'],['신고기간',pd.from+' ~ '+pd.to],['납부기한',pd.due],['',''],
+    ['매출 공급가액',d.salesSupply],['매출세액',d.salesVat],['',''],
+    ['매입 공급가액(공제)',d.buyDeductSupply],['매입세액(공제)',d.buyVatCredit],['인건비(면세·불공제)',d.buyLabor],['',''],
+    [d.payable>=0?'납부예상세액':'환급예상세액',Math.abs(d.payable)]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
+  // 매출 상세
+  const s1=[['월','내역','공급가','부가세','합계']];
+  d.salesRows.slice().sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s1.push([r.ym,r.label,r.supply,r.vat,r.supply+r.vat]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'매출');
+  // 매입 상세
+  const s2=[['월','내역','구분','금액']];
+  d.buyRows.slice().sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s2.push([r.ym,r.label,r.type,r.amount]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'매입');
+  const fname=COMPANY.name+'_부가세신고_'+pd.key+'_'+localDate()+'.xlsx';
+  XLSX.writeFile(wb,fname);
+  toast('📊 신고 자료 저장됨 ('+fname+')');
+  return {파일:fname,시트:3};
+}
+
+/* ═══════════ 💰 AI 수금 대송 — 일괄 입금 기록 + 영수증 자동 발송 ═══════════ */
+// AI가 여러 입금을 한 번에 처리: [{현장/고객, 금액}] → 각각 수금 기록 + (옵션)영수증
+async function batchReceive(payments,opts){
+  opts=opts||{};
+  const results=[];let totalAmt=0,okN=0;
+  for(const pay of (payments||[])){
+    const q=String(pay.query||pay.현장||pay.name||'').trim();
+    const amt=won2num(pay.amount!=null?pay.amount:pay.금액);
+    if(!q||!(amt>0)){results.push({입력:q,결과:'건너뜀(현장/금액 확인 필요)'});continue;}
+    const ms=projectResolve(q);
+    if(!ms.length){results.push({입력:q,결과:'현장 없음'});continue;}
+    if(ms.length>1){results.push({입력:q,결과:'현장 여러 곳 — 정확한 이름 필요',후보:ms});continue;}
+    const name=ms[0];const p=state.projects.find(x=>x.name===name);
+    const prev=p.received||0;
+    const nv=prev+amt;                                  // 기존 수금에 누적
+    hjPayLog(name,nv,prev);p.received=nv;
+    totalAmt+=amt;okN++;
+    const row={현장:name,입금액:amt,누적수금:nv};
+    // 영수증 발송(옵션)
+    if(opts.receipt){
+      try{const r=await receiptShare(name,amt);row.영수증=r.완료||'발송';
+        if(opts.sms){const ph=(p.customer&&p.customer.phone)||'';try{hjSendSms(ph,cashReceiptSMS(name,amt));row.문자='발송';}catch(e){}}
+      }catch(e){row.영수증='실패';}
+    }
+    results.push(row);
+  }
+  markDirty();render();
+  return {처리:okN,총입금액:totalAmt,건별:results,안내:opts.receipt?'입금 기록 + 영수증 발송 완료':'입금 기록 완료. 영수증이 필요하면 receipt=true로 다시 요청하세요.'};
+}
+
+/* ═══════════ 🔔 스마트 알림 — 미수·일정·무상 A/S 만료 (브라우저 알림) ═══════════ */
+function hjNotifyState(){
+  if(!('Notification' in window))return 'unsupported';
+  return Notification.permission; // 'granted'|'denied'|'default'
+}
+function hjNotifyEnabled(){return localStorage.getItem('hj_notify_on')==='1'&&hjNotifyState()==='granted';}
+async function hjNotifyRequest(){
+  if(!('Notification' in window)){toast('이 기기는 알림을 지원하지 않습니다.');return false;}
+  let perm=Notification.permission;
+  if(perm==='default'){try{perm=await Notification.requestPermission();}catch(e){}}
+  if(perm==='granted'){localStorage.setItem('hj_notify_on','1');return true;}
+  toast(perm==='denied'?'알림이 차단돼 있어요. 브라우저 설정에서 허용해 주세요.':'알림 권한을 받지 못했습니다.');
+  return false;
+}
+// 알림으로 띄울 항목 수집
+function hjNotifyItems(){
+  const items=[];const today=localDate();
+  // 오늘 일정
+  (state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).forEach(s=>{
+    items.push({key:'sch-'+s.id,ic:'🗓',title:'오늘 일정: '+(s.time?s.time+' ':'')+s.title,body:(s.project?s.project+' · ':'')+(s.workers?'인원 '+s.workers:'')});
+  });
+  // 미수금 장기 방치
+  try{const od=overdueFollowupData();(od.items||[]).filter(i=>i.level==='urgent').slice(0,3).forEach(x=>{items.push({key:'due-'+x.project,ic:'🔴',title:'미수금: '+x.project,body:hjMan(x.due)+' · 완료 '+(x.doneAt||'')});});}catch(e){}
+  // 무상 A/S 만료 임박(30일 이내)
+  state.projects.filter(p=>!p.archived&&p.doneAt).forEach(p=>{const w=hjWarranty(p);if(w&&w.dday>0&&w.dday<=30){items.push({key:'as-'+p.name,ic:'🛡',title:'무상 A/S 만료 임박: '+p.name,body:'D-'+w.dday+' ('+w.end+')'});}});
+  return items;
+}
+function hjNotifyFire(force){
+  if(!hjNotifyEnabled())return {상태:'꺼짐'};
+  const items=hjNotifyItems();
+  // 하루 1회 제한(force면 무시)
+  const shownKey='hj_notify_fired';
+  if(!force&&localStorage.getItem(shownKey)===localDate())return {상태:'오늘 이미 발송'};
+  if(!items.length){localStorage.setItem(shownKey,localDate());return {상태:'알릴 항목 없음'};}
+  // 요약 1개 알림(개별 폭탄 방지)
+  const head=items[0];
+  const more=items.length>1?(' 외 '+(items.length-1)+'건'):'';
+  try{
+    const n=new Notification(COMPANY.name+' 오늘의 알림',{
+      body:items.slice(0,4).map(i=>i.ic+' '+i.title).join('\n')+more,
+      tag:'hj-daily',renotify:true
+    });
+    n.onclick=()=>{window.focus();try{n.close();}catch(e){}try{bizDashboard();}catch(e){}};
+  }catch(e){return {상태:'발송 실패',오류:String(e.message||e)};}
+  localStorage.setItem(shownKey,localDate());
+  return {상태:'발송',건수:items.length};
+}
+function notifySettings(){
+  const st=hjNotifyState();
+  const on=hjNotifyEnabled();
+  const items=hjNotifyItems();
+  const statusLine=st==='unsupported'?'<span style="color:#c2410c">이 기기는 브라우저 알림을 지원하지 않습니다</span>'
+    :st==='denied'?'<span style="color:#c2410c">차단됨 — 브라우저 설정에서 이 사이트 알림을 허용해 주세요</span>'
+    :on?'<span style="color:#0a7f43">✅ 켜짐 — 앱을 열 때 하루 한 번 오늘의 알림을 보냅니다</span>'
+    :'꺼짐';
+  const preview=items.length?items.slice(0,5).map(i=>'<div style="font-size:12.5px;padding:5px 0;border-bottom:1px dashed var(--line-soft)">'+i.ic+' <b>'+escapeHtml(i.title)+'</b>'+(i.body?' <span style="color:var(--muted)">'+escapeHtml(i.body)+'</span>':'')+'</div>').join(''):'<div style="font-size:12.5px;color:var(--muted);padding:6px 0">지금 알릴 항목이 없습니다 👍</div>';
+  const body=
+    '<div style="font-size:13px;margin-bottom:8px">상태: '+statusLine+'</div>'+
+    '<div style="font-size:12px;color:var(--muted);line-height:1.7;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:12px">앱을 열 때마다 하루 한 번, <b>오늘 일정·장기 미수금·무상 A/S 만료 임박</b>을 브라우저 알림으로 요약해 드립니다. 스마트폰에 설치(홈 화면 추가)하면 더 잘 동작합니다.</div>'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">지금 알림 미리보기 ('+items.length+'건)</div>'+preview+
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
+      (on?'<button class="ghost" id="ntOff" style="flex:1;min-width:120px;padding:12px">알림 끄기</button><button class="clay" id="ntTest" style="flex:1;min-width:120px;padding:12px">🔔 지금 테스트</button>'
+         :'<button class="clay" id="ntOn" style="flex:1;min-width:150px;padding:12px">🔔 알림 켜기</button>')+
+    '</div>';
+  openModal('🔔 스마트 알림',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  const root=document.getElementById('modalRoot');
+  const onBtn=root.querySelector('#ntOn');if(onBtn)onBtn.onclick=async()=>{const okp=await hjNotifyRequest();closeModal();if(okp){toast('🔔 알림이 켜졌어요');hjNotifyFire(true);}};
+  const offBtn=root.querySelector('#ntOff');if(offBtn)offBtn.onclick=()=>{localStorage.setItem('hj_notify_on','0');closeModal();toast('알림을 껐습니다');};
+  const testBtn=root.querySelector('#ntTest');if(testBtn)testBtn.onclick=()=>{const r=hjNotifyFire(true);closeModal();if(r.상태!=='발송')toast(r.상태);};
+  return {상태:on?'켜짐':(st==='denied'?'차단됨':'꺼짐'),알림항목:items.length};
+}
+
+/* ═══════════ 📇 세금계산서 발행 정보 — 전자세금계산서 준비 ═══════════ */
+function taxInvoiceData(name){
+  const p=state.projects.find(x=>x.name===name);if(!p)return null;
+  const s=projStats(name);const cust=p.customer||{};
+  // 공급가/세액: 견적 기준
+  let supply=0;const q=(state.quotes||[]).filter(x=>x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  if(q){const c=quoteCalc(q);supply=c.supply;}else{supply=Math.round(s.est/1.1);}
+  const vat=Math.round(supply*0.1);
+  return {p,s,cust,supply,vat,total:supply+vat,doneAt:p.doneAt||localDate(),bizno:cust.bizno||''};
+}
+function taxInvoiceInfo(name){
+  if(!name){
+    const done=state.projects.filter(p=>!p.archived&&(p.stage>=3||p.doneAt));
+    const src=done.length?done:state.projects.filter(p=>!p.archived);
+    if(!src.length){toast('현장이 없습니다.');return {오류:'현장 없음'};}
+    const opts=src.map(p=>'<button class="ghost tiPick" data-n="'+escapeAttr(p.name)+'" style="display:block;width:100%;text-align:left;padding:11px;margin-bottom:6px;border:1px solid var(--line-soft);border-radius:10px"><b style="font-size:13px">'+escapeHtml(p.name)+'</b> <span style="font-size:11px;color:var(--muted)">'+STAGES[p.stage||0]+'</span></button>').join('');
+    openModal('📇 세금계산서 — 현장 선택','<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">세금계산서 발행 정보를 정리할 현장을 선택하세요.</div>'+opts,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+    document.getElementById('modalRoot').querySelectorAll('.tiPick').forEach(b=>b.onclick=()=>taxInvoiceInfo(b.dataset.n));
+    return {열림:'현장 선택'};
+  }
+  const d=taxInvoiceData(name);if(!d){toast('현장을 찾을 수 없습니다: '+name);return {오류:'현장 없음'};}
+  const row=(l,v,edit)=>'<div style="display:flex;padding:8px 0;border-bottom:1px solid var(--line-soft);align-items:center"><span style="width:96px;font-size:12.5px;color:var(--muted)">'+l+'</span>'+(edit?'<input id="'+edit+'" value="'+escapeAttr(v)+'" style="flex:1;padding:7px;font-size:13px" placeholder="'+l+'">':'<span style="flex:1;font-size:13px;font-weight:600">'+escapeHtml(v)+'</span>')+'</div>';
+  const won=hjNum;
+  const body=
+    '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">홈택스·세금계산서 발행 시 붙여넣을 정보입니다. 고객 <b>사업자번호</b>를 넣으면 저장돼요.</div>'+
+    '<div style="font-weight:800;font-size:12.5px;margin:6px 0 2px;color:'+hjBrandColor('#0b4ea2')+'">■ 공급자 (우리)</div>'+
+    row('상호',COMPANY.name)+row('사업자번호',COMPANY.bizno)+row('대표',COMPANY.owner)+row('주소',COMPANY.addr)+
+    '<div style="font-weight:800;font-size:12.5px;margin:12px 0 2px;color:#0a7f43">■ 공급받는 자 (고객)</div>'+
+    row('상호/성명',d.cust.name||'',null)+
+    row('사업자번호',d.bizno,'tiBizno')+
+    row('연락처',d.cust.phone||'')+
+    row('주소',d.cust.addr||'')+
+    '<div style="font-weight:800;font-size:12.5px;margin:12px 0 2px;color:#b45309">■ 공급 내역</div>'+
+    row('작성일자',hjDocDate(d.doneAt))+
+    '<div style="display:flex;gap:8px;margin:8px 0"><div style="flex:1;background:var(--paper-2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">공급가액</div><div style="font-size:15px;font-weight:800">'+won(d.supply)+'</div></div><div style="flex:1;background:var(--paper-2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">세액</div><div style="font-size:15px;font-weight:800">'+won(d.vat)+'</div></div><div style="flex:1;background:var(--paper-2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">합계</div><div style="font-size:15px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+won(d.total)+'</div></div></div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
+      '<button class="clay" id="tiSave" style="flex:1;min-width:120px;padding:12px">💾 사업자번호 저장</button>'+
+      '<button class="moss" id="tiCopy" style="flex:1;min-width:120px;padding:12px">📋 전체 복사</button>'+
+    '</div>';
+  openModal('📇 세금계산서 정보 — '+escapeHtml(name),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#tiSave').onclick=()=>{
+    const bn=root.querySelector('#tiBizno').value.trim();
+    d.p.customer=d.p.customer||{};d.p.customer.bizno=bn;markDirty();
+    toast('사업자번호를 저장했습니다');
+  };
+  root.querySelector('#tiCopy').onclick=()=>{
+    const bn=root.querySelector('#tiBizno').value.trim();
+    const txt='[세금계산서 발행 정보]\n\n■ 공급자\n상호: '+COMPANY.name+'\n사업자번호: '+COMPANY.bizno+'\n대표: '+COMPANY.owner+'\n주소: '+COMPANY.addr+'\n\n■ 공급받는 자\n상호/성명: '+(d.cust.name||'')+'\n사업자번호: '+bn+'\n연락처: '+(d.cust.phone||'')+'\n주소: '+(d.cust.addr||'')+'\n\n■ 공급 내역\n작성일자: '+hjDocDate(d.doneAt)+'\n공급가액: '+hjNum(d.supply)+'\n세액: '+hjNum(d.vat)+'\n합계: '+hjNum(d.total);
+    navigator.clipboard.writeText(txt).then(()=>toast('📋 세금계산서 정보를 복사했습니다')).catch(()=>toast('복사 실패'));
+  };
+  return {현장:name,공급가액:d.supply,세액:d.vat,사업자번호:d.bizno||'(미입력)'};
+}
+
+/* ═══════════ 📷 AI 사진 작업일지 — 날짜별·공정별 자동 정리 ═══════════ */
+function photoReportData(name){
+  const p=state.projects.find(x=>x.name===name);if(!p)return null;
+  const photos=state.files.filter(f=>f.project===name&&f.kind==='photo'&&f.when);
+  // 날짜별 그룹
+  const byDate={};
+  photos.forEach(f=>{const d=localDate(f.when);(byDate[d]=byDate[d]||[]).push(f);});
+  const dates=Object.keys(byDate).sort();
+  const days=dates.map(d=>{
+    const fs=byDate[d];
+    // 공정별 세분
+    const byPhase={};fs.forEach(f=>{const ph=f._phase||'기타';(byPhase[ph]=byPhase[ph]||[]).push(f);});
+    return {date:d,count:fs.length,phases:Object.keys(byPhase).map(ph=>({phase:ph,count:byPhase[ph].length,files:byPhase[ph]}))};
+  });
+  // 공정 커버리지
+  const allPhases={};photos.forEach(f=>{const ph=f._phase||'기타';allPhases[ph]=(allPhases[ph]||0)+1;});
+  return {p,total:photos.length,days,phaseSummary:allPhases,dateCount:dates.length};
+}
+async function photoReport(name){
+  if(!name){
+    const withPhotos=state.projects.filter(p=>!p.archived&&state.files.some(f=>f.project===p.name&&f.kind==='photo'));
+    if(!withPhotos.length){toast('사진이 있는 현장이 없습니다.');return {오류:'사진 현장 없음'};}
+    const opts=withPhotos.map(p=>{const n=state.files.filter(f=>f.project===p.name&&f.kind==='photo').length;return '<button class="ghost prPick" data-n="'+escapeAttr(p.name)+'" style="display:block;width:100%;text-align:left;padding:11px;margin-bottom:6px;border:1px solid var(--line-soft);border-radius:10px"><b style="font-size:13px">'+escapeHtml(p.name)+'</b> <span style="font-size:11px;color:var(--muted)">사진 '+n+'장</span></button>';}).join('');
+    openModal('📷 사진 작업일지 — 현장 선택','<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">작업일지를 만들 현장을 선택하세요.</div>'+opts,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+    document.getElementById('modalRoot').querySelectorAll('.prPick').forEach(b=>b.onclick=()=>photoReport(b.dataset.n));
+    return {열림:'현장 선택'};
+  }
+  const d=photoReportData(name);
+  if(!d||!d.total){toast('"'+name+'"에 정리할 사진이 없습니다.');return {오류:'사진 없음'};}
+  // 공정 커버리지 배지
+  const phaseChips=Object.keys(d.phaseSummary).map(ph=>'<span style="display:inline-block;background:var(--paper-2);border-radius:14px;padding:3px 10px;font-size:11.5px;margin:2px">'+escapeHtml(ph)+' '+d.phaseSummary[ph]+'</span>').join('');
+  // 날짜별 타임라인
+  const timeline=d.days.map(day=>{
+    const phaseLines=day.phases.map(ph=>'<div style="font-size:12px;color:var(--muted);padding:2px 0 2px 10px">· '+escapeHtml(ph.phase)+' '+ph.count+'장</div>').join('');
+    return '<div style="padding:8px 0;border-bottom:1px dashed var(--line-soft)"><div style="font-size:12.5px;font-weight:700">📅 '+hjKD(day.date)+' <span style="color:var(--muted);font-weight:400">'+day.count+'장</span></div>'+phaseLines+'</div>';
+  }).join('');
+  const hasKey=!!window.__geminiKey;
+  const body=
+    '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">사진 '+d.total+'장을 '+d.dateCount+'일 · 공정별로 정리했습니다.'+(hasKey?' AI로 작업 내용을 요약할 수 있어요.':' (☁️ 설정에 Gemini 키를 넣으면 AI가 작업 내용을 요약합니다)')+'</div>'+
+    '<div style="margin-bottom:10px">'+phaseChips+'</div>'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:4px">📆 날짜별 진행</div>'+
+    '<div style="max-height:34vh;overflow:auto">'+timeline+'</div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
+      (hasKey?'<button class="clay" id="prAI" style="flex:1;min-width:130px;padding:12px">🤖 AI 작업 요약</button>':'')+
+      '<button class="moss" id="prImg" style="flex:1;min-width:130px;padding:12px">🖼 사진 리포트 이미지</button>'+
+    '</div>';
+  openModal('📷 사진 작업일지 — '+escapeHtml(name),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  const imgBtn=root.querySelector('#prImg');if(imgBtn)imgBtn.onclick=()=>{closeModal();try{makeProgressReport(name);}catch(e){toast('사진 리포트를 만들 수 없습니다.');}};
+  const aiBtn=root.querySelector('#prAI');if(aiBtn)aiBtn.onclick=async()=>{
+    aiBtn.disabled=true;aiBtn.textContent='분석 중…';
+    try{
+      const summary=await photoReportAISummary(name,d);
+      openModal('🤖 '+escapeHtml(name)+' 작업 요약',
+        '<div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;background:var(--paper-2);border-radius:10px;padding:12px">'+escapeHtml(summary)+'</div>',
+        [{label:'📋 복사',cls:'moss',fn:()=>{navigator.clipboard.writeText(summary).then(()=>toast('복사됨'));}},{label:'닫기',cls:'ghost',fn:closeModal}]);
+    }catch(e){toast('AI 요약 실패: '+(e.message||e));aiBtn.disabled=false;aiBtn.textContent='🤖 AI 작업 요약';}
+  };
+  return {현장:name,사진:d.total,작업일수:d.dateCount,공정수:Object.keys(d.phaseSummary).length};
+}
+async function photoReportAISummary(name,d){
+  d=d||photoReportData(name);
+  const outline=d.days.map(day=>hjKD(day.date)+': '+day.phases.map(ph=>ph.phase+'('+ph.count+'장)').join(', ')).join('\n');
+  const prompt='너는 인테리어 현장 관리자다. 아래는 "'+name+'" 현장의 날짜별·공정별 사진 촬영 기록이다. 이를 바탕으로 고객/기록용 작업 일지를 간결한 한국어 존댓말로 작성하라. 각 날짜별로 어떤 작업이 진행됐는지 1~2줄로 요약하고, 마지막에 전체 진행 상황을 한 줄 정리. 추측성 과장 없이 사진 기록에 근거해서.\n\n[촬영 기록]\n'+outline;
+  const txt=await geminiAsk(prompt);
+  return txt||'작업 요약을 생성하지 못했습니다.';
+}
+
+/* ═══════════ 🤖 AI 주간 브리핑 — 지난주 성과 + 이번주 할 일 (월요일 선제) ═══════════ */
+function weekBriefData(){
+  // 지난주(off=-1)
+  const last=hjWeekRange(-1);
+  const lastPays=(state.payLog||[]).filter(x=>x.d>=last.from&&x.d<=last.to&&x.amt>0);
+  const lastRecv=lastPays.reduce((a,x)=>a+x.amt,0);
+  const lastQuotes=(state.quotes||[]).filter(q=>q.date>=last.from&&q.date<=last.to);
+  const lastQuoteSum=lastQuotes.reduce((a,q)=>a+quoteCalc(q).total,0);
+  const lastDone=state.projects.filter(p=>!p.archived&&p.doneAt&&p.doneAt>=last.from&&p.doneAt<=last.to);
+  const lastPhotos=state.files.filter(f=>{if(f.kind!=='photo')return false;const d=aiYmdOf(f.when);return d&&d>=last.from&&d<=last.to;}).length;
+  const lastSched=(state.schedule||[]).filter(s=>s.date>=last.from&&s.date<=last.to&&!/^💰/.test(s.title||''));
+  // 이번주(0)
+  const cur=hjWeekRange(0);
+  const curSched=(state.schedule||[]).filter(s=>s.date>=cur.from&&s.date<=cur.to&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.date+a.time).localeCompare(String(b.date+b.time)));
+  // 이번주 챙길 일: 미수·AS·무상만료
+  let dueTotal=0;const dueList=[];
+  state.projects.filter(p=>!p.archived).forEach(p=>{const s=projStats(p.name);if(s.due>0){dueTotal+=s.due;dueList.push({name:p.name,due:s.due});}});
+  dueList.sort((a,b)=>b.due-a.due);
+  const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
+  const warnExpire=state.projects.filter(p=>!p.archived&&p.doneAt).map(p=>({name:p.name,w:hjWarranty(p)})).filter(x=>x.w&&x.w.dday>0&&x.w.dday<=30);
+  return {last,cur,lastRecv,lastQuoteSum,lastDone,lastPhotos,lastSchedCount:lastSched.length,
+    curSched,dueTotal,dueList,asOpen,warnExpire};
+}
+function weekBriefText(d){
+  const won=hjNum;const L=[];
+  L.push('📊 지난주 ('+d.last.from.slice(5)+'~'+d.last.to.slice(5)+')');
+  L.push('· 수금 '+won(d.lastRecv)+'원 · 새 견적 '+won(d.lastQuoteSum)+'원');
+  L.push('· 완료 '+d.lastDone.length+'곳 · 일정 '+d.lastSchedCount+'건 · 사진 '+d.lastPhotos+'장');
+  L.push('');
+  L.push('📅 이번주 ('+d.cur.from.slice(5)+'~'+d.cur.to.slice(5)+')');
+  if(d.curSched.length)d.curSched.slice(0,6).forEach(s=>L.push('· '+hjKD(s.date).replace(/\(.*/,'')+' '+(s.time?s.time+' ':'')+s.title+(s.project?' @'+s.project:'')));
+  else L.push('· 등록된 일정 없음');
+  L.push('');
+  L.push('👀 챙길 일');
+  if(d.dueTotal>0)L.push('· 미수금 '+won(d.dueTotal)+'원'+(d.dueList[0]?' (최다: '+d.dueList[0].name+' '+won(d.dueList[0].due)+')':''));
+  if(d.asOpen)L.push('· 미처리 A/S '+d.asOpen+'건');
+  if(d.warnExpire.length)L.push('· 무상 A/S 만료 임박 '+d.warnExpire.length+'곳');
+  if(d.dueTotal<=0&&!d.asOpen&&!d.warnExpire.length)L.push('· 급한 일 없음 👍');
+  return L.join('\n');
+}
+async function weekBrief(){
+  const d=weekBriefData();
+  const base=weekBriefText(d);
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
+  const won=hjNum;
+  // 성과 카드
+  const kpi='<div style="display:flex;gap:8px;margin-bottom:12px">'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">지난주 수금</div><div style="font-size:16px;font-weight:800;color:'+hjBrandColor('#0a7f43')+'">'+hjMan(d.lastRecv)+'</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">완료 현장</div><div style="font-size:16px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+d.lastDone.length+'곳</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">이번주 일정</div><div style="font-size:16px;font-weight:800;color:#b45309">'+d.curSched.length+'건</div></div>'+
+    '</div>';
+  const hasKey=!!window.__geminiKey;
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">'+COMPANY.name+' · 주간 브리핑</div><div style="font-size:19px;font-weight:800;margin-top:2px">지난주 돌아보기 · 이번주 계획</div></div>'+
+    kpi+
+    '<div id="wbBox" style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:var(--paper-2);border-radius:10px;padding:12px">'+escapeHtml(base)+'</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+      (hasKey?'<button class="clay" id="wbAI" style="flex:1;min-width:130px;padding:12px">🤖 AI 코멘트</button>':'')+
+      '<button class="moss" id="wbCopy" style="flex:1;min-width:130px;padding:12px">📋 복사</button>'+
+    '</div>';
+  openModal('🤖 주간 브리핑',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#wbCopy').onclick=()=>{navigator.clipboard.writeText(base).then(()=>toast('📋 복사했습니다')).catch(()=>toast('복사 실패'));};
+  const aiBtn=root.querySelector('#wbAI');
+  if(aiBtn)aiBtn.onclick=async()=>{
+    aiBtn.disabled=true;aiBtn.textContent='분석 중…';
+    try{
+      const prompt='너는 1인 인테리어 업체 사장님의 경영 비서다. 아래 주간 데이터를 보고, 지난주 성과를 한 줄로 격려하고 이번주에 집중할 것 2~3가지를 콕 짚어 조언하라. 간결한 존댓말 한국어, 5줄 이내. 과장 없이 데이터 근거로.\n\n'+base;
+      const txt=await geminiAsk(prompt);
+      root.querySelector('#wbBox').textContent=base+'\n\n─────\n🤖 '+(txt||'코멘트를 생성하지 못했습니다.');
+      aiBtn.textContent='✅ 코멘트 완료';
+    }catch(e){toast('AI 코멘트 실패: '+(e.message||e));aiBtn.disabled=false;aiBtn.textContent='🤖 AI 코멘트';}
+  };
+  return {지난주수금:d.lastRecv,완료현장:d.lastDone.length,이번주일정:d.curSched.length,미수금:d.dueTotal,미처리AS:d.asOpen};
+}
+// 월요일 자동 노출(주 1회)
+function weekBriefShouldShow(){
+  const now=new Date();
+  if(now.getDay()!==1)return false;                      // 월요일만
+  if(!(state.projects||[]).length)return false;
+  return localStorage.getItem('hj_weekbrief_shown')!==localDate();
+}
+function weekBriefMaybe(){
+  try{if(weekBriefShouldShow()){localStorage.setItem('hj_weekbrief_shown',localDate());setTimeout(()=>{try{weekBrief();}catch(e){}},1000);}}catch(e){}
+}
+
+/* ═══════════ 💳 간편 지출 장부 — 현금·카드 지출 빠른 기록 ═══════════ */
+const HJ_EXP_CATS=['자재','인건비','외주','장비','유류','식대','기타'];
+function expenseAdd(o){
+  o=o||{};
+  const amt=won2num(o.amount!=null?o.amount:o.금액);
+  if(!(amt>0))return {오류:'금액을 확인해 주세요.'};
+  state.expenses=state.expenses||[];
+  const exp={id:uid(),date:o.date||localDate(),amount:amt,
+    category:HJ_EXP_CATS.includes(o.category)?o.category:(o.category||'기타'),
+    method:(o.method==='카드'||o.method==='현금')?o.method:(o.method||'현금'),
+    memo:String(o.memo||o.note||''),project:String(o.project||'')};
+  state.expenses.push(exp);markDirty();render();
+  return {기록:exp.amount,분류:exp.category,수단:exp.method,날짜:exp.date,메모:exp.memo||'(없음)'};
+}
+function expenseData(ym){
+  ym=ym||localDate().slice(0,7);
+  const list=(state.expenses||[]).filter(e=>String(e.date||'').slice(0,7)===ym).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const total=list.reduce((a,e)=>a+num(e.amount),0);
+  const byCat={};HJ_EXP_CATS.forEach(c=>byCat[c]=0);list.forEach(e=>{byCat[e.category]=(byCat[e.category]||0)+num(e.amount);});
+  const byMethod={현금:0,카드:0};list.forEach(e=>{byMethod[e.method]=(byMethod[e.method]||0)+num(e.amount);});
+  return {ym,list,total,byCat,byMethod,count:list.length};
+}
+function expenseLedger(ym){
+  ym=ym||localDate().slice(0,7);
+  const d=expenseData(ym);
+  const won=hjNum;const mm=+ym.split('-')[1];
+  // 월 이동
+  const prev=(()=>{const p=new Date(ym+'-01');p.setMonth(p.getMonth()-1);return p.getFullYear()+'-'+pad2(p.getMonth()+1);})();
+  const next=(()=>{const p=new Date(ym+'-01');p.setMonth(p.getMonth()+1);return p.getFullYear()+'-'+pad2(p.getMonth()+1);})();
+  const nav='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><button class="ghost tiny" onclick="expenseLedger(\''+prev+'\')" style="padding:6px 12px">‹ '+(+prev.split('-')[1])+'월</button><b style="font-size:14px">'+ym.split('-')[0]+'년 '+mm+'월</b><button class="ghost tiny" onclick="expenseLedger(\''+next+'\')" style="padding:6px 12px">'+(+next.split('-')[1])+'월 ›</button></div>';
+  // 분류별 바
+  const cats=HJ_EXP_CATS.filter(c=>d.byCat[c]>0);
+  const catBar=cats.length?'<div style="margin-bottom:10px">'+cats.map(c=>{const pct=Math.round(d.byCat[c]/d.total*100);return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>'+c+'</span><span>'+won(d.byCat[c])+' <span style="color:var(--muted)">'+pct+'%</span></span></div>';}).join('')+'</div>':'';
+  // 목록
+  const rows=d.list.length?d.list.map(e=>'<div class="expRow" data-id="'+e.id+'" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line-soft)"><span style="font-size:11px;color:var(--muted);width:38px">'+e.date.slice(5)+'</span><span style="font-size:16px">'+(e.method==='카드'?'💳':'💵')+'</span><span style="flex:1;min-width:0"><b style="font-size:12.5px">'+escapeHtml(e.category)+'</b>'+(e.memo?' <span style="font-size:11px;color:var(--muted)">'+escapeHtml(hjCut(e.memo,16))+'</span>':'')+(e.project?'<br><span style="font-size:10.5px;color:var(--muted)">@'+escapeHtml(e.project)+'</span>':'')+'</span><span style="font-size:13px;font-weight:700">'+won(e.amount)+'</span><button class="expDel" data-id="'+e.id+'" style="background:none;border:none;color:var(--muted);font-size:16px;padding:0 4px">×</button></div>').join(''):'<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:16px">이 달 지출 기록이 없습니다</div>';
+  const body=
+    nav+
+    '<div style="background:'+hjBrandColor('#0b4ea2')+';color:#fff;border-radius:12px;padding:14px;text-align:center;margin-bottom:12px"><div style="font-size:11.5px;opacity:.9">'+mm+'월 총 지출</div><div style="font-size:24px;font-weight:800">'+won(d.total)+' 원</div><div style="font-size:11px;opacity:.9;margin-top:2px">💵 현금 '+hjMan(d.byMethod.현금)+' · 💳 카드 '+hjMan(d.byMethod.카드)+'</div></div>'+
+    catBar+
+    '<button class="clay" id="expAddBtn" style="width:100%;padding:12px;margin-bottom:10px">➕ 지출 추가</button>'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:2px">📋 내역 ('+d.count+'건)</div>'+rows+
+    (d.list.length?'<button class="moss" id="expXlsx" style="width:100%;padding:11px;margin-top:12px">📊 이 달 엑셀</button>':'')+'<button class="moss" id="expPnl" style="width:100%;padding:11px;margin-top:8px">💰 이 달 손익 보기</button>';
+  openModal('💳 간편 장부',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#expAddBtn').onclick=()=>expenseAddDialog(ym);
+  const xb=root.querySelector('#expXlsx');if(xb)xb.onclick=()=>expenseExportXlsx(ym);
+  const pb=root.querySelector('#expPnl');if(pb)pb.onclick=()=>{closeModal();pnl(ym);};
+  root.querySelectorAll('.expDel').forEach(b=>b.onclick=(ev)=>{ev.stopPropagation();
+    const id=b.dataset.id;const e=(state.expenses||[]).find(x=>x.id===id);
+    openModal('지출 삭제','<div style="font-size:13px">이 지출 기록을 삭제할까요?<br><b>'+hjNum(e.amount)+'원 · '+escapeHtml(e.category)+'</b></div>',
+      [{label:'취소',cls:'ghost',fn:()=>expenseLedger(ym)},{label:'삭제',cls:'warn',fn:()=>{state.expenses=state.expenses.filter(x=>x.id!==id);markDirty();expenseLedger(ym);toast('삭제됨');}}]);
+  });
+  return {월:ym,총지출:d.total,건수:d.count};
+}
+function expenseAddDialog(ym,preset){
+  preset=preset||{};
+  const cats=HJ_EXP_CATS.map(c=>'<button type="button" class="expCat ghost tiny" data-c="'+c+'" style="padding:7px 12px;margin:2px">'+c+'</button>').join('');
+  const projs=state.projects.filter(p=>!p.archived).slice(0,30);
+  const projOpts='<option value="">현장 연결 안 함</option>'+projs.map(p=>'<option value="'+escapeAttr(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');
+  const body=
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">금액</label>'+
+    '<input id="exAmt" inputmode="numeric" placeholder="예: 50000" style="width:100%;padding:11px;font-size:16px;margin-bottom:10px">'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">분류</label>'+
+    '<div id="exCats" style="margin-bottom:10px">'+cats+'</div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">결제 수단</label>'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px"><button type="button" class="exMethod clay" data-m="현금" style="flex:1;padding:10px">💵 현금</button><button type="button" class="exMethod ghost" data-m="카드" style="flex:1;padding:10px">💳 카드</button></div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">날짜 · 현장 · 메모</label>'+
+    '<input id="exDate" type="date" value="'+localDate()+'" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+
+    '<select id="exProj" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+projOpts+'</select>'+
+    '<input id="exMemo" placeholder="메모(선택)" style="width:100%;padding:9px;font-size:13px">';
+  openModal('➕ 지출 추가',body,[
+    {label:'저장',cls:'clay',fn:()=>{
+      const amt=document.getElementById('exAmt').value;
+      if(!(won2num(amt)>0)){toast('금액을 입력해 주세요.');return;}
+      expenseAdd({amount:amt,category:window.__exCat||'기타',method:window.__exMethod||'현금',
+        date:document.getElementById('exDate').value,project:document.getElementById('exProj').value,memo:document.getElementById('exMemo').value});
+      toast('지출을 기록했습니다');expenseLedger(ym);
+    }},
+    {label:'취소',cls:'ghost',fn:()=>expenseLedger(ym)}]);
+  const root=document.getElementById('modalRoot');
+  window.__exCat='기타';window.__exMethod='현금';
+  root.querySelectorAll('.expCat').forEach(b=>b.onclick=()=>{window.__exCat=b.dataset.c;root.querySelectorAll('.expCat').forEach(x=>x.className='expCat ghost tiny');b.className='expCat clay tiny';});
+  root.querySelectorAll('.exMethod').forEach(b=>b.onclick=()=>{window.__exMethod=b.dataset.m;root.querySelectorAll('.exMethod').forEach(x=>{x.className='exMethod ghost';});b.className='exMethod clay';});
+  setTimeout(()=>{const a=document.getElementById('exAmt');if(a)a.focus();},200);
+}
+async function expenseExportXlsx(ym){
+  const d=expenseData(ym);
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return {오류:'모듈'};}
+  const wb=XLSX.utils.book_new();
+  const rows=[['날짜','분류','수단','금액','현장','메모']];
+  d.list.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(e=>rows.push([e.date,e.category,e.method,e.amount,e.project||'',e.memo||'']));
+  rows.push(['','','합계',d.total,'','']);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),ym+' 지출');
+  // 분류 요약
+  const cat=[['분류','금액']];HJ_EXP_CATS.forEach(c=>{if(d.byCat[c]>0)cat.push([c,d.byCat[c]]);});cat.push(['합계',d.total]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cat),'분류별');
+  const fname=COMPANY.name+'_지출_'+ym+'.xlsx';
+  XLSX.writeFile(wb,fname);toast('📊 저장됨 ('+fname+')');
+  return {파일:fname};
+}
+
+/* ═══════════ 💰 월별 실손익 — 수금(수입) vs 지출(장부) 통합 현금흐름 ═══════════ */
+function pnlData(ym){
+  ym=ym||localDate().slice(0,7);
+  // 수입: payLog(실제 들어온 돈)
+  const pays=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym&&num(x.amt)>0);
+  const income=pays.reduce((a,x)=>a+num(x.amt),0);
+  const incomeByPj={};pays.forEach(x=>{incomeByPj[x.project]=(incomeByPj[x.project]||0)+num(x.amt);});
+  const incomeTop=Object.keys(incomeByPj).map(k=>({name:k,amt:incomeByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,4);
+  // 지출: 지출 장부(expenses)
+  const exp=(typeof expenseData==='function')?expenseData(ym):{total:0,byCat:{},byMethod:{현금:0,카드:0},count:0};
+  const spend=exp.total;
+  const net=income-spend;
+  const margin=income>0?Math.round(net/income*100):0;
+  return {ym,income,incomeTop,spend,spendByCat:exp.byCat,spendByMethod:exp.byMethod,spendCount:exp.count,net,margin};
+}
+function pnlTrend(months){
+  months=months||6;const now=new Date();const rows=[];
+  for(let i=months-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);const ym=d.getFullYear()+'-'+pad2(d.getMonth()+1);const pd=pnlData(ym);rows.push({ym,mm:d.getMonth()+1,income:pd.income,spend:pd.spend,net:pd.net});}
+  return rows;
+}
+function pnlTrendSVG(rows){
+  const W=340,H=150,padL=8,padR=8,padT=12,padB=20;
+  const n=rows.length;const chartW=W-padL-padR,chartH=H-padT-padB;
+  const maxV=Math.max(1,...rows.map(r=>Math.max(r.income,r.spend)));
+  const bw=chartW/n;const x=i=>padL+bw*i+bw*0.5;
+  const bc=hjBrandColor('#0b4ea2');
+  let bars='',line='',dots='',labels='';const barW=Math.min(16,bw*0.34);
+  rows.forEach((r,i)=>{
+    const cx=x(i);
+    const ih=(r.income/maxV)*chartH,sh=(r.spend/maxV)*chartH;
+    // 수입 막대(파랑) + 지출 막대(주황) 나란히
+    bars+='<rect x="'+(cx-barW-1)+'" y="'+(padT+chartH-ih)+'" width="'+barW+'" height="'+Math.max(0,ih)+'" rx="2" fill="'+bc+'" opacity="0.85"/>';
+    bars+='<rect x="'+(cx+1)+'" y="'+(padT+chartH-sh)+'" width="'+barW+'" height="'+Math.max(0,sh)+'" rx="2" fill="#e8912d" opacity="0.8"/>';
+    labels+='<text x="'+cx+'" y="'+(H-6)+'" font-size="10" fill="#8b98ab" text-anchor="middle">'+r.mm+'월</text>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+
+    '<line x1="'+padL+'" y1="'+(padT+chartH)+'" x2="'+(W-padR)+'" y2="'+(padT+chartH)+'" stroke="var(--line-soft)" stroke-width="1"/>'+bars+labels+'</svg>';
+}
+function pnl(ym){
+  ym=ym||localDate().slice(0,7);
+  const d=pnlData(ym);const won=hjNum;const mm=+ym.split('-')[1];
+  const prev=(()=>{const p=new Date(ym+'-01');p.setMonth(p.getMonth()-1);return p.getFullYear()+'-'+pad2(p.getMonth()+1);})();
+  const next=(()=>{const p=new Date(ym+'-01');p.setMonth(p.getMonth()+1);return p.getFullYear()+'-'+pad2(p.getMonth()+1);})();
+  const nav='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><button class="ghost tiny" onclick="pnl(\''+prev+'\')" style="padding:6px 12px">‹ '+(+prev.split("-")[1])+'월</button><b style="font-size:14px">'+ym.split('-')[0]+'년 '+mm+'월 손익</b><button class="ghost tiny" onclick="pnl(\''+next+'\')" style="padding:6px 12px">'+(+next.split("-")[1])+'월 ›</button></div>';
+  // 핵심: 순이익 큰 카드
+  const netColor=d.net>=0?'#0a7f43':'#c2410c';
+  const netBg=d.net>=0?'#f0fdf4':'#fef2f2';
+  const hero='<div style="background:'+netBg+';border-radius:14px;padding:16px;text-align:center;margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">'+mm+'월 실손익 (수금 − 지출)</div><div style="font-size:28px;font-weight:800;color:'+netColor+';margin-top:2px">'+(d.net>=0?'+':'')+won(d.net)+' 원</div>'+(d.income>0?'<div style="font-size:11.5px;color:var(--muted);margin-top:2px">이익률 '+d.margin+'%</div>':'')+'</div>';
+  // 수입/지출 대비
+  const io='<div style="display:flex;gap:8px;margin-bottom:12px">'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">💰 수금(수입)</div><div style="font-size:17px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.income)+'</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">💳 지출</div><div style="font-size:17px;font-weight:800;color:#e8912d">'+hjMan(d.spend)+'</div></div>'+
+    '</div>';
+  // 지출 분류
+  const cats=HJ_EXP_CATS.filter(c=>d.spendByCat[c]>0);
+  const catBlock=cats.length?'<div style="font-size:12.5px;font-weight:700;margin:10px 0 4px">💳 지출 내역 ('+d.spendCount+'건)</div>'+cats.map(c=>{const pct=d.spend?Math.round(d.spendByCat[c]/d.spend*100):0;return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line-soft)"><span>'+c+'</span><span>'+won(d.spendByCat[c])+' <span style="color:var(--muted)">'+pct+'%</span></span></div>';}).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 0">이 달 지출 기록이 없습니다 — 💳 간편 장부에서 기록하세요</div>';
+  // 수입 현장 TOP
+  const incBlock=d.incomeTop.length?'<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">💰 수금 현장</div>'+d.incomeTop.map(x=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line-soft)"><span>'+escapeHtml(hjCut(x.name,16))+'</span><span>'+won(x.amt)+'</span></div>').join(''):'';
+  // 추세
+  const trend=pnlTrend(6);
+  const trendBlock='<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">📊 6개월 추이</div><div style="display:flex;gap:12px;font-size:11px;margin-bottom:4px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:#e8912d">■ 지출</span></div><div style="background:var(--paper-2);border-radius:10px;padding:8px 4px 2px">'+pnlTrendSVG(trend)+'</div>';
+  const body=nav+hero+io+catBlock+incBlock+trendBlock+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">💡 수금은 실제 입금된 돈(payLog), 지출은 간편 장부 기록 기준입니다. 현장별 원가·마진은 [📊 수익 분석]에서 볼 수 있어요.</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="moss" id="pnlExp" style="flex:1;min-width:120px;padding:11px">💳 지출 장부</button><button class="moss" id="pnlProfit" style="flex:1;min-width:120px;padding:11px">📊 수익 분석</button></div>';
+  openModal('💰 월별 손익',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#pnlExp').onclick=()=>{closeModal();try{expenseLedger(ym);}catch(e){}};
+  root.querySelector('#pnlProfit').onclick=()=>{closeModal();try{profitAnalysis();}catch(e){}};
+  return {월:ym,수입:d.income,지출:d.spend,실손익:d.net,이익률:d.margin};
+}
+
+/* ═══════════ 📅 일정 충돌 감지 — 같은 시간 중복·과부하 경고 ═══════════ */
+// 두 일정이 시간상 겹치는지(시작~+기본 2시간 가정, hours 있으면 반영)
+function schedTimeRange(s){
+  if(!s.time)return null;
+  const [hh,mm]=String(s.time).split(':').map(Number);
+  if(isNaN(hh))return null;
+  const start=hh*60+(mm||0);
+  const dur=(num(s.hours)>0?num(s.hours):2)*60;
+  return {start,end:start+dur};
+}
+function scheduleConflicts(){
+  const acts=(state.schedule||[]).filter(s=>!/^💰/.test(s.title||''));
+  const byDate={};acts.forEach(s=>{(byDate[s.date]=byDate[s.date]||[]).push(s);});
+  const conflicts=[],overloads=[];
+  Object.keys(byDate).forEach(date=>{
+    const list=byDate[date].slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+    // 시간 겹침(같은 날, 시간 있는 것끼리)
+    for(let i=0;i<list.length;i++){
+      const ri=schedTimeRange(list[i]);if(!ri)continue;
+      for(let j=i+1;j<list.length;j++){
+        const rj=schedTimeRange(list[j]);if(!rj)continue;
+        if(ri.start<rj.end&&rj.start<ri.end){
+          conflicts.push({date,a:list[i],b:list[j]});
+        }
+      }
+    }
+    // 과부하(하루 3건 이상 또는 총 작업시간 10h 초과)
+    const totalH=list.reduce((a,s)=>a+(num(s.hours)>0?num(s.hours):2),0);
+    if(list.length>=3||totalH>10)overloads.push({date,count:list.length,hours:totalH,items:list});
+  });
+  return {conflicts,overloads,hasIssue:conflicts.length>0||overloads.length>0};
+}
+function scheduleCheck(){
+  const d=scheduleConflicts();
+  const won=hjNum;
+  let body='';
+  if(!d.hasIssue){
+    body='<div style="text-align:center;padding:20px"><div style="font-size:44px">✅</div><div style="font-size:15px;font-weight:700;margin-top:8px">일정 충돌이 없습니다</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">같은 시간 중복이나 과부하 일정이 발견되지 않았어요.</div></div>';
+  }else{
+    if(d.conflicts.length){
+      body+='<div style="font-size:13px;font-weight:800;color:#c2410c;margin:4px 0 6px">🔴 시간 겹침 '+d.conflicts.length+'건</div>';
+      d.conflicts.slice(0,6).forEach(c=>{
+        body+='<div style="background:#fef2f2;border-radius:10px;padding:10px;margin-bottom:6px;font-size:12.5px"><b>'+hjKD(c.date)+'</b><br>· '+(c.a.time||'')+' '+escapeHtml(hjCut(c.a.title,16))+(c.a.project?' @'+escapeHtml(hjCut(c.a.project,8)):'')+'<br>· '+(c.b.time||'')+' '+escapeHtml(hjCut(c.b.title,16))+(c.b.project?' @'+escapeHtml(hjCut(c.b.project,8)):'')+'</div>';
+      });
+    }
+    if(d.overloads.length){
+      body+='<div style="font-size:13px;font-weight:800;color:#b45309;margin:12px 0 6px">🟠 과부하 일정 '+d.overloads.length+'일</div>';
+      d.overloads.slice(0,6).forEach(o=>{
+        body+='<div style="background:#fffbeb;border-radius:10px;padding:10px;margin-bottom:6px;font-size:12.5px"><b>'+hjKD(o.date)+'</b> — '+o.count+'건 · 약 '+o.hours+'시간<br><span style="color:var(--muted)">'+o.items.map(s=>(s.time?s.time+' ':'')+hjCut(s.title,10)).join(', ')+'</span></div>';
+      });
+    }
+    body+='<div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.6">💡 겹치는 일정은 시간을 옮기거나, 과부하한 날은 일부를 다른 날로 분산하는 걸 추천해요. 🤖 비서에게 "○○ 일정 옮겨줘"라고 하면 조정합니다.</div>';
+  }
+  body+='<button class="moss" id="scGoSched" style="width:100%;padding:12px;margin-top:12px">🗓 일정 화면으로</button>';
+  openModal('📅 일정 점검',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const gb=document.getElementById('scGoSched');if(gb)gb.onclick=()=>{closeModal();state.tab='schedule';render();};
+  return {충돌:d.conflicts.length,과부하일:d.overloads.length,이상:d.hasIssue};
+}
+
+/* ═══════════ 📇 거래처 관리 — 자재상·외주 업체 연락처·거래이력·단가 ═══════════ */
+function supplierList(){
+  return (state.suppliers||[]).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+}
+// 거래처별 거래이력: 지출 장부 메모/현장 + 발주 기록에서 추정
+function supplierStats(name){
+  const exps=(state.expenses||[]).filter(e=>String(e.memo||'').includes(name)||String(e.project||'')===name);
+  const total=exps.reduce((a,e)=>a+num(e.amount),0);
+  return {거래액:total,건수:exps.length,최근:exps.length?exps.sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0].date:''};
+}
+function supplierAdd(o){
+  o=o||{};const name=String(o.name||'').trim();
+  if(!name)return {오류:'거래처 이름이 필요합니다.'};
+  state.suppliers=state.suppliers||[];
+  let sup=state.suppliers.find(s=>s.name===name);
+  if(sup){
+    if(o.phone!==undefined)sup.phone=o.phone;
+    if(o.category!==undefined)sup.category=o.category;
+    if(o.memo!==undefined)sup.memo=o.memo;
+    if(o.items!==undefined)sup.items=o.items;
+    markDirty();render();
+    return {수정:name,연락처:sup.phone||'',분류:sup.category||''};
+  }
+  sup={name,phone:String(o.phone||''),category:String(o.category||'자재'),memo:String(o.memo||''),items:String(o.items||'')};
+  state.suppliers.push(sup);markDirty();render();
+  return {추가:name,연락처:sup.phone||'',분류:sup.category||''};
+}
+function suppliers(){
+  const list=supplierList();
+  const rows=list.length?list.map(s=>{
+    const st=supplierStats(s.name);
+    return '<div class="supRow" data-n="'+escapeAttr(s.name)+'" style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px">'+
+      '<span style="font-size:22px">'+(s.category==='외주'?'🔧':s.category==='장비'?'🚜':'📦')+'</span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(s.name)+'</b>'+(s.category?' <span style="font-size:10.5px;color:var(--muted);background:var(--paper-2);border-radius:8px;padding:1px 7px">'+escapeHtml(s.category)+'</span>':'')+
+      (s.items?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(hjCut(s.items,20))+'</span>':'')+
+      (st.건수?'<br><span style="font-size:10.5px;color:var(--muted)">거래 '+st.건수+'건 · '+hjMan(st.거래액)+'</span>':'')+'</span>'+
+      (s.phone?'<a href="tel:'+escapeAttr(s.phone)+'" onclick="event.stopPropagation()" style="font-size:20px;text-decoration:none">📞</a>':'')+'</div>';
+  }).join(''):'<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:16px">등록된 거래처가 없습니다.<br>자재발주에서 자동 등록되거나, 아래 [➕ 거래처 추가]로 넣으세요.</div>';
+  const body='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">자주 쓰는 자재상·외주 업체를 모아둡니다. 이름을 누르면 정보를 수정할 수 있어요.</div>'+
+    rows+
+    '<button class="clay" id="supAdd" style="width:100%;padding:12px;margin-top:8px">➕ 거래처 추가</button>';
+  openModal('📇 거래처 ('+list.length+')',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#supAdd').onclick=()=>supplierEditDialog();
+  root.querySelectorAll('.supRow').forEach(b=>b.onclick=()=>supplierEditDialog(b.dataset.n));
+  return {거래처수:list.length};
+}
+function supplierEditDialog(name){
+  const sup=name?(state.suppliers||[]).find(s=>s.name===name):null;
+  const cats=['자재','외주','장비','기타'];
+  const catBtns=cats.map(c=>'<button type="button" class="supCat ghost tiny" data-c="'+c+'" style="padding:7px 12px;margin:2px">'+c+'</button>').join('');
+  const body=
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">거래처 이름</label>'+
+    '<input id="supName" value="'+escapeAttr(sup?sup.name:'')+'" placeholder="예: 한밭철물" style="width:100%;padding:11px;font-size:15px;margin-bottom:10px"'+(sup?' readonly':'')+'>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">분류</label>'+
+    '<div id="supCats" style="margin-bottom:10px">'+catBtns+'</div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">연락처 · 취급품목 · 메모</label>'+
+    '<input id="supPhone" value="'+escapeAttr(sup?sup.phone||'':'')+'" placeholder="전화번호" inputmode="tel" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+
+    '<input id="supItems" value="'+escapeAttr(sup?sup.items||'':'')+'" placeholder="취급 품목(예: 타일, 본드)" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+
+    '<input id="supMemo" value="'+escapeAttr(sup?sup.memo||'':'')+'" placeholder="메모(단가·거래 조건 등)" style="width:100%;padding:9px;font-size:13px">';
+  openModal(sup?'✏️ 거래처 수정':'➕ 거래처 추가',body,[
+    {label:'저장',cls:'clay',fn:()=>{
+      const nm=document.getElementById('supName').value.trim();
+      if(!nm){toast('거래처 이름을 입력해 주세요.');return;}
+      supplierAdd({name:nm,category:window.__supCat||(sup?sup.category:'자재'),phone:document.getElementById('supPhone').value,items:document.getElementById('supItems').value,memo:document.getElementById('supMemo').value});
+      toast(sup?'수정했습니다':'거래처를 추가했습니다');suppliers();
+    }},
+    sup?{label:'삭제',cls:'warn',fn:()=>{state.suppliers=(state.suppliers||[]).filter(s=>s.name!==sup.name);markDirty();suppliers();toast('삭제됨');}}:{label:'취소',cls:'ghost',fn:()=>suppliers()}]);
+  const root=document.getElementById('modalRoot');
+  window.__supCat=sup?sup.category:'자재';
+  root.querySelectorAll('.supCat').forEach(btn=>{
+    if(btn.dataset.c===window.__supCat)btn.className='supCat clay tiny';
+    btn.onclick=()=>{window.__supCat=btn.dataset.c;root.querySelectorAll('.supCat').forEach(x=>x.className='supCat ghost tiny');btn.className='supCat clay tiny';};
+  });
+}
+
+/* ═══════════ 📊 연간 리포트 — 한 해 결산 (매출·수금·지출·완료) ═══════════ */
+function annualData(year){
+  year=year||String(new Date().getFullYear());
+  const months=[];let income=0,spend=0,quoteSum=0;
+  for(let m=1;m<=12;m++){
+    const ym=year+'-'+pad2(m);
+    const pd=(typeof pnlData==='function')?pnlData(ym):{income:0,spend:0};
+    income+=pd.income;spend+=pd.spend;
+    months.push({m,income:pd.income,spend:pd.spend,net:pd.income-pd.spend});
+  }
+  (state.quotes||[]).forEach(q=>{if(String(q.date||'').slice(0,4)===year)quoteSum+=quoteCalc(q).total;});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&String(f.est.date||'').slice(0,4)===year&&!f._fromQuote)quoteSum+=num(f.est.amount);});
+  const doneProjects=state.projects.filter(p=>!p.archived&&p.doneAt&&String(p.doneAt).slice(0,4)===year);
+  // 지출 분류 합
+  const catTotal={};HJ_EXP_CATS.forEach(c=>catTotal[c]=0);
+  (state.expenses||[]).forEach(e=>{if(String(e.date||'').slice(0,4)===year)catTotal[e.category]=(catTotal[e.category]||0)+num(e.amount);});
+  const bestMonth=months.slice().sort((a,b)=>b.income-a.income)[0];
+  return {year,months,income,spend,net:income-spend,quoteSum,doneCount:doneProjects.length,doneProjects,catTotal,bestMonth};
+}
+function annualReport(year){
+  year=year||String(new Date().getFullYear());
+  const d=annualData(year);const won=hjNum;
+  const years=[];const cy=new Date().getFullYear();for(let y=cy;y>=cy-2;y--)years.push(String(y));
+  const pill=years.map(y=>'<button class="'+(y===year?'blue':'ghost')+' tiny" onclick="annualReport(\''+y+'\')" style="padding:6px 12px">'+y+'</button>').join(' ');
+  // 월별 미니 막대
+  const maxV=Math.max(1,...d.months.map(m=>Math.max(m.income,m.spend)));
+  const barChart='<div style="display:flex;gap:2px;align-items:flex-end;height:70px;margin:8px 0">'+d.months.map(m=>{
+    const ih=Math.round(m.income/maxV*64),sh=Math.round(m.spend/maxV*64);
+    return '<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:1px"><div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:64px"><div style="flex:1;background:'+hjBrandColor('#0b4ea2')+';height:'+ih+'px;border-radius:1px" title="'+m.m+'월 수입"></div><div style="flex:1;background:#e8912d;height:'+sh+'px;border-radius:1px"></div></div><span style="font-size:8px;color:var(--muted)">'+m.m+'</span></div>';
+  }).join('')+'</div>';
+  const netColor=d.net>=0?'#0a7f43':'#c2410c';
+  const cats=HJ_EXP_CATS.filter(c=>d.catTotal[c]>0);
+  const catBlock=cats.length?'<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">💳 지출 분류</div>'+cats.map(c=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span>'+c+'</span><span>'+won(d.catTotal[c])+'</span></div>').join(''):'';
+  const body=
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+pill+'</div>'+
+    '<div style="background:'+(d.net>=0?'#f0fdf4':'#fef2f2')+';border-radius:14px;padding:16px;text-align:center;margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">'+year+'년 실손익 (수금 − 지출)</div><div style="font-size:26px;font-weight:800;color:'+netColor+';margin-top:2px">'+(d.net>=0?'+':'')+won(d.net)+' 원</div></div>'+
+    '<div style="display:flex;gap:7px;margin-bottom:12px">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">수금</div><div style="font-size:14px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.income)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">지출</div><div style="font-size:14px;font-weight:800;color:#e8912d">'+hjMan(d.spend)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">완료현장</div><div style="font-size:14px;font-weight:800;color:#0a7f43">'+d.doneCount+'곳</div></div>'+
+    '</div>'+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:2px">📊 월별 수입·지출</div><div style="display:flex;gap:10px;font-size:10.5px;color:var(--muted);margin-bottom:2px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:#e8912d">■ 지출</span></div>'+barChart+
+    catBlock+
+    (d.bestMonth&&d.bestMonth.income>0?'<div style="font-size:12px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:8px;padding:8px">🏆 최고 매출 달: '+d.bestMonth.m+'월 ('+won(d.bestMonth.income)+')</div>':'')+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="clay" id="anXlsx" style="flex:1;padding:12px">📊 연간 엑셀</button><button class="moss" id="anCopy" style="flex:1;padding:12px">📋 요약 복사</button></div>';
+  openModal('📊 '+year+'년 결산',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#anXlsx').onclick=()=>annualExportXlsx(year);
+  root.querySelector('#anCopy').onclick=()=>{
+    const txt=year+'년 결산 요약\n\n총 수금: '+won(d.income)+'원\n총 지출: '+won(d.spend)+'원\n실손익: '+(d.net>=0?'+':'')+won(d.net)+'원\n완료 현장: '+d.doneCount+'곳\n신규 견적: '+won(d.quoteSum)+'원\n\n- '+COMPANY.name;
+    navigator.clipboard.writeText(txt).then(()=>toast('📋 복사했습니다')).catch(()=>toast('복사 실패'));
+  };
+  return {연도:year,수금:d.income,지출:d.spend,실손익:d.net,완료현장:d.doneCount};
+}
+async function annualExportXlsx(year){
+  const d=annualData(year);
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return {오류:'모듈'};}
+  const wb=XLSX.utils.book_new();
+  const s1=[['월','수금','지출','실손익']];
+  d.months.forEach(m=>s1.push([m.m+'월',m.income,m.spend,m.net]));
+  s1.push(['합계',d.income,d.spend,d.net]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),year+' 월별');
+  const s2=[['분류','금액']];HJ_EXP_CATS.forEach(c=>{if(d.catTotal[c]>0)s2.push([c,d.catTotal[c]]);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'지출 분류');
+  const s3=[['완료 현장','완료일']];d.doneProjects.forEach(p=>s3.push([p.name,p.doneAt]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s3),'완료 현장');
+  const fname=COMPANY.name+'_'+year+'년결산.xlsx';
+  XLSX.writeFile(wb,fname);toast('📊 저장됨 ('+fname+')');
+  return {파일:fname};
+}
+
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
 function sendPhotoBundles(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
@@ -6608,15 +8077,7 @@ function viewPhotos(){
   // 위치별(같은 위치끼리)→날짜순 정렬: 위치 있는 묶음 먼저, 같은 위치끼리 모은 뒤 날짜순
   const __locKey=c=>c.address||(c.lat!=null?(c.lat.toFixed(3)+','+c.lng.toFixed(3)):'~없음');
   const __cDate=c=>{const w=c.items.find(p=>p.when)?.when;return w?w.getTime():0;};
-  const ordered=[...clusters].sort((a,b)=>{
-    const ua=clusterIsUnassigned(a),ub=clusterIsUnassigned(b);
-    if(ua!==ub)return ua?-1:1;
-    const la=(a.lat!=null||!!a.address),lb=(b.lat!=null||!!b.address);
-    if(la!==lb)return la?-1:1;
-    const ka=__locKey(a),kb=__locKey(b);
-    if(ka!==kb)return ka<kb?-1:1;
-    return __cDate(a)-__cDate(b);
-  });
+  const ordered=[...clusters].sort((a,b)=>{ const la=(a.lat!=null||!!a.address), lb=(b.lat!=null||!!b.address); if(la!==lb)return la?-1:1; const ka=__locKey(a),kb=__locKey(b); if(ka!==kb)return ka<kb?-1:1; return __cDate(a)-__cDate(b); });
   window.__clusters=ordered;
   // 초대형 목록 최적화: 클러스터를 한꺼번에 다 그리지 않고 12개씩 점진 표시(1,000장+에서도 가볍게)
   const CHUNK=12;
@@ -6630,7 +8091,6 @@ function viewPhotos(){
     const cur=mostCommon(c.items.map(p=>p.project).filter(Boolean));
     const ids=c.items.map(p=>p.id).join(',');
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
-    const unassigned=clusterIsUnassigned(c)?`<span class="revisit">미배정</span>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
     // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
@@ -6640,7 +8100,6 @@ function viewPhotos(){
     const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
-      ${unassigned}
       ${revisit}
       <span class="where">${where}</span>${geoBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
@@ -7169,15 +8628,13 @@ function photoCell(p){
   }else{
     sel=`<span class="ph-hint">현장 먼저</span>`;
   }
-  const editTools=(!p._virtual)?`<button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button>`:'';
-  const tools=`<div class="ph-tools">${editTools}<button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`;
+  const tools=(!p._virtual)?`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button><button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`:'';
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
   return `<div class="ph${__sel.has(p.id)?' sel':''}">
     ${photoImg(p,800,p.id)}
     ${selChk(p.id)}
-    ${isOrganized(p)?'<span class="ph-org-dot" title="정리완료"></span>':''}
     ${tools}
     ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
     ${sel}
@@ -8111,9 +9568,7 @@ function viewProject(){
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
       // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
       if(photos.length){
-        const peek=photos.slice(0,3);
-        html+=`<div class="proj-photo-peek">${peek.map(photoPeek).join('')}</div>`;
-        html+=`<div class="proj-more-row"><button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 전체 보기')}</button><span class="hint">미리보기 ${peek.length}/${photos.length}장</span></div>`;
+        html+=`<button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:8px 0">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 '+photos.length+'장 보기')}</button>`;
         if(open)html+=`<div class="grid">${photos.map(cardHtml).join('')}</div>`;
       }
       if(!list.length)html+=`<div class="empty" style="padding:22px">아직 배정된 파일이 없습니다.</div>`;
@@ -8223,9 +9678,6 @@ function viewProject(){
     const dayKeys=Object.keys(dayMap).sort((a,b)=>{if(a==='(날짜 없음)')return 1;if(b==='(날짜 없음)')return -1;return b.localeCompare(a);});
     dayKeys.forEach(dk=>{
       const items=dayMap[dk].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0));
-      const gkey=state.activeProject+'::'+dk;
-      const open=__projDayOpen.has(gkey);
-      const visible=open?items:items.slice(0,3);
       // 그 날짜에 등장한 공정들 요약
       const phasesInDay=[...new Set(items.map(f=>f._phase).filter(Boolean))];
       const dayLabel=dk==='(날짜 없음)'?dk:(()=>{const d=new Date(dk);const wd=['일','월','화','수','목','금','토'][d.getDay()];return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${wd})`;})();
@@ -8236,8 +9688,7 @@ function viewProject(){
         <div class="phase-group-h day-h">📅 ${dayLabel} <span>${items.length}장</span>
           <button class="day-selbtn" data-dayselect="${dayIds}">${allSel?'✓ 선택됨':'이 날짜 전체 선택'}</button>
           <span class="day-phases">${phaseSummary}</span></div>
-        <div class="cluster-body" style="padding:10px 0">${visible.map(f=>photoCellProj(f,phases)).join('')}</div>
-        ${items.length>3?`<div class="group-more"><button class="${open?'blue':'ghost'} tiny" data-projday="${escapeAttr(gkey)}">${open?'▲ 이 묶음 접기':'▶ 이 묶음 전체 보기'}</button><span class="hint">미리보기 ${visible.length}/${items.length}장</span></div>`:''}
+        <div class="cluster-body" style="padding:10px 0">${items.map(f=>photoCellProj(f,phases)).join('')}</div>
       </div>`;
     });
   }
@@ -8260,12 +9711,10 @@ function viewProject(){
 function photoCellProj(f,phases){
   const cur=phaseOf(f);
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
-  const editTools=(!f._virtual)?`<button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button>`:'';
-  const tools=`<div class="ph-tools">${editTools}<button data-delphoto="${f.id}" title="사진 삭제">🗑</button></div>`;
+  const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button><button data-delphoto="${f.id}" title="사진 삭제">🗑</button></div>`:'';
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
     ${photoImg(f,800,f.id)}
     ${selChk(f.id)}
-    ${isOrganized(f)?'<span class="ph-org-dot" title="정리완료"></span>':''}
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
     ${sel}
@@ -8275,7 +9724,6 @@ function photoCellProj(f,phases){
 let __projView=null; // null|0|1|2|3
 // 현장별 보기(전체 목록)에서 프로젝트별 사진 펼침 상태 — 기본 접힘(숨김), 클릭 시 펼침
 let __projPhotoOpen=new Set();
-let __projDayOpen=new Set();
 const STAGE_VIEW=[
   {label:'상담',desc:'고객·견적'},
   {label:'실측',desc:'도면'},
@@ -8308,7 +9756,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-projday],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -8342,7 +9790,7 @@ function setupDelegation(){
     if(d.schics!==undefined)return exportScheduleICS(d.schics);
     if(d.gcal!==undefined)return addToGoogleCalendar(d.gcal);
     if(d.gosch!==undefined){state.tab='schedule';render();return;}
-    if(d.navi!==undefined){const pp=state.projects.find(x=>x.name===d.navi);const a=pp&&pp.customer&&(pp.customer.addr||'').trim();if(a)window.open('https://map.naver.com/p/search/'+encodeURIComponent(a),'_blank');else toast('고객 정보에 현장 주소를 먼저 입력하세요');return;}
+    if(d.navi!==undefined){const pp=state.projects.find(x=>x.name===d.navi);const a=pp&&pp.customer&&(pp.customer.addr||'').trim();if(a)window.open('https://map.naver.com/p/search/'+encodeURIComponent(a),'_blank','noopener');else toast('고객 정보에 현장 주소를 먼저 입력하세요');return;}
     if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.schreport!==undefined)return openReportEdit(d.schreport);
@@ -8391,6 +9839,7 @@ function setupDelegation(){
     if(d.qpdf!==undefined)return printQuote(d.qpdf);
     if(d.unarchive!==undefined){const p=state.projects.find(x=>x.name===d.unarchive);if(p){p.archived=false;markDirty();render();toast('보관 해제됨');}return;}
     if(d.archive!==undefined){const p=state.projects.find(x=>x.name===d.archive);if(p){const du=projStats(p.name).due;if(du>0&&!confirm('미수금 '+won(du)+'이 남아 있습니다. 그래도 보관할까요?'))return;p.archived=true;markDirty();render();toast('📦 보관됨 — 왼쪽 목록 아래 [보관]에서 볼 수 있습니다');}return;}
+    if(d.unarchive!==undefined){const p=state.projects.find(x=>x.name===d.unarchive);if(p){p.archived=false;markDirty();render();toast('보관 해제됨');}return;}
     if(t.id==='asAdd'){
       const inp=$('#asNew');const txt=(inp&&inp.value||'').trim();
       if(!txt){toast('AS 내용을 입력하세요.');return;}
@@ -8412,7 +9861,6 @@ function setupDelegation(){
     if(d.qidel!==undefined)return delQuoteItem(+d.qidel);
     if(d.toedit!==undefined)return quoteFromExisting(d.toedit);
     if(d.projphoto!==undefined){const n=d.projphoto;if(__projPhotoOpen.has(n))__projPhotoOpen.delete(n);else __projPhotoOpen.add(n);return render();}
-    if(d.projday!==undefined){const n=d.projday;if(__projDayOpen.has(n))__projDayOpen.delete(n);else __projDayOpen.add(n);return render();}
     if(d.history!==undefined)return projectHistory(d.history);
     if(d.renproj!==undefined)return renameProject(d.renproj);
     if(d.delproj!==undefined)return deleteProject(d.delproj);
@@ -9384,13 +10832,14 @@ function copyBiz(){ const t=curBizText(); if(navigator.clipboard&&navigator.clip
 function openModal(title,body,btns,wide){
   btns=btns||[{label:'닫기',cls:'ghost',fn:closeModal}];   // 미전달 시 기본 닫기 버튼
   const root=$('#modalRoot');
-  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}"><h3>${title}</h3><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
+  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}"><h3>${(window.escapeHtml?escapeHtml(String(title)):title)}</h3><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
   const foot=root.querySelector('.mfoot');
   btns.forEach(b=>{const el=document.createElement('button');el.className=b.cls||'';el.textContent=b.label;el.onclick=b.fn;foot.appendChild(el);});
   root.querySelector('.modal-bg').addEventListener('click',e=>{if(e.target===root.querySelector('.modal-bg'))closeModal();});
 }
 function closeModal(){if(window.__pvUrl){URL.revokeObjectURL(window.__pvUrl);window.__pvUrl=null;}$('#modalRoot').innerHTML='';}
 
+window.escapeHtml=escapeHtml;
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function escapeAttr(s){return escapeHtml(s);}
 
@@ -9481,8 +10930,9 @@ async function tryRestoreDir(){
   }catch(e){}
 }
 tryRestoreDir();
-try{hjBootExtras();}catch(e){}
 try{hjBrandApplyUI();}catch(e){}
+try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
