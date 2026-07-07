@@ -115,6 +115,31 @@ index.html (≈700KB, 스크립트 1개)
 | v37 | 🦙 Llama·커스텀 모델 | 더보기 [🦙]·제공자 화면·비서 | `llamaAsk, llamaConfig, llamaConfigLoad/Save, llamaReady, llamaSetup, LLAMA_PRESETS` (Ollama·LM Studio·Groq·Together 등 OpenAI 호환 엔드포인트 등록, 연결 테스트, aiAsk 라우터 통합+폴백, llama_setup 도구) |
 | v38 | 🤖 OpenAI·Llama 스스로 도구 실행 | `aiFC` provider 분기 | `aiFC_openaiCompat, aiHistToOpenAI, aiToolsToOpenAI` (Gemini 전용이던 function calling을 OpenAI·Llama로 확장 — 세 두뇌 모두 89개 도구를 자율 실행. aiAgentSend의 키 체크도 aiKeyReady로 변경) |
 | v39 | 📊 AI 사용량·비용 대시보드 | 더보기 [📊]·비서 | `aiUsageTrack, aiUsageDashboard, AI_PRICING` (제공자별 호출 수·토큰 집계 + 예상 비용(₩), 6개월 추이. geminiAsk·openaiAsk·llamaAsk에 추적 심음, ai_usage 도구) |
+| v40 | 🌤 날씨 연동 스마트 공정 | 더보기 [🌤]·비서 | `weatherFetch(무료 Open-Meteo), WEATHER_SENSITIVE, weatherRisksForDate, weatherSmart` (5일 예보 + 도장·방수·미장·도배 등 비/습기 민감 공정 경고·AI 재배치, weather 도구) |
+| v40 | 🏷 명함·영수증 사진 스캔 | 더보기 [🏷][🧾]·비서 | `cardReceiptScan, cardScanConfirm, receiptScanConfirm` (geminiVision으로 명함→거래처·영수증→지출 자동 등록, scan_card·scan_receipt 도구) |
+| v41 | 📸 Before/After 갤러리 | 더보기 [📸]·비서 | `beforeAfterPairs, beforeAfterGallery, beforeAfterShare` (사진 공정으로 전후 짝짓기·홍보용 공유 페이지, before_after 도구) |
+| v41 | 📱 고객 진행 공유 | 더보기 [📱]·비서 | `customerProgressV2, customerProgressPage` (진행 단계 바·안내 문자·공유 페이지. 기존 customer_progress 도구와 별도 함수로 분리) |
+| v42 | 🎙 현장 대화 → 할일 | 더보기 [🎙]·비서 | `siteConversation, convMicToggle, convExtractTodos` (SpeechRecognition 녹음→AI 할일 추출→메모 저장, site_conversation 도구) |
+| v42 | 📈 수주 성공 분석 | 더보기 [📈]·비서 | `winRateData, winRateCoach` (수주=견적의 현장 연결로 집계, 금액대별 수주율·AI 영업 코칭, win_rate 도구) |
+| v43 | 🗓 공정표 자동 생성 | 더보기 [🗓]·비서 | `PLAN_RULES, planFromItems, planAssignDates, schedulePlanDialog` (견적→AI/규칙 공정 순서·기간→일요일 스킵 날짜 배정→일정표 일괄 등록, schedule_plan 도구) |
+| v43 | 🤝 AI 견적 협상 도우미 | 더보기 [🤝]·비서 | `negotiateCalc, negotiateDialog` (희망가→할인율·마진(원가 70% 가정)·손해 판정 + AI 조정항목·마지노선·협상 멘트, negotiate 도구) |
+| v44 | 🛡 AS 보증 만료 추적 | 더보기 [🛡]·비서 | `warrantyList, warrantyDue, warrantyManage, warrantySms` (완공일+보증개월로 만료일 계산·60일 임박 알림·무상점검 문자, warranty_manage 도구) |
+| v44 | 📚 시공 노하우 축적 | 더보기 [📚]·비서 | `knowhowSave, knowhowList, knowhowRelevant, knowhowManage, knowhowRemind` ([노하우] 태그 메모·단지/평형 키워드 매칭 리마인드, knowhow·knowhow_remind 도구) |
+| v45 | 🔨 현장 안전 체크리스트 | 더보기 [🔨]·비서 | `SAFETY_RULES, safetyChecklist, safetyAI` (철거·전기·고소작업 등 6종 안전수칙+공통, AI 현장맞춤, safety_check 도구) |
+| v45 | 📅 계절별 영업 달력 | 더보기 [📅]·비서 | `SEASON_CALENDAR, seasonCalendar` (12개월 인테리어 수요·성수기·홍보 타이밍+AI 홍보문구, season_calendar 도구) |
+| v46 | 🗺 AI 현장 동선 최적화 | 더보기 [🗺]·비서 | `geoDist, projCoord, routeOptimize, routeToday` (하버사인 거리+최근접이웃 경로+카카오맵 길찾기, route_today 도구) |
+| v46 | 📊 AI 월간 경영 보고서 | 더보기 [📊]·비서 | `monthlyReportData, monthlyReport, monthlyReportPage` (매출·지출·순이익·수주율·미수금 종합+AI 총평+공유 페이지, monthly_report 도구) |
+| v47 | 🔔 알림 센터 | 더보기 [🔔]·비서 | `briefExtraItems, alertCenter` (기존 능동브리핑 확장 — 일정·미수금·보증만료·AS·목표를 한 화면에, 항목 클릭→처리 이동, alert_center 도구) |
+| v47 | 📸 견적 사진 자동 분석 | 더보기 [📸]·비서 | `photoQuoteScan, photoQuoteResult` (geminiVision으로 방 사진→면적·자재·개략견적 추정→견적서 초안 자동, photo_quote 도구) |
+| v48 | 💬 고객 셀프 견적 링크 | 더보기 [💬]·비서 | `SELF_QUOTE_WORKS, selfQuoteCalc, selfQuoteDialog, selfQuotePage` (평형·공사 선택→개략 견적 페이지, self_quote 도구) |
+| v48 | 🎯 AI 영업 타깃 추천 | 더보기 [🎯]·비서 | `salesTargetData, salesTarget` (완공시기·관계·규모 점수화→재수주 우선순위+안부 문자, sales_target 도구) |
+| v49 | 🗣 AI 음성 브리핑(TTS) | 더보기 [🗣]·비서 | `ttsBriefText, ttsSpeak, ttsStop, voiceBrief` (SpeechSynthesis로 오늘 일정·미수금·보증·AS를 음성 재생, voice_brief 도구) |
+| v50 | 💸 예산 초과 실시간 경고 | 더보기 [💸]·비서 | `budgetAlertData, budgetAlert` (지출 vs 예산/견적70% 초과율, 80%↑ 경고·게이지, budget_alert 도구) |
+| v50 | 📉 적자 현장 조기 경보 | 더보기 [📉]·비서 | `lossAlertData, lossAlert` (진행 현장 마진율<15% 경보·적자 표시+AI 조언, loss_alert 도구) |
+| v51 | 📊 현금 흐름 예측 캘린더 | 더보기 [📊]·비서 | `cashFlowData, cashFlow` (4주 수금 예정·인건비 지출 예측·누적 잔고·자금부족 경고, cash_flow 도구) |
+| v51 | 🧾 자동 경비 분류 | 더보기 [🧾]·비서 | `EXPENSE_KEYWORDS, guessExpenseCategory, expenseAutoClassify` (거래처·메모 키워드로 자재·인건비·유류 자동 분류, expense_classify 도구) |
+| v52 | 📝 계약서 위험 조항 검토 | 더보기 [📝]·비서 | `CONTRACT_CHECKLIST, contractReview` (대금·범위·추가공사 등 7개 보호조항 누락 점검+AI 문구, contract_review 도구) |
+| v52 | 🔄 반복 고객 자동 인식 | 더보기 [🔄]·비서 | `repeatCustomerData, findExistingCustomer, repeatCustomers` (전화·이름으로 단골 2회↑ 자동 묶음·누적거래액, repeat_customers 도구) |
 
 ### 🤖 AI 자율 운영 검증 (v28 종합 점검)
 
@@ -205,6 +230,6 @@ AI 도구 78종 환경에서 자율 운영 시나리오 15종을 전수 검증(`
 
 ## 10. 릴리스 노트(요약)
 
-v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → v11 데이터 이사 마법사 → v12 온보딩 → v13 오프라인·자동저장 강건 → v14 AI 복합작업 자율처리 + 경영 대시보드 → v15 선제적 아침 비서 + 매출 추이 차트 → v16 정산 문서 AI 발송 → v17 AI 삭제·메모 권한 + 수금 영수증 → v18 부가세 신고 준비 + AI 수금 대송 → v19 스마트 알림 + 세금계산서 + AI 사진 작업일지 → v20 AI 주간 브리핑 + 간편 지출 장부 → v21 월별 실손익 → v22 일정 충돌 감지 + 거래처 관리 + 연간 결산 → v23 메뉴 카테고리 정리 + AI 비서 우선 배치 → v24 AI 먼저 제안 + 빠른 명령 카드 + 통합 검색 → v25 매출 목표 관리 + 제안 알림 → v26 음성 현장일지 + AI 경영 분석 + 현장 예산 → v27 일정 브리핑 강화 + AI 견적 자동작성 + 사진 AI 하자분석 → v28 종합 사용 가이드 + 실기기 체크리스트 최신화 → v29 OpenAI(ChatGPT) 지원 + AI 능동 브리핑 → v30 무료 Gemini 우선 + AI 자동 실행 + 주·월 운영 리포트 → v31 AI 자동 모드 설정 + 운영 리포트 자동 알림 → v32 고객 응대 AI(문자 초안) + AI 매출 예측 → v33 계약서 AI + AI 자율 운영 재점검 → v34 세금계산서 AI + PC↔폰 동기화 안내 → v35 ♿ 접근성 + 대시보드 검색 → v36 AI 비서 음성 입력 + AI 두뇌 선택 → v37 🦙 Llama·커스텀 모델 등록 → v38 🤖 OpenAI·Llama도 스스로 도구 실행 → **v39 📊 AI 사용량·비용 대시보드**.
+v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검토·월말 → v4 팔로업·거래처 → v5 파일철·오늘점검 → v6 단가장·포트폴리오·진행보고·알림 → v7 안전판·수익분석·PWA → v8 AS·발주·인건비·검색 → v9 설명서·지도·전체엑셀·⚡(+버그3 수술) → v10 브랜드·고객페이지·캘린더·리허설20 → v11 데이터 이사 마법사 → v12 온보딩 → v13 오프라인·자동저장 강건 → v14 AI 복합작업 자율처리 + 경영 대시보드 → v15 선제적 아침 비서 + 매출 추이 차트 → v16 정산 문서 AI 발송 → v17 AI 삭제·메모 권한 + 수금 영수증 → v18 부가세 신고 준비 + AI 수금 대송 → v19 스마트 알림 + 세금계산서 + AI 사진 작업일지 → v20 AI 주간 브리핑 + 간편 지출 장부 → v21 월별 실손익 → v22 일정 충돌 감지 + 거래처 관리 + 연간 결산 → v23 메뉴 카테고리 정리 + AI 비서 우선 배치 → v24 AI 먼저 제안 + 빠른 명령 카드 + 통합 검색 → v25 매출 목표 관리 + 제안 알림 → v26 음성 현장일지 + AI 경영 분석 + 현장 예산 → v27 일정 브리핑 강화 + AI 견적 자동작성 + 사진 AI 하자분석 → v28 종합 사용 가이드 + 실기기 체크리스트 최신화 → v29 OpenAI(ChatGPT) 지원 + AI 능동 브리핑 → v30 무료 Gemini 우선 + AI 자동 실행 + 주·월 운영 리포트 → v31 AI 자동 모드 설정 + 운영 리포트 자동 알림 → v32 고객 응대 AI(문자 초안) + AI 매출 예측 → v33 계약서 AI + AI 자율 운영 재점검 → v34 세금계산서 AI + PC↔폰 동기화 안내 → v35 ♿ 접근성 + 대시보드 검색 → v36 AI 비서 음성 입력 + AI 두뇌 선택 → v37 🦙 Llama·커스텀 모델 등록 → v38 🤖 OpenAI·Llama도 스스로 도구 실행 → v39 📊 AI 사용량·비용 대시보드 → v40~v42 🎨 창의 기능 6종 → v43 🗓 공정표 + 🤝 협상 → v44~v46 🎨 창의 6종 → v47~v49 🎨 창의 5종 → **v50~v52 💰 재무 안전 6종(예산 경고·적자 경보·현금흐름 예측·경비 분류·계약 검토·반복 고객)**.
 
 *작성: Claude (Anthropic) — 2026-07-05, 리허설 20/20 · 도구 42종 전수 통과 시점 기준.*
