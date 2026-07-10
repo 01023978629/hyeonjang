@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="현장">
 <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
-<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·도구 142 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
+<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·도구 154 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
 <title>현장 — 인테리어 파일 정리</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
@@ -998,6 +998,7 @@ function markDirty(){state.dirty=true;__photoCache.key=null;try{hjSnapshot('작�
   // 자동 저장: 자동 모드 + 연결 폴더일 때만, 3분 간격
   if(__autoSaveOn&&state.dirHandle&&FS_OK){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
   persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적·일정 유지
+  try{backupDriveAuto();}catch(e){}
   if(typeof cloudAutoSave==='function')cloudAutoSave(); // 클라우드(Supabase) 연결 시 자동 올리기
 }
 // 이 기기 안에 작업을 자동 저장(서버 없이). 데모는 저장 안 함(실제 자료 보호).
@@ -1033,12 +1034,16 @@ function serializeData(){
     notes:state.notes||[],
     priceBook:state.priceBook||{},
     asLog:state.asLog||[],
+    satisfaction:state.satisfaction||[],
+    coworkTasks:state.coworkTasks||null,
+    _coworkInit:state._coworkInit||false,
     payLog:(state.payLog||[]).slice(-400),
     expenses:(state.expenses||[]).slice(-600),
     goals:state.goals||{},
     aiOps:state.aiOps||null,
     suppliers:state.suppliers||[],
     supplierMap:state.supplierMap||{},
+    inventory:state.inventory||[],
     brand:state.brand||null,
     contacts:state.contacts||[],
     projects:state.projects,
@@ -1066,9 +1071,13 @@ function applyData(data){
   state.notes=data.notes||[];
   state.priceBook=data.priceBook||state.priceBook||{};
   state.asLog=data.asLog||state.asLog||[];
+  state.satisfaction=Array.isArray(data.satisfaction)?data.satisfaction:(state.satisfaction||[]);
+  state.coworkTasks=Array.isArray(data.coworkTasks)?data.coworkTasks:(state.coworkTasks||null);
+  state._coworkInit=data._coworkInit||state._coworkInit||false;
   state.payLog=data.payLog||state.payLog||[];
   state.suppliers=data.suppliers||state.suppliers||[];
   state.supplierMap=data.supplierMap||state.supplierMap||{};
+  state.inventory=Array.isArray(data.inventory)?data.inventory:(state.inventory||[]);
   if(data.brand)state.brand=data.brand;
   try{hjBrandApplyUI();}catch(e){}
   state.contacts=data.contacts||[];
@@ -1150,17 +1159,18 @@ function exportData(){
     if(navigator.canShare){
       const file=new File([blob],fname,{type:'application/json'});
       if(navigator.canShare({files:[file]})){
-        navigator.share({files:[file],title:fname,text:'만물인테리어 현장데이터'}).then(()=>clearDirty()).catch(()=>{});
+        navigator.share({files:[file],title:fname,text:'만물인테리어 현장데이터'}).then(()=>{clearDirty();backupMarkDone('file');}).catch(()=>{});
         toast('보내기 → 구글드라이브 만물인테리어▸데이터에 저장하세요');
         return;
       }
     }
   }catch(e){}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  clearDirty();toast('현장데이터 파일을 내보냈습니다 — 구글드라이브 만물인테리어▸데이터에 두세요');
+  clearDirty();backupMarkDone('file');toast('현장데이터 파일을 내보냈습니다 — 구글드라이브 만물인테리어▸데이터에 두세요');
 }
 /* 데이터 불러오기: 폰·다른 PC에서 파일 선택 → 복원 */
 function importData(){
+  if(!window.__bkGuardPass){window.__bkGuardPass=true;try{backupGuard('데이터 복원(덮어쓰기)',function(){window.__bkGuardPass=false;importData();});return;}catch(e){window.__bkGuardPass=false;}}window.__bkGuardPass=false;
   const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
   inp.onchange=async()=>{
     const f=inp.files[0];if(!f)return;
@@ -2885,7 +2895,9 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
+  try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
   if(sheet)sheet.remove();
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='moreBackdrop';
@@ -2896,13 +2908,13 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><input id="moreSearch" placeholder="🔍 기능 찾기 (예: 견적, 사진, 예산)" style="width:100%;padding:11px 12px;font-size:14px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px" autocomplete="off"><div class="more-ai-hint" onclick="['moreSheet','moreBackdrop'].forEach(function(x){var e=document.getElementById(x);if(e)e.remove();});try{aiAgent()}catch(e){}" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0b4ea2,#1d6fd8);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">복잡한 메뉴 대신 "○○ 해줘"라고 하세요</span></span><span style="color:#fff;font-size:18px">›</span></div><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="activebrief"><span class="mi">🤖</span>오늘 브리핑</div><div class="more-item" data-moreaction="opsreport"><span class="mi">📊</span>운영 리포트</div><div class="more-item" data-moreaction="aiprovider"><span class="mi">🔑</span>AI 두뇌 선택</div><div class="more-item" data-moreaction="llama"><span class="mi">🦙</span>Llama 등록</div><div class="more-item" data-moreaction="aiops"><span class="mi">🤖</span>AI 운영 센터</div><div class="more-item" data-moreaction="weekplan"><span class="mi">🎯</span>주간 계획</div><div class="more-item" data-moreaction="companyintro"><span class="mi">🪪</span>회사 소개</div><div class="more-item" data-moreaction="datahealth"><span class="mi">🧯</span>데이터 검진</div><div class="more-item" data-moreaction="staleproj"><span class="mi">💤</span>방치 현장</div><div class="more-item" data-moreaction="reviewreq"><span class="mi">🗣</span>리뷰 요청</div><div class="more-item" data-moreaction="yearreport"><span class="mi">🏆</span>연말 결산</div><div class="more-item" data-moreaction="featurecoach"><span class="mi">🎓</span>기능 코치</div><div class="more-item" data-moreaction="quotefollowup"><span class="mi">⏰</span>견적 팔로업</div><div class="more-item" data-moreaction="similarquotes"><span class="mi">🔍</span>유사 견적</div><div class="more-item" data-moreaction="contractreview"><span class="mi">📝</span>계약 검토</div><div class="more-item" data-moreaction="repeatcust"><span class="mi">🔄</span>반복 고객</div><div class="more-item" data-moreaction="cashflow"><span class="mi">📊</span>현금 흐름</div><div class="more-item" data-moreaction="expenseclassify"><span class="mi">🧾</span>경비 분류</div><div class="more-item" data-moreaction="budgetalert"><span class="mi">💸</span>예산 경고</div><div class="more-item" data-moreaction="lossalert"><span class="mi">📉</span>적자 경보</div><div class="more-item" data-moreaction="voicebrief"><span class="mi">🗣</span>음성 브리핑</div><div class="more-item" data-moreaction="selfquote"><span class="mi">💬</span>셀프 견적</div><div class="more-item" data-moreaction="salestarget"><span class="mi">🎯</span>영업 타깃</div><div class="more-item" data-moreaction="alertcenter"><span class="mi">🔔</span>알림 센터</div><div class="more-item" data-moreaction="photoquote"><span class="mi">📸</span>사진 견적</div><div class="more-item" data-moreaction="route"><span class="mi">🗺</span>현장 동선</div><div class="more-item" data-moreaction="monthreport"><span class="mi">📊</span>월간 보고서</div><div class="more-item" data-moreaction="safety"><span class="mi">🔨</span>안전 체크</div><div class="more-item" data-moreaction="season"><span class="mi">📅</span>영업 달력</div><div class="more-item" data-moreaction="warranty"><span class="mi">🛡</span>AS 보증</div><div class="more-item" data-moreaction="knowhow"><span class="mi">📚</span>시공 노하우</div><div class="more-item" data-moreaction="scheduleplan"><span class="mi">🗓</span>공정표 생성</div><div class="more-item" data-moreaction="negotiate"><span class="mi">🤝</span>견적 협상</div><div class="more-item" data-moreaction="siteconv"><span class="mi">🎙</span>대화→할일</div><div class="more-item" data-moreaction="winrate"><span class="mi">📈</span>수주 분석</div><div class="more-item" data-moreaction="beforeafter"><span class="mi">📸</span>전후 갤러리</div><div class="more-item" data-moreaction="custprogress"><span class="mi">📱</span>진행 공유</div><div class="more-item" data-moreaction="weather"><span class="mi">🌤</span>날씨 공정</div><div class="more-item" data-moreaction="scancard"><span class="mi">🏷</span>명함 스캔</div><div class="more-item" data-moreaction="scanreceipt"><span class="mi">🧾</span>영수증 스캔</div><div class="more-item" data-moreaction="aiusage"><span class="mi">📊</span>AI 사용량</div><div class="more-item" data-moreaction="a11y"><span class="mi">♿</span>화면 편하게</div><div class="more-item" data-moreaction="syncguide"><span class="mi">🔄</span>PC↔폰 동기화</div><div class="more-item" data-moreaction="custreply"><span class="mi">💬</span>고객 문자</div><div class="more-item" data-moreaction="forecast"><span class="mi">📈</span>매출 예측</div><div class="more-item" data-moreaction="automode"><span class="mi">🤖</span>AI 운영 모드</div><div class="more-item" data-moreaction="guide"><span class="mi">📚</span>사용 가이드</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="settle"><span class="mi">📄</span>정산 문서</div><div class="more-item" data-moreaction="taxinv"><span class="mi">📇</span>세금계산서</div><div class="more-item" data-moreaction="photorep"><span class="mi">📷</span>사진 작업일지</div><div class="more-item" data-moreaction="notify"><span class="mi">🔔</span>스마트 알림</div><div class="more-item" data-moreaction="expense"><span class="mi">💳</span>간편 장부</div><div class="more-item" data-moreaction="pnl"><span class="mi">💰</span>월별 손익</div><div class="more-item" data-moreaction="search"><span class="mi">🔍</span>통합 검색</div><div class="more-item" data-moreaction="suppliers"><span class="mi">📇</span>거래처</div><div class="more-item" data-moreaction="annual"><span class="mi">📊</span>연간 결산</div><div class="more-item" data-moreaction="goal"><span class="mi">🎯</span>매출 목표</div><div class="more-item" data-moreaction="schedbrief"><span class="mi">📅</span>일정 브리핑</div><div class="more-item" data-moreaction="aiquote"><span class="mi">💸</span>AI 견적작성</div><div class="more-item" data-moreaction="photodefect"><span class="mi">📷</span>사진 AI 분석</div><div class="more-item" data-moreaction="worklog"><span class="mi">📝</span>음성 현장일지</div><div class="more-item" data-moreaction="analysis"><span class="mi">📈</span>AI 경영 분석</div><div class="more-item" data-moreaction="budget"><span class="mi">📅</span>현장 예산</div><div class="more-item" data-moreaction="weekbrief"><span class="mi">🤖</span>주간 브리핑</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><input id="moreSearch" placeholder="🔍 기능 찾기 (예: 견적, 사진, 예산)" style="width:100%;padding:11px 12px;font-size:14px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px" autocomplete="off"><div class="more-ai-hint" onclick="['moreSheet','moreBackdrop'].forEach(function(x){var e=document.getElementById(x);if(e)e.remove();});try{aiAgent()}catch(e){}" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0b4ea2,#1d6fd8);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">복잡한 메뉴 대신 "○○ 해줘"라고 하세요</span></span><span style="color:#fff;font-size:18px">›</span></div><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="activebrief"><span class="mi">🤖</span>오늘 브리핑</div><div class="more-item" data-moreaction="opsreport"><span class="mi">📊</span>운영 리포트</div><div class="more-item" data-moreaction="aiprovider"><span class="mi">🔑</span>AI 두뇌 선택</div><div class="more-item" data-moreaction="llama"><span class="mi">🦙</span>Llama 등록</div><div class="more-item" data-moreaction="autopilot"><span class="mi">🤖</span>AI 자율 운영</div><div class="more-item" data-moreaction="aiops"><span class="mi">🎛</span>AI 운영 센터</div><div class="more-item" data-moreaction="loopstatus"><span class="mi">🔁</span>루프 성숙도</div><div class="more-item" data-moreaction="aibrain"><span class="mi">🧠</span>AI 브레인</div><div class="more-item" data-moreaction="asintake"><span class="mi">📩</span>AS 접수 링크</div><div class="more-item" data-moreaction="satisfaction"><span class="mi">⭐</span>고객 만족도</div><div class="more-item" data-moreaction="funnel"><span class="mi">📊</span>전환율 퍼널</div><div class="more-item" data-moreaction="payplan"><span class="mi">📅</span>분할납 계획</div><div class="more-item" data-moreaction="crm"><span class="mi">👥</span>고객 관리</div><div class="more-item" data-moreaction="inventory"><span class="mi">📦</span>자재 재고</div><div class="more-item" data-moreaction="profitrank"><span class="mi">🏆</span>수익성 랭킹</div><div class="more-item" data-moreaction="weekplan"><span class="mi">🎯</span>주간 계획</div><div class="more-item" data-moreaction="companyintro"><span class="mi">🪪</span>회사 소개</div><div class="more-item" data-moreaction="datahealth"><span class="mi">🧯</span>데이터 검진</div><div class="more-item" data-moreaction="staleproj"><span class="mi">💤</span>방치 현장</div><div class="more-item" data-moreaction="reviewreq"><span class="mi">🗣</span>리뷰 요청</div><div class="more-item" data-moreaction="yearreport"><span class="mi">🏆</span>연말 결산</div><div class="more-item" data-moreaction="featurecoach"><span class="mi">🎓</span>기능 코치</div><div class="more-item" data-moreaction="quotefollowup"><span class="mi">⏰</span>견적 팔로업</div><div class="more-item" data-moreaction="similarquotes"><span class="mi">🔍</span>유사 견적</div><div class="more-item" data-moreaction="contractreview"><span class="mi">📝</span>계약 검토</div><div class="more-item" data-moreaction="repeatcust"><span class="mi">🔄</span>반복 고객</div><div class="more-item" data-moreaction="cashflow"><span class="mi">📊</span>현금 흐름</div><div class="more-item" data-moreaction="expenseclassify"><span class="mi">🧾</span>경비 분류</div><div class="more-item" data-moreaction="budgetalert"><span class="mi">💸</span>예산 경고</div><div class="more-item" data-moreaction="lossalert"><span class="mi">📉</span>적자 경보</div><div class="more-item" data-moreaction="voicebrief"><span class="mi">🗣</span>음성 브리핑</div><div class="more-item" data-moreaction="selfquote"><span class="mi">💬</span>셀프 견적</div><div class="more-item" data-moreaction="salestarget"><span class="mi">🎯</span>영업 타깃</div><div class="more-item" data-moreaction="alertcenter"><span class="mi">🔔</span>알림 센터</div><div class="more-item" data-moreaction="photoquote"><span class="mi">📸</span>사진 견적</div><div class="more-item" data-moreaction="route"><span class="mi">🗺</span>현장 동선</div><div class="more-item" data-moreaction="monthreport"><span class="mi">📊</span>월간 보고서</div><div class="more-item" data-moreaction="safety"><span class="mi">🔨</span>안전 체크</div><div class="more-item" data-moreaction="season"><span class="mi">📅</span>영업 달력</div><div class="more-item" data-moreaction="warranty"><span class="mi">🛡</span>AS 보증</div><div class="more-item" data-moreaction="knowhow"><span class="mi">📚</span>시공 노하우</div><div class="more-item" data-moreaction="scheduleplan"><span class="mi">🗓</span>공정표 생성</div><div class="more-item" data-moreaction="negotiate"><span class="mi">🤝</span>견적 협상</div><div class="more-item" data-moreaction="siteconv"><span class="mi">🎙</span>대화→할일</div><div class="more-item" data-moreaction="winrate"><span class="mi">📈</span>수주 분석</div><div class="more-item" data-moreaction="beforeafter"><span class="mi">📸</span>전후 갤러리</div><div class="more-item" data-moreaction="custprogress"><span class="mi">📱</span>진행 공유</div><div class="more-item" data-moreaction="weather"><span class="mi">🌤</span>날씨 공정</div><div class="more-item" data-moreaction="scancard"><span class="mi">🏷</span>명함 스캔</div><div class="more-item" data-moreaction="scanreceipt"><span class="mi">🧾</span>영수증 스캔</div><div class="more-item" data-moreaction="aiusage"><span class="mi">📊</span>AI 사용량</div><div class="more-item" data-moreaction="a11y"><span class="mi">♿</span>화면 편하게</div><div class="more-item" data-moreaction="syncguide"><span class="mi">🔄</span>PC↔폰 동기화</div><div class="more-item" data-moreaction="custreply"><span class="mi">💬</span>고객 문자</div><div class="more-item" data-moreaction="forecast"><span class="mi">📈</span>매출 예측</div><div class="more-item" data-moreaction="automode"><span class="mi">🤖</span>AI 운영 모드</div><div class="more-item" data-moreaction="guide"><span class="mi">📚</span>사용 가이드</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="settle"><span class="mi">📄</span>정산 문서</div><div class="more-item" data-moreaction="taxinv"><span class="mi">📇</span>세금계산서</div><div class="more-item" data-moreaction="photorep"><span class="mi">📷</span>사진 작업일지</div><div class="more-item" data-moreaction="notify"><span class="mi">🔔</span>스마트 알림</div><div class="more-item" data-moreaction="expense"><span class="mi">💳</span>간편 장부</div><div class="more-item" data-moreaction="pnl"><span class="mi">💰</span>월별 손익</div><div class="more-item" data-moreaction="search"><span class="mi">🔍</span>통합 검색</div><div class="more-item" data-moreaction="suppliers"><span class="mi">📇</span>거래처</div><div class="more-item" data-moreaction="annual"><span class="mi">📊</span>연간 결산</div><div class="more-item" data-moreaction="goal"><span class="mi">🎯</span>매출 목표</div><div class="more-item" data-moreaction="schedbrief"><span class="mi">📅</span>일정 브리핑</div><div class="more-item" data-moreaction="aiquote"><span class="mi">💸</span>AI 견적작성</div><div class="more-item" data-moreaction="photodefect"><span class="mi">📷</span>사진 AI 분석</div><div class="more-item" data-moreaction="worklog"><span class="mi">📝</span>음성 현장일지</div><div class="more-item" data-moreaction="analysis"><span class="mi">📈</span>AI 경영 분석</div><div class="more-item" data-moreaction="budget"><span class="mi">📅</span>현장 예산</div><div class="more-item" data-moreaction="weekbrief"><span class="mi">🤖</span>주간 브리핑</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   {const si=sheet.querySelector('#moreSearch');if(si){si.oninput=()=>{const q=si.value.trim().toLowerCase();const grid=sheet.querySelector('.more-grid');if(!grid)return;grid.querySelectorAll('.more-item').forEach(it=>{const txt=(it.textContent||'').toLowerCase();it.style.display=(!q||txt.includes(q))?'':'none';});const hint=sheet.querySelector('.more-ai-hint');if(hint)hint.style.display=q?'none':'';};}}
   const close=()=>{sheet.remove();bd.remove();};
   bd.onclick=close;
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
-  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='aiops'){aiOpsCenter();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}});
+  sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;try{moreTrackUse(a);}catch(e){}moreActionHandler(a);});
 }
 // 카메라 촬영
 function openCamera(){
@@ -3167,7 +3179,7 @@ function viewDashboard(){
   const totMarginRate=totEst?Math.round(totMargin/totEst*100):0;
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
-  let html=`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="moss tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="clay tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="hjMorningBrief()">🌅 브리핑</button><button class="blue tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="blue tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="blue tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+dashboardTodayHTML();
+  let html=`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="moss tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="clay tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="hjMorningBrief()">🌅 브리핑</button><button class="blue tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="blue tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="blue tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
@@ -3544,6 +3556,18 @@ const AI_TOOLS = [
  {name:'ops_loop_dismiss',description:'특정 대기 작업을 무시 처리한다. title=작업 제목 일부(필수).',parameters:{type:'OBJECT',properties:{title:{type:'STRING'}}}},
  {name:'ops_loop_logs',description:'운영 로그(실행 기록)를 조회한다. "운영 로그/실행 기록/뭐 했어"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_settings',description:'운영 루프 설정 화면을 연다. "운영 설정/루프 설정/자동 점검 설정"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'as_intake',description:'고객이 직접 A/S를 신청하는 셀프 접수 안내 페이지를 만든다. "AS 접수/AS 신청 링크/사후관리 페이지/하자 접수"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'satisfaction',description:'고객 만족도 별점을 수집·관리한다(평균·분포·후기 기록·별점 요청 문자). "만족도/별점/후기 수집/평점"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'sales_funnel',description:'견적 전환율 퍼널을 보여준다(상담→실측→시공→완공 단계별 전환율·견적→계약 비율·병목 진단). "전환율/퍼널/계약률/어디서 이탈"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'pay_plan',description:'계약금·중도금·잔금 분할납 예약 알림을 만든다. query=현장명(선택). "분할납/계약금/중도금/잔금/입금 예약/대금 계획"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'customer_crm',description:'고객 타임라인(CRM)을 연다(고객별 현장·수금·연락·리뷰 이력 시간순). query=고객명(선택). "고객 관리/고객 이력/CRM/고객 타임라인/이 고객"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
+ {name:'inventory',description:'자재 재고를 관리한다(수량 증감·최소수량 미달 재주문 알림·발주 연결). "자재 재고/재고 관리/자재 부족/재주문"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'profit_rank',description:'현장별 수익성 랭킹을 보여준다(매출-원가 이익 순위·마진율). "수익성/어떤 현장이 남아/현장 순위/이익 랭킹"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'backup_center',description:'데이터 백업 센터를 연다(마지막 백업 시점·클라우드 연결 상태·지금 백업·드라이브 연결·복원). "백업/백업하기/데이터 안전/드라이브 백업/자료 지키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'cowork_tasks',description:'PC의 Claude Cowork에게 시킬 명령서를 보관·복사·수정하는 Cowork 작업 지휘부를 연다(카드내역 정리·세금계산서 대조·사진 담당자 전송·월간 종합). "코워크/cowork/명령서/작업 지휘부/홈택스 정리/카드 정리 시키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'auto_operate',description:'AI 완전 자율 운영: 사업을 점검하고 안전한 조회·리포트 작업은 자동 처리한 뒤, 문자·수금 등 승인 필요한 것만 모아 보여준다. "자율 운영/알아서 다 해줘/자동으로 처리해/오토파일럿"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'ops_loop_brain',description:'AI가 사업 상태 전체를 분석해 오늘 가장 중요한 3가지를 추론한다(규칙이 아닌 AI 판단). "AI 브레인/뭐부터 해야 해/우선순위 정해줘/오늘 조언"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'ops_loop_status',description:'운영 루프 성숙도를 자가진단한다(점수·등급·진단 항목·누적 성과). "루프 상태/자율 점수/얼마나 자동화/성숙도"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_batch',description:'승인 대기 작업을 카테고리·우선순위별로 일괄 승인·실행하는 배치 승인 화면을 연다. "일괄 승인/모두 승인/배치 처리/한번에 처리"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_summary',description:'현재 운영 상태를 요약한다(대기·긴급·처리할 일 3개). "운영 상태/요약/지금 상황"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_report_daily',description:'오늘의 브리핑 리포트를 생성한다(일정·미수금·챙길 일). "오늘 브리핑/일일 리포트"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -3981,6 +4005,18 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'ops_loop_dismiss':{if(!a.title)return {오류:'무시할 작업 제목을 알려주세요'};const o=aiOpsEnsureState();const t=o.queue.find(x=>x.title.includes(a.title));if(!t)return {오류:'"'+a.title+'" 작업을 못 찾았습니다'};aiQueueDismiss(t.id);return {결과:'무시 처리: '+t.title};}
     case 'ops_loop_logs':{const r=aiOpsLogView();return Object.assign({결과:'운영 로그'},r);}
     case 'ops_loop_settings':{const r=aiOpsSettings();return Object.assign({결과:'운영 설정'},r);}
+    case 'as_intake':{const r=asIntake();return Object.assign({결과:'AS 셀프 접수를 열었습니다'},r);}
+    case 'satisfaction':{const r=satisfactionManage();return Object.assign({결과:'고객 만족도를 열었습니다'},r);}
+    case 'sales_funnel':{const r=funnelView();return Object.assign({결과:'전환율 퍼널을 열었습니다'},r);}
+    case 'pay_plan':{let pn=null;if(a.query){const ms=projectResolve(a.query);if(ms.length)pn=ms[0];}const r=payPlanDialog(pn);return Object.assign({결과:'분할납 계획을 열었습니다'},r);}
+    case 'customer_crm':{let key=null;if(a.query){const list=customerListData();const m=list.find(x=>x.name&&x.name.includes(a.query))||list.find(x=>x.phone&&x.phone.includes(a.query));if(m)key=m.key;}const r=crmDialog(key);return Object.assign({결과:'고객 타임라인을 열었습니다'},r);}
+    case 'inventory':{const r=inventoryManage();return Object.assign({결과:'자재 재고를 열었습니다'},r);}
+    case 'profit_rank':{const r=profitRank();return Object.assign({결과:'수익성 랭킹을 열었습니다'},r);}
+    case 'backup_center':{const r=backupCenter();return Object.assign({결과:'백업 센터를 열었습니다'},r);}
+    case 'cowork_tasks':{const r=coworkTasksManage();return Object.assign({결과:'Cowork 작업 지휘부를 열었습니다'},r);}
+    case 'auto_operate':{const r=await aiAutoOperateView();return Object.assign({결과:'자율 운영 완료'},r);}
+    case 'ops_loop_brain':{const r=await aiOpsBrain();return Object.assign({결과:'AI 운영 브레인 분석'},r);}
+    case 'ops_loop_status':{const r=aiOpsLoopStatus();return Object.assign({결과:'루프 성숙도 진단'},r);}
     case 'ops_loop_batch':{const r=aiOpsBatchApprove();return Object.assign({결과:'배치 승인 화면'},r);}
     case 'ops_loop_summary':{const s=aiQueueSummary();return {결과:'운영 상태 요약',대기:s.pending,승인:s.approved,긴급:s.urgent,높음:s.high,오래된대기:s.stale,처리할일:s.top3.map(t=>t.title)};}
     case 'ops_loop_report_daily':{const r=aiOpsDailyBrief();aiOpsReportView(r);return Object.assign({결과:'일일 브리핑'},{요약:r.summary});}
@@ -4134,6 +4170,18 @@ case 'ops_loop_run':return '운영 점검';
     case 'ops_loop_dismiss':return '작업 무시';
     case 'ops_loop_logs':return '운영 로그';
     case 'ops_loop_settings':return '운영 설정';
+    case 'as_intake':return 'AS 셀프 접수';
+    case 'satisfaction':return '고객 만족도';
+    case 'sales_funnel':return '전환율 퍼널';
+    case 'pay_plan':return '분할납 계획';
+    case 'customer_crm':return '고객 타임라인';
+    case 'inventory':return '자재 재고';
+    case 'profit_rank':return '수익성 랭킹';
+    case 'backup_center':return '백업 센터';
+    case 'cowork_tasks':return 'Cowork 작업 지휘부';
+    case 'auto_operate':return 'AI 자율 운영';
+    case 'ops_loop_brain':return 'AI 운영 브레인';
+    case 'ops_loop_status':return '루프 성숙도';
     case 'ops_loop_batch':return '배치 승인';
     case 'ops_loop_summary':return '운영 상태 요약';
     case 'ops_loop_report_daily':return '일일 브리핑';
@@ -6145,6 +6193,18 @@ const HJ_HELP=[
   {k:'방치 현장 알림',d:'더보기 [💤 방치 현장] — 진행 중인데 2주 넘게 활동이 없는 현장을 찾아, 잊지 않게 알려주고 안부 문자를 제안합니다.',say:'방치된 현장 있어?'},
   {k:'주간 계획',d:'더보기 [🎯 주간 계획] — 다음 7일 일정을 요일별로 정리하고, 챙길 일(미수금·팔로업·보증 등)과 AI 우선순위 조언을 함께 보여줍니다.',say:'이번 주 계획 보여줘'},
   {k:'회사 소개 페이지',d:'더보기 [🪪 회사 소개] — 회사명·연락처·실적·강점을 담은 원페이지 소개를 만듭니다. 고객에게 링크·캡처로 보내 신뢰를 주세요.',say:'회사 소개 페이지 만들어줘'},
+  {k:'AS 셀프 접수 링크',d:'더보기 [📩 AS 접수 링크] — 고객이 직접 A/S를 신청하는 안내 페이지를 만듭니다. 전화·문자 신청 버튼과 안내가 담겨 있어 링크·캡처로 보내면 됩니다.',say:'AS 접수 페이지 만들어줘'},
+  {k:'고객 만족도 별점',d:'더보기 [⭐ 고객 만족도] — 완공 고객의 별점·후기를 기록하고 평균·분포를 봅니다. 완공 고객에게 별점 요청 문자도 보낼 수 있어요.',say:'고객 만족도 보여줘'},
+  {k:'견적 전환율 퍼널',d:'더보기 [📊 전환율 퍼널] — 상담→실측→시공→완공 단계별 현장 수와 전환율, 견적→계약 비율을 보고 어느 단계에서 이탈이 많은지 병목을 진단합니다.',say:'전환율 퍼널 보여줘'},
+  {k:'분할납 계획',d:'더보기 [📅 분할납 계획] — 계약금·중도금·잔금 비율과 예약일을 정하면 각 금액과 입금 예약 알림을 만들고, 입금 안내 문자도 보낼 수 있어요.',say:'분할납 계획 세워줘'},
+  {k:'고객 타임라인(CRM)',d:'더보기 [👥 고객 관리] — 고객별로 현장·수금·완공·리뷰 이력을 시간순으로 모아 보여줍니다. 단골은 자동 표시되고, 전화·문자도 바로 걸 수 있어요.',say:'고객 관리 열어줘'},
+  {k:'자재 재고',d:'더보기 [📦 자재 재고] — 자주 쓰는 자재의 재고를 +/−로 관리하고, 최소 수량 이하로 떨어지면 재주문 알림과 발주서를 연결해 줍니다.',say:'자재 재고 보여줘'},
+  {k:'현장별 수익성 랭킹',d:'더보기 [🏆 수익성 랭킹] — 현장별로 매출에서 원가(자재·인건비·외주)를 뺀 이익 순위를 매겨, 어떤 현장이 실제로 남는지 보여줍니다.',say:'수익성 랭킹 보여줘'},
+  {k:'백업 센터',d:'더보기 [💾 백업 센터] — 마지막 백업 시점과 클라우드 연결 상태를 보고, 한 번에 백업하거나 구글 드라이브를 연결합니다. 일주일 이상 백업 안 하면 홈에 알림이 뜨고, 드라이브를 연결하면 자료 저장 시 자동으로 클라우드에 백업돼 폰이 고장나도 안전해요.',say:'백업 센터 열어줘'},
+  {k:'Cowork 작업 지휘부',d:'더보기 [🖥 Cowork 지휘부] — PC의 Claude Cowork에게 시킬 명령서를 보관합니다. 카드내역 정리·세금계산서 대조·사진 담당자별 전송·월간 종합 4개 기본 명령이 있고, 복사해서 Cowork에 붙여넣으면 됩니다. 작업을 수정하거나 새로 추가할 수 있어요.',say:'Cowork 작업 지휘부 열어줘'},
+  {k:'AI 자율 운영(오토파일럿)',d:'더보기 [🤖 AI 자율 운영] — 한 번 누르면 사업을 점검하고 안전한 조회·리포트는 AI가 자동 처리한 뒤, 문자·수금처럼 승인이 필요한 것만 모아 보여줍니다. 되돌리기 어려운 일은 항상 사장님 승인을 거쳐요.',say:'자율 운영 실행해줘'},
+  {k:'AI 운영 브레인',d:'더보기 [🧠 AI 브레인] — 규칙 점검과 달리, AI가 진행 현장·일정·미수금·큐를 종합해 오늘 먼저 할 일 3가지를 이유와 함께 추론해 줍니다.',say:'AI 브레인 열어줘'},
+  {k:'루프 성숙도 진단',d:'더보기 [🔁 루프 성숙도] — 운영 루프가 얼마나 잘 돌고 있는지 점수(0~100)로 자가진단합니다. 활성·성공률·큐관리·후속연결 4가지를 보고 등급을 매겨요.',say:'루프 성숙도 보여줘'},
   {k:'AI 운영 센터',d:'더보기 [🤖 AI 운영 센터] — AI가 사업 상태를 점검(Planner)해 할 일을 큐에 쌓고, 승인하면(Approval) 실행(Executor)하고 기록(Log)합니다. 앱을 열 때 예약 시각이 지났으면 자동 점검해요. 문자 발송은 항상 승인을 거칩니다.',say:'AI 운영 센터 열어줘'},
   {k:'운영 리포트',d:'경영 대시보드 [📊 운영] — 주간/월간 전체 운영(수금·지출·손익·완료·견적)을 한 장으로 정리하고 AI 총평도 받습니다.',say:'이번주 운영 리포트'},
   {k:'비용 없는 AI',d:'무료 Gemini를 기본으로 씁니다. OpenAI(유료) 키를 넣어도 Gemini가 있으면 무료 Gemini를 우선 사용해 비용이 들지 않아요.',say:'AI 설정'},
@@ -10924,6 +10984,12 @@ function briefExtraItems(){
       if(st.length){items.push({ic:'💤',t:'방치 현장 '+st.length+'곳',sub:st[0].name+(st[0].days?' '+st[0].days+'일째 조용':' 활동 없음')+' — 확인 필요',action:'stale'});}
     }
   }catch(e){}
+  try{
+    if(typeof inventoryLowStock==='function'){
+      const low=inventoryLowStock();
+      if(low.length){items.push({ic:'📦',t:'자재 재주문 필요 '+low.length+'종',sub:low.map(function(x){return x.name;}).slice(0,3).join(', ')+' — 재고 부족',action:'inventory'});}
+    }
+  }catch(e){}
   return items;
 }
 // 능동 알림 센터(전용 화면 — 기존 브리핑보다 상세)
@@ -10949,6 +11015,7 @@ function alertCenter(){
       if(act==='warranty')warrantyManage();
       else if(act==='review'&&typeof reviewRequest==='function')reviewRequest();
       else if(act==='stale'&&typeof staleProjects==='function')staleProjects();
+      else if(act==='inventory'&&typeof inventoryManage==='function')inventoryManage();
       else if(act==='ops'&&typeof aiOpsCenter==='function')aiOpsCenter();
       else if(act==='as'&&typeof asManage==='function')asManage();
       else if(act==='goal'&&typeof goalManage==='function')goalManage();
@@ -12489,6 +12556,8 @@ async function aiExecuteTask(id){
   t.status=okDone?'done':'failed';t.result=result;t.updatedAt=new Date().toISOString();
   aiOpsMarkStats(okDone?'done':'failed');
   aiOpsLog({event:(okDone?'실행: ':'실패: ')+t.title,detail:result,source:t.type,actionId:t.id,ok:okDone});
+  // 완료 시 후속 액션 체이닝(루프 닫기)
+  if(okDone){try{aiOpsChainNext(t);}catch(e){}}
   // 완료된 건 큐에서 제거(실패는 재시도 위해 남김)
   if(okDone)o.queue=o.queue.filter(x=>x.id!==id);
   markDirty();try{render();}catch(e){}
@@ -12575,6 +12644,7 @@ function aiOpsVisibilityCheck(){
     const o=aiOpsEnsureState();if(!o.enabled)return;
     if(o.nextCheck&&new Date(o.nextCheck).getTime()<=Date.now()){aiRunLightCheck('visibility');}
     aiOpsRunDueLoops('visibility');
+    try{aiOpsNotifyPending();}catch(e){}
   }catch(e){}
 }
 function aiOpsIntervalCheck(){
@@ -12697,6 +12767,8 @@ function aiOpsCenter(){
   const catChips=Object.keys(sum.byCat).map(c=>'<span style="font-size:10px;background:var(--paper-2);border-radius:8px;padding:3px 8px;margin:2px">'+escapeHtml(c)+' '+sum.byCat[c]+'</span>').join('');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:15px 16px;color:#fff"><div style="font-size:11px;opacity:.9">Daily·Weekly·Monthly 운영 루프</div><div style="font-size:18px;font-weight:800">🔁 AI 운영 센터</div><div style="font-size:11.5px;opacity:.95;margin-top:3px">대기 '+sum.pending+' · 승인 '+sum.approved+' · 긴급 '+sum.urgent+' · '+(o.enabled?'루프 ON':'루프 OFF')+'</div></div>'+
+    // 완전 자율 운영(대표 버튼)
+    '<button class="clay" id="opAuto" style="width:100%;padding:13px;font-size:14px;font-weight:700;margin-bottom:8px">🤖 자율 운영 — 알아서 처리하기</button>'+
     // 루프 실행 버튼(Daily/Weekly/Monthly/전체)
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'+
       '<button class="clay" id="opRunAll" style="padding:11px;font-size:13px;font-weight:700">🔍 전체 점검</button>'+
@@ -12704,6 +12776,7 @@ function aiOpsCenter(){
       '<button class="ghost" id="opRunWeekly" style="padding:9px;font-size:12px">📊 주간</button>'+
       '<button class="ghost" id="opRunMonthly" style="padding:9px;font-size:12px">🏆 월말</button>'+
     '</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:8px">'+(aiKeyReady()?'<button class="ghost tiny" id="opBrain" style="flex:1;padding:8px;font-size:11.5px">🧠 AI 브레인</button>':'')+'<button class="ghost tiny" id="opStatus" style="flex:1;padding:8px;font-size:11.5px">🔁 루프 성숙도</button></div>'+
     (approved.length?'<button class="moss" id="opExecAll" style="width:100%;padding:10px;font-size:12.5px;margin-bottom:12px">▶ 승인된 '+approved.length+'건 실행</button>':'<div style="height:4px"></div>')+
     // 카테고리 요약
     (catChips?'<div style="margin-bottom:10px">'+catChips+'</div>':'')+
@@ -12725,7 +12798,10 @@ function aiOpsCenter(){
   bind('opRunWeekly',()=>{const r=aiRunWeeklyLoop('manual');toast('📊 주간 점검 — 신규 '+r.신규+'건');rebind();});
   bind('opRunMonthly',()=>{const r=aiRunMonthlyLoop('manual');toast('🏆 월말 점검 — 신규 '+r.신규+'건');rebind();});
   bind('opExecAll',async()=>{const b=document.getElementById('opExecAll');if(b){b.disabled=true;b.textContent='실행 중…';}const r=await aiExecuteApproved();toast('▶ 실행 '+r.실행+'건'+(r.실패?' · 실패 '+r.실패:''));rebind();});
+  bind('opAuto',()=>aiAutoOperateView());
   bind('opBatch',()=>aiOpsBatchApprove());
+  bind('opBrain',()=>aiOpsBrain());
+  bind('opStatus',()=>aiOpsLoopStatus());
   bind('opQueueFull',()=>aiOpsQueueView());
   bind('opLogFull',()=>aiOpsLogView());
   bind('opSettings',()=>aiOpsSettings());
@@ -12957,6 +13033,1151 @@ function aiOpsBatchApprove(){
   bind('baExecAll',async()=>{const btn=document.getElementById('baExecAll');if(btn){btn.disabled=true;btn.textContent='실행 중…';}const r=await aiExecuteBatch('approved');aiOpsBatchResultView(r);});
   document.querySelectorAll('.baCat').forEach(b=>b.onclick=()=>{const n=aiQueueApproveBatch('category',b.dataset.c);toast('✅ '+b.dataset.c+' '+n+'건 승인');aiOpsBatchApprove();});
   return {대기:sum.pending};
+}
+
+/* ═══════════ 📦 자재 재고·발주 관리 ═══════════
+   state.inventory = [{id,name,unit,qty,minQty,supplier,updatedAt}]
+   재고 부족(qty<=minQty) 시 재주문 알림·발주서 연결 */
+function inventoryEnsure(){
+  if(!Array.isArray(state.inventory))state.inventory=[];
+  return state.inventory;
+}
+function inventoryLowStock(){
+  return inventoryEnsure().filter(it=>(+it.qty||0)<=(+it.minQty||0));
+}
+function inventoryManage(){
+  const inv=inventoryEnsure();const [c1,c2]=hjBrandGrad('#0e7a6b','#e8912d');
+  const low=inventoryLowStock();
+  const rows=inv.length?inv.map(it=>{
+    const isLow=(+it.qty||0)<=(+it.minQty||0);
+    return '<div style="display:flex;align-items:center;gap:9px;padding:11px;border:1px solid '+(isLow?'#fca5a5':'var(--line-soft)')+';border-radius:11px;margin-bottom:7px;background:'+(isLow?'#fff5f5':'var(--paper)')+'">'+
+      '<div style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(it.name)+'</b>'+(isLow?' <span style="font-size:10px;color:#c2410c;font-weight:700">부족</span>':'')+'<br><span style="font-size:11px;color:var(--muted)">'+(it.supplier?escapeHtml(it.supplier)+' · ':'')+'최소 '+(it.minQty||0)+(it.unit||'')+'</span></div>'+
+      '<div style="display:flex;align-items:center;gap:5px"><button class="invMinus ghost tiny" data-id="'+it.id+'" style="width:30px;padding:5px">−</button><span style="min-width:52px;text-align:center;font-size:14px;font-weight:800">'+(it.qty||0)+'<span style="font-size:10px;font-weight:400;color:var(--muted)">'+(it.unit||'')+'</span></span><button class="invPlus ghost tiny" data-id="'+it.id+'" style="width:30px;padding:5px">+</button></div>'+
+      '<button class="invDel ghost tiny" data-id="'+it.id+'" style="padding:5px 8px;color:#c2410c">✕</button>'+
+    '</div>';
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">등록된 자재가 없어요.<br>자주 쓰는 자재를 추가해 재고를 관리하세요.</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">자재 재고</div><div style="font-size:17px;font-weight:800">📦 자재 '+inv.length+'종</div>'+(low.length?'<div style="font-size:12px;opacity:.95;margin-top:2px">⚠️ 재주문 필요 '+low.length+'종</div>':'')+'</div>'+
+    (low.length?'<div style="background:#fef2f2;border-radius:11px;padding:11px;margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#c2410c;margin-bottom:5px">🔔 재주문 필요</div><div style="font-size:11.5px;color:var(--ink)">'+low.map(it=>escapeHtml(it.name)+'('+(it.qty||0)+(it.unit||'')+')').join(', ')+'</div>'+(state.suppliers&&state.suppliers.length?'<button class="clay tiny" id="invOrder" style="margin-top:8px;padding:7px 12px">🚚 발주서 만들기</button>':'')+'</div>':'')+
+    rows+
+    '<button class="moss" id="invAdd" style="width:100%;padding:12px;margin-top:10px;font-size:14px">+ 자재 추가</button>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 현장에서 자재를 쓰면 −로 줄이세요. 최소 수량 이하로 떨어지면 재주문 알림이 떠요.</div>';
+  openModal('📦 자재 재고',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rebind=()=>inventoryManage();
+  document.querySelectorAll('.invPlus').forEach(b=>b.onclick=()=>{const it=inv.find(x=>x.id===b.dataset.id);if(it){it.qty=(+it.qty||0)+1;it.updatedAt=new Date().toISOString();markDirty();rebind();}});
+  document.querySelectorAll('.invMinus').forEach(b=>b.onclick=()=>{const it=inv.find(x=>x.id===b.dataset.id);if(it){it.qty=Math.max(0,(+it.qty||0)-1);it.updatedAt=new Date().toISOString();markDirty();rebind();}});
+  document.querySelectorAll('.invDel').forEach(b=>b.onclick=()=>{if(confirm('이 자재를 삭제할까요?')){state.inventory=inv.filter(x=>x.id!==b.dataset.id);markDirty();rebind();}});
+  const addBtn=document.getElementById('invAdd');if(addBtn)addBtn.onclick=()=>inventoryAdd();
+  const ordBtn=document.getElementById('invOrder');if(ordBtn)ordBtn.onclick=()=>{closeModal();try{if(typeof materialOrder==='function')materialOrder();else if(typeof supplierList==='function')supplierList();}catch(e){toast('발주 화면을 여는 중 문제가 생겼어요');}};
+  return {자재:inv.length,부족:low.length};
+}
+function inventoryAdd(){
+  const body=
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">자재 이름</label>'+
+    '<input id="invName" placeholder="예: 실크 벽지, 타일 본드" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px">'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">현재 수량</label><input id="invQty" type="number" value="0" style="width:100%;padding:10px;font-size:14px"></div><div style="flex:1"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">단위</label><input id="invUnit" placeholder="개/롤/포" style="width:100%;padding:10px;font-size:14px"></div></div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">최소 수량(알림 기준)</label><input id="invMin" type="number" value="1" style="width:100%;padding:10px;font-size:14px"></div><div style="flex:1"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px">거래처(선택)</label><input id="invSup" placeholder="예: OO자재" style="width:100%;padding:10px;font-size:14px"></div></div>';
+  openModal('+ 자재 추가',body,[
+    {label:'추가',cls:'clay',fn:()=>{
+      const name=document.getElementById('invName').value.trim();
+      if(!name){toast('자재 이름을 입력하세요');return;}
+      inventoryEnsure().push({id:uid(),name,qty:+document.getElementById('invQty').value||0,unit:document.getElementById('invUnit').value.trim(),minQty:+document.getElementById('invMin').value||0,supplier:document.getElementById('invSup').value.trim(),updatedAt:new Date().toISOString()});
+      markDirty();toast('📦 자재를 추가했어요');inventoryManage();
+    }},
+    {label:'취소',cls:'ghost',fn:()=>inventoryManage()}]);
+}
+
+/* ═══════════ 🏆 현장별 수익성 랭킹 ═══════════
+   projStats의 marginRate·cost·recv로 현장별 수익성 순위 */
+function profitRankData(){
+  const rows=[];
+  (state.projects||[]).forEach(p=>{
+    if(p.archived)return;
+    let s;try{s=projStats(p.name);}catch(e){return;}
+    if(!s)return;
+    // 매출(견적 or 수금 중 큰 값), 원가, 이익
+    const revenue=Math.max(s.est||0,s.recv||0);
+    if(revenue<=0&&s.cost<=0)return;  // 데이터 없는 현장 제외
+    const profit=revenue-(s.cost||0);
+    const rate=revenue>0?Math.round(profit/revenue*100):0;
+    rows.push({name:p.name,revenue,cost:s.cost||0,profit,rate,stage:s.stage,done:!!s.doneAt});
+  });
+  return rows.sort((a,b)=>b.profit-a.profit);
+}
+function profitRank(){
+  const rows=profitRankData();const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
+  if(!rows.length){
+    openModal('🏆 수익성 랭킹','<div style="text-align:center;padding:30px"><div style="font-size:40px">🏆</div><div style="margin-top:10px;font-size:14px">아직 수익을 계산할 현장이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">견적·수금·원가(자재·인건비·외주)를<br>입력하면 현장별 수익성을 비교해 드려요.</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    return {현장:0};
+  }
+  const medals=['🥇','🥈','🥉'];
+  const totalProfit=rows.reduce((a,r)=>a+r.profit,0);
+  const totalRev=rows.reduce((a,r)=>a+r.revenue,0);
+  const avgRate=totalRev>0?Math.round(totalProfit/totalRev*100):0;
+  const items=rows.map((r,i)=>{
+    const rateColor=r.rate>=30?'#0a7f43':r.rate>=15?'#e8912d':r.rate>=0?'#c2410c':'#dc2626';
+    const barW=Math.max(3,Math.min(100,r.rate));
+    return '<div style="padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:8px">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="font-size:18px;width:26px">'+(i<3?medals[i]:'<span style="font-size:12px;color:var(--muted)">'+(i+1)+'</span>')+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(r.name)+'</b><span style="font-size:11px;color:var(--muted)">'+(r.done?'완료':(STAGES[r.stage]||'진행'))+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px"><span>매출 '+hjMan(r.revenue)+' · 원가 '+hjMan(r.cost)+'</span><b style="color:'+rateColor+';font-size:13px">이익 '+hjMan(r.profit)+' ('+r.rate+'%)</b></div>'+
+      '<div style="height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+rateColor+'"></div></div>'+
+    '</div>';
+  }).join('');
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">전체 수익성</div><div style="font-size:24px;font-weight:800;margin:2px 0">이익 '+hjMan(totalProfit)+'</div><div style="font-size:13px;opacity:.95">평균 마진율 '+avgRate+'% · '+rows.length+'개 현장</div></div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">매출에서 원가(자재·인건비·외주)를 뺀 이익 순위입니다. 어떤 현장이 실제로 남는지 한눈에 보세요.</div>'+
+    items+
+    (rows.some(r=>r.rate<15)?'<div style="font-size:11px;color:#c2410c;background:#fef2f2;border-radius:9px;padding:10px;margin-top:6px;line-height:1.5">⚠️ 마진율 15% 미만 현장은 원가를 점검해 보세요. 다음 견적에 반영하면 좋아요.</div>':'<div style="font-size:11px;color:#0a7f43;background:#f0fdf4;border-radius:9px;padding:10px;margin-top:6px;line-height:1.5">👍 전반적으로 건강한 수익 구조예요.</div>')+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 원가는 각 현장의 자재비·인건비·외주비 입력값 기준이에요. 정확히 입력할수록 랭킹이 정확해져요.</div>';
+  openModal('🏆 현장별 수익성 랭킹',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:rows.length,평균마진:avgRate};
+}
+
+/* ═══════════ 👥 고객 타임라인 (CRM) ═══════════
+   고객별로 현장·수금·완공·리뷰 이력을 시간순으로 모아 보여줌.
+   고객 식별: customer.phone 우선, 없으면 customer.name */
+function customerKey(p){
+  const c=p.customer||{};
+  return (c.phone||'').replace(/[^0-9]/g,'')||c.name||'';
+}
+function customerListData(){
+  const map={};
+  (state.projects||[]).forEach(p=>{
+    if(p.archived)return;
+    const key=customerKey(p);if(!key)return;
+    const c=p.customer||{};
+    if(!map[key])map[key]={key,name:c.name||'(이름없음)',phone:c.phone||'',addr:c.addr||'',projects:[],revenue:0,recv:0,lastAt:null};
+    const m=map[key];
+    m.projects.push(p.name);
+    if(!m.name||m.name==='(이름없음)')m.name=c.name||m.name;
+    if(!m.phone)m.phone=c.phone||'';
+    let s;try{s=projStats(p.name);}catch(e){}
+    if(s){m.revenue+=Math.max(s.est||0,s.recv||0);m.recv+=s.recv||0;}
+    const la=(typeof projLastActivity==='function')?projLastActivity(p.name):null;
+    if(la&&(!m.lastAt||la>m.lastAt))m.lastAt=la;
+  });
+  return Object.values(map).sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
+}
+// 특정 고객의 시간순 이벤트
+function customerTimeline(key){
+  const events=[];
+  (state.projects||[]).forEach(p=>{
+    if(customerKey(p)!==key)return;
+    // 현장 생성(첫 파일/일정 기준 or doneAt)
+    let s;try{s=projStats(p.name);}catch(e){}
+    // 완공
+    if(p.doneAt)events.push({date:p.doneAt,ic:'✅',title:p.name+' 완공',sub:s?('견적 '+hjMan(s.est||0)):''});
+    // 미수금
+    if(s&&s.due>0)events.push({date:p.dueDate||p.doneAt||localDate(),ic:'💰',title:p.name+' 미수 '+hjMan(s.due),sub:'수금 필요'});
+    // 현장 진행
+    if(!p.doneAt)events.push({date:localDate(),ic:'🏗',title:p.name+' 진행 중',sub:STAGES[p.stage]||''});
+  });
+  // 수금 이력
+  (state.payLog||[]).forEach(x=>{
+    const pj=(state.projects||[]).find(p=>p.name===x.project);
+    if(pj&&customerKey(pj)===key)events.push({date:x.d,ic:'💵',title:hjMan(x.amt)+' 입금',sub:x.project});
+  });
+  // 리뷰 요청(노트)
+  (state.notes||[]).forEach(nt=>{
+    const t=String(nt.text||'');
+    const m=t.match(/^\[리뷰요청:([^\]]+)\]/);
+    if(m){const pj=(state.projects||[]).find(p=>p.name===m[1]);if(pj&&customerKey(pj)===key)events.push({date:(t.match(/\d{4}-\d{2}-\d{2}/)||[localDate()])[0],ic:'🗣',title:'리뷰·소개 요청',sub:m[1]});}
+  });
+  return events.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+}
+function crmDialog(key){
+  const list=customerListData();
+  if(!key){
+    if(!list.length){
+      openModal('👥 고객 타임라인','<div style="text-align:center;padding:30px"><div style="font-size:40px">👥</div><div style="margin-top:10px;font-size:14px">등록된 고객이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">현장에 고객 이름·연락처를 입력하면<br>고객별 거래 이력을 한눈에 볼 수 있어요.</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+      return {고객:0};
+    }
+    const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+    const rows=list.map(m=>{
+      const repeat=m.projects.length>=2;
+      return '<button class="crmPick" data-k="'+escapeAttr(m.key)+'" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px;margin-bottom:7px;border-radius:12px;border:1px solid var(--line-soft);background:var(--paper)">'+
+        '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,'+c1+','+c2+');display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;flex-shrink:0">'+escapeHtml((m.name||'?').slice(0,1))+'</div>'+
+        '<div style="flex:1;min-width:0"><b style="font-size:13.5px">'+escapeHtml(m.name)+'</b>'+(repeat?' <span style="font-size:10px;background:#fef9c3;color:#b45309;padding:1px 6px;border-radius:8px;font-weight:700">단골 '+m.projects.length+'</span>':'')+'<br><span style="font-size:11px;color:var(--muted)">'+(m.phone?escapeHtml(m.phone)+' · ':'')+'거래 '+hjMan(m.revenue)+'</span></div>'+
+        '<span style="font-size:16px;color:var(--muted)">›</span>'+
+      '</button>';
+    }).join('');
+    openModal('👥 고객 타임라인','<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">고객 관리</div><div style="font-size:17px;font-weight:800">👥 고객 '+list.length+'명</div></div><div style="font-size:12px;color:var(--muted);margin-bottom:10px">고객을 누르면 거래·수금·연락 이력을 시간순으로 볼 수 있어요.</div>'+rows,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    document.querySelectorAll('.crmPick').forEach(b=>b.onclick=()=>crmDialog(b.dataset.k));
+    return {고객:list.length};
+  }
+  // 특정 고객 타임라인
+  const m=list.find(x=>x.key===key);
+  if(!m){toast('고객 정보를 찾을 수 없어요');return {오류:'고객 없음'};}
+  const events=customerTimeline(key);
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
+  const due=m.revenue-m.recv;
+  const timeline=events.length?events.map(e=>
+    '<div style="display:flex;gap:10px;padding:9px 0"><div style="display:flex;flex-direction:column;align-items:center"><span style="font-size:16px">'+e.ic+'</span><div style="flex:1;width:1px;background:var(--line-soft);margin-top:3px"></div></div>'+
+    '<div style="flex:1;min-width:0;padding-bottom:6px"><div style="font-size:12.5px;font-weight:600">'+escapeHtml(e.title)+'</div><div style="font-size:11px;color:var(--muted)">'+escapeHtml(e.date)+(e.sub?' · '+escapeHtml(e.sub):'')+'</div></div></div>').join(''):'<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">기록된 이력이 없어요.</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff">'+
+      '<div style="display:flex;align-items:center;gap:12px"><div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700">'+escapeHtml((m.name||'?').slice(0,1))+'</div><div><div style="font-size:18px;font-weight:800">'+escapeHtml(m.name)+'</div>'+(m.phone?'<div style="font-size:12px;opacity:.9">'+escapeHtml(m.phone)+'</div>':'')+'</div></div>'+
+    '</div>'+
+    // 요약
+    '<div style="display:flex;gap:7px;margin-bottom:14px">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">현장</div><div style="font-size:15px;font-weight:800">'+m.projects.length+'</div></div>'+
+      '<div style="flex:1;background:#f0fdf4;border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">누적 거래</div><div style="font-size:14px;font-weight:800;color:#0a7f43">'+hjMan(m.revenue)+'</div></div>'+
+      (due>0?'<div style="flex:1;background:#fff5f5;border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">미수금</div><div style="font-size:14px;font-weight:800;color:#c2410c">'+hjMan(due)+'</div></div>':'')+
+    '</div>'+
+    // 연락 버튼
+    (m.phone?'<div style="display:flex;gap:7px;margin-bottom:14px"><a href="tel:'+escapeAttr(m.phone)+'" class="clay" style="flex:1;padding:11px;text-align:center;text-decoration:none;font-size:13px;border-radius:10px">📞 전화</a><button class="moss" id="crmSms" style="flex:1;padding:11px;font-size:13px">💬 문자</button></div>':'')+
+    // 타임라인
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:6px">📜 거래 타임라인</div>'+timeline+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 완공·수금·리뷰 요청이 자동으로 여기 기록돼요. 단골 관리에 활용하세요.</div>';
+  openModal('👥 '+m.name,body,[{label:'‹ 목록',cls:'ghost',fn:()=>crmDialog()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const smsBtn=document.getElementById('crmSms');
+  if(smsBtn)smsBtn.onclick=()=>{hjSendSms(m.phone,(m.name||'고객')+'님, '+COMPANY.name+'입니다. 안녕하세요! 궁금하신 점이나 필요하신 게 있으면 편히 연락 주세요. '+COMPANY.tel);toast('💬 문자를 준비했어요');};
+  return {고객:m.name,현장:m.projects.length,이력:events.length};
+}
+
+/* ═══════════ 📊 견적 전환율 퍼널 ═══════════
+   상담 → 실측 → 시공 → 완공 + 견적→계약 전환율 */
+function funnelData(){
+  const projs=(state.projects||[]).filter(p=>!p.archived);
+  // 단계별 현장 수(현재 stage 이상 도달 = 누적)
+  const stageCount=[0,0,0,0];  // 상담·실측·시공·완료
+  projs.forEach(p=>{const st=Math.min(3,Math.max(0,p.stage||0));for(let i=0;i<=st;i++)stageCount[i]++;});
+  // 견적 → 계약(수주) 전환
+  const quotes=state.quotes||[];
+  const quoteTotal=quotes.length;
+  const quoteWon=quotes.filter(q=>q.project).length;
+  const quoteRate=quoteTotal?Math.round(quoteWon/quoteTotal*100):0;
+  // 단계 전환율(전 단계 대비)
+  const conv=[];
+  for(let i=1;i<4;i++){
+    conv[i]=stageCount[i-1]>0?Math.round(stageCount[i]/stageCount[i-1]*100):0;
+  }
+  return {stageCount,conv,quoteTotal,quoteWon,quoteRate,totalProj:projs.length};
+}
+function funnelView(){
+  const d=funnelData();const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+  const labels=['상담','실측','시공','완공'];
+  const icons=['📞','📐','🔨','✅'];
+  const maxCount=Math.max(1,...d.stageCount);
+  const bars=labels.map((lb,i)=>{
+    const w=Math.max(6,Math.round(d.stageCount[i]/maxCount*100));
+    const convText=i>0?(d.conv[i]+'% 전환'):'';
+    return '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-size:12.5px;font-weight:600">'+icons[i]+' '+lb+'</span><span style="font-size:12px"><b>'+d.stageCount[i]+'곳</b>'+(convText?' <span style="font-size:10.5px;color:var(--muted)">· '+convText+'</span>':'')+'</span></div>'+
+      '<div style="height:26px;background:var(--paper-2);border-radius:7px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,'+c1+','+c2+');border-radius:7px;transition:width .3s"></div></div>'+
+    '</div>';
+  }).join('');
+  // 병목 진단
+  let bottleneck='';
+  if(d.totalProj>=2){
+    let minConv=101,minStage=-1;
+    for(let i=1;i<4;i++){if(d.stageCount[i-1]>0&&d.conv[i]<minConv){minConv=d.conv[i];minStage=i;}}
+    if(minStage>0&&minConv<70)bottleneck='<div style="font-size:11.5px;color:#c2410c;background:#fef2f2;border-radius:9px;padding:10px;margin-top:10px;line-height:1.5">⚠️ <b>'+labels[minStage-1]+'→'+labels[minStage]+'</b> 전환율이 '+minConv+'%로 낮아요. 이 단계에서 이탈이 많으니 점검해 보세요.</div>';
+  }
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">견적 → 계약 전환율</div><div style="font-size:28px;font-weight:800;margin:2px 0">'+d.quoteRate+'%</div><div style="font-size:12.5px;opacity:.95">견적 '+d.quoteTotal+'건 중 '+d.quoteWon+'건 계약</div></div>'+
+    '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🎯 단계별 현장 퍼널</div>'+
+    bars+
+    bottleneck+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 각 단계에 도달한 현장 수와 전 단계 대비 전환율입니다. 견적을 많이 냈는데 계약이 적으면 견적가·상담을, 시공 전환이 낮으면 계약 조건을 점검하세요.</div>';
+  openModal('📊 전환율 퍼널',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {계약전환율:d.quoteRate,현장:d.totalProj};
+}
+
+/* ═══════════ 📅 정기 입금·분할납 알림 ═══════════
+   계약금·중도금·잔금을 나눠 예약 → 💰 일정으로 등록(기존 미수금/알림과 연계) */
+function payPlanDialog(projName){
+  const projs=(state.projects||[]).filter(p=>!p.archived);
+  if(!projName){
+    if(!projs.length){toast('먼저 현장을 등록하세요');return {오류:'현장 없음'};}
+    const list=projs.map(p=>{
+      let s;try{s=projStats(p.name);}catch(e){}
+      return '<button class="ppPick clay" data-n="'+escapeAttr(p.name)+'" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px;margin-bottom:7px;border-radius:11px"><span style="font-size:18px">🏗</span><span style="flex:1"><b style="font-size:13px">'+escapeHtml(p.name)+'</b><br><span style="font-size:11px;opacity:.85">'+(s?'견적 '+hjMan(s.est||0):'')+'</span></span></button>';
+    }).join('');
+    openModal('📅 분할납 계획','<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">계약금·중도금·잔금 예약 알림을 만들 현장을 선택하세요.</div>'+list,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    document.querySelectorAll('.ppPick').forEach(b=>b.onclick=()=>payPlanDialog(b.dataset.n));
+    return {열림:'현장 선택'};
+  }
+  const p=projs.find(x=>x.name===projName);if(!p){toast('현장을 찾을 수 없어요');return {오류:'현장 없음'};}
+  let s;try{s=projStats(p.name);}catch(e){s={est:0};}
+  const total=s.est||0;
+  const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
+  // 기본 3분할(계약금 30·중도금 40·잔금 30)
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">'+escapeHtml(projName)+'</div><div style="font-size:17px;font-weight:800">📅 분할납 계획</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 견적 '+hjMan(total)+'</div></div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">비율을 정하면 각 대금의 예상 금액과 예약 알림을 만들어요.</div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">30%</span></div><input type="range" id="ppR1" min="0" max="100" value="30" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">40%</span></div><input type="range" id="ppR2" min="0" max="100" value="40" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">30%</span></div><input type="range" id="ppR3" min="0" max="100" value="30" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div id="ppSum" style="font-size:12px;text-align:center;padding:8px;background:var(--paper-2);border-radius:9px;margin-bottom:6px"></div>'+
+    '<div style="font-size:11px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 예약일을 정하면 그날 미수금 팔로업·알림에 뜹니다. 입금 안내 문자도 만들 수 있어요.</div>';
+  openModal('📅 '+projName+' 분할납',body,[
+    {label:'💾 예약 저장',cls:'clay',fn:()=>{
+      const parts=[['계약금','ppR1','ppD1'],['중도금','ppR2','ppD2'],['잔금','ppR3','ppD3']];
+      let saved=0;
+      parts.forEach(([label,rid,did])=>{
+        const pct=+document.getElementById(rid).value||0;
+        const date=document.getElementById(did).value;
+        if(pct>0&&date){
+          const amt=Math.round(total*pct/100);
+          state.schedule=state.schedule||[];
+          state.schedule.push({id:uid(),date,time:'',title:'💰 '+label+' '+hjMan(amt),project:projName,workers:'',hours:0,memo:projName+' '+label+'('+pct+'%) 입금 예정',report:null});
+          saved++;
+        }
+      });
+      if(saved){markDirty();toast('📅 분할납 '+saved+'건 예약 완료 — 일정·알림에 표시됩니다');closeModal();}
+      else toast('비율과 예약일을 입력하세요');
+    }},
+    {label:'입금안내 문자',cls:'moss',fn:()=>{
+      const cust=p.customer||{};
+      const p1=+document.getElementById('ppR1').value||0;
+      const a1=Math.round(total*p1/100);
+      const acc=(COMPANY.accounts&&COMPANY.accounts[0])?COMPANY.accounts[0].label:'';
+      hjSendSms(cust.phone||'',(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+projName+' 계약금 '+hjMan(a1)+' 입금 안내드립니다.'+(acc?' 입금계좌: '+acc:'')+' 감사합니다. '+COMPANY.tel);
+      toast('💬 입금 안내 문자를 준비했어요');
+    }},
+    {label:'닫기',cls:'ghost',fn:closeModal}]);
+  // 슬라이더 실시간 계산
+  const upd=()=>{
+    const r1=+document.getElementById('ppR1').value,r2=+document.getElementById('ppR2').value,r3=+document.getElementById('ppR3').value;
+    document.getElementById('ppP1').textContent=r1+'%';document.getElementById('ppP2').textContent=r2+'%';document.getElementById('ppP3').textContent=r3+'%';
+    document.getElementById('ppA1').textContent=hjMan(Math.round(total*r1/100));
+    document.getElementById('ppA2').textContent=hjMan(Math.round(total*r2/100));
+    document.getElementById('ppA3').textContent=hjMan(Math.round(total*r3/100));
+    const sum=r1+r2+r3;
+    const sumEl=document.getElementById('ppSum');
+    sumEl.innerHTML='합계 <b style="color:'+(sum===100?'#0a7f43':'#c2410c')+'">'+sum+'%</b>'+(sum!==100?' (100%가 되도록 맞춰주세요)':' ✓');
+  };
+  ['ppR1','ppR2','ppR3'].forEach(id=>{const el=document.getElementById(id);if(el)el.oninput=upd;});
+  upd();
+  return {현장:projName,견적:total};
+}
+
+/* ═══════════ 📩 AS 셀프 접수 링크 ═══════════
+   고객에게 보낼 AS 신청 안내 페이지(연락처·간단 폼 안내).
+   웹앱 특성상 실제 접수는 전화·문자로 연결. */
+function asIntakePage(){
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+  const inner=
+    '<div style="text-align:center;margin-bottom:24px">'+
+      '<div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,'+c1+','+c2+');margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:30px">🔧</div>'+
+      '<h1 style="font-size:23px;margin:0;color:#0b4ea2">A/S 신청</h1>'+
+      '<p style="color:#666;margin:6px 0 0;font-size:14px">'+escapeHtml(COMPANY.name)+' 사후관리 접수</p>'+
+    '</div>'+
+    '<div style="background:#f8fafc;border-radius:14px;padding:18px;margin-bottom:18px;line-height:1.7;font-size:14px;color:#334">'+
+      '<div style="font-weight:700;margin-bottom:8px;font-size:15px">📋 이렇게 신청하세요</div>'+
+      '① 아래 번호로 전화 또는 문자<br>② 시공하신 <b>현장 주소</b>와 <b>증상</b>을 알려주세요<br>③ 사진을 함께 보내주시면 더 빠릅니다<br>④ 확인 후 방문 일정을 잡아드립니다'+
+    '</div>'+
+    '<div style="margin-bottom:18px">'+
+      ['🏠 시공 후 하자·불편사항 무상 점검','⚡ 빠른 확인과 정직한 안내','🛠 필요 시 신속 보수'].map(s=>'<div style="display:flex;gap:9px;padding:9px 0;border-bottom:1px solid #eee;font-size:14px;color:#334"><span>'+s+'</span></div>').join('')+
+    '</div>'+
+    '<div style="background:linear-gradient(135deg,'+c1+','+c2+');border-radius:16px;padding:22px;text-align:center;color:#fff">'+
+      '<div style="font-size:13px;opacity:.9">A/S 접수·문의</div>'+
+      '<div style="font-size:26px;font-weight:800;margin:6px 0"><a href="tel:'+escapeAttr(COMPANY.tel)+'" style="color:#fff;text-decoration:none">'+escapeHtml(COMPANY.tel)+'</a></div>'+
+      '<a href="sms:'+escapeAttr(COMPANY.tel)+'" style="display:inline-block;background:rgba(255,255,255,.25);color:#fff;text-decoration:none;padding:9px 20px;border-radius:10px;font-size:14px;margin-top:6px">💬 문자로 신청하기</a>'+
+      '<div style="font-size:11px;opacity:.8;margin-top:12px">'+escapeHtml(COMPANY.addr)+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;color:#aaa;font-size:11px;margin-top:16px">'+escapeHtml(COMPANY.name)+' · 시공 후에도 끝까지 책임집니다</div>';
+  const html=hjDocShell(COMPANY.name+' A/S 신청',inner,'#0b4ea2');
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();toast('📩 A/S 신청 페이지를 열었습니다 — 링크·캡처로 고객에게 보내세요');}
+  else toast('팝업이 차단됐어요. 팝업을 허용해 주세요.');
+  return {열림:'AS 접수 페이지'};
+}
+function asIntake(){
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+  const body=
+    '<div style="text-align:center;padding:8px 0 14px"><div style="width:56px;height:56px;border-radius:15px;background:linear-gradient(135deg,'+c1+','+c2+');margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:26px">🔧</div><div style="font-size:17px;font-weight:800">A/S 셀프 접수 링크</div><div style="font-size:12.5px;color:var(--muted);margin-top:3px">고객이 직접 A/S를 신청하는 페이지를 만듭니다</div></div>'+
+    '<div style="background:var(--paper-2);border-radius:11px;padding:14px;margin-bottom:14px;font-size:12.5px;line-height:1.6"><b>포함 내용</b><br>· 신청 방법 안내(전화·문자)<br>· 현장 주소·증상·사진 요청<br>· 전화 걸기·문자 보내기 버튼<br>· 회사 정보</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">💡 카톡·문자로 링크를 보내거나 완공 서류에 넣으세요. 고객이 편하게 A/S를 신청할 수 있어 만족도가 올라가요.</div>'+
+    '<button class="clay" id="asMake" style="width:100%;padding:13px;font-size:15px">📩 A/S 신청 페이지 만들기</button>';
+  openModal('📩 A/S 셀프 접수',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const btn=document.getElementById('asMake');if(btn)btn.onclick=()=>asIntakePage();
+  return {열림:'AS 셀프 접수'};
+}
+
+/* ═══════════ ⭐ 고객 만족도 별점 수집 ═══════════
+   state.satisfaction = [{id,project,customer,stars,comment,at}]
+   완공 현장 대상, 별점·후기 기록 및 요청 문자 */
+function satisfactionEnsure(){if(!Array.isArray(state.satisfaction))state.satisfaction=[];return state.satisfaction;}
+function satisfactionStats(){
+  const arr=satisfactionEnsure();
+  if(!arr.length)return {count:0,avg:0,dist:[0,0,0,0,0]};
+  const sum=arr.reduce((a,r)=>a+(+r.stars||0),0);
+  const dist=[0,0,0,0,0];arr.forEach(r=>{const s=Math.min(5,Math.max(1,+r.stars||0));dist[s-1]++;});
+  return {count:arr.length,avg:Math.round(sum/arr.length*10)/10,dist};
+}
+function satisfactionManage(){
+  const arr=satisfactionEnsure();const st=satisfactionStats();const [c1,c2]=hjBrandGrad('#e8912d','#c2410c');
+  const stars=n=>'★★★★★'.slice(0,n)+'☆☆☆☆☆'.slice(0,5-n);
+  const distBars=st.count?[5,4,3,2,1].map(s=>{
+    const cnt=st.dist[s-1];const w=st.count?Math.round(cnt/st.count*100):0;
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:11px"><span style="width:24px;color:#e8912d">'+s+'★</span><div style="flex:1;height:8px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:#e8912d"></div></div><span style="width:20px;text-align:right;color:var(--muted)">'+cnt+'</span></div>';
+  }).join(''):'';
+  const rows=arr.length?arr.slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(r=>
+    '<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><b style="font-size:12.5px">'+escapeHtml(r.customer||r.project||'고객')+'</b><span style="font-size:13px;color:#e8912d">'+stars(+r.stars||0)+'</span></div>'+
+      (r.comment?'<div style="font-size:11.5px;color:var(--ink);background:var(--paper-2);border-radius:8px;padding:8px;margin-top:4px">"'+escapeHtml(r.comment)+'"</div>':'')+
+      '<div style="font-size:10px;color:var(--muted);margin-top:4px">'+escapeHtml(r.project||'')+(r.at?' · '+String(r.at).slice(0,10):'')+'</div>'+
+    '</div>').join(''):'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">아직 수집된 만족도가 없어요.</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">평균 만족도</div><div style="font-size:30px;font-weight:800;margin:2px 0">'+(st.count?st.avg+' ★':'—')+'</div><div style="font-size:12.5px;opacity:.95">'+(st.count?st.count+'명 응답':'응답 없음')+'</div></div>'+
+    (st.count?'<div style="margin-bottom:14px">'+distBars+'</div>':'')+
+    '<button class="clay" id="satAdd" style="width:100%;padding:12px;font-size:14px;margin-bottom:8px">+ 만족도 기록</button>'+
+    '<button class="moss" id="satReq" style="width:100%;padding:11px;font-size:13px;margin-bottom:14px">💬 완공 고객에게 별점 요청</button>'+
+    rows+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 고객이 준 별점·후기를 기록해 두면 평균 만족도와 분포를 볼 수 있어요. 좋은 후기는 영업에 활용하세요.</div>';
+  openModal('⭐ 고객 만족도',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const addBtn=document.getElementById('satAdd');if(addBtn)addBtn.onclick=()=>satisfactionAdd();
+  const reqBtn=document.getElementById('satReq');if(reqBtn)reqBtn.onclick=()=>satisfactionRequest();
+  return {응답:st.count,평균:st.avg};
+}
+function satisfactionAdd(){
+  const done=(state.projects||[]).filter(p=>!p.archived&&p.doneAt);
+  const projOpts=done.map(p=>'<option value="'+escapeAttr(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');
+  let selStars=5;
+  const body=
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">현장</label>'+
+    (done.length?'<select id="satProj" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px">'+projOpts+'</select>':'<input id="satProjName" placeholder="현장/고객 이름" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px">')+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px">별점</label>'+
+    '<div id="satStarPick" style="font-size:32px;text-align:center;margin-bottom:10px;letter-spacing:4px;cursor:pointer">'+[1,2,3,4,5].map(i=>'<span class="satStar" data-s="'+i+'" style="color:#e8912d">★</span>').join('')+'</div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">후기(선택)</label>'+
+    '<textarea id="satComment" placeholder="고객이 남긴 후기를 적어주세요" style="width:100%;padding:10px;font-size:13px;min-height:70px;margin-bottom:6px"></textarea>';
+  openModal('+ 만족도 기록',body,[
+    {label:'저장',cls:'clay',fn:()=>{
+      const projEl=document.getElementById('satProj');
+      const project=projEl?projEl.value:(document.getElementById('satProjName')||{}).value||'';
+      const pj=(state.projects||[]).find(p=>p.name===project);
+      satisfactionEnsure().push({id:uid(),project,customer:(pj&&pj.customer&&pj.customer.name)||'',stars:selStars,comment:(document.getElementById('satComment')||{}).value||'',at:new Date().toISOString()});
+      markDirty();toast('⭐ 만족도를 기록했어요');satisfactionManage();
+    }},
+    {label:'취소',cls:'ghost',fn:()=>satisfactionManage()}]);
+  // 별점 선택
+  const paint=()=>{document.querySelectorAll('.satStar').forEach(s=>{s.style.color=(+s.dataset.s<=selStars)?'#e8912d':'#d1d5db';});};
+  document.querySelectorAll('.satStar').forEach(s=>s.onclick=()=>{selStars=+s.dataset.s;paint();});
+  paint();
+}
+function satisfactionRequest(){
+  const done=(state.projects||[]).filter(p=>!p.archived&&p.doneAt&&p.customer&&p.customer.phone);
+  if(!done.length){toast('별점을 요청할 완공 현장(연락처 포함)이 없어요');return;}
+  const p=done[0];const cust=p.customer||{};
+  hjSendSms(cust.phone,(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+p.name+' 시공은 만족스러우셨나요? 별점(★1~5)과 짧은 후기를 문자로 남겨주시면 큰 힘이 됩니다. 소중한 의견 감사합니다! '+COMPANY.tel);
+  toast('💬 '+(cust.name||'고객')+'님께 별점 요청 문자를 준비했어요');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🧠 Loop Engineering — 닫힌 루프(closed loop) 완성
+   ① AI 브레인: 규칙이 아닌 AI 추론 기반 우선순위·계획
+   ② 후속 체이닝: task 완료 → 결과 확인 task 자동 생성
+   ③ 자가진단: 루프 효율·성과 점수
+   ④ 성과 추적: 액션 → 결과 확인으로 루프 닫기
+═══════════════════════════════════════════════════════════════ */
+
+/* ───────── ② 후속 액션 체이닝 ─────────
+   어떤 task가 완료되면, 그 결과를 확인하는 다음 task를 자동 생성.
+   예) 미수금 팔로업 문자 발송 → 3일 뒤 "입금 확인" task
+       리뷰 요청 문자 → 5일 뒤 "후기 등록 확인" task */
+function aiOpsChainNext(doneTask){
+  try{
+    if(!doneTask)return null;
+    const o=aiOpsEnsureState();
+    const addDays=(n)=>{const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());};
+    let chain=null;
+    // 미수금/분할납 문자 → 입금 확인
+    if(doneTask.type==='receivable'||/입금|미수|계약금|중도금|잔금/.test(doneTask.title)){
+      chain={category:'미수금',type:'receivable_check',title:'입금 확인: '+(doneTask.project||doneTask.title),
+        reason:'안내 후 입금됐는지 확인 (후속)',project:doneTask.project||'',dueDate:addDays(3),
+        priority:'normal',action:{kind:'open',fn:'overdueFollowup'},readOnly:true,requiresApproval:false,
+        source:'chain:recvcheck:'+(doneTask.project||doneTask.source)+':'+addDays(3)};
+    }
+    // 보증 안내 문자 → 방문 일정 확인
+    else if(doneTask.type==='warranty'){
+      chain={category:'AS',type:'warranty_visit',title:'무상점검 일정 확인: '+(doneTask.project||''),
+        reason:'안내 후 방문 일정 잡혔는지 확인 (후속)',project:doneTask.project||'',dueDate:addDays(5),
+        priority:'normal',action:{kind:'open',fn:'openSchedule'},readOnly:true,requiresApproval:false,
+        source:'chain:warrantyvisit:'+(doneTask.project||'')+':'+addDays(5)};
+    }
+    // 리뷰 요청 → 후기 등록 확인
+    else if(doneTask.type==='review'){
+      chain={category:'사후관리',type:'review_check',title:'후기 확인: '+(doneTask.project||''),
+        reason:'리뷰 요청 후 후기가 왔는지 확인 (후속)',project:doneTask.project||'',dueDate:addDays(5),
+        priority:'low',action:{kind:'open',fn:'satisfactionManage'},readOnly:true,requiresApproval:false,
+        source:'chain:reviewcheck:'+(doneTask.project||'')+':'+addDays(5)};
+    }
+    // 방치 현장 안부 → 진행 상태 재확인
+    else if(doneTask.type==='stale'){
+      chain={category:'사후관리',type:'stale_recheck',title:'진행 재확인: '+(doneTask.project||''),
+        reason:'안부 후 진행 상황 재확인 (후속)',project:doneTask.project||'',dueDate:addDays(7),
+        priority:'low',action:{kind:'open',fn:'openProjectSheet'},readOnly:true,requiresApproval:false,
+        source:'chain:stalerecheck:'+(doneTask.project||'')+':'+addDays(7)};
+    }
+    if(chain){
+      const item=aiQueueEnqueue(chain);
+      if(item){aiOpsLog({event:'후속 작업 생성: '+chain.title,detail:'루프 체이닝',source:'chain',ok:true});return item;}
+    }
+  }catch(e){}
+  return null;
+}
+
+/* ───────── ④ 성과 추적 (루프 닫기) ─────────
+   각 액션이 목표를 달성했는지 로그로 추적.
+   done 로그 중 후속 확인에서 "해결됨"으로 표시된 비율 = 루프 완결률 */
+function aiOpsOutcomeStats(){
+  const o=aiOpsEnsureState();
+  const chainLogs=o.log.filter(l=>l.source==='chain');
+  const execLogs=o.log.filter(l=>/^실행:|^실패:/.test(l.event||''));
+  const doneCnt=execLogs.filter(l=>l.ok).length;
+  const failCnt=execLogs.filter(l=>!l.ok).length;
+  return {executed:execLogs.length,done:doneCnt,failed:failCnt,chained:chainLogs.length,
+    successRate:execLogs.length?Math.round(doneCnt/execLogs.length*100):0};
+}
+
+/* ───────── ③ 루프 자가진단 ─────────
+   루프가 얼마나 잘 돌고 있는지 스스로 점수를 매김 */
+function aiOpsSelfCheck(){
+  const o=aiOpsEnsureState();const st=o.stats;const sum=aiQueueSummary();const out=aiOpsOutcomeStats();
+  // 점수 요소
+  let score=0;const factors=[];
+  // 1) 루프 활성(enabled + 최근 실행)
+  const lastRun=o.lastPlan?new Date(o.lastPlan).getTime():0;
+  const daysSinceRun=lastRun?Math.round((Date.now()-lastRun)/86400000):999;
+  const active=o.enabled&&daysSinceRun<=2;
+  score+=active?25:0;factors.push({ok:active,t:'루프 활성',d:o.enabled?(daysSinceRun<=2?'최근 점검됨':daysSinceRun+'일 전 점검'):'꺼짐'});
+  // 2) 실행 성공률
+  const goodRate=out.successRate>=80;
+  score+=out.executed>0?(out.successRate>=80?25:out.successRate>=50?15:5):15;
+  factors.push({ok:out.executed===0||goodRate,t:'실행 성공률',d:out.executed>0?out.successRate+'% ('+out.done+'/'+out.executed+')':'실행 이력 없음'});
+  // 3) 큐 적체(오래된 대기 적을수록 좋음)
+  const staleOk=sum.stale<=2;
+  score+=staleOk?25:(sum.stale<=5?12:0);
+  factors.push({ok:staleOk,t:'큐 관리',d:sum.stale>0?'오래된 대기 '+sum.stale+'건':'적체 없음 · 대기 '+sum.pending});
+  // 4) 후속 체이닝(루프가 닫히고 있는가)
+  const chaining=out.chained>0;
+  score+=chaining?25:10;
+  factors.push({ok:chaining,t:'루프 완결(체이닝)',d:out.chained>0?'후속 작업 '+out.chained+'개 생성':'아직 후속 없음'});
+  score=Math.min(100,score);
+  const grade=score>=85?'S · 완전 자율':score>=70?'A · 잘 돌아감':score>=50?'B · 보통':'C · 개선 필요';
+  return {score,grade,factors,stats:st,sum,out,daysSinceRun};
+}
+
+/* ───────── ① AI 브레인 ─────────
+   규칙 스캔 결과 + 최근 로그를 AI에게 주고, 사업 관점에서
+   "지금 가장 중요한 3가지와 이유"를 추론하게 함 */
+async function aiOpsBrain(){
+  if(!aiKeyReady()){toast('AI 두뇌(Gemini/ChatGPT 등)를 먼저 설정해 주세요');return {오류:'AI 미설정'};}
+  const o=aiOpsEnsureState();
+  // 현재 상태 요약(앱 데이터만)
+  const sum=aiQueueSummary();
+  let recvTotal=0,recvCnt=0;
+  (state.projects||[]).forEach(p=>{if(p.archived)return;try{const s=projStats(p.name);if(s.due>0){recvTotal+=s.due;recvCnt++;}}catch(e){}});
+  const active=(state.projects||[]).filter(p=>!p.archived&&p.stage<3).length;
+  const todaySch=(state.schedule||[]).filter(s=>s.date===aiOpsTodayKey()&&!/^💰/.test(s.title||'')).length;
+  const queueTop=sum.top3.map(t=>t.title).join(', ')||'없음';
+  const prompt='너는 1인 인테리어 사장의 운영 비서다. 아래는 현재 사업 상태다.\n'+
+    '- 진행 현장: '+active+'곳\n- 오늘 일정: '+todaySch+'건\n- 미수금: '+recvCnt+'곳 '+hjMan(recvTotal)+'\n'+
+    '- 운영 큐 대기: '+sum.pending+'건(긴급 '+sum.urgent+')\n- 큐 상위 작업: '+queueTop+'\n\n'+
+    '이 상황에서 사장이 오늘 가장 먼저 처리해야 할 일 3가지를 우선순위대로 정하고, 각각 왜 중요한지 한 줄 이유를 붙여줘. 현장 사장님이 바로 이해할 짧고 실무적인 존댓말로. 번호만 붙여 3줄로.';
+  const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
+  openModal('🧠 AI 운영 브레인','<div style="text-align:center;padding:30px"><div style="font-size:40px">🧠</div><div style="margin-top:12px;font-size:14px;color:var(--muted)">AI가 사업 상태를 분석 중…</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  let advice='';
+  try{advice=await aiAsk(prompt);}catch(e){advice='';}
+  const body='<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">AI 추론 기반 우선순위</div><div style="font-size:18px;font-weight:800">🧠 오늘의 운영 브레인</div></div>'+
+    '<div style="display:flex;gap:7px;margin-bottom:14px;font-size:11px">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:9px;padding:9px;text-align:center"><div style="color:var(--muted)">진행</div><b style="font-size:14px">'+active+'</b></div>'+
+      '<div style="flex:1;background:#f0fdf4;border-radius:9px;padding:9px;text-align:center"><div style="color:var(--muted)">오늘 일정</div><b style="font-size:14px">'+todaySch+'</b></div>'+
+      '<div style="flex:1;background:#fff5f5;border-radius:9px;padding:9px;text-align:center"><div style="color:var(--muted)">미수금</div><b style="font-size:13px">'+recvCnt+'곳</b></div>'+
+    '</div>'+
+    '<div style="white-space:pre-wrap;font-size:13.5px;line-height:1.8;background:var(--paper-2);border-radius:11px;padding:14px">'+(advice?'🧠 '+escapeHtml(advice):'AI 분석을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.')+'</div>'+
+    '<button class="clay" id="brainToOps" style="width:100%;padding:12px;margin-top:12px;font-size:14px">🔁 운영 센터에서 처리하기</button>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:#eff6ff;border-radius:9px;padding:10px;line-height:1.5">💡 규칙 점검(운영 루프)과 달리, 이건 AI가 상황 전체를 보고 판단한 조언이에요. 매일 아침 한 번 확인해 보세요.</div>';
+  openModal('🧠 AI 운영 브레인',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const btn=document.getElementById('brainToOps');if(btn)btn.onclick=()=>{aiRunDailyLoop('brain');aiOpsCenter();};
+  aiOpsLog({event:'AI 브레인 분석',detail:advice?advice.slice(0,40):'분석 실패',source:'brain',ok:!!advice});
+  return {브레인:'완료',조언:advice?advice.slice(0,60):''};
+}
+
+/* ───────── 루프 상태 대시보드(자가진단 UI) ───────── */
+function aiOpsLoopStatus(){
+  const chk=aiOpsSelfCheck();const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
+  const scoreColor=chk.score>=85?'#0a7f43':chk.score>=70?'#0b4ea2':chk.score>=50?'#e8912d':'#c2410c';
+  const factorRows=chk.factors.map(f=>
+    '<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px">'+
+      '<span style="font-size:18px">'+(f.ok?'✅':'⚠️')+'</span>'+
+      '<div style="flex:1"><b style="font-size:12.5px">'+escapeHtml(f.t)+'</b><br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(f.d)+'</span></div>'+
+    '</div>').join('');
+  // 성숙도 단계(밈 패러디)
+  const level=chk.score>=85?{n:'닫힌 자율 루프',e:'🔁',d:'AI가 점검·실행·후속까지 스스로 순환'}:
+              chk.score>=70?{n:'Loop Engineering',e:'⚙️',d:'루프가 잘 돌지만 일부 수동'}:
+              chk.score>=50?{n:'Agentic',e:'🤖',d:'큐·실행은 되나 후속 연결 약함'}:
+              {n:'초기 설정',e:'🌱',d:'루프를 더 활용해 보세요'};
+  const body=
+    '<div style="background:linear-gradient(120deg,'+scoreColor+','+c2+');margin:-16px -16px 14px;padding:18px 16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">운영 루프 성숙도</div><div style="font-size:34px;font-weight:800;margin:2px 0">'+chk.score+'점</div><div style="font-size:13px;opacity:.95">'+chk.grade+'</div></div>'+
+    '<div style="display:flex;align-items:center;gap:12px;background:var(--paper-2);border-radius:12px;padding:14px;margin-bottom:14px"><span style="font-size:30px">'+level.e+'</span><div><b style="font-size:14px">'+level.n+' 단계</b><br><span style="font-size:11.5px;color:var(--muted)">'+level.d+'</span></div></div>'+
+    '<div style="font-size:12.5px;font-weight:700;margin-bottom:6px">📋 진단 항목</div>'+
+    factorRows+
+    // 누적 성과
+    '<div style="font-size:12.5px;font-weight:700;margin:14px 0 6px">📊 누적 성과</div>'+
+    '<div style="display:flex;gap:6px">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">생성</div><b style="font-size:16px">'+chk.stats.totalCreated+'</b></div>'+
+      '<div style="flex:1;background:#f0fdf4;border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">완료</div><b style="font-size:16px;color:#0a7f43">'+chk.stats.totalDone+'</b></div>'+
+      '<div style="flex:1;background:#fff5f5;border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">실패</div><b style="font-size:16px;color:#c2410c">'+chk.stats.totalFailed+'</b></div>'+
+      '<div style="flex:1;background:#eff6ff;border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">후속</div><b style="font-size:16px;color:#0b4ea2">'+chk.out.chained+'</b></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;margin-top:14px">'+
+      (aiKeyReady()?'<button class="clay" id="lsBrain" style="flex:1;padding:12px;font-size:13px">🧠 AI 브레인</button>':'')+
+      '<button class="moss" id="lsRun" style="flex:1;padding:12px;font-size:13px">🔍 지금 점검</button>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 점수를 올리려면: 운영 루프를 켜두고, 대기 작업을 처리하고, 후속 작업(체이닝)이 쌓이게 하세요. 85점 이상이면 AI가 거의 스스로 순환합니다.</div>';
+  openModal('🔁 루프 성숙도',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const bb=document.getElementById('lsBrain');if(bb)bb.onclick=()=>aiOpsBrain();
+  const rb=document.getElementById('lsRun');if(rb)rb.onclick=()=>{aiRunManualCheck('manual');aiOpsCenter();};
+  return {점수:chk.score,등급:chk.grade,단계:level.n};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🤖 완전 자율 운영 (Full Autonomy) — 루프 에이전트에 한 걸음 더
+   ① 안전 작업(조회·리포트) 자동 실행 — 승인 없이 AI가 알아서
+   ② 알림 넛지 — 긴급 승인 대기 시 알림으로 호출
+   ③ 원탭 자율 운영 — 스캔→자동실행→후속→자가진단→통합 리포트
+   (문자·수금 등 변경 작업은 항상 승인 유지)
+═══════════════════════════════════════════════════════════════ */
+
+// 자율 실행 대상: readOnly + tool 계열(리포트/조회 도구). open(화면 열기)은 방해되니 제외
+function aiOpsIsAutoRunnable(t){
+  if(!t||t.requiresApproval)return false;      // write는 절대 자동 실행 안 함
+  if(!t.readOnly)return false;
+  const a=t.action||{};
+  // tool 계열(리포트 생성 등)만 자동 실행. open/sms 제외
+  return a.kind==='tool';
+}
+// 안전 작업 자동 실행(루프 중)
+async function aiOpsAutoExecuteSafe(){
+  const o=aiOpsEnsureState();
+  const targets=o.queue.filter(t=>(t.status==='pending'||t.status==='approved')&&aiOpsIsAutoRunnable(t));
+  let done=0;const items=[];
+  for(const t of targets){
+    if(t.status==='pending'){t.status='approved';t.updatedAt=new Date().toISOString();}
+    const title=t.title;
+    // 리포트류는 화면을 띄우지 않고 결과만 로그로 — aiToolRun 대신 데이터 함수 직접 호출 매핑
+    const r=await aiExecuteTask(t.id);
+    if(r&&r.성공){done++;items.push({title,result:r.결과});}
+  }
+  if(done)aiOpsLog({event:'안전 작업 자동 실행',detail:done+'건 자동 처리',source:'auto',ok:true});
+  return {done,items};
+}
+
+// ② 알림 넛지 — 긴급 승인 대기가 있으면 알림
+function aiOpsNotifyPending(){
+  try{
+    if(!('Notification' in window)||Notification.permission!=='granted')return false;
+    const o=aiOpsEnsureState();
+    const urgent=o.queue.filter(t=>(t.status==='pending'||t.status==='approved')&&(t.priority==='urgent'||t.priority==='high'));
+    if(!urgent.length)return false;
+    const top=urgent[0];
+    const extra=urgent.length>1?(' 외 '+(urgent.length-1)+'건'):'';
+    const n=new Notification(COMPANY.name+' 운영 알림',{
+      body:'승인 대기: '+top.title+extra+'\n탭하면 운영 센터로 이동합니다',
+      tag:'ops-pending',icon:'icon-192.png'
+    });
+    n.onclick=()=>{window.focus();try{aiOpsCenter();}catch(e){}n.close();};
+    aiOpsLog({event:'알림 발송(승인 대기)',detail:urgent.length+'건',source:'notify',ok:true});
+    return true;
+  }catch(e){return false;}
+}
+
+/* ③ 원탭 자율 운영 — 한 번에 전부 */
+async function aiAutoOperate(source){
+  const o=aiOpsEnsureState();
+  // 1) 전체 스캔 → 큐 적재
+  const scan=aiRunManualCheck(source||'autopilot');
+  // 2) 안전 작업(조회·리포트) 자동 실행
+  const auto=await aiOpsAutoExecuteSafe();
+  // 3) 자가진단
+  let chk;try{chk=aiOpsSelfCheck();}catch(e){chk={score:0,grade:'',out:{chained:0}};}
+  // 4) 남은 승인 대기(변경 작업)
+  const pendingWrite=o.queue.filter(t=>t.status==='pending'&&t.requiresApproval);
+  const approvedSafe=o.queue.filter(t=>t.status==='approved');
+  aiOpsLog({event:'🤖 자율 운영 실행 ['+(source||'autopilot')+']',detail:'자동처리 '+auto.done+' · 승인대기 '+pendingWrite.length,source:'autopilot',ok:true});
+  return {scan,auto,chk,pendingWrite,approvedSafe};
+}
+
+// 원탭 자율 운영 결과 리포트 화면
+async function aiAutoOperateView(){
+  const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
+  openModal('🤖 자율 운영','<div style="text-align:center;padding:30px"><div style="font-size:40px">🤖</div><div style="margin-top:12px;font-size:14px;color:var(--muted)">AI가 사업 상태를 점검하고<br>할 수 있는 일을 처리 중…</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const r=await aiAutoOperate('autopilot');
+  const typeIcon=t=>({receivable:'💰',brief_today:'📅',worklog:'📝',photo_sort:'📸',quote_followup:'⏰',budget:'💸',loss:'📉',warranty:'🛡',review:'🗣',stale:'💤',weekly_report:'📊',monthly_report:'🏆'})[t]||'📌';
+  // 자동 처리된 것
+  const autoRows=r.auto.items.length?r.auto.items.map(it=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:12px"><span>✅</span><span style="flex:1">'+escapeHtml(hjCut(it.title,28))+'</span></div>').join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 2px">자동 처리할 조회·리포트 작업이 없었어요.</div>';
+  // 승인 필요한 것
+  const pw=r.pendingWrite;
+  const pendRows=pw.length?pw.slice(0,6).map(t=>
+    '<div style="display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #fcd34d;border-radius:10px;margin-bottom:6px;background:#fffbeb">'+
+      '<span>'+typeIcon(t.type)+'</span><span style="flex:1;min-width:0;font-size:12px"><b>'+escapeHtml(hjCut(t.title,24))+'</b><br><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml(hjCut(t.reason||'',30))+'</span></span>'+
+      '<button class="aoApp clay tiny" data-id="'+t.id+'" style="padding:6px 10px;white-space:nowrap">승인</button>'+
+    '</div>').join('')+(pw.length>6?'<div style="text-align:center;font-size:11px;color:var(--muted)">외 '+(pw.length-6)+'건</div>':''):'<div style="font-size:12px;color:#0a7f43;padding:6px 2px">👍 승인이 필요한 변경 작업이 없어요.</div>';
+  const scoreColor=r.chk.score>=85?'#0a7f43':r.chk.score>=70?'#0b4ea2':r.chk.score>=50?'#e8912d':'#c2410c';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">AI 자율 운영 완료</div><div style="font-size:20px;font-weight:800;margin:3px 0">🤖 처리 결과</div><div style="font-size:12.5px;opacity:.95">자동 처리 '+r.auto.done+'건 · 승인 대기 '+pw.length+'건 · 성숙도 '+r.chk.score+'점</div></div>'+
+    // 자동 처리
+    '<div style="font-size:13px;font-weight:700;margin-bottom:6px">✅ AI가 자동으로 처리한 일</div>'+
+    '<div style="background:var(--paper-2);border-radius:11px;padding:6px 12px;margin-bottom:14px">'+autoRows+'</div>'+
+    // 승인 필요
+    '<div style="font-size:13px;font-weight:700;margin-bottom:6px">✋ 사장님 승인이 필요한 일 <span style="font-size:11px;color:var(--muted)">(문자·수금 등)</span></div>'+
+    pendRows+
+    '<div style="display:flex;gap:7px;margin-top:14px">'+
+      (pw.length?'<button class="clay" id="aoAll" style="flex:1;padding:12px;font-size:13px">전체 승인 후 처리</button>':'')+
+      '<button class="ghost" id="aoCenter" style="flex:1;padding:12px;font-size:13px">🔁 운영 센터</button>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:12px;background:#eff6ff;border-radius:9px;padding:10px;line-height:1.5">💡 조회·리포트 같은 안전한 작업은 AI가 알아서 처리했어요. 문자·수금처럼 되돌리기 어려운 일만 사장님 승인을 기다립니다.</div>';
+  openModal('🤖 자율 운영 결과',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rebind=()=>aiAutoOperateView();
+  document.querySelectorAll('.aoApp').forEach(b=>b.onclick=async()=>{aiQueueApprove(b.dataset.id);const ex=await aiExecuteTask(b.dataset.id);toast(ex.완료?'▶ '+(ex.결과||'처리'):'실행');const o=aiOpsEnsureState();aiOpsCenter();});
+  const allBtn=document.getElementById('aoAll');if(allBtn)allBtn.onclick=async()=>{const o=aiOpsEnsureState();o.queue.filter(t=>t.status==='pending'&&t.requiresApproval).forEach(t=>aiQueueApprove(t.id));const res=await aiExecuteBatch('approved');aiOpsBatchResultView(res);};
+  const cBtn=document.getElementById('aoCenter');if(cBtn)cBtn.onclick=()=>aiOpsCenter();
+  return {자동처리:r.auto.done,승인대기:pw.length,성숙도:r.chk.score};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🎛 더보기 UX 개선 — 카테고리 그룹핑 + 자주 쓰는 기능 바로가기
+   91개 항목을 6개 카테고리로 정리하고, 최근 사용 기능을 상단 노출
+═══════════════════════════════════════════════════════════════ */
+
+// 카테고리 정의(action → 카테고리 매핑)
+const MORE_CATS=[
+  {id:'ai',name:'AI·자율운영',ic:'🤖',items:[
+    ['cowork','🖥','Cowork 지휘부'],['autopilot','🤖','AI 자율 운영'],['aiops','🎛','AI 운영 센터'],['aibrain','🧠','AI 브레인'],['loopstatus','🔁','루프 성숙도'],
+    ['ai','💬','AI 도우미'],['activebrief','🌅','오늘 브리핑'],['weekbrief','📆','주간 브리핑'],['automode','⚙️','AI 운영 모드'],
+    ['aiquote','💸','AI 견적작성'],['analysis','📈','AI 경영 분석'],['aiprovider','🔑','AI 두뇌 선택'],['llama','🦙','Llama 등록'],['aiusage','📊','AI 사용량']
+  ]},
+  {id:'money',name:'경영·돈',ic:'💰',items:[
+    ['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
+    ['profitrank','🏆','수익성 랭킹'],['expense','💳','간편 장부'],['expenseclassify','🧾','경비 분류'],['scanreceipt','🧾','영수증 스캔'],
+    ['goal','🎯','매출 목표'],['forecast','📈','매출 예측'],['budget','📅','현장 예산'],['settle','📄','정산 문서'],['taxinv','📇','세금계산서'],['payplan','📅','분할납 계획']
+  ]},
+  {id:'customer',name:'고객·영업',ic:'👥',items:[
+    ['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
+    ['custprogress','📱','진행 공유'],['custreply','💬','고객 문자'],['asintake','📩','AS 접수 링크'],['companyintro','🪪','회사 소개'],
+    ['salestarget','🎯','영업 타깃'],['funnel','📊','전환율 퍼널'],['quotefollowup','⏰','견적 팔로업'],['negotiate','🤝','견적 협상'],
+    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractreview','📝','계약 검토']
+  ]},
+  {id:'site',name:'현장·시공',ic:'🏗',items:[
+    ['addproject','➕','현장 추가'],['photobundle','📤','사진 묶음 발송'],['worklog','📝','음성 현장일지'],['photorep','📷','사진 작업일지'],
+    ['photodefect','📷','사진 AI 분석'],['beforeafter','📸','전후 갤러리'],['safety','🔨','안전 체크'],['scheduleplan','🗓','공정표 생성'],
+    ['route','🗺','현장 동선'],['pjmap','🗺','현장 지도'],['weather','🌤','날씨 공정'],['season','📅','영업 달력'],
+    ['inventory','📦','자재 재고'],['suppliers','📇','거래처'],['asmanage','🔧','AS 관리'],['warranty','🛡','AS 보증'],['knowhow','📚','시공 노하우'],['siteconv','🎙','대화→할일'],['voice','🎙','음성 회의록']
+  ]},
+  {id:'report',name:'분석·리포트',ic:'📊',items:[
+    ['alertcenter','🔔','알림 센터'],['opsreport','📊','운영 리포트'],['monthreport','📊','월간 보고서'],['annual','📊','연간 결산'],
+    ['yearreport','🏆','연말 결산'],['weekplan','🎯','주간 계획'],['schedbrief','📅','일정 브리핑'],['voicebrief','🗣','음성 브리핑'],
+    ['staleproj','💤','방치 현장'],['datahealth','🧯','데이터 검진'],['search','🔍','통합 검색'],['fullxlsx','📤','전체 장부 엑셀'],['sheet','📊','구글시트 내보내기'],['notify','🔔','스마트 알림']
+  ]},
+  {id:'tool',name:'도구·설정',ic:'⚙️',items:[
+    ['backupcenter','💾','백업 센터'],['biz','📇','사업자·명함 보내기'],['scancard','🏷','명함 스캔'],['gdrive','☁️','구글드라이브 연동'],['opendrive','📂','만물인테리어 열기'],
+    ['syncguide','🔄','PC↔폰 동기화'],['import','📥','데이터 이사'],['backups','🛡','안전판(스냅샷)'],['restore','↺','백업 복원'],
+    ['undo','↩','되돌리기'],['brand','🎨','브랜드 테마'],['diag','🔧','연결 진단'],['guide','📚','사용 가이드'],['help','📖','사용설명서'],['featurecoach','🎓','기능 코치']
+  ]}
+];
+
+// 최근 사용 기능 추적
+function moreTrackUse(action){
+  try{
+    let recent=JSON.parse(localStorage.getItem('hj_more_recent')||'[]');
+    recent=recent.filter(a=>a!==action);recent.unshift(action);recent=recent.slice(0,6);
+    localStorage.setItem('hj_more_recent',JSON.stringify(recent));
+  }catch(e){}
+}
+function moreGetRecent(){
+  try{return JSON.parse(localStorage.getItem('hj_more_recent')||'[]');}catch(e){return [];}
+}
+// action → {ic,label} 조회
+function moreItemInfo(action){
+  for(const c of MORE_CATS){const it=c.items.find(x=>x[0]===action);if(it)return {ic:it[1],label:it[2]};}
+  return null;
+}
+
+// 개선된 더보기 시트
+function openMoreSheetV2(){
+  let sheet=document.getElementById('moreSheet');if(sheet)sheet.remove();
+  let bd=document.getElementById('moreBackdrop');if(bd)bd.remove();
+  bd=document.createElement('div');bd.className='more-backdrop open';bd.id='moreBackdrop';
+  bd.onclick=()=>{['moreSheet','moreBackdrop'].forEach(x=>{const e=document.getElementById(x);if(e)e.remove();});};
+  sheet=document.createElement('div');sheet.className='more-sheet open';sheet.id='moreSheet';
+  // 하단 탭 바로가기(자주 쓰는 화면)
+  const navShortcuts=[['docs','📁','서류'],['estimates','🧾','견적'],['contacts','👤','연락처'],['project','🏗️','현장별']];
+  // 최근 사용
+  const recent=moreGetRecent().map(a=>{const info=moreItemInfo(a);return info?[a,info.ic,info.label]:null;}).filter(Boolean);
+  const chip=(a,ic,l,isNav)=>'<button class="more-chip" data-'+(isNav?'more':'moreaction')+'="'+a+'" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);min-width:0"><span style="font-size:20px">'+ic+'</span><span style="font-size:10.5px;text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">'+escapeHtml(l)+'</span></button>';
+  // 카테고리 섹션
+  const catSection=(c)=>'<div class="more-cat-block" data-cat="'+c.id+'"><div style="font-size:12.5px;font-weight:700;margin:14px 0 7px;color:var(--ink)">'+c.ic+' '+c.name+' <span style="font-size:10.5px;color:var(--muted);font-weight:400">'+c.items.length+'</span></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+c.items.map(it=>chip(it[0],it[1],it[2])).join('')+'</div></div>';
+  sheet.innerHTML=
+    '<h4 style="margin-bottom:10px">더보기 <span style="font-size:11px;color:var(--muted);font-weight:400">기능 '+MORE_CATS.reduce((a,c)=>a+c.items.length,0)+'개</span></h4>'+
+    // 검색
+    '<input id="moreSearch" placeholder="🔍 기능 찾기 (예: 견적, 사진, 미수금)" style="width:100%;padding:11px 12px;font-size:14px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px" autocomplete="off">'+
+    // AI 비서 넛지
+    '<div class="more-ai-hint" id="moreAiHint" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#7c3aed,#0b4ea2);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">"미수금 봐줘" "자율 운영해줘"처럼 말하세요</span></span><span style="color:#fff;font-size:18px">›</span></div>'+
+    // 검색 결과 영역(숨김)
+    '<div id="moreSearchResult" style="display:none"></div>'+
+    // 기본 영역
+    '<div id="moreMain">'+
+      // 하단 탭 바로가기
+      '<div style="font-size:12.5px;font-weight:700;margin:6px 0 7px">📌 바로가기</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:4px">'+navShortcuts.map(n=>chip(n[0],n[1],n[2],true)).join('')+'</div>'+
+      // 최근 사용
+      (recent.length?'<div style="font-size:12.5px;font-weight:700;margin:14px 0 7px">🕘 최근 사용</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+recent.map(it=>chip(it[0],it[1],it[2])).join('')+'</div>':'')+
+      // 카테고리들
+      MORE_CATS.map(catSection).join('')+
+    '</div>';
+  document.body.appendChild(bd);document.body.appendChild(sheet);
+  // 이벤트: 항목 클릭
+  const closeSheet=()=>{['moreSheet','moreBackdrop'].forEach(x=>{const e=document.getElementById(x);if(e)e.remove();});};
+  const bindItems=(root)=>{
+    root.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{const a=el.dataset.moreaction;moreTrackUse(a);closeSheet();try{moreDispatch(a);}catch(e){}});
+    root.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{const t=el.dataset.more;closeSheet();try{state.tab=t;render();}catch(e){}});
+  };
+  bindItems(sheet);
+  const hint=document.getElementById('moreAiHint');if(hint)hint.onclick=()=>{closeSheet();try{aiAgent();}catch(e){}};
+  // 검색 필터
+  const search=document.getElementById('moreSearch');
+  if(search)search.oninput=()=>{
+    const q=search.value.trim().toLowerCase();
+    const main=document.getElementById('moreMain');const res=document.getElementById('moreSearchResult');
+    if(!q){main.style.display='';res.style.display='none';return;}
+    main.style.display='none';res.style.display='';
+    const hits=[];
+    MORE_CATS.forEach(c=>c.items.forEach(it=>{if(it[2].toLowerCase().includes(q)||c.name.toLowerCase().includes(q))hits.push(it);}));
+    res.innerHTML=hits.length?'<div style="font-size:12px;color:var(--muted);margin:6px 0 8px">검색 결과 '+hits.length+'개</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+hits.map(it=>chip(it[0],it[1],it[2])).join('')+'</div>':'<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">"'+escapeHtml(q)+'" 검색 결과가 없어요.<br><span style="font-size:12px">🤖 비서에게 말로 물어보세요.</span></div>';
+    bindItems(res);
+  };
+}
+
+// action 디스패치 — 기존 핸들러(moreActionHandler) 재사용
+function moreDispatch(a){
+  try{if(typeof moreActionHandler==='function'){moreActionHandler(a);return;}}catch(e){}
+  toast('기능을 여는 중 문제가 생겼어요.');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🖥 Cowork 작업 지휘부 — PC의 Claude Cowork에게 시킬 명령서 보관·관리
+   각 작업을 붙여넣기용 텍스트로 만들고, 복사·수정·추가 가능
+   state.coworkTasks = [{id,title,icon,prompt,builtin}]
+═══════════════════════════════════════════════════════════════ */
+
+// 기본 작업 템플릿(회사 정보 자동 반영)
+function coworkDefaults(){
+  const cats=(typeof HJ_EXP_CATS!=='undefined')?HJ_EXP_CATS.join('/'):'자재/인건비/외주/장비/유류/식대/기타';
+  const acc=(COMPANY.accounts&&COMPANY.accounts[0])?COMPANY.accounts[0].label:'';
+  // 진행 중인 현장 목록을 자동으로 채움(담당자만 적으면 됨)
+  let siteList='- (예: 김반장 → 대흥동상가, 유천동주택)\n- (예: 이기사 → 문화동카페)';
+  try{
+    const active=(state.projects||[]).filter(function(p){return !p.archived&&(p.stage||0)<3;}).map(function(p){return p.name;});
+    if(active.length)siteList=active.map(function(nm){return '- '+nm+' → 담당자: ';}).join('\n');
+  }catch(e){}
+  return [
+    {id:'cw_card',icon:'💳',title:'카드 내역 정리',builtin:true,prompt:
+`너는 ${COMPANY.name}(대전, 인테리어 시공업)의 경리 비서다.
+이 폴더에 있는 카드 이용내역 파일(엑셀/CSV/PDF)을 읽어서 처리해줘.
+
+[할 일]
+1. 전체 지출을 항목별로 분류해줘: ${cats}
+2. 가맹점명·메모로 어느 현장 지출인지 추정해서 현장별로 묶어줘 (애매하면 '미분류')
+3. 월별 합계와 항목별 합계 표를 만들어줘
+4. 결과를 '카드내역_정리.xlsx'로 저장해줘 (항목별 시트 + 현장별 시트)
+
+[주의]
+- 분류가 애매한 항목은 '확인필요'로 따로 표시해서 내가 검토할 수 있게 해줘.
+- 내가 이미 다운로드해둔 파일만 사용하고, 카드사 사이트에 직접 접속하지는 마.`},
+
+    {id:'cw_tax',icon:'🧾',title:'세금계산서·매출매입 대조',builtin:true,prompt:
+`너는 ${COMPANY.name}의 세무 정리 비서다. 사업자번호는 ${COMPANY.bizno}.
+이 폴더에 있는, 홈택스에서 내가 다운로드해둔 매출/매입 세금계산서 내역 파일과 통장·카드 내역을 대조해줘.
+
+[할 일]
+1. 매출 세금계산서 목록 정리 (거래처·일자·공급가액·부가세·합계)
+2. 매입 세금계산서 목록 정리 (거래처·일자·공급가액·부가세·합계)
+3. 실제 입금/출금 내역과 대조해서, 안 맞는 건(미수금·미지급) 표시
+4. 부가세 신고용 요약: 매출합계·매입합계·예상 납부세액
+5. '세금계산서_대조.xlsx'로 저장 (매출 시트/매입 시트/대조 시트)
+
+[주의]
+- 공동인증서 로그인이나 홈택스 직접 접속은 하지 마. 내가 받아둔 파일만 써.
+- 숫자는 반드시 원본 파일 기준으로, 임의로 만들지 마.`},
+
+    {id:'cw_photo',icon:'📸',title:'현장 사진 담당자별 정리·전송 준비',builtin:true,prompt:
+`너는 ${COMPANY.name}의 현장 사진 정리 비서다.
+이 폴더의 현장 사진들을 담당자별로 정리하고 전송 준비까지 해줘.
+
+[할 일]
+1. 현장별로 폴더를 나눠서 사진을 분류해줘 (파일명·촬영날짜 기준, 애매하면 나에게 물어봐)
+2. 각 현장 담당자를 지정해줘 (담당자 명단은 아래 참고, 없으면 '미지정')
+3. 담당자별로 보낼 사진 목록을 만들어줘
+4. 담당자에게 보낼 메시지 초안을 작성해줘 (현장명·사진 장수·진행상황 한 줄·정중한 말투)
+5. '사진전송_목록.xlsx'에 담당자·현장·사진수·메시지 정리
+
+[담당자 명단]  ← 아래 현장에 담당자를 적어줘 (같은 담당자는 여러 현장 묶어도 됨)
+${siteList}
+
+[주의]
+- 실제 카톡/문자 전송은 내가 확인하고 직접 보낼게. 목록과 초안까지만 만들어줘.`},
+
+    {id:'cw_month',icon:'📊',title:'월간 자료 종합 정리',builtin:true,prompt:
+`너는 ${COMPANY.name}의 경영 정리 비서다.
+이 폴더에 있는 이번 달 자료(카드내역·세금계산서·통장내역·현장 정보)를 종합해서 월간 정리 보고서를 만들어줘.
+
+[할 일]
+1. 이번 달 매출 합계 / 매입·지출 합계 / 순이익 계산
+2. 현장별 수입·지출·이익 정리 (어느 현장이 남았는지)
+3. 미수금 현황 (아직 안 들어온 돈)
+4. 항목별 지출 비중 (${cats})
+5. 한 장짜리 요약 + '월간정리_보고서.xlsx' 저장
+
+[주의]
+- 모든 숫자는 원본 파일 기준. 자료가 부족한 부분은 '자료없음'으로 표시하고 추측하지 마.`}
+  ];
+}
+
+function coworkTasksEnsure(){
+  if(!Array.isArray(state.coworkTasks)||!state.coworkTasks.length){
+    // 최초 1회 기본 템플릿 채움(사용자가 다 지웠으면 빈 상태 유지 위해 플래그)
+    if(!state._coworkInit){state.coworkTasks=coworkDefaults();state._coworkInit=true;}
+    else if(!Array.isArray(state.coworkTasks))state.coworkTasks=[];
+  }
+  return state.coworkTasks;
+}
+
+// 안전한 복사
+function coworkCopy(text,label){
+  const done=()=>toast('📋 '+(label||'명령')+' 복사됨 — Cowork에 붙여넣으세요');
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>coworkCopyFallback(text,done));}
+    else coworkCopyFallback(text,done);
+  }catch(e){coworkCopyFallback(text,done);}
+}
+function coworkCopyFallback(text,done){
+  try{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();done();}
+  catch(e){toast('복사가 안 돼요. 길게 눌러 직접 복사하세요.');}
+}
+
+// 목록 화면
+function coworkTasksManage(){
+  const tasks=coworkTasksEnsure();const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
+  const rows=tasks.length?tasks.map(t=>
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span style="font-size:20px">'+t.icon+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b>'+(t.builtin?'':'<span style="font-size:9.5px;background:#e0e7ff;color:#4338ca;padding:1px 7px;border-radius:8px;font-weight:700">내 작업</span>')+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:9px;line-height:1.5;max-height:42px;overflow:hidden">'+escapeHtml(t.prompt.slice(0,90))+'…</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<button class="cwCopy clay tiny" data-id="'+t.id+'" style="flex:1;padding:8px;font-size:12.5px">📋 명령 복사</button>'+
+        '<button class="cwView ghost tiny" data-id="'+t.id+'" style="padding:8px 11px;font-size:12px">전체</button>'+
+        '<button class="cwEdit ghost tiny" data-id="'+t.id+'" style="padding:8px 11px;font-size:12px">✏️</button>'+
+      '</div>'+
+    '</div>').join(''):'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">작업이 없어요.<br>[+ 작업 추가]로 만들거나 [기본값 복원]을 누르세요.</div>';
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">PC의 Claude Cowork에게 시킬 명령</div><div style="font-size:18px;font-weight:800">🖥 Cowork 작업 지휘부</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+tasks.length+'개 작업 · 복사해서 붙여넣기</div></div>'+
+    '<div style="font-size:11.5px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:10px;margin-bottom:12px;line-height:1.5">💡 PC에서 Claude Desktop → <b>Cowork 모드</b>로 전환하고, 자료 폴더를 연 뒤 아래 명령을 <b>복사해 붙여넣으면</b> 됩니다. 홈택스·카드 파일은 미리 폴더에 받아두세요.</div>'+
+    rows+
+    '<div style="display:flex;gap:7px;margin-top:10px">'+
+      '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 작업 추가</button>'+
+      '<button class="ghost" id="cwReset" style="padding:12px 14px;font-size:12px">기본값 복원</button>'+
+    '</div>';
+  openModal('🖥 Cowork 작업 지휘부',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rebind=()=>coworkTasksManage();
+  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(t.prompt,t.title);});
+  document.querySelectorAll('.cwView').forEach(b=>b.onclick=()=>coworkTaskView(b.dataset.id));
+  document.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
+  const addBtn=document.getElementById('cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
+  const resetBtn=document.getElementById('cwReset');if(resetBtn)resetBtn.onclick=()=>{if(confirm('기본 작업 4개를 다시 불러올까요? (내가 추가한 작업은 유지됩니다)')){const custom=(state.coworkTasks||[]).filter(t=>!t.builtin);state.coworkTasks=coworkDefaults().concat(custom);markDirty();toast('기본값을 복원했어요');rebind();}};
+  return {작업:tasks.length};
+}
+
+// 전체 보기(복사 중심)
+function coworkTaskView(id){
+  const tasks=coworkTasksEnsure();const t=tasks.find(x=>x.id===id);if(!t){toast('작업을 찾을 수 없어요');return;}
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">Cowork 명령</div><div style="font-size:17px;font-weight:800">'+t.icon+' '+escapeHtml(t.title)+'</div></div>'+
+    '<div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;background:var(--paper-2);border-radius:11px;padding:14px;border:1px solid var(--line-soft);max-height:340px;overflow:auto">'+escapeHtml(t.prompt)+'</div>'+
+    '<button class="clay" id="cwvCopy" style="width:100%;padding:13px;font-size:14px;margin-top:12px">📋 이 명령 복사</button>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 복사한 뒤 PC의 Cowork 입력창에 붙여넣고, 자료 폴더가 열려 있는지 확인하세요.</div>';
+  openModal('📋 '+t.title,body,[{label:'✏️ 수정',cls:'ghost',fn:()=>coworkTaskEdit(id)},{label:'‹ 목록',cls:'ghost',fn:()=>coworkTasksManage()}],true);
+  const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(t.prompt,t.title);
+  return {작업:t.title};
+}
+
+// 수정·추가(id null이면 새 작업)
+function coworkTaskEdit(id){
+  const tasks=coworkTasksEnsure();
+  const t=id?tasks.find(x=>x.id===id):null;
+  const isNew=!t;
+  const body=
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">작업 이름</label>'+
+    '<div style="display:flex;gap:8px;margin-bottom:12px"><input id="cwTitle" value="'+(t?escapeAttr(t.title):'')+'" placeholder="예: 통장 내역 정리" style="flex:1;padding:10px;font-size:14px"><input id="cwIcon" value="'+(t?escapeAttr(t.icon):'🖥')+'" maxlength="2" style="width:52px;padding:10px;font-size:18px;text-align:center"></div>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">Cowork에게 시킬 명령 (붙여넣기용)</label>'+
+    '<textarea id="cwPrompt" placeholder="너는 만물인테리어의 ○○ 비서다. 이 폴더의 ○○ 파일을 읽어서…" style="width:100%;padding:11px;font-size:13px;min-height:220px;line-height:1.6;font-family:inherit">'+(t?escapeHtml(t.prompt):'')+'</textarea>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">💡 명령은 구체적일수록 좋아요: ①누구인지(역할) ②어떤 파일을 ③무엇을 해서 ④어떻게 저장할지 ⑤하지 말 것. 회사명·현장명·담당자를 넣으면 더 정확합니다.</div>';
+  openModal(isNew?'+ Cowork 작업 추가':'✏️ 작업 수정',body,[
+    {label:'저장',cls:'clay',fn:()=>{
+      const title=document.getElementById('cwTitle').value.trim();
+      const prompt=document.getElementById('cwPrompt').value.trim();
+      const icon=document.getElementById('cwIcon').value.trim()||'🖥';
+      if(!title||!prompt){toast('작업 이름과 명령을 모두 입력하세요');return;}
+      if(isNew){coworkTasksEnsure().push({id:'cw_'+uid(),icon,title,prompt,builtin:false});toast('작업을 추가했어요');}
+      else{t.title=title;t.prompt=prompt;t.icon=icon;toast('작업을 수정했어요');}
+      markDirty();coworkTasksManage();
+    }},
+    (t&&!t.builtin?{label:'🗑 삭제',cls:'ghost',fn:()=>{if(confirm('이 작업을 삭제할까요?')){state.coworkTasks=tasks.filter(x=>x.id!==id);markDirty();coworkTasksManage();}}}:{label:'취소',cls:'ghost',fn:()=>coworkTasksManage()})
+  ]);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ⭐ 데이터 안심 3종 — 개인 운영 도구 별 5개 완성
+   ① 자동 백업 알림 + 원터치 백업 (잊지 않게 챙겨줌)
+   ② 드라이브 자동 백업 강화 (데이터 바뀌면 클라우드에도)
+   ③ 실수 방지 (지우기/덮어쓰기 전 백업 권유)
+═══════════════════════════════════════════════════════════════ */
+
+// 마지막 백업 시점 기록/조회 (localStorage: 백업 성공할 때마다 갱신)
+function backupMarkDone(kind){
+  try{localStorage.setItem('hj_last_backup',JSON.stringify({at:Date.now(),kind:kind||'file'}));}catch(e){}
+}
+function backupLastInfo(){
+  try{const v=JSON.parse(localStorage.getItem('hj_last_backup')||'null');return v;}catch(e){return null;}
+}
+// 며칠 지났나
+function backupDaysSince(){
+  const info=backupLastInfo();
+  if(!info||!info.at)return 999;
+  return Math.floor((Date.now()-info.at)/86400000);
+}
+// 백업이 필요한 상황인가? (7일 이상 지났거나, 데이터가 있는데 한 번도 백업 안 함)
+function backupNeeded(){
+  try{
+    const hasData=(state.projects&&state.projects.length)||(state.files&&state.files.length);
+    if(!hasData)return false;
+    const days=backupDaysSince();
+    return days>=7;   // 일주일 이상 백업 안 했으면 권유
+  }catch(e){return false;}
+}
+
+// ① 홈 백업 알림 카드
+function backupCardHTML(){
+  try{
+    if(!backupNeeded())return '';
+    const info=backupLastInfo();
+    const days=backupDaysSince();
+    const never=!info;
+    const msg=never?'아직 백업한 적이 없어요':(days>=30?days+'일째 백업 안 함':days+'일 전 백업');
+    return '<div class="hj-card" style="background:linear-gradient(120deg,#fef3c7,#fde68a);border:1px solid #fbbf24;border-radius:14px;padding:14px;margin:10px 0">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="font-size:26px">💾</span>'+
+        '<div style="flex:1;min-width:0"><b style="font-size:13.5px;color:#92400e">데이터 백업이 필요해요</b><br><span style="font-size:11.5px;color:#a16207">'+msg+' · 폰이 고장나면 자료가 사라질 수 있어요</span></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:10px">'+
+        '<button class="clay" onclick="try{backupNow()}catch(e){}" style="flex:1;padding:11px;font-size:13px">💾 지금 백업</button>'+
+        (typeof openManmulFolder==='function'?'<button class="ghost" onclick="try{openManmulFolder()}catch(e){}" style="padding:11px 13px;font-size:12px">☁️ 드라이브</button>':'')+
+      '</div>'+
+    '</div>';
+  }catch(e){return '';}
+}
+// 홈 카드 버튼 바인딩(render 후 호출)
+function backupCardBind(){
+  const now=document.getElementById('bkNow');
+  if(now)now.onclick=()=>backupNow();
+  const drv=document.getElementById('bkDrive');
+  if(drv)drv.onclick=()=>{try{if(typeof openManmulFolder==='function')openManmulFolder();}catch(e){}};
+}
+
+// 원터치 백업(파일 + 가능하면 드라이브)
+function backupNow(){
+  try{
+    if(typeof exportData==='function'){
+      exportData();          // 파일 백업(공유 시트 or 다운로드)
+      backupMarkDone('file');
+    }
+    // 드라이브도 연결돼 있으면 같이
+    try{if(typeof gdBackup==='function')gdBackup();}catch(e){}
+    // 홈 카드 갱신
+    try{if(typeof render==='function')render();}catch(e){}
+  }catch(e){toast('백업 중 문제가 생겼어요. 다시 시도해 주세요.');}
+}
+
+// ② 드라이브 자동 백업 강화 — 데이터 변경 시 하루 1회 드라이브에 조용히 백업
+let __bkDriveDebounce=null;
+function backupDriveAuto(){
+  try{
+    // 드라이브 연결 안 됐으면 조용히 스킵
+    if(typeof gdBackup!=='function')return;
+    if(typeof __gdToken!=='undefined'&&typeof __gdFolderId!=='undefined'){
+      if(!__gdToken||!__gdFolderId)return;
+    }
+    clearTimeout(__bkDriveDebounce);
+    __bkDriveDebounce=setTimeout(()=>{try{gdBackup();}catch(e){}},4000);   // 변경 몰아서 4초 후 1회
+  }catch(e){}
+}
+
+// 부팅 시 백업 상태 점검(알림만, 강제 안 함)
+function backupBootCheck(){
+  try{
+    // 드라이브 연결돼 있으면 부팅 시 조용히 자동 백업 시도(하루 1회)
+    try{if(typeof gdBackup==='function')gdBackup();}catch(e){}
+    // 오래 안 했으면 부드럽게 알림(홈 카드로 이미 보이므로 토스트는 30일+ 만)
+    if(backupDaysSince()>=30&&backupNeeded()){
+      setTimeout(()=>{try{toast('💾 한 달 넘게 백업을 안 했어요. 홈에서 백업해 주세요.');}catch(e){}},2500);
+    }
+  }catch(e){}
+}
+
+// ③ 실수 방지 — 위험 작업 전 백업 권유 게이트
+// 콜백 실행 전에 "백업하고 진행 / 그냥 진행 / 취소" 선택
+function backupGuard(actionName,dangerFn){
+  const days=backupDaysSince();
+  const info=backupLastInfo();
+  // 최근(2일 내) 백업했으면 게이트 없이 바로(귀찮지 않게)
+  if(info&&days<=2){dangerFn();return;}
+  const daysMsg=info?(days+'일 전 백업'):'백업한 적 없음';
+  openModal('⚠️ '+actionName+' 전 확인',
+    '<div style="text-align:center;padding:6px 0 12px"><div style="font-size:38px">💾</div><div style="font-size:14px;font-weight:700;margin-top:8px">되돌리기 어려운 작업이에요</div><div style="font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.5">현재 '+daysMsg+' 상태예요.<br>혹시 모르니 <b>백업부터 하고</b> 진행하는 걸 권해요.</div></div>',
+    [
+      {label:'💾 백업하고 진행',cls:'clay',fn:()=>{
+        try{backupNow();}catch(e){}
+        // 백업(공유/다운로드)이 뜨는 동안, 사용자가 마친 뒤 진행하도록 한 번 더 확인
+        setTimeout(()=>{
+          openModal('백업 후 진행',
+            '<div style="text-align:center;padding:10px 0"><div style="font-size:13px;line-height:1.6">백업 파일을 저장하셨나요?<br><span style="font-size:12px;color:var(--muted)">저장을 마쳤으면 아래를 눌러 진행하세요.</span></div></div>',
+            [{label:'✔ 백업했어요 · 진행',cls:'clay',fn:()=>{closeModal();dangerFn();}},{label:'취소',cls:'ghost',fn:closeModal}]);
+        },600);
+      }},
+      {label:'백업 없이 진행',cls:'ghost',fn:()=>{closeModal();dangerFn();}},
+      {label:'취소',cls:'ghost',fn:closeModal}
+    ]);
+}
+
+// 백업 안심 센터(현재 상태 + 관리)
+function backupCenter(){
+  const info=backupLastInfo();const days=backupDaysSince();
+  const driveOn=(typeof __gdToken!=='undefined'&&__gdToken&&typeof __gdFolderId!=='undefined'&&__gdFolderId);
+  const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
+  const statusColor=days<=2?'#0a7f43':days<=7?'#e8912d':'#c2410c';
+  const statusMsg=!info?'아직 백업 안 함':(days===0?'오늘 백업함 ✓':days+'일 전 백업');
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">데이터 안심 상태</div><div style="font-size:22px;font-weight:800;margin:3px 0">💾 백업 센터</div><div style="font-size:12.5px;opacity:.95">'+statusMsg+'</div></div>'+
+    // 상태 카드
+    '<div style="display:flex;gap:8px;margin-bottom:14px">'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:11px;padding:12px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">마지막 백업</div><div style="font-size:14px;font-weight:800;color:'+statusColor+'">'+(!info?'없음':days+'일 전')+'</div></div>'+
+      '<div style="flex:1;background:'+(driveOn?'#f0fdf4':'var(--paper-2)')+';border-radius:11px;padding:12px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">클라우드</div><div style="font-size:13px;font-weight:800;color:'+(driveOn?'#0a7f43':'#9ca3af')+'">'+(driveOn?'연결됨 ✓':'미연결')+'</div></div>'+
+    '</div>'+
+    // 백업 버튼
+    '<button class="clay" id="bcNow" style="width:100%;padding:13px;font-size:14px;margin-bottom:8px">💾 지금 백업하기</button>'+
+    (driveOn?'':'<button class="moss" id="bcDrive" style="width:100%;padding:12px;font-size:13px;margin-bottom:8px">☁️ 구글 드라이브 연결(폰 고장 대비)</button>')+
+    '<button class="ghost" id="bcRestore" style="width:100%;padding:11px;font-size:13px;margin-bottom:14px">↺ 백업에서 복원</button>'+
+    // 안내
+    '<div style="font-size:11.5px;color:var(--muted);background:#eff6ff;border-radius:10px;padding:11px;line-height:1.6">'+
+      '💡 <b>왜 백업이 중요한가요?</b><br>이 앱의 데이터는 이 기기 안에만 있어요. 폰이 고장나거나 브라우저를 지우면 자료가 사라져요. '+(driveOn?'구글 드라이브에 연결돼 있어 자료를 저장할 때 자동으로 사본이 올라가요. 안심하세요!':'<b>구글 드라이브를 연결하면</b> 자료가 자동으로 클라우드에 백업돼서, 폰이 고장나도 살아있어요.')+
+    '</div>';
+  openModal('💾 백업 센터',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const nb=document.getElementById('bcNow');if(nb)nb.onclick=()=>{backupNow();toast('💾 백업을 시작했어요');};
+  const db=document.getElementById('bcDrive');if(db)db.onclick=()=>{closeModal();try{if(typeof openGdriveSetup==='function')openGdriveSetup();else if(typeof openManmulFolder==='function')openManmulFolder();}catch(e){}};
+  const rb=document.getElementById('bcRestore');if(rb)rb.onclick=()=>{closeModal();try{if(typeof importData==='function')importData();else if(typeof openManmulFolder==='function')openManmulFolder();}catch(e){}};
+  return {마지막백업:!info?'없음':days+'일 전',클라우드:driveOn?'연결됨':'미연결'};
 }
 
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
@@ -16044,7 +17265,7 @@ try{hjNetWatch();}catch(e){}
   try{window.__openaiKey=(await idbGet('openai_key'))||null;}catch(e){}
   try{aiProviderLoad();}catch(e){}
   try{await llamaConfigLoad();}catch(e){}
-  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);}catch(e){}
+  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
