@@ -1230,7 +1230,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-04d';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-10-gemini-auth';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -2029,7 +2029,7 @@ function openGdriveSetup(){
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
-      <input type="text" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AIza...)" style="width:100%">
+      <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AI Studio)" autocomplete="off" spellcheck="false" style="width:100%">
       <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (OpenAI ChatGPT · 선택)</summary>
@@ -3391,6 +3391,7 @@ function voiceMemo(){
   root.querySelectorAll('[data-noteshare]').forEach(el=>el.onclick=async()=>{const n=(state.notes||[]).find(x=>x.id===el.dataset.noteshare);if(n){try{if(navigator.share)await navigator.share({title:'회의록',text:n.text});else if(navigator.clipboard){navigator.clipboard.writeText(n.text);toast('복사됨');}}catch(e){}}});
 }
 /* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
+function geminiHeaders(key){return {'Content-Type':'application/json','x-goog-api-key':key};}
 async function geminiAsk(prompt){
   const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
   const res=await quotaReserve('gemini'); if(!res.ok)throw new Error(res.msg);   // 무료 한도 보호(예약)
@@ -3398,10 +3399,10 @@ async function geminiAsk(prompt){
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
-        if(r.status===400||r.status===403){lastErr='요청 오류('+r.status+')';break;}  // 키/요청 문제 → 다른 모델 시도 무의미
+        if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}  // 키/요청 문제 → 다른 모델 시도 무의미
         if(!r.ok)throw new Error('Gemini '+r.status);
         consumed=true;   // 200 도달 → 구글이 생성 카운트함. 차단/빈응답이어도 예약 환불하면 한도 과소집계 → 환불 금지
         const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
@@ -3423,10 +3424,10 @@ async function geminiVision(prompt,b64jpegs){
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}]})});
+        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify({contents:[{parts}]})});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
-        if(r.status===400||r.status===403){lastErr='요청 오류('+r.status+')';break;}
+        if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}
         if(!r.ok)throw new Error('Gemini '+r.status);
         consumed=true;
         const j=await r.json(); const c=j&&j.candidates&&j.candidates[0];
@@ -4367,10 +4368,10 @@ async function aiFC(contents){
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify(body)});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
-        if(r.status===400||r.status===403){lastErr='요청 오류('+r.status+')';break;}
+        if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}
         if(!r.ok)throw new Error('Gemini '+r.status);
         consumed=true;
         const j=await r.json();const c=j&&j.candidates&&j.candidates[0];
