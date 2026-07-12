@@ -276,6 +276,13 @@
   .cluster-h .when{font-weight:700;font-size:13.5px}
   .cluster-h .where{font-size:11.5px;color:var(--blueprint)}
   .cluster-h .n{font-size:11px;color:var(--muted);margin-left:auto}
+  #projList{max-height:346px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:thin}
+  #projList::-webkit-scrollbar{width:5px}#projList::-webkit-scrollbar-thumb{background:var(--line-soft);border-radius:3px}
+  #projList>.proj-item:first-child{position:sticky;top:0;z-index:2;background:var(--paper)}
+  .ph-preview{display:flex;gap:6px;align-items:center;margin:2px 0 10px;flex-wrap:wrap}
+  .ph-preview img,.ph-preview .ph-more{width:74px;height:74px;border-radius:10px;border:1px solid var(--line-soft)}
+  .ph-preview img{object-fit:cover;cursor:zoom-in}
+  .ph-preview .ph-more{display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--blueprint);background:var(--paper-2);cursor:pointer}
   .cluster-body{padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
   .ph{aspect-ratio:1;border-radius:6px;overflow:hidden;background:var(--paper-2);border:1px solid var(--line-soft);position:relative}
   .ph img{width:100%;height:100%;object-fit:cover;display:block}
@@ -649,6 +656,8 @@
       <div class="tab" data-tab="schedule">📅 일정표</div>
       <div class="tab" data-tab="contacts">연락처 <span class="b" id="bCon">0</span></div>
       <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
+      <div class="tab" data-tab="ledger">💼 회계 <span class="b" id="bLedger">0</span></div>
+      <div class="tab" data-tab="ads">📣 광고</div>
     </div>
 
     <div id="view"></div>
@@ -728,6 +737,7 @@ const COMPANY={
 
 const KIND={
   estimate:{label:'견적서',folder:'견적서',badge:'clay'},
+  ledger:{label:'회계(홈택스)',folder:'회계',badge:'gold'},
   bizreg:{label:'사업자등록증',folder:'사업자등록증',badge:'blue'},
   card:{label:'명함',folder:'명함',badge:'moss'},
   drawing:{label:'도면',folder:'도면',badge:'gold'},
@@ -813,6 +823,7 @@ let __removedIds=new Set();   // 사용자가 '제거'한 중복 사진의 drive
 function classify(rec){
   const hay=((rec.name||'')+' '+(rec.text||'')).toLowerCase();
   const txt=(rec.text||'').toLowerCase();
+  if(/이용내역|카드.?이용|승인내역|매출.?전자세금계산서|매입.?전자세금계산서|세금계산서|홈택스|hometax/.test(hay)&&['xlsx','xls','csv'].includes(rec.ext)) return 'ledger';
   if(/사업자\s*등록증|사업자등록|등록번호[\s:]*\d{3}-?\d{2}-?\d{5}|business.?registration/.test(hay)) return 'bizreg';
   if(/명함|대표\s*이사|☎|tel[\s:．.]|mobile|name.?card|代表/.test(hay) && IMG.includes(rec.ext)) return 'card';
   if(/명함|name.?card/.test((rec.name||'').toLowerCase())) return 'card';
@@ -1055,7 +1066,10 @@ function serializeData(){
     priceBook:state.priceBook||{},
     asLog:state.asLog||[],
     satisfaction:state.satisfaction||[],
+    adPosts:state.adPosts||[],
     coworkTasks:state.coworkTasks||null,
+    coworkSched:state.coworkSched||[],
+    _cwSchedInit:state._cwSchedInit||false,
     _coworkInit:state._coworkInit||false,
     payLog:(state.payLog||[]).slice(-400),
     expenses:(state.expenses||[]).slice(-600),
@@ -1068,7 +1082,7 @@ function serializeData(){
     contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:f.text||'',ocr:f.ocr,est:f.est,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
+      text:f.text||'',ocr:f.ocr,est:f.est,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
       driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
@@ -1094,6 +1108,9 @@ function applyData(data){
   state.satisfaction=Array.isArray(data.satisfaction)?data.satisfaction:(state.satisfaction||[]);
   state.coworkTasks=Array.isArray(data.coworkTasks)?data.coworkTasks:(state.coworkTasks||null);
   state._coworkInit=data._coworkInit||state._coworkInit||false;
+  state.coworkSched=Array.isArray(data.coworkSched)?data.coworkSched:(state.coworkSched||[]);
+  state.adPosts=Array.isArray(data.adPosts)?data.adPosts:(state.adPosts||[]);
+  state._cwSchedInit=data._cwSchedInit||state._cwSchedInit||false;
   state.payLog=data.payLog||state.payLog||[];
   state.suppliers=data.suppliers||state.suppliers||[];
   state.supplierMap=data.supplierMap||state.supplierMap||{};
@@ -1115,7 +1132,7 @@ function applyData(data){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
@@ -2982,7 +2999,7 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -3086,7 +3103,7 @@ function render(){
     sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
     wrap.appendChild(sr);pl.appendChild(wrap);
   };
-  __actP.forEach(p=>addProjItem(p,false));
+  __actP.slice().reverse().forEach(p=>addProjItem(p,false)); // 신규 현장이 맨위
   if(__arcP.length){
     const tg=document.createElement('div');
     tg.className='proj-item';tg.style.opacity='.7';tg.style.fontSize='12px';
@@ -3100,15 +3117,16 @@ function render(){
   {const pc=$('#projChip');if(pc)pc.textContent='🏗 '+(state.activeProject||'전체 보기')+' ▾';}
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
   $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
+  {const _bl=$('#bLedger');if(_bl)_bl.textContent=state.files.filter(f=>f.kind==='ledger').length;}
   tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
   $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
-  const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함']};
+  const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함'],ledger:['홈택스 ','회계'],ads:['광고 ','관리']};
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates'].includes(state.tab)){v.innerHTML=emptyState();bindDrop();return;}
-  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject};
+  const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,ads:viewAds};
   v.innerHTML=map[state.tab]();
   bindDrop();bindEvents();
   try{observeHeicLazy();}catch(e){}   // 보이는 로컬 HEIC만 변환(지연 로딩)
@@ -3130,7 +3148,10 @@ function cardHtml(f){
   const canPreview=canPreviewFile(f);
   const preview=previewButtonHtml(f,'미리보기');
   const rename=(!f._virtual)?`<button class="mini-btn" data-rename="${f.id}" title="파일 이름 변경">✎ 이름</button>`:'';
-  const actbtns=(preview||rename)?`<div class="card-tools">${preview}${rename}</div>`:'';
+  const fcopy=(f.kind!=='photo'&&!f._virtual)?`<button class="mini-btn" data-fcopy="${f.id}" title="복사본 만들기">📄 복사</button>`:'';
+  const fdel=(f.kind!=='photo')?`<button class="mini-btn" data-fdel="${f.id}" title="파일 삭제" style="color:#b91c1c">🗑 삭제</button>`:'';
+  const fsend=(f.kind==='card'||f.kind==='bizreg')?`<button class="mini-btn" data-fsend="${f.id}" title="카톡·문자로 보내기">📤 보내기</button>`:'';
+  const actbtns=(preview||rename||fsend||fcopy||fdel)?`<div class="card-tools">${preview}${rename}${fsend}${fcopy}${fdel}</div>`:'';
   return `<div class="card" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
@@ -3656,6 +3677,9 @@ const AI_TOOLS = [
  {name:'customer_crm',description:'고객 타임라인(CRM)을 연다(고객별 현장·수금·연락·리뷰 이력 시간순). query=고객명(선택). "고객 관리/고객 이력/CRM/고객 타임라인/이 고객"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
  {name:'inventory',description:'자재 재고를 관리한다(수량 증감·최소수량 미달 재주문 알림·발주 연결). "자재 재고/재고 관리/자재 부족/재주문"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'profit_rank',description:'현장별 수익성 랭킹을 보여준다(매출-원가 이익 순위·마진율). "수익성/어떤 현장이 남아/현장 순위/이익 랭킹"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'hometax_ledger',description:'💼 회계 탭을 연다(홈택스 카드·매입·매출 엑셀 자동 년월 집계). "회계/홈택스/카드 내역/매입 매출/부가세 자료"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'ads_manage',description:'📣 광고 관리 탭을 연다(스레드·인스타·메타·네이버블로그 게시 기록). "광고/홍보 기록/스레드 올린 거/인스타 관리"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'cowork_schedule',description:'Cowork 예약 스케줄을 연다(일/주/월 예약, 오늘 예정 작업, 지시서 파일 저장). "코워크 예약/코워크 일정/오늘 코워크 뭐/지시서 저장"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ba_card',description:'시공 전/후 비교 카드 이미지를 만든다(현장 사진 2장 선택→합성 이미지, 홍보용). "전후 비교/비포애프터/홍보 카드/시공 전후 사진"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'voice_input',description:'말로 기록(음성 입력) 안내를 연다 — 음성으로 지출·일정·질문을 지시. "말로/음성으로/받아써/음성 입력"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'msg_center',description:'상황별 문자 센터를 연다(착공 안내/준공 인사/AS 답변/리뷰 부탁/감사 인사 — 현장·고객 자동 채움). "착공 문자/준공 문자/고객 문자/인사 문자/문자 보내줘"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -3896,6 +3920,7 @@ async function aiToolRun(name,a){
       const t=String(a.title||'').trim(),d=String(a.date||'').trim();
       if(!t)throw new Error('일정 제목이 비었습니다.');
       if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw new Error('날짜는 YYYY-MM-DD 형식이어야 합니다: '+d);
+      {const _p=d.split('-').map(Number);const _vd=new Date(_p[0],_p[1]-1,_p[2]);if(_vd.getFullYear()!==_p[0]||_vd.getMonth()!==_p[1]-1||_vd.getDate()!==_p[2])throw new Error('존재하지 않는 날짜입니다: '+d);}
       const s=Object.assign(newSchedule(),{title:t,date:d,time:String(a.time||'09:00').slice(0,5),project:String(a.project||''),workers:String(a.workers||''),memo:String(a.memo||'')});
       state.schedule=state.schedule||[];state.schedule.push(s);
       markDirty();render();
@@ -4112,6 +4137,9 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'customer_crm':{let key=null;if(a.query){const list=customerListData();const m=list.find(x=>x.name&&x.name.includes(a.query))||list.find(x=>x.phone&&x.phone.includes(a.query));if(m)key=m.key;}const r=crmDialog(key);return Object.assign({결과:'고객 타임라인을 열었습니다'},r);}
     case 'inventory':{const r=inventoryManage();return Object.assign({결과:'자재 재고를 열었습니다'},r);}
     case 'profit_rank':{const r=profitRank();return Object.assign({결과:'수익성 랭킹을 열었습니다'},r);}
+    case 'hometax_ledger':{state.tab='ledger';state.activeProject=null;render();return {결과:'회계 탭을 열었습니다',파일:state.files.filter(f=>f.kind==='ledger').length};}
+    case 'ads_manage':{state.tab='ads';state.activeProject=null;render();return {결과:'광고 관리 탭을 열었습니다',기록:(state.adPosts||[]).length};}
+    case 'cowork_schedule':{const r=coworkSchedView();return Object.assign({결과:'Cowork 예약 스케줄을 열었습니다'},r);}
     case 'ba_card':{const r=baCompareView();return Object.assign({결과:'전/후 비교 카드를 열었습니다'},r);}
     case 'voice_input':{const r=voiceInputView();return Object.assign({결과:'말로 기록 안내를 열었습니다'},r);}
     case 'msg_center':{const r=msgCenterView();return Object.assign({결과:'문자 센터를 열었습니다'},r);}
@@ -4284,6 +4312,9 @@ case 'ops_loop_run':return '운영 점검';
     case 'customer_crm':return '고객 타임라인';
     case 'inventory':return '자재 재고';
     case 'profit_rank':return '수익성 랭킹';
+    case 'hometax_ledger':return '회계(홈택스)';
+    case 'ads_manage':return '광고 관리';
+    case 'cowork_schedule':return 'Cowork 예약';
     case 'ba_card':return '전/후 비교 카드';
     case 'voice_input':return '말로 기록';
     case 'msg_center':return '문자 센터';
@@ -6314,6 +6345,10 @@ const HJ_HELP=[
   {k:'고객 타임라인(CRM)',d:'더보기 [👥 고객 관리] — 고객별로 현장·수금·완공·리뷰 이력을 시간순으로 모아 보여줍니다. 단골은 자동 표시되고, 전화·문자도 바로 걸 수 있어요.',say:'고객 관리 열어줘'},
   {k:'자재 재고',d:'더보기 [📦 자재 재고] — 자주 쓰는 자재의 재고를 +/−로 관리하고, 최소 수량 이하로 떨어지면 재주문 알림과 발주서를 연결해 줍니다.',say:'자재 재고 보여줘'},
   {k:'현장별 수익성 랭킹',d:'더보기 [🏆 수익성 랭킹] — 현장별로 매출에서 원가(자재·인건비·외주)를 뺀 이익 순위를 매겨, 어떤 현장이 실제로 남는지 보여줍니다.',say:'수익성 랭킹 보여줘'},
+  {k:'스킬 명령문',d:'지휘부·예약의 [🧰 스킬 명령문] — 만물 스킬 8종을 언제 어떤 한마디로 부르는지 표로 복사돼요. 모든 명령서·지시서에도 \'🧰 사용할 스킬\' 줄이 자동으로 붙어 Cowork가 알맞은 스킬로 일합니다.',say:'스킬 명령문 복사해줘'},
+  {k:'회계(홈택스)',d:'상단 [💼 회계] 탭 — 홈택스에서 받은 카드 이용내역·매출/매입 세금계산서 엑셀을 폴더에 넣기만 하면 년·월별로 자동 집계돼요(카드 사용액·매출·매입·부가세 예상). 파일별 [🔄]로 다시 읽기.',say:'회계 탭 열어줘'},
+  {k:'광고 관리',d:'상단 [📣 광고] 탭 — 스레드·인스타·메타·네이버블로그 채널별로 올린 글을 기록/관리해요. 채널 칩으로 소분류 필터, 이번 달 게시 수 확인, 링크 바로 열기.',say:'광고 관리 열어줘'},
+  {k:'Cowork 예약',d:'더보기 [⏰ Cowork 예약] — 카드정리·세금·사진정리·월간·QA 같은 Cowork 작업을 매일/매주/매월로 예약해두면, 예정일에 홈 브리핑과 승인함에 떠요. [📤 지시서 저장]을 누르면 폴더에 _코워크_오늘업무.md가 만들어지고, Cowork에서 \'만물 폴더 오늘 업무 해줘\' 한마디면 전부 수행합니다. 끝나면 [✅ 완료]로 다음 주기로.',say:'코워크 예약 열어줘'},
   {k:'전/후 비교 카드',d:'더보기 [📸 전/후 비교 카드] — 현장 사진에서 시공 전·후 2장을 고르면 회사명이 들어간 비교 이미지가 만들어져요. 저장하거나 카톡·블로그로 바로 공유해 홍보에 쓰세요.',say:'전후 비교 카드 만들어줘'},
   {k:'말로 기록',d:'더보기 [🎙 말로 기록] — 손에 먼지 묻었을 때 말로 시키세요. \'태산그린 자재비 30만원 지출\', \'내일 실측 일정\' 처럼 말하면 비서가 알아듣고 처리해요(변경은 승인 후). 비서 화면의 🎙 버튼과 같아요.',say:'말로 기록 열어줘'},
   {k:'문자 센터',d:'더보기 [💬 문자 센터] — 착공 안내·준공 인사·AS 답변·리뷰 부탁·감사 인사 5가지 상황 문자가 현장·고객 이름이 채워진 채 준비돼요. 수정해서 바로 보내거나 복사하세요.',say:'준공 문자 보내줘'},
@@ -11118,6 +11153,12 @@ function briefExtraItems(){
       if(ag.length){items.push({ic:'⏳',t:'오래된 미수금 '+ag.length+'곳',sub:ag[0].name+' '+ag[0].days+'일째 '+hjMan(ag[0].due)+' — 독촉 필요',action:'dueaging'});}
     }
   }catch(e){}
+  try{
+    if(typeof coworkSchedDue==='function'){
+      const cd=coworkSchedDue();
+      if(cd.length){items.push({ic:'🖥',t:'오늘 Cowork 작업 '+cd.length+'건',sub:cd.map(function(x){return x.task.title;}).join(' · ').slice(0,42)+' — 지시서 저장해 맡기세요',action:'cwsched'});}
+    }
+  }catch(e){}
   return items;
 }
 // 능동 알림 센터(전용 화면 — 기존 브리핑보다 상세)
@@ -11145,6 +11186,7 @@ function alertCenter(){
       else if(act==='stale'&&typeof staleProjects==='function')staleProjects();
       else if(act==='inventory'&&typeof inventoryManage==='function')inventoryManage();
       else if(act==='dueaging'&&typeof dueAgingView==='function')dueAgingView();
+      else if(act==='cwsched'&&typeof coworkSchedView==='function')coworkSchedView();
       else if(act==='ops'&&typeof aiOpsCenter==='function')aiOpsCenter();
       else if(act==='as'&&typeof asManage==='function')asManage();
       else if(act==='goal'&&typeof goalManage==='function')goalManage();
@@ -12553,6 +12595,13 @@ function aiPlannerScan(scope){
           source:'tax:'+it.date+':'+it.title});
       });
     }}catch(e){}
+    try{if(typeof coworkSchedDue==='function'){
+      const cd=coworkSchedDue();
+      if(cd.length)add({category:'Cowork',type:'cwsched',title:'오늘 Cowork 작업 '+cd.length+'건',
+        reason:cd.map(function(x){return x.task.title;}).join(', ').slice(0,60)+' — 지시서 저장 후 Cowork에 맡기기',
+        priority:'normal',priorityScore:58,action:{kind:'open',fn:'coworkSchedView'},readOnly:true,requiresApproval:false,
+        source:'cwsched:'+localDate()});
+    }}catch(e){}
     try{(typeof reviewRequestData==='function')&&reviewRequestData().filter(r=>!r.requested&&(r.customer&&r.customer.phone)).forEach(r=>add({
       category:'AS',type:'review',title:'리뷰·소개 요청: '+(r.customer.name||r.name),reason:'완공 '+r.days+'일째 — 후기 요청 타이밍',
       project:r.name,priority:r.days<=14?'high':'normal',priorityScore:55-Math.min(r.days,40),
@@ -13902,12 +13951,12 @@ async function aiAutoOperateView(){
 // 카테고리 정의(action → 카테고리 매핑)
 const MORE_CATS=[
   {id:'ai',name:'AI·자율운영',ic:'🤖',items:[
-    ['voicein','🎙','말로 기록'],['cowork','🖥','Cowork 지휘부'],['autopilot','🤖','AI 자율 운영'],['aiops','🎛','AI 운영 센터'],['aibrain','🧠','AI 브레인'],['loopstatus','🔁','루프 성숙도'],
+    ['voicein','🎙','말로 기록'],['cwsched','⏰','Cowork 예약'],['cowork','🖥','Cowork 지휘부'],['autopilot','🤖','AI 자율 운영'],['aiops','🎛','AI 운영 센터'],['aibrain','🧠','AI 브레인'],['loopstatus','🔁','루프 성숙도'],
     ['ai','💬','AI 도우미'],['activebrief','🌅','오늘 브리핑'],['weekbrief','📆','주간 브리핑'],['automode','⚙️','AI 운영 모드'],
     ['aiquote','💸','AI 견적작성'],['analysis','📈','AI 경영 분석'],['aiprovider','🔑','AI 두뇌 선택'],['llama','🦙','Llama 등록'],['aiusage','📊','AI 사용량']
   ]},
   {id:'money',name:'경영·돈',ic:'💰',items:[
-    ['yearreport','📊','연간 결산'],['dueaging','⏳','미수금 에이징'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
+    ['ledgertab','💼','회계(홈택스)'],['yearreport','📊','연간 결산'],['dueaging','⏳','미수금 에이징'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
     ['profitrank','🏆','수익성 랭킹'],['expense','💳','간편 장부'],['expenseclassify','🧾','경비 분류'],['scanreceipt','🧾','영수증 스캔'],
     ['goal','🎯','매출 목표'],['forecast','📈','매출 예측'],['budget','📅','현장 예산'],['settle','📄','정산 문서'],['taxinv','📇','세금계산서'],['payplan','📅','분할납 계획']
   ]},
@@ -13915,7 +13964,7 @@ const MORE_CATS=[
     ['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
     ['custprogress','📱','진행 공유'],['custreply','💬','고객 문자'],['asintake','📩','AS 접수 링크'],['companyintro','🪪','회사 소개'],
     ['salestarget','🎯','영업 타깃'],['funnel','📊','전환율 퍼널'],['bulkassign','🎯','견적 일괄 배정'],['quotefollowup','⏰','견적 팔로업'],['negotiate','🤝','견적 협상'],
-    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['contractreview','📝','계약 검토']
+    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['contractreview','📝','계약 검토']
   ]},
   {id:'site',name:'현장·시공',ic:'🏗',items:[
     ['addproject','➕','현장 추가'],['beforeafter','📸','전/후 비교 카드'],['photobundle','📤','사진 묶음 발송'],['worklog','📝','음성 현장일지'],['photorep','📷','사진 작업일지'],
@@ -14159,9 +14208,9 @@ function coworkTasksManage(){
       '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 작업 추가</button>'+
       '<button class="ghost" id="cwReset" style="padding:12px 14px;font-size:12px">기본값 복원</button>'+
     '</div>';
-  openModal('🖥 Cowork 작업 지휘부',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  openModal('🖥 Cowork 작업 지휘부',body,[{label:'🧰 스킬 명령문',cls:'ghost',fn:function(){coworkCopy(coworkSkillCatalogText(),'스킬 명령문 카탈로그');}},{label:'⏰ 예약',cls:'moss',fn:function(){coworkSchedView();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const rebind=()=>coworkTasksManage();
-  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(t.prompt,t.title);});
+  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(cwWithSkill(t),t.title);});
   document.querySelectorAll('.cwView').forEach(b=>b.onclick=()=>coworkTaskView(b.dataset.id));
   document.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
   const addBtn=document.getElementById('cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
@@ -14175,11 +14224,11 @@ function coworkTaskView(id){
   const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">Cowork 명령</div><div style="font-size:17px;font-weight:800">'+t.icon+' '+escapeHtml(t.title)+'</div></div>'+
-    '<div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;background:var(--paper-2);border-radius:11px;padding:14px;border:1px solid var(--line-soft);max-height:340px;overflow:auto">'+escapeHtml(t.prompt)+'</div>'+
+    '<div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;background:var(--paper-2);border-radius:11px;padding:14px;border:1px solid var(--line-soft);max-height:340px;overflow:auto">'+escapeHtml(cwWithSkill(t))+'</div>'+
     '<button class="clay" id="cwvCopy" style="width:100%;padding:13px;font-size:14px;margin-top:12px">📋 이 명령 복사</button>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 복사한 뒤 PC의 Cowork 입력창에 붙여넣고, 자료 폴더가 열려 있는지 확인하세요.</div>';
   openModal('📋 '+t.title,body,[{label:'✏️ 수정',cls:'ghost',fn:()=>coworkTaskEdit(id)},{label:'‹ 목록',cls:'ghost',fn:()=>coworkTasksManage()}],true);
-  const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(t.prompt,t.title);
+  const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(cwWithSkill(t),t.title);
   return {작업:t.title};
 }
 
@@ -14385,7 +14434,10 @@ function estimateGroups(estFiles){
       if(!groups[key])groups[key]={rep:f,repAmt:amt,repWhen:when,dups:[]};
       else{
         const g=groups[key];
-        if(amt>g.repAmt||(amt===g.repAmt&&when>g.repWhen)){g.dups.push(g.rep);g.rep=f;g.repAmt=amt;g.repWhen=when;}
+        const isX=function(x){return /xlsx?$/i.test(String(x.ext||''))||/\.xlsx?$/i.test(String(x.name||''));};
+        // 대표: 엑셀(원본) 우선 → 금액 큰 것 → 최신 (합산은 대표 1건만 = 엑셀만)
+        const better=(isX(f)&&!isX(g.rep))||(isX(f)===isX(g.rep)&&(amt>g.repAmt||(amt===g.repAmt&&when>g.repWhen)));
+        if(better){g.dups.push(g.rep);g.rep=f;g.repAmt=amt;g.repWhen=when;}
         else g.dups.push(f);
       }
     });
@@ -14844,6 +14896,539 @@ function msgCenterCompose(kind){
     else{coworkCopy(body,'문자 내용');toast('고객 전화번호가 없어 복사했어요');}
   };
   document.getElementById('mcCopy').onclick=function(){coworkCopy(document.getElementById('mcBody').value,'문자 내용');};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v87 ⏰ Cowork 예약 스케줄 — 일일/주간/월간 예약 → 오늘 지시서(_코워크_오늘업무.md)
+═══════════════════════════════════════════════════════════════ */
+const CW_DOW=['일','월','화','수','목','금','토'];
+function coworkSchedEnsure(){
+  state.coworkSched=state.coworkSched||[];
+  if(state._cwSchedInit)return 0;
+  const seed=[
+    {taskId:'cw_card',freq:'weekly',dow:1},
+    {taskId:'cw_bugtest',freq:'weekly',dow:3},
+    {taskId:'cw_photo',freq:'weekly',dow:5},
+    {taskId:'cw_tax',freq:'monthly',dom:5},
+    {taskId:'cw_month',freq:'monthly',dom:28}
+  ];
+  let added=0;
+  seed.forEach(function(s){
+    if(state.coworkSched.some(function(x){return x.taskId===s.taskId;}))return;
+    state.coworkSched.push(Object.assign({id:uid(),enabled:true,lastRun:''},s));added++;
+  });
+  state._cwSchedInit=true;
+  if(added)markDirty();
+  return added;
+}
+function coworkSchedLabel(s){
+  if(s.freq==='daily')return '매일';
+  if(s.freq==='weekly')return '매주 '+CW_DOW[s.dow!=null?s.dow:1];
+  return '매월 '+(s.dom||1)+'일';
+}
+function coworkSchedDue(d){
+  d=d||new Date();
+  const today=localDate(d);const ym=today.slice(0,7);
+  const tasks=coworkTasksEnsure();
+  const out=[];
+  (state.coworkSched||[]).forEach(function(s){
+    if(!s.enabled)return;
+    const t=tasks.find(function(x){return x.id===s.taskId;});
+    if(!t)return;
+    let due=false;
+    if(s.freq==='daily')due=(s.lastRun!==today);
+    else if(s.freq==='weekly')due=(d.getDay()===(s.dow!=null?s.dow:1))&&(s.lastRun!==today);
+    else if(s.freq==='monthly')due=(d.getDate()>=(s.dom||1))&&(String(s.lastRun||'').slice(0,7)!==ym);
+    if(due)out.push({sched:s,task:t});
+  });
+  return out;
+}
+function coworkSchedMarkDone(id){
+  const s=(state.coworkSched||[]).find(function(x){return x.id===id;});
+  if(!s)return;
+  s.lastRun=localDate();markDirty();
+  toast('✅ 완료 표시 — 다음 주기에 다시 예정됩니다');
+  coworkSchedView();
+}
+function coworkOrderText(due){
+  const today=localDate();
+  let md='# 만물인테리어 — Cowork 오늘 업무 지시서 ('+today+')\n\n';
+  md+='이 파일은 "현장" 앱의 Cowork 예약 스케줄이 자동 생성했습니다.\n';
+  md+='**manmul-hyeonjang 스킬 규약(안전수칙·산출물 표준)을 지키며 아래 작업을 순서대로 수행하세요.**\n\n';
+  due.forEach(function(x,i){
+    md+='---\n\n## '+(i+1)+'. '+(x.task.icon||'📋')+' '+x.task.title+'  · 주기: '+coworkSchedLabel(x.sched)+'\n\n';
+    md+=cwSkillLine(x.task)+'\n\n';
+    md+=x.task.prompt+'\n\n';
+  });
+  md+='---\n\n### 완료 후\n- 산출물을 이 폴더에 저장하세요(파일명 규약 준수).\n- 사장님께 "앱 → 더보기 → ⏰ Cowork 예약에서 해당 작업 [✅ 완료]를 눌러 주세요"라고 안내하세요.\n';
+  md+='\n'+coworkSkillCatalogText()+'\n';
+  return md;
+}
+async function coworkOrderExport(){
+  const due=coworkSchedDue();
+  if(!due.length){toast('오늘 예정된 Cowork 작업이 없어요');return {저장:0};}
+  const md=coworkOrderText(due);
+  if(state.dirHandle&&typeof FS_OK!=='undefined'&&FS_OK){
+    try{
+      const fh=await state.dirHandle.getFileHandle('_코워크_오늘업무.md',{create:true});
+      const w=await fh.createWritable();await w.write(md);await w.close();
+      toast('📤 폴더에 _코워크_오늘업무.md 저장 — Cowork에서 "만물 폴더 오늘 업무 해줘"라고 말하세요');
+      return {저장:due.length,파일:'_코워크_오늘업무.md'};
+    }catch(e){}
+  }
+  try{coworkCopy(md,'Cowork 지시서');}catch(e){}
+  toast('폴더 미연결 — 지시서를 복사했어요. Cowork에 붙여넣으세요');
+  return {복사:due.length};
+}
+function coworkSchedView(){
+  coworkSchedEnsure();
+  const tasks=coworkTasksEnsure();
+  const due=coworkSchedDue();
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+  const dueHtml=due.length?due.map(function(x){
+    return '<div style="display:flex;align-items:center;gap:8px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:11px;padding:10px 11px;margin-bottom:7px">'+
+      '<span style="font-size:16px">'+(x.task.icon||'📋')+'</span>'+
+      '<span style="flex:1;min-width:0;font-size:12.5px"><b>'+escapeHtml(x.task.title)+'</b><br><span style="font-size:10.5px;color:var(--muted)">'+coworkSchedLabel(x.sched)+'</span></span>'+
+      '<button class="ghost tiny cwsCopy" data-t="'+escapeAttr(x.task.id)+'" style="padding:7px 9px">📋</button>'+
+      '<button class="moss tiny cwsDone" data-s="'+escapeAttr(x.sched.id)+'" style="padding:7px 9px">✅ 완료</button>'+
+    '</div>';
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:14px;font-size:12px">오늘 예정된 작업이 없어요 🎉</div>';
+  const rows=(state.coworkSched||[]).map(function(s){
+    const t=tasks.find(function(x){return x.id===s.taskId;});
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px dashed var(--line-soft);font-size:12px'+(s.enabled?'':';opacity:.5')+'">'+
+      '<span>'+(t?(t.icon||'📋'):'❓')+'</span>'+
+      '<span style="flex:1;min-width:0"><b>'+escapeHtml(t?t.title:s.taskId)+'</b> <span style="font-size:10.5px;color:var(--blueprint)">'+coworkSchedLabel(s)+'</span>'+(s.lastRun?'<br><span style="font-size:10px;color:var(--muted)">마지막 완료 '+s.lastRun+'</span>':'')+'</span>'+
+      '<button class="ghost tiny cwsTg" data-s="'+escapeAttr(s.id)+'" style="padding:6px 8px">'+(s.enabled?'⏸':'▶')+'</button>'+
+      '<button class="ghost tiny cwsDel" data-s="'+escapeAttr(s.id)+'" style="padding:6px 8px">🗑</button>'+
+    '</div>';
+  }).join('');
+  const opts=tasks.map(function(t){return '<option value="'+escapeAttr(t.id)+'">'+(t.icon||'')+' '+escapeHtml(t.title)+'</option>';}).join('');
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">Cowork가 보고 일하는 일정</div><div style="font-size:19px;font-weight:800">⏰ Cowork 예약 스케줄</div></div>'+
+    '<div style="font-size:12.5px;font-weight:800;margin-bottom:6px">📅 오늘 예정 '+due.length+'건</div>'+dueHtml+
+    (due.length?'<button class="clay" id="cwsExport" style="width:100%;padding:12px;font-size:13.5px;margin:4px 0 14px">📤 Cowork 지시서 저장 (_코워크_오늘업무.md)</button>':'')+
+    '<div style="font-size:12.5px;font-weight:800;margin:6px 0 2px">전체 예약</div>'+rows+
+    '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;align-items:center">'+
+      '<select id="cwsTask" style="flex:2;min-width:120px;padding:9px;font-size:12px;border-radius:9px;border:1px solid var(--line-soft)">'+opts+'</select>'+
+      '<select id="cwsFreq" style="flex:1;min-width:70px;padding:9px;font-size:12px;border-radius:9px;border:1px solid var(--line-soft)"><option value="daily">매일</option><option value="weekly" selected>매주</option><option value="monthly">매월</option></select>'+
+      '<select id="cwsDow" style="flex:1;min-width:58px;padding:9px;font-size:12px;border-radius:9px;border:1px solid var(--line-soft)">'+CW_DOW.map(function(d,i){return '<option value="'+i+'"'+(i===1?' selected':'')+'>'+d+'</option>';}).join('')+'</select>'+
+      '<input id="cwsDom" type="number" min="1" max="28" value="5" style="flex:1;min-width:52px;display:none;padding:9px;font-size:12px;border-radius:9px;border:1px solid var(--line-soft)">'+
+      '<button class="blue tiny" id="cwsAdd" style="padding:9px 13px">＋ 추가</button>'+
+    '</div>'+
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:9px;line-height:1.6">💡 지시서 파일이 폴더에 저장되면, Cowork에서 <b>"만물 폴더 오늘 업무 해줘"</b> 한마디로 예약된 작업을 전부 수행합니다. 완료되면 [✅ 완료]를 눌러 다음 주기로 넘기세요.</div>';
+  openModal('⏰ Cowork 예약',body,[{label:'🧰 스킬 명령문',cls:'ghost',fn:function(){coworkCopy(coworkSkillCatalogText(),'스킬 명령문 카탈로그');}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const freqSel=document.getElementById('cwsFreq');
+  const syncFreq=function(){const f=freqSel.value;document.getElementById('cwsDow').style.display=f==='weekly'?'':'none';document.getElementById('cwsDom').style.display=f==='monthly'?'':'none';};
+  freqSel.onchange=syncFreq;syncFreq();
+  document.getElementById('cwsAdd').onclick=function(){
+    const s={id:uid(),taskId:document.getElementById('cwsTask').value,freq:freqSel.value,enabled:true,lastRun:''};
+    if(s.freq==='weekly')s.dow=+document.getElementById('cwsDow').value;
+    if(s.freq==='monthly')s.dom=Math.min(28,Math.max(1,+document.getElementById('cwsDom').value||1));
+    state.coworkSched.push(s);markDirty();toast('예약 추가됨');coworkSchedView();
+  };
+  document.querySelectorAll('.cwsTg').forEach(function(b){b.onclick=function(){const s=state.coworkSched.find(function(x){return x.id===b.dataset.s;});if(s){s.enabled=!s.enabled;markDirty();coworkSchedView();}};});
+  document.querySelectorAll('.cwsDel').forEach(function(b){b.onclick=function(){state.coworkSched=state.coworkSched.filter(function(x){return x.id!==b.dataset.s;});markDirty();toast('예약 삭제됨');coworkSchedView();};});
+  document.querySelectorAll('.cwsDone').forEach(function(b){b.onclick=function(){coworkSchedMarkDone(b.dataset.s);};});
+  document.querySelectorAll('.cwsCopy').forEach(function(b){b.onclick=function(){const t=tasks.find(function(x){return x.id===b.dataset.t;});if(t)coworkCopy(cwWithSkill(t),t.title);};});
+  const ex=document.getElementById('cwsExport');if(ex)ex.onclick=function(){coworkOrderExport();};
+  return {오늘예정:due.length,예약수:(state.coworkSched||[]).length};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v88 견적 파일 실무 3종
+   🎨 xlsx 원본서식 미리보기(색·병합·너비) · 🧮 합산은 xlsx 대표만 · 🗂 문서 복사/삭제
+═══════════════════════════════════════════════════════════════ */
+async function fsDirOfPrefix(prefix){
+  try{
+    if(!state.dirHandle)return null;
+    let dir=state.dirHandle;
+    const parts=String(prefix||'').split('/').filter(Boolean);
+    for(const p of parts){dir=await dir.getDirectoryHandle(p);}
+    return dir;
+  }catch(e){return null;}
+}
+function docDelete(id){
+  const f=state.files.find(function(x){return x.id===id;});
+  if(!f)return;
+  if(f.kind==='photo'){try{deletePhoto(id);}catch(e){}return;}
+  if(!requireEditMode('파일 삭제'))return;
+  const canFs=!!(!f._virtual&&state.dirHandle&&(typeof FS_OK==='undefined'||FS_OK));
+  const warn=canFs
+    ?'<p style="margin:8px 0;color:var(--warn)"><b>폴더의 실제 파일이 삭제됩니다.</b> 되돌릴 수 없어요.</p>'
+    :'<p style="margin:8px 0;color:var(--muted)">폴더 미연결/보기 모드 — <b>앱 목록에서만</b> 제거됩니다(실제 파일은 그대로).</p>';
+  openModal('🗑 파일 삭제',
+    '<div style="font-size:13px;line-height:1.6"><p style="margin:0 0 6px"><b>"'+escapeHtml(f.name)+'"</b> 을(를) 삭제할까요?</p>'+warn+
+    (f.est&&f.est.amount?'<p style="margin:8px 0;font-size:12px;color:var(--muted)">이 견적 금액 '+won(f.est.amount)+'원은 집계에서 빠집니다.</p>':'')+'</div>',
+    [{label:'삭제',cls:'clay',fn:async function(){
+        try{
+          if(canFs){
+            let done=false;
+            try{if(f.handle&&f.handle.remove){await f.handle.remove();done=true;}}catch(e){}
+            if(!done){const dir=await fsDirOfPrefix(f.prefix);if(dir){await dir.removeEntry(f.name);done=true;}}
+            if(!done){toast('폴더에서 파일을 찾지 못해 목록에서만 제거합니다');}
+          }
+          state.files=state.files.filter(function(x){return x.id!==id;});
+          markDirty();closeModal();render();
+          toast('🗑 삭제됨: '+f.name);
+        }catch(e){toast('삭제 실패: '+(e.message||e));}
+      }},
+     {label:'취소',cls:'ghost',fn:closeModal}],true);
+}
+async function docCopy(id){
+  const f=state.files.find(function(x){return x.id===id;});
+  if(!f)return;
+  if(!requireEditMode('파일 복사'))return;
+  let file=null;
+  try{file=await getFileOf(f);}catch(e){}
+  if(!file){toast('원본 파일을 읽을 수 없어요(폴더 연결/드라이브 확인)');return;}
+  const dot=f.name.lastIndexOf('.');
+  const base=dot>0?f.name.slice(0,dot):f.name;
+  const ext=dot>0?f.name.slice(dot):'';
+  const dir=await fsDirOfPrefix(f.prefix);
+  let newName=base+' 사본'+ext,n=2;
+  const exists=function(nm){return state.files.some(function(x){return x.prefix===f.prefix&&x.name===nm;});};
+  while(exists(newName)){newName=base+' 사본'+n+ext;n++;}
+  try{
+    let newHandle=null;
+    if(dir){
+      newHandle=await dir.getFileHandle(newName,{create:true});
+      const w=await newHandle.createWritable();
+      await w.write(await file.arrayBuffer());await w.close();
+    }else{
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(file);a.download=newName;a.click();
+      toast('폴더 미연결 — "'+newName+'" 로 다운로드했어요');
+    }
+    const rec=Object.assign({},f,{id:uid(),name:newName,when:new Date(),handle:newHandle||f.handle});
+    if(f.est)rec.est=Object.assign({},f.est);
+    if(f.quote)rec.quote=null;
+    state.files.push(rec);
+    markDirty();render();
+    if(dir)toast('📄 복사됨: '+newName+' — 사본은 자동으로 묶여 이중 집계되지 않아요');
+    return {복사:newName};
+  }catch(e){toast('복사 실패: '+(e.message||e));}
+}
+/* ── 🎨 xlsx 원본 서식 미리보기 (ExcelJS) ── */
+function excelColor(c){
+  try{
+    if(!c)return '';
+    if(c.argb)return '#'+String(c.argb).slice(-6);
+    if(c.theme!=null){const th=['1f2937','ffffff','44546a','e7e6e6','4472c4','ed7d31','a5a5a5','ffc000','5b9bd5','70ad47'];return '#'+(th[c.theme]||'444444');}
+  }catch(e){}
+  return '';
+}
+async function renderRichXlsx(box,buf,fname){
+  try{
+    if(typeof ExcelJS==='undefined'){
+      await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',function(){return window.ExcelJS;});
+    }
+    if(typeof ExcelJS==='undefined')return false;
+    const wb=new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws=wb.worksheets[0];
+    if(!ws||!ws.rowCount)return false;
+    const MAXR=Math.min(ws.rowCount,42),MAXC=Math.min(ws.columnCount||10,12);
+    // 병합 맵
+    const span={},covered={};
+    (ws.model&&ws.model.merges||[]).forEach(function(mg){
+      const m=/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(mg);if(!m)return;
+      const colN=function(s){let v=0;for(let i=0;i<s.length;i++)v=v*26+(s.charCodeAt(i)-64);return v;};
+      const c1=colN(m[1]),r1=+m[2],c2=colN(m[3]),r2=+m[4];
+      span[r1+':'+c1]={rs:r2-r1+1,cs:c2-c1+1};
+      for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++){if(r!==r1||c!==c1)covered[r+':'+c]=1;}
+    });
+    let html='<div style="font-size:10.5px;color:var(--muted);margin:0 0 6px">🎨 원본 서식 · '+escapeHtml(ws.name||'Sheet1')+(ws.rowCount>MAXR?' · 앞 '+MAXR+'행':'')+'</div>';
+    html+='<div style="overflow:auto;max-height:52vh;border:1px solid var(--line-soft);border-radius:10px"><table style="border-collapse:collapse;background:#fff">';
+    for(let r=1;r<=MAXR;r++){
+      const row=ws.getRow(r);
+      const rh=Math.round((row.height||18)*1.34);
+      html+='<tr style="height:'+rh+'px">';
+      for(let c=1;c<=MAXC;c++){
+        if(covered[r+':'+c])continue;
+        const cell=row.getCell(c);
+        const sp=span[r+':'+c]||{rs:1,cs:1};
+        let v=cell.text!=null?String(cell.text):'';
+        if(typeof cell.value==='number')v=cell.value.toLocaleString('ko-KR');
+        const fill=(cell.fill&&cell.fill.type==='pattern')?excelColor(cell.fill.fgColor):'';
+        const fcol=cell.font?excelColor(cell.font.color):'';
+        const bold=cell.font&&cell.font.bold?'font-weight:700;':'';
+        const fs=cell.font&&cell.font.size?Math.round(cell.font.size*1.28):12;
+        let align=(cell.alignment&&cell.alignment.horizontal)||'';
+        if(!align&&typeof cell.value==='number')align='right';
+        const w=Math.round(((ws.getColumn(c).width)||9)*7.4);
+        html+='<td rowspan="'+sp.rs+'" colspan="'+sp.cs+'" style="border:1px solid #e5e7eb;padding:2px 6px;min-width:'+Math.max(w,34)+'px;font-size:'+fs+'px;'+bold+
+          (fill&&fill!=='#ffffff'?'background:'+fill+';':'')+(fcol?'color:'+fcol+';':'')+
+          (align?'text-align:'+align+';':'')+'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px">'+escapeHtml(v)+'</td>';
+      }
+      html+='</tr>';
+    }
+    html+='</table></div>';
+    box.innerHTML=html;
+    return true;
+  }catch(e){return false;}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v89 대분류 2탭 + 문서 보내기
+   💼 회계(홈택스 카드·매입·매출 자동 집계) · 📣 광고(스레드/인스타/메타/블로그) · 📤 명함·등록증 보내기
+═══════════════════════════════════════════════════════════════ */
+
+/* ── 💼 회계: 홈택스/카드 엑셀 파싱 ── */
+function ledgerTypeOf(rec,headTxt){
+  const hay=((rec.name||'')+' '+(headTxt||'')).toLowerCase();
+  if(/매출/.test(hay))return 'sale';
+  if(/매입/.test(hay))return 'purchase';
+  if(/카드|이용내역|승인/.test(hay))return 'card';
+  return 'card';
+}
+function ledgerYm(v){
+  try{
+    if(v==null||v==='')return '';
+    if(typeof v==='number'){
+      if(v>40000&&v<60000){const d=new Date(Math.round((v-25569)*86400000));return d.toISOString().slice(0,7);}
+      const s=String(Math.round(v));
+      if(/^\d{8}$/.test(s))return s.slice(0,4)+'-'+s.slice(4,6);
+      return '';
+    }
+    const s=String(v).trim();
+    let m=/^(\d{4})[.\-\/년\s]+(\d{1,2})/.exec(s);
+    if(m)return m[1]+'-'+String(m[2]).padStart(2,'0');
+    m=/^(\d{2})[.\-\/](\d{1,2})[.\-\/]\d{1,2}/.exec(s);
+    if(m)return '20'+m[1]+'-'+String(m[2]).padStart(2,'0');
+    if(/^\d{8}/.test(s))return s.slice(0,4)+'-'+s.slice(4,6);
+  }catch(e){}
+  return '';
+}
+async function ledgerParse(rec){
+  try{
+    const file=await getFileOf(rec);if(!file)return null;
+    if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',function(){return window.XLSX;});
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];if(!ws)return null;
+    const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
+    // 헤더 행 탐색(상위 20행)
+    const DATE_RE=/(작성일|승인일|이용일|거래일|발급일|일자|날짜)/;
+    const AMT_RE=/(합계금액|이용금액|승인금액|결제금액|총\s*금액|^금액$|거래금액)/;
+    let hi=-1,dateC=-1,amtC=-1,supC=-1,vatC=-1,vendC=-1;
+    for(let r=0;r<Math.min(grid.length,20);r++){
+      const row=grid[r].map(function(c){return String(c).replace(/\s/g,'');});
+      let dc=-1,ac=-1;
+      row.forEach(function(c,ci){
+        if(dc<0&&DATE_RE.test(c))dc=ci;
+        if(ac<0&&AMT_RE.test(c))ac=ci;
+      });
+      if(dc>=0&&(ac>=0||row.some(function(c){return /공급가액/.test(c);}))){
+        hi=r;dateC=dc;amtC=ac;
+        row.forEach(function(c,ci){
+          if(/공급가액/.test(c))supC=ci;
+          if(/(세액|부가세)/.test(c)&&vatC<0)vatC=ci;
+          if(/(가맹점|상호|공급받는자|공급자|거래처)/.test(c)&&vendC<0)vendC=ci;
+        });
+        break;
+      }
+    }
+    if(hi<0)return null;
+    const type=ledgerTypeOf(rec,grid.slice(0,hi+1).flat().join(' '));
+    const byYm={};let rows=0;
+    for(let r=hi+1;r<grid.length;r++){
+      const ym=ledgerYm(grid[r][dateC]);if(!ym)continue;
+      let amt=won2num(grid[r][amtC>=0?amtC:supC]);
+      const sup=supC>=0?won2num(grid[r][supC]):0;
+      const vat=vatC>=0?won2num(grid[r][vatC]):0;
+      if(!amt&&!sup)continue;
+      if(!amt)amt=sup+vat;
+      // 합계/소계 행 제외
+      const vend=vendC>=0?String(grid[r][vendC]||''):'';
+      if(/합계|소계|총계/.test(String(grid[r].join(' '))))continue;
+      if(!byYm[ym])byYm[ym]={cnt:0,amt:0,supply:0,vat:0};
+      byYm[ym].cnt++;byYm[ym].amt+=amt;byYm[ym].supply+=sup;byYm[ym].vat+=vat;rows++;
+    }
+    if(!rows)return null;
+    rec.ledger={type:type,rows:rows,byYm:byYm,parsedAt:new Date().toISOString()};
+    markDirty();
+    return rec.ledger;
+  }catch(e){return null;}
+}
+function ledgerFiles(){return (state.files||[]).filter(function(f){return f.kind==='ledger';});}
+function ledgerAggregate(){
+  const agg={};
+  ledgerFiles().forEach(function(f){
+    if(!f.ledger||!f.ledger.byYm)return;
+    Object.keys(f.ledger.byYm).forEach(function(ym){
+      const v=f.ledger.byYm[ym];
+      if(!agg[ym])agg[ym]={card:{cnt:0,amt:0},sale:{cnt:0,amt:0,supply:0,vat:0},purchase:{cnt:0,amt:0,supply:0,vat:0}};
+      const t=agg[ym][f.ledger.type]||agg[ym].card;
+      t.cnt+=v.cnt;t.amt+=v.amt;
+      if(t.supply!=null){t.supply+=v.supply;t.vat+=v.vat;}
+    });
+  });
+  return agg;
+}
+let __ledgerParsing=false;
+function ledgerAutoParse(){
+  if(__ledgerParsing)return;
+  const todo=ledgerFiles().filter(function(f){return !f.ledger;});
+  if(!todo.length)return;
+  __ledgerParsing=true;
+  (async function(){
+    for(const f of todo){await ledgerParse(f);}
+    __ledgerParsing=false;
+    if(state.tab==='ledger')render();
+  })();
+}
+function viewLedger(){
+  const files=ledgerFiles();
+  const agg=ledgerAggregate();
+  const yms=Object.keys(agg).sort().reverse();
+  const parsing=files.some(function(f){return !f.ledger;});
+  if(parsing)setTimeout(ledgerAutoParse,80);
+  let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
+    '<span class="hint" style="margin:0">홈택스·카드사에서 받은 <b>엑셀(카드 이용내역·매출/매입 세금계산서 목록)</b>을 이 폴더에 넣고 재스캔하면 자동으로 년월별 정리돼요.</span>'+
+    '<button class="moss tiny" data-cwtax="1">🖥 Cowork 세금 명령서</button></div>';
+  if(!files.length){
+    html+='<div class="empty"><b>회계 파일이 없습니다</b><div style="margin:8px 0;color:var(--muted);font-size:12.5px">홈택스 ▸ 조회/발급에서 매출·매입 목록을, 카드사에서 이용내역을 <b>엑셀로 다운로드</b>해 폴더에 넣으세요.<br>파일명에 "매출/매입/카드/이용내역"이 들어가면 더 정확히 분류됩니다.</div></div>';
+    return html;
+  }
+  // 월별 집계 카드
+  html+='<div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">월별 정리'+(parsing?' · <span style="color:var(--clay)">분석 중…</span>':'')+'</div>';
+  if(!yms.length&&!parsing)html+='<div class="hint">표에서 날짜·금액 열을 찾지 못했어요. 파일을 열어 형식을 확인하거나 [🔄 재분석]을 눌러보세요.</div>';
+  yms.slice(0,12).forEach(function(ym){
+    const a=agg[ym];
+    const vatEst=(a.sale.vat||0)-(a.purchase.vat||0);
+    html+='<div style="border:1px solid var(--line-soft);border-radius:13px;padding:12px 13px;margin-bottom:9px;background:var(--paper)">'+
+      '<div style="display:flex;align-items:center;margin-bottom:8px"><b style="font-size:14.5px">🗓 '+ym+'</b>'+((a.sale.vat||a.purchase.vat)?'<span style="margin-left:auto;font-size:11px;color:'+(vatEst>=0?'#b45309':'#0a7f43')+'">부가세 예상 '+(vatEst>=0?'납부 ':'환급 ')+won(Math.abs(vatEst))+'원</span>':'')+'</div>'+
+      '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:105px;background:var(--paper-2);border-radius:10px;padding:9px"><div style="font-size:10.5px;color:var(--muted)">💳 카드 사용</div><b style="font-size:13px">'+won(a.card.amt)+'원</b><div style="font-size:10px;color:var(--muted)">'+a.card.cnt+'건</div></div>'+
+      '<div style="flex:1;min-width:105px;background:var(--paper-2);border-radius:10px;padding:9px"><div style="font-size:10.5px;color:var(--muted)">📤 매출</div><b style="font-size:13px;color:#0b4ea2">'+won(a.sale.supply||a.sale.amt)+'원</b><div style="font-size:10px;color:var(--muted)">'+a.sale.cnt+'건 · 세액 '+won(a.sale.vat)+'</div></div>'+
+      '<div style="flex:1;min-width:105px;background:var(--paper-2);border-radius:10px;padding:9px"><div style="font-size:10.5px;color:var(--muted)">📥 매입</div><b style="font-size:13px;color:#0e7a6b">'+won(a.purchase.supply||a.purchase.amt)+'원</b><div style="font-size:10px;color:var(--muted)">'+a.purchase.cnt+'건 · 세액 '+won(a.purchase.vat)+'</div></div>'+
+      '</div></div>';
+  });
+  // 파일 목록
+  const TL={card:'💳 카드',sale:'📤 매출',purchase:'📥 매입'};
+  html+='<div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">회계 파일 · '+files.length+'</div>';
+  files.forEach(function(f){
+    const yr=f.ledger?Object.keys(f.ledger.byYm).sort():[];
+    const range=yr.length?(yr[0]+(yr.length>1?' ~ '+yr[yr.length-1]:'')):'';
+    html+='<div style="display:flex;align-items:center;gap:9px;border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px;margin-bottom:7px;background:var(--paper)">'+
+      '<span style="font-size:17px">'+(f.ledger?(f.ledger.type==='sale'?'📤':f.ledger.type==='purchase'?'📥':'💳'):'📄')+'</span>'+
+      '<span style="flex:1;min-width:0;font-size:12px"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(f.name)+'</b>'+
+      '<span style="font-size:10.5px;color:var(--muted)">'+(f.ledger?(TL[f.ledger.type]+' · '+f.ledger.rows+'건 · '+range):(__ledgerParsing?'분석 중…':'미분석'))+'</span></span>'+
+      '<button class="ghost tiny" data-lgparse="'+escapeAttr(f.id)+'" style="padding:7px 9px">🔄</button>'+
+      '<button class="ghost tiny" data-fdel="'+escapeAttr(f.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
+    '</div>';
+  });
+  return html;
+}
+
+/* ── 📣 광고 관리 ── */
+const AD_CH=[
+  {id:'threads',n:'스레드',ic:'🧵',url:'https://www.threads.net'},
+  {id:'instagram',n:'인스타',ic:'📷',url:'https://www.instagram.com'},
+  {id:'meta',n:'메타(페북)',ic:'🌐',url:'https://business.facebook.com'},
+  {id:'blog',n:'네이버 블로그',ic:'✍️',url:'https://blog.naver.com'}
+];
+window.__adCh=window.__adCh||'threads';
+function adPostsOf(ch){return (state.adPosts||[]).filter(function(p){return p.ch===ch;}).sort(function(a,b){return String(b.date).localeCompare(String(a.date));});}
+function viewAds(){
+  state.adPosts=state.adPosts||[];
+  const ym=localDate().slice(0,7);
+  const chips=AD_CH.map(function(c){
+    const mCnt=(state.adPosts||[]).filter(function(p){return p.ch===c.id&&String(p.date).slice(0,7)===ym;}).length;
+    return '<button class="'+(window.__adCh===c.id?'blue':'ghost')+' tiny" data-adch="'+c.id+'" style="padding:9px 12px">'+c.ic+' '+c.n+(mCnt?' <span style="font-size:10px;opacity:.85">'+mCnt+'</span>':'')+'</button>';
+  }).join('');
+  const ch=AD_CH.find(function(c){return c.id===window.__adCh;})||AD_CH[0];
+  const posts=adPostsOf(ch.id);
+  const folderN=(state.files||[]).filter(function(f){return String(f.prefix||'').indexOf('광고/')===0;}).length;
+  let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
+    '<span class="hint" style="margin:0">채널별 포스팅 기록을 남겨 홍보 흐름을 관리해요.'+(folderN?' · 📁 광고 폴더 파일 '+folderN+'개':'')+'</span>'+
+    '<a class="ghost tiny" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px">'+chips+'</div>';
+  html+='<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:10px 14px;margin-bottom:10px">＋ '+ch.n+' 포스팅 기록</button>';
+  html+=posts.length?posts.slice(0,40).map(function(p){
+    return '<div style="display:flex;align-items:center;gap:9px;border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px;margin-bottom:7px;background:var(--paper)">'+
+      '<span style="font-size:15px">'+ch.ic+'</span>'+
+      '<span style="flex:1;min-width:0;font-size:12.5px"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(p.title||'(제목 없음)')+'</b><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml(p.date||'')+(p.memo?' · '+escapeHtml(p.memo):'')+'</span></span>'+
+      (p.url?'<a class="ghost tiny" href="'+escapeAttr(p.url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 9px">🔗</a>':'')+
+      '<button class="ghost tiny" data-addel="'+escapeAttr(p.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
+    '</div>';
+  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.</span></div>';
+  html+='<div class="hint" style="margin-top:12px">💡 원고가 필요하면 Cowork에서 <b>"이 사진으로 '+ch.n+' 홍보 글 써줘"</b>(manmul-marketing 스킬) — 전/후 카드는 더보기 [📸 전/후 비교 카드]로.</div>';
+  return html;
+}
+function adPostAdd(chId){
+  const ch=AD_CH.find(function(c){return c.id===chId;})||AD_CH[0];
+  openModal(ch.ic+' '+ch.n+' 기록 추가',
+    '<label style="font-size:11.5px;color:var(--muted)">날짜</label><input id="adDate" type="date" value="'+localDate()+'" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
+    '<label style="font-size:11.5px;color:var(--muted)">제목/내용 한 줄</label><input id="adTitle" type="text" placeholder="예) 유천동 욕실 전후 비교" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
+    '<label style="font-size:11.5px;color:var(--muted)">링크(선택)</label><input id="adUrl" type="url" placeholder="https://…" style="width:100%;padding:10px;margin:4px 0;border-radius:9px;border:1px solid var(--line-soft)">',
+    [{label:'저장',cls:'clay',fn:function(){
+        const t=document.getElementById('adTitle').value.trim();
+        state.adPosts=state.adPosts||[];
+        state.adPosts.push({id:uid(),ch:chId,date:document.getElementById('adDate').value||localDate(),title:t,url:document.getElementById('adUrl').value.trim(),memo:''});
+        markDirty();closeModal();render();toast('기록 저장됨');
+      }},
+     {label:'취소',cls:'ghost',fn:closeModal}],true);
+}
+
+/* ── 📤 명함·사업자등록증 보내기 ── */
+async function docSend(id){
+  const f=state.files.find(function(x){return x.id===id;});
+  if(!f)return;
+  let file=null;
+  try{file=await getFileOf(f);}catch(e){}
+  if(!file){toast('파일을 읽을 수 없어요(폴더 연결 확인)');return;}
+  try{
+    const shareFile=new File([await file.arrayBuffer()],f.name,{type:file.type||'application/octet-stream'});
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[shareFile]})){
+      await navigator.share({files:[shareFile],title:f.name});
+      return;
+    }
+  }catch(e){if(String(e&&e.name)==='AbortError')return;}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(file);a.download=f.name;a.click();
+  toast('공유 미지원 — 파일을 내려받았어요. 카톡·문자에 첨부해 보내세요');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v90 🧰 Claude 정리문 ↔ 스킬 명령문 통합
+   모든 Cowork 명령서·지시서에 "어떤 스킬로 할지"를 자동 결합
+═══════════════════════════════════════════════════════════════ */
+const CW_SKILL_MAP={
+  cw_card:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §1 카드/통장 → 지출 정리'},
+  cw_tax:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §2 세금계산서 대조(앱 💼 회계 탭 집계와 교차 확인)'},
+  cw_photo:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §3 현장 사진 정리(파일 규약 준수)'},
+  cw_month:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §4 월간 경영 정리'},
+  cw_bugtest:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §5 QA(P0→P1→P2 순서)'}
+};
+function cwSkillLine(t){
+  const m=CW_SKILL_MAP[t.id];
+  if(m)return '🧰 사용할 스킬: '+m.skill+' — '+m.note;
+  if(t.skill)return '🧰 사용할 스킬: '+t.skill;
+  return '🧰 스킬 안내: 작업 성격에 맞는 만물 스킬이 있으면 함께 쓰세요 — 견적서=manmul-estimate · 확인서/합의서=manmul-docs · 홍보 글=manmul-marketing · 고객 답장=manmul-customer · 상담/실측=manmul-consult · 아파트 서류=manmul-apt · 인력/정산=manmul-crew';
+}
+function cwWithSkill(t){
+  return cwSkillLine(t)+'\n\n'+t.prompt;
+}
+function coworkSkillCatalogText(){
+  return [
+    '# 만물인테리어 — Cowork 스킬 명령문 카탈로그',
+    '',
+    '아래 문장을 Cowork에 그대로 말하면 해당 스킬이 일합니다.',
+    '',
+    '| 이럴 때 | Cowork에 이렇게 | 스킬 |',
+    '|---|---|---|',
+    '| 폴더·앱 데이터 정리, 예약된 오늘 업무 | "만물 폴더 오늘 업무 해줘" / "만물 폴더 정리해줘" | manmul-hyeonjang |',
+    '| 실측 메모로 견적서 | "이 실측 메모로 견적 뽑아줘" | manmul-estimate |',
+    '| 시공 사진으로 홍보 글 | "이 사진으로 블로그(또는 스레드) 글 써줘" | manmul-marketing |',
+    '| 까다로운 고객 답장 | "추가금 38만원 어떻게 말하지, 답장 써줘" | manmul-customer |',
+    '| 서명 받을 한 장 문서 | "추가공사 합의서 만들어줘" / "완료 확인서" | manmul-docs |',
+    '| 첫 상담·실측 준비 | "내일 실측인데 체크리스트 준비해줘" | manmul-consult |',
+    '| 아파트 관리소·이웃 서류 | "관리사무소 공사 신고서랑 안내문 만들어줘" | manmul-apt |',
+    '| 인력 구인·외주·노임 정산 | "화요일 보조 1명 구인 글" / "이번달 노임 정산표" | manmul-crew |',
+    '',
+    '💡 스킬 파일(.skill)은 Cowork 설정에서 [Save skill]로 설치돼 있어야 합니다.'
+  ].join('\n');
 }
 
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
@@ -15639,7 +16224,7 @@ function viewEstimates(){
     return `<div class="empty"><b>견적서가 없습니다</b>견적서를 불러오고 ‘일괄 글자 읽기’를 누르면 고객·금액·날짜를 뽑아 정산표를 만듭니다.</div>`;
   }
   // 현장별 합계
-  const byProj={};list.forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
+  const byProj={};estimateGroups(list).map(g=>g.rep).forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
   html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
@@ -16559,7 +17144,12 @@ function viewProject(){
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
       // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
       if(photos.length){
-        html+=`<button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:8px 0">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 현장사진 '+photos.length+'장 보기')}</button>`;
+        if(!open){
+          // 닫힘 상태: 최근 3장 미리보기 + [+N] (요청: 미리보기 3개, 열면 전체)
+          const recent=photos.slice().sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)).slice(0,3);
+          html+=`<div class="ph-preview">${recent.map(f=>f.thumb?`<img src="${f.thumb}" data-light="${f.id}" loading="lazy" alt="">`:`<div class="ph-more" data-projphoto="${escapeAttr(p.name)}">🖼</div>`).join('')}${photos.length>3?`<div class="ph-more" data-projphoto="${escapeAttr(p.name)}" title="전체 보기">+${photos.length-3}</div>`:''}</div>`;
+        }
+        html+=`<button class="${open?'blue':'ghost'} tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:8px 0">${open?('▼ 📷 현장사진 '+photos.length+'장 숨기기'):('▶ 📷 전체 보기 ('+photos.length+'장)')}</button>`;
         if(open)html+=`<div class="grid">${photos.map(cardHtml).join('')}</div>`;
       }
       if(!list.length)html+=`<div class="empty" style="padding:22px">아직 배정된 파일이 없습니다.</div>`;
@@ -16633,7 +17223,7 @@ function viewProject(){
     if(__projView===null)return html+`<div class="empty"><b>비어 있습니다</b>서류·사진·견적 탭에서 이 현장으로 배정하세요.</div>`;
   }
   // 견적 합계 요약 (상담)
-  const tot=list.filter(f=>f.kind==='estimate').reduce((a,f)=>a+(f.est?.amount||0),0);
+  const tot=estimateGroups(list.filter(f=>f.kind==='estimate')).reduce((a,g)=>a+(g.rep.est?.amount||0),0);
   if(tot&&showSec(0))html+=`<div class="sumbar" style="margin:-4px 0 14px"><span>이 현장 견적 합계</span><b style="font-size:16px">${won(tot)}</b></div>`;
   // 서류류: 견적·사업자·명함은 상담(0), 도면은 실측(1), 기타는 전체
   const kindStage={estimate:0,bizreg:0,card:0,drawing:1,other:null};
@@ -16646,11 +17236,19 @@ function viewProject(){
   }
   // 사진 (시공)
   const photos=showSec(2)?list.filter(f=>f.kind==='photo'):[];
-  if(photos.length){
+  const __selOpen=__projPhotoOpen.has(p.name); // 사진 접힘(기본)/펼침 — 목록 화면과 상태 공유
+  if(photos.length&&!__selOpen){
+    const recent=photos.slice().sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)).slice(0,3);
+    html+=`<div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px">현장 사진 · ${photos.length}</div>`;
+    html+=`<div class="ph-preview">${recent.map(f=>f.thumb?`<img src="${f.thumb}" data-light="${f.id}" loading="lazy" alt="">`:`<div class="ph-more" data-projphoto="${escapeAttr(p.name)}">🖼</div>`).join('')}${photos.length>3?`<div class="ph-more" data-projphoto="${escapeAttr(p.name)}" title="전체 보기">+${photos.length-3}</div>`:''}</div>`;
+    html+=`<button class="ghost tiny" data-projphoto="${escapeAttr(p.name)}" style="margin:0 0 8px">▶ 📷 전체 보기 (${photos.length}장)</button>`;
+  }
+  if(photos.length&&__selOpen){
     const phases=p.phases||[];
     const gpsN=photos.filter(f=>f.lat!=null).length;
     html+=`<div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px;flex-wrap:wrap">
       <span style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)">현장 사진 · ${photos.length} · 날짜별 정리</span>
+      <button class="blue tiny" data-projphoto="${escapeAttr(p.name)}">▼ 숨기기</button>
       <button class="blue tiny" data-map="${escapeAttr(p.name)}">🗺️ 전체 위치 보기</button>
       <button class="moss tiny" data-organize="${escapeAttr(p.name)}">📁 공정대로 폴더 정리</button>
       <span class="hint" style="margin:0">GPS ${gpsN}/${photos.length}장</span>
@@ -16747,7 +17345,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -16877,6 +17475,14 @@ function setupDelegation(){
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}
     if(d.preview!==undefined){e.stopPropagation();return previewEstimate(d.preview);}
     if(d.rename!==undefined){e.stopPropagation();return renameFile(d.rename);}
+    if(d.fcopy!==undefined){e.stopPropagation();return docCopy(d.fcopy);}
+    if(d.fdel!==undefined){e.stopPropagation();return docDelete(d.fdel);}
+    if(d.fsend!==undefined){e.stopPropagation();return docSend(d.fsend);}
+    if(d.lgparse!==undefined){e.stopPropagation();(async()=>{const f=state.files.find(x=>x.id===d.lgparse);if(f){toast('다시 읽는 중…');await ledgerParse(f,true);render();}})();return;}
+    if(d.adch!==undefined){e.stopPropagation();window.__adCh=d.adch;render();return;}
+    if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
+    if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
+    if(d.cwtax!==undefined){e.stopPropagation();try{coworkTaskView('cw_tax');}catch(e2){}return;}
     if(d.movephoto!==undefined){e.stopPropagation();return moveSinglePhoto(d.movephoto);}
     if(d.delphoto!==undefined){e.stopPropagation();return deletePhoto(d.delphoto);}
   });
@@ -16974,7 +17580,7 @@ async function exportProjectPDF(proj){
   doc.setFillColor(26,23,20);doc.rect(0,0,W,90,'F');
   doc.setTextColor(243,239,231);doc.setFontSize(22);doc.text('HYEONJANG  |  '+proj,40,54);
   doc.setTextColor(40,40,40);doc.setFontSize(11);
-  const est=list.filter(f=>f.kind==='estimate').reduce((a,f)=>a+(f.est?.amount||0),0);
+  const est=estimateGroups(list.filter(f=>f.kind==='estimate')).reduce((a,g)=>a+(g.rep.est?.amount||0),0);
   let y=120;
   doc.text('Files: '+list.length+'    Estimate total: '+(est?est.toLocaleString('ko-KR')+' KRW':'-'),40,y);y+=24;
   ['estimate','bizreg','card','photo','other'].forEach(k=>{const n=list.filter(f=>f.kind===k).length;if(n)doc.text('· '+KIND[k].folder+': '+n,48,y),y+=18;});
@@ -17550,8 +18156,10 @@ async function previewEstimate(id){
       box.innerHTML='';box.appendChild(cv);
       if(pdf.numPages>1){const more=document.createElement('div');more.className='pv-more';more.textContent='총 '+pdf.numPages+'페이지 중 1페이지';box.appendChild(more);}
     }else if(SHEETEXT.includes(f.ext)){
-      if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX);
       const buf=await file.arrayBuffer();
+      // 🎨 원본 서식(색·병합셀·너비) 미리보기 우선 — 실패 시 아래 표 형태 폴백
+      try{if(await renderRichXlsx(box,buf.slice(0),f.name))return;}catch(e){}
+      if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',()=>window.XLSX);
       const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       if(!ws){box.innerHTML='<div class="pv-loading">엑셀 시트가 없습니다.</div>';return;}
@@ -17931,7 +18539,7 @@ try{hjNetWatch();}catch(e){}
   try{window.__openaiKey=(await idbGet('openai_key'))||null;}catch(e){}
   try{aiProviderLoad();}catch(e){}
   try{await llamaConfigLoad();}catch(e){}
-  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);}catch(e){}
+  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);setTimeout(()=>{try{coworkSchedEnsure();}catch(e){}},4500);}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
