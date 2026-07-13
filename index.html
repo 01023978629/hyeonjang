@@ -1012,8 +1012,20 @@ async function scanDir(){
   clearFileList();__walkSeen=new Map();__scanTick=0;toast('폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   await walk(state.dirHandle,'');
+  // [v100 안전장치] 스캔 결과가 저장된 색인보다 크게 적으면(폴더 접근 실패·제외 사고) 정리(prune)를 끈다
+  window.__pruneOff=false;
+  try{
+    const _saved=(state._savedFileCount||0);
+    if(_saved>20&&(state.files||[]).length<_saved*0.7){
+      window.__pruneOff=true;
+      toast('⚠️ 스캔된 파일이 평소보다 적어요('+state.files.length+'/'+_saved+') — 안전을 위해 색인 정리를 건너뜁니다');
+    }
+  }catch(e){}
   window.__scanFresh=true;
   window.__walkNames=new Set([...__walkSeen.keys()].map(k=>String(k).split('|')[0].toLowerCase()));
+  // [v100] 이번 스캔에서 실제로 들어간 폴더 목록 — 못 들어간 폴더의 항목은 절대 지우지 않는다
+  window.__walkDirs=new Set((state.files||[]).map(function(f){return String(f.prefix||'').toLowerCase();}));
+  window.__scanCount=(state.files||[]).length;
   await loadProject(); // 저장된 작업 자동 복원
   // P0 보강: 폴더의 _현장.json이 이 세션보다 오래됐으면 방금 배정이 null로 덮일 수 있음 → 스캔 직전 백업으로 재복원
   try{if(__editBackup&&__editBackup.size){(state.files||[]).forEach(function(f){restoreUserEdits(f);});}}catch(e){}
@@ -1073,6 +1085,7 @@ function serializeData(){
     satisfaction:state.satisfaction||[],
     adPosts:state.adPosts||[],
     portalCfg:state.portalCfg||{},
+    _savedFileCount:(state.files||[]).length,
     kakaoLastAt:state.kakaoLastAt||'',
     coworkTasks:state.coworkTasks||null,
     coworkSched:state.coworkSched||[],
@@ -1118,6 +1131,7 @@ function applyData(data){
   state.coworkSched=Array.isArray(data.coworkSched)?data.coworkSched:(state.coworkSched||[]);
   state.adPosts=Array.isArray(data.adPosts)?data.adPosts:(state.adPosts||[]);
   state.portalCfg=(data.portalCfg&&typeof data.portalCfg==='object')?data.portalCfg:(state.portalCfg||{});
+  state._savedFileCount=+data._savedFileCount||(Array.isArray(data.files)?data.files.length:0)||state._savedFileCount||0;
   state.kakaoLastAt=data.kakaoLastAt||state.kakaoLastAt||'';
   state._cwSchedInit=data._cwSchedInit||state._cwSchedInit||false;
   state.payLog=data.payLog||state.payLog||[];
@@ -1147,10 +1161,13 @@ function applyData(data){
   data.files.forEach(s=>{
     if(used.has(s))return;
     // [v91 P0] 방금 폴더를 스캔한 상태라면: 디스크에 없는 옛 이름 항목·앱 파일은 되살리지 않는다(prune)
-    if(window.__scanFresh){
+    if(window.__scanFresh&&!window.__pruneOff){
       if(isAppOwnFile(s.name,s.prefix))return;
       const _nm=String(s.name||'').toLowerCase();
-      if(!s.driveId&&!s._manual&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
+      const _pf=String(s.prefix||'').toLowerCase();
+      // [v100 안전장치] 이번 스캔이 들어가 본 폴더의 항목만 정리 대상. 못 들어간 폴더(권한·제외·오류)는 보존.
+      const _walked=window.__walkDirs&&window.__walkDirs.has(_pf);
+      if(_walked&&!s.driveId&&!s._manual&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
     }
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
     if(s.key&&state.files.some(f=>f.key===s.key))return;   // key(안정 식별자) 중복 방지 — 견적 가상파일 재증식 차단
@@ -2223,14 +2240,16 @@ function isAppOwnFile(name,prefix){
     if(/^현장.*\.html?$/.test(n)||/^_현장.*\.json$/.test(n)||/^_현장캐시.*\.json$/.test(n))return true;
     if(/현장_백업/.test(n)||/현장데이터_백업/.test(n)||/현장_수정전/.test(n))return true;
     if(/현장_통합본.*\.zip$/.test(n))return true;
-    if(/(^|\/)(_백업|데이터|_중복정리_보관|_정리완료)[^\/]*\//.test(path))return true;
+    if(/(^|\/)(_백업|데이터|_중복정리_보관)[^\/]*\//.test(path))return true;   // [v100] _정리완료 제외 해제(사장님 사진 폴더)
     return false;
   }catch(e){return false;}
 }
 async function walk(dir,prefix){
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      if(name==='_정리완료')continue;
+      // [v100 P0] _정리완료/ 는 앱이 '정리(이동)'로 사진을 옮겨 넣는 폴더 = 사장님 자료의 실제 보관처.
+      // 예전엔 중복 방지를 이유로 스캔에서 제외했는데, 그 탓에 재스캔 시 사진 색인이 통째로 사라졌다.
+      // 같은 파일이 원본·정리본에 모두 있으면 아래 __walkSeen(name|size)이 1번만 잡으므로 중복 걱정 없음.
       await walk(handle,prefix+name+'/');
     }else{try{
       if(isAppOwnFile(name,prefix))continue;
@@ -2297,6 +2316,15 @@ async function ingestFile(file,handle=null,prefix=''){
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
   restoreUserEdits(rec);   // 재스캔이어도 사용자 편집(현장 배정·수기 금액·분류) 복원
+  // [v100] 정리된 폴더 경로에 현장명이 있으면 배정 자가 복구: _정리완료/{현장}/{종류}/파일
+  if(!rec.project){
+    const seg=String(prefix||'').split('/').filter(Boolean);
+    if(seg[0]==='_정리완료'&&seg[1]){
+      const nm=seg[1];
+      if((state.projects||[]).some(function(p){return p.name===nm;}))rec.project=nm;
+      else if(nm.length>=2){try{ensureProjectExists(nm);rec.project=nm;}catch(e){}}
+    }
+  }
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -12716,11 +12744,32 @@ function aiQueueEnqueue(action){
   aiOpsMigrateTask(action);
   const dup=aiQueueFindDuplicate(action);
   if(dup)return null;  // 중복 → 생성 안 함
-  { // [v91] 안전망: (개수) 등 변하는 꼬리를 떼고 같은 pending이 있으면 갱신만
+  { // [v91→v100] 안전망: 꼬리 제거 + **돈 관련(미수금·입금·독촉)은 현장 단위로 1건만**
     const _norm=t=>String(t||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();
-    const _tk=(action.type||'task')+'|'+_norm(action.title);
-    const _ex=o.queue.find(t=>t.status==='pending'&&(t.type||'task')+'|'+_norm(t.title)===_tk);
-    if(_ex){_ex.updatedAt=new Date().toISOString();return null;}
+    const _fam=a=>{
+      const s=(a.type||'')+' '+(a.title||'');
+      if(/receivable|aging|recvcheck|미수금|입금\s*확인|독촉/.test(s))return 'money|'+(a.project||_norm(a.title).replace(/^[^:]*:\s*/,''));
+      return (a.type||'task')+'|'+_norm(a.title);
+    };
+    const _tk=_fam(action);
+    const _ex=o.queue.find(t=>(t.status==='pending'||t.status==='approved')&&_fam(t)===_tk);
+    if(_ex){
+      // 같은 현장의 돈 태스크는 1건 유지하되, **더 실행력 있는 태스크가 이긴다**
+      // (예: '입금 확인'(열기)만 있는데 '미수금 독촉'(문자 발송)이 들어오면 독촉으로 승격)
+      const rank=t=>{const k=(t.action&&t.action.kind)||'';return k==='sms'?3:(k==='exec'||k==='write')?2:1;};
+      const better=rank(action)>rank(_ex)||((action.priorityScore||0)>(_ex.priorityScore||0)&&rank(action)>=rank(_ex));
+      if(better){
+        _ex.type=action.type||_ex.type;_ex.title=action.title||_ex.title;
+        _ex.action=action.action||_ex.action;_ex.source=action.source||_ex.source;
+        _ex.priority=action.priority||_ex.priority;_ex.priorityScore=action.priorityScore||_ex.priorityScore;
+        _ex.category=action.category||_ex.category;
+        _ex.requiresApproval=(action.requiresApproval!==undefined)?action.requiresApproval:_ex.requiresApproval;
+        _ex.readOnly=(action.readOnly!==undefined)?action.readOnly:_ex.readOnly;
+      }
+      if(action.reason)_ex.reason=action.reason;
+      _ex.updatedAt=new Date().toISOString();
+      return null;
+    }
   }
   const item={
     id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
@@ -14510,7 +14559,27 @@ function estimateGroups(estFiles){
         else g.dups.push(f);
       }
     });
-    return Object.keys(groups).map(function(k){return {rep:groups[k].rep,dups:groups[k].dups};});
+    let arr=Object.keys(groups).map(function(k){return {rep:groups[k].rep,dups:groups[k].dups,amt:groups[k].repAmt||0};});
+    // [v100 P1] 2차 병합: 같은 현장 + 같은 금액이면 파일명이 달라도 같은 견적으로 본다
+    // (예: '★20251028 빌드캡 공주 3,978,700.xlsx' 와 '빌드캡 (공주)20251028 (1).xlsx' — 이름 정규화로는 못 묶여 2배로 잡히던 케이스)
+    const isX=function(f){return /xlsx?$/i.test(String(f.ext||''))||/\.xlsx?$/i.test(String(f.name||''));};
+    const byPA={},out=[];
+    arr.forEach(function(g){
+      const pj=g.rep.project||'',amt=g.amt||0;
+      if(pj&&amt>0){
+        const k2=pj+'|'+amt;
+        const t=byPA[k2];
+        if(t){
+          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}
+          else t.dups.push(g.rep);
+          t.dups=t.dups.concat(g.dups);
+          return;
+        }
+        byPA[k2]=g;
+      }
+      out.push(g);
+    });
+    return out.map(function(g){return {rep:g.rep,dups:g.dups};});
   }catch(e){return (estFiles||[]).map(function(f){return {rep:f,dups:[]};});}
 }
 
@@ -15591,15 +15660,22 @@ function aiQueueSanitize(){
       }
     });
     // 2) pending 중복(type+정규화 title) → 최신 1개만
-    const keyOf=function(t){return t.type+'|'+String(t.title||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();};
+    const keyOf=function(t){
+      const s=(t.type||'')+' '+(t.title||'');
+      const nm=String(t.title||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();
+      if(/receivable|aging|recvcheck|미수금|입금\s*확인|독촉/.test(s))return 'money|'+(t.project||nm.replace(/^[^:]*:\s*/,''));
+      return (t.type||'')+'|'+nm;
+    };
     const best={};
     o.queue.forEach(function(t){
       if(t.status!=='pending')return;
       const k=keyOf(t);
       if(!best[k]){best[k]=t;return;}
+      const rank=x=>{const k=(x.action&&x.action.kind)||'';return k==='sms'?3:(k==='exec'||k==='write')?2:1;};
       const a=new Date(best[k].updatedAt||best[k].createdAt).getTime();
       const b=new Date(t.updatedAt||t.createdAt).getTime();
-      const drop=(b>a)?best[k]:t;const keep=(b>a)?t:best[k];
+      const win=(rank(t)!==rank(best[k]))?(rank(t)>rank(best[k])?t:best[k]):((b>a)?t:best[k]);
+      const drop=(win===t)?best[k]:t;const keep=win;
       drop.status='dismissed';drop.reason='(자동 정리) 같은 작업이 이미 대기 중 — 중복 제거';drop.updatedAt=now;
       best[k]=keep;merged++;
     });
