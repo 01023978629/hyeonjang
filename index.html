@@ -903,17 +903,22 @@ function parseEstimate(text,fname){
   const lines=t.split(/\n/);
   let amount=0, supply=0, vat=0;
   // 1) 합계/총액 류 라인에서 최댓값
+  const __tier={};   // [v101 BUG-1] 라벨 우선순위: 총액 > 합계 > 견적금액
   for(let __li=0;__li<lines.length;__li++){const ln=lines[__li];
-    if(/(합\s*계\s*금\s*액|총\s*합\s*계|총\s*액|총\s*금\s*액|견\s*적\s*금\s*액|총\s*견\s*적|받을\s*금액|청구\s*금액)/.test(ln)){
-      const nums=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);
-      if(nums.length){const v=Math.max(...nums);if(v>amount)amount=v;}
-      else{ // 라벨 줄에 숫자가 없으면(병합셀·세로 배치) 다음 2줄에서 첫 콤마 금액
-        for(let __k=1;__k<=2&&__li+__k<lines.length;__k++){const nx=(lines[__li+__k].match(/\d{1,3}(?:,\d{3})+/g)||[]).map(won2num).filter(v=>v>=10000&&v<=1000000000);if(nx.length){const v=Math.max(...nx);if(v>amount)amount=v;break;}}
+    const __lb=ln.replace(/\s+/g,'');
+    const __rank=/(총액|총금액|총합계)/.test(__lb)?3:(/(합계금액|합계)/.test(__lb)?2:((/(견적금액|총견적|받을금액|청구금액)/.test(__lb))?1:0));
+    if(__rank){
+      const nums=amtCandidates(ln);
+      if(nums.length){const v=Math.max.apply(null,nums);if(v>(__tier[__rank]||0))__tier[__rank]=v;}
+      else{ // 라벨 줄에 숫자가 없으면(병합셀·세로 배치) 다음 2줄에서
+        for(let __k=1;__k<=2&&__li+__k<lines.length;__k++){const nx=amtCandidates(lines[__li+__k]);if(nx.length){const v=Math.max.apply(null,nx);if(v>(__tier[__rank]||0))__tier[__rank]=v;break;}}
       }
     }
-    if(/(공\s*급\s*가\s*액|공급가)/.test(ln)){const n=(ln.match(/[\d,]{4,}/g)||[]).map(won2num);if(n.length)supply=Math.max(supply,Math.max(...n));}
-    if(/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const n=(ln.match(/[\d,]{3,}/g)||[]).map(won2num);if(n.length)vat=Math.max(vat,Math.max(...n));}
+    if(/(공\s*급\s*가\s*액|공급가)/.test(ln)){const n=amtCandidates(ln);if(n.length)supply=Math.max(supply,Math.max.apply(null,n));}
+    if(/(부\s*가\s*세|세\s*액|V\.?A\.?T)/i.test(ln)){const n=(ln.match(/\d{1,3}(?:,\d{3})+|\b\d{4,9}\b/g)||[]).map(won2num).filter(function(v){return v>=1000&&v<=100000000;});if(n.length)vat=Math.max(vat,Math.max.apply(null,n));}
   }
+  // [v101] 라벨 우선순위 적용: 총액 있으면 총액, 없으면 합계, 없으면 견적금액
+  amount=__tier[3]||__tier[2]||__tier[1]||0;
   // 2) 합계가 없고 공급가액+부가세가 있으면 합산
   if(!amount && supply){ amount = supply + vat; }
   // 3) 폴백: 가장 큰 금액
@@ -925,12 +930,7 @@ function parseEstimate(text,fname){
       if(/(사업자|등록번호|연락처|전화|팩스|휴대)/i.test(ln))return false;
       return true;
     }).join('\n');
-    const withComma=(cleaned.match(/\d{1,3}(?:,\d{3})+/g)||[]).map(won2num);
-    let cand=withComma.filter(function(v){return v>=10000&&v<=1000000000;});
-    if(!cand.length){
-      const raw=(cleaned.match(/\b\d{5,9}\b/g)||[]).filter(function(s){return !/^20[0-9]{2}(0[1-9]|1[0-2])/.test(s);}).map(won2num);
-      cand=raw.filter(function(v){return v>=10000&&v<=1000000000;});
-    }
+    const cand=amtCandidates(cleaned);
     if(cand.length)amount=Math.max.apply(null,cand);
   }
   // 고객/현장명
@@ -1011,6 +1011,8 @@ async function scanDir(){
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   clearFileList();__walkSeen=new Map();__scanTick=0;toast('폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
+  // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
+  window.__walkDirs=new Set();window.__walkSaw=new Set();window.__walkFailed=new Set();window.__walkSkip=new Set();
   await walk(state.dirHandle,'');
   // [v100 안전장치] 스캔 결과가 저장된 색인보다 크게 적으면(폴더 접근 실패·제외 사고) 정리(prune)를 끈다
   window.__pruneOff=false;
@@ -1023,15 +1025,22 @@ async function scanDir(){
   }catch(e){}
   window.__scanFresh=true;
   window.__walkNames=new Set([...__walkSeen.keys()].map(k=>String(k).split('|')[0].toLowerCase()));
-  // [v100] 이번 스캔에서 실제로 들어간 폴더 목록 — 못 들어간 폴더의 항목은 절대 지우지 않는다
-  window.__walkDirs=new Set((state.files||[]).map(function(f){return String(f.prefix||'').toLowerCase();}));
   window.__scanCount=(state.files||[]).length;
   await loadProject(); // 저장된 작업 자동 복원
   // P0 보강: 폴더의 _현장.json이 이 세션보다 오래됐으면 방금 배정이 null로 덮일 수 있음 → 스캔 직전 백업으로 재복원
   try{if(__editBackup&&__editBackup.size){(state.files||[]).forEach(function(f){restoreUserEdits(f);});}}catch(e){}
+  // [v101 BUG-2/3] 자가치유: 앱 파일·보관함 항목이 색인에 남아 있으면 제거
+  try{
+    const _b4=(state.files||[]).length;
+    state.files=(state.files||[]).filter(function(f){return !isAppOwnFile(f.name,f.prefix);});
+    const _cut=_b4-state.files.length;
+    if(_cut)console.log('앱 파일·보관함 항목 '+_cut+'건 정리');
+  }catch(e){}
   try{pruneDupIndex();}catch(e){}
   try{const _fb=estimateNameAmount();if(_fb)console.log('파일명 금액 폴백 '+_fb+'건');}catch(e){}
   window.__scanFresh=false;
+  // [v101 BUG-4] ★ 최종본이 있는 달의 다른 안은 자동으로 집계 제외(견적 탭에서 되돌릴 수 있음)
+  try{const _fc=estFinalCandidates();if(_fc.length){_fc.forEach(function(f){f.exSum=true;});markDirty();toast('⭐ 최종본(★) 기준 '+_fc.length+'건을 매출 집계에서 제외했어요 — 견적 탭에서 되돌릴 수 있어요');}}catch(e){}
   $('#mountHint').textContent=state.files.length+'개 파일 인식됨.';
   $('#btnOcrAll').disabled=false;render();toast(state.files.length+'개 파일 분류 완료'+(_kept?' · 기존 배정 '+_kept+'건 유지':''));setTimeout(()=>aiAutoOrgOffer('scan'),600);setTimeout(()=>{try{quoteAutoAssignOffer();}catch(e){}},1400);
 }
@@ -1166,7 +1175,7 @@ function applyData(data){
       const _nm=String(s.name||'').toLowerCase();
       const _pf=String(s.prefix||'').toLowerCase();
       // [v100 안전장치] 이번 스캔이 들어가 본 폴더의 항목만 정리 대상. 못 들어간 폴더(권한·제외·오류)는 보존.
-      const _walked=window.__walkDirs&&window.__walkDirs.has(_pf);
+      const _walked=(typeof pruneAllowed==='function')?pruneAllowed(_pf):false;
       if(_walked&&!s.driveId&&!s._manual&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
     }
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
@@ -2245,13 +2254,17 @@ function isAppOwnFile(name,prefix){
   }catch(e){return false;}
 }
 async function walk(dir,prefix){
+  try{window.__walkDirs&&window.__walkDirs.add(String(prefix||'').toLowerCase());}catch(e){}
   for await(const [name,handle] of dir.entries()){
     if(handle.kind==='directory'){
-      // [v100 P0] _정리완료/ 는 앱이 '정리(이동)'로 사진을 옮겨 넣는 폴더 = 사장님 자료의 실제 보관처.
-      // 예전엔 중복 방지를 이유로 스캔에서 제외했는데, 그 탓에 재스캔 시 사진 색인이 통째로 사라졌다.
-      // 같은 파일이 원본·정리본에 모두 있으면 아래 __walkSeen(name|size)이 1번만 잡으므로 중복 걱정 없음.
-      await walk(handle,prefix+name+'/');
-    }else{try{
+      const _sub=(prefix+name+'/').toLowerCase();
+      try{window.__walkSaw&&window.__walkSaw.add(_sub);}catch(e){}
+      // [v101 BUG-2] 앱 백업·보관함은 아예 들어가지 않는다(견적 목록 오염 방지)
+      if(/^(_백업|데이터|_중복정리_보관)/.test(name)){try{window.__walkSkip&&window.__walkSkip.add(_sub);}catch(e){}continue;}
+      try{await walk(handle,prefix+name+'/');}catch(e){try{window.__walkFailed&&window.__walkFailed.add(_sub);}catch(e2){}}
+      continue;
+    }
+    {try{
       if(isAppOwnFile(name,prefix))continue;
       const f=await handle.getFile();
       const k=(f.name||name)+'|'+(f.size||0);
@@ -2274,16 +2287,21 @@ let __editBackup=new Map();
 function fileEditKey(prefix,name){return String((prefix||'')+(name||'')).toLowerCase();}
 function backupUserEdits(){
   __editBackup=new Map();
+  window.__editByName=new Map();
   try{
     (state.files||[]).forEach(function(f){
       if(!f)return;
       // 사용자가 손댄 흔적이 있는 것만 백업(자동 분류만 된 건 새로 계산해도 무방)
       const touched=f.project||f.est||f.kind!=='other'||f._worklabel||f.contact||f.phase;
       if(!touched)return;
-      __editBackup.set(fileEditKey(f.prefix,f.name),{
+      const _rec={
         project:f.project||null,est:f.est||null,kind:f.kind||null,phase:f.phase||null,
-        contact:f.contact||null,_worklabel:f._worklabel||null,text:f.text||'',ocr:f.ocr||null
-      });
+        contact:f.contact||null,_worklabel:f._worklabel||null,text:f.text||'',ocr:f.ocr||null,
+        exSum:f.exSum||false
+      };
+      __editBackup.set(fileEditKey(f.prefix,f.name),_rec);
+      // [v101 BUG-5] 이름만으로도 찾을 수 있게(파일이 다른 폴더로 옮겨진 경우 배정 복원)
+      window.__editByName.set(String(f.name||'').toLowerCase(),_rec);
     });
   }catch(e){}
   return __editBackup.size;
@@ -2291,11 +2309,14 @@ function backupUserEdits(){
 function restoreUserEdits(rec){
   try{
     if(!rec||!__editBackup||!__editBackup.size)return rec;
-    const b=__editBackup.get(fileEditKey(rec.prefix,rec.name));
+    let b=__editBackup.get(fileEditKey(rec.prefix,rec.name));
+    // [v101 BUG-5] 파일이 다른 폴더로 옮겨졌으면 이름만으로 복원(배정 풀림 방지)
+    if(!b&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
     if(!b)return rec;
     if(b.project)rec.project=b.project;          // 현장 배정 복원
     if(b.est)rec.est=b.est;                      // 수기 금액 복원
     if(b.kind&&b.kind!=='other')rec.kind=b.kind; // 사용자가 바꾼 분류 복원
+    if(b.exSum)rec.exSum=true;                   // Σ 집계 제외 복원
     if(b.phase)rec.phase=b.phase;
     if(b.contact)rec.contact=b.contact;
     if(b._worklabel)rec._worklabel=b._worklabel;
@@ -3043,7 +3064,7 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoImportView();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -4187,7 +4208,7 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'profit_rank':{const r=profitRank();return Object.assign({결과:'수익성 랭킹을 열었습니다'},r);}
     case 'vat_center':{const r=vatCenterView();return Object.assign({결과:'부가세 준비 센터를 열었습니다'},r);}
     case 'portal_list':{const r=portalListView();return Object.assign({결과:'고객 페이지 관리 화면을 열었습니다'},r);}
-    case 'kakao_import':{const r=await kakaoAutoImport();if(r.오류){kakaoImportView();return {결과:'서버에서 가져오지 못해 붙여넣기 창을 열었습니다',사유:r.오류};}return Object.assign({결과:'카카오 접수를 반영했습니다'},r);}
+    case 'kakao_import':{const r=await kakaoOpenInbox();if(r.오류){return {결과:'서버에서 가져오지 못해 붙여넣기 창을 열었습니다',사유:r.오류};}return Object.assign({결과:'카카오 문의함을 열었습니다'},r);}
     case 'customer_portal':{const pj=String(a.project||'').trim();const p=state.projects.find(x=>x.name===pj)||state.projects.find(x=>x.name.includes(pj));if(!p)throw new Error('현장을 찾을 수 없습니다: '+pj);const r=portalView(p.name);return Object.assign({결과:'고객 페이지를 열었습니다'},r);}
     case 'hometax_ledger':{state.tab='ledger';state.activeProject=null;render();return {결과:'회계 탭을 열었습니다',파일:state.files.filter(f=>f.kind==='ledger').length};}
     case 'ads_manage':{state.tab='ads';state.activeProject=null;render();return {결과:'광고 관리 탭을 열었습니다',기록:(state.adPosts||[]).length};}
@@ -4366,7 +4387,7 @@ case 'ops_loop_run':return '운영 점검';
     case 'profit_rank':return '수익성 랭킹';
     case 'vat_center':return '부가세 준비';
     case 'portal_list':return '고객 페이지 관리';
-    case 'kakao_import':return '카카오 접수 가져오기';
+    case 'kakao_import':return '카카오 문의';
     case 'customer_portal':return '고객 페이지';
     case 'hometax_ledger':return '회계(홈택스)';
     case 'ads_manage':return '광고 관리';
@@ -6403,7 +6424,8 @@ const HJ_HELP=[
   {k:'현장별 수익성 랭킹',d:'더보기 [🏆 수익성 랭킹] — 현장별로 매출에서 원가(자재·인건비·외주)를 뺀 이익 순위를 매겨, 어떤 현장이 실제로 남는지 보여줍니다.',say:'수익성 랭킹 보여줘'},
   {k:'고객 페이지 관리',d:'더보기 [🔗 고객 페이지 관리] — 발행한 링크를 한눈에(승인 ✅·입금·🎨선택·💬메시지·갱신 필요). 단계 변경·입금 기록·사진 배정은 자동으로 갱신되고, 앱을 안 켠 사이 바뀐 건 [🔄 한 번에 최신화]로 맞춰요.',say:'고객 페이지 목록 보여줘'},
   {k:'고객 페이지',d:'현장 화면 [🔗 고객 페이지] — 모바일 청첩장처럼 진행 단계·공사 비용·[승인] 버튼·현장 사진 6장이 담긴 고객 전용 링크를 만들어 카톡으로 보내요. 단계가 바뀌면 [🔄 갱신]. 고객이 승인하면 접수함(/leads)에 \'승인완료\'로 도착하고 [📥 가져오기]로 앱에 ✅가 붙어요. 계좌는 ①/②/표시안함 중 선택. 📢공지·🎨선택요청(타일 A/B 등)을 걸 수 있고, 고객의 💬메시지·선택·⭐후기도 [📥 가져오기]로 현장에 착착 들어옵니다.',say:'유천동 고객 페이지 열어줘'},
-  {k:'카카오 접수 가져오기',d:'더보기 [📥 카카오 접수 가져오기] — 카카오 챗봇 접수 페이지(/leads)를 복사해 붙여넣으면 견적문의는 새 현장(상담)+고객정보로, AS는 해당 현장 AS 접수로 자동 등록돼요. 같은 접수는 중복으로 안 들어갑니다.',say:'카카오 접수 가져오기 열어줘'},
+  {k:'카카오 문의',d:'더보기 [💬 카카오 문의] — 챗봇으로 들어온 문의를 카드로 보고 [✅ 전부 등록]하면 <b>연락처+현장(상담)</b>이 만들어져요. [📥 전부 등록하고 상담 일정까지]를 누르면 내일 10시 실측 일정까지 잡힙니다. 등록한 건은 서버에 표시돼 다시 안 떠요. ⚙️ 설정은 [🔗 고객 페이지]의 서버 주소·토큰을 같이 씁니다(Apps Script·Workers 모두 지원).',say:'카카오 문의 보여줘'},
+  {k:'카카오 접수(붙여넣기)',d:'더보기 [📥 카카오 접수 가져오기] — 카카오 챗봇 접수 페이지(/leads)를 복사해 붙여넣으면 견적문의는 새 현장(상담)+고객정보로, AS는 해당 현장 AS 접수로 자동 등록돼요. 같은 접수는 중복으로 안 들어갑니다.',say:'카카오 접수 가져오기 열어줘'},
   {k:'입금 기록',d:'현장 화면 [💰 입금 기록]·미수금 에이징 [💰 입금] — 금액·날짜만 넣으면 수금액과 분할 이력에 동시 반영되고, 승인함의 그 현장 미수금 작업도 자동 완료돼요. 절반/전액 버튼으로 더 빠르게.',say:'대전 입금 기록 열어줘'},
   {k:'부가세 자료 내보내기',d:'💼 회계 탭 [📤 세무사 전달용 xlsx] — 매출·매입·카드 상세와 월별 요약(부가세 예상)을 한 파일로 만들어 폴더에 저장해요. [💳 카드내역→경비 반영]을 누르면 월별 카드 사용액이 경비 장부에 들어가 마진이 진짜 숫자가 됩니다.',say:'세무사 전달용 자료 만들어줘'},
   {k:'스킬 명령문',d:'지휘부·예약의 [🧰 스킬 명령문] — 만물 스킬 8종을 언제 어떤 한마디로 부르는지 표로 복사돼요. 모든 명령서·지시서에도 \'🧰 사용할 스킬\' 줄이 자동으로 붙어 Cowork가 알맞은 스킬로 일합니다.',say:'스킬 명령문 복사해줘'},
@@ -11223,7 +11245,7 @@ function briefExtraItems(){
          items.push({ic:'🧾',t:'부가세 신고 D-'+_vp.dday,sub:'자료 '+_vs.준비도+'/3 준비됨 · 예상 '+(_vs.예상세액>=0?'납부':'환급')+' '+hjMan(Math.abs(_vs.예상세액))+' — 준비 센터에서 확인',action:'vatc'});}}
       {const _ps=(typeof portalStaleList==='function')?portalStaleList():[];
        if(_ps.length)items.push({ic:'🔗',t:'고객 페이지 갱신 필요 '+_ps.length+'곳',sub:_ps.map(function(p){return p.name;}).join(' · ').slice(0,40)+' — 고객이 옛 화면을 보고 있어요',action:'ptlist'});}
-      if(window.__kakaoNew){items.push({ic:'📥',t:'카카오 새 접수 '+window.__kakaoNew+'건',sub:'견적문의·AS·고객 메시지 — 가져와서 현장에 반영하세요',action:'kakaoin'});}
+      if(window.__kakaoNew){items.push({ic:'💬',t:'카카오 새 문의 '+window.__kakaoNew+'건',sub:'연락처·현장·상담 일정까지 한 번에 등록할 수 있어요',action:'kakaoin'});}
       if(cd.length){items.push({ic:'🖥',t:'오늘 Cowork 작업 '+cd.length+'건',sub:cd.map(function(x){return x.task.title;}).join(' · ').slice(0,42)+' — 지시서 저장해 맡기세요',action:'cwsched'});}
     }
   }catch(e){}
@@ -11255,7 +11277,7 @@ function alertCenter(){
       else if(act==='inventory'&&typeof inventoryManage==='function')inventoryManage();
       else if(act==='dueaging'&&typeof dueAgingView==='function')dueAgingView();
       else if(act==='cwsched'&&typeof coworkSchedView==='function')coworkSchedView();
-      else if(act==='kakaoin'&&typeof kakaoImportView==='function')kakaoImportView();
+      else if(act==='kakaoin'&&typeof kakaoOpenInbox==='function')kakaoOpenInbox();
       else if(act==='ptlist'&&typeof portalListView==='function')portalListView();
       else if(act==='vatc'&&typeof vatCenterView==='function')vatCenterView();
       else if(act==='ops'&&typeof aiOpsCenter==='function')aiOpsCenter();
@@ -12642,7 +12664,15 @@ function aiPlannerScan(scope){
     // 오래된 미수금(60일+) 독촉 — 전화 있으면 문자 task, 없으면 화면 안내 task
     try{if(typeof dueAgingData==='function'){
       const ag=dueAgingData().filter(function(r){return r.days>=60;});
-      ag.filter(function(r){return r.phone;}).forEach(function(r){add({
+      // [v101 BUG-8] 수금 기록이 한 번도 없는 현장은 '수금 미확인' — 독촉 문자 금지, 확인부터
+      ag.filter(function(r){const p=state.projects.find(function(x){return x.name===r.name;});return recvUnknown(p);})
+        .forEach(function(r){add({
+          category:'수금',type:'recvcheck',title:'입금 확인: '+r.name,
+          reason:'수금 기록이 한 번도 없습니다 — 실제로 못 받으셨는지 확인 후 독촉하세요('+hjMan(r.due)+' 미수로 계산 중)',
+          project:r.name,priority:'normal',priorityScore:75,
+          action:{kind:'open',fn:'recvQuickView',arg:r.name},readOnly:true,requiresApproval:false,
+          source:'recvunknown:'+r.name});});
+      ag.filter(function(r){const p=state.projects.find(function(x){return x.name===r.name;});return r.phone&&!recvUnknown(p);}).forEach(function(r){add({
         category:'수금',type:'aging',title:'미수금 독촉: '+r.name+' ('+r.days+'일째)',
         reason:hjMan(r.due)+' 미수 — '+r.band+', 정중한 입금 요청 문자',project:r.name,
         priority:r.days>=90?'high':'normal',priorityScore:70+Math.min(r.days-60,30),
@@ -14080,7 +14110,7 @@ const MORE_CATS=[
     ['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
     ['custprogress','📱','진행 공유'],['custreply','💬','고객 문자'],['asintake','📩','AS 접수 링크'],['companyintro','🪪','회사 소개'],
     ['salestarget','🎯','영업 타깃'],['funnel','📊','전환율 퍼널'],['bulkassign','🎯','견적 일괄 배정'],['quotefollowup','⏰','견적 팔로업'],['negotiate','🤝','견적 협상'],
-    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['kakaoin','📥','카카오 접수 가져오기'],['ptlist','🔗','고객 페이지 관리'],['contractreview','📝','계약 검토']
+    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['kakaoin','💬','카카오 문의'],['ptlist','🔗','고객 페이지 관리'],['contractreview','📝','계약 검토']
   ]},
   {id:'site',name:'현장·시공',ic:'🏗',items:[
     ['addproject','➕','현장 추가'],['beforeafter','📸','전/후 비교 카드'],['photobundle','📤','사진 묶음 발송'],['worklog','📝','음성 현장일지'],['photorep','📷','사진 작업일지'],
@@ -14593,13 +14623,13 @@ function quoteAutoMatch(){
     (state.files||[]).forEach(function(f){
       if(!f||f.project)return;
       if(f.kind!=='estimate'&&f.kind!=='other')return;   // 사진은 기존 자동 정리가 담당
-      const fn=norm(f.name);
-      let best=null;
+      const fn=norm(f.name).replace(/\(주\)|주식회사|㈜/g,'');
+      let best=null,bestLen=0;
       projs.forEach(function(p){
-        const pn=norm(p);
-        if(pn.length>=2&&fn.indexOf(pn)>=0){
-          if(!best||pn.length>norm(best).length)best=p;   // 더 긴 현장명 우선(오매칭 방지)
-        }
+        // [v101 BUG-5] 별칭까지 매칭: 피앤씨텍(주)→피앤씨텍 / 태산그린아파트→태산그린
+        projAliasKeys(p).forEach(function(k){
+          if(k.length>=2&&fn.indexOf(k)>=0&&k.length>bestLen){best=p;bestLen=k.length;}
+        });
       });
       if(best)out.push({id:f.id,name:f.name,project:best,amt:(f.est&&f.est.amount)||0});
     });
@@ -14737,7 +14767,8 @@ function dueAgingView(){
       '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">'+r.ic+'</span><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(r.name)+'</b><b style="font-size:13.5px;color:'+r.color+'">'+hjMan(r.due)+'</b></div>'+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:7px"><span style="flex:1;font-size:11px;color:var(--muted)">'+r.band+(r.days>=0?' · '+r.days+'일째':'')+'</span>'+
       '<button class="ghost tiny agRemind" data-i="'+i+'" style="padding:7px 11px;font-size:11.5px">💬 독촉 문자</button>'+
-      '<button class="clay tiny agRecv" data-p="'+escapeAttr(r.name)+'" style="padding:7px 11px;font-size:11.5px">💰 입금</button></div>'+
+      '<button class="clay tiny agRecv" data-p="'+escapeAttr(r.name)+'" style="padding:7px 11px;font-size:11.5px">💰 입금</button>'+
+      (recvUnknown(state.projects.find(function(x){return x.name===r.name;}))?'<span style="background:#fef3c7;color:#92400e;border-radius:7px;padding:3px 8px;font-size:10.5px;align-self:center">수금 미확인</span>':'')+'</div>'+
     '</div>';
   }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:13px">미수금이 없어요. 훌륭합니다! 🎉</div>';
   const [c1,c2]=hjBrandGrad('#b91c1c','#c2410c');
@@ -15734,7 +15765,9 @@ function recvQuickView(pjName){
     '<div style="display:flex;gap:6px;margin-top:4px">'+
       '<button class="ghost tiny" id="rqHalf" style="flex:1;padding:9px">절반</button>'+
       '<button class="ghost tiny" id="rqFull" style="flex:1;padding:9px">전액 '+hjMan(due)+'</button>'+
-    '</div></div>';
+    '</div>'+
+    (recvUnknown(p)?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:10px 12px;margin-top:10px;font-size:11.5px;color:#92400e;line-height:1.6">⚠️ 이 현장은 <b>수금 기록이 한 번도 없어</b> 매출 전액이 미수금으로 잡혀 있어요. 받으신 게 있으면 위에 기록하고, 정말 못 받으셨으면 아래를 눌러주세요.<br><button class="ghost tiny" id="rqNone" style="margin-top:7px;padding:8px 11px">받은 게 없어요 (미수 확정)</button></div>':'')+
+    '</div>';
   openModal('💰 입금 기록 — '+pjName,body,[
     {label:'입금 저장',cls:'clay',fn:function(){
       const amt=won2num(document.getElementById('rqAmt').value||'');
@@ -15759,6 +15792,8 @@ function recvQuickView(pjName){
       toast('💰 '+won(amt)+'원 입금 기록'+(left>0?' · 남은 미수 '+won(left)+'원':' · 완납 🎉'));
     }},
     {label:'취소',cls:'ghost',fn:closeModal}],true);
+  const _none=document.getElementById('rqNone');
+  if(_none)_none.onclick=function(){p.recvChecked=true;markDirty();closeModal();render();toast('미수 확정 — 이제 독촉 문자 작업이 만들어집니다');};
   const set=function(v){document.getElementById('rqAmt').value=v?v.toLocaleString('ko-KR'):'';};
   document.getElementById('rqHalf').onclick=function(){set(Math.round(due/2));};
   document.getElementById('rqFull').onclick=function(){set(due);};
@@ -15907,17 +15942,27 @@ function kakaoImportView(){
     '<div style="font-size:12.5px;line-height:1.7;color:var(--muted);margin-bottom:8px">'+
     '챗봇 접수 페이지(<b>/leads</b>)에서 전체 복사한 내용을 붙여넣으세요.<br>'+
     '한 줄 형식: <code style="font-size:10.5px">[시각] 구분 | 이름 | 전화 | 지역 | 내용</code></div>'+
-    '<button class="blue tiny" id="kkFetch" style="width:100%;padding:11px;margin-bottom:9px;font-size:13px">🔄 서버에서 바로 불러오기</button>'+
+    '<div style="display:flex;gap:6px;margin-bottom:9px">'+
+      '<button class="blue tiny" id="kkFetch" style="flex:1.6;padding:11px;font-size:13px">🔄 서버에서 바로 불러오기</button>'+
+      '<button class="ghost tiny" id="kkPing" style="flex:1;padding:11px;font-size:12.5px">🔌 연결 테스트</button>'+
+    '</div>'+
     '<textarea id="kkIn" style="width:100%;height:180px;padding:10px;font-size:12px;border-radius:11px;border:1px solid var(--line-soft);font-family:monospace" placeholder="[2026-07-12 14:30] 견적문의 | 홍길동 | 010-1234-5678 | 대전 유천동 | 욕실 리모델링"></textarea>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px">💡 견적문의 → 새 현장(상담 단계)+고객정보 · AS접수 → 기존 고객이면 그 현장에 AS 기록, 아니면 새 현장. 같은 접수는 두 번 안 들어가요.</div>';
-  const __bind=function(){const b=document.getElementById('kkFetch');if(b)b.onclick=async function(){
+  const __bind=function(){
+    const pg=document.getElementById('kkPing');
+    if(pg)pg.onclick=async function(){pg.textContent='확인 중…';const r=await kakaoPing();pg.textContent='🔌 연결 테스트';
+      toast(r.오류?('❌ '+r.오류):('✅ 연결 성공 · '+r.서버+' · 대기 '+r.건수+'건'));};
+    const b=document.getElementById('kkFetch');if(b)b.onclick=async function(){
     b.textContent='불러오는 중…';const f=await kakaoFetchLeads();b.textContent='🔄 서버에서 바로 불러오기';
     if(f.오류){toast('❌ '+f.오류);return;}
-    document.getElementById('kkIn').value=f.본문;toast('불러왔어요 — [가져오기]를 누르세요');
+    document.getElementById('kkIn').value=(typeof f.본문==='string')?f.본문:JSON.stringify(f.본문,null,1);
+    toast('불러왔어요 — [가져오기]를 누르세요');
   };};
   openModal('📥 카카오 접수 가져오기',body,[
     {label:'가져오기',cls:'clay',fn:function(){
-      const r=kakaoImportLeads(document.getElementById('kkIn').value);
+      const _raw=document.getElementById('kkIn').value;
+      let _in=_raw;try{const _j=JSON.parse(_raw);if(_j&&_j.leads)_in=kakaoNormalize(_j).map(function(L){return '['+L.at+'] '+L.type+' | '+L.name+' | '+L.phone+' | '+L.area+' | '+L.work;}).join('\n');}catch(e){}
+      const r=kakaoImportLeads(_in);
       if(!r.인식){toast('접수 형식을 찾지 못했어요 — /leads 페이지 내용을 그대로 붙여넣어 주세요');return;}
       closeModal();render();
       toast('📥 '+r.인식+'건 · 현장 '+r.신규현장+' · AS '+r.AS접수+(r.승인?' · 승인✅'+r.승인:'')+(r.메시지?' · 💬'+r.메시지:'')+(r.선택?' · 🎨'+r.선택:'')+(r.후기?' · ⭐'+r.후기:'')+(r.건너뜀?' · 중복 '+r.건너뜀:''));
@@ -16148,13 +16193,17 @@ async function kakaoAutoImport(){
 async function kakaoCheckNew(){
   const cfg=state.portalCfg||{};
   if(!cfg.base||!cfg.key)return 0;
-  const f=await kakaoFetchLeads();
+  const f=(typeof kakaoFetch2==='function')?await kakaoFetch2():await kakaoFetchLeads();
   if(f.오류)return 0;
   window.__kakaoRaw=f.본문;
-  window.__kakaoNew=kakaoNewCount(f.본문);
+  const _lds=(typeof kakaoNormalize==='function')?kakaoNormalize(f.본문):[];
+  const _last=state.kakaoLastAt||'';
+  const _fresh=_lds.filter(function(L){return L.leadId?true:(L.at>_last);});
+  window.__kakaoLeads=_fresh;
+  window.__kakaoNew=_fresh.length;
   if(window.__kakaoNew){
     try{renderBrief();}catch(e){}
-    toast('📥 카카오 새 접수 '+window.__kakaoNew+'건 — 홈에서 확인하세요');
+    toast('💬 카카오 새 문의 '+window.__kakaoNew+'건 — 홈에서 확인하세요');
   }
   return window.__kakaoNew;
 }
@@ -16358,6 +16407,221 @@ function vatCenterView(){
   const c=document.getElementById('vatC');if(c)c.onclick=function(){try{coworkTaskView('cw_tax');}catch(e){toast('Cowork 명령서를 열 수 없어요');}};
   const t=document.getElementById('vatT');if(t)t.onclick=function(){coworkCopy(vatChecklistText(),'부가세 준비 상황');};
   return {기간:P.label,디데이:P.dday,준비도:S.준비도+'/3',예상세액:S.예상세액};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v101 🔧 개선요청서 버그 8건 (2026-07-14)
+═══════════════════════════════════════════════════════════════ */
+// [BUG-6] 이 항목의 폴더를 이번 스캔이 '확실히 확인'했는가 → 확인했으면 정리 가능
+function pruneAllowed(prefix){
+  const D=window.__walkDirs,S=window.__walkSaw,F=window.__walkFailed,K=window.__walkSkip;
+  if(!D||!S)return false;
+  const p=String(prefix||'').toLowerCase();
+  if(D.has(p))return true;                       // 직접 들어가 본 폴더
+  if((F&&F.has(p))||(K&&K.has(p)))return false;  // 못 들어갔거나 건너뛴 폴더 → 보존
+  const segs=p.split('/').filter(Boolean);
+  let acc='';
+  for(let i=0;i<segs.length;i++){
+    const child=acc+segs[i]+'/';
+    if(!D.has(acc))return false;                 // 상위를 못 봤다 → 알 수 없음 → 보존
+    if(!S.has(child))return true;                // 상위엔 들어갔는데 이 폴더가 없었다 → 사라짐 → 정리
+    if((F&&F.has(child))||(K&&K.has(child)))return false;
+    if(!D.has(child))return false;
+    acc=child;
+  }
+  return D.has(p);
+}
+// [BUG-1] 금액 후보 추출 — 사업자·전화·계좌·날짜 제거, 콤마 우선, 1만~10억
+function amtCandidates(str){
+  let s=String(str||'');
+  s=s.replace(/\d{3}[-\s]?\d{2}[-\s]?\d{5}/g,' ')          // 사업자등록번호
+     .replace(/0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}/g,' ')      // 전화·휴대폰
+     .replace(/\d{2,6}[-\s]\d{2,6}[-\s]\d{2,6}([-\s]\d{1,6})?/g,' ') // 계좌번호류
+     .replace(/20\d{2}[-.\/]\d{1,2}[-.\/]\d{1,2}/g,' ')     // 날짜 YYYY-MM-DD
+     .replace(/\b20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/g,' '); // YYYYMMDD
+  const ok=function(v){return v>=10000&&v<=1000000000;};    // 1만원~10억 (10억 초과 폐기)
+  let c=(s.match(/\d{1,3}(?:,\d{3})+/g)||[]).map(won2num).filter(ok);   // 콤마 형식 우선
+  if(!c.length)c=(s.match(/\b\d{5,9}\b/g)||[]).map(won2num).filter(ok); // 콤마 없으면 5~9자리
+  return c;
+}
+// [BUG-5] 현장명 별칭 키 — '피앤씨텍(주)'→피앤씨텍 / '태산그린아파트'→태산그린
+function projAliasKeys(name){
+  const base=String(name||'').replace(/\s+/g,'').toLowerCase()
+    .replace(/\(주\)|주식회사|㈜/g,'');
+  const keys=[base];
+  const core=base.replace(/(아파트|오피스텔|빌라|빌딩|상가|타워|맨션|하우스|공사|현장)$/,'');
+  if(core.length>=2&&core!==base)keys.push(core);
+  return keys.filter(function(k){return k.length>=2;});
+}
+// [BUG-8] 수금 기록이 한 번도 없는 현장 = '수금 미확인' → 독촉 대상 제외
+function recvUnknown(p){
+  if(!p)return false;
+  if(p.recvChecked)return false;
+  if((p.received||0)>0)return false;
+  return !(state.payLog||[]).some(function(x){return x.project===p.name;});
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v102 💬 카카오 문의 완성 — Apps Script/Workers 겸용·리드 처리·연결 테스트
+═══════════════════════════════════════════════════════════════ */
+// JSON({ok,count,leads:[...]}) 또는 텍스트([시각] 구분 | 이름 | …) 둘 다 파싱
+function kakaoNormalize(raw){
+  const out=[];
+  if(raw&&typeof raw==='object'&&Array.isArray(raw.leads)){
+    raw.leads.forEach(function(L){
+      out.push({leadId:L.leadId||'',at:String(L.createdAt||'').slice(0,16),
+        type:(String(L.source||'').indexOf('as')>=0)?'AS접수':'견적문의',
+        name:L.name||'',phone:L.phone||'',area:L.area||'',
+        work:[L.workType,L.size,L.when,L.budget,L.memo].filter(Boolean).join(' · '),
+        workType:L.workType||'',size:L.size||'',when:L.when||'',budget:L.budget||'',memo:L.memo||''});
+    });
+    return out;
+  }
+  // 텍스트 형식(Workers)은 workType이 따로 없으므로 work를 공사종류로 사용 → 현장명이 '지역 공사' 형태가 되도록
+  return kakaoParseLeads(String(raw||'')).map(function(L){return Object.assign({leadId:'',workType:L.workType||L.work||''},L,{workType:L.workType||L.work||''});});
+}
+async function kakaoFetch2(){
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key)return {오류:'서버 주소·토큰을 먼저 저장하세요'};
+  const base=String(cfg.base).replace(/\/$/,'');
+  const isGas=/script\.google\.com/.test(base);
+  const url=isGas?(base+'?token='+encodeURIComponent(cfg.key))
+                 :(base+'/leads?key='+encodeURIComponent(cfg.key));
+  try{
+    const r=await fetch(url);
+    if(!r.ok)return {오류:'서버 응답 '+r.status+(r.status===403?' — 토큰이 다릅니다':'')};
+    const txt=await r.text();
+    let data=txt;
+    try{const j=JSON.parse(txt);if(j&&j.ok===false)return {오류:'인증 실패 — 토큰을 확인하세요'};if(j)data=j;}catch(e){}
+    return {본문:data,gas:isGas};
+  }catch(e){return {오류:'연결 실패: '+(e.message||e)};}
+}
+async function kakaoPing(){
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key)return {오류:'주소·토큰을 입력하세요'};
+  const f=await kakaoFetch2();
+  if(f.오류)return f;
+  const leads=kakaoNormalize(f.본문);
+  return {성공:true,건수:leads.length,서버:f.gas?'Apps Script':'Workers'};
+}
+async function kakaoMarkDone(ids){
+  const cfg=state.portalCfg||{};
+  const base=String(cfg.base||'').replace(/\/$/,'');
+  if(!/script\.google\.com/.test(base))return {건너뜀:'Workers는 앱이 시각으로 중복을 막습니다'};
+  const list=(ids||[]).filter(Boolean);
+  if(!list.length)return {표시:0};
+  try{
+    const r=await fetch(base+'?token='+encodeURIComponent(cfg.key)+'&action=done&leadId='+encodeURIComponent(list.join(',')));
+    const j=await r.json();
+    return {표시:(j&&j.marked)||0};
+  }catch(e){return {오류:e.message};}
+}
+// 리드 1건 → 연락처·현장·상담일정
+function kakaoLeadApply(L,opts){
+  opts=opts||{contact:true,project:true,schedule:false};
+  const res={};
+  const pjName=(L.area&&L.workType)?(L.area+' '+L.workType):(L.area||((L.name||'카카오')+' 문의'));
+  if(opts.contact&&L.phone){
+    state.contacts=state.contacts||[];
+    if(!state.contacts.some(function(c){return String(c.phone||'').replace(/\D/g,'')===L.phone.replace(/\D/g,'');})){
+      state.contacts.push({id:uid(),name:L.name||'카카오 문의',phone:L.phone,company:L.area||'',memo:'[카카오] '+(L.work||''),tag:'고객'});
+      res.연락처=L.name||L.phone;
+    }
+  }
+  if(opts.project){
+    if(!state.projects.some(function(p){return p.name===pjName;})){
+      state.projects.push({name:pjName,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},
+        customer:{name:L.name||'',phone:L.phone||'',addr:L.area||''},
+        kakaoLead:{at:L.at,type:L.type,work:L.work,leadId:L.leadId||''}});
+      res.현장=pjName;
+    }
+  }
+  if(opts.schedule){
+    const d=new Date();d.setDate(d.getDate()+1);
+    const dt=d.toISOString().slice(0,10);
+    state.schedule=state.schedule||[];
+    state.schedule.push(Object.assign(newSchedule(),{title:'상담·실측: '+pjName,date:dt,time:'10:00',project:pjName,memo:'[카카오 문의] '+(L.work||'')+' / '+(L.phone||'')}));
+    res.일정=dt;
+  }
+  if(L.type==='AS접수'){
+    state.asLog=state.asLog||[];
+    state.asLog.push({id:uid(),project:pjName,date:(L.at||localDate()).slice(0,10),text:'[카카오] '+(L.work||'AS 요청'),status:'open'});
+    res.AS=true;
+  }
+  markDirty();
+  return res;
+}
+function kakaoLeadsView(leads){
+  const list=leads||window.__kakaoLeads||[];
+  if(!list.length){toast('새 문의가 없어요');return {건수:0};}
+  const [c1,c2]=hjBrandGrad('#f9e000','#3c1e1e');
+  const rows=list.map(function(L,i){
+    return '<div style="border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">'+
+        '<b style="flex:1;font-size:13px">'+escapeHtml(L.name||'이름 없음')+'</b>'+
+        '<span style="font-size:10.5px;background:'+(L.type==='AS접수'?'#fef3c7':'#eff6ff')+';color:'+(L.type==='AS접수'?'#92400e':'#1d4ed8')+';border-radius:7px;padding:2px 7px">'+escapeHtml(L.type||'견적문의')+'</span>'+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.6">'+
+        '📞 '+escapeHtml(L.phone||'-')+' · 📍 '+escapeHtml(L.area||'-')+'<br>'+
+        '🔨 '+escapeHtml(L.work||'-')+'<br>'+
+        '<span style="font-size:10.5px">'+escapeHtml(L.at||'')+'</span>'+
+      '</div>'+
+      '<div style="display:flex;gap:5px;margin-top:8px">'+
+        '<button class="clay tiny" data-kkall="'+i+'" style="flex:1.4;padding:7px">✅ 전부 등록</button>'+
+        '<button class="ghost tiny" data-kkcall="'+escapeAttr(L.phone||'')+'" style="flex:1;padding:7px">📞 전화</button>'+
+        '<button class="ghost tiny" data-kkskip="'+i+'" style="flex:1;padding:7px">보류</button>'+
+      '</div></div>';
+  }).join('');
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff">'+
+      '<div style="font-size:12px;opacity:.9">카카오톡 챗봇 접수</div>'+
+      '<div style="font-size:19px;font-weight:800">💬 새 문의 '+list.length+'건</div></div>'+
+    rows+
+    '<button class="moss" id="kkAll" style="width:100%;padding:12px;font-size:13.5px;margin-top:4px">📥 전부 등록하고 상담 일정까지 잡기</button>'+
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:9px;line-height:1.6">✅ 전부 등록 = 연락처 + 현장(상담 단계) 생성. 등록하면 서버에 <b>반영 완료</b>로 표시돼 다시 뜨지 않아요.</div>';
+  openModal('💬 카카오 문의',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const done=[];
+  const bumpLast=function(ls){
+    const mx=(ls||[]).map(function(x){return x.at||'';}).sort().slice(-1)[0];
+    if(mx&&mx>(state.kakaoLastAt||'')){state.kakaoLastAt=mx;markDirty();}
+  };
+  document.querySelectorAll('#modalRoot [data-kkall]').forEach(function(b){b.onclick=async function(){
+    const L=list[+b.dataset.kkall];
+    const r=kakaoLeadApply(L,{contact:true,project:true,schedule:false});
+    done.push(L.leadId);bumpLast([L]);
+    await kakaoMarkDone([L.leadId]);
+    b.textContent='등록됨 ✅';b.disabled=true;
+    render();toast('📥 '+(r.현장||r.연락처||'등록')+' 완료');
+  };});
+  document.querySelectorAll('#modalRoot [data-kkcall]').forEach(function(b){b.onclick=function(){
+    const ph=b.dataset.kkcall;if(ph)location.href='tel:'+ph;else toast('전화번호가 없어요');
+  };});
+  document.querySelectorAll('#modalRoot [data-kkskip]').forEach(function(b){b.onclick=function(){
+    b.closest('div[style*="border:1px solid"]').style.opacity='.35';b.textContent='보류';
+  };});
+  const all=document.getElementById('kkAll');
+  if(all)all.onclick=async function(){
+    all.textContent='등록 중…';
+    let n=0;const ids=[];
+    list.forEach(function(L){kakaoLeadApply(L,{contact:true,project:true,schedule:true});ids.push(L.leadId);n++;});
+    bumpLast(list);
+    await kakaoMarkDone(ids);
+    window.__kakaoLeads=[];window.__kakaoNew=0;
+    closeModal();render();
+    toast('📥 '+n+'건 등록 + 상담 일정(내일 10시)까지 잡았어요');
+  };
+  return {건수:list.length};
+}
+async function kakaoOpenInbox(){
+  const f=await kakaoFetch2();
+  if(f.오류){toast('❌ '+f.오류);kakaoImportView();return {오류:f.오류};}
+  const leads=kakaoNormalize(f.본문);
+  const last=state.kakaoLastAt||'';
+  const fresh=leads.filter(function(L){return L.leadId?true:(L.at>last);});
+  window.__kakaoLeads=fresh;
+  window.__kakaoNew=fresh.length;
+  if(!fresh.length){toast('새 문의가 없어요 ✅');return {건수:0};}
+  return kakaoLeadsView(fresh);
 }
 
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
