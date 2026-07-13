@@ -1012,9 +1012,14 @@ async function scanDir(){
   clearFileList();__walkSeen=new Map();__scanTick=0;toast('폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   await walk(state.dirHandle,'');
+  window.__scanFresh=true;
+  window.__walkNames=new Set([...__walkSeen.keys()].map(k=>String(k).split('|')[0].toLowerCase()));
   await loadProject(); // 저장된 작업 자동 복원
   // P0 보강: 폴더의 _현장.json이 이 세션보다 오래됐으면 방금 배정이 null로 덮일 수 있음 → 스캔 직전 백업으로 재복원
   try{if(__editBackup&&__editBackup.size){(state.files||[]).forEach(function(f){restoreUserEdits(f);});}}catch(e){}
+  try{pruneDupIndex();}catch(e){}
+  try{const _fb=estimateNameAmount();if(_fb)console.log('파일명 금액 폴백 '+_fb+'건');}catch(e){}
+  window.__scanFresh=false;
   $('#mountHint').textContent=state.files.length+'개 파일 인식됨.';
   $('#btnOcrAll').disabled=false;render();toast(state.files.length+'개 파일 분류 완료'+(_kept?' · 기존 배정 '+_kept+'건 유지':''));setTimeout(()=>aiAutoOrgOffer('scan'),600);setTimeout(()=>{try{quoteAutoAssignOffer();}catch(e){}},1400);
 }
@@ -1067,6 +1072,8 @@ function serializeData(){
     asLog:state.asLog||[],
     satisfaction:state.satisfaction||[],
     adPosts:state.adPosts||[],
+    portalCfg:state.portalCfg||{},
+    kakaoLastAt:state.kakaoLastAt||'',
     coworkTasks:state.coworkTasks||null,
     coworkSched:state.coworkSched||[],
     _cwSchedInit:state._cwSchedInit||false,
@@ -1082,7 +1089,7 @@ function serializeData(){
     contacts:state.contacts||[],
     projects:state.projects,
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:f.text||'',ocr:f.ocr,est:f.est,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
+      text:f.text||'',ocr:f.ocr,est:f.est,exSum:f.exSum||false,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
       driveId:f._driveId||null,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
@@ -1110,6 +1117,8 @@ function applyData(data){
   state._coworkInit=data._coworkInit||state._coworkInit||false;
   state.coworkSched=Array.isArray(data.coworkSched)?data.coworkSched:(state.coworkSched||[]);
   state.adPosts=Array.isArray(data.adPosts)?data.adPosts:(state.adPosts||[]);
+  state.portalCfg=(data.portalCfg&&typeof data.portalCfg==='object')?data.portalCfg:(state.portalCfg||{});
+  state.kakaoLastAt=data.kakaoLastAt||state.kakaoLastAt||'';
   state._cwSchedInit=data._cwSchedInit||state._cwSchedInit||false;
   state.payLog=data.payLog||state.payLog||[];
   state.suppliers=data.suppliers||state.suppliers||[];
@@ -1132,11 +1141,17 @@ function applyData(data){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;if(s.exSum)f.exSum=true;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;restored++;}
   });
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
     if(used.has(s))return;
+    // [v91 P0] 방금 폴더를 스캔한 상태라면: 디스크에 없는 옛 이름 항목·앱 파일은 되살리지 않는다(prune)
+    if(window.__scanFresh){
+      if(isAppOwnFile(s.name,s.prefix))return;
+      const _nm=String(s.name||'').toLowerCase();
+      if(!s.driveId&&!s._manual&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
+    }
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
     if(s.key&&state.files.some(f=>f.key===s.key))return;   // key(안정 식별자) 중복 방지 — 견적 가상파일 재증식 차단
     if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)&&(f.kind||'')===(s.kind||'')))return;  // 이름+경로+크기+종류 중복 방지
@@ -2624,6 +2639,7 @@ function addProject(){const v=$('#newProj').value.trim();if(!v)return;
   if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');return;}
   state.projects.push({name:v,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');}
 function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){p.stage=idx;
+  try{portalAutoSync(name);}catch(e){}
   // 완료(마지막 단계)로 바뀌는 순간의 날짜 기록 — 미수금 경과일 계산용. 완료 해제하면 지움.
   if(idx===STAGES.length-1){if(!p.doneAt)p.doneAt=new Date().toISOString().slice(0,10);}else{p.doneAt=null;}
   markDirty();render();}}
@@ -2689,8 +2705,8 @@ function ensureProjectExists(name){
   }catch(e){return false;}
 }
 function assignProject(id,p){
-  if(p)ensureProjectExists(p);const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();scheduleRender();}}
-function assignProjectMany(ids,p){if(p)ensureProjectExists(p);ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f)f.project=p||null;});markDirty();scheduleRender();toast(ids.length+'장을 “'+p+'”에 배정');}
+  if(p)ensureProjectExists(p);const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();scheduleRender();try{if(p)portalAutoSync(p);}catch(e){}}}
+function assignProjectMany(ids,p){if(p)ensureProjectExists(p);ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f)f.project=p||null;});markDirty();scheduleRender();try{if(p)portalAutoSync(p);}catch(e){}toast(ids.length+'장을 “'+p+'”에 배정');}
 // 작업명: 묶음 사진 전체에 _worklabel 저장(날짜+위치는 자동, 작업명만 입력)
 function setWorkLabel(ids,label,opts){
   opts=opts||{};
@@ -2999,7 +3015,7 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoImportView();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='yearreport'){yearReport();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='beforeafter'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -3297,7 +3313,7 @@ function viewDashboard(){
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
     <div class="kpi due"><span class="kl">총 지출</span><span class="kv">${(totCost/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
-    <div class="kpi ${totMargin>=0?'ok':'due'}"><span class="kl">총 마진</span><span class="kv">${(totMargin/10000).toLocaleString('ko-KR')}<small>만원 · ${totMarginRate}%</small></span></div>
+    ${totCost===0?`<div class="kpi"><span class="kl">총 마진</span><span class="kv" style="font-size:13px;color:var(--muted)">지출 미입력</span></div>`:`<div class="kpi ${totMargin>=0?'ok':'due'}"><span class="kl">총 마진</span><span class="kv">${(totMargin/10000).toLocaleString('ko-KR')}<small>만원 · ${totMarginRate}%</small></span></div>`}
   </div>`;
   // 수금/미수 보조 카드
   html+=`<div class="kpis" style="margin-top:-6px">
@@ -3657,7 +3673,7 @@ const AI_TOOLS = [
  {name:'project_map',description:'전체 현장 지도: 모든 현장을 단계 색 핀으로 지도에 표시(미수금은 빨간 테두리). "현장 지도/어디어디 있지(위치)"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'export_ledger',description:'전체 장부 엑셀(9시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'brand_theme',description:'브랜드 테마 설정 화면(포인트 색·로고)을 엶. "브랜드/로고/색 바꾸기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'customer_page',description:'고객 진행 페이지(읽기전용 HTML 한 파일: 단계·최근 작업·다음 일정·사진) 생성 화면을 엶. "고객 페이지/링크로 보내"면 호출. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
+ {name:'customer_page',description:'고객 진행 상황을 HTML **파일**로 저장(오프라인 첨부용). "진행 페이지 파일로 저장/HTML로 만들어"면 호출. 실시간 링크는 customer_portal 사용. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
  {name:'calendar_sync',description:'구글 캘린더 자동 설정 조회/변경. enable=true/false로 켜고 끔(생략=현재 상태). 켜면 새 일정 저장 시 캘린더 추가 창이 자동으로 열림(단방향).',parameters:{type:'OBJECT',properties:{enable:{type:'BOOLEAN'}}}},
  {name:'week_brief',description:'주간 브리핑: 지난주 성과(수금·완료·견적)와 이번주 일정·챙길 일을 요약해 엶. Gemini 키가 있으면 AI 코멘트도. "주간 브리핑/지난주 어땠어/이번주 계획"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'add_expense',description:'[변경] 지출(현금/카드)을 기록한다. amount=금액, category=자재/인건비/외주/장비/유류/식대/기타, method=현금/카드, date, project, memo. "○○에 5만원 썼어/지출 기록"이면 호출.',parameters:{type:'OBJECT',properties:{amount:{type:'NUMBER'},category:{type:'STRING'},method:{type:'STRING'},date:{type:'STRING'},project:{type:'STRING'},memo:{type:'STRING'}},required:['amount']}},
@@ -3677,6 +3693,10 @@ const AI_TOOLS = [
  {name:'customer_crm',description:'고객 타임라인(CRM)을 연다(고객별 현장·수금·연락·리뷰 이력 시간순). query=고객명(선택). "고객 관리/고객 이력/CRM/고객 타임라인/이 고객"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
  {name:'inventory',description:'자재 재고를 관리한다(수량 증감·최소수량 미달 재주문 알림·발주 연결). "자재 재고/재고 관리/자재 부족/재주문"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'profit_rank',description:'현장별 수익성 랭킹을 보여준다(매출-원가 이익 순위·마진율). "수익성/어떤 현장이 남아/현장 순위/이익 랭킹"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'vat_center',description:'부가세 신고 준비 센터를 연다(D-day·자료 준비 상태·홈택스↔앱 대조·예상 세액). "부가세/신고 준비/세금 얼마 나와/부가세 자료"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'portal_list',description:'**고객 페이지(링크) 관리 화면**을 연다 — 발행한 링크들의 승인·입금 상태와 갱신 필요 목록. "고객 페이지 목록/고객 링크 관리/링크 전체 갱신/고객 페이지 현황"처럼 **고객 페이지·링크**가 언급되면 이 도구(현장 목록 list_projects 아님).',parameters:{type:'OBJECT',properties:{}}},
+ {name:'kakao_import',description:'카카오톡 챗봇 접수를 서버에서 가져와 현장·AS·고객메시지로 반영한다. "카카오 접수/새 문의 확인/접수 가져와"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'customer_portal',description:'고객 페이지 **링크**(진행 단계·비용 승인·사진·소통)를 만들거나 연다. "고객 페이지/고객 링크/승인 링크/카톡으로 진행상황 보내"면 호출.',parameters:{type:'OBJECT',properties:{project:{type:'STRING',description:'현장명'}},required:['project']}},
  {name:'hometax_ledger',description:'💼 회계 탭을 연다(홈택스 카드·매입·매출 엑셀 자동 년월 집계). "회계/홈택스/카드 내역/매입 매출/부가세 자료"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ads_manage',description:'📣 광고 관리 탭을 연다(스레드·인스타·메타·네이버블로그 게시 기록). "광고/홍보 기록/스레드 올린 거/인스타 관리"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'cowork_schedule',description:'Cowork 예약 스케줄을 연다(일/주/월 예약, 오늘 예정 작업, 지시서 파일 저장). "코워크 예약/코워크 일정/오늘 코워크 뭐/지시서 저장"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -4137,6 +4157,10 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'customer_crm':{let key=null;if(a.query){const list=customerListData();const m=list.find(x=>x.name&&x.name.includes(a.query))||list.find(x=>x.phone&&x.phone.includes(a.query));if(m)key=m.key;}const r=crmDialog(key);return Object.assign({결과:'고객 타임라인을 열었습니다'},r);}
     case 'inventory':{const r=inventoryManage();return Object.assign({결과:'자재 재고를 열었습니다'},r);}
     case 'profit_rank':{const r=profitRank();return Object.assign({결과:'수익성 랭킹을 열었습니다'},r);}
+    case 'vat_center':{const r=vatCenterView();return Object.assign({결과:'부가세 준비 센터를 열었습니다'},r);}
+    case 'portal_list':{const r=portalListView();return Object.assign({결과:'고객 페이지 관리 화면을 열었습니다'},r);}
+    case 'kakao_import':{const r=await kakaoAutoImport();if(r.오류){kakaoImportView();return {결과:'서버에서 가져오지 못해 붙여넣기 창을 열었습니다',사유:r.오류};}return Object.assign({결과:'카카오 접수를 반영했습니다'},r);}
+    case 'customer_portal':{const pj=String(a.project||'').trim();const p=state.projects.find(x=>x.name===pj)||state.projects.find(x=>x.name.includes(pj));if(!p)throw new Error('현장을 찾을 수 없습니다: '+pj);const r=portalView(p.name);return Object.assign({결과:'고객 페이지를 열었습니다'},r);}
     case 'hometax_ledger':{state.tab='ledger';state.activeProject=null;render();return {결과:'회계 탭을 열었습니다',파일:state.files.filter(f=>f.kind==='ledger').length};}
     case 'ads_manage':{state.tab='ads';state.activeProject=null;render();return {결과:'광고 관리 탭을 열었습니다',기록:(state.adPosts||[]).length};}
     case 'cowork_schedule':{const r=coworkSchedView();return Object.assign({결과:'Cowork 예약 스케줄을 열었습니다'},r);}
@@ -4312,6 +4336,10 @@ case 'ops_loop_run':return '운영 점검';
     case 'customer_crm':return '고객 타임라인';
     case 'inventory':return '자재 재고';
     case 'profit_rank':return '수익성 랭킹';
+    case 'vat_center':return '부가세 준비';
+    case 'portal_list':return '고객 페이지 관리';
+    case 'kakao_import':return '카카오 접수 가져오기';
+    case 'customer_portal':return '고객 페이지';
     case 'hometax_ledger':return '회계(홈택스)';
     case 'ads_manage':return '광고 관리';
     case 'cowork_schedule':return 'Cowork 예약';
@@ -6345,7 +6373,13 @@ const HJ_HELP=[
   {k:'고객 타임라인(CRM)',d:'더보기 [👥 고객 관리] — 고객별로 현장·수금·완공·리뷰 이력을 시간순으로 모아 보여줍니다. 단골은 자동 표시되고, 전화·문자도 바로 걸 수 있어요.',say:'고객 관리 열어줘'},
   {k:'자재 재고',d:'더보기 [📦 자재 재고] — 자주 쓰는 자재의 재고를 +/−로 관리하고, 최소 수량 이하로 떨어지면 재주문 알림과 발주서를 연결해 줍니다.',say:'자재 재고 보여줘'},
   {k:'현장별 수익성 랭킹',d:'더보기 [🏆 수익성 랭킹] — 현장별로 매출에서 원가(자재·인건비·외주)를 뺀 이익 순위를 매겨, 어떤 현장이 실제로 남는지 보여줍니다.',say:'수익성 랭킹 보여줘'},
+  {k:'고객 페이지 관리',d:'더보기 [🔗 고객 페이지 관리] — 발행한 링크를 한눈에(승인 ✅·입금·🎨선택·💬메시지·갱신 필요). 단계 변경·입금 기록·사진 배정은 자동으로 갱신되고, 앱을 안 켠 사이 바뀐 건 [🔄 한 번에 최신화]로 맞춰요.',say:'고객 페이지 목록 보여줘'},
+  {k:'고객 페이지',d:'현장 화면 [🔗 고객 페이지] — 모바일 청첩장처럼 진행 단계·공사 비용·[승인] 버튼·현장 사진 6장이 담긴 고객 전용 링크를 만들어 카톡으로 보내요. 단계가 바뀌면 [🔄 갱신]. 고객이 승인하면 접수함(/leads)에 \'승인완료\'로 도착하고 [📥 가져오기]로 앱에 ✅가 붙어요. 계좌는 ①/②/표시안함 중 선택. 📢공지·🎨선택요청(타일 A/B 등)을 걸 수 있고, 고객의 💬메시지·선택·⭐후기도 [📥 가져오기]로 현장에 착착 들어옵니다.',say:'유천동 고객 페이지 열어줘'},
+  {k:'카카오 접수 가져오기',d:'더보기 [📥 카카오 접수 가져오기] — 카카오 챗봇 접수 페이지(/leads)를 복사해 붙여넣으면 견적문의는 새 현장(상담)+고객정보로, AS는 해당 현장 AS 접수로 자동 등록돼요. 같은 접수는 중복으로 안 들어갑니다.',say:'카카오 접수 가져오기 열어줘'},
+  {k:'입금 기록',d:'현장 화면 [💰 입금 기록]·미수금 에이징 [💰 입금] — 금액·날짜만 넣으면 수금액과 분할 이력에 동시 반영되고, 승인함의 그 현장 미수금 작업도 자동 완료돼요. 절반/전액 버튼으로 더 빠르게.',say:'대전 입금 기록 열어줘'},
+  {k:'부가세 자료 내보내기',d:'💼 회계 탭 [📤 세무사 전달용 xlsx] — 매출·매입·카드 상세와 월별 요약(부가세 예상)을 한 파일로 만들어 폴더에 저장해요. [💳 카드내역→경비 반영]을 누르면 월별 카드 사용액이 경비 장부에 들어가 마진이 진짜 숫자가 됩니다.',say:'세무사 전달용 자료 만들어줘'},
   {k:'스킬 명령문',d:'지휘부·예약의 [🧰 스킬 명령문] — 만물 스킬 8종을 언제 어떤 한마디로 부르는지 표로 복사돼요. 모든 명령서·지시서에도 \'🧰 사용할 스킬\' 줄이 자동으로 붙어 Cowork가 알맞은 스킬로 일합니다.',say:'스킬 명령문 복사해줘'},
+  {k:'부가세 준비',d:'💼 회계 탭 [🧾 부가세 준비] 또는 더보기 — 신고 마감 D-day, 필요한 자료 3종(매출·매입·카드) 준비 상태와 받는 법, 홈택스↔앱 수금/경비 대조(계산서 미발행 의심까지), 예상 납부·환급 세액을 한 화면에. [📤 세무사 전달용 xlsx]와 [🧰 Cowork 명령서]로 바로 이어집니다.',say:'부가세 준비 열어줘'},
   {k:'회계(홈택스)',d:'상단 [💼 회계] 탭 — 홈택스에서 받은 카드 이용내역·매출/매입 세금계산서 엑셀을 폴더에 넣기만 하면 년·월별로 자동 집계돼요(카드 사용액·매출·매입·부가세 예상). 파일별 [🔄]로 다시 읽기.',say:'회계 탭 열어줘'},
   {k:'광고 관리',d:'상단 [📣 광고] 탭 — 스레드·인스타·메타·네이버블로그 채널별로 올린 글을 기록/관리해요. 채널 칩으로 소분류 필터, 이번 달 게시 수 확인, 링크 바로 열기.',say:'광고 관리 열어줘'},
   {k:'Cowork 예약',d:'더보기 [⏰ Cowork 예약] — 카드정리·세금·사진정리·월간·QA 같은 Cowork 작업을 매일/매주/매월로 예약해두면, 예정일에 홈 브리핑과 승인함에 떠요. [📤 지시서 저장]을 누르면 폴더에 _코워크_오늘업무.md가 만들어지고, Cowork에서 \'만물 폴더 오늘 업무 해줘\' 한마디면 전부 수행합니다. 끝나면 [✅ 완료]로 다음 주기로.',say:'코워크 예약 열어줘'},
@@ -11156,6 +11190,12 @@ function briefExtraItems(){
   try{
     if(typeof coworkSchedDue==='function'){
       const cd=coworkSchedDue();
+      {const _vp=(typeof vatPeriod==='function')?vatPeriod():null;
+       if(_vp&&_vp.dday<=21){const _vs=vatStatus();
+         items.push({ic:'🧾',t:'부가세 신고 D-'+_vp.dday,sub:'자료 '+_vs.준비도+'/3 준비됨 · 예상 '+(_vs.예상세액>=0?'납부':'환급')+' '+hjMan(Math.abs(_vs.예상세액))+' — 준비 센터에서 확인',action:'vatc'});}}
+      {const _ps=(typeof portalStaleList==='function')?portalStaleList():[];
+       if(_ps.length)items.push({ic:'🔗',t:'고객 페이지 갱신 필요 '+_ps.length+'곳',sub:_ps.map(function(p){return p.name;}).join(' · ').slice(0,40)+' — 고객이 옛 화면을 보고 있어요',action:'ptlist'});}
+      if(window.__kakaoNew){items.push({ic:'📥',t:'카카오 새 접수 '+window.__kakaoNew+'건',sub:'견적문의·AS·고객 메시지 — 가져와서 현장에 반영하세요',action:'kakaoin'});}
       if(cd.length){items.push({ic:'🖥',t:'오늘 Cowork 작업 '+cd.length+'건',sub:cd.map(function(x){return x.task.title;}).join(' · ').slice(0,42)+' — 지시서 저장해 맡기세요',action:'cwsched'});}
     }
   }catch(e){}
@@ -11187,6 +11227,9 @@ function alertCenter(){
       else if(act==='inventory'&&typeof inventoryManage==='function')inventoryManage();
       else if(act==='dueaging'&&typeof dueAgingView==='function')dueAgingView();
       else if(act==='cwsched'&&typeof coworkSchedView==='function')coworkSchedView();
+      else if(act==='kakaoin'&&typeof kakaoImportView==='function')kakaoImportView();
+      else if(act==='ptlist'&&typeof portalListView==='function')portalListView();
+      else if(act==='vatc'&&typeof vatCenterView==='function')vatCenterView();
       else if(act==='ops'&&typeof aiOpsCenter==='function')aiOpsCenter();
       else if(act==='as'&&typeof asManage==='function')asManage();
       else if(act==='goal'&&typeof goalManage==='function')goalManage();
@@ -12417,7 +12460,7 @@ function aiOpsEnsureState(){
   if(s.monthlyRunDay==null)s.monthlyRunDay='last';
   if(typeof s.autoReadOnly!=='boolean')s.autoReadOnly=true;
   if(typeof s.requireApprovalForWrites!=='boolean')s.requireApprovalForWrites=true;
-  if(!(+s.maxActionsPerRun>0))s.maxActionsPerRun=7;
+  if(!(+s.maxActionsPerRun>0))s.maxActionsPerRun=12;  // v99: 신규 카테고리(부가세·고객페이지) 추가로 상한 상향
   if(!(+s.stalePendingDays>0))s.stalePendingDays=7;
   if(!o.stats||typeof o.stats!=='object')o.stats={};
   const st=o.stats;
@@ -12595,6 +12638,21 @@ function aiPlannerScan(scope){
           source:'tax:'+it.date+':'+it.title});
       });
     }}catch(e){}
+    try{if(typeof vatPeriod==='function'){
+      const vp=vatPeriod();
+      if(vp.dday<=21){const vs=vatStatus();
+        add({category:'세금',type:'vatprep',title:'부가세 신고 준비 (D-'+vp.dday+')',
+          reason:'자료 '+vs.준비도+'/3 · 예상 '+(vs.예상세액>=0?'납부':'환급')+' '+hjMan(Math.abs(vs.예상세액))+(vs.부족.length?' · 부족: '+vs.부족.map(function(m){return m.k;}).join(', '):''),
+          priority:vp.dday<=7?'high':'normal',priorityScore:vp.dday<=7?88:70,action:{kind:'open',fn:'vatCenterView'},readOnly:true,requiresApproval:false,
+          source:'vatprep:'+vp.due});}
+    }}catch(e){}
+    try{if(typeof portalStaleList==='function'){
+      const ps=portalStaleList();
+      if(ps.length)add({category:'고객',type:'portalstale',title:'고객 페이지 갱신 '+ps.length+'곳',
+        reason:ps.map(function(p){return p.name;}).join(', ').slice(0,60)+' — 고객 화면이 옛 상태입니다',
+        priority:'normal',priorityScore:62,action:{kind:'open',fn:'portalListView'},readOnly:true,requiresApproval:false,
+        source:'portalstale:'+localDate()});
+    }}catch(e){}
     try{if(typeof coworkSchedDue==='function'){
       const cd=coworkSchedDue();
       if(cd.length)add({category:'Cowork',type:'cwsched',title:'오늘 Cowork 작업 '+cd.length+'건',
@@ -12658,6 +12716,12 @@ function aiQueueEnqueue(action){
   aiOpsMigrateTask(action);
   const dup=aiQueueFindDuplicate(action);
   if(dup)return null;  // 중복 → 생성 안 함
+  { // [v91] 안전망: (개수) 등 변하는 꼬리를 떼고 같은 pending이 있으면 갱신만
+    const _norm=t=>String(t||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();
+    const _tk=(action.type||'task')+'|'+_norm(action.title);
+    const _ex=o.queue.find(t=>t.status==='pending'&&(t.type||'task')+'|'+_norm(t.title)===_tk);
+    if(_ex){_ex.updatedAt=new Date().toISOString();return null;}
+  }
   const item={
     id:uid(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
     category:action.category||action.type||'기타',type:action.type||'task',
@@ -13024,7 +13088,10 @@ function aiOpsQueueView(filter){
   const list=o.queue.filter(t=>!filter||filter==='전체'||t.category===filter).sort((a,b)=>aiPriRank(b.priority)-aiPriRank(a.priority)||(b.priorityScore||0)-(a.priorityScore||0));
   const typeIcon=t=>({receivable:'💰',brief_today:'📅',worklog:'📝',photo_sort:'📸',quote_followup:'⏰',budget:'💸',loss:'📉',warranty:'🛡',review:'🗣',stale:'💤'})[t]||'📌';
   const chips=cats.map(c=>'<button class="opCat '+((filter||'전체')===c?'clay':'ghost')+' tiny" data-c="'+escapeAttr(c)+'" style="padding:5px 10px;margin:2px;font-size:11px">'+escapeHtml(c)+'</button>').join('');
-  const rows=list.map(t=>'<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:'+(t.status==='approved'?'#f0fdf4':t.status==='failed'?'#fff5f5':'var(--paper)')+'">'+
+  const __cap=60, shown=list.slice(0,__cap), __more=list.length-shown.length;
+  // (아래 rows 배열 끝에 잘림 안내를 push)
+  // 실제 push는 rows 정의 직후
+  const rows=shown.map(t=>'<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:'+(t.status==='approved'?'#f0fdf4':t.status==='failed'?'#fff5f5':'var(--paper)')+'">'+
     '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span>'+typeIcon(t.type)+'</span><b style="font-size:12.5px;flex:1">'+escapeHtml(t.title)+'</b><span style="font-size:9.5px">'+(AI_PRI_LABEL[t.priority]||'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:3px">'+escapeHtml(t.reason||'')+'</div>'+
     '<div style="font-size:10px;color:var(--muted);margin-bottom:6px">상태: '+t.status+(t.suggestedTool?' · 도구: '+escapeHtml(t.suggestedTool):t.action?' · '+t.action.kind:'')+(t.stale?' · 오래된 대기':'')+'</div>'+
@@ -13036,7 +13103,7 @@ function aiOpsQueueView(filter){
       '<button class="qvAsk ghost tiny" data-id="'+t.id+'" style="padding:5px 10px">💬 설명</button>'+
     '</div></div>').join('')||'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">해당 작업이 없어요.</div>';
   const body='<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:13px 16px;color:#fff"><div style="font-size:16px;font-weight:800">📋 승인 대기열</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+list.length+'건</div></div>'+
-    '<div style="margin-bottom:10px">'+chips+'</div>'+rows;
+    '<div style="margin-bottom:10px">'+chips+'</div>'+rows+(__more>0?'<div class="hint" style="text-align:center;padding:8px">…외 '+__more+'건 표시 생략(우선순위 낮음·완료분)</div>':'');
   openModal('📋 승인 대기열',body,[{label:'‹ 운영 센터',cls:'ghost',fn:()=>aiOpsCenter()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.querySelectorAll('.opCat').forEach(b=>b.onclick=()=>aiOpsQueueView(b.dataset.c));
   document.querySelectorAll('.qvApp').forEach(b=>b.onclick=()=>{aiQueueApprove(b.dataset.id);aiOpsQueueView(filter);});
@@ -13956,7 +14023,7 @@ const MORE_CATS=[
     ['aiquote','💸','AI 견적작성'],['analysis','📈','AI 경영 분석'],['aiprovider','🔑','AI 두뇌 선택'],['llama','🦙','Llama 등록'],['aiusage','📊','AI 사용량']
   ]},
   {id:'money',name:'경영·돈',ic:'💰',items:[
-    ['ledgertab','💼','회계(홈택스)'],['yearreport','📊','연간 결산'],['dueaging','⏳','미수금 에이징'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
+    ['ledgertab','💼','회계(홈택스)'],['vatc','🧾','부가세 준비'],['yearreport','📊','연간 결산'],['dueaging','⏳','미수금 에이징'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
     ['profitrank','🏆','수익성 랭킹'],['expense','💳','간편 장부'],['expenseclassify','🧾','경비 분류'],['scanreceipt','🧾','영수증 스캔'],
     ['goal','🎯','매출 목표'],['forecast','📈','매출 예측'],['budget','📅','현장 예산'],['settle','📄','정산 문서'],['taxinv','📇','세금계산서'],['payplan','📅','분할납 계획']
   ]},
@@ -13964,7 +14031,7 @@ const MORE_CATS=[
     ['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
     ['custprogress','📱','진행 공유'],['custreply','💬','고객 문자'],['asintake','📩','AS 접수 링크'],['companyintro','🪪','회사 소개'],
     ['salestarget','🎯','영업 타깃'],['funnel','📊','전환율 퍼널'],['bulkassign','🎯','견적 일괄 배정'],['quotefollowup','⏰','견적 팔로업'],['negotiate','🤝','견적 협상'],
-    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['contractreview','📝','계약 검토']
+    ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['kakaoin','📥','카카오 접수 가져오기'],['ptlist','🔗','고객 페이지 관리'],['contractreview','📝','계약 검토']
   ]},
   {id:'site',name:'현장·시공',ic:'🏗',items:[
     ['addproject','➕','현장 추가'],['beforeafter','📸','전/후 비교 카드'],['photobundle','📤','사진 묶음 발송'],['worklog','📝','음성 현장일지'],['photorep','📷','사진 작업일지'],
@@ -14424,9 +14491,11 @@ function estimateGroups(estFiles){
       .replace(/\s*[-_]?\s*견적(서)?.*$/,'')
       .replace(/\s*의?\s*사본.*$/,'')
       .replace(/\s*\(\d+\)\s*$/,'')
+      .replace(/[\d,]{5,}\s*$/,'').replace(/\s*-\s*\d+\s*$/,'')
       .replace(/[\s,]/g,'').trim();};
     const groups={};
     (estFiles||[]).forEach(function(f){
+      if(f.exSum)return; // [v91] 사장님이 집계 제외한 견적(초기안 등)
       let key=norm(f.name);const amt=(f.est&&f.est.amount)||0;
       if(!key||key.length<2)key='amt:'+amt;
       if(!key)key=f.id;
@@ -14598,7 +14667,8 @@ function dueAgingView(){
     return '<div style="border:1px solid var(--line-soft);border-left:4px solid '+r.color+';border-radius:11px;padding:11px 12px;margin-bottom:8px;background:var(--paper)">'+
       '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">'+r.ic+'</span><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(r.name)+'</b><b style="font-size:13.5px;color:'+r.color+'">'+hjMan(r.due)+'</b></div>'+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:7px"><span style="flex:1;font-size:11px;color:var(--muted)">'+r.band+(r.days>=0?' · '+r.days+'일째':'')+'</span>'+
-      '<button class="ghost tiny agRemind" data-i="'+i+'" style="padding:7px 11px;font-size:11.5px">💬 독촉 문자</button></div>'+
+      '<button class="ghost tiny agRemind" data-i="'+i+'" style="padding:7px 11px;font-size:11.5px">💬 독촉 문자</button>'+
+      '<button class="clay tiny agRecv" data-p="'+escapeAttr(r.name)+'" style="padding:7px 11px;font-size:11.5px">💰 입금</button></div>'+
     '</div>';
   }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:13px">미수금이 없어요. 훌륭합니다! 🎉</div>';
   const [c1,c2]=hjBrandGrad('#b91c1c','#c2410c');
@@ -14607,6 +14677,7 @@ function dueAgingView(){
     '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">🟢 30일 미만 · 🟡 30일+ · 🟠 60일+ · 🔴 90일+ (완공일·수금기한 기준) — 오래된 순</div>'+
     list;
   openModal('⏳ 미수금 에이징',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('.agRecv').forEach(function(b){b.onclick=function(){recvQuickView(b.dataset.p);};});
   document.querySelectorAll('.agRemind').forEach(function(b){b.onclick=function(){
     const r=rows[+b.dataset.i];const msg=dueAgingMsg(r);
     if(r.phone){hjSendSms(r.phone,msg);}
@@ -15230,7 +15301,7 @@ async function ledgerParse(rec){
     }
     if(hi<0)return null;
     const type=ledgerTypeOf(rec,grid.slice(0,hi+1).flat().join(' '));
-    const byYm={};let rows=0;
+    const byYm={};const __rowsData=[];let rows=0;
     for(let r=hi+1;r<grid.length;r++){
       const ym=ledgerYm(grid[r][dateC]);if(!ym)continue;
       let amt=won2num(grid[r][amtC>=0?amtC:supC]);
@@ -15243,11 +15314,12 @@ async function ledgerParse(rec){
       if(/합계|소계|총계/.test(String(grid[r].join(' '))))continue;
       if(!byYm[ym])byYm[ym]={cnt:0,amt:0,supply:0,vat:0};
       byYm[ym].cnt++;byYm[ym].amt+=amt;byYm[ym].supply+=sup;byYm[ym].vat+=vat;rows++;
+      __rowsData.push({date:ledgerYm(grid[r][dateC])?String(grid[r][dateC]):'',desc:vend||String(grid[r][1]||'').slice(0,40),amt:amt,supply:sup,vat:vat});
     }
     if(!rows)return null;
     rec.ledger={type:type,rows:rows,byYm:byYm,parsedAt:new Date().toISOString()};
     markDirty();
-    return rec.ledger;
+    return Object.assign({_rowsData:__rowsData},rec.ledger);
   }catch(e){return null;}
 }
 function ledgerFiles(){return (state.files||[]).filter(function(f){return f.kind==='ledger';});}
@@ -15284,6 +15356,9 @@ function viewLedger(){
   const parsing=files.some(function(f){return !f.ledger;});
   if(parsing)setTimeout(ledgerAutoParse,80);
   let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
+    '<button class="clay tiny" data-vatc="1" style="padding:8px 12px">🧾 부가세 준비 (D-'+vatPeriod().dday+')</button>'+
+    '<button class="ghost tiny" data-lgexport="1" style="padding:8px 12px">📤 세무사 전달용 xlsx</button>'+
+    '<button class="moss tiny" data-lgtoexp="1" style="padding:8px 12px">💳 카드내역→경비 반영</button>'+
     '<span class="hint" style="margin:0">홈택스·카드사에서 받은 <b>엑셀(카드 이용내역·매출/매입 세금계산서 목록)</b>을 이 폴더에 넣고 재스캔하면 자동으로 년월별 정리돼요.</span>'+
     '<button class="moss tiny" data-cwtax="1">🖥 Cowork 세금 명령서</button></div>';
   if(!files.length){
@@ -15429,6 +15504,784 @@ function coworkSkillCatalogText(){
     '',
     '💡 스킬 파일(.skill)은 Cowork 설정에서 [Save skill]로 설치돼 있어야 합니다.'
   ].join('\n');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v91 🔧 실기기 QA 대응 (2026-07-12 리포트)
+   prune(옛 색인 정리)·신규 파일 금액 폴백·AI 큐 위생·★최종본 제외 제안·Σ제외 토글
+═══════════════════════════════════════════════════════════════ */
+// 스캔 직후 상태 플래그 + 이번 스캔에서 실제로 본 파일 이름들
+window.__scanFresh=false;
+window.__walkNames=null;
+
+// [P1] 신규/금액없는 견적에 파일명 금액 즉시 폴백 (★20260324 대전 견적 26,675,000.xlsx)
+function estimateNameAmount(){
+  let n=0;
+  (state.files||[]).forEach(function(f){
+    if(f.kind!=='estimate')return;
+    if(f.est&&f.est.amount)return;
+    try{
+      // 파일명 끝의 콤마 금액만 신뢰(날짜 20260316 오인 방지)
+      const base=String(f.name||'').replace(/\.[a-z0-9]+$/i,'');
+      const m=base.match(/(\d{1,3}(?:,\d{3})+)\s*$/);
+      if(m){
+        const v=won2num(m[1]);
+        if(v>=10000&&v<=1000000000){f.est=Object.assign({},f.est||{},{amount:v});n++;}
+      }
+    }catch(e){}
+  });
+  if(n)markDirty();
+  return n;
+}
+
+// 스캔 후 인덱스 정리: 같은 (경로|이름) 중복 제거 — 실파일 항목 우선
+function pruneDupIndex(){
+  const seen={};const out=[];let removed=0;
+  (state.files||[]).forEach(function(f){
+    const k=((f.prefix||'')+'|'+(f.name||'')).toLowerCase();
+    const ex=seen[k];
+    if(!ex){seen[k]=f;out.push(f);return;}
+    // 실파일(handle/비가상)을 우선 유지
+    const exReal=!!(ex.handle||!ex._virtual), fReal=!!(f.handle||!f._virtual);
+    if(fReal&&!exReal){
+      // f로 교체하되, ex의 편집값(배정·금액)을 f에 이식
+      if(ex.project&&!f.project)f.project=ex.project;
+      if(ex.est&&(!f.est||!f.est.amount))f.est=ex.est;
+      if(ex.exSum)f.exSum=true;
+      out[out.indexOf(ex)]=f;seen[k]=f;removed++;
+    }else{
+      if(f.project&&!ex.project)ex.project=f.project;
+      if(f.est&&(!ex.est||!ex.est.amount))ex.est=f.est;
+      if(f.exSum)ex.exSum=true;
+      removed++;
+    }
+  });
+  if(removed){state.files=out;markDirty();}
+  return removed;
+}
+
+// [P0-AI] 큐 위생: 옛 버그 금액 폐기·미수금류 사유 최신화·pending 중복 정리 (부팅 시 1회)
+function aiQueueSanitize(){
+  try{
+    const o=aiOpsEnsureState();if(!o||!Array.isArray(o.queue))return {정리:0};
+    let fixed=0,dropped=0,merged=0;
+    const now=new Date().toISOString();
+    const curDue=function(name){
+      try{const s=projStats(name);return Math.max(0,(s.est||0)-(s.recv||0));}catch(e){return null;}
+    };
+    const nameFrom=function(t){
+      if(t.project)return t.project;
+      const m=String(t.title||'').match(/:\s*(.+)$/);return m?m[1].trim():null;
+    };
+    // 1) 옛 파싱버그 잔재(비정상 고액) + 미수금류 사유 최신화
+    o.queue.forEach(function(t){
+      if(t.status!=='pending'&&t.status!=='approved')return;
+      const txt=(t.title||'')+' '+(t.reason||'');
+      const man=(txt.match(/([\d,]{3,})\s*만원/g)||[]).map(function(s){return won2num(s.replace(/만원/,''));});
+      if(man.some(function(v){return v>=50000;})){ // 5억(만원단위 50,000) 이상 → 옛 버그
+        t.status='dismissed';t.reason='(자동 정리) 옛 파싱 버그 시점의 금액 — 폐기';t.updatedAt=now;dropped++;return;
+      }
+      if(/미수금|입금\s*확인|독촉/.test(t.title||'')){
+        const nm=nameFrom(t);
+        if(nm&&state.projects.some(function(p){return p.name===nm;})){
+          const due=curDue(nm);
+          if(due===0){t.status='done';t.reason='(자동 정리) 현재 미수금 없음 — 해소됨';t.updatedAt=now;dropped++;return;}
+          if(due!=null){const nr='현재 미수 '+hjMan(due);if(t.reason!==nr){t.reason=nr;t.updatedAt=now;fixed++;}}
+        }
+      }
+    });
+    // 2) pending 중복(type+정규화 title) → 최신 1개만
+    const keyOf=function(t){return t.type+'|'+String(t.title||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();};
+    const best={};
+    o.queue.forEach(function(t){
+      if(t.status!=='pending')return;
+      const k=keyOf(t);
+      if(!best[k]){best[k]=t;return;}
+      const a=new Date(best[k].updatedAt||best[k].createdAt).getTime();
+      const b=new Date(t.updatedAt||t.createdAt).getTime();
+      const drop=(b>a)?best[k]:t;const keep=(b>a)?t:best[k];
+      drop.status='dismissed';drop.reason='(자동 정리) 같은 작업이 이미 대기 중 — 중복 제거';drop.updatedAt=now;
+      best[k]=keep;merged++;
+    });
+    if(fixed||dropped||merged){
+      try{aiOpsLog({event:'sanitize',detail:'금액갱신 '+fixed+' · 폐기 '+dropped+' · 중복정리 '+merged,source:'boot',ok:true});}catch(e){}
+      markDirty();
+    }
+    return {갱신:fixed,폐기:dropped,중복정리:merged};
+  }catch(e){return {오류:e.message};}
+}
+
+// [P2] ★ 최종본 우선 — 같은 현장·같은 연월에 ★와 비★가 공존하면 비★를 집계 제외 제안
+function estFinalCandidates(){
+  const date8=function(nm){const m=String(nm||'').match(/(20\d{6})/);return m?m[1]:null;};
+  const byPm={}; // project|YYYYMM → {star:[],plain:[]}
+  (state.files||[]).forEach(function(f){
+    if(f.kind!=='estimate'||!f.project)return;
+    if(!(f.est&&f.est.amount))return;
+    const d=date8(f.name);if(!d)return;
+    const k=f.project+'|'+d.slice(0,6);
+    (byPm[k]=byPm[k]||{star:[],plain:[]})[/^★/.test(f.name)?'star':'plain'].push(f);
+  });
+  const out=[];
+  Object.keys(byPm).forEach(function(k){
+    const g=byPm[k];
+    if(g.star.length&&g.plain.length){
+      g.plain.forEach(function(f){if(!f.exSum)out.push(f);});
+    }
+  });
+  return out;
+}
+function estFinalApply(){
+  const c=estFinalCandidates();
+  c.forEach(function(f){f.exSum=true;});
+  if(c.length){markDirty();render();toast('⭐ '+c.length+'건을 집계에서 제외했어요(★ 최종본만 합산)');}
+  return {제외:c.length};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v92 💰 수금 원터치 + 🧾 부가세 패키지(세무사 xlsx·경비 반영)
+═══════════════════════════════════════════════════════════════ */
+function recvQuickView(pjName){
+  const p=state.projects.find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  const st=projStats(pjName);
+  const due=Math.max(0,st.due||0);
+  const today=localDate();
+  const body=
+    '<div style="font-size:13px;line-height:1.7">'+
+    '<div style="display:flex;justify-content:space-between;background:var(--paper-2);border-radius:11px;padding:11px 13px;margin-bottom:11px">'+
+      '<span>현재 미수</span><b style="color:'+(due>0?'var(--warn)':'var(--ok)')+'">'+won(due)+'원</b></div>'+
+    '<label style="font-size:11.5px;color:var(--muted)">입금액</label>'+
+    '<input id="rqAmt" type="text" inputmode="numeric" value="'+(due?due.toLocaleString('ko-KR'):'')+'" style="width:100%;padding:12px;font-size:16px;font-weight:800;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">'+
+    '<label style="font-size:11.5px;color:var(--muted)">입금일</label>'+
+    '<input id="rqDate" type="date" value="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px">'+
+    '<div style="display:flex;gap:6px;margin-top:4px">'+
+      '<button class="ghost tiny" id="rqHalf" style="flex:1;padding:9px">절반</button>'+
+      '<button class="ghost tiny" id="rqFull" style="flex:1;padding:9px">전액 '+hjMan(due)+'</button>'+
+    '</div></div>';
+  openModal('💰 입금 기록 — '+pjName,body,[
+    {label:'입금 저장',cls:'clay',fn:function(){
+      const amt=won2num(document.getElementById('rqAmt').value||'');
+      const d=document.getElementById('rqDate').value||today;
+      if(!amt||amt<=0){toast('입금액을 입력하세요');return;}
+      p.received=(p.received||0)+amt;
+      state.payLog=state.payLog||[];
+      state.payLog.push({d:d,project:pjName,amt:amt});
+      if(state.payLog.length>400)state.payLog=state.payLog.slice(-400);
+      // 승인함의 이 현장 미수금류 대기 작업은 자동 완료 처리
+      try{
+        const o=aiOpsEnsureState();const now=new Date().toISOString();
+        (o.queue||[]).forEach(function(t){
+          if((t.status==='pending'||t.status==='approved')&&/미수금|입금\s*확인|독촉/.test(t.title||'')&&String(t.title).includes(pjName)){
+            t.status='done';t.reason='(자동) '+d+' '+won(amt)+'원 입금 기록됨';t.updatedAt=now;
+          }
+        });
+      }catch(e){}
+      markDirty();closeModal();render();
+      try{portalAutoSync(pjName);}catch(e){}
+      const left=Math.max(0,due-amt);
+      toast('💰 '+won(amt)+'원 입금 기록'+(left>0?' · 남은 미수 '+won(left)+'원':' · 완납 🎉'));
+    }},
+    {label:'취소',cls:'ghost',fn:closeModal}],true);
+  const set=function(v){document.getElementById('rqAmt').value=v?v.toLocaleString('ko-KR'):'';};
+  document.getElementById('rqHalf').onclick=function(){set(Math.round(due/2));};
+  document.getElementById('rqFull').onclick=function(){set(due);};
+}
+/* ── 🧾 세무사 전달용 xlsx (매출/매입/카드/요약) ── */
+async function ledgerExportTax(){
+  const files=ledgerFiles().filter(function(f){return f.ledger;});
+  if(!files.length){toast('먼저 회계 파일을 넣고 집계하세요');return;}
+  if(typeof XLSX==='undefined')await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',function(){return window.XLSX;});
+  const wb=XLSX.utils.book_new();
+  const agg=ledgerAggregate();
+  const yms=Object.keys(agg).sort();
+  // 요약 시트
+  const sum=[['년월','카드 사용','매출 공급가','매출 세액','매입 공급가','매입 세액','부가세 예상(납부+/환급-)']];
+  yms.forEach(function(ym){
+    const a=agg[ym];
+    const sv=(a.sale&&a.sale.vat)||0, bv=(a.purchase&&a.purchase.vat)||0;
+    sum.push([ym,(a.card&&a.card.amt)||0,(a.sale&&(a.sale.supply||a.sale.amt))||0,sv,(a.purchase&&(a.purchase.supply||a.purchase.amt))||0,bv,sv-bv]);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
+  // 유형별 상세 시트
+  const byType={sale:[['일자','거래처/내용','공급가액','세액','합계','원본파일']],purchase:[['일자','거래처/내용','공급가액','세액','합계','원본파일']],card:[['일자','가맹점/내용','금액','원본파일']]};
+  for(const f of files){
+    let rd=null;
+    try{const r=await ledgerParse(f);rd=r&&r._rowsData;}catch(e){}
+    (rd||[]).forEach(function(r){
+      if(f.ledger.type==='card')byType.card.push([r.date||'',r.desc||'',r.amt||0,f.name]);
+      else byType[f.ledger.type==='sale'?'sale':'purchase'].push([r.date||'',r.desc||'',r.supply||0,r.vat||0,r.amt||0,f.name]);
+    });
+  }
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(byType.sale),'매출');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(byType.purchase),'매입');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(byType.card),'카드');
+  const fname='부가세자료_'+localDate().replace(/-/g,'')+'.xlsx';
+  const out=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+  // 폴더 저장 우선, 아니면 다운로드
+  try{
+    if(state.dirHandle){
+      const fh=await state.dirHandle.getFileHandle(fname,{create:true});
+      const w=await fh.createWritable();await w.write(out);await w.close();
+      toast('📤 폴더에 저장: '+fname+' — 세무사에게 그대로 전달하세요');
+      return {저장:fname,행:{매출:byType.sale.length-1,매입:byType.purchase.length-1,카드:byType.card.length-1}};
+    }
+  }catch(e){}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([out],{type:'application/octet-stream'}));a.download=fname;a.click();
+  toast('📤 다운로드: '+fname);
+  return {다운로드:fname};
+}
+/* ── 💳 카드 내역 → 경비(월 합계) 반영 ── */
+function ledgerToExpense(){
+  const agg=ledgerAggregate();
+  state.expenses=state.expenses||[];
+  let added=0,skipped=0;
+  Object.keys(agg).forEach(function(ym){
+    const a=agg[ym];
+    if(!a.card||!a.card.amt)return;
+    if(state.expenses.some(function(e){return e._fromLedger===ym;})){skipped++;return;}
+    state.expenses.push({id:uid(),date:ym+'-28',amount:a.card.amt,category:'기타',method:'카드',memo:'카드 이용내역 자동 반영('+ym+' · '+a.card.cnt+'건)',_fromLedger:ym});
+    added++;
+  });
+  if(added){markDirty();render();}
+  toast(added?('💳 '+added+'개월 카드 사용액을 경비로 반영했어요'+(skipped?' · 이미 반영 '+skipped+'건 건너뜀':'')):'새로 반영할 월이 없어요(이미 반영됨)');
+  return {반영:added,건너뜀:skipped};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v93 📥 카카오 접수 가져오기 — 챗봇(/leads) 텍스트 → 현장·AS 자동 등록
+═══════════════════════════════════════════════════════════════ */
+function kakaoParseLeads(text){
+  const out=[];
+  String(text||'').split(/\r?\n/).forEach(function(ln){
+    const m=ln.match(/^\[([^\]]+)\]\s*([^|]+?)\s*\|\s*([^|]*)\|\s*([^|]*)\|\s*([^|]*)\|\s*(.*)$/);
+    if(!m)return;
+    out.push({at:m[1].trim(),type:m[2].trim(),name:m[3].trim().replace(/^-$/,''),
+      phone:m[4].trim().replace(/^-$/,''),area:m[5].trim().replace(/^-$/,''),
+      work:m[6].trim().replace(/^-$/,'')});
+  });
+  return out;
+}
+function kakaoImportLeads(text){
+  const leads=kakaoParseLeads(text);
+  if(!leads.length)return {인식:0};
+  let added=0,asN=0,skip=0,apprN=0,msgN=0,chN=0,rvN=0;
+  const today=localDate();
+  leads.forEach(function(L){
+    const pjName=L.area||((L.name||'카카오')+' 문의');
+    // 같은 접수(시각+이름) 재가져오기 방지
+    if(state.projects.some(function(p){return p.kakaoLead&&p.kakaoLead.at===L.at&&(p.customer&&p.customer.name)===L.name;})){skip++;return;}
+    if(L.type.indexOf('승인')>=0){
+      const exP=state.projects.find(function(p){return p.name===pjName||p.name===L.name;});
+      if(exP){exP.portalApproval={at:L.at,name:L.phone||''};added+=0;asN+=0;skip+=0;apprN=(apprN||0)+1;}else skip++;
+      return;
+    }
+    if(L.type==='고객선택'||L.type==='고객후기'||L.type==='고객메시지'){
+      const exP=state.projects.find(function(p){return p.name===L.name;});
+      if(!exP){skip++;return;}
+      if(L.type==='고객선택'){
+        const ch=(L.work.split('→')[1]||'').trim();
+        if(exP.portalAsk&&exP.portalAsk.chosenAt===L.at){skip++;return;}
+        exP.portalAsk=Object.assign(exP.portalAsk||{q:(L.work.split('→')[0]||'').trim(),opts:[]},{choice:ch,chosenAt:L.at});chN++;
+      }else if(L.type==='고객후기'){
+        if((state.satisfaction||[]).some(function(s){return s.project===L.name&&s.at===L.at;})){skip++;return;}
+        const stars=(L.work.match(/★/g)||[]).length||5;
+        state.satisfaction=state.satisfaction||[];
+        state.satisfaction.push({project:L.name,at:L.at,date:(L.at||'').slice(0,10),stars:stars,text:L.work.replace(/★+/,'').trim(),src:'portal'});
+        exP.portalReview={stars:stars,text:L.work.replace(/★+/,'').trim(),at:L.at};rvN++;
+      }else{
+        exP.portalMsgs=exP.portalMsgs||[];
+        if(exP.portalMsgs.some(function(m){return m.at===L.at&&m.text===L.work;})){skip++;return;}
+        exP.portalMsgs.push({at:L.at,text:L.work});
+        if(exP.portalMsgs.length>20)exP.portalMsgs=exP.portalMsgs.slice(-20);msgN++;
+      }
+      return;
+    }
+    if(L.type.indexOf('AS')>=0){
+      // 기존 고객(전화) 매칭 → 해당 현장에 AS 접수
+      const ex=L.phone?state.projects.find(function(p){return p.customer&&String(p.customer.phone||'').replace(/\D/g,'')===L.phone.replace(/\D/g,'');}):null;
+      state.asLog=state.asLog||[];
+      if(ex){
+        const _dt=(L.at||today).slice(0,10),_tx='[카카오] '+(L.work||'AS 요청');
+        if(state.asLog.some(function(a){return a.project===ex.name&&a.date===_dt&&a.text===_tx;})){skip++;return;}
+        state.asLog.push({id:uid(),project:ex.name,date:_dt,text:_tx,status:'open'});
+        asN++;return;
+      }
+    }
+    if(state.projects.some(function(p){return p.name===pjName;})){skip++;return;}
+    const p={name:pjName,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},
+      customer:{name:L.name||'',phone:L.phone||'',addr:L.area||''},
+      kakaoLead:{at:L.at,type:L.type,work:L.work}};
+    state.projects.push(p);added++;
+    if(L.type.indexOf('AS')>=0){
+      state.asLog=state.asLog||[];
+      state.asLog.push({id:uid(),project:pjName,date:(L.at||today).slice(0,10),text:'[카카오] '+(L.work||'AS 요청'),status:'open'});
+      asN++;
+    }
+  });
+  if(added||asN)markDirty();
+  {const mx=leads.map(function(L){return L.at;}).sort().slice(-1)[0];if(mx&&mx>(state.kakaoLastAt||''))state.kakaoLastAt=mx;}
+  window.__kakaoNew=0;
+  if(apprN||msgN||chN||rvN)markDirty();
+  return {인식:leads.length,신규현장:added,AS접수:asN,승인:apprN,메시지:msgN,선택:chN,후기:rvN,건너뜀:skip};
+}
+function kakaoImportView(){
+  const body=
+    '<div style="font-size:12.5px;line-height:1.7;color:var(--muted);margin-bottom:8px">'+
+    '챗봇 접수 페이지(<b>/leads</b>)에서 전체 복사한 내용을 붙여넣으세요.<br>'+
+    '한 줄 형식: <code style="font-size:10.5px">[시각] 구분 | 이름 | 전화 | 지역 | 내용</code></div>'+
+    '<button class="blue tiny" id="kkFetch" style="width:100%;padding:11px;margin-bottom:9px;font-size:13px">🔄 서버에서 바로 불러오기</button>'+
+    '<textarea id="kkIn" style="width:100%;height:180px;padding:10px;font-size:12px;border-radius:11px;border:1px solid var(--line-soft);font-family:monospace" placeholder="[2026-07-12 14:30] 견적문의 | 홍길동 | 010-1234-5678 | 대전 유천동 | 욕실 리모델링"></textarea>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px">💡 견적문의 → 새 현장(상담 단계)+고객정보 · AS접수 → 기존 고객이면 그 현장에 AS 기록, 아니면 새 현장. 같은 접수는 두 번 안 들어가요.</div>';
+  const __bind=function(){const b=document.getElementById('kkFetch');if(b)b.onclick=async function(){
+    b.textContent='불러오는 중…';const f=await kakaoFetchLeads();b.textContent='🔄 서버에서 바로 불러오기';
+    if(f.오류){toast('❌ '+f.오류);return;}
+    document.getElementById('kkIn').value=f.본문;toast('불러왔어요 — [가져오기]를 누르세요');
+  };};
+  openModal('📥 카카오 접수 가져오기',body,[
+    {label:'가져오기',cls:'clay',fn:function(){
+      const r=kakaoImportLeads(document.getElementById('kkIn').value);
+      if(!r.인식){toast('접수 형식을 찾지 못했어요 — /leads 페이지 내용을 그대로 붙여넣어 주세요');return;}
+      closeModal();render();
+      toast('📥 '+r.인식+'건 · 현장 '+r.신규현장+' · AS '+r.AS접수+(r.승인?' · 승인✅'+r.승인:'')+(r.메시지?' · 💬'+r.메시지:'')+(r.선택?' · 🎨'+r.선택:'')+(r.후기?' · ⭐'+r.후기:'')+(r.건너뜀?' · 중복 '+r.건너뜀:''));
+    }},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  __bind();
+  return {열림:true};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v94 🔗 고객 페이지(모바일 청첩장 방식) — 진행·승인·사진을 링크 하나로
+═══════════════════════════════════════════════════════════════ */
+function portalBuild(pjName){
+  const p=state.projects.find(function(x){return x.name===pjName;});
+  if(!p)return null;
+  const st=projStats(pjName);
+  const idx=Math.max(0,Math.min(3,p.stage||0));
+  const steps=STAGES.map(function(t,i){
+    const s={t:t,done:i<=idx&&!(i===idx&&idx<3&&i>0&&false)};
+    s.done=(i<idx)||(idx===3&&i===3)||(i===idx&&i===0);
+    if(i===idx&&i>0&&i<3)s.memo='진행 중';
+    if(i===idx&&i===3)s.memo='공사가 마무리되었습니다';
+    return s;
+  });
+  // 시공 단계면 최근 공정 메모
+  if(idx===2&&Array.isArray(p.phases)&&p.phases.length){
+    const last=p.phases[p.phases.length-1];
+    steps[2].memo='진행 중 · 최근: '+(last.title||last.name||'');
+  }
+  const photos=state.files
+    .filter(function(f){return f.kind==='photo'&&f.project===pjName&&f.thumb;})
+    .sort(function(a,b){return new Date(b.when)-new Date(a.when);})
+    .slice(0,6).map(function(f){return f.thumb;});
+  const accMap={'1':'농협 356-1665-7211-53 (예금주: 전병덕 · 만물인테리어)','2':'농협 352-0941-3551-03 (예금주: 민경임)'};
+  const pay={};
+  if(st.due>0){pay.due=st.due;if(p.portalAcc&&accMap[p.portalAcc])pay.account=accMap[p.portalAcc];}
+  else if((p.received||0)>0){
+    const lastPay=(state.payLog||[]).filter(function(x){return x.project===pjName;}).slice(-1)[0];
+    pay.confirmedAt=lastPay?lastPay.d:localDate();
+  }
+  const ask=(p.portalAsk&&p.portalAsk.q)?{q:p.portalAsk.q,opts:p.portalAsk.opts||[],choice:p.portalAsk.choice||'',chosenAt:p.portalAsk.chosenAt||''}:null;
+  return {name:pjName,steps:steps,notice:p.portalNotice||'',ask:ask,review:p.portalReview||null,
+    quote:st.est?{amount:st.est,summary:'상세 내역은 전달드린 견적서를 확인해 주세요'}:null,
+    payment:pay,approval:(p.portalApproval&&p.portalApproval.at)?{approvedAt:p.portalApproval.at,name:p.portalApproval.name||''}:{},photos:photos};
+}
+async function portalPush(pjName){
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key){toast('먼저 서버 주소와 비밀키를 저장하세요');return null;}
+  const p=state.projects.find(function(x){return x.name===pjName;});
+  const data=portalBuild(pjName);
+  if(!data){toast('현장 데이터를 만들 수 없어요');return null;}
+  try{
+    const r=await fetch(String(cfg.base).replace(/\/$/,'')+'/portal/save',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({key:cfg.key,token:p.portalToken||undefined,data:data})});
+    if(!r.ok)throw new Error('서버 응답 '+r.status);
+    const j=await r.json();
+    p.portalToken=j.token;p.portalUrl=j.url;
+    p.portalSyncAt=new Date().toISOString().slice(0,16).replace('T',' ');
+    try{p.portalSig=portalSig(pjName);}catch(e){}
+    markDirty();
+    return j;
+  }catch(e){toast('전송 실패: '+(e.message||e)+' — 주소·키를 확인하세요');return null;}
+}
+function portalView(pjName){
+  const p=state.projects.find(function(x){return x.name===pjName;});
+  if(!p)return;
+  state.portalCfg=state.portalCfg||{};
+  const cfg=state.portalCfg;
+  const appr=p.portalApproval;
+  const body=
+    (appr&&appr.at?'<div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:11px;padding:10px 12px;font-size:12.5px;margin-bottom:10px">✅ 고객 승인 완료 · '+escapeHtml(appr.at)+(appr.name?' · '+escapeHtml(appr.name):'')+'</div>':'')+
+    (p.portalUrl?'<div style="background:var(--paper-2);border-radius:11px;padding:11px 12px;margin-bottom:10px;word-break:break-all;font-size:12px"><b>고객 링크</b><br><a href="'+escapeAttr(p.portalUrl)+'" target="_blank">'+escapeHtml(p.portalUrl)+'</a></div>':'')+
+    '<div style="font-size:12px;font-weight:800;margin:2px 0 5px">입금 계좌 표시</div>'+
+    '<select id="ptAcc" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:10px">'+
+      '<option value="">표시 안 함 (대표가 따로 안내)</option>'+
+      '<option value="1"'+(p.portalAcc==='1'?' selected':'')+'>① 사업자 — 농협 356-1665-7211-53 전병덕</option>'+
+      '<option value="2"'+(p.portalAcc==='2'?' selected':'')+'>② 개인 — 농협 352-0941-3551-03 민경임</option>'+
+    '</select>'+
+    '<div style="font-size:12px;font-weight:800;margin:2px 0 5px">📢 고객에게 안내(공지)</div>'+
+    '<textarea id="ptNotice" placeholder="예: 내일(월) 오전 9시 방문합니다. 소음 작업은 오전에만 해요." style="width:100%;height:64px;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:10px">'+escapeHtml(p.portalNotice||'')+'</textarea>'+
+    '<div style="font-size:12px;font-weight:800;margin:2px 0 5px">🎨 고객 선택 요청'+(p.portalAsk&&p.portalAsk.choice?' — <span style="color:var(--ok)">선택됨: '+escapeHtml(p.portalAsk.choice)+' ✅</span>':'')+'</div>'+
+    '<input id="ptAskQ" placeholder="질문 (예: 욕실 벽타일 어떤 걸로 할까요?)" value="'+escapeAttr(p.portalAsk&&p.portalAsk.q||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:6px">'+
+    '<input id="ptAskO" placeholder="선택지 (쉼표로: A. 밝은 그레이, B. 베이지 톤)" value="'+escapeAttr(p.portalAsk&&(p.portalAsk.opts||[]).join(', ')||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:10px">'+
+    '<details'+(cfg.base?'':' open')+' style="margin-bottom:10px"><summary style="font-size:12px;font-weight:800;cursor:pointer">⚙️ 서버 설정 (최초 1회)</summary>'+
+      '<input id="ptBase" placeholder="https://manmul-kakao.____.workers.dev" value="'+escapeAttr(cfg.base||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px;margin:8px 0 6px">'+
+      '<input id="ptKey" placeholder="비밀키 (ADMIN_KEY)" value="'+escapeAttr(cfg.key||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px">'+
+    '</details>'+
+    '<div style="font-size:11px;color:var(--muted);line-height:1.7">🔗 만들면 <b>진행 단계·비용·[승인] 버튼·사진 6장</b>이 담긴 고객 전용 페이지가 생겨요. 단계가 바뀌면 다시 [갱신]을 눌러 최신으로 유지하세요. 고객이 승인하면 카카오 접수함(/leads)에 도착 — [📥 가져오기]로 앱에 반영됩니다.</div>';
+  openModal('🔗 고객 페이지 — '+pjName,body,[
+    {label:'👀 미리보기',cls:'ghost',fn:function(){
+      state.portalCfg={base:(document.getElementById('ptBase')||{}).value||cfg.base||'',key:(document.getElementById('ptKey')||{}).value||cfg.key||''};
+      p.portalAcc=document.getElementById('ptAcc').value;
+      p.portalNotice=document.getElementById('ptNotice').value.trim();
+      {const q=document.getElementById('ptAskQ').value.trim();const o=document.getElementById('ptAskO').value.split(',').map(function(x){return x.trim();}).filter(Boolean);
+       if(q&&o.length>=2){if(!p.portalAsk||p.portalAsk.q!==q)p.portalAsk={q:q,opts:o};else p.portalAsk.opts=o;}else if(!q){p.portalAsk=null;}}
+      markDirty();portalPreview(pjName);
+    }},
+    {label:p.portalUrl?'🔄 갱신':'🔗 만들기',cls:'clay',fn:async function(){
+      state.portalCfg={base:document.getElementById('ptBase').value.trim(),key:document.getElementById('ptKey').value.trim()};
+      p.portalAcc=document.getElementById('ptAcc').value;
+      p.portalNotice=document.getElementById('ptNotice').value.trim();
+      {const q=document.getElementById('ptAskQ').value.trim();const o=document.getElementById('ptAskO').value.split(',').map(function(x){return x.trim();}).filter(Boolean);
+       if(q&&o.length>=2){if(!p.portalAsk||p.portalAsk.q!==q)p.portalAsk={q:q,opts:o};else p.portalAsk.opts=o;}
+       else if(!q){p.portalAsk=null;}}
+      markDirty();
+      const j=await portalPush(pjName);
+      if(j){toast('🔗 고객 페이지 준비 완료');portalView(pjName);}
+    }},
+    {label:'📋 복사',cls:'ghost',fn:function(){if(p.portalUrl){coworkCopy(p.portalUrl,'고객 페이지 링크');}else toast('먼저 만들기를 누르세요');}},
+    {label:'📤 공유',cls:'ghost',fn:async function(){
+      if(!p.portalUrl){toast('먼저 만들기를 누르세요');return;}
+      try{if(navigator.share){await navigator.share({title:pjName+' 공사 안내 — 만물인테리어',url:p.portalUrl});return;}}catch(e){}
+      coworkCopy(p.portalUrl,'고객 페이지 링크');
+    }},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:pjName,링크:p.portalUrl||null};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v96 👀 고객 화면 미리보기 — 링크 만들기 전에 그대로 확인
+═══════════════════════════════════════════════════════════════ */
+function portalPreviewHtml(d){
+  const E=function(x){return escapeHtml(String(x==null?'':x));};
+  const steps=(d.steps||[]).map(function(s,i){
+    const last=i===(d.steps.length-1);
+    return '<div class="pv-st'+(s.done?' on':'')+'"><div class="pv-dot">'+(s.done?'✓':(i+1))+'</div>'+
+      '<div class="pv-stx"><b>'+E(s.t)+'</b>'+(s.date?'<span>'+E(s.date)+'</span>':'')+(s.memo?'<p>'+E(s.memo)+'</p>':'')+'</div>'+
+      (last?'':'<div class="pv-ln"></div>')+'</div>';
+  }).join('');
+  const ph=(d.photos||[]).map(function(p){return '<img src="'+p+'">';}).join('');
+  const appr=d.approval||{},pay=d.payment||{};
+  const notice=d.notice?'<div class="pv-card" style="background:#eef6ff;border:1px solid #bfdbfe"><h3>📢 대표 안내</h3><p style="font-size:12.5px;line-height:1.7;white-space:pre-wrap">'+E(d.notice)+'</p></div>':'';
+  const apprBox=appr.approvedAt
+    ? '<div class="pv-ok">✅ 고객 승인 완료<span>'+E(appr.approvedAt)+(appr.name?' · '+E(appr.name):'')+'</span></div>'
+    : '<button class="pv-big">✅ 이 내용으로 승인합니다</button><p class="pv-tiny">고객이 누르면 사장님 접수함으로 전달됩니다</p>';
+  const payBox=pay.confirmedAt
+    ? '<div class="pv-ok">💳 결제(입금) 확인 완료<span>'+E(pay.confirmedAt)+'</span></div>'
+    : (pay.account?'<div class="pv-acc">입금 계좌<br><b>'+E(pay.account)+'</b>'+(pay.due?'<br>남은 금액 <b>'+won(pay.due)+'원</b>':'')+'</div>':'');
+  const ask=(d.ask&&d.ask.q)?(d.ask.choice
+    ? '<div class="pv-card"><h3>🎨 선택해 주신 항목</h3><div class="pv-ok">"'+E(d.ask.q)+'"<span>선택: <b>'+E(d.ask.choice)+'</b> ✅</span></div></div>'
+    : '<div class="pv-card"><h3>🎨 골라주세요</h3><p style="font-size:13px;font-weight:700;margin-bottom:9px">'+E(d.ask.q)+'</p>'+
+      (d.ask.opts||[]).map(function(o){return '<button class="pv-big" style="background:#fff;border:2px solid #f4c430;margin-bottom:7px">'+E(o)+'</button>';}).join('')+'</div>'):'';
+  const allDone=(d.steps||[]).length&&d.steps.every(function(s){return s.done;});
+  const review=(d.review&&d.review.stars)
+    ? '<div class="pv-card"><h3>⭐ 남겨주신 후기</h3><div class="pv-ok">'+'★'.repeat(d.review.stars)+'☆'.repeat(5-d.review.stars)+'<span>'+E(d.review.text||'')+' — 감사합니다!</span></div></div>'
+    : (allDone?'<div class="pv-card"><h3>⭐ 공사는 어떠셨나요?</h3><div style="text-align:center;font-size:28px;letter-spacing:5px;color:#f4c430">☆☆☆☆☆</div><div class="pv-ta">한 줄이면 충분합니다 :)</div><button class="pv-big" style="margin-top:8px">후기 보내기</button></div>':'');
+  return '<div class="pv-phone">'+
+    '<div class="pv-hd"><small>MANMUL INTERIOR</small><h2>'+E(d.name)+'</h2><p>고객님의 공사 진행 안내 페이지입니다</p></div>'+
+    notice+
+    '<div class="pv-card"><h3>📋 공사 진행 현황</h3>'+(steps||'<p style="font-size:12px;color:#9ca3af">준비 중</p>')+'</div>'+
+    (d.quote&&d.quote.amount?'<div class="pv-card"><h3>💰 공사 비용</h3><div class="pv-amt">'+won(d.quote.amount)+'<small> 원</small></div>'+
+      (d.quote.summary?'<div class="pv-sum">'+E(d.quote.summary)+'</div>':'')+apprBox+payBox+'</div>':'')+
+    ask+
+    (ph?'<div class="pv-card"><h3>📸 현장 사진</h3><div class="pv-gal">'+ph+'</div></div>':'<div class="pv-card"><h3>📸 현장 사진</h3><p style="font-size:11.5px;color:#9ca3af">이 현장에 배정된 사진이 없어요 — 사진을 배정하면 고객에게도 보입니다</p></div>')+
+    review+
+    '<div class="pv-card"><h3>💬 대표에게 남기기</h3><div class="pv-ta">궁금한 점, 요청사항을 편하게 남겨주세요.</div><button class="pv-big" style="margin-top:8px;background:#0b4ea2;color:#fff">메시지 보내기</button></div>'+
+    '<div class="pv-card" style="text-align:center;font-size:11px;color:#6b7280;line-height:1.7">만물인테리어 · 대표 전병덕<br>대전 중구 돌다리로 19번길 9 1층</div>'+
+    '<div class="pv-foot"><span class="pv-call">📞 대표에게 전화</span><span class="pv-sms">💬 문자 남기기</span></div>'+
+  '</div>';
+}
+function portalPreview(pjName){
+  const d=portalBuild(pjName);
+  if(!d){toast('현장 데이터를 만들 수 없어요');return;}
+  const css='<style>'+
+    '.pv-phone{background:#f6f4ef;border-radius:20px;padding:0 0 62px;max-width:340px;margin:0 auto;position:relative;overflow:hidden;border:8px solid #1f2937;font-family:inherit}'+
+    '.pv-hd{background:linear-gradient(150deg,#0b4ea2,#0e7a6b);color:#fff;padding:24px 16px 20px;border-radius:0 0 20px 20px;text-align:center}'+
+    '.pv-hd small{opacity:.85;letter-spacing:2px;font-size:9px}.pv-hd h2{font-size:17px;margin:5px 0 3px}.pv-hd p{font-size:11px;opacity:.9}'+
+    '.pv-card{background:#fff;border-radius:14px;margin:10px 10px 0;padding:13px;box-shadow:0 1px 6px rgba(0,0,0,.05)}'+
+    '.pv-card h3{font-size:12px;margin-bottom:9px;color:#0b4ea2}'+
+    '.pv-st{display:flex;gap:9px;position:relative;padding-bottom:14px}'+
+    '.pv-dot{width:24px;height:24px;border-radius:50%;background:#e5e7eb;color:#9ca3af;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;flex-shrink:0;z-index:1}'+
+    '.pv-st.on .pv-dot{background:#f4c430;color:#1f2937}'+
+    '.pv-ln{position:absolute;left:11px;top:24px;bottom:0;width:2px;background:#e5e7eb}.pv-st.on .pv-ln{background:#f4c430}'+
+    '.pv-stx b{font-size:12px;color:#1f2937}.pv-stx span{font-size:10px;color:#6b7280;margin-left:5px}.pv-stx p{font-size:11px;color:#4b5563;margin-top:2px}'+
+    '.pv-amt{font-size:22px;font-weight:800;text-align:center;color:#1f2937}.pv-amt small{font-size:11px;color:#6b7280;font-weight:400}'+
+    '.pv-sum{font-size:11px;color:#4b5563;text-align:center;margin:4px 0 10px}'+
+    '.pv-big{width:100%;padding:12px;border:0;border-radius:11px;background:#f4c430;font-size:13px;font-weight:800;color:#1f2937;pointer-events:none}'+
+    '.pv-tiny{font-size:9.5px;color:#9ca3af;text-align:center;margin-top:5px}'+
+    '.pv-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:10px;padding:11px;text-align:center;font-weight:700;font-size:12px}'+
+    '.pv-ok span{display:block;font-size:10px;font-weight:400;margin-top:2px;color:#4d7c5f}'+
+    '.pv-acc{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px;text-align:center;font-size:11.5px;line-height:1.7;margin-top:8px;color:#78350f}'+
+    '.pv-gal{display:flex;gap:6px;overflow-x:auto}.pv-gal img{height:88px;border-radius:9px}'+
+    '.pv-ta{border:1px solid #e5e7eb;border-radius:10px;padding:9px;font-size:11px;color:#9ca3af;background:#fafafa}'+
+    '.pv-foot{position:absolute;bottom:0;left:0;right:0;background:#fff;padding:9px 10px;display:flex;gap:6px;box-shadow:0 -3px 10px rgba(0,0,0,.07)}'+
+    '.pv-foot span{flex:1;text-align:center;padding:11px;border-radius:10px;font-size:12px;font-weight:700}'+
+    '.pv-call{background:#0b4ea2;color:#fff}.pv-sms{background:#eef2ff;color:#0b4ea2}'+
+    '</style>';
+  const warn=[];
+  if(!d.quote||!d.quote.amount)warn.push('견적 금액이 없어 비용·승인 카드가 안 보입니다');
+  if(!(d.photos||[]).length)warn.push('배정된 사진이 없습니다');
+  if(d.payment&&d.payment.due&&!d.payment.account)warn.push('입금 계좌를 "표시 안 함"으로 두었습니다');
+  const body=
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">👀 고객이 보게 될 실제 화면입니다(버튼은 미리보기라 동작하지 않아요)</div>'+
+    (warn.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 11px;font-size:11.5px;color:#92400e;margin-bottom:10px">⚠️ '+warn.map(escapeHtml).join('<br>⚠️ ')+'</div>':'')+
+    css+portalPreviewHtml(d);
+  openModal('👀 고객 화면 미리보기 — '+pjName,body,[
+    {label:'‹ 설정으로',cls:'ghost',fn:function(){portalView(pjName);}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:pjName,경고:warn.length};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v97 🔄 카카오 접수 자동 불러오기 + AI 도구 연결
+═══════════════════════════════════════════════════════════════ */
+async function kakaoFetchLeads(){
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key)return {오류:'서버 주소·비밀키가 없어요 (고객 페이지 설정에서 저장하세요)'};
+  try{
+    const r=await fetch(String(cfg.base).replace(/\/$/,'')+'/leads?key='+encodeURIComponent(cfg.key));
+    if(!r.ok)return {오류:'서버 응답 '+r.status+(r.status===403?' — 비밀키가 다릅니다':'')};
+    return {본문:await r.text()};
+  }catch(e){return {오류:'연결 실패: '+(e.message||e)};}
+}
+function kakaoNewCount(text){
+  const last=state.kakaoLastAt||'';
+  return kakaoParseLeads(text).filter(function(L){return L.at>last;}).length;
+}
+async function kakaoAutoImport(){
+  const f=await kakaoFetchLeads();
+  if(f.오류){toast('❌ '+f.오류);return f;}
+  const r=kakaoImportLeads(f.본문);
+  if(!r.인식){toast('접수가 아직 없어요');return r;}
+  render();
+  toast('📥 '+r.인식+'건 · 현장 '+r.신규현장+' · AS '+r.AS접수+(r.승인?' · 승인✅'+r.승인:'')+(r.메시지?' · 💬'+r.메시지:'')+(r.선택?' · 🎨'+r.선택:'')+(r.후기?' · ⭐'+r.후기:''));
+  return r;
+}
+async function kakaoCheckNew(){
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key)return 0;
+  const f=await kakaoFetchLeads();
+  if(f.오류)return 0;
+  window.__kakaoRaw=f.본문;
+  window.__kakaoNew=kakaoNewCount(f.본문);
+  if(window.__kakaoNew){
+    try{renderBrief();}catch(e){}
+    toast('📥 카카오 새 접수 '+window.__kakaoNew+'건 — 홈에서 확인하세요');
+  }
+  return window.__kakaoNew;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v98 🔄 고객 페이지 자동 갱신 + 관리 화면
+═══════════════════════════════════════════════════════════════ */
+const __ptTimers={};
+function portalSig(pjName){
+  const d=portalBuild(pjName);
+  if(!d)return '';
+  const p=state.projects.find(function(x){return x.name===pjName;})||{};
+  return [ (p.stage||0), (p.received||0), (d.quote&&d.quote.amount)||0, (d.photos||[]).length,
+    d.notice||'', (d.ask&&d.ask.q)||'', (d.ask&&d.ask.choice)||'',
+    (d.approval&&d.approval.approvedAt)||'', (d.review&&d.review.stars)||'', (d.payment&&d.payment.account)||'' ].join('|');
+}
+function portalStaleList(){
+  return (state.projects||[]).filter(function(p){
+    if(!p.portalUrl)return false;
+    try{return portalSig(p.name)!==(p.portalSig||'');}catch(e){return false;}
+  });
+}
+function portalAutoSync(pjName,delay){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p||!p.portalUrl)return;
+  const cfg=state.portalCfg||{};
+  if(!cfg.base||!cfg.key)return;
+  if(portalSig(pjName)===(p.portalSig||''))return;   // 바뀐 게 없으면 조용히 패스
+  clearTimeout(__ptTimers[pjName]);
+  __ptTimers[pjName]=setTimeout(async function(){
+    const j=await portalPush(pjName);
+    if(j)toast('🔗 고객 페이지 자동 갱신 — '+pjName);
+  },delay||2500);
+}
+async function portalSyncAll(){
+  const list=portalStaleList();
+  if(!list.length){toast('모든 고객 페이지가 최신이에요 ✅');return {갱신:0};}
+  let n=0;
+  for(const p of list){const j=await portalPush(p.name);if(j)n++;}
+  render();
+  toast('🔄 고객 페이지 '+n+'곳 갱신 완료');
+  return {갱신:n};
+}
+function portalListView(){
+  const pub=(state.projects||[]).filter(function(p){return p.portalUrl;});
+  const unpub=(state.projects||[]).filter(function(p){return !p.portalUrl;});
+  const stale=portalStaleList().map(function(p){return p.name;});
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#0e7a6b');
+  const row=function(p){
+    const st=projStats(p.name);
+    const ap=p.portalApproval&&p.portalApproval.at;
+    const paid=st.due<=0&&(p.received||0)>0;
+    const isStale=stale.indexOf(p.name)>=0;
+    return '<div style="border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:8px'+(isStale?';background:#fffbeb;border-color:#fde68a':'')+'">'+
+      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">'+
+        '<b style="flex:1;font-size:13px">'+escapeHtml(p.name)+'</b>'+
+        '<span style="font-size:10.5px;color:var(--muted)">'+escapeHtml(STAGES[p.stage||0]||'')+'</span>'+
+      '</div>'+
+      '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;font-size:10.5px">'+
+        '<span style="background:'+(ap?'#f0fdf4':'#f3f4f6')+';color:'+(ap?'#166534':'#9ca3af')+';border-radius:7px;padding:2px 7px">'+(ap?'승인 ✅':'승인 대기')+'</span>'+
+        '<span style="background:'+(paid?'#f0fdf4':'#fef3c7')+';color:'+(paid?'#166534':'#92400e')+';border-radius:7px;padding:2px 7px">'+(paid?'입금 완료':'미수 '+hjMan(st.due))+'</span>'+
+        (p.portalAsk&&p.portalAsk.q?'<span style="background:'+(p.portalAsk.choice?'#f0fdf4':'#eff6ff')+';color:'+(p.portalAsk.choice?'#166534':'#1d4ed8')+';border-radius:7px;padding:2px 7px">🎨 '+(p.portalAsk.choice?'선택됨':'대기')+'</span>':'')+
+        ((p.portalMsgs&&p.portalMsgs.length)?'<span style="background:#eef6ff;color:#1d4ed8;border-radius:7px;padding:2px 7px">💬 '+p.portalMsgs.length+'</span>':'')+
+        (isStale?'<span style="background:#fef3c7;color:#92400e;border-radius:7px;padding:2px 7px">🔄 갱신 필요</span>':'<span style="color:var(--muted)">최신 '+escapeHtml((p.portalSyncAt||'').slice(5))+'</span>')+
+      '</div>'+
+      '<div style="display:flex;gap:5px">'+
+        '<button class="ghost tiny" data-ptopen="'+escapeAttr(p.name)+'" style="flex:1;padding:7px">⚙️ 설정</button>'+
+        '<button class="ghost tiny" data-ptcopy="'+escapeAttr(p.name)+'" style="flex:1;padding:7px">📋 링크</button>'+
+        '<button class="'+(isStale?'clay':'ghost')+' tiny" data-ptsync="'+escapeAttr(p.name)+'" style="flex:1;padding:7px">🔄 갱신</button>'+
+      '</div></div>';
+  };
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">고객이 보는 진행·승인 페이지</div><div style="font-size:19px;font-weight:800">🔗 고객 페이지 '+pub.length+'곳</div></div>'+
+    (stale.length?'<button class="clay" id="ptSyncAll" style="width:100%;padding:12px;font-size:13.5px;margin-bottom:10px">🔄 갱신 필요한 '+stale.length+'곳 한 번에 최신화</button>':'')+
+    (pub.length?pub.map(row).join(''):'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">아직 발행한 고객 페이지가 없어요.<br>아래에서 현장을 골라 만들어 보세요.</div>')+
+    (unpub.length?'<div style="font-size:12px;font-weight:800;margin:12px 0 6px">아직 발행 안 한 현장</div>'+
+      unpub.slice(0,8).map(function(p){return '<button class="ghost tiny" data-ptopen="'+escapeAttr(p.name)+'" style="margin:0 5px 5px 0;padding:7px 11px">＋ '+escapeHtml(p.name)+'</button>';}).join(''):'')+
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.6">💡 단계 변경·입금 기록·사진 배정이 생기면 <b>자동으로 갱신</b>됩니다(서버 설정이 저장돼 있을 때). 앱을 안 켠 사이 바뀐 건 여기서 [🔄]로 맞추세요.</div>';
+  openModal('🔗 고객 페이지 관리',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  // 모달 내부는 위임(#view) 밖 — 직접 바인딩
+  document.querySelectorAll('#modalRoot [data-ptopen]').forEach(function(b){b.onclick=function(){portalView(b.dataset.ptopen);};});
+  document.querySelectorAll('#modalRoot [data-ptcopy]').forEach(function(b){b.onclick=function(){
+    const q=state.projects.find(function(x){return x.name===b.dataset.ptcopy;});
+    if(q&&q.portalUrl)coworkCopy(q.portalUrl,'고객 페이지 링크');else toast('아직 발행 전이에요');};});
+  document.querySelectorAll('#modalRoot [data-ptsync]').forEach(function(b){b.onclick=async function(){
+    b.textContent='…';const j=await portalPush(b.dataset.ptsync);if(j){toast('🔄 갱신됨');portalListView();}else b.textContent='🔄 갱신';};});
+  const sa=document.getElementById('ptSyncAll');
+  if(sa)sa.onclick=async function(){sa.textContent='갱신 중…';await portalSyncAll();portalListView();};
+  return {발행:pub.length,갱신필요:stale.length};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   v99 🧾 부가세 신고 준비 센터 — D-day·자료 점검·3방향 대조·원클릭 패키지
+   (개인 일반과세자: 7/25 = 1~6월, 1/25 = 전년 7~12월)
+═══════════════════════════════════════════════════════════════ */
+function vatPeriod(base){
+  const d=base?new Date(base):new Date();
+  const y=d.getFullYear(),m=d.getMonth()+1,day=d.getDate();
+  // 7/25 마감(1~6월) / 다음해 1/25 마감(7~12월)
+  let from,to,due,label;
+  if(m<7||(m===7&&day<=25)){from=y+'-01-01';to=y+'-06-30';due=y+'-07-25';label=y+'년 1기 확정(1~6월)';}
+  else if(m<13){from=y+'-07-01';to=y+'-12-31';due=(y+1)+'-01-25';label=y+'년 2기 확정(7~12월)';}
+  const _d0=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  const _du=due.split('-').map(Number);
+  const dd=Math.round((new Date(_du[0],_du[1]-1,_du[2])-_d0)/86400000);
+  return {label:label,from:from,to:to,due:due,dday:dd};
+}
+function vatStatus(base){
+  const P=vatPeriod(base);
+  const inP=function(ym){return ym>=P.from.slice(0,7)&&ym<=P.to.slice(0,7);};
+  const agg=(typeof ledgerAggregate==='function')?ledgerAggregate():{};
+  const sum={sale:{amt:0,supply:0,vat:0,cnt:0},purchase:{amt:0,supply:0,vat:0,cnt:0},card:{amt:0,cnt:0}};
+  Object.keys(agg).forEach(function(ym){
+    if(!inP(ym))return;
+    ['sale','purchase','card'].forEach(function(k){
+      const a=agg[ym][k];if(!a)return;
+      sum[k].amt+=a.amt||0;sum[k].cnt+=a.cnt||0;
+      if(k!=='card'){sum[k].supply+=a.supply||0;sum[k].vat+=a.vat||0;}
+    });
+  });
+  // 앱 데이터 (같은 기간)
+  const inRange=function(dt){return dt&&dt>=P.from&&dt<=P.to;};
+  const recv=(state.payLog||[]).filter(function(x){return inRange(x.d);}).reduce(function(a,x){return a+(x.amt||0);},0);
+  const exp=(state.expenses||[]).filter(function(x){return inRange(x.date);}).reduce(function(a,x){return a+(x.amount||0);},0);
+  const files={sale:0,purchase:0,card:0};
+  (state.files||[]).forEach(function(f){if(f.kind==='ledger'&&f.ledger&&files[f.ledger.type]!==undefined)files[f.ledger.type]++;});
+  const vatEst=sum.sale.vat-sum.purchase.vat;
+  // 대조
+  const gapSale=recv-sum.sale.amt;            // +: 입금은 있는데 계산서 없음(의심)
+  const gapBuy=exp-(sum.purchase.amt+sum.card.amt); // +: 앱 경비가 더 큼(증빙 없는 지출)
+  const missing=[];
+  if(!files.sale)missing.push({k:'매출 세금계산서',how:'홈택스 → 조회/발급 → 전자세금계산서 → 매출 목록 조회 → 엑셀 내려받기'});
+  if(!files.purchase)missing.push({k:'매입 세금계산서',how:'홈택스 → 조회/발급 → 전자세금계산서 → 매입 목록 조회 → 엑셀 내려받기'});
+  if(!files.card)missing.push({k:'카드 이용내역',how:'카드사 홈페이지/앱 → 이용내역 조회 → 기간 선택 → 엑셀 내려받기 (또는 홈택스 사업용신용카드)'});
+  return {기간:P,합계:sum,수금:recv,경비:exp,파일:files,예상세액:vatEst,차이:{매출:gapSale,매입:gapBuy},부족:missing,
+    준비도:3-missing.length};
+}
+function vatChecklistText(){
+  const S=vatStatus();const P=S.기간;
+  const L=['[만물인테리어] 부가세 신고 준비 — '+P.label,'마감 '+P.due+' (D-'+P.dday+')',''];
+  L.push('■ 자료 준비 '+S.준비도+'/3');
+  if(S.부족.length){S.부족.forEach(function(m){L.push('  ❌ '+m.k+' — '+m.how);});}
+  else L.push('  ✅ 매출·매입·카드 자료 모두 있음');
+  L.push('');
+  L.push('■ 집계(앱 회계 탭 기준)');
+  L.push('  매출 '+won(S.합계.sale.amt)+'원 (세액 '+won(S.합계.sale.vat)+')');
+  L.push('  매입 '+won(S.합계.purchase.amt)+'원 (세액 '+won(S.합계.purchase.vat)+')');
+  L.push('  카드 '+won(S.합계.card.amt)+'원');
+  L.push('  예상 '+(S.예상세액>=0?'납부':'환급')+' '+won(Math.abs(S.예상세액))+'원 (예상치 — 세무사 확인 필요)');
+  L.push('');
+  L.push('※ 실제 신고·납부는 세무사(또는 홈택스)에서 진행하세요.');
+  return L.join('\n');
+}
+function vatCenterView(){
+  const S=vatStatus();const P=S.기간;
+  const [c1,c2]=hjBrandGrad('#0b4ea2','#b45309');
+  const urgent=P.dday<=14;
+  const chk=function(okk,label,how){
+    return '<div style="display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line-soft)">'+
+      '<span style="font-size:15px">'+(okk?'✅':'❌')+'</span>'+
+      '<div style="flex:1;min-width:0"><b style="font-size:12.5px">'+escapeHtml(label)+'</b>'+
+      (okk?'':'<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+escapeHtml(how)+'</div>')+'</div></div>';
+  };
+  const cmp=function(label,a,b,note){
+    return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px dashed var(--line-soft)">'+
+      '<span>'+escapeHtml(label)+'</span><b>'+won(a)+'원</b></div>'+(note?'<div style="font-size:10.5px;color:var(--muted);margin:3px 0 6px">'+note+'</div>':'');
+  };
+  const gapS=S.차이.매출, gapB=S.차이.매입;
+  const body=
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff">'+
+      '<div style="font-size:12px;opacity:.9">'+escapeHtml(P.label)+' · 마감 '+P.due+'</div>'+
+      '<div style="font-size:22px;font-weight:800">🧾 부가세 D-'+P.dday+'</div>'+
+      '<div style="font-size:11.5px;opacity:.92;margin-top:3px">자료 준비 '+S.준비도+'/3 '+(S.준비도===3?'— 바로 만들 수 있어요':'— 부족한 자료를 채워 주세요')+'</div>'+
+    '</div>'+
+    (urgent&&S.준비도<3?'<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:11px;padding:10px 12px;font-size:12px;margin-bottom:10px">⏰ 마감이 가까워요. 아래 자료를 폴더에 넣으면 회계 탭이 자동으로 집계합니다.</div>':'')+
+    '<div style="font-size:12.5px;font-weight:800;margin:4px 0 2px">📂 필요한 자료</div>'+
+    chk(!!S.파일.sale,'매출 세금계산서 ('+S.합계.sale.cnt+'건 · '+won(S.합계.sale.amt)+'원)','홈택스 → 조회/발급 → 전자세금계산서 → 매출 목록 → 엑셀 내려받기 → 이 폴더에 넣기')+
+    chk(!!S.파일.purchase,'매입 세금계산서 ('+S.합계.purchase.cnt+'건 · '+won(S.합계.purchase.amt)+'원)','홈택스 → 조회/발급 → 전자세금계산서 → 매입 목록 → 엑셀 내려받기')+
+    chk(!!S.파일.card,'카드 이용내역 ('+S.합계.card.cnt+'건 · '+won(S.합계.card.amt)+'원)','카드사 앱/홈페이지 → 이용내역 → 기간 선택 → 엑셀 내려받기')+
+    '<div style="font-size:12.5px;font-weight:800;margin:14px 0 2px">🔍 앱 데이터와 대조</div>'+
+    cmp('홈택스 매출',S.합계.sale.amt)+
+    cmp('앱 수금(같은 기간)',S.수금,0,
+      gapS>100000?'⚠️ 입금이 <b>'+won(gapS)+'원</b> 더 많아요 — <b>계산서 미발행</b> 건이 있는지 확인하세요':
+      (gapS<-100000?'ℹ️ 계산서가 <b>'+won(-gapS)+'원</b> 더 많아요 — 발행 후 미입금(미수금)일 수 있어요':'✅ 큰 차이 없음'))+
+    cmp('홈택스 매입+카드',S.합계.purchase.amt+S.합계.card.amt)+
+    cmp('앱 경비(같은 기간)',S.경비,0,
+      gapB>100000?'⚠️ 앱 경비가 <b>'+won(gapB)+'원</b> 더 많아요 — 증빙(계산서·카드) 없는 지출은 공제가 안 될 수 있어요':'✅ 큰 차이 없음')+
+    '<div style="background:'+(S.예상세액>=0?'#fffbeb':'#f0fdf4')+';border:1px solid '+(S.예상세액>=0?'#fde68a':'#bbf7d0')+';border-radius:12px;padding:12px;text-align:center;margin-top:12px">'+
+      '<div style="font-size:11.5px;color:var(--muted)">예상 '+(S.예상세액>=0?'납부':'환급')+' 세액</div>'+
+      '<div style="font-size:24px;font-weight:800;margin:3px 0">'+won(Math.abs(S.예상세액))+'<small style="font-size:12px"> 원</small></div>'+
+      '<div style="font-size:10.5px;color:var(--muted)">매출세액 '+won(S.합계.sale.vat)+' − 매입세액 '+won(S.합계.purchase.vat)+' · <b>예상치이며 세무사 확인이 필요합니다</b></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'+
+      '<button class="clay tiny" id="vatX" style="flex:1;min-width:130px;padding:11px">📤 세무사 전달용 xlsx</button>'+
+      '<button class="moss tiny" id="vatC" style="flex:1;min-width:120px;padding:11px">🧰 Cowork 세금 명령서</button>'+
+      '<button class="ghost tiny" id="vatT" style="flex:1;min-width:110px;padding:11px">📋 준비 상황 복사</button>'+
+    '</div>'+
+    '<div style="font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.6">💡 자료를 폴더에 넣고 [🔄 다시 스캔] → 💼 회계 탭에서 자동 집계 → 여기서 확인 → [📤]로 세무사에게 전달하면 끝입니다.</div>';
+  openModal('🧾 부가세 준비',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const x=document.getElementById('vatX');if(x)x.onclick=function(){ledgerExportTax();};
+  const c=document.getElementById('vatC');if(c)c.onclick=function(){try{coworkTaskView('cw_tax');}catch(e){toast('Cowork 명령서를 열 수 없어요');}};
+  const t=document.getElementById('vatT');if(t)t.onclick=function(){coworkCopy(vatChecklistText(),'부가세 준비 상황');};
+  return {기간:P.label,디데이:P.dday,준비도:S.준비도+'/3',예상세액:S.예상세액};
 }
 
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
@@ -16226,11 +17079,14 @@ function viewEstimates(){
   // 현장별 합계
   const byProj={};estimateGroups(list).map(g=>g.rep).forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   let html=`<div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
+  try{const _fc=estFinalCandidates();if(_fc.length){html+=`<div class="hint" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⭐ 최종본(★)이 있는 달의 다른 안 <b>${_fc.length}건</b>이 매출에 같이 잡히고 있어요. <button class="moss tiny" data-finalize="1" style="padding:5px 10px;margin-left:6px">한 번에 집계 제외</button></div>`;}}catch(e){}
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
+  // [v91] 사본 그룹 뱃지 준비
+  const __gb={};try{estimateGroups(list.filter(f=>!f.exSum)).forEach(g=>{if(g.dups.length){__gb[g.rep.id]='rep:'+(g.dups.length+1);g.dups.forEach(d=>__gb[d.id]='dup');}});}catch(e){}
   html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
-      <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}</td>
+      <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}${__gb[f.id]?(String(__gb[f.id]).startsWith('rep')?` <span style="background:#eef2ff;color:#4338ca;border-radius:7px;padding:1px 6px;font-size:10px">📎 사본 ${String(__gb[f.id]).split(':')[1]}</span>`:' <span style="color:var(--muted);font-size:10px">📎</span>'):''}${f.exSum?' <span style="background:#fef3c7;color:#92400e;border-radius:7px;padding:1px 6px;font-size:10px">Σ제외</span>':''} <button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외" style="padding:1px 6px;font-size:10px">${f.exSum?'↩ 포함':'Σ 제외'}</button></td>
       <td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td>
       <td><input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></td>
       <td><input type="text" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}" style="width:96px"></td>
@@ -17169,7 +18025,7 @@ function viewProject(){
   if(showSec(0)){
     const cu=p.customer||{name:'',phone:'',addr:''};
     html+=`<div class="cust-card">
-      <div class="cust-h">👤 고객 정보 <button class="ghost tiny" id="custLoad" style="margin-left:auto">명함에서 불러오기</button></div>
+      <div class="cust-h">👤 고객 정보 <button class="blue tiny" data-portal="${escapeAttr(p.name)}" style="margin-left:auto;padding:7px 11px">🔗 고객 페이지</button>${p.portalApproval&&p.portalApproval.at?`<span style="font-size:10px;color:var(--ok);font-weight:700;margin-left:6px">승인 ✅</span>`:``}<button class="ghost tiny" id="custLoad" style="margin-left:6px">명함에서 불러오기</button></div>
       <div class="cust-grid">
         <label>이름<input type="text" data-cust="name" data-proj="${escapeAttr(p.name)}" value="${escapeAttr(cu.name||'')}" placeholder="고객명"></label>
         <label>연락처<input type="text" data-cust="phone" data-proj="${escapeAttr(p.name)}" value="${escapeAttr(cu.phone||'')}" placeholder="010-0000-0000"></label>
@@ -17191,6 +18047,12 @@ function viewProject(){
       html+=`<div class="cust-card" style="margin-top:10px"><div class="cust-h">🔧 AS·하자보수 기록 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">시공 후 접수된 건을 남겨두세요</span></div><div style="display:flex;gap:6px;margin-top:6px"><input type="text" id="asNew" placeholder="예: 안방 문틀 실리콘 재시공 요청" style="flex:1"><button class="clay tiny" id="asAdd" data-proj="${escapeAttr(p.name)}">+ 접수</button></div>${rows||'<div style="font-size:12px;color:var(--muted);margin-top:8px">아직 AS 접수 내역이 없습니다.</div>'}</div>`;
     }
   }
+  // 💬 고객 페이지 소통(선택 상태·메시지)
+  if((p.portalAsk&&p.portalAsk.q)||(p.portalMsgs&&p.portalMsgs.length)){
+    const askLine=p.portalAsk&&p.portalAsk.q?('<div style="font-size:12px;margin-bottom:6px">🎨 <b>'+escapeHtml(p.portalAsk.q)+'</b> — '+(p.portalAsk.choice?'<span style="color:var(--ok);font-weight:700">'+escapeHtml(p.portalAsk.choice)+' ✅</span>':'<span style="color:var(--warn)">고객 선택 대기 중</span>')+'</div>'):'';
+    const msgs=(p.portalMsgs||[]).slice(-3).reverse().map(function(m){return '<div style="background:#eef6ff;border-radius:10px;padding:8px 10px;font-size:12px;margin-bottom:5px">💬 '+escapeHtml(m.text)+'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+escapeHtml(m.at)+'</div></div>';}).join('');
+    html+=`<div class="cust-card" style="margin-top:10px"><div class="cust-h">💬 고객 소통 <span style="font-size:10.5px;color:var(--muted);font-weight:400;margin-left:6px">고객 페이지에서 온 내용</span></div><div style="margin-top:7px">${askLine}${msgs||'<div style="font-size:11.5px;color:var(--muted)">아직 메시지가 없어요</div>'}</div></div>`;
+  }
   // 💰 수금 약속일(D-day) — 미수금이 있거나 이미 약속일이 있을 때
   {
     const st=projStats(p.name);
@@ -17199,6 +18061,8 @@ function viewProject(){
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
           <input type="date" id="dueDateInp" value="${escapeAttr(p.dueDate||'')}" style="padding:8px">
           <button class="clay tiny" id="dueSave" data-proj="${escapeAttr(p.name)}">저장</button>
+          <button class="moss tiny" data-recvquick="${escapeAttr(p.name)}" style="padding:8px 12px">💰 입금 기록</button>
+          <button class="blue tiny" data-portal="${escapeAttr(p.name)}" style="padding:8px 12px">🔗 고객 페이지</button>${p.portalApproval&&p.portalApproval.at?`<span style="font-size:10.5px;color:var(--ok);font-weight:700">고객 승인 ✅</span>`:''}
           ${p.dueDate?`<button class="ghost tiny" id="dueClear" data-proj="${escapeAttr(p.name)}">지우기</button>`:''}
           <span style="font-size:12px;color:${st.due>0?'var(--warn)':'var(--muted)'}">미수금 ${won(st.due)}</span>
         </div></div>`;
@@ -17345,7 +18209,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -17478,6 +18342,16 @@ function setupDelegation(){
     if(d.fcopy!==undefined){e.stopPropagation();return docCopy(d.fcopy);}
     if(d.fdel!==undefined){e.stopPropagation();return docDelete(d.fdel);}
     if(d.fsend!==undefined){e.stopPropagation();return docSend(d.fsend);}
+    if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
+    if(d.finalize!==undefined){e.stopPropagation();return estFinalApply();}
+    if(d.recvquick!==undefined){e.stopPropagation();return recvQuickView(d.recvquick);}
+    if(d.portal!==undefined){e.stopPropagation();return portalView(d.portal);}
+    if(d.ptopen!==undefined){e.stopPropagation();return portalView(d.ptopen);}
+    if(d.ptcopy!==undefined){e.stopPropagation();const p=state.projects.find(x=>x.name===d.ptcopy);if(p&&p.portalUrl)coworkCopy(p.portalUrl,'고객 페이지 링크');else toast('아직 발행 전이에요');return;}
+    if(d.ptsync!==undefined){e.stopPropagation();(async()=>{const j=await portalPush(d.ptsync);if(j){toast('🔄 갱신됨');portalListView();}})();return;}
+    if(d.vatc!==undefined){e.stopPropagation();return vatCenterView();}
+    if(d.lgexport!==undefined){e.stopPropagation();ledgerExportTax();return;}
+    if(d.lgtoexp!==undefined){e.stopPropagation();return ledgerToExpense();}
     if(d.lgparse!==undefined){e.stopPropagation();(async()=>{const f=state.files.find(x=>x.id===d.lgparse);if(f){toast('다시 읽는 중…');await ledgerParse(f,true);render();}})();return;}
     if(d.adch!==undefined){e.stopPropagation();window.__adCh=d.adch;render();return;}
     if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
@@ -18539,7 +19413,7 @@ try{hjNetWatch();}catch(e){}
   try{window.__openaiKey=(await idbGet('openai_key'))||null;}catch(e){}
   try{aiProviderLoad();}catch(e){}
   try{await llamaConfigLoad();}catch(e){}
-  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);setTimeout(()=>{try{coworkSchedEnsure();}catch(e){}},4500);}catch(e){}
+  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);setTimeout(()=>{try{coworkSchedEnsure();}catch(e){}},4500);setTimeout(()=>{try{aiQueueSanitize();}catch(e){}},5000);setTimeout(()=>{try{kakaoCheckNew();}catch(e){}},6000);}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}
