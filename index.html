@@ -19744,7 +19744,68 @@ async function tryRestoreDir(){
 }
 tryRestoreDir();
 try{hjBrandApplyUI();}catch(e){}
-try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+/* ═══ 홈페이지 상담 리드 인입 (manmool 공개 사이트 연동) ═══
+   공개 사이트에서 ?lead=<base64url(JSON)> 로 넘어온 상담을 새 현장으로 등록.
+   되돌리기 위험작업 아님(사용자가 명시적으로 링크 클릭). 등록 전 스냅샷 + 확인 모달.
+   신규 필드 없이 기존 projects/customer/notes만 사용 → serialize/applyData 변경 불필요. */
+function hjB64ToUtf8(b64){try{b64=String(b64).replace(/-/g,'+').replace(/_/g,'/');while(b64.length%4)b64+='=';var bin=atob(b64);return decodeURIComponent(Array.prototype.map.call(bin,function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));}catch(e){try{return atob(b64);}catch(_){return '';}}}
+function hjLeadParse(){
+  var raw=null;
+  try{raw=new URLSearchParams(location.search).get('lead');}catch(e){}
+  if(!raw){try{var h=location.hash||'';var m=h.match(/lead=([^&]+)/);if(m)raw=decodeURIComponent(m[1]);}catch(e){}}
+  if(!raw)return null;
+  var d=null;try{d=JSON.parse(hjB64ToUtf8(raw));}catch(e){try{d=JSON.parse(decodeURIComponent(raw));}catch(_){d=null;}}
+  return (d&&typeof d==='object')?d:{__bad:true};
+}
+function hjLeadIntake(){
+  var d=hjLeadParse();
+  try{history.replaceState(null,'',location.pathname);}catch(e){}
+  if(!d)return;
+  if(d.__bad){toast('상담 리드 정보를 읽을 수 없어요');return;}
+  var s={name:(d.name||d.customer||'').toString().trim(),phone:(d.phone||'').toString().trim(),
+    region:(d.region||d.addr||'').toString().trim(),type:(d.type||'').toString().trim(),
+    area:d.area?(d.area+'평'):'',scope:(d.scope||'').toString().trim(),budget:(d.budget||'').toString().trim(),
+    works:Array.isArray(d.works)?d.works.join(', '):(d.works||'').toString(),
+    movein:(d.movein||'').toString().trim(),estimate:(d.estimateHint||d.estimate||'').toString().trim(),
+    memo:(d.memo||'').toString().trim()};
+  var rows=[['고객',s.name||'-'],['연락처',s.phone||'-'],['지역',s.region||'-'],
+    ['공간·범위',[s.type,s.scope].filter(Boolean).join(' ')||'-'],['평수',s.area||'-'],
+    ['희망공사',s.works||'-'],['예산',s.budget||'-'],['희망시기',s.movein||'-'],['참고견적',s.estimate||'-']];
+  var html='<div style="font-size:13px;line-height:1.6">'
+    +'<p style="margin-bottom:8px">홈페이지 상담이 도착했어요. 새 현장으로 등록할까요?</p>'
+    +'<div style="border:1px solid rgba(128,128,128,.25);border-radius:10px;padding:10px">'
+    +rows.map(function(r){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0"><span style="opacity:.65">'+escapeHtml(r[0])+'</span><b>'+escapeHtml(r[1])+'</b></div>';}).join('')
+    +'</div>'
+    +(s.memo?('<p style="margin-top:8px;opacity:.75">메모: '+escapeHtml(s.memo)+'</p>'):'')
+    +'</div>';
+  openModal('📥 새 상담 리드',html,[
+    {label:'현장으로 등록',cls:'blue',fn:function(){hjLeadCreate(s);}},
+    {label:'닫기',cls:'ghost',fn:closeModal}
+  ]);
+}
+function hjLeadCreate(s){
+  try{hjSnapshot('상담 리드 등록 전');}catch(e){}
+  if(!Array.isArray(state.projects))state.projects=[];
+  var base=[s.region,s.type].filter(Boolean).join(' ')||s.name||('홈상담 '+((new Date().getMonth())+1)+'월');
+  var nm=base,i=2;while(state.projects.some(function(p){return p.name===nm;})){nm=base+' '+i;i++;}
+  state.projects.push({name:nm,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:s.name||'',phone:s.phone||'',addr:s.region||''},geo:null});
+  state.activeProject=nm;
+  state.notes=state.notes||[];
+  var L=['[홈페이지 상담 리드]'];
+  if(s.type||s.scope)L.push('공사: '+[s.type,s.scope].filter(Boolean).join(' '));
+  if(s.area)L.push('평수: '+s.area);
+  if(s.works)L.push('희망공사: '+s.works);
+  if(s.budget)L.push('예산: '+s.budget);
+  if(s.movein)L.push('희망시기: '+s.movein);
+  if(s.estimate)L.push('참고견적: '+s.estimate);
+  if(s.memo)L.push('메모: '+s.memo);
+  state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:L.join('\n'),project:nm});
+  markDirty();closeModal();render();
+  toast('상담 리드 “'+nm+'” 현장 등록됨');
+}
+var __hjLead=/[?&#]lead=/.test(location.search+location.hash);
+try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+try{if(__hjLead)setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);}catch(e){}
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
