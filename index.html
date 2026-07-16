@@ -19671,7 +19671,8 @@ render();
 // 제거한 중복 사진 driveId 목록 복원(다시 불러와도 안 들어오게)
 (async()=>{ try{ const a=await idbGet('removed_ids'); if(Array.isArray(a))a.forEach(x=>__removedIds.add(x)); }catch(e){} })();
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
-(async()=>{ try{
+// 완료 시점을 promise로 노출(__hjRestoreDone) — 리드 인입 등이 복원 완료 후 실행되도록 (부팅 경합 방지)
+window.__hjRestoreDone=(async()=>{ try{
   if(state.projects.length||state.files.length)return; // 이미 데이터가 있으면 건너뜀
   const saved=await idbGet('appState');
   if(saved&&((saved.projects&&saved.projects.length)||(saved.files&&saved.files.length))){
@@ -19771,7 +19772,7 @@ function hjLeadDupe(leadId){
   if(!leadId)return false;
   var key='리드ID: '+leadId;
   return (state.notes||[]).some(function(n){
-    return String(n.text||'').split('\n').some(function(line){return line.trim()===key;});
+    return !!n&&String(n.text||'').split('\n').some(function(line){return line.trim()===key;});
   });
 }
 function hjLeadIntake(){
@@ -19786,7 +19787,7 @@ function hjLeadIntake(){
     movein:(d.movein||'').toString().trim(),estimate:(d.estimateHint||d.estimate||'').toString().trim(),
     memo:(d.memo||'').toString().trim(),
     /* lead.v103 신규 필드 — 구형 링크(필드 없음)도 안전하게 빈값 처리 */
-    leadId:(d.leadId||'').toString().trim(),
+    leadId:(d.leadId||'').toString().replace(/[\r\n]/g,'').trim().slice(0,64),
     design:(d.selectedDesign||'').toString().trim(),
     live:(d.live||'').toString().trim(),
     source:(d.source||'').toString().trim(),
@@ -19812,7 +19813,7 @@ function hjLeadIntake(){
 }
 function hjLeadCreate(s){
   if(s.leadId&&hjLeadDupe(s.leadId)){closeModal();toast('이미 등록된 리드입니다 ('+s.leadId+')');return;}
-  try{hjSnapshot('상담 리드 등록 전');}catch(e){}
+  try{hjSnapshot('상담 리드 등록 전',true);}catch(e){}
   if(!Array.isArray(state.projects))state.projects=[];
   var base=[s.region,s.type].filter(Boolean).join(' ')||s.name||('홈상담 '+((new Date().getMonth())+1)+'월');
   var nm=base,i=2;while(state.projects.some(function(p){return p.name===nm;})){nm=base+' '+i;i++;}
@@ -19840,7 +19841,8 @@ function hjLeadCreate(s){
 }
 var __hjLead=/[?&#]lead=/.test(location.search+location.hash);
 try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
-try{if(__hjLead)setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);}catch(e){}
+/* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
+try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
