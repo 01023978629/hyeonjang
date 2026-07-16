@@ -7186,7 +7186,10 @@ function bizDashData(){
   (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&String(f.est.date||'').slice(0,7)===ym)monthEst+=num(f.est.amount);});
   // 미처리 AS
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
-  return {ym,monthRecv,totalDue,dueList,doneThisMonth,inProgress,stageCount,weekSched,todaySched,checks,monthEst,asOpen,actN:acts.length};
+  // 웹(홈페이지) 유입 현장 — manmool 공개 사이트에서 넘어온 상담 리드
+  const webNames=new Set();(state.notes||[]).forEach(n=>{if(/\[홈페이지 상담 리드\]/.test(n.text||''))webNames.add(n.project);});
+  const webLeads=acts.filter(p=>webNames.has(p.name)).length;
+  return {ym,monthRecv,totalDue,dueList,doneThisMonth,inProgress,stageCount,weekSched,todaySched,checks,monthEst,asOpen,actN:acts.length,webLeads};
 }
 function bizDashboard(){
   const d=bizDashData();
@@ -7202,6 +7205,12 @@ function bizDashboard(){
     kpi('총 미수금',hjMan(d.totalDue),d.dueList.length+'곳',d.totalDue>0?'#c2410c':'#0a7f43')+
     kpi('진행 중',d.inProgress.length+'곳',mm+'월 견적 '+hjMan(d.monthEst),'#1d6fd8')+
     kpi('오늘 일정',d.todaySched.length+'건',d.asOpen?('AS 미처리 '+d.asOpen):'AS 없음',d.todaySched.length?'#b45309':'var(--muted)')+
+    '</div>';
+  // 홈페이지(웹) 유입 현장 — manmool 공개 사이트 연동 지표
+  const webStrip='<div style="display:flex;align-items:center;gap:9px;background:var(--paper);border:1px solid var(--line-soft);border-radius:12px;padding:9px 12px;margin-bottom:12px">'+
+    '<span style="font-size:15px">🌐</span>'+
+    '<span style="flex:1;font-size:12.5px">홈페이지(웹) 유입 현장 <span style="color:var(--muted)">· 공개 사이트 상담</span></span>'+
+    '<b style="font-size:15px;color:'+hjBrandColor('#1d6fd8')+'">'+(d.webLeads||0)+'곳</b>'+
     '</div>';
   // 단계 분포 바
   const total=Math.max(1,d.actN);
@@ -7224,7 +7233,7 @@ function bizDashboard(){
       '<div style="font-size:12px;opacity:.9">'+COMPANY.name+' · 경영 현황</div>'+
       '<div style="font-size:19px;font-weight:800;margin-top:2px">'+mm+'월 한눈 요약</div>'+
     '</div>'+
-    grid+stageBar+
+    grid+webStrip+stageBar+
     '<div style="display:grid;grid-template-columns:1fr;gap:12px">'+
       '<div><div style="font-size:12px;font-weight:700;margin-bottom:4px">💰 미수금 TOP</div>'+dueRows+'</div>'+
       '<div><div style="font-size:12px;font-weight:700;margin-bottom:4px">🗓 이번 주 일정</div>'+schRows+'</div>'+
