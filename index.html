@@ -19756,7 +19756,8 @@ try{hjBrandApplyUI();}catch(e){}
 /* ═══ 홈페이지 상담 리드 인입 (manmool 공개 사이트 연동) ═══
    공개 사이트에서 ?lead=<base64url(JSON)> 로 넘어온 상담을 새 현장으로 등록.
    되돌리기 위험작업 아님(사용자가 명시적으로 링크 클릭). 등록 전 스냅샷 + 확인 모달.
-   신규 필드 없이 기존 projects/customer/notes만 사용 → serialize/applyData 변경 불필요. */
+   lead.v103: leadId(노트 '리드ID:' 줄로 기록·중복 인입 차단)·selectedDesign·live·source·submittedAt·consent 지원.
+   구형 링크(신규 필드 없음)도 하위호환. 신규 필드 없이 기존 projects/customer/notes만 사용 → serialize/applyData 변경 불필요. */
 function hjB64ToUtf8(b64){try{b64=String(b64).replace(/-/g,'+').replace(/_/g,'/');while(b64.length%4)b64+='=';var bin=atob(b64);return decodeURIComponent(Array.prototype.map.call(bin,function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));}catch(e){try{return atob(b64);}catch(_){return '';}}}
 function hjLeadParse(){
   var raw=null;
@@ -19765,6 +19766,13 @@ function hjLeadParse(){
   if(!raw)return null;
   var d=null;try{d=JSON.parse(hjB64ToUtf8(raw));}catch(e){try{d=JSON.parse(decodeURIComponent(raw));}catch(_){d=null;}}
   return (d&&typeof d==='object')?d:{__bad:true};
+}
+function hjLeadDupe(leadId){
+  if(!leadId)return false;
+  var key='리드ID: '+leadId;
+  return (state.notes||[]).some(function(n){
+    return String(n.text||'').split('\n').some(function(line){return line.trim()===key;});
+  });
 }
 function hjLeadIntake(){
   var d=hjLeadParse();
@@ -19776,10 +19784,20 @@ function hjLeadIntake(){
     area:d.area?(d.area+'평'):'',scope:(d.scope||'').toString().trim(),budget:(d.budget||'').toString().trim(),
     works:Array.isArray(d.works)?d.works.join(', '):(d.works||'').toString(),
     movein:(d.movein||'').toString().trim(),estimate:(d.estimateHint||d.estimate||'').toString().trim(),
-    memo:(d.memo||'').toString().trim()};
+    memo:(d.memo||'').toString().trim(),
+    /* lead.v103 신규 필드 — 구형 링크(필드 없음)도 안전하게 빈값 처리 */
+    leadId:(d.leadId||'').toString().trim(),
+    design:(d.selectedDesign||'').toString().trim(),
+    live:(d.live||'').toString().trim(),
+    source:(d.source||'').toString().trim(),
+    submittedAt:(d.submittedAt||'').toString().trim(),
+    consent:(typeof d.consent==='boolean')?d.consent:null};
+  if(s.leadId&&hjLeadDupe(s.leadId)){toast('이미 등록된 리드입니다 ('+s.leadId+')');return;}
   var rows=[['고객',s.name||'-'],['연락처',s.phone||'-'],['지역',s.region||'-'],
     ['공간·범위',[s.type,s.scope].filter(Boolean).join(' ')||'-'],['평수',s.area||'-'],
     ['희망공사',s.works||'-'],['예산',s.budget||'-'],['희망시기',s.movein||'-'],['참고견적',s.estimate||'-']];
+  if(s.design)rows.push(['관심 디자인',s.design]);
+  if(s.live)rows.push(['거주 여부',s.live]);
   var html='<div style="font-size:13px;line-height:1.6">'
     +'<p style="margin-bottom:8px">홈페이지 상담이 도착했어요. 새 현장으로 등록할까요?</p>'
     +'<div style="border:1px solid rgba(128,128,128,.25);border-radius:10px;padding:10px">'
@@ -19793,6 +19811,7 @@ function hjLeadIntake(){
   ]);
 }
 function hjLeadCreate(s){
+  if(s.leadId&&hjLeadDupe(s.leadId)){closeModal();toast('이미 등록된 리드입니다 ('+s.leadId+')');return;}
   try{hjSnapshot('상담 리드 등록 전');}catch(e){}
   if(!Array.isArray(state.projects))state.projects=[];
   var base=[s.region,s.type].filter(Boolean).join(' ')||s.name||('홈상담 '+((new Date().getMonth())+1)+'월');
@@ -19807,7 +19826,14 @@ function hjLeadCreate(s){
   if(s.budget)L.push('예산: '+s.budget);
   if(s.movein)L.push('희망시기: '+s.movein);
   if(s.estimate)L.push('참고견적: '+s.estimate);
+  if(s.design)L.push('관심 디자인: '+s.design);
+  if(s.live)L.push('거주 여부: '+s.live);
   if(s.memo)L.push('메모: '+s.memo);
+  if(s.source||s.submittedAt||s.consent!==null){
+    var at=s.submittedAt;try{var dt=new Date(s.submittedAt);if(s.submittedAt&&!isNaN(dt))at=dt.toLocaleString('ko-KR');}catch(e){}
+    L.push('접수: '+[s.source||'',at||'',(s.consent===null?'':('개인정보 동의 '+(s.consent?'O':'X')))].filter(Boolean).join(' · '));
+  }
+  if(s.leadId)L.push('리드ID: '+s.leadId);
   state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:L.join('\n'),project:nm});
   markDirty();closeModal();render();
   toast('상담 리드 “'+nm+'” 현장 등록됨');
