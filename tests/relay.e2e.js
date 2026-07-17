@@ -202,10 +202,26 @@ async function pollMock(pred, ms, label) {
     assert(r.cached === r.thumb, 'IndexedDB 캐시 저장');
   });
 
+  await test('11-2. 과거 relay 업로드 사진 — Drive ID 가상 항목으로 자동 복구', async () => {
+    const r = await page.evaluate(async () => {
+      const before = state.files.slice();
+      const beforeStored = await idbGet('appState');
+      const origDirty = window.markDirty; window.markDirty = function() {};
+      state.files = state.files.filter(f => !f._driveId);
+      const n = await relayLoadDriveFiles(true);
+      const recovered = state.files.filter(f => /^mockfile_/.test(f._driveId || ''));
+      window.markDirty = origDirty; state.files = before; await idbSet('appState', beforeStored);
+      return { n, count: recovered.length, virtual: recovered.every(f => f._virtual && f.kind === 'photo'), hasSize: recovered.every(f => f.size > 0) };
+    });
+    assert(r.n === 3 && r.count === 3, '과거 업로드 3장 복구, got n=' + r.n + ' count=' + r.count);
+    assert(r.virtual, '복구 항목은 photo 가상 파일');
+    assert(r.hasSize, '서버 파일 크기 메타 포함');
+  });
+
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
-       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
+       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'relayLoadDriveFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
         .filter(n => typeof window[n] !== 'function'));
     assert(missing.length === 0, '누락: ' + missing.join(','));
   });

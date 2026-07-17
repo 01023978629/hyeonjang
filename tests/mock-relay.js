@@ -99,13 +99,13 @@ const server = http.createServer((req, res) => {
           if (!b64) return send(res, fail('bad-request', '파일 내용이 없습니다'));
           if (b64.length > MAX_UPLOAD_B64) return send(res, fail('too-large', '파일이 너무 큽니다'));
           const id = 'mockfile_' + (++store.fileSeq);
-          store.uploads.push({ id, name: String(p.name || ''), mimeType: mime, kind, dataB64: b64, modifiedAt: new Date().toISOString() });
+          store.uploads.push({ id, name: String(p.name || ''), mimeType: mime, kind, dataB64: b64, size: Math.floor(b64.length * 0.75), modifiedAt: new Date().toISOString() });
           return send(res, { ok: true, fileId: id, name: String(p.name || ''), folder: kind === 'photo' ? '현장사진' : '견적서' });
         }
         case 'listFiles': {
           const kind = p && p.kind ? String(p.kind) : '';
           const files = store.uploads.filter(f => !kind || f.kind === kind)
-            .map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType, modifiedAt: f.modifiedAt, kind: f.kind }));
+            .map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType, modifiedAt: f.modifiedAt, size: f.size, kind: f.kind }));
           return send(res, { ok: true, files });
         }
         case 'thumbnail': {

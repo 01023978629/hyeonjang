@@ -1452,6 +1452,7 @@ async function relayLoadApply(silent,snapLabel){
     __relay.rev=(typeof res.revision==='number')?res.revision:(__relay.rev||0);__relay.syncAt=res.modifiedAt||new Date().toISOString();   // revision 누락 응답이어도 rev 리셋 금지
     try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
     relaySetStatus('saved');
+    await relayLoadDriveFiles(true);   // 서버 JSON 적용 직후 Drive 사진 누락분도 함께 복구
     if(!silent)toast('☁️ 서버에서 불러옴 — 현장 '+state.projects.length+'곳 (이전 자료는 🛡 스냅샷에 보관)');
     return true;
   }catch(e){if(!silent)toast('서버 불러오기 실패: '+(e.message||e));relaySetStatus(e&&e.__http?'netfail':'offline');return false;}
@@ -1574,6 +1575,39 @@ async function relayUploadFiles(files,kind,targets){
   toast('☁️ '+ok+'/'+files.length+'개 서버 업로드 완료'+(queued?(' · '+queued+'건 전송 대기'):'')+(failed?(' · '+failed+'건 실패'):''));
   return ok;
 }
+let __relayFilesInflight=null;
+// relay로 과거에 올렸지만 JSON에 Drive ID가 남지 않은 사진을 앱 목록으로 복구한다.
+async function relayLoadDriveFiles(silent){
+  if(__relayFilesInflight)return __relayFilesInflight;
+  __relayFilesInflight=(async function(){
+    try{
+      const res=await cloudApiListFiles('photo');
+      if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);return 0;}
+      if(!(res&&res.ok&&Array.isArray(res.files))){if(!silent)toast('서버 사진 목록을 불러오지 못했습니다');return 0;}
+      let added=0;
+      for(const f of res.files){
+        if(!f||!f.id||__removedIds.has(f.id)||state.files.some(x=>x._driveId===f.id))continue;
+        const fe=bestExt(f.name,f.mimeType||'');
+        if(!IMG.includes(fe))continue;
+        const dt=f.modifiedAt?new Date(f.modifiedAt):null;
+        state.files.push({id:uid(),name:f.name||('photo_'+f.id),handle:null,prefix:'현장사진/',ext:fe,size:+f.size||0,
+          kind:'photo',project:null,when:dt&&!isNaN(dt)?dt:null,lat:null,lng:null,place:null,address:null,
+          thumb:null,text:'',ocr:'na',est:null,contact:null,_file:null,_virtual:true,_driveId:f.id});
+        added++;
+      }
+      if(added){
+        if(typeof __photoCache!=='undefined')__photoCache.key=null;
+        if(silent){try{await idbSet('appState',serializeData());}catch(e){}}
+        else{markDirty();state.tab='photos';}
+        render();try{hydrateThumbs();}catch(e){}
+      }
+      if(!silent)toast(added?('☁️ 서버 사진 '+added+'장 불러옴'):'새로 불러올 서버 사진이 없습니다');
+      return added;
+    }catch(e){if(!silent)toast('서버 사진 불러오기 실패: '+(e.message||e));return 0;}
+    finally{__relayFilesInflight=null;}
+  })();
+  return __relayFilesInflight;
+}
 /* ── relay 부팅(gdBootSync와 별개, 기존 로직 무변경) — 설정 복원 + 대기열 전송 + 서버 최신 안내(자동 적용 금지) ── */
 async function relayBoot(){
   try{
@@ -1597,6 +1631,8 @@ async function relayBoot(){
           const sAt=res.data.savedAt||res.modifiedAt||'';
           if(!__dataAt||(sAt&&sAt>__dataAt))relayNewerBanner(res);
         }
+      }else if(h&&h.ok&&(!h.dataFileExists||(h.revision||0)===(__relay.rev||0))){
+        await relayLoadDriveFiles(true);   // 서버/기기 자료가 같은 때만 누락 사진을 안전하게 합침
       }
     }catch(e){}   // 오프라인 등은 정상 시나리오 — 조용히(상태 표시만 유지)
   }catch(e){}
@@ -1655,7 +1691,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-relay-v106';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-relay-v106.1';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -2022,6 +2058,7 @@ function gdUploadPhotos(){
 // 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
 let __gdPullInflight=null;
 async function gdLoadDriveFiles(silent,bootSkip){
+  if(typeof relayReady==='function'&&relayReady())return relayLoadDriveFiles(silent);   // 모바일 중계 설정 시 OAuth 없이 목록+미리보기
   if(__gdPullInflight)return __gdPullInflight;            // 이미 진행 중이면 그 결과를 공유(중복 실행 차단)
   __gdPullInflight=(async()=>{
     try{ if(!__gdToken)await gdGetToken(!silent); }catch(e){ if(!silent)toast('먼저 ☁️ 구글 로그인하세요'); return 0; }

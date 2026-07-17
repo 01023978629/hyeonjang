@@ -265,7 +265,7 @@ function listAppFiles_(payload) {
     while (it.hasNext() && n < 200) {
       var f = it.next();
       files.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
-                   modifiedAt: f.getLastUpdated().toISOString(), kind: k });
+                   modifiedAt: f.getLastUpdated().toISOString(), size: f.getSize(), kind: k });
       n++;
     }
   }
