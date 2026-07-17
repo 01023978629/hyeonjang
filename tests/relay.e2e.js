@@ -1,7 +1,9 @@
 /* relay.e2e.js — Apps Script 중계 프론트엔드 회귀 테스트 (Playwright)
    전제: tests/mock-relay.js(8398) + python3 -m http.server 8299(저장소 루트) 실행 중 */
 'use strict';
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch (_) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
 const APP = 'http://localhost:8299/index.html';
 const MOCK = 'http://localhost:8398';
@@ -26,7 +28,10 @@ async function pollMock(pred, ms, label) {
 
 (async () => {
   await fetch(MOCK + '/__reset');
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const launchOpts = {};
+  if (process.env.PLAYWRIGHT_EXECUTABLE) launchOpts.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
+  else if (process.platform !== 'win32') launchOpts.executablePath = '/opt/pw-browsers/chromium';
+  const browser = await chromium.launch(launchOpts);
 
   // ── PC 컨텍스트 ──
   const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 800 } });
@@ -178,10 +183,29 @@ async function pollMock(pred, ms, label) {
     assert(n === 3, 'photo 3건, got ' + n);
   });
 
+  await test('11-1. relay 사진 미리보기 — Google 로그인 없이 썸네일 수신·캐시', async () => {
+    const r = await page.evaluate(async () => {
+      const lr = await cloudApiListFiles('photo');
+      const src = lr.files[0];
+      const rec = { id: 'relay-preview-test', name: src.name, ext: 'jpg', kind: 'photo', _driveId: src.id, thumb: null, _virtual: true };
+      state.files.push(rec);
+      __gdToken = null; __roTok = null;
+      const img = document.createElement('img'); document.body.appendChild(img);
+      await __driveThumbRescue(src.id, img);
+      const cached = await idbGet('thumb:' + src.id);
+      const out = { thumb: rec.thumb || '', imgSrc: img.src || '', cached: cached || '' };
+      img.remove(); state.files = state.files.filter(f => f !== rec);
+      return out;
+    });
+    assert(/^data:image\//.test(r.thumb), '레코드 썸네일 data URL 생성');
+    assert(/^data:image\//.test(r.imgSrc), '화면 img에 relay 썸네일 적용');
+    assert(r.cached === r.thumb, 'IndexedDB 캐시 저장');
+  });
+
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
-       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
+       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
         .filter(n => typeof window[n] !== 'function'));
     assert(missing.length === 0, '누락: ' + missing.join(','));
   });
@@ -217,6 +241,24 @@ async function pollMock(pred, ms, label) {
     assert(rec === 3000, '서버 최신본 적용, got ' + rec);
     const dev = await pm.evaluate(async () => idbGet('relay_device'));
     assert(/^mobile-/.test(dev), 'deviceId mobile- 프리픽스: ' + dev);
+  });
+
+  await test('13-1. 모바일 390px — 재접속 가상 사진의 relay 썸네일 실제 렌더', async () => {
+    const r = await pm.evaluate(async () => {
+      const lr = await cloudApiListFiles('photo');
+      const src = lr.files[0];
+      const rec = { id: 'mobile-relay-preview', name: src.name, ext: 'jpg', kind: 'photo', _driveId: src.id, thumb: null, _virtual: true };
+      state.files.push(rec); __gdToken = null; __roTok = null;
+      const img = document.createElement('img'); img.style.width = '180px'; document.body.appendChild(img);
+      await __driveThumbRescue(src.id, img);
+      await new Promise(resolve => { if (img.complete) resolve(); else { img.onload = resolve; img.onerror = resolve; } });
+      const out = { src: img.src || '', naturalWidth: img.naturalWidth || 0, viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth };
+      img.remove(); state.files = state.files.filter(f => f !== rec);
+      return out;
+    });
+    assert(/^data:image\//.test(r.src), '모바일 img에 data URL 적용');
+    assert(r.naturalWidth > 0, '모바일 이미지 디코딩 성공(naturalWidth=' + r.naturalWidth + ')');
+    assert(r.scrollWidth <= r.viewport + 2, '미리보기 후 가로 넘침 없음');
   });
 
   await test('14. 390px 설정 모달 레이아웃(가로 넘침 없음)', async () => {

@@ -70,7 +70,7 @@
 https://script.google.com/macros/s/…/exec?action=health&token=여기APP_TOKEN
 ```
 
-`{"ok":true,"version":"relay-v1","folderOk":true,...}` 가 보이면 성공.
+`{"ok":true,"version":"relay-v2","folderOk":true,...}` 가 보이면 성공.
 - `folderOk:false` → DRIVE_FOLDER_ID 오타
 - `unauthorized` → 토큰 오타
 

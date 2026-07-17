@@ -1,5 +1,5 @@
-/* mock-relay.js — Apps Script 중계 서버(relay-v1) 계약 mock (node http, 포트 8398)
-   README_APPS_SCRIPT.md 계약 구현: health/load/save(revision·conflict)/backup/upload/listFiles + unauthorized.
+/* mock-relay.js — Apps Script 중계 서버(relay-v2) 계약 mock (node http, 포트 8398)
+   Apps Script 계약 구현: health/load/save(revision·conflict)/backup/upload/listFiles/thumbnail + unauthorized.
    상태는 메모리. 테스트 제어용 훅: GET /__state /__reset /__bump */
 'use strict';
 const http = require('http');
@@ -25,7 +25,7 @@ function send(res, obj) {
   res.end(b);
 }
 const fail = (code, msg) => ({ ok: false, error: code, message: msg || code });
-const health = () => ({ ok: true, version: 'relay-v1-mock', folderOk: true, dataFileExists: store.exists, revision: store.revision });
+const health = () => ({ ok: true, version: 'relay-v2-mock', folderOk: true, dataFileExists: store.exists, revision: store.revision });
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://localhost');
@@ -107,6 +107,13 @@ const server = http.createServer((req, res) => {
           const files = store.uploads.filter(f => !kind || f.kind === kind)
             .map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType, modifiedAt: f.modifiedAt, kind: f.kind }));
           return send(res, { ok: true, files });
+        }
+        case 'thumbnail': {
+          const id = String(p.fileId || '');
+          const f = store.uploads.find(x => x.id === id);
+          if (!f) return send(res, fail('not-found', '사진 파일을 찾지 못했습니다'));
+          if (f.kind !== 'photo' || !/^image\//.test(f.mimeType)) return send(res, fail('bad-request', '이미지 파일만 미리볼 수 있습니다'));
+          return send(res, { ok: true, fileId: id, name: f.name, mimeType: f.mimeType, source: 'thumbnail', dataB64: f.dataB64 });
         }
         default: return send(res, fail('bad-request', '허용되지 않은 action'));
       }

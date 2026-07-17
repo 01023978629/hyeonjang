@@ -800,17 +800,26 @@ window.__thumbErr=function(img,id,step){
   img.onerror=null;__driveThumbRescue(id,img);
 };
 async function __driveThumbRescue(id,img){
-  const rec=state.files.find(f=>f._driveId===id); if(!rec||rec.__rescued)return; rec.__rescued=true;
+  const rec=state.files.find(f=>f._driveId===id); if(!rec)return;
+  if(rec.__rescuing){try{await rec.__rescuing;}catch(_){}if(rec.thumb&&img)img.src=rec.thumb;return;}
+  rec.__rescuing=(async()=>{
   try{
+    // 모바일 relay는 Google 로그인 토큰이 없으므로 서버가 인증해 반환한 Drive 썸네일을 우선 사용한다.
+    if(relayReady()){
+      const data=await relayGetThumbnail(id);
+      if(data){rec.thumb=data;if(img)img.src=data;return;}
+    }
     let tok=__gdToken||__roTok||null;
     if(!tok){try{tok=await getRoToken(false);}catch(_){}}
-    if(!tok){ if(img&&img.parentNode){const d=document.createElement('div');d.textContent='☁️ 로그인 필요';img.replaceWith(d);} return; }
+    if(!tok){ if(img&&img.parentNode){const d=document.createElement('div');d.textContent='미리보기 준비 중';img.replaceWith(d);} return; }
     const r=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
     if(!r.ok)return;
     const blob=await r.blob();
     rec._needHeic=false;
     queueHeicPreview(new File([blob],rec.name||'photo.jpg',{type:blob.type||'image/jpeg'}),rec);  // 기존 480px 파이프라인 재사용(HEIC 변환 포함)
-  }catch(e){}
+  }catch(e){}finally{rec.__rescuing=null;}
+  })();
+  await rec.__rescuing;
 }
 function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return (f&&f._needHeic&&f._heicFile)?`<div data-heic="${escapeAttr(f.id)}">IMG</div>`:'<div>IMG</div>';
   const oe=f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:'';
@@ -1268,7 +1277,7 @@ function importData(){
 }
 function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(p){const nv=won2num(val);hjPayLog(name,nv,p.received);p.received=nv;markDirty();render();}}
 
-/* ========== ☁️ Apps Script 클라우드 중계 (relay-v1) — 모바일에서 로그인·팝업 없이 저장 ==========
+/* ========== ☁️ Apps Script 클라우드 중계 (relay-v2) — 모바일에서 로그인·팝업 없이 저장 ==========
    웹 → Apps Script 웹앱(text/plain POST, preflight 없음) → 기존 드라이브 만물인테리어 폴더.
    서버 주소·인증키는 하드코딩하지 않음 — ☁️ 설정에서 입력 → 이 기기(IndexedDB)에만 보관.
    기존 gd*(구글 직접 연동)는 전부 '비상용'으로 그대로 유지 — relay 미설정이면 기존 경로 그대로. */
@@ -1290,7 +1299,30 @@ function cloudApiLoad(){return relayCall('load');}
 function cloudApiSave(baseRevision){return relayCall('save',{data:serializeData(),baseRevision:baseRevision});}
 function cloudApiBackup(){return relayCall('backup');}
 function cloudApiListFiles(kind){return relayCall('listFiles',kind?{kind:kind}:{});}
+function cloudApiThumbnail(fileId){return relayCall('thumbnail',{fileId:fileId});}
 async function cloudApiUploadFile(file,kind,name,mime){const p=await relayBuildUploadPayload(file,kind,name,mime);return relayCall('upload',p);}
+const RELAY_THUMB_MAX_B64=6*1024*1024;
+let __relayThumbInflight={};
+async function relayGetThumbnail(fileId){
+  if(!fileId)return null;
+  try{const cached=await idbGet('thumb:'+fileId);if(typeof cached==='string'&&cached.indexOf('data:image/')===0)return cached;}catch(e){}
+  if(!relayReady())return null;
+  if(__relayThumbInflight[fileId])return __relayThumbInflight[fileId];
+  __relayThumbInflight[fileId]=(async function(){
+    try{
+      const r=await cloudApiThumbnail(fileId);
+      if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);return null;}
+      if(!(r&&r.ok&&r.dataB64))return null;
+      const mime=String(r.mimeType||'image/jpeg');
+      if(mime.indexOf('image/')!==0||r.dataB64.length>RELAY_THUMB_MAX_B64)return null;
+      const data='data:'+mime+';base64,'+r.dataB64;
+      try{await idbSet('thumb:'+fileId,data);}catch(e){}
+      return data;
+    }catch(e){return null;}
+    finally{delete __relayThumbInflight[fileId];}
+  })();
+  return __relayThumbInflight[fileId];
+}
 /* ── 저장 상태 표시(사이드바 btnSave 아래 + 설정 모달 gdDot) — 실패를 조용히 삼키지 않음 ── */
 function relayStatText(code){
   const at=__relay.syncAt?(' '+new Date(__relay.syncAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})):'';
@@ -1521,7 +1553,7 @@ async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
 }
 /* ── 서버 중계 업로드: 한 개씩 순차 + 진행 토스트.
    targets[i]를 주면 성공 fileId를 레거시(카메라 경로 added[i]._driveId=id)와 동일하게 주입.
-   targets 없으면(gdUploadPhotos처럼 state 항목이 없는 경우) 주입 안 함 — 레거시 gdUploadPhotos도 미주입이라 동작 일치. ── */
+   targets가 있으면 업로드 직후와 다음 실행 모두 같은 사진을 찾도록 Drive ID를 저장한다. ── */
 async function relayUploadFiles(files,kind,targets){
   let ok=0,queued=0,failed=0,injected=0;
   for(let i=0;i<files.length;i++){
@@ -1623,7 +1655,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-relay-v105';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-relay-v106';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -1970,7 +2002,14 @@ function gdUploadPhotos(){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async()=>{
     const files=[...inp.files];if(!files.length)return;
-    if(typeof relayReady==='function'&&relayReady()){ await relayUploadFiles(files,'photo'); inp.value=''; return; }   // 서버 중계 우선(모바일 OK, 압축·순차)
+    if(typeof relayReady==='function'&&relayReady()){
+      const added=[];
+      for(const f of files){try{added.push(await ingestFile(f));}catch(e){added.push(null);}}
+      markDirty();
+      await relayUploadFiles(files,'photo',added);
+      if(typeof __photoCache!=='undefined')__photoCache.key=null;
+      state.tab='photos';render();inp.value='';return;
+    }   // 서버 중계 우선(모바일 OK, 압축·순차, 앱 목록 즉시 연결)
     try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
     toast(files.length+'장 드라이브 업로드 중...');
     let ok=0;
@@ -2042,9 +2081,21 @@ function makeThumbDataUrl(file,max){
     }catch(e){res(null);}
   });
 }
-async function cacheThumb(driveId,file){ /* 썸네일 캐시 제거 — photoSrc가 드라이브 썸네일을 바로 표시 */ }
-// (제거) 썸네일 채우기 — 이제 photoSrc(f)가 드라이브 썸네일 URL로 바로 표시하므로 채우기 불필요
-async function hydrateThumbs(){ return; }
+async function cacheThumb(driveId,file){
+  if(!driveId||!file)return null;
+  try{const t=await makeThumbDataUrl(file,480);if(t){await idbSet('thumb:'+driveId,t);return t;}}catch(e){}
+  return null;
+}
+// 캐시 읽기는 서버 요청 없이 처리한다. 화면에 보이는 미캐시 사진만 onerror 경로에서 relay를 호출한다.
+async function hydrateThumbs(){
+  let changed=false;
+  const list=(state.files||[]).filter(f=>f._driveId&&!f.thumb);
+  for(let i=0;i<list.length;i++){
+    try{const t=await idbGet('thumb:'+list[i]._driveId);if(typeof t==='string'&&t.indexOf('data:image/')===0){list[i].thumb=t;changed=true;}}catch(e){}
+  }
+  if(changed)render();
+  return changed;
+}
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
@@ -19636,12 +19687,17 @@ function renderLightbox(){
   root.innerHTML=`<div class="lb-bg">
     <button class="lb-close" id="lbClose">✕</button>
     ${__lightboxList.length>1?`<button class="lb-nav lb-prev" id="lbPrev">‹</button><button class="lb-nav lb-next" id="lbNext">›</button>`:''}
-    <div class="lb-stage"><img src="${f.thumb||(f._driveId?driveThumbUrl(f._driveId,1600):'')}" class="lb-img" id="lbImg" referrerpolicy="no-referrer"${f._driveId?` onerror="this.onerror=null;this.src='${driveThumbFallback(f._driveId,1600)}'"`:''}></div>
+    <div class="lb-stage"><img src="${f.thumb||(f._driveId?driveThumbUrl(f._driveId,1600):'')}" class="lb-img" id="lbImg" referrerpolicy="no-referrer"${f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:''}></div>
     <div class="lb-meta"><b>${escapeHtml(f.name)}</b>${meta?`<span>${escapeHtml(meta)}</span>`:''}<span class="lb-count">${__lightboxIdx+1} / ${__lightboxList.length}</span></div>
   </div>`;
   // 가상(미다운로드) 이미지면 드라이브에서 원본을 받아 선명하게 교체(캐시 썸네일은 즉시, 원본은 곧)
   if(f._virtual&&f._driveId&&IMG.includes(f.ext)){
     (async()=>{ try{
+      if(relayReady()){
+        const data=await relayGetThumbnail(f._driveId);const im=document.getElementById('lbImg');
+        if(data&&im&&__stillCurrent()){f.thumb=data;im.onerror=null;im.src=data;}
+        return;
+      }
       if(!__gdToken)await gdGetToken(true);
       const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+f._driveId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
       if(dr.ok){

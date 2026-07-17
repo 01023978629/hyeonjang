@@ -1,5 +1,5 @@
 /** ============================================================
- * 만물인테리어 현장관리 — Apps Script 클라우드 중계 서버 (relay-v1)
+ * 만물인테리어 현장관리 — Apps Script 클라우드 중계 서버 (relay-v2)
  * ------------------------------------------------------------
  * 목적: 모바일(사파리·카톡/네이버 인앱)에서 Google OAuth 팝업 없이
  *       기존 Google Drive '만물인테리어' 폴더에 저장/불러오기/업로드.
@@ -18,12 +18,13 @@
  * Supabase Auth 등 계정 기반 인증 서버로 교체해야 합니다.
  * ============================================================ */
 
-var RELAY_VERSION = 'relay-v1';
-var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles'];
+var RELAY_VERSION = 'relay-v2';
+var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail'];
 var TS_WINDOW_MS = 10 * 60 * 1000;          // 요청 시간 검사(±10분)
 var MAX_BODY = 15 * 1024 * 1024;            // 요청 전체 상한
 var MAX_SAVE = 10 * 1024 * 1024;            // 현장데이터 JSON 상한
 var MAX_UPLOAD_B64 = 12 * 1024 * 1024;      // 업로드 base64 상한(≈9MB 파일)
+var MAX_PREVIEW_BYTES = 4 * 1024 * 1024;    // 썸네일 미생성 직후 원본 폴백 상한
 var PHOTO_FOLDER = '현장사진';
 var DOC_FOLDER = '견적서';
 var ALLOWED_MIME = {
@@ -87,6 +88,7 @@ function doPost(e) {
       case 'backup':   return out_(makeBackup_(deviceId));
       case 'upload':   return out_(uploadFile_(payload));
       case 'listFiles':return out_(listAppFiles_(payload));
+      case 'thumbnail':return out_(thumbnailFile_(payload));
     }
     return fail_('bad-request', 'unreachable');
   } catch (err) { return fail_('server-error', safeMsg_(err)); }
@@ -121,6 +123,26 @@ function sanitizeName_(name, mime) {
     n = 'file_' + Date.now() + ext;
   }
   return n;
+}
+// 전달받은 fileId가 설정된 앱 루트 폴더 안에 있는지 확인한다.
+// 하위 현장 폴더도 지원하되, 부모 탐색 깊이와 방문 수를 제한한다.
+function isInsideRoot_(file, root) {
+  var rootId = root.getId(), queue = [], seen = {}, depth = 0, visited = 0;
+  var parents = file.getParents();
+  while (parents.hasNext()) queue.push(parents.next());
+  while (queue.length && depth < 8 && visited < 80) {
+    var next = [];
+    for (var i = 0; i < queue.length && visited < 80; i++) {
+      var folder = queue[i], id = folder.getId(); visited++;
+      if (id === rootId) return true;
+      if (seen[id]) continue;
+      seen[id] = true;
+      var pp = folder.getParents();
+      while (pp.hasNext()) next.push(pp.next());
+    }
+    queue = next; depth++;
+  }
+  return false;
 }
 
 /* ---------- A. health ---------- */
@@ -250,4 +272,31 @@ function listAppFiles_(payload) {
   if (!kind || kind === 'photo') collect(PHOTO_FOLDER, 'photo');
   if (!kind || kind === 'doc') collect(DOC_FOLDER, 'doc');
   return { ok: true, files: files };
+}
+
+/* ---------- G. thumbnail (모바일 relay 전용 미리보기) ---------- */
+function thumbnailFile_(payload) {
+  var id = String(payload && payload.fileId || '');
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return fail0_('bad-request', '파일 ID가 올바르지 않습니다');
+
+  var root = rootFolder_(), file;
+  try { file = DriveApp.getFileById(id); }
+  catch (_) { return fail0_('not-found', '사진 파일을 찾지 못했습니다'); }
+  if (!isInsideRoot_(file, root)) return fail0_('forbidden', '앱 폴더 밖의 파일은 미리볼 수 없습니다');
+
+  var mime = String(file.getMimeType() || '');
+  if (mime.indexOf('image/') !== 0) return fail0_('bad-request', '이미지 파일만 미리볼 수 있습니다');
+
+  var blob = null, source = 'thumbnail';
+  try { blob = file.getThumbnail(); } catch (_) {}
+  if (!blob) {
+    if (file.getSize() > MAX_PREVIEW_BYTES) return fail0_('not-ready', '미리보기를 준비 중입니다. 잠시 후 다시 열어 주세요');
+    try { blob = file.getBlob(); source = 'original'; }
+    catch (_) { return fail0_('not-ready', '미리보기를 아직 만들지 못했습니다'); }
+  }
+  var bytes = blob.getBytes();
+  if (bytes.length > MAX_PREVIEW_BYTES) return fail0_('too-large', '미리보기 파일이 너무 큽니다');
+  return { ok: true, fileId: id, name: file.getName(),
+           mimeType: blob.getContentType() || 'image/jpeg', source: source,
+           dataB64: Utilities.base64Encode(bytes) };
 }
