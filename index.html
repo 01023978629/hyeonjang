@@ -1594,10 +1594,21 @@ async function relayLoadDriveFiles(silent){
         unlinkedByName.get(x.name).push(x);
       }
       for(const f of res.files){
-        if(!f||!f.id||__removedIds.has(f.id)||state.files.some(x=>x._driveId===f.id))continue;
+        if(!f||!f.id||__removedIds.has(f.id))continue;
         const fe=bestExt(f.name,f.mimeType||'');
         if(!IMG.includes(fe))continue;
+        const existing=state.files.find(x=>x._driveId===f.id);
         const same=(unlinkedByName.get(f.name)||[]).find(x=>!x._driveId);
+        if(existing){
+          // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
+          if(same&&existing!==same&&existing._virtual&&existing.name===same.name){
+            same._driveId=f.id;same.size=same.size||existing.size||(+f.size||0);
+            if(!same.kind||same.kind==='other')same.kind='photo';
+            if(!same.when&&existing.when)same.when=existing.when;
+            revokeThumbUrl(existing);state.files.splice(state.files.indexOf(existing),1);linked++;
+          }
+          continue;
+        }
         if(same){
           same._driveId=f.id;same.size=same.size||(+f.size||0);
           if(!same.kind||same.kind==='other')same.kind='photo';
@@ -1705,7 +1716,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-relay-v106.2';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-relay-v106.3';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
