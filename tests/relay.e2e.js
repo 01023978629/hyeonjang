@@ -1,5 +1,5 @@
 /* relay.e2e.js — Apps Script 중계 프론트엔드 회귀 테스트 (Playwright)
-   전제: tests/mock-relay.js(8398) + python3 -m http.server 8299(저장소 루트) 실행 중 */
+   전제: tests/mock-relay.js(8398) + tests/static-server.js(8299) 실행 중 */
 'use strict';
 let chromium;
 try { ({ chromium } = require('playwright')); }
@@ -210,7 +210,7 @@ async function pollMock(pred, ms, label) {
       state.files = state.files.filter(f => !f._driveId);
       state.files.push(
         { id: 'old-mobile-a', name: '현장A.jpg', ext: 'jpg', kind: 'photo', _driveId: null, _virtual: true, size: 0 },
-        { id: 'old-mobile-b', name: '현장B.jpg', ext: 'jpg', kind: 'photo', _driveId: null, _virtual: true, size: 0 },
+        { id: 'old-mobile-b', name: '현장B.jpg의 사본', ext: 'jpg', kind: 'photo', _driveId: null, _virtual: true, size: 0 },
         { id: 'v1061-duplicate', name: '현장A.jpg', ext: 'jpg', kind: 'photo', _driveId: 'mockfile_1', _virtual: true, size: 10 }
       );
       const countBefore = state.files.length;
@@ -229,6 +229,33 @@ async function pollMock(pred, ms, label) {
     assert(r.duplicateA === 1, 'v106.1 임시 복구 항목을 기존 기록으로 병합');
     assert(r.virtual, '복구 항목은 photo 가상 파일');
     assert(r.hasSize, '서버 파일 크기 메타 포함');
+  });
+
+  await test('11-3. 빈 사진 카드 — 복구 버튼·재선택 썸네일 캐시', async () => {
+    const r = await page.evaluate(async () => {
+      const before = state.files.slice();
+      const origDirty = window.markDirty, origRender = window.render, origRelayReady = window.relayReady;
+      window.markDirty = function () {}; window.render = function () {}; window.relayReady = function () { return false; };
+      const rec = { id: 'missing-preview-test', name: '복구사진.jpg', prefix: '현장사진/', ext: 'jpg', kind: 'photo',
+        _driveId: null, thumb: null, _virtual: true, size: 0, when: new Date('2026-07-06T10:00:00') };
+      state.files.push(rec);
+      const markup = photoImg(rec, 800, rec.id);
+
+      const cv = document.createElement('canvas'); cv.width = 8; cv.height = 8;
+      const cx = cv.getContext('2d'); cx.fillStyle = '#1677ff'; cx.fillRect(0, 0, 8, 8);
+      const blob = await new Promise(resolve => cv.toBlob(resolve, 'image/jpeg', .8));
+      const file = new File([blob], rec.name, { type: 'image/jpeg' });
+      const linked = await relinkSelectedPhotos([file], rec.id);
+      const cacheKey = 'thumb-local:' + fileKey(rec);
+      const cached = await idbGet(cacheKey);
+      const out = { markup, linked, thumb: rec.thumb || '', cached: cached || '', virtual: rec._virtual };
+      await idbDel(cacheKey);
+      state.files = before; window.markDirty = origDirty; window.render = origRender; window.relayReady = origRelayReady;
+      return out;
+    });
+    assert(/data-repair="missing-preview-test"/.test(r.markup) && /사진 연결/.test(r.markup), '빈 카드 복구 버튼 렌더');
+    assert(r.linked === 1 && r.virtual === false, '기존 빈 기록에 원본 연결');
+    assert(/^data:image\//.test(r.thumb) && r.cached === r.thumb, '재접속용 로컬 썸네일 캐시 저장');
   });
 
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {

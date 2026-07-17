@@ -297,6 +297,11 @@
   .ph-phase{position:absolute;bottom:4px;left:4px;right:4px;width:calc(100% - 8px);font-size:10px;padding:3px 4px;border:1px solid var(--line-soft);border-radius:5px;background:rgba(255,255,255,.95);color:var(--ink)}
   /* 지연 썸네일 자리표시 + 화면 밖 묶음 계산 생략(대량 사진 스크롤 성능) */
   .ph [data-heic],.ph>div:not([class]){display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:var(--paper-2);color:var(--muted);font-size:10px;letter-spacing:2px}
+  .ph-repair{width:100%;height:100%;min-height:108px;border:0;border-radius:0;background:var(--paper-2);color:var(--blueprint);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:10px}
+  .ph-repair:hover,.ph-repair:focus-visible{background:#edf5ff;color:#073b7a;transform:none;outline:2px solid var(--blueprint);outline-offset:-2px}
+  .ph-repair b{font-size:22px;line-height:1}
+  .ph-repair small{font-size:10px;font-weight:800;letter-spacing:0}
+  body.dark .ph-repair{background:#1c2836;color:#9fc5f8}
   .cluster{content-visibility:auto;contain-intrinsic-size:auto 420px}
   .ph-phase-btn{text-align:left;cursor:pointer;font-weight:600}
   .ph-phase-btn:hover{border-color:var(--blueprint)}
@@ -821,7 +826,7 @@ async function __driveThumbRescue(id,img){
   })();
   await rec.__rescuing;
 }
-function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return (f&&f._needHeic&&f._heicFile)?`<div data-heic="${escapeAttr(f.id)}">IMG</div>`:'<div>IMG</div>';
+function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return (f&&f._needHeic&&f._heicFile)?`<div data-heic="${escapeAttr(f.id)}">IMG</div>`:(dataLight?`<button type="button" class="ph-repair" data-repair="${escapeAttr(dataLight)}" title="원본 사진을 찾아 미리보기를 복구합니다"><b aria-hidden="true">▧</b><small>사진 연결</small></button>`:'<div>IMG</div>');
   const oe=f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:'';
   return `<img src="${ps}" loading="lazy" decoding="async"${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''} referrerpolicy="no-referrer"${oe}>`; }
 function revokeThumbUrl(f){const u=f&&f.thumb;if(typeof u==='string'&&u.startsWith('blob:')){try{URL.revokeObjectURL(u);}catch(e){} } }
@@ -1298,7 +1303,7 @@ function cloudApiHealth(){return relayCall('health');}
 function cloudApiLoad(){return relayCall('load');}
 function cloudApiSave(baseRevision){return relayCall('save',{data:serializeData(),baseRevision:baseRevision});}
 function cloudApiBackup(){return relayCall('backup');}
-function cloudApiListFiles(kind){return relayCall('listFiles',kind?{kind:kind}:{});}
+function cloudApiListFiles(kind){return relayCall('listFiles',kind?{kind:kind,deep:kind==='photo'}:{});}
 function cloudApiThumbnail(fileId){return relayCall('thumbnail',{fileId:fileId});}
 async function cloudApiUploadFile(file,kind,name,mime){const p=await relayBuildUploadPayload(file,kind,name,mime);return relayCall('upload',p);}
 const RELAY_THUMB_MAX_B64=6*1024*1024;
@@ -1585,23 +1590,25 @@ async function relayLoadDriveFiles(silent){
       if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);return 0;}
       if(!(res&&res.ok&&Array.isArray(res.files))){if(!silent)toast('서버 사진 목록을 불러오지 못했습니다');return 0;}
       let added=0,linked=0;
-      const unlinkedByName=new Map();
-      for(const x of state.files){
-        if(!x||x._driveId||!x.name)continue;
-        const xe=bestExt(x.name,x.ext||'');
-        if(!IMG.includes(xe))continue;
-        if(!unlinkedByName.has(x.name))unlinkedByName.set(x.name,[]);
-        unlinkedByName.get(x.name).push(x);
-      }
+      const unlinked=state.files.filter(x=>x&&!x._driveId&&x.name&&IMG.includes(bestExt(x.name,x.ext||'')));
+      const usedRec=new Set();
+      const takeRecord=(sf)=>{
+        let pool=unlinked.filter(x=>!usedRec.has(x)&&x.name===sf.name);
+        if(!pool.length){const k=baseName(sf.name);pool=unlinked.filter(x=>!usedRec.has(x)&&baseName(x.name)===k);}
+        if(!pool.length)return null;
+        const sz=+sf.size||0;
+        if(sz){const sized=pool.filter(x=>x.size&&Math.abs(+x.size-sz)<=Math.max(4,Math.round(sz*.01)));if(sized.length)pool=sized;}
+        const hit=pool[0];usedRec.add(hit);return hit;
+      };
       for(const f of res.files){
         if(!f||!f.id||__removedIds.has(f.id))continue;
         const fe=bestExt(f.name,f.mimeType||'');
         if(!IMG.includes(fe))continue;
         const existing=state.files.find(x=>x._driveId===f.id);
-        const same=(unlinkedByName.get(f.name)||[]).find(x=>!x._driveId);
+        const same=takeRecord(f);
         if(existing){
           // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
-          if(same&&existing!==same&&existing._virtual&&existing.name===same.name){
+          if(same&&existing!==same&&existing._virtual&&baseName(existing.name)===baseName(same.name)){
             same._driveId=f.id;same.size=same.size||existing.size||(+f.size||0);
             if(!same.kind||same.kind==='other')same.kind='photo';
             if(!same.when&&existing.when)same.when=existing.when;
@@ -1614,6 +1621,9 @@ async function relayLoadDriveFiles(silent){
           if(!same.kind||same.kind==='other')same.kind='photo';
           linked++;continue;
         }
+        // 루트 전체 탐색에서 발견한 사진은 기존 빈 기록 복구에만 사용한다.
+        // 명함·도면까지 현장사진으로 새로 추가되는 오분류를 막는다.
+        if(f.recoverOnly)continue;
         const dt=f.modifiedAt?new Date(f.modifiedAt):null;
         state.files.push({id:uid(),name:f.name||('photo_'+f.id),handle:null,prefix:'현장사진/',ext:fe,size:+f.size||0,
           kind:'photo',project:null,when:dt&&!isNaN(dt)?dt:null,lat:null,lng:null,place:null,address:null,
@@ -1632,6 +1642,59 @@ async function relayLoadDriveFiles(silent){
     finally{__relayFilesInflight=null;}
   })();
   return __relayFilesInflight;
+}
+function missingPhotoPreviews(){return (state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.thumb&&!f._driveId);}
+async function repairPhotoFromServer(id){
+  const before=state.files.find(f=>f.id===id);if(!before)return false;
+  if(relayReady())await relayLoadDriveFiles(true);
+  const f=state.files.find(x=>x.id===id);if(!f||!f._driveId)return false;
+  try{const t=await relayGetThumbnail(f._driveId);if(t)f.thumb=t;}catch(e){}
+  markDirty();render();return true;
+}
+function choosePhotoRelink(targetId){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=!targetId;
+  inp.onchange=async()=>{const files=[...inp.files];if(!files.length)return;await relinkSelectedPhotos(files,targetId);};
+  inp.click();
+}
+async function relinkSelectedPhotos(files,targetId){
+  const missing=missingPhotoPreviews();const used=new Set(),pairs=[];
+  for(const file of files){
+    let rec=targetId?missing.find(x=>x.id===targetId&&!used.has(x)):null;
+    if(!rec){const exact=missing.filter(x=>!used.has(x)&&x.name===file.name);rec=exact[0]||null;}
+    if(!rec){const k=baseName(file.name),norm=missing.filter(x=>!used.has(x)&&baseName(x.name)===k);rec=norm[0]||null;}
+    if(!rec)continue;
+    used.add(rec);pairs.push({file,rec});if(targetId)break;
+  }
+  if(!pairs.length){toast('선택한 사진과 이름이 같은 빈 기록을 찾지 못했습니다');return 0;}
+  for(const p of pairs){
+    const f=p.rec,file=p.file;
+    f._file=file;f.handle=null;f._virtual=false;f.size=file.size||f.size;f.ext=bestExt(file.name,file.type)||f.ext;f.kind='photo';
+    try{const t=await makeThumbDataUrl(file,480);if(t){f.thumb=t;await idbSet('thumb-local:'+fileKey(f),t);}}catch(e){}
+  }
+  markDirty();render();
+  if(relayReady())await relayUploadFiles(pairs.map(p=>p.file),'photo',pairs.map(p=>p.rec));
+  for(const p of pairs){if(p.rec._driveId&&p.rec.thumb){try{await idbSet('thumb:'+p.rec._driveId,p.rec.thumb);}catch(e){}}}
+  markDirty();render();toast(pairs.length+'장 미리보기 복구 완료'+(files.length>pairs.length?' · 이름이 다른 사진 '+(files.length-pairs.length)+'장 제외':''));
+  return pairs.length;
+}
+function openPhotoRepair(id){
+  const f=state.files.find(x=>x.id===id);if(!f)return;
+  openModal('사진 미리보기 복구',`<div style="font-size:13px;line-height:1.65"><b>${escapeHtml(f.name||'사진')}</b><p id="photoRepairStatus" style="margin:8px 0;color:var(--muted-2)">${relayReady()?'서버와 하위 폴더에서 원본을 찾고 있습니다…':'원본 사진을 이 기기에서 다시 선택해 주세요.'}</p></div>`,[
+    {label:'닫기',cls:'ghost',fn:closeModal},
+    {label:'사진 선택',cls:'blue',fn:()=>{closeModal();choosePhotoRelink(id);}}
+  ],true);
+  if(relayReady())repairPhotoFromServer(id).then(ok=>{if(ok){closeModal();openLightbox(id,[id]);toast('사진 미리보기를 복구했습니다');}else{const s=document.getElementById('photoRepairStatus');if(s)s.textContent='서버에서 원본을 찾지 못했습니다. 아래 사진 선택을 눌러 다시 연결해 주세요.';}});
+}
+async function repairAllPhotoPreviews(){
+  const before=missingPhotoPreviews().length;if(!before){toast('복구할 빈 사진이 없습니다');return;}
+  let linked=0;if(relayReady()){toast('☁️ 서버와 하위 폴더에서 사진 찾는 중…');linked=await relayLoadDriveFiles(true);}
+  const left=missingPhotoPreviews().length;
+  if(!left){toast('빈 사진 '+before+'장 미리보기 복구 완료');return;}
+  openModal('사진 미리보기 일괄 복구',`<div style="font-size:13px;line-height:1.7"><b>서버에서 ${Math.max(0,before-left)}장을 연결했습니다.</b><p style="margin:8px 0 0">남은 ${left}장은 원본이 서버에 없습니다. 내 기기에서 해당 사진들을 여러 장 선택하면 파일명으로 기존 기록에 연결하고 서버에도 저장합니다.</p></div>`,[
+    {label:'닫기',cls:'ghost',fn:closeModal},
+    {label:'사진 여러 장 선택',cls:'blue',fn:()=>{closeModal();choosePhotoRelink(null);}}
+  ],true);
+  if(linked)render();
 }
 /* ── relay 부팅(gdBootSync와 별개, 기존 로직 무변경) — 설정 복원 + 대기열 전송 + 서버 최신 안내(자동 적용 금지) ── */
 async function relayBoot(){
@@ -1716,7 +1779,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-relay-v106.3';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-photo-preview-v107';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -2151,9 +2214,9 @@ async function cacheThumb(driveId,file){
 // 캐시 읽기는 서버 요청 없이 처리한다. 화면에 보이는 미캐시 사진만 onerror 경로에서 relay를 호출한다.
 async function hydrateThumbs(){
   let changed=false;
-  const list=(state.files||[]).filter(f=>f._driveId&&!f.thumb);
+  const list=(state.files||[]).filter(f=>!f.thumb);
   for(let i=0;i<list.length;i++){
-    try{const t=await idbGet('thumb:'+list[i]._driveId);if(typeof t==='string'&&t.indexOf('data:image/')===0){list[i].thumb=t;changed=true;}}catch(e){}
+    try{const key=list[i]._driveId?('thumb:'+list[i]._driveId):('thumb-local:'+fileKey(list[i]));const t=await idbGet(key);if(typeof t==='string'&&t.indexOf('data:image/')===0){list[i].thumb=t;changed=true;}}catch(e){}
   }
   if(changed)render();
   return changed;
@@ -17309,6 +17372,7 @@ function viewPhotos(){
       <span style="font-size:11px;color:var(--muted);font-weight:700">☁️ 드라이브</span>
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
+      <button class="ghost tiny" id="btnRepairPhotos" style="font-size:12.5px;padding:8px 12px">미리보기 복구</button>
       <button class="ghost tiny" id="btnGdPick" style="font-size:12.5px;padding:8px 12px">골라 불러오기</button>
       <button class="ghost tiny" id="btnGdPin" style="font-size:12.5px;padding:8px 12px">🔒 고정</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
@@ -19059,7 +19123,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19124,6 +19188,7 @@ function setupDelegation(){
       return;
     }
     if(t.id==='btnGdLoad')return gdLoadDriveFiles(false);
+    if(t.id==='btnRepairPhotos')return repairAllPhotoPreviews();
     if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
@@ -19184,6 +19249,7 @@ function setupDelegation(){
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
+    if(d.repair!==undefined){e.stopPropagation();return openPhotoRepair(d.repair);}
     if(d.stage!==undefined)return setStage(d.proj,+d.stage);
     if(d.learn!==undefined){const f=state.files.find(x=>x.id===d.learn);if(f)learnEstimate(f);return;}
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}
@@ -19732,7 +19798,8 @@ function safeName(n){return n.replace(/[\/\\:*?"<>|]/g,'_');}
 /* ---------- 사진 크게 보기 (라이트박스) ---------- */
 let __lightboxList=[], __lightboxIdx=0;
 function openLightbox(id, listIds){
-  __lightboxList=listIds&&listIds.length?listIds:state.files.filter(f=>f.kind==='photo'&&(f.thumb||f._driveId)).map(f=>f.id);
+  __lightboxList=listIds&&listIds.length?[...listIds]:state.files.filter(f=>f.kind==='photo'&&(f.thumb||f._driveId)).map(f=>f.id);
+  if(id&&!__lightboxList.includes(id))__lightboxList.unshift(id);
   __lightboxIdx=Math.max(0,__lightboxList.indexOf(id));
   renderLightbox();
 }

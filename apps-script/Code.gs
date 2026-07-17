@@ -18,7 +18,7 @@
  * Supabase Auth 등 계정 기반 인증 서버로 교체해야 합니다.
  * ============================================================ */
 
-var RELAY_VERSION = 'relay-v2';
+var RELAY_VERSION = 'relay-v3';
 var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail'];
 var TS_WINDOW_MS = 10 * 60 * 1000;          // 요청 시간 검사(±10분)
 var MAX_BODY = 15 * 1024 * 1024;            // 요청 전체 상한
@@ -256,22 +256,40 @@ function uploadFile_(payload) {
 function listAppFiles_(payload) {
   var kind = payload && payload.kind ? String(payload.kind) : '';
   var root = rootFolder_();
-  var files = [];
-  function collect(folderName, k) {
-    var it0 = root.getFoldersByName(folderName);
-    if (!it0.hasNext()) return;
-    var it = it0.next().getFiles();
-    var n = 0;
-    while (it.hasNext() && n < 200) {
-      var f = it.next();
-      files.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
-                   modifiedAt: f.getLastUpdated().toISOString(), size: f.getSize(), kind: k });
-      n++;
+  var files = [], seenFolder = {}, seenFile = {}, maxFiles = 2000, maxFolders = 600, folderCount = 0;
+  function addFile(f, k, recoverOnly) {
+    if (files.length >= maxFiles) return;
+    var id = f.getId(); if (seenFile[id]) return; seenFile[id] = true;
+    var mime = String(f.getMimeType() || '');
+    if (k === 'photo' && mime.indexOf('image/') !== 0) return;
+    files.push({ id: id, name: f.getName(), mimeType: mime,
+                 modifiedAt: f.getLastUpdated().toISOString(), size: f.getSize(), kind: k,
+                 recoverOnly: !!recoverOnly });
+  }
+  function collectTree(start, k, recoverOnly) {
+    if (!start) return;
+    var queue = [{ folder: start, depth: 0, recoverOnly: !!recoverOnly }];
+    while (queue.length && files.length < maxFiles && folderCount < maxFolders) {
+      var cur = queue.shift(), folder = cur.folder, fid = folder.getId();
+      if (seenFolder[fid]) continue; seenFolder[fid] = true; folderCount++;
+      var fit = folder.getFiles();
+      while (fit.hasNext() && files.length < maxFiles) addFile(fit.next(), k, cur.recoverOnly);
+      if (cur.depth >= 8) continue;
+      var dit = folder.getFolders();
+      while (dit.hasNext() && queue.length < maxFolders) queue.push({ folder: dit.next(), depth: cur.depth + 1, recoverOnly: cur.recoverOnly });
     }
   }
-  if (!kind || kind === 'photo') collect(PHOTO_FOLDER, 'photo');
-  if (!kind || kind === 'doc') collect(DOC_FOLDER, 'doc');
-  return { ok: true, files: files };
+  function firstFolder(name) { var it = root.getFoldersByName(name); return it.hasNext() ? it.next() : null; }
+
+  if (!kind || kind === 'photo') {
+    var photoRoot = firstFolder(PHOTO_FOLDER);
+    if (photoRoot) collectTree(photoRoot, 'photo', false);
+    // 과거에 현장별 하위 폴더로 이동된 사진도 기존 빈 기록과 다시 연결할 수 있게 찾는다.
+    // 이 범위의 미매칭 이미지는 앱에 새 사진으로 추가하지 않고 복구용으로만 반환한다.
+    if (kind === 'photo' && payload && payload.deep) collectTree(root, 'photo', true);
+  }
+  if (!kind || kind === 'doc') collectTree(firstFolder(DOC_FOLDER), 'doc', false);
+  return { ok: true, files: files, truncated: files.length >= maxFiles || folderCount >= maxFolders };
 }
 
 /* ---------- G. thumbnail (모바일 relay 전용 미리보기) ---------- */
