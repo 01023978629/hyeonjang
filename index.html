@@ -1300,13 +1300,14 @@ function relayStatText(code){
   if(code==='netfail')return '⚠️ 서버 연결 실패 — '+__relayQn+'건 대기(수동 재전송)';
   if(code==='conflict')return '⚠️ 저장 충돌 발생 — 선택 필요';
   if(code==='auth')return '🔑 인증키 오류 — ☁️ 설정 확인';
+  if(code==='qfail')return '⚠️ 대기열 저장 실패 — 저장공간 확인';
   if(code==='ready')return '☁️ 서버 연결됨';
   return '💾 기기에만 저장됨';
 }
 function relaySetStatus(code){
   __relayState=code;
   const txt=relayStatText(code);
-  const warn=(code==='offline'||code==='netfail'||code==='conflict'||code==='auth');
+  const warn=(code==='offline'||code==='netfail'||code==='conflict'||code==='auth'||code==='qfail');
   let el=document.getElementById('relayStat');
   if(!el){const b=document.getElementById('btnSave');if(b&&b.parentNode){el=document.createElement('small');el.id='relayStat';el.style.cssText='display:block;text-align:center;font-size:11px;line-height:1.4;color:var(--muted)';b.parentNode.insertBefore(el,b.nextSibling);}}
   if(el){el.textContent=txt;el.style.color=warn?'var(--warn)':'var(--muted)';}
@@ -1316,36 +1317,45 @@ function relaySetStatus(code){
 function relayAuthFail(res){relaySetStatus('auth');if(!__relayAuthToasted){__relayAuthToasted=true;toast('🔑 서버 인증키 오류 — ☁️ 설정에서 서버 주소·인증키를 확인하세요'+((res&&res.message)?(' ('+res.message+')'):''));}}
 /* ── 오프라인 동기화 대기열(idb relay_queue) — save는 최신 1건 병합, upload는 개별 누적 ── */
 async function relayQueueGet(){try{return (await idbGet('relay_queue'))||[];}catch(e){return [];}}
-async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){} __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;}
+async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){try{console.warn('relay_queue 저장 실패',e);}catch(_){}relaySetStatus('qfail');}   // idb 실패를 조용히 삼키지 않음
+  __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;}
 async function relayUpdateQueueBadge(){const q=await relayQueueGet();__relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;if(__relayQn&&(__relayState==='offline'||__relayState==='netfail'))relaySetStatus(__relayState);return __relayQn;}
 async function relayQueuePush(action,payload){
   let q=await relayQueueGet();
   if(action==='save')q=q.filter(function(it){return it.action!=='save';});   // 옛 save는 교체(항상 최신 1건)
-  // save의 payload는 null — 전송 시점에 최신 serializeData()로 재구성(오래된 본문 전송 방지). upload는 압축본 보관.
+  // upload는 압축본(base64)을 보관하므로 무제한 성장 금지 — 최대 15건
+  if(action==='upload'&&q.filter(function(it){return it.action==='upload';}).length>=15){toast('업로드 대기열이 가득 찼습니다 — 온라인 상태에서 [📮 다시 보내기] 후 다시 시도하세요');return false;}
+  // save의 payload는 null — 전송 시점에 최신 serializeData()로 재구성(오래된 본문 전송 방지)
   q.push({id:'q'+Date.now()+'_'+Math.floor(Math.random()*100000),action:action,payload:action==='save'?null:payload,createdAt:Date.now(),retryCount:0,deviceId:__relay.device,baseRevision:__relay.rev||0});
   await relayQueueSet(q);
+  return true;
 }
 async function cloudFlushQueue(manual){
-  if(__relayFlushing||!relayReady())return;
+  if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
   __relayFlushing=true;
   try{
     const q=await relayQueueGet();
     if(!q.length){await relayUpdateQueueBadge();return;}
-    const keep=[];let sent=0;
+    const doneIds={},retryUpd={};let sent=0,savedOk=false;
     for(let i=0;i<q.length;i++){
       const it=q[i];
-      if(!manual&&(it.retryCount||0)>=5){keep.push(it);continue;}   // 5회 이상 실패 → 자동 재시도 중단(설정의 '다시 보내기'로만)
+      if(!manual&&(it.retryCount||0)>=5)continue;   // 5회 이상 실패 → 자동 재시도 중단(설정의 '다시 보내기'로만)
       try{
         let res;
         if(it.action==='save')res=await relayCall('save',{data:serializeData(),baseRevision:__relay.rev||0});   // ts·데이터·rev 전부 전송 시점 기준(서버 ±10분 검사)
         else res=await relayCall(it.action,it.payload);
-        if(res&&res.ok){sent++;if(it.action==='save'){__relay.rev=res.revision||__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거
-        if(res&&res.error==='conflict'&&it.action==='save'){relaySetStatus('conflict');relayConflictModal(res);continue;}   // 충돌은 모달로 해결(자동 덮어쓰기 금지)
-        if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);it.retryCount=(it.retryCount||0)+1;keep.push(it);continue;}
-        it.retryCount=(it.retryCount||0)+1;keep.push(it);
-      }catch(e){it.retryCount=(it.retryCount||0)+1;keep.push(it);}
+        if(res&&res.ok){sent++;doneIds[it.id]=1;if(it.action==='save'){savedOk=true;__relay.rev=(typeof res.revision==='number')?res.revision:__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거 대상
+        if(res&&res.error==='conflict'&&it.action==='save'){doneIds[it.id]=1;relaySetStatus('conflict');relayConflictModal(res);continue;}   // 충돌은 모달로 해결(자동 덮어쓰기 금지)
+        if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);retryUpd[it.id]=(it.retryCount||0)+1;continue;}
+        retryUpd[it.id]=(it.retryCount||0)+1;
+      }catch(e){retryUpd[it.id]=(it.retryCount||0)+1;}
     }
+    // ★flush 도중 새로 push된 항목 유실 방지: 통째 덮어쓰지 않고 큐를 '다시 읽어' 성공 id만 제거 + retryCount는 id 기준 갱신
+    const q2=await relayQueueGet();
+    const keep=q2.filter(function(it){return !doneIds[it.id];});
+    keep.forEach(function(it){if(retryUpd[it.id]!=null)it.retryCount=retryUpd[it.id];});
     await relayQueueSet(keep);
+    if(savedOk)relayDailyBackup();   // 큐 경유 저장 성공에도 하루 1회 백업
     if(!keep.length){if(sent)relaySetStatus('saved');}
     else if(__relayState!=='auth'&&__relayState!=='conflict')relaySetStatus(navigator.onLine===false?'offline':'netfail');
   }finally{__relayFlushing=false;}
@@ -1361,7 +1371,7 @@ async function relaySaveNow(manual){
   try{
     const res=await cloudApiSave(__relay.rev||0);
     if(res&&res.ok){
-      __relay.rev=res.revision||0;__relay.syncAt=res.savedAt||new Date().toISOString();
+      __relay.rev=(typeof res.revision==='number')?res.revision:(__relay.rev||0);__relay.syncAt=res.savedAt||new Date().toISOString();   // revision 누락이어도 rev 리셋 금지
       try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
       relaySetStatus('saved');ok=true;
       relayDailyBackup();   // 하루 1회 서버 날짜별 백업(기존 gdBackup 패턴)
@@ -1387,7 +1397,15 @@ async function relayDailyBackup(){
     if(r&&r.ok){try{await idbSet('relay_lastbackup',today);}catch(e){}}
   }catch(e){}
 }
-/* ── 서버에서 불러와 적용 — 적용 전 강제 스냅샷(로컬 자료가 사라지지 않게) ── */
+/* ── 안전판 가드: 이 기기에 자료가 있으면 스냅샷 '성공'을 확인한 뒤에만 덮어쓰는 적용을 진행 ── */
+async function relayGuardSnapshot(label){
+  const has=((state.projects||[]).length||(state.files||[]).length||(state.quotes||[]).length)>0;
+  if(!has)return true;   // 빈 기기 — 보호할 자료 없음(hjSnapshot도 빈 상태는 저장하지 않는 정책)
+  let ok=false;try{ok=await hjSnapshot(label,true);}catch(e){ok=false;}   // force=true인데 false/throw면 실패로 간주
+  if(!ok)toast('🛡 안전판 백업 실패 — 적용을 중단했습니다. 저장공간을 확인하세요');
+  return ok;
+}
+/* ── 서버에서 불러와 적용 — 적용 전 스냅샷 성공 확인(실패 시 적용 중단, 로컬 자료 보존) ── */
 async function relayLoadApply(silent,snapLabel){
   try{
     const res=await cloudApiLoad();
@@ -1397,9 +1415,9 @@ async function relayLoadApply(silent,snapLabel){
       return false;
     }
     if(!res.exists||!res.data){if(!silent)toast('서버에 저장된 자료가 아직 없습니다 — [☁️ 서버에 저장하기]로 이 기기 자료를 올리세요');return false;}
-    try{await hjSnapshot(snapLabel||'서버자료 적용 전',true);}catch(e){}
+    if(!(await relayGuardSnapshot(snapLabel||'서버자료 적용 전')))return false;   // 스냅샷 실패 → 적용 중단
     applyData(res.data);render();
-    __relay.rev=res.revision||0;__relay.syncAt=res.modifiedAt||new Date().toISOString();
+    __relay.rev=(typeof res.revision==='number')?res.revision:(__relay.rev||0);__relay.syncAt=res.modifiedAt||new Date().toISOString();   // revision 누락 응답이어도 rev 리셋 금지
     try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
     relaySetStatus('saved');
     if(!silent)toast('☁️ 서버에서 불러옴 — 현장 '+state.projects.length+'곳 (이전 자료는 🛡 스냅샷에 보관)');
@@ -1417,7 +1435,13 @@ function relayConflictModal(res){
     </div>`,[
     {label:'① 서버 데이터 사용',cls:'blue',fn:async function(){closeModal();await relayLoadApply(false,'충돌-서버적용 전');}},
     {label:'② 내 기기 데이터로 덮어쓰기',cls:'clay',fn:async function(){closeModal();__relay.rev=Number(res&&res.serverRevision)||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 내 기기 자료로 서버를 덮어썼습니다');}},
-    {label:'③ 내 데이터 백업 후 서버 적용',cls:'moss',fn:async function(){closeModal();try{const b=await cloudApiBackup();if(!(b&&b.ok))toast('서버 백업 실패 — 스냅샷으로만 보관합니다');}catch(e){toast('서버 백업 실패 — 스냅샷으로만 보관합니다');}await relayLoadApply(false,'충돌-서버적용 전');}}
+    {label:'③ 내 기기 자료를 이 기기 안전판(🛡 스냅샷)에 백업한 뒤 서버 자료 적용',cls:'moss',fn:async function(){
+      closeModal();
+      // 라벨 그대로: '내 데이터 백업'=이 기기 스냅샷. 스냅샷 성공을 먼저 확인하고 나서만 서버 자료를 적용.
+      if(!(await relayGuardSnapshot('충돌-내자료 백업')))return;
+      try{const b=await cloudApiBackup();if(!(b&&b.ok))toast('참고: 서버본 날짜백업은 실패했습니다(내 자료 스냅샷과는 별개, 계속 진행)');}catch(e){toast('참고: 서버본 날짜백업은 실패했습니다(내 자료 스냅샷과는 별개, 계속 진행)');}   // 서버 파일 쪽 백업(추가 안전장치)
+      await relayLoadApply(false,'충돌-내자료 백업');
+    }}
   ]);
 }
 /* ── 첫 연결 마이그레이션 — 서버·기기 양쪽에 자료가 있으면 사용자 선택(무조건 덮어쓰기 금지) ── */
@@ -1430,15 +1454,26 @@ async function relayFirstConnectFlow(h){
   let res=null;try{res=await cloudApiLoad();}catch(e){}
   const sAt=(res&&res.data&&res.data.savedAt)?new Date(res.data.savedAt).toLocaleString('ko-KR'):((res&&res.modifiedAt)?new Date(res.modifiedAt).toLocaleString('ko-KR'):'(시각 확인 불가)');
   const lAt=__dataAt?new Date(__dataAt).toLocaleString('ko-KR'):'(시각 기록 없음)';
-  try{await hjSnapshot('서버 첫연결 전',true);}catch(e){}   // ★선택 전 자동 백업(이 기기)
+  let preSnap=false;try{preSnap=await hjSnapshot('서버 첫연결 전',true);}catch(e){preSnap=false;}   // ★선택 전 자동 백업(이 기기) — 성공 여부를 정직하게 안내
   openModal('☁️ 서버 첫 연결 — 어느 자료를 쓸까요?',
     `<div style="font-size:13px;line-height:1.8">
       <div>🌐 서버 자료: revision ${h.revision||0} · 저장 ${escapeHtml(sAt)}</div>
       <div>💻 이 기기 자료: 현장 ${(state.projects||[]).length}곳 · 파일 ${(state.files||[]).length}개 · 저장 ${escapeHtml(lAt)}</div>
-      <p style="font-size:12px;color:var(--muted-2);margin:8px 0 0">무엇을 골라도 이 기기 자료는 방금 🛡 스냅샷으로 보관했습니다. ‘기기 자료 올리기’를 고르면 서버 쪽도 먼저 백업합니다.</p>
+      <p style="font-size:12px;color:var(--muted-2);margin:8px 0 0">${preSnap?'이 기기 자료는 방금 🛡 스냅샷으로 보관했습니다.':'⚠️ 사전 스냅샷 저장 실패 — 서버 자료 적용 시 한 번 더 시도하고, 그래도 실패하면 적용을 중단합니다.'} ‘기기 자료 올리기’를 고르면 서버 쪽도 먼저 백업합니다.</p>
     </div>`,[
     {label:'서버 자료 사용',cls:'blue',fn:async function(){closeModal();await relayLoadApply(false,'서버 첫연결 전');}},
-    {label:'이 기기 자료를 서버에 올리기',cls:'clay',fn:async function(){closeModal();try{const b=await cloudApiBackup();if(!(b&&b.ok))toast('서버 쪽 백업이 안 됐습니다 — 그래도 진행하면 서버본은 백업 없이 교체됩니다');}catch(e){toast('서버 쪽 백업이 안 됐습니다 — 그래도 진행하면 서버본은 백업 없이 교체됩니다');}__relay.rev=h.revision||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 이 기기 자료로 서버를 시작했습니다(직전 서버본은 날짜 백업에 보관)');}},
+    {label:'이 기기 자료를 서버에 올리기',cls:'clay',fn:async function(){
+      closeModal();
+      let bok=false;try{const b=await cloudApiBackup();bok=!!(b&&b.ok);}catch(e){bok=false;}   // 덮어쓰기 전 서버본 백업
+      const doUp=async function(){__relay.rev=h.revision||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 이 기기 자료로 서버를 시작했습니다'+(bok?' (직전 서버본은 날짜 백업에 보관)':''));};
+      if(bok){await doUp();return;}
+      // 백업 실패 시 무확인 진행 금지 — 취소가 기본
+      openModal('⚠️ 서버 자료 백업 실패',
+        `<div style="font-size:13px;line-height:1.7">서버 자료 백업에 실패했습니다.<br>그래도 <b>이 기기 자료로 서버를 덮어쓸까요?</b><br><span style="font-size:12px;color:var(--muted-2)">덮어쓰면 서버에 있던 자료는 복구가 어려울 수 있습니다.</span></div>`,[
+        {label:'취소(권장)',cls:'blue',fn:closeModal},
+        {label:'그래도 덮어쓰기',cls:'clay',fn:async function(){closeModal();await doUp();}}
+      ]);
+    }},
     {label:'나중에',cls:'ghost',fn:closeModal}
   ]);
 }
@@ -1484,9 +1519,11 @@ async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
   if(b64.length>RELAY_MAX_B64)throw new Error('파일이 너무 큽니다(약 '+Math.round(b64.length/1398101)+'MB) — 대용량 영상·원본 파일은 지원하지 않습니다');
   return {name:name,mimeType:mime,kind:kind,dataB64:b64};
 }
-/* ── 서버 중계 업로드: 한 개씩 순차 + 진행 토스트. 성공 fileId는 state에 주입하지 않음(기존 gdUploadPhotos와 동일 — 목록은 cloudApiListFiles로 조회) ── */
-async function relayUploadFiles(files,kind){
-  let ok=0,queued=0,failed=0;
+/* ── 서버 중계 업로드: 한 개씩 순차 + 진행 토스트.
+   targets[i]를 주면 성공 fileId를 레거시(카메라 경로 added[i]._driveId=id)와 동일하게 주입.
+   targets 없으면(gdUploadPhotos처럼 state 항목이 없는 경우) 주입 안 함 — 레거시 gdUploadPhotos도 미주입이라 동작 일치. ── */
+async function relayUploadFiles(files,kind,targets){
+  let ok=0,queued=0,failed=0,injected=0;
   for(let i=0;i<files.length;i++){
     const f=files[i];
     toast('☁️ 서버 업로드 중… '+(i+1)+'/'+files.length+(f.name?(' · '+f.name):''));
@@ -1494,11 +1531,12 @@ async function relayUploadFiles(files,kind){
     try{payload=await relayBuildUploadPayload(f,kind);}catch(e){failed++;toast((f.name||'파일')+' — '+(e.message||e));continue;}   // 형식·크기 문제는 대기열에 안 넣고 바로 안내
     try{
       const r=await relayCall('upload',payload);
-      if(r&&r.ok)ok++;
+      if(r&&r.ok){ok++;if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;injected++;}}
       else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;break;}
       else{failed++;toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
-    }catch(e){queued++;try{await relayQueuePush('upload',payload);}catch(e2){failed++;}}   // 네트워크 실패 → 압축본을 대기열에(연결되면 자동 전송)
+    }catch(e){queued++;try{if(!(await relayQueuePush('upload',payload)))failed++;}catch(e2){failed++;}}   // 네트워크 실패 → 압축본을 대기열에(가득 차면 실패 처리)
   }
+  if(injected)markDirty();   // _driveId 주입분 저장(레거시 카메라 경로와 동일)
   await relayUpdateQueueBadge();
   if(queued)relaySetStatus(navigator.onLine===false?'offline':'netfail');
   toast('☁️ '+ok+'/'+files.length+'개 서버 업로드 완료'+(queued?(' · '+queued+'건 전송 대기'):'')+(failed?(' · '+failed+'건 실패'):''));
@@ -1539,11 +1577,8 @@ function relayNewerBanner(res){
   document.body.appendChild(d);
   d.querySelector('#relayNewGo').onclick=async function(){
     d.remove();
-    try{await hjSnapshot('서버자료 적용 전',true);}catch(e){}   // 적용 전 스냅샷(이 기기 자료 보존)
-    applyData(res.data);render();
-    __relay.rev=res.revision||0;__relay.syncAt=res.modifiedAt||new Date().toISOString();
-    try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
-    relaySetStatus('saved');toast('☁️ 서버 자료를 불러왔습니다(이전 자료는 🛡 스냅샷)');
+    // 부팅 때 받아둔 데이터(클로저)는 쓰지 않고 클릭 시점에 서버에서 '다시' 불러옴 — 스냅샷 성공 확인·적용은 relayLoadApply가 수행
+    await relayLoadApply(false,'서버자료 적용 전');
   };
   d.querySelector('#relayNewX').onclick=function(){d.remove();};
 }
@@ -2380,6 +2415,7 @@ function openGdriveSetup(){
       <button class="clay tiny" id="ryDown">⬇️ 서버에서 불러오기</button>
       <button class="blue tiny" id="ryUp">☁️ 서버에 저장하기</button>
       <button class="ghost tiny" id="ryFlush">📮 다시 보내기 (대기 <span id="ryQn">${__relayQn}</span>건)</button>
+      <button class="ghost tiny" id="ryClearFail">🧹 실패 항목 비우기</button>
     </div>
     <div id="ryOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
@@ -2477,6 +2513,15 @@ function openGdriveSetup(){
   root.querySelector('#ryUp').onclick=async()=>{await saveRy();if(!relayReady()){toast('서버 주소·인증키를 먼저 입력하세요');return;}const ok=await relaySaveNow(true);if(ok)toast('☁️ 서버에 저장됨 (revision '+__relay.rev+')');};
   root.querySelector('#ryDown').onclick=async()=>{await saveRy();if(!relayReady()){toast('서버 주소·인증키를 먼저 입력하세요');return;}await relayLoadApply(false);};
   root.querySelector('#ryFlush').onclick=async()=>{await saveRy();if(!relayReady()){toast('서버 주소·인증키를 먼저 입력하세요');return;}toast('대기열 재전송 중…');await cloudFlushQueue(true);const n=await relayUpdateQueueBadge();toast(n?('아직 '+n+'건 남음 — 서버 상태를 확인하세요'):'대기열 전부 전송 완료');};
+  root.querySelector('#ryClearFail').onclick=async()=>{   // 5회 이상 실패한 대기 항목만 비움(확인 후)
+    const q=await relayQueueGet();
+    const bad=q.filter(it=>(it.retryCount||0)>=5);
+    if(!bad.length){toast('5회 이상 실패한 대기 항목이 없습니다');return;}
+    if(!confirm('실패 항목 '+bad.length+'건을 삭제할까요? 삭제하면 그 항목은 서버로 전송되지 않은 채 사라집니다.'))return;
+    await relayQueueSet(q.filter(it=>(it.retryCount||0)<5));
+    await relayUpdateQueueBadge();
+    toast('실패 항목 '+bad.length+'건 삭제됨');
+  };
   relayUpdateQueueBadge();
   if(relayReady())relaySetStatus(__relayState||(__relay.syncAt?'saved':'ready'));   // gdDot에도 relay 상태 반영
 }
@@ -3445,8 +3490,7 @@ function openCamera(){
       toast(added.length+'장 촬영 추가'+(state.activeProject?` · ${state.activeProject}`:''));
       // 모바일=올리기 우선: 드라이브 연동돼 있으면 촬영분을 곧바로 자동 백업
       if(typeof relayReady==='function'&&relayReady()){
-        // 서버 중계 업로드(압축·순차) — fileId는 state에 주입하지 않음(목록은 cloudApiListFiles로 조회)
-        await relayUploadFiles(files,'photo');
+        await relayUploadFiles(files,'photo',added);   // 서버 중계 업로드(압축·순차) — 성공 fileId를 레거시와 동일하게 added[i]._driveId로 주입
       }else if(typeof __gdToken!=='undefined'&&__gdToken){
         let ok=0;
         for(let i=0;i<files.length;i++){

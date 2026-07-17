@@ -15,7 +15,7 @@ const ALLOWED_MIME = {
 
 function freshStore() {
   return { revision: 0, exists: false, data: null, savedAt: '', savedBy: '',
-           saves: [], uploads: [], backups: 0, backupDates: {}, fileSeq: 0 };
+           saves: [], uploads: [], backups: 0, backupDates: {}, fileSeq: 0, loads: 0 };
 }
 let store = freshStore();
 
@@ -35,7 +35,7 @@ const server = http.createServer((req, res) => {
         revision: store.revision, exists: store.exists, savedAt: store.savedAt, savedBy: store.savedBy,
         saves: store.saves,
         uploads: store.uploads.map(x => ({ name: x.name, kind: x.kind, mimeType: x.mimeType, b64len: x.dataB64.length })),
-        backups: store.backups, data: store.data
+        backups: store.backups, loads: store.loads, data: store.data
       });
     }
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
@@ -65,6 +65,7 @@ const server = http.createServer((req, res) => {
       switch (action) {
         case 'health': return send(res, health());
         case 'load':
+          store.loads++;
           if (!store.exists) return send(res, { ok: true, exists: false, data: null, revision: 0, modifiedAt: '', savedBy: '' });
           return send(res, { ok: true, exists: true, data: store.data, revision: store.revision, modifiedAt: store.savedAt, savedBy: store.savedBy });
         case 'save': {
