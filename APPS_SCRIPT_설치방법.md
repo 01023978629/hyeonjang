@@ -70,7 +70,8 @@
 https://script.google.com/macros/s/…/exec?action=health&token=여기APP_TOKEN
 ```
 
-`{"ok":true,"version":"relay-v2","folderOk":true,...}` 가 보이면 성공.
+`{"ok":true,"version":"relay-v3","folderOk":true,...}` 처럼 **`ok:true` 와 `folderOk:true`** 가 보이면 성공입니다.
+- `version` 값(relay-v3 등)은 서버 버전에 따라 다를 수 있으니 숫자는 신경쓰지 않아도 됩니다.
 - `folderOk:false` → DRIVE_FOLDER_ID 오타
 - `unauthorized` → 토큰 오타
 
