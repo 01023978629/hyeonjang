@@ -276,6 +276,7 @@
   .cluster-h .when{font-weight:700;font-size:13.5px}
   .cluster-h .where{font-size:11.5px;color:var(--blueprint)}
   .cluster-h .n{font-size:11px;color:var(--muted);margin-left:auto}
+  .cluster-repair{font-size:11px;padding:6px 9px;white-space:nowrap}
   #projList{max-height:346px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:thin}
   #projList::-webkit-scrollbar{width:5px}#projList::-webkit-scrollbar-thumb{background:var(--line-soft);border-radius:3px}
   #projList>.proj-item:first-child{position:sticky;top:0;z-index:2;background:var(--paper)}
@@ -1651,21 +1652,50 @@ async function repairPhotoFromServer(id){
   try{const t=await relayGetThumbnail(f._driveId);if(t)f.thumb=t;}catch(e){}
   markDirty();render();return true;
 }
-function choosePhotoRelink(targetId){
+function choosePhotoRelink(targetId,targetIds){
+  const scope=Array.isArray(targetIds)?targetIds.filter(Boolean):[];
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=!targetId;
-  inp.onchange=async()=>{const files=[...inp.files];if(!files.length)return;await relinkSelectedPhotos(files,targetId);};
+  inp.onchange=async()=>{const files=[...inp.files];if(!files.length)return;await relinkSelectedPhotos(files,targetId,scope,false);};
   inp.click();
 }
-async function relinkSelectedPhotos(files,targetId){
-  const missing=missingPhotoPreviews();const used=new Set(),pairs=[];
+function clusterRepairButton(items){
+  const ids=(items||[]).filter(f=>f&&f.kind==='photo'&&!f.thumb&&!f._driveId).map(f=>f.id);
+  return ids.length?`<button type="button" class="warn tiny cluster-repair" data-repaircluster="${escapeAttr(ids.join(','))}" title="이 방문의 빈 사진을 여러 장 선택해 연결합니다">사진 연결 ${ids.length}</button>`:'';
+}
+async function relinkSelectedPhotos(files,targetId,targetIds,allowOrder){
+  files=[...(files||[])];
+  const scoped=new Set(Array.isArray(targetIds)?targetIds.filter(Boolean):[]);
+  const missing=missingPhotoPreviews().filter(x=>targetId?x.id===targetId:(!scoped.size||scoped.has(x.id)));
+  const used=new Set(),usedFiles=new Set(),pairs=[];
   for(const file of files){
     let rec=targetId?missing.find(x=>x.id===targetId&&!used.has(x)):null;
     if(!rec){const exact=missing.filter(x=>!used.has(x)&&x.name===file.name);rec=exact[0]||null;}
     if(!rec){const k=baseName(file.name),norm=missing.filter(x=>!used.has(x)&&baseName(x.name)===k);rec=norm[0]||null;}
     if(!rec)continue;
-    used.add(rec);pairs.push({file,rec});if(targetId)break;
+    used.add(rec);usedFiles.add(file);pairs.push({file,rec});if(targetId)break;
   }
-  if(!pairs.length){toast('선택한 사진과 이름이 같은 빈 기록을 찾지 못했습니다');return 0;}
+  const remFiles=files.filter(f=>!usedFiles.has(f));
+  const remRecords=missing.filter(r=>!used.has(r));
+  if(scoped.size&&remFiles.length&&!allowOrder&&remFiles.length===remRecords.length){
+    openModal('방문 사진 연결 확인',`<div style="font-size:13px;line-height:1.7"><b>파일명으로 ${pairs.length}장 확인</b><p style="margin:8px 0 0">이름이 다른 ${remFiles.length}장은 선택한 순서대로 촬영 기록에 연결합니다. 선택한 사진 수와 빈칸 수가 정확히 같습니다.</p></div>`,[
+      {label:'취소',cls:'ghost',fn:closeModal},
+      {label:'선택 순서로 연결',cls:'blue',fn:async()=>{closeModal();await relinkSelectedPhotos(files,null,[...scoped],true);}}
+    ],true);
+    return 0;
+  }
+  if(scoped.size&&allowOrder&&remFiles.length===remRecords.length){
+    const ordered=[...remRecords].sort((a,b)=>((a.when&&a.when.getTime?a.when.getTime():0)-(b.when&&b.when.getTime?b.when.getTime():0))||String(a.id).localeCompare(String(b.id)));
+    remFiles.forEach((file,i)=>pairs.push({file,rec:ordered[i]}));
+  }
+  if(!pairs.length){
+    if(scoped.size){
+      openModal('사진 수를 확인해 주세요',`<div style="font-size:13px;line-height:1.7">이 방문의 빈 사진은 <b>${missing.length}장</b>, 선택한 사진은 <b>${files.length}장</b>입니다.<br>파일명이 다르면 같은 수를 선택해야 순서대로 연결할 수 있습니다.</div>`,[
+        {label:'닫기',cls:'ghost',fn:closeModal},
+        {label:'다시 선택',cls:'blue',fn:()=>{closeModal();choosePhotoRelink(null,[...scoped]);}}
+      ],true);
+    }else toast('선택한 사진과 이름이 같은 빈 기록을 찾지 못했습니다');
+    return 0;
+  }
   for(const p of pairs){
     const f=p.rec,file=p.file;
     f._file=file;f.handle=null;f._virtual=false;f.size=file.size||f.size;f.ext=bestExt(file.name,file.type)||f.ext;f.kind='photo';
@@ -1674,7 +1704,7 @@ async function relinkSelectedPhotos(files,targetId){
   markDirty();render();
   if(relayReady())await relayUploadFiles(pairs.map(p=>p.file),'photo',pairs.map(p=>p.rec));
   for(const p of pairs){if(p.rec._driveId&&p.rec.thumb){try{await idbSet('thumb:'+p.rec._driveId,p.rec.thumb);}catch(e){}}}
-  markDirty();render();toast(pairs.length+'장 미리보기 복구 완료'+(files.length>pairs.length?' · 이름이 다른 사진 '+(files.length-pairs.length)+'장 제외':''));
+  markDirty();render();toast(pairs.length+'장 미리보기 복구 완료'+(files.length>pairs.length?' · 연결하지 못한 사진 '+(files.length-pairs.length)+'장':''));
   return pairs.length;
 }
 function openPhotoRepair(id){
@@ -1779,7 +1809,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-photo-preview-v107';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-visit-photo-repair-v108';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -17434,6 +17464,7 @@ function viewPhotos(){
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
+    const repairBtn=clusterRepairButton(visible);
     // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
     const worklabel=mostCommon(c.items.map(p=>p._worklabel).filter(Boolean))||'';
     // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
@@ -17444,6 +17475,7 @@ function viewPhotos(){
       ${revisit}
       <span class="where">${where}</span>${geoBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
+      ${repairBtn}
       <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
       <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
       <div class="cluster-body">${visible.map(p=>photoCell(p)).join('')}</div></div>`;
@@ -19123,7 +19155,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19250,6 +19282,7 @@ function setupDelegation(){
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
     if(d.repair!==undefined){e.stopPropagation();return openPhotoRepair(d.repair);}
+    if(d.repaircluster!==undefined){e.stopPropagation();return choosePhotoRelink(null,d.repaircluster.split(',').filter(Boolean));}
     if(d.stage!==undefined)return setStage(d.proj,+d.stage);
     if(d.learn!==undefined){const f=state.files.find(x=>x.id===d.learn);if(f)learnEstimate(f);return;}
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}

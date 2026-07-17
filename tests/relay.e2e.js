@@ -258,6 +258,40 @@ async function pollMock(pred, ms, label) {
     assert(/^data:image\//.test(r.thumb) && r.cached === r.thumb, '재접속용 로컬 썸네일 캐시 저장');
   });
 
+  await test('11-4. 방문 묶음 복구 — 이름 변경 사진은 확인 후 선택 순서 연결', async () => {
+    const r = await page.evaluate(async () => {
+      const before = state.files.slice();
+      const origDirty = window.markDirty, origRender = window.render, origRelayReady = window.relayReady;
+      window.markDirty = function () {}; window.render = function () {}; window.relayReady = function () { return false; };
+      const recs = [
+        { id: 'visit-missing-a', name: '원래사진A.jpg', prefix: '현장사진/', ext: 'jpg', kind: 'photo', project: '테스트현장', _phase: '철거', _driveId: null, thumb: null, _virtual: true, size: 0, when: new Date('2026-07-06T10:00:00') },
+        { id: 'visit-missing-b', name: '원래사진B.jpg', prefix: '현장사진/', ext: 'jpg', kind: 'photo', project: '테스트현장', _phase: '철거', _driveId: null, thumb: null, _virtual: true, size: 0, when: new Date('2026-07-06T10:01:00') }
+      ];
+      state.files.push(...recs);
+      const makeFile = async (name, color) => {
+        const cv = document.createElement('canvas'); cv.width = 8; cv.height = 8;
+        const cx = cv.getContext('2d'); cx.fillStyle = color; cx.fillRect(0, 0, 8, 8);
+        const blob = await new Promise(resolve => cv.toBlob(resolve, 'image/jpeg', .8));
+        return new File([blob], name, { type: 'image/jpeg' });
+      };
+      const files = [await makeFile('선택사진1.jpg', '#1677ff'), await makeFile('선택사진2.jpg', '#ef4444')];
+      const markup = clusterRepairButton(recs);
+      const first = await relinkSelectedPhotos(files, null, recs.map(x => x.id), false);
+      const confirmText = document.querySelector('#modalRoot .modal')?.innerText || '';
+      const unchanged = recs.every(x => !x.thumb && x._virtual);
+      const confirmBtn = [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => b.textContent.includes('선택 순서'));
+      confirmBtn.click(); await new Promise(resolve => setTimeout(resolve, 500));
+      const linked = recs.every(x => /^data:image\//.test(x.thumb || '') && x._virtual === false);
+      const preserved = recs.every(x => x.project === '테스트현장' && x._phase === '철거');
+      for (const x of recs) await idbDel('thumb-local:' + fileKey(x));
+      closeModal(); state.files = before; window.markDirty = origDirty; window.render = origRender; window.relayReady = origRelayReady;
+      return { markup, first, confirmText, unchanged, linked, preserved };
+    });
+    assert(/data-repaircluster="visit-missing-a,visit-missing-b"/.test(r.markup) && /사진 연결 2/.test(r.markup), '방문 묶음 복구 버튼 렌더');
+    assert(r.first === 0 && r.unchanged && /선택한 순서/.test(r.confirmText), '확인 전에는 연결하지 않음');
+    assert(r.linked && r.preserved, '확인 후 선택 순서 연결 + 현장·공정 보존');
+  });
+
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
