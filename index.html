@@ -1584,25 +1584,39 @@ async function relayLoadDriveFiles(silent){
       const res=await cloudApiListFiles('photo');
       if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);return 0;}
       if(!(res&&res.ok&&Array.isArray(res.files))){if(!silent)toast('서버 사진 목록을 불러오지 못했습니다');return 0;}
-      let added=0;
+      let added=0,linked=0;
+      const unlinkedByName=new Map();
+      for(const x of state.files){
+        if(!x||x._driveId||!x.name)continue;
+        const xe=bestExt(x.name,x.ext||'');
+        if(!IMG.includes(xe))continue;
+        if(!unlinkedByName.has(x.name))unlinkedByName.set(x.name,[]);
+        unlinkedByName.get(x.name).push(x);
+      }
       for(const f of res.files){
         if(!f||!f.id||__removedIds.has(f.id)||state.files.some(x=>x._driveId===f.id))continue;
         const fe=bestExt(f.name,f.mimeType||'');
         if(!IMG.includes(fe))continue;
+        const same=(unlinkedByName.get(f.name)||[]).find(x=>!x._driveId);
+        if(same){
+          same._driveId=f.id;same.size=same.size||(+f.size||0);
+          if(!same.kind||same.kind==='other')same.kind='photo';
+          linked++;continue;
+        }
         const dt=f.modifiedAt?new Date(f.modifiedAt):null;
         state.files.push({id:uid(),name:f.name||('photo_'+f.id),handle:null,prefix:'현장사진/',ext:fe,size:+f.size||0,
           kind:'photo',project:null,when:dt&&!isNaN(dt)?dt:null,lat:null,lng:null,place:null,address:null,
           thumb:null,text:'',ocr:'na',est:null,contact:null,_file:null,_virtual:true,_driveId:f.id});
         added++;
       }
-      if(added){
+      if(added||linked){
         if(typeof __photoCache!=='undefined')__photoCache.key=null;
         if(silent){try{await idbSet('appState',serializeData());}catch(e){}}
         else{markDirty();state.tab='photos';}
         render();try{hydrateThumbs();}catch(e){}
       }
-      if(!silent)toast(added?('☁️ 서버 사진 '+added+'장 불러옴'):'새로 불러올 서버 사진이 없습니다');
-      return added;
+      if(!silent)toast((added||linked)?('☁️ 서버 사진 '+(added+linked)+'장 연결'):'새로 불러올 서버 사진이 없습니다');
+      return added+linked;
     }catch(e){if(!silent)toast('서버 사진 불러오기 실패: '+(e.message||e));return 0;}
     finally{__relayFilesInflight=null;}
   })();
@@ -1691,7 +1705,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-relay-v106.1';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-17-relay-v106.2';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];

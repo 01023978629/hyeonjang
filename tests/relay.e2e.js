@@ -208,12 +208,21 @@ async function pollMock(pred, ms, label) {
       const beforeStored = await idbGet('appState');
       const origDirty = window.markDirty; window.markDirty = function() {};
       state.files = state.files.filter(f => !f._driveId);
+      state.files.push(
+        { id: 'old-mobile-a', name: '현장A.jpg', ext: 'jpg', kind: 'photo', _driveId: null, _virtual: true, size: 0 },
+        { id: 'old-mobile-b', name: '현장B.jpg', ext: 'jpg', kind: 'photo', _driveId: null, _virtual: true, size: 0 }
+      );
+      const countBefore = state.files.length;
       const n = await relayLoadDriveFiles(true);
       const recovered = state.files.filter(f => /^mockfile_/.test(f._driveId || ''));
+      const added = state.files.length - countBefore;
       window.markDirty = origDirty; state.files = before; await idbSet('appState', beforeStored);
-      return { n, count: recovered.length, virtual: recovered.every(f => f._virtual && f.kind === 'photo'), hasSize: recovered.every(f => f.size > 0) };
+      return { n, count: recovered.length, added,
+        linked: recovered.filter(f => /^old-mobile-/.test(f.id)).length,
+        virtual: recovered.every(f => f._virtual && f.kind === 'photo'), hasSize: recovered.every(f => f.size > 0) };
     });
     assert(r.n === 3 && r.count === 3, '과거 업로드 3장 복구, got n=' + r.n + ' count=' + r.count);
+    assert(r.linked === 2 && r.added === 1, '같은 이름 2장은 기존 기록에 연결하고 새 사진 1장만 추가');
     assert(r.virtual, '복구 항목은 photo 가상 파일');
     assert(r.hasSize, '서버 파일 크기 메타 포함');
   });
