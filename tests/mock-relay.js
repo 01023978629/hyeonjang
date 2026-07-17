@@ -102,6 +102,14 @@ const server = http.createServer((req, res) => {
           store.uploads.push({ id, name: String(p.name || ''), mimeType: mime, kind, dataB64: b64, modifiedAt: new Date().toISOString() });
           return send(res, { ok: true, fileId: id, name: String(p.name || ''), folder: kind === 'photo' ? '현장사진' : '견적서' });
         }
+        case 'download': {   // relay-v1.1: 만물인테리어 폴더 안(=이 mock에 업로드된) 파일만, 8MB 상한
+          const fid = String(p.fileId || '');
+          if (!fid) return send(res, fail('bad-request', 'fileId가 없습니다'));
+          const f = store.uploads.find(x => x.id === fid);
+          if (!f) return send(res, fail('unauthorized', '만물인테리어 폴더 밖의 파일은 내려받을 수 없습니다'));
+          if (f.dataB64.length > Math.ceil(8 * 1024 * 1024 * 4 / 3)) return send(res, fail('too-large', '미리보기용으로는 파일이 너무 큽니다(8MB 초과)'));
+          return send(res, { ok: true, fileId: fid, name: f.name, mimeType: f.mimeType, dataB64: f.dataB64 });
+        }
         case 'listFiles': {
           const kind = p && p.kind ? String(p.kind) : '';
           const files = store.uploads.filter(f => !kind || f.kind === kind)

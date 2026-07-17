@@ -150,6 +150,8 @@ async function pollMock(pred, ms, label) {
     const recvBytes = Math.round(ph[0].b64len * 0.75);
     assert(recvBytes < r.origSize, '압축됨(수신 ' + recvBytes + ' < 원본 ' + r.origSize + ')');
     assert(ph.every(u => u.mimeType === 'image/jpeg'), 'jpeg 변환');
+    // 업로드 버튼 경로 즉시 등록(버그1 수정)이 markDirty를 유발 → 자동저장(rev6) 완료까지 대기(이후 테스트 결정성)
+    await pollMock(s => s.revision === 6, 12000, '등록 markDirty 자동저장(rev6)');
   });
 
   await test('9. PDF 문서 업로드(kind=doc)', async () => {
@@ -181,7 +183,7 @@ async function pollMock(pred, ms, label) {
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
-       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
+       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiDownload', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot', 'relayPullPhotos', 'relayIngestOne', 'relayPullAll']
         .filter(n => typeof window[n] !== 'function'));
     assert(missing.length === 0, '누락: ' + missing.join(','));
   });
@@ -206,15 +208,15 @@ async function pollMock(pred, ms, label) {
     await pm.waitForSelector('#relayNewBar', { timeout: 10000 });
     // (c) 검증: 배너 표시 '후' 서버가 또 갱신(rev6)돼도, 클릭 시 부팅 때 데이터가 아닌 '재조회' 결과를 적용해야 함
     const l0 = (await mockState()).loads;
-    await fetch(MOCK + '/__bump');   // 서버 rev 5 → 6
+    await fetch(MOCK + '/__bump');   // 서버 rev 6 → 7
     await pm.click('#relayNewGo');
     await pm.waitForFunction(() => state.projects.some(p => p.name === '테스트현장'), null, { timeout: 8000 });
     const l1 = (await mockState()).loads;
     assert(l1 > l0, '클릭 시 load 재요청 도착(loads ' + l0 + '→' + l1 + ')');
     const rev = await pm.evaluate(() => __relay.rev);
-    assert(rev === 6, '클릭 시점 최신 rev6 적용(부팅 클로저 rev5 아님), got ' + rev);
+    assert(rev === 7, '클릭 시점 최신 rev7 적용(부팅 클로저 rev6 아님), got ' + rev);
     const rec = await pm.evaluate(() => { const p = state.projects.find(x => x.name === '테스트현장'); return p && p.received; });
-    assert(rec === 3000, '서버 최신본 적용, got ' + rec);
+    assert(rec === 5000, '서버 최신본 적용, got ' + rec);
     const dev = await pm.evaluate(async () => idbGet('relay_device'));
     assert(/^mobile-/.test(dev), 'deviceId mobile- 프리픽스: ' + dev);
   });
@@ -281,15 +283,15 @@ async function pollMock(pred, ms, label) {
   });
 
   await test('19.(C+A) 충돌 ③ — 내 자료 스냅샷 성공 확인 후 서버 자료 적용', async () => {
-    // 서버 rev6(모바일 테스트의 bump) vs PC rev5 → 충돌
+    // 서버 rev7(모바일 테스트의 bump) vs PC rev6 → 충돌
     await page.evaluate(() => { state.projects[0].received = 7777; markDirty(); });
     await page.waitForSelector('#ryConflictBox', { timeout: 12000 });
     const label3 = await page.$eval('#modalRoot .mfoot button:nth-child(3)', b => b.textContent);
     assert(/안전판|스냅샷/.test(label3), '③ 라벨이 로컬 백업(스냅샷)임을 명시: ' + label3);
     await page.click('#modalRoot .mfoot button:nth-child(3)');
-    await page.waitForFunction(() => __relay.rev === 6, null, { timeout: 12000 });
+    await page.waitForFunction(() => __relay.rev === 7, null, { timeout: 12000 });
     const rec = await page.evaluate(() => state.projects[0].received);
-    assert(rec === 3000, '서버 자료 적용(7777→3000), got ' + rec);
+    assert(rec === 5000, '서버 자료 적용(7777→5000), got ' + rec);
     const labels = await page.evaluate(async () => ((await idbGet('hj_snaps')) || []).map(s => s.label));
     assert(labels.indexOf('충돌-내자료 백업') >= 0, '스냅샷 "충돌-내자료 백업" 생성: ' + labels.join(','));
   });
@@ -304,7 +306,7 @@ async function pollMock(pred, ms, label) {
       return target._driveId || '';
     });
     assert(/^mockfile_/.test(inj), '_driveId 주입됨: ' + inj);
-    await pollMock(s => s.revision === 7, 12000, '주입 markDirty 자동저장(rev7)');   // 이후 테스트와 경합 방지
+    await pollMock(s => s.revision === 8, 12000, '주입 markDirty 자동저장(rev8)');   // 이후 테스트와 경합 방지
   });
 
   await test('21.(E) 첫연결 "기기 자료 올리기" — 서버 백업 실패 시 확인 모달(취소 기본)', async () => {
@@ -341,6 +343,7 @@ async function pollMock(pred, ms, label) {
   await test('23.(H) revision 누락 응답에도 rev 유지(리셋 금지)', async () => {
     const rev = await page.evaluate(async () => {
       const orig = window.relayCall;
+      const realRev = __relay.rev;   // 실제 서버 rev(원복용)
       __relay.rev = 42;
       window.relayCall = async function (a, p) {   // revision 필드가 빠진 load 응답 모의
         if (a === 'load') return { ok: true, exists: true, data: serializeData(), modifiedAt: new Date().toISOString() };
@@ -349,13 +352,69 @@ async function pollMock(pred, ms, label) {
       await relayLoadApply(true);
       window.relayCall = orig;
       const r = __relay.rev;
-      __relay.rev = 7; await idbSet('relay_rev', 7);   // 실제 서버 rev로 원복
+      __relay.rev = realRev; await idbSet('relay_rev', realRev);   // 원복
       return r;
     });
     assert(rev === 42, 'rev 42 유지(0 리셋 아님), got ' + rev);
   });
 
-  await test('24. pageerror 0 (PC·모바일 컨텍스트)', async () => {
+  await test('25.(버그1) 업로드 버튼 경로 사진 2장 → 즉시 상태 등록 + 압축본 재사용 썸네일', async () => {
+    const r = await page.evaluate(async () => {
+      function mk(name) {
+        return new Promise(res => {
+          const cv = document.createElement('canvas'); cv.width = 800; cv.height = 600;
+          const g = cv.getContext('2d'); g.fillStyle = '#48c'; g.fillRect(0, 0, 800, 600); g.fillStyle = '#fc4'; g.fillRect(100, 100, 300, 200);
+          cv.toBlob(b => res(new File([b], name, { type: 'image/jpeg' })), 'image/jpeg', 0.9);
+        });
+      }
+      const before = state.files.length;
+      const f1 = await mk('preview1.jpg'), f2 = await mk('preview2.jpg');
+      await relayUploadFiles([f1, f2], 'photo');   // targets 없음 = gdUploadPhotos 업로드 버튼 경로
+      const recs = state.files.filter(x => x.name === 'preview1.jpg' || x.name === 'preview2.jpg');
+      return {
+        added: state.files.length - before, n: recs.length,
+        drive: recs.every(x => /^mockfile_/.test(x._driveId || '')),
+        thumbs: recs.every(x => typeof x.thumb === 'string' && x.thumb.indexOf('data:image') === 0),
+        virt: recs.every(x => !x._virtual)
+      };
+    });
+    assert(r.n === 2 && r.added >= 2, '상태 즉시 등록 2건(화면 표시), got ' + r.n);
+    assert(r.drive, '_driveId 주입');
+    assert(r.thumbs, '압축본 재사용 썸네일(dataURL) 즉시 생성');
+    assert(r.virt, '실제 레코드(가상 아님)');
+    const cached = await page.evaluate(async () => { const rec = state.files.find(x => x.name === 'preview1.jpg'); return !!(await idbGet('thumb:' + rec._driveId)); });
+    assert(cached, "idb 'thumb:' 캐시 저장");
+    await pollMock(s => s.revision === 9, 12000, '등록 자동저장(rev9) — 타 기기 메타 전파');
+  });
+
+  await test('26.(버그2) 다른 기기(모바일)에서 relayPullPhotos — 등록·썸네일·중복 pull 없음', async () => {
+    await pm.evaluate(async () => { await relayLoadApply(true); });   // 데이터 먼저 최신화(rev9) → 사진 메타는 가상 레코드로
+    const r = await pm.evaluate(async () => {
+      const n1 = await relayPullPhotos(true);
+      const a = state.files.find(x => x.name === '현장A.jpg');
+      const p1 = state.files.find(x => x.name === 'preview1.jpg');
+      const doc = state.files.find(x => x.name === '견적서_테스트.pdf');
+      const cnt = state.files.length;
+      const n2 = await relayPullPhotos(true);   // 중복 pull
+      return {
+        n1, n2, cntSame: state.files.length === cnt,
+        aReal: !!(a && !a._virtual && a._driveId), aThumb: !!(a && typeof a.thumb === 'string' && a.thumb.indexOf('data:image') === 0),
+        p1Real: !!(p1 && !p1._virtual && p1._driveId), docKind: doc && doc.kind
+      };
+    });
+    assert(r.n1 >= 6, '신규 파일 다운로드 등록(6개 이상), got ' + r.n1);
+    assert(r.aReal && r.aThumb, '가상분 교체 + 썸네일 생성(현장A.jpg)');
+    assert(r.p1Real, '다른 기기 업로드분(preview1.jpg) 등록');
+    assert(r.docKind === 'estimate', '견적서 폴더 doc → estimate 분류, got ' + r.docKind);
+    assert(r.n2 === 0 && r.cntSame, '중복 pull 시 재등록 없음(n2=' + r.n2 + ')');
+  });
+
+  await test('27.(버그2) 폴더 밖 fileId download → unauthorized', async () => {
+    const err = await page.evaluate(async () => { const r = await cloudApiDownload('outside-file-id'); return r && r.error; });
+    assert(err === 'unauthorized', 'unauthorized 반환, got ' + err);
+  });
+
+  await test('28. pageerror 0 (PC·모바일 컨텍스트)', async () => {
     assert(errsA.length === 0, 'PC pageerror: ' + errsA.join(' | '));
     assert(errsM.length === 0, '모바일 pageerror: ' + errsM.join(' | '));
   });

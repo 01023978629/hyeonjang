@@ -1290,6 +1290,7 @@ function cloudApiLoad(){return relayCall('load');}
 function cloudApiSave(baseRevision){return relayCall('save',{data:serializeData(),baseRevision:baseRevision});}
 function cloudApiBackup(){return relayCall('backup');}
 function cloudApiListFiles(kind){return relayCall('listFiles',kind?{kind:kind}:{});}
+function cloudApiDownload(fileId){return relayCall('download',{fileId:fileId});}   // relay-v1.1: 만물인테리어 폴더 안 파일만, 8MB 이하
 async function cloudApiUploadFile(file,kind,name,mime){const p=await relayBuildUploadPayload(file,kind,name,mime);return relayCall('upload',p);}
 /* ── 저장 상태 표시(사이드바 btnSave 아래 + 설정 모달 gdDot) — 실패를 조용히 삼키지 않음 ── */
 function relayStatText(code){
@@ -1495,6 +1496,7 @@ async function relayCompressPhoto(file){
   return blob;
 }
 function relayBlobB64(blob){return new Promise(function(res,rej){const r=new FileReader();r.onload=function(){const s=String(r.result||'');res(s.slice(s.indexOf(',')+1));};r.onerror=function(){rej(new Error('파일 읽기 실패'));};r.readAsDataURL(blob);});}
+function relayB64Blob(b64,mime){const bin=atob(b64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:mime||'application/octet-stream'});}   // base64 → Blob(다운로드·썸네일 재사용)
 const RELAY_MAX_B64=12*1024*1024;   // 서버 계약: base64 12MB(≈9MB 파일) 상한 — 대용량 영상·원본 파일은 지원하지 않음
 async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
   kind=(kind==='doc')?'doc':'photo';
@@ -1523,7 +1525,7 @@ async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
    targets[i]를 주면 성공 fileId를 레거시(카메라 경로 added[i]._driveId=id)와 동일하게 주입.
    targets 없으면(gdUploadPhotos처럼 state 항목이 없는 경우) 주입 안 함 — 레거시 gdUploadPhotos도 미주입이라 동작 일치. ── */
 async function relayUploadFiles(files,kind,targets){
-  let ok=0,queued=0,failed=0,injected=0;
+  let ok=0,queued=0,failed=0,injected=0,registered=0;
   for(let i=0;i<files.length;i++){
     const f=files[i];
     toast('☁️ 서버 업로드 중… '+(i+1)+'/'+files.length+(f.name?(' · '+f.name):''));
@@ -1531,16 +1533,94 @@ async function relayUploadFiles(files,kind,targets){
     try{payload=await relayBuildUploadPayload(f,kind);}catch(e){failed++;toast((f.name||'파일')+' — '+(e.message||e));continue;}   // 형식·크기 문제는 대기열에 안 넣고 바로 안내
     try{
       const r=await relayCall('upload',payload);
-      if(r&&r.ok){ok++;if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;injected++;}}
+      if(r&&r.ok){
+        ok++;
+        if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;injected++;}   // 촬영 경로: 이미 ingestFile로 등록된 레코드에 주입
+        else if(!targets&&kind==='photo'&&r.fileId){
+          // 업로드 버튼 경로: 올린 기기에서 즉시 미리보기 — 정식 레코드(ingestFile=openCamera와 동일 형태)로 상태 등록
+          try{
+            const rec=await ingestFile(f);   // 원본 파일 → EXIF(GPS·촬영일시) 유지, serializeData가 아는 필드만 생성
+            if(rec){
+              rec._driveId=r.fileId;
+              // 썸네일: 업로드용 압축본(payload.dataB64)을 재사용해 즉시 생성+idb 캐시(재다운로드 없음)
+              try{const cb=relayB64Blob(payload.dataB64,payload.mimeType);const t=await makeThumbDataUrl(cb,480);if(t){rec.thumb=t;idbSet('thumb:'+r.fileId,t);}}catch(e){}
+              registered++;
+            }
+          }catch(e){}
+        }
+      }
       else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;break;}
       else{failed++;toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
     }catch(e){queued++;try{if(!(await relayQueuePush('upload',payload)))failed++;}catch(e2){failed++;}}   // 네트워크 실패 → 압축본을 대기열에(가득 차면 실패 처리)
   }
-  if(injected)markDirty();   // _driveId 주입분 저장(레거시 카메라 경로와 동일)
+  if(injected||registered)markDirty();   // _driveId 주입/등록분 저장 → 자동저장으로 타 기기에 메타 전파
+  if(registered){if(typeof __photoCache!=='undefined')__photoCache.key=null;try{render();}catch(e){}}   // 사진탭 캐시 무효화+렌더(기존 패턴)
   await relayUpdateQueueBadge();
   if(queued)relaySetStatus(navigator.onLine===false?'offline':'netfail');
   toast('☁️ '+ok+'/'+files.length+'개 서버 업로드 완료'+(queued?(' · '+queued+'건 전송 대기'):'')+(failed?(' · '+failed+'건 실패'):''));
   return ok;
+}
+/* ── 서버 중계 사진/서류 내려받기(다른 기기에서 당겨오기) — __gdIngestOne과 동일 규칙(가상분 교체·승계·중복 방지) ── */
+async function relayIngestOne(meta){
+  if(__removedIds.has(meta.id))return 0;                       // 사용자가 '제거'한 중복 → 다시 안 불러옴
+  const existing=state.files.find(function(x){return x._driveId===meta.id;});
+  if(existing&&!existing._virtual)return 0;                    // 이미 실제 바이트 보유
+  const ph=existing||state.files.find(function(x){return x._virtual&&x.name===meta.name&&!x._driveId;});
+  const r=await cloudApiDownload(meta.id);
+  if(!(r&&r.ok&&r.dataB64)){if(r&&(r.error==='unauthorized'||r.error==='not-configured'))relayAuthFail(r);return 0;}
+  const blob=relayB64Blob(r.dataB64,r.mimeType||meta.mimeType||'application/octet-stream');
+  const rec=await ingestFile(new File([blob],r.name||meta.name,{type:blob.type}));   // __gdIngestOne과 동일한 정식 레코드 생성
+  if(!rec)return 0;
+  rec._driveId=meta.id;
+  if(meta.kind==='doc'&&(rec.ext==='pdf'||rec.ext==='xlsx'||rec.ext==='xls'))rec.kind='estimate';   // 견적서 폴더 → 강제 분류(__gdPullFrom forceKind와 동일)
+  if(IMG.includes(rec.ext)){try{const t=await makeThumbDataUrl(blob,480);if(t){rec.thumb=t;idbSet('thumb:'+meta.id,t);}}catch(e){}}   // 받은 바이트 재사용 썸네일+캐시
+  if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지) — __gdIngestOne과 동일
+    rec.project=ph.project||rec.project;
+    if(ph._phase)rec._phase=ph._phase;
+    if(ph.est)rec.est=ph.est;
+    if(ph.contact)rec.contact=ph.contact;
+    if(meta.kind!=='doc'&&ph.kind&&ph.kind!=='other')rec.kind=ph.kind;
+    revokeThumbUrl(ph);
+    state.files=state.files.filter(function(x){return x!==ph;});
+  }
+  return 1;
+}
+async function relayPullPhotos(silent){
+  if(!relayReady()){if(!silent)toast('먼저 ☁️ 설정에서 서버를 연결하세요');return 0;}
+  let n=0,more=0,hadImg=false;
+  try{
+    const lf=await cloudApiListFiles();   // photo+doc 모두(견적서 폴더 포함)
+    if(!(lf&&lf.ok)){
+      if(lf&&(lf.error==='unauthorized'||lf.error==='not-configured'))relayAuthFail(lf);
+      else if(!silent)toast('서버 파일 목록 조회 실패: '+((lf&&lf.message)||'서버 오류'));
+      return 0;
+    }
+    // 이미 실제 바이트를 보유한 것은 제외(가상분은 다운로드해 교체) — 중복 pull 시 재등록 없음
+    const fresh=(lf.files||[]).filter(function(m){
+      if(__removedIds.has(m.id))return false;
+      const ex=state.files.find(function(x){return x._driveId===m.id;});
+      return !(ex&&!ex._virtual);
+    });
+    const batch=fresh.slice(0,20);more=fresh.length-batch.length;   // 한 번에 최대 20장(용량 보호)
+    for(let i=0;i<batch.length;i++){
+      if(!silent)toast('☁️ 서버에서 받는 중… '+(i+1)+'/'+batch.length+(batch[i].name?(' · '+batch[i].name):''));
+      try{const got=await relayIngestOne(batch[i]);if(got){n++;if(batch[i].kind==='photo')hadImg=true;}}catch(e){}
+    }
+    if(typeof __photoCache!=='undefined')__photoCache.key=null;
+    if(n){markDirty();state.tab=hadImg?'photos':'docs';render();}
+    if(!silent)toast(n?('☁️ 서버에서 '+n+'개 받음'+(more>0?(' — '+more+'장 더 있음, [불러오기]를 다시 누르세요'):'')):(more>0?(more+'장 더 있음 — 다시 실행하세요'):'새로 받을 파일이 없습니다'));
+  }catch(e){if(!silent)toast('서버에서 받기 실패: '+(e.message||e));}
+  return n;
+}
+// '지금 동기화' relay 버전: 데이터(현장·견적) + 파일(사진·PDF) 순서로 — gdPullAll과 동일한 사용자 흐름
+async function relayPullAll(){
+  toast('☁️ 서버에서 불러오는 중 — 현장·견적·사진...');
+  let okData=false;try{okData=await relayLoadApply(true);}catch(e){}
+  const n=await relayPullPhotos(false);
+  if(okData||state.projects.length)state.tab='dashboard';
+  render();
+  toast('☁️ 불러옴 — 현장 '+state.projects.length+'곳 · 파일 '+state.files.length+'개'+(n?(' (사진/서류 '+n+'개 새로)'):''));
+  return okData;
 }
 /* ── relay 부팅(gdBootSync와 별개, 기존 로직 무변경) — 설정 복원 + 대기열 전송 + 서버 최신 안내(자동 적용 금지) ── */
 async function relayBoot(){
@@ -2942,7 +3022,7 @@ function toggleMoveMode(){
 $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
 {const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
-{const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdPullAll();}
+{const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>{if(typeof relayReady==='function'&&relayReady())relayPullAll();else gdPullAll();};}   // 서버 중계 연결 시 relay로 동기화(로그인 불필요)
 {const _gc=$('#btnGdConnect');if(_gc)_gc.onclick=gdConnectFolder;}
 {const _gp2=$('#btnGdPick2');if(_gp2)_gp2.onclick=gdPickFiles;}
 $('#btnZipPhotos').onclick=importPhotoZip;
@@ -7369,7 +7449,7 @@ function importWizard(){
         '<button class="blue" id="iwJson" style="flex:1;min-width:150px;padding:12px">📄 백업(JSON) 복원</button></div>',
         [{label:'← 뒤로',cls:'ghost',fn:importWizard},{label:'닫기',cls:'ghost',fn:closeModal}]);
       const r2=document.getElementById('modalRoot');
-      r2.querySelector('#iwGd').onclick=()=>{closeModal();gdLoadDriveFiles(false);};
+      r2.querySelector('#iwGd').onclick=()=>{closeModal();if(typeof relayReady==='function'&&relayReady())relayPullPhotos(false);else gdLoadDriveFiles(false);};
       r2.querySelector('#iwJson').onclick=()=>{closeModal();openRestore();};
       return;
     }
@@ -19010,7 +19090,7 @@ function setupDelegation(){
       try{s.showPicker&&s.showPicker();}catch(e){}
       return;
     }
-    if(t.id==='btnGdLoad')return gdLoadDriveFiles(false);
+    if(t.id==='btnGdLoad')return (typeof relayReady==='function'&&relayReady())?relayPullPhotos(false):gdLoadDriveFiles(false);
     if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
