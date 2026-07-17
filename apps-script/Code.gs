@@ -18,8 +18,8 @@
  * Supabase Auth 등 계정 기반 인증 서버로 교체해야 합니다.
  * ============================================================ */
 
-var RELAY_VERSION = 'relay-v1';
-var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles'];
+var RELAY_VERSION = 'relay-v1.1';
+var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'download'];
 var TS_WINDOW_MS = 10 * 60 * 1000;          // 요청 시간 검사(±10분)
 var MAX_BODY = 15 * 1024 * 1024;            // 요청 전체 상한
 var MAX_SAVE = 10 * 1024 * 1024;            // 현장데이터 JSON 상한
@@ -87,6 +87,7 @@ function doPost(e) {
       case 'backup':   return out_(makeBackup_(deviceId));
       case 'upload':   return out_(uploadFile_(payload));
       case 'listFiles':return out_(listAppFiles_(payload));
+      case 'download': return out_(downloadFile_(payload));
     }
     return fail_('bad-request', 'unreachable');
   } catch (err) { return fail_('server-error', safeMsg_(err)); }
@@ -228,6 +229,33 @@ function uploadFile_(payload) {
   var bytes; try { bytes = Utilities.base64Decode(b64); } catch (_) { return fail0_('bad-request', '파일 인코딩이 올바르지 않습니다'); }
   var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
   return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName };
+}
+
+/* ---------- F-2. download (사진/문서 내려받기 — 미리보기용) ---------- */
+// 보안: 만물인테리어 폴더(루트/현장사진/견적서) '안'의 파일만 허용 — 임의 fileId로
+// 계정의 다른 파일을 꺼내갈 수 없게 부모 폴더를 검증한다.
+function downloadFile_(payload) {
+  var fileId = String(payload.fileId || '');
+  if (!fileId) return fail0_('bad-request', 'fileId가 없습니다');
+  var root = rootFolder_();
+  var allowed = { };
+  allowed[root.getId()] = true;
+  try { var pf = root.getFoldersByName(PHOTO_FOLDER); if (pf.hasNext()) allowed[pf.next().getId()] = true; } catch (_) {}
+  try { var df = root.getFoldersByName(DOC_FOLDER); if (df.hasNext()) allowed[df.next().getId()] = true; } catch (_) {}
+
+  var file;
+  try { file = DriveApp.getFileById(fileId); } catch (_) { return fail0_('bad-request', '파일을 찾을 수 없습니다'); }
+  var inScope = false;
+  try {
+    var ps = file.getParents();
+    while (ps.hasNext()) { if (allowed[ps.next().getId()]) { inScope = true; break; } }
+  } catch (_) {}
+  if (!inScope) return fail0_('unauthorized', '만물인테리어 폴더 밖의 파일은 내려받을 수 없습니다');
+  if (file.getSize() > 8 * 1024 * 1024) return fail0_('too-large', '미리보기용으로는 파일이 너무 큽니다(8MB 초과)');
+
+  var blob = file.getBlob();
+  return { ok: true, fileId: fileId, name: file.getName(), mimeType: blob.getContentType(),
+           dataB64: Utilities.base64Encode(blob.getBytes()) };
 }
 
 /* ---------- F. listFiles ---------- */

@@ -30,6 +30,7 @@
 | `backup` | — | `{ok, created, name}` (`created:false` = 오늘 이미 백업됨) |
 | `upload` | `{name, mimeType, kind:'photo'|'doc', dataB64}` | `{ok, fileId, name, folder}` |
 | `listFiles` | `{kind?}` | `{ok, files:[{id,name,mimeType,modifiedAt,kind}]}` |
+| `download` | `{fileId}` | `{ok, fileId, name, mimeType, dataB64}` — 만물인테리어 폴더(루트/현장사진/견적서) 안의 파일만, 8MB 이하 (사진 미리보기용, relay-v1.1) |
 
 오류 응답: `{ok:false, error, message}` — error 코드:
 `unauthorized`(인증키 불일치) · `not-configured`(서버 미설정) · `bad-request` ·
