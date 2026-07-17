@@ -1,0 +1,253 @@
+/** ============================================================
+ * 만물인테리어 현장관리 — Apps Script 클라우드 중계 서버 (relay-v1)
+ * ------------------------------------------------------------
+ * 목적: 모바일(사파리·카톡/네이버 인앱)에서 Google OAuth 팝업 없이
+ *       기존 Google Drive '만물인테리어' 폴더에 저장/불러오기/업로드.
+ * 구조: 웹(fetch, text/plain POST) → 이 웹앱(배포자 권한으로 실행)
+ *       → DriveApp → 기존 폴더/현장데이터.json (데이터 이전 없음)
+ *
+ * 설정(코드에 하드코딩 금지 — 프로젝트 설정 ▸ 스크립트 속성):
+ *   APP_TOKEN         필수. 웹과 서버가 공유하는 인증키(긴 무작위 문자열)
+ *   DRIVE_FOLDER_ID   필수. 기존 '만물인테리어' 폴더 ID
+ *   DATA_FILE_NAME    선택. 기본 '현장데이터.json'
+ *   BACKUP_KEEP_COUNT 선택. 기본 14 (날짜별 백업 보관 개수)
+ *
+ * 보안 한계(정직 고지): APP_TOKEN은 브라우저에 저장되므로 완전한
+ * 비밀이 아닙니다. 기기를 아는 사람이면 추출할 수 있습니다.
+ * 1인 내부 업무용 전제의 최소 인증이며, 다중 사용자 운영 시에는
+ * Supabase Auth 등 계정 기반 인증 서버로 교체해야 합니다.
+ * ============================================================ */
+
+var RELAY_VERSION = 'relay-v1';
+var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles'];
+var TS_WINDOW_MS = 10 * 60 * 1000;          // 요청 시간 검사(±10분)
+var MAX_BODY = 15 * 1024 * 1024;            // 요청 전체 상한
+var MAX_SAVE = 10 * 1024 * 1024;            // 현장데이터 JSON 상한
+var MAX_UPLOAD_B64 = 12 * 1024 * 1024;      // 업로드 base64 상한(≈9MB 파일)
+var PHOTO_FOLDER = '현장사진';
+var DOC_FOLDER = '견적서';
+var ALLOWED_MIME = {
+  photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  doc: ['application/pdf', 'image/jpeg', 'image/png',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel']
+};
+
+/* ---------- 공통 ---------- */
+function props_() { return PropertiesService.getScriptProperties(); }
+function cfg_(k, d) { var v = props_().getProperty(k); return (v == null || v === '') ? d : v; }
+function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function fail_(code, msg) { return out_({ ok: false, error: code, message: msg || code }); }
+// 오류 원문 과다 노출 방지: 메시지를 짧게 자르고 스택은 보내지 않음
+function safeMsg_(err) { return String((err && err.message) || err).slice(0, 140); }
+function checkToken_(t) {
+  var want = cfg_('APP_TOKEN', '');
+  if (!want) return 'not-configured';
+  if (!t || String(t) !== want) return 'unauthorized';
+  return '';
+}
+
+/* ---------- 진입점 ---------- */
+// GET: 주소창으로 간단 확인용(health만). 실제 앱은 전부 POST를 씁니다.
+function doGet(e) {
+  try {
+    var p = (e && e.parameter) || {};
+    if ((p.action || 'health') !== 'health') return fail_('bad-request', 'GET은 health만 지원합니다');
+    var tk = checkToken_(p.token);
+    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
+    return out_(health_());
+  } catch (err) { return fail_('server-error', safeMsg_(err)); }
+}
+
+// POST: Content-Type text/plain(사전 OPTIONS 요청 회피), 본문 = JSON 문자열
+// { token, action, deviceId, ts, payload }
+function doPost(e) {
+  try {
+    var raw = e && e.postData && e.postData.contents;
+    if (!raw) return fail_('bad-request', '요청 본문이 없습니다');
+    if (raw.length > MAX_BODY) return fail_('too-large', '요청이 너무 큽니다');
+    var req; try { req = JSON.parse(raw); } catch (_) { return fail_('bad-request', 'JSON 형식이 아닙니다'); }
+
+    var tk = checkToken_(req.token);
+    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
+
+    var action = String(req.action || '');
+    if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
+
+    var ts = Number(req.ts || 0);
+    if (!ts || Math.abs(Date.now() - ts) > TS_WINDOW_MS) return fail_('bad-request', '요청 시간이 유효하지 않습니다(기기 시계를 확인하세요)');
+
+    var deviceId = String(req.deviceId || 'unknown').slice(0, 64);
+    var payload = req.payload || {};
+
+    switch (action) {
+      case 'health':   return out_(health_());
+      case 'load':     return out_(loadData_());
+      case 'save':     return out_(saveData_(payload, deviceId));
+      case 'backup':   return out_(makeBackup_(deviceId));
+      case 'upload':   return out_(uploadFile_(payload));
+      case 'listFiles':return out_(listAppFiles_(payload));
+    }
+    return fail_('bad-request', 'unreachable');
+  } catch (err) { return fail_('server-error', safeMsg_(err)); }
+}
+
+/* ---------- Drive 헬퍼 ---------- */
+function rootFolder_() {
+  var id = cfg_('DRIVE_FOLDER_ID', '');
+  if (!id) throw new Error('DRIVE_FOLDER_ID가 설정되지 않았습니다');
+  return DriveApp.getFolderById(id);
+}
+function dataFileName_() { return cfg_('DATA_FILE_NAME', '현장데이터.json'); }
+function findDataFile_(root) {
+  var it = root.getFilesByName(dataFileName_());
+  return it.hasNext() ? it.next() : null;
+}
+// revision 메타는 파일 설명(description)에 JSON으로 보관
+// 기존 파일(설명 없음)은 revision 0으로 간주 → 기존 데이터 그대로 사용 가능
+function readMeta_(file) {
+  try { var m = JSON.parse(file.getDescription() || ''); if (m && typeof m === 'object') return m; } catch (_) {}
+  return { revision: 0, savedBy: '', savedAt: '' };
+}
+function writeMeta_(file, m) { try { file.setDescription(JSON.stringify(m)); } catch (_) {} }
+function subFolder_(root, name) {
+  var it = root.getFoldersByName(name);
+  return it.hasNext() ? it.next() : root.createFolder(name);
+}
+function sanitizeName_(name, mime) {
+  var n = String(name || '').replace(/[\\\/:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!n) {
+    var ext = mime === 'application/pdf' ? '.pdf' : (mime && mime.indexOf('image/') === 0 ? '.jpg' : '.bin');
+    n = 'file_' + Date.now() + ext;
+  }
+  return n;
+}
+
+/* ---------- A. health ---------- */
+function health_() {
+  var folderOk = false, exists = false, revision = 0;
+  try {
+    var root = rootFolder_(); folderOk = true;
+    var f = findDataFile_(root);
+    if (f) { exists = true; revision = readMeta_(f).revision || 0; }
+  } catch (_) {}
+  return { ok: true, version: RELAY_VERSION, folderOk: folderOk, dataFileExists: exists, revision: revision };
+}
+
+/* ---------- B. load ---------- */
+function loadData_() {
+  var root = rootFolder_();
+  var f = findDataFile_(root);
+  if (!f) return { ok: true, exists: false, data: null, revision: 0, modifiedAt: '', savedBy: '' };
+  var text = f.getBlob().getDataAsString('UTF-8');
+  var data; try { data = JSON.parse(text); } catch (_) { return fail0_('server-error', '서버의 데이터 파일이 손상되었습니다'); }
+  var m = readMeta_(f);
+  return { ok: true, exists: true, data: data, revision: m.revision || 0,
+           modifiedAt: f.getLastUpdated().toISOString(), savedBy: m.savedBy || '' };
+}
+function fail0_(code, msg) { return { ok: false, error: code, message: msg }; }
+
+/* ---------- C. save (LockService + revision 충돌 감지) ---------- */
+function saveData_(payload, deviceId) {
+  var data = payload && payload.data;
+  // 저장 데이터 구조 검사: serializeData() 산출물(app:'현장' 또는 version 숫자)만 허용
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return fail0_('bad-request', '데이터 형식이 올바르지 않습니다');
+  if (data.app !== '현장' && typeof data.version !== 'number') return fail0_('bad-request', '알 수 없는 데이터 구조입니다');
+  var content = JSON.stringify(data);
+  if (content.length > MAX_SAVE) return fail0_('too-large', '데이터가 너무 큽니다(' + Math.round(content.length / 1048576) + 'MB)');
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return fail0_('server-error', '다른 저장이 진행 중입니다. 잠시 후 다시 시도하세요');
+  try {
+    var root = rootFolder_();
+    var f = findDataFile_(root);
+    var serverRev = f ? (readMeta_(f).revision || 0) : 0;
+    var baseRev = Number(payload.baseRevision);
+    if (isNaN(baseRev)) baseRev = -1;
+
+    // 충돌 감지: 파일이 있고 요청 기준 revision이 서버와 다르면 덮어쓰지 않음
+    if (f && baseRev !== serverRev) {
+      var m0 = readMeta_(f);
+      return { ok: false, error: 'conflict', serverRevision: serverRev,
+               serverModifiedAt: f.getLastUpdated().toISOString(), serverSavedBy: m0.savedBy || '' };
+    }
+
+    var now = new Date().toISOString();
+    if (f) { f.setContent(content); }
+    else { f = root.createFile(dataFileName_(), content, 'application/json'); }
+    var newRev = serverRev + 1;
+    writeMeta_(f, { revision: newRev, savedBy: deviceId, savedAt: now });
+    return { ok: true, revision: newRev, savedAt: now };
+  } finally { lock.releaseLock(); }
+}
+
+/* ---------- D. backup (하루 1개, 보관 개수 제한) ---------- */
+function makeBackup_(deviceId) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return fail0_('server-error', '다른 작업이 진행 중입니다');
+  try {
+    var root = rootFolder_();
+    var src = findDataFile_(root);
+    if (!src) return fail0_('bad-request', '백업할 데이터 파일이 없습니다');
+    var tz = Session.getScriptTimeZone() || 'Asia/Seoul';
+    var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var name = '현장데이터_백업_' + today + '.json';
+    var it = root.getFilesByName(name);
+    if (it.hasNext()) return { ok: true, created: false, name: name }; // 오늘 이미 백업됨
+
+    root.createFile(name, src.getBlob().getDataAsString('UTF-8'), 'application/json');
+    pruneBackups_(root);
+    return { ok: true, created: true, name: name };
+  } finally { lock.releaseLock(); }
+}
+function pruneBackups_(root) {
+  try {
+    var keep = parseInt(cfg_('BACKUP_KEEP_COUNT', '14'), 10) || 14;
+    var list = [];
+    var it = root.getFiles();
+    while (it.hasNext()) { var f = it.next(); if (f.getName().indexOf('현장데이터_백업_') === 0) list.push(f); }
+    list.sort(function (a, b) { return b.getName() < a.getName() ? -1 : 1; }); // 이름 내림차순 = 최신 먼저
+    for (var i = keep; i < list.length; i++) { try { list[i].setTrashed(true); } catch (_) {} }
+  } catch (_) {}
+}
+
+/* ---------- E. upload (사진/문서 → 하위 폴더) ---------- */
+function uploadFile_(payload) {
+  var kind = String(payload.kind || '');
+  if (kind !== 'photo' && kind !== 'doc') return fail0_('bad-request', 'kind는 photo 또는 doc만 허용');
+  var mime = String(payload.mimeType || '');
+  if ((ALLOWED_MIME[kind] || []).indexOf(mime) < 0) return fail0_('bad-request', '허용되지 않는 파일 형식: ' + mime.slice(0, 60));
+  var b64 = String(payload.dataB64 || '');
+  if (!b64) return fail0_('bad-request', '파일 내용이 없습니다');
+  if (b64.length > MAX_UPLOAD_B64) return fail0_('too-large', '파일이 너무 큽니다. 사진은 앱이 자동 압축하지만, 원본 영상·대용량 파일은 지원하지 않습니다');
+
+  var root = rootFolder_();
+  var folderName = kind === 'photo' ? PHOTO_FOLDER : DOC_FOLDER;
+  var folder = subFolder_(root, folderName);
+  var name = sanitizeName_(payload.name, mime);
+  var bytes; try { bytes = Utilities.base64Decode(b64); } catch (_) { return fail0_('bad-request', '파일 인코딩이 올바르지 않습니다'); }
+  var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
+  return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName };
+}
+
+/* ---------- F. listFiles ---------- */
+function listAppFiles_(payload) {
+  var kind = payload && payload.kind ? String(payload.kind) : '';
+  var root = rootFolder_();
+  var files = [];
+  function collect(folderName, k) {
+    var it0 = root.getFoldersByName(folderName);
+    if (!it0.hasNext()) return;
+    var it = it0.next().getFiles();
+    var n = 0;
+    while (it.hasNext() && n < 200) {
+      var f = it.next();
+      files.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
+                   modifiedAt: f.getLastUpdated().toISOString(), kind: k });
+      n++;
+    }
+  }
+  if (!kind || kind === 'photo') collect(PHOTO_FOLDER, 'photo');
+  if (!kind || kind === 'doc') collect(DOC_FOLDER, 'doc');
+  return { ok: true, files: files };
+}
