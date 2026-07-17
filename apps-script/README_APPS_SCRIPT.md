@@ -1,4 +1,4 @@
-# Apps Script 중계 서버 — API 계약 (relay-v1)
+# Apps Script 중계 서버 — API 계약 (relay-v3)
 
 모바일 브라우저가 Google Drive API를 직접 호출하지 않도록,
 웹 → **이 Apps Script 웹앱** → 기존 Drive `만물인테리어` 폴더 로 중계합니다.
@@ -30,10 +30,15 @@
 | `backup` | — | `{ok, created, name}` (`created:false` = 오늘 이미 백업됨) |
 | `upload` | `{name, mimeType, kind:'photo'|'doc', dataB64}` | `{ok, fileId, name, folder}` |
 | `listFiles` | `{kind?}` | `{ok, files:[{id,name,mimeType,modifiedAt,kind}]}` |
+| `thumbnail` | `{fileId}` | `{ok, fileId, mimeType, dataB64, source}` — 앱 폴더 안 이미지의 미리보기(썸네일 우선, 없으면 4MB 이하 원본). Google 로그인 없이 사진 표시용 (relay-v3+) |
 
 오류 응답: `{ok:false, error, message}` — error 코드:
 `unauthorized`(인증키 불일치) · `not-configured`(서버 미설정) · `bad-request` ·
-`too-large` · `conflict` · `server-error`
+`too-large` · `conflict` · `not-found` · `forbidden` · `not-ready` · `server-error`
+
+> **버전 표기**: `health`의 `version` 값(예: `relay-v3`)은 서버 개선에 따라 올라갑니다.
+> 앱은 이 값을 **비교하지 않고 표시만** 하므로, 서버·앱 버전이 달라도 동작합니다.
+> 성공 판정은 `ok:true` + `folderOk:true` 로 하세요(버전 숫자가 아니라).
 
 ## 충돌(revision) 규칙
 
