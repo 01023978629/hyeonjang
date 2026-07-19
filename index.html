@@ -1809,7 +1809,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-19-ad-perf-v110';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-19-ad-ui-v111';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -16123,8 +16123,8 @@ function viewAds(){
     '<a class="ghost tiny" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px">'+chips+'</div>';
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-    '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:10px 14px">✍️ '+ch.n+' 원고 만들기</button>'+
-    '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:10px 14px">＋ '+ch.n+' 포스팅 기록</button></div>';
+    '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:11px 16px;font-weight:700">✍️ 원고 만들기</button>'+
+    '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button></div>';
   // 이번 달 채널 성과 요약: 게시 n건 · 문의 m건 (성과는 각 기록의 [📈]로 입력)
   const mPosts=(state.adPosts||[]).filter(function(p){return p.ch===ch.id&&String(p.date).slice(0,7)===ym;});
   const mInq=mPosts.reduce(function(a,p){return a+((p.res&&+p.res.inq)||0);},0);
@@ -16245,36 +16245,52 @@ function adDraftText(chId,f){
   };
 }
 function adDraftOpen(chId){
-  const ch=AD_CH.find(function(c){return c.id===chId;})||AD_CH[0];
+  let curCh=chId;   // 모달 안에서 채널 전환 가능 — 한 번 열고 채널별 원고를 모두 뽑는다
   const projs=(state.projects||[]).map(function(p){return p.name;});
   if(!projs.length){toast('현장이 아직 없어요 — 먼저 현장을 추가하세요');return;}
   const cur=(state.activeProject&&projs.indexOf(state.activeProject)>=0)?state.activeProject:projs[projs.length-1];
-  openModal('✍️ '+ch.ic+' '+ch.n+' 원고 만들기',
+  openModal('✍️ 홍보 원고 만들기',
+    '<div id="adDraftChs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>'+
     '<label style="font-size:11.5px;color:var(--muted)">현장 선택</label>'+
     '<select id="adDraftProj" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
       projs.map(function(n){return '<option'+(n===cur?' selected':'')+' value="'+escapeAttr(n)+'">'+escapeHtml(n)+'</option>';}).join('')+'</select>'+
     '<label style="font-size:11.5px;color:var(--muted)">제목</label>'+
     '<input id="adDraftTitle" type="text" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
     '<label style="font-size:11.5px;color:var(--muted)">본문 (대괄호 [ ] 자리만 채우면 완성)</label>'+
-    '<textarea id="adDraftTa" rows="13" style="width:100%;padding:10px;margin:4px 0;border-radius:9px;border:1px solid var(--line-soft);font-size:12.5px;line-height:1.6"></textarea>'+
+    '<textarea id="adDraftTa" rows="12" style="width:100%;padding:10px;margin:4px 0;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;line-height:1.65;max-height:44vh"></textarea>'+
     '<div class="hint" style="margin-top:6px">현장 자료(지역·평수·공정·일정)에서 자동으로 채웠어요. 고객 실명·금액은 넣지 않습니다.</div>'+
     '<div id="adDraftPhotos" style="margin-top:8px"></div>',
-    [{label:'📋 복사',cls:'blue',fn:async function(){
+    [{label:'📋 복사하고 채널 열기',cls:'blue',fn:async function(){
+        const c=AD_CH.find(function(x){return x.id===curCh;})||AD_CH[0];
         const txt=document.getElementById('adDraftTitle').value+'\n\n'+document.getElementById('adDraftTa').value;
-        try{await navigator.clipboard.writeText(txt);toast('원고 복사됨 — '+ch.n+'에 붙여넣으세요');}
-        catch(e){try{const ta=document.getElementById('adDraftTa');ta.select();document.execCommand('copy');toast('원고 복사됨');}catch(_){toast('복사 실패 — 본문을 길게 눌러 복사하세요');}}
+        let copied=false;
+        try{await navigator.clipboard.writeText(txt);copied=true;}
+        catch(e){try{const ta=document.getElementById('adDraftTa');ta.select();document.execCommand('copy');copied=true;}catch(_){}}
+        toast(copied?('원고 복사됨 — '+c.n+'에 붙여넣으세요'):'복사 실패 — 본문을 길게 눌러 복사하세요');
+        if(copied)try{window.open(c.url,'_blank','noopener');}catch(e){}
       }},
      {label:'게시 기록에 추가',cls:'clay',fn:function(){
         const t=document.getElementById('adDraftTitle').value.trim();
         state.adPosts=state.adPosts||[];
-        state.adPosts.push({id:uid(),ch:chId,date:localDate(),title:t||'(원고)',url:'',memo:'원고 작성'});
+        state.adPosts.push({id:uid(),ch:curCh,date:localDate(),title:t||'(원고)',url:'',memo:'원고 작성'});
         markDirty();closeModal();render();toast('기록 저장됨 — 게시 후 링크를 채워두면 좋아요');
       }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  // 채널 칩 — 원고를 유지한 채 채널만 바꿔 다시 생성
+  const renderChs=function(){
+    const box=document.getElementById('adDraftChs');
+    if(!box)return;
+    box.innerHTML=AD_CH.map(function(c){
+      return '<button class="'+(c.id===curCh?'blue':'ghost')+' tiny" data-draftch="'+c.id+'" style="padding:8px 11px">'+c.ic+' '+c.n+'</button>';
+    }).join('');
+    box.querySelectorAll('[data-draftch]').forEach(function(el){
+      el.onclick=function(){curCh=el.dataset.draftch;renderChs();fill();};
+    });
+  };
   const fill=function(){
     const pj=document.getElementById('adDraftProj').value;
     const f=adProjFacts(pj);
-    const d=adDraftText(chId,f);
+    const d=adDraftText(curCh,f);
     document.getElementById('adDraftTitle').value=d.title;
     document.getElementById('adDraftTa').value=d.body;
     // 📸 현장 사진 연동 — 원고에 쓸 사진으로 바로 이어준다
@@ -16294,7 +16310,7 @@ function adDraftOpen(chId){
     }
   };
   const sel=document.getElementById('adDraftProj');
-  if(sel){sel.onchange=fill;fill();}
+  if(sel){sel.onchange=fill;renderChs();fill();}
 }
 /* 📈 게시별 성과 기록 — 이 글을 보고 온 문의 수·메모. 어떤 채널·형식이
    실제 손님을 데려오는지 데이터가 쌓인다 (res 필드는 선택적 — 하위호환) */
