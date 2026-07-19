@@ -1809,7 +1809,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-17-visit-photo-repair-v108';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-19-ad-draft-v109';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -3784,7 +3784,7 @@ function render(){
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
-  if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates'].includes(state.tab)){v.innerHTML=emptyState();bindDrop();return;}
+  if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates','ads'].includes(state.tab)){v.innerHTML=emptyState();bindDrop();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,ads:viewAds};
   v.innerHTML=map[state.tab]();
   bindDrop();bindEvents();
@@ -7025,7 +7025,7 @@ const HJ_HELP=[
   {k:'스킬 명령문',d:'지휘부·예약의 [🧰 스킬 명령문] — 만물 스킬 8종을 언제 어떤 한마디로 부르는지 표로 복사돼요. 모든 명령서·지시서에도 \'🧰 사용할 스킬\' 줄이 자동으로 붙어 Cowork가 알맞은 스킬로 일합니다.',say:'스킬 명령문 복사해줘'},
   {k:'부가세 준비',d:'💼 회계 탭 [🧾 부가세 준비] 또는 더보기 — 신고 마감 D-day, 필요한 자료 3종(매출·매입·카드) 준비 상태와 받는 법, 홈택스↔앱 수금/경비 대조(계산서 미발행 의심까지), 예상 납부·환급 세액을 한 화면에. [📤 세무사 전달용 xlsx]와 [🧰 Cowork 명령서]로 바로 이어집니다.',say:'부가세 준비 열어줘'},
   {k:'회계(홈택스)',d:'상단 [💼 회계] 탭 — 홈택스에서 받은 카드 이용내역·매출/매입 세금계산서 엑셀을 폴더에 넣기만 하면 년·월별로 자동 집계돼요(카드 사용액·매출·매입·부가세 예상). 파일별 [🔄]로 다시 읽기.',say:'회계 탭 열어줘'},
-  {k:'광고 관리',d:'상단 [📣 광고] 탭 — 스레드·인스타·메타·네이버블로그 채널별로 올린 글을 기록/관리해요. 채널 칩으로 소분류 필터, 이번 달 게시 수 확인, 링크 바로 열기.',say:'광고 관리 열어줘'},
+  {k:'광고 관리',d:'상단 [📣 광고] 탭 — 스레드·인스타·메타·네이버블로그 채널별로 올린 글을 기록/관리해요. [✍️ 원고 만들기]가 현장 자료로 채널별 홍보 원고(블로그 후기·SNS 캡션+해시태그)를 즉석 작성. 채널 칩으로 소분류 필터, 이번 달 게시 수 확인, 링크 바로 열기.',say:'광고 관리 열어줘'},
   {k:'Cowork 예약',d:'더보기 [⏰ Cowork 예약] — 카드정리·세금·사진정리·월간·QA 같은 Cowork 작업을 매일/매주/매월로 예약해두면, 예정일에 홈 브리핑과 승인함에 떠요. [📤 지시서 저장]을 누르면 폴더에 _코워크_오늘업무.md가 만들어지고, Cowork에서 \'만물 폴더 오늘 업무 해줘\' 한마디면 전부 수행합니다. 끝나면 [✅ 완료]로 다음 주기로.',say:'코워크 예약 열어줘'},
   {k:'전/후 비교 카드',d:'더보기 [📸 전/후 비교 카드] — 현장 사진에서 시공 전·후 2장을 고르면 회사명이 들어간 비교 이미지가 만들어져요. 저장하거나 카톡·블로그로 바로 공유해 홍보에 쓰세요.',say:'전후 비교 카드 만들어줘'},
   {k:'말로 기록',d:'더보기 [🎙 말로 기록] — 손에 먼지 묻었을 때 말로 시키세요. \'태산그린 자재비 30만원 지출\', \'내일 실측 일정\' 처럼 말하면 비서가 알아듣고 처리해요(변경은 승인 후). 비서 화면의 🎙 버튼과 같아요.',say:'말로 기록 열어줘'},
@@ -16122,7 +16122,9 @@ function viewAds(){
     '<span class="hint" style="margin:0">채널별 포스팅 기록을 남겨 홍보 흐름을 관리해요.'+(folderN?' · 📁 광고 폴더 파일 '+folderN+'개':'')+'</span>'+
     '<a class="ghost tiny" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px">'+chips+'</div>';
-  html+='<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:10px 14px;margin-bottom:10px">＋ '+ch.n+' 포스팅 기록</button>';
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+    '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:10px 14px">✍️ '+ch.n+' 원고 만들기</button>'+
+    '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:10px 14px">＋ '+ch.n+' 포스팅 기록</button></div>';
   html+=posts.length?posts.slice(0,40).map(function(p){
     return '<div style="display:flex;align-items:center;gap:9px;border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px;margin-bottom:7px;background:var(--paper)">'+
       '<span style="font-size:15px">'+ch.ic+'</span>'+
@@ -16131,7 +16133,7 @@ function viewAds(){
       '<button class="ghost tiny" data-addel="'+escapeAttr(p.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
     '</div>';
   }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.</span></div>';
-  html+='<div class="hint" style="margin-top:12px">💡 원고가 필요하면 Cowork에서 <b>"이 사진으로 '+ch.n+' 홍보 글 써줘"</b>(manmul-marketing 스킬) — 전/후 카드는 더보기 [📸 전/후 비교 카드]로.</div>';
+  html+='<div class="hint" style="margin-top:12px">💡 [✍️ 원고 만들기]가 현장 자료(지역·평수·공정·기간)로 초안을 바로 써줘요. 더 다듬으려면 Cowork <b>manmul-marketing</b> 스킬 — 전/후 카드는 더보기 [📸 전/후 비교 카드]로.</div>';
   return html;
 }
 function adPostAdd(chId){
@@ -16147,6 +16149,129 @@ function adPostAdd(chId){
         markDirty();closeModal();render();toast('기록 저장됨');
       }},
      {label:'취소',cls:'ghost',fn:closeModal}],true);
+}
+
+/* ── ✍️ 홍보 원고 생성기 (v109) — 현장 자료로 채널별 광고 원고를 즉석 작성.
+   외부 API 없음(무료 규칙 기반). "동네+평수+후기" 제목 공식은 지역 검색에서
+   실제 상위 노출되는 형식(공개 사이트 CONTENT-PLAN 실측)을 그대로 따른다. ── */
+function adLeadNoteOf(projName){
+  return (state.notes||[]).map(function(n){return n&&n.project===projName?String(n.text||''):'';})
+    .find(function(t){return t.indexOf('[홈페이지 상담 리드]')===0;})||'';
+}
+function adProjFacts(projName){
+  const p=(state.projects||[]).find(function(x){return x.name===projName;})||{};
+  const src=[projName,(p.customer&&p.customer.addr)||''].join(' ');
+  const note=adLeadNoteOf(projName);
+  const pick=function(re,s){const m=String(s||'').match(re);return m?String(m[1]).trim():'';};
+  const dong=pick(/([가-힣]{1,6}[동읍면])(?![가-힣])/,src);
+  const gu=pick(/([가-힣]{1,6}[구군])(?![가-힣])/,src);
+  const pyeong=pick(/(\d{1,3})\s*평/,src)||pick(/(\d{1,3})\s*평/,pick(/평수:\s*([^\n]+)/,note));
+  const works=(p.phases&&p.phases.length?p.phases.join(', '):'')
+    ||pick(/희망공사:\s*([^\n]+)/,note)||pick(/공사:\s*([^\n]+)/,note)||'';
+  let period='';
+  try{
+    const ds=(state.schedule||[]).filter(function(s){return s&&s.project===projName&&s.date;})
+      .map(function(s){return String(s.date);}).sort();
+    if(ds.length>=2){
+      const d0=new Date(ds[0]),d1=new Date(ds[ds.length-1]);
+      if(!isNaN(d0)&&!isNaN(d1)&&d1>d0)period='약 '+Math.max(1,Math.round((d1-d0)/6048e5))+'주';
+    }
+  }catch(e){}
+  const loc=('대전 '+[gu,dong].filter(Boolean).join(' ')).trim();
+  return {name:projName,loc:loc,gu:gu,dong:dong,pyeong:pyeong,works:works,period:period};
+}
+function adHashtags(f){
+  const t=['#대전인테리어','#대전리모델링'];
+  if(f.gu)t.push('#'+f.gu+'인테리어');
+  if(f.dong)t.push('#'+f.dong);
+  const w=String(f.works);
+  if(/욕실/.test(w))t.push('#욕실리모델링');
+  if(/주방/.test(w))t.push('#주방인테리어');
+  if(/도배|벽지/.test(w))t.push('#도배');
+  if(/샷시|창호/.test(w))t.push('#샷시교체');
+  if(/마루|바닥|장판/.test(w))t.push('#마루시공');
+  if(f.pyeong)t.push('#'+f.pyeong+'평인테리어');
+  return t.slice(0,10).join(' ');
+}
+function adDraftText(chId,f){
+  const py=f.pyeong?f.pyeong+'평':'';
+  const worksShort=String(f.works).split(/[,·]/).map(function(s){return s.trim();}).filter(Boolean).slice(0,3).join('·');
+  const headBits=[f.loc,py,'인테리어 후기'].filter(Boolean).join(' ');
+  const contact='📞 '+COMPANY.tel+' ('+COMPANY.owner+') · '+COMPANY.name;
+  const workLines=String(f.works).split(/[,·]/).map(function(s){return s.trim();}).filter(Boolean)
+    .map(function(w){return '· '+w+' — [한 줄 설명]';}).join('\n')||'· [공정과 내용을 적어주세요]';
+  if(chId==='blog'){
+    return {
+      title:headBits+(worksShort?' — '+worksShort:''),
+      body:['대전에서 대표가 직접 상담부터 시공·관리까지 맡는 '+COMPANY.name+'입니다.',
+        '오늘은 '+(f.loc||'대전')+(py?' '+py:'')+' 현장 이야기를 남깁니다.','',
+        '■ 현장 개요',
+        '· 위치: '+(f.loc||'[지역]'),
+        '· 면적: '+(py||'[평수]'),
+        '· 공사: '+(f.works||'[공사 범위]'),
+        '· 기간: '+(f.period||'[기간]'),'',
+        '[시공 전 사진]','',
+        '■ 이렇게 진행했습니다',workLines,'',
+        '[시공 후 사진]','',
+        '■ 이 현장에서 특히 신경 쓴 점',
+        '[품질·하자 관련 디테일 1~2개 — 예: 철거 중 발견한 문제를 사진으로 먼저 공유하고 협의 후 보강]','',
+        '■ 마치며',
+        (f.loc||'대전')+'에서 인테리어를 고민 중이시라면, 항목별 견적부터 솔직하게 잡아드립니다.','',
+        contact].join('\n')
+    };
+  }
+  if(chId==='threads'||chId==='instagram'){
+    return {
+      title:headBits+(worksShort?' · '+worksShort:''),
+      body:[(f.loc||'대전')+(py?' '+py:'')+(worksShort?' '+worksShort:' 인테리어')+' 완료 ✅',
+        (f.period?'공사기간 '+f.period+' · ':'')+'대표가 직접 시공하고 관리했습니다.','',
+        '[전/후 사진]','',
+        '상담은 DM 또는 '+COMPANY.tel,'',
+        adHashtags(f)].join('\n')
+    };
+  }
+  return {
+    title:headBits+(worksShort?' — '+worksShort:''),
+    body:[(f.loc||'대전')+(py?' '+py:'')+' '+(f.works||'인테리어')+' 현장을 마쳤습니다.',
+      (f.period?'공사기간 '+f.period+'. ':'')+'대표가 직접 상담·시공·관리하는 소수 현장 방식으로 진행했습니다.','',
+      '[전/후 사진]','',
+      '견적·상담 문의: '+COMPANY.tel+' ('+COMPANY.owner+')'].join('\n')
+  };
+}
+function adDraftOpen(chId){
+  const ch=AD_CH.find(function(c){return c.id===chId;})||AD_CH[0];
+  const projs=(state.projects||[]).map(function(p){return p.name;});
+  if(!projs.length){toast('현장이 아직 없어요 — 먼저 현장을 추가하세요');return;}
+  const cur=(state.activeProject&&projs.indexOf(state.activeProject)>=0)?state.activeProject:projs[projs.length-1];
+  openModal('✍️ '+ch.ic+' '+ch.n+' 원고 만들기',
+    '<label style="font-size:11.5px;color:var(--muted)">현장 선택</label>'+
+    '<select id="adDraftProj" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
+      projs.map(function(n){return '<option'+(n===cur?' selected':'')+' value="'+escapeAttr(n)+'">'+escapeHtml(n)+'</option>';}).join('')+'</select>'+
+    '<label style="font-size:11.5px;color:var(--muted)">제목</label>'+
+    '<input id="adDraftTitle" type="text" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
+    '<label style="font-size:11.5px;color:var(--muted)">본문 (대괄호 [ ] 자리만 채우면 완성)</label>'+
+    '<textarea id="adDraftTa" rows="13" style="width:100%;padding:10px;margin:4px 0;border-radius:9px;border:1px solid var(--line-soft);font-size:12.5px;line-height:1.6"></textarea>'+
+    '<div class="hint" style="margin-top:6px">현장 자료(지역·평수·공정·일정)에서 자동으로 채웠어요. 고객 실명·금액은 넣지 않습니다.</div>',
+    [{label:'📋 복사',cls:'blue',fn:async function(){
+        const txt=document.getElementById('adDraftTitle').value+'\n\n'+document.getElementById('adDraftTa').value;
+        try{await navigator.clipboard.writeText(txt);toast('원고 복사됨 — '+ch.n+'에 붙여넣으세요');}
+        catch(e){try{const ta=document.getElementById('adDraftTa');ta.select();document.execCommand('copy');toast('원고 복사됨');}catch(_){toast('복사 실패 — 본문을 길게 눌러 복사하세요');}}
+      }},
+     {label:'게시 기록에 추가',cls:'clay',fn:function(){
+        const t=document.getElementById('adDraftTitle').value.trim();
+        state.adPosts=state.adPosts||[];
+        state.adPosts.push({id:uid(),ch:chId,date:localDate(),title:t||'(원고)',url:'',memo:'원고 작성'});
+        markDirty();closeModal();render();toast('기록 저장됨 — 게시 후 링크를 채워두면 좋아요');
+      }},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const fill=function(){
+    const f=adProjFacts(document.getElementById('adDraftProj').value);
+    const d=adDraftText(chId,f);
+    document.getElementById('adDraftTitle').value=d.title;
+    document.getElementById('adDraftTa').value=d.body;
+  };
+  const sel=document.getElementById('adDraftProj');
+  if(sel){sel.onchange=fill;fill();}
 }
 
 /* ── 📤 명함·사업자등록증 보내기 ── */
@@ -19155,7 +19280,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19305,6 +19430,7 @@ function setupDelegation(){
     if(d.adch!==undefined){e.stopPropagation();window.__adCh=d.adch;render();return;}
     if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
     if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
+    if(d.addraft!==undefined){e.stopPropagation();return adDraftOpen(d.addraft);}
     if(d.cwtax!==undefined){e.stopPropagation();try{coworkTaskView('cw_tax');}catch(e2){}return;}
     if(d.movephoto!==undefined){e.stopPropagation();return moveSinglePhoto(d.movephoto);}
     if(d.delphoto!==undefined){e.stopPropagation();return deletePhoto(d.delphoto);}
@@ -20451,6 +20577,8 @@ var __hjLead=/[?&#]lead=/.test(location.search+location.hash);
 try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
 /* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
 try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
+/* 앱이 이미 열린 탭에서 #lead= 링크로 재진입(주소만 변경, 재로드 없음)해도 인입되도록 */
+window.addEventListener('hashchange',function(){try{if(/[#&]lead=/.test(location.hash))hjLeadIntake();}catch(e){}});
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
