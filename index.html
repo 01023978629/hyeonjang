@@ -1818,7 +1818,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-19-uxpass-v112';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-19-routine-v113';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -16358,6 +16358,51 @@ function adPerfOpen(postId){
      {label:'취소',cls:'ghost',fn:closeModal}]);
 }
 
+/* ── 🔁 운영 루틴 담기 (v113) — "사진→광고, 견적→홈택스 정리" 주간 운영 순서를
+   일정표에 4주치로 넣어준다. 각 일정 메모에 클로드(Cowork)에게 시킬 말이 적혀 있어
+   그날 일정만 따라가면 운영이 굴러간다. 같은 날짜+제목은 중복 추가하지 않는다. ── */
+const HJ_ROUTINE=[
+  {dow:1,time:'09:00',title:'📸 현장 사진 올리기·배정',
+   memo:'① 지난 며칠 현장 사진 업로드(촬영 버튼 또는 드라이브) ② 현장 배정 확인.\n클로드에게: "만물 폴더 정리해줘" (사진·서류 자동 정리)'},
+  {dow:3,time:'17:00',title:'📣 광고 1편 — 전/후·원고·배포',
+   memo:'① 진행·완료 현장 하나 선택 ② 광고 탭 [✍️ 원고 만들기] → 전/후 카드 ③ [복사하고 채널 열기]로 게시 ④ 게시 기록 저장.\n더 다듬기: 클로드에게 "이 사진으로 블로그 글 써줘"'},
+  {dow:5,time:'16:00',title:'🧾 견적·수금 기입 + 홈택스 정리',
+   memo:'① 이번 주 견적서 작성·수금액 입력 ② 홈택스에서 카드·세금계산서·매입 엑셀 내려받아 회계 탭에 업로드.\n클로드에게: "홈택스 파일 정리해줘" / "부가세 준비해줘"'},
+  {dow:5,time:'17:30',title:'🛡 주간 백업',
+   memo:'대시보드 [지금 백업] 한 번 — 폰 고장·분실 대비. 광고 성과([📈] 문의 수)도 이때 채우면 좋아요.'}
+];
+function hjRoutineSeed(){
+  state.schedule=state.schedule||[];
+  const today=new Date();today.setHours(0,0,0,0);
+  const plan=[];
+  for(let w=0;w<4;w++){
+    HJ_ROUTINE.forEach(function(r){
+      const d=new Date(today);
+      const diff=(r.dow-d.getDay()+7)%7;      // 다음 해당 요일(오늘 포함)
+      d.setDate(d.getDate()+diff+w*7);
+      const date=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      const dupe=state.schedule.some(function(s){return s&&s.date===date&&s.title===r.title;});
+      if(!dupe)plan.push({id:uid(),date:date,time:r.time,title:r.title,project:'',workers:'',hours:0,memo:r.memo,routine:true});
+    });
+  }
+  if(!plan.length){toast('이미 4주치 운영 루틴이 일정표에 있어요');return;}
+  const DOW=['일','월','화','수','목','금','토'];
+  const rows=plan.slice(0,8).map(function(p){
+    const d=new Date(p.date+'T00:00:00');
+    return '<div style="display:flex;gap:8px;padding:4px 0;font-size:12.5px"><span style="color:var(--muted);flex:0 0 92px">'+p.date.slice(5)+' ('+DOW[d.getDay()]+') '+p.time+'</span><b>'+escapeHtml(p.title)+'</b></div>';
+  }).join('');
+  openModal('🔁 운영 루틴 4주치 담기',
+    '<p style="font-size:13px;line-height:1.6;margin-bottom:10px">매주 <b>월(사진) · 수(광고) · 금(정산·백업)</b> 리듬으로 '+plan.length+'건을 일정표에 넣어요.<br>각 일정의 메모에 <b>클로드에게 시킬 말</b>이 적혀 있어 그대로 따라가면 됩니다.</p>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;max-height:200px;overflow:auto">'+rows+(plan.length>8?'<div style="font-size:11.5px;color:var(--muted);padding-top:4px">… 외 '+(plan.length-8)+'건 (4주 반복)</div>':'')+'</div>'+
+    '<div class="hint" style="margin-top:8px">필요 없는 요일은 일정에서 개별 삭제하면 됩니다. 다시 누르면 빠진 주만 채워져요.</div>',
+    [{label:plan.length+'건 일정표에 담기',cls:'clay',fn:function(){
+        state.schedule=state.schedule.concat(plan);
+        markDirty();closeModal();render();
+        toast('운영 루틴 '+plan.length+'건이 일정표에 들어갔어요');
+      }},
+     {label:'취소',cls:'ghost',fn:closeModal}],true);
+}
+
 /* ── 📤 명함·사업자등록증 보내기 ── */
 async function docSend(id){
   const f=state.files.find(function(x){return x.id===id;});
@@ -18566,7 +18611,7 @@ function calMonth(){return __calYM||localMonth();}
 function viewSchedule(){
   const today=localDate();
   let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schNotify">🔔 알림 문자</button> <button class="moss tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
+    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schRoutine">🔁 운영 루틴 담기</button> <button class="ghost tiny" id="schNotify">🔔 알림 문자</button> <button class="ghost tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
   // ===== 월 달력 =====
   html+=calendarHTML();
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
@@ -19364,7 +19409,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19377,6 +19422,7 @@ function setupDelegation(){
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmNew')return startNewQuote();
     if(t.id==='schAdd')return openScheduleEdit(null);
+    if(t.id==='schRoutine')return hjRoutineSeed();
     if(t.id==='schNotify')return scheduleNotify();
     if(t.id==='schLabor')return laborLedger();
     if(t.id==='schGcal')return toggleGcalAuto();
