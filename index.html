@@ -1818,7 +1818,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-19-routine-v113';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-19-routinego-v114';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -4054,10 +4054,16 @@ function dashboardTodayHTML(){
   const todays=sch.filter(s=>s.date===today).slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   const upcoming=sch.filter(s=>s.date>today).slice().sort((a,b)=>String((a.date||'')+(a.time||'')).localeCompare(String((b.date||'')+(b.time||'')))).slice(0,3);
   if(!todays.length&&!upcoming.length)return '';
-  const chip=(s,showDate)=>`<button data-gosch="${escapeAttr(s.id)}" style="display:block;width:100%;text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;margin:4px 0;cursor:pointer;font:inherit">`+
+  const chip=(s,showDate)=>{
+    const inner=`<button data-gosch="${escapeAttr(s.id)}" style="display:block;${s.routine?'flex:1;min-width:0;margin:0;':'width:100%;margin:4px 0;'}text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;cursor:pointer;font:inherit">`+
     `<b style="color:var(--blueprint)">${showDate?escapeHtml(String(s.date).slice(5))+' ':''}${s.time?escapeHtml(s.time)+' ':''}${escapeHtml(s.title||'작업')}</b>`+
     `${s.project?`<span style="margin-left:8px;font-size:12px;color:var(--muted)">📍${escapeHtml(s.project)}</span>`:''}`+
     `${s.workers?`<span style="margin-left:6px;font-size:12px;color:var(--muted)">👷${escapeHtml(String(s.workers))}명</span>`:''}</button>`;
+    // 운영 루틴 일정은 [▶ 바로] 한 번으로 해당 화면(사진/광고/회계)이나 백업 실행으로 점프
+    return s.routine
+      ?`<div style="display:flex;gap:6px;align-items:stretch;margin:4px 0">${inner}<button class="blue tiny" data-routinego="${escapeAttr(s.title)}" style="flex:0 0 auto;padding:0 14px;border-radius:9px" title="바로 실행">▶ 바로</button></div>`
+      :inner;
+  };
   let h=`<div class="dash-sec">📅 오늘 일정 <span style="font-size:11px;color:var(--muted);font-weight:400">· ${today}</span></div>`;
   h+= todays.length ? todays.map(s=>chip(s,false)).join('') : `<div class="hint" style="margin:0 0 6px">오늘 등록된 작업이 없습니다.</div>`;
   if(upcoming.length){ h+=`<div style="font-size:12px;color:var(--muted);margin:8px 0 2px">다가오는 일정</div>`+upcoming.map(s=>chip(s,true)).join(''); }
@@ -16371,6 +16377,18 @@ const HJ_ROUTINE=[
   {dow:5,time:'17:30',title:'🛡 주간 백업',
    memo:'대시보드 [지금 백업] 한 번 — 폰 고장·분실 대비. 광고 성과([📈] 문의 수)도 이때 채우면 좋아요.'}
 ];
+function hjRoutineGo(title){
+  const t=String(title||'');
+  if(/백업/.test(t)){try{backupNow();}catch(e){toast('백업을 실행할 수 없어요');}return;}
+  let tab='dashboard';
+  if(/사진/.test(t))tab='photos';
+  else if(/광고/.test(t))tab='ads';
+  else if(/홈택스|견적/.test(t))tab='ledger';
+  state.tab=tab;state.activeProject=null;render();
+  if(tab==='ads')toast('광고 탭 — [✍️ 원고 만들기]로 시작하세요');
+  else if(tab==='ledger')toast('회계 탭 — 홈택스 엑셀을 올리면 자동 분류됩니다');
+  else if(tab==='photos')toast('사진 탭 — 촬영 버튼 또는 드라이브로 올리세요');
+}
 function hjRoutineSeed(){
   state.schedule=state.schedule||[];
   const today=new Date();today.setHours(0,0,0,0);
@@ -19409,7 +19427,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19562,6 +19580,7 @@ function setupDelegation(){
     if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
     if(d.addraft!==undefined){e.stopPropagation();return adDraftOpen(d.addraft);}
     if(d.adperf!==undefined){e.stopPropagation();return adPerfOpen(d.adperf);}
+    if(d.routinego!==undefined){e.stopPropagation();return hjRoutineGo(d.routinego);}
     if(d.cwtax!==undefined){e.stopPropagation();try{coworkTaskView('cw_tax');}catch(e2){}return;}
     if(d.movephoto!==undefined){e.stopPropagation();return moveSinglePhoto(d.movephoto);}
     if(d.delphoto!==undefined){e.stopPropagation();return deletePhoto(d.delphoto);}
