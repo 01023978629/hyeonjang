@@ -1818,7 +1818,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-19-routinego-v114';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-19-photo-local-v115';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -1898,7 +1898,7 @@ function gdGetToken(interactive){
     }
   }).finally(()=>{__gdTokenPromise=null;});
   return __gdTokenPromise.catch(e=>{
-    if(interactive && !document.getElementById('diagAuthOut')){try{openModal('구글 로그인 실패',`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${escapeHtml((e&&e.message)||String(e))}</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="clay tiny" style="padding:8px 12px" onclick="closeModal();gdLoginRedirect()">🔁 이동 방식으로 로그인(팝업 없음)</button><button class="ghost tiny" style="padding:8px 12px" onclick="closeModal();runDiagnostics()">🔧 연결 진단</button></div>`);}catch(_){}}
+    if(interactive && !document.getElementById('diagAuthOut')){try{openModal('구글 로그인 실패',`<div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${escapeHtml((e&&e.message)||String(e))}</div><div style="margin-top:10px;padding:10px 12px;background:var(--paper);border:1px solid var(--line-soft);border-radius:10px;font-size:12.5px;line-height:1.6">💡 <b>사진은 이미 폰에 저장됩니다</b> — 구글 로그인이 안 돼도 [올리기]·촬영으로 앱에 담깁니다.<br>여러 기기에서 함께 보려면 <b>구글 없이 되는 ‘클라우드 저장(중계)’</b>을 권장합니다.</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="clay tiny" style="padding:8px 12px" onclick="closeModal();try{openGdriveSetup()}catch(_){}">☁️ 클라우드 저장 설정(구글 없이)</button><button class="ghost tiny" style="padding:8px 12px" onclick="closeModal();gdLoginRedirect()">🔁 이동 방식 로그인</button><button class="ghost tiny" style="padding:8px 12px" onclick="closeModal();runDiagnostics()">🔧 연결 진단</button></div>`);}catch(_){}}
     throw e;
   });
 }
@@ -2173,12 +2173,18 @@ function gdUploadPhotos(){
       if(typeof __photoCache!=='undefined')__photoCache.key=null;
       state.tab='photos';render();inp.value='';return;
     }   // 서버 중계 우선(모바일 OK, 압축·순차, 앱 목록 즉시 연결)
-    try{ if(!__gdToken)await gdGetToken(true); }catch(e){ toast('먼저 ☁️ 구글 로그인하세요'); return; }
-    toast(files.length+'장 드라이브 업로드 중...');
-    let ok=0;
-    for(const f of files){ try{ await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진'); ok++; }catch(e){} }
-    toast(ok+'/'+files.length+'장 → 만물인테리어▸현장사진 업로드 완료');
-    inp.value='';
+    // 릴레이 미설정 → 촬영과 동일하게 '폰에 먼저 저장'(구글 로그인 없이 항상 됨). 클라우드는 가능할 때만 백업.
+    // (예전엔 여기서 구글 로그인을 강제해, 아이폰 팝업/redirect_uri 오류 시 사진 자체가 안 올라갔음)
+    const added=[];
+    for(const f of files){ try{ added.push(await ingestFile(f)); }catch(e){ added.push(null); } }
+    if(state.activeProject)added.forEach(f=>{ if(f&&f.kind==='photo')f.project=state.activeProject; });
+    if(typeof __photoCache!=='undefined')__photoCache.key=null;
+    markDirty(); state.tab='photos'; render(); try{syncMobileNav();}catch(e){} inp.value='';
+    toast(files.length+'장 저장됨'+(state.activeProject?` · ${state.activeProject}`:'')+' — 폰에 먼저 담았어요');
+    // 이미 구글 로그인돼 있으면(토큰 보유) 백그라운드로 드라이브에도 백업. 없으면 로그인 강요하지 않음.
+    if(typeof __gdToken!=='undefined'&&__gdToken){
+      (async()=>{ let ok=0; for(const f of files){ try{ await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진'); ok++; }catch(e){} } if(ok)toast(ok+'장 드라이브에도 백업됨'); })();
+    }
   };
   inp.click();
 }
