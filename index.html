@@ -1302,6 +1302,9 @@ let __relayQn=0;                // 전송 대기열 건수(표시용)
 let __relayAuthToasted=false;   // 인증 오류 토스트는 1회만(도배 금지)
 let __relaySaving=false,__relayPend=false,__relayFlushing=false;
 function relayReady(){return !!(__relay.url&&__relay.token);}
+/* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
+let __contract={url:'',token:''};
+function contractReady(){return !!(__contract.url&&__contract.token);}
 async function relayCall(action,payload){
   // ★커스텀 헤더 금지: text/plain = '단순 요청' → OPTIONS preflight가 없어 Apps Script에서 동작
   const body=JSON.stringify({token:__relay.token,action:action,deviceId:__relay.device||'unknown',ts:Date.now(),payload:payload||{}});
@@ -1744,6 +1747,9 @@ async function relayBoot(){
     if(!__relay.device){const mob=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');__relay.device=(mob?'mobile-':'pc-')+Math.random().toString(36).slice(2,6);try{await idbSet('relay_device',__relay.device);}catch(e){}}
     __relay.rev=Number(await idbGet('relay_rev'))||0;
     __relay.syncAt=(await idbGet('relay_syncAt'))||'';
+    // 전자계약 서버 연결도 이 기기(idb)에서만 복원 — 스키마(serialize/applyData)에는 넣지 않는 비밀
+    __contract.url=(await idbGet('contract_url'))||'';
+    __contract.token=(await idbGet('contract_token'))||'';
     await relayUpdateQueueBadge();
     if(!relayReady())return;
     relaySetStatus(__relay.syncAt?'saved':'ready');
@@ -2640,6 +2646,22 @@ function openGdriveSetup(){
     </div>
     <div id="ryOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
+  const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
+  const contractSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--clay,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
+    <b style="font-size:14px">📨 전자계약 서버 연결 (알림톡 계약서 보내기)</b>
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">현장 상세의 <b>📨 알림톡 계약서</b> 버튼으로 고객에게 전자계약서를 보냅니다. 주소·관리자 토큰은 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업에는 포함되지 않습니다.</p>
+    <label style="display:block;margin-bottom:6px">서버 주소 (전자계약 서버 BASE URL)
+      <input type="text" id="ctUrl" value="${escapeAttr(__contract.url||'')}" placeholder="https://contract.example.com" style="width:100%;margin-top:4px">
+    </label>
+    <label style="display:block;margin-bottom:6px">관리자 토큰 (x-admin-token)
+      <input type="password" id="ctTok" value="" placeholder="${escapeAttr(ctMask)}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
+    </label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+      <button class="clay tiny" id="ctSave">💾 저장</button>
+      <span id="ctState" style="align-self:center;font-size:12px;color:var(--muted-2)">${__contract.url&&__contract.token?'✅ 연결됨':'미설정'}</span>
+    </div>
+    <div id="ctOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
+  </div>`;
   const gdBody=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 10px">구글드라이브 <b>만물인테리어 폴더</b>에 <b>현장데이터.json</b>을 자동 저장/불러와 PC↔폰을 맞춥니다(고정). <b>이미 연결 준비됨</b> — 아래 <b>‘🔑 구글 로그인 & 연결’</b>만 누르세요.</p>
     <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
@@ -2686,7 +2708,7 @@ function openGdriveSetup(){
     </details>
   </div>`;
   // 비상용(기존 구글 직접 연동)은 UI·기능 그대로 접어서 보존
-  const body=relaySec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
+  const body=relaySec+contractSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
   openModal('☁️ 클라우드 저장 설정',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
@@ -2745,6 +2767,19 @@ function openGdriveSetup(){
   };
   relayUpdateQueueBadge();
   if(relayReady())relaySetStatus(__relayState||(__relay.syncAt?'saved':'ready'));   // gdDot에도 relay 상태 반영
+  /* ── 전자계약 서버 연결 저장 ── */
+  {const cs=root.querySelector('#ctSave');if(cs)cs.onclick=async()=>{
+    const u=(root.querySelector('#ctUrl').value||'').trim();
+    const tin=(root.querySelector('#ctTok').value||'').trim();   // 빈칸이면 기존 토큰 유지(원문 재노출 안 함)
+    __contract.url=u;
+    if(tin)__contract.token=tin;
+    try{await idbSet('contract_url',u);if(tin)await idbSet('contract_token',tin);}catch(e){}
+    root.querySelector('#ctTok').value='';   // 저장 후 입력칸 비움 — 토큰 원문 재노출 금지
+    root.querySelector('#ctTok').placeholder=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
+    const stEl=root.querySelector('#ctState');if(stEl)stEl.textContent=contractReady()?'✅ 연결됨':'미설정';
+    const out=root.querySelector('#ctOut');if(out){out.textContent=contractReady()?'✅ 전자계약 서버 저장됨 — 현장 상세에서 📨 알림톡 계약서를 보낼 수 있습니다':(u?'관리자 토큰도 입력하세요':'서버 주소를 입력하세요');out.style.color=contractReady()?'var(--ok)':'var(--warn)';}
+    toast(contractReady()?'📨 전자계약 서버 저장됨':'주소·토큰을 모두 입력하세요');
+  };}
 }
 
 /* ---------- 사용법 도움말 ---------- */
@@ -3881,6 +3916,71 @@ function loadCustomerFromCard(projName){
     const p=state.projects.find(x=>x.name===window.__custProj);
     if(p){p.customer={name:c.name||'',phone:c.phone||c.tel||'',addr:p.customer?.addr||''};markDirty();closeModal();render();toast('고객 정보 불러옴');}
   });
+}
+
+/* ---------- 📨 전자계약 알림톡 발송 (전자계약 서버 quick-send) ----------
+   서버 주소·관리자 토큰은 ☁️ 설정에서 이 기기(idb)에만 저장(__contract). 전화번호 원문은 로그에 남기지 않는다. */
+function contractMaskPhone(ph){const d=String(ph||'').replace(/[^\d]/g,'');return d.length>=4?('***-****-'+d.slice(-4)):'(번호 없음)';}
+function openContractSend(projName){
+  const p=state.projects.find(x=>x.name===projName);
+  if(!p){toast('현장을 찾을 수 없습니다');return;}
+  const cu=p.customer||{};
+  if(!cu.phone||!telHref(cu.phone)){toast('고객 전화번호를 먼저 입력하세요');return;}
+  const st=projStats(p.name);
+  const defAmt=st.est||st.recv||0;   // 견적 합계 → 없으면 수금액 → 없으면 0 (수정 가능)
+  const body=`<div style="font-size:13px;line-height:1.8">
+    <div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      <div><b>고객</b> ${escapeHtml(cu.name||'(이름 미상)')} · ${escapeHtml(contractMaskPhone(cu.phone))}</div>
+      <div><b>현장</b> ${escapeHtml(p.name)}</div>
+      ${(p.phases&&p.phases.length)?`<div><b>공정</b> ${escapeHtml(p.phases.join(', '))}</div>`:''}
+    </div>
+    <label style="display:block">계약금액 (원, 수정 가능)
+      <input type="text" id="ctAmt" inputmode="numeric" value="${defAmt.toLocaleString('ko-KR')}" style="width:100%;margin-top:4px;text-align:right;font-size:16px">
+    </label>
+    <p style="font-size:12px;color:var(--muted-2);margin:8px 0 0">[보내기]를 누르면 전자계약 서버를 통해 <b>고객에게 알림톡으로 계약서</b>가 발송됩니다.</p>
+  </div>`;
+  openModal('📨 알림톡 계약서 보내기',body,[
+    {label:'보내기',cls:'clay',fn:async function(){
+      const el=document.getElementById('ctAmt');
+      const amount=el?won2num(el.value):defAmt;
+      await contractSend(p,amount);
+    }},
+    {label:'취소',cls:'ghost',fn:closeModal}
+  ]);
+}
+async function contractSend(p,amount){
+  if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
+  const cu=p.customer||{};
+  amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
+  const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-5439-8629'};
+  const endpoint=__contract.url.replace(/\/$/,'')+'/api/contracts/quick-send';
+  const payload={title:'공사 도급계약서',amount:amount,body:{site:p.name,scope:(p.phases||[])},
+    operator:op,customer:{name:cu.name||'',phone:cu.phone||''},baseUrl:__contract.url};
+  let res;
+  try{
+    res=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','x-admin-token':__contract.token},body:JSON.stringify(payload)});
+  }catch(e){toast('전송 실패 — 서버 주소·연결을 확인하세요');return;}   // 네트워크/CORS
+  if(res.status===401){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
+  let j=null;try{j=await res.json();}catch(e){}
+  if(res.status===400){toast('전송 실패: '+((j&&(j.message||j.error))||'입력값을 확인하세요'));return;}
+  if(!res.ok){toast('전송 실패 (서버 오류 '+res.status+')');return;}
+  const dl=(j&&j.delivery)||{};
+  if(dl.status==='SENT'){
+    closeModal();
+    toast('📨 계약서 알림톡을 보냈습니다');
+    try{contractLogSend(p,amount,j);}catch(e){}   // 발송 이력 메모(선택) — projects에 저장(전화번호는 저장 안 함)
+  }else if(dl.status==='FAILED'){
+    toast('알림톡 발송 실패: '+(dl.reason||'사유 미상'));
+  }else{
+    toast('전송 결과를 확인할 수 없습니다');
+  }
+}
+function contractLogSend(p,amount,j){
+  // projects 배열은 통째로 직렬화되므로 별도 스키마 등록 불필요(dueDate·portalMsgs와 동일 패턴). PII(전화번호)는 저장하지 않음.
+  if(!Array.isArray(p.contractLog))p.contractLog=[];
+  p.contractLog.push({at:new Date().toISOString(),amount:amount,contractNo:(j&&j.contractNo)||'',contractId:(j&&j.contractId)||'',status:'SENT'});
+  if(p.contractLog.length>50)p.contractLog=p.contractLog.slice(-50);
+  markDirty();
 }
 
 /* ---------- 현장 대표 위치 (GPS 평균 우선, 없으면 주소 지오코딩) ---------- */
@@ -19259,6 +19359,7 @@ function viewProject(){
         <button class="mini-btn call-btn" data-callcust="${escapeAttr(p.name)}" title="고객에게 전화 걸기">📞 전화</button>
         <button class="mini-btn" data-smscust="${escapeAttr(p.name)}" title="고객에게 문자 보내기">✉️ 문자</button>
         <button class="mini-btn" data-navi="${escapeAttr(p.name)}" title="현장 주소로 길찾기(네이버지도)">🗺️ 길찾기</button>
+        <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="전자계약서를 고객에게 알림톡으로 보냅니다"${cu.phone?'':' style="opacity:.55"'}>📨 알림톡 계약서</button>
       </div>
     </div>`;
   }
@@ -19433,7 +19534,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
@@ -19471,6 +19572,7 @@ function setupDelegation(){
     if(d.navi!==undefined){const pp=state.projects.find(x=>x.name===d.navi);const a=pp&&pp.customer&&(pp.customer.addr||'').trim();if(a)window.open('https://map.naver.com/p/search/'+encodeURIComponent(a),'_blank','noopener');else toast('고객 정보에 현장 주소를 먼저 입력하세요');return;}
     if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
+    if(d.contractsend!==undefined)return openContractSend(d.contractsend);
     if(d.schreport!==undefined)return openReportEdit(d.schreport);
     if(d.schedit!==undefined)return openScheduleEdit(d.schedit);
     if(d.schdel!==undefined)return deleteSchedule(d.schdel);
