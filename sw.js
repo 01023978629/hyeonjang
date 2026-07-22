@@ -1,5 +1,5 @@
 /* 현장 앱 오프라인 캐시 — HTML은 네트워크 우선(업데이트 즉시 반영), 나머지는 캐시 우선+백그라운드 갱신 */
-const C='hyeonjang-v115';
+const C='hyeonjang-v116';
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
 self.addEventListener('fetch',e=>{
