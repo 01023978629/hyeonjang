@@ -332,6 +332,45 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(biz.avgMargin !== 100, '수익추이 avgMargin 100% 아님(원가 0 버그 해소): ' + biz.avgMargin);
   });
 
+  // 16) 예산 축(costTotal): p.cost=0 + 자재 장부 300만 + 유류(기타) 50만, 예산 200만 현장
+  //     (1) projStats.costTotal=350만(=costEffective 300만 + costEtc 50만)
+  //     (2) budgetAlertData가 초과로 잡음(spent=350만 > 예산 200만)
+  //     (3) spent가 기타경비까지 포함(350만, 300만 아님) — 마진 costEffective와 구분
+  await test('예산 축: costTotal=유효원가+기타경비, budgetAlertData 초과 발화(장부·기타 포함)', async () => {
+    await page.evaluate(() => {
+      state.projects = [
+        { name: '예산장', stage: 2, received: 0, phases: [], budget: 2000000, cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false }
+      ];
+      state.files = [
+        { id: 'eBud', name: '예산장 견적.pdf', kind: 'estimate', project: '예산장', est: { amount: 11000000, supply: 10000000, vat: 1000000 } }
+      ];
+      state.expenses = [
+        { id: 'bx1', date: '2026-07-01', amount: 3000000, category: '자재', method: '카드', memo: '', project: '예산장' }, // 유효원가(자재)
+        { id: 'bx2', date: '2026-07-02', amount: 500000, category: '유류', method: '카드', memo: '', project: '예산장' }  // 기타경비(costEtc)
+      ];
+      state.quotes = []; state.payLog = [];
+      state.activeProject = null; state.tab = 'dashboard'; state.dirty = false; render();
+    });
+    // (1) costTotal = costEffective(자재 300만) + costEtc(유류 50만) = 350만
+    const s = await page.evaluate(() => projStats('예산장'));
+    assert(s.costEffective === 3000000, 'costEffective=자재 3,000,000(기타 제외): ' + s.costEffective);
+    assert(s.costEtc === 500000, 'costEtc=유류 500,000: ' + s.costEtc);
+    assert(s.costTotal === 3500000, 'costTotal=costEffective+costEtc=3,500,000: ' + s.costTotal);
+    // 마진 축(costEffective/marginEff)은 기타경비 미포함 — 예산 축과 구분 유지
+    assert(s.marginEff === 8000000, 'marginEff=1,100만−300만=8,000,000(기타경비 무관): ' + s.marginEff);
+    // (2)(3) budgetAlertData: spent=costTotal=350만 > 예산 200만 → 초과, 그리고 300만 아님
+    const alert = await page.evaluate(() => budgetAlertData().find(r => r.name === '예산장'));
+    assert(alert, 'budgetAlertData에 예산장 존재(80% 이상)');
+    assert(alert.spent === 3500000, 'alert.spent=costTotal 3,500,000(기타 포함, 300만 아님): ' + alert.spent);
+    assert(alert.over === true && alert.spent > 2000000, '예산 200만 초과로 잡힘(spent>budget): ' + alert.over);
+    assert(alert.base === 2000000 && alert.kind === '예산', '기준=예산 200만: ' + alert.base + '/' + alert.kind);
+    // budgetSpent(예산관리 화면)도 동일 베이스(costTotal) 공유
+    const bs = await page.evaluate(() => budgetSpent('예산장'));
+    assert(bs === 3500000, 'budgetSpent=costTotal 3,500,000(대시보드/경보와 동일 베이스): ' + bs);
+    const bd = await page.evaluate(() => budgetData().rows.find(r => r.name === '예산장'));
+    assert(bd && bd.spent === 3500000 && bd.over === true, 'budgetData row spent/over 일관: ' + (bd && bd.spent));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

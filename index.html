@@ -3938,6 +3938,10 @@ function projStats(name){
   const labEff = lMan ? (c.labor||0)    : expAgg.labor; // applyLaborToProject 이중계상 방지
   const costEffective = matEff+labEff+outEff; // 유효원가 원문합(부가세 포함 지출 그대로) — '지출합계' 표시용
   const costEtc = expAgg.etc;
+  // ── 예산 축 파생: 현장 총지출(costTotal) — 읽기 전용 ──
+  // 유효원가(자재+인건+외주 택일합) + 기타경비(장비/유류/식대 등). 마진 원가(costEffective)와 달리 기타경비까지 포함해
+  // '예산 대비 지출' = 현장 총현금유출 베이스로 쓴다. 마진 정의(costEffective/marginEff)는 건드리지 않음.
+  const costTotal = costEffective + costEtc;
   // 항목별 원가출처(값>0인 항목만): 유효값이 수기에서 왔는지 장부에서 왔는지 — 표 셀 배지용
   const matSrc = matEff<=0?'없음':(mMan?'수기':'장부');
   const outSrc = outEff<=0?'없음':(oMan?'수기':'장부');
@@ -3959,7 +3963,7 @@ function projStats(name){
   const marginEff = est-costEffective;
   const marginRateEff = est?Math.round(marginEff/est*100):0;
   return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
-    supply,costEffective,costSupply,costEtc,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
+    supply,costEffective,costSupply,costEtc,costTotal,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
     material:matEff,labor:labEff,outsource:outEff,matSrc,outSrc,labSrc,
     expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
 }
@@ -10134,13 +10138,11 @@ function budgetSet(project,amount){
   p.budget=won2num(amount);markDirty();render();
   return {현장:ms[0],예산:p.budget};
 }
-// 현장 지출: cost(원가) + 지출장부에서 현장 연결된 것
+// 현장 지출(현장 총현금유출): 유효원가(장부반영·택일합) + 기타경비 = projStats.costTotal
+// 대시보드/경보와 같은 장부반영 베이스 공유(수기 우선·이중계상 방지·기타경비 포함).
 function budgetSpent(project){
   const s=projStats(project);
-  const costSpent=s.cost;
-  const expSpent=(state.expenses||[]).filter(e=>String(e.project||'')===project).reduce((a,e)=>a+num(e.amount),0);
-  // cost가 있으면 그것 우선(중복 방지), 없으면 지출장부
-  return costSpent>0?costSpent:expSpent;
+  return s.costTotal||0;
 }
 function budgetData(){
   const rows=[];
@@ -12847,7 +12849,7 @@ function budgetAlertData(){
     if(p.archived)return;
     let s;try{s=projStats(p.name);}catch(e){return;}
     const budget=num(p.budget)||0;
-    const spent=s.cost||0;
+    const spent=s.costTotal||0;
     // 기준: 예산 설정돼 있으면 예산, 없으면 견적의 70%(원가 목표)
     const base=budget>0?budget:(s.est>0?Math.round(s.est*0.7):0);
     if(base<=0)return;  // 기준 없으면 스킵
