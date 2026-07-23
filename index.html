@@ -6760,6 +6760,102 @@ function scheduleNotify(ymd){
   return {날짜:ymd,건수:items.length};
 }
 
+/* ═══════════ 📋 작업지시 보내기 (Phase 2 · 휴먼 이펙터 디스패치) ═══════════ */
+/* AI(운영)가 현장 작업자·외주팀(사람의 손)에게 작업을 지시한다. 발송은 폰 네이티브 SMS(hjSendSms)
+   재사용 — 서버·배포 불필요. 완료 확인은 기존 사진 업로드로 회수(새 매커니즘 없음).
+   발송 이력은 project.workOrders에 전화번호 뒷4자리만 마스킹해 기록(projects 배열에 자연 직렬화,
+   contractLog·dueDate와 동일 패턴 → serializeData/applyData 본문 수정 불필요). 전화 원문은 저장 안 함. */
+function hjMaskTel(phone){const d=String(phone||'').replace(/\D/g,'');return d?('***-'+d.slice(-4)):'';}
+function hjWorkOrderText(o){
+  const lines=['['+COMPANY.name+'] 작업지시서'];
+  if(o.site)lines.push('■ 현장: '+o.site);
+  if(o.addr)lines.push('■ 주소: '+o.addr);
+  if(o.when)lines.push('■ 일시: '+o.when);
+  if(o.work)lines.push('■ 작업: '+o.work);
+  if(o.material)lines.push('■ 자재·준비물: '+o.material);
+  if(o.caution)lines.push('■ 주의사항: '+o.caution);
+  lines.push('');
+  lines.push('완료 후 현장 사진 부탁드립니다.');
+  lines.push('문의 '+COMPANY.owner+' '+COMPANY.tel);
+  return lines.join('\n');   // 전화번호 원문은 본문에 포함하지 않음(수신 대상일 뿐)
+}
+function hjWorkOrderLog(projName,rec){
+  const p=state.projects.find(x=>x.name===projName);
+  if(!p)return; // 현장 미지정이면 이력 생략 — 전화 원문은 어디에도 저장하지 않음
+  if(!Array.isArray(p.workOrders))p.workOrders=[];
+  p.workOrders.push({at:new Date().toISOString(),worker:rec.worker||'',title:rec.title||'',date:rec.date||''});   // worker는 hjMaskTel 결과(뒷4자리)만
+  if(p.workOrders.length>50)p.workOrders=p.workOrders.slice(-50);
+  markDirty();
+}
+async function hjWorkOrderAlimtalk(phone,text,projName,rec){
+  // 계약 서버가 연결돼 있을 때만 시도. 작업지시 알림톡 템플릿이 없으면 문안 복사로 안전 폴백(실발송 위장 금지).
+  if(!contractReady()){toast('전자계약 서버를 먼저 연결하세요(☁️ 설정)');return;}
+  const endpoint=__contract.url.replace(/\/$/,'')+'/api/notify/quick-send';
+  try{
+    const res=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','x-admin-token':__contract.token},body:JSON.stringify({to:telHref(phone),text:text,kind:'workorder'})});
+    if(res.ok){closeModal();toast('📨 작업지시 알림톡을 보냈습니다');hjWorkOrderLog(projName,rec);return;}
+  }catch(e){}
+  if(navigator.clipboard)navigator.clipboard.writeText(text);
+  toast('알림톡 미지원 서버 — 문안을 복사했습니다. [문자로 보내기]를 이용하세요');
+}
+// ref: {schId} (일정에서) 또는 {proj} (현장 카드에서)
+function openWorkOrder(ref){
+  ref=ref||{};
+  const s=ref.schId?((state.schedule||[]).find(x=>x.id===ref.schId)||null):null;
+  const projName=ref.proj||(s&&s.project)||'';
+  const p=projName?(state.projects.find(x=>x.name===projName)||null):null;
+  const cu=(p&&p.customer)||{};
+  const addr=(cu.addr||'').trim();
+  const date=(s&&s.date)||localDate();
+  const time=(s&&s.time)||'';
+  const whenStr=hjKD(date)+(time?' '+time:'');
+  const phases=(p&&Array.isArray(p.phases)?p.phases:[]).map(x=>typeof x==='string'?x:((x&&x.name)||'')).filter(Boolean);
+  const workPrefill=(s&&s.title)||phases.join(', ')||projName||'';
+  const contacts=(state.contacts||[]).filter(c=>telHref(c.phone));   // datalist에만 노출, 이력엔 저장 안 함
+  const dlOpts=contacts.map(c=>`<option value="${escapeAttr(c.phone)}">${escapeHtml((c.name||'')+(c.company?' · '+c.company:''))}</option>`).join('');
+  const workersHint=(s&&s.workers)?`<div style="font-size:11px;color:var(--muted);margin-top:3px">이 일정 예정 인원: 👷 ${escapeHtml(String(s.workers))}명 — 실제 담당 작업자 번호를 입력하세요</div>`:'';
+  const body=`
+    <div class="sch-form" style="display:flex;flex-direction:column;gap:9px">
+      <label>받는 사람(작업자) 전화<input type="tel" id="woPhone" list="woContacts" placeholder="010-0000-0000" autocomplete="off">
+        <datalist id="woContacts">${dlOpts}</datalist>${workersHint}</label>
+      <div class="sch-row2">
+        <label>현장<input type="text" id="woSite" value="${escapeAttr(projName||'')}" placeholder="현장명"></label>
+        <label>일시<input type="text" id="woWhen" value="${escapeAttr(whenStr)}"></label>
+      </div>
+      <label>주소<input type="text" id="woAddr" value="${escapeAttr(addr)}" placeholder="현장 주소(선택)"></label>
+      <label>작업 내용<textarea id="woWork" placeholder="예: 방수 2차 작업">${escapeHtml(workPrefill)}</textarea></label>
+      <label>자재·준비물<textarea id="woMat" placeholder="예: 방수액 2통, 롤러, 마스킹테이프"></textarea></label>
+      <label>주의사항<textarea id="woCau" placeholder="예: 오전 입주민 통행 주의, 엘리베이터 양생"></textarea></label>
+      <div style="font-size:12px;color:var(--muted);background:var(--line-soft);padding:8px 10px;border-radius:8px">문자 하단에 <b>“완료 후 현장 사진 부탁드립니다.”</b>가 자동 포함됩니다. 완료 확인은 기존 사진 업로드로 회수합니다.</div>
+    </div>`;
+  const collect=()=>{
+    const g=i=>document.getElementById(i);
+    const phone=((g('woPhone')||{}).value||'').trim();
+    const o={site:((g('woSite')||{}).value||'').trim(),addr:((g('woAddr')||{}).value||'').trim(),when:((g('woWhen')||{}).value||'').trim(),
+      work:((g('woWork')||{}).value||'').trim(),material:((g('woMat')||{}).value||'').trim(),caution:((g('woCau')||{}).value||'').trim()};
+    return {phone,o,text:hjWorkOrderText(o)};
+  };
+  const doLog=(phone,o)=>{if(!phone)return;hjWorkOrderLog(projName,{worker:hjMaskTel(phone),title:o.work||o.site,date:date});};
+  const btns=[
+    {label:'📤 문자로 보내기',cls:'blue',fn:()=>{
+      const c=collect();
+      if(!c.phone){toast('작업자 전화번호를 입력하세요');return;}
+      closeModal();
+      doLog(c.phone,c.o);        // 이력엔 뒷4자리만
+      hjSendSms(c.phone,c.text); // sms: 딥링크만 오픈 — 실제 발신은 사용자가 확인
+    }},
+    {label:'📋 복사',cls:'clay',fn:()=>{
+      const c=collect();
+      if(navigator.clipboard)navigator.clipboard.writeText(c.text).then(()=>toast('작업지시 문안 복사됨 — 카톡·문자에 붙여넣으세요'));
+      else toast('이 브라우저는 복사를 지원하지 않습니다');
+      doLog(c.phone,c.o);
+    }}
+  ];
+  if(contractReady())btns.push({label:'📨 알림톡',cls:'moss',fn:()=>{const c=collect();if(!c.phone){toast('작업자 전화번호를 입력하세요');return;}hjWorkOrderAlimtalk(c.phone,c.text,projName,{worker:hjMaskTel(c.phone),title:c.o.work||c.o.site,date:date});}});
+  btns.push({label:'닫기',cls:'ghost',fn:closeModal});
+  openModal('📋 작업지시 보내기',body,btns,true);
+}
+
 /* ═══════════ 🛡 데이터 안전판 — 이 기기 스냅샷 이력(폰에서도 작동) + 원클릭 복구 ═══════════ */
 let __snapLastAt=0,__snapLastLabel='';
 async function hjSnapshot(label,force){
@@ -18938,6 +19034,7 @@ function viewSchedule(){
         </div>
         <div class="sch-tools">
           <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고">📋</button>
+          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)">👷</button>
           <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가">📅</button>
           <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)">📲</button>
           <button class="mini-btn" data-schedit="${s.id}">✎</button>
@@ -19518,6 +19615,7 @@ function viewProject(){
         <button class="mini-btn" data-smscust="${escapeAttr(p.name)}" title="고객에게 문자 보내기">✉️ 문자</button>
         <button class="mini-btn" data-navi="${escapeAttr(p.name)}" title="현장 주소로 길찾기(네이버지도)">🗺️ 길찾기</button>
         <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="전자계약서를 고객에게 알림톡으로 보냅니다"${cu.phone?'':' style="opacity:.55"'}>📨 알림톡 계약서</button>
+        <button class="mini-btn" data-workorderp="${escapeAttr(p.name)}" title="현장 작업자에게 작업지시 문자를 보냅니다">📋 작업지시</button>
       </div>
     </div>`;
   }
@@ -19692,7 +19790,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
@@ -19733,6 +19831,8 @@ function setupDelegation(){
     if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.contractsend!==undefined)return openContractSend(d.contractsend);
+    if(d.workorder!==undefined)return openWorkOrder({schId:d.workorder});
+    if(d.workorderp!==undefined)return openWorkOrder({proj:d.workorderp});
     if(d.schreport!==undefined)return openReportEdit(d.schreport);
     if(d.schedit!==undefined)return openScheduleEdit(d.schedit);
     if(d.schdel!==undefined)return deleteSchedule(d.schdel);
