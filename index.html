@@ -5125,7 +5125,7 @@ async function aiToolRun(name,a){
       if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 사용자에게 어느 현장인지 물어보고 정확한 이름으로 다시 호출하세요.'};
       const d=projectHistoryData(ms[0]);
       setTimeout(()=>{try{projectHistory(ms[0]);}catch(e){}},60);
-      return {결과:'파일철 화면을 열었습니다',현장:d.name,단계:STAGES[d.p.stage||0],고객:d.cust.name||'',연락처:d.cust.phone||'',견적원:d.s.est,수금원:d.s.recv,미수금원:d.s.due,마진원:d.s.margin,사진:d.photos,일정:d.schedN,최근일지:d.lastReport?hjCut(d.lastReport.report.done,60):'',타임라인:d.timeline.slice(0,10).map(e=>e.d+' '+e.t)};
+      return {결과:'파일철 화면을 열었습니다',현장:d.name,단계:STAGES[d.p.stage||0],고객:d.cust.name||'',연락처:d.cust.phone||'',견적원:d.s.est,수금원:d.s.recv,미수금원:d.s.due,마진원:d.s.marginEff,사진:d.photos,일정:d.schedN,최근일지:d.lastReport?hjCut(d.lastReport.report.done,60):'',타임라인:d.timeline.slice(0,10).map(e=>e.d+' '+e.t)};
     }
     case 'daily_check':{
       const its=dailyCheckData();
@@ -6242,7 +6242,7 @@ function monthlyClosingData(ym){
   const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,4);
   // 이 달 완료 현장 + 지출/마진(완료일 기준)
   const doneP=state.projects.filter(p=>String(p.doneAt||'').slice(0,7)===ym);
-  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.cost;return {pj:p.name,est:s.est,cost:s.cost,margin:s.margin};});
+  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.costEffective;return {pj:p.name,est:s.est,cost:s.costEffective,margin:s.marginEff};});
   // 견적 소스 구성
   const srcMix=[...new Set((m.items||[]).map(i=>i.src))].join('+')||'-';
   // 전월 대비
@@ -6631,7 +6631,7 @@ function projectHistoryData(name){
 }
 function projectHistoryText(d){
   const L=['['+d.name+' 파일철] '+STAGES[d.p.stage||0]+(d.cust.name?' · 고객 '+d.cust.name+(d.cust.phone?' '+d.cust.phone:''):'')];
-  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 미수 '+hjMan(d.s.due)+' · 마진 '+hjMan(d.s.margin));
+  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 미수 '+hjMan(d.s.due)+' · 마진 '+hjMan(d.s.marginEff));
   L.push('사진 '+d.photos+'장'+(Object.keys(d.byPhase).length?' ('+Object.keys(d.byPhase).map(k=>k+' '+d.byPhase[k]).join(', ')+')':'')+' · 일정 '+d.schedN+'건');
   L.push('── 타임라인 ──');
   d.timeline.forEach(e=>{const dd=e.d?(+e.d.slice(5,7))+'/'+(+e.d.slice(8,10)):'';L.push(dd+' '+e.ic+' '+e.t);});
@@ -6649,7 +6649,7 @@ function projectHistory(name){
       (tel?'<div style="display:flex;gap:6px"><button class="ghost tiny" onclick="location.href=\'tel:'+tel+'\'">📞</button><button class="ghost tiny" onclick="location.href=\'sms:'+tel+'\'">✉️</button></div>':'')+
     '</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['미수',hjMan(d.s.due),d.s.due>0?'#c2410c':'var(--muted)'],['마진',hjMan(d.s.margin),d.s.margin>=0?'#0a7f43':'#c2410c']]
+      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['미수',hjMan(d.s.due),d.s.due>0?'#c2410c':'var(--muted)'],['마진',hjMan(d.s.marginEff),d.s.marginEff>=0?'#0a7f43':'#c2410c']]
       .map(x=>'<div style="flex:1;min-width:74px;background:var(--paper-2);border-radius:9px;padding:7px 9px"><div style="font-size:10.5px;color:var(--muted)">'+x[0]+'</div><div style="font-size:14.5px;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
     '</div>';
   const rows=d.timeline.length?d.timeline.map(e=>{
@@ -7091,11 +7091,12 @@ function profitAnalysisData(){
   const types={};let tEst=0,tCost=0,tMat=0,tLab=0,tOut=0;const lossers=[];
   all.forEach(p=>{
     const s=projStats(p.name);
-    tEst+=s.est;tCost+=s.cost;tMat+=(s.c.material||0);tLab+=(s.c.labor||0);tOut+=(s.c.outsource||0);
-    if(s.est>0&&s.margin<0)lossers.push({pj:p.name,margin:s.margin});
+    // 유효원가(ledger-aware) 기준으로 통일 — 대시보드·수익랭킹과 동일 베이스. 원가믹스도 유효 항목값 사용(비율 정합).
+    tEst+=s.est;tCost+=s.costEffective;tMat+=(s.material||0);tLab+=(s.labor||0);tOut+=(s.outsource||0);
+    if(s.est>0&&s.marginEff<0)lossers.push({pj:p.name,margin:s.marginEff});
     const ty=hjProjType(p.name);
     const m=types[ty]=types[ty]||{n:0,est:0,cost:0,margin:0};
-    m.n++;m.est+=s.est;m.cost+=s.cost;m.margin+=s.margin;
+    m.n++;m.est+=s.est;m.cost+=s.costEffective;m.margin+=s.marginEff;
   });
   const typeRows=Object.keys(types).map(k=>{const m=types[k];return {type:k,n:m.n,est:m.est,margin:m.margin,rate:m.est?Math.round(m.margin/m.est*100):0};})
     .filter(r=>r.est>0).sort((a,b)=>b.rate-a.rate);
@@ -7808,7 +7809,7 @@ async function exportFullXlsx(){
   const s1=[['현장','단계','고객','연락처','주소','견적합계','수금','미수','자재비','인건비','외주비','마진','마진율%','완료일','무상만료']];
   state.projects.forEach(p=>{
     const s=projStats(p.name),c=p.customer||{},w=hjWarranty(p);
-    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,s.due,(s.c.material||0),(s.c.labor||0),(s.c.outsource||0),s.margin,s.est?Math.round(s.margin/s.est*100):0,p.doneAt||'',w?w.end:'']);
+    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,s.due,(s.material||0),(s.labor||0),(s.outsource||0),s.marginEff,s.marginRateEff,p.doneAt||'',w?w.end:'']);
   });
   add('현장',s1);counts['현장']=s1.length-1;
   // ② 앱 견적
@@ -10069,7 +10070,7 @@ function bizAnalysisData(){
   const exp=(typeof expenseData==='function')?expenseData(ym):{byCat:{},total:0};
   // 완료 현장 평균 마진
   const doneP=state.projects.filter(p=>!p.archived&&p.doneAt);
-  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.est>0){marginSum+=s.marginRate;marginCnt++;}});
+  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.est>0){marginSum+=s.marginRateEff;marginCnt++;}});
   const avgMargin=marginCnt?Math.round(marginSum/marginCnt):null;
   return {trend:withMargin,recent,prev,totalDue,expByCat:exp.byCat,expTotal:exp.total,avgMargin,doneCount:doneP.length};
 }
@@ -12890,9 +12891,10 @@ function lossAlertData(){
     if(p.archived)return;
     let s;try{s=projStats(p.name);}catch(e){return;}
     if(!s.est||s.est<=0)return;  // 견적 없으면 판단 불가
-    const cost=s.cost||0;
-    const margin=s.est-cost;
-    const marginRate=s.est>0?Math.round(margin/s.est*100):0;
+    // 유효원가(ledger-aware) 기준 — 실제 원가 반영으로 경보 정확도↑(수기 미입력·장부지출 현장 교정)
+    const cost=s.costEffective||0;
+    const margin=s.marginEff;
+    const marginRate=s.marginRateEff;
     // 저마진(15% 미만) 또는 적자
     if(marginRate<15){
       rows.push({name:p.name,est:s.est,cost,margin,marginRate,stage:s.stage,loss:margin<0,recv:s.recv});
@@ -14709,7 +14711,7 @@ function inventoryAdd(){
 }
 
 /* ═══════════ 🏆 현장별 수익성 랭킹 ═══════════
-   projStats의 marginRate·cost·recv로 현장별 수익성 순위 */
+   projStats의 유효원가(costEffective)·recv로 현장별 수익성 순위 — 대시보드와 동일 원가 베이스 */
 function profitRankData(){
   const rows=[];
   (state.projects||[]).forEach(p=>{
@@ -14718,10 +14720,10 @@ function profitRankData(){
     if(!s)return;
     // 매출(견적 or 수금 중 큰 값), 원가, 이익
     const revenue=Math.max(s.est||0,s.recv||0);
-    if(revenue<=0&&s.cost<=0)return;  // 데이터 없는 현장 제외
-    const profit=revenue-(s.cost||0);
+    if(revenue<=0&&s.costEffective<=0)return;  // 데이터 없는 현장 제외
+    const profit=revenue-(s.costEffective||0);  // 유효원가(ledger-aware) — 대시보드와 동일 베이스
     const rate=revenue>0?Math.round(profit/revenue*100):0;
-    rows.push({name:p.name,revenue,cost:s.cost||0,profit,rate,stage:s.stage,done:!!s.doneAt});
+    rows.push({name:p.name,revenue,cost:s.costEffective||0,profit,rate,stage:s.stage,done:!!s.doneAt});
   });
   return rows.sort((a,b)=>b.profit-a.profit);
 }
@@ -20015,8 +20017,8 @@ function viewProject(){
       <div class="mc-row"><span>견적(매출)</span><b>${won(s.est)}</b></div>
       <div class="mc-row"><span>수금</span><b style="color:var(--ok)">${won(s.recv)}</b></div>
       <div class="mc-row"><span>미수금</span><b style="color:${s.due>0?'var(--warn)':'var(--ok)'}">${won(s.due)}</b></div>
-      <div class="mc-row"><span>지출 합계</span><b>${won(s.cost)}</b></div>
-      <div class="mc-row total"><span>마진</span><b style="color:${s.margin>=0?'var(--ok)':'var(--warn)'}">${won(s.margin)} · ${s.marginRate}%</b></div>
+      <div class="mc-row"><span>지출 합계</span><b>${won(s.costEffective)}</b></div>
+      <div class="mc-row total"><span>마진</span><b style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'}">${won(s.marginEff)} · ${s.marginRateEff}%</b></div>
     </div>`;
     html+=`<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오 PDF 만들기</button><span class="hint" style="margin:0;align-self:center">공정별 사진 + 내부 정산 포함</span></div>`;
   }
@@ -20514,9 +20516,9 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
   doc.text('[ 내부용 — 견적 / 마진 ]',56,Hp-150);
   doc.setTextColor(40,40,40);doc.setFont('helvetica','normal');doc.setFontSize(11);
   doc.text('견적(매출)  '+won(s.est),56,Hp-126);
-  doc.text('지출 합계   '+won(s.cost),56,Hp-106);
-  doc.setFont('helvetica','bold');doc.setTextColor(s.margin>=0?15:210, s.margin>=0?122:69, s.margin>=0?107:59);
-  doc.text('마진        '+won(s.margin)+'  ('+s.marginRate+'%)',56,Hp-84);
+  doc.text('지출 합계   '+won(s.costEffective),56,Hp-106);
+  doc.setFont('helvetica','bold');doc.setTextColor(s.marginEff>=0?15:210, s.marginEff>=0?122:69, s.marginEff>=0?107:59);
+  doc.text('마진        '+won(s.marginEff)+'  ('+s.marginRateEff+'%)',56,Hp-84);
   // ===== 공정별 사진 페이지 =====
   const phases=p?.phases||[];
   const groups=[...phases.map(ph=>({name:ph,items:photos.filter(f=>f._phase===ph)})),

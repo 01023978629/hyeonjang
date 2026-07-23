@@ -287,6 +287,51 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(has.val, '현장B 기타경비 450,000 렌더');
   });
 
+  // 15) 교차화면 일관성: p.cost=0 + 태깅 지출(자재 300만) 현장이
+  //     대시보드(projStats)·수익랭킹·월말결산·수익추이에서 동일한 유효원가 베이스(원가 300만·이익 100% 아님)를 쓰는지
+  await test('교차화면 일관성: 수기원가 0·장부지출 현장 — 랭킹/월말/추이가 대시보드와 동일 유효원가 베이스', async () => {
+    await page.evaluate(() => {
+      state.projects = [
+        // 수기 p.cost 전부 0, 자재 지출 3,000,000만 태깅, 이번 달 완료(doneAt)
+        { name: '장부장', stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, doneAt: '2026-07-15', customer: { name: '마', phone: '', addr: '' }, archived: false }
+      ];
+      state.files = [
+        { id: 'eL', name: '장부장 견적.pdf', kind: 'estimate', project: '장부장', est: { amount: 11000000, supply: 10000000, vat: 1000000 } }
+      ];
+      state.expenses = [
+        { id: 'lx1', date: '2026-07-10', amount: 3000000, category: '자재', method: '카드', memo: '', project: '장부장' }
+      ];
+      state.quotes = []; state.payLog = [];
+      state.activeProject = null; state.tab = 'dashboard'; state.dirty = false; render();
+    });
+
+    // 대시보드 기준값(projStats) — 유효원가 300만, 마진 800만(=1100만−300만), 마진율 73%
+    const base = await page.evaluate(() => projStats('장부장'));
+    assert(base.costEffective === 3000000, 'projStats.costEffective=장부 자재 3,000,000: ' + base.costEffective);
+    assert(base.marginEff === 8000000, 'projStats.marginEff=1,100만−300만=8,000,000: ' + base.marginEff);
+    assert(base.marginRateEff === Math.round(8000000 / 11000000 * 100), 'projStats.marginRateEff=73%: ' + base.marginRateEff);
+    // legacy(raw) 필드는 여전히 0원가·100%(제거·개명 금지 확인) — 소비처만 유효원가로 통일
+    assert(base.cost === 0 && base.marginRate === 100, 'legacy cost=0·marginRate=100 유지(필드 보존): ' + base.cost + '/' + base.marginRate);
+
+    // 수익랭킹: 원가 0·이익 100%가 아니라 유효원가 300만·이익 800만 사용(대시보드와 동일)
+    const rank = await page.evaluate(() => profitRankData().find(r => r.name === '장부장'));
+    assert(rank && rank.cost === 3000000, '수익랭킹 cost=유효원가 3,000,000(0 아님): ' + (rank && rank.cost));
+    assert(rank.profit === 8000000, '수익랭킹 profit=8,000,000: ' + rank.profit);
+    assert(rank.rate !== 100 && rank.rate === base.marginRateEff, '수익랭킹 rate=대시보드 marginRateEff(100% 아님): ' + rank.rate);
+
+    // 월말결산: 완료 현장 원가/마진이 유효원가 베이스
+    const mc = await page.evaluate(() => monthlyClosingData('2026-07'));
+    const mrow = mc.doneRows.find(r => r.pj === '장부장');
+    assert(mrow && mrow.cost === 3000000, '월말결산 doneRow.cost=3,000,000(대시보드 동일): ' + (mrow && mrow.cost));
+    assert(mrow.margin === base.marginEff, '월말결산 doneRow.margin=marginEff 8,000,000: ' + mrow.margin);
+    assert(mc.doneCost >= 3000000 && mc.doneMargin === mc.doneEst - mc.doneCost, '월말결산 doneCost/doneMargin 유효원가 반영');
+
+    // 수익추이(경영 분석) 완료 현장 평균마진: marginRateEff 기준(100% 아님)
+    const biz = await page.evaluate(() => bizAnalysisData());
+    assert(biz.avgMargin === base.marginRateEff, '수익추이 avgMargin=marginRateEff(대시보드 동일, 100% 아님): ' + biz.avgMargin);
+    assert(biz.avgMargin !== 100, '수익추이 avgMargin 100% 아님(원가 0 버그 해소): ' + biz.avgMargin);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
