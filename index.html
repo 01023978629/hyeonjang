@@ -3910,13 +3910,119 @@ function projStats(name){
   const files=state.files.filter(f=>f.project===name);
   const estFiles=dedupeEstimates(files.filter(f=>f.kind==='estimate'));
   const est=estFiles.reduce((a,f)=>a+(f.est?.amount||0),0);
+  // 공급가(부가세 제외) 매출: 파일별 f.est.supply, 없으면 그 파일 amount/1.1 — 원본 불변, 파생만
+  const supply=estFiles.reduce((a,f)=>{const e=f.est||{};const s=(e.supply!=null&&e.supply>0)?e.supply:Math.round((e.amount||0)/1.1);return a+(s||0);},0);
   const p=state.projects.find(x=>x.name===name);
   const recv=p?.received||0;
   const c=p?.cost||{material:0,labor:0,outsource:0};
+  // ⚠️ 레거시(수기 p.cost 전용 · 장부·기타경비 미반영) — 표시·경보에 쓰지 말 것.
+  //    마진은 marginEff/costEffective, 예산·지출은 costTotal 을 사용한다(교차화면 무음누락 방지).
   const cost=(c.material||0)+(c.labor||0)+(c.outsource||0);
   const margin=est-cost;
   const marginRate=est?Math.round(margin/est*100):0;
-  return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null};
+  // ── 유효원가(택일 규칙, 이중계상 방지) — 읽기 전용 파생 ──
+  // 현장 태깅 지출장부를 category별 합산(원본 state.expenses 변형 안 함)
+  // 매칭은 접두(startsWith): '자재'로 시작→material, '인건'→labor, '외주'→outsource. '자재비' 같은 비정규 문자열도 포함.
+  const expAgg={material:0,labor:0,outsource:0,etc:0};
+  (state.expenses||[]).forEach(function(e){
+    if(!e||String(e.project||'')!==name)return;
+    const amt=(+e.amount||0);if(!amt)return;
+    const cat=String(e.category||'');
+    if(cat.indexOf('자재')===0)expAgg.material+=amt;
+    else if(cat.indexOf('인건')===0)expAgg.labor+=amt;
+    else if(cat.indexOf('외주')===0)expAgg.outsource+=amt;
+    else expAgg.etc+=amt; // 장비/유류/식대/기타 → 원가 제외, 분리 집계
+  });
+  // 항목별 정본: 수기 p.cost>0이면 수기, 0이면 장부 합(labor는 스케줄/수기 우선)
+  const mMan=(c.material||0)>0, oMan=(c.outsource||0)>0, lMan=(c.labor||0)>0;
+  const matEff = mMan ? (c.material||0) : expAgg.material;
+  const outEff = oMan ? (c.outsource||0) : expAgg.outsource;
+  const labEff = lMan ? (c.labor||0)    : expAgg.labor; // applyLaborToProject 이중계상 방지
+  const costEffective = matEff+labEff+outEff; // 유효원가 원문합(부가세 포함 지출 그대로) — '지출합계' 표시용
+  const costEtc = expAgg.etc;
+  // ── 예산 축 파생: 현장 총지출(costTotal) — 읽기 전용 ──
+  // 유효원가(자재+인건+외주 택일합) + 기타경비(장비/유류/식대 등). 마진 원가(costEffective)와 달리 기타경비까지 포함해
+  // '예산 대비 지출' = 현장 총현금유출 베이스로 쓴다. 마진 정의(costEffective/marginEff)는 건드리지 않음.
+  const costTotal = costEffective + costEtc;
+  // 항목별 원가출처(값>0인 항목만): 유효값이 수기에서 왔는지 장부에서 왔는지 — 표 셀 배지용
+  const matSrc = matEff<=0?'없음':(mMan?'수기':'장부');
+  const outSrc = outEff<=0?'없음':(oMan?'수기':'장부');
+  const labSrc = labEff<=0?'없음':(lMan?'수기':'장부');
+  // 원가출처 종합(값>0인 항목만 반영)
+  const srcs={};
+  [matSrc,outSrc,labSrc].forEach(function(s){if(s==='수기'||s==='장부')srcs[s]=1;});
+  const keys=Object.keys(srcs);
+  const costSource = keys.length===0?'없음':(keys.length>1?'혼합':keys[0]);
+  // ── 순마진(부가세 제외) 원가 환산 ──
+  // 부가세 모듈 vatReportData 관례와 일치: 자재·외주는 '부가세 포함' 지출로 보고 ÷1.1로 공급가 환산.
+  // 인건비(labor)는 면세이므로 환산하지 않는다.
+  const materialSupply=Math.round(matEff/1.1);
+  const outsourceSupply=Math.round(outEff/1.1);
+  const costSupply=materialSupply+outsourceSupply+labEff; // 공급가(부가세 제외) 기준 원가
+  const marginNet = supply-costSupply;                    // 순마진 = 공급가매출 − 공급가원가
+  const marginRateNet = supply?Math.round(marginNet/supply*100):0;
+  // 유효원가 기준 마진(부가세 포함 기준) — 화면에 보이는 원가(costEffective)와 반드시 일치
+  const marginEff = est-costEffective;
+  const marginRateEff = est?Math.round(marginEff/est*100):0;
+  return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
+    supply,costEffective,costSupply,costEtc,costTotal,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
+    material:matEff,labor:labEff,outsource:outEff,matSrc,outSrc,labSrc,
+    expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
+}
+/* 현장별 순마진(부가세 제외) 집계 — 순수/읽기전용. state 미변형. 새 엔진/새 탭 없이 projStats 재사용. */
+function projMarginSummary(opts){
+  opts=opts||{};
+  const rows=[];
+  const total={est:0,supply:0,costEffective:0,costSupply:0,costEtc:0,marginEff:0,marginRateEff:0,marginNet:0,marginRateNet:0};
+  (state.projects||[]).filter(function(p){return p&&!p.archived;}).forEach(function(p){
+    const s=projStats(p.name);
+    rows.push({name:p.name,est:s.est,supply:s.supply,material:s.material,labor:s.labor,outsource:s.outsource,
+      matSrc:s.matSrc,outSrc:s.outSrc,labSrc:s.labSrc,
+      costEffective:s.costEffective,costSupply:s.costSupply,costEtc:s.costEtc,
+      marginEff:s.marginEff,marginRateEff:s.marginRateEff,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource});
+    total.est+=s.est;total.supply+=s.supply;total.costEffective+=s.costEffective;total.costSupply+=s.costSupply;
+    total.costEtc+=(s.costEtc||0);total.marginEff+=s.marginEff;total.marginNet+=s.marginNet;
+  });
+  total.marginRateEff=total.est?Math.round(total.marginEff/total.est*100):0;
+  total.marginRateNet=total.supply?Math.round(total.marginNet/total.supply*100):0;
+  return {rows,total};
+}
+/* 📒 장부에서 원가 불러오기 — 현장 태깅 지출을 category별 합산해 '0인 항목만' 제안(읽기전용 미리보기).
+   material←자재, outsource←외주, labor←인건비(단, 스케줄/수기 우선이라 labor==0일 때만). 수기 nonzero는 절대 미제안. */
+function hjLedgerCostProposal(name){
+  const p=(state.projects||[]).find(function(x){return x.name===name;});
+  const c=(p&&p.cost)||{material:0,labor:0,outsource:0};
+  const agg={material:0,labor:0,outsource:0};
+  (state.expenses||[]).forEach(function(e){
+    if(!e||String(e.project||'')!==name)return;const amt=(+e.amount||0);if(!amt)return;
+    const cat=String(e.category||'');
+    if(cat.indexOf('자재')===0)agg.material+=amt;else if(cat.indexOf('인건')===0)agg.labor+=amt;else if(cat.indexOf('외주')===0)agg.outsource+=amt;
+  });
+  const prop={};
+  if((c.material||0)===0&&agg.material>0)prop.material=Math.round(agg.material);
+  if((c.outsource||0)===0&&agg.outsource>0)prop.outsource=Math.round(agg.outsource);
+  if((c.labor||0)===0&&agg.labor>0)prop.labor=Math.round(agg.labor); // labor==0일 때만
+  return prop;
+}
+function hjLoadCostFromLedger(){
+  const acts=(state.projects||[]).filter(function(p){return p&&!p.archived;});
+  const items=acts.map(function(p){return {name:p.name,prop:hjLedgerCostProposal(p.name)};}).filter(function(x){return Object.keys(x.prop).length>0;});
+  const won=(typeof hjNum==='function')?hjNum:function(v){return (v||0).toLocaleString('ko-KR');};
+  if(!items.length){toast('장부에서 채울 원가가 없습니다 (수기 값이 이미 있거나 태깅된 지출이 없음).');return;}
+  const labelMap={material:'자재비',labor:'인건비',outsource:'외주비'};
+  const body='<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">현장에 태깅된 지출장부를 원가로 제안합니다. <b>수기로 입력한 값(0이 아님)은 건드리지 않습니다.</b> 인건비는 스케줄/수기 우선이라 0일 때만 제안합니다.</p>'+
+    items.map(function(x){
+      const chips=Object.keys(x.prop).map(function(k){return '<span style="display:inline-block;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;padding:3px 8px;margin:2px 4px 2px 0;font-size:12px">'+labelMap[k]+' <b>'+won(x.prop[k])+'</b></span>';}).join('');
+      return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="color:var(--blueprint)">'+escapeHtml(x.name)+'</b><button class="blue tiny" data-ledgercost="'+escapeAttr(x.name)+'">반영</button></div><div style="margin-top:6px">'+chips+'</div></div>';
+    }).join('');
+  openModal('📒 장부에서 원가 불러오기',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
+// 확인(반영) 시에만 확정 — 0인 항목만, setCost 경로로. 수기 nonzero·스케줄 labor는 절대 안 덮음.
+function hjApplyLedgerCost(name){
+  const prop=hjLedgerCostProposal(name);const keys=Object.keys(prop);
+  if(!keys.length){toast('반영할 항목이 없습니다');return;}
+  keys.forEach(function(k){setCost(name,k,prop[k]);});
+  toast(escapeHtml(name)+' 원가 반영: '+keys.length+'개 항목');
 }
 function setCost(name,field,val){const p=state.projects.find(x=>x.name===name);if(p){if(!p.cost)p.cost={material:0,labor:0,outsource:0};p.cost[field]=won2num(val);markDirty();render();}}
 
@@ -4091,9 +4197,10 @@ function viewDashboard(){
   const totEst=stats.reduce((a,s)=>a+s.est,0);
   const totRecv=stats.reduce((a,s)=>a+s.recv,0);
   const totDue=stats.reduce((a,s)=>a+s.due,0);
-  const totCost=stats.reduce((a,s)=>a+s.cost,0);
-  const totMargin=totEst-totCost;
+  const totCost=stats.reduce((a,s)=>a+s.costEffective,0); // 유효원가 원문합(수기>0 우선, 아니면 장부) — 표 지출합계와 동일 베이스
+  const totMargin=totEst-totCost;                          // 마진(부가세 포함 기준) = 견적총액 − 유효원가
   const totMarginRate=totEst?Math.round(totMargin/totEst*100):0;
+  const totEtc=stats.reduce((a,s)=>a+(s.costEtc||0),0);    // 기타경비(순마진 제외) 합계
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
@@ -4151,21 +4258,32 @@ function viewDashboard(){
     <td class="amt" style="color:var(--warn)"><b>${won(totDue)}</b></td></tr>`;
   html+=`</tbody></table>`;
   // 현장별 지출·마진 표
+  const __ms=projMarginSummary();
+  const srcBadge=src=>{const m={'수기':['#0a7f43','손'],'장부':['#2563eb','📒'],'혼합':['#b45309','혼'],'없음':['#94a3b8','–']};const a=m[src]||m['없음'];return `<span title="원가 출처: ${src}" style="display:inline-block;font-size:10px;font-weight:700;color:${a[0]};border:1px solid ${a[0]}55;border-radius:6px;padding:1px 5px">${a[1]} ${src}</span>`;};
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:var(--muted);font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
+  html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>순마진</b> = 공급가(부가세 제외) 매출 − 원가. 자재·외주는 부가세 포함 지출로 보고 공급가(÷1.1)로 환산, 인건비는 면세로 그대로 차감합니다. 장비·유류·식대 등 기타경비는 순마진에서 빠지며 별도 표기합니다. (완전한 회계 순이익이 아니라 재료·인건·외주 기준 마진입니다.)</div>`;
+  html+=`<div class="toolbar" style="margin:0 0 8px"><button class="blue tiny" id="btnLoadCostLedger" title="현장에 태깅된 지출장부를 원가로 제안(0인 항목만, 확인 후 반영)">📒 장부에서 원가 불러오기</button></div>`;
+  const fieldBadge=src=>src==='장부'?`<br><span title="장부(태깅 지출)에서 집계" style="display:inline-block;font-size:9px;font-weight:700;color:#2563eb;border:1px solid #2563eb55;border-radius:5px;padding:0 4px;margin-top:2px">📒 장부</span>`:'';
+  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진<br><span style="font-size:9px;font-weight:400">(부가세 포함 기준)</span></th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th class="amt">기타경비<br><span style="font-size:9px;font-weight:400">(순마진 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
   stats.forEach(s=>{
+    // 입력칸엔 '유효값'(수기>0 우선, 아니면 장부)을 표시 — 지출합계/마진과 같은 원가 베이스. 장부 출처엔 배지.
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.c.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.c.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.c.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt">${won(s.cost)}</td>
-      <td class="amt" style="color:${s.margin>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.margin)}<br><span style="font-size:10px;font-weight:400">${s.marginRate}%</span></td>
+      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
+      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
+      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
+      <td class="amt">${won(s.costEffective)}</td>
+      <td class="amt" style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginEff)}<br><span style="font-size:10px;font-weight:400">${s.marginRateEff}%</span></td>
+      <td class="amt" style="color:${s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginNet)}<br><span style="font-size:10px;font-weight:400">${s.marginRateNet}%</span></td>
+      <td class="amt" style="color:var(--muted)">${s.costEtc>0?won(s.costEtc):'-'}</td>
+      <td>${srcBadge(s.costSource)}</td>
     </tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
-    <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
+    <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td>
+    <td class="amt" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'}"><b>${won(__ms.total.marginNet)} · ${__ms.total.marginRateNet}%</b></td>
+    <td class="amt" style="color:var(--muted)"><b>${totEtc>0?won(totEtc):'-'}</b></td><td></td></tr>`;
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><button class="ghost tiny" id="btnXlsxTax" title="공급가액·부가세를 분기별로 집계 — 세무사 전달용">🧾 세무용 분기 정산</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시
@@ -5013,7 +5131,7 @@ async function aiToolRun(name,a){
       if(ms.length>1)return {여러곳:ms,안내:'현장이 여러 곳입니다 — 사용자에게 어느 현장인지 물어보고 정확한 이름으로 다시 호출하세요.'};
       const d=projectHistoryData(ms[0]);
       setTimeout(()=>{try{projectHistory(ms[0]);}catch(e){}},60);
-      return {결과:'파일철 화면을 열었습니다',현장:d.name,단계:STAGES[d.p.stage||0],고객:d.cust.name||'',연락처:d.cust.phone||'',견적원:d.s.est,수금원:d.s.recv,미수금원:d.s.due,마진원:d.s.margin,사진:d.photos,일정:d.schedN,최근일지:d.lastReport?hjCut(d.lastReport.report.done,60):'',타임라인:d.timeline.slice(0,10).map(e=>e.d+' '+e.t)};
+      return {결과:'파일철 화면을 열었습니다',현장:d.name,단계:STAGES[d.p.stage||0],고객:d.cust.name||'',연락처:d.cust.phone||'',견적원:d.s.est,수금원:d.s.recv,미수금원:d.s.due,마진원:d.s.marginEff,사진:d.photos,일정:d.schedN,최근일지:d.lastReport?hjCut(d.lastReport.report.done,60):'',타임라인:d.timeline.slice(0,10).map(e=>e.d+' '+e.t)};
     }
     case 'daily_check':{
       const its=dailyCheckData();
@@ -6130,7 +6248,7 @@ function monthlyClosingData(ym){
   const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,4);
   // 이 달 완료 현장 + 지출/마진(완료일 기준)
   const doneP=state.projects.filter(p=>String(p.doneAt||'').slice(0,7)===ym);
-  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.cost;return {pj:p.name,est:s.est,cost:s.cost,margin:s.margin};});
+  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.costEffective;return {pj:p.name,est:s.est,cost:s.costEffective,margin:s.marginEff};});
   // 견적 소스 구성
   const srcMix=[...new Set((m.items||[]).map(i=>i.src))].join('+')||'-';
   // 전월 대비
@@ -6519,7 +6637,7 @@ function projectHistoryData(name){
 }
 function projectHistoryText(d){
   const L=['['+d.name+' 파일철] '+STAGES[d.p.stage||0]+(d.cust.name?' · 고객 '+d.cust.name+(d.cust.phone?' '+d.cust.phone:''):'')];
-  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 미수 '+hjMan(d.s.due)+' · 마진 '+hjMan(d.s.margin));
+  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 미수 '+hjMan(d.s.due)+' · 마진 '+hjMan(d.s.marginEff));
   L.push('사진 '+d.photos+'장'+(Object.keys(d.byPhase).length?' ('+Object.keys(d.byPhase).map(k=>k+' '+d.byPhase[k]).join(', ')+')':'')+' · 일정 '+d.schedN+'건');
   L.push('── 타임라인 ──');
   d.timeline.forEach(e=>{const dd=e.d?(+e.d.slice(5,7))+'/'+(+e.d.slice(8,10)):'';L.push(dd+' '+e.ic+' '+e.t);});
@@ -6537,7 +6655,7 @@ function projectHistory(name){
       (tel?'<div style="display:flex;gap:6px"><button class="ghost tiny" onclick="location.href=\'tel:'+tel+'\'">📞</button><button class="ghost tiny" onclick="location.href=\'sms:'+tel+'\'">✉️</button></div>':'')+
     '</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['미수',hjMan(d.s.due),d.s.due>0?'#c2410c':'var(--muted)'],['마진',hjMan(d.s.margin),d.s.margin>=0?'#0a7f43':'#c2410c']]
+      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['미수',hjMan(d.s.due),d.s.due>0?'#c2410c':'var(--muted)'],['마진',hjMan(d.s.marginEff),d.s.marginEff>=0?'#0a7f43':'#c2410c']]
       .map(x=>'<div style="flex:1;min-width:74px;background:var(--paper-2);border-radius:9px;padding:7px 9px"><div style="font-size:10.5px;color:var(--muted)">'+x[0]+'</div><div style="font-size:14.5px;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
     '</div>';
   const rows=d.timeline.length?d.timeline.map(e=>{
@@ -6979,11 +7097,12 @@ function profitAnalysisData(){
   const types={};let tEst=0,tCost=0,tMat=0,tLab=0,tOut=0;const lossers=[];
   all.forEach(p=>{
     const s=projStats(p.name);
-    tEst+=s.est;tCost+=s.cost;tMat+=(s.c.material||0);tLab+=(s.c.labor||0);tOut+=(s.c.outsource||0);
-    if(s.est>0&&s.margin<0)lossers.push({pj:p.name,margin:s.margin});
+    // 유효원가(ledger-aware) 기준으로 통일 — 대시보드·수익랭킹과 동일 베이스. 원가믹스도 유효 항목값 사용(비율 정합).
+    tEst+=s.est;tCost+=s.costEffective;tMat+=(s.material||0);tLab+=(s.labor||0);tOut+=(s.outsource||0);
+    if(s.est>0&&s.marginEff<0)lossers.push({pj:p.name,margin:s.marginEff});
     const ty=hjProjType(p.name);
     const m=types[ty]=types[ty]||{n:0,est:0,cost:0,margin:0};
-    m.n++;m.est+=s.est;m.cost+=s.cost;m.margin+=s.margin;
+    m.n++;m.est+=s.est;m.cost+=s.costEffective;m.margin+=s.marginEff;
   });
   const typeRows=Object.keys(types).map(k=>{const m=types[k];return {type:k,n:m.n,est:m.est,margin:m.margin,rate:m.est?Math.round(m.margin/m.est*100):0};})
     .filter(r=>r.est>0).sort((a,b)=>b.rate-a.rate);
@@ -7696,7 +7815,7 @@ async function exportFullXlsx(){
   const s1=[['현장','단계','고객','연락처','주소','견적합계','수금','미수','자재비','인건비','외주비','마진','마진율%','완료일','무상만료']];
   state.projects.forEach(p=>{
     const s=projStats(p.name),c=p.customer||{},w=hjWarranty(p);
-    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,s.due,(s.c.material||0),(s.c.labor||0),(s.c.outsource||0),s.margin,s.est?Math.round(s.margin/s.est*100):0,p.doneAt||'',w?w.end:'']);
+    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,s.due,(s.material||0),(s.labor||0),(s.outsource||0),s.marginEff,s.marginRateEff,p.doneAt||'',w?w.end:'']);
   });
   add('현장',s1);counts['현장']=s1.length-1;
   // ② 앱 견적
@@ -9957,7 +10076,7 @@ function bizAnalysisData(){
   const exp=(typeof expenseData==='function')?expenseData(ym):{byCat:{},total:0};
   // 완료 현장 평균 마진
   const doneP=state.projects.filter(p=>!p.archived&&p.doneAt);
-  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.est>0){marginSum+=s.marginRate;marginCnt++;}});
+  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.est>0){marginSum+=s.marginRateEff;marginCnt++;}});
   const avgMargin=marginCnt?Math.round(marginSum/marginCnt):null;
   return {trend:withMargin,recent,prev,totalDue,expByCat:exp.byCat,expTotal:exp.total,avgMargin,doneCount:doneP.length};
 }
@@ -10021,13 +10140,11 @@ function budgetSet(project,amount){
   p.budget=won2num(amount);markDirty();render();
   return {현장:ms[0],예산:p.budget};
 }
-// 현장 지출: cost(원가) + 지출장부에서 현장 연결된 것
+// 현장 지출(현장 총현금유출): 유효원가(장부반영·택일합) + 기타경비 = projStats.costTotal
+// 대시보드/경보와 같은 장부반영 베이스 공유(수기 우선·이중계상 방지·기타경비 포함).
 function budgetSpent(project){
   const s=projStats(project);
-  const costSpent=s.cost;
-  const expSpent=(state.expenses||[]).filter(e=>String(e.project||'')===project).reduce((a,e)=>a+num(e.amount),0);
-  // cost가 있으면 그것 우선(중복 방지), 없으면 지출장부
-  return costSpent>0?costSpent:expSpent;
+  return s.costTotal||0;
 }
 function budgetData(){
   const rows=[];
@@ -12734,12 +12851,12 @@ function budgetAlertData(){
     if(p.archived)return;
     let s;try{s=projStats(p.name);}catch(e){return;}
     const budget=num(p.budget)||0;
-    const spent=s.cost||0;
+    const spent=s.costTotal||0;
     // 기준: 예산 설정돼 있으면 예산, 없으면 견적의 70%(원가 목표)
     const base=budget>0?budget:(s.est>0?Math.round(s.est*0.7):0);
     if(base<=0)return;  // 기준 없으면 스킵
     const pct=Math.round(spent/base*100);
-    const kind=budget>0?'예산':'견적 원가목표';
+    const kind=budget>0?'예산':'견적 지출목표';
     if(pct>=80){  // 80% 이상만 알림
       rows.push({name:p.name,spent,base,pct,over:spent>base,kind,budget:budget>0});
     }
@@ -12749,7 +12866,7 @@ function budgetAlertData(){
 function budgetAlert(){
   const rows=budgetAlertData();const [c1,c2]=hjBrandGrad('#c2410c','#e8912d');
   if(!rows.length){
-    openModal('💸 예산 점검','<div style="text-align:center;padding:30px"><div style="font-size:40px">✅</div><div style="margin-top:10px;font-size:14px">예산을 초과한 현장이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px">지출이 예산(또는 견적 원가목표)의 80%를 넘으면 여기에 표시됩니다. 현장에 예산을 설정하면 더 정확해요.</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    openModal('💸 예산 점검','<div style="text-align:center;padding:30px"><div style="font-size:40px">✅</div><div style="margin-top:10px;font-size:14px">예산을 초과한 현장이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px">총지출이 예산(또는 견적 지출목표)의 80%를 넘으면 여기에 표시됩니다. 현장에 예산을 설정하면 더 정확해요.</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     return {경고:0};
   }
   const overCount=rows.filter(r=>r.over).length;
@@ -12759,13 +12876,13 @@ function budgetAlert(){
     return '<div style="padding:12px;border:1px solid '+(r.over?'#fca5a5':'#fcd34d')+';border-radius:11px;margin-bottom:8px;background:'+bg+'">'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:13.5px;flex:1">'+escapeHtml(r.name)+'</b><span style="font-size:15px;font-weight:800;color:'+color+'">'+r.pct+'%</span></div>'+
       '<div style="height:7px;background:#eee;border-radius:4px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+Math.min(100,r.pct)+'%;background:'+color+'"></div></div>'+
-      '<div style="font-size:11.5px;color:var(--muted)">지출 '+hjMan(r.spent)+' / '+r.kind+' '+hjMan(r.base)+(r.over?' <b style="color:#c2410c">— 초과!</b>':'')+'</div>'+
+      '<div style="font-size:11.5px;color:var(--muted)">총지출 '+hjMan(r.spent)+' / '+r.kind+' '+hjMan(r.base)+(r.over?' <b style="color:#c2410c">— 초과!</b>':'')+'</div>'+
     '</div>';
   }).join('');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">지출 점검</div><div style="font-size:17px;font-weight:800">💸 예산 경고</div>'+(overCount?'<div style="font-size:12px;opacity:.95;margin-top:2px">🚨 초과 현장 '+overCount+'곳 — 즉시 확인 필요</div>':'<div style="font-size:12px;opacity:.95;margin-top:2px">⚠️ 임박 현장 '+rows.length+'곳</div>')+'</div>'+
     items+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 예산 미설정 현장은 <b>견적의 70%</b>를 원가목표로 봅니다. 현장별 예산을 설정하면 더 정확한 경고를 받아요.</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 <b>총지출</b>은 자재·인건·외주 + 기타경비(장비·유류·식대 등)를 모두 포함합니다(마진 화면의 “지출 합계”는 기타경비 제외). 예산 미설정 현장은 <b>견적의 70%</b>를 지출목표로 봅니다. 현장별 예산을 설정하면 더 정확해요.</div>';
   openModal('💸 예산 경고',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   return {경고:rows.length,초과:overCount};
 }
@@ -12778,9 +12895,10 @@ function lossAlertData(){
     if(p.archived)return;
     let s;try{s=projStats(p.name);}catch(e){return;}
     if(!s.est||s.est<=0)return;  // 견적 없으면 판단 불가
-    const cost=s.cost||0;
-    const margin=s.est-cost;
-    const marginRate=s.est>0?Math.round(margin/s.est*100):0;
+    // 유효원가(ledger-aware) 기준 — 실제 원가 반영으로 경보 정확도↑(수기 미입력·장부지출 현장 교정)
+    const cost=s.costEffective||0;
+    const margin=s.marginEff;
+    const marginRate=s.marginRateEff;
     // 저마진(15% 미만) 또는 적자
     if(marginRate<15){
       rows.push({name:p.name,est:s.est,cost,margin,marginRate,stage:s.stage,loss:margin<0,recv:s.recv});
@@ -14597,7 +14715,7 @@ function inventoryAdd(){
 }
 
 /* ═══════════ 🏆 현장별 수익성 랭킹 ═══════════
-   projStats의 marginRate·cost·recv로 현장별 수익성 순위 */
+   projStats의 유효원가(costEffective)·recv로 현장별 수익성 순위 — 대시보드와 동일 원가 베이스 */
 function profitRankData(){
   const rows=[];
   (state.projects||[]).forEach(p=>{
@@ -14606,10 +14724,10 @@ function profitRankData(){
     if(!s)return;
     // 매출(견적 or 수금 중 큰 값), 원가, 이익
     const revenue=Math.max(s.est||0,s.recv||0);
-    if(revenue<=0&&s.cost<=0)return;  // 데이터 없는 현장 제외
-    const profit=revenue-(s.cost||0);
+    if(revenue<=0&&s.costEffective<=0)return;  // 데이터 없는 현장 제외
+    const profit=revenue-(s.costEffective||0);  // 유효원가(ledger-aware) — 대시보드와 동일 베이스
     const rate=revenue>0?Math.round(profit/revenue*100):0;
-    rows.push({name:p.name,revenue,cost:s.cost||0,profit,rate,stage:s.stage,done:!!s.doneAt});
+    rows.push({name:p.name,revenue,cost:s.costEffective||0,profit,rate,stage:s.stage,done:!!s.doneAt});
   });
   return rows.sort((a,b)=>b.profit-a.profit);
 }
@@ -19903,8 +20021,8 @@ function viewProject(){
       <div class="mc-row"><span>견적(매출)</span><b>${won(s.est)}</b></div>
       <div class="mc-row"><span>수금</span><b style="color:var(--ok)">${won(s.recv)}</b></div>
       <div class="mc-row"><span>미수금</span><b style="color:${s.due>0?'var(--warn)':'var(--ok)'}">${won(s.due)}</b></div>
-      <div class="mc-row"><span>지출 합계</span><b>${won(s.cost)}</b></div>
-      <div class="mc-row total"><span>마진</span><b style="color:${s.margin>=0?'var(--ok)':'var(--warn)'}">${won(s.margin)} · ${s.marginRate}%</b></div>
+      <div class="mc-row"><span>지출 합계</span><b>${won(s.costEffective)}</b></div>
+      <div class="mc-row total"><span>마진</span><b style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'}">${won(s.marginEff)} · ${s.marginRateEff}%</b></div>
     </div>`;
     html+=`<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오 PDF 만들기</button><span class="hint" style="margin:0;align-self:center">공정별 사진 + 내부 정산 포함</span></div>`;
   }
@@ -19959,7 +20077,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
@@ -19967,6 +20085,8 @@ function setupDelegation(){
     if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
+    if(d.ledgercost!==undefined)return hjApplyLedgerCost(d.ledgercost);
+    if(t.id==='btnLoadCostLedger')return hjLoadCostFromLedger();
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnXlsxTax')return exportTaxXlsx();
     if(t.id==='btnDiag')return runDiagnostics();
@@ -20400,9 +20520,9 @@ async function exportPortfolio(proj){  const p=state.projects.find(x=>x.name===p
   doc.text('[ 내부용 — 견적 / 마진 ]',56,Hp-150);
   doc.setTextColor(40,40,40);doc.setFont('helvetica','normal');doc.setFontSize(11);
   doc.text('견적(매출)  '+won(s.est),56,Hp-126);
-  doc.text('지출 합계   '+won(s.cost),56,Hp-106);
-  doc.setFont('helvetica','bold');doc.setTextColor(s.margin>=0?15:210, s.margin>=0?122:69, s.margin>=0?107:59);
-  doc.text('마진        '+won(s.margin)+'  ('+s.marginRate+'%)',56,Hp-84);
+  doc.text('지출 합계   '+won(s.costEffective),56,Hp-106);
+  doc.setFont('helvetica','bold');doc.setTextColor(s.marginEff>=0?15:210, s.marginEff>=0?122:69, s.marginEff>=0?107:59);
+  doc.text('마진        '+won(s.marginEff)+'  ('+s.marginRateEff+'%)',56,Hp-84);
   // ===== 공정별 사진 페이지 =====
   const phases=p?.phases||[];
   const groups=[...phases.map(ph=>({name:ph,items:photos.filter(f=>f._phase===ph)})),
