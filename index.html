@@ -1305,6 +1305,8 @@ function relayReady(){return !!(__relay.url&&__relay.token);}
 /* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
 let __contract={url:'',token:''};
 function contractReady(){return !!(__contract.url&&__contract.token);}
+/* 리뷰 링크(네이버 플레이스 등) — 이 기기(idb)에만 저장. serialize/applyData·클라우드 백업에 절대 넣지 않음. relayBoot에서 복원 */
+let __reviewUrl='';
 async function relayCall(action,payload){
   // ★커스텀 헤더 금지: text/plain = '단순 요청' → OPTIONS preflight가 없어 Apps Script에서 동작
   const body=JSON.stringify({token:__relay.token,action:action,deviceId:__relay.device||'unknown',ts:Date.now(),payload:payload||{}});
@@ -1750,6 +1752,7 @@ async function relayBoot(){
     // 전자계약 서버 연결도 이 기기(idb)에서만 복원 — 스키마(serialize/applyData)에는 넣지 않는 비밀
     __contract.url=(await idbGet('contract_url'))||'';
     __contract.token=(await idbGet('contract_token'))||'';
+    __reviewUrl=(await idbGet('review_url'))||'';   // 리뷰 링크도 이 기기(idb)에서만 복원 — 스키마엔 넣지 않음
     await relayUpdateQueueBadge();
     if(!relayReady())return;
     relaySetStatus(__relay.syncAt?'saved':'ready');
@@ -2662,6 +2665,17 @@ function openGdriveSetup(){
     </div>
     <div id="ctOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
+  const reviewSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.06)">
+    <b style="font-size:14px">⭐ 리뷰 링크 (네이버 플레이스 등)</b>
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">준공 현장 상세의 <b>⭐ 리뷰 요청</b> 문자에 이 링크가 자동으로 붙습니다. 비워두면 링크 없이 문안만 만들어집니다. 이 링크는 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업에는 포함되지 않습니다.</p>
+    <label style="display:block;margin-bottom:6px">리뷰 링크 URL
+      <input type="text" id="rvUrl" value="${escapeAttr(__reviewUrl||'')}" placeholder="https://naver.me/…" style="width:100%;margin-top:4px">
+    </label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+      <button class="clay tiny" id="rvSave">💾 저장</button>
+      <span id="rvState" style="align-self:center;font-size:12px;color:var(--muted-2)">${__reviewUrl?'✅ 저장됨':'미설정'}</span>
+    </div>
+  </div>`;
   const gdBody=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 10px">구글드라이브 <b>만물인테리어 폴더</b>에 <b>현장데이터.json</b>을 자동 저장/불러와 PC↔폰을 맞춥니다(고정). <b>이미 연결 준비됨</b> — 아래 <b>‘🔑 구글 로그인 & 연결’</b>만 누르세요.</p>
     <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
@@ -2708,7 +2722,7 @@ function openGdriveSetup(){
     </details>
   </div>`;
   // 비상용(기존 구글 직접 연동)은 UI·기능 그대로 접어서 보존
-  const body=relaySec+contractSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
+  const body=relaySec+contractSec+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
   openModal('☁️ 클라우드 저장 설정',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
@@ -2779,6 +2793,13 @@ function openGdriveSetup(){
     const stEl=root.querySelector('#ctState');if(stEl)stEl.textContent=contractReady()?'✅ 연결됨':'미설정';
     const out=root.querySelector('#ctOut');if(out){out.textContent=contractReady()?'✅ 전자계약 서버 저장됨 — 현장 상세에서 📨 알림톡 계약서를 보낼 수 있습니다':(u?'관리자 토큰도 입력하세요':'서버 주소를 입력하세요');out.style.color=contractReady()?'var(--ok)':'var(--warn)';}
     toast(contractReady()?'📨 전자계약 서버 저장됨':'주소·토큰을 모두 입력하세요');
+  };}
+  {const rs=root.querySelector('#rvSave');if(rs)rs.onclick=async()=>{
+    const v=(root.querySelector('#rvUrl').value||'').trim();
+    __reviewUrl=v;
+    try{await idbSet('review_url',v);}catch(e){}
+    const st=root.querySelector('#rvState');if(st)st.textContent=v?'✅ 저장됨':'미설정';
+    toast(v?'⭐ 리뷰 링크 저장됨 — 리뷰 요청 문자에 자동 포함됩니다':'리뷰 링크를 비웠습니다 (링크 없이 문안만 생성)');
   };}
 }
 
@@ -7103,6 +7124,13 @@ function hjBootExtras(){
 /* ═══════════ 🔧 AS 전역 관리 — 접수·처리 대시 + 무상기간(완료+1년) 알림 ═══════════ */
 const AS_STAT={open:['접수','var(--warn)'],doing:['처리중','#b45309'],done:['완료','#0a7f43']};
 function hjWarranty(p){
+  // 새 항목별 보증(project.warranty={startedAt,items:[{name,months,expiresAt}]})이 있으면 그걸 우선 — 만료일은 가장 늦은 항목 기준(현장 전체 보증 종료)
+  const w=p&&p.warranty;
+  if(w&&typeof w==='object'&&Array.isArray(w.items)&&w.items.length){
+    let latest='';
+    w.items.forEach(it=>{if(it&&it.expiresAt&&it.expiresAt>latest)latest=it.expiresAt;});
+    if(latest){const end=new Date(latest+'T00:00:00');const dday=Math.ceil((end-hjToday0())/86400000);return {end:latest,dday,items:w.items,startedAt:w.startedAt||p.doneAt||''};}
+  }
   if(!p.doneAt)return null;
   const end=new Date(p.doneAt+'T00:00:00');end.setFullYear(end.getFullYear()+1);
   const dday=Math.ceil((end-hjToday0())/86400000);
@@ -7156,6 +7184,85 @@ function asManage(){
     state.asLog=(state.asLog||[]).filter(x=>x.id!==b.dataset.id);markDirty();asManage();toast('삭제됨');
   });
   return {미처리:open.length,전체:log.length,무상임박:soon.length};
+}
+
+/* ═══════════ 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (기존 hjWarranty·reviewRequest·hjSendSms 연동) ═══════════ */
+// ⭐ 리뷰 요청 문자 초안 — 전화 원문은 sms 딥링크 생성에만 순간 사용, 화면·이력엔 남기지 않음
+function hjReviewSms(name){
+  const p=(state.projects||[]).find(x=>x.name===name);
+  if(!p){toast('현장을 찾을 수 없습니다');return;}
+  const cust=p.customer||{};
+  const link=(__reviewUrl||'').trim();
+  const lines=['['+COMPANY.name+'] '+name+' 공사가 잘 마무리됐습니다.','만족하셨다면 리뷰 한 줄 부탁드립니다 🙏'];
+  if(link)lines.push(link);
+  hjSendSms(cust.phone,lines.join('\n'));            // 딥링크에만 번호 사용(연락처 없으면 문안 복사)
+  p.reviewRequestedAt=new Date().toISOString();      // 파생 필드 — 중복 요청 방지
+  try{aiAddNote('[리뷰요청:'+name+'] '+localDate()+' 리뷰 요청 문자 발송',name);}catch(e){}  // 이력엔 번호 미기록
+  markDirty();render();
+  toast(link?'⭐ 리뷰 요청 문자를 준비했어요':'⭐ 리뷰 요청 준비 — ☁️설정에서 리뷰 링크를 넣으면 문안에 자동 포함돼요');
+  return {요청:name,링크포함:!!link};
+}
+// 🛡 보증 시작/수정 — project.warranty={startedAt,items:[{name,months,expiresAt}]} (projects 배열 파생 필드로 자연 직렬화)
+function hjWarrantyStart(name){
+  const p=(state.projects||[]).find(x=>x.name===name);
+  if(!p){toast('현장을 찾을 수 없습니다');return;}
+  const cur=(p.warranty&&typeof p.warranty==='object'&&Array.isArray(p.warranty.items)&&p.warranty.items.length)?p.warranty.items:WARRANTY_ITEMS_DEFAULT;
+  const startDefault=(p.warranty&&typeof p.warranty==='object'&&p.warranty.startedAt)||p.doneAt||localDate();
+  const rowHtml=it=>'<div class="wsRow" style="display:flex;gap:6px;margin-bottom:6px"><input class="wsName" value="'+escapeAttr(it.name||'')+'" placeholder="항목(예: 방수)" style="flex:2;min-width:0;padding:8px;font-size:13px"><input class="wsMon" type="number" min="0" value="'+escapeAttr(String(num(it.months)||0))+'" style="width:72px;padding:8px;font-size:13px"><span style="align-self:center;font-size:12px;color:var(--muted)">개월</span><button class="ghost tiny wsDel" style="padding:6px 8px">✕</button></div>';
+  const body=
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">준공일 기준으로 항목별 보증 만료일을 계산합니다. 만물 표준(방수 2년·기타 1년)은 자유롭게 수정하세요. 계약·견적에 보증정보가 있으면 그 값으로 바꿔 넣으면 됩니다.</div>'+
+    '<label style="display:block;font-size:12.5px;margin-bottom:8px">준공일(보증 시작) <input type="date" id="wsStart" value="'+escapeAttr(startDefault)+'" style="padding:8px;margin-left:6px"></label>'+
+    '<div id="wsList">'+cur.map(rowHtml).join('')+'</div>'+
+    '<button class="ghost tiny" id="wsAdd" style="padding:7px 12px;margin-top:2px">+ 항목 추가</button>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 보증 시작 후에도 [🛡 보증 수정]으로 언제든 바꿀 수 있어요. 만료 임박은 🛡 AS 보증 관리·알림 센터가 자동으로 챙깁니다.</div>';
+  openModal('🛡 보증 시작 — '+name,body,[
+    {label:'보증 시작',cls:'clay',fn:function(){
+      const root=document.getElementById('modalRoot');
+      const start=(root.querySelector('#wsStart').value||'').trim()||localDate();
+      const items=[];
+      root.querySelectorAll('.wsRow').forEach(r=>{
+        const nm=(r.querySelector('.wsName').value||'').trim();
+        const mon=num(r.querySelector('.wsMon').value)||0;
+        if(nm&&mon>0)items.push({name:nm,months:mon,expiresAt:hjAddMonths(start,mon)});
+      });
+      if(!items.length){toast('보증 항목을 최소 1개 입력하세요');return;}
+      try{hjSnapshot('보증 시작 전');}catch(e){}   // 안전판(원본 불변·파생본 저장)
+      p.warranty={startedAt:start,items:items};
+      if(!p.doneAt)p.doneAt=start;               // 완공일 없으면 보증 시작일로(하자보증서·만료추적 일관)
+      markDirty();closeModal();render();
+      toast('🛡 보증 시작 — '+items.length+'개 항목 등록됨');
+    }},
+    {label:'닫기',cls:'ghost',fn:closeModal}
+  ],true);
+  const root=document.getElementById('modalRoot');
+  const bindDel=()=>root.querySelectorAll('.wsDel').forEach(b=>b.onclick=()=>{const r=b.closest('.wsRow');if(r)r.remove();});
+  root.querySelector('#wsAdd').onclick=()=>{const box=document.createElement('div');box.innerHTML=rowHtml({name:'',months:12});root.querySelector('#wsList').appendChild(box.firstChild);bindDel();};
+  bindDel();
+}
+// 준공 관리 카드(현장 상세용) — 준공 현장엔 버튼, 비준공엔 흐리게 안내(버튼 미노출)
+function hjCompletionCard(p){
+  const done=((p.stage||0)>=STAGES.length-1)||!!p.doneAt;
+  if(!done){
+    return '<div class="cust-card" data-donecard="0" style="margin-top:10px;opacity:.5"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">준공(완료) 처리 후 이용</span></div><div style="font-size:12px;color:var(--muted);margin-top:6px">현장을 <b>완료</b> 단계로 옮기면 ⭐ 리뷰 요청·🛡 보증 시작을 할 수 있어요.</div></div>';
+  }
+  const w=hjWarranty(p);
+  const reqd=reviewRequested(p.name);
+  const reqAt=p.reviewRequestedAt?localDate(new Date(p.reviewRequestedAt)):'';
+  let warrLine;
+  if(w){
+    const c=w.dday<0?'var(--muted)':(w.dday<=30?'#c2410c':'var(--ok)');
+    const stat=w.dday<0?('만료됨 ('+w.end+')'):(w.dday===0?'오늘 만료':'진행중 · D-'+w.dday+' ('+w.end+'까지)');
+    const itemsTxt=(w.items&&w.items.length)?('<div style="font-size:11.5px;color:var(--muted);margin-top:4px">'+w.items.map(it=>escapeHtml(it.name)+' '+it.months+'개월→'+it.expiresAt).join(' · ')+'</div>'):'';
+    warrLine='<div style="margin-top:8px;font-size:12.5px">🛡 보증 <b style="color:'+c+'">'+stat+'</b>'+(w.items?'':' <span style="color:var(--muted);font-size:11px">(완료+1년 기본)</span>')+'</div>'+itemsTxt;
+  }else{
+    warrLine='<div style="margin-top:8px;font-size:12px;color:var(--muted)">🛡 아직 보증을 시작하지 않았어요. [보증 시작]을 누르면 항목별 만료일을 계산합니다.</div>';
+  }
+  const rvBtn=reqd
+    ? '<span class="mini-btn" style="opacity:.7;pointer-events:none">✅ 리뷰 요청함'+(reqAt?' ('+reqAt+')':'')+'</span>'
+    : '<button class="mini-btn" data-reviewreqp="'+escapeAttr(p.name)+'" title="리뷰 요청 문자 초안">⭐ 리뷰 요청</button>';
+  const wtBtn='<button class="mini-btn" data-warrantystart="'+escapeAttr(p.name)+'">'+(w&&w.items?'🛡 보증 수정':'🛡 보증 시작')+'</button>';
+  return '<div class="cust-card" data-donecard="1" style="margin-top:10px"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">리뷰 요청 + 보증 등록</span></div>'+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+rvBtn+wtBtn+'</div>'+warrLine+'</div>';
 }
 
 /* ═══════════ 📦 자재 발주서 — 견적 품목 → 거래처별 주문 문자 (거래처 자동 기억) ═══════════ */
@@ -11835,6 +11942,17 @@ async function negotiateDialog(qid){
 
 /* ═══════════ 🛡 AS 보증 만료 추적 — 만료 전 알림·무상점검 재영업 ═══════════ */
 const WARRANTY_DEFAULT_MONTHS=12;
+// 만물 표준 하자보증(수정 가능): 방수 2년 · 마감 1년 · 전기설비 1년
+const WARRANTY_ITEMS_DEFAULT=[{name:'방수',months:24},{name:'마감(도배·바닥·타일)',months:12},{name:'전기·설비',months:12}];
+function hjAddMonths(dateStr,months){const d=new Date(String(dateStr)+'T00:00:00');if(isNaN(d.getTime()))return '';d.setMonth(d.getMonth()+(num(months)||0));return localDate(d);}
+// 현장의 유효 보증 개월: 항목형이면 가장 긴 항목, 숫자형(구형)이면 그 값, 없으면 기본 12
+function hjWarrantyMonths(p){
+  const w=p&&p.warranty;
+  if(w&&typeof w==='object'&&Array.isArray(w.items)&&w.items.length){
+    return Math.max.apply(null,w.items.map(it=>num(it&&it.months)||0))||WARRANTY_DEFAULT_MONTHS;
+  }
+  return num(w)||WARRANTY_DEFAULT_MONTHS;
+}
 // 완공 현장의 보증 만료일 계산
 function warrantyList(){
   const today=new Date();today.setHours(0,0,0,0);
@@ -11844,8 +11962,10 @@ function warrantyList(){
     const done=p.doneAt||((p.stage>=3)?null:null);
     // 완공일: doneAt 우선, 없으면 완료 단계면 최근 일정/오늘 근사(정확치 않으니 doneAt 있는 것만 신뢰)
     if(!p.doneAt)return;
-    const months=num(p.warranty)||WARRANTY_DEFAULT_MONTHS;
-    const start=new Date(p.doneAt+'T00:00:00');
+    const months=hjWarrantyMonths(p);   // 항목형(방수 2년 등)·숫자형·기본값 모두 지원
+    const wo=p.warranty;
+    const startStr=(wo&&typeof wo==='object'&&wo.startedAt)?wo.startedAt:p.doneAt;
+    const start=new Date(startStr+'T00:00:00');
     if(isNaN(start.getTime()))return;
     const expiry=new Date(start);expiry.setMonth(expiry.getMonth()+months);
     const daysLeft=Math.round((expiry-today)/(1000*60*60*24));
@@ -13146,6 +13266,8 @@ function similarQuoteDialog(qid){
 /* ═══════════ 🗣 완공 후 리뷰·소개 요청 ═══════════ */
 // 이미 요청했는지([리뷰요청] 노트로 기록)
 function reviewRequested(projName){
+  const p=(state.projects||[]).find(x=>x.name===projName);
+  if(p&&p.reviewRequestedAt)return true;   // 현장 상세 [⭐ 리뷰 요청]에서 남긴 파생 필드도 인정(중복 방지 통합)
   return (state.notes||[]).some(n=>String(n.text||'').startsWith('[리뷰요청:'+projName+']'));
 }
 // 리뷰 요청 대상: 완공(doneAt) 90일 이내 + 연락처 있음 + 아직 요청 안 함
@@ -19673,6 +19795,8 @@ function viewProject(){
       html+=`<div class="cust-card" style="margin-top:10px"><div class="cust-h">🔧 AS·하자보수 기록 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">시공 후 접수된 건을 남겨두세요</span></div><div style="display:flex;gap:6px;margin-top:6px"><input type="text" id="asNew" placeholder="예: 안방 문틀 실리콘 재시공 요청" style="flex:1"><button class="clay tiny" id="asAdd" data-proj="${escapeAttr(p.name)}">+ 접수</button></div>${rows||'<div style="font-size:12px;color:var(--muted);margin-top:8px">아직 AS 접수 내역이 없습니다.</div>'}</div>`;
     }
   }
+  // 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (준공 현장만 활성, 비준공은 흐리게)
+  html+=hjCompletionCard(p);
   // 💬 고객 페이지 소통(선택 상태·메시지)
   if((p.portalAsk&&p.portalAsk.q)||(p.portalMsgs&&p.portalMsgs.length)){
     const askLine=p.portalAsk&&p.portalAsk.q?('<div style="font-size:12px;margin-bottom:6px">🎨 <b>'+escapeHtml(p.portalAsk.q)+'</b> — '+(p.portalAsk.choice?'<span style="color:var(--ok);font-weight:700">'+escapeHtml(p.portalAsk.choice)+' ✅</span>':'<span style="color:var(--warn)">고객 선택 대기 중</span>')+'</div>'):'';
@@ -19835,7 +19959,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
@@ -19934,9 +20058,13 @@ function setupDelegation(){
       if(!txt){toast('AS 내용을 입력하세요.');return;}
       state.asLog=state.asLog||[];
       state.asLog.push({id:uid(),project:t.dataset.proj,date:new Date().toISOString().slice(0,10),text:txt,status:'open'});
-      markDirty();render();toast('🔧 AS 접수됨');return;
+      // 보증기간 내/외 힌트(과설계 금지 — 토스트로만)
+      const __asp=state.projects.find(x=>x.name===t.dataset.proj);const __w=__asp?hjWarranty(__asp):null;
+      markDirty();render();toast(__w?('🔧 AS 접수됨 · 보증 '+(__w.dday>=0?'기간 내 (D-'+__w.dday+')':'만료됨')):'🔧 AS 접수됨');return;
     }
     if(d.asdel!==undefined){state.asLog=(state.asLog||[]).filter(a=>a.id!==d.asdel);markDirty();render();toast('삭제됨');return;}
+    if(d.reviewreqp!==undefined){return hjReviewSms(d.reviewreqp);}
+    if(d.warrantystart!==undefined){return hjWarrantyStart(d.warrantystart);}
     if(d.qdoc!==undefined)return openContractDoc(d.qdoc);
     if(d.report!==undefined)return makeProgressReport(d.report);
     if(d.dun!==undefined)return sendDunning(d.dun);
