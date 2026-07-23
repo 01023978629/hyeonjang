@@ -4295,6 +4295,8 @@ function viewDashboard(){
 /* ═══════════ ☀️ 오늘의 브리핑 — 운영 루프 첫 심장박동(감지→결정). 순수 읽기 계산, 오프라인·서버 불필요.
    직렬화 스키마 불변(serializeData/applyData 미변경). 펼침 상태만 메모리 변수(__briefOpen)로 보관. ═══════════ */
 let __briefOpen=true; // 카드 펼침 상태 — 직렬화·idb 저장 안 함(원본 데이터 불변)
+let __boardOpen=false;   // 🏥 현장 보드 펼침 상태 — 메모리 전용(직렬화·idb 저장 안 함)
+let __boardFilter=false; // 🏥 현장 보드 '긴급만' 필터 — 메모리 전용(직렬화·idb 저장 안 함)
 // 전화번호는 뒷 4자리만(끝4자리 마스킹) — 복사텍스트·화면·로그에 원문 미노출
 function hjBriefMaskPhone(ph){const d=String(ph||'').replace(/[^\d]/g,'');return d.length>=4?('···'+d.slice(-4)):'';}
 // 리드 노트 요약: 마커 제거 + 전화번호 형태 마스킹(원문 유출 방지) + 길이 컷
@@ -4346,6 +4348,109 @@ function hjDailyBrief(){
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
   return {today,tomorrow,todaySch,tmrSch,doing,leadNotes,followups,pay,dues,totRecv,totDue,totEst,checks,unassignedPhotos};
 }
+/* ═══════════ 🏥 현장 보드 — 모든 활성 현장 종합 위험도 랭킹(순수·읽기전용 파생) ═══════════
+   Phase 4 "여러 현장 동시 운영". 새 탭·새 모달·새 project 필드·새 직렬화 키 없음.
+   기존 신호 함수 결과를 '재사용'만 하고 임계값을 재계산하지 않는다(원 함수가 이미 밴드를 판정).
+   state.projects/expenses/files 미변형 · markDirty 미유발. 가중치는 aiPlannerScan priorityScore 관례 차용. */
+// 현장 보드 배지가 열 수 있는 조치 화면(화이트리스트) — 동적 디스패치(window[문자열]) 방어.
+const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','dueAgingView','warrantyManage','staleProjects','reviewRequest']);
+// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(미수 dueAgingData 60일 · 보증 high · 방치 severe). 단일 출처.
+const BOARD_URGENT={dueDays:60,warrantyDays:14,staleDays:30};
+function projHealthBoard(){
+  const generatedAt=new Date().toISOString();
+  const rows=[];
+  const counts={urgent:0,watch:0,ok:0};
+  // 기존 신호 함수를 각각 1회만 호출 → 현장명 인덱스(임계값 판정은 원 함수 내부에서만 발생)
+  const safe=(fn)=>{try{const r=(typeof fn==='function')?fn():[];return Array.isArray(r)?r:[];}catch(e){return [];}};
+  const idx={loss:{},budget:{},due:{},warranty:{},stale:{},review:{}};
+  safe(typeof lossAlertData==='function'&&lossAlertData).forEach(r=>{if(r&&r.name)idx.loss[r.name]=r;});
+  safe(typeof budgetAlertData==='function'&&budgetAlertData).forEach(r=>{if(r&&r.name)idx.budget[r.name]=r;});
+  safe(typeof dueAgingData==='function'&&dueAgingData).forEach(r=>{if(r&&r.name)idx.due[r.name]=r;});
+  safe(typeof warrantyDue==='function'&&warrantyDue).forEach(r=>{if(r&&r.name)idx.warranty[r.name]=r;});   // warrantyList의 daysLeft<=60 파생(임박·만료)
+  safe(typeof staleProjectData==='function'&&staleProjectData).forEach(r=>{if(r&&r.name)idx.stale[r.name]=r;});
+  safe(typeof reviewRequestData==='function'&&reviewRequestData).forEach(r=>{if(r&&r.name&&!r.requested&&r.customer&&r.customer.phone)idx.review[r.name]=r;});
+  const RANK={urgent:3,watch:2,ok:1};
+  (state.projects||[]).forEach(p=>{
+    if(!p||p.archived)return;
+    const name=p.name;
+    const stage=p.stage||0;
+    let s=null;try{s=projStats(name);}catch(e){s=null;}
+    const reasons=[];
+    // 📉 마진(적자/저마진) — lossAlertData(marginRateEff<15) 결과 재사용
+    const L=idx.loss[name];
+    if(L){
+      if(L.loss)reasons.push({axis:'margin',label:'적자 '+L.marginRate+'%',weight:92,openAction:'lossAlert',urgent:true});
+      else reasons.push({axis:'margin',label:'저마진 '+L.marginRate+'%',weight:70,openAction:'lossAlert',urgent:false});
+    }
+    // 💸 예산 — budgetAlertData(pct>=80) 결과 재사용
+    const B=idx.budget[name];
+    if(B){
+      if(B.over)reasons.push({axis:'budget',label:'예산초과 '+B.pct+'%',weight:88,openAction:'budgetAlert',urgent:true});
+      else reasons.push({axis:'budget',label:'예산임박 '+B.pct+'%',weight:60,openAction:'budgetAlert',urgent:false});
+    }
+    // ⏳ 미수 에이징 — dueAgingData(band/days) 결과 재사용(재밴딩 없음)
+    const D=idx.due[name];
+    if(D){
+      const urgent=D.days>=BOARD_URGENT.dueDays;
+      const w=urgent?70+Math.min(D.days-60,30):(D.days>=30?50:40);
+      reasons.push({axis:'due',label:'미수 '+(D.days>=0?D.days+'일':'기한미정'),weight:w,openAction:'dueAgingView',urgent:urgent});
+    }
+    // 🛡 보증 — warrantyDue(daysLeft<=60) 결과 재사용
+    const W=idx.warranty[name];
+    if(W){
+      const urgent=W.daysLeft<=BOARD_URGENT.warrantyDays;
+      reasons.push({axis:'warranty',label:W.daysLeft<0?('보증만료 D+'+(-W.daysLeft)):('보증 D-'+W.daysLeft),weight:60-Math.min(W.daysLeft,40),openAction:'warrantyManage',urgent:urgent});
+    }
+    // 💤 방치 — staleProjectData(14일+/무기록) 결과 재사용
+    const S=idx.stale[name];
+    if(S){
+      const urgent=(S.days===null||S.days>=BOARD_URGENT.staleDays);
+      reasons.push({axis:'stale',label:(S.days==null?'활동기록 없음':(S.days+'일 무기록')),weight:45+Math.min(S.days||30,40),openAction:'staleProjects',urgent:urgent});
+    }
+    // 🗣 리뷰 — reviewRequestData(완공90일내 미요청) 결과 재사용(기회 신호 · watch)
+    const R=idx.review[name];
+    if(R)reasons.push({axis:'review',label:'리뷰요청 완공'+R.days+'일',weight:55-Math.min(R.days,40),openAction:'reviewRequest',urgent:false});
+    // 포함 규칙: 활성 현장(stage<3)은 항상, 완료 현장은 신호가 있을 때만
+    if(stage>=3&&reasons.length===0)return;
+    const score=reasons.reduce((a,r)=>a+(r.weight||0),0);
+    const level=reasons.some(r=>r.urgent)?'urgent':(reasons.length?'watch':'ok');
+    counts[level]++;
+    rows.push({name,stage,stageName:STAGES[stage]||'',score,level,due:s?s.due:0,marginRateEff:s?s.marginRateEff:0,reasons});
+  });
+  // 정렬: level rank desc → score desc (aiPlannerScan.sort 관례)
+  rows.sort((a,b)=>RANK[b.level]-RANK[a.level]||b.score-a.score);
+  return {generatedAt,rows,counts};
+}
+// 표시(읽기전용): 브리핑 카드 요약 칩 아래 파생 섹션. 기본 접힘, 상위 3곳. 전화 원문 미노출.
+function hjHealthBoardHTML(sec){
+  let bd;try{bd=projHealthBoard();}catch(e){return '';}
+  const dot=(lv)=>{const c=lv==='urgent'?'#b91c1c':lv==='watch'?'#e8912d':'#0a7f43';return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+c+';margin-right:5px;vertical-align:middle"></span>';};
+  const reasonBadge=(r)=>'<button class="ghost tiny" data-boardreason="'+escapeAttr(r.openAction)+'" title="근거 화면 열기" style="padding:2px 7px;font-size:10.5px;border-radius:8px;color:'+(r.urgent?'#b91c1c':'#b45309')+';margin:0 3px 3px 0">'+escapeHtml(r.label)+'</button>';
+  const rowHTML=(row)=>{
+    const badges=row.reasons.slice(0,__boardOpen?4:2).map(reasonBadge).join('');
+    const nums=(row.due>0?'<span style="color:var(--warn);font-size:11px">미수 '+won(row.due)+'</span>':'')+
+      ((row.marginRateEff<15&&row.marginRateEff!==0)?' <span style="color:'+(row.marginRateEff<0?'#b91c1c':'#b45309')+';font-size:11px">마진 '+row.marginRateEff+'%</span>':'');
+    return '<div style="font-size:13px;padding:4px 0;border-top:1px solid var(--line-soft)">'+
+      '<div style="display:flex;align-items:center;gap:4px"><span style="flex:1;min-width:0">'+dot(row.level)+
+      '<b data-boardproj="'+escapeAttr(row.name)+'" style="cursor:pointer">'+escapeHtml(row.name)+'</b> '+
+      '<span class="stage-chip" style="font-size:10.5px">'+escapeHtml(row.stageName)+'</span></span>'+nums+'</div>'+
+      (badges?'<div style="margin-top:3px">'+badges+'</div>':'')+
+    '</div>';
+  };
+  let h=sec('🏥 현장 보드');
+  h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'+
+     '<span style="font-size:11.5px;color:var(--muted);flex:1">긴급 '+bd.counts.urgent+' · 주의 '+bd.counts.watch+' · 정상 '+bd.counts.ok+'</span>'+
+     ((bd.rows.length>3||__boardOpen)?'<button class="ghost tiny" data-boardtoggle style="padding:3px 8px;font-size:10.5px">'+(__boardOpen?'접기 ▲':'전체 ▼')+'</button>':'')+
+     (__boardOpen?'<button class="ghost tiny" data-boardfilter style="padding:3px 8px;font-size:10.5px'+(__boardFilter?';background:#fef2f2;color:#b91c1c':'')+'">긴급만</button>':'')+
+     '</div>';
+  if(!bd.rows.length){h+='<div class="hint" style="margin:0">랭킹할 활성 현장이 없습니다.</div>';return h;}
+  let list=bd.rows;
+  if(__boardOpen&&__boardFilter)list=list.filter(r=>r.level==='urgent');
+  const shown=__boardOpen?list:bd.rows.slice(0,3);
+  h+=(shown.length?shown.map(rowHTML).join(''):'<div class="hint" style="margin:0">긴급 현장이 없습니다.</div>');
+  if(!__boardOpen&&bd.rows.length>3)h+='<div class="hint" style="margin:4px 0 0;font-size:11px">상위 3곳 표시 · 전체 '+bd.rows.length+'곳(“전체 ▼”)</div>';
+  return h;
+}
 // 결정→표시: 대시보드 최상단 카드(요약 + 펼치기). 빈 상태는 친절 문구.
 function hjDailyBriefHTML(){
   let b; try{b=hjDailyBrief();}catch(e){return '<div style="border:1.5px solid var(--line-soft);border-radius:14px;padding:12px;margin:0 0 14px;background:var(--paper)"><b>☀️ 오늘의 브리핑</b><div class="hint" style="margin:6px 0 0">브리핑을 계산할 수 없습니다.</div></div>';}
@@ -4360,6 +4465,8 @@ function hjDailyBriefHTML(){
      '</div>';
   // 요약 칩(항상 표시)
   h+='<div style="margin-top:8px">'+chip('📅 오늘 일정 '+nTodo)+chip('🔥 진행 현장 '+nDoing)+chip('📞 챙길 연락 '+nLead)+(nCheck?chip('✅ 체크 '+nCheck):'')+'</div>';
+  // 🏥 현장 보드 — 요약 칩 아래 읽기전용 파생 섹션(자체 접힘 __boardOpen, __briefOpen과 독립)
+  try{h+=hjHealthBoardHTML(sec);}catch(e){}
   if(__briefOpen){
     // 1) 오늘·내일 일정
     h+=sec('📅 오늘·내일 일정');
@@ -20077,7 +20184,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
@@ -20085,6 +20192,10 @@ function setupDelegation(){
     if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
+    if(d.boardtoggle!==undefined){e.stopPropagation();__boardOpen=!__boardOpen;if(!__boardOpen)__boardFilter=false;return render();}
+    if(d.boardfilter!==undefined){e.stopPropagation();__boardFilter=!__boardFilter;return render();}
+    if(d.boardreason!==undefined){e.stopPropagation();if(BOARD_ACTIONS.has(d.boardreason)){const fn=window[d.boardreason];if(typeof fn==='function'){try{fn();}catch(_){}}}return;}
+    if(d.boardproj!==undefined){e.stopPropagation();state.activeProject=d.boardproj;state.tab='project';__projView=null;return render();}
     if(d.ledgercost!==undefined)return hjApplyLedgerCost(d.ledgercost);
     if(t.id==='btnLoadCostLedger')return hjLoadCostFromLedger();
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
