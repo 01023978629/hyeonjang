@@ -3920,14 +3920,15 @@ function projStats(name){
   const marginRate=est?Math.round(margin/est*100):0;
   // ── 유효원가(택일 규칙, 이중계상 방지) — 읽기 전용 파생 ──
   // 현장 태깅 지출장부를 category별 합산(원본 state.expenses 변형 안 함)
+  // 매칭은 접두(startsWith): '자재'로 시작→material, '인건'→labor, '외주'→outsource. '자재비' 같은 비정규 문자열도 포함.
   const expAgg={material:0,labor:0,outsource:0,etc:0};
   (state.expenses||[]).forEach(function(e){
     if(!e||String(e.project||'')!==name)return;
     const amt=(+e.amount||0);if(!amt)return;
-    const cat=e.category;
-    if(cat==='자재')expAgg.material+=amt;
-    else if(cat==='인건비')expAgg.labor+=amt;
-    else if(cat==='외주')expAgg.outsource+=amt;
+    const cat=String(e.category||'');
+    if(cat.indexOf('자재')===0)expAgg.material+=amt;
+    else if(cat.indexOf('인건')===0)expAgg.labor+=amt;
+    else if(cat.indexOf('외주')===0)expAgg.outsource+=amt;
     else expAgg.etc+=amt; // 장비/유류/식대/기타 → 원가 제외, 분리 집계
   });
   // 항목별 정본: 수기 p.cost>0이면 수기, 0이면 장부 합(labor는 스케줄/수기 우선)
@@ -3935,33 +3936,48 @@ function projStats(name){
   const matEff = mMan ? (c.material||0) : expAgg.material;
   const outEff = oMan ? (c.outsource||0) : expAgg.outsource;
   const labEff = lMan ? (c.labor||0)    : expAgg.labor; // applyLaborToProject 이중계상 방지
-  const costEffective = matEff+labEff+outEff;
+  const costEffective = matEff+labEff+outEff; // 유효원가 원문합(부가세 포함 지출 그대로) — '지출합계' 표시용
   const costEtc = expAgg.etc;
-  // 원가출처 판정(값>0인 항목만 반영)
+  // 항목별 원가출처(값>0인 항목만): 유효값이 수기에서 왔는지 장부에서 왔는지 — 표 셀 배지용
+  const matSrc = matEff<=0?'없음':(mMan?'수기':'장부');
+  const outSrc = outEff<=0?'없음':(oMan?'수기':'장부');
+  const labSrc = labEff<=0?'없음':(lMan?'수기':'장부');
+  // 원가출처 종합(값>0인 항목만 반영)
   const srcs={};
-  if(matEff>0)srcs[mMan?'수기':'장부']=1;
-  if(outEff>0)srcs[oMan?'수기':'장부']=1;
-  if(labEff>0)srcs[lMan?'수기':'장부']=1;
+  [matSrc,outSrc,labSrc].forEach(function(s){if(s==='수기'||s==='장부')srcs[s]=1;});
   const keys=Object.keys(srcs);
   const costSource = keys.length===0?'없음':(keys.length>1?'혼합':keys[0]);
-  const marginNet = supply-costEffective;
+  // ── 순마진(부가세 제외) 원가 환산 ──
+  // 부가세 모듈 vatReportData 관례와 일치: 자재·외주는 '부가세 포함' 지출로 보고 ÷1.1로 공급가 환산.
+  // 인건비(labor)는 면세이므로 환산하지 않는다.
+  const materialSupply=Math.round(matEff/1.1);
+  const outsourceSupply=Math.round(outEff/1.1);
+  const costSupply=materialSupply+outsourceSupply+labEff; // 공급가(부가세 제외) 기준 원가
+  const marginNet = supply-costSupply;                    // 순마진 = 공급가매출 − 공급가원가
   const marginRateNet = supply?Math.round(marginNet/supply*100):0;
+  // 유효원가 기준 마진(부가세 포함 기준) — 화면에 보이는 원가(costEffective)와 반드시 일치
+  const marginEff = est-costEffective;
+  const marginRateEff = est?Math.round(marginEff/est*100):0;
   return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
-    supply,costEffective,costEtc,costSource,marginNet,marginRateNet,
-    material:matEff,labor:labEff,outsource:outEff,
+    supply,costEffective,costSupply,costEtc,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
+    material:matEff,labor:labEff,outsource:outEff,matSrc,outSrc,labSrc,
     expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
 }
 /* 현장별 순마진(부가세 제외) 집계 — 순수/읽기전용. state 미변형. 새 엔진/새 탭 없이 projStats 재사용. */
 function projMarginSummary(opts){
   opts=opts||{};
   const rows=[];
-  const total={supply:0,costEffective:0,marginNet:0,marginRateNet:0};
+  const total={est:0,supply:0,costEffective:0,costSupply:0,costEtc:0,marginEff:0,marginRateEff:0,marginNet:0,marginRateNet:0};
   (state.projects||[]).filter(function(p){return p&&!p.archived;}).forEach(function(p){
     const s=projStats(p.name);
-    rows.push({name:p.name,supply:s.supply,material:s.material,labor:s.labor,outsource:s.outsource,
-      costEffective:s.costEffective,costEtc:s.costEtc,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource});
-    total.supply+=s.supply;total.costEffective+=s.costEffective;total.marginNet+=s.marginNet;
+    rows.push({name:p.name,est:s.est,supply:s.supply,material:s.material,labor:s.labor,outsource:s.outsource,
+      matSrc:s.matSrc,outSrc:s.outSrc,labSrc:s.labSrc,
+      costEffective:s.costEffective,costSupply:s.costSupply,costEtc:s.costEtc,
+      marginEff:s.marginEff,marginRateEff:s.marginRateEff,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource});
+    total.est+=s.est;total.supply+=s.supply;total.costEffective+=s.costEffective;total.costSupply+=s.costSupply;
+    total.costEtc+=(s.costEtc||0);total.marginEff+=s.marginEff;total.marginNet+=s.marginNet;
   });
+  total.marginRateEff=total.est?Math.round(total.marginEff/total.est*100):0;
   total.marginRateNet=total.supply?Math.round(total.marginNet/total.supply*100):0;
   return {rows,total};
 }
@@ -3973,7 +3989,8 @@ function hjLedgerCostProposal(name){
   const agg={material:0,labor:0,outsource:0};
   (state.expenses||[]).forEach(function(e){
     if(!e||String(e.project||'')!==name)return;const amt=(+e.amount||0);if(!amt)return;
-    if(e.category==='자재')agg.material+=amt;else if(e.category==='인건비')agg.labor+=amt;else if(e.category==='외주')agg.outsource+=amt;
+    const cat=String(e.category||'');
+    if(cat.indexOf('자재')===0)agg.material+=amt;else if(cat.indexOf('인건')===0)agg.labor+=amt;else if(cat.indexOf('외주')===0)agg.outsource+=amt;
   });
   const prop={};
   if((c.material||0)===0&&agg.material>0)prop.material=Math.round(agg.material);
@@ -4174,9 +4191,10 @@ function viewDashboard(){
   const totEst=stats.reduce((a,s)=>a+s.est,0);
   const totRecv=stats.reduce((a,s)=>a+s.recv,0);
   const totDue=stats.reduce((a,s)=>a+s.due,0);
-  const totCost=stats.reduce((a,s)=>a+s.cost,0);
-  const totMargin=totEst-totCost;
+  const totCost=stats.reduce((a,s)=>a+s.costEffective,0); // 유효원가 원문합(수기>0 우선, 아니면 장부) — 표 지출합계와 동일 베이스
+  const totMargin=totEst-totCost;                          // 마진(부가세 포함 기준) = 견적총액 − 유효원가
   const totMarginRate=totEst?Math.round(totMargin/totEst*100):0;
+  const totEtc=stats.reduce((a,s)=>a+(s.costEtc||0),0);    // 기타경비(순마진 제외) 합계
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
@@ -4235,29 +4253,31 @@ function viewDashboard(){
   html+=`</tbody></table>`;
   // 현장별 지출·마진 표
   const __ms=projMarginSummary();
-  const __msBy={};__ms.rows.forEach(r=>{__msBy[r.name]=r;});
   const srcBadge=src=>{const m={'수기':['#0a7f43','손'],'장부':['#2563eb','📒'],'혼합':['#b45309','혼'],'없음':['#94a3b8','–']};const a=m[src]||m['없음'];return `<span title="원가 출처: ${src}" style="display:inline-block;font-size:10px;font-weight:700;color:${a[0]};border:1px solid ${a[0]}55;border-radius:6px;padding:1px 5px">${a[1]} ${src}</span>`;};
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:var(--muted);font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
-  html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>마진</b>=견적(부가세 포함)−원가 · <b>순마진</b>=공급가(부가세 제외)−원가. 세금계산서·회계 기준은 <b>순마진</b>이 맞습니다(‘마진’은 부가세만큼 커 보입니다).</div>`;
+  html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>순마진</b> = 공급가(부가세 제외) 매출 − 원가. 자재·외주는 부가세 포함 지출로 보고 공급가(÷1.1)로 환산, 인건비는 면세로 그대로 차감합니다. 장비·유류·식대 등 기타경비는 순마진에서 빠지며 별도 표기합니다. (완전한 회계 순이익이 아니라 재료·인건·외주 기준 마진입니다.)</div>`;
   html+=`<div class="toolbar" style="margin:0 0 8px"><button class="blue tiny" id="btnLoadCostLedger" title="현장에 태깅된 지출장부를 원가로 제안(0인 항목만, 확인 후 반영)">📒 장부에서 원가 불러오기</button></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
+  const fieldBadge=src=>src==='장부'?`<br><span title="장부(태깅 지출)에서 집계" style="display:inline-block;font-size:9px;font-weight:700;color:#2563eb;border:1px solid #2563eb55;border-radius:5px;padding:0 4px;margin-top:2px">📒 장부</span>`:'';
+  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진<br><span style="font-size:9px;font-weight:400">(부가세 포함 기준)</span></th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th class="amt">기타경비<br><span style="font-size:9px;font-weight:400">(순마진 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
   stats.forEach(s=>{
-    const ns=__msBy[s.name]||{marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource};
+    // 입력칸엔 '유효값'(수기>0 우선, 아니면 장부)을 표시 — 지출합계/마진과 같은 원가 베이스. 장부 출처엔 배지.
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.c.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.c.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.c.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
-      <td class="amt">${won(s.cost)}</td>
-      <td class="amt" style="color:${s.margin>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.margin)}<br><span style="font-size:10px;font-weight:400">${s.marginRate}%</span></td>
-      <td class="amt" style="color:${ns.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(ns.marginNet)}<br><span style="font-size:10px;font-weight:400">${ns.marginRateNet}%</span></td>
-      <td>${srcBadge(ns.costSource)}</td>
+      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
+      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
+      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
+      <td class="amt">${won(s.costEffective)}</td>
+      <td class="amt" style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginEff)}<br><span style="font-size:10px;font-weight:400">${s.marginRateEff}%</span></td>
+      <td class="amt" style="color:${s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginNet)}<br><span style="font-size:10px;font-weight:400">${s.marginRateNet}%</span></td>
+      <td class="amt" style="color:var(--muted)">${s.costEtc>0?won(s.costEtc):'-'}</td>
+      <td>${srcBadge(s.costSource)}</td>
     </tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
     <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td>
-    <td class="amt" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'}"><b>${won(__ms.total.marginNet)} · ${__ms.total.marginRateNet}%</b></td><td></td></tr>`;
+    <td class="amt" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'}"><b>${won(__ms.total.marginNet)} · ${__ms.total.marginRateNet}%</b></td>
+    <td class="amt" style="color:var(--muted)"><b>${totEtc>0?won(totEtc):'-'}</b></td><td></td></tr>`;
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><button class="ghost tiny" id="btnXlsxTax" title="공급가액·부가세를 분기별로 집계 — 세무사 전달용">🧾 세무용 분기 정산</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시

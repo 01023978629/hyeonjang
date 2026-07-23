@@ -64,9 +64,12 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.c.supply === 8000000, 'C supply=amount/1.1=8,000,000: ' + r.c.supply);
     // est(부가세 포함)은 그대로 유지
     assert(r.a.est === 11000000, 'A est 유지(부가세 포함): ' + r.a.est);
-    // marginNet은 supply-cost (est-cost보다 부가세만큼 작음)
-    assert(r.a.marginNet === r.a.supply - r.a.costEffective, 'A marginNet=supply-cost');
-    assert(r.a.margin - r.a.marginNet === r.a.est - r.a.supply, 'margin - marginNet = 부가세분(1,500,000): ' + (r.a.margin - r.a.marginNet));
+    // 순마진은 공급가 환산 원가(costSupply) 기준: 자재·외주는 ÷1.1, 인건비(면세)는 그대로
+    assert(r.a.costSupply === Math.round(3000000 / 1.1) + Math.round(1000000 / 1.1) + 2000000, 'A costSupply=자재/1.1+외주/1.1+인건: ' + r.a.costSupply);
+    assert(r.a.marginNet === r.a.supply - r.a.costSupply, 'A marginNet=supply-costSupply: ' + r.a.marginNet);
+    // costEffective(원문합, 지출합계 표시용)는 costSupply보다 큼(자재·외주 부가세만큼)
+    assert(r.a.costEffective === 6000000, 'A costEffective 원문합=6,000,000: ' + r.a.costEffective);
+    assert(r.a.costSupply < r.a.costEffective, 'A costSupply < costEffective(자재·외주 부가세 제거)');
   });
 
   // 2) 택일 중복방지: 수기 p.cost.material>0 + '자재' 지출 동시 → 수기값만
@@ -84,10 +87,12 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.material === 1200000, 'B material=자재 지출: ' + r.material);
     assert(r.outsource === 800000, 'B outsource=외주 지출: ' + r.outsource);
     assert(r.labor === 700000, 'B labor=인건비 지출(labor==0이므로): ' + r.labor);
-    assert(r.costEffective === 2700000, 'B costEffective=2,700,000: ' + r.costEffective);
+    assert(r.costEffective === 2700000, 'B costEffective 원문합=2,700,000: ' + r.costEffective);
     assert(r.costEtc === 450000, 'B costEtc=식대+유류=450,000(원가 제외): ' + r.costEtc);
     assert(r.costSource === '장부', 'B costSource=장부: ' + r.costSource);
-    assert(r.marginNet === 5000000 - 2700000, 'B marginNet=2,300,000: ' + r.marginNet);
+    // 순마진: 자재·외주 ÷1.1(부가세 제거), 인건비 그대로
+    assert(r.costSupply === Math.round(1200000 / 1.1) + Math.round(800000 / 1.1) + 700000, 'B costSupply 공급가환산: ' + r.costSupply);
+    assert(r.marginNet === 5000000 - r.costSupply, 'B marginNet=supply-costSupply: ' + r.marginNet);
   });
 
   // 4) applyLaborToProject로 채운 labor는 장부 인건비로 덮지 않음(스케줄 우선)
@@ -109,7 +114,9 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.d.supply === 0 && r.d.costEffective === 0, 'D 공급가·원가 0');
     assert(r.d.marginNet === 0 && r.d.marginRateNet === 0, 'D 순마진/율 0(분모 0 방지): ' + r.d.marginRateNet);
     assert(r.d.costSource === '없음', 'D costSource=없음: ' + r.d.costSource);
-    assert(r.c.marginNet === 8000000 - 9000000, 'C 적자 marginNet=-1,000,000: ' + r.c.marginNet);
+    // C: 자재 9,000,000(부가세 포함) ÷1.1 = 공급가원가 8,181,818 > 공급가매출 8,000,000 → 적자
+    assert(r.c.costSupply === Math.round(9000000 / 1.1), 'C costSupply=9,000,000/1.1: ' + r.c.costSupply);
+    assert(r.c.marginNet === 8000000 - r.c.costSupply, 'C 적자 marginNet=supply-costSupply: ' + r.c.marginNet);
     assert(r.c.marginNet < 0 && r.c.marginRateNet < 0, 'C 순마진/율 음수: ' + r.c.marginRateNet);
   });
 
@@ -119,10 +126,15 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.rows.length === 4, '활성 현장 4곳: ' + r.rows.length);
     const sumSupply = r.rows.reduce((a, x) => a + x.supply, 0);
     const sumCost = r.rows.reduce((a, x) => a + x.costEffective, 0);
+    const sumCostSupply = r.rows.reduce((a, x) => a + x.costSupply, 0);
     assert(r.total.supply === sumSupply, 'total.supply=행 합: ' + r.total.supply);
     assert(r.total.costEffective === sumCost, 'total.costEffective=행 합: ' + r.total.costEffective);
-    assert(r.total.marginNet === r.total.supply - r.total.costEffective, 'total.marginNet 일치');
+    assert(r.total.costSupply === sumCostSupply, 'total.costSupply=행 합: ' + r.total.costSupply);
+    // 순마진은 공급가 환산 원가(costSupply) 기준으로 화해
+    assert(r.total.marginNet === r.total.supply - r.total.costSupply, 'total.marginNet=supply-costSupply');
     assert(r.total.marginRateNet === Math.round(r.total.marginNet / r.total.supply * 100), 'total.marginRateNet 일치');
+    // 마진(부가세 포함 기준)은 유효원가 원문합(costEffective) 기준으로 화해
+    assert(r.total.marginEff === r.total.est - r.total.costEffective, 'total.marginEff=est-costEffective');
   });
 
   // 7) 읽기전용 불변: 다중 호출이 state 변형·markDirty 안 함
@@ -149,7 +161,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       applyData(snap);
       return projMarginSummary();
     });
-    const keyFields = ['supply', 'costEffective', 'marginNet', 'marginRateNet', 'costSource'];
+    const keyFields = ['supply', 'costEffective', 'costSupply', 'marginNet', 'marginRateNet', 'marginEff', 'costSource'];
     const byB = {}; before.rows.forEach(r => byB[r.name] = r);
     after.rows.forEach(r => {
       const b = byB[r.name];
@@ -194,6 +206,85 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     // 반영 후 A는 여전히 수기값(자재 지출 500,000로 덮이지 않음)
     const aCost = await page.evaluate(() => { hjApplyLedgerCost('현장A'); return state.projects.find(p => p.name === '현장A').cost; });
     assert(aCost.material === 3000000, 'A 수기 material 유지(장부로 안 덮음): ' + aCost.material);
+  });
+
+  // 11) 공급가 환산 검증: 자재110·외주110·인건100·공급가1000 → 순마진700
+  await test('공급가 환산: 자재110만·외주110만·인건100만·공급가1000만 → 순마진 700만', async () => {
+    await page.evaluate(() => {
+      state.projects = [{ name: '환산장', stage: 2, received: 0, phases: [], cost: { material: 1100000, labor: 1000000, outsource: 1100000 }, customer: { name: '', phone: '', addr: '' }, archived: false }];
+      state.files = [{ id: 'eConv', name: '환산.pdf', kind: 'estimate', project: '환산장', est: { amount: 11000000, supply: 10000000, vat: 1000000 } }];
+      state.expenses = []; state.activeProject = null; state.tab = 'dashboard'; state.dirty = false; render();
+    });
+    const r = await page.evaluate(() => projStats('환산장'));
+    assert(r.supply === 10000000, 'supply 10,000,000: ' + r.supply);
+    // 자재 1,100,000/1.1=1,000,000 · 외주 1,100,000/1.1=1,000,000 · 인건 1,000,000(면세) = 3,000,000
+    assert(r.costSupply === 3000000, 'costSupply=1.0M+1.0M+1.0M=3,000,000: ' + r.costSupply);
+    assert(r.marginNet === 7000000, '순마진 7,000,000(700만): ' + r.marginNet);
+    assert(r.marginRateNet === 70, '순마진율 70%: ' + r.marginRateNet);
+    // 원문합(지출합계 표시용)은 3,200,000 — 순마진은 이 값이 아니라 costSupply로 계산
+    assert(r.costEffective === 3200000, 'costEffective 원문합=3,200,000: ' + r.costEffective);
+  });
+
+  // 12) 견적 dedup: 동일 project+동일 amount 병합(1건) · 상이 amount 합산 위에서 supply 계산
+  await test('견적 dedup: 동일 amount 병합→1건, 상이 amount→합산(supply=dedup 결과)', async () => {
+    const merged = await page.evaluate(() => {
+      state.projects = [{ name: '중복장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false }];
+      state.files = [
+        { id: 'd1', name: '중복장 견적.pdf', kind: 'estimate', project: '중복장', est: { amount: 5500000, supply: 5000000, vat: 500000 } },
+        { id: 'd2', name: '중복장 견적 (1).pdf', kind: 'estimate', project: '중복장', est: { amount: 5500000, supply: 5000000, vat: 500000 } }
+      ];
+      state.expenses = []; state.dirty = false; render();
+      return { est: projStats('중복장').est, supply: projStats('중복장').supply, files: projStats('중복장').files };
+    });
+    assert(merged.est === 5500000, '동일 project+amount 2건 병합 → est 5,500,000(중복합산 안 함): ' + merged.est);
+    assert(merged.supply === 5000000, '병합 후 supply 5,000,000: ' + merged.supply);
+    const summed = await page.evaluate(() => {
+      state.files = [
+        { id: 'd3', name: '중복장 A동.pdf', kind: 'estimate', project: '중복장', est: { amount: 5500000, supply: 5000000, vat: 500000 } },
+        { id: 'd4', name: '중복장 B동.pdf', kind: 'estimate', project: '중복장', est: { amount: 3300000, supply: 3000000, vat: 300000 } }
+      ];
+      render(); return projStats('중복장');
+    });
+    assert(summed.est === 8800000, '상이 amount 합산 est=8,800,000: ' + summed.est);
+    assert(summed.supply === 8000000, 'dedup 결과 위에서 supply=8,000,000(=명시 supply 합): ' + summed.supply);
+  });
+
+  // 13) _fromQuote 가상 견적파일이 있어도 직렬화 왕복 후 projMarginSummary 동일
+  await test('_fromQuote 가상 견적파일 있어도 직렬화 왕복 후 projMarginSummary 동일', async () => {
+    await page.evaluate(() => {
+      state.projects = [{ name: '가상장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false }];
+      state.files = [
+        { id: 'real1', name: '가상장 견적.pdf', kind: 'estimate', project: '가상장', est: { amount: 6600000, supply: 6000000, vat: 600000 } },
+        // 앱 작성 견적에서 파생된 가상 파일(같은 현장+같은 amount) → dedup에 병합됨. 직렬화에선 제외됨.
+        { id: 'quote_v1', name: '[견적서] 가상장.pdf', ext: 'pdf', kind: 'estimate', _virtual: true, _fromQuote: true, project: '가상장', est: { amount: 6600000, supply: 6000000, vat: 600000 } }
+      ];
+      state.expenses = []; state.quotes = []; state.dirty = false; render();
+    });
+    const before = await page.evaluate(() => projMarginSummary());
+    const after = await page.evaluate(() => {
+      const snap = JSON.parse(JSON.stringify(serializeData())); // _fromQuote 제외 저장
+      state.files = []; state.projects = []; state.expenses = [];
+      applyData(snap);
+      return projMarginSummary();
+    });
+    const b = before.rows.find(r => r.name === '가상장'), a = after.rows.find(r => r.name === '가상장');
+    assert(b && a, '왕복 후 가상장 존재');
+    ['supply', 'costEffective', 'costSupply', 'marginNet', 'marginRateNet'].forEach(k => assert(String(b[k]) === String(a[k]), '가상장.' + k + ' 왕복 동일: ' + b[k] + ' vs ' + a[k]));
+    assert(a.supply === 6000000, '왕복 후 supply=6,000,000(가상+실물 중복 병합): ' + a.supply);
+  });
+
+  // 14) 대시보드 표: 기타경비 컬럼 렌더(0이면 '-', 값이 있으면 금액)
+  await test('대시보드 표: 기타경비 컬럼 렌더', async () => {
+    await seed(); // 현장B는 식대 300,000 + 유류 150,000 = 기타경비 450,000
+    await page.evaluate(() => { state.tab = 'dashboard'; render(); });
+    await page.waitForTimeout(200);
+    const has = await page.evaluate(() => {
+      const t = document.body.innerText;
+      return { header: t.includes('기타경비'), note: t.includes('순마진 제외'), val: t.includes('450,000') };
+    });
+    assert(has.header, '기타경비 헤더 노출');
+    assert(has.note, '기타경비(순마진 제외) 표기');
+    assert(has.val, '현장B 기타경비 450,000 렌더');
   });
 
   const pe = errs.length;
