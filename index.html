@@ -4188,7 +4188,7 @@ function hjDailyBrief(){
   // 📞 챙길 연락: 홈페이지 리드 노트(마커) + 초기단계(상담·실측) 연락처 있는 현장(후속 유도)
   const leadNotes=(state.notes||[]).filter(n=>n&&/\[홈페이지 상담 리드\]/.test(n.text||''))
     .slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,5)
-    .map(n=>({date:n.date||'',project:n.project||'',snippet:hjBriefLeadSnippet(n.text)}));
+    .map(n=>({id:n.id||'',date:n.date||'',project:n.project||'',snippet:hjBriefLeadSnippet(n.text),canContact:!!hjBriefLeadPhone(n)}));
   const followups=acts.filter(p=>{
     const c=p.customer||{};
     return (p.stage||0)<=1 && String(c.phone||'').replace(/[^\d]/g,'').length>=8;
@@ -4234,23 +4234,41 @@ function hjDailyBriefHTML(){
     // 2) 진행 중 현장
     h+=sec('🔥 진행 중 현장');
     if(b.doing.length){
-      h+=b.doing.map(p=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(p.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(p.stageName)+'</span>'+
-        (p.next?' <span style="color:var(--muted)">다음 공정: '+escapeHtml(p.next)+'</span>':(p.phaseN?'':' <span style="color:var(--muted)">공정 미설정</span>'))+'</div>').join('');
+      // 각 진행 현장 → [📋 작업지시] 원탭(기존 openWorkOrder({proj}) 재사용, 현장 프리필)
+      h+=b.doing.map(p=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(p.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(p.stageName)+'</span>'+
+        (p.next?' <span style="color:var(--muted)">다음 공정: '+escapeHtml(p.next)+'</span>':(p.phaseN?'':' <span style="color:var(--muted)">공정 미설정</span>'))+'</span>'+
+        '<button class="ghost tiny" data-workorderp="'+escapeAttr(p.name)+'" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="작업지시 문자 만들기">📋 작업지시</button></div>').join('');
     } else { h+='<div class="hint" style="margin:0">진행 중인 현장 없음.</div>'; }
     // 3) 챙길 연락
     h+=sec('📞 챙길 연락');
     if(b.leadNotes.length||b.followups.length){
-      if(b.leadNotes.length)h+=b.leadNotes.map(n=>'<div style="font-size:13px;padding:2px 0"> · <span style="background:#fef3c7;color:#92400e;font-size:10.5px;padding:1px 6px;border-radius:8px">홈 리드</span> '+
-        (n.date?'<span style="color:var(--muted);font-size:11px">'+escapeHtml(String(n.date).slice(5))+'</span> ':'')+escapeHtml(n.snippet||'')+(n.project?' <span style="color:var(--muted)">📍'+escapeHtml(n.project)+'</span>':'')+'</div>').join('');
-      if(b.followups.length)h+=b.followups.map(f=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1"> · <b>'+escapeHtml(f.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(f.stageName)+'</span>'+
+      // 홈 리드: 노트에 파싱 가능한 전화(현장 고객 or 노트 텍스트)가 있을 때만 [📞][💬] — 원문은 딥링크에만, 화면은 마스킹 스니펫
+      if(b.leadNotes.length)h+=b.leadNotes.map(n=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <span style="background:#fef3c7;color:#92400e;font-size:10.5px;padding:1px 6px;border-radius:8px">홈 리드</span> '+
+        (n.date?'<span style="color:var(--muted);font-size:11px">'+escapeHtml(String(n.date).slice(5))+'</span> ':'')+escapeHtml(n.snippet||'')+(n.project?' <span style="color:var(--muted)">📍'+escapeHtml(n.project)+'</span>':'')+'</span>'+
+        (n.canContact?'<button class="ghost tiny" data-briefleadcall="'+escapeAttr(n.id)+'" style="padding:3px 8px;font-size:11px">📞</button><button class="ghost tiny" data-briefleadsms="'+escapeAttr(n.id)+'" style="padding:3px 8px;font-size:11px">💬</button>':'')+'</div>').join('');
+      // 후속 유도 현장: [📞] 전화 + [💬] 문자(기존 data-callcust/data-smscust 재사용, 프로젝트 고객 연락처 조회)
+      if(b.followups.length)h+=b.followups.map(f=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(f.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(f.stageName)+'</span>'+
         (f.cust?' <span style="color:var(--muted)">'+escapeHtml(f.cust)+'</span>':'')+(f.phoneMasked?' <span style="color:var(--muted);font-size:11px">'+f.phoneMasked+'</span>':'')+'</span>'+
-        '<button class="ghost tiny" data-callcust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">📞</button></div>').join('');
+        '<button class="ghost tiny" data-callcust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">📞</button>'+
+        '<button class="ghost tiny" data-smscust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">💬</button></div>').join('');
     } else { h+='<div class="hint" style="margin:0">지금 챙길 연락 없음.</div>'; }
     // 4) 대금 현황(힌트)
     h+=sec('💰 대금 현황(힌트)');
     if(b.totEst>0){
       h+='<div style="font-size:13px">수금 <b style="color:var(--ok)">'+won(b.totRecv)+'</b> · 미수금 <b style="color:var(--warn)">'+won(b.totDue)+'</b></div>';
-      if(b.dues.length)h+='<div style="font-size:12.5px;color:var(--muted);margin-top:2px">미수 상위: '+b.dues.map(x=>escapeHtml(x.name)+' '+won(x.due)).join(' · ')+'</div>';
+      if(b.dues.length){
+        h+='<div style="font-size:12.5px;color:var(--muted);margin:4px 0 2px">미수 상위</div>';
+        // 각 미수 현장 → [💬 청구] 대금 안내 문자 초안(기존 hjSendSms 재사용). 고객 전화 없으면 버튼 흐리게.
+        h+=b.dues.map(x=>{
+          const pp=(state.projects||[]).find(p=>p&&p.name===x.name);
+          const hasPhone=!!(pp&&pp.customer&&telHref(pp.customer.phone)&&String(pp.customer.phone).replace(/\D/g,'').length>=8);
+          return '<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(x.name)+'</b> <b style="color:var(--warn)">'+won(x.due)+'</b></span>'+
+            (hasPhone
+              ? '<button class="clay tiny" data-briefbill="'+escapeAttr(x.name)+'" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="대금 안내 문자 초안">💬 청구</button>'
+              : '<button class="ghost tiny" disabled title="고객 연락처가 없어 청구 문자를 보낼 수 없습니다" style="padding:3px 8px;font-size:11px;opacity:.4;white-space:nowrap">💬 청구</button>')+
+            '</div>';
+        }).join('');
+      }
     } else if(b.totRecv>0){
       h+='<div style="font-size:13px">수금 <b style="color:var(--ok)">'+won(b.totRecv)+'</b> <span class="hint" style="display:inline">· 견적서 연결 전이라 미수금은 계산 전</span></div>';
     } else { h+='<div class="hint" style="margin:0">수금·견적 기록이 아직 없습니다.</div>'; }
@@ -4310,6 +4328,33 @@ async function hjDailyBriefCopy(){
     const ok=document.execCommand('copy');document.body.removeChild(ta);
     toast(ok?'📋 브리핑을 복사했습니다':'복사 실패 — 길게 눌러 복사하세요');
   }catch(e){ toast('복사 실패 — 아래 텍스트를 길게 눌러 복사하세요'); }
+}
+// ── 브리핑 원탭 액션(기존 헬퍼 재사용, 새 로직·새 상태키 없음) ──
+// 리드 노트에서 연락 가능한 전화 원문을 순간 해석: ① 노트 현장의 고객 전화 → ② 노트 텍스트 내 파싱. 화면·로그엔 절대 노출 안 함(sms/tel 딥링크에만 사용).
+function hjBriefLeadPhone(n){
+  if(!n)return '';
+  const p=n.project?(state.projects||[]).find(x=>x&&x.name===n.project):null;
+  const cp=p&&p.customer&&p.customer.phone;
+  if(cp&&String(cp).replace(/\D/g,'').length>=8)return cp;
+  const m=String(n.text||'').match(/01[016-9][-\s]?\d{3,4}[-\s]?\d{4}/);
+  return m?m[0]:'';
+}
+// 💬 청구: 미수 현장 대금 안내 문자 초안을 기존 hjSendSms로 연다(청구 로직 신규 없음, 전화 원문은 딥링크 생성에만 순간 사용).
+function hjBriefBill(name){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p){toast('현장을 찾을 수 없습니다.');return;}
+  const s=projStats(name);
+  const stage=STAGES[p.stage||0]||'';
+  const seg=s.due>0?('미수액 '+won(s.due)):(stage?(stage+' 단계'):'진행 현황');
+  const msg='['+COMPANY.name+'] '+name+' 공사 관련 안내드립니다. '+seg+' 확인 후 입금 부탁드립니다. 감사합니다.';
+  hjSendSms((p.customer&&p.customer.phone)||'',msg);
+}
+// 홈 리드 연락(전화/문자) — 노트 id로 전화 원문을 순간 해석해 딥링크만 실행(화면·로그 미노출).
+function hjBriefLeadContact(noteId,mode){
+  const n=(state.notes||[]).find(x=>x&&x.id===noteId);
+  const ph=telHref(hjBriefLeadPhone(n));
+  if(!ph){toast('연락처를 찾을 수 없습니다.');return;}
+  location.href=(mode==='call'?'tel:':'sms:')+ph;
 }
 // 대시보드 맨 위 '오늘 일정' — 현장 가는 1인 사장님이 아침에 앱 열면 오늘 작업·현장이 바로 보이게
 function dashboardTodayHTML(){
@@ -19790,11 +19835,14 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
     if(d.briefcopy!==undefined){e.stopPropagation();return hjDailyBriefCopy();}
+    if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
+    if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
+    if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnXlsxTax')return exportTaxXlsx();
     if(t.id==='btnDiag')return runDiagnostics();
