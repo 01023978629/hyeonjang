@@ -4352,6 +4352,10 @@ function hjDailyBrief(){
    Phase 4 "여러 현장 동시 운영". 새 탭·새 모달·새 project 필드·새 직렬화 키 없음.
    기존 신호 함수 결과를 '재사용'만 하고 임계값을 재계산하지 않는다(원 함수가 이미 밴드를 판정).
    state.projects/expenses/files 미변형 · markDirty 미유발. 가중치는 aiPlannerScan priorityScore 관례 차용. */
+// 현장 보드 배지가 열 수 있는 조치 화면(화이트리스트) — 동적 디스패치(window[문자열]) 방어.
+const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','dueAgingView','warrantyManage','staleProjects','reviewRequest']);
+// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(미수 dueAgingData 60일 · 보증 high · 방치 severe). 단일 출처.
+const BOARD_URGENT={dueDays:60,warrantyDays:14,staleDays:30};
 function projHealthBoard(){
   const generatedAt=new Date().toISOString();
   const rows=[];
@@ -4387,20 +4391,20 @@ function projHealthBoard(){
     // ⏳ 미수 에이징 — dueAgingData(band/days) 결과 재사용(재밴딩 없음)
     const D=idx.due[name];
     if(D){
-      const urgent=D.days>=60;
+      const urgent=D.days>=BOARD_URGENT.dueDays;
       const w=urgent?70+Math.min(D.days-60,30):(D.days>=30?50:40);
       reasons.push({axis:'due',label:'미수 '+(D.days>=0?D.days+'일':'기한미정'),weight:w,openAction:'dueAgingView',urgent:urgent});
     }
     // 🛡 보증 — warrantyDue(daysLeft<=60) 결과 재사용
     const W=idx.warranty[name];
     if(W){
-      const urgent=W.daysLeft<=14;
+      const urgent=W.daysLeft<=BOARD_URGENT.warrantyDays;
       reasons.push({axis:'warranty',label:W.daysLeft<0?('보증만료 D+'+(-W.daysLeft)):('보증 D-'+W.daysLeft),weight:60-Math.min(W.daysLeft,40),openAction:'warrantyManage',urgent:urgent});
     }
     // 💤 방치 — staleProjectData(14일+/무기록) 결과 재사용
     const S=idx.stale[name];
     if(S){
-      const urgent=(S.days===null||S.days>=30);
+      const urgent=(S.days===null||S.days>=BOARD_URGENT.staleDays);
       reasons.push({axis:'stale',label:(S.days==null?'활동기록 없음':(S.days+'일 무기록')),weight:45+Math.min(S.days||30,40),openAction:'staleProjects',urgent:urgent});
     }
     // 🗣 리뷰 — reviewRequestData(완공90일내 미요청) 결과 재사용(기회 신호 · watch)
@@ -20190,7 +20194,7 @@ function setupDelegation(){
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
     if(d.boardtoggle!==undefined){e.stopPropagation();__boardOpen=!__boardOpen;if(!__boardOpen)__boardFilter=false;return render();}
     if(d.boardfilter!==undefined){e.stopPropagation();__boardFilter=!__boardFilter;return render();}
-    if(d.boardreason!==undefined){e.stopPropagation();const fn=window[d.boardreason];if(typeof fn==='function'){try{fn();}catch(_){}}return;}
+    if(d.boardreason!==undefined){e.stopPropagation();if(BOARD_ACTIONS.has(d.boardreason)){const fn=window[d.boardreason];if(typeof fn==='function'){try{fn();}catch(_){}}}return;}
     if(d.boardproj!==undefined){e.stopPropagation();state.activeProject=d.boardproj;state.tab='project';__projView=null;return render();}
     if(d.ledgercost!==undefined)return hjApplyLedgerCost(d.ledgercost);
     if(t.id==='btnLoadCostLedger')return hjLoadCostFromLedger();

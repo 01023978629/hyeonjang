@@ -152,17 +152,22 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
       const keys = Object.keys(s).sort();
       const round = JSON.parse(JSON.stringify(s));
       applyData(round);
+      // 보드를 반복 호출해도 project 객체에 파생 필드를 stash하지 않아야 함(순수·읽기전용).
+      // serializeData가 projects를 화이트리스트 없이 통째 저장하므로, 오염 시 조용히 영속화된다.
+      try { projHealthBoard(); projHealthBoard(); } catch (e) {}
       return {
         keys,
         projNames: (state.projects || []).map(p => p.name),
         noteIds: (state.notes || []).map(n => n.id),
         fileCount: (state.files || []).length,
         hasBoardKey: keys.some(k => /board|health/i.test(k)),
-        boardKeys: keys.filter(k => /board|health/i.test(k))
+        boardKeys: keys.filter(k => /board|health/i.test(k)),
+        projFieldPollution: (state.projects || []).some(p => Object.keys(p).some(k => /board|health|_score|_level|_rank/i.test(k)))
       };
     });
     // 이 기능이 추가한 새 최상위 직렬화 키가 없어야 함
     assert(!r.hasBoardKey, '보드 관련 최상위 직렬화 키 금지: ' + JSON.stringify(r.boardKeys));
+    assert(!r.projFieldPollution, 'projHealthBoard가 project 객체에 파생 필드를 오염시키지 않아야 함(순수·읽기전용)');
     assert(r.projNames.length === 7, '7현장 보존: ' + r.projNames.length);
     assert(r.noteIds.indexOf('n1') >= 0, 'notes 보존');
     assert(r.fileCount >= 1, 'files 보존');
