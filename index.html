@@ -3910,13 +3910,96 @@ function projStats(name){
   const files=state.files.filter(f=>f.project===name);
   const estFiles=dedupeEstimates(files.filter(f=>f.kind==='estimate'));
   const est=estFiles.reduce((a,f)=>a+(f.est?.amount||0),0);
+  // 공급가(부가세 제외) 매출: 파일별 f.est.supply, 없으면 그 파일 amount/1.1 — 원본 불변, 파생만
+  const supply=estFiles.reduce((a,f)=>{const e=f.est||{};const s=(e.supply!=null&&e.supply>0)?e.supply:Math.round((e.amount||0)/1.1);return a+(s||0);},0);
   const p=state.projects.find(x=>x.name===name);
   const recv=p?.received||0;
   const c=p?.cost||{material:0,labor:0,outsource:0};
   const cost=(c.material||0)+(c.labor||0)+(c.outsource||0);
   const margin=est-cost;
   const marginRate=est?Math.round(margin/est*100):0;
-  return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null};
+  // ── 유효원가(택일 규칙, 이중계상 방지) — 읽기 전용 파생 ──
+  // 현장 태깅 지출장부를 category별 합산(원본 state.expenses 변형 안 함)
+  const expAgg={material:0,labor:0,outsource:0,etc:0};
+  (state.expenses||[]).forEach(function(e){
+    if(!e||String(e.project||'')!==name)return;
+    const amt=(+e.amount||0);if(!amt)return;
+    const cat=e.category;
+    if(cat==='자재')expAgg.material+=amt;
+    else if(cat==='인건비')expAgg.labor+=amt;
+    else if(cat==='외주')expAgg.outsource+=amt;
+    else expAgg.etc+=amt; // 장비/유류/식대/기타 → 원가 제외, 분리 집계
+  });
+  // 항목별 정본: 수기 p.cost>0이면 수기, 0이면 장부 합(labor는 스케줄/수기 우선)
+  const mMan=(c.material||0)>0, oMan=(c.outsource||0)>0, lMan=(c.labor||0)>0;
+  const matEff = mMan ? (c.material||0) : expAgg.material;
+  const outEff = oMan ? (c.outsource||0) : expAgg.outsource;
+  const labEff = lMan ? (c.labor||0)    : expAgg.labor; // applyLaborToProject 이중계상 방지
+  const costEffective = matEff+labEff+outEff;
+  const costEtc = expAgg.etc;
+  // 원가출처 판정(값>0인 항목만 반영)
+  const srcs={};
+  if(matEff>0)srcs[mMan?'수기':'장부']=1;
+  if(outEff>0)srcs[oMan?'수기':'장부']=1;
+  if(labEff>0)srcs[lMan?'수기':'장부']=1;
+  const keys=Object.keys(srcs);
+  const costSource = keys.length===0?'없음':(keys.length>1?'혼합':keys[0]);
+  const marginNet = supply-costEffective;
+  const marginRateNet = supply?Math.round(marginNet/supply*100):0;
+  return {files:files.length,est,recv,due:Math.max(est-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
+    supply,costEffective,costEtc,costSource,marginNet,marginRateNet,
+    material:matEff,labor:labEff,outsource:outEff,
+    expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
+}
+/* 현장별 순마진(부가세 제외) 집계 — 순수/읽기전용. state 미변형. 새 엔진/새 탭 없이 projStats 재사용. */
+function projMarginSummary(opts){
+  opts=opts||{};
+  const rows=[];
+  const total={supply:0,costEffective:0,marginNet:0,marginRateNet:0};
+  (state.projects||[]).filter(function(p){return p&&!p.archived;}).forEach(function(p){
+    const s=projStats(p.name);
+    rows.push({name:p.name,supply:s.supply,material:s.material,labor:s.labor,outsource:s.outsource,
+      costEffective:s.costEffective,costEtc:s.costEtc,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource});
+    total.supply+=s.supply;total.costEffective+=s.costEffective;total.marginNet+=s.marginNet;
+  });
+  total.marginRateNet=total.supply?Math.round(total.marginNet/total.supply*100):0;
+  return {rows,total};
+}
+/* 📒 장부에서 원가 불러오기 — 현장 태깅 지출을 category별 합산해 '0인 항목만' 제안(읽기전용 미리보기).
+   material←자재, outsource←외주, labor←인건비(단, 스케줄/수기 우선이라 labor==0일 때만). 수기 nonzero는 절대 미제안. */
+function hjLedgerCostProposal(name){
+  const p=(state.projects||[]).find(function(x){return x.name===name;});
+  const c=(p&&p.cost)||{material:0,labor:0,outsource:0};
+  const agg={material:0,labor:0,outsource:0};
+  (state.expenses||[]).forEach(function(e){
+    if(!e||String(e.project||'')!==name)return;const amt=(+e.amount||0);if(!amt)return;
+    if(e.category==='자재')agg.material+=amt;else if(e.category==='인건비')agg.labor+=amt;else if(e.category==='외주')agg.outsource+=amt;
+  });
+  const prop={};
+  if((c.material||0)===0&&agg.material>0)prop.material=Math.round(agg.material);
+  if((c.outsource||0)===0&&agg.outsource>0)prop.outsource=Math.round(agg.outsource);
+  if((c.labor||0)===0&&agg.labor>0)prop.labor=Math.round(agg.labor); // labor==0일 때만
+  return prop;
+}
+function hjLoadCostFromLedger(){
+  const acts=(state.projects||[]).filter(function(p){return p&&!p.archived;});
+  const items=acts.map(function(p){return {name:p.name,prop:hjLedgerCostProposal(p.name)};}).filter(function(x){return Object.keys(x.prop).length>0;});
+  const won=(typeof hjNum==='function')?hjNum:function(v){return (v||0).toLocaleString('ko-KR');};
+  if(!items.length){toast('장부에서 채울 원가가 없습니다 (수기 값이 이미 있거나 태깅된 지출이 없음).');return;}
+  const labelMap={material:'자재비',labor:'인건비',outsource:'외주비'};
+  const body='<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">현장에 태깅된 지출장부를 원가로 제안합니다. <b>수기로 입력한 값(0이 아님)은 건드리지 않습니다.</b> 인건비는 스케줄/수기 우선이라 0일 때만 제안합니다.</p>'+
+    items.map(function(x){
+      const chips=Object.keys(x.prop).map(function(k){return '<span style="display:inline-block;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;padding:3px 8px;margin:2px 4px 2px 0;font-size:12px">'+labelMap[k]+' <b>'+won(x.prop[k])+'</b></span>';}).join('');
+      return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="color:var(--blueprint)">'+escapeHtml(x.name)+'</b><button class="blue tiny" data-ledgercost="'+escapeAttr(x.name)+'">반영</button></div><div style="margin-top:6px">'+chips+'</div></div>';
+    }).join('');
+  openModal('📒 장부에서 원가 불러오기',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
+// 확인(반영) 시에만 확정 — 0인 항목만, setCost 경로로. 수기 nonzero·스케줄 labor는 절대 안 덮음.
+function hjApplyLedgerCost(name){
+  const prop=hjLedgerCostProposal(name);const keys=Object.keys(prop);
+  if(!keys.length){toast('반영할 항목이 없습니다');return;}
+  keys.forEach(function(k){setCost(name,k,prop[k]);});
+  toast(escapeHtml(name)+' 원가 반영: '+keys.length+'개 항목');
 }
 function setCost(name,field,val){const p=state.projects.find(x=>x.name===name);if(p){if(!p.cost)p.cost={material:0,labor:0,outsource:0};p.cost[field]=won2num(val);markDirty();render();}}
 
@@ -4151,9 +4234,15 @@ function viewDashboard(){
     <td class="amt" style="color:var(--warn)"><b>${won(totDue)}</b></td></tr>`;
   html+=`</tbody></table>`;
   // 현장별 지출·마진 표
+  const __ms=projMarginSummary();
+  const __msBy={};__ms.rows.forEach(r=>{__msBy[r.name]=r;});
+  const srcBadge=src=>{const m={'수기':['#0a7f43','손'],'장부':['#2563eb','📒'],'혼합':['#b45309','혼'],'없음':['#94a3b8','–']};const a=m[src]||m['없음'];return `<span title="원가 출처: ${src}" style="display:inline-block;font-size:10px;font-weight:700;color:${a[0]};border:1px solid ${a[0]}55;border-radius:6px;padding:1px 5px">${a[1]} ${src}</span>`;};
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:var(--muted);font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th></tr></thead><tbody>`;
+  html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>마진</b>=견적(부가세 포함)−원가 · <b>순마진</b>=공급가(부가세 제외)−원가. 세금계산서·회계 기준은 <b>순마진</b>이 맞습니다(‘마진’은 부가세만큼 커 보입니다).</div>`;
+  html+=`<div class="toolbar" style="margin:0 0 8px"><button class="blue tiny" id="btnLoadCostLedger" title="현장에 태깅된 지출장부를 원가로 제안(0인 항목만, 확인 후 반영)">📒 장부에서 원가 불러오기</button></div>`;
+  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진</th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
   stats.forEach(s=>{
+    const ns=__msBy[s.name]||{marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource};
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
@@ -4162,10 +4251,13 @@ function viewDashboard(){
       <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.c.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px"></td>
       <td class="amt">${won(s.cost)}</td>
       <td class="amt" style="color:${s.margin>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.margin)}<br><span style="font-size:10px;font-weight:400">${s.marginRate}%</span></td>
+      <td class="amt" style="color:${ns.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(ns.marginNet)}<br><span style="font-size:10px;font-weight:400">${ns.marginRateNet}%</span></td>
+      <td>${srcBadge(ns.costSource)}</td>
     </tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
-    <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td></tr>`;
+    <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${won(totMargin)} · ${totMarginRate}%</b></td>
+    <td class="amt" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'}"><b>${won(__ms.total.marginNet)} · ${__ms.total.marginRateNet}%</b></td><td></td></tr>`;
   html+=`</tbody></table>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><button class="ghost tiny" id="btnXlsxTax" title="공급가액·부가세를 분기별로 집계 — 세무사 전달용">🧾 세무용 분기 정산</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
   // 견적서(OCR로 읽은 외부 견적서) 내용 요약 — 현장 배정과 무관하게 모든 견적서 표시
@@ -19959,7 +20051,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
@@ -19967,6 +20059,8 @@ function setupDelegation(){
     if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
+    if(d.ledgercost!==undefined)return hjApplyLedgerCost(d.ledgercost);
+    if(t.id==='btnLoadCostLedger')return hjLoadCostFromLedger();
     if(t.id==='btnXlsx'||t.id==='btnXlsxDash')return exportEstimateXLSX();
     if(t.id==='btnXlsxTax')return exportTaxXlsx();
     if(t.id==='btnDiag')return runDiagnostics();
