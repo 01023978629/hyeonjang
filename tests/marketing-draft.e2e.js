@@ -43,8 +43,9 @@ const RAW_PHONE_DIGITS = '1012345678';
         { name: '노은동주방', stage: 3, phases: ['주방'], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '무후기', phone: '', addr: '대전 유성구 노은동 24평' }, doneAt: '2026-07-10', archived: false },
         { name: '진행현장', stage: 1, phases: ['도배'], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '이진행', phone: '', addr: '대전 중구 태평동 18평' }, archived: false }
       ];
+      // 등록 실명만 든 후기(전화·주소 없음) — 화이트리스트로 nm→"고객님" 치환 후 정상 인용됨
       state.satisfaction = [
-        { id: 'r1', project: '둔산동리모델링', customer: nm, stars: 5, comment: nm + ' ' + ph + ' 감사합니다', at: '2026-07-05T00:00:00.000Z' }
+        { id: 'r1', project: '둔산동리모델링', customer: nm, stars: 5, comment: nm + ' 사장님이 꼼꼼하게 시공해주셔서 만족합니다', at: '2026-07-05T00:00:00.000Z' }
       ];
       state.activeProject = null; state.tab = 'ads'; render();
     }, { nm: RAW_NAME, ph: RAW_PHONE });
@@ -184,6 +185,97 @@ const RAW_PHONE_DIGITS = '1012345678';
     const d = await page.evaluate(() => adDraftText('blog', adProjFacts('둔산동리모델링')).body);
     assert(d.indexOf('오점후기내용') >= 0, '초안에 5점 후기 인용');
     assert(d.indexOf('삼점후기내용') < 0 && d.indexOf('사점후기내용') < 0, '나머지 후기는 미인용');
+  });
+
+  // 8) 적대적 PII 스크럽(fail-closed) — 전화 5형식+비표준+전각·존칭결합·공백변형·이름만·
+  //    자유입력 현장·주소(동호수/도로명/지번). 위험 후기는 인용 자체가 제외되어 [대괄호] 유지.
+  //    등록 실명 변형은 "고객님"으로 치환되어 인용, 깨끗한 후기 1건은 정상 인용(회귀 방지).
+  await test('적대적 PII: 전화/주소/실명 위험 후기 전량 인용 제외 + 등록실명 치환 + 깨끗후기 인용', async () => {
+    await seed();
+    const COMP = await page.evaluate(() => ({ tel: COMPANY.tel, digits: COMPANY.tel.replace(/\D/g, '') }));
+    // 대상 현장 초안(blog/threads/instagram) 전체 + adReviewQuote 결과를 한 번에 뽑는 파생 헬퍼
+    const genAll = async (proj) => page.evaluate((p) => {
+      const f = adProjFacts(p);
+      const mk = (c) => { const d = adDraftText(c, f); return d.title + '\n' + d.body; };
+      return { quote: adReviewQuote(p), blog: mk('blog'), threads: mk('threads'), insta: mk('instagram') };
+    }, proj);
+    // 초안 전체 문자열에 대한 강한 "일반 패턴 부재" 단언 — 회사 공개 전화(COMPANY.tel)만 제거 후 검사
+    const assertNoPII = (all, label) => {
+      let s = all.split(COMP.tel).join(' ');
+      const stripped = s.replace(/[\s.\-\/()·・_+]/g, '').split(COMP.digits).join('');
+      assert(!/\d{2,4}[\s.\-\/]\d{3,4}[\s.\-\/]\d{4}/.test(s), label + ' 전화형(3-4-4·구분자) 패턴 잔존');
+      assert(!/\d{10,}/.test(stripped), label + ' 연속 10자리+ 전화형 숫자열 잔존');
+      assert(s.indexOf(RAW_NAME) < 0, label + ' 등록 실명(' + RAW_NAME + ') 잔존');
+      assert(s.indexOf('박영수') < 0 && s.indexOf('김철수') < 0, label + ' 미등록 실명 잔존');
+      assert(!/\d+\s*동\s*\d+\s*호/.test(s) && !/\d{2,}\s*호/.test(s), label + ' N동 N호 잔존');
+      assert(!/[가-힣]{2,}(?:로|길)\s*\d/.test(s), label + ' 도로명+번지 잔존');
+    };
+    const setSat = async (proj, comment, customer) => page.evaluate(({ p, c, cu }) => {
+      state.satisfaction = [{ id: 'x', project: p, customer: cu || '', stars: 5, comment: c, at: '2026-07-05T00:00:00Z' }];
+    }, { p: proj, c: comment, cu: customer });
+
+    // ── (A) 위험 후기 = 인용 제외(null) + 초안 전체 PII 패턴 부재 ──
+    const RISKY = [
+      ['전화 010-1234-5678', '이렇게 좋아요 010-1234-5678 연락주세요'],
+      ['전화 01012345678', '문의는 01012345678 로 주세요'],
+      ['전화 010.1234.5678', '연락처 010.1234.5678 입니다'],
+      ['전화 010 1234 5678(공백)', '전화 010 1234 5678 주세요'],
+      ['전화 +82 10-1234-5678', '해외에서 +82 10-1234-5678 로 연락'],
+      ['전화 비표준 010/1234/5678', '번호 010/1234/5678 남깁니다'],
+      ['전화 전각 ０１０－１２３４－５６７８', '전화 ０１０－１２３４－５６７８ 로 연락주세요'],
+      ['전화+등록실명 혼합', '홍길동 010-1234-5678 감사합니다'],
+      ['미등록 실명+존칭(박영수님)', '박영수님 정말 감사합니다 최고예요'],
+      ['미등록 실명+씨(김철수씨)', '김철수씨 덕분에 잘 마쳤어요 만족합니다'],
+      ['주소 동호수(302동 1503호)', '302동 1503호 시공 잘 받았어요'],
+      ['주소 도로명(둔산로 123)', '둔산로 123 현장 만족합니다'],
+      ['주소 지번(둔산동 123-4)', '둔산동 123-4 시공 감사합니다'],
+    ];
+    for (const [label, comment] of RISKY) {
+      await setSat('둔산동리모델링', comment, RAW_NAME);
+      const g = await genAll('둔산동리모델링');
+      assert(g.quote === null, label + ': 위험 후기는 adReviewQuote null 이어야 함');
+      const all = g.blog + '\n' + g.threads + '\n' + g.insta;
+      assert(g.blog.indexOf('[품질·하자') >= 0, label + ': blog은 인용 제외 → [대괄호] 폴백 유지');
+      assert(all.indexOf('실제 고객 후기') < 0, label + ': 어떤 채널에도 후기 인용문 미삽입');
+      assertNoPII(all, label);
+    }
+
+    // ── (B) 등록 실명 변형 = "고객님" 치환 후 정상 인용(존칭결합·내부공백·이름만) ──
+    const CLEAN_NAME = [
+      ['존칭결합(홍길동님)', '홍길동님 시공 꼼꼼해서 만족합니다'],
+      ['내부공백(홍 길동)', '홍 길동 반장님 친절하셨어요 만족'],
+      ['존칭 씨 결합(홍길동씨)', '홍길동씨 마감 깔끔합니다 추천해요'],
+      ['이름만(홍길동)', '홍길동 마감까지 깔끔하게 잘 끝냈어요'],
+    ];
+    for (const [label, comment] of CLEAN_NAME) {
+      await setSat('둔산동리모델링', comment, RAW_NAME);
+      const g = await genAll('둔산동리모델링');
+      assert(g.quote && g.quote.text, label + ': 등록 실명 변형은 스크럽 후 정상 인용되어야 함');
+      assert(g.quote.text.indexOf(RAW_NAME) < 0, label + ': 인용문에 원본 실명 잔존');
+      assert(/고객님/.test(g.quote.text), label + ': 실명이 "고객님"으로 치환되어야 함');
+      const all = g.blog + '\n' + g.threads + '\n' + g.insta;
+      assert(all.indexOf('실제 고객 후기') >= 0, label + ': 깨끗화된 후기 인용 확인');
+      assertNoPII(all, label);
+    }
+
+    // ── (C) 자유입력 현장(매칭 project 없음) — 전체 화이트리스트로 등록 실명 치환/전화 제외 ──
+    await page.evaluate(() => {
+      state.satisfaction = [
+        { id: 'f1', project: '자유입력현장A', customer: '', stars: 5, comment: '홍길동 덕분에 만족스러웠습니다', at: '2026-07-05T00:00:00Z' },
+        { id: 'f2', project: '자유입력현장B', customer: '', stars: 5, comment: '연락은 010-1234-5678 로 주세요', at: '2026-07-05T00:00:00Z' }
+      ];
+    });
+    const fA = await page.evaluate(() => adReviewQuote('자유입력현장A'));
+    const fB = await page.evaluate(() => adReviewQuote('자유입력현장B'));
+    assert(fA && fA.text.indexOf(RAW_NAME) < 0 && /고객님/.test(fA.text), '자유입력 현장에서도 전체 화이트리스트로 등록 실명 치환');
+    assert(fB === null, '자유입력 현장의 전화 포함 후기는 인용 제외');
+
+    // ── (D) 깨끗한 후기 1건 = 정상 인용(기능 회귀 방지) ──
+    await setSat('둔산동리모델링', '사장님이 처음부터 끝까지 꼼꼼하게 챙겨주셔서 정말 만족합니다', '');
+    const gc = await genAll('둔산동리모델링');
+    assert(gc.quote && /만족합니다/.test(gc.quote.text), '깨끗한 후기는 정상 인용되어야 함');
+    assert(gc.blog.indexOf('실제 고객 후기') >= 0, '깨끗한 후기 blog 초안 인용 확인');
+    assertNoPII(gc.blog + '\n' + gc.threads + '\n' + gc.insta, '깨끗후기');
   });
 
   const pe = errs.length;
