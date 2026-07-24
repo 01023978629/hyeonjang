@@ -12613,8 +12613,10 @@ function briefExtraItems(){
   try{
     if(typeof goalProgress==='function'){
       const g=goalProgress();
-      if(g&&g.g&&g.g.month>0&&g.monthExpected<g.g.month*0.9&&g.dayOfMonth>=10){
-        const pct=Math.round(g.monthRecv/g.g.month*100);
+      // 달성률(monthPace, %)이 기대 진행률(monthExpected, %)의 90% 미만일 때만 = 실제 페이스 미달.
+      // (이전: monthExpected(%)를 목표액(원)과 비교 → 목표만 있으면 매월 10일부터 무조건 발화하던 버그)
+      if(g&&g.g&&g.g.month>0&&typeof g.monthPace==='number'&&g.monthPace<g.monthExpected*0.9&&g.dayOfMonth>=10){
+        const pct=g.monthPace;
         items.push({ic:'🎯',t:'매출 목표 '+pct+'% (페이스 주의)',sub:'이대로면 목표 미달 예상 — 수금·영업 점검',action:'goal'});
       }
     }
@@ -16142,7 +16144,9 @@ function dueAgingData(){
     (state.projects||[]).filter(function(p){return !p.archived;}).forEach(function(p){
       const s=projStats(p.name);
       if(!s.due||s.due<=0)return;
-      const base=p.doneAt?new Date(p.doneAt):(p.dueDate?new Date(p.dueDate):null);
+      // 로컬 자정 기준 파싱(+'T00:00:00') — 형제 함수들과 동일. 'YYYY-MM-DD'를 그냥 new Date()에
+      // 넣으면 UTC 자정=09:00 KST로 파싱돼 오전 9시 이전엔 경과일이 하루 적게 나오던 밴드 경계 버그.
+      const base=p.doneAt?new Date(p.doneAt+'T00:00:00'):(p.dueDate?new Date(p.dueDate+'T00:00:00'):null);
       const days=base?Math.max(0,Math.floor((Date.now()-base.getTime())/86400000)):-1;   // -1=기준일 없음
       let band,ic,color;
       if(days<0){band='기한 미정';ic='⚪';color='#9ca3af';}
