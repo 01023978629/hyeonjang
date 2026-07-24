@@ -258,6 +258,26 @@ const UNIQUE_DONG = '302동';
     }
   });
 
+  await test('works 스크럽: 자유입력 희망공사에서 공정 키워드만 추출, 실명·전화 유입 차단', async () => {
+    await page.evaluate(() => {
+      state.projects = [{ name: '테스트현장', stage: 3, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객', phone: '', addr: '대전 서구 둔산동 30평' }, doneAt: '2026-07-01', archived: false }];
+      state.notes = [{ project: '테스트현장', text: '[홈페이지 상담 리드]\n희망공사: 도배 철거 홍길동 010-1234-5678\n평수: 30평' }];
+      state.satisfaction = []; state.files = []; state.adPosts = []; render();
+    });
+    const r = await page.evaluate(() => {
+      const f = adProjFacts('테스트현장');
+      const d = adDraftText('blog', f);
+      return { works: f.works, draft: d.title + '\n' + d.body };
+    });
+    assert(r.works.indexOf('도배') >= 0 && r.works.indexOf('철거') >= 0, 'works에 공정 키워드 유지: ' + r.works);
+    assert(r.works.indexOf('홍길동') < 0, 'works에 실명 유입 금지: ' + r.works);
+    assert(!/1234.?5678|1012345678/.test(r.works), 'works에 전화 유입 금지: ' + r.works);
+    assert(r.draft.indexOf('홍길동') < 0 && !/010.?1234.?5678/.test(r.draft), '초안 전체에 실명/전화 부재');
+    // 구조적 phases(신뢰)는 스크럽 없이 그대로 — 회귀 확인
+    const w2 = await page.evaluate(() => { state.projects[0].phases = ['특수도장', '욕실']; render(); return adProjFacts('테스트현장').works; });
+    assert(w2.indexOf('특수도장') >= 0, '구조적 phases는 화이트리스트 무관하게 신뢰: ' + w2);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

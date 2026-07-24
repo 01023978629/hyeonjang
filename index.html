@@ -16945,6 +16945,16 @@ function adLeadNoteOf(projName){
   return (state.notes||[]).map(function(n){return n&&n.project===projName?String(n.text||''):'';})
     .find(function(t){return t.indexOf('[홈페이지 상담 리드]')===0;})||'';
 }
+// 공정명은 유한 집합이라 화이트리스트로 안전하게 거를 수 있다(이름과 달리 fail-closed 가능).
+// 리드 자유입력(희망공사:)에서 공정 키워드가 포함된 토큰만 남겨 실명·전화 등 PII 유입을 차단한다.
+const AD_WORK_TERMS=['철거','도배','장판','마루','타일','욕실','주방','싱크','전기','목공','샷시','샤시','창호','도장','페인트','필름','조명','설비','배관','방수','단열','벽지','몰딩','중문','신발장','붙박이','수납','확장','미장','석고','천장','가구','화장실','발코니','베란다','현관','아트월','폴딩','줄눈','코킹','실리콘','샤워부스','조적','바닥','천정','인테리어','리모델링','디자인','전체','부분'];
+function adScrubWorks(s){
+  // 원문 토큰을 통째로 남기지 않고, 등장한 '공정 키워드'만 추출한다.
+  // (실명·전화가 공정어와 같은 토큰에 붙어 있어도 키워드만 나가므로 PII 유입 불가.)
+  const raw=String(s||'');const found=[];
+  AD_WORK_TERMS.forEach(function(k){if(raw.indexOf(k)>=0&&found.indexOf(k)<0)found.push(k);});
+  return found.join(', ');
+}
 function adProjFacts(projName){
   const p=(state.projects||[]).find(function(x){return x.name===projName;})||{};
   const src=[projName,(p.customer&&p.customer.addr)||''].join(' ');
@@ -16953,8 +16963,9 @@ function adProjFacts(projName){
   const dong=pick(/([가-힣]{1,6}[동읍면])(?![가-힣])/,src);
   const gu=pick(/([가-힣]{1,6}[구군])(?![가-힣])/,src);
   const pyeong=pick(/(\d{1,3})\s*평/,src)||pick(/(\d{1,3})\s*평/,pick(/평수:\s*([^\n]+)/,note));
+  // 구조적 phases(사장이 앱에서 입력)는 신뢰. 자유입력 리드노트 fallback만 공정 화이트리스트로 스크럽(PII 차단).
   const works=(p.phases&&p.phases.length?p.phases.join(', '):'')
-    ||pick(/희망공사:\s*([^\n]+)/,note)||pick(/공사:\s*([^\n]+)/,note)||'';
+    ||adScrubWorks(pick(/희망공사:\s*([^\n]+)/,note)||pick(/공사:\s*([^\n]+)/,note)||'');
   let period='';
   try{
     const ds=(state.schedule||[]).filter(function(s){return s&&s.project===projName&&s.date;})
