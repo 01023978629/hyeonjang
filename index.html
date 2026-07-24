@@ -4755,7 +4755,11 @@ function voiceMemo(){
     root.querySelector('#vmSave').onclick=()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}window.__vrecOn=false;try{if(__vrec)__vrec.stop();}catch(e){}const pj=(root.querySelector('#vmProj')||{}).value||null;state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t,project:pj});markDirty();toast(pj?('회의록 저장됨 · '+pj):'회의록 저장됨');voiceMemo();};
     root.querySelector('#vmShare').onclick=async()=>{const t=ta.value.trim();if(!t){toast('내용이 없습니다.');return;}try{if(navigator.share)await navigator.share({title:'회의록',text:t});else toast('공유 미지원 — 글을 복사해 보내세요');}catch(e){}};
   }
-  root.querySelectorAll('[data-notedel]').forEach(el=>el.onclick=()=>{const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id);markDirty();voiceMemo();});
+  root.querySelectorAll('[data-notedel]').forEach(el=>el.onclick=async()=>{
+    if(!confirm('이 회의록을 삭제할까요?'))return;
+    try{await hjSnapshot('회의록 삭제 전',true);}catch(e){}
+    const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id);markDirty();voiceMemo();toast('삭제됨');
+  });
   root.querySelectorAll('[data-noteshare]').forEach(el=>el.onclick=async()=>{const n=(state.notes||[]).find(x=>x.id===el.dataset.noteshare);if(n){try{if(navigator.share)await navigator.share({title:'회의록',text:n.text});else if(navigator.clipboard){navigator.clipboard.writeText(n.text);toast('복사됨');}}catch(e){}}});
 }
 /* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
@@ -7438,7 +7442,9 @@ function asManage(){
     const a=(state.asLog||[]).find(x=>x.id===s.dataset.id);
     if(a){a.status=s.value;markDirty();asManage();toast(s.value==='done'?'✅ AS 완료 처리':'상태 변경됨');}
   });
-  root.querySelectorAll('.asmDel').forEach(b=>b.onclick=()=>{
+  root.querySelectorAll('.asmDel').forEach(b=>b.onclick=async()=>{
+    if(!confirm('이 AS 기록을 삭제할까요?\n하자 대응 이력(보증 판정 근거)이 사라집니다.'))return;   // 오조작 방지(형제 삭제와 동일)
+    try{await hjSnapshot('AS 기록 삭제 전',true);}catch(e){}   // 강제 스냅샷 → 실수 시 안전판에서 복구
     state.asLog=(state.asLog||[]).filter(x=>x.id!==b.dataset.id);markDirty();asManage();toast('삭제됨');
   });
   return {미처리:open.length,전체:log.length,무상임박:soon.length};
