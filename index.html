@@ -741,7 +741,7 @@ function requireEditMode(action){
 const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null,schedule:[],contacts:[]};
 // 공급자 고정 정보 + 계좌 목록 (만물인테리어)
 const COMPANY={
-  name:'만물인테리어', bizno:'895-48-01132', owner:'전병덕', tel:'010-5439-8629',
+  name:'만물인테리어', bizno:'895-48-01132', owner:'전병덕', tel:'010-2397-8629',
   addr:'대전 중구 돌다리로 19번길 9 1층',
   business:'건설업', type:'인테리어, 일반건축공사',
   accounts:[
@@ -7364,6 +7364,9 @@ function hjGlanceShow(force){
 }
 function hjBootExtras(){
   try{
+    // Cowork 기본 작업을 부팅 시 1회 결정적으로 초기화 — 지연 초기화(coworkTasksEnsure)가
+    // 렌더·조회 도중 coworkTasks(null→기본)·_coworkInit 을 바꿔 직렬화가 세션 중간에 달라지던 비결정성 제거.
+    try{coworkTasksEnsure();}catch(e){}
     const v=new URLSearchParams(location.search).get('view');
     if(v){
       try{history.replaceState(null,'',location.pathname);}catch(e){}
