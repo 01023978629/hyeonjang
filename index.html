@@ -653,7 +653,9 @@
       <button class="clay tiny" id="btnGdSync">🔄 지금 동기화 (드라이브 최신 받기)</button>
       <button class="moss tiny" id="btnExport">📤 내보내기(백업 파일)</button>
       <button class="ghost tiny" id="btnImport">📥 불러오기</button>
+      <button class="clay tiny" id="btnSiteZip">📁 현장별 사진·파일 내려받기(ZIP)</button>
     </div>
+    <p class="hint">📁는 사진·서류를 <b>현장명 › 종류(사진·견적·서류) › 공정</b> 폴더로 묶어 <b>원본 그대로</b> PC에 내려받습니다(파일 관리·백업용). 서버(☁️) 연결 시 폰에서 올린 사진 원본까지 함께 받습니다.</p>
     <p class="hint">내보낸 <b>현장데이터.json</b>을 구글 드라이브·카톡에 두면, 폰이나 다른 PC에서 ‘불러오기’로 현장·견적·수금 현황을 그대로 봅니다.</p>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px">
@@ -1372,6 +1374,23 @@ async function relayGetThumbnail(fileId){
     finally{delete __relayThumbInflight[fileId];}
   })();
   return __relayThumbInflight[fileId];
+}
+/* base64 → Uint8Array (ZIP 원본 바이트 복원용) */
+function b64ToBytes(b64){try{const bin=atob(String(b64||''));const n=bin.length;const u=new Uint8Array(n);for(let i=0;i<n;i++)u[i]=bin.charCodeAt(i);return u;}catch(e){return null;}}
+const RELAY_DL_MAX_B64=28*1024*1024;   // 원본 다운로드 응답 상한(≈20MB 파일)
+/* PC 정리용: Drive 원본 파일 바이트를 받아온다. 구버전 중계서버(download 미지원)면 __unsupported로 throw. */
+async function relayDownloadOriginal(fileId){
+  if(!fileId||!relayReady())return null;
+  let r;
+  try{r=await relayCall('download',{fileId:fileId});}
+  catch(e){return null;}
+  if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);return null;}
+  if(r&&r.error==='bad-request'&&/action/.test(String(r.message||''))){const e=new Error('download 미지원');e.__unsupported=true;throw e;}
+  if(!(r&&r.ok&&r.dataB64))return null;
+  if(r.dataB64.length>RELAY_DL_MAX_B64)return null;
+  const bytes=b64ToBytes(r.dataB64);
+  if(!bytes)return null;
+  return {name:String(r.name||''),mime:String(r.mimeType||'application/octet-stream'),bytes:bytes};
 }
 /* ── 저장 상태 표시(사이드바 btnSave 아래 + 설정 모달 gdDot) — 실패를 조용히 삼키지 않음 ── */
 function relayStatText(code){
@@ -2884,7 +2903,7 @@ function showHelp(){
 
     <div class="help-sec">📤 내보내기</div>
     <ul>
-      <li><b>현장별 ZIP</b> — 현장 파일을 종류별 폴더로 묶어 다운로드.</li>
+      <li><b>현장별 사진·파일 ZIP</b> — 왼쪽 ‘📁 현장별 사진·파일 내려받기(ZIP)’. 현장명 › 종류(사진·견적·서류) › 공정 폴더로 <b>원본 그대로</b> 묶어 PC에 내려받습니다(파일 관리·백업용). 서버(☁️) 연결 시 폰에서 올린 사진 원본까지 포함.</li>
       <li><b>견적 정산 엑셀</b> — 정산표 + 견적상세 2개 시트.</li>
       <li><b>PDF 묶음</b> — 현장 사진·서류를 PDF 한 장으로.</li>
     </ul>
@@ -3236,6 +3255,65 @@ async function importPhotoZip(){
   };
   inp.click();
 }
+
+/* ===== 현장별 정리 ZIP 내려받기 (PC 파일관리용) =====
+   앱에 있는 파일을 현장명/종류(/공정) 폴더로 묶어 원본 그대로 ZIP 다운로드.
+   원본 바이트 우선순위: ① 메모리 원본(_file) ② Drive 원본(relay download) ③ 썸네일(저화질 폴백).
+   읽기 전용 — state/직렬화를 변형하지 않는다. */
+async function exportSiteZip(){
+  const src=(state.files||[]).filter(f=>f&&(f._file||f._driveId||(typeof f.thumb==='string'&&f.thumb.indexOf('data:')===0)));
+  if(!src.length){toast('내려받을 파일이 없습니다. 사진·서류를 먼저 올리거나 불러오세요.');return;}
+  try{await ensureJSZip();}catch(e){toast('압축 모듈 로드 실패(인터넷 확인).');return;}
+  const zip=new JSZip();
+  const clean=(s)=>String(s==null?'':s).replace(/[\\\/:*?"<>|\x00-\x1f]/g,'_').replace(/\s+/g,' ').trim().slice(0,60);
+  const kindFolder=(k)=>({photo:'사진',estimate:'견적',drawing:'도면',card:'명함',bizreg:'서류',contract:'계약',receipt:'영수증'}[k]||'서류');
+  const used={};
+  const uniq=(p)=>{if(!used[p]){used[p]=1;return p;}const dot=p.lastIndexOf('.'),base=dot>0?p.slice(0,dot):p,ex=dot>0?p.slice(dot):'';let n=2;while(used[base+'_'+n+ex])n++;used[base+'_'+n+ex]=1;return base+'_'+n+ex;};
+  const dstr=(w)=>{try{if(!w)return '';const d=new Date(w);if(isNaN(d))return '';return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}catch(e){return '';}};
+  const bar=$('#ocrBar');const summary={};
+  let ok=0,lowres=0,failed=0,unsupported=false;
+  zipProg(true,'파일 준비 중…');
+  for(let i=0;i<src.length;i++){
+    const f=src[i];
+    zipProg(true,`(${i+1}/${src.length}) ${f.name||''}`);
+    if(bar)bar.style.width=Math.round(i/src.length*100)+'%';
+    let bytes=null,low=false;
+    try{
+      if(f._file&&f._file.arrayBuffer){bytes=new Uint8Array(await f._file.arrayBuffer());}
+      else if(f._driveId){
+        try{const dl=await relayDownloadOriginal(f._driveId);if(dl&&dl.bytes)bytes=dl.bytes;}
+        catch(e){if(e&&e.__unsupported)unsupported=true;}
+      }
+      if(!bytes&&typeof f.thumb==='string'&&f.thumb.indexOf('data:')===0){const cm=f.thumb.indexOf(',');if(cm>0){bytes=b64ToBytes(f.thumb.slice(cm+1));low=!!bytes;}}
+    }catch(e){}
+    if(!bytes){failed++;continue;}
+    const proj=clean(f.project)||'_미배정';
+    let folder=proj+'/'+kindFolder(f.kind);
+    if(f.kind==='photo'&&f._phase)folder+='/'+clean(f._phase);
+    const pre=dstr(f.when),nm=clean(f.name)||('file_'+(i+1));
+    const path=uniq(folder+'/'+(pre?pre+'_':'')+nm);
+    try{zip.file(path,bytes);}catch(e){failed++;continue;}
+    if(low)lowres++;else ok++;
+    summary[proj]=(summary[proj]||0)+1;
+  }
+  if(!ok&&!lowres){zipProg(false);toast('내려받을 원본을 확보하지 못했습니다. 서버 연결(☁️) 후 다시 시도하세요.');return;}
+  let txt='만물인테리어 현장 파일 정리\n내려받은 날짜: '+localDate()+'\n\n[현장별 파일 수]\n';
+  Object.keys(summary).sort().forEach(k=>{txt+=' · '+k+': '+summary[k]+'개\n';});
+  txt+='\n원본 '+ok+'개'+(lowres?(' · 저화질(원본 미확보) '+lowres+'개'):'')+(failed?(' · 실패 '+failed+'개'):'')+'\n';
+  if(unsupported)txt+='\n※ 일부 사진은 중계서버가 구버전이라 저화질로 받았습니다.\n  Apps Script를 최신 Code.gs로 재배포하면 원본 화질로 받을 수 있습니다.\n';
+  zip.file('_요약.txt',txt);
+  zipProg(true,'압축 만드는 중…');
+  let blob;try{blob=await zip.generateAsync({type:'blob'});}catch(e){zipProg(false);toast('압축 생성 실패: '+(e&&e.message||e));return;}
+  const fname='만물인테리어_현장정리_'+localDate().replace(/-/g,'')+'.zip';
+  try{
+    if(navigator.canShare){const file=new File([blob],fname,{type:'application/zip'});
+      if(navigator.canShare({files:[file]})){navigator.share({files:[file],title:fname,text:'만물인테리어 현장 파일'}).catch(()=>{});zipProg(false);
+        toast('보내기 → 구글드라이브·PC로 저장하세요 (현장별 폴더 정리됨)');return;}}
+  }catch(e){}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  zipProg(false);
+  toast('현장별 정리 ZIP 내려받음 — 원본 '+ok+'개'+(lowres?(' · 저화질 '+lowres):'')+(failed?(' · 실패 '+failed):'')+(unsupported?' · (원본화질은 서버 재배포 필요)':''));
+}
 function parseExifDate(s){const m=String(s).match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);if(!m)return null;return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);}
 function dms(a,ref){if(!a)return null;const d=a[0]+a[1]/60+a[2]/3600;return(ref==='S'||ref==='W')?-d:d;}
 
@@ -3263,6 +3341,7 @@ function toggleMoveMode(){
 }
 $('#btnExport').onclick=exportData;
 $('#btnImport').onclick=importData;
+{const _sz=$('#btnSiteZip');if(_sz)_sz.onclick=exportSiteZip;}
 {const _gd=$('#btnGdrive');if(_gd)_gd.onclick=openGdriveSetup;}
 {const _gs=$('#btnGdSync');if(_gs)_gs.onclick=()=>gdPullAll();}
 {const _gc=$('#btnGdConnect');if(_gc)_gc.onclick=gdConnectFolder;}

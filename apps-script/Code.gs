@@ -18,13 +18,14 @@
  * Supabase Auth 등 계정 기반 인증 서버로 교체해야 합니다.
  * ============================================================ */
 
-var RELAY_VERSION = 'relay-v3';
-var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail'];
+var RELAY_VERSION = 'relay-v4';
+var ALLOWED_ACTIONS = ['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail', 'download'];
 var TS_WINDOW_MS = 10 * 60 * 1000;          // 요청 시간 검사(±10분)
 var MAX_BODY = 15 * 1024 * 1024;            // 요청 전체 상한
 var MAX_SAVE = 10 * 1024 * 1024;            // 현장데이터 JSON 상한
 var MAX_UPLOAD_B64 = 12 * 1024 * 1024;      // 업로드 base64 상한(≈9MB 파일)
 var MAX_PREVIEW_BYTES = 4 * 1024 * 1024;    // 썸네일 미생성 직후 원본 폴백 상한
+var MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;  // PC 정리용 원본 내려받기 상한
 var PHOTO_FOLDER = '현장사진';
 var DOC_FOLDER = '견적서';
 var ALLOWED_MIME = {
@@ -89,6 +90,7 @@ function doPost(e) {
       case 'upload':   return out_(uploadFile_(payload));
       case 'listFiles':return out_(listAppFiles_(payload));
       case 'thumbnail':return out_(thumbnailFile_(payload));
+      case 'download': return out_(downloadFile_(payload));
     }
     return fail_('bad-request', 'unreachable');
   } catch (err) { return fail_('server-error', safeMsg_(err)); }
@@ -153,7 +155,8 @@ function health_() {
     var f = findDataFile_(root);
     if (f) { exists = true; revision = readMeta_(f).revision || 0; }
   } catch (_) {}
-  return { ok: true, version: RELAY_VERSION, folderOk: folderOk, dataFileExists: exists, revision: revision };
+  return { ok: true, version: RELAY_VERSION, folderOk: folderOk, dataFileExists: exists, revision: revision,
+           caps: ALLOWED_ACTIONS };
 }
 
 /* ---------- B. load ---------- */
@@ -317,4 +320,25 @@ function thumbnailFile_(payload) {
   return { ok: true, fileId: id, name: file.getName(),
            mimeType: blob.getContentType() || 'image/jpeg', source: source,
            dataB64: Utilities.base64Encode(bytes) };
+}
+
+/* ---------- H. download (PC 정리용 — 원본 파일 그대로 내려받기) ---------- */
+// 썸네일이 아니라 저장된 원본 파일(사진 압축본·PDF 등)을 base64로 반환한다.
+// 앱 루트('만물인테리어') 폴더 안의 파일만 허용(썸네일과 동일한 경계 검사).
+function downloadFile_(payload) {
+  var id = String(payload && payload.fileId || '');
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return fail0_('bad-request', '파일 ID가 올바르지 않습니다');
+
+  var root = rootFolder_(), file;
+  try { file = DriveApp.getFileById(id); }
+  catch (_) { return fail0_('not-found', '파일을 찾지 못했습니다'); }
+  if (!isInsideRoot_(file, root)) return fail0_('forbidden', '앱 폴더 밖의 파일은 내려받을 수 없습니다');
+  if (file.getSize() > MAX_DOWNLOAD_BYTES) return fail0_('too-large', '파일이 너무 커서 내려받을 수 없습니다(20MB 초과)');
+
+  var blob;
+  try { blob = file.getBlob(); }
+  catch (_) { return fail0_('server-error', '파일을 읽지 못했습니다'); }
+  return { ok: true, fileId: id, name: file.getName(),
+           mimeType: blob.getContentType() || 'application/octet-stream',
+           size: file.getSize(), dataB64: Utilities.base64Encode(blob.getBytes()) };
 }
