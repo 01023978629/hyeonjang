@@ -8840,7 +8840,7 @@ function settleDocData(name){
   if(q&&quoteRealItems){items=quoteRealItems(q).map(it=>({name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)}));}
   const w=hjWarranty(p);
   return {p,s,cust,items,quote:q,
-    est:s.est,recv:s.recv,due:s.due,
+    est:s.est,supply:s.supply,recv:s.recv,due:s.due,   // supply=부가세 제외(품목 없을 때 부가세 이중가산 방지)
     doneAt:p.doneAt||localDate(),warranty:w};
 }
 // 공통 문서 셸
@@ -8881,7 +8881,8 @@ function hjDocShell(title,inner,accentDefault){
 function statementHTML(name){
   const d=settleDocData(name);if(!d)return null;
   const rows=d.items.length?d.items.map((it,i)=>{const amt=it.qty*it.price;return '<tr><td class="c">'+(i+1)+'</td><td class="nm">'+escapeHtml(it.name)+'</td><td class="c">'+escapeHtml(it.spec)+'</td><td class="c">'+hjNum(it.qty)+'</td><td class="r">'+hjNum(it.price)+'</td><td class="r">'+hjNum(amt)+'</td></tr>';}).join(''):'<tr><td class="c" colspan="6" style="padding:16px;color:#8b98ab">등록된 품목이 없습니다 — 견적서를 먼저 작성하면 자동으로 채워집니다</td></tr>';
-  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.est;
+  // 품목 없으면 부가세 제외 공급가(d.supply) 사용 — d.est는 부가세 포함 총액이라 그대로 쓰면 10% 이중가산.
+  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.supply;
   const vat=Math.round(supply*0.1);
   const inner=
     '<div class="prow"><span><b>공급받는 자</b>'+escapeHtml(d.cust.name||'—')+'</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+(d.cust.addr?'<span><b>현장</b>'+escapeHtml(d.cust.addr)+'</span>':'')+'<span><b>작성일</b>'+hjDocDate()+'</span><span><b>공사 완료</b>'+hjDocDate(d.doneAt)+'</span></div>'+
@@ -8898,7 +8899,8 @@ function statementHTML(name){
 // ② 청구서
 function invoiceHTML(name){
   const d=settleDocData(name);if(!d)return null;
-  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.est;
+  // 품목 없으면 부가세 제외 공급가(d.supply) 사용 — d.est는 부가세 포함 총액(그대로 쓰면 10% 이중가산).
+  const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.supply;
   const vat=Math.round(supply*0.1);
   const total=supply+vat;
   const claim=d.due>0?d.due:total;   // 미수금 있으면 잔금, 없으면 전액
@@ -8926,15 +8928,23 @@ function warrantyHTML(name){
   const w=d.warranty;
   const startStr=hjDocDate(d.doneAt);
   const endStr=w?hjDocDate(w.end):'';
+  // 항목별 보증(방수 2년·마감 1년 등)이 등록돼 있으면 실제 기간으로 표기 — '1년' 하드코딩 시 만료일과 모순.
+  const witems=(w&&Array.isArray(w.items))?w.items:[];
+  const ml=(m)=>{m=m||12;return m%12===0?(m/12)+'년':m+'개월';};
+  const maxM=witems.length?Math.max.apply(null,witems.map(it=>it.months||12)):12;
+  const badgeLabel=witems.length?('시공 후 최대 '+ml(maxM)+' 무상 A/S'):'시공 후 1년 무상 A/S';
+  const periodCell=witems.length
+    ? '<b>'+startStr+' ~ '+endStr+'</b><div style="font-size:12px;color:#5b6b82;margin-top:4px">'+witems.map(it=>escapeHtml(it.name||'')+' '+ml(it.months)).join(' · ')+'</div>'
+    : '<b>'+startStr+' ~ '+endStr+'</b> (1년)';
   const inner=
-    '<div style="text-align:center"><span class="warranty-badge">시공 후 1년 무상 A/S</span></div>'+
+    '<div style="text-align:center"><span class="warranty-badge">'+escapeHtml(badgeLabel)+'</span></div>'+
     '<div class="prow"><span><b>고객명</b>'+escapeHtml(d.cust.name||'—')+' 님</span>'+(d.cust.addr?'<span><b>시공 현장</b>'+escapeHtml(d.cust.addr)+'</span>':'<span><b>현장</b>'+escapeHtml(name)+'</span>')+'</div>'+
     '<div style="font-size:14px;line-height:1.9;margin:16px 0">'+
       '<p>본 <b>'+escapeHtml(COMPANY.name)+'</b>은(는) 위 현장의 시공 품질을 보증하며, 아래 기간 동안 시공 하자에 대해 <b>무상 A/S</b>를 제공할 것을 확인합니다.</p>'+
     '</div>'+
     '<table class="items"><tbody>'+
       '<tr><td class="nm" style="width:120px;background:#f7fafd">공사 완료일</td><td>'+startStr+'</td></tr>'+
-      '<tr><td class="nm" style="background:#f7fafd">보증 기간</td><td><b>'+startStr+' ~ '+endStr+'</b> (1년)</td></tr>'+
+      '<tr><td class="nm" style="background:#f7fafd">보증 기간</td><td>'+periodCell+'</td></tr>'+
       '<tr><td class="nm" style="background:#f7fafd">보증 범위</td><td>시공 부위의 하자 (마감 들뜸, 누수, 시공 불량 등)</td></tr>'+
       '<tr><td class="nm" style="background:#f7fafd">A/S 연락처</td><td>'+escapeHtml(COMPANY.owner)+' · '+escapeHtml(COMPANY.tel)+'</td></tr>'+
     '</tbody></table>'+
@@ -16263,10 +16273,17 @@ function contractDraftText(f){
   const cust=(p.customer&&p.customer.name)||e.customer||'';
   const acc=(COMPANY.accounts&&COMPANY.accounts[0])?COMPANY.accounts[0].label:'';
   const dp=Math.round(amt*0.3),mp=Math.round(amt*0.4),fp=amt-dp-mp;
+  // 부가세 포함/별도 판정: 계약금액(amt)이 공급가+세액에 가까우면 '포함', 공급가에 가까우면 '별도'.
+  // (quoteCalc 는 vatIncluded 여부와 무관하게 est.vat 를 항상 계산 → est.vat 존재만으로 '별도'로 찍던 버그.
+  //  '별도'로 오표기되면 고객이 이미 포함된 부가세를 다시 얹어야 하는 것으로 오해한다.)
+  const sup=e.supply||0,ev=e.vat||0;
+  const vatLabel=(ev>0&&sup>0&&Math.abs(amt-sup)<Math.abs(amt-(sup+ev)))
+    ? '별도 '+won(ev)+'원 · 총 '+won(amt+ev)+'원'   // amt가 공급가에 더 가까움 = 부가세 별도
+    : '포함';                                        // amt가 이미 부가세 포함(또는 공급가 정보 없음 → 고객 과다청구 방지 위해 포함으로 간주)
   return '공 사 도 급 계 약 서\n\n'+
     '1. 공사명: '+(f.project||'')+' 인테리어 공사\n'+
     '2. 공사장소: '+((p.customer&&p.customer.addr)||'(현장 주소 기입)')+'\n'+
-    '3. 계약금액: 일금 '+won(amt)+'원정 (부가가치세 '+(e.vat?'별도 '+won(e.vat)+'원':'포함')+')\n'+
+    '3. 계약금액: 일금 '+won(amt)+'원정 (부가가치세 '+vatLabel+')\n'+
     '4. 공사기간: 착공 20   년   월   일 ~ 준공 20   년   월   일\n'+
     '5. 대금 지급\n'+
     '   - 계약금(30%): '+won(dp)+'원 — 계약 시\n'+
