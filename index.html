@@ -4354,22 +4354,23 @@ function hjDailyBrief(){
    기존 신호 함수 결과를 '재사용'만 하고 임계값을 재계산하지 않는다(원 함수가 이미 밴드를 판정).
    state.projects/expenses/files 미변형 · markDirty 미유발. 가중치는 aiPlannerScan priorityScore 관례 차용. */
 // 현장 보드 배지가 열 수 있는 조치 화면(화이트리스트) — 동적 디스패치(window[문자열]) 방어.
-const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','dueAgingView','warrantyManage','staleProjects','reviewRequest']);
-// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(미수 dueAgingData 60일 · 보증 high · 방치 severe). 단일 출처.
-const BOARD_URGENT={dueDays:60,warrantyDays:14,staleDays:30};
+const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','dueAgingView','warrantyManage','staleProjects','reviewRequest','asManage']);
+// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(미수 dueAgingData 60일 · 보증 high · 방치 severe · AS 접수 14일). 단일 출처.
+const BOARD_URGENT={dueDays:60,warrantyDays:14,staleDays:30,asDays:14};
 function projHealthBoard(){
   const generatedAt=new Date().toISOString();
   const rows=[];
   const counts={urgent:0,watch:0,ok:0};
   // 기존 신호 함수를 각각 1회만 호출 → 현장명 인덱스(임계값 판정은 원 함수 내부에서만 발생)
   const safe=(fn)=>{try{const r=(typeof fn==='function')?fn():[];return Array.isArray(r)?r:[];}catch(e){return [];}};
-  const idx={loss:{},budget:{},due:{},warranty:{},stale:{},review:{}};
+  const idx={loss:{},budget:{},due:{},warranty:{},stale:{},review:{},as:{}};
   safe(typeof lossAlertData==='function'&&lossAlertData).forEach(r=>{if(r&&r.name)idx.loss[r.name]=r;});
   safe(typeof budgetAlertData==='function'&&budgetAlertData).forEach(r=>{if(r&&r.name)idx.budget[r.name]=r;});
   safe(typeof dueAgingData==='function'&&dueAgingData).forEach(r=>{if(r&&r.name)idx.due[r.name]=r;});
   safe(typeof warrantyDue==='function'&&warrantyDue).forEach(r=>{if(r&&r.name)idx.warranty[r.name]=r;});   // warrantyList의 daysLeft<=60 파생(임박·만료)
   safe(typeof staleProjectData==='function'&&staleProjectData).forEach(r=>{if(r&&r.name)idx.stale[r.name]=r;});
   safe(typeof reviewRequestData==='function'&&reviewRequestData).forEach(r=>{if(r&&r.name&&!r.requested&&r.customer&&r.customer.phone)idx.review[r.name]=r;});
+  safe(typeof asOpenData==='function'&&asOpenData).forEach(r=>{if(r&&r.name)idx.as[r.name]=r;});           // asOpenData(status!=='done') 파생 — 미처리 AS 접수 후 aging
   const RANK={urgent:3,watch:2,ok:1};
   (state.projects||[]).forEach(p=>{
     if(!p||p.archived)return;
@@ -4411,6 +4412,13 @@ function projHealthBoard(){
     // 🗣 리뷰 — reviewRequestData(완공90일내 미요청) 결과 재사용(기회 신호 · watch)
     const R=idx.review[name];
     if(R)reasons.push({axis:'review',label:'리뷰요청 완공'+R.days+'일',weight:55-Math.min(R.days,40),openAction:'reviewRequest',urgent:false});
+    // 🔧 미처리 AS — asOpenData(status!=='done') 결과 재사용. 접수 14일+ 또는 3건+면 urgent(사후대응 지연).
+    const A=idx.as[name];
+    if(A){
+      const urgent=(A.days!==null&&A.days>=BOARD_URGENT.asDays)||A.count>=3;
+      const agingLbl=(A.days!=null&&A.days>=1)?(' '+A.days+'일'):'';
+      reasons.push({axis:'as',label:'AS 미처리 '+A.count+'건'+agingLbl,weight:58+Math.min(A.days||0,30)+(A.count>=3?10:0),openAction:'asManage',urgent:urgent});
+    }
     // 포함 규칙: 활성 현장(stage<3)은 항상, 완료 현장은 신호가 있을 때만
     if(stage>=3&&reasons.length===0)return;
     const score=reasons.reduce((a,r)=>a+(r.weight||0),0);
@@ -7364,6 +7372,25 @@ function hjWarranty(p){
   return {end:localDate(end),dday};
 }
 function asOpenList(){return (state.asLog||[]).filter(a=>a.status!=='done');}
+/* 미처리 AS(하자·사후대응) 현장별 집계 — 순수·읽기전용 파생(state 미변형·markDirty 미유발).
+   열림 판정은 asOpenList()와 동일(status!=='done'). date=접수일 기준 경과일(aging).
+   현장 보드의 시간축(사후대응) 신호원. 전화 원문은 담지 않는다(보드는 이름만 사용). */
+function asOpenData(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const byName={};(state.projects||[]).forEach(p=>{if(p&&p.name)byName[p.name]=p;});
+  const map={};
+  (state.asLog||[]).filter(a=>a&&a.status!=='done').forEach(a=>{
+    const name=a.project||'';if(!name)return;
+    const d=a.date?new Date(a.date+'T00:00:00'):null;
+    const days=(d&&!isNaN(d.getTime()))?Math.max(0,Math.round((today-d)/86400000)):null;
+    if(!map[name])map[name]={name,count:0,days:null,latest:''};
+    const m=map[name];m.count++;
+    if(days!==null&&(m.days===null||days>m.days))m.days=days;
+    if(!m.latest)m.latest=a.text||'';
+  });
+  return Object.values(map).map(m=>{const p=byName[m.name]||{};return {name:m.name,count:m.count,days:m.days,latest:m.latest,stage:p.stage||0,customer:p.customer||{}};})
+    .sort((a,b)=>(b.days||0)-(a.days||0)||b.count-a.count);
+}
 function asManage(){
   const log=(state.asLog||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const open=log.filter(a=>a.status!=='done');
@@ -12579,8 +12606,8 @@ function briefExtraItems(){
   }catch(e){}
   // 2) 미완료 AS
   try{
-    const openAs=(state.asLog||[]).filter(a=>!a.done);
-    if(openAs.length){items.push({ic:'🔧',t:'미처리 AS '+openAs.length+'건',sub:(openAs[0].project||'')+' '+hjCut(openAs[0].issue||'',12),action:'as'});}
+    const openAs=(state.asLog||[]).filter(a=>a&&a.status!=='done');
+    if(openAs.length){items.push({ic:'🔧',t:'미처리 AS '+openAs.length+'건',sub:(openAs[0].project||'')+' '+hjCut(openAs[0].text||'',12),action:'as'});}
   }catch(e){}
   // 3) 매출 목표 페이스(뒤처지면)
   try{
@@ -12829,7 +12856,7 @@ function salesTargetData(){
     // 규모 있는 공사(우량 고객)
     try{const s=projStats(p.name);if(s&&s.recv>=10000000){score+=15;reasons.push('고액 시공 이력');}}catch(e){}
     // AS 이력 있고 잘 처리됨(신뢰)
-    try{const asDone=(state.asLog||[]).filter(a=>a.project===p.name&&a.done).length;if(asDone>0){score+=10;reasons.push('AS 잘 마무리 — 신뢰 형성');}}catch(e){}
+    try{const asDone=(state.asLog||[]).filter(a=>a.project===p.name&&a.status==='done').length;if(asDone>0){score+=10;reasons.push('AS 잘 마무리 — 신뢰 형성');}}catch(e){}
     if(score>0)targets.push({name:p.name,customer:cust,score,reasons});
   });
   return targets.sort((a,b)=>b.score-a.score);
@@ -12901,7 +12928,7 @@ function ttsBriefText(){
   try{
     if(typeof warrantyDue==='function'){const due=warrantyDue().filter(w=>w.daysLeft>=0);if(due.length)parts.push('보증 만료 임박한 현장이 '+due.length+'곳 있습니다.');}
   }catch(e){}
-  try{const openAs=(state.asLog||[]).filter(a=>!a.done);if(openAs.length)parts.push('처리할 AS가 '+openAs.length+'건 있습니다.');}catch(e){}
+  try{const openAs=(state.asLog||[]).filter(a=>a&&a.status!=='done');if(openAs.length)parts.push('처리할 AS가 '+openAs.length+'건 있습니다.');}catch(e){}
   parts.push('오늘도 안전하게, 좋은 하루 되세요.');
   return parts.join(' ');
 }
