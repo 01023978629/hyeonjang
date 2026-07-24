@@ -316,6 +316,30 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     assert(r.drift, 'as 축 drift 불일치 — board=' + JSON.stringify(r.boardAs) + ' src=' + JSON.stringify(r.srcAs));
   });
 
+  // 11) applyData 데이터 무결성 — 부분/구스키마 자료가 기존 배열을 지우지 않음(누락 키 보존)
+  await test('applyData — 누락 키 보존(구 스키마 통합이 quotes/contacts/notes 안 지움)·존재 키는 교체', async () => {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1200);
+    const r = await page.evaluate(() => {
+      // 현재 기기: 최신 자료가 채워져 있음
+      state.projects = [{ name: '기존현장', stage: 1, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false }];
+      state.quotes = [{ project: '기존현장', date: '2026-07-01', items: [] }];
+      state.contacts = [{ name: '김거래처', phone: '01000000000' }];
+      state.notes = [{ id: 'n1', date: '2026-07-01', text: '중요 메모' }];
+      state.schedule = [{ date: '2026-07-01', title: '기존 일정' }];
+      state.files = [];
+      // 구 스키마/부분 자료: files·projects만 있고 quotes/contacts/notes/schedule 키가 아예 없음(과거 드라이브 JSON)
+      const partial = { version: 2, savedAt: '2020-01-01T00:00:00.000Z', files: [{ key: 'k1', name: '사진.jpg' }], projects: [{ name: '새현장', stage: 2 }] };
+      applyData(partial);
+      return { quotes: state.quotes.length, contacts: state.contacts.length, notes: state.notes.length, schedule: state.schedule.length, projNames: state.projects.map(p => p.name) };
+    });
+    assert(r.quotes === 1, '누락된 quotes 키 → 기존 보존(지워지면 안 됨): ' + r.quotes);
+    assert(r.contacts === 1, '누락된 contacts 키 → 기존 보존: ' + r.contacts);
+    assert(r.notes === 1, '누락된 notes 키 → 기존 보존: ' + r.notes);
+    assert(r.schedule === 1, '누락된 schedule 키 → 기존 보존: ' + r.schedule);
+    assert(JSON.stringify(r.projNames) === JSON.stringify(['새현장']), '존재하는 projects 키는 정상 교체 적용: ' + JSON.stringify(r.projNames));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
