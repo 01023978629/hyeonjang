@@ -1124,8 +1124,8 @@ function serializeData(){
     coworkSched:state.coworkSched||[],
     _cwSchedInit:state._cwSchedInit||false,
     _coworkInit:state._coworkInit||false,
-    payLog:(state.payLog||[]).slice(-400),
-    expenses:(state.expenses||[]).slice(-600),
+    payLog:(state.payLog||[]).slice(-5000),   // 장부 보존: 1인 시공사 수년치 여유(과거 수금 이력 유실 방지)
+    expenses:(state.expenses||[]).slice(-8000),
     goals:state.goals||{},
     aiOps:state.aiOps||null,
     suppliers:state.suppliers||[],
@@ -1150,12 +1150,14 @@ function applyData(data){
   __lastData=data; if(data.savedAt)__dataAt=data.savedAt;
   state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
   state.learn=(data.learn&&typeof data.learn==='object')?data.learn:{estimateByBiz:{}};
-  state.quotes=data.quotes||[];
-  state.schedule=data.schedule||[];
+  // 누락 키 보존: data.x 가 undefined(구 스키마·부분 자료)면 기존 state 유지.
+  // 빈 배열 []는 truthy라 '명시적 비움'은 그대로 적용되고, 키 자체가 없을 때만 보존된다.
+  state.quotes=data.quotes||state.quotes||[];
+  state.schedule=data.schedule||state.schedule||[];
   state.expenses=Array.isArray(data.expenses)?data.expenses:(state.expenses||[]);
   state.aiOps=(data.aiOps&&typeof data.aiOps==='object')?data.aiOps:(state.aiOps||null);
   state.goals=(data.goals&&typeof data.goals==='object')?data.goals:(state.goals||{});
-  state.notes=data.notes||[];
+  state.notes=data.notes||state.notes||[];
   state.priceBook=data.priceBook||state.priceBook||{};
   state.asLog=data.asLog||state.asLog||[];
   state.satisfaction=Array.isArray(data.satisfaction)?data.satisfaction:(state.satisfaction||[]);
@@ -1173,8 +1175,8 @@ function applyData(data){
   state.inventory=Array.isArray(data.inventory)?data.inventory:(state.inventory||[]);
   if(data.brand)state.brand=data.brand;
   try{hjBrandApplyUI();}catch(e){}
-  state.contacts=data.contacts||[];
-  state.projects=(data.projects||[]).map(p=>({...p,name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
+  state.contacts=data.contacts||state.contacts||[];
+  state.projects=(data.projects||state.projects||[]).map(p=>({...p,name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
   let restored=0;
@@ -2030,6 +2032,8 @@ async function gdLoad(silent,retried,force){
       if(!silent)toast('이 기기 자료가 더 최신 — 드라이브 불러오기 건너뜀(덮어쓰기 방지)');
       return true;
     }
+    // 덮어쓰기 전 안전판 스냅샷(relay 경로와 동일 규약) — 실패 시 적용 중단해 로컬 자료 보존.
+    if(!(await relayGuardSnapshot('드라이브 불러오기 전'))){ if(!silent)toast('🛡 백업 실패로 드라이브 불러오기를 중단했습니다'); return false; }
     applyData(data);render();
     if(!silent)toast('☁️ 구글드라이브에서 불러옴');
     return true;
@@ -2532,7 +2536,7 @@ async function gdImportAll(){
   try{
     const dj=await roList("name='현장데이터.json' and trashed=false",'files(id,name,modifiedTime)',tok);
     dj.sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''));
-    if(dj[0]){ const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+dj[0].id+'?alt=media',{headers:{Authorization:'Bearer '+tok}}); if(dr.ok){ try{ applyData(await dr.json()); okData=true; }catch(e){} } }
+    if(dj[0]){ const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+dj[0].id+'?alt=media',{headers:{Authorization:'Bearer '+tok}}); if(dr.ok){ try{ const dData=await dr.json(); if(await relayGuardSnapshot('드라이브 통합 전')){ applyData(dData); okData=true; } else toast('🛡 백업 실패 — 현장데이터 통합만 건너뜁니다(사진은 계속 통합)'); }catch(e){} } }
   }catch(e){}
   let roots=[];
   try{ const cfg=await idbGet('gd_import_root'); if(cfg)roots.push(cfg); }catch(e){}
@@ -5981,7 +5985,7 @@ function hjPayLog(pj,newAmt,oldAmt){
   state.payLog=state.payLog||[];
   const t=new Date(),d=t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate());
   state.payLog.push({d:d,project:String(pj||''),amt:diff});
-  if(state.payLog.length>400)state.payLog=state.payLog.slice(-400);
+  if(state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);   // serializeData 캡과 동일
 }
 
 /* ═══════════ 🧹 AI 자동 정리 파이프라인 — 가져오기 직후 현장 배정(무료·로컬) + 공정 태깅(Gemini 비전) ═══════════ */
@@ -17506,7 +17510,7 @@ function recvQuickView(pjName){
       p.received=(p.received||0)+amt;
       state.payLog=state.payLog||[];
       state.payLog.push({d:d,project:pjName,amt:amt});
-      if(state.payLog.length>400)state.payLog=state.payLog.slice(-400);
+      if(state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);   // serializeData 캡과 동일
       // 승인함의 이 현장 미수금류 대기 작업은 자동 완료 처리
       try{
         const o=aiOpsEnsureState();const now=new Date().toISOString();
