@@ -124,6 +124,30 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     assert(bodyTxt.indexOf('7777') >= 0, '후속 마스킹(뒷4자리) 표시 확인');
   });
 
+  await test('8. 목표 페이스 경보 — 앞서갈 때 오발화 없음(%↔원 단위 불일치 회귀)', async () => {
+    const r = await page.evaluate(() => {
+      const ym = localDate().slice(0, 7);
+      // 앞서가는 상황: 목표 100만, 이번달 수금 500만 → 달성률 500%(기대 진행률 훨씬 초과)
+      state.goals = { month: 1000000, year: 0 };
+      state.payLog = [{ d: ym + '-05', project: '행복빌라 201호', amt: 5000000 }];
+      const gA = goalProgress();
+      const nagA = (typeof briefExtraItems === 'function' ? briefExtraItems() : []).some(it => /페이스 주의/.test(it.t || ''));
+      // 뒤처지는 상황: 목표 1억, 이번달 수금 0 → 달성률 0%
+      state.goals = { month: 100000000, year: 0 };
+      state.payLog = [];
+      const gB = goalProgress();
+      const nagB = briefExtraItems().some(it => /페이스 주의/.test(it.t || ''));
+      state.goals = {}; state.payLog = [];
+      return { paceA: gA.monthPace, expA: gA.monthExpected, nagA, paceB: gB.monthPace, expB: gB.monthExpected, nagB, day: gB.dayOfMonth };
+    });
+    assert(r.paceA >= r.expA, '시드 확인: 앞서가는 상황(pace≥expected): pace=' + r.paceA + ' exp=' + r.expA);
+    // 앞서가면 날짜와 무관하게 경보 없어야 함(옛 버그: 목표만 있으면 10일부터 무조건 발화)
+    assert(!r.nagA, '앞서가는데 페이스 경보 오발화 — %↔원 단위 불일치 버그 재발');
+    // 뒤처지면(달성률 0%) 경보가 실제 페이스에 반응: 10일+엔 발화, 그 전엔 침묵
+    if (r.day >= 10) assert(r.nagB, '뒤처지는데(달성률 0%, ' + r.day + '일) 페이스 경보 미발화');
+    else assert(!r.nagB, '10일 이전에는 페이스 경보 없음(day=' + r.day + ')');
+  });
+
   await test('6. serializeData() 직렬화 불변 — 브리핑 관련 새 키 없음', async () => {
     const keys = await page.evaluate(() => Object.keys(serializeData()));
     const bad = keys.filter(k => /brief/i.test(k));
