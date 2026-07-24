@@ -4036,7 +4036,7 @@ function loadCustomerFromCard(projName){
   const cards=state.files.filter(f=>f.kind==='card'&&f.contact);
   if(!cards.length){toast('불러올 명함 연락처가 없습니다. 명함을 OCR하면 목록에 나옵니다.');return;}
   const rows=cards.map((f,i)=>{const c=f.contact||{};return `<div class="bk-row" data-pickcard="${i}" style="cursor:pointer">
-    <div class="bk-info"><b>${escapeHtml(c.name||'(이름 미상)')}</b><span>${escapeHtml([c.title,c.company].filter(Boolean).join(' · '))} ${c.phone||''}</span></div>
+    <div class="bk-info"><b>${escapeHtml(c.name||'(이름 미상)')}</b><span>${escapeHtml([c.title,c.company].filter(Boolean).join(' · '))} ${escapeHtml(c.phone||'')}</span></div>
     <button class="clay tiny">이 고객 선택</button></div>`;}).join('');
   window.__custCards=cards;window.__custProj=projName;
   openModal('명함에서 고객 불러오기',
@@ -5090,7 +5090,7 @@ async function aiToolRun(name,a){
         return {현장:p.name,단계:STAGES[Math.min(s.stage||0,3)],
           사진수:state.files.filter(f=>f.kind==='photo'&&f.project===p.name).length,
           견적원:s.est,수금원:s.recv,미수금원:s.due,
-          고객:cut(p.customer&&p.customer.name),연락처:cut(p.customer&&p.customer.phone,20)};});
+          고객:cut(p.customer&&p.customer.name),연락처:hjBriefMaskPhone(p.customer&&p.customer.phone)};});   // 외부 LLM 전송 — 전화 원문 대신 뒷4자리 마스킹(발송 액션은 state에서 원문 조회)
       return {개수:list.length,목록:list};
     }
     case 'list_photos':{
@@ -5116,7 +5116,7 @@ async function aiToolRun(name,a){
       const q=String(a.query||'').toLowerCase();
       let cs=(state.contacts||[]);
       if(q)cs=cs.filter(c=>[c.name,c.phone,c.company,c.memo].some(v=>String(v||'').toLowerCase().includes(q)));
-      return {개수:cs.length,연락처:cs.slice(0,30).map(c=>({이름:c.name,전화:c.phone,소속:c.company||'',메모:cut(c.memo,50)}))};
+      return {개수:cs.length,연락처:cs.slice(0,30).map(c=>({이름:c.name,전화:hjBriefMaskPhone(c.phone),소속:c.company||'',메모:cut(c.memo,50)}))};   // 외부 LLM 전송 — 전화 뒷4자리 마스킹
     }
     case 'suggest_photo_organization':{
       const un=state.files.filter(f=>f.kind==='photo'&&!f.project);
@@ -21527,9 +21527,11 @@ try{hjBrandApplyUI();}catch(e){}
    구형 링크(신규 필드 없음)도 하위호환. 신규 필드 없이 기존 projects/customer/notes만 사용 → serialize/applyData 변경 불필요. */
 function hjB64ToUtf8(b64){try{b64=String(b64).replace(/-/g,'+').replace(/_/g,'/');while(b64.length%4)b64+='=';var bin=atob(b64);return decodeURIComponent(Array.prototype.map.call(bin,function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));}catch(e){try{return atob(b64);}catch(_){return '';}}}
 function hjLeadParse(){
+  // 프래그먼트(#lead=) 우선: 해시는 서버 요청·액세스 로그·Referer 에 전송되지 않아 PII 노출면이 작다.
+  // (홈페이지 발급부도 #lead= 로 emit함) 쿼리(?lead=)는 구형 링크 하위호환용 폴백으로만 둔다.
   var raw=null;
-  try{raw=new URLSearchParams(location.search).get('lead');}catch(e){}
-  if(!raw){try{var h=location.hash||'';var m=h.match(/lead=([^&]+)/);if(m)raw=decodeURIComponent(m[1]);}catch(e){}}
+  try{var h=location.hash||'';var m=h.match(/lead=([^&]+)/);if(m)raw=decodeURIComponent(m[1]);}catch(e){}
+  if(!raw){try{raw=new URLSearchParams(location.search).get('lead');}catch(e){}}
   if(!raw)return null;
   var d=null;try{d=JSON.parse(hjB64ToUtf8(raw));}catch(e){try{d=JSON.parse(decodeURIComponent(raw));}catch(_){d=null;}}
   return (d&&typeof d==='object')?d:{__bad:true};
