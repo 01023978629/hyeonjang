@@ -1296,9 +1296,10 @@ function setReceived(name,val){const p=state.projects.find(x=>x.name===name);if(
 
 /* ========== ☁️ Apps Script 클라우드 중계 (relay-v2) — 모바일에서 로그인·팝업 없이 저장 ==========
    웹 → Apps Script 웹앱(text/plain POST, preflight 없음) → 기존 드라이브 만물인테리어 폴더.
-   서버 주소·인증키는 하드코딩하지 않음 — ☁️ 설정에서 입력 → 이 기기(IndexedDB)에만 보관.
+   서버 주소는 기본값으로 안내하고, 인증키는 하드코딩하지 않음 — ☁️ 설정에서 입력 → 이 기기(IndexedDB)에만 보관.
    기존 gd*(구글 직접 연동)는 전부 '비상용'으로 그대로 유지 — relay 미설정이면 기존 경로 그대로. */
-let __relay={url:'',token:'',device:'',rev:0,syncAt:''};   // 부팅 때 idb에서 복원(relayBoot)
+const RELAY_URL_DEFAULT='https://script.google.com/macros/s/AKfycbw-0z-ONbZTI2mC6zXObm15MOFiJW9ppxTbfaE1N3q8kRtkiGCOm0TSG_v3Wg44ePCF/exec';
+let __relay={url:RELAY_URL_DEFAULT,token:'',device:'',rev:0,syncAt:''};   // 부팅 때 idb에서 복원(relayBoot)
 let __relayState='';            // 저장 상태 코드(local/saving/saved/offline/netfail/conflict/auth/ready)
 let __relayQn=0;                // 전송 대기열 건수(표시용)
 let __relayAuthToasted=false;   // 인증 오류 토스트는 1회만(도배 금지)
@@ -1763,7 +1764,7 @@ async function repairAllPhotoPreviews(){
 /* ── relay 부팅(gdBootSync와 별개, 기존 로직 무변경) — 설정 복원 + 대기열 전송 + 서버 최신 안내(자동 적용 금지) ── */
 async function relayBoot(){
   try{
-    __relay.url=(await idbGet('relay_url'))||'';
+    __relay.url=(await idbGet('relay_url'))||RELAY_URL_DEFAULT;
     __relay.token=(await idbGet('relay_token'))||'';
     __relay.device=(await idbGet('relay_device'))||'';
     if(!__relay.device){const mob=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');__relay.device=(mob?'mobile-':'pc-')+Math.random().toString(36).slice(2,6);try{await idbSet('relay_device',__relay.device);}catch(e){}}
@@ -1847,7 +1848,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-19-photo-local-v115';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-24-relay-url-default';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
