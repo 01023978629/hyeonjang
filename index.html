@@ -19004,6 +19004,7 @@ function bulkBar(scopeProj){
     ${n===2?`<button class="moss tiny" id="bulkBeforeAfter">↔ 비포/애프터</button>`:''}
     ${(scopeProj&&phaseList.length&&window.__geminiKey)?`<button class="clay tiny" id="bulkAiPhase" title="선택 사진(최대 8장)을 AI가 보고 공정을 자동 지정">🤖 AI 공정</button>`:''}
     <button class="ghost tiny" id="bulkRename">자동 이름정리</button>
+    <button class="warn tiny" id="bulkDelete">🗑 선택 삭제</button>
     <button class="ghost tiny" id="bulkClear">선택 해제</button>
     ${mobileChips}
   </div>`;
@@ -19014,6 +19015,7 @@ function bindBulk(scopeProj){
   const bp=$('#bulkPhase');if(bp)bp.onchange=()=>{if(!bp.value)return;applyBulkPhase(scopeProj,bp.value);};
   const bm=$('#bulkMove');if(bm)bm.onclick=()=>bulkMove();
   const br=$('#bulkRename');if(br)br.onclick=()=>bulkRename();
+  const bd=$('#bulkDelete');if(bd)bd.onclick=()=>deleteSelectedPhotos();
   const bc=$('#bulkClear');if(bc)bc.onclick=clearSel;
   // 모바일 공정 큰 버튼
   document.querySelectorAll('[data-bulkphase]').forEach(b=>b.onclick=()=>applyBulkPhase(scopeProj,b.dataset.bulkphase));
@@ -19210,6 +19212,33 @@ function deletePhoto(id){
       if(typeof __photoCache!=='undefined')__photoCache.key=null;
       markDirty();closeModal();render();
       toast(deleteLocal?'사진 삭제됨 · PC 원본 파일 삭제':'사진 삭제됨 · 앱 목록에서 제거');
+    }}
+  ], true);
+}
+// 선택(체크박스) 사진 여러 장 한 번에 삭제 — 삭제 직전 강제 스냅샷(🛡 안전판)으로 복구 가능.
+// PC 원본 파일은 건드리지 않고(대량 실수 방지), 드라이브 사진은 재유입 방지 기록만.
+function deleteSelectedPhotos(){
+  const fs=selFiles().filter(f=>f&&f.kind==='photo');
+  if(!fs.length){toast('선택된 사진이 없습니다 — [✓ 선택 모드]를 켜고 사진을 눌러 고르세요.');return;}
+  const noPreview=fs.filter(f=>!f.thumb&&!f._driveId).length;   // '사진 연결' 상태(원본이 이 기기에 없음)
+  const prev=fs.slice(0,6).map(f=>`<div class="ph" style="width:64px;height:48px;min-height:48px">${photoImg(f,120)}</div>`).join('');
+  const body=`<div style="font-size:13px;line-height:1.65">
+    <p style="margin:0 0 8px"><b>선택한 ${fs.length}장</b>을 앱 목록에서 삭제할까요?</p>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin:8px 0;align-items:center">${prev}${fs.length>6?`<span class="ph-hint" style="position:static">+${fs.length-6}장</span>`:''}</div>
+    ${noPreview?`<p style="margin:8px 0;color:var(--warn)"><b>이 중 ${noPreview}장은 미리보기가 없는 '사진 연결' 상태입니다.</b> 원본이 폰·구글드라이브에 남아 있을 수 있고, 삭제하면 앱 목록에서 사라집니다(폰·드라이브의 원본 파일 자체는 그대로).</p>`:''}
+    <p style="margin:8px 0;color:var(--muted-2)">삭제 직전 자동 백업(🛡 안전판)이 만들어져, 실수해도 [더보기 → 이전 버전 복원]에서 되돌릴 수 있습니다. PC 폴더 원본 파일은 삭제하지 않습니다.</p>
+  </div>`;
+  openModal('사진 여러 장 삭제', body, [
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:`${fs.length}장 삭제`,cls:'warn',fn:async()=>{
+      try{await hjSnapshot('사진 '+fs.length+'장 삭제 전',true);}catch(e){}   // 강제 스냅샷(스로틀 우회) — 복구 안전판
+      const ids=new Set(fs.map(f=>f.id));
+      fs.forEach(f=>{ if(f._driveId)__removedIds.add(f._driveId); revokeThumbUrl(f); __sel.delete(f.id); });
+      try{if(__removedIds.size)await idbSet('removed_ids',[...__removedIds]);}catch(e){}
+      state.files=state.files.filter(x=>!ids.has(x.id));
+      if(typeof __photoCache!=='undefined')__photoCache.key=null;
+      markDirty();closeModal();render();
+      toast(fs.length+'장 삭제됨 · 앱 목록에서 제거(원본 파일 유지)');
     }}
   ], true);
 }
