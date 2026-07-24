@@ -4297,6 +4297,7 @@ function viewDashboard(){
 let __briefOpen=true; // 카드 펼침 상태 — 직렬화·idb 저장 안 함(원본 데이터 불변)
 let __boardOpen=false;   // 🏥 현장 보드 펼침 상태 — 메모리 전용(직렬화·idb 저장 안 함)
 let __boardFilter=false; // 🏥 현장 보드 '긴급만' 필터 — 메모리 전용(직렬화·idb 저장 안 함)
+let __adDoneOnly=false;  // ✍️ 홍보 원고 '완공만 보기' 필터 — 메모리 전용(직렬화·idb 저장 안 함, 원본 데이터 불변)
 // 전화번호는 뒷 4자리만(끝4자리 마스킹) — 복사텍스트·화면·로그에 원문 미노출
 function hjBriefMaskPhone(ph){const d=String(ph||'').replace(/[^\d]/g,'');return d.length>=4?('···'+d.slice(-4)):'';}
 // 리드 노트 요약: 마커 제거 + 전화번호 형태 마스킹(원문 유출 방지) + 길이 컷
@@ -16966,6 +16967,21 @@ function adProjFacts(projName){
   const loc=('대전 '+[gu,dong].filter(Boolean).join(' ')).trim();
   return {name:projName,loc:loc,gu:gu,dong:dong,pyeong:pyeong,works:works,period:period};
 }
+/* ── 📝 저장 후기 → PII-free 별점 신호(파생 전용·구조적 안전) — state.satisfaction의
+   후기 "원문(comment)"은 절대 읽지도 반환하지도 않는다. 후기 comment는 자유입력이라
+   등록 안 된 맨이름(존칭 없는 성명)까지 안전하게 스크럽하기가 근본적으로 불가능하므로,
+   공개(블로그/SNS) 초안에는 오직 별점 집계(평균·건수)라는 개인정보 없는 신호만 노출한다.
+   원본 satisfaction 불변, stars 필드만 읽어 새 객체({avg,count})를 계산해 반환. 순수·읽기전용. ── */
+function adReviewSignal(projName){
+  // 해당 현장의 satisfaction 중 stars(별점)가 유효한 항목만 집계. comment는 참조하지 않음.
+  var vals=(state.satisfaction||[]).filter(function(r){
+    return r&&r.project===projName&&isFinite(+r.stars)&&(+r.stars)>0;
+  }).map(function(r){return +r.stars;});
+  if(!vals.length) return null;
+  var sum=vals.reduce(function(a,b){return a+b;},0);
+  var avg=Math.round((sum/vals.length)*10)/10;   // 소수 1자리
+  return {avg:avg,count:vals.length};
+}
 function adHashtags(f){
   const t=['#대전인테리어','#대전리모델링'];
   if(f.gu)t.push('#'+f.gu+'인테리어');
@@ -16986,6 +17002,14 @@ function adDraftText(chId,f){
   const contact='📞 '+COMPANY.tel+' ('+COMPANY.owner+') · '+COMPANY.name;
   const workLines=String(f.works).split(/[,·]/).map(function(s){return s.trim();}).filter(Boolean)
     .map(function(w){return '· '+w+' — [한 줄 설명]';}).join('\n')||'· [공정과 내용을 적어주세요]';
+  // 저장 후기 → PII-free 별점 신호(파생). comment 원문은 절대 노출하지 않고 별점 집계만.
+  // avg>=4.0·count>=1 일 때만 사회적 증거 한 줄. 미달/없음이면 기존 [대괄호] 자리표시자 유지.
+  const rs=adReviewSignal(f.name);
+  const hasSignal=!!(rs&&rs.avg>=4.0&&rs.count>=1);
+  const signalLine=hasSignal?('고객 만족도: ★'+rs.avg+' (후기 '+rs.count+'건)'):'';
+  const reviewLine=hasSignal
+    ?signalLine
+    :'[품질·하자 관련 디테일 1~2개 — 예: 철거 중 발견한 문제를 사진으로 먼저 공유하고 협의 후 보강]';
   if(chId==='blog'){
     return {
       title:headBits+(worksShort?' — '+worksShort:''),
@@ -17000,7 +17024,7 @@ function adDraftText(chId,f){
         '■ 이렇게 진행했습니다',workLines,'',
         '[시공 후 사진]','',
         '■ 이 현장에서 특히 신경 쓴 점',
-        '[품질·하자 관련 디테일 1~2개 — 예: 철거 중 발견한 문제를 사진으로 먼저 공유하고 협의 후 보강]','',
+        reviewLine,'',
         '■ 마치며',
         (f.loc||'대전')+'에서 인테리어를 고민 중이시라면, 항목별 견적부터 솔직하게 잡아드립니다.','',
         contact].join('\n')
@@ -17010,10 +17034,11 @@ function adDraftText(chId,f){
     return {
       title:headBits+(worksShort?' · '+worksShort:''),
       body:[(f.loc||'대전')+(py?' '+py:'')+(worksShort?' '+worksShort:' 인테리어')+' 완료 ✅',
-        (f.period?'공사기간 '+f.period+' · ':'')+'대표가 직접 시공하고 관리했습니다.','',
-        '[전/후 사진]','',
+        (f.period?'공사기간 '+f.period+' · ':'')+'대표가 직접 시공하고 관리했습니다.']
+        .concat(hasSignal?['',signalLine]:[])
+        .concat(['','[전/후 사진]','',
         '상담은 DM 또는 '+COMPANY.tel,'',
-        adHashtags(f)].join('\n')
+        adHashtags(f)]).join('\n')
     };
   }
   return {
@@ -17026,14 +17051,36 @@ function adDraftText(chId,f){
 }
 function adDraftOpen(chId){
   let curCh=chId;   // 모달 안에서 채널 전환 가능 — 한 번 열고 채널별 원고를 모두 뽑는다
-  const projs=(state.projects||[]).map(function(p){return p.name;});
-  if(!projs.length){toast('현장이 아직 없어요 — 먼저 현장을 추가하세요');return;}
-  const cur=(state.activeProject&&projs.indexOf(state.activeProject)>=0)?state.activeProject:projs[projs.length-1];
+  // 완공(!archived && doneAt) 현장 우선 — satisfactionAdd 등이 쓰는 관용식 재사용
+  const isDone=function(p){return !!(p&&!p.archived&&p.doneAt);};
+  const ordered=(state.projects||[]).slice().sort(function(a,b){
+    const da=isDone(a),db=isDone(b);
+    if(da&&db)return String(b.doneAt).localeCompare(String(a.doneAt)); // 완공은 최근 준공일 우선
+    if(da)return -1; if(db)return 1;
+    return 0;
+  });
+  if(!ordered.length){toast('현장이 아직 없어요 — 먼저 현장을 추가하세요');return;}
+  const doneList=ordered.filter(isDone);
+  const projNames=ordered.map(function(p){return p.name;});
+  // 기본 선택 = 가장 최근 완공 현장 → 없으면 활성 현장 → 마지막
+  const cur=doneList.length?doneList[0].name
+    :((state.activeProject&&projNames.indexOf(state.activeProject)>=0)?state.activeProject:projNames[projNames.length-1]);
+  // '완공만 보기'(__adDoneOnly) 반영한 옵션 HTML — 완공엔 "✅ 완공" 배지
+  const optsHtml=function(selName){
+    return ordered.filter(function(p){return __adDoneOnly?isDone(p):true;})
+      .map(function(p){
+        const label=escapeHtml(p.name)+(isDone(p)?'  ✅ 완공':'');
+        return '<option'+(p.name===selName?' selected':'')+' value="'+escapeAttr(p.name)+'">'+label+'</option>';
+      }).join('');
+  };
   openModal('✍️ 홍보 원고 만들기',
     '<div id="adDraftChs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>'+
-    '<label style="font-size:11.5px;color:var(--muted)">현장 선택</label>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'+
+      '<label style="font-size:11.5px;color:var(--muted)">현장 선택 <span style="color:var(--muted)">(완공 현장 우선)</span></label>'+
+      '<label style="font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="adDoneOnly"> 완공만 보기</label>'+
+    '</div>'+
     '<select id="adDraftProj" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
-      projs.map(function(n){return '<option'+(n===cur?' selected':'')+' value="'+escapeAttr(n)+'">'+escapeHtml(n)+'</option>';}).join('')+'</select>'+
+      optsHtml(cur)+'</select>'+
     '<label style="font-size:11.5px;color:var(--muted)">제목</label>'+
     '<input id="adDraftTitle" type="text" style="width:100%;padding:10px;margin:4px 0 10px;border-radius:9px;border:1px solid var(--line-soft)">'+
     '<label style="font-size:11.5px;color:var(--muted)">본문 (대괄호 [ ] 자리만 채우면 완성)</label>'+
@@ -17091,6 +17138,20 @@ function adDraftOpen(chId){
   };
   const sel=document.getElementById('adDraftProj');
   if(sel){sel.onchange=fill;renderChs();fill();}
+  // '완공만 보기' 토글 — 메모리 변수(__adDoneOnly)만 갱신, 저장·직렬화 없음
+  const doneChk=document.getElementById('adDoneOnly');
+  if(doneChk){
+    doneChk.checked=__adDoneOnly;
+    doneChk.onchange=function(){
+      __adDoneOnly=doneChk.checked;
+      const s=document.getElementById('adDraftProj'); if(!s)return;
+      let keep=s.value;
+      const visible=ordered.filter(function(p){return __adDoneOnly?isDone(p):true;}).map(function(p){return p.name;});
+      if(visible.indexOf(keep)<0)keep=visible[0]||keep;   // 필터로 사라진 선택은 첫 완공으로
+      s.innerHTML=optsHtml(keep);
+      fill();
+    };
+  }
 }
 /* 📈 게시별 성과 기록 — 이 글을 보고 온 문의 수·메모. 어떤 채널·형식이
    실제 손님을 데려오는지 데이터가 쌓인다 (res 필드는 선택적 — 하위호환) */
