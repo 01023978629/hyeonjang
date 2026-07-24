@@ -148,6 +148,34 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     else assert(!r.nagB, '10일 이전에는 페이스 경보 없음(day=' + r.day + ')');
   });
 
+  await test('9. 견적 팔로업 — 미수주 무응답 견적이 브리핑에 표면화(전화 원문 없음)', async () => {
+    const r = await page.evaluate(() => {
+      const DAY = 86400000;
+      const d = (back) => localDate(new Date(Date.now() - back * DAY));
+      // 현장 미연결(미수주) + 10일 경과 견적 → quoteFollowupData(3~30일) 포함
+      state.quotes = [{ id: 'q1', title: '행복빌라 욕실', date: d(10), place: '대전 탄방동', items: [{ name: '타일', qty: 1, price: 2000000 }], vatIncluded: false }];
+      window.__briefOpen = true; render();
+      const b = hjDailyBrief();
+      const html = hjDailyBriefHTML();
+      const text = hjDailyBriefText();
+      return {
+        qf: b.quoteFollow.length,
+        hasSection: /⏰ 견적 팔로업/.test(html),
+        hasTitle: html.indexOf('행복빌라 욕실') >= 0,
+        hasBtn: /data-qfollow/.test(html),
+        chip: /견적 팔로업 1/.test(html),
+        inText: /견적 팔로업/.test(text),
+        noRawPhone: !/01[016-9]-?\d{3,4}-?\d{4}/.test(JSON.stringify(b.quoteFollow))
+      };
+    });
+    assert(r.qf === 1, 'quoteFollow 1건: ' + r.qf);
+    assert(r.hasSection && r.hasTitle, '브리핑에 견적 팔로업 섹션+제목');
+    assert(r.hasBtn, '팔로업 버튼(data-qfollow) 존재');
+    assert(r.chip, '요약 칩에 견적 팔로업 카운트');
+    assert(r.inText, 'AI 복사 텍스트에 견적 팔로업 포함');
+    assert(r.noRawPhone, 'quoteFollow 데이터에 전화 원문 없음');
+  });
+
   await test('6. serializeData() 직렬화 불변 — 브리핑 관련 새 키 없음', async () => {
     const keys = await page.evaluate(() => Object.keys(serializeData()));
     const bad = keys.filter(k => /brief/i.test(k));

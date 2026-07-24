@@ -4351,7 +4351,9 @@ function hjDailyBrief(){
   if(noEst.length)checks.push({ic:'📄',t:'견적서 미첨부 현장 '+noEst.length+'곳: '+noEst.slice(0,3).join(', ')+(noEst.length>3?' 외':'')});
   const adNoPerf=(state.adPosts||[]).filter(a=>a&&!(a.perf||a.performance||a.result||a.metrics)).length;
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
-  return {today,tomorrow,todaySch,tmrSch,doing,leadNotes,followups,pay,dues,totRecv,totDue,totEst,checks,unassignedPhotos};
+  // ⏰ 견적 팔로업: 현장 미연결(미수주) 3~30일 경과 견적 — 매일 카드에 표면화(수주 전환 골든타임). 순수 읽기 파생.
+  let quoteFollow=[];try{if(typeof quoteFollowupData==='function')quoteFollow=quoteFollowupData().slice(0,5);}catch(e){}
+  return {today,tomorrow,todaySch,tmrSch,doing,leadNotes,followups,quoteFollow,pay,dues,totRecv,totDue,totEst,checks,unassignedPhotos};
 }
 /* ═══════════ 🏥 현장 보드 — 모든 활성 현장 종합 위험도 랭킹(순수·읽기전용 파생) ═══════════
    Phase 4 "여러 현장 동시 운영". 새 탭·새 모달·새 project 필드·새 직렬화 키 없음.
@@ -4467,7 +4469,7 @@ function hjHealthBoardHTML(sec){
 // 결정→표시: 대시보드 최상단 카드(요약 + 펼치기). 빈 상태는 친절 문구.
 function hjDailyBriefHTML(){
   let b; try{b=hjDailyBrief();}catch(e){return '<div style="border:1.5px solid var(--line-soft);border-radius:14px;padding:12px;margin:0 0 14px;background:var(--paper)"><b>☀️ 오늘의 브리핑</b><div class="hint" style="margin:6px 0 0">브리핑을 계산할 수 없습니다.</div></div>';}
-  const nTodo=b.todaySch.length, nDoing=b.doing.length, nLead=b.leadNotes.length+b.followups.length, nCheck=b.checks.length;
+  const nTodo=b.todaySch.length, nDoing=b.doing.length, nLead=b.leadNotes.length+b.followups.length, nCheck=b.checks.length, nQF=(b.quoteFollow||[]).length;
   const chip=(txt)=>'<span style="display:inline-block;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:20px;padding:3px 10px;font-size:12px;margin:0 5px 5px 0">'+txt+'</span>';
   const sec=(t)=>'<div style="font-size:12px;letter-spacing:.02em;color:var(--muted);font-weight:700;margin:12px 0 6px">'+t+'</div>';
   let h='<div class="brief-card" style="border:1.5px solid var(--clay);border-radius:14px;padding:13px 13px 12px;margin:0 0 14px;background:var(--paper);box-shadow:0 1px 6px rgba(0,0,0,.04)">';
@@ -4477,7 +4479,7 @@ function hjDailyBriefHTML(){
      '<button class="ghost tiny" data-brieftoggle style="font-size:11px;padding:4px 9px">'+(__briefOpen?'접기 ▲':'펼치기 ▼')+'</button>'+
      '</div>';
   // 요약 칩(항상 표시)
-  h+='<div style="margin-top:8px">'+chip('📅 오늘 일정 '+nTodo)+chip('🔥 진행 현장 '+nDoing)+chip('📞 챙길 연락 '+nLead)+(nCheck?chip('✅ 체크 '+nCheck):'')+'</div>';
+  h+='<div style="margin-top:8px">'+chip('📅 오늘 일정 '+nTodo)+chip('🔥 진행 현장 '+nDoing)+chip('📞 챙길 연락 '+nLead)+(nQF?chip('⏰ 견적 팔로업 '+nQF):'')+(nCheck?chip('✅ 체크 '+nCheck):'')+'</div>';
   // 🏥 현장 보드 — 요약 칩 아래 읽기전용 파생 섹션(자체 접힘 __boardOpen, __briefOpen과 독립)
   try{h+=hjHealthBoardHTML(sec);}catch(e){}
   if(__briefOpen){
@@ -4511,6 +4513,13 @@ function hjDailyBriefHTML(){
         '<button class="ghost tiny" data-callcust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">📞</button>'+
         '<button class="ghost tiny" data-smscust="'+escapeAttr(f.name)+'" style="padding:3px 8px;font-size:11px">💬</button></div>').join('');
     } else { h+='<div class="hint" style="margin:0">지금 챙길 연락 없음.</div>'; }
+    // 3.5) 견적 팔로업(미수주·무응답 견적) — 전화 원문 미노출(반환 스키마에 전화 없음), 발송은 quoteFollowup() 모달 경유
+    if(b.quoteFollow&&b.quoteFollow.length){
+      h+=sec('⏰ 견적 팔로업');
+      h+=b.quoteFollow.map(q=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(q.title)+'</b> <span style="color:var(--muted);font-size:11px">'+q.days+'일 경과</span>'+
+        (q.total?' <b style="color:var(--blueprint)">'+won(q.total)+'</b>':'')+(q.place?' <span style="color:var(--muted)">📍'+escapeHtml(q.place)+'</span>':'')+'</span>'+
+        '<button class="clay tiny" data-qfollow="1" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="견적 팔로업 문자 초안">⏰ 팔로업</button></div>').join('');
+    }
     // 4) 대금 현황(힌트)
     h+=sec('💰 대금 현황(힌트)');
     if(b.totEst>0){
@@ -4564,6 +4573,11 @@ function hjDailyBriefText(){
   if(!b.leadNotes.length&&!b.followups.length)L.push(' · 지금 챙길 연락 없음');
   b.leadNotes.forEach(n=>L.push(' · [홈 리드] '+(n.date?n.date+' ':'')+(n.snippet||'')+(n.project?' @'+n.project:'')));
   b.followups.forEach(f=>L.push(' · [후속] '+f.name+' ['+f.stageName+']'+(f.cust?' '+f.cust:'')+(f.phoneMasked?' '+f.phoneMasked:'')));
+  if(b.quoteFollow&&b.quoteFollow.length){
+    L.push('');
+    L.push('⏰ 견적 팔로업 '+b.quoteFollow.length+'건 (미수주·무응답)');
+    b.quoteFollow.forEach(q=>L.push(' · '+q.title+' '+q.days+'일 경과'+(q.total?' '+won(q.total):'')));
+  }
   L.push('');
   L.push('💰 대금 현황');
   if(b.totEst>0){
@@ -20314,12 +20328,13 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
     if(d.briefcopy!==undefined){e.stopPropagation();return hjDailyBriefCopy();}
     if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
+    if(d.qfollow!==undefined){e.stopPropagation();return quoteFollowup();}   // ⏰ 견적 팔로업 모달(전화 원문은 발송 시점만)
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
     if(d.boardtoggle!==undefined){e.stopPropagation();__boardOpen=!__boardOpen;if(!__boardOpen)__boardFilter=false;return render();}
