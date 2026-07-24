@@ -294,6 +294,15 @@
   .ph-tag.ok{background:var(--ok)} .ph-tag.warn{background:var(--warn)}
   .ph-tag.phase{background:var(--blueprint);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ph-tag.work{background:var(--moss);font-size:9px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 사진 카드: 이미지(정사각) 아래에 공정/작업명·선택칸을 전체 표시(오버레이·잘림 없음) */
+  .ph-cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .ph-cell .ph{width:100%}
+  .ph-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .ph-cap{font-size:10.5px;font-weight:700;line-height:1.3;word-break:break-word;white-space:normal}
+  .ph-cap.phase{color:var(--blueprint)} .ph-cap.work{color:var(--moss)}
+  /* 아래로 내려온 공정 선택칸은 오버레이 해제(정적 배치) */
+  .ph-meta .ph-phase,.ph-meta .ph-hint{position:static;width:100%;left:auto;right:auto;bottom:auto}
+  .ph-meta .ph-hint{text-align:left}
   .cluster-work{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
   .cluster-work .work-input{flex:1;min-width:160px;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);border-radius:7px}
   .cluster-work .work-name{font-size:11.5px;color:var(--moss);font-weight:700}
@@ -19261,12 +19270,17 @@ function photoCell(p){
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
-  return `<div class="ph${__sel.has(p.id)?' sel':''}">
-    ${photoImg(p,800,p.id)}
-    ${selChk(p.id)}
-    ${tools}
-    ${tagText?`<span class="ph-tag ${tagCls}">${escapeHtml(tagText)}</span>`:''}
-    ${sel}
+  // 공정/작업명·선택칸을 사진 위 오버레이가 아니라 '사진 아래'에 배치 → 긴 글자도 잘리지 않고 전체 표시.
+  return `<div class="ph-cell">
+    <div class="ph${__sel.has(p.id)?' sel':''}">
+      ${photoImg(p,800,p.id)}
+      ${selChk(p.id)}
+      ${tools}
+    </div>
+    <div class="ph-meta">
+      ${tagText?`<div class="ph-cap ${tagCls}">${escapeHtml(tagText)}</div>`:''}
+      ${sel}
+    </div>
   </div>`;
 }
 function viewEstimates(){
