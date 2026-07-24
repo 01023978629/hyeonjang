@@ -14,7 +14,7 @@ async function test(name, fn) {
   catch (e) { results.push({ name, ok: false, err: String(e && e.stack || e).slice(0, 800) }); console.log('FAIL  ' + name + '\n      ' + String(e && e.message || e)); }
 }
 function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
-const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingView', 'staleProjects', 'reviewRequest'];
+const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingView', 'staleProjects', 'reviewRequest', 'asManage'];
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined });
@@ -275,6 +275,45 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     const st = await page.evaluate(() => ({ tab: state.tab, ap: state.activeProject }));
     assert(st.tab === 'project', 'tab=project: ' + st.tab);
     assert(st.ap === name, 'activeProject=' + name + ' (got ' + st.ap + ')');
+  });
+
+  // 10) 🔧 AS 축 — asOpenData(status!=='done') aging = board.reasons('as') + openAction=asManage
+  await test('AS 축 — 미처리 AS aging 신호·drift·openAction·완료 AS 제외', async () => {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1200);
+    await seed();
+    const r = await page.evaluate(() => {
+      const DAY = 86400000;
+      const d = (back) => localDate(new Date(Date.now() - back * DAY));
+      // 완공 현장에 미처리 AS 2건(접수 20일 전·3일 전) + 완료 AS 1건(제외돼야 함)
+      state.asLog = [
+        { id: 'as1', project: '보증현장D', date: d(20), text: '욕실 누수 재발', status: 'open' },
+        { id: 'as2', project: '보증현장D', date: d(3), text: '문 경첩 소음', status: 'doing' },
+        { id: 'as3', project: '보증현장D', date: d(1), text: '지난 건 완료', status: 'done' }
+      ];
+      const od = asOpenData();
+      const b = projHealthBoard();
+      const asRow = b.rows.find(x => x.name === '보증현장D');
+      const asReason = asRow ? asRow.reasons.find(rr => rr.axis === 'as') : null;
+      // drift: board 'as' 축 현장 집합 = asOpenData 이름 집합
+      const boardAs = b.rows.filter(x => x.reasons.some(rr => rr.axis === 'as')).map(x => x.name).sort();
+      const srcAs = od.map(x => x.name).sort();
+      state.asLog = [];
+      return {
+        odCount: od.length, odRow: od[0] || null,
+        hasReason: !!asReason, reason: asReason || null,
+        drift: JSON.stringify(boardAs) === JSON.stringify(srcAs),
+        boardAs, srcAs
+      };
+    });
+    assert(r.odCount === 1, 'asOpenData 1현장(완료 AS 제외): ' + r.odCount);
+    assert(r.odRow && r.odRow.count === 2, '미처리 2건(done 제외): ' + JSON.stringify(r.odRow));
+    assert(r.odRow && r.odRow.days === 20, 'aging=최고령 20일: ' + (r.odRow && r.odRow.days));
+    assert(r.hasReason, '보증현장D에 as 축 reason 존재');
+    assert(r.reason && r.reason.openAction === 'asManage', "openAction=asManage: " + JSON.stringify(r.reason));
+    assert(r.reason && r.reason.urgent === true, '접수 20일(>=14) → urgent');
+    assert(r.reason && /AS 미처리 2건/.test(r.reason.label), 'label=AS 미처리 2건: ' + (r.reason && r.reason.label));
+    assert(r.drift, 'as 축 drift 불일치 — board=' + JSON.stringify(r.boardAs) + ' src=' + JSON.stringify(r.srcAs));
   });
 
   const pe = errs.length;
