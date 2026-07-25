@@ -4350,7 +4350,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
+  let html=hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -7557,6 +7557,100 @@ function asOpenData(){
   });
   return Object.values(map).map(m=>{const p=byName[m.name]||{};return {name:m.name,count:m.count,days:m.days,latest:m.latest,stage:p.stage||0,customer:p.customer||{}};})
     .sort((a,b)=>(b.days||0)-(a.days||0)||b.count-a.count);
+}
+
+/* ===== 🛡 파수꾼 — 폰 캘린더로 받는 그 내용을 앱 첫 화면에도 =====
+   판단 기준은 apps-script/Watchdog.gs 의 var W 와 **같은 값**이어야 한다.
+   한쪽만 바꾸면 캘린더 알림과 앱 화면이 서로 다른 말을 하게 되므로 반드시 함께 고칠 것.
+   순수 파생(읽기 전용) — state 를 변형하지 않으며 직렬화에 아무것도 추가하지 않는다. */
+const HJ_WATCH={dueAfterDone:14,dueMin:100000,warrantySoon:60,asStale:3,projStale:21};
+function hjWatchScan(){
+  const out={due:[],as:[],warranty:[],stale:[],cash:0,total:0};
+  try{
+    // 현장별 마지막 움직임(사진·파일·일정 중 최근) — 방치 판정용
+    const touch={};
+    const bump=(pn,ymd)=>{if(!pn||!ymd)return;const k=String(pn),v=String(ymd).slice(0,10);if(!touch[k]||v>touch[k])touch[k]=v;};
+    (state.files||[]).forEach(f=>{if(f&&f.project&&f.when)bump(f.project,(f.when instanceof Date)?f.when.toISOString():f.when);});
+    (state.schedule||[]).forEach(s=>{if(s&&s.project&&s.date)bump(s.project,s.date);});
+
+    (state.projects||[]).forEach(p=>{
+      if(!p||!p.name||p.archived)return;
+      const phone=(p.customer&&p.customer.phone)||'';
+      // ① 못 받은 돈 — 완료 후 N일 경과분만(공사 중은 정상이므로 제외)
+      let s=null; try{s=projStats(p.name);}catch(e){}
+      if(s&&s.due>=HJ_WATCH.dueMin&&p.doneAt){
+        const d=hjDaysSince(p.doneAt);
+        if(d!==null&&d>=HJ_WATCH.dueAfterDone){out.due.push({name:p.name,owed:s.due,days:d,phone});out.cash+=s.due;}
+      }
+      // ② 보증 만료 임박 = 무상점검 제안(재수주 기회)
+      let w=null; try{w=hjWarranty(p);}catch(e){}
+      if(w&&w.dday>=0&&w.dday<=HJ_WATCH.warrantySoon)out.warranty.push({name:p.name,dday:w.dday,end:w.end,phone});
+      // ③ 멈춰 있는 현장 — 완료 전인데 오래 조용
+      if(!p.doneAt){
+        const last=touch[p.name]||null, idle=last?hjDaysSince(last):null;
+        if(idle!==null&&idle>=HJ_WATCH.projStale)out.stale.push({name:p.name,days:idle,last});
+      }
+    });
+    // ④ 밀린 AS
+    let as=[]; try{as=asOpenData()||[];}catch(e){}
+    as.forEach(a=>{if(a&&(a.days===null||a.days>=HJ_WATCH.asStale))out.as.push(a);});
+
+    out.due.sort((a,b)=>b.owed-a.owed);
+    out.warranty.sort((a,b)=>a.dday-b.dday);
+    out.stale.sort((a,b)=>b.days-a.days);
+  }catch(e){}
+  out.total=out.due.length+out.as.length+out.warranty.length+out.stale.length;
+  return out;
+}
+let __watchOpen=false;   // 화면 접힘 상태 — 메모리에만 둔다(직렬화 금지)
+function hjWatchCardHTML(){
+  let r; try{r=hjWatchScan();}catch(e){return '';}
+  const won=n=>Math.round(n||0).toLocaleString('ko-KR')+'원';
+  const chip=(t,c)=>'<span style="display:inline-block;background:var(--paper-2);border:1px solid '+(c||'var(--line-soft)')+';border-radius:20px;padding:3px 10px;font-size:12px;margin:0 5px 5px 0'+(c?';color:'+c+';font-weight:700':'')+'">'+t+'</span>';
+  const dl='<button class="moss tiny" onclick="exportAllICS()" style="font-size:11.5px;padding:5px 10px;white-space:nowrap" title="작업 일정을 폰 캘린더에 등록(.ics)">📲 일정표 폰에 받기</button>';
+
+  // 클래스는 brief-card 와 분리한다 — .brief-card 는 '오늘의 브리핑' 카드를 가리키는 이름이라
+  // 여기서 같이 쓰면 querySelector('.brief-card') 가 이 카드를 먼저 집어 브리핑 관련 코드·테스트가 어긋난다.
+  let h='<div class="watch-card" style="border:1.5px solid '+(r.total?'var(--warn)':'var(--line-soft)')+';border-radius:14px;padding:13px;margin:0 0 14px;background:var(--paper)">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+     '<b style="font-size:15px">🛡 파수꾼 <span style="font-size:11.5px;color:var(--muted);font-weight:500">· 폰 캘린더로도 매일 아침 갑니다</span></b>'+
+     '<span style="display:flex;gap:6px">'+dl+
+     (r.total?'<button class="ghost tiny" data-watchtoggle style="font-size:11px;padding:4px 9px">'+(__watchOpen?'접기 ▲':'펼치기 ▼')+'</button>':'')+
+     '</span></div>';
+
+  if(!r.total){
+    h+='<div class="hint" style="margin:8px 0 0">✅ 챙길 게 없습니다 — 미수금·AS·보증만료·멈춘 현장 모두 이상 없습니다.</div></div>';
+    return h;
+  }
+
+  h+='<div style="margin-top:8px">'+
+     (r.due.length?chip('💰 못 받은 돈 '+won(r.cash),'var(--warn)'):'')+
+     (r.as.length?chip('🔧 밀린 AS '+r.as.length):'')+
+     (r.warranty.length?chip('🛡 보증만료 '+r.warranty.length):'')+
+     (r.stale.length?chip('💤 멈춘 현장 '+r.stale.length):'')+'</div>';
+
+  if(__watchOpen){
+    const sec=t=>'<div style="font-size:12px;color:var(--muted);font-weight:700;margin:12px 0 5px">'+t+'</div>';
+    const tel=p=>p?'<a href="tel:'+encodeURIComponent(p)+'" style="color:var(--blueprint);text-decoration:none">📞 '+escapeHtml(p)+'</a>':'';
+    if(r.due.length){
+      h+=sec('💰 못 받은 돈 — 완료 후 '+HJ_WATCH.dueAfterDone+'일 넘음');
+      h+=r.due.map(d=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(d.name)+'</b> <b style="color:var(--warn)">'+won(d.owed)+'</b> <span style="color:var(--muted)">완료 '+d.days+'일 경과</span> '+tel(d.phone)+'</div>').join('');
+    }
+    if(r.as.length){
+      h+=sec('🔧 밀린 AS');
+      h+=r.as.map(a=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(a.name)+'</b> '+a.count+'건'+(a.days!==null?' <span style="color:var(--muted)">'+a.days+'일 경과</span>':'')+(a.latest?' <span style="color:var(--muted)">'+escapeHtml(String(a.latest).slice(0,30))+'</span>':'')+'</div>').join('');
+    }
+    if(r.warranty.length){
+      h+=sec('🛡 보증 만료 임박 — 무상점검 제안 = 재수주 기회');
+      h+=r.warranty.map(v=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(v.name)+'</b> <b style="color:var(--clay)">D-'+v.dday+'</b> <span style="color:var(--muted)">'+escapeHtml(String(v.end||''))+' 만료</span> '+tel(v.phone)+'</div>').join('');
+    }
+    if(r.stale.length){
+      h+=sec('💤 멈춰 있는 현장 — '+HJ_WATCH.projStale+'일 넘게 조용');
+      h+=r.stale.map(s=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(s.name)+'</b> <span style="color:var(--muted)">'+s.days+'일째'+(s.last?' (마지막 '+escapeHtml(s.last)+')':'')+'</span></div>').join('');
+    }
+  }
+  h+='</div>';
+  return h;
 }
 function asManage(){
   const log=(state.asLog||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -20507,9 +20601,10 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
+    if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
     if(d.briefcopy!==undefined){e.stopPropagation();return hjDailyBriefCopy();}
     if(d.briefbill!==undefined){e.stopPropagation();return hjBriefBill(d.briefbill);}
