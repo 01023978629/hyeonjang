@@ -7569,7 +7569,7 @@ function asOpenData(){
    순수 파생(읽기 전용) — state 를 변형하지 않으며 직렬화에 아무것도 추가하지 않는다. */
 const HJ_WATCH={dueAfterDone:14,dueMin:100000,warrantySoon:60,asStale:3,projStale:21};
 function hjWatchScan(){
-  const out={due:[],as:[],warranty:[],stale:[],cash:0,total:0};
+  const out={due:[],uncertain:[],as:[],warranty:[],stale:[],cash:0,total:0};
   try{
     // 현장별 마지막 움직임(사진·파일·일정 중 최근) — 방치 판정용
     const touch={};
@@ -7580,11 +7580,19 @@ function hjWatchScan(){
     (state.projects||[]).forEach(p=>{
       if(!p||!p.name||p.archived)return;
       const phone=(p.customer&&p.customer.phone)||'';
-      // ① 못 받은 돈 — 완료 후 N일 경과분만(공사 중은 정상이므로 제외)
+      // ① 못 받은 돈 — 약속한 날(완료일, 없으면 dueDate)이 지난 것만
       let s=null; try{s=projStats(p.name);}catch(e){}
-      if(s&&s.due>=HJ_WATCH.dueMin&&p.doneAt){
-        const d=hjDaysSince(p.doneAt);
-        if(d!==null&&d>=HJ_WATCH.dueAfterDone){out.due.push({name:p.name,owed:s.due,days:d,phone});out.cash+=s.due;}
+      const payBase=p.doneAt||p.dueDate||null;
+      if(s&&s.due>=HJ_WATCH.dueMin&&payBase){
+        const d=hjDaysSince(payBase);
+        if(d!==null&&d>=HJ_WATCH.dueAfterDone){
+          const row={name:p.name,owed:s.due,days:d,byDue:!p.doneAt,phone};
+          // 수금 기록이 한 번도 없으면 독촉이 아니라 '입금 확인 필요'(recvUnknown, [BUG-8]).
+          // 파수꾼(Watchdog.gs)과 같은 규칙 — 한쪽만 바꾸면 캘린더와 앱이 다른 말을 하게 된다.
+          let unk=false; try{unk=recvUnknown(p);}catch(e){}
+          if(unk)out.uncertain.push(row);
+          else {out.due.push(row);out.cash+=s.due;}
+        }
       }
       // ② 보증 만료 임박 = 무상점검 제안(재수주 기회)
       let w=null; try{w=hjWarranty(p);}catch(e){}
@@ -7600,10 +7608,11 @@ function hjWatchScan(){
     as.forEach(a=>{if(a&&(a.days===null||a.days>=HJ_WATCH.asStale))out.as.push(a);});
 
     out.due.sort((a,b)=>b.owed-a.owed);
+    out.uncertain.sort((a,b)=>b.owed-a.owed);
     out.warranty.sort((a,b)=>a.dday-b.dday);
     out.stale.sort((a,b)=>b.days-a.days);
   }catch(e){}
-  out.total=out.due.length+out.as.length+out.warranty.length+out.stale.length;
+  out.total=out.due.length+out.uncertain.length+out.as.length+out.warranty.length+out.stale.length;
   return out;
 }
 let __watchOpen=false;   // 화면 접힘 상태 — 메모리에만 둔다(직렬화 금지)
@@ -7629,6 +7638,7 @@ function hjWatchCardHTML(){
 
   h+='<div style="margin-top:8px">'+
      (r.due.length?chip('💰 못 받은 돈 '+won(r.cash),'var(--warn)'):'')+
+     (r.uncertain.length?chip('❓ 입금 확인 '+r.uncertain.length):'')+
      (r.as.length?chip('🔧 밀린 AS '+r.as.length):'')+
      (r.warranty.length?chip('🛡 보증만료 '+r.warranty.length):'')+
      (r.stale.length?chip('💤 멈춘 현장 '+r.stale.length):'')+'</div>';
@@ -7638,7 +7648,12 @@ function hjWatchCardHTML(){
     const tel=p=>p?'<a href="tel:'+encodeURIComponent(p)+'" style="color:var(--blueprint);text-decoration:none">📞 '+escapeHtml(p)+'</a>':'';
     if(r.due.length){
       h+=sec('💰 못 받은 돈 — 완료 후 '+HJ_WATCH.dueAfterDone+'일 넘음');
-      h+=r.due.map(d=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(d.name)+'</b> <b style="color:var(--warn)">'+won(d.owed)+'</b> <span style="color:var(--muted)">완료 '+d.days+'일 경과</span> '+tel(d.phone)+'</div>').join('');
+      h+=r.due.map(d=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(d.name)+'</b> <b style="color:var(--warn)">'+won(d.owed)+'</b> <span style="color:var(--muted)">'+(d.byDue?'약속일':'완료')+' '+d.days+'일 경과</span> '+tel(d.phone)+'</div>').join('');
+    }
+    if(r.uncertain.length){
+      h+=sec('❓ 입금 확인 필요 — 수금 기록이 아예 없는 현장');
+      h+='<div class="hint" style="margin:0 0 4px">현금으로 받고 입력만 안 하셨을 수 있어요. 독촉 전에 먼저 확인하세요.</div>';
+      h+=r.uncertain.map(q=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(q.name)+'</b> <b style="color:var(--clay)">'+won(q.owed)+'</b> <span style="color:var(--muted)">'+(q.byDue?'약속일':'완료')+' '+q.days+'일 경과</span> '+tel(q.phone)+'</div>').join('');
     }
     if(r.as.length){
       h+=sec('🔧 밀린 AS');

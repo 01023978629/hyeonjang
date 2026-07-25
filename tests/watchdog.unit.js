@@ -35,6 +35,7 @@ function ahead(n) { return ago(-n); }
 
 test('미수금 — 견적(부가세 포함) - 수금, 완료 14일 경과분만 경보', () => {
   const data = {
+    payLog: [{ d: ago(35), project: '괴산현장', amt: 5000000 }],
     projects: [
       { name: '괴산현장', received: 5000000, doneAt: ago(30), customer: { name: '김사장', phone: '010-1111-2222' } },
       { name: '둔산동', received: 10000000, doneAt: ago(30) },              // 완납 → 제외
@@ -58,7 +59,7 @@ test('미수금 — 견적(부가세 포함) - 수금, 완료 14일 경과분만
 
 test('견적 중복제거 — 이름 다르고 금액 같으면 1건으로(2배 계상 금지)', () => {
   const data = {
-    projects: [{ name: '공주현장', received: 0, doneAt: ago(30) }],
+    projects: [{ name: '공주현장', received: 0, recvChecked: true, doneAt: ago(30) }],
     files: [
       { kind: 'estimate', project: '공주현장', name: '★20251028 빌드캡 공주 3,978,700.xlsx', est: { amount: 3978700 }, when: ago(50) },
       { kind: 'estimate', project: '공주현장', name: '빌드캡 (공주)20251028 (1).xlsx', est: { amount: 3978700 }, when: ago(49) },
@@ -71,7 +72,7 @@ test('견적 중복제거 — 이름 다르고 금액 같으면 1건으로(2배 
 
 test('견적 중복제거 — exSum(집계 제외) 견적은 빼고 계산', () => {
   const data = {
-    projects: [{ name: 'A현장', received: 0, doneAt: ago(30) }],
+    projects: [{ name: 'A현장', received: 0, recvChecked: true, doneAt: ago(30) }],
     files: [
       { kind: 'estimate', project: 'A현장', name: '초기안.xlsx', est: { amount: 9000000 }, exSum: true, when: ago(70) },
       { kind: 'estimate', project: 'A현장', name: '최종.xlsx', est: { amount: 5000000 }, when: ago(60) },
@@ -182,6 +183,76 @@ test('오늘·내일 일정 — 경보(total)에는 포함하지 않음', () => 
   eq(r.total, 0, '일정은 경보 수에 안 들어감');
 });
 
+test('★수금 기록이 없는 현장은 독촉 아님 — 입금 확인 필요로 분리(앱 recvUnknown 규칙)', () => {
+  const data = {
+    payLog: [{ d: ago(20), project: '기록있음', amt: 3000000 }],
+    projects: [
+      { name: '기록있음', received: 3000000, doneAt: ago(30) },   // 수금 이력 O → 진짜 미수
+      { name: '기록없음', received: 0, doneAt: ago(30) },         // 이력 X·수금 0 → 확인 필요
+      { name: '확인함',  received: 0, recvChecked: true, doneAt: ago(30) }, // 사장님이 확인 표시 → 미수
+    ],
+    files: [
+      { kind: 'estimate', project: '기록있음', name: 'a.xlsx', est: { amount: 10000000 }, when: ago(60) },
+      { kind: 'estimate', project: '기록없음', name: 'b.xlsx', est: { amount: 8000000 }, when: ago(60) },
+      { kind: 'estimate', project: '확인함',  name: 'c.xlsx', est: { amount: 5000000 }, when: ago(60) },
+    ],
+  };
+  const r = sandbox.watchScan_(data);
+  const dueNames = r.due.map(x => x.name).sort();
+  const unNames = r.uncertain.map(x => x.name);
+  eq(JSON.stringify(dueNames), JSON.stringify(['기록있음', '확인함']), '독촉 대상: ' + JSON.stringify(dueNames));
+  eq(JSON.stringify(unNames), JSON.stringify(['기록없음']), '확인 필요: ' + JSON.stringify(unNames));
+  // 합계 = 기록있음 700만 + 확인함 500만 = 1200만. 확인필요(기록없음 800만)는 빠진다.
+  eq(r.cash, 12000000, '못 받은 돈 합계에 확인필요분(800만)은 안 들어감');
+  assert(!/8,000,000/.test(sandbox.watchText_(r).split('■ 입금 확인')[0]), '미수금 절에 확인필요분이 섞이면 안 됨');
+});
+
+test('★중도금 — 완공 전이라도 약속일(dueDate) 지나면 잡는다', () => {
+  const data = {
+    payLog: [{ d: ago(60), project: '공사중', amt: 1000000 }],
+    projects: [{ name: '공사중', received: 1000000, dueDate: ago(20) }],   // doneAt 없음
+    files: [{ kind: 'estimate', project: '공사중', name: 'q.xlsx', est: { amount: 9000000 }, when: ago(70) }],
+  };
+  const r = sandbox.watchScan_(data);
+  eq(r.due.length, 1, '완공 전이어도 약속일 경과분은 잡힘');
+  eq(r.due[0].byDue, true, '약속일 기준임을 표시');
+  assert(/약속일 20일 경과/.test(sandbox.watchText_(r)), '문구에 약속일 기준 표기: ' + sandbox.watchText_(r).slice(0, 200));
+});
+
+test('★AS 알림에 전화번호 — 폰에서 바로 전화 걸 수 있게', () => {
+  const data = {
+    projects: [{ name: '괴산현장', received: 0, customer: { name: '김사장', phone: '010-9999-8888' } }],
+    files: [],
+    asLog: [{ project: '괴산현장', date: ago(9), text: '누수', status: 'open' }],
+  };
+  const r = sandbox.watchScan_(data);
+  eq(r.as[0].phone, '010-9999-8888', 'AS 항목에 연락처가 실려야 함');
+  assert(/010-9999-8888/.test(sandbox.watchText_(r)), '알림 본문에도 번호 노출');
+});
+
+test('★조용한 날이라도 오늘·내일 일정이 있으면 알린다(일정 유실 방지)', () => {
+  // 경보 0건 + 일정 있음 → quiet 이면 안 된다
+  const withSched = sandbox.watchScan_({
+    projects: [], files: [],
+    schedule: [{ date: ahead(1), time: '09:00', title: '타일팀 방문', project: '괴산현장' }],
+  });
+  eq(withSched.total, 0, '경보는 0건');
+  eq(withSched.today.length, 1, '내일 일정 1건');
+  // dailyWatch 의 판정식과 동일한 규칙을 확인
+  const quiet = (withSched.total === 0 && withSched.today.length === 0);
+  assert(quiet === false, '일정이 있으면 조용한 날로 보면 안 됨 — 내일 타일팀이 오는데 폰이 조용하면 안 된다');
+
+  const empty = sandbox.watchScan_({ projects: [], files: [], schedule: [] });
+  assert((empty.total === 0 && empty.today.length === 0) === true, '아무것도 없으면 조용한 날이 맞음');
+});
+
+test('쓰지 않는 기준값을 선언해두지 않는다(구현된 척 방지)', () => {
+  assert(!('quoteSilent' in sandbox.W), 'quoteSilent 는 구현이 없으므로 선언도 없어야 함');
+  ['dueAfterDone', 'dueMin', 'warrantySoon', 'asStale', 'projStale'].forEach(k => {
+    assert(k in sandbox.W, '실제 쓰이는 기준값은 있어야 함: ' + k);
+  });
+});
+
 test('빈 자료·깨진 자료에도 죽지 않음', () => {
   [{}, { projects: null, files: 'x' }, { projects: [null, {}], files: [null] }].forEach((d, i) => {
     const r = sandbox.watchScan_(d);
@@ -191,6 +262,7 @@ test('빈 자료·깨진 자료에도 죽지 않음', () => {
 
 test('알림 문구(텍스트) — 캘린더·시트용, 금액·경과일·연락처가 그대로 읽힘', () => {
   const data = {
+    payLog: [{ d: ago(35), project: '괴산현장', amt: 5000000 }],
     projects: [
       { name: '괴산현장', received: 5000000, doneAt: ago(30), customer: { name: '김사장', phone: '010-1111-2222' } },
       { name: '보증임박', received: 0, doneAt: ago(365 - 20) },
@@ -283,7 +355,7 @@ test('제목 — 경보 있으면 금액·건수, 없으면 이상 없음', () =
   const none = sandbox.watchScan_({ projects: [], files: [] });
   assert(/챙길 것 없음/.test(sandbox.watchSubject_(none)), '조용한 날 제목');
   const some = sandbox.watchScan_({
-    projects: [{ name: 'A', received: 0, doneAt: ago(30) }],
+    projects: [{ name: 'A', received: 0, recvChecked: true, doneAt: ago(30) }],
     files: [{ kind: 'estimate', project: 'A', name: 'q.xlsx', est: { amount: 1000000 }, when: ago(60) }],
   });
   const s = sandbox.watchSubject_(some);
