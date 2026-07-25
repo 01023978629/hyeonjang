@@ -81,6 +81,45 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
     assert(o.tel, '전화 걸기 링크(현장에서 바로 통화)');
   });
 
+  await test('★수금 기록 없는 현장은 독촉 아님 — 카드도 파수꾼과 같은 규칙', async () => {
+    const r = await page.evaluate(() => {
+      const ymd = (n) => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-n);
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+      state.projects = [
+        { name: '기록없음', stage: 3, phases: [], cost: {}, customer: {}, received: 0, doneAt: ymd(30), archived: false },
+        { name: '기록있음', stage: 3, phases: [], cost: {}, customer: {}, received: 3000000, doneAt: ymd(30), archived: false },
+      ];
+      state.files = [
+        { id: 'x1', kind: 'estimate', project: '기록없음', name: 'a.xlsx', est: { amount: 8000000 }, when: new Date(ymd(60)) },
+        { id: 'x2', kind: 'estimate', project: '기록있음', name: 'b.xlsx', est: { amount: 10000000 }, when: new Date(ymd(60)) },
+      ];
+      state.payLog = [{ d: ymd(35), project: '기록있음', amt: 3000000 }];
+      state.asLog = []; state.schedule = [];
+      const o = hjWatchScan();
+      return { due: o.due.map(x => x.name), unc: o.uncertain.map(x => x.name), cash: o.cash };
+    });
+    assert(r.due.indexOf('기록있음') !== -1, '수금 이력 있으면 독촉 대상: ' + JSON.stringify(r));
+    assert(r.unc.indexOf('기록없음') !== -1, '수금 이력 없으면 입금 확인 필요: ' + JSON.stringify(r));
+    assert(r.due.indexOf('기록없음') === -1, '기록 없는 현장을 독촉으로 밀면 안 됨(현금 수금 오경보)');
+    assert(r.cash === 7000000, '못 받은 돈 합계에 확인필요분 제외: ' + r.cash);
+  });
+
+  await test('★기준값 일치 — 앱 카드(HJ_WATCH)와 파수꾼(Watchdog.gs W)이 같은 숫자를 쓴다', async () => {
+    // 한쪽만 바꾸면 캘린더 알림과 앱 화면이 서로 다른 목록을 보여준다.
+    const gs = await page.evaluate(async () => {
+      const r = await fetch('/apps-script/Watchdog.gs');
+      return r.ok ? await r.text() : '';
+    });
+    assert(gs, 'Watchdog.gs 를 읽지 못했습니다(정적 서버 경로 확인)');
+    const app = await page.evaluate(() => JSON.parse(JSON.stringify(HJ_WATCH)));
+    const num = (k) => { const m = gs.match(new RegExp(k + '\\s*:\\s*(\\d+)')); return m ? Number(m[1]) : null; };
+    ['dueAfterDone', 'dueMin', 'warrantySoon', 'asStale', 'projStale'].forEach(k => {
+      const g = num(k);
+      assert(g !== null, 'Watchdog.gs 에 ' + k + ' 가 없습니다');
+      assert(g === app[k], k + ' 불일치 — 앱 ' + app[k] + ' vs 파수꾼 ' + g + ' (두 화면이 다른 말을 하게 됨)');
+    });
+  });
+
   await test('★읽기 전용 — 카드를 그려도 직렬화 결과가 1바이트도 안 바뀐다', async () => {
     const same = await page.evaluate(() => {
       const norm = (d) => { const c = JSON.parse(JSON.stringify(d)); c.savedAt = ''; if (c.aiOps) c.aiOps = null; return JSON.stringify(c); };
@@ -101,6 +140,7 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
   });
 
   await test('일정표 폰에 받기 — .ics 파일이 만들어진다(캘린더 호환)', async () => {
+    await seed();   // 앞 테스트가 state 를 바꿔놓으므로 각자 시드한다(순서 의존 제거)
     const o = await page.evaluate(() => {
       let captured = null, name = null;
       const origCreate = document.createElement.bind(document);
