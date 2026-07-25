@@ -2125,8 +2125,12 @@ async function gdRestoreBackup(fileId){
     const r=await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',{headers:{Authorization:'Bearer '+__gdToken}});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
+    // 되돌리기도 '덮어쓰기'다 — 다른 복원 경로(restoreFull의 makeCheckpoint, relayLoadApply의
+    // relayGuardSnapshot)와 동일하게 지금 자료를 먼저 안전판에 넣는다.
+    // 이게 없으면 날짜를 잘못 골랐을 때 되돌아올 방법이 사라진다.
+    if(!(await relayGuardSnapshot('드라이브 복원 전'))){ toast('🛡 백업 실패로 되돌리기를 중단했습니다 — 지금 자료는 그대로입니다'); return false; }
     applyData(data);render();markDirty();           // 복원본을 현재 자료로(자동저장됨)
-    toast('이전 버전으로 되돌렸습니다.');
+    toast('이전 버전으로 되돌렸습니다 — 직전 자료는 🛡 안전판에 보관');
     return true;
   }catch(e){ toast('복원 실패: '+(e.message||e)); return false; }
 }
