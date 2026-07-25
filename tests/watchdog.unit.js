@@ -189,6 +189,85 @@ test('빈 자료·깨진 자료에도 죽지 않음', () => {
   });
 });
 
+test('알림 문구(텍스트) — 캘린더·시트용, 금액·경과일·연락처가 그대로 읽힘', () => {
+  const data = {
+    projects: [
+      { name: '괴산현장', received: 5000000, doneAt: ago(30), customer: { name: '김사장', phone: '010-1111-2222' } },
+      { name: '보증임박', received: 0, doneAt: ago(365 - 20) },
+    ],
+    files: [{ kind: 'estimate', project: '괴산현장', name: 'q.xlsx', est: { amount: 11000000 }, when: ago(60) }],
+    asLog: [{ project: '괴산현장', date: ago(9), text: '누수', status: 'open' }],
+  };
+  const r = sandbox.watchScan_(data);
+  const t = sandbox.watchText_(r);
+  assert(t.indexOf('<') === -1, 'HTML 태그가 섞이면 안 됨(캘린더 설명은 순수 텍스트)');
+  assert(/못 받은 돈/.test(t), '미수금 섹션');
+  assert(/6,000,000원/.test(t), '금액 표기: ' + t.slice(0, 200));
+  assert(/완료 30일 경과/.test(t), '경과일');
+  assert(/010-1111-2222/.test(t), '연락처(바로 전화 걸 수 있게)');
+  assert(/밀린 AS/.test(t), 'AS 섹션');
+  assert(/보증 만료 임박/.test(t), '보증 섹션');
+});
+
+test('알림 문구 — 조용한 날은 "챙길 게 없습니다"', () => {
+  const t = sandbox.watchText_(sandbox.watchScan_({ projects: [], files: [] }));
+  assert(/챙길 게 없습니다/.test(t), '이상 없음 문구: ' + t.slice(0, 120));
+});
+
+test('알림 경로 — 기본은 캘린더(메일 아님), 설정에 따라 분기', () => {
+  const calls = [];
+  const mk = (props) => {
+    const box = Object.assign({}, sandbox);
+    box.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) };
+    box.CalendarApp = { getDefaultCalendar: () => { calls.push('calendar'); return null; } };
+    box.SpreadsheetApp = { open: () => { calls.push('sheet'); throw new Error('stub'); },
+                           create: () => { calls.push('sheet'); throw new Error('stub'); } };
+    box.MailApp = { sendEmail: () => { calls.push('mail'); } };
+    box.DriveApp = { getFileById: () => ({}), getRootFolder: () => ({ removeFile() {} }) };
+    box.rootFolder_ = () => ({ getFilesByName: () => ({ hasNext: () => false }) });
+    box.Logger = { log() {} };
+    return box;
+  };
+  // 기본(설정 없음) → 캘린더
+  calls.length = 0;
+  let b = mk({});
+  vm.createContext(b); vm.runInContext(src, b);
+  b.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+  b.CalendarApp = { getDefaultCalendar: () => { calls.push('calendar'); return null; } };
+  b.MailApp = { sendEmail: () => { calls.push('mail'); } };
+  b.Logger = { log() {} };
+  b.watchDeliver_('제목', '본문', null);
+  assert(calls.indexOf('calendar') !== -1, '기본은 캘린더 시도: ' + JSON.stringify(calls));
+  assert(calls.indexOf('mail') === -1, '기본에서 메일은 쓰지 않음: ' + JSON.stringify(calls));
+
+  // mail 로 명시했을 때만 메일
+  calls.length = 0;
+  let b2 = mk({});
+  vm.createContext(b2); vm.runInContext(src, b2);
+  b2.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k === 'WATCH_CHANNEL' ? 'mail' : null) }) };
+  b2.MailApp = { sendEmail: () => { calls.push('mail'); } };
+  b2.Session = { getEffectiveUser: () => ({ getEmail: () => 'a@b.c' }) };
+  b2.CalendarApp = { getDefaultCalendar: () => { calls.push('calendar'); return null; } };
+  b2.Logger = { log() {} };
+  b2.watchDeliver_('제목', '본문', null);
+  assert(calls.indexOf('mail') !== -1, "WATCH_CHANNEL='mail' 이면 메일: " + JSON.stringify(calls));
+  assert(calls.indexOf('calendar') === -1, 'mail 지정 시 캘린더는 안 씀: ' + JSON.stringify(calls));
+});
+
+test('알림 경로 — 한 경로가 실패해도 예외를 밖으로 던지지 않음(파수꾼이 죽지 않게)', () => {
+  const b = Object.assign({}, sandbox);
+  vm.createContext(b); vm.runInContext(src, b);
+  b.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k === 'WATCH_CHANNEL' ? 'both' : null) }) };
+  b.CalendarApp = { getDefaultCalendar: () => { throw new Error('캘린더 권한 없음'); } };
+  b.rootFolder_ = () => { throw new Error('폴더 없음'); };
+  const logs = [];
+  b.Logger = { log: (m) => logs.push(String(m)) };
+  let threw = false;
+  try { b.watchDeliver_('제목', '본문', null); } catch (e) { threw = true; }
+  assert(!threw, '전달 실패해도 예외가 밖으로 나오면 안 됨');
+  assert(logs.some(l => /전달 실패/.test(l)), '조용히 삼키지 않고 로그로 남김: ' + JSON.stringify(logs));
+});
+
 test('메일 HTML 생성 — XSS 차단(현장명에 태그 넣어도 이스케이프)', () => {
   const data = {
     projects: [{ name: '<img src=x onerror=alert(1)>', received: 0, doneAt: ago(30) }],
