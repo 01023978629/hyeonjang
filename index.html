@@ -17238,25 +17238,34 @@ function docDelete(id){
   const f=state.files.find(function(x){return x.id===id;});
   if(!f)return;
   if(f.kind==='photo'){try{deletePhoto(id);}catch(e){}return;}
-  if(!requireEditMode('파일 삭제'))return;
-  const canFs=!!(!f._virtual&&state.dirHandle&&(typeof FS_OK==='undefined'||FS_OK));
+  // ※ 예전에는 여기서 requireEditMode 로 모바일 전체를 막았다. 그래서 폰에서는 견적서 [🗑 삭제]가
+  //   보이는데 눌러도 "모바일은 올리기·보기 전용" 안내만 뜨고 아무 일도 없었다.
+  //   실제로 위험한 건 '폴더의 원본 파일 삭제'뿐이고, 그건 아래 canFs 에서만 일어난다.
+  //   앱 목록에서 빼는 것은 폰에서도 안전하다(사진 삭제 deletePhoto 가 이미 같은 방식으로 동작한다).
+  const canFs=!!(!f._virtual&&canEditFiles());   // PC + 폴더 연결일 때만 원본까지(모바일 모드는 항상 제외)
   const warn=canFs
     ?'<p style="margin:8px 0;color:var(--warn)"><b>폴더의 실제 파일이 삭제됩니다.</b> 되돌릴 수 없어요.</p>'
-    :'<p style="margin:8px 0;color:var(--muted)">폴더 미연결/보기 모드 — <b>앱 목록에서만</b> 제거됩니다(실제 파일은 그대로).</p>';
+    :'<p style="margin:8px 0;color:var(--muted)">'+(isMobileNow()?'📱 폰에서는 ':'폴더 미연결 — ')+'<b>앱 목록에서만</b> 제거됩니다(드라이브·PC의 원본 파일은 그대로).</p>';
   openModal('🗑 파일 삭제',
     '<div style="font-size:13px;line-height:1.6"><p style="margin:0 0 6px"><b>"'+escapeHtml(f.name)+'"</b> 을(를) 삭제할까요?</p>'+warn+
     (f.est&&f.est.amount?'<p style="margin:8px 0;font-size:12px;color:var(--muted)">이 견적 금액 '+won(f.est.amount)+'원은 집계에서 빠집니다.</p>':'')+'</div>',
     [{label:'삭제',cls:'clay',fn:async function(){
         try{
+          // 지우기 전 스냅샷(🛡 안전판) — 폰에서도 남는다(IndexedDB). 견적서는 매출 집계가 걸려 있어
+          // 잘못 지웠을 때 되살릴 길이 반드시 있어야 한다.
+          try{await hjSnapshot('파일 삭제 전 — '+f.name,true);}catch(e){}
           if(canFs){
             let done=false;
             try{if(f.handle&&f.handle.remove){await f.handle.remove();done=true;}}catch(e){}
             if(!done){const dir=await fsDirOfPrefix(f.prefix);if(dir){await dir.removeEntry(f.name);done=true;}}
             if(!done){toast('폴더에서 파일을 찾지 못해 목록에서만 제거합니다');}
           }
+          // 드라이브에서 온 파일은 '제거함'으로 기록 — 안 하면 다시 불러올 때 되살아나
+          // "지웠는데 또 생긴다"가 된다(사진 삭제와 같은 방식).
+          if(f._driveId){__removedIds.add(f._driveId);try{await idbSet('removed_ids',[...__removedIds]);}catch(e){}}
           state.files=state.files.filter(function(x){return x.id!==id;});
           markDirty();closeModal();render();
-          toast('🗑 삭제됨: '+f.name);
+          toast(canFs?('🗑 삭제됨 · 폴더 원본까지: '+f.name):('🗑 목록에서 제거됨: '+f.name));
         }catch(e){toast('삭제 실패: '+(e.message||e));}
       }},
      {label:'취소',cls:'ghost',fn:closeModal}],true);
