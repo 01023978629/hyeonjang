@@ -897,7 +897,7 @@ function collectQuotesByMonth(){
     map[ym].count++; map[ym].total+=amount; map[ym].items.push({amount,label,src});
   };
   // 1) 외부 견적서 (kind==='estimate')
-  state.files.filter(f=>f.kind==='estimate'&&f.est).forEach(f=>{
+  salesEstimateFiles().forEach(f=>{
     const ym=ymOf(f.est.date)||(f.when?ymOf(f.when.toISOString()):null);
     add(ym, f.est.amount||0, f.est.customer||f.name, '외부');
   });
@@ -4089,6 +4089,25 @@ function cardHtml(f){
 function dedupeEstimates(estFiles){
   try{return estimateGroups(estFiles).map(function(g){return g.rep;});}catch(e){return estFiles;}
 }
+/* 매출 집계에 쓸 견적서 목록 — 대시보드와 똑같은 기준으로 한 번에 만든다.
+   예전에는 결산·부가세·세무 엑셀이 각자 state.files 를 원시 필터로 훑어,
+   중복 견적과 '집계 제외(exSum)' 견적까지 그대로 더했다.
+   실측: 둔산동 초안 3,000만(자동 exSum) + 확정 4,000만
+     → 대시보드 4,000만(정답) / 월말 결산 7,000만 / 매출세액 700만(정답 400만) = 300만원 과다.
+   앱이 스캔할 때 exSum 을 찍고 "매출 집계에서 제외했어요"라고 알려놓고 세무 경로만 무시한 셈이었다.
+   ※ 중복 판정은 반드시 현장 안에서만 한다 — 1차 키가 파일명이라, 전체를 한 번에 넣으면
+     이름이 비슷한 다른 현장 견적이 묶여 매출이 사라진다. */
+function salesEstimateFiles(){
+  const all=(state.files||[]).filter(function(f){return f&&f.kind==='estimate'&&f.est&&!f._fromQuote;});
+  const byPj={};
+  all.forEach(function(f){const k=f.project||' 미배정';(byPj[k]=byPj[k]||[]).push(f);});
+  const out=[];
+  Object.keys(byPj).forEach(function(k){
+    try{ out.push.apply(out, dedupeEstimates(byPj[k])); }
+    catch(e){ out.push.apply(out, byPj[k].filter(function(f){return !f.exSum;})); }
+  });
+  return out;
+}
 function projStats(name){
   const files=state.files.filter(f=>f.project===name);
   const estFiles=dedupeEstimates(files.filter(f=>f.kind==='estimate'));
@@ -4891,7 +4910,7 @@ function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열�
 async function exportTaxXlsx(){
   // 수집: 외부 견적서 파일(f.est) + 앱 작성 견적(state.quotes). _fromQuote 파일은 quotes와 중복이라 제외.
   const rows=[]; // {ym,supply,vat,total,label}
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
+  salesEstimateFiles().forEach(f=>{
     const e=f.est;const d=hjNormDate(e.date).slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');   // 예전에 저장된 점 형식(2026.05.10)도 받아준다
     if(!d)return;
     const supply=num(e.supply)||0, vat=num(e.vat)||0, total=num(e.amount)||supply+vat;
@@ -8300,7 +8319,8 @@ async function exportFullXlsx(){
   add('앱견적',s2);counts['앱견적']=s2.length-1;
   // ③ 외부 견적서 파일
   const s3=[['일자','내역','현장','공급가','부가세','합계']];
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
+  // 세무사에게 나가는 시트라 다른 집계와 같은 기준을 쓴다(중복 제거·집계 제외 반영)
+  salesEstimateFiles().forEach(f=>{
     const e=f.est;const total=num(e.amount)||num(e.supply)+num(e.vat);
     s3.push([String(e.date||'').slice(0,10),e.customer||f.name||'',f.project||'',num(e.supply)||Math.round(total/1.1),num(e.vat)||Math.round(total/11),total]);
   });
@@ -9489,7 +9509,7 @@ function vatReportData(from,to){
   const inRange=ym=>ym&&ym>=from&&ym<=to;
   let salesSupply=0,salesVat=0;const salesRows=[];
   (state.quotes||[]).forEach(q=>{const ym=String(q.date||'').slice(0,7);if(!inRange(ym))return;const c=quoteCalc(q);salesSupply+=c.supply;salesVat+=c.vat;salesRows.push({ym,label:q.title||q.project||'견적',supply:c.supply,vat:c.vat});});
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{const e=f.est;const ym=hjNormDate(e.date).slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
+  salesEstimateFiles().forEach(f=>{const e=f.est;const ym=hjNormDate(e.date).slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
   // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
   let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
   state.projects.filter(p=>!p.archived).forEach(p=>{
