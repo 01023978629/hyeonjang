@@ -1230,7 +1230,35 @@ function applyData(data){
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
   state.quotes.forEach(q=>{ if(q&&q.project){ try{syncQuoteToProject(q);}catch(e){} } });
+  try{ fixXlsxEstVat(); }catch(e){}
   return restored;
+}
+/* 엑셀로 불러온 견적서의 est 금액 교정 — 부가세가 한 번 더 붙어 저장된 것을 되돌린다.
+   예전 quoteToEst 는 quoteCalc 와 반대로 부가세를 해석해, 엑셀에서 불러온 견적서의
+   매출이 10% 부풀려진 채 저장됐다(대시보드 매출·마진·연간결산·세무 정산이 전부 그 위에 얹혀 있다).
+   저장본에 f.quote 가 함께 들어 있으므로 여기서 다시 계산해 바로잡는다.
+   · 사람이 손으로 고친 값(_edited)은 건드리지 않는다.
+   · PDF 텍스트에서 뽑은 견적(parseEstimate)은 f.quote 가 없어 대상이 아니다.
+   · 같은 값을 다시 넣는 것뿐이라 몇 번 실행해도 결과가 같다(멱등).
+   구조는 바꾸지 않는다 — 이미 있는 est 의 금액 세 개만 제자리에서 고친다.
+   매출 숫자가 조용히 바뀌면 안 되므로, 실제로 고친 게 있을 때만 알린다. */
+function fixXlsxEstVat(){
+  let n=0,before=0,after=0;
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='estimate')return;
+    const e=f.est;
+    if(!e||e._edited||!e._fromXlsx)return;
+    if(!f.quote||!quoteRealItems(f.quote).length)return;
+    const c=quoteCalc(f.quote);
+    if(e.amount===c.total&&e.supply===c.supply&&e.vat===c.vat)return;   // 이미 맞음 → 멱등
+    before+=(+e.amount||0);after+=c.total;
+    e.amount=c.total;e.supply=c.supply;e.vat=c.vat;n++;
+  });
+  if(n){
+    try{markDirty();}catch(e){}
+    try{toast('견적서 '+n+'건의 매출을 바로잡았습니다 — 부가세가 한 번 더 붙어 있었습니다 ('+hjNum(before)+' → '+hjNum(after)+'원)');}catch(e){}
+  }
+  return n;
 }
 let __saving=false,__saveQueued=null;
 async function saveProject(silent){

@@ -125,6 +125,78 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.amount === r.total, 'est.amount 가 합계와 다르다: ' + r.amount + ' vs ' + r.total);
   });
 
+  // ── 이미 저장돼 있던 부풀려진 금액 교정 ─────────────────────────────
+  // 고치기 전에 엑셀로 불러온 견적서는 est 가 부풀려진 채로 저장됐다.
+  // 새로 불러오는 것만 고치면 이미 들어간 장부는 계속 틀린다.
+  const seedFiles = () => page.evaluate(() => {
+    const q = { id: 'qi', title: '불러온견적', date: '2026-05-02', vatIncluded: false,
+                items: [{ name: '철거', spec: '', qty: 1, price: 10000000 }] };
+    state.files = [
+      // ① 엑셀에서 불러온 견적 — 예전 계산으로 1,100만이 저장돼 있다 (정답 1,000만)
+      { id: 'f1', name: '불러온견적.xlsx', ext: 'xlsx', kind: 'estimate', project: 'A', quote: q,
+        est: { customer: '불러온견적', amount: 11000000, supply: 10000000, vat: 1000000, date: '2026-05-02', _fromXlsx: true } },
+      // ② 사람이 손으로 고친 값 — 건드리면 안 된다
+      { id: 'f2', name: '손수정.xlsx', ext: 'xlsx', kind: 'estimate', project: 'A', quote: q,
+        est: { customer: '손수정', amount: 9500000, supply: 9500000, vat: 950000, date: '2026-05-02', _fromXlsx: true, _edited: true } },
+      // ③ PDF 텍스트에서 뽑은 견적 — quote 가 없어 대상이 아니다
+      { id: 'f3', name: '스캔견적.pdf', ext: 'pdf', kind: 'estimate', project: 'A', quote: null,
+        est: { customer: '스캔', amount: 8250000, supply: 7500000, vat: 750000, date: '2026-05-02' } }
+    ];
+  });
+
+  await test('이미 저장된 부풀려진 견적 매출을 불러올 때 바로잡는다', async () => {
+    await seedFiles();
+    const r = await page.evaluate(() => {
+      const n = fixXlsxEstVat();
+      const g = id => state.files.find(f => f.id === id).est;
+      return { n, f1: g('f1'), f2: g('f2'), f3: g('f3') };
+    });
+    assert(r.n === 1, '고친 건수가 1이어야 한다: ' + r.n);
+    assert(r.f1.amount === 10000000, '엑셀 견적 매출이 안 고쳐졌다: ' + r.f1.amount);
+    assert(r.f1.supply === 10000000 && r.f1.vat === 1000000, '공급가·세액이 어긋난다: ' + r.f1.supply + '/' + r.f1.vat);
+    assert(r.f2.amount === 9500000, '손으로 고친 값(_edited)을 덮어썼다: ' + r.f2.amount);
+    assert(r.f3.amount === 8250000, 'PDF 에서 뽑은 견적(quote 없음)을 건드렸다: ' + r.f3.amount);
+  });
+
+  await test('교정은 여러 번 돌려도 결과가 같다(멱등)', async () => {
+    await seedFiles();
+    const r = await page.evaluate(() => {
+      const a = fixXlsxEstVat(), b = fixXlsxEstVat(), c = fixXlsxEstVat();
+      return { a, b, c, amount: state.files.find(f => f.id === 'f1').est.amount };
+    });
+    assert(r.a === 1 && r.b === 0 && r.c === 0, '두 번째부터는 고칠 게 없어야 한다: ' + [r.a, r.b, r.c].join(','));
+    assert(r.amount === 10000000, '반복 실행이 금액을 또 바꿨다: ' + r.amount);
+  });
+
+  await test('교정이 대시보드 매출(projStats)까지 내려간다', async () => {
+    await seedFiles();
+    const r = await page.evaluate(() => {
+      state.projects = [{ name: 'A', stage: 2, received: 0, phases: [], cost: {}, customer: { name: '', phone: '', addr: '' }, archived: false }];
+      const beforeEst = projStats('A').est;
+      fixXlsxEstVat();
+      return { beforeEst, afterEst: projStats('A').est };
+    });
+    assert(r.beforeEst - r.afterEst === 1000000,
+      '교정 후 매출이 부가세만큼 줄어야 한다: ' + r.beforeEst + ' → ' + r.afterEst);
+  });
+
+  await test('데이터를 불러오면(applyData) 교정이 자동으로 돈다', async () => {
+    const r = await page.evaluate(() => {
+      const q = { id: 'qi2', title: '불러온견적2', date: '2026-05-02', vatIncluded: false,
+                  items: [{ name: '도배', spec: '', qty: 1, price: 5000000 }] };
+      state.files = [];
+      applyData({
+        savedAt: '2026-05-02T00:00:00.000Z',
+        projects: [{ name: 'B', stage: 2, received: 0, phases: [], cost: {}, customer: { name: '', phone: '', addr: '' } }],
+        files: [{ key: 'k9', name: '불러온견적2.xlsx', kind: 'estimate', project: 'B', quote: q,
+                  est: { customer: '불러온견적2', amount: 5500000, supply: 5000000, vat: 500000, _fromXlsx: true }, when: null }]
+      });
+      const f = state.files.find(x => x.name === '불러온견적2.xlsx');
+      return { amount: f && f.est && f.est.amount };
+    });
+    assert(r.amount === 5000000, 'applyData 뒤에도 부풀려진 값이 남아 있다: ' + r.amount);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
