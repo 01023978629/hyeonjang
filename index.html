@@ -3424,10 +3424,19 @@ function quoteItemSummary(q){
 }
 function quoteToEst(q){
   if(!q)return null;
-  const supply=Math.round((q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
-  const vat=q.vatIncluded?Math.round(supply/11):Math.round(supply*0.1);
-  const amount=q.vatIncluded?supply:supply+vat;
-  return { customer:q.title||q.customer||'', amount:amount, supply:q.vatIncluded?supply-vat:supply, vat:vat,
+  // 금액은 quoteCalc 한 곳에서만 나온다. 여기서 따로 계산하지 말 것.
+  // ※ 예전에는 여기서 vatIncluded 를 quoteCalc 와 정반대로 해석했다.
+  //   quoteCalc 의 계약은 '입력 단가 = 공급가액(부가세 전)'인데, 여기서는 단가 합계를
+  //   부가세가 이미 포함된 금액으로 보고 ÷11 로 세액을 빼냈다.
+  //   그래서 같은 견적이라도 f.est.amount 가 만들어진 경로에 따라 값이 달랐다:
+  //     · 앱에서 만든 견적   → syncQuoteToProject 가 quoteCalc.total 을 넣는다
+  //     · 엑셀에서 불러온 견적 → 여기서 부가세만큼 다른 값을 넣었다
+  //   f.est.amount 는 projStats 의 매출(est)이라 대시보드 매출·마진·연간결산·세무 정산이
+  //   전부 그 위에 얹혀 있다 → 엑셀로 불러온 견적서는 매출이 10% 부풀려져 있었다.
+  //   (엑셀 파서 parseQuoteFromGrid 는 '합계/총액/소계' 행 앞에서 끊고 품목의 공급가액만
+  //    읽으므로, 단가 합계가 공급가액이라는 quoteCalc 의 계약과 이미 맞다.)
+  const c=quoteCalc(q);
+  return { customer:q.title||q.customer||'', amount:c.total, supply:c.supply, vat:c.vat,
            date:q.date||'', itemCount:quoteRealItems(q).length, summary:quoteItemSummary(q), _fromXlsx:true };
 }
 function estimateContentSummary(f){
