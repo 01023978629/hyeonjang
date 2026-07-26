@@ -16341,8 +16341,9 @@ function estimateGroups(estFiles){
     (estFiles||[]).forEach(function(f){
       if(f.exSum)return; // [v91] 사장님이 집계 제외한 견적(초기안 등)
       let key=norm(f.name);const amt=(f.est&&f.est.amount)||0;
-      if(!key||key.length<2)key='amt:'+amt;
-      if(!key)key=f.id;
+      // 이름이 거의 안 남으면 금액으로 묶지 않는다 — 금액만 같은 서로 다른 견적이 통째로 합쳐진다.
+      // 못 묶는 건 '사본 2건'으로 보이는 것뿐이지만, 잘못 묶으면 매출이 조용히 사라진다.
+      if(!key||key.length<2)key='id:'+f.id;
       const when=f.when?new Date(f.when).getTime():0;
       if(!groups[key])groups[key]={rep:f,repAmt:amt,repWhen:when,dups:[]};
       else{
@@ -16357,20 +16358,47 @@ function estimateGroups(estFiles){
     let arr=Object.keys(groups).map(function(k){return {rep:groups[k].rep,dups:groups[k].dups,amt:groups[k].repAmt||0};});
     // [v100 P1] 2차 병합: 같은 현장 + 같은 금액이면 파일명이 달라도 같은 견적으로 본다
     // (예: '★20251028 빌드캡 공주 3,978,700.xlsx' 와 '빌드캡 (공주)20251028 (1).xlsx' — 이름 정규화로는 못 묶여 2배로 잡히던 케이스)
+    //
+    // ※ 여기에 파일명 속 숫자를 넣는다. 현장·금액만 보면 서로 다른 견적이 합쳐져 매출이 사라졌다.
+    //   실측: '태산그린 101동 견적.xlsx' 500만 + '태산그린 202동 견적.xlsx' 500만 → 매출 500만(정답 1,000만).
+    //   같은 평형 두 세대를 같은 단가로 수주하는 건 이 업종의 기본 패턴이고, 화면에는 '사본 1' 배지만 뜬다.
+    //   202동 500만원이 미수금·에이징·파수꾼 어디에도 안 남고, 청구서도 축소된 금액으로 나간다.
+    //
+    // 판정: 이름의 '글자 부분'(한글·영문만)이 같은 것끼리만 후보로 보고,
+    //       거기서 숫자가 양쪽 다 있으면서 서로 다르면 다른 견적으로 둔다.
+    //   · 태산그린 101동 / 202동 → 글자 '태산그린동' 같음, 숫자 101≠202 → 별개 ✔
+    //   · ★20251028 빌드캡 공주 3,978,700 / 빌드캡 (공주)20251028 (1)
+    //     → 글자 '빌드캡공주' 같음, 한쪽은 norm 이 숫자를 지워 비어 있음 → 사본 ✔
+    //   (숫자를 그냥 키에 붙이면 norm 이 위치에 따라 숫자를 다르게 지워서 이 사본 쌍이 갈라진다)
+    //
+    // 엑셀이 원본이고 PDF는 그 출력본이다. 같은 견적의 엑셀·PDF 는 이름이 같게 정규화돼
+    // 1차에서 이미 한 그룹이 되고, 아래 대표 선정이 엑셀을 남기므로 매출에는 엑셀만 반영된다.
     const isX=function(f){return /xlsx?$/i.test(String(f.ext||''))||/\.xlsx?$/i.test(String(f.name||''));};
+    const lettersOf=function(f){return norm(f.name).replace(/[^가-힣a-z]/g,'');};
+    const digitsOf=function(f){return (norm(f.name).match(/\d/g)||[]).join('');};
     const byPA={},out=[];
     arr.forEach(function(g){
       const pj=g.rep.project||'',amt=g.amt||0;
       if(pj&&amt>0){
-        const k2=pj+'|'+amt;
-        const t=byPA[k2];
+        const cands=byPA[pj+'|'+amt]||[];
+        // 같은 현장·같은 금액인 앞선 그룹 중에서 '사본'을 찾는다
+        const t=cands.filter(function(c){
+          const dA=digitsOf(c.rep),dB=digitsOf(g.rep);
+          if(dA&&dB&&dA!==dB)return false;               // 호수 등 숫자가 서로 다르면 다른 견적(101동 vs 202동)
+          if(isX(c.rep)!==isX(g.rep))return true;        // 엑셀 ↔ PDF = 원본과 그 출력본 → 사본
+          // 같은 형식끼리는 이름 글자까지 같아야 사본.
+          // 단 '[견적서] 가상장.pdf' 처럼 정규화하면 글자가 안 남는 이름이 있다 — 그건 '이름이 다르다'가
+          // 아니라 '이름으로는 알 수 없다'이므로, 현장·금액이 같은 이상 사본으로 본다.
+          const lA=lettersOf(c.rep),lB=lettersOf(g.rep);
+          return !lA||!lB||lA===lB;
+        })[0];
         if(t){
-          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}
+          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본)
           else t.dups.push(g.rep);
           t.dups=t.dups.concat(g.dups);
           return;
         }
-        byPA[k2]=g;
+        byPA[pj+'|'+amt]=cands;cands.push(g);
       }
       out.push(g);
     });
