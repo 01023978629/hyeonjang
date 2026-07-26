@@ -6352,10 +6352,13 @@ function hjWeekRange(off){
 function hjMan(n){n=Math.round(num(n));if(Math.abs(n)>=10000)return Math.round(n/10000).toLocaleString('ko-KR')+'만원';return won(n);}
 function weeklyReportData(off){
   const r=hjWeekRange(off||0);
-  const pays=(state.payLog||[]).filter(x=>x.d>=r.from&&x.d<=r.to&&x.amt>0);
+  // amt<0 은 수금액을 고쳤을 때 남는 '정정' 기록이다. 빼고 세면 정정 전 금액이 그대로 리포트에 남아
+  // 통장과 안 맞는다(실측: 500만 오입력 → 50만 정정 후에도 리포트는 500만).
+  // 합계는 정정을 반영해 전부 더하고, 목록만 합산 후 0 이하를 숨긴다.
+  const pays=(state.payLog||[]).filter(x=>x.d>=r.from&&x.d<=r.to);
   const paySum=pays.reduce((a,x)=>a+x.amt,0);
   const payByPj={};pays.forEach(x=>payByPj[x.project]=(payByPj[x.project]||0)+x.amt);
-  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,3);
+  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt).slice(0,3);
   const qs=(state.quotes||[]).filter(q=>q.date>=r.from&&q.date<=r.to);
   const quoteSum=qs.reduce((a,q)=>a+quoteCalc(q).total,0);
   const photos=state.files.filter(f=>{if(f.kind!=='photo')return false;const d=aiYmdOf(f.when);return d&&d>=r.from&&d<=r.to;}).length;
@@ -6581,10 +6584,11 @@ function monthlyClosingData(ym){
   // 공급가·부가세 분해(포함 가정 total→/1.1)
   const supply=Math.round(m.total/1.1), vat=m.total-supply;
   // 이 달 수금(payLog)
-  const pays=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym&&x.amt>0);
+  // 정정(amt<0)을 빼면 안 된다 — 위 weeklyReportData 와 같은 이유
+  const pays=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym);
   const paySum=pays.reduce((a,x)=>a+x.amt,0);
   const payByPj={};pays.forEach(x=>payByPj[x.project]=(payByPj[x.project]||0)+x.amt);
-  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,4);
+  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt).slice(0,4);
   // 이 달 완료 현장 + 지출/마진(완료일 기준)
   const doneP=state.projects.filter(p=>String(p.doneAt||'').slice(0,7)===ym);
   let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.costEffective;return {pj:p.name,est:s.est,cost:s.costEffective,margin:s.marginEff};});
@@ -6972,7 +6976,7 @@ function projectHistoryData(name){
   const more=Math.max(0,ev.length-40);
   const lastReport=[...sched].reverse().find(sc=>sc.report&&sc.report.done);
   return {name,p,s,cust,quotes,pays,photos:photos.length,byPhase,schedN:sched.length,timeline:ev.slice(0,40),more,lastReport,
-    paySum:pays.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0)};
+    paySum:pays.reduce((a,x)=>a+x.amt,0)};   // 정정(음수)까지 더해야 실제 수금액과 맞는다
 }
 function projectHistoryText(d){
   const L=['['+d.name+' 파일철] '+STAGES[d.p.stage||0]+(d.cust.name?' · 고객 '+d.cust.name+(d.cust.phone?' '+d.cust.phone:''):'')];
@@ -9800,7 +9804,7 @@ async function photoReportAISummary(name,d){
 function weekBriefData(){
   // 지난주(off=-1)
   const last=hjWeekRange(-1);
-  const lastPays=(state.payLog||[]).filter(x=>x.d>=last.from&&x.d<=last.to&&x.amt>0);
+  const lastPays=(state.payLog||[]).filter(x=>x.d>=last.from&&x.d<=last.to);   // 정정(음수) 포함
   const lastRecv=lastPays.reduce((a,x)=>a+x.amt,0);
   const lastQuotes=(state.quotes||[]).filter(q=>q.date>=last.from&&q.date<=last.to);
   const lastQuoteSum=lastQuotes.reduce((a,q)=>a+quoteCalc(q).total,0);
