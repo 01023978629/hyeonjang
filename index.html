@@ -7907,6 +7907,168 @@ function hjCompletionCard(p){
     '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+rvBtn+wtBtn+'</div>'+warrLine+'</div>';
 }
 
+/* ═══════════ 📲 고객 카톡 관리 — 프로젝트 창에서 진행안내·스토리·서명내역·완료보증서 ═══════════
+   구조: 발송은 카톡 공유(navigator.share → 폰에서 카카오톡 선택)로 — 서버·챗봇 없이 항상 동작.
+   서명 내역은 전자계약 서버(☁️ 설정)에서 읽어 현장에 저장하고, 완료보증서는 발급 사본을
+   project.warrantyDoc 에 보관한다(projects 통짜 직렬화 → 스키마 등록 불필요, PII 미저장). */
+async function kakaoShareText(text,title){
+  if(!(text||'').trim()){toast('보낼 내용이 없습니다');return {오류:'빈 내용'};}
+  try{if(navigator.share){await navigator.share({title:(title||COMPANY.name),text:text});return {완료:'공유'};}}
+  catch(e){if(e&&e.name==='AbortError')return {취소:true};}
+  coworkCopy(text,(title||'안내'));
+  toast('복사됨 — 카톡 대화방에 붙여넣으세요');
+  return {완료:'복사'};
+}
+function hjPhaseLabel(x){return (x&&(x.title||x.name))||String(x||'');}
+function hjProgressText(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return '';
+  const cu=p.customer||{};
+  const L=['['+COMPANY.name+'] '+(cu.name?cu.name+'님, ':'')+name+' 공사 진행 안내드립니다.',''];
+  L.push('▪ 현재 단계: '+(STAGES[p.stage||0]||'')+((p.stage||0)>=STAGES.length-1?' — 공사가 마무리되었습니다':''));
+  if((p.stage||0)===2&&Array.isArray(p.phases)&&p.phases.length)L.push('▪ 최근 작업: '+hjPhaseLabel(p.phases[p.phases.length-1]));
+  const nx=(state.schedule||[]).filter(function(s){return s.project===name&&s.date>=localDate();})
+    .sort(function(a,b){return (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));})[0];
+  if(nx)L.push('▪ 다음 일정: '+nx.date+(nx.time?' '+nx.time:'')+' '+(nx.title||''));
+  const ph=state.files.filter(function(f){return f.kind==='photo'&&f.project===name;}).length;
+  if(ph)L.push('▪ 현장 사진 '+ph+'장 기록 중 — 필요하시면 보내드릴게요.');
+  L.push('','궁금하신 점은 언제든 연락 주세요. '+COMPANY.tel+' '+COMPANY.owner);
+  return L.join('\n');
+}
+/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생) */
+function hjStoryData(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return [];
+  const ev=[];
+  const day=function(iso){return String(iso||'').slice(0,10);};
+  (p.contractLog||[]).forEach(function(L){
+    const done=L.serverStatus==='COMPLETED';
+    ev.push({d:day(L.at),ic:'✍️',t:'전자계약 '+(L.contractNo||'')+' '+(L.amount?won(L.amount):'')+(done?' — 서명 완료':' 발송')});
+    if(done&&L.completedAt)ev.push({d:day(L.completedAt),ic:'✅',t:'고객 서명 완료 '+(L.contractNo||'')});
+  });
+  const est=state.files.filter(function(f){return f.kind==='estimate'&&f.project===name&&f.est;});
+  est.slice(0,3).forEach(function(f){const d=(typeof hjNormDate==='function'?hjNormDate(f.est.date||''):String(f.est.date||'')).slice(0,10);if(d)ev.push({d:d,ic:'🧾',t:'견적 '+won(f.est.amount||0)});});
+  const byDate={};
+  state.files.filter(function(f){return f.kind==='photo'&&f.project===name&&f.when;}).forEach(function(f){
+    const d=day(new Date(f.when).toISOString());byDate[d]=(byDate[d]||0)+1;});
+  Object.keys(byDate).forEach(function(d){ev.push({d:d,ic:'📷',t:'시공 사진 '+byDate[d]+'장'});});
+  (state.payLog||[]).filter(function(x){return x.project===name;}).forEach(function(x){ev.push({d:day(x.d),ic:'💰',t:'입금 '+won(x.amt||0)});});
+  (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});});
+  if(p.doneAt)ev.push({d:p.doneAt,ic:'🎉',t:'공사 완료'});
+  if(p.warrantyDoc&&p.warrantyDoc.at)ev.push({d:p.warrantyDoc.at,ic:'🛡',t:'완료보증서 발급'});
+  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);}).slice(-40);
+}
+function hjStoryText(name){
+  const ev=hjStoryData(name);
+  const p=state.projects.find(function(x){return x.name===name;})||{};
+  const cu=p.customer||{};
+  return ['['+COMPANY.name+'] '+name+' 공사 스토리'+(cu.name?' — '+cu.name+'님':''),'']
+    .concat(ev.map(function(e){return e.d+' '+e.ic+' '+e.t;}))
+    .concat(['','감사합니다. '+COMPANY.tel+' '+COMPANY.owner]).join('\n');
+}
+function hjStoryView(name){
+  const ev=hjStoryData(name);
+  const rows=ev.length?ev.map(function(e){
+    return '<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 2px;border-bottom:1px dashed var(--line-soft)">'+
+      '<span style="font-size:11px;color:var(--muted);white-space:nowrap;padding-top:2px">'+escapeHtml(e.d.slice(5))+'</span>'+
+      '<span>'+e.ic+'</span><span style="flex:1;font-size:12.5px">'+escapeHtml(e.t)+'</span></div>';
+  }).join(''):'<div style="font-size:12.5px;color:var(--muted);padding:14px 4px">아직 기록이 없어요 — 계약·사진·입금이 쌓이면 자동으로 이야기가 됩니다.</div>';
+  openModal('📖 공사 스토리 — '+escapeHtml(name),
+    '<div style="max-height:52vh;overflow:auto">'+rows+'</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px">계약·서명·사진·입금·완료·보증서가 날짜순으로 정리됩니다. [카톡 공유]로 고객에게 그대로 보낼 수 있어요.</div>',
+    [{label:'📤 카톡 공유',cls:'clay',fn:function(){kakaoShareText(hjStoryText(name),name+' 공사 스토리');}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:name,기록:ev.length};
+}
+/* 서명 내역 — 전자계약 서버에서 상태를 읽어 현장 contractLog 에 저장(계약번호·상태만, 전화번호 없음) */
+async function contractStatusRefresh(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
+  if(!Array.isArray(p.contractLog)||!p.contractLog.length){toast('보낸 전자계약이 없습니다 — [📨 알림톡 계약서]로 먼저 보내세요');return;}
+  if(typeof contractReady!=='function'||!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
+  const base=contractBaseUrl(__contract.url);
+  let j=null;
+  try{
+    const r=await fetch(base+'/api/contracts',{headers:{'x-admin-token':__contract.token}});
+    if(!r.ok)throw new Error('서버 응답 '+r.status);
+    j=await r.json();
+  }catch(e){toast('서명 확인 실패: '+(e&&e.message||e));return;}
+  const byId={};(j&&j.contracts||[]).forEach(function(c){if(c.contractId)byId[c.contractId]=c;});
+  let ch=0;
+  p.contractLog.forEach(function(L){
+    const c=L.contractId&&byId[L.contractId];if(!c)return;
+    if(L.serverStatus!==c.status||(c.completedAt&&L.completedAt!==c.completedAt)){
+      L.serverStatus=c.status;if(c.completedAt)L.completedAt=c.completedAt;ch++;}
+  });
+  if(ch){markDirty();render();}
+  toast(ch?('✍️ 서명 상태 '+ch+'건 갱신됨'):'변경 없음 — 이미 최신입니다');
+  return {갱신:ch};
+}
+function hjContractStatusLabel(L){
+  if(L.serverStatus==='COMPLETED')return ['서명 완료 ✅'+(L.completedAt?' '+String(L.completedAt).slice(5,10):''),'var(--ok)'];
+  if(L.serverStatus==='VOID')return ['취소됨','var(--muted)'];
+  if(L.serverStatus==='VIEWED')return ['열람함 · 서명 대기','var(--gold)'];
+  return ['서명 대기','var(--warn)'];
+}
+/* 완료보증서 — 발급 사본을 현장에 보관(p.warrantyDoc)하고 카톡(파일 공유)으로 송부 */
+async function hjWarrantyShareHtml(name,html,fname){
+  const file=new File([html],fname,{type:'text/html'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:name+' 완료보증서'});return true;}
+    catch(e){if(e&&e.name==='AbortError')return false;}
+  }
+  const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  toast('저장됨 — 카톡 대화방에 파일로 첨부해 보내세요');
+  return true;
+}
+async function warrantyIssueSend(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
+  if(!(((p.stage||0)>=STAGES.length-1)||p.doneAt)){toast('완료 단계에서 발급할 수 있어요 — 먼저 준공 처리하세요');return {오류:'미완료'};}
+  const html=warrantyHTML(name);
+  if(!html){toast('보증서를 만들 수 없습니다');return {오류:'생성 실패'};}
+  p.warrantyDoc={at:localDate(),file:safeName(name)+'_완료보증서_'+localDate()+'.html',html:html};
+  markDirty();
+  const ok=await hjWarrantyShareHtml(name,html,p.warrantyDoc.file);
+  if(ok){p.warrantyDoc.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}
+  render();
+  return {발급:p.warrantyDoc.at,송부:!!ok};
+}
+function warrantyDocView(name){
+  const p=state.projects.find(function(x){return x.name===name;});
+  if(!p||!p.warrantyDoc||!p.warrantyDoc.html){toast('보관된 보증서가 없습니다 — [🧾 완료보증서 보내기]로 발급하세요');return;}
+  const w=p.warrantyDoc;
+  openModal('🛡 완료보증서 보관본 — '+escapeHtml(name),
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">발급 '+escapeHtml(w.at||'')+(w.sentAt?' · 마지막 송부 '+escapeHtml(w.sentAt):' · 아직 송부 전')+' — 고객에게 보낸 것과 같은 사본입니다.</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:52vh"><iframe srcdoc="'+escapeAttr(w.html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
+    [{label:'📤 다시 보내기(보관본)',cls:'clay',fn:async function(){const ok=await hjWarrantyShareHtml(name,w.html,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}}},
+     {label:'♻️ 새로 발급',cls:'ghost',fn:function(){closeModal();warrantyIssueSend(name);}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
+function hjKakaoCard(p){
+  const done=((p.stage||0)>=STAGES.length-1)||!!p.doneAt;
+  const logs=(p.contractLog||[]).slice(-3).reverse();
+  const sigRows=logs.length?logs.map(function(L){
+    const s=hjContractStatusLabel(L);
+    return '<div style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
+      '<span style="color:var(--muted);white-space:nowrap">'+escapeHtml(String(L.at||'').slice(5,10))+'</span>'+
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(L.contractNo||'계약')+' · '+won(L.amount||0)+'</span>'+
+      '<b style="color:'+s[1]+';white-space:nowrap;font-size:11.5px">'+s[0]+'</b></div>';
+  }).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 2px">아직 보낸 전자계약이 없어요 — 위의 [📨 알림톡 계약서]로 보내면 여기에 서명 내역이 쌓입니다.</div>';
+  const w=p.warrantyDoc;
+  const warrLine=w&&w.at
+    ?'<div style="margin-top:7px;font-size:12px">🛡 완료보증서 <b style="color:var(--ok)">발급 '+escapeHtml(w.at)+'</b>'+(w.sentAt?' · 송부 '+escapeHtml(String(w.sentAt).slice(5)):' · <span style="color:var(--warn)">아직 송부 전</span>')+' <button class="mini-btn" data-kkwarrview="'+escapeAttr(p.name)+'">📄 보관본 보기</button></div>'
+    :(done?'<div style="margin-top:7px;font-size:12px;color:var(--muted)">🛡 완료보증서를 발급하면 사본이 이 현장에 남고, 고객에게 카톡으로 보낼 수 있어요.</div>':'');
+  return '<div class="cust-card" data-kkcard="1" style="margin-top:10px">'+
+    '<div class="cust-h">📲 고객 카톡 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">보내기는 카톡 공유로 · 서명은 전자계약으로</span></div>'+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+      '<button class="mini-btn" data-kkprog="'+escapeAttr(p.name)+'" title="진행 단계·다음 일정을 카톡으로 보냅니다">📤 진행 안내</button>'+
+      '<button class="mini-btn" data-kkstory="'+escapeAttr(p.name)+'" title="계약부터 완료까지 날짜순 이야기">📖 공사 스토리</button>'+
+      '<button class="mini-btn" data-kkwarr="'+escapeAttr(p.name)+'" title="완료보증서를 발급해 고객에게 보내고 사본을 남깁니다"'+(done?'':' style="opacity:.55"')+'>🧾 완료보증서 보내기</button>'+
+      '<button class="mini-btn" data-ctrefresh="'+escapeAttr(p.name)+'" title="전자계약 서버에서 서명 여부를 확인합니다">✍️ 서명 확인</button>'+
+    '</div>'+
+    '<div style="margin-top:8px"><div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.08em">서명 내역</div>'+sigRows+'</div>'+
+    warrLine+'</div>';
+}
+
 /* ═══════════ 📦 자재 발주서 — 견적 품목 → 거래처별 주문 문자 (거래처 자동 기억) ═══════════ */
 function hjSupplierOf(name){return (state.supplierMap||{})[String(name||'').trim()]||'';}
 function materialOrder(quoteId){
@@ -20614,6 +20776,8 @@ function viewProject(){
   }
   // 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (준공 현장만 활성, 비준공은 흐리게)
   html+=hjCompletionCard(p);
+  // 📲 고객 카톡 관리 — 진행 안내·공사 스토리·서명 내역·완료보증서(발급 사본 보관)
+  html+=hjKakaoCard(p);
   // 💬 고객 페이지 소통(선택 상태·메시지)
   if((p.portalAsk&&p.portalAsk.q)||(p.portalMsgs&&p.portalMsgs.length)){
     const askLine=p.portalAsk&&p.portalAsk.q?('<div style="font-size:12px;margin-bottom:6px">🎨 <b>'+escapeHtml(p.portalAsk.q)+'</b> — '+(p.portalAsk.choice?'<span style="color:var(--ok);font-weight:700">'+escapeHtml(p.portalAsk.choice)+' ✅</span>':'<span style="color:var(--warn)">고객 선택 대기 중</span>')+'</div>'):'';
@@ -20776,7 +20940,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -20828,6 +20992,11 @@ function setupDelegation(){
     if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.contractsend!==undefined)return openContractSend(d.contractsend);
+    if(d.kkprog!==undefined)return kakaoShareText(hjProgressText(d.kkprog),'공사 진행 안내');
+    if(d.kkstory!==undefined)return hjStoryView(d.kkstory);
+    if(d.kkwarr!==undefined)return warrantyIssueSend(d.kkwarr);
+    if(d.kkwarrview!==undefined)return warrantyDocView(d.kkwarrview);
+    if(d.ctrefresh!==undefined)return contractStatusRefresh(d.ctrefresh);
     if(d.workorder!==undefined)return openWorkOrder({schId:d.workorder});
     if(d.workorderp!==undefined)return openWorkOrder({proj:d.workorderp});
     if(d.schreport!==undefined)return openReportEdit(d.schreport);
