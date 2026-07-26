@@ -143,6 +143,25 @@
   body.mobile-mode .qm-table .qm-delcell{position:absolute;top:8px;right:10px;padding:0}
   body.mobile-mode .qm-table .qm-delcell::before{content:''}
   body.mobile-mode .qm-table .qm-del{width:28px;height:28px}
+  /* ===== 모바일 파일 목록: 카드 격자 → 한 줄 리스트형 =====
+     폰(390px)에서 190px 격자는 1열 거대 카드가 돼 스크롤이 길고 버튼이 작았다.
+     서류·견적류는 [썸네일|이름·정보] 가로 행으로, 사진 격자만 2열(140px)로 유지.
+     :has() 미지원 브라우저는 기존 격자 그대로 → 기능 저하 없음(점진적 개선). */
+  body.mobile-mode .grid{gap:10px}
+  body.mobile-mode .grid:not(:has(.card.k-photo)){grid-template-columns:1fr}
+  body.mobile-mode .grid:has(.card.k-photo){grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  body.mobile-mode .card:not(.k-photo){flex-direction:row;flex-wrap:wrap;align-items:center}
+  body.mobile-mode .card:not(.k-photo) .thumb{width:76px;height:76px;flex:0 0 76px;border-radius:10px;margin:10px 0 10px 10px}
+  body.mobile-mode .card:not(.k-photo) .thumb .ext{font-size:11px}
+  body.mobile-mode .card:not(.k-photo) .meta{flex:1 1 0;min-width:0;padding:10px 12px}
+  body.mobile-mode .card:not(.k-photo) .card-tools{width:100%;padding:0 10px 8px}
+  body.mobile-mode .card:not(.k-photo) .cardact{width:100%;padding:0 10px 12px}
+  /* 터치 타깃: 카드 미니 버튼·분류 드롭다운을 손가락 크기로 */
+  body.mobile-mode .mini-btn{font-size:12.5px;padding:8px 12px;border-radius:8px}
+  body.mobile-mode .cardact select{min-height:40px;font-size:14px;flex:1 1 45%}
+  /* 긴 목록 맨 위로 — 하단 메뉴(60px) 위, 촬영 버튼과 겹치지 않게 오른쪽 */
+  #toTopBtn{display:none;position:fixed;right:14px;bottom:132px;z-index:49;width:44px;height:44px;border-radius:50%;border:1px solid var(--line-soft);background:var(--paper);color:var(--blueprint);font-size:19px;box-shadow:0 3px 12px rgba(0,0,0,.18);cursor:pointer;align-items:center;justify-content:center}
+  body.mobile-mode #toTopBtn.show{display:flex}
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
@@ -707,6 +726,7 @@
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
+<button id="toTopBtn" title="맨 위로" aria-label="목록 맨 위로">↑</button>
 
 
 <script>
@@ -3864,6 +3884,10 @@ function applyMobileMode(){
   syncMobileNav();
 }
 function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mobileMode);}catch(e){}applyMobileMode();toast(__mobileMode?'모바일 모드 — 하단 메뉴 사용':'PC 모드');}
+/* 긴 목록에서 맨 위로 — 모바일 모드 전용 플로팅 버튼(600px 이상 내려가면 표시) */
+{const tb=document.getElementById('toTopBtn');
+ if(tb){tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}};
+  window.addEventListener('scroll',function(){tb.classList.toggle('show',window.scrollY>600);},{passive:true});}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
 }
@@ -3885,13 +3909,17 @@ function openProjectSheet(){
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='projSheetBd';
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='projSheet';
   const act=state.projects.filter(p=>!p.archived), arc=state.projects.filter(p=>p.archived);
+  // 미수금은 현장에 나가서 가장 자주 찾는 숫자 — 목록에서 바로 보이게 한다(만원 단위 요약)
+  const dueTxt=(name)=>{try{const d=projStats(name).due||0;if(d<=0)return '';
+    const s=d>=10000?Math.round(d/10000).toLocaleString()+'만':d.toLocaleString()+'원';
+    return `<span style="display:block;font-size:11.5px;color:#c2410c;font-weight:700;margin-top:1px">미수 ${s}</span>`;}catch(e){return '';}};
   const row=(p,dim)=>{const n=state.files.filter(f=>f.project===p.name).length;
     return `<div data-psel="${escapeAttr(p.name)}" style="display:flex;align-items:center;gap:8px;padding:13px 8px;border-bottom:1px dashed var(--line-soft);${dim?'opacity:.55;':''}${state.activeProject===p.name?'background:var(--paper-2);border-radius:8px;':''}">
-      <span style="flex:1;font-size:15px;font-weight:600">${dim?'📦 ':''}${escapeHtml(p.name)}</span>
-      <span style="display:flex;gap:3px">${STAGES.map((s,i)=>`<span class="stage-dot ${i<=(p.stage||0)?'on':''}" title="${s}"></span>`).join('')}</span>
+      <span style="flex:1;min-width:0"><span style="display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dim?'📦 ':''}${escapeHtml(p.name)}</span>${dim?'':dueTxt(p.name)}</span>
+      <span style="display:flex;gap:3px;flex-shrink:0">${STAGES.map((s,i)=>`<span class="stage-dot ${i<=(p.stage||0)?'on':''}" title="${s}"></span>`).join('')}</span>
       <span style="font-size:12px;color:var(--muted);min-width:34px;text-align:right">${n}</span></div>`;};
   sh.innerHTML=`<h4>🏗️ 현장 선택</h4>
-    ${state.projects.length>6?`<input type="text" id="psSearch" placeholder="🔍 현장 이름 검색" style="width:100%;padding:9px;margin-bottom:6px;font-size:14px">`:''}
+    ${state.projects.length>0?`<input type="text" id="psSearch" placeholder="🔍 현장 이름 검색" style="width:100%;padding:11px;margin-bottom:6px;font-size:15px;position:sticky;top:0">`:''}
     <div id="psList" style="max-height:58vh;overflow:auto">
       <div data-psel="" style="padding:13px 8px;font-weight:700;border-bottom:1px solid var(--line-soft);${!state.activeProject?'background:var(--paper-2);border-radius:8px;':''}">● 전체 보기 <span style="float:right;color:var(--muted);font-size:12px;font-weight:400">${state.files.length}</span></div>
       ${act.map(p=>row(p,false)).join('')||'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>'}
@@ -4074,7 +4102,7 @@ function cardHtml(f){
   const fdel=(f.kind!=='photo')?`<button class="mini-btn" data-fdel="${f.id}" title="파일 삭제" style="color:#b91c1c">🗑 삭제</button>`:'';
   const fsend=(f.kind==='card'||f.kind==='bizreg')?`<button class="mini-btn" data-fsend="${f.id}" title="카톡·문자로 보내기">📤 보내기</button>`:'';
   const actbtns=(preview||rename||fsend||fcopy||fdel)?`<div class="card-tools">${preview}${rename}${fsend}${fcopy}${fdel}</div>`:'';
-  return `<div class="card" data-id="${f.id}">
+  return `<div class="card k-${f.kind}" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
