@@ -4262,7 +4262,7 @@ async function contractSend(p,amount){
   if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
   const cu=p.customer||{};
   amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
-  const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-5439-8629'};
+  const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-2397-8629'};
   const base=contractBaseUrl(__contract.url);
   if(!base){toast('전자계약 서버 주소를 확인하세요 (☁️ 설정)');return;}
   let health;
