@@ -27,6 +27,33 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);
 
+  // (4) 문서 안에서 산수가 맞는가 — 합계 − 기수금 = 청구금액
+  // 견적이 '부가세 별도'면 견적금액에 부가세가 없어서, 청구액만 d.due(=견적금액−수금)로 뽑던 예전 코드는
+  // 표에 합계 1,100만·기수금 300만을 적어 놓고 청구액은 700만을 찍었다. 부가세만큼 덜 청구한다.
+  await test('청구서 — 합계 − 기수금 = 청구금액 (부가세 별도 견적에서도 산수가 맞는다)', async () => {
+    const r = await page.evaluate(() => {
+      // 부가세 별도 견적: est.amount 에 부가세가 안 들어 있다. 계약금 300만 수금.
+      state.projects = [{ name: '갈마동', stage: 2, received: 3000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객', phone: '', addr: '대전' }, archived: false }];
+      state.files = [{ id: 'e2', kind: 'estimate', project: '갈마동', name: '별도견적',
+        est: { amount: 10000000, supply: 10000000, vat: 1000000, date: '2026-05-10' }, when: new Date('2026-05-10') }];
+      state.quotes = [];
+      const inv = invoiceHTML('갈마동'), stmt = statementHTML('갈마동');
+      // 천단위 콤마가 있는 숫자만 — 그냥 [\d,]{4,} 로 하면 색상값(#c2410c)의 '2410' 을 집는다
+      const grab = (label, html) => {
+        const i = html.indexOf(label); if (i < 0) return null;
+        const m = html.slice(i).match(/(\d{1,3}(?:,\d{3})+)/);
+        return m ? Number(m[1].replace(/,/g, '')) : null;
+      };
+      return { 합계: grab('공사대금 합계', inv), 기수금: grab('기수금', inv), 청구: grab('청구 금액', inv),
+               명세서잔금: grab('잔금', stmt) };
+    });
+    assert(r.합계 === 11000000, '청구서 합계가 11,000,000 이 아니다: ' + r.합계);
+    assert(r.기수금 === 3000000, '기수금이 3,000,000 이 아니다: ' + r.기수금);
+    assert(r.청구 === r.합계 - r.기수금,
+      '문서 안에서 산수가 안 맞는다 — 합계 ' + r.합계 + ' − 기수금 ' + r.기수금 + ' = ' + (r.합계 - r.기수금) + ' 인데 청구금액은 ' + r.청구);
+    assert(r.명세서잔금 === 8000000, '거래명세서 잔금도 합계 기준이어야 한다: ' + r.명세서잔금);
+  });
+
   // (1) 품목 없는(외부 견적파일만) 완료현장 → 청구서/명세서: 공급가=부가세 제외, 합계=총액(이중가산 없음)
   await test('청구서·명세서 — 품목 없을 때 부가세 10% 이중가산 없음(공급가 제외값 사용)', async () => {
     const r = await page.evaluate(() => {

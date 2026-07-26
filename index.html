@@ -975,7 +975,10 @@ function parseEstimate(text,fname){
   // 날짜
   let date='';
   const dm=t.match(/(20\d{2})[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/);
-  if(dm)date=`${dm[1]}.${pad(+dm[2])}.${pad(+dm[3])}`;
+  // 앱 내부 날짜는 전부 YYYY-MM-DD 다. 여기서만 점(2026.05.10)을 쓰면 월 비교가 어긋난다:
+  // '2026.05' <= '2026-06' 이 false 라('.'=46 > '-'=45) 부가세·이번 달 매출·매출 추이에서
+  // 그 견적이 통째로 빠진다. 실측: 납부 예상 70만 → 환급 예상 30만으로 뒤집혔다.
+  if(dm)date=`${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}`;
   // 사업자등록번호
   let bizno='';
   const bn=t.match(/\b(\d{3})[-\s]?(\d{2})[-\s]?(\d{5})\b/);
@@ -4889,7 +4892,7 @@ async function exportTaxXlsx(){
   // 수집: 외부 견적서 파일(f.est) + 앱 작성 견적(state.quotes). _fromQuote 파일은 quotes와 중복이라 제외.
   const rows=[]; // {ym,supply,vat,total,label}
   (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
-    const e=f.est;const d=String(e.date||'').slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');
+    const e=f.est;const d=hjNormDate(e.date).slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');   // 예전에 저장된 점 형식(2026.05.10)도 받아준다
     if(!d)return;
     const supply=num(e.supply)||0, vat=num(e.vat)||0, total=num(e.amount)||supply+vat;
     rows.push({ym:d,supply:supply||Math.round(total/1.1),vat:vat||Math.round(total/11),total,label:(e.customer||f.name||'')});
@@ -8905,7 +8908,7 @@ function bizDashData(){
   const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
   // 이번 달 신규 견적/매출 추정
   let monthEst=0;(state.quotes||[]).forEach(q=>{if(String(q.date||'').slice(0,7)===ym)monthEst+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&String(f.est.date||'').slice(0,7)===ym)monthEst+=num(f.est.amount);});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&hjNormDate(f.est.date).slice(0,7)===ym)monthEst+=num(f.est.amount);});   // 점 형식(2026.05.10) 저장본도 이번 달로 잡히게
   // 미처리 AS
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
   // 웹(홈페이지) 유입 현장 — manmool 공개 사이트에서 넘어온 상담 리드
@@ -9089,7 +9092,7 @@ function revenueTrendData(months){
   const est={},recv={},done={};keys.forEach(k=>{est[k]=0;recv[k]=0;done[k]=0;});
   // 매출(견적): 앱 견적 + 외부 견적 파일
   (state.quotes||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k in est)est[k]+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=String(f.est.date||'').slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=hjNormDate(f.est.date).slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});   // 점 형식 저장본도 추이에 잡히게
   // 수금(payLog)
   (state.payLog||[]).forEach(x=>{const k=String(x.d||'').slice(0,7);if(k in recv)recv[k]+=num(x.amt);});
   // 완료 현장 수
@@ -9222,7 +9225,9 @@ function statementHTML(name){
       '<div class="row"><span>부가세 (10%)</span><b>'+hjNum(vat)+' 원</b></div>'+
       '<div class="row total"><span>합계</span><span>'+hjNum(supply+vat)+' 원</span></div>'+
     '</div></div>'+
-    (d.recv>0?'<div class="note">💰 기수금 '+hjNum(d.recv)+'원'+(d.due>0?' · <b style="color:#c2410c">잔금 '+hjNum(d.due)+'원</b>':' · 완납 감사합니다')+'</div>':'')+
+    // 잔금도 이 문서의 합계 기준으로 뺀다(청구서와 같은 이유 — d.due 는 부가세가 빠져 있을 수 있다)
+    (d.recv>0?(function(){const bal=Math.max((supply+vat)-num(d.recv||0),0);
+      return '<div class="note">💰 기수금 '+hjNum(d.recv)+'원'+(bal>0?' · <b style="color:#c2410c">잔금 '+hjNum(bal)+'원</b>':' · 완납 감사합니다')+'</div>';})():'')+
     '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> <span style="color:#8b98ab">(인)</span></div>';
   return hjDocShell('거 래 명 세 서',inner);
 }
@@ -9233,7 +9238,10 @@ function invoiceHTML(name){
   const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.supply;
   const vat=Math.round(supply*0.1);
   const total=supply+vat;
-  const claim=d.due>0?d.due:total;   // 미수금 있으면 잔금, 없으면 전액
+  // 청구액은 이 문서 안의 합계에서 뺀다 — d.due(=견적금액−수금)를 쓰면 안 된다.
+  // 견적이 '부가세 별도'면 견적금액에 부가세가 없어서, 표에는 합계 1,100만·기수금 300만이라 적어 놓고
+  // 청구액만 700만이 찍혔다(실측). 문서 자체가 3+7≠11 이 되고 부가세만큼 덜 청구한다.
+  const claim=Math.max(total-num(d.recv||0),0);
   const acct=COMPANY.accounts[0];
   const inner=
     '<div class="prow"><span><b>받는 분</b>'+escapeHtml(d.cust.name||'—')+' 귀하</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+'<span><b>청구일</b>'+hjDocDate()+'</span></div>'+
@@ -9477,7 +9485,7 @@ function vatReportData(from,to){
   const inRange=ym=>ym&&ym>=from&&ym<=to;
   let salesSupply=0,salesVat=0;const salesRows=[];
   (state.quotes||[]).forEach(q=>{const ym=String(q.date||'').slice(0,7);if(!inRange(ym))return;const c=quoteCalc(q);salesSupply+=c.supply;salesVat+=c.vat;salesRows.push({ym,label:q.title||q.project||'견적',supply:c.supply,vat:c.vat});});
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{const e=f.est;const ym=String(e.date||'').slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
+  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{const e=f.est;const ym=hjNormDate(e.date).slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
   // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
   let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
   state.projects.filter(p=>!p.archived).forEach(p=>{

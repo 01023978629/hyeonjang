@@ -319,6 +319,51 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.items === 1, '유령 제거가 반복 실행에서 흔들린다: ' + r.items);
   });
 
+  // ── 날짜 형식이 집계에서 견적을 통째로 떨어뜨리지 않는가 ─────────────
+  // parseEstimate 는 PDF·이미지에서 뽑은 날짜를 '2026.05.10'(점)로 만들었다.
+  // 앱 내부 표준은 '2026-05-10' 이고, 월 비교는 문자열 비교다:
+  //   '2026.05' <= '2026-06'  →  false  ('.'=46 > '-'=45)
+  // 그래서 그 견적이 신고기간에 안 들어가고 매출세액이 0이 됐다.
+  await test('점(.) 날짜로 저장된 견적도 부가세 신고에 잡힌다', async () => {
+    const run = (dateStr) => page.evaluate((d) => {
+      state.projects = [{ name: 'A', stage: 2, received: 0, phases: [], cost: { material: 3300000, labor: 0, outsource: 0 },
+                          customer: { name: '', phone: '', addr: '' }, archived: false, doneAt: '2026-05-20' }];
+      state.files = [{ id: 'f1', name: '견적.pdf', ext: 'pdf', kind: 'estimate', project: 'A', quote: null,
+                       est: { customer: '가', amount: 11000000, supply: 10000000, vat: 1000000, date: d } }];
+      state.quotes = []; state.schedule = []; state.expenses = [];
+      const v = vatReportData('2026-04', '2026-06');
+      return { salesVat: v.salesVat, payable: v.payable, count: v.salesCount };
+    }, dateStr);
+    const dot = await run('2026.05.10');
+    const dash = await run('2026-05-10');
+    assert(dot.count === 1, '점 날짜 견적이 매출 집계에서 빠졌다 — 건수 ' + dot.count);
+    assert(dot.salesVat === 1000000, '점 날짜면 매출세액이 0이 된다: ' + dot.salesVat);
+    assert(dot.payable === 700000, '납부 예상이 틀리다(환급으로 뒤집힘): ' + dot.payable);
+    assert(dot.salesVat === dash.salesVat && dot.payable === dash.payable,
+      '같은 날짜인데 표기 형식만으로 세액이 달라진다 — 점 ' + dot.payable + ' vs 하이픈 ' + dash.payable);
+  });
+
+  await test('이번 달 매출·매출 추이도 점(.) 날짜를 놓치지 않는다', async () => {
+    const r = await page.evaluate(() => {
+      const seed = (d) => { state.files = [{ id: 'f1', name: '견적.pdf', kind: 'estimate', project: 'A', quote: null,
+                                             est: { amount: 11000000, supply: 10000000, vat: 1000000, date: d } }]; };
+      const ym = '2026-05';
+      const monthOf = () => { let s = 0; (state.files || []).forEach(f => { if (f.kind === 'estimate' && f.est && hjNormDate(f.est.date).slice(0, 7) === ym) s += num(f.est.amount); }); return s; };
+      seed('2026.05.10'); const dot = monthOf();
+      seed('2026-05-10'); const dash = monthOf();
+      return { dot, dash };
+    });
+    assert(r.dot === r.dash && r.dot === 11000000, '점 날짜가 이번 달 매출에서 빠진다: ' + r.dot + ' vs ' + r.dash);
+  });
+
+  await test('parseEstimate 는 앱 표준(YYYY-MM-DD) 날짜를 만든다', async () => {
+    const r = await page.evaluate(() => {
+      const e = parseEstimate('견 적 서\n작성일 2026. 05. 10\n합계 11,000,000원', '견적.pdf');
+      return e && e.date;
+    });
+    assert(r === '2026-05-10', "parseEstimate 날짜가 앱 표준이 아니다: '" + r + "' (기대 '2026-05-10')");
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
