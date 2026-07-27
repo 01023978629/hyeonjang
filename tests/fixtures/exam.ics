@@ -1,0 +1,75 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//만물인테리어//시험 일정//KO
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:qnet-13201286@manmool
+DTSTAMP:20260727T010000Z
+SEQUENCE:1
+DTSTART;VALUE=DATE:20260901
+DTEND;VALUE=DATE:20260902
+SUMMARY:타일기능사 실기시험 — 전우철
+LOCATION:대전도시과학고등학교 별관(건축실습동)
+DESCRIPTION:응시자 전우철 · 수험번호 13201286\n종목 타일
+ 기능사 실기\n장소 대전도시과학고등학교 별관(건축실
+ 습동)\n문의 1644-8000 (큐넷)\n원서접수 상세보기 https://ww
+ w.q-net.or.kr/myp002.do?id=myp00203&gSite=Q&gId=&repreRecptNo=R101158823
+ 35
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+BEGIN:VALARM
+TRIGGER:-P7D
+ACTION:DISPLAY
+DESCRIPTION:일주일 뒤 타일기능사 실기시험 (대전도시과
+ 학고등학교 별관(건축실습동))
+END:VALARM
+BEGIN:VALARM
+TRIGGER:-PT9H
+ACTION:DISPLAY
+DESCRIPTION:내일 타일기능사 실기시험 — 수험표·신분증 
+ 확인
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:qnet-13200888@manmool
+DTSTAMP:20260727T010000Z
+SEQUENCE:0
+DTSTART;VALUE=DATE:20260914
+DTEND;VALUE=DATE:20260915
+SUMMARY:방수기능사 실기시험 — 전우철 (주차불가)
+LOCATION:제일인테리어기술학원[동구 용전동]
+DESCRIPTION:응시자 전우철 · 수험번호 13200888\n종목 방수
+ 기능사 실기\n장소 제일인테리어기술학원[동구 용전동
+ ]\n※ 주차 불가 — 대중교통 이용\n문의 1644-8000 (큐넷)\
+ n원서접수 상세보기 https://www.q-net.or.kr/myp002.do?id=myp00203
+ &gSite=Q&gId=&repreRecptNo=R10115880421
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+BEGIN:VALARM
+TRIGGER:-P7D
+ACTION:DISPLAY
+DESCRIPTION:일주일 뒤 방수기능사 실기시험 (제일인테리
+ 어기술학원[동구 용전동])
+END:VALARM
+BEGIN:VALARM
+TRIGGER:-PT9H
+ACTION:DISPLAY
+DESCRIPTION:내일 방수기능사 실기시험 — 수험표·신분증 
+ 확인 · 주차 불가
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:qnet-31200481@manmool
+DTSTAMP:20260727T010000Z
+SEQUENCE:1
+DTSTART;VALUE=DATE:20260831
+DTEND;VALUE=DATE:20260901
+SUMMARY:[취소됨] 타일기능사 실기시험 — 전우철 (익산)
+LOCATION:애림직업전문학교(익산)
+DESCRIPTION:응시 취소 — 수험번호 31200481 (익산). 큐넷 접
+ 수 취소·환불은 별도로 확인하세요. 1644-8000
+STATUS:CANCELLED
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR
