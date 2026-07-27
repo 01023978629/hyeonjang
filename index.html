@@ -143,6 +143,25 @@
   body.mobile-mode .qm-table .qm-delcell{position:absolute;top:8px;right:10px;padding:0}
   body.mobile-mode .qm-table .qm-delcell::before{content:''}
   body.mobile-mode .qm-table .qm-del{width:28px;height:28px}
+  /* ===== 모바일 파일 목록: 카드 격자 → 한 줄 리스트형 =====
+     폰(390px)에서 190px 격자는 1열 거대 카드가 돼 스크롤이 길고 버튼이 작았다.
+     서류·견적류는 [썸네일|이름·정보] 가로 행으로, 사진 격자만 2열(140px)로 유지.
+     :has() 미지원 브라우저는 기존 격자 그대로 → 기능 저하 없음(점진적 개선). */
+  body.mobile-mode .grid{gap:10px}
+  body.mobile-mode .grid:not(:has(.card.k-photo)){grid-template-columns:1fr}
+  body.mobile-mode .grid:has(.card.k-photo){grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  body.mobile-mode .card:not(.k-photo){flex-direction:row;flex-wrap:wrap;align-items:center}
+  body.mobile-mode .card:not(.k-photo) .thumb{width:76px;height:76px;flex:0 0 76px;border-radius:10px;margin:10px 0 10px 10px}
+  body.mobile-mode .card:not(.k-photo) .thumb .ext{font-size:11px}
+  body.mobile-mode .card:not(.k-photo) .meta{flex:1 1 0;min-width:0;padding:10px 12px}
+  body.mobile-mode .card:not(.k-photo) .card-tools{width:100%;padding:0 10px 8px}
+  body.mobile-mode .card:not(.k-photo) .cardact{width:100%;padding:0 10px 12px}
+  /* 터치 타깃: 카드 미니 버튼·분류 드롭다운을 손가락 크기로 */
+  body.mobile-mode .mini-btn{font-size:12.5px;padding:8px 12px;border-radius:8px}
+  body.mobile-mode .cardact select{min-height:40px;font-size:14px;flex:1 1 45%}
+  /* 긴 목록 맨 위로 — 하단 메뉴(60px) 위, 촬영 버튼과 겹치지 않게 오른쪽 */
+  #toTopBtn{display:none;position:fixed;right:14px;bottom:132px;z-index:49;width:44px;height:44px;border-radius:50%;border:1px solid var(--line-soft);background:var(--paper);color:var(--blueprint);font-size:19px;box-shadow:0 3px 12px rgba(0,0,0,.18);cursor:pointer;align-items:center;justify-content:center}
+  body.mobile-mode #toTopBtn.show{display:flex}
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
@@ -707,6 +726,7 @@
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
+<button id="toTopBtn" title="맨 위로" aria-label="목록 맨 위로">↑</button>
 
 
 <script>
@@ -897,7 +917,7 @@ function collectQuotesByMonth(){
     map[ym].count++; map[ym].total+=amount; map[ym].items.push({amount,label,src});
   };
   // 1) 외부 견적서 (kind==='estimate')
-  state.files.filter(f=>f.kind==='estimate'&&f.est).forEach(f=>{
+  salesEstimateFiles().forEach(f=>{
     const ym=ymOf(f.est.date)||(f.when?ymOf(f.when.toISOString()):null);
     add(ym, f.est.amount||0, f.est.customer||f.name, '외부');
   });
@@ -975,7 +995,10 @@ function parseEstimate(text,fname){
   // 날짜
   let date='';
   const dm=t.match(/(20\d{2})[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/);
-  if(dm)date=`${dm[1]}.${pad(+dm[2])}.${pad(+dm[3])}`;
+  // 앱 내부 날짜는 전부 YYYY-MM-DD 다. 여기서만 점(2026.05.10)을 쓰면 월 비교가 어긋난다:
+  // '2026.05' <= '2026-06' 이 false 라('.'=46 > '-'=45) 부가세·이번 달 매출·매출 추이에서
+  // 그 견적이 통째로 빠진다. 실측: 납부 예상 70만 → 환급 예상 30만으로 뒤집혔다.
+  if(dm)date=`${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}`;
   // 사업자등록번호
   let bizno='';
   const bn=t.match(/\b(\d{3})[-\s]?(\d{2})[-\s]?(\d{5})\b/);
@@ -1236,7 +1259,50 @@ function applyData(data){
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
   state.quotes.forEach(q=>{ if(q&&q.project){ try{syncQuoteToProject(q);}catch(e){} } });
+  try{ fixXlsxEstVat(); }catch(e){}
   return restored;
+}
+/* 엑셀로 불러온 견적서의 금액 교정 — 저장된 채로 틀어져 있는 값을 되돌린다.
+   두 가지가 겹쳐 있었다(둘 다 매출·마진·연간결산·세무 정산이 얹힌 f.est 를 틀리게 만든다):
+     ① parseQuoteFromGrid 가 '합 계(공급가액)'·'총 액(부가세 포함)' 행을 못 끊어
+        그 금액이 품목으로 저장됐다 → 견적이 통째로 한 번 더 더해진다(실측 2.8배)
+     ② quoteToEst 가 quoteCalc 와 반대로 부가세를 해석해 거기에 10%가 또 붙었다
+   저장본에 f.quote 가 함께 들어 있으므로(직렬화 포함) 여기서 되돌릴 수 있다.
+   · 품명 없는 품목 = 흡수된 합계 행이다. 지우면 ①이 정확히 풀린다.
+   · 지워낸 합계 행이 '품목합계 + 부가세'와 딱 맞아떨어지면 원본이 '부가세 포함'이었다는 뜻이라
+     그 기준을 되살린다. 정확히 일치할 때만 — 어림짐작으로 금액을 올리지 않는다.
+   · 사람이 손으로 고친 값(_edited)은 건드리지 않는다.
+   · PDF 텍스트에서 뽑은 견적(parseEstimate)은 f.quote 가 없어 대상이 아니다.
+   · 한 번 정리되면 품명 없는 품목이 남지 않아, 몇 번 실행해도 결과가 같다(멱등).
+   구조는 바꾸지 않는다 — 이미 있는 quote.items 와 est 금액을 제자리에서 고칠 뿐이다.
+   매출이 조용히 바뀌면 안 되므로, 실제로 고친 게 있을 때만 알린다. */
+function fixXlsxEstVat(){
+  let n=0,before=0,after=0;
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='estimate')return;
+    const e=f.est;
+    if(!e||e._edited||!e._fromXlsx)return;
+    const q=f.quote;
+    if(!q||!quoteRealItems(q).length)return;
+    // ① 흡수된 합계 행(품명 없이 금액만) 제거
+    const ghosts=(q.items||[]).filter(it=>it&&!String(it.name||'').trim()&&num(it.price)>0);
+    if(ghosts.length){
+      q.items=(q.items||[]).filter(it=>it&&String(it.name||'').trim());
+      // ② 지워낸 값이 '품목합계 + 부가세'와 정확히 맞으면 원본은 부가세 포함이었다
+      const sub=Math.round((q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
+      const withVat=sub+Math.round(sub*0.1);
+      if(sub>0&&ghosts.some(g=>Math.round(num(g.qty)||1)*num(g.price)===withVat))q.vatIncluded=true;
+    }
+    const c=quoteCalc(q);
+    if(e.amount===c.total&&e.supply===c.supply&&e.vat===c.vat&&!ghosts.length)return;   // 이미 맞음 → 멱등
+    before+=(+e.amount||0);after+=c.total;
+    e.amount=c.total;e.supply=c.supply;e.vat=c.vat;n++;
+  });
+  if(n){
+    try{markDirty();}catch(e){}
+    try{toast('엑셀 견적서 '+n+'건의 금액을 바로잡았습니다 — 합계 행이 품목으로 섞이고 부가세가 한 번 더 붙어 있었습니다 ('+hjNum(before)+' → '+hjNum(after)+'원)');}catch(e){}
+  }
+  return n;
 }
 let __saving=false,__saveQueued=null;
 async function saveProject(silent){
@@ -3430,10 +3496,19 @@ function quoteItemSummary(q){
 }
 function quoteToEst(q){
   if(!q)return null;
-  const supply=Math.round((q.items||[]).reduce((a,it)=>a+(num(it.qty)||1)*(num(it.price)||0),0));
-  const vat=q.vatIncluded?Math.round(supply/11):Math.round(supply*0.1);
-  const amount=q.vatIncluded?supply:supply+vat;
-  return { customer:q.title||q.customer||'', amount:amount, supply:q.vatIncluded?supply-vat:supply, vat:vat,
+  // 금액은 quoteCalc 한 곳에서만 나온다. 여기서 따로 계산하지 말 것.
+  // ※ 예전에는 여기서 vatIncluded 를 quoteCalc 와 정반대로 해석했다.
+  //   quoteCalc 의 계약은 '입력 단가 = 공급가액(부가세 전)'인데, 여기서는 단가 합계를
+  //   부가세가 이미 포함된 금액으로 보고 ÷11 로 세액을 빼냈다.
+  //   그래서 같은 견적이라도 f.est.amount 가 만들어진 경로에 따라 값이 달랐다:
+  //     · 앱에서 만든 견적   → syncQuoteToProject 가 quoteCalc.total 을 넣는다
+  //     · 엑셀에서 불러온 견적 → 여기서 부가세만큼 다른 값을 넣었다
+  //   f.est.amount 는 projStats 의 매출(est)이라 대시보드 매출·마진·연간결산·세무 정산이
+  //   전부 그 위에 얹혀 있다 → 엑셀로 불러온 견적서는 매출이 10% 부풀려져 있었다.
+  //   (엑셀 파서 parseQuoteFromGrid 는 '합계/총액/소계' 행 앞에서 끊고 품목의 공급가액만
+  //    읽으므로, 단가 합계가 공급가액이라는 quoteCalc 의 계약과 이미 맞다.)
+  const c=quoteCalc(q);
+  return { customer:q.title||q.customer||'', amount:c.total, supply:c.supply, vat:c.vat,
            date:q.date||'', itemCount:quoteRealItems(q).length, summary:quoteItemSummary(q), _fromXlsx:true };
 }
 function estimateContentSummary(f){
@@ -3815,6 +3890,10 @@ function applyMobileMode(){
   syncMobileNav();
 }
 function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mobileMode);}catch(e){}applyMobileMode();toast(__mobileMode?'모바일 모드 — 하단 메뉴 사용':'PC 모드');}
+/* 긴 목록에서 맨 위로 — 모바일 모드 전용 플로팅 버튼(600px 이상 내려가면 표시) */
+{const tb=document.getElementById('toTopBtn');
+ if(tb){tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}};
+  window.addEventListener('scroll',function(){tb.classList.toggle('show',window.scrollY>600);},{passive:true});}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
 }
@@ -3836,13 +3915,17 @@ function openProjectSheet(){
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='projSheetBd';
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='projSheet';
   const act=state.projects.filter(p=>!p.archived), arc=state.projects.filter(p=>p.archived);
+  // 미수금은 현장에 나가서 가장 자주 찾는 숫자 — 목록에서 바로 보이게 한다(만원 단위 요약)
+  const dueTxt=(name)=>{try{const d=projStats(name).due||0;if(d<=0)return '';
+    const s=d>=10000?Math.round(d/10000).toLocaleString()+'만':d.toLocaleString()+'원';
+    return `<span style="display:block;font-size:11.5px;color:#c2410c;font-weight:700;margin-top:1px">미수 ${s}</span>`;}catch(e){return '';}};
   const row=(p,dim)=>{const n=state.files.filter(f=>f.project===p.name).length;
     return `<div data-psel="${escapeAttr(p.name)}" style="display:flex;align-items:center;gap:8px;padding:13px 8px;border-bottom:1px dashed var(--line-soft);${dim?'opacity:.55;':''}${state.activeProject===p.name?'background:var(--paper-2);border-radius:8px;':''}">
-      <span style="flex:1;font-size:15px;font-weight:600">${dim?'📦 ':''}${escapeHtml(p.name)}</span>
-      <span style="display:flex;gap:3px">${STAGES.map((s,i)=>`<span class="stage-dot ${i<=(p.stage||0)?'on':''}" title="${s}"></span>`).join('')}</span>
+      <span style="flex:1;min-width:0"><span style="display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dim?'📦 ':''}${escapeHtml(p.name)}</span>${dim?'':dueTxt(p.name)}</span>
+      <span style="display:flex;gap:3px;flex-shrink:0">${STAGES.map((s,i)=>`<span class="stage-dot ${i<=(p.stage||0)?'on':''}" title="${s}"></span>`).join('')}</span>
       <span style="font-size:12px;color:var(--muted);min-width:34px;text-align:right">${n}</span></div>`;};
   sh.innerHTML=`<h4>🏗️ 현장 선택</h4>
-    ${state.projects.length>6?`<input type="text" id="psSearch" placeholder="🔍 현장 이름 검색" style="width:100%;padding:9px;margin-bottom:6px;font-size:14px">`:''}
+    ${state.projects.length>0?`<input type="text" id="psSearch" placeholder="🔍 현장 이름 검색" style="width:100%;padding:11px;margin-bottom:6px;font-size:15px;position:sticky;top:0">`:''}
     <div id="psList" style="max-height:58vh;overflow:auto">
       <div data-psel="" style="padding:13px 8px;font-weight:700;border-bottom:1px solid var(--line-soft);${!state.activeProject?'background:var(--paper-2);border-radius:8px;':''}">● 전체 보기 <span style="float:right;color:var(--muted);font-size:12px;font-weight:400">${state.files.length}</span></div>
       ${act.map(p=>row(p,false)).join('')||'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>'}
@@ -4025,7 +4108,7 @@ function cardHtml(f){
   const fdel=(f.kind!=='photo')?`<button class="mini-btn" data-fdel="${f.id}" title="파일 삭제" style="color:#b91c1c">🗑 삭제</button>`:'';
   const fsend=(f.kind==='card'||f.kind==='bizreg')?`<button class="mini-btn" data-fsend="${f.id}" title="카톡·문자로 보내기">📤 보내기</button>`:'';
   const actbtns=(preview||rename||fsend||fcopy||fdel)?`<div class="card-tools">${preview}${rename}${fsend}${fcopy}${fdel}</div>`:'';
-  return `<div class="card" data-id="${f.id}">
+  return `<div class="card k-${f.kind}" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
@@ -4039,6 +4122,25 @@ function cardHtml(f){
 // 견적 중복 제거: estimateGroups의 대표만 반환(로직 단일화)
 function dedupeEstimates(estFiles){
   try{return estimateGroups(estFiles).map(function(g){return g.rep;});}catch(e){return estFiles;}
+}
+/* 매출 집계에 쓸 견적서 목록 — 대시보드와 똑같은 기준으로 한 번에 만든다.
+   예전에는 결산·부가세·세무 엑셀이 각자 state.files 를 원시 필터로 훑어,
+   중복 견적과 '집계 제외(exSum)' 견적까지 그대로 더했다.
+   실측: 둔산동 초안 3,000만(자동 exSum) + 확정 4,000만
+     → 대시보드 4,000만(정답) / 월말 결산 7,000만 / 매출세액 700만(정답 400만) = 300만원 과다.
+   앱이 스캔할 때 exSum 을 찍고 "매출 집계에서 제외했어요"라고 알려놓고 세무 경로만 무시한 셈이었다.
+   ※ 중복 판정은 반드시 현장 안에서만 한다 — 1차 키가 파일명이라, 전체를 한 번에 넣으면
+     이름이 비슷한 다른 현장 견적이 묶여 매출이 사라진다. */
+function salesEstimateFiles(){
+  const all=(state.files||[]).filter(function(f){return f&&f.kind==='estimate'&&f.est&&!f._fromQuote;});
+  const byPj={};
+  all.forEach(function(f){const k=f.project||' 미배정';(byPj[k]=byPj[k]||[]).push(f);});
+  const out=[];
+  Object.keys(byPj).forEach(function(k){
+    try{ out.push.apply(out, dedupeEstimates(byPj[k])); }
+    catch(e){ out.push.apply(out, byPj[k].filter(function(f){return !f.exSum;})); }
+  });
+  return out;
 }
 function projStats(name){
   const files=state.files.filter(f=>f.project===name);
@@ -4213,7 +4315,7 @@ async function contractSend(p,amount){
   if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
   const cu=p.customer||{};
   amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
-  const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-5439-8629'};
+  const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-2397-8629'};
   const base=contractBaseUrl(__contract.url);
   if(!base){toast('전자계약 서버 주소를 확인하세요 (☁️ 설정)');return;}
   let health;
@@ -4842,8 +4944,8 @@ function openDrive(){ openManmulFolder(); }   // 기존 '구글드라이브 열�
 async function exportTaxXlsx(){
   // 수집: 외부 견적서 파일(f.est) + 앱 작성 견적(state.quotes). _fromQuote 파일은 quotes와 중복이라 제외.
   const rows=[]; // {ym,supply,vat,total,label}
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
-    const e=f.est;const d=String(e.date||'').slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');
+  salesEstimateFiles().forEach(f=>{
+    const e=f.est;const d=hjNormDate(e.date).slice(0,7)||(f.when?f.when.toISOString().slice(0,7):'');   // 예전에 저장된 점 형식(2026.05.10)도 받아준다
     if(!d)return;
     const supply=num(e.supply)||0, vat=num(e.vat)||0, total=num(e.amount)||supply+vat;
     rows.push({ym:d,supply:supply||Math.round(total/1.1),vat:vat||Math.round(total/11),total,label:(e.customer||f.name||'')});
@@ -6303,10 +6405,13 @@ function hjWeekRange(off){
 function hjMan(n){n=Math.round(num(n));if(Math.abs(n)>=10000)return Math.round(n/10000).toLocaleString('ko-KR')+'만원';return won(n);}
 function weeklyReportData(off){
   const r=hjWeekRange(off||0);
-  const pays=(state.payLog||[]).filter(x=>x.d>=r.from&&x.d<=r.to&&x.amt>0);
+  // amt<0 은 수금액을 고쳤을 때 남는 '정정' 기록이다. 빼고 세면 정정 전 금액이 그대로 리포트에 남아
+  // 통장과 안 맞는다(실측: 500만 오입력 → 50만 정정 후에도 리포트는 500만).
+  // 합계는 정정을 반영해 전부 더하고, 목록만 합산 후 0 이하를 숨긴다.
+  const pays=(state.payLog||[]).filter(x=>x.d>=r.from&&x.d<=r.to);
   const paySum=pays.reduce((a,x)=>a+x.amt,0);
   const payByPj={};pays.forEach(x=>payByPj[x.project]=(payByPj[x.project]||0)+x.amt);
-  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,3);
+  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt).slice(0,3);
   const qs=(state.quotes||[]).filter(q=>q.date>=r.from&&q.date<=r.to);
   const quoteSum=qs.reduce((a,q)=>a+quoteCalc(q).total,0);
   const photos=state.files.filter(f=>{if(f.kind!=='photo')return false;const d=aiYmdOf(f.when);return d&&d>=r.from&&d<=r.to;}).length;
@@ -6532,10 +6637,11 @@ function monthlyClosingData(ym){
   // 공급가·부가세 분해(포함 가정 total→/1.1)
   const supply=Math.round(m.total/1.1), vat=m.total-supply;
   // 이 달 수금(payLog)
-  const pays=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym&&x.amt>0);
+  // 정정(amt<0)을 빼면 안 된다 — 위 weeklyReportData 와 같은 이유
+  const pays=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym);
   const paySum=pays.reduce((a,x)=>a+x.amt,0);
   const payByPj={};pays.forEach(x=>payByPj[x.project]=(payByPj[x.project]||0)+x.amt);
-  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).sort((a,b)=>b.amt-a.amt).slice(0,4);
+  const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt).slice(0,4);
   // 이 달 완료 현장 + 지출/마진(완료일 기준)
   const doneP=state.projects.filter(p=>String(p.doneAt||'').slice(0,7)===ym);
   let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.costEffective;return {pj:p.name,est:s.est,cost:s.costEffective,margin:s.marginEff};});
@@ -6923,7 +7029,7 @@ function projectHistoryData(name){
   const more=Math.max(0,ev.length-40);
   const lastReport=[...sched].reverse().find(sc=>sc.report&&sc.report.done);
   return {name,p,s,cust,quotes,pays,photos:photos.length,byPhase,schedN:sched.length,timeline:ev.slice(0,40),more,lastReport,
-    paySum:pays.filter(x=>x.amt>0).reduce((a,x)=>a+x.amt,0)};
+    paySum:pays.reduce((a,x)=>a+x.amt,0)};   // 정정(음수)까지 더해야 실제 수금액과 맞는다
 }
 function projectHistoryText(d){
   const L=['['+d.name+' 파일철] '+STAGES[d.p.stage||0]+(d.cust.name?' · 고객 '+d.cust.name+(d.cust.phone?' '+d.cust.phone:''):'')];
@@ -7807,6 +7913,168 @@ function hjCompletionCard(p){
     '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+rvBtn+wtBtn+'</div>'+warrLine+'</div>';
 }
 
+/* ═══════════ 📲 고객 카톡 관리 — 프로젝트 창에서 진행안내·스토리·서명내역·완료보증서 ═══════════
+   구조: 발송은 카톡 공유(navigator.share → 폰에서 카카오톡 선택)로 — 서버·챗봇 없이 항상 동작.
+   서명 내역은 전자계약 서버(☁️ 설정)에서 읽어 현장에 저장하고, 완료보증서는 발급 사본을
+   project.warrantyDoc 에 보관한다(projects 통짜 직렬화 → 스키마 등록 불필요, PII 미저장). */
+async function kakaoShareText(text,title){
+  if(!(text||'').trim()){toast('보낼 내용이 없습니다');return {오류:'빈 내용'};}
+  try{if(navigator.share){await navigator.share({title:(title||COMPANY.name),text:text});return {완료:'공유'};}}
+  catch(e){if(e&&e.name==='AbortError')return {취소:true};}
+  coworkCopy(text,(title||'안내'));
+  toast('복사됨 — 카톡 대화방에 붙여넣으세요');
+  return {완료:'복사'};
+}
+function hjPhaseLabel(x){return (x&&(x.title||x.name))||String(x||'');}
+function hjProgressText(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return '';
+  const cu=p.customer||{};
+  const L=['['+COMPANY.name+'] '+(cu.name?cu.name+'님, ':'')+name+' 공사 진행 안내드립니다.',''];
+  L.push('▪ 현재 단계: '+(STAGES[p.stage||0]||'')+((p.stage||0)>=STAGES.length-1?' — 공사가 마무리되었습니다':''));
+  if((p.stage||0)===2&&Array.isArray(p.phases)&&p.phases.length)L.push('▪ 최근 작업: '+hjPhaseLabel(p.phases[p.phases.length-1]));
+  const nx=(state.schedule||[]).filter(function(s){return s.project===name&&s.date>=localDate();})
+    .sort(function(a,b){return (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));})[0];
+  if(nx)L.push('▪ 다음 일정: '+nx.date+(nx.time?' '+nx.time:'')+' '+(nx.title||''));
+  const ph=state.files.filter(function(f){return f.kind==='photo'&&f.project===name;}).length;
+  if(ph)L.push('▪ 현장 사진 '+ph+'장 기록 중 — 필요하시면 보내드릴게요.');
+  L.push('','궁금하신 점은 언제든 연락 주세요. '+COMPANY.tel+' '+COMPANY.owner);
+  return L.join('\n');
+}
+/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생) */
+function hjStoryData(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return [];
+  const ev=[];
+  const day=function(iso){return String(iso||'').slice(0,10);};
+  (p.contractLog||[]).forEach(function(L){
+    const done=L.serverStatus==='COMPLETED';
+    ev.push({d:day(L.at),ic:'✍️',t:'전자계약 '+(L.contractNo||'')+' '+(L.amount?won(L.amount):'')+(done?' — 서명 완료':' 발송')});
+    if(done&&L.completedAt)ev.push({d:day(L.completedAt),ic:'✅',t:'고객 서명 완료 '+(L.contractNo||'')});
+  });
+  const est=state.files.filter(function(f){return f.kind==='estimate'&&f.project===name&&f.est;});
+  est.slice(0,3).forEach(function(f){const d=(typeof hjNormDate==='function'?hjNormDate(f.est.date||''):String(f.est.date||'')).slice(0,10);if(d)ev.push({d:d,ic:'🧾',t:'견적 '+won(f.est.amount||0)});});
+  const byDate={};
+  state.files.filter(function(f){return f.kind==='photo'&&f.project===name&&f.when;}).forEach(function(f){
+    const d=day(new Date(f.when).toISOString());byDate[d]=(byDate[d]||0)+1;});
+  Object.keys(byDate).forEach(function(d){ev.push({d:d,ic:'📷',t:'시공 사진 '+byDate[d]+'장'});});
+  (state.payLog||[]).filter(function(x){return x.project===name;}).forEach(function(x){ev.push({d:day(x.d),ic:'💰',t:'입금 '+won(x.amt||0)});});
+  (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});});
+  if(p.doneAt)ev.push({d:p.doneAt,ic:'🎉',t:'공사 완료'});
+  if(p.warrantyDoc&&p.warrantyDoc.at)ev.push({d:p.warrantyDoc.at,ic:'🛡',t:'완료보증서 발급'});
+  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);}).slice(-40);
+}
+function hjStoryText(name){
+  const ev=hjStoryData(name);
+  const p=state.projects.find(function(x){return x.name===name;})||{};
+  const cu=p.customer||{};
+  return ['['+COMPANY.name+'] '+name+' 공사 스토리'+(cu.name?' — '+cu.name+'님':''),'']
+    .concat(ev.map(function(e){return e.d+' '+e.ic+' '+e.t;}))
+    .concat(['','감사합니다. '+COMPANY.tel+' '+COMPANY.owner]).join('\n');
+}
+function hjStoryView(name){
+  const ev=hjStoryData(name);
+  const rows=ev.length?ev.map(function(e){
+    return '<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 2px;border-bottom:1px dashed var(--line-soft)">'+
+      '<span style="font-size:11px;color:var(--muted);white-space:nowrap;padding-top:2px">'+escapeHtml(e.d.slice(5))+'</span>'+
+      '<span>'+e.ic+'</span><span style="flex:1;font-size:12.5px">'+escapeHtml(e.t)+'</span></div>';
+  }).join(''):'<div style="font-size:12.5px;color:var(--muted);padding:14px 4px">아직 기록이 없어요 — 계약·사진·입금이 쌓이면 자동으로 이야기가 됩니다.</div>';
+  openModal('📖 공사 스토리 — '+escapeHtml(name),
+    '<div style="max-height:52vh;overflow:auto">'+rows+'</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px">계약·서명·사진·입금·완료·보증서가 날짜순으로 정리됩니다. [카톡 공유]로 고객에게 그대로 보낼 수 있어요.</div>',
+    [{label:'📤 카톡 공유',cls:'clay',fn:function(){kakaoShareText(hjStoryText(name),name+' 공사 스토리');}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:name,기록:ev.length};
+}
+/* 서명 내역 — 전자계약 서버에서 상태를 읽어 현장 contractLog 에 저장(계약번호·상태만, 전화번호 없음) */
+async function contractStatusRefresh(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
+  if(!Array.isArray(p.contractLog)||!p.contractLog.length){toast('보낸 전자계약이 없습니다 — [📨 알림톡 계약서]로 먼저 보내세요');return;}
+  if(typeof contractReady!=='function'||!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
+  const base=contractBaseUrl(__contract.url);
+  let j=null;
+  try{
+    const r=await fetch(base+'/api/contracts',{headers:{'x-admin-token':__contract.token}});
+    if(!r.ok)throw new Error('서버 응답 '+r.status);
+    j=await r.json();
+  }catch(e){toast('서명 확인 실패: '+(e&&e.message||e));return;}
+  const byId={};(j&&j.contracts||[]).forEach(function(c){if(c.contractId)byId[c.contractId]=c;});
+  let ch=0;
+  p.contractLog.forEach(function(L){
+    const c=L.contractId&&byId[L.contractId];if(!c)return;
+    if(L.serverStatus!==c.status||(c.completedAt&&L.completedAt!==c.completedAt)){
+      L.serverStatus=c.status;if(c.completedAt)L.completedAt=c.completedAt;ch++;}
+  });
+  if(ch){markDirty();render();}
+  toast(ch?('✍️ 서명 상태 '+ch+'건 갱신됨'):'변경 없음 — 이미 최신입니다');
+  return {갱신:ch};
+}
+function hjContractStatusLabel(L){
+  if(L.serverStatus==='COMPLETED')return ['서명 완료 ✅'+(L.completedAt?' '+String(L.completedAt).slice(5,10):''),'var(--ok)'];
+  if(L.serverStatus==='VOID')return ['취소됨','var(--muted)'];
+  if(L.serverStatus==='VIEWED')return ['열람함 · 서명 대기','var(--gold)'];
+  return ['서명 대기','var(--warn)'];
+}
+/* 완료보증서 — 발급 사본을 현장에 보관(p.warrantyDoc)하고 카톡(파일 공유)으로 송부 */
+async function hjWarrantyShareHtml(name,html,fname){
+  const file=new File([html],fname,{type:'text/html'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:name+' 완료보증서'});return true;}
+    catch(e){if(e&&e.name==='AbortError')return false;}
+  }
+  const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  toast('저장됨 — 카톡 대화방에 파일로 첨부해 보내세요');
+  return true;
+}
+async function warrantyIssueSend(name){
+  const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
+  if(!(((p.stage||0)>=STAGES.length-1)||p.doneAt)){toast('완료 단계에서 발급할 수 있어요 — 먼저 준공 처리하세요');return {오류:'미완료'};}
+  const html=warrantyHTML(name);
+  if(!html){toast('보증서를 만들 수 없습니다');return {오류:'생성 실패'};}
+  p.warrantyDoc={at:localDate(),file:safeName(name)+'_완료보증서_'+localDate()+'.html',html:html};
+  markDirty();
+  const ok=await hjWarrantyShareHtml(name,html,p.warrantyDoc.file);
+  if(ok){p.warrantyDoc.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}
+  render();
+  return {발급:p.warrantyDoc.at,송부:!!ok};
+}
+function warrantyDocView(name){
+  const p=state.projects.find(function(x){return x.name===name;});
+  if(!p||!p.warrantyDoc||!p.warrantyDoc.html){toast('보관된 보증서가 없습니다 — [🧾 완료보증서 보내기]로 발급하세요');return;}
+  const w=p.warrantyDoc;
+  openModal('🛡 완료보증서 보관본 — '+escapeHtml(name),
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">발급 '+escapeHtml(w.at||'')+(w.sentAt?' · 마지막 송부 '+escapeHtml(w.sentAt):' · 아직 송부 전')+' — 고객에게 보낸 것과 같은 사본입니다.</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:52vh"><iframe srcdoc="'+escapeAttr(w.html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
+    [{label:'📤 다시 보내기(보관본)',cls:'clay',fn:async function(){const ok=await hjWarrantyShareHtml(name,w.html,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}}},
+     {label:'♻️ 새로 발급',cls:'ghost',fn:function(){closeModal();warrantyIssueSend(name);}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
+function hjKakaoCard(p){
+  const done=((p.stage||0)>=STAGES.length-1)||!!p.doneAt;
+  const logs=(p.contractLog||[]).slice(-3).reverse();
+  const sigRows=logs.length?logs.map(function(L){
+    const s=hjContractStatusLabel(L);
+    return '<div style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
+      '<span style="color:var(--muted);white-space:nowrap">'+escapeHtml(String(L.at||'').slice(5,10))+'</span>'+
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(L.contractNo||'계약')+' · '+won(L.amount||0)+'</span>'+
+      '<b style="color:'+s[1]+';white-space:nowrap;font-size:11.5px">'+s[0]+'</b></div>';
+  }).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 2px">아직 보낸 전자계약이 없어요 — 위의 [📨 알림톡 계약서]로 보내면 여기에 서명 내역이 쌓입니다.</div>';
+  const w=p.warrantyDoc;
+  const warrLine=w&&w.at
+    ?'<div style="margin-top:7px;font-size:12px">🛡 완료보증서 <b style="color:var(--ok)">발급 '+escapeHtml(w.at)+'</b>'+(w.sentAt?' · 송부 '+escapeHtml(String(w.sentAt).slice(5)):' · <span style="color:var(--warn)">아직 송부 전</span>')+' <button class="mini-btn" data-kkwarrview="'+escapeAttr(p.name)+'">📄 보관본 보기</button></div>'
+    :(done?'<div style="margin-top:7px;font-size:12px;color:var(--muted)">🛡 완료보증서를 발급하면 사본이 이 현장에 남고, 고객에게 카톡으로 보낼 수 있어요.</div>':'');
+  return '<div class="cust-card" data-kkcard="1" style="margin-top:10px">'+
+    '<div class="cust-h">📲 고객 카톡 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">보내기는 카톡 공유로 · 서명은 전자계약으로</span></div>'+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+      '<button class="mini-btn" data-kkprog="'+escapeAttr(p.name)+'" title="진행 단계·다음 일정을 카톡으로 보냅니다">📤 진행 안내</button>'+
+      '<button class="mini-btn" data-kkstory="'+escapeAttr(p.name)+'" title="계약부터 완료까지 날짜순 이야기">📖 공사 스토리</button>'+
+      '<button class="mini-btn" data-kkwarr="'+escapeAttr(p.name)+'" title="완료보증서를 발급해 고객에게 보내고 사본을 남깁니다"'+(done?'':' style="opacity:.55"')+'>🧾 완료보증서 보내기</button>'+
+      '<button class="mini-btn" data-ctrefresh="'+escapeAttr(p.name)+'" title="전자계약 서버에서 서명 여부를 확인합니다">✍️ 서명 확인</button>'+
+    '</div>'+
+    '<div style="margin-top:8px"><div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.08em">서명 내역</div>'+sigRows+'</div>'+
+    warrLine+'</div>';
+}
+
 /* ═══════════ 📦 자재 발주서 — 견적 품목 → 거래처별 주문 문자 (거래처 자동 기억) ═══════════ */
 function hjSupplierOf(name){return (state.supplierMap||{})[String(name||'').trim()]||'';}
 function materialOrder(quoteId){
@@ -8247,7 +8515,8 @@ async function exportFullXlsx(){
   add('앱견적',s2);counts['앱견적']=s2.length-1;
   // ③ 외부 견적서 파일
   const s3=[['일자','내역','현장','공급가','부가세','합계']];
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{
+  // 세무사에게 나가는 시트라 다른 집계와 같은 기준을 쓴다(중복 제거·집계 제외 반영)
+  salesEstimateFiles().forEach(f=>{
     const e=f.est;const total=num(e.amount)||num(e.supply)+num(e.vat);
     s3.push([String(e.date||'').slice(0,10),e.customer||f.name||'',f.project||'',num(e.supply)||Math.round(total/1.1),num(e.vat)||Math.round(total/11),total]);
   });
@@ -8859,7 +9128,7 @@ function bizDashData(){
   const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
   // 이번 달 신규 견적/매출 추정
   let monthEst=0;(state.quotes||[]).forEach(q=>{if(String(q.date||'').slice(0,7)===ym)monthEst+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&String(f.est.date||'').slice(0,7)===ym)monthEst+=num(f.est.amount);});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&hjNormDate(f.est.date).slice(0,7)===ym)monthEst+=num(f.est.amount);});   // 점 형식(2026.05.10) 저장본도 이번 달로 잡히게
   // 미처리 AS
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
   // 웹(홈페이지) 유입 현장 — manmool 공개 사이트에서 넘어온 상담 리드
@@ -9043,7 +9312,7 @@ function revenueTrendData(months){
   const est={},recv={},done={};keys.forEach(k=>{est[k]=0;recv[k]=0;done[k]=0;});
   // 매출(견적): 앱 견적 + 외부 견적 파일
   (state.quotes||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k in est)est[k]+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=String(f.est.date||'').slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});
+  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=hjNormDate(f.est.date).slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});   // 점 형식 저장본도 추이에 잡히게
   // 수금(payLog)
   (state.payLog||[]).forEach(x=>{const k=String(x.d||'').slice(0,7);if(k in recv)recv[k]+=num(x.amt);});
   // 완료 현장 수
@@ -9176,7 +9445,9 @@ function statementHTML(name){
       '<div class="row"><span>부가세 (10%)</span><b>'+hjNum(vat)+' 원</b></div>'+
       '<div class="row total"><span>합계</span><span>'+hjNum(supply+vat)+' 원</span></div>'+
     '</div></div>'+
-    (d.recv>0?'<div class="note">💰 기수금 '+hjNum(d.recv)+'원'+(d.due>0?' · <b style="color:#c2410c">잔금 '+hjNum(d.due)+'원</b>':' · 완납 감사합니다')+'</div>':'')+
+    // 잔금도 이 문서의 합계 기준으로 뺀다(청구서와 같은 이유 — d.due 는 부가세가 빠져 있을 수 있다)
+    (d.recv>0?(function(){const bal=Math.max((supply+vat)-num(d.recv||0),0);
+      return '<div class="note">💰 기수금 '+hjNum(d.recv)+'원'+(bal>0?' · <b style="color:#c2410c">잔금 '+hjNum(bal)+'원</b>':' · 완납 감사합니다')+'</div>';})():'')+
     '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> <span style="color:#8b98ab">(인)</span></div>';
   return hjDocShell('거 래 명 세 서',inner);
 }
@@ -9187,7 +9458,10 @@ function invoiceHTML(name){
   const supply=d.items.length?d.items.reduce((a,it)=>a+it.qty*it.price,0):d.supply;
   const vat=Math.round(supply*0.1);
   const total=supply+vat;
-  const claim=d.due>0?d.due:total;   // 미수금 있으면 잔금, 없으면 전액
+  // 청구액은 이 문서 안의 합계에서 뺀다 — d.due(=견적금액−수금)를 쓰면 안 된다.
+  // 견적이 '부가세 별도'면 견적금액에 부가세가 없어서, 표에는 합계 1,100만·기수금 300만이라 적어 놓고
+  // 청구액만 700만이 찍혔다(실측). 문서 자체가 3+7≠11 이 되고 부가세만큼 덜 청구한다.
+  const claim=Math.max(total-num(d.recv||0),0);
   const acct=COMPANY.accounts[0];
   const inner=
     '<div class="prow"><span><b>받는 분</b>'+escapeHtml(d.cust.name||'—')+' 귀하</span>'+(d.cust.phone?'<span><b>연락처</b>'+escapeHtml(d.cust.phone)+'</span>':'')+'<span><b>청구일</b>'+hjDocDate()+'</span></div>'+
@@ -9431,7 +9705,7 @@ function vatReportData(from,to){
   const inRange=ym=>ym&&ym>=from&&ym<=to;
   let salesSupply=0,salesVat=0;const salesRows=[];
   (state.quotes||[]).forEach(q=>{const ym=String(q.date||'').slice(0,7);if(!inRange(ym))return;const c=quoteCalc(q);salesSupply+=c.supply;salesVat+=c.vat;salesRows.push({ym,label:q.title||q.project||'견적',supply:c.supply,vat:c.vat});});
-  (state.files||[]).filter(f=>f.kind==='estimate'&&f.est&&!f._fromQuote).forEach(f=>{const e=f.est;const ym=String(e.date||'').slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
+  salesEstimateFiles().forEach(f=>{const e=f.est;const ym=hjNormDate(e.date).slice(0,7)||(f.when?localDate(f.when).slice(0,7):'');if(!inRange(ym))return;const total=num(e.amount)||num(e.supply)+num(e.vat);const supply=num(e.supply)||Math.round(total/1.1);const vat=num(e.vat)||total-supply;salesSupply+=supply;salesVat+=vat;salesRows.push({ym,label:e.customer||f.name||'견적',supply,vat});});
   // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
   let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
   state.projects.filter(p=>!p.archived).forEach(p=>{
@@ -9746,7 +10020,7 @@ async function photoReportAISummary(name,d){
 function weekBriefData(){
   // 지난주(off=-1)
   const last=hjWeekRange(-1);
-  const lastPays=(state.payLog||[]).filter(x=>x.d>=last.from&&x.d<=last.to&&x.amt>0);
+  const lastPays=(state.payLog||[]).filter(x=>x.d>=last.from&&x.d<=last.to);   // 정정(음수) 포함
   const lastRecv=lastPays.reduce((a,x)=>a+x.amt,0);
   const lastQuotes=(state.quotes||[]).filter(q=>q.date>=last.from&&q.date<=last.to);
   const lastQuoteSum=lastQuotes.reduce((a,q)=>a+quoteCalc(q).total,0);
@@ -16287,8 +16561,9 @@ function estimateGroups(estFiles){
     (estFiles||[]).forEach(function(f){
       if(f.exSum)return; // [v91] 사장님이 집계 제외한 견적(초기안 등)
       let key=norm(f.name);const amt=(f.est&&f.est.amount)||0;
-      if(!key||key.length<2)key='amt:'+amt;
-      if(!key)key=f.id;
+      // 이름이 거의 안 남으면 금액으로 묶지 않는다 — 금액만 같은 서로 다른 견적이 통째로 합쳐진다.
+      // 못 묶는 건 '사본 2건'으로 보이는 것뿐이지만, 잘못 묶으면 매출이 조용히 사라진다.
+      if(!key||key.length<2)key='id:'+f.id;
       const when=f.when?new Date(f.when).getTime():0;
       if(!groups[key])groups[key]={rep:f,repAmt:amt,repWhen:when,dups:[]};
       else{
@@ -16303,20 +16578,47 @@ function estimateGroups(estFiles){
     let arr=Object.keys(groups).map(function(k){return {rep:groups[k].rep,dups:groups[k].dups,amt:groups[k].repAmt||0};});
     // [v100 P1] 2차 병합: 같은 현장 + 같은 금액이면 파일명이 달라도 같은 견적으로 본다
     // (예: '★20251028 빌드캡 공주 3,978,700.xlsx' 와 '빌드캡 (공주)20251028 (1).xlsx' — 이름 정규화로는 못 묶여 2배로 잡히던 케이스)
+    //
+    // ※ 여기에 파일명 속 숫자를 넣는다. 현장·금액만 보면 서로 다른 견적이 합쳐져 매출이 사라졌다.
+    //   실측: '태산그린 101동 견적.xlsx' 500만 + '태산그린 202동 견적.xlsx' 500만 → 매출 500만(정답 1,000만).
+    //   같은 평형 두 세대를 같은 단가로 수주하는 건 이 업종의 기본 패턴이고, 화면에는 '사본 1' 배지만 뜬다.
+    //   202동 500만원이 미수금·에이징·파수꾼 어디에도 안 남고, 청구서도 축소된 금액으로 나간다.
+    //
+    // 판정: 이름의 '글자 부분'(한글·영문만)이 같은 것끼리만 후보로 보고,
+    //       거기서 숫자가 양쪽 다 있으면서 서로 다르면 다른 견적으로 둔다.
+    //   · 태산그린 101동 / 202동 → 글자 '태산그린동' 같음, 숫자 101≠202 → 별개 ✔
+    //   · ★20251028 빌드캡 공주 3,978,700 / 빌드캡 (공주)20251028 (1)
+    //     → 글자 '빌드캡공주' 같음, 한쪽은 norm 이 숫자를 지워 비어 있음 → 사본 ✔
+    //   (숫자를 그냥 키에 붙이면 norm 이 위치에 따라 숫자를 다르게 지워서 이 사본 쌍이 갈라진다)
+    //
+    // 엑셀이 원본이고 PDF는 그 출력본이다. 같은 견적의 엑셀·PDF 는 이름이 같게 정규화돼
+    // 1차에서 이미 한 그룹이 되고, 아래 대표 선정이 엑셀을 남기므로 매출에는 엑셀만 반영된다.
     const isX=function(f){return /xlsx?$/i.test(String(f.ext||''))||/\.xlsx?$/i.test(String(f.name||''));};
+    const lettersOf=function(f){return norm(f.name).replace(/[^가-힣a-z]/g,'');};
+    const digitsOf=function(f){return (norm(f.name).match(/\d/g)||[]).join('');};
     const byPA={},out=[];
     arr.forEach(function(g){
       const pj=g.rep.project||'',amt=g.amt||0;
       if(pj&&amt>0){
-        const k2=pj+'|'+amt;
-        const t=byPA[k2];
+        const cands=byPA[pj+'|'+amt]||[];
+        // 같은 현장·같은 금액인 앞선 그룹 중에서 '사본'을 찾는다
+        const t=cands.filter(function(c){
+          const dA=digitsOf(c.rep),dB=digitsOf(g.rep);
+          if(dA&&dB&&dA!==dB)return false;               // 호수 등 숫자가 서로 다르면 다른 견적(101동 vs 202동)
+          if(isX(c.rep)!==isX(g.rep))return true;        // 엑셀 ↔ PDF = 원본과 그 출력본 → 사본
+          // 같은 형식끼리는 이름 글자까지 같아야 사본.
+          // 단 '[견적서] 가상장.pdf' 처럼 정규화하면 글자가 안 남는 이름이 있다 — 그건 '이름이 다르다'가
+          // 아니라 '이름으로는 알 수 없다'이므로, 현장·금액이 같은 이상 사본으로 본다.
+          const lA=lettersOf(c.rep),lB=lettersOf(g.rep);
+          return !lA||!lB||lA===lB;
+        })[0];
         if(t){
-          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}
+          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본)
           else t.dups.push(g.rep);
           t.dups=t.dups.concat(g.dups);
           return;
         }
-        byPA[k2]=g;
+        byPA[pj+'|'+amt]=cands;cands.push(g);
       }
       out.push(g);
     });
@@ -16942,25 +17244,34 @@ function docDelete(id){
   const f=state.files.find(function(x){return x.id===id;});
   if(!f)return;
   if(f.kind==='photo'){try{deletePhoto(id);}catch(e){}return;}
-  if(!requireEditMode('파일 삭제'))return;
-  const canFs=!!(!f._virtual&&state.dirHandle&&(typeof FS_OK==='undefined'||FS_OK));
+  // ※ 예전에는 여기서 requireEditMode 로 모바일 전체를 막았다. 그래서 폰에서는 견적서 [🗑 삭제]가
+  //   보이는데 눌러도 "모바일은 올리기·보기 전용" 안내만 뜨고 아무 일도 없었다.
+  //   실제로 위험한 건 '폴더의 원본 파일 삭제'뿐이고, 그건 아래 canFs 에서만 일어난다.
+  //   앱 목록에서 빼는 것은 폰에서도 안전하다(사진 삭제 deletePhoto 가 이미 같은 방식으로 동작한다).
+  const canFs=!!(!f._virtual&&canEditFiles());   // PC + 폴더 연결일 때만 원본까지(모바일 모드는 항상 제외)
   const warn=canFs
     ?'<p style="margin:8px 0;color:var(--warn)"><b>폴더의 실제 파일이 삭제됩니다.</b> 되돌릴 수 없어요.</p>'
-    :'<p style="margin:8px 0;color:var(--muted)">폴더 미연결/보기 모드 — <b>앱 목록에서만</b> 제거됩니다(실제 파일은 그대로).</p>';
+    :'<p style="margin:8px 0;color:var(--muted)">'+(isMobileNow()?'📱 폰에서는 ':'폴더 미연결 — ')+'<b>앱 목록에서만</b> 제거됩니다(드라이브·PC의 원본 파일은 그대로).</p>';
   openModal('🗑 파일 삭제',
     '<div style="font-size:13px;line-height:1.6"><p style="margin:0 0 6px"><b>"'+escapeHtml(f.name)+'"</b> 을(를) 삭제할까요?</p>'+warn+
     (f.est&&f.est.amount?'<p style="margin:8px 0;font-size:12px;color:var(--muted)">이 견적 금액 '+won(f.est.amount)+'원은 집계에서 빠집니다.</p>':'')+'</div>',
     [{label:'삭제',cls:'clay',fn:async function(){
         try{
+          // 지우기 전 스냅샷(🛡 안전판) — 폰에서도 남는다(IndexedDB). 견적서는 매출 집계가 걸려 있어
+          // 잘못 지웠을 때 되살릴 길이 반드시 있어야 한다.
+          try{await hjSnapshot('파일 삭제 전 — '+f.name,true);}catch(e){}
           if(canFs){
             let done=false;
             try{if(f.handle&&f.handle.remove){await f.handle.remove();done=true;}}catch(e){}
             if(!done){const dir=await fsDirOfPrefix(f.prefix);if(dir){await dir.removeEntry(f.name);done=true;}}
             if(!done){toast('폴더에서 파일을 찾지 못해 목록에서만 제거합니다');}
           }
+          // 드라이브에서 온 파일은 '제거함'으로 기록 — 안 하면 다시 불러올 때 되살아나
+          // "지웠는데 또 생긴다"가 된다(사진 삭제와 같은 방식).
+          if(f._driveId){__removedIds.add(f._driveId);try{await idbSet('removed_ids',[...__removedIds]);}catch(e){}}
           state.files=state.files.filter(function(x){return x.id!==id;});
           markDirty();closeModal();render();
-          toast('🗑 삭제됨: '+f.name);
+          toast(canFs?('🗑 삭제됨 · 폴더 원본까지: '+f.name):('🗑 목록에서 제거됨: '+f.name));
         }catch(e){toast('삭제 실패: '+(e.message||e));}
       }},
      {label:'취소',cls:'ghost',fn:closeModal}],true);
@@ -19743,7 +20054,7 @@ async function importQuoteXlsx(){
       const grid=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''});
       const q=parseQuoteFromGrid(grid,file.name);
       state.editingQuote=q;state.tab='quotemaker';markDirty();render();
-      toast('엑셀 견적서를 불러왔습니다 · 품목 '+q.items.length+'개. (총액은 원본과 동일한 부가세 별도 기준 — 10% 추가가 필요하면 ‘부가세 포함’으로 변경)');
+      toast('엑셀 견적서를 불러왔습니다 · 품목 '+quoteRealItems(q).length+'개 · '+(q.vatIncluded?'부가세 포함':'부가세 별도')+' 기준 '+hjNum(quoteCalc(q).total)+'원. (기준이 다르면 화면에서 바꾸세요)');
     }catch(e){toast('엑셀 읽기 오류: '+e.message);}
   };
   inp.click();
@@ -19764,10 +20075,20 @@ function parseQuoteFromGrid(grid,filename){
     if(n>=0&&p>=0){hr=r;cN=n;cP=p;cS=find('규격');cQ=find('수량');cA=find('공급가액','금액');break;}
   }
   const items=[];
+  // 품목 표가 어디서 끝나는지 — 여기서 못 끊으면 합계·총액 행이 품목으로 흡수돼
+  // 견적 금액이 통째로 한 번 더 더해진다.
+  // ※ 앱이 스스로 만든 견적서(exportQuoteXlsx)가 정확히 그랬다. 그쪽 라벨은
+  //   '합 계(공급가액)'·'총 액(부가세 포함)' 이라, 공백만 지운 정확일치로는 안 걸렸다.
+  //   실측: 1,100만원짜리 견적서를 내보냈다가 다시 읽으면 3,100만원이 됐다
+  //   (품목 700만 + 합계행 1,000만 + 총액행 1,100만). 매출·마진·세금이 전부 그 위에 얹힌다.
+  // 합계류는 뒤에 괄호가 붙으므로 '시작하면' 끊고, 꼬리말은 품목명(예: '장소이동비')과
+  // 헷갈리지 않게 완전일치로만 끊는다.
+  const END_TOTAL=/^(합계|총액|소계|합계금액|공급가액계|세액계)/;
+  const END_FOOT=new Set(['결제방법','입금계좌','장소','비고','특이사항','견적유효기간','견적조건','견적금액']);
   if(hr>=0){
     for(let r=hr+1;r<grid.length&&items.length<200;r++){
       const row=grid[r]||[];
-      if(row.some(c=>['합계','총액','소계'].includes(norm(c))))break;
+      if(row.some(c=>{const s=norm(c);return s&&(END_TOTAL.test(s)||END_FOOT.has(s));}))break;
       let nm=String(row[cN]==null?'':row[cN]).trim();
       let spec=cS>=0?String(row[cS]==null?'':row[cS]).trim():'';
       const qty=cQ>=0?(num(row[cQ])||1):1;
@@ -19775,12 +20096,18 @@ function parseQuoteFromGrid(grid,filename){
       if(!price&&cA>=0&&qty)price=Math.round(num(row[cA])/qty);
       if(nm==='-')nm='';
       if(spec==='-')spec='';
-      if(!nm&&!price)continue;
+      // 품명이 없는데 금액만 있는 줄은 품목이 아니라 소계·합계다 — 세면 이중계상이 된다.
+      // (앱도 quoteRealItems 에서 '이름 있는 것'만 품목으로 센다. 금액도 같은 기준으로 맞춘다.)
+      if(!nm)continue;
       items.push({name:nm,spec:spec,qty:qty||1,price:price});
     }
   }
   if(items.length)q.items=items;
-  q.vatIncluded=false; // 원본 합계와 동일하게 별도 기준으로 가져옴
+  // 부가세 기준: 총액/견적금액 칸에 '(부가세 포함)'이라고 적혀 있으면 그대로 따른다.
+  // 앱이 내보낸 견적서(exportQuoteXlsx)가 바로 이 형식이라, 이게 없으면 내보냈다 다시 읽을 때
+  // 총액이 부가세만큼 줄어든다. 아무 말도 없는 시트는 예전처럼 '별도'로 둔다(품목 단가=공급가액).
+  const VAT_IN=/^(총액|견적금액|합계|합계금액)\(?부가세포함/;
+  q.vatIncluded=grid.some(row=>(row||[]).some(c=>VAT_IN.test(norm(c))));
   return q;
 }
 /* ===== 편집 중인 견적을 엑셀(.xlsx)로 저장 ===== */
@@ -19829,7 +20156,7 @@ function viewSchedule(){
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
   const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(sch.length){
-    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="moss tiny" id="schExportAll">📲 전체 폰 캘린더에 추가</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
@@ -20168,8 +20495,112 @@ function downloadICS(items,filename){
   setTimeout(()=>URL.revokeObjectURL(url),1500);
   toast('캘린더 파일(.ics) 생성 — 열어서 ‘추가’하면 폰 캘린더에 등록됩니다.');
 }
-function exportScheduleICS(id){const s=state.schedule.find(x=>x.id===id);if(s)downloadICS([s],`일정_${(s.title||'작업').replace(/[^\w가-힣]/g,'')}.ics`);}
-function exportAllICS(){downloadICS(state.schedule||[],'만물인테리어_작업일정.ics');}
+/* 폰 기본 캘린더에 저장 — 예전에는 .ics 를 '다운로드'만 했다. 폰에서는 그 파일이
+   다운로드 폴더에 떨어질 뿐 캘린더로 넘어가지 않아, 사장님이 파일을 직접 찾아 열어야 했다.
+   공유 시트로 넘기면 목록에서 '캘린더'를 골라 그 자리에서 저장된다(완료보증서와 같은 방식).
+   공유를 지원하지 않는 PC 브라우저에서는 예전대로 다운로드한다. */
+async function saveICSToPhone(items,filename){
+  if(!items||!items.length){toast('내보낼 일정이 없습니다.');return {오류:'일정 없음'};}
+  const name=filename||'일정.ics';
+  const ics=buildICS(items);
+  try{
+    const file=new File([ics],name,{type:'text/calendar'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'만물인테리어 일정'});
+      toast('📅 공유 목록에서 캘린더를 고르면 저장됩니다');
+      return {완료:'공유',건수:items.length};
+    }
+  }catch(e){
+    if(e&&e.name==='AbortError')return {취소:true};   // 사용자가 공유창을 닫음 — 실패 아님
+    // 공유가 막힌 환경이면 아래 다운로드로 이어간다
+  }
+  downloadICS(items,name);
+  return {완료:'저장',건수:items.length};
+}
+/* ═══════════ 📅 캘린더 파일(.ics) 가져오기 — 시험·교육·외부 일정을 일정표로 ═══════════
+   내보내기만 있고 가져오기가 없어서, 큐넷 시험처럼 밖에서 온 일정은 손으로 옮겨 적어야 했다.
+   같은 파일을 두 번 넣어도 UID 로 알아보고 갱신만 한다(중복 방지).
+   STATUS:CANCELLED 는 '취소된 일정' → 같은 UID 가 이미 있으면 지운다(접수 취소 반영). */
+function icsUnfold(text){
+  // RFC5545 줄 접힘 풀기: 다음 줄이 공백/탭으로 시작하면 앞 줄에 이어붙인다
+  return String(text||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n').replace(/\n[ \t]/g,'');
+}
+function icsUnescape(s){
+  return String(s||'').replace(/\\n/gi,'\n').replace(/\\,/g,',').replace(/\\;/g,';').replace(/\\\\/g,'\\');
+}
+function parseICS(text){
+  const out=[];
+  const blocks=icsUnfold(text).split(/BEGIN:VEVENT/i).slice(1);
+  blocks.forEach(function(b){
+    const body=b.split(/END:VEVENT/i)[0];
+    const get=function(name){
+      // 속성 파라미터(;VALUE=DATE, ;TZID=...)까지 함께 잡는다
+      const m=body.match(new RegExp('^'+name+'([^:\\n]*):(.*)$','im'));
+      return m?{params:m[1]||'',val:m[2].trim()}:null;
+    };
+    const ds=get('DTSTART'); if(!ds)return;
+    const raw=ds.val.replace(/\s/g,'');
+    const dm=raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/);
+    if(!dm)return;
+    const date=dm[1]+'-'+dm[2]+'-'+dm[3];
+    // 종일(VALUE=DATE)이면 시간 없음. 시간이 붙어 있으면 그대로 쓴다(Z 는 UTC 표기라 그대로 두면 오차가 생겨 무시).
+    const allDay=/VALUE=DATE(?!-TIME)/i.test(ds.params)||!dm[4];
+    const time=allDay?'':(dm[4]+':'+dm[5]);
+    const st=get('STATUS');
+    out.push({
+      uid:(get('UID')||{}).val||'',
+      date:date, time:time,
+      title:icsUnescape((get('SUMMARY')||{}).val||'일정'),
+      location:icsUnescape((get('LOCATION')||{}).val||''),
+      memo:icsUnescape((get('DESCRIPTION')||{}).val||''),
+      cancelled:!!(st&&/CANCELLED/i.test(st.val))
+    });
+  });
+  return out;
+}
+async function importICS(text){
+  const evs=parseICS(text);
+  if(!evs.length)return {오류:'일정을 찾지 못했습니다'};
+  try{await hjSnapshot('캘린더 가져오기 전',true);}catch(e){}
+  state.schedule=state.schedule||[];
+  let added=0,updated=0,removed=0;
+  evs.forEach(function(e){
+    const key=e.uid||('nouid:'+e.date+'|'+e.title);
+    // 같은 일정을 두 경로로 받을 수 있다 — 앱에 미리 넣어 둔 기본 일정(sourceUid)과 사장님이 넣는 .ics 파일(icsUid).
+    // 둘을 같은 UID로 묶지 않으면 시험 일정이 캘린더에 두 번 뜬다.
+    const i=state.schedule.findIndex(function(s){
+      if(s.icsUid) return s.icsUid===key;
+      if(e.uid&&s.sourceUid) return s.sourceUid===e.uid;
+      return !e.uid&&s.date===e.date&&s.title===e.title;
+    });
+    if(e.cancelled){ if(i>=0){state.schedule.splice(i,1);removed++;} return; }
+    const memo=[e.location?('장소: '+e.location):'',e.memo].filter(Boolean).join('\n');
+    if(i>=0){
+      Object.assign(state.schedule[i],{date:e.date,time:e.time,title:e.title,memo:memo,icsUid:key});
+      updated++;
+    }else{
+      state.schedule.push(Object.assign(newSchedule(),{date:e.date,time:e.time,title:e.title,memo:memo,hours:e.time?8:0,icsUid:key}));
+      added++;
+    }
+  });
+  markDirty();render();
+  const msg='📅 일정 '+(added?added+'건 추가':'')+(updated?(added?' · ':'')+updated+'건 갱신':'')+(removed?((added||updated)?' · ':'')+removed+'건 취소반영':'');
+  toast(added||updated||removed?msg:'바뀐 일정이 없습니다');
+  return {추가:added,갱신:updated,취소:removed};
+}
+function pickICSFile(){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.ics,text/calendar';
+  inp.onchange=async function(){
+    const f=inp.files&&inp.files[0]; if(!f)return;
+    try{ await importICS(await f.text()); }
+    catch(e){ toast('캘린더 파일을 읽지 못했습니다: '+(e&&e.message||e)); }
+    inp.value='';
+  };
+  inp.click();
+}
+function exportScheduleICS(id){const s=state.schedule.find(x=>x.id===id);if(s)return saveICSToPhone([s],`일정_${(s.title||'작업').replace(/[^\w가-힣]/g,'')}.ics`);}
+function exportAllICS(){return saveICSToPhone(state.schedule||[],'만물인테리어_작업일정.ics');}
 // 구글 캘린더에 일정 추가 (캘린더 '일정 만들기' 화면을 미리 채워 열기 — 추가 권한/심사 불필요)
 function addToGoogleCalendar(id){
   const s=(state.schedule||[]).find(x=>x.id===id); if(!s){toast('일정을 찾을 수 없습니다.');return;}
@@ -20516,6 +20947,8 @@ function viewProject(){
   }
   // 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (준공 현장만 활성, 비준공은 흐리게)
   html+=hjCompletionCard(p);
+  // 📲 고객 카톡 관리 — 진행 안내·공사 스토리·서명 내역·완료보증서(발급 사본 보관)
+  html+=hjKakaoCard(p);
   // 💬 고객 페이지 소통(선택 상태·메시지)
   if((p.portalAsk&&p.portalAsk.q)||(p.portalMsgs&&p.portalMsgs.length)){
     const askLine=p.portalAsk&&p.portalAsk.q?('<div style="font-size:12px;margin-bottom:6px">🎨 <b>'+escapeHtml(p.portalAsk.q)+'</b> — '+(p.portalAsk.choice?'<span style="color:var(--ok);font-weight:700">'+escapeHtml(p.portalAsk.choice)+' ✅</span>':'<span style="color:var(--warn)">고객 선택 대기 중</span>')+'</div>'):'';
@@ -20678,7 +21111,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -20709,6 +21142,7 @@ function setupDelegation(){
     if(t.id==='schLabor')return laborLedger();
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();
+    if(t.id==='schIcsIn')return pickICSFile();
     if(t.id==='schShowAll'){__calSelDate=null;return render();}
     if(d.calday!==undefined)return calSelectDay(d.calday);
     if(d.calnav!==undefined)return calNav(d.calnav);
@@ -20730,6 +21164,11 @@ function setupDelegation(){
     if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.contractsend!==undefined)return openContractSend(d.contractsend);
+    if(d.kkprog!==undefined)return kakaoShareText(hjProgressText(d.kkprog),'공사 진행 안내');
+    if(d.kkstory!==undefined)return hjStoryView(d.kkstory);
+    if(d.kkwarr!==undefined)return warrantyIssueSend(d.kkwarr);
+    if(d.kkwarrview!==undefined)return warrantyDocView(d.kkwarrview);
+    if(d.ctrefresh!==undefined)return contractStatusRefresh(d.ctrefresh);
     if(d.workorder!==undefined)return openWorkOrder({schId:d.workorder});
     if(d.workorderp!==undefined)return openWorkOrder({proj:d.workorderp});
     if(d.schreport!==undefined)return openReportEdit(d.schreport);

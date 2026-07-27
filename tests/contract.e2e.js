@@ -1,13 +1,16 @@
 /* contract.e2e.js — 전자계약 안전 모드·실발송 확인 회귀 테스트
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
-const { chromium } = require('playwright');
+// 다른 테스트와 같은 폴백 — 이게 없어서 이 테스트만 조용히 실행되지 않고 있었다(MODULE_NOT_FOUND).
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const APP = 'http://localhost:8299/index.html';
 const assert = (v, m) => { if (!v) throw new Error(m); };
 let browser;
 
 (async () => {
-  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE });
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   page.setDefaultTimeout(7000);
   const errors = [];

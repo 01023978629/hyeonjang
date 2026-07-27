@@ -172,7 +172,8 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     assert(r.noteIds.indexOf('n1') >= 0, 'notes 보존');
     assert(r.fileCount >= 1, 'files 보존');
     // 기준 스냅샷(warranty-review 관례) 대비 최상위 키 집합 — 알려진 키만 존재
-    const ALLOWED = ['version', 'app', 'savedAt', 'learn', 'quotes', 'schedule', 'notes', 'priceBook', 'asLog', 'satisfaction', 'adPosts', 'portalCfg', '_savedFileCount', 'kakaoLastAt', 'coworkTasks', 'coworkSched', '_cwSchedInit', '_coworkInit', 'payLog', 'expenses', 'goals', 'aiOps', 'suppliers', 'supplierMap', 'inventory', 'brand', 'contacts', 'projects', 'files'].sort();
+    // calendarImports: 앱에 내장된 기본 일정을 이미 넣었는지 기록하는 장부(배치 id 목록). 사용자 데이터가 아니라 중복 방지용.
+    const ALLOWED = ['version', 'app', 'savedAt', 'learn', 'quotes', 'schedule', 'calendarImports', 'notes', 'priceBook', 'asLog', 'satisfaction', 'adPosts', 'portalCfg', '_savedFileCount', 'kakaoLastAt', 'coworkTasks', 'coworkSched', '_cwSchedInit', '_coworkInit', 'payLog', 'expenses', 'goals', 'aiOps', 'suppliers', 'supplierMap', 'inventory', 'brand', 'contacts', 'projects', 'files'].sort();
     assert(JSON.stringify(r.keys) === JSON.stringify(ALLOWED), '최상위 키 집합 불변\n got: ' + JSON.stringify(r.keys) + '\n exp: ' + JSON.stringify(ALLOWED));
   });
 
@@ -331,12 +332,16 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
       // 구 스키마/부분 자료: files·projects만 있고 quotes/contacts/notes/schedule 키가 아예 없음(과거 드라이브 JSON)
       const partial = { version: 2, savedAt: '2020-01-01T00:00:00.000Z', files: [{ key: 'k1', name: '사진.jpg' }], projects: [{ name: '새현장', stage: 2 }] };
       applyData(partial);
-      return { quotes: state.quotes.length, contacts: state.contacts.length, notes: state.notes.length, schedule: state.schedule.length, projNames: state.projects.map(p => p.name) };
+      return { quotes: state.quotes.length, contacts: state.contacts.length, notes: state.notes.length,
+        keptSchedule: state.schedule.filter(s => s.title === '기존 일정').length,
+        addedByApp: state.schedule.filter(s => s.sourceUid).length,
+        projNames: state.projects.map(p => p.name) };
     });
     assert(r.quotes === 1, '누락된 quotes 키 → 기존 보존(지워지면 안 됨): ' + r.quotes);
     assert(r.contacts === 1, '누락된 contacts 키 → 기존 보존: ' + r.contacts);
     assert(r.notes === 1, '누락된 notes 키 → 기존 보존: ' + r.notes);
-    assert(r.schedule === 1, '누락된 schedule 키 → 기존 보존: ' + r.schedule);
+    // 앱 내장 기본 일정(sourceUid 표시)은 더해질 수 있다. 지워지면 안 되는 것은 사장님이 넣은 일정이다.
+    assert(r.keptSchedule === 1, '누락된 schedule 키 → 기존 일정 보존: ' + r.keptSchedule);
     assert(JSON.stringify(r.projNames) === JSON.stringify(['새현장']), '존재하는 projects 키는 정상 교체 적용: ' + JSON.stringify(r.projNames));
   });
 
