@@ -135,6 +135,23 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.workKept, '직렬화 후에도 현장 작업 일정 유지');
   });
 
+  await test('⑦ 앱 기본 시험일정이 이미 있으면 .ics 를 넣어도 두 번 뜨지 않는다', async () => {
+    // 같은 시험을 앱 기본값(sourceUid)과 .ics 파일(icsUid) 두 경로로 받는다.
+    // 서로 못 알아보면 9/1·9/14 가 캘린더에 2건씩 겹쳐 뜨고, 어느 쪽이 맞는지 알 수 없게 된다.
+    const r = await page.evaluate(async (ics) => {
+      state.schedule = []; state.calendarImports = [];
+      const built = ensureBuiltInCalendarImports();
+      const out = await importICS(ics);
+      return { built: built.added, out, n: state.schedule.length,
+        dates: state.schedule.map(s => s.date).sort(),
+        sep: state.schedule.map(s => s.date + '|' + s.title) };
+    }, EXAM);
+    assert(r.built === 2, '전제: 앱 기본 시험일정 2건이 먼저 들어가 있어야 함(' + r.built + ')');
+    assert(r.n === 2, '기본 2건 + 파일 2건 = 4건이 되면 안 됨: ' + r.n + '건 · ' + r.sep.join(' / '));
+    assert(r.out.추가 === 0 && r.out.갱신 === 2, '추가가 아니라 갱신이어야 함: ' + JSON.stringify(r.out));
+    assert(r.dates.join(',') === '2026-09-01,2026-09-14', '날짜가 어긋남: ' + r.dates.join(','));
+  });
+
   await test('★pageerror 0', async () => {
     assert(errs.length === 0, 'pageerror: ' + errs.join(' | '));
   });
