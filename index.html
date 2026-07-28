@@ -709,7 +709,7 @@
 
     <p class="footnote">
       모든 처리는 브라우저 안에서만 일어나며 파일·사진은 외부로 전송되지 않습니다. 한글 OCR 모델은 처음 한 번만 자동 내려받습니다.
-      GPS→주소 변환만 좌표를 OpenStreetMap에 조회합니다(설정에 카카오 키를 넣으면 카카오로 조회 — 원치 않으면 사용 안 함). 정리(이동)는 미리보기·확정 후 실행되며, 직전 1회는 되돌릴 수 있습니다.
+      GPS→주소 변환만 좌표를 OpenStreetMap에 조회합니다(설정에 카카오 키를 넣으면 카카오로 조회 — 원치 않으면 사용 안 함). [🔎 네이버지도]는 누를 때만 그 주소로 네이버지도를 열며, 앱이 네이버에 자동으로 보내는 것은 없습니다. 정리(이동)는 미리보기·확정 후 실행되며, 직전 1회는 되돌릴 수 있습니다.
       실제 폴더 연결·이동은 Chrome·Edge에서 지원됩니다.
       <br><b>PC·모바일 연동:</b> 작업 폴더를 구글 드라이브/드롭박스 동기화 폴더 안에 두면 사진·서류가 기기 간 공유됩니다. 현장·견적·수금 데이터는 ‘데이터 내보내기’로 만든 파일을 옮겨 ‘불러오기’ 하면 폰에서도 그대로 확인됩니다.
     </p>
@@ -3879,6 +3879,18 @@ function hjPlaceLabel(j){
   if(name&&s.indexOf(name)<0)s=s?(s+' · '+name):name;
   return s||(j&&j.display_name)||'';
 }
+// 건물 이름이 붙었는지. 조립할 때 ' · ' 뒤에 넣기로 정했으므로 그것으로 판별한다.
+function hjHasBuildingName(addr){ return String(addr||'').indexOf(' · ')>=0; }
+/* 건물명이 비었을 때 네이버지도로 넘긴다.
+   앱이 네이버를 직접 조회하지는 못한다 — 네이버 지도/지역검색 API 는 서버용 키(시크릿)를 요구하고
+   브라우저에서 부르면 CORS 로 막힌다. 화면에 넣을 수 있는 키가 없다.
+   그래서 '대신 찾아주기'가 아니라 '한 번에 열어주기'로 한다. 폰에서는 네이버지도 앱이 열린다. */
+function hjNaverMapUrl(addr,lat,lng){
+  // 괄호 안 지번은 빼고 검색한다 — 도로명만 넣는 편이 결과가 정확하다.
+  let q=String(addr||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  if(!q&&lat!=null)q=Number(lat).toFixed(6)+','+Number(lng).toFixed(6);
+  return 'https://map.naver.com/p/search/'+encodeURIComponent(q);
+}
 // 한 줄 요약에 쓸 짧은 위치. 건물 이름이 있으면 그게 가장 알아보기 쉽다.
 function hjPlaceShort(addr){
   const s=String(addr||'');
@@ -3942,6 +3954,27 @@ async function hjLookupPlace(lat,lng){
   }
   const r=await fetch(hjGeoUrl(lat,lng),{headers:{'Accept':'application/json'}});
   return {addr:hjPlaceLabel(await r.json()),src:'osm'};
+}
+// 네이버지도를 새 탭으로 연다(폰이면 네이버지도 앱).
+function openNaverMapFor(c){
+  if(!c){toast('묶음을 찾을 수 없습니다.');return;}
+  if(!c.address&&c.lat==null){toast('먼저 [주소 조회]를 눌러주세요.');return;}
+  const url=hjNaverMapUrl(c.address,c.lat,c.lng);
+  toast('네이버지도에서 건물명을 확인한 뒤 [✏️ 건물명]으로 적어 두세요');
+  try{ window.open(url,'_blank','noopener'); }catch(e){ location.href=url; }
+}
+// 확인한 건물명을 이 묶음 사진들에 붙인다. 안 적어 두면 다음에 또 찾아야 한다.
+function setClusterBuilding(c){
+  if(!c){toast('묶음을 찾을 수 없습니다.');return;}
+  const base=String(c.address||'').split(' · ')[0];
+  const cur=hjHasBuildingName(c.address)?String(c.address).split(' · ').slice(1).join(' · '):'';
+  const v=prompt('건물명 (예: 햇살아파트 101동). 비우면 지웁니다.',cur);
+  if(v===null)return;
+  const name=v.trim();
+  const addr=name?(base+' · '+name):base;
+  c.items.forEach(p=>p.address=addr); c.address=addr;
+  markDirty(); if(typeof __photoCache!=='undefined')__photoCache.key=null; render();
+  toast(name?('건물명 저장: '+name):'건물명을 지웠습니다');
 }
 async function geocodeCluster(c,btn){
   if(c.lat==null){toast('이 묶음엔 GPS가 없습니다.');return;}
@@ -19311,6 +19344,9 @@ function viewPhotos(){
     const cur=mostCommon(c.items.map(p=>p.project).filter(Boolean));
     const ids=c.items.map(p=>p.id).join(',');
     const geoBtn=c.lat!=null&&!c.address?`<button class="ghost tiny" data-geo="${i}">주소 조회</button>`:'';
+    // 건물명이 비면 도로명까지만 남아 현장을 특정하기 어렵다. 네이버지도로 넘겨 확인하고 적어 둘 수 있게 한다.
+    const nmapBtn=(c.address&&!hjHasBuildingName(c.address))?`<button class="ghost tiny" data-nmap="${i}" title="네이버지도에서 이 주소의 건물명을 확인합니다">🔎 네이버지도</button>`:'';
+    const bnameBtn=c.address?`<button class="ghost tiny" data-bname="${i}" title="확인한 건물명을 이 묶음에 저장합니다">✏️ 건물명</button>`:'';
     const revisit=c._visitTotal>1?`<span class="revisit">재방문 ${c._visitNo}/${c._visitTotal}차</span>`:'';
     const dupN=c.items.length-visible.length;
     const repairBtn=clusterRepairButton(visible);
@@ -19322,7 +19358,7 @@ function viewPhotos(){
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
       ${revisit}
-      <span class="where">${where}</span>${geoBtn}
+      <span class="where">${where}</span>${geoBtn}${nmapBtn}${bnameBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
       ${repairBtn}
       <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
@@ -21217,7 +21253,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-briefbill],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -21367,6 +21403,8 @@ function setupDelegation(){
     if(d.zip!==undefined)return exportProjectZIP(d.zip);
     if(d.portfolio!==undefined)return exportPortfolio(d.portfolio);
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
+    if(d.nmap!==undefined)return openNaverMapFor((window.__clusters||[])[+d.nmap]);
+    if(d.bname!==undefined)return setClusterBuilding((window.__clusters||[])[+d.bname]);
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}

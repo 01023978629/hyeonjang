@@ -240,6 +240,116 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
     assert(r.domain, '등록할 도메인을 알려주지 않으면 키를 넣어도 동작하지 않는다');
   });
 
+  /* ===== 건물명이 비었을 때: 네이버지도로 넘기고 받아 적기 ===== */
+
+  await test('⑯ 건물명이 붙었는지 구분한다', async () => {
+    const r = await page.evaluate(() => ({
+      has: hjHasBuildingName('대전 중구 돌다리로19번길 9 · 햇살아파트'),
+      no: hjHasBuildingName('대전 중구 계룡로 12 (태평동 45-6)'),
+      empty: hjHasBuildingName('')
+    }));
+    assert(r.has === true, '건물명이 있는데 없다고 함');
+    assert(r.no === false, '지번 괄호를 건물명으로 오해함');
+    assert(r.empty === false, '빈 값');
+  });
+
+  await test('⑰ 네이버지도 주소를 만든다 (지번 괄호는 빼고 검색)', async () => {
+    const r = await page.evaluate(() => ({
+      road: hjNaverMapUrl('대전 중구 계룡로 12 (태평동 45-6)', 36.31, 127.42),
+      none: hjNaverMapUrl('', 36.312345678, 127.423456789)
+    }));
+    assert(/^https:\/\/map\.naver\.com\/p\/search\//.test(r.road), '네이버지도 검색 주소가 아님: ' + r.road);
+    assert(decodeURIComponent(r.road.split('/search/')[1]) === '대전 중구 계룡로 12',
+      '괄호 안 지번을 빼야 검색이 정확하다: ' + decodeURIComponent(r.road.split('/search/')[1]));
+    assert(r.road.indexOf(' ') < 0, '주소가 인코딩되지 않음: ' + r.road);
+    assert(decodeURIComponent(r.none.split('/search/')[1]) === '36.312346,127.423457',
+      '주소가 없으면 좌표로: ' + decodeURIComponent(r.none.split('/search/')[1]));
+  });
+
+  await test('⑱ 건물명이 없을 때만 [네이버지도] 버튼이 뜬다 (실제 화면)', async () => {
+    const r = await page.evaluate(() => {
+      const mk = (id, addr, day) => ({ id, name: id + '.jpg', ext: 'jpg', kind: 'photo', project: '',
+        when: new Date('2026-0' + day + '-10T10:00:00'), lat: 36.31, lng: 127.42, address: addr, thumb: null });
+      state.projects = []; state.quotes = [];
+      state.files = [
+        mk('p건물명없음', '대전 중구 계룡로 12', 3),   // 도로명까지만 — 버튼이 떠야 한다
+        mk('p건물명있음', '대전 중구 돌다리로19번길 9 · 햇살아파트', 5)  // 이미 있음 — 뜨면 안 된다
+      ];
+      state.activeProject = null; state.search = ''; state.tab = 'photos';
+      render();
+      const rows = [...document.querySelectorAll('.cluster')].map((el) => ({
+        where: (el.querySelector('.where') || {}).textContent || '',
+        nmap: !!el.querySelector('[data-nmap]'),
+        bname: !!el.querySelector('[data-bname]')
+      }));
+      return { rows, n: rows.length };
+    });
+    assert(r.n >= 2, '묶음이 2개 이상 그려져야 함: ' + r.n + ' · ' + JSON.stringify(r.rows));
+    const 없음 = r.rows.find(x => x.where.indexOf('계룡로 12') >= 0);
+    const 있음 = r.rows.find(x => x.where.indexOf('햇살아파트') >= 0);
+    assert(없음, '건물명 없는 묶음을 못 찾음: ' + JSON.stringify(r.rows));
+    assert(있음, '건물명 있는 묶음을 못 찾음: ' + JSON.stringify(r.rows));
+    assert(없음.nmap === true, '건물명이 없는데 [네이버지도] 버튼이 안 뜸');
+    assert(있음.nmap === false, '건물명이 이미 있는데 [네이버지도] 버튼이 뜸 — 쓸데없는 버튼');
+    assert(없음.bname && 있음.bname, '[✏️ 건물명] 은 주소가 있으면 항상 있어야 함');
+  });
+
+  await test('⑱-2 두 버튼이 위임에 등록돼 있다 (눌러도 아무 일 없는 버튼 방지)', async () => {
+    const r = await page.evaluate(() => {
+      let nmap = 0, bname = 0;
+      const on = window.openNaverMapFor, os = window.setClusterBuilding;
+      window.openNaverMapFor = () => { nmap++; };
+      window.setClusterBuilding = () => { bname++; };
+      window.__clusters = [{ address: '대전 중구 계룡로 12', lat: 36.31, lng: 127.42, items: [] }];
+      // 위임 리스너는 #view 에 걸려 있다. body 에 붙이면 클릭이 도달하지 않는다.
+      const view = document.getElementById('view');
+      const a = document.createElement('button'); a.setAttribute('data-nmap', '0');
+      const b = document.createElement('button'); b.setAttribute('data-bname', '0');
+      view.appendChild(a); view.appendChild(b);
+      a.click(); b.click();
+      a.remove(); b.remove();
+      window.openNaverMapFor = on; window.setClusterBuilding = os;
+      return { nmap, bname };
+    });
+    assert(r.nmap === 1, '[🔎 네이버지도] 가 위임에 안 걸림 (' + r.nmap + ')');
+    assert(r.bname === 1, '[✏️ 건물명] 이 위임에 안 걸림 (' + r.bname + ')');
+  });
+
+  await test('⑲ 확인한 건물명을 묶음 사진 전체에 저장한다', async () => {
+    const r = await page.evaluate(() => {
+      const p1 = { address: '대전 중구 계룡로 12' }, p2 = { address: '대전 중구 계룡로 12' };
+      const c = { address: '대전 중구 계룡로 12', items: [p1, p2] };
+      const realPrompt = window.prompt;
+      window.prompt = () => '한빛빌라 나동';
+      setClusterBuilding(c);
+      const after = { c: c.address, p1: p1.address, p2: p2.address };
+      // 다시 부르면 덮어쓴다(두 번 붙지 않는다)
+      window.prompt = () => '한빛빌라 다동';
+      setClusterBuilding(c);
+      const again = c.address;
+      // 비우면 지운다
+      window.prompt = () => '';
+      setClusterBuilding(c);
+      const cleared = c.address;
+      // 취소(null)면 그대로
+      window.prompt = () => null;
+      setClusterBuilding(c);
+      const cancelled = c.address;
+      window.prompt = realPrompt;
+      return { after, again, cleared, cancelled };
+    });
+    assert(r.after.c === '대전 중구 계룡로 12 · 한빛빌라 나동', '묶음에 저장 안 됨: ' + r.after.c);
+    assert(r.after.p1 === r.after.c && r.after.p2 === r.after.c, '사진마다 저장 안 됨: ' + JSON.stringify(r.after));
+    assert(r.again === '대전 중구 계룡로 12 · 한빛빌라 다동', '두 번 붙음: ' + r.again);
+    assert(r.cleared === '대전 중구 계룡로 12', '비웠는데 안 지워짐: ' + r.cleared);
+    assert(r.cancelled === '대전 중구 계룡로 12', '취소했는데 바뀜: ' + r.cancelled);
+  });
+
+  await test('⑲-2 건물명을 저장하면 한 줄 요약이 그 이름을 쓴다', async () => {
+    const s = await page.evaluate(() => hjPlaceShort('대전 중구 계룡로 12 · 한빛빌라 나동'));
+    assert(s === '한빛빌라 나동', '요약이 건물명을 안 씀: ' + s);
+  });
+
   await test('★pageerror 0', async () => {
     assert(errs.length === 0, 'pageerror: ' + errs.join(' | '));
   });
