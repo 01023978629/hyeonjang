@@ -2421,12 +2421,34 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
   rec._driveId=id;
   if(forceKind)rec.kind=forceKind;   // 견적서 폴더 등 위치 기반 강제 분류
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
-  if(ph){ // 가상 placeholder의 배정/공정/견적 정보를 승계하고 제거(중복 방지)
+  if(ph){
+    // 가상 placeholder 를 실제 바이트로 교체한다. 여기서 승계하지 않은 값은 그대로 사라진다 —
+    // 아래 2431줄에서 옛 레코드를 지우고, ingestFile 이 만든 rec 에는 address:null·exSum 없음이기 때문이다.
+    // 그래서 승계 목록은 반드시 serializeData 의 files 필드 목록(1172~1174줄)과 같아야 한다.
+    // 하나라도 빠지면 '드라이브에서 다시 받으면 조용히 사라지는 값'이 된다.
+    // 실제로 exSum(Σ 매출 제외)·address(손으로 적은 건물명)·quote·_worklabel 이 빠져 있었다.
+    // tests/gd-reingest.e2e.js ④ 가 두 목록이 갈라지지 않는지 지킨다.
+
+    // ① 사장님이 손으로 넣은 값 — 새 레코드에는 있을 수 없으므로 그대로 덮어쓴다
     rec.project=ph.project||rec.project;
     if(ph._phase)rec._phase=ph._phase;
     if(ph.est)rec.est=ph.est;
     if(ph.contact)rec.contact=ph.contact;
+    if(ph.exSum)rec.exSum=true;                 // Σ 매출 집계 제외 — 풀리면 초안 견적이 매출에 다시 더해진다
+    if(ph.quote)rec.quote=ph.quote;
+    if(ph.ledger)rec.ledger=ph.ledger;
+    if(ph.address)rec.address=ph.address;       // 네이버지도로 확인해 적은 건물명 — 자동 복구 경로가 없다
+    if(ph._worklabel)rec._worklabel=ph._worklabel;
+    if(ph._gdFolder)rec._gdFolder=ph._gdFolder;
+    if(ph.prefix&&!rec.prefix)rec.prefix=ph.prefix;
     if(!forceKind && ph.kind&&ph.kind!=='other')rec.kind=ph.kind;   // forceKind면 그대로 유지
+
+    // ② 기계가 다시 뽑을 수 있는 값 — 새로 못 뽑았을 때만 옛 값을 쓴다.
+    //    사진이면 EXIF 에서 GPS·촬영일시를, 견적서면 OCR 을 다시 읽으므로 새 값이 더 정확하다.
+    if(ph.text&&!rec.text){rec.text=ph.text;if(ph.ocr)rec.ocr=ph.ocr;}
+    if(rec.lat==null&&ph.lat!=null){rec.lat=ph.lat;rec.lng=ph.lng;rec.place=ph.place||rec.place;}
+    if(!rec.when&&ph.when)rec.when=ph.when;
+
     revokeThumbUrl(ph);
     state.files=state.files.filter(x=>x!==ph);
   }
