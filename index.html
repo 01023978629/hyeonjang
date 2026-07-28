@@ -2901,7 +2901,9 @@ function openGdriveSetup(){
   {const ks=root.querySelector('#gdKakaoSave');if(ks)ks.onclick=async()=>{
     const v=root.querySelector('#gdKakao').value.trim();
     window.__kakaoKey=v||null;
-    // 키가 바뀌면 이미 불러 둔 SDK 는 옛 키로 붙어 있으므로 버린다
+    // 키가 바뀌면 옛 키로 붙은 SDK 를 다시 쓰면 안 된다.
+    // __kakaoSdkKey(옛 키)는 남겨 둔다 — 지우면 ensureKakaoSdk 가 '어느 키인지 모른다'로 보고
+    // 옛 SDK 를 그대로 재사용한다. 대조는 그 값이 남아 있어야 성립한다.
     window.__kakaoSdk=null;
     try{await idbSet('kakao_key',v||'');}catch(e){}
     toast(v?'카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다':'카카오 키 지움 — OpenStreetMap 으로 조회합니다');
@@ -3927,16 +3929,22 @@ function hjPlaceShort(addr){
 function hjKakaoReady(){ return !!(window.kakao&&window.kakao.maps&&window.kakao.maps.services); }
 function ensureKakaoSdk(){
   if(!window.__kakaoKey)return Promise.reject(new Error('NO_KAKAO_KEY'));
-  if(hjKakaoReady())return Promise.resolve();
-  if(window.__kakaoSdk)return window.__kakaoSdk;
+  // 이미 붙어 있어도 '그때 쓴 키'가 지금 키와 같을 때만 재사용한다.
+  // 카카오 SDK 는 appkey 가 script URL 에 박히므로, 키를 바꾸면 다시 불러야 한다.
+  // __kakaoSdkKey 가 없으면 '어느 키로 붙었는지 모른다'는 뜻이므로 그냥 쓴다(우리가 붙인 게 아닐 수도 있다).
+  // 값이 있는데 지금 키와 다르면 반드시 다시 불러야 한다 — 옛 키로 계속 조회하게 되기 때문이다.
+  if(hjKakaoReady()&&(window.__kakaoSdkKey==null||window.__kakaoSdkKey===window.__kakaoKey))return Promise.resolve();
+  if(window.__kakaoSdk&&window.__kakaoSdkKey===window.__kakaoKey)return window.__kakaoSdk;
+  const wantKey=window.__kakaoKey;
+  window.__kakaoSdkKey=wantKey;
   window.__kakaoSdk=new Promise(function(res,rej){
     const s=document.createElement('script');
-    s.src='https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey='+encodeURIComponent(window.__kakaoKey);
-    s.onerror=function(){ window.__kakaoSdk=null; rej(new Error('KAKAO_SDK_LOAD')); };
+    s.src='https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey='+encodeURIComponent(wantKey);
+    s.onerror=function(){ window.__kakaoSdk=null; window.__kakaoSdkKey=null; rej(new Error('KAKAO_SDK_LOAD')); };
     s.onload=function(){
       try{
         window.kakao.maps.load(function(){ hjKakaoReady()?res():rej(new Error('KAKAO_SDK_NO_SERVICES')); });
-      }catch(e){ window.__kakaoSdk=null; rej(e); }
+      }catch(e){ window.__kakaoSdk=null; window.__kakaoSdkKey=null; rej(e); }
     };
     document.head.appendChild(s);
   });

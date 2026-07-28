@@ -242,6 +242,38 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
 
   /* ===== 건물명이 비었을 때: 네이버지도로 넘기고 받아 적기 ===== */
 
+  await test('⑮-2 키를 바꾸면 옛 키로 붙은 SDK 를 다시 쓰지 않는다', async () => {
+    // 카카오 SDK 는 appkey 가 script 주소에 박힌다. 키를 바꿨는데 이미 붙은 SDK 를 재사용하면
+    // 계속 옛 키로 조회한다(도메인 미등록 키를 고쳐 넣어도 안 고쳐진다).
+    const r = await page.evaluate(async () => {
+      window.__kakaoKey = 'KEY_A';
+      window.kakao = { maps: { services: { Status: { OK: 'OK' }, Geocoder: function () {} } } };
+      window.__kakaoSdkKey = 'KEY_A';
+      const sameKey = await ensureKakaoSdk().then(() => 'reused').catch((e) => 'err:' + e.message);
+      // 키 교체 — 설정 저장(gdKakaoSave)이 하는 일과 똑같이: 프로미스만 버리고 옛 키 표식은 남긴다
+      window.__kakaoKey = 'KEY_B';
+      window.__kakaoSdk = null;
+      let loadedSrc = null;
+      const realAppend = document.head.appendChild.bind(document.head);
+      document.head.appendChild = function (el) {
+        if (el.tagName === 'SCRIPT' && /dapi\.kakao\.com/.test(el.src || '')) {
+          loadedSrc = el.src;
+          return el;   // 실제로 붙이지 않는다(네트워크 없음)
+        }
+        return realAppend(el);
+      };
+      ensureKakaoSdk().catch(() => {});
+      await new Promise((r) => setTimeout(r, 60));
+      document.head.appendChild = realAppend;
+      const out = { sameKey, loadedSrc };
+      window.__kakaoKey = null; window.__kakaoSdk = null; window.__kakaoSdkKey = null; delete window.kakao;
+      return out;
+    });
+    assert(r.sameKey === 'reused', '같은 키면 다시 안 불러야 함: ' + r.sameKey);
+    assert(r.loadedSrc, '키를 바꿨는데 SDK 를 다시 부르지 않았다 — 옛 키로 계속 조회하게 된다');
+    assert(/appkey=KEY_B/.test(r.loadedSrc), '새 키로 불러야 함: ' + r.loadedSrc);
+  });
+
   await test('⑯ 건물명이 붙었는지 구분한다', async () => {
     const r = await page.evaluate(() => ({
       has: hjHasBuildingName('대전 중구 돌다리로19번길 9 · 햇살아파트'),
