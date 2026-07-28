@@ -3838,14 +3838,48 @@ function trimDuplicates(){
 }
 
 /* ---------- GPS → 주소 ---------- */
+// zoom=18 은 건물 단위, namedetails 는 건물·아파트 이름을 준다.
+// 이게 없으면 도로명까지만 나와서 같은 길에 현장이 둘이면 구분이 안 된다.
+function hjGeoUrl(lat,lng){
+  return 'https://nominatim.openstreetmap.org/reverse?format=json'
+    + '&lat='+lat+'&lon='+lng
+    + '&zoom=18&addressdetails=1&namedetails=1&accept-language=ko';
+}
+// 응답에서 '사람이 찾아갈 수 있는' 주소를 만든다.
+// 두 곳(한 묶음 조회·전체 조회)에서 쓰므로 함수 하나로 둔다 — 따로 두면 반드시 갈라진다.
+function hjPlaceLabel(j){
+  const a=(j&&j.address)||{};
+  const nd=(j&&j.namedetails)||{};
+  // 건물·아파트 이름. 한국 아파트는 대개 이 중 하나에 들어온다.
+  const name=nd['name:ko']||nd.name||a.apartments||a.building||a.amenity||a.shop||a.office||a.residential||'';
+  // 도로명 + 건물번호. 건물번호가 있어야 현장을 찍어 말할 수 있다.
+  const road=[a.road,a.house_number].filter(Boolean).join(' ');
+  const parts=[];
+  [a.city||a.county||a.province||a.state,
+   a.borough||a.city_district,
+   a.suburb||a.neighbourhood||a.quarter,
+   road].forEach(function(v){
+    // 같은 값이 두 칸에 걸쳐 오는 경우가 있다(예: city 와 borough 가 같은 이름)
+    if(v&&parts.indexOf(v)<0)parts.push(v);
+  });
+  let s=parts.join(' ');
+  if(name&&s.indexOf(name)<0)s=s?(s+' · '+name):name;
+  return s||(j&&j.display_name)||'';
+}
+// 한 줄 요약에 쓸 짧은 위치. 건물 이름이 있으면 그게 가장 알아보기 쉽다.
+function hjPlaceShort(addr){
+  const s=String(addr||'');
+  if(!s)return '';
+  if(s.indexOf(' · ')>=0)return s.split(' · ').pop();
+  return s.split(' ').slice(-2).join(' ');
+}
 async function geocodeCluster(c,btn){
   if(c.lat==null){toast('이 묶음엔 GPS가 없습니다.');return;}
   btn.disabled=true;btn.textContent='조회 중…';
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${c.lat}&lon=${c.lng}&accept-language=ko`,{headers:{'Accept':'application/json'}});
+    const r=await fetch(hjGeoUrl(c.lat,c.lng),{headers:{'Accept':'application/json'}});
     const j=await r.json();
-    const a=j.address||{};
-    const addr=[a.city||a.county,a.borough||a.city_district,a.suburb||a.neighbourhood,a.road].filter(Boolean).join(' ')||j.display_name;
+    const addr=hjPlaceLabel(j);
     c.items.forEach(p=>p.address=addr);c.address=addr;
     markDirty();render();toast('주소: '+addr);
   }catch(e){toast('주소 조회 실패(네트워크).');}
@@ -3858,9 +3892,9 @@ async function geocodeAllClusters(){
   let ok=0,done=0;
   for(const c of cs){
     try{
-      const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${c.lat}&lon=${c.lng}&accept-language=ko`,{headers:{'Accept':'application/json'}});
-      const j=await r.json(); const a=j.address||{};
-      const addr=[a.city||a.county,a.borough||a.city_district,a.suburb||a.neighbourhood,a.road].filter(Boolean).join(' ')||j.display_name;
+      const r=await fetch(hjGeoUrl(c.lat,c.lng),{headers:{'Accept':'application/json'}});
+      const j=await r.json();
+      const addr=hjPlaceLabel(j);
       if(addr){ c.items.forEach(p=>p.address=addr); c.address=addr; ok++; }
     }catch(e){}
     done++;
@@ -19211,7 +19245,7 @@ function viewPhotos(){
     // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
     const worklabel=mostCommon(c.items.map(p=>p._worklabel).filter(Boolean))||'';
     // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
-    const placeShort=c.address?String(c.address).split(' ').slice(-2).join(' '):(c.place||'');
+    const placeShort=c.address?hjPlaceShort(c.address):(c.place||'');
     const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
