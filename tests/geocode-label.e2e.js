@@ -115,11 +115,129 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
   });
 
   await test('⑧ 두 조회 경로가 같은 함수를 쓴다 (표기가 갈라지지 않게)', async () => {
+    // 「주소 조회」와 「모든 위치 확인」이 각자 주소를 조립하면 버튼에 따라 표기가 달라진다.
+    // 둘 다 hjLookupPlace 한 곳만 거쳐야 한다(카카오·OSM 선택도 그 안에서 끝난다).
     const r = await page.evaluate(() => ({
       one: String(geocodeCluster), all: String(geocodeAllClusters)
     }));
-    assert(/hjPlaceLabel/.test(r.one) && /hjGeoUrl/.test(r.one), '한 묶음 조회가 공용 함수를 안 씀');
-    assert(/hjPlaceLabel/.test(r.all) && /hjGeoUrl/.test(r.all), '전체 조회가 공용 함수를 안 씀');
+    assert(/hjLookupPlace/.test(r.one), '한 묶음 조회가 공용 함수를 안 씀');
+    assert(/hjLookupPlace/.test(r.all), '전체 조회가 공용 함수를 안 씀');
+    assert(!/hjGeoUrl|hjPlaceLabel|hjKakaoLabel/.test(r.one + r.all),
+      '조회 함수 안에서 직접 주소를 조립한다 — 두 경로가 갈라질 자리를 남기면 안 됨');
+  });
+
+  /* ===== 카카오 로컬(선택) ===== */
+  // 실제 카카오 coord2Address 가 돌려주는 모양
+  const 카카오_아파트 = {
+    road_address: { address_name: '대전 중구 돌다리로19번길 9', building_name: '햇살아파트' },
+    address: { address_name: '대전 중구 석교동 123-4' }
+  };
+  const 카카오_단독 = {
+    road_address: { address_name: '대전 중구 계룡로 12', building_name: '' },
+    address: { address_name: '대전 중구 태평동 45-6' }
+  };
+  const 카카오_지번만 = { road_address: null, address: { address_name: '충남 금산군 남이면 산 12-3' } };
+
+  await test('⑨ 카카오: 건물명이 있으면 도로명 뒤에 붙는다', async () => {
+    const s = await page.evaluate((x) => hjKakaoLabel(x), 카카오_아파트);
+    assert(s === '대전 중구 돌다리로19번길 9 · 햇살아파트', '어긋남: ' + s);
+  });
+
+  await test('⑩ 카카오: 건물명이 없으면 지번을 괄호로 덧붙인다', async () => {
+    // 단독주택·신축은 건물명이 비어 있고, 그때는 지번이 현장을 특정하는 유일한 단서다
+    const s = await page.evaluate((x) => hjKakaoLabel(x), 카카오_단독);
+    assert(s === '대전 중구 계룡로 12 (태평동 45-6)', '어긋남: ' + s);
+  });
+
+  await test('⑩-2 카카오: 도로명이 없으면 지번만으로 적는다', async () => {
+    const s = await page.evaluate((x) => hjKakaoLabel(x), 카카오_지번만);
+    assert(s === '충남 금산군 남이면 산 12-3', '어긋남: ' + s);
+    const e = await page.evaluate(() => hjKakaoLabel(null));
+    assert(e === '', 'null 이면 빈 문자열: ' + JSON.stringify(e));
+  });
+
+  await test('⑪ 키가 없으면 OpenStreetMap 으로 조회한다', async () => {
+    const r = await page.evaluate(async () => {
+      window.__kakaoKey = null;
+      let hit = null;
+      const realFetch = window.fetch;
+      window.fetch = (u) => { hit = String(u); return Promise.resolve({ json: () => Promise.resolve({
+        address: { city: '대전광역시', city_district: '중구', suburb: '유천동', road: '유천로', house_number: '3' } }) }); };
+      const got = await hjLookupPlace(36.31, 127.42);
+      window.fetch = realFetch;
+      return { got, hit };
+    });
+    assert(r.got.src === 'osm', 'osm 으로 표시돼야 함: ' + r.got.src);
+    assert(/nominatim/.test(r.hit), 'OSM 을 부르지 않았음: ' + r.hit);
+    assert(r.got.addr === '대전광역시 중구 유천동 유천로 3', '주소가 어긋남: ' + r.got.addr);
+  });
+
+  await test('⑫ 키가 있으면 카카오로 조회한다 (OSM 은 부르지 않는다)', async () => {
+    const r = await page.evaluate(async () => {
+      window.__kakaoKey = 'TEST_JS_KEY';
+      // SDK 가 이미 붙어 있는 상태를 흉내낸다 — 실제 스크립트를 받지 않는다
+      window.kakao = { maps: { services: {
+        Status: { OK: 'OK' },
+        Geocoder: function () {
+          this.coord2Address = function (lng, lat, cb) {
+            cb([{ road_address: { address_name: '대전 중구 돌다리로19번길 9', building_name: '햇살아파트' },
+                  address: { address_name: '대전 중구 석교동 123-4' } }], 'OK');
+          };
+        }
+      } } };
+      let osmCalled = false;
+      const realFetch = window.fetch;
+      window.fetch = (u) => { osmCalled = true; return Promise.resolve({ json: () => Promise.resolve({}) }); };
+      const got = await hjLookupPlace(36.31, 127.42);
+      window.fetch = realFetch; window.__kakaoKey = null; delete window.kakao;
+      return { got, osmCalled };
+    });
+    assert(r.got.src === 'kakao', 'kakao 로 표시돼야 함: ' + r.got.src);
+    assert(r.got.addr === '대전 중구 돌다리로19번길 9 · 햇살아파트', '주소가 어긋남: ' + r.got.addr);
+    assert(!r.osmCalled, '카카오로 됐는데 OSM 도 불렀음(할당량 낭비)');
+  });
+
+  await test('⑬ 카카오가 실패하면 조용히 OpenStreetMap 으로 되돌아간다', async () => {
+    // 키를 잘못 넣었거나 도메인 등록을 안 했을 때 위치 조회 자체가 죽으면 안 된다
+    const r = await page.evaluate(async () => {
+      window.__kakaoKey = 'BAD_KEY';
+      window.__kakaoSdk = Promise.reject(new Error('KAKAO_SDK_LOAD'));
+      window.__kakaoSdk.catch(() => {});
+      let osmCalled = false;
+      const realFetch = window.fetch;
+      window.fetch = () => { osmCalled = true; return Promise.resolve({ json: () => Promise.resolve({
+        address: { city: '대전광역시', suburb: '석교동', road: '돌다리로19번길' } }) }); };
+      let threw = false, got = null;
+      try { got = await hjLookupPlace(36.31, 127.42); } catch (e) { threw = true; }
+      window.fetch = realFetch; window.__kakaoKey = null; window.__kakaoSdk = null;
+      return { got, osmCalled, threw };
+    });
+    assert(!r.threw, '카카오 실패가 통째로 터지면 안 됨');
+    assert(r.osmCalled, 'OSM 으로 되돌아가지 않았음');
+    assert(r.got && r.got.src === 'osm', 'osm 으로 표시돼야 함: ' + JSON.stringify(r.got));
+    assert(r.got.addr === '대전광역시 석교동 돌다리로19번길', '되돌아간 주소가 어긋남: ' + r.got.addr);
+  });
+
+  await test('⑭ 키는 저장 데이터에 섞이지 않는다 (백업 파일로 새면 안 됨)', async () => {
+    const r = await page.evaluate(() => {
+      window.__kakaoKey = 'SECRET_JS_KEY';
+      const dump = JSON.stringify(serializeData());
+      window.__kakaoKey = null;
+      return { leaked: dump.indexOf('SECRET_JS_KEY') >= 0, keys: Object.keys(JSON.parse(dump)).length };
+    });
+    assert(!r.leaked, '카카오 키가 serializeData 에 들어갔다 — 백업·동기화로 새어나간다');
+    assert(r.keys > 0, '직렬화가 비어 있음');
+  });
+
+  await test('⑮ 설정 화면에 카카오 키 칸과 저장 버튼이 있다', async () => {
+    const r = await page.evaluate(() => {
+      const s = String(openGdriveSetup);
+      return { input: /id="gdKakao"/.test(s), save: /id="gdKakaoSave"/.test(s),
+        js: /JavaScript 키/.test(s), domain: /01023978629\.github\.io/.test(s) };
+    });
+    assert(r.input && r.save, '입력칸 또는 저장 버튼이 없음: ' + JSON.stringify(r));
+    assert(r.js, 'REST 키와 헷갈리지 않게 "JavaScript 키" 라고 적어야 함');
+    assert(r.domain, '등록할 도메인을 알려주지 않으면 키를 넣어도 동작하지 않는다');
   });
 
   await test('★pageerror 0', async () => {

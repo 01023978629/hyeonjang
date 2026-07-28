@@ -709,7 +709,7 @@
 
     <p class="footnote">
       모든 처리는 브라우저 안에서만 일어나며 파일·사진은 외부로 전송되지 않습니다. 한글 OCR 모델은 처음 한 번만 자동 내려받습니다.
-      GPS→주소 변환만 좌표를 OpenStreetMap에 조회합니다(원치 않으면 사용 안 함). 정리(이동)는 미리보기·확정 후 실행되며, 직전 1회는 되돌릴 수 있습니다.
+      GPS→주소 변환만 좌표를 OpenStreetMap에 조회합니다(설정에 카카오 키를 넣으면 카카오로 조회 — 원치 않으면 사용 안 함). 정리(이동)는 미리보기·확정 후 실행되며, 직전 1회는 되돌릴 수 있습니다.
       실제 폴더 연결·이동은 Chrome·Edge에서 지원됩니다.
       <br><b>PC·모바일 연동:</b> 작업 폴더를 구글 드라이브/드롭박스 동기화 폴더 안에 두면 사진·서류가 기기 간 공유됩니다. 현장·견적·수금 데이터는 ‘데이터 내보내기’로 만든 파일을 옮겨 ‘불러오기’ 하면 폰에서도 그대로 확인됩니다.
     </p>
@@ -2843,6 +2843,11 @@ function openGdriveSetup(){
       <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AI Studio)" autocomplete="off" spellcheck="false" style="width:100%">
       <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
     </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 현장 사진 위치 정밀도 (카카오 · 선택)</summary>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
+      <input type="text" id="gdKakao" value="${escapeAttr(window.__kakaoKey||'')}" placeholder="카카오 JavaScript 키" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button>
+    </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (OpenAI ChatGPT · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
       <input type="text" id="gdOpenai" value="${escapeAttr(window.__openaiKey||'')}" placeholder="OpenAI API 키 (sk-...)" style="width:100%">
@@ -2871,6 +2876,14 @@ function openGdriveSetup(){
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
   {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
   {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=async()=>{const v=root.querySelector('#gdGemini').value.trim();window.__geminiKey=v||null;try{await idbSet('gemini_key',v||'');}catch(e){}toast(v?'Gemini 키 저장됨 — AI 도우미 사용 가능':'Gemini 키 지움');};}
+  {const ks=root.querySelector('#gdKakaoSave');if(ks)ks.onclick=async()=>{
+    const v=root.querySelector('#gdKakao').value.trim();
+    window.__kakaoKey=v||null;
+    // 키가 바뀌면 이미 불러 둔 SDK 는 옛 키로 붙어 있으므로 버린다
+    window.__kakaoSdk=null;
+    try{await idbSet('kakao_key',v||'');}catch(e){}
+    toast(v?'카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다':'카카오 키 지움 — OpenStreetMap 으로 조회합니다');
+  };}
   {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=async()=>{const v=root.querySelector('#gdOpenai').value.trim();window.__openaiKey=v||null;try{await idbSet('openai_key',v||'');}catch(e){}toast(v?'OpenAI 키 저장됨 — ChatGPT 사용 가능':'OpenAI 키 지움');};}
   {const qel=root.querySelector('#gdQuota');if(qel)quotaText().then(t=>{if(t)qel.textContent='📊 사용량 — '+t;});}
   /* ── 서버 연결(relay) 핸들러 ── */
@@ -3873,33 +3886,92 @@ function hjPlaceShort(addr){
   if(s.indexOf(' · ')>=0)return s.split(' · ').pop();
   return s.split(' ').slice(-2).join(' ');
 }
+/* ---------- 카카오 로컬(선택) ----------
+   OpenStreetMap 은 한국 건물 이름이 자주 비어 있다. 카카오는 도로명·지번·건물명을 다 준다.
+   REST 키가 아니라 JavaScript 키를 쓴다 — JS 키는 카카오에 등록한 도메인에서만 동작해서,
+   누가 화면에서 키를 가져가도 자기 사이트에서는 못 쓴다. 키는 이 기기 IndexedDB 에만 둔다. */
+function hjKakaoReady(){ return !!(window.kakao&&window.kakao.maps&&window.kakao.maps.services); }
+function ensureKakaoSdk(){
+  if(!window.__kakaoKey)return Promise.reject(new Error('NO_KAKAO_KEY'));
+  if(hjKakaoReady())return Promise.resolve();
+  if(window.__kakaoSdk)return window.__kakaoSdk;
+  window.__kakaoSdk=new Promise(function(res,rej){
+    const s=document.createElement('script');
+    s.src='https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey='+encodeURIComponent(window.__kakaoKey);
+    s.onerror=function(){ window.__kakaoSdk=null; rej(new Error('KAKAO_SDK_LOAD')); };
+    s.onload=function(){
+      try{
+        window.kakao.maps.load(function(){ hjKakaoReady()?res():rej(new Error('KAKAO_SDK_NO_SERVICES')); });
+      }catch(e){ window.__kakaoSdk=null; rej(e); }
+    };
+    document.head.appendChild(s);
+  });
+  return window.__kakaoSdk;
+}
+// 카카오 응답 → 화면에 적을 한 줄.
+// 도로명+건물번호가 기본. 건물명이 있으면 붙이고, 없을 때만 지번을 괄호로 덧붙인다
+// (단독주택·신축은 건물명이 비어 있는데, 그때는 지번이 현장을 특정하는 유일한 단서다).
+function hjKakaoLabel(x){
+  if(!x)return '';
+  const r=x.road_address||null, j=x.address||null;
+  const road=(r&&r.address_name)||'';
+  const jibun=(j&&j.address_name)||'';
+  const bld=(r&&r.building_name)||'';
+  const s=road||jibun;
+  if(!s)return '';
+  if(bld&&s.indexOf(bld)<0)return s+' · '+bld;
+  if(road&&jibun&&jibun!==road)return s+' ('+jibun.split(' ').slice(-2).join(' ')+')';
+  return s;
+}
+function hjKakaoPlace(lat,lng){
+  return ensureKakaoSdk().then(function(){
+    return new Promise(function(res,rej){
+      new kakao.maps.services.Geocoder().coord2Address(Number(lng),Number(lat),function(result,status){
+        if(status!==kakao.maps.services.Status.OK||!result||!result.length)return rej(new Error('KAKAO_NO_RESULT'));
+        const s=hjKakaoLabel(result[0]);
+        s?res(s):rej(new Error('KAKAO_EMPTY'));
+      });
+    });
+  });
+}
+// 카카오 먼저, 안 되면 OpenStreetMap. 어느 쪽을 썼는지도 돌려준다 —
+// OSM 은 '초당 1회' 정책이 있어 호출 간격을 다르게 잡아야 하기 때문이다.
+async function hjLookupPlace(lat,lng){
+  if(window.__kakaoKey){
+    try{ return {addr:await hjKakaoPlace(lat,lng),src:'kakao'}; }catch(e){}
+  }
+  const r=await fetch(hjGeoUrl(lat,lng),{headers:{'Accept':'application/json'}});
+  return {addr:hjPlaceLabel(await r.json()),src:'osm'};
+}
 async function geocodeCluster(c,btn){
   if(c.lat==null){toast('이 묶음엔 GPS가 없습니다.');return;}
   btn.disabled=true;btn.textContent='조회 중…';
   try{
-    const r=await fetch(hjGeoUrl(c.lat,c.lng),{headers:{'Accept':'application/json'}});
-    const j=await r.json();
-    const addr=hjPlaceLabel(j);
+    const got=await hjLookupPlace(c.lat,c.lng);
+    const addr=got.addr;
+    if(!addr){toast('주소를 찾지 못했습니다.');btn.disabled=false;btn.textContent='주소 조회';return;}
     c.items.forEach(p=>p.address=addr);c.address=addr;
     markDirty();render();toast('주소: '+addr);
-  }catch(e){toast('주소 조회 실패(네트워크).');}
+  }catch(e){toast('주소 조회 실패(네트워크).');btn.disabled=false;btn.textContent='주소 조회';}
 }
 // 모든 위치 확인: GPS 있는 모든 묶음의 주소를 한 번에 조회(초당 1회 — Nominatim 정책)
 async function geocodeAllClusters(){
   const cs=(window.__clusters||[]).filter(c=>c.lat!=null&&!c.address);
   if(!cs.length){toast('주소를 조회할 GPS 묶음이 없습니다(이미 됐거나 위치 없음).');return;}
-  toast('📍 모든 위치 확인 중 0/'+cs.length+' (초당 1곳, 잠시 걸립니다)');
+  toast('📍 모든 위치 확인 중 0/'+cs.length+(window.__kakaoKey?'':' (초당 1곳, 잠시 걸립니다)'));
   let ok=0,done=0;
   for(const c of cs){
+    // 마지막에 어느 쪽으로 받았는지에 따라 다음 호출까지 쉬는 시간이 다르다.
+    // OpenStreetMap 은 '초당 1회' 정책이라 지켜야 하고, 카카오는 하루 10만 건이라 여유롭다.
+    let src='osm';
     try{
-      const r=await fetch(hjGeoUrl(c.lat,c.lng),{headers:{'Accept':'application/json'}});
-      const j=await r.json();
-      const addr=hjPlaceLabel(j);
-      if(addr){ c.items.forEach(p=>p.address=addr); c.address=addr; ok++; }
+      const got=await hjLookupPlace(c.lat,c.lng);
+      src=got.src;
+      if(got.addr){ c.items.forEach(p=>p.address=got.addr); c.address=got.addr; ok++; }
     }catch(e){}
     done++;
     if(done%2===0||done===cs.length){ if(typeof __photoCache!=='undefined')__photoCache.key=null; scheduleRender(); toast('📍 위치 확인 중 '+done+'/'+cs.length); }
-    await new Promise(r=>setTimeout(r,1100));
+    await new Promise(r=>setTimeout(r,src==='kakao'?250:1100));
   }
   markDirty(); if(typeof __photoCache!=='undefined')__photoCache.key=null; render();
   toast('📍 위치 확인 완료 — '+ok+'/'+cs.length+'곳 주소 채움');
@@ -22492,6 +22564,7 @@ try{hjNetWatch();}catch(e){}
 (async()=>{try{
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
   try{window.__geminiKey=(await idbGet('gemini_key'))||null;}catch(e){}
+  try{window.__kakaoKey=(await idbGet('kakao_key'))||null;}catch(e){}
   try{window.__openaiKey=(await idbGet('openai_key'))||null;}catch(e){}
   try{aiProviderLoad();}catch(e){}
   try{await llamaConfigLoad();}catch(e){}
