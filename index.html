@@ -1390,8 +1390,11 @@ let __relaySaving=false,__relayPend=false,__relayFlushing=false;
 function relayReady(){return !!(__relay.url&&__relay.token);}
 /* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
 let __contract={url:'',token:''};
-const CONTRACT_SERVER_DEFAULT='https://manmool-contract.fly.dev';
-function contractReady(){return !!(__contract.url&&__contract.token);}
+/* Fly 계약 서버는 2026-07-30 종료. Apps Script 계약 전환이 검증되기 전까지
+   버튼·저장·발송을 명시적으로 잠가 죽은 주소나 과거 토큰을 사용하지 않는다. */
+const CONTRACT_FEATURE_AVAILABLE=false;
+const CONTRACT_SERVER_DEFAULT='';
+function contractReady(){return CONTRACT_FEATURE_AVAILABLE&&!!(__contract.url&&__contract.token);}
 function contractBaseUrl(v){
   const u=String(v||'').trim().replace(/\/+$/,'');
   return /^https:\/\//i.test(u)?u:'';
@@ -2799,7 +2802,7 @@ function openGdriveSetup(){
     <div id="ryOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
   const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
-  const contractSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--clay,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
+  const contractSec=CONTRACT_FEATURE_AVAILABLE?`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--clay,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
     <b style="font-size:14px">📨 전자계약 서버 연결 (알림톡 계약서 보내기)</b>
     <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">현장 상세의 <b>📨 알림톡 계약서</b> 버튼으로 고객에게 전자계약서를 보냅니다. 주소·관리자 토큰은 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업에는 포함되지 않습니다.</p>
     <label style="display:block;margin-bottom:6px">서버 주소 (전자계약 서버 BASE URL)
@@ -2814,6 +2817,9 @@ function openGdriveSetup(){
       <span id="ctState" style="align-self:center;font-size:12px;color:var(--muted-2)">${__contract.url&&__contract.token?'✅ 연결됨':'미설정'}</span>
     </div>
     <div id="ctOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
+  </div>`:`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.07)">
+    <b style="font-size:14px">📨 전자계약 — Apps Script 이전 준비 중</b>
+    <p style="margin:6px 0 0;font-size:12.5px;color:var(--muted-2)">기존 Fly 서버는 종료되어 전자계약 발송을 잠시 막았습니다. 새 Google Apps Script 계약 기능이 구현·검증될 때까지 계약 내용·금액은 대표가 직접 확인해 고객에게 안내하세요. 이 상태에서는 실제 알림톡이 발송되지 않습니다.</p>
   </div>`;
   const reviewSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.06)">
     <b style="font-size:14px">⭐ 리뷰 링크 (네이버 플레이스 등)</b>
@@ -4506,6 +4512,7 @@ function openContractSend(projName){
   ]);
 }
 async function contractSend(p,amount){
+  if(!CONTRACT_FEATURE_AVAILABLE){toast('전자계약은 Apps Script 이전 준비 중입니다 — 현재는 발송되지 않습니다');return;}
   if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
   const cu=p.customer||{};
   amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
@@ -7624,6 +7631,7 @@ function hjWorkOrderLog(projName,rec){
 }
 async function hjWorkOrderAlimtalk(phone,text,projName,rec){
   // 계약 서버가 연결돼 있을 때만 시도. 작업지시 알림톡 템플릿이 없으면 문안 복사로 안전 폴백(실발송 위장 금지).
+  if(!CONTRACT_FEATURE_AVAILABLE){toast('서버 발송은 Apps Script 이전 준비 중입니다 — 문안 복사를 이용하세요');return;}
   if(!contractReady()){toast('전자계약 서버를 먼저 연결하세요(☁️ 설정)');return;}
   const endpoint=__contract.url.replace(/\/$/,'')+'/api/notify/quick-send';
   try{
@@ -21190,7 +21198,7 @@ function viewProject(){
         <button class="mini-btn call-btn" data-callcust="${escapeAttr(p.name)}" title="고객에게 전화 걸기">📞 전화</button>
         <button class="mini-btn" data-smscust="${escapeAttr(p.name)}" title="고객에게 문자 보내기">✉️ 문자</button>
         <button class="mini-btn" data-navi="${escapeAttr(p.name)}" title="현장 주소로 길찾기(네이버지도)">🗺️ 길찾기</button>
-        <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="전자계약서를 고객에게 알림톡으로 보냅니다"${cu.phone?'':' style="opacity:.55"'}>📨 알림톡 계약서</button>
+        <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="${CONTRACT_FEATURE_AVAILABLE?'전자계약서를 고객에게 알림톡으로 보냅니다':'전자계약 Apps Script 이전 준비 중'}"${CONTRACT_FEATURE_AVAILABLE?(cu.phone?'':' style="opacity:.55"'):' disabled style="opacity:.55"'}>📨 ${CONTRACT_FEATURE_AVAILABLE?'알림톡 계약서':'전자계약 준비중'}</button>
         <button class="mini-btn" data-workorderp="${escapeAttr(p.name)}" title="현장 작업자에게 작업지시 문자를 보냅니다">📋 작업지시</button>
       </div>
     </div>`;
