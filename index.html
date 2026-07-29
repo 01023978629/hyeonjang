@@ -5075,7 +5075,68 @@ function hjBriefLeadContact(noteId,mode){
   const n=(state.notes||[]).find(x=>x&&x.id===noteId);
   const ph=telHref(hjBriefLeadPhone(n));
   if(!ph){toast('연락처를 찾을 수 없습니다.');return;}
-  location.href=(mode==='call'?'tel:':'sms:')+ph;
+  if(mode==='call')return hjPlaceCall(ph,(n&&(n.name||n.customer))||'',null);
+  location.href='sms:'+ph;
+}
+
+/* ---------- 통화 후 메모 → 자동 문자 초안 ----------
+   폰 웹앱은 문자를 몰래 보낼 수 없고(브라우저 제약), 고객 발송은 사장님 확인 후가 원칙이다.
+   그래서 '자동'의 실제 구현은: 앱에서 건 전화를 기억해 두고, 통화를 마치고 앱에 돌아오면
+   메모를 받아 ①프로젝트 메모로 저장하고 ②그 내용이 채워진 문자창을 연다 — 전송 버튼만 누르면 된다. */
+let __lastCall=null;   // {phone,name,project,at,done} — 런타임 전용, 저장하지 않는다
+function hjGo(u){location.href=u;}   // 테스트에서 가로채기 위한 한 겹
+function hjPlaceCall(phone,name,project){
+  const ph=telHref(phone);
+  if(!ph){toast('연락처가 없습니다.');return;}
+  __lastCall={phone:ph,name:name||'',project:project||null,at:Date.now(),done:false};
+  hjGo('tel:'+ph);
+}
+function hjCallReturnCheck(){
+  const c=__lastCall; if(!c||c.done)return;
+  const age=Date.now()-c.at;
+  if(age<8000)return;                       // 8초 미만 복귀 = 잘못 눌렀거나 부재중 — 조르지 않는다
+  if(age>30*60000){__lastCall=null;return;} // 30분 지난 통화는 잊는다
+  c.done=true; hjCallFollowup(c);
+}
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')hjCallReturnCheck(); });
+window.addEventListener('focus',hjCallReturnCheck);
+// tel: 링크로 거는 곳(프로젝트 시트 등)도 놓치지 않는다 — 이름은 data-cname 이 있으면 쓴다
+document.addEventListener('click',function(e){
+  const a=e.target.closest&&e.target.closest('a[href^="tel:"]');
+  if(a)__lastCall={phone:String(a.getAttribute('href')).slice(4),name:a.getAttribute('data-cname')||'',project:a.getAttribute('data-cproj')||null,at:Date.now(),done:false};
+},true);
+
+function hjCallSmsBody(c,text){
+  return '[만물인테리어] '+(c.name?c.name+'님, ':'')+'통화 감사합니다.\n말씀 나눈 내용 정리해 드립니다.\n\n'+text+
+    '\n\n궁금한 점은 이 번호로 편하게 회신 주세요.\n만물인테리어 전병덕 010-2397-8629';
+}
+function hjCallSave(c,text){
+  state.notes=state.notes||[];
+  state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),
+    text:'📞 통화메모 · '+(c.name||'고객')+' '+c.phone+'\n'+text,project:c.project||null});
+  markDirty();
+}
+function hjCallFollowup(c){
+  const who=(c.name?escapeHtml(c.name)+' · ':'')+escapeHtml(c.phone);
+  openModal('📞 통화 마치셨나요?',
+    '<p style="font-size:13px;color:var(--muted-2);margin-bottom:8px">'+who+'</p>'+
+    '<textarea id="cfNote" rows="5" style="width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:9px" placeholder="통화 내용을 적어 두세요 (예: 9월 초 착공 희망, 욕실+주방, 실측 토요일 오전)"></textarea>'+
+    '<p class="hint" style="margin-top:6px">저장하면 메모로 남고, [문자 보내기]는 이 내용이 채워진 문자창을 엽니다 — 전송은 사장님이 누르셔야 나갑니다.</p>',
+    [
+      {label:'💾 저장 + 💬 문자 보내기',cls:'clay',fn:function(){
+        const t=(document.getElementById('cfNote').value||'').trim();
+        if(!t){toast('통화 내용을 먼저 적어 주세요.');return;}
+        hjCallSave(c,t); closeModal(); toast('통화메모 저장됨');
+        const sep=/(iPhone|iPad|Mac)/i.test(navigator.userAgent)?'&':'?';
+        hjGo('sms:'+c.phone+sep+'body='+encodeURIComponent(hjCallSmsBody(c,t)));
+      }},
+      {label:'저장만',cls:'ghost',fn:function(){
+        const t=(document.getElementById('cfNote').value||'').trim();
+        if(!t){toast('통화 내용을 먼저 적어 주세요.');return;}
+        hjCallSave(c,t); closeModal(); toast('통화메모 저장됨');
+      }},
+      {label:'건너뛰기',cls:'ghost',fn:closeModal}
+    ]);
 }
 // 대시보드 맨 위 '오늘 일정' — 현장 가는 1인 사장님이 아침에 앱 열면 오늘 작업·현장이 바로 보이게
 function dashboardTodayHTML(){
@@ -21359,7 +21420,7 @@ function setupDelegation(){
     if(d.gcal!==undefined)return addToGoogleCalendar(d.gcal);
     if(d.gosch!==undefined){state.tab='schedule';render();return;}
     if(d.navi!==undefined){const pp=state.projects.find(x=>x.name===d.navi);const a=pp&&pp.customer&&(pp.customer.addr||'').trim();if(a)window.open('https://map.naver.com/p/search/'+encodeURIComponent(a),'_blank','noopener');else toast('고객 정보에 현장 주소를 먼저 입력하세요');return;}
-    if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='tel:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
+    if(d.callcust!==undefined){const pp=state.projects.find(x=>x.name===d.callcust);const ph=pp&&pp.customer&&pp.customer.phone;if(ph)hjPlaceCall(ph,(pp.customer.name||''),d.callcust);else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.smscust!==undefined){const pp=state.projects.find(x=>x.name===d.smscust);const ph=pp&&pp.customer&&telHref(pp.customer.phone);if(ph)location.href='sms:'+ph;else toast('고객 정보에 연락처를 먼저 입력하세요');return;}
     if(d.contractsend!==undefined)return openContractSend(d.contractsend);
     if(d.kkprog!==undefined)return kakaoShareText(hjProgressText(d.kkprog),'공사 진행 안내');
