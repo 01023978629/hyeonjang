@@ -382,6 +382,52 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
     assert(s === '한빛빌라 나동', '요약이 건물명을 안 씀: ' + s);
   });
 
+  await test('⑳ 주소 다시 조회(카카오): 옛 주소만 채우고 손으로 적은 건물명은 안 건드린다', async () => {
+    const r = await page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      // 카카오가 붙은 상태를 스텁으로
+      window.__kakaoKey = 'TEST_KEY'; window.__kakaoSdkKey = 'TEST_KEY';
+      window.kakao = { maps: { services: { Status: { OK: 'OK' }, Geocoder: function () {
+        this.coord2Address = function (lng, lat, cb) {
+          cb([{ road_address: { address_name: '대전 중구 계룡로 12', building_name: '한빛빌라' },
+                address: { address_name: '대전 중구 태평동 45-6' } }], 'OK');
+        }; } } } };
+      const 옛주소 = { lat: 36.1, lng: 127.1, address: '대전 중구 계룡로', items: [{ address: '대전 중구 계룡로' }] };
+      const 손으로적음 = { lat: 36.2, lng: 127.2, address: '대전 서구 둔산로 1 · 크로바 101동', items: [{ address: '대전 서구 둔산로 1 · 크로바 101동' }] };
+      const 위치없음 = { lat: null, address: '어딘가', items: [] };
+      window.__clusters = [옛주소, 손으로적음, 위치없음];
+      const realConfirm = window.confirm; window.confirm = () => true;
+      await geocodeUpgradeClusters();
+      await wait(100);
+      window.confirm = realConfirm;
+      const out = { 옛주소: 옛주소.address, 사진도: 옛주소.items[0].address, 손으로적음: 손으로적음.address };
+      window.__kakaoKey = null; window.__kakaoSdkKey = null; delete window.kakao; window.__clusters = [];
+      return out;
+    });
+    assert(r.옛주소 === '대전 중구 계룡로 12 · 한빛빌라', '옛 주소가 건물명까지 채워져야 함: ' + r.옛주소);
+    assert(r.사진도 === r.옛주소, '묶음 안 사진에도 저장돼야 함: ' + r.사진도);
+    assert(r.손으로적음 === '대전 서구 둔산로 1 · 크로바 101동', '손으로 적은 건물명을 덮었다: ' + r.손으로적음);
+  });
+
+  await test('⑳-2 다시 조회 버튼이 위임에 걸려 있고, 키 없으면 그리지 않는다', async () => {
+    const r = await page.evaluate(() => {
+      let called = 0;
+      const orig = window.geocodeUpgradeClusters;
+      window.geocodeUpgradeClusters = () => { called++; };
+      const view = document.getElementById('view');
+      const b = document.createElement('button'); b.id = 'btnGeoUpgrade';
+      view.appendChild(b); b.click(); b.remove();
+      window.geocodeUpgradeClusters = orig;
+      // 키 없이 사진 탭을 그리면 버튼이 없어야 한다
+      window.__kakaoKey = null;
+      state.files = []; state.projects = []; state.tab = 'photos'; render();
+      const drawn = !!document.getElementById('btnGeoUpgrade');
+      return { called, drawn };
+    });
+    assert(r.called === 1, '버튼이 위임에 안 걸림');
+    assert(r.drawn === false, '카카오 키가 없는데 버튼이 그려짐 — 눌러도 좋아질 게 없다');
+  });
+
   await test('★pageerror 0', async () => {
     assert(errs.length === 0, 'pageerror: ' + errs.join(' | '));
   });
