@@ -169,6 +169,8 @@
     color:var(--ink); font-family:"Helvetica Neue","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased; line-height:1.5;
   }
+  .skip-link{position:fixed;left:12px;top:8px;z-index:10000;transform:translateY(-140%);background:var(--blueprint);color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700}
+  .skip-link:focus{transform:translateY(0)}
   header{
     border-bottom:2px solid var(--line); padding:18px 24px 14px;
     display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
@@ -203,6 +205,9 @@
   button.warn:hover{background:#b23a31;color:#fff}
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
+  button:focus-visible,a:focus-visible,.tab:focus-visible,.proj-item:focus-visible,.mnav-btn:focus-visible,[role="button"]:focus-visible{
+    outline:3px solid var(--clay);outline-offset:2px
+  }
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
@@ -221,7 +226,7 @@
   .panel-head h2 span{color:var(--clay)}
   .counts{font-size:12px;color:var(--muted)}
   .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line-soft);margin-bottom:16px;flex-wrap:wrap}
-  .tab{padding:8px 14px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-bottom:none;cursor:pointer;color:var(--muted);border-radius:var(--r) var(--r) 0 0;font-weight:600}
+  .tab{padding:8px 14px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-bottom:none;cursor:pointer;color:var(--muted);border-radius:var(--r) var(--r) 0 0;font-weight:600;user-select:none}
   .tab:hover{color:var(--blueprint)}
   .tab.active{color:var(--blueprint);background:var(--paper);border-color:var(--line-soft);border-bottom:2px solid var(--paper);position:relative;top:1px}
   .tab .b{display:inline-block;min-width:16px;text-align:center;background:var(--clay);color:#fff;font-size:10px;border-radius:8px;padding:0 5px;margin-left:6px}
@@ -549,9 +554,13 @@
   .progress{height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden;margin:8px 0}
   .progress i{display:block;height:100%;background:var(--clay);width:0;transition:width .2s}
   .modal-bg{position:fixed;inset:0;background:rgba(15,36,56,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:70;padding:20px}
+  body.modal-open{overflow:hidden}
   .modal{background:var(--paper);border:1.5px solid var(--line);border-radius:14px;max-width:620px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(13,78,162,.55)}
   .modal.wide{max-width:880px}
-  .modal h3{margin:0;padding:16px 20px;border-bottom:1px solid var(--line-soft);font-size:17px}
+  .modal-head{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);padding:10px 12px 10px 20px}
+  .modal h3{margin:0;padding:6px 0;font-size:17px;flex:1;min-width:0}
+  .modal-close{width:40px;height:40px;padding:0;border-color:transparent;background:transparent;font-size:24px;line-height:1;color:var(--muted)}
+  .modal-close:hover{background:var(--paper-2);color:var(--blueprint);border-color:var(--line-soft);transform:none}
   .modal .mbody{padding:16px 20px}
   .modal .mfoot{padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--paper)}
   .moveline{display:flex;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px dashed var(--line-soft);align-items:center}
@@ -585,6 +594,20 @@
     .logo{font-size:26px}
     .tagline{font-size:0;letter-spacing:0;border-left:none;padding-left:0}
     .tagline .mode-badge{font-size:11px}
+    .hsearch{width:100%;min-width:0;flex-wrap:wrap}
+    .hsearch input{flex:1 1 180px;min-width:0;width:auto}
+    .hsearch .proj-chip{max-width:145px}
+    main{padding-left:14px;padding-right:14px}
+    .modal-bg{padding:8px}
+    .modal{max-height:94vh}
+    .modal .mbody{padding:14px}
+    .modal .mfoot{padding:10px 14px;flex-wrap:wrap}
+    .modal .mfoot button{min-height:42px}
+    body.mobile-mode .sch-item{flex-wrap:wrap;gap:8px}
+    body.mobile-mode .sch-body{min-width:calc(100% - 60px)}
+    body.mobile-mode .sch-tools{width:100%;justify-content:flex-end;flex-wrap:wrap}
+    body.mobile-mode .sch-tools .mini-btn,
+    body.mobile-mode .contact .mini-btn{min-width:40px;min-height:40px;font-size:16px;padding:7px}
   }
   /* 헤더 현장 선택 칩 — 폰에서만 노출(PC는 왼쪽 목록이 있음) */
   .proj-chip{display:none;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:20px;background:var(--blueprint);color:#fff;border:none;cursor:pointer;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
@@ -605,6 +628,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#view">본문으로 건너뛰기</a>
 <header>
   <div class="brand">
     <div class="logo">현장<span class="dot">.</span></div>
@@ -692,20 +716,20 @@
       <div class="counts" id="mainCounts"></div>
     </div>
 
-    <div class="tabs" id="tabs">
-      <div class="tab active" data-tab="dashboard">대시보드 <span class="b" id="bDash">0</span></div>
-      <div class="tab" data-tab="docs">서류 <span class="b" id="bDocs">0</span></div>
-      <div class="tab" data-tab="photos">현장 사진 <span class="b" id="bPhotos">0</span></div>
-      <div class="tab" data-tab="estimates">견적·정산 <span class="b" id="bEst">0</span></div>
-      <div class="tab" data-tab="quotemaker">✍ 견적 작성</div>
-      <div class="tab" data-tab="schedule">📅 일정표</div>
-      <div class="tab" data-tab="contacts">연락처 <span class="b" id="bCon">0</span></div>
-      <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
-      <div class="tab" data-tab="ledger">💼 회계 <span class="b" id="bLedger">0</span></div>
-      <div class="tab" data-tab="ads">📣 광고</div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="주요 기능">
+      <div class="tab active" data-tab="dashboard" role="tab" tabindex="0" aria-selected="true" aria-controls="view">대시보드 <span class="b" id="bDash">0</span></div>
+      <div class="tab" data-tab="docs" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">서류 <span class="b" id="bDocs">0</span></div>
+      <div class="tab" data-tab="photos" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">현장 사진 <span class="b" id="bPhotos">0</span></div>
+      <div class="tab" data-tab="estimates" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">견적·정산 <span class="b" id="bEst">0</span></div>
+      <div class="tab" data-tab="quotemaker" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">✍ 견적 작성</div>
+      <div class="tab" data-tab="schedule" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">📅 일정표</div>
+      <div class="tab" data-tab="contacts" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">연락처 <span class="b" id="bCon">0</span></div>
+      <div class="tab" data-tab="project" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">현장별 보기 <span class="b" id="bProj">0</span></div>
+      <div class="tab" data-tab="ledger" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">💼 회계 <span class="b" id="bLedger">0</span></div>
+      <div class="tab" data-tab="ads" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">📣 광고</div>
     </div>
 
-    <div id="view"></div>
+    <div id="view" role="tabpanel" aria-labelledby="mainTitle" tabindex="-1"></div>
 
     <p class="footnote">
       모든 처리는 브라우저 안에서만 일어나며 파일·사진은 외부로 전송되지 않습니다. 한글 OCR 모델은 처음 한 번만 자동 내려받습니다.
@@ -1998,7 +2022,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-24-relay-url-default';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-30-uiux-contract-audit';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -2846,7 +2870,7 @@ function openGdriveSetup(){
       <button class="ghost tiny" id="ryFlush">📮 다시 보내기 (대기 <span id="ryQn">${__relayQn}</span>건)</button>
       <button class="ghost tiny" id="ryClearFail">🧹 실패 항목 비우기</button>
     </div>
-    <div id="ryOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
+    <div id="ryOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
   const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
   const ctUnlocked=contractFeatureAvailable();
@@ -2874,9 +2898,9 @@ function openGdriveSetup(){
       <button class="clay tiny" id="ctSave">💾 저장</button>
       <button class="blue tiny" id="ctSelfTest">🩺 자가진단</button>
       <button class="ghost tiny" id="ctTest">🔌 연결 테스트</button>
-      <span id="ctState" style="align-self:center;font-size:12px;color:var(--muted-2)">${ctUnlocked?'✅ 사용 가능':(__contract.url&&__contract.token?'🔒 자가진단 필요':'미설정')}</span>
+      <span id="ctState" role="status" aria-live="polite" style="align-self:center;font-size:12px;color:var(--muted-2)">${ctUnlocked?'✅ 사용 가능':(__contract.url&&__contract.token?'🔒 자가진단 필요':'미설정')}</span>
     </div>
-    <div id="ctOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
+    <div id="ctOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
   const reviewSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.06)">
     <b style="font-size:14px">⭐ 리뷰 링크 (네이버 플레이스 등)</b>
@@ -4155,7 +4179,27 @@ async function geocodeUpgradeClusters(){
 
 /* ---------- 렌더 ---------- */
 const tabs=document.querySelectorAll('.tab');
-tabs.forEach(t=>t.onclick=()=>{state.tab=t.dataset.tab;render();});
+function activateMainTab(t,focus){
+  if(!t||!t.dataset.tab)return;
+  state.tab=t.dataset.tab;render();
+  if(focus)try{t.focus();}catch(e){}
+}
+tabs.forEach(t=>{
+  t.onclick=()=>activateMainTab(t,false);
+  t.onkeydown=e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();activateMainTab(t,true);return;}
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+    e.preventDefault();
+    const list=[...tabs],cur=list.indexOf(t);
+    const next=e.key==='Home'?list[0]:e.key==='End'?list[list.length-1]:
+      list[(cur+(e.key==='ArrowRight'?1:-1)+list.length)%list.length];
+    activateMainTab(next,true);
+  };
+});
+document.addEventListener('keydown',e=>{
+  const target=e.target&&e.target.closest&&e.target.closest('[data-calday],[data-delphase]');
+  if(target&&(e.key==='Enter'||e.key===' ')){e.preventDefault();target.click();}
+});
 let __searchTimer=null;
 $('#globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();clearTimeout(__searchTimer);__searchTimer=setTimeout(render,180);});
 
@@ -4174,8 +4218,22 @@ function applyMobileMode(){
 function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mobileMode);}catch(e){}applyMobileMode();toast(__mobileMode?'모바일 모드 — 하단 메뉴 사용':'PC 모드');}
 /* 긴 목록에서 맨 위로 — 모바일 모드 전용 플로팅 버튼(600px 이상 내려가면 표시) */
 {const tb=document.getElementById('toTopBtn');
- if(tb){tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}};
-  window.addEventListener('scroll',function(){tb.classList.toggle('show',window.scrollY>600);},{passive:true});}}
+ if(tb){const syncTopBtn=function(){tb.classList.toggle('show',window.scrollY>600);};
+  window.onscroll=syncTopBtn;
+  window.addEventListener('scroll',syncTopBtn,{passive:true});
+  document.addEventListener('scroll',syncTopBtn,{passive:true,capture:true});
+  window.addEventListener('scrollend',syncTopBtn,{passive:true});
+  if(window.visualViewport)window.visualViewport.addEventListener('scroll',syncTopBtn,{passive:true});
+  if('IntersectionObserver' in window){
+    const marker=document.createElement('span');
+    marker.setAttribute('aria-hidden','true');
+    marker.style.cssText='position:absolute;top:600px;left:0;width:1px;height:1px;pointer-events:none';
+    document.body.appendChild(marker);
+    new IntersectionObserver(syncTopBtn,{threshold:0}).observe(marker);
+  }
+  const nativeScrollTo=window.scrollTo.bind(window);
+  window.scrollTo=function(){nativeScrollTo.apply(window,arguments);syncTopBtn();};
+  tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});setTimeout(syncTopBtn,700);}catch(e){window.scrollTo(0,0);}};}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
 }
@@ -4317,7 +4375,11 @@ function render(){
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
   all.innerHTML='<span class="pin" style="background:#6a86a3"></span> 전체 보기 <span class="cnt">'+state.files.length+'</span>';
-  all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
+  all.setAttribute('role','button');all.tabIndex=0;all.setAttribute('aria-label','전체 현장 보기');
+  if(state.activeProject===null)all.setAttribute('aria-current','true');
+  all.onclick=()=>{state.activeProject=null;render();};
+  all.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();all.click();}};
+  pl.appendChild(all);
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
   const addProjItem=(p,dim)=>{
     const n=state.files.filter(f=>f.project===p.name).length;
@@ -4326,7 +4388,10 @@ function render(){
     el.className='proj-item'+(state.activeProject===p.name?' active':'');
     if(dim)el.style.opacity='.55';
     el.innerHTML='<span class="pin"></span> '+(dim?'📦 ':'')+escapeHtml(p.name)+' <span class="cnt">'+n+'</span>';
+    el.setAttribute('role','button');el.tabIndex=0;el.setAttribute('aria-label',p.name+' 현장 열기');
+    if(state.activeProject===p.name)el.setAttribute('aria-current','true');
     el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
+    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click();}};
     wrap.appendChild(el);
     const sr=document.createElement('div');sr.className='stage-row';
     sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
@@ -4337,7 +4402,9 @@ function render(){
     const tg=document.createElement('div');
     tg.className='proj-item';tg.style.opacity='.7';tg.style.fontSize='12px';
     tg.innerHTML='<span class="pin" style="background:transparent">'+(__showArchived?'▾':'▸')+'</span> 📦 보관 '+__arcP.length+'곳';
+    tg.setAttribute('role','button');tg.tabIndex=0;tg.setAttribute('aria-expanded',String(__showArchived));tg.setAttribute('aria-label','보관 현장 '+__arcP.length+'곳');
     tg.onclick=()=>{__showArchived=!__showArchived;render();};
+    tg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tg.click();}};
     pl.appendChild(tg);
     if(__showArchived)__arcP.forEach(p=>addProjItem(p,true));
   }
@@ -4347,7 +4414,12 @@ function render(){
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
   $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
   {const _bl=$('#bLedger');if(_bl)_bl.textContent=state.files.filter(f=>f.kind==='ledger').length;}
-  tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
+  tabs.forEach(t=>{
+    const active=t.dataset.tab===state.tab;
+    t.classList.toggle('active',active);
+    t.setAttribute('aria-selected',String(active));
+    t.tabIndex=active?0:-1;
+  });
   $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
   const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함'],ledger:['홈택스 ','회계'],ads:['광고 ','관리']};
@@ -4396,8 +4468,8 @@ function cardHtml(f){
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
-      <select data-act="kind" data-id="${f.id}">${kindOptions(f.kind)}</select>
-      <select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select>
+      <select data-act="kind" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 파일 종류">${kindOptions(f.kind)}</select>
+      <select data-act="proj" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 현장 배정">${projectOptions(f.project)}</select>
     </div></div>`;
 }
 /* ---------- 대시보드 ---------- */
@@ -4775,7 +4847,7 @@ function viewDashboard(){
       <td><span class="stage-chip">${STAGES[s.stage]}</span></td>
       <td>${s.files}</td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-recv="${escapeAttr(s.name)}" value="${(s.recv||0).toLocaleString('ko-KR')}" style="text-align:right;width:118px"></td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 수금액" data-recv="${escapeAttr(s.name)}" value="${(s.recv||0).toLocaleString('ko-KR')}" style="text-align:right;width:118px"></td>
       <td class="amt" style="color:${s.due>0?'var(--warn)':'var(--ok)'};font-weight:700">${won(s.due)}${(s.due>0)?(()=>{
         if(s.dueDate){const dd=Math.ceil((new Date(s.dueDate+'T00:00:00')-new Date(new Date().toDateString()))/86400000);
           const lbl=dd>0?('D-'+dd):(dd===0?'D-day':('D+'+(-dd)));
@@ -4809,9 +4881,9 @@ function viewDashboard(){
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
-      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
-      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 자재비" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 인건비" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 외주비" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
       <td class="amt">${won(s.costEffective)}</td>
       <td class="amt" style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginEff)}<br><span style="font-size:10px;font-weight:400">${s.marginRateEff}%</span></td>
       <td class="amt" style="color:${s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginNet)}<br><span style="font-size:10px;font-weight:400">${s.marginRateNet}%</span></td>
@@ -19511,11 +19583,11 @@ function viewPhotos(){
     html+=`<div class="phasebar">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--muted-2)">공정 추가 대상</span>
-        <select id="phaseProjSel">${popt}</select>
+        <select id="phaseProjSel" aria-label="공정을 추가할 현장">${popt}</select>
         <input type="text" id="phaseProjInput" placeholder="새 공정 (예: 방수 1차)" maxlength="20" style="width:160px">
         <button class="clay tiny" id="phaseProjAdd">+ 공정 추가</button>
       </div>
-      <div class="phase-chips" style="margin-top:8px">${curPhases.length?curPhases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(selProj)}" title="삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">선택한 현장에 아직 공정이 없습니다</span>'}</div>
+      <div class="phase-chips" style="margin-top:8px">${curPhases.length?curPhases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b role="button" tabindex="0" data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(selProj)}" title="삭제" aria-label="${escapeAttr(selProj)} ${escapeAttr(ph)} 공정 삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">선택한 현장에 아직 공정이 없습니다</span>'}</div>
     </div>`;
   }
   html+=bulkBar(null);
@@ -19564,8 +19636,8 @@ function viewPhotos(){
       <span class="where">${where}</span>${geoBtn}${nmapBtn}${bnameBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
       ${repairBtn}
-      <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
-      <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
+      <select data-act="cluster" data-ids="${ids}" aria-label="${escapeAttr(fmtDay(when))} 사진 묶음 현장 배정">${projectOptions(cur)}</select></div>
+      <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" aria-label="${escapeAttr(fmtDay(when))} 사진 묶음 작업명" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
       <div class="cluster-body">${visible.map(p=>photoCell(p)).join('')}</div></div>`;
   });
   if(hiddenN>0){
@@ -19583,7 +19655,11 @@ function toggleSelMode(){
 }
 function toggleSel(id){if(__sel.has(id))__sel.delete(id);else __sel.add(id);render();}
 function clearSel(){__sel.clear();render();}
-function selChk(id){return `<label class="ph-chk${__sel.has(id)?' on':''}"><input type="checkbox" data-sel="${id}" ${__sel.has(id)?'checked':''}><span>✓</span></label>`;}
+function selChk(id){
+  const f=state.files.find(x=>x.id===id);
+  const label='사진 선택: '+((f&&f.name)||'현장 사진');
+  return `<label class="ph-chk${__sel.has(id)?' on':''}"><input type="checkbox" aria-label="${escapeAttr(label)}" data-sel="${id}" ${__sel.has(id)?'checked':''}><span aria-hidden="true">✓</span></label>`;
+}
 function selFiles(){return [...__sel].map(id=>state.files.find(f=>f.id===id)).filter(Boolean);}
 
 /* ═══════════ (F4) 미수금 독촉 문자 — 2문안 선택 → 문자앱 ═══════════ */
@@ -20539,12 +20615,12 @@ function viewSchedule(){
           </div>`:''}
         </div>
         <div class="sch-tools">
-          <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고">📋</button>
-          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)">👷</button>
-          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가">📅</button>
-          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)">📲</button>
-          <button class="mini-btn" data-schedit="${s.id}">✎</button>
-          <button class="mini-btn" data-schdel="${s.id}">🗑</button>
+          <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고" aria-label="${escapeAttr(s.title||'일정')} 작업 보고">📋</button>
+          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)" aria-label="${escapeAttr(s.title||'일정')} 작업지시 보내기">👷</button>
+          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가" aria-label="${escapeAttr(s.title||'일정')} 구글 캘린더에 추가">📅</button>
+          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)" aria-label="${escapeAttr(s.title||'일정')} 폰 캘린더에 추가">📲</button>
+          <button class="mini-btn" data-schedit="${s.id}" title="일정 수정" aria-label="${escapeAttr(s.title||'일정')} 수정">✎</button>
+          <button class="mini-btn" data-schdel="${s.id}" title="일정 삭제" aria-label="${escapeAttr(s.title||'일정')} 삭제">🗑</button>
         </div>
       </div>`;
     });
@@ -20582,7 +20658,7 @@ function calendarHTML(){
     const info=dayInfo[day];
     const isToday=ds===today;
     const isSel=ds===__calSelDate;
-    cells+=`<div class="cal-cell${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" data-calday="${ds}">
+    cells+=`<div class="cal-cell${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" role="button" tabindex="0" aria-pressed="${isSel?'true':'false'}" aria-label="${y}년 ${m}월 ${day}일${info?' 일정 '+info.cnt+'건':' 일정 없음'}" data-calday="${ds}">
       <span class="cal-d">${day}</span>
       ${info?`<span class="cal-dot${info.rep?' rep':''}">${info.cnt>1?info.cnt:'●'}</span>`:''}
     </div>`;
@@ -20590,10 +20666,10 @@ function calendarHTML(){
   const ymLabel=`${y}년 ${m}월`;
   return `<div class="calendar">
     <div class="cal-head">
-      <button class="cal-nav" data-calnav="-1">‹</button>
+      <button class="cal-nav" data-calnav="-1" aria-label="이전 달">‹</button>
       <span class="cal-title">${ymLabel}</span>
-      <button class="cal-nav" data-calnav="1">›</button>
-      <button class="cal-nav cal-today-btn" data-calnav="0">오늘</button>
+      <button class="cal-nav" data-calnav="1" aria-label="다음 달">›</button>
+      <button class="cal-nav cal-today-btn" data-calnav="0" aria-label="오늘 날짜로 이동">오늘</button>
     </div>
     <div class="cal-grid">
       <div class="cal-dow sun">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div><div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow sat">토</div>
@@ -21063,10 +21139,10 @@ function viewContacts(){
       <div>${escapeHtml(c.phone||'')}</div>
       ${c.memo?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(c.memo)}</div>`:''}</div>
       <div class="con-tools">
-        ${telHref(c.phone)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone)}" title="전화 걸기">📞</a>`:''}
-        <button class="mini-btn" data-convcf="${c.id}" title="폰 주소록에 저장">📲</button>
-        <button class="mini-btn" data-conedit="${c.id}">✎</button>
-        <button class="mini-btn" data-condel="${c.id}">🗑</button>
+        ${telHref(c.phone)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone)}" title="전화 걸기" aria-label="${escapeAttr(c.name||'연락처')}에게 전화 걸기">📞</a>`:''}
+        <button class="mini-btn" data-convcf="${c.id}" title="폰 주소록에 저장" aria-label="${escapeAttr(c.name||'연락처')} 폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-conedit="${c.id}" title="연락처 수정" aria-label="${escapeAttr(c.name||'연락처')} 수정">✎</button>
+        <button class="mini-btn" data-condel="${c.id}" title="연락처 삭제" aria-label="${escapeAttr(c.name||'연락처')} 삭제">🗑</button>
       </div></div>`;
   });
   // 명함 OCR 연락처
@@ -21079,9 +21155,9 @@ function viewContacts(){
       <div>${escapeHtml(c.company||'')}</div>
       <div>${phones}${c.email?' · '+escapeHtml(c.email):''}</div></div>
       <div class="con-tools">
-        ${telHref(c.phone||c.tel)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone||c.tel)}" title="전화 걸기">📞</a>`:''}
-        <button class="mini-btn" data-convcfcard="${f.id}" title="폰 주소록에 저장">📲</button>
-        <button class="mini-btn" data-cardedit="${f.id}" title="이름·전화 고치기">✎</button>
+        ${telHref(c.phone||c.tel)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone||c.tel)}" title="전화 걸기" aria-label="${escapeAttr(c.name||'명함 연락처')}에게 전화 걸기">📞</a>`:''}
+        <button class="mini-btn" data-convcfcard="${f.id}" title="폰 주소록에 저장" aria-label="${escapeAttr(c.name||'명함 연락처')} 폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-cardedit="${f.id}" title="이름·전화 고치기" aria-label="${escapeAttr(c.name||'명함 연락처')} 수정">✎</button>
         ${f.thumb?`<div class="ph" style="width:44px;height:44px"><img src="${f.thumb}" loading="lazy" decoding="async"></div>`:''}
       </div></div>`;});
   return html;
@@ -21367,7 +21443,7 @@ function viewProject(){
     html+=bulkBar(p.name);
     // 공정 관리 바
     html+=`<div class="phasebar">
-      <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
+      <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b role="button" tabindex="0" data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제" aria-label="${escapeAttr(p.name)} ${escapeAttr(ph)} 공정 삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
       <div class="phase-add"><input type="text" data-phaseinput="${escapeAttr(p.name)}" placeholder="공정 추가 (예: 방수 1차)" maxlength="20"><button class="clay tiny" data-addphase="${escapeAttr(p.name)}">추가</button></div>
     </div>`;
     // ===== 날짜별 그룹 (날짜 1차 기준) =====
@@ -22591,15 +22667,37 @@ function saveBizImages(){
   toast(n?`이미지 ${n}장 저장됨 — 카톡/문자에서 첨부하세요.`:'등록된 사진이 없습니다. 먼저 사진을 등록하세요.');
 }
 function copyBiz(){ const t=curBizText(); if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast('글 복사됨 — 카톡/문자에 붙여넣기')).catch(()=>toast('복사 실패'));}else toast('자동 복사 미지원 브라우저'); }
+let __modalReturnFocus=null;
 function openModal(title,body,btns,wide){
   btns=btns||[{label:'닫기',cls:'ghost',fn:closeModal}];   // 미전달 시 기본 닫기 버튼
   const root=$('#modalRoot');
-  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}"><h3>${(window.escapeHtml?escapeHtml(String(title)):title)}</h3><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
+  if(!root.querySelector('.modal'))__modalReturnFocus=document.activeElement;
+  const titleId='modalTitle';
+  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}" role="dialog" aria-modal="true" aria-labelledby="${titleId}" tabindex="-1"><div class="modal-head"><h3 id="${titleId}">${(window.escapeHtml?escapeHtml(String(title)):title)}</h3><button type="button" class="modal-close" aria-label="창 닫기" title="닫기">×</button></div><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
+  document.body.classList.add('modal-open');
   const foot=root.querySelector('.mfoot');
   btns.forEach(b=>{const el=document.createElement('button');el.className=b.cls||'';el.textContent=b.label;el.onclick=b.fn;foot.appendChild(el);});
+  root.querySelector('.modal-close').onclick=closeModal;
   root.querySelector('.modal-bg').addEventListener('click',e=>{if(e.target===root.querySelector('.modal-bg'))closeModal();});
+  setTimeout(()=>{try{root.querySelector('.modal').focus();}catch(e){}},0);
 }
-function closeModal(){if(window.__pvUrl){URL.revokeObjectURL(window.__pvUrl);window.__pvUrl=null;}$('#modalRoot').innerHTML='';}
+function closeModal(){
+  if(window.__pvUrl){URL.revokeObjectURL(window.__pvUrl);window.__pvUrl=null;}
+  $('#modalRoot').innerHTML='';document.body.classList.remove('modal-open');
+  const back=__modalReturnFocus;__modalReturnFocus=null;
+  if(back&&back.isConnected)setTimeout(()=>{try{back.focus();}catch(e){}},0);
+}
+document.addEventListener('keydown',e=>{
+  const modal=$('#modalRoot .modal');if(!modal)return;
+  if(e.key==='Escape'){e.preventDefault();closeModal();return;}
+  if(e.key!=='Tab')return;
+  const focusable=[...modal.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>el.getClientRects().length);
+  if(!focusable.length){e.preventDefault();modal.focus();return;}
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 
 window.escapeHtml=escapeHtml;
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
