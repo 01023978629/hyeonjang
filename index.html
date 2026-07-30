@@ -2872,7 +2872,7 @@ function openGdriveSetup(){
     </div>
     <div id="ryOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
-  const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
+  const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'스크립트 속성에 넣은 ADMIN_TOKEN';
   const ctUnlocked=contractFeatureAvailable();
   /* 잠금 안내는 늘 보이되, 주소·토큰 입력칸도 늘 열어 둔다.
      칸을 숨기면 사장님이 새 주소를 넣을 방법이 없어 영원히 잠긴다.

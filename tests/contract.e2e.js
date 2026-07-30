@@ -174,6 +174,56 @@ const selfTestReply = (allOk) => ({
   assert(honesty.offStatus === 'LINK_CREATED', '발송 안 됐는데 SENT 로 기록함: ' + honesty.offStatus);
   assert(honesty.onStatus === 'SENT', 'notify.sent=true 인데 SENT 로 기록하지 않음: ' + honesty.onStatus);
 
+  // ⑨ 보안 경계 — 관리자 비밀이 기기 밖으로 나가는 통로가 없는지
+  const boundary = await page.evaluate(async () => {
+    __contract.url = 'https://script.google.com/macros/s/AKfyTEST/exec';
+    __contract.token = 'SUPER-SECRET-ADMIN-TOKEN';
+    __contract.selfTestOk = true;
+    // 클라우드 백업·직렬화에 실리는 자료 전체를 문자열로 훑는다.
+    const dump = JSON.stringify(serializeData());
+    // 설정 화면을 열어 저장까지 해 본 뒤 DOM 에 토큰이 남는지 본다.
+    openGdriveSetup();
+    const root = document.getElementById('modalRoot');
+    root.querySelector('#ctTok').value = 'SUPER-SECRET-ADMIN-TOKEN';
+    await root.querySelector('#ctSave').onclick();
+    const domAfterSave = document.documentElement.innerHTML;
+    const tokInput = root.querySelector('#ctTok');
+    const r = {
+      inSerialized: dump.indexOf('SUPER-SECRET-ADMIN-TOKEN') >= 0,
+      urlInSerialized: dump.indexOf('script.google.com') >= 0,
+      inDom: domAfterSave.indexOf('SUPER-SECRET-ADMIN-TOKEN') >= 0,
+      inputCleared: tokInput.value === '',
+      placeholderMasked: /\*{4}/.test(tokInput.placeholder || '')
+    };
+    closeModal();
+    return r;
+  });
+  assert(boundary.inSerialized === false, '관리자 토큰이 직렬화(클라우드 백업)에 실린다 — 기기 밖으로 나간다');
+  assert(boundary.urlInSerialized === false, '계약 서버 주소가 직렬화에 실린다');
+  assert(boundary.inDom === false, '저장 후에도 토큰 원문이 화면 소스에 남아 있다');
+  assert(boundary.inputCleared, '저장 후 토큰 입력칸이 비워지지 않았다');
+  assert(boundary.placeholderMasked, '토큰 안내가 마스킹(****)되지 않았다');
+
+  // ⑩ 고객 서명 링크(1회용 토큰)를 앱이 저장하지 않는다
+  const linkNotStored = await page.evaluate(async () => {
+    const p2 = { name: '보관검사현장', phases: [], customer: { name: '최고객', phone: '010-7777-8888' } };
+    window.fetch = async function (u, opt) {
+      const req = JSON.parse(opt.body);
+      if (req.action === 'health') return { ok: true, status: 200, json: async () => ({ ok: true, live: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true, contractId: 'ct_9', contractNo: 'MM-2026-0199',
+        signUrl: 'https://script.google.com/macros/s/AKfyTEST/exec?page=sign&t=CUSTOMER-RAW-TOKEN',
+        notify: { sent: false, reason: 'MOCK_OFF' } }) };
+    };
+    state.projects = [p2];
+    await contractSend(p2, 700000);
+    closeModal();
+    const dump = JSON.stringify(serializeData());
+    return { inSerialized: dump.indexOf('CUSTOMER-RAW-TOKEN') >= 0,
+             logged: JSON.stringify(p2.contractLog || []).indexOf('CUSTOMER-RAW-TOKEN') >= 0 };
+  });
+  assert(linkNotStored.inSerialized === false, '고객 1회용 서명 토큰이 직렬화에 저장된다 — 유출되면 남이 서명할 수 있다');
+  assert(linkNotStored.logged === false, '고객 서명 토큰이 계약 이력에 남는다');
+
   assert(errors.length === 0, 'pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 종료된 Fly 주소 소스에 없음');
@@ -184,8 +234,10 @@ const selfTestReply = (allOk) => ({
   console.log('PASS  ⑥ 자가진단 실패는 잠김 유지 · 통과해야 열림');
   console.log('PASS  ⑦ 주소 변경 시 예전 자가진단 무효화');
   console.log('PASS  ⑧ notify.sent=true 일 때만 SENT');
-  console.log('PASS  ⑨ pageerror 0');
-  console.log('\n전부 통과 (9건)');
+  console.log('PASS  ⑨ 관리자 토큰이 직렬화·DOM 에 남지 않음');
+  console.log('PASS  ⑩ 고객 1회용 서명 토큰을 앱이 저장하지 않음');
+  console.log('PASS  ⑪ pageerror 0');
+  console.log('\n전부 통과 (11건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
