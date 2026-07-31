@@ -2861,7 +2861,7 @@ function openGdriveSetup(){
       <input type="text" id="ryUrl" value="${escapeAttr(__relay.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px">
     </label>
     <label style="display:block;margin-bottom:6px">앱 인증키 (APP_TOKEN)
-      <input type="password" id="ryTok" value="${escapeAttr(__relay.token||'')}" placeholder="서버 스크립트 속성에 넣은 인증키" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
+      <input type="password" id="ryTok" value="" placeholder="${escapeAttr(__relay.token?('저장됨 · 끝 4자리 ****'+String(__relay.token).slice(-4)):'서버 스크립트 속성에 넣은 인증키')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
     </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="moss tiny" id="ryTest">🔌 연결 테스트</button>
@@ -2869,9 +2869,18 @@ function openGdriveSetup(){
       <button class="blue tiny" id="ryUp">☁️ 서버에 저장하기</button>
       <button class="ghost tiny" id="ryFlush">📮 다시 보내기 (대기 <span id="ryQn">${__relayQn}</span>건)</button>
       <button class="ghost tiny" id="ryClearFail">🧹 실패 항목 비우기</button>
+      <button class="ghost tiny" id="ryDrop">🔌 연결 끊기</button>
     </div>
     <div id="ryOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
+  /* 저장된 키를 화면에 되비추지 않는다.
+     ① 평문으로 뿌리면 화면공유·어깨너머·스크린샷으로 그대로 샌다.
+     ② 되비춘 값을 다시 저장하는 구조라, 그 칸이 어떤 이유로든 비면(복원 지연·
+        브라우저 자동완성·비밀번호 관리자) 저장을 누르는 순간 키가 지워진다.
+        실제로 사장님 키가 반복해서 사라진 원인이 이것이다.
+     그래서 칸은 항상 비워 두고, 안내문에 '저장됨 · 끝 4자리'만 보여준다.
+     빈 칸으로 저장하면 **아무 일도 일어나지 않는다**. 지울 때는 [지우기]를 눌러야 한다. */
+  const keyHint=(v,ph)=>v?('저장됨 · 끝 4자리 ****'+String(v).slice(-4)):ph;
   const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'스크립트 속성에 넣은 ADMIN_TOKEN';
   const ctUnlocked=contractFeatureAvailable();
   /* 잠금 안내는 늘 보이되, 주소·토큰 입력칸도 늘 열어 둔다.
@@ -2944,23 +2953,23 @@ function openGdriveSetup(){
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
-      <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
-      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
+      <input type="password" id="gdVision" value="" placeholder="${escapeAttr(keyHint(window.__visionKey,'Vision API 키 (AIza...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdVisionDel" style="margin-top:6px;margin-left:4px">지우기</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
-      <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AI Studio)" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
+      <input type="password" id="gdGemini" value="" placeholder="${escapeAttr(keyHint(window.__geminiKey,'Gemini API 키 (AI Studio)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdGeminiDel" style="margin-top:6px;margin-left:4px">지우기</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 현장 사진 위치 정밀도 (카카오 · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
-      <input type="text" id="gdKakao" value="${escapeAttr(window.__kakaoKey||'')}" placeholder="카카오 JavaScript 키" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button>
+      <input type="password" id="gdKakao" value="" placeholder="${escapeAttr(keyHint(window.__kakaoKey,'카카오 JavaScript 키'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdKakaoDel" style="margin-top:6px;margin-left:4px">지우기</button>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (OpenAI ChatGPT · 선택)</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
-      <input type="text" id="gdOpenai" value="${escapeAttr(window.__openaiKey||'')}" placeholder="OpenAI API 키 (sk-...)" style="width:100%">
-      <button class="moss tiny" id="gdOpenaiSave" style="margin-top:6px">키 저장</button>
+      <input type="password" id="gdOpenai" value="" placeholder="${escapeAttr(keyHint(window.__openaiKey,'OpenAI API 키 (sk-...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdOpenaiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdOpenaiDel" style="margin-top:6px;margin-left:4px">지우기</button>
     </details>
   </div>`;
   // 비상용(기존 구글 직접 연동)은 UI·기능 그대로 접어서 보존
@@ -2983,27 +2992,77 @@ function openGdriveSetup(){
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
-  {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
-  {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=async()=>{const v=root.querySelector('#gdGemini').value.trim();window.__geminiKey=v||null;try{await idbSet('gemini_key',v||'');}catch(e){}toast(v?'Gemini 키 저장됨 — AI 도우미 사용 가능':'Gemini 키 지움');};}
+  {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=()=>keySave('gdVision','vision_key','__visionKey','Vision');
+   const vd=root.querySelector('#gdVisionDel');if(vd)vd.onclick=()=>keyDrop('gdVision','vision_key','__visionKey','Vision');}
+  {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=()=>keySave('gdGemini','gemini_key','__geminiKey','Gemini');
+   const gd=root.querySelector('#gdGeminiDel');if(gd)gd.onclick=()=>keyDrop('gdGemini','gemini_key','__geminiKey','Gemini');}
   {const ks=root.querySelector('#gdKakaoSave');if(ks)ks.onclick=async()=>{
-    const v=root.querySelector('#gdKakao').value.trim();
-    window.__kakaoKey=v||null;
+    const el=root.querySelector('#gdKakao');
+    const v=(el&&el.value||'').trim();
+    // 빈 칸은 '안 바꿈'이다. 지우려면 [지우기]를 눌러야 한다.
+    if(!v){toast(window.__kakaoKey?'카카오 키는 그대로 둡니다 — 바꾸려면 새 키를 넣으세요':'카카오 키를 입력하세요');return;}
+    window.__kakaoKey=v;
     // 키가 바뀌면 옛 키로 붙은 SDK 를 다시 쓰면 안 된다.
     // __kakaoSdkKey(옛 키)는 남겨 둔다 — 지우면 ensureKakaoSdk 가 '어느 키인지 모른다'로 보고
     // 옛 SDK 를 그대로 재사용한다. 대조는 그 값이 남아 있어야 성립한다.
     window.__kakaoSdk=null;
-    try{await idbSet('kakao_key',v||'');}catch(e){}
-    toast(v?'카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다':'카카오 키 지움 — OpenStreetMap 으로 조회합니다');
-  };}
-  {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=async()=>{const v=root.querySelector('#gdOpenai').value.trim();window.__openaiKey=v||null;try{await idbSet('openai_key',v||'');}catch(e){}toast(v?'OpenAI 키 저장됨 — ChatGPT 사용 가능':'OpenAI 키 지움');};}
+    try{await idbSet('kakao_key',v);}catch(e){toast('저장 실패 — 브라우저 저장공간을 확인하세요');return;}
+    if(el){el.value='';el.placeholder='저장됨 · 끝 4자리 ****'+v.slice(-4);}
+    toast('카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다');
+  };
+   const kd=root.querySelector('#gdKakaoDel');if(kd)kd.onclick=async()=>{
+     if(!confirm('카카오 키를 지울까요? 주소 조회가 OpenStreetMap 으로 돌아갑니다.'))return;
+     window.__kakaoKey=null;window.__kakaoSdk=null;
+     try{await idbSet('kakao_key','');}catch(e){}
+     const el=root.querySelector('#gdKakao');if(el){el.value='';el.placeholder='카카오 JavaScript 키 없음';}
+     toast('카카오 키 지움 — OpenStreetMap 으로 조회합니다');
+   };}
+  {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=()=>keySave('gdOpenai','openai_key','__openaiKey','OpenAI');
+   const od=root.querySelector('#gdOpenaiDel');if(od)od.onclick=()=>keyDrop('gdOpenai','openai_key','__openaiKey','OpenAI');}
   {const qel=root.querySelector('#gdQuota');if(qel)quotaText().then(t=>{if(t)qel.textContent='📊 사용량 — '+t;});}
+  /* 키 저장 공통 규칙 — 빈 칸은 '안 바꿈'이다. 절대 '지움'이 아니다.
+     지우려면 [지우기]를 눌러야 한다. 실수로 키를 날리는 길을 없앤다. */
+  const keySave=async(inputId,idbKey,winProp,label)=>{
+    const el=root.querySelector('#'+inputId);
+    const v=(el&&el.value||'').trim();
+    if(!v){toast(window[winProp]?(label+' 키는 그대로 둡니다 — 바꾸려면 새 키를 넣으세요'):(label+' 키를 입력하세요'));return;}
+    window[winProp]=v;
+    try{await idbSet(idbKey,v);}catch(e){toast('저장 실패 — 브라우저 저장공간을 확인하세요');return;}
+    if(el){el.value='';el.placeholder='저장됨 · 끝 4자리 ****'+v.slice(-4);}
+    toast(label+' 키 저장됨');
+  };
+  const keyDrop=async(inputId,idbKey,winProp,label)=>{
+    if(!confirm(label+' 키를 지울까요? 다시 발급받아 넣어야 합니다.'))return;
+    window[winProp]=null;
+    try{await idbSet(idbKey,'');}catch(e){}
+    const el=root.querySelector('#'+inputId);if(el){el.value='';el.placeholder=label+' 키 없음';}
+    toast(label+' 키 지움');
+  };
   /* ── 서버 연결(relay) 핸들러 ── */
   const saveRy=async()=>{
     const u=(root.querySelector('#ryUrl').value||'').trim(),t=(root.querySelector('#ryTok').value||'').trim();
-    const changed=(u!==__relay.url||t!==__relay.token);
-    __relay.url=u;__relay.token=t;if(changed)__relayAuthToasted=false;   // 키를 바꾸면 인증오류 토스트 다시 1회 허용
-    try{await idbSet('relay_url',u);await idbSet('relay_token',t);}catch(e){}
+    /* ★ 빈 칸은 '안 바꿈'이다. 절대 '지움'이 아니다.
+       이 함수는 [저장]뿐 아니라 [연결 테스트]·[불러오기]·[저장하기]에서도 불린다.
+       예전에는 빈 값을 그대로 idb 에 써서, 인증키 칸이 어떤 이유로든 비어 있을 때
+       **연결 테스트를 누르는 것만으로 드라이브 인증키가 지워졌다.**
+       칸이 비는 경우는 흔하다 — 부팅 복원이 아직 안 끝났거나, 비밀번호 관리자가
+       password 칸을 비우거나, 사장님이 실수로 지웠거나.
+       키를 지우려면 [지우기]를 눌러야 한다. */
+    const nu=u||__relay.url, nt=t||__relay.token;
+    const changed=(nu!==__relay.url||nt!==__relay.token);
+    __relay.url=nu;__relay.token=nt;if(changed)__relayAuthToasted=false;   // 키를 바꾸면 인증오류 토스트 다시 1회 허용
+    try{if(nu)await idbSet('relay_url',nu);if(nt)await idbSet('relay_token',nt);}catch(e){}
   };
+  /* 드라이브 연결을 정말 끊을 때만 쓰는 길. 실수로 지나칠 수 없게 확인을 받는다. */
+  const dropRy=async()=>{
+    if(!confirm('드라이브 서버 연결을 끊을까요? 주소와 인증키를 다시 넣어야 합니다.\n(드라이브에 저장된 자료는 지워지지 않습니다)'))return;
+    __relay.url='';__relay.token='';
+    try{await idbSet('relay_url','');await idbSet('relay_token','');}catch(e){}
+    const ue=root.querySelector('#ryUrl'),te=root.querySelector('#ryTok');
+    if(ue)ue.value='';if(te){te.value='';te.placeholder='인증키 없음';}
+    toast('드라이브 연결 끊김 — 자료는 그대로 있습니다');
+  };
+  {const rd=root.querySelector('#ryDrop');if(rd)rd.onclick=dropRy;}
   const ryOut=(t,ok)=>{const el=root.querySelector('#ryOut');if(el){el.textContent=t;el.style.color=ok===false?'var(--warn)':(ok?'var(--ok)':'var(--muted-2)');}};
   root.querySelector('#ryTest').onclick=async()=>{
     await saveRy();
