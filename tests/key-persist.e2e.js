@@ -181,6 +181,49 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
     assert(dump.indexOf('RELAY-TOKEN-TEST-5555') < 0, '드라이브 인증키가 클라우드 백업에 실린다');
   });
 
+  await test('⑪ 키를 찾기 쉬운 자리에 둔다 — "비상용" 문 뒤에 숨기지 않는다', async () => {
+    await openPanel();
+    const r = await page.evaluate(() => {
+      const modal = document.querySelector('#modalRoot .modal');
+      const depthOf = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return { found: false };
+        let n = 0; const labels = []; let cur = el.parentElement;
+        while (cur && cur !== modal) {
+          if (cur.tagName === 'DETAILS') { n++; const sm = cur.querySelector('summary'); labels.unshift((sm && sm.textContent || '').trim()); }
+          cur = cur.parentElement;
+        }
+        return { found: true, depth: n, labels };
+      };
+      return {
+        gemini: depthOf('gdGemini'), openai: depthOf('gdOpenai'), kakao: depthOf('gdKakao'), vision: depthOf('gdVision'),
+        title: (modal.querySelector('h3') || {}).textContent || ''
+      };
+    });
+    for (const [name, d] of Object.entries(r)) {
+      if (name === 'title') continue;
+      assert(d.found, name + ' 키 칸이 없다');
+      // 아코디언 한 겹까지는 괜찮다(항목이 많아 접어 두는 것). 두 겹부터는 못 찾는다.
+      assert(d.depth <= 1, name + ' 키가 아코디언 ' + d.depth + '겹 안에 있다 — 사장님이 못 찾는다: ' + d.labels.join(' > '));
+      // '비상용'·'로그인 필요' 같은 말 뒤에 두면, 찾아도 열지 않는다.
+      const behind = d.labels.join(' ');
+      assert(!/비상용|응급|고급 설정|건드리지/.test(behind),
+        name + ' 키가 "' + behind + '" 뒤에 숨어 있다 — 그 문구는 열지 말라는 뜻으로 읽힌다');
+    }
+    // 열지 않아도 지금 상태가 보여야 한다.
+    const badges = await page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll('#modalRoot summary').forEach((sm) => {
+        const t = sm.textContent || '';
+        if (/Gemini|ChatGPT|카카오|Cloud Vision/.test(t)) out[t.slice(0, 20)] = /설정됨|없음/.test(t);
+      });
+      return out;
+    });
+    const vals = Object.values(badges);
+    assert(vals.length >= 4 && vals.every(Boolean),
+      '키 줄에 설정됨/없음 배지가 없다 — 열어 봐야만 알 수 있다: ' + JSON.stringify(badges));
+  });
+
   await test('⑩ 화면 오류 0', async () => {
     assert(errs.length === 0, errs.slice(0, 3).join(' | '));
   });
