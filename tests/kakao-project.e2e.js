@@ -96,12 +96,16 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('④ 서명 확인 — 서버 COMPLETED 가 반영돼 "서명 완료 ✅"로 보인다', async () => {
     const r = await page.evaluate(async () => {
-      window.__contract = { url: 'https://contract.test', token: 'tk' };
+      // 계약 서버는 Apps Script 웹앱 — 주소 하나로 text/plain POST 하고 본문의 action 으로 갈린다.
+      // 예전처럼 URL 경로로 알아볼 수 없다(옛 서버는 경로로 갈랐다). dead-endpoint-ok
+      __contract.url = 'https://script.google.com/macros/s/AKfyTEST/exec';
+      __contract.token = 'tk';
       const origReady = window.contractReady, origFetch = window.fetch;
       window.contractReady = () => true;
-      window.fetch = async (u) => {
-        if (String(u).includes('/api/contracts')) return { ok: true, status: 200, json: async () => ({ contracts: [{ contractId: 'ct_test1', contractNo: 'MM-20260701-001', status: 'COMPLETED', completedAt: '2026-07-03T12:00:00.000Z' }] }) };
-        throw new Error('unexpected fetch ' + u);
+      window.fetch = async (u, opt) => {
+        const req = JSON.parse((opt && opt.body) || '{}');
+        if (req.action === 'listContracts') return { ok: true, status: 200, json: async () => ({ ok: true, contracts: [{ contractId: 'ct_test1', contractNo: 'MM-20260701-001', status: 'COMPLETED', completedAt: '2026-07-03T12:00:00.000Z' }] }) };
+        throw new Error('unexpected action ' + req.action);
       };
       await contractStatusRefresh('석교동주택');
       window.fetch = origFetch; window.contractReady = origReady;

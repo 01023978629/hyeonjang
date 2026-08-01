@@ -169,6 +169,8 @@
     color:var(--ink); font-family:"Helvetica Neue","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased; line-height:1.5;
   }
+  .skip-link{position:fixed;left:12px;top:8px;z-index:10000;transform:translateY(-140%);background:var(--blueprint);color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700}
+  .skip-link:focus{transform:translateY(0)}
   header{
     border-bottom:2px solid var(--line); padding:18px 24px 14px;
     display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
@@ -203,6 +205,9 @@
   button.warn:hover{background:#b23a31;color:#fff}
   button:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;background:var(--paper);color:var(--blueprint);border-color:var(--line-soft)}
   button.tiny{padding:5px 9px;font-size:11.5px}
+  button:focus-visible,a:focus-visible,.tab:focus-visible,.proj-item:focus-visible,.mnav-btn:focus-visible,[role="button"]:focus-visible{
+    outline:3px solid var(--clay);outline-offset:2px
+  }
   input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%}
   input:focus{outline:2px solid var(--line);outline-offset:-1px;border-color:var(--line)}
   .proj-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;font-size:13.5px}
@@ -221,7 +226,7 @@
   .panel-head h2 span{color:var(--clay)}
   .counts{font-size:12px;color:var(--muted)}
   .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line-soft);margin-bottom:16px;flex-wrap:wrap}
-  .tab{padding:8px 14px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-bottom:none;cursor:pointer;color:var(--muted);border-radius:var(--r) var(--r) 0 0;font-weight:600}
+  .tab{padding:8px 14px;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-bottom:none;cursor:pointer;color:var(--muted);border-radius:var(--r) var(--r) 0 0;font-weight:600;user-select:none}
   .tab:hover{color:var(--blueprint)}
   .tab.active{color:var(--blueprint);background:var(--paper);border-color:var(--line-soft);border-bottom:2px solid var(--paper);position:relative;top:1px}
   .tab .b{display:inline-block;min-width:16px;text-align:center;background:var(--clay);color:#fff;font-size:10px;border-radius:8px;padding:0 5px;margin-left:6px}
@@ -549,9 +554,13 @@
   .progress{height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden;margin:8px 0}
   .progress i{display:block;height:100%;background:var(--clay);width:0;transition:width .2s}
   .modal-bg{position:fixed;inset:0;background:rgba(15,36,56,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:70;padding:20px}
+  body.modal-open{overflow:hidden}
   .modal{background:var(--paper);border:1.5px solid var(--line);border-radius:14px;max-width:620px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(13,78,162,.55)}
   .modal.wide{max-width:880px}
-  .modal h3{margin:0;padding:16px 20px;border-bottom:1px solid var(--line-soft);font-size:17px}
+  .modal-head{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);padding:10px 12px 10px 20px}
+  .modal h3{margin:0;padding:6px 0;font-size:17px;flex:1;min-width:0}
+  .modal-close{width:40px;height:40px;padding:0;border-color:transparent;background:transparent;font-size:24px;line-height:1;color:var(--muted)}
+  .modal-close:hover{background:var(--paper-2);color:var(--blueprint);border-color:var(--line-soft);transform:none}
   .modal .mbody{padding:16px 20px}
   .modal .mfoot{padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--paper)}
   .moveline{display:flex;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px dashed var(--line-soft);align-items:center}
@@ -585,6 +594,20 @@
     .logo{font-size:26px}
     .tagline{font-size:0;letter-spacing:0;border-left:none;padding-left:0}
     .tagline .mode-badge{font-size:11px}
+    .hsearch{width:100%;min-width:0;flex-wrap:wrap}
+    .hsearch input{flex:1 1 180px;min-width:0;width:auto}
+    .hsearch .proj-chip{max-width:145px}
+    main{padding-left:14px;padding-right:14px}
+    .modal-bg{padding:8px}
+    .modal{max-height:94vh}
+    .modal .mbody{padding:14px}
+    .modal .mfoot{padding:10px 14px;flex-wrap:wrap}
+    .modal .mfoot button{min-height:42px}
+    body.mobile-mode .sch-item{flex-wrap:wrap;gap:8px}
+    body.mobile-mode .sch-body{min-width:calc(100% - 60px)}
+    body.mobile-mode .sch-tools{width:100%;justify-content:flex-end;flex-wrap:wrap}
+    body.mobile-mode .sch-tools .mini-btn,
+    body.mobile-mode .contact .mini-btn{min-width:40px;min-height:40px;font-size:16px;padding:7px}
   }
   /* 헤더 현장 선택 칩 — 폰에서만 노출(PC는 왼쪽 목록이 있음) */
   .proj-chip{display:none;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:20px;background:var(--blueprint);color:#fff;border:none;cursor:pointer;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
@@ -605,6 +628,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#view">본문으로 건너뛰기</a>
 <header>
   <div class="brand">
     <div class="logo">현장<span class="dot">.</span></div>
@@ -692,20 +716,20 @@
       <div class="counts" id="mainCounts"></div>
     </div>
 
-    <div class="tabs" id="tabs">
-      <div class="tab active" data-tab="dashboard">대시보드 <span class="b" id="bDash">0</span></div>
-      <div class="tab" data-tab="docs">서류 <span class="b" id="bDocs">0</span></div>
-      <div class="tab" data-tab="photos">현장 사진 <span class="b" id="bPhotos">0</span></div>
-      <div class="tab" data-tab="estimates">견적·정산 <span class="b" id="bEst">0</span></div>
-      <div class="tab" data-tab="quotemaker">✍ 견적 작성</div>
-      <div class="tab" data-tab="schedule">📅 일정표</div>
-      <div class="tab" data-tab="contacts">연락처 <span class="b" id="bCon">0</span></div>
-      <div class="tab" data-tab="project">현장별 보기 <span class="b" id="bProj">0</span></div>
-      <div class="tab" data-tab="ledger">💼 회계 <span class="b" id="bLedger">0</span></div>
-      <div class="tab" data-tab="ads">📣 광고</div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="주요 기능">
+      <div class="tab active" data-tab="dashboard" role="tab" tabindex="0" aria-selected="true" aria-controls="view">대시보드 <span class="b" id="bDash">0</span></div>
+      <div class="tab" data-tab="docs" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">서류 <span class="b" id="bDocs">0</span></div>
+      <div class="tab" data-tab="photos" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">현장 사진 <span class="b" id="bPhotos">0</span></div>
+      <div class="tab" data-tab="estimates" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">견적·정산 <span class="b" id="bEst">0</span></div>
+      <div class="tab" data-tab="quotemaker" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">✍ 견적 작성</div>
+      <div class="tab" data-tab="schedule" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">📅 일정표</div>
+      <div class="tab" data-tab="contacts" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">연락처 <span class="b" id="bCon">0</span></div>
+      <div class="tab" data-tab="project" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">현장별 보기 <span class="b" id="bProj">0</span></div>
+      <div class="tab" data-tab="ledger" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">💼 회계 <span class="b" id="bLedger">0</span></div>
+      <div class="tab" data-tab="ads" role="tab" tabindex="-1" aria-selected="false" aria-controls="view">📣 광고</div>
     </div>
 
-    <div id="view"></div>
+    <div id="view" role="tabpanel" aria-labelledby="mainTitle" tabindex="-1"></div>
 
     <p class="footnote">
       모든 처리는 브라우저 안에서만 일어나며 파일·사진은 외부로 전송되지 않습니다. 한글 OCR 모델은 처음 한 번만 자동 내려받습니다.
@@ -1150,6 +1174,8 @@ function serializeData(){
     notes:state.notes||[],
     priceBook:state.priceBook||{},
     asLog:state.asLog||[],
+    aptOffices:state.aptOffices||[],
+    aptOrders:state.aptOrders||[],
     satisfaction:state.satisfaction||[],
     adPosts:state.adPosts||[],
     portalCfg:state.portalCfg||{},
@@ -1178,7 +1204,7 @@ function serializeData(){
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 function applyData(data){
   if(!data||typeof data!=='object')return 0;
-  ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
+  ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog','aptOffices','aptOrders'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
   if(data.files)data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
   if(data.projects)data.projects=data.projects.filter(p=>p&&typeof p==='object'&&p.name);
   if(!data.files)return 0;
@@ -1200,6 +1226,8 @@ function applyData(data){
   state.notes=data.notes||state.notes||[];
   state.priceBook=data.priceBook||state.priceBook||{};
   state.asLog=data.asLog||state.asLog||[];
+  state.aptOffices=data.aptOffices||state.aptOffices||[];
+  state.aptOrders=data.aptOrders||state.aptOrders||[];
   state.satisfaction=Array.isArray(data.satisfaction)?data.satisfaction:(state.satisfaction||[]);
   state.coworkTasks=Array.isArray(data.coworkTasks)?data.coworkTasks:(state.coworkTasks||null);
   state._coworkInit=data._coworkInit||state._coworkInit||false;
@@ -1389,26 +1417,70 @@ let __relayAuthToasted=false;   // 인증 오류 토스트는 1회만(도배 금
 let __relaySaving=false,__relayPend=false,__relayFlushing=false;
 function relayReady(){return !!(__relay.url&&__relay.token);}
 /* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
-let __contract={url:'',token:''};
-/* Fly 계약 서버는 2026-07-30 종료. Apps Script 계약 전환이 검증되기 전까지
-   버튼·저장·발송을 명시적으로 잠가 죽은 주소나 과거 토큰을 사용하지 않는다. */
-const CONTRACT_FEATURE_AVAILABLE=false;
+let __contract={url:'',token:'',selfTestOk:false,selfTestAt:''};
+/* Fly 계약 서버는 2026-07-30 종료. 새 계약 서버는 Apps Script 웹앱이다.
+   ★ 잠금은 유지하되 조건을 더 엄격하게 바꿨다.
+     이전: const CONTRACT_FEATURE_AVAILABLE=false — 사람이 소스를 고쳐야 켜진다.
+     지금: 그 서버에 selfTest 를 실제로 걸어 통과했을 때만 켜진다.
+   상수는 "이제 괜찮다"는 사람의 판단이지만, selfTest 는 서버가 살아 있고 토큰이 맞고
+   시트·드라이브가 열린다는 증거다. 증거 없이는 버튼이 눌리지 않는다.
+   기본값은 여전히 잠김(selfTestOk=false). 배포 주소는 계정마다 달라 기본값을 두지 않는다. */
 const CONTRACT_SERVER_DEFAULT='';
-function contractReady(){return CONTRACT_FEATURE_AVAILABLE&&!!(__contract.url&&__contract.token);}
+const CONTRACT_URL_HINT='https://script.google.com/macros/s/.../exec';
+function contractFeatureAvailable(){return !!(__contract.selfTestOk&&__contract.url&&__contract.token);}
+function contractReady(){return contractFeatureAvailable();}
 function contractBaseUrl(v){
+  // Apps Script 주소는 .../exec 로 끝난다. 뒤 슬래시만 떼고 경로는 손대지 않는다.
   const u=String(v||'').trim().replace(/\/+$/,'');
   return /^https:\/\//i.test(u)?u:'';
 }
-async function contractServerStatus(checkAdmin){
+/* ★커스텀 헤더 금지 — relayCall 과 같은 이유.
+   text/plain 은 '단순 요청'이라 OPTIONS preflight 가 없다. Apps Script 는 OPTIONS 에 답하지 못한다.
+   그래서 관리자 토큰도 헤더가 아니라 본문에 실어 보낸다. */
+async function contractCall(action,payload,opts){
   const base=contractBaseUrl(__contract.url);
-  if(!base)throw new Error('https://로 시작하는 서버 주소를 확인하세요');
-  const h=await fetch(base+'/healthz');
-  if(!h.ok)throw new Error('서버 상태 확인 실패 ('+h.status+')');
-  const health=await h.json();
+  if(!base)throw new Error('계약 서버 주소를 확인하세요 (☁️ 설정)');
+  const req={action:action,ts:Date.now(),payload:payload||{}};
+  if(!(opts&&opts.noAuth))req.adminToken=__contract.token;
+  if(opts&&opts.idem)req.idem=opts.idem;
+  const r=await fetch(base,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(req),redirect:'follow'});
+  if(!r.ok)throw new Error('서버 응답 오류 ('+r.status+')');
+  let j=null;try{j=await r.json();}catch(e){throw new Error('서버 응답을 읽지 못했습니다 — 배포 주소가 맞는지 확인하세요');}
+  // Apps Script 는 실패해도 HTTP 200 을 준다. ok 를 안 보면 실패가 조용히 성공으로 지나간다.
+  if(!j||j.ok!==true){
+    const e=new Error((j&&j.message)||'요청이 거부되었습니다');
+    e.__code=(j&&j.error)||'SERVER_ERROR';
+    throw e;
+  }
+  return j;
+}
+/* 자가진단 — 이것이 통과해야만 전자계약이 열린다.
+   실패하면 selfTestOk 를 반드시 false 로 되돌린다. 한 번 통과했다고 영원히 열어두지 않는다. */
+async function contractSelfTest(){
+  try{
+    const j=await contractCall('selfTest',{});
+    const ok=!!(j&&j.checks&&j.checks.allOk);
+    __contract.selfTestOk=ok;
+    __contract.selfTestAt=ok?new Date().toISOString():'';
+    try{await idbSet('contract_selftest',__contract.selfTestAt);}catch(e){}
+    return j;
+  }catch(e){
+    __contract.selfTestOk=false;__contract.selfTestAt='';
+    try{await idbSet('contract_selftest','');}catch(_){}
+    throw e;
+  }
+}
+async function contractServerStatus(checkAdmin){
+  // health 는 토큰 없이도 되지만, 토큰까지 확인하려면 관리자 동작을 한 번 태워 봐야 한다.
+  const health=await contractCall('health',{},{noAuth:true});
   if(checkAdmin){
-    const r=await fetch(base+'/api/contracts',{headers:{'x-admin-token':__contract.token}});
-    if(r.status===401)throw new Error('관리자 토큰이 올바르지 않습니다');
-    if(!r.ok)throw new Error('관리자 연결 확인 실패 ('+r.status+')');
+    try{await contractCall('listContracts',{limit:1});}
+    catch(e){
+      if(e.__code==='UNAUTHORIZED')throw new Error('관리자 토큰이 올바르지 않습니다');
+      if(e.__code==='NOT_CONFIGURED')throw new Error('서버에 ADMIN_TOKEN 이 설정되지 않았습니다');
+      throw e;
+    }
   }
   return health;
 }
@@ -1876,7 +1948,14 @@ async function relayBoot(){
     // 전자계약 서버 연결도 이 기기(idb)에서만 복원 — 스키마(serialize/applyData)에는 넣지 않는 비밀
     __contract.url=(await idbGet('contract_url'))||CONTRACT_SERVER_DEFAULT;
     __contract.token=(await idbGet('contract_token'))||'';
+    // selfTest 통과 기록이 있어야 계약 버튼이 열린다. 없으면 잠긴 채로 뜬다.
+    __contract.selfTestAt=(await idbGet('contract_selftest'))||'';
+    __contract.selfTestOk=!!__contract.selfTestAt;
     __reviewUrl=(await idbGet('review_url'))||'';   // 리뷰 링크도 이 기기(idb)에서만 복원 — 스키마엔 넣지 않음
+    /* AI 중계가 살아 있는지 부팅 때 한 번 물어본다. aiKeyReady() 는 화면을 그리는 중에
+       불려서 기다릴 수 없으므로, 미리 확인해 두지 않으면 서버에 키가 있어도
+       AI 버튼이 안 뜬다. 기다리지 않는다 — 느린 서버가 부팅을 붙잡으면 안 된다. */
+    try{aiRelayProbe(false).catch(()=>{});}catch(e){}
     await relayUpdateQueueBadge();
     if(!relayReady())return;
     relaySetStatus(__relay.syncAt?'saved':'ready');
@@ -1951,7 +2030,7 @@ function openBrowserGuide(){
   const b=document.getElementById('copyUrlBtn');
   if(b)b.onclick=async()=>{try{await navigator.clipboard.writeText(url);toast('주소 복사됨 — 브라우저에 붙여넣어 여세요');}catch(_){toast('복사 실패 — 주소창을 길게 눌러 복사하세요');}};
 }
-const APP_BUILD='2026-07-24-relay-url-default';   // 폰 화면에서 배포본 확인용
+const APP_BUILD='2026-07-30-uiux-contract-audit';   // 폰 화면에서 배포본 확인용
 /* 🔧 연결 진단: 모바일 로그인 실패의 원인을 화면에서 바로 확인 */
 async function runDiagnostics(){
   const rows=[];
@@ -2790,7 +2869,7 @@ function openGdriveSetup(){
       <input type="text" id="ryUrl" value="${escapeAttr(__relay.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px">
     </label>
     <label style="display:block;margin-bottom:6px">앱 인증키 (APP_TOKEN)
-      <input type="password" id="ryTok" value="${escapeAttr(__relay.token||'')}" placeholder="서버 스크립트 속성에 넣은 인증키" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
+      <input type="password" id="ryTok" value="" placeholder="${escapeAttr(__relay.token?('저장됨 · 끝 4자리 ****'+String(__relay.token).slice(-4)):'서버 스크립트 속성에 넣은 인증키')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
     </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="moss tiny" id="ryTest">🔌 연결 테스트</button>
@@ -2798,28 +2877,47 @@ function openGdriveSetup(){
       <button class="blue tiny" id="ryUp">☁️ 서버에 저장하기</button>
       <button class="ghost tiny" id="ryFlush">📮 다시 보내기 (대기 <span id="ryQn">${__relayQn}</span>건)</button>
       <button class="ghost tiny" id="ryClearFail">🧹 실패 항목 비우기</button>
+      <button class="ghost tiny" id="ryDrop">🔌 연결 끊기</button>
     </div>
-    <div id="ryOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
+    <div id="ryOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
-  const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
-  const contractSec=CONTRACT_FEATURE_AVAILABLE?`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--clay,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
-    <b style="font-size:14px">📨 전자계약 서버 연결 (알림톡 계약서 보내기)</b>
-    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">현장 상세의 <b>📨 알림톡 계약서</b> 버튼으로 고객에게 전자계약서를 보냅니다. 주소·관리자 토큰은 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업에는 포함되지 않습니다.</p>
-    <label style="display:block;margin-bottom:6px">서버 주소 (전자계약 서버 BASE URL)
-      <input type="text" id="ctUrl" value="${escapeAttr(__contract.url||CONTRACT_SERVER_DEFAULT)}" placeholder="${CONTRACT_SERVER_DEFAULT}" style="width:100%;margin-top:4px">
+  /* 저장된 키를 화면에 되비추지 않는다.
+     ① 평문으로 뿌리면 화면공유·어깨너머·스크린샷으로 그대로 샌다.
+     ② 되비춘 값을 다시 저장하는 구조라, 그 칸이 어떤 이유로든 비면(복원 지연·
+        브라우저 자동완성·비밀번호 관리자) 저장을 누르는 순간 키가 지워진다.
+        실제로 사장님 키가 반복해서 사라진 원인이 이것이다.
+     그래서 칸은 항상 비워 두고, 안내문에 '저장됨 · 끝 4자리'만 보여준다.
+     빈 칸으로 저장하면 **아무 일도 일어나지 않는다**. 지울 때는 [지우기]를 눌러야 한다. */
+  const keyHint=(v,ph)=>v?('저장됨 · 끝 4자리 ****'+String(v).slice(-4)):ph;
+  const ctMask=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'스크립트 속성에 넣은 ADMIN_TOKEN';
+  const ctUnlocked=contractFeatureAvailable();
+  /* 잠금 안내는 늘 보이되, 주소·토큰 입력칸도 늘 열어 둔다.
+     칸을 숨기면 사장님이 새 주소를 넣을 방법이 없어 영원히 잠긴다.
+     대신 [자가진단]을 통과하기 전에는 계약 버튼이 눌리지 않는다 — 잠금은 그대로다. */
+  const ctBanner=ctUnlocked
+    ? `<div style="background:rgba(46,160,67,.10);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
+        <b>✅ 자가진단 통과 — 전자계약 사용 가능</b><br>확인 시각 ${escapeHtml(String(__contract.selfTestAt).slice(0,16).replace('T',' '))}</div>`
+    : `<div style="background:rgba(201,154,46,.12);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
+        <b>🔒 전자계약 잠김 — 자가진단 전</b><br>종료된 Fly 서버 대신 Google Apps Script 계약 서버를 씁니다.
+        아래에 배포 주소와 관리자 토큰을 넣고 <b>[자가진단]</b>을 통과시키면 열립니다.
+        그전까지 계약 버튼은 눌리지 않고 <b>고객에게 아무것도 나가지 않습니다.</b></div>`;
+  const contractSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid ${ctUnlocked?'var(--clay,#1d6fe0)':'var(--gold,#c99a2e)'};border-radius:12px;padding:12px;margin-bottom:12px;background:${ctUnlocked?'rgba(29,111,224,.05)':'rgba(201,154,46,.07)'}">
+    <b style="font-size:14px">📨 전자계약 서버 연결 (Google Apps Script)</b>
+    ${ctBanner}
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">주소·관리자 토큰은 <b>이 기기(IndexedDB)에만</b> 저장되며 클라우드 백업·직렬화에 포함되지 않습니다.</p>
+    <label style="display:block;margin-bottom:6px">웹앱 배포 주소 (Apps Script <b>/exec</b> 주소)
+      <input type="text" id="ctUrl" value="${escapeAttr(__contract.url||CONTRACT_SERVER_DEFAULT)}" placeholder="${CONTRACT_URL_HINT}" style="width:100%;margin-top:4px">
     </label>
-    <label style="display:block;margin-bottom:6px">관리자 토큰 (x-admin-token)
+    <label style="display:block;margin-bottom:6px">관리자 토큰 (스크립트 속성 ADMIN_TOKEN)
       <input type="password" id="ctTok" value="" placeholder="${escapeAttr(ctMask)}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px">
     </label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="clay tiny" id="ctSave">💾 저장</button>
-      <button class="blue tiny" id="ctTest">🔌 연결 테스트</button>
-      <span id="ctState" style="align-self:center;font-size:12px;color:var(--muted-2)">${__contract.url&&__contract.token?'✅ 연결됨':'미설정'}</span>
+      <button class="blue tiny" id="ctSelfTest">🩺 자가진단</button>
+      <button class="ghost tiny" id="ctTest">🔌 연결 테스트</button>
+      <span id="ctState" role="status" aria-live="polite" style="align-self:center;font-size:12px;color:var(--muted-2)">${ctUnlocked?'✅ 사용 가능':(__contract.url&&__contract.token?'🔒 자가진단 필요':'미설정')}</span>
     </div>
-    <div id="ctOut" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
-  </div>`:`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.07)">
-    <b style="font-size:14px">📨 전자계약 — Apps Script 이전 준비 중</b>
-    <p style="margin:6px 0 0;font-size:12.5px;color:var(--muted-2)">기존 Fly 서버는 종료되어 전자계약 발송을 잠시 막았습니다. 새 Google Apps Script 계약 기능이 구현·검증될 때까지 계약 내용·금액은 대표가 직접 확인해 고객에게 안내하세요. 이 상태에서는 실제 알림톡이 발송되지 않습니다.</p>
+    <div id="ctOut" role="status" aria-live="polite" style="font-size:12px;color:var(--muted-2);white-space:pre-wrap;min-height:16px"></div>
   </div>`;
   const reviewSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--gold,#c99a2e);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(201,154,46,.06)">
     <b style="font-size:14px">⭐ 리뷰 링크 (네이버 플레이스 등)</b>
@@ -2861,30 +2959,43 @@ function openGdriveSetup(){
         <li>만들기 → 나온 <b>클라이언트 ID</b>를 위 칸에 붙여넣고 ‘구글 로그인 & 연결’</li>
       </ol>
     </details>
-    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision · 선택)</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
-      <input type="text" id="gdVision" value="${escapeAttr(window.__visionKey||'')}" placeholder="Vision API 키 (AIza...)" style="width:100%">
-      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button>
-    </details>
-    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 선택)</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
-      <input type="password" id="gdGemini" value="${escapeAttr(window.__geminiKey||'')}" placeholder="Gemini API 키 (AI Studio)" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button>
-    </details>
-    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 현장 사진 위치 정밀도 (카카오 · 선택)</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
-      <input type="text" id="gdKakao" value="${escapeAttr(window.__kakaoKey||'')}" placeholder="카카오 JavaScript 키" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button>
-    </details>
-    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (OpenAI ChatGPT · 선택)</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
-      <input type="text" id="gdOpenai" value="${escapeAttr(window.__openaiKey||'')}" placeholder="OpenAI API 키 (sk-...)" style="width:100%">
-      <button class="moss tiny" id="gdOpenaiSave" style="margin-top:6px">키 저장</button>
-    </details>
   </div>`;
   // 비상용(기존 구글 직접 연동)은 UI·기능 그대로 접어서 보존
-  const body=relaySec+contractSec+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
-  openModal('☁️ 클라우드 저장 설정',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  /* 🔑 키 모음 — 예전에는 이 넷이 "🧰 비상용: Google 직접 연동" 아코디언 **안**에 있었다.
+     즉 AI 키 하나 넣으려고 '비상용 · 로그인 필요'라고 적힌 회색 문을 열어야 했다(아코디언 2겹).
+     사장님이 키를 못 찾거나, 겨우 찾아 빈 칸을 보고 저장하다 키를 잃은 뿌리가 여기다.
+     밖으로 꺼내고, 각 줄에 지금 상태(설정됨/없음)를 배지로 붙여 열지 않고도 보이게 한다. */
+  const keyBadge=(v)=>v
+    ? '<span style="font-size:11px;font-weight:700;color:var(--ok);border:1px solid var(--ok);border-radius:20px;padding:1px 7px;margin-left:6px">설정됨</span>'
+    : '<span style="font-size:11px;color:var(--muted-2);border:1px solid var(--line-soft);border-radius:20px;padding:1px 7px;margin-left:6px">없음</span>';
+  const keysSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--moss,#5b7a52);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(91,122,82,.05)">
+    <b style="font-size:14px">🔑 AI·지도 키 <span style="font-weight:400;font-size:12px;color:var(--muted-2)">(선택 — 넣으면 더 똑똑해집니다)</span></b>
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">전부 <b>이 기기에만</b> 저장되고 클라우드 백업에 들어가지 않습니다.
+      빈 칸으로 저장하면 <b>아무 일도 일어나지 않습니다</b> — 지울 때만 [지우기]를 누르세요.</p>
+    ${aiRelayNotice()}
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision)${keyBadge(window.__visionKey)}</summary>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
+      <input type="password" id="gdVision" value="" placeholder="${escapeAttr(keyHint(window.__visionKey,'Vision API 키 (AIza...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdVisionDel" style="margin-top:6px;margin-left:4px">지우기</button>
+    </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 무료)${keyBadge(window.__geminiKey)}</summary>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
+      <input type="password" id="gdGemini" value="" placeholder="${escapeAttr(keyHint(window.__geminiKey,'Gemini API 키 (AI Studio)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdGeminiDel" style="margin-top:6px;margin-left:4px">지우기</button>
+    </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 사진 위치 정밀도 (카카오 · 무료)${keyBadge(window.__kakaoKey)}</summary>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
+      <input type="password" id="gdKakao" value="" placeholder="${escapeAttr(keyHint(window.__kakaoKey,'카카오 JavaScript 키'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdKakaoDel" style="margin-top:6px;margin-left:4px">지우기</button>
+    </details>
+    <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (ChatGPT · 유료)${keyBadge(window.__openaiKey)}</summary>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
+      <input type="password" id="gdOpenai" value="" placeholder="${escapeAttr(keyHint(window.__openaiKey,'OpenAI API 키 (sk-...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
+      <button class="moss tiny" id="gdOpenaiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdOpenaiDel" style="margin-top:6px;margin-left:4px">지우기</button>
+    </details>
+  </div>`;
+  const body=relaySec+contractSec+keysSec+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
+  openModal('⚙️ 설정 — 저장·계약·키',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
   const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;__gdTokenPromise=null;__gdTokenExp=0;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
@@ -2902,27 +3013,77 @@ function openGdriveSetup(){
   root.querySelector('#gdOpen').onclick=()=>openManmulFolder();
   root.querySelector('#gdRestore').onclick=()=>gdShowRestore();
   root.querySelector('#gdSheet').onclick=()=>exportToSheet();
-  {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=async()=>{const v=root.querySelector('#gdVision').value.trim();window.__visionKey=v||null;try{await idbSet('vision_key',v||'');}catch(e){}toast(v?'Vision 키 저장됨 — 글자인식 정확도 향상':'Vision 키 지움');};}
-  {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=async()=>{const v=root.querySelector('#gdGemini').value.trim();window.__geminiKey=v||null;try{await idbSet('gemini_key',v||'');}catch(e){}toast(v?'Gemini 키 저장됨 — AI 도우미 사용 가능':'Gemini 키 지움');};}
+  {const vs=root.querySelector('#gdVisionSave');if(vs)vs.onclick=()=>keySave('gdVision','vision_key','__visionKey','Vision');
+   const vd=root.querySelector('#gdVisionDel');if(vd)vd.onclick=()=>keyDrop('gdVision','vision_key','__visionKey','Vision');}
+  {const gs=root.querySelector('#gdGeminiSave');if(gs)gs.onclick=()=>keySave('gdGemini','gemini_key','__geminiKey','Gemini');
+   const gd=root.querySelector('#gdGeminiDel');if(gd)gd.onclick=()=>keyDrop('gdGemini','gemini_key','__geminiKey','Gemini');}
   {const ks=root.querySelector('#gdKakaoSave');if(ks)ks.onclick=async()=>{
-    const v=root.querySelector('#gdKakao').value.trim();
-    window.__kakaoKey=v||null;
+    const el=root.querySelector('#gdKakao');
+    const v=(el&&el.value||'').trim();
+    // 빈 칸은 '안 바꿈'이다. 지우려면 [지우기]를 눌러야 한다.
+    if(!v){toast(window.__kakaoKey?'카카오 키는 그대로 둡니다 — 바꾸려면 새 키를 넣으세요':'카카오 키를 입력하세요');return;}
+    window.__kakaoKey=v;
     // 키가 바뀌면 옛 키로 붙은 SDK 를 다시 쓰면 안 된다.
     // __kakaoSdkKey(옛 키)는 남겨 둔다 — 지우면 ensureKakaoSdk 가 '어느 키인지 모른다'로 보고
     // 옛 SDK 를 그대로 재사용한다. 대조는 그 값이 남아 있어야 성립한다.
     window.__kakaoSdk=null;
-    try{await idbSet('kakao_key',v||'');}catch(e){}
-    toast(v?'카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다':'카카오 키 지움 — OpenStreetMap 으로 조회합니다');
-  };}
-  {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=async()=>{const v=root.querySelector('#gdOpenai').value.trim();window.__openaiKey=v||null;try{await idbSet('openai_key',v||'');}catch(e){}toast(v?'OpenAI 키 저장됨 — ChatGPT 사용 가능':'OpenAI 키 지움');};}
+    try{await idbSet('kakao_key',v);}catch(e){toast('저장 실패 — 브라우저 저장공간을 확인하세요');return;}
+    if(el){el.value='';el.placeholder='저장됨 · 끝 4자리 ****'+v.slice(-4);}
+    toast('카카오 키 저장됨 — 다음 주소 조회부터 건물명·지번까지 나옵니다');
+  };
+   const kd=root.querySelector('#gdKakaoDel');if(kd)kd.onclick=async()=>{
+     if(!confirm('카카오 키를 지울까요? 주소 조회가 OpenStreetMap 으로 돌아갑니다.'))return;
+     window.__kakaoKey=null;window.__kakaoSdk=null;
+     try{await idbSet('kakao_key','');}catch(e){}
+     const el=root.querySelector('#gdKakao');if(el){el.value='';el.placeholder='카카오 JavaScript 키 없음';}
+     toast('카카오 키 지움 — OpenStreetMap 으로 조회합니다');
+   };}
+  {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=()=>keySave('gdOpenai','openai_key','__openaiKey','OpenAI');
+   const od=root.querySelector('#gdOpenaiDel');if(od)od.onclick=()=>keyDrop('gdOpenai','openai_key','__openaiKey','OpenAI');}
   {const qel=root.querySelector('#gdQuota');if(qel)quotaText().then(t=>{if(t)qel.textContent='📊 사용량 — '+t;});}
+  /* 키 저장 공통 규칙 — 빈 칸은 '안 바꿈'이다. 절대 '지움'이 아니다.
+     지우려면 [지우기]를 눌러야 한다. 실수로 키를 날리는 길을 없앤다. */
+  const keySave=async(inputId,idbKey,winProp,label)=>{
+    const el=root.querySelector('#'+inputId);
+    const v=(el&&el.value||'').trim();
+    if(!v){toast(window[winProp]?(label+' 키는 그대로 둡니다 — 바꾸려면 새 키를 넣으세요'):(label+' 키를 입력하세요'));return;}
+    window[winProp]=v;
+    try{await idbSet(idbKey,v);}catch(e){toast('저장 실패 — 브라우저 저장공간을 확인하세요');return;}
+    if(el){el.value='';el.placeholder='저장됨 · 끝 4자리 ****'+v.slice(-4);}
+    toast(label+' 키 저장됨');
+  };
+  const keyDrop=async(inputId,idbKey,winProp,label)=>{
+    if(!confirm(label+' 키를 지울까요? 다시 발급받아 넣어야 합니다.'))return;
+    window[winProp]=null;
+    try{await idbSet(idbKey,'');}catch(e){}
+    const el=root.querySelector('#'+inputId);if(el){el.value='';el.placeholder=label+' 키 없음';}
+    toast(label+' 키 지움');
+  };
   /* ── 서버 연결(relay) 핸들러 ── */
   const saveRy=async()=>{
     const u=(root.querySelector('#ryUrl').value||'').trim(),t=(root.querySelector('#ryTok').value||'').trim();
-    const changed=(u!==__relay.url||t!==__relay.token);
-    __relay.url=u;__relay.token=t;if(changed)__relayAuthToasted=false;   // 키를 바꾸면 인증오류 토스트 다시 1회 허용
-    try{await idbSet('relay_url',u);await idbSet('relay_token',t);}catch(e){}
+    /* ★ 빈 칸은 '안 바꿈'이다. 절대 '지움'이 아니다.
+       이 함수는 [저장]뿐 아니라 [연결 테스트]·[불러오기]·[저장하기]에서도 불린다.
+       예전에는 빈 값을 그대로 idb 에 써서, 인증키 칸이 어떤 이유로든 비어 있을 때
+       **연결 테스트를 누르는 것만으로 드라이브 인증키가 지워졌다.**
+       칸이 비는 경우는 흔하다 — 부팅 복원이 아직 안 끝났거나, 비밀번호 관리자가
+       password 칸을 비우거나, 사장님이 실수로 지웠거나.
+       키를 지우려면 [지우기]를 눌러야 한다. */
+    const nu=u||__relay.url, nt=t||__relay.token;
+    const changed=(nu!==__relay.url||nt!==__relay.token);
+    __relay.url=nu;__relay.token=nt;if(changed)__relayAuthToasted=false;   // 키를 바꾸면 인증오류 토스트 다시 1회 허용
+    try{if(nu)await idbSet('relay_url',nu);if(nt)await idbSet('relay_token',nt);}catch(e){}
   };
+  /* 드라이브 연결을 정말 끊을 때만 쓰는 길. 실수로 지나칠 수 없게 확인을 받는다. */
+  const dropRy=async()=>{
+    if(!confirm('드라이브 서버 연결을 끊을까요? 주소와 인증키를 다시 넣어야 합니다.\n(드라이브에 저장된 자료는 지워지지 않습니다)'))return;
+    __relay.url='';__relay.token='';
+    try{await idbSet('relay_url','');await idbSet('relay_token','');}catch(e){}
+    const ue=root.querySelector('#ryUrl'),te=root.querySelector('#ryTok');
+    if(ue)ue.value='';if(te){te.value='';te.placeholder='인증키 없음';}
+    toast('드라이브 연결 끊김 — 자료는 그대로 있습니다');
+  };
+  {const rd=root.querySelector('#ryDrop');if(rd)rd.onclick=dropRy;}
   const ryOut=(t,ok)=>{const el=root.querySelector('#ryOut');if(el){el.textContent=t;el.style.color=ok===false?'var(--warn)':(ok?'var(--ok)':'var(--muted-2)');}};
   root.querySelector('#ryTest').onclick=async()=>{
     await saveRy();
@@ -2962,14 +3123,39 @@ function openGdriveSetup(){
     if(tin)__contract.token=tin;
     try{await idbSet('contract_url',u);if(tin)await idbSet('contract_token',tin);}catch(e){}
     root.querySelector('#ctTok').value='';   // 저장 후 입력칸 비움 — 토큰 원문 재노출 금지
-    root.querySelector('#ctTok').placeholder=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'서버에서 발급한 관리자 토큰';
-    const stEl=root.querySelector('#ctState');if(stEl)stEl.textContent=contractReady()?'✅ 연결됨':'미설정';
-    if(out){out.textContent=contractReady()?'저장됨 — [연결 테스트]로 서버와 토큰을 확인하세요':'관리자 토큰도 입력하세요';out.style.color=contractReady()?'var(--ok)':'var(--warn)';}
-    toast(contractReady()?'📨 전자계약 서버 저장됨':'주소·토큰을 모두 입력하세요');
+    root.querySelector('#ctTok').placeholder=__contract.token?('저장됨 · 끝 4자리 ****'+String(__contract.token).slice(-4)):'스크립트 속성에 넣은 ADMIN_TOKEN';
+    // 주소나 토큰이 바뀌면 예전 자가진단 결과는 다른 서버의 것이다. 반드시 무효화한다.
+    __contract.selfTestOk=false;__contract.selfTestAt='';
+    try{await idbSet('contract_selftest','');}catch(e){}
+    const hasBoth=!!(__contract.url&&__contract.token);
+    const stEl=root.querySelector('#ctState');if(stEl)stEl.textContent=hasBoth?'🔒 자가진단 필요':'미설정';
+    if(out){out.textContent=hasBoth?'저장됨 — [🩺 자가진단]을 통과해야 계약 버튼이 열립니다':'관리자 토큰도 입력하세요';out.style.color=hasBoth?'var(--gold)':'var(--warn)';}
+    toast(hasBoth?'저장됨 — 자가진단을 실행하세요':'주소·토큰을 모두 입력하세요');
+  };}
+  {const cst=root.querySelector('#ctSelfTest');if(cst)cst.onclick=async()=>{
+    const out=root.querySelector('#ctOut');
+    if(!(__contract.url&&__contract.token)){if(out){out.textContent='주소와 관리자 토큰을 먼저 저장하세요';out.style.color='var(--warn)';}return;}
+    cst.disabled=true;if(out){out.textContent='자가진단 중…';out.style.color='var(--muted-2)';}
+    try{
+      const j=await contractSelfTest();
+      const items=(j&&j.checks&&j.checks.items)||[];
+      // 통과·실패를 항목별로 다 보여준다. 실패를 뭉뚱그리면 사장님이 무엇을 고쳐야 할지 모른다.
+      const lines=items.map(function(it){return (it.ok?'✅ ':'❌ ')+it.name+(it.detail?' — '+it.detail:'');});
+      const ok=contractFeatureAvailable();
+      if(out){out.textContent=(ok?'✅ 자가진단 통과 — 전자계약이 열렸습니다\n':'❌ 자가진단 실패 — 계약 버튼은 잠긴 채입니다\n')+lines.join('\n');
+        out.style.color=ok?'var(--ok)':'var(--warn)';}
+      const stEl=root.querySelector('#ctState');if(stEl)stEl.textContent=ok?'✅ 사용 가능':'🔒 자가진단 필요';
+      toast(ok?'🩺 자가진단 통과 — 전자계약 사용 가능':'자가진단 실패 — 잠긴 상태 유지');
+      render();
+    }catch(e){
+      if(out){out.textContent='❌ 자가진단 실패: '+e.message+'\n계약 버튼은 잠긴 채로 둡니다.';out.style.color='var(--warn)';}
+      toast('자가진단 실패 — 잠긴 상태 유지');
+    }
+    finally{cst.disabled=false;}
   };}
   {const ct=root.querySelector('#ctTest');if(ct)ct.onclick=async()=>{
     const out=root.querySelector('#ctOut');
-    if(!contractReady()){if(out){out.textContent='주소와 관리자 토큰을 먼저 저장하세요';out.style.color='var(--warn)';}return;}
+    if(!(__contract.url&&__contract.token)){if(out){out.textContent='주소와 관리자 토큰을 먼저 저장하세요';out.style.color='var(--warn)';}return;}
     ct.disabled=true;if(out){out.textContent='연결 확인 중…';out.style.color='var(--muted-2)';}
     try{
       const h=await contractServerStatus(true);
@@ -4073,7 +4259,27 @@ async function geocodeUpgradeClusters(){
 
 /* ---------- 렌더 ---------- */
 const tabs=document.querySelectorAll('.tab');
-tabs.forEach(t=>t.onclick=()=>{state.tab=t.dataset.tab;render();});
+function activateMainTab(t,focus){
+  if(!t||!t.dataset.tab)return;
+  state.tab=t.dataset.tab;render();
+  if(focus)try{t.focus();}catch(e){}
+}
+tabs.forEach(t=>{
+  t.onclick=()=>activateMainTab(t,false);
+  t.onkeydown=e=>{
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();activateMainTab(t,true);return;}
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+    e.preventDefault();
+    const list=[...tabs],cur=list.indexOf(t);
+    const next=e.key==='Home'?list[0]:e.key==='End'?list[list.length-1]:
+      list[(cur+(e.key==='ArrowRight'?1:-1)+list.length)%list.length];
+    activateMainTab(next,true);
+  };
+});
+document.addEventListener('keydown',e=>{
+  const target=e.target&&e.target.closest&&e.target.closest('[data-calday],[data-delphase]');
+  if(target&&(e.key==='Enter'||e.key===' ')){e.preventDefault();target.click();}
+});
 let __searchTimer=null;
 $('#globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();clearTimeout(__searchTimer);__searchTimer=setTimeout(render,180);});
 
@@ -4092,8 +4298,22 @@ function applyMobileMode(){
 function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mobileMode);}catch(e){}applyMobileMode();toast(__mobileMode?'모바일 모드 — 하단 메뉴 사용':'PC 모드');}
 /* 긴 목록에서 맨 위로 — 모바일 모드 전용 플로팅 버튼(600px 이상 내려가면 표시) */
 {const tb=document.getElementById('toTopBtn');
- if(tb){tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}};
-  window.addEventListener('scroll',function(){tb.classList.toggle('show',window.scrollY>600);},{passive:true});}}
+ if(tb){const syncTopBtn=function(){tb.classList.toggle('show',window.scrollY>600);};
+  window.onscroll=syncTopBtn;
+  window.addEventListener('scroll',syncTopBtn,{passive:true});
+  document.addEventListener('scroll',syncTopBtn,{passive:true,capture:true});
+  window.addEventListener('scrollend',syncTopBtn,{passive:true});
+  if(window.visualViewport)window.visualViewport.addEventListener('scroll',syncTopBtn,{passive:true});
+  if('IntersectionObserver' in window){
+    const marker=document.createElement('span');
+    marker.setAttribute('aria-hidden','true');
+    marker.style.cssText='position:absolute;top:600px;left:0;width:1px;height:1px;pointer-events:none';
+    document.body.appendChild(marker);
+    new IntersectionObserver(syncTopBtn,{threshold:0}).observe(marker);
+  }
+  const nativeScrollTo=window.scrollTo.bind(window);
+  window.scrollTo=function(){nativeScrollTo.apply(window,arguments);syncTopBtn();};
+  tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});setTimeout(syncTopBtn,700);}catch(e){window.scrollTo(0,0);}};}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
 }
@@ -4144,7 +4364,7 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -4157,7 +4377,7 @@ function openMoreSheet(){
     {t:'contacts',i:'👤',l:'연락처'},
     {t:'project',i:'🏗️',l:'현장별 보기'},
   ];
-  sheet.innerHTML=`<h4>더보기</h4><input id="moreSearch" placeholder="🔍 기능 찾기 (예: 견적, 사진, 예산)" style="width:100%;padding:11px 12px;font-size:14px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px" autocomplete="off"><div class="more-ai-hint" onclick="['moreSheet','moreBackdrop'].forEach(function(x){var e=document.getElementById(x);if(e)e.remove();});try{aiAgent()}catch(e){}" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0b4ea2,#1d6fd8);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">복잡한 메뉴 대신 "○○ 해줘"라고 하세요</span></span><span style="color:#fff;font-size:18px">›</span></div><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="activebrief"><span class="mi">🤖</span>오늘 브리핑</div><div class="more-item" data-moreaction="opsreport"><span class="mi">📊</span>운영 리포트</div><div class="more-item" data-moreaction="aiprovider"><span class="mi">🔑</span>AI 두뇌 선택</div><div class="more-item" data-moreaction="llama"><span class="mi">🦙</span>Llama 등록</div><div class="more-item" data-moreaction="autopilot"><span class="mi">🤖</span>AI 자율 운영</div><div class="more-item" data-moreaction="aiops"><span class="mi">🎛</span>AI 운영 센터</div><div class="more-item" data-moreaction="loopstatus"><span class="mi">🔁</span>루프 성숙도</div><div class="more-item" data-moreaction="aibrain"><span class="mi">🧠</span>AI 브레인</div><div class="more-item" data-moreaction="asintake"><span class="mi">📩</span>AS 접수 링크</div><div class="more-item" data-moreaction="satisfaction"><span class="mi">⭐</span>고객 만족도</div><div class="more-item" data-moreaction="funnel"><span class="mi">📊</span>전환율 퍼널</div><div class="more-item" data-moreaction="payplan"><span class="mi">📅</span>분할납 계획</div><div class="more-item" data-moreaction="crm"><span class="mi">👥</span>고객 관리</div><div class="more-item" data-moreaction="inventory"><span class="mi">📦</span>자재 재고</div><div class="more-item" data-moreaction="profitrank"><span class="mi">🏆</span>수익성 랭킹</div><div class="more-item" data-moreaction="weekplan"><span class="mi">🎯</span>주간 계획</div><div class="more-item" data-moreaction="companyintro"><span class="mi">🪪</span>회사 소개</div><div class="more-item" data-moreaction="datahealth"><span class="mi">🧯</span>데이터 검진</div><div class="more-item" data-moreaction="staleproj"><span class="mi">💤</span>방치 현장</div><div class="more-item" data-moreaction="reviewreq"><span class="mi">🗣</span>리뷰 요청</div><div class="more-item" data-moreaction="yearreport"><span class="mi">🏆</span>연말 결산</div><div class="more-item" data-moreaction="featurecoach"><span class="mi">🎓</span>기능 코치</div><div class="more-item" data-moreaction="quotefollowup"><span class="mi">⏰</span>견적 팔로업</div><div class="more-item" data-moreaction="similarquotes"><span class="mi">🔍</span>유사 견적</div><div class="more-item" data-moreaction="contractreview"><span class="mi">📝</span>계약 검토</div><div class="more-item" data-moreaction="repeatcust"><span class="mi">🔄</span>반복 고객</div><div class="more-item" data-moreaction="cashflow"><span class="mi">📊</span>현금 흐름</div><div class="more-item" data-moreaction="expenseclassify"><span class="mi">🧾</span>경비 분류</div><div class="more-item" data-moreaction="budgetalert"><span class="mi">💸</span>예산 경고</div><div class="more-item" data-moreaction="lossalert"><span class="mi">📉</span>적자 경보</div><div class="more-item" data-moreaction="voicebrief"><span class="mi">🗣</span>음성 브리핑</div><div class="more-item" data-moreaction="selfquote"><span class="mi">💬</span>셀프 견적</div><div class="more-item" data-moreaction="salestarget"><span class="mi">🎯</span>영업 타깃</div><div class="more-item" data-moreaction="alertcenter"><span class="mi">🔔</span>알림 센터</div><div class="more-item" data-moreaction="photoquote"><span class="mi">📸</span>사진 견적</div><div class="more-item" data-moreaction="route"><span class="mi">🗺</span>현장 동선</div><div class="more-item" data-moreaction="monthreport"><span class="mi">📊</span>월간 보고서</div><div class="more-item" data-moreaction="safety"><span class="mi">🔨</span>안전 체크</div><div class="more-item" data-moreaction="season"><span class="mi">📅</span>영업 달력</div><div class="more-item" data-moreaction="warranty"><span class="mi">🛡</span>AS 보증</div><div class="more-item" data-moreaction="knowhow"><span class="mi">📚</span>시공 노하우</div><div class="more-item" data-moreaction="scheduleplan"><span class="mi">🗓</span>공정표 생성</div><div class="more-item" data-moreaction="negotiate"><span class="mi">🤝</span>견적 협상</div><div class="more-item" data-moreaction="siteconv"><span class="mi">🎙</span>대화→할일</div><div class="more-item" data-moreaction="winrate"><span class="mi">📈</span>수주 분석</div><div class="more-item" data-moreaction="beforeafter"><span class="mi">📸</span>전후 갤러리</div><div class="more-item" data-moreaction="custprogress"><span class="mi">📱</span>진행 공유</div><div class="more-item" data-moreaction="weather"><span class="mi">🌤</span>날씨 공정</div><div class="more-item" data-moreaction="scancard"><span class="mi">🏷</span>명함 스캔</div><div class="more-item" data-moreaction="scanreceipt"><span class="mi">🧾</span>영수증 스캔</div><div class="more-item" data-moreaction="aiusage"><span class="mi">📊</span>AI 사용량</div><div class="more-item" data-moreaction="a11y"><span class="mi">♿</span>화면 편하게</div><div class="more-item" data-moreaction="syncguide"><span class="mi">🔄</span>PC↔폰 동기화</div><div class="more-item" data-moreaction="custreply"><span class="mi">💬</span>고객 문자</div><div class="more-item" data-moreaction="forecast"><span class="mi">📈</span>매출 예측</div><div class="more-item" data-moreaction="automode"><span class="mi">🤖</span>AI 운영 모드</div><div class="more-item" data-moreaction="guide"><span class="mi">📚</span>사용 가이드</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="settle"><span class="mi">📄</span>정산 문서</div><div class="more-item" data-moreaction="taxinv"><span class="mi">📇</span>세금계산서</div><div class="more-item" data-moreaction="photorep"><span class="mi">📷</span>사진 작업일지</div><div class="more-item" data-moreaction="notify"><span class="mi">🔔</span>스마트 알림</div><div class="more-item" data-moreaction="expense"><span class="mi">💳</span>간편 장부</div><div class="more-item" data-moreaction="pnl"><span class="mi">💰</span>월별 손익</div><div class="more-item" data-moreaction="search"><span class="mi">🔍</span>통합 검색</div><div class="more-item" data-moreaction="suppliers"><span class="mi">📇</span>거래처</div><div class="more-item" data-moreaction="annual"><span class="mi">📊</span>연간 결산</div><div class="more-item" data-moreaction="goal"><span class="mi">🎯</span>매출 목표</div><div class="more-item" data-moreaction="schedbrief"><span class="mi">📅</span>일정 브리핑</div><div class="more-item" data-moreaction="aiquote"><span class="mi">💸</span>AI 견적작성</div><div class="more-item" data-moreaction="photodefect"><span class="mi">📷</span>사진 AI 분석</div><div class="more-item" data-moreaction="worklog"><span class="mi">📝</span>음성 현장일지</div><div class="more-item" data-moreaction="analysis"><span class="mi">📈</span>AI 경영 분석</div><div class="more-item" data-moreaction="budget"><span class="mi">📅</span>현장 예산</div><div class="more-item" data-moreaction="weekbrief"><span class="mi">🤖</span>주간 브리핑</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
+  sheet.innerHTML=`<h4>더보기</h4><input id="moreSearch" placeholder="🔍 기능 찾기 (예: 견적, 사진, 예산)" style="width:100%;padding:11px 12px;font-size:14px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px" autocomplete="off"><div class="more-ai-hint" onclick="['moreSheet','moreBackdrop'].forEach(function(x){var e=document.getElementById(x);if(e)e.remove();});try{aiAgent()}catch(e){}" style="display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0b4ea2,#1d6fd8);border-radius:12px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:22px">🤖</span><span style="flex:1;color:#fff"><b style="font-size:13px">비서에게 말로 시키기</b><br><span style="font-size:11px;opacity:.9">복잡한 메뉴 대신 "○○ 해줘"라고 하세요</span></span><span style="color:#fff;font-size:18px">›</span></div><div class="more-grid">${items.map(x=>`<div class="more-item" data-more="${x.t}"><span class="mi">${x.i}</span>${x.l}</div>`).join('')}<div class="more-item" data-moreaction="biz"><span class="mi">📇</span>사업자·명함 보내기</div><div class="more-item" data-moreaction="gdrive"><span class="mi">☁️</span>구글드라이브 연동</div><div class="more-item" data-moreaction="opendrive"><span class="mi">📂</span>만물인테리어 열기</div><div class="more-item" data-moreaction="photobundle"><span class="mi">📤</span>사진 묶음 발송</div><div class="more-item" data-moreaction="sheet"><span class="mi">📊</span>구글시트 내보내기</div><div class="more-item" data-moreaction="voice"><span class="mi">🎙</span>음성 회의록</div><div class="more-item" data-moreaction="ai"><span class="mi">🤖</span>AI 도우미</div><div class="more-item" data-moreaction="addproject"><span class="mi">➕</span>현장 추가</div><div class="more-item" data-moreaction="restore"><span class="mi">↺</span>백업 복원</div><div class="more-item" data-moreaction="backups"><span class="mi">🛡</span>안전판(스냅샷)</div><div class="more-item" data-moreaction="asmanage"><span class="mi">🔧</span>AS 관리</div><div class="more-item" data-moreaction="aptorders"><span class="mi">🏢</span>아파트 오더</div><div class="more-item" data-moreaction="pjmap"><span class="mi">🗺</span>현장 지도</div><div class="more-item" data-moreaction="fullxlsx"><span class="mi">📤</span>전체 장부 엑셀</div><div class="more-item" data-moreaction="activebrief"><span class="mi">🤖</span>오늘 브리핑</div><div class="more-item" data-moreaction="opsreport"><span class="mi">📊</span>운영 리포트</div><div class="more-item" data-moreaction="aiprovider"><span class="mi">🔑</span>AI 두뇌 선택</div><div class="more-item" data-moreaction="llama"><span class="mi">🦙</span>Llama 등록</div><div class="more-item" data-moreaction="autopilot"><span class="mi">🤖</span>AI 자율 운영</div><div class="more-item" data-moreaction="aiops"><span class="mi">🎛</span>AI 운영 센터</div><div class="more-item" data-moreaction="loopstatus"><span class="mi">🔁</span>루프 성숙도</div><div class="more-item" data-moreaction="aibrain"><span class="mi">🧠</span>AI 브레인</div><div class="more-item" data-moreaction="asintake"><span class="mi">📩</span>AS 접수 링크</div><div class="more-item" data-moreaction="satisfaction"><span class="mi">⭐</span>고객 만족도</div><div class="more-item" data-moreaction="funnel"><span class="mi">📊</span>전환율 퍼널</div><div class="more-item" data-moreaction="payplan"><span class="mi">📅</span>분할납 계획</div><div class="more-item" data-moreaction="crm"><span class="mi">👥</span>고객 관리</div><div class="more-item" data-moreaction="inventory"><span class="mi">📦</span>자재 재고</div><div class="more-item" data-moreaction="profitrank"><span class="mi">🏆</span>수익성 랭킹</div><div class="more-item" data-moreaction="weekplan"><span class="mi">🎯</span>주간 계획</div><div class="more-item" data-moreaction="companyintro"><span class="mi">🪪</span>회사 소개</div><div class="more-item" data-moreaction="datahealth"><span class="mi">🧯</span>데이터 검진</div><div class="more-item" data-moreaction="staleproj"><span class="mi">💤</span>방치 현장</div><div class="more-item" data-moreaction="reviewreq"><span class="mi">🗣</span>리뷰 요청</div><div class="more-item" data-moreaction="yearreport"><span class="mi">🏆</span>연말 결산</div><div class="more-item" data-moreaction="featurecoach"><span class="mi">🎓</span>기능 코치</div><div class="more-item" data-moreaction="quotefollowup"><span class="mi">⏰</span>견적 팔로업</div><div class="more-item" data-moreaction="similarquotes"><span class="mi">🔍</span>유사 견적</div><div class="more-item" data-moreaction="contractreview"><span class="mi">📝</span>계약 검토</div><div class="more-item" data-moreaction="repeatcust"><span class="mi">🔄</span>반복 고객</div><div class="more-item" data-moreaction="cashflow"><span class="mi">📊</span>현금 흐름</div><div class="more-item" data-moreaction="expenseclassify"><span class="mi">🧾</span>경비 분류</div><div class="more-item" data-moreaction="budgetalert"><span class="mi">💸</span>예산 경고</div><div class="more-item" data-moreaction="lossalert"><span class="mi">📉</span>적자 경보</div><div class="more-item" data-moreaction="voicebrief"><span class="mi">🗣</span>음성 브리핑</div><div class="more-item" data-moreaction="selfquote"><span class="mi">💬</span>셀프 견적</div><div class="more-item" data-moreaction="salestarget"><span class="mi">🎯</span>영업 타깃</div><div class="more-item" data-moreaction="alertcenter"><span class="mi">🔔</span>알림 센터</div><div class="more-item" data-moreaction="photoquote"><span class="mi">📸</span>사진 견적</div><div class="more-item" data-moreaction="route"><span class="mi">🗺</span>현장 동선</div><div class="more-item" data-moreaction="monthreport"><span class="mi">📊</span>월간 보고서</div><div class="more-item" data-moreaction="safety"><span class="mi">🔨</span>안전 체크</div><div class="more-item" data-moreaction="season"><span class="mi">📅</span>영업 달력</div><div class="more-item" data-moreaction="warranty"><span class="mi">🛡</span>AS 보증</div><div class="more-item" data-moreaction="knowhow"><span class="mi">📚</span>시공 노하우</div><div class="more-item" data-moreaction="scheduleplan"><span class="mi">🗓</span>공정표 생성</div><div class="more-item" data-moreaction="negotiate"><span class="mi">🤝</span>견적 협상</div><div class="more-item" data-moreaction="siteconv"><span class="mi">🎙</span>대화→할일</div><div class="more-item" data-moreaction="winrate"><span class="mi">📈</span>수주 분석</div><div class="more-item" data-moreaction="beforeafter"><span class="mi">📸</span>전후 갤러리</div><div class="more-item" data-moreaction="custprogress"><span class="mi">📱</span>진행 공유</div><div class="more-item" data-moreaction="weather"><span class="mi">🌤</span>날씨 공정</div><div class="more-item" data-moreaction="scancard"><span class="mi">🏷</span>명함 스캔</div><div class="more-item" data-moreaction="scanreceipt"><span class="mi">🧾</span>영수증 스캔</div><div class="more-item" data-moreaction="aiusage"><span class="mi">📊</span>AI 사용량</div><div class="more-item" data-moreaction="a11y"><span class="mi">♿</span>화면 편하게</div><div class="more-item" data-moreaction="syncguide"><span class="mi">🔄</span>PC↔폰 동기화</div><div class="more-item" data-moreaction="custreply"><span class="mi">💬</span>고객 문자</div><div class="more-item" data-moreaction="forecast"><span class="mi">📈</span>매출 예측</div><div class="more-item" data-moreaction="automode"><span class="mi">🤖</span>AI 운영 모드</div><div class="more-item" data-moreaction="guide"><span class="mi">📚</span>사용 가이드</div><div class="more-item" data-moreaction="help"><span class="mi">📖</span>사용설명서</div><div class="more-item" data-moreaction="brand"><span class="mi">🎨</span>브랜드 테마</div><div class="more-item" data-moreaction="import"><span class="mi">📥</span>데이터 이사</div><div class="more-item" data-moreaction="settle"><span class="mi">📄</span>정산 문서</div><div class="more-item" data-moreaction="taxinv"><span class="mi">📇</span>세금계산서</div><div class="more-item" data-moreaction="photorep"><span class="mi">📷</span>사진 작업일지</div><div class="more-item" data-moreaction="notify"><span class="mi">🔔</span>스마트 알림</div><div class="more-item" data-moreaction="expense"><span class="mi">💳</span>간편 장부</div><div class="more-item" data-moreaction="pnl"><span class="mi">💰</span>월별 손익</div><div class="more-item" data-moreaction="search"><span class="mi">🔍</span>통합 검색</div><div class="more-item" data-moreaction="suppliers"><span class="mi">📇</span>거래처</div><div class="more-item" data-moreaction="annual"><span class="mi">📊</span>연간 결산</div><div class="more-item" data-moreaction="goal"><span class="mi">🎯</span>매출 목표</div><div class="more-item" data-moreaction="schedbrief"><span class="mi">📅</span>일정 브리핑</div><div class="more-item" data-moreaction="aiquote"><span class="mi">💸</span>AI 견적작성</div><div class="more-item" data-moreaction="photodefect"><span class="mi">📷</span>사진 AI 분석</div><div class="more-item" data-moreaction="worklog"><span class="mi">📝</span>음성 현장일지</div><div class="more-item" data-moreaction="analysis"><span class="mi">📈</span>AI 경영 분석</div><div class="more-item" data-moreaction="budget"><span class="mi">📅</span>현장 예산</div><div class="more-item" data-moreaction="weekbrief"><span class="mi">🤖</span>주간 브리핑</div><div class="more-item" data-moreaction="undo"><span class="mi">↩</span>되돌리기</div><div class="more-item" data-moreaction="diag"><span class="mi">🔧</span>연결 진단</div></div>`;
   document.body.appendChild(bd);document.body.appendChild(sheet);
   {const si=sheet.querySelector('#moreSearch');if(si){si.oninput=()=>{const q=si.value.trim().toLowerCase();const grid=sheet.querySelector('.more-grid');if(!grid)return;grid.querySelectorAll('.more-item').forEach(it=>{const txt=(it.textContent||'').toLowerCase();it.style.display=(!q||txt.includes(q))?'':'none';});const hint=sheet.querySelector('.more-ai-hint');if(hint)hint.style.display=q?'none':'';};}}
   const close=()=>{sheet.remove();bd.remove();};
@@ -4235,7 +4455,11 @@ function render(){
   const all=document.createElement('div');
   all.className='proj-item'+(state.activeProject===null?' active':'');
   all.innerHTML='<span class="pin" style="background:#6a86a3"></span> 전체 보기 <span class="cnt">'+state.files.length+'</span>';
-  all.onclick=()=>{state.activeProject=null;render();};pl.appendChild(all);
+  all.setAttribute('role','button');all.tabIndex=0;all.setAttribute('aria-label','전체 현장 보기');
+  if(state.activeProject===null)all.setAttribute('aria-current','true');
+  all.onclick=()=>{state.activeProject=null;render();};
+  all.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();all.click();}};
+  pl.appendChild(all);
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
   const addProjItem=(p,dim)=>{
     const n=state.files.filter(f=>f.project===p.name).length;
@@ -4244,7 +4468,10 @@ function render(){
     el.className='proj-item'+(state.activeProject===p.name?' active':'');
     if(dim)el.style.opacity='.55';
     el.innerHTML='<span class="pin"></span> '+(dim?'📦 ':'')+escapeHtml(p.name)+' <span class="cnt">'+n+'</span>';
+    el.setAttribute('role','button');el.tabIndex=0;el.setAttribute('aria-label',p.name+' 현장 열기');
+    if(state.activeProject===p.name)el.setAttribute('aria-current','true');
     el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
+    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click();}};
     wrap.appendChild(el);
     const sr=document.createElement('div');sr.className='stage-row';
     sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
@@ -4255,7 +4482,9 @@ function render(){
     const tg=document.createElement('div');
     tg.className='proj-item';tg.style.opacity='.7';tg.style.fontSize='12px';
     tg.innerHTML='<span class="pin" style="background:transparent">'+(__showArchived?'▾':'▸')+'</span> 📦 보관 '+__arcP.length+'곳';
+    tg.setAttribute('role','button');tg.tabIndex=0;tg.setAttribute('aria-expanded',String(__showArchived));tg.setAttribute('aria-label','보관 현장 '+__arcP.length+'곳');
     tg.onclick=()=>{__showArchived=!__showArchived;render();};
+    tg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tg.click();}};
     pl.appendChild(tg);
     if(__showArchived)__arcP.forEach(p=>addProjItem(p,true));
   }
@@ -4265,7 +4494,12 @@ function render(){
   const _bi=$('#bInbox');if(_bi)_bi.textContent=c.inbox;$('#bDocs').textContent=c.docs;$('#bPhotos').textContent=c.photos;
   $('#bEst').textContent=c.est;$('#bCon').textContent=c.con;$('#bProj').textContent=c.assigned;
   {const _bl=$('#bLedger');if(_bl)_bl.textContent=state.files.filter(f=>f.kind==='ledger').length;}
-  tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===state.tab));
+  tabs.forEach(t=>{
+    const active=t.dataset.tab===state.tab;
+    t.classList.toggle('active',active);
+    t.setAttribute('aria-selected',String(active));
+    t.tabIndex=active?0:-1;
+  });
   $('#mainCounts').textContent=state.files.length?`전체 ${state.files.length} · 미배정 ${c.inbox} · 배정완료 ${c.assigned}`:'';
   $('#btnUndo').disabled=!state.lastMove;
   const titles={dashboard:['운영 ','대시보드'],docs:['서류 ','정리'],photos:['현장 사진 ','자동분류'],estimates:['견적 ','정산'],quotemaker:['견적서 ','작성'],schedule:['작업 ','일정표'],contacts:['명함 ','연락처'],project:['현장별 ','정리함'],ledger:['홈택스 ','회계'],ads:['광고 ','관리']};
@@ -4314,8 +4548,8 @@ function cardHtml(f){
       <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
-      <select data-act="kind" data-id="${f.id}">${kindOptions(f.kind)}</select>
-      <select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select>
+      <select data-act="kind" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 파일 종류">${kindOptions(f.kind)}</select>
+      <select data-act="proj" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 현장 배정">${projectOptions(f.project)}</select>
     </div></div>`;
 }
 /* ---------- 대시보드 ---------- */
@@ -4512,7 +4746,7 @@ function openContractSend(projName){
   ]);
 }
 async function contractSend(p,amount){
-  if(!CONTRACT_FEATURE_AVAILABLE){toast('전자계약은 Apps Script 이전 준비 중입니다 — 현재는 발송되지 않습니다');return;}
+  if(!contractFeatureAvailable()){toast('전자계약이 잠겨 있습니다 — ☁️ 설정에서 [자가진단]을 먼저 통과시키세요');return;}
   if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
   const cu=p.customer||{};
   amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
@@ -4523,38 +4757,36 @@ async function contractSend(p,amount){
   try{health=await contractServerStatus(false);}
   catch(e){toast('서버 연결 실패: '+e.message);return;}
   if(health.live&&!confirm((cu.name||'고객')+' '+contractMaskPhone(cu.phone)+'에게 실제 알림톡으로 전자계약 링크를 발송할까요?'))return;
-  const endpoint=base+'/api/contracts/quick-send';
-  const payload={title:'공사 도급계약서',amount:amount,body:{site:p.name,scope:(p.phases||[])},
-    operator:op,customer:{name:cu.name||'',phone:cu.phone||''},baseUrl:base};
-  let res;
+  // 생성·잠금·링크발급을 한 번에. 세 번 왕복하면 현장 신호가 끊겼을 때 잠기지 않은 계약이 남는다.
+  // idem 을 붙여 두면 앱이 재시도해도 계약이 두 건 생기지 않는다.
+  let j;
   try{
-    res=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','x-admin-token':__contract.token},body:JSON.stringify(payload)});
-  }catch(e){toast('전송 실패 — 서버 주소·연결을 확인하세요');return;}   // 네트워크/CORS
-  if(res.status===401){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
-  let j=null;try{j=await res.json();}catch(e){}
-  if(res.status===400){toast('전송 실패: '+((j&&(j.message||j.error))||'입력값을 확인하세요'));return;}
-  if(!res.ok){toast('전송 실패 (서버 오류 '+res.status+')');return;}
-  const dl=(j&&j.delivery)||{};
-  if(dl.status==='SENT'){
-    if((j&&j.provider)==='mock'||!health.live){
-      try{contractLogSend(p,amount,j,'LINK_CREATED');}catch(e){}
-      contractShowSignLink(p,j);
-    }else{
-      closeModal();
-      toast('📨 계약서 알림톡을 보냈습니다');
-      try{contractLogSend(p,amount,j,'SENT');}catch(e){}   // 발송 이력 메모(선택) — projects에 저장(전화번호는 저장 안 함)
-    }
-  }else if(dl.status==='FAILED'){
-    toast('알림톡 발송 실패: '+(dl.reason||'사유 미상'));
+    j=await contractCall('quickSend',{
+      title:'공사 도급계약서',amount:amount,body:{site:p.name,scope:(p.phases||[])},
+      operator:op,customer:{name:cu.name||'',phone:cu.phone||''}
+    },{idem:'qs:'+p.name+':'+amount+':'+Math.floor(Date.now()/60000)});
+  }catch(e){
+    if(e.__code==='UNAUTHORIZED'){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
+    toast('전송 실패: '+e.message);return;
+  }
+  const nt=j.notify||{};
+  if(nt.sent===true){
+    closeModal();
+    toast('📨 계약서 알림톡을 보냈습니다');
+    try{contractLogSend(p,amount,j,'SENT');}catch(e){}   // 발송 이력 메모 — projects에 저장(전화번호는 저장 안 함)
   }else{
-    toast('전송 결과를 확인할 수 없습니다');
+    // 안 나갔다. 나갔다고 쓰지 않는다 — 링크를 사장님이 직접 보내시게 한다.
+    try{contractLogSend(p,amount,j,'LINK_CREATED');}catch(e){}
+    contractShowSignLink(p,j);
   }
 }
 function contractShowSignLink(p,j){
-  const path=(j&&j.signPath)||'',link=contractBaseUrl(__contract.url)+path;
-  if(!path){toast('서명 링크를 받지 못했습니다');return;}
+  // Apps Script 는 완성된 링크(signUrl)를 준다. 원문 토큰은 이 응답에만 있고
+  // 서버에는 해시만 남으므로, 이 창을 닫으면 다시 물어볼 수 없다 — 그 사실을 화면에도 적는다.
+  const link=(j&&j.signUrl)||'';
+  if(!link){toast('서명 링크를 받지 못했습니다 — 서버 설정(WEBAPP_URL)을 확인하세요');return;}
   const cu=p.customer||{},text='['+COMPANY.name+'] '+(cu.name||'고객')+'님 전자계약 서명 링크입니다.\n'+link;
-  const body='<div style="font-size:13px;line-height:1.65"><div style="background:var(--paper-2);border-radius:10px;padding:11px;margin-bottom:10px"><b>안전 모드 — 자동 발송 없음</b><br>계약은 서버에 저장됐습니다. 아래 링크를 고객에게 직접 공유하세요.</div><label style="display:block">고객 서명 링크<input id="ctSignLink" readonly value="'+escapeAttr(link)+'" style="width:100%;margin-top:5px"></label><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><button class="blue tiny" id="ctLinkCopy">링크 복사</button><button class="clay tiny" id="ctLinkShare">공유하기</button><button class="ghost tiny" id="ctLinkOpen">서명 화면 열기</button></div></div>';
+  const body='<div style="font-size:13px;line-height:1.65"><div style="background:var(--paper-2);border-radius:10px;padding:11px;margin-bottom:10px"><b>안전 모드 — 자동 발송 없음</b><br>계약은 서버에 저장됐습니다. 아래 링크를 고객에게 직접 공유하세요.<br><span style="color:var(--warn)">이 링크는 지금만 볼 수 있습니다</span> — 창을 닫으면 다시 못 보고 새로 발급해야 합니다.</div><label style="display:block">고객 서명 링크<input id="ctSignLink" readonly value="'+escapeAttr(link)+'" style="width:100%;margin-top:5px"></label><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><button class="blue tiny" id="ctLinkCopy">링크 복사</button><button class="clay tiny" id="ctLinkShare">공유하기</button><button class="ghost tiny" id="ctLinkOpen">서명 화면 열기</button></div></div>';
   openModal('✅ 전자계약 링크 생성됨',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelector('#ctLinkCopy').onclick=async()=>{try{await navigator.clipboard.writeText(link);toast('서명 링크 복사됨');}catch(e){const el=root.querySelector('#ctSignLink');el.select();document.execCommand('copy');toast('서명 링크 복사됨');}};
@@ -4695,7 +4927,7 @@ function viewDashboard(){
       <td><span class="stage-chip">${STAGES[s.stage]}</span></td>
       <td>${s.files}</td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-recv="${escapeAttr(s.name)}" value="${(s.recv||0).toLocaleString('ko-KR')}" style="text-align:right;width:118px"></td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 수금액" data-recv="${escapeAttr(s.name)}" value="${(s.recv||0).toLocaleString('ko-KR')}" style="text-align:right;width:118px"></td>
       <td class="amt" style="color:${s.due>0?'var(--warn)':'var(--ok)'};font-weight:700">${won(s.due)}${(s.due>0)?(()=>{
         if(s.dueDate){const dd=Math.ceil((new Date(s.dueDate+'T00:00:00')-new Date(new Date().toDateString()))/86400000);
           const lbl=dd>0?('D-'+dd):(dd===0?'D-day':('D+'+(-dd)));
@@ -4729,9 +4961,9 @@ function viewDashboard(){
     html+=`<tr>
       <td><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
-      <td class="amt"><input type="text" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
-      <td class="amt"><input type="text" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 자재비" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 인건비" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 외주비" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
       <td class="amt">${won(s.costEffective)}</td>
       <td class="amt" style="color:${s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginEff)}<br><span style="font-size:10px;font-weight:400">${s.marginRateEff}%</span></td>
       <td class="amt" style="color:${s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${won(s.marginNet)}<br><span style="font-size:10px;font-weight:400">${s.marginRateNet}%</span></td>
@@ -5294,14 +5526,74 @@ function voiceMemo(){
 }
 /* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
 function geminiHeaders(key){return {'Content-Type':'application/json','x-goog-api-key':key};}
+/* ── AI 중계 ──────────────────────────────────────────────────────────
+   지금까지 AI 키가 이 기기 안에 있었다. 그래서 넷이 따라왔다.
+     ① 기기마다 키를 따로 넣어야 한다 (키는 보안상 클라우드 백업에 안 실린다)
+     ② 사파리가 7일 미사용 시 저장소를 비우면 키도 사라진다
+     ③ 유료 ChatGPT 키는 도메인 제한이 아예 없어, 폰을 아는 사람이 쓸 수 있다
+     ④ 한도 카운터가 기기별이라 PC 200 + 폰 200 = 400건이 나간다
+   계약 서버에 AI 중계를 얹어 키를 그쪽 스크립트 속성으로 옮겼다.
+   여기서는 '서버가 준비됐으면 서버로, 아니면 지금까지처럼 이 기기 키로' 를 가른다.
+   서버가 없거나 못 미더우면 **조용히 기기 키로 되돌아간다** — AI 가 멈추지 않는 것이 먼저다. */
+let __aiRelay={checked:false,gemini:false,at:0};
+async function aiRelayProbe(force){
+  // 주소·토큰이 없으면 물어볼 곳이 없다. 자가진단(계약 잠금)과는 무관하다 —
+  // AI 는 시트·드라이브가 없어도 되므로 계약 준비가 안 됐어도 쓸 수 있어야 한다.
+  if(!(__contract.url&&__contract.token)){__aiRelay={checked:true,gemini:false,at:Date.now()};return __aiRelay;}
+  if(!force&&__aiRelay.checked&&Date.now()-__aiRelay.at<10*60000)return __aiRelay;
+  try{
+    const h=await contractCall('health',{},{noAuth:true});
+    __aiRelay={checked:true,gemini:!!(h&&h.ai&&h.ai.gemini&&h.modules&&h.modules.ai),at:Date.now()};
+  }catch(e){ __aiRelay={checked:true,gemini:false,at:Date.now()}; }   // 못 물어보면 기기 키로 간다
+  return __aiRelay;
+}
+/* 설정 화면에 "지금 어느 길로 가고 있는지" 를 한 줄로 보여 준다.
+   화면을 그리는 중이라 물어보러 가지 않고 부팅 때 확인해 둔 값만 쓴다. */
+function aiRelayNotice(){
+  if(__aiRelay&&__aiRelay.gemini)
+    return '<p style="margin:0 0 8px;font-size:12.5px;background:rgba(91,122,82,.12);border-radius:8px;padding:8px 10px">'+
+      '✅ <b>AI 키는 계약 서버에 있습니다.</b> 이 기기에 Gemini 키를 안 넣어도 AI 가 돌아갑니다 — '+
+      '폰을 바꾸거나 사파리가 저장소를 비워도 그대로입니다. 아래 Gemini 칸은 서버가 멈췄을 때 쓰는 예비입니다.</p>';
+  if(!(__contract.url&&__contract.token))
+    return '<p style="margin:0 0 8px;font-size:12.5px;color:var(--muted-2)">💡 위 <b>전자계약 서버</b>를 연결하고 그쪽 스크립트 속성에 '+
+      '<code>GEMINI_API_KEY</code> 를 넣으면, 기기마다 키를 넣지 않아도 됩니다(무료).</p>';
+  return '<p style="margin:0 0 8px;font-size:12.5px;color:var(--muted-2)">💡 계약 서버 스크립트 속성에 '+
+    '<code>GEMINI_API_KEY</code> 를 넣으면 이 기기 키가 없어도 AI 가 돌아갑니다(무료). '+
+    '지금은 <b>서버에 키가 없어</b> 이 기기 키로 동작합니다.</p>';
+}
+/* Gemini 한 번 부르기. 서버 중계 우선, 안 되면 이 기기 키.
+   돌려주는 것은 어느 길로 갔든 **Gemini 가 준 JSON 그대로**다 — 부르는 쪽 코드가 안 바뀐다. */
+async function geminiCall(model,body){
+  const relay=await aiRelayProbe(false);
+  if(relay.gemini){
+    try{
+      const j=await contractCall('ai.ask',{provider:'gemini',model:model,body:body});
+      // 부르는 쪽이 fetch 응답처럼 다루므로 json() 을 가진 같은 모양으로 돌려준다.
+      // 그래야 세 호출 지점의 코드를 한 줄도 안 고치고 길만 바뀐다.
+      return {ok:true,status:j.status||200,json:async()=>j.json,via:'relay'};
+    }catch(e){
+      // 서버가 한도·설정 문제로 거절했으면 그대로 알린다(기기 키로 우회하면 한도가 무의미해진다).
+      if(e.__code==='AI_QUOTA')throw new Error('AI 한도 — '+e.message);
+      if(e.__code==='AI_NOT_CONFIGURED'){__aiRelay.gemini=false;}   // 서버에 키가 빠졌다 → 기기 키로
+      else if(e.__code!=='UNAUTHORIZED'&&e.__code!=='SERVER_ERROR')throw e;
+      else __aiRelay.gemini=false;
+    }
+  }
+  const key=window.__geminiKey;
+  if(!key)throw new Error('NO_GEMINI_KEY');
+  return await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',
+    {method:'POST',headers:geminiHeaders(key),body:JSON.stringify(body)});
+}
 async function geminiAsk(prompt){
-  const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
+  // 기기에 키가 없어도 서버 중계가 준비돼 있으면 쓸 수 있다.
+  // 예전에는 여기서 막혀, 서버에 키를 넣어 둬도 AI 가 안 열렸다.
+  if(!window.__geminiKey&&!(await aiRelayProbe(false)).gemini)throw new Error('NO_GEMINI_KEY');
   const res=await quotaReserve('gemini'); if(!res.ok)throw new Error(res.msg);   // 무료 한도 보호(예약)
   const models=['gemini-flash-latest','gemini-flash-lite-latest','gemini-2.0-flash']; let lastErr='', consumed=false;  // 2.0/1.5는 2026 단종 → 2.5-flash
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+        const r=await geminiCall(m,{contents:[{parts:[{text:prompt}]}]});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
         if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}  // 키/요청 문제 → 다른 모델 시도 무의미
@@ -5319,14 +5611,16 @@ async function geminiAsk(prompt){
 }
 /* Gemini 비전: 이미지+텍스트 — geminiAsk와 동일한 키·한도·모델 폴백 규칙 */
 async function geminiVision(prompt,b64jpegs){
-  const key=window.__geminiKey; if(!key)throw new Error('NO_GEMINI_KEY');
+  // 기기에 키가 없어도 서버 중계가 준비돼 있으면 쓸 수 있다.
+  // 예전에는 여기서 막혀, 서버에 키를 넣어 둬도 AI 가 안 열렸다.
+  if(!window.__geminiKey&&!(await aiRelayProbe(false)).gemini)throw new Error('NO_GEMINI_KEY');
   const res=await quotaReserve('gemini'); if(!res.ok)throw new Error(res.msg);
   const models=['gemini-flash-latest','gemini-flash-lite-latest']; let lastErr='', consumed=false;
   const parts=[{text:prompt}].concat((b64jpegs||[]).map(d=>({inline_data:{mime_type:'image/jpeg',data:d}})));
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify({contents:[{parts}]})});
+        const r=await geminiCall(m,{contents:[{parts}]});
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
         if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}
@@ -6299,21 +6593,24 @@ function aiResultBrief(name,out){
 async function aiFC(contents){
   // 제공자 분기: OpenAI/Llama 선택 시 해당 함수 호출(스스로 도구 실행)
   const prov=window.__aiProvider;
-  if(prov==='openai'&&window.__openaiKey){try{return await aiFC_openaiCompat(contents,'openai');}catch(e){if(!window.__geminiKey)throw e;/* Gemini 폴백 */}}
-  if(prov==='llama'&&llamaReady()){try{return await aiFC_openaiCompat(contents,'llama');}catch(e){if(!window.__geminiKey)throw e;/* Gemini 폴백 */}}
-  // 기본: Gemini (키 없고 다른 제공자 있으면 그쪽)
-  if(!window.__geminiKey){
+  // 기기에 키가 없어도 서버 중계가 준비돼 있으면 Gemini 를 쓸 수 있다.
+  // 예전에는 window.__geminiKey 만 봐서, 서버에 키를 넣어 둬도 이 경로가 안 열렸다.
+  const gemOk=!!window.__geminiKey||(await aiRelayProbe(false)).gemini;
+  if(prov==='openai'&&window.__openaiKey){try{return await aiFC_openaiCompat(contents,'openai');}catch(e){if(!gemOk)throw e;/* Gemini 폴백 */}}
+  if(prov==='llama'&&llamaReady()){try{return await aiFC_openaiCompat(contents,'llama');}catch(e){if(!gemOk)throw e;/* Gemini 폴백 */}}
+  // 기본: Gemini (키도 중계도 없고 다른 제공자가 있으면 그쪽)
+  if(!gemOk){
     if(window.__openaiKey)return await aiFC_openaiCompat(contents,'openai');
     if(llamaReady())return await aiFC_openaiCompat(contents,'llama');
+    throw new Error('NO_GEMINI_KEY');
   }
-  const key=window.__geminiKey;if(!key)throw new Error('NO_GEMINI_KEY');
   const res=await quotaReserve('gemini');if(!res.ok)throw new Error(res.msg);
   const models=['gemini-flash-latest','gemini-flash-lite-latest'];let lastErr='',consumed=false;
   const body={systemInstruction:{parts:[{text:aiSys()}]},contents:contents,tools:[{functionDeclarations:AI_TOOLS}],toolConfig:{functionCallingConfig:{mode:'AUTO'}}};
   try{
     for(const m of models){
       try{
-        const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:geminiHeaders(key),body:JSON.stringify(body)});
+        const r=await geminiCall(m,body);
         if(r.status===404){lastErr='모델 없음('+m+')';continue;}
         if(r.status===429)throw new Error('Gemini 한도(429) — 잠시 후 다시');
         if(r.status===400||r.status===401||r.status===403){lastErr='요청 오류('+r.status+')';break;}
@@ -7631,12 +7928,13 @@ function hjWorkOrderLog(projName,rec){
 }
 async function hjWorkOrderAlimtalk(phone,text,projName,rec){
   // 계약 서버가 연결돼 있을 때만 시도. 작업지시 알림톡 템플릿이 없으면 문안 복사로 안전 폴백(실발송 위장 금지).
-  if(!CONTRACT_FEATURE_AVAILABLE){toast('서버 발송은 Apps Script 이전 준비 중입니다 — 문안 복사를 이용하세요');return;}
+  if(!contractFeatureAvailable()){toast('서버 발송이 잠겨 있습니다 — 문안 복사를 이용하세요');return;}
   if(!contractReady()){toast('전자계약 서버를 먼저 연결하세요(☁️ 설정)');return;}
-  const endpoint=__contract.url.replace(/\/$/,'')+'/api/notify/quick-send';
   try{
-    const res=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','x-admin-token':__contract.token},body:JSON.stringify({to:telHref(phone),text:text,kind:'workorder'})});
-    if(res.ok){closeModal();toast('📨 작업지시 알림톡을 보냈습니다');hjWorkOrderLog(projName,rec);return;}
+    const j=await contractCall('notifySend',{to:telHref(phone),text:text,kind:'workorder'});
+    // 서버가 ok:true 를 줘도 실제로 나갔는지는 sent 로만 알 수 있다.
+    // 발송이 꺼져 있으면 sent:false 가 온다 — 그때 "보냈습니다"라고 쓰면 거짓말이 된다.
+    if(j&&j.notify&&j.notify.sent===true){closeModal();toast('📨 작업지시 알림톡을 보냈습니다');hjWorkOrderLog(projName,rec);return;}
   }catch(e){}
   if(navigator.clipboard)navigator.clipboard.writeText(text);
   toast('알림톡 미지원 서버 — 문안을 복사했습니다. [문자로 보내기]를 이용하세요');
@@ -8097,6 +8395,143 @@ function asManage(){
   return {미처리:open.length,전체:log.length,무상임박:soon.length};
 }
 
+/* ═══════════ 🏢 아파트 오더 — 관리사무소에서 받는 세대·공용부 보수 일감 ═══════════
+   일반 현장과 성격이 다르다: 한 단지에서 작은 일감이 계속 오고(욕실 실리콘, 주차장 도장…),
+   건별로 계약서를 쓰지 않으며, 월말에 관리사무소와 한 번에 정산한다.
+   그래서 현장(projects)으로 만들지 않고 별도 장부로 들되,
+   입금만은 기존 수금 장부(payLog)에 합류시킨다 — 매출·미수금 브리핑이 이미 그걸 읽는다. */
+const APT_STAT={recv:['접수','#b45309'],visit:['방문예정','#0369a1'],work:['진행중','#7c3aed'],done:['완료','#0a7f43'],billed:['청구됨','#c2410c'],paid:['입금완료','var(--muted)']};
+function aptData(){state.aptOffices=state.aptOffices||[];state.aptOrders=state.aptOrders||[];return state;}
+function aptOfficeName(id){const o=(state.aptOffices||[]).find(x=>x.id===id);return o?o.complex:'(삭제된 단지)';}
+function aptOrderManage(filterOffice){
+  aptData();
+  const offices=state.aptOffices, orders=state.aptOrders.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const ym=localDate().slice(0,7);
+  const active=orders.filter(o=>o.status!=='paid');
+  const doneThisMonth=orders.filter(o=>o.status!=='recv'&&o.status!=='visit'&&o.status!=='work'&&(o.doneAt||'').slice(0,7)===ym);
+  const unpaid=orders.filter(o=>o.status==='billed').reduce((s,o)=>s+num(o.amount),0);
+  const tile=(l,v,c)=>'<div style="flex:1;min-width:88px;background:var(--paper-2);border-radius:9px;padding:8px 9px"><div style="font-size:10.5px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+c+'">'+v+'</div></div>';
+  const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+    tile('진행 중 오더',active.length+'건',active.length?'var(--warn)':'#0a7f43')+
+    tile('이달 완료',doneThisMonth.length+'건 · '+hjMan(doneThisMonth.reduce((s,o)=>s+num(o.amount),0)),'#0a7f43')+
+    tile('청구 후 미입금',hjMan(unpaid),unpaid?'#c2410c':'var(--muted)')+'</div>';
+  const offOpts=offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===filterOffice?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('');
+  const addRow=offices.length
+    ? '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'+
+      '<select id="apoOff" style="flex:1;min-width:110px;padding:9px;font-size:13px">'+offOpts+'</select>'+
+      '<input id="apoUnit" placeholder="동/호 (예: 103동 1204호 · 지하주차장)" style="flex:1;min-width:130px;padding:9px;font-size:13px">'+
+      '<input id="apoText" placeholder="작업 (예: 욕실 실리콘 교체)" style="flex:2;min-width:150px;padding:9px;font-size:13px">'+
+      '<input id="apoAmt" inputmode="numeric" placeholder="금액(원·비워도 됨)" style="width:120px;padding:9px;font-size:13px">'+
+      '<button class="clay tiny" id="apoAdd" style="padding:9px 14px">+ 접수</button></div>'
+    : '<div class="empty" style="padding:14px;margin-bottom:10px"><b>먼저 관리사무소(단지)를 등록하세요</b>오더는 단지에 매여야 월말 정산이 됩니다.</div>';
+  const shown=filterOffice?orders.filter(o=>o.officeId===filterOffice):orders;
+  const rows=shown.length?shown.map(o=>{
+    const st=APT_STAT[o.status]||APT_STAT.recv;
+    return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
+        '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · '+escapeHtml(o.unit||'')+'</b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
+        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(o.text||'')+(num(o.amount)?' — <b>'+won(num(o.amount))+'</b>':' — <span style="color:var(--muted)">금액 미정</span>')+'</div></div>'+
+        '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
+          '<select class="apoStat" data-id="'+escapeAttr(o.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(APT_STAT).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
+          '<button class="ghost tiny apoDel" data-id="'+escapeAttr(o.id)+'" style="padding:6px 8px">✕</button>'+
+        '</div></div></div>';
+  }).join(''):'<div class="empty" style="padding:14px"><b>오더가 없습니다</b>관리사무소에서 전화가 오면 여기 바로 남기세요 — 동/호와 작업만 있으면 됩니다.</div>';
+  const offRow='<div style="display:flex;gap:6px;align-items:center;margin:12px 0 4px;flex-wrap:wrap"><b style="font-size:13px">🏢 관리사무소</b>'+
+    offices.map(o=>'<span style="font-size:12px;border:1px solid var(--line-soft);border-radius:20px;padding:3px 9px">'+escapeHtml(o.complex)+' <span style="color:var(--muted)">'+escapeHtml(o.manager||'')+'</span></span>').join('')+
+    '<button class="ghost tiny" id="apoOffAdd" style="padding:5px 10px">+ 단지 등록</button></div>';
+  openModal('🏢 아파트 오더 — 관리사무소 일감',head+addRow+
+    '<div style="max-height:38vh;overflow:auto">'+rows+'</div>'+offRow,
+    [{label:'📄 월 정산서',cls:'moss',fn:()=>aptSettle(filterOffice||((offices[0]||{}).id))},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#apoOffAdd').onclick=()=>{
+    const complex=(prompt('단지(아파트) 이름 (예: 신흥마을아파트)')||'').trim();
+    if(!complex)return;
+    if(offices.some(o=>o.complex===complex)){toast('이미 등록된 단지입니다');return;}
+    const manager=(prompt('담당자 (예: 김OO 소장) — 비워도 됩니다')||'').trim();
+    const phone=(prompt('관리사무소 연락처 — 비워도 됩니다')||'').trim();
+    state.aptOffices.push({id:uid(),complex,manager,phone});
+    markDirty();aptOrderManage(filterOffice);toast('단지 등록됨 — "'+complex+'"');
+  };
+  const addBtn=root.querySelector('#apoAdd');
+  if(addBtn)addBtn.onclick=()=>{
+    const officeId=root.querySelector('#apoOff').value;
+    const unit=root.querySelector('#apoUnit').value.trim(), txt=root.querySelector('#apoText').value.trim();
+    const amount=num((root.querySelector('#apoAmt').value||'').replace(/[^\d]/g,''));
+    if(!unit){toast('동/호를 입력하세요 (공용부면 "지하주차장"처럼)');return;}
+    if(!txt){toast('작업 내용을 입력하세요');return;}
+    state.aptOrders.push({id:uid(),officeId,unit,text:txt,amount,date:localDate(),status:'recv',doneAt:''});
+    markDirty();aptOrderManage(officeId);toast('오더 접수됨 — '+unit);
+  };
+  root.querySelectorAll('.apoStat').forEach(s=>s.onchange=()=>{
+    const o=state.aptOrders.find(x=>x.id===s.dataset.id);
+    if(!o)return;
+    if(s.value==='paid'&&o.status!=='paid'){
+      // 입금은 정산서에서 단지·월 단위로 확인한다 — 개별로 찍으면 수금 장부에 안 남는다.
+      toast('입금은 [📄 월 정산서]에서 확인하세요 — 수금 장부에 함께 기록됩니다');s.value=o.status;return;
+    }
+    o.status=s.value;
+    if(s.value==='done'&&!o.doneAt)o.doneAt=localDate();
+    markDirty();aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
+  });
+  root.querySelectorAll('.apoDel').forEach(b=>b.onclick=async()=>{
+    if(!confirm('이 오더를 삭제할까요?\n관리사무소 정산 근거가 사라집니다.'))return;
+    try{await hjSnapshot('아파트 오더 삭제 전',true);}catch(e){}
+    state.aptOrders=state.aptOrders.filter(x=>x.id!==b.dataset.id);markDirty();aptOrderManage(filterOffice);toast('삭제됨');
+  });
+  return {진행:active.length,이달완료:doneThisMonth.length,미입금:unpaid};
+}
+/* 월 정산서 — 그 단지·그 달의 완료(및 이미 청구된) 오더를 모아 청구 문안을 만든다.
+   [청구 처리]는 완료→청구됨, [입금 확인]은 청구됨→입금완료 + 수금 장부(payLog) 1건.
+   입금 확인을 두 번 눌러도 장부에 두 번 실리지 않는다 — 남은 '청구됨'이 없으면 0원이라 막힌다. */
+function aptSettle(officeId,ym){
+  aptData();
+  const offices=state.aptOffices;
+  if(!offices.length){toast('먼저 단지를 등록하세요');return;}
+  const off=offices.find(o=>o.id===officeId)||offices[0];
+  ym=ym||localDate().slice(0,7);
+  const list=state.aptOrders.filter(o=>o.officeId===off.id&&(o.status==='done'||o.status==='billed'||o.status==='paid')&&(o.doneAt||'').slice(0,7)===ym);
+  const billable=list.filter(o=>o.status==='done'||o.status==='billed');
+  const noAmt=billable.filter(o=>!num(o.amount));
+  const sum=billable.reduce((s,o)=>s+num(o.amount),0);
+  const [y,m]=ym.split('-');
+  const lines=billable.map((o,i)=>(i+1)+'. '+o.unit+' — '+o.text+' — '+(num(o.amount)?won(num(o.amount)):'금액 미정')+' (완료 '+(o.doneAt||'')+')');
+  const text=['[만물인테리어] '+off.complex+' '+y+'년 '+(+m)+'월 보수 정산서',
+    (off.manager?off.manager+' 님':'관리사무소 담당자님'),'',
+    ...(lines.length?lines:['(이 달 완료된 작업이 없습니다)']),'',
+    '합계: '+won(sum)+' (부가세 별도)','',
+    '만물인테리어 · 대표 전병덕 · 010-2397-8629','사업자 895-48-01132'].join('\n');
+  // 1일로 맞추고 빼야 한다 — 31일에 setMonth(-1) 하면 2월이 건너뛰어 같은 달이 두 번 나온다
+  const months=[];{const n=new Date();n.setDate(1);for(let i=0;i<6;i++){months.push(localDate(n).slice(0,7));n.setMonth(n.getMonth()-1);}}
+  const offSel='<select id="apsOff" style="flex:1;padding:8px;font-size:13px">'+offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===off.id?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('')+'</select>';
+  const ymSel='<select id="apsYm" style="padding:8px;font-size:13px">'+months.map(v=>'<option value="'+v+'"'+(v===ym?' selected':'')+'>'+v.split('-')[0]+'년 '+(+v.split('-')[1])+'월</option>').join('')+'</select>';
+  openModal('📄 월 정산서 — '+escapeHtml(off.complex),
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+offSel+ymSel+'</div>'+
+    (noAmt.length?'<div style="font-size:12.5px;color:#c2410c;margin-bottom:8px">⚠️ 금액 미정 '+noAmt.length+'건 — 목록에서 금액을 채우고 다시 여세요. 미정인 채 보내면 합계가 틀립니다.</div>':'')+
+    '<textarea id="apsText" style="width:100%;min-height:220px;padding:10px;font-size:12.5px;line-height:1.6" readonly>'+escapeHtml(text)+'</textarea>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:6px">완료 '+billable.length+'건 · 합계 '+won(sum)+(list.length-billable.length?' · 입금완료 '+(list.length-billable.length)+'건 제외':'')+'</div>',
+    [{label:'📋 복사',cls:'ghost',fn:()=>{try{navigator.clipboard.writeText(text);toast('복사됨 — 문자·카톡에 붙여넣으세요');}catch(e){toast('복사 실패');}}},
+     {label:'📮 청구 처리',cls:'moss',fn:()=>{
+       const n=state.aptOrders.filter(o=>o.officeId===off.id&&o.status==='done'&&(o.doneAt||'').slice(0,7)===ym).length;
+       if(!n){toast('청구할 완료 오더가 없습니다');return;}
+       state.aptOrders.forEach(o=>{if(o.officeId===off.id&&o.status==='done'&&(o.doneAt||'').slice(0,7)===ym)o.status='billed';});
+       markDirty();toast('청구 처리 '+n+'건 — 입금되면 [입금 확인]을 누르세요');aptSettle(off.id,ym);}},
+     {label:'💰 입금 확인',cls:'clay',fn:()=>{
+       const target=state.aptOrders.filter(o=>o.officeId===off.id&&o.status==='billed'&&(o.doneAt||'').slice(0,7)===ym);
+       const amt=target.reduce((s,o)=>s+num(o.amount),0);
+       if(!target.length){toast('청구된 오더가 없습니다 — 먼저 [청구 처리]를 하세요');return;}
+       if(!amt){toast('금액이 전부 미정입니다 — 금액을 채운 뒤 확인하세요');return;}
+       if(!confirm(off.complex+' '+y+'년 '+(+m)+'월분 '+won(amt)+' 입금을 확인했나요?\n수금 장부에 기록됩니다.'))return;
+       target.forEach(o=>o.status='paid');
+       state.payLog=state.payLog||[];
+       state.payLog.push({d:localDate(),project:off.complex+' 관리사무소',amt});
+       markDirty();toast('💰 '+won(amt)+' 수금 기록됨');aptSettle(off.id,ym);}},
+     {label:'닫기',cls:'ghost',fn:()=>aptOrderManage(off.id)}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#apsOff').onchange=e=>aptSettle(e.target.value,ym);
+  root.querySelector('#apsYm').onchange=e=>aptSettle(off.id,e.target.value);
+  return {건수:billable.length,합계:sum};
+}
+
 /* ═══════════ 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (기존 hjWarranty·reviewRequest·hjSendSms 연동) ═══════════ */
 // ⭐ 리뷰 요청 문자 초안 — 전화 원문은 sms 딥링크 생성에만 순간 사용, 화면·이력엔 남기지 않음
 function hjReviewSms(name){
@@ -8252,14 +8687,11 @@ async function contractStatusRefresh(name){
   const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
   if(!Array.isArray(p.contractLog)||!p.contractLog.length){toast('보낸 전자계약이 없습니다 — [📨 알림톡 계약서]로 먼저 보내세요');return;}
   if(typeof contractReady!=='function'||!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
-  const base=contractBaseUrl(__contract.url);
   let j=null;
-  try{
-    const r=await fetch(base+'/api/contracts',{headers:{'x-admin-token':__contract.token}});
-    if(!r.ok)throw new Error('서버 응답 '+r.status);
-    j=await r.json();
-  }catch(e){toast('서명 확인 실패: '+(e&&e.message||e));return;}
-  const byId={};(j&&j.contracts||[]).forEach(function(c){if(c.contractId)byId[c.contractId]=c;});
+  try{ j=await contractCall('listContracts',{limit:200}); }
+  catch(e){toast('서명 확인 실패: '+(e&&e.message||e));return;}
+  // 목록은 요약만 준다(본문·해시 제외). 여기서 쓰는 것은 id·status·completedAt 뿐이다.
+  const byId={};(j&&j.contracts||[]).forEach(function(c){var k=c.contractId||c.id;if(k)byId[k]=c;});
   let ch=0;
   p.contractLog.forEach(function(L){
     const c=L.contractId&&byId[L.contractId];if(!c)return;
@@ -8561,6 +8993,7 @@ const HJ_HELP=[
   {k:'오늘 자동 점검',d:'앱을 열면 미수금·오늘 일정·일지 미작성·미배정 사진·AS를 훑어 카드로 알려줍니다.',say:'오늘 뭐 챙겨야 해?'},
   {k:'아침 브리핑',d:'하루 한 번 앱을 처음 열면 🌅 브리핑이 자동으로 떠서 오늘 일정·미수금·챙길 일을 실행 버튼과 함께 보여줍니다. 대시보드 [🌅 브리핑]으로 다시 열 수 있어요.',say:'오늘 브리핑 보여줘'},
   {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료+1년) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
+  {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'아파트 오더 열어줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
@@ -11468,7 +11901,11 @@ async function aiAsk(prompt){
   if(llamaReady())return await llamaAsk(prompt);
   throw new Error('NO_AI_KEY');
 }
-function aiKeyReady(){return !!window.__geminiKey||!!window.__openaiKey||llamaReady();}
+function aiKeyReady(){
+  // 서버 중계가 준비됐으면 기기에 키가 없어도 AI 를 쓸 수 있다.
+  // 이 함수는 화면을 그리는 중에 불리므로 물어보러 가지 않고, 마지막에 확인해 둔 값을 본다.
+  return !!window.__geminiKey||!!window.__openaiKey||llamaReady()||!!(__aiRelay&&__aiRelay.gemini);
+}
 function aiProviderName(){
   if(window.__aiProvider==='llama'&&llamaReady())return 'Llama('+(window.__llamaConfig.model||'')+')';
   if(window.__aiProvider==='openai'&&window.__openaiKey)return 'ChatGPT';
@@ -16364,7 +16801,7 @@ const MORE_CATS=[
     ['addproject','➕','현장 추가'],['beforeafter','📸','전/후 비교 카드'],['photobundle','📤','사진 묶음 발송'],['worklog','📝','음성 현장일지'],['photorep','📷','사진 작업일지'],
     ['photodefect','📷','사진 AI 분석'],['bagallery','📸','전후 갤러리'],['safety','🔨','안전 체크'],['scheduleplan','🗓','공정표 생성'],
     ['route','🗺','현장 동선'],['pjmap','🗺','현장 지도'],['weather','🌤','날씨 공정'],['season','📅','영업 달력'],
-    ['inventory','📦','자재 재고'],['suppliers','📇','거래처'],['asmanage','🔧','AS 관리'],['warranty','🛡','AS 보증'],['knowhow','📚','시공 노하우'],['siteconv','🎙','대화→할일'],['voice','🎙','음성 회의록']
+    ['inventory','📦','자재 재고'],['suppliers','📇','거래처'],['asmanage','🔧','AS 관리'],['aptorders','🏢','아파트 오더'],['warranty','🛡','AS 보증'],['knowhow','📚','시공 노하우'],['siteconv','🎙','대화→할일'],['voice','🎙','음성 회의록']
   ]},
   {id:'report',name:'분석·리포트',ic:'📊',items:[
     ['alertcenter','🔔','알림 센터'],['opsreport','📊','운영 리포트'],['monthreport','📊','월간 보고서'],['annual','📊','연간 결산'],
@@ -19433,11 +19870,11 @@ function viewPhotos(){
     html+=`<div class="phasebar">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--muted-2)">공정 추가 대상</span>
-        <select id="phaseProjSel">${popt}</select>
+        <select id="phaseProjSel" aria-label="공정을 추가할 현장">${popt}</select>
         <input type="text" id="phaseProjInput" placeholder="새 공정 (예: 방수 1차)" maxlength="20" style="width:160px">
         <button class="clay tiny" id="phaseProjAdd">+ 공정 추가</button>
       </div>
-      <div class="phase-chips" style="margin-top:8px">${curPhases.length?curPhases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(selProj)}" title="삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">선택한 현장에 아직 공정이 없습니다</span>'}</div>
+      <div class="phase-chips" style="margin-top:8px">${curPhases.length?curPhases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b role="button" tabindex="0" data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(selProj)}" title="삭제" aria-label="${escapeAttr(selProj)} ${escapeAttr(ph)} 공정 삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">선택한 현장에 아직 공정이 없습니다</span>'}</div>
     </div>`;
   }
   html+=bulkBar(null);
@@ -19486,8 +19923,8 @@ function viewPhotos(){
       <span class="where">${where}</span>${geoBtn}${nmapBtn}${bnameBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
       ${repairBtn}
-      <select data-act="cluster" data-ids="${ids}">${projectOptions(cur)}</select></div>
-      <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
+      <select data-act="cluster" data-ids="${ids}" aria-label="${escapeAttr(fmtDay(when))} 사진 묶음 현장 배정">${projectOptions(cur)}</select></div>
+      <div class="cluster-work"><input type="text" class="work-input" data-worklabel="${ids}" aria-label="${escapeAttr(fmtDay(when))} 사진 묶음 작업명" value="${escapeAttr(worklabel)}" placeholder="작업명 입력 (예: 방수 1차, 철거, 타일)">${worklabel?`<span class="work-name">🏷 ${escapeHtml(autoName)}</span>`:''}</div>
       <div class="cluster-body">${visible.map(p=>photoCell(p)).join('')}</div></div>`;
   });
   if(hiddenN>0){
@@ -19505,7 +19942,11 @@ function toggleSelMode(){
 }
 function toggleSel(id){if(__sel.has(id))__sel.delete(id);else __sel.add(id);render();}
 function clearSel(){__sel.clear();render();}
-function selChk(id){return `<label class="ph-chk${__sel.has(id)?' on':''}"><input type="checkbox" data-sel="${id}" ${__sel.has(id)?'checked':''}><span>✓</span></label>`;}
+function selChk(id){
+  const f=state.files.find(x=>x.id===id);
+  const label='사진 선택: '+((f&&f.name)||'현장 사진');
+  return `<label class="ph-chk${__sel.has(id)?' on':''}"><input type="checkbox" aria-label="${escapeAttr(label)}" data-sel="${id}" ${__sel.has(id)?'checked':''}><span aria-hidden="true">✓</span></label>`;
+}
 function selFiles(){return [...__sel].map(id=>state.files.find(f=>f.id===id)).filter(Boolean);}
 
 /* ═══════════ (F4) 미수금 독촉 문자 — 2문안 선택 → 문자앱 ═══════════ */
@@ -20461,12 +20902,12 @@ function viewSchedule(){
           </div>`:''}
         </div>
         <div class="sch-tools">
-          <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고">📋</button>
-          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)">👷</button>
-          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가">📅</button>
-          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)">📲</button>
-          <button class="mini-btn" data-schedit="${s.id}">✎</button>
-          <button class="mini-btn" data-schdel="${s.id}">🗑</button>
+          <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고" aria-label="${escapeAttr(s.title||'일정')} 작업 보고">📋</button>
+          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)" aria-label="${escapeAttr(s.title||'일정')} 작업지시 보내기">👷</button>
+          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가" aria-label="${escapeAttr(s.title||'일정')} 구글 캘린더에 추가">📅</button>
+          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)" aria-label="${escapeAttr(s.title||'일정')} 폰 캘린더에 추가">📲</button>
+          <button class="mini-btn" data-schedit="${s.id}" title="일정 수정" aria-label="${escapeAttr(s.title||'일정')} 수정">✎</button>
+          <button class="mini-btn" data-schdel="${s.id}" title="일정 삭제" aria-label="${escapeAttr(s.title||'일정')} 삭제">🗑</button>
         </div>
       </div>`;
     });
@@ -20504,7 +20945,7 @@ function calendarHTML(){
     const info=dayInfo[day];
     const isToday=ds===today;
     const isSel=ds===__calSelDate;
-    cells+=`<div class="cal-cell${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" data-calday="${ds}">
+    cells+=`<div class="cal-cell${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" role="button" tabindex="0" aria-pressed="${isSel?'true':'false'}" aria-label="${y}년 ${m}월 ${day}일${info?' 일정 '+info.cnt+'건':' 일정 없음'}" data-calday="${ds}">
       <span class="cal-d">${day}</span>
       ${info?`<span class="cal-dot${info.rep?' rep':''}">${info.cnt>1?info.cnt:'●'}</span>`:''}
     </div>`;
@@ -20512,10 +20953,10 @@ function calendarHTML(){
   const ymLabel=`${y}년 ${m}월`;
   return `<div class="calendar">
     <div class="cal-head">
-      <button class="cal-nav" data-calnav="-1">‹</button>
+      <button class="cal-nav" data-calnav="-1" aria-label="이전 달">‹</button>
       <span class="cal-title">${ymLabel}</span>
-      <button class="cal-nav" data-calnav="1">›</button>
-      <button class="cal-nav cal-today-btn" data-calnav="0">오늘</button>
+      <button class="cal-nav" data-calnav="1" aria-label="다음 달">›</button>
+      <button class="cal-nav cal-today-btn" data-calnav="0" aria-label="오늘 날짜로 이동">오늘</button>
     </div>
     <div class="cal-grid">
       <div class="cal-dow sun">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div><div class="cal-dow">수</div><div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow sat">토</div>
@@ -20985,10 +21426,10 @@ function viewContacts(){
       <div>${escapeHtml(c.phone||'')}</div>
       ${c.memo?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(c.memo)}</div>`:''}</div>
       <div class="con-tools">
-        ${telHref(c.phone)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone)}" title="전화 걸기">📞</a>`:''}
-        <button class="mini-btn" data-convcf="${c.id}" title="폰 주소록에 저장">📲</button>
-        <button class="mini-btn" data-conedit="${c.id}">✎</button>
-        <button class="mini-btn" data-condel="${c.id}">🗑</button>
+        ${telHref(c.phone)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone)}" title="전화 걸기" aria-label="${escapeAttr(c.name||'연락처')}에게 전화 걸기">📞</a>`:''}
+        <button class="mini-btn" data-convcf="${c.id}" title="폰 주소록에 저장" aria-label="${escapeAttr(c.name||'연락처')} 폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-conedit="${c.id}" title="연락처 수정" aria-label="${escapeAttr(c.name||'연락처')} 수정">✎</button>
+        <button class="mini-btn" data-condel="${c.id}" title="연락처 삭제" aria-label="${escapeAttr(c.name||'연락처')} 삭제">🗑</button>
       </div></div>`;
   });
   // 명함 OCR 연락처
@@ -21001,9 +21442,9 @@ function viewContacts(){
       <div>${escapeHtml(c.company||'')}</div>
       <div>${phones}${c.email?' · '+escapeHtml(c.email):''}</div></div>
       <div class="con-tools">
-        ${telHref(c.phone||c.tel)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone||c.tel)}" title="전화 걸기">📞</a>`:''}
-        <button class="mini-btn" data-convcfcard="${f.id}" title="폰 주소록에 저장">📲</button>
-        <button class="mini-btn" data-cardedit="${f.id}" title="이름·전화 고치기">✎</button>
+        ${telHref(c.phone||c.tel)?`<a class="mini-btn call-btn" href="tel:${telHref(c.phone||c.tel)}" title="전화 걸기" aria-label="${escapeAttr(c.name||'명함 연락처')}에게 전화 걸기">📞</a>`:''}
+        <button class="mini-btn" data-convcfcard="${f.id}" title="폰 주소록에 저장" aria-label="${escapeAttr(c.name||'명함 연락처')} 폰 주소록에 저장">📲</button>
+        <button class="mini-btn" data-cardedit="${f.id}" title="이름·전화 고치기" aria-label="${escapeAttr(c.name||'명함 연락처')} 수정">✎</button>
         ${f.thumb?`<div class="ph" style="width:44px;height:44px"><img src="${f.thumb}" loading="lazy" decoding="async"></div>`:''}
       </div></div>`;});
   return html;
@@ -21198,7 +21639,7 @@ function viewProject(){
         <button class="mini-btn call-btn" data-callcust="${escapeAttr(p.name)}" title="고객에게 전화 걸기">📞 전화</button>
         <button class="mini-btn" data-smscust="${escapeAttr(p.name)}" title="고객에게 문자 보내기">✉️ 문자</button>
         <button class="mini-btn" data-navi="${escapeAttr(p.name)}" title="현장 주소로 길찾기(네이버지도)">🗺️ 길찾기</button>
-        <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="${CONTRACT_FEATURE_AVAILABLE?'전자계약서를 고객에게 알림톡으로 보냅니다':'전자계약 Apps Script 이전 준비 중'}"${CONTRACT_FEATURE_AVAILABLE?(cu.phone?'':' style="opacity:.55"'):' disabled style="opacity:.55"'}>📨 ${CONTRACT_FEATURE_AVAILABLE?'알림톡 계약서':'전자계약 준비중'}</button>
+        <button class="mini-btn" data-contractsend="${escapeAttr(p.name)}" title="${contractFeatureAvailable()?'전자계약서를 고객에게 알림톡으로 보냅니다':'전자계약 Apps Script 이전 준비 중'}"${contractFeatureAvailable()?(cu.phone?'':' style="opacity:.55"'):' disabled style="opacity:.55"'}>📨 ${contractFeatureAvailable()?'알림톡 계약서':'전자계약 준비중'}</button>
         <button class="mini-btn" data-workorderp="${escapeAttr(p.name)}" title="현장 작업자에게 작업지시 문자를 보냅니다">📋 작업지시</button>
       </div>
     </div>`;
@@ -21289,7 +21730,7 @@ function viewProject(){
     html+=bulkBar(p.name);
     // 공정 관리 바
     html+=`<div class="phasebar">
-      <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
+      <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b role="button" tabindex="0" data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제" aria-label="${escapeAttr(p.name)} ${escapeAttr(ph)} 공정 삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
       <div class="phase-add"><input type="text" data-phaseinput="${escapeAttr(p.name)}" placeholder="공정 추가 (예: 방수 1차)" maxlength="20"><button class="clay tiny" data-addphase="${escapeAttr(p.name)}">추가</button></div>
     </div>`;
     // ===== 날짜별 그룹 (날짜 1차 기준) =====
@@ -22513,15 +22954,37 @@ function saveBizImages(){
   toast(n?`이미지 ${n}장 저장됨 — 카톡/문자에서 첨부하세요.`:'등록된 사진이 없습니다. 먼저 사진을 등록하세요.');
 }
 function copyBiz(){ const t=curBizText(); if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast('글 복사됨 — 카톡/문자에 붙여넣기')).catch(()=>toast('복사 실패'));}else toast('자동 복사 미지원 브라우저'); }
+let __modalReturnFocus=null;
 function openModal(title,body,btns,wide){
   btns=btns||[{label:'닫기',cls:'ghost',fn:closeModal}];   // 미전달 시 기본 닫기 버튼
   const root=$('#modalRoot');
-  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}"><h3>${(window.escapeHtml?escapeHtml(String(title)):title)}</h3><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
+  if(!root.querySelector('.modal'))__modalReturnFocus=document.activeElement;
+  const titleId='modalTitle';
+  root.innerHTML=`<div class="modal-bg"><div class="modal${wide?' wide':''}" role="dialog" aria-modal="true" aria-labelledby="${titleId}" tabindex="-1"><div class="modal-head"><h3 id="${titleId}">${(window.escapeHtml?escapeHtml(String(title)):title)}</h3><button type="button" class="modal-close" aria-label="창 닫기" title="닫기">×</button></div><div class="mbody">${body}</div><div class="mfoot"></div></div></div>`;
+  document.body.classList.add('modal-open');
   const foot=root.querySelector('.mfoot');
   btns.forEach(b=>{const el=document.createElement('button');el.className=b.cls||'';el.textContent=b.label;el.onclick=b.fn;foot.appendChild(el);});
+  root.querySelector('.modal-close').onclick=closeModal;
   root.querySelector('.modal-bg').addEventListener('click',e=>{if(e.target===root.querySelector('.modal-bg'))closeModal();});
+  setTimeout(()=>{try{root.querySelector('.modal').focus();}catch(e){}},0);
 }
-function closeModal(){if(window.__pvUrl){URL.revokeObjectURL(window.__pvUrl);window.__pvUrl=null;}$('#modalRoot').innerHTML='';}
+function closeModal(){
+  if(window.__pvUrl){URL.revokeObjectURL(window.__pvUrl);window.__pvUrl=null;}
+  $('#modalRoot').innerHTML='';document.body.classList.remove('modal-open');
+  const back=__modalReturnFocus;__modalReturnFocus=null;
+  if(back&&back.isConnected)setTimeout(()=>{try{back.focus();}catch(e){}},0);
+}
+document.addEventListener('keydown',e=>{
+  const modal=$('#modalRoot .modal');if(!modal)return;
+  if(e.key==='Escape'){e.preventDefault();closeModal();return;}
+  if(e.key!=='Tab')return;
+  const focusable=[...modal.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>el.getClientRects().length);
+  if(!focusable.length){e.preventDefault();modal.focus();return;}
+  const first=focusable[0],last=focusable[focusable.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 
 window.escapeHtml=escapeHtml;
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
