@@ -2974,28 +2974,83 @@ function openGdriveSetup(){
       빈 칸으로 저장하면 <b>아무 일도 일어나지 않습니다</b> — 지울 때만 [지우기]를 누르세요.</p>
     ${aiRelayNotice()}
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision)${keyBadge(window.__visionKey)}</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(이후 무료 인식기로 대체). 100% 과금 0원은 <b>결제계정 미연결</b> 또는 콘솔 $1 예산알림으로.</p>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(Vision 무료 1,000건 안에 머물게. 이후 무료 인식기로 대체). ⚠️ Vision 은 Gemini 와 반대로 <b>결제계정이 있어야 동작</b>합니다. 예산 <b>알림</b>은 메일만 올 뿐 지출을 멈추지 못하니, 0원을 확실히 하려면 콘솔에서 <b>할당량(Quota) 상한</b>을 거세요. 이 기기 카운터는 기기마다 따로 세므로 폰·PC 를 함께 쓰면 합계가 1,000건을 넘을 수 있습니다.</p>
       <input type="password" id="gdVision" value="" placeholder="${escapeAttr(keyHint(window.__visionKey,'Vision API 키 (AIza...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdVisionSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdVisionDel" style="margin-top:6px;margin-left:4px">지우기</button>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdVisionSave">키 저장</button><button class="blue tiny" id="gdVisionChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdVisionDel">지우기</button><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">구글 클라우드 콘솔 열기 ↗</a></div><div id="gdVisionOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 무료)${keyBadge(window.__geminiKey)}</summary>
-      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 무료 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(초과 시 잠깐 막힘·과금X) — 단 그 프로젝트에 <b>결제계정을 연결하면 무료가 사라지니</b> 연결하지 마세요. 분당 8·하루 200건에서 자동 보호.</p>
+      <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다.<br><b style="color:#c2410c">무료는 키가 속한 구글 프로젝트에 결제계정이 연결되지 않았을 때뿐입니다.</b> 연결돼 있으면 쓴 만큼 청구됩니다(한도를 넘어도 막히지 않고 계속 과금). <b>이미 연결했다면</b> console.cloud.google.com 에서 그 프로젝트의 결제를 해제하거나, 결제 없는 새 프로젝트에서 키를 다시 발급하세요. 분당 8·하루 200건 제한은 <b>횟수만</b> 막고 요금은 막지 못합니다.</p>
       <input type="password" id="gdGemini" value="" placeholder="${escapeAttr(keyHint(window.__geminiKey,'Gemini API 키 (AI Studio)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdGeminiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdGeminiDel" style="margin-top:6px;margin-left:4px">지우기</button>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdGeminiSave">키 저장</button><button class="blue tiny" id="gdGeminiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdGeminiDel">지우기</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">AI Studio 열기 ↗</a></div><div id="gdGeminiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 사진 위치 정밀도 (카카오 · 무료)${keyBadge(window.__kakaoKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
       <input type="password" id="gdKakao" value="" placeholder="${escapeAttr(keyHint(window.__kakaoKey,'카카오 JavaScript 키'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdKakaoSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdKakaoDel" style="margin-top:6px;margin-left:4px">지우기</button>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdKakaoSave">키 저장</button><button class="blue tiny" id="gdKakaoChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdKakaoDel">지우기</button><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">카카오 개발자 열기 ↗</a></div><div id="gdKakaoOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (ChatGPT · 유료)${keyBadge(window.__openaiKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
       <input type="password" id="gdOpenai" value="" placeholder="${escapeAttr(keyHint(window.__openaiKey,'OpenAI API 키 (sk-...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <button class="moss tiny" id="gdOpenaiSave" style="margin-top:6px">키 저장</button><button class="ghost tiny" id="gdOpenaiDel" style="margin-top:6px;margin-left:4px">지우기</button>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdOpenaiSave">키 저장</button><button class="blue tiny" id="gdOpenaiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdOpenaiDel">지우기</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">OpenAI 플랫폼 열기 ↗</a></div><div id="gdOpenaiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
   </div>`;
-  const body=relaySec+contractSec+keysSec+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`;
-  openModal('⚙️ 설정 — 저장·계약·키',body,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  /* ── 네 덩어리를 탭으로 나눈다 ──────────────────────────────────
+     예전에는 넷을 위에서 아래로 이어 붙여 한 화면이 1,510px 이었다(폰 두 화면 반).
+     키를 넣으려면 드라이브 설정과 계약 설정을 지나 한참 굴려야 했고,
+     그렇게 못 찾은 것이 사장님 키가 사라진 사고의 뿌리였다.
+
+     아코디언으로 접지 않고 **탭**으로 나눈 이유: 아코디언은 겹이 늘어난다.
+     키 칸은 이미 자기 <details> 안에 있어서, 위에 하나 더 씌우면 두 겹이 되고
+     그건 '못 찾는 깊이'다(tests/key-persist ⑪ 이 그 선을 지킨다).
+     탭은 <div> 라 겹을 늘리지 않으면서 화면만 나눈다.
+
+     탭마다 상태 점을 달아, 열지 않고도 무엇이 설정됐는지 보이게 한다. */
+  const TABS=[
+    {id:'save',   ic:'💾', label:'저장·백업', html:relaySec,   on:!!(__relay.url&&__relay.token)},
+    {id:'ct',     ic:'📨', label:'전자계약',   html:contractSec, on:ctUnlocked, warn:!!(__contract.url&&__contract.token)&&!ctUnlocked},
+    {id:'keys',   ic:'🔑', label:'AI·지도 키', html:keysSec,     on:!!(window.__geminiKey||window.__visionKey||window.__kakaoKey||window.__openaiKey)},
+    {id:'etc',    ic:'⭐', label:'기타',       html:reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
+  ];
+  const dot=(t)=>t.warn
+    ? '<span title="자가진단 필요" style="width:7px;height:7px;border-radius:50%;background:var(--warn,#c99a2e);display:inline-block"></span>'
+    : (t.on?'<span title="설정됨" style="width:7px;height:7px;border-radius:50%;background:var(--ok,#2ea043);display:inline-block"></span>'
+           :'<span title="미설정" style="width:7px;height:7px;border-radius:50%;border:1.5px solid var(--line);display:inline-block"></span>');
+  const tabBar='<div role="tablist" aria-label="설정 분류" style="display:flex;gap:5px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--line-soft)">'+
+    TABS.map((t,i)=>'<button role="tab" class="setTab" data-tab="'+t.id+'" id="setTab-'+t.id+'"'+
+      ' aria-selected="'+(i===0?'true':'false')+'" aria-controls="setPanel-'+t.id+'" tabindex="'+(i===0?'0':'-1')+'"'+
+      ' style="flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--card,#fff);'+
+      'border-radius:20px;padding:7px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap;color:inherit;min-height:40px">'+
+      '<span aria-hidden="true">'+t.ic+'</span>'+escapeHtml(t.label)+dot(t)+'</button>').join('')+'</div>';
+  const panels=TABS.map((t,i)=>'<div role="tabpanel" id="setPanel-'+t.id+'" aria-labelledby="setTab-'+t.id+'"'+
+    (i===0?'':' hidden')+'>'+t.html+'</div>').join('');
+  openModal('⚙️ 설정',tabBar+panels,[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  {
+    const r0=document.getElementById('modalRoot');
+    const tabEls=[...r0.querySelectorAll('.setTab')];
+    const show=(id)=>{
+      TABS.forEach(t=>{
+        const p=r0.querySelector('#setPanel-'+t.id), b=r0.querySelector('#setTab-'+t.id);
+        const sel=(t.id===id);
+        if(p)p.hidden=!sel;
+        if(b){b.setAttribute('aria-selected',sel?'true':'false');b.tabIndex=sel?0:-1;
+          b.style.background=sel?'var(--moss,#5b7a52)':'var(--card,#fff)';
+          b.style.color=sel?'#fff':'inherit';
+          b.style.borderColor=sel?'var(--moss,#5b7a52)':'var(--line)';}
+      });
+      // 탭을 바꾸면 위로 — 아래쪽에서 눌렀을 때 새 내용의 중간이 보이면 길을 잃는다.
+      const sc=r0.querySelector('.modal'); if(sc)sc.scrollTop=0;
+    };
+    tabEls.forEach((b,i)=>{
+      b.onclick=()=>show(b.dataset.tab);
+      b.onkeydown=(e)=>{   // 좌우 화살표로 이동(탭 목록의 표준 동작)
+        const d=e.key==='ArrowRight'?1:(e.key==='ArrowLeft'?-1:0);
+        if(!d)return; e.preventDefault();
+        const n=tabEls[(i+d+tabEls.length)%tabEls.length];
+        show(n.dataset.tab); n.focus();
+      };
+    });
+    show(TABS[0].id);
+  }
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
   const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;__gdTokenPromise=null;__gdTokenExp=0;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
@@ -3040,6 +3095,58 @@ function openGdriveSetup(){
    };}
   {const os=root.querySelector('#gdOpenaiSave');if(os)os.onclick=()=>keySave('gdOpenai','openai_key','__openaiKey','OpenAI');
    const od=root.querySelector('#gdOpenaiDel');if(od)od.onclick=()=>keyDrop('gdOpenai','openai_key','__openaiKey','OpenAI');}
+  /* ── [🔎 확인] — 키가 진짜로 되는지 그 자리에서 알려 준다 ─────────────
+     예전에는 키를 넣고 저장해도 맞는지 알 길이 없었다. 오타·만료·권한 미설정이면
+     며칠 뒤 "AI가 대답을 안 해요" 로만 드러났고, 그때는 무엇이 문제인지 알 수 없었다.
+
+     칸에 새로 넣은 값이 있으면 그것을, 없으면 저장된 키를 시험한다 —
+     저장 전에도 확인할 수 있어야 오타를 저장하지 않는다.
+     **호출은 1회뿐이고, 버튼에 그렇게 적어 두었다.** 확인이 요금을 쓰는 행동임을
+     숨기지 않는다(Vision 은 월 1,000건 중 1건, Gemini 는 결제가 붙어 있으면 소액). */
+  const keyCheck=async(inputId,winProp,label,fn)=>{
+    const el=root.querySelector('#'+inputId), out=root.querySelector('#'+inputId+'Out');
+    const btn=root.querySelector('#'+inputId+'Chk');
+    const key=((el&&el.value||'').trim())||window[winProp]||'';
+    if(!key){if(out){out.style.color='var(--muted-2)';out.textContent='키를 먼저 넣거나 저장하세요.';}return;}
+    if(btn){btn.disabled=true;btn.textContent='확인 중…';}
+    if(out){out.style.color='var(--muted-2)';out.textContent='시험 호출 중…';}
+    let r;
+    try{ r=await fn(key); }catch(e){ r={ok:false,msg:'연결 실패 — 인터넷을 확인하세요'}; }
+    if(out){out.style.color=r.ok?'var(--ok,#2ea043)':'var(--warn,#c2410c)';
+      out.textContent=(r.ok?'✅ ':'⚠️ ')+r.msg;}
+    if(btn){btn.disabled=false;btn.textContent='🔎 확인';}
+  };
+  const httpWhy=(st)=>st===400?'키 형식이 잘못됐습니다':st===401?'키가 맞지 않습니다':
+    st===403?'키는 있으나 권한이 없습니다 — 콘솔에서 그 API 사용 설정과 키 제한(도메인)을 확인하세요':
+    st===429?'한도 초과 — 잠시 뒤 다시':('서버 응답 '+st);
+  {const b=root.querySelector('#gdGeminiChk');if(b)b.onclick=()=>keyCheck('gdGemini','__geminiKey','Gemini',async(key)=>{
+    const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      {method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+       body:JSON.stringify({contents:[{parts:[{text:'ok'}]}],generationConfig:{maxOutputTokens:1}})});
+    if(res.ok)return {ok:true,msg:'작동합니다. (요금은 이 키의 구글 프로젝트에 결제계정이 있으면 붙습니다)'};
+    return {ok:false,msg:httpWhy(res.status)};
+  });}
+  {const b=root.querySelector('#gdVisionChk');if(b)b.onclick=()=>keyCheck('gdVision','__visionKey','Vision',async(key)=>{
+    // 1x1 짜리 가장 작은 유효 JPEG — 무료 1,000건 중 1건만 쓴다.
+    const px='/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+    const res=await fetch('https://vision.googleapis.com/v1/images:annotate?key='+encodeURIComponent(key),
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({requests:[{image:{content:px},features:[{type:'TEXT_DETECTION',maxResults:1}]}]})});
+    if(res.ok)return {ok:true,msg:'작동합니다. (Vision 은 결제계정이 있어야 동작하며 월 1,000건까지 무료)'};
+    if(res.status===403)return {ok:false,msg:'권한 없음 — 콘솔에서 Cloud Vision API 사용 설정과 결제계정 연결을 확인하세요'};
+    return {ok:false,msg:httpWhy(res.status)};
+  });}
+  {const b=root.querySelector('#gdKakaoChk');if(b)b.onclick=()=>keyCheck('gdKakao','__kakaoKey','Kakao',async(key)=>{
+    // SDK 스크립트가 받아지는지만 본다 — 지도 호출 없이 키를 걸러낸다.
+    const res=await fetch('https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(key)+'&libraries=services');
+    if(res.ok)return {ok:true,msg:'키를 받아들였습니다. 사진 위치가 그래도 안 나오면 카카오 콘솔 → 플랫폼 → Web 에 이 사이트 주소가 등록됐는지 보세요.'};
+    return {ok:false,msg:res.status===401?'키가 맞지 않습니다 (REST 키 말고 JavaScript 키여야 합니다)':httpWhy(res.status)};
+  });}
+  {const b=root.querySelector('#gdOpenaiChk');if(b)b.onclick=()=>keyCheck('gdOpenai','__openaiKey','OpenAI',async(key)=>{
+    const res=await fetch('https://api.openai.com/v1/models',{headers:{Authorization:'Bearer '+key}});
+    if(res.ok)return {ok:true,msg:'작동합니다. 다만 OpenAI 는 쓴 만큼 요금이 붙습니다.'};
+    return {ok:false,msg:httpWhy(res.status)};
+  });}
   {const qel=root.querySelector('#gdQuota');if(qel)quotaText().then(t=>{if(t)qel.textContent='📊 사용량 — '+t;});}
   /* 키 저장 공통 규칙 — 빈 칸은 '안 바꿈'이다. 절대 '지움'이 아니다.
      지우려면 [지우기]를 눌러야 한다. 실수로 키를 날리는 길을 없앤다. */
@@ -6715,7 +6822,7 @@ async function aiAgentSend(text){
   aiSheetEl();
   if(!aiKeyReady()){
     aiMsg('u',text);
-    aiMsg('a','AI 키가 아직 없어요. ☁️ 설정에서 무료 Gemini 키(AIza…)를 넣거나, 🦙 Llama 모델을 등록하면 바로 부릴 수 있습니다.');
+    aiMsg('a','AI 키가 아직 없어요. ☁️ 설정에서 Gemini 키(AIza…)를 넣거나, 🦙 Llama 모델을 등록하면 바로 부릴 수 있습니다.');
     aiMsg('s','화면의 ☁️ 버튼을 누르거나, 더보기에서 [🔑 AI 두뇌 선택]을 열어보세요.');
     try{openGdriveSetup();}catch(e){}
     return;
@@ -8955,7 +9062,7 @@ function universalSearch(query){
 const HJ_HELP=[
  {t:'🚀 시작하기',items:[
   {k:'데이터 불러오기',d:'PC는 왼쪽 [📁 로컬 폴더 연결], 폰은 [☁️ 구글드라이브에서 불러오기] 한 번이면 사진·견적·현장이 들어옵니다.'},
-  {k:'AI 켜기',d:'☁️ 설정에 무료 Gemini 키(AIza…) 또는 OpenAI ChatGPT 키(sk-…)를 넣으면 비서·공정 태깅·검토·코멘트가 전부 살아납니다. 두 키가 다 있으면 ChatGPT 우선.'},
+  {k:'AI 켜기',d:'☁️ 설정에 Gemini 키(AIza…) 또는 OpenAI ChatGPT 키(sk-…)를 넣으면 비서·공정 태깅·검토·코멘트가 전부 살아납니다. 두 키가 다 있으면 ChatGPT 우선.'},
   {k:'시작 가이드 다시 보기',d:'처음 안내 3장과 시작 준비 체크리스트를 다시 열려면 비서에게 “시작 가이드”라고 하세요.',say:'시작 가이드 다시 보여줘'},
   {k:'저장',d:'PC 폴더 연결 시 자동 저장(_현장.json), 폰은 드라이브 저장 버튼. 이 기기 안엔 🛡 스냅샷 12개가 별도로 자동 보관됩니다.'},
   {k:'데이터 이사',d:'더보기 [📥 데이터 이사] — 예전 엑셀(현장·연락처·단가표)을 열 매핑으로, 우리 전체장부 엑셀은 자동 인식으로 가져옵니다. 이사 직전 스냅샷이 남아 되돌리기 가능.',say:'엑셀 데이터 가져오기 열어줘'}]},
@@ -9018,9 +9125,9 @@ const HJ_HELP=[
   {k:'PC↔폰 동기화',d:'더보기 [🔄 PC↔폰 동기화] — PC에서 AI로 작업하고 폰에서 확인하는 방법을 안내합니다. 구글 드라이브로 자료를 맞춰요.',say:'PC랑 폰 같이 쓰는 법'},
   {k:'화면 편하게 보기',d:'더보기 [♿ 화면 편하게] — 글씨를 크게(3단계) 하고 고대비 모드로 눈에 잘 띄게 만듭니다. 설정은 저장돼요. 상단 [가⁺] 버튼으로도 글씨를 키울 수 있습니다.',say:'글씨 크게 해줘'},
   {k:'음성으로 명령',d:'AI 비서 화면 입력창 옆 [🎙]을 누르고 말하면, 말한 내용이 자동으로 비서에게 전달됩니다. "미배정 사진 정리해줘"처럼 말로 시키세요.',say:'비서 열어줘'},
-  {k:'AI 두뇌 선택',d:'더보기 [🔑 AI 두뇌 선택] — 무료 Gemini·유료 ChatGPT·오픈모델(Llama) 중 고릅니다. 선택은 저장돼요. 무료 Gemini를 권장합니다.',say:'AI 두뇌 선택 열어줘'},
+  {k:'AI 두뇌 선택',d:'더보기 [🔑 AI 두뇌 선택] — Gemini·ChatGPT·오픈모델(Llama) 중 고릅니다. 선택은 저장돼요. Gemini를 권장하지만, 공짜인 것은 키가 속한 구글 프로젝트에 결제계정이 없을 때뿐입니다.',say:'AI 두뇌 선택 열어줘'},
   {k:'Llama·커스텀 모델',d:'더보기 [🦙 Llama 등록] — Ollama·LM Studio(내 PC)나 Groq·Together(온라인)에서 실행하는 Llama 등 오픈 모델을 연결합니다. OpenAI 호환 주소면 무엇이든 돼요.',say:'라마 모델 등록 열어줘'},
-  {k:'AI 사용량·비용',d:'더보기 [📊 AI 사용량] — 이번 달 어느 두뇌(Gemini·ChatGPT·Llama)를 몇 번 썼고 예상 비용이 얼마인지 봅니다. 무료 Gemini·Llama는 비용 0.',say:'AI 얼마나 썼어'},
+  {k:'AI 사용량·비용',d:'더보기 [📊 AI 사용량] — 이번 달 어느 두뇌를 몇 번 썼는지 봅니다. 호출 횟수만 정확하고 금액은 추정치입니다 — Gemini 요금은 앱이 알 수 없으니 console.cloud.google.com 결제에서 확인하세요.',say:'AI 얼마나 썼어'},
   {k:'날씨 연동 공정',d:'더보기 [🌤 날씨 공정] — 5일 날씨 예보를 보고, 도장·방수처럼 비/습기에 취약한 공정이 예정돼 있으면 경고하고 재배치를 제안합니다.',say:'날씨 확인해줘'},
   {k:'명함·영수증 스캔',d:'더보기 [🏷 명함 스캔]/[🧾 영수증 스캔] — 사진을 찍으면 AI가 정보를 읽어 거래처·지출로 자동 등록합니다. (Gemini 키 필요)',say:'영수증 스캔해줘'},
   {k:'Before/After 갤러리',d:'더보기 [📸 전후 갤러리] — 현장의 시공 전(철거·시공전)과 후(완료·마감) 사진을 자동으로 짝지어 비교 카드를 만듭니다. 카톡·블로그 홍보용 페이지도 생성.',say:'전후 사진 보여줘'},
@@ -9088,7 +9195,7 @@ const HJ_HELP=[
   {k:'루프 성숙도 진단',d:'더보기 [🔁 루프 성숙도] — 운영 루프가 얼마나 잘 돌고 있는지 점수(0~100)로 자가진단합니다. 활성·성공률·큐관리·후속연결 4가지를 보고 등급을 매겨요.',say:'루프 성숙도 보여줘'},
   {k:'AI 운영 센터',d:'더보기 [🤖 AI 운영 센터] — AI가 사업 상태를 점검(Planner)해 할 일을 큐에 쌓고, 승인하면(Approval) 실행(Executor)하고 기록(Log)합니다. 앱을 열 때 예약 시각이 지났으면 자동 점검해요. 문자 발송은 항상 승인을 거칩니다.',say:'AI 운영 센터 열어줘'},
   {k:'운영 리포트',d:'경영 대시보드 [📊 운영] — 주간/월간 전체 운영(수금·지출·손익·완료·견적)을 한 장으로 정리하고 AI 총평도 받습니다.',say:'이번주 운영 리포트'},
-  {k:'비용 없는 AI',d:'무료 Gemini를 기본으로 씁니다. OpenAI(유료) 키를 넣어도 Gemini가 있으면 무료 Gemini를 우선 사용해 비용이 들지 않아요.',say:'AI 설정'},
+  {k:'AI 요금 — 무료가 되는 조건',d:'Gemini를 기본으로 씁니다. Gemini는 키가 속한 구글 프로젝트에 결제계정이 연결되지 않았을 때만 무료이고, 연결돼 있으면 ChatGPT처럼 쓴 만큼 청구됩니다. 0원을 확실히 하려면 결제 없는 프로젝트에서 키를 발급하세요. 앱의 분당·하루 제한은 횟수만 막고 요금은 막지 못합니다.',say:'AI 설정'},
   {k:'매출 목표',d:'경영 대시보드 [🎯 목표] — 월·연 매출 목표를 정하면 수금 기준 달성률과 페이스(기대 대비)를 추적합니다. 목표 관련 소식은 알림으로도.',say:'이번달 목표 1000만원으로 설정해줘'},
   {k:'제안 알림',d:'스마트 알림을 켜면 오늘 일정·미수뿐 아니라 AI 제안(청구서·사진정리)과 목표 소식도 앱을 안 열어도 알려줍니다.',say:'알림 켜줘'},
   {k:'음성 현장일지',d:'더보기 [📝 음성 현장일지] — 현장을 고르고 오늘 한 작업을 말하면 글로 적혀 작업일지로 저장됩니다. 비서에게 시켜도 돼요.',say:'둔산동에 안방 도배 완료 기록해줘'},
@@ -11880,7 +11987,7 @@ async function openaiAsk(prompt){
   }
   throw new Error('OpenAI 호출 실패: '+lastErr);
 }
-// 통합 AI 래퍼: 무료 Gemini 우선(비용 절감). OpenAI는 Gemini가 없거나 사용자가 명시 선택('openai') 시만.
+// 통합 AI 래퍼: Gemini 우선(대개 더 쌈 — 결제 미연결이면 0원). OpenAI는 Gemini가 없거나 사용자가 명시 선택('openai') 시만.
 async function aiAsk(prompt){
   // Llama/커스텀 명시 선택
   if(window.__aiProvider==='llama'&&llamaReady()){
@@ -11892,7 +11999,7 @@ async function aiAsk(prompt){
     try{return await openaiAsk(prompt);}
     catch(e){if(window.__geminiKey){try{return await geminiAsk(prompt);}catch(e2){throw e;}}throw e;}
   }
-  // 기본: 무료 Gemini 우선
+  // 기본: Gemini 우선
   if(window.__geminiKey){
     try{return await geminiAsk(prompt);}
     catch(e){if(window.__openaiKey){try{return await openaiAsk(prompt);}catch(e2){throw e;}}throw e;}
@@ -12521,8 +12628,8 @@ function aiProviderManage(){
       '<span style="flex:1;min-width:0"><b style="font-size:14px">'+title+(active?' ✓':'')+'</b><br><span style="font-size:11.5px;opacity:.85">'+desc+'</span><br><span style="font-size:11px;font-weight:700;color:'+(active?'#fff':(cost==='무료'?'#0a7f43':'#c2410c'))+'">'+cost+(available?'':' · 키 필요')+'</span></span>'+
     '</button>';
   const body=
-    '<div style="font-size:12.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:12px;margin-bottom:14px;line-height:1.6">AI 비서가 어떤 두뇌를 쓸지 고릅니다. <b>무료 Gemini를 권장</b>해요. ChatGPT는 유료지만 더 자연스러울 수 있습니다.</div>'+
-    card('gemini','✨','Gemini (구글)','견적·문서·분석 등 모든 AI 기능','무료',cur==='gemini',hasGemini)+
+    '<div style="font-size:12.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:12px;margin-bottom:14px;line-height:1.6">AI 비서가 어떤 두뇌를 쓸지 고릅니다. <b>Gemini를 권장</b>해요 — 단 Gemini가 무료인 것은 키가 속한 구글 프로젝트에 <b>결제계정이 없을 때뿐</b>이고, 연결돼 있으면 ChatGPT와 마찬가지로 쓴 만큼 청구됩니다.</div>'+
+    card('gemini','✨','Gemini (구글)','견적·문서·분석 등 모든 AI 기능','무료(결제 미연결 시)',cur==='gemini',hasGemini)+
     card('openai','🧠','ChatGPT (OpenAI)','더 자연스러운 문장·대화','유료(사용량 과금)',cur==='openai',hasOpenai)+
     card('llama','🦙','Llama (Ollama·Groq)','내 PC Ollama·무료 Groq 등 오픈 모델','무료~저가',cur==='llama',llamaReady())+
     '<button class="ghost" id="provLlama" style="width:100%;padding:11px;margin-top:2px;margin-bottom:8px">🦙 Llama 모델 등록/변경</button>'+
@@ -12530,7 +12637,7 @@ function aiProviderManage(){
     '<button class="ghost" id="provKeys" style="width:100%;padding:11px;margin-top:8px">☁️ AI 키 설정 열기</button>';
   openModal('🔑 AI 두뇌 선택',body,[{label:'닫기',cls:'clay',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
-  root.querySelectorAll('.provPick').forEach(b=>{if(!b.disabled)b.onclick=()=>{aiProviderSet(b.dataset.p);const pn=b.dataset.p==='openai'?'ChatGPT':b.dataset.p==='llama'?'Llama(Ollama 등)':'무료 Gemini';toast(pn+'를 사용합니다');aiProviderManage();};});
+  root.querySelectorAll('.provPick').forEach(b=>{if(!b.disabled)b.onclick=()=>{aiProviderSet(b.dataset.p);const pn=b.dataset.p==='openai'?'ChatGPT':b.dataset.p==='llama'?'Llama(Ollama 등)':'Gemini';toast(pn+'를 사용합니다');aiProviderManage();};});
   {const lb=root.querySelector('#provLlama');if(lb)lb.onclick=()=>{closeModal();try{llamaSetup();}catch(e){}};}
   const kb=root.querySelector('#provKeys');if(kb)kb.onclick=()=>{closeModal();try{openGdriveSetup();}catch(e){}};
   return {현재:aiProviderName()};
@@ -12813,9 +12920,16 @@ function aiUsageTrack(provider,inChars,outChars){
     aiUsageSave(all);
   }catch(e){}
 }
-// 제공자별 단가(1M 토큰당 USD, 대략치 — 참고용). Gemini 무료.
+/* 제공자별 단가(1M 토큰당 USD, 대략치 — 참고용).
+   ★ Gemini 를 free:true 로 단정하면 안 된다. Gemini 가 무료인 것은
+     **키가 속한 구글 프로젝트에 결제계정이 연결되지 않았을 때뿐**이고,
+     연결하는 순간 유료 티어로 올라가 토큰마다 청구된다. 그런데 이 앱은
+     그 연결 여부를 알 방법이 없다(구글이 키만으로는 안 알려준다).
+     예전에는 free:true 로 박아 두어, 결제가 붙은 뒤에도 이 화면이
+     "예상 비용 0원(무료)" 라고 단언했다 — 청구서가 올 때까지 아무 신호가 없었다. (cost-honesty-ok)
+     이제 unknown 으로 두고 "모른다"고 말한다. 틀린 0원보다 정직한 물음표가 낫다. */
 const AI_PRICING={
-  gemini:{in:0,out:0,free:true,label:'Gemini',ic:'✨'},
+  gemini:{in:0,out:0,free:true,unknown:true,label:'Gemini',ic:'✨'},
   openai:{in:0.15,out:0.60,free:false,label:'ChatGPT',ic:'🧠'},  // gpt-4o-mini
   llama:{in:0,out:0,free:true,label:'Llama',ic:'🦙'}  // 로컬/무료 가정
 };
@@ -12852,11 +12966,11 @@ function aiUsageDashboard(){
   const maxC=Math.max(1,...trend.map(t=>t.calls));
   const bars=trend.map(t=>'<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px"><div style="width:66%;background:'+hjBrandColor('#0b4ea2')+';height:'+Math.round(t.calls/maxC*54)+'px;border-radius:2px;opacity:.75"></div><span style="font-size:9px;color:var(--muted)">'+t.mm+'</span></div>').join('');
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">이번 달 AI 사용</div><div style="font-size:22px;font-weight:800;margin-top:2px">'+totalCalls+'회 호출</div><div style="font-size:12px;opacity:.9;margin-top:2px">예상 비용 '+(totalKRW<=0?'₩0 (무료)':'약 ₩'+hjNum(totalKRW))+'</div></div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">이번 달 AI 사용</div><div style="font-size:22px;font-weight:800;margin-top:2px">'+totalCalls+'회 호출</div><div style="font-size:12px;opacity:.9;margin-top:2px">예상 비용 '+(totalKRW<=0?'확인 필요':'약 ₩'+hjNum(totalKRW)+' + 확인 필요')+'</div></div>'+
     (rows||'<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">아직 이번 달 AI 사용 기록이 없어요.</div>')+
     '<div style="font-size:12px;font-weight:700;margin:14px 0 4px">📊 6개월 호출 추이</div>'+
     '<div style="display:flex;gap:3px;align-items:flex-end;height:70px;background:var(--paper-2);border-radius:10px;padding:8px 6px">'+bars+'</div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 비용은 <b>대략 추정치</b>입니다(ChatGPT gpt-4o-mini 기준, 환율 '+USD_KRW+'원). 무료 Gemini·내 PC Llama는 비용이 들지 않아요. 실제 청구는 각 서비스에서 확인하세요.</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 <b>여기 숫자는 호출 횟수만 정확합니다.</b> 금액은 ChatGPT 기준 추정치이고(환율 '+USD_KRW+'원), <b>Gemini 요금은 이 앱이 알 수 없습니다</b> — Gemini 는 키가 속한 구글 프로젝트에 <b>결제계정이 연결되면 쓴 만큼 청구</b>되는데, 연결 여부를 앱에서 확인할 방법이 없습니다. 실제 청구는 <b>console.cloud.google.com → 결제</b>에서 꼭 직접 확인하세요.</div>'+
     '<button class="ghost" id="usageReset" style="width:100%;padding:10px;margin-top:10px;font-size:12px">사용 기록 초기화</button>';
   openModal('📊 AI 사용량·비용',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const rb=document.getElementById('usageReset');
@@ -14666,7 +14780,7 @@ function aiOperateMode(){
     }
     // 등록됨 → 선택
     if(typeof aiProviderSet==='function')aiProviderSet(id);
-    const pn=id==='openai'?'ChatGPT':id==='llama'?'Llama(Ollama 등)':'무료 Gemini';
+    const pn=id==='openai'?'ChatGPT':id==='llama'?'Llama(Ollama 등)':'Gemini';
     toast('🧠 '+pn+'(으)로 전환했습니다');
     aiOperateMode();  // 새로고침
   });

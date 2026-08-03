@@ -50,14 +50,20 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
     { input: 'gdVision', save: 'gdVisionSave', del: 'gdVisionDel', idb: 'vision_key', win: '__visionKey', val: 'AIzaVISION-TEST-0004', label: 'Vision' }
   ];
 
-  const openPanel = async () => {
+  /* 설정 화면이 탭으로 나뉘어 있다(💾저장·백업 / 📨전자계약 / 🔑AI·지도 키 / ⭐기타).
+     한 화면에 다 이어 붙이면 1,510px 이라 폰에서 두 화면 반을 굴려야 했다.
+     탭은 <div> 라 <details> 겹을 늘리지 않는다 — ⑪ 의 '한 겹까지' 규칙은 그대로 유효하다.
+     테스트는 해당 탭을 누른 뒤 details 를 펼친다. */
+  const openPanel = async (tab) => {
     await page.evaluate(() => { try { closeModal(); } catch (e) {} });
     await page.evaluate(() => openGdriveSetup());
-    // 키 칸들은 접힌 <details> 안에 있다(비상용 아코디언 안에 또 아코디언).
-    // 그래서 '보일 때까지'가 아니라 '붙을 때까지' 기다린 뒤 전부 펼친다.
-    await page.waitForSelector('#gdOpenai', { state: 'attached', timeout: 5000 });
+    await page.waitForSelector('#modalRoot .setTab', { state: 'visible', timeout: 5000 });
+    await page.click('#setTab-' + (tab || 'keys'));
+    const probe = (tab === 'save') ? '#ryTok' : '#gdOpenai';
+    // 키 칸들은 각자 접힌 <details> 안에 있다. '붙을 때까지' 기다린 뒤 전부 펼친다.
+    await page.waitForSelector(probe, { state: 'attached', timeout: 5000 });
     await page.evaluate(() => document.querySelectorAll('#modalRoot details').forEach((d) => { d.open = true; }));
-    await page.waitForSelector('#gdOpenai', { state: 'visible', timeout: 5000 });
+    await page.waitForSelector(probe, { state: 'visible', timeout: 5000 });
     await page.waitForTimeout(120);
   };
 
@@ -127,7 +133,7 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
   await test('⑥ ★드라이브 인증키가 [연결 테스트]만으로 지워지지 않는다', async () => {
     const RY_URL = 'https://script.google.com/macros/s/RELAYTEST/exec';
     const RY_TOK = 'RELAY-TOKEN-TEST-5555';
-    await openPanel();
+    await openPanel('save');
     await page.fill('#ryUrl', RY_URL);
     await page.fill('#ryTok', RY_TOK);
     // 연결 테스트는 네트워크를 타므로 응답을 흉내낸다.
@@ -142,7 +148,7 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
     assert(tok === RY_TOK, '연결 테스트 뒤 인증키가 사라졌다: ' + JSON.stringify(tok));
 
     // 이제 칸을 비우고 다시 연결 테스트 — 예전에는 이것만으로 키가 날아갔다.
-    await openPanel();
+    await openPanel('save');
     await page.evaluate(() => { document.getElementById('ryTok').value = ''; });
     await page.click('#ryTest');
     await page.waitForTimeout(600);
@@ -154,7 +160,7 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
   });
 
   await test('⑦ 드라이브 인증키도 입력칸에 되비추지 않는다', async () => {
-    await openPanel();
+    await openPanel('save');
     const r = await page.evaluate(() => {
       const el = document.getElementById('ryTok');
       return { value: el.value, type: el.type, ph: el.placeholder };
@@ -166,7 +172,7 @@ const readIdb = (page, k) => page.evaluate((key) => idbGet(key), k);
   });
 
   await test('⑧ [연결 끊기]를 눌러야만 드라이브 연결이 끊긴다', async () => {
-    await openPanel();
+    await openPanel('save');
     await page.click('#ryDrop');
     await page.waitForTimeout(250);
     const tok = await readIdb(page, 'relay_token');
