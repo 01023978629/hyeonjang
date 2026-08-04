@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      - claude/manmool-lead-intake
+      # 작업 브랜치 트리거는 넣지 않는다 — 검증 전 코드가 운영 앱으로 나가고,
+      # 브랜치가 사라진 뒤에도 남아 빨간불만 쌓는다(manmool 에서 12연속 실패가 그것).
   workflow_dispatch:
 
 permissions:
