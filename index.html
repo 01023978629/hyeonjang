@@ -8548,7 +8548,9 @@ function aptOrderManage(filterOffice){
     '<button class="ghost tiny" id="apoOffAdd" style="padding:5px 10px">+ 단지 등록</button></div>';
   openModal('🏢 아파트 오더 — 관리사무소 일감',head+addRow+
     '<div style="max-height:38vh;overflow:auto">'+rows+'</div>'+offRow,
-    [{label:'📄 월 정산서',cls:'moss',fn:()=>aptSettle(filterOffice||((offices[0]||{}).id))},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    [{label:'📄 월 정산서',cls:'moss',fn:()=>aptSettle(filterOffice||((offices[0]||{}).id))},
+     {label:'📊 단지 통계',cls:'ghost',fn:()=>aptStats(filterOffice||((offices[0]||{}).id))},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelector('#apoOffAdd').onclick=()=>{
     const complex=(prompt('단지(아파트) 이름 (예: 신흥마을아파트)')||'').trim();
@@ -8578,6 +8580,21 @@ function aptOrderManage(filterOffice){
     }
     o.status=s.value;
     if(s.value==='done'&&!o.doneAt)o.doneAt=localDate();
+    if(s.value==='visit'){
+      // 방문예정은 날짜가 생명이다 — 일정표에 안 올리면 브리핑에서 빠져 그날 아침에 잊는다.
+      // 날짜를 비우거나 취소하면 일정 없이 상태만 바뀐다(강요하지 않는다 — 전화로 아직 조율 중일 수 있다).
+      const tm=new Date();tm.setDate(tm.getDate()+1);
+      const d=prompt('방문 날짜 (YYYY-MM-DD) — 일정표에 올립니다. 비우면 일정 없이 표시만 합니다.',localDate(tm));
+      if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d.trim())){
+        state.schedule=state.schedule||[];
+        state.schedule.push(Object.assign(newSchedule(),{date:d.trim(),
+          title:'🏢 '+aptOfficeName(o.officeId)+' '+(o.unit||'')+' — '+(o.text||'').slice(0,30),
+          memo:'아파트 오더 방문 (접수 '+(o.date||'')+')'}));
+        toast('일정표에 올렸습니다 — '+d.trim());
+      }else if(d!==null&&d!==''){
+        toast('날짜 형식이 아니라 일정은 만들지 않았습니다 (예: 2026-08-15)');
+      }
+    }
     markDirty();aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
   });
   root.querySelectorAll('.apoDel').forEach(b=>b.onclick=async()=>{
@@ -8617,6 +8634,7 @@ function aptSettle(officeId,ym){
     '<textarea id="apsText" style="width:100%;min-height:220px;padding:10px;font-size:12.5px;line-height:1.6" readonly>'+escapeHtml(text)+'</textarea>'+
     '<div style="font-size:12px;color:var(--muted);margin-top:6px">완료 '+billable.length+'건 · 합계 '+won(sum)+(list.length-billable.length?' · 입금완료 '+(list.length-billable.length)+'건 제외':'')+'</div>',
     [{label:'📋 복사',cls:'ghost',fn:()=>{try{navigator.clipboard.writeText(text);toast('복사됨 — 문자·카톡에 붙여넣으세요');}catch(e){toast('복사 실패');}}},
+     {label:'⬇ 엑셀',cls:'ghost',fn:()=>aptSettleXlsx(off,ym,billable,sum)},
      {label:'📮 청구 처리',cls:'moss',fn:()=>{
        const n=state.aptOrders.filter(o=>o.officeId===off.id&&o.status==='done'&&(o.doneAt||'').slice(0,7)===ym).length;
        if(!n){toast('청구할 완료 오더가 없습니다');return;}
@@ -8637,6 +8655,68 @@ function aptSettle(officeId,ym){
   root.querySelector('#apsOff').onchange=e=>aptSettle(e.target.value,ym);
   root.querySelector('#apsYm').onchange=e=>aptSettle(off.id,e.target.value);
   return {건수:billable.length,합계:sum};
+}
+/* 정산서 엑셀 — 관리사무소는 회계 처리 때문에 문자보다 표를 원할 때가 많다.
+   화면의 정산 내용과 같은 자료(billable)를 그대로 내려받는다 — 따로 계산하면 언젠가 어긋난다. */
+async function aptSettleXlsx(off,ym,billable,sum){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패 — 인터넷을 확인하세요. [📋 복사]로 문안은 보낼 수 있습니다.');return;}
+  const [y,m]=ym.split('-');
+  const aoa=[
+    [COMPANY.name+' — '+off.complex+' '+y+'년 '+(+m)+'월 보수 정산서'],
+    ['발행일',localDate(),'담당',off.manager||'관리사무소'],
+    [],
+    ['번호','동/호','작업 내용','완료일','금액(원)','상태'],
+  ];
+  billable.forEach((o,i)=>aoa.push([i+1,o.unit||'',o.text||'',o.doneAt||'',num(o.amount)||'미정',(APT_STAT[o.status]||[''])[0]]));
+  aoa.push([]);
+  aoa.push(['','','','합계',sum,'부가세 별도']);
+  aoa.push([]);
+  aoa.push([COMPANY.name+' · 대표 전병덕 · 010-2397-8629 · 사업자 895-48-01132']);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),(+m)+'월 정산');
+  const fname=off.complex+'_'+ym+'_정산서.xlsx';
+  XLSX.writeFile(wb,fname);
+  toast('⬇ 저장됨 — '+fname);
+  return {파일:fname,행:billable.length};
+}
+/* 단지 통계 — 단지마다 "이번 달 얼마 했고 얼마 못 받았나"를 한눈에.
+   기준은 정산과 같은 완료월(doneAt)이다 — 접수월로 세면 정산서와 숫자가 어긋난다. */
+function aptStats(officeId){
+  aptData();
+  const offices=state.aptOffices;
+  if(!offices.length){toast('먼저 단지를 등록하세요');return;}
+  const off=offices.find(o=>o.id===officeId)||offices[0];
+  const months=[];{const n=new Date();n.setDate(1);for(let i=0;i<6;i++){months.push(localDate(n).slice(0,7));n.setMonth(n.getMonth()-1);}}
+  const mine=state.aptOrders.filter(o=>o.officeId===off.id);
+  const rows=months.map(ym=>{
+    const done=mine.filter(o=>(o.doneAt||'').slice(0,7)===ym&&(o.status==='done'||o.status==='billed'||o.status==='paid'));
+    const paid=done.filter(o=>o.status==='paid').reduce((s,o)=>s+num(o.amount),0);
+    const unpaid=done.filter(o=>o.status==='billed').reduce((s,o)=>s+num(o.amount),0);
+    const notBilled=done.filter(o=>o.status==='done').reduce((s,o)=>s+num(o.amount),0);
+    return {ym,n:done.length,total:done.reduce((s,o)=>s+num(o.amount),0),paid,unpaid,notBilled};
+  });
+  const openN=mine.filter(o=>o.status==='recv'||o.status==='visit'||o.status==='work').length;
+  const allUnpaid=mine.filter(o=>o.status==='billed').reduce((s,o)=>s+num(o.amount),0);
+  const offSel='<select id="apstOff" style="flex:1;padding:8px;font-size:13px">'+offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===off.id?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('')+'</select>';
+  const tbl='<table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
+    '<tr style="color:var(--muted);font-size:11.5px"><th style="text-align:left;padding:6px 4px;border-bottom:1px solid var(--line-soft)">월</th><th style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--line-soft)">완료</th><th style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--line-soft)">완료 금액</th><th style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--line-soft)">입금</th><th style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--line-soft)">미수</th></tr>'+
+    rows.map(r=>'<tr><td style="padding:6px 4px;border-bottom:1px dashed var(--line-soft)">'+r.ym.slice(2).replace('-','.')+'</td>'+
+      '<td style="text-align:right;padding:6px 4px;border-bottom:1px dashed var(--line-soft)">'+(r.n||'—')+'</td>'+
+      '<td style="text-align:right;padding:6px 4px;border-bottom:1px dashed var(--line-soft)">'+(r.total?won(r.total):'—')+'</td>'+
+      '<td style="text-align:right;padding:6px 4px;border-bottom:1px dashed var(--line-soft);color:#0a7f43">'+(r.paid?won(r.paid):'—')+'</td>'+
+      '<td style="text-align:right;padding:6px 4px;border-bottom:1px dashed var(--line-soft);color:'+((r.unpaid||r.notBilled)?'#c2410c':'var(--muted)')+'">'+((r.unpaid+r.notBilled)?won(r.unpaid+r.notBilled):'—')+'</td></tr>').join('')+
+    '</table>';
+  openModal('📊 단지 통계 — '+escapeHtml(off.complex),
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+offSel+'</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+      '<div style="flex:1;min-width:96px;background:var(--paper-2);border-radius:9px;padding:8px 9px"><div style="font-size:10.5px;color:var(--muted)">진행 중</div><div style="font-size:15.5px;font-weight:800">'+openN+'건</div></div>'+
+      '<div style="flex:1;min-width:96px;background:var(--paper-2);border-radius:9px;padding:8px 9px"><div style="font-size:10.5px;color:var(--muted)">청구 후 미입금</div><div style="font-size:15.5px;font-weight:800;color:'+(allUnpaid?'#c2410c':'#0a7f43')+'">'+won(allUnpaid)+'</div></div>'+
+    '</div>'+tbl+
+    '<div style="font-size:11.5px;color:var(--muted);margin-top:8px">기준: 완료월(doneAt) — 정산서와 같은 기준입니다. 미수 = 청구됨 + 아직 청구 전 완료분.</div>',
+    [{label:'📄 이 단지 정산서',cls:'moss',fn:()=>aptSettle(off.id)},{label:'닫기',cls:'ghost',fn:()=>aptOrderManage(off.id)}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelector('#apstOff').onchange=e=>aptStats(e.target.value);
+  return {단지:off.complex,줄:rows.filter(r=>r.n>0).length,미수:allUnpaid};
 }
 
 /* ═══════════ 🎉 준공 관리 — ⭐ 리뷰 요청 + 🛡 보증 등록 (기존 hjWarranty·reviewRequest·hjSendSms 연동) ═══════════ */
