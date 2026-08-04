@@ -5845,7 +5845,7 @@ const AI_TOOLS = [
  {name:'search_all',description:'만능 검색: 사진 OCR 텍스트·파일명·일정/작업일지·현장/고객·견적 품목·연락처·AS·수금 기록을 한 번에 검색해 그룹별로 반환. "~어디 있지/찾아줘/검색"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'help',description:'사용설명서: 기능 가이드를 검색해 반환하고 설명서 화면을 엶. 사용법·기능 질문("~어떻게 해/도움말/설명서")이면 호출. topic으로 필터.',parameters:{type:'OBJECT',properties:{topic:{type:'STRING'}}}},
  {name:'project_map',description:'전체 현장 지도: 모든 현장을 단계 색 핀으로 지도에 표시(미수금은 빨간 테두리). "현장 지도/어디어디 있지(위치)"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'export_ledger',description:'전체 장부 엑셀(9시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'export_ledger',description:'전체 장부 엑셀(10시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장·아파트오더)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'brand_theme',description:'브랜드 테마 설정 화면(포인트 색·로고)을 엶. "브랜드/로고/색 바꾸기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_page',description:'고객 진행 상황을 HTML **파일**로 저장(오프라인 첨부용). "진행 페이지 파일로 저장/HTML로 만들어"면 호출. 실시간 링크는 customer_portal 사용. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
  {name:'calendar_sync',description:'구글 캘린더 자동 설정 조회/변경. enable=true/false로 켜고 끔(생략=현재 상태). 켜면 새 일정 저장 시 캘린더 추가 창이 자동으로 열림(단방향).',parameters:{type:'OBJECT',properties:{enable:{type:'BOOLEAN'}}}},
@@ -9134,6 +9134,10 @@ function universalSearch(query){
     if(hit(a.text,a.project))add('AS',{현장:a.project,날짜:a.date,상태:(AS_STAT[a.status]||AS_STAT.open)[0],일치:snip(a.text)||'현장 일치'});
   });
   (state.payLog||[]).forEach(x=>{if(hit(x.project))add('수금',{날짜:x.d,현장:x.project,금액원:x.amt});});
+  (state.aptOrders||[]).forEach(o=>{
+    const cx=aptOfficeName(o.officeId);
+    if(hit(cx,o.unit,o.text))add('아파트 오더',{이름:cx+' '+(o.unit||''),상태:(APT_STAT[o.status]||APT_STAT.recv)[0],일치:snip(o.text)||'단지·동/호 일치'});
+  });
   const total=Object.values(G).reduce((a,v)=>a+v.length,0);
   return {검색어:query,총건수:total,그룹:G,안내:total?'사진 원본은 사진 탭 검색창에 같은 검색어를 넣으면 필터됩니다':'일치하는 항목이 없습니다'};
 }
@@ -9184,7 +9188,7 @@ const HJ_HELP=[
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
-  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장까지 9시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
+  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더까지 10시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
   {k:'홈화면',d:'설치된 앱 아이콘을 길게 누르면 바로가기(오늘 일정/미수금/AI 비서), 열면 한눈 보기 카드, 아이콘엔 챙길 일 뱃지.'},
   {k:'세무',d:'견적 탭 [세무 정산 엑셀]로 분기·월별 공급가/부가세 분해 시트를 뽑아 신고 준비.'},
   {k:'부가세 신고',d:'경영 대시보드 [📊 부가세] — 분기별 매출세액·매입세액 공제·납부(환급) 예상을 집계하고 신고 자료 엑셀을 뽑습니다.',say:'부가세 신고 자료 만들어줘'},
@@ -9379,7 +9383,7 @@ async function allProjectsMap(){
   return {표시:pts.length,좌표없음:missing.map(p=>p.name)};
 }
 
-/* ═══════════ 📤 전체 장부 엑셀 — 9시트 한 파일 ═══════════ */
+/* ═══════════ 📤 전체 장부 엑셀 — 10시트 한 파일 ═══════════ */
 async function exportFullXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return {오류:'모듈'};}
   const wb=XLSX.utils.book_new();
@@ -9431,10 +9435,15 @@ async function exportFullXlsx(){
   const s9=[['품목','단가']];
   Object.keys(state.priceBook||{}).sort((a,b)=>a.localeCompare(b,'ko')).forEach(k=>s9.push([k,num(state.priceBook[k])]));
   add('단가장',s9);counts['단가장']=s9.length-1;
+  // ⑩ 아파트 오더 — 관리사무소 일감은 현장(①)에 안 실리므로 여기 없으면 장부에서 통째로 빠진다
+  const s10=[['접수일','단지','동/호','작업','금액','상태','완료일']];
+  (state.aptOrders||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))
+    .forEach(o=>s10.push([o.date||'',aptOfficeName(o.officeId),o.unit||'',o.text||'',num(o.amount),(APT_STAT[o.status]||APT_STAT.recv)[0],o.doneAt||'']));
+  add('아파트오더',s10);counts['아파트오더']=s10.length-1;
   const fname=COMPANY.name+'_전체장부_'+localDate()+'.xlsx';
   XLSX.writeFile(wb,fname);
-  toast('📤 전체 장부 저장됨 — 9개 시트 ('+fname+')');
-  return {파일:fname,시트:9,행수:counts};
+  toast('📤 전체 장부 저장됨 — 10개 시트 ('+fname+')');
+  return {파일:fname,시트:10,행수:counts};
 }
 
 /* ═══════════ 🎨 브랜드 테마 — 포인트 색·로고 (카드·리포트·견적서·앱 헤더 반영) ═══════════ */
@@ -10919,8 +10928,15 @@ function weekBriefData(){
   dueList.sort((a,b)=>b.due-a.due);
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
   const warnExpire=state.projects.filter(p=>!p.archived&&p.doneAt).map(p=>({name:p.name,w:hjWarranty(p)})).filter(x=>x.w&&x.w.dday>0&&x.w.dday<=30);
+  // 아파트 오더 — 지난주 완료(완료월이 아니라 완료일 기준: 주간이므로), 열린 건, 청구 후 미입금
+  const apt={lastDone:0,lastDoneAmt:0,open:0,unpaid:0};
+  (state.aptOrders||[]).forEach(o=>{
+    if((o.doneAt||'')>=last.from&&(o.doneAt||'')<=last.to&&o.status!=='recv'&&o.status!=='visit'&&o.status!=='work'){apt.lastDone++;apt.lastDoneAmt+=num(o.amount);}
+    if(o.status==='recv'||o.status==='visit'||o.status==='work')apt.open++;
+    if(o.status==='billed')apt.unpaid+=num(o.amount);
+  });
   return {last,cur,lastRecv,lastQuoteSum,lastDone,lastPhotos,lastSchedCount:lastSched.length,
-    curSched,dueTotal,dueList,asOpen,warnExpire};
+    curSched,dueTotal,dueList,asOpen,warnExpire,apt};
 }
 function weekBriefText(d){
   const won=hjNum;const L=[];
@@ -10932,11 +10948,19 @@ function weekBriefText(d){
   if(d.curSched.length)d.curSched.slice(0,6).forEach(s=>L.push('· '+hjKD(s.date).replace(/\(.*/,'')+' '+(s.time?s.time+' ':'')+s.title+(s.project?' @'+s.project:'')));
   else L.push('· 등록된 일정 없음');
   L.push('');
+  if(d.apt&&(d.apt.lastDone||d.apt.open||d.apt.unpaid)){
+    L.push('🏢 아파트 오더');
+    if(d.apt.lastDone)L.push('· 지난주 완료 '+d.apt.lastDone+'건 '+won(d.apt.lastDoneAmt)+'원');
+    if(d.apt.open)L.push('· 진행 중 '+d.apt.open+'건');
+    if(d.apt.unpaid)L.push('· 관리사무소 미입금 '+won(d.apt.unpaid)+'원');
+    L.push('');
+  }
   L.push('👀 챙길 일');
   if(d.dueTotal>0)L.push('· 미수금 '+won(d.dueTotal)+'원'+(d.dueList[0]?' (최다: '+d.dueList[0].name+' '+won(d.dueList[0].due)+')':''));
   if(d.asOpen)L.push('· 미처리 A/S '+d.asOpen+'건');
   if(d.warnExpire.length)L.push('· 무상 A/S 만료 임박 '+d.warnExpire.length+'곳');
-  if(d.dueTotal<=0&&!d.asOpen&&!d.warnExpire.length)L.push('· 급한 일 없음 👍');
+  if(d.apt&&d.apt.unpaid)L.push('· 관리사무소 청구 후 미입금 '+won(d.apt.unpaid)+'원 — [🏢 아파트 오더 ▸ 월 정산서]에서 확인');
+  if(d.dueTotal<=0&&!d.asOpen&&!d.warnExpire.length&&!(d.apt&&d.apt.unpaid))L.push('· 급한 일 없음 👍');
   return L.join('\n');
 }
 async function weekBrief(){
@@ -12207,8 +12231,14 @@ function opsReportData(period){
   // 미결 사항
   let totalDue=0;state.projects.filter(p=>!p.archived).forEach(p=>{totalDue+=projStats(p.name).due;});
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
+  // 아파트 오더 — 기간 내 완료분과, 기간 무관 청구 후 미입금
+  const apt={done:0,doneAmt:0,unpaid:0};
+  (state.aptOrders||[]).forEach(o=>{
+    if((o.doneAt||'')>=from&&(o.doneAt||'')<=to&&o.status!=='recv'&&o.status!=='visit'&&o.status!=='work'){apt.done++;apt.doneAmt+=num(o.amount);}
+    if(o.status==='billed')apt.unpaid+=num(o.amount);
+  });
   return {period,label,from,to,income,spend,net:income-spend,done:done.length,doneProjects:done,
-    quoteCount:quotes.length,quoteSum,schedCount:sched.length,photos,totalDue,asOpen};
+    quoteCount:quotes.length,quoteSum,schedCount:sched.length,photos,totalDue,asOpen,apt};
 }
 function opsReportText(d){
   const won=hjNum;const L=[];
@@ -12218,10 +12248,12 @@ function opsReportText(d){
   L.push('📈 실손익 '+(d.net>=0?'+':'')+won(d.net)+'원');
   L.push('🏗 완료 현장 '+d.done+'곳 · 새 견적 '+d.quoteCount+'건('+won(d.quoteSum)+'원)');
   L.push('🗓 일정 '+d.schedCount+'건 · 📸 사진 '+d.photos+'장');
-  if(d.totalDue>0||d.asOpen){
+  if(d.apt&&(d.apt.done||d.apt.unpaid))L.push('🏢 아파트 오더 완료 '+d.apt.done+'건('+won(d.apt.doneAmt)+'원)'+(d.apt.unpaid?' · 관리사무소 미입금 '+won(d.apt.unpaid)+'원':''));
+  if(d.totalDue>0||d.asOpen||(d.apt&&d.apt.unpaid)){
     L.push('');L.push('👀 챙길 일');
     if(d.totalDue>0)L.push('· 미수금 '+won(d.totalDue)+'원');
     if(d.asOpen)L.push('· 미처리 A/S '+d.asOpen+'건');
+    if(d.apt&&d.apt.unpaid)L.push('· 관리사무소 청구 후 미입금 '+won(d.apt.unpaid)+'원');
   }
   return L.join('\n');
 }
