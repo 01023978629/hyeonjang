@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v179-bkvisible` 형태)이 곧 버전이다.
+현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v180-aptba` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -39,7 +39,7 @@ node tests/syntax.check.js             # 문법
 node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 
-# 3) 전체 회귀 — 44개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 45개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 ```
 
@@ -64,6 +64,7 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/nul
 | 설정 화면은 탭 구조, 키는 아코디언 1겹까지 | `settings-tabs`, `key-persist` |
 | AI 중계: 서버 키 없으면 기기 키 폴백, 한도 초과는 우회 금지 | `ai-relay` |
 | 서버 날짜별 백업은 성패를 기록하고 화면에 띄운다 — 실패를 삼키지 않는다 | `backup-visible` |
+| 아파트 오더 전/후 카드는 그 동/호 사진만 대상(파일명 매칭), 2장 이상일 때만 | `apt-ba` |
 
 ## 구조 지도 (함수명으로 찾아라 — 줄번호는 금방 낡는다)
 
@@ -115,9 +116,11 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-05)
 
-- 테스트 44개 파일 전부 통과. 앱 v179 배포.
+- 테스트 45개 파일 전부 통과. 앱 v180 배포.
 - v178: 미수금 알림·운영 큐에서 **[💰 수금 입력] 직행**(얼마·언제) — 이전에는
   독촉 문자만 가능해 돈을 받아도 알림이 안 꺼졌다. `recv-entry.e2e.js` 가 지킨다.
 - v179: 서버 날짜별 백업 성패를 백업 센터에 표시(`backup-visible.e2e.js`).
+- v180: 아파트 오더에서 시공 전/후 비교 카드 — 전에는 현장 배정 사진만 대상이라
+  관리사무소 일은 아예 못 만들었다(`apt-ba.e2e.js`).
 - 막힌 것은 전부 🅱 — 에이전트가 더 밀어붙일 수 있는 게 없다.
   대표 몫 인계는 manmool `CODEX-인수인계.md` 에 항목별로 정리돼 있다.
