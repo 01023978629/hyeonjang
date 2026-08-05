@@ -1636,14 +1636,26 @@ async function relaySaveNow(manual){
   }
   return ok;
 }
+/* 서버 날짜별 백업의 마지막 결과 — 화면(백업 센터)에서 읽으려고 전역에 둔다.
+   {d:'YYYY-MM-DD', ok:bool, msg:'실패 사유'} */
+let __relayBackupStat=null;
+function relayBackupStatSet(v){
+  __relayBackupStat=v;
+  try{idbSet('relay_backup_stat',v);}catch(e){}
+}
+async function relayBackupStatLoad(){
+  try{const v=await idbGet('relay_backup_stat');if(v)__relayBackupStat=v;}catch(e){}
+}
 async function relayDailyBackup(){
   try{
     const today=localDate();
     let last=null;try{last=await idbGet('relay_lastbackup');}catch(e){}
     if(last===today)return;   // 오늘 이미 백업함(하루 1회)
     const r=await cloudApiBackup();
-    if(r&&r.ok){try{await idbSet('relay_lastbackup',today);}catch(e){}}
-  }catch(e){}
+    if(r&&r.ok){try{await idbSet('relay_lastbackup',today);}catch(e){}relayBackupStatSet({d:today,ok:true,msg:''});}
+    // 실패를 삼키면 매일 조용히 실패해도 아무도 모른다 — 백업 0건이 몇 달 뒤에야 발견된다
+    else relayBackupStatSet({d:today,ok:false,msg:(r&&(r.message||r.error))||'서버 응답 없음'});
+  }catch(e){try{relayBackupStatSet({d:localDate(),ok:false,msg:String((e&&e.message)||e||'오류')});}catch(e2){}}
 }
 /* ── 안전판 가드: 이 기기에 자료가 있으면 스냅샷 '성공'을 확인한 뒤에만 덮어쓰는 적용을 진행 ── */
 async function relayGuardSnapshot(label){
@@ -1945,6 +1957,7 @@ async function relayBoot(){
     if(!__relay.device){const mob=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');__relay.device=(mob?'mobile-':'pc-')+Math.random().toString(36).slice(2,6);try{await idbSet('relay_device',__relay.device);}catch(e){}}
     __relay.rev=Number(await idbGet('relay_rev'))||0;
     __relay.syncAt=(await idbGet('relay_syncAt'))||'';
+    await relayBackupStatLoad();   // 백업 센터가 서버 백업 성패를 바로 읽을 수 있게
     // 전자계약 서버 연결도 이 기기(idb)에서만 복원 — 스키마(serialize/applyData)에는 넣지 않는 비밀
     __contract.url=(await idbGet('contract_url'))||CONTRACT_SERVER_DEFAULT;
     __contract.token=(await idbGet('contract_token'))||'';
@@ -17567,6 +17580,14 @@ function backupCenter(){
     '<button class="clay" id="bcNow" style="width:100%;padding:13px;font-size:14px;margin-bottom:8px">💾 지금 백업하기</button>'+
     (driveOn?'':'<button class="moss" id="bcDrive" style="width:100%;padding:12px;font-size:13px;margin-bottom:8px">☁️ 구글 드라이브 연결(폰 고장 대비)</button>')+
     '<button class="ghost" id="bcRestore" style="width:100%;padding:11px;font-size:13px;margin-bottom:14px">↺ 백업에서 복원</button>'+
+    // 서버 날짜별 백업 — 전에는 실패해도 아무 표시가 없어, 몇 달간 0건인 걸 아무도 몰랐다
+    (relayReady()?
+      (__relayBackupStat?
+        (__relayBackupStat.ok?
+          '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:#166534">✅ <b>서버 날짜별 백업</b> — 마지막 성공 '+escapeHtml(String(__relayBackupStat.d||''))+'</div>':
+          '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:#991b1b;line-height:1.6">⚠️ <b>서버 날짜별 백업 실패</b> ('+escapeHtml(String(__relayBackupStat.d||''))+')<br>사유: '+escapeHtml(String(__relayBackupStat.msg||''))+'<br>서버에 한 번도 저장한 적이 없으면 백업할 원본이 없어 실패합니다 — [☁️ 서버에 저장하기]를 먼저 하세요.</div>'):
+        '<div style="background:var(--paper-2);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:var(--muted)">서버 날짜별 백업 기록이 아직 없어요 — 서버에 저장이 한 번 성공하면 하루 1회 자동으로 남습니다.</div>')
+      :'')+
     // 안내
     '<div style="font-size:11.5px;color:var(--muted);background:#eff6ff;border-radius:10px;padding:11px;line-height:1.6">'+
       '💡 <b>왜 백업이 중요한가요?</b><br>이 앱의 데이터는 이 기기 안에만 있어요. 폰이 고장나거나 브라우저를 지우면 자료가 사라져요. '+(driveOn?'구글 드라이브에 연결돼 있어 자료를 저장할 때 자동으로 사본이 올라가요. 안심하세요!':'<b>구글 드라이브를 연결하면</b> 자료가 자동으로 클라우드에 백업돼서, 폰이 고장나도 살아있어요.')+
