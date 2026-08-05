@@ -759,7 +759,7 @@
    ╚══════════════════════════════════════════════════════════════════════╝
    구조: 헬퍼/COMPANY → 저장(serializeData/applyData ⇄ 폴더 _현장.json·드라이브·
         IndexedDB 스냅샷 'hj_snaps') → render()+view*() → setupDelegation(위임)
-        → AI(AI_TOOLS 42종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
+        → AI(AI_TOOLS 44종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
    ⚠ 위임 규약: 새 버튼은 ①click 셀렉터 문자열 ②click 체인 핸들러 — 반드시 둘 다.
         change 리스너에 click 핸들러를 두면 절대 안 탄다(과거 죽은 버튼 3건의 원인).
    ⚠ 새 state 필드는 serializeData·applyData 양쪽 등록. 일정(schedule)은 통짜라 자동.
@@ -5805,7 +5805,7 @@ window.__aiAuto = localStorage.getItem('hj_ai_auto')==='1';
 window.__aiHist = window.__aiHist || [];          // Gemini contents 원형(세션 동안 유지)
 window.__aiBusy = false;
 
-const AI_WRITE = new Set(['add_project','assign_photos','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor','send_settle_doc','delete_project','delete_schedule','add_note','send_receipt','batch_receive','add_expense','add_supplier','set_goal','add_worklog','set_budget','ai_quote']);
+const AI_WRITE = new Set(['add_project','assign_photos','set_phase','add_schedule','set_stage','set_received','create_quote_draft','auto_organize_photos','as_add','as_done','set_labor','send_settle_doc','delete_project','delete_schedule','add_note','send_receipt','batch_receive','add_expense','add_supplier','set_goal','add_worklog','set_budget','ai_quote','apt_order_add']);
 
 const AI_TOOLS = [
  {name:'get_overview',description:'앱 전체 현황(현장·견적·수금·미수금·오늘 일정·미배정 사진 수). 브리핑이나 현황 질문이면 먼저 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -5838,6 +5838,8 @@ const AI_TOOLS = [
  {name:'profit_analysis',description:'수익 분석: 현장 유형별 마진율·품목별 평균 단가·단가 전략 제안을 반환하고 화면을 엶. "마진/수익/어디가 남나/단가 전략" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'as_manage',description:'AS(하자보수) 전역 현황: 미처리 목록·전체 이력·무상 A/S(완료+1년) 만료 임박을 반환하고 관리 화면을 엶. "AS/하자/무상기간" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'as_add',description:'[변경] AS 접수 등록. project는 정확한 현장명, issue는 증상.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},issue:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD, 생략=오늘'}},required:['project','issue']}},
+ {name:'apt_orders',description:'아파트(관리사무소) 오더 조회 — 단지·상태별 목록과 청구 후 미입금 합계. "아파트 오더 보여줘/관리사무소 일감/단지 미수 얼마"면 호출.',parameters:{type:'OBJECT',properties:{complex:{type:'STRING',description:'단지 이름(부분 일치)'},status:{type:'STRING',description:'recv|visit|work|done|billed|paid'}}}},
+ {name:'apt_order_add',description:'[변경] 아파트 관리사무소 오더 접수. complex는 등록된 단지 이름(부분 일치 가능), unit은 동/호(예: 103동 1204호, 지하주차장), work는 작업 내용, amount는 원 단위 금액(모르면 생략=미정).',parameters:{type:'OBJECT',properties:{complex:{type:'STRING'},unit:{type:'STRING'},work:{type:'STRING'},amount:{type:'INTEGER'}},required:['complex','unit','work']}},
  {name:'as_done',description:'[변경] 미처리 AS를 완료 처리. keyword로 증상 일부를 지정(project로 좁힐 수 있음). 여러 건이 걸리면 후보를 반환하니 사용자에게 확인.',parameters:{type:'OBJECT',properties:{keyword:{type:'STRING'},project:{type:'STRING'}},required:['keyword']}},
  {name:'material_order',description:'자재 발주서: 견적 품목을 거래처별 주문 문자로 만드는 화면을 엶. project나 quote_title로 견적 지정 가능(생략=편집 중/최근 견적). "발주/자재 주문"이면 호출.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},quote_title:{type:'STRING'}}}},
  {name:'labor_ledger',description:'인건비 장부: 해당 월(기본 최근) 일정별 일당 기록 현황·현장별 합계·작업자별 추정 합계를 반환하고 화면을 엶. "인건비/일당/노무비" 관련이면 호출.',parameters:{type:'OBJECT',properties:{month:{type:'STRING',description:'YYYY-MM'}}}},
@@ -6245,6 +6247,37 @@ async function aiToolRun(name,a){
       state.asLog.push(it);markDirty();render();
       return {결과:'AS 접수됨',현장:pj,날짜:dt,증상:issue,미처리:asOpenList().length};
     }
+    case 'apt_orders':{
+      aptData();
+      const q=String(a.complex||'').trim().toLowerCase();
+      const off=q?state.aptOffices.filter(o=>o.complex.toLowerCase().includes(q)):state.aptOffices;
+      const ids=new Set(off.map(o=>o.id));
+      let list=state.aptOrders.filter(o=>ids.has(o.officeId));
+      if(a.status&&APT_STAT[a.status])list=list.filter(o=>o.status===a.status);
+      const unpaid=list.filter(o=>o.status==='billed').reduce((sm,o)=>sm+num(o.amount),0);
+      return {단지:off.map(o=>o.complex),건수:list.length,미입금원:unpaid,
+        목록:list.slice(0,20).map(o=>({단지:aptOfficeName(o.officeId),동호:o.unit,작업:o.text,금액:num(o.amount)||'미정',상태:(APT_STAT[o.status]||APT_STAT.recv)[0],접수:o.date,완료:o.doneAt||''}))};
+    }
+    case 'apt_order_add':{
+      aptData();
+      const cx=String(a.complex||'').trim();
+      // 부분 일치까지 받아준다 — 말로는 "신흥마을" 이라고만 하기 마련이다.
+      // 단 여러 단지에 걸리면 조용히 첫 번째를 고르지 않는다 — 남의 단지 장부에 실린다.
+      let off=state.aptOffices.find(o=>o.complex===cx);
+      if(!off){
+        const cand=state.aptOffices.filter(o=>cx&&(o.complex.includes(cx)||cx.includes(o.complex)));
+        if(cand.length>1)throw new Error('"'+cx+'" 에 해당하는 단지가 여러 곳입니다: '+cand.map(o=>o.complex).join(', ')+'. 정확한 이름으로 다시 말해 주세요.');
+        off=cand[0];
+      }
+      if(!off)throw new Error('단지 "'+cx+'" 이(가) 등록돼 있지 않습니다. 등록된 단지: '+(state.aptOffices.map(o=>o.complex).join(', ')||'(없음)')+'. 더보기 [🏢 아파트 오더]에서 단지를 먼저 등록하세요.');
+      const unit=String(a.unit||'').trim();if(!unit)throw new Error('동/호(unit)가 비었습니다. 공용부면 "지하주차장"처럼 적으세요.');
+      const work=String(a.work||'').trim();if(!work)throw new Error('작업 내용(work)이 비었습니다.');
+      const amt=num(a.amount);
+      if(amt<0)throw new Error('금액은 0 이상이어야 합니다. 조정·차감은 금액을 고치는 것으로 하세요.');
+      state.aptOrders.push({id:uid(),officeId:off.id,unit:unit,text:work,amount:amt,date:localDate(),status:'recv',doneAt:''});
+      markDirty();render();
+      return {결과:'오더 접수됨',단지:off.complex,동호:unit,작업:work,금액:amt||'미정'};
+    }
     case 'as_done':{
       const kw=String(a.keyword||'').trim().toLowerCase();
       let cand=asOpenList().filter(x=>String(x.text||'').toLowerCase().includes(kw)||String(x.project||'').toLowerCase().includes(kw));
@@ -6481,6 +6514,8 @@ function aiActionLabel(name,a){
     case 'profit_analysis':return '수익 분석';
     case 'as_manage':return 'AS 현황';
     case 'as_add':return 'AS 접수 "'+hjCut(a.issue||'',14)+'" → '+(a.project||'');
+    case 'apt_orders':return '아파트 오더 조회'+(a.complex?(' — '+a.complex):'');
+    case 'apt_order_add':return '아파트 오더 접수 "'+hjCut(a.work||'',14)+'" → '+(a.complex||'')+' '+(a.unit||'');
     case 'as_done':return 'AS 완료 처리 "'+(a.keyword||'')+'"';
     case 'material_order':return '자재 발주서'+(a.project?' ('+a.project+')':'');
     case 'labor_ledger':return '인건비 장부'+(a.month?' ('+a.month+')':'');
@@ -6645,6 +6680,8 @@ function aiResultBrief(name,out){
   if(name==='profit_analysis')return ' — 마진율 '+(out.마진율||0)+'%';
   if(name==='as_manage')return ' — 미처리 '+(out.미처리||0)+'건';
   if(name==='as_add')return ' — '+(out.현장||'');
+  if(name==='apt_order_add')return ' — '+(out.단지||'')+' '+(out.동호||'');
+  if(name==='apt_orders')return ' — '+(out.건수||0)+'건 · 미입금 '+won(num(out.미입금원));
   if(name==='as_done')return out.여러건?' — '+out.여러건.length+'건 일치':' — 남은 '+(out.남은미처리||0)+'건';
   if(name==='material_order')return out.품목?' — '+out.품목.length+'종':'';
   if(name==='labor_ledger')return ' — '+won(out.합계원||0);
@@ -9221,7 +9258,7 @@ const HJ_HELP=[
   {k:'오늘 자동 점검',d:'앱을 열면 미수금·오늘 일정·일지 미작성·미배정 사진·AS를 훑어 카드로 알려줍니다.',say:'오늘 뭐 챙겨야 해?'},
   {k:'아침 브리핑',d:'하루 한 번 앱을 처음 열면 🌅 브리핑이 자동으로 떠서 오늘 일정·미수금·챙길 일을 실행 버튼과 함께 보여줍니다. 대시보드 [🌅 브리핑]으로 다시 열 수 있어요.',say:'오늘 브리핑 보여줘'},
   {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료+1년) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
-  {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'아파트 오더 열어줘'},
+  {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'신흥마을 103동 1204호 실리콘 8만원 오더 접수해줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
