@@ -8510,6 +8510,18 @@ function asManage(){
 const APT_STAT={recv:['접수','#b45309'],visit:['방문예정','#0369a1'],work:['진행중','#7c3aed'],done:['완료','#0a7f43'],billed:['청구됨','#c2410c'],paid:['입금완료','var(--muted)']};
 function aptData(){state.aptOffices=state.aptOffices||[];state.aptOrders=state.aptOrders||[];return state;}
 function aptOfficeName(id){const o=(state.aptOffices||[]).find(x=>x.id===id);return o?o.complex:'(삭제된 단지)';}
+/* 오더 ↔ 사진 연결 — 사장님이 드라이브에 올리는 사진은 파일명에 동/호가 들어간다
+   (예: 신흥마을아파트_103동1204호_실리콘.jpg). 그 규칙을 그대로 검색어로 쓴다.
+   검색어는 공백을 뺀 동/호("103동1204호") — 파일명에 공백을 안 쓰는 관행과 맞춘다.
+   개수는 사진 탭이 실제로 쓰는 matchSearch 와 같은 판정으로 센다 —
+   배지가 3장이라는데 탭에서 0장이 보이면 기능을 못 믿게 된다. */
+function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
+function aptPhotoCount(o){
+  const q=aptPhotoQuery(o); if(!q)return 0;
+  const prev=state.search; state.search=q;
+  let n=0; try{ n=state.files.filter(f=>f.kind==='photo'&&matchSearch(f)).length; } finally{ state.search=prev; }
+  return n;
+}
 function aptOrderManage(filterOffice){
   aptData();
   const offices=state.aptOffices, orders=state.aptOrders.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -8539,6 +8551,7 @@ function aptOrderManage(filterOffice){
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · '+escapeHtml(o.unit||'')+'</b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
         '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(o.text||'')+(num(o.amount)?' — <b>'+won(num(o.amount))+'</b>':' — <span style="color:var(--muted)">금액 미정</span>')+'</div></div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
+          (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>':'';})()+
           '<select class="apoStat" data-id="'+escapeAttr(o.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(APT_STAT).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
           '<button class="ghost tiny apoDel" data-id="'+escapeAttr(o.id)+'" style="padding:6px 8px">✕</button>'+
         '</div></div></div>';
@@ -8596,6 +8609,14 @@ function aptOrderManage(filterOffice){
       }
     }
     markDirty();aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
+  });
+  root.querySelectorAll('.apoPh').forEach(b=>b.onclick=()=>{
+    const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
+    const q=aptPhotoQuery(o);
+    state.search=q;
+    const gi=document.getElementById('globalSearch'); if(gi)gi.value=q;   // 입력칸도 맞춰야 사용자가 지울 수 있다
+    closeModal(); state.tab='photos'; render();
+    toast('📸 '+(o.unit||'')+' 사진 — 검색어를 지우면 전체가 다시 보입니다');
   });
   root.querySelectorAll('.apoDel').forEach(b=>b.onclick=async()=>{
     if(!confirm('이 오더를 삭제할까요?\n관리사무소 정산 근거가 사라집니다.'))return;
