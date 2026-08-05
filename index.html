@@ -8585,8 +8585,8 @@ function aptOrderManage(filterOffice){
     const st=APT_STAT[o.status]||APT_STAT.recv;
     return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
-        '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · '+escapeHtml(o.unit||'')+'</b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
-        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(o.text||'')+' — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div></div>'+
+        '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
+        '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div></div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>':'';})()+
           '<select class="apoStat" data-id="'+escapeAttr(o.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(APT_STAT).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
@@ -8652,6 +8652,19 @@ function aptOrderManage(filterOffice){
      입금완료(paid)만 막는다 — 그 금액은 이미 수금 장부에 실렸으므로
      여기서 고치면 장부와 어긋난다. 청구됨(billed)은 고칠 수 있다 —
      관리사무소와 조정되면 정산서를 다시 뽑으면 된다. */
+  /* 동/호·작업내용 즉석 수정 — 금액(apoAmt)과 같은 규칙.
+     동/호 오타는 [📸] 사진 연결(파일명 검색)까지 어긋나게 하므로 고칠 길이 필요하다.
+     입금완료(paid)는 봉인 — 정산이 끝난 달의 기록을 바꾸면 재발행 근거가 흔들린다. */
+  const aptFieldEdit=(id,field,label)=>{
+    const o=state.aptOrders.find(x=>x.id===id); if(!o)return;
+    if(o.status==='paid'){toast('입금완료된 오더는 고칠 수 없습니다 — 정산이 끝난 기록입니다');return;}
+    const v=prompt(label+' — 비우거나 취소하면 그대로 둡니다.',o[field]||'');
+    if(v===null||String(v).trim()==='')return;
+    o[field]=String(v).trim();
+    markDirty();aptOrderManage(filterOffice);toast(label+' 수정됨');
+  };
+  root.querySelectorAll('.apoUnit').forEach(b=>b.onclick=()=>aptFieldEdit(b.dataset.id,'unit','동/호'));
+  root.querySelectorAll('.apoText').forEach(b=>b.onclick=()=>aptFieldEdit(b.dataset.id,'text','작업 내용'));
   root.querySelectorAll('.apoAmt').forEach(b=>b.onclick=()=>{
     const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
     if(o.status==='paid'){toast('입금완료된 오더의 금액은 고칠 수 없습니다 — 수금 장부에 이미 실렸습니다');return;}
