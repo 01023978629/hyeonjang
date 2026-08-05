@@ -8566,12 +8566,14 @@ function aptOfficeName(id){const o=(state.aptOffices||[]).find(x=>x.id===id);ret
    개수는 사진 탭이 실제로 쓰는 matchSearch 와 같은 판정으로 센다 —
    배지가 3장이라는데 탭에서 0장이 보이면 기능을 못 믿게 된다. */
 function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
-function aptPhotoCount(o){
-  const q=aptPhotoQuery(o); if(!q)return 0;
+// 이 오더(동/호)에 걸리는 사진 목록. 아파트 오더는 현장 배정이 아니라 파일명으로 잡는다.
+function aptPhotoList(o){
+  const q=aptPhotoQuery(o); if(!q)return [];
   const prev=state.search; state.search=q;
-  let n=0; try{ n=state.files.filter(f=>f.kind==='photo'&&matchSearch(f)).length; } finally{ state.search=prev; }
-  return n;
+  let list=[]; try{ list=state.files.filter(f=>f.kind==='photo'&&matchSearch(f)); } finally{ state.search=prev; }
+  return list;
 }
+function aptPhotoCount(o){return aptPhotoList(o).length;}
 function aptOrderManage(filterOffice){
   aptData();
   const offices=state.aptOffices, orders=state.aptOrders.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -8601,7 +8603,9 @@ function aptOrderManage(filterOffice){
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
         '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div></div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
-          (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>':'';})()+
+          (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>'+
+            // 전/후 카드는 원래 "현장에 배정된 사진"만 대상이라 아파트 오더는 아예 못 만들었다
+            (pn>=2?'<button class="ghost tiny apoBA" data-id="'+escapeAttr(o.id)+'" title="시공 전/후 비교 카드" style="padding:6px 8px">🖼</button>':''):'';})()+
           '<select class="apoStat" data-id="'+escapeAttr(o.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(APT_STAT).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
           '<button class="ghost tiny apoDel" data-id="'+escapeAttr(o.id)+'" style="padding:6px 8px">✕</button>'+
         '</div></div></div>';
@@ -8696,6 +8700,12 @@ function aptOrderManage(filterOffice){
     const gi=document.getElementById('globalSearch'); if(gi)gi.value=q;   // 입력칸도 맞춰야 사용자가 지울 수 있다
     closeModal(); state.tab='photos'; render();
     toast('📸 '+(o.unit||'')+' 사진 — 검색어를 지우면 전체가 다시 보입니다');
+  });
+  root.querySelectorAll('.apoBA').forEach(b=>b.onclick=()=>{
+    const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
+    const ph=aptPhotoList(o);
+    if(ph.length<2){toast('전/후 카드는 사진이 2장 이상 있어야 해요');return;}
+    baPickView(aptOfficeName(o.officeId)+' '+(o.unit||''),ph,()=>aptOrderManage(filterOffice));
   });
   root.querySelectorAll('.apoDel').forEach(b=>b.onclick=async()=>{
     if(!confirm('이 오더를 삭제할까요?\n관리사무소 정산 근거가 사라집니다.'))return;
@@ -18001,8 +18011,10 @@ function baCompareView(){
   document.querySelectorAll('.baProj').forEach(function(b){b.onclick=function(){baPickView(b.dataset.n);};});
   return {사진있는현장:projs.length};
 }
-function baPickView(proj){
-  const photos=(state.files||[]).filter(function(f){return f.kind==='photo'&&f.project===proj;});
+// photos 를 넘기면 그 목록으로 고른다(아파트 오더처럼 현장 배정이 아닌 사진).
+// back 은 [‹ 뒤로]가 돌아갈 곳 — 없으면 현장 목록.
+function baPickView(proj,photos,back){
+  photos=photos||(state.files||[]).filter(function(f){return f.kind==='photo'&&f.project===proj;});
   window.__baPick={proj:proj,before:null,after:null};
   const grid=photos.map(function(f,i){
     const src=f.thumb||'';
@@ -18012,7 +18024,7 @@ function baPickView(proj){
     '<div style="font-size:12px;color:var(--muted);margin-bottom:9px">사진을 <b>두 번</b> 고르세요 — 첫 번째가 <b style="color:#b45309">시공 전</b>, 두 번째가 <b style="color:#0a7f43">시공 후</b>. (다시 누르면 해제)</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-height:330px;overflow:auto">'+grid+'</div>'+
     '<button class="clay" id="baMake" style="width:100%;padding:13px;font-size:14px;margin-top:12px" disabled>🖼 비교 카드 만들기</button>',
-    [{label:'‹ 현장',cls:'ghost',fn:baCompareView},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    [{label:'‹ 뒤로',cls:'ghost',fn:(typeof back==='function'?back:baCompareView)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const upd=function(){
     const s=window.__baPick;
     document.querySelectorAll('.baPh').forEach(function(el){
