@@ -545,7 +545,7 @@
   .margin-card{border:1.5px solid var(--line);border-radius:12px;padding:16px;background:var(--paper-2);max-width:420px}
   .mc-row{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px solid var(--line-soft)}
   .mc-row.total{border-bottom:none;border-top:2px solid var(--line);margin-top:4px;padding-top:11px;font-size:15px;font-weight:700}
-  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:60;max-width:90vw;pointer-events:none}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:80;max-width:90vw;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .hint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:4px 0 16px}
@@ -14229,7 +14229,8 @@ function briefExtraItems(){
   try{
     if(typeof dueAgingData==='function'){
       const ag=dueAgingData().filter(function(r){return r.days>=60;});
-      if(ag.length){items.push({ic:'⏳',t:'오래된 미수금 '+ag.length+'곳',sub:ag[0].name+' '+ag[0].days+'일째 '+hjMan(ag[0].due)+' — 독촉 필요',action:'dueaging'});}
+      // recv: 알림에서 바로 수금 입력(얼마·언제)으로 갈 현장 — 없으면 독촉만 남고 알림이 영영 안 꺼진다
+      if(ag.length){items.push({ic:'⏳',t:'오래된 미수금 '+ag.length+'곳',sub:ag[0].name+' '+ag[0].days+'일째 '+hjMan(ag[0].due)+' — 독촉 또는 수금 입력',action:'dueaging',recv:ag[0].name});}
     }
   }catch(e){}
   try{
@@ -14259,10 +14260,13 @@ function alertCenter(){
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">'+localDate()+'</div><div style="font-size:18px;font-weight:800">🔔 오늘의 알림</div><div style="font-size:12px;opacity:.9;margin-top:2px">'+(all.length?all.length+'건 챙길 일이 있어요':'급한 일은 없습니다 👍')+'</div></div>'+
     (all.length?all.map(u=>{
       const act=u.action||'';
-      return '<div class="alertItem" data-act="'+act+'" style="display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;cursor:'+(act?'pointer':'default')+'"><span style="font-size:22px">'+u.ic+'</span><span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(u.t)+'</b>'+(u.sub?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(u.sub)+'</span>':'')+'</span>'+(act?'<span style="font-size:16px;color:var(--muted)">›</span>':'')+'</div>';
+      return '<div class="alertItem" data-act="'+act+'" style="display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;cursor:'+(act?'pointer':'default')+'"><span style="font-size:22px">'+u.ic+'</span><span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(u.t)+'</b>'+(u.sub?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(u.sub)+'</span>':'')+'</span>'+(u.recv?'<button class="alertRecv clay tiny" data-p="'+escapeAttr(u.recv)+'" aria-label="'+escapeAttr(u.recv)+' 수금 입력" style="min-height:44px;padding:7px 10px;white-space:nowrap">💰 '+escapeHtml(hjCut(u.recv,6))+' 수금</button>':'')+(act?'<span style="font-size:16px;color:var(--muted)">›</span>':'')+'</div>';
     }).join(''):'<div style="text-align:center;color:var(--muted);padding:24px;font-size:13.5px">🎉 오늘은 특별히 챙길 일이 없어요.<br>여유로운 하루 되세요!</div>')+
     '<button class="clay" id="alertAsk" style="width:100%;padding:12px;margin-top:8px">🤖 AI에게 오늘 브리핑 받기</button>';
   openModal('🔔 알림 센터',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('.alertRecv').forEach(b=>{b.onclick=e=>{
+    e.stopPropagation();try{recvQuickView(b.dataset.p,()=>alertCenter());}catch(e2){}
+  };});
   document.querySelectorAll('.alertItem').forEach(el=>{
     const act=el.dataset.act;if(!act)return;
     el.onclick=()=>{closeModal();try{
@@ -15893,7 +15897,9 @@ async function aiExecuteTask(id){
       else{result='실행 함수 없음: '+a.fn;okDone=false;}
     }else if(a.kind==='open'){
       const fn=window[a.fn];
-      if(typeof fn==='function'){fn();result='화면 열림';}else{result='화면 함수 없음: '+a.fn;okDone=false;}
+      // a.arg 를 빠뜨리면 recvQuickView(undefined) 처럼 아무 화면도 못 열면서
+      // '화면 열림'으로 성공 처리돼 작업이 큐에서 조용히 사라진다(sms 분기는 원래 넘기고 있었다)
+      if(typeof fn==='function'){fn(a.arg);result='화면 열림';}else{result='화면 함수 없음: '+a.fn;okDone=false;}
     }else if(a.kind==='tool'){
       const tool=t.suggestedTool||a.tool;const args=t.suggestedArgs||a.args||{};
       const r=await aiToolRun(tool,args);result=(r&&(r.결과||r.요약))||'도구 실행 완료';if(r&&r.오류){result=r.오류;okDone=false;}
@@ -16089,6 +16095,18 @@ function aiOpsRelTime(iso,future){
   }catch(e){return '';}
 }
 const AI_PRI_LABEL={urgent:'🔴 긴급',high:'🟠 높음',normal:'🟡 보통',low:'⚪ 낮음'};
+/* 수금 작업이면 그 현장명 — 독촉만 있고 "받았다"를 넣을 곳이 없어 알림이 안 꺼지던 문제.
+   현장이 실재하고 아직 미수가 남아 있을 때만(다 받은 건에 입금 버튼을 띄우면 이중 입력을 부른다). */
+function opsRecvTarget(t){
+  try{
+    if(!t||!t.project)return '';
+    // 카테고리는 코드 곳곳에서 '수금'과 '미수금' 두 가지로 쓰인다 — 한쪽만 보면 조용히 버튼이 사라진다
+    if(!(/^(수금|미수금)$/.test(t.category||'')||/receivable|aging|recvcheck/.test(t.type||'')))return '';
+    const p=(state.projects||[]).find(function(x){return x.name===t.project;});
+    if(!p)return '';
+    return (projStats(t.project).due||0)>0?t.project:'';
+  }catch(e){return '';}
+}
 function aiOpsCenter(){
   const o=aiOpsEnsureState();const sum=aiQueueSummary();const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
   const typeIcon=t=>({receivable:'💰',brief_today:'📅',brief_tmr:'📅',conflict:'⚡',worklog:'📝',photo_sort:'📸',quote_followup:'⏰',budget:'💸',loss:'📉',warranty:'🛡',review:'🗣',stale:'💤',weekly_report:'📊',monthly_report:'🏆',month_receivable:'💰'})[t]||'📌';
@@ -16097,14 +16115,17 @@ function aiOpsCenter(){
   const failed=o.queue.filter(t=>t.status==='failed');
   const queueRow=(t)=>{
     const canRun=!t.requiresApproval||t.status==='approved';
+    const rcv=opsRecvTarget(t);
+    // 옆의 [▶ 실행]이 독촉 문자 작성창을 여는 자리다 — 오탭하면 이미 낸 고객에게 독촉이 간다. gap 을 벌린다
+    const rcvBtn=rcv?'<button class="opRecv moss tiny" data-p="'+escapeAttr(rcv)+'" style="min-height:44px;padding:6px 11px;margin-right:6px;white-space:nowrap">💰 수금 입력</button>':'';
     return '<div style="padding:11px;border:1px solid '+(t.status==='failed'?'#fca5a5':t.status==='approved'?'#86efac':t.stale?'#fcd34d':'var(--line-soft)')+';border-radius:11px;margin-bottom:7px;background:'+(t.status==='failed'?'#fff5f5':t.status==='approved'?'#f0fdf4':'var(--paper)')+'">'+
       '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span style="font-size:16px">'+typeIcon(t.type)+'</span><b style="font-size:12.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b><span style="font-size:9.5px;white-space:nowrap">'+(AI_PRI_LABEL[t.priority]||'')+'</span></div>'+
       '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+escapeHtml(t.reason||'')+(t.stale?' <span style="color:#b45309">· 오래된 대기</span>':'')+(t.requiresApproval?' <span style="color:#c2410c">· 승인필요</span>':'')+'</div>'+
       (t.status==='failed'?
-        '<div style="display:flex;gap:6px"><button class="opRetry clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">↻ 재시도</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 10px">삭제</button></div>':
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+rcvBtn+'<button class="opRetry clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">↻ 재시도</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 10px">삭제</button></div>':
       t.status==='approved'?
-        '<div style="display:flex;gap:6px"><button class="opRun clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">▶ 실행</button><button class="opLater ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">나중에</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">무시</button></div>':
-        '<div style="display:flex;gap:6px">'+(t.requiresApproval?'<button class="opApp clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">✓ 승인</button>':'<button class="opRun clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">▶ 실행</button>')+'<button class="opLater ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">나중에</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">무시</button></div>')+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+rcvBtn+'<button class="opRun clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">▶ 실행</button><button class="opLater ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">나중에</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">무시</button></div>':
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+rcvBtn+(t.requiresApproval?'<button class="opApp clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">✓ 승인</button>':'<button class="opRun clay tiny" data-id="'+t.id+'" style="flex:1;padding:6px">▶ 실행</button>')+'<button class="opLater ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">나중에</button><button class="opDis ghost tiny" data-id="'+t.id+'" style="padding:6px 8px">무시</button></div>')+
     '</div>';
   };
   const logRows=o.log.slice(0,6).map(l=>{
@@ -16156,6 +16177,7 @@ function aiOpsCenter(){
   document.querySelectorAll('.opLater').forEach(b=>b.onclick=()=>{aiQueuePostpone(b.dataset.id);rebind();});
   document.querySelectorAll('.opRetry').forEach(b=>b.onclick=()=>{aiQueueRetry(b.dataset.id);rebind();});
   document.querySelectorAll('.opRun').forEach(b=>b.onclick=async()=>{const r=await aiExecuteTask(b.dataset.id);toast(r.완료?'▶ '+(r.결과||'실행'):(r.오류||'실행 실패'));rebind();});
+  document.querySelectorAll('.opRecv').forEach(b=>b.onclick=()=>{try{recvQuickView(b.dataset.p,()=>aiOpsCenter());}catch(e){}});
   return {큐:o.queue.length,대기:sum.pending,긴급:sum.urgent,로그:o.log.length};
 }
 // 승인 대기열 전체(카테고리 필터)
@@ -16168,17 +16190,19 @@ function aiOpsQueueView(filter){
   const __cap=60, shown=list.slice(0,__cap), __more=list.length-shown.length;
   // (아래 rows 배열 끝에 잘림 안내를 push)
   // 실제 push는 rows 정의 직후
-  const rows=shown.map(t=>'<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:'+(t.status==='approved'?'#f0fdf4':t.status==='failed'?'#fff5f5':'var(--paper)')+'">'+
+  // _rt 를 한 번만 구한다 — opsRecvTarget 은 projStats(전 파일·지출 스캔)를 부르므로 행마다 두 번 부르면 최대 120회가 된다
+  const rows=shown.map(t=>{const _rt=opsRecvTarget(t);return '<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:'+(t.status==='approved'?'#f0fdf4':t.status==='failed'?'#fff5f5':'var(--paper)')+'">'+
     '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px"><span>'+typeIcon(t.type)+'</span><b style="font-size:12.5px;flex:1">'+escapeHtml(t.title)+'</b><span style="font-size:9.5px">'+(AI_PRI_LABEL[t.priority]||'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:3px">'+escapeHtml(t.reason||'')+'</div>'+
     '<div style="font-size:10px;color:var(--muted);margin-bottom:6px">상태: '+t.status+(t.suggestedTool?' · 도구: '+escapeHtml(t.suggestedTool):t.action?' · '+t.action.kind:'')+(t.stale?' · 오래된 대기':'')+'</div>'+
     '<div style="display:flex;gap:5px;flex-wrap:wrap">'+
+      (_rt?'<button class="qvRecv moss tiny" data-p="'+escapeAttr(_rt)+'" style="min-height:44px;padding:5px 11px;margin-right:6px">💰 수금 입력</button>':'')+
       (t.status==='failed'?'<button class="qvRetry clay tiny" data-id="'+t.id+'" style="padding:5px 10px">↻ 재시도</button>':
        (!t.requiresApproval||t.status==='approved')?'<button class="qvRun clay tiny" data-id="'+t.id+'" style="padding:5px 10px">▶ 실행</button>':'<button class="qvApp clay tiny" data-id="'+t.id+'" style="padding:5px 10px">✓ 승인</button>')+
       '<button class="qvLater ghost tiny" data-id="'+t.id+'" style="padding:5px 10px">나중에</button>'+
       '<button class="qvDis ghost tiny" data-id="'+t.id+'" style="padding:5px 10px">무시</button>'+
       '<button class="qvAsk ghost tiny" data-id="'+t.id+'" style="padding:5px 10px">💬 설명</button>'+
-    '</div></div>').join('')||'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">해당 작업이 없어요.</div>';
+    '</div></div>';}).join('')||'<div style="text-align:center;color:var(--muted);padding:20px;font-size:12.5px">해당 작업이 없어요.</div>';
   const body='<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:13px 16px;color:#fff"><div style="font-size:16px;font-weight:800">📋 승인 대기열</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+list.length+'건</div></div>'+
     '<div style="margin-bottom:10px">'+chips+'</div>'+rows+(__more>0?'<div class="hint" style="text-align:center;padding:8px">…외 '+__more+'건 표시 생략(우선순위 낮음·완료분)</div>':'');
   openModal('📋 승인 대기열',body,[{label:'‹ 운영 센터',cls:'ghost',fn:()=>aiOpsCenter()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -16188,6 +16212,7 @@ function aiOpsQueueView(filter){
   document.querySelectorAll('.qvLater').forEach(b=>b.onclick=()=>{aiQueuePostpone(b.dataset.id);aiOpsQueueView(filter);});
   document.querySelectorAll('.qvRetry').forEach(b=>b.onclick=()=>{aiQueueRetry(b.dataset.id);aiOpsQueueView(filter);});
   document.querySelectorAll('.qvRun').forEach(b=>b.onclick=async()=>{const r=await aiExecuteTask(b.dataset.id);toast(r.완료?'▶ '+(r.결과||'실행'):(r.오류||'실패'));aiOpsQueueView(filter);});
+  document.querySelectorAll('.qvRecv').forEach(b=>b.onclick=()=>{try{recvQuickView(b.dataset.p,()=>aiOpsQueueView(filter));}catch(e){}});
   document.querySelectorAll('.qvAsk').forEach(b=>b.onclick=()=>{const t=o.queue.find(x=>x.id===b.dataset.id);if(t){closeModal();try{aiAgent('운영 큐에 있는 "'+t.title+'" 작업이 왜 필요한지, 어떻게 처리하면 좋은지 알려줘',false);}catch(e){}}});
   return {대기열:list.length};
 }
@@ -19107,24 +19132,36 @@ function estFinalApply(){
 /* ═══════════════════════════════════════════════════════════════
    v92 💰 수금 원터치 + 🧾 부가세 패키지(세무사 xlsx·경비 반영)
 ═══════════════════════════════════════════════════════════════ */
-function recvQuickView(pjName){
+// back: 이 화면을 연 목록으로 돌아가는 콜백(알림 센터·운영 센터·대기열).
+// 없으면 저장 후 대시보드로 튕겨 "알람이 꺼졌는지" 그 자리에서 확인할 수 없다.
+function recvQuickView(pjName,back){
   const p=state.projects.find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
   const st=projStats(pjName);
   const due=Math.max(0,st.due||0);
   const today=localDate();
+  // 이미 넣은 수금(얼마·언제)을 같은 화면에서 보여준다 — 안 보이면 같은 입금을 또 넣게 된다
+  const paid=(state.payLog||[]).filter(function(x){return x&&x.project===pjName;}).slice().sort(function(a,b){return a.d<b.d?1:-1;});
+  const hist=paid.length?
+    '<div style="margin-top:12px;border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;background:var(--paper-2)">'+
+      '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">📥 이미 기록된 수금 '+paid.length+'건 · 합계 <b>'+won(paid.reduce(function(a,x){return a+Math.round(num(x.amt));},0))+'</b></div>'+
+      paid.slice(0,6).map(function(x){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span style="color:var(--muted)">'+escapeHtml(String(x.d||''))+'</span><b>'+won(Math.round(num(x.amt)))+'</b></div>';}).join('')+
+      (paid.length>6?'<div style="font-size:10.5px;color:var(--muted);padding-top:3px">…외 '+(paid.length-6)+'건</div>':'')+
+    '</div>':
+    '<div style="margin-top:12px;font-size:11.5px;color:var(--muted);text-align:center;padding:8px">기록된 수금이 아직 없어요.</div>';
   const body=
     '<div style="font-size:13px;line-height:1.7">'+
     '<div style="display:flex;justify-content:space-between;background:var(--paper-2);border-radius:11px;padding:11px 13px;margin-bottom:11px">'+
-      '<span>현재 미수</span><b style="color:'+(due>0?'var(--warn)':'var(--ok)')+'">'+won(due)+'원</b></div>'+
-    '<label style="font-size:11.5px;color:var(--muted)">입금액</label>'+
+      '<span>현재 미수</span><b style="color:'+(due>0?'var(--warn)':'var(--ok)')+'">'+won(due)+'</b></div>'+
+    '<label for="rqAmt" style="font-size:11.5px;color:var(--muted)">입금액</label>'+
     '<input id="rqAmt" type="text" inputmode="numeric" value="'+(due?due.toLocaleString('ko-KR'):'')+'" style="width:100%;padding:12px;font-size:16px;font-weight:800;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">'+
-    '<label style="font-size:11.5px;color:var(--muted)">입금일</label>'+
-    '<input id="rqDate" type="date" value="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px">'+
+    '<label for="rqDate" style="font-size:11.5px;color:var(--muted)">입금일 (오늘까지)</label>'+
+    '<input id="rqDate" type="date" value="'+today+'" max="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px">'+
     '<div style="display:flex;gap:6px;margin-top:4px">'+
       '<button class="ghost tiny" id="rqHalf" style="flex:1;padding:9px">절반</button>'+
       '<button class="ghost tiny" id="rqFull" style="flex:1;padding:9px">전액 '+hjMan(due)+'</button>'+
     '</div>'+
+    hist+
     (recvUnknown(p)?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:10px 12px;margin-top:10px;font-size:11.5px;color:#92400e;line-height:1.6">⚠️ 이 현장은 <b>수금 기록이 한 번도 없어</b> 매출 전액이 미수금으로 잡혀 있어요. 받으신 게 있으면 위에 기록하고, 정말 못 받으셨으면 아래를 눌러주세요.<br><button class="ghost tiny" id="rqNone" style="margin-top:7px;padding:8px 11px">받은 게 없어요 (미수 확정)</button></div>':'')+
     '</div>';
   openModal('💰 입금 기록 — '+pjName,body,[
@@ -19132,25 +19169,39 @@ function recvQuickView(pjName){
       const amt=won2num(document.getElementById('rqAmt').value||'');
       const d=document.getElementById('rqDate').value||today;
       if(!amt||amt<=0){toast('입금액을 입력하세요');return;}
+      // 아직 오지 않은 돈을 받은 것으로 적으면 이번 주 수금·매출이 부풀려진다
+      if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
       p.received=(p.received||0)+amt;
       state.payLog=state.payLog||[];
       state.payLog.push({d:d,project:pjName,amt:amt});
       if(state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);   // serializeData 캡과 동일
-      // 승인함의 이 현장 미수금류 대기 작업은 자동 완료 처리
+      // 승인함의 이 현장 미수금류 작업 정리 — **다 받았을 때만** 닫는다.
+      // 일부만 들어왔는데 닫아 버리면 남은 돈을 알려 줄 사람이 없어진다.
+      const restDue=Math.max(0,due-amt);
       try{
         const o=aiOpsEnsureState();const now=new Date().toISOString();
+        // 현장 매칭은 t.project 우선 — title 부분일치만 쓰면 "래미안" 입금이 "래미안2차" 작업까지 닫는다
+        const mine=function(t){return t.project?t.project===pjName:String(t.title||'').includes(pjName);};
         (o.queue||[]).forEach(function(t){
-          if((t.status==='pending'||t.status==='approved')&&/미수금|입금\s*확인|독촉/.test(t.title||'')&&String(t.title).includes(pjName)){
-            t.status='done';t.reason='(자동) '+d+' '+won(amt)+'원 입금 기록됨';t.updatedAt=now;
+          if((t.status==='pending'||t.status==='approved')&&/미수금|입금\s*확인|독촉/.test(t.title||'')&&mine(t)){
+            if(restDue<=0){t.status='done';t.reason='(자동) '+d+' '+won(amt)+' 입금 — 완납';}
+            else{t.reason='(자동) '+d+' '+won(amt)+' 입금 — 남은 미수 '+won(restDue);}
+            t.updatedAt=now;
           }
         });
+        // 완납 처리한 작업은 **큐에서 뺀다**(aiExecuteTask·aiQueueDismiss 와 같은 방식).
+        // 남겨 두면 목록에 계속 보여 "알람이 안 꺼진다"가 되고, [승인]→[실행] 로 이미
+        // 다 낸 고객에게 독촉 문자 작성창이 열린다.
+        o.queue=(o.queue||[]).filter(function(t){return t.status!=='done';});
       }catch(e){}
       markDirty();closeModal();render();
       try{portalAutoSync(pjName);}catch(e){}
       const left=Math.max(0,due-amt);
-      toast('💰 '+won(amt)+'원 입금 기록'+(left>0?' · 남은 미수 '+won(left)+'원':' · 완납 🎉'));
+      toast('💰 '+won(amt)+' 입금 기록'+(left>0?' · 남은 미수 '+won(left):' · 완납 🎉'));
+      if(typeof back==='function'){try{back();}catch(e){}}
     }},
-    {label:'취소',cls:'ghost',fn:closeModal}],true);
+    (typeof back==='function'?{label:'‹ 뒤로',cls:'ghost',fn:function(){back();}}:null),
+    {label:'취소',cls:'ghost',fn:closeModal}].filter(Boolean),true);
   const _none=document.getElementById('rqNone');
   if(_none)_none.onclick=function(){p.recvChecked=true;markDirty();closeModal();render();toast('미수 확정 — 이제 독촉 문자 작업이 만들어집니다');};
   const set=function(v){document.getElementById('rqAmt').value=v?v.toLocaleString('ko-KR'):'';};

@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v176-aptai` 형태)이 곧 버전이다.
+현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v178-recventry` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -39,7 +39,7 @@ node tests/syntax.check.js             # 문법
 node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 
-# 3) 전체 회귀 — 41개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 43개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 ```
 
@@ -60,6 +60,7 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/nul
 | AI 도구 추가는 5곳(AI_TOOLS·aiToolRun·aiActionLabel·aiResultBrief·AI_WRITE) | `apt-ai` + ai-automation-auditor 감사 |
 | 쓰기 도구는 AI_WRITE(승인 게이트), SAFE_AUTO 확대는 대표 승인 | `apt-ai` |
 | 아파트 오더: 통계·정산은 완료월(doneAt) 기준, 입금완료 금액 수정 금지, 입금은 정산서에서만(payLog 1회) | `apt-orders`, `apt-stats`, `apt-amount` |
+| 수금 입력은 미수 알림에서 한 번에 닿는다(얼마·언제), 미래 입금일 금지, 일부 입금은 독촉을 닫지 않는다 | `recv-entry` |
 | 설정 화면은 탭 구조, 키는 아코디언 1겹까지 | `settings-tabs`, `key-persist` |
 | AI 중계: 서버 키 없으면 기기 키 폴백, 한도 초과는 우회 금지 | `ai-relay` |
 
@@ -79,10 +80,38 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/nul
 같은 파일은 쓰기 에이전트 1명만(single-writer), 쓰기 전에 관련 리뷰어 근거 확보,
 PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
+## 작업 분류 — 누가 할 수 있는 일인가 (2026-08-05)
+
+에이전트(Claude·Codex)가 "못 하는 일"은 **전부 코덱스로 넘길 수 있는 게 아니다.**
+대부분은 사람 손이 필요하고, 코덱스에 맡겨 두면 영영 안 끝난다. 세 칸으로 나눈다.
+
+### 🅰 에이전트가 한다 (Claude·Codex 아무나 — 저장소 안에서 끝나는 일)
+
+코드·테스트·문서. 위 절차(테스트 → 변이 검증 → sw 버전)만 지키면 된다.
+남은 후보: 실환경 체크리스트 문서 갱신, 데모 데이터에 아파트 오더 표본 추가,
+`relayDailyBackup` 이 한 번도 안 돈 원인 추적(백업 파일 0건 — 중계 설정이 없어서인지
+코드 문제인지 아직 구분 안 됨. **원인을 밝히기 전까지 "백업 정상"이라고 쓰지 마라.**)
+
+### 🅱 사장님만 할 수 있다 (브라우저·본인 계정·결제 — 에이전트는 대신 못 누른다)
+
+코덱스로 분류하면 **안 된다.** 코덱스도 똑같이 못 한다.
+
+| 일 | 어디서 | 지금 상태 |
+|---|---|---|
+| Gemini API 키 발급 | `aistudio.google.com/api-keys`, 프로젝트 `Manmool Gemini No Billing` | **막힘** — "The request is suspicious" 재시도 필요 |
+| 전자계약 Apps Script 배포 | 본인 구글 계정 | 대기 (manmool `apps-script-contract/SETUP.md`) |
+| 배포 후 앱 ⚙️설정 자가진단 | 앱 | 위가 끝나야 가능 |
+| 네이버·구글 소유확인 코드 | 서치어드바이저·서치콘솔 | manmool `index.html` 11~14행이 주석 처리된 자리표시자 |
+| Threads 토큰 재발급 | Meta | 2026-06-19 만료 |
+| 실제 문자·알림톡 발송 승인 | — | 계속 OFF 가 정상 |
+
+### 🅲 사장님이 자료를 줘야 에이전트가 한다
+
+실제 고객 후기(지어내기 금지), 현장 사진, 아파트 단지·관리사무소 정보.
+
 ## 지금 상태와 남은 일 (2026-08-05)
 
-- 열린 PR 0. 테스트 41개 파일 전부 통과. 앱 v176 배포됨.
-- **사장님 대기**: Gemini 새 프로젝트 키 발급 → 전자계약 서버 설치(manmool
-  `apps-script-contract/SETUP.md`) → 앱 ⚙️설정에서 자가진단.
-- 코덱스 후보 작업(승인 후): 오더의 동/호·작업내용 즉석 수정(금액은 이미 됨),
-  실환경 체크리스트 문서 갱신, 데모 데이터에 아파트 오더 표본 추가.
+- 테스트 43개 파일 전부 통과. 앱 v178 배포.
+- v178: 미수금 알림·운영 큐에서 **[💰 수금 입력] 직행**(얼마·언제) — 이전에는
+  독촉 문자만 가능해 돈을 받아도 알림이 안 꺼졌다. `recv-entry.e2e.js` 가 지킨다.
+- 막힌 것은 전부 🅱 — 에이전트가 더 밀어붙일 수 있는 게 없다.
