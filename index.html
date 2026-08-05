@@ -8549,7 +8549,7 @@ function aptOrderManage(filterOffice){
     return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · '+escapeHtml(o.unit||'')+'</b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
-        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(o.text||'')+(num(o.amount)?' — <b>'+won(num(o.amount))+'</b>':' — <span style="color:var(--muted)">금액 미정</span>')+'</div></div>'+
+        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(o.text||'')+' — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div></div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>':'';})()+
           '<select class="apoStat" data-id="'+escapeAttr(o.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(APT_STAT).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
@@ -8609,6 +8609,22 @@ function aptOrderManage(filterOffice){
       }
     }
     markDirty();aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
+  });
+  /* 금액 고치기 — 정산서가 "목록에서 금액을 채우세요" 라고 안내하는데
+     정작 목록에 고칠 길이 없었다. 할 수 없는 일을 하라고 시키고 있었던 것.
+     입금완료(paid)만 막는다 — 그 금액은 이미 수금 장부에 실렸으므로
+     여기서 고치면 장부와 어긋난다. 청구됨(billed)은 고칠 수 있다 —
+     관리사무소와 조정되면 정산서를 다시 뽑으면 된다. */
+  root.querySelectorAll('.apoAmt').forEach(b=>b.onclick=()=>{
+    const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
+    if(o.status==='paid'){toast('입금완료된 오더의 금액은 고칠 수 없습니다 — 수금 장부에 이미 실렸습니다');return;}
+    const v=prompt('금액(원) — 비우거나 취소하면 그대로 둡니다.',num(o.amount)||'');
+    if(v===null)return;
+    const nv=num(String(v).replace(/[^\d]/g,''));
+    if(String(v).trim()!==''&&!/\d/.test(String(v))){toast('숫자로 입력하세요 (예: 80000)');return;}
+    if(String(v).trim()==='')return;   // 빈 값은 '안 바꿈' — 키 저장과 같은 규칙
+    o.amount=nv;
+    markDirty();aptOrderManage(filterOffice);toast(nv?('금액 '+won(nv)):'금액을 미정으로 두었습니다');
   });
   root.querySelectorAll('.apoPh').forEach(b=>b.onclick=()=>{
     const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
