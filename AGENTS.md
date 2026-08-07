@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v182-clreqlink` 형태)이 곧 버전이다.
+현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v183-settleall` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -39,7 +39,7 @@ node tests/syntax.check.js             # 문법
 node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 
-# 3) 전체 회귀 — 47개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 48개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 ```
 
@@ -67,6 +67,7 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/nul
 | 아파트 오더 전/후 카드는 그 동/호 사진만 대상(파일명 매칭), 2장 이상일 때만 | `apt-ba` |
 | 클로드 요청은 승인해야 적용, 같은 id 두 번 적용 금지, 모르는 도구 실행 금지 | `claude-inbox` |
 | 링크는 `#hjreq=`(쿼리 금지 — 로그·SW캐시 누수), 승인 전 안전판, 삭제·발송·반출 도구 차단 | `claude-link` |
+| 수금은 **누적**이지 덮어쓰기가 아니다 — 일괄 완납도 현장마다 payLog 1건 | `due-settle-all` |
 
 ## 구조 지도 (함수명으로 찾아라 — 줄번호는 금방 낡는다)
 
@@ -118,7 +119,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-05)
 
-- 테스트 47개 파일 전부 통과. 앱 v182 배포.
+- 테스트 48개 파일 전부 통과. 앱 v183 배포.
 - v178: 미수금 알림·운영 큐에서 **[💰 수금 입력] 직행**(얼마·언제) — 이전에는
   독촉 문자만 가능해 돈을 받아도 알림이 안 꺼졌다. `recv-entry.e2e.js` 가 지킨다.
 - v179: 서버 날짜별 백업 성패를 백업 센터에 표시(`backup-visible.e2e.js`).
@@ -139,5 +140,9 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
   `CLAUDE_REQ_DENY` 는 삭제·고객 발송뿐 아니라 **PII 반출(`export_ledger`)·
   덮어쓰기(`set_received`)·설정 변경(`calendar_sync`)** 까지 막는다 —
   `AI_WRITE` 는 "장부 변경" 기준이지 "링크로 와도 되는가" 기준이 아니다.
+- v183: 미수금 **여러 곳 한 번에 완납 처리**(에이징 화면). 화면에 현장별
+  [💰 입금] 하나뿐이라 열 곳이면 열 번 눌러야 했다. `set_received` 로 0 을
+  미는 방식은 **그동안 받은 기록이 사라져** 부가세 근거가 날아가므로 쓰지
+  않는다 — `received += 미수액` 누적 + 현장마다 payLog 1건(`due-settle-all`).
 - 막힌 것은 전부 🅱 — 에이전트가 더 밀어붙일 수 있는 게 없다.
   대표 몫 인계는 manmool `CODEX-인수인계.md` 에 항목별로 정리돼 있다.
