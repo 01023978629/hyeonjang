@@ -2157,6 +2157,33 @@ function gdLoginRedirect(){
     }
   }
 }catch(_){}})();
+// 클로드가 준 링크(#hjreq=)로 들어온 작업 요청.
+// **프래그먼트(#)를 쓴다** — 이 저장소가 #lead= 에서 이미 내린 결정과 같다.
+// 해시는 서버 요청·액세스 로그·Referer 에 실리지 않고, sw.js 가 URL 을 키로
+// 캐시할 때도 포함되지 않는다. ?hjreq= 로 보내면 요청 내용(동/호·연락처가
+// 실릴 수 있다)이 공개 호스팅 로그와 기기 캐시에 영구히 남는다.
+// 옛 ?hjreq= 링크는 당분간 받아 주되 경고한다.
+(function(){try{
+  let v='',viaQuery=false;
+  const hm=(location.hash||'').match(/[#&]hjreq=([^&\s]+)/);
+  if(hm)v=decodeURIComponent(hm[1]);
+  if(!v){const q=new URLSearchParams(location.search||'').get('hjreq');if(q){v=q;viaQuery=true;}}
+  if(!v)return;
+  history.replaceState(null,'',location.pathname);   // 주소창 정리(이미 나간 요청은 못 지운다)
+  // 로컬 복원이 끝난 뒤에 연다 — 리드 경로(hjLeadIntake)와 같은 이유.
+  // 복원 전에 승인이 state 를 건드리면 복원이 통째로 스킵되고 거의 빈 장부가 동기화될 수 있다.
+  Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){
+    setTimeout(function(){
+      try{
+        const d=claudeReqDecode(v);
+        if(!d.ok){toast('요청을 읽지 못했습니다 — '+d.error);return;}
+        d.via='link'; d.viaQuery=viaQuery;
+        claudeInboxView(d);
+        if(viaQuery)setTimeout(function(){toast('이 링크 형식(?)은 주소에 내용이 남습니다 — 다음부터 # 링크를 쓰세요');},1200);
+      }catch(e){toast('요청을 열지 못했습니다');}
+    },500);
+  });
+}catch(_){}})();
 // '만물인테리어' 폴더(앱 전용) 찾기/만들기 — 데이터 파일을 여기 고정
 async function gdEnsureFolder(retried){
   if(__gdFolderId)return __gdFolderId;
@@ -6978,13 +7005,49 @@ async function aiBriefing(){
 
    파일 형식: {"requests":[{"id":"고유값","tool":"apt_order_add","args":{...},"why":"사람이 읽을 이유"}]}  */
 const CLAUDE_INBOX_NAME='클로드_요청함.json';
+/* 요청(링크·파일)으로는 절대 실행하지 않는 도구.
+   링크는 누구나 만들어 카톡으로 보낼 수 있다 — 승인 한 번 잘못 눌러
+   현장이 지워지거나 고객에게 문자가 나가면 되돌릴 수 없다.
+   삭제·고객 발송은 반드시 앱에서 직접 하도록 남긴다(AI_WRITE 여부와 별개). */
+const CLAUDE_REQ_DENY=new Set([
+  'delete_project','delete_schedule',            // 삭제 — 되돌릴 수 없다
+  'send_receipt','send_settle_doc','batch_receive', // 고객에게 나간다(batch_receive 는 sms 플래그가 있다)
+  'set_received',                                 // 덮어쓰기다(누적 아님) — 0 이면 수금 기록이 통째로 지워진다
+  'export_ledger',                                // 고객명·연락처·주소가 든 장부를 기기에 내려받는다(유출 준비)
+  'customer_portal','calendar_sync'               // 외부 발행·설정 변경
+]);
+// 링크(?hjreq=)·붙여넣기로 받은 요청을 푼다. base64url / 원문 JSON / 전체 URL 다 받는다.
+// 드라이브 공유가 안 돼 있어도 이 경로로 요청을 받을 수 있다.
+function claudeReqDecode(raw){
+  let t=String(raw||'').trim();
+  if(!t)return {ok:false,error:'내용이 비었습니다'};
+  try{ const m=t.match(/[?&#]hjreq=([^&\s]+)/); if(m)t=decodeURIComponent(m[1]); }catch(e){}
+  let json=null;
+  if(/^\s*\{/.test(t)){ try{json=JSON.parse(t);}catch(e){return {ok:false,error:'JSON 형식이 아닙니다'};} }
+  else{
+    let b=t.replace(/-/g,'+').replace(/_/g,'/'); while(b.length%4)b+='=';
+    try{ json=JSON.parse(decodeURIComponent(escape(atob(b)))); }
+    catch(e){ return {ok:false,error:'읽을 수 없는 요청 코드입니다'}; }
+  }
+  let all=Array.isArray(json&&json.requests)?json.requests:[];
+  if(!all.length)return {ok:false,error:'요청이 들어 있지 않습니다'};
+  if(all.length>20)all=all.slice(0,20);   // 모달 폭주 방지
+  all.forEach(r=>{if(r&&typeof r.why==='string'&&r.why.length>200)r.why=r.why.slice(0,200)+'…';});
+  const done=claudeDoneSet(), bad=[], fresh=[];
+  all.forEach(r=>{ const why=claudeReqBad(r); if(why){bad.push(why);return;} if(done.has(r.id))return; fresh.push(r); });
+  return {ok:true,requests:fresh,bad:bad,total:all.length,via:'link'};
+}
 function claudeDoneSet(){state.claudeDone=state.claudeDone||[];return new Set(state.claudeDone);}
 // 요청 1건이 형식에 맞는가 — 형식이 깨진 건 조용히 버리지 않고 이유를 남긴다
 function claudeReqBad(r){
   if(!r||typeof r!=='object')return '형식 오류';
   if(!r.id||typeof r.id!=='string')return 'id 없음';
+  if(r.id.length>64)return 'id 가 너무 김';   // claudeDone 은 직렬화돼 서버까지 나간다
   if(!r.tool||typeof r.tool!=='string')return 'tool 없음';
-  if(!AI_TOOLS.some(t=>t.name===r.tool))return '모르는 도구: '+r.tool;
+  // 사유에 요청자 문자열을 길게 싣지 않는다 — 신뢰 UI 안에 안내문을 심는 수법을 줄인다
+  const nm=String(r.tool).replace(/[^A-Za-z0-9_]/g,'').slice(0,24);
+  if(!AI_TOOLS.some(t=>t.name===r.tool))return '모르는 도구('+nm.slice(0,12)+'…)';
+  if(CLAUDE_REQ_DENY.has(r.tool))return '요청으로는 못 하는 작업(삭제·발송·반출): '+nm;
   if(r.args!=null&&typeof r.args!=='object')return 'args 형식 오류';
   return '';
 }
@@ -7012,9 +7075,10 @@ async function claudeInboxFetch(){
   });
   return {ok:true,requests:fresh,bad:bad,total:all.length,at:hit.modifiedAt||''};
 }
-async function claudeInboxView(){
+async function claudeInboxView(preset){
   openModal('🤖 클로드 요청함','<div style="text-align:center;padding:26px;color:var(--muted);font-size:13px">요청을 불러오는 중…</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  const r=await claudeInboxFetch();
+  // preset: 링크·붙여넣기로 이미 받은 요청. 없으면 드라이브에서 가져온다.
+  const r=preset||await claudeInboxFetch();
   if(!r.ok){
     openModal('🤖 클로드 요청함','<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:11px;padding:13px;font-size:12.5px;color:#991b1b;line-height:1.6">'+escapeHtml(r.error)+'</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     return {오류:r.error};
@@ -7022,36 +7086,63 @@ async function claudeInboxView(){
   if(!r.requests.length){
     openModal('🤖 클로드 요청함',
       '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">'+(r.none?'요청 파일이 아직 없어요.':'새 요청이 없습니다 — 받은 '+r.total+'건은 모두 처리했어요.')+'</div>'+
-      (r.bad&&r.bad.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px;font-size:11.5px;color:#92400e">형식이 맞지 않아 건너뛴 요청 '+r.bad.length+'건: '+escapeHtml(r.bad.slice(0,3).join(' · '))+'</div>':''),
+      (r.bad&&r.bad.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px;font-size:11.5px;color:#92400e">형식이 맞지 않아 건너뛴 요청 '+r.bad.length+'건: '+escapeHtml(r.bad.slice(0,3).join(' · '))+'</div>':'')+
+      '<button class="ghost" id="clPaste" style="width:100%;padding:12px;margin-top:10px;min-height:44px">📋 클로드가 준 링크·코드 붙여넣기</button>',
       [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    const pb=document.getElementById('clPaste');
+    if(pb)pb.onclick=()=>{
+      const v=prompt('클로드가 준 링크나 요청 코드를 붙여넣으세요');
+      if(!v)return;
+      const d=claudeReqDecode(v);
+      if(!d.ok){toast(d.error);return;}
+      if(!d.requests.length){toast('새 요청이 없습니다 — 이미 처리한 요청이에요');return;}
+      claudeInboxView(d);
+    };
     return {요청:0};
   }
   const rows=r.requests.map((q,i)=>
     '<div style="border:1px solid var(--line-soft);border-radius:11px;padding:11px;margin-bottom:8px">'+
       '<div style="font-size:13px;font-weight:700;margin-bottom:3px">'+escapeHtml(aiActionLabel(q.tool,q.args||{}))+'</div>'+
-      (q.why?'<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px">'+escapeHtml(String(q.why))+'</div>':'')+
+      (q.why?'<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px">'+escapeHtml(String(q.why))+' <span style="font-size:10px;opacity:.75">(요청자가 쓴 설명 — 앱이 검증하지 않음)</span></div>':'')+
       (AI_WRITE.has(q.tool)?'<div style="font-size:10.5px;color:#c2410c;margin-bottom:7px">장부를 바꾸는 작업입니다</div>':'')+
       '<div style="display:flex;gap:6px"><button class="clai clay tiny" data-i="'+i+'" style="flex:1;padding:8px;min-height:44px">✓ 승인·적용</button>'+
       '<button class="clsk ghost tiny" data-i="'+i+'" style="padding:8px 12px;min-height:44px">건너뛰기</button></div>'+
     '</div>').join('');
   openModal('🤖 클로드 요청함',
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">클로드가 올린 요청 '+r.requests.length+'건입니다. <b>승인해야만 장부에 들어갑니다.</b></div>'+rows,
+    (r.via==='link'?'<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:11px;padding:11px 12px;margin-bottom:10px;font-size:12px;color:#991b1b;line-height:1.6"><b>⚠️ 이 요청의 출처를 앱이 확인할 수 없습니다.</b><br>링크는 누구나 만들 수 있어요. 클로드에게 시킨 기억이 없으면 <b>승인하지 마세요.</b></div>':'')+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">'+(r.via==='link'?'링크로 받은':'클로드가 올린')+' 요청 '+r.requests.length+'건입니다. <b>승인해야만 장부에 들어갑니다.</b> 내용을 꼭 확인하세요.</div>'+
+    (r.bad&&r.bad.length?'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 11px;margin-bottom:9px;font-size:11.5px;color:#92400e">거부된 요청 '+r.bad.length+'건: '+escapeHtml(r.bad.slice(0,3).join(' · '))+'</div>':'')+rows,
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
+  // 카톡→브라우저 전환 직후 손가락이 닿아 승인되는 것을 막는다
+  root.querySelectorAll('.clai').forEach(b=>{b.disabled=true;});
+  setTimeout(()=>{try{root.querySelectorAll('.clai').forEach(b=>{b.disabled=false;});}catch(e){}},600);
   const mark=(id)=>{state.claudeDone=state.claudeDone||[];if(!state.claudeDone.includes(id))state.claudeDone.push(id);if(state.claudeDone.length>500)state.claudeDone=state.claudeDone.slice(-500);};
   root.querySelectorAll('.clai').forEach(b=>b.onclick=async()=>{
     const q=r.requests[+b.dataset.i];if(!q)return;
     b.disabled=true;b.textContent='적용 중…';
     try{
+      // 잘못 눌렀을 때 되돌릴 수 있어야 한다 — 채팅 경로(aiToolRun 호출부)와 동일하게 안전판을 먼저 찍는다.
+      // 이게 없으면 "안전판에서 복구하세요" 안내가 거짓말이 된다.
+      if(AI_WRITE.has(q.tool)){try{await hjSnapshot('🔗 요청 적용 전 — '+aiActionLabel(q.tool,q.args||{}),true);}catch(e){}}
       const out=await aiToolRun(q.tool,q.args||{});
       mark(q.id);markDirty();
-      toast('✓ '+aiResultBrief(q.tool,out).replace(/^ — /,'')||'적용됨');
+      toast('✓ '+(aiResultBrief(q.tool,out)||'').replace(/^ — /,'')||'적용됨');
     }catch(e){toast('적용 실패: '+(e.message||e));b.disabled=false;b.textContent='✓ 승인·적용';return;}
+    // 링크·붙여넣기로 받은 건 남은 요청을 그대로 유지한다(드라이브 재조회 금지 —
+    // 릴레이 미연결이면 오류가 뜨고 대표가 링크를 다시 탭하게 된다)
+    if(preset){const rest=Object.assign({},r,{requests:r.requests.filter(x=>x.id!==q.id)});
+      if(rest.requests.length)return claudeInboxView(rest);
+      closeModal();toast('요청을 모두 처리했어요');return;}
     claudeInboxView();
   });
   root.querySelectorAll('.clsk').forEach(b=>b.onclick=()=>{
     const q=r.requests[+b.dataset.i];if(!q)return;
-    mark(q.id);markDirty();claudeInboxView();
+    mark(q.id);markDirty();
+    if(preset){const rest=Object.assign({},r,{requests:r.requests.filter(x=>x.id!==q.id)});
+      if(rest.requests.length)return claudeInboxView(rest);
+      closeModal();return;}
+    claudeInboxView();
   });
   return {요청:r.requests.length};
 }
