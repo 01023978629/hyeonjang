@@ -95,10 +95,13 @@ const REQ = {
   assert(opened.orders === 0, '③ 열기만 했는데 장부에 들어갔다 — 승인 게이트가 없다');
   assert(opened.btns === 3, '③ 승인 버튼 수가 안 맞다: ' + opened.btns);
   assert(/배관 교체/.test(opened.txt) && /선비마을3단지/.test(opened.txt), '② 사람 말 라벨이 아니다');
-  assert(!/rm_rf_everything/.test(opened.txt), '⑤ 모르는 도구가 화면에 뜬다');
+  // 거부 사실은 보여야 하지만(조용한 폐기 금지), 요청자가 준 문자열을 그대로 싣지는 않는다
+  assert(!/rm_rf_everything/.test(opened.txt), '⑤ 모르는 도구 이름이 화면에 그대로 찍힌다 — 신뢰 UI 안 스푸핑 표면');
+  assert(/거부된 요청/.test(opened.txt), '⑤ 거부 사실이 안 보인다 — 조용히 버려지면 감사 흔적이 없다');
 
   // ③-2 승인하면 들어간다
   const applied = await page.evaluate(async () => {
+    await new Promise(r => setTimeout(r, 700));   // 오탭 방지 잠금이 풀릴 때까지
     document.getElementById('modalRoot').querySelectorAll('.clai')[0].click();
     await new Promise(r => setTimeout(r, 600));
     const o = state.aptOrders.find(x => x.unit === '315동 1401호');
@@ -121,6 +124,7 @@ const REQ = {
     await claudeInboxView();
     await new Promise(r => setTimeout(r, 250));
     const root = document.getElementById('modalRoot');
+    await new Promise(r => setTimeout(r, 700));   // 오탭 방지 잠금이 풀릴 때까지
     const idx = Array.from(root.querySelectorAll('.clai')).length - 1;   // neg1 이 마지막
     let msg = ''; const rt = window.toast; window.toast = m => { msg = m; };
     root.querySelectorAll('.clai')[idx].click();

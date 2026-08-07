@@ -39,13 +39,13 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
 
   // ⑦ 링크로 진입 — 주소가 지워지고 요청함이 열린다
-  await page.goto(APP + '?hjreq=' + mk(OK1), { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  await page.goto(APP + '#hjreq=' + mk(OK1), { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1800);
   await page.evaluate(() => {
     state.aptOffices = [{ id: 'of1', complex: '선비마을3단지', manager: '', phone: '' }];
     state.aptOrders = []; state.claudeDone = [];
   });
-  const url = await page.evaluate(() => location.search);
+  const url = await page.evaluate(() => location.search + ' | ' + location.hash);
   assert(!/hjreq/.test(url), '⑦ 주소에 hjreq 가 남아 있다 — 새로고침마다 같은 요청이 다시 뜬다: ' + url);
 
   // ①④⑧ 링크 요청이 뜨고, 열기만으로는 안 들어간다
@@ -60,15 +60,20 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
     await new Promise(r => setTimeout(r, 250));
     const root = document.getElementById('modalRoot');
     return { ok: d.ok, n: d.requests.length, orders: state.aptOrders.length,
-             txt: root.textContent || '', btns: root.querySelectorAll('.clai').length };
+             txt: root.textContent || '', btns: root.querySelectorAll('.clai').length,
+             locked: root.querySelectorAll('.clai')[0].disabled };
   }, mk(OK1));
   assert(view.ok && view.n === 1, '① 링크를 못 푼다');
   assert(/배관 교체/.test(view.txt) && /315동 1401호/.test(view.txt), '① 한글이 깨졌다');
   assert(view.orders === 0, '④ 열기만 했는데 장부에 들어갔다');
+  assert(view.locked, '④ 모달이 뜨자마자 승인이 눌린다 — 카톡→브라우저 전환 직후 오탭으로 적용된다');
   assert(/링크로 받은/.test(view.txt), '⑧ 출처가 링크임을 안 밝힌다');
 
   // ④-2 승인하면 들어간다
   const applied = await page.evaluate(async () => {
+    // 오탭 방지로 승인 버튼은 0.6초간 잠겨 있다 — 풀릴 때까지 기다린다
+    await new Promise(r => setTimeout(r, 700));
+    if (document.getElementById('modalRoot').querySelectorAll('.clai')[0].disabled) throw new Error('승인 버튼이 계속 잠겨 있다');
     document.getElementById('modalRoot').querySelectorAll('.clai')[0].click();
     await new Promise(r => setTimeout(r, 600));
     const o = state.aptOrders.find(x => x.unit === '315동 1401호');
@@ -134,6 +139,70 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
       '⑥-2 ' + n + ' 이 링크로 실행 가능하다 — 되돌릴 수 없는 사고가 난다');
   });
 
+  // ⑩ 위험 도구 확대 차단 — 삭제·발송뿐 아니라 PII 반출·덮어쓰기·설정 변경까지.
+  //    export_ledger 는 고객명·연락처·주소가 든 장부를 기기에 내려받는다(유출 준비).
+  //    set_received 는 누적이 아니라 덮어쓰기라 0 이면 수금 기록이 통째로 사라진다.
+  const deny2 = await page.evaluate(() => {
+    const names = ['set_received', 'export_ledger', 'customer_portal', 'calendar_sync'];
+    const out = { _inTools: names.every(n => AI_TOOLS.some(t => t.name === n)) };
+    names.forEach((n, i) => {
+      const d = claudeReqDecode(JSON.stringify({ requests: [{ id: 'E' + i, tool: n, args: {}, why: 'x' }] }));
+      out[n] = d.requests.length === 0 && d.bad.length === 1;
+    });
+    return out;
+  });
+  assert(deny2._inTools, '⑩ 검사 대상 도구가 AI_TOOLS 에 없다 — 검사가 무의미하다');
+  ['set_received', 'export_ledger', 'customer_portal', 'calendar_sync'].forEach(n => {
+    assert(deny2[n], '⑩ ' + n + ' 이 요청으로 실행된다');
+  });
+
+  // ⑪ 출처 미검증 경고 — 링크는 누구나 만들 수 있다
+  const warn = await page.evaluate(async (b64) => {
+    state.claudeDone = [];
+    const d = claudeReqDecode(b64); d.via = 'link';
+    await claudeInboxView(d);
+    await new Promise(r => setTimeout(r, 250));
+    const t = document.getElementById('modalRoot').textContent || '';
+    return { warn: /출처를 앱이 확인할 수 없습니다/.test(t), advise: /승인하지 마세요/.test(t),
+             caption: /앱이 검증하지 않음/.test(t) };
+  }, mk([{ id: 'W1', tool: 'apt_order_add', args: { complex: '선비마을3단지', unit: '1동 1호', work: 'x' }, why: '설명' }]));
+  assert(warn.warn && warn.advise, '⑪ 출처 미검증 경고가 없다 — 위장 링크를 구분할 수 없다');
+  assert(warn.caption, '⑪ 요청자가 쓴 설명임을 안 밝힌다 — 안내문으로 위장할 수 있다');
+
+  // ⑫ 승인 직전 안전판 — 잘못 눌러도 되돌릴 수 있어야 한다
+  const snap = await page.evaluate(async () => {
+    window.__snaps = [];
+    const real = window.hjSnapshot;
+    // 찍힌 시점의 오더 수를 함께 기록한다 — '적용 전'인지 판정하려면 개수가 아니라 시점이 필요하다
+    window.hjSnapshot = async (label, force) => { window.__snaps.push({ label: String(label || ''), orders: (state.aptOrders || []).length }); return true; };
+    await new Promise(r => setTimeout(r, 700));
+    const before = (state.aptOrders || []).length;
+    document.getElementById('modalRoot').querySelectorAll('.clai')[0].click();
+    await new Promise(r => setTimeout(r, 700));
+    window.hjSnapshot = real;
+    window.__before = before;
+    // 자동저장('작업 중')이 섞이므로 개수가 아니라 **내 스냅샷이 적용 전 시점인지**를 본다
+    const mine = window.__snaps.filter(x => /요청 적용 전/.test(x.label));
+    return { mine, before: window.__before, orders: state.aptOrders.length };
+  });
+  assert(snap.mine.length >= 1, '⑫ 승인 전 안전판을 안 찍는다 — "안전판에서 복구하세요" 안내가 거짓이 된다');
+  assert(snap.orders === snap.before + 1, '⑫ 승인이 적용되지 않아 시점 판정을 못 한다');
+  assert(snap.mine[0].orders === snap.before, '⑫ 안전판이 적용 뒤에 찍힌다 — 되돌릴 시점이 이미 지났다 (' + snap.mine[0].orders + ' vs ' + snap.before + ')');
+  assert(/아파트 오더 접수/.test(snap.mine[0].label), '⑫ 안전판 이름으로 무엇을 되돌릴지 알 수 없다: ' + snap.mine[0].label);
+
+  // ⑬ 길이·건수 상한 — claudeDone 은 직렬화돼 서버까지 나간다
+  const caps = await page.evaluate(() => {
+    const many = { requests: [] };
+    for (let i = 0; i < 40; i++) many.requests.push({ id: 'M' + i, tool: 'apt_orders', args: {}, why: 'x' });
+    const d1 = claudeReqDecode(JSON.stringify(many));
+    const d2 = claudeReqDecode(JSON.stringify({ requests: [{ id: 'X'.repeat(200), tool: 'apt_orders', args: {}, why: 'y' }] }));
+    const d3 = claudeReqDecode(JSON.stringify({ requests: [{ id: 'W2', tool: 'apt_orders', args: {}, why: 'z'.repeat(900) }] }));
+    return { total: d1.total, longId: d2.requests.length, why: (d3.requests[0] || {}).why.length };
+  });
+  assert(caps.total <= 20, '⑬ 요청 건수 상한이 없다 — 모달이 폭주한다: ' + caps.total);
+  assert(caps.longId === 0, '⑬ 긴 id 가 통과한다 — 직렬화돼 서버까지 나간다');
+  assert(caps.why <= 201, '⑬ why 길이 상한이 없다 — 신뢰 UI 안에 안내문을 심을 수 있다: ' + caps.why);
+
   assert(errors.length === 0, '⑨ pageerror: ' + errors.join(' | '));
   void shown;
 
@@ -145,8 +214,12 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   console.log('PASS  ⑥ 모르는 도구 차단 + 삭제·고객 발송 도구 차단');
   console.log('PASS  ⑦ 주소창 hjreq 즉시 제거');
   console.log('PASS  ⑧ 출처(링크) 표시');
+  console.log('PASS  ⑩ 위험 도구 확대 차단 (PII 반출·덮어쓰기·설정변경)');
+  console.log('PASS  ⑪ 출처 미검증 경고 + 설명 출처 표기');
+  console.log('PASS  ⑫ 승인 직전 안전판');
+  console.log('PASS  ⑬ 건수·id·설명 길이 상한');
   console.log('PASS  ⑨ pageerror 0');
-  console.log('\n전부 통과 (9건)');
+  console.log('\n전부 통과 (13건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
