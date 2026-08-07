@@ -173,7 +173,7 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     assert(r.fileCount >= 1, 'files 보존');
     // 기준 스냅샷(warranty-review 관례) 대비 최상위 키 집합 — 알려진 키만 존재
     // calendarImports: 앱에 내장된 기본 일정을 이미 넣었는지 기록하는 장부(배치 id 목록). 사용자 데이터가 아니라 중복 방지용.
-    const ALLOWED = ['version', 'app', 'savedAt', 'learn', 'quotes', 'schedule', 'calendarImports', 'notes', 'priceBook', 'asLog', 'aptOffices', 'aptOrders', 'satisfaction', 'adPosts', 'portalCfg', '_savedFileCount', 'kakaoLastAt', 'coworkTasks', 'coworkSched', '_cwSchedInit', '_coworkInit', 'payLog', 'expenses', 'goals', 'aiOps', 'suppliers', 'supplierMap', 'inventory', 'brand', 'contacts', 'projects', 'files'].sort();
+    const ALLOWED = ['version', 'app', 'savedAt', 'learn', 'quotes', 'schedule', 'calendarImports', 'notes', 'priceBook', 'asLog', 'aptOffices', 'aptOrders', 'claudeDone', 'satisfaction', 'adPosts', 'portalCfg', '_savedFileCount', 'kakaoLastAt', 'coworkTasks', 'coworkSched', '_cwSchedInit', '_coworkInit', 'payLog', 'expenses', 'goals', 'aiOps', 'suppliers', 'supplierMap', 'inventory', 'brand', 'contacts', 'projects', 'files'].sort();
     assert(JSON.stringify(r.keys) === JSON.stringify(ALLOWED), '최상위 키 집합 불변\n got: ' + JSON.stringify(r.keys) + '\n exp: ' + JSON.stringify(ALLOWED));
   });
 
