@@ -18023,6 +18023,79 @@ function agingSms(name){
     return {발송:name+' '+hjMan(r.due)+' 독촉'};
   }catch(e){return {오류:e.message};}
 }
+/* 여러 현장 미수금을 한 번에 완납 처리.
+   "오늘 전으로 된 건 모두 완납" 같은 상황이 실제로 자주 있는데, 화면에는
+   현장별 [💰 입금] 하나뿐이라 열 곳이면 열 번 눌러야 했다.
+
+   지켜야 할 것:
+   - **덮어쓰지 않는다.** received += 미수액 (set_received 처럼 0 으로 밀면
+     그동안 받은 기록이 사라져 부가세 근거가 날아간다)
+   - 현장마다 payLog 1건 — "언제 얼마" 가 남아야 주간 수금·매출이 맞는다
+   - 무엇이 바뀌는지 먼저 보여 주고, 체크 해제로 뺄 수 있다
+   - 실행 전 안전판(hjSnapshot) — 되돌릴 수 있어야 한다
+   - 입금일은 오늘까지만(미래 날짜는 이번 주 수금을 부풀린다) */
+function dueSettleAll(){
+  const rows=dueAgingData();
+  if(!rows.length){toast('미수금이 없어요');return;}
+  const today=localDate();
+  const list=rows.map(function(r,i){
+    return '<label style="display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;cursor:pointer">'+
+      '<input type="checkbox" class="dsChk" data-i="'+i+'" checked style="width:20px;height:20px;flex:none">'+
+      '<span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(r.name)+
+        '<br><span style="font-size:10.5px;color:var(--muted)">'+r.band+(r.days>=0?' · '+r.days+'일째':'')+'</span></span>'+
+      '<b style="font-size:13px;white-space:nowrap">'+won(r.due)+'</b></label>';
+  }).join('');
+  openModal('✅ 한 번에 완납 처리',
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:9px">체크한 현장의 <b>남은 미수금 전액</b>을 받은 것으로 기록합니다. 덮어쓰지 않고 <b>기존 수금에 더합니다.</b></div>'+
+    '<label for="dsDate" style="font-size:11.5px;color:var(--muted)">입금일 (오늘까지)</label>'+
+    '<input id="dsDate" type="date" value="'+today+'" max="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">'+
+    list+
+    '<div id="dsSum" style="text-align:right;font-size:13px;font-weight:800;margin-top:8px"></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.55">실행 전 🛡 안전판을 찍습니다. 잘못되면 되돌릴 수 있어요.</div>',
+    [{label:'완납 처리',cls:'clay',fn:async function(){
+       const d=document.getElementById('dsDate').value||today;
+       if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
+       const picked=Array.from(document.querySelectorAll('.dsChk')).filter(function(c){return c.checked;}).map(function(c){return rows[+c.dataset.i];});
+       if(!picked.length){toast('완납 처리할 현장을 선택하세요');return;}
+       const sum=picked.reduce(function(a,r){return a+r.due;},0);
+       if(!confirm(picked.length+'곳 · '+won(sum)+'을 '+d+' 입금으로 기록합니다.\n계속할까요?'))return;
+       try{await hjSnapshot('✅ 일괄 완납 처리 전 ('+picked.length+'곳)',true);}catch(e){}
+       let n=0,total=0;
+       picked.forEach(function(r){
+         const p=(state.projects||[]).find(function(x){return x.name===r.name;});
+         if(!p)return;
+         const cur=projStats(r.name).due;           // 화면 표시 후 바뀌었을 수 있으니 다시 계산
+         if(!(cur>0))return;
+         const prev=p.received||0;
+         p.received=prev+cur;
+         state.payLog=state.payLog||[];
+         state.payLog.push({d:d,project:r.name,amt:cur});   // 현장마다 1건 — "언제 얼마"가 남아야 한다
+         n++;total+=cur;
+       });
+       if(state.payLog&&state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);
+       // 이 현장들의 미수금 독촉 작업은 큐에서 뺀다 — 남겨 두면 다 받았는데 알림이 계속 뜬다
+       try{
+         const o=aiOpsEnsureState();const names=picked.map(function(r){return r.name;});
+         o.queue=(o.queue||[]).filter(function(t){
+           if(!/미수금|입금\s*확인|독촉/.test(t.title||''))return true;
+           const mine=t.project?names.indexOf(t.project)>=0:names.some(function(nm){return String(t.title||'').includes(nm);});
+           return !mine;
+         });
+       }catch(e){}
+       markDirty();closeModal();render();
+       toast('✅ '+n+'곳 완납 처리 — '+won(total)+' ('+d+')');
+     }},
+     {label:'취소',cls:'ghost',fn:closeModal}],true);
+  const upd=function(){
+    const picked=Array.from(document.querySelectorAll('.dsChk')).filter(function(c){return c.checked;});
+    const sum=picked.reduce(function(a,c){return a+rows[+c.dataset.i].due;},0);
+    const el=document.getElementById('dsSum');
+    if(el)el.textContent=picked.length+'곳 선택 · 합계 '+won(sum);
+  };
+  document.querySelectorAll('.dsChk').forEach(function(c){c.onchange=upd;});
+  upd();
+  return {대상:rows.length};
+}
 function dueAgingView(){
   const rows=dueAgingData();
   const tot=rows.reduce(function(a,r){return a+r.due;},0);
@@ -18040,8 +18113,10 @@ function dueAgingView(){
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">받을 돈 관리</div><div style="font-size:19px;font-weight:800">⏳ 미수금 에이징</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 '+hjMan(tot)+' · '+rows.length+'곳'+(danger?' · 🔴60일+ '+danger+'곳':'')+'</div></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">🟢 30일 미만 · 🟡 30일+ · 🟠 60일+ · 🔴 90일+ (완공일·수금기한 기준) — 오래된 순</div>'+
+    (rows.length>1?'<button class="moss" id="agAll" style="width:100%;padding:12px;font-size:13px;margin-bottom:10px;min-height:44px">✅ 여러 곳 한 번에 완납 처리</button>':'')+
     list;
   openModal('⏳ 미수금 에이징',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  {const ab=document.getElementById('agAll');if(ab)ab.onclick=function(){dueSettleAll();};}
   document.querySelectorAll('.agRecv').forEach(function(b){b.onclick=function(){recvQuickView(b.dataset.p);};});
   document.querySelectorAll('.agRemind').forEach(function(b){b.onclick=function(){
     const r=rows[+b.dataset.i];const msg=dueAgingMsg(r);
