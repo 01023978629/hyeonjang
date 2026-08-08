@@ -41,8 +41,14 @@ const SEED = () => {
   state.payLog = []; state.dirty = false;
 };
 
+/* browser 를 IIFE 밖에 둔다 — 안에 두면 예외가 났을 때 catch 가 닿지 못해
+   브라우저가 살아남고, node 프로세스가 끝나지 않아 **그대로 멈춘다.**
+   회귀 실행이 한 파일에서 멈추면 뒤 파일은 아예 돌지 않고 화면엔 아무 표시도 없다 —
+   "전부 통과"라는 보고 자체가 성립하지 않게 된다. */
+let browser;
+
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
 
   /* ══════════ PC (1280×860) ══════════ */
   const pc = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 860 } });
@@ -295,4 +301,8 @@ const SEED = () => {
   const bad = results.filter(r => !r.ok);
   console.log('\n' + (bad.length ? bad.length + '건 실패' : '전부 통과 (' + results.length + '건)'));
   if (bad.length) process.exitCode = 1;
-})().catch(e => { console.error('FAIL', e && e.stack || e); process.exitCode = 1; });
+})().catch(async e => {
+  console.error('FAIL', e && e.stack || e);
+  process.exitCode = 1;
+  if (browser) await browser.close().catch(() => {});   // 안 닫으면 멈춘다
+});
