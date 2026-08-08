@@ -38,8 +38,9 @@ node tests/mock-relay.js &             # 8398 (relay.e2e.js 가 요구)
 node tests/syntax.check.js             # 문법
 node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
+node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 
-# 3) 전체 회귀 — 48개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 50개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 #    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
 #    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
@@ -49,6 +50,10 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$
   되돌려 테스트가 실패하는 것까지 확인하라. 안 잡히면 그 테스트는 장식이다.
 - **`index.html` 을 고쳤으면 `sw.js` 캐시 버전을 올려라** (`hyeonjang-v{N+1}-{짧은이름}`).
   안 올리면 사장님 폰이 옛 버전을 계속 쓴다.
+  **그리고 `index.html` 의 `APP_BUILD` 도 같은 값으로 맞춰라** — 그게 설정 화면과
+  푸터에 찍혀 "지금 몇 번이세요?" 의 답이 된다. 예전에는 이 상수가 규칙 밖이라
+  아무도 안 고쳤고, v183 폰이 화면에 '2026-07-30' 을 띄웠다. 틀린 번호는 없는
+  번호보다 나쁘다 — 그 답을 믿고 엉뚱한 데를 판다. `version-sync.check.js` 가 막는다.
 - 커밋 메시지는 "무엇을" 이 아니라 **"왜"** 를 적는 것이 이 저장소의 관례다.
 
 ## 지켜야 할 불변식 (각각 테스트가 못박고 있다)
