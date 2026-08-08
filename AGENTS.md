@@ -40,7 +40,9 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 
 # 3) 전체 회귀 — 48개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
-for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do node "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
+#    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
+#    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
+for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
 ```
 
 - **새 기능 = 새 테스트.** 그리고 반드시 **변이 검증**: 보호하는 동작을 일부러
