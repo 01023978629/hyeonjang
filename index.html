@@ -2051,7 +2051,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v185-warrantylimit';
+const APP_BUILD='hyeonjang-v186-pipetype';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8839,7 +8839,11 @@ const PIPE_REGISTRATION_LIMIT=15000000;
 const PIPE_WORK_RE=/(배관|누수|설비|급수|배수)/;
 const APT_AMOUNT_GUIDE='500만원(부가세 제외)을 넘는 관리사무소 공사는 수의계약이 안 되고 전자입찰 대상입니다. 금액과 발주 방식을 확인하세요.';
 const PIPE_REGISTRATION_GUIDE='1,500만원 이상 전문공사는 건설업 등록 없이 시공할 수 없습니다. 같은 공사를 나눠 계약해도 합산됩니다.';
+const APT_PIPE_TYPES=['미확정','오수','우수','잡배수','난방','급수'];
+const APT_LICENSED_PIPE_GUIDE='이 공종은 등록 업체만 시공할 수 있습니다 — 우선 시공 대상이 아니며, 유자격 업체를 주선하세요(계약서 제5조⑨).';
 function aptOrderAmountGuide(amount){return num(amount)>APT_PRIVATE_CONTRACT_LIMIT?APT_AMOUNT_GUIDE:'';}
+function aptPipeType(value){return APT_PIPE_TYPES.includes(String(value||''))?String(value):'미확정';}
+function aptPipeTypeGuide(value){const v=aptPipeType(value);return v==='난방'||v==='급수'?APT_LICENSED_PIPE_GUIDE:'';}
 function quotePipeText(q){return [q&&q.title,q&&q.place,q&&q.memo,q&&q.project].concat((q&&q.items||[]).flatMap(it=>[it&&it.name,it&&it.spec])).filter(Boolean).join(' ');}
 function quoteRegistrationGuide(q){return q&&quoteCalc(q).total>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(quotePipeText(q))?PIPE_REGISTRATION_GUIDE:'';}
 function projectRegistrationGuide(p,list,total){
@@ -8880,6 +8884,7 @@ function aptOrderManage(filterOffice){
       '<select id="apoOff" style="flex:1;min-width:110px;padding:9px;font-size:13px">'+offOpts+'</select>'+
       '<input id="apoUnit" placeholder="동/호 (예: 103동 1204호 · 지하주차장)" style="flex:1;min-width:130px;padding:9px;font-size:13px">'+
       '<input id="apoText" placeholder="작업 (예: 욕실 실리콘 교체)" style="flex:2;min-width:150px;padding:9px;font-size:13px">'+
+      '<select id="apoPipe" title="배관 종류" style="min-width:105px;padding:9px;font-size:13px">'+APT_PIPE_TYPES.map(v=>'<option value="'+escapeAttr(v)+'">'+escapeHtml(v)+'</option>').join('')+'</select>'+
       '<input id="apoAmt" inputmode="numeric" placeholder="금액(원·비워도 됨)" style="width:120px;padding:9px;font-size:13px">'+
       '<button class="clay tiny" id="apoAdd" style="padding:9px 14px">+ 접수</button></div>'+
       '<div id="apoAmountGuide" data-apt-amount-guide="1" style="display:none;margin:-4px 0 10px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:9px;padding:8px 10px;font-size:12px;line-height:1.5"></div>'
@@ -8888,11 +8893,13 @@ function aptOrderManage(filterOffice){
   const rows=shown.length?shown.map(o=>{
     const st=APT_STAT[o.status]||APT_STAT.recv;
     const amountGuide=aptOrderAmountGuide(o.amount);
+    const pipeType=aptPipeType(o.pipeType), pipeGuide=aptPipeTypeGuide(pipeType);
     return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
-        '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div>'+
+        '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button> · <select class="apoPipe" data-id="'+escapeAttr(o.id)+'" aria-label="배관 종류" style="padding:3px 5px;font-size:11.5px">'+APT_PIPE_TYPES.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===pipeType?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select></div>'+
         (amountGuide?'<div data-apt-order-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(amountGuide)+'</div>':'')+'</div>'+
+        (pipeGuide?'<div data-apt-pipe-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(pipeGuide)+'</div>':'')+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>'+
             // 전/후 카드는 원래 "현장에 배정된 사진"만 대상이라 아파트 오더는 아예 못 만들었다
@@ -8934,9 +8941,15 @@ function aptOrderManage(filterOffice){
     const amount=num((root.querySelector('#apoAmt').value||'').replace(/[^\d]/g,''));
     if(!unit){toast('동/호를 입력하세요 (공용부면 "지하주차장"처럼)');return;}
     if(!txt){toast('작업 내용을 입력하세요');return;}
-    state.aptOrders.push({id:uid(),officeId,unit,text:txt,amount,date:localDate(),status:'recv',doneAt:''});
+    const pipeType=aptPipeType((root.querySelector('#apoPipe')||{}).value);
+    state.aptOrders.push({id:uid(),officeId,unit,text:txt,amount,pipeType,date:localDate(),status:'recv',doneAt:''});
     markDirty();aptOrderManage(officeId);toast('오더 접수됨 — '+unit);
   };
+  root.querySelectorAll('.apoPipe').forEach(s=>s.onchange=()=>{
+    const o=state.aptOrders.find(x=>x.id===s.dataset.id);if(!o)return;
+    o.pipeType=aptPipeType(s.value);markDirty();aptOrderManage(filterOffice||o.officeId);
+    const guide=aptPipeTypeGuide(o.pipeType);toast(guide?('⚠️ '+guide):('배관 종류 저장됨 — '+o.pipeType));
+  });
   root.querySelectorAll('.apoStat').forEach(s=>s.onchange=()=>{
     const o=state.aptOrders.find(x=>x.id===s.dataset.id);
     if(!o)return;
