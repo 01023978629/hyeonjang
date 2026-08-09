@@ -2051,7 +2051,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v184-appver';
+const APP_BUILD='hyeonjang-v185-warrantylimit';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8638,9 +8638,15 @@ function hjWarranty(p){
     if(latest){const end=new Date(latest+'T00:00:00');const dday=Math.ceil((end-hjToday0())/86400000);return {end:latest,dday,items:w.items,startedAt:w.startedAt||p.doneAt||''};}
   }
   if(!p.doneAt)return null;
-  const end=new Date(p.doneAt+'T00:00:00');end.setFullYear(end.getFullYear()+1);
+  // 저장값이 없는 현장은 법정 기본 항목을 읽기 전용으로 파생한다.
+  // p.warranty 를 쓰지 않으므로 기존 현장 데이터 마이그레이션·덮어쓰기는 일어나지 않는다.
+  const items=WARRANTY_ITEMS_DEFAULT.map(it=>({
+    name:it.name,months:it.months,expiresAt:hjAddMonths(p.doneAt,it.months)
+  }));
+  const latest=items.reduce((v,it)=>it.expiresAt>v?it.expiresAt:v,'');
+  const end=new Date(latest+'T00:00:00');
   const dday=Math.ceil((end-hjToday0())/86400000);
-  return {end:localDate(end),dday};
+  return {end:latest,dday,items,startedAt:p.doneAt,defaulted:true};
 }
 function asOpenList(){return (state.asLog||[]).filter(a=>a.status!=='done');}
 /* 미처리 AS(하자·사후대응) 현장별 집계 — 순수·읽기전용 파생(state 미변형·markDirty 미유발).
@@ -8828,6 +8834,18 @@ function asManage(){
    그래서 현장(projects)으로 만들지 않고 별도 장부로 들되,
    입금만은 기존 수금 장부(payLog)에 합류시킨다 — 매출·미수금 브리핑이 이미 그걸 읽는다. */
 const APT_STAT={recv:['접수','#b45309'],visit:['방문예정','#0369a1'],work:['진행중','#7c3aed'],done:['완료','#0a7f43'],billed:['청구됨','#c2410c'],paid:['입금완료','var(--muted)']};
+const APT_PRIVATE_CONTRACT_LIMIT=5000000;
+const PIPE_REGISTRATION_LIMIT=15000000;
+const PIPE_WORK_RE=/(배관|누수|설비|급수|배수)/;
+const APT_AMOUNT_GUIDE='500만원(부가세 제외)을 넘는 관리사무소 공사는 수의계약이 안 되고 전자입찰 대상입니다. 금액과 발주 방식을 확인하세요.';
+const PIPE_REGISTRATION_GUIDE='1,500만원 이상 전문공사는 건설업 등록 없이 시공할 수 없습니다. 같은 공사를 나눠 계약해도 합산됩니다.';
+function aptOrderAmountGuide(amount){return num(amount)>APT_PRIVATE_CONTRACT_LIMIT?APT_AMOUNT_GUIDE:'';}
+function quotePipeText(q){return [q&&q.title,q&&q.place,q&&q.memo,q&&q.project].concat((q&&q.items||[]).flatMap(it=>[it&&it.name,it&&it.spec])).filter(Boolean).join(' ');}
+function quoteRegistrationGuide(q){return q&&quoteCalc(q).total>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(quotePipeText(q))?PIPE_REGISTRATION_GUIDE:'';}
+function projectRegistrationGuide(p,list,total){
+  const text=[p&&p.name].concat((list||[]).filter(f=>f.kind==='estimate').flatMap(f=>[f.name,f.est&&f.est.customer])).filter(Boolean).join(' ');
+  return num(total)>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(text)?PIPE_REGISTRATION_GUIDE:'';
+}
 function aptData(){state.aptOffices=state.aptOffices||[];state.aptOrders=state.aptOrders||[];return state;}
 function aptOfficeName(id){const o=(state.aptOffices||[]).find(x=>x.id===id);return o?o.complex:'(삭제된 단지)';}
 /* 오더 ↔ 사진 연결 — 사장님이 드라이브에 올리는 사진은 파일명에 동/호가 들어간다
@@ -8863,15 +8881,18 @@ function aptOrderManage(filterOffice){
       '<input id="apoUnit" placeholder="동/호 (예: 103동 1204호 · 지하주차장)" style="flex:1;min-width:130px;padding:9px;font-size:13px">'+
       '<input id="apoText" placeholder="작업 (예: 욕실 실리콘 교체)" style="flex:2;min-width:150px;padding:9px;font-size:13px">'+
       '<input id="apoAmt" inputmode="numeric" placeholder="금액(원·비워도 됨)" style="width:120px;padding:9px;font-size:13px">'+
-      '<button class="clay tiny" id="apoAdd" style="padding:9px 14px">+ 접수</button></div>'
+      '<button class="clay tiny" id="apoAdd" style="padding:9px 14px">+ 접수</button></div>'+
+      '<div id="apoAmountGuide" data-apt-amount-guide="1" style="display:none;margin:-4px 0 10px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:9px;padding:8px 10px;font-size:12px;line-height:1.5"></div>'
     : '<div class="empty" style="padding:14px;margin-bottom:10px"><b>먼저 관리사무소(단지)를 등록하세요</b>오더는 단지에 매여야 월말 정산이 됩니다.</div>';
   const shown=filterOffice?orders.filter(o=>o.officeId===filterOffice):orders;
   const rows=shown.length?shown.map(o=>{
     const st=APT_STAT[o.status]||APT_STAT.recv;
+    const amountGuide=aptOrderAmountGuide(o.amount);
     return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
-        '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div></div>'+
+        '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button></div>'+
+        (amountGuide?'<div data-apt-order-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(amountGuide)+'</div>':'')+'</div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>'+
             // 전/후 카드는 원래 "현장에 배정된 사진"만 대상이라 아파트 오더는 아예 못 만들었다
@@ -8899,6 +8920,14 @@ function aptOrderManage(filterOffice){
     markDirty();aptOrderManage(filterOffice);toast('단지 등록됨 — "'+complex+'"');
   };
   const addBtn=root.querySelector('#apoAdd');
+  const addAmt=root.querySelector('#apoAmt');
+  const addGuide=root.querySelector('#apoAmountGuide');
+  const refreshAmountGuide=()=>{
+    if(!addAmt||!addGuide)return;
+    const msg=aptOrderAmountGuide((addAmt.value||'').replace(/[^\d]/g,''));
+    addGuide.textContent=msg?('⚠️ '+msg):'';addGuide.style.display=msg?'block':'none';
+  };
+  if(addAmt)addAmt.oninput=refreshAmountGuide;
   if(addBtn)addBtn.onclick=()=>{
     const officeId=root.querySelector('#apoOff').value;
     const unit=root.querySelector('#apoUnit').value.trim(), txt=root.querySelector('#apoText').value.trim();
@@ -9123,7 +9152,7 @@ function hjWarrantyStart(name){
   const startDefault=(p.warranty&&typeof p.warranty==='object'&&p.warranty.startedAt)||p.doneAt||localDate();
   const rowHtml=it=>'<div class="wsRow" style="display:flex;gap:6px;margin-bottom:6px"><input class="wsName" value="'+escapeAttr(it.name||'')+'" placeholder="항목(예: 방수)" style="flex:2;min-width:0;padding:8px;font-size:13px"><input class="wsMon" type="number" min="0" value="'+escapeAttr(String(num(it.months)||0))+'" style="width:72px;padding:8px;font-size:13px"><span style="align-self:center;font-size:12px;color:var(--muted)">개월</span><button class="ghost tiny wsDel" style="padding:6px 8px">✕</button></div>';
   const body=
-    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">준공일 기준으로 항목별 보증 만료일을 계산합니다. 만물 표준(방수 2년·기타 1년)은 자유롭게 수정하세요. 계약·견적에 보증정보가 있으면 그 값으로 바꿔 넣으면 됩니다.</div>'+
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">목적물 인도일 기준으로 항목별 보증 만료일을 계산합니다. 만물 표준(방수 3년·급배수·배관 설비 2년·마감·전기 1년)은 자유롭게 수정하세요. 계약·견적에 보증정보가 있으면 그 값으로 바꿔 넣으면 됩니다.</div>'+
     '<label style="display:block;font-size:12.5px;margin-bottom:8px">준공일(보증 시작) <input type="date" id="wsStart" value="'+escapeAttr(startDefault)+'" style="padding:8px;margin-left:6px"></label>'+
     '<div id="wsList">'+cur.map(rowHtml).join('')+'</div>'+
     '<button class="ghost tiny" id="wsAdd" style="padding:7px 12px;margin-top:2px">+ 항목 추가</button>'+
@@ -9141,7 +9170,7 @@ function hjWarrantyStart(name){
       if(!items.length){toast('보증 항목을 최소 1개 입력하세요');return;}
       try{hjSnapshot('보증 시작 전');}catch(e){}   // 안전판(원본 불변·파생본 저장)
       p.warranty={startedAt:start,items:items};
-      if(!p.doneAt)p.doneAt=start;               // 완공일 없으면 보증 시작일로(하자보증서·만료추적 일관)
+      if(!p.doneAt)p.doneAt=start;               // 인도일 없으면 보증 시작일로(하자보증서·만료추적 일관)
       markDirty();closeModal();render();
       toast('🛡 보증 시작 — '+items.length+'개 항목 등록됨');
     }},
@@ -9166,7 +9195,7 @@ function hjCompletionCard(p){
     const c=w.dday<0?'var(--muted)':(w.dday<=30?'#c2410c':'var(--ok)');
     const stat=w.dday<0?('만료됨 ('+w.end+')'):(w.dday===0?'오늘 만료':'진행중 · D-'+w.dday+' ('+w.end+'까지)');
     const itemsTxt=(w.items&&w.items.length)?('<div style="font-size:11.5px;color:var(--muted);margin-top:4px">'+w.items.map(it=>escapeHtml(it.name)+' '+it.months+'개월→'+it.expiresAt).join(' · ')+'</div>'):'';
-    warrLine='<div style="margin-top:8px;font-size:12.5px">🛡 보증 <b style="color:'+c+'">'+stat+'</b>'+(w.items?'':' <span style="color:var(--muted);font-size:11px">(완료+1년 기본)</span>')+'</div>'+itemsTxt;
+    warrLine='<div style="margin-top:8px;font-size:12.5px">🛡 보증 <b style="color:'+c+'">'+stat+'</b>'+(w.defaulted?' <span style="color:var(--muted);font-size:11px">(법정 기본값)</span>':'')+'</div>'+itemsTxt;
   }else{
     warrLine='<div style="margin-top:8px;font-size:12px;color:var(--muted)">🛡 아직 보증을 시작하지 않았어요. [보증 시작]을 누르면 항목별 만료일을 계산합니다.</div>';
   }
@@ -10748,7 +10777,7 @@ function invoiceHTML(name){
       '<tr style="background:#fff7ed"><td class="nm" style="font-weight:800">청구 금액</td><td class="r" style="font-weight:800;color:#c2410c">'+hjNum(claim)+'</td></tr>'+
     '</tbody></table>'+
     '<div class="acct">🏦 <b>입금 계좌</b><br>'+escapeHtml(acct.bank)+' '+escapeHtml(acct.no)+' ('+escapeHtml(acct.holder)+')</div>'+
-    '<div class="note">공사를 맡겨주셔서 감사합니다. 입금 확인 후 영수 처리해 드리며, 시공 후 1년간 무상 A/S를 제공합니다.</div>'+
+    '<div class="note">공사를 맡겨주셔서 감사합니다. 입금 확인 후 영수 처리해 드리며, 공종별 하자보증 기본기간(방수 3년·급배수·배관 설비 2년·마감 1년)을 적용합니다.</div>'+
     '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> <span style="color:#8b98ab">(인)</span></div>';
   return hjDocShell('청 구 서',inner,'#b45309');
 }
@@ -10758,14 +10787,14 @@ function warrantyHTML(name){
   const w=d.warranty;
   const startStr=hjDocDate(d.doneAt);
   const endStr=w?hjDocDate(w.end):'';
-  // 항목별 보증(방수 2년·마감 1년 등)이 등록돼 있으면 실제 기간으로 표기 — '1년' 하드코딩 시 만료일과 모순.
+  // 항목별 보증(방수 3년·급배수·배관 설비 2년·마감 1년 등)을 실제 기간으로 표기한다.
   const witems=(w&&Array.isArray(w.items))?w.items:[];
   const ml=(m)=>{m=m||12;return m%12===0?(m/12)+'년':m+'개월';};
   const maxM=witems.length?Math.max.apply(null,witems.map(it=>it.months||12)):12;
-  const badgeLabel=witems.length?('시공 후 최대 '+ml(maxM)+' 무상 A/S'):'시공 후 1년 무상 A/S';
+  const badgeLabel=witems.length?('목적물 인도일로부터 최대 '+ml(maxM)+' 하자보증'):'공종별 하자보증';
   const periodCell=witems.length
     ? '<b>'+startStr+' ~ '+endStr+'</b><div style="font-size:12px;color:#5b6b82;margin-top:4px">'+witems.map(it=>escapeHtml(it.name||'')+' '+ml(it.months)).join(' · ')+'</div>'
-    : '<b>'+startStr+' ~ '+endStr+'</b> (1년)';
+    : '<b>'+startStr+' ~ '+endStr+'</b>';
   const inner=
     '<div style="text-align:center"><span class="warranty-badge">'+escapeHtml(badgeLabel)+'</span></div>'+
     '<div class="prow"><span><b>고객명</b>'+escapeHtml(d.cust.name||'—')+' 님</span>'+(d.cust.addr?'<span><b>시공 현장</b>'+escapeHtml(d.cust.addr)+'</span>':'<span><b>현장</b>'+escapeHtml(name)+'</span>')+'</div>'+
@@ -10785,7 +10814,7 @@ function warrantyHTML(name){
 const HJ_SETTLE_DOCS={
   statement:{t:'거래명세서',ic:'📋',fn:statementHTML,desc:'공급 품목·금액·기수금을 정리한 명세'},
   invoice:{t:'청구서',ic:'💳',fn:invoiceHTML,desc:'잔금(또는 전액) 청구 + 입금 계좌'},
-  warranty:{t:'하자보증서',ic:'🛡',fn:warrantyHTML,desc:'시공 후 1년 무상 A/S 보증'}
+  warranty:{t:'하자보증서',ic:'🛡',fn:warrantyHTML,desc:'방수 3년·급배수·배관 설비 2년·마감 1년 기준'}
 };
 async function settleDocShare(name,kind){
   const def=HJ_SETTLE_DOCS[kind];if(!def)return {오류:'문서 종류 오류'};
@@ -14072,8 +14101,8 @@ async function negotiateDialog(qid){
 
 /* ═══════════ 🛡 AS 보증 만료 추적 — 만료 전 알림·무상점검 재영업 ═══════════ */
 const WARRANTY_DEFAULT_MONTHS=12;
-// 만물 표준 하자보증(수정 가능): 방수 2년 · 마감 1년 · 전기설비 1년
-const WARRANTY_ITEMS_DEFAULT=[{name:'방수',months:24},{name:'마감(도배·바닥·타일)',months:12},{name:'전기·설비',months:12}];
+// 만물 표준 하자보증(수정 가능): 방수 3년 · 급배수·배관 설비 2년 · 마감 1년 · 전기 1년
+const WARRANTY_ITEMS_DEFAULT=[{name:'방수',months:36},{name:'급배수·배관 설비',months:24},{name:'마감(도배·바닥·타일)',months:12},{name:'전기',months:12}];
 function hjAddMonths(dateStr,months){const d=new Date(String(dateStr)+'T00:00:00');if(isNaN(d.getTime()))return '';d.setMonth(d.getMonth()+(num(months)||0));return localDate(d);}
 // 현장의 유효 보증 개월: 항목형이면 가장 긴 항목, 숫자형(구형)이면 그 값, 없으면 기본 12
 function hjWarrantyMonths(p){
@@ -14092,7 +14121,7 @@ function warrantyList(){
     const done=p.doneAt||((p.stage>=3)?null:null);
     // 완공일: doneAt 우선, 없으면 완료 단계면 최근 일정/오늘 근사(정확치 않으니 doneAt 있는 것만 신뢰)
     if(!p.doneAt)return;
-    const months=hjWarrantyMonths(p);   // 항목형(방수 2년 등)·숫자형·기본값 모두 지원
+    const months=hjWarrantyMonths(p);   // 항목형(방수 3년·설비 2년 등)·숫자형·기본값 모두 지원
     const wo=p.warranty;
     const startStr=(wo&&typeof wo==='object'&&wo.startedAt)?wo.startedAt:p.doneAt;
     const start=new Date(startStr+'T00:00:00');
@@ -21379,6 +21408,7 @@ function viewQuoteMaker(){
   }
   const q=state.editingQuote;
   const c=quoteCalc(q);
+  const legalGuide=quoteRegistrationGuide(q);
   let projOpts=`<option value="">현장 미연결</option>`+state.projects.filter(p=>!p.archived||q.project===p.name).map(p=>`<option value="${escapeAttr(p.name)}"${q.project===p.name?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
   let acctOpts=COMPANY.accounts.map((a,i)=>`<option value="${i}"${q.accountIdx===i?' selected':''}>${escapeHtml(a.label)}</option>`).join('');
   let rows=q.items.map((it,i)=>`<tr>
@@ -21420,6 +21450,7 @@ function viewQuoteMaker(){
       </table></div>
     </div>
     <div class="qm-side">
+      ${legalGuide?`<div data-quote-legal-guide="1" style="margin-bottom:10px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.55">⚠️ ${escapeHtml(legalGuide)}</div>`:''}
       <div class="qm-preview-card">
         <div class="qm-sum-row"><span>품목 합계</span><b>${won(c.sub)}</b></div>
         <div class="qm-sum-row"><span>공급가액</span><b>${won(c.supply)}</b></div>
@@ -21458,11 +21489,13 @@ function saveQuoteEdit(){
   // 품목 단가장: 저장할 때마다 품목명→최근 단가를 기억 → 다음 견적에서 자동완성·단가 자동채움
   state.priceBook=state.priceBook||{};
   q.items.forEach(it=>{const nm=String(it.name||'').trim();const pr=num(it.price);if(nm&&pr>0)state.priceBook[nm]=pr;});
+  const legalGuide=quoteRegistrationGuide(q);
   const idx=state.quotes.findIndex(x=>x.id===q.id);
   if(idx>=0)state.quotes[idx]=q;else state.quotes.push(q);
   if(q.project)syncQuoteToProject(q); else state.files=state.files.filter(f=>f.id!=='quote_'+q.id);  // 현장 연결 해제 시 유령 견적 파일 제거
-  markDirty();toast('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:''));
+  markDirty();
   state.editingQuote=null;render();
+  toast(legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')));
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
   openModal('견적서 삭제',`<p style="font-size:13px">‘${escapeHtml(q.title||q.no)}’ 견적서를 삭제할까요?</p>`,
@@ -22440,7 +22473,11 @@ function viewProject(){
   }
   // 견적 합계 요약 (상담)
   const tot=estimateGroups(list.filter(f=>f.kind==='estimate')).reduce((a,g)=>a+(g.rep.est?.amount||0),0);
-  if(tot&&showSec(0))html+=`<div class="sumbar" style="margin:-4px 0 14px"><span>이 현장 견적 합계</span><b style="font-size:16px">${won(tot)}</b></div>`;
+  if(tot&&showSec(0)){
+    html+=`<div class="sumbar" style="margin:-4px 0 14px"><span>이 현장 견적 합계</span><b style="font-size:16px">${won(tot)}</b></div>`;
+    const legalGuide=projectRegistrationGuide(p,list,tot);
+    if(legalGuide)html+=`<div data-project-legal-guide="1" style="margin:-6px 0 14px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.55">⚠️ ${escapeHtml(legalGuide)}</div>`;
+  }
   // 서류류: 견적·사업자·명함은 상담(0), 도면은 실측(1), 기타는 전체
   const kindStage={estimate:0,bizreg:0,card:0,drawing:1,other:null};
   for(const k of ['estimate','bizreg','card','drawing','other']){
