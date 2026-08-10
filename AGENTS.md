@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v187-reviewcopy` 형태)이 곧 버전이다.
+현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v188-contractqr` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -40,7 +40,7 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 
-# 3) 전체 회귀 — 54개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 55개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 #    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
 #    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
