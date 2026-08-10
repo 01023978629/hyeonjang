@@ -98,6 +98,19 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.indexOf('2028') >= 0, '만료일 2028(방수 2년) 표기 없음');
   });
 
+  await test('청구서 note 와 하자보증서가 같은 기본기간을 말한다', async () => {
+    const r = await page.evaluate(() => {
+      state.projects = [{ name: '법정기본현장', stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '이고객', phone: '', addr: '대전' }, doneAt: '2026-08-01', archived: false }];
+      state.files = [{ id: 'e3', kind: 'estimate', project: '법정기본현장', name: '견적', est: { amount: 1100000, supply: 1000000, vat: 100000 }, when: new Date('2026-07-01') }];
+      state.quotes = [];
+      return { summary: hjWarrantyPeriodText(), invoice: invoiceHTML('법정기본현장'), warranty: warrantyHTML('법정기본현장'), desc: HJ_SETTLE_DOCS.warranty.desc };
+    });
+    assert(/방수 3년/.test(r.summary) && /급배수·배관 설비 2년/.test(r.summary) && /마감\(도배·바닥·타일\) 1년/.test(r.summary), '법정 기본기간 요약이 틀림: ' + r.summary);
+    assert(r.invoice.indexOf(r.summary) >= 0, '청구서 note 가 보증 기본기간과 다름: ' + r.summary);
+    assert(r.warranty.indexOf(r.summary) >= 0, '하자보증서가 같은 기본기간을 말하지 않음: ' + r.summary);
+    assert(r.desc.indexOf(r.summary) >= 0, '문서 선택 설명도 같은 기본기간이 아님: ' + r.desc);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

@@ -1,14 +1,14 @@
 # 코덱스 인수인계서 — hyeonjang (현장 앱)
 
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
-> 2026-08-05 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
+> 2026-08-10 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
 ## 이 저장소가 무엇인가
 
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 배포 버전: `sw.js` 의 캐시 이름(`hyeonjang-v183-settleall` 형태)이 곧 버전이다.
+현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v187-reviewcopy` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -40,7 +40,7 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 
-# 3) 전체 회귀 — 50개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 54개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 #    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
 #    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
@@ -75,6 +75,7 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$
 | 클로드 요청은 승인해야 적용, 같은 id 두 번 적용 금지, 모르는 도구 실행 금지 | `claude-inbox` |
 | 링크는 `#hjreq=`(쿼리 금지 — 로그·SW캐시 누수), 승인 전 안전판, 삭제·발송·반출 도구 차단 | `claude-link` |
 | 수금은 **누적**이지 덮어쓰기가 아니다 — 일괄 완납도 현장마다 payLog 1건 | `due-settle-all` |
+| 하자보증 기본값은 법정기간(방수 36·설비 24·마감 12) 이상 | `warranty-review` |
 
 ## 구조 지도 (함수명으로 찾아라 — 줄번호는 금방 낡는다)
 
