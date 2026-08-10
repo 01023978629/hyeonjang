@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v188-contractqr` 형태)이 곧 버전이다.
+현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v190-toolcount` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -64,7 +64,7 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$
 | 키 입력칸: 빈 값 저장 = "안 바꿈", 삭제는 [지우기]+확인만 | `key-persist` |
 | 요금은 조건형으로만 ("결제계정이 없을 때만 무료") | `cost-honesty.check` |
 | 전자계약 버튼은 서버 자가진단 통과 전까지 잠김, 잠긴 동안 요청 0 | `contract` |
-| AI 도구 추가는 5곳(AI_TOOLS·aiToolRun·aiActionLabel·aiResultBrief·AI_WRITE) | `apt-ai` + ai-automation-auditor 감사 |
+| AI 도구 추가는 5곳(AI_TOOLS·aiToolRun·aiActionLabel·aiResultBrief·AI_WRITE), 맨 앞 주석 수는 실제 배열 길이와 일치 | `apt-ai`, `ai-tools-count.check` + ai-automation-auditor 감사 |
 | 쓰기 도구는 AI_WRITE(승인 게이트), SAFE_AUTO 확대는 대표 승인 | `apt-ai` |
 | 아파트 오더: 통계·정산은 완료월(doneAt) 기준, 입금완료 금액 수정 금지, 입금은 정산서에서만(payLog 1회) | `apt-orders`, `apt-stats`, `apt-amount` |
 | 수금 입력은 미수 알림에서 한 번에 닿는다(얼마·언제), 미래 입금일 금지, 일부 입금은 독촉을 닫지 않는다 | `recv-entry` |
@@ -115,8 +115,8 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 | 일 | 어디서 | 지금 상태 |
 |---|---|---|
 | Gemini API 키 발급 | `aistudio.google.com/api-keys`, 프로젝트 `Manmool Gemini No Billing` | **막힘** — "The request is suspicious" 재시도 필요 |
-| 전자계약 Apps Script 배포 | 본인 구글 계정 | 대기 (manmool `apps-script-contract/SETUP.md`) |
-| 배포 후 앱 ⚙️설정 자가진단 | 앱 | 위가 끝나야 가능 |
+| 전자계약 Apps Script 배포 | 본인 구글 계정 | 완료 — health·selfTest 통과(2026-08-10) |
+| 앱 ⚙️설정 자가진단·실기기 서명 확인 | 앱 | 대표 폰에서 최종 확인 필요 |
 | 네이버·구글 소유확인 코드 | 서치어드바이저·서치콘솔 | manmool `index.html` 11~14행이 주석 처리된 자리표시자 |
 | Threads 토큰 재발급 | Meta | 2026-06-19 만료 |
 | 실제 문자·알림톡 발송 승인 | — | 계속 OFF 가 정상 |
@@ -125,32 +125,15 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 실제 고객 후기(지어내기 금지), 현장 사진, 아파트 단지·관리사무소 정보.
 
-## 지금 상태와 남은 일 (2026-08-05)
+## 지금 상태와 남은 일 (2026-08-10)
 
-- 테스트 48개 파일 전부 통과. 앱 v183 배포.
-- v178: 미수금 알림·운영 큐에서 **[💰 수금 입력] 직행**(얼마·언제) — 이전에는
-  독촉 문자만 가능해 돈을 받아도 알림이 안 꺼졌다. `recv-entry.e2e.js` 가 지킨다.
-- v179: 서버 날짜별 백업 성패를 백업 센터에 표시(`backup-visible.e2e.js`).
-- v180: 아파트 오더에서 시공 전/후 비교 카드 — 전에는 현장 배정 사진만 대상이라
-  관리사무소 일은 아예 못 만들었다(`apt-ba.e2e.js`).
-- v181: **클로드 요청함** — 대화(클로드)가 드라이브 문서 폴더에 둔
-  `클로드_요청함.json` 을 앱이 읽어 **승인 후** `aiToolRun` 으로 적용한다.
-  클로드가 `현장데이터.json` 을 직접 고치면 revision 충돌 방지를 우회해
-  한쪽이 덮어써지므로, 데이터 파일은 건드리지 않는 구조로 만들었다.
-  릴레이 서버(`apps-script/`)는 손대지 않는다 — 기존 listFiles/download 만 쓴다.
-- v182: 같은 요청을 **링크(`#hjreq=`)·붙여넣기**로도 받는다. 드라이브 공유가
-  막혀 있어도 대화에서 앱으로 작업을 넘길 수 있다. 승인 게이트·중복 방지·
-  도구 허용목록은 드라이브 경로와 **동일**하다(`claude-link.e2e.js`).
-  보안 검토에서 나온 것들: 반드시 **프래그먼트(#)** — 쿼리로 보내면 요청 내용이
-  공개 호스팅 액세스 로그와 `sw.js` 캐시(URL 키)에 영구히 남는다(`#lead=` 과 같은 이유).
-  승인 직전 `hjSnapshot`(없으면 "안전판에서 복구하세요" 안내가 거짓이 된다),
-  로컬 복원(`__hjRestoreDone`) 후 처리(복원 스킵 → 빈 장부 동기화 방지),
-  `CLAUDE_REQ_DENY` 는 삭제·고객 발송뿐 아니라 **PII 반출(`export_ledger`)·
-  덮어쓰기(`set_received`)·설정 변경(`calendar_sync`)** 까지 막는다 —
-  `AI_WRITE` 는 "장부 변경" 기준이지 "링크로 와도 되는가" 기준이 아니다.
-- v183: 미수금 **여러 곳 한 번에 완납 처리**(에이징 화면). 화면에 현장별
-  [💰 입금] 하나뿐이라 열 곳이면 열 번 눌러야 했다. `set_received` 로 0 을
-  미는 방식은 **그동안 받은 기록이 사라져** 부가세 근거가 날아가므로 쓰지
-  않는다 — `received += 미수액` 누적 + 현장마다 payLog 1건(`due-settle-all`).
-- 막힌 것은 전부 🅱 — 에이전트가 더 밀어붙일 수 있는 게 없다.
-  대표 몫 인계는 manmool `CODEX-인수인계.md` 에 항목별로 정리돼 있다.
+- 운영 main: `hyeonjang-v189-legalguard`. 현재 작업 브랜치:
+  `codex/ai-tools-count-20260810` (`hyeonjang-v190-toolcount`) — PR·대표 병합 대기.
+- 브라우저·정적 검사 56개 파일 전부 통과(서버 보조 파일 2개 제외).
+- `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
+  `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.
+- 전자계약 Apps Script 서버는 배포·health·selfTest 까지 완료. 남은 것은 대표 폰에서
+  앱 자가진단, 계약 생성→서명→완료 PDF 실기기 확인이다. 실제 문자·알림톡은 계속 OFF.
+- 고객 사례 글 재료는 `aptReviewMaterialText()` 6항목 형식으로 복사한다. 동·호수와
+  고객 연락처를 공개 글에 넣지 않는다; manmool `scripts/new-case-post.mjs` 로 넘긴다.
+- 네이버·구글 소유확인 코드, Threads 토큰 갱신, Gemini 키 상태 확인은 대표 계정 작업이다.
