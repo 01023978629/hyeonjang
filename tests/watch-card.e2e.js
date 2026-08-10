@@ -32,7 +32,8 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
       { name: '괴산현장', stage: 3, phases: [], cost: { material: 0, labor: 0, outsource: 0 },
         customer: { name: '김사장', phone: '010-1111-2222' }, received: 5000000, doneAt: ymd(30), archived: false },
       { name: '보증임박', stage: 3, phases: [], cost: { material: 0, labor: 0, outsource: 0 },
-        customer: {}, received: 0, doneAt: ymd(365 - 20), archived: false },
+        customer: {}, received: 0, doneAt: ymd(365 - 20), archived: false,
+        warranty: { startedAt: ymd(365 - 20), items: [{ name: '기존 보증', months: 12, expiresAt: ymd(-20) }] } },
       { name: '멈춘현장', stage: 2, phases: [], cost: { material: 0, labor: 0, outsource: 0 },
         customer: {}, received: 0, archived: false },
     ];

@@ -19,7 +19,7 @@ const REVIEW_URL = 'https://naver.me/REVIEWTEST';
 const DONE_AT = '2026-07-01';
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined });
+  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
   const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 780 } });
   const page = await ctx.newPage();
   const errs = [];
@@ -115,12 +115,12 @@ const DONE_AT = '2026-07-01';
     assert(!/https?:\/\//.test(t), '링크 미설정 시 링크 줄 생략: ' + JSON.stringify(t));
   });
 
-  // 3) 보증 시작 — 방수 2년 등 만료일 계산 + serializeData 왕복 유지
-  await test('[🛡 보증 시작] → warranty 항목·만료일 계산(방수 2년) + 직렬화 왕복', async () => {
+  // 3) 보증 시작 — 법정 기본값(방수 3년·급배수 배관 2년) + serializeData 왕복 유지
+  await test('[🛡 보증 시작] → 법정 기본 항목·만료일 계산 + 직렬화 왕복', async () => {
     // 리뷰 링크 복구(무관하지만 상태 정리)
     await seed(); await openDetail('준공현장 A'); await page.waitForTimeout(150);
     await page.click('[data-warrantystart]'); await page.waitForTimeout(250);
-    // 모달 기본값(방수 24·마감 12·전기설비 12, 시작=doneAt) 그대로 확정
+    // 모달 기본값(방수 36·급배수 배관 24·마감 12·전기 12, 시작=doneAt) 그대로 확정
     await page.evaluate(() => { const b = [...document.querySelectorAll('#modalRoot .mfoot button')].find(x => x.textContent.includes('보증 시작')); b.click(); });
     await page.waitForTimeout(250);
     const r = await page.evaluate(() => {
@@ -136,15 +136,18 @@ const DONE_AT = '2026-07-01';
         topWarranty: 'warranty' in s
       };
     });
-    assert(r.warranty && Array.isArray(r.warranty.items) && r.warranty.items.length >= 1, 'warranty.items 생성');
+    assert(r.warranty && Array.isArray(r.warranty.items) && r.warranty.items.length === 4, 'warranty.items 법정 기본 4개 생성');
     assert(r.startedAt === DONE_AT, 'startedAt=준공일: ' + r.startedAt);
     const wp = r.warranty.items.find(i => i.name === '방수');
-    assert(wp && wp.months === 24, '방수 24개월');
-    assert(wp.expiresAt === '2028-07-01', '방수 만료 = 준공+2년(2028-07-01): ' + wp.expiresAt);
+    assert(wp && wp.months === 36, '방수 36개월');
+    assert(wp.expiresAt === '2029-07-01', '방수 만료 = 인도+3년(2029-07-01): ' + wp.expiresAt);
+    const pipe = r.warranty.items.find(i => i.name === '급배수·배관 설비');
+    assert(pipe && pipe.months === 24, '급배수·배관 설비 24개월');
+    assert(pipe.expiresAt === '2028-07-01', '설비 만료 = 인도+2년(2028-07-01): ' + pipe.expiresAt);
     const fin = r.warranty.items.find(i => /마감/.test(i.name));
     assert(fin && fin.expiresAt === '2027-07-01', '마감 1년 만료(2027-07-01): ' + (fin && fin.expiresAt));
     // serializeData 왕복 유지
-    assert(r.wp && Array.isArray(r.wp.items) && r.wp.items.find(i => i.name === '방수' && i.expiresAt === '2028-07-01'), 'serialize 왕복에 warranty 보존');
+    assert(r.wp && Array.isArray(r.wp.items) && r.wp.items.find(i => i.name === '방수' && i.expiresAt === '2029-07-01'), 'serialize 왕복에 warranty 보존');
     // 최상위 키 금지
     assert(!r.topReview, 'serialize에 review_url 최상위 키 없음');
     assert(!r.topWarranty, 'serialize에 warranty 최상위 키 없음');
@@ -155,18 +158,37 @@ const DONE_AT = '2026-07-01';
       const w = hjWarranty(p);
       return { end: w.end, dday: w.dday, cardHas: (document.querySelector('[data-donecard]') || {}).outerHTML.includes('보증') };
     });
-    assert(r.end === '2028-07-01', 'hjWarranty가 항목형 만료일(가장 늦은 항목) 반영: ' + r.end);
+    assert(r.end === '2029-07-01', 'hjWarranty가 항목형 만료일(가장 늦은 항목) 반영: ' + r.end);
     assert(r.cardHas, '카드에 보증 상태 표시');
   });
 
-  // 4) 회귀: 구형 숫자형 warranty·doneAt만 있는 현장도 hjWarranty 정상
-  await test('회귀 — warranty 미설정 완공 현장은 완료+1년 기본 유지', async () => {
+  // 4) 미설정 현장은 법정 기본값을 파생하되, 저장 데이터에는 쓰지 않는다
+  await test('회귀 — warranty 미설정 완공 현장은 법정 기본값을 읽기 전용으로 파생', async () => {
     const r = await page.evaluate(() => {
       const p = { name: 'x', stage: 3, doneAt: '2026-01-10', customer: {} };
       const w = hjWarranty(p);
-      return w;
+      return {w,stored:Object.prototype.hasOwnProperty.call(p,'warranty')};
     });
-    assert(r.end === '2027-01-10', '완료+1년 기본: ' + r.end);
+    assert(r.w.end === '2029-01-10', '방수 3년 기준 종료: ' + r.w.end);
+    assert(r.w.items.find(i => i.name === '급배수·배관 설비' && i.months === 24), '설비 2년 기본 파생');
+    assert(!r.stored, '미설정 현장에 warranty 를 몰래 써 넣음 — 마이그레이션 금지');
+  });
+  await test('회귀 — 기존 현장의 수정 저장한 warranty.items 는 건드리지 않음', async () => {
+    const r = await page.evaluate(() => {
+      const p={name:'기존현장',doneAt:'2026-01-10',warranty:{startedAt:'2026-01-10',items:[{name:'방수',months:18,expiresAt:'2027-07-10'}]}};
+      const before=JSON.stringify(p.warranty);
+      const w=hjWarranty(p);
+      return {before,after:JSON.stringify(p.warranty),end:w.end,months:w.items[0].months};
+    });
+    assert(r.before === r.after, '기존 warranty.items 가 바뀜');
+    assert(r.end === '2027-07-10' && r.months === 18, '기존 사용자 값이 우선되지 않음: ' + JSON.stringify(r));
+  });
+  await test('하자보증서 미설정 현장도 방수 3년·설비 2년을 출력', async () => {
+    await seed();
+    const html = await page.evaluate(() => warrantyHTML('준공현장 A'));
+    assert(/방수 3년/.test(html), '하자보증서에 방수 3년이 없음');
+    assert(/급배수·배관 설비 2년/.test(html), '하자보증서에 급배수·배관 설비 2년이 없음');
+    assert(/목적물 인도일로부터 최대 3년/.test(html), '보증서 기산점·최대기간 안내가 없음');
   });
 
   const pe = errs.length;
