@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v190-toolcount` 형태)이 곧 버전이다.
+현재 코드 버전: `sw.js` 의 캐시 이름(`hyeonjang-v191-managementpolicy` 형태)이 곧 버전이다.
 
 자매 저장소 `01023978629/manmool`: 공개 홈페이지 + 전자계약 Apps Script 서버 소스.
 
@@ -115,7 +115,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 | 일 | 어디서 | 지금 상태 |
 |---|---|---|
 | Gemini API 키 발급 | `aistudio.google.com/api-keys`, 프로젝트 `Manmool Gemini No Billing` | **막힘** — "The request is suspicious" 재시도 필요 |
-| 전자계약 Apps Script 배포 | 본인 구글 계정 | 완료 — health·selfTest 통과(2026-08-10) |
+| 전자계약 Apps Script 배포 | 본인 구글 계정 | 배포 URL·스크립트 속성 설정됨 — 앱 자가진단과 실기기 계약 흐름 확인 필요 |
 | 앱 ⚙️설정 자가진단·실기기 서명 확인 | 앱 | 대표 폰에서 최종 확인 필요 |
 | 네이버·구글 소유확인 코드 | 서치어드바이저·서치콘솔 | manmool `index.html` 11~14행이 주석 처리된 자리표시자 |
 | Threads 토큰 재발급 | Meta | 2026-06-19 만료 |
@@ -127,13 +127,13 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-10)
 
-- 운영 main: `hyeonjang-v189-legalguard`. 현재 작업 브랜치:
-  `codex/ai-tools-count-20260810` (`hyeonjang-v190-toolcount`) — PR·대표 병합 대기.
+- 이 브랜치의 배포 목표: `hyeonjang-v191-managementpolicy`. 병합 전 운영 main은
+  `hyeonjang-v189-legalguard`다.
 - 브라우저·정적 검사 56개 파일 전부 통과(서버 보조 파일 2개 제외).
 - `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
   `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.
-- 전자계약 Apps Script 서버는 배포·health·selfTest 까지 완료. 남은 것은 대표 폰에서
-  앱 자가진단, 계약 생성→서명→완료 PDF 실기기 확인이다. 실제 문자·알림톡은 계속 OFF.
+- 전자계약 Apps Script는 배포 URL과 속성이 설정돼 있다. 완료로 확정하려면 대표 폰에서
+  앱 자가진단, 계약 생성→서명→완료 PDF 실기기 확인이 필요하다. 실제 문자·알림톡은 계속 OFF.
 - 고객 사례 글 재료는 `aptReviewMaterialText()` 6항목 형식으로 복사한다. 동·호수와
   고객 연락처를 공개 글에 넣지 않는다; manmool `scripts/new-case-post.mjs` 로 넘긴다.
 - 네이버·구글 소유확인 코드, Threads 토큰 갱신, Gemini 키 상태 확인은 대표 계정 작업이다.

@@ -1,4 +1,4 @@
-/* legal-amount-guide.e2e.js — 관리사무소 수의계약·전문공사 금액 안내
+/* legal-amount-guide.e2e.js — 관리사무소 표준 패키지·전문공사 금액 안내
    안내는 보여 주되 저장을 막지 않는다는 불변식을 지킨다.
    전제: tests/static-server.js(8299) 실행 중. */
 'use strict';
@@ -43,7 +43,7 @@ let browser;
     return { atLimit, guide, saved: state.aptOrders.length, amount: state.aptOrders[0] && state.aptOrders[0].amount };
   });
   assert(apt.atLimit === 'none', '① 500만원에서 경고가 뜸');
-  assert(/500만원\(부가세 제외\).*전자입찰 대상/.test(apt.guide), '① 500만원 초과 안내 문구가 다름: ' + apt.guide);
+  assert(/표준 패키지는 500만원 이하.*별도 견적과 관리사무소 승인/.test(apt.guide), '① 500만원 초과 안내 문구가 다름: ' + apt.guide);
   assert(apt.saved === 1 && apt.amount === 5000001, '① 경고가 오더 저장을 막음: ' + JSON.stringify(apt));
 
   // ② 1,500만원 이상 + 배관 계열이면 경고하고, 저장은 계속된다.

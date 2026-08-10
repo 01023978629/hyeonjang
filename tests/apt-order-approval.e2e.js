@@ -32,10 +32,10 @@ let browser;
     highOther: aiActionWarnings('apt_order_add', { work: '도배', amount: 15000000 })
   }));
   assert(guides.highPipe.length === 2, '② 1,500만원 배관 오더에 두 경고가 아님: ' + JSON.stringify(guides.highPipe));
-  assert(guides.highPipe.some(x => /전자입찰 대상/.test(x)), '② 관리사무소 500만원 초과 경고 없음');
+  assert(guides.highPipe.some(x => /표준 패키지는 500만원 이하/.test(x)), '② 관리사무소 500만원 초과 정책 안내 없음');
   assert(guides.highPipe.some(x => /건설업 등록 없이/.test(x)), '② 전문공사 1,500만원 경고 없음');
   assert(guides.low.length === 0, '② 정확히 500만원에 오경고: ' + JSON.stringify(guides.low));
-  assert(guides.highOther.length === 1 && /전자입찰/.test(guides.highOther[0]), '② 무관 공사에 전문공사 오경고: ' + JSON.stringify(guides.highOther));
+  assert(guides.highOther.length === 1 && /별도 견적과 관리사무소 승인/.test(guides.highOther[0]), '② 무관 공사에 전문공사 오경고: ' + JSON.stringify(guides.highOther));
 
   const modal = await page.evaluate(async () => {
     state.claudeDone = [];
@@ -45,7 +45,7 @@ let browser;
     return { text: root.textContent || '', warnings: root.querySelectorAll('[data-ai-action-warning]').length, orders: (state.aptOrders || []).length };
   });
   assert(/15,000,000원/.test(modal.text), '③ 링크 승인 카드에 금액이 안 보임: ' + modal.text);
-  assert(modal.warnings === 2 && /전자입찰 대상/.test(modal.text) && /건설업 등록 없이/.test(modal.text), '③ 링크 승인 카드 경고가 빠짐: ' + modal.text);
+  assert(modal.warnings === 2 && /표준 패키지는 500만원 이하/.test(modal.text) && /건설업 등록 없이/.test(modal.text), '③ 링크 승인 카드 경고가 빠짐: ' + modal.text);
   assert(modal.orders === 0, '③ 경고를 보여 주는 동안 승인 없이 오더가 저장됨');
   assert(errors.length === 0, '④ pageerror: ' + errors.join(' | '));
 
