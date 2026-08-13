@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="현장">
 <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
-<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 170종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
+<!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 167종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 💰 미수금 팔로업 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjM4IiBmaWxsPSIjMGI0ZWEyIi8+PHRleHQgeD0iOTAiIHk9IjExOCIgZm9udC1zaXplPSI4NCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7tmITsnqU8L3RleHQ+PC9zdmc+">
 <title>현장 — 인테리어 파일 정리</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
@@ -759,7 +759,7 @@
    ╚══════════════════════════════════════════════════════════════════════╝
    구조: 헬퍼/COMPANY → 저장(serializeData/applyData ⇄ 폴더 _현장.json·드라이브·
         IndexedDB 스냅샷 'hj_snaps') → render()+view*() → setupDelegation(위임)
-        → AI(AI_TOOLS 170종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
+        → AI(AI_TOOLS 167종·aiToolRun·AI_WRITE 승인) → 기능블록(아래 마커 앞에 v1~v11 순).
    ⚠ 위임 규약: 새 버튼은 ①click 셀렉터 문자열 ②click 체인 핸들러 — 반드시 둘 다.
         change 리스너에 click 핸들러를 두면 절대 안 탄다(과거 죽은 버튼 3건의 원인).
    ⚠ 새 state 필드는 serializeData·applyData 양쪽 등록. 일정(schedule)은 통짜라 자동.
@@ -2051,7 +2051,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v191-managementpolicy';
+const APP_BUILD='hyeonjang-v192-noreceivable';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4628,7 +4628,7 @@ function openProjectSheet(){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();__showArchived=!__showArchived;close();openProjectSheet();};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='claudeinbox'){claudeInboxView();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='dueaging'){dueAgingView();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='claudeinbox'){claudeInboxView();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -5159,7 +5159,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="overdueFollowup()">💰 미수금 팔로업</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
+  let html=hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -5311,9 +5311,9 @@ function hjDailyBrief(){
    기존 신호 함수 결과를 '재사용'만 하고 임계값을 재계산하지 않는다(원 함수가 이미 밴드를 판정).
    state.projects/expenses/files 미변형 · markDirty 미유발. 가중치는 aiPlannerScan priorityScore 관례 차용. */
 // 현장 보드 배지가 열 수 있는 조치 화면(화이트리스트) — 동적 디스패치(window[문자열]) 방어.
-const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','dueAgingView','warrantyManage','staleProjects','reviewRequest','asManage']);
-// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(미수 dueAgingData 60일 · 보증 high · 방치 severe · AS 접수 14일). 단일 출처.
-const BOARD_URGENT={dueDays:60,warrantyDays:14,staleDays:30,asDays:14};
+const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','warrantyManage','staleProjects','reviewRequest','asManage']);
+// 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(보증 high · 방치 severe · AS 접수 14일). 단일 출처.
+const BOARD_URGENT={warrantyDays:14,staleDays:30,asDays:14};
 function projHealthBoard(){
   const generatedAt=new Date().toISOString();
   const rows=[];
@@ -5323,7 +5323,6 @@ function projHealthBoard(){
   const idx={loss:{},budget:{},due:{},warranty:{},stale:{},review:{},as:{}};
   safe(typeof lossAlertData==='function'&&lossAlertData).forEach(r=>{if(r&&r.name)idx.loss[r.name]=r;});
   safe(typeof budgetAlertData==='function'&&budgetAlertData).forEach(r=>{if(r&&r.name)idx.budget[r.name]=r;});
-  safe(typeof dueAgingData==='function'&&dueAgingData).forEach(r=>{if(r&&r.name)idx.due[r.name]=r;});
   safe(typeof warrantyDue==='function'&&warrantyDue).forEach(r=>{if(r&&r.name)idx.warranty[r.name]=r;});   // warrantyList의 daysLeft<=60 파생(임박·만료)
   safe(typeof staleProjectData==='function'&&staleProjectData).forEach(r=>{if(r&&r.name)idx.stale[r.name]=r;});
   safe(typeof reviewRequestData==='function'&&reviewRequestData).forEach(r=>{if(r&&r.name&&!r.requested&&r.customer&&r.customer.phone)idx.review[r.name]=r;});
@@ -5346,13 +5345,6 @@ function projHealthBoard(){
     if(B){
       if(B.over)reasons.push({axis:'budget',label:'예산초과 '+B.pct+'%',weight:88,openAction:'budgetAlert',urgent:true});
       else reasons.push({axis:'budget',label:'예산임박 '+B.pct+'%',weight:60,openAction:'budgetAlert',urgent:false});
-    }
-    // ⏳ 미수 에이징 — dueAgingData(band/days) 결과 재사용(재밴딩 없음)
-    const D=idx.due[name];
-    if(D){
-      const urgent=D.days>=BOARD_URGENT.dueDays;
-      const w=urgent?70+Math.min(D.days-60,30):(D.days>=30?50:40);
-      reasons.push({axis:'due',label:'미수 '+(D.days>=0?D.days+'일':'기한미정'),weight:w,openAction:'dueAgingView',urgent:urgent});
     }
     // 🛡 보증 — warrantyDue(daysLeft<=60) 결과 재사용
     const W=idx.warranty[name];
@@ -5983,7 +5975,6 @@ const AI_TOOLS = [
  {name:'weekly_report',description:'주간 리포트 화면을 열고 요약 수치를 반환(이번 주 수금·새 견적·미수금·다음 주 일정). week=last면 지난주.',parameters:{type:'OBJECT',properties:{week:{type:'STRING',description:"'this'(기본) 또는 'last'"}}}},
  {name:'review_quote',description:'현재 편집 중인 견적서를 검토(누락 항목·단가 이상·수량 점검)하고 검토 화면을 엶. 사용자가 "견적 검토/봐줘/빠진 거 없나" 하면 호출. 먼저 견적 작성 화면에 견적이 열려 있어야 함.',parameters:{type:'OBJECT',properties:{}}},
  {name:'monthly_closing',description:'월말 결산: "이번 달/지난달 매출 정리, N월 결산, 부가세"면 호출. 그 달 요약(매출·공급가·부가세·수금·완료 현장 마진·미수금)을 반환. month는 YYYY-MM(생략 시 최근 달).',parameters:{type:'OBJECT',properties:{month:{type:'STRING',description:'YYYY-MM (예: 2026-06). 생략하면 가장 최근 달.'}}}},
- {name:'overdue_followup',description:'미수금 방치 현장을 자동 점검(완료 후 경과일·약속일 초과)하고 우선순위 목록과 팔로업 화면을 엶. "미수금/못 받은 돈/독촉" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_ledger',description:'거래처(고객)별 누적 매출·수금·미수·재거래 장부를 집계하고 화면을 엶. "거래처/고객별 매출/단골/재거래" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'project_history',description:'현장 파일철: 현장명 또는 고객명(query)으로 그 현장의 전체 이력(견적·수금·일정·작업일지·사진)을 타임라인으로 반환하고 화면을 엶. "이 현장/고객 지난번에 뭐 했지" 류 질문이면 호출. 여러 곳이 걸리면 후보 목록을 반환하니 사용자에게 고르게 할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING',description:'현장명 또는 고객 이름(일부 가능)'}},required:['query']}},
  {name:'daily_check',description:'오늘 자동 점검: 미수금 방치·오늘 일정·작업일지 미작성·미배정 사진·미연결 견적을 한 번에 훑어 챙길 일 목록을 반환. "오늘 뭐 챙겨야 해/점검해줘"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -6036,7 +6027,6 @@ const AI_TOOLS = [
  {name:'ba_card',description:'시공 전/후 비교 카드 이미지를 만든다(현장 사진 2장 선택→합성 이미지, 홍보용). "전후 비교/비포애프터/홍보 카드/시공 전후 사진"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'voice_input',description:'말로 기록(음성 입력) 안내를 연다 — 음성으로 지출·일정·질문을 지시. "말로/음성으로/받아써/음성 입력"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'msg_center',description:'상황별 문자 센터를 연다(착공 안내/준공 인사/AS 답변/리뷰 부탁/감사 인사 — 현장·고객 자동 채움). "착공 문자/준공 문자/고객 문자/인사 문자/문자 보내줘"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'due_aging',description:'미수금 에이징을 연다(30/60/90일 경과 구간별 색상·독촉 우선순위·독촉 문자). "미수금 오래된 곳/에이징/독촉 순서/받을 돈 정리"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'tax_calendar',description:'세금 캘린더를 연다(부가세 1·4·7·10월, 종합소득세 5월 신고 일정 자동 등록·D-day). "세금 일정/부가세 언제/종소세/신고 기한"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'quote_contract',description:'현장에 배정된 견적으로 공사 계약서 초안을 만든다(계약금액·계약금30/중도금40/잔금30·하자보수·계좌 자동 채움, 복사용). "계약서 만들어줘/계약서 초안/수주 확정"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'bulk_assign',description:'견적 일괄 배정 센터를 연다(파일명에서 현장 자동 매칭 배정 + 목록 붙여넣기 일괄 적용·복구). "일괄 배정/자동 배정/견적 정리/배정 복구"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -6050,7 +6040,6 @@ const AI_TOOLS = [
  {name:'ops_loop_report_daily',description:'오늘의 브리핑 리포트를 생성한다(일정·미수금·챙길 일). "오늘 브리핑/일일 리포트"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_report_weekly',description:'주간 운영 리포트를 생성한다. "주간 리포트"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_report_monthly',description:'월말 결산 리포트를 생성한다(매출·지출·손익·완료 현장). "월말 리포트/월간 결산"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'ops_loop_report_receivable',description:'미수금 리포트를 생성한다(현장별 미수 현황). "미수금 봐줘/미수금 리포트/못 받은 돈"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_report_risk',description:'위험 현장 리포트를 생성한다(적자·예산초과·방치). "위험한 현장/리스크/위험 리포트"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ai_ops',description:'AI 자율 운영 센터를 연다(Planner→Queue→Approval→Executor→Log). AI가 사업 상태를 점검해 할 일을 큐에 쌓고, 승인하면 실행한다. "운영 센터/자율 운영/할 일 점검/AI 점검/작업 큐/운영 루프"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'week_plan',description:'이번 주(다음 7일) 일정과 챙길 일을 요일별로 정리하고 AI 우선순위 조언을 준다. "주간 계획/이번 주/다음 주/주간 일정/한 주 계획"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -6329,11 +6318,6 @@ async function aiToolRun(name,a){
       setTimeout(()=>{try{monthlyClosing(a.month||'');}catch(e){}},60);
       return {결과:'월말 결산 화면을 열었습니다',월:d.label,견적건수:d.count,매출원:d.total,공급가원:d.supply,부가세원:d.vat,이달수금원:d.paySum,완료현장:d.doneRows.length,완료마진원:d.doneMargin,미수금원:d.dueSum};
     }
-    case 'overdue_followup':{
-      const d=overdueFollowupData();
-      setTimeout(()=>{try{overdueFollowup();}catch(e){}},60);
-      return {결과:'미수금 팔로업 화면을 열었습니다',방치건수:d.items.length,합계미수원:d.totalDue,장기방치:d.counts.urgent,목록:d.items.slice(0,10).map(i=>({현장:i.project,고객:i.customer||'',미수금원:i.due,상태:HJ_LEVEL_META[i.level].t,사유:i.reason}))};
-    }
     case 'customer_ledger':{
       const d=customerLedgerData();
       setTimeout(()=>{try{customerLedger();}catch(e){}},60);
@@ -6531,7 +6515,6 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'ba_card':{const r=baCompareView();return Object.assign({결과:'전/후 비교 카드를 열었습니다'},r);}
     case 'voice_input':{const r=voiceInputView();return Object.assign({결과:'말로 기록 안내를 열었습니다'},r);}
     case 'msg_center':{const r=msgCenterView();return Object.assign({결과:'문자 센터를 열었습니다'},r);}
-    case 'due_aging':{const r=dueAgingView();return Object.assign({결과:'미수금 에이징을 열었습니다'},r);}
     case 'tax_calendar':{const r=taxCalendarView();return Object.assign({결과:'세금 캘린더를 열었습니다'},r);}
     case 'quote_contract':{const r=contractDraftView();return Object.assign({결과:'계약서 초안 화면을 열었습니다'},r);}
     case 'bulk_assign':{const r=bulkAssignCenter();return Object.assign({결과:'일괄 배정 센터를 열었습니다'},r);}
@@ -6545,7 +6528,6 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'ops_loop_report_daily':{const r=aiOpsDailyBrief();aiOpsReportView(r);return Object.assign({결과:'일일 브리핑'},{요약:r.summary});}
     case 'ops_loop_report_weekly':{const r=aiOpsWeeklyReport();aiOpsReportView(r);return Object.assign({결과:'주간 리포트'},{요약:r.summary});}
     case 'ops_loop_report_monthly':{const r=aiOpsMonthlyReport();aiOpsReportView(r);return Object.assign({결과:'월말 결산 리포트'},{요약:r.summary});}
-    case 'ops_loop_report_receivable':{const r=aiOpsReceivableReport();aiOpsReportView(r);return Object.assign({결과:'미수금 리포트'},{요약:r.summary});}
     case 'ops_loop_report_risk':{const r=aiOpsRiskReport();aiOpsReportView(r);return Object.assign({결과:'위험 현장 리포트'},{요약:r.summary});}
     case 'ai_ops':{const r=aiOpsCenter();return Object.assign({결과:'AI 운영 센터를 열었습니다'},r);}
     case 'week_plan':{const r=await weekPlan();return Object.assign({결과:'이번 주 계획을 열었습니다'},r);}
@@ -6659,7 +6641,6 @@ function aiActionLabel(name,a){
     case 'weekly_report':return '주간 리포트'+(String(a.week||'')==='last'?' (지난주)':'');
     case 'review_quote':return '견적 검토';
     case 'monthly_closing':return '월말 결산'+(a.month?' ('+a.month+')':'');
-    case 'overdue_followup':return '미수금 팔로업';
     case 'customer_ledger':return '거래처 장부';
     case 'project_history':return '현장 파일철 "'+(a.query||'')+'"';
     case 'daily_check':return '오늘 자동 점검';
@@ -6712,7 +6693,6 @@ case 'ops_loop_run':return '운영 점검';
     case 'ba_card':return '전/후 비교 카드';
     case 'voice_input':return '말로 기록';
     case 'msg_center':return '문자 센터';
-    case 'due_aging':return '미수금 에이징';
     case 'tax_calendar':return '세금 캘린더';
     case 'quote_contract':return '계약서 초안';
     case 'bulk_assign':return '견적 일괄 배정';
@@ -6726,7 +6706,6 @@ case 'ops_loop_run':return '운영 점검';
     case 'ops_loop_report_daily':return '일일 브리핑';
     case 'ops_loop_report_weekly':return '주간 리포트';
     case 'ops_loop_report_monthly':return '월말 결산';
-    case 'ops_loop_report_receivable':return '미수금 리포트';
     case 'ops_loop_report_risk':return '위험 리포트';
     case 'ai_ops':return 'AI 운영 센터';
     case 'week_plan':return '주간 계획';
@@ -6835,7 +6814,6 @@ function aiResultBrief(name,out){
   if(name==='weekly_report')return ' — 수금 '+won(out.수금원||0);
   if(name==='review_quote')return ' — 지적 '+(out.지적수||0)+'건';
   if(name==='monthly_closing')return ' — 매출 '+won(out.매출원||0);
-  if(name==='overdue_followup')return ' — 방치 '+(out.방치건수||0)+'건 · '+won(out.합계미수원||0);
   if(name==='customer_ledger')return ' — '+(out.거래처수||0)+'곳 · 매출 '+won(out.누적매출원||0);
   if(name==='project_history')return out.여러곳?' — '+out.여러곳.length+'곳 일치':' — 미수 '+won(out.미수금원||0);
   if(name==='daily_check')return ' — '+(out.챙길일||0)+'건';
@@ -6965,7 +6943,6 @@ function aiSheetEl(){
     ['📅 이번 주','오늘부터 7일간 일정을 보여줘.'],
     ['📊 주간 리포트','이번 주 주간 리포트 열어줘.'],
     ['🗓 월말 결산','이번 달 월말 결산 열어줘.'],
-    ['💰 미수금 팔로업','미수금 방치된 현장 점검하고 독촉 문안 뽑아줘.'],
     ['📈 거래처 장부','거래처별 누적 매출과 재거래 고객 보여줘.'],
     ['🧠 현장 파일철','현장 파일철 보여줘.'],
     ['🤖 오늘 점검','오늘 챙길 일 점검해줘.'],
@@ -7780,135 +7757,15 @@ async function monthlyClosing(ym){
   return {열림:'결산 모달',월:d.label};
 }
 
-/* ═══════════ 💰 미수금 자동 팔로업 — 방치 감지 + 독촉 문안 초안 ═══════════ */
-function hjToday0(){return new Date(new Date().toDateString());}
-function hjDaysSince(ymd){ if(!ymd)return null; const d=new Date(String(ymd).slice(0,10)+'T00:00:00'); if(isNaN(d))return null; return Math.max(0,Math.round((hjToday0()-d)/86400000)); }
-/* 방치 미수금 목록: 완료일/약속일 기준 경과일 + 심각도 레벨 */
-function overdueFollowupData(){
-  const acts=state.projects.filter(p=>!p.archived);
-  const items=[];let totalDue=0;
-  acts.forEach(p=>{
-    const s=projStats(p.name);
-    if(s.due<=0)return;
-    totalDue+=s.due;
-    const dueDays=p.dueDate?hjDaysSince(p.dueDate):null;      // 약속일 경과(양수면 지남)
-    const dueOver=(p.dueDate)?Math.round((hjToday0()-new Date(p.dueDate+'T00:00:00'))/86400000):null;
-    const doneDays=hjDaysSince(p.doneAt);                      // 완료 후 경과
-    // 기준 경과일: 약속일이 있으면 그 경과, 없으면 완료 후 경과
-    const baseDays=(dueOver!=null)?dueOver:(doneDays!=null?doneDays:null);
-    let level='wait',reason='';
-    if(dueOver!=null && dueOver>0){level='urgent';reason='약속일 '+dueOver+'일 지남';}
-    else if(doneDays!=null && doneDays>=30){level='urgent';reason='완료 후 '+doneDays+'일 경과';}
-    else if(doneDays!=null && doneDays>=14){level='soon';reason='완료 후 '+doneDays+'일';}
-    else if(p.doneAt){level='wait';reason='완료 후 '+(doneDays||0)+'일';}
-    else if(p.dueDate){level=(dueOver>=0?'soon':'wait');reason='약속일 '+(dueOver>0?dueOver+'일 지남':'D'+(dueOver<=0?dueOver:'+'+dueOver));}
-    else {level='nodate';reason='완료·약속일 미설정';}
-    const cust=p.customer||{};
-    items.push({project:p.name,title:p.title||p.name,customer:cust.name||'',phone:cust.phone||'',due:s.due,doneAt:p.doneAt||null,dueDate:p.dueDate||null,baseDays,level,reason});
-  });
-  const rank={urgent:0,soon:1,wait:2,nodate:3};
-  items.sort((a,b)=>(rank[a.level]-rank[b.level])||(b.due-a.due)||((b.baseDays||0)-(a.baseDays||0)));
-  const counts={urgent:items.filter(i=>i.level==='urgent').length,soon:items.filter(i=>i.level==='soon').length};
-  return {items,totalDue,counts,urgentDue:items.filter(i=>i.level==='urgent').reduce((a,i)=>a+i.due,0)};
-}
-const HJ_LEVEL_META={urgent:{ic:'🔴',t:'장기 방치',c:'#c2410c'},soon:{ic:'🟠',t:'확인 필요',c:'#b45309'},wait:{ic:'⚪',t:'정상 대기',c:'var(--muted)'},nodate:{ic:'⚪',t:'기한 미설정',c:'var(--muted)'}};
+/* ═══════════ 📅 날짜 계산 도우미 (여러 화면 공용) ═══════════ */
 /* 문자/카톡 전송 공통 */
 function hjSendSms(phone,text){
   const tel=telHref(phone);
   if(tel){location.href='sms:'+tel+(/(iPhone|iPad|Mac)/i.test(navigator.userAgent)?'&':'?')+'body='+encodeURIComponent(text);}
   else{if(navigator.clipboard)navigator.clipboard.writeText(text);toast('연락처가 없어 문안을 복사했습니다 — 문자·카톡에 붙여넣으세요');}
 }
-/* 규칙 기반 독촉 3단계(경과일에 맞춰 톤 강도 자동) */
-function overdueRuleDrafts(it){
-  const acc=(COMPANY.accounts&&COMPANY.accounts[0])||null;
-  const accL=acc?acc.bank+' '+acc.no+' ('+acc.holder+')':'';
-  const amt=won(it.due);const name=it.title||it.project;
-  const soft=['안녕하세요, '+COMPANY.name+'입니다.',name+' 공사 잔금 '+amt+'이 아직 확인되지 않아 혹시 착오가 있으실까 하여 연락드립니다.',accL?'입금계좌: '+accL:'','이미 처리하셨다면 이 문자는 무시해 주세요. 감사합니다.'].filter(Boolean).join('\n');
-  const firm=['['+COMPANY.name+'] 대금 안내',name+' 공사대금 잔금 '+amt+(it.reason?' ('+it.reason+')':'')+'이 미납 상태입니다.',accL?'입금계좌: '+accL:'','확인 후 입금 부탁드립니다. 문의 '+COMPANY.owner+' '+COMPANY.tel].filter(Boolean).join('\n');
-  const fin=['['+COMPANY.name+'] 미수금 최종 안내',name+' 공사대금 잔금 '+amt+'이 '+(it.reason||'장기간')+' 미납되어 다시 한 번 정중히 안내드립니다.',accL?'입금계좌: '+accL:'','이번 주 내 입금이 어려우시면 '+COMPANY.tel+'로 조정 가능한 일정을 알려주시면 감사하겠습니다.'].filter(Boolean).join('\n');
-  return {soft,firm,fin};
-}
-/* 독촉 문안 초안 모달(규칙 즉시 + AI 맞춤) */
-function overdueDraftModal(projName){
-  const data=overdueFollowupData();
-  const it=data.items.find(x=>x.project===projName);
-  if(!it){toast('미수금이 없는 현장입니다.');return;}
-  const d=overdueRuleDrafts(it);
-  const card=(title,ic,text,tone,cls)=>
-    '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'+
-    '<div style="font-weight:700;font-size:13px;margin-bottom:4px">'+ic+' '+title+'</div>'+
-    '<div class="odText" data-tone="'+tone+'" style="font-size:12.5px;white-space:pre-wrap;color:var(--ink);line-height:1.55">'+escapeHtml(text)+'</div>'+
-    '<div style="display:flex;gap:6px;margin-top:8px"><button class="'+cls+' tiny odSend" data-tone="'+tone+'" style="padding:7px 12px">✉️ 이 문안으로</button>'+
-    '<button class="ghost tiny odCopy" data-tone="'+tone+'" style="padding:7px 12px">복사</button></div></div>';
-  const suggest=it.level==='urgent'?'최종 안내':(it.level==='soon'?'명확히':'부드럽게');
-  const body=
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">'+escapeHtml(it.title||it.project)+' · 미수금 <b style="color:var(--warn)">'+won(it.due)+'</b>'+(it.reason?' · '+escapeHtml(it.reason):'')+(it.customer?' · '+escapeHtml(it.customer):'')+'<br>추천 강도: <b>'+suggest+'</b></div>'+
-    '<div id="odRule">'+
-      card('부드럽게 (착오 확인)','①',d.soft,'soft','blue')+
-      card('명확히 (금액·계좌·기한)','②',d.firm,'firm','clay')+
-      (it.level==='urgent'?card('최종 안내 (장기 미납)','③',d.fin,'fin','moss'):'')+
-    '</div>'+
-    '<div id="odAiWrap" style="margin-top:6px">'+
-      (window.__geminiKey
-        ? '<button class="clay" id="odAiBtn" style="width:100%;padding:11px">🤖 AI 맞춤 문안 만들기</button><div id="odAiOut" style="margin-top:8px"></div>'
-        : '<div style="background:var(--paper-2);border-radius:10px;padding:10px;font-size:12.5px;color:var(--muted)">☁️ Gemini 키를 넣으면 AI가 상황에 맞춘 정중한 맞춤 문안을 만들어 줍니다.</div>')+
-    '</div>';
-  openModal('✉️ 미수금 독촉 문안 — '+escapeHtml(it.project),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  const root=document.getElementById('modalRoot');
-  const textOf=tone=>{const el=root.querySelector('.odText[data-tone="'+tone+'"]')||root.querySelector('#odAiText');return el?el.textContent:'';};
-  root.querySelectorAll('.odSend').forEach(b=>b.onclick=()=>{const t=root.querySelector('.odText[data-tone="'+b.dataset.tone+'"]').textContent;closeModal();hjSendSms(it.phone,t);});
-  root.querySelectorAll('.odCopy').forEach(b=>b.onclick=()=>{const t=root.querySelector('.odText[data-tone="'+b.dataset.tone+'"]').textContent;if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast('복사됨'));});
-  const aiBtn=root.querySelector('#odAiBtn');
-  if(aiBtn)aiBtn.onclick=async()=>{
-    aiBtn.disabled=true;aiBtn.textContent='🤖 작성 중…';
-    const out=root.querySelector('#odAiOut');
-    try{
-      const prompt='너는 대한민국 1인 인테리어 사장님을 돕는 조수다. 아래 상황에 맞는 미수금 안내 문자 1건을 써라. 관계를 해치지 않게 정중하되, 금액과 입금계좌를 명확히 포함하고, 3~5문장, 존댓말. 머리말·따옴표·설명 없이 문자 본문만 출력.\n'+
-        '업체: '+COMPANY.name+' / 담당 '+COMPANY.owner+' '+COMPANY.tel+'\n'+
-        '계좌: '+(((COMPANY.accounts||[])[0])?COMPANY.accounts[0].bank+' '+COMPANY.accounts[0].no+' '+COMPANY.accounts[0].holder:'')+'\n'+
-        '현장: '+(it.title||it.project)+' / 고객: '+(it.customer||'고객님')+' / 미수금: '+won(it.due)+' / 상태: '+(it.reason||'미납')+'\n'+
-        '강도: '+suggest+' 수준으로.';
-      let t=String(await geminiAsk(prompt)||'').trim();
-      out.innerHTML='<div style="border:1px solid var(--clay);border-radius:10px;padding:10px">'+
-        '<div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--clay)">🤖 AI 맞춤 문안</div>'+
-        '<div id="odAiText" style="font-size:12.5px;white-space:pre-wrap;line-height:1.55">'+escapeHtml(t)+'</div>'+
-        '<div style="display:flex;gap:6px;margin-top:8px"><button class="clay tiny" id="odAiSend" style="padding:7px 12px">✉️ 이 문안으로</button><button class="ghost tiny" id="odAiCopy" style="padding:7px 12px">복사</button></div></div>';
-      root.querySelector('#odAiSend').onclick=()=>{closeModal();hjSendSms(it.phone,t);};
-      root.querySelector('#odAiCopy').onclick=()=>{if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>toast('복사됨'));};
-      aiBtn.textContent='🤖 다시 만들기';aiBtn.disabled=false;
-    }catch(e){out.innerHTML='<div style="color:var(--muted);font-size:12.5px">AI 문안 실패: '+escapeHtml(String(e.message||e))+' — 위 규칙 문안을 사용하세요.</div>';aiBtn.textContent='🤖 다시 시도';aiBtn.disabled=false;}
-  };
-}
-/* 팔로업 센터(방치 목록) */
-function overdueFollowup(){
-  const d=overdueFollowupData();
-  if(!d.items.length){openModal('💰 미수금 팔로업','<div class="empty" style="padding:20px"><b>미수금이 없습니다 🎉</b>모든 현장의 잔금이 회수되었어요.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);return {방치건수:0,합계미수원:0};}
-  const head='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
-    '<div style="flex:1;min-width:120px;background:var(--paper-2);border-radius:10px;padding:10px"><div style="font-size:11px;color:var(--muted)">총 미수금</div><div style="font-size:19px;font-weight:800;color:var(--warn)">'+hjMan(d.totalDue)+'</div></div>'+
-    '<div style="flex:1;min-width:120px;background:var(--paper-2);border-radius:10px;padding:10px"><div style="font-size:11px;color:var(--muted)">🔴 장기 방치</div><div style="font-size:19px;font-weight:800">'+d.counts.urgent+'건 · '+hjMan(d.urgentDue)+'</div></div>'+
-    '</div>';
-  const rows=d.items.map(it=>{
-    const m=HJ_LEVEL_META[it.level];
-    return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
-        '<div style="min-width:0"><b style="font-size:14px">'+escapeHtml(it.title||it.project)+'</b> <span style="font-size:11px;color:'+m.c+'">'+m.ic+' '+m.t+'</span>'+
-        '<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+escapeHtml(it.reason)+(it.customer?' · '+escapeHtml(it.customer):'')+(it.phone?' · '+escapeHtml(it.phone):'')+'</div></div>'+
-        '<div style="text-align:right;white-space:nowrap"><div style="font-size:16px;font-weight:800;color:var(--warn)">'+won(it.due)+'</div></div>'+
-      '</div>'+
-      '<div style="display:flex;gap:6px;margin-top:8px">'+
-        '<button class="clay tiny odDraft" data-proj="'+escapeAttr(it.project)+'" style="padding:7px 12px">✉️ 독촉 문안</button>'+
-        (it.phone?'<button class="ghost tiny odCall" data-phone="'+escapeAttr(telHref(it.phone))+'" style="padding:7px 12px">📞 전화</button>':'')+
-      '</div></div>';
-  }).join('');
-  openModal('💰 미수금 팔로업 — '+d.items.length+'건',head+'<div style="max-height:52vh;overflow:auto">'+rows+'</div>'+
-    '<div style="font-size:11.5px;color:var(--muted);margin-top:8px">완료 후 30일↑ 또는 약속일 경과 = 🔴 · 14~30일 = 🟠. 약속일은 각 현장 카드에서 설정하면 정확해집니다.</div>',
-    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  const root=document.getElementById('modalRoot');
-  root.querySelectorAll('.odDraft').forEach(b=>b.onclick=()=>overdueDraftModal(b.dataset.proj));
-  root.querySelectorAll('.odCall').forEach(b=>b.onclick=()=>{location.href='tel:'+b.dataset.phone;});
-  return {방치건수:d.items.length,합계미수원:d.totalDue,장기방치:d.counts.urgent};
-}
-
+function hjToday0(){return new Date(new Date().toDateString());}
+function hjDaysSince(ymd){ if(!ymd)return null; const d=new Date(String(ymd).slice(0,10)+'T00:00:00'); if(isNaN(d))return null; return Math.max(0,Math.round((hjToday0()-d)/86400000)); }
 /* ═══════════ 📈 거래처 장부 — 고객별 누적 매출·수금·미수·재거래 ═══════════ */
 function customerLedgerData(){
   const acts=state.projects.filter(p=>!p.archived);
@@ -8102,11 +7959,6 @@ function projectHistory(name){
 function dailyCheckData(){
   const items=[];
   const today=localDate();
-  try{
-    const od=overdueFollowupData();
-    if(od.counts.urgent)items.push({ic:'🔴',t:'미수금 장기 방치 '+od.counts.urgent+'건 · '+hjMan(od.urgentDue),act:"overdueFollowup()",w:0});
-    else if(od.counts.soon)items.push({ic:'🟠',t:'미수금 확인 필요 '+od.counts.soon+'건',act:"overdueFollowup()",w:1});
-  }catch(e){}
   const todaySch=(state.schedule||[]).filter(s=>s.date===today).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
   if(todaySch.length){const f=todaySch[0];items.push({ic:'🗓',t:'오늘 일정 '+todaySch.length+'건 — '+(f.time?f.time+' ':'')+hjCut(f.title,14)+(f.project?' @'+hjCut(f.project,8):''),act:"state.tab='schedule';render()",w:2});}
   const asN=asOpenList().length;
@@ -8655,7 +8507,6 @@ function hjBootExtras(){
     if(v){
       try{history.replaceState(null,'',location.pathname);}catch(e){}
       if(v==='schedule'){state.tab='schedule';render();}
-      else if(v==='due'){setTimeout(()=>{try{overdueFollowup();}catch(e){}},600);}
       else if(v==='ai'){setTimeout(()=>{try{aiAgent();}catch(e){}},600);}
       else if(v==='glance'){hjGlanceShow(true);}
     }else{
@@ -8713,7 +8564,7 @@ function asOpenData(){
    순수 파생(읽기 전용) — state 를 변형하지 않으며 직렬화에 아무것도 추가하지 않는다. */
 const HJ_WATCH={dueAfterDone:14,dueMin:100000,warrantySoon:60,asStale:3,projStale:21};
 function hjWatchScan(){
-  const out={due:[],uncertain:[],as:[],warranty:[],stale:[],cash:0,total:0};
+  const out={as:[],warranty:[],stale:[],total:0};
   try{
     // 현장별 마지막 움직임(사진·파일·일정 중 최근) — 방치 판정용
     const touch={};
@@ -8724,20 +8575,6 @@ function hjWatchScan(){
     (state.projects||[]).forEach(p=>{
       if(!p||!p.name||p.archived)return;
       const phone=(p.customer&&p.customer.phone)||'';
-      // ① 못 받은 돈 — 약속한 날(완료일, 없으면 dueDate)이 지난 것만
-      let s=null; try{s=projStats(p.name);}catch(e){}
-      const payBase=p.doneAt||p.dueDate||null;
-      if(s&&s.due>=HJ_WATCH.dueMin&&payBase){
-        const d=hjDaysSince(payBase);
-        if(d!==null&&d>=HJ_WATCH.dueAfterDone){
-          const row={name:p.name,owed:s.due,days:d,byDue:!p.doneAt,phone};
-          // 수금 기록이 한 번도 없으면 독촉이 아니라 '입금 확인 필요'(recvUnknown, [BUG-8]).
-          // 파수꾼(Watchdog.gs)과 같은 규칙 — 한쪽만 바꾸면 캘린더와 앱이 다른 말을 하게 된다.
-          let unk=false; try{unk=recvUnknown(p);}catch(e){}
-          if(unk)out.uncertain.push(row);
-          else {out.due.push(row);out.cash+=s.due;}
-        }
-      }
       // ② 보증 만료 임박 = 무상점검 제안(재수주 기회)
       let w=null; try{w=hjWarranty(p);}catch(e){}
       if(w&&w.dday>=0&&w.dday<=HJ_WATCH.warrantySoon)out.warranty.push({name:p.name,dday:w.dday,end:w.end,phone});
@@ -8751,12 +8588,10 @@ function hjWatchScan(){
     let as=[]; try{as=asOpenData()||[];}catch(e){}
     as.forEach(a=>{if(a&&(a.days===null||a.days>=HJ_WATCH.asStale))out.as.push(a);});
 
-    out.due.sort((a,b)=>b.owed-a.owed);
-    out.uncertain.sort((a,b)=>b.owed-a.owed);
     out.warranty.sort((a,b)=>a.dday-b.dday);
     out.stale.sort((a,b)=>b.days-a.days);
   }catch(e){}
-  out.total=out.due.length+out.uncertain.length+out.as.length+out.warranty.length+out.stale.length;
+  out.total=out.as.length+out.warranty.length+out.stale.length;
   return out;
 }
 let __watchOpen=false;   // 화면 접힘 상태 — 메모리에만 둔다(직렬화 금지)
@@ -8776,13 +8611,11 @@ function hjWatchCardHTML(){
      '</span></div>';
 
   if(!r.total){
-    h+='<div class="hint" style="margin:8px 0 0">✅ 챙길 게 없습니다 — 미수금·AS·보증만료·멈춘 현장 모두 이상 없습니다.</div></div>';
+    h+='<div class="hint" style="margin:8px 0 0">✅ 챙길 게 없습니다 — AS·보증만료·멈춘 현장 모두 이상 없습니다.</div></div>';
     return h;
   }
 
   h+='<div style="margin-top:8px">'+
-     (r.due.length?chip('💰 못 받은 돈 '+won(r.cash),'var(--warn)'):'')+
-     (r.uncertain.length?chip('❓ 입금 확인 '+r.uncertain.length):'')+
      (r.as.length?chip('🔧 밀린 AS '+r.as.length):'')+
      (r.warranty.length?chip('🛡 보증만료 '+r.warranty.length):'')+
      (r.stale.length?chip('💤 멈춘 현장 '+r.stale.length):'')+'</div>';
@@ -8790,15 +8623,6 @@ function hjWatchCardHTML(){
   if(__watchOpen){
     const sec=t=>'<div style="font-size:12px;color:var(--muted);font-weight:700;margin:12px 0 5px">'+t+'</div>';
     const tel=p=>p?'<a href="tel:'+encodeURIComponent(p)+'" style="color:var(--blueprint);text-decoration:none">📞 '+escapeHtml(p)+'</a>':'';
-    if(r.due.length){
-      h+=sec('💰 못 받은 돈 — 완료 후 '+HJ_WATCH.dueAfterDone+'일 넘음');
-      h+=r.due.map(d=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(d.name)+'</b> <b style="color:var(--warn)">'+won(d.owed)+'</b> <span style="color:var(--muted)">'+(d.byDue?'약속일':'완료')+' '+d.days+'일 경과</span> '+tel(d.phone)+'</div>').join('');
-    }
-    if(r.uncertain.length){
-      h+=sec('❓ 입금 확인 필요 — 수금 기록이 아예 없는 현장');
-      h+='<div class="hint" style="margin:0 0 4px">현금으로 받고 입력만 안 하셨을 수 있어요. 독촉 전에 먼저 확인하세요.</div>';
-      h+=r.uncertain.map(q=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(q.name)+'</b> <b style="color:var(--clay)">'+won(q.owed)+'</b> <span style="color:var(--muted)">'+(q.byDue?'약속일':'완료')+' '+q.days+'일 경과</span> '+tel(q.phone)+'</div>').join('');
-    }
     if(r.as.length){
       h+=sec('🔧 밀린 AS');
       h+=r.as.map(a=>'<div style="font-size:13px;padding:2px 0"> · <b>'+escapeHtml(a.name)+'</b> '+a.count+'건'+(a.days!==null?' <span style="color:var(--muted)">'+a.days+'일 경과</span>':'')+(a.latest?' <span style="color:var(--muted)">'+escapeHtml(String(a.latest).slice(0,30))+'</span>':'')+'</div>').join('');
@@ -9660,7 +9484,6 @@ const HJ_HELP=[
   {k:'자재 발주',d:'[🚚 발주서] — 품목 체크→거래처별 주문 문자. 거래처는 품목별로 자동 기억.',say:'타일 발주 문자 만들어줘'}]},
  {t:'💰 돈 관리',items:[
   {k:'수금 기록',d:'현장별 수금액을 바꾸면 날짜별 이력이 자동 누적 → 주간·월말 수치의 근거.',say:'성산동 수금 300만원 처리해줘'},
-  {k:'미수금 팔로업',d:'완료 후 방치·약속일 초과를 자동 감지, 3단계 독촉 문안(+AI 맞춤)을 바로 문자로.',say:'못 받은 돈 점검해줘'},
   {k:'경영 대시보드',d:'대시보드 [📊 경영 현황] — 이번 달 수금·미수금·진행중·오늘 일정·단계 분포·챙길 일을 한 화면에. 사장님 아침 점검용.',say:'경영 현황 보여줘'},
   {k:'매출 추이',d:'월별 매출·수금 흐름을 그래프로. 최근 3개월 추세(증가/감소)도 계산. 경영 대시보드 [📉 추이]에서도 열립니다.',say:'매출 추이 보여줘'},
   {k:'리포트',d:'📊 주간 리포트 · 🗓 월말 결산(부가세 분해) · 📊 수익 분석(유형별 마진·단가 전략) — 전부 카톡용 이미지 한 장 지원.',say:'6월 결산 보여줘'},
@@ -10576,7 +10399,6 @@ function bizDashboard(){
       '<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px">💰 돈</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
         '<button class="blue tiny" id="bdPnl" style="flex:1;min-width:76px;padding:9px">💰 손익</button>'+
-        '<button class="blue tiny" id="bdOverdue" style="flex:1;min-width:76px;padding:9px">💳 미수금</button>'+
         '<button class="blue tiny" id="bdExp" style="flex:1;min-width:76px;padding:9px">💳 지출</button>'+
         '<button class="blue tiny" id="bdVat" style="flex:1;min-width:76px;padding:9px">📊 부가세</button>'+
       '</div>'+
@@ -10618,7 +10440,6 @@ function bizDashboard(){
   const obtn=root.querySelector('#bdOps');if(obtn)obtn.onclick=()=>{closeModal();opsReport('week');};
   const fbtn=root.querySelector('#bdForecast');if(fbtn)fbtn.onclick=()=>{closeModal();salesForecast();};
   const bbtn=root.querySelector('#bdBudget');if(bbtn)bbtn.onclick=()=>{closeModal();budgetManage();};
-  root.querySelector('#bdOverdue').onclick=()=>{closeModal();overdueFollowup();};
   root.querySelector('#bdMap').onclick=()=>{closeModal();allProjectsMap();};
   return {월:d.ym,수금원:d.monthRecv,미수금원:d.totalDue,진행중:d.inProgress.length,오늘일정:d.todaySched.length};
 }
@@ -11226,8 +11047,6 @@ function hjNotifyItems(){
   (state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).forEach(s=>{
     items.push({key:'sch-'+s.id,ic:'🗓',title:'오늘 일정: '+(s.time?s.time+' ':'')+s.title,body:(s.project?s.project+' · ':'')+(s.workers?'인원 '+s.workers:'')});
   });
-  // 미수금 장기 방치
-  try{const od=overdueFollowupData();(od.items||[]).filter(i=>i.level==='urgent').slice(0,3).forEach(x=>{items.push({key:'due-'+x.project,ic:'🔴',title:'미수금: '+x.project,body:hjMan(x.due)+' · 완료 '+(x.doneAt||'')});});}catch(e){}
   // 무상 A/S 만료 임박(30일 이내)
   state.projects.filter(p=>!p.archived&&p.doneAt).forEach(p=>{const w=hjWarranty(p);if(w&&w.dday>0&&w.dday<=30){items.push({key:'as-'+p.name,ic:'🛡',title:'무상 A/S 만료 임박: '+p.name,body:'D-'+w.dday+' ('+w.end+')'});}});
   // AI 제안·목표 알림 추가(중복 키 방지)
@@ -11900,8 +11719,6 @@ function aiSuggestions(){
   // 3) 미배정 사진 → 정리
   const unassigned=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
   if(unassigned>=3)sug.push({ic:'📸',t:'미배정 사진 '+unassigned+'장 정리',cmd:'미배정 사진 자동 정리해줘',w:2});
-  // 4) 장기 미수 → 팔로업
-  try{const od=overdueFollowupData();if(od.counts.urgent)sug.push({ic:'🔴',t:'못 받은 돈 '+od.counts.urgent+'건 점검',cmd:'못 받은 돈 점검해줘',w:0});}catch(e){}
   // 5) 오늘 일정 있는데 일지 미작성(어제 이전 완료 일정)
   const y=(()=>{const d=new Date();d.setDate(d.getDate()-1);return localDate(d);})();
   const noReport=(state.schedule||[]).filter(s=>s.date<=y&&s.date>=localDate(new Date(Date.now()-7*86400000))&&!s.report&&!/^💰/.test(s.title||'')).length;
@@ -12491,7 +12308,6 @@ const HJ_GUIDE_CATS=[
   {ic:'💰',title:'돈 관리',color:'#0a7f43',desc:'수금·지출·손익·목표',
    items:[
      {t:'이번달 손익',say:'이번달 얼마 남았어',act:'pnl()'},
-     {t:'못 받은 돈',say:'못 받은 돈 점검해줘',act:'overdueFollowup()'},
      {t:'지출 기록',say:'오늘 자재비 5만원 카드로 썼어',act:'expenseLedger()'},
      {t:'매출 목표',say:'이번달 목표 1000만원으로 잡아줘',act:'goalManage()'},
      {t:'현장 예산',say:'둔산동 예산 800만원으로',act:'budgetManage()'}
@@ -12630,8 +12446,6 @@ function aiActiveBriefData(){
   const today=localDate();
   const sch=(state.schedule||[]).filter(s=>s.date===today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   if(sch.length){const f=sch[0];parts.push('오늘 일정 '+sch.length+'건'+(f.time?'('+f.time+' '+hjCut(f.title,10)+' 등)':''));urgent.push({ic:'🗓',t:'오늘 일정 '+sch.length+'건',cmd:'오늘 일정 브리핑'});}
-  // 미수금
-  try{const od=overdueFollowupData();if(od.counts.urgent){parts.push('장기 미수금 '+od.counts.urgent+'건('+hjMan(od.urgentDue)+')');urgent.push({ic:'🔴',t:'못 받은 돈 '+od.counts.urgent+'건',cmd:'못 받은 돈 점검해줘'});}}catch(e){}
   // AI 제안(완료 현장 청구 등)
   try{const sug=(typeof aiSuggestions==='function')?aiSuggestions():[];sug.slice(0,2).forEach(s=>{const clean=String(s.t||'').replace(/<[^>]+>/g,'');urgent.push({ic:s.ic||'💡',t:clean,cmd:s.cmd});});}catch(e){}
   // 목표
@@ -14635,13 +14449,6 @@ function briefExtraItems(){
     }
   }catch(e){}
   try{
-    if(typeof dueAgingData==='function'){
-      const ag=dueAgingData().filter(function(r){return r.days>=60;});
-      // recv: 알림에서 바로 수금 입력(얼마·언제)으로 갈 현장 — 없으면 독촉만 남고 알림이 영영 안 꺼진다
-      if(ag.length){items.push({ic:'⏳',t:'오래된 미수금 '+ag.length+'곳',sub:ag[0].name+' '+ag[0].days+'일째 '+hjMan(ag[0].due)+' — 독촉 또는 수금 입력',action:'dueaging',recv:ag[0].name});}
-    }
-  }catch(e){}
-  try{
     if(typeof coworkSchedDue==='function'){
       const cd=coworkSchedDue();
       {const _vp=(typeof vatPeriod==='function')?vatPeriod():null;
@@ -14682,7 +14489,6 @@ function alertCenter(){
       else if(act==='review'&&typeof reviewRequest==='function')reviewRequest();
       else if(act==='stale'&&typeof staleProjects==='function')staleProjects();
       else if(act==='inventory'&&typeof inventoryManage==='function')inventoryManage();
-      else if(act==='dueaging'&&typeof dueAgingView==='function')dueAgingView();
       else if(act==='cwsched'&&typeof coworkSchedView==='function')coworkSchedView();
       else if(act==='kakaoin'&&typeof kakaoOpenInbox==='function')kakaoOpenInbox();
       else if(act==='ptlist'&&typeof portalListView==='function')portalListView();
@@ -16000,19 +15806,6 @@ function aiPlannerScan(scope){
   const monthly=(scope==='all'||scope==='monthly');
 
   if(daily){
-    // A. 미수금 루프
-    try{(state.projects||[]).forEach(p=>{
-      if(p.archived)return;let s;try{s=projStats(p.name);}catch(e){return;}
-      if(!s||s.due<=0)return;
-      const overdue=p.dueDate&&(new Date(p.dueDate+'T00:00:00')<new Date());
-      const big=s.due>=5000000;
-      add({category:'미수금',type:'receivable',title:'미수금 확인: '+p.name,
-        reason:hjMan(s.due)+' 미수'+(overdue?' · 결제 예정일 지남':'')+(p.stage>=3?' · 완공됨':''),
-        project:p.name,dueDate:p.dueDate||'',
-        priority:overdue?'urgent':big?'high':'normal',priorityScore:(overdue?90:big?70:50)+Math.min(Math.round(s.due/1000000),15),
-        action:{kind:'open',fn:'overdueFollowup'},readOnly:true,requiresApproval:false,
-        source:'receivable:'+p.name});
-    });}catch(e){}
     // B. 오늘/내일 일정 브리핑
     try{
       const today=aiOpsTodayKey();
@@ -16071,29 +15864,6 @@ function aiPlannerScan(scope){
       category:'AS',type:'warranty',title:'무상점검 안내: '+w.name,reason:'보증 만료 D-'+w.daysLeft+' — 재영업 기회',
       project:w.name,priority:w.daysLeft<=14?'high':'normal',priorityScore:60-Math.min(w.daysLeft,40),
       action:{kind:'sms',fn:'warrantySms',arg:w.name},readOnly:false,requiresApproval:true,source:'warranty:'+w.name}));}catch(e){}
-    // 오래된 미수금(60일+) 독촉 — 전화 있으면 문자 task, 없으면 화면 안내 task
-    try{if(typeof dueAgingData==='function'){
-      const ag=dueAgingData().filter(function(r){return r.days>=60;});
-      // [v101 BUG-8] 수금 기록이 한 번도 없는 현장은 '수금 미확인' — 독촉 문자 금지, 확인부터
-      ag.filter(function(r){const p=state.projects.find(function(x){return x.name===r.name;});return recvUnknown(p);})
-        .forEach(function(r){add({
-          category:'수금',type:'recvcheck',title:'입금 확인: '+r.name,
-          reason:'수금 기록이 한 번도 없습니다 — 실제로 못 받으셨는지 확인 후 독촉하세요('+hjMan(r.due)+' 미수로 계산 중)',
-          project:r.name,priority:'normal',priorityScore:75,
-          action:{kind:'open',fn:'recvQuickView',arg:r.name},readOnly:true,requiresApproval:false,
-          source:'recvunknown:'+r.name});});
-      ag.filter(function(r){const p=state.projects.find(function(x){return x.name===r.name;});return r.phone&&!recvUnknown(p);}).forEach(function(r){add({
-        category:'수금',type:'aging',title:'미수금 독촉: '+r.name+' ('+r.days+'일째)',
-        reason:hjMan(r.due)+' 미수 — '+r.band+', 정중한 입금 요청 문자',project:r.name,
-        priority:r.days>=90?'high':'normal',priorityScore:70+Math.min(r.days-60,30),
-        action:{kind:'sms',fn:'agingSms',arg:r.name},readOnly:false,requiresApproval:true,
-        source:'aging:'+r.name});});
-      if(ag.some(function(r){return !r.phone;}))add({
-        category:'수금',type:'aging_view',title:'오래된 미수금 확인('+ag.filter(function(r){return !r.phone;}).length+'곳 전화 미등록)',
-        reason:'60일+ 미수금인데 고객 전화가 없어요 — 에이징 화면에서 확인',
-        priority:'normal',priorityScore:62,action:{kind:'open',fn:'dueAgingView'},readOnly:true,requiresApproval:false,
-        source:'aging_view'});
-    }}catch(e){}
     // 세금 신고 D-7 리마인드
     try{if(typeof taxCalendarItems==='function'){
       const __t0=new Date();__t0.setHours(0,0,0,0);
@@ -16148,9 +15918,6 @@ function aiPlannerScan(scope){
     add({category:'리포트',type:'monthly_report',title:'월말 결산 리포트',reason:'월 매출·미수금·손익·완료 현장 요약',
       priority:'high',priorityScore:74,action:{kind:'tool',tool:'ops_loop_report_monthly',args:{}},readOnly:true,requiresApproval:false,
       source:'monthly_report:'+aiOpsMonthKey()});
-    add({category:'미수금',type:'month_receivable',title:'이번 달 미수금 정리',reason:'월간 미수 현황 점검',
-      priority:'normal',priorityScore:58,action:{kind:'tool',tool:'ops_loop_report_receivable',args:{}},readOnly:true,requiresApproval:false,
-      source:'month_receivable:'+aiOpsMonthKey()});
   }
   return tasks.sort((a,b)=>aiPriRank(b.priority)-aiPriRank(a.priority)||(b.priorityScore||0)-(a.priorityScore||0));
 }
@@ -16463,17 +16230,6 @@ function aiOpsMonthlyReport(){
   lines.push({h:'✅ 완료 현장',v:doneThisMonth+'곳'});
   lines.push({h:'🏗 진행 현장',v:sum.active+'곳'});
   return {title:'🏆 월말 결산 리포트 ('+ym+')',lines,summary:'순이익 '+hjMan(pnl.net||0)+' · 완료 '+doneThisMonth+'곳'};
-}
-function aiOpsReceivableReport(){
-  const projs=(state.projects||[]).filter(p=>!p.archived);
-  const rows=[];projs.forEach(p=>{try{const s=projStats(p.name);if(s.due>0)rows.push({name:p.name,due:s.due,overdue:p.dueDate&&new Date(p.dueDate+'T00:00:00')<new Date(),dueDate:p.dueDate||''});}catch(e){}});
-  rows.sort((a,b)=>b.due-a.due);
-  const total=rows.reduce((a,r)=>a+r.due,0);
-  const lines=[];
-  lines.push({h:'💰 총 미수금',v:hjMan(total)+' ('+rows.length+'곳)'});
-  if(rows.length)lines.push({h:'📋 현장별',v:rows.slice(0,10).map(r=>'· '+r.name+' '+hjMan(r.due)+(r.overdue?' ⚠️예정일 지남':'')).join('\n')});
-  else lines.push({h:'상태',v:'현재 등록된 데이터 기준 미수금 없음'});
-  return {title:'💰 미수금 리포트',lines,summary:hjMan(total)+' · '+rows.length+'곳'};
 }
 function aiOpsRiskReport(){
   const risk=[];
@@ -17265,15 +17021,8 @@ function aiOpsChainNext(doneTask){
     const o=aiOpsEnsureState();
     const addDays=(n)=>{const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());};
     let chain=null;
-    // 미수금/분할납 문자 → 입금 확인
-    if(doneTask.type==='receivable'||/입금|미수|계약금|중도금|잔금/.test(doneTask.title)){
-      chain={category:'미수금',type:'receivable_check',title:'입금 확인: '+(doneTask.project||doneTask.title),
-        reason:'안내 후 입금됐는지 확인 (후속)',project:doneTask.project||'',dueDate:addDays(3),
-        priority:'normal',action:{kind:'open',fn:'overdueFollowup'},readOnly:true,requiresApproval:false,
-        source:'chain:recvcheck:'+(doneTask.project||doneTask.source)+':'+addDays(3)};
-    }
     // 보증 안내 문자 → 방문 일정 확인
-    else if(doneTask.type==='warranty'){
+    if(doneTask.type==='warranty'){
       chain={category:'AS',type:'warranty_visit',title:'무상점검 일정 확인: '+(doneTask.project||''),
         reason:'안내 후 방문 일정 잡혔는지 확인 (후속)',project:doneTask.project||'',dueDate:addDays(5),
         priority:'normal',action:{kind:'open',fn:'openSchedule'},readOnly:true,requiresApproval:false,
@@ -17533,7 +17282,7 @@ const MORE_CATS=[
     ['aiquote','💸','AI 견적작성'],['analysis','📈','AI 경영 분석'],['aiprovider','🔑','AI 두뇌 선택'],['llama','🦙','Llama 등록'],['aiusage','📊','AI 사용량']
   ]},
   {id:'money',name:'경영·돈',ic:'💰',items:[
-    ['ledgertab','💼','회계(홈택스)'],['vatc','🧾','부가세 준비'],['dueaging','⏳','미수금 에이징'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
+    ['ledgertab','💼','회계(홈택스)'],['vatc','🧾','부가세 준비'],['taxcal','📅','세금 캘린더'],['pnl','💰','월별 손익'],['cashflow','📊','현금 흐름'],['budgetalert','💸','예산 경고'],['lossalert','📉','적자 경보'],
     ['profitrank','🏆','수익성 랭킹'],['expense','💳','간편 장부'],['expenseclassify','🧾','경비 분류'],['scanreceipt','🧾','영수증 스캔'],
     ['goal','🎯','매출 목표'],['forecast','📈','매출 예측'],['budget','📅','현장 예산'],['settle','📄','정산 문서'],['taxinv','📇','세금계산서'],['payplan','📅','분할납 계획']
   ]},
@@ -18188,149 +17937,9 @@ function quoteAutoAssignOffer(){
 
 /* ═══════════════════════════════════════════════════════════════
    v83 경영 3종
-   ⏳ 미수금 에이징(30/60/90) · 📅 세금 캘린더 자동 등록 · 📝 견적→계약서 초안
+   📅 세금 캘린더 자동 등록 · 📝 견적→계약서 초안
 ═══════════════════════════════════════════════════════════════ */
 
-// ── ⏳ 미수금 에이징 ──
-function dueAgingData(){
-  const out=[];
-  try{
-    (state.projects||[]).filter(function(p){return !p.archived;}).forEach(function(p){
-      const s=projStats(p.name);
-      if(!s.due||s.due<=0)return;
-      // 로컬 자정 기준 파싱(+'T00:00:00') — 형제 함수들과 동일. 'YYYY-MM-DD'를 그냥 new Date()에
-      // 넣으면 UTC 자정=09:00 KST로 파싱돼 오전 9시 이전엔 경과일이 하루 적게 나오던 밴드 경계 버그.
-      const base=p.doneAt?new Date(p.doneAt+'T00:00:00'):(p.dueDate?new Date(p.dueDate+'T00:00:00'):null);
-      const days=base?Math.max(0,Math.floor((Date.now()-base.getTime())/86400000)):-1;   // -1=기준일 없음
-      let band,ic,color;
-      if(days<0){band='기한 미정';ic='⚪';color='#9ca3af';}
-      else if(days<30){band='30일 미만';ic='🟢';color='#0a7f43';}
-      else if(days<60){band='30일 경과';ic='🟡';color='#b45309';}
-      else if(days<90){band='60일 경과';ic='🟠';color='#c2410c';}
-      else{band='90일 이상';ic='🔴';color='#b91c1c';}
-      out.push({name:p.name,due:s.due,days:days,band:band,ic:ic,color:color,phone:(p.customer&&p.customer.phone)||''});
-    });
-    out.sort(function(a,b){return b.days-a.days||b.due-a.due;});
-  }catch(e){}
-  return out;
-}
-function dueAgingMsg(row){
-  const acc=(COMPANY.accounts&&COMPANY.accounts[0])?COMPANY.accounts[0].label:'';
-  return '안녕하세요, '+COMPANY.name+' '+COMPANY.owner+'입니다.\n'+row.name+' 공사 잔금 '+won(row.due)+'원 입금을 부탁드립니다.\n입금계좌: '+acc+'\n확인 부탁드리며, 늘 감사합니다.';
-}
-function agingSms(name){
-  try{
-    const r=dueAgingData().find(function(x){return x.name===name;});
-    if(!r)return {오류:'미수금 현장을 찾을 수 없음: '+name};
-    if(!r.phone)return {오류:'고객 전화번호 없음 — 에이징 화면에서 복사해 보내세요'};
-    hjSendSms(r.phone,dueAgingMsg(r));
-    return {발송:name+' '+hjMan(r.due)+' 독촉'};
-  }catch(e){return {오류:e.message};}
-}
-/* 여러 현장 미수금을 한 번에 완납 처리.
-   "오늘 전으로 된 건 모두 완납" 같은 상황이 실제로 자주 있는데, 화면에는
-   현장별 [💰 입금] 하나뿐이라 열 곳이면 열 번 눌러야 했다.
-
-   지켜야 할 것:
-   - **덮어쓰지 않는다.** received += 미수액 (set_received 처럼 0 으로 밀면
-     그동안 받은 기록이 사라져 부가세 근거가 날아간다)
-   - 현장마다 payLog 1건 — "언제 얼마" 가 남아야 주간 수금·매출이 맞는다
-   - 무엇이 바뀌는지 먼저 보여 주고, 체크 해제로 뺄 수 있다
-   - 실행 전 안전판(hjSnapshot) — 되돌릴 수 있어야 한다
-   - 입금일은 오늘까지만(미래 날짜는 이번 주 수금을 부풀린다) */
-function dueSettleAll(){
-  const rows=dueAgingData();
-  if(!rows.length){toast('미수금이 없어요');return;}
-  const today=localDate();
-  const list=rows.map(function(r,i){
-    return '<label style="display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;cursor:pointer">'+
-      '<input type="checkbox" class="dsChk" data-i="'+i+'" checked style="width:20px;height:20px;flex:none">'+
-      '<span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(r.name)+
-        '<br><span style="font-size:10.5px;color:var(--muted)">'+r.band+(r.days>=0?' · '+r.days+'일째':'')+'</span></span>'+
-      '<b style="font-size:13px;white-space:nowrap">'+won(r.due)+'</b></label>';
-  }).join('');
-  openModal('✅ 한 번에 완납 처리',
-    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:9px">체크한 현장의 <b>남은 미수금 전액</b>을 받은 것으로 기록합니다. 덮어쓰지 않고 <b>기존 수금에 더합니다.</b></div>'+
-    '<label for="dsDate" style="font-size:11.5px;color:var(--muted)">입금일 (오늘까지)</label>'+
-    '<input id="dsDate" type="date" value="'+today+'" max="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">'+
-    list+
-    '<div id="dsSum" style="text-align:right;font-size:13px;font-weight:800;margin-top:8px"></div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.55">실행 전 🛡 안전판을 찍습니다. 잘못되면 되돌릴 수 있어요.</div>',
-    [{label:'완납 처리',cls:'clay',fn:async function(){
-       const d=document.getElementById('dsDate').value||today;
-       if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
-       const picked=Array.from(document.querySelectorAll('.dsChk')).filter(function(c){return c.checked;}).map(function(c){return rows[+c.dataset.i];});
-       if(!picked.length){toast('완납 처리할 현장을 선택하세요');return;}
-       const sum=picked.reduce(function(a,r){return a+r.due;},0);
-       if(!confirm(picked.length+'곳 · '+won(sum)+'을 '+d+' 입금으로 기록합니다.\n계속할까요?'))return;
-       try{await hjSnapshot('✅ 일괄 완납 처리 전 ('+picked.length+'곳)',true);}catch(e){}
-       let n=0,total=0;
-       picked.forEach(function(r){
-         const p=(state.projects||[]).find(function(x){return x.name===r.name;});
-         if(!p)return;
-         const cur=projStats(r.name).due;           // 화면 표시 후 바뀌었을 수 있으니 다시 계산
-         if(!(cur>0))return;
-         const prev=p.received||0;
-         p.received=prev+cur;
-         state.payLog=state.payLog||[];
-         state.payLog.push({d:d,project:r.name,amt:cur});   // 현장마다 1건 — "언제 얼마"가 남아야 한다
-         n++;total+=cur;
-       });
-       if(state.payLog&&state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);
-       // 이 현장들의 미수금 독촉 작업은 큐에서 뺀다 — 남겨 두면 다 받았는데 알림이 계속 뜬다
-       try{
-         const o=aiOpsEnsureState();const names=picked.map(function(r){return r.name;});
-         o.queue=(o.queue||[]).filter(function(t){
-           if(!/미수금|입금\s*확인|독촉/.test(t.title||''))return true;
-           const mine=t.project?names.indexOf(t.project)>=0:names.some(function(nm){return String(t.title||'').includes(nm);});
-           return !mine;
-         });
-       }catch(e){}
-       markDirty();closeModal();render();
-       toast('✅ '+n+'곳 완납 처리 — '+won(total)+' ('+d+')');
-     }},
-     {label:'취소',cls:'ghost',fn:closeModal}],true);
-  const upd=function(){
-    const picked=Array.from(document.querySelectorAll('.dsChk')).filter(function(c){return c.checked;});
-    const sum=picked.reduce(function(a,c){return a+rows[+c.dataset.i].due;},0);
-    const el=document.getElementById('dsSum');
-    if(el)el.textContent=picked.length+'곳 선택 · 합계 '+won(sum);
-  };
-  document.querySelectorAll('.dsChk').forEach(function(c){c.onchange=upd;});
-  upd();
-  return {대상:rows.length};
-}
-function dueAgingView(){
-  const rows=dueAgingData();
-  const tot=rows.reduce(function(a,r){return a+r.due;},0);
-  const danger=rows.filter(function(r){return r.days>=60;}).length;
-  const list=rows.length?rows.map(function(r,i){
-    return '<div style="border:1px solid var(--line-soft);border-left:4px solid '+r.color+';border-radius:11px;padding:11px 12px;margin-bottom:8px;background:var(--paper)">'+
-      '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">'+r.ic+'</span><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(r.name)+'</b><b style="font-size:13.5px;color:'+r.color+'">'+hjMan(r.due)+'</b></div>'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-top:7px"><span style="flex:1;font-size:11px;color:var(--muted)">'+r.band+(r.days>=0?' · '+r.days+'일째':'')+'</span>'+
-      '<button class="ghost tiny agRemind" data-i="'+i+'" style="padding:7px 11px;font-size:11.5px">💬 독촉 문자</button>'+
-      '<button class="clay tiny agRecv" data-p="'+escapeAttr(r.name)+'" style="padding:7px 11px;font-size:11.5px">💰 입금</button>'+
-      (recvUnknown(state.projects.find(function(x){return x.name===r.name;}))?'<span style="background:#fef3c7;color:#92400e;border-radius:7px;padding:3px 8px;font-size:10.5px;align-self:center">수금 미확인</span>':'')+'</div>'+
-    '</div>';
-  }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:13px">미수금이 없어요. 훌륭합니다! 🎉</div>';
-  const [c1,c2]=hjBrandGrad('#b91c1c','#c2410c');
-  const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">받을 돈 관리</div><div style="font-size:19px;font-weight:800">⏳ 미수금 에이징</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 '+hjMan(tot)+' · '+rows.length+'곳'+(danger?' · 🔴60일+ '+danger+'곳':'')+'</div></div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">🟢 30일 미만 · 🟡 30일+ · 🟠 60일+ · 🔴 90일+ (완공일·수금기한 기준) — 오래된 순</div>'+
-    (rows.length>1?'<button class="moss" id="agAll" style="width:100%;padding:12px;font-size:13px;margin-bottom:10px;min-height:44px">✅ 여러 곳 한 번에 완납 처리</button>':'')+
-    list;
-  openModal('⏳ 미수금 에이징',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  {const ab=document.getElementById('agAll');if(ab)ab.onclick=function(){dueSettleAll();};}
-  document.querySelectorAll('.agRecv').forEach(function(b){b.onclick=function(){recvQuickView(b.dataset.p);};});
-  document.querySelectorAll('.agRemind').forEach(function(b){b.onclick=function(){
-    const r=rows[+b.dataset.i];const msg=dueAgingMsg(r);
-    if(r.phone){hjSendSms(r.phone,msg);}
-    else{try{coworkCopy(msg,'독촉 문자');}catch(e){}toast('고객 전화번호가 없어 문자를 복사했어요');}
-  };});
-  return {미수총액:hjMan(tot),건수:rows.length,'60일이상':danger};
-}
-
-// ── 📅 세금 캘린더 ──
 function taxCalendarItems(){
   const items=[];const now=new Date();const thisY=now.getFullYear();
   [thisY,thisY+1].forEach(function(y){
@@ -20806,39 +20415,6 @@ function selChk(id){
 }
 function selFiles(){return [...__sel].map(id=>state.files.find(f=>f.id===id)).filter(Boolean);}
 
-/* ═══════════ (F4) 미수금 독촉 문자 — 2문안 선택 → 문자앱 ═══════════ */
-function sendDunning(projName){
-  const p=state.projects.find(x=>x.name===projName);if(!p){toast('현장을 찾을 수 없습니다.');return;}
-  const st=projStats(projName);
-  if(st.due<=0){toast('이 현장은 미수금이 없습니다.');return;}
-  const cust=p.customer||{};
-  const tel=telHref(cust.phone);
-  const acc=(COMPANY.accounts&&COMPANY.accounts[0])||null;
-  const accL=acc?`${acc.bank} ${acc.no} (${acc.holder})`:'';
-  const amt=won(st.due);
-  const overdue=p.dueDate?Math.max(0,Math.ceil((new Date(new Date().toDateString())-new Date(p.dueDate+'T00:00:00'))/86400000)):0;
-  // 문안 A: 부드럽게(착오 확인)  /  B: 명확히(금액·계좌·기한)
-  const soft=[`안녕하세요, ${COMPANY.name}입니다.`,`${p.title||projName} 공사 관련 잔금 ${amt}이 아직 확인되지 않아 혹시 착오가 있으실까 하여 연락드립니다.`,accL?`입금계좌: ${accL}`:'',`이미 처리하셨다면 이 문자는 무시해 주세요. 감사합니다.`].filter(Boolean).join('\n');
-  const firm=[`[${COMPANY.name}] 대금 안내`,`${p.title||projName} 공사대금 잔금 ${amt}${overdue>0?` (약속일 ${overdue}일 경과)`:''}이 미납 상태입니다.`,accL?`입금계좌: ${accL}`:'',`확인 후 입금 부탁드립니다. 문의 ${COMPANY.owner} ${COMPANY.tel}`].filter(Boolean).join('\n');
-  const go=(text)=>{ closeModal();
-    if(tel){ location.href='sms:'+tel+(/(iPhone|iPad|Mac)/i.test(navigator.userAgent)?'&':'?')+'body='+encodeURIComponent(text); }
-    else { navigator.clipboard&&navigator.clipboard.writeText(text); toast('고객 연락처가 없어 문안을 복사했습니다 — 문자앱에 붙여넣으세요'); }
-  };
-  openModal('✉️ 미수금 독촉 문자', `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${escapeHtml(projName)} · 미수금 <b style="color:var(--warn)">${amt}</b>${overdue>0?` · <b style="color:var(--warn)">${overdue}일 경과</b>`:''} · ${tel?'고객 '+escapeHtml(cust.phone):'<b style="color:var(--warn)">연락처 없음(복사됨)</b>'}</div>
-    <div style="border:1px solid var(--line-soft);border-radius:8px;padding:10px;margin-bottom:8px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:4px">① 부드럽게 (착오 확인)</div>
-      <div style="font-size:12.5px;white-space:pre-wrap;color:var(--ink)">${escapeHtml(soft)}</div>
-      <button class="blue tiny" id="dunSoft" style="margin-top:8px;padding:8px 14px">이 문안으로 문자</button>
-    </div>
-    <div style="border:1px solid var(--line-soft);border-radius:8px;padding:10px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:4px">② 명확히 (금액·계좌·기한)</div>
-      <div style="font-size:12.5px;white-space:pre-wrap;color:var(--ink)">${escapeHtml(firm)}</div>
-      <button class="clay tiny" id="dunFirm" style="margin-top:8px;padding:8px 14px">이 문안으로 문자</button>
-    </div>`, [{label:'닫기',cls:'ghost',fn:closeModal}], true);
-  const bs=document.getElementById('dunSoft');if(bs)bs.onclick=()=>go(soft);
-  const bf=document.getElementById('dunFirm');if(bf)bf.onclick=()=>go(firm);
-}
 /* ═══════════ 자재 체크리스트 프리셋 (E) — 초안, 화면에서 자유 수정 ═══════════ */
 const MAT_PRESET={
   '철거':['보양재(커버링)','마대·톤백','빠루·망치','커터칼','분진막','양생테이프'],
@@ -22807,7 +22383,6 @@ function setupDelegation(){
     if(d.warrantystart!==undefined){return hjWarrantyStart(d.warrantystart);}
     if(d.qdoc!==undefined)return openContractDoc(d.qdoc);
     if(d.report!==undefined)return makeProgressReport(d.report);
-    if(d.dun!==undefined)return sendDunning(d.dun);
     if(d.ckdel!==undefined){const p2=state.projects.find(x=>x.name===state.activeProject);if(p2){p2.checklist=(p2.checklist||[]).filter(i=>i.id!==d.ckdel);markDirty();render();}return;}
     if(t.id==='ckAdd'){const p2=state.projects.find(x=>x.name===t.dataset.proj);const inp=$('#ckNew');const v=(inp&&inp.value||'').trim();if(!p2||!v){toast('내용을 입력하세요');return;}p2.checklist=p2.checklist||[];p2.checklist.push({id:uid(),text:v,done:false});markDirty();render();return;}
     if(t.id==='ckPresetBtn'){const p2=state.projects.find(x=>x.name===t.dataset.proj);const sel=$('#ckPresetSel');const k=sel&&sel.value;if(!p2||!k){toast('공정 프리셋을 먼저 선택하세요');return;}p2.checklist=p2.checklist||[];const ex=new Set(p2.checklist.map(i=>i.text));let n=0;(MAT_PRESET[k]||[]).forEach(txt=>{if(!ex.has(txt)){p2.checklist.push({id:uid(),text:txt,done:false});n++;}});markDirty();render();toast('🧰 '+k+' 프리셋 '+n+'개 담음'+(n?'':' (이미 모두 있음)'));return;}
@@ -23899,7 +23474,6 @@ try{Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){
     icons:[{src:icon,sizes:'512x512',type:'image/svg+xml',purpose:'any maskable'}],
     shortcuts:[
       {name:'오늘 일정',url:'./?view=schedule',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]},
-      {name:'미수금 팔로업',url:'./?view=due',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]},
       {name:'AI 비서',url:'./?view=ai',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]},
       {name:'한눈 보기',url:'./?view=glance',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]}
     ]};

@@ -47,15 +47,15 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
     render();
   });
 
-  await test('첫 화면에 파수꾼 카드 — 미수금·AS·보증·방치 요약이 보인다', async () => {
+  await test('첫 화면에 파수꾼 카드 — AS·보증·방치 요약이 보인다', async () => {
     await seed();
     const t = await page.evaluate(() => {
       const v = document.querySelector('#view');
       return v ? v.textContent : '';
     });
     assert(/🛡 파수꾼/.test(t), '카드 제목 노출');
-    assert(/못 받은 돈/.test(t), '미수금 칩: ' + t.slice(0, 200));
-    assert(/6,000,000원/.test(t), '금액(1100만-500만): ' + t.slice(0, 300));
+    // 미수금 경보는 없앴다(2026-08-13) — 칩이 다시 생기면 잡는다.
+    assert(!/못 받은 돈|입금 확인/.test(t), '미수금 칩이 되살아났다: ' + t.slice(0, 200));
     assert(/밀린 AS/.test(t), 'AS 칩');
     assert(/보증만료/.test(t), '보증 칩');
     assert(/멈춘 현장/.test(t), '방치 칩');
@@ -78,31 +78,10 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
       return { text: v ? v.textContent : '', tel: !!document.querySelector('#view a[href^="tel:"]') };
     });
     assert(/괴산현장/.test(o.text), '현장명');
-    assert(/완료 30일 경과/.test(o.text), '경과일: ' + o.text.slice(0, 400));
-    assert(o.tel, '전화 걸기 링크(현장에서 바로 통화)');
-  });
-
-  await test('★수금 기록 없는 현장은 독촉 아님 — 카드도 파수꾼과 같은 규칙', async () => {
-    const r = await page.evaluate(() => {
-      const ymd = (n) => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-n);
-        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
-      state.projects = [
-        { name: '기록없음', stage: 3, phases: [], cost: {}, customer: {}, received: 0, doneAt: ymd(30), archived: false },
-        { name: '기록있음', stage: 3, phases: [], cost: {}, customer: {}, received: 3000000, doneAt: ymd(30), archived: false },
-      ];
-      state.files = [
-        { id: 'x1', kind: 'estimate', project: '기록없음', name: 'a.xlsx', est: { amount: 8000000 }, when: new Date(ymd(60)) },
-        { id: 'x2', kind: 'estimate', project: '기록있음', name: 'b.xlsx', est: { amount: 10000000 }, when: new Date(ymd(60)) },
-      ];
-      state.payLog = [{ d: ymd(35), project: '기록있음', amt: 3000000 }];
-      state.asLog = []; state.schedule = [];
-      const o = hjWatchScan();
-      return { due: o.due.map(x => x.name), unc: o.uncertain.map(x => x.name), cash: o.cash };
-    });
-    assert(r.due.indexOf('기록있음') !== -1, '수금 이력 있으면 독촉 대상: ' + JSON.stringify(r));
-    assert(r.unc.indexOf('기록없음') !== -1, '수금 이력 없으면 입금 확인 필요: ' + JSON.stringify(r));
-    assert(r.due.indexOf('기록없음') === -1, '기록 없는 현장을 독촉으로 밀면 안 됨(현금 수금 오경보)');
-    assert(r.cash === 7000000, '못 받은 돈 합계에 확인필요분 제외: ' + r.cash);
+    assert(/9일 경과/.test(o.text), 'AS 경과일: ' + o.text.slice(0, 400));
+    // 전화 걸기 링크는 미수금 절에만 있었다. 그 절을 없앴으므로(2026-08-13)
+    // 여기서는 확인하지 않는다 — AS·보증·방치 절은 원래 번호를 싣지 않는다.
+    assert(/보증 만료 임박|멈춰 있는 현장/.test(o.text), '남은 절이 펼쳐진다: ' + o.text.slice(0, 300));
   });
 
   await test('★기준값 일치 — 앱 카드(HJ_WATCH)와 파수꾼(Watchdog.gs W)이 같은 숫자를 쓴다', async () => {
@@ -114,7 +93,8 @@ function assert(c, m) { if (!c) throw new Error('assert: ' + m); }
     assert(gs, 'Watchdog.gs 를 읽지 못했습니다(정적 서버 경로 확인)');
     const app = await page.evaluate(() => JSON.parse(JSON.stringify(HJ_WATCH)));
     const num = (k) => { const m = gs.match(new RegExp(k + '\\s*:\\s*(\\d+)')); return m ? Number(m[1]) : null; };
-    ['dueAfterDone', 'dueMin', 'warrantySoon', 'asStale', 'projStale'].forEach(k => {
+    // dueAfterDone·dueMin 은 미수금 경보와 함께 사라졌다.
+    ['warrantySoon', 'asStale', 'projStale'].forEach(k => {
       const g = num(k);
       assert(g !== null, 'Watchdog.gs 에 ' + k + ' 가 없습니다');
       assert(g === app[k], k + ' 불일치 — 앱 ' + app[k] + ' vs 파수꾼 ' + g + ' (두 화면이 다른 말을 하게 됨)');

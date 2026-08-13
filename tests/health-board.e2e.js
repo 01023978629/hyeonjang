@@ -72,9 +72,13 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
       return { counts: b.counts, order: b.rows.map(x => x.name), levels: lvl, scores: sc,
         ranks: b.rows.map(x => ({ level: x.level, score: x.score })) };
     });
-    assert(r.counts.urgent === 3 && r.counts.watch === 3 && r.counts.ok === 1, 'counts=3/3/1: ' + JSON.stringify(r.counts));
-    const exp = { '적자현장A': 'urgent', '예산현장B': 'urgent', '미수현장C': 'urgent', '보증현장D': 'watch', '방치현장E': 'watch', '리뷰현장G': 'watch', '정상현장F': 'ok' };
+    // 미수 축을 없애면서(2026-08-13) '미수현장C' 는 위험 사유가 하나도 없게 됐다 —
+    // 보드에서 빠지므로 urgent 3→2, 전체 7→6 이 정상이다.
+    assert(r.counts.urgent === 2 && r.counts.watch === 3 && r.counts.ok === 1, 'counts=2/3/1: ' + JSON.stringify(r.counts));
+    const exp = { '적자현장A': 'urgent', '예산현장B': 'urgent', '보증현장D': 'watch', '방치현장E': 'watch', '리뷰현장G': 'watch', '정상현장F': 'ok' };
     Object.keys(exp).forEach(n => assert(r.levels[n] === exp[n], n + ' level=' + exp[n] + ' (got ' + r.levels[n] + ')'));
+    // 미수만 있던 현장은 이제 위험 사유가 없다 — 보드에 올라오면 미수 축이 되살아난 것이다.
+    assert(r.levels['미수현장C'] === undefined, '미수현장C 가 보드에 남아 있다 — 미수 축 부활');
     // 정렬 불변식: rank 비오름차순, 동일 rank 내 score 비오름차순
     const RANK = { urgent: 3, watch: 2, ok: 1 };
     for (let i = 1; i < r.ranks.length; i++) {
@@ -82,29 +86,31 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
       assert(RANK[a.level] > RANK[c.level] || (RANK[a.level] === RANK[c.level] && a.score >= c.score), '정렬 불변식 위반 @' + i + ': ' + JSON.stringify([a, c]));
     }
     assert(r.order[0] === '적자현장A', '최상위=적자현장A(220): ' + r.order[0]);
-    assert(r.order[6] === '정상현장F', '최하위=정상현장F(ok): ' + r.order[6]);
-    assert(r.scores['적자현장A'] > r.scores['미수현장C'] && r.scores['미수현장C'] > r.scores['예산현장B'], 'urgent 내 점수 A>C>B');
+    assert(r.order[5] === '정상현장F', '최하위=정상현장F(ok): ' + r.order[5]);
+    assert(r.scores['적자현장A'] > r.scores['예산현장B'], 'urgent 내 점수 A>B');
   });
 
   // 2) 임계값 drift 방지 — 원 함수 결과와 board.reasons 축 집합 교차검증
-  await test('drift 방지 — 원 함수(loss/budget/due/warranty/stale) 결과 = board.reasons 축', async () => {
+  await test('drift 방지 — 원 함수(loss/budget/warranty/stale) 결과 = board.reasons 축', async () => {
     const r = await page.evaluate(() => {
       const b = projHealthBoard();
       const axisSet = (axis) => b.rows.filter(x => x.reasons.some(rr => rr.axis === axis)).map(x => x.name).sort();
       const names = (arr) => arr.map(x => x.name).sort();
       return {
-        board: { margin: axisSet('margin'), budget: axisSet('budget'), due: axisSet('due'), warranty: axisSet('warranty'), stale: axisSet('stale'), review: axisSet('review') },
+        board: { margin: axisSet('margin'), budget: axisSet('budget'), warranty: axisSet('warranty'), stale: axisSet('stale'), review: axisSet('review') },
+        dueAxis: axisSet('due'),
         src: {
           margin: names(lossAlertData()),
           budget: names(budgetAlertData()),
-          due: names(dueAgingData()),
           warranty: names(warrantyDue()),
           stale: names(staleProjectData()),
           review: names(reviewRequestData().filter(x => !x.requested && x.customer && x.customer.phone))
         }
       };
     });
-    ['margin', 'budget', 'due', 'warranty', 'stale', 'review'].forEach(ax => {
+    // 미수 축은 없앴다(2026-08-13) — 되살아나면 여기서 잡힌다.
+    assert(r.dueAxis.length === 0, '미수 축이 보드에 되살아났다: ' + JSON.stringify(r.dueAxis));
+    ['margin', 'budget', 'warranty', 'stale', 'review'].forEach(ax => {
       assert(JSON.stringify(r.board[ax]) === JSON.stringify(r.src[ax]),
         ax + ' 축 불일치 — board=' + JSON.stringify(r.board[ax]) + ' src=' + JSON.stringify(r.src[ax]));
     });
@@ -112,11 +118,9 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     const chk = await page.evaluate(() => ({
       lossA: lossAlertData().find(x => x.name === '적자현장A').loss,
       overB: budgetAlertData().find(x => x.name === '예산현장B').over,
-      due95: dueAgingData().find(x => x.name === '미수현장C').days
     }));
     assert(chk.lossA === true, '적자현장A loss=true');
     assert(chk.overB === true, '예산현장B over=true');
-    assert(chk.due95 >= 90, '미수현장C 90일+ : ' + chk.due95);
   });
 
   // 3) 읽기전용 — projHealthBoard 전후 state.projects 딥이퀄 + markDirty 미유발
@@ -141,7 +145,7 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     assert(r.eqE, 'state.expenses 불변');
     assert(r.eqF, 'state.files 개수 불변');
     assert(r.dirty === 0, 'markDirty 미유발: ' + r.dirty);
-    assert(r.rows === 7, 'rows=7');
+    assert(r.rows === 6, 'rows=6 (미수 축 제거로 미수현장C 는 사유 없음)');
   });
 
   // 4) 직렬화 왕복 불변 + 새 최상위 키 금지 + project 새 필드 금지

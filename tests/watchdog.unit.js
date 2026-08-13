@@ -1,6 +1,11 @@
 /* watchdog.unit.js — Apps Script 파수꾼(Watchdog.gs) 순수 계산 검증
    Watchdog.gs 의 watchScan_ 계열은 GAS API를 쓰지 않는 순수 함수라 Node에서 그대로 돌린다.
-   중점: 돈 계산(견적 중복제거·미수금)·보증 D-day·AS·방치·일정. 과거 부가세 이중계산 전력 있어 특히 엄격히. */
+   중점: 보증 D-day·AS·방치·일정.
+
+   2026-08-13 — 미수금 경보를 없애면서 관련 검사(미수금 계산·소액 무시·
+   입금 확인 분리·중도금 약속일·견적 중복제거)를 걷어냈다. 견적 중복제거는
+   미수금 계산에만 쓰이던 것이라 함께 사라졌다. 대신 '되살아나지 않는지'를
+   아래에서 확인한다. */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -32,64 +37,6 @@ function ago(n) {
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
 function ahead(n) { return ago(-n); }
-
-test('미수금 — 견적(부가세 포함) - 수금, 완료 14일 경과분만 경보', () => {
-  const data = {
-    payLog: [{ d: ago(35), project: '괴산현장', amt: 5000000 }],
-    projects: [
-      { name: '괴산현장', received: 5000000, doneAt: ago(30), customer: { name: '김사장', phone: '010-1111-2222' } },
-      { name: '둔산동', received: 10000000, doneAt: ago(30) },              // 완납 → 제외
-      { name: '진행중', received: 0 },                                       // doneAt 없음 → 제외(공사 중)
-      { name: '방금완료', received: 0, doneAt: ago(3) },                     // 14일 미만 → 제외
-    ],
-    files: [
-      { kind: 'estimate', project: '괴산현장', name: '괴산 견적서.xlsx', est: { amount: 11000000 }, when: ago(60) },
-      { kind: 'estimate', project: '둔산동', name: '둔산 견적.xlsx', est: { amount: 10000000 }, when: ago(60) },
-      { kind: 'estimate', project: '방금완료', name: 'x.xlsx', est: { amount: 3000000 }, when: ago(10) },
-    ],
-  };
-  const r = sandbox.watchScan_(data);
-  eq(r.due.length, 1, '경보 대상은 괴산현장 1건');
-  eq(r.due[0].name, '괴산현장', '현장명');
-  eq(r.due[0].owed, 6000000, '미수금 = 1100만 - 500만 (부가세 이중계산 없음)');
-  eq(r.due[0].days, 30, '완료 후 경과일');
-  eq(r.due[0].customer, '김사장', '고객명 전달');
-  eq(r.cash, 6000000, '미수 합계');
-});
-
-test('견적 중복제거 — 이름 다르고 금액 같으면 1건으로(2배 계상 금지)', () => {
-  const data = {
-    projects: [{ name: '공주현장', received: 0, recvChecked: true, doneAt: ago(30) }],
-    files: [
-      { kind: 'estimate', project: '공주현장', name: '★20251028 빌드캡 공주 3,978,700.xlsx', est: { amount: 3978700 }, when: ago(50) },
-      { kind: 'estimate', project: '공주현장', name: '빌드캡 (공주)20251028 (1).xlsx', est: { amount: 3978700 }, when: ago(49) },
-    ],
-  };
-  const r = sandbox.watchScan_(data);
-  eq(r.due.length, 1, '1건');
-  eq(r.due[0].owed, 3978700, '같은 금액 견적 2개 → 1번만 계상');
-});
-
-test('견적 중복제거 — exSum(집계 제외) 견적은 빼고 계산', () => {
-  const data = {
-    projects: [{ name: 'A현장', received: 0, recvChecked: true, doneAt: ago(30) }],
-    files: [
-      { kind: 'estimate', project: 'A현장', name: '초기안.xlsx', est: { amount: 9000000 }, exSum: true, when: ago(70) },
-      { kind: 'estimate', project: 'A현장', name: '최종.xlsx', est: { amount: 5000000 }, when: ago(60) },
-    ],
-  };
-  const r = sandbox.watchScan_(data);
-  eq(r.due[0].owed, 5000000, '집계 제외 견적은 합산에서 빠짐');
-});
-
-test('미수금 — 소액 잔액(10만 미만)은 노이즈로 무시', () => {
-  const data = {
-    projects: [{ name: '잔돈현장', received: 9950000, doneAt: ago(40) }],
-    files: [{ kind: 'estimate', project: '잔돈현장', name: 'q.xlsx', est: { amount: 10000000 }, when: ago(60) }],
-  };
-  const r = sandbox.watchScan_(data);
-  eq(r.due.length, 0, '5만원 잔액은 경보 안 함');
-});
 
 test('보증 만료 — D-60 이내만, doneAt+1년 규칙', () => {
   const data = {
@@ -183,42 +130,6 @@ test('오늘·내일 일정 — 경보(total)에는 포함하지 않음', () => 
   eq(r.total, 0, '일정은 경보 수에 안 들어감');
 });
 
-test('★수금 기록이 없는 현장은 독촉 아님 — 입금 확인 필요로 분리(앱 recvUnknown 규칙)', () => {
-  const data = {
-    payLog: [{ d: ago(20), project: '기록있음', amt: 3000000 }],
-    projects: [
-      { name: '기록있음', received: 3000000, doneAt: ago(30) },   // 수금 이력 O → 진짜 미수
-      { name: '기록없음', received: 0, doneAt: ago(30) },         // 이력 X·수금 0 → 확인 필요
-      { name: '확인함',  received: 0, recvChecked: true, doneAt: ago(30) }, // 사장님이 확인 표시 → 미수
-    ],
-    files: [
-      { kind: 'estimate', project: '기록있음', name: 'a.xlsx', est: { amount: 10000000 }, when: ago(60) },
-      { kind: 'estimate', project: '기록없음', name: 'b.xlsx', est: { amount: 8000000 }, when: ago(60) },
-      { kind: 'estimate', project: '확인함',  name: 'c.xlsx', est: { amount: 5000000 }, when: ago(60) },
-    ],
-  };
-  const r = sandbox.watchScan_(data);
-  const dueNames = r.due.map(x => x.name).sort();
-  const unNames = r.uncertain.map(x => x.name);
-  eq(JSON.stringify(dueNames), JSON.stringify(['기록있음', '확인함']), '독촉 대상: ' + JSON.stringify(dueNames));
-  eq(JSON.stringify(unNames), JSON.stringify(['기록없음']), '확인 필요: ' + JSON.stringify(unNames));
-  // 합계 = 기록있음 700만 + 확인함 500만 = 1200만. 확인필요(기록없음 800만)는 빠진다.
-  eq(r.cash, 12000000, '못 받은 돈 합계에 확인필요분(800만)은 안 들어감');
-  assert(!/8,000,000/.test(sandbox.watchText_(r).split('■ 입금 확인')[0]), '미수금 절에 확인필요분이 섞이면 안 됨');
-});
-
-test('★중도금 — 완공 전이라도 약속일(dueDate) 지나면 잡는다', () => {
-  const data = {
-    payLog: [{ d: ago(60), project: '공사중', amt: 1000000 }],
-    projects: [{ name: '공사중', received: 1000000, dueDate: ago(20) }],   // doneAt 없음
-    files: [{ kind: 'estimate', project: '공사중', name: 'q.xlsx', est: { amount: 9000000 }, when: ago(70) }],
-  };
-  const r = sandbox.watchScan_(data);
-  eq(r.due.length, 1, '완공 전이어도 약속일 경과분은 잡힘');
-  eq(r.due[0].byDue, true, '약속일 기준임을 표시');
-  assert(/약속일 20일 경과/.test(sandbox.watchText_(r)), '문구에 약속일 기준 표기: ' + sandbox.watchText_(r).slice(0, 200));
-});
-
 test('★AS 알림에 전화번호 — 폰에서 바로 전화 걸 수 있게', () => {
   const data = {
     projects: [{ name: '괴산현장', received: 0, customer: { name: '김사장', phone: '010-9999-8888' } }],
@@ -247,8 +158,12 @@ test('★조용한 날이라도 오늘·내일 일정이 있으면 알린다(일
 });
 
 test('쓰지 않는 기준값을 선언해두지 않는다(구현된 척 방지)', () => {
-  assert(!('quoteSilent' in sandbox.W), 'quoteSilent 는 구현이 없으므로 선언도 없어야 함');
-  ['dueAfterDone', 'dueMin', 'warrantySoon', 'asStale', 'projStale'].forEach(k => {
+  // dueAfterDone·dueMin 은 미수금 경보를 없애면서 쓰는 곳이 사라졌다(2026-08-13).
+  // 남겨두면 '아직 미수금을 본다'고 오해할 근거가 되므로 선언도 없어야 한다.
+  ['quoteSilent', 'dueAfterDone', 'dueMin'].forEach(k => {
+    assert(!(k in sandbox.W), k + ' 는 쓰는 곳이 없으므로 선언도 없어야 함');
+  });
+  ['warrantySoon', 'asStale', 'projStale'].forEach(k => {
     assert(k in sandbox.W, '실제 쓰이는 기준값은 있어야 함: ' + k);
   });
 });
@@ -273,10 +188,7 @@ test('알림 문구(텍스트) — 캘린더·시트용, 금액·경과일·연�
   const r = sandbox.watchScan_(data);
   const t = sandbox.watchText_(r);
   assert(t.indexOf('<') === -1, 'HTML 태그가 섞이면 안 됨(캘린더 설명은 순수 텍스트)');
-  assert(/못 받은 돈/.test(t), '미수금 섹션');
-  assert(/6,000,000원/.test(t), '금액 표기: ' + t.slice(0, 200));
-  assert(/완료 30일 경과/.test(t), '경과일');
-  assert(/010-1111-2222/.test(t), '연락처(바로 전화 걸 수 있게)');
+  assert(!/못 받은 돈|미수금/.test(t), '미수금 절은 없어야 한다: ' + t.slice(0, 200));
   assert(/밀린 AS/.test(t), 'AS 섹션');
   assert(/보증 만료 임박/.test(t), '보증 섹션');
 });
@@ -341,9 +253,10 @@ test('알림 경로 — 한 경로가 실패해도 예외를 밖으로 던지지
 });
 
 test('메일 HTML 생성 — XSS 차단(현장명에 태그 넣어도 이스케이프)', () => {
+  // 미수금 절이 사라졌으므로 AS 경보로 시드한다 — 확인하려는 건 이스케이프이지 미수금이 아니다.
   const data = {
     projects: [{ name: '<img src=x onerror=alert(1)>', received: 0, doneAt: ago(30) }],
-    files: [{ kind: 'estimate', project: '<img src=x onerror=alert(1)>', name: 'q.xlsx', est: { amount: 5000000 }, when: ago(60) }],
+    asLog: [{ project: '<img src=x onerror=alert(1)>', date: ago(20), text: '누수', status: 'open' }],
   };
   const r = sandbox.watchScan_(data);
   const html = sandbox.watchHtml_(r, data);
@@ -355,11 +268,12 @@ test('제목 — 경보 있으면 금액·건수, 없으면 이상 없음', () =
   const none = sandbox.watchScan_({ projects: [], files: [] });
   assert(/챙길 것 없음/.test(sandbox.watchSubject_(none)), '조용한 날 제목');
   const some = sandbox.watchScan_({
-    projects: [{ name: 'A', received: 0, recvChecked: true, doneAt: ago(30) }],
-    files: [{ kind: 'estimate', project: 'A', name: 'q.xlsx', est: { amount: 1000000 }, when: ago(60) }],
+    projects: [{ name: 'A', received: 0, doneAt: ago(30) }],
+    asLog: [{ project: 'A', date: ago(20), text: '누수', status: 'open' }],
   });
   const s = sandbox.watchSubject_(some);
-  assert(/미수금 1/.test(s) && /1,000,000원/.test(s), '경보 제목에 건수·금액: ' + s);
+  assert(/AS 1/.test(s), '경보 제목에 건수: ' + s);
+  assert(!/미수금|못 받은 돈/.test(s), '제목에 미수금이 남으면 안 된다: ' + s);
 });
 
 const passed = results.filter(r => r.ok).length;
@@ -367,3 +281,18 @@ const failed = results.filter(r => !r.ok);
 console.log('\n== watchdog.unit: ' + passed + '/' + results.length + ' passed ==');
 if (failed.length) failed.forEach(f => console.log('  FAIL ' + f.name + '\n    ' + f.err));
 process.exit(failed.length ? 1 : 0);
+
+test('미수금 경보는 되살아나지 않는다', () => {
+  // 지우기만 하면 언젠가 조용히 돌아온다. 결과 스키마와 본문 양쪽을 못박는다.
+  const r = sandbox.watchScan_(seed({
+    projects: [{ name: '완료현장', received: 0, doneAt: ago(90), dueDate: ago(90) }],
+    files: [{ project: '완료현장', kind: 'estimate', est: { amount: 11000000 } }]
+  }));
+  assert(r.due === undefined, '결과에 due 가 없어야 한다');
+  assert(r.uncertain === undefined, '결과에 uncertain 이 없어야 한다');
+  assert(r.cash === undefined, '결과에 cash(못 받은 돈 합계)가 없어야 한다');
+  const txt = sandbox.watchText_(r);
+  assert(!/못 받은 돈|미수금|입금 확인 필요/.test(txt), '본문에 미수금 문구가 남아 있다: ' + txt.slice(0, 200));
+  const html = sandbox.watchHtml_ ? sandbox.watchHtml_(r) : '';
+  assert(!/못 받은 돈|입금 확인 필요/.test(html), 'HTML 에 미수금 절이 남아 있다');
+});
