@@ -35,14 +35,12 @@ var WATCH_TAG = '[파수꾼]';        // 캘린더 일정 제목 접두 — 중�
 
 // 판단 기준 — 1인 시공사 기준으로 잡은 값. 필요하면 여기 숫자만 바꾸면 된다.
 var W = {
-  dueAfterDone: 14,     // 공사 끝난 지 N일 넘었는데 돈이 안 들어옴 → 독촉
-  dueMin: 100000,       // 이 금액 미만 잔액은 무시(반올림 잔돈 노이즈 방지)
   warrantySoon: 60,     // 보증 만료 D-N 이내 → 무상점검 제안 = 재수주 기회
   asStale: 3,           // AS 접수 후 N일 넘게 미처리
   projStale: 21         // 진행 중인데 N일 넘게 아무 움직임 없음
 };
 // ※ '견적 무응답' 감시는 아직 없다. 현장데이터의 quotes 를 읽어야 하는데 watchScan_ 은
-//   projects·files·asLog·schedule·payLog 만 본다. 넣을 때 이 주석을 지울 것.
+//   projects·files·asLog·schedule 만 본다. 넣을 때 이 주석을 지울 것.
 //   (기준값만 선언해 두면 '되고 있다'는 오해를 부르므로 선언하지 않는다)
 
 /* ---------- 설치 / 제거 ---------- */
@@ -150,13 +148,13 @@ function watchToSheet_(subject, r) {
   var ss = watchSheetFile_();
   var sh = ss.getSheets()[0];
   if (sh.getLastRow() === 0) {
-    sh.appendRow(['날짜', '요약', '못받은돈(원)', '미수건', '입금확인', 'AS', '보증임박', '방치', '상세']);
+    sh.appendRow(['날짜', '요약', 'AS', '보증임박', '방치', '상세']);
     sh.setFrozenRows(1);
   }
   var detail = r ? watchText_(r) : '';
   sh.appendRow([
     watchYmd_(new Date()), subject,
-    r ? r.cash : 0, r ? r.due.length : 0, r ? r.uncertain.length : 0, r ? r.as.length : 0,
+    r ? r.as.length : 0,
     r ? r.warranty.length : 0, r ? r.stale.length : 0, detail
   ]);
   // 최신이 위로 오게 정렬하지 않고 append 유지 — 이력 추적이 목적
@@ -197,45 +195,22 @@ function watchLoadData_() {
 /* ---------- 순수 계산 — state 변형 없음, 테스트 가능 ----------
    앱(index.html)의 파생 규칙을 그대로 옮긴 것:
    · 견적 중복 제거(estimateGroups) → 같은 현장에서 같은 견적을 두 번 세지 않음
-   · 미수금 = 견적합계(부가세 포함) - 수금액
    · 보증 = project.warranty.items 우선, 없으면 doneAt + 1년             */
 
 function watchScan_(data) {
   var today = watchToday0_();
   var projects = watchArr_(data.projects), files = watchArr_(data.files);
   var asLog = watchArr_(data.asLog), schedule = watchArr_(data.schedule);
-  var payLog = watchArr_(data.payLog);
 
-  var estByProj = watchEstimateTotals_(files);
   var lastTouch = watchLastTouch_(files, schedule);
-  var paidSeen = watchPaidProjects_(payLog);
 
-  var r = { due: [], uncertain: [], warranty: [], as: [], stale: [], today: [], total: 0, cash: 0 };
+  var r = { warranty: [], as: [], stale: [], today: [], total: 0 };
 
   for (var i = 0; i < projects.length; i++) {
     var p = projects[i];
     if (!p || !p.name || p.archived) continue;
     var name = String(p.name);
-    var est = estByProj[name] || 0;
-    var recv = watchNum_(p.received);
-    var owed = Math.max(est - recv, 0);
     var doneAt = p.doneAt ? String(p.doneAt) : '';
-    // 잔금 기준일: 완공일이 있으면 그것, 없으면 약속일(dueDate) — 공사 중 중도금 미납도 잡는다
-    var payBase = doneAt || (p.dueDate ? String(p.dueDate) : '');
-
-    // ① 미수금 — 약속한 날이 지났는데 돈이 안 들어온 것
-    if (owed >= W.dueMin && payBase) {
-      var sinceDone = watchDaysSince_(payBase, today);
-      if (sinceDone !== null && sinceDone >= W.dueAfterDone) {
-        var row = { name: name, owed: owed, est: est, recv: recv, days: sinceDone,
-                    byDue: !doneAt, phone: watchPhone_(p), customer: watchCustName_(p) };
-        // 앱의 recvUnknown([BUG-8], index.html)과 같은 규칙:
-        // 수금 기록이 한 번도 없는 현장은 '못 받은 돈'이 아니라 '입금 확인 필요'다.
-        // 현금으로 받고 앱에 입력만 안 한 경우를 매일 독촉으로 밀어내면 알림 자체를 안 믿게 된다.
-        if (!p.recvChecked && recv <= 0 && !paidSeen[name]) r.uncertain.push(row);
-        else { r.due.push(row); r.cash += owed; }
-      }
-    }
 
     // ② 보증 만료 임박 — 무상점검 제안 = 재수주 기회
     var wr = watchWarranty_(p, today);
@@ -249,7 +224,8 @@ function watchScan_(data) {
       var touched = lastTouch[name] || null;
       var idle = touched ? watchDaysSince_(touched, today) : null;
       if (idle !== null && idle >= W.projStale) {
-        r.stale.push({ name: name, days: idle, last: touched, est: est, recv: recv });
+        // est·recv 는 아무 데서도 쓰지 않아 함께 뺐다(미수금 제거 2026-08-13).
+        r.stale.push({ name: name, days: idle, last: touched });
       }
     }
   }
@@ -291,36 +267,17 @@ function watchScan_(data) {
     }
   }
 
-  r.due.sort(function (x, y) { return y.owed - x.owed; });
-  r.uncertain.sort(function (x, y) { return y.owed - x.owed; });
   r.warranty.sort(function (x, y) { return x.dday - y.dday; });
   r.as.sort(function (x, y) { return (y.days || 0) - (x.days || 0); });
   r.stale.sort(function (x, y) { return y.days - x.days; });
   r.today.sort(function (x, y) { return (x.date + x.time) < (y.date + y.time) ? -1 : 1; });
 
   // '오늘 일정'은 경보가 아니라 안내 — total(경보 수)에 넣지 않는다
-  r.total = r.due.length + r.uncertain.length + r.warranty.length + r.as.length + r.stale.length;
+  r.total = r.warranty.length + r.as.length + r.stale.length;
   return r;
 }
 
 /* 견적 합계(현장별) — 앱의 estimateGroups 중복제거 규칙을 옮김 */
-function watchEstimateTotals_(files) {
-  var byProj = {};
-  for (var i = 0; i < files.length; i++) {
-    var f = files[i];
-    if (!f || f.kind !== 'estimate' || f.exSum) continue;
-    var pn = String(f.project || '');
-    if (!pn) continue;
-    (byProj[pn] = byProj[pn] || []).push(f);
-  }
-  var out = {};
-  for (var p in byProj) {
-    if (!byProj.hasOwnProperty(p)) continue;
-    out[p] = watchDedupeSum_(byProj[p]);
-  }
-  return out;
-}
-
 function watchDedupeSum_(list) {
   function norm(nm) {
     return String(nm || '').toLowerCase()
@@ -360,17 +317,7 @@ function watchDedupeSum_(list) {
   return sum;
 }
 
-/* 수금 이력이 한 번이라도 있는 현장 집합 — '입금 확인 필요'와 '진짜 미수'를 가르는 근거 */
-function watchPaidProjects_(payLog) {
-  var seen = {};
-  for (var i = 0; i < payLog.length; i++) {
-    var e = payLog[i];
-    if (e && e.project) seen[String(e.project)] = true;
-  }
-  return seen;
-}
-
-/* 현장별 마지막 움직임(사진·파일·일정 중 가장 최근) */
+/* 현장별 마지막 손댄 날 — '방치 현장' 판정 근거 */
 function watchLastTouch_(files, schedule) {
   var out = {};
   function bump(pn, ymd) {
@@ -416,13 +363,10 @@ function watchWarranty_(p, today) {
 function watchSubject_(r) {
   if (r.total === 0) return '✅ 만물인테리어 — 오늘 챙길 것 없음';
   var bits = [];
-  if (r.due.length) bits.push('미수금 ' + r.due.length);
-  if (r.uncertain.length) bits.push('입금확인 ' + r.uncertain.length);
   if (r.as.length) bits.push('AS ' + r.as.length);
   if (r.warranty.length) bits.push('보증만료 ' + r.warranty.length);
   if (r.stale.length) bits.push('방치 ' + r.stale.length);
-  var head = r.cash > 0 ? ('💰 못 받은 돈 ' + watchWon_(r.cash) + ' · ') : '';
-  return '🔔 ' + head + bits.join(' · ');
+  return '🔔 ' + bits.join(' · ');
 }
 
 /* 캘린더 설명·시트용 순수 텍스트 — HTML 태그 없이 폰에서 바로 읽힌다 */
@@ -433,29 +377,7 @@ function watchText_(r) {
   L.push('');
 
   if (r.total === 0) {
-    L.push('챙길 게 없습니다. 미수금·AS·보증만료·방치 현장 모두 이상 없습니다.');
-  }
-
-  if (r.due.length) {
-    L.push('■ 못 받은 돈 — 공사 끝난 지 ' + W.dueAfterDone + '일 넘음');
-    for (var i = 0; i < r.due.length; i++) {
-      var d = r.due[i];
-      L.push('  · ' + d.name + ' : ' + watchWon_(d.owed) + ' (' + (d.byDue ? '약속일' : '완료') + ' ' + d.days + '일 경과)' +
-             (d.customer ? ' / ' + d.customer : '') + (d.phone ? ' ' + d.phone : ''));
-    }
-    L.push('  합계 ' + watchWon_(r.cash));
-    L.push('');
-  }
-
-  if (r.uncertain.length) {
-    L.push('■ 입금 확인 필요 — 수금 기록이 아예 없는 현장');
-    L.push('  (현금으로 받고 입력만 안 하셨을 수 있습니다. 독촉 전에 먼저 확인하세요)');
-    for (var u = 0; u < r.uncertain.length; u++) {
-      var q = r.uncertain[u];
-      L.push('  · ' + q.name + ' : ' + watchWon_(q.owed) + ' (' + (q.byDue ? '약속일' : '완료') + ' ' + q.days + '일 경과)' +
-             (q.customer ? ' / ' + q.customer : '') + (q.phone ? ' ' + q.phone : ''));
-    }
-    L.push('');
+    L.push('챙길 게 없습니다. AS·보증만료·방치 현장 모두 이상 없습니다.');
   }
 
   if (r.as.length) {
@@ -510,33 +432,7 @@ function watchHtml_(r, data) {
   h += '<div style="border:1px solid #e5e5e5;border-top:none;border-radius:0 0 12px 12px;padding:16px 18px">';
 
   if (r.total === 0) {
-    h += '<p style="font-size:15px"><b>챙길 게 없습니다.</b> 미수금·AS·보증만료·방치 현장 모두 이상 없습니다. 👍</p>';
-  }
-
-  if (r.due.length) {
-    h += watchSec_('💰 못 받은 돈', '공사가 끝난 지 ' + W.dueAfterDone + '일이 지났는데 잔금이 안 들어왔습니다');
-    h += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
-    for (var i = 0; i < r.due.length; i++) {
-      var d = r.due[i];
-      h += '<tr style="border-bottom:1px solid #eee">' +
-           '<td style="padding:8px 4px"><b>' + watchEsc_(d.name) + '</b>' +
-           (d.customer ? '<br><span style="color:#888;font-size:11px">' + watchEsc_(d.customer) + (d.phone ? ' · ' + watchEsc_(d.phone) : '') + '</span>' : '') + '</td>' +
-           '<td style="padding:8px 4px;text-align:right;white-space:nowrap"><b style="color:#c0392b">' + watchWon_(d.owed) + '</b>' +
-           '<br><span style="color:#888;font-size:11px">완료 ' + d.days + '일 경과</span></td></tr>';
-    }
-    h += '</table><p style="margin:8px 0 0;font-size:13px">합계 <b style="color:#c0392b">' + watchWon_(r.cash) + '</b></p>';
-  }
-
-  if (r.uncertain.length) {
-    h += watchSec_('❓ 입금 확인 필요', '수금 기록이 아예 없는 현장입니다. 현금으로 받고 입력만 안 하셨을 수 있으니 독촉 전에 확인하세요');
-    h += '<ul style="margin:0;padding-left:18px;font-size:13px">';
-    for (var u = 0; u < r.uncertain.length; u++) {
-      var q = r.uncertain[u];
-      h += '<li style="margin-bottom:4px"><b>' + watchEsc_(q.name) + '</b> ' + watchWon_(q.owed) +
-           ' <span style="color:#888">' + (q.byDue ? '약속일' : '완료') + ' ' + q.days + '일 경과</span>' +
-           (q.phone ? ' · ' + watchEsc_(q.phone) : '') + '</li>';
-    }
-    h += '</ul>';
+    h += '<p style="font-size:15px"><b>챙길 게 없습니다.</b> AS·보증만료·방치 현장 모두 이상 없습니다. 👍</p>';
   }
 
   if (r.as.length) {
@@ -586,7 +482,7 @@ function watchHtml_(r, data) {
 
   h += '<p style="margin:18px 0 0;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#999">' +
        '파수꾼 ' + WATCH_VERSION + ' · 현장자료를 읽기만 하며 절대 고치지 않습니다.<br>' +
-       '기준: 완료 후 ' + W.dueAfterDone + '일 미수 · AS ' + W.asStale + '일 · 보증 D-' + W.warrantySoon + ' · 방치 ' + W.projStale + '일<br>' +
+       '기준: AS ' + W.asStale + '일 · 보증 D-' + W.warrantySoon + ' · 방치 ' + W.projStale + '일<br>' +
        '그만 받으시려면 스크립트 속성에 WATCH_OFF=1 을 넣으세요.</p>';
   h += '</div></div>';
   return h;

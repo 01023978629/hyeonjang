@@ -58,22 +58,25 @@ let browser;
   const due0 = await page.evaluate(() => projStats('늦은빌라 302호').due);
   assert(due0 === 2000000, '시드가 잘못됨 — 미수 200만이 아니라 ' + due0);
 
-  // ① 알림 센터에 수금 입력 버튼
-  const alert = await page.evaluate(() => {
+  // ① 앱이 미수금 작업·경보를 스스로 만들지 않는다 (2026-08-13 대표 결정)
+  //    아래 큐 항목은 이 테스트가 손으로 넣은 fixture 다 — 생성기가 만드는지를 본다.
+  const gen = await page.evaluate(() => {
+    const planned = (typeof aiOpsPlan === 'function' ? aiOpsPlan() : []) || [];
     alertCenter();
     const root = document.getElementById('modalRoot');
-    const b = root.querySelector('.alertRecv');
-    return { has: !!b, p: b && b.dataset.p, itemHasDue: /미수금/.test(root.textContent || '') };
+    return {
+      dueTasks: planned.filter(t => /미수|수금|receivable|aging/.test((t.category || '') + (t.type || ''))).map(t => t.title),
+      alertRecvBtn: !!root.querySelector('.alertRecv')
+    };
   });
-  assert(alert.itemHasDue, '① 알림 센터에 미수금 항목 자체가 없다 — 시드 확인');
-  assert(alert.has, '① 미수금 알림에 [수금 입력] 버튼이 없다 — 독촉만 되고 알림이 안 꺼진다');
-  assert(alert.p === '늦은빌라 302호', '① 버튼이 엉뚱한 현장을 가리킨다: ' + alert.p);
+  assert(gen.dueTasks.length === 0, '① 운영 루프가 미수금 작업을 다시 만든다: ' + JSON.stringify(gen.dueTasks));
+  assert(!gen.alertRecvBtn, '① 미수금 알림 항목이 되살아났다');
 
-  // ①-2 눌러서 입금 화면 ② 금액·날짜 칸
-  // 진짜 클릭으로 연다 — 버튼이 클릭 가능한 행 안에 있어서, 이벤트가 행까지 올라가면
-  // 에이징 목록이 겹쳐 떠 버린다(사장님은 왜 다른 화면이 떴는지 모른다).
+  // ①-2 수금 입력 화면 자체는 남아 있어야 한다 — 장부·부가세 근거다.
+  // 알림을 거치지 않고 현장명으로 직접 연다(현장 목록의 수금액 칸과 같은 경로).
   const opened = await page.evaluate(async () => {
-    document.getElementById('modalRoot').querySelector('.alertRecv').click();
+    closeModal();
+    recvQuickView('늦은빌라 302호');
     await new Promise(r => setTimeout(r, 300));
     const root = document.getElementById('modalRoot');
     const amt = root.querySelector('#rqAmt'), d = root.querySelector('#rqDate');
