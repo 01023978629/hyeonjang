@@ -60,11 +60,12 @@ let browser;
   assert(/아파트 오더/.test(brief), '② 주간 브리핑에 아파트 오더 항목이 없다: ' + brief.slice(0, 120));
   assert(/완료 2건/.test(brief) && /380,000원/.test(brief), '② 지난주 완료 건수·금액이 틀리다 (paid+billed 완료 2건 = 80,000+300,000):\n' + brief);
   assert(/진행 중 1건/.test(brief), '② 진행 중 건수가 없다');
-  assert(/미입금 300,000원/.test(brief), '② 관리사무소 미입금이 챙길 일에 없다 — 못 받은 돈이 잊힌다:\n' + brief);
+  // 앱이 못 받은 돈을 챙기지 않는다(2026-08-13 대표 결정) — 브리핑에 미입금이 뜨면 안 된다
+  assert(!/미입금/.test(brief), '② 주간 브리핑에 미입금이 되살아났다:\n' + brief);
 
-  // ③ 운영 리포트 (이번 주 기간이라 지난주 완료는 제외 — 미입금만 보인다)
+  // ③ 운영 리포트 — 미입금 줄은 걷어냈다
   const ops = await page.evaluate(() => opsReportText(opsReportData('week')));
-  assert(/관리사무소.*미입금 300,000원|미입금 300,000원/.test(ops), '③ 운영 리포트에 미입금이 없다:\n' + ops);
+  assert(!/미입금/.test(ops), '③ 운영 리포트에 미입금이 되살아났다:\n' + ops);
 
   // ③-2 월 리포트 — 이번 달 완료가 있으면 완료 줄도 나온다
   const opsMonth = await page.evaluate(() => {
@@ -103,7 +104,7 @@ let browser;
   assert(errors.length === 0, '⑥ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 통합 검색 — 단지·동/호·작업으로 찾아진다');
-  console.log('PASS  ② 주간 브리핑 — 완료·진행·미입금 합류');
+  console.log('PASS  ② 주간 브리핑 — 완료·진행 합류 · 미입금 없음');
   console.log('PASS  ③ 운영 리포트 — 주·월 모두 합류');
   console.log('PASS  ④ 전체 장부 엑셀 — 아파트오더 시트(10번째)');
   console.log('PASS  ⑤ 오더 없으면 빈 줄 안 만듦');

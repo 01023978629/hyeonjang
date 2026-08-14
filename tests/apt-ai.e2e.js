@@ -10,7 +10,7 @@
      ③ 접수 실행 — recv 상태·오늘 날짜·금액 미정 허용으로 장부에 들어간다
      ④ 단지 부분 일치 — "신흥마을" 만 말해도 신흥마을아파트에 붙는다
      ⑤ 미등록 단지는 실패하되, 등록된 단지 목록을 알려 준다 (비서가 되물을 수 있게)
-     ⑥ apt_orders 조회 — 단지 필터와 미입금 합계가 맞다
+     ⑥ apt_orders 조회 — 단지 필터가 맞다. 미입금 합계는 내지 않는다(2026-08-13 대표 결정)
      ⑦ 승인 대화상자용 라벨·결과 요약이 사람 말로 나온다
      ⑧ pageerror 0
 
@@ -76,9 +76,10 @@ let browser;
   assert(miss.threw, '⑤ 미등록 단지인데 접수됨 — 유령 단지가 생긴다');
   assert(/신흥마을아파트/.test(miss.msg) && /등록/.test(miss.msg), '⑤ 실패 안내에 등록된 단지 목록이 없다 — 비서가 되물을 수 없다: ' + miss.msg);
 
-  // ⑥ 조회 — 필터·미입금
+  // ⑥ 조회 — 필터. 앱이 못 받은 돈을 집계하지 않으므로 미입금 합계는 나오면 안 된다.
   const q = await page.evaluate(async () => await aiToolRun('apt_orders', { complex: '신흥마을' }));
-  assert(q.건수 === 3 && q.미입금원 === 200000, '⑥ 조회 건수·미입금 합계가 틀리다: ' + JSON.stringify({ n: q.건수, u: q.미입금원 }));
+  assert(q.건수 === 3, '⑥ 조회 건수가 틀리다: ' + q.건수);
+  assert(q.미입금원 === undefined, '⑥ 미입금 합계가 되살아났다: ' + q.미입금원);
   assert(q.목록.some(o => o.금액 === '미정'), '⑥ 미정 금액이 "미정"으로 표기되지 않는다');
 
   // ⑦ 라벨·요약 — 쓰기·조회 둘 다. 조회에 라벨이 없으면 채팅에 원시 도구명이 그대로 찍힌다(감사 지적).
@@ -86,12 +87,13 @@ let browser;
     act: aiActionLabel('apt_order_add', { complex: '신흥마을아파트', unit: '103동 1204호', work: '욕실 실리콘 교체' }),
     brief: aiResultBrief('apt_order_add', { 단지: '신흥마을아파트', 동호: '103동 1204호' }),
     qAct: aiActionLabel('apt_orders', { complex: '신흥마을' }),
-    qBrief: aiResultBrief('apt_orders', { 건수: 3, 미입금원: 200000 })
+    qBrief: aiResultBrief('apt_orders', { 건수: 3 })
   }));
   assert(/아파트 오더 접수/.test(label.act) && /신흥마을아파트/.test(label.act), '⑦ 승인 라벨이 사람 말이 아니다: ' + label.act);
   assert(/신흥마을아파트/.test(label.brief), '⑦ 결과 요약이 비었다: ' + label.brief);
   assert(/아파트 오더 조회/.test(label.qAct) && label.qAct !== 'apt_orders', '⑦ 조회 라벨이 원시 도구명 그대로다: ' + label.qAct);
-  assert(/3건/.test(label.qBrief) && /200,000/.test(label.qBrief), '⑦ 조회 결과 요약이 비었다: ' + label.qBrief);
+  assert(/3건/.test(label.qBrief), '⑦ 조회 결과 요약이 비었다: ' + label.qBrief);
+  assert(!/미입금/.test(label.qBrief), '⑦ 결과 요약에 미입금이 되살아났다: ' + label.qBrief);
 
   // ⑦-2 감사 권고 반영 — 음수 금액 거부 · 동명 단지 모호성
   const guard = await page.evaluate(async () => {
@@ -115,7 +117,7 @@ let browser;
   console.log('PASS  ③ 접수 — recv·오늘 날짜·금액 미정 허용');
   console.log('PASS  ④ 단지 부분 일치');
   console.log('PASS  ⑤ 미등록 단지 실패 + 등록 단지 안내');
-  console.log('PASS  ⑥ 조회 — 필터·미입금 합계');
+  console.log('PASS  ⑥ 조회 — 단지 필터 · 미입금 합계 없음');
   console.log('PASS  ⑦ 승인 라벨·결과 요약 (쓰기·조회) + 음수·모호성 방어');
   console.log('PASS  ⑧ pageerror 0');
   console.log('\n전부 통과 (8건)');
