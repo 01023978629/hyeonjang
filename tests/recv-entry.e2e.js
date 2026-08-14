@@ -9,7 +9,8 @@
      ② 입금 화면에 금액칸과 날짜칸이 둘 다 있다 (얼마·언제)
      ③ 저장 → received 증가 + payLog 에 {얼마, 언제} 1건
      ④ 미래 날짜는 거부한다 (안 들어온 돈이 이번 주 수금으로 잡히면 안 된다)
-     ⑤ 일부 입금은 독촉 작업을 닫지 않고 남은 금액을 적는다 / 완납이면 닫는다
+     ⑤ 옛 버전이 남긴 독촉 작업은 입금을 기록하면 큐에서 사라진다
+        (앱은 더 이상 미수금 작업을 만들지 않는다 — 2026-08-13 대표 결정)
      ⑥ 이미 기록된 수금이 같은 화면에 보인다 (같은 입금 두 번 넣는 것 방지)
      ⑦ 운영 큐의 수금 작업에 [💰 수금 입력] — 다 받은 현장에는 안 뜬다
      ⑧ pageerror 0
@@ -112,7 +113,8 @@ let browser;
   assert(/미래/.test(future.msg), '④ 미래 입금일이 조용히 저장된다: ' + future.msg);
   assert(future.recv === 1000000 && future.logs === 1, '④ 거부했는데 장부가 바뀌었다');
 
-  // ③⑤ 일부 입금 — 저장되고, 독촉 작업은 살아 있고 남은 금액이 적힌다
+  // ③⑤ 일부 입금 — 저장되고, 옛 독촉 작업은 큐에서 사라진다.
+  //     앱이 미수 잔액을 더는 추적하지 않으므로 "남은 미수 얼마" 문구도 안 쓴다.
   const partial = await page.evaluate(async () => {
     const today = localDate();
     document.getElementById('rqAmt').value = '500,000';
@@ -123,40 +125,22 @@ let browser;
     window.toast = rt;
     const p = state.projects.find(x => x.name === '늦은빌라 302호');
     const last = (state.payLog || [])[state.payLog.length - 1];
-    const t = aiOpsEnsureState().queue.find(x => x.id === 'q1');
-    return { recv: p.received, due: projStats(p.name).due, last, status: t.status, reason: t.reason, today, msg };
+    const q = aiOpsEnsureState().queue;
+    return { recv: p.received, due: projStats(p.name).due, last, gone: !q.some(x => x.id === 'q1'), other: q.some(x => x.id === 'q2'), today, msg };
   });
   assert(partial.recv === 1500000, '③ 입금이 반영 안 됨: ' + partial.recv);
   assert(partial.last && partial.last.amt === 500000 && partial.last.d === partial.today && partial.last.project === '늦은빌라 302호',
     '③ payLog 에 얼마·언제가 안 남았다: ' + JSON.stringify(partial.last));
-  assert(partial.due === 1500000, '③ 미수 재계산이 틀리다: ' + partial.due);
   assert(/500,000원/.test(partial.msg) && !/원원/.test(partial.msg),
     '③ 저장 안내가 "원원"으로 찍힌다 — won() 이 이미 \'원\'을 붙인다: ' + partial.msg);
-  assert(partial.status === 'pending', '⑤ 일부만 받았는데 독촉 작업이 닫혔다 — 남은 150만을 알려줄 사람이 없어진다');
-  // 문안은 우리가 쓰거나(즉시) 운영 스캔이 다시 쓰거나(직후) 둘 중 하나 — 어느 쪽이든
-  // **입금 전 금액이 남아 있으면 안 된다.** 200만이라고 계속 적혀 있으면 또 200만을 독촉한다.
-  assert(!/200만|2,000,000/.test(partial.reason || ''), '⑤ 입금 후에도 작업에 옛 미수액(200만)이 남아 있다: ' + partial.reason);
-  assert(/150만|1,500,000/.test(partial.reason || ''), '⑤ 남은 미수 금액이 작업에 안 적힌다: ' + partial.reason);
+  // 입금 안내에 잔액(미수)을 붙이지 않는다 — 표시를 걷어낸 이유가 사라진다
+  assert(!/미수|잔액|완납/.test(partial.msg), '⑤ 입금 안내에 미수 잔액이 다시 붙었다: ' + partial.msg);
+  assert(partial.gone, '⑤ 옛 독촉 작업이 큐에 그대로다 — 입금을 적어도 알람이 안 꺼진다');
+  assert(partial.other, '⑤ 다른 현장 작업까지 지웠다');
 
-  // ⑤-2 완납 — 작업이 큐에서 사라진다.
-  // status='done' 으로만 두면 대기열에 계속 보여 "알람이 안 꺼진다"가 되고,
-  // [승인]→[실행] 로 이미 다 낸 고객에게 독촉 문자 작성창이 열린다.
-  const full = await page.evaluate(async () => {
-    recvQuickView('늦은빌라 302호');
-    await new Promise(r => setTimeout(r, 200));
-    document.getElementById('rqAmt').value = '1,500,000';
-    document.querySelectorAll('#modalRoot button, .modal button').forEach(b => { if (/입금 저장/.test(b.textContent || '')) b.click(); });
-    await new Promise(r => setTimeout(r, 250));
-    const q = aiOpsEnsureState().queue;
-    return { due: projStats('늦은빌라 302호').due, gone: !q.some(x => x.id === 'q1'), other: q.some(x => x.id === 'q2') };
-  });
-  assert(full.due === 0, '⑤-2 완납인데 미수가 남아 있다: ' + full.due);
-  assert(full.gone, '⑤-2 완납인데 독촉 작업이 큐에 남아 있다 — 알림이 계속 뜨고 재승인하면 독촉 문자가 나간다');
-  assert(full.other, '⑤-2 다른 현장 작업까지 지웠다');
-
-  // ⑦ 운영 큐 버튼 — 미수 있는 현장에만
+  // ⑦ 운영 큐 버튼 — 아직 덜 받은 현장에만 (이중 입력 방지 게이트)
   const ops = await page.evaluate(() => {
-    // '아직 미수 있음' 상태를 다시 만든다 (q1 은 완납으로 큐에서 빠졌다)
+    // q1 은 위에서 큐에서 빠졌다 — 같은 상황을 다시 만든다
     state.projects.find(x => x.name === '늦은빌라 302호').received = 1000000;
     const q = aiOpsEnsureState().queue;
     q.push({ id: 'q1', category: '수금', type: 'aging', title: '미수금 독촉: 늦은빌라 302호 (90일째)', reason: '200만 미수', project: '늦은빌라 302호', status: 'pending', priority: 'high', requiresApproval: true, action: { kind: 'sms', fn: 'agingSms', arg: '늦은빌라 302호' }, createdAt: new Date().toISOString() });
@@ -211,9 +195,9 @@ let browser;
   console.log('PASS  ② 금액·날짜 칸 (얼마·언제)');
   console.log('PASS  ③ 저장 → received + payLog 1건');
   console.log('PASS  ④ 미래 입금일 거부');
-  console.log('PASS  ⑤ 일부 입금은 독촉 유지(남은 금액 기재) · 완납은 종료');
+  console.log('PASS  ⑤ 입금 기록 시 옛 독촉 작업 종료 · 안내에 미수 잔액 없음');
   console.log('PASS  ⑥ 기록된 수금 내역 표시');
-  console.log('PASS  ⑦ 운영 큐 버튼 — 미수 있는 현장에만');
+  console.log('PASS  ⑦ 운영 큐 버튼 — 덜 받은 현장에만');
   console.log('PASS  ⑧ 저장·[뒤로] 후 원래 목록 복귀');
   console.log('PASS  ⑨ 토스트가 모달 위 — 검증 경고가 보인다');
   console.log('PASS  ⑩ kind:open 작업이 arg 를 넘긴다');

@@ -72,7 +72,8 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
   await test('1. 브리핑 카드 렌더 + 세 섹션 원탭 버튼 존재', async () => {
     assert(await page.$('.brief-card'), '브리핑 카드 없음');
     assert(await page.$('.brief-card [data-workorderp="행복빌라 201호"]'), '진행 현장 [작업지시] 버튼 없음');
-    assert(await page.$('.brief-card [data-briefbill="행복빌라 201호"]'), '미수 현장 [청구] 버튼 없음');
+    // [청구] 버튼은 미수금 기능과 함께 없앴다(2026-08-13) — 되살아나면 잡는다.
+    assert(!(await page.$('.brief-card [data-briefbill]')), '[청구] 버튼이 되살아났다');
     assert(await page.$('.brief-card [data-callcust="샛별상가 1층"]'), '후속 [전화] 버튼 없음');
     assert(await page.$('.brief-card [data-smscust="샛별상가 1층"]'), '후속 [문자] 버튼 없음');
     assert(await page.$('.brief-card [data-briefleadcall="leadA"]'), '리드 [전화] 버튼 없음(텍스트 전화 파싱 실패)');
@@ -85,19 +86,6 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     const site = await page.$eval('#woSite', el => el.value);
     assert(site === '행복빌라 201호', '현장 프리필 불일치: ' + site);
     await page.evaluate(() => closeModal());
-  });
-
-  await test('3. [💬 청구] 클릭 → hjSendSms(고객번호 + 현장 + 미수액 문안)', async () => {
-    await page.evaluate(() => { window.__sms.length = 0; });
-    await page.click('.brief-card [data-briefbill="행복빌라 201호"]');
-    await page.waitForTimeout(150);
-    const sms = await page.evaluate(() => window.__sms.slice());
-    assert(sms.length === 1, 'hjSendSms 호출 1회 아님: ' + JSON.stringify(sms));
-    assert(sms[0].phone === RAW_CUST, 'sms 대상 번호 불일치: ' + sms[0].phone);
-    const body = sms[0].text;
-    assert(body.indexOf('행복빌라 201호') >= 0, '문안에 현장명 없음: ' + body);
-    assert(body.indexOf('4,000,000') >= 0, '문안에 미수액(4,000,000) 없음: ' + body);
-    assert(body.indexOf('만물인테리어') >= 0, '문안에 업체명 없음');
   });
 
   await test('4. 챙길 연락 — 리드 [📞][💬] 텍스트 전화 파싱 딥링크 + 후속 버튼 동작', async () => {

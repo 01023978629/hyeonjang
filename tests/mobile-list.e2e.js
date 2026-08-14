@@ -2,7 +2,7 @@
    폰에서 목록이 불편하던 것들이 다시 나빠지지 않게 지킨다:
    ① 서류·견적 카드가 1열 거대 격자 대신 '한 줄 리스트형'으로 눕는다(사진 격자는 다열 유지)
    ② 카드 버튼·분류 드롭다운이 손가락 크기다(터치 타깃)
-   ③ 현장 선택 시트: 검색이 항상 있고, 현장별 미수금이 바로 보인다
+   ③ 현장 선택 시트: 검색이 항상 있고, 미수금은 표시하지 않는다
    ④ 긴 목록에서 '맨 위로' 버튼이 뜨고 실제로 올라간다 (모바일 모드 전용)
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'. 실발신/네트워크 없음. */
 'use strict';
@@ -93,14 +93,14 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(has, '현장 2곳뿐이어도 검색 입력이 있어야 함(예전엔 7곳부터만)');
   });
 
-  await test('③ 현장 선택 시트: 미수 있는 현장에만 미수금이 표시된다', async () => {
-    const r = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#psList [data-psel]')];
-      const t = (nm) => { const el = rows.find(x => x.dataset.psel === nm); return el ? el.textContent : ''; };
-      return { d: t('둔산현장'), w: t('완납현장') };
+  await test('③ 현장 선택 시트: 미수금이 표시되지 않는다', async () => {
+    // 미수금 표시는 없앴다(2026-08-13 대표 결정) — 배지가 되살아나면 여기서 잡힌다.
+    const txt = await page.evaluate(() => {
+      const sh = document.getElementById('projSheet');
+      return sh ? (sh.textContent || '') : '';
     });
-    assert(/미수\s*1,000만/.test(r.d), '둔산현장(1,100만 견적·100만 수금)에 "미수 1,000만"이 보여야 함: ' + r.d);
-    assert(!/미수/.test(r.w), '완납현장에는 미수 표시가 없어야 함: ' + r.w);
+    assert(txt, '현장 선택 시트가 열려 있지 않다');
+    assert(!/미수/.test(txt), '현장 선택 시트에 미수 배지가 되살아났다: ' + txt.slice(0, 200));
   });
 
   await test('③ 현장 선택 시트: 검색하면 다른 현장 행이 숨는다', async () => {

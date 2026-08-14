@@ -101,17 +101,18 @@ let browser;
       hasUnpaid: /344,000원/.test(text),       // 이번 달 미수(a3 300,000 + a5 44,000) — a5 는 접수가 지난달·완료가 이번 달이라, 접수월로 세면 여기서 빠진다
       hasLastMonth: /999,000원/.test(text),    // 지난달 완료(a4) — 6개월 표 안에 보여야 함
       // 이번 달 줄의 '완료 금액' 합계. a5(접수 7월·완료 8월)가 들어가야 394,000 이다.
-      // 상단 미수 타일은 월과 무관한 전체 합계라 월 기준이 틀려도 못 잡는다 — 표의 월별 값이 진짜 검증이다.
+      // 미수 타일은 없앴다. 표의 월별 값이 월 기준(완료월) 검증의 핵심이다.
       hasMonthTotal: /394,000원/.test(text),
       otherComplex: /700,000원/.test(text)     // 다른 단지(b1) — 보이면 안 됨
     };
   });
   assert(stats.hasPaid, '④ 이번 달 입금 금액이 통계에 없다');
-  assert(stats.hasUnpaid, '④ 미수(청구 후 미입금)가 통계에 없다 — 못 받은 돈이 안 보인다');
+  // 미수(청구 후 미입금) 표시는 없앴다(2026-08-13 대표 결정) — 되살아나면 잡는다.
+  assert(!stats.hasUnpaid, '④ 미수(청구 후 미입금) 표시가 되살아났다');
   assert(stats.hasLastMonth, '④ 지난달 완료분이 6개월 표에 없다');
   assert(stats.hasMonthTotal, '④ 이번 달 완료 금액 합계(394,000)가 표에 없다 — 월 기준이 완료월(doneAt)이 아니면 여기서 어긋난다');
   assert(!stats.otherComplex, '⑤ 다른 단지 금액이 섞였다 — 단지별 정산이 무너진다');
-  assert(stats.r.미수 === 344000, '④ 미수 합계가 틀리다(기준이 완료월이 아니면 어긋난다): ' + stats.r.미수);
+  assert(stats.r.미수 === undefined, '④ 반환값에 미수 합계가 되살아났다: ' + stats.r.미수);
 
   // ⑥ 정산서 엑셀 — 화면 자료 그대로, 파일명에 단지·월
   const xlsx = await page.evaluate(async () => {

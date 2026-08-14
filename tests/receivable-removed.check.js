@@ -9,8 +9,11 @@
 
      없앰: 미수금 팔로업·독촉 문안·에이징(30/60/90)·일괄 완납·미수금 리포트·
            파수꾼의 '못 받은 돈'/'입금 확인 필요' 절·운영 루프의 미수금 작업
-     남김: 수금액 입력(현장 목록의 수금액 칸·recvQuickView)과 payLog —
-           장부와 부가세 근거라 지우면 안 된다
+     없앰(2차): 남아 있던 **미수 숫자 표시** — 대시보드·리포트·장부·엑셀·
+           한눈 보기·지도 핀·입금 화면의 '현재 미수'까지. 대표 지시 "지워".
+     남김: 수금액 입력(현장 목록의 수금액 칸·recvQuickView)과 payLog,
+           그리고 견적(매출)·수금액 두 값 — 장부와 부가세 근거라 지우면 안 된다.
+           둘이 남아 있으면 미수는 언제든 다시 계산되므로 신고 근거는 온전하다.
 
    브라우저 없이 도는 정적 검사다. */
 'use strict';
@@ -56,9 +59,69 @@ if (html.indexOf('data-recv=') === -1) fail.push('현장 목록의 수금액 입
 /* ⑤ 계약서의 지급 조건(계약금·중도금·잔금)은 계약 내용이라 남는다 */
 if (html.indexOf('pay_plan') === -1) fail.push('분할납 계획(pay_plan)이 사라졌다 — 지급 조건은 계약 내용이다');
 
+
+/* ⑥ 미수 "숫자 표시"가 되살아나지 않는지 — 기능은 지웠는데 숫자만 다시 붙는 일이 잦다.
+      아래는 전부 실제로 화면에 찍히던 문구/자리다. */
+const GONE_TEXT = [
+  '미수금 총액',     // 월간 보고서·경영 현황 지표 줄
+  '미수금 현장',     // 월간 보고서 상세 목록
+  '현재 미수',       // 입금 기록(recvQuickView) 상단 줄
+  '남은 미수',       // 입금 저장 토스트·승인함 사유
+  '미수 확정',       // '받은 게 없어요' 버튼
+  '미수금 에이징',   // 없어진 화면 이름(도움말에 남아 있으면 없는 화면을 안내한다)
+  '총 미수금',
+];
+for (const t of GONE_TEXT) {
+  if (html.indexOf(t) !== -1) fail.push('index.html 에 "' + t + '" 표시가 돌아왔다');
+}
+
+/* ⑦ 엑셀 시트 헤더 — 세무사에게 나가는 표에 미수 칸이 다시 생기면 안 된다.
+      헤더 배열만 본다(주석에 '미수'가 들어 있다고 실패하면 안 된다). */
+// 헤더는 그 시트에만 있는 칸 이름으로 집는다 — `const s1` 은 파일에 여럿이라
+// 변수명으로 찾으면 엉뚱한 시트를 검사한다(첫 시도에서 실제로 그랬다).
+const SHEETS = [
+  { name: '전체 장부 ① 현장', re: /\[\[([^\]]*'견적합계'[^\]]*)\]\]/, keep: ['수금', '마진'] },
+  { name: '견적 정산 시트1', re: /\[\[([^\]]*'수금률\(%\)'[^\]]*)\]\]/, keep: ['견적(매출)', '수금액'] },
+];
+for (const sh of SHEETS) {
+  const m = html.match(sh.re);
+  if (!m) { fail.push(sh.name + ' 헤더를 찾지 못했다 — 검사가 무력해졌다'); continue; }
+  if (m[1].indexOf('미수') !== -1) fail.push(sh.name + ' 헤더에 미수 칸이 돌아왔다: ' + m[1]);
+  for (const k of sh.keep) {
+    if (m[1].indexOf(k) === -1) fail.push(sh.name + ' 헤더에서 "' + k + '" 이 사라졌다 — 남기기로 한 값이다');
+  }
+}
+// 정산표 합계행의 미수 누산기
+if (/\btDue\b/.test(html)) fail.push('정산표에 미수 합계(tDue)가 돌아왔다');
+for (const keep of ['tEst', 'tRecv']) {
+  if (!new RegExp('\\b' + keep + '\\b').test(html)) fail.push('정산표 합계에서 ' + keep + ' 이 사라졌다');
+}
+
+/* ⑧ 한눈 보기(홈 위젯)는 앱을 열기도 전에 보이는 화면이다 — 여기 미수가 뜨면 제일 나쁘다 */
+const glance = html.match(/localStorage\.setItem\('hj_glance',[\s\S]{0,400}?\}\)\);/);
+if (!glance) fail.push('한눈 보기 캐시(hj_glance)를 찾지 못했다 — 검사가 무력해졌다');
+else if (/\bdue\b/.test(glance[0])) fail.push('한눈 보기 캐시에 미수(due)가 돌아왔다');
+
+/* ⑨ 입금 기록 화면은 남되(장부 근거), 미수액을 미리 채워 주지도 말아야 한다.
+      '전액 ○○원' 버튼이 곧 미수 표시였다. */
+const rq = html.match(/function recvQuickView\([\s\S]*?\n\}/);
+if (!rq) fail.push('recvQuickView 본문을 찾지 못했다 — 검사가 무력해졌다');
+else {
+  // 따옴표까지 본다 — indexOf('rqAmt') 는 rqAmtX 로 바꿔치기해도 통과한다(변이 검증에서 걸렸다)
+  for (const id of ['rqAmt', 'rqDate']) {
+    if (rq[0].indexOf('id="' + id + '"') === -1) fail.push('입금 기록 화면에서 ' + id + ' 칸이 사라졌다 — 장부 입력이 끊긴다');
+  }
+  for (const gone of ['rqFull', 'rqHalf', 'rqNone']) {
+    if (rq[0].indexOf(gone) !== -1) fail.push('입금 기록 화면에 ' + gone + ' (미수액 자동 채움)이 돌아왔다');
+  }
+}
+
+/* ⑩ 현장 지도 핀의 빨간 테두리는 "이 집 돈 안 냈다"는 표시였다 */
+if (/const ring\s*=\s*s\.due/.test(html)) fail.push('지도 핀에 미수 테두리가 돌아왔다');
+
 if (fail.length) {
   console.error('FAIL  미수금 제거 상태가 깨졌다:');
   for (const f of fail) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('PASS  미수금 기능 제거 유지 · 수금 입력 경로 보존');
+console.log('PASS  미수금 기능·표시 제거 유지 · 수금 입력 경로와 견적/수금액 보존');
