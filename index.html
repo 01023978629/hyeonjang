@@ -2052,7 +2052,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v194-photoorder';
+const APP_BUILD='hyeonjang-v195-photoorder';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -20141,7 +20141,7 @@ function viewPhotos(){
     <span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 제거</button>`:''}
   </div>`;
-  html+=`<p class="hint" style="margin:0 0 12px"><b>현장을 아직 안 정한 묶음이 맨 위</b>, 그다음은 최근 날짜순입니다. 촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
+  html+=`<p class="hint" style="margin:0 0 12px"><b>현장을 아직 안 정한 묶음이 맨 위</b>, 그다음은 최근 날짜순이며 같은 날에는 같은 현장이 이어집니다. 촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
   html+=`<div style="margin:0 0 10px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -20192,24 +20192,40 @@ function viewPhotos(){
     return html;
   }
 
-  /* 정렬(2026-08-14 대표 지시): ① 현장 미지정 묶음이 맨 위 ② 그다음 날짜 최신순.
+  /* 정렬(2026-08-20 대표 지시): ① 현장 미지정 묶음이 맨 위 ② 그다음 날짜 최신순
+     ③ 같은 날짜에서는 바로 위 묶음과 같은 현장을 우선해 이어 붙인다.
      이 화면은 '새로 들어온 사진을 현장에 배정하는' 화면이다. 예전에는 위치별로 묶어
      날짜 오름차순(오래된 것 먼저)이라, 방금 찍어 올린 사진이 목록 한참 아래에 묻혔다.
      미지정 판정은 **중복 제외 사진 중 현장이 없는 것이 하나라도 있으면** 미지정으로 본다
      — 절반만 배정된 묶음도 아직 손이 필요하므로 위에 남아 있어야 한다.
      날짜가 없는 묶음은 최신순에서 자연히 맨 뒤로 간다(0). */
-  const __locKey=c=>c.address||(c.lat!=null?(c.lat.toFixed(3)+','+c.lng.toFixed(3)):'~없음');
   const __cDate=c=>{const w=c.items.find(p=>p.when)?.when;return w?w.getTime():0;};
+  const __cDay=c=>{const t=__cDate(c);if(!t)return 0;const d=new Date(t);return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();};
   const __unassigned=c=>c.items.some(p=>!p._dup&&!p.project);
-  const ordered=[...clusters].sort((a,b)=>{
-    const ua=__unassigned(a), ub=__unassigned(b);
-    if(ua!==ub)return ua?-1:1;                    // ① 미지정 먼저
-    const da=__cDate(a), db=__cDate(b);
-    if(da!==db)return db-da;                      // ② 날짜 최신순
-    const ka=__locKey(a), kb=__locKey(b);         // ③ 같은 날이면 같은 장소끼리 붙여 둔다
-    if(ka!==kb)return ka<kb?-1:1;
-    return String(a.items[0]&&a.items[0].id).localeCompare(String(b.items[0]&&b.items[0].id));
+  const __cProject=c=>mostCommon(c.items.filter(p=>!p._dup).map(p=>p.project).filter(Boolean))||'';
+  const __rows=clusters.map((cluster,index)=>({cluster,index,unassigned:__unassigned(cluster),day:__cDay(cluster),time:__cDate(cluster),project:__cProject(cluster)}));
+  __rows.sort((a,b)=>{
+    if(a.unassigned!==b.unassigned)return a.unassigned?-1:1; // ① 미지정 먼저
+    if(a.day!==b.day)return b.day-a.day;                      // ② 날짜 최신순
+    if(a.time!==b.time)return b.time-a.time;                  // 같은 날의 첫 묶음은 최신 촬영순
+    return a.index-b.index;
   });
+  const ordered=[];
+  for(let at=0;at<__rows.length;){
+    let end=at+1;
+    while(end<__rows.length&&__rows[end].unassigned===__rows[at].unassigned&&__rows[end].day===__rows[at].day)end++;
+    const sameDay=__rows.slice(at,end);
+    while(sameDay.length){
+      const seed=sameDay.shift();ordered.push(seed.cluster);
+      if(seed.project){
+        for(let i=0;i<sameDay.length;){
+          if(sameDay[i].project===seed.project)ordered.push(sameDay.splice(i,1)[0].cluster);
+          else i++;
+        }
+      }
+    }
+    at=end;
+  }
   window.__clusters=ordered;
   // 초대형 목록 최적화: 클러스터를 한꺼번에 다 그리지 않고 12개씩 점진 표시(1,000장+에서도 가볍게)
   const CHUNK=12;

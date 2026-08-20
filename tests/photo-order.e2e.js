@@ -13,7 +13,8 @@
      ⑤ 위치(GPS·주소)가 있다고 위로 올라가지 않는다 (옛 규칙의 핵심이 뒤집혔는지)
      ⑥ 날짜 없는 묶음은 맨 뒤
      ⑦ 미지정 묶음에 '현장 미지정 N장' 배지가 보인다
-     ⑧ pageerror 0
+     ⑧ 같은 날짜는 바로 위와 같은 현장 묶음이 우선
+     ⑨ pageerror 0
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -43,7 +44,10 @@ let browser;
   //   nodate       : 날짜 없음 · 배정됨              → 맨 뒤
   const setup = await page.evaluate(() => {
     const d = (s) => new Date(s);
-    state.projects = [{ name: '둔산현장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false }];
+    state.projects = [
+      { name: '둔산현장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false },
+      { name: '은행현장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false }
+    ];
     state.files = [
       { id: 'p_oldloc', name: 'old-located.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: d('2026-01-05T09:00:00'), lat: 36.32, lng: 127.41, address: '대전 중구 어딘가' },
       { id: 'p_newun', name: 'new-unassigned.jpg', ext: 'jpg', kind: 'photo', project: '', when: d('2026-08-10T09:00:00') },
@@ -51,6 +55,9 @@ let browser;
       { id: 'p_half_a', name: 'half-a.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: d('2026-08-12T09:00:00') },
       { id: 'p_half_b', name: 'half-b.jpg', ext: 'jpg', kind: 'photo', project: '', when: d('2026-08-12T09:05:00') },
       { id: 'p_newas', name: 'new-assigned.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: d('2026-08-11T09:00:00') },
+      { id: 'p_same_a_late', name: 'same-a-late.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: d('2026-08-09T23:00:00') },
+      { id: 'p_same_b_mid', name: 'same-b-mid.jpg', ext: 'jpg', kind: 'photo', project: '은행현장', when: d('2026-08-09T15:00:00') },
+      { id: 'p_same_a_early', name: 'same-a-early.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: d('2026-08-09T07:00:00') },
       { id: 'p_nodate', name: 'nodate.jpg', ext: 'jpg', kind: 'photo', project: '둔산현장', when: null }
     ];
     state.tab = 'photos'; state.activeProject = null; state.search = '';
@@ -58,7 +65,7 @@ let browser;
     render();
     return { n: state.files.length };
   });
-  assert(setup.n === 7, '시드가 안 들어갔다');
+  assert(setup.n === 10, '시드가 안 들어갔다');
   await page.waitForTimeout(600);
 
   // 실제 화면에 그려진 묶음 순서를 읽는다(정렬 함수가 아니라 결과를 본다)
@@ -110,7 +117,11 @@ let browser;
   assert(/현장 미지정/.test(badge.first), '⑦ 첫 묶음에 "현장 미지정" 배지가 없다: ' + JSON.stringify(badge));
   assert(badge.count === 3, '⑦ 미지정 배지 개수가 3이 아니다(half·newun·oldun): ' + badge.count);
 
-  assert(errors.length === 0, '⑧ pageerror: ' + errors.join(' | '));
+  // ⑧ 같은 날짜에서는 첫 묶음(23시 A) 바로 아래에 같은 현장(07시 A)이 오고, 다른 현장(15시 B)은 그다음이다.
+  assert(idxOf('p_same_a_late') < idxOf('p_same_a_early') && idxOf('p_same_a_early') < idxOf('p_same_b_mid'),
+    '⑧ 같은 날짜의 같은 현장이 이어지지 않는다: ' + dbg);
+
+  assert(errors.length === 0, '⑨ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 미지정 묶음이 맨 위');
   console.log('PASS  ② 미지정끼리 날짜 최신순');
@@ -119,8 +130,9 @@ let browser;
   console.log('PASS  ⑤ GPS 있다고 위로 올라가지 않는다');
   console.log('PASS  ⑥ 날짜 없는 묶음은 맨 뒤');
   console.log('PASS  ⑦ 현장 미지정 배지');
-  console.log('PASS  ⑧ pageerror 0');
-  console.log('\n전부 통과 (8건)');
+  console.log('PASS  ⑧ 같은 날짜는 위와 같은 현장 우선');
+  console.log('PASS  ⑨ pageerror 0');
+  console.log('\n전부 통과 (9건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
