@@ -776,7 +776,7 @@ const FS_OK='showDirectoryPicker' in window;
    - 모바일 모드: 올리기·보기 전용 → 파일 이동/정리 같은 쓰기 동작 막음
    - 폴더 미연결 or File System API 미지원(폰 브라우저): 실제 이동 불가 */
 function isMobileNow(){return (typeof __mobileMode!=='undefined') && __mobileMode;}
-function canEditFiles(){return !isMobileNow() && !!state.dirHandle && FS_OK;}
+function canEditFiles(){return !isMobileNow() && !!state.dirHandle && FS_OK && !directOrganizedRoot();}
 function requireEditMode(action){
   // action: 안내에 쓸 동작 이름(예: '파일 정리', '사진 이동')
   if(isMobileNow()){
@@ -791,10 +791,17 @@ function requireEditMode(action){
     toast('먼저 왼쪽 “📁 로컬 폴더 연결”로 작업 폴더를 연결하세요. 연결하면 '+(action||'이 작업')+'이(가) 가능합니다.');
     return false;
   }
+  if(directOrganizedRoot()){
+    toast('📷 _정리완료 사진 연결 모드입니다. 파일 이동·저장은 상위 작업 폴더를 연결할 때만 가능합니다.');
+    return false;
+  }
   return true;
 }
 
 const state={dirHandle:null,files:[],projects:[],activeProject:null,tab:'dashboard',search:'',lastMove:null,geocode:true,dirty:false,quotes:[],editingQuote:null,schedule:[],calendarImports:[],contacts:[]};
+function directOrganizedRoot(){return !!(state.dirHandle&&String(state.dirHandle.name||'')==='_정리완료');}
+function scanRootPrefix(){return directOrganizedRoot()?'_정리완료/':'';}
+function directRootCarry(files){return directOrganizedRoot()?(Array.isArray(files)?files:[]).filter(f=>f&&!String(f.prefix||'').startsWith('_정리완료/')):[];}
 // 공급자 고정 정보 + 계좌 목록 (만물인테리어)
 const COMPANY={
   name:'만물인테리어', bizno:'895-48-01132', owner:'전병덕', tel:'010-2397-8629',
@@ -1167,12 +1174,18 @@ function parseCard(text){
 }
 
 /* ---------- 폴더 연결 ---------- */
+function setMountedDirectory(dir){
+  state.dirHandle=dir;rememberDir(dir);
+  const direct=directOrganizedRoot();
+  $('#mountName').textContent=direct?'📁 _정리완료 (사진 연결)':'📁 '+dir.name;
+  $('#mountHint').textContent=direct?'정리완료 사진을 연결하는 중… 상위 저장자료는 그대로 유지합니다.':'연결됨. 스캔 중…';
+  $('#btnScan').disabled=false;$('#btnSave').disabled=direct;
+}
 $('#btnMount').onclick=async()=>{
   if(!FS_OK){pickFilesFallback();return;}
   try{
     const dir=await window.showDirectoryPicker({mode:'readwrite'});
-    state.dirHandle=dir; rememberDir(dir); $('#mountName').textContent='📁 '+dir.name;
-    $('#mountHint').textContent='연결됨. 스캔 중…'; $('#btnScan').disabled=false; $('#btnSave').disabled=false;
+    setMountedDirectory(dir);
     await scanDir();
   }catch(e){if(e.name!=='AbortError')toast('폴더를 연결하지 못했습니다.');}
 };
@@ -1190,14 +1203,22 @@ let __showArchived=false;   // 보관 현장 펼침 상태   // 스캔 점진 �
 async function scanDir(){
   if(!state.dirHandle)return;
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
+  const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
   window.__organizedRecovered=0;
   clearFileList();__walkSeen=new Map();__scanTick=0;toast('폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
   window.__walkDirs=new Set();window.__walkSaw=new Set();window.__walkFailed=new Set();window.__walkSkip=new Set();
-  await walk(state.dirHandle,'');
+  await walk(state.dirHandle,scanRootPrefix());
+  if(_carry.length){
+    _carry.forEach(f=>{
+      if(f._driveId&&state.files.some(x=>x._driveId===f._driveId))return;
+      if(state.files.some(x=>fileKey(x)===fileKey(f)))return;
+      state.files.push(f);
+    });
+  }
   // [v100 안전장치] 스캔 결과가 저장된 색인보다 크게 적으면(폴더 접근 실패·제외 사고) 정리(prune)를 끈다
-  window.__pruneOff=false;
+  window.__pruneOff=directOrganizedRoot();
   try{
     const _saved=(state._savedFileCount||0);
     if(_saved>20&&(state.files||[]).length<_saved*0.7){
@@ -1229,7 +1250,8 @@ async function scanDir(){
   // [v101 BUG-4] ★ 최종본이 있는 달의 다른 안은 자동으로 집계 제외(견적 탭에서 되돌릴 수 있음)
   try{const _fc=estFinalCandidates();if(_fc.length){_fc.forEach(function(f){f.exSum=true;});markDirty();toast('⭐ 최종본(★) 기준 '+_fc.length+'건을 매출 집계에서 제외했어요 — 견적 탭에서 되돌릴 수 있어요');}}catch(e){}
   const _org=window.__organizedRecovered||0;if(_org)markDirty();
-  $('#mountHint').textContent=state.files.length+'개 파일 인식됨.';
+  $('#mountHint').textContent=state.files.length+'개 파일 인식됨.'+(directOrganizedRoot()?' · _정리완료 사진 연결 모드':'');
+  if(directOrganizedRoot())$('#btnSave').disabled=true;
   $('#btnOcrAll').disabled=false;render();toast(state.files.length+'개 파일 분류 완료'+(_kept?' · 기존 배정 '+_kept+'건 유지':'')+(_org?' · 현장·공정 '+_org+'건 복구':''));setTimeout(()=>aiAutoOrgOffer('scan'),600);setTimeout(()=>{try{quoteAutoAssignOffer();}catch(e){}},1400);
 }
 
@@ -1241,7 +1263,7 @@ let __photoCache={key:null,clusters:null,dupSets:null};
 let __clusterShowN=12, __clusterShowKey='';   // 사진 클러스터 점진 표시(더보기) 상태
 function markDirty(){state.dirty=true;__photoCache.key=null;try{hjSnapshot('작업 중');}catch(e){}const b=$('#btnSave');if(b){b.classList.add('clay');b.textContent='● 저장하기';}
   // 자동 저장: 자동 모드 + 연결 폴더일 때만, 3분 간격
-  if(__autoSaveOn&&state.dirHandle&&FS_OK){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
+  if(__autoSaveOn&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
   persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적·일정 유지
   try{backupDriveAuto();}catch(e){}
   if(typeof cloudAutoSave==='function')cloudAutoSave(); // 클라우드(Supabase) 연결 시 자동 올리기
@@ -1257,7 +1279,7 @@ function clearDirty(){state.dirty=false;const b=$('#btnSave');if(b){b.classList.
 function toggleAutoSave(){
   __autoSaveOn=!__autoSaveOn;
   if(!__autoSaveOn)clearTimeout(__autosaveTimer);
-  else if(state.dirty&&state.dirHandle&&FS_OK){__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
+  else if(state.dirty&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
   const b=$('#btnAutoSave');if(b){b.textContent=__autoSaveOn?'⏱ 자동저장 ON':'⏸ 수동저장';b.classList.toggle('blue',__autoSaveOn);b.classList.toggle('ghost',!__autoSaveOn);}
   try{idbSet('pref_autosave',__autoSaveOn);}catch(e){}
   toast(__autoSaveOn?'자동 저장 켜짐 (3분 간격)':'수동 저장 모드 — 직접 저장하세요');
@@ -1448,6 +1470,7 @@ function fixXlsxEstVat(){
 let __saving=false,__saveQueued=null;
 async function saveProject(silent){
   if(!state.dirHandle||!FS_OK){if(!silent)toast('폴더 연결 시 폴더에 저장됩니다. 폰에서는 ‘데이터 내보내기’를 쓰세요.');return;}
+  if(directOrganizedRoot()){if(!silent)toast('_정리완료는 사진 연결 전용입니다. 저장자료는 상위 만물 폴더의 _현장.json을 그대로 사용합니다.');return;}
   if(__saving){__saveQueued=silent;return;}
   __saving=true;
   try{
@@ -1461,6 +1484,7 @@ async function saveProject(silent){
 }
 async function loadProject(){
   if(!state.dirHandle)return;
+  if(directOrganizedRoot())return;
   try{
     const fh=await state.dirHandle.getFileHandle('_현장.json');
     const file=await fh.getFile();const data=JSON.parse(await file.text());
@@ -2162,7 +2186,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v197-photolink';
+const APP_BUILD='hyeonjang-v198-directphotos';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3704,7 +3728,7 @@ function backupUserEdits(){
       if(!touched)return;
       const _rec={
         project:f.project||null,est:f.est||null,kind:f.kind||null,phase:f._phase||null,
-        contact:f.contact||null,_worklabel:f._worklabel||null,text:f.text||'',ocr:f.ocr||null,
+        contact:f.contact||null,_worklabel:f._worklabel||null,driveId:f._driveId||null,text:f.text||'',ocr:f.ocr||null,
         exSum:f.exSum||false
       };
       __editBackup.set(fileEditKey(f.prefix,f.name),_rec);
@@ -3728,6 +3752,7 @@ function restoreUserEdits(rec){
     if(b.phase)rec._phase=b.phase;
     if(b.contact)rec.contact=b.contact;
     if(b._worklabel)rec._worklabel=b._worklabel;
+    if(b.driveId&&!rec._driveId)rec._driveId=b.driveId;
     if(b.text&&!rec.text)rec.text=b.text;        // OCR 결과 재활용(재OCR 방지)
     if(b.ocr==='done'&&b.text)rec.ocr='done';
   }catch(e){}
@@ -23496,7 +23521,7 @@ async function tryRestoreDir(){
         let p=perm;
         if(p!=='granted')p=await handle.requestPermission({mode:'readwrite'});
         if(p!=='granted'){toast('폴더 권한이 필요합니다.');return;}
-        state.dirHandle=handle;$('#mountName').textContent='📁 '+handle.name;$('#btnScan').disabled=false;$('#btnSave').disabled=false;
+        setMountedDirectory(handle);
         bar.style.display='none';await scanDir();
       };
       bar.querySelector('#rbDismiss').onclick=()=>{bar.style.display='none';};
