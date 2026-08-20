@@ -901,7 +901,9 @@ function recoverOrganizedMetadata(rec){
     if(names.has(target)&&rec.project!==target){rec.project=target;changed=true;}
   }
   if(rec.kind==='photo'&&rec.project){
-    const phase=String(rec._phase||info.phase||rec._worklabel||'').trim();
+    // _정리완료 안에서 공정 폴더까지 명시된 사진은 실제 폴더 위치를 최우선으로 쓴다.
+    // 과거 저장본의 공정이 남아 있어도 사용자가 PC에서 옮긴 최종 위치와 다르면 폴더가 정답이다.
+    const phase=String(info.phase||rec._phase||rec._worklabel||'').trim();
     if(phase){
       if(rec._phase!==phase){rec._phase=phase;changed=true;}
       const p=(state.projects||[]).find(x=>x.name===rec.project);
@@ -909,6 +911,52 @@ function recoverOrganizedMetadata(rec){
     }
   }
   return changed;
+}
+
+// 같은 사진이 원본 폴더와 _정리완료에 한 벌씩 남은 과거 저장본을 정리한다.
+// 정리본의 위치·현장·공정은 그대로 두고, 원본 쪽 서버 사진 연결값만 이어 붙인다.
+function mergeOrganizedPhotoDuplicates(files){
+  const src=Array.isArray(files)?files:[],byName=new Map();
+  const mergeMissing=(keep,old)=>{
+    ['text','ocr','est','ledger','quote','contact','address','gdFolder','lat','lng','when','project','phase','worklabel'].forEach(k=>{
+      if((keep[k]===undefined||keep[k]===null||keep[k]==='')&&old[k]!==undefined&&old[k]!==null&&old[k]!=='')keep[k]=old[k];
+    });
+    if(!keep.exSum&&old.exSum)keep.exSum=true;
+  };
+  src.forEach((f,i)=>{
+    if(!f||f.kind!=='photo'||!f.name)return;
+    const k=String(f.name).trim().toLowerCase();
+    if(!byName.has(k))byName.set(k,[]);
+    byName.get(k).push({f,i});
+  });
+  const drop=new Set();let merged=0,linked=0;
+  byName.forEach(group=>{
+    if(group.length!==2)return;
+    const organized=group.filter(x=>String(x.f.prefix||'').startsWith('_정리완료/'));
+    const original=group.filter(x=>!String(x.f.prefix||'').startsWith('_정리완료/'));
+    if(organized.length!==1||original.length!==1)return;
+    const keep=organized[0].f,old=original[0].f;
+    if(keep.project&&old.project&&keep.project!==old.project)return;
+    if(!keep.driveId&&old.driveId){keep.driveId=old.driveId;linked++;}
+    mergeMissing(keep,old);
+    drop.add(original[0].i);merged++;
+  });
+  let work=src.filter((_,i)=>!drop.has(i));
+  // 같은 Drive ID가 두 기록에 붙은 경우도 한 장이다. 정리본, 그다음 원본 크기가 큰 기록을 남긴다.
+  const byDrive=new Map();
+  work.forEach((f,i)=>{
+    if(!f||f.kind!=='photo'||!f.driveId)return;
+    if(!byDrive.has(f.driveId))byDrive.set(f.driveId,[]);
+    byDrive.get(f.driveId).push({f,i});
+  });
+  const driveDrop=new Set();let driveDeduped=0;
+  byDrive.forEach(group=>{
+    if(group.length!==2||String(group[0].f.name||'').toLowerCase()!==String(group[1].f.name||'').toLowerCase())return;
+    group.sort((a,b)=>Number(String(b.f.prefix||'').startsWith('_정리완료/'))-Number(String(a.f.prefix||'').startsWith('_정리완료/'))||(Number(b.f.size)||0)-(Number(a.f.size)||0));
+    mergeMissing(group[0].f,group[1].f);driveDrop.add(group[1].i);driveDeduped++;
+  });
+  work=work.filter((_,i)=>!driveDrop.has(i));
+  return {files:work,merged,linked,driveDeduped};
 }
 // 사진 표시 URL: 로컬 썸네일이 있으면 그걸, 없으면 구글드라이브 썸네일 URL을 직접 사용(로그인된 브라우저가 바로 로드, HEIC도 드라이브가 JPG로 변환해 줌). → 별도 '썸네일 채우기' 불필요, 바로 표시
 // HEIC도 JPEG로 렌더해 주는 lh3 형식(drive.google.com/thumbnail은 HEIC 미지원) — 로그인된 브라우저에서 바로 표시
@@ -1264,7 +1312,12 @@ let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(sav
 function applyData(data){
   if(!data||typeof data!=='object')return 0;
   ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog','aptOffices','aptOrders'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
-  if(data.files)data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
+  if(data.files){
+    data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
+    const compact=mergeOrganizedPhotoDuplicates(data.files);
+    data.files=compact.files;
+    window.__organizedLinksMerged=compact;
+  }
   if(data.projects)data.projects=data.projects.filter(p=>p&&typeof p==='object'&&p.name);
   if(!data.files)return 0;
   __lastData=data; if(data.savedAt)__dataAt=data.savedAt;
@@ -2109,7 +2162,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v196-phasematch';
+const APP_BUILD='hyeonjang-v197-photolink';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
