@@ -10,6 +10,7 @@
    ⑤ 주소를 못 만들면 display_name 으로라도 뭔가 보여준다(빈칸 금지)
    ⑥ 한 줄 요약의 짧은 위치가 '· 이름' 처럼 깨지지 않는다
    ⑦ 조회 URL 에 건물 단위 조회 옵션이 실제로 들어간다
+   ⑧ 사진 묶음 위치는 주소+프로젝트+GPS 를 함께 보여 앞으로의 현장도 같은 규칙을 쓴다
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'. 네트워크 없음(순수 함수만 검사). */
 'use strict';
 let chromium;
@@ -124,6 +125,45 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
     assert(/hjLookupPlace/.test(r.all), '전체 조회가 공용 함수를 안 씀');
     assert(!/hjGeoUrl|hjPlaceLabel|hjKakaoLabel/.test(r.one + r.all),
       '조회 함수 안에서 직접 주소를 조립한다 — 두 경로가 갈라질 자리를 남기면 안 됨');
+  });
+
+  await test('⑧-2 위치 표기는 주소+프로젝트+GPS 를 함께 쓴다', async () => {
+    const r = await page.evaluate(() => ({
+      trench: hjClusterLocationLabel({
+        address: '대전광역시 중구 목동로', lat: 36.3312349, lng: 127.4123459,
+        items: [{ project: '' }, { project: '' }]
+      }),
+      assigned: hjClusterLocationLabel({
+        address: '대전광역시 서구 관저2동 구봉산북로', lat: 36.2929, lng: 127.3413,
+        items: [{ project: '효성혜링턴 105동501호' }, { project: '효성혜링턴 105동501호' }]
+      }),
+      half: hjClusterLocationLabel({
+        address: '대전광역시 중구 목동로', lat: 36.33123, lng: 127.41234,
+        items: [{ project: '목동현장' }, { project: '' }]
+      }),
+      coordPlace: hjClusterLocationLabel({
+        place: '36.2929, 127.3413', lat: 36.2929, lng: 127.3413,
+        items: [{ project: '관저동현장' }]
+      })
+    }));
+    assert(r.trench === '대전광역시 중구 목동로 · GPS 36.33123, 127.41235', '트렌치 주소+좌표: ' + r.trench);
+    assert(r.assigned === '대전광역시 서구 관저2동 구봉산북로 · 효성혜링턴 105동501호 · GPS 36.29290, 127.34130', '프로젝트 포함: ' + r.assigned);
+    assert(r.half === '대전광역시 중구 목동로 · GPS 36.33123, 127.41234', '절반 배정 묶음에 프로젝트명을 단정하면 안 됨: ' + r.half);
+    assert(r.coordPlace === '관저동현장 · GPS 36.29290, 127.34130', '좌표를 두 번 쓰면 안 됨: ' + r.coordPlace);
+  });
+
+  await test('⑧-3 실제 사진 탭 위치 줄에도 상세 표기가 보인다', async () => {
+    const r = await page.evaluate(() => {
+      state.projects = [{ name: '목동 트렌치 현장', stage: 2, received: 0, phases: [], cost: {}, customer: {}, archived: false }];
+      state.files = [{ id: 'trench-photo', name: 'IMG_4285.jpeg', ext: 'jpeg', kind: 'photo', project: '목동 트렌치 현장',
+        when: new Date('2026-07-27T07:34:32'), lat: 36.3312349, lng: 127.4123459,
+        address: '대전광역시 중구 목동로', _worklabel: '트렌치 배수 작업' }];
+      state.activeProject = null; state.search = ''; state.tab = 'photos';
+      if(typeof __photoCache!=='undefined')__photoCache.key=null;
+      render();
+      return (document.querySelector('.cluster .where')||{}).textContent||'';
+    });
+    assert(r === '📍 대전광역시 중구 목동로 · 목동 트렌치 현장 · GPS 36.33123, 127.41235', '화면 위치 줄: ' + r);
   });
 
   /* ===== 카카오 로컬(선택) ===== */
