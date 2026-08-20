@@ -7,6 +7,7 @@
    ⑤ 견적서 같은 종류 폴더는 공정으로 오인하지 않음
    ⑥ 직렬화 결과에도 복구 공정이 저장됨
    ⑦ 원본·정리본 중복은 정리본으로 합치고 서버 사진 연결을 승계
+   ⑧ 상위 폴더가 브라우저에서 막혀도 _정리완료 직접 연결 시 경로·연결값·서버전용 기록을 보존
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -60,7 +61,19 @@ let browser;
       { key: 'large', name: 'check.jpg', prefix: '현장사진/_확인필요/', kind: 'photo', project: null, driveId: 'drive-456', size: 900 }
     ]);
 
+    state.dirHandle = { name: '_정리완료' };
+    state.files = [
+      { id: 'direct', name: 'direct.jpg', prefix: '_정리완료/가온마을/방수/', kind: 'photo', project: '가온마을', _phase: '방수', _driveId: 'drive-direct' },
+      { id: 'remote', name: 'remote.jpg', prefix: '현장사진/', kind: 'photo', project: '가온마을', _driveId: 'drive-remote', _virtual: true }
+    ];
+    backupUserEdits();
+    const directRestored = { name: 'direct.jpg', prefix: scanRootPrefix()+'가온마을/방수/', kind: 'photo', project: null };
+    restoreUserEdits(directRestored);
+    const carry = directRootCarry(state.files);
+    const directMode = { direct: directOrganizedRoot(), prefix: scanRootPrefix() };
+
     state.files = [restored, folderPhase, workPhase, orphan, estimate];
+    state.dirHandle = null;
     const saved = serializeData();
     return {
       restoredPhase: restored._phase,
@@ -73,7 +86,10 @@ let browser;
       gaonPhases: state.projects.find(p => p.name === '가온마을').phases,
       samsungPhases: state.projects.find(p => p.name === '삼성아파트').phases,
       savedPhases: saved.files.map(f => f.phase),
-      compact
+      compact,
+      directRestored,
+      carry,
+      directMode
     };
   });
 
@@ -85,6 +101,7 @@ let browser;
   assert(got.gaonPhases.includes('2차 방수 작업') && got.samsungPhases.includes('배관 교체'), '공정 목록 등록 실패: ' + JSON.stringify(got));
   assert(got.savedPhases.includes('1차 방수') && got.savedPhases.includes('2차 방수 작업') && got.savedPhases.includes('배관 교체'), '⑥ 직렬화 공정 저장 실패: ' + JSON.stringify(got));
   assert(got.compact.merged === 1 && got.compact.linked === 1 && got.compact.driveDeduped === 1 && got.compact.files.length === 2 && got.compact.files.some(f => f.prefix.startsWith('_정리완료/') && f.driveId === 'drive-123' && f.size === 900) && got.compact.files.some(f => f.prefix === '현장사진/_확인필요/' && f.driveId === 'drive-456' && f.size === 900), '⑦ 정리본 서버 연결 승계 실패: ' + JSON.stringify(got));
+  assert(got.directMode.direct && got.directMode.prefix === '_정리완료/' && got.directRestored.project === '가온마을' && got.directRestored._phase === '방수' && got.directRestored._driveId === 'drive-direct' && got.carry.length === 1 && got.carry[0]._driveId === 'drive-remote', '⑧ _정리완료 직접 연결 보존 실패: ' + JSON.stringify(got));
   assert(errors.length === 0, 'pageerror: ' + errors.join(' | '));
 
   console.log('PASS  재스캔 _phase 보존');
@@ -94,8 +111,9 @@ let browser;
   console.log('PASS  종류 폴더 공정 오인 방지');
   console.log('PASS  직렬화 공정 저장');
   console.log('PASS  정리본 서버 사진 연결 승계');
+  console.log('PASS  _정리완료 직접 연결 보존');
   console.log('PASS  pageerror 0');
-  console.log('\n전부 통과 (8건)');
+  console.log('\n전부 통과 (9건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
