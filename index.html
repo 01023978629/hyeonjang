@@ -2186,7 +2186,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v199-locationdetail';
+const APP_BUILD='hyeonjang-v200-locationdetailfix';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4521,7 +4521,8 @@ function hjClusterLocationLabel(c){
   const projects=[...new Set(items.map(p=>String(p.project||'').trim()).filter(Boolean))];
   const project=(projects.length===1&&items.length&&items.every(p=>String(p.project||'').trim()===projects[0]))?projects[0]:'';
   const lat=Number(c.lat),lng=Number(c.lng);
-  const gps=(Number.isFinite(lat)&&Number.isFinite(lng))?('GPS '+lat.toFixed(5)+', '+lng.toFixed(5)):'';
+  const hasGps=c.lat!=null&&c.lng!=null&&Number.isFinite(lat)&&Number.isFinite(lng);
+  const gps=hasGps?('GPS '+lat.toFixed(5)+', '+lng.toFixed(5)):'';
   const parts=[];
   [base,project,gps].forEach(v=>{if(v&&parts.every(x=>x.indexOf(v)<0&&v.indexOf(x)<0))parts.push(v);});
   return parts.join(' · ')||'위치 정보 없음';

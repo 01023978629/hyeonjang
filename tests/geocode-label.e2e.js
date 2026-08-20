@@ -144,12 +144,17 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
       coordPlace: hjClusterLocationLabel({
         place: '36.2929, 127.3413', lat: 36.2929, lng: 127.3413,
         items: [{ project: '관저동현장' }]
+      }),
+      noGps: hjClusterLocationLabel({
+        address: '대전광역시 중구 목동로', lat: null, lng: null,
+        items: [{ project: '' }]
       })
     }));
     assert(r.trench === '대전광역시 중구 목동로 · GPS 36.33123, 127.41235', '트렌치 주소+좌표: ' + r.trench);
     assert(r.assigned === '대전광역시 서구 관저2동 구봉산북로 · 효성혜링턴 105동501호 · GPS 36.29290, 127.34130', '프로젝트 포함: ' + r.assigned);
     assert(r.half === '대전광역시 중구 목동로 · GPS 36.33123, 127.41234', '절반 배정 묶음에 프로젝트명을 단정하면 안 됨: ' + r.half);
     assert(r.coordPlace === '관저동현장 · GPS 36.29290, 127.34130', '좌표를 두 번 쓰면 안 됨: ' + r.coordPlace);
+    assert(r.noGps === '대전광역시 중구 목동로', 'GPS 없는 사진에 0,0 좌표를 만들면 안 됨: ' + r.noGps);
   });
 
   await test('⑧-3 실제 사진 탭 위치 줄에도 상세 표기가 보인다', async () => {
