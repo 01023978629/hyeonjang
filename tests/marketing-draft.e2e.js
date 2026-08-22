@@ -98,7 +98,7 @@ const UNIQUE_DONG = '302동';
       return { topKeys, projJson };
     });
     // calendarImports: 내장 기본 일정을 이미 넣었는지 기록하는 장부. 중복 등록 방지용이라 직렬화에 남는다.
-    const allowed = new Set(['version','app','savedAt','learn','quotes','schedule','calendarImports','notes','priceBook','asLog','aptOffices','aptOrders','claudeDone','satisfaction','adPosts','portalCfg','_savedFileCount','kakaoLastAt','coworkTasks','coworkSched','_cwSchedInit','_coworkInit','payLog','expenses','goals','aiOps','suppliers','supplierMap','inventory','brand','contacts','projects','files']);
+    const allowed = new Set(['version','app','savedAt','learn','quotes','schedule','calendarImports','notes','priceBook','asLog','aptOffices','aptOrders','aptRates','monthClosed','quoteSets','trips','tripCfg','workLogs','claudeDone','satisfaction','adPosts','portalCfg','_savedFileCount','kakaoLastAt','coworkTasks','coworkSched','_cwSchedInit','_coworkInit','payLog','expenses','goals','aiOps','suppliers','supplierMap','inventory','brand','contacts','projects','files']);
     const extra = r.topKeys.filter(k => !allowed.has(k));
     assert(extra.length === 0, '허용되지 않은 최상위 키: ' + extra.join(','));
     assert(!/adDoneOnly|_review|_signal|_done|reviewQuote|_adReview|_draft/i.test(r.projJson), 'project 객체에 파생값 오염됨: ' + r.projJson.slice(0, 200));
