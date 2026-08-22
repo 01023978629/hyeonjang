@@ -41,6 +41,11 @@
     --moss:#3fb89e; --muted:#aebccb; --muted-2:#9fb3c6; --shadow:0 1px 2px rgba(0,0,0,.3), 0 14px 34px -22px rgba(0,0,0,.6);
   }
   body.dark .card,body.dark .cluster,body.dark .kpi,body.dark .contact,body.dark .mount,body.dark .estimate-table{background:#17222e}
+  .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;min-width:0;width:100%;box-sizing:border-box;border-radius:10px}
+  #view{overflow-x:clip}
+  .tbl-scroll>table{min-width:640px}
+  .tbl-scroll::-webkit-scrollbar{height:6px}
+  .tbl-scroll::-webkit-scrollbar-thumb{background:#c8d3e0;border-radius:3px}
   body.dark .thumb,body.dark .ph,body.dark .drop,body.dark .empty,body.dark .phasebar,body.dark .photo-bar,body.dark .stagedist .sd{background:#1c2836}
   body.dark input,body.dark select{background:#1c2836;color:var(--ink)}
   body.dark .restorebar{background:#1c2f44}
@@ -637,7 +642,7 @@
   </div>
   <div class="hsearch">
     <button class="proj-chip mobile-only-chip" id="projChip" title="현장 선택">🏗 전체 보기 ▾</button>
-    <input type="text" id="globalSearch" placeholder="🔍 통합 검색 — 파일명·문서내용·명함">
+    <input type="text" id="globalSearch" placeholder="🔍 검색 — 파일·현장·기능 (예: 보증서, 단가표)">
     <button class="ghost tiny" id="btnFont" title="글자 크기" aria-label="글자 크기 조절">가⁺</button>
     <button class="ghost tiny" id="btnDark" title="다크모드" aria-label="다크모드 전환">🌙</button>
     <button class="ghost tiny" id="btnMobile" title="모바일 모드" aria-label="모바일 모드 전환">📱</button>
@@ -1292,6 +1297,13 @@ window.addEventListener('pagehide',()=>{try{if(!state._demo)idbSet('appState',se
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo)idbSet('appState',serializeData());}catch(e){}}else if(document.visibilityState==='visible'){try{setTimeout(()=>{try{aiOpsVisibilityCheck();}catch(e){}},800);}catch(e){}}});
 try{setInterval(()=>{try{aiOpsIntervalCheck();}catch(e){}},60*60*1000);}catch(e){}
 function fileKey(f){return (f.prefix||'')+f.name+'|'+(f.size||0);}
+// 공동현관·도어락 비밀번호 같은 출입정보는 앱 백업/동기화 대상에서 제외한다.
+// 구형 백업에 access가 들어 있어도 복원 과정에서 제거해 다른 기기로 퍼지지 않게 한다.
+function projectBackupSafe(p){
+  const out={...(p||{})};
+  delete out.access;
+  return out;
+}
 function serializeData(){
   return {
     version:2, app:'현장', savedAt:new Date().toISOString(),
@@ -1304,6 +1316,12 @@ function serializeData(){
     asLog:state.asLog||[],
     aptOffices:state.aptOffices||[],
     aptOrders:state.aptOrders||[],
+    aptRates:state.aptRates||[],
+    monthClosed:state.monthClosed||{},
+    quoteSets:state.quoteSets||[],
+    trips:state.trips||[],
+    tripCfg:state.tripCfg||{},
+    workLogs:state.workLogs||[],
     claudeDone:(state.claudeDone||[]).slice(-500),   // 처리한 클로드 요청 id — 기기끼리 공유해야 두 번 적용되지 않는다
     satisfaction:state.satisfaction||[],
     adPosts:state.adPosts||[],
@@ -1323,7 +1341,7 @@ function serializeData(){
     inventory:state.inventory||[],
     brand:state.brand||null,
     contacts:state.contacts||[],
-    projects:state.projects,
+    projects:(state.projects||[]).map(projectBackupSafe),
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
       text:f.text||'',ocr:f.ocr,est:f.est,exSum:f.exSum||false,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
       driveId:f._driveId||null,size:f.size||0,
@@ -1333,7 +1351,8 @@ function serializeData(){
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 function applyData(data){
   if(!data||typeof data!=='object')return 0;
-  ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog','aptOffices','aptOrders'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
+  ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog','aptOffices','aptOrders','aptRates','quoteSets','trips','workLogs'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
+  ['monthClosed','tripCfg'].forEach(k=>{if(k in data&&(!data[k]||typeof data[k]!=='object'||Array.isArray(data[k])))delete data[k];});
   if(data.files){
     data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
     const compact=mergeOrganizedPhotoDuplicates(data.files);
@@ -1362,6 +1381,12 @@ function applyData(data){
   state.asLog=data.asLog||state.asLog||[];
   state.aptOffices=data.aptOffices||state.aptOffices||[];
   state.aptOrders=data.aptOrders||state.aptOrders||[];
+  state.aptRates=data.aptRates||state.aptRates||[];
+  state.monthClosed=data.monthClosed||state.monthClosed||{};
+  state.quoteSets=data.quoteSets||state.quoteSets||[];
+  state.trips=data.trips||state.trips||[];
+  state.tripCfg=data.tripCfg||state.tripCfg||{};
+  state.workLogs=data.workLogs||state.workLogs||[];
   state.claudeDone=Array.isArray(data.claudeDone)?data.claudeDone:(state.claudeDone||[]);
   state.satisfaction=Array.isArray(data.satisfaction)?data.satisfaction:(state.satisfaction||[]);
   state.coworkTasks=Array.isArray(data.coworkTasks)?data.coworkTasks:(state.coworkTasks||null);
@@ -1379,7 +1404,7 @@ function applyData(data){
   if(data.brand)state.brand=data.brand;
   try{hjBrandApplyUI();}catch(e){}
   state.contacts=data.contacts||state.contacts||[];
-  state.projects=(data.projects||state.projects||[]).map(p=>({...p,name:p.name,stage:p.stage||0,received:p.received||0,phases:p.phases||[],cost:p.cost||{material:0,labor:0,outsource:0},customer:p.customer||{name:'',phone:'',addr:''},geo:p.geo||null}));
+  state.projects=(data.projects||state.projects||[]).map(p=>{const clean=projectBackupSafe(p);return {...clean,name:clean.name,stage:clean.stage||0,received:clean.received||0,phases:clean.phases||[],cost:clean.cost||{material:0,labor:0,outsource:0},customer:clean.customer||{name:'',phone:'',addr:''},geo:clean.geo||null};});
   const byKey={},byName={};
   data.files.forEach(s=>{byKey[s.key]=s;(byName[s.name]=byName[s.name]||[]).push(s);});
   let restored=0;
@@ -2186,7 +2211,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v200-locationdetailfix';
+const APP_BUILD='hyeonjang-v219-operationssafe';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4182,7 +4207,54 @@ $('#newProj').addEventListener('keydown',e=>{if(e.key==='Enter')addProject();});
 function addProject(){const v=$('#newProj').value.trim();if(!v)return;
   if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');return;}
   state.projects.push({name:v,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');}
-function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){p.stage=idx;
+const STAGE_CHECK={
+  2:{key:'start',title:'📋 착공 전 체크',items:[
+    ['관리사무소에 공사 신고(신청서·예치금)','notify'],
+    ['엘리베이터·복도 보양 준비','protect'],
+    ['이웃(위·아래·옆집) 안내문 부착','neighbor'],
+    ['자재 반입 일정 확인','material']]},
+  3:{key:'done',title:'📋 준공 전 체크',items:[
+    ['잔금 청구(입금 안내 발송)','balance'],
+    ['보증(하자보수) 안내 문자','warranty'],
+    ['고객께 도어락 비번 변경 안내','pwchange'],
+    ['현장 사진 정리·📦 ZIP 보관','zip'],
+    ['리뷰·소개 부탁 문자','review']]}
+};
+function stageChecklistView(name,idx){
+  const p=state.projects.find(x=>x.name===name);
+  const def=STAGE_CHECK[idx];
+  if(!p||!def)return;
+  p.checklists=p.checklists||{};
+  const st=p.checklists[def.key]=p.checklists[def.key]||{};
+  const rows=def.items.map(function(it,i){
+    return '<label style="display:flex;gap:9px;align-items:center;padding:9px 2px;border-bottom:1px dashed var(--line-soft);font-size:13px">'+
+      '<input type="checkbox" class="clChk" data-k="'+it[1]+'" '+(st[it[1]]?'checked':'')+' style="width:19px;height:19px">'+
+      '<span style="flex:1">'+it[0]+'</span></label>';
+  }).join('');
+  openModal(def.title+' — '+name,
+    rows+'<p class="hint" style="margin-top:10px">체크 상태는 저장됩니다. 급하면 건너뛰어도 돼요 — 다음에 단계 올릴 때 다시 보여드립니다.</p>',
+    [{label:'✅ 확인하고 진행',cls:'clay',fn:function(){
+        document.querySelectorAll('#modalRoot .clChk').forEach(function(c){st[c.dataset.k]=c.checked;});
+        st._ok=true;markDirty();closeModal();
+        window.__clPass=1;setStage(name,idx);
+      }},
+     {label:'건너뛰고 진행',cls:'ghost',fn:function(){
+        document.querySelectorAll('#modalRoot .clChk').forEach(function(c){st[c.dataset.k]=c.checked;});
+        markDirty();closeModal();
+        window.__clPass=1;setStage(name,idx);
+      }},
+     {label:'취소',cls:'ghost',fn:function(){
+        document.querySelectorAll('#modalRoot .clChk').forEach(function(c){st[c.dataset.k]=c.checked;});
+        markDirty();closeModal();
+      }}],true);
+}
+function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){
+  // [v205] 착공(시공)·준공(완료) 진입 시 체크리스트 — 올릴 때만, 완료 표시 전 1회
+  if(!window.__clPass&&idx>(p.stage||0)&&STAGE_CHECK[idx]&&!(p.checklists&&p.checklists[STAGE_CHECK[idx].key]&&p.checklists[STAGE_CHECK[idx].key]._ok)){
+    stageChecklistView(name,idx);return;
+  }
+  window.__clPass=0;
+  p.stage=idx;
   try{portalAutoSync(name);}catch(e){}
   // 완료(마지막 단계)로 바뀌는 순간의 날짜 기록 — 보증·AS 기산일. 완료 해제하면 지움.
   if(idx===STAGES.length-1){if(!p.doneAt)p.doneAt=new Date().toISOString().slice(0,10);}else{p.doneAt=null;}
@@ -4694,7 +4766,13 @@ document.addEventListener('keydown',e=>{
   if(target&&(e.key==='Enter'||e.key===' ')){e.preventDefault();target.click();}
 });
 let __searchTimer=null;
-$('#globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();clearTimeout(__searchTimer);__searchTimer=setTimeout(render,180);});
+$('#globalSearch').addEventListener('input',e=>{state.search=e.target.value.trim().toLowerCase();clearTimeout(__searchTimer);__searchTimer=setTimeout(render,180);
+  try{hjCmdRender(e.target.value);}catch(err){}});
+$('#globalSearch').addEventListener('focus',e=>{try{if(e.target.value)hjCmdRender(e.target.value);}catch(err){}});
+document.addEventListener('click',e=>{const b=document.getElementById('hjCmdBox');if(!b)return;
+  if(b.contains(e.target)||e.target.id==='globalSearch')return;hjCmdClose();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hjCmdClose();});
+window.addEventListener('resize',()=>{try{const gi=document.getElementById('globalSearch');if(gi&&gi.value)hjCmdRender(gi.value);}catch(err){}});
 
 /* ===== 모바일 모드 + 하단 메뉴 ===== */
 let __mobileMode=false;
@@ -4918,9 +4996,188 @@ function render(){
   if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates','ads','project'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,ads:viewAds};
   v.innerHTML=map[state.tab]();
+  try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
   bindDrop();bindEvents();
   try{observeHeicLazy();}catch(e){}   // 보이는 로컬 HEIC만 변환(지연 로딩)
   if(typeof syncMobileNav==='function')syncMobileNav();
+}
+/* ═══ v217 ⚡ 기능 바로가기 — 검색창에 이름만 치면 그 화면으로 ═══ */
+function hjNeedProj(fn){
+  const p=state.activeProject;
+  if(p){fn(p);return;}
+  const act=(state.projects||[]).filter(function(x){return !x.archived;});
+  if(!act.length){toast('현장을 먼저 만들어 주세요');return;}
+  if(act.length===1){state.activeProject=act[0].name;fn(act[0].name);return;}
+  openModal('어느 현장인가요?',
+    act.slice(0,12).map(function(p2){
+      return '<button class="hjPjPick" data-n="'+escapeAttr(p2.name)+'" style="display:block;width:100%;text-align:left;padding:11px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;background:var(--paper);font-size:13px"><b>'+escapeHtml(p2.name)+'</b> <span style="color:var(--muted);font-size:11px">'+(STAGES[p2.stage||0]||'')+'</span></button>';
+    }).join(''),
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .hjPjPick').forEach(function(b){b.onclick=function(){
+    const n=b.dataset.n;closeModal();state.activeProject=n;setTimeout(function(){fn(n);},80);};});
+}
+function hjGoTab(t){state.tab=t;state.activeProject=null;render();}
+const HJ_ACTIONS=[
+  // 현장 문서
+  {i:'📎',n:'서류 만들기',k:'서류 문서 보고서 zip pdf 발급',run:function(){hjNeedProj(docHubView);}},
+  {i:'📄',n:'완료보고서',k:'완료 보고서 관리사무소 제출 준공',run:function(){hjNeedProj(aptReportView);}},
+  {i:'🛡',n:'하자보증서',k:'보증서 하자 보증 warranty',run:function(){hjNeedProj(warrantyView);}},
+  {i:'📦',n:'서류 묶음 ZIP',k:'zip 묶음 압축 보관 백업',run:function(){hjNeedProj(exportProjectZIP);}},
+  {i:'⏱',n:'작업시간 기록',k:'시간 출퇴근 근무 공수',run:function(){hjNeedProj(workView);}},
+  // 소통
+  {i:'💬',n:'문자 센터',k:'문자 카톡 메시지 착공 준공 안내 계산서요청 부재중',run:function(){msgCenterView();}},
+  {i:'📇',n:'사업자·명함 보내기',k:'사업자등록증 명함 통장 서류지갑 등록증',run:function(){shareBizCard();}},
+  {i:'📍',n:'오시는 길',k:'주소 위치 지도 길찾기 사무실',run:function(){sendDirections();}},
+  // 관리사무소
+  {i:'🏢',n:'아파트 오더',k:'관리사무소 오더 발주 접수 아파트',run:function(){aptOrderManage();}},
+  {i:'💰',n:'표준 단가표',k:'단가 단가표 가격표 견적표 관리소',run:function(){aptRatesView();}},
+  {i:'📊',n:'오더 이력',k:'오더 이력 내역 조회 관리소',run:function(){aptHistoryView(true);}},
+  // 이력·정산
+  {i:'💰',n:'수금 이력',k:'수금 입금 내역 이력 통장',run:function(){payHistoryView(true);}},
+  {i:'🛠',n:'AS 이력',k:'as 하자 사후 이력',run:function(){asHistoryView(true);}},
+  {i:'🔧',n:'AS 관리',k:'as 접수 하자보수 관리',run:function(){asManage();}},
+  {i:'📄',n:'견적 이력·수주율',k:'견적 이력 수주율 성공률 승패',run:function(){quoteHistoryView(true);}},
+  {i:'📆',n:'월말 마감',k:'월말 마감 정리 결산 마감정리',run:function(){monthCloseView(1);}},
+  {i:'🚗',n:'차량 운행일지',k:'차량 운행 주행 유류비 기름 km',run:function(){tripView(true);}},
+  {i:'🧾',n:'부가세 준비',k:'부가세 세금 신고 홈택스',run:function(){vatCenterView();}},
+  {i:'📊',n:'연간 결산',k:'연간 결산 매출 한해 작년',run:function(){yearReport();}},
+  // 견적
+  {i:'📦',n:'품목 세트',k:'품목 세트 템플릿 견적 자주쓰는',run:function(){hjGoTab('quotemaker');setTimeout(qsetView,200);}},
+  {i:'📕',n:'단가장',k:'단가장 품목 단가 학습',run:function(){priceBookManage();}},
+  {i:'🧮',n:'새 견적서',k:'견적 작성 새 견적서 만들기',run:function(){hjGoTab('quotemaker');setTimeout(function(){const b=document.getElementById('qmNew');if(b)b.click();},250);}},
+  // 사진·고객
+  {i:'⋯',n:'사진 도구',k:'사진 도구 위치 주소 복구 정리',run:function(){hjGoTab('photos');setTimeout(photoToolsView,250);}},
+  {i:'🔗',n:'고객 페이지',k:'고객 페이지 공유 링크 포털',run:function(){portalListView();}},
+  {i:'❓',n:'사용법 가이드',k:'도움말 사용법 help 안내 가이드 설명서',run:function(){helpGuide();}}
+];
+function hjActionSearch(q){
+  q=String(q||'').trim().toLowerCase();
+  if(!q)return [];
+  return HJ_ACTIONS.filter(function(a){
+    if(typeof a.run!=='function')return false;
+    return (a.n+' '+a.k).toLowerCase().indexOf(q)>=0;
+  }).slice(0,6);
+}
+function hjCmdRender(q){
+  let box=document.getElementById('hjCmdBox');
+  const hits=hjActionSearch(q);
+  if(!hits.length){if(box)box.remove();return 0;}
+  if(!box){
+    box=document.createElement('div');
+    box.id='hjCmdBox';
+    box.style.cssText='position:fixed;z-index:9998;background:var(--paper);border:1px solid var(--line-soft);border-radius:12px;box-shadow:0 18px 40px -18px rgba(0,0,0,.35);padding:7px;max-width:min(460px,94vw);max-height:52vh;overflow:auto';
+    document.body.appendChild(box);
+  }
+  const inp=document.getElementById('globalSearch');
+  const r=inp?inp.getBoundingClientRect():{left:12,bottom:56,width:320};
+  box.style.left=Math.max(8,Math.min(r.left,window.innerWidth-Math.min(460,window.innerWidth*0.94)-8))+'px';
+  box.style.top=(r.bottom+6)+'px';
+  box.style.width=Math.max(260,Math.min(460,r.width||360))+'px';
+  box.innerHTML='<div style="font-size:10.5px;color:var(--muted);font-weight:700;padding:4px 8px 6px">⚡ 기능 바로가기</div>'+
+    hits.map(function(a,i){
+      return '<button class="hjCmdIt" data-i="'+i+'" style="display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:10px;border:0;border-radius:9px;background:transparent;font-size:13px">'+
+        '<span style="font-size:16px;width:22px;text-align:center">'+a.i+'</span><b>'+escapeHtml(a.n)+'</b></button>';
+    }).join('');
+  box.querySelectorAll('.hjCmdIt').forEach(function(b){
+    b.onmouseenter=function(){b.style.background='var(--paper-2)';};
+    b.onmouseleave=function(){b.style.background='transparent';};
+    b.onclick=function(){
+      const a=hits[+b.dataset.i];
+      hjCmdClose();
+      const gi=document.getElementById('globalSearch');
+      if(gi){gi.value='';state.search='';}
+      setTimeout(function(){try{a.run();}catch(e){toast('열 수 없어요: '+(e.message||e));}},60);
+    };
+  });
+  return hits.length;
+}
+function hjCmdClose(){const b=document.getElementById('hjCmdBox');if(b)b.remove();}
+
+function schMoreView(sid){
+  const s=(state.schedule||[]).find(function(x){return x.id===sid;});
+  if(!s){toast('일정을 찾을 수 없어요');return;}
+  const it=function(icon,title,desc,act){
+    return '<button class="smBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;background:var(--paper)">'+
+      '<span style="font-size:18px;line-height:1.1">'+icon+'</span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+'</b>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div></span></button>';
+  };
+  openModal('⋯ '+(s.title||'일정'),
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">'+escapeHtml((s.date||'')+(s.time?' '+s.time:''))+(s.project?' · '+escapeHtml(s.project):'')+'</div>'+
+    it('👷','작업지시 보내기','작업자에게 날짜·현장·할 일을 문자로 전달합니다.','workorder')+
+    it('📅','구글 캘린더에 추가','구글 캘린더에 이 일정을 넣습니다.','gcal')+
+    it('📲','폰 캘린더에 추가','아이폰·안드로이드 기본 캘린더(.ics)로 저장합니다.','ics'),
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .smBtn').forEach(function(b){b.onclick=function(){
+    const a=b.dataset.act;closeModal();
+    setTimeout(function(){
+      try{
+        if(a==='workorder')openWorkOrder({schId:sid});
+        else if(a==='gcal')addToGoogleCalendar(sid);
+        else if(a==='ics')exportScheduleICS(sid);
+      }catch(e){toast('실행할 수 없어요: '+(e.message||e));}
+    },80);
+  };});
+  return {일정:s.title};
+}
+function photoToolsView(){
+  const it=function(icon,title,desc,fn){
+    return '<button class="ptBtn" data-fn="'+fn+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;background:var(--paper)">'+
+      '<span style="font-size:18px;line-height:1.1">'+icon+'</span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+'</b>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div></span></button>';
+  };
+  openModal('⋯ 사진 도구',
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:2px 0 6px">위치·주소</div>'+
+    it('📍','모든 위치 확인','GPS가 있는 사진의 주소를 한 번에 조회합니다.','geocodeAllClusters')+
+    (window.__kakaoKey?it('🔁','주소 다시 조회(카카오)','도로명까지만 있는 옛 주소를 건물명까지 채웁니다.','geocodeUpgradeClusters'):'')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">불러오기·복구</div>'+
+    it('🖼','미리보기 복구','썸네일이 깨진 사진을 드라이브에서 다시 받아옵니다.','repairAllPhotoPreviews')+
+    it('📥','골라 불러오기','드라이브에서 필요한 사진만 골라 가져옵니다.','gdPickFiles')+
+    it('🔒','드라이브 자동 불러오기','자주 쓰는 폴더를 고정해 둡니다.','gdToggleAutoload')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">정리 (PC 폴더 연결 시)</div>'+
+    it('📦','전체 정리완료','현장이 배정된 파일을 현장별 _정리완료 폴더로 모읍니다.','organizeAllProjects'),
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .ptBtn').forEach(function(b){b.onclick=function(){
+    const fn=b.dataset.fn;closeModal();
+    setTimeout(function(){
+      try{
+        if(typeof window[fn]==='function')window[fn]();
+        else toast('이 기능을 찾을 수 없어요');
+      }catch(e){toast('실행할 수 없어요: '+(e.message||e));}
+    },80);
+  };});
+  return {도구:document.querySelectorAll('#modalRoot .ptBtn').length};
+}
+let __wrapObs=null,__wrapT=null;
+function startWrapObserver(){
+  if(__wrapObs)return;
+  const v=document.getElementById('view');
+  if(!v||typeof MutationObserver==='undefined')return;
+  __wrapObs=new MutationObserver(function(){
+    clearTimeout(__wrapT);
+    __wrapT=setTimeout(function(){try{wrapWideTables(document.getElementById('view'));}catch(e){}},60);
+  });
+  __wrapObs.observe(v,{childList:true,subtree:true});
+}
+function wrapWideTables(root){
+  if(!root)return 0;
+  let n=0;
+  root.querySelectorAll('table.estimate-table').forEach(function(t){
+    const par=t.parentElement;
+    if(par&&par.classList&&par.classList.contains('tbl-scroll'))return;
+    const w=document.createElement('div');
+    w.className='tbl-scroll';
+    t.replaceWith(w);w.appendChild(t);n++;
+    // flex/grid 부모는 기본 min-width:auto 라 표 폭만큼 늘어난다 → 3단계까지 0으로
+    let up=w.parentElement,d=0;
+    while(up&&d<3&&up.id!=='view'){
+      const ds=getComputedStyle(up).display;
+      if(ds.indexOf('flex')>=0||ds.indexOf('grid')>=0)up.style.minWidth='0';
+      up=up.parentElement;d++;
+    }
+  });
+  return n;
 }
 function emptyState(tab){
   // 탭 목적에 맞는 빈 상태 안내 — 범용 문구 하나만 쓰면 회계 탭에서도 '파일을 끌어놓으세요'만 보인다
@@ -5832,13 +6089,27 @@ async function exportTaxXlsx(){
 async function sendPaymentInfo(qid){
   const q=(state.quotes||[]).find(x=>x.id===qid);if(!q){toast('견적을 찾을 수 없습니다.');return;}
   const calc=quoteCalc(q);
-  const acc=(COMPANY.accounts&&COMPANY.accounts[0])||null;
+  // [v201] 입금계좌는 용도별 2개 — 자동 기재하지 않고 물어봅니다
+  if(!window.__paySel){
+    const A=COMPANY.accounts||[];
+    const biz=A.find(a=>String(a.holder||'').indexOf('전병덕')>=0)||A[1]||A[0];
+    const per=A.find(a=>String(a.holder||'').indexOf('민경임')>=0)||A[0];
+    openModal('💳 어느 계좌로 안내할까요?',
+      `<div style="font-size:12.5px;line-height:1.7">${escapeHtml(q.title||'')} · <b>${won(calc.total)}</b><br><small style="color:var(--muted)">세금계산서를 발행하는 건이면 ① 사업자 계좌를 권해요.</small></div>`,
+      [
+        {label:'① '+((biz&&biz.label)||'사업자 계좌'),cls:'clay',fn:()=>{window.__paySel=[biz].filter(Boolean);closeModal();sendPaymentInfo(qid);}},
+        {label:'② '+((per&&per.label)||'개인 계좌'),cls:'ghost',fn:()=>{window.__paySel=[per].filter(Boolean);closeModal();sendPaymentInfo(qid);}},
+        {label:'두 계좌 모두',cls:'ghost',fn:()=>{window.__paySel=[biz,per].filter(Boolean);closeModal();sendPaymentInfo(qid);}},
+        {label:'닫기',cls:'ghost',fn:closeModal}
+      ],true);
+    return;
+  }
+  const __accs=window.__paySel;window.__paySel=null;
   const lines=[
     `[${COMPANY.name}] 입금 안내`,
     q.title?`공사: ${q.title}`:'',
     `금액: ${won(calc.total)} ${q.vatIncluded?'(부가세 포함)':'(부가세 별도)'}`,
-    acc?`입금계좌: ${acc.bank} ${acc.no} (예금주 ${acc.holder})`:'',
-    (COMPANY.accounts&&COMPANY.accounts[1])?`또는: ${COMPANY.accounts[1].bank} ${COMPANY.accounts[1].no} (${COMPANY.accounts[1].holder})`:'',
+    ...__accs.map((a,i)=>`입금계좌${__accs.length>1?(i===0?' ①':' ②'):''}: ${a.bank} ${a.no} (예금주 ${a.holder})`),
     ``,
     `문의: ${COMPANY.owner} ${COMPANY.tel}`,
     `입금 확인되는 대로 연락드리겠습니다. 감사합니다.`
@@ -8752,7 +9023,8 @@ function asManage(){
     '<div style="max-height:34vh;overflow:auto">'+rows+'</div>'+
     '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">🛡 무상 A/S 기간 (법정 기준 · 방수 3년·설비 2년·마감 1년)</div>'+
     '<div style="max-height:22vh;overflow:auto">'+warrRows+'</div>',
-    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    [{label:'📊 AS 이력 (필터·엑셀)',cls:'blue',fn:function(){asHistoryView(true);}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelector('#asmAdd').onclick=()=>{
     const pj=root.querySelector('#asmProj').value, txt=root.querySelector('#asmText').value.trim();
@@ -8903,6 +9175,36 @@ function aptOrderManage(filterOffice){
   };
   const addBtn=root.querySelector('#apoAdd');
   const addAmt=root.querySelector('#apoAmt');
+  // [v207] 💰 단가표: 관리 버튼 + 접수 폼 원터치 채우기
+  try{
+    if(addBtn&&!root.querySelector('#apoRatesBtn')){
+      const rb=document.createElement('button');rb.id='apoRatesBtn';rb.className='ghost tiny';
+      rb.style.cssText='width:100%;padding:9px;margin:6px 0';rb.textContent='💰 표준 단가표 (관리·PDF·복사)';
+      rb.onclick=function(){aptRatesView();};
+      addBtn.parentElement.insertBefore(rb,addBtn);
+      const hb=document.createElement('button');hb.className='blue tiny';
+      hb.style.cssText='width:100%;padding:9px;margin:0 0 6px';hb.textContent='📊 오더 이력 (필터·엑셀)';
+      hb.onclick=function(){aptHistoryView(true);};
+      addBtn.parentElement.insertBefore(hb,rb);
+    }
+    if(addAmt&&!root.querySelector('#apoRatePick')){
+      const pk=document.createElement('select');pk.id='apoRatePick';
+      pk.style.cssText='width:100%;padding:9px;border-radius:8px;border:1px solid var(--line-soft);font-size:12.5px;margin-top:5px';
+      const opts=['<option value="">💰 단가표에서 선택해 채우기…</option>'].concat(
+        aptRatesData().map(function(r){return '<option value="'+r.id+'">'+escapeHtml(r.name)+(r.spec?' ('+r.spec+')':'')+' — '+(num(r.price)?won(num(r.price)):'협의')+'</option>';}));
+      pk.innerHTML=opts.join('');
+      pk.onchange=function(){
+        const r=(state.aptRates||[]).find(function(x){return x.id===pk.value;});
+        if(!r)return;
+        if(num(r.price))addAmt.value=num(r.price).toLocaleString('ko-KR');
+        const tx=root.querySelector('#apoText');
+        if(tx&&!tx.value.trim())tx.value=r.name+(r.spec?' ('+r.spec+')':'');
+        if(addAmt.oninput)addAmt.oninput();
+        pk.value='';
+      };
+      addAmt.insertAdjacentElement('afterend',pk);
+    }
+  }catch(e){}
   const addGuide=root.querySelector('#apoAmountGuide');
   const refreshAmountGuide=()=>{
     if(!addAmt||!addGuide)return;
@@ -9563,6 +9865,10 @@ const HJ_HELP=[
   {k:'AI 검토',d:'[🧾 AI 검토] — 단가 0·중복·표준공정 누락·과대 NEGO를 잡고, 키가 있으면 시세 검토까지.',say:'이 견적 빠진 거 없나 봐줘'},
   {k:'자재 발주',d:'[🚚 발주서] — 품목 체크→거래처별 주문 문자. 거래처는 품목별로 자동 기억.',say:'타일 발주 문자 만들어줘'}]},
  {t:'💰 돈 관리',items:[
+  {k:'입금 확인증',d:'[💰 입금 기록] 저장 직후 “고객께 확인 문자 보낼까요?”가 뜹니다. 이번 입금·누계·잔액이 정리된 문자가 나가고, 완납이면 문구가 바뀝니다.'},
+  {k:'월말 마감',d:'장부 탭 [📆 월말 마감] — 수금 → 미수(잔금 요청 문자) → 지출 → 청구·부가세 → 요약까지 5단계로 한 달을 정리합니다. [✅ 마감 완료]를 누르면 그 달 수치가 기록으로 남아요.'},
+  {k:'수금·견적 이력',d:'장부 탭 [💰 수금 이력]은 통장 대조용, 견적서 탭 [📄 견적 이력]은 <b>수주율</b>을 보여줍니다 — 견적 보내고 [📤 보냄], 계약되면 [🎉 수주]만 눌러두세요.'},
+  {k:'차량 운행일지',d:'장부 탭 [🚗 운행일지] — 현장 오간 km를 적고 km당 단가를 정해두면 유류비가 자동 계산되고, [💸 경비로 넣기] 한 번에 지출로 들어갑니다.'},
   {k:'수금 기록',d:'현장별 수금액을 바꾸면 날짜별 이력이 자동 누적 → 주간·월말 수치의 근거.',say:'성산동 수금 300만원 처리해줘'},
   {k:'경영 대시보드',d:'대시보드 [📊 경영 현황] — 이번 달 수금·진행중·오늘 일정·단계 분포·챙길 일을 한 화면에. 사장님 아침 점검용.',say:'경영 현황 보여줘'},
   {k:'매출 추이',d:'월별 매출·수금 흐름을 그래프로. 최근 3개월 추세(증가/감소)도 계산. 경영 대시보드 [📉 추이]에서도 열립니다.',say:'매출 추이 보여줘'},
@@ -9580,6 +9886,15 @@ const HJ_HELP=[
   {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료+1년) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
   {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'신흥마을 103동 1204호 실리콘 8만원 오더 접수해줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
+ {t:'⚡ 빠르게 찾기',items:[
+  {k:'검색창에 기능 이름',d:'맨 위 검색창에 <b>보증서 · 단가표 · 기름 · 마감 · 보고서</b>처럼 치면 그 화면이 바로 뜹니다. 정확한 이름을 몰라도 평소 쓰는 말로 찾아집니다.'},
+  {k:'현장 서류는 한 곳에',d:'현장 화면 [📎 서류 만들기] — 완료보고서·하자보증서·서류 ZIP·PDF 묶음·포트폴리오가 모두 여기 있습니다. 각 항목에 설명이 붙어 있어 헷갈리지 않아요.'},
+  {k:'사진 도구 · 일정 ⋯',d:'사진 탭 [⋯ 사진 도구]에 위치 조회·미리보기 복구·전체 정리가, 일정 항목의 [⋯]에 작업지시·캘린더 추가가 들어 있습니다.'}]},
+ {t:'🏢 관리사무소 일',items:[
+  {k:'표준 단가표',d:'[🏢 아파트 오더] → [💰 표준 단가표] — 밸브·누수점검 같은 주력 작업 단가를 채워 PDF나 문자로 관리소에 전달하세요. <b>견적 절차가 사라져 전화가 바로 옵니다.</b> 접수 폼에서 단가를 골라 금액을 자동으로 채울 수도 있어요.'},
+  {k:'완료보고서 PDF',d:'현장 [📎 서류 만들기] → 완료보고서. 표지·개요·작업내용에 <b>사진대장(작업 전/후 자동 표시)</b>과 관리사무소 확인란까지 A4로 나옵니다. 공사 끝나고 5분이면 제출.'},
+  {k:'하자보증서',d:'준공된 현장에서 발급. 법정 보증기간(방수 3년·설비 2년·마감 1년)이 자동 계산되고 A/S 접수 번호가 들어갑니다.'},
+  {k:'오더 이력',d:'[📊 오더 이력] — 기간·단지·상태로 걸러 보고, 완료 금액·미수·입금을 한눈에. 엑셀로 뽑아 청구·정산에 씁니다.'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
   {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더까지 10시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
@@ -11391,10 +11706,12 @@ function expenseAdd(o){
   const amt=won2num(o.amount!=null?o.amount:o.금액);
   if(!(amt>0))return {오류:'금액을 확인해 주세요.'};
   state.expenses=state.expenses||[];
+  const sourceKey=String(o.sourceKey||'').trim();
+  if(sourceKey&&state.expenses.some(e=>e&&e.sourceKey===sourceKey))return {오류:'이미 같은 운행 범위를 경비로 반영했습니다.'};
   const exp={id:uid(),date:o.date||localDate(),amount:amt,
     category:HJ_EXP_CATS.includes(o.category)?o.category:(o.category||'기타'),
     method:(o.method==='카드'||o.method==='현금')?o.method:(o.method||'현금'),
-    memo:String(o.memo||o.note||''),project:String(o.project||'')};
+    memo:String(o.memo||o.note||''),project:String(o.project||''),sourceKey:sourceKey||undefined};
   state.expenses.push(exp);markDirty();render();
   return {기록:exp.amount,분류:exp.category,수단:exp.method,날짜:exp.date,메모:exp.memo||'(없음)'};
 }
@@ -18201,13 +18518,31 @@ function msgTemplate(kind,p,extra){
     start:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사를 '+(extra.date||'예정일')+'에 착공합니다.\n작업 시간은 오전 9시~오후 6시이며, 소음·자재 반입이 있을 수 있어 미리 양해 말씀드립니다.\n진행 중 궁금하신 점은 언제든 연락 주세요.'+sign,
     done:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사가 마무리되었습니다. 믿고 맡겨주셔서 진심으로 감사합니다.\n사용하시다 불편한 점이 있으면 바로 연락 주세요 — 하자보수는 준공일로부터 1년간 책임지고 처리해 드립니다.'+sign,
     as:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' A/S 요청 잘 접수했습니다. 불편을 드려 죄송합니다.\n빠른 시일 내 방문 일정을 잡아 연락드리겠습니다. 편하신 시간대를 알려주시면 맞춰 방문하겠습니다.'+sign,
+    recvok:(function(){
+      const mine=(state.payLog||[]).filter(function(x){return x.project===(p&&p.name);});
+      if(!mine.length)return '['+COMPANY.name+'] '+site+' 입금 기록이 아직 없습니다.\n현장 화면 [💰 입금 기록] 후 다시 열면 확인증이 자동으로 채워집니다.';
+      return receiptText(p,mine[mine.length-1]);
+    })(),
+    loc:(function(){
+      const addr=(p&&p.customer&&p.customer.addr)||'';
+      let gps=null;
+      try{gps=(state.files||[]).find(function(f){return f.project===(p&&p.name)&&f.kind==='photo'&&f.lat!=null&&f.lng!=null;});}catch(e){}
+      const L=['['+COMPANY.name+'] '+site+' 위치 안내'];
+      if(addr){L.push(addr);L.push('');L.push('카카오맵: https://map.kakao.com/link/search/'+encodeURIComponent(addr));L.push('네이버지도: https://map.naver.com/p/search/'+encodeURIComponent(addr));}
+      else if(gps){L.push('');L.push('카카오맵(위치): https://map.kakao.com/link/map/'+encodeURIComponent(site)+','+gps.lat+','+gps.lng);L.push('* 현장 사진의 GPS 위치입니다');}
+      else{L.push('(현장 주소가 아직 없습니다 — 현장 화면에서 고객 주소를 입력하거나 GPS 사진을 배정하세요)');}
+      L.push('');L.push('도착하시면 '+COMPANY.tel+' 로 연락 주세요.');
+      return L.join('\n');
+    })(),
+    taxreq:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n세금계산서 발행을 위해 아래 정보를 문자로 부탁드립니다.\n\n· 상호 (개인이시면 성함)\n· 사업자등록번호\n· 받으실 이메일 주소\n\n* 개인이시면 현금영수증(휴대폰 번호)으로도 처리해 드립니다.\n받는 대로 바로 발행해 드리겠습니다. 감사합니다.'+sign,
+    sorry:'안녕하세요, '+COMPANY.name+' '+COMPANY.owner+'입니다.\n현장 작업 중이라 전화를 받지 못했습니다. 죄송합니다.\n용건을 문자로 남겨주시면 확인하는 대로 바로 연락드리겠습니다.\n급하신 일이면 잠시 후 다시 전화 부탁드립니다.'+sign,
     review:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사는 만족스러우셨나요? 지내시다 불편한 점은 없으신지 궁금합니다.\n혹시 주변에 인테리어가 필요한 분이 계시면 소개해 주시면 정말 큰 힘이 됩니다. 늘 감사합니다.'+sign,
     thanks:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n한 해 동안 저희를 믿고 맡겨주셔서 진심으로 감사드립니다.\n하시는 일 모두 잘 되시고, 가정에 늘 건강과 행복이 가득하시길 바랍니다.'+sign
   };
   return T[kind]||'';
 }
 function msgCenterView(){
-  const kinds=[['start','🔨','착공 안내'],['done','🎉','준공 인사'],['as','🛠','AS 접수 답변'],['review','⭐','안부·리뷰 부탁'],['thanks','🙏','감사·명절 인사']];
+  const kinds=[['start','🔨','착공 안내'],['done','🎉','준공 인사'],['as','🛠','AS 접수 답변'],['review','⭐','안부·리뷰 부탁'],['thanks','🙏','감사·명절 인사'],['taxreq','🧾','계산서 정보 요청'],['sorry','📵','부재중 답신'],['loc','📍','현장 위치 안내'],['access','🔑','작업자 출입 안내'],['recvok','🧾','입금 확인증']];
   const btns=kinds.map(function(k){return '<button class="ghost mcKind" data-k="'+k[0]+'" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:var(--paper)"><span style="font-size:18px">'+k[1]+'</span><b style="font-size:13px">'+k[2]+'</b></button>';}).join('');
   const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
   openModal('💬 문자 센터',
@@ -18644,6 +18979,9 @@ function viewLedger(){
   const parsing=files.some(function(f){return !f.ledger;});
   if(parsing)setTimeout(ledgerAutoParse,80);
   let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
+    '<button class="moss tiny" data-payhist="1" style="padding:8px 12px">💰 수금 이력</button>'+
+    '<button class="blue tiny" data-mclose="1" style="padding:8px 12px">📆 월말 마감</button>'+
+    '<button class="ghost tiny" data-trip="" style="padding:8px 12px">🚗 운행일지</button>'+
     '<button class="clay tiny" data-vatc="1" style="padding:8px 12px">🧾 부가세 준비 (D-'+vatPeriod().dday+')</button>'+
     '<button class="ghost tiny" data-lgexport="1" style="padding:8px 12px">📤 세무사 전달용 xlsx</button>'+
     '<button class="moss tiny" data-lgtoexp="1" style="padding:8px 12px">💳 카드내역→경비 반영</button>'+
@@ -19298,6 +19636,12 @@ function recvQuickView(pjName,back){
       markDirty();closeModal();render();
       try{portalAutoSync(pjName);}catch(e){}
       toast('💰 '+won(amt)+' 입금 기록');
+      // [v205] 입금 확인증 제안
+      setTimeout(function(){
+        openModal('🧾 입금 확인증','<div style="font-size:12.5px;line-height:1.7">'+won(amt)+' 기록됨.<br>고객께 <b>입금 확인 문자</b>를 보낼까요? 신뢰가 확 올라갑니다.</div>',
+          [{label:'🧾 확인증 보내기',cls:'clay',fn:function(){closeModal();sendPaymentReceipt(pjName,{d:d,amt:amt});}},
+           {label:'나중에',cls:'ghost',fn:closeModal}],true);
+      },150);
       if(typeof back==='function'){try{back();}catch(e){}}
     }},
     (typeof back==='function'?{label:'‹ 뒤로',cls:'ghost',fn:function(){back();}}:null),
@@ -20296,14 +20640,9 @@ function viewPhotos(){
       <span style="font-size:11px;color:var(--muted);font-weight:700">☁️ 드라이브</span>
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
-      <button class="ghost tiny" id="btnRepairPhotos" style="font-size:12.5px;padding:8px 12px">미리보기 복구</button>
-      <button class="ghost tiny" id="btnGdPick" style="font-size:12.5px;padding:8px 12px">골라 불러오기</button>
-      <button class="ghost tiny" id="btnGdPin" style="font-size:12.5px;padding:8px 12px">🔒 고정</button>
+      <button class="ghost tiny" id="btnPhotoTools" style="font-size:12.5px;padding:8px 12px">⋯ 사진 도구</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
       <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>
-      <button class="ghost tiny" id="btnGeoAll" style="font-size:12.5px;padding:8px 12px">📍 모든 위치 확인</button>
-      ${window.__kakaoKey?`<button class="ghost tiny" id="btnGeoUpgrade" style="font-size:12.5px;padding:8px 12px" title="도로명까지만 저장된 옛 주소를 카카오로 다시 조회해 건물명까지 채웁니다">🔁 주소 다시 조회(카카오)</button>`:''}
-      <button class="moss tiny" id="btnOrganizeAll" style="font-size:12.5px;padding:8px 12px" title="현장이 배정된 사진·파일을 현장별로 _정리완료 폴더에 모읍니다(PC 폴더 연결 시)">📦 전체 정리완료</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
       <span style="font-size:11px;color:var(--muted);font-weight:700">📌 일괄 배정</span>
@@ -21059,7 +21398,7 @@ function won2kor(n){
 function viewQuoteMaker(){
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button></div>`;
+      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button></div>`;
     html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
     if(!state.quotes.length){
       html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
@@ -21122,7 +21461,7 @@ function viewQuoteMaker(){
         <label>연결 현장<select id="qmProj">${projOpts}</select></label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
       </div>
-      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
+      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
       <datalist id="qmItemNames">${(()=>{const base=['철거','화장실','방수','타일,기구','주방,베란다타일','몰딩','씽크대','붙박이장문','장판','도배(실크)','식대,부자재','폐기물','인건비','목공','시트지','중문','신발장','키큰장','샷시','마감재','실리콘','경비','장비대','스텐 물받이','용마루','NEGO'];const pb=state.priceBook||{};const names=[...new Set([...Object.keys(pb),...base])];return names.map(n=>`<option value="${escapeAttr(n)}"${pb[n]?` label="${Number(pb[n]).toLocaleString('ko-KR')}원"`:''}></option>`).join('');})()}</datalist>
       <div class="qm-table-wrap"><table class="qm-table">
@@ -21359,9 +21698,7 @@ function viewSchedule(){
         </div>
         <div class="sch-tools">
           <button class="mini-btn ${r?'rep-done':'rep-todo'}" data-schreport="${s.id}" title="일일 작업 보고" aria-label="${escapeAttr(s.title||'일정')} 작업 보고">📋</button>
-          <button class="mini-btn" data-workorder="${s.id}" title="작업지시 보내기(작업자에게 문자)" aria-label="${escapeAttr(s.title||'일정')} 작업지시 보내기">👷</button>
-          <button class="mini-btn" data-gcal="${s.id}" title="구글 캘린더에 추가" aria-label="${escapeAttr(s.title||'일정')} 구글 캘린더에 추가">📅</button>
-          <button class="mini-btn" data-schics="${s.id}" title="폰 캘린더에 추가(.ics)" aria-label="${escapeAttr(s.title||'일정')} 폰 캘린더에 추가">📲</button>
+          <button class="mini-btn" data-schmore="${s.id}" title="더보기 — 작업지시·캘린더" aria-label="${escapeAttr(s.title||'일정')} 더보기">⋯</button>
           <button class="mini-btn" data-schedit="${s.id}" title="일정 수정" aria-label="${escapeAttr(s.title||'일정')} 수정">✎</button>
           <button class="mini-btn" data-schdel="${s.id}" title="일정 삭제" aria-label="${escapeAttr(s.title||'일정')} 삭제">🗑</button>
         </div>
@@ -22054,7 +22391,7 @@ function viewProject(){
       const docs=list.filter(f=>f.kind!=='photo');
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:var(--muted);font-size:13px;font-weight:400">· ${list.length}개</span></h2>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(p.name)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(p.name)}">ZIP</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(p.name)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">📦 ZIP</button><button class="ghost tiny" data-aptreport="${escapeAttr(p.name)}">📄 보고서</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
       html+=stageBar(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
@@ -22075,8 +22412,24 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="moss tiny" data-portfolio="${escapeAttr(state.activeProject)}">📖 포트폴리오 PDF</button><button class="ghost tiny pc-only-action" data-zip="${escapeAttr(state.activeProject)}">ZIP 내보내기</button><button class="blue tiny" data-pdf="${escapeAttr(state.activeProject)}">PDF 묶음</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=stageBar(p);
+
+  // ⏱ 작업시간 · 🚗 운행
+  {
+    const open=workToday(p.name);
+    const mine=workData().filter(function(w){return w.project===p.name;});
+    const totM=mine.reduce(function(s,w){return s+workMinutes(w);},0);
+    html+=`<div class="cust-card" style="display:flex;align-items:center;gap:7px;margin:0 0 10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)">⏱ 작업시간</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px">${open?('<b style="color:#c2410c">'+open.in+' 시작 · 진행 중</b>'):(totM?('누적 '+workHM(totM)+' · '+mine.length+'회'):'현장 도착·퇴근을 찍으면 실제 투입 시간이 쌓여요')}</div>
+      </div>
+      <button class="${open?'clay':'ghost'} tiny" data-punch="${escapeAttr(p.name)}" style="padding:9px 12px;white-space:nowrap">${open?'⏱ 종료':'⏱ 시작'}</button>
+      <button class="ghost tiny" data-worklog="${escapeAttr(p.name)}" style="padding:9px 10px">📋</button>
+      <button class="ghost tiny" data-trip="${escapeAttr(p.name)}" style="padding:9px 10px">🚗</button>
+    </div>`;
+  }
 
   // 필터 헬퍼: 현재 보기(__projView)에서 해당 섹션을 표시할지
   const showSec=(stage)=>__projView===null||__projView===stage;
@@ -22279,7 +22632,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -22346,6 +22699,7 @@ function setupDelegation(){
     if(t.id==='qmPdf')return printQuote(null);
     if(t.id==='qmSend')return sendQuote();
     if(t.id==='qmDriveSave')return saveQuoteToDrive();
+    if(t.id==='btnPhotoTools')return photoToolsView();
     if(t.id==='btnGdPhotos')return gdUploadPhotos();
     if(t.id==='btnPhotoBundle')return sendPhotoBundles();
     if(t.id==='btnGeoAll')return geocodeAllClusters();
@@ -22378,6 +22732,7 @@ function setupDelegation(){
     if(t.id==='qmAi')return aiQuoteItems();
     if(t.id==='qmReview')return reviewQuote({});
     if(t.id==='qmBook')return priceBookManage();
+    if(t.id==='qmSet')return qsetView();
     if(t.id==='qmOrder')return materialOrder(state.editingQuote&&state.editingQuote.id);
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmXlsx')return exportQuoteXlsx();
@@ -22430,6 +22785,16 @@ function setupDelegation(){
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.nmap!==undefined)return openNaverMapFor((window.__clusters||[])[+d.nmap]);
     if(d.bname!==undefined)return setClusterBuilding((window.__clusters||[])[+d.bname]);
+    if(d.payhist!==undefined){e.stopPropagation();return payHistoryView(true);}
+    if(d.qhist!==undefined){e.stopPropagation();return quoteHistoryView(true);}
+    if(d.mclose!==undefined){e.stopPropagation();return monthCloseView(1);}
+    if(d.warranty!==undefined){e.stopPropagation();return warrantyView(d.warranty);}
+    if(d.dochub!==undefined){e.stopPropagation();return docHubView(d.dochub);}
+    if(d.schmore!==undefined){e.stopPropagation();return schMoreView(d.schmore);}
+    if(d.punch!==undefined){e.stopPropagation();return workPunch(d.punch);}
+    if(d.worklog!==undefined){e.stopPropagation();return workView(d.worklog);}
+    if(d.trip!==undefined){e.stopPropagation();window.__trip=null;tripView(true);return;}
+    if(d.aptreport!==undefined){e.stopPropagation();return aptReportView(d.aptreport);}
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
@@ -22782,7 +23147,10 @@ async function exportProjectZIP(proj){
   const list=state.files.filter(f=>f.project===proj);
   if(!list.length){toast('배정된 파일이 없습니다.');return;}
   try{await ensureJSZip();}catch(e){toast('압축 모듈 로드 실패(인터넷 확인).');return;}
-  if(list.every(f=>f._virtual)){toast('데이터 보기 모드에서는 ZIP을 만들 수 없습니다. PC에서 폴더를 연결하세요.');return;}
+  const hasReal=list.some(f=>!f._virtual);
+  const hasThumb=list.some(f=>f.kind==='photo'&&f.thumb);
+  const hasAppData=(state.quotes||[]).some(q=>q.project===proj)||(state.payLog||[]).some(x=>x.project===proj)||(state.asLog||[]).some(x=>x.project===proj);
+  if(!hasReal&&!hasThumb&&!hasAppData){toast('묶을 자료가 없습니다 — 폴더 연결(PC) 시 원본까지 담깁니다.');return;}
   toast('“'+proj+'” ZIP 만드는 중…');
   const zip=new JSZip();
   const root=zip.folder(safeName(proj));
@@ -22790,8 +23158,11 @@ async function exportProjectZIP(proj){
   const usedNames={};
   for(const f of list){
     try{
-      const file=await getFileOf(f);
+      let file=await getFileOf(f);
+      let __preview=false;
+      if(!file&&f.kind==='photo'&&f.thumb){try{file=dataURLtoFile(f.thumb,safeName(f.name)||'photo.jpg');__preview=true;}catch(e){}}
       if(!file){skipped++;continue;}
+      if(__preview)window.__zipPrev=(window.__zipPrev||0)+1;
       const folder=KIND[f.kind].folder;
       let nm=safeName(f.name);
       const fk=folder+'/'+nm;
@@ -22801,11 +23172,39 @@ async function exportProjectZIP(proj){
       added++;
     }catch(e){skipped++;}
   }
+  // 앱에서 만든 견적서 동봉(텍스트)
+  try{
+    const aq=(state.quotes||[]).filter(q=>q.project===proj);
+    if(aq.length){
+      const qf=root.folder('앱견적');
+      aq.forEach(q=>{
+        const c=quoteCalc(q);
+        const lines=['['+COMPANY.name+' 견적서] '+(q.title||''),'작성일: '+(q.date||''),'현장: '+proj,''];
+        (q.items||[]).forEach(it=>lines.push('· '+it.name+'  '+num(it.qty)+' × '+won(num(it.price))+' = '+won(Math.round(num(it.qty)*num(it.price)))));
+        lines.push('');lines.push('공급가액: '+won(c.supply));lines.push('부가세: '+won(c.vat));
+        lines.push('합계: '+won(c.total)+(q.vatIncluded?' (부가세 포함)':' (부가세 별도)'));
+        if(q.memo)lines.push('비고: '+q.memo);
+        qf.file(safeName(q.title||('견적_'+q.id))+'.txt',lines.join('\n'));
+      });
+    }
+  }catch(e){}
   // 현장 요약 텍스트 동봉
   const s=projStats(proj);
   const p=state.projects.find(x=>x.name===proj);
-  const summary=`현장: ${proj}\n진행단계: ${STAGES[p?.stage||0]}\n파일 수: ${list.length}\n견적(매출): ${won(s.est)}\n수금액: ${won(s.recv)}\n생성: ${new Date().toLocaleString('ko-KR')}\n`;
-  root.file('_현장요약.txt', summary);
+  const __pl=(state.payLog||[]).filter(x=>x.project===proj);
+  const __as=(state.asLog||[]).filter(x=>x.project===proj);
+  const __L=['현장: '+proj,'진행단계: '+STAGES[p?.stage||0]];
+  if(p&&p.customer&&(p.customer.name||p.customer.phone||p.customer.addr))__L.push('고객: '+[p.customer.name,p.customer.phone,p.customer.addr].filter(Boolean).join(' · '));
+  if(p&&(p.startDate||p.doneAt))__L.push('기간: '+(p.startDate||'?')+' ~ '+(p.doneAt||'진행 중'));
+  if(p&&Array.isArray(p.phases)&&p.phases.length)__L.push('공정: '+p.phases.map(x=>typeof x==='string'?x:(x.title||x.name||'')).filter(Boolean).join(' → '));
+  __L.push('파일 수: '+list.length+(window.__zipPrev?(' (원본 아닌 미리보기 사진 '+window.__zipPrev+'장 포함)'):''));
+  __L.push('견적(매출): '+won(s.est));
+  __L.push('수금액: '+won(s.recv)+' / 미수: '+won(Math.max(0,(s.est||0)-(s.recv||0))));
+  if(__pl.length){__L.push('');__L.push('[입금 이력]');__pl.forEach(x=>__L.push('· '+x.d+'  '+won(x.amt)));}
+  if(__as.length){__L.push('');__L.push('[AS 기록]');__as.forEach(x=>__L.push('· '+x.date+'  '+x.text+' ('+(x.status==='open'?'진행':'완료')+')'));}
+  __L.push('');__L.push('생성: '+new Date().toLocaleString('ko-KR')+' · '+COMPANY.name+' '+COMPANY.tel);
+  root.file('_현장보고서.txt', __L.join('\n'));
+  window.__zipPrev=0;
   const blob=await zip.generateAsync({type:'blob'},m=>{});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=safeName(proj)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast(`“${proj}” ZIP 저장됨 — ${added}개${skipped?(' (제외 '+skipped+')'):''}`);
@@ -23279,9 +23678,13 @@ function defaultPresets(){return [
 ];}
 async function loadBiz(){
   try{
-    __biz.img1=await idbGet('biz_사업자')||null; __biz.img2=await idbGet('biz_명함')||null;
+    __biz.img1=await idbGet('biz_사업자')||null; __biz.img2=await idbGet('biz_명함')||null; __biz.img3=await idbGet('biz_통장')||null;
     __biz.extras=await idbGet('biz_extras')||[];
     const ps=await idbGet('biz_presets'); __biz.presets=(ps&&ps.length)?ps:defaultPresets();
+    if(!__biz.presets.some(p=>p&&p.name==='세금계산서 정보')){
+      __biz.presets.push({name:'세금계산서 정보',text:`[세금계산서 발행 정보]\n상호: ${COMPANY.name}\n대표: ${COMPANY.owner}\n사업자등록번호: ${COMPANY.bizno}\n업태: ${COMPANY.business} / 종목: ${COMPANY.type}\n주소: ${COMPANY.addr||''}\n이메일: 3dncjf@gmail.com`});
+      try{await idbSet('biz_presets',__biz.presets);}catch(e){}
+    }
     const pi=await idbGet('biz_presetIdx'); __biz.presetIdx=(typeof pi==='number')?pi:0;
     const t=await idbGet('biz_text'); __biz.text=(t!=null&&t!=='')?t:(__biz.presets[__biz.presetIdx]?.text||defaultBizText());
   }
@@ -23302,7 +23705,7 @@ function pickBizImage(which){
     const durl=await resizeToDataURL(f,1800,0.85);
     if(!durl){toast('이 사진은 못 읽었습니다. JPG/PNG 사진을 써주세요(HEIC면 먼저 변환).');return;}
     __biz[which]=durl;
-    try{await idbSet(which==='img1'?'biz_사업자':'biz_명함',durl);}catch(e){}
+    try{await idbSet(which==='img1'?'biz_사업자':which==='img3'?'biz_통장':'biz_명함',durl);}catch(e){}
     shareBizCard(); toast('사진 등록·저장됨');
   };
   inp.click();
@@ -23352,7 +23755,7 @@ function dataURLtoFile(durl,name){
   return new File([u],name,{type:mime});
 }
 function curBizText(){ const ta=document.getElementById('bizText'); return ta?ta.value:(__biz.text||''); }
-function bizImageFiles(){ const fs=[]; if(__biz.img1)fs.push(dataURLtoFile(__biz.img1,`${COMPANY.name}_사업자등록증.jpg`)); if(__biz.img2)fs.push(dataURLtoFile(__biz.img2,`${COMPANY.name}_명함.jpg`)); (__biz.extras||[]).forEach((d,i)=>fs.push(dataURLtoFile(d,`${COMPANY.name}_사진${i+1}.jpg`))); return fs; }
+function bizImageFiles(){ const fs=[]; if(__biz.img1)fs.push(dataURLtoFile(__biz.img1,`${COMPANY.name}_사업자등록증.jpg`)); if(__biz.img3)fs.push(dataURLtoFile(__biz.img3,`${COMPANY.name}_통장사본.jpg`)); if(__biz.img2)fs.push(dataURLtoFile(__biz.img2,`${COMPANY.name}_명함.jpg`)); (__biz.extras||[]).forEach((d,i)=>fs.push(dataURLtoFile(d,`${COMPANY.name}_사진${i+1}.jpg`))); return fs; }
 async function shareBizCard(){
   await loadBiz();
   const slot=(durl,which,label)=> durl
@@ -23363,8 +23766,15 @@ async function shareBizCard(){
   // 프리셋 선택
   const presetOpts=__biz.presets.map((p,i)=>`<option value="${i}"${i===__biz.presetIdx?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
   const body=`
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="clay tiny" data-bizone="img1" style="flex:1;padding:9px">📄 등록증만 보내기</button>
+      <button class="clay tiny" data-bizone="img3" style="flex:1;padding:9px">🏦 통장만 보내기</button>
+      <button class="ghost tiny" data-bizone="img2" style="flex:1;padding:9px">📇 명함만</button>
+    </div>
+    <button class="ghost tiny" id="bizDirections" style="width:100%;padding:9px;margin-bottom:12px">📍 오시는 길 보내기 (주소+지도 링크)</button>
     <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
       ${slot(__biz.img1,'img1','사업자등록증')}
+      ${slot(__biz.img3,'img3','통장사본')}
       ${slot(__biz.img2,'img2','명함')}
     </div>
     <div style="margin-top:14px;font-size:12px;color:var(--ink);font-weight:600">추가 사진 <button class="ghost tiny" id="bizAddPic" style="margin-left:6px">＋ 사진 추가</button></div>
@@ -23385,6 +23795,8 @@ async function shareBizCard(){
     {label:'💾 이 문구 저장',cls:'ghost',fn:savePresetEdit},
     {label:'닫기',cls:'ghost',fn:closeModal}
   ], true);
+  document.querySelectorAll('#modalRoot [data-bizone]').forEach(b=>{b.onclick=()=>sendBizOne(b.dataset.bizone);});
+  const __dir=document.getElementById('bizDirections');if(__dir)__dir.onclick=sendDirections;
   document.querySelectorAll('[data-bizpic]').forEach(b=>b.onclick=()=>pickBizImage(b.dataset.bizpic));
   document.querySelectorAll('[data-bizdel]').forEach(b=>b.onclick=()=>delBizExtra(+b.dataset.bizdel));
   const addPic=document.getElementById('bizAddPic');if(addPic)addPic.onclick=addBizExtra;
@@ -23404,10 +23816,1301 @@ async function sendBiz(){
     saveBizImages(); copyBiz(); toast('공유 미지원 기기 — 사진 저장+글 복사했습니다. 카톡/문자에 붙여 보내세요.');
   }catch(e){ if(e&&e.name!=='AbortError')toast('보내기 취소/오류: '+(e&&e.message||e)); }
 }
+/* ═══ v206 📄 관리사무소 완료보고서 (캔버스→PDF, 한글 안전) ═══ */
+function rptPhotoCap(f){
+  // 파일명 "20260814_1652_지하실_신설배관_보온마감_전경.jpg" → "지하실 신설배관 보온마감 전경"
+  let s=String(f.name||'').replace(/\.[a-z0-9]+$/i,'');
+  s=s.replace(/^20\d{6}[_\- ]?(\d{4})?[_\- ]?/,'');
+  s=s.replace(/[_\-]+/g,' ').trim();
+  const when=f.when?new Date(f.when):null;
+  const hm=(when&&!isNaN(when))?(pad2(when.getHours())+':'+pad2(when.getMinutes())):'';
+  let tag='';
+  if(/(작업|시공|교체|보수|공사)\s*전|전$/.test(s))tag='전';
+  if(/(작업|시공|교체|보수|공사)\s*후|후$|마감|완료/.test(s))tag='후';
+  return {cap:s||f.name,hm,tag};
+}
+function rptWrap(ctx,text,maxW){
+  const out=[];let line='';
+  for(const ch of String(text||'')){
+    if(ch==='\n'){out.push(line);line='';continue;}
+    const t=line+ch;
+    if(ctx.measureText(t).width>maxW&&line){out.push(line);line=ch;}
+    else line=t;
+  }
+  if(line)out.push(line);
+  return out;
+}
+async function buildAptReportPDF(o){
+  await ensureJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'a4'});
+  const W=595,H=842;
+  const CW=1240,CH=1754;   // 150dpi급 캔버스
+  window.__rptTexts=[];
+  const page=function(draw){
+    const c=document.createElement('canvas');c.width=CW;c.height=CH;
+    const x=c.getContext('2d');
+    x.fillStyle='#ffffff';x.fillRect(0,0,CW,CH);
+    x.fillStyle='#111';x.textBaseline='top';
+    const T=function(txt,px,py,f,color,maxW){
+      x.font=f||'26px sans-serif';x.fillStyle=color||'#111';
+      const lines=maxW?rptWrap(x,txt,maxW):[String(txt)];
+      const lh=parseInt(x.font)*1.45;
+      lines.forEach(function(L,i){x.fillText(L,px,py+i*lh);try{window.__rptTexts.push(L);}catch(e){}});
+      return py+lines.length*lh;
+    };
+    draw(x,T);
+    return c;
+  };
+  const pages=[];
+
+  // ── 1p: 표지+개요+작업내용 ──
+  pages.push(page(function(x,T){
+    x.fillStyle='#0b4ea2';x.fillRect(0,0,CW,150);
+    T('공 사 완 료 보 고 서',70,44,'bold 56px sans-serif','#fff');
+    T(o.date,CW-330,66,'26px sans-serif','#dbe9ff');
+    let y=200;
+    y=T(o.title,70,y,'bold 44px sans-serif','#111',CW-140)+8;
+    T('제출처: '+o.dest,70,y,'28px sans-serif','#333');y+=52;
+    // 개요 표
+    const rows=[['공사명',o.title],['현장',o.site],['공사 기간',o.period],['작업자',o.worker]];
+    if(o.showAmt&&o.amt)rows.push(['공사 금액',won(o.amt)+(o.vat?' (부가세 포함)':' (부가세 별도)')]);
+    x.strokeStyle='#c9d4e2';x.lineWidth=2;
+    rows.forEach(function(r){
+      x.strokeRect(70,y,CW-140,64);
+      x.fillStyle='#eef3fa';x.fillRect(70,y,240,64);
+      T(r[0],92,y+16,'bold 26px sans-serif','#0b4ea2');
+      T(String(r[1]||''),340,y+16,'26px sans-serif','#111',CW-420);
+      y+=64;
+    });
+    y+=44;
+    y=T('■ 작업 내용',70,y,'bold 30px sans-serif','#0b4ea2')+10;
+    o.works.forEach(function(w,i){
+      y=T((i+1)+'. '+w,86,y,'27px sans-serif','#222',CW-180)+6;
+    });
+    if(o.note){y+=26;y=T('■ 특이사항',70,y,'bold 30px sans-serif','#0b4ea2')+10;y=T(o.note,86,y,'27px sans-serif','#222',CW-180);}
+    // 하단 업체
+    x.fillStyle='#f4f7fb';x.fillRect(0,CH-190,CW,190);
+    T(COMPANY.name+'  ·  대표 '+COMPANY.owner+'  ·  사업자 '+COMPANY.bizno,70,CH-150,'26px sans-serif','#333');
+    T(COMPANY.addr+'  ·  '+COMPANY.tel,70,CH-104,'24px sans-serif','#555');
+  }));
+
+  // ── 사진 대장 (2×3/페이지) ──
+  const ph=o.photos;
+  const per=6,cols=2;
+  const cellW=(CW-140-40)/cols, cellH=430, imgH=330;
+  for(let pi=0;pi<ph.length;pi+=per){
+    const chunk=ph.slice(pi,pi+per);
+    const imgs=await Promise.all(chunk.map(function(f){return new Promise(function(res){
+      const im=new Image();im.onload=function(){res(im);};im.onerror=function(){res(null);};im.src=f.thumb;
+    });}));
+    pages.push(page(function(x,T){
+      T('■ 사진 대장 ('+(Math.floor(pi/per)+1)+'/'+Math.ceil(ph.length/per)+')  — '+o.site,70,54,'bold 32px sans-serif','#0b4ea2');
+      chunk.forEach(function(f,i){
+        const cx=70+(i%cols)*(cellW+40), cy=130+Math.floor(i/cols)*(cellH+40);
+        x.strokeStyle='#d7dee8';x.lineWidth=2;x.strokeRect(cx,cy,cellW,cellH);
+        const im=imgs[i];
+        if(im){
+          const r=Math.min(cellW/im.width,imgH/im.height);
+          const dw=im.width*r,dh=im.height*r;
+          x.drawImage(im,cx+(cellW-dw)/2,cy+8+(imgH-dh)/2,dw,dh);
+        }else{x.fillStyle='#f0f2f5';x.fillRect(cx+2,cy+2,cellW-4,imgH);}
+        const m=rptPhotoCap(f);
+        if(m.tag){
+          x.fillStyle=m.tag==='전'?'#64748b':'#0b8a4b';
+          x.fillRect(cx+10,cy+10,86,44);
+          T('작업'+m.tag,cx+18,cy+18,'bold 26px sans-serif','#fff');
+        }
+        T((m.hm?m.hm+'  ':'')+m.cap,cx+12,cy+imgH+22,'23px sans-serif','#333',cellW-24);
+      });
+    }));
+  }
+
+  // ── 마지막: 확인란 ──
+  pages.push(page(function(x,T){
+    T('■ 완료 확인',70,60,'bold 34px sans-serif','#0b4ea2');
+    let y=140;
+    y=T('위와 같이 공사를 완료하였음을 보고합니다.',70,y,'30px sans-serif','#111')+40;
+    y=T(o.date,70,y,'28px sans-serif','#333')+80;
+    T('보고 업체',70,y,'bold 28px sans-serif','#0b4ea2');
+    T(COMPANY.name+'  대표 '+COMPANY.owner+'   (서명)  ______________',260,y,'28px sans-serif','#111');y+=110;
+    T('확인 (관리사무소)',70,y,'bold 28px sans-serif','#0b4ea2');
+    T('직책: __________   성명: __________   (서명)  ______________',260,y,'28px sans-serif','#111');y+=140;
+    T('· 하자보수: 준공일로부터 1년간 책임 보수 (공종별 상세는 계약서 기준)',70,y,'25px sans-serif','#555');y+=44;
+    T('· 문의: '+COMPANY.owner+' '+COMPANY.tel,70,y,'25px sans-serif','#555');
+  }));
+
+  pages.forEach(function(c,i){
+    if(i>0)doc.addPage();
+    doc.addImage(c.toDataURL('image/jpeg',0.86),'JPEG',0,0,W,H);
+  });
+  doc.save(safeName(o.site)+' 완료보고서.pdf');
+  return {pages:pages.length,photos:ph.length};
+}
+function aptReportView(pjName){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo'&&f.thumb;})
+    .sort(function(a,b){return new Date(a.when||0)-new Date(b.when||0);});
+  const st=projStats(pjName);
+  const works=(Array.isArray(p.phases)&&p.phases.length)
+    ? p.phases.map(function(x){return typeof x==='string'?x:(x.title||x.name||'');}).filter(Boolean).join('\n')
+    : '';
+  const F=function(id,label,val,ph2,tag){
+    return '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label>'+
+      (tag==='ta'
+        ?'<textarea id="'+id+'" rows="4" placeholder="'+ph2+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;font-family:inherit">'+escapeHtml(val||'')+'</textarea>'
+        :'<input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph2+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">');
+  };
+  const period=((p.startDate||'')+(p.doneAt?(' ~ '+p.doneAt):' ~ ')).trim();
+  openModal('📄 완료보고서 — '+pjName,
+    F('rpDest','제출처',pjName.includes('관리')?pjName:(pjName+' 관리사무소'),'예: 금성백조아파트 관리사무소')+
+    F('rpTitle','공사명',pjName+' 공사','예: 지하 배관 교체 공사')+
+    F('rpPeriod','공사 기간',period,'예: 2026-08-14 ~ 2026-08-14')+
+    F('rpWorker','작업자',COMPANY.owner+' 1인','예: 전병덕 외 1인')+
+    F('rpWorks','작업 내용 (한 줄에 하나)',works,'예: 지하실 노후 배관 교체·보온 마감','ta')+
+    F('rpNote','특이사항 (선택)','','예: 806·807호 급수 정상 확인, 누수 없음','ta')+
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12.5px"><input type="checkbox" id="rpAmt" style="width:18px;height:18px"> 공사 금액 표시 ('+won(st.est)+')</label>'+
+    '<p class="hint" style="margin-top:8px">사진 '+ph.length+'장이 시각순으로 사진 대장에 들어갑니다. 마지막 장에 관리사무소 확인란이 붙습니다.</p>',
+    [{label:'📄 PDF 만들기',cls:'clay',fn:async function(){
+        const o={site:pjName,
+          dest:document.getElementById('rpDest').value.trim(),
+          title:document.getElementById('rpTitle').value.trim()||pjName+' 공사',
+          period:document.getElementById('rpPeriod').value.trim(),
+          worker:document.getElementById('rpWorker').value.trim(),
+          works:document.getElementById('rpWorks').value.split('\n').map(function(s){return s.trim();}).filter(Boolean),
+          note:document.getElementById('rpNote').value.trim(),
+          showAmt:document.getElementById('rpAmt').checked,
+          amt:st.est,vat:false,
+          date:new Date().toISOString().slice(0,10),
+          photos:ph};
+        if(!o.works.length)o.works=[o.title];
+        closeModal();toast('📄 보고서 만드는 중…');
+        try{const r=await buildAptReportPDF(o);toast('📄 완료보고서 PDF 저장됨 — '+r.pages+'쪽 (사진 '+r.photos+'장)');}
+        catch(e){toast('PDF 생성 실패: '+(e.message||e));}
+      }},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {사진:ph.length};
+}
+
+/* ═══ v214 📎 서류 허브 — 현장 문서를 한곳에서 ═══ */
+function docHubView(pjName){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo';}).length;
+  const doneOk=!!p.doneAt;
+  const item=function(icon,title,desc,act,tone,warn){
+    return '<button class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;background:'+(tone||'var(--paper)')+'">'+
+      '<span style="font-size:19px;line-height:1.1">'+icon+'</span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+'</b>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div>'+
+      (warn?'<div style="font-size:10.5px;color:#c2410c;margin-top:3px">'+warn+'</div>':'')+'</span></button>';
+  };
+  openModal('📎 서류 만들기 — '+pjName,
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">사진 '+ph+'장 · '+(doneOk?('준공 '+p.doneAt):'진행 중')+'</div>'+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:4px 0 6px">제출·보고</div>'+
+    item('📄','완료보고서 PDF','관리사무소·고객 제출용. 표지+사진대장+확인란까지 A4로.','aptreport','var(--paper)',ph?'':'사진이 없으면 대장이 비어요')+
+    item('🛡','하자보증서 PDF','준공 후 고객에게 드리는 보증서 한 장(법정 기간 자동).','warranty','var(--paper)',doneOk?'':'준공 처리 후 발급됩니다')+
+    item('🧾','완료보증서 문자로 보내기','파일 대신 문자로 바로 — 고객이 링크로 확인·서명.','wdoc','var(--paper)','')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">보관·정리</div>'+
+    item('📦','서류 묶음 ZIP','사진·견적·보고서를 한 파일로. 보관·세무·분쟁 대비용.','zip','var(--paper)','')+
+    item('📕','PDF 묶음','사진·서류를 PDF 한 장으로 이어붙입니다.','pdf','var(--paper)','')+
+    item('📖','포트폴리오 PDF','시공 사진을 홍보용 화보로. 새 고객 상담에 보여주세요.','portfolio','var(--paper)',''),
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .docHubBtn').forEach(function(b){b.onclick=function(){
+    const a=b.dataset.act;
+    closeModal();
+    setTimeout(function(){
+      try{
+        if(a==='aptreport')aptReportView(pjName);
+        else if(a==='warranty')warrantyView(pjName);
+        else if(a==='wdoc'){if(typeof warrantyIssue==='function')warrantyIssue(pjName);else if(typeof warrantyDocSend==='function')warrantyDocSend(pjName);else toast('준공 섹션의 [🧾 완료보증서 보내기]를 눌러주세요');}
+        else if(a==='zip')exportProjectZIP(pjName);
+        else if(a==='pdf')exportProjectPDF(pjName);
+        else if(a==='portfolio')exportPortfolio(pjName);
+      }catch(e){toast('열 수 없어요: '+(e.message||e));}
+    },80);
+  };});
+  return {현장:pjName,사진:ph};
+}
+/* ═══ v213-A 🚗 차량 운행일지 ═══ */
+function tripData(){state.trips=state.trips||[];return state.trips;}
+function tripSum(list){
+  const km=list.reduce((s,t)=>s+num(t.km),0);
+  const rate=num((state.tripCfg||{}).rate)||0;
+  return {km:km,cnt:list.length,cost:Math.round(km*rate)};
+}
+function tripFilter(){
+  const F=window.__trip||{};
+  let list=tripData().slice();
+  if(F.from)list=list.filter(t=>(t.date||'')>=F.from);
+  if(F.to)list=list.filter(t=>(t.date||'')<=F.to);
+  if(F.pj)list=list.filter(t=>t.project===F.pj);
+  return list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function tripExpenseSourceKey(F,list,rate){
+  const ids=(list||[]).map(t=>String(t.id||'')).filter(Boolean).sort().join(',');
+  return ['trip',F.from||'',F.to||'',F.pj||'*',num(rate)||0,ids].join('|');
+}
+function tripAddView(pre){
+  const pjs=(state.projects||[]).filter(p=>!p.archived).map(p=>p.name);
+  const last=tripData()[tripData().length-1];
+  const inp='width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px';
+  openModal('🚗 운행 기록 추가',
+    '<label style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">날짜</label><input type="date" id="trDate" value="'+localDate()+'" style="'+inp+'">'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">현장</label>'+
+    '<select id="trPj" style="'+inp+'"><option value="">(현장 미지정)</option>'+pjs.map(n=>'<option value="'+escapeAttr(n)+'"'+((pre&&pre===n)?' selected':'')+'>'+escapeHtml(n)+'</option>').join('')+'</select>'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">주행 거리 (km)</label><input id="trKm" inputmode="decimal" placeholder="예: 24" style="'+inp+'">'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">목적·메모</label><input id="trMemo" value="'+(last&&last.memo?escapeAttr(last.memo):'')+'" placeholder="예: 자재 픽업 · 실측 방문" style="'+inp+'">'+
+    '<p class="hint" style="margin-top:9px">왕복 거리를 적으면 됩니다. km당 단가를 설정해 두면 유류비가 자동 계산돼요.</p>',
+    [{label:'저장',cls:'clay',fn:function(){
+        const km=num(document.getElementById('trKm').value);
+        if(!(km>0)){toast('주행 거리를 입력하세요');return;}
+        tripData().push({id:uid(),date:document.getElementById('trDate').value||localDate(),
+          project:document.getElementById('trPj').value,km:km,
+          memo:document.getElementById('trMemo').value.trim()});
+        markDirty();closeModal();tripView();
+        toast('🚗 '+km+'km 기록됨');
+      }},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
+function tripView(reset){
+  if(reset||!window.__trip){
+    const t=new Date(),f=new Date();f.setMonth(f.getMonth()-1);
+    window.__trip={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),pj:'',page:1};
+  }
+  const F=window.__trip;
+  const list=tripFilter();
+  const S=tripSum(list);
+  const rate=num((state.tripCfg||{}).rate)||0;
+  const per=10,pages=Math.max(1,Math.ceil(list.length/per));
+  F.page=Math.min(Math.max(1,F.page),pages);
+  const rows=list.slice((F.page-1)*per,F.page*per);
+  const allPj=[...new Set(tripData().map(t=>t.project).filter(Boolean))].sort();
+  const inp='padding:9px;border-radius:9px;border:1px solid var(--line-soft);font-size:12px;width:100%';
+  const tile=(l,v,c,s)=>'<div style="flex:1;min-width:92px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div>'+(s?'<div style="font-size:9.5px;color:var(--muted);margin-top:1px">'+s+'</div>':'')+'</div>';
+  const body=
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">현장 오간 거리를 적어두면 <b>유류비를 경비로 정리</b>할 수 있어요.</div>'+
+    '<div style="background:var(--paper-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:11px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">시작일</div><input type="date" id="trFrom" value="'+F.from+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">종료일</div><input type="date" id="trTo" value="'+F.to+'" style="'+inp+'"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:7px">'+
+        '<select id="trFPj" style="'+inp+';flex:1.6"><option value="">현장 전체</option>'+allPj.map(n=>'<option value="'+escapeAttr(n)+'"'+(F.pj===n?' selected':'')+'>'+escapeHtml(n)+'</option>').join('')+'</select>'+
+        '<button class="blue tiny" id="trGo" style="flex:.6;padding:9px">조회</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('운행 횟수',S.cnt+'회')+
+      tile('총 주행',S.km.toLocaleString('ko-KR')+'km','#1d4ed8')+
+      tile('유류비(환산)',rate?won(S.cost):'단가 미설정','#c2410c',rate?('km당 '+won(rate)):'⚙에서 설정')+
+    '</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<button class="clay tiny" id="trAdd" style="flex:1.4;padding:10px">＋ 운행 기록</button>'+
+      '<button class="ghost tiny" id="trRate" style="flex:1;padding:10px">⚙ km 단가</button>'+
+      (rate&&S.km?'<button class="moss tiny" id="trExp" style="flex:1.2;padding:10px">💸 경비로 넣기</button>':'')+
+    '</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:58px 1fr 62px 30px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>현장 / 메모</div><div style="text-align:right">거리</div><div></div></div>'+
+      (rows.length?rows.map((t,i)=>'<div style="display:grid;grid-template-columns:58px 1fr 62px 30px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+        '<div style="color:var(--muted)">'+String(t.date||'').slice(5)+'</div>'+
+        '<div style="min-width:0"><b>'+escapeHtml(t.project||'(미지정)')+'</b><div style="color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(t.memo||'')+'</div></div>'+
+        '<div style="text-align:right;font-weight:800">'+num(t.km)+'km</div>'+
+        '<button class="ghost tiny trDel" data-id="'+t.id+'" style="padding:6px 7px">🗑</button>'+
+      '</div>').join(''):'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">기록이 없어요 — [＋ 운행 기록]으로 시작하세요</div>')+
+    '</div>'+
+    (pages>1?'<div style="display:flex;gap:5px;justify-content:center;margin-top:11px">'+
+      Array.from({length:pages},(_,i)=>i+1).slice(Math.max(0,F.page-3),Math.max(0,F.page-3)+5).map(pn=>'<button class="'+(pn===F.page?'blue':'ghost')+' tiny trPg" data-p="'+pn+'" style="padding:7px 12px">'+pn+'</button>').join('')+'</div>':'');
+  openModal('🚗 차량 운행일지',body,[
+    {label:'⬇ 엑셀',cls:'ghost',fn:function(){tripExcel();}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rd=function(){F.from=document.getElementById('trFrom').value;F.to=document.getElementById('trTo').value;F.pj=document.getElementById('trFPj').value;};
+  document.getElementById('trGo').onclick=function(){rd();F.page=1;tripView();};
+  document.getElementById('trAdd').onclick=function(){tripAddView(F.pj);};
+  document.getElementById('trRate').onclick=function(){
+    const cur=num((state.tripCfg||{}).rate)||0;
+    const v=prompt('km당 유류비 단가를 입력하세요 (원)\n예) 연비 10km/L · 유가 1,700원 → 170', cur||'');
+    if(v===null)return;
+    state.tripCfg={rate:num(v)};markDirty();tripView();
+    toast('⚙ km당 '+won(num(v))+'로 설정');
+  };
+  const ex=document.getElementById('trExp');
+  if(ex)ex.onclick=function(){
+    const tripList=tripFilter();
+    const S2=tripSum(tripList);
+    if(!S2.cost){toast('환산할 금액이 없어요');return;}
+    const sourceKey=tripExpenseSourceKey(F,tripList,num((state.tripCfg||{}).rate)||0);
+    const r=expenseAdd({date:F.to||localDate(),amount:S2.cost,category:'유류',method:'현금',
+      memo:'차량 운행 '+S2.km+'km ('+F.from+'~'+F.to+')'+(F.pj?' · '+F.pj:''),project:F.pj||'',sourceKey:sourceKey});
+    if(r&&r.오류){toast(r.오류);return;}
+    closeModal();toast('💸 유류비 '+won(S2.cost)+' 지출로 넣었어요');
+  };
+  document.querySelectorAll('#modalRoot .trDel').forEach(b=>{b.onclick=function(){
+    state.trips=tripData().filter(t=>t.id!==b.dataset.id);markDirty();tripView();};});
+  document.querySelectorAll('#modalRoot .trPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;tripView();};});
+  return {건수:list.length,km:S.km,유류비:S.cost};
+}
+async function tripExcel(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
+  const list=tripFilter();
+  if(!list.length){toast('내보낼 기록이 없어요');return;}
+  const rate=num((state.tripCfg||{}).rate)||0;
+  const aoa=[['일자','현장','목적/메모','거리(km)','환산 유류비']];
+  list.forEach(t=>aoa.push([t.date||'',t.project||'',t.memo||'',num(t.km),rate?Math.round(num(t.km)*rate):'']));
+  const S=tripSum(list);
+  aoa.push(['','','합계',S.km,rate?S.cost:'']);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'운행일지');
+  XLSX.writeFile(wb,COMPANY.name+'_운행일지_'+localDate()+'.xlsx');
+  toast('⬇ 운행 '+list.length+'건 엑셀 저장됨');
+}
+/* ═══ v213-B ⏱ 현장 작업시간 ═══ */
+function workData(){state.workLogs=state.workLogs||[];return state.workLogs;}
+function workToday(pjName){
+  const d=localDate();
+  return workData().find(function(w){return w.project===pjName&&w.date===d&&!w.out;});
+}
+function workPunch(pjName){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  const now=new Date();
+  const hm=pad2(now.getHours())+':'+pad2(now.getMinutes());
+  const open=workToday(pjName);
+  if(!open){
+    workData().push({id:uid(),project:pjName,date:localDate(),in:hm,out:'',memo:''});
+    markDirty();render();toast('⏱ '+hm+' 작업 시작');
+    return {상태:'시작',시각:hm};
+  }
+  open.out=hm;
+  const mins=workMinutes(open);
+  markDirty();render();
+  toast('⏱ '+hm+' 종료 — 오늘 '+workHM(mins));
+  return {상태:'종료',시각:hm,분:mins};
+}
+function workMinutes(w){
+  if(!w||!w.in||!w.out)return 0;
+  const a=w.in.split(':'),b=w.out.split(':');
+  let m=(+b[0]*60+ +b[1])-(+a[0]*60+ +a[1]);
+  if(m<0)m+=1440;
+  return m;
+}
+function workHM(mins){
+  const h=Math.floor(mins/60),m=mins%60;
+  return (h?h+'시간 ':'')+(m?m+'분':(h?'':'0분'));
+}
+function workEditView(id,pjName){
+  const w=workData().find(x=>x.id===id);
+  if(!w){toast('작업시간 기록을 찾을 수 없어요');return;}
+  const input='width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px';
+  openModal('✏️ 작업시간 수정',
+    '<label style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">날짜</label><input type="date" id="wkDate" value="'+escapeAttr(w.date||localDate())+'" style="'+input+'">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><div><label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">시작</label><input type="time" id="wkIn" value="'+escapeAttr(w.in||'')+'" style="'+input+'"></div>'+
+    '<div><label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">종료</label><input type="time" id="wkOut" value="'+escapeAttr(w.out||'')+'" style="'+input+'"></div></div>'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">메모</label><input id="wkMemo" value="'+escapeAttr(w.memo||'')+'" style="'+input+'">'+
+    '<button class="clay" id="wkSave" style="width:100%;margin-top:12px;padding:11px">저장</button>',
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.getElementById('wkSave').onclick=function(){
+    const date=document.getElementById('wkDate').value;
+    const tin=document.getElementById('wkIn').value;
+    if(!date||!tin){toast('날짜와 시작 시간을 입력하세요');return;}
+    w.date=date;w.in=tin;w.out=document.getElementById('wkOut').value;w.memo=document.getElementById('wkMemo').value.trim();
+    markDirty();closeModal();workView(pjName);toast('⏱ 작업시간 수정됨');
+  };
+}
+function workView(pjName){
+  const all=workData().filter(function(w){return !pjName||w.project===pjName;})
+    .sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  const totalM=all.reduce(function(s,w){return s+workMinutes(w);},0);
+  const days=[...new Set(all.map(function(w){return w.date;}))].length;
+  const ym=localDate().slice(0,7);
+  const thisM=all.filter(function(w){return String(w.date||'').slice(0,7)===ym;}).reduce(function(s,w){return s+workMinutes(w);},0);
+  const tile=function(l,v,c){return '<div style="flex:1;min-width:92px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div></div>';};
+  const rows=all.slice(0,30).map(function(w,i){
+    const m=workMinutes(w);
+    return '<div style="display:grid;grid-template-columns:58px 1fr 96px 62px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+      '<div style="color:var(--muted)">'+String(w.date||'').slice(5)+'</div>'+
+      '<div style="min-width:0"><b>'+escapeHtml(w.project||'')+'</b></div>'+
+      '<div style="text-align:right;font-weight:700;color:'+(w.out?'var(--ink)':'#c2410c')+'">'+w.in+'~'+(w.out||'진행 중')+(w.out?'<div style="font-size:10px;color:var(--muted);font-weight:400">'+workHM(m)+'</div>':'')+'</div>'+
+      '<div style="display:flex;gap:2px"><button class="ghost tiny wkEdit" data-id="'+w.id+'" style="padding:6px 7px">✏️</button><button class="ghost tiny wkDel" data-id="'+w.id+'" style="padding:6px 7px">🗑</button></div>'+
+    '</div>';
+  }).join('');
+  openModal('⏱ 작업시간'+(pjName?' — '+pjName:''),
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('작업 일수',days+'일')+tile('누적 시간',workHM(totalM),'#1d4ed8')+tile('이번 달',workHM(thisM),'#15803d')+
+    '</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:58px 1fr 96px 62px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>현장</div><div style="text-align:right">시간</div><div></div></div>'+
+      (rows||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">기록이 없어요</div>')+
+    '</div>'+
+    '<p class="hint" style="margin-top:9px">현장 화면의 [⏱ 시작]/[⏱ 종료]로 찍습니다. 실제 투입 시간을 알면 다음 견적 단가가 정확해져요.</p>',
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .wkEdit').forEach(function(b){b.onclick=function(){workEditView(b.dataset.id,pjName);};});
+  document.querySelectorAll('#modalRoot .wkDel').forEach(function(b){b.onclick=function(){
+    state.workLogs=workData().filter(function(w){return w.id!==b.dataset.id;});markDirty();workView(pjName);};});
+  return {일수:days,분:totalM};
+}
+
+/* ═══ v212-A 🛡 하자보증서 PDF ═══ */
+async function buildWarrantyPDF(o){
+  await ensureJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'a4'});
+  const CW=1240,CH=1754;
+  window.__rptTexts=window.__rptTexts||[];
+  const c=document.createElement('canvas');c.width=CW;c.height=CH;
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,CW,CH);x.textBaseline='top';
+  const T=function(t,px,py,f,col){x.font=f||'26px sans-serif';x.fillStyle=col||'#111';x.fillText(String(t),px,py);try{window.__rptTexts.push(String(t));}catch(e){}};
+  // 테두리
+  x.strokeStyle='#0b4ea2';x.lineWidth=6;x.strokeRect(46,46,CW-92,CH-92);
+  x.strokeStyle='#b9cbe4';x.lineWidth=2;x.strokeRect(62,62,CW-124,CH-124);
+  T('하 자 보 증 서',CW/2-210,140,'bold 62px sans-serif','#0b4ea2');
+  x.fillStyle='#0b4ea2';x.fillRect(CW/2-190,222,380,4);
+  let y=310;
+  const rows=[['현 장 명',o.site],['공 사 내 용',o.work],['준 공 일',o.doneAt],['발 주 처',o.client||'—']];
+  x.lineWidth=2;x.strokeStyle='#c9d4e2';
+  rows.forEach(function(r){
+    x.strokeRect(110,y,CW-220,68);
+    x.fillStyle='#eef3fa';x.fillRect(110,y,250,68);
+    T(r[0],132,y+18,'bold 27px sans-serif','#0b4ea2');
+    T(String(r[1]||''),392,y+18,'27px sans-serif','#111');
+    y+=68;
+  });
+  y+=46;
+  T('■ 보증 기간',110,y,'bold 30px sans-serif','#0b4ea2');y+=52;
+  (o.items||[]).forEach(function(it){
+    x.strokeRect(110,y,CW-220,62);
+    x.beginPath();x.moveTo(560,y);x.lineTo(560,y+62);x.stroke();
+    x.beginPath();x.moveTo(860,y);x.lineTo(860,y+62);x.stroke();
+    T(it.name,132,y+16,'26px sans-serif','#111');
+    T(it.months+'개월',584,y+16,'bold 26px sans-serif','#0b4ea2');
+    T('~ '+(it.expiresAt||''),884,y+16,'25px sans-serif','#555');
+    y+=62;
+  });
+  y+=44;
+  T('위 공사에 대하여 아래와 같이 하자보수를 보증합니다.',110,y,'27px sans-serif','#222');y+=48;
+  T('· 보증 기간 내 시공상 하자는 무상으로 보수해 드립니다.',132,y,'25px sans-serif','#444');y+=42;
+  T('· 사용상 부주의·천재지변·타 업체 개조로 인한 손상은 제외됩니다.',132,y,'25px sans-serif','#444');y+=42;
+  T('· 하자 발생 시 아래 연락처로 알려주시면 신속히 방문하겠습니다.',132,y,'25px sans-serif','#444');
+  y+=110;
+  T(o.date,CW/2-90,y,'28px sans-serif','#333');y+=90;
+  T(COMPANY.name,CW/2-200,y,'bold 34px sans-serif','#111');
+  T('대표  '+COMPANY.owner+'   (인)',CW/2+60,y+6,'28px sans-serif','#111');
+  x.fillStyle='#f4f7fb';x.fillRect(62,CH-230,CW-124,168);
+  T('사업자등록번호 '+COMPANY.bizno+'  ·  '+COMPANY.business+' / '+COMPANY.type,110,CH-196,'25px sans-serif','#333');
+  T(COMPANY.addr,110,CH-152,'24px sans-serif','#555');
+  T('A/S 접수: '+COMPANY.tel,110,CH-110,'bold 26px sans-serif','#0b4ea2');
+  doc.addImage(c.toDataURL('image/jpeg',0.88),'JPEG',0,0,595,842);
+  doc.save(safeName(o.site)+' 하자보증서.pdf');
+  return {items:(o.items||[]).length};
+}
+function warrantyView(pjName){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  if(!p.doneAt){toast('준공(완료) 처리 후 발급할 수 있어요');return;}
+  const w=hjWarranty(p);
+  if(!w){toast('보증 정보를 계산할 수 없어요');return;}
+  const rows=w.items.map(function(it){
+    return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="flex:1">'+escapeHtml(it.name)+'</span><b>'+it.months+'개월</b><span style="color:var(--muted);font-size:11.5px">~'+it.expiresAt+'</span></div>';
+  }).join('');
+  const F=function(id,label,val,ph){return '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">';};
+  openModal('🛡 하자보증서 — '+pjName,
+    F('wrWork','공사 내용',(Array.isArray(p.phases)&&p.phases.length?p.phases.map(x=>typeof x==='string'?x:(x.title||x.name||'')).filter(Boolean).join(', '):pjName+' 공사'),'예: 욕실 리모델링 일체')+
+    F('wrClient','발주처·고객',(p.customer&&p.customer.name)||'','예: 홍길동 / ○○아파트 관리사무소')+
+    '<div style="font-size:12px;font-weight:800;margin:14px 0 4px">보증 기간 (법정 기준)</div>'+rows+
+    '<p class="hint" style="margin-top:9px">준공일 '+p.doneAt+' 기준입니다. A4 한 장으로 저장돼요 — 고객·관리사무소에 그대로 전달하시면 됩니다.</p>',
+    [{label:'🛡 보증서 PDF',cls:'clay',fn:async function(){
+        const o={site:pjName,work:document.getElementById('wrWork').value.trim(),
+          client:document.getElementById('wrClient').value.trim(),doneAt:p.doneAt,
+          items:w.items,date:new Date().toISOString().slice(0,10)};
+        closeModal();toast('🛡 보증서 만드는 중…');
+        try{await buildWarrantyPDF(o);toast('🛡 하자보증서 PDF 저장됨');}catch(e){toast('PDF 실패: '+(e.message||e));}
+      }},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  return {현장:pjName,항목:w.items.length};
+}
+/* ═══ v212-B 📦 견적 품목 세트 ═══ */
+const QSET_SEED=[
+  {id:'s_bath',name:'욕실 리모델링(기본)',items:[
+    {name:'철거·폐기물 처리',spec:'욕실 1개소',qty:1,price:0},
+    {name:'방수 (2회)',spec:'바닥·벽 하부',qty:1,price:0},
+    {name:'타일 시공',spec:'벽·바닥',qty:1,price:0},
+    {name:'양변기 교체',spec:'자재 포함',qty:1,price:0},
+    {name:'세면기·수전 교체',spec:'자재 포함',qty:1,price:0},
+    {name:'천장·환풍기',spec:'돔천장',qty:1,price:0},
+    {name:'실리콘 마감',spec:'전체',qty:1,price:0}]},
+  {id:'s_paper',name:'도배·장판',items:[
+    {name:'기존 벽지 제거·면정리',spec:'',qty:1,price:0},
+    {name:'실크 도배',spec:'평당',qty:1,price:0},
+    {name:'장판 시공',spec:'평당',qty:1,price:0},
+    {name:'걸레받이·마감',spec:'',qty:1,price:0}]},
+  {id:'s_pipe',name:'배관 공사',items:[
+    {name:'노후 배관 교체',spec:'m당',qty:1,price:0},
+    {name:'밸브·부속 교체',spec:'개소',qty:1,price:0},
+    {name:'배관 보온·마감',spec:'m당',qty:1,price:0},
+    {name:'누수 시험·확인',spec:'',qty:1,price:0}]}
+];
+function qsetData(){
+  state.quoteSets=state.quoteSets||[];
+  if(!state.quoteSets.length)state.quoteSets=JSON.parse(JSON.stringify(QSET_SEED));
+  return state.quoteSets;
+}
+function qsetApply(id){
+  const s=qsetData().find(function(x){return x.id===id;});
+  if(!s||!state.editingQuote){toast('세트를 적용할 수 없어요');return;}
+  const q=state.editingQuote;
+  q.items=(q.items||[]).filter(function(it){return String(it.name||'').trim()||num(it.price);});
+  const pb=state.priceBook||{};
+  s.items.forEach(function(it){
+    const learned=num(pb[it.name]);
+    q.items.push({name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)||learned||0});
+  });
+  markDirty();closeModal();render();
+  toast('📦 "'+s.name+'" '+s.items.length+'개 품목을 넣었어요 — 단가를 채워주세요');
+}
+function qsetSaveCurrent(){
+  const q=state.editingQuote;
+  if(!q||!(q.items||[]).some(function(it){return String(it.name||'').trim();})){toast('품목이 있는 견적에서 저장할 수 있어요');return;}
+  const nm=(prompt('세트 이름을 정해주세요','')||'').trim();
+  if(!nm)return;
+  qsetData().push({id:uid(),name:nm,items:q.items.filter(function(it){return String(it.name||'').trim();})
+    .map(function(it){return {name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)||0};})});
+  markDirty();toast('📦 "'+nm+'" 세트로 저장됨');
+  qsetView();
+}
+function qsetView(){
+  const sets=qsetData();
+  const rows=sets.map(function(s){
+    return '<div style="border:1px solid var(--line-soft);border-radius:11px;padding:11px;margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<div style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(s.name)+'</b>'+
+        '<div style="color:var(--muted);font-size:10.5px;margin-top:2px">'+s.items.length+'개 품목 · '+escapeHtml(s.items.slice(0,3).map(function(i){return i.name;}).join(', '))+(s.items.length>3?' 외':'')+'</div></div>'+
+        '<button class="clay tiny qsApply" data-id="'+s.id+'" style="padding:8px 11px;white-space:nowrap">넣기</button>'+
+        '<button class="ghost tiny qsDel" data-id="'+s.id+'" style="padding:8px 9px">🗑</button>'+
+      '</div></div>';
+  }).join('');
+  openModal('📦 품목 세트',
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">자주 쓰는 공사 품목을 한 번에 넣습니다. 단가는 <b>단가장에 학습된 값</b>이 있으면 자동으로 채워져요.</div>'+
+    (rows||'<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">세트가 없습니다</div>')+
+    (state.editingQuote?'<button class="ghost tiny" id="qsSave" style="width:100%;padding:10px;margin-top:6px">💾 지금 견적을 세트로 저장</button>':''),
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#modalRoot .qsApply').forEach(function(b){b.onclick=function(){qsetApply(b.dataset.id);};});
+  document.querySelectorAll('#modalRoot .qsDel').forEach(function(b){b.onclick=function(){
+    state.quoteSets=qsetData().filter(function(x){return x.id!==b.dataset.id;});markDirty();qsetView();};});
+  const sv=document.getElementById('qsSave');
+  if(sv)sv.onclick=qsetSaveCurrent;
+  return {세트:sets.length};
+}
+
+/* ═══ v211 📆 월말 마감 위저드 — 5단계로 이 달 정리 ═══ */
+function mcData(ym){
+  ym=ym||localDate().slice(0,7);
+  const pay=(state.payLog||[]).filter(x=>String(x.d||'').slice(0,7)===ym);
+  const recv=pay.reduce((s,x)=>s+num(x.amt),0);
+  const exp=(state.expenses||[]).filter(x=>String(x.date||'').slice(0,7)===ym);
+  const expSum=exp.reduce((s,x)=>s+num(x.amount),0);
+  // 미수: 진행/완료 현장 중 견적>수금
+  const due=[];
+  (state.projects||[]).forEach(function(p){
+    if(p.archived)return;
+    const st=projStats(p.name);
+    const rest=(st.est||0)-(st.recv||0);
+    if(st.est>0&&rest>0)due.push({name:p.name,est:st.est,recv:st.recv,rest:rest,stage:p.stage||0});
+  });
+  due.sort((a,b)=>b.rest-a.rest);
+  // 이 달 완료 현장
+  const done=(state.projects||[]).filter(p=>String(p.doneAt||'').slice(0,7)===ym);
+  // 관리소 청구 대기(완료·청구 상태)
+  let apt=[];
+  try{aptData();apt=(state.aptOrders||[]).filter(o=>(o.status==='done'||o.status==='billed')&&String(o.doneAt||o.date||'').slice(0,7)===ym);}catch(e){}
+  const aptSum=apt.reduce((s,o)=>s+num(o.amount),0);
+  // 진행 중 AS
+  const asOpen=(state.asLog||[]).filter(x=>x.status!=='done');
+  // 부가세
+  let vat=null;try{vat=vatPeriod();}catch(e){}
+  return {ym,recv,payCnt:pay.length,expSum,expCnt:exp.length,due,dueSum:due.reduce((s,x)=>s+x.rest,0),
+    done,apt,aptSum,asOpen,vat,profit:recv-expSum};
+}
+function mcText(ym){
+  const D=mcData(ym);
+  const [y,m]=D.ym.split('-');
+  const L=['['+COMPANY.name+'] '+(+m)+'월 마감 정리',''];
+  L.push('■ 돈');
+  L.push('· 수금 '+won(D.recv)+' ('+D.payCnt+'건)');
+  L.push('· 지출 '+(D.expCnt?won(D.expSum)+' ('+D.expCnt+'건)':'미입력'));
+  if(D.expCnt)L.push('· 남은 돈(대략) '+won(D.profit));
+  L.push('· 미수금 '+won(D.dueSum)+' ('+D.due.length+'곳)');
+  if(D.due.length){D.due.slice(0,5).forEach(function(x){L.push('   - '+x.name+' '+won(x.rest));});}
+  L.push('');
+  L.push('■ 현장');
+  L.push('· 이달 완료 '+D.done.length+'곳'+(D.done.length?': '+D.done.map(p=>p.name).join(', '):''));
+  if(D.apt.length)L.push('· 관리소 청구 대기 '+D.apt.length+'건 '+won(D.aptSum));
+  if(D.asOpen.length)L.push('· 진행 중 AS '+D.asOpen.length+'건');
+  if(D.vat){L.push('');L.push('■ 세금');L.push('· 부가세 D-'+D.vat.dday+' ('+D.vat.due+')');}
+  return L.join('\n');
+}
+function monthCloseView(step,ym){
+  const D=mcData(ym||(window.__mcYm||localDate().slice(0,7)));
+  window.__mcYm=D.ym;
+  const S=Math.min(5,Math.max(1,step||1));
+  const [y,m]=D.ym.split('-');
+  const p=state.projects||[];
+  const dot=function(i){return '<span style="width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;background:'+(i<S?'#15803d':i===S?'var(--clay)':'var(--paper-2)')+';color:'+(i<=S?'#fff':'var(--muted)')+';border:1px solid var(--line-soft)">'+(i<S?'✓':i)+'</span>';};
+  const bar='<div style="display:flex;gap:6px;align-items:center;justify-content:center;margin-bottom:12px">'+
+    [1,2,3,4,5].map(function(i){return dot(i)+(i<5?'<span style="flex:0 0 14px;height:2px;background:var(--line-soft)"></span>':'');}).join('')+'</div>';
+  const box=function(inner,tone){return '<div style="background:'+(tone||'var(--paper-2)')+';border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:10px">'+inner+'</div>';};
+  const kv=function(k,v,c){return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="color:var(--muted)">'+k+'</span><b style="color:'+(c||'var(--ink)')+'">'+v+'</b></div>';};
+  let body=bar,btns=[];
+  if(S===1){
+    body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">1. 이 달 수금 확인</div>'+
+      box(kv('수금',won(D.recv)+' ('+D.payCnt+'건)','#15803d')+kv('이달 완료 현장',D.done.length+'곳'))+
+      '<p class="hint">빠진 입금이 있으면 [💰 수금 이력]에서 채워주세요. 통장과 대조하면 정확합니다.</p>';
+    btns=[{label:'💰 수금 이력 열기',cls:'ghost',fn:function(){payHistoryView(true);}},
+          {label:'다음 →',cls:'clay',fn:function(){monthCloseView(2);}}];
+  }else if(S===2){
+    const rows=D.due.length?D.due.slice(0,8).map(function(x){
+      return '<div style="display:flex;gap:7px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
+        '<div style="flex:1;min-width:0"><b>'+escapeHtml(x.name)+'</b><div style="color:var(--muted);font-size:10.5px">계약 '+won(x.est)+' · 수금 '+won(x.recv)+'</div></div>'+
+        '<div style="font-weight:800;color:#dc2626">'+won(x.rest)+'</div>'+
+        '<button class="ghost tiny mcDue" data-pj="'+escapeAttr(x.name)+'" style="padding:6px 8px;font-size:10.5px">💬 요청</button></div>';
+    }).join(''):'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">미수금이 없습니다 👏</div>';
+    body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">2. 미수금 정리 — '+won(D.dueSum)+'</div>'+box(rows)+
+      '<p class="hint">[💬 요청]을 누르면 잔금 안내 문자를 만들어 드립니다.</p>';
+    btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(1);}},
+          {label:'다음 →',cls:'clay',fn:function(){monthCloseView(3);}}];
+  }else if(S===3){
+    body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">3. 지출·경비 확인</div>'+
+      box(kv('입력된 지출',D.expCnt?won(D.expSum)+' ('+D.expCnt+'건)':'없음',D.expCnt?'var(--ink)':'#dc2626')+
+          kv('남은 돈(대략)',D.expCnt?won(D.profit):'지출 입력 후 계산','#1d4ed8'))+
+      (D.expCnt?'':'<p class="hint">자재·인건비 지출이 하나도 없네요. 지출을 넣어야 이 달에 실제로 얼마 남았는지 나옵니다.</p>');
+    btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(2);}},
+          {label:'다음 →',cls:'clay',fn:function(){monthCloseView(4);}}];
+  }else if(S===4){
+    body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">4. 청구·세금계산서</div>'+
+      box(kv('관리소 청구 대기',D.apt.length?D.apt.length+'건 '+won(D.aptSum):'없음',D.apt.length?'#c2410c':'var(--muted)')+
+          (D.vat?kv('부가세 신고','D-'+D.vat.dday+' ('+D.vat.due+')',D.vat.dday<=14?'#dc2626':'var(--ink)'):''))+
+      '<p class="hint">관리소는 <b>월 마감</b>이 있습니다 — 이달 완료 건은 이번 주 안에 계산서를 넘기는 게 좋아요.</p>';
+    btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(3);}},
+          (D.apt.length?{label:'🏢 오더 이력',cls:'ghost',fn:function(){aptHistoryView(true);}}:null),
+          {label:'다음 →',cls:'clay',fn:function(){monthCloseView(5);}}].filter(Boolean);
+  }else{
+    body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">5. 마감 요약</div>'+
+      '<pre style="white-space:pre-wrap;background:var(--bg-soft,var(--paper-2));border:1px solid var(--line-soft);border-radius:12px;padding:12px;font-size:11.5px;line-height:1.7;font-family:inherit">'+escapeHtml(mcText(D.ym))+'</pre>'+
+      (D.asOpen.length?'<p class="hint">진행 중 AS '+D.asOpen.length+'건이 남아 있어요 — 다음 달로 넘기기 전에 한 번 확인해 보세요.</p>':'');
+    btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(4);}},
+          {label:'📋 복사',cls:'ghost',fn:function(){coworkCopy(mcText(D.ym),(+m)+'월 마감');}},
+          {label:'✅ 마감 완료',cls:'clay',fn:function(){
+            state.monthClosed=state.monthClosed||{};
+            state.monthClosed[D.ym]={at:new Date().toISOString(),recv:D.recv,exp:D.expSum,due:D.dueSum};
+            markDirty();closeModal();toast('📆 '+(+m)+'월 마감 완료 — 수고하셨습니다!');
+          }}];
+  }
+  const closed=(state.monthClosed||{})[D.ym];
+  openModal('📆 '+(+m)+'월 마감'+(closed?' (마감됨)':'')+' — '+S+'/5',body,btns.concat([{label:'닫기',cls:'ghost',fn:closeModal}]),true);
+  document.querySelectorAll('#modalRoot .mcDue').forEach(function(b){b.onclick=function(){
+    const pj=(state.projects||[]).find(x=>x.name===b.dataset.pj);
+    if(!pj){toast('현장을 찾을 수 없어요');return;}
+    const st=projStats(pj.name);
+    const rest=Math.max(0,(st.est||0)-(st.recv||0));
+    const nm=(pj.customer&&pj.customer.name)?pj.customer.name+'님':'고객님';
+    const text='['+COMPANY.name+'] '+nm+', 안녕하세요. 전병덕입니다.\n'+
+      pj.name+' 공사 잔금 '+won(rest)+' 안내드립니다.\n'+
+      '(계약 '+won(st.est)+' · 수금 '+won(st.recv)+')\n'+
+      '편하실 때 확인 부탁드립니다. 계좌는 회신드릴게요. 감사합니다.\n'+
+      COMPANY.name+' '+COMPANY.owner+' ('+COMPANY.tel+')';
+    const ph=pj.customer&&pj.customer.phone;
+    if(ph){hjSendSms(ph,text);toast('💬 잔금 안내 문자 준비됨');}
+    else{try{navigator.clipboard.writeText(text);toast('💬 문구 복사됨 — 고객 번호가 없어 붙여넣기로 보내세요');}catch(e){toast('복사 실패');}}
+  };});
+  return {단계:S,월:D.ym,수금:D.recv,미수:D.dueSum};
+}
+
+/* ═══ v210 📄 견적 이력 — 승·패 추적(같은 스타일) ═══ */
+const QT_STL={draft:['작성',' #f8fafc','#475569'],sent:['보냄','#eff6ff','#1d4ed8'],won:['수주','#f0fdf4','#15803d'],lost:['실패','#fef2f2','#dc2626']};
+function quoteStatus(q){
+  if(q&&q.result)return q.result;              // won | lost (수동)
+  if(q&&q.project)return 'won';                 // 현장 연결 = 수주로 간주
+  if(q&&q.sentAt)return 'sent';
+  return 'draft';
+}
+function qtBadge(st){
+  const m=QT_STL[st]||QT_STL.draft;
+  return '<span style="background:'+m[1].trim()+';color:'+m[2]+';border:1px solid '+m[2]+'22;border-radius:7px;padding:2px 8px;font-size:10.5px;font-weight:700;white-space:nowrap">'+m[0]+'</span>';
+}
+function quoteHistFilter(){
+  const F=window.__qtHist||{};
+  let list=(state.quotes||[]).slice();
+  if(F.from)list=list.filter(q=>(q.date||'')>=F.from);
+  if(F.to)list=list.filter(q=>(q.date||'')<=F.to);
+  if(F.st)list=list.filter(q=>quoteStatus(q)===F.st);
+  if(F.q){const s=F.q.toLowerCase();list=list.filter(q=>((q.title||'')+' '+(q.place||'')+' '+(q.project||'')).toLowerCase().includes(s));}
+  return list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function quoteMark(id,res){
+  const q=(state.quotes||[]).find(x=>x.id===id);
+  if(!q)return;
+  q.result=(q.result===res)?'':res;
+  if(res==='sent'){q.sentAt=q.sentAt?'':localDate();q.result='';}
+  markDirty();quoteHistoryView();
+  toast(res==='won'?'🎉 수주로 표시했어요':res==='lost'?'실패로 표시했어요':'보냄 표시를 바꿨어요');
+}
+function quoteHistoryView(reset){
+  if(reset||!window.__qtHist){
+    const t=new Date(),f=new Date();f.setMonth(f.getMonth()-6);
+    window.__qtHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),st:'',q:'',page:1};
+  }
+  const F=window.__qtHist;
+  const list=quoteHistFilter();
+  const amt=q=>quoteCalc(q).total;
+  const wonL=list.filter(q=>quoteStatus(q)==='won'), lostL=list.filter(q=>quoteStatus(q)==='lost');
+  const pend=list.filter(q=>['draft','sent'].includes(quoteStatus(q)));
+  const wonAmt=wonL.reduce((s,q)=>s+amt(q),0), pendAmt=pend.reduce((s,q)=>s+amt(q),0);
+  const decided=wonL.length+lostL.length;
+  const rate=decided?Math.round(wonL.length/decided*100):0;
+  const per=10,pages=Math.max(1,Math.ceil(list.length/per));
+  F.page=Math.min(Math.max(1,F.page),pages);
+  const rows=list.slice((F.page-1)*per,F.page*per);
+  const inp='padding:9px;border-radius:9px;border:1px solid var(--line-soft);font-size:12px;width:100%';
+  const tile=(l,v,c,s)=>'<div style="flex:1;min-width:92px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div>'+(s?'<div style="font-size:9.5px;color:var(--muted);margin-top:1px">'+s+'</div>':'')+'</div>';
+  const body=
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">보낸 견적이 수주로 이어졌는지 추적합니다. 결과를 눌러 표시해 두면 수주율이 쌓여요.</div>'+
+    '<div style="background:var(--paper-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:11px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">시작일</div><input type="date" id="qhFrom" value="'+F.from+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">종료일</div><input type="date" id="qhTo" value="'+F.to+'" style="'+inp+'"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:7px">'+
+        '<select id="qhSt" style="'+inp+';flex:1"><option value="">상태 전체</option>'+Object.keys(QT_STL).map(k=>'<option value="'+k+'"'+(F.st===k?' selected':'')+'>'+QT_STL[k][0]+'</option>').join('')+'</select>'+
+        '<input id="qhQ" value="'+escapeAttr(F.q)+'" placeholder="제목·장소 검색" style="'+inp+';flex:1.4">'+
+        '<button class="blue tiny" id="qhGo" style="flex:.6;padding:9px">조회</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('견적 건수',list.length+'건')+
+      tile('수주율',rate+'%','#15803d',decided?(wonL.length+'/'+decided+' 결정'):'결과 미표시')+
+      tile('수주 금액',hjMan(wonAmt),'#15803d')+
+      tile('대기 중',hjMan(pendAmt),'#1d4ed8',pend.length+'건')+
+    '</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:52px 52px 1fr 78px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>상태</div><div>제목 / 장소</div><div style="text-align:right">금액</div></div>'+
+      (rows.length?rows.map((q,i)=>{
+        const st=quoteStatus(q);
+        return '<div style="padding:10px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+        '<div style="display:grid;grid-template-columns:52px 52px 1fr 78px;gap:6px;align-items:center;font-size:11.5px">'+
+          '<div style="color:var(--muted)">'+String(q.date||'').slice(5)+'</div>'+
+          '<div>'+qtBadge(st)+'</div>'+
+          '<div style="min-width:0"><b>'+escapeHtml(q.title||'(제목 없음)')+'</b><div style="color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(q.place||q.project||'—')+'</div></div>'+
+          '<div style="text-align:right;font-weight:800;color:'+(st==='won'?'#15803d':st==='lost'?'#999':'var(--ink)')+'">'+won(amt(q))+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:5px;margin-top:7px">'+
+          '<button class="ghost tiny qhSent" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">'+(q.sentAt?'✓ 보냄':'📤 보냄')+'</button>'+
+          '<button class="'+(st==='won'?'moss':'ghost')+' tiny qhWon" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">🎉 수주</button>'+
+          '<button class="'+(st==='lost'?'clay':'ghost')+' tiny qhLost" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">✕ 실패</button>'+
+          '<button class="ghost tiny qhEdit" data-id="'+q.id+'" style="flex:.7;padding:6px;font-size:10.5px">✎</button>'+
+        '</div></div>';
+      }).join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 견적이 없어요</div>')+
+    '</div>'+
+    '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
+      '<button class="ghost tiny qhPg" data-p="'+(F.page-1)+'" '+(F.page<=1?'disabled':'')+' style="padding:7px 11px">‹</button>'+
+      Array.from({length:pages},(_,i)=>i+1).slice(Math.max(0,F.page-3),Math.max(0,F.page-3)+5).map(pn=>'<button class="'+(pn===F.page?'blue':'ghost')+' tiny qhPg" data-p="'+pn+'" style="padding:7px 12px">'+pn+'</button>').join('')+
+      '<button class="ghost tiny qhPg" data-p="'+(F.page+1)+'" '+(F.page>=pages?'disabled':'')+' style="padding:7px 11px">›</button>'+
+      '<span style="font-size:10.5px;color:var(--muted);margin-left:6px">10개씩 · '+pages+'쪽</span>'+
+    '</div>';
+  openModal('📄 견적 이력',body,[
+    {label:'⬇ 엑셀',cls:'clay',fn:function(){quoteHistExcel();}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rd=function(){F.from=document.getElementById('qhFrom').value;F.to=document.getElementById('qhTo').value;F.st=document.getElementById('qhSt').value;F.q=document.getElementById('qhQ').value.trim();};
+  document.getElementById('qhGo').onclick=function(){rd();F.page=1;quoteHistoryView();};
+  document.getElementById('qhQ').onkeydown=function(e){if(e.key==='Enter'){rd();F.page=1;quoteHistoryView();}};
+  document.querySelectorAll('#modalRoot .qhPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;quoteHistoryView();};});
+  document.querySelectorAll('#modalRoot .qhWon').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'won');};});
+  document.querySelectorAll('#modalRoot .qhLost').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'lost');};});
+  document.querySelectorAll('#modalRoot .qhSent').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'sent');};});
+  document.querySelectorAll('#modalRoot .qhEdit').forEach(b=>{b.onclick=function(){
+    const q=(state.quotes||[]).find(x=>x.id===b.dataset.id);
+    if(!q)return;
+    closeModal();state.editingQuote=JSON.parse(JSON.stringify(q));state.tab='quotemaker';render();
+  };});
+  return {건수:list.length,수주율:rate};
+}
+async function quoteHistExcel(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
+  const list=quoteHistFilter();
+  if(!list.length){toast('내보낼 견적이 없어요');return;}
+  const aoa=[['일자','상태','제목','장소/현장','금액','보낸날']];
+  list.forEach(q=>aoa.push([q.date||'',(QT_STL[quoteStatus(q)]||QT_STL.draft)[0],q.title||'',q.place||q.project||'',quoteCalc(q).total,q.sentAt||'']));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'견적이력');
+  XLSX.writeFile(wb,COMPANY.name+'_견적이력_'+localDate()+'.xlsx');
+  toast('⬇ 견적 '+list.length+'건 엑셀 저장됨');
+}
+
+/* ═══ v209 📊 수금 이력 · AS 이력 (오더 이력과 같은 스타일) ═══ */
+function payHistFilter(){
+  const F=window.__payHist||{};
+  let list=(state.payLog||[]).slice();
+  if(F.from)list=list.filter(x=>(x.d||'')>=F.from);
+  if(F.to)list=list.filter(x=>(x.d||'')<=F.to);
+  if(F.pj)list=list.filter(x=>x.project===F.pj);
+  if(F.q){const q=F.q.toLowerCase();list=list.filter(x=>String(x.project||'').toLowerCase().includes(q));}
+  return list.sort((a,b)=>(b.d||'').localeCompare(a.d||''));
+}
+function payHistoryView(reset){
+  if(reset||!window.__payHist){
+    const t=new Date(),f=new Date();f.setMonth(f.getMonth()-3);
+    window.__payHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),pj:'',q:'',page:1};
+  }
+  const F=window.__payHist;
+  const list=payHistFilter();
+  const total=list.reduce((s,x)=>s+num(x.amt),0);
+  const ym=localDate().slice(0,7);
+  const thisM=list.filter(x=>(x.d||'').slice(0,7)===ym).reduce((s,x)=>s+num(x.amt),0);
+  const pjs=[...new Set(list.map(x=>x.project))];
+  const per=10,pages=Math.max(1,Math.ceil(list.length/per));
+  F.page=Math.min(Math.max(1,F.page),pages);
+  const rows=list.slice((F.page-1)*per,F.page*per);
+  const allPj=[...new Set((state.payLog||[]).map(x=>x.project))].sort();
+  const inp='padding:9px;border-radius:9px;border:1px solid var(--line-soft);font-size:12px;width:100%';
+  const tile=(l,v,c,ar)=>'<div style="flex:1;min-width:96px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+' <span style="font-size:12px">'+(ar||'')+'</span></div></div>';
+  const body=
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">현장별 입금 내역을 조회합니다. 확인증을 다시 보낼 수도 있어요.</div>'+
+    '<div style="background:var(--paper-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:11px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">시작일</div><input type="date" id="phFrom" value="'+F.from+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">종료일</div><input type="date" id="phTo" value="'+F.to+'" style="'+inp+'"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:7px">'+
+        '<select id="phPj" style="'+inp+';flex:1.4"><option value="">현장 전체</option>'+allPj.map(p=>'<option value="'+escapeAttr(p)+'"'+(F.pj===p?' selected':'')+'>'+escapeHtml(p)+'</option>').join('')+'</select>'+
+        '<button class="ghost tiny" id="phReset" style="flex:.7;padding:9px">초기화</button>'+
+        '<button class="blue tiny" id="phGo" style="flex:.7;padding:9px">조회</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('입금 건수',list.length+'건')+
+      tile('총 수금',hjMan(total),'#15803d','↑')+
+      tile('이번 달',hjMan(thisM),'#1d4ed8','')+
+      tile('현장 수',pjs.length+'곳','#475569','')+
+    '</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:62px 1fr 92px 30px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>현장</div><div style="text-align:right">금액</div><div></div></div>'+
+      (rows.length?rows.map((x,i)=>'<div style="display:grid;grid-template-columns:62px 1fr 92px 30px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+        '<div style="color:var(--muted)">'+String(x.d||'').slice(5)+'</div>'+
+        '<div style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>'+escapeHtml(x.project||'')+'</b></div>'+
+        '<div style="text-align:right;font-weight:800;color:#15803d">+'+won(num(x.amt))+'</div>'+
+        '<button class="ghost tiny phMg" data-pj="'+escapeAttr(x.project||'')+'" style="padding:6px 7px">⋯</button>'+
+      '</div>').join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 입금이 없어요</div>')+
+    '</div>'+
+    '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
+      '<button class="ghost tiny phPg" data-p="'+(F.page-1)+'" '+(F.page<=1?'disabled':'')+' style="padding:7px 11px">‹</button>'+
+      Array.from({length:pages},(_,i)=>i+1).slice(Math.max(0,F.page-3),Math.max(0,F.page-3)+5).map(pn=>'<button class="'+(pn===F.page?'blue':'ghost')+' tiny phPg" data-p="'+pn+'" style="padding:7px 12px">'+pn+'</button>').join('')+
+      '<button class="ghost tiny phPg" data-p="'+(F.page+1)+'" '+(F.page>=pages?'disabled':'')+' style="padding:7px 11px">›</button>'+
+      '<span style="font-size:10.5px;color:var(--muted);margin-left:6px">10개씩 · '+pages+'쪽</span>'+
+    '</div>';
+  openModal('💰 수금 이력',body,[
+    {label:'⬇ 엑셀',cls:'clay',fn:function(){payHistExcel();}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rd=function(){F.from=phFrom.value;F.to=phTo.value;F.pj=phPj.value;F.q='';};
+  const phFrom=document.getElementById('phFrom'),phTo=document.getElementById('phTo'),phPj=document.getElementById('phPj');
+  document.getElementById('phGo').onclick=function(){rd();F.page=1;payHistoryView();};
+  document.getElementById('phReset').onclick=function(){payHistoryView(true);};
+  document.querySelectorAll('#modalRoot .phPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;payHistoryView();};});
+  document.querySelectorAll('#modalRoot .phMg').forEach(b=>{b.onclick=function(){recvQuickView(b.dataset.pj,function(){payHistoryView();});};});
+  return {건수:list.length,합계:total};
+}
+async function payHistExcel(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
+  const list=payHistFilter();
+  if(!list.length){toast('내보낼 입금이 없어요');return;}
+  const aoa=[['일자','현장','금액']];
+  list.forEach(x=>aoa.push([x.d||'',x.project||'',num(x.amt)]));
+  aoa.push(['','합계',list.reduce((s,x)=>s+num(x.amt),0)]);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'수금이력');
+  XLSX.writeFile(wb,COMPANY.name+'_수금이력_'+localDate()+'.xlsx');
+  toast('⬇ 수금 '+list.length+'건 엑셀 저장됨');
+}
+const AS_STL={open:['진행중','#fef2f2','#dc2626'],done:['완료','#f0fdf4','#15803d']};
+function asStBadge(st){
+  const m=AS_STL[st]||AS_STL.open;
+  return '<span style="background:'+m[1]+';color:'+m[2]+';border:1px solid '+m[2]+'22;border-radius:7px;padding:2px 8px;font-size:10.5px;font-weight:700;white-space:nowrap">'+m[0]+'</span>';
+}
+function asHistFilter(){
+  const F=window.__asHist||{};
+  let list=(state.asLog||[]).slice();
+  if(F.from)list=list.filter(x=>(x.date||'')>=F.from);
+  if(F.to)list=list.filter(x=>(x.date||'')<=F.to);
+  if(F.st)list=list.filter(x=>F.st==='open'?x.status!=='done':x.status==='done');
+  if(F.q){const q=F.q.toLowerCase();list=list.filter(x=>((x.project||'')+' '+(x.text||'')).toLowerCase().includes(q));}
+  return list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function asHistoryView(reset){
+  if(reset||!window.__asHist){
+    const t=new Date(),f=new Date();f.setMonth(f.getMonth()-6);
+    window.__asHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),st:'',q:'',page:1};
+  }
+  const F=window.__asHist;
+  const list=asHistFilter();
+  const openN=list.filter(x=>x.status!=='done').length;
+  const doneN=list.length-openN;
+  const ym=localDate().slice(0,7);
+  const thisM=list.filter(x=>(x.date||'').slice(0,7)===ym).length;
+  const per=10,pages=Math.max(1,Math.ceil(list.length/per));
+  F.page=Math.min(Math.max(1,F.page),pages);
+  const rows=list.slice((F.page-1)*per,F.page*per);
+  const inp='padding:9px;border-radius:9px;border:1px solid var(--line-soft);font-size:12px;width:100%';
+  const tile=(l,v,c)=>'<div style="flex:1;min-width:90px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div></div>';
+  const body=
+    '<div style="background:var(--paper-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:11px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">시작일</div><input type="date" id="ashFrom" value="'+F.from+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">종료일</div><input type="date" id="ashTo" value="'+F.to+'" style="'+inp+'"></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:7px">'+
+        '<select id="ashSt" style="'+inp+';flex:1"><option value="">상태 전체</option><option value="open"'+(F.st==='open'?' selected':'')+'>진행중</option><option value="done"'+(F.st==='done'?' selected':'')+'>완료</option></select>'+
+        '<input id="ashQ" value="'+escapeAttr(F.q)+'" placeholder="현장·증상 검색" style="'+inp+';flex:1.4">'+
+        '<button class="blue tiny" id="ashGo" style="flex:.6;padding:9px">조회</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('접수 건수',list.length+'건')+
+      tile('진행중',openN+'건','#dc2626')+
+      tile('완료',doneN+'건','#15803d')+
+      tile('이번 달',thisM+'건','#1d4ed8')+
+    '</div>'+
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:58px 62px 1fr 30px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>상태</div><div>현장 / 증상</div><div></div></div>'+
+      (rows.length?rows.map((x,i)=>'<div style="display:grid;grid-template-columns:58px 62px 1fr 30px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+        '<div style="color:var(--muted)">'+String(x.date||'').slice(5)+'</div>'+
+        '<div>'+asStBadge(x.status)+'</div>'+
+        '<div style="min-width:0"><b>'+escapeHtml(x.project||'')+'</b><div style="color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(x.text||'')+'</div></div>'+
+        '<button class="ghost tiny ashMg" style="padding:6px 7px">⋯</button>'+
+      '</div>').join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 AS가 없어요</div>')+
+    '</div>'+
+    '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
+      '<button class="ghost tiny ashPg" data-p="'+(F.page-1)+'" '+(F.page<=1?'disabled':'')+' style="padding:7px 11px">‹</button>'+
+      Array.from({length:pages},(_,i)=>i+1).slice(Math.max(0,F.page-3),Math.max(0,F.page-3)+5).map(pn=>'<button class="'+(pn===F.page?'blue':'ghost')+' tiny ashPg" data-p="'+pn+'" style="padding:7px 12px">'+pn+'</button>').join('')+
+      '<button class="ghost tiny ashPg" data-p="'+(F.page+1)+'" '+(F.page>=pages?'disabled':'')+' style="padding:7px 11px">›</button>'+
+      '<span style="font-size:10.5px;color:var(--muted);margin-left:6px">10개씩 · '+pages+'쪽</span>'+
+    '</div>';
+  openModal('🛠 AS 이력',body,[
+    {label:'⬇ 엑셀',cls:'clay',fn:function(){asHistExcel();}},
+    {label:'🔧 AS 관리로',cls:'ghost',fn:function(){asManage();}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rd=function(){F.from=document.getElementById('ashFrom').value;F.to=document.getElementById('ashTo').value;F.st=document.getElementById('ashSt').value;F.q=document.getElementById('ashQ').value.trim();};
+  document.getElementById('ashGo').onclick=function(){rd();F.page=1;asHistoryView();};
+  document.getElementById('ashQ').onkeydown=function(e){if(e.key==='Enter'){rd();F.page=1;asHistoryView();}};
+  document.querySelectorAll('#modalRoot .ashPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;asHistoryView();};});
+  document.querySelectorAll('#modalRoot .ashMg').forEach(b=>{b.onclick=function(){asManage();};});
+  return {건수:list.length,진행:openN};
+}
+async function asHistExcel(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
+  const list=asHistFilter();
+  if(!list.length){toast('내보낼 AS가 없어요');return;}
+  const aoa=[['일자','상태','현장','증상/내용']];
+  list.forEach(x=>aoa.push([x.date||'',(AS_STL[x.status]||AS_STL.open)[0],x.project||'',x.text||'']));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'AS이력');
+  XLSX.writeFile(wb,COMPANY.name+'_AS이력_'+localDate()+'.xlsx');
+  toast('⬇ AS '+list.length+'건 엑셀 저장됨');
+}
+
+/* ═══ v208 📊 오더 이력 — 필터·요약 타일·표(스크린샷 스타일) ═══ */
+const APT_STL={recv:['접수','#eff6ff','#1d4ed8'],visit:['방문예정','#ecfeff','#0e7490'],work:['작업중','#fff7ed','#c2410c'],done:['완료','#f0fdf4','#15803d'],billed:['청구','#f5f3ff','#6d28d9'],paid:['입금완료','#f1f5f9','#475569']};
+function aptStBadge(st){
+  const m=APT_STL[st]||['?','#f1f5f9','#475569'];
+  return '<span style="background:'+m[1]+';color:'+m[2]+';border:1px solid '+m[2]+'22;border-radius:7px;padding:2px 8px;font-size:10.5px;font-weight:700;white-space:nowrap">'+m[0]+'</span>';
+}
+function aptHistFilter(){
+  const F=window.__aptHist||{};
+  aptData();
+  let list=state.aptOrders.slice();
+  if(F.from)list=list.filter(o=>(o.date||'')>=F.from);
+  if(F.to)list=list.filter(o=>(o.date||'')<=F.to);
+  if(F.office)list=list.filter(o=>o.officeId===F.office);
+  if(F.st)list=list.filter(o=>o.status===F.st);
+  if(F.q){const q=F.q.toLowerCase();list=list.filter(o=>((o.unit||'')+' '+(o.text||'')).toLowerCase().includes(q));}
+  return list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function aptHistoryView(reset){
+  aptData();
+  if(reset||!window.__aptHist){
+    const t=new Date(),f=new Date();f.setMonth(f.getMonth()-1);
+    window.__aptHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),office:'',st:'',q:'',page:1};
+  }
+  const F=window.__aptHist;
+  const list=aptHistFilter();
+  const doneAmt=list.filter(o=>['done','billed','paid'].includes(o.status)).reduce((s,o)=>s+num(o.amount),0);
+  const unpaid=list.filter(o=>o.status==='billed'||o.status==='done').reduce((s,o)=>s+num(o.amount),0);
+  const paid=list.filter(o=>o.status==='paid').reduce((s,o)=>s+num(o.amount),0);
+  const per=10, pages=Math.max(1,Math.ceil(list.length/per));
+  F.page=Math.min(Math.max(1,F.page),pages);
+  const rows=list.slice((F.page-1)*per,F.page*per);
+  const inp='padding:9px;border-radius:9px;border:1px solid var(--line-soft);font-size:12px;width:100%';
+  const tile=function(l,v,c,ar){return '<div style="flex:1;min-width:96px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+' <span style="font-size:12px">'+(ar||'')+'</span></div></div>';};
+  const body=
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">단지별 오더 변동 내역을 조회하고, 상태·금액을 한눈에 확인합니다.</div>'+
+    // 필터 카드
+    '<div style="background:var(--paper-2);border:1px solid var(--line-soft);border-radius:12px;padding:11px;margin-bottom:11px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">시작일</div><input type="date" id="ahFrom" value="'+F.from+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">종료일</div><input type="date" id="ahTo" value="'+F.to+'" style="'+inp+'"></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">단지</div><select id="ahOff" style="'+inp+'"><option value="">전체</option>'+state.aptOffices.map(o=>'<option value="'+o.id+'"'+(F.office===o.id?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('')+'</select></div>'+
+        '<div><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px">상태</div><select id="ahSt" style="'+inp+'"><option value="">전체</option>'+Object.keys(APT_STL).map(k=>'<option value="'+k+'"'+(F.st===k?' selected':'')+'>'+APT_STL[k][0]+'</option>').join('')+'</select></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:7px">'+
+        '<input id="ahQ" value="'+escapeAttr(F.q)+'" placeholder="동·호 / 작업 내용 검색" style="'+inp+';flex:2">'+
+        '<button class="ghost tiny" id="ahReset" style="flex:.8;padding:9px">초기화</button>'+
+        '<button class="blue tiny" id="ahGo" style="flex:.8;padding:9px">조회</button>'+
+      '</div>'+
+    '</div>'+
+    // 요약 타일
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
+      tile('조회 건수',list.length+'건','var(--ink)','')+
+      tile('작업 완료 금액',hjMan(doneAmt),'#15803d','↑')+
+      tile('미수(청구·완료)',hjMan(unpaid),'#dc2626','↓')+
+      tile('입금 완료',hjMan(paid),'#1d4ed8','✓')+
+    '</div>'+
+    // 표
+    '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
+      '<div style="display:grid;grid-template-columns:58px 66px 1fr 74px 30px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700">'+
+        '<div>일자</div><div>상태</div><div>단지 · 동호 / 작업</div><div style="text-align:right">금액</div><div></div>'+
+      '</div>'+
+      (rows.length?rows.map(function(o,i){
+        return '<div style="display:grid;grid-template-columns:58px 66px 1fr 74px 30px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
+          '<div style="color:var(--muted)">'+String(o.date||'').slice(5)+'</div>'+
+          '<div>'+aptStBadge(o.status)+'</div>'+
+          '<div style="min-width:0"><b>'+escapeHtml(aptOfficeName(o.officeId))+'</b> '+escapeHtml(o.unit||'')+'<div style="color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(o.text||'')+'</div></div>'+
+          '<div style="text-align:right;font-weight:800;color:'+(o.status==='paid'?'#1d4ed8':(num(o.amount)?'var(--ink)':'#999'))+'">'+(num(o.amount)?won(num(o.amount)):'—')+'</div>'+
+          '<button class="ghost tiny ahMg" data-off="'+o.officeId+'" style="padding:6px 7px">⋯</button>'+
+        '</div>';
+      }).join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 오더가 없어요</div>')+
+    '</div>'+
+    // 페이지네이션
+    '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
+      '<button class="ghost tiny ahPg" data-p="'+(F.page-1)+'" '+(F.page<=1?'disabled':'')+' style="padding:7px 11px">‹</button>'+
+      Array.from({length:pages},(_,i)=>i+1).slice(Math.max(0,F.page-3),Math.max(0,F.page-3)+5).map(pn=>'<button class="'+(pn===F.page?'blue':'ghost')+' tiny ahPg" data-p="'+pn+'" style="padding:7px 12px">'+pn+'</button>').join('')+
+      '<button class="ghost tiny ahPg" data-p="'+(F.page+1)+'" '+(F.page>=pages?'disabled':'')+' style="padding:7px 11px">›</button>'+
+      '<span style="font-size:10.5px;color:var(--muted);margin-left:6px">10개씩 · '+pages+'쪽</span>'+
+    '</div>';
+  openModal('📊 오더 이력',body,[
+    {label:'⬇ 엑셀 다운로드',cls:'clay',fn:function(){aptHistExcel();}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const rd=function(){
+    F.from=document.getElementById('ahFrom').value;
+    F.to=document.getElementById('ahTo').value;
+    F.office=document.getElementById('ahOff').value;
+    F.st=document.getElementById('ahSt').value;
+    F.q=document.getElementById('ahQ').value.trim();
+  };
+  document.getElementById('ahGo').onclick=function(){rd();F.page=1;aptHistoryView();};
+  document.getElementById('ahQ').onkeydown=function(e){if(e.key==='Enter'){rd();F.page=1;aptHistoryView();}};
+  document.getElementById('ahReset').onclick=function(){aptHistoryView(true);};
+  document.querySelectorAll('#modalRoot .ahPg').forEach(function(b){b.onclick=function(){rd();F.page=+b.dataset.p;aptHistoryView();};});
+  document.querySelectorAll('#modalRoot .ahMg').forEach(function(b){b.onclick=function(){aptOrderManage(b.dataset.off);};});
+  return {건수:list.length,쪽:pages};
+}
+async function aptHistExcel(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return;}
+  const list=aptHistFilter();
+  if(!list.length){toast('내보낼 오더가 없어요');return;}
+  const aoa=[['일자','상태','단지','동·호','작업 내용','금액','완료일']];
+  list.forEach(function(o){
+    aoa.push([o.date||'',(APT_STL[o.status]||['?'])[0],aptOfficeName(o.officeId),o.unit||'',o.text||'',num(o.amount)||0,o.doneAt||'']);
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'오더이력');
+  XLSX.writeFile(wb,COMPANY.name+'_오더이력_'+localDate()+'.xlsx');
+  toast('⬇ 오더 이력 '+list.length+'건 엑셀 저장됨');
+}
+
+/* ═══ v207 💰 관리사무소 표준 단가표 ═══ */
+const APT_RATE_SEED=[
+  {name:'세대 앵글밸브 교체',spec:'13mm·부속 포함',price:0,note:'냉·온수 각 1개소'},
+  {name:'세대 계량기 밸브 교체',spec:'13mm',price:0,note:''},
+  {name:'양변기 부속 교체',spec:'후레쉬밸브·볼탑 등',price:0,note:'부품비 별도 가능'},
+  {name:'세면기 배수·팝업 교체',spec:'1개소',price:0,note:''},
+  {name:'싱크 배수 교체',spec:'1개소',price:0,note:''},
+  {name:'누수 점검(간단)',spec:'세대 1회 방문',price:0,note:'수리 시 점검비 차감'},
+  {name:'배관 보온 마감',spec:'m당',price:0,note:'보온재+테이프'},
+  {name:'실리콘 코킹',spec:'개소당',price:0,note:'욕실·주방'},
+  {name:'공용부 배관 점검',spec:'구역 1회',price:0,note:'지하·옥상 등'},
+  {name:'긴급 출장(야간·주말)',spec:'기본 출장',price:0,note:'작업비 별도'}
+];
+function aptRatesData(){
+  state.aptRates=state.aptRates||[];
+  if(!state.aptRates.length){
+    state.aptRates=APT_RATE_SEED.map(function(r){return Object.assign({id:uid()},r);});
+  }
+  return state.aptRates;
+}
+function aptRatesText(){
+  const L=['['+COMPANY.name+'] 표준 단가표 ('+localDate()+')',''];
+  aptRatesData().forEach(function(r,i){
+    L.push((i+1)+'. '+r.name+(r.spec?' ('+r.spec+')':'')+' — '+(num(r.price)?won(num(r.price)):'협의')+(r.note?' · '+r.note:''));
+  });
+  L.push('');
+  L.push('· 부가세 별도 · 자재 실비 별도(표기 항목 제외)');
+  L.push('· 표에 없는 작업·대형 공사는 현장 확인 후 견적');
+  L.push('· 문의: '+COMPANY.owner+' '+COMPANY.tel);
+  return L.join('\n');
+}
+async function buildAptRatesPDF(){
+  await ensureJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'a4'});
+  const W=595,H=842,CW=1240,CH=1754;
+  window.__rptTexts=window.__rptTexts||[];
+  const rates=aptRatesData();
+  const per=14;
+  const pages=Math.max(1,Math.ceil(rates.length/per));
+  for(let pi=0;pi<pages;pi++){
+    const c=document.createElement('canvas');c.width=CW;c.height=CH;
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,CW,CH);x.textBaseline='top';
+    const T=function(t,px,py,f,col){x.font=f||'26px sans-serif';x.fillStyle=col||'#111';x.fillText(String(t),px,py);try{window.__rptTexts.push(String(t));}catch(e){}};
+    x.fillStyle='#0b4ea2';x.fillRect(0,0,CW,140);
+    T('표 준 단 가 표',70,40,'bold 54px sans-serif','#fff');
+    T(COMPANY.name+'  ·  '+localDate(),CW-560,58,'26px sans-serif','#dbe9ff');
+    let y=190;
+    // 표 머리
+    const cols=[70,150,760,1000,CW-70];
+    x.fillStyle='#eef3fa';x.fillRect(cols[0],y,cols[4]-cols[0],58);
+    x.strokeStyle='#c9d4e2';x.lineWidth=2;x.strokeRect(cols[0],y,cols[4]-cols[0],58);
+    T('No',cols[0]+18,y+14,'bold 26px sans-serif','#0b4ea2');
+    T('항목 / 규격',cols[1]+14,y+14,'bold 26px sans-serif','#0b4ea2');
+    T('단가',cols[2]+14,y+14,'bold 26px sans-serif','#0b4ea2');
+    T('비고',cols[3]+14,y+14,'bold 26px sans-serif','#0b4ea2');
+    y+=58;
+    rates.slice(pi*per,pi*per+per).forEach(function(r,i){
+      const rh=92;
+      x.strokeRect(cols[0],y,cols[4]-cols[0],rh);
+      [cols[1],cols[2],cols[3]].forEach(function(cx2){x.beginPath();x.moveTo(cx2,y);x.lineTo(cx2,y+rh);x.stroke();});
+      T(String(pi*per+i+1),cols[0]+22,y+30,'26px sans-serif','#333');
+      T(r.name,cols[1]+14,y+14,'bold 27px sans-serif','#111');
+      if(r.spec)T(r.spec,cols[1]+14,y+52,'23px sans-serif','#667');
+      T(num(r.price)?won(num(r.price)):'협의',cols[2]+14,y+30,'bold 28px sans-serif',num(r.price)?'#0b4ea2':'#999');
+      if(r.note)T(r.note,cols[3]+14,y+30,'23px sans-serif','#555');
+      y+=rh;
+    });
+    if(pi===pages-1){
+      y+=40;
+      T('· 부가세 별도 / 자재 실비 별도(표기 항목 제외)',70,y,'25px sans-serif','#555');y+=44;
+      T('· 표에 없는 작업·대형 공사는 현장 확인 후 별도 견적드립니다',70,y,'25px sans-serif','#555');y+=44;
+      T('· 접수: 전화·문자 '+COMPANY.tel+' (평일 08:30~18:30, 긴급 시 야간 가능)',70,y,'25px sans-serif','#555');
+      x.fillStyle='#f4f7fb';x.fillRect(0,CH-170,CW,170);
+      T(COMPANY.name+'  ·  대표 '+COMPANY.owner+'  ·  사업자 '+COMPANY.bizno,70,CH-132,'26px sans-serif','#333');
+      T(COMPANY.addr,70,CH-88,'24px sans-serif','#555');
+    }
+    if(pi>0)doc.addPage();
+    doc.addImage(c.toDataURL('image/jpeg',0.86),'JPEG',0,0,W,H);
+  }
+  doc.save(COMPANY.name+' 표준단가표.pdf');
+  return {pages:pages,items:rates.length};
+}
+function aptRatesView(){
+  const rates=aptRatesData();
+  const row=function(r){
+    return '<div class="rateRow" data-id="'+r.id+'" style="display:flex;gap:5px;margin-bottom:6px;align-items:center">'+
+      '<input class="rN" value="'+escapeAttr(r.name)+'" placeholder="항목" style="flex:2.2;padding:9px;border-radius:8px;border:1px solid var(--line-soft);font-size:12.5px">'+
+      '<input class="rS" value="'+escapeAttr(r.spec||'')+'" placeholder="규격" style="flex:1.3;padding:9px;border-radius:8px;border:1px solid var(--line-soft);font-size:12px">'+
+      '<input class="rP" value="'+(num(r.price)?num(r.price).toLocaleString('ko-KR'):'')+'" placeholder="단가" inputmode="numeric" style="flex:1.1;padding:9px;border-radius:8px;border:1px solid var(--line-soft);font-size:12.5px;text-align:right">'+
+      '<button class="ghost tiny rDel" style="padding:8px 9px">🗑</button></div>';
+  };
+  openModal('💰 표준 단가표',
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">관리사무소에 이 표를 주면, 견적 절차 없이 <b>바로 발주</b>가 옵니다. 단가는 사장님 기준으로 채워주세요(빈칸은 "협의"로 인쇄).</div>'+
+    '<div id="rateList">'+rates.map(row).join('')+'</div>'+
+    '<button class="ghost tiny" id="rateAdd" style="width:100%;padding:9px;margin-top:4px">＋ 항목 추가</button>',
+    [{label:'📄 단가표 PDF',cls:'clay',fn:async function(){
+        aptRatesSave();closeModal();toast('📄 단가표 만드는 중…');
+        try{const r=await buildAptRatesPDF();toast('📄 단가표 PDF 저장됨 — '+r.items+'항목 '+r.pages+'쪽');}
+        catch(e){toast('PDF 실패: '+(e.message||e));}
+      }},
+     {label:'📋 문자용 복사',cls:'ghost',fn:function(){aptRatesSave();coworkCopy(aptRatesText(),'단가표');}},
+     {label:'저장',cls:'ghost',fn:function(){aptRatesSave();closeModal();toast('💰 단가표 저장됨');}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const bind=function(){
+    document.querySelectorAll('#modalRoot .rDel').forEach(function(b){b.onclick=function(){b.closest('.rateRow').remove();};});
+  };
+  bind();
+  document.getElementById('rateAdd').onclick=function(){
+    const d=document.createElement('div');
+    d.innerHTML=row({id:uid(),name:'',spec:'',price:0,note:''});
+    document.getElementById('rateList').appendChild(d.firstChild);
+    bind();
+  };
+}
+function aptRatesSave(){
+  const out=[];
+  document.querySelectorAll('#modalRoot .rateRow').forEach(function(rw){
+    const name=rw.querySelector('.rN').value.trim();
+    if(!name)return;
+    const old=(state.aptRates||[]).find(function(x){return x.id===rw.dataset.id;})||{};
+    out.push({id:rw.dataset.id||uid(),name:name,
+      spec:rw.querySelector('.rS').value.trim(),
+      price:num(rw.querySelector('.rP').value.replace(/[^\d]/g,'')),
+      note:old.note||''});
+  });
+  if(out.length){state.aptRates=out;markDirty();}
+}
+
+function receiptText(p,entry){
+  const nm=(p&&p.customer&&p.customer.name)?p.customer.name+'님':'고객님';
+  const st=projStats(p.name);
+  const L=['['+COMPANY.name+'] 입금 확인'];
+  L.push(nm+', '+entry.d+' '+won(entry.amt)+' 입금 확인되었습니다. 감사합니다.');
+  if(st.est>0){
+    L.push('');
+    L.push('· 누계 수금: '+won(st.recv)+' / 계약 '+won(st.est));
+    const rest=Math.max(0,st.est-st.recv);
+    L.push(rest>0?('· 잔액: '+won(rest)):'· 잔금까지 모두 정리되었습니다 🙏');
+  }
+  L.push('');
+  L.push('공사 잘 마무리하겠습니다.');
+  L.push(COMPANY.name+' '+COMPANY.owner+' ('+COMPANY.tel+')');
+  return L.join('\n');
+}
+async function sendPaymentReceipt(pjName,entry){
+  const p=(state.projects||[]).find(function(x){return x.name===pjName;});
+  if(!p){toast('현장을 찾을 수 없어요');return;}
+  if(!entry){
+    const mine=(state.payLog||[]).filter(function(x){return x.project===pjName;});
+    if(!mine.length){toast('이 현장의 입금 기록이 없어요 — 먼저 [💰 입금 기록]을 해주세요');return;}
+    entry=mine[mine.length-1];
+  }
+  const text=receiptText(p,entry);
+  const ph=p.customer&&p.customer.phone;
+  if(ph){hjSendSms(ph,text);return;}
+  try{
+    if(navigator.share){await navigator.share({text,title:'입금 확인'});return;}
+    await navigator.clipboard.writeText(text);toast('🧾 확인증이 복사됨 — 카톡·문자에 붙여넣으세요');
+  }catch(e){if(e&&e.name!=='AbortError'){try{await navigator.clipboard.writeText(text);toast('🧾 복사했어요');}catch(e2){toast('공유 실패');}}}
+}
+async function sendDirections(){
+  const enc=encodeURIComponent(COMPANY.addr||COMPANY.name);
+  const text=`[${COMPANY.name}] 오시는 길\n${COMPANY.addr}\n\n카카오맵: https://map.kakao.com/link/search/${enc}\n네이버지도: https://map.naver.com/p/search/${enc}\n\n전화 ${COMPANY.tel}`;
+  try{
+    if(navigator.share){await navigator.share({text,title:`${COMPANY.name} 오시는 길`});return;}
+    await navigator.clipboard.writeText(text);toast('📍 오시는 길이 복사됨 — 카톡·문자에 붙여넣으세요');
+  }catch(e){if(e&&e.name!=='AbortError'){try{await navigator.clipboard.writeText(text);toast('📍 복사했어요');}catch(e2){toast('공유 실패');}}}
+}
+async function sendBizOne(which){
+  const map={img1:['사업자등록증',__biz.img1],img3:['통장사본',__biz.img3],img2:['명함',__biz.img2]};
+  const pair=map[which]||[];const label=pair[0],durl=pair[1];
+  if(!durl){toast((label||'해당')+' 사진을 먼저 등록하세요 — 아래 칸의 [사진 변경]');return;}
+  const f=dataURLtoFile(durl,`${COMPANY.name}_${label}.jpg`);
+  const text=`[${COMPANY.name}] ${label}입니다.\n대표 ${COMPANY.owner} · ${COMPANY.tel}`;
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],text,title:`${COMPANY.name} ${label}`});return;}
+    if(navigator.share){await navigator.share({text,title:label});toast('이 폰은 사진 공유가 안 돼 글만 보냈어요 — [이미지 저장] 후 첨부하세요');return;}
+    const a=document.createElement('a');a.href=durl;a.download=`${COMPANY.name}_${label}.jpg`;document.body.appendChild(a);a.click();a.remove();
+    try{await navigator.clipboard.writeText(text);}catch(e){}
+    toast('공유 미지원 — 이미지 저장+글 복사했어요');
+  }catch(e){if(e&&e.name!=='AbortError')toast('보내기 취소/오류');}
+}
 function smsBiz(){ const t=curBizText(); try{location.href='sms:?body='+encodeURIComponent(t);}catch(e){toast('문자앱을 열 수 없습니다(PC).');} }
 function saveBizImages(){
   let n=0;
-  [['img1','사업자등록증'],['img2','명함']].forEach(([k,nm])=>{ if(__biz[k]){ const a=document.createElement('a');a.href=__biz[k];a.download=`${COMPANY.name}_${nm}.jpg`;document.body.appendChild(a);a.click();a.remove();n++; } });
+  [['img1','사업자등록증'],['img3','통장사본'],['img2','명함']].forEach(([k,nm])=>{ if(__biz[k]){ const a=document.createElement('a');a.href=__biz[k];a.download=`${COMPANY.name}_${nm}.jpg`;document.body.appendChild(a);a.click();a.remove();n++; } });
   (__biz.extras||[]).forEach((d,i)=>{const a=document.createElement('a');a.href=d;a.download=`${COMPANY.name}_사진${i+1}.jpg`;document.body.appendChild(a);a.click();a.remove();n++;});
   toast(n?`이미지 ${n}장 저장됨 — 카톡/문자에서 첨부하세요.`:'등록된 사진이 없습니다. 먼저 사진을 등록하세요.');
 }
