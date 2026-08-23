@@ -27,14 +27,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install security test browser
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/hj-e2e" --no-save --package-lock=false playwright@1.55.0
+          "$RUNNER_TEMP/hj-e2e/node_modules/.bin/playwright" install --with-deps chromium
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+
+      - name: Verify release guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/syntax.check.js
+          node tests/dead-endpoint.check.js
+          node tests/cost-honesty.check.js
+          node tests/version-sync.check.js
+          node tests/sw-cache.check.js
+          node tests/pages-artifact.e2e.js
+          export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
+          node tests/static-server.js >"$RUNNER_TEMP/hj-static.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            curl -fsS http://127.0.0.1:8299/index.html >/dev/null && break
+            sleep 0.25
+          done
+          node tests/ai-high-risk-confirm.e2e.js
+          node tests/sensitive-query.e2e.js
+
+      - name: Stage public site allowlist
+        run: node scripts/stage-pages.mjs _site
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # 단일 파일 PWA(index.html + sw.js) — 저장소 루트를 그대로 업로드
-          path: "."
+          # 공개 앱 셸만 업로드 — backup/, tests/, apps-script/는 Pages에 노출하지 않는다.
+          path: "_site"
 
       - name: Deploy to GitHub Pages
         id: deployment
