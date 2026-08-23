@@ -1,18 +1,35 @@
-/* 현장 앱 오프라인 캐시 — HTML은 네트워크 우선(업데이트 즉시 반영), 나머지는 캐시 우선+백그라운드 갱신 */
-const C='hyeonjang-v223-signguard';
+/* 현장 앱 오프라인 캐시 — 공개 앱 셸 허용목록만 네트워크 우선으로 저장 */
+const C='hyeonjang-v224-guarded';
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
+
+const SCOPE_PATH=new URL('./',self.location.href).pathname;
+const SHELL_PATHS=new Set([
+  SCOPE_PATH,
+  SCOPE_PATH+'index.html',
+  SCOPE_PATH+'privacy.html',
+  SCOPE_PATH+'terms.html'
+]);
+function cacheableShellRequest(request){
+  if(request.method!=='GET'||request.headers.has('Authorization'))return false;
+  const url=new URL(request.url);
+  return url.origin===self.location.origin&&!url.search&&SHELL_PATHS.has(url.pathname);
+}
+function cacheableShellResponse(response){
+  return !!response&&response.ok&&(response.type==='basic'||response.type==='default');
+}
 self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  const isDoc=e.request.mode==='navigate'||e.request.destination==='document';
-  if(isDoc){
-    e.respondWith(fetch(e.request).then(res=>{if(res.ok){const cp=res.clone();caches.open(C).then(c=>c.put(e.request,cp));}return res;}).catch(()=>caches.match(e.request)));
-    return;
-  }
-  e.respondWith(
-    caches.open(C).then(cache=>cache.match(e.request).then(hit=>{
-      const net=fetch(e.request).then(res=>{if(res.ok&&res.type!=='opaque'){try{cache.put(e.request,res.clone());}catch(_){}}return res;}).catch(()=>hit);
-      return hit||net;
-    }))
-  );
+  if(!cacheableShellRequest(e.request))return;
+  e.respondWith((async()=>{
+    const cache=await caches.open(C);
+    try{
+      const response=await fetch(e.request);
+      if(cacheableShellResponse(response))await cache.put(e.request,response.clone());
+      return response;
+    }catch(error){
+      const hit=await cache.match(e.request);
+      if(hit)return hit;
+      throw error;
+    }
+  })());
 });
