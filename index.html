@@ -108,8 +108,9 @@
   /* ===== 모바일 하단 메뉴 ===== */
   .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;height:60px;background:var(--paper);border-top:1px solid var(--line-soft);z-index:50;box-shadow:0 -2px 12px rgba(0,0,0,.08);padding-bottom:env(safe-area-inset-bottom,0)}
   body.mobile-mode .mobile-nav{display:flex}
-  .mnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:10.5px;padding:6px 2px}
+  .mnav-btn{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:10.5px;padding:6px 2px}
   .mnav-btn .mi{font-size:20px;line-height:1}
+  .mnav-badge{position:absolute;top:3px;left:calc(50% + 8px);min-width:18px;height:18px;padding:0 5px;border:2px solid var(--paper);border-radius:999px;background:#c7352d;color:#fff;font-size:10px;font-weight:800;line-height:14px;text-align:center;box-sizing:border-box;pointer-events:none}
   .mnav-btn.on{color:var(--clay)}
   .mnav-btn:hover{color:var(--clay);transform:none}
   .mnav-cam{position:relative}
@@ -777,9 +778,9 @@
 <div id="modalRoot"></div>
 <nav id="mobileNav" class="mobile-nav">
   <button class="mnav-btn" data-mnav="dashboard"><span class="mi">📊</span><span>대시보드</span></button>
-  <button class="mnav-btn" data-mnav="photos"><span class="mi">📷</span><span>현장사진</span></button>
+  <button class="mnav-btn" data-mnav="photos" aria-label="현장사진"><span class="mi">📷</span><span>현장사진</span><span class="mnav-badge" data-mnav-badge="photos" aria-hidden="true" hidden></span></button>
   <button class="mnav-btn mnav-cam" data-mnav="__camera"><span class="mi">📸</span><span>촬영</span></button>
-  <button class="mnav-btn" data-mnav="schedule"><span class="mi">📅</span><span>일정표</span></button>
+  <button class="mnav-btn" data-mnav="schedule" aria-label="일정표"><span class="mi">📅</span><span>일정표</span><span class="mnav-badge" data-mnav-badge="schedule" aria-hidden="true" hidden></span></button>
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
@@ -2253,7 +2254,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v226-mobilesheets';
+const APP_BUILD='hyeonjang-v229-mobileback';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4857,6 +4858,47 @@ function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mo
   tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});setTimeout(syncTopBtn,700);}catch(e){window.scrollTo(0,0);}};}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
+  const setBadge=(target,count,base,detail)=>{
+    const btn=document.querySelector('.mnav-btn[data-mnav="'+target+'"]');
+    if(!btn)return;
+    const badge=btn.querySelector('[data-mnav-badge]');
+    const n=Math.max(0,Number(count)||0);
+    btn.setAttribute('aria-label',n?base+', '+detail(n):base);
+    if(!badge)return;
+    badge.textContent=n>=100?'99+':String(n);
+    badge.hidden=n===0;
+  };
+  setBadge('photos',(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project).length,'현장사진',n=>'미배정 '+n+'장');
+  setBadge('schedule',(state.schedule||[]).filter(s=>s&&s.date===localDate()).length,'일정표',n=>'오늘 일정 '+n+'건');
+}
+const __mobileTabScroll=Object.create(null); // 탭별 위치는 현재 실행 중 메모리에만 보관(데이터 저장 안 함)
+let __mobileTabRestore=null;
+function mobileNavScrollTo(top,behavior){
+  const y=Math.max(0,Number(top)||0);
+  try{window.scrollTo({top:y,behavior:behavior||'auto'});}catch(e){window.scrollTo(0,y);}
+}
+function mobileNavOpenTab(tgt){
+  const current=state.tab;
+  if(tgt===current){
+    if(__mobileTabRestore){cancelAnimationFrame(__mobileTabRestore.raf);__mobileTabRestore=null;}
+    __mobileTabScroll[current]=0;
+    mobileNavScrollTo(0,'auto');
+    return;
+  }
+  const currentY=__mobileTabRestore&&__mobileTabRestore.tab===current
+    ?__mobileTabRestore.top:Math.max(0,Number(window.scrollY)||0);
+  __mobileTabScroll[current]=currentY;
+  if(__mobileTabRestore){cancelAnimationFrame(__mobileTabRestore.raf);__mobileTabRestore=null;}
+  state.tab=tgt;
+  render();syncMobileNav();
+  const restore=Math.max(0,Number(__mobileTabScroll[tgt])||0);
+  const pending={tab:tgt,top:restore,raf:0};
+  pending.raf=requestAnimationFrame(()=>{
+    if(__mobileTabRestore!==pending)return;
+    __mobileTabRestore=null;
+    if(state.tab===tgt)mobileNavScrollTo(restore,'auto');
+  });
+  __mobileTabRestore=pending;
 }
 $('#btnMobile').onclick=toggleMobile;
 {const pc=$('#projChip');if(pc){pc.onclick=openProjectSheet;pc.textContent='🏗 '+(state.activeProject||'전체 보기')+' ▾';}}
@@ -4865,9 +4907,104 @@ document.querySelectorAll('.mnav-btn').forEach(b=>b.onclick=()=>{
   const tgt=b.dataset.mnav;
   if(tgt==='__camera')return openCamera();
   if(tgt==='__more')return openMoreSheet();
-  state.tab=tgt;if(tgt==='project'&&!state.activeProject){/* 현장 미선택 시 대시보드 유지 */}
-  render();syncMobileNav();
+  mobileNavOpenTab(tgt);
 });
+/* 휴대폰 뒤로가기는 앱을 벗어나기 전에 현재 하단 시트 하나만 닫는다.
+   닫자마자 다시 여는 시트(보관 목록 펼침)는 같은 history 항목을 이어받아 경합을 막는다. */
+const __MOBILE_SHEET_HISTORY_KEY='__hjMobileSheet';
+let __mobileSheetHistorySeq=0;
+let __mobileSheetHistoryActive=null;
+let __mobileSheetHistoryRetire=null;
+let __mobileSheetHistoryDeferredOpen=null;
+function mobileSheetRestoreFocus(el){
+  if(!el||!el.isConnected)return;
+  try{el.focus({preventScroll:true});}catch(e){try{el.focus();}catch(e2){}}
+}
+function mobileSheetHistoryMarker(){
+  const s=history.state;
+  return s&&typeof s==='object'?s[__MOBILE_SHEET_HISTORY_KEY]||'':'';
+}
+function mobileSheetHistoryState(token){
+  const s=history.state;
+  const next=s&&typeof s==='object'&&!Array.isArray(s)?Object.assign({},s):{};
+  next[__MOBILE_SHEET_HISTORY_KEY]=token;
+  return next;
+}
+function mobileSheetHistoryScheduleRetire(token){
+  const retiring={token,started:false,timer:0};
+  retiring.timer=setTimeout(()=>{
+    if(__mobileSheetHistoryRetire!==retiring)return;
+    retiring.started=true;
+    try{history.back();}catch(e){__mobileSheetHistoryRetire=null;}
+  },0);
+  __mobileSheetHistoryRetire=retiring;
+  return retiring;
+}
+function mobileSheetHistoryDeferOpen(openFn){
+  const queued=__mobileSheetHistoryDeferredOpen;
+  if(queued&&queued.scheduled){clearTimeout(queued.timer);__mobileSheetHistoryDeferredOpen=null;}
+  const retiring=__mobileSheetHistoryRetire;
+  if(!retiring||!retiring.started)return false;
+  __mobileSheetHistoryDeferredOpen={retiring,openFn,scheduled:false,timer:0};
+  return true;
+}
+function mobileSheetHistoryFlushDeferred(retiring){
+  const deferred=__mobileSheetHistoryDeferredOpen;
+  if(!deferred||deferred.retiring!==retiring)return false;
+  deferred.scheduled=true;
+  deferred.timer=setTimeout(()=>{
+    if(__mobileSheetHistoryDeferredOpen!==deferred)return;
+    __mobileSheetHistoryDeferredOpen=null;
+    try{deferred.openFn();}catch(e){}
+  },0);
+  return true;
+}
+function mobileSheetHistoryOpen(closeFromBack){
+  const token='hjms-'+(++__mobileSheetHistorySeq);
+  const entry={token,closeFromBack,pendingRetire:null};
+  try{
+    const current=mobileSheetHistoryMarker();
+    const retiring=__mobileSheetHistoryRetire;
+    if(retiring&&current===retiring.token){
+      if(retiring.started){
+        entry.pendingRetire=retiring;
+      }else{
+        clearTimeout(retiring.timer);__mobileSheetHistoryRetire=null;
+        history.replaceState(mobileSheetHistoryState(token),'',location.href);
+      }
+    }else if(current){
+      history.replaceState(mobileSheetHistoryState(token),'',location.href);
+    }else{
+      history.pushState(mobileSheetHistoryState(token),'',location.href);
+    }
+  }catch(e){return()=>{};}
+  __mobileSheetHistoryActive=entry;
+  return()=>mobileSheetHistoryClose(entry);
+}
+function mobileSheetHistoryClose(entry){
+  if(__mobileSheetHistoryActive!==entry)return;
+  __mobileSheetHistoryActive=null;
+  if(mobileSheetHistoryMarker()!==entry.token)return;
+  mobileSheetHistoryScheduleRetire(entry.token);
+}
+window.addEventListener('popstate',()=>{
+  const queued=__mobileSheetHistoryDeferredOpen;
+  if(queued&&queued.scheduled){clearTimeout(queued.timer);__mobileSheetHistoryDeferredOpen=null;}
+  const retiring=__mobileSheetHistoryRetire;
+  if(retiring){clearTimeout(retiring.timer);__mobileSheetHistoryRetire=null;}
+  const active=__mobileSheetHistoryActive;
+  if(retiring&&mobileSheetHistoryFlushDeferred(retiring))return;
+  if(retiring&&active&&active.pendingRetire===retiring){
+    active.pendingRetire=null;
+    try{history.pushState(mobileSheetHistoryState(active.token),'',location.href);return;}
+    catch(e){__mobileSheetHistoryActive=null;try{active.closeFromBack();}catch(e2){}return;}
+  }
+  if(!active){const stale=mobileSheetHistoryMarker();if(stale)mobileSheetHistoryScheduleRetire(stale);return;}
+  if(mobileSheetHistoryMarker()===active.token)return;
+  __mobileSheetHistoryActive=null;
+  try{active.closeFromBack();}catch(e){}
+});
+{const stale=mobileSheetHistoryMarker();if(stale)mobileSheetHistoryScheduleRetire(stale);}
 // 더보기 시트
 /* 모바일 하단 시트 공통 접근성: dialog 의미·초점 순환·Esc·배경 잠금·초점 복귀 */
 function mobileSheetA11y(sheet,backdrop,opts){
@@ -4877,12 +5014,15 @@ function mobileSheetA11y(sheet,backdrop,opts){
   sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');
   if(opts.labelledBy)sheet.setAttribute('aria-labelledby',opts.labelledBy);
   if(!sheet.hasAttribute('tabindex'))sheet.setAttribute('tabindex','-1');
-  const close=(returnFocus=true)=>{
+  let releaseHistory=()=>{};
+  const close=(returnFocus=true,fromHistory=false)=>{
     if(sheet&&sheet.isConnected)sheet.remove();
     if(backdrop&&backdrop.isConnected)backdrop.remove();
     document.body.classList.remove('mobile-sheet-open');
-    if(returnFocus&&opener)setTimeout(()=>{try{if(opener.isConnected)opener.focus();}catch(e){}},0);
+    if(returnFocus&&opener)setTimeout(()=>mobileSheetRestoreFocus(opener),0);
+    if(!fromHistory)releaseHistory();
   };
+  releaseHistory=mobileSheetHistoryOpen(()=>close(true,true));
   sheet.__mobileSheetClose=close;
   backdrop.onclick=()=>close();
   sheet.onkeydown=e=>{
@@ -4905,6 +5045,7 @@ function mobileSheetA11y(sheet,backdrop,opts){
 function openProjectSheet(openerOverride){
   const opener=(openerOverride&&openerOverride.nodeType===1)?openerOverride:
     (openerOverride&&openerOverride.currentTarget&&openerOverride.currentTarget.nodeType===1)?openerOverride.currentTarget:document.activeElement;
+  if(mobileSheetHistoryDeferOpen(()=>openProjectSheet(opener)))return;
   const o1=document.getElementById('projSheet');
   if(o1&&o1.__mobileSheetClose)o1.__mobileSheetClose(false);else if(o1)o1.remove();
   const o2=document.getElementById('projSheetBd');if(o2)o2.remove();
@@ -4958,16 +5099,19 @@ function openMoreSheet(){
   sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;try{moreTrackUse(a);}catch(e){}moreActionHandler(a);});
 }
 // 카메라 촬영 — 현장 미선택 사진이 쌓이지 않도록 선택을 먼저 받는다.
-function closeCameraProjectSheet(returnFocus=true){
+function closeCameraProjectSheet(returnFocus=true,fromHistory=false){
   const sheet=document.getElementById('cameraProjectSheet');
   const back=sheet&&sheet.__cameraOpener;
+  const releaseHistory=sheet&&sheet.__mobileSheetHistoryRelease;
   ['cameraProjectSheet','cameraProjectBackdrop'].forEach(id=>{const el=document.getElementById(id);if(el)el.remove();});
   document.body.classList.remove('camera-sheet-open');
-  if(returnFocus&&back)setTimeout(()=>{try{if(back.isConnected)back.focus();}catch(e){}},0);
+  if(returnFocus&&back)setTimeout(()=>mobileSheetRestoreFocus(back),0);
+  if(!fromHistory&&releaseHistory)releaseHistory();
 }
-function openCameraProjectSheet(){
+function openCameraProjectSheet(openerOverride){
+  const opener=(openerOverride&&openerOverride.nodeType===1)?openerOverride:document.activeElement;
+  if(mobileSheetHistoryDeferOpen(()=>openCameraProjectSheet(opener)))return;
   closeCameraProjectSheet(false);
-  const opener=document.activeElement;
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='cameraProjectBackdrop';bd.onclick=()=>closeCameraProjectSheet();
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='cameraProjectSheet';
   sh.__cameraOpener=opener;
@@ -4985,6 +5129,7 @@ function openCameraProjectSheet(){
     <p style="font-size:11px;color:var(--muted);margin:7px 2px 0">현장을 아직 모를 때만 사용하세요. 나중에 현장사진에서 배정할 수 있습니다.</p>`;
   document.body.appendChild(bd);document.body.appendChild(sh);
   document.body.classList.add('camera-sheet-open');
+  sh.__mobileSheetHistoryRelease=mobileSheetHistoryOpen(()=>closeCameraProjectSheet(true,true));
   document.getElementById('cameraProjectClose').onclick=()=>closeCameraProjectSheet();
   sh.querySelectorAll('[data-camera-project]').forEach(btn=>btn.onclick=()=>{
     state.activeProject=btn.dataset.cameraProject;closeCameraProjectSheet(false);render();syncMobileNav();triggerCameraInput();
@@ -5129,13 +5274,13 @@ function render(){
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
+  if(typeof syncMobileNav==='function')syncMobileNav();
   if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates','ads','project'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,ads:viewAds};
   v.innerHTML=map[state.tab]();
   try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
   bindDrop();bindEvents();
   try{observeHeicLazy();}catch(e){}   // 보이는 로컬 HEIC만 변환(지연 로딩)
-  if(typeof syncMobileNav==='function')syncMobileNav();
 }
 /* ═══ v217 ⚡ 기능 바로가기 — 검색창에 이름만 치면 그 화면으로 ═══ */
 function hjNeedProj(fn){
@@ -17844,8 +17989,9 @@ function moreItemInfo(action){
 }
 
 // 개선된 더보기 시트
-function openMoreSheetV2(){
-  const opener=document.activeElement;
+function openMoreSheetV2(openerOverride){
+  const opener=(openerOverride&&openerOverride.nodeType===1)?openerOverride:document.activeElement;
+  if(mobileSheetHistoryDeferOpen(()=>openMoreSheetV2(opener)))return;
   let sheet=document.getElementById('moreSheet');
   if(sheet&&sheet.__mobileSheetClose)sheet.__mobileSheetClose(false);else if(sheet)sheet.remove();
   let bd=document.getElementById('moreBackdrop');if(bd)bd.remove();
