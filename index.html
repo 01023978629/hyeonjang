@@ -108,8 +108,9 @@
   /* ===== 모바일 하단 메뉴 ===== */
   .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;height:60px;background:var(--paper);border-top:1px solid var(--line-soft);z-index:50;box-shadow:0 -2px 12px rgba(0,0,0,.08);padding-bottom:env(safe-area-inset-bottom,0)}
   body.mobile-mode .mobile-nav{display:flex}
-  .mnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:10.5px;padding:6px 2px}
+  .mnav-btn{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:10.5px;padding:6px 2px}
   .mnav-btn .mi{font-size:20px;line-height:1}
+  .mnav-badge{position:absolute;top:3px;left:calc(50% + 8px);min-width:18px;height:18px;padding:0 5px;border:2px solid var(--paper);border-radius:999px;background:#c7352d;color:#fff;font-size:10px;font-weight:800;line-height:14px;text-align:center;box-sizing:border-box;pointer-events:none}
   .mnav-btn.on{color:var(--clay)}
   .mnav-btn:hover{color:var(--clay);transform:none}
   .mnav-cam{position:relative}
@@ -777,9 +778,9 @@
 <div id="modalRoot"></div>
 <nav id="mobileNav" class="mobile-nav">
   <button class="mnav-btn" data-mnav="dashboard"><span class="mi">📊</span><span>대시보드</span></button>
-  <button class="mnav-btn" data-mnav="photos"><span class="mi">📷</span><span>현장사진</span></button>
+  <button class="mnav-btn" data-mnav="photos" aria-label="현장사진"><span class="mi">📷</span><span>현장사진</span><span class="mnav-badge" data-mnav-badge="photos" aria-hidden="true" hidden></span></button>
   <button class="mnav-btn mnav-cam" data-mnav="__camera"><span class="mi">📸</span><span>촬영</span></button>
-  <button class="mnav-btn" data-mnav="schedule"><span class="mi">📅</span><span>일정표</span></button>
+  <button class="mnav-btn" data-mnav="schedule" aria-label="일정표"><span class="mi">📅</span><span>일정표</span><span class="mnav-badge" data-mnav-badge="schedule" aria-hidden="true" hidden></span></button>
   <button class="mnav-btn" data-mnav="quotemaker"><span class="mi">✍️</span><span>견적</span></button>
   <button class="mnav-btn" data-mnav="__more"><span class="mi">⋯</span><span>더보기</span></button>
 </nav>
@@ -2253,7 +2254,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v226-mobilesheets';
+const APP_BUILD='hyeonjang-v227-navbadges';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4857,6 +4858,18 @@ function toggleMobile(){__mobileMode=!__mobileMode;try{idbSet('pref_mobile',__mo
   tb.onclick=function(){try{window.scrollTo({top:0,behavior:'smooth'});setTimeout(syncTopBtn,700);}catch(e){window.scrollTo(0,0);}};}}
 function syncMobileNav(){
   document.querySelectorAll('.mnav-btn').forEach(b=>{const tgt=b.dataset.mnav;b.classList.toggle('on',tgt===state.tab);});
+  const setBadge=(target,count,base,detail)=>{
+    const btn=document.querySelector('.mnav-btn[data-mnav="'+target+'"]');
+    if(!btn)return;
+    const badge=btn.querySelector('[data-mnav-badge]');
+    const n=Math.max(0,Number(count)||0);
+    btn.setAttribute('aria-label',n?base+', '+detail(n):base);
+    if(!badge)return;
+    badge.textContent=n>=100?'99+':String(n);
+    badge.hidden=n===0;
+  };
+  setBadge('photos',(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project).length,'현장사진',n=>'미배정 '+n+'장');
+  setBadge('schedule',(state.schedule||[]).filter(s=>s&&s.date===localDate()).length,'일정표',n=>'오늘 일정 '+n+'건');
 }
 $('#btnMobile').onclick=toggleMobile;
 {const pc=$('#projChip');if(pc){pc.onclick=openProjectSheet;pc.textContent='🏗 '+(state.activeProject||'전체 보기')+' ▾';}}
