@@ -12,7 +12,7 @@
      ⑤ 아이콘만 있는 버튼에 이름이 있다 — 일정·연락처·달력
      ⑥ 금액 입력칸에 라벨과 숫자 키패드가 있다
      ⑦ 가로 스크롤이 생기지 않는다 — 폰(390)과 PC(1280) 양쪽
-     ⑧ 폰에서 손가락으로 누를 수 있는 크기(40px)다
+     ⑧ 폰에서 손가락으로 누를 수 있는 크기(44px)다
      ⑨ 모달이 열리면 뒤 화면이 스크롤되지 않는다
 
    전제: tests/static-server.js(8299) 실행 중 */
@@ -265,14 +265,13 @@ let browser;
         state.tab = tab; render(); await new Promise(r2 => setTimeout(r2, 220));
         document.querySelectorAll(sel).forEach(b => {
           const q = b.getBoundingClientRect();
-          if (q.width < 38 || q.height < 38) small.push(where + ' ' + Math.round(q.width) + '×' + Math.round(q.height));
+          if (q.width < 44 || q.height < 44) small.push(where + ' ' + Math.round(q.width) + '×' + Math.round(q.height));
         });
       };
       await scan('schedule', '.sch-tools .mini-btn', '일정');
       await scan('contacts', '.con-tools .mini-btn', '연락처');
       return small;
     });
-    // 38px 로 본다 — CSS 는 40px 을 주지만 테두리·반올림으로 1~2px 이 깎인다.
     assert(r.length === 0, '너무 작은 버튼: ' + r.slice(0, 6).join(' / '));
   });
 
