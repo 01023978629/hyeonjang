@@ -57,6 +57,39 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(/촬영할 현장/.test(out.text), '왜 선택해야 하는지 안내가 있어야 함');
   });
 
+  await test('① 촬영 현장 선택 시트는 초점을 받고 Esc로 닫힌 뒤 호출 버튼에 복귀한다', async () => {
+    await page.evaluate(() => {
+      closeCameraProjectSheet();
+      const opener = document.querySelector('[data-mnav="__camera"]');
+      opener.focus();
+      openCamera();
+    });
+    await page.waitForTimeout(30);
+    const focusedInside = await page.evaluate(() => {
+      const sheet = document.getElementById('cameraProjectSheet');
+      return {
+        inside: !!sheet && sheet.contains(document.activeElement),
+        locked: document.body.classList.contains('camera-sheet-open'),
+      };
+    });
+    assert(focusedInside.inside, '시트가 열리면 키보드 초점이 시트 안으로 이동해야 함');
+    assert(focusedInside.locked, '시트가 열린 동안 뒤 화면 스크롤을 잠가야 함');
+    await page.locator('#cameraUnassigned').focus();
+    await page.keyboard.press('Tab');
+    assert(await page.locator('#cameraProjectClose').evaluate(el => el === document.activeElement), '마지막 조작부에서 Tab을 누르면 첫 조작부로 돌아와야 함');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(30);
+    const out = await page.evaluate(() => ({
+      closed: !document.getElementById('cameraProjectSheet'),
+      restored: document.activeElement === document.querySelector('[data-mnav="__camera"]'),
+      unlocked: !document.body.classList.contains('camera-sheet-open'),
+    }));
+    assert(out.closed, 'Esc를 누르면 촬영 현장 선택 시트가 닫혀야 함');
+    assert(out.restored, '닫힌 뒤 초점이 촬영 버튼으로 돌아와야 함');
+    assert(out.unlocked, '닫힌 뒤 화면 스크롤 잠금을 풀어야 함');
+    await page.evaluate(() => openCamera());
+  });
+
   await test('① 현장을 고르면 그 현장이 활성화되고 카메라가 열린다', async () => {
     const project = page.locator('[data-camera-project="열매현장"]');
     assert(await project.count() === 1, '촬영 현장 선택지에 열매현장이 있어야 함');

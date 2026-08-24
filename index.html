@@ -139,6 +139,7 @@
   .more-cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 8px 10px}
   .more-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:54;display:none}
   .more-backdrop.open{display:block}
+  body.camera-sheet-open{overflow:hidden}
   .biz-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:var(--warn);color:#fff;font-size:13px;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3)}
   /* 모바일 일괄 공정 큰 버튼 */
   .bulk-phase-btns{display:none;width:100%;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -4921,13 +4922,19 @@ function openMoreSheet(){
   sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;try{moreTrackUse(a);}catch(e){}moreActionHandler(a);});
 }
 // 카메라 촬영 — 현장 미선택 사진이 쌓이지 않도록 선택을 먼저 받는다.
-function closeCameraProjectSheet(){
+function closeCameraProjectSheet(returnFocus=true){
+  const sheet=document.getElementById('cameraProjectSheet');
+  const back=sheet&&sheet.__cameraOpener;
   ['cameraProjectSheet','cameraProjectBackdrop'].forEach(id=>{const el=document.getElementById(id);if(el)el.remove();});
+  document.body.classList.remove('camera-sheet-open');
+  if(returnFocus&&back)setTimeout(()=>{try{if(back.isConnected)back.focus();}catch(e){}},0);
 }
 function openCameraProjectSheet(){
-  closeCameraProjectSheet();
-  const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='cameraProjectBackdrop';bd.onclick=closeCameraProjectSheet;
+  closeCameraProjectSheet(false);
+  const opener=document.activeElement;
+  const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='cameraProjectBackdrop';bd.onclick=()=>closeCameraProjectSheet();
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='cameraProjectSheet';
+  sh.__cameraOpener=opener;
   sh.setAttribute('role','dialog');sh.setAttribute('aria-modal','true');sh.setAttribute('aria-labelledby','cameraProjectTitle');
   const projects=state.projects.filter(p=>!p.archived).slice().reverse();
   const rows=projects.map(p=>{
@@ -4941,15 +4948,26 @@ function openCameraProjectSheet(){
     <button type="button" class="ghost" id="cameraUnassigned" style="width:100%;margin-top:4px;color:var(--warn)">⚠ 미배정으로 촬영</button>
     <p style="font-size:11px;color:var(--muted);margin:7px 2px 0">현장을 아직 모를 때만 사용하세요. 나중에 현장사진에서 배정할 수 있습니다.</p>`;
   document.body.appendChild(bd);document.body.appendChild(sh);
-  document.getElementById('cameraProjectClose').onclick=closeCameraProjectSheet;
+  document.body.classList.add('camera-sheet-open');
+  document.getElementById('cameraProjectClose').onclick=()=>closeCameraProjectSheet();
   sh.querySelectorAll('[data-camera-project]').forEach(btn=>btn.onclick=()=>{
-    state.activeProject=btn.dataset.cameraProject;closeCameraProjectSheet();render();syncMobileNav();triggerCameraInput();
+    state.activeProject=btn.dataset.cameraProject;closeCameraProjectSheet(false);render();syncMobileNav();triggerCameraInput();
   });
-  document.getElementById('cameraUnassigned').onclick=()=>{closeCameraProjectSheet();triggerCameraInput();};
+  document.getElementById('cameraUnassigned').onclick=()=>{closeCameraProjectSheet(false);triggerCameraInput();};
   document.getElementById('cameraProjectSearch').oninput=e=>{
     const q=e.target.value.trim().toLowerCase();
     sh.querySelectorAll('[data-camera-project]').forEach(btn=>{btn.style.display=(!q||(btn.textContent||'').toLowerCase().includes(q))?'flex':'none';});
   };
+  sh.onkeydown=e=>{
+    if(e.key==='Escape'){e.preventDefault();closeCameraProjectSheet();return;}
+    if(e.key!=='Tab')return;
+    const focusable=[...sh.querySelectorAll('button,input')].filter(el=>!el.disabled&&el.offsetParent!==null);
+    if(!focusable.length)return;
+    const first=focusable[0],last=focusable[focusable.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  };
+  setTimeout(()=>{try{document.getElementById('cameraProjectSearch').focus();}catch(e){}},0);
 }
 function triggerCameraInput(){
   // 현장사진 탭으로 이동 후 카메라 입력 트리거
