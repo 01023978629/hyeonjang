@@ -19,7 +19,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined });
-  const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+  const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Seoul' });
   const page = await ctx.newPage();
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
@@ -127,6 +127,70 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       };
     });
     assert(r.photo === '99+' && r.schedule === '99+', '100건 이상은 99+여야 함: ' + JSON.stringify(r));
+  });
+
+  await test('⑤ 사진 탭에서 마지막 미배정 사진이 사라지면 배지도 즉시 숨긴다', async () => {
+    const r = await page.evaluate(() => {
+      state.tab = 'photos';
+      state.files = [{ id: 'last-photo', name: '마지막.jpg', ext: 'jpg', kind: 'photo', project: '' }];
+      render();
+      const btn = document.querySelector('.mnav-btn[data-mnav="photos"]');
+      const badge = btn && btn.querySelector('[data-mnav-badge]');
+      const before = { text: badge && badge.textContent.trim(), hidden: badge ? badge.hidden : null };
+      state.files = [];
+      render();
+      return {
+        before,
+        afterText: badge && badge.textContent.trim(),
+        afterHidden: badge ? badge.hidden : null,
+        label: btn && btn.getAttribute('aria-label')
+      };
+    });
+    assert(r.before.text === '1' && r.before.hidden === false, '삭제 전 배지 1이 보여야 함: ' + JSON.stringify(r));
+    assert(r.afterHidden === true && r.label === '현장사진', '마지막 사진 삭제 직후 배지가 사라져야 함: ' + JSON.stringify(r));
+  });
+
+  await test('⑥ UTC와 날짜가 다른 한국 새벽에도 KST 오늘 일정만 센다', async () => {
+    const boundaryCtx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Seoul' });
+    try {
+      await boundaryCtx.addInitScript(({ fixed }) => {
+        const NativeDate = Date;
+        class FixedDate extends NativeDate {
+          constructor(...args) { super(...(args.length ? args : [fixed])); }
+          static now() { return new NativeDate(fixed).getTime(); }
+        }
+        window.Date = FixedDate;
+        try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {}
+      }, { fixed: '2026-08-24T15:30:00.000Z' });
+      const boundaryPage = await boundaryCtx.newPage();
+      await boundaryPage.goto(APP, { waitUntil: 'domcontentloaded' });
+      await boundaryPage.waitForTimeout(900);
+      const r = await boundaryPage.evaluate(() => {
+        state.files = [];
+        state.schedule = [
+          { id: 'kst-today-1', date: '2026-08-25', time: '00:30', title: '한국 오늘 1', project: '' },
+          { id: 'kst-today-2', date: '2026-08-25', time: '09:00', title: '한국 오늘 2', project: '' },
+          { id: 'utc-yesterday', date: '2026-08-24', time: '23:30', title: '한국 어제', project: '' }
+        ];
+        state.tab = 'schedule';
+        __mobileMode = true;
+        applyMobileMode();
+        render();
+        const btn = document.querySelector('.mnav-btn[data-mnav="schedule"]');
+        const badge = btn && btn.querySelector('[data-mnav-badge]');
+        return {
+          local: localDate(),
+          text: badge && badge.textContent.trim(),
+          hidden: badge ? badge.hidden : null,
+          label: btn && btn.getAttribute('aria-label')
+        };
+      });
+      assert(r.local === '2026-08-25', '고정 시각의 KST 날짜는 2026-08-25여야 함: ' + JSON.stringify(r));
+      assert(r.text === '2' && r.hidden === false, 'KST 오늘 일정 2건만 세야 함: ' + JSON.stringify(r));
+      assert(r.label === '일정표, 오늘 일정 2건', 'KST 일정 접근성 라벨: ' + r.label);
+    } finally {
+      await boundaryCtx.close();
+    }
   });
 
   await test('★ pageerror 0', async () => {

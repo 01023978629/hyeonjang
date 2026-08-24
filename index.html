@@ -5142,13 +5142,13 @@ function render(){
   const _tt=titles[state.tab]||['',''];
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
+  if(typeof syncMobileNav==='function')syncMobileNav();
   if(!state.files.length&&!['dashboard','quotemaker','schedule','contacts','estimates','ads','project'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,ads:viewAds};
   v.innerHTML=map[state.tab]();
   try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
   bindDrop();bindEvents();
   try{observeHeicLazy();}catch(e){}   // 보이는 로컬 HEIC만 변환(지연 로딩)
-  if(typeof syncMobileNav==='function')syncMobileNav();
 }
 /* ═══ v217 ⚡ 기능 바로가기 — 검색창에 이름만 치면 그 화면으로 ═══ */
 function hjNeedProj(fn){
