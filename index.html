@@ -98,9 +98,11 @@
   /* 모바일(올리기·보기) 모드에서 파일을 직접 쓰는/옮기는 위험 동작 숨김 — 폰에서는 안 되는 기능이라 보이지 않게 */
   .pc-only-action{display:inline-flex}
   body.mobile-mode .pc-only-action{display:none !important}
-  /* [v221] 폰에서 너무 얇은 버튼은 옆 걸 누르게 된다 — 최소 높이만 올린다(폭·배치는 그대로) */
+  /* [v225] 폰 조작부는 장갑을 끼거나 한 손으로 눌러도 빗나가지 않는 44px을 지킨다. */
+  body.mobile-mode button{min-width:44px;min-height:44px}
+  body.mobile-mode input,body.mobile-mode select,body.mobile-mode textarea{min-height:44px}
   body.mobile-mode button.tiny,body.mobile-mode .mini-btn,body.mobile-mode .phase-chip b,body.mobile-mode .cal-nav{
-    min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+    min-height:44px;display:inline-flex;align-items:center;justify-content:center}
   /* PC(편집) 모드 숨김 — PC는 '내 폴더 연결'로만 사진을 다룬다(드라이브 사진 편집 시 이중화 방지) */
   body:not(.mobile-mode) .mobile-only-action{display:none !important}
   /* ===== 모바일 하단 메뉴 ===== */
@@ -128,6 +130,13 @@
   .more-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .more-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);cursor:pointer;font-size:11.5px;color:var(--ink)}
   .more-item .mi{font-size:20px}
+  .more-cat-block{border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);margin-top:8px;overflow:hidden}
+  .more-cat-block>summary{display:flex;align-items:center;gap:8px;min-height:48px;padding:10px 12px;cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:var(--ink)}
+  .more-cat-block>summary::-webkit-details-marker{display:none}
+  .more-cat-block>summary .more-cat-count{margin-left:auto;color:var(--muted);font-size:11px;font-weight:500}
+  .more-cat-block>summary .more-cat-arrow{color:var(--muted);transition:transform .15s}
+  .more-cat-block[open]>summary .more-cat-arrow{transform:rotate(180deg)}
+  .more-cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 8px 10px}
   .more-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:54;display:none}
   .more-backdrop.open{display:block}
   .biz-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:var(--warn);color:#fff;font-size:13px;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3)}
@@ -155,7 +164,7 @@
   body.mobile-mode .qm-table .qm-amt{font-weight:700;color:var(--clay);font-size:15px}
   body.mobile-mode .qm-table .qm-delcell{position:absolute;top:8px;right:10px;padding:0}
   body.mobile-mode .qm-table .qm-delcell::before{content:''}
-  body.mobile-mode .qm-table .qm-del{width:28px;height:28px}
+  body.mobile-mode .qm-table .qm-del{width:44px;height:44px}
   /* ===== 모바일 파일 목록: 카드 격자 → 한 줄 리스트형 =====
      폰(390px)에서 190px 격자는 1열 거대 카드가 돼 스크롤이 길고 버튼이 작았다.
      서류·견적류는 [썸네일|이름·정보] 가로 행으로, 사진 격자만 2열(140px)로 유지.
@@ -171,7 +180,7 @@
   body.mobile-mode .card:not(.k-photo) .cardact{width:100%;padding:0 10px 12px}
   /* 터치 타깃: 카드 미니 버튼·분류 드롭다운을 손가락 크기로 */
   body.mobile-mode .mini-btn{font-size:12.5px;padding:8px 12px;border-radius:8px}
-  body.mobile-mode .cardact select{min-height:40px;font-size:14px;flex:1 1 45%}
+  body.mobile-mode .cardact select{min-height:44px;font-size:14px;flex:1 1 45%}
   /* 긴 목록 맨 위로 — 하단 메뉴(60px) 위, 촬영 버튼과 겹치지 않게 오른쪽 */
   #toTopBtn{display:none;position:fixed;right:14px;bottom:132px;z-index:49;width:44px;height:44px;border-radius:50%;border:1px solid var(--line-soft);background:var(--paper);color:var(--blueprint);font-size:19px;box-shadow:0 3px 12px rgba(0,0,0,.18);cursor:pointer;align-items:center;justify-content:center}
   body.mobile-mode #toTopBtn.show{display:flex}
@@ -611,6 +620,14 @@
     .hsearch{width:100%;min-width:0;flex-wrap:wrap}
     .hsearch input{flex:1 1 180px;min-width:0;width:auto}
     .hsearch .proj-chip{max-width:145px}
+    body.mobile-mode header{padding:8px 14px;gap:8px;align-items:center}
+    body.mobile-mode .brand{display:flex;align-items:center;width:100%;gap:8px}
+    body.mobile-mode .tagline{margin-left:auto}
+    body.mobile-mode .hsearch{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr) 44px;gap:6px;width:100%}
+    body.mobile-mode .hsearch input{width:100%;min-width:0}
+    body.mobile-mode .hsearch .proj-chip{max-width:120px;width:auto}
+    body.mobile-mode #btnFont,body.mobile-mode #btnDark{display:none}
+    body.mobile-mode #btnMobile{display:inline-flex;min-width:44px;padding:0}
     main{padding-left:14px;padding-right:14px}
     .modal-bg{padding:8px}
     .modal{max-height:94vh}
@@ -621,7 +638,7 @@
     body.mobile-mode .sch-body{min-width:calc(100% - 60px)}
     body.mobile-mode .sch-tools{width:100%;justify-content:flex-end;flex-wrap:wrap}
     body.mobile-mode .sch-tools .mini-btn,
-    body.mobile-mode .contact .mini-btn{min-width:40px;min-height:40px;font-size:16px;padding:7px}
+    body.mobile-mode .contact .mini-btn{min-width:44px;min-height:44px;font-size:16px;padding:7px}
   }
   /* 헤더 현장 선택 칩 — 폰에서만 노출(PC는 왼쪽 목록이 있음) */
   .proj-chip{display:none;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:20px;background:var(--blueprint);color:#fff;border:none;cursor:pointer;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
@@ -2234,7 +2251,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v224-guarded';
+const APP_BUILD='hyeonjang-v225-mobileflow';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4903,8 +4920,38 @@ function openMoreSheet(){
   sheet.querySelectorAll('[data-more]').forEach(el=>el.onclick=()=>{state.tab=el.dataset.more;close();render();syncMobileNav();});
   sheet.querySelectorAll('[data-moreaction]').forEach(el=>el.onclick=()=>{close();const a=el.dataset.moreaction;try{moreTrackUse(a);}catch(e){}moreActionHandler(a);});
 }
-// 카메라 촬영
-function openCamera(){
+// 카메라 촬영 — 현장 미선택 사진이 쌓이지 않도록 선택을 먼저 받는다.
+function closeCameraProjectSheet(){
+  ['cameraProjectSheet','cameraProjectBackdrop'].forEach(id=>{const el=document.getElementById(id);if(el)el.remove();});
+}
+function openCameraProjectSheet(){
+  closeCameraProjectSheet();
+  const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='cameraProjectBackdrop';bd.onclick=closeCameraProjectSheet;
+  const sh=document.createElement('div');sh.className='more-sheet open';sh.id='cameraProjectSheet';
+  sh.setAttribute('role','dialog');sh.setAttribute('aria-modal','true');sh.setAttribute('aria-labelledby','cameraProjectTitle');
+  const projects=state.projects.filter(p=>!p.archived).slice().reverse();
+  const rows=projects.map(p=>{
+    const n=state.files.filter(f=>f.project===p.name&&f.kind==='photo').length;
+    return `<button type="button" class="camera-project-row" data-camera-project="${escapeAttr(p.name)}" style="width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;margin-bottom:7px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left"><span style="font-size:18px">🏗</span><span style="flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</span><small style="color:var(--muted)">사진 ${n}</small><span aria-hidden="true">›</span></button>`;
+  }).join('');
+  sh.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h4 id="cameraProjectTitle" style="margin:0;flex:1">📸 촬영할 현장 선택</h4><button type="button" class="ghost" id="cameraProjectClose" aria-label="촬영 현장 선택 닫기">✕</button></div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.5">사진이 미배정으로 쌓이지 않도록 촬영할 현장을 먼저 선택해 주세요.</p>
+    <input id="cameraProjectSearch" type="search" placeholder="🔍 현장 이름 찾기" autocomplete="off" style="width:100%;padding:10px 12px;border:1.5px solid var(--line-soft);border-radius:10px;margin-bottom:10px;font-size:14px">
+    <div id="cameraProjectList">${rows||'<div style="padding:18px;text-align:center;color:var(--muted);font-size:13px">등록된 현장이 없습니다.<br>더보기에서 현장을 먼저 추가해 주세요.</div>'}</div>
+    <button type="button" class="ghost" id="cameraUnassigned" style="width:100%;margin-top:4px;color:var(--warn)">⚠ 미배정으로 촬영</button>
+    <p style="font-size:11px;color:var(--muted);margin:7px 2px 0">현장을 아직 모를 때만 사용하세요. 나중에 현장사진에서 배정할 수 있습니다.</p>`;
+  document.body.appendChild(bd);document.body.appendChild(sh);
+  document.getElementById('cameraProjectClose').onclick=closeCameraProjectSheet;
+  sh.querySelectorAll('[data-camera-project]').forEach(btn=>btn.onclick=()=>{
+    state.activeProject=btn.dataset.cameraProject;closeCameraProjectSheet();render();syncMobileNav();triggerCameraInput();
+  });
+  document.getElementById('cameraUnassigned').onclick=()=>{closeCameraProjectSheet();triggerCameraInput();};
+  document.getElementById('cameraProjectSearch').oninput=e=>{
+    const q=e.target.value.trim().toLowerCase();
+    sh.querySelectorAll('[data-camera-project]').forEach(btn=>{btn.style.display=(!q||(btn.textContent||'').toLowerCase().includes(q))?'flex':'none';});
+  };
+}
+function triggerCameraInput(){
   // 현장사진 탭으로 이동 후 카메라 입력 트리거
   let inp=document.getElementById('camInput');
   if(!inp){
@@ -4941,6 +4988,10 @@ function openCamera(){
     };
   }
   inp.click();
+}
+function openCamera(){
+  if(!state.activeProject)return openCameraProjectSheet();
+  triggerCameraInput();
 }
 
 function matchSearch(f){
@@ -17751,7 +17802,7 @@ function openMoreSheetV2(){
   const recent=moreGetRecent().map(a=>{const info=moreItemInfo(a);return info?[a,info.ic,info.label]:null;}).filter(Boolean);
   const chip=(a,ic,l,isNav)=>'<button class="more-chip" data-'+(isNav?'more':'moreaction')+'="'+a+'" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);min-width:0"><span style="font-size:20px">'+ic+'</span><span style="font-size:10.5px;text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">'+escapeHtml(l)+'</span></button>';
   // 카테고리 섹션
-  const catSection=(c)=>'<div class="more-cat-block" data-cat="'+c.id+'"><div style="font-size:12.5px;font-weight:700;margin:14px 0 7px;color:var(--ink)">'+c.ic+' '+c.name+' <span style="font-size:10.5px;color:var(--muted);font-weight:400">'+c.items.length+'</span></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'+c.items.map(it=>chip(it[0],it[1],it[2])).join('')+'</div></div>';
+  const catSection=(c)=>'<details class="more-cat-block" data-cat="'+c.id+'"><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+c.items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+c.items.map(it=>chip(it[0],it[1],it[2])).join('')+'</div></details>';
   sheet.innerHTML=
     '<h4 style="margin-bottom:10px">더보기 <span style="font-size:11px;color:var(--muted);font-weight:400">기능 '+MORE_CATS.reduce((a,c)=>a+c.items.length,0)+'개</span></h4>'+
     // 검색

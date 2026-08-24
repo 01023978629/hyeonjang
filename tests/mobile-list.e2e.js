@@ -1,7 +1,7 @@
 /* mobile-list.e2e.js — 모바일(폰) 목록 사용성 회귀 (Playwright)
    폰에서 목록이 불편하던 것들이 다시 나빠지지 않게 지킨다:
    ① 서류·견적 카드가 1열 거대 격자 대신 '한 줄 리스트형'으로 눕는다(사진 격자는 다열 유지)
-   ② 카드 버튼·분류 드롭다운이 손가락 크기다(터치 타깃)
+   ② 카드 버튼·분류 드롭다운이 44px 손가락 크기다(터치 타깃)
    ③ 현장 선택 시트: 검색이 항상 있고, 미수금은 표시하지 않는다
    ④ 긴 목록에서 '맨 위로' 버튼이 뜨고 실제로 올라간다 (모바일 모드 전용)
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'. 실발신/네트워크 없음. */
@@ -72,7 +72,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(cols >= 2, '사진 격자는 2열 이상이어야 함: ' + cols + '열');
   });
 
-  await test('② 터치 타깃: 카드 버튼 32px+ · 분류 드롭다운 38px+', async () => {
+  await test('② 터치 타깃: 카드 버튼·분류 드롭다운 44px+', async () => {
     const r = await page.evaluate(() => {
       const btn = document.querySelector('.card.k-estimate .mini-btn');
       const sel = document.querySelector('.card.k-estimate .cardact select');
@@ -81,8 +81,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         selH: sel ? Math.round(sel.getBoundingClientRect().height) : 0
       };
     });
-    assert(r.btnH >= 32, '카드 미니 버튼 높이 32px 이상이어야 함: ' + r.btnH + 'px');
-    assert(r.selH >= 38, '분류 드롭다운 높이 38px 이상이어야 함: ' + r.selH + 'px');
+    assert(r.btnH >= 44, '카드 미니 버튼 높이 44px 이상이어야 함: ' + r.btnH + 'px');
+    assert(r.selH >= 44, '분류 드롭다운 높이 44px 이상이어야 함: ' + r.selH + 'px');
   });
 
   await test('③ 현장 선택 시트: 현장이 적어도 검색이 항상 보인다', async () => {
