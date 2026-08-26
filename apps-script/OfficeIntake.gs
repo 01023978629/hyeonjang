@@ -441,8 +441,13 @@ function oiInbox_(payload) {
   var cursor = oiText_(payload.updatedAfter, 40);
   var now = Date.now();
   var store = oiReadStore_();
+  var retryIds = {};
+  store.operationalErrors.forEach(function (error) {
+    if (error && error.requestId && !error.resolvedAt) retryIds[String(error.requestId)] = true;
+  });
   var requests = store.requests.filter(function (request) {
-    return !cursor || String(request.updatedAt || '') > cursor;
+    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || retryIds[String(request.requestId || '')];
+    return actionable && (!cursor || String(request.updatedAt || '') > cursor);
   }).sort(function (a, b) {
     return String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
   }).slice(0, 100).map(function (request) {
@@ -465,10 +470,18 @@ function oiAccept_(payload, now) {
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
     if (request.hyeonjangOrderId) {
-      if (request.hyeonjangOrderId !== orderId) return { ok: false, error: 'already-linked' };
+      if (request.hyeonjangOrderId !== orderId) {
+        oiOperationalErrorLocked_(store, 'already-linked', request.requestId, now);
+        oiWriteStore_(store);
+        return { ok: false, error: 'already-linked' };
+      }
       return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
     }
-    if (!oiCanTransition_(request.status, 'accepted', 'internal')) return { ok: false, error: 'invalid-transition' };
+    if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
+      oiOperationalErrorLocked_(store, 'accept-invalid-transition', request.requestId, now);
+      oiWriteStore_(store);
+      return { ok: false, error: 'invalid-transition' };
+    }
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';
     request.updatedAt = oiNow_(now);
@@ -485,6 +498,28 @@ function oiStatusResult_(request) {
     completionReport: request.completionReport || null, updatedAt: request.updatedAt
   };
 }
+function oiCompletionPhotoIds_(value) {
+  if (!Array.isArray(value)) return null;
+  var ids = [], seen = {};
+  for (var i = 0; i < value.length && ids.length < 10; i++) {
+    if (typeof value[i] !== 'string') continue;
+    var id = oiText_(value[i], 160);
+    if (id && !seen[id]) { seen[id] = true; ids.push(id); }
+  }
+  return ids;
+}
+function oiCompletionReportValue_(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
+  var supplied = Object.prototype.hasOwnProperty.call(value, 'photoIds') ? oiCompletionPhotoIds_(value.photoIds) : [];
+  var published = Object.prototype.hasOwnProperty.call(value, 'publicPhotoIds') ? oiCompletionPhotoIds_(value.publicPhotoIds) : [];
+  if (supplied == null || published == null) return { ok: false, error: 'invalid-input' };
+  if (supplied.length) {
+    var allowed = {};
+    supplied.forEach(function (id) { allowed[id] = true; });
+    published = published.filter(function (id) { return allowed[id]; });
+  }
+  return { ok: true, value: { summary: oiText_(value.summary, 800), publicPhotoIds: published } };
+}
 function oiSetStatus_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
   var next = oiText_(payload.status, 40);
@@ -495,13 +530,13 @@ function oiSetStatus_(payload, now) {
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
     if (!oiCanTransition_(request.status, next, 'internal')) return { ok: false, error: 'invalid-transition' };
+    var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
+    if (completion && !completion.ok) return { ok: false, error: completion.error };
     request.status = next;
     request.visitAt = payload.visitAt || request.visitAt || null;
     request.publicAmount = Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : request.publicAmount;
-    request.completionReport = payload.completionReport ? {
-      summary: oiText_(payload.completionReport.summary, 800),
-      photoIds: (payload.completionReport.photoIds || []).slice(0, 10)
-    } : request.completionReport;
+    request.completionReport = completion ? completion.value : request.completionReport;
+    if (next === 'completed' && !request.completedAt) request.completedAt = oiNow_(now);
     request.updatedAt = oiNow_(now);
     oiAuditLocked_(store, request.officeId, request.receiptNo, 'status', 'ok', now);
     oiWriteStore_(store);
@@ -512,6 +547,10 @@ function oiSetStatus_(payload, now) {
 function oiSaveConfig_(config) {
   PropertiesService.getScriptProperties().setProperty('OFFICE_CONFIG_JSON', JSON.stringify(config));
 }
+function oiRestoreConfig_(properties, raw) {
+  if (raw == null) properties.deleteProperty('OFFICE_CONFIG_JSON');
+  else properties.setProperty('OFFICE_CONFIG_JSON', raw);
+}
 function oiAdminUpsert_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
   var id = oiText_(payload.id, 120);
@@ -521,23 +560,37 @@ function oiAdminUpsert_(payload, now) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    var properties = PropertiesService.getScriptProperties();
+    var previousConfig = properties.getProperty('OFFICE_CONFIG_JSON');
     var config = oiConfig_();
     var office = null;
     for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === id) office = config.offices[i];
-    if (!office) {
-      office = { id: id, sessionVersion: 1 };
-      config.offices.push(office);
+    for (var j = 0; j < config.offices.length; j++) {
+      if (String(config.offices[j].id || '') !== id && String(config.offices[j].slug || '') === slug) return { ok: false, error: 'slug-conflict' };
     }
-    office.slug = slug;
-    office.complexName = complexName;
-    if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) office.enabled = payload.enabled !== false;
-    if (office.disabled === true && office.enabled !== false) office.disabled = false;
-    office.updatedAt = oiNow_(now);
-    oiSaveConfig_(config);
-    var store = oiReadStore_();
-    oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now);
-    oiWriteStore_(store);
-    return { ok: true, office: oiPublicOffice_(office) };
+    try {
+      if (!office) {
+        office = { id: id, sessionVersion: 1 };
+        config.offices.push(office);
+      }
+      var wasActive = oiOfficeActive_(office);
+      office.slug = slug;
+      office.complexName = complexName;
+      if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) {
+        office.enabled = payload.enabled !== false;
+        office.disabled = office.enabled === false;
+      }
+      if (wasActive && !oiOfficeActive_(office)) office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+      office.updatedAt = oiNow_(now);
+      oiSaveConfig_(config);
+      var store = oiReadStore_();
+      oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now);
+      oiWriteStore_(store);
+      return { ok: true, office: oiPublicOffice_(office) };
+    } catch (err) {
+      oiRestoreConfig_(properties, previousConfig);
+      throw err;
+    }
   } finally { lock.releaseLock(); }
 }
 function oiPinFromUuid_(uuid) {
@@ -552,21 +605,28 @@ function oiRotatePin_(payload, now) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    var properties = PropertiesService.getScriptProperties();
+    var previousConfig = properties.getProperty('OFFICE_CONFIG_JSON');
     var config = oiConfig_();
     var office = null;
     for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
     if (!office) return { ok: false, error: 'not-found' };
-    var entropy = Utilities.getUuid();
-    var pin = oiPinFromUuid_(entropy);
-    office.pinSalt = String(entropy) + ':' + String(now);
-    office.pinHash = oiHashPin_(pin, office.pinSalt);
-    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
-    office.updatedAt = oiNow_(now);
-    oiSaveConfig_(config);
-    var store = oiReadStore_();
-    oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now);
-    oiWriteStore_(store);
-    return { ok: true, office: oiPublicOffice_(office), pin: pin };
+    try {
+      var pinEntropy = Utilities.getUuid();
+      var pin = oiPinFromUuid_(pinEntropy);
+      office.pinSalt = String(Utilities.getUuid());
+      office.pinHash = oiHashPin_(pin, office.pinSalt);
+      office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+      office.updatedAt = oiNow_(now);
+      oiSaveConfig_(config);
+      var store = oiReadStore_();
+      oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now);
+      oiWriteStore_(store);
+      return { ok: true, office: oiPublicOffice_(office), pin: pin };
+    } catch (err) {
+      oiRestoreConfig_(properties, previousConfig);
+      throw err;
+    }
   } finally { lock.releaseLock(); }
 }
 function oiDisable_(payload, now) {
@@ -575,19 +635,26 @@ function oiDisable_(payload, now) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    var properties = PropertiesService.getScriptProperties();
+    var previousConfig = properties.getProperty('OFFICE_CONFIG_JSON');
     var config = oiConfig_();
     var office = null;
     for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
     if (!office) return { ok: false, error: 'not-found' };
-    office.enabled = false;
-    office.disabled = true;
-    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
-    office.updatedAt = oiNow_(now);
-    oiSaveConfig_(config);
-    var store = oiReadStore_();
-    oiAuditLocked_(store, office.id, '', 'disable', 'ok', now);
-    oiWriteStore_(store);
-    return { ok: true, office: oiPublicOffice_(office) };
+    try {
+      office.enabled = false;
+      office.disabled = true;
+      office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+      office.updatedAt = oiNow_(now);
+      oiSaveConfig_(config);
+      var store = oiReadStore_();
+      oiAuditLocked_(store, office.id, '', 'disable', 'ok', now);
+      oiWriteStore_(store);
+      return { ok: true, office: oiPublicOffice_(office) };
+    } catch (err) {
+      oiRestoreConfig_(properties, previousConfig);
+      throw err;
+    }
   } finally { lock.releaseLock(); }
 }
 
@@ -599,11 +666,11 @@ function oiRetentionCandidates_(now) {
   var candidates = [];
   oiReadStore_().requests.forEach(function (request) {
     if (request.legalRetention === true) return;
-    var at = request.status === 'completed' ? (request.completedAt || request.updatedAt) : request.updatedAt;
+    var at = (request.status === 'completed' || request.status === 'billed' || request.status === 'paid') ? request.completedAt : request.updatedAt;
     var eligibleAt = Date.parse(at || '');
     var reason = '';
     if (request.status === 'cancelled' || request.status === 'declined') { eligibleAt += ninetyDays; reason = 'cancelled-90-days'; }
-    else if (request.status === 'completed') { eligibleAt += oneYear; reason = 'completed-1-year'; }
+    else if (request.status === 'completed' || request.status === 'billed' || request.status === 'paid') { eligibleAt += oneYear; reason = 'completed-1-year'; }
     else return;
     if (isFinite(eligibleAt) && now >= eligibleAt) candidates.push({
       requestId: request.requestId, receiptNo: request.receiptNo, officeId: request.officeId,

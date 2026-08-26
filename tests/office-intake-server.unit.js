@@ -419,18 +419,83 @@ const urgent = sandbox.oiCreate_(sessionOf1, {
 assert.equal(urgent.ok, true);
 assert.equal(sandbox.oiReadStore_().operationalErrors.some(error => error.code === 'calendar-failed' && error.requestId === urgent.requestId), true);
 
-// Break caught: PIN rotation must invalidate an already issued session; disabling must block new access without deleting requests.
-const admin = postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
-assert.equal(admin.ok, true);
+// Break caught: unresolved sync conflicts keep the linked request actionable, while ordinary completed records stay out of the inbox.
+assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'in_progress' }).status, 'in_progress');
+const completed = postInternal('officeSetStatus', {
+  requestId: first.requestId, status: 'completed', completionReport: {
+    summary: '공개 완료 보고', photoIds: ['published-photo', 'private-photo', 7],
+    publicPhotoIds: ['published-photo', 'unrelated-photo', 'private-photo', 9], internalNotes: 'never public',
+  },
+});
+assert.deepEqual(JSON.parse(JSON.stringify(completed.completionReport)), {
+  summary: '공개 완료 보고', publicPhotoIds: ['published-photo', 'private-photo'],
+});
+const completedAt = sandbox.oiReadStore_().requests.find(request => request.requestId === first.requestId).completedAt;
+assert.equal(typeof completedAt, 'string');
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiGet_(sessionOf1, first.requestId).request.completionReport)), {
+  summary: '공개 완료 보고', publicPhotoIds: ['published-photo', 'private-photo'],
+});
+fakeNow = 2000;
+assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'billed' }).status, 'billed');
+fakeNow = 3000;
+assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'paid' }).status, 'paid');
+assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === first.requestId).completedAt, completedAt);
+const inboxStore = sandbox.oiReadStore_();
+inboxStore.requests.push({ requestId: 'completed-hidden', receiptNo: 'MM-completed-hidden', officeId: 'of1', status: 'completed', completedAt: '1970-01-01T00:00:00.000Z', updatedAt: '1970-01-01T00:00:00.000Z' });
+sandbox.oiWriteStore_(inboxStore);
+const filteredInbox = postInternal('officeInbox', { updatedAfter: '' });
+assert.equal(filteredInbox.requests.some(request => request.requestId === first.requestId), true);
+assert.equal(filteredInbox.requests.some(request => request.requestId === 'completed-hidden'), false);
+fakeNow = Date.parse('1972-01-01T00:00:00.000Z');
+assert.equal(postInternal('officeRetentionList', {}).requests.some(request => request.requestId === first.requestId && request.status === 'paid' && request.retentionReason === 'completed-1-year'), true);
+fakeNow = 1000;
+
+// Break caught: admin mutations must roll back the exact config if the following audit write fails, and PIN entropy must never enter pinSalt.
+const configBeforeFailedUpsert = properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+const failedUpsert = postInternal('officeAdminUpsert', { id: 'of-rollback', slug: 'rollback-apt', complexName: '원복 아파트', enabled: true });
+assert.equal(failedUpsert.ok, false);
+assert.equal(properties.OFFICE_CONFIG_JSON, configBeforeFailedUpsert);
+const configBeforeFailedRotate = properties.OFFICE_CONFIG_JSON;
+const uuidBeforeFailedRotate = drive.uuid;
+drive.failStoreWrites = 1;
+const failedRotate = postInternal('officeRotatePin', { officeId: 'of1' });
+assert.equal(failedRotate.ok, false);
+assert.equal(Object.hasOwn(failedRotate, 'pin'), false);
+assert.equal(properties.OFFICE_CONFIG_JSON, configBeforeFailedRotate);
+assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1001).officeId, 'of1');
+assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 1000).ok, true);
+assert.equal(drive.uuid, uuidBeforeFailedRotate + 2);
+const configBeforeFailedDisable = properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+const failedDisable = postInternal('officeDisable', { officeId: 'of1' });
+assert.equal(failedDisable.ok, false);
+assert.equal(properties.OFFICE_CONFIG_JSON, configBeforeFailedDisable);
+assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1001).officeId, 'of1');
+
+const entropyBeforeRotate = drive.uuid;
 const rotated = postInternal('officeRotatePin', { officeId: 'of1' });
 assert.equal(rotated.ok, true);
 assert.match(rotated.pin, /^\d{6}$/);
+const rotatedOffice = JSON.parse(properties.OFFICE_CONFIG_JSON).offices.find(office => office.id === 'of1');
+assert.equal(rotatedOffice.pinSalt.includes('req-' + (entropyBeforeRotate + 1)), false);
+assert.notEqual(sandbox.oiPinFromUuid_(rotatedOffice.pinSalt), rotated.pin);
+assert.equal(JSON.stringify(rotatedOffice).includes(rotated.pin), false);
 assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1001), null);
 const freshLogin = sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1000);
 assert.equal(freshLogin.ok, true);
+assert.equal(postInternal('officeAdminUpsert', { id: 'of-conflict', slug: 'sample-apt', complexName: '중복 단지', enabled: true }).error, 'slug-conflict');
+
+// Break caught: active->disabled upsert must invalidate sessions, enabling later must not revive them, and disable keeps requests.
+assert.equal(postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: false }).ok, true);
+assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
+assert.equal(postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true }).ok, true);
+assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
+const enabledLogin = sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1000);
+assert.equal(enabledLogin.ok, true);
 const beforeDisableCount = sandbox.oiReadStore_().requests.length;
 assert.equal(postInternal('officeDisable', { officeId: 'of1' }).ok, true);
-assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
+assert.equal(sandbox.oiVerifySession_(enabledLogin.sessionToken, 1001), null);
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1002).error, 'invalid-credentials');
 assert.equal(sandbox.oiReadStore_().requests.length, beforeDisableCount);
 
