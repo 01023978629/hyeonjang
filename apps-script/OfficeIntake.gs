@@ -96,7 +96,8 @@ function oiLogin_(payload, now) {
     var successStore = oiReadStore_();
     oiAuditLocked_(successStore, office.id, '', 'login', 'ok', now);
     oiWriteStore_(successStore);
-    return { ok: true, office: oiPublicOffice_(office), sessionToken: oiIssueSession_(office, Number(now)) };
+    var issuedAt = Number(now);
+    return { ok: true, office: oiPublicOffice_(office), sessionToken: oiIssueSession_(office, issuedAt), expiresAt: issuedAt + 8 * 60 * 60 * 1000 };
   } finally {
     lock.releaseLock();
   }

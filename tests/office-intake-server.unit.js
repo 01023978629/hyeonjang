@@ -251,6 +251,8 @@ lockEvents.length = 0;
 const login = sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 1000);
 assert.equal(login.ok, true);
 assert.deepEqual(lockEvents, ['wait:20000', 'release']);
+assert.equal(login.expiresAt, 1000 + 8 * 60 * 60 * 1000);
+assert.deepEqual(Object.keys(login).sort(), ['expiresAt', 'office', 'ok', 'sessionToken']);
 assert.equal(login.office.complexName, '예시 아파트');
 assert.equal(Object.hasOwn(login.office, 'pinHash'), false);
 assert.equal(Object.hasOwn(login.office, 'pinSalt'), false);
@@ -298,7 +300,10 @@ cache.clear();
 const publicOutput = sandbox.doPost({ postData: { contents: JSON.stringify({
   action: 'officeLogin', ts: 1000, payload: { slug: 'sample-apt', pin: '123456' },
 }) } });
-assert.equal(JSON.parse(publicOutput.getContent()).ok, true);
+const publicLogin = JSON.parse(publicOutput.getContent());
+assert.equal(publicLogin.ok, true);
+assert.equal(publicLogin.expiresAt, Number(fakeNow) + 8 * 60 * 60 * 1000);
+assert.deepEqual(Object.keys(publicLogin).sort(), ['expiresAt', 'office', 'ok', 'sessionToken']);
 
 // Break caught: dispatching office-internal actions before APP_TOKEN validation would expose them.
 const internalOutput = sandbox.doPost({ postData: { contents: JSON.stringify({
