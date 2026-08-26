@@ -210,6 +210,7 @@ function oiPublicRequest_(request) {
     publicAmount: request.publicAmount == null ? null : request.publicAmount,
     visitAt: request.visitAt || null,
     completionReport: request.completionReport || null,
+    needsInfoReason: request.needsInfoReason || null,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt
   };
@@ -290,6 +291,7 @@ function oiCreate_(session, payload, now) {
       publicAmount: null,
       visitAt: null,
       completionReport: null,
+      needsInfoReason: null,
       createdAt: at,
       updatedAt: at
     };
@@ -354,6 +356,7 @@ function oiUpdate_(session, payload, now) {
     request.officeContact = value.officeContact;
     request.residentContact = value.residentContact;
     request.preferredVisitDate = value.preferredVisitDate;
+    if (request.status === 'needs_info') { request.status = 'pending_review'; request.needsInfoReason = null; }
     request.updatedAt = oiNow_(now);
     oiAuditLocked_(store, officeId, request.receiptNo, 'update', 'ok', now);
     oiWriteStore_(store);
@@ -533,6 +536,7 @@ function oiAccept_(payload, now) {
     }
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';
+    request.needsInfoReason = null;
     request.updatedAt = oiNow_(now);
     oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
     oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'ok', now);
@@ -545,7 +549,7 @@ function oiStatusResult_(request) {
   return {
     ok: true, requestId: request.requestId, receiptNo: request.receiptNo, status: request.status,
     visitAt: request.visitAt || null, publicAmount: request.publicAmount == null ? null : request.publicAmount,
-    completionReport: request.completionReport || null, updatedAt: request.updatedAt
+    completionReport: request.completionReport || null, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt
   };
 }
 function oiCompletionPhotoIds_(value) {
@@ -584,19 +588,30 @@ function oiPublicAmount_(request, payload) {
   if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid-input', field: 'publicAmount' };
   return { ok: true, value: amount };
 }
-function oiStatusProjection_(request, payload, completion) {
+function oiNeedsInfoReason_(request, payload, next) {
+  if (next === 'needs_info') {
+    var reason = String(payload.reason == null ? '' : payload.reason).trim();
+    return reason && reason.length <= 300 ? { ok: true, value: reason } : { ok: false, error: 'invalid-input', field: 'reason' };
+  }
+  return { ok: true, value: next === 'on_hold' && request.status === 'needs_info' ? (oiText_(request.needsInfoReason, 300) || null) : null };
+}
+function oiStatusProjection_(request, payload, completion, next) {
   var amount = oiPublicAmount_(request, payload);
   if (!amount.ok) return amount;
+  var reason = oiNeedsInfoReason_(request, payload, next);
+  if (!reason.ok) return reason;
   return { ok: true, value: {
     visitAt: oiHas_(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
     publicAmount: amount.value,
-    completionReport: completion ? completion.value : (request.completionReport || null)
+    completionReport: completion ? completion.value : (request.completionReport || null),
+    needsInfoReason: reason.value
   }};
 }
 function oiSameStatusProjection_(request, projection) {
   return (request.visitAt || null) === projection.visitAt &&
     (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount &&
-    JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null);
+    JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null) &&
+    (request.needsInfoReason || null) === projection.needsInfoReason;
 }
 function oiSetStatus_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
@@ -609,7 +624,7 @@ function oiSetStatus_(payload, now) {
     if (!request) return { ok: false, error: 'not-found' };
     var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
-    var projected = oiStatusProjection_(request, payload, completion);
+    var projected = oiStatusProjection_(request, payload, completion, next);
     if (!projected.ok) return projected;
     var projection = projected.value;
     if (request.status === next) {
@@ -630,6 +645,7 @@ function oiSetStatus_(payload, now) {
     request.visitAt = projection.visitAt;
     request.publicAmount = projection.publicAmount;
     request.completionReport = projection.completionReport;
+    request.needsInfoReason = projection.needsInfoReason;
     if (next === 'completed' && !request.completedAt) request.completedAt = oiNow_(now);
     request.updatedAt = oiNow_(now);
     oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now);

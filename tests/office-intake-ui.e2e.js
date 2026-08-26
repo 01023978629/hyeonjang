@@ -89,8 +89,10 @@ let browser;
   assert.equal(await page.locator('#modalRoot img[src="x"]').count(), 0, '주입 태그를 DOM으로 만들지 않음');
   assert.equal(await page.evaluate(() => window.__xss), undefined, 'XSS 실행 없음');
   const call = page.locator('[data-oi-request="req-xss"] a[href^="tel:"]');
-  assert.equal(await call.count(), 1, '관리사무소 전화 버튼');
-  assert.match(String(await call.getAttribute('href')), /^tel:\+?\d+$/, 'tel href는 숫자와 선행 +만 허용');
+  assert.equal(await call.count(), 0, '악성 구분자가 섞인 전화는 전화 링크를 만들지 않음');
+  const validCall = page.locator('[data-oi-request="req-review"] a[href^="tel:"]');
+  assert.equal(await validCall.count(), 1, '유효한 관리사무소 전화 버튼');
+  assert.equal(await validCall.getAttribute('href'), 'tel:01033334444', 'tel href는 안전한 숫자로만 정규화');
 
   await page.evaluate(() => {
     const b = document.querySelector('[data-oi-accept="req-xss"]');
@@ -162,6 +164,59 @@ let browser;
   assert.deepEqual(reviewActions.afterHold.payload, { requestId: 'req-review', status: 'on_hold' }, '보류 큐 동작');
   assert.equal(reviewActions.cancelled, false, '보완 사유 입력 취소');
   assert.equal(reviewActions.unchanged, true, '입력 취소는 상태·큐·오더를 바꾸지 않음');
+
+  const reviewGuards = await page.evaluate(async () => {
+    const request = (requestId, status) => ({
+      requestId, receiptNo: requestId, officeId: 'of-ui', unit: '공용부', location: '계단', issueType: '기타', pipeType: '미확정', urgency: 'normal', description: requestId,
+      officeContact: { name: '관리소', phone: '010-7777-8888' }, photos: [], status
+    });
+    state.aptOrders = [];
+    state.projects = [{ name: '기존 현장', stage: 0, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, geo: null }];
+    state.officeIntake = { inbox: [request('matrix-pending', 'pending_review'), request('matrix-needs', 'needs_info'), request('matrix-hold', 'on_hold')], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    officeIntakeOpen();
+    const buttons = id => [...document.querySelectorAll('[data-oi-request="' + id + '"] button')].map(button => button.textContent.trim());
+    const snapshot = () => JSON.stringify({ orders: state.aptOrders, projects: state.projects, inbox: officeIntakeData().inbox, outbox: officeIntakeData().outbox });
+    const reject = async fn => { const before = snapshot(); const result = await fn(); return { result: !!result, unchanged: before === snapshot() }; };
+    const invalidNeedsAccept = await reject(() => officeIntakeAccept('matrix-needs', 'none'));
+    const invalidHoldNeeds = await reject(() => officeIntakeNeedsInfo('matrix-hold'));
+    const invalidHoldAgain = await reject(() => officeIntakeHold('matrix-hold'));
+    const invalidMode = await reject(() => officeIntakeAccept('matrix-pending', 'surprise', '무시되면 안 됨'));
+    const missingExisting = await reject(() => officeIntakeAccept('matrix-pending', 'existing', '없는 현장'));
+    const newCollision = await reject(() => officeIntakeAccept('matrix-pending', 'new', '기존 현장'));
+    const promptBefore = window.prompt;
+    window.prompt = () => '   ';
+    const blankNeeds = await reject(() => officeIntakeNeedsInfo('matrix-pending'));
+    window.prompt = promptBefore;
+    const existing = await officeIntakeAccept('matrix-pending', 'existing', '기존 현장');
+    const projectCountAfterExisting = state.projects.length;
+    const duplicateExisting = await officeIntakeAccept('matrix-pending', 'new', '새로 만들면 안 됨');
+    const projectCountAfterDuplicate = state.projects.length;
+    const held = await officeIntakeAccept('matrix-hold', 'new', '새 현장');
+    const holdAfterNeeds = await officeIntakeHold('matrix-needs');
+    const phoneChecks = ['010-1234-5678', '+82 10 1234 5678', '010-1234-5678;evil', '010abc12345678', '+12'].map(value => ({ value, tel: officeIntakeTel(value) }));
+    state.officeIntake.inbox.push(request('sequence', 'pending_review'));
+    const events = [], originalPush = state.aptOrders.push, originalDirty = window.markDirty, originalAccept = window.cloudOfficeAccept;
+    state.aptOrders.push = function () { events.push('push'); return originalPush.apply(this, arguments); };
+    window.markDirty = () => events.push('dirty');
+    window.cloudOfficeAccept = async () => { events.push('cloud'); return { ok: false, error: 'offline' }; };
+    const sequence = await officeIntakeAccept('sequence', 'none');
+    state.aptOrders.push = originalPush; window.markDirty = originalDirty; window.cloudOfficeAccept = originalAccept;
+    return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds, existingProject: existing && existing.project, projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate, heldProject: held && held.project, holdAfterNeeds: !!holdAfterNeeds, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
+  });
+  assert.deepEqual(reviewGuards.buttons, { pending: ['오더 등록', '내용 보완 요청', '보류'], needs: ['보류'], hold: ['오더 등록'] }, '상태별로 허용된 검토 버튼만 렌더링');
+  for (const key of ['invalidNeedsAccept', 'invalidHoldNeeds', 'invalidHoldAgain', 'invalidMode', 'missingExisting', 'newCollision', 'blankNeeds']) assert.deepEqual(reviewGuards[key], { result: false, unchanged: true }, key + '는 로컬 상태를 바꾸지 않음');
+  assert.equal(reviewGuards.existingProject, '기존 현장');
+  assert.equal(reviewGuards.projectCountAfterExisting, 1, '기존 현장 연결은 현장을 추가하지 않음');
+  assert.equal(reviewGuards.duplicateProject, '기존 현장', '이미 승인된 접수는 기존 오더만 반환');
+  assert.equal(reviewGuards.projectCountAfterDuplicate, 1, '중복 승인은 새 현장을 만들지 않음');
+  assert.equal(reviewGuards.heldProject, '새 현장', '보류 접수는 새 현장 승인 허용');
+  assert.equal(reviewGuards.holdAfterNeeds, true, '보완 요청 상태는 보류 허용');
+  assert.deepEqual(reviewGuards.phoneChecks, [
+    { value: '010-1234-5678', tel: '01012345678' }, { value: '+82 10 1234 5678', tel: '+821012345678' },
+    { value: '010-1234-5678;evil', tel: '' }, { value: '010abc12345678', tel: '' }, { value: '+12', tel: '' }
+  ], '안전한 국내/E.164 전화만 tel href로 정규화');
+  assert.deepEqual(reviewGuards.events.slice(0, 3), ['push', 'dirty', 'cloud'], '로컬 오더 저장과 dirty가 서버 승인보다 먼저 실행');
+  assert.deepEqual(reviewGuards.sequenceQueued, [{ requestId: 'sequence', hyeonjangOrderId: reviewGuards.sequenceId }], '실패한 승인 호출은 한 번만 정확히 큐잉');
 
   const layout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   assert.ok(layout.width <= layout.viewport, '390px 모바일 가로 넘침 없음: ' + JSON.stringify(layout));

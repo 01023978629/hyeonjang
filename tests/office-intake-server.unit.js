@@ -754,6 +754,30 @@ assert.equal(absentRestore.ok, false);
 assert.equal(Object.hasOwn(properties, 'OFFICE_CONFIG_JSON'), false);
 properties.OFFICE_CONFIG_JSON = priorUnknownConfig;
 
+// Break caught: needs_info is a public, reason-bound state; blank/oversize reasons cannot mutate it,
+// exact retries are idempotent, and an office edit atomically resubmits it for internal review.
+const reasonStore = sandbox.oiReadStore_();
+reasonStore.requests.push({ requestId: 'reason-state', receiptNo: 'MM-reason-state', officeId: 'of1', idempotencyKey: 'reason-state-key', unit: '101동 101호', location: '현관', issueType: '기타', pipeType: '미확정', urgency: 'normal', officeContact: { name: '관리소', phone: '010-1234-5678' }, residentContact: null, preferredVisitDate: '', photos: [], status: 'pending_review', needsInfoReason: null, updatedAt: '2026-08-26T00:00:00.000Z', description: '수정 전' });
+sandbox.oiWriteStore_(reasonStore);
+const reasonBefore = JSON.parse(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request));
+for (const reason of ['', '   ', 'x'.repeat(301)]) {
+  const rejected = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason }, 11000);
+  assert.deepEqual(JSON.parse(JSON.stringify({ error: rejected.error, field: rejected.field })), { error: 'invalid-input', field: 'reason' }, 'needs_info requires a bounded nonblank reason: ' + JSON.stringify(rejected));
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request)), reasonBefore, 'invalid needs_info reason does not mutate public request');
+}
+const reasonSet = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '  사진을 다시 올려주세요  ' }, 11001);
+assert.equal(reasonSet.needsInfoReason, '사진을 다시 올려주세요');
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, '사진을 다시 올려주세요');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '사진을 다시 올려주세요' }, 11002).ok, true, 'exact reason retry is idempotent');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '다른 사유' }, 11003).error, 'invalid-transition', 'different reason cannot replay a self transition');
+const resubmitted = sandbox.oiUpdate_({ officeId: 'of1' }, { requestId: 'reason-state', description: '사진을 다시 올렸습니다.' }, 11004);
+assert.equal(resubmitted.status, 'pending_review');
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '현장 확인이 필요합니다' }, 11005).ok, true);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 11006).needsInfoReason, '현장 확인이 필요합니다', 'hold preserves an unresolved reason');
+assert.equal(sandbox.oiAccept_({ requestId: 'reason-state', hyeonjangOrderId: 'reason-order' }, 11007).ok, true);
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null, 'accept clears a resolved reason');
+
 // Break caught: audit data must remain metadata-only even after requests containing private values and a returned PIN.
 const finalStore = sandbox.oiReadStore_();
 assert.equal(finalStore.audit.length > 0, true);

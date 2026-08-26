@@ -62,15 +62,20 @@ function officePublicAmount(request, payload) {
   const amount = Number(value);
   return Number.isFinite(amount) && amount >= 0 ? { ok: true, value: amount } : { ok: false, error: 'invalid-input', field: 'publicAmount' };
 }
-function officeProjection(request, payload, completion) {
+function officeReason(request, payload, next) {
+  if (next === 'needs_info') { const reason = String(payload.reason == null ? '' : payload.reason).trim(); return reason && reason.length <= 300 ? { ok: true, value: reason } : { ok: false, error: 'invalid-input', field: 'reason' }; }
+  return { ok: true, value: next === 'on_hold' && request.status === 'needs_info' ? (String(request.needsInfoReason || '').trim().slice(0, 300) || null) : null };
+}
+function officeProjection(request, payload, completion, next) {
   const amount = officePublicAmount(request, payload); if (!amount.ok) return amount;
+  const reason = officeReason(request, payload, next); if (!reason.ok) return reason;
   return { ok: true, value: {
     visitAt: Object.hasOwn(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
     publicAmount: amount.value,
-    completionReport: completion ? completion.value : (request.completionReport || null)
+    completionReport: completion ? completion.value : (request.completionReport || null), needsInfoReason: reason.value
   }};
 }
-function sameOfficeProjection(request, projection) { return (request.visitAt || null) === projection.visitAt && (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount && JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null); }
+function sameOfficeProjection(request, projection) { return (request.visitAt || null) === projection.visitAt && (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount && JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null) && (request.needsInfoReason || null) === projection.needsInfoReason; }
 
 function send(res, obj) {
   const b = JSON.stringify(obj);
@@ -195,7 +200,7 @@ const server = http.createServer((req, res) => {
           if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, fail('already-linked'));
           if (!request.hyeonjangOrderId) {
             if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, fail('invalid-transition'));
-            request.hyeonjangOrderId = orderId; request.status = 'accepted'; request.updatedAt = new Date().toISOString();
+            request.hyeonjangOrderId = orderId; request.status = 'accepted'; request.needsInfoReason = null; request.updatedAt = new Date().toISOString();
             store.officeAccepts.push({ requestId, hyeonjangOrderId: orderId });
           }
           return send(res, { ok: true, requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status });
@@ -207,15 +212,15 @@ const server = http.createServer((req, res) => {
           if (!request) return send(res, fail('not-found'));
           const completion = p.completionReport ? officeCompletion(p.completionReport) : null;
           if (completion && !completion.ok) return send(res, fail(completion.error));
-          const projection = officeProjection(request, p, completion);
+          const projection = officeProjection(request, p, completion, status);
           if (!projection.ok) return send(res, Object.assign(fail(projection.error), { field: projection.field }));
           const publicProjection = projection.value;
           if (request.status === status) {
             if (!sameOfficeProjection(request, publicProjection)) return send(res, fail('invalid-transition'));
           } else {
             if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
-            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.updatedAt = new Date().toISOString();
-            store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null });
+            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.updatedAt = new Date().toISOString();
+            store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null, needsInfoReason: publicProjection.needsInfoReason });
           }
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
           // while the next outbox flush must use the server's idempotent status result.

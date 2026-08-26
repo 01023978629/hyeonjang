@@ -9503,11 +9503,15 @@ function officeIntakeOverdue(r){
   return at!=null&&Date.now()-at>=24*60*60*1000;
 }
 function officeIntakeTel(phone){
-  const value=telHref(phone);
-  return /^\+?\d+$/.test(value)?value:'';
+  const raw=String(phone==null?'':phone).trim();
+  if(!/^\+?[\d\s()\-]+$/.test(raw))return '';
+  const international=raw.charAt(0)==='+',digits=raw.replace(/\D/g,'');
+  if(international)return digits.length>=8&&digits.length<=15?('+'+digits):'';
+  return digits.length>=10&&digits.length<=11?digits:'';
 }
 function officeIntakeProjectName(mode,projectName){
-  const next=['none','existing','new'].includes(mode)?mode:'none';
+  if(!['none','existing','new'].includes(mode)){toast('현장 연결 방식을 다시 선택하세요');return null;}
+  const next=mode;
   if(next==='none')return '';
   const name=String(projectName||'').trim();
   if(!name){toast('연결할 현장명을 입력하세요');return null;}
@@ -9516,21 +9520,23 @@ function officeIntakeProjectName(mode,projectName){
     if(!exists){toast('선택한 기존 현장을 찾을 수 없습니다');return null;}
     return name;
   }
-  if(exists)return name;
+  if(exists){toast('같은 이름의 현장이 있습니다. 기존 현장으로 연결하세요');return null;}
   const input=document.getElementById('newProj');
   if(!input||typeof addProject!=='function'){toast('새 현장 추가 화면을 열 수 없습니다');return null;}
   input.value=name;
   addProject();
   return (state.projects||[]).some(function(p){return p&&p.name===name;})?name:null;
 }
+function officeIntakeCanAccept(request){return !!(request&&['pending_review','on_hold'].includes(request.status));}
+function officeIntakeCanNeedsInfo(request){return !!(request&&request.status==='pending_review');}
+function officeIntakeCanHold(request){return !!(request&&['pending_review','needs_info'].includes(request.status));}
 async function officeIntakeAccept(requestId,projectMode,projectName){
   const request=officeIntakeFindRequest(requestId);
   if(!request){toast('접수를 찾을 수 없습니다');return false;}
   const existing=officeIntakeFindOrder(request.requestId);
-  if(existing){
-    if(request.status!=='accepted'){request.status='accepted';officeIntakeMarkDirty();}
-    return existing;
-  }
+  if(existing&&request.status==='accepted')return existing;
+  if(!officeIntakeCanAccept(request)){toast('현재 상태에서는 오더로 등록할 수 없습니다');return false;}
+  if(existing)return existing;
   const project=officeIntakeProjectName(projectMode,projectName);
   if(project===null)return false;
   let order;
@@ -9552,9 +9558,11 @@ async function officeIntakeAccept(requestId,projectMode,projectName){
 async function officeIntakeNeedsInfo(requestId){
   const request=officeIntakeFindRequest(requestId);
   if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  if(!officeIntakeCanNeedsInfo(request)){toast('현재 상태에서는 보완 요청을 할 수 없습니다');return false;}
   const entered=prompt('내용 보완 요청 사유 (300자 이내)',String(request.needsInfoReason||''));
   if(entered===null)return false;
   const reason=String(entered).trim().slice(0,300);
+  if(!reason){toast('보완 요청 사유를 입력하세요');return false;}
   request.status='needs_info';request.needsInfoReason=reason;
   officeIntakeMarkDirty();
   officeIntakeQueue('officeSetStatus',{requestId:request.requestId,status:'needs_info',reason:reason});
@@ -9563,6 +9571,7 @@ async function officeIntakeNeedsInfo(requestId){
 async function officeIntakeHold(requestId){
   const request=officeIntakeFindRequest(requestId);
   if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  if(!officeIntakeCanHold(request)){toast('현재 상태에서는 보류할 수 없습니다');return false;}
   request.status='on_hold';
   officeIntakeMarkDirty();
   officeIntakeQueue('officeSetStatus',{requestId:request.requestId,status:'on_hold'});
@@ -9581,7 +9590,7 @@ function officeIntakeOpen(){
       '<div style="font-size:12px;line-height:1.5;margin-top:7px;white-space:pre-wrap">'+escapeHtml(r.description||r.issueType||'내용 없음')+'</div>'+
       '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted)"><span>'+escapeHtml(contact.name||'관리사무소 담당자 미입력')+'</span>'+call+'<span>📷 사진 '+photos+'장</span></div>'+
       '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;margin-top:9px"><select data-oi-project-mode="'+escapeAttr(id)+'" aria-label="'+escapeAttr((r.receiptNo||id)+' 현장 연결 방식')+'" style="min-width:0;padding:8px"><option value="none">현장 미연결</option><option value="existing">기존 현장</option><option value="new">새 현장</option></select><input data-oi-project-name="'+escapeAttr(id)+'" aria-label="'+escapeAttr((r.receiptNo||id)+' 연결 현장명')+'" list="oiProjects" placeholder="기존/새 현장명" style="min-width:0;padding:8px"></div>'+
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px"><button class="blue tiny" data-oi-accept="'+escapeAttr(id)+'" style="padding:8px 10px">오더 등록</button><button class="ghost tiny" data-oi-needs="'+escapeAttr(id)+'" style="padding:8px 10px">내용 보완 요청</button><button class="ghost tiny" data-oi-hold="'+escapeAttr(id)+'" style="padding:8px 10px">보류</button></div></section>';
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">'+(officeIntakeCanAccept(r)?'<button class="blue tiny" data-oi-accept="'+escapeAttr(id)+'" style="padding:8px 10px">오더 등록</button>':'')+(officeIntakeCanNeedsInfo(r)?'<button class="ghost tiny" data-oi-needs="'+escapeAttr(id)+'" style="padding:8px 10px">내용 보완 요청</button>':'')+(officeIntakeCanHold(r)?'<button class="ghost tiny" data-oi-hold="'+escapeAttr(id)+'" style="padding:8px 10px">보류</button>':'')+'</div></section>';
   }).join(''):'<div class="empty" style="padding:18px"><b>검토할 신규 접수가 없습니다</b>관리사무소 접수가 동기화되면 여기에 표시됩니다.</div>';
   openModal('📥 관리사무소 신규 접수',
     '<div style="font-size:12px;color:var(--muted);margin-bottom:9px">검토 대기 '+pending.length+'건'+(overdue?' · 24시간 이상 미확인 '+overdue+'건':'')+'</div><datalist id="oiProjects">'+projectChoices+'</datalist>'+rows,
@@ -9594,8 +9603,8 @@ function officeIntakeOpen(){
     button.disabled=true;const saved=await officeIntakeAccept(id,mode,name);
     if(saved){toast('아파트 오더로 등록했습니다');officeIntakeOpen();}else button.disabled=false;
   };});
-  root.querySelectorAll('[data-oi-needs]').forEach(function(button){button.onclick=async function(){if(await officeIntakeNeedsInfo(button.dataset.oiNeeds)){toast('내용 보완 요청을 보냈습니다');officeIntakeOpen();}};});
-  root.querySelectorAll('[data-oi-hold]').forEach(function(button){button.onclick=async function(){if(await officeIntakeHold(button.dataset.oiHold)){toast('접수를 보류했습니다');officeIntakeOpen();}};});
+  root.querySelectorAll('[data-oi-needs]').forEach(function(button){button.onclick=async function(){if(await officeIntakeNeedsInfo(button.dataset.oiNeeds)){toast('내용 보완 요청을 동기화 대기 중으로 저장했습니다');officeIntakeOpen();}};});
+  root.querySelectorAll('[data-oi-hold]').forEach(function(button){button.onclick=async function(){if(await officeIntakeHold(button.dataset.oiHold)){toast('보류를 동기화 대기 중으로 저장했습니다');officeIntakeOpen();}};});
 }
 function quotePipeText(q){return [q&&q.title,q&&q.place,q&&q.memo,q&&q.project].concat((q&&q.items||[]).flatMap(it=>[it&&it.name,it&&it.spec])).filter(Boolean).join(' ');}
 function quoteRegistrationGuide(q){return q&&quoteCalc(q).total>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(quotePipeText(q))?PIPE_REGISTRATION_GUIDE:'';}

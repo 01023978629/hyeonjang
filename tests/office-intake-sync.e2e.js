@@ -48,7 +48,7 @@ const TOKEN = 'test-token-123';
   const blockMock = url => String(url).startsWith(MOCK);
   await page.route(blockMock, route => route.abort());
   const queued = await page.evaluate(() => {
-    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info' });
+    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', reason: '사진 보완' });
     return officeIntakeData().outbox.map(x => ({ action: x.action, attempts: x.attempts, lastError: x.lastError, hasId: !!x.id, hasCreatedAt: !!x.createdAt }));
   });
   assert.deepEqual(queued, [{ action: 'officeSetStatus', attempts: 0, lastError: '', hasId: true, hasCreatedAt: true }], 'durable outbox shape');
@@ -93,15 +93,15 @@ const TOKEN = 'test-token-123';
     const RealDate = window.Date;
     class FixedDate extends RealDate { constructor(...args) { return args.length ? new RealDate(...args) : new RealDate('2026-08-26T00:00:00.000Z'); } static now() { return Date.parse('2026-08-26T00:00:00.000Z'); } }
     window.Date = FixedDate;
-    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', extra: { a: 1, b: 2 } });
-    officeIntakeQueue('officeSetStatus', { status: 'needs_info', extra: { b: 2, a: 1 }, requestId: 'req-1' });
+    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', reason: '사진 보완', extra: { a: 1, b: 2 } });
+    officeIntakeQueue('officeSetStatus', { status: 'needs_info', reason: '사진 보완', extra: { b: 2, a: 1 }, requestId: 'req-1' });
     officeIntakeQueue('officeAccept', { requestId: 'req-1', hyeonjangOrderId: 'order-fifo' });
-    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', extra: { b: 2, a: 1 } });
+    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', reason: '사진 보완', extra: { b: 2, a: 1 } });
     window.Date = RealDate;
     const canonicalActions = officeIntakeData().outbox.map(x => x.action);
     const queueDirty = dirtyCalls;
     state.officeIntake.outbox = [
-      { id: 'z-first', action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'needs_info' }, createdAt: '2026-08-26T00:00:00.000Z', attempts: 2, lastError: '동기화 오류' },
+      { id: 'z-first', action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'needs_info', reason: '사진 보완' }, createdAt: '2026-08-26T00:00:00.000Z', attempts: 2, lastError: '동기화 오류' },
       { id: 'a-second', action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'pending_review' }, createdAt: '2026-08-26T00:00:00.000Z', attempts: 3, lastError: '인증 오류' }
     ];
     state.officeIntake.cursor = 'oi1.persisted-cursor';
@@ -128,7 +128,7 @@ const TOKEN = 'test-token-123';
   await fetch(MOCK + '/__officeDropNextStatus');
   const lostResponse = await page.evaluate(async () => {
     state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
-    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info' });
+    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'needs_info', reason: '사진 보완' });
     await officeIntakeFlush(); const afterDrop = { n: officeIntakeData().outbox.length, attempts: officeIntakeData().outbox[0] && officeIntakeData().outbox[0].attempts };
     const serverAfterDrop = await (await fetch(__relay.url + '/__state')).json();
     const sent = await officeIntakeFlush(); return { afterDrop, sent, remaining: officeIntakeData().outbox.length, serverAfterDrop: { calls: serverAfterDrop.officeStatusCalls, statuses: serverAfterDrop.officeStatuses.length } };
@@ -137,8 +137,25 @@ const TOKEN = 'test-token-123';
   const lostMock = await (await fetch(MOCK + '/__state')).json();
   assert.equal(lostMock.officeStatuses.length, 1, 'lost response applies status exactly once');
   assert.equal(lostMock.officeStatusCalls, 2, 'retry reaches mock server and receives idempotent success');
-  const mockDifferentRetry = await page.evaluate(() => cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', visitAt: '2026-08-28T10:00:00+09:00' }));
+  const mockDifferentRetry = await page.evaluate(() => cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', reason: '사진 보완', visitAt: '2026-08-28T10:00:00+09:00' }));
   assert.equal(mockDifferentRetry.error, 'invalid-transition', 'mock rejects a different-payload self transition');
+
+  // Break caught: the mock follows the server's public projection contract.  A
+  // reason can survive needs_info -> on_hold, but acceptance resolves it.
+  await fetch(MOCK + '/__reset');
+  const resolvedReason = await page.evaluate(async () => {
+    const needs = await cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', reason: '사진 보완' });
+    const hold = await cloudOfficeSetStatus({ requestId: 'req-1', status: 'on_hold' });
+    const accepted = await cloudOfficeAccept('req-1', 'order-reason-resolved');
+    return { needs, hold, accepted };
+  });
+  assert.deepEqual(resolvedReason, {
+    needs: { ok: true, requestId: 'req-1', status: 'needs_info', updatedAt: resolvedReason.needs.updatedAt },
+    hold: { ok: true, requestId: 'req-1', status: 'on_hold', updatedAt: resolvedReason.hold.updatedAt },
+    accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted' }
+  }, 'needs_info -> on_hold -> accepted succeeds');
+  const resolvedMock = await (await fetch(MOCK + '/__state')).json();
+  assert.equal(resolvedMock.officeRequests.find(row => row.requestId === 'req-1').needsInfoReason, null, 'acceptance clears resolved needs-info reason in mock fidelity');
 
   await fetch(MOCK + '/__officeSeed?count=101&at=2100-01-01T00%3A00%3A00.000Z');
   const cursorPaging = await page.evaluate(async () => {
