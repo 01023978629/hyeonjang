@@ -561,7 +561,7 @@ function oiCompletionPhotoIds_(value) {
     if (id.length > 120) continue;
     if (id && !seen[id]) { seen[id] = true; ids.push(id); }
   }
-  return ids;
+  return ids.sort();
 }
 function oiCompletionReportValue_(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
@@ -573,7 +573,10 @@ function oiCompletionReportValue_(value) {
   var allowed = {};
   supplied.forEach(function (id) { allowed[id] = true; });
   published = published.filter(function (id) { return allowed[id]; });
-  return { ok: true, value: { summary: oiText_(value.summary, 800), publicPhotoIds: published } };
+  // `photoIds` is the intake-owned available set. Keep it with the report so a
+  // lost successful reply can be retried as the same projection; only the
+  // explicitly selected `publicPhotoIds` are public.
+  return { ok: true, value: { summary: oiText_(value.summary, 800), photoIds: supplied, publicPhotoIds: published } };
 }
 function oiHas_(value, key) { return Object.prototype.hasOwnProperty.call(value || {}, key); }
 function oiPublicAmount_(request, payload) {

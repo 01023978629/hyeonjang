@@ -526,12 +526,12 @@ const completed = postInternal('officeSetStatus', {
   },
 });
 assert.deepEqual(JSON.parse(JSON.stringify(completed.completionReport)), {
-  summary: '공개 완료 보고', publicPhotoIds: ['published-photo', 'private-photo'],
+  summary: '공개 완료 보고', photoIds: ['private-photo', 'published-photo'], publicPhotoIds: ['private-photo', 'published-photo'],
 });
 const completedAt = sandbox.oiReadStore_().requests.find(request => request.requestId === first.requestId).completedAt;
 assert.equal(typeof completedAt, 'string');
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiGet_(sessionOf1, first.requestId).request.completionReport)), {
-  summary: '공개 완료 보고', publicPhotoIds: ['published-photo', 'private-photo'],
+  summary: '공개 완료 보고', photoIds: ['private-photo', 'published-photo'], publicPhotoIds: ['private-photo', 'published-photo'],
 });
 fakeNow = 2000;
 assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'billed' }).status, 'billed');
@@ -642,11 +642,11 @@ assert.equal(sandbox.oiSetStatus_({ requestId: 'public-empty', status: 'complete
 completionCase('public-unrelated');
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_({ requestId: 'public-unrelated', status: 'completed', completionReport: {
   photoIds: ['owned'], publicPhotoIds: ['other'], internalNotes: 'private note',
-} }, 4002).completionReport)), { summary: '', publicPhotoIds: [] });
+} }, 4002).completionReport)), { summary: '', photoIds: ['owned'], publicPhotoIds: [] });
 completionCase('public-subset');
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_({ requestId: 'public-subset', status: 'completed', completionReport: {
   photoIds: ['owned', 'x'.repeat(161), 3], publicPhotoIds: ['owned', 'owned', 'x'.repeat(161), 8], internalNotes: 'private note',
-} }, 4003).completionReport)), { summary: '', publicPhotoIds: ['owned'] });
+} }, 4003).completionReport)), { summary: '', photoIds: ['owned'], publicPhotoIds: ['owned'] });
 assert.equal(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'public-subset').request.completionReport).includes('private note'), false);
 
 // Break caught: a lost relay response may retry only the exact already-applied public projection;

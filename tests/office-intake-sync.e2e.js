@@ -33,6 +33,25 @@ const TOKEN = 'test-token-123';
   assert.ok(afterSync.cursor, 'cursor stored');
   assert.equal(afterSync.error, '', 'sync error cleared');
 
+  // Break caught: office access uses the stable local office id; rotating a PIN revokes old sessions and never persists the PIN.
+  const officeAccess = await page.evaluate(async () => {
+    state.aptOffices = [{ id: 'of1', complex: '예시 아파트', manager: '', phone: '' }];
+    aptOrderManage('of1');
+    const visible = !!document.querySelector('.apoOfficeAccess[data-id="of1"]');
+    closeModal();
+    const before = await cloudOfficeAdmin('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
+    const rotated = await officeIntakeOfficeAccess('of1', 'rotate');
+    const after = await cloudOfficeAdmin('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
+    const persisted = JSON.stringify({ state, local: Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]) });
+    return { visible, before, rotated, after, persistedPin: /\b\d{6}\b/.test(persisted) };
+  });
+  assert.equal(officeAccess.visible, true, 'office list exposes the access administration control');
+  assert.equal(officeAccess.before.ok, true, 'admin upsert accepts the stable aptOffices id');
+  assert.equal(officeAccess.rotated.ok, true, 'PIN rotation returns a one-time result');
+  assert.match(officeAccess.rotated.pin, /^\d{6}$/, 'PIN rotation result is a six digit display value');
+  assert.equal(officeAccess.after.office.sessionVersion, officeAccess.before.office.sessionVersion + 1, 'PIN rotation increments server sessionVersion');
+  assert.equal(officeAccess.persistedPin, false, 'one-time PIN must not enter serialized state or local storage');
+
   const merged = await page.evaluate(async () => {
     const d = officeIntakeData();
     d.inbox.push({ requestId: 'local-only', updatedAt: '2026-08-26T08:00:00+09:00' });

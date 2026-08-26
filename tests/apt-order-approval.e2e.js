@@ -47,13 +47,31 @@ let browser;
   assert(/15,000,000원/.test(modal.text), '③ 링크 승인 카드에 금액이 안 보임: ' + modal.text);
   assert(modal.warnings === 2 && /표준 패키지는 500만원 이하/.test(modal.text) && /건설업 등록 없이/.test(modal.text), '③ 링크 승인 카드 경고가 빠짐: ' + modal.text);
   assert(modal.orders === 0, '③ 경고를 보여 주는 동안 승인 없이 오더가 저장됨');
+
+  // Break caught: only an intake-derived order publishes a sanitized public projection.
+  const publishing = await page.evaluate(() => {
+    state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    const intake = { id: 'publish-intake', source: 'office-intake', sourceRequestId: 'req-1', status: 'visit', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: null, amount: 980000, intakePhotoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2', 'unrelated'], completionSummary: '공개 가능한 완료 내용', customerName: '노출 금지' };
+    const manual = { id: 'publish-manual', sourceRequestId: 'manual-looks-linked', status: 'visit', visitAt: '2026-08-27T10:00:00+09:00' };
+    officeIntakeQueueOrderStatus(intake);
+    officeIntakeQueueOrderStatus(manual);
+    const visit = officeIntakeData().outbox.map(x => ({ action: x.action, payload: x.payload }));
+    intake.status = 'done'; intake.publicAmount = 120000; intake.publicPhotoIds = ['drive-2', 'unrelated'];
+    const completion = officeIntakeCompletionPayload(intake);
+    officeIntakeQueueOrderStatus(intake);
+    return { visit, completion, all: officeIntakeData().outbox.map(x => ({ action: x.action, payload: x.payload })) };
+  });
+  assert(JSON.stringify(publishing.visit) === JSON.stringify([{ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: null, completionReport: null } }]), '④ 방문 상태는 접수 오더만 공개 금액 null을 명시해 대기열에 넣어야 한다');
+  assert(JSON.stringify(publishing.completion) === JSON.stringify({ summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'], publicAmount: 120000 }), '④ 완료 보고는 intake 사용 가능 사진 집합과 명시 공개 부분집합만 포함해야 한다');
+  assert(JSON.stringify(publishing.all[1]) === JSON.stringify({ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'completed', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000, completionReport: { summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'] } } }), '④ 완료 상태는 공개 보고 외 개인정보·내부금액·무관 사진을 보내면 안 된다');
   assert(errors.length === 0, '④ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 승인 라벨에 금액/금액 미정 표시');
   console.log('PASS  ② 500만원·1,500만원 경고 판정');
   console.log('PASS  ③ 링크 승인 카드에 금액과 경고 노출');
-  console.log('PASS  ④ pageerror 0');
-  console.log('\n전부 통과 (4건)');
+  console.log('PASS  ④ 접수 오더만 상태·공개 완료 보고를 발행');
+  console.log('PASS  ⑤ pageerror 0');
+  console.log('\n전부 통과 (5건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e); process.exitCode = 1;

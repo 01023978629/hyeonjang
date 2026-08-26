@@ -1817,7 +1817,7 @@ async function cloudFlushQueue(manual){
     const keep=q2.filter(function(it){return !doneIds[it.id];});
     keep.forEach(function(it){if(retryUpd[it.id]!=null)it.retryCount=retryUpd[it.id];});
     await relayQueueSet(keep);
-    if(savedOk)relayDailyBackup();   // 큐 경유 저장 성공에도 하루 1회 백업
+    if(savedOk){relayDailyBackup();try{await officeIntakeFlush();}catch(e){}}   // 큐 경유 저장 성공에도 하루 1회 백업
     if(!keep.length){if(sent)relaySetStatus('saved');}
     else if(__relayState!=='auth'&&__relayState!=='conflict')relaySetStatus(navigator.onLine===false?'offline':'netfail');
   }finally{__relayFlushing=false;}
@@ -1837,6 +1837,7 @@ async function relaySaveNow(manual){
       try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
       relaySetStatus('saved');ok=true;
       relayDailyBackup();   // 하루 1회 서버 날짜별 백업(기존 gdBackup 패턴)
+      try{await officeIntakeFlush();}catch(e){}   // 정상 저장 확인 뒤에만 관리사무소 상태 발행
     }else if(res&&res.error==='conflict'){relaySetStatus('conflict');relayConflictModal(res);}
     else if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);}
     else{await relayQueuePush('save');relaySetStatus('netfail');if(manual)toast('서버 저장 실패: '+((res&&res.message)||'서버 오류')+' — 대기열에 보관됨');}
@@ -9378,6 +9379,7 @@ function officeIntakeData(){
   const d=state.officeIntake;
   if(!Array.isArray(d.inbox))d.inbox=[];
   if(!Array.isArray(d.outbox))d.outbox=[];
+  if(!Array.isArray(d.operationalErrors))d.operationalErrors=[];
   d.cursor=String(d.cursor||'');d.lastSyncAt=String(d.lastSyncAt||'');d.lastError=String(d.lastError||'');
   return d;
 }
@@ -9388,6 +9390,14 @@ function officeIntakeError(value){
   if(!known)return '동기화 오류';
   const code=known[0].toLowerCase().replace(/\s+/g,' ');
   return /unauthorized|not-configured|session-expired|invalid-session|forbidden/.test(code)?'인증 오류':'동기화 오류 ('+code+')';
+}
+function officeIntakeOperationalErrors(value){
+  return (Array.isArray(value)?value:[]).slice(-20).map(function(row){
+    const raw=String((row&&row.code)||(row&&row.error)||'sync-error').toLowerCase();
+    const code=/^[a-z0-9_-]{1,60}$/.test(raw)?raw:'sync-error';
+    const at=officeIntakeTime(row&&row.at);
+    return {code:code,receiptNo:String(row&&row.receiptNo||'').slice(0,80),requestId:String(row&&row.requestId||'').slice(0,120),at:at!=null?new Date(at).toISOString():''};
+  });
 }
 function officeIntakeAuthError(value){return /^(인증 오류|.*(?:unauthorized|not-configured|session-expired|invalid-session|forbidden))/i.test(String((value&&value.error)||value||''));}
 function officeIntakeMarkDirty(){try{markDirty();}catch(e){}}
@@ -9434,6 +9444,8 @@ async function officeIntakeSync(){
     let changed=officeIntakeMerge(res.requests);
     const cursor=typeof res.cursor==='string'&&res.cursor?res.cursor:officeIntakeCursor(res.requests,d.cursor);
     if(cursor!==d.cursor){d.cursor=cursor;changed=true;}
+    const errors=officeIntakeOperationalErrors(res.operationalErrors);
+    if(JSON.stringify(d.operationalErrors)!==JSON.stringify(errors)){d.operationalErrors=errors;changed=true;}
     const now=new Date().toISOString();if(d.lastSyncAt!==now){d.lastSyncAt=now;changed=true;}
     if(d.lastError){d.lastError='';changed=true;}
     if(changed)officeIntakeMarkDirty();
@@ -9493,6 +9505,62 @@ function officeIntakeOrderFromRequest(r,projectName){
     location:String(r.location||''),preferredVisitDate:String(r.preferredVisitDate||''),
     intakePhotoIds:(r.photos||[]).map(p=>p&&p.fileId).filter(Boolean).slice(0,5)
   };
+}
+function officeIntakeAttachPhotos(request,order,projectName){
+  if(!request||!order)return 0;
+  state.files=state.files||[];
+  const ids=[],seen={};let added=0;
+  (Array.isArray(request.photos)?request.photos:[]).forEach(function(photo){
+    const driveId=String(photo&&photo.fileId||'').trim();
+    if(!driveId||seen[driveId])return;seen[driveId]=true;ids.push(driveId);
+    if(state.files.some(function(file){return file&&file._driveId===driveId;}))return;
+    const name=String(photo&&photo.name||('관리사무소_접수사진_'+driveId)).slice(0,180);
+    const mime=String(photo&&photo.mimeType||'');
+    const when=photo&&photo.createdAt?new Date(photo.createdAt):null;
+    state.files.push({id:uid(),name:name,handle:null,prefix:'관리사무소 접수/',ext:bestExt(name,mime)||'jpg',size:Number(photo&&photo.size)||0,
+      kind:'photo',project:projectName||order.project||null,when:when&&!isNaN(when)?when:null,lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:'na',est:null,quote:null,contact:null,
+      _phase:null,_worklabel:'관리사무소 접수',_file:null,_virtual:true,_driveId:driveId,_relayLink:'relay:'+driveId});
+    added++;
+  });
+  order.intakePhotoIds=ids.slice(0,10);
+  return added;
+}
+function officeIntakeCompletionPayload(order){
+  const available=[],seen={};
+  (Array.isArray(order&&order.intakePhotoIds)?order.intakePhotoIds:[]).forEach(function(value){const id=String(value||'').trim();if(id&&!seen[id]&&available.length<10){seen[id]=true;available.push(id);}});
+  const publicIds=[],publicSeen={};
+  (Array.isArray(order&&order.publicPhotoIds)?order.publicPhotoIds:[]).forEach(function(value){const id=String(value||'').trim();if(id&&available.includes(id)&&!publicSeen[id]&&publicIds.length<10){publicSeen[id]=true;publicIds.push(id);}});
+  const amount=order&&order.publicAmount;
+  return {summary:String(order&&order.completionSummary||order&&order.text||'').slice(0,800),photoIds:available,publicPhotoIds:publicIds,publicAmount:amount==null?null:num(amount)};
+}
+function officeIntakeQueueOrderStatus(order){
+  if(!order||order.source!=='office-intake'||!order.sourceRequestId)return;
+  const completed=['done','billed','paid'].includes(order.status),report=completed?officeIntakeCompletionPayload(order):null;
+  officeIntakeQueue('officeSetStatus',{requestId:String(order.sourceRequestId),status:APT_TO_OFFICE_STATUS[order.status]||'accepted',visitAt:order.visitAt||null,
+    publicAmount:order.publicAmount==null?null:num(order.publicAmount),completionReport:report?{summary:report.summary,photoIds:report.photoIds,publicPhotoIds:report.publicPhotoIds}:null});
+}
+function officeIntakeOfficeSlug(office){return String((office&&office.intakeSlug)||('office-'+String(office&&office.id||'').replace(/[^a-zA-Z0-9_-]/g,''))).slice(0,80);}
+function officeIntakeAdminWarning(result){
+  if(result&&result.warning==='audit-failed')return '설정은 반영됐지만 감사 기록 확인이 필요합니다.';
+  if(result&&result.error==='admin-state-unknown')return '관리사무소 설정 상태를 확인할 수 없습니다. 다시 조회하기 전에는 재시도하지 마세요.';
+  return result&&result.error?'관리사무소 설정 오류 ('+String(result.error).replace(/[^a-z0-9_-]/gi,'').slice(0,60)+')':'';
+}
+async function officeIntakeOfficeAccess(officeId,command){
+  const office=(state.aptOffices||[]).find(function(item){return item&&item.id===officeId;});
+  if(!office)return {ok:false,error:'not-found'};
+  let result;
+  if(command==='rotate')return cloudOfficeAdmin('officeRotatePin',{officeId:office.id});
+  if(command==='disable')return cloudOfficeAdmin('officeDisable',{officeId:office.id});
+  result=await cloudOfficeAdmin('officeAdminUpsert',{id:office.id,slug:officeIntakeOfficeSlug(office),complexName:String(office.complex||'').slice(0,120),enabled:office.intakeEnabled!==false});
+  if(!(result&&result.ok)){toast(officeIntakeAdminWarning(result)||'관리사무소 설정을 열 수 없습니다');return result||{ok:false,error:'sync-error'};}
+  const warning=officeIntakeAdminWarning(result),path='/office/'+encodeURIComponent(result.office&&result.office.slug||officeIntakeOfficeSlug(office));
+  openModal('접수 주소·비밀번호',
+    '<div style="font-size:12.5px;line-height:1.6"><b>'+escapeHtml(office.complex||'관리사무소')+'</b><p style="margin:7px 0">접수 주소: <code>'+escapeHtml(path)+'</code></p><p style="color:var(--muted);margin:0">비밀번호는 새로 발급한 직후 한 번만 표시됩니다. 닫으면 다시 볼 수 없습니다.</p>'+(warning?'<p style="color:var(--warn)">⚠️ '+escapeHtml(warning)+'</p>':'')+'</div>',[
+      {label:'보존기간 확인',cls:'ghost',fn:async function(){const r=await cloudOfficeAdmin('officeRetentionList',{});if(!(r&&r.ok)){toast(officeIntakeAdminWarning(r)||'보존기간 목록 조회 실패');return;}const rows=(Array.isArray(r.requests)?r.requests:[]).map(function(row){return '<li>'+escapeHtml([row.receiptNo,row.officeId,row.status,row.retentionReason,row.eligibleAt].filter(Boolean).join(' · '))+'</li>';}).join('')||'<li>검토 대상이 없습니다.</li>';openModal('보존기간 확인','<div style="font-size:12px;color:var(--muted);margin-bottom:7px">표시 전용입니다. 이 화면에서는 삭제하지 않습니다.</div><ul style="padding-left:18px;font-size:12px;line-height:1.6">'+rows+'</ul>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);}},
+      {label:'접수 중지',cls:'ghost',fn:async function(){const r=await officeIntakeOfficeAccess(office.id,'disable');const warning=officeIntakeAdminWarning(r);toast(r&&r.ok?(warning?'접수 주소가 중지되었습니다 · '+warning:'접수 주소가 중지되었습니다'):(warning||'접수 중지 실패'));}},
+      {label:'PIN 새로 발급',cls:'blue',fn:async function(){const r=await officeIntakeOfficeAccess(office.id,'rotate');if(!(r&&r.ok&&/^\d{6}$/.test(String(r.pin||'')))){toast(officeIntakeAdminWarning(r)||'PIN 발급 실패');return;}const warning=officeIntakeAdminWarning(r);openModal('PIN 한 번 보기','<div style="font-size:12.5px;line-height:1.6">아래 PIN을 관리사무소에 안전하게 전달하세요. 닫으면 앱 어디에도 저장되지 않습니다.</div>'+(warning?'<p style="color:var(--warn)">⚠️ '+escapeHtml(warning)+'</p>':'')+'<input id="oiOneTimePin" aria-label="한 번만 표시하는 관리사무소 PIN" readonly value="'+escapeAttr(String(r.pin))+'" style="width:100%;margin-top:9px;padding:10px;font-size:18px;letter-spacing:.15em;text-align:center">',[{label:'복사',cls:'ghost',fn:async function(){const input=document.getElementById('oiOneTimePin');try{await navigator.clipboard.writeText(input.value);toast('PIN을 복사했습니다');}catch(e){input.select();toast('PIN을 선택했습니다');}}},{label:'닫기',cls:'blue',fn:closeModal}],true);}}
+    ],true);
+  return result;
 }
 function officeIntakePending(){
   return officeIntakeData().inbox.filter(function(r){return r&&['pending_review','needs_info','on_hold'].includes(r.status);});
@@ -9556,6 +9624,7 @@ async function officeIntakeAccept(requestId,projectMode,projectName){
   if(duplicate)return duplicate;
   state.aptOrders=state.aptOrders||[];
   state.aptOrders.push(order);
+  officeIntakeAttachPhotos(request,order,project);
   return officeIntakeFinishAccept(request,order);
 }
 async function officeIntakeNeedsInfo(requestId){
@@ -9660,6 +9729,17 @@ async function aptReviewMaterialCopy(id){
   try{await navigator.clipboard.writeText(text);toast('후기 재료 복사됨 — 동·호수·고객 연락처는 넣지 않았습니다');return true;}
   catch(e){toast('복사 실패 — 브라우저의 클립보드 권한을 확인하세요');return false;}
 }
+function officeIntakeCompletionControls(o){
+  if(!o||o.source!=='office-intake'||!o.sourceRequestId)return '';
+  const allowed=(Array.isArray(o.intakePhotoIds)?o.intakePhotoIds:[]).slice(0,10);
+  const chosen=new Set(Array.isArray(o.publicPhotoIds)?o.publicPhotoIds:[]);
+  return '<details style="margin-top:7px;border-top:1px dashed var(--line-soft);padding-top:6px"><summary style="font-size:11.5px;cursor:pointer">관리사무소 공개 완료 보고 (기본 비공개)</summary><div style="display:grid;gap:6px;margin-top:7px"><label style="font-size:11.5px">공개 금액(원 · 비우면 비공개)<input class="apoPublicAmount" data-id="'+escapeAttr(o.id)+'" inputmode="numeric" value="'+escapeAttr(o.publicAmount==null?'':String(o.publicAmount))+'" style="display:block;width:100%;padding:7px;margin-top:3px"></label><label style="font-size:11.5px">공개 완료 메모 (최대 800자)<textarea class="apoCompletionSummary" data-id="'+escapeAttr(o.id)+'" maxlength="800" style="display:block;width:100%;min-height:48px;padding:7px;margin-top:3px" placeholder="고객 연락처·내부 원가 없이 입력">'+escapeHtml(o.completionSummary||'')+'</textarea></label>'+(allowed.length?'<div style="font-size:11.5px">공개 사진 선택 (기본 선택 없음)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'+allowed.map(function(id){return '<label style="font-size:11px"><input class="apoPublicPhoto" data-id="'+escapeAttr(o.id)+'" value="'+escapeAttr(id)+'" type="checkbox"'+(chosen.has(id)?' checked':'')+'> 사진</label>';}).join('')+'</div></div>':'<div style="font-size:11px;color:var(--muted)">접수 사진이 없어 공개할 사진이 없습니다.</div>')+'</div></details>';
+}
+function officeIntakeOperationalErrorHtml(){
+  const rows=officeIntakeData().operationalErrors||[];
+  if(!rows.length)return '';
+  return '<div style="margin:8px 0;padding:7px 8px;border:1px solid #fdba74;border-radius:8px;font-size:11px;color:#9a3412">동기화 운영 오류 '+rows.map(function(row){return escapeHtml([row.code,row.receiptNo||row.requestId,row.at].filter(Boolean).join(' · '));}).join('<br>')+'</div>';
+}
 function aptOrderManage(filterOffice){
   aptData();
   const offices=state.aptOffices, orders=state.aptOrders.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -9672,7 +9752,7 @@ function aptOrderManage(filterOffice){
   const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
     tile('진행 중 오더',active.length+'건',active.length?'var(--warn)':'#0a7f43')+
     tile('이달 완료',doneThisMonth.length+'건 · '+hjMan(doneThisMonth.reduce((s,o)=>s+num(o.amount),0)),'#0a7f43')+
-    '<button class="ghost tiny" id="apoOfficeInbox" aria-label="관리사무소 신규 접수 '+intakePending.length+'건, 24시간 이상 미확인 '+intakeOverdue+'건" style="padding:8px 10px;align-self:center">📥 신규 '+intakePending.length+'</button></div>';
+    '<button class="ghost tiny" id="apoOfficeInbox" aria-label="관리사무소 신규 접수 '+intakePending.length+'건, 24시간 이상 미확인 '+intakeOverdue+'건" style="padding:8px 10px;align-self:center">📥 신규 '+intakePending.length+'</button><button class="ghost tiny" id="apoOfficeRetry" style="padding:8px 10px;align-self:center">다시 동기화</button></div>';
   const offOpts=offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===filterOffice?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('');
   const addRow=offices.length
     ? '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'+
@@ -9694,7 +9774,7 @@ function aptOrderManage(filterOffice){
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
         '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button> · <select class="apoPipe" data-id="'+escapeAttr(o.id)+'" aria-label="배관 종류" style="padding:3px 5px;font-size:11.5px">'+APT_PIPE_TYPES.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===pipeType?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select></div>'+
         (amountGuide?'<div data-apt-order-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(amountGuide)+'</div>':'')+'</div>'+
-        (pipeGuide?'<div data-apt-pipe-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(pipeGuide)+'</div>':'')+
+        (pipeGuide?'<div data-apt-pipe-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(pipeGuide)+'</div>':'')+officeIntakeCompletionControls(o)+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>'+
             // 전/후 카드는 원래 "현장에 배정된 사진"만 대상이라 아파트 오더는 아예 못 만들었다
@@ -9705,9 +9785,9 @@ function aptOrderManage(filterOffice){
         '</div></div></div>';
   }).join(''):'<div class="empty" style="padding:14px"><b>오더가 없습니다</b>관리사무소에서 전화가 오면 여기 바로 남기세요 — 동/호와 작업만 있으면 됩니다.</div>';
   const offRow='<div style="display:flex;gap:6px;align-items:center;margin:12px 0 4px;flex-wrap:wrap"><b style="font-size:13px">🏢 관리사무소</b>'+
-    offices.map(o=>'<span style="font-size:12px;border:1px solid var(--line-soft);border-radius:20px;padding:3px 9px">'+escapeHtml(o.complex)+' <span style="color:var(--muted)">'+escapeHtml(o.manager||'')+'</span></span>').join('')+
+    offices.map(o=>'<span style="font-size:12px;border:1px solid var(--line-soft);border-radius:20px;padding:3px 9px">'+escapeHtml(o.complex)+' <span style="color:var(--muted)">'+escapeHtml(o.manager||'')+'</span> <button class="ghost tiny apoOfficeAccess" data-id="'+escapeAttr(o.id)+'" style="padding:2px 5px">접수 주소·비밀번호</button></span>').join('')+
     '<button class="ghost tiny" id="apoOffAdd" style="padding:5px 10px">+ 단지 등록</button></div>';
-  openModal('🏢 아파트 오더 — 관리사무소 일감',head+addRow+
+  openModal('🏢 아파트 오더 — 관리사무소 일감',head+officeIntakeOperationalErrorHtml()+addRow+
     '<div style="max-height:38vh;overflow:auto">'+rows+'</div>'+offRow,
     [{label:'📄 월 정산서',cls:'moss',fn:()=>aptSettle(filterOffice||((offices[0]||{}).id))},
      {label:'📊 단지 통계',cls:'ghost',fn:()=>aptStats(filterOffice||((offices[0]||{}).id))},
@@ -9715,6 +9795,9 @@ function aptOrderManage(filterOffice){
   const root=document.getElementById('modalRoot');
   const intakeBtn=root.querySelector('#apoOfficeInbox');
   if(intakeBtn)intakeBtn.onclick=officeIntakeOpen;
+  const retryBtn=root.querySelector('#apoOfficeRetry');
+  if(retryBtn)retryBtn.onclick=async function(){retryBtn.disabled=true;const synced=await officeIntakeSync();const sent=await officeIntakeFlush();retryBtn.disabled=false;toast((synced?'접수함 갱신':'접수함 갱신 실패')+' · 상태 '+sent+'건 동기화');aptOrderManage(filterOffice);};
+  root.querySelectorAll('.apoOfficeAccess').forEach(function(button){button.onclick=function(){officeIntakeOfficeAccess(button.dataset.id);};});
   root.querySelector('#apoOffAdd').onclick=()=>{
     const complex=(prompt('단지(아파트) 이름 (예: 신흥마을아파트)')||'').trim();
     if(!complex)return;
@@ -9778,6 +9861,9 @@ function aptOrderManage(filterOffice){
     o.pipeType=aptPipeType(s.value);markDirty();aptOrderManage(filterOffice||o.officeId);
     const guide=aptPipeTypeGuide(o.pipeType);toast(guide?('⚠️ '+guide):('배관 종류 저장됨 — '+o.pipeType));
   });
+  root.querySelectorAll('.apoPublicAmount').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const raw=String(input.value||'').replace(/[\s,]/g,'');if(!raw){o.publicAmount=null;officeIntakeMarkDirty();return;}if(!/^\d+$/.test(raw)){input.value=o.publicAmount==null?'':String(o.publicAmount);toast('공개 금액은 0 이상의 숫자만 입력하세요');return;}o.publicAmount=num(raw);officeIntakeMarkDirty();};});
+  root.querySelectorAll('.apoCompletionSummary').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;o.completionSummary=String(input.value||'').slice(0,800);officeIntakeMarkDirty();};});
+  root.querySelectorAll('.apoPublicPhoto').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const selected=[];root.querySelectorAll('.apoPublicPhoto[data-id="'+CSS.escape(o.id)+'"]:checked').forEach(function(box){selected.push(box.value);});o.publicPhotoIds=selected;officeIntakeMarkDirty();};});
   root.querySelectorAll('.apoStat').forEach(s=>s.onchange=()=>{
     const o=state.aptOrders.find(x=>x.id===s.dataset.id);
     if(!o)return;
@@ -9793,6 +9879,7 @@ function aptOrderManage(filterOffice){
       const tm=new Date();tm.setDate(tm.getDate()+1);
       const d=prompt('방문 날짜 (YYYY-MM-DD) — 일정표에 올립니다. 비우면 일정 없이 표시만 합니다.',localDate(tm));
       if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d.trim())){
+        o.visitAt=d.trim()+'T10:00:00+09:00';
         state.schedule=state.schedule||[];
         state.schedule.push(Object.assign(newSchedule(),{date:d.trim(),
           title:'🏢 '+aptOfficeName(o.officeId)+' '+(o.unit||'')+' — '+(o.text||'').slice(0,30),
@@ -9802,7 +9889,7 @@ function aptOrderManage(filterOffice){
         toast('날짜 형식이 아니라 일정은 만들지 않았습니다 (예: 2026-08-15)');
       }
     }
-    markDirty();aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
+    markDirty();officeIntakeQueueOrderStatus(o);aptOrderManage(filterOffice);toast(APT_STAT[s.value][0]+' 처리됨');
   });
   /* 금액 고치기 — 정산서가 "목록에서 금액을 채우세요" 라고 안내하는데
      정작 목록에 고칠 길이 없었다. 할 수 없는 일을 하라고 시키고 있었던 것.

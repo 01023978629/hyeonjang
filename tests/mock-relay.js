@@ -22,7 +22,8 @@ function freshStore() {
              description: '천장에서 물이 떨어집니다.', officeContact: { name: '김소장', phone: '010-1111-2222' },
              residentContact: null, preferredVisitDate: '2026-08-27', photos: [], status: 'pending_review',
              updatedAt: '2026-08-26T09:00:00+09:00'
-           }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0, officeOperationalErrors: [], officeInboxCursors: [], dropNextOfficeStatus: false };
+           }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0, officeOperationalErrors: [], officeInboxCursors: [], dropNextOfficeStatus: false,
+           officeConfig: [{ id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true, sessionVersion: 1 }] };
 }
 let store = freshStore();
 
@@ -43,7 +44,7 @@ function officePhotoIds(value) {
   if (!Array.isArray(value)) return null;
   const seen = new Set(), ids = [];
   for (const item of value) { const id = typeof item === 'string' ? item.trim().slice(0, 120) : ''; if (id && !seen.has(id) && ids.length < 10) { seen.add(id); ids.push(id); } }
-  return ids;
+  return ids.sort();
 }
 function officeCompletion(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
@@ -51,8 +52,10 @@ function officeCompletion(value) {
   const published = Object.hasOwn(value, 'publicPhotoIds') ? officePhotoIds(value.publicPhotoIds) : [];
   if (supplied == null || published == null || (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length))) return { ok: false, error: 'invalid-completion-photos' };
   const allowed = new Set(supplied);
-  return { ok: true, value: { summary: String(value.summary == null ? '' : value.summary).trim().slice(0, 800), publicPhotoIds: published.filter(id => allowed.has(id)) } };
+  return { ok: true, value: { summary: String(value.summary == null ? '' : value.summary).trim().slice(0, 800), photoIds: supplied, publicPhotoIds: published.filter(id => allowed.has(id)) } };
 }
+function officePublic(office) { return { id: office.id, slug: office.slug, complexName: office.complexName, enabled: office.enabled !== false, sessionVersion: Number(office.sessionVersion || 1) }; }
+function officePin(id, version) { let n = 0; const text = String(id) + ':' + String(version); for (const ch of text) n = ((n * 31) + ch.charCodeAt(0)) >>> 0; return String(n % 1000000).padStart(6, '0'); }
 function officePublicAmount(request, payload) {
   if (!Object.hasOwn(payload, 'publicAmount')) return { ok: true, value: request.publicAmount == null ? null : request.publicAmount };
   let value = payload.publicAmount;
@@ -94,7 +97,7 @@ const server = http.createServer((req, res) => {
         saves: store.saves,
         uploads: store.uploads.map(x => ({ name: x.name, kind: x.kind, mimeType: x.mimeType, b64len: x.dataB64.length })),
         backups: store.backups, loads: store.loads, data: store.data,
-        officeRequests: store.officeRequests, officeAccepts: store.officeAccepts, officeStatuses: store.officeStatuses, officeStatusCalls: store.officeStatusCalls, officeOperationalErrors: store.officeOperationalErrors, officeInboxCursors: store.officeInboxCursors
+        officeRequests: store.officeRequests, officeAccepts: store.officeAccepts, officeStatuses: store.officeStatuses, officeStatusCalls: store.officeStatusCalls, officeOperationalErrors: store.officeOperationalErrors, officeInboxCursors: store.officeInboxCursors, officeConfig: store.officeConfig.map(officePublic)
       });
     }
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
@@ -220,13 +223,38 @@ const server = http.createServer((req, res) => {
           } else {
             if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
             request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.updatedAt = new Date().toISOString();
-            store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null, needsInfoReason: publicProjection.needsInfoReason });
+            store.officeStatuses.push({ requestId, status, visitAt: publicProjection.visitAt, publicAmount: publicProjection.publicAmount, completionReport: publicProjection.completionReport, needsInfoReason: publicProjection.needsInfoReason });
           }
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
           // while the next outbox flush must use the server's idempotent status result.
           if (store.dropNextOfficeStatus) { store.dropNextOfficeStatus = false; res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
           return send(res, { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt });
         }
+        case 'officeAdminUpsert': {
+          const id = String(p.id || '').trim(), slug = String(p.slug || '').trim(), complexName = String(p.complexName || '').trim();
+          if (!id || !slug || !complexName) return send(res, fail('invalid-input'));
+          if (store.officeConfig.some(office => office.id !== id && office.slug === slug)) return send(res, fail('slug-conflict'));
+          let office = store.officeConfig.find(row => row.id === id);
+          if (!office) { office = { id, sessionVersion: 1, enabled: true }; store.officeConfig.push(office); }
+          const wasEnabled = office.enabled !== false;
+          office.slug = slug; office.complexName = complexName;
+          if (Object.hasOwn(p, 'enabled')) office.enabled = p.enabled !== false;
+          if (wasEnabled && office.enabled === false) office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+          return send(res, { ok: true, office: officePublic(office) });
+        }
+        case 'officeRotatePin': {
+          const office = store.officeConfig.find(row => row.id === String(p.officeId || p.id || ''));
+          if (!office) return send(res, fail('not-found'));
+          office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+          return send(res, { ok: true, office: officePublic(office), pin: officePin(office.id, office.sessionVersion) });
+        }
+        case 'officeDisable': {
+          const office = store.officeConfig.find(row => row.id === String(p.officeId || p.id || ''));
+          if (!office) return send(res, fail('not-found'));
+          office.enabled = false; office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+          return send(res, { ok: true, office: officePublic(office) });
+        }
+        case 'officeRetentionList': return send(res, { ok: true, requests: [] });
         default: return send(res, fail('bad-request', '허용되지 않은 action'));
       }
     } catch (err) { return send(res, fail('server-error', String(err && err.message || err).slice(0, 140))); }

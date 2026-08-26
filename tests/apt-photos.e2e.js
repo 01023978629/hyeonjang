@@ -81,6 +81,24 @@ let browser;
   assert(agree.n === agree.tabN && agree.n === 2,
     '④ 배지(' + agree.n + ')와 탭 필터(' + agree.tabN + ')가 다르다 — 배지를 못 믿게 된다');
 
+  // Break caught: intake-provided Drive files must be referenced virtually once, not downloaded or re-uploaded.
+  const intakePhotos = await page.evaluate(() => {
+    state.files = state.files.filter(f => !/^OI-PHOTO/.test(f.name || ''));
+    const order = { id: 'oi-photo-order', project: '선택 현장', intakePhotoIds: [] };
+    const request = { photos: [
+      { fileId: 'drive-office-1', name: 'OI-PHOTO_접수전.jpg', mimeType: 'image/jpeg', size: 123, createdAt: '2026-08-26T00:00:00.000Z' },
+      { fileId: 'drive-office-2', name: 'OI-PHOTO_접수후.png', mimeType: 'image/png', size: 456, createdAt: '2026-08-26T01:00:00.000Z' },
+      { fileId: 'drive-office-1', name: 'OI-PHOTO_중복.jpg', mimeType: 'image/jpeg', size: 999 }
+    ] };
+    const first = officeIntakeAttachPhotos(request, order, '선택 현장');
+    const second = officeIntakeAttachPhotos(request, order, '다른 현장');
+    const files = state.files.filter(f => /^drive-office-/.test(f._driveId || ''));
+    return { first, second, intakePhotoIds: order.intakePhotoIds, files: files.map(f => ({ name: f.name, kind: f.kind, project: f.project, driveId: f._driveId, relay: f._relayLink, virtual: f._virtual, work: f._worklabel, file: f._file })) };
+  });
+  assert(intakePhotos.first === 2 && intakePhotos.second === 0, '⑥ 접수 사진은 Drive ID별로 한 번만 가상 연결해야 한다: ' + JSON.stringify(intakePhotos));
+  assert(JSON.stringify(intakePhotos.intakePhotoIds) === JSON.stringify(['drive-office-1', 'drive-office-2']), '⑥ 완료 보고용 intake photo ID가 서버 제공 순서대로 남지 않았다');
+  assert(intakePhotos.files.length === 2 && intakePhotos.files.every(f => f.kind === 'photo' && f.project === '선택 현장' && f.virtual === true && f.relay === 'relay:' + f.driveId && f.work === '관리사무소 접수' && f.file == null), '⑥ 원본 바이트 없이 가상 Drive 참조가 보존되지 않았다: ' + JSON.stringify(intakePhotos.files));
+
   assert(errors.length === 0, '⑥ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 사진 있는 오더에 📸 배지 + 정확한 장수');
@@ -88,8 +106,9 @@ let browser;
   console.log('PASS  ③ 사진 탭 이동 + 입력칸 반영');
   console.log('PASS  ④ 배지 수 == 탭 필터 수');
   console.log('PASS  ⑤ 검색어는 공백 뺀 동/호');
-  console.log('PASS  ⑥ pageerror 0');
-  console.log('\n전부 통과 (6건)');
+  console.log('PASS  ⑥ 접수 사진은 중복 없는 가상 Drive 참조');
+  console.log('PASS  ⑦ pageerror 0');
+  console.log('\n전부 통과 (7건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
