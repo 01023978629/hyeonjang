@@ -22,9 +22,45 @@ function freshStore() {
              description: '천장에서 물이 떨어집니다.', officeContact: { name: '김소장', phone: '010-1111-2222' },
              residentContact: null, preferredVisitDate: '2026-08-27', photos: [], status: 'pending_review',
              updatedAt: '2026-08-26T09:00:00+09:00'
-           }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0 };
+           }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0, officeOperationalErrors: [], officeInboxCursors: [], dropNextOfficeStatus: false };
 }
 let store = freshStore();
+
+const officeTransitions = {
+  pending_review: ['needs_info', 'accepted', 'on_hold', 'cancelled'], needs_info: ['pending_review', 'on_hold', 'cancelled'],
+  accepted: ['visit_scheduled', 'on_hold'], visit_scheduled: ['in_progress', 'on_hold'], in_progress: ['completed', 'on_hold'],
+  completed: ['billed'], billed: ['paid'], paid: [], on_hold: ['pending_review', 'accepted', 'visit_scheduled', 'in_progress', 'cancelled'], cancelled: []
+};
+function officeTime(value) { const n = Date.parse(String(value || '')); return Number.isFinite(n) ? n : -Infinity; }
+function officeCompare(aAt, aId, bAt, bId) { return aAt === bAt ? String(aId).localeCompare(String(bId)) : aAt < bAt ? -1 : 1; }
+function officeCursor(at, id) { return 'oi1.' + Buffer.from(JSON.stringify([at, String(id || '')])).toString('base64url'); }
+function officeReadCursor(value) {
+  const raw = String(value || ''); if (!raw) return { at: -Infinity, id: '', raw: '' };
+  if (raw.startsWith('oi1.')) { try { const tuple = JSON.parse(Buffer.from(raw.slice(4), 'base64url').toString('utf8')); if (Array.isArray(tuple) && Number.isFinite(Number(tuple[0]))) return { at: Number(tuple[0]), id: String(tuple[1] || ''), raw }; } catch (_) {} return { at: Infinity, id: '', raw }; }
+  return { at: officeTime(raw), id: '', raw };
+}
+function officePhotoIds(value) {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set(), ids = [];
+  for (const item of value) { const id = typeof item === 'string' ? item.trim().slice(0, 120) : ''; if (id && !seen.has(id) && ids.length < 10) { seen.add(id); ids.push(id); } }
+  return ids;
+}
+function officeCompletion(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
+  const supplied = Object.hasOwn(value, 'photoIds') ? officePhotoIds(value.photoIds) : [];
+  const published = Object.hasOwn(value, 'publicPhotoIds') ? officePhotoIds(value.publicPhotoIds) : [];
+  if (supplied == null || published == null || (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length))) return { ok: false, error: 'invalid-completion-photos' };
+  const allowed = new Set(supplied);
+  return { ok: true, value: { summary: String(value.summary == null ? '' : value.summary).trim().slice(0, 800), publicPhotoIds: published.filter(id => allowed.has(id)) } };
+}
+function officeProjection(request, payload, completion) {
+  return {
+    visitAt: Object.hasOwn(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
+    publicAmount: Object.hasOwn(payload, 'publicAmount') && Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : (request.publicAmount == null ? null : request.publicAmount),
+    completionReport: completion ? completion.value : (request.completionReport || null)
+  };
+}
+function sameOfficeProjection(request, projection) { return (request.visitAt || null) === projection.visitAt && (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount && JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null); }
 
 function send(res, obj) {
   const b = JSON.stringify(obj);
@@ -43,10 +79,17 @@ const server = http.createServer((req, res) => {
         saves: store.saves,
         uploads: store.uploads.map(x => ({ name: x.name, kind: x.kind, mimeType: x.mimeType, b64len: x.dataB64.length })),
         backups: store.backups, loads: store.loads, data: store.data,
-        officeRequests: store.officeRequests, officeAccepts: store.officeAccepts, officeStatuses: store.officeStatuses, officeStatusCalls: store.officeStatusCalls
+        officeRequests: store.officeRequests, officeAccepts: store.officeAccepts, officeStatuses: store.officeStatuses, officeStatusCalls: store.officeStatusCalls, officeOperationalErrors: store.officeOperationalErrors, officeInboxCursors: store.officeInboxCursors
       });
     }
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
+    if (u.pathname === '/__officeDropNextStatus') { store.dropNextOfficeStatus = true; return send(res, { ok: true }); }
+    if (u.pathname === '/__officeSeed') {
+      const count = Math.max(0, Math.min(150, Number(u.searchParams.get('count') || 0)));
+      const at = String(u.searchParams.get('at') || '2100-01-01T00:00:00.000Z');
+      store.officeRequests = Array.from({ length: count }, (_, i) => ({ requestId: 'tuple-' + String(i).padStart(3, '0'), receiptNo: 'MM-tuple-' + i, officeId: 'of1', unit: '', location: '', issueType: '기타', pipeType: '미확정', urgency: 'normal', description: '', officeContact: {}, residentContact: null, preferredVisitDate: '', photos: [], status: 'pending_review', updatedAt: at, createdAt: at }));
+      return send(res, { ok: true, count });
+    }
     if (u.pathname === '/__bump') { // 다른 기기가 저장한 상황을 흉내(충돌 유발)
       store.revision++; store.exists = true; store.savedBy = 'other-device'; store.savedAt = new Date().toISOString();
       if (store.data) store.data = Object.assign({}, store.data, { savedAt: store.savedAt });
@@ -124,11 +167,15 @@ const server = http.createServer((req, res) => {
           return send(res, { ok: true, fileId: id, name: f.name, mimeType: f.mimeType, source: 'thumbnail', dataB64: f.dataB64 });
         }
         case 'officeInbox': {
-          const cursor = String(p.updatedAfter || '');
-          const requests = store.officeRequests.filter(x => !cursor || String(x.updatedAt || '') > cursor)
-            .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
-          const nextCursor = requests.length ? String(requests[requests.length - 1].updatedAt || cursor) : cursor;
-          return send(res, { ok: true, requests, cursor: nextCursor, operationalErrors: [] });
+          const cursor = officeReadCursor(p.updatedAfter);
+          store.officeInboxCursors.push(cursor.raw);
+          const retries = new Map();
+          for (const error of store.officeOperationalErrors) if (error && !error.resolvedAt && error.requestId) { const id = String(error.requestId), at = officeTime(error.at); if (!retries.has(id) || at > retries.get(id)) retries.set(id, at); }
+          const rows = store.officeRequests.map(request => { const hasRetry = retries.has(String(request.requestId)); const effectiveAt = Math.max(officeTime(request.updatedAt), hasRetry ? retries.get(String(request.requestId)) : -Infinity); return { request, effectiveAt, actionable: request.status === 'pending_review' || request.status === 'needs_info' || hasRetry }; })
+            .filter(row => row.actionable && officeCompare(row.effectiveAt, row.request.requestId, cursor.at, cursor.id) > 0)
+            .sort((a, b) => officeCompare(a.effectiveAt, a.request.requestId, b.effectiveAt, b.request.requestId)).slice(0, 100);
+          const nextCursor = rows.length ? officeCursor(rows[rows.length - 1].effectiveAt, rows[rows.length - 1].request.requestId) : cursor.raw;
+          return send(res, { ok: true, requests: rows.map(row => row.request), cursor: nextCursor, operationalErrors: store.officeOperationalErrors.slice(-100) });
         }
         case 'officeAccept': {
           const requestId = String(p.requestId || ''), orderId = String(p.hyeonjangOrderId || '');
@@ -147,18 +194,20 @@ const server = http.createServer((req, res) => {
           const requestId = String(p.requestId || ''), status = String(p.status || '');
           store.officeStatusCalls++;
           const request = store.officeRequests.find(x => x.requestId === requestId);
-          const transitions = {
-            pending_review: ['needs_info', 'accepted', 'on_hold', 'cancelled'], needs_info: ['pending_review', 'on_hold', 'cancelled'],
-            accepted: ['visit_scheduled', 'on_hold'], visit_scheduled: ['in_progress', 'on_hold'], in_progress: ['completed', 'on_hold'],
-            completed: ['billed'], billed: ['paid'], paid: [], on_hold: ['pending_review', 'accepted', 'visit_scheduled', 'in_progress', 'cancelled'], cancelled: []
-          };
           if (!request) return send(res, fail('not-found'));
-          // Retrying the same delivered payload is idempotent, matching the internal action's observable result.
-          if (request.status !== status) {
-            if (!(transitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
-            request.status = status; request.updatedAt = new Date().toISOString();
+          const completion = p.completionReport ? officeCompletion(p.completionReport) : null;
+          if (completion && !completion.ok) return send(res, fail(completion.error));
+          const projection = officeProjection(request, p, completion);
+          if (request.status === status) {
+            if (!sameOfficeProjection(request, projection)) return send(res, fail('invalid-transition'));
+          } else {
+            if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
+            request.status = status; request.visitAt = projection.visitAt; request.publicAmount = projection.publicAmount; request.completionReport = projection.completionReport; request.updatedAt = new Date().toISOString();
             store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null });
           }
+          // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
+          // while the next outbox flush must use the server's idempotent status result.
+          if (store.dropNextOfficeStatus) { store.dropNextOfficeStatus = false; res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
           return send(res, { ok: true, requestId, status: request.status, updatedAt: request.updatedAt });
         }
         default: return send(res, fail('bad-request', '허용되지 않은 action'));

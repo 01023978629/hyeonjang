@@ -438,30 +438,60 @@ function oiUpload_(session, payload, now) {
 
 function oiInbox_(payload) {
   payload = payload && typeof payload === 'object' ? payload : {};
-  var cursor = oiText_(payload.updatedAfter, 40);
+  var cursor = oiInboxCursor_(payload.updatedAfter);
   var now = Date.now();
   var store = oiReadStore_();
   var retryAt = {};
   store.operationalErrors.forEach(function (error) {
     if (oiIsSyncError_(error) && !error.resolvedAt) {
       var id = String(error.requestId);
-      if (!retryAt[id] || String(error.at || '') > retryAt[id]) retryAt[id] = String(error.at || '');
+      var errorAt = oiTime_(error.at);
+      if (!Object.prototype.hasOwnProperty.call(retryAt, id) || errorAt > retryAt[id]) retryAt[id] = errorAt;
     }
   });
-  var requests = store.requests.filter(function (request) {
-    var errorAt = retryAt[String(request.requestId || '')] || '';
-    request._oiEffectiveAt = String(request.updatedAt || '') > errorAt ? String(request.updatedAt || '') : errorAt;
-    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || !!errorAt;
-    return actionable && (!cursor || request._oiEffectiveAt > cursor);
+  var rows = store.requests.map(function (request) {
+    var requestId = String(request.requestId || ''), hasRetry = Object.prototype.hasOwnProperty.call(retryAt, requestId);
+    var errorAt = hasRetry ? retryAt[requestId] : -Infinity;
+    var updatedAt = oiTime_(request.updatedAt);
+    var effectiveAt = updatedAt > errorAt ? updatedAt : errorAt;
+    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || hasRetry;
+    return { request: request, effectiveAt: effectiveAt, actionable: actionable };
+  }).filter(function (row) {
+    return row.actionable && oiTupleCompare_(row.effectiveAt, row.request.requestId, cursor.at, cursor.id) > 0;
   }).sort(function (a, b) {
-    return String(a._oiEffectiveAt || '').localeCompare(String(b._oiEffectiveAt || ''));
-  }).slice(0, 100).map(function (request) {
+    return oiTupleCompare_(a.effectiveAt, a.request.requestId, b.effectiveAt, b.request.requestId);
+  }).slice(0, 100);
+  var requests = rows.map(function (row) {
+    var request = row.request;
     var copy = {};
-    Object.keys(request).forEach(function (key) { if (key !== '_oiEffectiveAt') copy[key] = request[key]; });
+    Object.keys(request).forEach(function (key) { copy[key] = request[key]; });
     copy.overdue = request.status === 'pending_review' && isFinite(Date.parse(request.createdAt || '')) && now - Date.parse(request.createdAt) >= 24 * 60 * 60 * 1000;
     return copy;
   });
-  return { ok: true, requests: requests, operationalErrors: store.operationalErrors.slice(-100) };
+  var next = rows.length ? oiInboxCursorEncode_(rows[rows.length - 1].effectiveAt, rows[rows.length - 1].request.requestId) : cursor.raw;
+  return { ok: true, requests: requests, cursor: next, operationalErrors: store.operationalErrors.slice(-100) };
+}
+function oiTime_(value) { var time = Date.parse(String(value || '')); return isFinite(time) ? time : -Infinity; }
+function oiTupleCompare_(leftAt, leftId, rightAt, rightId) {
+  if (leftAt !== rightAt) return leftAt < rightAt ? -1 : 1;
+  leftId = String(leftId || ''); rightId = String(rightId || '');
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
+function oiInboxCursorEncode_(at, requestId) {
+  return 'oi1.' + Utilities.base64EncodeWebSafe(Utilities.newBlob(JSON.stringify([at, String(requestId || '')])).getBytes());
+}
+function oiInboxCursor_(value) {
+  var raw = String(value == null ? '' : value).slice(0, 200);
+  if (!raw) return { at: -Infinity, id: '', raw: '' };
+  if (raw.indexOf('oi1.') === 0) {
+    try {
+      var tuple = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(raw.slice(4))).getDataAsString());
+      if (Array.isArray(tuple) && isFinite(Number(tuple[0]))) return { at: Number(tuple[0]), id: String(tuple[1] || ''), raw: raw };
+    } catch (_) {}
+    return { at: Infinity, id: '', raw: raw };
+  }
+  var legacy = oiTime_(raw);
+  return { at: legacy, id: '', raw: raw };
 }
 
 var OI_SYNC_ERROR_CODES = ['already-linked', 'accept-invalid-transition', 'invalid-transition'];
@@ -541,6 +571,19 @@ function oiCompletionReportValue_(value) {
   published = published.filter(function (id) { return allowed[id]; });
   return { ok: true, value: { summary: oiText_(value.summary, 800), publicPhotoIds: published } };
 }
+function oiHas_(value, key) { return Object.prototype.hasOwnProperty.call(value || {}, key); }
+function oiStatusProjection_(request, payload, completion) {
+  return {
+    visitAt: oiHas_(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
+    publicAmount: oiHas_(payload, 'publicAmount') && Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : (request.publicAmount == null ? null : request.publicAmount),
+    completionReport: completion ? completion.value : (request.completionReport || null)
+  };
+}
+function oiSameStatusProjection_(request, projection) {
+  return (request.visitAt || null) === projection.visitAt &&
+    (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount &&
+    JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null);
+}
 function oiSetStatus_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
   var next = oiText_(payload.status, 40);
@@ -550,17 +593,27 @@ function oiSetStatus_(payload, now) {
     var store = oiReadStore_();
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
+    var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
+    if (completion && !completion.ok) return { ok: false, error: completion.error };
+    var projection = oiStatusProjection_(request, payload, completion);
+    if (request.status === next) {
+      if (!oiSameStatusProjection_(request, projection)) {
+        oiOperationalErrorLocked_(store, 'invalid-transition', request.requestId, now);
+        oiWriteStore_(store);
+        return { ok: false, error: 'invalid-transition' };
+      }
+      if (oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now)) oiWriteStore_(store);
+      return oiStatusResult_(request);
+    }
     if (!oiCanTransition_(request.status, next, 'internal')) {
       oiOperationalErrorLocked_(store, 'invalid-transition', request.requestId, now);
       oiWriteStore_(store);
       return { ok: false, error: 'invalid-transition' };
     }
-    var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
-    if (completion && !completion.ok) return { ok: false, error: completion.error };
     request.status = next;
-    request.visitAt = payload.visitAt || request.visitAt || null;
-    request.publicAmount = Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : request.publicAmount;
-    request.completionReport = completion ? completion.value : request.completionReport;
+    request.visitAt = projection.visitAt;
+    request.publicAmount = projection.publicAmount;
+    request.completionReport = projection.completionReport;
     if (next === 'completed' && !request.completedAt) request.completedAt = oiNow_(now);
     request.updatedAt = oiNow_(now);
     oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now);

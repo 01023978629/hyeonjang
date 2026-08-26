@@ -211,7 +211,7 @@ const sandbox = {
     },
     base64Decode: value => Array.from(Buffer.from(String(value), 'base64')),
     formatDate,
-    newBlob: (bytes, mimeType, name) => ({ bytes: Array.from(bytes), mimeType, name, getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
+    newBlob: (bytes, mimeType, name) => { const data = typeof bytes === 'string' ? Array.from(Buffer.from(bytes, 'utf8')) : Array.from(bytes); return { bytes: data, mimeType, name, getDataAsString: () => Buffer.from(data).toString('utf8'), getBytes: () => data.slice() }; },
     getUuid: () => 'req-' + (++drive.uuid),
   },
   LockService: {
@@ -648,6 +648,38 @@ assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_({ requestId: 'pu
   photoIds: ['owned', 'x'.repeat(161), 3], publicPhotoIds: ['owned', 'owned', 'x'.repeat(161), 8], internalNotes: 'private note',
 } }, 4003).completionReport)), { summary: '', publicPhotoIds: ['owned'] });
 assert.equal(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'public-subset').request.completionReport).includes('private note'), false);
+
+// Break caught: a lost relay response may retry only the exact already-applied public projection;
+// changing a supplied field on the same status is still an invalid transition and must not mutate or audit twice.
+const idemStore = sandbox.oiReadStore_();
+idemStore.requests.push({ requestId: 'status-idempotent', receiptNo: 'MM-status-idempotent', officeId: 'of1', status: 'accepted', visitAt: null, publicAmount: null, completionReport: null, updatedAt: '2026-08-26T00:00:00.000Z' });
+sandbox.oiWriteStore_(idemStore);
+const idemFirst = sandbox.oiSetStatus_({ requestId: 'status-idempotent', status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000 }, 5000);
+assert.equal(idemFirst.ok, true);
+const idemAuditBefore = sandbox.oiReadStore_().audit.filter(row => row.receiptNo === 'MM-status-idempotent' && row.action === 'status').length;
+const idemRetry = sandbox.oiSetStatus_({ requestId: 'status-idempotent', status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000 }, 6000);
+assert.equal(idemRetry.ok, true, 'lost-response retry accepts the exact stored public projection');
+assert.equal(sandbox.oiReadStore_().audit.filter(row => row.receiptNo === 'MM-status-idempotent' && row.action === 'status').length, idemAuditBefore, 'idempotent retry does not duplicate audit');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'status-idempotent', status: 'visit_scheduled', visitAt: '2026-08-28T10:00:00+09:00', publicAmount: 120000 }, 7000).error, 'invalid-transition', 'same status with a different public field is rejected');
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'status-idempotent').request.visitAt, '2026-08-27T10:00:00+09:00', 'different retry did not mutate status projection');
+
+const idemCompletionStore = sandbox.oiReadStore_();
+idemCompletionStore.requests.push({ requestId: 'completion-idempotent', receiptNo: 'MM-completion-idempotent', officeId: 'of1', status: 'in_progress', updatedAt: '2026-08-26T00:00:00.000Z' });
+sandbox.oiWriteStore_(idemCompletionStore);
+const completionPayload = { requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '공개 완료', photoIds: ['owned', 'private'], publicPhotoIds: ['owned'] } };
+assert.equal(sandbox.oiSetStatus_(completionPayload, 8000).ok, true);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '공개 완료', photoIds: ['private', 'owned'], publicPhotoIds: ['owned'] } }, 9000).ok, true, 'normalized available-photo contract retries safely');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '다른 공개 보고', photoIds: ['owned', 'private'], publicPhotoIds: ['owned'] } }, 10000).error, 'invalid-transition');
+
+// Break caught: equal effective timestamps require a requestId tuple cursor; the second page must not skip its 101st record.
+const cursorStore = sandbox.oiReadStore_();
+for (let i = 0; i < 101; i++) cursorStore.requests.push({ requestId: 'tuple-' + String(i).padStart(3, '0'), receiptNo: 'MM-tuple-' + i, officeId: 'of1', status: 'pending_review', updatedAt: '2100-01-01T00:00:00.000Z', createdAt: '2100-01-01T00:00:00.000Z' });
+sandbox.oiWriteStore_(cursorStore);
+const tuplePage1 = sandbox.oiInbox_({ updatedAfter: '2099-12-31T23:59:59.000Z' });
+assert.equal(tuplePage1.requests.length, 100);
+assert.match(tuplePage1.cursor, /^oi1\./, 'server returns an opaque tuple cursor');
+const tuplePage2 = sandbox.oiInbox_({ updatedAfter: tuplePage1.cursor });
+assert.deepEqual(tuplePage2.requests.map(request => request.requestId), ['tuple-100']);
 
 // Break caught: config compensation classifies restored, staged, unknown, and absent-property states without leaking a PIN in failed paths.
 const recovery = postInternal('officeAdminUpsert', { id: 'of-recovery', slug: 'recovery-apt', complexName: '복구 단지', enabled: true });
