@@ -110,5 +110,263 @@ function oiVerifySession_(token, now) {
 function oiHandlePublicAction_(action, req) {
   var payload = req && req.payload && typeof req.payload === 'object' ? req.payload : {};
   if (action === 'officeLogin') return oiLogin_(payload, Date.now());
+  var session = oiVerifySession_((req && req.sessionToken) || payload.sessionToken, Date.now());
+  if (!session) return { ok: false, error: 'session-expired', message: '로그인 세션이 만료되었습니다' };
+  if (action === 'officeList') return oiList_(session, payload);
+  if (action === 'officeGet') return oiGet_(session, payload.requestId);
+  if (action === 'officeCreate') return oiCreate_(session, payload, Date.now());
+  if (action === 'officeUpdate') return oiUpdate_(session, payload, Date.now());
+  if (action === 'officeCancel') return oiCancel_(session, payload, Date.now());
+  if (action === 'officeUpload') return oiUpload_(session, payload, Date.now());
   return { ok: false, error: 'bad-request', message: '아직 지원하지 않는 관리사무소 action입니다' };
+}
+
+var OI_STORE_VERSION = 1;
+var OI_MAX_PHOTOS = 5;
+var OI_MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+var OI_IMAGE_TYPES = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp'
+};
+
+function oiStoreName_() {
+  return PropertiesService.getScriptProperties().getProperty('OFFICE_STORE_FILE') || '관리사무소접수.json';
+}
+function oiStoreRoot_() { return rootFolder_(); }
+function oiStoreFile_(root) {
+  var files = root.getFilesByName(oiStoreName_());
+  return files.hasNext() ? files.next() : null;
+}
+function oiEmptyStore_() { return { version: OI_STORE_VERSION, requests: [] }; }
+function oiReadStore_() {
+  var file = oiStoreFile_(oiStoreRoot_());
+  if (!file) return oiEmptyStore_();
+  var store = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+  if (!store || store.version !== OI_STORE_VERSION || !Array.isArray(store.requests)) throw new Error('office-store-corrupt');
+  return store;
+}
+function oiWriteStore_(store) {
+  if (!store || store.version !== OI_STORE_VERSION || !Array.isArray(store.requests)) throw new Error('office-store-invalid');
+  var root = oiStoreRoot_();
+  var file = oiStoreFile_(root);
+  var content = JSON.stringify(store);
+  if (file) file.setContent(content);
+  else root.createFile(oiStoreName_(), content, 'application/json');
+}
+function oiSessionOfficeId_(session) { return String(session && session.officeId || ''); }
+function oiOwnRequest_(store, officeId, requestId) {
+  requestId = String(requestId || '');
+  for (var i = 0; i < store.requests.length; i++) {
+    var request = store.requests[i];
+    if (request.officeId === officeId && request.requestId === requestId) return request;
+  }
+  return null;
+}
+function oiNow_(now) { return new Date(Number(now)).toISOString(); }
+function oiReceiptDay_(now) {
+  return new Date(Number(now)).toISOString().slice(0, 10).replace(/-/g, '');
+}
+function oiCreateResult_(request) {
+  return { ok: true, requestId: request.requestId, receiptNo: request.receiptNo, status: request.status, createdAt: request.createdAt };
+}
+function oiPublicRequest_(request) {
+  return {
+    requestId: request.requestId,
+    receiptNo: request.receiptNo,
+    unit: request.unit,
+    location: request.location,
+    issueType: request.issueType,
+    pipeType: request.pipeType,
+    urgency: request.urgency,
+    description: request.description,
+    officeContact: request.officeContact,
+    residentContact: request.residentContact || null,
+    preferredVisitDate: request.preferredVisitDate || '',
+    photos: (request.photos || []).map(function (photo) {
+      return { fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
+    }),
+    status: request.status,
+    publicAmount: request.publicAmount == null ? null : request.publicAmount,
+    visitAt: request.visitAt || null,
+    completionReport: request.completionReport || null,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt
+  };
+}
+function oiOfficeEnabled_() { return PropertiesService.getScriptProperties().getProperty('OFFICE_INTAKE_ENABLED') === '1'; }
+function oiOfficeMutable_(request) { return request.status === 'pending_review' || request.status === 'needs_info'; }
+
+function oiCreate_(session, payload, now) {
+  if (!oiOfficeEnabled_()) return { ok: false, error: 'office-disabled' };
+  var validated = oiValidateCreate_(payload);
+  if (!validated.ok) return validated;
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    for (var i = 0; i < store.requests.length; i++) {
+      var existing = store.requests[i];
+      if (existing.officeId === officeId && existing.idempotencyKey === validated.value.idempotencyKey) return oiCreateResult_(existing);
+    }
+    var day = oiReceiptDay_(now);
+    var receiptKey = 'OFFICE_RECEIPT_' + day;
+    var props = PropertiesService.getScriptProperties();
+    var sequence = Number(props.getProperty(receiptKey) || 0) + 1;
+    props.setProperty(receiptKey, String(sequence));
+    var at = oiNow_(now);
+    var request = {
+      requestId: Utilities.getUuid(),
+      receiptNo: oiReceiptNo_(day, sequence),
+      officeId: officeId,
+      idempotencyKey: validated.value.idempotencyKey,
+      unit: validated.value.unit,
+      location: validated.value.location,
+      issueType: validated.value.issueType,
+      pipeType: validated.value.pipeType,
+      urgency: validated.value.urgency,
+      description: validated.value.description,
+      officeContact: validated.value.officeContact,
+      residentContact: validated.value.residentContact,
+      preferredVisitDate: validated.value.preferredVisitDate,
+      photos: [],
+      status: 'pending_review',
+      hyeonjangOrderId: null,
+      publicAmount: null,
+      visitAt: null,
+      completionReport: null,
+      createdAt: at,
+      updatedAt: at
+    };
+    store.requests.push(request);
+    oiWriteStore_(store);
+    return oiCreateResult_(request);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function oiList_(session, payload) {
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  var requests = oiReadStore_().requests.filter(function (request) { return request.officeId === officeId; });
+  requests.sort(function (a, b) { return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)); });
+  return { ok: true, requests: requests.slice(0, 50).map(oiPublicRequest_) };
+}
+function oiGet_(session, requestId) {
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  var request = oiOwnRequest_(oiReadStore_(), officeId, requestId);
+  return request ? { ok: true, request: oiPublicRequest_(request) } : { ok: false, error: 'not-found' };
+}
+function oiUpdate_(session, payload, now) {
+  if (!oiOfficeEnabled_()) return { ok: false, error: 'office-disabled' };
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    var request = oiOwnRequest_(store, officeId, payload.requestId);
+    if (!request) return { ok: false, error: 'not-found' };
+    if (!oiOfficeMutable_(request)) return { ok: false, error: 'invalid-status' };
+    var source = {
+      idempotencyKey: request.idempotencyKey,
+      unit: payload.unit == null ? request.unit : payload.unit,
+      location: payload.location == null ? request.location : payload.location,
+      issueType: payload.issueType == null ? request.issueType : payload.issueType,
+      pipeType: payload.pipeType == null ? request.pipeType : payload.pipeType,
+      urgency: payload.urgency == null ? request.urgency : payload.urgency,
+      description: payload.description == null ? request.description : payload.description,
+      officeContact: payload.officeContact == null ? request.officeContact : payload.officeContact,
+      residentContact: payload.residentContact == null ? request.residentContact : payload.residentContact,
+      preferredVisitDate: payload.preferredVisitDate == null ? request.preferredVisitDate : payload.preferredVisitDate,
+      privacyConsent: payload.privacyConsent == null ? true : payload.privacyConsent
+    };
+    var validated = oiValidateCreate_(source);
+    if (!validated.ok) return validated;
+    var value = validated.value;
+    request.unit = value.unit;
+    request.location = value.location;
+    request.issueType = value.issueType;
+    request.pipeType = value.pipeType;
+    request.urgency = value.urgency;
+    request.description = value.description;
+    request.officeContact = value.officeContact;
+    request.residentContact = value.residentContact;
+    request.preferredVisitDate = value.preferredVisitDate;
+    request.updatedAt = oiNow_(now);
+    oiWriteStore_(store);
+    return { ok: true, requestId: request.requestId, status: request.status, updatedAt: request.updatedAt };
+  } finally {
+    lock.releaseLock();
+  }
+}
+function oiCancel_(session, payload, now) {
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    var request = oiOwnRequest_(store, officeId, payload.requestId);
+    if (!request) return { ok: false, error: 'not-found' };
+    if (!oiOfficeMutable_(request)) return { ok: false, error: 'invalid-status' };
+    request.status = 'cancelled';
+    request.updatedAt = oiNow_(now);
+    oiWriteStore_(store);
+    return { ok: true, requestId: request.requestId, status: request.status, updatedAt: request.updatedAt };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function oiByte_(bytes, index) { return Number(bytes[index]) & 255; }
+function oiImageMagicValid_(mimeType, bytes) {
+  if (mimeType === 'image/jpeg') return bytes.length >= 3 && oiByte_(bytes, 0) === 0xFF && oiByte_(bytes, 1) === 0xD8 && oiByte_(bytes, 2) === 0xFF;
+  if (mimeType === 'image/png') return bytes.length >= 4 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4E && oiByte_(bytes, 3) === 0x47;
+  return bytes.length >= 12 && oiByte_(bytes, 0) === 0x52 && oiByte_(bytes, 1) === 0x49 && oiByte_(bytes, 2) === 0x46 && oiByte_(bytes, 3) === 0x46 && oiByte_(bytes, 8) === 0x57 && oiByte_(bytes, 9) === 0x45 && oiByte_(bytes, 10) === 0x42 && oiByte_(bytes, 11) === 0x50;
+}
+function oiRequestPhotoFolder_(officeId, receiptNo) {
+  var office = oiOfficeById_(officeId);
+  if (!office || !oiText_(office.slug, 80)) throw new Error('office-not-found');
+  var root = oiStoreRoot_();
+  return subFolder_(subFolder_(subFolder_(root, '관리사무소접수'), oiText_(office.slug, 80)), receiptNo);
+}
+function oiUpload_(session, payload, now) {
+  if (!oiOfficeEnabled_()) return { ok: false, error: 'office-disabled' };
+  var officeId = oiSessionOfficeId_(session);
+  if (!officeId) return { ok: false, error: 'session-expired' };
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var mimeType = String(payload.mimeType || '');
+  if (!OI_IMAGE_TYPES[mimeType]) return { ok: false, error: 'unsupported-type' };
+  var bytes;
+  try { bytes = Utilities.base64Decode(String(payload.dataB64 || '')); }
+  catch (_) { return { ok: false, error: 'invalid-file' }; }
+  if (bytes.length > OI_MAX_PHOTO_BYTES) return { ok: false, error: 'too-large' };
+  if (!oiImageMagicValid_(mimeType, bytes)) return { ok: false, error: 'invalid-file' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    var request = oiOwnRequest_(store, officeId, payload.requestId);
+    if (!request) return { ok: false, error: 'not-found' };
+    request.photos = Array.isArray(request.photos) ? request.photos : [];
+    if (request.photos.length >= OI_MAX_PHOTOS) return { ok: false, error: 'too-many-files' };
+    var number = request.photos.length + 1;
+    var name = request.receiptNo + '_0' + number + OI_IMAGE_TYPES[mimeType];
+    var file = oiRequestPhotoFolder_(officeId, request.receiptNo).createFile(Utilities.newBlob(bytes, mimeType, name));
+    var createdAt = oiNow_(now);
+    var photo = { fileId: file.getId(), name: name, mimeType: mimeType, size: bytes.length, createdAt: createdAt };
+    request.photos.push(photo);
+    request.updatedAt = createdAt;
+    oiWriteStore_(store);
+    return { ok: true, fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
+  } finally {
+    lock.releaseLock();
+  }
 }
