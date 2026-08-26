@@ -205,7 +205,7 @@ function oiPublicRequest_(request) {
     residentContact: request.residentContact || null,
     preferredVisitDate: request.preferredVisitDate || '',
     photos: (request.photos || []).map(function (photo) {
-      return { fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
+      return oiPhotoResult_(photo);
     }),
     status: request.status,
     publicAmount: request.publicAmount == null ? null : request.publicAmount,
@@ -388,6 +388,21 @@ function oiCancel_(session, payload, now) {
 }
 
 function oiByte_(bytes, index) { return Number(bytes[index]) & 255; }
+function oiUploadId_(value) {
+  var id = String(value == null ? '' : value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id.toLowerCase() : '';
+}
+function oiPhotoResult_(photo) {
+  var result = { fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
+  var uploadId = oiUploadId_(photo.uploadId);
+  if (uploadId) result.uploadId = uploadId;
+  return result;
+}
+function oiUploadResult_(photo) {
+  var result = oiPhotoResult_(photo);
+  result.ok = true;
+  return result;
+}
 function oiImageMagicValid_(mimeType, bytes) {
   if (mimeType === 'image/jpeg') return bytes.length >= 3 && oiByte_(bytes, 0) === 0xFF && oiByte_(bytes, 1) === 0xD8 && oiByte_(bytes, 2) === 0xFF;
   if (mimeType === 'image/png') return bytes.length >= 4 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4E && oiByte_(bytes, 3) === 0x47;
@@ -405,6 +420,8 @@ function oiUpload_(session, payload, now) {
   var officeId = oiSessionOfficeId_(session);
   if (!officeId) return { ok: false, error: 'session-expired' };
   payload = payload && typeof payload === 'object' ? payload : {};
+  var uploadId = oiUploadId_(payload.uploadId);
+  if (!uploadId) return { ok: false, error: 'invalid-upload-id' };
   var mimeType = String(payload.mimeType || '');
   if (!Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, mimeType)) return { ok: false, error: 'unsupported-type' };
   var bytes;
@@ -419,12 +436,16 @@ function oiUpload_(session, payload, now) {
     var request = oiOwnRequest_(store, officeId, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
     request.photos = Array.isArray(request.photos) ? request.photos : [];
+    for (var i = 0; i < request.photos.length; i++) {
+      if (oiUploadId_(request.photos[i] && request.photos[i].uploadId) === uploadId) return oiUploadResult_(request.photos[i]);
+    }
+    if (!oiOfficeMutable_(request)) return { ok: false, error: 'invalid-status' };
     if (request.photos.length >= OI_MAX_PHOTOS) return { ok: false, error: 'too-many-files' };
     var number = request.photos.length + 1;
     var name = request.receiptNo + '_0' + number + OI_IMAGE_TYPES[mimeType];
     var file = oiRequestPhotoFolder_(officeId, request.receiptNo).createFile(Utilities.newBlob(bytes, mimeType, name));
     var createdAt = oiNow_(now);
-    var photo = { fileId: file.getId(), name: name, mimeType: mimeType, size: bytes.length, createdAt: createdAt };
+    var photo = { fileId: file.getId(), name: name, mimeType: mimeType, size: bytes.length, createdAt: createdAt, uploadId: uploadId };
     request.photos.push(photo);
     request.updatedAt = createdAt;
     oiAuditLocked_(store, officeId, request.receiptNo, 'upload', 'ok', now);
@@ -434,7 +455,7 @@ function oiUpload_(session, payload, now) {
       try { file.setTrashed(true); } catch (_) {}
       throw err;
     }
-    return { ok: true, fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
+    return oiUploadResult_(photo);
   } finally {
     lock.releaseLock();
   }
