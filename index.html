@@ -2264,7 +2264,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v229-mobileback';
+const APP_BUILD='hyeonjang-v230-officeintake';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9535,8 +9535,8 @@ function officeIntakeCompletionPayload(order){
   (Array.isArray(order&&order.publicPhotoIds)?order.publicPhotoIds:[]).forEach(function(value){const id=String(value||'').trim();if(id&&available.includes(id)&&!publicSeen[id]&&publicIds.length<10){publicSeen[id]=true;publicIds.push(id);}});
   let summary=String(order&&order.completionSummary||order&&order.text||'');
   const resident=(order&&order.residentContact)||{};
-  [order&&order.customerName,order&&order.customer,resident.name].forEach(function(value){const text=String(value||'').trim();if(text)summary=summary.split(text).join('[고객명]');});
-  [order&&order.phone,resident.phone,order&&order.officeContactPhone].forEach(function(value){const digits=String(value||'').replace(/\D/g,'');if(digits.length>=7){const pattern=digits.split('').map(function(d){return d+'[^0-9]*';}).join('');summary=summary.replace(new RegExp(pattern,'g'),'[연락처]');}});
+  [order&&order.customerName,order&&order.customer,resident.name].forEach(function(value){const text=String(value||'').trim();if(text){const escaped=text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');const pattern=new RegExp('(^|[^가-힣A-Za-z0-9_])'+escaped+'(?:님)?(?=$|[^가-힣A-Za-z0-9_])','g');summary=summary.replace(pattern,'$1[고객명]');}});
+  [order&&order.phone,resident.phone,order&&order.officeContactPhone].forEach(function(value){const digits=String(value||'').replace(/\D/g,'');if(digits.length>=7){const pattern=digits.split('').join('[\\s().-]*');summary=summary.replace(new RegExp(pattern,'g'),'[연락처]');}});
   summary=summary.replace(/(?:\+82[\s().-]*|(?:\(\s*)?0[\s().-]*)(?:1[016789]|2|[3-6][1-5]|70)[\s().-]*\)?[\s().-]*\d{3,4}[\s().-]*\d{4}/g,'[연락처]').replace(/\s{2,}/g,' ').trim().slice(0,800);
   const amount=order&&order.publicAmount;
   return {summary:summary,photoIds:available,publicPhotoIds:publicIds,publicAmount:amount==null?null:num(amount)};

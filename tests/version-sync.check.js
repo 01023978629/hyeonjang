@@ -18,6 +18,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const fail = [];
+const TARGET_BUILD = 'hyeonjang-v230-officeintake';
 
 const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -41,6 +42,9 @@ if (mSw && mApp) {
   // 형식까지 못박는다 — 'hyeonjang-v{숫자}-{짧은이름}' 이 저장소 규칙이다.
   if (!/^hyeonjang-v\d+-[a-z0-9]+$/.test(c)) {
     fail.push("캐시 이름 형식이 규칙에서 벗어났다: '" + c + "' (hyeonjang-v{숫자}-{영소문자·숫자})");
+  }
+  if (c !== TARGET_BUILD || b !== TARGET_BUILD) {
+    fail.push("이번 오피스 인테이크 릴리스는 정확히 '" + TARGET_BUILD + "'를 사용해야 한다");
   }
 }
 
