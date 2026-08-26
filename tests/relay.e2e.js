@@ -1,6 +1,31 @@
 /* relay.e2e.js — Apps Script 중계 프론트엔드 회귀 테스트 (Playwright)
    전제: tests/mock-relay.js(8398) + tests/static-server.js(8299) 실행 중 */
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Dependency-free preflight. This runs before the optional Playwright load so
+// the deployment/security contract remains testable in minimal Node runtimes.
+function assertStaticOfficeContract() {
+  const root = path.join(__dirname, '..');
+  const codeSource = fs.readFileSync(path.join(root, 'apps-script', 'Code.gs'), 'utf8');
+  const officeSource = fs.readFileSync(path.join(root, 'apps-script', 'OfficeIntake.gs'), 'utf8');
+  const readme = fs.readFileSync(path.join(root, 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
+  const install = fs.readFileSync(path.join(root, 'APPS_SCRIPT_설치방법.md'), 'utf8');
+  assert(codeSource.includes('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'), 'public office dispatch is explicit');
+  assert(codeSource.includes('var tk = checkToken_(req.token);'), 'legacy/internal APP_TOKEN gate is explicit');
+  assert(!officeSource.includes('APP_TOKEN='), 'office source has no embedded APP_TOKEN assignment');
+  for (const key of ['OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE']) {
+    assert(readme.includes(key), 'README documents ' + key);
+    assert(install.includes(key), 'install guide documents ' + key);
+  }
+  assert(readme.includes('USER_DEPLOYING') && readme.includes('ANYONE_ANONYMOUS'), 'README documents deployment boundary');
+  assert(install.includes('USER_DEPLOYING') && install.includes('ANYONE_ANONYMOUS'), 'install guide documents deployment boundary');
+  console.log('PASS  office intake static deployment contract');
+}
+function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
+assertStaticOfficeContract();
+
 let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (_) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
@@ -14,7 +39,6 @@ async function test(name, fn) {
   try { await fn(); results.push({ name, ok: true }); console.log('PASS  ' + name); }
   catch (e) { results.push({ name, ok: false, err: String(e && e.stack || e).slice(0, 800) }); console.log('FAIL  ' + name + '\n      ' + String(e && e.message || e)); }
 }
-function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 async function mockState() { const r = await fetch(MOCK + '/__state'); return r.json(); }
 async function pollMock(pred, ms, label) {
   const t0 = Date.now();

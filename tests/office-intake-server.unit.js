@@ -4,6 +4,19 @@ const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
+// Task 5 installation/deployment contract: keep this dependency-free so it
+// still runs when the optional Playwright package is unavailable.
+const codeSource = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
+const officeSource = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'OfficeIntake.gs'), 'utf8');
+const readme = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
+assert(codeSource.includes('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'));
+assert(codeSource.includes('var tk = checkToken_(req.token);'));
+assert(!officeSource.includes('APP_TOKEN='));
+assert(readme.includes('OFFICE_INTAKE_ENABLED'));
+assert(readme.includes('OFFICE_SESSION_SECRET'));
+assert(readme.includes('OFFICE_CONFIG_JSON'));
+assert(readme.includes('OFFICE_STORE_FILE'));
+
 const properties = {
   OFFICE_INTAKE_ENABLED: '1',
   OFFICE_SESSION_SECRET: 'TEST_ONLY_SESSION_SECRET_0123456789',

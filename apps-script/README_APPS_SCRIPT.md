@@ -12,7 +12,7 @@
 - 본문 = JSON 문자열:
 
 ```json
-{ "token": "APP_TOKEN", "action": "save", "deviceId": "phone-01", "ts": 1789000000000, "payload": { } }
+{ "token": "[REDACTED_SECRET]", "action": "save", "deviceId": "phone-01", "ts": 1789000000000, "payload": { } }
 ```
 
 - `ts`: `Date.now()` 값. 서버가 ±10분 이내만 허용(재전송 시 새로 발급할 것).
@@ -40,6 +40,115 @@
 > **버전 표기**: `health`의 `version` 값(예: `relay-v4`)은 서버 개선에 따라 올라갑니다.
 > 앱은 이 값을 **비교하지 않고 표시만** 하므로, 서버·앱 버전이 달라도 동작합니다.
 > 성공 판정은 `ok:true` + `folderOk:true` 로 하세요(버전 숫자가 아니라).
+
+## 관리사무소 접수 API — 인증·권한 경계
+
+Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay와 같은
+`text/plain;charset=utf-8` POST 진입점을 사용하지만 인증 경로가 분리됩니다.
+
+### 공개(public)와 내부(internal) action
+
+| 구분 | action | 인증 | 반환 범위 |
+|---|---|---|---|
+| 공개 | `officeLogin`, `officeList`, `officeGet`, `officeCreate`, `officeUpdate`, `officeCancel`, `officeUpload` | `officeLogin`은 단지 slug+6자리 PIN, 나머지는 8시간 만료 HMAC 세션 | 해당 office의 접수·상태·허용된 완료 보고만 |
+| 내부 | `officeInbox`, `officeAccept`, `officeSetStatus`, `officeAdminUpsert`, `officeRotatePin`, `officeDisable`, `officeRetentionList` | 기존 `APP_TOKEN` 필수 | 현장 앱 연동·관리·보존 검토용. 외부 공개 금지 |
+
+공개 action에는 내부 `APP_TOKEN`을 보내거나 반환하지 않습니다. 내부 action은
+`checkToken_(req.token)` 검사를 통과한 경우에만 실행됩니다. 관리사무소 세션에는
+`officeId`, `sessionVersion`, `issuedAt`, `expiresAt`만 서명해 넣고 PIN·토큰·사진
+바이트·내부 메모를 넣지 않습니다. `OFFICE_INTAKE_ENABLED`가 꺼져 있으면 공개
+로그인·접수 변경·사진 업로드를 거부하며 기존 relay action은 계속 동작합니다.
+
+### 관리사무소 오류 코드
+
+공개 응답은 `{ok:false,error,message}` 형식입니다.
+
+`office-disabled`(기능 플래그 꺼짐) · `invalid-credentials`(없는/중지된 단지나
+잘못된 PIN 포함) · `rate-limited`(10분 동안 로그인 실패 5회) ·
+`session-expired`(만료·폐기·서명 오류 세션) · `invalid-input` ·
+`consent-required` · `invalid-status` · `invalid-completion-photos` ·
+`unsupported-type` · `invalid-file` · `too-large` · `too-many-files` ·
+`not-found` · `already-linked` · `slug-conflict` · `invalid-transition` ·
+`calendar-failed` · `admin-state-unknown` · `bad-request` · `server-error`.
+
+로그인 실패나 동기화 실패 기록에는 전체 전화번호·PIN·세션 토큰·사진 바이트를
+남기지 않습니다. 사진은 JPEG/PNG/WebP만 허용하고 이미지별 decoded bytes 2 MiB,
+접수당 5장까지입니다. 영구 삭제 action은 이 단계에 없습니다.
+
+## 배포 전 Script Properties 계약
+
+아래 이름은 **Google Apps Script 프로젝트 설정 ▸ 스크립트 속성**에만 둡니다.
+값을 코드·Git·문서·로그·채팅에 복사하지 마세요. 이 문서에는 값 예시를 싣지
+않으며, 비밀값을 가리킬 때는 `[REDACTED_SECRET]`만 사용합니다.
+
+| 키 | 용도 | 필수 시점 |
+|---|---|---|
+| `APP_TOKEN` | 기존 현장 relay와 내부 office action의 인증키 | 기존 relay 사용 전 |
+| `DRIVE_FOLDER_ID` | 대표 Drive 루트 폴더 ID | relay/office 저장 전 |
+| `DATA_FILE_NAME` | 기존 현장 데이터 파일명 | 선택(기본값 사용 가능) |
+| `OFFICE_INTAKE_ENABLED` | 공개 office 로그인·접수 기능 on/off feature flag | 배포 전 설정 |
+| `OFFICE_SESSION_SECRET` | office 세션·PIN HMAC 서명 키(충분히 긴 무작위 값) | office 기능 on 전 |
+| `OFFICE_CONFIG_JSON` | office 목록·slug·활성 상태·PIN hash/salt·sessionVersion | office 기능 on 전 |
+| `OFFICE_STORE_FILE` | 루트 Drive에 둘 접수 저장 파일명 | 선택(기본 `관리사무소접수.json`) |
+
+`OFFICE_CONFIG_JSON`에는 평문 PIN을 저장하지 않습니다. 최초 office는 내부
+`officeAdminUpsert`로 등록하고, `officeRotatePin`이 반환하는 PIN을 안전한
+관리 채널에서 한 번만 전달합니다. 응답·로그·저장소에 PIN을 다시 기록하지
+마세요. `OFFICE_INTAKE_ENABLED`는 검증 중 비활성 상태로 두고, 모든 gate를 통과한
+뒤 대표가 직접 활성화합니다.
+
+## 계정 측 설치·재배포 순서와 live gate
+
+이 저장소의 정적 검사 통과는 Google 계정 권한이나 실제 `/exec` 배포를 증명하지
+않습니다. 다음 단계는 대표가 해당 Apps Script 프로젝트에서 직접 수행해야
+합니다.
+
+1. 기존 relay 프로젝트를 확인하고 `Code.gs`, `OfficeIntakePure.gs`,
+   `OfficeIntake.gs`, `Watchdog.gs`, `appsscript.json`을 같은 프로젝트에 반영합니다.
+2. 위 Script Properties를 값 노출 없이 입력합니다. `OFFICE_INTAKE_ENABLED`는
+   검증 중 꺼진 상태로 두고, `OFFICE_SESSION_SECRET`은 새로 생성해 보관합니다.
+3. `appsscript.json`의 `timeZone`이 `Asia/Seoul`인지 확인합니다. 영수증 번호의
+   날짜와 `createdAt` 기반 보존 판정은 이 스크립트 시간대를 따릅니다.
+4. 최초 권한 승인(Drive, Calendar, ScriptApp 및 필요한 Spreadsheet/Mail 범위)을
+   대표 계정으로 완료합니다. 승인·OAuth 동의는 에이전트가 대신하지 않습니다.
+5. 웹앱을 `executeAs: USER_DEPLOYING`, `access: ANYONE_ANONYMOUS`로 **새 버전**
+   배포합니다. 앱 URL은 기존 배포의 `/exec`를 유지하고, 새 배포를 만들었다면
+   프론트 설정의 URL만 대표가 직접 교체합니다.
+6. 대표 계정에서 `health`를 확인해 `ok:true`, `folderOk:true`, 올바른
+   `version`/`revision`을 확인합니다. `not-configured`, `unauthorized`,
+   `folderOk:false`이면 다음 gate로 진행하지 않습니다.
+7. `APP_TOKEN`을 사용하는 내부 관리 도구로 office를 upsert하고 PIN을 rotate한
+   뒤, 내부 `officeInbox`가 토큰 없이 거부되고 올바른 토큰으로만 동작하는지
+   확인합니다. 생성·연결·상태 변경·긴급 Calendar 실패 기록은 테스트 데이터로
+   확인합니다.
+8. 대표가 직접 공개 office 로그인 → 접수 생성 → 사진 업로드 → 상태/완료 보고
+   조회를 확인합니다. 공개 요청의 네트워크 payload에 `APP_TOKEN`이 없는지
+   확인한 뒤에만 feature flag를 켭니다.
+9. flag를 켠 뒤 동일한 공개 흐름과 기존 relay(`load/save/upload/listFiles/
+   thumbnail/download`)를 다시 확인합니다. 이것이 live verification gate이며,
+   로컬 Node 결과만으로 대체하지 않습니다.
+
+### 롤백
+
+문제 발생 시 대표가 먼저 `OFFICE_INTAKE_ENABLED`를 꺼 공개 접수를 멈추고,
+기존 내부 relay의 health를 확인합니다. 필요한 경우 배포 관리에서 직전 정상
+버전으로 되돌린 뒤 동일 URL의 health와 기존 relay 회귀를 재확인합니다.
+관리자 설정 변경 실패 시 서버는 이전 `OFFICE_CONFIG_JSON` 복원을 시도하고,
+복원 상태를 확인할 수 없으면 `admin-state-unknown`을 반환합니다. 이때 PIN을
+추측하거나 수동으로 덮어쓰지 말고 현재 property 값을 대표가 확인한 후 복구합니다.
+접수 저장 파일과 사진을 지우는 롤백은 하지 않으며, 법적 보존 대상은 별도 보존
+검토로 남깁니다.
+
+### Drive·Calendar 권한
+
+`appsscript.json`의 Drive 범위는 기존 `현장데이터.json`, 백업, 관리사무소 접수
+저장 파일과 접수별 사진 폴더를 배포 실행자 권한으로 읽고 쓰는 데 사용합니다.
+Calendar 범위는 긴급 접수 알림과 Watchdog 일정 생성에만 사용하며, Calendar 생성
+실패는 접수 성공을 취소하지 않고 `calendar-failed` 운영 오류로 기록합니다.
+`script.scriptapp`는 Watchdog 시간 트리거, `spreadsheets`는 선택한 현황판,
+`script.send_mail`은 명시적으로 mail 채널을 선택한 경우, `userinfo.email`은
+기본 수신자 조회에만 필요합니다. 범위를 승인했다고 공개 office 인증이 끝난
+것은 아니며, 실제 계정 승인과 배포는 별도 gate입니다.
 
 ## 충돌(revision) 규칙
 
