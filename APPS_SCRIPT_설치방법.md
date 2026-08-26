@@ -151,10 +151,13 @@ flag를 `0`으로 설정하거나 property를 삭제합니다.
    운영 오류가 남는지 확인합니다.
 5. 통제된 시험 시간에만 Script Properties에서 정확한 문자열
    `OFFICE_INTAKE_ENABLED=1`을 설정합니다. 공개 office login → create → upload
-   → list/get → status/완료 보고 및 다른 office 차단을 확인합니다. Calendar 생성
-   실패가 성공한 접수·영수증을 보존하고 `calendar-failed` 운영 오류를 남기는지,
-   관리자 설정 실패가 rollback 또는 `admin-state-unknown`으로 처리되는지
-   확인합니다.
+   → list/get → status/완료 보고 및 다른 office 차단을 확인합니다. 완료 보고에서
+   공개로 지정한 JPEG/PNG/WebP 각각에 대해 `officePhoto`를 호출해 응답 키가
+   정확히 `{ok,photoId,mimeType,dataB64}`이고, MIME이 저장 값과 같으며 `dataB64`가
+   표준 base64인지 확인합니다. 같은 사진을 공개 해제한 뒤와 다른 office 세션으로
+   요청한 뒤에는 모두 `not-found`인지 확인합니다. Calendar 생성 실패가 성공한
+   접수·영수증을 보존하고 `calendar-failed` 운영 오류를 남기는지, 관리자 설정
+   실패가 rollback 또는 `admin-state-unknown`으로 처리되는지 확인합니다.
 6. 모든 gate가 통과한 경우에만 `1`을 유지합니다. 하나라도 실패하면 즉시
    `OFFICE_INTAKE_ENABLED=0`으로 바꾸거나 property를 삭제하고, 기존 relay
    `health`/읽기 동작을 다시 확인합니다.

@@ -153,17 +153,20 @@ function oiPhotoRequest_(payload) {
 }
 function oiPhotoMagic_(mimeType, bytes) {
   if (!bytes || !bytes.length) return false;
-  if (mimeType === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (mimeType === 'image/png') return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
-  return mimeType === 'image/webp' && bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  if (mimeType === 'image/jpeg') return bytes.length >= 3 && oiByte_(bytes, 0) === 0xff && oiByte_(bytes, 1) === 0xd8 && oiByte_(bytes, 2) === 0xff;
+  if (mimeType === 'image/png') return bytes.length >= 8 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4e && oiByte_(bytes, 3) === 0x47 && oiByte_(bytes, 4) === 0x0d && oiByte_(bytes, 5) === 0x0a && oiByte_(bytes, 6) === 0x1a && oiByte_(bytes, 7) === 0x0a;
+  return mimeType === 'image/webp' && bytes.length >= 12 && oiByte_(bytes, 0) === 0x52 && oiByte_(bytes, 1) === 0x49 && oiByte_(bytes, 2) === 0x46 && oiByte_(bytes, 3) === 0x46 && oiByte_(bytes, 8) === 0x57 && oiByte_(bytes, 9) === 0x45 && oiByte_(bytes, 10) === 0x42 && oiByte_(bytes, 11) === 0x50;
 }
 function oiPhotoUnavailable_() { return { ok: false, error: 'photo-unavailable' }; }
+function oiPhotoServerError_() { return { ok: false, error: 'server-error' }; }
 function oiPhoto_(session, sessionToken, payload) {
   var input = oiPhotoRequest_(payload);
   if (!input) return { ok: false, error: 'not-found' };
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  var lock = null, locked = false;
   try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    locked = true;
     // Re-check while locked so an admin status/unpublish write cannot interleave
     // with the authorization decision and the only permitted Drive file read.
     var lockedSession = oiVerifySession_(sessionToken, Date.now());
@@ -177,15 +180,23 @@ function oiPhoto_(session, sessionToken, payload) {
     if (!photo) return { ok: false, error: 'not-found' };
     var storedMimeType = String(photo.mimeType || '');
     if (!Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, storedMimeType)) return oiPhotoUnavailable_();
+    var file;
     try {
-      var file = DriveApp.getFileById(input.photoId);
+      file = DriveApp.getFileById(input.photoId);
+    } catch (_) { return oiPhotoUnavailable_(); }
+    try {
       var actualMimeType = String(file.getMimeType() || '');
       if (actualMimeType !== storedMimeType || !Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, actualMimeType)) return oiPhotoUnavailable_();
       var bytes = file.getBlob().getBytes();
       if (!bytes || bytes.length > OI_MAX_PHOTO_BYTES || !oiPhotoMagic_(actualMimeType, bytes)) return oiPhotoUnavailable_();
       return { ok: true, photoId: input.photoId, mimeType: actualMimeType, dataB64: Utilities.base64Encode(bytes) };
-    } catch (_) { return oiPhotoUnavailable_(); }
-  } finally { lock.releaseLock(); }
+    } catch (_) { return oiPhotoServerError_(); }
+  } catch (_) { return oiPhotoServerError_(); }
+  finally {
+    if (lock && locked) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  }
 }
 
 function oiStoreName_() {

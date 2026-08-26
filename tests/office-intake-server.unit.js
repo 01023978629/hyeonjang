@@ -40,6 +40,8 @@ for (const docs of [readme, installGuide]) {
   assert(docs.includes('정확한 문자열 `1`'), 'only exact string 1 enables office intake');
   assert(docs.includes('`0`') && docs.includes('누락'), '0 or absent disables office intake');
 }
+assert(installGuide.includes('`officePhoto`') && installGuide.includes('JPEG/PNG/WebP') && installGuide.includes('`dataB64`') && installGuide.includes('`not-found`'),
+  'install live gate requires the exact public completion-photo checks before activation');
 function assertGateOrder(docs, start, end, deployMarker) {
   const gate = sectionBetween(docs, start, end);
   const disabled = gate.indexOf('OFFICE_INTAKE_ENABLED=0');
@@ -77,6 +79,8 @@ const doPostPublicFailErrors = new Set([...doPostPublicSource.matchAll(/fail_\('
 assert.deepEqual(doPostPublicFailErrors, new Set(['bad-request', 'too-large']),
   'doPost public pre-dispatch failures are tracked without reading token-gated or legacy branches');
 assert(!officeSource.includes('APP_TOKEN='));
+const officePhotoMagicSource = sectionBetween(officeSource, 'function oiPhotoMagic_', 'function oiPhotoUnavailable_');
+assert.equal(officePhotoMagicSource.includes('bytes['), false, 'officePhoto magic must normalize every Apps Script signed byte through oiByte_');
 const publicErrorSection = sectionBetween(readme, '### Public response codes', '### Internal response codes');
 const internalErrorSection = sectionBetween(readme, '### Internal response codes', '### Operational records');
 const operationalErrorSection = sectionBetween(readme, '### Operational records', '## 배포 전 Script Properties 계약');
@@ -116,6 +120,7 @@ const properties = {
 };
 const cache = new Map();
 const propertyFaults = { onSet: null, onDelete: null };
+const lockFaults = { get: false, wait: false, release: false };
 const cryptoStats = { macCalls: 0, decodeCalls: 0, base64EncodeCalls: 0 };
 const lockEvents = [];
 const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0, getFileByIdCalls: 0 };
@@ -246,11 +251,14 @@ const sandbox = {
     getUuid: () => 'req-' + (++drive.uuid),
   },
   LockService: {
-    getScriptLock: () => ({
-      tryLock: () => true,
-      waitLock: timeout => { lockEvents.push('wait:' + timeout); },
-      releaseLock: () => { lockEvents.push('release'); },
-    }),
+    getScriptLock: () => {
+      if (lockFaults.get) throw new Error('injected-lock-get-secret');
+      return {
+        tryLock: () => true,
+        waitLock: timeout => { lockEvents.push('wait:' + timeout); if (lockFaults.wait) throw new Error('injected-lock-wait-secret'); },
+        releaseLock: () => { lockEvents.push('release'); if (lockFaults.release) throw new Error('injected-lock-release-secret'); },
+      };
+    },
   },
   DriveApp: {
     getFolderById: id => { if (id !== 'root') throw new Error('not-found'); return driveRoot; },
@@ -466,12 +474,14 @@ assert.deepEqual(lockEvents, ['wait:20000', 'release']);
 // their real bytes have the corresponding standard magic signature.
 const pngFile = drive.files.find(file => file.id === pngUpload.fileId);
 const webpFile = drive.files.find(file => file.id === webpUpload.fileId);
-pngFile.bytes = Array.from(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+jpgFile.bytes = [-1, -40, -1, 0];
+pngFile.bytes = [-119, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+webpFile.bytes = [0x52, 0x49, 0x46, 0x46, -128, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
 setPublishedPhotoIds([jpgUpload.fileId, pngUpload.fileId, webpUpload.fileId]);
-for (const [photoId, mimeType] of [[pngUpload.fileId, 'image/png'], [webpUpload.fileId, 'image/webp']]) {
+for (const [photoId, mimeType] of [[jpgUpload.fileId, 'image/jpeg'], [pngUpload.fileId, 'image/png'], [webpUpload.fileId, 'image/webp']]) {
   const result = photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId });
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
-    ok: true, photoId, mimeType, dataB64: Buffer.from((photoId === pngUpload.fileId ? pngFile : webpFile).bytes).toString('base64')
+    ok: true, photoId, mimeType, dataB64: Buffer.from((photoId === jpgUpload.fileId ? jpgFile : photoId === pngUpload.fileId ? pngFile : webpFile).bytes).toString('base64')
   });
 }
 
@@ -515,6 +525,38 @@ jpgFile.trashed = false;
 drive.getFileByIdCalls = 0;
 assert.equal(photoResponse('', { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }).error, 'session-expired');
 assert.equal(drive.getFileByIdCalls, 0, 'expired session must not reach Drive');
+
+// Break caught: infrastructure/auth/runtime faults are never leaked as raw
+// errors and release only a lock that was actually acquired.
+function assertPhotoServerError(run) {
+  const result = run();
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: false, error: 'server-error' });
+  assert.equal(JSON.stringify(result).includes('secret'), false);
+}
+lockFaults.get = true;
+lockEvents.length = 0;
+assertPhotoServerError(() => sandbox.oiPhoto_(sessionOf1, publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }));
+assert.deepEqual(lockEvents, []);
+lockFaults.get = false;
+lockFaults.wait = true;
+lockEvents.length = 0;
+assertPhotoServerError(() => sandbox.oiPhoto_(sessionOf1, publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }));
+assert.deepEqual(lockEvents, ['wait:20000']);
+lockFaults.wait = false;
+const savedReadStore = sandbox.oiReadStore_;
+sandbox.oiReadStore_ = () => { throw new Error('injected-store-secret'); };
+lockEvents.length = 0;
+assertPhotoServerError(() => sandbox.oiPhoto_(sessionOf1, publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }));
+assert.deepEqual(lockEvents, ['wait:20000', 'release']);
+sandbox.oiReadStore_ = savedReadStore;
+const savedVerifySession = sandbox.oiVerifySession_;
+sandbox.oiVerifySession_ = () => { throw new Error('injected-auth-secret'); };
+assertPhotoServerError(() => sandbox.oiPhoto_(sessionOf1, publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }));
+sandbox.oiVerifySession_ = savedVerifySession;
+const savedGetBlob = jpgFile.getBlob;
+jpgFile.getBlob = () => { throw new Error('injected-file-read-secret'); };
+assertPhotoServerError(() => sandbox.oiPhoto_(sessionOf1, publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }));
+jpgFile.getBlob = savedGetBlob;
 
 // Break caught: allowing a sixth image would bypass the per-request photo limit.
 for (let i = 4; i <= 5; i++) {
