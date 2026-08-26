@@ -46,11 +46,14 @@ function officePhotoIds(value) {
   for (const item of value) { const id = typeof item === 'string' ? item.trim().slice(0, 120) : ''; if (id && !seen.has(id) && ids.length < 10) { seen.add(id); ids.push(id); } }
   return ids.sort();
 }
-function officeCompletion(value) {
+function officeCompletion(request, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
   const supplied = Object.hasOwn(value, 'photoIds') ? officePhotoIds(value.photoIds) : [];
   const published = Object.hasOwn(value, 'publicPhotoIds') ? officePhotoIds(value.publicPhotoIds) : [];
   if (supplied == null || published == null || (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length))) return { ok: false, error: 'invalid-completion-photos' };
+  const owned = new Set((request.photos || []).map(photo => String(photo && photo.fileId || '').trim()).filter(Boolean));
+  supplied = supplied.filter(id => owned.has(id));
+  if (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length)) return { ok: false, error: 'invalid-completion-photos' };
   const allowed = new Set(supplied);
   return { ok: true, value: { summary: String(value.summary == null ? '' : value.summary).trim().slice(0, 800), photoIds: supplied, publicPhotoIds: published.filter(id => allowed.has(id)) } };
 }
@@ -213,7 +216,7 @@ const server = http.createServer((req, res) => {
           store.officeStatusCalls++;
           const request = store.officeRequests.find(x => x.requestId === requestId);
           if (!request) return send(res, fail('not-found'));
-          const completion = p.completionReport ? officeCompletion(p.completionReport) : null;
+          const completion = p.completionReport ? officeCompletion(request, p.completionReport) : null;
           if (completion && !completion.ok) return send(res, fail(completion.error));
           const projection = officeProjection(request, p, completion, status);
           if (!projection.ok) return send(res, Object.assign(fail(projection.error), { field: projection.field }));

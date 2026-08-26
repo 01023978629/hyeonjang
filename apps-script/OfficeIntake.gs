@@ -209,7 +209,7 @@ function oiPublicRequest_(request) {
     status: request.status,
     publicAmount: request.publicAmount == null ? null : request.publicAmount,
     visitAt: request.visitAt || null,
-    completionReport: request.completionReport || null,
+    completionReport: request.completionReport ? { summary: oiText_(request.completionReport.summary, 800), publicPhotoIds: oiCompletionPhotoIds_(request.completionReport.publicPhotoIds) || [] } : null,
     needsInfoReason: request.needsInfoReason || null,
     createdAt: request.createdAt,
     updatedAt: request.updatedAt
@@ -563,12 +563,14 @@ function oiCompletionPhotoIds_(value) {
   }
   return ids.sort();
 }
-function oiCompletionReportValue_(value) {
+function oiCompletionReportValue_(request, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
   var hasSupplied = Object.prototype.hasOwnProperty.call(value, 'photoIds');
   var supplied = hasSupplied ? oiCompletionPhotoIds_(value.photoIds) : [];
   var published = Object.prototype.hasOwnProperty.call(value, 'publicPhotoIds') ? oiCompletionPhotoIds_(value.publicPhotoIds) : [];
   if (supplied == null || published == null) return { ok: false, error: 'invalid-input' };
+  var owned = {}; (request.photos || []).forEach(function (photo) { var id = String(photo && photo.fileId || '').trim(); if (id) owned[id] = true; });
+  supplied = supplied.filter(function (id) { return owned[id]; });
   if (published.length && (!hasSupplied || !supplied.length)) return { ok: false, error: 'invalid-completion-photos' };
   var allowed = {};
   supplied.forEach(function (id) { allowed[id] = true; });
@@ -625,7 +627,7 @@ function oiSetStatus_(payload, now) {
     var store = oiReadStore_();
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
-    var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
+    var completion = payload.completionReport ? oiCompletionReportValue_(request, payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
     var projected = oiStatusProjection_(request, payload, completion, next);
     if (!projected.ok) return projected;

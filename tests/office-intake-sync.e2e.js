@@ -52,6 +52,18 @@ const TOKEN = 'test-token-123';
   assert.equal(officeAccess.after.office.sessionVersion, officeAccess.before.office.sessionVersion + 1, 'PIN rotation increments server sessionVersion');
   assert.equal(officeAccess.persistedPin, false, 'one-time PIN must not enter serialized state or local storage');
 
+  const disablePersist = await page.evaluate(async () => {
+    const office = state.aptOffices[0];
+    const disabled = await officeIntakeOfficeAccess('of1', 'disable');
+    const local = office.intakeEnabled;
+    await officeIntakeOfficeAccess('of1'); closeModal();
+    const remote = await cloudOfficeAdmin('officeAdminUpsert', { id:'of1', slug:'sample-apt', complexName:'예시 아파트', enabled:false });
+    return { disabled, local, remote };
+  });
+  assert.equal(disablePersist.disabled.ok, true);
+  assert.equal(disablePersist.local, false, 'disable result updates local office intakeEnabled');
+  assert.equal(disablePersist.remote.office.enabled, false, 'reopen never silently reactivates a disabled office');
+
   const merged = await page.evaluate(async () => {
     const d = officeIntakeData();
     d.inbox.push({ requestId: 'local-only', updatedAt: '2026-08-26T08:00:00+09:00' });
@@ -158,6 +170,20 @@ const TOKEN = 'test-token-123';
   assert.equal(lostMock.officeStatusCalls, 2, 'retry reaches mock server and receives idempotent success');
   const mockDifferentRetry = await page.evaluate(() => cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', reason: '사진 보완', visitAt: '2026-08-28T10:00:00+09:00' }));
   assert.equal(mockDifferentRetry.error, 'invalid-transition', 'mock rejects a different-payload self transition');
+
+  await fetch(MOCK + '/__reset');
+  await fetch(MOCK + '/__officeDropNextStatus');
+  const strictFifo = await page.evaluate(async () => {
+    state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    await cloudOfficeAccept('req-1', 'strict-fifo-order');
+    officeIntakeQueue('officeSetStatus', { requestId:'req-1', status:'visit_scheduled', visitAt:'2026-08-27T10:00:00+09:00' });
+    officeIntakeQueue('officeSetStatus', { requestId:'req-1', status:'in_progress', visitAt:'2026-08-27T10:00:00+09:00' });
+    await officeIntakeFlush(); const first=officeIntakeData().outbox.map(x=>({status:x.payload.status,attempts:x.attempts}));
+    const retry=await officeIntakeFlush(); return { first, retry, remaining:officeIntakeData().outbox.map(x=>x.payload.status) };
+  });
+  assert.deepEqual(strictFifo, { first:[{status:'visit_scheduled',attempts:1},{status:'in_progress',attempts:0}], retry:2, remaining:[] }, 'a dropped applied head stops strict FIFO; idempotent retry then delivers the later legal step');
+  const strictFifoMock=await (await fetch(MOCK + '/__state')).json();
+  assert.deepEqual(strictFifoMock.officeStatuses.map(x=>x.status), ['visit_scheduled','in_progress'], 'later state is not sent before the dropped head retry');
 
   // Break caught: the mock follows the server's public projection contract.  A
   // reason can survive needs_info -> on_hold, but acceptance resolves it.

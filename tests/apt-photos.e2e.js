@@ -99,6 +99,19 @@ let browser;
   assert(JSON.stringify(intakePhotos.intakePhotoIds) === JSON.stringify(['drive-office-1', 'drive-office-2']), '⑥ 완료 보고용 intake photo ID가 서버 제공 순서대로 남지 않았다');
   assert(intakePhotos.files.length === 2 && intakePhotos.files.every(f => f.kind === 'photo' && f.project === '선택 현장' && f.virtual === true && f.relay === 'relay:' + f.driveId && f.work === '관리사무소 접수' && f.file == null), '⑥ 원본 바이트 없이 가상 Drive 참조가 보존되지 않았다: ' + JSON.stringify(intakePhotos.files));
 
+  const recovery = await page.evaluate(async () => {
+    const request = { requestId: 'existing-photo-request', status: 'accepted', photos: [{ fileId: 'existing-drive-photo', name: 'OI-PHOTO_기존.jpg', mimeType: 'image/jpeg', size: 4, createdAt: '2026-08-26T00:00:00.000Z' }] };
+    const order = { id: 'existing-photo-order', source: 'office-intake', sourceRequestId: request.requestId, project: '기존 선택 현장', intakePhotoIds: [] };
+    state.officeIntake = { inbox: [request], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    state.aptOrders = [order]; state.files = state.files.filter(f => f._driveId !== 'existing-drive-photo');
+    const first = await officeIntakeAccept(request.requestId, 'none');
+    const second = await officeIntakeAccept(request.requestId, 'none');
+    const saved = serializeData(); state.files=[]; applyData(saved);
+    const file = state.files.find(f => f._driveId === 'existing-drive-photo');
+    return { first: first && first.id, second: second && second.id, ids: order.intakePhotoIds, n: state.files.filter(f => f._driveId === 'existing-drive-photo').length, file: file && { project:file.project, virtual:file._virtual, relay:file._relayLink } };
+  });
+  assert(JSON.stringify(recovery) === JSON.stringify({ first:'existing-photo-order', second:'existing-photo-order', ids:['existing-drive-photo'], n:1, file:{ project:'기존 선택 현장', virtual:true, relay:'relay:existing-drive-photo' } }), '⑦ 기존 승인 오더도 접수 사진을 한 번만 연결하고 재적용 뒤 relay 링크를 복원해야 한다: '+JSON.stringify(recovery));
+
   assert(errors.length === 0, '⑥ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 사진 있는 오더에 📸 배지 + 정확한 장수');
@@ -107,8 +120,9 @@ let browser;
   console.log('PASS  ④ 배지 수 == 탭 필터 수');
   console.log('PASS  ⑤ 검색어는 공백 뺀 동/호');
   console.log('PASS  ⑥ 접수 사진은 중복 없는 가상 Drive 참조');
-  console.log('PASS  ⑦ pageerror 0');
-  console.log('\n전부 통과 (7건)');
+  console.log('PASS  ⑦ 기존 승인 오더 사진 복구와 relay 링크 재적용');
+  console.log('PASS  ⑧ pageerror 0');
+  console.log('\n전부 통과 (8건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);

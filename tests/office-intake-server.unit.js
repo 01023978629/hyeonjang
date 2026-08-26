@@ -518,6 +518,12 @@ assert.equal(urgent.ok, true);
 assert.equal(sandbox.oiReadStore_().operationalErrors.some(error => error.code === 'calendar-failed' && error.requestId === urgent.requestId), true);
 
 // Break caught: unresolved sync conflicts keep the linked request actionable, while ordinary completed records stay out of the inbox.
+const firstPhotoStore = sandbox.oiReadStore_();
+firstPhotoStore.requests.find(request => request.requestId === first.requestId).photos = [
+  { fileId: 'published-photo', name: 'published.jpg', mimeType: 'image/jpeg', size: 1, createdAt: '2026-08-26T00:00:00.000Z' },
+  { fileId: 'private-photo', name: 'private.jpg', mimeType: 'image/jpeg', size: 1, createdAt: '2026-08-26T00:00:00.000Z' },
+];
+sandbox.oiWriteStore_(firstPhotoStore);
 assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'in_progress' }).status, 'in_progress');
 const completed = postInternal('officeSetStatus', {
   requestId: first.requestId, status: 'completed', completionReport: {
@@ -531,7 +537,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(completed.completionReport)), {
 const completedAt = sandbox.oiReadStore_().requests.find(request => request.requestId === first.requestId).completedAt;
 assert.equal(typeof completedAt, 'string');
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiGet_(sessionOf1, first.requestId).request.completionReport)), {
-  summary: '공개 완료 보고', photoIds: ['private-photo', 'published-photo'], publicPhotoIds: ['private-photo', 'published-photo'],
+  summary: '공개 완료 보고', publicPhotoIds: ['private-photo', 'published-photo'],
 });
 fakeNow = 2000;
 assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'billed' }).status, 'billed');
@@ -632,7 +638,7 @@ fakeNow = 1000;
 // Break caught: public completion photos require a non-empty owned photo list and are always a strict, bounded subset.
 function completionCase(id) {
   const store = sandbox.oiReadStore_();
-  store.requests.push({ requestId: id, receiptNo: 'MM-' + id, officeId: 'of1', status: 'in_progress', updatedAt: '1970-01-01T00:00:00.000Z' });
+  store.requests.push({ requestId: id, receiptNo: 'MM-' + id, officeId: 'of1', status: 'in_progress', photos: [{ fileId: 'owned', name: 'owned.jpg', mimeType: 'image/jpeg', size: 1, createdAt: '1970-01-01T00:00:00.000Z' }], updatedAt: '1970-01-01T00:00:00.000Z' });
   sandbox.oiWriteStore_(store);
 }
 completionCase('public-missing');
@@ -685,12 +691,27 @@ for (const supplied of ['', '  ', true, {}, 'NaN', 'Infinity', -1]) {
 }
 
 const idemCompletionStore = sandbox.oiReadStore_();
-idemCompletionStore.requests.push({ requestId: 'completion-idempotent', receiptNo: 'MM-completion-idempotent', officeId: 'of1', status: 'in_progress', updatedAt: '2026-08-26T00:00:00.000Z' });
+idemCompletionStore.requests.push({ requestId: 'completion-idempotent', receiptNo: 'MM-completion-idempotent', officeId: 'of1', status: 'in_progress', photos: [{ fileId: 'owned', name: 'owned.jpg' }, { fileId: 'private', name: 'private.jpg' }], updatedAt: '2026-08-26T00:00:00.000Z' });
 sandbox.oiWriteStore_(idemCompletionStore);
 const completionPayload = { requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '공개 완료', photoIds: ['owned', 'private'], publicPhotoIds: ['owned'] } };
 assert.equal(sandbox.oiSetStatus_(completionPayload, 8000).ok, true);
 assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '공개 완료', photoIds: ['private', 'owned'], publicPhotoIds: ['owned'] } }, 9000).ok, true, 'normalized available-photo contract retries safely');
 assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '다른 공개 보고', photoIds: ['owned', 'private'], publicPhotoIds: ['owned'] } }, 10000).error, 'invalid-transition');
+
+// Break caught: completion availability is owned by the current request, while public list/get never project the internal available set.
+const ownershipStore = sandbox.oiReadStore_();
+ownershipStore.requests.push(
+  { requestId: 'ownership-current', receiptNo: 'MM-ownership-current', officeId: 'of1', status: 'in_progress', photos: [{ fileId: 'current-photo', name: 'current.jpg' }], updatedAt: '2026-08-26T00:00:00.000Z' },
+  { requestId: 'ownership-other', receiptNo: 'MM-ownership-other', officeId: 'of2', status: 'in_progress', photos: [{ fileId: 'other-photo', name: 'other.jpg' }], updatedAt: '2026-08-26T00:00:00.000Z' }
+);
+sandbox.oiWriteStore_(ownershipStore);
+const ownedCompletion = { requestId: 'ownership-current', status: 'completed', completionReport: { summary: 'owned only', photoIds: ['current-photo', 'other-photo'], publicPhotoIds: ['other-photo', 'current-photo'] } };
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_(ownedCompletion, 10100).completionReport)), { summary: 'owned only', photoIds: ['current-photo'], publicPhotoIds: ['current-photo'] }, 'foreign request photos are omitted before mutation');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'ownership-current', status: 'completed', completionReport: { summary: 'owned only', photoIds: ['other-photo', 'current-photo'], publicPhotoIds: ['current-photo', 'other-photo'] } }, 10101).ok, true, 'owned projection retries idempotently after foreign IDs are omitted');
+const ownershipPublic = sandbox.oiGet_({ officeId: 'of1' }, 'ownership-current').request;
+assert.deepEqual(JSON.parse(JSON.stringify(ownershipPublic.completionReport)), { summary: 'owned only', publicPhotoIds: ['current-photo'] }, 'public get hides internal photoIds');
+assert.equal(Object.prototype.hasOwnProperty.call(sandbox.oiList_({ officeId: 'of1' }, {}).requests.filter(request => request.requestId === 'ownership-current')[0].completionReport, 'photoIds'), false, 'public list hides internal photoIds');
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'ownership-other').error, 'not-found', 'another office request remains inaccessible');
 
 // Break caught: equal effective timestamps require a requestId tuple cursor; the second page must not skip its 101st record.
 const cursorStore = sandbox.oiReadStore_();
