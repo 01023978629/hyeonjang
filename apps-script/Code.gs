@@ -254,7 +254,8 @@ function uploadFile_(payload) {
   var name = sanitizeName_(payload.name, mime);
   var bytes; try { bytes = Utilities.base64Decode(b64); } catch (_) { return fail0_('bad-request', '파일 인코딩이 올바르지 않습니다'); }
   var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
-  return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName };
+  return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName,
+           mimeType: file.getMimeType(), size: file.getSize() };
 }
 
 /* ---------- F. listFiles ---------- */

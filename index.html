@@ -1383,7 +1383,7 @@ function serializeData(){
     projects:(state.projects||[]).map(projectBackupSafe),
     files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
       text:f.text||'',ocr:f.ocr,est:f.est,exSum:f.exSum||false,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
-      driveId:f._driveId||null,size:f.size||0,
+      driveId:f._driveId||null,driveMimeType:f._driveMimeType||null,driveSize:Number(f._driveSize)||0,size:f.size||0,
       lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
   };
 }
@@ -1460,7 +1460,7 @@ function applyData(data){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;f.text=s.text||f.text;
-      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;if(s.exSum)f.exSum=true;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;if(f._driveId)f._relayLink='relay:'+f._driveId;restored++;}
+      f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;if(s.exSum)f.exSum=true;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;if(s.driveId&&!f._driveId)f._driveId=s.driveId;if(s.driveMimeType)f._driveMimeType=s.driveMimeType;if(Object.prototype.hasOwnProperty.call(s,'driveSize'))f._driveSize=Number(s.driveSize)||0;if(f._driveId)f._relayLink='relay:'+f._driveId;restored++;}
   });
   // 매칭 안 된 저장 기록(=드라이브에만 있는 파일)은 가상 항목으로 항상 추가 → 부분 로드 상태에서도 목록이 잘려 드라이브가 truncate되는 것 방지
   data.files.forEach(s=>{
@@ -1484,7 +1484,7 @@ function applyData(data){
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
       kind:fkind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
-      est:s.est||null,quote:s.quote||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_relayLink:s.driveId?'relay:'+s.driveId:null,_file:null,_virtual:true});
+      est:s.est||null,quote:s.quote||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_driveMimeType:s.driveMimeType||null,_driveSize:Number(s.driveSize)||0,_relayLink:s.driveId?'relay:'+s.driveId:null,_file:null,_virtual:true});
     restored++;
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
@@ -2007,7 +2007,7 @@ async function relayUploadFiles(files,kind,targets){
     try{payload=await relayBuildUploadPayload(f,kind);}catch(e){failed++;toast((f.name||'파일')+' — '+(e.message||e));continue;}   // 형식·크기 문제는 대기열에 안 넣고 바로 안내
     try{
       const r=await relayCall('upload',payload);
-      if(r&&r.ok){ok++;if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;injected++;}}
+      if(r&&r.ok){ok++;if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;targets[i]._driveMimeType=String(r.mimeType||payload.mimeType||'');targets[i]._driveSize=Number(r.size)||Math.max(0,Math.floor(String(payload.dataB64||'').length*3/4)-(String(payload.dataB64||'').endsWith('==')?2:String(payload.dataB64||'').endsWith('=')?1:0));injected++;}}
       else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;break;}
       else{failed++;toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
     }catch(e){queued++;try{if(!(await relayQueuePush('upload',payload)))failed++;}catch(e2){failed++;}}   // 네트워크 실패 → 압축본을 대기열에(가득 차면 실패 처리)
@@ -2045,9 +2045,10 @@ async function relayLoadDriveFiles(silent){
         const existing=state.files.find(x=>x._driveId===f.id);
         const same=takeRecord(f);
         if(existing){
+          existing._driveMimeType=String(f.mimeType||'');existing._driveSize=Number(f.size)||0;
           // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
           if(same&&existing!==same&&existing._virtual&&baseName(existing.name)===baseName(same.name)){
-            same._driveId=f.id;same.size=same.size||existing.size||(+f.size||0);
+            same._driveId=f.id;same._driveMimeType=String(f.mimeType||existing._driveMimeType||'');same._driveSize=Number(f.size)||Number(existing._driveSize)||0;same.size=same.size||existing.size||(+f.size||0);
             if(!same.kind||same.kind==='other')same.kind='photo';
             if(!same.when&&existing.when)same.when=existing.when;
             revokeThumbUrl(existing);state.files.splice(state.files.indexOf(existing),1);linked++;
@@ -2055,7 +2056,7 @@ async function relayLoadDriveFiles(silent){
           continue;
         }
         if(same){
-          same._driveId=f.id;same.size=same.size||(+f.size||0);
+          same._driveId=f.id;same._driveMimeType=String(f.mimeType||'');same._driveSize=Number(f.size)||0;same.size=same.size||(+f.size||0);
           if(!same.kind||same.kind==='other')same.kind='photo';
           linked++;continue;
         }
@@ -2065,7 +2066,7 @@ async function relayLoadDriveFiles(silent){
         const dt=f.modifiedAt?new Date(f.modifiedAt):null;
         state.files.push({id:uid(),name:f.name||('photo_'+f.id),handle:null,prefix:'현장사진/',ext:fe,size:+f.size||0,
           kind:'photo',project:null,when:dt&&!isNaN(dt)?dt:null,lat:null,lng:null,place:null,address:null,
-          thumb:null,text:'',ocr:'na',est:null,contact:null,_file:null,_virtual:true,_driveId:f.id});
+          thumb:null,text:'',ocr:'na',est:null,contact:null,_file:null,_virtual:true,_driveId:f.id,_driveMimeType:String(f.mimeType||''),_driveSize:Number(f.size)||0});
         added++;
       }
       if(added||linked){
@@ -2264,7 +2265,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v231-officeintakefix';
+const APP_BUILD='hyeonjang-v232-officeintakesafety';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -2744,7 +2745,7 @@ function gdUploadPhotos(){
     toast(files.length+'장 저장됨'+(state.activeProject?` · ${state.activeProject}`:'')+' — 폰에 먼저 담았어요');
     // 이미 구글 로그인돼 있으면(토큰 보유) 백그라운드로 드라이브에도 백업. 없으면 로그인 강요하지 않음.
     if(typeof __gdToken!=='undefined'&&__gdToken){
-      (async()=>{ let ok=0; for(const f of files){ try{ await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진'); ok++; }catch(e){} } if(ok)toast(ok+'장 드라이브에도 백업됨'); })();
+      (async()=>{ let ok=0; for(let i=0;i<files.length;i++){const f=files[i];try{const id=await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진');if(id&&added[i]){added[i]._driveId=id;added[i]._driveMimeType=String(f.type||'');added[i]._driveSize=Number(f.size)||0;}ok++;}catch(e){} } if(ok){markDirty();toast(ok+'장 드라이브에도 백업됨');} })();
     }
   };
   inp.click();
@@ -2829,9 +2830,10 @@ async function hydrateThumbs(){
 }
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
-async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
+async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize){
   if(__removedIds.has(id))return 0;                    // 사용자가 '제거'한 중복 → 다시 안 불러옴
   const existing=state.files.find(x=>x._driveId===id);
+  if(existing){existing._driveMimeType=String(mime||'');existing._driveSize=Number(driveSize)||Number(existing._driveSize)||0;}
   if(existing&&!existing._virtual)return 0;            // 이미 실제 바이트 보유
   if(existing&&existing._virtual&&bootSkip){           // 부팅: 캐시 썸네일이 있으면 재다운로드 생략(탭 시 원본). 없으면 받아서 자동 표시
     try{ const c=await idbGet('thumb:'+id); if(c)return 0; }catch(e){}
@@ -2843,7 +2845,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind){
   const blob=await dr.blob();
   // HEIC 원본 그대로 보관(변환 안 함) → EXIF(GPS·날짜) 보존. 표시는 드라이브 썸네일 URL(photoSrc)로 바로, GPS는 extractImage가 exifr로 읽음
   const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
-  rec._driveId=id;
+  rec._driveId=id;rec._driveMimeType=String(mime||blob.type||'');rec._driveSize=Number(driveSize)||Number(blob.size)||0;
   if(forceKind)rec.kind=forceKind;   // 견적서 폴더 등 위치 기반 강제 분류
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
   if(ph){
@@ -2884,12 +2886,12 @@ async function __gdPullFrom(folderId,mimeClause,bootSkip,forceKind){
   const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and ("+mimeClause+")");
   let n=0, token='', guard=0;
   do{
-    const url='https://www.googleapis.com/drive/v3/files?q='+q+'&fields='+encodeURIComponent('nextPageToken,files(id,name,mimeType)')+'&pageSize=1000'+(token?('&pageToken='+encodeURIComponent(token)):'');
+    const url='https://www.googleapis.com/drive/v3/files?q='+q+'&fields='+encodeURIComponent('nextPageToken,files(id,name,mimeType,size)')+'&pageSize=1000'+(token?('&pageToken='+encodeURIComponent(token)):'');
     const r=await fetch(url,{headers:{Authorization:'Bearer '+__gdToken}});
     if(!r.ok)break;
     const j=await r.json();
     const files=j.files||[];
-    for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip,forceKind); }catch(e){} }
+    for(const f of files){ try{ n+=await __gdIngestOne(f.id,f.name,f.mimeType,__gdToken,bootSkip,forceKind,f.size); }catch(e){} }
     token=j.nextPageToken||''; guard++;
   }while(token && guard<30);   // 최대 3만 개까지(안전 가드)
   return n;
@@ -3067,19 +3069,19 @@ async function __importTree(roots, tok){
   let queue=(roots||[]).filter(Boolean).map(id=>({id,proj:null})), seen=new Set(), visited=0, nProj=0, chg=0, nImg=0, nPdf=0;
   while(queue.length && visited<400){
     const cur=queue.shift(); if(!cur||!cur.id||seen.has(cur.id))continue; seen.add(cur.id); visited++;
-    let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType)',tok); }catch(e){}
+    let kids=[]; try{ kids=await roList("'"+cur.id+"' in parents and trashed=false",'files(id,name,mimeType,size)',tok); }catch(e){}
     for(const k of kids){
       if(k.mimeType==='application/vnd.google-apps.folder'){ const kp=isProjName(k.name)?k.name:cur.proj; queue.push({id:k.id,proj:kp}); }
       else if((k.mimeType||'').indexOf('image/')===0){ try{
         // 1) 이미 있는 사진이면 다운로드 없이 driveId만 연결 → 다운로드 실패와 무관하게 즉시 표시 + 통합 속도↑
         const b=baseName(k.name); const rec0=unlinked.get(b);
         if(rec0 && !rec0._driveId && !__removedIds.has(k.id) && !state.files.some(x=>x._driveId===k.id)){
-          rec0._driveId=k.id; if(!rec0.kind||rec0.kind==='other')rec0.kind='photo'; unlinked.delete(b); nImg++; chg++;
+          rec0._driveId=k.id;rec0._driveMimeType=String(k.mimeType||'');rec0._driveSize=Number(k.size)||0; if(!rec0.kind||rec0.kind==='other')rec0.kind='photo'; unlinked.delete(b); nImg++; chg++;
           if(cur.proj){ if(ensureProj(cur.proj))nProj++; if(!rec0.project){rec0.project=cur.proj;} }
           continue;
         }
         // 2) 새 사진이면 다운로드해서 반영
-        nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
+        nImg+=await __gdIngestOne(k.id,k.name,k.mimeType,tok,false,null,k.size); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
       else if(k.mimeType==='application/pdf'){ try{ nPdf+=await __gdIngestOne(k.id,k.name,k.mimeType,tok); if(cur.proj){ const rec=state.files.find(x=>x._driveId===k.id); if(rec){ if(ensureProj(cur.proj)){nProj++;chg++;} if(!rec.project){rec.project=cur.proj;chg++;} } } }catch(e){} }
     }
   }
@@ -3814,7 +3816,7 @@ function backupUserEdits(){
       if(!touched)return;
       const _rec={
         project:f.project||null,est:f.est||null,kind:f.kind||null,phase:f._phase||null,
-        contact:f.contact||null,_worklabel:f._worklabel||null,driveId:f._driveId||null,text:f.text||'',ocr:f.ocr||null,
+        contact:f.contact||null,_worklabel:f._worklabel||null,driveId:f._driveId||null,driveMimeType:f._driveMimeType||null,driveSize:Number(f._driveSize)||0,text:f.text||'',ocr:f.ocr||null,
         exSum:f.exSum||false
       };
       __editBackup.set(fileEditKey(f.prefix,f.name),_rec);
@@ -3839,6 +3841,8 @@ function restoreUserEdits(rec){
     if(b.contact)rec.contact=b.contact;
     if(b._worklabel)rec._worklabel=b._worklabel;
     if(b.driveId&&!rec._driveId)rec._driveId=b.driveId;
+    if(b.driveMimeType)rec._driveMimeType=b.driveMimeType;
+    if(Object.prototype.hasOwnProperty.call(b,'driveSize'))rec._driveSize=Number(b.driveSize)||0;
     if(b.text&&!rec.text)rec.text=b.text;        // OCR 결과 재활용(재OCR 방지)
     if(b.ocr==='done'&&b.text)rec.ocr='done';
   }catch(e){}
@@ -3850,7 +3854,7 @@ async function ingestFile(file,handle=null,prefix=''){
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
     lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':((e==='pdf'||e==='xlsx'||e==='xls')?'pending':'na'),
-    est:null,contact:null,_file:handle?null:file};
+    est:null,contact:null,_driveMimeType:null,_driveSize:0,_file:handle?null:file};
   if(isImg)await extractImage(file,rec);
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
@@ -4333,9 +4337,11 @@ function renameProject(oldName){
       if(!nv){toast('이름을 입력하세요.');return;}
       if(nv===oldName){closeModal();return;}
       if(state.projects.some(x=>x.name===nv)){toast('이미 있는 현장 이름입니다.');return;}
+      const projectIdentity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
       p.name=nv;
       // 연결된 모든 항목의 현장명 변경
       state.files.forEach(f=>{if(f.project===oldName)f.project=nv;});
+      if(projectIdentity)(state.aptOrders||[]).forEach(function(order){if(order&&officeIntakeValidProjectIdentity(order.projectIdentity)===projectIdentity)order.project=nv;});
       (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
       if(state.activeProject===oldName)state.activeProject=nv;
       markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”');
@@ -5185,7 +5191,7 @@ function triggerCameraInput(){
           const f=files[i];
           try{
             const id=await gdUploadBlob(f, f.name||('photo_'+Date.now()+'_'+i+'.jpg'), f.type||'image/jpeg', '현장사진');
-            if(id){ok++; if(added[i])added[i]._driveId=id;}
+            if(id){ok++; if(added[i]){added[i]._driveId=id;added[i]._driveMimeType=String(f.type||'');added[i]._driveSize=Number(f.size)||0;}}
           }catch(e){}
         }
         if(ok)markDirty();
@@ -9496,13 +9502,30 @@ function officeIntakeStatusOptions(order){const keys=Object.keys(APT_STAT);if(!o
 function officeIntakeStatusToApt(status){return OFFICE_TO_APT_STATUS[status]||'recv';}
 function officeIntakeFindRequest(id){return officeIntakeData().inbox.find(x=>x&&x.requestId===id)||null;}
 function officeIntakeFindOrder(id){return (state.aptOrders||[]).find(x=>x&&x.sourceRequestId===id)||null;}
+function officeIntakeValidProjectIdentity(value){const id=String(value||'').trim();return /^office-project-[a-z0-9]{7}$/i.test(id)?id:'';}
+function officeIntakeEnsureProjectIdentity(project){
+  if(!project)return '';
+  const existing=officeIntakeValidProjectIdentity(project.officeIntakeProjectId);if(existing)return existing;
+  project.officeIntakeProjectId='office-project-'+uid();
+  return project.officeIntakeProjectId;
+}
+function officeIntakeProjectIdentityByName(name){
+  const matches=(state.projects||[]).filter(function(project){return project&&project.name===name;});
+  return matches.length===1?officeIntakeValidProjectIdentity(matches[0].officeIntakeProjectId):'';
+}
+function officeIntakeBoundProject(order){
+  const name=String(order&&order.project||'').trim(),identity=officeIntakeValidProjectIdentity(order&&order.projectIdentity);
+  if(!name||name==='현장 미연결'||!identity)return null;
+  const matches=(state.projects||[]).filter(function(project){return project&&project.name===name&&officeIntakeValidProjectIdentity(project.officeIntakeProjectId)===identity;});
+  return matches.length===1?matches[0]:null;
+}
 function officeIntakeOrderFromRequest(r,projectName){
   if(!r||!r.requestId)throw new Error('접수번호가 없습니다');
   const existing=officeIntakeFindOrder(r.requestId);if(existing)return existing;
   return {
     id:uid(),officeId:r.officeId,unit:String(r.unit||r.location||'').trim(),
     text:String(r.description||r.issueType||'').trim(),amount:0,pipeType:aptPipeType(r.pipeType),
-    date:localDate(),status:'recv',doneAt:'',project:projectName||'',
+    date:localDate(),status:'recv',doneAt:'',project:projectName||'',projectIdentity:officeIntakeProjectIdentityByName(projectName||''),
     source:'office-intake',sourceRequestId:r.requestId,receiptNo:String(r.receiptNo||''),
     officeContactName:String((r.officeContact||{}).name||''),
     officeContactPhone:String((r.officeContact||{}).phone||''),
@@ -9524,24 +9547,37 @@ function officeIntakeAttachPhotos(request,order,projectName){
     const when=photo&&photo.createdAt?new Date(photo.createdAt):null;
     state.files.push({id:uid(),name:name,handle:null,prefix:'관리사무소 접수/',ext:bestExt(name,mime)||'jpg',size:Number(photo&&photo.size)||0,
       kind:'photo',project:projectName||order.project||null,when:when&&!isNaN(when)?when:null,lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:'na',est:null,quote:null,contact:null,
-      _phase:null,_worklabel:'관리사무소 접수',_file:null,_virtual:true,_driveId:driveId,_relayLink:'relay:'+driveId});
+      _phase:null,_worklabel:'관리사무소 접수',_file:null,_virtual:true,_driveId:driveId,_driveMimeType:mime,_driveSize:Number(photo&&photo.size)||0,_relayLink:'relay:'+driveId});
     added++;
   });
   order.intakePhotoIds=ids.slice(0,10);
   return added;
 }
+const OFFICE_COMPLETION_PHOTO_MIME=['image/jpeg','image/png','image/webp'];
+const OFFICE_COMPLETION_PHOTO_MAX_BYTES=2*1024*1024;
+function officeCompletionPhotoSafe(file){
+  const mime=String(file&&file._driveMimeType||''),size=Number(file&&file._driveSize);
+  return !!(file&&file.kind==='photo'&&String(file._driveId||'').trim()&&OFFICE_COMPLETION_PHOTO_MIME.includes(mime)&&size>0&&size<=OFFICE_COMPLETION_PHOTO_MAX_BYTES);
+}
 function officeCompletionPhotoIds(order){
+  const project=officeIntakeBoundProject(order);if(!project)return [];
+  const ids=[],seen={},intake=new Set(Array.isArray(order&&order.intakePhotoIds)?order.intakePhotoIds.map(String):[]);
+  (state.files||[]).forEach(function(file){
+    const id=String(file&&file._driveId||'').trim();
+    if(file&&file.project===project.name&&!intake.has(id)&&officeCompletionPhotoSafe(file)&&!seen[id]&&ids.length<10){seen[id]=true;ids.push(id);}
+  });
+  return ids;
+}
+function officeIntakeAvailablePhotoIds(order){
   const ids=[],seen={};
   const accept=function(value){const id=String(value||'').trim();if(id&&!seen[id]&&ids.length<10){seen[id]=true;ids.push(id);}};
-  // Only actual, Drive-backed project photos are added to the server-side
-  // manifest. Intake uploads remain available separately for legacy reports.
-  aptPhotoList(order).forEach(function(file){if(file&&file.kind==='photo'&&file._driveId&&!file._virtual&&(!order.project||file.project===order.project))accept(file._driveId);});
   (Array.isArray(order&&order.intakePhotoIds)?order.intakePhotoIds:[]).forEach(accept);
+  officeCompletionPhotoIds(order).forEach(accept);
   return ids;
 }
 function officeIntakeCompletionPayload(order){
   const available=[],seen={};
-  officeCompletionPhotoIds(order).forEach(function(value){const id=String(value||'').trim();if(id&&!seen[id]&&available.length<10){seen[id]=true;available.push(id);}});
+  officeIntakeAvailablePhotoIds(order).forEach(function(value){const id=String(value||'').trim();if(id&&!seen[id]&&available.length<10){seen[id]=true;available.push(id);}});
   const publicIds=[],publicSeen={};
   (Array.isArray(order&&order.publicPhotoIds)?order.publicPhotoIds:[]).forEach(function(value){const id=String(value||'').trim();if(id&&available.includes(id)&&!publicSeen[id]&&publicIds.length<10){publicSeen[id]=true;publicIds.push(id);}});
   let summary=String(order&&order.completionSummary||order&&order.text||'');
@@ -9556,7 +9592,8 @@ function officeIntakeProjectionPayload(order){
   const completed=['done','billed','paid'].includes(order.status),report=completed?officeIntakeCompletionPayload(order):null;
   const base={requestId:String(order.sourceRequestId),status:APT_TO_OFFICE_STATUS[order.status]||'accepted',visitAt:order.visitAt||null,
     publicAmount:order.publicAmount==null?null:num(order.publicAmount),completionReport:report?{summary:report.summary,photoIds:report.photoIds,publicPhotoIds:report.publicPhotoIds}:null,
-    completionPhotoIds:officeCompletionPhotoIds(order)};
+  };
+  if(completed)base.completionPhotoIds=officeCompletionPhotoIds(order);
   const fingerprint=officeIntakeFingerprint(base);
   if(order.officeProjectionFingerprint!==fingerprint){order.officeProjectionFingerprint=fingerprint;order.officeProjectionRevision=Math.max(0,Number(order.officeProjectionRevision)||0)+1;}
   base.projectionRevision=Number(order.officeProjectionRevision)||1;
@@ -9616,6 +9653,7 @@ function officeIntakeProjectName(mode,projectName){
   const exists=(state.projects||[]).some(function(p){return p&&p.name===name;});
   if(next==='existing'){
     if(!exists){toast('선택한 기존 현장을 찾을 수 없습니다');return null;}
+    officeIntakeEnsureProjectIdentity((state.projects||[]).find(function(project){return project&&project.name===name;}));
     return name;
   }
   if(exists){toast('같은 이름의 현장이 있습니다. 기존 현장으로 연결하세요');return null;}
@@ -9623,7 +9661,9 @@ function officeIntakeProjectName(mode,projectName){
   if(!input||typeof addProject!=='function'){toast('새 현장 추가 화면을 열 수 없습니다');return null;}
   input.value=name;
   addProject();
-  return (state.projects||[]).some(function(p){return p&&p.name===name;})?name:null;
+  const created=(state.projects||[]).find(function(project){return project&&project.name===name;});
+  if(created)officeIntakeEnsureProjectIdentity(created);
+  return created?name:null;
 }
 function officeIntakeCanAccept(request){return !!(request&&['pending_review','on_hold'].includes(request.status));}
 function officeIntakeCanNeedsInfo(request){return !!(request&&request.status==='pending_review');}
@@ -9785,9 +9825,9 @@ async function aptReviewMaterialCopy(id){
 }
 function officeIntakeCompletionControls(o){
   if(!o||o.source!=='office-intake'||!o.sourceRequestId)return '';
-  const allowed=officeCompletionPhotoIds(o);
+  const allowed=officeIntakeAvailablePhotoIds(o);
   const chosen=new Set(Array.isArray(o.publicPhotoIds)?o.publicPhotoIds:[]);
-  return '<details style="margin-top:7px;border-top:1px dashed var(--line-soft);padding-top:6px"><summary style="font-size:11.5px;cursor:pointer">관리사무소 공개 완료 보고 (기본 비공개)</summary><div style="display:grid;gap:6px;margin-top:7px"><label style="font-size:11.5px">공개 금액(원 · 비우면 비공개)<input class="apoPublicAmount" data-id="'+escapeAttr(o.id)+'" inputmode="numeric" value="'+escapeAttr(o.publicAmount==null?'':String(o.publicAmount))+'" style="display:block;width:100%;padding:7px;margin-top:3px"></label><label style="font-size:11.5px">공개 완료 메모 (최대 800자)<textarea class="apoCompletionSummary" data-id="'+escapeAttr(o.id)+'" maxlength="800" style="display:block;width:100%;min-height:48px;padding:7px;margin-top:3px" placeholder="고객 연락처·내부 원가 없이 입력">'+escapeHtml(o.completionSummary||'')+'</textarea></label>'+(allowed.length?'<div style="font-size:11.5px">공개 사진 선택 (실제 현장 전·후 사진만 선택 가능)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'+allowed.map(function(id,index){const f=(state.files||[]).find(function(file){return file&&file._driveId===id;});const label=(index+1)+'번 '+String(f&&f.name||'현장 사진');return '<label style="font-size:11px"><input class="apoPublicPhoto" data-id="'+escapeAttr(o.id)+'" value="'+escapeAttr(id)+'" aria-label="'+escapeAttr(label)+' 공개" type="checkbox"'+(chosen.has(id)?' checked':'')+'> '+escapeHtml(label)+'</label>';}).join('')+'</div></div>':'<div style="font-size:11px;color:var(--muted)">Drive에 연결된 현장 사진이 없어 공개할 사진이 없습니다.</div>')+'</div></details>';
+  return '<details style="margin-top:7px;border-top:1px dashed var(--line-soft);padding-top:6px"><summary style="font-size:11.5px;cursor:pointer">관리사무소 공개 완료 보고 (기본 비공개)</summary><div style="display:grid;gap:6px;margin-top:7px"><label style="font-size:11.5px">공개 금액(원 · 비우면 비공개)<input class="apoPublicAmount" data-id="'+escapeAttr(o.id)+'" inputmode="numeric" value="'+escapeAttr(o.publicAmount==null?'':String(o.publicAmount))+'" style="display:block;width:100%;padding:7px;margin-top:3px"></label><label style="font-size:11.5px">공개 완료 메모 (최대 800자)<textarea class="apoCompletionSummary" data-id="'+escapeAttr(o.id)+'" maxlength="800" style="display:block;width:100%;min-height:48px;padding:7px;margin-top:3px" placeholder="고객 연락처·내부 원가 없이 입력">'+escapeHtml(o.completionSummary||'')+'</textarea></label>'+(allowed.length?'<div style="font-size:11.5px">공개 사진 선택 (접수 사진 또는 서버 규격에 맞는 연결 현장 사진)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'+allowed.map(function(id,index){const f=(state.files||[]).find(function(file){return file&&file._driveId===id;});const label=(index+1)+'번 '+String(f&&f.name||'현장 사진');return '<label style="font-size:11px"><input class="apoPublicPhoto" data-id="'+escapeAttr(o.id)+'" value="'+escapeAttr(id)+'" aria-label="'+escapeAttr(label)+' 공개" type="checkbox"'+(chosen.has(id)?' checked':'')+'> '+escapeHtml(label)+'</label>';}).join('')+'</div></div>':'<div style="font-size:11px;color:var(--muted)">공개 가능한 접수·현장 사진이 없습니다.</div>')+'</div></details>';
 }
 function officeIntakeOperationalErrorHtml(){
   const rows=officeIntakeData().operationalErrors||[];

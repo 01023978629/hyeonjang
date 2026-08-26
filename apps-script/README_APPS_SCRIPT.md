@@ -68,6 +68,14 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 때만 표준 base64를
 반환합니다. 삭제·MIME/매직 불일치·초과 파일은 `photo-unavailable`만 반환합니다.
 
+현장 앱의 `completionPhotoIds`는 공개 완료 보고용 **별도 manifest**입니다. 완료
+상태(`completed`/`billed`/`paid`)에서만 보내며, 명시적인 project identity로 연결된
+현장 소유 사진 중 Drive MIME·크기 metadata가 확인된 JPEG/PNG/WebP·2 MiB 이하만
+후보가 됩니다. 현장 미연결·이름만 남은 구형 연결·metadata 누락·HEIC/HEIF·초과
+파일은 클라이언트에서 fail-closed하고, 서버도 Drive 루트 소속·MIME·크기·매직
+바이트를 다시 검증합니다. 관리사무소가 접수할 때 올린 자기 사진은 기존
+`request.photos` 소유 집합으로만 사용하며 completion manifest에 섞지 않습니다.
+
 ### Public response codes
 
 공개 action의 응답은 `{ok:false,error,message}` 형식입니다. 아래 코드는

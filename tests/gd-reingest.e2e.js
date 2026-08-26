@@ -119,13 +119,21 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const after = serializeData().files[0];
       const lost = [];
       Object.keys(before).forEach((k) => {
-        if (k === 'key' || k === 'size' || k === 'driveId' || k === 'when' || k === 'prefix') return;
+        // Drive MIME/size are machine-verified metadata and may become more
+        // precise when the real blob is downloaded; they are not user edits.
+        if (k === 'key' || k === 'size' || k === 'driveId' || k === 'driveMimeType' || k === 'driveSize' || k === 'when' || k === 'prefix') return;
         const a = JSON.stringify(before[k]), b = JSON.stringify(after[k]);
         if (a !== b && before[k] !== null && before[k] !== '' && before[k] !== false) lost.push(k + ': ' + a + ' → ' + b);
       });
-      return { lost };
+      return { lost, driveMeta: {
+        beforeMime: before.driveMimeType, beforeSize: before.driveSize,
+        afterMime: after.driveMimeType, afterSize: after.driveSize
+      } };
     }, stub.toString());
     assert(r.lost.length === 0, '재인입에서 사라지는 저장 필드가 있다:\n      ' + r.lost.join('\n      '));
+    assert(r.driveMeta.beforeMime === null && r.driveMeta.beforeSize === 0 &&
+      r.driveMeta.afterMime === 'application/vnd.ms-excel' && r.driveMeta.afterSize === 1,
+      'Drive metadata는 사용자값을 덮은 것이 아니라 실제 blob ingest에서 정밀화돼야 한다: ' + JSON.stringify(r.driveMeta));
   });
 
   await test('★pageerror 0', async () => {

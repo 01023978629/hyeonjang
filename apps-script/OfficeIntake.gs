@@ -586,7 +586,9 @@ function oiInboxCursor_(value) {
   return { at: legacy, id: '', raw: raw };
 }
 
-var OI_SYNC_ERROR_CODES = ['already-linked', 'accept-invalid-transition', 'invalid-transition'];
+// Accept conflicts are terminal semantic results, not retryable transport
+// failures. Only a rejected status projection remains operationally actionable.
+var OI_SYNC_ERROR_CODES = ['invalid-transition'];
 function oiIsSyncError_(error) { return !!(error && OI_SYNC_ERROR_CODES.indexOf(String(error.code || '')) >= 0 && error.requestId); }
 function oiResolveSyncErrors_(store, requestId, codes, now) {
   var changed = false, at = oiNow_(now);
@@ -608,10 +610,15 @@ function oiAccept_(payload, now) {
   try {
     var store = oiReadStore_();
     var request = oiRequestById_(store, payload.requestId);
-    if (!request) return { ok: false, error: 'not-found' };
+    if (!request) {
+      oiAuditLocked_(store, '', oiText_(payload.requestId, 80), 'accept', 'not-found', now);
+      oiWriteStore_(store);
+      return { ok: false, error: 'not-found' };
+    }
     if (request.hyeonjangOrderId) {
       if (request.hyeonjangOrderId !== orderId) {
-        oiOperationalErrorLocked_(store, 'already-linked', request.requestId, now);
+        oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
+        oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'already-linked', now);
         oiWriteStore_(store);
         return { ok: false, error: 'already-linked', hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
       }
@@ -619,7 +626,8 @@ function oiAccept_(payload, now) {
       return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
     }
     if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
-      oiOperationalErrorLocked_(store, 'accept-invalid-transition', request.requestId, now);
+      oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
+      oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'invalid-transition', now);
       oiWriteStore_(store);
       return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null };
     }
@@ -738,6 +746,10 @@ function oiSameStatusProjection_(request, projection) {
     JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null) &&
     (request.needsInfoReason || null) === projection.needsInfoReason;
 }
+function oiSameCompletionManifest_(request, completionPhotos) {
+  function ids(value) { return (Array.isArray(value) ? value : []).map(function (photo) { return String(photo && photo.fileId || ''); }).filter(Boolean).sort(); }
+  return JSON.stringify(ids(request.completionPhotos)) === JSON.stringify(ids(completionPhotos));
+}
 function oiSetStatus_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
   var next = oiText_(payload.status, 40);
@@ -748,21 +760,29 @@ function oiSetStatus_(payload, now) {
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
     var hasRevision = Object.prototype.hasOwnProperty.call(payload, 'projectionRevision');
-    var revision = hasRevision ? Number(payload.projectionRevision) : Number(request.projectionRevision || 0) + 1;
+    var currentRevision = Number(request.projectionRevision || 0);
+    var revision = hasRevision ? Number(payload.projectionRevision) : currentRevision + 1;
     if (!isFinite(revision) || revision < 0 || Math.floor(revision) !== revision) return { ok: false, error: 'invalid-input', field: 'projectionRevision' };
-    if (Object.prototype.hasOwnProperty.call(payload, 'completionPhotoIds')) {
-      var manifest = oiCompletionManifest_(payload.completionPhotoIds);
+    // A status change is a new projection. Reject stale/equal explicit
+    // revisions before Drive reads so they cannot roll back report/manifest.
+    if (request.status !== next && hasRevision && revision <= currentRevision) return { ok: false, error: 'invalid-transition', status: request.status, projectionRevision: currentRevision };
+    var hasManifest = Object.prototype.hasOwnProperty.call(payload, 'completionPhotoIds');
+    var manifest = null;
+    if (hasManifest) {
+      manifest = oiCompletionManifest_(payload.completionPhotoIds);
       if (!manifest.ok) return manifest;
-      request.completionPhotos = manifest.value;
     }
-    var completion = payload.completionReport ? oiCompletionReportValue_(request, payload.completionReport) : null;
+    var completionOwner = hasManifest ? { photos: request.photos || [], completionPhotos: manifest.value } : request;
+    var completion = payload.completionReport ? oiCompletionReportValue_(completionOwner, payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
     var projected = oiStatusProjection_(request, payload, completion, next);
     if (!projected.ok) return projected;
     var projection = projected.value;
     if (request.status === next) {
-      if (!oiSameStatusProjection_(request, projection)) {
-        if (!hasRevision || revision <= Number(request.projectionRevision || 0)) return { ok: false, error: 'invalid-transition', status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
+      var sameManifest = !hasManifest || oiSameCompletionManifest_(request, manifest.value);
+      if (!oiSameStatusProjection_(request, projection) || !sameManifest) {
+        if (!hasRevision || revision <= currentRevision) return { ok: false, error: 'invalid-transition', status: request.status, projectionRevision: currentRevision };
+        if (hasManifest) request.completionPhotos = manifest.value;
         request.visitAt = projection.visitAt;
         request.publicAmount = projection.publicAmount;
         request.completionReport = projection.completionReport;
@@ -782,6 +802,7 @@ function oiSetStatus_(payload, now) {
       return { ok: false, error: 'invalid-transition' };
     }
     request.status = next;
+    if (hasManifest) request.completionPhotos = manifest.value;
     request.visitAt = projection.visitAt;
     request.publicAmount = projection.publicAmount;
     request.completionReport = projection.completionReport;

@@ -222,15 +222,22 @@ let browser;
     window.cloudOfficeAccept = async () => { events.push('cloud'); return { ok: false, error: 'offline' }; };
     const sequence = await officeIntakeAccept('sequence', 'none');
     state.aptOrders.push = originalPush; window.markDirty = originalDirty; window.cloudOfficeAccept = originalAccept;
-    return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds, existingProject: existing && existing.project, projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate, heldProject: held && held.project, heldAfterAccept, holdAfterNeeds: !!holdAfterNeeds, recovery, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
+    return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds,
+      existingProject: existing && existing.project, existingIdentity: existing && existing.projectIdentity, existingProjectIdentity: state.projects.find(project => project.name === '기존 현장').officeIntakeProjectId,
+      projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate,
+      heldProject: held && held.project, heldIdentity: held && held.projectIdentity, heldProjectIdentity: state.projects.find(project => project.name === '새 현장').officeIntakeProjectId,
+      heldAfterAccept, holdAfterNeeds: !!holdAfterNeeds, recovery, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
   });
   assert.deepEqual(reviewGuards.buttons, { pending: ['오더 등록', '내용 보완 요청', '보류'], needs: ['보류'], hold: ['오더 등록'] }, '상태별로 허용된 검토 버튼만 렌더링');
   for (const key of ['invalidNeedsAccept', 'invalidHoldNeeds', 'invalidHoldAgain', 'invalidMode', 'missingExisting', 'newCollision', 'blankNeeds']) assert.deepEqual(reviewGuards[key], { result: false, unchanged: true }, key + '는 로컬 상태를 바꾸지 않음');
   assert.equal(reviewGuards.existingProject, '기존 현장');
+  assert.match(reviewGuards.existingIdentity, /^office-project-[a-z0-9]{7}$/i);
+  assert.equal(reviewGuards.existingIdentity, reviewGuards.existingProjectIdentity, '기존 현장 선택 시 오더와 현장에 같은 stable identity 저장');
   assert.equal(reviewGuards.projectCountAfterExisting, 1, '기존 현장 연결은 현장을 추가하지 않음');
   assert.equal(reviewGuards.duplicateProject, '기존 현장', '이미 승인된 접수는 기존 오더만 반환');
   assert.equal(reviewGuards.projectCountAfterDuplicate, 1, '중복 승인은 새 현장을 만들지 않음');
   assert.equal(reviewGuards.heldProject, '새 현장', '보류 접수는 새 현장 승인 허용');
+  assert.equal(reviewGuards.heldIdentity, reviewGuards.heldProjectIdentity, '새 현장 생성 승인도 stable identity로 명시 연결');
   assert.deepEqual(reviewGuards.heldAfterAccept, { status: 'accepted', reason: null }, '보류 사유는 로컬 승인 전에 해결 처리');
   assert.equal(reviewGuards.holdAfterNeeds, true, '보완 요청 상태는 보류 허용');
   assert.equal(reviewGuards.recovery.success, 'recovery-order');
@@ -257,20 +264,38 @@ let browser;
   const finalSafety = await page.evaluate(async () => {
     const linked = state.aptOrders.find(order => order && order.source === 'office-intake');
     const deleteBlocked = !officeIntakeDeleteGuard(linked);
-    const projectOrder = Object.assign({}, linked, { id: 'completion-project', unit: '103동 1204호', project: '기존 현장', intakePhotoIds: ['intake-only'] });
-    state.files.push({ id: 'field-before', kind: 'photo', project: '기존 현장', name: '103동1204호_시공전.jpg', _driveId: 'field-before-drive', _virtual: false });
-    state.files.push({ id: 'field-after', kind: 'photo', project: '기존 현장', name: '103동1204호_시공후.jpg', _driveId: 'field-after-drive', _virtual: false });
+    const project = state.projects.find(item => item.name === '기존 현장');
+    project.officeIntakeProjectId = 'office-project-abc1234';
+    const projectOrder = Object.assign({}, linked, { id: 'completion-project', unit: '103동 1204호', project: '기존 현장', projectIdentity: 'office-project-abc1234', intakePhotoIds: ['intake-only'] });
+    state.files.push({ id: 'field-before', kind: 'photo', project: '기존 현장', name: '103동1204호_시공전.jpg', _driveId: 'field-before-drive', _driveMimeType: 'image/jpeg', _driveSize: 1024, _virtual: false });
+    state.files.push({ id: 'field-after', kind: 'photo', project: '기존 현장', name: '103동1204호_시공후.webp', _driveId: 'field-after-drive', _driveMimeType: 'image/webp', _driveSize: 2048, _virtual: false });
+    state.files.push({ id: 'cross-project', kind: 'photo', project: '타현장', name: '103동1204호_타현장.jpg', _driveId: 'cross-project-drive', _driveMimeType: 'image/jpeg', _driveSize: 1024, _virtual: false });
+    state.files.push({ id: 'field-heic', kind: 'photo', project: '기존 현장', name: '103동1204호_HEIC.heic', _driveId: 'field-heic-drive', _driveMimeType: 'image/heic', _driveSize: 1024, _virtual: false });
+    state.files.push({ id: 'field-large', kind: 'photo', project: '기존 현장', name: '103동1204호_대용량.jpg', _driveId: 'field-large-drive', _driveMimeType: 'image/jpeg', _driveSize: 2 * 1024 * 1024 + 1, _virtual: false });
+    state.files.push({ id: 'field-unknown', kind: 'photo', project: '기존 현장', name: '103동1204호_정보없음.jpg', _driveId: 'field-unknown-drive', _virtual: false });
     const completion = officeCompletionPhotoIds(projectOrder);
+    const unlinked = officeCompletionPhotoIds(Object.assign({}, projectOrder, { project: '', projectIdentity: '' }));
+    const sentinel = officeCompletionPhotoIds(Object.assign({}, projectOrder, { project: '현장 미연결', projectIdentity: '' }));
+    const legacyNameOnly = officeCompletionPhotoIds(Object.assign({}, projectOrder, { projectIdentity: '' }));
+    const unlinkedReport = officeIntakeCompletionPayload(Object.assign({}, projectOrder, { project: '', projectIdentity: '', publicPhotoIds: ['cross-project-drive', 'intake-only'] }));
+    const workProjection = officeIntakeProjectionPayload(Object.assign({}, projectOrder, { status: 'work' }));
+    const doneProjection = officeIntakeProjectionPayload(Object.assign({}, projectOrder, { status: 'done' }));
     const cancelled = { requestId: 'req-cancel-race', receiptNo: 'MM-RACE', officeId: 'of-ui', unit: '105동 501호', location: '', issueType: '누수', pipeType: '미확정', urgency: 'normal', description: '취소 경합', officeContact: {}, photos: [], status: 'pending_review' };
     officeIntakeData().inbox.push(cancelled);
     const original = window.cloudOfficeAccept;
     window.cloudOfficeAccept = async () => ({ ok: false, error: 'invalid-transition', status: 'cancelled', hyeonjangOrderId: null });
     const result = await officeIntakeAccept('req-cancel-race', 'none');
     window.cloudOfficeAccept = original;
-    return { deleteBlocked, completion, result: !!result, localRaceOrders: state.aptOrders.filter(order => order && order.sourceRequestId === 'req-cancel-race').length, raceOutbox: officeIntakeData().outbox.filter(item => item && item.payload && item.payload.requestId === 'req-cancel-race').length, raceStatus: cancelled.status };
+    return { deleteBlocked, completion, unlinked, sentinel, legacyNameOnly, unlinkedReport,
+      workHasManifest: Object.prototype.hasOwnProperty.call(workProjection, 'completionPhotoIds'),
+      doneManifest: doneProjection.completionPhotoIds,
+      result: !!result, localRaceOrders: state.aptOrders.filter(order => order && order.sourceRequestId === 'req-cancel-race').length, raceOutbox: officeIntakeData().outbox.filter(item => item && item.payload && item.payload.requestId === 'req-cancel-race').length, raceStatus: cancelled.status };
   });
   assert.equal(finalSafety.deleteBlocked, true, '연결된 관리사무소 오더는 로컬 삭제 경로에서 차단');
-  assert.deepEqual(finalSafety.completion, ['field-before-drive', 'field-after-drive', 'intake-only'], '공개 완료 후보에는 실제 Drive 현장 전·후 사진이 포함');
+  assert.deepEqual(finalSafety.completion, ['field-before-drive', 'field-after-drive'], '명시적으로 연결한 project identity 소유 Drive 현장 사진만 completion manifest 후보');
+  assert.deepEqual({ unlinked: finalSafety.unlinked, sentinel: finalSafety.sentinel, legacyNameOnly: finalSafety.legacyNameOnly }, { unlinked: [], sentinel: [], legacyNameOnly: [] }, '현장 미연결·빈 project·legacy 이름-only 연결은 completion manifest를 fail-closed');
+  assert.deepEqual({ photoIds: finalSafety.unlinkedReport.photoIds, publicPhotoIds: finalSafety.unlinkedReport.publicPhotoIds }, { photoIds: ['intake-only'], publicPhotoIds: ['intake-only'] }, '미연결 접수는 자기 접수 사진만 완료 보고에 사용할 수 있고 타현장 사진은 제외');
+  assert.deepEqual({ workHasManifest: finalSafety.workHasManifest, doneManifest: finalSafety.doneManifest }, { workHasManifest: false, doneManifest: ['field-before-drive', 'field-after-drive'] }, '비완료 상태는 manifest를 보내지 않고 완료 상태만 JPEG/PNG/WebP·2MiB 이하·metadata 완비 후보를 보냄');
   assert.deepEqual({ result: finalSafety.result, localRaceOrders: finalSafety.localRaceOrders, raceOutbox: finalSafety.raceOutbox, raceStatus: finalSafety.raceStatus }, { result: false, localRaceOrders: 0, raceOutbox: 0, raceStatus: 'cancelled' }, '취소 경합은 ghost 오더·FIFO 재시도 없이 서버 상태로 정리');
 
   const layout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));

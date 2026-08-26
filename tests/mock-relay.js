@@ -193,7 +193,7 @@ const server = http.createServer((req, res) => {
           const cursor = officeReadCursor(p.updatedAfter);
           store.officeInboxCursors.push(cursor.raw);
           const retries = new Map();
-          for (const error of store.officeOperationalErrors) if (error && !error.resolvedAt && error.requestId) { const id = String(error.requestId), at = officeTime(error.at); if (!retries.has(id) || at > retries.get(id)) retries.set(id, at); }
+          for (const error of store.officeOperationalErrors) if (error && error.code === 'invalid-transition' && !error.resolvedAt && error.requestId) { const id = String(error.requestId), at = officeTime(error.at); if (!retries.has(id) || at > retries.get(id)) retries.set(id, at); }
           const rows = store.officeRequests.map(request => { const hasRetry = retries.has(String(request.requestId)); const effectiveAt = Math.max(officeTime(request.updatedAt), hasRetry ? retries.get(String(request.requestId)) : -Infinity); return { request, effectiveAt, actionable: request.status === 'pending_review' || request.status === 'needs_info' || hasRetry }; })
             .filter(row => row.actionable && officeCompare(row.effectiveAt, row.request.requestId, cursor.at, cursor.id) > 0)
             .sort((a, b) => officeCompare(a.effectiveAt, a.request.requestId, b.effectiveAt, b.request.requestId)).slice(0, 100);
@@ -219,26 +219,32 @@ const server = http.createServer((req, res) => {
           const request = store.officeRequests.find(x => x.requestId === requestId);
           if (!request) return send(res, fail('not-found'));
           const hasRevision = Object.hasOwn(p, 'projectionRevision');
-          const projectionRevision = hasRevision ? Number(p.projectionRevision) : Number(request.projectionRevision || 0) + 1;
+          const currentRevision = Number(request.projectionRevision || 0);
+          const projectionRevision = hasRevision ? Number(p.projectionRevision) : currentRevision + 1;
           if (!Number.isInteger(projectionRevision) || projectionRevision < 0) return send(res, Object.assign(fail('invalid-input'), { field: 'projectionRevision' }));
+          if (request.status !== status && hasRevision && projectionRevision <= currentRevision) return send(res, Object.assign(fail('invalid-transition'), { status: request.status, projectionRevision: currentRevision }));
+          let completionPhotos = request.completionPhotos || [], hasManifest = false;
           if (Object.hasOwn(p, 'completionPhotoIds')) {
             if (!Array.isArray(p.completionPhotoIds) || p.completionPhotoIds.length > 10) return send(res, fail('invalid-completion-photos'));
-            request.completionPhotos = [...new Set(p.completionPhotoIds.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))].map(id => ({ fileId: id, name: 'completion.jpg', mimeType: 'image/jpeg', size: 1 }));
+            hasManifest = true;
+            completionPhotos = [...new Set(p.completionPhotoIds.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))].map(id => ({ fileId: id, name: 'completion.jpg', mimeType: 'image/jpeg', size: 1 }));
           }
-          const completion = p.completionReport ? officeCompletion(request, p.completionReport) : null;
+          const completion = p.completionReport ? officeCompletion(Object.assign({}, request, { completionPhotos }), p.completionReport) : null;
           if (completion && !completion.ok) return send(res, fail(completion.error));
           const projection = officeProjection(request, p, completion, status);
           if (!projection.ok) return send(res, Object.assign(fail(projection.error), { field: projection.field }));
           const publicProjection = projection.value;
           if (request.status === status) {
-            if (!sameOfficeProjection(request, publicProjection)) {
-              if (!hasRevision || projectionRevision <= Number(request.projectionRevision || 0)) return send(res, Object.assign(fail('invalid-transition'), { status: request.status, projectionRevision: Number(request.projectionRevision || 0) }));
+            const sameManifest = !hasManifest || JSON.stringify((request.completionPhotos || []).map(photo => photo.fileId).sort()) === JSON.stringify(completionPhotos.map(photo => photo.fileId).sort());
+            if (!sameOfficeProjection(request, publicProjection) || !sameManifest) {
+              if (!hasRevision || projectionRevision <= currentRevision) return send(res, Object.assign(fail('invalid-transition'), { status: request.status, projectionRevision: currentRevision }));
+              if (hasManifest) request.completionPhotos = completionPhotos;
               request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.projectionRevision = projectionRevision; request.updatedAt = new Date().toISOString();
               store.officeStatuses.push({ requestId, status, projectionRevision, revised: true });
             }
           } else {
             if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
-            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.projectionRevision = projectionRevision; request.updatedAt = new Date().toISOString();
+            request.status = status; if (hasManifest) request.completionPhotos = completionPhotos; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.projectionRevision = projectionRevision; request.updatedAt = new Date().toISOString();
             store.officeStatuses.push({ requestId, status, visitAt: publicProjection.visitAt, publicAmount: publicProjection.publicAmount, completionReport: publicProjection.completionReport, needsInfoReason: publicProjection.needsInfoReason, projectionRevision });
           }
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,

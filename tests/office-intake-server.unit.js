@@ -840,7 +840,7 @@ const inboxStore = sandbox.oiReadStore_();
 inboxStore.requests.push({ requestId: 'completed-hidden', receiptNo: 'MM-completed-hidden', officeId: 'of1', status: 'completed', completedAt: '1970-01-01T00:00:00.000Z', updatedAt: '1970-01-01T00:00:00.000Z' });
 sandbox.oiWriteStore_(inboxStore);
 const filteredInbox = postInternal('officeInbox', { updatedAfter: '' });
-assert.equal(filteredInbox.requests.some(request => request.requestId === first.requestId), true);
+assert.equal(filteredInbox.requests.some(request => request.requestId === first.requestId), false, 'paid request with a terminal already-linked audit is not actionable');
 assert.equal(filteredInbox.requests.some(request => request.requestId === 'completed-hidden'), false);
 fakeNow = Date.parse('1972-01-01T00:00:00.000Z');
 assert.equal(postInternal('officeRetentionList', {}).requests.some(request => request.requestId === first.requestId && request.status === 'paid' && request.retentionReason === 'completed-1-year'), true);
@@ -898,14 +898,15 @@ assert.equal(sandbox.oiVerifySession_(enabledLogin.sessionToken, 1001), null);
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1002).error, 'invalid-credentials');
 assert.equal(sandbox.oiReadStore_().requests.length, beforeDisableCount);
 
-// Break caught: an unresolved sync error advances the inbox cursor, then a successful matching retry resolves it.
+// Break caught: legacy terminal accept errors are audit-only and never make an
+// already-linked request actionable; an exact retry still resolves the marker.
 const retryStore = sandbox.oiReadStore_();
 retryStore.requests.push({ requestId: 'sync-retry', receiptNo: 'MM-sync-retry', officeId: 'of1', status: 'completed', hyeonjangOrderId: 'apt-sync', updatedAt: '1970-01-01T00:00:00.000Z' });
 retryStore.operationalErrors.push({ code: 'already-linked', requestId: 'sync-retry', at: '1970-01-02T00:00:00.000Z' });
 sandbox.oiWriteStore_(retryStore);
 fakeNow = Date.parse('1970-01-02T00:00:00.000Z');
 const retryInbox = postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' });
-assert.equal(retryInbox.requests.some(request => request.requestId === 'sync-retry'), true);
+assert.equal(retryInbox.requests.some(request => request.requestId === 'sync-retry'), false);
 assert.equal(retryInbox.operationalErrors.some(error => JSON.stringify(error).includes('010-1234-5678')), false);
 assert.equal(postInternal('officeAccept', { requestId: 'sync-retry', hyeonjangOrderId: 'apt-sync' }).ok, true);
 assert.equal(postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' }).requests.some(request => request.requestId === 'sync-retry'), false);
@@ -999,6 +1000,13 @@ const revisedCompletion = sandbox.oiSetStatus_({ requestId: 'completion-idempote
 assert.deepEqual(JSON.parse(JSON.stringify(revisedCompletion.completionReport)), { summary: '공개 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] });
 assert.equal(revisedCompletion.projectionRevision, 2);
 assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', projectionRevision: 2, completionReport: { summary: '다른 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] } }, 10002).error, 'invalid-transition', 'the same revision cannot replace a published projection');
+drive.getFileByIdCalls = 0;
+const staleTransition = sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'billed', projectionRevision: 1, publicAmount: 999999, completionPhotoIds: ['stale-untrusted-drive-id'], completionReport: { summary: '오래된 보고', photoIds: ['owned'], publicPhotoIds: ['owned'] } }, 10003);
+assert.equal(staleTransition.error, 'invalid-transition', 'a status transition cannot carry a stale projection revision');
+assert.equal(drive.getFileByIdCalls, 0, 'stale revision is rejected before reading or replacing its completion manifest');
+const afterStaleTransition = sandbox.oiReadStore_().requests.find(request => request.requestId === 'completion-idempotent');
+assert.deepEqual(JSON.parse(JSON.stringify({ status: afterStaleTransition.status, projectionRevision: afterStaleTransition.projectionRevision, publicAmount: afterStaleTransition.publicAmount, completionReport: afterStaleTransition.completionReport })), { status: 'completed', projectionRevision: 2, publicAmount: null, completionReport: { summary: '공개 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] } }, 'stale status transition cannot roll back the latest public projection');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'billed', projectionRevision: 3 }, 10004).projectionRevision, 3, 'a newer status transition advances the revision monotonically');
 
 // Break caught: completion availability is owned by the current request, while public list/get never project the internal available set.
 const ownershipStore = sandbox.oiReadStore_();
@@ -1014,6 +1022,27 @@ const ownershipPublic = sandbox.oiGet_({ officeId: 'of1' }, 'ownership-current')
 assert.deepEqual(JSON.parse(JSON.stringify(ownershipPublic.completionReport)), { summary: 'owned only', publicPhotoIds: ['current-photo'] }, 'public get hides internal photoIds');
 assert.equal(Object.prototype.hasOwnProperty.call(sandbox.oiList_({ officeId: 'of1' }, {}).requests.filter(request => request.requestId === 'ownership-current')[0].completionReport, 'photoIds'), false, 'public list hides internal photoIds');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'ownership-other').error, 'not-found', 'another office request remains inaccessible');
+
+// Break caught: terminal accept conflicts are audited and any legacy retry
+// marker is resolved, but never remain actionable in officeInbox forever.
+const terminalAcceptStore = sandbox.oiReadStore_();
+terminalAcceptStore.requests.push(
+  { requestId: 'accept-cancelled', receiptNo: 'MM-accept-cancelled', officeId: 'of1', status: 'cancelled', hyeonjangOrderId: null, createdAt: '2026-08-26T00:00:00.000Z', updatedAt: '2026-08-26T00:00:00.000Z' },
+  { requestId: 'accept-linked', receiptNo: 'MM-accept-linked', officeId: 'of1', status: 'accepted', hyeonjangOrderId: 'server-order', createdAt: '2026-08-26T00:00:00.000Z', updatedAt: '2026-08-26T00:00:00.000Z' }
+);
+terminalAcceptStore.operationalErrors.push(
+  { code: 'accept-invalid-transition', requestId: 'accept-cancelled', at: '2026-08-27T00:00:00.000Z' },
+  { code: 'already-linked', requestId: 'accept-linked', at: '2026-08-27T00:00:00.000Z' }
+);
+sandbox.oiWriteStore_(terminalAcceptStore);
+assert.equal(sandbox.oiAccept_({ requestId: 'accept-cancelled', hyeonjangOrderId: 'local-ghost' }, 10110).error, 'invalid-transition');
+assert.equal(sandbox.oiAccept_({ requestId: 'accept-linked', hyeonjangOrderId: 'local-other' }, 10111).error, 'already-linked');
+assert.equal(sandbox.oiAccept_({ requestId: 'accept-missing', hyeonjangOrderId: 'local-missing' }, 10112).error, 'not-found');
+const terminalAfter = sandbox.oiReadStore_();
+assert.equal(terminalAfter.operationalErrors.filter(error => ['accept-cancelled', 'accept-linked'].includes(error.requestId)).every(error => !!error.resolvedAt), true, 'terminal accept conflicts resolve old operational retry markers');
+const terminalInbox = sandbox.oiInbox_({ updatedAfter: '2026-08-26T12:00:00.000Z' });
+assert.equal(terminalInbox.requests.some(request => ['accept-cancelled', 'accept-linked'].includes(request.requestId)), false, 'terminal accept conflicts are not returned as actionable retries');
+assert.equal(terminalAfter.audit.filter(row => row.action === 'accept' && ['invalid-transition', 'already-linked', 'not-found'].includes(row.result)).length >= 3, true, 'terminal accept conflicts retain metadata-only audit evidence');
 
 // Break caught: equal effective timestamps require a requestId tuple cursor; the second page must not skip its 101st record.
 const cursorStore = sandbox.oiReadStore_();
