@@ -13,7 +13,7 @@ const properties = {
 const cache = new Map();
 const cryptoStats = { macCalls: 0, decodeCalls: 0 };
 const lockEvents = [];
-const drive = { nextId: 1, files: [], folders: [] };
+const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0 };
 function iterator(items) {
   let index = 0;
   return { hasNext: () => index < items.length, next: () => items[index++] };
@@ -23,7 +23,7 @@ function makeFolder(name, parent) {
     id: 'folder-' + drive.nextId++, name, parent,
     getId() { return this.id; },
     getName() { return this.name; },
-    getFilesByName(fileName) { return iterator(drive.files.filter(file => file.parent === this && file.name === fileName)); },
+    getFilesByName(fileName) { return iterator(drive.files.filter(file => !file.trashed && file.parent === this && file.name === fileName)); },
     getFoldersByName(folderName) { return iterator(drive.folders.filter(child => child.parent === this && child.name === folderName)); },
     createFolder(folderName) { const child = makeFolder(folderName, this); drive.folders.push(child); return child; },
     createFile(arg, content, mimeType) {
@@ -31,12 +31,19 @@ function makeFolder(name, parent) {
         ? { name: arg, bytes: Array.from(Buffer.from(String(content), 'utf8')), mimeType }
         : arg;
       const file = {
-        id: 'file-' + drive.nextId++, parent: this, name: blob.name, mimeType: blob.mimeType,
+        id: 'file-' + drive.nextId++, parent: this, name: blob.name, mimeType: blob.mimeType, trashed: false,
         bytes: Array.from(blob.bytes || []),
         getId() { return this.id; },
         getName() { return this.name; },
         getBlob() { return { getDataAsString: () => Buffer.from(this.bytes).toString('utf8'), getBytes: () => this.bytes.slice() }; },
-        setContent(text) { this.bytes = Array.from(Buffer.from(String(text), 'utf8')); },
+        setContent(text) {
+          if (this.name === '관리사무소접수.json' && drive.failStoreWrites > 0) {
+            drive.failStoreWrites--;
+            throw new Error('injected-store-write-failure');
+          }
+          this.bytes = Array.from(Buffer.from(String(text), 'utf8'));
+        },
+        setTrashed(value) { this.trashed = value === true; },
       };
       drive.files.push(file);
       return file;
@@ -47,6 +54,19 @@ function makeFolder(name, parent) {
 const driveRoot = makeFolder('root', null);
 drive.folders.push(driveRoot);
 const SandboxDate = class extends Date { static now() { return 1000; } };
+function formatDate(date, timezone, pattern) {
+  assert.equal(timezone, 'Asia/Seoul');
+  assert.equal(pattern, 'yyyyMMdd');
+  const pieces = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date).reduce((out, part) => { out[part.type] = part.value; return out; }, {});
+  return pieces.year + pieces.month + pieces.day;
+}
+function folderPath(folder) {
+  const parts = [];
+  for (let current = folder; current && current.parent; current = current.parent) parts.unshift(current.name);
+  return parts.join('/');
+}
 function stubMac(text, key) {
   cryptoStats.macCalls++;
   return Array.from(Buffer.from('test-hmac:' + String(key) + ':' + String(text), 'utf8'));
@@ -98,8 +118,9 @@ const sandbox = {
       return Array.from(Buffer.from(String(value), 'base64url'));
     },
     base64Decode: value => Array.from(Buffer.from(String(value), 'base64')),
+    formatDate,
     newBlob: (bytes, mimeType, name) => ({ bytes: Array.from(bytes), mimeType, name, getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
-    getUuid: () => 'req-' + drive.nextId,
+    getUuid: () => 'req-' + (++drive.uuid),
   },
   LockService: {
     getScriptLock: () => ({
@@ -109,6 +130,7 @@ const sandbox = {
     }),
   },
   DriveApp: { getFolderById: id => { if (id !== 'root') throw new Error('not-found'); return driveRoot; } },
+  Session: { getScriptTimeZone: () => 'Asia/Seoul' },
   CalendarApp: {},
   ContentService: {
     MimeType: { JSON: 'application/json' },
@@ -192,6 +214,21 @@ for (const token of [undefined, 'wrong-test-token']) {
   assert.equal(JSON.parse(legacyOutput.getContent()).error, 'unauthorized');
 }
 
+function locked(run) {
+  lockEvents.length = 0;
+  const result = run();
+  assert.deepEqual(lockEvents, ['wait:20000', 'release']);
+  return result;
+}
+function lockedThrow(run, message) {
+  lockEvents.length = 0;
+  assert.throws(run, new RegExp(message));
+  assert.deepEqual(lockEvents, ['wait:20000', 'release']);
+}
+function postOffice(action, sessionToken, payload) {
+  return JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({ action, ts: 1000, sessionToken, payload }) } }).getContent());
+}
+
 // Break caught: omitting the Drive-backed, office-scoped store would duplicate a retry and expose another office's request.
 const sessionOf1 = { officeId: 'of1', office: sandbox.oiOfficeById_('of1') };
 const sessionOf2 = { officeId: 'of3', office: sandbox.oiOfficeById_('of3') };
@@ -201,41 +238,133 @@ const validPayload = {
   officeContact: { name: '홍길동', phone: '01012345678' }, residentContact: null,
   preferredVisitDate: '1970-01-01', privacyConsent: true,
 };
-const first = sandbox.oiCreate_(sessionOf1, validPayload, 10000);
-const replay = sandbox.oiCreate_(sessionOf1, validPayload, 10001);
+const first = locked(() => sandbox.oiCreate_(sessionOf1, validPayload, 10000));
+const replay = locked(() => sandbox.oiCreate_(sessionOf1, validPayload, 10001));
 assert.equal(first.receiptNo, 'MM-19700101-0001');
 assert.equal(replay.requestId, first.requestId);
 assert.equal(sandbox.oiList_(sessionOf2, {}).requests.length, 0);
 assert.equal(sandbox.oiGet_(sessionOf2, first.requestId).error, 'not-found');
 
-// Break caught: accepting an unrecognised declared type or a cross-office upload would store untrusted or another office's photo.
-const badPhoto = sandbox.oiUpload_(sessionOf1, {
-  requestId: first.requestId, name: 'bad.gif', mimeType: 'image/gif', dataB64: 'R0lGODlhAQABAIAAAAUEBA=='
-}, 10002);
-assert.equal(badPhoto.error, 'unsupported-type');
+// Break caught: inherited Object keys must never become image MIME types.
 const jpegB64 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]).toString('base64');
-assert.equal(sandbox.oiUpload_(sessionOf2, {
-  requestId: first.requestId, name: 'other.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 10003).error, 'not-found');
+assert.equal(sandbox.oiUpload_(sessionOf1, {
+  requestId: first.requestId, name: 'prototype.bin', mimeType: 'toString', dataB64: jpegB64
+}, 10002).error, 'unsupported-type');
+
+// Break caught: receipt allocation must use the configured Korea business day rather than UTC midnight.
+const kstBoundary = locked(() => sandbox.oiCreate_(sessionOf1, {
+  ...validPayload, idempotencyKey: 'kst-boundary'
+}, Date.parse('1970-01-01T15:00:00.000Z')));
+assert.equal(kstBoundary.receiptNo, 'MM-19700102-0001');
+
+// Break caught: declared image type and magic bytes must agree, while each allowed image type remains accepted.
+const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
+const webpBytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+assert.equal(sandbox.oiUpload_(sessionOf1, {
+  requestId: first.requestId, name: 'mismatch.jpg', mimeType: 'image/jpeg', dataB64: pngBytes.toString('base64')
+}, 10003).error, 'invalid-file');
+const photoBatch = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'photo-batch' }, 20000));
+const exactTwoMiB = Buffer.alloc(2 * 1024 * 1024);
+exactTwoMiB[0] = 0xff; exactTwoMiB[1] = 0xd8; exactTwoMiB[2] = 0xff;
+const jpgUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: photoBatch.requestId, name: 'exact.jpg', mimeType: 'image/jpeg', dataB64: exactTwoMiB.toString('base64')
+}, 20001));
+const pngUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: photoBatch.requestId, name: 'valid.png', mimeType: 'image/png', dataB64: pngBytes.toString('base64')
+}, 20002));
+const webpUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: photoBatch.requestId, name: 'valid.webp', mimeType: 'image/webp', dataB64: webpBytes.toString('base64')
+}, 20003));
+assert.equal(jpgUpload.size, 2 * 1024 * 1024);
+assert.equal(pngUpload.name, photoBatch.receiptNo + '_02.png');
+assert.equal(webpUpload.name, photoBatch.receiptNo + '_03.webp');
+const jpgFile = drive.files.find(file => file.id === jpgUpload.fileId);
+assert.equal(folderPath(jpgFile.parent), '관리사무소접수/sample-apt/' + photoBatch.receiptNo);
+const stored = JSON.parse(drive.files.find(file => file.name === '관리사무소접수.json').getBlob().getDataAsString('UTF-8'));
+assert.deepEqual(Object.keys(stored).sort(), ['requests', 'version']);
+const storedPhoto = stored.requests.find(request => request.requestId === photoBatch.requestId).photos[0];
+assert.deepEqual(Object.keys(storedPhoto).sort(), ['createdAt', 'fileId', 'mimeType', 'name', 'size']);
+assert.equal(storedPhoto.name, photoBatch.receiptNo + '_01.jpg');
 
 // Break caught: allowing a sixth image would bypass the per-request photo limit.
-for (let i = 1; i <= 5; i++) {
-  const upload = sandbox.oiUpload_(sessionOf1, {
-    requestId: first.requestId, name: 'photo-' + i + '.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-  }, 10010 + i);
-  assert.equal(upload.ok, true);
-  assert.equal(upload.name, 'MM-19700101-0001_0' + i + '.jpg');
+for (let i = 4; i <= 5; i++) {
+  assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
+    requestId: photoBatch.requestId, name: 'photo-' + i + '.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+  }, 20010 + i)).ok, true);
 }
-assert.equal(sandbox.oiUpload_(sessionOf1, {
-  requestId: first.requestId, name: 'six.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 10020).error, 'too-many-files');
+assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: photoBatch.requestId, name: 'six.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 20020)).error, 'too-many-files');
 
 // Break caught: checking encoded text instead of decoded bytes would allow an image above the 2 MiB limit.
-const second = sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'retry-key-2' }, 10030);
+const tooLargeRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'too-large' }, 20030));
 const tooLarge = Buffer.alloc(2 * 1024 * 1024 + 1);
 tooLarge[0] = 0xff; tooLarge[1] = 0xd8; tooLarge[2] = 0xff;
 assert.equal(sandbox.oiUpload_(sessionOf1, {
-  requestId: second.requestId, name: 'large.jpg', mimeType: 'image/jpeg', dataB64: tooLarge.toString('base64')
-}, 10031).error, 'too-large');
+  requestId: tooLargeRequest.requestId, name: 'large.jpg', mimeType: 'image/jpeg', dataB64: tooLarge.toString('base64')
+}, 20031).error, 'too-large');
+assert.equal(sandbox.oiUpload_(sessionOf2, {
+  requestId: first.requestId, name: 'other.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 20032).error, 'not-found');
+
+// Break caught: store-write failure after Drive create must not leave a retry-visible orphan photo.
+const compensated = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'compensated' }, 20040));
+drive.failStoreWrites = 1;
+lockedThrow(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: compensated.requestId, name: 'will-fail.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 20041), 'injected-store-write-failure');
+assert.equal(drive.files.filter(file => !file.trashed && file.name === compensated.receiptNo + '_01.jpg').length, 0);
+assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: compensated.requestId, name: 'retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 20042)).ok, true);
+assert.equal(drive.files.filter(file => !file.trashed && file.name === compensated.receiptNo + '_01.jpg').length, 1);
+
+// Break caught: explicit null must clear resident contact, and only the owning office may update or cancel while status is mutable.
+const editable = locked(() => sandbox.oiCreate_(sessionOf1, {
+  ...validPayload, idempotencyKey: 'editable', residentContact: { name: '입주민', phone: '01098765432' }
+}, 20050));
+assert.equal(locked(() => sandbox.oiUpdate_(sessionOf1, {
+  requestId: editable.requestId, description: '입주민 연락처 유지'
+}, 20051)).ok, true);
+assert.equal(sandbox.oiGet_(sessionOf1, editable.requestId).request.residentContact.name, '입주민');
+assert.equal(locked(() => sandbox.oiUpdate_(sessionOf1, {
+  requestId: editable.requestId, description: '수정된 설명', residentContact: null
+}, 20052)).ok, true);
+assert.equal(sandbox.oiGet_(sessionOf1, editable.requestId).request.residentContact, null);
+assert.equal(locked(() => sandbox.oiUpdate_(sessionOf2, { requestId: editable.requestId, description: '침입' }, 20053)).error, 'not-found');
+assert.equal(locked(() => sandbox.oiCancel_(sessionOf2, { requestId: editable.requestId }, 20054)).error, 'not-found');
+assert.equal(locked(() => sandbox.oiCancel_(sessionOf1, { requestId: editable.requestId }, 20055)).status, 'cancelled');
+assert.equal(locked(() => sandbox.oiUpdate_(sessionOf1, { requestId: editable.requestId, description: '늦은 수정' }, 20056)).error, 'invalid-status');
+assert.equal(locked(() => sandbox.oiCancel_(sessionOf1, { requestId: editable.requestId }, 20057)).error, 'invalid-status');
+
+// Break caught: newest list order is created order, not a later edit time.
+const sortOld = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'sort-old' }, 2000000000000));
+const sortNew = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'sort-new' }, 2000000000001));
+assert.equal(locked(() => sandbox.oiUpdate_(sessionOf1, { requestId: sortOld.requestId, description: '늦게 수정된 오래된 접수' }, 2000000000100)).ok, true);
+assert.equal(sandbox.oiList_(sessionOf1, {}).requests[0].requestId, sortNew.requestId);
+const listStore = sandbox.oiReadStore_();
+for (let i = 0; i <= 50; i++) {
+  listStore.requests.push({
+    requestId: 'cap-' + i, receiptNo: 'MM-cap-' + i, officeId: 'of1', unit: '', location: '', issueType: '', pipeType: '', urgency: 'normal',
+    description: '', officeContact: {}, residentContact: null, preferredVisitDate: '', photos: [], status: 'pending_review',
+    publicAmount: null, visitAt: null, completionReport: null, createdAt: '2040-01-01T00:00:' + String(i).padStart(2, '0') + '.000Z', updatedAt: '2040-01-01T00:00:00.000Z'
+  });
+}
+sandbox.oiWriteStore_(listStore);
+const newestFifty = sandbox.oiList_(sessionOf1, {}).requests;
+assert.equal(newestFifty.length, 50);
+assert.equal(newestFifty[0].requestId, 'cap-50');
+assert.equal(newestFifty.some(request => request.requestId === 'cap-0'), false);
+
+// Break caught: public office actions must route through the Task 2 session, not the legacy APP_TOKEN gate.
+const routedCreate = postOffice('officeCreate', login.sessionToken, { ...validPayload, idempotencyKey: 'public-route' });
+assert.equal(routedCreate.ok, true);
+assert.equal(postOffice('officeUpdate', login.sessionToken, {
+  requestId: routedCreate.requestId, description: '공개 경로 수정'
+}).ok, true);
+assert.equal(postOffice('officeUpload', login.sessionToken, {
+  requestId: routedCreate.requestId, name: 'route.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}).ok, true);
+assert.equal(postOffice('officeCancel', login.sessionToken, { requestId: routedCreate.requestId }).status, 'cancelled');
 
 console.log('PASS  office intake server authentication');

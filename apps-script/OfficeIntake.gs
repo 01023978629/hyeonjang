@@ -165,7 +165,7 @@ function oiOwnRequest_(store, officeId, requestId) {
 }
 function oiNow_(now) { return new Date(Number(now)).toISOString(); }
 function oiReceiptDay_(now) {
-  return new Date(Number(now)).toISOString().slice(0, 10).replace(/-/g, '');
+  return Utilities.formatDate(new Date(Number(now)), Session.getScriptTimeZone() || 'Asia/Seoul', 'yyyyMMdd');
 }
 function oiCreateResult_(request) {
   return { ok: true, requestId: request.requestId, receiptNo: request.receiptNo, status: request.status, createdAt: request.createdAt };
@@ -252,7 +252,7 @@ function oiList_(session, payload) {
   var officeId = oiSessionOfficeId_(session);
   if (!officeId) return { ok: false, error: 'session-expired' };
   var requests = oiReadStore_().requests.filter(function (request) { return request.officeId === officeId; });
-  requests.sort(function (a, b) { return String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)); });
+  requests.sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
   return { ok: true, requests: requests.slice(0, 50).map(oiPublicRequest_) };
 }
 function oiGet_(session, requestId) {
@@ -282,7 +282,7 @@ function oiUpdate_(session, payload, now) {
       urgency: payload.urgency == null ? request.urgency : payload.urgency,
       description: payload.description == null ? request.description : payload.description,
       officeContact: payload.officeContact == null ? request.officeContact : payload.officeContact,
-      residentContact: payload.residentContact == null ? request.residentContact : payload.residentContact,
+      residentContact: Object.prototype.hasOwnProperty.call(payload, 'residentContact') ? payload.residentContact : request.residentContact,
       preferredVisitDate: payload.preferredVisitDate == null ? request.preferredVisitDate : payload.preferredVisitDate,
       privacyConsent: payload.privacyConsent == null ? true : payload.privacyConsent
     };
@@ -329,7 +329,8 @@ function oiByte_(bytes, index) { return Number(bytes[index]) & 255; }
 function oiImageMagicValid_(mimeType, bytes) {
   if (mimeType === 'image/jpeg') return bytes.length >= 3 && oiByte_(bytes, 0) === 0xFF && oiByte_(bytes, 1) === 0xD8 && oiByte_(bytes, 2) === 0xFF;
   if (mimeType === 'image/png') return bytes.length >= 4 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4E && oiByte_(bytes, 3) === 0x47;
-  return bytes.length >= 12 && oiByte_(bytes, 0) === 0x52 && oiByte_(bytes, 1) === 0x49 && oiByte_(bytes, 2) === 0x46 && oiByte_(bytes, 3) === 0x46 && oiByte_(bytes, 8) === 0x57 && oiByte_(bytes, 9) === 0x45 && oiByte_(bytes, 10) === 0x42 && oiByte_(bytes, 11) === 0x50;
+  if (mimeType === 'image/webp') return bytes.length >= 12 && oiByte_(bytes, 0) === 0x52 && oiByte_(bytes, 1) === 0x49 && oiByte_(bytes, 2) === 0x46 && oiByte_(bytes, 3) === 0x46 && oiByte_(bytes, 8) === 0x57 && oiByte_(bytes, 9) === 0x45 && oiByte_(bytes, 10) === 0x42 && oiByte_(bytes, 11) === 0x50;
+  return false;
 }
 function oiRequestPhotoFolder_(officeId, receiptNo) {
   var office = oiOfficeById_(officeId);
@@ -343,7 +344,7 @@ function oiUpload_(session, payload, now) {
   if (!officeId) return { ok: false, error: 'session-expired' };
   payload = payload && typeof payload === 'object' ? payload : {};
   var mimeType = String(payload.mimeType || '');
-  if (!OI_IMAGE_TYPES[mimeType]) return { ok: false, error: 'unsupported-type' };
+  if (!Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, mimeType)) return { ok: false, error: 'unsupported-type' };
   var bytes;
   try { bytes = Utilities.base64Decode(String(payload.dataB64 || '')); }
   catch (_) { return { ok: false, error: 'invalid-file' }; }
@@ -364,7 +365,12 @@ function oiUpload_(session, payload, now) {
     var photo = { fileId: file.getId(), name: name, mimeType: mimeType, size: bytes.length, createdAt: createdAt };
     request.photos.push(photo);
     request.updatedAt = createdAt;
-    oiWriteStore_(store);
+    try {
+      oiWriteStore_(store);
+    } catch (err) {
+      try { file.setTrashed(true); } catch (_) {}
+      throw err;
+    }
     return { ok: true, fileId: photo.fileId, name: photo.name, mimeType: photo.mimeType, size: photo.size, createdAt: photo.createdAt };
   } finally {
     lock.releaseLock();
