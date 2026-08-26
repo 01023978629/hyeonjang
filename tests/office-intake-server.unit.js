@@ -8,14 +8,76 @@ const assert = require('node:assert/strict');
 // still runs when the optional Playwright package is unavailable.
 const codeSource = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8');
 const officeSource = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'OfficeIntake.gs'), 'utf8');
+const pureSource = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'OfficeIntakePure.gs'), 'utf8');
 const readme = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
-assert(codeSource.includes('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'));
-assert(codeSource.includes('var tk = checkToken_(req.token);'));
+const installGuide = fs.readFileSync(path.join(__dirname, '..', 'APPS_SCRIPT_설치방법.md'), 'utf8');
+const REQUIRED_PROPERTIES = new Set([
+  'APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED',
+  'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_CALENDAR_ID',
+]);
+function sectionBetween(source, start, end) {
+  const begin = source.indexOf(start);
+  assert(begin >= 0, 'missing section: ' + start);
+  const finish = end ? source.indexOf(end, begin + start.length) : source.length;
+  assert(finish >= 0, 'missing section end: ' + end);
+  return source.slice(begin, finish);
+}
+function declaredPropertyKeys(section) {
+  const keys = [];
+  for (const match of section.matchAll(/^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|/gm)) keys.push(match[1]);
+  return new Set(keys);
+}
+function declaredArray(source, name) {
+  const match = source.match(new RegExp('var\\s+' + name + '\\s*=\\s*\\[([\\s\\S]*?)\\];'));
+  assert(match, 'missing array: ' + name);
+  return [...match[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+}
+const readmePropertyKeys = declaredPropertyKeys(sectionBetween(readme, '## 배포 전 Script Properties 계약', '## 계정 측 설치·재배포 순서와 live gate'));
+const installPropertyKeys = declaredPropertyKeys(sectionBetween(installGuide, '## 4. 스크립트 속성 입력', '## 5. 최초 권한 승인'));
+assert.deepEqual(readmePropertyKeys, REQUIRED_PROPERTIES, 'README property declaration must be exact');
+assert.deepEqual(installPropertyKeys, REQUIRED_PROPERTIES, 'install property declaration must be exact');
+for (const docs of [readme, installGuide]) {
+  assert(docs.includes('정확한 문자열 `1`'), 'only exact string 1 enables office intake');
+  assert(docs.includes('`0`') && docs.includes('누락'), '0 or absent disables office intake');
+}
+function assertGateOrder(docs, start, end, deployMarker) {
+  const gate = sectionBetween(docs, start, end);
+  const disabled = gate.indexOf('OFFICE_INTAKE_ENABLED=0');
+  const deployed = gate.indexOf(deployMarker || '배포합니다');
+  const health = gate.indexOf('`health`');
+  const enabled = gate.indexOf('OFFICE_INTAKE_ENABLED=1');
+  const rollback = gate.lastIndexOf('OFFICE_INTAKE_ENABLED=0');
+  assert(disabled >= 0 && deployed > disabled && health > deployed && enabled > health && rollback > enabled,
+    'flag 0/absent -> deploy -> legacy health -> controlled flag 1 -> immediate rollback order');
+}
+assertGateOrder(readme, '## 계정 측 설치·재배포 순서와 live gate', '### 롤백');
+assertGateOrder(installGuide, '## 6. 웹 앱으로 배포', '## 7-2. 파수꾼 설치', '**배포** 클릭');
+assert.deepEqual(new Set(declaredArray(officeSource, 'OI_PUBLIC_ACTIONS')), new Set([
+  'officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload',
+]));
+assert.deepEqual(new Set(declaredArray(officeSource, 'OI_INTERNAL_ACTIONS')), new Set([
+  'officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList',
+]));
+assert.deepEqual(new Set(declaredArray(codeSource, 'ALLOWED_ACTIONS')), new Set([
+  'health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail', 'download',
+]));
+const postSource = sectionBetween(codeSource, 'function doPost(e)', '/* ---------- Drive 헬퍼 ---------- */');
+const publicBranch = postSource.indexOf('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));');
+const tokenBranch = postSource.indexOf('var tk = checkToken_(req.token);');
+const internalBranch = postSource.indexOf('if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));');
+const legacyBranch = postSource.indexOf("if (ALLOWED_ACTIONS.indexOf(action) < 0)");
+assert(publicBranch >= 0 && publicBranch < tokenBranch && tokenBranch < internalBranch && internalBranch < legacyBranch,
+  'public -> APP_TOKEN -> internal -> legacy branch order');
 assert(!officeSource.includes('APP_TOKEN='));
-assert(readme.includes('OFFICE_INTAKE_ENABLED'));
-assert(readme.includes('OFFICE_SESSION_SECRET'));
-assert(readme.includes('OFFICE_CONFIG_JSON'));
-assert(readme.includes('OFFICE_STORE_FILE'));
+const publicErrorSection = sectionBetween(readme, '### Public response codes', '### Internal response codes');
+const internalErrorSection = sectionBetween(readme, '### Internal response codes', '### Operational records');
+const operationalErrorSection = sectionBetween(readme, '### Operational records', '## 배포 전 Script Properties 계약');
+const codeTokens = section => [...section.matchAll(/`([a-z][a-z-]+)`/g)].map(m => m[1]).filter(token => token.includes('-'));
+const documentedErrors = new Set([...codeTokens(publicErrorSection), ...codeTokens(internalErrorSection), ...codeTokens(operationalErrorSection)]);
+const serverSource = codeSource + officeSource + pureSource;
+for (const error of documentedErrors) assert(serverSource.includes("'" + error + "'"), 'documented error must exist in source: ' + error);
+assert(internalErrorSection.includes('already-linked') && internalErrorSection.includes('slug-conflict') && internalErrorSection.includes('invalid-transition') && internalErrorSection.includes('admin-state-unknown'));
+assert(operationalErrorSection.includes('calendar-failed') && operationalErrorSection.includes('성공한 접수'));
 
 const properties = {
   OFFICE_INTAKE_ENABLED: '1',

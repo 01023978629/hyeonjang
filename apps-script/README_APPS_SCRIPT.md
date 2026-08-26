@@ -59,17 +59,34 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 바이트·내부 메모를 넣지 않습니다. `OFFICE_INTAKE_ENABLED`가 꺼져 있으면 공개
 로그인·접수 변경·사진 업로드를 거부하며 기존 relay action은 계속 동작합니다.
 
-### 관리사무소 오류 코드
+### Public response codes
 
-공개 응답은 `{ok:false,error,message}` 형식입니다.
+공개 action의 응답은 `{ok:false,error,message}` 형식입니다. 아래 코드는
+관리사무소 브라우저에 반환될 수 있는 값입니다.
 
-`office-disabled`(기능 플래그 꺼짐) · `invalid-credentials`(없는/중지된 단지나
-잘못된 PIN 포함) · `rate-limited`(10분 동안 로그인 실패 5회) ·
-`session-expired`(만료·폐기·서명 오류 세션) · `invalid-input` ·
-`consent-required` · `invalid-status` · `invalid-completion-photos` ·
-`unsupported-type` · `invalid-file` · `too-large` · `too-many-files` ·
-`not-found` · `already-linked` · `slug-conflict` · `invalid-transition` ·
-`calendar-failed` · `admin-state-unknown` · `bad-request` · `server-error`.
+`office-disabled`(feature flag가 exact string `1`이 아님) ·
+`invalid-credentials`(없는/중지된 단지나 잘못된 PIN 포함) ·
+`rate-limited`(10분 동안 로그인 실패 5회) · `session-expired`(만료·폐기·서명
+오류 세션) · `invalid-input` · `consent-required` · `invalid-status` ·
+`invalid-completion-photos` · `unsupported-type` · `invalid-file` · `too-large` ·
+`too-many-files` · `not-found` · `bad-request` · `server-error`.
+
+### Internal response codes
+
+내부 action은 기존 `APP_TOKEN` 검증 뒤에만 호출되며, 결과는 현장 운영 도구가
+처리합니다. `already-linked`(다른 현장 order가 이미 연결됨) ·
+`slug-conflict`(다른 office가 같은 slug 사용) · `invalid-transition`(허용되지
+않은 상태 전이) · `admin-state-unknown`(관리자 설정과 복구 상태를 판정할 수
+없음) · `invalid-input` · `not-found` · `bad-request` · `server-error`.
+
+### Operational records
+
+`calendar-failed` · `already-linked` · `accept-invalid-transition` ·
+`invalid-transition`은 운영 오류/재시도 기록에 저장될 수 있습니다. 긴급 접수의
+Calendar 생성이 실패해도 성공한 접수·영수증은 보존되며, `calendar-failed`는
+정제된 operational error로만 기록됩니다. 따라서 `calendar-failed`를 공개
+`officeCreate` 실패로 표시하거나 접수를 롤백하지 않습니다. 운영 기록에는
+`code`, `requestId`, `at`만 저장하며 PIN·토큰·전체 전화번호·사진 바이트는 없습니다.
 
 로그인 실패나 동기화 실패 기록에는 전체 전화번호·PIN·세션 토큰·사진 바이트를
 남기지 않습니다. 사진은 JPEG/PNG/WebP만 허용하고 이미지별 decoded bytes 2 MiB,
@@ -89,7 +106,7 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 | `OFFICE_INTAKE_ENABLED` | 공개 office 로그인·접수 기능 on/off feature flag | 배포 전 설정 |
 | `OFFICE_SESSION_SECRET` | office 세션·PIN HMAC 서명 키(충분히 긴 무작위 값) | office 기능 on 전 |
 | `OFFICE_CONFIG_JSON` | office 목록·slug·활성 상태·PIN hash/salt·sessionVersion | office 기능 on 전 |
-| `OFFICE_STORE_FILE` | 루트 Drive에 둘 접수 저장 파일명 | 선택(기본 `관리사무소접수.json`) |
+| `OFFICE_CALENDAR_ID` | 긴급 office 알림을 만들 Calendar ID | 선택(미설정 시 배포자 기본 Calendar) |
 
 `OFFICE_CONFIG_JSON`에는 평문 PIN을 저장하지 않습니다. 최초 office는 내부
 `officeAdminUpsert`로 등록하고, `officeRotatePin`이 반환하는 PIN을 안전한
@@ -105,28 +122,36 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 
 1. 기존 relay 프로젝트를 확인하고 `Code.gs`, `OfficeIntakePure.gs`,
    `OfficeIntake.gs`, `Watchdog.gs`, `appsscript.json`을 같은 프로젝트에 반영합니다.
-2. 위 Script Properties를 값 노출 없이 입력합니다. `OFFICE_INTAKE_ENABLED`는
-   검증 중 꺼진 상태로 두고, `OFFICE_SESSION_SECRET`은 새로 생성해 보관합니다.
+2. 위 Script Properties를 값 노출 없이 입력합니다. 최초 설정은
+   `OFFICE_INTAKE_ENABLED=0`으로 하거나 해당 property를 **아예 두지 않습니다**.
+   오직 정확한 문자열 `1`만 office 공개 기능을 켜며, `0`·빈 값·누락·그 밖의
+   값은 모두 끕니다. `OFFICE_SESSION_SECRET`은 새로 생성해 보관합니다.
 3. `appsscript.json`의 `timeZone`이 `Asia/Seoul`인지 확인합니다. 영수증 번호의
    날짜와 `createdAt` 기반 보존 판정은 이 스크립트 시간대를 따릅니다.
 4. 최초 권한 승인(Drive, Calendar, ScriptApp 및 필요한 Spreadsheet/Mail 범위)을
    대표 계정으로 완료합니다. 승인·OAuth 동의는 에이전트가 대신하지 않습니다.
 5. 웹앱을 `executeAs: USER_DEPLOYING`, `access: ANYONE_ANONYMOUS`로 **새 버전**
-   배포합니다. 앱 URL은 기존 배포의 `/exec`를 유지하고, 새 배포를 만들었다면
-   프론트 설정의 URL만 대표가 직접 교체합니다.
+   배포합니다. 이 첫 배포는 flag가 `0` 또는 누락인 상태에서 진행합니다. 앱
+   URL은 기존 배포의 `/exec`를 유지하고, 새 배포를 만들었다면 프론트 설정의
+   URL만 대표가 직접 교체합니다.
 6. 대표 계정에서 `health`를 확인해 `ok:true`, `folderOk:true`, 올바른
-   `version`/`revision`을 확인합니다. `not-configured`, `unauthorized`,
-   `folderOk:false`이면 다음 gate로 진행하지 않습니다.
+   `version`/`revision`을 확인하고, 기존 relay의 `load` 등 읽기 동작이
+   정상인지 확인합니다. `not-configured`, `unauthorized`, `folderOk:false`이면
+   다음 gate로 진행하지 않습니다. 이 단계에서 office 공개 login/create/upload는
+   비활성 상태여야 합니다.
 7. `APP_TOKEN`을 사용하는 내부 관리 도구로 office를 upsert하고 PIN을 rotate한
    뒤, 내부 `officeInbox`가 토큰 없이 거부되고 올바른 토큰으로만 동작하는지
    확인합니다. 생성·연결·상태 변경·긴급 Calendar 실패 기록은 테스트 데이터로
    확인합니다.
-8. 대표가 직접 공개 office 로그인 → 접수 생성 → 사진 업로드 → 상태/완료 보고
-   조회를 확인합니다. 공개 요청의 네트워크 payload에 `APP_TOKEN`이 없는지
-   확인한 뒤에만 feature flag를 켭니다.
-9. flag를 켠 뒤 동일한 공개 흐름과 기존 relay(`load/save/upload/listFiles/
-   thumbnail/download`)를 다시 확인합니다. 이것이 live verification gate이며,
-   로컬 Node 결과만으로 대체하지 않습니다.
+8. 대표가 통제된 시험 시간에만 property를 정확히
+   `OFFICE_INTAKE_ENABLED=1`로 설정하고, 공개 office login → create → upload →
+   list/get → status/완료 보고와 다른 office 차단을 확인합니다. Calendar 실패는
+   성공한 접수·영수증을 보존하고 운영 오류로 기록하는지, 관리자 설정 실패는
+   rollback/`admin-state-unknown` 계약을 지키는지 확인합니다.
+9. 어느 gate 하나라도 실패하면 즉시 `OFFICE_INTAKE_ENABLED=0`으로 설정하거나
+   property를 삭제하고, 기존 relay health/read-only 동작을 재확인합니다. 모든
+   gate가 통과한 경우에만 `1`을 유지합니다. 로컬 Node 결과만으로 live gate를
+   대체하지 않습니다.
 
 ### 롤백
 

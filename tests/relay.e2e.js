@@ -12,18 +12,38 @@ function assertStaticOfficeContract() {
   const officeSource = fs.readFileSync(path.join(root, 'apps-script', 'OfficeIntake.gs'), 'utf8');
   const readme = fs.readFileSync(path.join(root, 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
   const install = fs.readFileSync(path.join(root, 'APPS_SCRIPT_설치방법.md'), 'utf8');
-  assert(codeSource.includes('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'), 'public office dispatch is explicit');
-  assert(codeSource.includes('var tk = checkToken_(req.token);'), 'legacy/internal APP_TOKEN gate is explicit');
+  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_CALENDAR_ID']);
+  const sectionBetween = (source, start, end) => {
+    const begin = source.indexOf(start); assert(begin >= 0, 'missing section: ' + start);
+    const finish = source.indexOf(end, begin + start.length); assert(finish >= 0, 'missing section end: ' + end);
+    return source.slice(begin, finish);
+  };
+  const propertyKeys = section => new Set([...section.matchAll(/^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|/gm)].map(m => m[1]));
+  assert(deepEqualSet(propertyKeys(sectionBetween(readme, '## 배포 전 Script Properties 계약', '## 계정 측 설치·재배포 순서와 live gate')), required), 'README exact property set');
+  assert(deepEqualSet(propertyKeys(sectionBetween(install, '## 4. 스크립트 속성 입력', '## 5. 최초 권한 승인')), required), 'install exact property set');
+  const array = (source, name) => {
+    const m = source.match(new RegExp('var\\s+' + name + '\\s*=\\s*\\[([\\s\\S]*?)\\];')); assert(m, 'missing array ' + name);
+    return new Set([...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]));
+  };
+  assert(deepEqualSet(array(officeSource, 'OI_PUBLIC_ACTIONS'), new Set(['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload'])), 'public action set');
+  assert(deepEqualSet(array(officeSource, 'OI_INTERNAL_ACTIONS'), new Set(['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'])), 'internal action set');
+  assert(deepEqualSet(array(codeSource, 'ALLOWED_ACTIONS'), new Set(['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail', 'download'])), 'legacy action set');
+  const post = sectionBetween(codeSource, 'function doPost(e)', '/* ---------- Drive 헬퍼 ---------- */');
+  const order = [
+    post.indexOf('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'),
+    post.indexOf('var tk = checkToken_(req.token);'),
+    post.indexOf('if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));'),
+    post.indexOf('if (ALLOWED_ACTIONS.indexOf(action) < 0)'),
+  ];
+  assert(order.every(i => i >= 0) && order.every((i, n) => n === 0 || order[n - 1] < i), 'public -> token -> internal -> legacy ordering');
   assert(!officeSource.includes('APP_TOKEN='), 'office source has no embedded APP_TOKEN assignment');
-  for (const key of ['OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE']) {
-    assert(readme.includes(key), 'README documents ' + key);
-    assert(install.includes(key), 'install guide documents ' + key);
-  }
+  for (const docs of [readme, install]) assert(docs.includes('only exact string `1`') || docs.includes('정확한 문자열 `1`'), 'exact flag enable semantics');
   assert(readme.includes('USER_DEPLOYING') && readme.includes('ANYONE_ANONYMOUS'), 'README documents deployment boundary');
   assert(install.includes('USER_DEPLOYING') && install.includes('ANYONE_ANONYMOUS'), 'install guide documents deployment boundary');
   console.log('PASS  office intake static deployment contract');
 }
 function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
+function deepEqualSet(a, b) { return a.size === b.size && [...a].every(x => b.has(x)); }
 assertStaticOfficeContract();
 
 let chromium;

@@ -65,7 +65,7 @@
 | `OFFICE_INTAKE_ENABLED` | 공개 office 접수 feature flag |
 | `OFFICE_SESSION_SECRET` | office PIN·세션 HMAC 서명 키 |
 | `OFFICE_CONFIG_JSON` | office 목록·PIN hash/salt·활성 상태·sessionVersion |
-| `OFFICE_STORE_FILE` | 관리사무소 접수 저장 파일명(선택) |
+| `OFFICE_CALENDAR_ID` | 긴급 office 알림을 만들 Calendar ID(선택) |
 
 3. 기존 설치에서 사용하는 `BACKUP_KEEP_COUNT` 등 다른 Watchdog 속성이 있다면
    그대로 보존합니다. 새 기능의 저장 파일 기본 이름은 `관리사무소접수.json`입니다.
@@ -73,6 +73,10 @@
    아래의 내부 `officeAdminUpsert` → `officeRotatePin` 절차로 대표가 수행합니다.
 5. 값이 필요한 문서 예시는 모두 `[REDACTED_SECRET]` 같은 자리표시자만 사용합니다.
    **실제 토큰·세션 secret·폴더 ID·PIN을 이 파일에 적지 마세요.**
+
+`OFFICE_INTAKE_ENABLED`는 오직 정확한 문자열 `1`일 때만 공개 office 기능을
+활성화합니다. 초기값은 `0`으로 하거나 property를 비워 두며, 빈 값·누락·그
+밖의 값은 모두 비활성화로 처리합니다.
 
 ## 5. 최초 권한 승인
 
@@ -86,7 +90,10 @@
    ScriptApp(Watchdog 트리거)입니다. 현황판을 쓰면 Spreadsheet, mail 채널을
    명시적으로 쓰면 Mail, 기본 수신자 조회에는 `userinfo.email`도 승인합니다.
 
-## 6. 웹 앱으로 배포
+## 6. 웹 앱으로 배포 (flag는 0 또는 누락 상태)
+
+배포를 시작하기 전에 `OFFICE_INTAKE_ENABLED=0`으로 설정하거나 property를
+삭제합니다. 오직 정확한 문자열 `1`만 office 공개 기능을 켭니다.
 
 1. 오른쪽 위 **배포 ▸ 새 배포**
 2. 톱니바퀴(유형 선택) → **웹 앱**
@@ -117,6 +124,11 @@ https://script.google.com/macros/s/…/exec?action=health&token=[REDACTED_SECRET
 HTTP 200만으로는 올바른 배포·속성·Drive 권한을 증명하지 못합니다. 반드시 현재
 프로젝트의 `/exec` URL, Script Properties, 배포 버전을 함께 확인합니다.
 
+이 단계에서 기존 relay의 `health`와 `load` 같은 읽기 동작이 정상인지 확인합니다.
+flag가 `0` 또는 누락이면 office 공개 login/create/upload는 실패해야 하며, 기존
+relay는 계속 동작해야 합니다. 어느 확인이라도 실패하면 다음 단계로 가지 않고
+flag를 `0`으로 설정하거나 property를 삭제합니다.
+
 ## 7-1. 관리사무소 office bootstrap (live gate 2)
 
 계정 권한과 health gate가 통과한 뒤 대표가 내부 관리 도구에서 다음 순서로
@@ -132,9 +144,15 @@ HTTP 200만으로는 올바른 배포·속성·Drive 권한을 증명하지 못�
 4. 내부 action은 토큰 없이 거부되는지, 기존 relay action은 기존 토큰으로 계속
    동작하는지 확인합니다. 긴급 접수는 Calendar 일정 또는 `calendar-failed`
    운영 오류가 남는지 확인합니다.
-5. 모든 확인이 끝난 뒤에만 `OFFICE_INTAKE_ENABLED`를 직접 활성화합니다.
-   비활성 상태에서는 office 공개 로그인·생성·변경·업로드가 거부되고 기존
-   relay에는 영향이 없어야 합니다.
+5. 통제된 시험 시간에만 Script Properties에서 정확한 문자열
+   `OFFICE_INTAKE_ENABLED=1`을 설정합니다. 공개 office login → create → upload
+   → list/get → status/완료 보고 및 다른 office 차단을 확인합니다. Calendar 생성
+   실패가 성공한 접수·영수증을 보존하고 `calendar-failed` 운영 오류를 남기는지,
+   관리자 설정 실패가 rollback 또는 `admin-state-unknown`으로 처리되는지
+   확인합니다.
+6. 모든 gate가 통과한 경우에만 `1`을 유지합니다. 하나라도 실패하면 즉시
+   `OFFICE_INTAKE_ENABLED=0`으로 바꾸거나 property를 삭제하고, 기존 relay
+   `health`/읽기 동작을 다시 확인합니다.
 
 Playwright 브라우저 회귀는 선택 의존성이므로 로컬에서 모듈을 불러오지 못할 수
 있습니다. 그 경우 `tests/office-intake-server.unit.js`의 dependency-free 정적
