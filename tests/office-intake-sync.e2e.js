@@ -64,6 +64,19 @@ const TOKEN = 'test-token-123';
   assert.equal(disablePersist.local, false, 'disable result updates local office intakeEnabled');
   assert.equal(disablePersist.remote.office.enabled, false, 'reopen never silently reactivates a disabled office');
 
+  // RED: an old/partial admin response that omits enabled must fail closed.  It
+  // cannot flip a locally disabled office or make the next upsert send true.
+  const partialAdmin = await page.evaluate(async () => {
+    const office = state.aptOffices[0]; office.intakeEnabled = false;
+    const applied = officeIntakeApplyOfficeAdminResult(office, { ok:true, office:{ id:'of1', slug:'sample-apt' } });
+    const original = window.cloudOfficeAdmin, calls = [];
+    window.cloudOfficeAdmin = async function(action,payload){ calls.push({action,payload:JSON.parse(JSON.stringify(payload||{}))}); return {ok:true,office:{id:'of1',slug:'sample-apt'}}; };
+    await officeIntakeOfficeAccess('of1'); closeModal();
+    window.cloudOfficeAdmin = original;
+    return { applied, local:office.intakeEnabled, sentEnabled:calls[0]&&calls[0].payload.enabled };
+  });
+  assert.deepEqual(partialAdmin, { applied:false, local:false, sentEnabled:false }, 'missing enabled is never interpreted as enabled=true');
+
   const merged = await page.evaluate(async () => {
     const d = officeIntakeData();
     d.inbox.push({ requestId: 'local-only', updatedAt: '2026-08-26T08:00:00+09:00' });
@@ -115,6 +128,39 @@ const TOKEN = 'test-token-123';
     { action: 'officeSetStatus', attempts: 1, error: '인증 오류' },
     { action: 'officeAccept', attempts: 0, error: '' }
   ], 'authorization error stops a continuous outbox retry and leaves later work untouched');
+
+  // RED: invalid completion-photo manifests are semantic, user-correctable
+  // blockers.  They stay durable and visible, but do not poison unrelated FIFO
+  // work; a strictly newer corrected projection supersedes the blocked item.
+  const blockedCompletion = await page.evaluate(async () => {
+    state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:2, completionPhotoIds:['missing-drive-id'], completionReport:{summary:'완료',photoIds:['missing-drive-id'],publicPhotoIds:[]} });
+    officeIntakeQueue('officeSetStatus', { requestId:'other-order', status:'visit_scheduled', projectionRevision:1 });
+    const original = window.relayCall; let blockedCalls=0, otherCalls=0;
+    window.relayCall = async function(action,payload){
+      if(payload.requestId==='blocked-photo'){ blockedCalls++; return {ok:false,error:'invalid-completion-photos'}; }
+      otherCalls++; return {ok:true};
+    };
+    const firstSent=await officeIntakeFlush();
+    const first=officeIntakeData().outbox.map(item=>({requestId:item.payload.requestId,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));
+    const secondSent=await officeIntakeFlush();
+    const html=officeIntakeOperationalErrorHtml();
+    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:3, completionPhotoIds:[], completionReport:{summary:'수정 완료',photoIds:[],publicPhotoIds:[]} });
+    const afterCorrection=officeIntakeData().outbox.map(item=>({revision:item.payload.projectionRevision,blocked:item.blocked===true}));
+    window.relayCall = async function(){ return {ok:true}; };
+    const correctedSent=await officeIntakeFlush();
+    window.relayCall = original;
+    return {firstSent,first,secondSent,blockedCalls,otherCalls,html,afterCorrection,correctedSent,remaining:officeIntakeData().outbox.length};
+  });
+  assert.equal(blockedCompletion.firstSent, 1, 'unrelated later outbox work proceeds past the semantic blocker');
+  assert.deepEqual(blockedCompletion.first, [{requestId:'blocked-photo',blocked:true,code:'invalid-completion-photos',attempts:1}], 'blocked manifest stays durable and explicit');
+  assert.equal(blockedCompletion.secondSent, 0, 'blocked item is not retried automatically');
+  assert.equal(blockedCompletion.blockedCalls, 1, 'semantic blocker reaches relay only once before correction');
+  assert.equal(blockedCompletion.otherCalls, 1, 'unrelated item is delivered exactly once');
+  assert.match(blockedCompletion.html, /사진.*수정/, 'UI explains that photo selection or manifest correction is required');
+  assert.deepEqual(blockedCompletion.afterCorrection, [{revision:3,blocked:false}], 'strictly newer corrected projection explicitly supersedes the blocked revision');
+  assert.equal(blockedCompletion.correctedSent, 1);
+  assert.equal(blockedCompletion.remaining, 0, 'corrected projection flushes successfully without false success for the blocked revision');
 
   await fetch(MOCK + '/__reset');
   const durable = await page.evaluate(() => {
@@ -221,11 +267,59 @@ const TOKEN = 'test-token-123';
   assert.deepEqual(resolvedReason, {
     needs: { ok: true, requestId: 'req-1', status: 'needs_info', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.needs.projectionRevision, updatedAt: resolvedReason.needs.updatedAt },
     hold: { ok: true, requestId: 'req-1', status: 'on_hold', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.hold.projectionRevision, updatedAt: resolvedReason.hold.updatedAt },
-    accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted' }
+    accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted', projectionRevision: resolvedReason.hold.projectionRevision }
   }, 'needs_info -> on_hold -> accepted succeeds');
   assert.equal(resolvedReason.needs.projectionRevision < resolvedReason.hold.projectionRevision, true, 'status transitions advance the projection revision');
   const resolvedMock = await (await fetch(MOCK + '/__state')).json();
   assert.equal(resolvedMock.officeRequests.find(row => row.requestId === 'req-1').needsInfoReason, null, 'acceptance clears resolved needs-info reason in mock fidelity');
+
+  // RED: a fresh field app can receive an on-hold request with an existing
+  // authoritative revision, accept it, and publish the first visit as rev+1.
+  await fetch(MOCK + '/__reset');
+  const preacceptRevision = await page.evaluate(async () => {
+    const needs=await cloudOfficeSetStatus({requestId:'req-1',status:'needs_info',reason:'추가 사진 확인'});
+    const hold=await cloudOfficeSetStatus({requestId:'req-1',status:'on_hold'});
+    state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];
+    await officeIntakeSync();
+    const held=officeIntakeFindRequest('req-1');
+    const accepted=await officeIntakeAccept('req-1','none','');
+    const order=officeIntakeFindOrder('req-1');
+    order.status='visit';order.visitAt='2026-08-28T10:00:00+09:00';
+    officeIntakeQueueOrderStatus(order);
+    const queuedRevision=officeIntakeData().outbox[0]&&officeIntakeData().outbox[0].payload.projectionRevision;
+    const sent=await officeIntakeFlush();
+    const server=await (await fetch(__relay.url+'/__state')).json();
+    const remote=server.officeRequests.find(row=>row.requestId==='req-1');
+    return {needsRevision:needs.projectionRevision,holdRevision:hold.projectionRevision,heldRevision:held&&held.projectionRevision,accepted:!!accepted,orderRevision:order&&order.officeProjectionRevision,queuedRevision,sent,remoteStatus:remote.status,remoteRevision:remote.projectionRevision};
+  });
+  assert.deepEqual(preacceptRevision, {
+    needsRevision:1,holdRevision:2,heldRevision:2,accepted:true,orderRevision:3,queuedRevision:3,sent:1,remoteStatus:'visit_scheduled',remoteRevision:3
+  }, 'needs_info/on_hold revision is inherited, so the first visit publishes current+1 without collision');
+
+  // RED: upload completion can race the field-app accept click.  The first
+  // photos-pending response triggers one fresh inbox sync, attaches only the
+  // declared stored slots, and retries the exact same order with an ack.
+  await fetch(MOCK + '/__reset');
+  const raceIds=['00000000-0000-4000-8000-000000000061','00000000-0000-4000-8000-000000000062'];
+  await fetch(MOCK + '/__officeDeclarePhotos?requestId=req-1&ids=' + encodeURIComponent(raceIds.join(',')) + '&completeOnAccept=1');
+  const uploadAcceptRace = await page.evaluate(async () => {
+    state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];state.files=[];
+    await officeIntakeSync();
+    const accepted=await officeIntakeAccept('req-1','none','');
+    const order=officeIntakeFindOrder('req-1');
+    const server=await (await fetch(__relay.url+'/__state')).json();
+    const remote=server.officeRequests.find(row=>row.requestId==='req-1');
+    return {accepted:!!accepted,localStatus:officeIntakeFindRequest('req-1')&&officeIntakeFindRequest('req-1').status,orderId:order&&order.id,photoIds:order&&order.intakePhotoIds,files:state.files.map(file=>file._driveId),remoteUploadIds:remote.photos.map(photo=>photo.uploadId),remoteStatus:remote.status,remoteOrderId:remote.hyeonjangOrderId,accepts:server.officeAccepts.length,outbox:officeIntakeData().outbox.length};
+  });
+  assert.equal(uploadAcceptRace.accepted, true, 'race is reconciled without another user click');
+  assert.equal(uploadAcceptRace.localStatus, 'accepted');
+  assert.ok(uploadAcceptRace.orderId && uploadAcceptRace.orderId===uploadAcceptRace.remoteOrderId, 'the same exact local order is linked remotely');
+  assert.deepEqual(uploadAcceptRace.photoIds, ['declared-file-1','declared-file-2'], 'all declared uploads are attached by their server-owned Drive file IDs');
+  assert.deepEqual(uploadAcceptRace.files, ['declared-file-1','declared-file-2'], 'only the refreshed request photos become local Drive references');
+  assert.deepEqual(uploadAcceptRace.remoteUploadIds, raceIds, 'the attached Drive files retain the exact declared upload slots');
+  assert.equal(uploadAcceptRace.remoteStatus, 'accepted');
+  assert.equal(uploadAcceptRace.accepts, 1, 'only the successful retry creates an accept audit record');
+  assert.equal(uploadAcceptRace.outbox, 0, 'photos-pending never poisons the retry queue');
 
   // Break caught: an offline acceptance can race a management-office cancel.
   // That semantic failure must clear its FIFO head and the local ghost order,

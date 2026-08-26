@@ -24,6 +24,16 @@ function oiNormalizePhone_(value) {
   if (n.length === 10) return n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6);
   return '';
 }
+function oiExpectedUploadIds_(value) {
+  if (!Array.isArray(value) || value.length > 5) return null;
+  var ids = [], seen = {};
+  for (var i = 0; i < value.length; i++) {
+    var id = value[i];
+    if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) || seen[id]) return null;
+    seen[id] = true; ids.push(id);
+  }
+  return ids;
+}
 function oiValidateCreate_(p) {
   p = p && typeof p === 'object' ? p : {};
   var value = {
@@ -45,6 +55,10 @@ function oiValidateCreate_(p) {
     preferredVisitDate: oiText_(p.preferredVisitDate, 10),
     privacyConsent: p.privacyConsent === true
   };
+  if (Object.prototype.hasOwnProperty.call(p, 'expectedUploadIds')) {
+    value.expectedUploadIds = oiExpectedUploadIds_(p.expectedUploadIds);
+    if (value.expectedUploadIds === null) return { ok: false, error: 'invalid-input', field: 'expectedUploadIds' };
+  }
   var required = [['idempotencyKey', value.idempotencyKey], ['unit', value.unit], ['location', value.location], ['description', value.description]];
   for (var i = 0; i < required.length; i++) if (!required[i][1]) return { ok: false, error: 'invalid-input', field: required[i][0] };
   if (OI_ISSUE_TYPES.indexOf(value.issueType) < 0) return { ok: false, error: 'invalid-input', field: 'issueType' };

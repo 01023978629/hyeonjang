@@ -1711,7 +1711,7 @@ function cloudApiThumbnail(fileId){return relayCall('thumbnail',{fileId:fileId})
 async function cloudApiUploadFile(file,kind,name,mime){const p=await relayBuildUploadPayload(file,kind,name,mime);return relayCall('upload',p);}
 // 관리사무소 action도 기존 내부 relay 인증만 재사용한다. APP_TOKEN은 __relay/idb 밖으로 나오지 않는다.
 function cloudOfficeInbox(cursor){return relayCall('officeInbox',{updatedAfter:cursor||''});}
-function cloudOfficeAccept(requestId,orderId){return relayCall('officeAccept',{requestId:requestId,hyeonjangOrderId:orderId});}
+function cloudOfficeAccept(requestId,orderId,attachedUploadIds){return relayCall('officeAccept',{requestId:requestId,hyeonjangOrderId:orderId,attachedUploadIds:Array.isArray(attachedUploadIds)?attachedUploadIds:[]});}
 function cloudOfficeSetStatus(payload){return relayCall('officeSetStatus',payload);}
 function cloudOfficeAdmin(action,payload){return relayCall(action,payload||{});}
 const RELAY_THUMB_MAX_B64=6*1024*1024;
@@ -2265,7 +2265,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v232-officeintakesafety';
+const APP_BUILD='hyeonjang-v233-officecontract';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9462,7 +9462,16 @@ async function officeIntakeSync(){
   }
 }
 function officeIntakeQueue(action,payload,silent){
-  const d=officeIntakeData(),copy=officeIntakeClonePayload(payload),fingerprint=officeIntakeFingerprint(copy),last=d.outbox[d.outbox.length-1];
+  const d=officeIntakeData(),copy=officeIntakeClonePayload(payload),fingerprint=officeIntakeFingerprint(copy);
+  if(String(action||'')==='officeSetStatus'&&copy&&copy.requestId&&Number.isInteger(Number(copy.projectionRevision))){
+    const blocked=(d.outbox||[]).filter(function(item){return item&&item.blocked===true&&item.action==='officeSetStatus'&&item.payload&&String(item.payload.requestId||'')===String(copy.requestId);});
+    if(blocked.length){
+      const newer=blocked.every(function(item){return Number(copy.projectionRevision)>Number(item.payload&&item.payload.projectionRevision);});
+      if(!newer)return;
+      d.outbox=d.outbox.filter(function(item){return blocked.indexOf(item)<0;});
+    }
+  }
+  const last=d.outbox[d.outbox.length-1];
   // A user retry before the first network result must not create a second non-idempotent status transition.
   if(last&&last.action===String(action||'')&&officeIntakeFingerprint(last.payload||{})===fingerprint)return;
   d.outbox.push({id:uid(),action:String(action||''),payload:copy,createdAt:new Date().toISOString(),attempts:0,lastError:''});
@@ -9477,10 +9486,14 @@ async function officeIntakeFlush(){
     const pending=d.outbox.map(function(item,index){return {item:item,index:index};}).sort(function(a,b){const at=officeIntakeTime(a.item&&a.item.createdAt),bt=officeIntakeTime(b.item&&b.item.createdAt);if(at!=null&&bt!=null&&at!==bt)return at-bt;return a.index-b.index;}).map(function(row){return row.item;});
     for(let i=0;i<pending.length;i++){
       const item=pending[i];if(!item||!item.id||d.outbox.indexOf(item)<0)continue;
+      if(item.blocked===true)continue;
       try{
         const res=await relayCall(item.action,item.payload);
-        if(res&&res.ok===true){d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
+        if(res&&res.ok===true){if(item.action==='officeAccept')officeIntakeApplyAcceptResult(item,res);d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
         if(item.action==='officeAccept'&&officeIntakeResolveQueuedAcceptConflict(item,res)){d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
+        if(item.action==='officeSetStatus'&&String(res&&res.error||'')==='invalid-completion-photos'){
+          item.attempts=(Number(item.attempts)||0)+1;item.lastError='완료 사진 선택 또는 manifest 수정이 필요합니다';item.blocked=true;item.blockedCode='invalid-completion-photos';item.blockedAt=new Date().toISOString();changed=true;continue;
+        }
         item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(res);d.lastError=item.lastError;changed=true;failed=true;
         break;
       }catch(e){
@@ -9502,6 +9515,8 @@ function officeIntakeStatusOptions(order){const keys=Object.keys(APT_STAT);if(!o
 function officeIntakeStatusToApt(status){return OFFICE_TO_APT_STATUS[status]||'recv';}
 function officeIntakeFindRequest(id){return officeIntakeData().inbox.find(x=>x&&x.requestId===id)||null;}
 function officeIntakeFindOrder(id){return (state.aptOrders||[]).find(x=>x&&x.sourceRequestId===id)||null;}
+function officeIntakeProjectionRevision(value){const raw=value&&typeof value==='object'?value.projectionRevision:value,n=Number(raw);return Number.isInteger(n)&&n>=0?n:0;}
+function officeIntakeReconcileOrderProjection(order,source){if(!order)return 0;const revision=officeIntakeProjectionRevision(source);if(revision>officeIntakeProjectionRevision(order.officeProjectionRevision))order.officeProjectionRevision=revision;return officeIntakeProjectionRevision(order.officeProjectionRevision);}
 function officeIntakeValidProjectIdentity(value){const id=String(value||'').trim();return /^office-project-[a-z0-9]{7}$/i.test(id)?id:'';}
 function officeIntakeEnsureProjectIdentity(project){
   if(!project)return '';
@@ -9521,7 +9536,7 @@ function officeIntakeBoundProject(order){
 }
 function officeIntakeOrderFromRequest(r,projectName){
   if(!r||!r.requestId)throw new Error('접수번호가 없습니다');
-  const existing=officeIntakeFindOrder(r.requestId);if(existing)return existing;
+  const existing=officeIntakeFindOrder(r.requestId);if(existing){officeIntakeReconcileOrderProjection(existing,r);return existing;}
   return {
     id:uid(),officeId:r.officeId,unit:String(r.unit||r.location||'').trim(),
     text:String(r.description||r.issueType||'').trim(),amount:0,pipeType:aptPipeType(r.pipeType),
@@ -9531,7 +9546,7 @@ function officeIntakeOrderFromRequest(r,projectName){
     officeContactPhone:String((r.officeContact||{}).phone||''),
     residentContact:r.residentContact||null,urgency:r.urgency==='urgent'?'urgent':'normal',
     location:String(r.location||''),preferredVisitDate:String(r.preferredVisitDate||''),
-    intakePhotoIds:(r.photos||[]).map(p=>p&&p.fileId).filter(Boolean).slice(0,5)
+    intakePhotoIds:(r.photos||[]).map(p=>p&&p.fileId).filter(Boolean).slice(0,5),officeProjectionRevision:officeIntakeProjectionRevision(r)
   };
 }
 function officeIntakeAttachPhotos(request,order,projectName){
@@ -9604,7 +9619,7 @@ function officeIntakeQueueOrderStatus(order,silent){
   officeIntakeQueue('officeSetStatus',officeIntakeProjectionPayload(order),silent);
 }
 function officeIntakeQueueOrderStatuses(orders){let queued=0;(orders||[]).forEach(function(order){const before=officeIntakeData().outbox.length;officeIntakeQueueOrderStatus(order,true);if(officeIntakeData().outbox.length>before)queued++;});return queued;}
-function officeIntakeApplyOfficeAdminResult(office,result){if(!(office&&result&&result.ok&&result.office))return false;const enabled=result.office.enabled!==false;if(office.intakeEnabled===enabled)return false;office.intakeEnabled=enabled;officeIntakeMarkDirty();return true;}
+function officeIntakeApplyOfficeAdminResult(office,result){if(!(office&&result&&result.ok&&result.office))return false;const enabled=result.office.enabled===true;if(office.intakeEnabled===enabled)return false;office.intakeEnabled=enabled;officeIntakeMarkDirty();return true;}
 function officeIntakeOfficeSlug(office){return String((office&&office.intakeSlug)||('office-'+String(office&&office.id||'').replace(/[^a-zA-Z0-9_-]/g,''))).slice(0,80);}
 function officeIntakeAdminWarning(result){
   if(result&&result.warning==='audit-failed')return '설정은 반영됐지만 감사 기록 확인이 필요합니다.';
@@ -9669,19 +9684,37 @@ function officeIntakeCanAccept(request){return !!(request&&['pending_review','on
 function officeIntakeCanNeedsInfo(request){return !!(request&&request.status==='pending_review');}
 function officeIntakeCanHold(request){return !!(request&&['pending_review','needs_info'].includes(request.status));}
 async function officeIntakeFinishAccept(request,order){
-  request.status='accepted';request.needsInfoReason=null;
+  const payload=function(current){return {requestId:current.requestId,hyeonjangOrderId:order.id,attachedUploadIds:officeIntakeAttachedUploadIds(current,order)};};
+  // Persist the staged exact order before the network call.  A browser close
+  // after server acceptance can then reconcile the same ID instead of making a
+  // second ghost order.
   officeIntakeMarkDirty();
   try{
-    const result=await cloudOfficeAccept(request.requestId,order.id);
+    let result=await cloudOfficeAccept(request.requestId,order.id,payload(request).attachedUploadIds);
+    if(result&&result.error==='photos-pending'){
+      request.status=String(result.status||request.status||'pending_review');officeIntakeReconcileOrderProjection(order,result);officeIntakeMarkDirty();
+      await officeIntakeSync();
+      const refreshed=officeIntakeFindRequest(request.requestId)||request;
+      officeIntakeAttachPhotos(refreshed,order,order.project);
+      result=await cloudOfficeAccept(refreshed.requestId,order.id,payload(refreshed).attachedUploadIds);
+      if(result&&result.error==='photos-pending'){
+        state.aptOrders=(state.aptOrders||[]).filter(function(item){return item!==order&&item.id!==order.id;});
+        refreshed.status=String(result.status||'pending_review');officeIntakeMarkDirty();toast('접수 사진 업로드가 아직 끝나지 않았습니다. 업로드 후 다시 등록하세요.');return null;
+      }
+      request=refreshed;
+    }
     if(!(result&&result.ok===true)){
       if(officeIntakeResolveAcceptConflict(request,order,result))return null;
       throw result||new Error('office accept failed');
     }
+    request.status='accepted';request.needsInfoReason=null;officeIntakeReconcileOrderProjection(order,result);officeIntakeMarkDirty();
   }catch(e){
-    officeIntakeQueue('officeAccept',{requestId:request.requestId,hyeonjangOrderId:order.id});
+    request.status='accepted';request.needsInfoReason=null;officeIntakeQueue('officeAccept',payload(request));officeIntakeMarkDirty();
   }
   return order;
 }
+function officeIntakeAttachedUploadIds(request,order){const attached=new Set(Array.isArray(order&&order.intakePhotoIds)?order.intakePhotoIds.map(String):[]),ids=[],seen={};(Array.isArray(request&&request.photos)?request.photos:[]).forEach(function(photo){const fileId=String(photo&&photo.fileId||''),uploadId=String(photo&&photo.uploadId||'');if(attached.has(fileId)&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(uploadId)&&!seen[uploadId]){seen[uploadId]=true;ids.push(uploadId);}});return ids;}
+function officeIntakeApplyAcceptResult(item,result){const request=officeIntakeFindRequest(item&&item.payload&&item.payload.requestId),order=officeIntakeFindOrder(item&&item.payload&&item.payload.requestId);if(request){request.status=String(result&&result.status||'accepted');request.needsInfoReason=null;}officeIntakeReconcileOrderProjection(order,result);}
 function officeIntakeResolveAcceptConflict(request,order,result){
   const code=String(result&&result.error||'');
   if(!['invalid-transition','not-found','already-linked'].includes(code))return false;
@@ -9689,7 +9722,7 @@ function officeIntakeResolveAcceptConflict(request,order,result){
   // the FIFO head.  A different existing linked order is preserved locally but
   // this conflicting local duplicate is removed.
   const remoteOrderId=String(result&&result.hyeonjangOrderId||'');
-  if(code==='already-linked'&&order&&remoteOrderId===String(order.id||'')){request.status=String(result&&result.status||'accepted');request.needsInfoReason=null;officeIntakeMarkDirty();return true;}
+  if(code==='already-linked'&&order&&remoteOrderId===String(order.id||'')){request.status=String(result&&result.status||'accepted');request.needsInfoReason=null;officeIntakeReconcileOrderProjection(order,result);officeIntakeMarkDirty();return true;}
   if(order)state.aptOrders=(state.aptOrders||[]).filter(function(item){return item!==order&&item.id!==order.id;});
   const d=officeIntakeData();d.outbox=(d.outbox||[]).filter(function(item){return !(item&&item.payload&&String(item.payload.requestId||'')===String(request.requestId||''));});
   request.status=String(result&&result.status||'cancelled');request.needsInfoReason=null;
@@ -9707,7 +9740,7 @@ async function officeIntakeAccept(requestId,projectMode,projectName){
   const request=officeIntakeFindRequest(requestId);
   if(!request){toast('접수를 찾을 수 없습니다');return false;}
   const existing=officeIntakeFindOrder(request.requestId);
-  if(existing){const before=JSON.stringify(existing.intakePhotoIds||[]);const linked=officeIntakeAttachPhotos(request,existing,existing.project);if(linked||before!==JSON.stringify(existing.intakePhotoIds||[]))officeIntakeMarkDirty();if(request.status==='accepted')return existing;}
+  if(existing){officeIntakeReconcileOrderProjection(existing,request);const before=JSON.stringify(existing.intakePhotoIds||[]);const linked=officeIntakeAttachPhotos(request,existing,existing.project);if(linked||before!==JSON.stringify(existing.intakePhotoIds||[]))officeIntakeMarkDirty();if(request.status==='accepted')return existing;}
   if(!officeIntakeCanAccept(request)){toast('현재 상태에서는 오더로 등록할 수 없습니다');return false;}
   if(existing)return officeIntakeFinishAccept(request,existing);
   const project=officeIntakeProjectName(projectMode,projectName);
@@ -9831,8 +9864,11 @@ function officeIntakeCompletionControls(o){
 }
 function officeIntakeOperationalErrorHtml(){
   const rows=officeIntakeData().operationalErrors||[];
-  if(!rows.length)return '';
-  return '<div style="margin:8px 0;padding:7px 8px;border:1px solid #fdba74;border-radius:8px;font-size:11px;color:#9a3412">동기화 운영 오류 '+rows.map(function(row){return escapeHtml([row.code,row.receiptNo||row.requestId,row.at].filter(Boolean).join(' · '));}).join('<br>')+'</div>';
+  const blocked=(officeIntakeData().outbox||[]).filter(function(item){return item&&item.blocked===true&&item.blockedCode==='invalid-completion-photos';});
+  if(!rows.length&&!blocked.length)return '';
+  const messages=rows.map(function(row){return escapeHtml([row.code,row.receiptNo||row.requestId,row.at].filter(Boolean).join(' · '));});
+  blocked.forEach(function(item){messages.push('완료 사진 선택 또는 manifest 수정 필요 · '+escapeHtml(String(item.payload&&item.payload.requestId||'')));});
+  return '<div style="margin:8px 0;padding:7px 8px;border:1px solid #fdba74;border-radius:8px;font-size:11px;color:#9a3412">동기화 운영 오류 '+messages.join('<br>')+'</div>';
 }
 function aptOrderManage(filterOffice){
   aptData();

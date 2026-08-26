@@ -86,7 +86,7 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 `rate-limited`(10분 동안 로그인 실패 5회) · `session-expired`(만료·폐기·서명
 오류 세션) · `invalid-input` · `consent-required` · `invalid-status` ·
 `invalid-upload-id`(canonical UUID uploadId 누락·형식 오류) · `unsupported-type` ·
-`invalid-file` · `too-large` · `too-many-files` · `not-found` · `bad-request` ·
+`invalid-file` · `too-large` · `unexpected-upload-id` · `too-many-files` · `not-found` · `bad-request` ·
 `photo-unavailable`(공개가 허용된 사진의 삭제·형식·크기 검증 실패) · `server-error`.
 
 ### Internal response codes
@@ -95,7 +95,8 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 처리합니다. `already-linked`(다른 현장 order가 이미 연결됨) ·
 `slug-conflict`(다른 office가 같은 slug 사용) · `invalid-transition`(허용되지
 않은 상태 전이) · `admin-state-unknown`(관리자 설정과 복구 상태를 판정할 수
-없음) · `invalid-completion-photos` · `invalid-input` · `not-found` ·
+없음) · `photos-pending`(포털이 선언한 사진 슬롯의 업로드·동일 order 첨부가
+아직 끝나지 않음) · `invalid-completion-photos` · `invalid-input` · `not-found` ·
 `bad-request` · `server-error`.
 
 ### Operational records

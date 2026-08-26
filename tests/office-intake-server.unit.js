@@ -420,6 +420,49 @@ const webpBytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0
 assert.equal(sandbox.oiUpload_(sessionOf1, {
   requestId: first.requestId, uploadId: uploadUuid(2), name: 'mismatch.jpg', mimeType: 'image/jpeg', dataB64: pngBytes.toString('base64')
 }, 10003).error, 'invalid-file');
+
+// RED: the portal declares every canonical upload slot at create time.  The
+// internal app cannot accept the request until every declared slot is both
+// stored and explicitly acknowledged as attached to this exact order.
+const declaredUploadIds = [uploadUuid(50), uploadUuid(51)];
+const declaredRequest = locked(() => sandbox.oiCreate_(sessionOf1, {
+  ...validPayload, idempotencyKey: 'declared-upload-race', expectedUploadIds: declaredUploadIds
+}, 10004));
+assert.deepEqual(Object.keys(declaredRequest).sort(), ['createdAt', 'ok', 'receiptNo', 'requestId', 'status'], 'officeCreate public response schema stays exact');
+let declaredStored = sandbox.oiReadStore_().requests.find(request => request.requestId === declaredRequest.requestId);
+assert.deepEqual(Array.from(declaredStored.expectedUploadIds || []), declaredUploadIds, 'declared upload slots are stored in stable order');
+const declaredPublic = sandbox.oiGet_(sessionOf1, declaredRequest.requestId).request;
+assert.equal(Object.hasOwn(declaredPublic, 'expectedUploadIds'), false, 'public request projection does not expose upload capability slots');
+assert.equal(declaredPublic.projectionRevision, 0, 'public request projection exposes only the safe current revision');
+assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: declaredRequest.requestId, uploadId: uploadUuid(52), name: 'undeclared.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 10005)).error, 'unexpected-upload-id', 'an undeclared upload ID never creates a Drive file');
+const declaredFirst = locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: declaredRequest.requestId, uploadId: declaredUploadIds[0], name: 'declared-1.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 10006));
+assert.equal(locked(() => sandbox.oiAccept_({
+  requestId: declaredRequest.requestId, hyeonjangOrderId: 'declared-order', attachedUploadIds: [declaredUploadIds[0]]
+}, 10007)).error, 'photos-pending', 'accept is fail-closed while a declared slot is not uploaded');
+assert.equal(sandbox.oiInbox_({ updatedAfter: '' }).requests.some(request => request.requestId === declaredRequest.requestId), true, 'photos-pending request stays actionable');
+const declaredSecond = locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: declaredRequest.requestId, uploadId: declaredUploadIds[1], name: 'declared-2.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 10008));
+assert.equal(locked(() => sandbox.oiAccept_({
+  requestId: declaredRequest.requestId, hyeonjangOrderId: 'declared-order', attachedUploadIds: [declaredUploadIds[0]]
+}, 10009)).error, 'photos-pending', 'accept is fail-closed until every stored slot is attached');
+const declaredAccepted = locked(() => sandbox.oiAccept_({
+  requestId: declaredRequest.requestId, hyeonjangOrderId: 'declared-order', attachedUploadIds: declaredUploadIds
+}, 10010));
+assert.deepEqual(JSON.parse(JSON.stringify(declaredAccepted)), {
+  ok: true, requestId: declaredRequest.requestId, hyeonjangOrderId: 'declared-order', status: 'accepted', projectionRevision: 0
+}, 'accept returns the authoritative revision after all declared photos are attached');
+assert.deepEqual(JSON.parse(JSON.stringify(locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId: declaredRequest.requestId, uploadId: declaredUploadIds[0], name: 'retry-after-accept.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+}, 10011)))), JSON.parse(JSON.stringify(declaredFirst)), 'same-ID retry remains idempotent before status rejection');
+declaredStored = sandbox.oiReadStore_().requests.find(request => request.requestId === declaredRequest.requestId);
+assert.deepEqual(declaredStored.photos.map(photo => photo.fileId), [declaredFirst.fileId, declaredSecond.fileId]);
+assert.equal(sandbox.oiInbox_({ updatedAfter: '' }).requests.some(request => request.requestId === declaredRequest.requestId), false, 'fully attached accepted request leaves the actionable inbox');
+
 const photoBatch = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'photo-batch' }, 20000));
 const exactTwoMiB = Buffer.alloc(2 * 1024 * 1024);
 exactTwoMiB[0] = 0xff; exactTwoMiB[1] = 0xd8; exactTwoMiB[2] = 0xff;
@@ -465,6 +508,16 @@ setPublishedPhotoIds([jpgUpload.fileId]);
 const manifestStore = sandbox.oiReadStore_();
 manifestStore.requests.push({ requestId: 'completion-manifest', receiptNo: 'MM-completion-manifest', officeId: 'of1', status: 'in_progress', photos: [], completionPhotos: [], projectionRevision: 0, createdAt: '1970-01-01T00:00:00.000Z', updatedAt: '2026-08-26T00:00:00.000Z' });
 sandbox.oiWriteStore_(manifestStore);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 1, completionPhotoIds: ['missing-drive-file'], completionReport: { summary: '누락', photoIds: ['missing-drive-file'], publicPhotoIds: [] } }, 200031).error, 'invalid-completion-photos', 'missing Drive file returns the semantic completion-photo blocker');
+const originalManifestParent = jpgFile.parent;
+const outsideRoot = makeFolder('outside-root', null);
+jpgFile.parent = outsideRoot;
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 1, completionPhotoIds: [jpgUpload.fileId], completionReport: { summary: '이동됨', photoIds: [jpgUpload.fileId], publicPhotoIds: [] } }, 200032).error, 'invalid-completion-photos', 'a moved file outside the configured Drive root returns the semantic blocker');
+jpgFile.parent = originalManifestParent;
+const originalManifestBytes = jpgFile.bytes.slice();
+jpgFile.bytes = Array.from(pngBytes);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 1, completionPhotoIds: [jpgUpload.fileId], completionReport: { summary: '매직 불일치', photoIds: [jpgUpload.fileId], publicPhotoIds: [] } }, 200033).error, 'invalid-completion-photos', 'MIME/magic mismatch returns the same user-correctable blocker');
+jpgFile.bytes = originalManifestBytes;
 const manifestPublished = sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 1, completionPhotoIds: [jpgUpload.fileId], completionReport: { summary: '현장 완료', photoIds: [jpgUpload.fileId], publicPhotoIds: [jpgUpload.fileId] } }, 20004);
 assert.deepEqual(JSON.parse(JSON.stringify(manifestPublished.completionReport)), { summary: '현장 완료', photoIds: [jpgUpload.fileId], publicPhotoIds: [jpgUpload.fileId] });
 assert.equal(photoResponse(publicLogin.sessionToken, { requestId: 'completion-manifest', photoId: jpgUpload.fileId }).ok, true, 'validated completion manifest photo can be read only after explicit publication');
@@ -1119,20 +1172,28 @@ for (const reason of ['', '   ', 'x'.repeat(301)]) {
 }
 const reasonSet = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '  사진을 다시 올려주세요  ' }, 11001);
 assert.equal(reasonSet.needsInfoReason, '사진을 다시 올려주세요');
+assert.equal(reasonSet.projectionRevision, 1, 'first pre-accept projection gets revision 1');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, '사진을 다시 올려주세요');
 assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '사진을 다시 올려주세요' }, 11002).ok, true, 'exact reason retry is idempotent');
 assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '다른 사유' }, 11003).error, 'invalid-transition', 'different reason cannot replay a self transition');
 const resubmitted = sandbox.oiUpdate_({ officeId: 'of1' }, { requestId: 'reason-state', description: '사진을 다시 올렸습니다.' }, 11004);
 assert.equal(resubmitted.status, 'pending_review');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null);
-assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '현장 확인이 필요합니다' }, 11005).ok, true);
-assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 11006).needsInfoReason, '현장 확인이 필요합니다', 'hold preserves an unresolved reason');
+const secondNeeds = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '현장 확인이 필요합니다' }, 11005);
+assert.equal(secondNeeds.ok, true);
+const heldWithRevision = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 11006);
+assert.equal(heldWithRevision.needsInfoReason, '현장 확인이 필요합니다', 'hold preserves an unresolved reason');
+assert.equal(heldWithRevision.projectionRevision, secondNeeds.projectionRevision + 1, 'pre-accept hold advances the authoritative revision');
+assert.equal(sandbox.oiInbox_({ updatedAfter: '' }).requests.some(request => request.requestId === 'reason-state' && request.status === 'on_hold' && request.projectionRevision === heldWithRevision.projectionRevision), true, 'on-hold inbox row exposes its safe authoritative revision');
 const auditAfterFirstHold = sandbox.oiReadStore_().audit.length;
 const replayedHold = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 110061);
 assert.equal(replayedHold.ok, true, 'lost successful on_hold response replays as an exact idempotent projection');
 assert.equal(replayedHold.needsInfoReason, '현장 확인이 필요합니다', 'on_hold self replay keeps its unresolved reason');
 assert.equal(sandbox.oiReadStore_().audit.length, auditAfterFirstHold, 'idempotent on_hold retry adds no status audit');
-assert.equal(sandbox.oiAccept_({ requestId: 'reason-state', hyeonjangOrderId: 'reason-order' }, 11007).ok, true);
+const acceptedReason = sandbox.oiAccept_({ requestId: 'reason-state', hyeonjangOrderId: 'reason-order' }, 11007);
+assert.equal(acceptedReason.ok, true);
+assert.equal(acceptedReason.projectionRevision, heldWithRevision.projectionRevision, 'accept response preserves the authoritative pre-accept revision');
+assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.projectionRevision, heldWithRevision.projectionRevision, 'public projection keeps the same safe revision after accept');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null, 'accept clears a resolved reason');
 
 // Break caught: audit data must remain metadata-only even after requests containing private values and a returned PIN.

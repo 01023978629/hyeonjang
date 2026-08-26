@@ -106,7 +106,7 @@ let browser;
   }));
   assert.equal(accepted.orders.length, 1, '오더 등록을 두 번 눌러도 하나만 생성');
   assert.equal(accepted.request.status, 'accepted', '로컬 오더가 만들어진 뒤에만 승인 상태');
-  assert.deepEqual(accepted.queued, [{ requestId: 'req-xss', hyeonjangOrderId: accepted.orders[0].id }], '실패한 승인 연결은 정확한 요청·오더 ID로 큐잉');
+  assert.deepEqual(accepted.queued, [{ requestId: 'req-xss', hyeonjangOrderId: accepted.orders[0].id, attachedUploadIds:[] }], '실패한 승인 연결은 정확한 요청·오더 ID와 첨부 ack로 큐잉');
 
   const parallelApproval = await page.evaluate(async () => {
     officeIntakeData().inbox.push({
@@ -201,7 +201,7 @@ let browser;
     const recoveryFailedOrder = { id: 'recovery-failed-order', sourceRequestId: 'recovery-fail', project: '기존 현장' };
     state.aptOrders.push(recoveryOrder, recoveryFailedOrder);
     const recoveryCalls = [], priorCloud = window.cloudOfficeAccept;
-    window.cloudOfficeAccept = async (requestId, orderId) => { recoveryCalls.push({ requestId, orderId }); return requestId === 'recovery-fail' ? { ok: false, error: 'offline' } : { ok: true }; };
+    window.cloudOfficeAccept = async (requestId, orderId, attachedUploadIds) => { recoveryCalls.push({ requestId, orderId, attachedUploadIds }); return requestId === 'recovery-fail' ? { ok: false, error: 'offline' } : { ok: true }; };
     const recoverySuccess = await officeIntakeAccept('recovery-ok', 'new', '만들면 안 됨');
     const recoveryIdempotent = await officeIntakeAccept('recovery-ok', 'none');
     const recoveryFailure = await officeIntakeAccept('recovery-fail', 'existing', '없는 현장도 보지 않음');
@@ -243,7 +243,7 @@ let browser;
   assert.equal(reviewGuards.recovery.success, 'recovery-order');
   assert.equal(reviewGuards.recovery.failure, 'recovery-failed-order');
   assert.equal(reviewGuards.recovery.idempotent, 'recovery-order', 'already accepted existing order does not call cloud twice');
-  assert.deepEqual(reviewGuards.recovery.calls, [{ requestId: 'recovery-ok', orderId: 'recovery-order' }, { requestId: 'recovery-fail', orderId: 'recovery-failed-order' }], 'existing orders recover through their exact cloud approval IDs');
+  assert.deepEqual(reviewGuards.recovery.calls, [{ requestId: 'recovery-ok', orderId: 'recovery-order', attachedUploadIds:[] }, { requestId: 'recovery-fail', orderId: 'recovery-failed-order', attachedUploadIds:[] }], 'existing orders recover through their exact cloud approval IDs and attachment ack');
   assert.deepEqual(reviewGuards.recovery.projects, ['기존 현장', '새 현장'], 'recovery creates no project');
   assert.deepEqual(reviewGuards.recovery.orders, ['recovery-order', 'recovery-failed-order'], 'recovery creates no duplicate order');
   assert.equal(reviewGuards.recovery.successRequest.status, 'accepted');
@@ -251,7 +251,7 @@ let browser;
   assert.equal(reviewGuards.recovery.failureRequest.status, 'accepted');
   assert.equal(reviewGuards.recovery.failureRequest.needsInfoReason, null, 'recovered on_hold clears its reason before local persistence');
   assert.deepEqual(reviewGuards.recovery.recoveryNeeds, { result: false, unchanged: true }, 'needs_info recovery has zero side effects');
-  assert.deepEqual(reviewGuards.recovery.queued, [{ requestId: 'recovery-fail', hyeonjangOrderId: 'recovery-failed-order' }], 'failed existing-order recovery queues one exact approval retry');
+  assert.deepEqual(reviewGuards.recovery.queued, [{ requestId: 'recovery-fail', hyeonjangOrderId: 'recovery-failed-order', attachedUploadIds:[] }], 'failed existing-order recovery queues one exact approval retry');
   assert.equal(reviewGuards.recovery.pendingIds.includes('recovery-ok'), false, 'successful recovery no longer renders as a pending row');
   assert.equal(reviewGuards.recovery.pendingIds.includes('recovery-fail'), false, 'queued recovery no longer renders as a pending row');
   assert.deepEqual(reviewGuards.phoneChecks, [
@@ -259,7 +259,7 @@ let browser;
     { value: '010-1234-5678;evil', tel: '' }, { value: '010abc12345678', tel: '' }, { value: '+12', tel: '' }
   ], '안전한 국내/E.164 전화만 tel href로 정규화');
   assert.deepEqual(reviewGuards.events.slice(0, 3), ['push', 'dirty', 'cloud'], '로컬 오더 저장과 dirty가 서버 승인보다 먼저 실행');
-  assert.deepEqual(reviewGuards.sequenceQueued, [{ requestId: 'sequence', hyeonjangOrderId: reviewGuards.sequenceId }], '실패한 승인 호출은 한 번만 정확히 큐잉');
+  assert.deepEqual(reviewGuards.sequenceQueued, [{ requestId: 'sequence', hyeonjangOrderId: reviewGuards.sequenceId, attachedUploadIds:[] }], '실패한 승인 호출은 한 번만 정확히 큐잉');
 
   const finalSafety = await page.evaluate(async () => {
     const linked = state.aptOrders.find(order => order && order.source === 'office-intake');

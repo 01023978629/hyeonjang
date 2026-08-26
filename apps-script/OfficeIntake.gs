@@ -277,6 +277,7 @@ function oiPublicRequest_(request) {
     visitAt: request.visitAt || null,
     completionReport: request.completionReport ? { summary: oiText_(request.completionReport.summary, 800), publicPhotoIds: oiCompletionPhotoIds_(request.completionReport.publicPhotoIds) || [] } : null,
     needsInfoReason: request.needsInfoReason || null,
+    projectionRevision: Number(request.projectionRevision || 0),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt
   };
@@ -363,6 +364,7 @@ function oiCreate_(session, payload, now) {
       createdAt: at,
       updatedAt: at
     };
+    if (Object.prototype.hasOwnProperty.call(validated.value, 'expectedUploadIds')) request.expectedUploadIds = validated.value.expectedUploadIds.slice();
     store.requests.push(request);
     oiAuditLocked_(store, officeId, request.receiptNo, 'create', 'ok', now);
     oiWriteStore_(store);
@@ -506,6 +508,7 @@ function oiUpload_(session, payload, now) {
     for (var i = 0; i < request.photos.length; i++) {
       if (oiUploadId_(request.photos[i] && request.photos[i].uploadId) === uploadId) return oiUploadResult_(request.photos[i]);
     }
+    if (Object.prototype.hasOwnProperty.call(request, 'expectedUploadIds') && request.expectedUploadIds.indexOf(uploadId) < 0) return { ok: false, error: 'unexpected-upload-id' };
     if (!oiOfficeMutable_(request)) return { ok: false, error: 'invalid-status' };
     if (request.photos.length >= OI_MAX_PHOTOS) return { ok: false, error: 'too-many-files' };
     var number = request.photos.length + 1;
@@ -546,7 +549,7 @@ function oiInbox_(payload) {
     var errorAt = hasRetry ? retryAt[requestId] : -Infinity;
     var updatedAt = oiTime_(request.updatedAt);
     var effectiveAt = updatedAt > errorAt ? updatedAt : errorAt;
-    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || hasRetry;
+    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || request.status === 'on_hold' || hasRetry;
     return { request: request, effectiveAt: effectiveAt, actionable: actionable };
   }).filter(function (row) {
     return row.actionable && oiTupleCompare_(row.effectiveAt, row.request.requestId, cursor.at, cursor.id) > 0;
@@ -620,16 +623,26 @@ function oiAccept_(payload, now) {
         oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
         oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'already-linked', now);
         oiWriteStore_(store);
-        return { ok: false, error: 'already-linked', hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
+        return { ok: false, error: 'already-linked', hyeonjangOrderId: request.hyeonjangOrderId, status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
       }
       if (oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now)) oiWriteStore_(store);
-      return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
+      return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
+    }
+    if (Object.prototype.hasOwnProperty.call(request, 'expectedUploadIds')) {
+      var attached = oiExpectedUploadIds_(payload.attachedUploadIds);
+      if (attached === null) return { ok: false, error: 'invalid-input', field: 'attachedUploadIds' };
+      var expected = request.expectedUploadIds, uploaded = {};
+      (request.photos || []).forEach(function (photo) { var id = oiUploadId_(photo && photo.uploadId); if (id) uploaded[id] = true; });
+      for (var e = 0; e < attached.length; e++) if (expected.indexOf(attached[e]) < 0) return { ok: false, error: 'invalid-input', field: 'attachedUploadIds' };
+      for (var x = 0; x < expected.length; x++) {
+        if (!uploaded[expected[x]] || attached.indexOf(expected[x]) < 0) return { ok: false, error: 'photos-pending', status: request.status, hyeonjangOrderId: null, projectionRevision: Number(request.projectionRevision || 0) };
+      }
     }
     if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
       oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
       oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'invalid-transition', now);
       oiWriteStore_(store);
-      return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null };
+      return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null, projectionRevision: Number(request.projectionRevision || 0) };
     }
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';
@@ -638,7 +651,7 @@ function oiAccept_(payload, now) {
     oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
     oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'ok', now);
     oiWriteStore_(store);
-    return { ok: true, requestId: request.requestId, hyeonjangOrderId: orderId, status: request.status };
+    return { ok: true, requestId: request.requestId, hyeonjangOrderId: orderId, status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
   } finally { lock.releaseLock(); }
 }
 

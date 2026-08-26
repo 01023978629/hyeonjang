@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 기준선은 `hyeonjang-v232-officeintakesafety`이며 기존 검사는 78개다. 사진 동기화 로컬 후보
+현재 기준선은 `hyeonjang-v233-officecontract`이며 기존 검사는 78개다. 사진 동기화 로컬 후보
 `hyeonjang-v201-photosyncp0`는 서버 선행 게이트 전에는 계속 병합·배포하지 않는다.
 `sw.js`의 캐시 이름이 곧 버전이다.
 
@@ -130,7 +130,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-27)
 
-- 기준선은 `hyeonjang-v232-officeintakesafety`이며 기존 검사 78개가 통과했다. v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함한다.
+- 기준선은 `hyeonjang-v233-officecontract`이며 기존 검사 78개가 통과했다. v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가한다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
 - 현재 전체 회귀 기준은 78개 파일이다. 과거의 브라우저·정적 60개 집계는
   OfficeIntake 서버·회귀 검사를 추가하기 전 기록이므로 완료 기준으로 쓰지 않는다.

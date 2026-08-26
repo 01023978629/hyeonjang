@@ -21,7 +21,7 @@ function freshStore() {
              location: '욕실 천장', issueType: '누수', pipeType: '미확정', urgency: 'normal',
              description: '천장에서 물이 떨어집니다.', officeContact: { name: '김소장', phone: '010-1111-2222' },
              residentContact: null, preferredVisitDate: '2026-08-27', photos: [], status: 'pending_review',
-             updatedAt: '2026-08-26T09:00:00+09:00'
+             projectionRevision: 0, updatedAt: '2026-08-26T09:00:00+09:00'
            }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0, officeOperationalErrors: [], officeInboxCursors: [], dropNextOfficeStatus: false,
            officeConfig: [{ id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true, sessionVersion: 1 }] };
 }
@@ -107,6 +107,12 @@ const server = http.createServer((req, res) => {
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
     if (u.pathname === '/__officeDropNextStatus') { store.dropNextOfficeStatus = true; return send(res, { ok: true }); }
     if (u.pathname === '/__officeSetPhotos') { const request = store.officeRequests.find(row => row.requestId === String(u.searchParams.get('requestId') || '')); if (!request) return send(res, fail('not-found')); request.photos = [{ fileId: String(u.searchParams.get('fileId') || ''), name: 'owned.jpg', mimeType: 'image/jpeg', size: 1, createdAt: new Date().toISOString() }].filter(photo => photo.fileId); return send(res, { ok: true }); }
+    if (u.pathname === '/__officeDeclarePhotos') {
+      const request = store.officeRequests.find(row => row.requestId === String(u.searchParams.get('requestId') || '')); if (!request) return send(res, fail('not-found'));
+      request.expectedUploadIds = String(u.searchParams.get('ids') || '').split(',').filter(Boolean);
+      request.photos = []; request.completeOnAccept = u.searchParams.get('completeOnAccept') === '1';
+      request.updatedAt = new Date().toISOString(); return send(res, { ok: true });
+    }
     if (u.pathname === '/__officeSeed') {
       const count = Math.max(0, Math.min(150, Number(u.searchParams.get('count') || 0)));
       const at = String(u.searchParams.get('at') || '2100-01-01T00:00:00.000Z');
@@ -194,7 +200,7 @@ const server = http.createServer((req, res) => {
           store.officeInboxCursors.push(cursor.raw);
           const retries = new Map();
           for (const error of store.officeOperationalErrors) if (error && error.code === 'invalid-transition' && !error.resolvedAt && error.requestId) { const id = String(error.requestId), at = officeTime(error.at); if (!retries.has(id) || at > retries.get(id)) retries.set(id, at); }
-          const rows = store.officeRequests.map(request => { const hasRetry = retries.has(String(request.requestId)); const effectiveAt = Math.max(officeTime(request.updatedAt), hasRetry ? retries.get(String(request.requestId)) : -Infinity); return { request, effectiveAt, actionable: request.status === 'pending_review' || request.status === 'needs_info' || hasRetry }; })
+          const rows = store.officeRequests.map(request => { const hasRetry = retries.has(String(request.requestId)); const effectiveAt = Math.max(officeTime(request.updatedAt), hasRetry ? retries.get(String(request.requestId)) : -Infinity); return { request, effectiveAt, actionable: request.status === 'pending_review' || request.status === 'needs_info' || request.status === 'on_hold' || hasRetry }; })
             .filter(row => row.actionable && officeCompare(row.effectiveAt, row.request.requestId, cursor.at, cursor.id) > 0)
             .sort((a, b) => officeCompare(a.effectiveAt, a.request.requestId, b.effectiveAt, b.request.requestId)).slice(0, 100);
           const nextCursor = rows.length ? officeCursor(rows[rows.length - 1].effectiveAt, rows[rows.length - 1].request.requestId) : cursor.raw;
@@ -205,13 +211,23 @@ const server = http.createServer((req, res) => {
           const request = store.officeRequests.find(x => x.requestId === requestId);
           if (!request) return send(res, fail('not-found'));
           if (!orderId) return send(res, fail('invalid-input'));
-          if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, Object.assign(fail('already-linked'), { hyeonjangOrderId: request.hyeonjangOrderId, status: request.status }));
+          const revision = Number(request.projectionRevision || 0);
+          if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, Object.assign(fail('already-linked'), { hyeonjangOrderId: request.hyeonjangOrderId, status: request.status, projectionRevision: revision }));
           if (!request.hyeonjangOrderId) {
-            if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, Object.assign(fail('invalid-transition'), { hyeonjangOrderId: request.hyeonjangOrderId || null, status: request.status }));
+            if (Object.hasOwn(request, 'expectedUploadIds')) {
+              if (request.completeOnAccept) {
+                request.photos = request.expectedUploadIds.map((uploadId,index) => ({fileId:'declared-file-'+(index+1),uploadId,name:'declared-'+(index+1)+'.jpg',mimeType:'image/jpeg',size:1,createdAt:new Date().toISOString()}));
+                request.completeOnAccept = false; request.updatedAt = new Date().toISOString();
+              }
+              const uploaded = new Set((request.photos || []).map(photo => photo.uploadId));
+              const attached = Array.isArray(p.attachedUploadIds) ? p.attachedUploadIds : [];
+              if (!request.expectedUploadIds.every(id => uploaded.has(id) && attached.includes(id))) return send(res, Object.assign(fail('photos-pending'), {hyeonjangOrderId:null,status:request.status,projectionRevision:revision}));
+            }
+            if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, Object.assign(fail('invalid-transition'), { hyeonjangOrderId: request.hyeonjangOrderId || null, status: request.status, projectionRevision: revision }));
             request.hyeonjangOrderId = orderId; request.status = 'accepted'; request.needsInfoReason = null; request.updatedAt = new Date().toISOString();
             store.officeAccepts.push({ requestId, hyeonjangOrderId: orderId });
           }
-          return send(res, { ok: true, requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status });
+          return send(res, { ok: true, requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status, projectionRevision: Number(request.projectionRevision || 0) });
         }
         case 'officeSetStatus': {
           const requestId = String(p.requestId || ''), status = String(p.status || '');

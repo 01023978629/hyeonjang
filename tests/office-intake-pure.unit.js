@@ -23,10 +23,22 @@ const valid = sandbox.oiValidateCreate_({
   officeContact: { name: '홍길동', phone: '01012345678' },
   residentContact: null,
   preferredVisitDate: '2026-08-27',
+  expectedUploadIds: [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+  ],
   privacyConsent: true,
 });
 assert.equal(valid.ok, true);
 assert.equal(valid.value.officeContact.phone, '010-1234-5678');
+assert.deepEqual(Array.from(valid.value.expectedUploadIds), [
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+]);
+assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: [valid.value.expectedUploadIds[0], valid.value.expectedUploadIds[0]] }).field, 'expectedUploadIds', 'duplicate declared upload slots fail closed');
+assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: ['00000000-0000-3000-8000-000000000001'] }).field, 'expectedUploadIds', 'declared slots must be RFC4122 UUID v4');
+assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: ['00000000-0000-4000-8000-00000000000A'] }).field, 'expectedUploadIds', 'declared slots must be canonical lowercase');
+assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: Array.from({ length: 6 }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`) }).field, 'expectedUploadIds', 'at most five declared upload slots are accepted');
 assert.equal(sandbox.oiValidateCreate_({ ...valid.value, privacyConsent: false }).field, 'privacyConsent');
 assert.equal(sandbox.oiCanTransition_('pending_review', 'cancelled', 'office'), true);
 assert.equal(sandbox.oiCanTransition_('accepted', 'cancelled', 'office'), false);
