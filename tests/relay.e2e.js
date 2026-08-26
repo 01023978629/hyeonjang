@@ -25,7 +25,7 @@ function assertStaticOfficeContract() {
     const m = source.match(new RegExp('var\\s+' + name + '\\s*=\\s*\\[([\\s\\S]*?)\\];')); assert(m, 'missing array ' + name);
     return new Set([...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]));
   };
-  assert(deepEqualSet(array(officeSource, 'OI_PUBLIC_ACTIONS'), new Set(['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload'])), 'public action set');
+  assert(deepEqualSet(array(officeSource, 'OI_PUBLIC_ACTIONS'), new Set(['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload', 'officePhoto'])), 'public action set');
   assert(deepEqualSet(array(officeSource, 'OI_INTERNAL_ACTIONS'), new Set(['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'])), 'internal action set');
   assert(deepEqualSet(array(codeSource, 'ALLOWED_ACTIONS'), new Set(['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail', 'download'])), 'legacy action set');
   const post = sectionBetween(codeSource, 'function doPost(e)', '/* ---------- Drive 헬퍼 ---------- */');

@@ -56,7 +56,7 @@ function assertGateOrder(docs, start, end, deployMarker) {
 assertGateOrder(readme, '## 계정 측 설치·재배포 순서와 live gate', '### 롤백');
 assertGateOrder(installGuide, '## 6. 웹 앱으로 배포', '## 7-2. 파수꾼 설치', '**배포** 클릭');
 assert.deepEqual(new Set(declaredArray(officeSource, 'OI_PUBLIC_ACTIONS')), new Set([
-  'officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload',
+  'officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload', 'officePhoto',
 ]));
 assert.deepEqual(new Set(declaredArray(officeSource, 'OI_INTERNAL_ACTIONS')), new Set([
   'officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList',
@@ -94,6 +94,7 @@ const publicOfficeErrorSources = [
   sectionBetween(officeSource, 'function oiUpdate_', 'function oiCancel_'),
   sectionBetween(officeSource, 'function oiCancel_', 'function oiByte_'),
   sectionBetween(officeSource, 'function oiUpload_', 'function oiInbox_'),
+  sectionBetween(officeSource, 'function oiPhotoUnavailable_', 'function oiStoreName_'),
   sectionBetween(pureSource, 'function oiValidateCreate_', 'function oiCanTransition_'),
 ].join('\n');
 const implementedPublicOfficeErrors = new Set([
@@ -115,9 +116,9 @@ const properties = {
 };
 const cache = new Map();
 const propertyFaults = { onSet: null, onDelete: null };
-const cryptoStats = { macCalls: 0, decodeCalls: 0 };
+const cryptoStats = { macCalls: 0, decodeCalls: 0, base64EncodeCalls: 0 };
 const lockEvents = [];
-const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0 };
+const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0, getFileByIdCalls: 0 };
 function iterator(items) {
   let index = 0;
   return { hasNext: () => index < items.length, next: () => items[index++] };
@@ -139,6 +140,7 @@ function makeFolder(name, parent) {
         bytes: Array.from(blob.bytes || []),
         getId() { return this.id; },
         getName() { return this.name; },
+        getMimeType() { return this.mimeType; },
         getBlob() { return { getDataAsString: () => Buffer.from(this.bytes).toString('utf8'), getBytes: () => this.bytes.slice() }; },
         setContent(text) {
           if (this.name === '관리사무소접수.json' && drive.failStoreWrites > 0) {
@@ -238,6 +240,7 @@ const sandbox = {
       return Array.from(Buffer.from(String(value), 'base64url'));
     },
     base64Decode: value => Array.from(Buffer.from(String(value), 'base64')),
+    base64Encode: value => { cryptoStats.base64EncodeCalls++; return Buffer.from(Array.from(value || [])).toString('base64'); },
     formatDate,
     newBlob: (bytes, mimeType, name) => { const data = typeof bytes === 'string' ? Array.from(Buffer.from(bytes, 'utf8')) : Array.from(bytes); return { bytes: data, mimeType, name, getDataAsString: () => Buffer.from(data).toString('utf8'), getBytes: () => data.slice() }; },
     getUuid: () => 'req-' + (++drive.uuid),
@@ -249,7 +252,15 @@ const sandbox = {
       releaseLock: () => { lockEvents.push('release'); },
     }),
   },
-  DriveApp: { getFolderById: id => { if (id !== 'root') throw new Error('not-found'); return driveRoot; } },
+  DriveApp: {
+    getFolderById: id => { if (id !== 'root') throw new Error('not-found'); return driveRoot; },
+    getFileById: id => {
+      drive.getFileByIdCalls++;
+      const file = drive.files.find(candidate => candidate.id === id && !candidate.trashed);
+      if (!file) throw new Error('not-found');
+      return file;
+    },
+  },
   Session: { getScriptTimeZone: () => 'Asia/Seoul' },
   CalendarApp: {},
   ContentService: {
@@ -422,6 +433,88 @@ const storedPhoto = stored.requests.find(request => request.requestId === photoB
 assert.deepEqual(Object.keys(storedPhoto).sort(), ['createdAt', 'fileId', 'mimeType', 'name', 'size', 'uploadId']);
 assert.equal(storedPhoto.name, photoBatch.receiptNo + '_01.jpg');
 assert.equal(storedPhoto.uploadId, uploadUuid(3));
+
+// Break caught: officePhoto is an office-session-only read of exactly one
+// published completion image. It must never expose a URL, touch the store, or
+// look up Drive before the office/request/public-photo authorization succeeds.
+function photoResponse(sessionToken, payload) { return postOffice('officePhoto', sessionToken, payload); }
+function assertPhotoError(result, error) {
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: false, error });
+}
+function setPublishedPhotoIds(ids) {
+  const store = sandbox.oiReadStore_();
+  const request = store.requests.find(row => row.requestId === photoBatch.requestId);
+  request.completionReport = { summary: '공개 완료', photoIds: [jpgUpload.fileId, pngUpload.fileId], publicPhotoIds: ids };
+  sandbox.oiWriteStore_(store);
+}
+setPublishedPhotoIds([jpgUpload.fileId]);
+const photoStoreWrites = drive.storeWrites;
+drive.getFileByIdCalls = 0;
+cryptoStats.base64EncodeCalls = 0;
+lockEvents.length = 0;
+const publishedPhoto = photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId });
+assert.deepEqual(Object.keys(publishedPhoto).sort(), ['dataB64', 'mimeType', 'ok', 'photoId']);
+assert.deepEqual(JSON.parse(JSON.stringify(publishedPhoto)), {
+  ok: true, photoId: jpgUpload.fileId, mimeType: 'image/jpeg', dataB64: Buffer.from(jpgFile.bytes).toString('base64')
+});
+assert.equal(drive.getFileByIdCalls, 1);
+assert.equal(cryptoStats.base64EncodeCalls, 1);
+assert.equal(drive.storeWrites, photoStoreWrites, 'a photo read must not mutate/audit the office store');
+assert.deepEqual(lockEvents, ['wait:20000', 'release']);
+
+// The public reader accepts each of the three stored image types only when
+// their real bytes have the corresponding standard magic signature.
+const pngFile = drive.files.find(file => file.id === pngUpload.fileId);
+const webpFile = drive.files.find(file => file.id === webpUpload.fileId);
+pngFile.bytes = Array.from(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+setPublishedPhotoIds([jpgUpload.fileId, pngUpload.fileId, webpUpload.fileId]);
+for (const [photoId, mimeType] of [[pngUpload.fileId, 'image/png'], [webpUpload.fileId, 'image/webp']]) {
+  const result = photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    ok: true, photoId, mimeType, dataB64: Buffer.from((photoId === pngUpload.fileId ? pngFile : webpFile).bytes).toString('base64')
+  });
+}
+
+drive.getFileByIdCalls = 0;
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId, extra: true }), 'not-found');
+assert.equal(drive.getFileByIdCalls, 0, 'officePhoto accepts only its exact request shape before Drive');
+
+// Mutation guard: deleting the publicPhotoIds membership check would return this own-but-unpublished file.
+setPublishedPhotoIds([]);
+drive.getFileByIdCalls = 0;
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'not-found');
+assert.equal(drive.getFileByIdCalls, 0, 'unpublished photo must not reach Drive');
+
+// Mutation guard: moving DriveApp.getFileById before all authorization checks leaks a Drive lookup.
+setPublishedPhotoIds([jpgUpload.fileId]);
+const otherSession = sandbox.oiIssueSession_(sandbox.oiOfficeById_('of3'), fakeNow);
+drive.getFileByIdCalls = 0;
+assertPhotoError(photoResponse(otherSession, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'not-found');
+assert.equal(drive.getFileByIdCalls, 0, 'cross-office request must fail closed before Drive');
+setPublishedPhotoIds([pngUpload.fileId]);
+drive.getFileByIdCalls = 0;
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'not-found');
+assert.equal(drive.getFileByIdCalls, 0, 'own but non-public photo must fail closed before Drive');
+
+setPublishedPhotoIds([jpgUpload.fileId]);
+const originalPhotoBytes = jpgFile.bytes.slice();
+const originalPhotoMime = jpgFile.mimeType;
+jpgFile.mimeType = 'image/png';
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'photo-unavailable');
+jpgFile.mimeType = originalPhotoMime;
+jpgFile.bytes = Array.from(pngBytes);
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'photo-unavailable');
+const tooLargePhoto = Buffer.alloc(2 * 1024 * 1024 + 1);
+tooLargePhoto[0] = 0xff; tooLargePhoto[1] = 0xd8; tooLargePhoto[2] = 0xff;
+jpgFile.bytes = Array.from(tooLargePhoto);
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'photo-unavailable');
+jpgFile.bytes = originalPhotoBytes;
+jpgFile.trashed = true;
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }), 'photo-unavailable');
+jpgFile.trashed = false;
+drive.getFileByIdCalls = 0;
+assert.equal(photoResponse('', { requestId: photoBatch.requestId, photoId: jpgUpload.fileId }).error, 'session-expired');
+assert.equal(drive.getFileByIdCalls, 0, 'expired session must not reach Drive');
 
 // Break caught: allowing a sixth image would bypass the per-request photo limit.
 for (let i = 4; i <= 5; i++) {

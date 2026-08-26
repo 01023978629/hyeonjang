@@ -1,6 +1,6 @@
 'use strict';
 
-var OI_PUBLIC_ACTIONS = ['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload'];
+var OI_PUBLIC_ACTIONS = ['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload', 'officePhoto'];
 var OI_INTERNAL_ACTIONS = ['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'];
 var OI_LOGIN_LIMIT = 5;
 var OI_LOGIN_WINDOW_SECONDS = 600;
@@ -130,6 +130,7 @@ function oiHandlePublicAction_(action, req) {
   if (action === 'officeUpdate') return oiUpdate_(session, payload, Date.now());
   if (action === 'officeCancel') return oiCancel_(session, payload, Date.now());
   if (action === 'officeUpload') return oiUpload_(session, payload, Date.now());
+  if (action === 'officePhoto') return oiPhoto_(session, (req && req.sessionToken) || payload.sessionToken, payload);
   return { ok: false, error: 'bad-request', message: '아직 지원하지 않는 관리사무소 action입니다' };
 }
 
@@ -141,6 +142,51 @@ var OI_IMAGE_TYPES = {
   'image/png': '.png',
   'image/webp': '.webp'
 };
+
+function oiPhotoRequest_(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  var keys = Object.keys(payload).sort();
+  if (keys.join(',') !== 'photoId,requestId') return null;
+  var requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
+  var photoId = typeof payload.photoId === 'string' ? payload.photoId : '';
+  return requestId && photoId ? { requestId: requestId, photoId: photoId } : null;
+}
+function oiPhotoMagic_(mimeType, bytes) {
+  if (!bytes || !bytes.length) return false;
+  if (mimeType === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === 'image/png') return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  return mimeType === 'image/webp' && bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+}
+function oiPhotoUnavailable_() { return { ok: false, error: 'photo-unavailable' }; }
+function oiPhoto_(session, sessionToken, payload) {
+  var input = oiPhotoRequest_(payload);
+  if (!input) return { ok: false, error: 'not-found' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    // Re-check while locked so an admin status/unpublish write cannot interleave
+    // with the authorization decision and the only permitted Drive file read.
+    var lockedSession = oiVerifySession_(sessionToken, Date.now());
+    if (!lockedSession || lockedSession.officeId !== oiSessionOfficeId_(session)) return { ok: false, error: 'session-expired' };
+    var store = oiReadStore_();
+    var request = oiOwnRequest_(store, lockedSession.officeId, input.requestId);
+    if (!request || !request.completionReport || !Array.isArray(request.completionReport.publicPhotoIds)) return { ok: false, error: 'not-found' };
+    if (request.completionReport.publicPhotoIds.indexOf(input.photoId) < 0) return { ok: false, error: 'not-found' };
+    var photo = null, photos = Array.isArray(request.photos) ? request.photos : [];
+    for (var i = 0; i < photos.length; i++) if (photos[i] && photos[i].fileId === input.photoId) { photo = photos[i]; break; }
+    if (!photo) return { ok: false, error: 'not-found' };
+    var storedMimeType = String(photo.mimeType || '');
+    if (!Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, storedMimeType)) return oiPhotoUnavailable_();
+    try {
+      var file = DriveApp.getFileById(input.photoId);
+      var actualMimeType = String(file.getMimeType() || '');
+      if (actualMimeType !== storedMimeType || !Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, actualMimeType)) return oiPhotoUnavailable_();
+      var bytes = file.getBlob().getBytes();
+      if (!bytes || bytes.length > OI_MAX_PHOTO_BYTES || !oiPhotoMagic_(actualMimeType, bytes)) return oiPhotoUnavailable_();
+      return { ok: true, photoId: input.photoId, mimeType: actualMimeType, dataB64: Utilities.base64Encode(bytes) };
+    } catch (_) { return oiPhotoUnavailable_(); }
+  } finally { lock.releaseLock(); }
+}
 
 function oiStoreName_() {
   return PropertiesService.getScriptProperties().getProperty('OFFICE_STORE_FILE') || '관리사무소접수.json';

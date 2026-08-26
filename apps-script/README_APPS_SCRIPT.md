@@ -50,7 +50,7 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 
 | 구분 | action | 인증 | 반환 범위 |
 |---|---|---|---|
-| 공개 | `officeLogin`, `officeList`, `officeGet`, `officeCreate`, `officeUpdate`, `officeCancel`, `officeUpload` | `officeLogin`은 단지 slug+6자리 PIN, 나머지는 8시간 만료 HMAC 세션 | 해당 office의 접수·상태·허용된 완료 보고만 |
+| 공개 | `officeLogin`, `officeList`, `officeGet`, `officeCreate`, `officeUpdate`, `officeCancel`, `officeUpload`, `officePhoto` | `officeLogin`은 단지 slug+6자리 PIN, 나머지는 8시간 만료 HMAC 세션 | 해당 office의 접수·상태·허용된 완료 보고만 |
 | 내부 | `officeInbox`, `officeAccept`, `officeSetStatus`, `officeAdminUpsert`, `officeRotatePin`, `officeDisable`, `officeRetentionList` | 기존 `APP_TOKEN` 필수 | 현장 앱 연동·관리·보존 검토용. 외부 공개 금지 |
 
 공개 action에는 내부 `APP_TOKEN`을 보내거나 반환하지 않습니다. 내부 action은
@@ -58,6 +58,15 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 `officeId`, `sessionVersion`, `issuedAt`, `expiresAt`만 서명해 넣고 PIN·토큰·사진
 바이트·내부 메모를 넣지 않습니다. `OFFICE_INTAKE_ENABLED`가 꺼져 있으면 공개
 로그인·접수 변경·사진 업로드를 거부하며 기존 relay action은 계속 동작합니다.
+
+`officePhoto`의 payload는 정확히 `{requestId,photoId}`이며, 성공 시
+`{ok:true,photoId,mimeType,dataB64}`만 반환합니다. URL·Drive 파일명·크기·예외
+원문은 반환하지 않습니다. 서버는 같은 office 세션의 요청인지, 완료 보고가 있고
+`publicPhotoIds`에 해당 ID가 있는지, 그 요청의 `photos`에 같은 `fileId`가 있는지
+확인한 뒤에만 그 한 Drive 파일을 읽습니다. 공개 해제·다른 office·관련 없는 ID는
+`not-found`이며 Drive 조회를 하지 않습니다. JPEG/PNG/WebP의 저장 MIME과 실제
+MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 때만 표준 base64를
+반환합니다. 삭제·MIME/매직 불일치·초과 파일은 `photo-unavailable`만 반환합니다.
 
 ### Public response codes
 
@@ -70,7 +79,7 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 오류 세션) · `invalid-input` · `consent-required` · `invalid-status` ·
 `invalid-upload-id`(canonical UUID uploadId 누락·형식 오류) · `unsupported-type` ·
 `invalid-file` · `too-large` · `too-many-files` · `not-found` · `bad-request` ·
-`server-error`.
+`photo-unavailable`(공개가 허용된 사진의 삭제·형식·크기 검증 실패) · `server-error`.
 
 ### Internal response codes
 
