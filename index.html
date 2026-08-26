@@ -9494,6 +9494,109 @@ function officeIntakeOrderFromRequest(r,projectName){
     intakePhotoIds:(r.photos||[]).map(p=>p&&p.fileId).filter(Boolean).slice(0,5)
   };
 }
+function officeIntakePending(){
+  return officeIntakeData().inbox.filter(function(r){return r&&['pending_review','needs_info','on_hold'].includes(r.status);});
+}
+function officeIntakeOverdue(r){
+  if(!r||r.status!=='pending_review')return false;
+  const at=officeIntakeTime(r.createdAt||r.updatedAt);
+  return at!=null&&Date.now()-at>=24*60*60*1000;
+}
+function officeIntakeTel(phone){
+  const value=telHref(phone);
+  return /^\+?\d+$/.test(value)?value:'';
+}
+function officeIntakeProjectName(mode,projectName){
+  const next=['none','existing','new'].includes(mode)?mode:'none';
+  if(next==='none')return '';
+  const name=String(projectName||'').trim();
+  if(!name){toast('연결할 현장명을 입력하세요');return null;}
+  const exists=(state.projects||[]).some(function(p){return p&&p.name===name;});
+  if(next==='existing'){
+    if(!exists){toast('선택한 기존 현장을 찾을 수 없습니다');return null;}
+    return name;
+  }
+  if(exists)return name;
+  const input=document.getElementById('newProj');
+  if(!input||typeof addProject!=='function'){toast('새 현장 추가 화면을 열 수 없습니다');return null;}
+  input.value=name;
+  addProject();
+  return (state.projects||[]).some(function(p){return p&&p.name===name;})?name:null;
+}
+async function officeIntakeAccept(requestId,projectMode,projectName){
+  const request=officeIntakeFindRequest(requestId);
+  if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  const existing=officeIntakeFindOrder(request.requestId);
+  if(existing){
+    if(request.status!=='accepted'){request.status='accepted';officeIntakeMarkDirty();}
+    return existing;
+  }
+  const project=officeIntakeProjectName(projectMode,projectName);
+  if(project===null)return false;
+  let order;
+  try{order=officeIntakeOrderFromRequest(request,project);}catch(e){toast(e&&e.message||'오더를 만들 수 없습니다');return false;}
+  const duplicate=officeIntakeFindOrder(request.requestId);
+  if(duplicate)return duplicate;
+  state.aptOrders=state.aptOrders||[];
+  state.aptOrders.push(order);
+  request.status='accepted';
+  officeIntakeMarkDirty();
+  try{
+    const result=await cloudOfficeAccept(request.requestId,order.id);
+    if(!(result&&result.ok===true))throw result||new Error('office accept failed');
+  }catch(e){
+    officeIntakeQueue('officeAccept',{requestId:request.requestId,hyeonjangOrderId:order.id});
+  }
+  return order;
+}
+async function officeIntakeNeedsInfo(requestId){
+  const request=officeIntakeFindRequest(requestId);
+  if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  const entered=prompt('내용 보완 요청 사유 (300자 이내)',String(request.needsInfoReason||''));
+  if(entered===null)return false;
+  const reason=String(entered).trim().slice(0,300);
+  request.status='needs_info';request.needsInfoReason=reason;
+  officeIntakeMarkDirty();
+  officeIntakeQueue('officeSetStatus',{requestId:request.requestId,status:'needs_info',reason:reason});
+  return true;
+}
+async function officeIntakeHold(requestId){
+  const request=officeIntakeFindRequest(requestId);
+  if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  request.status='on_hold';
+  officeIntakeMarkDirty();
+  officeIntakeQueue('officeSetStatus',{requestId:request.requestId,status:'on_hold'});
+  return true;
+}
+function officeIntakeOpen(){
+  const pending=officeIntakePending(),overdue=pending.filter(officeIntakeOverdue).length;
+  const projectChoices=(state.projects||[]).filter(function(p){return p&&!p.archived;}).map(function(p){return '<option value="'+escapeAttr(p.name)+'">'+escapeHtml(p.name)+'</option>';}).join('');
+  const rows=pending.length?pending.map(function(r){
+    const id=String(r.requestId||''),contact=r.officeContact||{},phone=officeIntakeTel(contact.phone),photos=Array.isArray(r.photos)?r.photos.filter(Boolean).length:0;
+    const urgency=r.urgency==='urgent'?'긴급':'일반',over=officeIntakeOverdue(r);
+    const call=phone?'<a class="ghost tiny" href="tel:'+escapeAttr(phone)+'" aria-label="'+escapeAttr(String(contact.name||'관리사무소')+'에게 전화 걸기')+'" style="padding:7px 9px">📞 전화</a>':'';
+    return '<section data-oi-request="'+escapeAttr(id)+'" style="min-width:0;border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px;overflow-wrap:anywhere">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><div style="min-width:0"><b>'+escapeHtml(r.receiptNo||id||'접수번호 없음')+'</b><div style="font-size:12px;margin-top:3px">'+escapeHtml(r.unit||'위치 미입력')+(r.location?' · '+escapeHtml(r.location):'')+'</div></div><span style="font-size:11px;font-weight:700;color:'+(r.urgency==='urgent'?'#b91c1c':'var(--muted)')+'">'+urgency+'</span></div>'+
+      (over?'<div style="margin-top:6px;color:#b91c1c;font-size:11.5px;font-weight:700">⚠️ 24시간 이상 미확인</div>':'')+
+      '<div style="font-size:12px;line-height:1.5;margin-top:7px;white-space:pre-wrap">'+escapeHtml(r.description||r.issueType||'내용 없음')+'</div>'+
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted)"><span>'+escapeHtml(contact.name||'관리사무소 담당자 미입력')+'</span>'+call+'<span>📷 사진 '+photos+'장</span></div>'+
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;margin-top:9px"><select data-oi-project-mode="'+escapeAttr(id)+'" aria-label="'+escapeAttr((r.receiptNo||id)+' 현장 연결 방식')+'" style="min-width:0;padding:8px"><option value="none">현장 미연결</option><option value="existing">기존 현장</option><option value="new">새 현장</option></select><input data-oi-project-name="'+escapeAttr(id)+'" aria-label="'+escapeAttr((r.receiptNo||id)+' 연결 현장명')+'" list="oiProjects" placeholder="기존/새 현장명" style="min-width:0;padding:8px"></div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px"><button class="blue tiny" data-oi-accept="'+escapeAttr(id)+'" style="padding:8px 10px">오더 등록</button><button class="ghost tiny" data-oi-needs="'+escapeAttr(id)+'" style="padding:8px 10px">내용 보완 요청</button><button class="ghost tiny" data-oi-hold="'+escapeAttr(id)+'" style="padding:8px 10px">보류</button></div></section>';
+  }).join(''):'<div class="empty" style="padding:18px"><b>검토할 신규 접수가 없습니다</b>관리사무소 접수가 동기화되면 여기에 표시됩니다.</div>';
+  openModal('📥 관리사무소 신규 접수',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:9px">검토 대기 '+pending.length+'건'+(overdue?' · 24시간 이상 미확인 '+overdue+'건':'')+'</div><datalist id="oiProjects">'+projectChoices+'</datalist>'+rows,
+    [{label:'아파트 오더',cls:'ghost',fn:function(){aptOrderManage();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelectorAll('[data-oi-accept]').forEach(function(button){button.onclick=async function(){
+    const id=button.dataset.oiAccept,card=button.closest('[data-oi-request]');
+    const mode=(card&&card.querySelector('[data-oi-project-mode]')||{}).value||'none';
+    const name=(card&&card.querySelector('[data-oi-project-name]')||{}).value||'';
+    button.disabled=true;const saved=await officeIntakeAccept(id,mode,name);
+    if(saved){toast('아파트 오더로 등록했습니다');officeIntakeOpen();}else button.disabled=false;
+  };});
+  root.querySelectorAll('[data-oi-needs]').forEach(function(button){button.onclick=async function(){if(await officeIntakeNeedsInfo(button.dataset.oiNeeds)){toast('내용 보완 요청을 보냈습니다');officeIntakeOpen();}};});
+  root.querySelectorAll('[data-oi-hold]').forEach(function(button){button.onclick=async function(){if(await officeIntakeHold(button.dataset.oiHold)){toast('접수를 보류했습니다');officeIntakeOpen();}};});
+}
 function quotePipeText(q){return [q&&q.title,q&&q.place,q&&q.memo,q&&q.project].concat((q&&q.items||[]).flatMap(it=>[it&&it.name,it&&it.spec])).filter(Boolean).join(' ');}
 function quoteRegistrationGuide(q){return q&&quoteCalc(q).total>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(quotePipeText(q))?PIPE_REGISTRATION_GUIDE:'';}
 function projectRegistrationGuide(p,list,total){
@@ -9548,6 +9651,7 @@ async function aptReviewMaterialCopy(id){
 function aptOrderManage(filterOffice){
   aptData();
   const offices=state.aptOffices, orders=state.aptOrders.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const intakePending=officeIntakePending(),intakeOverdue=intakePending.filter(officeIntakeOverdue).length;
   const ym=localDate().slice(0,7);
   const active=orders.filter(o=>o.status!=='paid');
   const doneThisMonth=orders.filter(o=>o.status!=='recv'&&o.status!=='visit'&&o.status!=='work'&&(o.doneAt||'').slice(0,7)===ym);
@@ -9556,7 +9660,7 @@ function aptOrderManage(filterOffice){
   const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
     tile('진행 중 오더',active.length+'건',active.length?'var(--warn)':'#0a7f43')+
     tile('이달 완료',doneThisMonth.length+'건 · '+hjMan(doneThisMonth.reduce((s,o)=>s+num(o.amount),0)),'#0a7f43')+
-'</div>';
+    '<button class="ghost tiny" id="apoOfficeInbox" aria-label="관리사무소 신규 접수 '+intakePending.length+'건, 24시간 이상 미확인 '+intakeOverdue+'건" style="padding:8px 10px;align-self:center">📥 신규 '+intakePending.length+'</button></div>';
   const offOpts=offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===filterOffice?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('');
   const addRow=offices.length
     ? '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'+
@@ -9597,6 +9701,8 @@ function aptOrderManage(filterOffice){
      {label:'📊 단지 통계',cls:'ghost',fn:()=>aptStats(filterOffice||((offices[0]||{}).id))},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
+  const intakeBtn=root.querySelector('#apoOfficeInbox');
+  if(intakeBtn)intakeBtn.onclick=officeIntakeOpen;
   root.querySelector('#apoOffAdd').onclick=()=>{
     const complex=(prompt('단지(아파트) 이름 (예: 신흥마을아파트)')||'').trim();
     if(!complex)return;
@@ -18131,7 +18237,12 @@ function openMoreSheetV2(openerOverride){
   const navShortcuts=[['docs','📁','서류'],['estimates','🧾','견적'],['contacts','👤','연락처'],['project','🏗️','현장별']];
   // 최근 사용
   const recent=moreGetRecent().map(a=>{const info=moreItemInfo(a);return info?[a,info.ic,info.label]:null;}).filter(Boolean);
-  const chip=(a,ic,l,isNav)=>'<button class="more-chip" data-'+(isNav?'more':'moreaction')+'="'+a+'" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);min-width:0"><span style="font-size:20px">'+ic+'</span><span style="font-size:10.5px;text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">'+escapeHtml(l)+'</span></button>';
+  const chip=(a,ic,l,isNav)=>{
+    const pending=a==='aptorders'?officeIntakePending():[],overdue=a==='aptorders'?pending.filter(officeIntakeOverdue).length:0;
+    const accessible=a==='aptorders'?l+', 신규 '+pending.length+'건, 24시간 이상 미확인 '+overdue+'건':l;
+    const label=a==='aptorders'?escapeHtml(l)+' <span style="display:inline-block;margin-left:2px;padding:1px 4px;border-radius:8px;background:#dbeafe;color:#1d4ed8;font-size:9px;font-weight:700">신규 '+pending.length+'</span>':escapeHtml(l);
+    return '<button class="more-chip" data-'+(isNav?'more':'moreaction')+'="'+a+'" aria-label="'+escapeAttr(accessible)+'" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);min-width:0"><span style="font-size:20px">'+ic+'</span><span style="font-size:10.5px;text-align:center;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">'+label+'</span></button>';
+  };
   // 카테고리 섹션
   const catSection=(c)=>'<details class="more-cat-block" data-cat="'+c.id+'"><summary><span>'+c.ic+'</span><span>'+c.name+'</span><span class="more-cat-count">'+c.items.length+'개</span><span class="more-cat-arrow" aria-hidden="true">⌄</span></summary><div class="more-cat-grid">'+c.items.map(it=>chip(it[0],it[1],it[2])).join('')+'</div></details>';
   sheet.innerHTML=
