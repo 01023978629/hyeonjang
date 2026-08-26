@@ -71,6 +71,11 @@ const internalBranch = postSource.indexOf('if (oiIsInternalAction_(action)) retu
 const legacyBranch = postSource.indexOf("if (ALLOWED_ACTIONS.indexOf(action) < 0)");
 assert(publicBranch >= 0 && publicBranch < tokenBranch && tokenBranch < internalBranch && internalBranch < legacyBranch,
   'public -> APP_TOKEN -> internal -> legacy branch order');
+const publicDispatchMarker = 'if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));';
+const doPostPublicSource = postSource.slice(0, publicBranch + publicDispatchMarker.length);
+const doPostPublicFailErrors = new Set([...doPostPublicSource.matchAll(/fail_\('([a-z][a-z-]+)'/g)].map(match => match[1]));
+assert.deepEqual(doPostPublicFailErrors, new Set(['bad-request', 'too-large']),
+  'doPost public pre-dispatch failures are tracked without reading token-gated or legacy branches');
 assert(!officeSource.includes('APP_TOKEN='));
 const publicErrorSection = sectionBetween(readme, '### Public response codes', '### Internal response codes');
 const internalErrorSection = sectionBetween(readme, '### Internal response codes', '### Operational records');
@@ -93,7 +98,8 @@ const publicOfficeErrorSources = [
 ].join('\n');
 const implementedPublicOfficeErrors = new Set([
   ...[...publicOfficeErrorSources.matchAll(/\berror:\s*'([a-z][a-z-]+)'/g)].map(match => match[1]),
-  // doPost's public-action dispatch may serialize unexpected public handler failures.
+  ...doPostPublicFailErrors,
+  // doPost's catch serializes unexpected public handler failures after dispatch.
   'server-error',
 ]);
 assert.deepEqual(new Set(codeTokens(publicErrorSection)), implementedPublicOfficeErrors,
@@ -111,7 +117,7 @@ const cache = new Map();
 const propertyFaults = { onSet: null, onDelete: null };
 const cryptoStats = { macCalls: 0, decodeCalls: 0 };
 const lockEvents = [];
-const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0 };
+const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0 };
 function iterator(items) {
   let index = 0;
   return { hasNext: () => index < items.length, next: () => items[index++] };
@@ -123,7 +129,7 @@ function makeFolder(name, parent) {
     getName() { return this.name; },
     getFilesByName(fileName) { return iterator(drive.files.filter(file => !file.trashed && file.parent === this && file.name === fileName)); },
     getFoldersByName(folderName) { return iterator(drive.folders.filter(child => child.parent === this && child.name === folderName)); },
-    createFolder(folderName) { const child = makeFolder(folderName, this); drive.folders.push(child); return child; },
+    createFolder(folderName) { const child = makeFolder(folderName, this); drive.folderCreates++; drive.folders.push(child); return child; },
     createFile(arg, content, mimeType) {
       const blob = typeof arg === 'string'
         ? { name: arg, bytes: Array.from(Buffer.from(String(content), 'utf8')), mimeType }
@@ -142,8 +148,9 @@ function makeFolder(name, parent) {
           this.bytes = Array.from(Buffer.from(String(text), 'utf8'));
           if (this.name === '관리사무소접수.json') drive.storeWrites++;
         },
-        setTrashed(value) { this.trashed = value === true; },
+        setTrashed(value) { drive.trashCalls++; this.trashed = value === true; },
       };
+      drive.fileCreates++;
       drive.files.push(file);
       if (file.name === '관리사무소접수.json') drive.storeWrites++;
       return file;
@@ -443,6 +450,10 @@ assert.deepEqual(Object.keys(firstRetryUpload).sort(), ['createdAt', 'fileId', '
 const retryFileCount = drive.files.filter(file => !file.trashed).length;
 const retryAuditCount = sandbox.oiReadStore_().audit.filter(row => row.action === 'upload' && row.receiptNo === retryRequest.receiptNo).length;
 const retryStoreWrites = drive.storeWrites;
+const retryDriveEffects = {
+  files: drive.files.length, folders: drive.folders.length,
+  fileCreates: drive.fileCreates, folderCreates: drive.folderCreates, trashCalls: drive.trashCalls,
+};
 const retryRequestBeforeReplay = JSON.parse(JSON.stringify(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId)));
 const replayRetryUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, uploadId: retryUploadId, name: 'ignored-on-retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
@@ -452,6 +463,10 @@ assert.equal(replayRetryUpload.uploadId, retryUploadId.toLowerCase());
 assert.equal(drive.files.filter(file => !file.trashed).length, retryFileCount);
 assert.equal(sandbox.oiReadStore_().audit.filter(row => row.action === 'upload' && row.receiptNo === retryRequest.receiptNo).length, retryAuditCount);
 assert.equal(drive.storeWrites, retryStoreWrites);
+assert.deepEqual({
+  files: drive.files.length, folders: drive.folders.length,
+  fileCreates: drive.fileCreates, folderCreates: drive.folderCreates, trashCalls: drive.trashCalls,
+}, retryDriveEffects);
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId))), retryRequestBeforeReplay);
 assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId).photos[0].uploadId, retryUploadId.toLowerCase());
 
