@@ -10,7 +10,10 @@ const properties = {
   APP_TOKEN: 'TEST_ONLY_LEGACY_RELAY_TOKEN',
 };
 const cache = new Map();
+const cryptoStats = { macCalls: 0, decodeCalls: 0 };
+const lockEvents = [];
 function stubMac(text, key) {
+  cryptoStats.macCalls++;
   return Array.from(Buffer.from('test-hmac:' + String(key) + ':' + String(text), 'utf8'));
 }
 function stubB64(bytes) { return Buffer.from(bytes).toString('base64url'); }
@@ -21,6 +24,9 @@ properties.OFFICE_CONFIG_JSON = JSON.stringify({
   offices: [{
     id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', sessionVersion: 1,
     pinSalt: 'sample-office-salt', pinHash: expectedPinHash('123456', 'sample-office-salt'),
+  }, {
+    id: 'of2', slug: 'disabled-apt', complexName: '중지 아파트', sessionVersion: 1, enabled: false,
+    pinSalt: 'disabled-office-salt', pinHash: expectedPinHash('123456', 'disabled-office-salt'),
   }],
 });
 
@@ -49,10 +55,19 @@ const sandbox = {
   Utilities: {
     computeHmacSha256Signature: stubMac,
     base64EncodeWebSafe: stubB64,
-    base64DecodeWebSafe: value => Array.from(Buffer.from(String(value), 'base64url')),
+    base64DecodeWebSafe: value => {
+      cryptoStats.decodeCalls++;
+      return Array.from(Buffer.from(String(value), 'base64url'));
+    },
     newBlob: bytes => ({ getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
   },
-  LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
+  LockService: {
+    getScriptLock: () => ({
+      tryLock: () => true,
+      waitLock: timeout => { lockEvents.push('wait:' + timeout); },
+      releaseLock: () => { lockEvents.push('release'); },
+    }),
+  },
   DriveApp: {},
   CalendarApp: {},
   ContentService: {
@@ -71,13 +86,44 @@ for (const name of ['OfficeIntakePure.gs', 'Code.gs', 'OfficeIntake.gs']) {
 }
 
 // Break caught: removing login/session helpers must make successful office login impossible.
+lockEvents.length = 0;
 const login = sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 1000);
 assert.equal(login.ok, true);
+assert.deepEqual(lockEvents, ['wait:20000', 'release']);
 assert.equal(login.office.complexName, '예시 아파트');
 assert.equal(Object.hasOwn(login.office, 'pinHash'), false);
 assert.equal(Object.hasOwn(login.office, 'pinSalt'), false);
 assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1001).officeId, 'of1');
 assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1000 + 8 * 60 * 60 * 1000 + 1), null);
+assert.equal(sandbox.oiVerifySession_(sandbox.oiIssueSession_({ id: 'of1', sessionVersion: 1 }, 2000), 1000), null);
+assert.equal(sandbox.oiVerifySession_(login.sessionToken.slice(0, -1) + 'x', 1001), null);
+assert.equal(sandbox.oiVerifySession_('malformed-session', 1001), null);
+
+// Break caught: unknown and disabled slugs must perform the same PIN HMAC/compare work as a known office.
+function credentialMetrics(input) {
+  cache.clear();
+  cryptoStats.macCalls = 0;
+  cryptoStats.decodeCalls = 0;
+  const result = sandbox.oiLogin_(input, 1500);
+  return { result, macCalls: cryptoStats.macCalls, decodeCalls: cryptoStats.decodeCalls };
+}
+const activeFailure = credentialMetrics({ slug: 'sample-apt', pin: '000000' });
+const unknownFailure = credentialMetrics({ slug: 'missing-apt', pin: '000000' });
+const disabledFailure = credentialMetrics({ slug: 'disabled-apt', pin: '000000' });
+assert.equal(activeFailure.result.error, 'invalid-credentials');
+assert.equal(unknownFailure.result.error, 'invalid-credentials');
+assert.equal(disabledFailure.result.error, 'invalid-credentials');
+assert.deepEqual(unknownFailure.result, activeFailure.result);
+assert.deepEqual(disabledFailure.result, activeFailure.result);
+assert.deepEqual(
+  { macCalls: unknownFailure.macCalls, decodeCalls: unknownFailure.decodeCalls },
+  { macCalls: activeFailure.macCalls, decodeCalls: activeFailure.decodeCalls },
+);
+assert.deepEqual(
+  { macCalls: disabledFailure.macCalls, decodeCalls: disabledFailure.decodeCalls },
+  { macCalls: activeFailure.macCalls, decodeCalls: activeFailure.decodeCalls },
+);
+cache.clear();
 
 for (let i = 0; i < 5; i++) sandbox.oiLogin_({ slug: 'sample-apt', pin: '000000' }, 2000 + i);
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 2010).error, 'rate-limited');

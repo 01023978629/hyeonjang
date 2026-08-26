@@ -4,6 +4,8 @@ var OI_PUBLIC_ACTIONS = ['officeLogin', 'officeList', 'officeGet', 'officeCreate
 var OI_INTERNAL_ACTIONS = ['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'];
 var OI_LOGIN_LIMIT = 5;
 var OI_LOGIN_WINDOW_SECONDS = 600;
+var OI_DUMMY_PIN_SALT = 'office-intake-invalid-salt';
+var OI_DUMMY_PIN_HASH = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
 function oiIsPublicAction_(action) { return OI_PUBLIC_ACTIONS.indexOf(action) >= 0; }
 function oiIsInternalAction_(action) { return OI_INTERNAL_ACTIONS.indexOf(action) >= 0; }
@@ -67,17 +69,26 @@ function oiLogin_(payload, now) {
   var slug = oiText_(payload.slug, 80);
   var cache = CacheService.getScriptCache();
   var key = 'oi-login:' + slug;
-  if (Number(cache.get(key) || 0) >= OI_LOGIN_LIMIT) return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (Number(cache.get(key) || 0) >= OI_LOGIN_LIMIT) return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' };
 
-  var office = oiOfficeBySlug_(slug);
-  var pin = String(payload.pin == null ? '' : payload.pin);
-  var valid = /^\d{6}$/.test(pin) && oiOfficeActive_(office) && oiSafeEqual_(oiHashPin_(pin, office.pinSalt || ''), office.pinHash || '');
-  if (!valid) {
-    cache.put(key, String(Number(cache.get(key) || 0) + 1), OI_LOGIN_WINDOW_SECONDS);
-    return oiInvalidCredentials_();
+    var office = oiOfficeBySlug_(slug);
+    var pin = String(payload.pin == null ? '' : payload.pin);
+    var pinFormatValid = /^\d{6}$/.test(pin);
+    var credential = oiOfficeActive_(office) ? office : { pinSalt: OI_DUMMY_PIN_SALT, pinHash: OI_DUMMY_PIN_HASH };
+    var matches = oiSafeEqual_(oiHashPin_(pinFormatValid ? pin : '000000', credential.pinSalt), credential.pinHash);
+    var valid = pinFormatValid && matches && oiOfficeActive_(office);
+    if (!valid) {
+      cache.put(key, String(Number(cache.get(key) || 0) + 1), OI_LOGIN_WINDOW_SECONDS);
+      return oiInvalidCredentials_();
+    }
+    cache.remove(key);
+    return { ok: true, office: oiPublicOffice_(office), sessionToken: oiIssueSession_(office, Number(now)) };
+  } finally {
+    lock.releaseLock();
   }
-  cache.remove(key);
-  return { ok: true, office: oiPublicOffice_(office), sessionToken: oiIssueSession_(office, Number(now)) };
 }
 
 function oiVerifySession_(token, now) {
@@ -87,10 +98,11 @@ function oiVerifySession_(token, now) {
     var payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString('UTF-8'));
     var keys = Object.keys(payload || {}).sort();
     if (keys.join(',') !== 'expiresAt,issuedAt,officeId,sessionVersion') return null;
-    if (typeof payload.officeId !== 'string' || !isFinite(payload.sessionVersion) || !isFinite(payload.issuedAt) || !isFinite(payload.expiresAt)) return null;
-    if (Number(payload.expiresAt) - Number(payload.issuedAt) !== 8 * 60 * 60 * 1000 || Number(now) >= Number(payload.expiresAt)) return null;
+    if (typeof payload.officeId !== 'string' || typeof payload.sessionVersion !== 'number' || typeof payload.issuedAt !== 'number' || typeof payload.expiresAt !== 'number') return null;
+    if (!isFinite(payload.sessionVersion) || !isFinite(payload.issuedAt) || !isFinite(payload.expiresAt) || !isFinite(now)) return null;
+    if (payload.expiresAt - payload.issuedAt !== 8 * 60 * 60 * 1000 || payload.issuedAt > now || now >= payload.expiresAt) return null;
     var office = oiOfficeById_(payload.officeId);
-    if (!oiOfficeActive_(office) || Number(office.sessionVersion || 1) !== Number(payload.sessionVersion)) return null;
+    if (!oiOfficeActive_(office) || Number(office.sessionVersion || 1) !== payload.sessionVersion) return null;
     return { officeId: payload.officeId, office: office };
   } catch (_) { return null; }
 }
