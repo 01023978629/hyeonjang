@@ -69,6 +69,7 @@ let browser;
   });
   assert(intake.offices === 1 && intake.orders === 1, '② 등록/접수가 안 됨');
   assert(intake.order.status === 'recv' && intake.order.amount === 80000, '② 오더 초기 상태가 접수(recv)·금액이어야 함');
+  assert(!Object.prototype.hasOwnProperty.call(intake.order, 'sourceRequestId'), '② 기존 수동 오더에 접수 원본 ID를 강제하면 안 됨');
   assert(intake.shown, '② 목록에 동/호·작업·금액이 보이지 않음');
 
   // ③ 완료 처리 → doneAt / ⑦ 입금완료 직접 변경 차단

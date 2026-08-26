@@ -1354,6 +1354,7 @@ function serializeData(){
     asLog:state.asLog||[],
     aptOffices:state.aptOffices||[],
     aptOrders:state.aptOrders||[],
+    officeIntake:officeIntakeData(),
     aptRates:state.aptRates||[],
     monthClosed:state.monthClosed||{},
     quoteSets:state.quoteSets||[],
@@ -1391,6 +1392,7 @@ function applyData(data){
   if(!data||typeof data!=='object')return 0;
   ['files','projects','quotes','schedule','contacts','notes','payLog','suppliers','asLog','aptOffices','aptOrders','aptRates','quoteSets','trips','workLogs'].forEach(k=>{if(k in data&&!Array.isArray(data[k]))delete data[k];});
   ['monthClosed','tripCfg'].forEach(k=>{if(k in data&&(!data[k]||typeof data[k]!=='object'||Array.isArray(data[k])))delete data[k];});
+  if('officeIntake' in data&&(!data.officeIntake||typeof data.officeIntake!=='object'||Array.isArray(data.officeIntake)))delete data.officeIntake;
   if(data.files){
     data.files=data.files.filter(f=>f&&typeof f==='object'&&f.name);
     const compact=mergeOrganizedPhotoDuplicates(data.files);
@@ -1419,6 +1421,8 @@ function applyData(data){
   state.asLog=data.asLog||state.asLog||[];
   state.aptOffices=data.aptOffices||state.aptOffices||[];
   state.aptOrders=data.aptOrders||state.aptOrders||[];
+  if(data.officeIntake)state.officeIntake=data.officeIntake;
+  officeIntakeData();
   state.aptRates=data.aptRates||state.aptRates||[];
   state.monthClosed=data.monthClosed||state.monthClosed||{};
   state.quoteSets=data.quoteSets||state.quoteSets||[];
@@ -9364,6 +9368,34 @@ const APT_LICENSED_PIPE_GUIDE='이 공종은 등록 업체만 시공할 수 있�
 function aptOrderAmountGuide(amount){return num(amount)>APT_PRIVATE_CONTRACT_LIMIT?APT_AMOUNT_GUIDE:'';}
 function aptPipeType(value){return APT_PIPE_TYPES.includes(String(value||''))?String(value):'미확정';}
 function aptPipeTypeGuide(value){const v=aptPipeType(value);return v==='난방'||v==='급수'?APT_LICENSED_PIPE_GUIDE:'';}
+function officeIntakeData(){
+  if(!state.officeIntake||typeof state.officeIntake!=='object'||Array.isArray(state.officeIntake))state.officeIntake={};
+  const d=state.officeIntake;
+  if(!Array.isArray(d.inbox))d.inbox=[];
+  if(!Array.isArray(d.outbox))d.outbox=[];
+  d.cursor=String(d.cursor||'');d.lastSyncAt=String(d.lastSyncAt||'');d.lastError=String(d.lastError||'');
+  return d;
+}
+const OFFICE_TO_APT_STATUS={accepted:'recv',visit_scheduled:'visit',in_progress:'work',completed:'done',billed:'billed',paid:'paid'};
+const APT_TO_OFFICE_STATUS={recv:'accepted',visit:'visit_scheduled',work:'in_progress',done:'completed',billed:'billed',paid:'paid'};
+function officeIntakeStatusToApt(status){return OFFICE_TO_APT_STATUS[status]||'recv';}
+function officeIntakeFindRequest(id){return officeIntakeData().inbox.find(x=>x&&x.requestId===id)||null;}
+function officeIntakeFindOrder(id){return (state.aptOrders||[]).find(x=>x&&x.sourceRequestId===id)||null;}
+function officeIntakeOrderFromRequest(r,projectName){
+  if(!r||!r.requestId)throw new Error('접수번호가 없습니다');
+  const existing=officeIntakeFindOrder(r.requestId);if(existing)return existing;
+  return {
+    id:uid(),officeId:r.officeId,unit:String(r.unit||r.location||'').trim(),
+    text:String(r.description||r.issueType||'').trim(),amount:0,pipeType:aptPipeType(r.pipeType),
+    date:localDate(),status:'recv',doneAt:'',project:projectName||'',
+    source:'office-intake',sourceRequestId:r.requestId,receiptNo:String(r.receiptNo||''),
+    officeContactName:String((r.officeContact||{}).name||''),
+    officeContactPhone:String((r.officeContact||{}).phone||''),
+    residentContact:r.residentContact||null,urgency:r.urgency==='urgent'?'urgent':'normal',
+    location:String(r.location||''),preferredVisitDate:String(r.preferredVisitDate||''),
+    intakePhotoIds:(r.photos||[]).map(p=>p&&p.fileId).filter(Boolean).slice(0,5)
+  };
+}
 function quotePipeText(q){return [q&&q.title,q&&q.place,q&&q.memo,q&&q.project].concat((q&&q.items||[]).flatMap(it=>[it&&it.name,it&&it.spec])).filter(Boolean).join(' ');}
 function quoteRegistrationGuide(q){return q&&quoteCalc(q).total>=PIPE_REGISTRATION_LIMIT&&PIPE_WORK_RE.test(quotePipeText(q))?PIPE_REGISTRATION_GUIDE:'';}
 function projectRegistrationGuide(p,list,total){
