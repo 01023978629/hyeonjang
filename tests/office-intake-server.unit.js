@@ -53,7 +53,8 @@ function makeFolder(name, parent) {
 }
 const driveRoot = makeFolder('root', null);
 drive.folders.push(driveRoot);
-const SandboxDate = class extends Date { static now() { return 1000; } };
+let fakeNow = 1000;
+const SandboxDate = class extends Date { static now() { return fakeNow; } };
 function formatDate(date, timezone, pattern) {
   assert.equal(timezone, 'Asia/Seoul');
   assert.equal(pattern, 'yyyyMMdd');
@@ -281,7 +282,8 @@ assert.equal(webpUpload.name, photoBatch.receiptNo + '_03.webp');
 const jpgFile = drive.files.find(file => file.id === jpgUpload.fileId);
 assert.equal(folderPath(jpgFile.parent), '관리사무소접수/sample-apt/' + photoBatch.receiptNo);
 const stored = JSON.parse(drive.files.find(file => file.name === '관리사무소접수.json').getBlob().getDataAsString('UTF-8'));
-assert.deepEqual(Object.keys(stored).sort(), ['requests', 'version']);
+assert.equal(stored.version, 1);
+assert.equal(Array.isArray(stored.requests), true);
 const storedPhoto = stored.requests.find(request => request.requestId === photoBatch.requestId).photos[0];
 assert.deepEqual(Object.keys(storedPhoto).sort(), ['createdAt', 'fileId', 'mimeType', 'name', 'size']);
 assert.equal(storedPhoto.name, photoBatch.receiptNo + '_01.jpg');
@@ -366,5 +368,81 @@ assert.equal(postOffice('officeUpload', login.sessionToken, {
   requestId: routedCreate.requestId, name: 'route.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }).ok, true);
 assert.equal(postOffice('officeCancel', login.sessionToken, { requestId: routedCreate.requestId }).status, 'cancelled');
+
+// Break caught: removing the APP_TOKEN-protected internal dispatch, idempotent link, or transition guard
+// would either expose the inbox or publish a second project / invalid public status.
+function postInternal(action, payload) {
+  return JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify({
+    action, ts: fakeNow, token: properties.APP_TOKEN, payload,
+  }) } }).getContent());
+}
+const inboxRoute = postInternal('officeInbox', { updatedAfter: '' });
+assert.equal(inboxRoute.ok, true);
+assert.equal(inboxRoute.requests.some(request => request.requestId === first.requestId), true);
+const linked = postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-1' });
+assert.equal(linked.ok, true);
+assert.equal(postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-1' }).hyeonjangOrderId, 'apt-1');
+assert.equal(postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-2' }).error, 'already-linked');
+assert.equal(postInternal('officeSetStatus', {
+  requestId: first.requestId, status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00',
+}).status, 'visit_scheduled');
+assert.equal(postInternal('officeSetStatus', { requestId: first.requestId, status: 'paid' }).error, 'invalid-transition');
+
+// Break caught: treating a 24-hour-old unreviewed request as current hides an operationally overdue intake.
+fakeNow = 20040 + 24 * 60 * 60 * 1000;
+const overdue = sandbox.oiInbox_({ updatedAfter: '' });
+assert.equal(overdue.requests.find(request => request.requestId === compensated.requestId).overdue, true);
+fakeNow = 1000;
+
+// Break caught: retention must be a review list only, with distinct 90-day cancelled and one-year completed eligibility.
+const retentionStore = sandbox.oiReadStore_();
+retentionStore.requests.push(
+  { requestId: 'retained-cancelled', receiptNo: 'MM-retained-cancelled', officeId: 'of1', status: 'cancelled', updatedAt: '1970-01-01T00:00:00.000Z' },
+  { requestId: 'retained-completed', receiptNo: 'MM-retained-completed', officeId: 'of1', status: 'completed', completedAt: '1970-01-01T00:00:00.000Z', updatedAt: '1970-01-01T00:00:00.000Z' },
+  { requestId: 'legal-record', receiptNo: 'MM-legal-record', officeId: 'of1', status: 'completed', legalRetention: true, completedAt: '1970-01-01T00:00:00.000Z' },
+);
+sandbox.oiWriteStore_(retentionStore);
+fakeNow = Date.parse('1972-01-01T00:00:00.000Z');
+const retention = postInternal('officeRetentionList', {});
+assert.equal(retention.ok, true);
+assert.deepEqual(JSON.parse(JSON.stringify(retention.requests.filter(request => request.requestId.indexOf('retained-') === 0))), [
+  { requestId: 'retained-cancelled', receiptNo: 'MM-retained-cancelled', officeId: 'of1', status: 'cancelled', retentionReason: 'cancelled-90-days', eligibleAt: '1970-04-01T00:00:00.000Z' },
+  { requestId: 'retained-completed', receiptNo: 'MM-retained-completed', officeId: 'of1', status: 'completed', retentionReason: 'completed-1-year', eligibleAt: '1971-01-01T00:00:00.000Z' },
+]);
+fakeNow = 1000;
+
+// Break caught: a Calendar outage must record a bounded operational error but never turn an urgent receipt into a failure.
+sandbox.CalendarApp = { getDefaultCalendar() { throw new Error('calendar-offline'); } };
+const urgent = sandbox.oiCreate_(sessionOf1, {
+  ...validPayload, idempotencyKey: 'urgent-calendar', urgency: 'urgent', description: 'very-sensitive-description-not-audit',
+}, 30000);
+assert.equal(urgent.ok, true);
+assert.equal(sandbox.oiReadStore_().operationalErrors.some(error => error.code === 'calendar-failed' && error.requestId === urgent.requestId), true);
+
+// Break caught: PIN rotation must invalidate an already issued session; disabling must block new access without deleting requests.
+const admin = postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
+assert.equal(admin.ok, true);
+const rotated = postInternal('officeRotatePin', { officeId: 'of1' });
+assert.equal(rotated.ok, true);
+assert.match(rotated.pin, /^\d{6}$/);
+assert.equal(sandbox.oiVerifySession_(login.sessionToken, 1001), null);
+const freshLogin = sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1000);
+assert.equal(freshLogin.ok, true);
+const beforeDisableCount = sandbox.oiReadStore_().requests.length;
+assert.equal(postInternal('officeDisable', { officeId: 'of1' }).ok, true);
+assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
+assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1002).error, 'invalid-credentials');
+assert.equal(sandbox.oiReadStore_().requests.length, beforeDisableCount);
+
+// Break caught: audit data must remain metadata-only even after requests containing private values and a returned PIN.
+const finalStore = sandbox.oiReadStore_();
+assert.equal(finalStore.audit.length > 0, true);
+for (const row of finalStore.audit) assert.deepEqual(Object.keys(row).sort(), ['action', 'at', 'officeId', 'receiptNo', 'result']);
+const auditText = JSON.stringify(finalStore.audit);
+assert.equal(auditText.includes('very-sensitive-description-not-audit'), false);
+assert.equal(auditText.includes('010-1234-5678'), false);
+assert.equal(auditText.includes(rotated.pin), false);
+assert.equal(auditText.includes(freshLogin.sessionToken), false);
+assert.equal(auditText.includes(jpegB64), false);
 
 console.log('PASS  office intake server authentication');

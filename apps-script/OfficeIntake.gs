@@ -72,7 +72,12 @@ function oiLogin_(payload, now) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    if (Number(cache.get(key) || 0) >= OI_LOGIN_LIMIT) return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' };
+    if (Number(cache.get(key) || 0) >= OI_LOGIN_LIMIT) {
+      var limitedStore = oiReadStore_();
+      oiAuditLocked_(limitedStore, '', '', 'login', 'rate-limited', now);
+      oiWriteStore_(limitedStore);
+      return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' };
+    }
 
     var office = oiOfficeBySlug_(slug);
     var pin = String(payload.pin == null ? '' : payload.pin);
@@ -82,9 +87,15 @@ function oiLogin_(payload, now) {
     var valid = pinFormatValid && matches && oiOfficeActive_(office);
     if (!valid) {
       cache.put(key, String(Number(cache.get(key) || 0) + 1), OI_LOGIN_WINDOW_SECONDS);
+      var failedStore = oiReadStore_();
+      oiAuditLocked_(failedStore, office ? office.id : '', '', 'login', 'invalid-credentials', now);
+      oiWriteStore_(failedStore);
       return oiInvalidCredentials_();
     }
     cache.remove(key);
+    var successStore = oiReadStore_();
+    oiAuditLocked_(successStore, office.id, '', 'login', 'ok', now);
+    oiWriteStore_(successStore);
     return { ok: true, office: oiPublicOffice_(office), sessionToken: oiIssueSession_(office, Number(now)) };
   } finally {
     lock.releaseLock();
@@ -138,16 +149,20 @@ function oiStoreFile_(root) {
   var files = root.getFilesByName(oiStoreName_());
   return files.hasNext() ? files.next() : null;
 }
-function oiEmptyStore_() { return { version: OI_STORE_VERSION, requests: [] }; }
+function oiEmptyStore_() { return { version: OI_STORE_VERSION, requests: [], audit: [], operationalErrors: [] }; }
 function oiReadStore_() {
   var file = oiStoreFile_(oiStoreRoot_());
   if (!file) return oiEmptyStore_();
   var store = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
   if (!store || store.version !== OI_STORE_VERSION || !Array.isArray(store.requests)) throw new Error('office-store-corrupt');
+  if (!Array.isArray(store.audit)) store.audit = [];
+  if (!Array.isArray(store.operationalErrors)) store.operationalErrors = [];
   return store;
 }
 function oiWriteStore_(store) {
   if (!store || store.version !== OI_STORE_VERSION || !Array.isArray(store.requests)) throw new Error('office-store-invalid');
+  if (!Array.isArray(store.audit)) store.audit = [];
+  if (!Array.isArray(store.operationalErrors)) store.operationalErrors = [];
   var root = oiStoreRoot_();
   var file = oiStoreFile_(root);
   var content = JSON.stringify(store);
@@ -161,6 +176,11 @@ function oiOwnRequest_(store, officeId, requestId) {
     var request = store.requests[i];
     if (request.officeId === officeId && request.requestId === requestId) return request;
   }
+  return null;
+}
+function oiRequestById_(store, requestId) {
+  requestId = String(requestId || '');
+  for (var i = 0; i < store.requests.length; i++) if (store.requests[i].requestId === requestId) return store.requests[i];
   return null;
 }
 function oiNow_(now) { return new Date(Number(now)).toISOString(); }
@@ -197,6 +217,38 @@ function oiPublicRequest_(request) {
 function oiOfficeEnabled_() { return PropertiesService.getScriptProperties().getProperty('OFFICE_INTAKE_ENABLED') === '1'; }
 function oiOfficeMutable_(request) { return request.status === 'pending_review' || request.status === 'needs_info'; }
 
+function oiAuditLocked_(store, officeId, receiptNo, action, result, now) {
+  store.audit = Array.isArray(store.audit) ? store.audit : [];
+  store.audit.push({
+    officeId: oiText_(officeId, 120), receiptNo: oiText_(receiptNo, 80),
+    action: oiText_(action, 40), result: oiText_(result, 80), at: oiNow_(now)
+  });
+  if (store.audit.length > 1000) store.audit = store.audit.slice(-1000);
+}
+function oiAudit_(officeId, receiptNo, action, result, now) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    oiAuditLocked_(store, officeId, receiptNo, action, result, now);
+    oiWriteStore_(store);
+  } finally { lock.releaseLock(); }
+}
+function oiOperationalErrorLocked_(store, code, requestId, now) {
+  store.operationalErrors = Array.isArray(store.operationalErrors) ? store.operationalErrors : [];
+  store.operationalErrors.push({ code: oiText_(code, 60), requestId: oiText_(requestId, 120), at: oiNow_(now) });
+  if (store.operationalErrors.length > 100) store.operationalErrors = store.operationalErrors.slice(-100);
+}
+function oiOperationalError_(code, requestId, now) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    oiOperationalErrorLocked_(store, code, requestId, now);
+    oiWriteStore_(store);
+  } finally { lock.releaseLock(); }
+}
+
 function oiCreate_(session, payload, now) {
   if (!oiOfficeEnabled_()) return { ok: false, error: 'office-disabled' };
   var validated = oiValidateCreate_(payload);
@@ -205,6 +257,7 @@ function oiCreate_(session, payload, now) {
   if (!officeId) return { ok: false, error: 'session-expired' };
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  var createdRequest = null;
   try {
     var store = oiReadStore_();
     for (var i = 0; i < store.requests.length; i++) {
@@ -241,10 +294,13 @@ function oiCreate_(session, payload, now) {
       updatedAt: at
     };
     store.requests.push(request);
+    oiAuditLocked_(store, officeId, request.receiptNo, 'create', 'ok', now);
     oiWriteStore_(store);
+    createdRequest = request;
     return oiCreateResult_(request);
   } finally {
     lock.releaseLock();
+    if (createdRequest && createdRequest.urgency === 'urgent') oiNotifyUrgent_(createdRequest);
   }
 }
 
@@ -299,6 +355,7 @@ function oiUpdate_(session, payload, now) {
     request.residentContact = value.residentContact;
     request.preferredVisitDate = value.preferredVisitDate;
     request.updatedAt = oiNow_(now);
+    oiAuditLocked_(store, officeId, request.receiptNo, 'update', 'ok', now);
     oiWriteStore_(store);
     return { ok: true, requestId: request.requestId, status: request.status, updatedAt: request.updatedAt };
   } finally {
@@ -318,6 +375,7 @@ function oiCancel_(session, payload, now) {
     if (!oiOfficeMutable_(request)) return { ok: false, error: 'invalid-status' };
     request.status = 'cancelled';
     request.updatedAt = oiNow_(now);
+    oiAuditLocked_(store, officeId, request.receiptNo, 'cancel', 'ok', now);
     oiWriteStore_(store);
     return { ok: true, requestId: request.requestId, status: request.status, updatedAt: request.updatedAt };
   } finally {
@@ -365,6 +423,7 @@ function oiUpload_(session, payload, now) {
     var photo = { fileId: file.getId(), name: name, mimeType: mimeType, size: bytes.length, createdAt: createdAt };
     request.photos.push(photo);
     request.updatedAt = createdAt;
+    oiAuditLocked_(store, officeId, request.receiptNo, 'upload', 'ok', now);
     try {
       oiWriteStore_(store);
     } catch (err) {
@@ -375,4 +434,209 @@ function oiUpload_(session, payload, now) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function oiInbox_(payload) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var cursor = oiText_(payload.updatedAfter, 40);
+  var now = Date.now();
+  var store = oiReadStore_();
+  var requests = store.requests.filter(function (request) {
+    return !cursor || String(request.updatedAt || '') > cursor;
+  }).sort(function (a, b) {
+    return String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
+  }).slice(0, 100).map(function (request) {
+    var copy = {};
+    Object.keys(request).forEach(function (key) { copy[key] = request[key]; });
+    copy.overdue = request.status === 'pending_review' && isFinite(Date.parse(request.createdAt || '')) && now - Date.parse(request.createdAt) >= 24 * 60 * 60 * 1000;
+    return copy;
+  });
+  return { ok: true, requests: requests, operationalErrors: store.operationalErrors.slice(-100) };
+}
+
+function oiAccept_(payload, now) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var orderId = oiText_(payload.hyeonjangOrderId, 120);
+  if (!orderId) return { ok: false, error: 'invalid-input' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    var request = oiRequestById_(store, payload.requestId);
+    if (!request) return { ok: false, error: 'not-found' };
+    if (request.hyeonjangOrderId) {
+      if (request.hyeonjangOrderId !== orderId) return { ok: false, error: 'already-linked' };
+      return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
+    }
+    if (!oiCanTransition_(request.status, 'accepted', 'internal')) return { ok: false, error: 'invalid-transition' };
+    request.hyeonjangOrderId = orderId;
+    request.status = 'accepted';
+    request.updatedAt = oiNow_(now);
+    oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'ok', now);
+    oiWriteStore_(store);
+    return { ok: true, requestId: request.requestId, hyeonjangOrderId: orderId, status: request.status };
+  } finally { lock.releaseLock(); }
+}
+
+function oiStatusResult_(request) {
+  return {
+    ok: true, requestId: request.requestId, receiptNo: request.receiptNo, status: request.status,
+    visitAt: request.visitAt || null, publicAmount: request.publicAmount == null ? null : request.publicAmount,
+    completionReport: request.completionReport || null, updatedAt: request.updatedAt
+  };
+}
+function oiSetStatus_(payload, now) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var next = oiText_(payload.status, 40);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    var request = oiRequestById_(store, payload.requestId);
+    if (!request) return { ok: false, error: 'not-found' };
+    if (!oiCanTransition_(request.status, next, 'internal')) return { ok: false, error: 'invalid-transition' };
+    request.status = next;
+    request.visitAt = payload.visitAt || request.visitAt || null;
+    request.publicAmount = Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : request.publicAmount;
+    request.completionReport = payload.completionReport ? {
+      summary: oiText_(payload.completionReport.summary, 800),
+      photoIds: (payload.completionReport.photoIds || []).slice(0, 10)
+    } : request.completionReport;
+    request.updatedAt = oiNow_(now);
+    oiAuditLocked_(store, request.officeId, request.receiptNo, 'status', 'ok', now);
+    oiWriteStore_(store);
+    return oiStatusResult_(request);
+  } finally { lock.releaseLock(); }
+}
+
+function oiSaveConfig_(config) {
+  PropertiesService.getScriptProperties().setProperty('OFFICE_CONFIG_JSON', JSON.stringify(config));
+}
+function oiAdminUpsert_(payload, now) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var id = oiText_(payload.id, 120);
+  var slug = oiText_(payload.slug, 80);
+  var complexName = oiText_(payload.complexName, 120);
+  if (!id || !slug || !complexName) return { ok: false, error: 'invalid-input' };
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var config = oiConfig_();
+    var office = null;
+    for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === id) office = config.offices[i];
+    if (!office) {
+      office = { id: id, sessionVersion: 1 };
+      config.offices.push(office);
+    }
+    office.slug = slug;
+    office.complexName = complexName;
+    if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) office.enabled = payload.enabled !== false;
+    if (office.disabled === true && office.enabled !== false) office.disabled = false;
+    office.updatedAt = oiNow_(now);
+    oiSaveConfig_(config);
+    var store = oiReadStore_();
+    oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now);
+    oiWriteStore_(store);
+    return { ok: true, office: oiPublicOffice_(office) };
+  } finally { lock.releaseLock(); }
+}
+function oiPinFromUuid_(uuid) {
+  var text = String(uuid || '');
+  var n = 0;
+  for (var i = 0; i < text.length; i++) n = ((n * 31) + text.charCodeAt(i)) >>> 0;
+  return ('000000' + String(n % 1000000)).slice(-6);
+}
+function oiRotatePin_(payload, now) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var officeId = oiText_(payload.officeId || payload.id, 120);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var config = oiConfig_();
+    var office = null;
+    for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
+    if (!office) return { ok: false, error: 'not-found' };
+    var entropy = Utilities.getUuid();
+    var pin = oiPinFromUuid_(entropy);
+    office.pinSalt = String(entropy) + ':' + String(now);
+    office.pinHash = oiHashPin_(pin, office.pinSalt);
+    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+    office.updatedAt = oiNow_(now);
+    oiSaveConfig_(config);
+    var store = oiReadStore_();
+    oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now);
+    oiWriteStore_(store);
+    return { ok: true, office: oiPublicOffice_(office), pin: pin };
+  } finally { lock.releaseLock(); }
+}
+function oiDisable_(payload, now) {
+  payload = payload && typeof payload === 'object' ? payload : {};
+  var officeId = oiText_(payload.officeId || payload.id, 120);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var config = oiConfig_();
+    var office = null;
+    for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
+    if (!office) return { ok: false, error: 'not-found' };
+    office.enabled = false;
+    office.disabled = true;
+    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+    office.updatedAt = oiNow_(now);
+    oiSaveConfig_(config);
+    var store = oiReadStore_();
+    oiAuditLocked_(store, office.id, '', 'disable', 'ok', now);
+    oiWriteStore_(store);
+    return { ok: true, office: oiPublicOffice_(office) };
+  } finally { lock.releaseLock(); }
+}
+
+function oiRetentionCandidates_(now) {
+  now = Number(now);
+  if (!isFinite(now)) return [];
+  var ninetyDays = 90 * 24 * 60 * 60 * 1000;
+  var oneYear = 365 * 24 * 60 * 60 * 1000;
+  var candidates = [];
+  oiReadStore_().requests.forEach(function (request) {
+    if (request.legalRetention === true) return;
+    var at = request.status === 'completed' ? (request.completedAt || request.updatedAt) : request.updatedAt;
+    var eligibleAt = Date.parse(at || '');
+    var reason = '';
+    if (request.status === 'cancelled' || request.status === 'declined') { eligibleAt += ninetyDays; reason = 'cancelled-90-days'; }
+    else if (request.status === 'completed') { eligibleAt += oneYear; reason = 'completed-1-year'; }
+    else return;
+    if (isFinite(eligibleAt) && now >= eligibleAt) candidates.push({
+      requestId: request.requestId, receiptNo: request.receiptNo, officeId: request.officeId,
+      status: request.status, retentionReason: reason, eligibleAt: new Date(eligibleAt).toISOString()
+    });
+  });
+  candidates.sort(function (a, b) { return String(a.eligibleAt).localeCompare(String(b.eligibleAt)); });
+  return candidates;
+}
+
+function oiNotifyUrgent_(request) {
+  if (!request || request.urgency !== 'urgent') return { ok: true };
+  try {
+    var office = oiOfficeById_(request.officeId);
+    var title = '[긴급 관리사무소 접수] ' + oiText_(office && office.complexName, 120) + ' ' + oiText_(request.location, 120);
+    var start = new Date();
+    CalendarApp.getDefaultCalendar().createEvent(title, start, new Date(start.getTime() + 30 * 60 * 1000));
+    return { ok: true };
+  } catch (_) {
+    try { oiOperationalError_('calendar-failed', request && request.requestId, Date.now()); } catch (_) {}
+    return { ok: false, error: 'calendar-failed' };
+  }
+}
+
+function oiHandleInternalAction_(action, req) {
+  var payload = req && req.payload && typeof req.payload === 'object' ? req.payload : {};
+  var now = Date.now();
+  if (action === 'officeInbox') return oiInbox_(payload);
+  if (action === 'officeAccept') return oiAccept_(payload, now);
+  if (action === 'officeSetStatus') return oiSetStatus_(payload, now);
+  if (action === 'officeAdminUpsert') return oiAdminUpsert_(payload, now);
+  if (action === 'officeRotatePin') return oiRotatePin_(payload, now);
+  if (action === 'officeDisable') return oiDisable_(payload, now);
+  if (action === 'officeRetentionList') return { ok: true, requests: oiRetentionCandidates_(now) };
+  return { ok: false, error: 'bad-request' };
 }
