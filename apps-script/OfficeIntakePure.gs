@@ -55,10 +55,8 @@ function oiValidateCreate_(p) {
     preferredVisitDate: oiText_(p.preferredVisitDate, 10),
     privacyConsent: p.privacyConsent === true
   };
-  if (Object.prototype.hasOwnProperty.call(p, 'expectedUploadIds')) {
-    value.expectedUploadIds = oiExpectedUploadIds_(p.expectedUploadIds);
-    if (value.expectedUploadIds === null) return { ok: false, error: 'invalid-input', field: 'expectedUploadIds' };
-  }
+  value.expectedUploadIds = oiExpectedUploadIds_(p.expectedUploadIds);
+  if (value.expectedUploadIds === null) return { ok: false, error: 'invalid-input', field: 'expectedUploadIds' };
   var required = [['idempotencyKey', value.idempotencyKey], ['unit', value.unit], ['location', value.location], ['description', value.description]];
   for (var i = 0; i < required.length; i++) if (!required[i][1]) return { ok: false, error: 'invalid-input', field: required[i][0] };
   if (OI_ISSUE_TYPES.indexOf(value.issueType) < 0) return { ok: false, error: 'invalid-input', field: 'issueType' };

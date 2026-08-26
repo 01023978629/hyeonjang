@@ -390,8 +390,10 @@ const validPayload = {
   idempotencyKey: 'retry-key-1', unit: '103동 1204호', location: '욕실 천장', issueType: '누수', pipeType: '미확정',
   urgency: 'normal', description: '천장에서 물이 떨어집니다.',
   officeContact: { name: '홍길동', phone: '01012345678' }, residentContact: null,
-  preferredVisitDate: '1970-01-01', privacyConsent: true,
+  preferredVisitDate: '1970-01-01', expectedUploadIds: [], privacyConsent: true,
 };
+const missingExpectedPayload = { ...validPayload }; delete missingExpectedPayload.expectedUploadIds;
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiCreate_(sessionOf1, missingExpectedPayload, 9999))), { ok:false, error:'invalid-input', field:'expectedUploadIds' }, 'new officeCreate cannot omit the upload-slot declaration');
 function uploadUuid(number) {
   return '00000000-0000-4000-8000-' + String(number).padStart(12, '0');
 }
@@ -404,6 +406,17 @@ assert.equal(sandbox.oiGet_(sessionOf2, first.requestId).error, 'not-found');
 
 // Break caught: inherited Object keys must never become image MIME types.
 const jpegB64 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]).toString('base64');
+// Stored requests from before slot declarations remain usable only through the
+// legacy upload/accept paths; this does not weaken the required new-create gate.
+const legacyContractRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey:'legacy-contract' }, 100015));
+const legacyContractStore = sandbox.oiReadStore_();
+delete legacyContractStore.requests.find(request => request.requestId === legacyContractRequest.requestId).expectedUploadIds;
+sandbox.oiWriteStore_(legacyContractStore);
+assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
+  requestId:legacyContractRequest.requestId,uploadId:uploadUuid(70),name:'legacy-contract.jpg',mimeType:'image/jpeg',dataB64:jpegB64
+},100016)).ok,true,'legacy stored request can upload without a declaration membership gate');
+assert.equal(locked(() => sandbox.oiAccept_({requestId:legacyContractRequest.requestId,hyeonjangOrderId:'legacy-contract-order'},100017)).status,'accepted','legacy stored request can accept without attachedUploadIds');
+
 assert.equal(sandbox.oiUpload_(sessionOf1, {
   requestId: first.requestId, uploadId: uploadUuid(1), name: 'prototype.bin', mimeType: 'toString', dataB64: jpegB64
 }, 10002).error, 'unsupported-type');
@@ -424,7 +437,7 @@ assert.equal(sandbox.oiUpload_(sessionOf1, {
 // RED: the portal declares every canonical upload slot at create time.  The
 // internal app cannot accept the request until every declared slot is both
 // stored and explicitly acknowledged as attached to this exact order.
-const declaredUploadIds = [uploadUuid(50), uploadUuid(51)];
+const declaredUploadIds = ['a0000000-0000-4000-8000-000000000050', 'b0000000-0000-4000-8000-000000000051'];
 const declaredRequest = locked(() => sandbox.oiCreate_(sessionOf1, {
   ...validPayload, idempotencyKey: 'declared-upload-race', expectedUploadIds: declaredUploadIds
 }, 10004));
@@ -447,6 +460,17 @@ assert.equal(sandbox.oiInbox_({ updatedAfter: '' }).requests.some(request => req
 const declaredSecond = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: declaredRequest.requestId, uploadId: declaredUploadIds[1], name: 'declared-2.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 10008));
+for (const attachedUploadIds of [
+  [declaredUploadIds[0], declaredUploadIds[0]],
+  declaredUploadIds.concat(uploadUuid(52)),
+  [declaredUploadIds[0].toUpperCase(), declaredUploadIds[1]],
+  ['00000000-0000-3000-8000-000000000050', declaredUploadIds[1]],
+  Array.from({length:6}, (_,index) => uploadUuid(70 + index)),
+  'not-an-array'
+]) {
+  const malformedAck = locked(() => sandbox.oiAccept_({ requestId:declaredRequest.requestId, hyeonjangOrderId:'declared-order', attachedUploadIds }, 100081));
+  assert.deepEqual(JSON.parse(JSON.stringify({error:malformedAck.error,field:malformedAck.field})), {error:'invalid-input',field:'attachedUploadIds'}, 'accept attachment ack uses the same strict canonical UUIDv4 parser: '+JSON.stringify(attachedUploadIds)+' -> '+JSON.stringify(malformedAck));
+}
 assert.equal(locked(() => sandbox.oiAccept_({
   requestId: declaredRequest.requestId, hyeonjangOrderId: 'declared-order', attachedUploadIds: [declaredUploadIds[0]]
 }, 10009)).error, 'photos-pending', 'accept is fail-closed until every stored slot is attached');
@@ -463,7 +487,7 @@ declaredStored = sandbox.oiReadStore_().requests.find(request => request.request
 assert.deepEqual(declaredStored.photos.map(photo => photo.fileId), [declaredFirst.fileId, declaredSecond.fileId]);
 assert.equal(sandbox.oiInbox_({ updatedAfter: '' }).requests.some(request => request.requestId === declaredRequest.requestId), false, 'fully attached accepted request leaves the actionable inbox');
 
-const photoBatch = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'photo-batch' }, 20000));
+const photoBatch = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'photo-batch', expectedUploadIds:[uploadUuid(3),uploadUuid(4),uploadUuid(5),uploadUuid(14),uploadUuid(15)] }, 20000));
 const exactTwoMiB = Buffer.alloc(2 * 1024 * 1024);
 exactTwoMiB[0] = 0xff; exactTwoMiB[1] = 0xd8; exactTwoMiB[2] = 0xff;
 const jpgUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
@@ -635,18 +659,18 @@ for (let i = 4; i <= 5; i++) {
 }
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: photoBatch.requestId, uploadId: uploadUuid(16), name: 'six.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 20020)).error, 'too-many-files');
+}, 20020)).error, 'unexpected-upload-id');
 
 // Break caught: a client retry needs one required, canonical upload ID that is
 // scoped to its request, persisted with the photo, and replayed without a second file or audit.
-const retryRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-retry' }, 20021));
+const retryUploadId = 'A0B1C2D3-E4F5-4A67-8B90-1234567890AB';
+const retryRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-retry', expectedUploadIds:[retryUploadId.toLowerCase()] }, 20021));
 assert.equal(sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, name: 'missing-id.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20022).error, 'invalid-upload-id');
 assert.equal(sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, uploadId: 'not-a-uuid', name: 'bad-id.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20023).error, 'invalid-upload-id');
-const retryUploadId = 'A0B1C2D3-E4F5-4A67-8B90-1234567890AB';
 const firstRetryUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, uploadId: retryUploadId, name: 'untrusted-client-name.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20024));
@@ -674,14 +698,14 @@ assert.deepEqual({
 assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId))), retryRequestBeforeReplay);
 assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId).photos[0].uploadId, retryUploadId.toLowerCase());
 
-const scopedRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-id-scope' }, 20026));
+const scopedRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-id-scope', expectedUploadIds:[retryUploadId.toLowerCase()] }, 20026));
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: scopedRequest.requestId, uploadId: retryUploadId, name: 'same-id-different-request.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20027)).ok, true);
 
 // Break caught: retries of the five accepted IDs remain safe, but a sixth distinct ID is rejected.
-const limitRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-limit' }, 20028));
 const limitUploads = [uploadUuid(30), uploadUuid(31), uploadUuid(32), uploadUuid(33), uploadUuid(34)];
+const limitRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-limit', expectedUploadIds:limitUploads }, 20028));
 for (let i = 0; i < limitUploads.length; i++) {
   assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
     requestId: limitRequest.requestId, uploadId: limitUploads[i], name: 'limit-' + i + '.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
@@ -694,26 +718,26 @@ assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
 assert.equal(drive.files.filter(file => !file.trashed).length, limitRetryFileCount);
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: limitRequest.requestId, uploadId: uploadUuid(35), name: 'limit-sixth.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 20036)).error, 'too-many-files');
+}, 20036)).error, 'unexpected-upload-id');
 
 // Break caught: only mutable requests accept a new upload ID; final requests can replay an existing ID only.
-const needsInfoRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'needs-info-upload' }, 20037));
+const needsInfoRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'needs-info-upload', expectedUploadIds:[uploadUuid(42)] }, 20037));
 assert.equal(locked(() => sandbox.oiSetStatus_({ requestId: needsInfoRequest.requestId, status: 'needs_info', reason: '사진 보완' }, 20038)).status, 'needs_info');
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: needsInfoRequest.requestId, uploadId: uploadUuid(42), name: 'needs-info.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20039)).ok, true);
-const acceptedRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'accepted-upload' }, 20037));
+const acceptedRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'accepted-upload', expectedUploadIds:[uploadUuid(36)] }, 20037));
 const acceptedUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: acceptedRequest.requestId, uploadId: uploadUuid(36), name: 'accepted-before.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20038));
-assert.equal(locked(() => sandbox.oiAccept_({ requestId: acceptedRequest.requestId, hyeonjangOrderId: 'accepted-upload-order' }, 20039)).status, 'accepted');
+assert.equal(locked(() => sandbox.oiAccept_({ requestId: acceptedRequest.requestId, hyeonjangOrderId: 'accepted-upload-order', attachedUploadIds:[uploadUuid(36)] }, 20039)).status, 'accepted');
 assert.deepEqual(JSON.parse(JSON.stringify(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: acceptedRequest.requestId, uploadId: uploadUuid(36), name: 'accepted-retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20040)))), JSON.parse(JSON.stringify(acceptedUpload)));
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: acceptedRequest.requestId, uploadId: uploadUuid(37), name: 'accepted-new.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 20041)).error, 'invalid-status');
-const cancelledRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'cancelled-upload' }, 20042));
+}, 20041)).error, 'unexpected-upload-id');
+const cancelledRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'cancelled-upload', expectedUploadIds:[uploadUuid(38)] }, 20042));
 const cancelledUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: cancelledRequest.requestId, uploadId: uploadUuid(38), name: 'cancelled-before.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20043));
@@ -723,10 +747,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(locked(() => sandbox.oiUpload_(sessio
 }, 20045)))), JSON.parse(JSON.stringify(cancelledUpload)));
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: cancelledRequest.requestId, uploadId: uploadUuid(39), name: 'cancelled-new.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
-}, 20046)).error, 'invalid-status');
+}, 20046)).error, 'unexpected-upload-id');
 
 // Break caught: a pre-idempotency stored photo remains visible and leaves room for a new tracked upload.
-const legacyPhotoRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'legacy-photo' }, 20047));
+const legacyPhotoRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'legacy-photo', expectedUploadIds:[uploadUuid(40)] }, 20047));
 const legacyStore = sandbox.oiReadStore_();
 legacyStore.requests.find(request => request.requestId === legacyPhotoRequest.requestId).photos = [{
   fileId: 'legacy-photo-id', name: 'legacy.jpg', mimeType: 'image/jpeg', size: 10, createdAt: '1970-01-01T00:00:00.000Z'
@@ -739,7 +763,7 @@ assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
 }, 20048)).name, legacyPhotoRequest.receiptNo + '_02.jpg');
 
 // Break caught: checking encoded text instead of decoded bytes would allow an image above the 2 MiB limit.
-const tooLargeRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'too-large' }, 20030));
+const tooLargeRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'too-large', expectedUploadIds:[uploadUuid(17)] }, 20030));
 const tooLarge = Buffer.alloc(2 * 1024 * 1024 + 1);
 tooLarge[0] = 0xff; tooLarge[1] = 0xd8; tooLarge[2] = 0xff;
 assert.equal(sandbox.oiUpload_(sessionOf1, {
@@ -750,8 +774,8 @@ assert.equal(sandbox.oiUpload_(sessionOf2, {
 }, 20032).error, 'not-found');
 
 // Break caught: store-write failure after Drive create must not leave a retry-visible orphan photo.
-const compensated = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'compensated' }, 20040));
 const compensatedUploadId = uploadUuid(19);
+const compensated = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'compensated', expectedUploadIds:[compensatedUploadId] }, 20040));
 drive.failStoreWrites = 1;
 lockedThrow(() => sandbox.oiUpload_(sessionOf1, {
   requestId: compensated.requestId, uploadId: compensatedUploadId, name: 'will-fail.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
@@ -802,7 +826,7 @@ assert.equal(newestFifty[0].requestId, 'cap-50');
 assert.equal(newestFifty.some(request => request.requestId === 'cap-0'), false);
 
 // Break caught: public office actions must route through the Task 2 session, not the legacy APP_TOKEN gate.
-const routedCreate = postOffice('officeCreate', login.sessionToken, { ...validPayload, idempotencyKey: 'public-route' });
+const routedCreate = postOffice('officeCreate', login.sessionToken, { ...validPayload, idempotencyKey: 'public-route', expectedUploadIds:[uploadUuid(41)] });
 assert.equal(routedCreate.ok, true);
 assert.equal(postOffice('officeUpdate', login.sessionToken, {
   requestId: routedCreate.requestId, description: '공개 경로 수정'
@@ -822,7 +846,7 @@ function postInternal(action, payload) {
 const inboxRoute = postInternal('officeInbox', { updatedAfter: '' });
 assert.equal(inboxRoute.ok, true);
 assert.equal(inboxRoute.requests.some(request => request.requestId === first.requestId), true);
-const linked = postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-1' });
+const linked = postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-1', attachedUploadIds:[] });
 assert.equal(linked.ok, true);
 assert.equal(postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-1' }).hyeonjangOrderId, 'apt-1');
 assert.equal(postInternal('officeAccept', { requestId: first.requestId, hyeonjangOrderId: 'apt-2' }).error, 'already-linked');

@@ -364,7 +364,7 @@ function oiCreate_(session, payload, now) {
       createdAt: at,
       updatedAt: at
     };
-    if (Object.prototype.hasOwnProperty.call(validated.value, 'expectedUploadIds')) request.expectedUploadIds = validated.value.expectedUploadIds.slice();
+    request.expectedUploadIds = validated.value.expectedUploadIds.slice();
     store.requests.push(request);
     oiAuditLocked_(store, officeId, request.receiptNo, 'create', 'ok', now);
     oiWriteStore_(store);
@@ -412,6 +412,7 @@ function oiUpdate_(session, payload, now) {
       officeContact: payload.officeContact == null ? request.officeContact : payload.officeContact,
       residentContact: Object.prototype.hasOwnProperty.call(payload, 'residentContact') ? payload.residentContact : request.residentContact,
       preferredVisitDate: payload.preferredVisitDate == null ? request.preferredVisitDate : payload.preferredVisitDate,
+      expectedUploadIds: Array.isArray(request.expectedUploadIds) ? request.expectedUploadIds.slice() : [],
       privacyConsent: payload.privacyConsent == null ? true : payload.privacyConsent
     };
     var validated = oiValidateCreate_(source);
@@ -628,6 +629,12 @@ function oiAccept_(payload, now) {
       if (oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now)) oiWriteStore_(store);
       return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
     }
+    if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
+      oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
+      oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'invalid-transition', now);
+      oiWriteStore_(store);
+      return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null, projectionRevision: Number(request.projectionRevision || 0) };
+    }
     if (Object.prototype.hasOwnProperty.call(request, 'expectedUploadIds')) {
       var attached = oiExpectedUploadIds_(payload.attachedUploadIds);
       if (attached === null) return { ok: false, error: 'invalid-input', field: 'attachedUploadIds' };
@@ -637,12 +644,6 @@ function oiAccept_(payload, now) {
       for (var x = 0; x < expected.length; x++) {
         if (!uploaded[expected[x]] || attached.indexOf(expected[x]) < 0) return { ok: false, error: 'photos-pending', status: request.status, hyeonjangOrderId: null, projectionRevision: Number(request.projectionRevision || 0) };
       }
-    }
-    if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
-      oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
-      oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'invalid-transition', now);
-      oiWriteStore_(store);
-      return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null, projectionRevision: Number(request.projectionRevision || 0) };
     }
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';

@@ -42,14 +42,16 @@ const TOKEN = 'test-token-123';
     const before = await cloudOfficeAdmin('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
     const rotated = await officeIntakeOfficeAccess('of1', 'rotate');
     const after = await cloudOfficeAdmin('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true });
+    const server = await (await fetch(__relay.url + '/__state')).json();
     const persisted = JSON.stringify({ state, local: Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]) });
-    return { visible, before, rotated, after, persistedPin: /\b\d{6}\b/.test(persisted) };
+    return { visible, before, rotated, after, persistedPin: /\b\d{6}\b/.test(persisted), responseVersionFields:[before.office,rotated.office,after.office].map(office=>Object.hasOwn(office,'sessionVersion')), storedSessionVersion:server.officeConfig[0].sessionVersion };
   });
   assert.equal(officeAccess.visible, true, 'office list exposes the access administration control');
   assert.equal(officeAccess.before.ok, true, 'admin upsert accepts the stable aptOffices id');
   assert.equal(officeAccess.rotated.ok, true, 'PIN rotation returns a one-time result');
   assert.match(officeAccess.rotated.pin, /^\d{6}$/, 'PIN rotation result is a six digit display value');
-  assert.equal(officeAccess.after.office.sessionVersion, officeAccess.before.office.sessionVersion + 1, 'PIN rotation increments server sessionVersion');
+  assert.deepEqual(officeAccess.responseVersionFields,[false,false,false],'admin API projection matches production and never exposes sessionVersion');
+  assert.equal(officeAccess.storedSessionVersion,2,'PIN rotation still increments the server-only sessionVersion');
   assert.equal(officeAccess.persistedPin, false, 'one-time PIN must not enter serialized state or local storage');
 
   const disablePersist = await page.evaluate(async () => {
@@ -76,6 +78,14 @@ const TOKEN = 'test-token-123';
     return { applied, local:office.intakeEnabled, sentEnabled:calls[0]&&calls[0].payload.enabled };
   });
   assert.deepEqual(partialAdmin, { applied:false, local:false, sentEnabled:false }, 'missing enabled is never interpreted as enabled=true');
+
+  await fetch(MOCK + '/__officeLegacyConfig?officeId=of1&disabled=0');
+  const legacyActive = await page.evaluate(() => cloudOfficeAdmin('officeRotatePin',{officeId:'of1'}));
+  await fetch(MOCK + '/__officeLegacyConfig?officeId=of1&disabled=1');
+  const legacyDisabled = await page.evaluate(() => cloudOfficeAdmin('officeRotatePin',{officeId:'of1'}));
+  assert.deepEqual({active:legacyActive.office.enabled,disabled:legacyDisabled.office.enabled},{active:true,disabled:false},'mock admin projection matches production legacy enabled/disabled semantics');
+  const legacyReenabled = await page.evaluate(() => cloudOfficeAdmin('officeAdminUpsert',{id:'of1',slug:'sample-apt',complexName:'예시 아파트',enabled:true}));
+  assert.equal(legacyReenabled.office.enabled,true,'admin upsert clears the legacy disabled flag when explicitly enabled');
 
   const merged = await page.evaluate(async () => {
     const d = officeIntakeData();
@@ -130,37 +140,64 @@ const TOKEN = 'test-token-123';
   ], 'authorization error stops a continuous outbox retry and leaves later work untouched');
 
   // RED: invalid completion-photo manifests are semantic, user-correctable
-  // blockers.  They stay durable and visible, but do not poison unrelated FIFO
-  // work; a strictly newer corrected projection supersedes the blocked item.
+  // blockers.  Strict FIFO stops at the first blocked revision.  A strictly
+  // newer correction atomically removes that blocker and every obsolete later
+  // revision for the same request while preserving unrelated work order.
   const blockedCompletion = await page.evaluate(async () => {
     state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
     officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:2, completionPhotoIds:['missing-drive-id'], completionReport:{summary:'완료',photoIds:['missing-drive-id'],publicPhotoIds:[]} });
+    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:3, completionPhotoIds:['still-missing'], completionReport:{summary:'두번째',photoIds:['still-missing'],publicPhotoIds:[]} });
     officeIntakeQueue('officeSetStatus', { requestId:'other-order', status:'visit_scheduled', projectionRevision:1 });
-    const original = window.relayCall; let blockedCalls=0, otherCalls=0;
+    const original = window.relayCall, statusCalls=[];
     window.relayCall = async function(action,payload){
-      if(payload.requestId==='blocked-photo'){ blockedCalls++; return {ok:false,error:'invalid-completion-photos'}; }
-      otherCalls++; return {ok:true};
+      statusCalls.push(payload.requestId==='blocked-photo'?payload.projectionRevision:'other');
+      if(payload.requestId==='blocked-photo')return {ok:false,error:'invalid-completion-photos'};
+      return {ok:true};
     };
     const firstSent=await officeIntakeFlush();
-    const first=officeIntakeData().outbox.map(item=>({requestId:item.payload.requestId,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));
+    const first=officeIntakeData().outbox.map(item=>({requestId:item.payload.requestId,revision:item.payload.projectionRevision,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));
     const secondSent=await officeIntakeFlush();
     const html=officeIntakeOperationalErrorHtml();
-    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:3, completionPhotoIds:[], completionReport:{summary:'수정 완료',photoIds:[],publicPhotoIds:[]} });
-    const afterCorrection=officeIntakeData().outbox.map(item=>({revision:item.payload.projectionRevision,blocked:item.blocked===true}));
-    window.relayCall = async function(){ return {ok:true}; };
+    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:4, completionPhotoIds:[], completionReport:{summary:'수정 완료',photoIds:[],publicPhotoIds:[]} });
+    const afterCorrection=officeIntakeData().outbox.map(item=>({requestId:item.payload.requestId,revision:item.payload.projectionRevision,blocked:item.blocked===true}));
+    window.relayCall = async function(action,payload){statusCalls.push(payload.requestId==='blocked-photo'?payload.projectionRevision:'other');return {ok:true};};
     const correctedSent=await officeIntakeFlush();
     window.relayCall = original;
-    return {firstSent,first,secondSent,blockedCalls,otherCalls,html,afterCorrection,correctedSent,remaining:officeIntakeData().outbox.length};
+    return {firstSent,first,secondSent,statusCalls,html,afterCorrection,correctedSent,remaining:officeIntakeData().outbox.length};
   });
-  assert.equal(blockedCompletion.firstSent, 1, 'unrelated later outbox work proceeds past the semantic blocker');
-  assert.deepEqual(blockedCompletion.first, [{requestId:'blocked-photo',blocked:true,code:'invalid-completion-photos',attempts:1}], 'blocked manifest stays durable and explicit');
+  assert.equal(blockedCompletion.firstSent, 0, 'strict FIFO sends nothing after the semantic blocker');
+  assert.deepEqual(blockedCompletion.first, [
+    {requestId:'blocked-photo',revision:2,blocked:true,code:'invalid-completion-photos',attempts:1},
+    {requestId:'blocked-photo',revision:3,blocked:false,code:'',attempts:0},
+    {requestId:'other-order',revision:1,blocked:false,code:'',attempts:0}
+  ], 'blocked head and every dependent/unrelated later item remain durable');
   assert.equal(blockedCompletion.secondSent, 0, 'blocked item is not retried automatically');
-  assert.equal(blockedCompletion.blockedCalls, 1, 'semantic blocker reaches relay only once before correction');
-  assert.equal(blockedCompletion.otherCalls, 1, 'unrelated item is delivered exactly once');
+  assert.deepEqual(blockedCompletion.statusCalls.slice(0,1), [2], 'rev3 is never probed while rev2 is blocked');
   assert.match(blockedCompletion.html, /사진.*수정/, 'UI explains that photo selection or manifest correction is required');
-  assert.deepEqual(blockedCompletion.afterCorrection, [{revision:3,blocked:false}], 'strictly newer corrected projection explicitly supersedes the blocked revision');
-  assert.equal(blockedCompletion.correctedSent, 1);
+  assert.deepEqual(blockedCompletion.afterCorrection, [
+    {requestId:'other-order',revision:1,blocked:false},
+    {requestId:'blocked-photo',revision:4,blocked:false}
+  ], 'correction removes rev2 and obsolete rev3 while preserving unrelated FIFO');
+  assert.equal(blockedCompletion.correctedSent, 2);
+  assert.deepEqual(blockedCompletion.statusCalls, [2,'other',4], 'only the latest corrected revision is sent after the blocker');
   assert.equal(blockedCompletion.remaining, 0, 'corrected projection flushes successfully without false success for the blocked revision');
+
+  const inFlightCorrection = await page.evaluate(async () => {
+    state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+    officeIntakeQueue('officeSetStatus',{requestId:'in-flight-photo',status:'completed',projectionRevision:2,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}});
+    const original=window.relayCall,calls=[];let release;
+    window.relayCall=function(action,payload){calls.push(payload.projectionRevision);return new Promise(resolve=>{release=resolve;});};
+    const flushing=officeIntakeFlush();
+    officeIntakeQueue('officeSetStatus',{requestId:'in-flight-photo',status:'completed',projectionRevision:3,completionPhotoIds:[],completionReport:{summary:'수정',photoIds:[],publicPhotoIds:[]}});
+    release({ok:false,error:'invalid-completion-photos'});
+    const firstSent=await flushing;
+    const afterFirst=officeIntakeData().outbox.map(item=>({revision:item.payload.projectionRevision,blocked:item.blocked===true}));
+    const html=officeIntakeOperationalErrorHtml();
+    window.relayCall=async function(action,payload){calls.push(payload.projectionRevision);return {ok:true};};
+    const secondSent=await officeIntakeFlush();window.relayCall=original;
+    return {firstSent,afterFirst,html,secondSent,calls,remaining:officeIntakeData().outbox.length};
+  });
+  assert.deepEqual(inFlightCorrection,{firstSent:0,afterFirst:[{revision:3,blocked:false}],html:'',secondSent:1,calls:[2,3],remaining:0},'a correction queued while the failed revision is in flight immediately supersedes the new blocker');
 
   await fetch(MOCK + '/__reset');
   const durable = await page.evaluate(() => {
@@ -249,7 +286,7 @@ const TOKEN = 'test-token-123';
     const retry=await officeIntakeFlush();
     return {first,afterDrop,retry,remaining:officeIntakeData().outbox.length};
   });
-  assert.deepEqual(completionRelay, {first:{ok:true,requestId:'req-1',status:'completed',completionReport:{summary:'완료',publicPhotoIds:['owned-completion']},needsInfoReason:null,projectionRevision:completionRelay.first.projectionRevision,updatedAt:completionRelay.first.updatedAt},afterDrop:1,retry:1,remaining:0}, 'completion relay returns only public photo IDs, returns its durable revision, and lost-success retry clears');
+  assert.deepEqual(completionRelay, {first:{ok:true,requestId:'req-1',receiptNo:'MM-20260826-0001',status:'completed',visitAt:null,publicAmount:null,completionReport:{summary:'완료',photoIds:['owned-completion'],publicPhotoIds:['owned-completion']},needsInfoReason:null,projectionRevision:completionRelay.first.projectionRevision,updatedAt:completionRelay.first.updatedAt},afterDrop:1,retry:1,remaining:0}, 'completion relay matches the internal status result, returns its durable revision, and lost-success retry clears');
   assert.equal(Number.isInteger(completionRelay.first.projectionRevision), true, 'completion response returns a durable integer projection revision');
   const completionMock=await (await fetch(MOCK + '/__state')).json();
   assert.deepEqual(completionMock.officeRequests[0].completionReport,{summary:'완료',photoIds:['owned-completion'],publicPhotoIds:['owned-completion']},'mock stores request-owned available IDs for exact idempotency');
@@ -265,8 +302,8 @@ const TOKEN = 'test-token-123';
     return { needs, hold, accepted };
   });
   assert.deepEqual(resolvedReason, {
-    needs: { ok: true, requestId: 'req-1', status: 'needs_info', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.needs.projectionRevision, updatedAt: resolvedReason.needs.updatedAt },
-    hold: { ok: true, requestId: 'req-1', status: 'on_hold', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.hold.projectionRevision, updatedAt: resolvedReason.hold.updatedAt },
+    needs: { ok: true, requestId: 'req-1', receiptNo:'MM-20260826-0001', status: 'needs_info', visitAt:null, publicAmount:null, completionReport:null, needsInfoReason: '사진 보완', projectionRevision: resolvedReason.needs.projectionRevision, updatedAt: resolvedReason.needs.updatedAt },
+    hold: { ok: true, requestId: 'req-1', receiptNo:'MM-20260826-0001', status: 'on_hold', visitAt:null, publicAmount:null, completionReport:null, needsInfoReason: '사진 보완', projectionRevision: resolvedReason.hold.projectionRevision, updatedAt: resolvedReason.hold.updatedAt },
     accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted', projectionRevision: resolvedReason.hold.projectionRevision }
   }, 'needs_info -> on_hold -> accepted succeeds');
   assert.equal(resolvedReason.needs.projectionRevision < resolvedReason.hold.projectionRevision, true, 'status transitions advance the projection revision');
@@ -300,12 +337,15 @@ const TOKEN = 'test-token-123';
   // photos-pending response triggers one fresh inbox sync, attaches only the
   // declared stored slots, and retries the exact same order with an ack.
   await fetch(MOCK + '/__reset');
-  const raceIds=['00000000-0000-4000-8000-000000000061','00000000-0000-4000-8000-000000000062'];
-  await fetch(MOCK + '/__officeDeclarePhotos?requestId=req-1&ids=' + encodeURIComponent(raceIds.join(',')) + '&completeOnAccept=1');
+  const raceIds=['a0000000-0000-4000-8000-000000000061','b0000000-0000-4000-8000-000000000062'];
+  await fetch(MOCK + '/__officeDeclarePhotos?requestId=req-1&ids=' + encodeURIComponent(raceIds.join(',')));
   const uploadAcceptRace = await page.evaluate(async () => {
     state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];state.files=[];
     await officeIntakeSync();
+    const original=window.cloudOfficeAccept;let calls=0;
+    window.cloudOfficeAccept=async function(requestId,orderId,attachedUploadIds){const result=await original(requestId,orderId,attachedUploadIds);if(calls++===0&&result&&result.error==='photos-pending')await fetch(__relay.url+'/__officeUploadDeclared?requestId=req-1');return result;};
     const accepted=await officeIntakeAccept('req-1','none','');
+    window.cloudOfficeAccept=original;
     const order=officeIntakeFindOrder('req-1');
     const server=await (await fetch(__relay.url+'/__state')).json();
     const remote=server.officeRequests.find(row=>row.requestId==='req-1');
@@ -320,6 +360,92 @@ const TOKEN = 'test-token-123';
   assert.equal(uploadAcceptRace.remoteStatus, 'accepted');
   assert.equal(uploadAcceptRace.accepts, 1, 'only the successful retry creates an accept audit record');
   assert.equal(uploadAcceptRace.outbox, 0, 'photos-pending never poisons the retry queue');
+
+  // RED: a transport failure can queue accept before photos finish.  On the
+  // later photos-pending response, flush refreshes the request, attaches the
+  // stored files to the same exact order, retries accept once, then preserves
+  // FIFO so the queued visit follows acceptance.
+  await fetch(MOCK + '/__reset');
+  await fetch(MOCK + '/__officeDeclarePhotos?requestId=req-1&ids=' + encodeURIComponent(raceIds.join(',')));
+  await page.evaluate(async () => {state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];state.files=[];await officeIntakeSync();});
+  await page.route(blockMock, route => route.abort());
+  const offlineAccepted = await page.evaluate(() => officeIntakeAccept('req-1','none','').then(Boolean));
+  await page.unroute(blockMock);
+  assert.equal(offlineAccepted, true, 'offline accept keeps one recoverable staged order');
+  await fetch(MOCK + '/__officeUploadDeclared?requestId=req-1');
+  const queuedPhotoAccept = await page.evaluate(async () => {
+    const order=officeIntakeFindOrder('req-1');order.status='visit';order.visitAt='2026-08-29T10:00:00+09:00';officeIntakeQueueOrderStatus(order);
+    const sent=await officeIntakeFlush();const server=await (await fetch(__relay.url+'/__state')).json();const remote=server.officeRequests.find(row=>row.requestId==='req-1');
+    return {sent,outbox:officeIntakeData().outbox.length,orders:state.aptOrders.filter(row=>row.sourceRequestId==='req-1').length,orderId:order.id,photoIds:order.intakePhotoIds,localStatus:officeIntakeFindRequest('req-1').status,remoteStatus:remote.status,remoteOrderId:remote.hyeonjangOrderId,accepts:server.officeAccepts.length,statuses:server.officeStatuses.map(row=>row.status)};
+  });
+  assert.deepEqual(queuedPhotoAccept, {sent:2,outbox:0,orders:1,orderId:queuedPhotoAccept.orderId,photoIds:['declared-file-1','declared-file-2'],localStatus:'accepted',remoteStatus:'visit_scheduled',remoteOrderId:queuedPhotoAccept.orderId,accepts:1,statuses:['visit_scheduled']}, 'queued photos-pending accept reconciles the exact order and unblocks dependent status FIFO');
+
+  const recoverablePhotoBlock = await page.evaluate(async () => {
+    state.officeIntake={inbox:[{requestId:'pending-photos',status:'accepted',photos:[]}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+    state.aptOrders=[{id:'pending-photo-order',source:'office-intake',sourceRequestId:'pending-photos',project:'',status:'recv',intakePhotoIds:[]}];
+    officeIntakeQueue('officeAccept',{requestId:'pending-photos',hyeonjangOrderId:'pending-photo-order',attachedUploadIds:[]});
+    officeIntakeQueue('officeSetStatus',{requestId:'pending-photos',status:'visit_scheduled',projectionRevision:1});
+    const originalRelay=window.relayCall,originalSync=window.officeIntakeSync;let acceptCalls=0;
+    window.relayCall=async function(action){if(action==='officeAccept'){acceptCalls++;return {ok:false,error:'photos-pending',status:'pending_review',projectionRevision:0};}return {ok:true};};
+    window.officeIntakeSync=async function(){return true;};
+    const sent=await officeIntakeFlush();
+    window.relayCall=originalRelay;window.officeIntakeSync=originalSync;
+    const outbox=officeIntakeData().outbox.map(item=>({action:item.action,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));
+    return {sent,acceptCalls,outbox,orders:state.aptOrders.length,status:officeIntakeFindRequest('pending-photos').status,html:officeIntakeOperationalErrorHtml()};
+  });
+  assert.deepEqual({sent:recoverablePhotoBlock.sent,acceptCalls:recoverablePhotoBlock.acceptCalls,outbox:recoverablePhotoBlock.outbox,orders:recoverablePhotoBlock.orders,status:recoverablePhotoBlock.status},{sent:0,acceptCalls:2,outbox:[{action:'officeAccept',blocked:true,code:'photos-pending',attempts:1},{action:'officeSetStatus',blocked:false,code:'',attempts:0}],orders:1,status:'pending_review'},'still-pending upload is retried once, keeps its exact staged order, and stops FIFO explicitly');
+  assert.match(recoverablePhotoBlock.html,/사진.*업로드|업로드.*사진/,'recoverable photo block is visible to the field operator');
+
+  const acceptErrorClasses = await page.evaluate(async () => {
+    const originalRelay=window.relayCall,originalSync=window.officeIntakeSync;
+    function seed(){state.officeIntake={inbox:[{requestId:'accept-error',status:'pending_review',photos:[]}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[{id:'accept-error-order',source:'office-intake',sourceRequestId:'accept-error',project:'',status:'recv',intakePhotoIds:[]}];officeIntakeQueue('officeAccept',{requestId:'accept-error',hyeonjangOrderId:'accept-error-order',attachedUploadIds:[]});}
+    window.officeIntakeSync=async()=>true;
+    seed();let invalidCalls=0;window.relayCall=async()=>invalidCalls++===0?{ok:false,error:'photos-pending',status:'pending_review'}:{ok:false,error:'invalid-input',field:'attachedUploadIds'};
+    await officeIntakeFlush();const invalidItem=officeIntakeData().outbox[0];const invalid={code:invalidItem.blockedCode,html:officeIntakeOperationalErrorHtml(),calls:invalidCalls};
+    seed();let authCalls=0;window.relayCall=async()=>authCalls++===0?{ok:false,error:'photos-pending',status:'pending_review'}:{ok:false,error:'unauthorized'};
+    await officeIntakeFlush();const authItem=officeIntakeData().outbox[0];const authBlocked={code:authItem.blockedCode,html:officeIntakeOperationalErrorHtml(),calls:authCalls};
+    window.relayCall=async()=>{authCalls++;return {ok:true,status:'accepted',hyeonjangOrderId:'accept-error-order',projectionRevision:0};};
+    const authSent=await officeIntakeFlush();const authRetry={sent:authSent,remaining:officeIntakeData().outbox.length,calls:authCalls};
+    window.relayCall=originalRelay;window.officeIntakeSync=originalSync;
+    return {invalid,authBlocked,authRetry};
+  });
+  assert.equal(acceptErrorClasses.invalid.code,'accept-invalid-input','deterministic accept payload errors are not mislabeled as pending uploads');
+  assert.match(acceptErrorClasses.invalid.html,/연결.*정보|입력.*오류/,'invalid accept block tells the operator to fix connection data');
+  assert.equal(acceptErrorClasses.authBlocked.code,'accept-auth-error','authorization failure keeps a separately classified recoverable block');
+  assert.match(acceptErrorClasses.authBlocked.html,/인증|설정/,'authorization block tells the operator to fix relay credentials');
+  assert.deepEqual(acceptErrorClasses.authRetry,{sent:1,remaining:0,calls:3},'an explicit retry after credentials recover clears the same exact queued accept');
+
+  // RED: the mock must reject every parser shape that production rejects.
+  await fetch(MOCK + '/__reset');
+  await fetch(MOCK + '/__officeDeclarePhotos?requestId=req-1&ids=' + encodeURIComponent(raceIds.join(',')));
+  await fetch(MOCK + '/__officeUploadDeclared?requestId=req-1');
+  const strictMockAck = await page.evaluate(async ids => {
+    const variants=[[ids[0],ids[0]],ids.concat('00000000-0000-4000-8000-000000000063'),[ids[0].toUpperCase(),ids[1]],['00000000-0000-3000-8000-000000000061',ids[1]],Array.from({length:6},(_,index)=>'00000000-0000-4000-8000-'+String(80+index).padStart(12,'0')),'not-an-array'];
+    const results=[];for(const value of variants)results.push(await relayCall('officeAccept',{requestId:'req-1',hyeonjangOrderId:'strict-mock-order',attachedUploadIds:value}));return results.map(result=>({error:result.error,field:result.field}));
+  }, raceIds);
+  assert.deepEqual(strictMockAck, Array.from({length:6},()=>({error:'invalid-input',field:'attachedUploadIds'})), 'mock attachedUploadIds parser has exact production parity: '+JSON.stringify(strictMockAck));
+
+  const exactQueuedOrder = await page.evaluate(async () => {
+    const originalRelay=window.relayCall,originalSync=window.officeIntakeSync;
+    function seed(withGhost){
+      state.officeIntake={inbox:[{requestId:'exact-order-request',status:'pending_review',photos:[]}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+      state.aptOrders=[{id:'order-B',source:'office-intake',sourceRequestId:'exact-order-request',status:'recv',officeProjectionRevision:0,intakePhotoIds:[]}];
+      if(withGhost)state.aptOrders.push({id:'order-A',source:'office-intake',sourceRequestId:'exact-order-request',status:'recv',officeProjectionRevision:0,intakePhotoIds:[]});
+      state.files=[];officeIntakeQueue('officeAccept',{requestId:'exact-order-request',hyeonjangOrderId:'order-A',attachedUploadIds:[]});
+    }
+    seed(true);window.relayCall=async()=>({ok:true,status:'accepted',hyeonjangOrderId:'order-A',projectionRevision:5});
+    await officeIntakeFlush();
+    const success=state.aptOrders.map(order=>({id:order.id,revision:order.officeProjectionRevision||0}));
+    seed(true);window.relayCall=async()=>({ok:false,error:'already-linked',status:'accepted',hyeonjangOrderId:'order-B',projectionRevision:6});
+    await officeIntakeFlush();
+    const linked={orders:state.aptOrders.map(order=>order.id),revision:state.aptOrders[0]&&state.aptOrders[0].officeProjectionRevision||0,outbox:officeIntakeData().outbox.length};
+    seed(false);let pendingCalls=0;window.relayCall=async()=>{pendingCalls++;return {ok:false,error:'photos-pending',status:'pending_review',projectionRevision:0};};window.officeIntakeSync=async()=>true;
+    await officeIntakeFlush();
+    const missingGhost={orders:state.aptOrders.map(order=>order.id),outbox:officeIntakeData().outbox.length,pendingCalls};
+    window.relayCall=originalRelay;window.officeIntakeSync=originalSync;
+    return {success,linked,missingGhost};
+  });
+  assert.deepEqual(exactQueuedOrder,{success:[{id:'order-B',revision:0},{id:'order-A',revision:5}],linked:{orders:['order-B'],revision:6,outbox:0},missingGhost:{orders:['order-B'],outbox:0,pendingCalls:1}},'queued accept success, recovery, and conflict always target payload hyeonjangOrderId and preserve another exact linked order');
 
   // Break caught: an offline acceptance can race a management-office cancel.
   // That semantic failure must clear its FIFO head and the local ghost order,

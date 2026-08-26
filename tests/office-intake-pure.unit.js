@@ -35,6 +35,8 @@ assert.deepEqual(Array.from(valid.value.expectedUploadIds), [
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000002',
 ]);
+const missingExpected = { ...valid.value }; delete missingExpected.expectedUploadIds;
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiValidateCreate_(missingExpected))), { ok:false, error:'invalid-input', field:'expectedUploadIds' }, 'every new officeCreate must declare expectedUploadIds, including an empty array');
 assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: [valid.value.expectedUploadIds[0], valid.value.expectedUploadIds[0]] }).field, 'expectedUploadIds', 'duplicate declared upload slots fail closed');
 assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: ['00000000-0000-3000-8000-000000000001'] }).field, 'expectedUploadIds', 'declared slots must be RFC4122 UUID v4');
 assert.equal(sandbox.oiValidateCreate_({ ...valid.value, expectedUploadIds: ['00000000-0000-4000-8000-00000000000A'] }).field, 'expectedUploadIds', 'declared slots must be canonical lowercase');

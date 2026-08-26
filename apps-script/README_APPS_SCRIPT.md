@@ -59,6 +59,13 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 바이트·내부 메모를 넣지 않습니다. `OFFICE_INTAKE_ENABLED`가 꺼져 있으면 공개
 로그인·접수 변경·사진 업로드를 거부하며 기존 relay action은 계속 동작합니다.
 
+새 `officeCreate` payload에는 `expectedUploadIds`가 항상 있어야 하며, 사진이 없어도
+빈 배열 `[]`을 보냅니다. 값은 0–5개의 중복 없는 canonical lowercase UUIDv4이고,
+생성 뒤 `officeUpdate`로 바꾸지 않습니다. `officeUpload`는 선언된 slot만 저장하며,
+`officeAccept`는 모든 선언 slot이 업로드되고 같은 order의 `attachedUploadIds`로 정확히
+확인된 뒤에만 성공합니다. 이 필드가 생기기 전에 저장된 legacy request는 기존 업로드·
+승인 경로에서만 호환하고, 신규 생성에서는 필드 생략을 `invalid-input`으로 거부합니다.
+
 `officePhoto`의 payload는 정확히 `{requestId,photoId}`이며, 성공 시
 `{ok:true,photoId,mimeType,dataB64}`만 반환합니다. URL·Drive 파일명·크기·예외
 원문은 반환하지 않습니다. 서버는 같은 office 세션의 요청인지, 완료 보고가 있고
@@ -98,6 +105,14 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 없음) · `photos-pending`(포털이 선언한 사진 슬롯의 업로드·동일 order 첨부가
 아직 끝나지 않음) · `invalid-completion-photos` · `invalid-input` · `not-found` ·
 `bad-request` · `server-error`.
+
+현장 앱 outbox는 strict FIFO입니다. `invalid-completion-photos`가 발생하면 뒤 revision을
+전송하지 않고 수정이 필요한 blocked 상태로 보존합니다. 같은 request의 더 높은 수정
+revision을 넣을 때 blocker와 그 뒤의 obsolete revision을 함께 교체합니다. 오프라인
+`officeAccept`가 뒤늦게 `photos-pending`을 받으면 접수를 다시 동기화하고, 같은 local
+order에 저장된 접수 사진을 붙여 `attachedUploadIds`를 갱신한 뒤 한 번만 재시도합니다.
+여전히 미완료이거나 전송 상태를 확인할 수 없으면 자동 성공·삭제하지 않고 운영 화면에
+복구 가능 blocked 상태로 남깁니다.
 
 ### Operational records
 
