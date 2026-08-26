@@ -441,22 +441,40 @@ function oiInbox_(payload) {
   var cursor = oiText_(payload.updatedAfter, 40);
   var now = Date.now();
   var store = oiReadStore_();
-  var retryIds = {};
+  var retryAt = {};
   store.operationalErrors.forEach(function (error) {
-    if (error && error.requestId && !error.resolvedAt) retryIds[String(error.requestId)] = true;
+    if (oiIsSyncError_(error) && !error.resolvedAt) {
+      var id = String(error.requestId);
+      if (!retryAt[id] || String(error.at || '') > retryAt[id]) retryAt[id] = String(error.at || '');
+    }
   });
   var requests = store.requests.filter(function (request) {
-    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || retryIds[String(request.requestId || '')];
-    return actionable && (!cursor || String(request.updatedAt || '') > cursor);
+    var errorAt = retryAt[String(request.requestId || '')] || '';
+    request._oiEffectiveAt = String(request.updatedAt || '') > errorAt ? String(request.updatedAt || '') : errorAt;
+    var actionable = request.status === 'pending_review' || request.status === 'needs_info' || !!errorAt;
+    return actionable && (!cursor || request._oiEffectiveAt > cursor);
   }).sort(function (a, b) {
-    return String(a.updatedAt || '').localeCompare(String(b.updatedAt || ''));
+    return String(a._oiEffectiveAt || '').localeCompare(String(b._oiEffectiveAt || ''));
   }).slice(0, 100).map(function (request) {
     var copy = {};
-    Object.keys(request).forEach(function (key) { copy[key] = request[key]; });
+    Object.keys(request).forEach(function (key) { if (key !== '_oiEffectiveAt') copy[key] = request[key]; });
     copy.overdue = request.status === 'pending_review' && isFinite(Date.parse(request.createdAt || '')) && now - Date.parse(request.createdAt) >= 24 * 60 * 60 * 1000;
     return copy;
   });
   return { ok: true, requests: requests, operationalErrors: store.operationalErrors.slice(-100) };
+}
+
+var OI_SYNC_ERROR_CODES = ['already-linked', 'accept-invalid-transition', 'invalid-transition'];
+function oiIsSyncError_(error) { return !!(error && OI_SYNC_ERROR_CODES.indexOf(String(error.code || '')) >= 0 && error.requestId); }
+function oiResolveSyncErrors_(store, requestId, codes, now) {
+  var changed = false, at = oiNow_(now);
+  store.operationalErrors.forEach(function (error) {
+    if (!error || error.resolvedAt || String(error.requestId || '') !== String(requestId || '')) return;
+    if (codes.indexOf(String(error.code || '')) < 0) return;
+    error.resolvedAt = at;
+    changed = true;
+  });
+  return changed;
 }
 
 function oiAccept_(payload, now) {
@@ -475,6 +493,7 @@ function oiAccept_(payload, now) {
         oiWriteStore_(store);
         return { ok: false, error: 'already-linked' };
       }
+      if (oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now)) oiWriteStore_(store);
       return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
     }
     if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
@@ -485,6 +504,7 @@ function oiAccept_(payload, now) {
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';
     request.updatedAt = oiNow_(now);
+    oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now);
     oiAuditLocked_(store, request.officeId, request.receiptNo, 'accept', 'ok', now);
     oiWriteStore_(store);
     return { ok: true, requestId: request.requestId, hyeonjangOrderId: orderId, status: request.status };
@@ -503,21 +523,22 @@ function oiCompletionPhotoIds_(value) {
   var ids = [], seen = {};
   for (var i = 0; i < value.length && ids.length < 10; i++) {
     if (typeof value[i] !== 'string') continue;
-    var id = oiText_(value[i], 160);
+    var id = String(value[i]).trim();
+    if (id.length > 120) continue;
     if (id && !seen[id]) { seen[id] = true; ids.push(id); }
   }
   return ids;
 }
 function oiCompletionReportValue_(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
-  var supplied = Object.prototype.hasOwnProperty.call(value, 'photoIds') ? oiCompletionPhotoIds_(value.photoIds) : [];
+  var hasSupplied = Object.prototype.hasOwnProperty.call(value, 'photoIds');
+  var supplied = hasSupplied ? oiCompletionPhotoIds_(value.photoIds) : [];
   var published = Object.prototype.hasOwnProperty.call(value, 'publicPhotoIds') ? oiCompletionPhotoIds_(value.publicPhotoIds) : [];
   if (supplied == null || published == null) return { ok: false, error: 'invalid-input' };
-  if (supplied.length) {
-    var allowed = {};
-    supplied.forEach(function (id) { allowed[id] = true; });
-    published = published.filter(function (id) { return allowed[id]; });
-  }
+  if (published.length && (!hasSupplied || !supplied.length)) return { ok: false, error: 'invalid-completion-photos' };
+  var allowed = {};
+  supplied.forEach(function (id) { allowed[id] = true; });
+  published = published.filter(function (id) { return allowed[id]; });
   return { ok: true, value: { summary: oiText_(value.summary, 800), publicPhotoIds: published } };
 }
 function oiSetStatus_(payload, now) {
@@ -538,18 +559,34 @@ function oiSetStatus_(payload, now) {
     request.completionReport = completion ? completion.value : request.completionReport;
     if (next === 'completed' && !request.completedAt) request.completedAt = oiNow_(now);
     request.updatedAt = oiNow_(now);
+    oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now);
     oiAuditLocked_(store, request.officeId, request.receiptNo, 'status', 'ok', now);
     oiWriteStore_(store);
     return oiStatusResult_(request);
   } finally { lock.releaseLock(); }
 }
 
-function oiSaveConfig_(config) {
-  PropertiesService.getScriptProperties().setProperty('OFFICE_CONFIG_JSON', JSON.stringify(config));
-}
 function oiRestoreConfig_(properties, raw) {
   if (raw == null) properties.deleteProperty('OFFICE_CONFIG_JSON');
   else properties.setProperty('OFFICE_CONFIG_JSON', raw);
+}
+function oiSameRawConfig_(a, b) { return a === b; }
+function oiCommitAdminConfig_(properties, previousRaw, stagedRaw, writeAudit, stagedResult) {
+  try {
+    properties.setProperty('OFFICE_CONFIG_JSON', stagedRaw);
+    writeAudit();
+    return stagedResult();
+  } catch (original) {
+    try { oiRestoreConfig_(properties, previousRaw); } catch (_) {}
+    var currentRaw = properties.getProperty('OFFICE_CONFIG_JSON');
+    if (oiSameRawConfig_(currentRaw, previousRaw)) throw original;
+    if (oiSameRawConfig_(currentRaw, stagedRaw)) {
+      var partial = stagedResult();
+      partial.warning = 'audit-failed';
+      return partial;
+    }
+    return { ok: false, error: 'admin-state-unknown' };
+  }
 }
 function oiAdminUpsert_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
@@ -568,29 +605,17 @@ function oiAdminUpsert_(payload, now) {
     for (var j = 0; j < config.offices.length; j++) {
       if (String(config.offices[j].id || '') !== id && String(config.offices[j].slug || '') === slug) return { ok: false, error: 'slug-conflict' };
     }
-    try {
-      if (!office) {
-        office = { id: id, sessionVersion: 1 };
-        config.offices.push(office);
-      }
-      var wasActive = oiOfficeActive_(office);
-      office.slug = slug;
-      office.complexName = complexName;
-      if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) {
-        office.enabled = payload.enabled !== false;
-        office.disabled = office.enabled === false;
-      }
-      if (wasActive && !oiOfficeActive_(office)) office.sessionVersion = Number(office.sessionVersion || 1) + 1;
-      office.updatedAt = oiNow_(now);
-      oiSaveConfig_(config);
-      var store = oiReadStore_();
-      oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now);
-      oiWriteStore_(store);
-      return { ok: true, office: oiPublicOffice_(office) };
-    } catch (err) {
-      oiRestoreConfig_(properties, previousConfig);
-      throw err;
-    }
+    if (!office) { office = { id: id, sessionVersion: 1 }; config.offices.push(office); }
+    var wasActive = oiOfficeActive_(office);
+    office.slug = slug;
+    office.complexName = complexName;
+    if (Object.prototype.hasOwnProperty.call(payload, 'enabled')) { office.enabled = payload.enabled !== false; office.disabled = office.enabled === false; }
+    if (wasActive && !oiOfficeActive_(office)) office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+    office.updatedAt = oiNow_(now);
+    var stagedConfig = JSON.stringify(config);
+    return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
+      var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now); oiWriteStore_(store);
+    }, function () { return { ok: true, office: oiPublicOffice_(office) }; });
   } finally { lock.releaseLock(); }
 }
 function oiPinFromUuid_(uuid) {
@@ -611,22 +636,16 @@ function oiRotatePin_(payload, now) {
     var office = null;
     for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
     if (!office) return { ok: false, error: 'not-found' };
-    try {
-      var pinEntropy = Utilities.getUuid();
-      var pin = oiPinFromUuid_(pinEntropy);
-      office.pinSalt = String(Utilities.getUuid());
-      office.pinHash = oiHashPin_(pin, office.pinSalt);
-      office.sessionVersion = Number(office.sessionVersion || 1) + 1;
-      office.updatedAt = oiNow_(now);
-      oiSaveConfig_(config);
-      var store = oiReadStore_();
-      oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now);
-      oiWriteStore_(store);
-      return { ok: true, office: oiPublicOffice_(office), pin: pin };
-    } catch (err) {
-      oiRestoreConfig_(properties, previousConfig);
-      throw err;
-    }
+    var pinEntropy = Utilities.getUuid();
+    var pin = oiPinFromUuid_(pinEntropy);
+    office.pinSalt = String(Utilities.getUuid());
+    office.pinHash = oiHashPin_(pin, office.pinSalt);
+    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+    office.updatedAt = oiNow_(now);
+    var stagedConfig = JSON.stringify(config);
+    return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
+      var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now); oiWriteStore_(store);
+    }, function () { return { ok: true, office: oiPublicOffice_(office), pin: pin }; });
   } finally { lock.releaseLock(); }
 }
 function oiDisable_(payload, now) {
@@ -641,20 +660,14 @@ function oiDisable_(payload, now) {
     var office = null;
     for (var i = 0; i < config.offices.length; i++) if (String(config.offices[i].id || '') === officeId) office = config.offices[i];
     if (!office) return { ok: false, error: 'not-found' };
-    try {
-      office.enabled = false;
-      office.disabled = true;
-      office.sessionVersion = Number(office.sessionVersion || 1) + 1;
-      office.updatedAt = oiNow_(now);
-      oiSaveConfig_(config);
-      var store = oiReadStore_();
-      oiAuditLocked_(store, office.id, '', 'disable', 'ok', now);
-      oiWriteStore_(store);
-      return { ok: true, office: oiPublicOffice_(office) };
-    } catch (err) {
-      oiRestoreConfig_(properties, previousConfig);
-      throw err;
-    }
+    office.enabled = false;
+    office.disabled = true;
+    office.sessionVersion = Number(office.sessionVersion || 1) + 1;
+    office.updatedAt = oiNow_(now);
+    var stagedConfig = JSON.stringify(config);
+    return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
+      var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'disable', 'ok', now); oiWriteStore_(store);
+    }, function () { return { ok: true, office: oiPublicOffice_(office) }; });
   } finally { lock.releaseLock(); }
 }
 

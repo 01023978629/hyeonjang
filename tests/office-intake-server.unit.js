@@ -11,6 +11,7 @@ const properties = {
   DRIVE_FOLDER_ID: 'root',
 };
 const cache = new Map();
+const propertyFaults = { onSet: null, onDelete: null };
 const cryptoStats = { macCalls: 0, decodeCalls: 0 };
 const lockEvents = [];
 const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0 };
@@ -101,7 +102,19 @@ const sandbox = {
   PropertiesService: {
     getScriptProperties: () => ({
       getProperty: key => Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null,
-      setProperty: (key, value) => { properties[key] = String(value); },
+      setProperty: (key, value) => {
+        const mode = propertyFaults.onSet && propertyFaults.onSet(key, String(value));
+        if (mode === 'throw-before') throw new Error('injected-property-set-before');
+        properties[key] = String(value);
+        if (mode === 'throw-after') throw new Error('injected-property-set-after');
+        if (mode === 'third-state') { properties[key] = '{"third":"state"}'; throw new Error('injected-property-third-state'); }
+      },
+      deleteProperty: key => {
+        const mode = propertyFaults.onDelete && propertyFaults.onDelete(key);
+        if (mode === 'throw-before') throw new Error('injected-property-delete-before');
+        delete properties[key];
+        if (mode === 'throw-after') throw new Error('injected-property-delete-after');
+      },
     }),
   },
   CacheService: {
@@ -498,6 +511,80 @@ assert.equal(postInternal('officeDisable', { officeId: 'of1' }).ok, true);
 assert.equal(sandbox.oiVerifySession_(enabledLogin.sessionToken, 1001), null);
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1002).error, 'invalid-credentials');
 assert.equal(sandbox.oiReadStore_().requests.length, beforeDisableCount);
+
+// Break caught: an unresolved sync error advances the inbox cursor, then a successful matching retry resolves it.
+const retryStore = sandbox.oiReadStore_();
+retryStore.requests.push({ requestId: 'sync-retry', receiptNo: 'MM-sync-retry', officeId: 'of1', status: 'completed', hyeonjangOrderId: 'apt-sync', updatedAt: '1970-01-01T00:00:00.000Z' });
+retryStore.operationalErrors.push({ code: 'already-linked', requestId: 'sync-retry', at: '1970-01-02T00:00:00.000Z' });
+sandbox.oiWriteStore_(retryStore);
+fakeNow = Date.parse('1970-01-02T00:00:00.000Z');
+const retryInbox = postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' });
+assert.equal(retryInbox.requests.some(request => request.requestId === 'sync-retry'), true);
+assert.equal(retryInbox.operationalErrors.some(error => JSON.stringify(error).includes('010-1234-5678')), false);
+assert.equal(postInternal('officeAccept', { requestId: 'sync-retry', hyeonjangOrderId: 'apt-sync' }).ok, true);
+assert.equal(postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' }).requests.some(request => request.requestId === 'sync-retry'), false);
+fakeNow = 1000;
+
+// Break caught: public completion photos require a non-empty owned photo list and are always a strict, bounded subset.
+function completionCase(id) {
+  const store = sandbox.oiReadStore_();
+  store.requests.push({ requestId: id, receiptNo: 'MM-' + id, officeId: 'of1', status: 'in_progress', updatedAt: '1970-01-01T00:00:00.000Z' });
+  sandbox.oiWriteStore_(store);
+}
+completionCase('public-missing');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'public-missing', status: 'completed', completionReport: { publicPhotoIds: ['owned'] } }, 4000).error, 'invalid-completion-photos');
+completionCase('public-empty');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'public-empty', status: 'completed', completionReport: { photoIds: [], publicPhotoIds: ['owned'] } }, 4001).error, 'invalid-completion-photos');
+completionCase('public-unrelated');
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_({ requestId: 'public-unrelated', status: 'completed', completionReport: {
+  photoIds: ['owned'], publicPhotoIds: ['other'], internalNotes: 'private note',
+} }, 4002).completionReport)), { summary: '', publicPhotoIds: [] });
+completionCase('public-subset');
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiSetStatus_({ requestId: 'public-subset', status: 'completed', completionReport: {
+  photoIds: ['owned', 'x'.repeat(161), 3], publicPhotoIds: ['owned', 'owned', 'x'.repeat(161), 8], internalNotes: 'private note',
+} }, 4003).completionReport)), { summary: '', publicPhotoIds: ['owned'] });
+assert.equal(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'public-subset').request.completionReport).includes('private note'), false);
+
+// Break caught: config compensation classifies restored, staged, unknown, and absent-property states without leaking a PIN in failed paths.
+const recovery = postInternal('officeAdminUpsert', { id: 'of-recovery', slug: 'recovery-apt', complexName: '복구 단지', enabled: true });
+assert.equal(recovery.ok, true);
+const priorRecoveryConfig = properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+propertyFaults.onSet = (key, value) => key === 'OFFICE_CONFIG_JSON' && value === priorRecoveryConfig ? 'throw-after' : null;
+const restoredDespiteThrow = postInternal('officeRotatePin', { officeId: 'of-recovery' });
+propertyFaults.onSet = null;
+assert.equal(restoredDespiteThrow.ok, false);
+assert.equal(properties.OFFICE_CONFIG_JSON, priorRecoveryConfig);
+assert.equal(Object.hasOwn(restoredDespiteThrow, 'pin'), false);
+
+const priorPartialConfig = properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+propertyFaults.onSet = (key, value) => key === 'OFFICE_CONFIG_JSON' && value === priorPartialConfig ? 'throw-before' : null;
+const partialRotate = postInternal('officeRotatePin', { officeId: 'of-recovery' });
+propertyFaults.onSet = null;
+assert.equal(partialRotate.ok, true);
+assert.equal(partialRotate.warning, 'audit-failed');
+assert.match(partialRotate.pin, /^\d{6}$/);
+assert.notEqual(properties.OFFICE_CONFIG_JSON, priorPartialConfig);
+assert.equal(sandbox.oiLogin_({ slug: 'recovery-apt', pin: partialRotate.pin }, 1000).ok, true);
+
+const priorUnknownConfig = properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+propertyFaults.onSet = (key, value) => key === 'OFFICE_CONFIG_JSON' && value === priorUnknownConfig ? 'third-state' : null;
+const unknownRotate = postInternal('officeRotatePin', { officeId: 'of-recovery' });
+propertyFaults.onSet = null;
+assert.equal(unknownRotate.error, 'admin-state-unknown');
+assert.equal(Object.hasOwn(unknownRotate, 'pin'), false);
+assert.equal(properties.OFFICE_CONFIG_JSON, '{"third":"state"}');
+
+delete properties.OFFICE_CONFIG_JSON;
+drive.failStoreWrites = 1;
+propertyFaults.onDelete = key => key === 'OFFICE_CONFIG_JSON' ? 'throw-after' : null;
+const absentRestore = postInternal('officeAdminUpsert', { id: 'of-absent', slug: 'absent-apt', complexName: '없음 복구', enabled: true });
+propertyFaults.onDelete = null;
+assert.equal(absentRestore.ok, false);
+assert.equal(Object.hasOwn(properties, 'OFFICE_CONFIG_JSON'), false);
+properties.OFFICE_CONFIG_JSON = priorUnknownConfig;
 
 // Break caught: audit data must remain metadata-only even after requests containing private values and a returned PIN.
 const finalStore = sandbox.oiReadStore_();
