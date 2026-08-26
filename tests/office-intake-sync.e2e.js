@@ -203,7 +203,8 @@ const TOKEN = 'test-token-123';
     const retry=await officeIntakeFlush();
     return {first,afterDrop,retry,remaining:officeIntakeData().outbox.length};
   });
-  assert.deepEqual(completionRelay, {first:{ok:true,requestId:'req-1',status:'completed',completionReport:{summary:'완료',publicPhotoIds:['owned-completion']},needsInfoReason:null,updatedAt:completionRelay.first.updatedAt},afterDrop:1,retry:1,remaining:0}, 'completion relay returns only public photo IDs and lost-success retry clears');
+  assert.deepEqual(completionRelay, {first:{ok:true,requestId:'req-1',status:'completed',completionReport:{summary:'완료',publicPhotoIds:['owned-completion']},needsInfoReason:null,projectionRevision:completionRelay.first.projectionRevision,updatedAt:completionRelay.first.updatedAt},afterDrop:1,retry:1,remaining:0}, 'completion relay returns only public photo IDs, returns its durable revision, and lost-success retry clears');
+  assert.equal(Number.isInteger(completionRelay.first.projectionRevision), true, 'completion response returns a durable integer projection revision');
   const completionMock=await (await fetch(MOCK + '/__state')).json();
   assert.deepEqual(completionMock.officeRequests[0].completionReport,{summary:'완료',photoIds:['owned-completion'],publicPhotoIds:['owned-completion']},'mock stores request-owned available IDs for exact idempotency');
   assert.equal(completionMock.officeStatuses.filter(row=>row.status==='completed').length,1,'completion lost-success retry adds no duplicate record');
@@ -218,12 +219,28 @@ const TOKEN = 'test-token-123';
     return { needs, hold, accepted };
   });
   assert.deepEqual(resolvedReason, {
-    needs: { ok: true, requestId: 'req-1', status: 'needs_info', needsInfoReason: '사진 보완', updatedAt: resolvedReason.needs.updatedAt },
-    hold: { ok: true, requestId: 'req-1', status: 'on_hold', needsInfoReason: '사진 보완', updatedAt: resolvedReason.hold.updatedAt },
+    needs: { ok: true, requestId: 'req-1', status: 'needs_info', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.needs.projectionRevision, updatedAt: resolvedReason.needs.updatedAt },
+    hold: { ok: true, requestId: 'req-1', status: 'on_hold', needsInfoReason: '사진 보완', projectionRevision: resolvedReason.hold.projectionRevision, updatedAt: resolvedReason.hold.updatedAt },
     accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted' }
   }, 'needs_info -> on_hold -> accepted succeeds');
+  assert.equal(resolvedReason.needs.projectionRevision < resolvedReason.hold.projectionRevision, true, 'status transitions advance the projection revision');
   const resolvedMock = await (await fetch(MOCK + '/__state')).json();
   assert.equal(resolvedMock.officeRequests.find(row => row.requestId === 'req-1').needsInfoReason, null, 'acceptance clears resolved needs-info reason in mock fidelity');
+
+  // Break caught: an offline acceptance can race a management-office cancel.
+  // That semantic failure must clear its FIFO head and the local ghost order,
+  // not retry forever behind a false accepted state.
+  const acceptCancelRace = await page.evaluate(async () => {
+    state.officeIntake = { inbox: [{ requestId: 'req-cancel-race', status: 'pending_review', needsInfoReason: null }], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    state.aptOrders = [{ id: 'race-order', source: 'office-intake', sourceRequestId: 'req-cancel-race', status: 'recv' }];
+    officeIntakeQueue('officeAccept', { requestId: 'req-cancel-race', hyeonjangOrderId: 'race-order' });
+    const original = window.relayCall;
+    window.relayCall = async () => ({ ok: false, error: 'invalid-transition', status: 'cancelled', hyeonjangOrderId: null });
+    const sent = await officeIntakeFlush();
+    window.relayCall = original;
+    return { sent, outbox: officeIntakeData().outbox.length, orders: state.aptOrders.length, status: officeIntakeFindRequest('req-cancel-race').status };
+  });
+  assert.deepEqual(acceptCancelRace, { sent: 1, outbox: 0, orders: 0, status: 'cancelled' }, 'cancel conflict clears the ghost order and unblocks FIFO retry');
 
   // Break caught: a lost on_hold success must replay the same public projection,
   // keep its reason, and let the durable queue clear without a second status audit.

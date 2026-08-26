@@ -59,6 +59,14 @@ function oiOfficeById_(id) {
 function oiPublicOffice_(office) {
   return { id: String(office.id || ''), slug: String(office.slug || ''), complexName: String(office.complexName || '') };
 }
+// The public login projection deliberately omits admin state.  Internal
+// provisioning must not reuse it: doing so turns a disabled office into a
+// missing `enabled` field and the next settings save can accidentally reopen it.
+function oiAdminOffice_(office) {
+  var value = oiPublicOffice_(office);
+  value.enabled = oiOfficeActive_(office);
+  return value;
+}
 function oiInvalidCredentials_() { return { ok: false, error: 'invalid-credentials', message: '관리사무소 코드 또는 비밀번호가 올바르지 않습니다' }; }
 
 function oiLogin_(payload, now) {
@@ -175,7 +183,7 @@ function oiPhoto_(session, sessionToken, payload) {
     var request = oiOwnRequest_(store, lockedSession.officeId, input.requestId);
     if (!request || !request.completionReport || !Array.isArray(request.completionReport.publicPhotoIds)) return { ok: false, error: 'not-found' };
     if (request.completionReport.publicPhotoIds.indexOf(input.photoId) < 0) return { ok: false, error: 'not-found' };
-    var photo = null, photos = Array.isArray(request.photos) ? request.photos : [];
+    var photo = null, photos = (Array.isArray(request.photos) ? request.photos : []).concat(Array.isArray(request.completionPhotos) ? request.completionPhotos : []);
     for (var i = 0; i < photos.length; i++) if (photos[i] && photos[i].fileId === input.photoId) { photo = photos[i]; break; }
     if (!photo) return { ok: false, error: 'not-found' };
     var storedMimeType = String(photo.mimeType || '');
@@ -349,6 +357,8 @@ function oiCreate_(session, payload, now) {
       publicAmount: null,
       visitAt: null,
       completionReport: null,
+      completionPhotos: [],
+      projectionRevision: 0,
       needsInfoReason: null,
       createdAt: at,
       updatedAt: at
@@ -603,7 +613,7 @@ function oiAccept_(payload, now) {
       if (request.hyeonjangOrderId !== orderId) {
         oiOperationalErrorLocked_(store, 'already-linked', request.requestId, now);
         oiWriteStore_(store);
-        return { ok: false, error: 'already-linked' };
+        return { ok: false, error: 'already-linked', hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
       }
       if (oiResolveSyncErrors_(store, request.requestId, ['already-linked', 'accept-invalid-transition'], now)) oiWriteStore_(store);
       return { ok: true, requestId: request.requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status };
@@ -611,7 +621,7 @@ function oiAccept_(payload, now) {
     if (!oiCanTransition_(request.status, 'accepted', 'internal')) {
       oiOperationalErrorLocked_(store, 'accept-invalid-transition', request.requestId, now);
       oiWriteStore_(store);
-      return { ok: false, error: 'invalid-transition' };
+      return { ok: false, error: 'invalid-transition', status: request.status, hyeonjangOrderId: request.hyeonjangOrderId || null };
     }
     request.hyeonjangOrderId = orderId;
     request.status = 'accepted';
@@ -628,7 +638,8 @@ function oiStatusResult_(request) {
   return {
     ok: true, requestId: request.requestId, receiptNo: request.receiptNo, status: request.status,
     visitAt: request.visitAt || null, publicAmount: request.publicAmount == null ? null : request.publicAmount,
-    completionReport: request.completionReport || null, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt
+    completionReport: request.completionReport || null, needsInfoReason: request.needsInfoReason || null,
+    projectionRevision: Number(request.projectionRevision || 0), updatedAt: request.updatedAt
   };
 }
 function oiCompletionPhotoIds_(value) {
@@ -648,7 +659,7 @@ function oiCompletionReportValue_(request, value) {
   var supplied = hasSupplied ? oiCompletionPhotoIds_(value.photoIds) : [];
   var published = Object.prototype.hasOwnProperty.call(value, 'publicPhotoIds') ? oiCompletionPhotoIds_(value.publicPhotoIds) : [];
   if (supplied == null || published == null) return { ok: false, error: 'invalid-input' };
-  var owned = {}; (request.photos || []).forEach(function (photo) { var id = String(photo && photo.fileId || '').trim(); if (id) owned[id] = true; });
+  var owned = {}; (request.photos || []).concat(request.completionPhotos || []).forEach(function (photo) { var id = String(photo && photo.fileId || '').trim(); if (id) owned[id] = true; });
   supplied = supplied.filter(function (id) { return owned[id]; });
   if (published.length && (!hasSupplied || !supplied.length)) return { ok: false, error: 'invalid-completion-photos' };
   var allowed = {};
@@ -658,6 +669,36 @@ function oiCompletionReportValue_(request, value) {
   // lost successful reply can be retried as the same projection; only the
   // explicitly selected `publicPhotoIds` are public.
   return { ok: true, value: { summary: oiText_(value.summary, 800), photoIds: supplied, publicPhotoIds: published } };
+}
+function oiCompletionManifest_(value) {
+  if (!Array.isArray(value) || value.length > 10) return { ok: false, error: 'invalid-completion-photos' };
+  var rootId = String(oiStoreRoot_().getId() || ''), seen = {}, photos = [];
+  for (var i = 0; i < value.length; i++) {
+    var fileId = typeof value[i] === 'string' ? value[i].trim() : '';
+    if (!fileId || seen[fileId]) continue;
+    seen[fileId] = true;
+    var file;
+    try { file = DriveApp.getFileById(fileId); } catch (_) { return { ok: false, error: 'invalid-completion-photos' }; }
+    var mimeType = String(file.getMimeType() || '');
+    if (!Object.prototype.hasOwnProperty.call(OI_IMAGE_TYPES, mimeType) || Number(file.getSize() || 0) > OI_MAX_PHOTO_BYTES || !oiFileUnderRoot_(file, rootId)) return { ok: false, error: 'invalid-completion-photos' };
+    var bytes;
+    try { bytes = file.getBlob().getBytes(); } catch (_) { return { ok: false, error: 'invalid-completion-photos' }; }
+    if (!oiPhotoMagic_(mimeType, bytes)) return { ok: false, error: 'invalid-completion-photos' };
+    photos.push({ fileId: fileId, name: oiText_(file.getName(), 180), mimeType: mimeType, size: bytes.length });
+  }
+  return { ok: true, value: photos };
+}
+function oiFileUnderRoot_(file, rootId) {
+  var queue = [], seen = {}, parents;
+  try { parents = file.getParents(); while (parents.hasNext()) queue.push(parents.next()); } catch (_) { return false; }
+  while (queue.length) {
+    var folder = queue.shift(), id = String(folder.getId() || '');
+    if (!id || seen[id]) continue;
+    seen[id] = true;
+    if (id === rootId) return true;
+    try { var higher = folder.getParents(); while (higher.hasNext()) queue.push(higher.next()); } catch (_) { return false; }
+  }
+  return false;
 }
 function oiHas_(value, key) { return Object.prototype.hasOwnProperty.call(value || {}, key); }
 function oiPublicAmount_(request, payload) {
@@ -706,6 +747,14 @@ function oiSetStatus_(payload, now) {
     var store = oiReadStore_();
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
+    var hasRevision = Object.prototype.hasOwnProperty.call(payload, 'projectionRevision');
+    var revision = hasRevision ? Number(payload.projectionRevision) : Number(request.projectionRevision || 0) + 1;
+    if (!isFinite(revision) || revision < 0 || Math.floor(revision) !== revision) return { ok: false, error: 'invalid-input', field: 'projectionRevision' };
+    if (Object.prototype.hasOwnProperty.call(payload, 'completionPhotoIds')) {
+      var manifest = oiCompletionManifest_(payload.completionPhotoIds);
+      if (!manifest.ok) return manifest;
+      request.completionPhotos = manifest.value;
+    }
     var completion = payload.completionReport ? oiCompletionReportValue_(request, payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
     var projected = oiStatusProjection_(request, payload, completion, next);
@@ -713,9 +762,16 @@ function oiSetStatus_(payload, now) {
     var projection = projected.value;
     if (request.status === next) {
       if (!oiSameStatusProjection_(request, projection)) {
-        oiOperationalErrorLocked_(store, 'invalid-transition', request.requestId, now);
+        if (!hasRevision || revision <= Number(request.projectionRevision || 0)) return { ok: false, error: 'invalid-transition', status: request.status, projectionRevision: Number(request.projectionRevision || 0) };
+        request.visitAt = projection.visitAt;
+        request.publicAmount = projection.publicAmount;
+        request.completionReport = projection.completionReport;
+        request.needsInfoReason = projection.needsInfoReason;
+        request.projectionRevision = revision;
+        request.updatedAt = oiNow_(now);
+        oiAuditLocked_(store, request.officeId, request.receiptNo, 'projection-revise', 'ok', now);
         oiWriteStore_(store);
-        return { ok: false, error: 'invalid-transition' };
+        return oiStatusResult_(request);
       }
       if (oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now)) oiWriteStore_(store);
       return oiStatusResult_(request);
@@ -730,6 +786,7 @@ function oiSetStatus_(payload, now) {
     request.publicAmount = projection.publicAmount;
     request.completionReport = projection.completionReport;
     request.needsInfoReason = projection.needsInfoReason;
+    request.projectionRevision = revision;
     if (next === 'completed' && !request.completedAt) request.completedAt = oiNow_(now);
     request.updatedAt = oiNow_(now);
     oiResolveSyncErrors_(store, request.requestId, ['invalid-transition'], now);
@@ -788,7 +845,7 @@ function oiAdminUpsert_(payload, now) {
     var stagedConfig = JSON.stringify(config);
     return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
       var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'admin-upsert', 'ok', now); oiWriteStore_(store);
-    }, function () { return { ok: true, office: oiPublicOffice_(office) }; });
+    }, function () { return { ok: true, office: oiAdminOffice_(office) }; });
   } finally { lock.releaseLock(); }
 }
 function oiPinFromUuid_(uuid) {
@@ -818,7 +875,7 @@ function oiRotatePin_(payload, now) {
     var stagedConfig = JSON.stringify(config);
     return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
       var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'pin-rotate', 'ok', now); oiWriteStore_(store);
-    }, function () { return { ok: true, office: oiPublicOffice_(office), pin: pin }; });
+    }, function () { return { ok: true, office: oiAdminOffice_(office), pin: pin }; });
   } finally { lock.releaseLock(); }
 }
 function oiDisable_(payload, now) {
@@ -840,7 +897,7 @@ function oiDisable_(payload, now) {
     var stagedConfig = JSON.stringify(config);
     return oiCommitAdminConfig_(properties, previousConfig, stagedConfig, function () {
       var store = oiReadStore_(); oiAuditLocked_(store, office.id, '', 'disable', 'ok', now); oiWriteStore_(store);
-    }, function () { return { ok: true, office: oiPublicOffice_(office) }; });
+    }, function () { return { ok: true, office: oiAdminOffice_(office) }; });
   } finally { lock.releaseLock(); }
 }
 

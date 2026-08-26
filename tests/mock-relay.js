@@ -52,7 +52,7 @@ function officeCompletion(request, value) {
   let supplied = Object.hasOwn(value, 'photoIds') ? officePhotoIds(value.photoIds) : [];
   const published = Object.hasOwn(value, 'publicPhotoIds') ? officePhotoIds(value.publicPhotoIds) : [];
   if (supplied == null || published == null || (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length))) return { ok: false, error: 'invalid-completion-photos' };
-  const owned = new Set((request.photos || []).map(photo => String(photo && photo.fileId || '').trim()).filter(Boolean));
+  const owned = new Set((request.photos || []).concat(request.completionPhotos || []).map(photo => String(photo && photo.fileId || '').trim()).filter(Boolean));
   supplied = supplied.filter(id => owned.has(id));
   if (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length)) return { ok: false, error: 'invalid-completion-photos' };
   const allowed = new Set(supplied);
@@ -205,9 +205,9 @@ const server = http.createServer((req, res) => {
           const request = store.officeRequests.find(x => x.requestId === requestId);
           if (!request) return send(res, fail('not-found'));
           if (!orderId) return send(res, fail('invalid-input'));
-          if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, fail('already-linked'));
+          if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, Object.assign(fail('already-linked'), { hyeonjangOrderId: request.hyeonjangOrderId, status: request.status }));
           if (!request.hyeonjangOrderId) {
-            if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, fail('invalid-transition'));
+            if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, Object.assign(fail('invalid-transition'), { hyeonjangOrderId: request.hyeonjangOrderId || null, status: request.status }));
             request.hyeonjangOrderId = orderId; request.status = 'accepted'; request.needsInfoReason = null; request.updatedAt = new Date().toISOString();
             store.officeAccepts.push({ requestId, hyeonjangOrderId: orderId });
           }
@@ -218,22 +218,33 @@ const server = http.createServer((req, res) => {
           store.officeStatusCalls++;
           const request = store.officeRequests.find(x => x.requestId === requestId);
           if (!request) return send(res, fail('not-found'));
+          const hasRevision = Object.hasOwn(p, 'projectionRevision');
+          const projectionRevision = hasRevision ? Number(p.projectionRevision) : Number(request.projectionRevision || 0) + 1;
+          if (!Number.isInteger(projectionRevision) || projectionRevision < 0) return send(res, Object.assign(fail('invalid-input'), { field: 'projectionRevision' }));
+          if (Object.hasOwn(p, 'completionPhotoIds')) {
+            if (!Array.isArray(p.completionPhotoIds) || p.completionPhotoIds.length > 10) return send(res, fail('invalid-completion-photos'));
+            request.completionPhotos = [...new Set(p.completionPhotoIds.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))].map(id => ({ fileId: id, name: 'completion.jpg', mimeType: 'image/jpeg', size: 1 }));
+          }
           const completion = p.completionReport ? officeCompletion(request, p.completionReport) : null;
           if (completion && !completion.ok) return send(res, fail(completion.error));
           const projection = officeProjection(request, p, completion, status);
           if (!projection.ok) return send(res, Object.assign(fail(projection.error), { field: projection.field }));
           const publicProjection = projection.value;
           if (request.status === status) {
-            if (!sameOfficeProjection(request, publicProjection)) return send(res, fail('invalid-transition'));
+            if (!sameOfficeProjection(request, publicProjection)) {
+              if (!hasRevision || projectionRevision <= Number(request.projectionRevision || 0)) return send(res, Object.assign(fail('invalid-transition'), { status: request.status, projectionRevision: Number(request.projectionRevision || 0) }));
+              request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.projectionRevision = projectionRevision; request.updatedAt = new Date().toISOString();
+              store.officeStatuses.push({ requestId, status, projectionRevision, revised: true });
+            }
           } else {
             if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
-            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.updatedAt = new Date().toISOString();
-            store.officeStatuses.push({ requestId, status, visitAt: publicProjection.visitAt, publicAmount: publicProjection.publicAmount, completionReport: publicProjection.completionReport, needsInfoReason: publicProjection.needsInfoReason });
+            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.needsInfoReason = publicProjection.needsInfoReason; request.projectionRevision = projectionRevision; request.updatedAt = new Date().toISOString();
+            store.officeStatuses.push({ requestId, status, visitAt: publicProjection.visitAt, publicAmount: publicProjection.publicAmount, completionReport: publicProjection.completionReport, needsInfoReason: publicProjection.needsInfoReason, projectionRevision });
           }
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
           // while the next outbox flush must use the server's idempotent status result.
           if (store.dropNextOfficeStatus) { store.dropNextOfficeStatus = false; res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
-          const result = { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt };
+          const result = { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, projectionRevision: Number(request.projectionRevision || 0), updatedAt: request.updatedAt };
           if (request.completionReport) result.completionReport = officePublicCompletion(request.completionReport);
           return send(res, result);
         }

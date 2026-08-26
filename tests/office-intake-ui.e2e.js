@@ -254,6 +254,25 @@ let browser;
   assert.deepEqual(reviewGuards.events.slice(0, 3), ['push', 'dirty', 'cloud'], '로컬 오더 저장과 dirty가 서버 승인보다 먼저 실행');
   assert.deepEqual(reviewGuards.sequenceQueued, [{ requestId: 'sequence', hyeonjangOrderId: reviewGuards.sequenceId }], '실패한 승인 호출은 한 번만 정확히 큐잉');
 
+  const finalSafety = await page.evaluate(async () => {
+    const linked = state.aptOrders.find(order => order && order.source === 'office-intake');
+    const deleteBlocked = !officeIntakeDeleteGuard(linked);
+    const projectOrder = Object.assign({}, linked, { id: 'completion-project', unit: '103동 1204호', project: '기존 현장', intakePhotoIds: ['intake-only'] });
+    state.files.push({ id: 'field-before', kind: 'photo', project: '기존 현장', name: '103동1204호_시공전.jpg', _driveId: 'field-before-drive', _virtual: false });
+    state.files.push({ id: 'field-after', kind: 'photo', project: '기존 현장', name: '103동1204호_시공후.jpg', _driveId: 'field-after-drive', _virtual: false });
+    const completion = officeCompletionPhotoIds(projectOrder);
+    const cancelled = { requestId: 'req-cancel-race', receiptNo: 'MM-RACE', officeId: 'of-ui', unit: '105동 501호', location: '', issueType: '누수', pipeType: '미확정', urgency: 'normal', description: '취소 경합', officeContact: {}, photos: [], status: 'pending_review' };
+    officeIntakeData().inbox.push(cancelled);
+    const original = window.cloudOfficeAccept;
+    window.cloudOfficeAccept = async () => ({ ok: false, error: 'invalid-transition', status: 'cancelled', hyeonjangOrderId: null });
+    const result = await officeIntakeAccept('req-cancel-race', 'none');
+    window.cloudOfficeAccept = original;
+    return { deleteBlocked, completion, result: !!result, localRaceOrders: state.aptOrders.filter(order => order && order.sourceRequestId === 'req-cancel-race').length, raceOutbox: officeIntakeData().outbox.filter(item => item && item.payload && item.payload.requestId === 'req-cancel-race').length, raceStatus: cancelled.status };
+  });
+  assert.equal(finalSafety.deleteBlocked, true, '연결된 관리사무소 오더는 로컬 삭제 경로에서 차단');
+  assert.deepEqual(finalSafety.completion, ['field-before-drive', 'field-after-drive', 'intake-only'], '공개 완료 후보에는 실제 Drive 현장 전·후 사진이 포함');
+  assert.deepEqual({ result: finalSafety.result, localRaceOrders: finalSafety.localRaceOrders, raceOutbox: finalSafety.raceOutbox, raceStatus: finalSafety.raceStatus }, { result: false, localRaceOrders: 0, raceOutbox: 0, raceStatus: 'cancelled' }, '취소 경합은 ghost 오더·FIFO 재시도 없이 서버 상태로 정리');
+
   const layout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   assert.ok(layout.width <= layout.viewport, '390px 모바일 가로 넘침 없음: ' + JSON.stringify(layout));
   assert.deepEqual(errors, [], 'page errors: ' + errors.join(' | '));

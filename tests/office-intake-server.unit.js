@@ -133,6 +133,7 @@ function makeFolder(name, parent) {
     id: 'folder-' + drive.nextId++, name, parent,
     getId() { return this.id; },
     getName() { return this.name; },
+    getParents() { return iterator(this.parent ? [this.parent] : []); },
     getFilesByName(fileName) { return iterator(drive.files.filter(file => !file.trashed && file.parent === this && file.name === fileName)); },
     getFoldersByName(folderName) { return iterator(drive.folders.filter(child => child.parent === this && child.name === folderName)); },
     createFolder(folderName) { const child = makeFolder(folderName, this); drive.folderCreates++; drive.folders.push(child); return child; },
@@ -146,6 +147,8 @@ function makeFolder(name, parent) {
         getId() { return this.id; },
         getName() { return this.name; },
         getMimeType() { return this.mimeType; },
+        getSize() { return this.bytes.length; },
+        getParents() { return iterator(this.parent ? [this.parent] : []); },
         getBlob() { return { getDataAsString: () => Buffer.from(this.bytes).toString('utf8'), getBytes: () => this.bytes.slice() }; },
         setContent(text) {
           if (this.name === '관리사무소접수.json' && drive.failStoreWrites > 0) {
@@ -456,6 +459,19 @@ function setPublishedPhotoIds(ids) {
   sandbox.oiWriteStore_(store);
 }
 setPublishedPhotoIds([jpgUpload.fileId]);
+// Break caught: completion photos come from an internal, root-contained Drive
+// manifest.  They can be published, then explicitly withdrawn so officePhoto
+// no longer reaches Drive.
+const manifestStore = sandbox.oiReadStore_();
+manifestStore.requests.push({ requestId: 'completion-manifest', receiptNo: 'MM-completion-manifest', officeId: 'of1', status: 'in_progress', photos: [], completionPhotos: [], projectionRevision: 0, createdAt: '1970-01-01T00:00:00.000Z', updatedAt: '2026-08-26T00:00:00.000Z' });
+sandbox.oiWriteStore_(manifestStore);
+const manifestPublished = sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 1, completionPhotoIds: [jpgUpload.fileId], completionReport: { summary: '현장 완료', photoIds: [jpgUpload.fileId], publicPhotoIds: [jpgUpload.fileId] } }, 20004);
+assert.deepEqual(JSON.parse(JSON.stringify(manifestPublished.completionReport)), { summary: '현장 완료', photoIds: [jpgUpload.fileId], publicPhotoIds: [jpgUpload.fileId] });
+assert.equal(photoResponse(publicLogin.sessionToken, { requestId: 'completion-manifest', photoId: jpgUpload.fileId }).ok, true, 'validated completion manifest photo can be read only after explicit publication');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-manifest', status: 'completed', projectionRevision: 2, completionReport: { summary: '현장 완료', photoIds: [jpgUpload.fileId], publicPhotoIds: [] } }, 20005).ok, true, 'newer revision withdraws published completion photos');
+drive.getFileByIdCalls = 0;
+assertPhotoError(photoResponse(publicLogin.sessionToken, { requestId: 'completion-manifest', photoId: jpgUpload.fileId }), 'not-found');
+assert.equal(drive.getFileByIdCalls, 0, 'withdrawn completion photo is rejected before Drive');
 const photoStoreWrites = drive.storeWrites;
 drive.getFileByIdCalls = 0;
 cryptoStats.base64EncodeCalls = 0;
@@ -867,11 +883,14 @@ assert.equal(freshLogin.ok, true);
 assert.equal(postInternal('officeAdminUpsert', { id: 'of-conflict', slug: 'sample-apt', complexName: '중복 단지', enabled: true }).error, 'slug-conflict');
 
 // Break caught: active->disabled upsert must invalidate sessions, enabling later must not revive them, and disable keeps requests.
-assert.equal(postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: false }).ok, true);
+const disabledAdmin = postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: false });
+assert.equal(disabledAdmin.ok, true);
+assert.equal(disabledAdmin.office.enabled, false, 'admin response preserves disabled state instead of defaulting it true in the client');
 assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
 assert.equal(postInternal('officeAdminUpsert', { id: 'of1', slug: 'sample-apt', complexName: '예시 아파트', enabled: true }).ok, true);
 assert.equal(sandbox.oiVerifySession_(freshLogin.sessionToken, 1001), null);
 const enabledLogin = sandbox.oiLogin_({ slug: 'sample-apt', pin: rotated.pin }, 1000);
+assert.equal(Object.hasOwn(enabledLogin.office, 'enabled'), false, 'public login projection does not disclose admin enablement state');
 assert.equal(enabledLogin.ok, true);
 const beforeDisableCount = sandbox.oiReadStore_().requests.length;
 assert.equal(postInternal('officeDisable', { officeId: 'of1' }).ok, true);
@@ -973,6 +992,13 @@ const completionPayload = { requestId: 'completion-idempotent', status: 'complet
 assert.equal(sandbox.oiSetStatus_(completionPayload, 8000).ok, true);
 assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '공개 완료', photoIds: ['private', 'owned'], publicPhotoIds: ['owned'] } }, 9000).ok, true, 'normalized available-photo contract retries safely');
 assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', completionReport: { summary: '다른 공개 보고', photoIds: ['owned', 'private'], publicPhotoIds: ['owned'] } }, 10000).error, 'invalid-transition');
+// Break caught: after completion, a newer explicit projection revision may
+// revise a public report (including withdrawing all public photos), but stale
+// revisions cannot overwrite it.
+const revisedCompletion = sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', projectionRevision: 2, completionReport: { summary: '공개 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] } }, 10001);
+assert.deepEqual(JSON.parse(JSON.stringify(revisedCompletion.completionReport)), { summary: '공개 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] });
+assert.equal(revisedCompletion.projectionRevision, 2);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'completion-idempotent', status: 'completed', projectionRevision: 2, completionReport: { summary: '다른 철회', photoIds: ['owned', 'private'], publicPhotoIds: [] } }, 10002).error, 'invalid-transition', 'the same revision cannot replace a published projection');
 
 // Break caught: completion availability is owned by the current request, while public list/get never project the internal available set.
 const ownershipStore = sandbox.oiReadStore_();

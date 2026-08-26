@@ -61,9 +61,9 @@ let browser;
     officeIntakeQueueOrderStatus(intake);
     return { visit, completion, all: officeIntakeData().outbox.map(x => ({ action: x.action, payload: x.payload })) };
   });
-  assert(JSON.stringify(publishing.visit) === JSON.stringify([{ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: null, completionReport: null } }]), '④ 방문 상태는 접수 오더만 공개 금액 null을 명시해 대기열에 넣어야 한다');
+  assert(publishing.visit.length===1&&publishing.visit[0].action==='officeSetStatus'&&JSON.stringify(publishing.visit[0].payload)===JSON.stringify({ requestId: 'req-1', status: 'visit_scheduled', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: null, completionReport: null, completionPhotoIds:['drive-1','drive-2'], projectionRevision:1 }), '④ 방문 상태는 접수 오더만 공개 금액 null·trusted 사진 manifest·초기 revision을 대기열에 넣어야 한다');
   assert(JSON.stringify(publishing.completion) === JSON.stringify({ summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'], publicAmount: 120000 }), '④ 완료 보고는 intake 사용 가능 사진 집합과 명시 공개 부분집합만 포함해야 한다');
-  assert(JSON.stringify(publishing.all[1]) === JSON.stringify({ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'completed', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000, completionReport: { summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'] } } }), '④ 완료 상태는 공개 보고 외 개인정보·내부금액·무관 사진을 보내면 안 된다');
+  assert(JSON.stringify(publishing.all[1]) === JSON.stringify({ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'completed', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000, completionReport: { summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'] }, completionPhotoIds:['drive-1','drive-2'], projectionRevision:2 } }), '④ 완료 상태는 공개 보고 외 개인정보·내부금액·무관 사진을 보내면 안 된다');
   const integrity = await page.evaluate(() => {
     const intake = { id:'strict-order', source:'office-intake', sourceRequestId:'strict-request', status:'recv', intakePhotoIds:['owned'], publicPhotoIds:['owned'], completionSummary:'홍길동 02-1234-5678 (042) 123-4567 010 1234 5678 작업 완료', residentContact:{name:'홍길동',phone:'01012345678'}, officeContactPhone:'010-9999-8888' };
     const manual = { id:'manual-order', status:'recv' };
@@ -94,8 +94,8 @@ let browser;
   });
   const bulkReport={summary:'',photoIds:[],publicPhotoIds:[]};
   assert(JSON.stringify(monthly.statuses) === JSON.stringify([['bulk-intake','paid'],['bulk-manual','paid']]), '⑥ 월 청구·입금은 실제 변경된 intake만 발행하고 manual은 기존 정산만 적용해야 한다: '+JSON.stringify(monthly));
-  assert(JSON.stringify(monthly.billed) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport}]), '⑥ 청구는 intake 상태 1건의 정확한 payload만 대기열에 넣어야 한다');
-  assert(JSON.stringify(monthly.paid) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport},{requestId:'bulk-request',status:'paid',visitAt:null,publicAmount:null,completionReport:bulkReport}]), '⑥ 입금도 실제 변경된 intake 상태만 순서대로 대기열에 넣어야 한다');
+  assert(JSON.stringify(monthly.billed) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1}]), '⑥ 청구는 intake 상태 1건의 정확한 payload만 대기열에 넣어야 한다');
+  assert(JSON.stringify(monthly.paid) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1},{requestId:'bulk-request',status:'paid',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:2}]), '⑥ 입금도 실제 변경된 intake 상태만 순서대로 대기열에 넣어야 한다');
   assert(errors.length === 0, '④ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 승인 라벨에 금액/금액 미정 표시');
