@@ -1709,6 +1709,11 @@ function cloudApiBackup(){return relayCall('backup');}
 function cloudApiListFiles(kind){return relayCall('listFiles',kind?{kind:kind,deep:kind==='photo'}:{});}
 function cloudApiThumbnail(fileId){return relayCall('thumbnail',{fileId:fileId});}
 async function cloudApiUploadFile(file,kind,name,mime){const p=await relayBuildUploadPayload(file,kind,name,mime);return relayCall('upload',p);}
+// 관리사무소 action도 기존 내부 relay 인증만 재사용한다. APP_TOKEN은 __relay/idb 밖으로 나오지 않는다.
+function cloudOfficeInbox(cursor){return relayCall('officeInbox',{updatedAfter:cursor||''});}
+function cloudOfficeAccept(requestId,orderId){return relayCall('officeAccept',{requestId:requestId,hyeonjangOrderId:orderId});}
+function cloudOfficeSetStatus(payload){return relayCall('officeSetStatus',payload);}
+function cloudOfficeAdmin(action,payload){return relayCall(action,payload||{});}
 const RELAY_THUMB_MAX_B64=6*1024*1024;
 let __relayThumbInflight={};
 async function relayGetThumbnail(fileId){
@@ -9375,6 +9380,88 @@ function officeIntakeData(){
   if(!Array.isArray(d.outbox))d.outbox=[];
   d.cursor=String(d.cursor||'');d.lastSyncAt=String(d.lastSyncAt||'');d.lastError=String(d.lastError||'');
   return d;
+}
+let __officeIntakeFlushing=false;
+function officeIntakeError(value){
+  const raw=String((value&&value.error)||(value&&value.__code)||(value&&value.message)||value||'');
+  const known=raw.match(/unauthorized|not-configured|session-expired|invalid-session|forbidden|invalid-transition|already-linked|not-found|invalid-input|HTTP\s+\d{3}/i);
+  if(!known)return '동기화 오류';
+  const code=known[0].toLowerCase().replace(/\s+/g,' ');
+  return /unauthorized|not-configured|session-expired|invalid-session|forbidden/.test(code)?'인증 오류':'동기화 오류 ('+code+')';
+}
+function officeIntakeAuthError(value){return /^(인증 오류|.*(?:unauthorized|not-configured|session-expired|invalid-session|forbidden))/i.test(String((value&&value.error)||value||''));}
+function officeIntakeMarkDirty(){try{markDirty();}catch(e){}}
+function officeIntakeClonePayload(payload){try{return JSON.parse(JSON.stringify(payload||{}));}catch(e){return {};}}
+function officeIntakeUpdatedAt(value){return String(value&&value.updatedAt||'');}
+function officeIntakeMerge(records){
+  const d=officeIntakeData(),byId={};let changed=false;
+  d.inbox.forEach(function(r,i){if(r&&r.requestId)byId[String(r.requestId)]=i;});
+  (Array.isArray(records)?records:[]).forEach(function(incoming){
+    if(!incoming||!incoming.requestId)return;
+    const id=String(incoming.requestId),at=officeIntakeUpdatedAt(incoming),index=byId[id];
+    if(index==null){d.inbox.push(incoming);byId[id]=d.inbox.length-1;changed=true;return;}
+    // Equal timestamps keep the local object. A paged response is never a deletion signal.
+    if(at>officeIntakeUpdatedAt(d.inbox[index])){d.inbox[index]=incoming;changed=true;}
+  });
+  return changed;
+}
+function officeIntakeCursor(records,cursor){
+  let next=String(cursor||'');
+  (Array.isArray(records)?records:[]).forEach(function(r){const at=officeIntakeUpdatedAt(r);if(at>next)next=at;});
+  return next;
+}
+async function officeIntakeSync(){
+  if(!relayReady())return false;
+  const d=officeIntakeData();
+  try{
+    const res=await cloudOfficeInbox(d.cursor);
+    if(!(res&&res.ok)){
+      const error=officeIntakeError(res);if(d.lastError!==error){d.lastError=error;officeIntakeMarkDirty();}
+      return false;
+    }
+    let changed=officeIntakeMerge(res.requests);
+    const cursor=officeIntakeCursor(res.requests,res.cursor||d.cursor);
+    if(cursor>d.cursor){d.cursor=cursor;changed=true;}
+    const now=new Date().toISOString();if(d.lastSyncAt!==now){d.lastSyncAt=now;changed=true;}
+    if(d.lastError){d.lastError='';changed=true;}
+    if(changed)officeIntakeMarkDirty();
+    return true;
+  }catch(e){
+    const error=officeIntakeError(e);if(d.lastError!==error){d.lastError=error;officeIntakeMarkDirty();}
+    return false;
+  }
+}
+function officeIntakeQueue(action,payload){
+  const d=officeIntakeData(),copy=officeIntakeClonePayload(payload),fingerprint=JSON.stringify(copy);
+  // A user retry before the first network result must not create a second non-idempotent status transition.
+  const existing=d.outbox.find(function(item){return item&&item.action===String(action||'')&&JSON.stringify(item.payload||{})===fingerprint;});
+  if(existing)return;
+  d.outbox.push({id:uid(),action:String(action||''),payload:copy,createdAt:new Date().toISOString(),attempts:0,lastError:''});
+  officeIntakeMarkDirty();
+}
+async function officeIntakeFlush(){
+  if(__officeIntakeFlushing||!relayReady())return 0;
+  __officeIntakeFlushing=true;
+  let sent=0;
+  try{
+    const d=officeIntakeData();let changed=false,failed=false;
+    const pending=d.outbox.slice().sort(function(a,b){return String(a&&a.createdAt||'').localeCompare(String(b&&b.createdAt||''))||String(a&&a.id||'').localeCompare(String(b&&b.id||''));});
+    for(let i=0;i<pending.length;i++){
+      const item=pending[i];if(!item||!item.id||d.outbox.indexOf(item)<0)continue;
+      try{
+        const res=await relayCall(item.action,item.payload);
+        if(res&&res.ok===true){d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
+        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(res);d.lastError=item.lastError;changed=true;failed=true;
+        if(officeIntakeAuthError(res))break;
+      }catch(e){
+        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(e);d.lastError=item.lastError;changed=true;failed=true;
+        if(officeIntakeAuthError(e))break;
+      }
+    }
+    if(!failed&&d.lastError){d.lastError='';changed=true;}
+    if(changed)officeIntakeMarkDirty();
+    return sent;
+  }finally{__officeIntakeFlushing=false;}
 }
 const OFFICE_TO_APT_STATUS={accepted:'recv',visit_scheduled:'visit',in_progress:'work',completed:'done',billed:'billed',paid:'paid'};
 const APT_TO_OFFICE_STATUS={recv:'accepted',visit:'visit_scheduled',work:'in_progress',done:'completed',billed:'billed',paid:'paid'};

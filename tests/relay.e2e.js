@@ -111,6 +111,15 @@ async function pollMock(pred, ms, label) {
     await page.evaluate(() => closeModal());
   });
 
+  await test('1-1. 관리사무소 내부 relay wrapper — 기존 APP_TOKEN relay로 inbox를 조회', async () => {
+    const r = await page.evaluate(async () => {
+      const inbox = await cloudOfficeInbox('');
+      return { types: ['cloudOfficeInbox', 'cloudOfficeAccept', 'cloudOfficeSetStatus', 'cloudOfficeAdmin'].map(n => typeof window[n]), inbox };
+    });
+    assert(r.types.every(t => t === 'function'), 'office relay wrapper exported');
+    assert(r.inbox.ok === true && Array.isArray(r.inbox.requests) && r.inbox.requests[0].requestId === 'req-1', 'mock internal inbox contract');
+  });
+
   await test('2. markDirty → 3초 디바운스 relay 저장 → revision 1 · 상태 저장 완료', async () => {
     await page.evaluate(() => {
       state.projects.push({ name: '테스트현장', stage: 0, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' } });
@@ -349,7 +358,8 @@ async function pollMock(pred, ms, label) {
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
-       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'relayLoadDriveFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
+       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'relayLoadDriveFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot',
+       'cloudOfficeInbox', 'cloudOfficeAccept', 'cloudOfficeSetStatus', 'cloudOfficeAdmin', 'officeIntakeSync', 'officeIntakeQueue', 'officeIntakeFlush']
         .filter(n => typeof window[n] !== 'function'));
     assert(missing.length === 0, '누락: ' + missing.join(','));
   });

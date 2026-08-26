@@ -15,7 +15,14 @@ const ALLOWED_MIME = {
 
 function freshStore() {
   return { revision: 0, exists: false, data: null, savedAt: '', savedBy: '',
-           saves: [], uploads: [], backups: 0, backupDates: {}, fileSeq: 0, loads: 0 };
+           saves: [], uploads: [], backups: 0, backupDates: {}, fileSeq: 0, loads: 0,
+           officeRequests: [{
+             requestId: 'req-1', receiptNo: 'MM-20260826-0001', officeId: 'of1', unit: '103동 1204호',
+             location: '욕실 천장', issueType: '누수', pipeType: '미확정', urgency: 'normal',
+             description: '천장에서 물이 떨어집니다.', officeContact: { name: '김소장', phone: '010-1111-2222' },
+             residentContact: null, preferredVisitDate: '2026-08-27', photos: [], status: 'pending_review',
+             updatedAt: '2026-08-26T09:00:00+09:00'
+           }], officeAccepts: [], officeStatuses: [], officeStatusCalls: 0 };
 }
 let store = freshStore();
 
@@ -35,7 +42,8 @@ const server = http.createServer((req, res) => {
         revision: store.revision, exists: store.exists, savedAt: store.savedAt, savedBy: store.savedBy,
         saves: store.saves,
         uploads: store.uploads.map(x => ({ name: x.name, kind: x.kind, mimeType: x.mimeType, b64len: x.dataB64.length })),
-        backups: store.backups, loads: store.loads, data: store.data
+        backups: store.backups, loads: store.loads, data: store.data,
+        officeRequests: store.officeRequests, officeAccepts: store.officeAccepts, officeStatuses: store.officeStatuses, officeStatusCalls: store.officeStatusCalls
       });
     }
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
@@ -114,6 +122,44 @@ const server = http.createServer((req, res) => {
           if (!f) return send(res, fail('not-found', '사진 파일을 찾지 못했습니다'));
           if (f.kind !== 'photo' || !/^image\//.test(f.mimeType)) return send(res, fail('bad-request', '이미지 파일만 미리볼 수 있습니다'));
           return send(res, { ok: true, fileId: id, name: f.name, mimeType: f.mimeType, source: 'thumbnail', dataB64: f.dataB64 });
+        }
+        case 'officeInbox': {
+          const cursor = String(p.updatedAfter || '');
+          const requests = store.officeRequests.filter(x => !cursor || String(x.updatedAt || '') > cursor)
+            .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
+          const nextCursor = requests.length ? String(requests[requests.length - 1].updatedAt || cursor) : cursor;
+          return send(res, { ok: true, requests, cursor: nextCursor, operationalErrors: [] });
+        }
+        case 'officeAccept': {
+          const requestId = String(p.requestId || ''), orderId = String(p.hyeonjangOrderId || '');
+          const request = store.officeRequests.find(x => x.requestId === requestId);
+          if (!request) return send(res, fail('not-found'));
+          if (!orderId) return send(res, fail('invalid-input'));
+          if (request.hyeonjangOrderId && request.hyeonjangOrderId !== orderId) return send(res, fail('already-linked'));
+          if (!request.hyeonjangOrderId) {
+            if (request.status !== 'pending_review' && request.status !== 'on_hold') return send(res, fail('invalid-transition'));
+            request.hyeonjangOrderId = orderId; request.status = 'accepted'; request.updatedAt = new Date().toISOString();
+            store.officeAccepts.push({ requestId, hyeonjangOrderId: orderId });
+          }
+          return send(res, { ok: true, requestId, hyeonjangOrderId: request.hyeonjangOrderId, status: request.status });
+        }
+        case 'officeSetStatus': {
+          const requestId = String(p.requestId || ''), status = String(p.status || '');
+          store.officeStatusCalls++;
+          const request = store.officeRequests.find(x => x.requestId === requestId);
+          const transitions = {
+            pending_review: ['needs_info', 'accepted', 'on_hold', 'cancelled'], needs_info: ['pending_review', 'on_hold', 'cancelled'],
+            accepted: ['visit_scheduled', 'on_hold'], visit_scheduled: ['in_progress', 'on_hold'], in_progress: ['completed', 'on_hold'],
+            completed: ['billed'], billed: ['paid'], paid: [], on_hold: ['pending_review', 'accepted', 'visit_scheduled', 'in_progress', 'cancelled'], cancelled: []
+          };
+          if (!request) return send(res, fail('not-found'));
+          // Retrying the same delivered payload is idempotent, matching the internal action's observable result.
+          if (request.status !== status) {
+            if (!(transitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
+            request.status = status; request.updatedAt = new Date().toISOString();
+            store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null });
+          }
+          return send(res, { ok: true, requestId, status: request.status, updatedAt: request.updatedAt });
         }
         default: return send(res, fail('bad-request', '허용되지 않은 action'));
       }
