@@ -106,13 +106,16 @@ Calendar 생성이 실패해도 성공한 접수·영수증은 보존되며, `ca
 | `OFFICE_INTAKE_ENABLED` | 공개 office 로그인·접수 기능 on/off feature flag | 배포 전 설정 |
 | `OFFICE_SESSION_SECRET` | office 세션·PIN HMAC 서명 키(충분히 긴 무작위 값) | office 기능 on 전 |
 | `OFFICE_CONFIG_JSON` | office 목록·slug·활성 상태·PIN hash/salt·sessionVersion | office 기능 on 전 |
-| `OFFICE_CALENDAR_ID` | 긴급 office 알림을 만들 Calendar ID | 선택(미설정 시 배포자 기본 Calendar) |
+| `OFFICE_STORE_FILE` | 루트 Drive에 둘 접수 저장 파일명 | 선택(기본 `관리사무소접수.json`) |
 
 `OFFICE_CONFIG_JSON`에는 평문 PIN을 저장하지 않습니다. 최초 office는 내부
 `officeAdminUpsert`로 등록하고, `officeRotatePin`이 반환하는 PIN을 안전한
 관리 채널에서 한 번만 전달합니다. 응답·로그·저장소에 PIN을 다시 기록하지
-마세요. `OFFICE_INTAKE_ENABLED`는 검증 중 비활성 상태로 두고, 모든 gate를 통과한
-뒤 대표가 직접 활성화합니다.
+마세요. `OFFICE_INTAKE_ENABLED`는 검증 중 `0` 또는 누락 상태로 두고, 이 상태에서
+기존 relay의 배포·health·read-only gate를 먼저 통과합니다. 그 뒤 통제된 공개
+office 흐름 시험 시간에만 정확한 문자열 `1`을 설정하며, 모든 gate를 통과한
+경우에만 `1`을 유지합니다. 어느 gate라도 실패하면 즉시 `0`으로 설정하거나
+property를 삭제합니다.
 
 ## 계정 측 설치·재배포 순서와 live gate
 
@@ -135,7 +138,7 @@ Calendar 생성이 실패해도 성공한 접수·영수증은 보존되며, `ca
    URL은 기존 배포의 `/exec`를 유지하고, 새 배포를 만들었다면 프론트 설정의
    URL만 대표가 직접 교체합니다.
 6. 대표 계정에서 `health`를 확인해 `ok:true`, `folderOk:true`, 올바른
-   `version`/`revision`을 확인하고, 기존 relay의 `load` 등 읽기 동작이
+   `version`/`revision`을 확인하고, 기존 relay의 `load` 등 read-only 읽기 동작이
    정상인지 확인합니다. `not-configured`, `unauthorized`, `folderOk:false`이면
    다음 gate로 진행하지 않습니다. 이 단계에서 office 공개 login/create/upload는
    비활성 상태여야 합니다.

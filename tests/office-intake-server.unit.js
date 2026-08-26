@@ -13,7 +13,7 @@ const readme = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'README
 const installGuide = fs.readFileSync(path.join(__dirname, '..', 'APPS_SCRIPT_설치방법.md'), 'utf8');
 const REQUIRED_PROPERTIES = new Set([
   'APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED',
-  'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_CALENDAR_ID',
+  'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE',
 ]);
 function sectionBetween(source, start, end) {
   const begin = source.indexOf(start);
@@ -49,6 +49,9 @@ function assertGateOrder(docs, start, end, deployMarker) {
   const rollback = gate.lastIndexOf('OFFICE_INTAKE_ENABLED=0');
   assert(disabled >= 0 && deployed > disabled && health > deployed && enabled > health && rollback > enabled,
     'flag 0/absent -> deploy -> legacy health -> controlled flag 1 -> immediate rollback order');
+  assert(gate.slice(disabled, enabled).includes('기존 relay') && gate.slice(disabled, enabled).includes('read-only'),
+    'legacy relay gate is explicitly before public flag enable');
+  assert(!/flag를 켠 뒤[^\n]*health/.test(gate), 'banned contradictory flag-before-health wording');
 }
 assertGateOrder(readme, '## 계정 측 설치·재배포 순서와 live gate', '### 롤백');
 assertGateOrder(installGuide, '## 6. 웹 앱으로 배포', '## 7-2. 파수꾼 설치', '**배포** 클릭');
@@ -235,6 +238,13 @@ for (const name of ['OfficeIntakePure.gs', 'Code.gs', 'OfficeIntake.gs']) {
   const file = path.join(__dirname, '..', 'apps-script', name);
   if (fs.existsSync(file)) vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: name });
 }
+
+// Break caught: custom office store properties must remain supported, while
+// an absent property must preserve the established default filename.
+properties.OFFICE_STORE_FILE = 'custom-office-intake.json';
+assert.equal(sandbox.oiStoreName_(), 'custom-office-intake.json');
+delete properties.OFFICE_STORE_FILE;
+assert.equal(sandbox.oiStoreName_(), '관리사무소접수.json');
 
 // Break caught: removing login/session helpers must make successful office login impossible.
 lockEvents.length = 0;

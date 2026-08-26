@@ -65,7 +65,7 @@
 | `OFFICE_INTAKE_ENABLED` | 공개 office 접수 feature flag |
 | `OFFICE_SESSION_SECRET` | office PIN·세션 HMAC 서명 키 |
 | `OFFICE_CONFIG_JSON` | office 목록·PIN hash/salt·활성 상태·sessionVersion |
-| `OFFICE_CALENDAR_ID` | 긴급 office 알림을 만들 Calendar ID(선택) |
+| `OFFICE_STORE_FILE` | 관리사무소 접수 저장 파일명(선택) |
 
 3. 기존 설치에서 사용하는 `BACKUP_KEEP_COUNT` 등 다른 Watchdog 속성이 있다면
    그대로 보존합니다. 새 기능의 저장 파일 기본 이름은 `관리사무소접수.json`입니다.
@@ -77,6 +77,11 @@
 `OFFICE_INTAKE_ENABLED`는 오직 정확한 문자열 `1`일 때만 공개 office 기능을
 활성화합니다. 초기값은 `0`으로 하거나 property를 비워 두며, 빈 값·누락·그
 밖의 값은 모두 비활성화로 처리합니다.
+
+flag가 `0` 또는 누락인 동안 기존 relay의 배포·health·read-only gate를 먼저
+통과시킵니다. 통제된 공개 office 흐름 시험 시간에만 정확한 문자열 `1`을
+설정하고, 모든 gate가 통과한 경우에만 `1`을 유지합니다. 실패하면 즉시 `0`으로
+바꾸거나 property를 삭제합니다.
 
 ## 5. 최초 권한 승인
 
@@ -126,7 +131,7 @@ HTTP 200만으로는 올바른 배포·속성·Drive 권한을 증명하지 못�
 
 이 단계에서 기존 relay의 `health`와 `load` 같은 읽기 동작이 정상인지 확인합니다.
 flag가 `0` 또는 누락이면 office 공개 login/create/upload는 실패해야 하며, 기존
-relay는 계속 동작해야 합니다. 어느 확인이라도 실패하면 다음 단계로 가지 않고
+relay의 read-only 동작은 계속 동작해야 합니다. 어느 확인이라도 실패하면 다음 단계로 가지 않고
 flag를 `0`으로 설정하거나 property를 삭제합니다.
 
 ## 7-1. 관리사무소 office bootstrap (live gate 2)

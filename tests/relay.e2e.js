@@ -12,7 +12,7 @@ function assertStaticOfficeContract() {
   const officeSource = fs.readFileSync(path.join(root, 'apps-script', 'OfficeIntake.gs'), 'utf8');
   const readme = fs.readFileSync(path.join(root, 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
   const install = fs.readFileSync(path.join(root, 'APPS_SCRIPT_설치방법.md'), 'utf8');
-  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_CALENDAR_ID']);
+  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE']);
   const sectionBetween = (source, start, end) => {
     const begin = source.indexOf(start); assert(begin >= 0, 'missing section: ' + start);
     const finish = source.indexOf(end, begin + start.length); assert(finish >= 0, 'missing section end: ' + end);
@@ -36,6 +36,16 @@ function assertStaticOfficeContract() {
     post.indexOf('if (ALLOWED_ACTIONS.indexOf(action) < 0)'),
   ];
   assert(order.every(i => i >= 0) && order.every((i, n) => n === 0 || order[n - 1] < i), 'public -> token -> internal -> legacy ordering');
+  for (const docs of [readme, install]) {
+    const gate = docs === readme
+      ? sectionBetween(docs, '## 계정 측 설치·재배포 순서와 live gate', '### 롤백')
+      : sectionBetween(docs, '## 6. 웹 앱으로 배포', '## 7-2. 파수꾼 설치');
+    const disabled = gate.indexOf('OFFICE_INTAKE_ENABLED=0');
+    const health = gate.indexOf('`health`');
+    const enabled = gate.indexOf('OFFICE_INTAKE_ENABLED=1');
+    assert(disabled >= 0 && health > disabled && enabled > health, 'legacy health precedes controlled flag enable');
+    assert(!/flag를 켠 뒤[^\n]*health/.test(gate), 'banned contradictory flag-before-health wording');
+  }
   assert(!officeSource.includes('APP_TOKEN='), 'office source has no embedded APP_TOKEN assignment');
   for (const docs of [readme, install]) assert(docs.includes('only exact string `1`') || docs.includes('정확한 문자열 `1`'), 'exact flag enable semantics');
   assert(readme.includes('USER_DEPLOYING') && readme.includes('ANYONE_ANONYMOUS'), 'README documents deployment boundary');

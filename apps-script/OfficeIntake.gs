@@ -142,7 +142,7 @@ var OI_IMAGE_TYPES = {
 };
 
 function oiStoreName_() {
-  return '관리사무소접수.json';
+  return PropertiesService.getScriptProperties().getProperty('OFFICE_STORE_FILE') || '관리사무소접수.json';
 }
 function oiStoreRoot_() { return rootFolder_(); }
 function oiStoreFile_(root) {
@@ -704,10 +704,7 @@ function oiNotifyUrgent_(request) {
     var office = oiOfficeById_(request.officeId);
     var title = '[긴급 관리사무소 접수] ' + oiText_(office && office.complexName, 120) + ' ' + oiText_(request.location, 120);
     var start = new Date();
-    var calendarId = PropertiesService.getScriptProperties().getProperty('OFFICE_CALENDAR_ID') || '';
-    var calendar = calendarId && CalendarApp.getCalendarById ? CalendarApp.getCalendarById(calendarId) : CalendarApp.getDefaultCalendar();
-    if (!calendar) throw new Error('office-calendar-not-found');
-    calendar.createEvent(title, start, new Date(start.getTime() + 30 * 60 * 1000));
+    CalendarApp.getDefaultCalendar().createEvent(title, start, new Date(start.getTime() + 30 * 60 * 1000));
     return { ok: true };
   } catch (_) {
     try { oiOperationalError_('calendar-failed', request && request.requestId, Date.now()); } catch (_) {}
