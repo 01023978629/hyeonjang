@@ -68,8 +68,9 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 `invalid-credentials`(없는/중지된 단지나 잘못된 PIN 포함) ·
 `rate-limited`(10분 동안 로그인 실패 5회) · `session-expired`(만료·폐기·서명
 오류 세션) · `invalid-input` · `consent-required` · `invalid-status` ·
-`invalid-completion-photos` · `unsupported-type` · `invalid-file` · `too-large` ·
-`too-many-files` · `not-found` · `bad-request` · `server-error`.
+`invalid-upload-id`(canonical UUID uploadId 누락·형식 오류) · `unsupported-type` ·
+`invalid-file` · `too-large` · `too-many-files` · `not-found` · `bad-request` ·
+`server-error`.
 
 ### Internal response codes
 
@@ -77,7 +78,8 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 처리합니다. `already-linked`(다른 현장 order가 이미 연결됨) ·
 `slug-conflict`(다른 office가 같은 slug 사용) · `invalid-transition`(허용되지
 않은 상태 전이) · `admin-state-unknown`(관리자 설정과 복구 상태를 판정할 수
-없음) · `invalid-input` · `not-found` · `bad-request` · `server-error`.
+없음) · `invalid-completion-photos` · `invalid-input` · `not-found` ·
+`bad-request` · `server-error`.
 
 ### Operational records
 

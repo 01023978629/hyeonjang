@@ -79,6 +79,25 @@ const codeTokens = section => [...section.matchAll(/`([a-z][a-z-]+)`/g)].map(m =
 const documentedErrors = new Set([...codeTokens(publicErrorSection), ...codeTokens(internalErrorSection), ...codeTokens(operationalErrorSection)]);
 const serverSource = codeSource + officeSource + pureSource;
 for (const error of documentedErrors) assert(serverSource.includes("'" + error + "'"), 'documented error must exist in source: ' + error);
+const publicOfficeErrorSources = [
+  sectionBetween(officeSource, 'function oiInvalidCredentials_', 'function oiLogin_'),
+  sectionBetween(officeSource, 'function oiLogin_', 'function oiVerifySession_'),
+  sectionBetween(officeSource, 'function oiHandlePublicAction_', 'var OI_STORE_VERSION'),
+  sectionBetween(officeSource, 'function oiCreate_', 'function oiList_'),
+  sectionBetween(officeSource, 'function oiList_', 'function oiGet_'),
+  sectionBetween(officeSource, 'function oiGet_', 'function oiUpdate_'),
+  sectionBetween(officeSource, 'function oiUpdate_', 'function oiCancel_'),
+  sectionBetween(officeSource, 'function oiCancel_', 'function oiByte_'),
+  sectionBetween(officeSource, 'function oiUpload_', 'function oiInbox_'),
+  sectionBetween(pureSource, 'function oiValidateCreate_', 'function oiCanTransition_'),
+].join('\n');
+const implementedPublicOfficeErrors = new Set([
+  ...[...publicOfficeErrorSources.matchAll(/\berror:\s*'([a-z][a-z-]+)'/g)].map(match => match[1]),
+  // doPost's public-action dispatch may serialize unexpected public handler failures.
+  'server-error',
+]);
+assert.deepEqual(new Set(codeTokens(publicErrorSection)), implementedPublicOfficeErrors,
+  'public OfficeIntake errors are documented exactly, without including internal-only paths');
 assert(internalErrorSection.includes('already-linked') && internalErrorSection.includes('slug-conflict') && internalErrorSection.includes('invalid-transition') && internalErrorSection.includes('admin-state-unknown'));
 assert(operationalErrorSection.includes('calendar-failed') && operationalErrorSection.includes('성공한 접수'));
 
@@ -92,7 +111,7 @@ const cache = new Map();
 const propertyFaults = { onSet: null, onDelete: null };
 const cryptoStats = { macCalls: 0, decodeCalls: 0 };
 const lockEvents = [];
-const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0 };
+const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0 };
 function iterator(items) {
   let index = 0;
   return { hasNext: () => index < items.length, next: () => items[index++] };
@@ -121,10 +140,12 @@ function makeFolder(name, parent) {
             throw new Error('injected-store-write-failure');
           }
           this.bytes = Array.from(Buffer.from(String(text), 'utf8'));
+          if (this.name === '관리사무소접수.json') drive.storeWrites++;
         },
         setTrashed(value) { this.trashed = value === true; },
       };
       drive.files.push(file);
+      if (file.name === '관리사무소접수.json') drive.storeWrites++;
       return file;
     },
   };
@@ -418,8 +439,11 @@ const retryUploadId = 'A0B1C2D3-E4F5-4A67-8B90-1234567890AB';
 const firstRetryUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, uploadId: retryUploadId, name: 'untrusted-client-name.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20024));
+assert.deepEqual(Object.keys(firstRetryUpload).sort(), ['createdAt', 'fileId', 'mimeType', 'name', 'ok', 'size', 'uploadId']);
 const retryFileCount = drive.files.filter(file => !file.trashed).length;
 const retryAuditCount = sandbox.oiReadStore_().audit.filter(row => row.action === 'upload' && row.receiptNo === retryRequest.receiptNo).length;
+const retryStoreWrites = drive.storeWrites;
+const retryRequestBeforeReplay = JSON.parse(JSON.stringify(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId)));
 const replayRetryUpload = locked(() => sandbox.oiUpload_(sessionOf1, {
   requestId: retryRequest.requestId, uploadId: retryUploadId, name: 'ignored-on-retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20025));
@@ -427,6 +451,8 @@ assert.deepEqual(JSON.parse(JSON.stringify(replayRetryUpload)), JSON.parse(JSON.
 assert.equal(replayRetryUpload.uploadId, retryUploadId.toLowerCase());
 assert.equal(drive.files.filter(file => !file.trashed).length, retryFileCount);
 assert.equal(sandbox.oiReadStore_().audit.filter(row => row.action === 'upload' && row.receiptNo === retryRequest.receiptNo).length, retryAuditCount);
+assert.equal(drive.storeWrites, retryStoreWrites);
+assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId))), retryRequestBeforeReplay);
 assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === retryRequest.requestId).photos[0].uploadId, retryUploadId.toLowerCase());
 
 const scopedRequest = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'upload-id-scope' }, 20026));
@@ -506,15 +532,18 @@ assert.equal(sandbox.oiUpload_(sessionOf2, {
 
 // Break caught: store-write failure after Drive create must not leave a retry-visible orphan photo.
 const compensated = locked(() => sandbox.oiCreate_(sessionOf1, { ...validPayload, idempotencyKey: 'compensated' }, 20040));
+const compensatedUploadId = uploadUuid(19);
 drive.failStoreWrites = 1;
 lockedThrow(() => sandbox.oiUpload_(sessionOf1, {
-  requestId: compensated.requestId, uploadId: uploadUuid(19), name: 'will-fail.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+  requestId: compensated.requestId, uploadId: compensatedUploadId, name: 'will-fail.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20041), 'injected-store-write-failure');
 assert.equal(drive.files.filter(file => !file.trashed && file.name === compensated.receiptNo + '_01.jpg').length, 0);
+assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === compensated.requestId).photos.length, 0);
 assert.equal(locked(() => sandbox.oiUpload_(sessionOf1, {
-  requestId: compensated.requestId, uploadId: uploadUuid(20), name: 'retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
+  requestId: compensated.requestId, uploadId: compensatedUploadId, name: 'retry.jpg', mimeType: 'image/jpeg', dataB64: jpegB64
 }, 20042)).ok, true);
 assert.equal(drive.files.filter(file => !file.trashed && file.name === compensated.receiptNo + '_01.jpg').length, 1);
+assert.equal(sandbox.oiReadStore_().requests.find(request => request.requestId === compensated.requestId).photos.length, 1);
 
 // Break caught: explicit null must clear resident contact, and only the owning office may update or cancel while status is mutable.
 const editable = locked(() => sandbox.oiCreate_(sessionOf1, {
