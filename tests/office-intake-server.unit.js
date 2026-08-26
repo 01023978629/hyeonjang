@@ -775,6 +775,11 @@ assert.equal(resubmitted.status, 'pending_review');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null);
 assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'needs_info', reason: '현장 확인이 필요합니다' }, 11005).ok, true);
 assert.equal(sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 11006).needsInfoReason, '현장 확인이 필요합니다', 'hold preserves an unresolved reason');
+const auditAfterFirstHold = sandbox.oiReadStore_().audit.length;
+const replayedHold = sandbox.oiSetStatus_({ requestId: 'reason-state', status: 'on_hold' }, 110061);
+assert.equal(replayedHold.ok, true, 'lost successful on_hold response replays as an exact idempotent projection');
+assert.equal(replayedHold.needsInfoReason, '현장 확인이 필요합니다', 'on_hold self replay keeps its unresolved reason');
+assert.equal(sandbox.oiReadStore_().audit.length, auditAfterFirstHold, 'idempotent on_hold retry adds no status audit');
 assert.equal(sandbox.oiAccept_({ requestId: 'reason-state', hyeonjangOrderId: 'reason-order' }, 11007).ok, true);
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'reason-state').request.needsInfoReason, null, 'accept clears a resolved reason');
 

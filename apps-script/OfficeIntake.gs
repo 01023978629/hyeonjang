@@ -593,7 +593,7 @@ function oiNeedsInfoReason_(request, payload, next) {
     var reason = String(payload.reason == null ? '' : payload.reason).trim();
     return reason && reason.length <= 300 ? { ok: true, value: reason } : { ok: false, error: 'invalid-input', field: 'reason' };
   }
-  return { ok: true, value: next === 'on_hold' && request.status === 'needs_info' ? (oiText_(request.needsInfoReason, 300) || null) : null };
+  return { ok: true, value: next === 'on_hold' && (request.status === 'needs_info' || request.status === 'on_hold') ? (oiText_(request.needsInfoReason, 300) || null) : null };
 }
 function oiStatusProjection_(request, payload, completion, next) {
   var amount = oiPublicAmount_(request, payload);

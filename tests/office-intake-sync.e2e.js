@@ -150,12 +150,39 @@ const TOKEN = 'test-token-123';
     return { needs, hold, accepted };
   });
   assert.deepEqual(resolvedReason, {
-    needs: { ok: true, requestId: 'req-1', status: 'needs_info', updatedAt: resolvedReason.needs.updatedAt },
-    hold: { ok: true, requestId: 'req-1', status: 'on_hold', updatedAt: resolvedReason.hold.updatedAt },
+    needs: { ok: true, requestId: 'req-1', status: 'needs_info', needsInfoReason: '사진 보완', updatedAt: resolvedReason.needs.updatedAt },
+    hold: { ok: true, requestId: 'req-1', status: 'on_hold', needsInfoReason: '사진 보완', updatedAt: resolvedReason.hold.updatedAt },
     accepted: { ok: true, requestId: 'req-1', hyeonjangOrderId: 'order-reason-resolved', status: 'accepted' }
   }, 'needs_info -> on_hold -> accepted succeeds');
   const resolvedMock = await (await fetch(MOCK + '/__state')).json();
   assert.equal(resolvedMock.officeRequests.find(row => row.requestId === 'req-1').needsInfoReason, null, 'acceptance clears resolved needs-info reason in mock fidelity');
+
+  // Break caught: a lost on_hold success must replay the same public projection,
+  // keep its reason, and let the durable queue clear without a second status audit.
+  await fetch(MOCK + '/__reset');
+  const holdProjection = await page.evaluate(async () => {
+    const needs = await cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', reason: '배관 사진 보완' });
+    const hold = await cloudOfficeSetStatus({ requestId: 'req-1', status: 'on_hold' });
+    return { needs, hold };
+  });
+  assert.equal(holdProjection.needs.needsInfoReason, '배관 사진 보완', 'mock status response exposes the public reason');
+  assert.equal(holdProjection.hold.needsInfoReason, '배관 사진 보완', 'on_hold response preserves the public reason');
+  await fetch(MOCK + '/__reset');
+  await page.evaluate(() => cloudOfficeSetStatus({ requestId: 'req-1', status: 'needs_info', reason: '배관 사진 보완' }));
+  await fetch(MOCK + '/__officeDropNextStatus');
+  const lostHold = await page.evaluate(async () => {
+    state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    officeIntakeQueue('officeSetStatus', { requestId: 'req-1', status: 'on_hold' });
+    await officeIntakeFlush();
+    const afterDrop = { queued: officeIntakeData().outbox.length, attempts: officeIntakeData().outbox[0].attempts };
+    const sent = await officeIntakeFlush();
+    return { afterDrop, sent, remaining: officeIntakeData().outbox.length };
+  });
+  assert.deepEqual(lostHold, { afterDrop: { queued: 1, attempts: 1 }, sent: 1, remaining: 0 }, 'lost on_hold response retries once and clears only exact ok:true');
+  const lostHoldMock = await (await fetch(MOCK + '/__state')).json();
+  assert.deepEqual(lostHoldMock.officeStatuses.map(row => row.status), ['needs_info', 'on_hold'], 'lost on_hold retry does not duplicate the status audit');
+  assert.equal(lostHoldMock.officeStatusCalls, 3, 'needs_info plus committed hold plus idempotent retry reach relay');
+  assert.equal(lostHoldMock.officeRequests.find(row => row.requestId === 'req-1').needsInfoReason, '배관 사진 보완', 'lost on_hold retry keeps the unresolved reason');
 
   await fetch(MOCK + '/__officeSeed?count=101&at=2100-01-01T00%3A00%3A00.000Z');
   const cursorPaging = await page.evaluate(async () => {

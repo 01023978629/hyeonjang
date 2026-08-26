@@ -64,7 +64,7 @@ function officePublicAmount(request, payload) {
 }
 function officeReason(request, payload, next) {
   if (next === 'needs_info') { const reason = String(payload.reason == null ? '' : payload.reason).trim(); return reason && reason.length <= 300 ? { ok: true, value: reason } : { ok: false, error: 'invalid-input', field: 'reason' }; }
-  return { ok: true, value: next === 'on_hold' && request.status === 'needs_info' ? (String(request.needsInfoReason || '').trim().slice(0, 300) || null) : null };
+  return { ok: true, value: next === 'on_hold' && (request.status === 'needs_info' || request.status === 'on_hold') ? (String(request.needsInfoReason || '').trim().slice(0, 300) || null) : null };
 }
 function officeProjection(request, payload, completion, next) {
   const amount = officePublicAmount(request, payload); if (!amount.ok) return amount;
@@ -225,7 +225,7 @@ const server = http.createServer((req, res) => {
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
           // while the next outbox flush must use the server's idempotent status result.
           if (store.dropNextOfficeStatus) { store.dropNextOfficeStatus = false; res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
-          return send(res, { ok: true, requestId, status: request.status, updatedAt: request.updatedAt });
+          return send(res, { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt });
         }
         default: return send(res, fail('bad-request', '허용되지 않은 action'));
       }

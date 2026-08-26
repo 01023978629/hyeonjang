@@ -191,8 +191,29 @@ let browser;
     const projectCountAfterExisting = state.projects.length;
     const duplicateExisting = await officeIntakeAccept('matrix-pending', 'new', '새로 만들면 안 됨');
     const projectCountAfterDuplicate = state.projects.length;
+    const heldRequest = officeIntakeFindRequest('matrix-hold'); heldRequest.needsInfoReason = '보완 사진 대기';
     const held = await officeIntakeAccept('matrix-hold', 'new', '새 현장');
+    const heldAfterAccept = { status: heldRequest.status, reason: heldRequest.needsInfoReason };
     const holdAfterNeeds = await officeIntakeHold('matrix-needs');
+    state.officeIntake.inbox.push(request('recovery-ok', 'pending_review'), request('recovery-fail', 'on_hold'), request('recovery-needs', 'needs_info'));
+    officeIntakeFindRequest('recovery-fail').needsInfoReason = '기존 보완 사유';
+    const recoveryOrder = { id: 'recovery-order', sourceRequestId: 'recovery-ok', project: '기존 현장' };
+    const recoveryFailedOrder = { id: 'recovery-failed-order', sourceRequestId: 'recovery-fail', project: '기존 현장' };
+    state.aptOrders.push(recoveryOrder, recoveryFailedOrder);
+    const recoveryCalls = [], priorCloud = window.cloudOfficeAccept;
+    window.cloudOfficeAccept = async (requestId, orderId) => { recoveryCalls.push({ requestId, orderId }); return requestId === 'recovery-fail' ? { ok: false, error: 'offline' } : { ok: true }; };
+    const recoverySuccess = await officeIntakeAccept('recovery-ok', 'new', '만들면 안 됨');
+    const recoveryIdempotent = await officeIntakeAccept('recovery-ok', 'none');
+    const recoveryFailure = await officeIntakeAccept('recovery-fail', 'existing', '없는 현장도 보지 않음');
+    const recoveryNeeds = await reject(() => officeIntakeAccept('recovery-needs', 'none'));
+    window.cloudOfficeAccept = priorCloud;
+    const recovery = {
+      success: recoverySuccess && recoverySuccess.id, failure: recoveryFailure && recoveryFailure.id, idempotent: recoveryIdempotent && recoveryIdempotent.id,
+      calls: recoveryCalls, projects: state.projects.map(project => project.name), orders: state.aptOrders.filter(order => /^recovery-/.test(order.sourceRequestId)).map(order => order.id),
+      successRequest: officeIntakeFindRequest('recovery-ok'), failureRequest: officeIntakeFindRequest('recovery-fail'), recoveryNeeds,
+      queued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && /^recovery-/.test(item.payload.requestId)).map(item => item.payload),
+      pendingIds: officeIntakePending().map(item => item.requestId)
+    };
     const phoneChecks = ['010-1234-5678', '+82 10 1234 5678', '010-1234-5678;evil', '010abc12345678', '+12'].map(value => ({ value, tel: officeIntakeTel(value) }));
     state.officeIntake.inbox.push(request('sequence', 'pending_review'));
     const events = [], originalPush = state.aptOrders.push, originalDirty = window.markDirty, originalAccept = window.cloudOfficeAccept;
@@ -201,7 +222,7 @@ let browser;
     window.cloudOfficeAccept = async () => { events.push('cloud'); return { ok: false, error: 'offline' }; };
     const sequence = await officeIntakeAccept('sequence', 'none');
     state.aptOrders.push = originalPush; window.markDirty = originalDirty; window.cloudOfficeAccept = originalAccept;
-    return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds, existingProject: existing && existing.project, projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate, heldProject: held && held.project, holdAfterNeeds: !!holdAfterNeeds, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
+    return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds, existingProject: existing && existing.project, projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate, heldProject: held && held.project, heldAfterAccept, holdAfterNeeds: !!holdAfterNeeds, recovery, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
   });
   assert.deepEqual(reviewGuards.buttons, { pending: ['오더 등록', '내용 보완 요청', '보류'], needs: ['보류'], hold: ['오더 등록'] }, '상태별로 허용된 검토 버튼만 렌더링');
   for (const key of ['invalidNeedsAccept', 'invalidHoldNeeds', 'invalidHoldAgain', 'invalidMode', 'missingExisting', 'newCollision', 'blankNeeds']) assert.deepEqual(reviewGuards[key], { result: false, unchanged: true }, key + '는 로컬 상태를 바꾸지 않음');
@@ -210,7 +231,22 @@ let browser;
   assert.equal(reviewGuards.duplicateProject, '기존 현장', '이미 승인된 접수는 기존 오더만 반환');
   assert.equal(reviewGuards.projectCountAfterDuplicate, 1, '중복 승인은 새 현장을 만들지 않음');
   assert.equal(reviewGuards.heldProject, '새 현장', '보류 접수는 새 현장 승인 허용');
+  assert.deepEqual(reviewGuards.heldAfterAccept, { status: 'accepted', reason: null }, '보류 사유는 로컬 승인 전에 해결 처리');
   assert.equal(reviewGuards.holdAfterNeeds, true, '보완 요청 상태는 보류 허용');
+  assert.equal(reviewGuards.recovery.success, 'recovery-order');
+  assert.equal(reviewGuards.recovery.failure, 'recovery-failed-order');
+  assert.equal(reviewGuards.recovery.idempotent, 'recovery-order', 'already accepted existing order does not call cloud twice');
+  assert.deepEqual(reviewGuards.recovery.calls, [{ requestId: 'recovery-ok', orderId: 'recovery-order' }, { requestId: 'recovery-fail', orderId: 'recovery-failed-order' }], 'existing orders recover through their exact cloud approval IDs');
+  assert.deepEqual(reviewGuards.recovery.projects, ['기존 현장', '새 현장'], 'recovery creates no project');
+  assert.deepEqual(reviewGuards.recovery.orders, ['recovery-order', 'recovery-failed-order'], 'recovery creates no duplicate order');
+  assert.equal(reviewGuards.recovery.successRequest.status, 'accepted');
+  assert.equal(reviewGuards.recovery.successRequest.needsInfoReason, null);
+  assert.equal(reviewGuards.recovery.failureRequest.status, 'accepted');
+  assert.equal(reviewGuards.recovery.failureRequest.needsInfoReason, null, 'recovered on_hold clears its reason before local persistence');
+  assert.deepEqual(reviewGuards.recovery.recoveryNeeds, { result: false, unchanged: true }, 'needs_info recovery has zero side effects');
+  assert.deepEqual(reviewGuards.recovery.queued, [{ requestId: 'recovery-fail', hyeonjangOrderId: 'recovery-failed-order' }], 'failed existing-order recovery queues one exact approval retry');
+  assert.equal(reviewGuards.recovery.pendingIds.includes('recovery-ok'), false, 'successful recovery no longer renders as a pending row');
+  assert.equal(reviewGuards.recovery.pendingIds.includes('recovery-fail'), false, 'queued recovery no longer renders as a pending row');
   assert.deepEqual(reviewGuards.phoneChecks, [
     { value: '010-1234-5678', tel: '01012345678' }, { value: '+82 10 1234 5678', tel: '+821012345678' },
     { value: '010-1234-5678;evil', tel: '' }, { value: '010abc12345678', tel: '' }, { value: '+12', tel: '' }

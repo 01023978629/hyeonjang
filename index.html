@@ -9530,22 +9530,8 @@ function officeIntakeProjectName(mode,projectName){
 function officeIntakeCanAccept(request){return !!(request&&['pending_review','on_hold'].includes(request.status));}
 function officeIntakeCanNeedsInfo(request){return !!(request&&request.status==='pending_review');}
 function officeIntakeCanHold(request){return !!(request&&['pending_review','needs_info'].includes(request.status));}
-async function officeIntakeAccept(requestId,projectMode,projectName){
-  const request=officeIntakeFindRequest(requestId);
-  if(!request){toast('접수를 찾을 수 없습니다');return false;}
-  const existing=officeIntakeFindOrder(request.requestId);
-  if(existing&&request.status==='accepted')return existing;
-  if(!officeIntakeCanAccept(request)){toast('현재 상태에서는 오더로 등록할 수 없습니다');return false;}
-  if(existing)return existing;
-  const project=officeIntakeProjectName(projectMode,projectName);
-  if(project===null)return false;
-  let order;
-  try{order=officeIntakeOrderFromRequest(request,project);}catch(e){toast(e&&e.message||'오더를 만들 수 없습니다');return false;}
-  const duplicate=officeIntakeFindOrder(request.requestId);
-  if(duplicate)return duplicate;
-  state.aptOrders=state.aptOrders||[];
-  state.aptOrders.push(order);
-  request.status='accepted';
+async function officeIntakeFinishAccept(request,order){
+  request.status='accepted';request.needsInfoReason=null;
   officeIntakeMarkDirty();
   try{
     const result=await cloudOfficeAccept(request.requestId,order.id);
@@ -9554,6 +9540,23 @@ async function officeIntakeAccept(requestId,projectMode,projectName){
     officeIntakeQueue('officeAccept',{requestId:request.requestId,hyeonjangOrderId:order.id});
   }
   return order;
+}
+async function officeIntakeAccept(requestId,projectMode,projectName){
+  const request=officeIntakeFindRequest(requestId);
+  if(!request){toast('접수를 찾을 수 없습니다');return false;}
+  const existing=officeIntakeFindOrder(request.requestId);
+  if(existing&&request.status==='accepted')return existing;
+  if(!officeIntakeCanAccept(request)){toast('현재 상태에서는 오더로 등록할 수 없습니다');return false;}
+  if(existing)return officeIntakeFinishAccept(request,existing);
+  const project=officeIntakeProjectName(projectMode,projectName);
+  if(project===null)return false;
+  let order;
+  try{order=officeIntakeOrderFromRequest(request,project);}catch(e){toast(e&&e.message||'오더를 만들 수 없습니다');return false;}
+  const duplicate=officeIntakeFindOrder(request.requestId);
+  if(duplicate)return duplicate;
+  state.aptOrders=state.aptOrders||[];
+  state.aptOrders.push(order);
+  return officeIntakeFinishAccept(request,order);
 }
 async function officeIntakeNeedsInfo(requestId){
   const request=officeIntakeFindRequest(requestId);
