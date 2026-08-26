@@ -550,7 +550,11 @@ function oiSetStatus_(payload, now) {
     var store = oiReadStore_();
     var request = oiRequestById_(store, payload.requestId);
     if (!request) return { ok: false, error: 'not-found' };
-    if (!oiCanTransition_(request.status, next, 'internal')) return { ok: false, error: 'invalid-transition' };
+    if (!oiCanTransition_(request.status, next, 'internal')) {
+      oiOperationalErrorLocked_(store, 'invalid-transition', request.requestId, now);
+      oiWriteStore_(store);
+      return { ok: false, error: 'invalid-transition' };
+    }
     var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
     request.status = next;

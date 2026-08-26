@@ -525,6 +525,25 @@ assert.equal(postInternal('officeAccept', { requestId: 'sync-retry', hyeonjangOr
 assert.equal(postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' }).requests.some(request => request.requestId === 'sync-retry'), false);
 fakeNow = 1000;
 
+// Break caught: a failed internal status sync must persist only a safe retry record, then a valid status resolves that exact retry.
+const statusRetryStore = sandbox.oiReadStore_();
+statusRetryStore.requests.push({ requestId: 'status-retry', receiptNo: 'MM-status-retry', officeId: 'of1', status: 'accepted', updatedAt: '1970-01-01T00:00:00.000Z' });
+sandbox.oiWriteStore_(statusRetryStore);
+fakeNow = Date.parse('1970-01-02T00:00:00.000Z');
+assert.equal(postInternal('officeSetStatus', { requestId: 'status-retry', status: 'paid' }).error, 'invalid-transition');
+const statusRetryError = sandbox.oiReadStore_().operationalErrors.find(error => error.requestId === 'status-retry' && error.code === 'invalid-transition');
+assert.deepEqual(Object.keys(statusRetryError).sort(), ['at', 'code', 'requestId']);
+assert.equal(postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' }).requests.some(request => request.requestId === 'status-retry'), true);
+assert.equal(postInternal('officeSetStatus', { requestId: 'status-retry', status: 'visit_scheduled' }).status, 'visit_scheduled');
+assert.equal(postInternal('officeInbox', { updatedAfter: '1970-01-01T12:00:00.000Z' }).requests.some(request => request.requestId === 'status-retry'), false);
+const failedStatusStore = sandbox.oiReadStore_();
+failedStatusStore.requests.push({ requestId: 'status-write-fail', receiptNo: 'MM-status-write-fail', officeId: 'of1', status: 'accepted', updatedAt: '1970-01-01T00:00:00.000Z' });
+sandbox.oiWriteStore_(failedStatusStore);
+drive.failStoreWrites = 1;
+lockedThrow(() => sandbox.oiSetStatus_({ requestId: 'status-write-fail', status: 'paid' }, fakeNow), 'injected-store-write-failure');
+assert.equal(sandbox.oiReadStore_().operationalErrors.some(error => error.requestId === 'status-write-fail'), false);
+fakeNow = 1000;
+
 // Break caught: public completion photos require a non-empty owned photo list and are always a strict, bounded subset.
 function completionCase(id) {
   const store = sandbox.oiReadStore_();
