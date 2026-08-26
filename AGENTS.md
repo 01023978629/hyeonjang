@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-운영 main 버전은 `hyeonjang-v219-operationssafe`다. 사진 동기화 로컬 후보
+현재 기준선은 `hyeonjang-v229-mobileback`이며 기존 검사는 72개다. 사진 동기화 로컬 후보
 `hyeonjang-v201-photosyncp0`는 서버 선행 게이트 전에는 계속 병합·배포하지 않는다.
 `sw.js`의 캐시 이름이 곧 버전이다.
 
@@ -16,7 +16,7 @@ GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간
 
 ## 🔴 절대 금지 — 어기면 실제 사고가 난다
 
-1. **`apps-script/` 폴더를 수정하지 마라.** 운영 중인 사진 중계 서버의 소스다.
+1. **`apps-script/` 폴더는 검토된 `OfficeIntake` 모듈과 후속 `Code.gs` dispatch split만 수정할 수 있다.** 기존 사진 중계 서버의 모든 relay action과 동작은 보존한다. 배포는 수동으로만 한다.
    전자계약 서버는 저기가 아니라 manmool 저장소 `apps-script-contract/` 다.
 2. **비밀값(토큰·API 키·전화번호 원문)을 코드·커밋·로그에 넣지 마라.**
    키는 기기 IndexedDB 에만 산다. 테스트 픽스처는 자기서술형 가짜값만
@@ -42,7 +42,7 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 
-# 3) 전체 회귀 — 55개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 72개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 #    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
 #    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
@@ -129,7 +129,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-23)
 
-- 운영 main 버전은 `hyeonjang-v219-operationssafe`다. v219는 기능 검색·사진 도구·월말 마감·이력·완료보고서·보증서·표준단가표·차량·작업시간을 추가하고, 평문 출입 비밀번호 기능은 제외했다.
+- 기준선은 `hyeonjang-v229-mobileback`이며 기존 검사 72개가 통과했다. v229는 모바일 백 동작을 포함한다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
 - 브라우저·정적 검사 60개 파일 전부 통과(서버 보조 파일 2개 제외).
 - `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
