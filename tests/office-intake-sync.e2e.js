@@ -161,6 +161,22 @@ const TOKEN = 'test-token-123';
   assert.equal(cursorPaging.offset, 'newer');
   const pagingMock = await (await fetch(MOCK + '/__state')).json();
   assert.equal(pagingMock.officeInboxCursors[1], cursorPaging.first, 'second client poll sends the opaque server cursor verbatim');
+
+  await fetch(MOCK + '/__officeSeed?count=101&at=2100-01-01T00%3A00%3A00.000Z');
+  const corruptCursorRecovery = await page.evaluate(async () => {
+    state.officeIntake = { inbox: [{ requestId: 'local-corrupt-omitted', updatedAt: '2099-01-01T00:00:00.000Z' }], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
+    const envelope = serializeData(); envelope.officeIntake.cursor = 'oi1.%%%'; applyData(envelope);
+    await officeIntakeSync(); const first = officeIntakeData().cursor;
+    await officeIntakeSync(); const second = officeIntakeData().cursor;
+    const d = officeIntakeData(); return { first, second, n: d.inbox.length, unique: new Set(d.inbox.map(x => x.requestId)).size, omitted: !!officeIntakeFindRequest('local-corrupt-omitted') };
+  });
+  assert.match(corruptCursorRecovery.first, /^oi1\./, 'corrupt persisted cursor is replaced by a valid opaque cursor after full resync');
+  assert.match(corruptCursorRecovery.second, /^oi1\./);
+  assert.equal(corruptCursorRecovery.n, 102, 'corrupt cursor recovers 100+1 equal-time rows without deleting an omitted local request');
+  assert.equal(corruptCursorRecovery.unique, 102, 'corrupt cursor recovery has no duplicate or skipped rows');
+  assert.equal(corruptCursorRecovery.omitted, true);
+  const corruptMock = await (await fetch(MOCK + '/__state')).json();
+  assert.equal(corruptMock.officeInboxCursors.slice(-2)[0], '', 'mock maps a corrupted opaque cursor to the full-resync tuple');
   assert.deepEqual(pageErrors, [], 'page errors');
   await browser.close();
   console.log('PASS  office intake relay sync and durable outbox');

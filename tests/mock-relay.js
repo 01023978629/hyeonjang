@@ -36,7 +36,7 @@ function officeCompare(aAt, aId, bAt, bId) { return aAt === bAt ? String(aId).lo
 function officeCursor(at, id) { return 'oi1.' + Buffer.from(JSON.stringify([at, String(id || '')])).toString('base64url'); }
 function officeReadCursor(value) {
   const raw = String(value || ''); if (!raw) return { at: -Infinity, id: '', raw: '' };
-  if (raw.startsWith('oi1.')) { try { const tuple = JSON.parse(Buffer.from(raw.slice(4), 'base64url').toString('utf8')); if (Array.isArray(tuple) && Number.isFinite(Number(tuple[0]))) return { at: Number(tuple[0]), id: String(tuple[1] || ''), raw }; } catch (_) {} return { at: Infinity, id: '', raw }; }
+  if (raw.startsWith('oi1.')) { try { const tuple = JSON.parse(Buffer.from(raw.slice(4), 'base64url').toString('utf8')); if (Array.isArray(tuple) && tuple.length === 2 && typeof tuple[0] === 'number' && Number.isFinite(tuple[0]) && typeof tuple[1] === 'string') return { at: tuple[0], id: tuple[1], raw }; } catch (_) {} return { at: -Infinity, id: '', raw: '' }; }
   return { at: officeTime(raw), id: '', raw };
 }
 function officePhotoIds(value) {
@@ -53,12 +53,22 @@ function officeCompletion(value) {
   const allowed = new Set(supplied);
   return { ok: true, value: { summary: String(value.summary == null ? '' : value.summary).trim().slice(0, 800), publicPhotoIds: published.filter(id => allowed.has(id)) } };
 }
+function officePublicAmount(request, payload) {
+  if (!Object.hasOwn(payload, 'publicAmount')) return { ok: true, value: request.publicAmount == null ? null : request.publicAmount };
+  let value = payload.publicAmount;
+  if (value === null) return { ok: true, value: null };
+  if (typeof value === 'string') { value = value.trim(); if (!value) return { ok: false, error: 'invalid-input', field: 'publicAmount' }; }
+  else if (typeof value !== 'number') return { ok: false, error: 'invalid-input', field: 'publicAmount' };
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? { ok: true, value: amount } : { ok: false, error: 'invalid-input', field: 'publicAmount' };
+}
 function officeProjection(request, payload, completion) {
-  return {
+  const amount = officePublicAmount(request, payload); if (!amount.ok) return amount;
+  return { ok: true, value: {
     visitAt: Object.hasOwn(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
-    publicAmount: Object.hasOwn(payload, 'publicAmount') && Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : (request.publicAmount == null ? null : request.publicAmount),
+    publicAmount: amount.value,
     completionReport: completion ? completion.value : (request.completionReport || null)
-  };
+  }};
 }
 function sameOfficeProjection(request, projection) { return (request.visitAt || null) === projection.visitAt && (request.publicAmount == null ? null : request.publicAmount) === projection.publicAmount && JSON.stringify(request.completionReport || null) === JSON.stringify(projection.completionReport || null); }
 
@@ -198,11 +208,13 @@ const server = http.createServer((req, res) => {
           const completion = p.completionReport ? officeCompletion(p.completionReport) : null;
           if (completion && !completion.ok) return send(res, fail(completion.error));
           const projection = officeProjection(request, p, completion);
+          if (!projection.ok) return send(res, Object.assign(fail(projection.error), { field: projection.field }));
+          const publicProjection = projection.value;
           if (request.status === status) {
-            if (!sameOfficeProjection(request, projection)) return send(res, fail('invalid-transition'));
+            if (!sameOfficeProjection(request, publicProjection)) return send(res, fail('invalid-transition'));
           } else {
             if (!(officeTransitions[request.status] || []).includes(status)) return send(res, fail('invalid-transition'));
-            request.status = status; request.visitAt = projection.visitAt; request.publicAmount = projection.publicAmount; request.completionReport = projection.completionReport; request.updatedAt = new Date().toISOString();
+            request.status = status; request.visitAt = publicProjection.visitAt; request.publicAmount = publicProjection.publicAmount; request.completionReport = publicProjection.completionReport; request.updatedAt = new Date().toISOString();
             store.officeStatuses.push({ requestId, status, visitAt: p.visitAt || null, publicAmount: p.publicAmount == null ? null : Number(p.publicAmount), completionReport: p.completionReport || null });
           }
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,

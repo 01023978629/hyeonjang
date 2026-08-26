@@ -663,6 +663,27 @@ assert.equal(sandbox.oiReadStore_().audit.filter(row => row.receiptNo === 'MM-st
 assert.equal(sandbox.oiSetStatus_({ requestId: 'status-idempotent', status: 'visit_scheduled', visitAt: '2026-08-28T10:00:00+09:00', publicAmount: 120000 }, 7000).error, 'invalid-transition', 'same status with a different public field is rejected');
 assert.equal(sandbox.oiGet_({ officeId: 'of1' }, 'status-idempotent').request.visitAt, '2026-08-27T10:00:00+09:00', 'different retry did not mutate status projection');
 
+// Break caught: publicAmount distinguishes absent from explicitly private null and rejects invalid supplied values before status handling.
+const amountStore = sandbox.oiReadStore_();
+amountStore.requests.push(
+  { requestId: 'amount-null', receiptNo: 'MM-amount-null', officeId: 'of1', status: 'accepted', publicAmount: null, visitAt: null, completionReport: null, updatedAt: '2026-08-26T00:00:00.000Z' },
+  { requestId: 'amount-preserve', receiptNo: 'MM-amount-preserve', officeId: 'of1', status: 'accepted', publicAmount: 80000, visitAt: null, completionReport: null, updatedAt: '2026-08-26T00:00:00.000Z' },
+  { requestId: 'amount-invalid', receiptNo: 'MM-amount-invalid', officeId: 'of1', status: 'visit_scheduled', publicAmount: 77000, visitAt: null, completionReport: null, updatedAt: '2026-08-26T00:00:00.000Z' }
+);
+sandbox.oiWriteStore_(amountStore);
+assert.equal(sandbox.oiSetStatus_({ requestId: 'amount-null', status: 'visit_scheduled', publicAmount: null }, 7100).publicAmount, null, 'explicit null remains private on a real transition');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'amount-null', status: 'visit_scheduled', publicAmount: null }, 7101).ok, true, 'null stored amount retries idempotently');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'amount-preserve', status: 'visit_scheduled' }, 7102).publicAmount, 80000, 'absent amount preserves the stored public amount');
+assert.equal(sandbox.oiSetStatus_({ requestId: 'amount-preserve', status: 'visit_scheduled', publicAmount: null }, 7102).error, 'invalid-transition', 'explicit null cannot idempotently hide a stored public amount');
+const stringAmount = sandbox.oiSetStatus_({ requestId: 'amount-invalid', status: 'in_progress', publicAmount: ' 123456.5 ' }, 7103);
+assert.equal(stringAmount.publicAmount, 123456.5, 'trimmed numeric strings normalize using existing numeric money semantics');
+const invalidAmountBefore = JSON.parse(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'amount-invalid').request));
+for (const supplied of ['', '  ', true, {}, 'NaN', 'Infinity', -1]) {
+  const invalid = sandbox.oiSetStatus_({ requestId: 'amount-invalid', status: 'in_progress', publicAmount: supplied }, 7104);
+  assert.deepEqual(JSON.parse(JSON.stringify({ error: invalid.error, field: invalid.field })), { error: 'invalid-input', field: 'publicAmount' }, 'invalid supplied amount is rejected before idempotency: ' + JSON.stringify(supplied));
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.oiGet_({ officeId: 'of1' }, 'amount-invalid').request)), invalidAmountBefore, 'invalid amount never mutates request state');
+}
+
 const idemCompletionStore = sandbox.oiReadStore_();
 idemCompletionStore.requests.push({ requestId: 'completion-idempotent', receiptNo: 'MM-completion-idempotent', officeId: 'of1', status: 'in_progress', updatedAt: '2026-08-26T00:00:00.000Z' });
 sandbox.oiWriteStore_(idemCompletionStore);
@@ -680,6 +701,17 @@ assert.equal(tuplePage1.requests.length, 100);
 assert.match(tuplePage1.cursor, /^oi1\./, 'server returns an opaque tuple cursor');
 const tuplePage2 = sandbox.oiInbox_({ updatedAfter: tuplePage1.cursor });
 assert.deepEqual(tuplePage2.requests.map(request => request.requestId), ['tuple-100']);
+for (const malformedCursor of [
+  'oi1.', 'oi1.%%%', 'oi1.e30',
+  'oi1.' + Buffer.from(JSON.stringify(['not-a-time', 'id'])).toString('base64url'),
+  'oi1.' + Buffer.from(JSON.stringify([123, {}])).toString('base64url'),
+  'oi2.' + Buffer.from(JSON.stringify([123, 'id'])).toString('base64url')
+]) {
+  assert.equal(sandbox.oiInboxCursor_(malformedCursor).at, -Infinity, 'malformed cursor parses as the full-resync tuple: ' + malformedCursor);
+  const recovered = sandbox.oiInbox_({ updatedAfter: malformedCursor });
+  assert.equal(recovered.requests.length, 100, 'malformed opaque cursor fully resyncs: ' + malformedCursor);
+  assert.match(recovered.cursor, /^oi1\./);
+}
 
 // Break caught: config compensation classifies restored, staged, unknown, and absent-property states without leaking a PIN in failed paths.
 const recovery = postInternal('officeAdminUpsert', { id: 'of-recovery', slug: 'recovery-apt', complexName: '복구 단지', enabled: true });

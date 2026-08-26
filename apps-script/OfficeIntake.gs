@@ -486,9 +486,9 @@ function oiInboxCursor_(value) {
   if (raw.indexOf('oi1.') === 0) {
     try {
       var tuple = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(raw.slice(4))).getDataAsString());
-      if (Array.isArray(tuple) && isFinite(Number(tuple[0]))) return { at: Number(tuple[0]), id: String(tuple[1] || ''), raw: raw };
+      if (Array.isArray(tuple) && tuple.length === 2 && typeof tuple[0] === 'number' && isFinite(tuple[0]) && typeof tuple[1] === 'string') return { at: tuple[0], id: tuple[1], raw: raw };
     } catch (_) {}
-    return { at: Infinity, id: '', raw: raw };
+    return { at: -Infinity, id: '', raw: '' };
   }
   var legacy = oiTime_(raw);
   return { at: legacy, id: '', raw: raw };
@@ -572,12 +572,26 @@ function oiCompletionReportValue_(value) {
   return { ok: true, value: { summary: oiText_(value.summary, 800), publicPhotoIds: published } };
 }
 function oiHas_(value, key) { return Object.prototype.hasOwnProperty.call(value || {}, key); }
+function oiPublicAmount_(request, payload) {
+  if (!oiHas_(payload, 'publicAmount')) return { ok: true, value: request.publicAmount == null ? null : request.publicAmount };
+  var value = payload.publicAmount;
+  if (value === null) return { ok: true, value: null };
+  if (typeof value === 'string') {
+    value = value.trim();
+    if (!value) return { ok: false, error: 'invalid-input', field: 'publicAmount' };
+  } else if (typeof value !== 'number') return { ok: false, error: 'invalid-input', field: 'publicAmount' };
+  var amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'invalid-input', field: 'publicAmount' };
+  return { ok: true, value: amount };
+}
 function oiStatusProjection_(request, payload, completion) {
-  return {
+  var amount = oiPublicAmount_(request, payload);
+  if (!amount.ok) return amount;
+  return { ok: true, value: {
     visitAt: oiHas_(payload, 'visitAt') ? (payload.visitAt || request.visitAt || null) : (request.visitAt || null),
-    publicAmount: oiHas_(payload, 'publicAmount') && Number.isFinite(Number(payload.publicAmount)) ? Number(payload.publicAmount) : (request.publicAmount == null ? null : request.publicAmount),
+    publicAmount: amount.value,
     completionReport: completion ? completion.value : (request.completionReport || null)
-  };
+  }};
 }
 function oiSameStatusProjection_(request, projection) {
   return (request.visitAt || null) === projection.visitAt &&
@@ -595,7 +609,9 @@ function oiSetStatus_(payload, now) {
     if (!request) return { ok: false, error: 'not-found' };
     var completion = payload.completionReport ? oiCompletionReportValue_(payload.completionReport) : null;
     if (completion && !completion.ok) return { ok: false, error: completion.error };
-    var projection = oiStatusProjection_(request, payload, completion);
+    var projected = oiStatusProjection_(request, payload, completion);
+    if (!projected.ok) return projected;
+    var projection = projected.value;
     if (request.status === next) {
       if (!oiSameStatusProjection_(request, projection)) {
         oiOperationalErrorLocked_(store, 'invalid-transition', request.requestId, now);
