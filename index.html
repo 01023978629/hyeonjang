@@ -9535,8 +9535,9 @@ function officeIntakeCompletionPayload(order){
   (Array.isArray(order&&order.publicPhotoIds)?order.publicPhotoIds:[]).forEach(function(value){const id=String(value||'').trim();if(id&&available.includes(id)&&!publicSeen[id]&&publicIds.length<10){publicSeen[id]=true;publicIds.push(id);}});
   let summary=String(order&&order.completionSummary||order&&order.text||'');
   const resident=(order&&order.residentContact)||{};
-  [order&&order.customerName,order&&order.customer,order&&order.phone,resident.name,resident.phone,order&&order.officeContactName,order&&order.officeContactPhone].forEach(function(value){const text=String(value||'').trim();if(text)summary=summary.split(text).join('');});
-  summary=summary.replace(/(?:\+82[- .]?(?:10)|01[016789])[- .]?\d{3,4}[- .]?\d{4}/g,'').replace(/\s{2,}/g,' ').trim().slice(0,800);
+  [order&&order.customerName,order&&order.customer,resident.name].forEach(function(value){const text=String(value||'').trim();if(text)summary=summary.split(text).join('[고객명]');});
+  [order&&order.phone,resident.phone,order&&order.officeContactPhone].forEach(function(value){const digits=String(value||'').replace(/\D/g,'');if(digits.length>=7){const pattern=digits.split('').map(function(d){return d+'[^0-9]*';}).join('');summary=summary.replace(new RegExp(pattern,'g'),'[연락처]');}});
+  summary=summary.replace(/(?:\+82[\s().-]*|(?:\(\s*)?0[\s().-]*)(?:1[016789]|2|[3-6][1-5]|70)[\s().-]*\)?[\s().-]*\d{3,4}[\s().-]*\d{4}/g,'[연락처]').replace(/\s{2,}/g,' ').trim().slice(0,800);
   const amount=order&&order.publicAmount;
   return {summary:summary,photoIds:available,publicPhotoIds:publicIds,publicAmount:amount==null?null:num(amount)};
 }

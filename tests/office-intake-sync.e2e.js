@@ -185,6 +185,29 @@ const TOKEN = 'test-token-123';
   const strictFifoMock=await (await fetch(MOCK + '/__state')).json();
   assert.deepEqual(strictFifoMock.officeStatuses.map(x=>x.status), ['visit_scheduled','in_progress'], 'later state is not sent before the dropped head retry');
 
+  // RED: a real completion relay must normalize to owned photos, expose only the
+  // public subset, and replay a dropped success without a duplicate record.
+  await fetch(MOCK + '/__reset');
+  await fetch(MOCK + '/__officeSetPhotos?requestId=req-1&fileId=owned-completion');
+  const completionRelay = await page.evaluate(async () => {
+    await officeIntakeSync();
+    await cloudOfficeAccept('req-1','completion-order');
+    await cloudOfficeSetStatus({requestId:'req-1',status:'visit_scheduled'});
+    await cloudOfficeSetStatus({requestId:'req-1',status:'in_progress'});
+    const payload={requestId:'req-1',status:'completed',completionReport:{summary:'완료',photoIds:['owned-completion','foreign-photo'],publicPhotoIds:['foreign-photo','owned-completion']}};
+    const first=await cloudOfficeSetStatus(payload);
+    await fetch(__relay.url+'/__officeDropNextStatus');
+    state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+    officeIntakeQueue('officeSetStatus',payload);
+    await officeIntakeFlush(); const afterDrop=officeIntakeData().outbox.length;
+    const retry=await officeIntakeFlush();
+    return {first,afterDrop,retry,remaining:officeIntakeData().outbox.length};
+  });
+  assert.deepEqual(completionRelay, {first:{ok:true,requestId:'req-1',status:'completed',completionReport:{summary:'완료',publicPhotoIds:['owned-completion']},needsInfoReason:null,updatedAt:completionRelay.first.updatedAt},afterDrop:1,retry:1,remaining:0}, 'completion relay returns only public photo IDs and lost-success retry clears');
+  const completionMock=await (await fetch(MOCK + '/__state')).json();
+  assert.deepEqual(completionMock.officeRequests[0].completionReport,{summary:'완료',photoIds:['owned-completion'],publicPhotoIds:['owned-completion']},'mock stores request-owned available IDs for exact idempotency');
+  assert.equal(completionMock.officeStatuses.filter(row=>row.status==='completed').length,1,'completion lost-success retry adds no duplicate record');
+
   // Break caught: the mock follows the server's public projection contract.  A
   // reason can survive needs_info -> on_hold, but acceptance resolves it.
   await fetch(MOCK + '/__reset');

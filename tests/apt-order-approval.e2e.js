@@ -65,7 +65,7 @@ let browser;
   assert(JSON.stringify(publishing.completion) === JSON.stringify({ summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'], publicAmount: 120000 }), '④ 완료 보고는 intake 사용 가능 사진 집합과 명시 공개 부분집합만 포함해야 한다');
   assert(JSON.stringify(publishing.all[1]) === JSON.stringify({ action: 'officeSetStatus', payload: { requestId: 'req-1', status: 'completed', visitAt: '2026-08-27T10:00:00+09:00', publicAmount: 120000, completionReport: { summary: '공개 가능한 완료 내용', photoIds: ['drive-1', 'drive-2'], publicPhotoIds: ['drive-2'] } } }), '④ 완료 상태는 공개 보고 외 개인정보·내부금액·무관 사진을 보내면 안 된다');
   const integrity = await page.evaluate(() => {
-    const intake = { id:'strict-order', source:'office-intake', sourceRequestId:'strict-request', status:'recv', intakePhotoIds:['owned'], publicPhotoIds:['owned'], completionSummary:'홍길동 010-1234-5678 작업 완료', residentContact:{name:'홍길동',phone:'01012345678'}, officeContactPhone:'010-9999-8888' };
+    const intake = { id:'strict-order', source:'office-intake', sourceRequestId:'strict-request', status:'recv', intakePhotoIds:['owned'], publicPhotoIds:['owned'], completionSummary:'홍길동 02-1234-5678 (042) 123-4567 010 1234 5678 작업 완료', residentContact:{name:'홍길동',phone:'01012345678'}, officeContactPhone:'010-9999-8888' };
     const manual = { id:'manual-order', status:'recv' };
     const allowed = [officeIntakeAptStatusAllowed(intake,'recv'), officeIntakeAptStatusAllowed(intake,'visit'), officeIntakeAptStatusAllowed(intake,'work'), officeIntakeAptStatusAllowed(manual,'paid')];
     const payload = officeIntakeCompletionPayload(intake);
@@ -74,7 +74,7 @@ let browser;
   });
   assert(JSON.stringify(integrity.allowed) === JSON.stringify([true,true,false,true]), '⑤ intake는 현재와 다음 단계만 허용하고 manual은 기존 동작을 유지해야 한다');
   assert(JSON.stringify(integrity.options) === JSON.stringify(['recv','visit']) && integrity.after === 'recv' && integrity.outbox === 0, '⑤ 변조된 intake 상태 선택은 되돌리고 outbox에 넣으면 안 된다');
-  assert(!/홍길동|010|9999/.test(integrity.payload.summary) && integrity.payload.summary === '작업 완료', '⑤ 공개 완료 메모는 알려진 연락처·한국 전화번호를 제거해야 한다: '+integrity.payload.summary);
+  assert(!/홍길동|(?:\d[\s().-]*){7,}/.test(integrity.payload.summary) && /\[고객명\]|\[연락처\]/.test(integrity.payload.summary), '⑤ 공개 완료 메모는 알려진 이름·휴대폰·지역번호를 placeholder로 바꿔야 한다: '+integrity.payload.summary);
   assert(integrity.overflow === false, '⑤ 390px 폭에서 Task 4 controls가 넘치면 안 된다');
   const monthly = await page.evaluate(() => {
     const ym=localDate().slice(0,7), doneAt=ym+'-10';

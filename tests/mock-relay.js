@@ -46,9 +46,10 @@ function officePhotoIds(value) {
   for (const item of value) { const id = typeof item === 'string' ? item.trim().slice(0, 120) : ''; if (id && !seen.has(id) && ids.length < 10) { seen.add(id); ids.push(id); } }
   return ids.sort();
 }
+function officePublicCompletion(report) { return report ? { summary: String(report.summary || '').slice(0, 800), publicPhotoIds: officePhotoIds(report.publicPhotoIds) || [] } : null; }
 function officeCompletion(request, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, error: 'invalid-input' };
-  const supplied = Object.hasOwn(value, 'photoIds') ? officePhotoIds(value.photoIds) : [];
+  let supplied = Object.hasOwn(value, 'photoIds') ? officePhotoIds(value.photoIds) : [];
   const published = Object.hasOwn(value, 'publicPhotoIds') ? officePhotoIds(value.publicPhotoIds) : [];
   if (supplied == null || published == null || (published.length && (!Object.hasOwn(value, 'photoIds') || !supplied.length))) return { ok: false, error: 'invalid-completion-photos' };
   const owned = new Set((request.photos || []).map(photo => String(photo && photo.fileId || '').trim()).filter(Boolean));
@@ -105,6 +106,7 @@ const server = http.createServer((req, res) => {
     }
     if (u.pathname === '/__reset') { store = freshStore(); return send(res, { ok: true }); }
     if (u.pathname === '/__officeDropNextStatus') { store.dropNextOfficeStatus = true; return send(res, { ok: true }); }
+    if (u.pathname === '/__officeSetPhotos') { const request = store.officeRequests.find(row => row.requestId === String(u.searchParams.get('requestId') || '')); if (!request) return send(res, fail('not-found')); request.photos = [{ fileId: String(u.searchParams.get('fileId') || ''), name: 'owned.jpg', mimeType: 'image/jpeg', size: 1, createdAt: new Date().toISOString() }].filter(photo => photo.fileId); return send(res, { ok: true }); }
     if (u.pathname === '/__officeSeed') {
       const count = Math.max(0, Math.min(150, Number(u.searchParams.get('count') || 0)));
       const at = String(u.searchParams.get('at') || '2100-01-01T00:00:00.000Z');
@@ -231,7 +233,9 @@ const server = http.createServer((req, res) => {
           // Deliberately omit the JSON body after committing: the browser sees a relay response it cannot parse,
           // while the next outbox flush must use the server's idempotent status result.
           if (store.dropNextOfficeStatus) { store.dropNextOfficeStatus = false; res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); res.end(); return; }
-          return send(res, { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt });
+          const result = { ok: true, requestId, status: request.status, needsInfoReason: request.needsInfoReason || null, updatedAt: request.updatedAt };
+          if (request.completionReport) result.completionReport = officePublicCompletion(request.completionReport);
+          return send(res, result);
         }
         case 'officeAdminUpsert': {
           const id = String(p.id || '').trim(), slug = String(p.slug || '').trim(), complexName = String(p.complexName || '').trim();
