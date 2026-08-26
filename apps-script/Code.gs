@@ -70,14 +70,16 @@ function doPost(e) {
     if (raw.length > MAX_BODY) return fail_('too-large', '요청이 너무 큽니다');
     var req; try { req = JSON.parse(raw); } catch (_) { return fail_('bad-request', 'JSON 형식이 아닙니다'); }
 
-    var tk = checkToken_(req.token);
-    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
-
     var action = String(req.action || '');
-    if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
-
     var ts = Number(req.ts || 0);
     if (!ts || Math.abs(Date.now() - ts) > TS_WINDOW_MS) return fail_('bad-request', '요청 시간이 유효하지 않습니다(기기 시계를 확인하세요)');
+
+    if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));
+
+    var tk = checkToken_(req.token);
+    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
+    if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));
+    if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
 
     var deviceId = String(req.deviceId || 'unknown').slice(0, 64);
     var payload = req.payload || {};
