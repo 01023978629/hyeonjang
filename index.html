@@ -590,6 +590,11 @@
   .modal-close:hover{background:var(--paper-2);color:var(--blueprint);border-color:var(--line-soft);transform:none}
   .modal .mbody{padding:16px 20px}
   .modal .mfoot{padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--paper)}
+  .bc-storage{max-width:100%;min-width:0;margin-top:14px;padding:14px;border:1px solid var(--line-soft);border-radius:11px;background:var(--paper-2)}
+  .bc-storage h3{margin:0 0 8px;padding:0;font-size:14px}
+  #bcStorageStatus{max-width:100%;overflow-wrap:anywhere;word-break:break-word;font-size:11.5px;line-height:1.6;color:var(--muted-2)}
+  #bcStorageStatus p{margin:0 0 5px}
+  .bc-storage #bcPersist{width:100%;max-width:100%;min-height:44px;margin-top:5px}
   .moveline{display:flex;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px dashed var(--line-soft);align-items:center}
   .moveline .from{color:var(--muted);word-break:break-all;flex:1}
   .moveline .arr{color:var(--clay)}
@@ -2291,7 +2296,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v237-officesync';
+const APP_BUILD='hyeonjang-v238-storageguard';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -19078,6 +19083,157 @@ function backupGuard(actionName,dangerFn){
     ]);
 }
 
+const STORAGE_ORIGIN_LABEL='https://01023978629.github.io';
+window.__storageGuard={
+  persisted:{kind:'unknown',message:''},
+  estimate:{kind:'unknown',usage:null,quota:null,ratio:null,message:''},
+  refreshInFlight:null,
+  persistInFlight:null,
+  persistEpoch:0
+};
+function storageGuardFiniteNonNegative(value){
+  return Number.isFinite(value)&&value>=0?value:null;
+}
+function storageGuardFormatBytes(value){
+  const bytes=storageGuardFiniteNonNegative(value);
+  if(bytes===null)return '확인할 수 없음';
+  const gb=1024*1024*1024,mb=1024*1024;
+  if(bytes>=gb)return (bytes/gb).toFixed(1)+' GB';
+  return (bytes/mb).toFixed(1)+' MB';
+}
+function storageGuardRenderIntoBackupCenter(){
+  const status=document.getElementById('bcStorageStatus');
+  if(!status)return;
+  const guard=window.__storageGuard;
+  const api=navigator.storage||{};
+  const lines=[];
+  lines.push(guard.persisted.message||'영속 보관 상태 확인 중');
+  if(typeof api.persist!=='function')lines.push('영속 보관 요청 미지원');
+  if(guard.estimate.kind==='ready'){
+    lines.push(storageGuardFormatBytes(guard.estimate.usage)+' / '+storageGuardFormatBytes(guard.estimate.quota)+' 사용');
+  }else{
+    lines.push(guard.estimate.message||'용량 확인 중');
+  }
+  lines.push(STORAGE_ORIGIN_LABEL+' origin 전체의 근사값이며 Cache, IndexedDB, localStorage를 포함할 수 있습니다.');
+  if(guard.estimate.ratio!==null&&guard.estimate.ratio>=0.80){
+    lines.push('저장공간을 80% 이상 사용 중입니다. 지금 백업하세요.');
+  }
+  status.replaceChildren();
+  lines.forEach(function(text){
+    const line=document.createElement('p');
+    line.textContent=text;
+    status.appendChild(line);
+  });
+  const button=document.getElementById('bcPersist');
+  if(button){
+    const busy=!!guard.persistInFlight;
+    const unsupported=typeof api.persist!=='function';
+    button.disabled=busy||unsupported||guard.persisted.kind==='yes';
+    button.setAttribute('aria-busy',busy?'true':'false');
+    button.textContent=guard.persisted.kind==='yes'
+      ?'이 기기 저장공간 보호 적용됨'
+      :busy
+        ?'보호 요청 중…'
+        :'이 기기 저장공간 보호 요청';
+  }
+}
+function storageGuardRefresh(){
+  const guard=window.__storageGuard;
+  if(guard.refreshInFlight)return guard.refreshInFlight;
+  const api=navigator.storage||{};
+  const persistEpochAtStart=guard.persistEpoch;
+  const persistWasInFlightAtStart=!!guard.persistInFlight;
+  const promise=(async function(){
+    if(typeof api.persisted!=='function'){
+      guard.persisted={kind:'unsupported',message:'상태 확인 미지원'};
+    }else{
+      try{
+        const persisted=await api.persisted();
+        if(!persistWasInFlightAtStart&&guard.persistEpoch===persistEpochAtStart){
+          guard.persisted={
+            kind:persisted?'yes':'no',
+            message:persisted?'영속 보관 적용됨 — 브라우저 자동 정리 가능성을 낮췄지만 데이터 보존을 보장하지 않습니다. 백업을 계속해 주세요.':'영속 보관 미적용'
+          };
+        }
+      }catch(_){
+        if(!persistWasInFlightAtStart&&guard.persistEpoch===persistEpochAtStart){
+          guard.persisted={kind:'error',message:'보관 상태 확인 실패'};
+        }
+      }
+    }
+    if(typeof api.estimate!=='function'){
+      guard.estimate={kind:'unsupported',usage:null,quota:null,ratio:null,message:'용량 확인 미지원'};
+    }else{
+      try{
+        const result=await api.estimate();
+        const usage=storageGuardFiniteNonNegative(result&&result.usage);
+        const quota=storageGuardFiniteNonNegative(result&&result.quota);
+        const ratio=usage!==null&&quota!==null&&quota>0?usage/quota:null;
+        guard.estimate={
+          kind:ratio===null?'invalid':'ready',
+          usage:usage,
+          quota:quota,
+          ratio:ratio,
+          message:ratio===null?'용량을 확인할 수 없음':''
+        };
+      }catch(_){
+        guard.estimate={kind:'error',usage:null,quota:null,ratio:null,message:'용량 확인 실패'};
+      }
+    }
+    storageGuardRenderIntoBackupCenter();
+    return guard;
+  })().finally(function(){
+    if(guard.refreshInFlight===promise)guard.refreshInFlight=null;
+  });
+  guard.refreshInFlight=promise;
+  return promise;
+}
+
+function storageGuardRequestPersist(){
+  const guard=window.__storageGuard;
+  if(guard.persistInFlight)return guard.persistInFlight;
+  if(guard.persisted.kind==='yes')return Promise.resolve(true);
+  const api=navigator.storage||{};
+  if(typeof api.persist!=='function'){
+    guard.persisted={kind:'unsupported',message:'영속 보관 요청 미지원'};
+    storageGuardRenderIntoBackupCenter();
+    return Promise.resolve(false);
+  }
+  const focusTarget=document.getElementById('bcPersist');
+  const restoreFocus=!!(focusTarget&&document.activeElement===focusTarget);
+  let request;
+  guard.persistEpoch+=1;
+  try{
+    request=api.persist();
+  }catch(_){
+    guard.persisted={kind:'error',message:'영속 보관 요청 실패'};
+    storageGuardRenderIntoBackupCenter();
+    return Promise.resolve(false);
+  }
+  const promise=Promise.resolve(request).then(function(granted){
+    guard.persisted=granted===true
+      ?{kind:'yes',message:'영속 보관 적용됨 — 브라우저 자동 정리 가능성을 낮췄지만 데이터 보존을 보장하지 않습니다. 백업을 계속해 주세요.'}
+      :{kind:'no',message:'브라우저 정책상 적용되지 않음'};
+    storageGuardRenderIntoBackupCenter();
+    return granted===true;
+  }).catch(function(){
+    guard.persisted={kind:'error',message:'영속 보관 요청 실패'};
+    storageGuardRenderIntoBackupCenter();
+    return false;
+  }).finally(function(){
+    if(guard.persistInFlight===promise){
+      guard.persistInFlight=null;
+      storageGuardRenderIntoBackupCenter();
+      if(restoreFocus&&focusTarget===document.getElementById('bcPersist')&&!focusTarget.disabled){
+        try{focusTarget.focus({preventScroll:true});}catch(_){focusTarget.focus();}
+      }
+    }
+  });
+  guard.persistInFlight=promise;
+  storageGuardRenderIntoBackupCenter();
+  return promise;
+}
+
 // 백업 안심 센터(현재 상태 + 관리)
 function backupCenter(){
   const info=backupLastInfo();const days=backupDaysSince();
@@ -19107,8 +19263,16 @@ function backupCenter(){
     // 안내
     '<div style="font-size:11.5px;color:var(--muted);background:#eff6ff;border-radius:10px;padding:11px;line-height:1.6">'+
       '💡 <b>왜 백업이 중요한가요?</b><br>이 앱의 데이터는 이 기기 안에만 있어요. 폰이 고장나거나 브라우저를 지우면 자료가 사라져요. '+(driveOn?'구글 드라이브에 연결돼 있어 자료를 저장할 때 자동으로 사본이 올라가요. 안심하세요!':'<b>구글 드라이브를 연결하면</b> 자료가 자동으로 클라우드에 백업돼서, 폰이 고장나도 살아있어요.')+
-    '</div>';
+    '</div>'+
+    '<section class="bc-storage" aria-labelledby="bcStorageTitle">'+
+      '<h3 id="bcStorageTitle">이 기기 저장공간 보호</h3>'+
+      '<div id="bcStorageStatus" role="status" aria-live="polite"></div>'+
+      '<button id="bcPersist" type="button">이 기기 저장공간 보호 요청</button>'+
+    '</section>';
   openModal('💾 백업 센터',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  storageGuardRenderIntoBackupCenter();
+  try{storageGuardRefresh();}catch(e){}
+  const pb=document.getElementById('bcPersist');if(pb)pb.onclick=function(event){if(!event||event.isTrusted!==true)return;storageGuardRequestPersist();};
   const nb=document.getElementById('bcNow');if(nb)nb.onclick=()=>{backupNow();toast('💾 백업을 시작했어요');};
   const db=document.getElementById('bcDrive');if(db)db.onclick=()=>{closeModal();try{if(typeof openGdriveSetup==='function')openGdriveSetup();else if(typeof openManmulFolder==='function')openManmulFolder();}catch(e){}};
   const rb=document.getElementById('bcRestore');if(rb)rb.onclick=()=>{closeModal();try{if(typeof importData==='function')importData();else if(typeof openManmulFolder==='function')openManmulFolder();}catch(e){}};
@@ -26246,6 +26410,10 @@ window.__hjRestoreDone = (async () => {
   } catch (_) {}
   return { ok: true, restoredAt: new Date().toISOString(), errorCode: '' };
 })();
+try{Promise.resolve(window.__hjRestoreDone).then(function(result){
+  if(result&&result.ok===false)return;
+  return storageGuardRefresh();
+}).catch(function(){});}catch(e){}
 // 배포에 포함된 캘린더 가져오기는 로컬 복원 후 한 번만 병합한다.
 // 가져오기 ID를 저장하므로 사용자가 이후 일정을 삭제해도 다시 생성되지 않는다.
 try{Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){
