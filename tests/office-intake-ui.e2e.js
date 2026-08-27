@@ -14,7 +14,7 @@ let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (_) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
-const APP = 'http://localhost:8299/index.html';
+const APP = 'http://127.0.0.1:8299/index.html';
 let browser;
 
 (async () => {
@@ -29,6 +29,7 @@ let browser;
     errors.push('unexpected dialog: ' + dialog.type());
     await dialog.dismiss().catch(() => {});
   });
+  await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(700);

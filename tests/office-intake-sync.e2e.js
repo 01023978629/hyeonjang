@@ -199,6 +199,78 @@ const TOKEN = 'test-token-123';
   });
   assert.deepEqual(inFlightCorrection,{firstSent:0,afterFirst:[{revision:3,blocked:false}],html:'',secondSent:1,calls:[2,3],remaining:0},'a correction queued while the failed revision is in flight immediately supersedes the new blocker');
 
+  // RED: correcting completion data on an order that is already billed/paid
+  // must rebuild every required server transition.  Keeping only the latest
+  // billed/paid projection would try to jump directly from in_progress.
+  const correctionChains = await page.evaluate(async () => {
+    function seed(status,revision){
+      state.officeIntake={inbox:[],cursor:'',outbox:[
+        {id:'blocked-'+status,action:'officeSetStatus',payload:{requestId:'chain-'+status,status:'completed',projectionRevision:2,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:1,lastError:'사진 오류',blocked:true,blockedCode:'invalid-completion-photos'},
+        {id:'dependent-'+status,action:'officeSetStatus',payload:{requestId:'chain-'+status,status:'billed',projectionRevision:3},createdAt:'2026-08-27T00:00:01.000Z',attempts:0,lastError:''}
+      ],lastSyncAt:'',lastError:''};
+      const order={id:'order-'+status,source:'office-intake',sourceRequestId:'chain-'+status,status,project:'',text:'수리 완료',completionSummary:'수정 보고',publicAmount:120000,publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:revision,officeProjectionFingerprint:'stale'};
+      state.aptOrders=[order];state.files=[];return order;
+    }
+    const built={};
+    for(const row of [['done',3],['billed',3],['paid',4]]){
+      const order=seed(row[0],row[1]);officeIntakeQueueOrderStatus(order);
+      built[row[0]]={statuses:officeIntakeData().outbox.map(item=>item.payload.status),revisions:officeIntakeData().outbox.map(item=>item.payload.projectionRevision),orderRevision:order.officeProjectionRevision,summaries:officeIntakeData().outbox.map(item=>item.payload.completionReport&&item.payload.completionReport.summary)};
+    }
+    const billedOrder=seed('billed',3);officeIntakeQueueOrderStatus(billedOrder);
+    const original=window.relayCall,billedCalls=[];let remote='in_progress';
+    window.relayCall=async function(action,payload){billedCalls.push([payload.status,payload.projectionRevision]);const allowed={in_progress:'completed',completed:'billed'};if(allowed[remote]!==payload.status)return {ok:false,error:'invalid-transition'};remote=payload.status;return {ok:true,status:remote,projectionRevision:payload.projectionRevision};};
+    const billedSent=await officeIntakeFlush();
+    const billedResult={sent:billedSent,calls:billedCalls.slice(),remote,remaining:officeIntakeData().outbox.length};
+
+    const paidOrder=seed('paid',4);state.officeIntake.outbox[0].blocked=false;state.officeIntake.outbox[0].attempts=0;state.officeIntake.outbox.push({id:'paid-tail',action:'officeSetStatus',payload:{requestId:'chain-paid',status:'paid',projectionRevision:4},createdAt:'2026-08-27T00:00:02.000Z',attempts:0,lastError:''});
+    let release;const paidCalls=[];window.relayCall=function(action,payload){paidCalls.push([payload.status,payload.projectionRevision]);return new Promise(resolve=>{release=resolve;});};
+    const inflight=officeIntakeFlush();officeIntakeQueueOrderStatus(paidOrder);release({ok:false,error:'invalid-completion-photos'});await inflight;
+    const paidAfter=officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision]);
+    remote='in_progress';window.relayCall=async function(action,payload){paidCalls.push([payload.status,payload.projectionRevision]);const allowed={in_progress:'completed',completed:'billed',billed:'paid'};if(allowed[remote]!==payload.status)return {ok:false,error:'invalid-transition'};remote=payload.status;return {ok:true,status:remote,projectionRevision:payload.projectionRevision};};
+    const paidSent=await officeIntakeFlush();window.relayCall=original;
+    const paidResult={after:paidAfter,sent:paidSent,calls:paidCalls.slice(1),remaining:officeIntakeData().outbox.length};
+    const duplicateOrder={id:'order-duplicate',source:'office-intake',sourceRequestId:'chain-duplicate',status:'recv',officeProjectionRevision:1,officeProjectionFingerprint:'old'};
+    const editedOrder={id:'order-edited',source:'office-intake',sourceRequestId:'chain-duplicate',status:'paid',project:'',text:'수리 완료',completionSummary:'중복 정리 보고',publicAmount:120000,publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:4,officeProjectionFingerprint:'stale'};
+    state.officeIntake={inbox:[],cursor:'',outbox:[
+      {id:'duplicate-blocked',action:'officeSetStatus',payload:{requestId:'chain-duplicate',status:'completed',projectionRevision:2,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:1,lastError:'사진 오류',blocked:true,blockedCode:'invalid-completion-photos'},
+      {id:'duplicate-dependent',action:'officeSetStatus',payload:{requestId:'chain-duplicate',status:'billed',projectionRevision:3},createdAt:'2026-08-27T00:00:01.000Z',attempts:0,lastError:''}
+    ],lastSyncAt:'',lastError:''};
+    state.aptOrders=[duplicateOrder,editedOrder];state.files=[];
+    officeIntakeQueueOrderStatus(editedOrder);
+    const duplicates={revisions:state.aptOrders.map(order=>order.officeProjectionRevision),chain:officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision])};
+
+    function seedRelative(blockedStatus,targetStatus){
+      state.officeIntake={inbox:[],cursor:'',outbox:[{id:'relative-'+blockedStatus,action:'officeSetStatus',payload:{requestId:'relative-'+blockedStatus,status:blockedStatus,projectionRevision:11,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:1,lastError:'사진 오류',blocked:true,blockedCode:'invalid-completion-photos'}],lastSyncAt:'',lastError:''};
+      const order={id:'relative-order-'+blockedStatus,source:'office-intake',sourceRequestId:'relative-'+blockedStatus,status:targetStatus,project:'',text:'수리 완료',completionSummary:'상태 유지 보고',publicAmount:120000,publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:11,officeProjectionFingerprint:'stale'};
+      state.aptOrders=[order];state.files=[];officeIntakeQueueOrderStatus(order);return order;
+    }
+    const relative={};
+    seedRelative('billed','paid');
+    relative.billedBuilt=officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision]);
+    remote='billed';const relativeCalls=[];window.relayCall=async function(action,payload){relativeCalls.push([payload.status,payload.projectionRevision]);const allowed={billed:['billed','paid'],paid:['paid']};if(!allowed[remote].includes(payload.status))return {ok:false,error:'invalid-transition'};remote=payload.status;return {ok:true,status:remote,projectionRevision:payload.projectionRevision};};
+    relative.billedSent=await officeIntakeFlush();relative.billedCalls=relativeCalls.slice();relative.billedRemaining=officeIntakeData().outbox.length;
+    seedRelative('paid','paid');
+    relative.paidBuilt=officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision]);
+    remote='paid';relativeCalls.length=0;
+    relative.paidSent=await officeIntakeFlush();relative.paidCalls=relativeCalls.slice();relative.paidRemaining=officeIntakeData().outbox.length;
+
+    state.officeIntake={inbox:[],cursor:'',outbox:[{id:'relative-inflight',action:'officeSetStatus',payload:{requestId:'relative-inflight',status:'billed',projectionRevision:11,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:0,lastError:''}],lastSyncAt:'',lastError:''};
+    const relativeInflightOrder={id:'relative-inflight-order',source:'office-intake',sourceRequestId:'relative-inflight',status:'paid',project:'',text:'수리 완료',completionSummary:'상태 유지 보고',publicAmount:120000,publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:11,officeProjectionFingerprint:'stale'};
+    state.aptOrders=[relativeInflightOrder];state.files=[];let releaseRelative;window.relayCall=function(){return new Promise(resolve=>{releaseRelative=resolve;});};
+    const relativeFlushing=officeIntakeFlush();officeIntakeQueueOrderStatus(relativeInflightOrder);releaseRelative({ok:false,error:'invalid-completion-photos'});await relativeFlushing;
+    relative.inflightBuilt=officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision]);
+    remote='billed';relativeCalls.length=0;window.relayCall=async function(action,payload){relativeCalls.push([payload.status,payload.projectionRevision]);const allowed={billed:['billed','paid'],paid:['paid']};if(!allowed[remote].includes(payload.status))return {ok:false,error:'invalid-transition'};remote=payload.status;return {ok:true,status:remote,projectionRevision:payload.projectionRevision};};
+    relative.inflightSent=await officeIntakeFlush();relative.inflightCalls=relativeCalls.slice();relative.inflightRemaining=officeIntakeData().outbox.length;window.relayCall=original;
+    return {built,billed:billedResult,paid:paidResult,duplicates,relative};
+  });
+  assert.deepEqual(correctionChains.built.done,{statuses:['completed'],revisions:[4],orderRevision:4,summaries:['수정 보고']},'done correction rebuilds completed only');
+  assert.deepEqual(correctionChains.built.billed,{statuses:['completed','billed'],revisions:[4,5],orderRevision:5,summaries:['수정 보고','수정 보고']},'billed correction rebuilds completed then billed');
+  assert.deepEqual(correctionChains.built.paid,{statuses:['completed','billed','paid'],revisions:[5,6,7],orderRevision:7,summaries:['수정 보고','수정 보고','수정 보고']},'paid correction rebuilds completed, billed, then paid');
+  assert.deepEqual(correctionChains.billed,{sent:2,calls:[['completed',4],['billed',5]],remote:'billed',remaining:0},'corrected billed order reaches relay through the legal chain');
+  assert.deepEqual(correctionChains.paid,{after:[['completed',5],['billed',6],['paid',7]],sent:3,calls:[['completed',5],['billed',6],['paid',7]],remaining:0},'in-flight paid correction replaces stale work with a legal sequential chain');
+  assert.deepEqual(correctionChains.duplicates,{revisions:[7,7],chain:[['completed',5],['billed',6],['paid',7]]},'correction advances every duplicate local order for the same request to the authoritative final revision');
+  assert.deepEqual(correctionChains.relative,{billedBuilt:[['billed',12],['paid',13]],billedSent:2,billedCalls:[['billed',12],['paid',13]],billedRemaining:0,paidBuilt:[['paid',12]],paidSent:1,paidCalls:[['paid',12]],paidRemaining:0,inflightBuilt:[['billed',12],['paid',13]],inflightSent:2,inflightCalls:[['billed',12],['paid',13]],inflightRemaining:0},'completion correction starts at the failed remote status and never reverses billed or paid');
+
   await fetch(MOCK + '/__reset');
   const durable = await page.evaluate(() => {
     state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
@@ -395,6 +467,19 @@ const TOKEN = 'test-token-123';
   });
   assert.deepEqual({sent:recoverablePhotoBlock.sent,acceptCalls:recoverablePhotoBlock.acceptCalls,outbox:recoverablePhotoBlock.outbox,orders:recoverablePhotoBlock.orders,status:recoverablePhotoBlock.status},{sent:0,acceptCalls:2,outbox:[{action:'officeAccept',blocked:true,code:'photos-pending',attempts:1},{action:'officeSetStatus',blocked:false,code:'',attempts:0}],orders:1,status:'pending_review'},'still-pending upload is retried once, keeps its exact staged order, and stops FIFO explicitly');
   assert.match(recoverablePhotoBlock.html,/사진.*업로드|업로드.*사진/,'recoverable photo block is visible to the field operator');
+
+  const directInvalidAccept = await page.evaluate(async () => {
+    state.officeIntake={inbox:[{requestId:'direct-invalid',status:'pending_review',photos:[]}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+    state.aptOrders=[{id:'direct-invalid-order',source:'office-intake',sourceRequestId:'direct-invalid',status:'recv',intakePhotoIds:[]}];
+    officeIntakeQueue('officeAccept',{requestId:'direct-invalid',hyeonjangOrderId:'direct-invalid-order',attachedUploadIds:['not-canonical']});
+    officeIntakeQueue('officeSetStatus',{requestId:'direct-invalid',status:'visit_scheduled',projectionRevision:1});
+    const original=window.relayCall;let calls=0;window.relayCall=async function(){calls++;return {ok:false,error:'invalid-input',field:'attachedUploadIds'};};
+    const first=await officeIntakeFlush();const afterFirst=officeIntakeData().outbox.map(item=>({action:item.action,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));const html=officeIntakeOperationalErrorHtml();
+    const second=await officeIntakeFlush();window.relayCall=original;
+    return {first,second,calls,afterFirst,html,remaining:officeIntakeData().outbox.length};
+  });
+  assert.deepEqual({first:directInvalidAccept.first,second:directInvalidAccept.second,calls:directInvalidAccept.calls,afterFirst:directInvalidAccept.afterFirst,remaining:directInvalidAccept.remaining},{first:0,second:0,calls:1,afterFirst:[{action:'officeAccept',blocked:true,code:'accept-invalid-input',attempts:1},{action:'officeSetStatus',blocked:false,code:'',attempts:0}],remaining:2},'first-response invalid accept is blocked once and stops dependent FIFO without a retry loop');
+  assert.match(directInvalidAccept.html,/accept-invalid-input/,'direct invalid accept exposes its stable blocked code in the operator UI');
 
   const acceptErrorClasses = await page.evaluate(async () => {
     const originalRelay=window.relayCall,originalSync=window.officeIntakeSync;

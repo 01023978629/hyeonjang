@@ -11,7 +11,7 @@
 let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
-const APP = 'http://localhost:8299/index.html';
+const APP = 'http://127.0.0.1:8299/index.html';
 const assert = (v, m) => { if (!v) throw new Error(m); };
 let browser;
 
@@ -21,6 +21,7 @@ let browser;
   page.setDefaultTimeout(9000);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
+  await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(700);

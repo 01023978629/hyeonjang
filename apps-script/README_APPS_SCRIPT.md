@@ -114,6 +114,14 @@ order에 저장된 접수 사진을 붙여 `attachedUploadIds`를 갱신한 뒤 
 여전히 미완료이거나 전송 상태를 확인할 수 없으면 자동 성공·삭제하지 않고 운영 화면에
 복구 가능 blocked 상태로 남깁니다.
 
+완료 보고를 수정할 때 로컬 order가 이미 `billed` 또는 `paid`여도 서버 상태를 건너뛰거나
+되돌리지 않습니다. 사진 검증에 실패한 서버 상태(`completed`·`billed`·`paid`)부터 시작해
+같은 공개 보고·manifest를 유지한 채 로컬 목표 상태까지 연속 revision으로 다시 구성합니다.
+`officeAccept`의 첫 응답이 `invalid-input`이면 현장 앱 로컬 blocked label
+accept-invalid-input으로 즉시 차단합니다. 이 label은 서버 응답 code가 아니며, 앱은
+자동 재시도를 중단하고 운영 화면에 표시합니다. 인증·전송 오류와 사진 대기는
+각각 별도 code로 보존해 원인이 해결된 뒤 명시적으로만 다시 시도합니다.
+
 ### Operational records
 
 `calendar-failed` · `already-linked` · `accept-invalid-transition` ·
