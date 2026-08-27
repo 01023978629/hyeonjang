@@ -112,7 +112,7 @@ const RAW_DIGITS = '01012345678';
     }).summary);
     assert(summary.indexOf('[고객명] [고객명] 홍길동식당 [고객명] [고객명] AliceCo') >= 0, '한글/영문 이름 토큰·님 경계를 지키지 않음: ' + summary);
     assert(summary.indexOf('010-1234-5678') < 0 && summary.indexOf('042.1234.5678') < 0, '사무소·입주민 전화의 허용 구분자가 마스킹되지 않음: ' + summary);
-    assert(summary.indexOf('010/1234/5678') >= 0, '허용 목록 밖의 /까지 전화 구분자로 처리함: ' + summary);
+    assert(summary.indexOf('010/1234/5678') < 0, 'slash-separated mobile number leaked from the public completion summary: ' + summary);
   });
 
   const pe = errs.length;

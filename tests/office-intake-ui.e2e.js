@@ -167,6 +167,7 @@ let browser;
   assert.equal(reviewActions.unchanged, true, '입력 취소는 상태·큐·오더를 바꾸지 않음');
 
   const reviewGuards = await page.evaluate(async () => {
+    __relay.url='http://127.0.0.1:1';__relay.token='ui-test-token';
     const request = (requestId, status) => ({
       requestId, receiptNo: requestId, officeId: 'of-ui', unit: '공용부', location: '계단', issueType: '기타', pipeType: '미확정', urgency: 'normal', description: requestId,
       officeContact: { name: '관리소', phone: '010-7777-8888' }, photos: [], status
@@ -196,6 +197,10 @@ let browser;
     const held = await officeIntakeAccept('matrix-hold', 'new', '새 현장');
     const heldAfterAccept = { status: heldRequest.status, reason: heldRequest.needsInfoReason };
     const holdAfterNeeds = await officeIntakeHold('matrix-needs');
+    // The matrix above intentionally uses an offline approval stub.  Its
+    // strict-FIFO blocker is covered by sync tests; isolate the existing-order
+    // recovery assertions so they exercise their own exact queued item.
+    officeIntakeData().outbox=[];officeIntakeData().lastError='';
     state.officeIntake.inbox.push(request('recovery-ok', 'pending_review'), request('recovery-fail', 'on_hold'), request('recovery-needs', 'needs_info'));
     officeIntakeFindRequest('recovery-fail').needsInfoReason = '기존 보완 사유';
     const recoveryOrder = { id: 'recovery-order', sourceRequestId: 'recovery-ok', project: '기존 현장' };
@@ -215,19 +220,20 @@ let browser;
       queued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && /^recovery-/.test(item.payload.requestId)).map(item => item.payload),
       pendingIds: officeIntakePending().map(item => item.requestId)
     };
+    officeIntakeData().outbox=officeIntakeData().outbox.filter(item=>!(item&&item.payload&&/^recovery-/.test(String(item.payload.requestId||''))));officeIntakeData().lastError='';
     const phoneChecks = ['010-1234-5678', '+82 10 1234 5678', '010-1234-5678;evil', '010abc12345678', '+12'].map(value => ({ value, tel: officeIntakeTel(value) }));
     state.officeIntake.inbox.push(request('sequence', 'pending_review'));
-    const events = [], originalPush = state.aptOrders.push, originalDirty = window.markDirty, originalAccept = window.cloudOfficeAccept;
-    state.aptOrders.push = function () { events.push('push'); return originalPush.apply(this, arguments); };
+    const events = [], originalDirty = window.markDirty, originalAccept = window.cloudOfficeAccept, originalIdbSet=window.idbSet,ordersBeforeSequence=state.aptOrders.length;
     window.markDirty = () => events.push('dirty');
+    window.idbSet = async () => { events.push('persist'); };
     window.cloudOfficeAccept = async () => { events.push('cloud'); return { ok: false, error: 'offline' }; };
     const sequence = await officeIntakeAccept('sequence', 'none');
-    state.aptOrders.push = originalPush; window.markDirty = originalDirty; window.cloudOfficeAccept = originalAccept;
+    window.markDirty = originalDirty; window.cloudOfficeAccept = originalAccept;window.idbSet=originalIdbSet;
     return { buttons: { pending: buttons('matrix-pending'), needs: buttons('matrix-needs'), hold: buttons('matrix-hold') }, invalidNeedsAccept, invalidHoldNeeds, invalidHoldAgain, invalidMode, missingExisting, newCollision, blankNeeds,
       existingProject: existing && existing.project, existingIdentity: existing && existing.projectIdentity, existingProjectIdentity: state.projects.find(project => project.name === '기존 현장').officeIntakeProjectId,
       projectCountAfterExisting, duplicateProject: duplicateExisting && duplicateExisting.project, projectCountAfterDuplicate,
       heldProject: held && held.project, heldIdentity: held && held.projectIdentity, heldProjectIdentity: state.projects.find(project => project.name === '새 현장').officeIntakeProjectId,
-      heldAfterAccept, holdAfterNeeds: !!holdAfterNeeds, recovery, phoneChecks, events, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
+      heldAfterAccept, holdAfterNeeds: !!holdAfterNeeds, recovery, phoneChecks, events, sequenceOrderCreated:state.aptOrders.length===ordersBeforeSequence+1, sequenceQueued: officeIntakeData().outbox.filter(item => item.action === 'officeAccept' && item.payload.requestId === 'sequence').map(item => item.payload), sequenceId: sequence && sequence.id };
   });
   assert.deepEqual(reviewGuards.buttons, { pending: ['오더 등록', '내용 보완 요청', '보류'], needs: ['보류'], hold: ['오더 등록'] }, '상태별로 허용된 검토 버튼만 렌더링');
   for (const key of ['invalidNeedsAccept', 'invalidHoldNeeds', 'invalidHoldAgain', 'invalidMode', 'missingExisting', 'newCollision', 'blankNeeds']) assert.deepEqual(reviewGuards[key], { result: false, unchanged: true }, key + '는 로컬 상태를 바꾸지 않음');
@@ -259,10 +265,12 @@ let browser;
     { value: '010-1234-5678', tel: '01012345678' }, { value: '+82 10 1234 5678', tel: '+821012345678' },
     { value: '010-1234-5678;evil', tel: '' }, { value: '010abc12345678', tel: '' }, { value: '+12', tel: '' }
   ], '안전한 국내/E.164 전화만 tel href로 정규화');
-  assert.deepEqual(reviewGuards.events.slice(0, 3), ['push', 'dirty', 'cloud'], '로컬 오더 저장과 dirty가 서버 승인보다 먼저 실행');
+  assert.equal(reviewGuards.sequenceOrderCreated, true, '정확한 로컬 오더를 한 건만 생성');
+  assert.equal(reviewGuards.events.indexOf('persist') > reviewGuards.events.indexOf('dirty') && reviewGuards.events.indexOf('persist') < reviewGuards.events.indexOf('cloud'), true, '로컬 내구성 저장을 서버 승인보다 먼저 await: '+JSON.stringify(reviewGuards.events));
   assert.deepEqual(reviewGuards.sequenceQueued, [{ requestId: 'sequence', hyeonjangOrderId: reviewGuards.sequenceId, attachedUploadIds:[] }], '실패한 승인 호출은 한 번만 정확히 큐잉');
 
   const finalSafety = await page.evaluate(async () => {
+    officeIntakeData().outbox=[];officeIntakeData().lastError='';
     const linked = state.aptOrders.find(order => order && order.source === 'office-intake');
     const deleteBlocked = !officeIntakeDeleteGuard(linked);
     const project = state.projects.find(item => item.name === '기존 현장');

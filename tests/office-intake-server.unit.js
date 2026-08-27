@@ -123,7 +123,7 @@ const propertyFaults = { onSet: null, onDelete: null };
 const lockFaults = { get: false, wait: false, release: false };
 const cryptoStats = { macCalls: 0, decodeCalls: 0, base64EncodeCalls: 0 };
 const lockEvents = [];
-const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0, getFileByIdCalls: 0 };
+const drive = { nextId: 1, uuid: 0, files: [], folders: [], failStoreWrites: 0, storeReads: 0, storeWrites: 0, fileCreates: 0, folderCreates: 0, trashCalls: 0, getFileByIdCalls: 0 };
 function iterator(items) {
   let index = 0;
   return { hasNext: () => index < items.length, next: () => items[index++] };
@@ -149,7 +149,10 @@ function makeFolder(name, parent) {
         getMimeType() { return this.mimeType; },
         getSize() { return this.bytes.length; },
         getParents() { return iterator(this.parent ? [this.parent] : []); },
-        getBlob() { return { getDataAsString: () => Buffer.from(this.bytes).toString('utf8'), getBytes: () => this.bytes.slice() }; },
+        getBlob() {
+          if (this.name === '관리사무소접수.json') drive.storeReads++;
+          return { getDataAsString: () => Buffer.from(this.bytes).toString('utf8'), getBytes: () => this.bytes.slice() };
+        },
         setContent(text) {
           if (this.name === '관리사무소접수.json' && drive.failStoreWrites > 0) {
             drive.failStoreWrites--;
@@ -289,6 +292,15 @@ for (const name of ['OfficeIntakePure.gs', 'Code.gs', 'OfficeIntake.gs']) {
   if (fs.existsSync(file)) vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: name });
 }
 
+// Portal/server slug identity is one canonical contract.  Legacy custom
+// values are never silently normalized into a different public capability.
+assert.equal(typeof sandbox.oiSlug_, 'function', 'server exposes the canonical office slug validator');
+assert.equal(sandbox.oiSlug_('abc'), 'abc');
+assert.equal(sandbox.oiSlug_('a' + 'b'.repeat(63)), 'a' + 'b'.repeat(63));
+for (const invalidSlug of ['ab', 'Upper-apt', '-leading', 'bad_slug', 'a' + 'b'.repeat(64)]) {
+  assert.equal(sandbox.oiSlug_(invalidSlug), '', 'invalid canonical slug rejected: ' + invalidSlug);
+}
+
 // Break caught: custom office store properties must remain supported, while
 // an absent property must preserve the established default filename.
 properties.OFFICE_STORE_FILE = 'custom-office-intake.json';
@@ -340,6 +352,35 @@ cache.clear();
 
 for (let i = 0; i < 5; i++) sandbox.oiLogin_({ slug: 'sample-apt', pin: '000000' }, 2000 + i);
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 2010).error, 'rate-limited');
+
+// RED: once a per-office bucket is limited, anonymous repeats are answered
+// from CacheService before ScriptLock/Drive.  They cannot amplify lock or
+// audit-store work.
+const limitedKnownCost = { reads: drive.storeReads, writes: drive.storeWrites, locks: lockEvents.length };
+for (let i = 0; i < 20; i++) assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 2020 + i).error, 'rate-limited');
+assert.deepEqual(
+  { reads: drive.storeReads, writes: drive.storeWrites, locks: lockEvents.length },
+  limitedKnownCost,
+  'repeated limited office slug causes no additional Drive reads/writes or global locks',
+);
+
+// RED: rotating valid-looking unknown slugs shares a bounded anonymous bucket.
+// After its threshold/audit edge, new slugs cannot bypass the cache by name.
+cache.clear();
+const unknownLimit = Number(sandbox.OI_LOGIN_UNKNOWN_LIMIT);
+assert.equal(Number.isInteger(unknownLimit) && unknownLimit > 0, true, 'unknown-login global limit is explicit and bounded');
+for (let i = 0; i < unknownLimit; i++) {
+  assert.equal(sandbox.oiLogin_({ slug: 'unknown-' + String(i).padStart(3, '0'), pin: '000000' }, 2100 + i).error, 'invalid-credentials');
+}
+assert.equal(sandbox.oiLogin_({ slug: 'unknown-edge', pin: '000000' }, 2200).error, 'rate-limited');
+const limitedUnknownCost = { reads: drive.storeReads, writes: drive.storeWrites, locks: lockEvents.length };
+for (let i = 0; i < 30; i++) assert.equal(sandbox.oiLogin_({ slug: 'rotate-' + String(i).padStart(3, '0'), pin: '000000' }, 2300 + i).error, 'rate-limited');
+assert.deepEqual(
+  { reads: drive.storeReads, writes: drive.storeWrites, locks: lockEvents.length },
+  limitedUnknownCost,
+  'rotating unknown slugs cannot grow Drive or lock work after the global threshold',
+);
+cache.clear();
 
 properties.OFFICE_INTAKE_ENABLED = '0';
 assert.equal(sandbox.oiLogin_({ slug: 'sample-apt', pin: '123456' }, 3000).error, 'office-disabled');
@@ -428,11 +469,15 @@ const kstBoundary = locked(() => sandbox.oiCreate_(sessionOf1, {
 assert.equal(kstBoundary.receiptNo, 'MM-19700102-0001');
 
 // Break caught: declared image type and magic bytes must agree, while each allowed image type remains accepted.
-const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
+const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const truncatedPngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
 const webpBytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
 assert.equal(sandbox.oiUpload_(sessionOf1, {
   requestId: first.requestId, uploadId: uploadUuid(2), name: 'mismatch.jpg', mimeType: 'image/jpeg', dataB64: pngBytes.toString('base64')
 }, 10003).error, 'invalid-file');
+assert.equal(sandbox.oiUpload_(sessionOf1, {
+  requestId: first.requestId, uploadId: uploadUuid(2), name: 'truncated.png', mimeType: 'image/png', dataB64: truncatedPngMagic.toString('base64')
+}, 100031).error, 'invalid-file', 'PNG upload validates the complete standard eight-byte signature');
 
 // RED: the portal declares every canonical upload slot at create time.  The
 // internal app cannot accept the request until every declared slot is both
@@ -922,6 +967,12 @@ assert.equal(filteredInbox.requests.some(request => request.requestId === 'compl
 fakeNow = Date.parse('1972-01-01T00:00:00.000Z');
 assert.equal(postInternal('officeRetentionList', {}).requests.some(request => request.requestId === first.requestId && request.status === 'paid' && request.retentionReason === 'completed-1-year'), true);
 fakeNow = 1000;
+
+const configBeforeInvalidSlug = properties.OFFICE_CONFIG_JSON;
+lockEvents.length = 0;
+assert.equal(postInternal('officeAdminUpsert', { id: 'of-invalid-slug', slug: 'Bad_Slug', complexName: '잘못된 단지', enabled: true }).error, 'invalid-input');
+assert.equal(properties.OFFICE_CONFIG_JSON, configBeforeInvalidSlug, 'invalid custom slug never mutates provisioning state');
+assert.deepEqual(lockEvents, [], 'invalid custom slug is rejected before global lock/Drive work');
 
 // Break caught: admin mutations must roll back the exact config if the following audit write fails, and PIN entropy must never enter pinSalt.
 const configBeforeFailedUpsert = properties.OFFICE_CONFIG_JSON;

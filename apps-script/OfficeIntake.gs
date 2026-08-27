@@ -3,6 +3,8 @@
 var OI_PUBLIC_ACTIONS = ['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload', 'officePhoto'];
 var OI_INTERNAL_ACTIONS = ['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'];
 var OI_LOGIN_LIMIT = 5;
+var OI_LOGIN_UNKNOWN_LIMIT = 12;
+var OI_LOGIN_GLOBAL_LIMIT = 50;
 var OI_LOGIN_WINDOW_SECONDS = 600;
 var OI_DUMMY_PIN_SALT = 'office-intake-invalid-salt';
 var OI_DUMMY_PIN_HASH = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
@@ -45,6 +47,10 @@ function oiConfig_() {
     return config && Array.isArray(config.offices) ? config : { offices: [] };
   } catch (_) { return { offices: [] }; }
 }
+function oiSlug_(value) {
+  var slug = String(value == null ? '' : value);
+  return /^[a-z0-9][a-z0-9-]{2,63}$/.test(slug) ? slug : '';
+}
 function oiOfficeActive_(office) { return !!office && office.enabled !== false && office.disabled !== true; }
 function oiOfficeBySlug_(slug) {
   var offices = oiConfig_().offices;
@@ -68,38 +74,56 @@ function oiAdminOffice_(office) {
   return value;
 }
 function oiInvalidCredentials_() { return { ok: false, error: 'invalid-credentials', message: '관리사무소 코드 또는 비밀번호가 올바르지 않습니다' }; }
+function oiLoginRateCount_(cache, key) { return Math.max(0, Number(cache.get(key) || 0) || 0); }
+function oiLoginRateIncrement_(cache, key) {
+  var next = oiLoginRateCount_(cache, key) + 1;
+  cache.put(key, String(next), OI_LOGIN_WINDOW_SECONDS);
+  return next;
+}
+function oiLoginLimited_() { return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' }; }
+function oiLoginAuditThreshold_(officeId, result, now) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var store = oiReadStore_();
+    oiAuditLocked_(store, officeId || '', '', 'login', result, now);
+    oiWriteStore_(store);
+  } finally { lock.releaseLock(); }
+}
 
 function oiLogin_(payload, now) {
   if (PropertiesService.getScriptProperties().getProperty('OFFICE_INTAKE_ENABLED') !== '1') {
     return { ok: false, error: 'office-disabled', message: '관리사무소 접수가 현재 비활성화되어 있습니다' };
   }
   payload = payload && typeof payload === 'object' ? payload : {};
-  var slug = oiText_(payload.slug, 80);
+  var slug = oiSlug_(payload.slug);
   var cache = CacheService.getScriptCache();
-  var key = 'oi-login:' + slug;
+  var key = 'oi-login:' + (slug || 'invalid');
+  var unknownKey = 'oi-login:unknown-global';
+  var globalKey = 'oi-login:invalid-global';
+  var office = slug ? oiOfficeBySlug_(slug) : null;
+  if (oiLoginRateCount_(cache, key) >= OI_LOGIN_LIMIT ||
+      oiLoginRateCount_(cache, globalKey) >= OI_LOGIN_GLOBAL_LIMIT ||
+      (!office && oiLoginRateCount_(cache, unknownKey) >= OI_LOGIN_UNKNOWN_LIMIT)) return oiLoginLimited_();
+
+  var pin = String(payload.pin == null ? '' : payload.pin);
+  var pinFormatValid = /^\d{6}$/.test(pin);
+  var credential = oiOfficeActive_(office) ? office : { pinSalt: OI_DUMMY_PIN_SALT, pinHash: OI_DUMMY_PIN_HASH };
+  var matches = oiSafeEqual_(oiHashPin_(pinFormatValid ? pin : '000000', credential.pinSalt), credential.pinHash);
+  var valid = pinFormatValid && matches && oiOfficeActive_(office);
+  if (!valid) {
+    var perCount = oiLoginRateIncrement_(cache, key);
+    var globalCount = oiLoginRateIncrement_(cache, globalKey);
+    var unknownCount = office ? 0 : oiLoginRateIncrement_(cache, unknownKey);
+    if (perCount === OI_LOGIN_LIMIT || globalCount === OI_LOGIN_GLOBAL_LIMIT || unknownCount === OI_LOGIN_UNKNOWN_LIMIT) {
+      oiLoginAuditThreshold_(office ? office.id : '', 'rate-threshold', now);
+    }
+    return oiInvalidCredentials_();
+  }
+
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    if (Number(cache.get(key) || 0) >= OI_LOGIN_LIMIT) {
-      var limitedStore = oiReadStore_();
-      oiAuditLocked_(limitedStore, '', '', 'login', 'rate-limited', now);
-      oiWriteStore_(limitedStore);
-      return { ok: false, error: 'rate-limited', message: '잠시 후 다시 시도하세요' };
-    }
-
-    var office = oiOfficeBySlug_(slug);
-    var pin = String(payload.pin == null ? '' : payload.pin);
-    var pinFormatValid = /^\d{6}$/.test(pin);
-    var credential = oiOfficeActive_(office) ? office : { pinSalt: OI_DUMMY_PIN_SALT, pinHash: OI_DUMMY_PIN_HASH };
-    var matches = oiSafeEqual_(oiHashPin_(pinFormatValid ? pin : '000000', credential.pinSalt), credential.pinHash);
-    var valid = pinFormatValid && matches && oiOfficeActive_(office);
-    if (!valid) {
-      cache.put(key, String(Number(cache.get(key) || 0) + 1), OI_LOGIN_WINDOW_SECONDS);
-      var failedStore = oiReadStore_();
-      oiAuditLocked_(failedStore, office ? office.id : '', '', 'login', 'invalid-credentials', now);
-      oiWriteStore_(failedStore);
-      return oiInvalidCredentials_();
-    }
     cache.remove(key);
     var successStore = oiReadStore_();
     oiAuditLocked_(successStore, office.id, '', 'login', 'ok', now);
@@ -475,15 +499,16 @@ function oiUploadResult_(photo) {
 }
 function oiImageMagicValid_(mimeType, bytes) {
   if (mimeType === 'image/jpeg') return bytes.length >= 3 && oiByte_(bytes, 0) === 0xFF && oiByte_(bytes, 1) === 0xD8 && oiByte_(bytes, 2) === 0xFF;
-  if (mimeType === 'image/png') return bytes.length >= 4 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4E && oiByte_(bytes, 3) === 0x47;
+  if (mimeType === 'image/png') return bytes.length >= 8 && oiByte_(bytes, 0) === 0x89 && oiByte_(bytes, 1) === 0x50 && oiByte_(bytes, 2) === 0x4E && oiByte_(bytes, 3) === 0x47 && oiByte_(bytes, 4) === 0x0D && oiByte_(bytes, 5) === 0x0A && oiByte_(bytes, 6) === 0x1A && oiByte_(bytes, 7) === 0x0A;
   if (mimeType === 'image/webp') return bytes.length >= 12 && oiByte_(bytes, 0) === 0x52 && oiByte_(bytes, 1) === 0x49 && oiByte_(bytes, 2) === 0x46 && oiByte_(bytes, 3) === 0x46 && oiByte_(bytes, 8) === 0x57 && oiByte_(bytes, 9) === 0x45 && oiByte_(bytes, 10) === 0x42 && oiByte_(bytes, 11) === 0x50;
   return false;
 }
 function oiRequestPhotoFolder_(officeId, receiptNo) {
   var office = oiOfficeById_(officeId);
-  if (!office || !oiText_(office.slug, 80)) throw new Error('office-not-found');
+  var slug = office && oiSlug_(office.slug);
+  if (!office || !slug) throw new Error('office-not-found');
   var root = oiStoreRoot_();
-  return subFolder_(subFolder_(subFolder_(root, '관리사무소접수'), oiText_(office.slug, 80)), receiptNo);
+  return subFolder_(subFolder_(subFolder_(root, '관리사무소접수'), slug), receiptNo);
 }
 function oiUpload_(session, payload, now) {
   if (!oiOfficeEnabled_()) return { ok: false, error: 'office-disabled' };
@@ -856,7 +881,7 @@ function oiCommitAdminConfig_(properties, previousRaw, stagedRaw, writeAudit, st
 function oiAdminUpsert_(payload, now) {
   payload = payload && typeof payload === 'object' ? payload : {};
   var id = oiText_(payload.id, 120);
-  var slug = oiText_(payload.slug, 80);
+  var slug = oiSlug_(payload.slug);
   var complexName = oiText_(payload.complexName, 120);
   if (!id || !slug || !complexName) return { ok: false, error: 'invalid-input' };
   var lock = LockService.getScriptLock();

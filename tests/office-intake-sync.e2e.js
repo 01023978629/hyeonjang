@@ -54,7 +54,19 @@ const TOKEN = 'test-token-123';
   assert.equal(officeAccess.storedSessionVersion,2,'PIN rotation still increments the server-only sessionVersion');
   assert.equal(officeAccess.persistedPin, false, 'one-time PIN must not enter serialized state or local storage');
 
+  const slugContract = await page.evaluate(async () => {
+    const generated=officeIntakeOfficeSlug({id:'Ab_C 1'}),validCustom=officeIntakeOfficeSlug({id:'ignored',intakeSlug:'custom-apt'}),invalidCustom=officeIntakeOfficeSlug({id:'ignored',intakeSlug:'Custom_Apt'});
+    const original=window.cloudOfficeAdmin,calls=[];
+    state.aptOffices=[{id:'invalid-office',complex:'안전 단지',intakeSlug:'Custom_Apt',intakeEnabled:false}];
+    window.cloudOfficeAdmin=async function(action,payload){calls.push({action,payload});return {ok:true,office:{id:'invalid-office',slug:'custom-apt',enabled:false}};};
+    const result=await officeIntakeOfficeAccess('invalid-office');
+    window.cloudOfficeAdmin=original;
+    return {generated,validCustom,invalidCustom,result,calls};
+  });
+  assert.deepEqual(slugContract,{generated:'office-ab-c-1',validCustom:'custom-apt',invalidCustom:'',result:{ok:false,error:'invalid-input'},calls:[]},'client slug generation and explicit custom validation match the lowercase portal contract and fail closed before admin mutation');
+
   const disablePersist = await page.evaluate(async () => {
+    state.aptOffices=[{ id: 'of1', complex: '예시 아파트', manager: '', phone: '', intakeEnabled:true }];
     const office = state.aptOffices[0];
     const disabled = await officeIntakeOfficeAccess('of1', 'disable');
     const local = office.intakeEnabled;
@@ -146,7 +158,7 @@ const TOKEN = 'test-token-123';
   const blockedCompletion = await page.evaluate(async () => {
     state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
     officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:2, completionPhotoIds:['missing-drive-id'], completionReport:{summary:'완료',photoIds:['missing-drive-id'],publicPhotoIds:[]} });
-    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'completed', projectionRevision:3, completionPhotoIds:['still-missing'], completionReport:{summary:'두번째',photoIds:['still-missing'],publicPhotoIds:[]} });
+    officeIntakeQueue('officeSetStatus', { requestId:'blocked-photo', status:'billed', projectionRevision:3, completionPhotoIds:['missing-drive-id'], completionReport:{summary:'완료',photoIds:['missing-drive-id'],publicPhotoIds:[]} });
     officeIntakeQueue('officeSetStatus', { requestId:'other-order', status:'visit_scheduled', projectionRevision:1 });
     const original = window.relayCall, statusCalls=[];
     window.relayCall = async function(action,payload){
@@ -270,6 +282,36 @@ const TOKEN = 'test-token-123';
   assert.deepEqual(correctionChains.paid,{after:[['completed',5],['billed',6],['paid',7]],sent:3,calls:[['completed',5],['billed',6],['paid',7]],remaining:0},'in-flight paid correction replaces stale work with a legal sequential chain');
   assert.deepEqual(correctionChains.duplicates,{revisions:[7,7],chain:[['completed',5],['billed',6],['paid',7]]},'correction advances every duplicate local order for the same request to the authoritative final revision');
   assert.deepEqual(correctionChains.relative,{billedBuilt:[['billed',12],['paid',13]],billedSent:2,billedCalls:[['billed',12],['paid',13]],billedRemaining:0,paidBuilt:[['paid',12]],paidSent:1,paidCalls:[['paid',12]],paidRemaining:0,inflightBuilt:[['billed',12],['paid',13]],inflightSent:2,inflightCalls:[['billed',12],['paid',13]],inflightRemaining:0},'completion correction starts at the failed remote status and never reverses billed or paid');
+
+  // RED: revision ownership is request-scoped, not whichever duplicate order
+  // the operator happens to edit.  Rebase above every duplicate/outbox value
+  // and advance all local remnants together.
+  const duplicateRebase = await page.evaluate(() => {
+    state.officeIntake={inbox:[],cursor:'',outbox:[{id:'rev-six',action:'officeSetStatus',payload:{requestId:'rebase-request',status:'completed',projectionRevision:6,completionPhotoIds:[],completionReport:{summary:'이전 보고',photoIds:[],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:0,lastError:''}],lastSyncAt:'',lastError:''};
+    const low={id:'rebase-low',source:'office-intake',sourceRequestId:'rebase-request',status:'done',project:'',text:'수정',completionSummary:'새 운영자 보고',publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:1,officeProjectionFingerprint:'stale'};
+    const high={id:'rebase-high',source:'office-intake',sourceRequestId:'rebase-request',status:'done',project:'',text:'이전',completionSummary:'이전 보고',publicPhotoIds:[],intakePhotoIds:[],officeProjectionRevision:6,officeProjectionFingerprint:'current'};
+    state.aptOrders=[low,high];state.files=[];
+    officeIntakeQueueOrderStatus(low);
+    return {revisions:state.aptOrders.map(order=>order.officeProjectionRevision),queued:officeIntakeData().outbox.map(item=>[item.payload.status,item.payload.projectionRevision,item.payload.completionReport&&item.payload.completionReport.summary])};
+  });
+  assert.deepEqual(duplicateRebase,{revisions:[7,7],queued:[['completed',6,'이전 보고'],['completed',7,'새 운영자 보고']]},'low duplicate edit rebases above request-wide rev6 and advances every duplicate to rev7');
+
+  // RED: a corrected higher projection may already be part of the flush
+  // snapshot.  It still supersedes the failed manifest and is sent on the next
+  // flush instead of leaving the stale head blocked forever.
+  const snapshotCorrection = await page.evaluate(async () => {
+    state.officeIntake={inbox:[],cursor:'',outbox:[
+      {id:'snapshot-bad',action:'officeSetStatus',payload:{requestId:'snapshot-correction',status:'completed',projectionRevision:2,completionPhotoIds:['bad'],completionReport:{summary:'이전',photoIds:['bad'],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:00.000Z',attempts:0,lastError:''},
+      {id:'snapshot-good',action:'officeSetStatus',payload:{requestId:'snapshot-correction',status:'completed',projectionRevision:3,completionPhotoIds:[],completionReport:{summary:'수정',photoIds:[],publicPhotoIds:[]}},createdAt:'2026-08-27T00:00:01.000Z',attempts:0,lastError:''}
+    ],lastSyncAt:'',lastError:''};
+    const original=window.relayCall,calls=[];
+    window.relayCall=async function(action,payload){calls.push(payload.projectionRevision);return payload.projectionRevision===2?{ok:false,error:'invalid-completion-photos'}:{ok:true,status:'completed',projectionRevision:payload.projectionRevision};};
+    const first=await officeIntakeFlush();
+    const afterFirst=officeIntakeData().outbox.map(item=>({revision:item.payload.projectionRevision,blocked:item.blocked===true,summary:item.payload.completionReport&&item.payload.completionReport.summary}));
+    const second=await officeIntakeFlush();window.relayCall=original;
+    return {first,afterFirst,second,calls,remaining:officeIntakeData().outbox.length};
+  });
+  assert.deepEqual(snapshotCorrection,{first:0,afterFirst:[{revision:3,blocked:false,summary:'수정'}],second:1,calls:[2,3],remaining:0},'higher correction already in the snapshot coalesces and clears the failed FIFO head');
 
   await fetch(MOCK + '/__reset');
   const durable = await page.evaluate(() => {
@@ -404,6 +446,46 @@ const TOKEN = 'test-token-123';
   assert.deepEqual(preacceptRevision, {
     needsRevision:1,holdRevision:2,heldRevision:2,accepted:true,orderRevision:3,queuedRevision:3,sent:1,remoteStatus:'visit_scheduled',remoteRevision:3
   }, 'needs_info/on_hold revision is inherited, so the first visit publishes current+1 without collision');
+
+  // RED: accept is first staged as one exact local order + one durable outbox
+  // item, then delivered by the same strict FIFO dispatcher as an earlier
+  // on-hold transition.  The persisted pre-send snapshot can be replayed after
+  // a success/crash window without creating another order.
+  const durableDirectAccept = await page.evaluate(async () => {
+    const originalRelay=window.relayCall,originalIdbSet=window.idbSet,events=[],calls=[];let saved=null,persistedBeforeRelay=false;
+    state.officeIntake={inbox:[{requestId:'durable-accept',status:'on_hold',photos:[],projectionRevision:1}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];state.files=[];
+    officeIntakeQueue('officeSetStatus',{requestId:'durable-accept',status:'on_hold',projectionRevision:1});
+    window.idbSet=async function(key,value){events.push('persist');saved=JSON.parse(JSON.stringify(value));return true;};
+    window.relayCall=async function(action,payload){persistedBeforeRelay=!!saved;calls.push(action==='officeSetStatus'?'status:'+payload.status:action);events.push('relay:'+action);return action==='officeAccept'?{ok:true,status:'accepted',hyeonjangOrderId:payload.hyeonjangOrderId,projectionRevision:1}:{ok:true,status:'on_hold',projectionRevision:1};};
+    const accepted=await officeIntakeAccept('durable-accept','none','');
+    const orderId=accepted&&accepted.id;
+    const staged=saved&&{orders:(saved.aptOrders||[]).filter(order=>order.sourceRequestId==='durable-accept').map(order=>order.id),actions:(saved.officeIntake&&saved.officeIntake.outbox||[]).map(item=>item.action)};
+    let replay={orders:0,remaining:-1,accepted:false};
+    if(saved){applyData(saved);window.relayCall=async function(action,payload){return action==='officeAccept'?{ok:true,status:'accepted',hyeonjangOrderId:payload.hyeonjangOrderId,projectionRevision:1}:{ok:true,status:'on_hold',projectionRevision:1};};await officeIntakeFlush();replay={orders:state.aptOrders.filter(order=>order.sourceRequestId==='durable-accept').length,remaining:officeIntakeData().outbox.length,accepted:officeIntakeFindRequest('durable-accept').status==='accepted'};}
+    clearTimeout(__idbSaveTimer);window.idbSet=originalIdbSet;window.relayCall=originalRelay;
+    return {accepted:!!accepted,orderId,persistedBeforeRelay,events,calls,staged,replay};
+  });
+  assert.equal(durableDirectAccept.accepted,true,'durable accept returns the exact order after dispatcher acknowledgement');
+  assert.equal(durableDirectAccept.persistedBeforeRelay,true,'order and accept item are awaited in IndexedDB before any relay call');
+  assert.deepEqual(durableDirectAccept.calls,['status:on_hold','officeAccept'],'an already queued hold is delivered before accept through strict FIFO');
+  assert.deepEqual(durableDirectAccept.staged,{orders:[durableDirectAccept.orderId],actions:['officeSetStatus','officeAccept']},'pre-send durable snapshot contains one exact order and the whole FIFO');
+  assert.deepEqual(durableDirectAccept.replay,{orders:1,remaining:0,accepted:true},'pre-send snapshot replays idempotently after a server-success crash window');
+
+  // RED: first-response invalid-input from the direct approval action uses the
+  // queued classifier immediately.  It is a visible, stable, nonretry blocker
+  // and never looks like successful acceptance.
+  const directActionInvalid = await page.evaluate(async () => {
+    const originalRelay=window.relayCall,originalIdbSet=window.idbSet;let calls=0;
+    state.officeIntake={inbox:[{requestId:'direct-action-invalid',status:'pending_review',photos:[]}],cursor:'',outbox:[],lastSyncAt:'',lastError:''};state.aptOrders=[];state.files=[];
+    window.idbSet=async()=>true;window.relayCall=async function(){calls++;return {ok:false,error:'invalid-input',field:'attachedUploadIds'};};
+    const accepted=await officeIntakeAccept('direct-action-invalid','none','');
+    const first=officeIntakeData().outbox.map(item=>({action:item.action,blocked:item.blocked===true,code:item.blockedCode||'',attempts:item.attempts}));
+    const html=officeIntakeOperationalErrorHtml();await officeIntakeFlush();
+    clearTimeout(__idbSaveTimer);window.idbSet=originalIdbSet;window.relayCall=originalRelay;
+    return {accepted:!!accepted,calls,first,html,status:officeIntakeFindRequest('direct-action-invalid').status};
+  });
+  assert.deepEqual({accepted:directActionInvalid.accepted,calls:directActionInvalid.calls,first:directActionInvalid.first,status:directActionInvalid.status},{accepted:false,calls:1,first:[{action:'officeAccept',blocked:true,code:'accept-invalid-input',attempts:1}],status:'pending_review'},'direct officeIntakeAccept classifies invalid-input on the first response and does not retry');
+  assert.match(directActionInvalid.html,/accept-invalid-input/,'direct invalid approval blocker is visible to the operator');
 
   // RED: upload completion can race the field-app accept click.  The first
   // photos-pending response triggers one fresh inbox sync, attaches only the

@@ -31,6 +31,10 @@ let browser;
   page.setDefaultTimeout(9000);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
+  // This sorting scenario never uses EXIF/network features.  Abort unrelated
+  // CDN resources so a slow exif-js response cannot consume the 9s navigation
+  // budget before the local photo-order assertions even start.
+  await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);

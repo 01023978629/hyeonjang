@@ -59,6 +59,11 @@ Task 1–4에서 구현한 관리사무소 접수 기능은 기존 현장 relay�
 바이트·내부 메모를 넣지 않습니다. `OFFICE_INTAKE_ENABLED`가 꺼져 있으면 공개
 로그인·접수 변경·사진 업로드를 거부하며 기존 relay action은 계속 동작합니다.
 
+office slug는 포털과 동일하게 `^[a-z0-9][a-z0-9-]{2,63}$`만 허용합니다. 현장 앱은
+로컬 office id에서 slug를 만들 때 소문자·숫자·하이픈으로 정규화하지만, 이미 저장된
+custom slug가 계약에 어긋나면 다른 주소로 묵시 변환하지 않고 `invalid-input`으로
+fail-closed합니다. 서버 admin upsert도 같은 정규식을 lock/Drive 작업 전에 검증합니다.
+
 새 `officeCreate` payload에는 `expectedUploadIds`가 항상 있어야 하며, 사진이 없어도
 빈 배열 `[]`을 보냅니다. 값은 0–5개의 중복 없는 canonical lowercase UUIDv4이고,
 생성 뒤 `officeUpdate`로 바꾸지 않습니다. `officeUpload`는 선언된 slot만 저장하며,
@@ -90,7 +95,7 @@ MIME·매직 바이트가 모두 일치하고 decoded bytes가 2 MiB 이하일 �
 
 `office-disabled`(feature flag가 exact string `1`이 아님) ·
 `invalid-credentials`(없는/중지된 단지나 잘못된 PIN 포함) ·
-`rate-limited`(10분 동안 로그인 실패 5회) · `session-expired`(만료·폐기·서명
+`rate-limited`(10분 동안 office별 5회, unknown slug 전체 12회, 전체 실패 50회) · `session-expired`(만료·폐기·서명
 오류 세션) · `invalid-input` · `consent-required` · `invalid-status` ·
 `invalid-upload-id`(canonical UUID uploadId 누락·형식 오류) · `unsupported-type` ·
 `invalid-file` · `too-large` · `unexpected-upload-id` · `too-many-files` · `not-found` · `bad-request` ·
@@ -122,6 +127,13 @@ accept-invalid-input으로 즉시 차단합니다. 이 label은 서버 응답 co
 자동 재시도를 중단하고 운영 화면에 표시합니다. 인증·전송 오류와 사진 대기는
 각각 별도 code로 보존해 원인이 해결된 뒤 명시적으로만 다시 시도합니다.
 
+현장 앱의 승인 동작은 exact local order와 `officeAccept` outbox item을 IndexedDB에
+await해 저장한 뒤에만 strict FIFO dispatcher를 시작합니다. 따라서 앞선 보류 상태가
+승인보다 먼저 전달되고, 승인 성공 직전 종료되어도 같은 order id로 idempotent replay할
+수 있습니다. 완료 보고 수정 revision은 같은 request의 모든 중복 local order와 outbox의
+최댓값보다 크게 재기준화하며, flush 시작 snapshot 안에 이미 들어온 상위 수정도 stale
+사진 blocker를 대체할 수 있습니다.
+
 ### Operational records
 
 `calendar-failed` · `already-linked` · `accept-invalid-transition` ·
@@ -132,7 +144,10 @@ Calendar 생성이 실패해도 성공한 접수·영수증은 보존되며, `ca
 `code`, `requestId`, `at`만 저장하며 PIN·토큰·전체 전화번호·사진 바이트는 없습니다.
 
 로그인 실패나 동기화 실패 기록에는 전체 전화번호·PIN·세션 토큰·사진 바이트를
-남기지 않습니다. 사진은 JPEG/PNG/WebP만 허용하고 이미지별 decoded bytes 2 MiB,
+남기지 않습니다. 로그인 실패 제한은 CacheService에서 lock/Drive보다 먼저 적용하며,
+제한 임계점만 집계 감사해 반복/slug 회전 공격이 Drive read/write·global lock을 계속
+증가시키지 않게 합니다. 사진은 JPEG/PNG/WebP만 허용하고 PNG는 표준 8-byte signature
+`89 50 4E 47 0D 0A 1A 0A` 전체를 확인하며, 이미지별 decoded bytes 2 MiB,
 접수당 5장까지입니다. 영구 삭제 action은 이 단계에 없습니다.
 
 ## 배포 전 Script Properties 계약
