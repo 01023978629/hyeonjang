@@ -1,5 +1,5 @@
 /** ============================================================
- * 만물인테리어 현장관리 — Apps Script 클라우드 중계 서버 (relay-v3)
+ * 만물인테리어 현장관리 — Apps Script 클라우드 중계 서버 (relay-v4)
  * ------------------------------------------------------------
  * 목적: 모바일(사파리·카톡/네이버 인앱)에서 Google OAuth 팝업 없이
  *       기존 Google Drive '만물인테리어' 폴더에 저장/불러오기/업로드.
@@ -70,14 +70,16 @@ function doPost(e) {
     if (raw.length > MAX_BODY) return fail_('too-large', '요청이 너무 큽니다');
     var req; try { req = JSON.parse(raw); } catch (_) { return fail_('bad-request', 'JSON 형식이 아닙니다'); }
 
-    var tk = checkToken_(req.token);
-    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
-
     var action = String(req.action || '');
-    if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
-
     var ts = Number(req.ts || 0);
     if (!ts || Math.abs(Date.now() - ts) > TS_WINDOW_MS) return fail_('bad-request', '요청 시간이 유효하지 않습니다(기기 시계를 확인하세요)');
+
+    if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));
+
+    var tk = checkToken_(req.token);
+    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
+    if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));
+    if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
 
     var deviceId = String(req.deviceId || 'unknown').slice(0, 64);
     var payload = req.payload || {};
@@ -252,7 +254,8 @@ function uploadFile_(payload) {
   var name = sanitizeName_(payload.name, mime);
   var bytes; try { bytes = Utilities.base64Decode(b64); } catch (_) { return fail0_('bad-request', '파일 인코딩이 올바르지 않습니다'); }
   var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
-  return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName };
+  return { ok: true, fileId: file.getId(), name: file.getName(), folder: folderName,
+           mimeType: file.getMimeType(), size: file.getSize() };
 }
 
 /* ---------- F. listFiles ---------- */

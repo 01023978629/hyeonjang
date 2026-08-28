@@ -75,6 +75,46 @@ const RAW_DIGITS = '01012345678';
     assert(r.indexOf('&amp;') >= 0 && r.indexOf('&quot;') >= 0 && (r.indexOf('&#39;') >= 0 || r.indexOf('&#039;') >= 0), '따옴표/앰퍼샌드 미이스케이프: ' + r);
   });
 
+  // 5) 관리사무소 접수 고지 — 모든 필수 고지는 privacy.html 자체에 있어야 한다.
+  await test('관리사무소 접수 — 개인정보 고지에 필수 항목 포함', async () => {
+    const pages = await page.evaluate(async () => Promise.all(['privacy.html', 'terms.html'].map(async name => (await fetch(name)).text())));
+    const [privacy, terms] = pages;
+    const text = privacy.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    for (const [label, pattern] of [
+      ['관리사무소 연락처', /관리사무소[^.]{0,120}(?:담당자|성명)[^.]{0,80}(?:연락처|전화)/],
+      ['선택적 입주민 연락처', /입주민[^.]{0,100}(?:연락처|성명)[^.]{0,100}(?:선택|필요한 경우에만)/],
+      ['처리 목적', /수집 목적[^.]{0,160}(?:문의 접수|방문 일정|공사 진행)/],
+      ['처리 경로', /관리사무소 웹 문의\s*→\s*보안 연결\s*→\s*운영자 (?:현장 )?접수함\s*→\s*담당자 검토/],
+      ['취소 90일 후보', /취소[^.]{0,180}(?:90일[^.]{0,100}(?:후보|분류)|(?:후보|분류)[^.]{0,120}90일)/],
+      ['완료일부터 1년', /완료일(?:로부터|부터)\s*1년/],
+      ['계약·세금 법정 보관', /계약서[^.]{0,120}세금계산서[^.]{0,120}(?:법정|법령)/],
+      ['사람 검토 후 파기', /자동[^.]{0,120}(?:삭제|파기)/],
+      ['담당자 검토 후 파기', /담당자[^.]{0,120}검토[^.]{0,120}(?:삭제|파기)/],
+      ['권리와 연락처', /열람[^.]{0,120}정정[^.]{0,120}삭제[^.]{0,120}처리정지/],
+      ['문의 연락처', /010-2397-8629[^.]{0,100}3dncjf@gmail\.com/]
+    ]) assert(pattern.test(text), 'privacy.html ' + label + ' 고지가 없습니다');
+    for (const pattern of [
+      /Google Apps Script/i, /\bApps Script\b/i, /(?:script\.google\.com|\/exec\b)/i,
+      /\b(?:APP_TOKEN|OFFICE_[A-Z_]+|DRIVE_FOLDER_ID|DATA_FILE_NAME)\b/,
+      /(?:OAuth|access token|액세스 토큰|\btoken\b)/i, /(?:일회용\s*)?PIN\b/i,
+      /(?:배포 URL|스크립트 속성|내부 서버|endpoint)/i
+    ]) assert(!pattern.test(privacy) && !pattern.test(terms), '공개 법률 문서에 내부 식별자/비밀 용어가 남아 있음: ' + pattern);
+  });
+
+  // 6) 완료 보고 PII — 알려진 이름은 토큰/‘님’ 경계만, 전화 구분자는 제한된 문자만 허용한다.
+  await test('officeIntakeCompletionPayload — 이름·전화 경계 마스킹', async () => {
+    const summary = await page.evaluate(() => officeIntakeCompletionPayload({
+      completionSummary: '홍길동 홍길동님 홍길동식당 Alice Alice님 AliceCo 010-1234-5678 010/1234/5678 042.1234.5678',
+      customerName: 'Alice',
+      phone: '0421234567',
+      residentContact: { name: '홍길동', phone: '01012345678' },
+      officeContactPhone: '0421234567'
+    }).summary);
+    assert(summary.indexOf('[고객명] [고객명] 홍길동식당 [고객명] [고객명] AliceCo') >= 0, '한글/영문 이름 토큰·님 경계를 지키지 않음: ' + summary);
+    assert(summary.indexOf('010-1234-5678') < 0 && summary.indexOf('042.1234.5678') < 0, '사무소·입주민 전화의 허용 구분자가 마스킹되지 않음: ' + summary);
+    assert(summary.indexOf('010/1234/5678') < 0, 'slash-separated mobile number leaked from the public completion summary: ' + summary);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

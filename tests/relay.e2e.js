@@ -1,6 +1,61 @@
 /* relay.e2e.js — Apps Script 중계 프론트엔드 회귀 테스트 (Playwright)
    전제: tests/mock-relay.js(8398) + tests/static-server.js(8299) 실행 중 */
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Dependency-free preflight. This runs before the optional Playwright load so
+// the deployment/security contract remains testable in minimal Node runtimes.
+function assertStaticOfficeContract() {
+  const root = path.join(__dirname, '..');
+  const codeSource = fs.readFileSync(path.join(root, 'apps-script', 'Code.gs'), 'utf8');
+  const officeSource = fs.readFileSync(path.join(root, 'apps-script', 'OfficeIntake.gs'), 'utf8');
+  const readme = fs.readFileSync(path.join(root, 'apps-script', 'README_APPS_SCRIPT.md'), 'utf8');
+  const install = fs.readFileSync(path.join(root, 'APPS_SCRIPT_설치방법.md'), 'utf8');
+  const required = new Set(['APP_TOKEN', 'DRIVE_FOLDER_ID', 'DATA_FILE_NAME', 'OFFICE_INTAKE_ENABLED', 'OFFICE_SESSION_SECRET', 'OFFICE_CONFIG_JSON', 'OFFICE_STORE_FILE']);
+  const sectionBetween = (source, start, end) => {
+    const begin = source.indexOf(start); assert(begin >= 0, 'missing section: ' + start);
+    const finish = source.indexOf(end, begin + start.length); assert(finish >= 0, 'missing section end: ' + end);
+    return source.slice(begin, finish);
+  };
+  const propertyKeys = section => new Set([...section.matchAll(/^\|\s*`([A-Z][A-Z0-9_]*)`\s*\|/gm)].map(m => m[1]));
+  assert(deepEqualSet(propertyKeys(sectionBetween(readme, '## 배포 전 Script Properties 계약', '## 계정 측 설치·재배포 순서와 live gate')), required), 'README exact property set');
+  assert(deepEqualSet(propertyKeys(sectionBetween(install, '## 4. 스크립트 속성 입력', '## 5. 최초 권한 승인')), required), 'install exact property set');
+  const array = (source, name) => {
+    const m = source.match(new RegExp('var\\s+' + name + '\\s*=\\s*\\[([\\s\\S]*?)\\];')); assert(m, 'missing array ' + name);
+    return new Set([...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]));
+  };
+  assert(deepEqualSet(array(officeSource, 'OI_PUBLIC_ACTIONS'), new Set(['officeLogin', 'officeList', 'officeGet', 'officeCreate', 'officeUpdate', 'officeCancel', 'officeUpload', 'officePhoto'])), 'public action set');
+  assert(deepEqualSet(array(officeSource, 'OI_INTERNAL_ACTIONS'), new Set(['officeInbox', 'officeAccept', 'officeSetStatus', 'officeAdminUpsert', 'officeRotatePin', 'officeDisable', 'officeRetentionList'])), 'internal action set');
+  assert(deepEqualSet(array(codeSource, 'ALLOWED_ACTIONS'), new Set(['health', 'load', 'save', 'backup', 'upload', 'listFiles', 'thumbnail', 'download'])), 'legacy action set');
+  const post = sectionBetween(codeSource, 'function doPost(e)', '/* ---------- Drive 헬퍼 ---------- */');
+  const order = [
+    post.indexOf('if (oiIsPublicAction_(action)) return out_(oiHandlePublicAction_(action, req));'),
+    post.indexOf('var tk = checkToken_(req.token);'),
+    post.indexOf('if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));'),
+    post.indexOf('if (ALLOWED_ACTIONS.indexOf(action) < 0)'),
+  ];
+  assert(order.every(i => i >= 0) && order.every((i, n) => n === 0 || order[n - 1] < i), 'public -> token -> internal -> legacy ordering');
+  for (const docs of [readme, install]) {
+    const gate = docs === readme
+      ? sectionBetween(docs, '## 계정 측 설치·재배포 순서와 live gate', '### 롤백')
+      : sectionBetween(docs, '## 6. 웹 앱으로 배포', '## 7-2. 파수꾼 설치');
+    const disabled = gate.indexOf('OFFICE_INTAKE_ENABLED=0');
+    const health = gate.indexOf('`health`');
+    const enabled = gate.indexOf('OFFICE_INTAKE_ENABLED=1');
+    assert(disabled >= 0 && health > disabled && enabled > health, 'legacy health precedes controlled flag enable');
+    assert(!/flag를 켠 뒤[^\n]*health/.test(gate), 'banned contradictory flag-before-health wording');
+  }
+  assert(!officeSource.includes('APP_TOKEN='), 'office source has no embedded APP_TOKEN assignment');
+  for (const docs of [readme, install]) assert(docs.includes('only exact string `1`') || docs.includes('정확한 문자열 `1`'), 'exact flag enable semantics');
+  assert(readme.includes('USER_DEPLOYING') && readme.includes('ANYONE_ANONYMOUS'), 'README documents deployment boundary');
+  assert(install.includes('USER_DEPLOYING') && install.includes('ANYONE_ANONYMOUS'), 'install guide documents deployment boundary');
+  console.log('PASS  office intake static deployment contract');
+}
+function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
+function deepEqualSet(a, b) { return a.size === b.size && [...a].every(x => b.has(x)); }
+assertStaticOfficeContract();
+
 let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (_) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
@@ -14,7 +69,6 @@ async function test(name, fn) {
   try { await fn(); results.push({ name, ok: true }); console.log('PASS  ' + name); }
   catch (e) { results.push({ name, ok: false, err: String(e && e.stack || e).slice(0, 800) }); console.log('FAIL  ' + name + '\n      ' + String(e && e.message || e)); }
 }
-function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 async function mockState() { const r = await fetch(MOCK + '/__state'); return r.json(); }
 async function pollMock(pred, ms, label) {
   const t0 = Date.now();
@@ -55,6 +109,15 @@ async function pollMock(pred, ms, label) {
     assert(await page.$('#gdLegacy #gdCid'), '기존 클라이언트ID 입력칸 보존');
     assert(await page.$('#gdLegacy #gdLogin'), '기존 구글 로그인 버튼 보존');
     await page.evaluate(() => closeModal());
+  });
+
+  await test('1-1. 관리사무소 내부 relay wrapper — 기존 APP_TOKEN relay로 inbox를 조회', async () => {
+    const r = await page.evaluate(async () => {
+      const inbox = await cloudOfficeInbox('');
+      return { types: ['cloudOfficeInbox', 'cloudOfficeAccept', 'cloudOfficeSetStatus', 'cloudOfficeAdmin'].map(n => typeof window[n]), inbox };
+    });
+    assert(r.types.every(t => t === 'function'), 'office relay wrapper exported');
+    assert(r.inbox.ok === true && Array.isArray(r.inbox.requests) && r.inbox.requests[0].requestId === 'req-1', 'mock internal inbox contract');
   });
 
   await test('2. markDirty → 3초 디바운스 relay 저장 → revision 1 · 상태 저장 완료', async () => {
@@ -295,7 +358,8 @@ async function pollMock(pred, ms, label) {
   await test('12. 기존 gd* 함수 전부 유지(typeof function)', async () => {
     const missing = await page.evaluate(() =>
       ['gdGetToken', 'gdSave', 'gdLoad', 'gdBackup', 'gdUploadBlob', 'gdLoadDriveFiles', 'gdBootSync', 'gdUploadPhotos', 'gdEnsureFolder', 'gdShowRestore', 'cloudAutoSave',
-       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'relayLoadDriveFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot']
+       'relayReady', 'relayCall', 'cloudApiHealth', 'cloudApiLoad', 'cloudApiSave', 'cloudApiBackup', 'cloudApiUploadFile', 'cloudApiListFiles', 'cloudApiThumbnail', 'relayGetThumbnail', 'relayLoadDriveFiles', 'cloudFlushQueue', 'relayConflictModal', 'relayBoot',
+       'cloudOfficeInbox', 'cloudOfficeAccept', 'cloudOfficeSetStatus', 'cloudOfficeAdmin', 'officeIntakeSync', 'officeIntakeQueue', 'officeIntakeFlush']
         .filter(n => typeof window[n] !== 'function'));
     assert(missing.length === 0, '누락: ' + missing.join(','));
   });
