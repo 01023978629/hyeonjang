@@ -37,7 +37,9 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       ext: 'jpg',
       kind: 'photo',
       project: '',
-      when: new Date(2026, 7, 24, 9, i % 60)
+      // 여러 날짜로 흩어 묶음을 여러 개 만든다 — 한 묶음이면 렌더 상한 때문에
+      // 페이지가 짧아져, 상단 도구 압축(v243) 이후 850px 스크롤 시드가 안 잡힌다(실측 618)
+      when: new Date(2026, 7, 1 + (i % 24), 9, i % 60)
     }));
     state.schedule = Array.from({ length: 48 }, (_, i) => ({
       id: 'scroll-schedule-' + i,
