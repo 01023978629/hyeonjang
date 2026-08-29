@@ -1,5 +1,5 @@
 /* 현장 앱 오프라인 캐시 — 공개 앱 셸 허용목록만 네트워크 우선으로 저장 */
-const C='hyeonjang-v241-tabsafe';
+const C='hyeonjang-v242-restorehonest';
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
 
