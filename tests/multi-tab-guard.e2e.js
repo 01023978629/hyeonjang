@@ -7,7 +7,8 @@
 
      ① 정상 저장: markDirty → idb appState 의 savedAt 이 전진한다
      ② 두 번째 탭이 열리면 양쪽 다 "다른 탭" 경고를 받는다
-     ③ 탭2가 저장하면 탭1이 방송으로 뒤처짐을 알고 자동저장을 멈춘다 + 경고
+     ③ 탭2가 저장하면 탭1이 방송으로 뒤처짐을 안다(조용히) — 경고는 실제
+        저장이 막히는 순간에만 뜬다(다른 안내 토스트를 덮지 않기 위해)
      ④ 뒤처진 탭은 자동저장으로도 pagehide(탭 닫힘)로도 덮지 않는다
      ⑤ 방송 없는 외부 저장(다른 기기 동기화 등)도 쓰기 전 대조가 차단한다
      ⑥ pageerror 0 (모든 탭)
@@ -53,36 +54,56 @@ async function boot(ctx, errors) {
   });
   assert(first.savedAt && first.savedAt === first.stamp, '① 저장 후 savedAt/스탬프가 어긋난다: ' + JSON.stringify(first));
 
+  // 이 시점부터 탭1의 저장 경로를 스텁으로 봉인한다(③에서 원복). 이유 둘:
+  //  · 탭1의 백그라운드 저장이 탭2 부팅 뒤에 끼어들면 탭2가 먼저 뒤처져
+  //    방송이 아예 안 나가고 ③이 헛돈다(실측)
+  //  · "경고는 저장 시도 때만" 어서션이 백그라운드 저장 시도와 레이스한다(실측)
+  await p1.evaluate(() => {
+    window.__realPersist = persistLocal;
+    window.persistLocal = () => {};
+  });
+
   // ② 두 번째 탭 — 양쪽 다 경고 (BroadcastChannel)
   await p1.evaluate(() => { window.__toasts.length = 0; });
   const p2 = await boot(ctx, errors);
   await p1.waitForTimeout(600);
+  const banner = (p) => p.evaluate(() => (document.getElementById('hjTabWarnMsg') || {}).textContent || '');
   const warns = await Promise.all([
-    p1.evaluate(() => window.__toasts.some(t => t.includes('다른 탭'))),
-    p2.evaluate(() => window.__toasts.some(t => t.includes('다른 탭')) || __tabWarned.open === true),
+    banner(p1).then(t => t.includes('다른 탭')),
+    banner(p2).then(t => t.includes('다른 탭')),
   ]);
   assert(warns[0], '② 먼저 열려 있던 탭이 새 탭을 알아채지 못했다');
   assert(warns[1], '② 새 탭이 기존 탭을 알아채지 못했다');
 
   // ③ 탭2가 저장하면 탭1이 방송으로 뒤처짐을 알고 자동저장을 멈춘다
-  //    주의: 백그라운드(taxCalendarEnsure 등)가 탭1에서 markDirty 를 불러 쓰기 전
+  //    주의 1: 백그라운드(taxCalendarEnsure 등)가 탭1에서 markDirty 를 불러 쓰기 전
   //    대조(①겹)로도 stale 이 서 버린다 — 그러면 방송(②겹)을 지워도 이 검사가
-  //    통과해 뮤테이션이 생존한다(실측). 탭1의 idbGet 을 잠시 멈춰 대조 경로를
-  //    무력화하고, 방송만으로 stale 이 서는지를 본다.
-  await p1.evaluate(() => {
-    window.__realIdbGet = idbGet;
-    window.idbGet = (k) => k === 'appState' ? new Promise(() => {}) : window.__realIdbGet(k);
-  });
+  //    통과해 뮤테이션이 생존한다(실측).
+  //    주의 2: 같은 백그라운드가 "경고는 저장 시도 때만" 어서션과도 레이스한다
+  //    (뮤테이션 실행 중 실측 — 게이트 플레이크가 된다).
+  //    → 조용한 구간 동안 persistLocal 자체를 스텁해 저장 시도를 봉인하고,
+  //      방송만으로 stale 이 서는지를 결정적으로 본다.
   await p2.evaluate(async () => {
     state.notes = [{ id: 'n2', text: '탭2 메모' }];
     markDirty();
     await new Promise(r => setTimeout(r, 1300));
   });
   await p1.waitForTimeout(400);
-  const r3 = await p1.evaluate(() => ({ stale: __tabStale, toasts: window.__toasts.slice() }));
+  const r3 = await p1.evaluate(() => ({ stale: __tabStale, banner: (document.getElementById('hjTabWarnMsg') || {}).textContent || '', toasts: window.__toasts.slice() }));
   assert(r3.stale === true, '③ 다른 탭의 저장 방송을 받고도 뒤처짐 표시가 안 됐다: ' + JSON.stringify(r3));
-  assert(r3.toasts.some(t => t.includes('자동저장을 멈췄')), '③ 뒤처진 탭에 경고가 없다: ' + JSON.stringify(r3.toasts));
-  await p1.evaluate(() => { window.idbGet = window.__realIdbGet; });   // 대조 경로 원복
+  // 방송 수신만으로 경고하지 않는다 — 경고는 실제 저장이 막히는 순간에만.
+  // 그리고 경고는 공용 토스트가 아니라 전용 배너다: 토스트로 띄우면 ?lead 차단
+  // 안내 같은 다른 메시지를 덮는다(v240 배포 게이트 실측 — sensitive-query 실패).
+  assert(!r3.banner.includes('자동저장을 멈췄'), '③ 저장 시도도 없는데 방송만으로 경고를 띄웠다: ' + r3.banner);
+  const r3b = await p1.evaluate(async () => {
+    window.persistLocal = window.__realPersist;   // 저장 경로 원복 — 이제부터가 진짜 저장 시도
+    state.notes = [{ id: 'n1w', text: '탭1 수정 시도' }];
+    markDirty();
+    await new Promise(r => setTimeout(r, 1300));
+    return { banner: (document.getElementById('hjTabWarnMsg') || {}).textContent || '', toasts: window.__toasts.slice() };
+  });
+  assert(r3b.banner.includes('자동저장을 멈췄'), '③ 저장이 막히는 순간의 경고 배너가 없다: ' + r3b.banner);
+  assert(!r3b.toasts.some(t => t.includes('자동저장을 멈췄')), '③ 경고가 공용 토스트로 나갔다 — 다른 안내를 덮는다: ' + JSON.stringify(r3b.toasts));
 
   // ④ 뒤처진 탭(탭1)의 자동저장·pagehide 가 탭2의 저장을 덮지 않는다
   const r4 = await p1.evaluate(async () => {
@@ -116,7 +137,7 @@ async function boot(ctx, errors) {
 
   console.log('PASS  ① 정상 저장은 savedAt 전진');
   console.log('PASS  ② 두 탭 모두 "다른 탭" 경고');
-  console.log('PASS  ③ 저장 방송으로 뒤처진 탭이 정지 + 경고');
+  console.log('PASS  ③ 방송은 조용히 정지, 경고는 저장이 막힐 때만');
   console.log('PASS  ④ 뒤처진 탭은 자동저장·pagehide 로도 안 덮는다');
   console.log('PASS  ⑤ 방송 없는 외부 저장도 쓰기 전 대조로 차단');
   console.log('PASS  ⑥ pageerror 0');
