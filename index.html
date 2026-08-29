@@ -2366,7 +2366,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v242-restorehonest';
+const APP_BUILD='hyeonjang-v243-photofirst';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6459,6 +6459,12 @@ function viewDocs(){
 }
 let __showDup=false;
 let __phaseProj=null;
+/* 폰 화면 압축 — 사진 탭의 주업무는 '새 사진을 현장에 배정'인데, 안내문+도구
+   두 줄+공정바가 첫 화면(844px)을 다 차지해 사진이 한 장도 안 보였다(실측
+   첫 썸네일 y=926). 좁은 화면(≤720px)에서는 보조 도구·공정바를 접어 두고
+   필요할 때 펼친다. 데스크톱 화면은 종전 그대로다. */
+let __photoMoreOpen=false;
+let __phaseBarOpen=false;
 function photoFingerprint(photos){return photos.map(p=>p.id+':'+(p._phase||'')+':'+(p.project||'')+':'+(p._worklabel||'')).join('|')+'#'+state.search;}
 // 현장 사진은 구글드라이브에서 직접 관리 — 만물인테리어▸현장사진 폴더 열기(앱 우선, 없으면 웹)
 // 구글드라이브 '만물인테리어' 폴더 열기 (만물인테리어 검색 → 사진·견적 들어있는 그 폴더가 뜸)
@@ -21907,33 +21913,39 @@ function viewPhotos(){
     <span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'중복 펼침 끄기':'중복만 보기'}</button><button class="warn tiny" id="btnTrimDup">중복 제거</button>`:''}
   </div>`;
-  html+=`<p class="hint" style="margin:0 0 12px"><b>현장을 아직 안 정한 묶음이 맨 위</b>, 그다음은 최근 날짜순이며 같은 날에는 같은 현장이 이어집니다. 촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
+  // 좁은 화면(폰) 판정 — 첫 화면에 사진이 보이는지가 이 화면의 존재 이유다
+  const __narrow=(typeof innerWidth==='number'&&innerWidth<=720);
+  if(!__narrow)html+=`<p class="hint" style="margin:0 0 12px"><b>현장을 아직 안 정한 묶음이 맨 위</b>, 그다음은 최근 날짜순이며 같은 날에는 같은 현장이 이어집니다. 촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
+  const __selBtn=`<button class="${__selMode?'clay':'ghost'} tiny" id="btnSelMode" style="font-size:12.5px;padding:8px 12px">${__selMode?'✓ 선택 모드 켜짐(눌러서 끄기)':'✓ 선택 모드(눌러서 선택)'}</button>`;
+  const __moreBtns=`<button class="ghost tiny" id="btnPhotoTools" style="font-size:12.5px;padding:8px 12px">⋯ 사진 도구</button>
+      <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
+      <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>`;
   html+=`<div style="margin:0 0 10px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <span style="font-size:11px;color:var(--muted);font-weight:700">☁️ 드라이브</span>
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
-      <button class="ghost tiny" id="btnPhotoTools" style="font-size:12.5px;padding:8px 12px">⋯ 사진 도구</button>
-      <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
-      <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>
+      ${__narrow?__selBtn+`<button class="ghost tiny" id="btnPhotoMore" style="font-size:12.5px;padding:8px 12px">${__photoMoreOpen?'접기 ▴':'더보기 ▾'}</button>`:__moreBtns}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
+    ${__narrow?(__photoMoreOpen?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">${__moreBtns}</div>`:''):`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
       <span style="font-size:11px;color:var(--muted);font-weight:700">📌 일괄 배정</span>
-      <button class="${__selMode?'clay':'ghost'} tiny" id="btnSelMode" style="font-size:12.5px;padding:8px 12px">${__selMode?'✓ 선택 모드 켜짐(눌러서 끄기)':'✓ 선택 모드(눌러서 선택)'}</button>
+      ${__selBtn}
       <span class="hint" style="margin:0">켜고 사진을 누르면 선택 → 날짜별 '전체 선택'·아래 막대에서 현장/공정 한번에 배정</span>
-    </div>
-    <span class="hint" style="margin:4px 0 0;display:block">올리기=드라이브 저장 · 불러오기=앱으로 가져오기(사진+견적서/PDF) · 골라 불러오기=드라이브에서 직접 선택(사진·PDF)</span>
+    </div>`}
+    ${(!__narrow||__photoMoreOpen)?`<span class="hint" style="margin:4px 0 0;display:block">올리기=드라이브 저장 · 불러오기=앱으로 가져오기(사진+견적서/PDF) · 골라 불러오기=드라이브에서 직접 선택(사진·PDF)</span>`:''}
   </div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
-  if(state.projects.length){
+  if(state.projects.length&&__narrow&&!__phaseBarOpen){
+    html+=`<div class="phasebar" style="padding:9px 12px"><button class="ghost tiny" id="btnPhaseBarToggle" style="align-self:flex-start">🪜 공정 관리 ▾</button></div>`;
+  }else if(state.projects.length){
     let popt=state.projects.filter(p=>!p.archived||p.name===__phaseProj).map(p=>`<option value="${escapeAttr(p.name)}"${p.name===__phaseProj?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
     const selProj=__phaseProj||state.projects[0].name;
     const curPhases=projPhases(selProj);
     html+=`<div class="phasebar">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--muted-2)">공정 추가 대상</span>
+        <span style="font-size:12px;color:var(--muted-2)">공정 추가 대상</span>${__narrow?'<button class="ghost tiny" id="btnPhaseBarToggle">접기 ▴</button>':''}
         <select id="phaseProjSel" aria-label="공정을 추가할 현장">${popt}</select>
         <input type="text" id="phaseProjInput" placeholder="새 공정 (예: 방수 1차)" maxlength="20" style="width:160px">
         <button class="clay tiny" id="phaseProjAdd">+ 공정 추가</button>
@@ -23906,7 +23918,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -23999,6 +24011,8 @@ function setupDelegation(){
     if(t.id==='btnGdPick')return gdPickFiles();
     if(t.id==='btnGdPin')return gdToggleAutoload();
     if(t.id==='btnSelMode')return toggleSelMode();
+    if(t.id==='btnPhotoMore'){__photoMoreOpen=!__photoMoreOpen;return render();}
+    if(t.id==='btnPhaseBarToggle'){__phaseBarOpen=!__phaseBarOpen;return render();}
     if(t.id==='dashGdPull')return gdPullAll();
     if(t.id==='gdImportAll')return gdImportAll();
     if(t.id==='gdPickFolder')return gdPickFolder();
