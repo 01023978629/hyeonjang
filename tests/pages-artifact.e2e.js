@@ -34,18 +34,28 @@ try {
   assert(!fs.existsSync(path.join(out, 'tests')) && !fs.existsSync(path.join(out, 'apps-script')), '내부 테스트/서버 소스가 산출물에 포함됐다');
 
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
+  // 게이트는 run-all.js 를 "인자 없이" 불러야 한다 — 인자를 붙이면 필터가 걸려
+  // 전체 스위트가 아니라 일부만 돌면서도 초록불이 켜진다. 그게 예전 8/82 사고다.
+  assert(/node\s+tests\/run-all\.js\s*$/m.test(workflow),
+    '워크플로가 전체 러너(node tests/run-all.js, 인자 없이)를 실행하지 않는다');
+  // 예전 게이트가 지키던 8종 검사가 러너의 수집 범위(tests/*.check|unit|e2e.js) 안에
+  // 실제 파일로 존재하는지 — 파일이 지워지거나 이름이 바뀌면 여기서 잡는다.
   const guards = [
     'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
     'version-sync.check.js', 'sw-cache.check.js', 'pages-artifact.e2e.js',
     'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js'
   ];
-  const missingGuards = guards.filter(name => !workflow.includes('node tests/' + name));
-  assert(missingGuards.length === 0, '배포 전 필수 검사가 빠졌다: ' + missingGuards.join(', '));
+  const missingGuards = guards.filter(name =>
+    !/\.(check|unit|e2e)\.js$/.test(name) || !fs.existsSync(path.join(root, 'tests', name)));
+  assert(missingGuards.length === 0, '배포 전 필수 검사 파일이 러너 수집 범위에 없다: ' + missingGuards.join(', '));
+  const runner = fs.readFileSync(path.join(root, 'tests', 'run-all.js'), 'utf8');
+  assert(runner.includes('static-server.js') && runner.includes('mock-relay.js'),
+    '러너가 테스트 서버(8299/8398)를 직접 관리하지 않는다 — CI 에서 e2e 가 전부 죽는다');
   assert(/node\s+scripts\/stage-pages\.mjs\s+_site/.test(workflow), '워크플로가 검증된 staging 스크립트를 실행하지 않는다');
   assert(/path:\s*["']?_site["']?/.test(workflow), 'Pages 업로드 경로가 _site 허용목록 산출물이 아니다');
   assert(/actions\/setup-node@v4/.test(workflow), '보안 E2E용 Node 준비 단계가 없다');
   assert(/playwright[^\n]*(?:install|@)/i.test(workflow), '보안 E2E용 Playwright 설치 단계가 없다');
-  assert(/node\s+tests\/static-server\.js[^\n]*&/.test(workflow), '보안 E2E가 사용할 정적 서버 시작 단계가 없다');
+  assert(/\/opt\/pw-browsers/.test(workflow), '하드코딩 브라우저 경로(/opt/pw-browsers) 심링크 단계가 없다 — 옛 e2e 30여 개가 CI 에서 못 뜬다');
   const verifyAt = workflow.indexOf('Verify release guards');
   const stageAt = workflow.indexOf('Stage public site allowlist');
   const uploadAt = workflow.indexOf('Upload site artifact');
@@ -53,7 +63,7 @@ try {
   console.log('PASS  Pages 산출물은 앱 셸 5개 파일만 포함');
   console.log('PASS  공개 백업 HTML·tests·apps-script 제외');
   console.log('PASS  배포 워크플로가 _site staging 산출물만 업로드');
-  console.log('PASS  배포 전 핵심 검사 6종 + AI/query 보안 E2E 실행 후 staging/upload');
+  console.log('PASS  배포 전 전체 스위트(run-all.js, 인자 없이) 실행 후 staging/upload');
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

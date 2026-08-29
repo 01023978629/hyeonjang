@@ -41,26 +41,20 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Verify release guards
+      - name: Verify release guards (full suite)
         shell: bash
         run: |
           set -euo pipefail
-          node tests/syntax.check.js
-          node tests/dead-endpoint.check.js
-          node tests/cost-honesty.check.js
-          node tests/version-sync.check.js
-          node tests/sw-cache.check.js
-          node tests/pages-artifact.e2e.js
+          # 예전에는 82개 중 8개만 돌렸다 — 나머지는 "로컬에서 돌렸다"는 말에
+          # 의존했고, 게이트가 못 보는 회귀가 실제로 있었다. 이제 전부 돈다.
+          # (러너가 static-server 8299 · mock-relay 8398 을 직접 띄우고 끈다)
           export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
-          node tests/static-server.js >"$RUNNER_TEMP/hj-static.log" 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..20}; do
-            curl -fsS http://127.0.0.1:8299/index.html >/dev/null && break
-            sleep 0.25
-          done
-          node tests/ai-high-risk-confirm.e2e.js
-          node tests/sensitive-query.e2e.js
+          # 옛 e2e 상당수가 /opt/pw-browsers/chromium 을 하드코딩한다 — 심링크로 맞춘다
+          CHROME="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+          sudo mkdir -p /opt/pw-browsers
+          sudo ln -sfn "$CHROME" /opt/pw-browsers/chromium
+          export PLAYWRIGHT_EXECUTABLE="$CHROME"
+          node tests/run-all.js
 
       - name: Stage public site allowlist
         run: node scripts/stage-pages.mjs _site
