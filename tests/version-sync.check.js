@@ -18,7 +18,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const fail = [];
-const TARGET_BUILD = 'hyeonjang-v238-storageguard';
+const TARGET_BUILD = 'hyeonjang-v239-restoreback';
 
 const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -44,7 +44,7 @@ if (mSw && mApp) {
     fail.push("캐시 이름 형식이 규칙에서 벗어났다: '" + c + "' (hyeonjang-v{숫자}-{영소문자·숫자})");
   }
   if (c !== TARGET_BUILD || b !== TARGET_BUILD) {
-    fail.push("이번 오피스 인테이크 릴리스는 정확히 '" + TARGET_BUILD + "'를 사용해야 한다");
+    fail.push("이번 릴리스는 정확히 '" + TARGET_BUILD + "'를 사용해야 한다 — 버전을 올렸으면 이 핀도 같이 올려라");
   }
 }
 
