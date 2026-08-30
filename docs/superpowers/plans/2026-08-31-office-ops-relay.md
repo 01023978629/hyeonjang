@@ -96,7 +96,7 @@ Common request errors are `bad-request`, `unauthorized`, `office-disabled`, `con
 - Create: `apps-script-office-ops/Code.gs`
 - Create: `apps-script-office-ops/OfficeOpsPure.gs`
 - Create: `apps-script-office-ops/OfficeOps.gs`
-- Create: `apps-script-office-ops/README_APPS_SCRIPT.md`
+- Modify: `apps-script-office-ops/README_APPS_SCRIPT.md`
 - Create: `tests/office-ops-server-isolation.check.js`
 
 **Interfaces:**
@@ -835,6 +835,7 @@ git commit -m "feat: retain OfficeOps history through archive and restore"
 
 **Files:**
 - Create: `apps-script-office-ops/README_APPS_SCRIPT.md`
+- Create: `apps-script-office-ops/conversion-promotion.json`
 - Modify: `apps-script-office-ops/OfficeOps.gs`
 - Modify: `tests/office-ops-server.unit.js`
 - Modify: `tests/office-ops-server-isolation.check.js`
@@ -851,7 +852,39 @@ for (const phrase of ['OFFICE_OPS_FILE_ID', 'OFFICE_OPS_ENABLED', 'OFFICE_OPS_RE
   assert.equal(readme.includes(phrase), true, 'README must state ' + phrase);
 }
 assert.equal(readme.includes('TEST_ONLY_OFFICE_OPS_TOKEN value'), false);
+
+const sectionOrder = ['## 1. 사전 검증','## 2. 새 프로젝트 초기화','## 3. 비활성 배포','## 4. 별도 승인 후 OfficeOps 활성화','## 5. 수동 복구','## 6. 전환 promotion','## 7. rollback','## 8. 금지 작업'];
+for (const section of sectionOrder) assert.equal(readme.indexOf(section) >= 0, true, 'README section missing: ' + section);
+for (let index = 1; index < sectionOrder.length; index += 1) {
+  assert.equal(readme.indexOf(sectionOrder[index - 1]) < readme.indexOf(sectionOrder[index]), true, sectionOrder[index]);
+}
+const readmeProperties = extractMarkedList(readme, 'OFFICE_OPS_PROPERTIES');
+assert.deepEqual(readmeProperties, ['OFFICE_OPS_FILE_ID','OFFICE_OPS_ENABLED','OFFICE_OPS_RECOVERY_REQUIRED','OFFICE_OPS_TOKEN']);
+assert.deepEqual(extractMarkedList(readme, 'OFFICE_OPS_ACTIONS'), allowedActions);
+for (const phrase of ['preMutationRevision → createdAt → backupFileId → manifestFileId','latest complete verified pair','point-in-time restore requires separate written approval','OFFICE_OPS_ENABLED=0','OFFICE_OPS_RECOVERY_REQUIRED=1','approvalEvidenceSha256','commercialRelayCommit','browserConversionE2eCommit','conversion-promotion.json']) {
+  assert.equal(readme.includes(phrase), true, 'README structured contract: ' + phrase);
+}
+
+const promotion = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'apps-script-office-ops', 'conversion-promotion.json'), 'utf8'));
+assert.deepEqual(Object.keys(promotion), ['schemaVersion','enabled','approvalEvidenceSha256','commercialRelayCommit','commercialRelayVerifiedAtKst','browserConversionE2eCommit','approvedAtKst']);
+assert.equal(promotion.schemaVersion, 1);
+assert.equal(typeof promotion.enabled, 'boolean');
+const gateLiteral = /function\s+ooConversionOperationallyEnabled_\s*\(\s*\)\s*\{\s*return\s+(true|false)\s*;?\s*\}/.exec(source);
+assert.ok(gateLiteral, 'conversion gate must be one literal return');
+assert.equal(gateLiteral[1] === 'true', promotion.enabled, 'promotion marker and production gate must agree');
+if (!promotion.enabled) {
+  for (const key of Object.keys(promotion).slice(2)) assert.equal(promotion[key], null, key + ' must be null while disabled');
+} else {
+  assert.match(promotion.approvalEvidenceSha256, /^[a-f0-9]{64}$/);
+  assert.match(promotion.commercialRelayCommit, /^[a-f0-9]{40}$/);
+  assert.match(promotion.browserConversionE2eCommit, /^[a-f0-9]{40}$/);
+  assert.notEqual(sandbox.ooParseKstDateTime_(promotion.commercialRelayVerifiedAtKst), null, 'commercial relay evidence time must be a real strict KST calendar time');
+  assert.notEqual(sandbox.ooParseKstDateTime_(promotion.approvedAtKst), null, 'promotion approval time must be a real strict KST calendar time');
+  assert.equal(/^(?:0{64}|TEST_|REDACTED)/.test(promotion.approvalEvidenceSha256), false);
+}
 ```
+
+`extractMarkedList` reads only bullet values between exact HTML comments `<!-- OFFICE_OPS_PROPERTIES_START/END -->` and `<!-- OFFICE_OPS_ACTIONS_START/END -->`; reject duplicate markers, duplicate values, extra prose within the markers, and missing/extra entries. The server suite reads the same promotion marker. With `enabled:false`, production behavior remains `conversion-disabled`; with a later approved `enabled:true` marker, the five disabled-path tests explicitly inject a false gate while all conversion lifecycle tests run once with the production true gate, so no test source change is needed for promotion or rollback.
 
 - [ ] **Step 2: Run the documentation assertion to verify it fails**
 
@@ -863,9 +896,9 @@ Expected: FAIL until the OfficeOps README is added.
 
 Before documenting the runbook, require `OfficeOps.gs` to contain the zero-argument editor-only `ooRecoveryValidateSource_()` contract from Task 3 and add server tests proving it succeeds only with `enabled=0`, latch `1`, and a strict valid exact source; it never appears in `ooIsAllowedAction_` or changes any file/property.
 
-Document these ordered actions: (1) run new OfficeOps tests and the full hyeonjang regression; (2) representative creates a **new** Apps Script project from `apps-script-office-ops/`; (3) representative manually creates one empty UTF-8 JSON file using the exact initial schema, records the existing data and OfficeIntake file IDs in a redacted checklist, confirms the new exact Drive ID is different from both, and records only the new ID in that project’s Script Properties; (4) representative sets the distinct token, `OFFICE_OPS_RECOVERY_REQUIRED=0`, and `OFFICE_OPS_ENABLED=0`; (5) representative deploys a new Apps Script web-app version and proves authenticated list and mutation both fail with `office-disabled`, without enabling public UI; (6) after separate written approval, changes only the enable flag to `1`, tests a redacted list success path, and records version/date/pass-fail; (7) on `manual-recovery-required`, never clear the recovery latch first: keep OfficeOps inaccessible, permit only device-local cached read-only export, re-read and verify the manifest/backup, restore bytes into a **new** file, point `OFFICE_OPS_FILE_ID` to it, and from the Apps Script editor run `ooRecoveryValidateSource_()` while `OFFICE_OPS_ENABLED=0` and the latch remains `1`; a thrown redacted error means stop, while success requires this explicit mapping: manifest `sourceFileId` equals the incident old source ID, manifest `backupFileId` equals the selected backup ID, logged `sourceFileId` equals both the new restored file ID and current `OFFICE_OPS_FILE_ID`, logged `schemaVersion` equals manifest `schemaVersion`, logged `revision` equals manifest `preMutationRevision`, and logged `byteLength`/`sha256Hex` equal both the manifest and re-read backup bytes; only after recording every comparison may the representative set `OFFICE_OPS_RECOVERY_REQUIRED=0`, and enabling remains a separate approval; (8) never delete/overwrite the old ID, and return to a previous deployment version if code rollback is needed.
+Document these ordered actions: (1) run new OfficeOps tests and the full hyeonjang regression; (2) representative creates a **new** Apps Script project from `apps-script-office-ops/`; (3) representative manually creates one empty UTF-8 JSON file using the exact initial schema, records the existing data and OfficeIntake file IDs in a redacted checklist, confirms the new exact Drive ID is different from both, and records only the new ID in that project’s Script Properties; (4) representative sets the distinct token, `OFFICE_OPS_RECOVERY_REQUIRED=0`, and `OFFICE_OPS_ENABLED=0`; (5) representative deploys a new Apps Script web-app version and proves authenticated list and mutation both fail with `office-disabled`, without enabling public UI; (6) after separate written approval, changes only the enable flag to `1`, tests a redacted list success path, and records version/date/pass-fail; (7) on `manual-recovery-required`, never clear the recovery latch first: keep OfficeOps inaccessible, permit only device-local cached read-only export, enumerate every candidate in the incident source's exact parent, fully verify each backup/manifest pair with the Task 3 byte/hash/ID/name/schema/source rules, and sort complete verified pairs descending by exact `preMutationRevision → createdAt → backupFileId → manifestFileId`; the first row is the required `latest complete verified pair`. Record the ordered redacted candidate table and prove no later complete pair exists. Restore that pair's bytes into a **new** file, point `OFFICE_OPS_FILE_ID` to it, and from the Apps Script editor run `ooRecoveryValidateSource_()` while `OFFICE_OPS_ENABLED=0` and the latch remains `1`; a thrown redacted error means stop, while success requires this explicit mapping: manifest `sourceFileId` equals the incident old source ID, manifest `backupFileId` equals the selected backup ID, logged `sourceFileId` equals both the new restored file ID and current `OFFICE_OPS_FILE_ID`, logged `schemaVersion` equals manifest `schemaVersion`, logged `revision` equals manifest `preMutationRevision`, and logged `byteLength`/`sha256Hex` equal both the manifest and re-read backup bytes. A point-in-time restore of any older valid pair requires a separate written approval naming the requested revision, reason, and exact selected pair; it never inherits the normal recovery approval. Only after recording every comparison may the representative set `OFFICE_OPS_RECOVERY_REQUIRED=0`, and enabling remains a separate approval; (8) never delete/overwrite the old ID, and return to a previous deployment version if code rollback is needed.
 
-Normal OfficeOps enablement does not enable conversion. The runbook must show all five conversion actions returning `conversion-disabled` while reads and non-conversion mutations remain testable. Promotion requires separate written approval after both the actual commercial relay verification and browser conversion/resume E2E pass; the promotion commit changes only `ooConversionOperationallyEnabled_(){return false;}` to literal `true`, reruns static/server/browser suites, records the reviewed commit and deployment version, and makes no Script Property or allowlist change. Rollback changes that literal back to `false` and redeploys; it never weakens token/latch/enabled gates.
+Normal OfficeOps enablement does not enable conversion. Create `conversion-promotion.json` initially with exact disabled values `{schemaVersion:1,enabled:false,approvalEvidenceSha256:null,commercialRelayCommit:null,commercialRelayVerifiedAtKst:null,browserConversionE2eCommit:null,approvedAtKst:null}`. The runbook must show all five conversion actions returning `conversion-disabled` while reads and non-conversion mutations remain testable. Promotion requires separate written approval after actual commercial relay verification and browser conversion/resume E2E pass. The promotion commit changes exactly two production artifacts: the literal in `ooConversionOperationallyEnabled_(){return false;}` to `true`, and the marker to `enabled:true` with a SHA-256 of the separately retained written approval, exact reviewed 40-hex commercial/browser commits, and KST verification/approval times. It changes no test, Script Property, action allowlist, or other source. Static/server/browser suites must pass unchanged because tests validate marker/literal parity and both disabled/enabled gate behavior; then record the reviewed promotion commit and deployment version. Rollback changes exactly those two artifacts back to the disabled literal/null marker and redeploys; it never weakens token/latch/enabled gates. The approval evidence itself, secrets, tokens, or PII never enter the repository—only the SHA-256 does.
 
 State explicitly that no automated email/calendar/fetch, user notification, order creation, static-site deployment, account setting, or property/file/deployment operation is authorized by this plan.
 
@@ -878,7 +911,7 @@ Expected: all PASS with no real Drive file, property, deployment, or external AP
 - [ ] **Step 5: Commit the activation boundary**
 
 ```bash
-git add apps-script-office-ops/OfficeOps.gs apps-script-office-ops/README_APPS_SCRIPT.md tests/office-ops-server.unit.js tests/office-ops-server-isolation.check.js
+git add apps-script-office-ops/OfficeOps.gs apps-script-office-ops/README_APPS_SCRIPT.md apps-script-office-ops/conversion-promotion.json tests/office-ops-server.unit.js tests/office-ops-server-isolation.check.js
 git commit -m "docs: gate OfficeOps activation behind verified recovery"
 ```
 
@@ -888,6 +921,7 @@ git commit -m "docs: gate OfficeOps activation behind verified recovery"
 - Modify: `tests/office-ops-server-isolation.check.js`
 - Modify: `apps-script-office-ops/README_APPS_SCRIPT.md`
 - Modify: `AGENTS.md`
+- Create: `scripts/verify-office-ops-branch-scope.mjs`
 
 **Interfaces:**
 - Consumes: all new OfficeOps sources/tests and existing hyeonjang test runner.
@@ -922,14 +956,44 @@ Update `AGENTS.md` in the repository map and verification section with two expli
 
 - [ ] **Step 4: Run complete tests and inspect allowed diffs**
 
-Run: `node tests/office-ops-pure.unit.js && node tests/office-ops-server.unit.js && node tests/office-ops-server-isolation.check.js && node tests/run-all.js && git diff --exit-code -- apps-script apps-script-commercial index.html sw.js`
+Create `scripts/verify-office-ops-branch-scope.mjs` as a read-only Git verifier with fixed base commit `f44fa5727064b8cba2e1e339f646dd7598b35442`. It must fail if that object is unavailable, run Git without a shell, normalize `/`, disable rename collapsing, and union committed (`base...HEAD`), unstaged, staged, and untracked-not-ignored paths. Every changed path must belong to this exact allowlist and no path may escape it:
 
-Expected: every new test and existing hyeonjang regression passes; the final diff command exits 0, proving legacy relay and PWA source remain untouched.
+```text
+.superpowers/sdd/.gitignore
+AGENTS.md
+apps-script-commercial/Code.gs
+apps-script-commercial/CommercialApproval.gs
+apps-script-commercial/CommercialApprovalPure.gs
+apps-script-commercial/README_APPS_SCRIPT.md
+apps-script-commercial/appsscript.json
+apps-script-office-ops/Code.gs
+apps-script-office-ops/OfficeOps.gs
+apps-script-office-ops/OfficeOpsPure.gs
+apps-script-office-ops/README_APPS_SCRIPT.md
+apps-script-office-ops/appsscript.json
+apps-script-office-ops/conversion-promotion.json
+docs/superpowers/plans/2026-08-31-commercial-approval-relay.md
+docs/superpowers/plans/2026-08-31-hyeonjang-office-ops.md
+docs/superpowers/plans/2026-08-31-office-ops-relay.md
+scripts/verify-office-ops-branch-scope.mjs
+tests/commercial-approval-isolation.check.js
+tests/commercial-approval-server.unit.js
+tests/commercial-approval.unit.js
+tests/office-ops-pure.unit.js
+tests/office-ops-server-isolation.check.js
+tests/office-ops-server.unit.js
+```
+
+The script must also require every current changed path to be a tracked/allowed addition or modification, reject deletions of baseline files, and exit nonzero on any extra path. On success it may print only the fixed allowlisted relative paths. On failure it must never print an unauthorized path: print only the number of rejected paths plus one lower-case SHA-256 digest per normalized path under the literal label `[REDACTED_PATH]`; never print file contents, a common prefix, basename, extension, or a reversible encoding. Use fixed messages for Git errors. Its own tests pass synthetic unauthorized names containing a telephone number, token marker, apartment name, and unit number into the pure classifier and assert none of those substrings appears in stdout/stderr while the count and 64-hex digests do. A disposable-clone integration case may prove untracked/staged rejection, but it must inspect only the redacted output and clean the clone in `finally`. It must never mutate the actual worktree or index.
+
+Run: `node tests/office-ops-pure.unit.js && node tests/office-ops-server.unit.js && node tests/office-ops-server-isolation.check.js && node tests/run-all.js && node scripts/verify-office-ops-branch-scope.mjs`
+
+Expected: every new test and existing hyeonjang regression passes; the branch-scope verifier exits 0 and reports only the exact allowlist, proving every legacy relay/PWA/privacy/terms/deployment asset outside the approved commercial and OfficeOps branch files remains untouched.
 
 - [ ] **Step 5: Commit final isolation verification**
 
 ```bash
-git add AGENTS.md apps-script-office-ops/README_APPS_SCRIPT.md tests/office-ops-server-isolation.check.js
+git add AGENTS.md apps-script-office-ops/README_APPS_SCRIPT.md tests/office-ops-server-isolation.check.js scripts/verify-office-ops-branch-scope.mjs
 git commit -m "test: prove OfficeOps failures cannot alter field operations"
 ```
 
