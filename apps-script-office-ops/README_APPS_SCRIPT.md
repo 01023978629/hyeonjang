@@ -81,8 +81,15 @@ relay remains disabled and the latch remains set.
 Do not delete the incident source file, even after a restored replacement has
 passed validation.
 
-Record a sanitized validator log with every comparison below; it must not
-contain tokens, source bytes, resident data, evidence bytes, or full IDs.
+The internal sanitized validator log is the editor-only sanitized success tuple.
+The internal sanitized success tuple includes the exact `sourceFileId`.
+The internal sanitized success tuple contains the exact `sourceFileId` and no
+token, source bytes, or PII. It is editor-only evidence for the representative
+to compare directly with the current property, manifest, and re-read backup;
+the exact source ID is intentionally retained only for that internal comparison.
+External checklists and reports use redacted IDs only. They may record that
+each comparison passed, but must not copy the internal exact ID, tokens, source
+bytes, resident data, or evidence bytes.
 
 | Required comparison | Required equality |
 | --- | --- |
