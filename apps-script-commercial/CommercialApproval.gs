@@ -2,13 +2,14 @@ if (typeof caNowMs_ !== 'function') {
   var caNowMs_ = function() { return Date.now(); };
 }
 
-function caCommercialNow_(payload, receivedAtKst) {
+function caCommercialNow_(payload, nowMs) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !caHasExactFields_(payload, ['nonce'])) return caFail_('bad-request');
   if (!caValidateNonce_(payload.nonce)) return caFail_('invalid-nonce');
-  return { ok: true, serverNowKst: caNowKst_(), receivedAtKst: receivedAtKst, nonce: payload.nonce };
+  var serverNowKst = caNowKst_(nowMs);
+  return { ok: true, serverNowKst: serverNowKst, receivedAtKst: serverNowKst, nonce: payload.nonce };
 }
 
-function caCommercialApprovalIssue_(payload) {
+function caCommercialApprovalIssue_(payload, nowMs) {
   if (!caEnabled_()) return caFail_('commercial-disabled');
   var fields = ['subjectType', 'subjectId', 'commercialTerms', 'approvalEvidenceType', 'approvalEvidenceFileId', 'approvedAt', 'approvedByRole'];
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !caHasExactFields_(payload, fields)) return caFail_('bad-request');
@@ -19,7 +20,7 @@ function caCommercialApprovalIssue_(payload) {
   if (['quote-file', 'contract-file', 'message-export-file'].indexOf(payload.approvalEvidenceType) < 0 ||
       ['management-office', 'customer'].indexOf(payload.approvedByRole) < 0) return caFail_('invalid-approval');
   var approvedAtMs = caParseKstDateTime_(payload.approvedAt);
-  if (approvedAtMs === null || approvedAtMs > caNowMs_() || !caWithinApprovalWindow_(payload.approvedAt, terms.value.validUntil, caNowMs_())) {
+  if (approvedAtMs === null || approvedAtMs > nowMs || !caWithinApprovalWindow_(payload.approvedAt, terms.value.validUntil, nowMs)) {
     return caFail_('invalid-approval-window');
   }
   var evidence = caEvidenceByExactId_(payload.approvalEvidenceFileId);
@@ -36,14 +37,14 @@ function caCommercialApprovalIssue_(payload) {
     approvalEvidenceSha256: evidence.sha256Hex,
     approvedAt: payload.approvedAt,
     approvedByRole: payload.approvedByRole,
-    issuedAt: caNowKst_()
+    issuedAt: caNowKst_(nowMs)
   };
   receipt.receiptHmac = caSignReceipt_(receipt, receiptKey);
   if (!receipt.receiptHmac) return caFail_('invalid-receipt');
   return { ok: true, commercialApproval: receipt };
 }
 
-function caCommercialApprovalVerify_(payload) {
+function caCommercialApprovalVerify_(payload, nowMs) {
   if (!caEnabled_()) return caFail_('commercial-disabled');
   var fields = ['subjectType', 'subjectId', 'commercialTerms', 'commercialApproval', 'nonce'];
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !caHasExactFields_(payload, fields)) return caFail_('bad-request');
@@ -52,22 +53,61 @@ function caCommercialApprovalVerify_(payload) {
   var terms = caCanonicalTerms_(payload.commercialTerms);
   if (!terms.ok || !caReceiptFieldsValid_(receipt) || !caVerifyReceiptMac_(receipt, caReceiptKey_())) return caFail_('invalid-receipt');
   if (receipt.subjectType !== payload.subjectType || receipt.subjectId !== payload.subjectId ||
-      receipt.approvedTermsSha256 !== terms.sha256Hex || !caWithinApprovalWindow_(receipt.approvedAt, terms.value.validUntil, caNowMs_())) {
+      receipt.approvedTermsSha256 !== terms.sha256Hex || !caWithinApprovalWindow_(receipt.approvedAt, terms.value.validUntil, nowMs)) {
     return caFail_('approval-mismatch');
   }
   var evidence = caEvidenceByExactId_(receipt.approvalEvidenceFileId);
   if (!evidence.ok || evidence.sha256Hex !== receipt.approvalEvidenceSha256) return caFail_('evidence-hash-mismatch');
+  var ackNowMs = caNowMs_();
   var cacheKey = 'commercial-verify:' + receipt.receiptId + ':' + payload.nonce;
-  var cache = CacheService.getScriptCache();
-  if (cache.get(cacheKey)) return caFail_('nonce-replay');
-  cache.put(cacheKey, '1', 60);
+  var claim = caClaimVerifyNonce_(cacheKey);
+  if (!claim.ok) return claim;
   return {
     ok: true,
     receiptId: receipt.receiptId,
-    serverNowKst: caNowKst_(),
+    serverNowKst: caNowKst_(ackNowMs),
     nonce: payload.nonce,
-    verifyExpiresAtKst: caKstAfterSeconds_(60)
+    verifyExpiresAtKst: caKstAfterSeconds_(60, ackNowMs)
   };
+}
+
+function caClaimVerifyNonce_(cacheKey) {
+  var lock;
+  var acquired = false;
+  var cache;
+  var putAttempted = false;
+  var result = caFail_('internal-error');
+  try {
+    lock = LockService.getScriptLock();
+    acquired = !!lock.tryLock(5000);
+    if (acquired) {
+      cache = CacheService.getScriptCache();
+      if (cache.get(cacheKey)) {
+        result = caFail_('nonce-replay');
+      } else {
+        putAttempted = true;
+        cache.put(cacheKey, '1', 60);
+        result = { ok: true };
+      }
+    }
+  } catch (_) {
+    if (putAttempted && cache) {
+      try { cache.remove(cacheKey); } catch (_) {}
+    }
+    result = caFail_('internal-error');
+  } finally {
+    if (acquired) {
+      try {
+        lock.releaseLock();
+      } catch (_) {
+        if (putAttempted && cache) {
+          try { cache.remove(cacheKey); } catch (_) {}
+        }
+        result = caFail_('internal-error');
+      }
+    }
+  }
+  return result;
 }
 
 function caEvidenceByExactId_(id) {
@@ -113,17 +153,40 @@ function caSha256BytesHex_(bytes) {
   return caBytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes));
 }
 
-function caNowKst_() {
-  return Utilities.formatDate(new Date(caNowMs_()), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
+function caNowKst_(nowMs) {
+  if (!Number.isFinite(nowMs)) nowMs = caNowMs_();
+  return Utilities.formatDate(new Date(nowMs), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
-function caKstAfterSeconds_(seconds) {
-  return Utilities.formatDate(new Date(caNowMs_() + seconds * 1000), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
+function caKstAfterSeconds_(seconds, nowMs) {
+  if (!Number.isFinite(nowMs)) nowMs = caNowMs_();
+  return Utilities.formatDate(new Date(nowMs + seconds * 1000), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
 }
 
-function caRequestFresh_(requestAtKst) {
-  var requestMs = caParseKstDateTime_(requestAtKst);
-  return requestMs !== null && Math.abs(caNowMs_() - requestMs) <= 5 * 60 * 1000;
+function caRequestFresh_(timestamp, nowMs) {
+  var requestMs = caParseRequestTimestamp_(timestamp);
+  return requestMs !== null && Math.abs(nowMs - requestMs) <= 5 * 60 * 1000;
+}
+
+function caParseRequestTimestamp_(value) {
+  if (typeof value !== 'string') return null;
+  var match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return null;
+  var year = Number(match[1]);
+  var month = Number(match[2]);
+  var day = Number(match[3]);
+  var hour = Number(match[4]);
+  var minute = Number(match[5]);
+  var second = Number(match[6]);
+  var calendar = new Date(Date.UTC(year, month - 1, day));
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day ||
+      hour > 23 || minute > 59 || second > 59) return null;
+  if (match[7] !== 'Z') {
+    var offset = match[7].slice(1).split(':').map(Number);
+    if (offset[0] > 14 || offset[1] > 59 || (offset[0] === 14 && offset[1] !== 0)) return null;
+  }
+  var timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function caFail_(code) {

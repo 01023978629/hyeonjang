@@ -14,7 +14,7 @@
 - OfficeOps must never enter \`serializeData()\`, \`applyData()\`, \`state\`, \`현장데이터.json\`, \`DATA_FILE_NAME\`, \`OFFICE_STORE_FILE\`, photo relay config/queue, or OfficeIntake storage. \`hjSnapshot()\` is the existing local recovery snapshot only.
 - Never invoke, wrap, queue through, or modify \`relayCall()\`, \`relayBoot()\`, \`relay_queue\`, \`relay_url\`, \`relay_token\`, or legacy \`APP_TOKEN\`. \`tests/relay.e2e.js\` is unchanged regression-only.
 - IDB owns only \`office_ops_url\`, \`office_ops_token\`, \`commercial_approval_url\`, \`commercial_approval_token\`, \`office_ops_device_id\`, and successful read cache \`office_ops_cache\`. Empty input retains a configured value; removal requires explicit confirmation.
-- Every OfficeOps/commercial POST body is exactly \`{token,action,deviceId,timestamp,mutationId?,payload}\`; \`timestamp\` is \`new Date().toISOString()\` and \`ts\` is forbidden. A mutation result is exactly \`{ok,id,revision,updatedAt}\`, then the client explicitly calls \`officeOpsLoad()\`; acknowledgements never update cache.
+- Every OfficeOps POST body is exactly \`officeOpsEnvelope={token,action,deviceId,timestamp,mutationId?,payload}\`; every commercial approval POST body is exactly \`commercialEnvelope={token,action,timestamp,payload}\`. \`timestamp\` is \`new Date().toISOString()\` and \`ts\` is forbidden. Only OfficeOps uses \`deviceId\`/\`mutationId\`. A mutation result is exactly \`{ok,id,revision,updatedAt}\`, then the client explicitly calls \`officeOpsLoad()\`; acknowledgements never update cache.
 - Tabs are exactly \`시험운영 후보\`, \`재점검 동의\`, \`예방점검\`, and \`K-apt 기회\`. No send, booking, scraper, bid, email, SMS, Kakao, Calendar, or Naver integration.
 - Gate command kinds are \`create-order|transition-state\`; permitted target states are \`visit|work|billed\`. Existing \`payLog\` remains the sole \`paid\` settlement. Existing \`done|billed|paid\` records are readable without backfill.
 - Only \`free-phone-photo-consultation\` and \`free-interior-first-measurement\` are free exceptions. Neither may contain repair/equipment/material work nor a paid \`aptOrder\`. Every other new paid order, including general, AI, OfficeIntake follow-up, manual diagnosis, and OfficeOps conversion, is gated before local persistence.
@@ -50,23 +50,26 @@ async function officeOpsDeviceId(){
   if(!id){ id=crypto.randomUUID(); await idbSet('office_ops_device_id',id); }
   return id;
 }
-async function requestEnvelope(token,action,payload,mutationId){
+async function officeOpsEnvelope(token,action,payload,mutationId){
   const body={token,action,deviceId:await officeOpsDeviceId(),timestamp:new Date().toISOString(),payload};
   if(mutationId) body.mutationId=mutationId;
   return body;
 }
-async function postIsolated(url,token,action,payload,mutationId,errorFactory){
+function commercialEnvelope(token,action,payload){
+  return {token,action,timestamp:new Date().toISOString(),payload};
+}
+async function postIsolated(url,body,errorFactory){
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify(await requestEnvelope(token,action,payload,mutationId))});
+    body:JSON.stringify(body)});
   const json=await r.json();
   if(!r.ok||!json||json.ok!==true) throw errorFactory(json);
   return json;
 }
 async function officeOpsCall(action,payload,{mutationId}={}){
-  return postIsolated(__officeOps.url,__officeOps.token,action,payload,mutationId,officeOpsError);
+  return postIsolated(__officeOps.url,await officeOpsEnvelope(__officeOps.token,action,payload,mutationId),officeOpsError);
 }
-async function commercialCall(action,payload,{mutationId}={}){
-  return postIsolated(__commercialApproval.url,__commercialApproval.token,action,payload,mutationId,commercialError);
+async function commercialCall(action,payload){
+  return postIsolated(__commercialApproval.url,commercialEnvelope(__commercialApproval.token,action,payload),commercialError);
 }
 async function commercialApprovalBoot(){
   __commercialApproval.url=normalizeHttpsUrl(await idbGet('commercial_approval_url')||'');
