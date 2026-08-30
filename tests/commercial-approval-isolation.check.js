@@ -7,6 +7,10 @@ for (const required of ['COMMERCIAL_APPROVAL_ENABLED', 'COMMERCIAL_APPROVAL_TOKE
 }
 assert.equal(readme.includes('APP_TOKEN value'), false);
 assert.equal(readme.includes('...'), false, 'README must not use ellipses or partial shapes');
+assert.match(readme, /executePaidWorkGate\(\{ commandKind, subjectType, subjectId, targetState, commercialTerms, commercialApproval, createDraft \}\)/);
+assert.match(readme, /one matching nonce exactly once/);
+assert.match(readme, /round trip is at most 10 seconds/);
+assert.match(readme, /received within 60 seconds/);
 const headings = [...readme.matchAll(/^### Gate (\d+)\b[^\n]*$/gm)];
 assert.deepEqual(headings.map(m => Number(m[1])), [1, 2, 3, 4, 5, 6, 7], 'README must have exactly ordered Gate 1-7 headings');
 assert.equal(headings.length, 7, 'README must have exactly seven gates');

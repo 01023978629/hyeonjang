@@ -25,6 +25,16 @@
 ### Gate 7 — rollback/disable
 비활성화할 때는 flag to `0`으로 되돌리거나 prior Apps Script deployment를 선택한다. disabled 상태에서 `commercialApprovalIssue`와 `commercialApprovalVerify`만 fail-closed이며, `commercialNow`는 Gate 4 health/time 확인용으로 계속 가능하다.
 
+## Future paid-work client handoff
+
+향후 hyeonjang paid-work client는 production client를 여기서 바꾸지 않고 `executePaidWorkGate({ commandKind, subjectType, subjectId, targetState, commercialTerms, commercialApproval, createDraft })` 계약을 소비한다. 이 gate 바깥에서는 pending order를 만들거나 target state로 전환하지 않으며, `createDraft`도 gate가 승인한 뒤에만 호출한다.
+
+1. `commercialNow`를 **새로 생성한 nonce**와 함께 호출한다. 요청/응답 round trip is at most 10 seconds여야 하며, 응답 echo nonce가 요청 nonce와 일치하지 않으면 거절한다. 신뢰할 수 있는 KST 결과는 응답을 받은 뒤 received within 60 seconds 안에만 사용한다.
+2. `commercialApprovalVerify`는 반드시 **두 번째 새로 생성한 nonce**를 사용하고, 동일한 `subjectType`, `subjectId`, `commercialTerms`, `commercialApproval`을 gate에 전달한다. 성공 응답의 nonce echo가 verify 요청 nonce와 일치할 때만, `executePaidWorkGate({ commandKind, subjectType, subjectId, targetState, commercialTerms, commercialApproval, createDraft })` 안에서 one matching nonce exactly once를 즉시 소비한다.
+3. stale response, subject/terms mismatch, echo mismatch, 또는 any failure는 pending order와 state를 **0건 변경**으로 끝낸다. 즉 어떤 실패도 `createDraft`, order 생성, state transition을 실행하지 않는다.
+
+Commercial relay는 order create나 state transition 권한이 없다. 이 절차는 operational UI safety proof이며 hostile-client authorization enforcement가 아니다. 실제 authorization은 향후 client와 주문/state backend가 별도로 강제해야 한다.
+
 ## 이 Task가 승인하지 않는 외부 작업
 이 repository task는 Drive evidence selection, Script Property creation, Apps Script deployment, browser token storage, Pages publication, paid-work activation, push, merge, PR, customer contact, paid-service configuration을 승인하지 않는다. 실제 token, key, file ID, customer data는 문서·커밋·로그에 쓰지 않는다.
 
