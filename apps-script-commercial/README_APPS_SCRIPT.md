@@ -124,8 +124,8 @@ commercialApprovalIssue failure response:
     },
     "commercialApproval": {
       "receiptId": "receipt_fake-0001", "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
-      "approvedTermsSha256": "fake-sha256-terms-0001", "approvalEvidenceType": "quote-file",
-      "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "fake-sha256-evidence-0001",
+      "approvedTermsSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "approvalEvidenceType": "quote-file",
+      "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
       "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer",
       "issuedAt": "<runtimeNowKst>", "receiptHmac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     },
@@ -139,10 +139,59 @@ commercialApprovalIssue failure response:
   "ok": true, "receiptId": "receipt_fake-0001",
   "serverNowKst": "<runtimeNowKst>",
   "nonce": "fake-commercialVerify-nonce-0001",
-  "verifyExpiresAtKst": "<runtimeNowKst-plus-60-seconds>"
+  "verifyExpiresAtKst": "2026-08-31T12:01:00+09:00"
 }
 ```
 
+commercialApprovalVerify failure response:
+```json
+{ "ok": false, "error": "nonce-replay" }
+```
+
+The following minimal complete failure requests are tied to their triggers and use the production error codes:
+
+commercialNow failure request (send an invalid nonce):
+```json
+{
+  "token": "fake-commercial-token-for-docs-only",
+  "action": "commercialNow",
+  "timestamp": "<runtimeNowKst>",
+  "payload": { "nonce": "bad nonce" }
+}
+```
+commercialNow failure response:
+```json
+{ "ok": false, "error": "invalid-nonce" }
+```
+
+commercialApprovalIssue failure request (send a forbidden evidence file):
+```json
+{
+  "token": "fake-commercial-token-for-docs-only",
+  "action": "commercialApprovalIssue",
+  "timestamp": "<runtimeNowKst>",
+  "payload": {
+    "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
+    "commercialTerms": { "workKind": "dispatch", "scope": "fake scope", "exclusions": ["fake"], "vatMode": "included", "quotedAmount": 1000, "validUntil": "<validUntil>", "scheduleWindow": "fake window" },
+    "approvalEvidenceType": "quote-file", "approvalEvidenceFileId": "fake-forbidden-evidence-0001",
+    "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer"
+  }
+}
+```
+commercialApprovalIssue failure response:
+```json
+{ "ok": false, "error": "forbidden-evidence" }
+```
+
+commercialApprovalVerify failure request (same nonce second transmission: send the same nonce as the first successful verify a second time):
+```json
+{
+  "token": "fake-commercial-token-for-docs-only",
+  "action": "commercialApprovalVerify",
+  "timestamp": "<runtimeNowKst>",
+  "payload": { "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001", "commercialTerms": { "workKind": "dispatch", "scope": "fake scope", "exclusions": ["fake"], "vatMode": "included", "quotedAmount": 1000, "validUntil": "<validUntil>", "scheduleWindow": "fake window" }, "commercialApproval": { "receiptId": "receipt_fake-0001", "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001", "approvedTermsSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "approvalEvidenceType": "quote-file", "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer", "issuedAt": "<runtimeNowKst>", "receiptHmac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" }, "nonce": "fake-commercialVerify-nonce-0001" }
+}
+```
 commercialApprovalVerify failure response:
 ```json
 { "ok": false, "error": "nonce-replay" }

@@ -29,6 +29,24 @@ for (const required of [
   'commercialNow failure response', 'invalid-nonce', 'commercialApprovalIssue failure response', 'forbidden-evidence',
   'commercialApprovalVerify failure response', 'nonce-replay'
 ]) assert.equal(readme.includes(required), true, 'README contract must state ' + required);
+const verifyExample = readme.slice(readme.indexOf('### `commercialApprovalVerify`'), readme.indexOf('승인 evidence는'));
+for (const field of ['approvedTermsSha256', 'approvalEvidenceSha256', 'receiptHmac']) {
+  const match = verifyExample.match(new RegExp('"' + field + '"\\s*:\\s*"([0-9a-f]+)"'));
+  assert.ok(match && /^[0-9a-f]{64}$/.test(match[1]), 'verify ' + field + ' must be 64 lowercase hex');
+}
+assert.equal(verifyExample.includes('fake-sha256'), false, 'verify must not use fake-sha256 placeholders');
+assert.equal(verifyExample.includes('<runtimeNowKst-plus-60-seconds>'), false, 'verify ACK must show concrete KST timestamp');
+assert.match(verifyExample, /"verifyExpiresAtKst"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00"/);
+for (const [action, trigger, code] of [
+  ['commercialNow', 'invalid nonce', 'invalid-nonce'],
+  ['commercialApprovalIssue', 'forbidden evidence', 'forbidden-evidence'],
+  ['commercialApprovalVerify', 'same nonce second transmission', 'nonce-replay']
+]) {
+  assert.equal(readme.includes(action + ' failure request'), true, action + ' failure request missing');
+  assert.equal(readme.includes(trigger), true, action + ' failure trigger missing');
+  assert.equal(readme.includes(action + ' failure response'), true, action + ' failure response missing');
+  assert.equal(readme.includes('"error": "' + code + '"'), true, action + ' failure code missing');
+}
 const source = ['Code.gs', 'CommercialApprovalPure.gs', 'CommercialApproval.gs']
   .map(name => fs.readFileSync(require('node:path').join(root, name), 'utf8')).join('\n');
 
