@@ -22,6 +22,13 @@ var OO_ALLOWED_ACTIONS_ = [
   'officeOpsRetentionList'
 ];
 
+var OO_SCRIPT_PROPERTY_KEYS_ = [
+  'OFFICE_OPS_FILE_ID',
+  'OFFICE_OPS_ENABLED',
+  'OFFICE_OPS_RECOVERY_REQUIRED',
+  'OFFICE_OPS_TOKEN'
+];
+
 function ooIsAllowedAction_(action) {
   return OO_ALLOWED_ACTIONS_.indexOf(action) >= 0;
 }
