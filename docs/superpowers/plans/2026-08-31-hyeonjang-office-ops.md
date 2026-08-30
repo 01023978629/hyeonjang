@@ -375,6 +375,7 @@ git commit -m \"refactor: route every paid order path through gate\"
 **Files:** modify \`index.html\`, \`tests/office-ops-conversion.e2e.js\`, \`tests/office-ops-isolation.e2e.js\`.
 
 - [ ] **RED:** Inject failure before begin, after begin, arm, local write, and record. Require trusted-time receipt verification plus a successful snapshot before begin, another gate verification immediately before the local write, full signed receipt metadata available after reload, no duplicate \`pendingOrderId\`, revision conflict for second tab, and finalization refusal for any mismatched ID/terms. Prove any failure before a successful begin leaves both stores unchanged; begin atomically freezes the full normalized terms and full signed receipt; begin/arm/record/finalize safely return the prior success for an exact frozen-proof replay after response loss; and record retry with a new mutation ID plus the prior revision cannot duplicate the order. After local durable commit but before RecordLocalCommit acknowledgement, resume must recognize the exact existing local order, verify all source/terms/full-receipt identities, record it without re-running create or issuing a receipt, and continue finalize; any mismatch stops. Expected failure: saga/resume absent.
+- [ ] **Resume approval RED:** Every resume invocation calls \`validateCommercialApproval\` with the stored full receipt and obtains a fresh verification nonce before its first OfficeOps mutation or local \`aptOrders\` create/update. Receipt normalization, subject/ID/hash checks, and validation failure perform zero OfficeOps/local/snapshot effects; resume never reissues the receipt.
 - [ ] **Implement exact payload and saga:**
 \`\`\`js
 function conversionPayload({inspectionId,conversionId,pendingOrderId,receipt}){
@@ -400,14 +401,16 @@ async function convertOfficeOpsInspectionToAptOrder(inspectionId,approvalInput){
 async function resumeOfficeOpsInspectionConversion({inspectionId,conversionId,pendingOrderId,receiptId,receiptSubjectType,receiptSubjectId,termsSha256,linkedOrderId}){
   const store=await officeOpsLoad(), inspection=store.inspections.find(x=>x.inspectionId===inspectionId), order=state.aptOrders.find(x=>x.id===linkedOrderId||x.id===pendingOrderId);
   if(!inspection||inspection.conversionId!==conversionId||inspection.pendingOrderId!==pendingOrderId||inspection.conversionReceiptId!==receiptId||inspection.conversionTermsSha256!==termsSha256) throw new Error('conversion identity conflict');
+  const terms=normalizeCommercialTerms(inspection.commercialTerms), receipt=normalizeReceipt(inspection.commercialApproval,pendingOrderId);
+  if(receipt.receiptId!==receiptId||receipt.subjectType!==receiptSubjectType||receipt.subjectId!==receiptSubjectId||receipt.approvedTermsSha256!==termsSha256) throw new Error('conversion receipt conflict');
+  await validateCommercialApproval({subjectType:'aptOrder',subjectId:pendingOrderId,commercialTerms:terms,commercialApproval:receipt}); // fresh nonce before any OfficeOps/local change
   const base={inspectionId,conversionId,pendingOrderId,receiptId,receiptSubjectType,receiptSubjectId,termsSha256};
   if(inspection.status==='conversion-pending'){
     await officeOpsMutation('officeInspectionArmLocalCommit',{...base,expectedRevision:__officeOps.revision});
     return resumeOfficeOpsInspectionConversion({...base,linkedOrderId});
   }
   if(inspection.status==='conversion-writing'&&order){
-    const storedTerms=normalizeCommercialTerms(inspection.commercialTerms), storedReceipt=normalizeReceipt(inspection.commercialApproval,pendingOrderId);
-    const orderTerms=normalizeCommercialTerms(order.commercialTerms), orderReceipt=normalizeReceipt(order.commercialApproval,pendingOrderId);
+    const storedTerms=terms, storedReceipt=receipt, orderTerms=normalizeCommercialTerms(order.commercialTerms), orderReceipt=normalizeReceipt(order.commercialApproval,pendingOrderId);
     if(order.id!==pendingOrderId||order.sourceOfficeOpsInspectionId!==inspectionId||order.sourceOfficeOpsConversionId!==conversionId||
       JSON.stringify(orderTerms)!==JSON.stringify(storedTerms)||JSON.stringify(orderReceipt)!==JSON.stringify(storedReceipt)||
       orderReceipt.receiptId!==receiptId||orderReceipt.approvedTermsSha256!==termsSha256) throw new Error('existing local order identity conflict');
@@ -415,8 +418,6 @@ async function resumeOfficeOpsInspectionConversion({inspectionId,conversionId,pe
     return resumeOfficeOpsInspectionConversion({...base,linkedOrderId:order.id});
   }
   if(inspection.status==='conversion-writing'&&!order){
-    const terms=normalizeCommercialTerms(inspection.commercialTerms), receipt=normalizeReceipt(inspection.commercialApproval,pendingOrderId);
-    if(receipt.receiptId!==receiptId||receipt.subjectType!==receiptSubjectType||receipt.subjectId!==receiptSubjectId||receipt.approvedTermsSha256!==termsSha256) throw new Error('conversion receipt conflict');
     const created=await executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:pendingOrderId,targetState:'visit',commercialTerms:terms,commercialApproval:receipt,createDraft:Object.freeze(officeOpsAptOrderDraft(inspection,{conversionId,pendingOrderId,terms}))});
     await officeOpsMutation('officeInspectionRecordLocalCommit',{...base,linkedOrderId:created.id,expectedRevision:__officeOps.revision});
     return resumeOfficeOpsInspectionConversion({...base,linkedOrderId:created.id});
@@ -429,6 +430,7 @@ async function resumeOfficeOpsInspectionConversion({inspectionId,conversionId,pe
 }
 \`\`\`
 Client resume revalidates the server-fixed \`inspectionId\`, conversion/order/receipt IDs and hash; begin atomically persists and freezes the full \`commercialTerms\` and full signed \`commercialApproval\`, while arm/record/finalize revalidate all seven base fields plus \`linkedOrderId\` server-side. Resume always reuses the stored full receipt with a fresh verification nonce and never reissues it.
+On every resume call, receipt normalization and identity checks plus a successful fresh-nonce \`validateCommercialApproval\` occur before the first arm, record, finalize, local create, or local update. Verification failure has zero mutation effects. The already issued stored receipt is reused and never reissued.
 - [ ] **UI:** \`재개\` only at legal recovery stage; \`취소\` only pre-arm. Post-arm cancellation is a non-mutating conflict; in-flight states hide edit/terms/archive/restore/duplicate controls.
 - [ ] **GREEN/commit:**
 \`\`\`powershell
