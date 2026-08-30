@@ -469,8 +469,8 @@ const canonicalCases = {
     expected: { idempotencyKey:'create_inspect_12345', officeId:'office_test', complexName:'점검 단지', templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-09-02', riskItems:['배수 확인','옥상 우수관 확인'], summary:'점검 생성 요약', commercialTerms:canonicalExpectedTerms, commercialApproval:null }
   },
   officeInspectionUpdate: {
-    input: { commercialApproval:null, commercialTerms:null, summary:'점검 수정 요약', riskItems:['저수조 확인','배수펌프 확인'], nextDueAt:'2026-10-02', status:'checked', templateId:'rainy-v1', complexName:'수정 점검 단지', officeId:'office_update', expectedRevision:11, inspectionId:'inspection_test' },
-    expected: { inspectionId:'inspection_test', expectedRevision:11, officeId:'office_update', complexName:'수정 점검 단지', templateId:'rainy-v1', status:'checked', nextDueAt:'2026-10-02', riskItems:['저수조 확인','배수펌프 확인'], summary:'점검 수정 요약', commercialTerms:null, commercialApproval:null }
+    input: { commercialApproval:null, commercialTerms:canonicalRawTerms, summary:'점검 수정 요약', riskItems:['저수조 확인','배수펌프 확인'], nextDueAt:'2026-10-02', status:'checked', templateId:'rainy-v1', complexName:'수정 점검 단지', officeId:'office_update', expectedRevision:11, inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', expectedRevision:11, officeId:'office_update', complexName:'수정 점검 단지', templateId:'rainy-v1', status:'checked', nextDueAt:'2026-10-02', riskItems:['저수조 확인','배수펌프 확인'], summary:'점검 수정 요약', commercialTerms:canonicalExpectedTerms, commercialApproval:null }
   },
   officeInspectionArchive: {
     input: { archiveReason:'계획 보류', expectedRevision:12, inspectionId:'inspection_test' },
@@ -518,7 +518,8 @@ const canonicalCases = {
   }
 };
 const canonicalNormalizationExceptions = new Set([
-  'officeInspectionCreate', 'officeInspectionBeginConversion', 'officeOpportunityCreate', 'officeOpportunityUpdate'
+  'officeInspectionCreate', 'officeInspectionUpdate', 'officeInspectionBeginConversion',
+  'officeOpportunityCreate', 'officeOpportunityUpdate'
 ]);
 for (const [action, testCase] of Object.entries(canonicalCases)) {
   const sourceBefore = JSON.stringify(testCase.input);
