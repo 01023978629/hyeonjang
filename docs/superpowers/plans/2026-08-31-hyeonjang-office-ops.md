@@ -96,20 +96,24 @@ async function officeOpsMutation(action,payload){
 }
 \`\`\`
 
-\`normalizeOfficeOpsStore(raw)\` rejects unknown/missing collection keys and returns \`{schemaVersion,revision,updatedAt,pilots,consents,inspections,opportunities,audit}\`. A pilot is keyed only by \`pilotId\`, a consent only by \`consentId\`, an inspection only by \`inspectionId\`, and a K-apt opportunity only by \`opportunityId\`; generic record \`id\` is never used to dispatch a UI mutation.
+\`normalizeOfficeOpsStore(raw)\` rejects unknown/missing collection keys and returns \`{schemaVersion,revision,updatedAt,pilots,consents,inspections,opportunities,audit}\`. It maps every pilot through the Task 2 `normalizePilotRecord` full stored-row validator before caching; no summary/view projection is stored in `__officeOps.cache`. A pilot is keyed only by \`pilotId\`, a consent only by \`consentId\`, an inspection only by \`inspectionId\`, and a K-apt opportunity only by \`opportunityId\`; generic record \`id\` is never used to dispatch a UI mutation.
 
 \`\`\`js
+function isRealIsoDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year,month,day]=value.split('-').map(Number), date=new Date(Date.UTC(year,month-1,day));
+  return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day;
+}
 function normalizeCommercialTerms(raw){
   const keys=['workKind','scope','exclusions','vatMode','quotedAmount','validUntil','scheduleWindow'];
   if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid commercial terms keys');
-  const t={workKind:String(raw.workKind||''),scope:String(raw.scope||'').trim(),
-    exclusions:Array.isArray(raw.exclusions)?raw.exclusions.map(x=>String(x).trim()):[],
+  const t={workKind:String(raw.workKind||''),scope:String(raw.scope||'').replace(/^\s+|\s+$/g,''),
+    exclusions:Array.isArray(raw.exclusions)?raw.exclusions.map(String):null,
     vatMode:String(raw.vatMode||''),quotedAmount:Number(raw.quotedAmount),
-    validUntil:String(raw.validUntil||''),scheduleWindow:String(raw.scheduleWindow||'').trim()};
+    validUntil:String(raw.validUntil||''),scheduleWindow:String(raw.scheduleWindow||'').replace(/^\s+|\s+$/g,'')};
   if(!['device-diagnosis','dispatch','repair','preventive-inspection'].includes(t.workKind)||!t.scope||
-    t.exclusions.some(x=>!x)||!['included','excluded'].includes(t.vatMode)||
-    !Number.isInteger(t.quotedAmount)||t.quotedAmount<1||!/^\d{4}-\d{2}-\d{2}$/.test(t.validUntil)||
-    !Number.isFinite(Date.parse(t.validUntil+'T00:00:00+09:00'))||!t.scheduleWindow) throw new Error('invalid commercial terms');
+    !t.exclusions||!['included','excluded'].includes(t.vatMode)||
+    !Number.isInteger(t.quotedAmount)||t.quotedAmount<1||!isRealIsoDate(t.validUntil)||!t.scheduleWindow) throw new Error('invalid commercial terms');
   return Object.freeze(t);
 }
 async function commercialNow(){
@@ -184,6 +188,8 @@ async function createPaidDiagnosisOrderFromManualLead(input){
 \`\`\`
 The manual UI permits only \`approvedByRole:'customer'|'management-office'\`; it must not render an approval path for AI commands.
 
+`normalizeCommercialTerms` deliberately mirrors `apps-script-commercial/CommercialApprovalPure.gs:caCanonicalTerms_` rather than adding browser-only policy. The returned object is constructed in the exact seven-key order shown above; only `scope` and `scheduleWindow` receive outer trim, while exclusions use ordered `map(String)` with no sorting, trimming, or empty-item restriction. `tests/paid-work-gate.e2e.js` must compare the browser result, OfficeOps `ooCanonicalCommercialTerms_`, and actual commercial `caCanonicalTerms_` for byte-identical JSON and lower-case SHA-256. The shared golden input `{workKind:'device-diagnosis',scope:'  욕실 누수 장비 진단  ',exclusions:['복구 공사','타일'],vatMode:'included',quotedAmount:100000,validUntil:'2026-09-30',scheduleWindow:'  2026-09-02 오후  '}` yields exactly `{"workKind":"device-diagnosis","scope":"욕실 누수 장비 진단","exclusions":["복구 공사","타일"],"vatMode":"included","quotedAmount":100000,"validUntil":"2026-09-30","scheduleWindow":"2026-09-02 오후"}` and SHA-256 `d281f3a06b118ecba257558c569bb48da25869c78f0ea6fc2b42cba622e0d52f`. Also prove the invalid date `2026-02-29` fails in all three paths and that an exclusion such as `'  현장 협의  '` retains those array-item spaces in all three outputs.
+
 ## Task 1: Transport, settings, cache, and isolation test ownership
 
 **Files:** modify \`index.html\`, \`tests/office-ops-isolation.e2e.js\`, \`tests/paid-work-gate.e2e.js\`. Do not edit \`tests/relay.e2e.js\`.
@@ -206,7 +212,7 @@ git commit -m \"feat: isolate OfficeOps client transport and cache\"
 
 **Files:** modify \`index.html\`, \`tests/office-ops-ui.e2e.js\`, \`tests/office-ops-isolation.e2e.js\`.
 
-- [ ] **RED:** Require exactly four tab labels and no outgoing-contact controls. Test pilot stages \`new|contacted|meeting|pilot|converted|closed\`, keyed by \`pilotId\`; only \`pilot\` has an active period. Assert \`2026-08-31→2026-09-29T23:59:59+09:00\`, leap \`2028-02-01→2028-03-01T23:59:59+09:00\`, and rollover \`2026-12-20→2027-01-18T23:59:59+09:00\`. Test server \`extensionApprovedAt\` plus replacement \`pilotEndsAt\` rather than a client-only extension field.
+- [ ] **RED:** Require exactly four tab labels and no outgoing-contact controls. Test pilot stages \`new|contacted|meeting|pilot|converted|closed\`, keyed by \`pilotId\`; only \`pilot\` has an active period. Assert \`2026-08-31→2026-09-29T23:59:59+09:00\`, leap \`2028-02-01→2028-03-01T23:59:59+09:00\`, and rollover \`2026-12-20→2027-01-18T23:59:59+09:00\`. Test server \`extensionApprovedAt\` plus replacement \`pilotEndsAt\` rather than a client-only extension field. Assert `normalizePilotRecord` returns exactly all 17 relay pilot keys in fixed order and rejects a missing or extra key, invalid tombstone, and any source outside `website|phone|referral|kapt`. Assert `pilotWindowView` returns only display fields and is never referenced by a create/update transport. Assert `pilotEditablePayload` returns exactly `pilotId,expectedRevision,complexName,source,stage,pilotStartedAt,pilotEndsAt,extensionApprovedAt,nextActionAt,owner,notes`—the relay's ten business keys (`pilotId` plus nine editable fields) plus `expectedRevision`—with no server-owned timestamp, retention, or tombstone field; changing one field still sends every editable field.
 - [ ] **Implement:**
 \`\`\`js
 function formatKstIso(ms){
@@ -214,12 +220,59 @@ function formatKstIso(ms){
   return \`\${p.year}-\${p.month}-\${p.day}T\${p.hour}:\${p.minute}:\${p.second}+09:00\`;
 }
 function pilotEndsAtKst(startDateKst){
-  const m=/^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(startDateKst); if(!m) throw new Error('invalid pilot start date');
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(startDateKst); if(!m) throw new Error('invalid pilot start date');
   const [y,mo,d]=m.slice(1).map(Number); return formatKstIso(Date.UTC(y,mo-1,d,-9)+(30*86400000)-1000);
 }
+function parseStrictKstDateTime(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(value)) return null;
+  const ms=Date.parse(value);
+  return Number.isFinite(ms)&&formatKstIso(ms)===value?ms:null;
+}
+function normalizePilotEditable(raw){
+  const keys=['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid pilot editable keys');
+  const value={complexName:String(raw.complexName||''),source:String(raw.source||''),stage:String(raw.stage||''),pilotStartedAt:raw.pilotStartedAt,
+    pilotEndsAt:raw.pilotEndsAt,extensionApprovedAt:raw.extensionApprovedAt,nextActionAt:String(raw.nextActionAt||''),owner:String(raw.owner||''),notes:String(raw.notes||'')};
+  const start=value.pilotStartedAt===null?null:parseStrictKstDateTime(value.pilotStartedAt), end=value.pilotEndsAt===null?null:parseStrictKstDateTime(value.pilotEndsAt);
+  const extension=value.extensionApprovedAt===null?null:parseStrictKstDateTime(value.extensionApprovedAt), normalEnd=start===null?null:pilotEndsAtKst(value.pilotStartedAt.slice(0,10));
+  if(!value.complexName||value.complexName.length>100||!['website','phone','referral','kapt'].includes(value.source)||
+    !['new','contacted','meeting','pilot','converted','closed'].includes(value.stage)||(start===null)!==(end===null)||
+    (value.stage==='pilot'&&(start===null||end===null))||(value.extensionApprovedAt!==null&&extension===null)||(extension!==null&&(start===null||end<=Date.parse(normalEnd)))||
+    (extension===null&&start!==null&&value.pilotEndsAt!==normalEnd)||
+    !isRealIsoDate(value.nextActionAt)||!value.owner||value.owner.length>100||value.notes.length>2000) throw new Error('invalid pilot editable values');
+  return Object.freeze(value);
+}
+function normalizePilotRecord(raw){
+  const keys=['pilotId','complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes','createdAt','updatedAt','retentionStartedAt','archivedAt','archivedBy','archiveReason','restoredAt'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid pilot record keys');
+  const editable=normalizePilotEditable(Object.fromEntries(['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'].map(key=>[key,raw[key]])));
+  const value={pilotId:raw.pilotId,complexName:editable.complexName,source:editable.source,stage:editable.stage,pilotStartedAt:editable.pilotStartedAt,pilotEndsAt:editable.pilotEndsAt,
+    extensionApprovedAt:editable.extensionApprovedAt,nextActionAt:editable.nextActionAt,owner:editable.owner,notes:editable.notes,createdAt:raw.createdAt,updatedAt:raw.updatedAt,
+    retentionStartedAt:raw.retentionStartedAt,archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt};
+  const archived=value.archivedAt===null?false:parseStrictKstDateTime(value.archivedAt)!==null;
+  if(!/^pilot_[A-Za-z0-9_-]{1,100}$/.test(value.pilotId||'')||parseStrictKstDateTime(value.createdAt)===null||parseStrictKstDateTime(value.updatedAt)===null||Date.parse(value.updatedAt)<Date.parse(value.createdAt)||
+    (value.stage==='closed'?parseStrictKstDateTime(value.retentionStartedAt)===null:value.retentionStartedAt!==null)||(value.archivedAt!==null&&!archived)||
+    (archived&&(value.archivedBy!=='representative'||typeof value.archiveReason!=='string'||!value.archiveReason||value.restoredAt!==null))||
+    (!archived&&(value.archivedBy!==null||value.archiveReason!==null||(value.restoredAt!==null&&parseStrictKstDateTime(value.restoredAt)===null)))) throw new Error('invalid pilot record');
+  return Object.freeze(value);
+}
+function pilotWindowView(raw){
+  const pilot=normalizePilotRecord(raw);
+  return Object.freeze({pilotId:pilot.pilotId,stage:pilot.stage,pilotStartedAt:pilot.pilotStartedAt,pilotEndsAt:pilot.pilotEndsAt,extensionApprovedAt:pilot.extensionApprovedAt});
+}
+function pilotEditablePayload(raw,changes,expectedRevision){
+  const pilot=normalizePilotRecord(raw), editableKeys=['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'];
+  if(!changes||Object.keys(changes).some(key=>!editableKeys.includes(key))||!Number.isInteger(expectedRevision)||expectedRevision<0) throw new Error('invalid pilot update');
+  const editable=normalizePilotEditable(Object.fromEntries(editableKeys.map(key=>[key,Object.prototype.hasOwnProperty.call(changes,key)?changes[key]:pilot[key]])));
+  return {pilotId:pilot.pilotId,expectedRevision,complexName:editable.complexName,source:editable.source,stage:editable.stage,pilotStartedAt:editable.pilotStartedAt,pilotEndsAt:editable.pilotEndsAt,extensionApprovedAt:editable.extensionApprovedAt,nextActionAt:editable.nextActionAt,owner:editable.owner,notes:editable.notes};
+}
+async function updateOfficePilot(pilotId,changes){
+  const pilot=__officeOps.cache&&__officeOps.cache.pilots.find(row=>row.pilotId===pilotId); if(!pilot) throw new Error('pilot not found');
+  return officeOpsMutation('officePilotUpdate',pilotEditablePayload(pilot,changes,__officeOps.revision));
+}
 \`\`\`
-\`normalizePilot(raw)\` returns exactly \`{pilotId,stage,pilotStartedAt,pilotEndsAt,extensionApprovedAt?}\` or throws. Stages are \`new|contacted|meeting|pilot|converted|closed\`; active deadline is the server-recorded \`pilotEndsAt\`, and an extension is accepted only when server records both \`extensionApprovedAt\` and the replacement \`pilotEndsAt\`. The browser never grants/extends a pilot.
-- [ ] **Consent implementation:** \`normalizeReinspectionConsent(raw)\` accepts exactly \`{subjectType,subjectId,purpose:'preventive-reinspection',intervalMonths:6|12,channel,consentVersion:'reinspection-v1',consentTextSnapshot,consentTextSha256,recordedBy,consentedAt,evidenceType,evidenceId}\`; it validates a lower-case 64-hex hash and returns a frozen input object without a client-created ID. \`persistReinspectionConsent(input,idempotencyKey)\` sends \`officeConsentRecord\` with those exact fields plus the required 16–80 character \`idempotencyKey\`, never \`expectedRevision\`, and outputs the refreshed server record identified by \`consentId\`. One logical create keeps the same key across a user retry; a new logical create gets a new key. \`withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason})\` sends \`officeConsentWithdraw\` with exactly those fields plus \`expectedRevision\`; the server supplies \`withdrawnAt\` in KST. It returns the refreshed record and disables scheduling/draft creation immediately. A \`수동 초안\` is browser-memory-only/no-send until explicit record; its contact lookup is from existing project/order data only after a live active consent check.
+`normalizePilotRecord` is the only relay-row normalizer and returns all 17 stored keys in the exact construction order above. `pilotWindowView` is explicitly view-only: active deadline is the server-recorded `pilotEndsAt`, and an extension is displayed only when the row contains both server `extensionApprovedAt` and replacement `pilotEndsAt`; no mutation function may call it. `pilotEditablePayload` and `updateOfficePilot` are the only ordinary update path, always send the full replacement, and exclude/preserve all server-owned fields. The browser never grants or extends a pilot and never manufactures `retentionStartedAt` or tombstones.
+- [ ] **Consent implementation:** \`normalizeReinspectionConsent(raw)\` accepts exactly \`{subjectType,subjectId,purpose:'preventive-reinspection',intervalMonths:6|12,channel,consentVersion:'reinspection-v1',consentTextSnapshot,consentTextSha256,recordedBy,consentedAt,evidenceType,evidenceId}\`; it validates a lower-case 64-hex hash and requires `consentedAt` to pass the same real whole-second KST `parseStrictKstDateTime` helper as relay stored timestamps. RED rejects a missing offset, UTC `Z`, fractional seconds, and impossible calendar/clock values. It returns a frozen input object without a client-created ID. \`persistReinspectionConsent(input,idempotencyKey)\` sends \`officeConsentRecord\` with those exact fields plus the required 16–80 character \`idempotencyKey\`, never \`expectedRevision\`, and outputs the refreshed server record identified by \`consentId\`. One logical create keeps the same key across a user retry; a new logical create gets a new key. \`withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason})\` sends \`officeConsentWithdraw\` with exactly those fields plus \`expectedRevision\`; the server supplies \`withdrawnAt\` in KST. It returns the refreshed record and disables scheduling/draft creation immediately. A \`수동 초안\` is browser-memory-only/no-send until explicit record; its contact lookup is from existing project/order data only after a live active consent check.
 \`\`\`js
 function normalizeReinspectionConsent(raw){
   const keys=['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'];
@@ -227,7 +280,7 @@ function normalizeReinspectionConsent(raw){
     !raw.subjectId||raw.purpose!=='preventive-reinspection'||![6,12].includes(raw.intervalMonths)||
     !['sms','phone','kakao'].includes(raw.channel)||raw.consentVersion!=='reinspection-v1'||
     !raw.consentTextSnapshot||!/^[a-f0-9]{64}$/.test(raw.consentTextSha256||'')||!raw.recordedBy||
-    !Date.parse(raw.consentedAt)||!['signed-document','message','recorded-call-note'].includes(raw.evidenceType)||!raw.evidenceId) throw new Error('invalid reinspection consent');
+    parseStrictKstDateTime(raw.consentedAt)===null||!['signed-document','message','recorded-call-note'].includes(raw.evidenceType)||!raw.evidenceId) throw new Error('invalid reinspection consent');
   return Object.freeze({...raw});
 }
 async function persistReinspectionConsent(input,idempotencyKey){
@@ -249,10 +302,10 @@ function officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst}){
   const serverMs=Date.parse(serverNowKst), deadlineMs=Date.parse(deadlineAtKst);
   if(!Number.isFinite(serverMs)||!Number.isFinite(deadlineMs)||!Number.isFinite(deviceNowMs)) return {ok:false,reason:'parse-failed'};
   if(Math.abs(serverMs-deviceNowMs)>5*60*1000) return {ok:false,reason:'clock-skew'};
-  return serverMs>deadlineMs ? {ok:false,reason:'deadline-passed'} : {ok:true,reason:'eligible'};
+  return serverMs>=deadlineMs ? {ok:false,reason:'deadline-passed'} : {ok:true,reason:'eligible'};
 }
 \`\`\`
-The caller separately requires \`normalizeKAptUrl(record.officialUrl)\` before displaying the opportunity. It never scrapes.
+The caller separately requires \`normalizeKAptUrl(record.officialUrl)\` before displaying the opportunity. RED tests one millisecond before the deadline as eligible and exact equality plus any later time as `deadline-passed`. It never scrapes.
 - [ ] **GREEN/commit:**
 \`\`\`powershell
 & $node tests/office-ops-ui.e2e.js
@@ -266,6 +319,8 @@ git commit -m \"feat: add isolated OfficeOps representative tabs\"
 ## Task 3: Commercial approval and paid gate
 
 **Files:** modify \`index.html\`, \`tests/paid-work-gate.e2e.js\`, \`tests/legacy-commercial-gate.e2e.js\`.
+
+- [ ] **Commercial canonical RED:** Load or VM-evaluate the browser `normalizeCommercialTerms`, OfficeOps `ooCanonicalCommercialTerms_`, and actual commercial `caCanonicalTerms_`. For the exact golden input and JSON/SHA-256 stated above, assert all three emit the same ordered seven-key object, byte-identical JSON, and `d281f3a06b118ecba257558c569bb48da25869c78f0ea6fc2b42cba622e0d52f`. Assert all three reject missing/extra keys and `2026-02-29`, while all three preserve ordered exclusions exactly through `map(String)`, including leading/trailing spaces and empty strings. Expected failure: browser exclusions are trimmed/sorted/rejected independently, date validation accepts rollover, key order differs, or any JSON/hash differs.
 
 - [ ] **RED:** Mock \`commercialNow\` and reject nonce absence/mismatch, a round trip over 10 seconds, use after 60 seconds, invalid receipt, reuse of the clock nonce for verify, and a verify response that is not exactly an acknowledgement containing \`ok,receiptId,serverNowKst,nonce,verifyExpiresAtKst\`. Verify must receive the supplied full \`commercialApproval\`, use a second fresh nonce, and must not expect or unwrap \`verifyResponse.receipt\`. Assert issue payload exactly has \`subjectType:'aptOrder'\`, \`subjectId\`, \`commercialTerms\`, \`approvalEvidenceFileId\`, \`approvalEvidenceType\`, \`approvedAt\`, \`approvedByRole:'customer'|'management-office'\`, and issue unwraps \`json.commercialApproval\`. Assert terms reject \`amount\`, \`currency\`, \`expiresAtKst\`, and \`termsSha256\`; require only the exact seven spec keys. Reject a missing or non-\`aptOrder\` \`subjectType\`, identical nonce reuse, a snapshot delay past the monotonic deadline, duplicate consumption of one acknowledgement, and a mutable/non-plain draft. Inject validation/serialization/IndexedDB transaction failures and prove old generation, pointer, \`appState\`, live state, and acknowledgement-consumption set are unchanged. Inject render failure after commit and prove the new generation remains committed once, the acknowledgement is consumed once, a recovery banner appears, and boot reloads the committed generation without duplicate mutation. Prove a stored full receipt succeeds later only after verification with a new nonce, terms change makes the former receipt fail, and every successful transition atomically retains the normalized terms and full receipt. Test UI wording that gate is operational safety, not hostile-browser enforcement.
 - [ ] **Implement:** Use the exact shared functions. \`commercialApprovalIssue\` alone unwraps its signed \`json.commercialApproval\`; \`commercialApprovalVerify\` accepts that receipt in its request and returns only the verification acknowledgement. Both \`commercialNow\` and verification measure a monotonic request round trip of at most 10 seconds; verification uses a second fresh nonce before the trusted-time result reaches 60 seconds. Compute a conservative monotonic use deadline from the verify request start plus the server acknowledgement lifetime, capped by the earlier trusted-time deadline, then recheck it after the snapshot and immediately before durable mutation. Consume one successful acknowledgement once; the relay nonce claim remains authoritative and the immutable receipt itself can be reverified with a new nonce. Validate \`create-order→visit\` and \`transition-state→visit|work|billed\`; \`createDraft\` is a frozen plain object only for create-order, its \`id\` equals \`subjectId\`, its initial state is \`visit\`, and it is absent for transition-state. \`transitionAptOrderWithGate({orderId,targetState,commercialTerms,commercialApproval})\` loads the current order and calls \`executePaidWorkGate({commandKind:'transition-state',subjectType:'aptOrder',subjectId:orderId,targetState,commercialTerms,commercialApproval})\`.

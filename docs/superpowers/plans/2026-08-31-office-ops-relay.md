@@ -165,7 +165,7 @@ git commit -m "feat: isolate OfficeOps storage from field operations"
 
 **Interfaces:**
 - Consumes: `Utilities.computeDigest`, `Utilities.newBlob`, `Utilities.getUuid`, and an injected `nowKst` parameter; no Drive access.
-- Produces: `ooValidateRequestEnvelope_(request, isRead, nowMs)`, `ooParseRequestTimestamp_(value)`, `ooParseKstDateTime_(value)`, `ooValidateStore_(store)`, `ooValidateAuditRow_(row)`, `ooCanonicalMutation_(action, payload)`, `ooValidateMutationEnvelope_(request, nowMs)`, `ooValidatePilot_(pilot)`, `ooValidatePilotCreate_(payload, nowKst)`, `ooPilotEndsAtKst_(startDateKst)`, `ooValidateConsentAuditEvent_(event)`, `ooValidateConsent_(consent)`, `ooValidateConsentCreate_(payload, nowKst)`, `ooWithdrawConsent_(consent, withdrawnBy, reason, nowKst)`, `ooNextDueAtKst_(consentedAt, intervalMonths)`, `ooConsentActive_(consent, nowMs)`, `ooDueConsents_(consents, nowMs)`, `ooValidateInspection_(inspection)`, `ooValidateInspectionCreate_(payload, nowKst)`, `ooValidateOpportunity_(opportunity)`, `ooValidateOpportunityCreate_(payload, nowKst)`, `ooOfficialKaptUrl_(value)`, `ooCanOpportunityParticipate_(opportunity, serverNowMs, requestTimestampMs)`, `ooCanonicalCommercialTerms_(terms)`, `ooTermsSha256_(terms)`, `ooValidateApprovalMetadata_(approvalMetadata)`, `ooApprovalProofMatches_(approvalMetadata, payload, termsSha256)`, `ooReceiptId_(approvalMetadata)`, `ooNewRecordId_(kind)`, `ooArchive_(record, actor, reason, nowKst)`, `ooRestore_(record, actor, nowKst)`, `ooAddOneKstYear_(referenceAt)`, `ooRetentionRows_(store, nowMs)`.
+- Produces: `ooValidateRequestEnvelope_(request, isRead, nowMs)`, `ooParseRequestTimestamp_(value)`, `ooParseKstDateTime_(value)`, `ooValidateStoredFields_(value, required, invalidCode)`, `ooValidateStore_(store)`, `ooValidateAuditRow_(row)`, `ooCanonicalMutation_(action, payload)`, `ooValidateMutationEnvelope_(request, nowMs)`, `ooValidatePilot_(pilot)`, `ooValidatePilotCreate_(payload, nowKst)`, `ooPilotEndsAtKst_(startDateKst)`, `ooValidPilotSource_(source)`, `ooValidateConsentAuditEvent_(event)`, `ooValidateConsent_(consent)`, `ooValidateConsentCreate_(payload, nowKst)`, `ooWithdrawConsent_(consent, withdrawnBy, reason, nowKst)`, `ooNextDueAtKst_(consentedAt, intervalMonths)`, `ooConsentActive_(consent, nowMs)`, `ooDueConsents_(consents, nowMs)`, `ooValidateInspection_(inspection)`, `ooValidateInspectionCreate_(payload, nowKst)`, `ooValidateOpportunity_(opportunity)`, `ooValidateOpportunityCreate_(payload, nowKst)`, `ooOfficialKaptUrl_(value)`, `ooCanOpportunityParticipate_(opportunity, serverNowMs, requestTimestampMs)`, `ooCanonicalCommercialTerms_(terms)`, `ooTermsSha256_(terms)`, `ooValidateApprovalMetadata_(approvalMetadata)`, `ooApprovalProofMatches_(approvalMetadata, payload, termsSha256)`, `ooReceiptId_(approvalMetadata)`, `ooNewRecordId_(kind)`, `ooArchive_(record, actor, reason, nowKst)`, `ooRestore_(record, actor, nowKst)`, `ooRetentionStartedAtFor_(recordType, currentValue, nextState, nowKst)`, `ooAddOneKstYear_(referenceAt)`, `ooRetentionRows_(store, nowMs)`.
 
 - [ ] **Step 1: Write failing strict-schema and lifecycle tests**
 
@@ -179,6 +179,12 @@ const exactAudit = { action:'officePilotCreate', result:'ok', id:'pilot_test', m
 assert.equal(sandbox.ooValidateAuditRow_(exactAudit).ok, true);
 assert.equal(sandbox.ooValidateAuditRow_({ ...exactAudit, actor:'대표' }).error, 'invalid-audit');
 assert.equal(sandbox.ooValidateAuditRow_({ ...exactAudit, surprise:true }).error, 'unknown-field');
+const lifecycleAudit = { ...exactAudit, action:'officePilotArchive', idempotencyKey:null, lifecycleBefore:{archivedAt:null,archivedBy:null,archiveReason:null,restoredAt:null} };
+assert.equal(sandbox.ooValidateAuditRow_({ ...lifecycleAudit, lifecycleBefore:{...lifecycleAudit.lifecycleBefore,surprise:true} }).error, 'unknown-field');
+const lifecycleMissing = {...lifecycleAudit.lifecycleBefore}; delete lifecycleMissing.restoredAt;
+assert.equal(sandbox.ooValidateAuditRow_({ ...lifecycleAudit, lifecycleBefore:lifecycleMissing }).error, 'invalid-audit');
+const auditMissingActor = {...exactAudit}; delete auditMissingActor.actor;
+assert.equal(sandbox.ooValidateAuditRow_(auditMissingActor).error, 'invalid-audit');
 const readUtc = { token:'TEST_ONLY_OFFICE_OPS_TOKEN', action:'officeOpsList', deviceId:'550e8400-e29b-41d4-a716-446655440000', timestamp:'2026-08-31T01:00:00.000Z', payload:{} };
 assert.equal(sandbox.ooValidateRequestEnvelope_(readUtc, true, Date.parse('2026-08-31T10:05:00+09:00')).ok, true);
 assert.equal(sandbox.ooValidateRequestEnvelope_({ ...readUtc, mutationId:'550e8400-e29b-41d4-a716-446655440001' }, true, Date.parse('2026-08-31T10:05:00+09:00')).error, 'unknown-field');
@@ -197,23 +203,46 @@ const archived = sandbox.ooArchive_({ pilotId:'pilot_test', archivedAt:null, arc
 assert.deepEqual(archived, { pilotId:'pilot_test', archivedAt:'2026-08-31T10:00:00+09:00', archivedBy:'representative', archiveReason:'상담 종료', restoredAt:null });
 const pilot = sandbox.ooValidatePilot_({ pilotId:'pilot_test', complexName:'테스트 단지', source:'website', stage:'pilot', pilotStartedAt:'2026-08-31T18:00:00+09:00', pilotEndsAt:'2026-09-29T23:59:59+09:00', extensionApprovedAt:null, nextActionAt:'2026-09-01', owner:'대표', notes:'', createdAt:'2026-08-31T18:00:00+09:00', updatedAt:'2026-08-31T18:00:00+09:00', retentionStartedAt:null, archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null });
 assert.equal(pilot.ok, true);
+assert.equal(sandbox.ooValidatePilot_({ ...pilot.value, source:'email' }).error, 'invalid-pilot');
+assert.equal(sandbox.ooValidatePilot_({ ...pilot.value, surprise:true }).error, 'unknown-field');
+const pilotMissingStored = {...pilot.value}; delete pilotMissingStored.notes;
+assert.equal(sandbox.ooValidatePilot_(pilotMissingStored).error, 'invalid-pilot');
+assert.equal(sandbox.ooValidateStore_({ ...empty, pilots:[{...pilot.value,surprise:true}] }).error, 'unknown-field');
+assert.equal(sandbox.ooValidateStore_({ ...empty, pilots:[pilotMissingStored] }).error, 'invalid-pilot');
 assert.equal(sandbox.ooPilotEndsAtKst_('2026-08-31'), '2026-09-29T23:59:59+09:00');
 assert.equal(sandbox.ooPilotEndsAtKst_('2028-02-01'), '2028-03-01T23:59:59+09:00');
 const consent = sandbox.ooValidateConsent_({ consentId:'consent_test', subjectType:'aptOrder', subjectId:'order01', purpose:'preventive-reinspection', intervalMonths:6, channel:'phone', consentVersion:'reinspection-v1', consentTextSnapshot:'재점검 연락에 동의합니다.', consentTextSha256:'a'.repeat(64), recordedBy:'대표', consentedAt:'2026-08-31T10:00:00+09:00', withdrawnAt:null, withdrawnBy:null, withdrawalReason:null, nextDueAt:'2027-02-28', lastContactedAt:null, evidenceType:'message', evidenceId:'record_test', audit:[{event:'recorded',at:'2026-08-31T10:00:00+09:00',actor:'대표',reason:null}] });
 assert.equal(consent.ok, true);
 assert.equal(sandbox.ooNextDueAtKst_('2026-08-31T10:00:00+09:00', 6), '2027-02-28');
+assert.equal(sandbox.ooNextDueAtKst_('2028-02-29T10:00:00+09:00', 12), '2029-02-28');
 assert.equal(sandbox.ooValidateConsent_({ ...consent.value, intervalMonths:9 }).error, 'invalid-consent');
 assert.equal(sandbox.ooValidateConsent_({ ...consent.value, lastContactedAt:'2026-09-01T10:00:00+09:00' }).error, 'invalid-consent');
 assert.equal(sandbox.ooValidateConsent_({ ...consent.value, audit:[...consent.value.audit, {event:'recorded',at:'2026-09-01T10:00:00+09:00',actor:'대표',reason:null}] }).error, 'invalid-consent');
+assert.equal(sandbox.ooValidateConsent_({ ...consent.value, surprise:true }).error, 'unknown-field');
+assert.equal(sandbox.ooValidateConsent_({ ...consent.value, audit:[{...consent.value.audit[0],surprise:true}] }).error, 'unknown-field');
+const consentMissingStored = {...consent.value}; delete consentMissingStored.evidenceId;
+assert.equal(sandbox.ooValidateConsent_(consentMissingStored).error, 'invalid-consent');
+assert.equal(sandbox.ooValidateStore_({ ...empty, consents:[{...consent.value,audit:[{...consent.value.audit[0],surprise:true}]}] }).error, 'unknown-field');
 const withdrawn = sandbox.ooWithdrawConsent_(consent.value, '대표', '철회', '2026-09-01T10:00:00+09:00');
 assert.equal(withdrawn.withdrawnAt, '2026-09-01T10:00:00+09:00');
 assert.deepEqual(withdrawn.audit.at(-1), {event:'withdrawn',at:'2026-09-01T10:00:00+09:00',actor:'대표',reason:'철회'});
+assert.equal(sandbox.ooWithdrawConsent_(withdrawn, '대표', '다시 철회', '2026-09-02T10:00:00+09:00').error, 'already-withdrawn');
 assert.equal(sandbox.ooConsentActive_(withdrawn, Date.parse('2026-09-01T10:00:01+09:00')), false);
 assert.deepEqual(sandbox.ooDueConsents_([consent.value, withdrawn], Date.parse('2027-02-28T12:00:00+09:00')).map(x => x.consentId), ['consent_test']);
+const consentA = {...consent.value,consentId:'consent_a'}, consentB = {...consent.value,consentId:'consent_b'};
+assert.deepEqual(sandbox.ooDueConsents_([consentB,consentA], Date.parse('2027-02-28T12:00:00+09:00')).map(x => x.consentId), ['consent_a','consent_b']);
 const inspection = { inspectionId:'inspection_test', officeId:'office_test', complexName:'테스트 단지', templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-09-02', riskItems:['배수 확인'], summary:'접근 허가 후 점검', commercialTerms:null, commercialApproval:null, conversionId:null, conversionTermsSha256:null, conversionReceiptId:null, pendingOrderId:null, linkedOrderId:null, conversionStartedAt:null, updatedAt:'2026-08-31T10:00:00+09:00', archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null };
 assert.equal(sandbox.ooValidateInspection_(inspection).ok, true);
 assert.equal(sandbox.ooValidateInspection_({ ...inspection, conversionStartedAt:'2026-08-31T10:00:00+09:00' }).error, 'invalid-inspection');
+assert.equal(sandbox.ooValidateInspection_({ ...inspection, surprise:true }).error, 'unknown-field');
+const inspectionMissingStored = {...inspection}; delete inspectionMissingStored.summary;
+assert.equal(sandbox.ooValidateInspection_(inspectionMissingStored).error, 'invalid-inspection');
+const storedTermsWithExtra = {workKind:'preventive-inspection',scope:'배수 점검',exclusions:[],vatMode:'included',quotedAmount:100000,validUntil:'2026-09-30',scheduleWindow:'2026-09-02',surprise:true};
+assert.equal(sandbox.ooValidateInspection_({...inspection,commercialTerms:storedTermsWithExtra}).error, 'unknown-field');
 const opportunity = { opportunityId:'opp_test', complexName:'테스트 단지', officialUrl:'https://www.k-apt.go.kr/a?x=1', observedAt:'2026-08-31T10:00:00+09:00', region:'대전', category:'배관', deadlineAt:'2026-09-01T10:00:00+09:00', stage:'review', requirements:['면허 확인'], verifiedBy:'대표', notes:'', retentionStartedAt:null, archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null };
+assert.equal(sandbox.ooValidateOpportunity_({...opportunity,surprise:true}).error, 'unknown-field');
+const opportunityMissingStored = {...opportunity}; delete opportunityMissingStored.notes;
+assert.equal(sandbox.ooValidateOpportunity_(opportunityMissingStored).error, 'invalid-opportunity');
 assert.equal(sandbox.ooCanOpportunityParticipate_(opportunity, Date.parse('2026-08-31T10:05:00+09:00'), Date.parse('2026-08-31T10:00:30+09:00')), true);
 assert.equal(sandbox.ooCanOpportunityParticipate_(opportunity, Date.parse('2026-08-31T10:05:01+09:00'), Date.parse('2026-08-31T10:00:00+09:00')), false);
 const commercial = sandbox.ooCanonicalCommercialTerms_({ workKind:'device-diagnosis', scope:'  욕실 누수 장비 진단  ', exclusions:['복구 공사','타일'], vatMode:'included', quotedAmount:100000, validUntil:'2026-09-30', scheduleWindow:'  2026-09-02 오후  ' });
@@ -221,10 +250,29 @@ const commercialJson = '{"workKind":"device-diagnosis","scope":"욕실 누수 �
 assert.equal(commercial.json, commercialJson);
 assert.equal(commercial.sha256Hex, crypto.createHash('sha256').update(commercialJson).digest('hex'));
 assert.equal(sandbox.ooAddOneKstYear_('2028-02-29T10:00:00+09:00'), '2029-02-28T10:00:00+09:00');
+assert.equal(sandbox.ooRetentionStartedAtFor_('opportunity', null, 'skip', '2026-08-31T10:00:00+09:00'), '2026-08-31T10:00:00+09:00');
+assert.equal(sandbox.ooRetentionStartedAtFor_('opportunity', '2026-08-31T10:00:00+09:00', 'closed', '2026-09-01T10:00:00+09:00'), '2026-08-31T10:00:00+09:00');
+assert.equal(sandbox.ooRetentionStartedAtFor_('opportunity', '2026-08-31T10:00:00+09:00', 'review', '2026-09-01T10:00:00+09:00'), null);
 const duePilot = { ...pilot.value, stage:'closed', retentionStartedAt:'2026-08-31T10:00:00+09:00' };
 assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, pilots:[duePilot] }, Date.parse('2027-08-31T10:00:00+09:00')), [{recordType:'pilot',recordId:'pilot_test',reason:'closed',referenceAt:'2026-08-31T10:00:00+09:00',eligibleAt:'2027-08-31T10:00:00+09:00'}]);
 const archivedDuePilot = { ...duePilot, archivedAt:'2026-09-01T10:00:00+09:00', archivedBy:'representative', archiveReason:'정리', restoredAt:null };
 assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, pilots:[archivedDuePilot] }, Date.parse('2027-09-01T10:00:00+09:00')), [{recordType:'pilot',recordId:'pilot_test',reason:'archived',referenceAt:'2026-09-01T10:00:00+09:00',eligibleAt:'2027-09-01T10:00:00+09:00'}]);
+const archivedInspection = { ...inspection, archivedAt:'2026-08-31T10:00:00+09:00', archivedBy:'representative', archiveReason:'정리', restoredAt:null };
+assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, inspections:[archivedInspection] }, Date.parse('2027-08-31T10:00:00+09:00')), [{recordType:'inspection',recordId:'inspection_test',reason:'archived',referenceAt:'2026-08-31T10:00:00+09:00',eligibleAt:'2027-08-31T10:00:00+09:00'}]);
+const archivedOpportunity = { ...opportunity, archivedAt:'2026-08-31T10:00:00+09:00', archivedBy:'representative', archiveReason:'정리', restoredAt:null };
+assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, opportunities:[archivedOpportunity] }, Date.parse('2027-08-31T10:00:00+09:00')), [{recordType:'opportunity',recordId:'opp_test',reason:'archived',referenceAt:'2026-08-31T10:00:00+09:00',eligibleAt:'2027-08-31T10:00:00+09:00'}]);
+const withdrawnAtBoundary = { ...withdrawn, withdrawnAt:'2026-08-31T10:00:00+09:00', audit:[withdrawn.audit[0],{event:'withdrawn',at:'2026-08-31T10:00:00+09:00',actor:'대표',reason:'철회'}] };
+assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, consents:[withdrawnAtBoundary] }, Date.parse('2027-08-31T10:00:00+09:00')), [{recordType:'consent',recordId:'consent_test',reason:'withdrawn',referenceAt:'2026-08-31T10:00:00+09:00',eligibleAt:'2027-08-31T10:00:00+09:00'}]);
+const restoredTerminal = { ...archivedDuePilot, archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:'2027-08-30T10:00:00+09:00' };
+assert.deepEqual(sandbox.ooRetentionRows_({ ...empty, pilots:[restoredTerminal] }, Date.parse('2027-08-31T10:00:00+09:00'))[0].reason, 'closed');
+const ordered = sandbox.ooRetentionRows_({ ...empty, pilots:[duePilot], consents:[{...withdrawnAtBoundary,consentId:'consent_b'},{...withdrawnAtBoundary,consentId:'consent_a'}], inspections:[archivedInspection], opportunities:[archivedOpportunity] }, Date.parse('2027-08-31T10:00:00+09:00'));
+assert.deepEqual(ordered.map(row => [row.eligibleAt,row.recordType,row.recordId]), [
+  ['2027-08-31T10:00:00+09:00','consent','consent_a'],
+  ['2027-08-31T10:00:00+09:00','consent','consent_b'],
+  ['2027-08-31T10:00:00+09:00','inspection','inspection_test'],
+  ['2027-08-31T10:00:00+09:00','opportunity','opp_test'],
+  ['2027-08-31T10:00:00+09:00','pilot','pilot_test']
+]);
 ```
 
 Add exact-envelope tests before the domain cases. Reads accept only `token,action,deviceId,timestamp,payload`, reject `mutationId`, and apply the same five-minute freshness rule as mutations. `officeOpsList` accepts exactly `{}` or `{includeArchived:boolean}`; `officeOpsRetentionList` accepts exactly `{}`. Mutations require those five fields plus a fresh `mutationId`. Both reject `ts`, unknown keys, invalid calendar/clock/offset strings, a timestamp without a zone, IDs under 16 or over 100 characters, and stale timestamps. Test browser UUIDs and `new Date().toISOString()` output.
@@ -240,7 +288,7 @@ Use these exact stored field sets; every missing field is a domain `invalid-*` e
 
 Pilot IDs match `^pilot_[A-Za-z0-9_-]{1,100}$`, consent IDs `^consent_[A-Za-z0-9_-]{1,100}$`, inspection IDs `^inspection_[A-Za-z0-9_-]{1,100}$`, opportunity IDs `^opp_[A-Za-z0-9_-]{1,100}$`, office IDs `^office_[A-Za-z0-9_-]{1,100}$`, template IDs `^[A-Za-z0-9_-]{1,80}$`, and consent evidence IDs `^[A-Za-z0-9_-]{1,200}$`. Commercial subject/order/conversion IDs match `^[A-Za-z0-9_-]{1,160}$`, deliberately accepting both the current seven-character `uid()` values and future UUIDs. Duplicate IDs across any collection fail the entire store.
 
-Pilot records use `stage`, never `status`, and accept only `new|contacted|meeting|pilot|converted|closed`. `pilotStartedAt` and `pilotEndsAt` are either both null or valid KST datetimes; `pilot` requires both. Without an extension, the end equals the start KST calendar date plus 30 calendar days minus one second. An extended end requires `extensionApprovedAt` and must be later than the normal end. `retentionStartedAt` is server-generated on first entry to `closed`, is preserved while closed, and is null outside closed.
+Pilot records use `stage`, never `status`, accept `source` exactly `website|phone|referral|kapt`, and accept `stage` exactly `new|contacted|meeting|pilot|converted|closed`. Both `ooValidatePilot_` and every pilot action validator call `ooValidPilotSource_`; no other source is normalized or silently accepted. `pilotStartedAt` and `pilotEndsAt` are either both null or valid KST datetimes; `pilot` requires both. Without an extension, the end equals the start KST calendar date plus 30 calendar days minus one second. An extended end requires `extensionApprovedAt` and must be later than the normal end. `retentionStartedAt` is server-generated on first entry to `closed`, is preserved while closed, and is null outside closed.
 
 Consent `audit` rows are exactly `{event,at,actor,reason}`. `event` is `recorded|withdrawn`; recorded uses `reason:null`, withdrawal uses its bounded reason. Require `purpose==='preventive-reinspection'`, `subjectType==='project'|'aptOrder'`, `intervalMonths===6|12`, `channel==='sms'|'phone'|'kakao'`, `consentVersion==='reinspection-v1'`, a lower-case 64-hex text hash, and `evidenceType==='signed-document'|'message'|'recorded-call-note'`. The first audit row is exactly `{event:'recorded',at:<server create KST>,actor:recordedBy,reason:null}`. An active consent has all three withdrawal fields null and exactly that one audit row; a withdrawn consent has non-null `withdrawnAt,withdrawnBy,withdrawalReason` and exactly one additional final row `{event:'withdrawn',at:withdrawnAt,actor:withdrawnBy,reason:withdrawalReason}`. `ooValidateConsent_` requires `lastContactedAt===null` for every current-schema row. Create forces `withdrawn*` and `lastContactedAt` to null and appends the recorded event. `ooWithdrawConsent_` rejects caller-supplied `withdrawnAt`, uses server KST, appends the withdrawal event, immediately makes the consent inactive, and removes it from `ooDueConsents_`. Due rows are active consents with `nextDueAt` on or before the server KST date, sorted by `nextDueAt,consentId`. There is no contact-record mutation in this release, so `lastContactedAt` stays null and no automatic send is added.
 
@@ -250,7 +298,7 @@ Opportunity stages are exactly `watch|review|participate|skip|closed`. `retentio
 
 `ooValidatePilot_` and `ooValidateConsent_` validate normalized stored rows only, after the server assigns `pilotId`/`consentId`, timestamps, tombstones, and audit array. `ooValidatePilotCreate_` and `ooValidateConsentCreate_` validate the corresponding network payloads: they reject caller-supplied record IDs and then construct the normalized row before passing it to the stored-row validator. This keeps server-generated IDs compatible with exact-key validation and the canonical action maps.
 
-`ooValidateInspection_` and `ooValidateOpportunity_` likewise validate only normalized stored rows. Their create helpers reject caller IDs and every server-owned timestamp, tombstone, retention, and conversion field. Pilot, inspection, and opportunity updates are exact full replacements of all client-editable business fields plus the record ID and `expectedRevision`; they are not partial patches. The server preserves or recalculates all server-owned fields. A missing editable field returns `invalid-input`; an extra field returns `unknown-field`.
+`ooValidateInspection_` and `ooValidateOpportunity_` likewise validate only normalized stored rows. Their create helpers reject caller IDs and every server-owned timestamp, tombstone, retention, and conversion field. Every stored-row and nested stored-object validator must call `ooValidateStoredFields_` before value checks. An extra key returns `unknown-field`; a missing key, non-object, or invalid value returns that validator's domain code (`invalid-pilot|invalid-consent|invalid-inspection|invalid-opportunity|invalid-audit|invalid-commercial-approval`). `ooValidateStore_` returns the first nested failure unchanged instead of collapsing it to `invalid-store`. For stored `commercialTerms` and `commercialApproval`, check extra keys before invoking the canonical/domain validator; successful commercial normalization remains byte-identical to the actual commercial relay. Consent audit events and audit `lifecycleBefore` use the same error distinction. Pilot, inspection, and opportunity updates are exact full replacements of all client-editable business fields plus the record ID and `expectedRevision`; they are not partial patches. The server preserves or recalculates all server-owned fields. At the network boundary, a missing editable field returns `invalid-input`; an extra field returns `unknown-field`.
 
 - [ ] **Step 2: Run the pure test to verify it fails**
 
@@ -311,6 +359,13 @@ function ooValidatePayloadFields_(value, required) {
   if (required.some(function(key) { return !Object.prototype.hasOwnProperty.call(value, key); })) return ooFail_('invalid-input');
   return { ok:true };
 }
+function ooValidateStoredFields_(value, required, invalidCode) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return ooFail_(invalidCode);
+  var keys = Object.keys(value);
+  if (keys.some(function(key) { return required.indexOf(key) < 0; })) return ooFail_('unknown-field');
+  if (required.some(function(key) { return !Object.prototype.hasOwnProperty.call(value, key); })) return ooFail_(invalidCode);
+  return { ok:true };
+}
 function ooCanonicalNested_(fields, value) {
   var out = {}; fields.forEach(function(key) { out[key] = value[key]; }); return out;
 }
@@ -344,15 +399,21 @@ function ooNextDueAtKst_(consentedAt, intervalMonths) {
   var year = start.year + Math.floor(targetMonth / 12), month = (targetMonth % 12) + 1;
   return ooKstDate_(year, month, Math.min(start.day, ooDaysInMonth_(year, month)));
 }
+function ooValidPilotSource_(source) {
+  return ['website','phone','referral','kapt'].indexOf(source) >= 0;
+}
 function ooValidateConsentAuditEvent_(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !ooExactKeys_(value, ['event','at','actor','reason']) ||
-      ['recorded','withdrawn'].indexOf(value.event) < 0 || ooParseKstDateTime_(value.at) === null ||
-      typeof value.actor !== 'string' || !value.actor || value.actor.length > 100) return false;
-  return value.event === 'recorded' ? value.reason === null : typeof value.reason === 'string' && !!value.reason && value.reason.length <= 500;
+  var fields = ooValidateStoredFields_(value, ['event','at','actor','reason'], 'invalid-consent'); if (!fields.ok) return fields;
+  if (['recorded','withdrawn'].indexOf(value.event) < 0 || ooParseKstDateTime_(value.at) === null ||
+      typeof value.actor !== 'string' || !value.actor || value.actor.length > 100 ||
+      (value.event === 'recorded' ? value.reason !== null : typeof value.reason !== 'string' || !value.reason || value.reason.length > 500)) return ooFail_('invalid-consent');
+  return { ok:true };
 }
 function ooValidateConsent_(value) {
   var required = ['consentId','subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','withdrawnAt','withdrawnBy','withdrawalReason','nextDueAt','lastContactedAt','evidenceType','evidenceId','audit'];
-  if (!ooExactKeys_(value, required) || !/^consent_[A-Za-z0-9_-]{1,100}$/.test(value.consentId || '') || ['project','aptOrder'].indexOf(value.subjectType) < 0 || !/^[A-Za-z0-9_-]{1,160}$/.test(value.subjectId || '') || value.purpose !== 'preventive-reinspection' || [6,12].indexOf(value.intervalMonths) < 0 || ['sms','phone','kakao'].indexOf(value.channel) < 0 || value.consentVersion !== 'reinspection-v1' || typeof value.consentTextSnapshot !== 'string' || !value.consentTextSnapshot || !/^[0-9a-f]{64}$/.test(value.consentTextSha256 || '') || typeof value.recordedBy !== 'string' || !value.recordedBy || ooParseKstDateTime_(value.consentedAt) === null || value.nextDueAt !== ooNextDueAtKst_(value.consentedAt, value.intervalMonths) || value.lastContactedAt !== null || ['signed-document','message','recorded-call-note'].indexOf(value.evidenceType) < 0 || !/^[A-Za-z0-9_-]{1,200}$/.test(value.evidenceId || '') || !Array.isArray(value.audit) || !value.audit.length || !value.audit.every(ooValidateConsentAuditEvent_)) return ooFail_('invalid-consent');
+  var fields = ooValidateStoredFields_(value, required, 'invalid-consent'); if (!fields.ok) return fields;
+  if (!/^consent_[A-Za-z0-9_-]{1,100}$/.test(value.consentId || '') || ['project','aptOrder'].indexOf(value.subjectType) < 0 || !/^[A-Za-z0-9_-]{1,160}$/.test(value.subjectId || '') || value.purpose !== 'preventive-reinspection' || [6,12].indexOf(value.intervalMonths) < 0 || ['sms','phone','kakao'].indexOf(value.channel) < 0 || value.consentVersion !== 'reinspection-v1' || typeof value.consentTextSnapshot !== 'string' || !value.consentTextSnapshot || !/^[0-9a-f]{64}$/.test(value.consentTextSha256 || '') || typeof value.recordedBy !== 'string' || !value.recordedBy || ooParseKstDateTime_(value.consentedAt) === null || value.nextDueAt !== ooNextDueAtKst_(value.consentedAt, value.intervalMonths) || value.lastContactedAt !== null || ['signed-document','message','recorded-call-note'].indexOf(value.evidenceType) < 0 || !/^[A-Za-z0-9_-]{1,200}$/.test(value.evidenceId || '') || !Array.isArray(value.audit) || !value.audit.length) return ooFail_('invalid-consent');
+  for (var i = 0; i < value.audit.length; i++) { var event = ooValidateConsentAuditEvent_(value.audit[i]); if (!event.ok) return event; }
   var first = value.audit[0], last = value.audit[value.audit.length - 1];
   if (first.event !== 'recorded' || first.actor !== value.recordedBy || first.reason !== null) return ooFail_('invalid-consent');
   var active = value.withdrawnAt === null && value.withdrawnBy === null && value.withdrawalReason === null;
@@ -367,7 +428,12 @@ function ooValidateConsentCreate_(payload, nowKst) {
 }
 function ooValidatePilotCreate_(payload, nowKst) {
   var keys = ooValidatePayloadFields_(payload, OO_CANONICAL_FIELDS_.officePilotCreate); if (!keys.ok) return keys;
+  if (!ooValidPilotSource_(payload.source)) return ooFail_('invalid-pilot');
   return ooValidatePilot_({ pilotId:'pilot_normalized_for_validation', complexName:payload.complexName, source:payload.source, stage:payload.stage, pilotStartedAt:payload.pilotStartedAt, pilotEndsAt:payload.pilotEndsAt, extensionApprovedAt:payload.extensionApprovedAt, nextActionAt:payload.nextActionAt, owner:payload.owner, notes:payload.notes, createdAt:nowKst, updatedAt:nowKst, retentionStartedAt:payload.stage === 'closed' ? nowKst : null, archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null });
+}
+function ooRetentionStartedAtFor_(recordType, currentValue, nextState, nowKst) {
+  var terminal = recordType === 'pilot' ? nextState === 'closed' : recordType === 'opportunity' ? ['skip','closed'].indexOf(nextState) >= 0 : false;
+  return terminal ? (currentValue || nowKst) : null;
 }
 function ooCanonicalCommercialTerms_(terms) {
   if (!terms || typeof terms !== 'object' || Array.isArray(terms) || !ooExactKeys_(terms, OO_TERMS_FIELDS_)) return ooFail_('invalid-terms');
@@ -416,7 +482,7 @@ function ooCanOpportunityParticipate_(opportunity, serverNowMs, requestTimestamp
 
 Store audit rows use the exact global shape defined above. `ooValidateAuditRow_` requires `result==='ok'`, a valid mutation ID, create-only `idempotencyKey` or null, lower-case payload/backup SHA-256, whole-second KST `at`, `actor==='representative'`, nonempty immutable backup IDs, nonnegative `preMutationRevision`, and `lifecycleBefore===null` or the exact four tombstone fields. Archive/restore record only previous tombstone metadata; arbitrary notes, full payloads, and receipts never enter audit.
 
-`ooRetentionRows_` returns exact rows `{recordType,recordId,reason,referenceAt,eligibleAt}`. `recordType` is exactly `pilot|consent|inspection|opportunity`; `reason` is exactly `archived|closed|skip|withdrawn` and must be legal for that record type. It uses `archivedAt` first for any archived pilot/inspection/opportunity; otherwise it uses pilot `retentionStartedAt` with reason `closed`, consent `withdrawnAt` with reason `withdrawn`, and opportunity `retentionStartedAt` with its current `skip|closed` stage as reason. Thus `referenceAt` is exactly the selected stored timestamp, not a recalculated close time. Archive wins rather than returning duplicate reasons. `eligibleAt` is one KST calendar year after `referenceAt` with February 29 falling back to February 28; include equality and sort by `eligibleAt,recordType,recordId`. Restore removes the archive reason, and a still-terminal restored row may independently qualify from its preserved terminal `retentionStartedAt`. No deletion is performed.
+`ooRetentionRows_` returns exact rows `{recordType,recordId,reason,referenceAt,eligibleAt}`. `recordType` is exactly `pilot|consent|inspection|opportunity`; `reason` is exactly `archived|closed|skip|withdrawn` and must be legal for that record type. It uses `archivedAt` first for any archived pilot/inspection/opportunity; otherwise it uses pilot `retentionStartedAt` with reason `closed`, consent `withdrawnAt` with reason `withdrawn`, and opportunity `retentionStartedAt` with its current `skip|closed` stage as reason. Pilot/opportunity create and full-replacement update handlers use `ooRetentionStartedAtFor_` exclusively so entry sets server `nowKst`, terminal-to-terminal transition preserves the original value, and exit clears it. Thus `referenceAt` is exactly the selected stored timestamp, not a recalculated close time. Archive wins rather than returning duplicate reasons. `eligibleAt` is one KST calendar year after `referenceAt` with February 29 falling back to February 28; include equality and sort by `eligibleAt,recordType,recordId`. Restore removes the archive reason, and a still-terminal restored row may independently qualify from its preserved terminal `retentionStartedAt`. No deletion is performed.
 
 Use explicit per-record and per-action allowlists, never silently drop unknown fields, and compute server-owned dates from KST. Consent withdrawal accepts no caller-supplied `withdrawnAt`; the server records `ooNowKst_()`. Nested records use fixed documented key order rather than runtime object sorting; `consentTextSnapshot` and ordered arrays retain their original order. Reject unknown `action` before canonicalization. Do not add a consent-contact action, automatic messaging, generic patch API, permanent deletion, employee roles, or any twenty-second action; the exact 21-action allowlist remains unchanged.
 
@@ -494,13 +560,15 @@ function ooMutate_(request) {
   } finally { lock.releaseLock(); }
 }
 function ooBackupPair_(source, bytes, store) {
-  var stamp = ooBackupStamp_(ooNowMs_());
+  var nowMs = ooNowMs_();
+  var createdAt = Utilities.formatDate(new Date(nowMs), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
+  var stamp = ooBackupStamp_(nowMs);
   var backup = source.getParents().next().createFile('관리사무소영업운영_백업_' + stamp + '.json', Utilities.newBlob(bytes, 'application/json'));
-  var manifest = { sourceFileId:source.getId(), backupFileId:backup.getId(), createdAt:ooNowKst_(), schemaVersion:store.schemaVersion, preMutationRevision:store.revision, byteLength:bytes.length, sha256Hex:ooSha256BytesHex_(bytes) };
+  var manifest = { sourceFileId:source.getId(), backupFileId:backup.getId(), createdAt:createdAt, schemaVersion:store.schemaVersion, preMutationRevision:store.revision, byteLength:bytes.length, sha256Hex:ooSha256BytesHex_(bytes) };
   var manifestFile = source.getParents().next().createFile('관리사무소영업운영_백업_' + stamp + '.manifest.json', JSON.stringify(manifest), 'application/json');
   var reread; try { reread = JSON.parse(manifestFile.getBlob().getDataAsString('UTF-8')); } catch (_) { return ooCleanupFailedPair_(backup, manifestFile, 'backup-verify-failed'); }
   if (!ooExactKeys_(reread, ['sourceFileId','backupFileId','createdAt','schemaVersion','preMutationRevision','byteLength','sha256Hex']) ||
-      reread.sourceFileId !== source.getId() || reread.backupFileId !== backup.getId() || reread.schemaVersion !== store.schemaVersion ||
+      reread.sourceFileId !== source.getId() || reread.backupFileId !== backup.getId() || reread.createdAt !== createdAt || ooParseKstDateTime_(reread.createdAt) === null || reread.schemaVersion !== store.schemaVersion ||
       reread.preMutationRevision !== store.revision || reread.byteLength !== bytes.length || reread.sha256Hex !== ooSha256BytesHex_(backup.getBlob().getBytes())) {
     return ooCleanupFailedPair_(backup, manifestFile, 'backup-verify-failed');
   }
@@ -526,7 +594,7 @@ Run: `node tests/office-ops-server.unit.js && node tests/office-ops-server-isola
 
 Expected: both PASS.
 
-Retain separate test cases for manual setup noncollision documentation, wrong display name, malformed JSON, schema version 2, duplicate record ID, lock unavailable, revision mismatch, backup-copy failure, manifest-create failure, manifest re-read/parse/field mismatch, backup re-read failure, backup hash mismatch, latch arm write/readback failure before source write, source write throw before modification, partial/corrupt write followed by verified restore, restore throw, restore hash mismatch, latch clear write/read-back failure after restore, latch clear write/read-back failure after a valid commit, and successful source re-read validation. Prove the committed audit row has exactly the Task 2 fields and verified backup values. Create once, retry the same action/key/canonical hash with a fresh mutation ID and timestamp, and require the byte-identical first acknowledgement reconstructed from audit with zero Drive write; then reuse that key with one changed canonical field and require `idempotency-conflict`. Reuse the first mutation ID and require `replay-request` before idempotency lookup; make the retry stale and require `stale-request` before lookup.
+Retain separate test cases for manual setup noncollision documentation, wrong display name, malformed JSON, schema version 2, duplicate record ID, lock unavailable, revision mismatch, backup-copy failure, manifest-create failure, manifest re-read/parse/field mismatch, backup re-read failure, backup hash mismatch, latch arm write/readback failure before source write, source write throw before modification, partial/corrupt write followed by verified restore, restore throw, restore hash mismatch, latch clear write/read-back failure after restore, latch clear write/read-back failure after a valid commit, and successful source re-read validation. Inject both a valid-but-different manifest `createdAt` and a malformed/non-KST `createdAt`; each must return `backup-verify-failed`, mark only the attempted pair for cleanup, and leave source bytes/revision unchanged. Prove `ooBackupPair_` calls the clock once, derives both filename stamp and manifest `createdAt` from that snapshot, and requires the re-read `createdAt` to equal the original value exactly as well as pass `ooParseKstDateTime_`. Prove the committed audit row has exactly the Task 2 fields and verified backup values. Create once, retry the same action/key/canonical hash with a fresh mutation ID and timestamp, and require the byte-identical first acknowledgement reconstructed from audit with zero Drive write; then reuse that key with one changed canonical field and require `idempotency-conflict`. Reuse the first mutation ID and require `replay-request` before idempotency lookup; make the retry stale and require `stale-request` before lookup.
 
 Add eleven same-second mutations and prove exactly the newest ten complete pairs remain in pre-mutation revision order despite duplicate filenames. Before the source write begins, every failure must leave raw source bytes/revision unchanged. A partial/corrupt write must either restore byte-for-byte, confirm latch clear, and return `write-verify-failed`, or preserve the pair with no clear attempt and the durable latch still `1`, return `manual-recovery-required`, and reject all later calls. Inject a Script Property arm failure and prove source is untouched. For clear ambiguity after verified bytes, require `recovery-state-unknown`; separately simulate actual persisted `0` (next call may use the verified source) and retained `1`/unreadable (next call remains blocked). Never claim or test that a failed clear read-back proves the property stayed `1`.
 
