@@ -56,15 +56,24 @@ function doGet() {
 }
 
 function doPost(e) {
-  var raw = e && e.postData && e.postData.contents;
-  if (!raw || raw.length > 131072) return ooOut_(ooFail_('bad-request'));
-  var request;
+  var result;
   try {
-    request = JSON.parse(raw);
+    var raw = e && e.postData && e.postData.contents;
+    if (!raw || typeof raw !== 'string' || raw.length > 131072) result = ooFail_('bad-request');
+    else {
+      try {
+        var request = JSON.parse(raw);
+        try { result = ooDoPost_(request); }
+        catch (_) { result = ooFail_('server-error'); }
+      } catch (parseError) {
+        result = parseError && parseError.name === 'SyntaxError' ? ooFail_('bad-request') : ooFail_('server-error');
+      }
+    }
   } catch (_) {
-    return ooOut_(ooFail_('bad-request'));
+    result = ooFail_('server-error');
   }
-  return ooOut_(ooDoPost_(request));
+  try { return ooOut_(result); }
+  catch (_) { return ooOut_(ooFail_('server-error')); }
 }
 
 function ooDoPost_(request) {
@@ -74,15 +83,15 @@ function ooDoPost_(request) {
   try {
     expectedToken = ooGetScriptProperty_('OFFICE_OPS_TOKEN');
   } catch (_) {
-    return ooFail_('manual-recovery-required');
+    return ooFail_('server-error');
   }
-  if (!expectedToken || request.token !== expectedToken) return ooFail_('unauthorized');
+  if (!expectedToken || !ooConstantTimeEqual_(request.token, expectedToken)) return ooFail_('unauthorized');
 
   var recoveryRequired;
   try {
     recoveryRequired = ooGetScriptProperty_('OFFICE_OPS_RECOVERY_REQUIRED');
   } catch (_) {
-    return ooFail_('manual-recovery-required');
+    return ooFail_('server-error');
   }
   if (recoveryRequired !== '0') return ooFail_('manual-recovery-required');
 
@@ -90,7 +99,7 @@ function ooDoPost_(request) {
   try {
     enabled = ooGetScriptProperty_('OFFICE_OPS_ENABLED');
   } catch (_) {
-    return ooFail_('office-disabled');
+    return ooFail_('server-error');
   }
   if (enabled !== '1') return ooFail_('office-disabled');
   if (!ooIsAllowedAction_(request.action)) return ooFail_('bad-request');

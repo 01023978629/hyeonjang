@@ -21,6 +21,7 @@ assert.equal(productionFiles.includes('Code.gs'), true, 'OfficeOps dispatcher so
 const sourceByName = Object.fromEntries(productionFiles.map(name => [name, fs.readFileSync(path.join(PROJECT, name), 'utf8')]));
 const source = productionFiles.map(name => sourceByName[name]).join('\n');
 const codeSource = sourceByName['Code.gs'];
+const serverSource = sourceByName['OfficeOps.gs'];
 const readme = fs.readFileSync(path.join(PROJECT, 'README_APPS_SCRIPT.md'), 'utf8');
 const BASE = '19657c3';
 
@@ -239,6 +240,11 @@ const documentedPropertyKeys = Array.from(readme.matchAll(/`(OFFICE_[A-Z0-9_]+)`
 assert.deepEqual([...new Set(documentedPropertyKeys)].sort(), [...allowedPropertyKeys].sort(), 'README documents exactly the four OfficeOps Script Properties');
 
 for (const forbidden of [
+  'getFilesByName',
+  'APP_TOKEN',
+  'DATA_FILE_ID',
+  'OFFICE_INTAKE_FILE_ID',
+  'COMMERCIAL_APPROVAL_TOKEN',
   'OfficeIntake',
   'officeInbox',
   'officeAccept',
@@ -255,6 +261,36 @@ for (const forbidden of [
   'commercialApprovalVerify('
 ]) {
   assert.equal(source.includes(forbidden), false, forbidden + ' must not enter OfficeOps');
+}
+
+assert.match(serverSource, /function\s+ooDispatch_\s*\(\s*request\s*\)/, 'OfficeOps exposes exact one-argument dispatcher');
+assert.doesNotMatch(serverSource, /function\s+ooDispatch_\s*\([^)]*,/, 'dispatcher cannot accept a second argument');
+const conversionGateMatch = /function\s+ooConversionOperationallyEnabled_\s*\(\s*\)\s*\{([^}]*)\}/.exec(serverSource);
+assert.notEqual(conversionGateMatch, null, 'OfficeOps exposes the production conversion code gate');
+assert.equal(conversionGateMatch && conversionGateMatch[1].replace(/\s+/g, ''), 'returnfalse;', 'conversion gate is exact literal false');
+assert.doesNotMatch(conversionGateMatch ? conversionGateMatch[1] : '', /Property|Drive|Service|ooGet|ooSet|\(/, 'conversion gate has no property, service, or external lookup');
+const conversionClassifyMatch = /function\s+ooIsConversionAction_\s*\(\s*action\s*\)/.exec(serverSource);
+assert.notEqual(conversionClassifyMatch, null, 'OfficeOps exposes the exact conversion action classifier');
+assert.match(serverSource, /function\s+ooRecoveryValidateSource_\s*\(\s*\)/, 'editor recovery validator is zero-argument');
+assert.equal(allowedActions.includes('ooRecoveryValidateSource_'), false, 'editor recovery validator is never an action');
+assert.doesNotMatch(source, /(?:apps-script-commercial|apps-script\/|\.\.\/apps-script)/, 'OfficeOps cannot import protected relay sources');
+
+const gateSandbox = { Date, JSON, Math, Number, Object, String, Array };
+vm.createContext(gateSandbox);
+for (const name of productionFiles) vm.runInContext(sourceByName[name], gateSandbox, { filename:name });
+const exactConversionActions = [
+  'officeInspectionBeginConversion',
+  'officeInspectionArmLocalCommit',
+  'officeInspectionRecordLocalCommit',
+  'officeInspectionFinalizeConversion',
+  'officeInspectionCancelConversion'
+];
+assert.equal(gateSandbox.ooConversionOperationallyEnabled_(), false, 'production conversion gate stays false');
+for (const action of allowedActions) {
+  assert.equal(gateSandbox.ooIsConversionAction_(action), exactConversionActions.includes(action), 'conversion classifier: ' + action);
+}
+for (const action of ['', 'unknown', 'officeInspectionCreate', null]) {
+  assert.equal(gateSandbox.ooIsConversionAction_(action), false, 'conversion classifier rejects ' + action);
 }
 
 for (const field of ['commercialTerms', 'commercialApproval', 'conversionReceiptId', 'conversionTermsSha256']) {
@@ -276,14 +312,14 @@ assert.doesNotThrow(() => {
 }, 'HEAD must descend from the fixed Task 1 base');
 
 assert.doesNotThrow(() => {
-  childProcess.execFileSync('git', ['diff', '--exit-code', BASE, 'HEAD', '--', 'apps-script', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
+    childProcess.execFileSync('git', ['diff', '--exit-code', BASE, 'HEAD', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
     cwd: ROOT,
     stdio: 'pipe'
   });
 }, 'OfficeOps commits must preserve every protected path from the fixed Task 1 base');
 
 assert.doesNotThrow(() => {
-  childProcess.execFileSync('git', ['diff', '--exit-code', 'HEAD', '--', 'apps-script', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
+    childProcess.execFileSync('git', ['diff', '--exit-code', 'HEAD', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
     cwd: ROOT,
     stdio: 'pipe'
   });
@@ -291,7 +327,7 @@ assert.doesNotThrow(() => {
 
 const untrackedProtected = childProcess.execFileSync(
   'git',
-  ['status', '--porcelain', '--untracked-files=all', '--', 'apps-script', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'],
+  ['status', '--porcelain', '--untracked-files=all', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'],
   { cwd: ROOT, encoding: 'utf8' }
 );
 assert.equal(untrackedProtected, '', 'OfficeOps must not add untracked files beneath protected paths');
