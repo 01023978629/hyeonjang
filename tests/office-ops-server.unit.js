@@ -777,6 +777,112 @@ for (const action of [
   deepEqual(harness.state.files.get(SOURCE_ID).bytes, beforeBytes, action + ' safe replay preserves source');
 }
 
+{
+  const builder = makeHarness();
+  const fixture = conversionReplayFixture(builder, 'officeInspectionBeginConversion');
+  const inspection = fixture.store.inspections[0];
+  inspection.status = 'closed';
+  inspection.commercialApproval = null;
+  inspection.conversionId = null;
+  inspection.conversionTermsSha256 = null;
+  inspection.conversionReceiptId = null;
+  inspection.pendingOrderId = null;
+  inspection.linkedOrderId = null;
+  inspection.conversionStartedAt = null;
+  const harness = makeHarness({ store:fixture.store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', fixture.payload, {
+    mutationId:'mutation_inconsistent_conversion_ack_01'
+  }), 'invalid-store', 'immediate conversion audit ACK must match stored transition result');
+  assertNoWriteDelta(harness, before, 'inconsistent immediate conversion audit ACK', 1, 1);
+}
+
+{
+  const builder = makeHarness();
+  const fixture = conversionReplayFixture(builder, 'officeInspectionBeginConversion');
+  fixture.store.pilots = [storedPilot('pilot_seed_1')];
+  fixture.store.audit = [auditRow()];
+  const harness = makeHarness({ store:fixture.store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', fixture.payload, {
+    mutationId:'mutation_missing_conversion_audit_001'
+  }), 'invalid-store', 'immediate conversion state requires its exact audit ACK row');
+  assertNoWriteDelta(harness, before, 'missing immediate conversion audit ACK', 1, 1);
+}
+
+{
+  const builder = makeHarness();
+  const fixture = conversionReplayFixture(builder, 'officeInspectionBeginConversion');
+  const inspection = fixture.store.inspections[0];
+  inspection.archivedAt = '2026-08-31T09:58:00+09:00';
+  inspection.archivedBy = 'representative';
+  inspection.archiveReason = '불가능한 전환 보관 상태';
+  const harness = makeHarness({ store:fixture.store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', fixture.payload, {
+    mutationId:'mutation_archived_conversion_ack_001'
+  }), 'invalid-store', 'archived conversion result cannot produce a replay ACK');
+  assertNoWriteDelta(harness, before, 'archived immediate conversion audit ACK', 1, 1);
+}
+
+{
+  const builder = makeHarness();
+  const fixture = conversionReplayFixture(builder, 'officeInspectionBeginConversion');
+  const sameSecond = fixture.store.updatedAt;
+  fixture.store.pilots = [storedPilot('pilot_same_second', sameSecond)];
+  fixture.store.audit.push(auditRow(1, {
+    action:'officePilotUpdate', id:'pilot_same_second', mutationId:'mutation_seed_same_second_02',
+    idempotencyKey:null, at:sameSecond, preMutationRevision:1
+  }));
+  fixture.store.revision = 2;
+  const harness = makeHarness({ store:fixture.store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', {
+    ...fixture.payload, expectedRevision:1
+  }, { mutationId:'mutation_same_second_fresh_begin_001' }), 'revision-conflict',
+  'same-second unrelated mutation stays a fresh revision conflict');
+  assertNoWriteDelta(harness, before, 'same-second fresh begin revision conflict', 1, 1);
+}
+
+{
+  const builder = makeHarness();
+  const inspectionId = 'inspection_missing_second_begin';
+  const currentAt = '2026-08-31T10:00:01+09:00';
+  const inspection = storedInspectionFor(builder, 'conversion-pending', {
+    inspectionId, officeId:'office_missing_second_begin', updatedAt:currentAt, conversionStartedAt:currentAt
+  });
+  const audit = [
+    auditRow(0, {
+      action:'officeInspectionBeginConversion', id:inspectionId, idempotencyKey:null,
+      payloadSha256:'1'.repeat(64), at:'2026-08-31T09:59:58+09:00'
+    }),
+    auditRow(1, {
+      action:'officeInspectionCancelConversion', id:inspectionId, idempotencyKey:null,
+      payloadSha256:'2'.repeat(64), at:'2026-08-31T09:59:59+09:00'
+    }),
+    auditRow(2, {
+      action:'officePilotUpdate', id:'pilot_missing_second_begin', idempotencyKey:null,
+      payloadSha256:'3'.repeat(64), at:currentAt
+    })
+  ];
+  const store = {
+    ...emptyStore(currentAt), revision:3,
+    pilots:[storedPilot('pilot_missing_second_begin', currentAt)], inspections:[inspection], audit
+  };
+  const harness = makeHarness({ store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const payload = conversionPayload(harness, inspectionId, 2);
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', payload, {
+    mutationId:'mutation_missing_second_begin_audit_001'
+  }), 'invalid-store', 'prior begin then cancel cannot explain a missing second begin audit');
+  assertNoWriteDelta(harness, before, 'missing second begin audit', 1, 1);
+}
+
 const auditFailureStores = [];
 {
   const store = committedStore(1);
@@ -1365,6 +1471,750 @@ function performElevenCreates(harness) {
   equal(last.ok, true, 'retention cleanup failure never masks verified commit');
   equal(JSON.parse(harness.state.files.get(SOURCE_ID).bytes.toString('utf8')).revision, 11, 'retention cleanup failure keeps commit');
   equal(harness.state.files.get(SOURCE_ID).trashed, false, 'retention cleanup failure never trashes source');
+}
+
+// Task 4 RED: all remaining domain routes, replay/concurrency precedence,
+// tombstones, consent history, participation timing, and generic rollback.
+function lifecycleTerms(overrides = {}) {
+  return {
+    workKind:'preventive-inspection', scope:'지하 배수 점검', exclusions:[], vatMode:'included',
+    quotedAmount:100000, validUntil:'2026-09-30', scheduleWindow:'2026-09-02', ...overrides
+  };
+}
+
+function lifecycleApproval(harness, pendingOrderId = 'pending_lifecycle_001', receiptId = 'receipt_lifecycle_001', terms = lifecycleTerms()) {
+  const termsSha256 = harness.sandbox.ooTermsSha256_(terms);
+  return {
+    receiptId, subjectType:'aptOrder', subjectId:pendingOrderId, approvedTermsSha256:termsSha256,
+    approvalEvidenceType:'quote-file', approvalEvidenceFileId:'TEST_EVIDENCE_FILE_0001',
+    approvalEvidenceSha256:'a'.repeat(64), approvedAt:'2026-08-31T09:59:00+09:00',
+    approvedByRole:'management-office', issuedAt:'2026-08-31T10:00:00+09:00', receiptHmac:'b'.repeat(64)
+  };
+}
+
+function storedInspectionFor(harness, status = 'proposal', overrides = {}) {
+  const terms = overrides.commercialTerms === undefined ? lifecycleTerms() : overrides.commercialTerms;
+  const pending = overrides.pendingOrderId || 'pending_lifecycle_001';
+  const receipt = overrides.conversionReceiptId || 'receipt_lifecycle_001';
+  const approval = lifecycleApproval(harness, pending, receipt, terms || lifecycleTerms());
+  const conversion = ['conversion-pending','conversion-writing','conversion-local-committed','converted'].includes(status);
+  return {
+    inspectionId:'inspection_lifecycle_001', officeId:'office_lifecycle_001', complexName:'예방점검 단지',
+    templateId:'preventive-v1', status, nextDueAt:'2026-09-02', riskItems:['배수 확인'], summary:'접근 허가 후 점검',
+    commercialTerms:terms, commercialApproval:conversion ? approval : null,
+    conversionId:conversion ? (overrides.conversionId || 'conversion_lifecycle_001') : null,
+    conversionTermsSha256:conversion ? harness.sandbox.ooTermsSha256_(terms) : null,
+    conversionReceiptId:conversion ? receipt : null, pendingOrderId:conversion ? pending : null,
+    linkedOrderId:status === 'conversion-local-committed' || status === 'converted' ? pending : null,
+    conversionStartedAt:conversion ? '2026-08-31T09:59:59+09:00' : null,
+    updatedAt:'2026-08-31T10:00:00+09:00', archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null,
+    ...overrides
+  };
+}
+
+function inspectionCreatePayload(harness, overrides = {}) {
+  return {
+    idempotencyKey:'create_inspection_123456', officeId:'office_lifecycle_001', complexName:'예방점검 단지',
+    templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-09-02', riskItems:['배수 확인'],
+    summary:'접근 허가 후 점검', commercialTerms:lifecycleTerms(), commercialApproval:null, ...overrides
+  };
+}
+
+function inspectionUpdatePayload(id, expectedRevision, overrides = {}) {
+  return {
+    inspectionId:id, expectedRevision, officeId:'office_lifecycle_001', complexName:'예방점검 수정 단지',
+    templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-09-03', riskItems:['우수관 확인'],
+    summary:'수정된 점검 요약', commercialTerms:lifecycleTerms(), commercialApproval:null, ...overrides
+  };
+}
+
+function consentRecordPayload(overrides = {}) {
+  const text = '재점검 연락에 동의합니다.';
+  return {
+    idempotencyKey:'create_consent_123456', subjectType:'aptOrder', subjectId:'order_lifecycle_001',
+    purpose:'preventive-reinspection', intervalMonths:6, channel:'phone', consentVersion:'reinspection-v1',
+    consentTextSnapshot:text, consentTextSha256:crypto.createHash('sha256').update(text).digest('hex'), recordedBy:'대표',
+    consentedAt:'2026-08-31T10:00:00+09:00', evidenceType:'message', evidenceId:'record_lifecycle_001', ...overrides
+  };
+}
+
+function storedConsent(overrides = {}) {
+  const payload = consentRecordPayload();
+  return {
+    consentId:'consent_lifecycle_001', subjectType:payload.subjectType, subjectId:payload.subjectId, purpose:payload.purpose,
+    intervalMonths:payload.intervalMonths, channel:payload.channel, consentVersion:payload.consentVersion,
+    consentTextSnapshot:payload.consentTextSnapshot, consentTextSha256:payload.consentTextSha256, recordedBy:payload.recordedBy,
+    consentedAt:payload.consentedAt, withdrawnAt:null, withdrawnBy:null, withdrawalReason:null, nextDueAt:'2027-02-28',
+    lastContactedAt:null, evidenceType:payload.evidenceType, evidenceId:payload.evidenceId,
+    audit:[{ event:'recorded', at:'2026-08-31T10:00:00+09:00', actor:'대표', reason:null }], ...overrides
+  };
+}
+
+function opportunityPayload(overrides = {}) {
+  return {
+    idempotencyKey:'create_opportunity_123456', complexName:'K-apt 단지', officialUrl:'https://www.k-apt.go.kr/a?x=1',
+    observedAt:'2026-08-31T10:00:00+09:00', region:'대전', category:'배관',
+    deadlineAt:'2026-09-30T10:00:00+09:00', stage:'review', requirements:['면허 확인'], verifiedBy:'대표', notes:'', ...overrides
+  };
+}
+
+function opportunityUpdatePayload(id, expectedRevision, overrides = {}) {
+  const payload = opportunityPayload(overrides);
+  delete payload.idempotencyKey;
+  return { opportunityId:id, expectedRevision, ...payload };
+}
+
+function storedOpportunity(overrides = {}) {
+  const payload = opportunityPayload();
+  return {
+    opportunityId:'opp_lifecycle_001', complexName:payload.complexName, officialUrl:payload.officialUrl,
+    observedAt:payload.observedAt, region:payload.region, category:payload.category, deadlineAt:payload.deadlineAt,
+    stage:payload.stage, requirements:payload.requirements, verifiedBy:payload.verifiedBy, notes:payload.notes,
+    retentionStartedAt:null, archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null, ...overrides
+  };
+}
+
+function conversionPayload(harness, inspectionId, expectedRevision, overrides = {}) {
+  const terms = lifecycleTerms();
+  const pendingOrderId = overrides.pendingOrderId || 'pending_lifecycle_001';
+  const receiptId = overrides.receiptId || 'receipt_lifecycle_001';
+  const approval = lifecycleApproval(harness, pendingOrderId, receiptId, terms);
+  return {
+    inspectionId, conversionId:'conversion_lifecycle_001', pendingOrderId, receiptId,
+    receiptSubjectType:'aptOrder', receiptSubjectId:pendingOrderId, termsSha256:harness.sandbox.ooTermsSha256_(terms),
+    commercialTerms:terms, commercialApproval:approval, expectedRevision, ...overrides
+  };
+}
+
+function noWriteSnapshot(harness) {
+  return {
+    clockCalls:harness.state.clockCalls, driveReads:harness.state.driveReads.length, created:harness.state.created.length,
+    trashCalls:harness.state.trashCalls.length, propertyWrites:harness.state.propertyWrites.length,
+    sourceWrites:harness.state.sourceWrites, bytes:Buffer.from(harness.state.files.get(SOURCE_ID).bytes)
+  };
+}
+
+function assertNoWriteDelta(harness, before, label, expectedClockDelta = 1, expectedDriveDelta = 1) {
+  equal(harness.state.clockCalls - before.clockCalls, expectedClockDelta, label + ' clock delta');
+  equal(harness.state.driveReads.length - before.driveReads, expectedDriveDelta, label + ' Drive read delta');
+  equal(harness.state.created.length, before.created, label + ' creates no backup');
+  equal(harness.state.trashCalls.length, before.trashCalls, label + ' trashes nothing');
+  equal(harness.state.propertyWrites.length, before.propertyWrites, label + ' writes no property');
+  equal(harness.state.sourceWrites, before.sourceWrites, label + ' writes no source');
+  deepEqual(harness.state.files.get(SOURCE_ID).bytes, before.bytes, label + ' preserves bytes');
+}
+
+let lifecycleMutation = 0;
+function lifecyclePost(harness, action, payload) {
+  lifecycleMutation += 1;
+  return harness.post(action, payload, { mutationId:`mutation_lifecycle_${String(lifecycleMutation).padStart(16,'0')}` });
+}
+
+{
+  const harness = makeHarness();
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+
+  const closedPilot = lifecyclePost(harness, 'officePilotCreate', pilotPayload({
+    idempotencyKey:'create_pilot_lifecycle_1', stage:'closed', pilotStartedAt:null, pilotEndsAt:null, extensionApprovedAt:null
+  }));
+  equal(closedPilot.ok, true, 'closed pilot create succeeds');
+  let store = harness.post('officeOpsList', { includeArchived:true }).store;
+  equal(store.pilots[0].retentionStartedAt, closedPilot.updatedAt, 'first terminal pilot starts retention');
+  const stillClosed = lifecyclePost(harness, 'officePilotUpdate', pilotUpdatePayload(closedPilot.id, closedPilot.revision, { stage:'closed' }));
+  equal(stillClosed.ok, true, 'pilot full replacement succeeds');
+  store = harness.post('officeOpsList', { includeArchived:true }).store;
+  equal(store.pilots[0].retentionStartedAt, closedPilot.updatedAt, 'terminal-to-terminal pilot preserves retention');
+  const reopened = lifecyclePost(harness, 'officePilotUpdate', pilotUpdatePayload(closedPilot.id, stillClosed.revision));
+  equal(reopened.ok, true);
+  store = harness.post('officeOpsList', { includeArchived:true }).store;
+  equal(store.pilots[0].retentionStartedAt, null, 'pilot terminal exit clears retention');
+  const pilotArchive = lifecyclePost(harness, 'officePilotArchive', { pilotId:closedPilot.id, expectedRevision:reopened.revision, archiveReason:'상담 종료' });
+  equal(pilotArchive.ok, true);
+  equal(harness.post('officeOpsList', {}).store.pilots.length, 0, 'default list hides pilot tombstone');
+  equal(harness.post('officeOpsList', { includeArchived:true }).store.pilots.length, 1, 'includeArchived shows pilot tombstone');
+  const archivedPilotRow = harness.post('officeOpsList', { includeArchived:true }).store.pilots[0];
+  assertFailure(lifecyclePost(harness, 'officePilotUpdate', pilotUpdatePayload(closedPilot.id, pilotArchive.revision)), 'already-archived', 'archived pilot update');
+  const pilotRestore = lifecyclePost(harness, 'officePilotRestore', { pilotId:closedPilot.id, expectedRevision:pilotArchive.revision });
+  equal(pilotRestore.ok, true);
+  const restoredPilotRow = harness.post('officeOpsList', {}).store.pilots[0];
+  equal(restoredPilotRow.pilotId, closedPilot.id, 'pilot restore preserves ID');
+  equal(restoredPilotRow.archivedAt, null);
+  equal(restoredPilotRow.restoredAt, pilotRestore.updatedAt);
+  deepEqual(harness.post('officeOpsList', { includeArchived:true }).store.audit.find(row => row.action === 'officePilotRestore').lifecycleBefore, {
+    archivedAt:archivedPilotRow.archivedAt, archivedBy:'representative', archiveReason:'상담 종료', restoredAt:null
+  }, 'restore audit binds exact prior lifecycle');
+
+  const consent = lifecyclePost(harness, 'officeConsentRecord', consentRecordPayload());
+  equal(consent.ok, true, 'consent record succeeds');
+  let consentRow = harness.post('officeOpsList', { includeArchived:true }).store.consents[0];
+  equal(consentRow.lastContactedAt, null, 'consent stores no contact action');
+  equal(harness.sandbox.ooConsentActive_(consentRow, REQUEST_NOW_MS), true);
+  const withdrawn = lifecyclePost(harness, 'officeConsentWithdraw', {
+    consentId:consent.id, expectedRevision:consent.revision, withdrawnBy:'대표', withdrawalReason:'고객 철회'
+  });
+  equal(withdrawn.ok, true, 'consent withdrawal succeeds');
+  consentRow = harness.post('officeOpsList', {}).store.consents[0];
+  equal(consentRow.withdrawnAt, withdrawn.updatedAt);
+  equal(consentRow.audit.length, 2, 'withdrawal preserves history');
+  equal(harness.sandbox.ooConsentActive_(consentRow, REQUEST_NOW_MS), false);
+  const beforeSecondWithdraw = noWriteSnapshot(harness);
+  assertFailure(lifecyclePost(harness, 'officeConsentWithdraw', {
+    consentId:consent.id, expectedRevision:withdrawn.revision, withdrawnBy:'대표', withdrawalReason:'다시'
+  }), 'already-withdrawn', 'already withdrawn consent');
+  assertNoWriteDelta(harness, beforeSecondWithdraw, 'already withdrawn consent', 2, 1);
+
+  const inspection = lifecyclePost(harness, 'officeInspectionCreate', inspectionCreatePayload(harness));
+  equal(inspection.ok, true, 'inspection create succeeds');
+  const inspectionUpdate = lifecyclePost(harness, 'officeInspectionUpdate', inspectionUpdatePayload(inspection.id, inspection.revision));
+  equal(inspectionUpdate.ok, true, 'inspection full replacement succeeds');
+  const inspectionArchive = lifecyclePost(harness, 'officeInspectionArchive', { inspectionId:inspection.id, expectedRevision:inspectionUpdate.revision, archiveReason:'계획 보류' });
+  equal(inspectionArchive.ok, true);
+  equal(harness.post('officeOpsList', {}).store.inspections.length, 0);
+  const inspectionRestore = lifecyclePost(harness, 'officeInspectionRestore', { inspectionId:inspection.id, expectedRevision:inspectionArchive.revision });
+  equal(inspectionRestore.ok, true);
+
+  const beginPayload = conversionPayload(harness, inspection.id, inspectionRestore.revision);
+  const begin = lifecyclePost(harness, 'officeInspectionBeginConversion', beginPayload);
+  equal(begin.ok, true, 'conversion begin succeeds');
+  let conversionRow = harness.post('officeOpsList', {}).store.inspections[0];
+  equal(conversionRow.status, 'conversion-pending');
+  equal(conversionRow.conversionStartedAt, begin.updatedAt);
+  deepEqual(conversionRow.commercialApproval, beginPayload.commercialApproval);
+  let beforeReplay = noWriteSnapshot(harness);
+  const beginReplay = lifecyclePost(harness, 'officeInspectionBeginConversion', beginPayload);
+  deepEqual(beginReplay, begin, 'begin exact replay returns exact ACK');
+  assertNoWriteDelta(harness, beforeReplay, 'begin replay');
+
+  const armPayload = {
+    inspectionId:inspection.id, conversionId:beginPayload.conversionId, pendingOrderId:beginPayload.pendingOrderId,
+    receiptId:beginPayload.receiptId, receiptSubjectType:'aptOrder', receiptSubjectId:beginPayload.pendingOrderId,
+    termsSha256:beginPayload.termsSha256, expectedRevision:begin.revision
+  };
+  const arm = lifecyclePost(harness, 'officeInspectionArmLocalCommit', armPayload);
+  equal(arm.ok, true, 'arm succeeds');
+  beforeReplay = noWriteSnapshot(harness);
+  deepEqual(lifecyclePost(harness, 'officeInspectionArmLocalCommit', armPayload), arm, 'arm exact replay ACK');
+  assertNoWriteDelta(harness, beforeReplay, 'arm replay');
+  const laterBeginBefore = noWriteSnapshot(harness);
+  assertFailure(lifecyclePost(harness, 'officeInspectionBeginConversion', beginPayload), 'invalid-conversion-state', 'begin replay after later stage');
+  assertNoWriteDelta(harness, laterBeginBefore, 'later begin replay');
+
+  const recordPayload = { ...armPayload, linkedOrderId:armPayload.pendingOrderId, expectedRevision:arm.revision };
+  const record = lifecyclePost(harness, 'officeInspectionRecordLocalCommit', recordPayload);
+  equal(record.ok, true, 'record succeeds');
+  beforeReplay = noWriteSnapshot(harness);
+  deepEqual(lifecyclePost(harness, 'officeInspectionRecordLocalCommit', recordPayload), record, 'record exact replay ACK');
+  assertNoWriteDelta(harness, beforeReplay, 'record replay');
+
+  const finalizePayload = { ...recordPayload, expectedRevision:record.revision };
+  const finalize = lifecyclePost(harness, 'officeInspectionFinalizeConversion', finalizePayload);
+  equal(finalize.ok, true, 'finalize succeeds');
+  beforeReplay = noWriteSnapshot(harness);
+  deepEqual(lifecyclePost(harness, 'officeInspectionFinalizeConversion', finalizePayload), finalize, 'finalize exact replay ACK');
+  assertNoWriteDelta(harness, beforeReplay, 'finalize replay');
+  const convertedBefore = noWriteSnapshot(harness);
+  assertFailure(lifecyclePost(harness, 'officeInspectionArchive', { inspectionId:inspection.id, expectedRevision:finalize.revision, archiveReason:'전환 종료' }), 'invalid-conversion-state', 'converted inspection archive');
+  assertNoWriteDelta(harness, convertedBefore, 'converted inspection archive', 2, 1);
+
+  const cancellable = lifecyclePost(harness, 'officeInspectionCreate', inspectionCreatePayload(harness, {
+    idempotencyKey:'create_inspection_cancel_1', officeId:'office_cancel_001', complexName:'취소 점검'
+  }));
+  const cancellableBeginPayload = conversionPayload(harness, cancellable.id, cancellable.revision, {
+    conversionId:'conversion_cancel_001', pendingOrderId:'pending_cancel_001', receiptId:'receipt_cancel_001', receiptSubjectId:'pending_cancel_001'
+  });
+  cancellableBeginPayload.commercialApproval = lifecycleApproval(harness, 'pending_cancel_001', 'receipt_cancel_001');
+  const cancellableBegin = lifecyclePost(harness, 'officeInspectionBeginConversion', cancellableBeginPayload);
+  equal(cancellableBegin.ok, true);
+  const cancelled = lifecyclePost(harness, 'officeInspectionCancelConversion', {
+    inspectionId:cancellable.id, conversionId:'conversion_cancel_001', expectedRevision:cancellableBegin.revision
+  });
+  equal(cancelled.ok, true, 'pending conversion may cancel');
+  conversionRow = harness.post('officeOpsList', {}).store.inspections.find(row => row.inspectionId === cancellable.id);
+  deepEqual({ status:conversionRow.status, approval:conversionRow.commercialApproval, conversionId:conversionRow.conversionId,
+    hash:conversionRow.conversionTermsSha256, receipt:conversionRow.conversionReceiptId, pending:conversionRow.pendingOrderId,
+    linked:conversionRow.linkedOrderId, started:conversionRow.conversionStartedAt },
+  { status:'proposal', approval:null, conversionId:null, hash:null, receipt:null, pending:null, linked:null, started:null }, 'cancel clears conversion proof only');
+  deepEqual(conversionRow.commercialTerms, harness.sandbox.ooCanonicalCommercialTerms_(lifecycleTerms()).value, 'cancel retains proposal terms');
+  const cancelRetryBefore = noWriteSnapshot(harness);
+  assertFailure(lifecyclePost(harness, 'officeInspectionCancelConversion', {
+    inspectionId:cancellable.id, conversionId:'conversion_cancel_001', expectedRevision:cancellableBegin.revision
+  }), 'invalid-conversion-state', 'cancel retry is not replay success');
+  assertNoWriteDelta(harness, cancelRetryBefore, 'cancel retry');
+
+  const opportunity = lifecyclePost(harness, 'officeOpportunityCreate', opportunityPayload({ stage:'skip' }));
+  equal(opportunity.ok, true, 'opportunity create succeeds');
+  let opportunityRow = harness.post('officeOpsList', {}).store.opportunities[0];
+  equal(opportunityRow.retentionStartedAt, opportunity.updatedAt, 'opportunity terminal entry starts retention');
+  const opportunityClosed = lifecyclePost(harness, 'officeOpportunityUpdate',
+    opportunityUpdatePayload(opportunity.id, opportunity.revision, { stage:'closed', notes:'종료' }));
+  equal(opportunityClosed.ok, true);
+  opportunityRow = harness.post('officeOpsList', {}).store.opportunities[0];
+  equal(opportunityRow.retentionStartedAt, opportunity.updatedAt, 'opportunity terminal-to-terminal preserves retention');
+  const opportunityReview = lifecyclePost(harness, 'officeOpportunityUpdate',
+    opportunityUpdatePayload(opportunity.id, opportunityClosed.revision, { stage:'review' }));
+  equal(opportunityReview.ok, true);
+  equal(harness.post('officeOpsList', {}).store.opportunities[0].retentionStartedAt, null, 'opportunity terminal exit clears retention');
+  let participateCalls = 0;
+  const originalParticipate = harness.sandbox.ooCanOpportunityParticipate_;
+  harness.sandbox.ooCanOpportunityParticipate_ = function(row, serverNowMs, requestTimestampMs) {
+    participateCalls += 1;
+    equal(row.opportunityId, opportunity.id, 'participation receives locked server candidate');
+    equal(serverNowMs, MUTATION_NOW_MS, 'participation receives mutation snapshot');
+    equal(requestTimestampMs, REQUEST_NOW_MS, 'participation receives dispatcher timestamp');
+    return originalParticipate(row, serverNowMs, requestTimestampMs);
+  };
+  const opportunityParticipate = lifecyclePost(harness, 'officeOpportunityUpdate',
+    opportunityUpdatePayload(opportunity.id, opportunityReview.revision, { stage:'participate' }));
+  equal(opportunityParticipate.ok, true, 'verified future K-apt opportunity may participate');
+  equal(participateCalls, 1, 'participation helper called once');
+  const opportunityArchive = lifecyclePost(harness, 'officeOpportunityArchive', { opportunityId:opportunity.id, expectedRevision:opportunityParticipate.revision, archiveReason:'검토 종료' });
+  equal(opportunityArchive.ok, true);
+  const opportunityRestore = lifecyclePost(harness, 'officeOpportunityRestore', { opportunityId:opportunity.id, expectedRevision:opportunityArchive.revision });
+  equal(opportunityRestore.ok, true);
+
+  const requiredTask4Routes = [
+    'officePilotUpdate','officePilotArchive','officePilotRestore','officeConsentRecord','officeConsentWithdraw',
+    'officeInspectionCreate','officeInspectionUpdate','officeInspectionArchive','officeInspectionRestore',
+    'officeInspectionBeginConversion','officeInspectionArmLocalCommit','officeInspectionRecordLocalCommit',
+    'officeInspectionFinalizeConversion','officeInspectionCancelConversion','officeOpportunityCreate','officeOpportunityUpdate',
+    'officeOpportunityArchive','officeOpportunityRestore'
+  ];
+  const actionSet = new Set(harness.post('officeOpsList', { includeArchived:true }).store.audit.map(row => row.action));
+  equal(requiredTask4Routes.length, 18, 'exact remaining Task 4 route count');
+  for (const action of requiredTask4Routes) equal(actionSet.has(action), true, action + ' exercised successfully');
+}
+
+// Every tombstone family must hide/show symmetrically, retain exact lifecycle
+// history, and start a fresh archive-retention reference after restore.
+for (const config of (() => {
+  const builder = makeHarness();
+  return [
+    {
+      kind:'pilot', collection:'pilots', idField:'pilotId', id:'pilot_tombstone_matrix',
+      archiveAction:'officePilotArchive', restoreAction:'officePilotRestore',
+      record:storedPilot('pilot_tombstone_matrix', '2026-08-31T10:00:00+09:00', {
+        stage:'closed', retentionStartedAt:'2026-01-01T10:00:00+09:00'
+      })
+    },
+    {
+      kind:'inspection', collection:'inspections', idField:'inspectionId', id:'inspection_tombstone_matrix',
+      archiveAction:'officeInspectionArchive', restoreAction:'officeInspectionRestore',
+      record:storedInspectionFor(builder, 'checked', {
+        inspectionId:'inspection_tombstone_matrix', officeId:'office_tombstone_matrix'
+      })
+    },
+    {
+      kind:'opportunity', collection:'opportunities', idField:'opportunityId', id:'opp_tombstone_matrix',
+      archiveAction:'officeOpportunityArchive', restoreAction:'officeOpportunityRestore',
+      record:storedOpportunity({
+        opportunityId:'opp_tombstone_matrix', stage:'skip', retentionStartedAt:'2026-01-01T10:00:00+09:00'
+      })
+    }
+  ];
+})()) {
+  const store = { ...emptyStore(), [config.collection]:[config.record] };
+  const harness = makeHarness({
+    store,
+    hooks:{ clock({index}) { return REQUEST_NOW_MS + index * 1000; } }
+  });
+  function businessSnapshot(row) {
+    const value = JSON.parse(JSON.stringify(row));
+    for (const field of ['updatedAt','archivedAt','archivedBy','archiveReason','restoredAt']) delete value[field];
+    return value;
+  }
+  const beforeBusiness = businessSnapshot(config.record);
+  const firstArchive = harness.post(config.archiveAction, {
+    [config.idField]:config.id, expectedRevision:0, archiveReason:'첫 보관'
+  }, { mutationId:`mutation_${config.kind}_matrix_archive_01` });
+  equal(firstArchive.ok, true, config.kind + ' first archive succeeds');
+  equal(harness.post('officeOpsList', {}).store[config.collection].length, 0, config.kind + ' default list hides tombstone');
+  let fullStore = harness.post('officeOpsList', { includeArchived:true }).store;
+  equal(fullStore[config.collection].length, 1, config.kind + ' includeArchived shows tombstone');
+  const firstArchivedRow = fullStore[config.collection][0];
+  equal(firstArchivedRow.archivedAt, firstArchive.updatedAt, config.kind + ' first archive timestamp');
+  deepEqual(fullStore.audit.find(row => row.action === config.archiveAction && row.preMutationRevision === 0).lifecycleBefore, {
+    archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:null
+  }, config.kind + ' first archive audit preserves live lifecycle');
+
+  const restored = harness.post(config.restoreAction, {
+    [config.idField]:config.id, expectedRevision:firstArchive.revision
+  }, { mutationId:`mutation_${config.kind}_matrix_restore_01` });
+  equal(restored.ok, true, config.kind + ' restore succeeds');
+  fullStore = harness.post('officeOpsList', { includeArchived:true }).store;
+  const restoredRow = fullStore[config.collection][0];
+  deepEqual(businessSnapshot(restoredRow), beforeBusiness, config.kind + ' restore preserves ID and business fields');
+  deepEqual(fullStore.audit.find(row => row.action === config.restoreAction).lifecycleBefore, {
+    archivedAt:firstArchive.updatedAt, archivedBy:'representative', archiveReason:'첫 보관', restoredAt:null
+  }, config.kind + ' restore audit preserves exact tombstone lifecycle');
+
+  const secondArchive = harness.post(config.archiveAction, {
+    [config.idField]:config.id, expectedRevision:restored.revision, archiveReason:'두 번째 보관'
+  }, { mutationId:`mutation_${config.kind}_matrix_archive_02` });
+  equal(secondArchive.ok, true, config.kind + ' re-archive succeeds');
+  equal(secondArchive.updatedAt === firstArchive.updatedAt, false, config.kind + ' re-archive uses a fresh timestamp');
+  fullStore = harness.post('officeOpsList', { includeArchived:true }).store;
+  const secondArchivedRow = fullStore[config.collection][0];
+  equal(secondArchivedRow.archivedAt, secondArchive.updatedAt, config.kind + ' re-archive replaces archive reference');
+  equal(fullStore[config.collection].length, 1, config.kind + ' lifecycle never deletes the row');
+  deepEqual(fullStore.audit.find(row => row.action === config.archiveAction && row.preMutationRevision === restored.revision).lifecycleBefore, {
+    archivedAt:null, archivedBy:null, archiveReason:null, restoredAt:restored.updatedAt
+  }, config.kind + ' re-archive audit preserves restored lifecycle');
+  const retention = harness.sandbox.ooRetentionRows_(fullStore, Date.parse('2028-09-01T10:00:00+09:00'));
+  const retentionRow = retention.find(row => row.recordType === config.kind && row.recordId === config.id);
+  equal(!!retentionRow, true, config.kind + ' re-archive becomes retention eligible');
+  deepEqual({ reason:retentionRow.reason, referenceAt:retentionRow.referenceAt }, {
+    reason:'archived', referenceAt:secondArchive.updatedAt
+  }, config.kind + ' archive retention takes precedence and uses fresh reference');
+}
+
+// Immediate conversion replays with changed proof are classified precisely and
+// never fall through to a stale-revision write path.
+{
+  const builder = makeHarness();
+  const harness = makeHarness({ store:{ ...emptyStore(), inspections:[storedInspectionFor(builder)] } });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const original = conversionPayload(harness, 'inspection_lifecycle_001', 0);
+  const begun = harness.post('officeInspectionBeginConversion', original, { mutationId:'mutation_proof_begin_0001' });
+  equal(begun.ok, true, 'proof classifier fixture begins');
+  const changedTerms = lifecycleTerms({ scheduleWindow:'2026-09-03' });
+  const changedTermsHash = harness.sandbox.ooTermsSha256_(changedTerms);
+  const changedTermsPayload = {
+    ...original, termsSha256:changedTermsHash, commercialTerms:changedTerms,
+    commercialApproval:lifecycleApproval(harness, original.pendingOrderId, original.receiptId, changedTerms)
+  };
+  const changedApproval = {
+    ...original,
+    commercialApproval:{ ...original.commercialApproval, approvalEvidenceSha256:'c'.repeat(64) }
+  };
+  const changedReceipt = {
+    ...original, receiptId:'receipt_lifecycle_other',
+    commercialApproval:lifecycleApproval(harness, original.pendingOrderId, 'receipt_lifecycle_other')
+  };
+  for (const [label, payload, expected] of [
+    ['changed terms replay', changedTermsPayload, 'terms-mismatch'],
+    ['changed approval replay', changedApproval, 'receipt-mismatch'],
+    ['changed receipt replay', changedReceipt, 'receipt-mismatch'],
+    ['changed identity replay', { ...original, conversionId:'conversion_lifecycle_other' }, 'invalid-conversion-state']
+  ]) {
+    const before = noWriteSnapshot(harness);
+    assertFailure(harness.post('officeInspectionBeginConversion', payload, {
+      mutationId:`mutation_proof_${label.replace(/\s/g,'_')}`
+    }), expected, label);
+    assertNoWriteDelta(harness, before, label);
+  }
+}
+
+// Full tombstone error matrix and conversion-state archive/update/restore locks.
+for (const [kind, idField, liveStore, archivedStore, updateAction, updatePayloadFactory, archiveAction, restoreAction] of [
+  ['pilot', 'pilotId', { ...emptyStore(), pilots:[storedPilot()] }, { ...emptyStore(), pilots:[storedPilot('pilot_seed_1', '2026-08-31T10:00:00+09:00', { archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관' })] }, 'officePilotUpdate', () => pilotUpdatePayload('pilot_seed_1', 0), 'officePilotArchive', 'officePilotRestore'],
+  ['inspection', 'inspectionId', (() => { const b=makeHarness(); return { ...emptyStore(), inspections:[storedInspectionFor(b, 'checked')] }; })(), (() => { const b=makeHarness(); return { ...emptyStore(), inspections:[storedInspectionFor(b, 'checked', { archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관' })] }; })(), 'officeInspectionUpdate', () => inspectionUpdatePayload('inspection_lifecycle_001', 0), 'officeInspectionArchive', 'officeInspectionRestore'],
+  ['opportunity', 'opportunityId', { ...emptyStore(), opportunities:[storedOpportunity()] }, { ...emptyStore(), opportunities:[storedOpportunity({ archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관' })] }, 'officeOpportunityUpdate', () => opportunityUpdatePayload('opp_lifecycle_001', 0), 'officeOpportunityArchive', 'officeOpportunityRestore']
+]) {
+  const id = liveStore[kind === 'pilot' ? 'pilots' : kind === 'inspection' ? 'inspections' : 'opportunities'][0][idField];
+  const unknownHarness = makeHarness({ store:liveStore });
+  const unknownBefore = noWriteSnapshot(unknownHarness);
+  const unknownId = kind === 'pilot' ? 'pilot_unknown' : kind === 'inspection' ? 'inspection_unknown' : 'opp_unknown';
+  assertFailure(unknownHarness.post(archiveAction, { [idField]:unknownId, expectedRevision:0, archiveReason:'없음' }, { mutationId:`mutation_${kind}_unknown_001` }), 'not-found', kind + ' unknown archive');
+  assertNoWriteDelta(unknownHarness, unknownBefore, kind + ' unknown archive', 2, 1);
+
+  const archivedHarness = makeHarness({ store:archivedStore });
+  const archiveAgainBefore = noWriteSnapshot(archivedHarness);
+  assertFailure(archivedHarness.post(archiveAction, { [idField]:id, expectedRevision:0, archiveReason:'다시' }, { mutationId:`mutation_${kind}_archive_again` }), 'already-archived', kind + ' archive archived');
+  assertNoWriteDelta(archivedHarness, archiveAgainBefore, kind + ' archive archived', 2, 1);
+  const updateBefore = noWriteSnapshot(archivedHarness);
+  assertFailure(archivedHarness.post(updateAction, updatePayloadFactory(), { mutationId:`mutation_${kind}_update_archived` }), 'already-archived', kind + ' update archived');
+  assertNoWriteDelta(archivedHarness, updateBefore, kind + ' update archived', 2, 1);
+
+  const liveHarness = makeHarness({ store:liveStore });
+  const restoreLiveBefore = noWriteSnapshot(liveHarness);
+  assertFailure(liveHarness.post(restoreAction, { [idField]:id, expectedRevision:0 }, { mutationId:`mutation_${kind}_restore_live` }), 'not-archived', kind + ' restore live');
+  assertNoWriteDelta(liveHarness, restoreLiveBefore, kind + ' restore live', 2, 1);
+}
+
+for (const status of ['conversion-pending','conversion-writing','conversion-local-committed','converted']) {
+  const builder = makeHarness();
+  const inspectionId = `inspection_state_${status}`;
+  const live = storedInspectionFor(builder, status, { inspectionId, officeId:`office_state_${status}` });
+  const archived = {
+    ...live, archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'전환 중 보관'
+  };
+  for (const [label, action, store, payload] of [
+    [`${status} inspection update`, 'officeInspectionUpdate', { ...emptyStore(), inspections:[live] }, inspectionUpdatePayload(inspectionId, 0)],
+    [`${status} inspection archive`, 'officeInspectionArchive', { ...emptyStore(), inspections:[live] }, { inspectionId, expectedRevision:0, archiveReason:'보류' }],
+    [`${status} inspection restore`, 'officeInspectionRestore', { ...emptyStore(), inspections:[archived] }, { inspectionId, expectedRevision:0 }]
+  ]) {
+    const harness = makeHarness({ store });
+    const before = noWriteSnapshot(harness);
+    assertFailure(harness.post(action, payload, {
+      mutationId:`mutation_state_${status}_${action}`
+    }), 'invalid-conversion-state', label);
+    assertNoWriteDelta(harness, before, label, 2, 1);
+  }
+}
+
+// Only pending/link equality is legal inside one conversion request.
+{
+  const harness = makeHarness();
+  const legalBody = {
+    inspectionId:'inspection_target', conversionId:'conversion_distinct', pendingOrderId:'pending_same', linkedOrderId:'pending_same',
+    receiptId:'receipt_distinct', receiptSubjectType:'aptOrder', receiptSubjectId:'pending_same', termsSha256:'a'.repeat(64), expectedRevision:0
+  };
+  const legalRequest = { action:'officeInspectionRecordLocalCommit', payload:legalBody };
+  equal(harness.sandbox.ooValidateConversionIdentityOwnership_({ inspections:[] }, legalRequest, { json:JSON.stringify({ action:legalRequest.action, payload:legalBody }) }).ok, true, 'same-owner pending/link equality is legal');
+  const illegalBody = { ...legalBody, conversionId:'pending_same' };
+  const illegalRequest = { action:'officeInspectionRecordLocalCommit', payload:illegalBody };
+  equal(harness.sandbox.ooValidateConversionIdentityOwnership_({ inspections:[] }, illegalRequest, { json:JSON.stringify({ action:illegalRequest.action, payload:illegalBody }) }).error, 'conversion-identity-conflict', 'conversion ID cannot hide in legal pending/link pair');
+}
+
+// Revision conflict must win before global identity validation; with the latest
+// revision a reserved identity must fail without a mutation clock or writes.
+{
+  const seedHarness = makeHarness();
+  const seedStore = {
+    ...emptyStore(),
+    inspections:[
+      storedInspectionFor(seedHarness, 'proposal', { inspectionId:'inspection_race_001', officeId:'office_race_001' }),
+      storedInspectionFor(seedHarness, 'proposal', { inspectionId:'inspection_race_002', officeId:'office_race_002' })
+    ]
+  };
+  const harness = makeHarness({ store:seedStore });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  let identityCalls = 0;
+  const originalIdentity = harness.sandbox.ooValidateConversionIdentityOwnership_;
+  harness.sandbox.ooValidateConversionIdentityOwnership_ = function(...args) { identityCalls += 1; return originalIdentity(...args); };
+  const firstPayload = conversionPayload(harness, 'inspection_race_001', 0, {
+    conversionId:'conversion_race_shared', pendingOrderId:'pending_race_shared', receiptId:'receipt_race_shared', receiptSubjectId:'pending_race_shared'
+  });
+  firstPayload.commercialApproval = lifecycleApproval(harness, 'pending_race_shared', 'receipt_race_shared');
+  const first = harness.post('officeInspectionBeginConversion', firstPayload, { mutationId:'mutation_race_first_0001' });
+  equal(first.ok, true, 'first concurrent begin succeeds');
+  identityCalls = 0;
+  const secondPayload = { ...firstPayload, inspectionId:'inspection_race_002' };
+  const staleBefore = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', secondPayload, { mutationId:'mutation_race_second_001' }), 'revision-conflict', 'stale concurrent begin');
+  equal(identityCalls, 0, 'revision conflict precedes identity validation');
+  assertNoWriteDelta(harness, staleBefore, 'stale concurrent begin');
+  const latestBefore = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeInspectionBeginConversion', { ...secondPayload, expectedRevision:first.revision }, { mutationId:'mutation_race_latest_001' }), 'conversion-identity-conflict', 'latest revision reserved identity');
+  equal(identityCalls, 1, 'latest revision reaches identity validation once');
+  assertNoWriteDelta(harness, latestBefore, 'latest revision identity conflict');
+}
+
+// Every stored conversion identity reserves every incoming begin identity,
+// regardless of tombstone visibility or which identity field holds it.
+{
+  const harness = makeHarness();
+  const storedFields = ['conversionId','pendingOrderId','linkedOrderId','conversionReceiptId'];
+  const incomingFields = ['conversionId','pendingOrderId','receiptId'];
+  for (const archived of [false, true]) {
+    for (const storedField of storedFields) {
+      for (const incomingField of incomingFields) {
+        const identities = {
+          conversionId:'receipt_owner_conversion', pendingOrderId:'receipt_owner_pending',
+          linkedOrderId:'receipt_owner_linked', conversionReceiptId:'receipt_owner_receipt'
+        };
+        const owner = { inspectionId:'inspection_owner', archivedAt:archived ? '2026-08-31T09:00:00+09:00' : null, ...identities };
+        const body = {
+          inspectionId:'inspection_target', conversionId:'receipt_incoming_conversion', pendingOrderId:'receipt_incoming_pending',
+          receiptId:'receipt_incoming_receipt', receiptSubjectType:'aptOrder', receiptSubjectId:'receipt_incoming_pending',
+          termsSha256:'a'.repeat(64), commercialTerms:lifecycleTerms(), commercialApproval:{}, expectedRevision:0
+        };
+        body[incomingField] = owner[storedField];
+        if (incomingField === 'pendingOrderId') body.receiptSubjectId = body.pendingOrderId;
+        const request = { action:'officeInspectionBeginConversion', payload:body };
+        const canonical = { json:JSON.stringify({ action:request.action, payload:body }), sha256Hex:'a'.repeat(64) };
+        equal(harness.sandbox.ooValidateConversionIdentityOwnership_({ inspections:[owner] }, request, canonical).error,
+          'conversion-identity-conflict', `${archived ? 'archived' : 'live'} ${storedField} reserves ${incomingField}`);
+      }
+    }
+  }
+}
+
+// Exercise the same live/archived 4x3 identity matrix through the locked
+// dispatcher so every collision proves the exact pre-write side-effect budget.
+{
+  const storedFields = ['conversionId','pendingOrderId','linkedOrderId','conversionReceiptId'];
+  const incomingFields = ['conversionId','pendingOrderId','receiptId'];
+  for (const archived of [false, true]) {
+    for (let storedIndex = 0; storedIndex < storedFields.length; storedIndex += 1) {
+      for (let incomingIndex = 0; incomingIndex < incomingFields.length; incomingIndex += 1) {
+        const builder = makeHarness();
+        const owner = storedInspectionFor(builder, 'conversion-local-committed', {
+          inspectionId:'inspection_identity_owner', officeId:'office_identity_owner',
+          conversionId:'receipt_identity_conversion_owner', pendingOrderId:'receipt_identity_pending_owner',
+          conversionReceiptId:'receipt_identity_owner',
+          archivedAt:archived ? '2026-08-31T09:00:00+09:00' : null,
+          archivedBy:archived ? 'representative' : null,
+          archiveReason:archived ? '보관된 식별자' : null
+        });
+        const target = storedInspectionFor(builder, 'proposal', {
+          inspectionId:'inspection_identity_target', officeId:'office_identity_target'
+        });
+        const store = { ...emptyStore(), inspections:[owner, target] };
+        const harness = makeHarness({ store });
+        harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+        const storedField = storedFields[storedIndex];
+        const incomingField = incomingFields[incomingIndex];
+        const overrides = {};
+        overrides[incomingField] = owner[storedField];
+        if (incomingField === 'pendingOrderId') overrides.receiptSubjectId = owner[storedField];
+        const payload = conversionPayload(harness, target.inspectionId, 0, overrides);
+        const label = `${archived ? 'archived' : 'live'} dispatcher ${storedField} reserves ${incomingField}`;
+        const before = noWriteSnapshot(harness);
+        assertFailure(harness.post('officeInspectionBeginConversion', payload, {
+          mutationId:`mutation_identity_${archived ? 1 : 0}_${storedIndex}_${incomingIndex}`
+        }), 'conversion-identity-conflict', label);
+        assertNoWriteDelta(harness, before, label, 1, 1);
+      }
+    }
+  }
+}
+
+// Record and finalize must re-check a newly supplied linked-order identity,
+// even though their frozen conversion proof already belongs to the target.
+for (const [action, status] of [
+  ['officeInspectionRecordLocalCommit','conversion-writing'],
+  ['officeInspectionFinalizeConversion','conversion-local-committed']
+]) {
+  const builder = makeHarness();
+  const owner = storedInspectionFor(builder, 'conversion-local-committed', {
+    inspectionId:`inspection_${action}_owner`, officeId:`office_${action}_owner`,
+    conversionId:`conversion_${action}_owner`, pendingOrderId:`pending_${action}_owner`,
+    conversionReceiptId:`receipt_${action}_owner`
+  });
+  const target = storedInspectionFor(builder, status, {
+    inspectionId:`inspection_${action}_target`, officeId:`office_${action}_target`,
+    conversionId:`conversion_${action}_target`, pendingOrderId:`pending_${action}_target`,
+    conversionReceiptId:`receipt_${action}_target`
+  });
+  const store = { ...emptyStore(), inspections:[owner, target] };
+  const harness = makeHarness({ store });
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const payload = conversionPayload(harness, target.inspectionId, 0, {
+    conversionId:target.conversionId, pendingOrderId:target.pendingOrderId,
+    receiptId:target.conversionReceiptId, receiptSubjectId:target.pendingOrderId,
+    linkedOrderId:owner.conversionId
+  });
+  delete payload.commercialTerms;
+  delete payload.commercialApproval;
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post(action, payload, {
+    mutationId:`mutation_${action}_identity_conflict`
+  }), 'conversion-identity-conflict', action + ' revalidates linked identity ownership');
+  assertNoWriteDelta(harness, before, action + ' linked identity conflict', 1, 1);
+}
+
+// Participation equality/skew/unverified paths fail before backup.
+for (const [label, options, rowOverrides, requestOverrides] of [
+  ['unverified source', {}, { verifiedBy:'외부' }, {}],
+  ['deadline equality', { clockValues:[REQUEST_NOW_MS, Date.parse('2026-09-30T10:00:00+09:00')] }, { deadlineAt:'2026-09-30T10:00:00+09:00' }, {}],
+  ['request equality', { clockValues:[REQUEST_NOW_MS, Date.parse('2026-09-30T09:59:59+09:00')] }, { deadlineAt:'2026-08-31T10:00:00+09:00' }, {}],
+  ['request server skew', { clockValues:[REQUEST_NOW_MS, REQUEST_NOW_MS + 6 * 60 * 1000] }, {}, {}]
+]) {
+  const store = { ...emptyStore(), opportunities:[storedOpportunity(rowOverrides)] };
+  const harness = makeHarness({ ...options, store });
+  const payload = opportunityUpdatePayload('opp_lifecycle_001', 0, { stage:'participate', ...rowOverrides });
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeOpportunityUpdate', payload, {
+    mutationId:`mutation_participate_${label.replace(/\s/g,'_')}`, ...requestOverrides
+  }), 'invalid-opportunity', label);
+  assertNoWriteDelta(harness, before, label, 2, 1);
+}
+
+{
+  const store = { ...emptyStore(), opportunities:[storedOpportunity()] };
+  const harness = makeHarness({ store });
+  const payload = opportunityUpdatePayload('opp_lifecycle_001', 0, {
+    stage:'participate', officialUrl:'https://example.com/not-kapt'
+  });
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeOpportunityUpdate', payload, {
+    mutationId:'mutation_nonofficial_kapt_url_001'
+  }), 'invalid-opportunity', 'nonofficial K-apt URL cannot enter participation');
+  assertNoWriteDelta(harness, before, 'nonofficial K-apt URL', 1, 1);
+}
+
+// A full replacement that remains in participation must revalidate the
+// replacement row; prior participation never grants a permanent bypass.
+for (const [label, options, rowOverrides] of [
+  ['participate replacement empty requirements', {}, { requirements:[] }],
+  ['participate replacement unverified source', {}, { verifiedBy:'외부' }],
+  ['participate replacement deadline equality', {
+    clockValues:[REQUEST_NOW_MS, Date.parse('2026-09-30T10:00:00+09:00')]
+  }, { deadlineAt:'2026-09-30T10:00:00+09:00' }],
+  ['participate replacement past deadline', {}, { deadlineAt:'2026-08-31T09:59:59+09:00' }],
+  ['participate replacement request server skew', {
+    clockValues:[REQUEST_NOW_MS, REQUEST_NOW_MS + 6 * 60 * 1000]
+  }, {}],
+  ['participate replacement millisecond skew boundary', {
+    clockValues:[REQUEST_NOW_MS, REQUEST_NOW_MS + 5 * 60 * 1000 + 1]
+  }, {}]
+]) {
+  const store = { ...emptyStore(), opportunities:[storedOpportunity({ stage:'participate' })] };
+  const harness = makeHarness({ ...options, store });
+  let participationCalls = 0;
+  const originalParticipate = harness.sandbox.ooCanOpportunityParticipate_;
+  harness.sandbox.ooCanOpportunityParticipate_ = function(...args) {
+    participationCalls += 1;
+    return originalParticipate(...args);
+  };
+  const payload = opportunityUpdatePayload('opp_lifecycle_001', 0, { stage:'participate', ...rowOverrides });
+  const before = noWriteSnapshot(harness);
+  assertFailure(harness.post('officeOpportunityUpdate', payload, {
+    mutationId:`mutation_revalidate_${label.replace(/\s/g,'_')}`
+  }), 'invalid-opportunity', label);
+  equal(participationCalls, 1, label + ' calls participation guard once');
+  assertNoWriteDelta(harness, before, label, 2, 1);
+}
+
+// Generic Task 3 rollback must remain action-independent for all exact 18 Task 4 routes.
+function rollbackCases() {
+  const builder = makeHarness();
+  const pending = storedInspectionFor(builder, 'conversion-pending');
+  const writing = storedInspectionFor(builder, 'conversion-writing');
+  const committed = storedInspectionFor(builder, 'conversion-local-committed');
+  const archivedPilot = storedPilot('pilot_restore_001', '2026-08-31T10:00:00+09:00', { archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관', restoredAt:null });
+  const archivedInspection = storedInspectionFor(builder, 'checked', { inspectionId:'inspection_restore_001', archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관' });
+  const archivedOpportunity = storedOpportunity({ opportunityId:'opp_restore_001', archivedAt:'2026-08-31T09:00:00+09:00', archivedBy:'representative', archiveReason:'보관' });
+  return [
+    ['officePilotUpdate', { ...emptyStore(), pilots:[storedPilot()] }, pilotUpdatePayload('pilot_seed_1', 0)],
+    ['officePilotArchive', { ...emptyStore(), pilots:[storedPilot()] }, { pilotId:'pilot_seed_1', expectedRevision:0, archiveReason:'종료' }],
+    ['officePilotRestore', { ...emptyStore(), pilots:[archivedPilot] }, { pilotId:'pilot_restore_001', expectedRevision:0 }],
+    ['officeConsentRecord', emptyStore(), consentRecordPayload()],
+    ['officeConsentWithdraw', { ...emptyStore(), consents:[storedConsent()] }, { consentId:'consent_lifecycle_001', expectedRevision:0, withdrawnBy:'대표', withdrawalReason:'철회' }],
+    ['officeInspectionCreate', emptyStore(), inspectionCreatePayload(builder)],
+    ['officeInspectionUpdate', { ...emptyStore(), inspections:[storedInspectionFor(builder)] }, inspectionUpdatePayload('inspection_lifecycle_001', 0)],
+    ['officeInspectionArchive', { ...emptyStore(), inspections:[storedInspectionFor(builder, 'checked')] }, { inspectionId:'inspection_lifecycle_001', expectedRevision:0, archiveReason:'종료' }],
+    ['officeInspectionRestore', { ...emptyStore(), inspections:[archivedInspection] }, { inspectionId:'inspection_restore_001', expectedRevision:0 }],
+    ['officeInspectionBeginConversion', { ...emptyStore(), inspections:[storedInspectionFor(builder)] }, conversionPayload(builder, 'inspection_lifecycle_001', 0)],
+    ['officeInspectionArmLocalCommit', { ...emptyStore(), inspections:[pending] }, (() => { const p=conversionPayload(builder,'inspection_lifecycle_001',0); delete p.commercialTerms; delete p.commercialApproval; return p; })()],
+    ['officeInspectionRecordLocalCommit', { ...emptyStore(), inspections:[writing] }, (() => { const p=conversionPayload(builder,'inspection_lifecycle_001',0,{linkedOrderId:'pending_lifecycle_001'}); delete p.commercialTerms; delete p.commercialApproval; return p; })()],
+    ['officeInspectionFinalizeConversion', { ...emptyStore(), inspections:[committed] }, (() => { const p=conversionPayload(builder,'inspection_lifecycle_001',0,{linkedOrderId:'pending_lifecycle_001'}); delete p.commercialTerms; delete p.commercialApproval; return p; })()],
+    ['officeInspectionCancelConversion', { ...emptyStore(), inspections:[pending] }, { inspectionId:'inspection_lifecycle_001', conversionId:'conversion_lifecycle_001', expectedRevision:0 }],
+    ['officeOpportunityCreate', emptyStore(), opportunityPayload()],
+    ['officeOpportunityUpdate', { ...emptyStore(), opportunities:[storedOpportunity()] }, opportunityUpdatePayload('opp_lifecycle_001', 0)],
+    ['officeOpportunityArchive', { ...emptyStore(), opportunities:[storedOpportunity()] }, { opportunityId:'opp_lifecycle_001', expectedRevision:0, archiveReason:'종료' }],
+    ['officeOpportunityRestore', { ...emptyStore(), opportunities:[archivedOpportunity] }, { opportunityId:'opp_restore_001', expectedRevision:0 }]
+  ];
+}
+
+const task4RollbackCases = rollbackCases();
+equal(task4RollbackCases.length, 18, 'rollback matrix covers exact 18 routes');
+for (let index = 0; index < task4RollbackCases.length; index += 1) {
+  const [action, store, payload] = task4RollbackCases[index];
+  const invalidHarness = makeHarness({ store });
+  invalidHarness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const invalidBefore = noWriteSnapshot(invalidHarness);
+  assertFailure(invalidHarness.post(action, { ...payload, surprise:true }, { mutationId:`mutation_invalid_${String(index).padStart(16,'0')}` }), 'unknown-field', action + ' prepare failure');
+  assertNoWriteDelta(invalidHarness, invalidBefore, action + ' prepare failure', 1, 1);
+
+  const writeHarness = makeHarness({ store, hooks:{ afterSetContent({call,data}) { if (call === 1) data.bytes = Buffer.concat([data.bytes,Buffer.from(' ')]); } } });
+  writeHarness.sandbox.ooConversionOperationallyEnabled_ = function() { return true; };
+  const sourceBefore = Buffer.from(writeHarness.state.files.get(SOURCE_ID).bytes);
+  assertFailure(writeHarness.post(action, payload, { mutationId:`mutation_rollback_${String(index).padStart(16,'0')}` }), 'write-verify-failed', action + ' write rollback');
+  equal(writeHarness.state.sourceWrites, 2, action + ' writes candidate then exact restore');
+  deepEqual(writeHarness.state.files.get(SOURCE_ID).bytes, sourceBefore, action + ' restores exact source');
+  equal(writeHarness.state.properties.OFFICE_OPS_RECOVERY_REQUIRED, '0', action + ' clears latch after verified restore');
 }
 
 console.log(`office ops server tests: PASS (${assertions} assertions)`);

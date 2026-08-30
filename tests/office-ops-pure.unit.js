@@ -64,6 +64,10 @@ const DEVICE_ID = '550e8400-e29b-41d4-a716-446655440000';
 const MUTATION_ID = '550e8400-e29b-41d4-a716-446655440001';
 const TOKEN = 'TEST_ONLY_OFFICE_OPS_TOKEN';
 
+function sha256Text(value) {
+  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
 function tombstone() {
   return { archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null };
 }
@@ -100,7 +104,7 @@ function validConsent(overrides = {}) {
     consentId: 'consent_test', subjectType: 'aptOrder', subjectId: 'order01',
     purpose: 'preventive-reinspection', intervalMonths: 6, channel: 'phone',
     consentVersion: 'reinspection-v1', consentTextSnapshot: '재점검 연락에 동의합니다.',
-    consentTextSha256: 'a'.repeat(64), recordedBy: '대표', consentedAt: NOW,
+    consentTextSha256: sha256Text('재점검 연락에 동의합니다.'), recordedBy: '대표', consentedAt: NOW,
     withdrawnAt: null, withdrawnBy: null, withdrawalReason: null, nextDueAt: '2027-02-28',
     lastContactedAt: null, evidenceType: 'message', evidenceId: 'record_test',
     audit: [{ event: 'recorded', at: NOW, actor: '대표', reason: null }], ...overrides
@@ -249,7 +253,7 @@ equal(consent.ok, true);
 equal(sandbox.ooNextDueAtKst_(NOW, 6), '2027-02-28');
 equal(sandbox.ooNextDueAtKst_('2028-02-29T10:00:00+09:00', 12), '2029-02-28');
 equal(sandbox.ooValidateConsent_(validConsent({ intervalMonths: 9 })).error, 'invalid-consent');
-equal(sandbox.ooValidateConsent_(validConsent({ consentTextSnapshot: '동'.repeat(20000) })).ok, true);
+equal(sandbox.ooValidateConsent_(validConsent({ consentTextSnapshot: '동'.repeat(20000), consentTextSha256:sha256Text('동'.repeat(20000)) })).ok, true);
 equal(sandbox.ooValidateConsent_(validConsent({ evidenceId: 'a'.repeat(200) })).ok, true);
 equal(sandbox.ooValidateConsent_(validConsent({ evidenceId: 'a'.repeat(201) })).error, 'invalid-consent');
 equal(sandbox.ooValidateConsent_(validConsent({ lastContactedAt: '2026-09-01T10:00:00+09:00' })).error, 'invalid-consent');
@@ -263,7 +267,7 @@ const consentCreatePayload = {
   idempotencyKey: 'create_consent_123456', subjectType: 'aptOrder', subjectId: 'order01',
   purpose: 'preventive-reinspection', intervalMonths: 6, channel: 'phone',
   consentVersion: 'reinspection-v1', consentTextSnapshot: '재점검 연락에 동의합니다.',
-  consentTextSha256: 'a'.repeat(64), recordedBy: '대표', consentedAt: NOW,
+  consentTextSha256: sha256Text('재점검 연락에 동의합니다.'), recordedBy: '대표', consentedAt: NOW,
   evidenceType: 'message', evidenceId: 'record_test'
 };
 equal(sandbox.ooValidateConsentCreate_(consentCreatePayload, '2026-08-31T10:00:01+09:00').ok, true);
@@ -457,8 +461,8 @@ const canonicalCases = {
     expected: { pilotId:'pilot_test', expectedRevision:9 }
   },
   officeConsentRecord: {
-    input: { evidenceId:'record_test', evidenceType:'message', consentedAt:NOW, recordedBy:'대표', consentTextSha256:'a'.repeat(64), consentTextSnapshot:'재점검 연락 선택 동의 원문', consentVersion:'reinspection-v1', channel:'kakao', intervalMonths:12, purpose:'preventive-reinspection', subjectId:'order01', subjectType:'aptOrder', idempotencyKey:'create_consent_123456' },
-    expected: { idempotencyKey:'create_consent_123456', subjectType:'aptOrder', subjectId:'order01', purpose:'preventive-reinspection', intervalMonths:12, channel:'kakao', consentVersion:'reinspection-v1', consentTextSnapshot:'재점검 연락 선택 동의 원문', consentTextSha256:'a'.repeat(64), recordedBy:'대표', consentedAt:NOW, evidenceType:'message', evidenceId:'record_test' }
+    input: { evidenceId:'record_test', evidenceType:'message', consentedAt:NOW, recordedBy:'대표', consentTextSha256:sha256Text('재점검 연락 선택 동의 원문'), consentTextSnapshot:'재점검 연락 선택 동의 원문', consentVersion:'reinspection-v1', channel:'kakao', intervalMonths:12, purpose:'preventive-reinspection', subjectId:'order01', subjectType:'aptOrder', idempotencyKey:'create_consent_123456' },
+    expected: { idempotencyKey:'create_consent_123456', subjectType:'aptOrder', subjectId:'order01', purpose:'preventive-reinspection', intervalMonths:12, channel:'kakao', consentVersion:'reinspection-v1', consentTextSnapshot:'재점검 연락 선택 동의 원문', consentTextSha256:sha256Text('재점검 연락 선택 동의 원문'), recordedBy:'대표', consentedAt:NOW, evidenceType:'message', evidenceId:'record_test' }
   },
   officeConsentWithdraw: {
     input: { withdrawalReason:'철회 요청', withdrawnBy:'대표', expectedRevision:10, consentId:'consent_test' },
@@ -640,5 +644,68 @@ deepEqual(Array.from(ordered.map(row => [row.eligibleAt, row.recordType, row.rec
   ['2027-08-31T10:00:00+09:00', 'opportunity', 'opp_test'],
   ['2027-08-31T10:00:00+09:00', 'pilot', 'pilot_test']
 ]);
+
+// Task 4 RED: strict consent proof, human-only K-apt participation, conversion
+// transitions, and store-wide conversion identity ownership.
+equal(sandbox.ooValidateConsent_(validConsent({ consentTextSha256:'0'.repeat(64) })).error, 'invalid-consent', 'stored consent hash binds exact text');
+equal(sandbox.ooValidateConsentCreate_({ ...consentCreatePayload, consentTextSha256:'0'.repeat(64) }, NOW).error, 'invalid-consent', 'create consent hash binds exact text');
+
+const beforeDeadline = Date.parse('2026-08-31T10:00:00+09:00');
+const deadline = Date.parse('2026-09-01T10:00:00+09:00');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity(), beforeDeadline, beforeDeadline), true, 'verified official K-apt opportunity may enter participation');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity({ verifiedBy:'외부' }), beforeDeadline, beforeDeadline), false, 'unverified opportunity cannot participate');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity({ requirements:[] }), beforeDeadline, beforeDeadline), false, 'participation requires checked documents');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity(), deadline, beforeDeadline), false, 'deadline equality is closed');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity(), beforeDeadline, deadline), false, 'request clock must also be before deadline');
+equal(sandbox.ooCanOpportunityParticipate_(validOpportunity({ observedAt:'2026-09-01T10:00:01+09:00' }), beforeDeadline, beforeDeadline), false, 'future observation is unverified');
+
+const lifecycleTerms = validTerms();
+const lifecycleTermsHash = sandbox.ooTermsSha256_(lifecycleTerms);
+const lifecycleApproval = validApproval(lifecycleTermsHash);
+const lifecycleProof = {
+  inspectionId:'inspection_lifecycle', conversionId:'conversion_lifecycle_001', pendingOrderId:'pending_lifecycle_001',
+  receiptId:lifecycleApproval.receiptId, receiptSubjectType:'aptOrder', receiptSubjectId:'pending_lifecycle_001',
+  termsSha256:lifecycleTermsHash, commercialTerms:lifecycleTerms, commercialApproval:lifecycleApproval, expectedRevision:0
+};
+lifecycleApproval.subjectId = lifecycleProof.pendingOrderId;
+const lifecycleInspection = validInspection({ inspectionId:'inspection_lifecycle', commercialTerms:lifecycleTerms });
+equal(sandbox.ooConversionTransition_(lifecycleInspection, 'begin', lifecycleProof, NOW).ok, true, 'begin freezes proof');
+equal(lifecycleInspection.status, 'conversion-pending');
+equal(lifecycleInspection.conversionStartedAt, NOW);
+deepEqual(lifecycleInspection.commercialApproval, lifecycleApproval);
+equal(sandbox.ooConversionTransition_(lifecycleInspection, 'arm', lifecycleProof, '2026-08-31T10:00:01+09:00').ok, true, 'arm advances pending');
+equal(lifecycleInspection.status, 'conversion-writing');
+const recordProof = { ...lifecycleProof, linkedOrderId:lifecycleProof.pendingOrderId };
+equal(sandbox.ooConversionTransition_(lifecycleInspection, 'record', recordProof, '2026-08-31T10:00:02+09:00').ok, true, 'record binds local order');
+equal(lifecycleInspection.status, 'conversion-local-committed');
+equal(lifecycleInspection.linkedOrderId, lifecycleProof.pendingOrderId);
+equal(sandbox.ooConversionTransition_(lifecycleInspection, 'finalize', recordProof, '2026-08-31T10:00:03+09:00').ok, true, 'finalize closes conversion');
+equal(lifecycleInspection.status, 'converted');
+equal(sandbox.ooConversionTransition_(lifecycleInspection, 'cancel', lifecycleProof, NOW).error, 'invalid-conversion-state', 'cancel is blocked after arm');
+
+const cancelInspection = validInspection({ inspectionId:'inspection_cancel', commercialTerms:lifecycleTerms });
+equal(sandbox.ooConversionTransition_(cancelInspection, 'begin', { ...lifecycleProof, inspectionId:'inspection_cancel' }, NOW).ok, true);
+equal(sandbox.ooConversionTransition_(cancelInspection, 'cancel', { inspectionId:'inspection_cancel', conversionId:lifecycleProof.conversionId, expectedRevision:1 }, '2026-08-31T10:00:01+09:00').ok, true);
+deepEqual({
+  status:cancelInspection.status, approval:cancelInspection.commercialApproval, conversionId:cancelInspection.conversionId,
+  termsHash:cancelInspection.conversionTermsSha256, receipt:cancelInspection.conversionReceiptId,
+  pending:cancelInspection.pendingOrderId, linked:cancelInspection.linkedOrderId, started:cancelInspection.conversionStartedAt
+}, { status:'proposal', approval:null, conversionId:null, termsHash:null, receipt:null, pending:null, linked:null, started:null });
+deepEqual(cancelInspection.commercialTerms, JSON.parse(JSON.stringify(sandbox.ooCanonicalCommercialTerms_(lifecycleTerms).value)), 'cancel retains normalized proposal terms');
+
+const identityOwner = validInspection({
+  inspectionId:'inspection_identity_owner', status:'converted', commercialTerms:lifecycleTerms,
+  commercialApproval:lifecycleApproval, conversionId:'conversion_identity_001', conversionTermsSha256:lifecycleTermsHash,
+  conversionReceiptId:lifecycleApproval.receiptId, pendingOrderId:lifecycleProof.pendingOrderId,
+  linkedOrderId:lifecycleProof.pendingOrderId, conversionStartedAt:NOW
+});
+const identityOther = validInspection({
+  inspectionId:'inspection_identity_other', status:'conversion-pending', commercialTerms:lifecycleTerms,
+  commercialApproval:{ ...lifecycleApproval, receiptId:'receipt_identity_002', subjectId:'pending_identity_002' },
+  conversionId:lifecycleProof.pendingOrderId, conversionTermsSha256:lifecycleTermsHash,
+  conversionReceiptId:'receipt_identity_002', pendingOrderId:'pending_identity_002', linkedOrderId:null, conversionStartedAt:NOW
+});
+equal(sandbox.ooValidateStore_({ ...emptyStore, inspections:[identityOwner, identityOther] }).error, 'invalid-store', 'cross-inspection identities collide across field names');
+equal(sandbox.ooValidateStore_({ ...emptyStore, inspections:[identityOwner] }).ok, true, 'same-owner pending and linked equality remains legal');
 
 console.log('office ops pure tests: PASS (' + assertionCount + ' assertions)');

@@ -289,6 +289,7 @@ function ooValidateConsent_(value) {
       !ooValidSubjectId_(value.subjectId) || value.purpose !== 'preventive-reinspection' || [6, 12].indexOf(value.intervalMonths) < 0 ||
       ['sms', 'phone', 'kakao'].indexOf(value.channel) < 0 || value.consentVersion !== 'reinspection-v1' ||
       (typeof value.consentTextSnapshot !== 'string' || !value.consentTextSnapshot) || !/^[0-9a-f]{64}$/.test(value.consentTextSha256 || '') ||
+      ooSha256Hex_(value.consentTextSnapshot) !== value.consentTextSha256 ||
       !ooValidBoundedString_(value.recordedBy, 1, 100) || ooParseKstDateTime_(value.consentedAt) === null ||
       value.nextDueAt !== ooNextDueAtKst_(value.consentedAt, value.intervalMonths) || value.lastContactedAt !== null ||
       ['signed-document', 'message', 'recorded-call-note'].indexOf(value.evidenceType) < 0 || !/^[A-Za-z0-9_-]{1,200}$/.test(value.evidenceId || '') ||
@@ -524,7 +525,93 @@ function ooValidateOpportunityCreate_(payload, nowKst) {
 function ooCanOpportunityParticipate_(opportunity, serverNowMs, requestTimestampMs) {
   if (!ooValidateOpportunity_(opportunity).ok || !Number.isFinite(serverNowMs) || !Number.isFinite(requestTimestampMs) ||
       Math.abs(serverNowMs - requestTimestampMs) > 5 * 60 * 1000) return false;
-  return Date.parse(opportunity.deadlineAt) > serverNowMs;
+  var observedAtMs = Date.parse(opportunity.observedAt);
+  var deadlineAtMs = Date.parse(opportunity.deadlineAt);
+  return opportunity.officialUrl === ooOfficialKaptUrl_(opportunity.officialUrl) &&
+    (opportunity.verifiedBy === '대표' || opportunity.verifiedBy === 'representative') &&
+    opportunity.requirements.length > 0 && observedAtMs <= serverNowMs && observedAtMs <= requestTimestampMs &&
+    deadlineAtMs > serverNowMs && deadlineAtMs > requestTimestampMs;
+}
+
+function ooVisible_(record) {
+  return !!record && record.archivedAt === null;
+}
+
+function ooConversionProofMatches_(inspection, payload) {
+  return !!inspection && !!payload && payload.conversionId === inspection.conversionId &&
+    payload.pendingOrderId === inspection.pendingOrderId && payload.receiptId === inspection.conversionReceiptId &&
+    payload.receiptSubjectType === 'aptOrder' && payload.receiptSubjectId === inspection.pendingOrderId &&
+    payload.termsSha256 === inspection.conversionTermsSha256;
+}
+
+function ooConversionProofError_(inspection, payload) {
+  if (!inspection || !payload || payload.conversionId !== inspection.conversionId ||
+      payload.pendingOrderId !== inspection.pendingOrderId) return ooFail_('invalid-conversion-state');
+  if (payload.receiptId !== inspection.conversionReceiptId || payload.receiptSubjectType !== 'aptOrder' ||
+      payload.receiptSubjectId !== inspection.pendingOrderId) return ooFail_('receipt-mismatch');
+  if (payload.termsSha256 !== inspection.conversionTermsSha256) return ooFail_('terms-mismatch');
+  return { ok: true };
+}
+
+function ooReplaceRecord_(target, source) {
+  Object.keys(source).forEach(function(key) { target[key] = source[key]; });
+  return target;
+}
+
+function ooConversionTransition_(inspection, command, payload, nowKst) {
+  if (!inspection || typeof inspection !== 'object' || !payload || typeof payload !== 'object' ||
+      ooParseKstDateTime_(nowKst) === null || inspection.archivedAt !== null) return ooFail_('invalid-conversion-state');
+  var candidate = ooClone_(inspection);
+  if (command === 'begin') {
+    if (candidate.status !== 'proposal') return ooFail_('invalid-conversion-state');
+    var terms = ooCanonicalCommercialTerms_(payload.commercialTerms);
+    if (!terms.ok || payload.termsSha256 !== terms.sha256Hex) return ooFail_('terms-mismatch');
+    var approval = ooValidateApprovalMetadata_(payload.commercialApproval);
+    if (!approval.ok) return approval;
+    if (!ooApprovalProofMatches_(payload.commercialApproval, payload, terms.sha256Hex)) return ooFail_('receipt-mismatch');
+    if (payload.conversionId === payload.pendingOrderId || payload.conversionId === payload.receiptId ||
+        payload.pendingOrderId === payload.receiptId) return ooFail_('conversion-identity-conflict');
+    candidate.commercialTerms = terms.value;
+    candidate.commercialApproval = ooCanonicalNested_(OO_APPROVAL_META_FIELDS_, payload.commercialApproval);
+    candidate.status = 'conversion-pending';
+    candidate.conversionId = payload.conversionId;
+    candidate.conversionTermsSha256 = payload.termsSha256;
+    candidate.conversionReceiptId = payload.receiptId;
+    candidate.pendingOrderId = payload.pendingOrderId;
+    candidate.linkedOrderId = null;
+    candidate.conversionStartedAt = nowKst;
+  } else if (command === 'cancel') {
+    if (candidate.status !== 'conversion-pending' || payload.conversionId !== candidate.conversionId) return ooFail_('invalid-conversion-state');
+    candidate.status = 'proposal';
+    candidate.commercialApproval = null;
+    candidate.conversionId = null;
+    candidate.conversionTermsSha256 = null;
+    candidate.conversionReceiptId = null;
+    candidate.pendingOrderId = null;
+    candidate.linkedOrderId = null;
+    candidate.conversionStartedAt = null;
+  } else {
+    var expectedStatus = { arm:'conversion-pending', record:'conversion-writing', finalize:'conversion-local-committed' }[command];
+    if (!expectedStatus || candidate.status !== expectedStatus) return ooFail_('invalid-conversion-state');
+    var proof = ooConversionProofError_(candidate, payload);
+    if (!proof.ok) return proof;
+    if (command === 'arm') {
+      if (candidate.linkedOrderId !== null) return ooFail_('invalid-conversion-state');
+      candidate.status = 'conversion-writing';
+    } else if (command === 'record') {
+      if (payload.linkedOrderId !== candidate.pendingOrderId || candidate.linkedOrderId !== null) return ooFail_('invalid-conversion-state');
+      candidate.linkedOrderId = payload.linkedOrderId;
+      candidate.status = 'conversion-local-committed';
+    } else {
+      if (payload.linkedOrderId !== candidate.linkedOrderId || candidate.linkedOrderId !== candidate.pendingOrderId) return ooFail_('invalid-conversion-state');
+      candidate.status = 'converted';
+    }
+  }
+  candidate.updatedAt = nowKst;
+  var validated = ooValidateInspection_(candidate);
+  if (!validated.ok) return validated;
+  ooReplaceRecord_(inspection, candidate);
+  return { ok: true };
 }
 
 function ooValidateArchivePayload_(payload, idField, idPattern) {
@@ -655,6 +742,29 @@ function ooValidateAuditRow_(value) {
   return { ok: true, value: value };
 }
 
+function ooValidateConversionIdentityIndex_(inspections) {
+  if (!Array.isArray(inspections)) return ooFail_('invalid-store');
+  var owners = {};
+  var fields = ['conversionId', 'pendingOrderId', 'linkedOrderId', 'conversionReceiptId'];
+  for (var rowIndex = 0; rowIndex < inspections.length; rowIndex += 1) {
+    var row = inspections[rowIndex];
+    var local = {};
+    for (var fieldIndex = 0; fieldIndex < fields.length; fieldIndex += 1) {
+      var field = fields[fieldIndex];
+      var value = row[field];
+      if (value === null) continue;
+      if (local[value]) {
+        var pendingLinkedPair = (field === 'linkedOrderId' && local[value] === 'pendingOrderId') ||
+          (field === 'pendingOrderId' && local[value] === 'linkedOrderId');
+        if (!pendingLinkedPair) return ooFail_('invalid-store');
+      } else local[value] = field;
+      if (owners[value] && owners[value] !== row.inspectionId) return ooFail_('invalid-store');
+      owners[value] = row.inspectionId;
+    }
+  }
+  return { ok: true };
+}
+
 function ooValidateStore_(store) {
   var required = ['schemaVersion', 'revision', 'updatedAt', 'pilots', 'consents', 'inspections', 'opportunities', 'audit'];
   var fields = ooValidateStoredFields_(store, required, 'invalid-store');
@@ -683,6 +793,8 @@ function ooValidateStore_(store) {
     var auditResult = ooValidateAuditRow_(store.audit[auditIndex]);
     if (!auditResult.ok) return auditResult;
   }
+  var conversionIdentities = ooValidateConversionIdentityIndex_(store.inspections);
+  if (!conversionIdentities.ok) return conversionIdentities;
   return { ok: true, value: store };
 }
 

@@ -85,6 +85,8 @@ function ooMutateLocked_(request, requestNowMs) {
   if (idempotent) return idempotent;
   var domainReplay = ooFindSafeConversionReplay_(loaded.store, request, canonical);
   if (domainReplay) return domainReplay;
+  var replayConflict = ooConversionReplayConflict_(loaded.store, request, canonical);
+  if (replayConflict) return replayConflict;
 
   var revision = ooValidateExpectedRevisionInsideLock_(request, loaded.store.revision);
   if (!revision.ok) return revision;
@@ -93,7 +95,7 @@ function ooMutateLocked_(request, requestNowMs) {
 
   var mutationNowMs = ooNowMs_();
   var mutationNowKst = ooFormatKst_(mutationNowMs);
-  var prepared = ooPrepareMutation_(loaded.store, request, 'representative', canonical, mutationNowKst);
+  var prepared = ooPrepareMutation_(loaded.store, request, 'representative', canonical, mutationNowKst, mutationNowMs);
   if (!prepared.ok) return prepared;
   var backup = ooBackupPair_(source, loaded, mutationNowMs);
   if (!backup.ok) return backup;
@@ -333,22 +335,85 @@ function ooFindSafeConversionReplay_(store, request, canonical) {
   if (matches.length > 1) return ooFail_('invalid-store');
   if (!matches.length) return null;
   var row = matches[0];
-  if (row !== store.audit[store.audit.length - 1] || row.preMutationRevision !== body.expectedRevision ||
-      store.revision !== row.preMutationRevision + 1 || store.updatedAt !== row.at) return null;
+  if (row !== store.audit[store.audit.length - 1]) return null;
+  if (row.preMutationRevision !== body.expectedRevision || store.revision !== row.preMutationRevision + 1 ||
+      store.updatedAt !== row.at) return ooFail_('invalid-store');
   var inspections = store.inspections.filter(function(value) { return value.inspectionId === body.inspectionId; });
   if (inspections.length !== 1) return ooFail_('invalid-store');
   var inspection = inspections[0];
+  if (inspection.archivedAt !== null) return ooFail_('invalid-store');
   if (inspection.status !== stage || inspection.updatedAt !== row.at ||
       inspection.conversionId !== body.conversionId || inspection.pendingOrderId !== body.pendingOrderId ||
-      inspection.conversionReceiptId !== body.receiptId || inspection.conversionTermsSha256 !== body.termsSha256) return null;
+      inspection.conversionReceiptId !== body.receiptId || inspection.conversionTermsSha256 !== body.termsSha256) return ooFail_('invalid-store');
   if (request.action === 'officeInspectionBeginConversion') {
     if (inspection.conversionStartedAt !== row.at || inspection.linkedOrderId !== null ||
         !ooSameJson_(inspection.commercialTerms, body.commercialTerms) ||
-        !ooSameJson_(inspection.commercialApproval, body.commercialApproval)) return null;
+        !ooSameJson_(inspection.commercialApproval, body.commercialApproval)) return ooFail_('invalid-store');
   } else if (request.action === 'officeInspectionArmLocalCommit') {
-    if (inspection.linkedOrderId !== null) return null;
-  } else if (inspection.linkedOrderId !== body.linkedOrderId) return null;
+    if (inspection.linkedOrderId !== null) return ooFail_('invalid-store');
+  } else if (inspection.linkedOrderId !== body.linkedOrderId) return ooFail_('invalid-store');
   return ooAckFromAudit_(store, row);
+}
+
+function ooInspectionById_(store, inspectionId) {
+  var matches = store.inspections.filter(function(row) { return row.inspectionId === inspectionId; });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function ooConversionReplayConflict_(store, request, canonical) {
+  if (!ooIsConversionAction_(request.action)) return null;
+  var body;
+  try { body = JSON.parse(canonical.json).payload; }
+  catch (_) { return ooFail_('invalid-store'); }
+  var inspection = ooInspectionById_(store, body.inspectionId);
+  if (!inspection) return null;
+  var reached = {
+    officeInspectionBeginConversion: 'conversion-pending',
+    officeInspectionArmLocalCommit: 'conversion-writing',
+    officeInspectionRecordLocalCommit: 'conversion-local-committed',
+    officeInspectionFinalizeConversion: 'converted'
+  }[request.action];
+  var matches = store.audit.filter(function(row) {
+    return row.action === request.action && row.id === body.inspectionId && row.preMutationRevision === body.expectedRevision;
+  });
+  if (matches.length > 1) return ooFail_('invalid-store');
+  if (!matches.length) {
+    var latestTransition = null;
+    for (var auditIndex = 0; auditIndex < store.audit.length; auditIndex += 1) {
+      var auditRow = store.audit[auditIndex];
+      if (auditRow.id === body.inspectionId && ooIsConversionAction_(auditRow.action)) latestTransition = auditRow;
+    }
+    var stateAt = request.action === 'officeInspectionBeginConversion' ? inspection.conversionStartedAt : inspection.updatedAt;
+    var priorExplainsState = !!latestTransition && latestTransition.action === request.action && latestTransition.at === stateAt;
+    if (!priorExplainsState && reached && inspection.status === reached && store.revision === body.expectedRevision + 1 &&
+        store.updatedAt === inspection.updatedAt) return ooFail_('invalid-store');
+    return null;
+  }
+  var stageOrder = {
+    'proposal': 0,
+    'conversion-pending': 1,
+    'conversion-writing': 2,
+    'conversion-local-committed': 3,
+    'converted': 4
+  };
+  if (request.action === 'officeInspectionCancelConversion') {
+    return inspection.status === 'proposal' ? ooFail_('invalid-conversion-state') : null;
+  }
+  if (stageOrder[inspection.status] > stageOrder[reached]) return ooFail_('invalid-conversion-state');
+  var audit = matches[0];
+  var immediate = audit === store.audit[store.audit.length - 1] && store.revision === audit.preMutationRevision + 1 && store.updatedAt === audit.at;
+  if (!immediate || inspection.status !== reached) return null;
+  if (body.conversionId !== inspection.conversionId || body.pendingOrderId !== inspection.pendingOrderId) return ooFail_('invalid-conversion-state');
+  if (body.receiptId !== inspection.conversionReceiptId || body.receiptSubjectType !== 'aptOrder' ||
+      body.receiptSubjectId !== inspection.pendingOrderId) return ooFail_('receipt-mismatch');
+  if (body.termsSha256 !== inspection.conversionTermsSha256) return ooFail_('terms-mismatch');
+  if (request.action === 'officeInspectionBeginConversion') {
+    if (!ooSameJson_(inspection.commercialTerms, body.commercialTerms)) return ooFail_('terms-mismatch');
+    if (!ooSameJson_(inspection.commercialApproval, body.commercialApproval)) return ooFail_('receipt-mismatch');
+  }
+  if ((request.action === 'officeInspectionRecordLocalCommit' || request.action === 'officeInspectionFinalizeConversion') &&
+      body.linkedOrderId !== inspection.linkedOrderId) return ooFail_('invalid-conversion-state');
+  return ooFail_('invalid-store');
 }
 
 function ooValidateExpectedRevisionInsideLock_(request, revision) {
@@ -357,6 +422,35 @@ function ooValidateExpectedRevisionInsideLock_(request, revision) {
 }
 
 function ooValidateConversionIdentityOwnership_(store, request, canonical) {
+  if (['officeInspectionBeginConversion', 'officeInspectionRecordLocalCommit', 'officeInspectionFinalizeConversion'].indexOf(request.action) < 0) return { ok: true };
+  var body;
+  try { body = JSON.parse(canonical.json).payload; }
+  catch (_) { return ooFail_('invalid-store'); }
+  var incoming = [
+    { field: 'conversionId', value: body.conversionId },
+    { field: 'pendingOrderId', value: body.pendingOrderId },
+    { field: 'receiptId', value: body.receiptId }
+  ];
+  if (body.linkedOrderId) incoming.push({ field: 'linkedOrderId', value: body.linkedOrderId });
+  for (var left = 0; left < incoming.length; left += 1) {
+    for (var right = left + 1; right < incoming.length; right += 1) {
+      if (incoming[left].value !== incoming[right].value) continue;
+      var pendingLinked = (incoming[left].field === 'pendingOrderId' && incoming[right].field === 'linkedOrderId') ||
+        (incoming[left].field === 'linkedOrderId' && incoming[right].field === 'pendingOrderId');
+      if (!pendingLinked) return ooFail_('conversion-identity-conflict');
+    }
+  }
+  var fields = ['conversionId', 'pendingOrderId', 'linkedOrderId', 'conversionReceiptId'];
+  for (var rowIndex = 0; rowIndex < store.inspections.length; rowIndex += 1) {
+    var row = store.inspections[rowIndex];
+    if (row.inspectionId === body.inspectionId) continue;
+    for (var fieldIndex = 0; fieldIndex < fields.length; fieldIndex += 1) {
+      if (row[fields[fieldIndex]] === null) continue;
+      for (var incomingIndex = 0; incomingIndex < incoming.length; incomingIndex += 1) {
+        if (incoming[incomingIndex].value === row[fields[fieldIndex]]) return ooFail_('conversion-identity-conflict');
+      }
+    }
+  }
   return { ok: true };
 }
 
@@ -373,48 +467,226 @@ function ooUniqueRecordId_(store, kind) {
   return '';
 }
 
-function ooPrepareMutation_(store, request, actor, canonical, mutationNowKst) {
-  if (actor !== 'representative') return ooFail_('server-error');
-  if (request.action !== 'officePilotCreate') return ooFail_('not-implemented');
-  var payload;
-  try { payload = JSON.parse(canonical.json).payload; }
-  catch (_) { return ooFail_('invalid-input'); }
-  var valid = ooValidatePilotCreate_(payload, mutationNowKst);
-  if (!valid.ok) return valid;
-  var id = ooUniqueRecordId_(store, 'pilot');
-  if (!id) return ooFail_('server-error');
-  var record = {
-    pilotId: id,
-    complexName: payload.complexName,
-    source: payload.source,
-    stage: payload.stage,
-    pilotStartedAt: payload.pilotStartedAt,
-    pilotEndsAt: payload.pilotEndsAt,
-    extensionApprovedAt: payload.extensionApprovedAt,
-    nextActionAt: payload.nextActionAt,
-    owner: payload.owner,
-    notes: payload.notes,
-    createdAt: mutationNowKst,
-    updatedAt: mutationNowKst,
-    retentionStartedAt: payload.stage === 'closed' ? mutationNowKst : null,
-    archivedAt: null,
-    archivedBy: null,
-    archiveReason: null,
-    restoredAt: null
+function ooIndexById_(rows, key, id) {
+  var found = -1;
+  for (var index = 0; index < rows.length; index += 1) {
+    if (rows[index][key] !== id) continue;
+    if (found >= 0) return -2;
+    found = index;
+  }
+  return found;
+}
+
+function ooLifecycleSnapshot_(record) {
+  return {
+    archivedAt: record.archivedAt,
+    archivedBy: record.archivedBy,
+    archiveReason: record.archiveReason,
+    restoredAt: record.restoredAt
   };
-  if (!ooValidatePilot_(record).ok) return ooFail_('invalid-pilot');
-  var nextStore = ooClone_(store);
-  nextStore.pilots.push(record);
+}
+
+function ooPreparedMutation_(store, request, canonical, payload, id, lifecycleBefore) {
   return {
     ok: true,
-    store: nextStore,
+    store: store,
     id: id,
     action: request.action,
     mutationId: request.mutationId,
-    idempotencyKey: payload.idempotencyKey,
+    idempotencyKey: OO_CREATE_ACTIONS_.indexOf(request.action) >= 0 ? payload.idempotencyKey : null,
     payloadSha256: canonical.sha256Hex,
-    lifecycleBefore: null
+    lifecycleBefore: lifecycleBefore
   };
+}
+
+function ooPilotRecord_(id, payload, nowKst) {
+  return {
+    pilotId: id, complexName: payload.complexName, source: payload.source, stage: payload.stage,
+    pilotStartedAt: payload.pilotStartedAt, pilotEndsAt: payload.pilotEndsAt,
+    extensionApprovedAt: payload.extensionApprovedAt, nextActionAt: payload.nextActionAt,
+    owner: payload.owner, notes: payload.notes, createdAt: nowKst, updatedAt: nowKst,
+    retentionStartedAt: ooRetentionStartedAtFor_('pilot', null, payload.stage, nowKst),
+    archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
+  };
+}
+
+function ooConsentRecord_(id, payload, nowKst) {
+  return {
+    consentId: id, subjectType: payload.subjectType, subjectId: payload.subjectId, purpose: payload.purpose,
+    intervalMonths: payload.intervalMonths, channel: payload.channel, consentVersion: payload.consentVersion,
+    consentTextSnapshot: payload.consentTextSnapshot, consentTextSha256: payload.consentTextSha256,
+    recordedBy: payload.recordedBy, consentedAt: payload.consentedAt, withdrawnAt: null, withdrawnBy: null,
+    withdrawalReason: null, nextDueAt: ooNextDueAtKst_(payload.consentedAt, payload.intervalMonths),
+    lastContactedAt: null, evidenceType: payload.evidenceType, evidenceId: payload.evidenceId,
+    audit: [{ event: 'recorded', at: nowKst, actor: payload.recordedBy, reason: null }]
+  };
+}
+
+function ooInspectionRecord_(id, payload, nowKst) {
+  return {
+    inspectionId: id, officeId: payload.officeId, complexName: payload.complexName, templateId: payload.templateId,
+    status: payload.status, nextDueAt: payload.nextDueAt, riskItems: ooClone_(payload.riskItems), summary: payload.summary,
+    commercialTerms: payload.commercialTerms === null ? null : ooCanonicalCommercialTerms_(payload.commercialTerms).value,
+    commercialApproval: null, conversionId: null, conversionTermsSha256: null, conversionReceiptId: null,
+    pendingOrderId: null, linkedOrderId: null, conversionStartedAt: null, updatedAt: nowKst,
+    archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
+  };
+}
+
+function ooOpportunityRecord_(id, payload, nowKst) {
+  return {
+    opportunityId: id, complexName: payload.complexName, officialUrl: payload.officialUrl, observedAt: payload.observedAt,
+    region: payload.region, category: payload.category, deadlineAt: payload.deadlineAt, stage: payload.stage,
+    requirements: ooClone_(payload.requirements), verifiedBy: payload.verifiedBy, notes: payload.notes,
+    retentionStartedAt: ooRetentionStartedAtFor_('opportunity', null, payload.stage, nowKst),
+    archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
+  };
+}
+
+function ooInspectionConversionLocked_(inspection) {
+  return ['conversion-pending', 'conversion-writing', 'conversion-local-committed', 'converted'].indexOf(inspection.status) >= 0;
+}
+
+function ooPrepareMutation_(store, request, actor, canonical, mutationNowKst, mutationNowMs) {
+  if (actor !== 'representative') return ooFail_('server-error');
+  var payload;
+  try { payload = JSON.parse(canonical.json).payload; }
+  catch (_) { return ooFail_('invalid-input'); }
+  var nextStore = ooClone_(store);
+  var index;
+  var record;
+  var valid;
+  var id;
+  var lifecycleBefore = null;
+
+  if (request.action === 'officePilotCreate') {
+    valid = ooValidatePilotCreate_(payload, mutationNowKst);
+    if (!valid.ok) return valid;
+    id = ooUniqueRecordId_(store, 'pilot');
+    if (!id) return ooFail_('server-error');
+    record = ooPilotRecord_(id, payload, mutationNowKst);
+    if (!ooValidatePilot_(record).ok) return ooFail_('invalid-pilot');
+    nextStore.pilots.push(record);
+  } else if (request.action === 'officePilotUpdate') {
+    index = ooIndexById_(nextStore.pilots, 'pilotId', payload.pilotId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.pilots[index];
+    if (record.archivedAt !== null) return ooFail_('already-archived');
+    record.complexName = payload.complexName; record.source = payload.source; record.stage = payload.stage;
+    record.pilotStartedAt = payload.pilotStartedAt; record.pilotEndsAt = payload.pilotEndsAt;
+    record.extensionApprovedAt = payload.extensionApprovedAt; record.nextActionAt = payload.nextActionAt;
+    record.owner = payload.owner; record.notes = payload.notes; record.updatedAt = mutationNowKst;
+    record.retentionStartedAt = ooRetentionStartedAtFor_('pilot', record.retentionStartedAt, payload.stage, mutationNowKst);
+    if (!ooValidatePilot_(record).ok) return ooFail_('invalid-pilot');
+    id = record.pilotId;
+  } else if (request.action === 'officePilotArchive' || request.action === 'officePilotRestore') {
+    index = ooIndexById_(nextStore.pilots, 'pilotId', payload.pilotId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.pilots[index];
+    lifecycleBefore = ooLifecycleSnapshot_(record);
+    var pilotLifecycle = request.action === 'officePilotArchive' ?
+      ooArchive_(record, actor, payload.archiveReason, mutationNowKst) : ooRestore_(record, actor, mutationNowKst);
+    if (pilotLifecycle && pilotLifecycle.ok === false) return pilotLifecycle;
+    record.updatedAt = mutationNowKst;
+    if (!ooValidatePilot_(record).ok) return ooFail_('invalid-pilot');
+    id = record.pilotId;
+  } else if (request.action === 'officeConsentRecord') {
+    valid = ooValidateConsentCreate_(payload, mutationNowKst);
+    if (!valid.ok) return valid;
+    id = ooUniqueRecordId_(store, 'consent');
+    if (!id) return ooFail_('server-error');
+    record = ooConsentRecord_(id, payload, mutationNowKst);
+    if (!ooValidateConsent_(record).ok) return ooFail_('invalid-consent');
+    nextStore.consents.push(record);
+  } else if (request.action === 'officeConsentWithdraw') {
+    index = ooIndexById_(nextStore.consents, 'consentId', payload.consentId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = ooWithdrawConsent_(nextStore.consents[index], payload.withdrawnBy, payload.withdrawalReason, mutationNowKst);
+    if (record && record.ok === false) return record;
+    nextStore.consents[index] = record;
+    id = record.consentId;
+  } else if (request.action === 'officeInspectionCreate') {
+    valid = ooValidateInspectionCreate_(payload, mutationNowKst);
+    if (!valid.ok) return valid;
+    id = ooUniqueRecordId_(store, 'inspection');
+    if (!id) return ooFail_('server-error');
+    record = ooInspectionRecord_(id, payload, mutationNowKst);
+    if (!ooValidateInspection_(record).ok) return ooFail_('invalid-inspection');
+    nextStore.inspections.push(record);
+  } else if (request.action === 'officeInspectionUpdate') {
+    index = ooIndexById_(nextStore.inspections, 'inspectionId', payload.inspectionId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.inspections[index];
+    if (record.archivedAt !== null) return ooFail_('already-archived');
+    if (ooInspectionConversionLocked_(record)) return ooFail_('invalid-conversion-state');
+    record.officeId = payload.officeId; record.complexName = payload.complexName; record.templateId = payload.templateId;
+    record.status = payload.status; record.nextDueAt = payload.nextDueAt; record.riskItems = ooClone_(payload.riskItems);
+    record.summary = payload.summary;
+    record.commercialTerms = payload.commercialTerms === null ? null : ooCanonicalCommercialTerms_(payload.commercialTerms).value;
+    record.commercialApproval = null; record.updatedAt = mutationNowKst;
+    if (!ooValidateInspection_(record).ok) return ooFail_('invalid-inspection');
+    id = record.inspectionId;
+  } else if (request.action === 'officeInspectionArchive' || request.action === 'officeInspectionRestore') {
+    index = ooIndexById_(nextStore.inspections, 'inspectionId', payload.inspectionId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.inspections[index];
+    if (ooInspectionConversionLocked_(record)) return ooFail_('invalid-conversion-state');
+    lifecycleBefore = ooLifecycleSnapshot_(record);
+    var inspectionLifecycle = request.action === 'officeInspectionArchive' ?
+      ooArchive_(record, actor, payload.archiveReason, mutationNowKst) : ooRestore_(record, actor, mutationNowKst);
+    if (inspectionLifecycle && inspectionLifecycle.ok === false) return inspectionLifecycle;
+    record.updatedAt = mutationNowKst;
+    if (!ooValidateInspection_(record).ok) return ooFail_('invalid-inspection');
+    id = record.inspectionId;
+  } else if (ooIsConversionAction_(request.action)) {
+    index = ooIndexById_(nextStore.inspections, 'inspectionId', payload.inspectionId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.inspections[index];
+    var command = {
+      officeInspectionBeginConversion: 'begin', officeInspectionArmLocalCommit: 'arm',
+      officeInspectionRecordLocalCommit: 'record', officeInspectionFinalizeConversion: 'finalize',
+      officeInspectionCancelConversion: 'cancel'
+    }[request.action];
+    var transitioned = ooConversionTransition_(record, command, payload, mutationNowKst);
+    if (!transitioned.ok) return transitioned;
+    id = record.inspectionId;
+  } else if (request.action === 'officeOpportunityCreate') {
+    valid = ooValidateOpportunityCreate_(payload, mutationNowKst);
+    if (!valid.ok) return valid;
+    id = ooUniqueRecordId_(store, 'opportunity');
+    if (!id) return ooFail_('server-error');
+    record = ooOpportunityRecord_(id, payload, mutationNowKst);
+    if (!ooValidateOpportunity_(record).ok) return ooFail_('invalid-opportunity');
+    if (record.stage === 'participate' &&
+        !ooCanOpportunityParticipate_(record, mutationNowMs, ooParseRequestTimestamp_(request.timestamp))) return ooFail_('invalid-opportunity');
+    nextStore.opportunities.push(record);
+  } else if (request.action === 'officeOpportunityUpdate') {
+    index = ooIndexById_(nextStore.opportunities, 'opportunityId', payload.opportunityId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.opportunities[index];
+    if (record.archivedAt !== null) return ooFail_('already-archived');
+    record.complexName = payload.complexName; record.officialUrl = payload.officialUrl; record.observedAt = payload.observedAt;
+    record.region = payload.region; record.category = payload.category; record.deadlineAt = payload.deadlineAt;
+    record.stage = payload.stage; record.requirements = ooClone_(payload.requirements); record.verifiedBy = payload.verifiedBy;
+    record.notes = payload.notes;
+    record.retentionStartedAt = ooRetentionStartedAtFor_('opportunity', record.retentionStartedAt, payload.stage, mutationNowKst);
+    if (!ooValidateOpportunity_(record).ok) return ooFail_('invalid-opportunity');
+    if (record.stage === 'participate' &&
+        !ooCanOpportunityParticipate_(record, mutationNowMs, ooParseRequestTimestamp_(request.timestamp))) return ooFail_('invalid-opportunity');
+    id = record.opportunityId;
+  } else if (request.action === 'officeOpportunityArchive' || request.action === 'officeOpportunityRestore') {
+    index = ooIndexById_(nextStore.opportunities, 'opportunityId', payload.opportunityId);
+    if (index < 0) return ooFail_(index === -1 ? 'not-found' : 'invalid-store');
+    record = nextStore.opportunities[index];
+    lifecycleBefore = ooLifecycleSnapshot_(record);
+    var opportunityLifecycle = request.action === 'officeOpportunityArchive' ?
+      ooArchive_(record, actor, payload.archiveReason, mutationNowKst) : ooRestore_(record, actor, mutationNowKst);
+    if (opportunityLifecycle && opportunityLifecycle.ok === false) return opportunityLifecycle;
+    if (!ooValidateOpportunity_(record).ok) return ooFail_('invalid-opportunity');
+    id = record.opportunityId;
+  } else return ooFail_('bad-request');
+
+  return ooPreparedMutation_(nextStore, request, canonical, payload, id, lifecycleBefore);
 }
 
 function ooParentFileIdSnapshot_(parent) {
