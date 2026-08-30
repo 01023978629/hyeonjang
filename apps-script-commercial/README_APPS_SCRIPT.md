@@ -23,7 +23,7 @@
 별도의 **separate written representative approval**을 받은 뒤에만 flag to `1`로 바꾼다. 기록에는 deployment version, test date, pass/fail만 남긴다.
 
 ### Gate 7 — rollback/disable
-비활성화할 때는 flag to `0`으로 되돌리거나 prior Apps Script deployment를 선택한다. disabled 상태에서 모든 commercial action은 fail-closed여야 한다.
+비활성화할 때는 flag to `0`으로 되돌리거나 prior Apps Script deployment를 선택한다. disabled 상태에서 `commercialApprovalIssue`와 `commercialApprovalVerify`만 fail-closed이며, `commercialNow`는 Gate 4 health/time 확인용으로 계속 가능하다.
 
 ## 이 Task가 승인하지 않는 외부 작업
 이 repository task는 Drive evidence selection, Script Property creation, Apps Script deployment, browser token storage, Pages publication, paid-work activation, push, merge, PR, customer contact, paid-service configuration을 승인하지 않는다. 실제 token, key, file ID, customer data는 문서·커밋·로그에 쓰지 않는다.
@@ -35,19 +35,25 @@
 {
   "token": "fake-commercial-token-for-docs-only",
   "action": "<one action below>",
-  "timestamp": "2030-01-01T00:00:00+09:00",
+  "timestamp": "<runtimeNowKst>",
   "payload": "<action payload below>"
 }
 ```
 
-모든 실패는 정확히 `{ "ok": false, "error": "<code>" }` envelope이며, disabled는 `commercial-disabled`, 재사용 nonce는 `nonce replay` 오류로 fail-closed 처리한다.
+문서 예시의 `<runtimeNowKst>`는 아래 helper로 요청 직전에 생성한 현재 KST timestamp이며, `validUntil`도 helper 결과의 오늘 또는 이후 날짜를 사용한다. 모든 실패는 action별 complete response `{ "ok": false, "error": "<actual-code>" }`이며, disabled는 `commercial-disabled`, 재사용 nonce는 `nonce replay` 오류로 fail-closed 처리한다.
+
+```js
+const now = new Date();
+const runtimeNowKst = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium' }).format(now).replace(' ', 'T') + '+09:00';
+const validUntil = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', dateStyle: 'short' }).format(now).replaceAll('/', '-');
+```
 
 ### `commercialNow` complete envelope
 ```json
 {
   "token": "fake-commercial-token-for-docs-only",
   "action": "commercialNow",
-  "timestamp": "2030-01-01T00:00:00+09:00",
+  "timestamp": "<runtimeNowKst>",
   "payload": { "nonce": "fake-commercialNow-nonce-0001" }
 }
 ```
@@ -55,10 +61,15 @@
 ```json
 {
   "ok": true,
-  "serverNowKst": "2030-01-01T00:00:00+09:00",
-  "receivedAtKst": "2030-01-01T00:00:00+09:00",
+  "serverNowKst": "<runtimeNowKst>",
+  "receivedAtKst": "<runtimeNowKst>",
   "nonce": "fake-commercialNow-nonce-0001"
 }
+```
+
+commercialNow failure response:
+```json
+{ "ok": false, "error": "invalid-nonce" }
 ```
 
 ### `commercialApprovalIssue` complete envelope
@@ -66,16 +77,16 @@
 {
   "token": "fake-commercial-token-for-docs-only",
   "action": "commercialApprovalIssue",
-  "timestamp": "2030-01-01T00:00:00+09:00",
+  "timestamp": "<runtimeNowKst>",
   "payload": {
     "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
     "commercialTerms": {
       "workKind": "dispatch", "scope": "fake non-production scope",
       "exclusions": ["fake exclusion"], "vatMode": "included", "quotedAmount": 1000,
-      "validUntil": "2030-01-31", "scheduleWindow": "fake test window"
+      "validUntil": "<validUntil>", "scheduleWindow": "fake test window"
     },
     "approvalEvidenceType": "quote-file", "approvalEvidenceFileId": "fake-evidence-file-0001",
-    "approvedAt": "2030-01-01T00:00:00+09:00", "approvedByRole": "customer"
+    "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer"
   }
 }
 ```
@@ -85,12 +96,17 @@
   "ok": true,
   "commercialApproval": {
     "receiptId": "receipt_fake-0001", "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
-    "approvedTermsSha256": "fake-sha256-terms-0001", "approvalEvidenceType": "quote-file",
-    "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "fake-sha256-evidence-0001",
-    "approvedAt": "2030-01-01T00:00:00+09:00", "approvedByRole": "customer",
-    "issuedAt": "2030-01-01T00:00:00+09:00", "receiptHmac": "fake-hmac-0001"
+    "approvedTermsSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "approvalEvidenceType": "quote-file",
+    "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer",
+    "issuedAt": "<runtimeNowKst>", "receiptHmac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
   }
 }
+```
+
+commercialApprovalIssue failure response:
+```json
+{ "ok": false, "error": "forbidden-evidence" }
 ```
 
 ### `commercialApprovalVerify` complete envelope
@@ -98,20 +114,20 @@
 {
   "token": "fake-commercial-token-for-docs-only",
   "action": "commercialApprovalVerify",
-  "timestamp": "2030-01-01T00:00:00+09:00",
+  "timestamp": "<runtimeNowKst>",
   "payload": {
     "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
     "commercialTerms": {
       "workKind": "dispatch", "scope": "fake non-production scope",
       "exclusions": ["fake exclusion"], "vatMode": "included", "quotedAmount": 1000,
-      "validUntil": "2030-01-31", "scheduleWindow": "fake test window"
+      "validUntil": "<validUntil>", "scheduleWindow": "fake test window"
     },
     "commercialApproval": {
       "receiptId": "receipt_fake-0001", "subjectType": "aptOrder", "subjectId": "fake-apt-order-0001",
       "approvedTermsSha256": "fake-sha256-terms-0001", "approvalEvidenceType": "quote-file",
       "approvalEvidenceFileId": "fake-evidence-file-0001", "approvalEvidenceSha256": "fake-sha256-evidence-0001",
-      "approvedAt": "2030-01-01T00:00:00+09:00", "approvedByRole": "customer",
-      "issuedAt": "2030-01-01T00:00:00+09:00", "receiptHmac": "fake-hmac-0001"
+      "approvedAt": "<runtimeNowKst>", "approvedByRole": "customer",
+      "issuedAt": "<runtimeNowKst>", "receiptHmac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     },
     "nonce": "fake-commercialVerify-nonce-0001"
   }
@@ -121,10 +137,15 @@
 ```json
 {
   "ok": true, "receiptId": "receipt_fake-0001",
-  "serverNowKst": "2030-01-01T00:00:00+09:00",
+  "serverNowKst": "<runtimeNowKst>",
   "nonce": "fake-commercialVerify-nonce-0001",
-  "verifyExpiresAtKst": "2030-01-01T00:01:00+09:00"
+  "verifyExpiresAtKst": "<runtimeNowKst-plus-60-seconds>"
 }
+```
+
+commercialApprovalVerify failure response:
+```json
+{ "ok": false, "error": "nonce-replay" }
 ```
 
 승인 evidence는 `application/pdf`, `image/jpeg`, `image/png`만 허용하며 **20 MiB** 이하이어야 한다. verify nonce cache는 **60 seconds** 동안 유지되고 같은 receipt+nonce 재사용(nonce replay)은 거절된다. `COMMERCIAL_APPROVAL_TOKEN`은 요청 인증 전용, `COMMERCIAL_APPROVAL_RECEIPT_KEY`는 receipt HMAC 전용으로 분리한다.
