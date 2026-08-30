@@ -212,7 +212,7 @@ git commit -m \"feat: isolate OfficeOps client transport and cache\"
 
 **Files:** modify \`index.html\`, \`tests/office-ops-ui.e2e.js\`, \`tests/office-ops-isolation.e2e.js\`.
 
-- [ ] **RED:** Require exactly four tab labels and no outgoing-contact controls. Test pilot stages \`new|contacted|meeting|pilot|converted|closed\`, keyed by \`pilotId\`; only \`pilot\` has an active period. Assert \`2026-08-31→2026-09-29T23:59:59+09:00\`, leap \`2028-02-01→2028-03-01T23:59:59+09:00\`, and rollover \`2026-12-20→2027-01-18T23:59:59+09:00\`. Test server \`extensionApprovedAt\` plus replacement \`pilotEndsAt\` rather than a client-only extension field. Assert `normalizePilotRecord` returns exactly all 17 relay pilot keys in fixed order and rejects a missing or extra key, invalid tombstone, and any source outside `website|phone|referral|kapt`. Assert `pilotWindowView` returns only display fields and is never referenced by a create/update transport. Assert `pilotEditablePayload` returns exactly `pilotId,expectedRevision,complexName,source,stage,pilotStartedAt,pilotEndsAt,extensionApprovedAt,nextActionAt,owner,notes`—the relay's ten business keys (`pilotId` plus nine editable fields) plus `expectedRevision`—with no server-owned timestamp, retention, or tombstone field; changing one field still sends every editable field.
+- [ ] **RED:** Require exactly four tab labels and no outgoing-contact controls. Test pilot stages \`new|contacted|meeting|pilot|converted|closed\`, keyed by \`pilotId\`; only \`pilot\` has an active period. Assert \`2026-08-31→2026-09-29T23:59:59+09:00\`, leap \`2028-02-01→2028-03-01T23:59:59+09:00\`, and rollover \`2026-12-20→2027-01-18T23:59:59+09:00\`; assert `pilotEndsAtKst('2026-02-30')` throws `invalid pilot start date` instead of normalizing into March. Test server \`extensionApprovedAt\` plus replacement \`pilotEndsAt\` rather than a client-only extension field. Assert `normalizePilotRecord` returns exactly all 17 relay pilot keys in fixed order and rejects a missing or extra key, invalid tombstone, and any source outside `website|phone|referral|kapt`. Assert `pilotWindowView` returns only display fields and is never referenced by a create/update transport. Assert `pilotEditablePayload` returns exactly `pilotId,expectedRevision,complexName,source,stage,pilotStartedAt,pilotEndsAt,extensionApprovedAt,nextActionAt,owner,notes`—the relay's ten business keys (`pilotId` plus nine editable fields) plus `expectedRevision`—with no server-owned timestamp, retention, or tombstone field; changing one field still sends every editable field.
 - [ ] **Implement:**
 \`\`\`js
 function formatKstIso(ms){
@@ -220,7 +220,7 @@ function formatKstIso(ms){
   return \`\${p.year}-\${p.month}-\${p.day}T\${p.hour}:\${p.minute}:\${p.second}+09:00\`;
 }
 function pilotEndsAtKst(startDateKst){
-  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(startDateKst); if(!m) throw new Error('invalid pilot start date');
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(startDateKst); if(!m||!isRealIsoDate(startDateKst)) throw new Error('invalid pilot start date');
   const [y,mo,d]=m.slice(1).map(Number); return formatKstIso(Date.UTC(y,mo-1,d,-9)+(30*86400000)-1000);
 }
 function parseStrictKstDateTime(value){
