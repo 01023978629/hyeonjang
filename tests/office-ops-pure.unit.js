@@ -541,6 +541,32 @@ for (const [action, testCase] of Object.entries(canonicalCases)) {
   const missing = { ...testCase.input }; delete missing[firstKey];
   equal(sandbox.ooCanonicalMutation_(action, missing).error, 'invalid-input', action + ' rejects missing');
 }
+const nullCommercialTermsCases = {
+  officeInspectionCreate: {
+    input: { commercialApproval:null, commercialTerms:null, summary:'상업 조건 미정 생성', riskItems:['배관 상태 확인','누수 흔적 확인'], nextDueAt:'2026-11-05', status:'proposal', templateId:'preventive-v1', complexName:'조건 미정 생성 단지', officeId:'office_null_create', idempotencyKey:'null_terms_create_123' },
+    expected: { idempotencyKey:'null_terms_create_123', officeId:'office_null_create', complexName:'조건 미정 생성 단지', templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-11-05', riskItems:['배관 상태 확인','누수 흔적 확인'], summary:'상업 조건 미정 생성', commercialTerms:null, commercialApproval:null }
+  },
+  officeInspectionUpdate: {
+    input: { commercialApproval:null, commercialTerms:null, summary:'상업 조건 미정 수정', riskItems:['옥상 배수 확인','지하 배관 확인'], nextDueAt:'2026-12-05', status:'checked', templateId:'rainy-v1', complexName:'조건 미정 수정 단지', officeId:'office_null_update', expectedRevision:22, inspectionId:'inspection_null_update' },
+    expected: { inspectionId:'inspection_null_update', expectedRevision:22, officeId:'office_null_update', complexName:'조건 미정 수정 단지', templateId:'rainy-v1', status:'checked', nextDueAt:'2026-12-05', riskItems:['옥상 배수 확인','지하 배관 확인'], summary:'상업 조건 미정 수정', commercialTerms:null, commercialApproval:null }
+  }
+};
+for (const [action, testCase] of Object.entries(nullCommercialTermsCases)) {
+  const sourceBefore = JSON.stringify(testCase.input);
+  const canonical = sandbox.ooCanonicalMutation_(action, testCase.input);
+  const expectedEnvelope = { action, payload:testCase.expected };
+  const expectedJson = JSON.stringify(expectedEnvelope);
+  const parsed = JSON.parse(canonical.json);
+  equal(canonical.ok, true, action + ' accepts null commercial terms');
+  equal(canonical.json, expectedJson, action + ' preserves exact null commercial terms JSON');
+  deepEqual(parsed, expectedEnvelope, action + ' preserves exact null commercial terms envelope');
+  deepEqual(Object.keys(parsed), ['action','payload'], action + ' null variant top-level order');
+  deepEqual(Object.keys(parsed.payload), expectedCanonicalFields[action], action + ' null variant payload order');
+  equal(canonical.sha256Hex, crypto.createHash('sha256').update(expectedJson).digest('hex'), action + ' null variant exact hash');
+  match(canonical.sha256Hex, /^[0-9a-f]{64}$/, action + ' null variant lowercase hash');
+  equal(JSON.stringify(testCase.input), sourceBefore, action + ' null variant source remains unchanged');
+}
+equal(Object.keys(nullCommercialTermsCases).length, 2);
 equal(Object.keys(canonicalCases).length, 19);
 equal(Object.keys(sandbox.OO_CANONICAL_FIELDS_).length, 19);
 deepEqual(Object.fromEntries(Object.entries(sandbox.OO_CANONICAL_FIELDS_).map(([key, fields]) => [key, Array.from(fields)])), expectedCanonicalFields);
