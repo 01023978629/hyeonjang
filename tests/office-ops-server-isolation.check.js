@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const childProcess = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
@@ -497,5 +499,202 @@ assert.match(
   /internal sanitized success tuple contains the exact `sourceFileId` and no\s+token, source bytes, or PII/i,
   'README must keep the internal tuple exact but secret- and PII-free'
 );
+
+const agents = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
+assert.match(source, /OFFICE_OPS_ENABLED/, 'OfficeOps retains the explicit enable gate');
+assert.match(source, /OFFICE_OPS_RECOVERY_REQUIRED/, 'OfficeOps retains the durable recovery latch');
+for (const forbiddenService of ['MailApp', 'CalendarApp', 'UrlFetchApp']) {
+  assert.equal(source.includes(forbiddenService), false, forbiddenService + ' cannot enter OfficeOps');
+}
+assert.match(readme, /disabled[\s\S]*device-local cached read-only export/i, 'disabled UI contract is device-local read-only only');
+assert.match(readme, /does not create an aptOrder/i, 'OfficeOps has no local-order authority');
+assert.match(agents, /apps-script-commercial\/[\s\S]*separate Apps Script project/i, 'commercial source is an independent Apps Script project');
+assert.match(agents, /apps-script-office-ops\/[\s\S]*separate Apps Script project/i, 'OfficeOps source is an independent Apps Script project');
+for (const projectDirectory of ['apps-script-commercial/', 'apps-script-office-ops/']) {
+  const projectEntry = agents.slice(agents.indexOf('`' + projectDirectory + '`:'), agents.indexOf('`' + projectDirectory + '`:') + 320);
+  assert.equal(projectEntry.includes('separate Apps Script project'), true, projectDirectory + ' is explicitly separate');
+  assert.equal(projectEntry.includes('자체 Script Properties와 수동 deployment'), true, projectDirectory + ' has independent properties and deployment');
+  assert.equal(projectEntry.includes('`APP_TOKEN`을 공유하지 않으며'), true, projectDirectory + ' never shares APP_TOKEN');
+  assert.equal(projectEntry.includes('Pages merge로 배포되지 않는다'), true, projectDirectory + ' is never deployed by a Pages merge');
+}
+assert.equal(
+  agents.includes('**`apps-script/` 폴더는 검토된 `OfficeIntake` 모듈과 후속 `Code.gs` dispatch split만 수정할 수 있다.**'),
+  true,
+  'legacy apps-script restriction remains exact'
+);
+for (const phrase of [
+  'future UI contract only',
+  'device-local settings',
+  'fresh mutation ID per HTTP attempt',
+  'preserve idempotency key for one logical create',
+  'revision conflicts for manual merge',
+  'never auto-retry offline',
+  'device-local last-normal-data export',
+  'disabled server rejects reads and writes',
+  'separately verified commercial approval',
+  'distinct local paid-work gate',
+  'conversion actions stay inactive',
+  'records the conversion handshake',
+  'never calls hyeonjang state'
+]) {
+  assert.equal(readme.includes(phrase), true, 'future UI contract must state ' + phrase);
+}
+
+const branchScopePath = path.join(ROOT, 'scripts', 'verify-office-ops-branch-scope.mjs');
+const branchScopeBase = 'f44fa5727064b8cba2e1e339f646dd7598b35442';
+const branchScopeAllowlist = [
+  '.superpowers/sdd/.gitignore',
+  'AGENTS.md',
+  'apps-script-commercial/Code.gs',
+  'apps-script-commercial/CommercialApproval.gs',
+  'apps-script-commercial/CommercialApprovalPure.gs',
+  'apps-script-commercial/README_APPS_SCRIPT.md',
+  'apps-script-commercial/appsscript.json',
+  'apps-script-office-ops/Code.gs',
+  'apps-script-office-ops/OfficeOps.gs',
+  'apps-script-office-ops/OfficeOpsPure.gs',
+  'apps-script-office-ops/README_APPS_SCRIPT.md',
+  'apps-script-office-ops/appsscript.json',
+  'apps-script-office-ops/conversion-promotion.json',
+  'docs/superpowers/plans/2026-08-31-commercial-approval-relay.md',
+  'docs/superpowers/plans/2026-08-31-hyeonjang-office-ops.md',
+  'docs/superpowers/plans/2026-08-31-office-ops-relay.md',
+  'scripts/verify-office-ops-branch-scope.mjs',
+  'tests/commercial-approval-isolation.check.js',
+  'tests/commercial-approval-server.unit.js',
+  'tests/commercial-approval.unit.js',
+  'tests/office-ops-pure.unit.js',
+  'tests/office-ops-server-isolation.check.js',
+  'tests/office-ops-server.unit.js'
+];
+
+function gitBuffer(args) {
+  return childProcess.execFileSync('git', args, { cwd:ROOT, encoding:null, stdio:['ignore', 'pipe', 'pipe'] });
+}
+
+function zeroSeparatedPaths(buffer) {
+  return buffer.toString('utf8').split('\0').filter(Boolean);
+}
+
+function actualRepositorySnapshot() {
+  const untracked = zeroSeparatedPaths(gitBuffer(['ls-files', '--others', '--exclude-standard', '-z']));
+  return {
+    status:gitBuffer(['status', '--porcelain=v1', '-z', '--untracked-files=all']).toString('hex'),
+    index:gitBuffer(['ls-files', '--stage', '-z']).toString('hex'),
+    staged:gitBuffer(['diff', '--cached', '--binary', 'HEAD', '--']).toString('hex'),
+    worktree:gitBuffer(['diff', '--binary', 'HEAD', '--']).toString('hex'),
+    untracked:untracked.map(relativePath => ({
+      relativePath,
+      sha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, relativePath))).digest('hex')
+    }))
+  };
+}
+
+assert.equal(fs.existsSync(branchScopePath), true, 'read-only OfficeOps branch-scope verifier exists');
+const branchScopeSource = fs.readFileSync(branchScopePath, 'utf8');
+assert.match(branchScopeSource, /spawnSync\(\s*'git'\s*,\s*args/, 'branch-scope verifier invokes Git directly');
+assert.equal((branchScopeSource.match(/shell\s*:\s*false/g) || []).length, 1, 'Git runs exactly once through an explicit no-shell boundary');
+assert.doesNotMatch(branchScopeSource, /shell\s*:\s*true|\bexec(?:File|FileSync|Sync)?\s*\(/, 'branch-scope verifier cannot invoke a shell or exec helper');
+assert.equal((branchScopeSource.match(/'--no-renames'/g) || []).length, 3, 'committed, staged, and unstaged layers disable rename collapsing');
+for (const commandFragment of [
+  "FIXED_BASE + '...HEAD'",
+  "['diff', '--cached', '--name-status'",
+  "['diff', '--name-status', '--no-renames', '-z']",
+  "['ls-files', '--others', '--exclude-standard', '-z']"
+]) {
+  assert.equal(branchScopeSource.includes(commandFragment), true, 'branch-scope verifier collects ' + commandFragment);
+}
+const syntheticPaths = [
+  'scope-fixtures/customer-010-1234-5678.txt',
+  'scope-fixtures/token-TEST_ONLY_TOKEN_MARKER.txt',
+  'scope-fixtures/한빛아파트.txt',
+  '../scope-fixtures/101동-1001호.txt'
+];
+const probeSource = `
+  const moduleValue = await import(${JSON.stringify(pathToFileURL(branchScopePath).href)});
+  try {
+    const expected = JSON.parse(process.env.OFFICE_OPS_SCOPE_EXPECTED);
+    const synthetic = JSON.parse(process.env.OFFICE_OPS_SCOPE_SYNTHETIC);
+    const union = moduleValue.unionChangeLayers({
+      committed:[{ status:'M', path:expected[0] }, { status:'M', path:synthetic[0] }],
+      staged:[{ status:'A', path:expected[0] }, { status:'A', path:synthetic[1] }],
+      unstaged:[{ status:'M', path:expected[0] }, { status:'M', path:synthetic[2] }],
+      untracked:[{ status:'A', path:expected[0] }, { status:'A', path:synthetic[3] }]
+    });
+    const classified = moduleValue.classifyScopeChanges(union, new Set(expected));
+    const deletion = moduleValue.classifyScopeChanges([
+      { path:'AGENTS.md', statuses:new Set(['D']), layers:new Set(['committed']) }
+    ], new Set(['AGENTS.md']));
+    const allowedRecord = union.find(record => record.path === expected[0]);
+    process.stdout.write(JSON.stringify({
+      fixedBase:moduleValue.FIXED_BASE,
+      allowlist:moduleValue.ALLOWED_PATHS,
+      unionCount:union.length,
+      allowedCount:classified.allowed.length,
+      rejectedCount:classified.rejected.length,
+      allowedLayers:Array.from(allowedRecord.layers).sort(),
+      allowedStatuses:Array.from(allowedRecord.statuses).sort(),
+      redacted:moduleValue.formatRejectedPaths(classified.rejected),
+      deletionCount:deletion.rejected.length,
+      deletionRedacted:moduleValue.formatRejectedPaths(deletion.rejected)
+    }));
+  } catch (_) {
+    process.stderr.write('scope-probe-failed');
+    process.exitCode = 2;
+  }
+`;
+
+const beforePureProbe = actualRepositorySnapshot();
+const probe = childProcess.spawnSync(process.execPath, ['--input-type=module', '--eval', probeSource], {
+  cwd:ROOT,
+  encoding:'utf8',
+  shell:false,
+  windowsHide:true,
+  env:{
+    ...process.env,
+    OFFICE_OPS_SCOPE_EXPECTED:JSON.stringify(branchScopeAllowlist),
+    OFFICE_OPS_SCOPE_SYNTHETIC:JSON.stringify(syntheticPaths)
+  }
+});
+assert.equal(probe.status, 0, 'pure branch-scope classifier probe succeeds');
+assert.equal(probe.stderr, '', 'pure classifier writes no stderr');
+const probeResult = JSON.parse(probe.stdout);
+assert.equal(probeResult.fixedBase, branchScopeBase, 'branch-scope verifier uses the fixed reviewed base');
+assert.deepEqual(probeResult.allowlist, branchScopeAllowlist, 'branch-scope verifier uses the exact reviewed allowlist');
+assert.deepEqual({
+  unionCount:probeResult.unionCount,
+  allowedCount:probeResult.allowedCount,
+  rejectedCount:probeResult.rejectedCount,
+  allowedLayers:probeResult.allowedLayers,
+  allowedStatuses:probeResult.allowedStatuses
+}, {
+  unionCount:5,
+  allowedCount:1,
+  rejectedCount:4,
+  allowedLayers:['committed', 'staged', 'unstaged', 'untracked'],
+  allowedStatuses:['A', 'M']
+}, 'classifier unions all four change layers without duplicate paths');
+
+const redactedLines = probeResult.redacted.split('\n');
+assert.equal(redactedLines[0], 'rejected-path-count: 4', 'redacted output contains only the rejected count first');
+assert.equal(redactedLines.length, 5, 'redacted output has exactly one digest per rejected path');
+const expectedDigests = syntheticPaths
+  .map(value => crypto.createHash('sha256').update(value.replace(/\\/g, '/')).digest('hex'))
+  .sort();
+assert.deepEqual(redactedLines.slice(1).map(line => {
+  const match = /^\[REDACTED_PATH\] ([0-9a-f]{64})$/.exec(line);
+  assert.notEqual(match, null, 'each rejected path is one lowercase SHA-256 only');
+  return match[1];
+}).sort(), expectedDigests, 'redacted digests bind every normalized rejected path');
+for (const forbiddenLeak of [
+  '010-1234-5678', 'TEST_ONLY_TOKEN_MARKER', '한빛아파트', '101동-1001호',
+  'scope-fixtures', '.txt', '../'
+]) {
+  assert.equal((probe.stdout + probe.stderr).includes(forbiddenLeak), false, 'scope output redacts ' + forbiddenLeak);
+}
+assert.equal(probeResult.deletionCount, 1, 'baseline deletion is rejected');
+assert.match(probeResult.deletionRedacted, /^rejected-path-count: 1\n\[REDACTED_PATH\] [0-9a-f]{64}$/, 'baseline deletion output is redacted');
+assert.equal(probeResult.deletionRedacted.includes('AGENTS.md'), false, 'baseline deletion never prints the path');
+assert.deepEqual(actualRepositorySnapshot(), beforePureProbe, 'pure branch-scope probe mutates neither actual worktree nor index');
 
 console.log('office-ops-server-isolation.check.js: PASS');

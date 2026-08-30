@@ -8,7 +8,7 @@
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 23,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-현재 기준선은 `hyeonjang-v236-officeguard`이며 기존 검사는 78개다. 사진 동기화 로컬 후보
+현재 기준선은 `hyeonjang-v236-officeguard`이며 기존 검사는 92개다. 사진 동기화 로컬 후보
 `hyeonjang-v201-photosyncp0`는 서버 선행 게이트 전에는 계속 병합·배포하지 않는다.
 `sw.js`의 캐시 이름이 곧 버전이다.
 
@@ -42,10 +42,15 @@ node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 
-# 3) 전체 회귀 — 78개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
+# 3) 전체 회귀 — 92개 파일, 종료코드로 판정 (출력 마지막 줄로 판정하지 마라)
 #    timeout 을 빼지 마라 — 한 파일이 멈추면 뒤 파일은 아예 안 돌고 화면엔
 #    아무것도 안 뜬다. "전부 통과"라는 보고 자체가 성립하지 않는다. 124 = 멈춤.
 for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$f" >/dev/null 2>&1 || echo "FAIL $f (exit $?)"; done
+
+# 4) 이번 OfficeOps source-only 인수인계 브랜치에서만 실행 (일반 PWA 변경은 제외)
+node tests/commercial-approval-isolation.check.js
+node tests/office-ops-server-isolation.check.js
+node scripts/verify-office-ops-branch-scope.mjs
 ```
 
 - **새 기능 = 새 테스트.** 그리고 반드시 **변이 검증**: 보호하는 동작을 일부러
@@ -88,6 +93,12 @@ for f in tests/*.check.js tests/*.e2e.js tests/*.unit.js; do timeout 120 node "$
 - 아파트 오더: `aptOrderManage()`, `aptSettle()`, `aptStats()`, `aptPhotoCount()`
 - 주간·운영 보고: `weekBriefData/Text()`, `opsReportData/Text()`
 - 전체 장부 엑셀: `exportFullXlsx()` (10시트)
+- `apps-script-commercial/`: separate Apps Script project인 source-only 프로젝트.
+  자체 Script Properties와 수동 deployment가 필요하고 `APP_TOKEN`을 공유하지 않으며,
+  Pages merge로 배포되지 않는다.
+- `apps-script-office-ops/`: separate Apps Script project인 source-only 프로젝트.
+  자체 Script Properties와 수동 deployment가 필요하고 `APP_TOKEN`을 공유하지 않으며,
+  Pages merge로 배포되지 않는다.
 
 ## 서브에이전트
 
@@ -130,9 +141,9 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 
 ## 지금 상태와 남은 일 (2026-08-27)
 
-- 기준선은 `hyeonjang-v236-officeguard`이며 기존 검사 78개가 통과했다. v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가했다. v234는 신규 접수의 사진 슬롯 선언을 필수화하고, 오프라인 승인 뒤 `photos-pending` 복구와 완료 사진 오류의 strict FIFO·상위 revision 교체 계약을 추가했다. v235는 완료 보고 수정의 합법적인 상태 전이 체인과 승인 payload 입력 오류 차단을 추가했다. v236은 승인 오더·outbox 선저장과 단일 FIFO 발송, request 단위 projection revision 재기준화, 익명 로그인 선행 캐시 제한, canonical slug·PNG 8-byte·slash 전화 마스킹 계약을 추가했다.
+- 기준선은 `hyeonjang-v236-officeguard`이며 기존 검사 92개가 통과했다. v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가했다. v234는 신규 접수의 사진 슬롯 선언을 필수화하고, 오프라인 승인 뒤 `photos-pending` 복구와 완료 사진 오류의 strict FIFO·상위 revision 교체 계약을 추가했다. v235는 완료 보고 수정의 합법적인 상태 전이 체인과 승인 payload 입력 오류 차단을 추가했다. v236은 승인 오더·outbox 선저장과 단일 FIFO 발송, request 단위 projection revision 재기준화, 익명 로그인 선행 캐시 제한, canonical slug·PNG 8-byte·slash 전화 마스킹 계약을 추가했다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
-- 현재 전체 회귀 기준은 78개 파일이다. 과거의 브라우저·정적 60개 집계는
+- 현재 전체 회귀 기준은 92개 파일이다. 과거의 브라우저·정적 60개 집계는
   OfficeIntake 서버·회귀 검사를 추가하기 전 기록이므로 완료 기준으로 쓰지 않는다.
 - `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
   `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.

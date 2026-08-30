@@ -189,6 +189,25 @@ External checklists and reports use redacted IDs only.
 - `officeOpsRetentionList`
 <!-- OFFICE_OPS_ACTIONS_END -->
 
+### future UI contract only
+
+이 항목은 향후 hyeonjang UI가 지켜야 할 계약만 정의하며, 이 브랜치에서는
+UI를 구현하거나 연결하지 않습니다. `OFFICE_OPS_TOKEN`은 public Office
+browser/session data가 아니라 device-local settings에만 저장합니다. 각 HTTP
+시도에는 fresh mutation ID per HTTP attempt를 사용하되, 하나의 논리적 생성은
+preserve idempotency key for one logical create 규칙을 지킵니다. 충돌은
+revision conflicts for manual merge로 표시하고 never auto-retry offline을
+지킵니다.
+
+Disabled mode permits only a device-local cached read-only export. 구체적으로
+UI가 보유한 device-local last-normal-data export만 허용합니다. disabled server rejects reads and writes이므로
+서버 조회·수정·재전송으로 우회하지 않습니다.
+OfficeOps does not create an aptOrder. 검사 전환이 로컬 주문을 만들기 전에는
+separately verified commercial approval과 distinct local paid-work gate를 모두
+별도로 통과해야 합니다. 해당 통합 시험이 끝나기 전까지 conversion actions stay inactive입니다.
+이 relay는 records the conversion handshake만 수행하며
+never calls hyeonjang state입니다.
+
 초기 `conversion-promotion.json`은 `schemaVersion=1`, `enabled=false`이며
 `approvalEvidenceSha256`, `commercialRelayCommit`,
 `commercialRelayVerifiedAtKst`, `browserConversionE2eCommit`,
