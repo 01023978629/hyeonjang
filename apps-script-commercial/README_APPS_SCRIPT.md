@@ -158,7 +158,7 @@ commercialApprovalVerify failure response:
 
 ### Executable: `commercialNow` invalid-nonce
 
-Precondition: 새 test project의 **`COMMERCIAL_APPROVAL_TOKEN` test property**와 repository 밖의 **`TEST_COMMERCIAL_APPROVAL_TOKEN`** 값이 **exactly matches**여야 한다. 그렇지 않으면 production은 nonce를 보기 전에 `unauthorized`를 반환한다. 그 상태에서 아래 **complete request**의 **invalid nonce**를 보내야 `invalid-nonce`가 된다.
+Precondition: 새 test project의 **`COMMERCIAL_APPROVAL_TOKEN` test property**와 **repository-external `TEST_COMMERCIAL_APPROVAL_TOKEN`** 값은 **exact match**여야 한다. 그렇지 않으면 production은 nonce를 보기 전에 `unauthorized`를 반환한다. 그 상태에서 아래 **complete request**의 **invalid nonce**를 보내야 `invalid-nonce`가 된다.
 
 ```js
 const commercialNowFailureRequest = {
@@ -176,7 +176,7 @@ commercialNow failure response:
 
 ### Executable: `commercialApprovalIssue` forbidden-evidence
 
-Precondition: 대표자가 접근 가능한 **existing deliberately-created non-production** **`application/json`** test file을 Drive에 준비한다. 그 파일의 **runtime exact Drive file ID**를 repository 밖의 **`TEST_FORBIDDEN_EVIDENCE_FILE_ID`** **repository-external variable**에 넣고, 실제 ID를 문서·커밋·로그에 넣지 않는다. 또한 격리 test project의 token이 위 변수와 일치하고 `COMMERCIAL_APPROVAL_ENABLED=1`이어야 한다. `0`이면 evidence 조회 전에 `commercial-disabled`가 반환된다.
+Precondition: 격리 test project가 **`COMMERCIAL_APPROVAL_ENABLED=1`**이고, 그 project의 **`COMMERCIAL_APPROVAL_TOKEN` test property**와 **repository-external `TEST_COMMERCIAL_APPROVAL_TOKEN`** 값이 **exact match**여야 한다. 대표자는 Drive에 **accessible existing deliberately-created non-production** **`application/json`** test file을 준비한다. 그 파일의 **runtime exact Drive file ID**를 repository 밖의 **`TEST_FORBIDDEN_EVIDENCE_FILE_ID`** **repository-external variable**에 넣고, 실제 ID를 문서·커밋·로그에 넣지 않는다. Enabled 값이 `0`이면 evidence 조회 전에 `commercial-disabled`가 반환된다.
 
 그 다음 현재 KST와 test-only terms를 사용해 아래 **complete issue request**를 보낸다.
 
@@ -216,12 +216,12 @@ commercialApprovalIssue failure response:
 
 ### Executable: `commercialApprovalVerify` nonce-replay
 
-Precondition: 허용된 non-production PDF/JPEG/PNG에 대한 **successful issue response**에서 받은 **actual server-signed `commercialApproval`**을 그대로 사용하고, 그 receipt가 가리키는 **same evidence**가 접근 가능하고 바뀌지 않은 상태여야 한다. 한 개의 **same complete verify request**를 만들고 16–80자 형식의 **same nonce**를 유지한다.
+Precondition: 허용된 non-production PDF/JPEG/PNG에 대한 **successful issue response**에서 받은 **actual server-issued receipt**인 `issueResponse.commercialApproval`을 그대로 사용한다. 그 receipt가 가리키는 **unchanged evidence**가 계속 접근 가능해야 한다. 한 개의 **same complete verify request**를 만들고 16–80자 형식의 **same nonce**를 유지한다.
 
 **first verify**를 보내고 먼저 **`{ "ok": true, "receiptId": "<runtime receiptId>", "serverNowKst": "<runtime KST>", "nonce": "<same nonce>", "verifyExpiresAtKst": "<runtime KST>" }`** 성공을 확인한다. 어떠한 필드도 바꾸지 않은 **identical second request**를 즉시 다시 보낸다. 이 **second verify**만 **`{ "ok": false, "error": "nonce-replay" }`**가 되어야 한다.
 
 ```js
-const completeVerifyRequest = {
+const verifyRequest = {
   token: TEST_COMMERCIAL_APPROVAL_TOKEN,
   action: 'commercialApprovalVerify',
   timestamp: runtimeNowKst,
@@ -233,10 +233,10 @@ const completeVerifyRequest = {
     nonce: TEST_VERIFY_NONCE
   }
 };
-const firstVerifyResponse = postCommercialApproval(completeVerifyRequest);
+const firstVerifyResponse = post(verifyRequest);
 if (firstVerifyResponse.ok !== true) throw new Error('first verify did not succeed');
-const secondVerifyResponse = postCommercialApproval(completeVerifyRequest);
-if (secondVerifyResponse.ok !== false || secondVerifyResponse.error !== 'nonce-replay') throw new Error('second verify did not detect replay');
+const replayVerifyResponse = post(verifyRequest);
+if (replayVerifyResponse.ok !== false || replayVerifyResponse.error !== 'nonce-replay') throw new Error('second verify did not detect replay');
 ```
 
 Production 순서는 valid nonce → receipt 형식/HMAC → terms/subject/window → evidence 재조회/hash → nonce claim이다. 따라서 **shape-only fake receipt**나 고정 fake HMAC은 첫 성공 전에 `invalid-receipt`가 되어 replay trigger가 아니다. 확인 후 `TEST_VERIFY_NONCE` 등 runtime 변수를 지우고 flag를 `0`으로 되돌리는 **cleanup**을 수행한다.
