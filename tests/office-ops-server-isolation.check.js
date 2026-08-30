@@ -112,101 +112,128 @@ function tokenizeJavascript(sourceText) {
   return tokens;
 }
 
-const scriptPropertyMethods = new Set(['getProperty', 'setProperty', 'deleteProperty']);
-const wholeNamespaceMethods = new Set(['getProperties', 'setProperties', 'deleteAllProperties']);
-const allPropertyMethods = new Set([...scriptPropertyMethods, ...wholeNamespaceMethods]);
+const rawPropertyMethods = new Set(['getProperty', 'setProperty', 'deleteProperty', 'getProperties', 'setProperties', 'deleteAllProperties']);
+const wrapperNames = new Set(['ooGetScriptProperty_', 'ooSetScriptProperty_']);
 
-function findScriptPropertyCalls(sourceText) {
-  const tokens = tokenizeJavascript(sourceText);
-  const functionAliases = new Map();
+function allSourceTokens(sources) {
+  return Object.keys(sources).sort().flatMap(name => tokenizeJavascript(sources[name]).map(token => ({ ...token, sourceName: name })));
+}
+
+function identifierCount(tokens, value) {
+  return tokens.filter(token => token.type === 'identifier' && token.value === value).length;
+}
+
+function wrapperCalls(tokens, name) {
+  return tokens.flatMap((token, index) => {
+    if (token.type !== 'identifier' || token.value !== name || !tokens[index + 1] || tokens[index + 1].value !== '(') return [];
+    if (tokens[index - 1] && tokens[index - 1].value === 'function') return [];
+    return [{ key: tokens[index + 2] && tokens[index + 2].type === 'string' ? tokens[index + 2].value : null }];
+  });
+}
+
+function bracketBypasses(tokens) {
   const methodAliases = new Map();
-  const calls = [];
-
   for (let index = 0; index + 3 < tokens.length; index += 1) {
     if (!['var', 'let', 'const'].includes(tokens[index].value) || tokens[index + 1].type !== 'identifier' || tokens[index + 2].value !== '=') continue;
-    const alias = tokens[index + 1].value;
-    const assigned = tokens[index + 3];
-    if (assigned.type === 'string' && allPropertyMethods.has(assigned.value)) methodAliases.set(alias, assigned.value);
-    for (let scan = index + 3; scan + 1 < tokens.length && tokens[scan].value !== ';'; scan += 1) {
-      if (tokens[scan].value === '.' && allPropertyMethods.has(tokens[scan + 1].value)) {
-        functionAliases.set(alias, tokens[scan + 1].value);
-        break;
-      }
-    }
+    if (tokens[index + 3].type === 'string') methodAliases.set(tokens[index + 1].value, tokens[index + 3].value);
   }
+  const blockedNames = new Set([...rawPropertyMethods, ...wrapperNames]);
+  const bypasses = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value !== '[') continue;
+    let close = index + 1;
+    while (close < tokens.length && tokens[close].value !== ']') close += 1;
+    if (!tokens[close] || !tokens[close + 1] || tokens[close + 1].value !== '(') continue;
+    const expression = tokens.slice(index + 1, close);
+    const joinedStrings = expression.filter(token => token.type === 'string').map(token => token.value).join('');
+    const alias = expression.length === 1 && expression[0].type === 'identifier' ? methodAliases.get(expression[0].value) : null;
+    if (blockedNames.has(joinedStrings) || blockedNames.has(alias)) bypasses.push(joinedStrings || alias);
+  }
+  return bypasses;
+}
 
+function assertCentralizedPropertyBoundary(sources) {
+  for (const sourceText of Object.values(sources)) {
+    assert.equal(sourceText.includes('`'), false, 'backtick syntax is outside the OfficeOps ES5 source boundary');
+  }
+  const tokens = allSourceTokens(sources);
+  const rawFactories = tokens.filter((token, index) => token.value === 'PropertiesService' && tokens[index + 1] && tokens[index + 1].value === '.' && tokens[index + 2] && tokens[index + 2].value === 'getScriptProperties' && tokens[index + 3] && tokens[index + 3].value === '(');
+  assert.equal(rawFactories.length, 1, 'PropertiesService.getScriptProperties must appear only in ooScriptProperties_');
+  assert.equal(rawFactories[0].sourceName, 'Code.gs', 'raw PropertiesService access belongs only in Code.gs');
+  assert.equal(identifierCount(tokens, 'PropertiesService'), 1, 'raw PropertiesService references are centralized');
+  assert.equal(identifierCount(tokens, 'getScriptProperties'), 1, 'raw getScriptProperties references are centralized');
+
+  const rawMethods = [];
   for (let index = 0; index + 2 < tokens.length; index += 1) {
-    const method = tokens[index + 1].value;
-    if (tokens[index].value === '.' && allPropertyMethods.has(method) && tokens[index + 2].value === '(') {
-      calls.push({ method, key: tokens[index + 3] && tokens[index + 3].type === 'string' ? tokens[index + 3].value : null, via: 'direct' });
-      continue;
+    if (tokens[index].value === '.' && rawPropertyMethods.has(tokens[index + 1].value) && tokens[index + 2].value === '(') {
+      rawMethods.push({ method: tokens[index + 1].value, sourceName: tokens[index].sourceName });
     }
-    if (tokens[index].value === '[' && tokens[index + 2].value === ']' && tokens[index + 3] && tokens[index + 3].value === '(') {
-      const bracketMethod = tokens[index + 1];
-      if ((bracketMethod.type === 'string' && allPropertyMethods.has(bracketMethod.value)) ||
-          (bracketMethod.type === 'identifier' && methodAliases.has(bracketMethod.value))) {
-        calls.push({ method: methodAliases.get(bracketMethod.value) || bracketMethod.value, key: null, via: bracketMethod.type === 'string' ? 'bracket-literal' : 'bracket-dynamic' });
+  }
+  assert.deepEqual(rawMethods, [
+    { method: 'getProperty', sourceName: 'Code.gs' },
+    { method: 'setProperty', sourceName: 'Code.gs' }
+  ], 'only central getter and setter wrappers may directly access Script Properties');
+  assert.equal(identifierCount(tokens, 'ooScriptProperties_'), 3, 'ooScriptProperties_ appears only as its definition and in the get/set wrappers');
+  assert.equal(identifierCount(tokens, 'ooScriptPropertyKeyAllowed_') >= 3, true, 'key allowlist guards both property wrappers');
+  assert.deepEqual(bracketBypasses(tokens), [], 'computed Property and wrapper method access is forbidden');
+
+  for (const name of wrapperNames) {
+    const calls = wrapperCalls(tokens, name);
+    assert.equal(identifierCount(tokens, name), calls.length + 1, name + ' cannot be extracted, called, or aliased');
+    for (const call of calls) {
+      assert.notEqual(call.key, null, name + ' requires a literal key at every production call site');
+      assert.equal(allowedPropertyKeys.includes(call.key), true, name + ' rejects an unapproved literal key: ' + call.key);
+    }
+    for (let index = 0; index + 3 < tokens.length; index += 1) {
+      if (tokens[index].value === name && tokens[index + 1].value === '.' && ['call', 'apply'].includes(tokens[index + 2].value) && tokens[index + 3].value === '(') {
+        assert.fail(name + ' call/apply access is forbidden');
       }
-      continue;
-    }
-    if (tokens[index].type === 'identifier' && functionAliases.has(tokens[index].value) && tokens[index + 1].value === '(') {
-      calls.push({ method: functionAliases.get(tokens[index].value), key: null, via: 'function-alias' });
     }
   }
-  return calls;
-}
-
-function assertScriptPropertyBoundary(sources) {
-  const calls = Object.keys(sources).sort().flatMap(name => findScriptPropertyCalls(sources[name]));
-  for (const call of calls) {
-    assert.equal(call.via === 'bracket-literal', false, 'bracket Script Property method access is forbidden: ' + call.method);
-    assert.equal(call.via === 'bracket-dynamic', false, 'dynamic Script Property method access is forbidden: ' + call.method);
-    assert.equal(call.via === 'function-alias', false, 'indirect Script Property method alias is forbidden: ' + call.method);
-    assert.equal(wholeNamespaceMethods.has(call.method), false, 'whole-namespace Script Property access is forbidden: ' + call.method);
-    assert.notEqual(call.key, null, 'dynamic Script Property key is forbidden: ' + call.method);
-    assert.equal(allowedPropertyKeys.includes(call.key), true, 'unapproved Script Property key: ' + call.key);
+  for (let index = 0; index + 4 < tokens.length; index += 1) {
+    if (rawPropertyMethods.has(tokens[index].value) && tokens[index + 1].value === '.' && ['call', 'apply'].includes(tokens[index + 2].value) && tokens[index + 3].value === '(') {
+      assert.fail('raw Script Property call/apply access is forbidden: ' + tokens[index].value);
+    }
   }
-  return calls;
+  return tokens;
 }
 
-assert.deepEqual(
-  assertScriptPropertyBoundary(sourceByName),
-  [
-    { method: 'getProperty', key: 'OFFICE_OPS_TOKEN', via: 'direct' },
-    { method: 'getProperty', key: 'OFFICE_OPS_RECOVERY_REQUIRED', via: 'direct' },
-    { method: 'getProperty', key: 'OFFICE_OPS_ENABLED', via: 'direct' }
-  ],
-  'Task 1 may read only its three active property keys; FILE_ID stays declared for later store access'
-);
+assertCentralizedPropertyBoundary(sourceByName);
 
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + "\nfunction ooBadProperty_() { return PropertiesService.getScriptProperties().getProperty('ARBITRARY_CONFIG'); }\n" }),
-  /unapproved Script Property key: ARBITRARY_CONFIG/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + '\nfunction ooBadProperty_(name) { return PropertiesService.getScriptProperties().getProperty(name); }\n' }),
-  /dynamic Script Property key is forbidden/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + '\nfunction ooBadProperty_() { return PropertiesService.getScriptProperties().getProperties(); }\n' }),
-  /whole-namespace Script Property access is forbidden/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + "\nfunction ooBadProperty_() { return properties['getProperties'](); }\n" }),
-  /bracket Script Property method access is forbidden/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + "\nfunction ooBadProperty_() { return properties['getProperty']('ARBITRARY_CONFIG'); }\n" }),
-  /bracket Script Property method access is forbidden/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + "\nfunction ooBadProperty_() { var f = properties.getProperty; return f('ARBITRARY_CONFIG'); }\n" }),
-  /indirect Script Property method alias is forbidden/
-);
-assert.throws(
-  () => assertScriptPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + "\nfunction ooBadProperty_() { var method = 'getProperty'; return properties[method]('ARBITRARY_CONFIG'); }\n" }),
-  /dynamic Script Property method access is forbidden/
-);
+for (const mutation of [
+  "\nfunction ooBadProperty_() { return properties['get' + 'Property']('ARBITRARY_CONFIG'); }\n",
+  "\nfunction ooBadProperty_() { var method = 'getProperty'; return properties[method]('ARBITRARY_CONFIG'); }\n",
+  "\nfunction ooBadProperty_() { return properties.getProperty.call(properties, 'ARBITRARY_CONFIG'); }\n",
+  "\nfunction ooBadProperty_() { return properties.getProperties.call(properties); }\n",
+  "\nfunction ooBadProperty_() { return ooScriptProperties_(); }\n",
+  "\nfunction ooBadProperty_() { return PropertiesService.getScriptProperties(); }\n",
+  "\nfunction ooBadProperty_(key) { return ooGetScriptProperty_(key); }\n"
+]) {
+  assert.throws(
+    () => assertCentralizedPropertyBoundary({ ...sourceByName, 'OfficeOps.gs': sourceByName['OfficeOps.gs'] + mutation }),
+    /Property|property|Script|script|literal|call\/apply|computed/
+  );
+}
+
+const wrapperValues = new Map(allowedPropertyKeys.map(key => [key, 'before-' + key]));
+const wrapperSandbox = {
+  PropertiesService: {
+    getScriptProperties() {
+      return {
+        getProperty(key) { return wrapperValues.get(key) || null; },
+        setProperty(key, value) { wrapperValues.set(key, value); return null; }
+      };
+    }
+  }
+};
+vm.runInNewContext(codeSource, wrapperSandbox, { filename: 'Code.gs' });
+for (const key of allowedPropertyKeys) {
+  assert.equal(wrapperSandbox.ooGetScriptProperty_(key), 'before-' + key, 'runtime getter accepts ' + key);
+  wrapperSandbox.ooSetScriptProperty_(key, 7);
+  assert.equal(wrapperValues.get(key), '7', 'runtime setter stringifies values for ' + key);
+}
+assert.throws(() => wrapperSandbox.ooGetScriptProperty_('APP_TOKEN'), /office-ops-script-property-key-rejected/);
+assert.throws(() => wrapperSandbox.ooSetScriptProperty_(['ARBITRARY', 'CONFIG'].join('_'), 'value'), /office-ops-script-property-key-rejected/);
 
 const documentedPropertyKeys = Array.from(readme.matchAll(/`(OFFICE_[A-Z0-9_]+)`/g), match => match[1]);
 assert.deepEqual([...new Set(documentedPropertyKeys)].sort(), [...allowedPropertyKeys].sort(), 'README documents exactly the four OfficeOps Script Properties');

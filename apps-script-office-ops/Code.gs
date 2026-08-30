@@ -29,6 +29,24 @@ var OO_SCRIPT_PROPERTY_KEYS_ = [
   'OFFICE_OPS_TOKEN'
 ];
 
+function ooScriptPropertyKeyAllowed_(key) {
+  return OO_SCRIPT_PROPERTY_KEYS_.indexOf(key) >= 0;
+}
+
+function ooScriptProperties_() {
+  return PropertiesService.getScriptProperties();
+}
+
+function ooGetScriptProperty_(key) {
+  if (!ooScriptPropertyKeyAllowed_(key)) throw new Error('office-ops-script-property-key-rejected');
+  return ooScriptProperties_().getProperty(key);
+}
+
+function ooSetScriptProperty_(key, value) {
+  if (!ooScriptPropertyKeyAllowed_(key)) throw new Error('office-ops-script-property-key-rejected');
+  return ooScriptProperties_().setProperty(key, String(value));
+}
+
 function ooIsAllowedAction_(action) {
   return OO_ALLOWED_ACTIONS_.indexOf(action) >= 0;
 }
@@ -52,11 +70,9 @@ function doPost(e) {
 function ooDoPost_(request) {
   if (!ooHasBasicEnvelope_(request)) return ooFail_('bad-request');
 
-  var properties;
   var expectedToken;
   try {
-    properties = PropertiesService.getScriptProperties();
-    expectedToken = properties.getProperty('OFFICE_OPS_TOKEN');
+    expectedToken = ooGetScriptProperty_('OFFICE_OPS_TOKEN');
   } catch (_) {
     return ooFail_('manual-recovery-required');
   }
@@ -64,7 +80,7 @@ function ooDoPost_(request) {
 
   var recoveryRequired;
   try {
-    recoveryRequired = properties.getProperty('OFFICE_OPS_RECOVERY_REQUIRED');
+    recoveryRequired = ooGetScriptProperty_('OFFICE_OPS_RECOVERY_REQUIRED');
   } catch (_) {
     return ooFail_('manual-recovery-required');
   }
@@ -72,7 +88,7 @@ function ooDoPost_(request) {
 
   var enabled;
   try {
-    enabled = properties.getProperty('OFFICE_OPS_ENABLED');
+    enabled = ooGetScriptProperty_('OFFICE_OPS_ENABLED');
   } catch (_) {
     return ooFail_('office-disabled');
   }
