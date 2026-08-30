@@ -399,39 +399,6 @@ const beginPayload = {
   termsSha256: commercial.sha256Hex, commercialTerms: commercialInput, commercialApproval: approvalMetadata,
   expectedRevision: 1
 };
-const canonicalPayloads = {
-  officePilotCreate: pilotCreatePayload,
-  officePilotUpdate: { pilotId: 'pilot_test', expectedRevision: 1, ...pilotCreatePayload, idempotencyKey: undefined },
-  officePilotArchive: { pilotId: 'pilot_test', expectedRevision: 1, archiveReason: '상담 종료' },
-  officePilotRestore: { pilotId: 'pilot_test', expectedRevision: 1 },
-  officeConsentRecord: consentCreatePayload,
-  officeConsentWithdraw: { consentId: 'consent_test', expectedRevision: 1, withdrawnBy: '대표', withdrawalReason: '철회' },
-  officeInspectionCreate: inspectionCreatePayload,
-  officeInspectionUpdate: { inspectionId: 'inspection_test', expectedRevision: 1, ...inspectionCreatePayload, idempotencyKey: undefined },
-  officeInspectionArchive: { inspectionId: 'inspection_test', expectedRevision: 1, archiveReason: '계획 보류' },
-  officeInspectionRestore: { inspectionId: 'inspection_test', expectedRevision: 1 },
-  officeInspectionBeginConversion: beginPayload,
-  officeInspectionArmLocalCommit: { inspectionId: 'inspection_test', conversionId: 'conversion_test_001', pendingOrderId: 'pending_test_001', receiptId: 'receipt_test_001', receiptSubjectType: 'aptOrder', receiptSubjectId: 'pending_test_001', termsSha256: commercial.sha256Hex, expectedRevision: 1 },
-  officeInspectionRecordLocalCommit: { inspectionId: 'inspection_test', conversionId: 'conversion_test_001', pendingOrderId: 'pending_test_001', linkedOrderId: 'pending_test_001', receiptId: 'receipt_test_001', receiptSubjectType: 'aptOrder', receiptSubjectId: 'pending_test_001', termsSha256: commercial.sha256Hex, expectedRevision: 1 },
-  officeInspectionFinalizeConversion: { inspectionId: 'inspection_test', conversionId: 'conversion_test_001', pendingOrderId: 'pending_test_001', linkedOrderId: 'pending_test_001', receiptId: 'receipt_test_001', receiptSubjectType: 'aptOrder', receiptSubjectId: 'pending_test_001', termsSha256: commercial.sha256Hex, expectedRevision: 1 },
-  officeInspectionCancelConversion: { inspectionId: 'inspection_test', conversionId: 'conversion_test_001', expectedRevision: 1 },
-  officeOpportunityCreate: opportunityCreatePayload,
-  officeOpportunityUpdate: { opportunityId: 'opp_test', expectedRevision: 1, ...opportunityCreatePayload, idempotencyKey: undefined },
-  officeOpportunityArchive: { opportunityId: 'opp_test', expectedRevision: 1, archiveReason: '종료' },
-  officeOpportunityRestore: { opportunityId: 'opp_test', expectedRevision: 1 }
-};
-for (const [action, sourcePayload] of Object.entries(canonicalPayloads)) {
-  const payload = Object.fromEntries(Object.entries(sourcePayload).filter(([, value]) => value !== undefined));
-  const canonical = sandbox.ooCanonicalMutation_(action, payload);
-  equal(canonical.ok, true, action);
-  match(canonical.sha256Hex, /^[0-9a-f]{64}$/, action);
-  equal(JSON.parse(canonical.json).action, action, action);
-  equal(sandbox.ooCanonicalMutation_(action, { ...payload, surprise: true }).error, 'unknown-field', action);
-  const firstKey = Object.keys(payload)[0];
-  const missing = { ...payload }; delete missing[firstKey];
-  equal(sandbox.ooCanonicalMutation_(action, missing).error, 'invalid-input', action);
-}
-equal(Object.keys(sandbox.OO_CANONICAL_FIELDS_).length, 19);
 const expectedCanonicalFields = {
   officePilotCreate: ['idempotencyKey','complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'],
   officePilotUpdate: ['pilotId','expectedRevision','complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'],
@@ -450,6 +417,131 @@ const expectedCanonicalFields = {
   officeOpportunityUpdate: ['opportunityId','expectedRevision','complexName','officialUrl','observedAt','region','category','deadlineAt','stage','requirements','verifiedBy','notes'],
   officeOpportunityArchive: ['opportunityId','expectedRevision','archiveReason'], officeOpportunityRestore: ['opportunityId','expectedRevision']
 };
+const canonicalTermsHash = 'd281f3a06b118ecba257558c569bb48da25869c78f0ea6fc2b42cba622e0d52f';
+const canonicalRawTerms = {
+  scheduleWindow: '  2026-09-02 오후  ', validUntil: '2026-09-30', quotedAmount: '100000',
+  vatMode: 'included', exclusions: ['복구 공사', '타일'], scope: '  욕실 누수 장비 진단  ', workKind: 'device-diagnosis'
+};
+const canonicalExpectedTerms = {
+  workKind: 'device-diagnosis', scope: '욕실 누수 장비 진단', exclusions: ['복구 공사', '타일'],
+  vatMode: 'included', quotedAmount: 100000, validUntil: '2026-09-30', scheduleWindow: '2026-09-02 오후'
+};
+const canonicalApprovalInput = {
+  receiptHmac: 'b'.repeat(64), issuedAt: '2026-08-31T10:00:01+09:00', approvedByRole: 'management-office',
+  approvedAt: NOW, approvalEvidenceSha256: 'a'.repeat(64), approvalEvidenceFileId: 'TEST_EVIDENCE_FILE_0001',
+  approvalEvidenceType: 'quote-file', approvedTermsSha256: canonicalTermsHash, subjectId: 'pending_test_001',
+  subjectType: 'aptOrder', receiptId: 'receipt_test_001'
+};
+const canonicalExpectedApproval = {
+  receiptId: 'receipt_test_001', subjectType: 'aptOrder', subjectId: 'pending_test_001',
+  approvedTermsSha256: canonicalTermsHash, approvalEvidenceType: 'quote-file',
+  approvalEvidenceFileId: 'TEST_EVIDENCE_FILE_0001', approvalEvidenceSha256: 'a'.repeat(64),
+  approvedAt: NOW, approvedByRole: 'management-office', issuedAt: '2026-08-31T10:00:01+09:00',
+  receiptHmac: 'b'.repeat(64)
+};
+const canonicalCases = {
+  officePilotCreate: {
+    input: { idempotencyKey:'create_pilot_123456', complexName:'신규 단지', source:'website', stage:'pilot', pilotStartedAt:'2026-08-31T18:00:00+09:00', pilotEndsAt:'2026-09-29T23:59:59+09:00', extensionApprovedAt:null, nextActionAt:'2026-09-01', owner:'대표', notes:'신규 상담 메모' },
+    expected: { idempotencyKey:'create_pilot_123456', complexName:'신규 단지', source:'website', stage:'pilot', pilotStartedAt:'2026-08-31T18:00:00+09:00', pilotEndsAt:'2026-09-29T23:59:59+09:00', extensionApprovedAt:null, nextActionAt:'2026-09-01', owner:'대표', notes:'신규 상담 메모' }
+  },
+  officePilotUpdate: {
+    input: { notes:'후속 상담 메모', owner:'대표', nextActionAt:'2026-09-03', extensionApprovedAt:null, pilotEndsAt:null, pilotStartedAt:null, stage:'contacted', source:'referral', complexName:'수정 단지', expectedRevision:7, pilotId:'pilot_test' },
+    expected: { pilotId:'pilot_test', expectedRevision:7, complexName:'수정 단지', source:'referral', stage:'contacted', pilotStartedAt:null, pilotEndsAt:null, extensionApprovedAt:null, nextActionAt:'2026-09-03', owner:'대표', notes:'후속 상담 메모' }
+  },
+  officePilotArchive: {
+    input: { archiveReason:'상담 종료', expectedRevision:8, pilotId:'pilot_test' },
+    expected: { pilotId:'pilot_test', expectedRevision:8, archiveReason:'상담 종료' }
+  },
+  officePilotRestore: {
+    input: { expectedRevision:9, pilotId:'pilot_test' },
+    expected: { pilotId:'pilot_test', expectedRevision:9 }
+  },
+  officeConsentRecord: {
+    input: { evidenceId:'record_test', evidenceType:'message', consentedAt:NOW, recordedBy:'대표', consentTextSha256:'a'.repeat(64), consentTextSnapshot:'재점검 연락 선택 동의 원문', consentVersion:'reinspection-v1', channel:'kakao', intervalMonths:12, purpose:'preventive-reinspection', subjectId:'order01', subjectType:'aptOrder', idempotencyKey:'create_consent_123456' },
+    expected: { idempotencyKey:'create_consent_123456', subjectType:'aptOrder', subjectId:'order01', purpose:'preventive-reinspection', intervalMonths:12, channel:'kakao', consentVersion:'reinspection-v1', consentTextSnapshot:'재점검 연락 선택 동의 원문', consentTextSha256:'a'.repeat(64), recordedBy:'대표', consentedAt:NOW, evidenceType:'message', evidenceId:'record_test' }
+  },
+  officeConsentWithdraw: {
+    input: { withdrawalReason:'철회 요청', withdrawnBy:'대표', expectedRevision:10, consentId:'consent_test' },
+    expected: { consentId:'consent_test', expectedRevision:10, withdrawnBy:'대표', withdrawalReason:'철회 요청' }
+  },
+  officeInspectionCreate: {
+    input: { commercialApproval:null, commercialTerms:canonicalRawTerms, summary:'점검 생성 요약', riskItems:['배수 확인','옥상 우수관 확인'], nextDueAt:'2026-09-02', status:'proposal', templateId:'preventive-v1', complexName:'점검 단지', officeId:'office_test', idempotencyKey:'create_inspect_12345' },
+    expected: { idempotencyKey:'create_inspect_12345', officeId:'office_test', complexName:'점검 단지', templateId:'preventive-v1', status:'proposal', nextDueAt:'2026-09-02', riskItems:['배수 확인','옥상 우수관 확인'], summary:'점검 생성 요약', commercialTerms:canonicalExpectedTerms, commercialApproval:null }
+  },
+  officeInspectionUpdate: {
+    input: { commercialApproval:null, commercialTerms:null, summary:'점검 수정 요약', riskItems:['저수조 확인','배수펌프 확인'], nextDueAt:'2026-10-02', status:'checked', templateId:'rainy-v1', complexName:'수정 점검 단지', officeId:'office_update', expectedRevision:11, inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', expectedRevision:11, officeId:'office_update', complexName:'수정 점검 단지', templateId:'rainy-v1', status:'checked', nextDueAt:'2026-10-02', riskItems:['저수조 확인','배수펌프 확인'], summary:'점검 수정 요약', commercialTerms:null, commercialApproval:null }
+  },
+  officeInspectionArchive: {
+    input: { archiveReason:'계획 보류', expectedRevision:12, inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', expectedRevision:12, archiveReason:'계획 보류' }
+  },
+  officeInspectionBeginConversion: {
+    input: { expectedRevision:13, commercialApproval:canonicalApprovalInput, commercialTerms:canonicalRawTerms, termsSha256:canonicalTermsHash, receiptSubjectId:'pending_test_001', receiptSubjectType:'aptOrder', receiptId:'receipt_test_001', pendingOrderId:'pending_test_001', conversionId:'conversion_test_001', inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', conversionId:'conversion_test_001', pendingOrderId:'pending_test_001', receiptId:'receipt_test_001', receiptSubjectType:'aptOrder', receiptSubjectId:'pending_test_001', termsSha256:canonicalTermsHash, commercialTerms:canonicalExpectedTerms, commercialApproval:canonicalExpectedApproval, expectedRevision:13 }
+  },
+  officeInspectionArmLocalCommit: {
+    input: { expectedRevision:14, termsSha256:canonicalTermsHash, receiptSubjectId:'pending_test_001', receiptSubjectType:'aptOrder', receiptId:'receipt_test_001', pendingOrderId:'pending_test_001', conversionId:'conversion_test_001', inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', conversionId:'conversion_test_001', pendingOrderId:'pending_test_001', receiptId:'receipt_test_001', receiptSubjectType:'aptOrder', receiptSubjectId:'pending_test_001', termsSha256:canonicalTermsHash, expectedRevision:14 }
+  },
+  officeInspectionRecordLocalCommit: {
+    input: { expectedRevision:15, termsSha256:canonicalTermsHash, receiptSubjectId:'pending_test_001', receiptSubjectType:'aptOrder', receiptId:'receipt_test_001', linkedOrderId:'pending_test_001', pendingOrderId:'pending_test_001', conversionId:'conversion_test_001', inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', conversionId:'conversion_test_001', pendingOrderId:'pending_test_001', linkedOrderId:'pending_test_001', receiptId:'receipt_test_001', receiptSubjectType:'aptOrder', receiptSubjectId:'pending_test_001', termsSha256:canonicalTermsHash, expectedRevision:15 }
+  },
+  officeInspectionFinalizeConversion: {
+    input: { expectedRevision:16, termsSha256:canonicalTermsHash, receiptSubjectId:'pending_test_001', receiptSubjectType:'aptOrder', receiptId:'receipt_test_001', linkedOrderId:'pending_test_001', pendingOrderId:'pending_test_001', conversionId:'conversion_test_001', inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', conversionId:'conversion_test_001', pendingOrderId:'pending_test_001', linkedOrderId:'pending_test_001', receiptId:'receipt_test_001', receiptSubjectType:'aptOrder', receiptSubjectId:'pending_test_001', termsSha256:canonicalTermsHash, expectedRevision:16 }
+  },
+  officeInspectionCancelConversion: {
+    input: { expectedRevision:17, conversionId:'conversion_test_001', inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', conversionId:'conversion_test_001', expectedRevision:17 }
+  },
+  officeInspectionRestore: {
+    input: { expectedRevision:18, inspectionId:'inspection_test' },
+    expected: { inspectionId:'inspection_test', expectedRevision:18 }
+  },
+  officeOpportunityCreate: {
+    input: { notes:'공고 생성 메모', verifiedBy:'대표', requirements:['면허 확인','현장설명 확인'], stage:'review', deadlineAt:'2026-09-30T18:00:00+09:00', category:'배관', region:'대전', observedAt:NOW, officialUrl:'  https://www.k-apt.go.kr/a?x=1#section  ', complexName:'공고 단지', idempotencyKey:'create_opport_12345' },
+    expected: { idempotencyKey:'create_opport_12345', complexName:'공고 단지', officialUrl:'https://www.k-apt.go.kr/a?x=1', observedAt:NOW, region:'대전', category:'배관', deadlineAt:'2026-09-30T18:00:00+09:00', stage:'review', requirements:['면허 확인','현장설명 확인'], verifiedBy:'대표', notes:'공고 생성 메모' }
+  },
+  officeOpportunityUpdate: {
+    input: { notes:'공고 수정 메모', verifiedBy:'대표', requirements:['공동인증서 확인','제출서류 확인'], stage:'watch', deadlineAt:'2026-10-15T18:00:00+09:00', category:'누수', region:'대전 중구', observedAt:'2026-09-01T10:00:00+09:00', officialUrl:' https://k-apt.go.kr/b?notice=2#detail ', complexName:'수정 공고 단지', expectedRevision:19, opportunityId:'opp_test' },
+    expected: { opportunityId:'opp_test', expectedRevision:19, complexName:'수정 공고 단지', officialUrl:'https://k-apt.go.kr/b?notice=2', observedAt:'2026-09-01T10:00:00+09:00', region:'대전 중구', category:'누수', deadlineAt:'2026-10-15T18:00:00+09:00', stage:'watch', requirements:['공동인증서 확인','제출서류 확인'], verifiedBy:'대표', notes:'공고 수정 메모' }
+  },
+  officeOpportunityArchive: {
+    input: { archiveReason:'공고 종료', expectedRevision:20, opportunityId:'opp_test' },
+    expected: { opportunityId:'opp_test', expectedRevision:20, archiveReason:'공고 종료' }
+  },
+  officeOpportunityRestore: {
+    input: { expectedRevision:21, opportunityId:'opp_test' },
+    expected: { opportunityId:'opp_test', expectedRevision:21 }
+  }
+};
+const canonicalNormalizationExceptions = new Set([
+  'officeInspectionCreate', 'officeInspectionBeginConversion', 'officeOpportunityCreate', 'officeOpportunityUpdate'
+]);
+for (const [action, testCase] of Object.entries(canonicalCases)) {
+  const sourceBefore = JSON.stringify(testCase.input);
+  const canonical = sandbox.ooCanonicalMutation_(action, testCase.input);
+  const parsed = JSON.parse(canonical.json);
+  const expectedEnvelope = { action, payload: testCase.expected };
+  const expectedJson = JSON.stringify(expectedEnvelope);
+  equal(canonical.ok, true, action + ' succeeds');
+  equal(canonical.json, expectedJson, action + ' exact canonical JSON');
+  deepEqual(parsed, expectedEnvelope, action + ' exact canonical values');
+  deepEqual(Object.keys(parsed), ['action','payload'], action + ' top-level order');
+  deepEqual(Object.keys(parsed.payload), expectedCanonicalFields[action], action + ' payload order');
+  equal(canonical.sha256Hex, crypto.createHash('sha256').update(expectedJson).digest('hex'), action + ' exact hash');
+  match(canonical.sha256Hex, /^[0-9a-f]{64}$/, action + ' lowercase hash');
+  equal(JSON.stringify(testCase.input), sourceBefore, action + ' source payload remains unchanged');
+  if (!canonicalNormalizationExceptions.has(action)) deepEqual(parsed.payload, testCase.input, action + ' raw values preserved');
+  equal(sandbox.ooCanonicalMutation_(action, { ...testCase.input, surprise:true }).error, 'unknown-field', action + ' rejects extra');
+  const firstKey = Object.keys(testCase.input)[0];
+  const missing = { ...testCase.input }; delete missing[firstKey];
+  equal(sandbox.ooCanonicalMutation_(action, missing).error, 'invalid-input', action + ' rejects missing');
+}
+equal(Object.keys(canonicalCases).length, 19);
+equal(Object.keys(sandbox.OO_CANONICAL_FIELDS_).length, 19);
 deepEqual(Object.fromEntries(Object.entries(sandbox.OO_CANONICAL_FIELDS_).map(([key, fields]) => [key, Array.from(fields)])), expectedCanonicalFields);
 equal(sandbox.ooCanonicalMutation_('officeOpsList', {}).error, 'bad-request');
 equal(sandbox.ooCanonicalMutation_('officeConsentContact', {}).error, 'bad-request');
