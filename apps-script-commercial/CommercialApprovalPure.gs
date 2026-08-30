@@ -87,7 +87,8 @@ function caIsReceipt_(receipt, hasMac) {
   if (hasMac) fields.push('receiptHmac');
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || !caHasExactFields_(receipt, fields)) return false;
   if (!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(receipt.receiptId) || !/^[A-Za-z0-9_-]{1,160}$/.test(receipt.subjectId)) return false;
-  if (receipt.subjectType !== 'aptOrder' || receipt.approvalEvidenceType !== 'quote-file' || receipt.approvedByRole !== 'customer') return false;
+  if (receipt.subjectType !== 'aptOrder' || ['quote-file', 'contract-file', 'message-export-file'].indexOf(receipt.approvalEvidenceType) < 0 ||
+      ['customer', 'management-office'].indexOf(receipt.approvedByRole) < 0) return false;
   if (!/^[0-9a-f]{64}$/.test(receipt.approvedTermsSha256) || !/^[0-9a-f]{64}$/.test(receipt.approvalEvidenceSha256)) return false;
   if (typeof receipt.approvalEvidenceFileId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(receipt.approvalEvidenceFileId)) return false;
   var approvedAt = caParseKstDateTime_(receipt.approvedAt);
