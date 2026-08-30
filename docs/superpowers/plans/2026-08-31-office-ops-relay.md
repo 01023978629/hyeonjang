@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Do not modify `apps-script/`, `index.html`, `sw.js`, existing photo relay behavior, `OfficeIntake`, existing project storage, or `aptOrders`.
+- Do not modify `apps-script/`, `apps-script-commercial/`, `index.html`, `sw.js`, existing photo relay behavior, `OfficeIntake`, existing project storage, or `aptOrders`.
 - Create and deploy `apps-script-office-ops/` as a new, separate Apps Script project, entrypoint, deployment, and property namespace; it must not share sources or dispatch with `apps-script/` or `apps-script-commercial/`.
 - Use only `OFFICE_OPS_FILE_ID`, `OFFICE_OPS_ENABLED`, `OFFICE_OPS_RECOVERY_REQUIRED`, and `OFFICE_OPS_TOKEN`. `OFFICE_OPS_RECOVERY_REQUIRED` is the durable fail-closed write latch, initialized to `0`; it is never a client-controlled field. `OFFICE_OPS_TOKEN` must differ from `APP_TOKEN`, every public OfficeIntake session token, and `COMMERCIAL_APPROVAL_TOKEN`.
 - Permit no public browser call, OfficeIntake session token, legacy `APP_TOKEN`, or unauthenticated request. Every action is internal and must authenticate its separate token without logging it.
@@ -22,7 +22,7 @@
 - Require schema version `1`, nonnegative integer `revision`, whole-second KST `updatedAt`, exactly `pilots`, `consents`, `inspections`, `opportunities`, and `audit` arrays; reject unknown top-level or nested fields, duplicate IDs across all four arrays, invalid states, malformed JSON, unsupported schema, and display-name mismatch without overwriting the source file. Pilot and opportunity rows include the server-owned `retentionStartedAt`; inspection rows include the server-owned `conversionStartedAt`.
 - Every request, including `officeOpsList` and `officeOpsRetentionList`, requires an RFC 3339 timestamp that passes the same calendar, clock, offset, and five-minute freshness rules as the commercial relay's `caParseRequestTimestamp_`; browser UTC `new Date().toISOString()` and valid explicit offsets such as `+09:00` are accepted. Stored datetimes are stricter whole-second KST `YYYY-MM-DDTHH:mm:ss+09:00` values. Every mutation additionally requires a new `mutationId`. Creates also require a 16–80 character `[A-Za-z0-9_-]+` `idempotencyKey`; same key/same canonical payload returns the first exact acknowledgement reconstructed from audit, same key/different payload returns `idempotency-conflict`, repeated mutation ID returns `replay-request`, and stale timestamps return `stale-request` before idempotency lookup.
 - Updates, archives, restores, and conversion commands require `expectedRevision`; use `LockService` to serialize mutation and fail with `revision-conflict` without overwriting newer data.
-- Before every mutation, copy the exact UTF-8 source bytes to `관리사무소영업운영_백업_YYYYMMDD_HHmmss.json`, create a paired `.manifest.json` containing `sourceFileId`, `backupFileId`, `createdAt`, `schemaVersion`, `preMutationRevision`, `byteLength`, and lowercase SHA-256, then re-read both files, strict-parse the manifest, and verify every field plus the backup hash. Mutation proceeds only after the verified pair succeeds. On any copy/manifest/re-read/parse/hash failure, mark both new artifacts as cleanup candidates and leave source bytes/revision unchanged. Drive may contain same-name files created within one second; pair and order them by `preMutationRevision`, `createdAt`, and immutable file IDs, retaining exactly the latest ten complete verified pairs.
+- Before every mutation, copy the exact loaded UTF-8 source bytes to `관리사무소영업운영_백업_YYYYMMDD_HHmmss.json`, create a paired `.manifest.json` containing `sourceFileId`, `backupFileId`, `createdAt`, `schemaVersion`, `preMutationRevision`, `byteLength`, and lowercase SHA-256, then re-read both files and bind every value, byte, ID, name, parent, MIME, length, hash, and revision back to that loaded source. Mutation proceeds only after the verified pair succeeds. On any copy/manifest/re-read/parse/hash failure, track only directly returned, distinct, same-parent new artifact IDs as attempted cleanup candidates and leave source bytes/revision unchanged; never trash the source or pass attempted artifacts into normal retention selection. Drive may contain same-name files created within one second; pair and order complete verified pairs by `preMutationRevision`, `createdAt`, and immutable file IDs, requiring the current pair to be the maximal member and retaining exactly the newest ten including it.
 - Archive is a tombstone for pilots, inspections, and opportunities: preserve item ID, set `archivedAt`, `archivedBy`, `archiveReason`, and later `restoredAt`; exclude archived entries from default lists and operational statistics. Consents use withdrawal records rather than archive. First release never permanently deletes data.
 - Retention list includes closed pilots, skip/closed opportunities, withdrawn consents, and archived tombstones once their one-KST-calendar-year reference date is reached. `retentionStartedAt` is set only when a pilot enters `closed` or an opportunity enters `skip|closed`, preserved while that terminal state remains, and cleared if the row leaves it. Archive uses `archivedAt` instead; archive wins if one row has both reasons. Restore retains the ID and resets only the archive retention start to a subsequent archive. February 29 falls back to February 28 in the following non-leap year. First release lists but never automatically deletes eligible rows.
 - Do not call `MailApp`, `CalendarApp`, `UrlFetchApp`, SMS, Kakao, Naver booking APIs, `commercialNow`, `commercialApprovalIssue`, `commercialApprovalVerify`, or any external service. Inspection receipt metadata is permitted, but OfficeOps never invokes a commercial API. Do not automatically retry or queue offline work.
@@ -87,7 +87,7 @@ Store shape is exactly:
 | inspection conversion actions | exact fields in Task 4's conversion table; every action includes `inspectionId`, `conversionId`, and `expectedRevision` | `{ok:true,id,revision,updatedAt}` | `invalid-conversion-state`, `receipt-mismatch`, `terms-mismatch`, `revision-conflict` |
 | `officeOpsRetentionList` | exactly `{}` | `{ok:true,rows,serverNowKst}` | `office-disabled`, `unauthorized`, `stale-request`, `invalid-input`, `unknown-field` |
 
-Common request errors are `bad-request`, `unauthorized`, `office-disabled`, `manual-recovery-required`, `recovery-state-unknown`, `stale-request`, `replay-request`, `idempotency-conflict`, `lock-unavailable`, `invalid-store`, `invalid-input`, `unknown-field`, and `server-error`. An unexpected key returns `unknown-field`; a missing required key or invalid value returns `invalid-input` or the action's narrower domain error. Every request checks the recovery latch before enabled/action dispatch and fails closed while it is `1` or unreadable. No error returns a token, secret, receipt HMAC, evidence file ID, or source bytes.
+Common request errors are `bad-request`, `unauthorized`, `office-disabled`, `manual-recovery-required`, `recovery-state-unknown`, `stale-request`, `replay-request`, `idempotency-conflict`, `lock-unavailable`, `invalid-store`, `invalid-input`, `unknown-field`, `source-changed`, `backup-verify-failed`, `recovery-arm-failed`, `write-verify-failed`, and `server-error`. An unexpected key returns `unknown-field`; a missing required key or invalid value returns `invalid-input` or the action's narrower domain error. Every request checks the recovery latch before enabled/action dispatch and fails closed while it is `1` or unreadable. No error returns a token, secret, receipt HMAC, evidence file ID, or source bytes.
 
 ### Task 1: Scaffold the independent OfficeOps relay and prove strict isolation
 
@@ -111,7 +111,7 @@ const source = ['Code.gs', 'OfficeOpsPure.gs', 'OfficeOps.gs'].map(name =>
 for (const allowed of ['officeOpsList', 'officePilotCreate', 'officeConsentWithdraw', 'officeInspectionFinalizeConversion', 'officeOpportunityRestore', 'officeOpsRetentionList']) {
   assert.equal(source.includes("'" + allowed + "'"), true, allowed + ' is allowlisted');
 }
-for (const forbidden of ['OfficeIntake', 'officeInbox', 'officeAccept', 'officeSetStatus', 'loadData_', 'saveData_', 'serializeData', 'aptOrders', 'MailApp', 'CalendarApp', 'UrlFetchApp', 'commercialNow(', 'commercialApprovalIssue(', 'commercialApprovalVerify(']) {
+for (const forbidden of ['OfficeIntake', 'officeInbox', 'officeAccept', 'officeSetStatus', 'loadData_', 'saveData_', 'serializeData', 'aptOrders', 'MailApp', 'CalendarApp', 'UrlFetchApp', 'getFilesByName', 'APP_TOKEN', 'DATA_FILE_ID', 'OFFICE_INTAKE_FILE_ID', 'COMMERCIAL_APPROVAL_TOKEN', 'commercialNow(', 'commercialApprovalIssue(', 'commercialApprovalVerify(']) {
   assert.equal(source.includes(forbidden), false, forbidden + ' must not enter OfficeOps');
 }
 assert.match(source, /commercialTerms/);
@@ -135,20 +135,22 @@ function ooIsAllowedAction_(action) {
 }
 function doGet() { return ooOut_(ooFail_('method-not-allowed')); }
 function doPost(e) {
-  var raw = e && e.postData && e.postData.contents;
-  if (!raw || raw.length > 131072) return ooOut_(ooFail_('bad-request'));
-  var request; try { request = JSON.parse(raw); } catch (_) { return ooOut_(ooFail_('bad-request')); }
-  return ooOut_(ooDoPost_(request));
+  try {
+    var raw = e && e.postData && e.postData.contents;
+    if (!raw || raw.length > 131072) return ooOut_(ooFail_('bad-request'));
+    var request; try { request = JSON.parse(raw); } catch (_) { return ooOut_(ooFail_('bad-request')); }
+    return ooOut_(ooDoPost_(request));
+  } catch (_) { return ContentService.createTextOutput('{"ok":false,"error":"server-error"}').setMimeType(ContentService.MimeType.JSON); }
 }
 ```
 
-Set V8 and `Asia/Seoul` in the new manifest. `ooDoPost_` authenticates without logging, then reads `OFFICE_OPS_RECOVERY_REQUIRED` before enabled/action dispatch; only exact string `0` may continue, while `1`, missing, unreadable, or any other value returns `manual-recovery-required`. Do not add public action handlers or reuse the production `apps-script/Code.gs` dispatcher. Write the complete README property, deployment, rollback, and approval-boundary contract required by Task 5; it must state that this is a separate, representative-approved deployment.
+Set V8 and `Asia/Seoul` in the new manifest. `ooDoPost_` authenticates without logging, then reads `OFFICE_OPS_RECOVERY_REQUIRED` before enabled/action dispatch; only exact string `0` may continue, while `1`, missing, unreadable, or any other value returns `manual-recovery-required`. The outer `doPost` boundary catches every unexpected parser, property, dispatch, Drive, lock, and response exception and emits only `{ok:false,error:'server-error'}` without exception text or logging. Do not add public action handlers, `getFilesByName`, legacy property/source access, or reuse either `apps-script/Code.gs` or `apps-script-commercial/`. Write the complete README property, deployment, rollback, and approval-boundary contract required by Task 5; it must state that this is a separate, representative-approved deployment.
 
 - [ ] **Step 4: Run the isolation test to verify it passes**
 
 Run: `node tests/office-ops-server-isolation.check.js`
 
-Expected: PASS and `git diff -- apps-script index.html sw.js` is empty.
+Expected: PASS and `git diff -- apps-script apps-script-commercial index.html sw.js` is empty.
 
 - [ ] **Step 5: Commit the isolated OfficeOps foundation**
 
@@ -543,7 +545,7 @@ git commit -m "feat: reject unsafe OfficeOps mutations before storage"
 
 **Interfaces:**
 - Consumes: pure helpers; `DriveApp.getFileById`, `Utilities.newBlob`, `Utilities.formatDate`, `LockService.getScriptLock`, and Script Properties injected by tests.
-- Produces: `ooReadStore_(sourceFile)`, `ooBackupPair_(sourceFile, sourceBytes, store)`, `ooMutate_(request)`, `ooDispatch_(action, request)`, the editor-only zero-argument `ooRecoveryValidateSource_()`, and all allowlisted handlers. `ooMutate_` supplies the only actor value, exact server-owned `'representative'`; no request can choose it.
+- Produces: exact one-argument `ooDispatch_(request)`; `ooDispatchRead_(request,requestNowMs)`; `ooMutate_(request,requestNowMs)`; `ooMutateLocked_(request,requestNowMs)`; `ooRecheckLockedGates_(token)`; `ooSourceFile_()`; `ooReadStore_(sourceFile)`; `ooValidateAuditHistory_(store)`; `ooValidateExpectedRevisionInsideLock_(request,revision)`; `ooBackupPair_(sourceFile,loaded,mutationNowMs)`; `ooRereadExactPair_(source,parent,backup,manifestFile,backupName,manifestName)`; `ooRecheckLoadedSource_(source,loaded)`; `ooArmRecoveryLatch_()`; `ooWritePrepared_(source,loaded,prepared,backup,mutationNowKst)`; `ooRestoreSourceAfterFailedWrite_(source,loaded,backup)`; `ooClearRecoveryLatch_()`; `ooVerifiedRetentionPairs_(sourceFile,currentPair)`; byte/hash/KST formatting utilities; and the editor-only zero-argument `ooRecoveryValidateSource_()`. Task 3 wires only the shared dispatcher/storage boundary, `officeOpsList`, `officeOpsRetentionList`, and `officePilotCreate` needed to prove one complete read/create path; Task 4 owns the remaining eighteen mutation handlers without changing the 21-action allowlist. `ooMutate_` supplies the only actor value, exact server-owned `'representative'`; no request can choose it.
 
 - [ ] **Step 1: Write failing server tests with fake Apps Script dependencies**
 
@@ -551,9 +553,14 @@ git commit -m "feat: reject unsafe OfficeOps mutations before storage"
 const properties = {
   OFFICE_OPS_ENABLED:'1', OFFICE_OPS_RECOVERY_REQUIRED:'0', OFFICE_OPS_TOKEN:'TEST_ONLY_OFFICE_OPS_TOKEN', OFFICE_OPS_FILE_ID:'TEST_OFFICE_OPS_FILE'
 };
+const listed = postRead('officeOpsList', {});
+assert.deepEqual(Object.keys(listed), ['ok','store']);
+const retention = postRead('officeOpsRetentionList', {});
+assert.deepEqual(Object.keys(retention), ['ok','rows','serverNowKst']);
 const pilotPayload = { idempotencyKey:'create_pilot_123456', complexName:'테스트 단지', source:'website', stage:'pilot', pilotStartedAt:'2026-08-31T09:00:00+09:00', pilotEndsAt:'2026-09-29T23:59:59+09:00', extensionApprovedAt:null, nextActionAt:'2026-09-01', owner:'대표', notes:'' };
 const first = post('officePilotCreate', pilotPayload);
 assert.equal(first.ok, true);
+assert.deepEqual(Object.keys(first), ['ok','id','revision','updatedAt']);
 const retried = post('officePilotCreate', pilotPayload);
 assert.deepEqual(retried, first);
 assert.equal(post('officePilotCreate', { ...pilotPayload, complexName:'다른 단지' }).error, 'idempotency-conflict');
@@ -563,7 +570,7 @@ assert.equal(drive.files.filter(file => /_백업_.*\.json$/.test(file.name)).len
 assert.equal(drive.files.filter(file => /_백업_.*\.manifest\.json$/.test(file.name)).length, 1);
 ```
 
-The fake Drive file must hold raw bytes, distinguish source/update/backup reads, support injected errors for backup copy, manifest creation, backup re-read, and source write, and provide `setTrashed`. The fake lock records acquire/release calls and can refuse acquisition. The fake clock supplies a fixed KST instant. Add assertions that every failed backup leaves source bytes and revision exactly unchanged.
+The fake Drive file must hold raw bytes, immutable IDs, parent IDs, MIME type, trashed state, and returned `getId()` values; distinguish source/update/backup/manifest reads; support invalid UTF-8; inject backup copy, manifest creation, pair re-read, source write, restore, retention-trash, and property failures; and provide `setTrashed`. The fake lock separately injects `getScriptLock`, `tryLock`, and `releaseLock` exceptions and records acquisition/release counts. The fake clock counts dispatcher request-time calls and mutation-time calls independently. Add assertions that every failed backup leaves source bytes and revision exactly unchanged.
 
 - [ ] **Step 2: Run the server test to verify it fails**
 
@@ -574,52 +581,78 @@ Expected: FAIL because there is no exact-ID store, lock, idempotency, or verifie
 - [ ] **Step 3: Implement store validation and locked mutation sequence**
 
 ```js
-function ooMutate_(request) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) return ooFail_('lock-unavailable');
-  try {
-    var source = ooSourceFile_();
-    var loaded = ooReadStore_(source); if (!loaded.ok) return loaded;
-    var envelope = ooValidateMutationEnvelope_(request, ooNowMs_()); if (!envelope.ok) return envelope;
-    var replay = ooFindMutation_(loaded.store, request.mutationId); if (replay) return ooFail_('replay-request');
-    var canonical = ooCanonicalMutation_(request.action, request.payload); if (!canonical.ok) return canonical;
-    var idempotent = ooFindIdempotentCreate_(loaded.store, request.action, request.payload.idempotencyKey, canonical.sha256Hex);
-    if (idempotent) return idempotent;
-    var domainReplay = ooFindSafeConversionReplay_(loaded.store, request, canonical); if (domainReplay) return domainReplay;
-    var prepared = ooPrepareMutation_(loaded.store, request, 'representative', canonical); if (!prepared.ok) return prepared;
-    var backup = ooBackupPair_(source, loaded.bytes, loaded.store); if (!backup.ok) return backup;
-    var armed = ooArmRecoveryLatch_(); if (!armed.ok) return armed;
-    return ooWritePrepared_(source, loaded, prepared, backup);
-  } finally { lock.releaseLock(); }
+function ooDispatch_(request) {
+  var requestNowMs = ooNowMs_();
+  var isRead = request && (request.action === 'officeOpsList' || request.action === 'officeOpsRetentionList');
+  var envelope = ooValidateRequestEnvelope_(request, isRead, requestNowMs); if (!envelope.ok) return envelope;
+  if (isRead) return ooDispatchRead_(request, requestNowMs);
+  return ooMutate_(request, requestNowMs);
 }
-function ooBackupPair_(source, bytes, store) {
-  var nowMs = ooNowMs_();
-  var createdAt = Utilities.formatDate(new Date(nowMs), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ssXXX");
-  var stamp = ooBackupStamp_(nowMs);
-  var backup = source.getParents().next().createFile('관리사무소영업운영_백업_' + stamp + '.json', Utilities.newBlob(bytes, 'application/json'));
-  var manifest = { sourceFileId:source.getId(), backupFileId:backup.getId(), createdAt:createdAt, schemaVersion:store.schemaVersion, preMutationRevision:store.revision, byteLength:bytes.length, sha256Hex:ooSha256BytesHex_(bytes) };
-  var manifestFile = source.getParents().next().createFile('관리사무소영업운영_백업_' + stamp + '.manifest.json', JSON.stringify(manifest), 'application/json');
-  var reread; try { reread = JSON.parse(manifestFile.getBlob().getDataAsString('UTF-8')); } catch (_) { return ooCleanupFailedPair_(backup, manifestFile, 'backup-verify-failed'); }
-  if (!ooExactKeys_(reread, ['sourceFileId','backupFileId','createdAt','schemaVersion','preMutationRevision','byteLength','sha256Hex']) ||
-      reread.sourceFileId !== source.getId() || reread.backupFileId !== backup.getId() || reread.createdAt !== createdAt || ooParseKstDateTime_(reread.createdAt) === null || reread.schemaVersion !== store.schemaVersion ||
-      reread.preMutationRevision !== store.revision || reread.byteLength !== bytes.length || reread.sha256Hex !== ooSha256BytesHex_(backup.getBlob().getBytes())) {
+function ooMutate_(request, requestNowMs) {
+  var lock = null, acquired = false, result;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(20000)) result = ooFail_('lock-unavailable');
+    else { acquired = true; result = ooMutateLocked_(request, requestNowMs); }
+  } catch (_) { result = ooFail_('server-error'); }
+  finally { if (acquired) { try { lock.releaseLock(); } catch (_) {} } }
+  return result;
+}
+function ooMutateLocked_(request, requestNowMs) {
+  var gates = ooRecheckLockedGates_(request.token); if (!gates.ok) return gates; // token -> latch -> enabled, before Drive
+  var source = ooSourceFile_(), loaded = ooReadStore_(source); if (!loaded.ok) return loaded;
+  var revision = ooValidateExpectedRevisionInsideLock_(request, loaded.store.revision); if (!revision.ok) return revision;
+  var replay = ooFindMutation_(loaded.store, request.mutationId); if (replay) return ooFail_('replay-request');
+  var canonical = ooCanonicalMutation_(request.action, request.payload); if (!canonical.ok) return canonical;
+  var idempotent = ooFindIdempotentCreate_(loaded.store, request.action, request.payload.idempotencyKey, canonical.sha256Hex); if (idempotent) return idempotent;
+  var domainReplay = ooFindSafeConversionReplay_(loaded.store, request, canonical); if (domainReplay) return domainReplay;
+  var mutationNowMs = ooNowMs_(), mutationNowKst = ooFormatKst_(mutationNowMs);
+  var prepared = ooPrepareMutation_(loaded.store, request, 'representative', canonical, mutationNowKst); if (!prepared.ok) return prepared;
+  var backup = ooBackupPair_(source, loaded, mutationNowMs); if (!backup.ok) return backup;
+  var unchanged = ooRecheckLoadedSource_(source, loaded); if (!unchanged.ok) return unchanged;
+  var armed = ooArmRecoveryLatch_(); if (!armed.ok) return armed;
+  return ooWritePrepared_(source, loaded, prepared, backup, mutationNowKst);
+}
+function ooBackupPair_(source, loaded, mutationNowMs) {
+  var parent = ooExactSourceParent_(source); if (!parent.ok || parent.id !== loaded.parentId || source.getId() !== loaded.sourceId) return ooFail_('backup-verify-failed');
+  var createdAt = ooFormatKst_(mutationNowMs), stamp = ooBackupStamp_(mutationNowMs);
+  var backupName = '관리사무소영업운영_백업_' + stamp + '.json', manifestName = '관리사무소영업운영_백업_' + stamp + '.manifest.json';
+  var backup = parent.value.createFile(backupName, Utilities.newBlob(loaded.bytes, 'application/json'));
+  var manifest = { sourceFileId:loaded.sourceId, backupFileId:backup.getId(), createdAt:createdAt, schemaVersion:loaded.store.schemaVersion, preMutationRevision:loaded.store.revision, byteLength:loaded.byteLength, sha256Hex:loaded.sha256Hex };
+  var manifestFile = parent.value.createFile(manifestName, JSON.stringify(manifest), 'application/json');
+  var pair = ooRereadExactPair_(source, parent.value, backup, manifestFile, backupName, manifestName); if (!pair.ok) return ooCleanupFailedPair_(backup, manifestFile, 'backup-verify-failed');
+  if (pair.sourceFileId !== loaded.sourceId || pair.parentId !== loaded.parentId || pair.backupFileId !== backup.getId() || pair.manifestFileId !== manifestFile.getId() ||
+      pair.createdAt !== createdAt || ooParseKstDateTime_(pair.createdAt) === null || pair.schemaVersion !== loaded.store.schemaVersion || pair.preMutationRevision !== loaded.store.revision ||
+      pair.byteLength !== loaded.byteLength || pair.sha256Hex !== loaded.sha256Hex || !ooBytesEqual_(pair.backupBytes, loaded.bytes) || ooSha256BytesHex_(pair.backupBytes) !== loaded.sha256Hex) {
     return ooCleanupFailedPair_(backup, manifestFile, 'backup-verify-failed');
   }
-  return { ok:true, backupFileId:backup.getId(), manifestFileId:manifestFile.getId(), manifest:reread };
+  return { ok:true, backupFileId:backup.getId(), manifestFileId:manifestFile.getId(), parentId:loaded.parentId, backupName:backupName, manifestName:manifestName, manifest:manifest };
 }
 ```
 
-`ooDispatch_` obtains one server-time snapshot and calls `ooValidateRequestEnvelope_` for every read and mutation before any handler. Reads therefore use the same request-timestamp parser and five-minute freshness boundary as writes; list accepts only `{}` or exact `{includeArchived:boolean}`, retention accepts only `{}`, and neither accepts `mutationId`. The dispatcher then uses the same validated request object rather than reparsing an alternative `ts` or `requestAtKst` field.
+`ooDispatch_(request)` obtains exactly one `requestNowMs` snapshot and calls `ooValidateRequestEnvelope_` for every read and mutation before any handler; no downstream function reparses an alternative `ts`/`requestAtKst` field or calls the clock for request freshness. Reads therefore use the same request-timestamp parser and five-minute boundary as writes; list accepts only `{}` or exact `{includeArchived:boolean}`, retention accepts only `{}`, and neither accepts `mutationId`. `officeOpsRetentionList.serverNowKst` is formatted from the passed `requestNowMs`, not a second clock read. A mutation obtains exactly one later `mutationNowMs`, derives exactly one whole-second `mutationNowKst`, and passes that same KST value into the record, store `updatedAt`, audit `at`, and four-key ACK. Backup filename and manifest time derive from that same mutation snapshot. Server tests assert one request-clock read per dispatch and one mutation-clock read per non-replay mutation; reads and replay returns never create an extra mutation snapshot.
 
-`ooPrepareMutation_` deep-clones and fully validates the requested state/revision transition before any backup or latch; it cannot access Drive or Properties. `actor` is always the server-derived exact value `'representative'`, never a caller payload. Only a valid prepared candidate proceeds to backup, latch arm, audit enrichment, serialization, and `ooWritePrepared_`. Pilot, inspection, and opportunity update handlers consume the exact full-replacement payloads from Task 2; they preserve or recalculate server-owned timestamps, retention, tombstone, conversion, and audit fields rather than accepting them from the caller.
+The public preflight in `ooDoPost_` remains an early rejection only. After acquiring the script lock, `ooRecheckLockedGates_` must re-read in exact order: constant-time token match, `OFFICE_OPS_RECOVERY_REQUIRED==='0'`, then `OFFICE_OPS_ENABLED==='1'`, all before any Drive access. A request that waited behind a mutation therefore cannot pass a newly armed latch. After the exact source is loaded, every update/archive/restore/conversion `expectedRevision` is compared to the loaded revision inside the lock before replay, backup, or write; create and read actions cannot smuggle `expectedRevision`. The already validated `requestNowMs` is passed through and never replaced inside the lock.
 
-`ooRecoveryValidateSource_()` is a named zero-argument Apps Script editor entrypoint, never an allowlisted web action. It runs only when `OFFICE_OPS_ENABLED==='0'` and `OFFICE_OPS_RECOVERY_REQUIRED==='1'`; wrong flags, missing/wrong source, malformed bytes, schema failure, or hash failure throw a redacted `Error('recovery-validation-failed:<code>')` so the Apps Script Run visibly fails. On success it invokes `ooSourceFile_()`, `ooReadStore_()`, strict schema validation, and a source-byte SHA-256, constructs only `{ok:true,sourceFileId,schemaVersion,revision,byteLength,sha256Hex}`, writes that sanitized tuple once with `Logger.log(JSON.stringify(result))`, and returns the same tuple. It never reads/logs/returns the token, clears the latch, changes enabled state, writes Drive, or exposes record contents. Server tests capture Logger and thrown errors for a valid restored file, malformed source, wrong flags, and verify visible success/failure, exact sanitized keys, zero writes, no token/record content, and absence from `ooIsAllowedAction_`.
+`ooMutate_` catches `getScriptLock`, `tryLock`, mutation-body, and `releaseLock` exceptions without exposing exception text. False `tryLock` returns `lock-unavailable`; get/try/body exceptions return `server-error`. Once acquired, the lock is released exactly once on every success/error/early-result path. A release exception is swallowed only after recording the primary result and can never replace a success or earlier error. Tests assert zero release when acquisition did not occur and exactly one release after acquisition.
 
-Implement `ooSourceFile_` with `DriveApp.getFileById(OFFICE_OPS_FILE_ID)` only, reject missing IDs and all name/schema failures before any write, and never call `getFilesByName`. Legacy ID noncollision is a representative initialization check because this standalone property namespace cannot inspect legacy IDs. After freshness and mutation-replay validation, `ooFindIdempotentCreate_` immediately returns null unless `action` is one of the four create actions and the payload has a validated key; for those actions it searches only successful create audit rows by exact `action+idempotencyKey`. Equal `payloadSha256` returns exactly `{ok:true,id:audit.id,revision:audit.preMutationRevision+1,updatedAt:audit.at}`, while a different hash returns `idempotency-conflict`. The replay creates no backup, audit, revision, or source write. `ooFindSafeConversionReplay_` accepts only the exact immediately reached begin/arm/record/finalize proof and returns the stored normal acknowledgement without backup, audit, revision increment, or source write; changed proof, stale timestamp, repeated mutation ID, or a non-conversion action cannot use it.
+`ooPrepareMutation_` deep-clones and fully validates the requested state/revision transition before any backup or latch; it cannot access Drive, Properties, locks, or clocks. `actor` is always the server-derived exact value `'representative'`, never a caller payload. Only a valid prepared candidate proceeds to backup, exact source recheck, latch arm, audit enrichment, serialization, and `ooWritePrepared_`. Pilot, inspection, and opportunity update handlers consume the exact full-replacement payloads from Task 2; they preserve or recalculate server-owned timestamps, retention, tombstone, conversion, and audit fields rather than accepting them from the caller.
 
-Write source JSON only after successful backup and manifest re-read verification. Increment revision once and set `updatedAt` to one server whole-second KST snapshot. Enrich exactly one prepared audit row with `{action,result:'ok',id,mutationId,idempotencyKey,payloadSha256,at:updatedAt,actor:'representative',lifecycleBefore,backupFileId,backupManifestFileId,backupSha256,preMutationRevision}`; create uses its validated key, all other actions use `null`, and archive/restore alone carry the exact prior tombstone object. Validate the complete enriched candidate before serialization, write, re-read, and strict store validation. Pair retention uses manifest `preMutationRevision`, `createdAt`, and immutable file IDs rather than filename; keep exactly the latest ten complete verified pairs and mark only older complete pairs for cleanup.
+`ooRecoveryValidateSource_()` is a named zero-argument Apps Script editor entrypoint, never an allowlisted web action. It acquires the same script lock with the same exactly-once/nonmasking release pattern, then re-reads `OFFICE_OPS_ENABLED==='0'` and `OFFICE_OPS_RECOVERY_REQUIRED==='1'` inside the lock before Drive access. Wrong flags, lock failure, missing/wrong source, malformed bytes, schema failure, or hash failure throw only a redacted `Error('recovery-validation-failed:<code>')` so the Apps Script Run visibly fails. On success it invokes `ooSourceFile_()`, `ooReadStore_()`, strict schema/audit validation, and source-byte SHA-256, constructs only `{ok:true,sourceFileId,schemaVersion,revision,byteLength,sha256Hex}`, writes that sanitized tuple once with `Logger.log(JSON.stringify(result))`, and returns the same tuple. It never reads/logs/returns the token, clears the latch, changes enabled state, writes Drive, or exposes record contents. Server tests include a waiter whose flags change before lock acquisition, lock get/try/release exceptions, a valid restored file, malformed source, and wrong flags; they verify visible success/failure, exact sanitized keys, zero writes, no token/record content, and absence from `ooIsAllowedAction_`.
 
-Drive `setContent` is not claimed to be atomic. Immediately before any source write, while the lock is held, `ooArmRecoveryLatch_` sets `OFFICE_OPS_RECOVERY_REQUIRED=1` and reads it back; if either step fails or does not equal `1`, mutation aborts before touching source. Every request checks this property first and returns `manual-recovery-required` while it is `1` or unreadable. If the source write throws or the re-read does not validate, `ooRestoreSourceAfterFailedWrite_` writes the already verified backup bytes back to the same exact source, re-reads and hashes them. If restoration or its verification fails, no clear is attempted: the previously verified armed latch remains `1`, the code returns only `{ok:false,error:'manual-recovery-required'}`, preserves the backup pair, and performs no cleanup/retention. Only after a verified new commit or verified restoration may `ooClearRecoveryLatch_` write `0`. If its read-back confirms `0`, the server returns the normal success or restored `write-verify-failed`. If the clear write/read-back throws or cannot confirm `0`, the code returns `recovery-state-unknown` and preserves the pair; it does not claim the property is still `1`, because a non-transactional clear may already have persisted. This ambiguity is safe because clear is attempted only after source bytes and schema are verified: the next request either observes `0` and may use the verified source, or observes `1`/unreadable and remains blocked. The plan never promises unchanged source bytes when both the primary write and verified restoration fail.
+Implement `ooSourceFile_` with `DriveApp.getFileById(OFFICE_OPS_FILE_ID)` only and never call `getFilesByName`. Reject a missing configured ID, Drive lookup exception, returned `getId()` different from the configured ID, trashed source, a name other than exact `관리사무소영업운영.json`, MIME other than exact `application/json`, zero or multiple parents, invalid UTF-8 byte round-trip, BOM/non-JSON bytes, or any strict store/audit failure before a write. `ooReadStore_` hashes the same raw byte array it parses, calls both `ooValidateStore_` and `ooValidateAuditHistory_`, and returns exact `{ok:true,sourceId,parentId,bytes,byteLength,sha256Hex,store}`; it never silently normalizes source text. Legacy ID noncollision is a representative initialization check because this standalone property namespace cannot inspect legacy IDs, and the OfficeOps source must contain neither legacy property names nor legacy source access.
+
+Strict store validation additionally requires `audit.length===revision`; audit `preMutationRevision` values are exactly contiguous `0..revision-1`; every mutation ID is unique; every non-null create key is unique by exact `(action,idempotencyKey)` and appears only on a create action; non-create rows have `idempotencyKey:null`; and each audit `id` matches its action family (`pilot_`, `consent_`, `inspection_`, or `opp_`). The final audit row's `at` equals store `updatedAt`. Any duplicate or ambiguous replay candidate is `invalid-store`, never “first match wins.” After freshness and mutation-ID validation, `ooFindIdempotentCreate_` immediately returns null unless `action` is one of the four create actions and the payload has a validated key; equal canonical hash reconstructs exactly `{ok:true,id:audit.id,revision:audit.preMutationRevision+1,updatedAt:audit.at}`, verified to have exactly those four keys and a matching action-ID family. A changed hash returns `idempotency-conflict`. Replay creates no clock snapshot, backup, audit, revision, or source write. `ooFindSafeConversionReplay_` uses the same exact four-key ACK rule and accepts only the exact immediately reached begin/arm/record/finalize proof; changed proof, stale timestamp, repeated mutation ID, ambiguity, or a non-conversion action cannot use it.
+
+`ooBackupPair_` is bound to the already loaded pre-mutation object, not merely to internally consistent new files. The re-read manifest must have the exact seven approved fields and equal the loaded `sourceId`, `schemaVersion`, `revision`, `byteLength`, and `sha256Hex`; the re-read backup bytes must be byte-for-byte equal to `loaded.bytes` and independently match the same length/hash. Both created files must return their expected immutable IDs, exact generated names, exact `application/json` MIME, non-trashed state, and the same `loaded.parentId`; backup/manifest/source IDs must be pairwise distinct. A backup plus manifest changed consistently to some other valid bytes still fails `backup-verify-failed`. Failed attempted artifacts may be marked only by their directly returned new IDs and are never mixed into normal retention selection.
+
+Write source JSON only after successful source-bound backup verification. Increment revision once and set `updatedAt` to the one mutation KST snapshot. Enrich exactly one prepared audit row with `{action,result:'ok',id,mutationId,idempotencyKey,payloadSha256,at:updatedAt,actor:'representative',lifecycleBefore,backupFileId,backupManifestFileId,backupSha256,preMutationRevision}`; create uses its validated key, all other actions use `null`, and archive/restore alone carry the exact prior tombstone object. Validate all store/audit/ACK invariants on the complete enriched candidate before serialization. Immediately before latch arm, while holding the lock, re-read the exact source and require the same ID, parent, raw bytes, byte length, SHA-256, and revision as `loaded`; any difference returns `source-changed`, preserves the verified pair, and performs no latch/source write. After `setContent(candidateBytes)`, re-read and require raw bytes and SHA-256 exactly equal to the serialized candidate, then strict-parse that same byte array and require the expected revision; valid-but-different JSON, whitespace changes, different valid fields/revision, corrupt UTF-8, or malformed JSON are all `write-verify-failed` and enter restore.
+
+`ooVerifiedRetentionPairs_(source,currentPair)` enumerates only the exact source parent after a verified commit. A cleanup candidate exists only when an exact-key manifest is non-trashed JSON in that parent, names a distinct non-source backup ID in the same parent, has `sourceFileId===source.getId()`, and its createdAt/schema/revision/length/hash exactly match a non-trashed JSON backup whose raw bytes strict-parse and whose store revision equals `preMutationRevision`. Manifest, backup, and source IDs must be pairwise distinct. Sort complete pairs stably by `preMutationRevision,createdAt,backupFileId,manifestFileId`, require `currentPair` to be the unique maximal pair, keep exactly the newest ten including it, and immediately reverify a pair before each `setTrashed`. Never trash the source, current pair, unrelated files, orphans, cross-parent/cross-source pairs, duplicate-ID pairs, forged manifests, malformed pairs, or anything selected only by filename. Selection/verification ambiguity or trash exception stops cleanup without masking an already verified commit.
+
+Drive `setContent` and Script Properties are not claimed atomic. Immediately before any source write, while the lock is held, `ooArmRecoveryLatch_` attempts to write `1` and then performs an independent read even if the write threw. Observed exact `1` is authoritative and permits the source write; observed exact `0` means source remains untouched, the verified pair is preserved, and the result is `recovery-arm-failed`; unreadable, missing, or any other value means source remains untouched, the pair is preserved, and the result is `recovery-state-unknown`. The next request always applies its fresh token→latch→enabled preflight: observed `0` may retry, observed `1` returns `manual-recovery-required`, and unreadable remains fail-closed. No arm failure cleans retention or claims an unobserved state.
+
+If the source write throws or exact candidate re-read fails, `ooRestoreSourceAfterFailedWrite_` writes the already verified `loaded.bytes` back to the same exact source, then requires byte-for-byte equality, loaded hash/length/revision, strict UTF-8, and strict store/audit validation. A valid-but-different restore, corrupt restore, thrown restore, or unreadable restore is failure: no clear is attempted, the verified pair is preserved, and the result is only `manual-recovery-required`. Only after an exact verified candidate or exact verified restoration may `ooClearRecoveryLatch_` write `0`. Confirmed `0` returns the normal exact ACK or restored `write-verify-failed`; confirmed `1` returns `manual-recovery-required`; unreadable/other returns `recovery-state-unknown`. Clear ambiguity never changes the verified source result, and the next request is governed only by its newly observed latch. The plan never promises unchanged source bytes when both primary write and exact restoration fail.
 
 - [ ] **Step 4: Run server tests and inject each backup failure**
 
@@ -627,9 +660,19 @@ Run: `node tests/office-ops-server.unit.js && node tests/office-ops-server-isola
 
 Expected: both PASS.
 
-Retain separate test cases for manual setup noncollision documentation, wrong display name, malformed JSON, schema version 2, duplicate record ID, lock unavailable, revision mismatch, backup-copy failure, manifest-create failure, manifest re-read/parse/field mismatch, backup re-read failure, backup hash mismatch, latch arm write/readback failure before source write, source write throw before modification, partial/corrupt write followed by verified restore, restore throw, restore hash mismatch, latch clear write/read-back failure after restore, latch clear write/read-back failure after a valid commit, and successful source re-read validation. Inject both a valid-but-different manifest `createdAt` and a malformed/non-KST `createdAt`; each must return `backup-verify-failed`, mark only the attempted pair for cleanup, and leave source bytes/revision unchanged. Prove `ooBackupPair_` calls the clock once, derives both filename stamp and manifest `createdAt` from that snapshot, and requires the re-read `createdAt` to equal the original value exactly as well as pass `ooParseKstDateTime_`. Prove the committed audit row has exactly the Task 2 fields and verified backup values. Create once, retry the same action/key/canonical hash with a fresh mutation ID and timestamp, and require the byte-identical first acknowledgement reconstructed from audit with zero Drive write; then reuse that key with one changed canonical field and require `idempotency-conflict`. Reuse the first mutation ID and require `replay-request` before idempotency lookup; make the retry stale and require `stale-request` before lookup.
+Retain separate exact-source REDs for: missing property, Drive lookup throw, returned ID mismatch, trashed source, wrong display name, wrong MIME, no parent, multiple parents, invalid UTF-8/round-trip, BOM, malformed JSON, schema version 2, duplicate record ID, and strict audit failure. Every case must perform zero backup/source/property writes. The static isolation test must fail on `getFilesByName`, `APP_TOKEN`, `DATA_FILE_ID`, `OFFICE_INTAKE_FILE_ID`, `COMMERCIAL_APPROVAL_TOKEN`, any legacy source helper, or imports/access from `apps-script/` or `apps-script-commercial/`; protected-path checks include both directories plus `index.html` and `sw.js`.
 
-Add eleven same-second mutations and prove exactly the newest ten complete pairs remain in pre-mutation revision order despite duplicate filenames. Before the source write begins, every failure must leave raw source bytes/revision unchanged. A partial/corrupt write must either restore byte-for-byte, confirm latch clear, and return `write-verify-failed`, or preserve the pair with no clear attempt and the durable latch still `1`, return `manual-recovery-required`, and reject all later calls. Inject a Script Property arm failure and prove source is untouched. For clear ambiguity after verified bytes, require `recovery-state-unknown`; separately simulate actual persisted `0` (next call may use the verified source) and retained `1`/unreadable (next call remains blocked). Never claim or test that a failed clear read-back proves the property stayed `1`.
+Retain separate lock/gate/clock REDs for: lock unavailable; `getScriptLock` throw; `tryLock` throw; acquired-body throw; `releaseLock` throw after success and after primary error; exactly zero or one release as applicable; and a waiting request whose token, latch, or enabled property changes before acquisition. Assert the locked gate reads token→latch→enabled in that order, rejects before any Drive call, and validates `expectedRevision` against the source loaded inside that lock. Assert `ooDispatch_(request)` is the only dispatcher signature, one request clock snapshot serves freshness, and one mutation snapshot supplies backup time, record/store/audit time, and ACK; replay/read paths do not take a mutation snapshot.
+
+Retain separate backup/prewrite/write REDs for: backup-copy failure; manifest-create failure; manifest or backup ID/name/MIME/parent/trashed mismatch; manifest re-read/UTF-8/parse/exact-field mismatch; backup re-read failure; byte-length/hash mismatch; valid-but-different and malformed/non-KST `createdAt`; and a backup plus manifest coherently replaced with different valid bytes/hash/length/revision. Each returns `backup-verify-failed`, marks only directly returned distinct same-parent attempted artifact IDs (one or two) as cleanup candidates, and leaves source bytes/revision unchanged; a returned source/current/unrelated ID is never trashed. Prove the manifest source ID/hash/length/revision and backup bytes are each independently equal to `loaded`. After a verified pair but immediately before latch arm, inject source changes consisting of raw-byte-only whitespace, different valid JSON, revision change, corrupt bytes, ID/parent change, and require `source-changed`, preserved pair, zero latch/source write. Inject latch arm write success/throw followed independently by read-back `1`, `0`, and unreadable: only observed `1` may write; `0` returns `recovery-arm-failed`; unreadable returns `recovery-state-unknown`; all non-`1` cases preserve the pair and source.
+
+After source write, inject exact candidate success, valid-but-different JSON, whitespace-only byte difference, wrong revision, corrupt UTF-8, malformed JSON, and write throw. Every non-exact case enters restore. Test exact byte-for-byte restore and confirmed clear `0` returns `write-verify-failed`; restore throw, valid-but-different restore, corrupt restore, hash/length/revision mismatch, or failed strict audit keeps the pair, makes no clear attempt, returns `manual-recovery-required`, and blocks later requests. After exact commit/restore, inject clear write/read-back outcomes observed `0`, observed `1`, and unreadable: respectively normal result, `manual-recovery-required`, and `recovery-state-unknown`; the following request must obey its newly observed latch rather than an assumed state.
+
+Add store/audit/replay REDs for `audit.length!==revision`, noncontiguous `preMutationRevision`, duplicate mutation IDs, duplicate `(create action,idempotencyKey)`, a key on a non-create action, null key on a create, wrong action-ID prefix, final audit time different from store `updatedAt`, and two otherwise valid replay candidates; each is `invalid-store`. Prove a committed row has exactly the Task 2 audit fields and bound backup values. Create once, retry the same action/key/canonical hash with a fresh mutation ID/timestamp, and require the byte-identical exact four-key acknowledgement reconstructed from audit with zero clock/Drive/property write; changed hash is `idempotency-conflict`, reused mutation ID is `replay-request` before key lookup, and stale timestamp is `stale-request` before lookup. Inject extra/missing ACK keys and require `invalid-store` rather than returning an ambiguous replay.
+
+Add eleven same-second mutations and prove exactly the newest ten complete verified pairs remain in stable `preMutationRevision,createdAt,backupFileId,manifestFileId` order despite duplicate filenames. Inject source-as-backup, current pair, unrelated JSON, orphan backup, orphan manifest, cross-parent pair, cross-source pair, duplicate IDs, forged hash/length/revision, malformed manifest, invalid backup store, and trash exceptions; `setTrashed` must never be called on the source, current pair, unrelated/orphan/cross-source/forged files, and selection ambiguity stops safely. Reverify each old pair immediately before trash. Retention failure never masks an already exact verified commit.
+
+Test `ooRecoveryValidateSource_` under an acquired lock with in-lock flag recheck, flag changes while waiting, all lock exceptions, malformed/exact source outcomes, exact sanitized output keys, zero writes, and exactly-once nonmasking release. Finally inject unexpected exceptions at raw input access, JSON parse boundary, properties, dispatch, Drive, lock, and response construction; `doPost` must expose only redacted `{ok:false,error:'server-error'}` and never exception text, token, receipt, evidence ID, or source bytes.
 
 - [ ] **Step 5: Commit the durable mutation boundary**
 
@@ -648,7 +691,7 @@ git commit -m "feat: preserve verified OfficeOps backups before each mutation"
 
 **Interfaces:**
 - Consumes: `ooMutate_`, strict schema helpers, and backup contract.
-- Produces: all 21 allowlisted OfficeOps handlers, including `officeInspectionBeginConversion`, `officeInspectionArmLocalCommit`, `officeInspectionRecordLocalCommit`, `officeInspectionFinalizeConversion`, and `officeInspectionCancelConversion`.
+- Produces: the remaining eighteen mutation handlers after Task 3's `officePilotCreate` path, including pilot update/archive/restore, every consent/inspection/opportunity mutation, and `officeInspectionBeginConversion`, `officeInspectionArmLocalCommit`, `officeInspectionRecordLocalCommit`, `officeInspectionFinalizeConversion`, and `officeInspectionCancelConversion`. Together with Task 3's two reads and pilot create, the exact allowlist remains 21 actions.
 
 - [ ] **Step 1: Write failing lifecycle and conversion tests**
 
@@ -850,7 +893,7 @@ Update `AGENTS.md` in the repository map and verification section with two expli
 
 - [ ] **Step 4: Run complete tests and inspect allowed diffs**
 
-Run: `node tests/office-ops-pure.unit.js && node tests/office-ops-server.unit.js && node tests/office-ops-server-isolation.check.js && node tests/run-all.js && git diff --exit-code -- apps-script index.html sw.js`
+Run: `node tests/office-ops-pure.unit.js && node tests/office-ops-server.unit.js && node tests/office-ops-server-isolation.check.js && node tests/run-all.js && git diff --exit-code -- apps-script apps-script-commercial index.html sw.js`
 
 Expected: every new test and existing hyeonjang regression passes; the final diff command exits 0, proving legacy relay and PWA source remain untouched.
 
