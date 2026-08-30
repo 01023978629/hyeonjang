@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "approvalEvidenceSha256": null,
+  "commercialRelayCommit": null,
+  "commercialRelayVerifiedAtKst": null,
+  "browserConversionE2eCommit": null,
+  "approvedAtKst": null
+}

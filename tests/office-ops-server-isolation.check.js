@@ -61,6 +61,43 @@ const allowedPropertyKeys = [
 ];
 assert.deepEqual(Array.from(sandbox.OO_SCRIPT_PROPERTY_KEYS_), allowedPropertyKeys, 'Code.gs declares the complete OfficeOps property namespace');
 
+function extractMarkedList(document, marker) {
+  const start = `<!-- ${marker}_START -->`;
+  const end = `<!-- ${marker}_END -->`;
+  assert.equal(document.split(start).length - 1, 1, marker + ' start marker must appear exactly once');
+  assert.equal(document.split(end).length - 1, 1, marker + ' end marker must appear exactly once');
+  const startIndex = document.indexOf(start);
+  const endIndex = document.indexOf(end);
+  assert.equal(startIndex < endIndex, true, marker + ' markers must be ordered');
+  const values = document.slice(startIndex + start.length, endIndex)
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const match = /^- `([A-Za-z][A-Za-z0-9_]*)`$/.exec(line);
+      assert.notEqual(match, null, marker + ' may contain bullet values only: ' + line);
+      return match[1];
+    });
+  assert.equal(new Set(values).size, values.length, marker + ' values must not repeat');
+  return values;
+}
+
+assert.throws(
+  () => extractMarkedList('<!-- SAMPLE_START -->\n- `one`\nprose\n<!-- SAMPLE_END -->', 'SAMPLE'),
+  /bullet values only/,
+  'marked-list parser rejects prose'
+);
+assert.throws(
+  () => extractMarkedList('<!-- SAMPLE_START -->\n- `one`\n- `one`\n<!-- SAMPLE_END -->', 'SAMPLE'),
+  /must not repeat/,
+  'marked-list parser rejects duplicate values'
+);
+assert.throws(
+  () => extractMarkedList('<!-- SAMPLE_START -->\n- `one`\n<!-- SAMPLE_END -->\n<!-- SAMPLE_END -->', 'SAMPLE'),
+  /exactly once/,
+  'marked-list parser rejects duplicate markers'
+);
+
 const sourcePropertyKeys = Array.from(source.matchAll(/['"]([A-Z][A-Z0-9_]*(?:_TOKEN|_FILE_ID|_ENABLED|_RECOVERY_REQUIRED))['"]/g), match => match[1]);
 assert.deepEqual([...new Set(sourcePropertyKeys)].sort(), [...allowedPropertyKeys].sort(), 'production source permits no legacy or arbitrary Script Property key');
 
@@ -236,8 +273,25 @@ for (const key of allowedPropertyKeys) {
 assert.throws(() => wrapperSandbox.ooGetScriptProperty_('APP_TOKEN'), /office-ops-script-property-key-rejected/);
 assert.throws(() => wrapperSandbox.ooSetScriptProperty_(['ARBITRARY', 'CONFIG'].join('_'), 'value'), /office-ops-script-property-key-rejected/);
 
+const sectionOrder = [
+  '## 1. 사전 검증',
+  '## 2. 새 프로젝트 초기화',
+  '## 3. 비활성 배포',
+  '## 4. 별도 승인 후 OfficeOps 활성화',
+  '## 5. 수동 복구',
+  '## 6. 전환 promotion',
+  '## 7. rollback',
+  '## 8. 금지 작업'
+];
+for (const section of sectionOrder) {
+  assert.equal(readme.split(section).length - 1, 1, 'README section must appear exactly once: ' + section);
+}
+assert.deepEqual(readme.match(/^## .+$/gm), sectionOrder, 'README must contain exactly the eight ordered runbook sections');
+
 const documentedPropertyKeys = Array.from(readme.matchAll(/`(OFFICE_[A-Z0-9_]+)`/g), match => match[1]);
 assert.deepEqual([...new Set(documentedPropertyKeys)].sort(), [...allowedPropertyKeys].sort(), 'README documents exactly the four OfficeOps Script Properties');
+assert.deepEqual(extractMarkedList(readme, 'OFFICE_OPS_PROPERTIES'), allowedPropertyKeys, 'README marked property list is exact and ordered');
+assert.deepEqual(extractMarkedList(readme, 'OFFICE_OPS_ACTIONS'), allowedActions, 'README marked action list is exact and ordered');
 
 for (const forbidden of [
   'getFilesByName',
@@ -265,17 +319,28 @@ for (const forbidden of [
 
 assert.match(serverSource, /function\s+ooDispatch_\s*\(\s*request\s*\)/, 'OfficeOps exposes exact one-argument dispatcher');
 assert.doesNotMatch(serverSource, /function\s+ooDispatch_\s*\([^)]*,/, 'dispatcher cannot accept a second argument');
-const conversionGateMatch = /function\s+ooConversionOperationallyEnabled_\s*\(\s*\)\s*\{([^}]*)\}/.exec(serverSource);
+const conversionGateMatch = /function\s+ooConversionOperationallyEnabled_\s*\(\s*\)\s*\{\s*return\s+(true|false)\s*;?\s*\}/.exec(serverSource);
 assert.notEqual(conversionGateMatch, null, 'OfficeOps exposes the production conversion code gate');
-assert.equal(conversionGateMatch && conversionGateMatch[1].replace(/\s+/g, ''), 'returnfalse;', 'conversion gate is exact literal false');
-assert.doesNotMatch(conversionGateMatch ? conversionGateMatch[1] : '', /Property|Drive|Service|ooGet|ooSet|\(/, 'conversion gate has no property, service, or external lookup');
+assert.doesNotMatch(conversionGateMatch ? conversionGateMatch[0] : '', /Property|Drive|Service|ooGet|ooSet/, 'conversion gate has no property, service, or external lookup');
 const conversionClassifyMatch = /function\s+ooIsConversionAction_\s*\(\s*action\s*\)/.exec(serverSource);
 assert.notEqual(conversionClassifyMatch, null, 'OfficeOps exposes the exact conversion action classifier');
 assert.match(serverSource, /function\s+ooRecoveryValidateSource_\s*\(\s*\)/, 'editor recovery validator is zero-argument');
 assert.equal(allowedActions.includes('ooRecoveryValidateSource_'), false, 'editor recovery validator is never an action');
 assert.doesNotMatch(source, /(?:apps-script-commercial|apps-script\/|\.\.\/apps-script)/, 'OfficeOps cannot import protected relay sources');
 
-const gateSandbox = { Date, JSON, Math, Number, Object, String, Array };
+function kstFormat(date, timezone, format) {
+  assert.equal(timezone, 'Asia/Seoul', 'strict KST evidence uses Asia/Seoul');
+  assert.equal(format, "yyyy-MM-dd'T'HH:mm:ssXXX", 'strict KST evidence uses the exact format');
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const pad = value => String(value).padStart(2, '0');
+  return shifted.getUTCFullYear() + '-' + pad(shifted.getUTCMonth() + 1) + '-' + pad(shifted.getUTCDate()) +
+    'T' + pad(shifted.getUTCHours()) + ':' + pad(shifted.getUTCMinutes()) + ':' + pad(shifted.getUTCSeconds()) + '+09:00';
+}
+
+const gateSandbox = {
+  Date, JSON, Math, Number, Object, String, Array,
+  Utilities:{ formatDate:kstFormat }
+};
 vm.createContext(gateSandbox);
 for (const name of productionFiles) vm.runInContext(sourceByName[name], gateSandbox, { filename:name });
 const exactConversionActions = [
@@ -285,7 +350,60 @@ const exactConversionActions = [
   'officeInspectionFinalizeConversion',
   'officeInspectionCancelConversion'
 ];
-assert.equal(gateSandbox.ooConversionOperationallyEnabled_(), false, 'production conversion gate stays false');
+const promotionKeys = [
+  'schemaVersion',
+  'enabled',
+  'approvalEvidenceSha256',
+  'commercialRelayCommit',
+  'commercialRelayVerifiedAtKst',
+  'browserConversionE2eCommit',
+  'approvedAtKst'
+];
+
+function assertPromotion(candidate, gateEnabled, label) {
+  assert.deepEqual(Object.keys(candidate), promotionKeys, label + ' exact ordered keys');
+  assert.equal(candidate.schemaVersion, 1, label + ' schemaVersion');
+  assert.equal(typeof candidate.enabled, 'boolean', label + ' enabled boolean');
+  assert.equal(candidate.enabled, gateEnabled, label + ' marker/literal parity');
+  if (!candidate.enabled) {
+    for (const key of promotionKeys.slice(2)) assert.equal(candidate[key], null, label + ' disabled null ' + key);
+    return;
+  }
+  assert.match(candidate.approvalEvidenceSha256, /^[a-f0-9]{64}$/, label + ' approval SHA-256');
+  assert.match(candidate.commercialRelayCommit, /^[a-f0-9]{40}$/, label + ' commercial commit');
+  assert.match(candidate.browserConversionE2eCommit, /^[a-f0-9]{40}$/, label + ' browser commit');
+  assert.equal(/^(?:0{64}|TEST_|REDACTED)/.test(candidate.approvalEvidenceSha256), false, label + ' approval evidence is not a placeholder');
+  assert.equal(/^0{40}$/.test(candidate.commercialRelayCommit), false, label + ' commercial commit is not zero');
+  assert.equal(/^0{40}$/.test(candidate.browserConversionE2eCommit), false, label + ' browser commit is not zero');
+  const verifiedAt = gateSandbox.ooParseKstDateTime_(candidate.commercialRelayVerifiedAtKst);
+  const approvedAt = gateSandbox.ooParseKstDateTime_(candidate.approvedAtKst);
+  assert.notEqual(verifiedAt, null, label + ' commercial time is real strict KST');
+  assert.notEqual(approvedAt, null, label + ' approval time is real strict KST');
+  assert.equal(verifiedAt <= approvedAt, true, label + ' approval is not earlier than verification');
+}
+
+const promotion = JSON.parse(fs.readFileSync(path.join(PROJECT, 'conversion-promotion.json'), 'utf8'));
+const productionGateEnabled = conversionGateMatch && conversionGateMatch[1] === 'true';
+assertPromotion(promotion, productionGateEnabled, 'production promotion');
+assert.equal(gateSandbox.ooConversionOperationallyEnabled_(), promotion.enabled, 'runtime gate agrees with promotion marker');
+assertPromotion({
+  schemaVersion:1,
+  enabled:true,
+  approvalEvidenceSha256:'a'.repeat(64),
+  commercialRelayCommit:'1'.repeat(40),
+  commercialRelayVerifiedAtKst:'2026-08-31T10:00:00+09:00',
+  browserConversionE2eCommit:'2'.repeat(40),
+  approvedAtKst:'2026-08-31T10:05:00+09:00'
+}, true, 'future enabled promotion');
+assert.throws(() => assertPromotion({
+  schemaVersion:1,
+  enabled:true,
+  approvalEvidenceSha256:'a'.repeat(64),
+  commercialRelayCommit:'1'.repeat(40),
+  commercialRelayVerifiedAtKst:'2026-02-30T10:00:00+09:00',
+  browserConversionE2eCommit:'2'.repeat(40),
+  approvedAtKst:'2026-08-31T10:05:00+09:00'
+}, true, 'invalid KST promotion'), /real strict KST/, 'promotion rejects impossible KST calendar dates');
 for (const action of allowedActions) {
   assert.equal(gateSandbox.ooIsConversionAction_(action), exactConversionActions.includes(action), 'conversion classifier: ' + action);
 }
@@ -345,7 +463,22 @@ for (const phrase of [
   'byteLength',
   'lowercase SHA-256',
   'sanitized validator log',
-  'do not delete the incident source file'
+  'do not delete the incident source file',
+  'preMutationRevision → createdAt → backupFileId → manifestFileId',
+  'latest complete verified pair',
+  'point-in-time restore requires separate written approval',
+  'latest ten verified backup pairs',
+  'device-local cached read-only export',
+  'representative approval',
+  'approvalEvidenceSha256',
+  'commercialRelayCommit',
+  'browserConversionE2eCommit',
+  'conversion-promotion.json',
+  'exactly two production artifacts',
+  'actual commercial relay verification',
+  'browser conversion/resume E2E',
+  'real strict KST',
+  'changes no test, Script Property, action allowlist, or other source'
 ]) {
   assert.equal(readme.toLowerCase().includes(phrase.toLowerCase()), true, 'README must state ' + phrase);
 }

@@ -671,6 +671,7 @@ for (const action of [
   'officeInspectionCancelConversion'
 ]) {
   const harness = makeHarness();
+  harness.sandbox.ooConversionOperationallyEnabled_ = function() { return false; };
   assertFailure(harness.post(action, {}), 'conversion-disabled', action + ' production gate');
   equal(harness.state.clockCalls, 1, action + ' gate uses request clock only');
   equal(harness.state.driveReads.length, 0, action + ' gate rejects before Drive');
@@ -1387,6 +1388,88 @@ function retentionNoiseFiles() {
     { id:'FORGED_MANIFEST', name:'관리사무소영업운영_백업_20260830_090003.manifest.json', bytes:manifest(SOURCE_ID,'FORGED_BACKUP',{sha256Hex:'0'.repeat(64)}), role:'noise' },
     { id:'SOURCE_ALIAS_MANIFEST', name:'관리사무소영업운영_백업_20260830_090004.manifest.json', bytes:manifest(SOURCE_ID,SOURCE_ID), role:'noise' }
   ];
+}
+
+function completeRecoveryPairFiles({ revision, createdAt, stamp, backupFileId, manifestFileId }) {
+  const store = revision === 0 ? emptyStore() : committedStore(revision);
+  const bytes = Buffer.from(JSON.stringify(store), 'utf8');
+  const sha256Hex = crypto.createHash('sha256').update(bytes).digest('hex');
+  const backupName = `관리사무소영업운영_백업_${stamp}.json`;
+  return [
+    { id:backupFileId, name:backupName, bytes, role:'recovery-backup' },
+    {
+      id:manifestFileId,
+      name:backupName.slice(0, -5) + '.manifest.json',
+      bytes:Buffer.from(JSON.stringify({
+        sourceFileId:SOURCE_ID,
+        backupFileId,
+        createdAt,
+        schemaVersion:1,
+        preMutationRevision:revision,
+        byteLength:bytes.length,
+        sha256Hex
+      })),
+      role:'recovery-manifest'
+    }
+  ];
+}
+
+{
+  const complete = [
+    ...completeRecoveryPairFiles({
+      revision:1, createdAt:'2026-08-30T12:00:00+09:00', stamp:'20260830_120000',
+      backupFileId:'RECOVERY_BACKUP_Z1', manifestFileId:'RECOVERY_MANIFEST_Z1'
+    }),
+    ...completeRecoveryPairFiles({
+      revision:2, createdAt:'2026-08-30T09:00:00+09:00', stamp:'20260830_090000',
+      backupFileId:'RECOVERY_BACKUP_Z2', manifestFileId:'RECOVERY_MANIFEST_Z2'
+    }),
+    ...completeRecoveryPairFiles({
+      revision:2, createdAt:'2026-08-30T12:00:00+09:00', stamp:'20260830_120001',
+      backupFileId:'RECOVERY_BACKUP_A2', manifestFileId:'RECOVERY_MANIFEST_Z2A'
+    }),
+    ...completeRecoveryPairFiles({
+      revision:2, createdAt:'2026-08-30T12:00:00+09:00', stamp:'20260830_120002',
+      backupFileId:'RECOVERY_BACKUP_B2', manifestFileId:'RECOVERY_MANIFEST_A2B'
+    })
+  ];
+  const harness = makeHarness({ extraFiles:[...retentionNoiseFiles(), ...complete] });
+  const source = harness.sandbox.ooSourceFile_();
+  const pairs = harness.sandbox.ooCompleteVerifiedPairs_(source);
+  deepEqual(pairs.map(pair => [
+    pair.preMutationRevision, pair.createdAt, pair.backupFileId, pair.manifestFileId
+  ]), [
+    [1, '2026-08-30T12:00:00+09:00', 'RECOVERY_BACKUP_Z1', 'RECOVERY_MANIFEST_Z1'],
+    [2, '2026-08-30T09:00:00+09:00', 'RECOVERY_BACKUP_Z2', 'RECOVERY_MANIFEST_Z2'],
+    [2, '2026-08-30T12:00:00+09:00', 'RECOVERY_BACKUP_A2', 'RECOVERY_MANIFEST_Z2A'],
+    [2, '2026-08-30T12:00:00+09:00', 'RECOVERY_BACKUP_B2', 'RECOVERY_MANIFEST_A2B']
+  ], 'recovery fully verifies candidates and orders exact pair keys ascending');
+  const latest = harness.sandbox.ooLatestCompleteVerifiedPair_(pairs);
+  deepEqual([
+    latest.preMutationRevision, latest.createdAt, latest.backupFileId, latest.manifestFileId
+  ], [
+    2, '2026-08-30T12:00:00+09:00', 'RECOVERY_BACKUP_B2', 'RECOVERY_MANIFEST_A2B'
+  ], 'recovery selects the latest complete verified pair by the exact four-part key');
+  for (const file of complete) {
+    equal((harness.state.blobReads.get(file.id) || 0) > 0, true, 'recovery fully reads candidate ' + file.id);
+  }
+  equal(harness.state.sourceWrites, 0, 'recovery selection writes no source');
+  equal(harness.state.propertyWrites.length, 0, 'recovery selection writes no property');
+  equal(harness.state.created.length, 0, 'recovery selection creates no Drive file');
+  equal(harness.state.trashCalls.length, 0, 'recovery selection trashes no Drive file');
+  equal(JSON.parse(harness.state.files.get(SOURCE_ID).bytes.toString('utf8')).revision, 0, 'recovery selection changes no audit or revision');
+}
+
+{
+  const duplicateIdentityFiles = [
+    { id:'DUPLICATE_HANDLE_A', returnedId:'DUPLICATE_RETURNED_ID', name:'unrelated-a.json', bytes:Buffer.from('{}') },
+    { id:'DUPLICATE_HANDLE_B', returnedId:'DUPLICATE_RETURNED_ID', name:'unrelated-b.json', bytes:Buffer.from('{}') }
+  ];
+  const harness = makeHarness({ extraFiles:duplicateIdentityFiles });
+  deepEqual(harness.sandbox.ooCompleteVerifiedPairs_(harness.sandbox.ooSourceFile_()), [], 'recovery fails closed on duplicate file identity ambiguity');
+  equal(harness.state.sourceWrites, 0, 'ambiguous recovery selection writes no source');
+  equal(harness.state.propertyWrites.length, 0, 'ambiguous recovery selection writes no property');
+  equal(harness.state.trashCalls.length, 0, 'ambiguous recovery selection trashes no file');
 }
 
 function performElevenCreates(harness) {
@@ -2215,6 +2298,56 @@ for (let index = 0; index < task4RollbackCases.length; index += 1) {
   equal(writeHarness.state.sourceWrites, 2, action + ' writes candidate then exact restore');
   deepEqual(writeHarness.state.files.get(SOURCE_ID).bytes, sourceBefore, action + ' restores exact source');
   equal(writeHarness.state.properties.OFFICE_OPS_RECOVERY_REQUIRED, '0', action + ' clears latch after verified restore');
+}
+
+const promotionKeys = [
+  'schemaVersion',
+  'enabled',
+  'approvalEvidenceSha256',
+  'commercialRelayCommit',
+  'commercialRelayVerifiedAtKst',
+  'browserConversionE2eCommit',
+  'approvedAtKst'
+];
+
+function assertPromotionContract(candidate, gateEnabled, parser, label) {
+  deepEqual(Object.keys(candidate), promotionKeys, label + ' exact ordered keys');
+  equal(candidate.schemaVersion, 1, label + ' schemaVersion');
+  equal(typeof candidate.enabled, 'boolean', label + ' enabled boolean');
+  equal(candidate.enabled, gateEnabled, label + ' marker/literal parity');
+  if (!candidate.enabled) {
+    for (const key of promotionKeys.slice(2)) equal(candidate[key], null, label + ' disabled null ' + key);
+    return;
+  }
+  match(candidate.approvalEvidenceSha256, /^[a-f0-9]{64}$/, label + ' approval SHA-256');
+  match(candidate.commercialRelayCommit, /^[a-f0-9]{40}$/, label + ' commercial relay commit');
+  match(candidate.browserConversionE2eCommit, /^[a-f0-9]{40}$/, label + ' browser conversion commit');
+  equal(/^(?:0{64}|TEST_|REDACTED)/.test(candidate.approvalEvidenceSha256), false, label + ' approval SHA is not a placeholder');
+  equal(/^0{40}$/.test(candidate.commercialRelayCommit), false, label + ' commercial commit is not zero');
+  equal(/^0{40}$/.test(candidate.browserConversionE2eCommit), false, label + ' browser commit is not zero');
+  const verifiedAt = parser(candidate.commercialRelayVerifiedAtKst);
+  const approvedAt = parser(candidate.approvedAtKst);
+  equal(verifiedAt === null, false, label + ' commercial evidence time is real strict KST');
+  equal(approvedAt === null, false, label + ' approval time is real strict KST');
+  equal(verifiedAt <= approvedAt, true, label + ' approval follows verification');
+}
+
+{
+  const promotionHarness = makeHarness();
+  const serverSource = fs.readFileSync(path.join(ROOT, 'apps-script-office-ops', 'OfficeOps.gs'), 'utf8');
+  const gateMatch = /function\s+ooConversionOperationallyEnabled_\s*\(\s*\)\s*\{\s*return\s+(true|false)\s*;?\s*\}/.exec(serverSource);
+  equal(gateMatch === null, false, 'promotion requires an exact literal conversion gate');
+  const promotion = JSON.parse(fs.readFileSync(path.join(ROOT, 'apps-script-office-ops', 'conversion-promotion.json'), 'utf8'));
+  assertPromotionContract(promotion, gateMatch[1] === 'true', promotionHarness.sandbox.ooParseKstDateTime_, 'production promotion');
+  assertPromotionContract({
+    schemaVersion:1,
+    enabled:true,
+    approvalEvidenceSha256:'a'.repeat(64),
+    commercialRelayCommit:'1'.repeat(40),
+    commercialRelayVerifiedAtKst:'2026-08-31T10:00:00+09:00',
+    browserConversionE2eCommit:'2'.repeat(40),
+    approvedAtKst:'2026-08-31T10:05:00+09:00'
+  }, true, promotionHarness.sandbox.ooParseKstDateTime_, 'future enabled promotion');
 }
 
 console.log(`office ops server tests: PASS (${assertions} assertions)`);

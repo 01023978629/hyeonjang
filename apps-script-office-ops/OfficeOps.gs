@@ -989,7 +989,12 @@ function ooVerifiedRetentionPair_(source, manifestFile, files) {
   };
 }
 
-function ooVerifiedRetentionPairs_(source, currentPair) {
+function ooCompareCompleteVerifiedPairs_(left, right) {
+  return left.preMutationRevision - right.preMutationRevision || left.createdAt.localeCompare(right.createdAt) ||
+    left.backupFileId.localeCompare(right.backupFileId) || left.manifestFileId.localeCompare(right.manifestFileId);
+}
+
+function ooCompleteVerifiedPairs_(source) {
   var files;
   try { files = ooRetentionFileMap_(source.parent); }
   catch (_) { return []; }
@@ -1007,10 +1012,17 @@ function ooVerifiedRetentionPairs_(source, currentPair) {
     used[pair.manifestFileId] = true;
     pairs.push(pair);
   }
-  pairs.sort(function(left, right) {
-    return left.preMutationRevision - right.preMutationRevision || left.createdAt.localeCompare(right.createdAt) ||
-      left.backupFileId.localeCompare(right.backupFileId) || left.manifestFileId.localeCompare(right.manifestFileId);
-  });
+  pairs.sort(ooCompareCompleteVerifiedPairs_);
+  return pairs;
+}
+
+function ooLatestCompleteVerifiedPair_(pairs) {
+  return Array.isArray(pairs) && pairs.length ? pairs[pairs.length - 1] : null;
+}
+
+function ooVerifiedRetentionPairs_(source, currentPair) {
+  var pairs = ooCompleteVerifiedPairs_(source);
+  if (!currentPair) return [];
   var currentMatches = pairs.filter(function(pair) {
     return pair.backupFileId === currentPair.backupFileId && pair.manifestFileId === currentPair.manifestFileId &&
       pair.backupName === currentPair.backupName && pair.manifestName === currentPair.manifestName &&
@@ -1020,7 +1032,7 @@ function ooVerifiedRetentionPairs_(source, currentPair) {
       pair.byteLength === currentPair.manifest.byteLength && pair.sha256Hex === currentPair.manifest.sha256Hex &&
       currentPair.manifest.sourceFileId === source.sourceId && currentPair.manifest.backupFileId === pair.backupFileId;
   });
-  if (currentMatches.length !== 1 || pairs[pairs.length - 1] !== currentMatches[0]) return [];
+  if (currentMatches.length !== 1 || ooLatestCompleteVerifiedPair_(pairs) !== currentMatches[0]) return [];
   return pairs;
 }
 
