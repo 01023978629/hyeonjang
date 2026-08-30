@@ -13,13 +13,13 @@
 - Use only \`C:\Users\1dncj\Documents\New project\.worktrees\hyeonjang-revenue-ops-20260831\` at \`origin/main\` \`f44fa57\`. Do not edit the original dirty checkout.
 - OfficeOps must never enter \`serializeData()\`, \`applyData()\`, \`state\`, \`현장데이터.json\`, \`DATA_FILE_NAME\`, \`OFFICE_STORE_FILE\`, photo relay config/queue, or OfficeIntake storage. \`hjSnapshot()\` is the existing local recovery snapshot only.
 - Never invoke, wrap, queue through, or modify \`relayCall()\`, \`relayBoot()\`, \`relay_queue\`, \`relay_url\`, \`relay_token\`, or legacy \`APP_TOKEN\`. \`tests/relay.e2e.js\` is unchanged regression-only.
-- IDB owns only \`office_ops_url\`, \`office_ops_token\`, \`commercial_approval_url\`, \`commercial_approval_token\`, \`office_ops_device_id\`, and successful read cache \`office_ops_cache\`. Empty input retains a configured value; removal requires explicit confirmation.
-- Every OfficeOps POST body is exactly \`officeOpsEnvelope={token,action,deviceId,timestamp,mutationId?,payload}\`; every commercial approval POST body is exactly \`commercialEnvelope={token,action,timestamp,payload}\`. \`timestamp\` is \`new Date().toISOString()\` and \`ts\` is forbidden. Only OfficeOps uses \`deviceId\`/\`mutationId\`. A mutation result is exactly \`{ok,id,revision,updatedAt}\`, then the client explicitly calls \`officeOpsLoad()\`; acknowledgements never update cache.
+- OfficeOps configuration/cache owns only \`office_ops_url\`, \`office_ops_token\`, \`commercial_approval_url\`, \`commercial_approval_token\`, \`office_ops_device_id\`, and successful read cache \`office_ops_cache\`. The paid local transaction helper additionally owns \`paid_commit_pointer\`, \`paid_commit_journal\`, and bounded \`paid_commit_generation:<id>\` records containing only the same existing serialized hyeonjang state as \`appState\`; OfficeOps collections, URLs, and tokens never enter those generations. Empty credential input retains a configured value; removal requires explicit confirmation.
+- Every OfficeOps POST body is exactly \`officeOpsEnvelope={token,action,deviceId,timestamp,mutationId?,payload}\`; every commercial approval POST body is exactly \`commercialEnvelope={token,action,timestamp,payload}\`. \`timestamp\` is \`new Date().toISOString()\` and \`ts\` is forbidden. Only OfficeOps uses \`deviceId\`/\`mutationId\`: an OfficeOps read has \`deviceId\` and no \`mutationId\`, an OfficeOps mutation has a fresh \`mutationId\`, and a commercial request has neither field. A mutation result is exactly \`{ok,id,revision,updatedAt}\`, then the client explicitly calls \`officeOpsLoad()\`; acknowledgements never update cache.
 - Tabs are exactly \`시험운영 후보\`, \`재점검 동의\`, \`예방점검\`, and \`K-apt 기회\`. No send, booking, scraper, bid, email, SMS, Kakao, Calendar, or Naver integration.
 - Gate command kinds are \`create-order|transition-state\`; permitted target states are \`visit|work|billed\`. Existing \`payLog\` remains the sole \`paid\` settlement. Existing \`done|billed|paid\` records are readable without backfill.
 - Only \`free-phone-photo-consultation\` and \`free-interior-first-measurement\` are free exceptions. Neither may contain repair/equipment/material work nor a paid \`aptOrder\`. Every other new paid order, including general, AI, OfficeIntake follow-up, manual diagnosis, and OfficeOps conversion, is gated before local persistence.
 - OfficeIntake acceptance stays the existing free \`recv\` route. Later paid \`recv→visit\`, \`visit→work\`, and \`done→billed\` transitions are gated.
-- Use \`escapeHtml()\` and \`escapeAttr()\`; strict-normalize a K-apt URL before anchor rendering. Never store/render credentials, HMACs, PII, photos, or evidence content.
+- Use \`escapeHtml()\` and \`escapeAttr()\`; strict-normalize a K-apt URL before anchor rendering. Never render credentials, HMAC keys, PII, photos, or evidence content. The full signed receipt including its non-secret \`receiptHmac\` value may be stored only as immutable approval metadata on the gated order/inspection; the signing key is never stored or rendered.
 - Do not split \`index.html\` this release. An external file needs a separate Pages artifact allowlist and service-worker shell-cache review.
 - At implementation start audit all \`hyeonjang-vN-*\` values. Reserve the next unused numeral and make the final paired \`APP_BUILD\`/sw \`C\` edit only after implementation/tests. The marker selected at start remains unused until that edit.
 - Before commands: \`$node='C:\Users\1dncj\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'\`; \`$env:NODE_PATH='C:\Users\1dncj\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules'\`.
@@ -85,10 +85,14 @@ async function officeOpsLoad(){
   __officeOps.loadedAt=new Date().toISOString(); await idbSet('office_ops_cache',{store,revision:store.revision,updatedAt:store.updatedAt});
   return store;
 }
-async function officeOpsMutation(action,payload){
+async function officeOpsMutationWithAck(action,payload){
   const json=await officeOpsCall(action,payload,{mutationId:crypto.randomUUID()});
   if(Object.keys(json).sort().join(',')!=='id,ok,revision,updatedAt'||json.ok!==true) throw new Error('invalid mutation acknowledgement');
-  return officeOpsLoad();
+  const store=await officeOpsLoad();
+  return {ack:Object.freeze({id:json.id,revision:json.revision,updatedAt:json.updatedAt}),store};
+}
+async function officeOpsMutation(action,payload){
+  return (await officeOpsMutationWithAck(action,payload)).store;
 }
 \`\`\`
 
@@ -114,18 +118,20 @@ async function commercialNow(){
   if(receivedAt-startedAt>10000||json.nonce!==nonce||!Number.isFinite(Date.parse(json.serverNowKst))||
     !Number.isFinite(Date.parse(json.receivedAtKst))) throw new Error('untrusted commercial time');
   __commercialApproval.lastTrustedNow=json.serverNowKst;
-  return {serverNowKst:json.serverNowKst,receivedAtKst:json.receivedAtKst,useBeforeMonotonicMs:receivedAt+60000};
+  return {serverNowKst:json.serverNowKst,receivedAtKst:json.receivedAtKst,receivedMonotonicMs:receivedAt,useBeforeMonotonicMs:receivedAt+60000};
 }
 async function validateCommercialApproval({subjectType,subjectId,commercialTerms,commercialApproval}){
   if(subjectType!=='aptOrder') throw new Error('invalid subject type');
   const trusted=await commercialNow();
   if(performance.now()>trusted.useBeforeMonotonicMs) throw new Error('stale commercial time');
-  const verifyNonce=crypto.randomUUID();
+  const verifyNonce=crypto.randomUUID(), verifyStartedAt=performance.now();
   const json=await commercialCall('commercialApprovalVerify',{subjectType,subjectId,commercialTerms,commercialApproval,nonce:verifyNonce});
+  const exactAckKeys=['nonce','ok','receiptId','serverNowKst','verifyExpiresAtKst'];
   const verifiedAt=performance.now(), serverMs=Date.parse(json.serverNowKst), expiryMs=Date.parse(json.verifyExpiresAtKst);
-  if(verifiedAt>trusted.useBeforeMonotonicMs||json.receiptId!==commercialApproval.receiptId||json.nonce!==verifyNonce||
+  if(Object.keys(json).sort().join(',')!==exactAckKeys.sort().join(',')||verifiedAt-verifyStartedAt>10000||verifiedAt>trusted.useBeforeMonotonicMs||json.receiptId!==commercialApproval.receiptId||json.nonce!==verifyNonce||
     !Number.isFinite(serverMs)||!Number.isFinite(expiryMs)||expiryMs<=serverMs||expiryMs-serverMs>60000) throw new Error('invalid approval verification');
-  return {receiptId:json.receiptId,serverNowKst:json.serverNowKst,nonce:json.nonce,verifyExpiresAtKst:json.verifyExpiresAtKst};
+  return Object.freeze({receiptId:json.receiptId,serverNowKst:json.serverNowKst,nonce:json.nonce,
+    verifyExpiresAtKst:json.verifyExpiresAtKst,useBeforeMonotonicMs:Math.min(trusted.useBeforeMonotonicMs,verifyStartedAt+(expiryMs-serverMs))});
 }
 async function issueCommercialApproval({subjectId,commercialTerms,approvalEvidenceFileId,approvalEvidenceType,approvedAt,approvedByRole}){
   if(!approvalEvidenceFileId||!approvalEvidenceType||!Date.parse(approvedAt)||!['customer','management-office'].includes(approvedByRole)) throw new Error('missing approval evidence');
@@ -133,32 +139,34 @@ async function issueCommercialApproval({subjectId,commercialTerms,approvalEviden
     approvalEvidenceFileId,approvalEvidenceType,approvedAt,approvedByRole});
   return normalizeReceipt(json.commercialApproval,subjectId);
 }
-async function persistApprovedAptOrder({draft,commercialTerms,receipt}){
-  if(!draft||draft.id!==receipt.subjectId||state.aptOrders.some(x=>x.id===draft.id)) throw new Error('paid order identity conflict');
-  normalizeReceipt(receipt,draft.id); await hjSnapshot('유상 오더 승인 저장',true);
-  const persisted={...draft,commercialGateVersion:1,commercialTerms,commercialApproval:receipt};
-  state.aptOrders.push(persisted); await saveData(); return persisted;
+async function persistApprovedAptOrder({draft,commercialTerms,receipt,verification}){
+  if(!draft||Object.getPrototypeOf(draft)!==Object.prototype||!Object.isFrozen(draft)||draft.id!==receipt.subjectId||draft.state!=='visit'||state.aptOrders.some(x=>x.id===draft.id)) throw new Error('paid order identity conflict');
+  normalizeReceipt(receipt,draft.id);
+  const persisted=Object.freeze({...draft,commercialGateVersion:1,commercialTerms,commercialApproval:receipt});
+  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',mutateDraft:next=>{ next.aptOrders.push(persisted); return persisted; }});
 }
-async function executePaidWorkGate({commandKind,subjectId,targetState,commercialTerms,commercialApproval,createDraft}){
-  if(!['create-order','transition-state'].includes(commandKind)||!['visit','work','billed'].includes(targetState)||
+async function executePaidWorkGate({commandKind,subjectType,subjectId,targetState,commercialTerms,commercialApproval,createDraft}){
+  if(subjectType!=='aptOrder'||!['create-order','transition-state'].includes(commandKind)||!['visit','work','billed'].includes(targetState)||
     (commandKind==='create-order'&&(targetState!=='visit'||!createDraft||typeof createDraft!=='object'||Array.isArray(createDraft)))||
     (commandKind==='transition-state'&&createDraft!==undefined)) throw new Error('invalid paid gate command');
   const terms=normalizeCommercialTerms(commercialTerms);
   const receipt=normalizeReceipt(commercialApproval,subjectId);
-  await validateCommercialApproval({subjectType:'aptOrder',subjectId,commercialTerms:terms,commercialApproval:receipt});
-  if(commandKind==='create-order') return persistApprovedAptOrder({draft:createDraft,commercialTerms:terms,receipt});
-  return persistGatedAptTransition(subjectId,targetState,terms,receipt);
+  const verification=await validateCommercialApproval({subjectType,subjectId,commercialTerms:terms,commercialApproval:receipt});
+  if(commandKind==='create-order') return persistApprovedAptOrder({draft:createDraft,commercialTerms:terms,receipt,verification});
+  return persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms:terms,receipt,verification});
 }
 \`\`\`
+
+durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted}) takes a successful recovery snapshot, applies mutateDraft to a deep-cloned candidate, validates/serializes it without touching live state, invokes the optional fail-closed `beforeCommit` hook, then uses one native IndexedDB readwrite transaction on the existing kv store to write a generation record, update a paid-commit journal/pointer, and replace legacy `appState`. IndexedDB transaction abort leaves all old keys and live state unchanged; commit success is the durable commit point, after which `onCommitted` runs exactly once. Only after commit does it replace live state and render. A render failure is not reported as a failed mutation or rolled back: the committed journal/pointer remains authoritative, the UI shows a reload-required recovery banner, and boot reloads that committed generation. durablePaidMutation({verification,snapshotLabel,mutateDraft}) is the only paid wrapper: it rejects an already consumed (receiptId,nonce), delegates with a `beforeCommit` hook that rechecks performance.now() <= verification.useBeforeMonotonicMs after the snapshot and immediately before the atomic transaction, and an `onCommitted` hook that consumes (receiptId,nonce) only after commit. The commercial relay's nonce claim is authoritative; the same stored receipt may be verified later with a new nonce while still valid. persistGatedAptTransition uses the paid wrapper and atomically preserves the normalized full commercialTerms and full signed commercialApproval on the order.
 
 \`\`\`js
 function normalizeReceipt(receipt,subjectId){
   const keys=['receiptId','subjectType','subjectId','approvedTermsSha256','approvalEvidenceType','approvalEvidenceFileId','approvalEvidenceSha256','approvedAt','approvedByRole','issuedAt','receiptHmac'];
-  if(!receipt||Object.keys(receipt).sort().join(',')!==keys.slice().sort().join(',')||receipt.subjectType!=='aptOrder'||receipt.subjectId!==subjectId||typeof receipt.receiptId!=='string'||!receipt.receiptId||
+  if(!receipt||Object.keys(receipt).sort().join(',')!==keys.slice().sort().join(',')||receipt.subjectType!=='aptOrder'||receipt.subjectId!==subjectId||!/^[A-Za-z0-9_-]{1,160}$/.test(subjectId||'')||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(receipt.receiptId||'')||
     !/^[a-f0-9]{64}$/.test(receipt.approvedTermsSha256||'')||
     !['quote-file','contract-file','message-export-file'].includes(receipt.approvalEvidenceType)||
-    !receipt.approvalEvidenceFileId||!/^[a-f0-9]{64}$/.test(receipt.approvalEvidenceSha256||'')||!Date.parse(receipt.approvedAt)||
-    !['customer','management-office'].includes(receipt.approvedByRole)||!Date.parse(receipt.issuedAt)||
+    !/^[A-Za-z0-9_-]{1,200}$/.test(receipt.approvalEvidenceFileId||'')||!/^[a-f0-9]{64}$/.test(receipt.approvalEvidenceSha256||'')||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(receipt.approvedAt||'')||
+    !['customer','management-office'].includes(receipt.approvedByRole)||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(receipt.issuedAt||'')||Date.parse(receipt.issuedAt)<Date.parse(receipt.approvedAt)||
     !/^[a-f0-9]{64}$/.test(receipt.receiptHmac||'')) throw new Error('invalid commercial receipt');
   return Object.freeze({...receipt});
 }
@@ -170,7 +178,7 @@ async function createPaidDiagnosisOrderFromManualLead(input){
   const commercialApproval=await issueCommercialApproval({subjectId:id,commercialTerms,
     approvalEvidenceFileId:input.approvalEvidenceFileId,approvalEvidenceType:input.approvalEvidenceType,
     approvedAt:input.approvedAt,approvedByRole:input.approvedByRole});
-  return executePaidWorkGate({commandKind:'create-order',subjectId:id,targetState:'visit',commercialTerms,commercialApproval,
+  return executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:id,targetState:'visit',commercialTerms,commercialApproval,
     createDraft:Object.freeze({id,source:'manual-paid-diagnosis',state:'visit'})});
 }
 \`\`\`
@@ -180,8 +188,8 @@ The manual UI permits only \`approvedByRole:'customer'|'management-office'\`; it
 
 **Files:** modify \`index.html\`, \`tests/office-ops-isolation.e2e.js\`, \`tests/paid-work-gate.e2e.js\`. Do not edit \`tests/relay.e2e.js\`.
 
-- [ ] **RED:** Assert every new POST contains only the exact envelope keys, never \`ts\`; mutations require the exact acknowledgement keys and then invoke \`officeOpsLoad()\`. Assert cache write occurs only in \`officeOpsLoad\`, and static source rejects OfficeOps references inside serialize/apply/relay/OfficeIntake sections. Expected failure: isolated functions absent or legacy \`ts\` shape found.
-- [ ] **Implement:** Add the exact functions above, IDB-only settings, stale-read display with no offline mutation retry, and settings UI with explicit credential deletion confirmation.
+- [ ] **RED:** Assert each commercial POST has exactly \`token,action,timestamp,payload\` and zero \`deviceId\`/\`mutationId\`; each OfficeOps read has exactly \`token,action,deviceId,timestamp,payload\`; each OfficeOps mutation adds one fresh \`mutationId\`; no request uses \`ts\`. Mutations require the exact acknowledgement keys, preserve the server \`id\` in \`officeOpsMutationWithAck\`, and then invoke \`officeOpsLoad()\`; create helpers select the refreshed row only by that exact server ID, never by a non-unique field tuple. Assert cache write occurs only after a successful normalized \`officeOpsLoad\`; an \`office-disabled\` read never overwrites it, renders it as stale/export-only, blocks every create/edit/draft/convert/contact action, and permits only a local JSON export without a network call. Static source rejects OfficeOps references inside serialize/apply/relay/OfficeIntake sections. Expected failure: isolated functions absent, an envelope boundary is mixed, server identity is discarded, or stale cache can mutate.
+- [ ] **Implement:** Add the exact functions above, IDB-only settings, stale-read/export-only display with no offline mutation retry, and settings UI with explicit credential deletion confirmation. Disabled-server export reads only the last normalized \`office_ops_cache\`; it never treats the cache as current or calls a mutation.
 - [ ] **GREEN:**
 \`\`\`powershell
 & $node tests/office-ops-isolation.e2e.js
@@ -211,7 +219,7 @@ function pilotEndsAtKst(startDateKst){
 }
 \`\`\`
 \`normalizePilot(raw)\` returns exactly \`{pilotId,stage,pilotStartedAt,pilotEndsAt,extensionApprovedAt?}\` or throws. Stages are \`new|contacted|meeting|pilot|converted|closed\`; active deadline is the server-recorded \`pilotEndsAt\`, and an extension is accepted only when server records both \`extensionApprovedAt\` and the replacement \`pilotEndsAt\`. The browser never grants/extends a pilot.
-- [ ] **Consent implementation:** \`normalizeReinspectionConsent(raw)\` accepts exactly \`{subjectType,subjectId,purpose:'preventive-reinspection',intervalMonths:6|12,channel,consentVersion:'reinspection-v1',consentTextSnapshot,consentTextSha256,recordedBy,consentedAt,evidenceType,evidenceId}\`; it validates a lower-case 64-hex hash and returns a frozen input object without a client-created ID. \`persistReinspectionConsent(input)\` sends \`officeConsentRecord\` with those exact fields plus \`expectedRevision\`, and outputs the refreshed server record identified by \`consentId\`. \`withdrawReinspectionConsent({consentId,withdrawnAt,withdrawnBy,withdrawalReason})\` sends \`officeConsentWithdraw\` with exactly those fields plus \`expectedRevision\`, returns the refreshed record, and disables scheduling/draft creation immediately. A \`수동 초안\` is browser-memory-only/no-send until explicit record; its contact lookup is from existing project/order data only after a live active consent check.
+- [ ] **Consent implementation:** \`normalizeReinspectionConsent(raw)\` accepts exactly \`{subjectType,subjectId,purpose:'preventive-reinspection',intervalMonths:6|12,channel,consentVersion:'reinspection-v1',consentTextSnapshot,consentTextSha256,recordedBy,consentedAt,evidenceType,evidenceId}\`; it validates a lower-case 64-hex hash and returns a frozen input object without a client-created ID. \`persistReinspectionConsent(input,idempotencyKey)\` sends \`officeConsentRecord\` with those exact fields plus the required 16–80 character \`idempotencyKey\`, never \`expectedRevision\`, and outputs the refreshed server record identified by \`consentId\`. One logical create keeps the same key across a user retry; a new logical create gets a new key. \`withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason})\` sends \`officeConsentWithdraw\` with exactly those fields plus \`expectedRevision\`; the server supplies \`withdrawnAt\` in KST. It returns the refreshed record and disables scheduling/draft creation immediately. A \`수동 초안\` is browser-memory-only/no-send until explicit record; its contact lookup is from existing project/order data only after a live active consent check.
 \`\`\`js
 function normalizeReinspectionConsent(raw){
   const keys=['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'];
@@ -222,13 +230,16 @@ function normalizeReinspectionConsent(raw){
     !Date.parse(raw.consentedAt)||!['signed-document','message','recorded-call-note'].includes(raw.evidenceType)||!raw.evidenceId) throw new Error('invalid reinspection consent');
   return Object.freeze({...raw});
 }
-async function persistReinspectionConsent(input){
-  const payload={...normalizeReinspectionConsent(input),expectedRevision:__officeOps.revision};
-  const store=await officeOpsMutation('officeConsentRecord',payload);
-  return store.consents.find(x=>x.consentId&&x.subjectType===payload.subjectType&&x.subjectId===payload.subjectId&&x.consentedAt===payload.consentedAt);
+async function persistReinspectionConsent(input,idempotencyKey){
+  if(!/^[A-Za-z0-9_-]{16,80}$/.test(idempotencyKey||'')) throw new Error('invalid consent idempotency key');
+  const payload={idempotencyKey,...normalizeReinspectionConsent(input)};
+  const result=await officeOpsMutationWithAck('officeConsentRecord',payload);
+  const consent=result.store.consents.find(x=>x.consentId===result.ack.id);
+  if(!consent) throw new Error('created consent missing after reload');
+  return consent;
 }
-async function withdrawReinspectionConsent({consentId,withdrawnAt,withdrawnBy,withdrawalReason}){
-  const store=await officeOpsMutation('officeConsentWithdraw',{consentId,withdrawnAt,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
+async function withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason}){
+  const store=await officeOpsMutation('officeConsentWithdraw',{consentId,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
   return store.consents.find(x=>x.consentId===consentId);
 }
 \`\`\`
@@ -256,16 +267,18 @@ git commit -m \"feat: add isolated OfficeOps representative tabs\"
 
 **Files:** modify \`index.html\`, \`tests/paid-work-gate.e2e.js\`, \`tests/legacy-commercial-gate.e2e.js\`.
 
-- [ ] **RED:** Mock \`commercialNow\` and reject nonce absence/mismatch, a round trip over 10 seconds, use after 60 seconds, invalid receipt, reuse of the clock nonce for verify, and a verify response that is not exactly an acknowledgement containing \`receiptId,serverNowKst,nonce,verifyExpiresAtKst\`. Verify must receive the supplied full \`commercialApproval\`, use a second fresh nonce, and must not expect or unwrap \`verifyResponse.receipt\`. Assert issue payload exactly has \`subjectType:'aptOrder'\`, \`subjectId\`, \`commercialTerms\`, \`approvalEvidenceFileId\`, \`approvalEvidenceType\`, \`approvedAt\`, \`approvedByRole:'customer'|'management-office'\`, and issue unwraps \`json.commercialApproval\`. Assert terms reject \`amount\`, \`currency\`, \`expiresAtKst\`, and \`termsSha256\`; require only the exact seven spec keys. Test UI wording that gate is operational safety, not hostile-browser enforcement.
-- [ ] **Implement:** Use the exact shared functions. \`commercialApprovalIssue\` alone unwraps its signed \`json.commercialApproval\`; \`commercialApprovalVerify\` accepts that receipt in its request and returns only the verification acknowledgement. \`commercialNow\` measures a monotonic request round trip of at most 10 seconds, and verification uses a second fresh nonce before the trusted-time result reaches 60 seconds. Validate \`create-order→visit\` and \`transition-state→visit|work|billed\`; \`createDraft\` is a plain immutable object only for create-order and is absent for transition-state. \`transitionAptOrderWithGate({orderId,targetState,commercialTerms,commercialApproval})\` loads the current order and calls \`executePaidWorkGate({commandKind:'transition-state',subjectId:orderId,targetState,commercialTerms,commercialApproval})\`.
+- [ ] **RED:** Mock \`commercialNow\` and reject nonce absence/mismatch, a round trip over 10 seconds, use after 60 seconds, invalid receipt, reuse of the clock nonce for verify, and a verify response that is not exactly an acknowledgement containing \`ok,receiptId,serverNowKst,nonce,verifyExpiresAtKst\`. Verify must receive the supplied full \`commercialApproval\`, use a second fresh nonce, and must not expect or unwrap \`verifyResponse.receipt\`. Assert issue payload exactly has \`subjectType:'aptOrder'\`, \`subjectId\`, \`commercialTerms\`, \`approvalEvidenceFileId\`, \`approvalEvidenceType\`, \`approvedAt\`, \`approvedByRole:'customer'|'management-office'\`, and issue unwraps \`json.commercialApproval\`. Assert terms reject \`amount\`, \`currency\`, \`expiresAtKst\`, and \`termsSha256\`; require only the exact seven spec keys. Reject a missing or non-\`aptOrder\` \`subjectType\`, identical nonce reuse, a snapshot delay past the monotonic deadline, duplicate consumption of one acknowledgement, and a mutable/non-plain draft. Inject validation/serialization/IndexedDB transaction failures and prove old generation, pointer, \`appState\`, live state, and acknowledgement-consumption set are unchanged. Inject render failure after commit and prove the new generation remains committed once, the acknowledgement is consumed once, a recovery banner appears, and boot reloads the committed generation without duplicate mutation. Prove a stored full receipt succeeds later only after verification with a new nonce, terms change makes the former receipt fail, and every successful transition atomically retains the normalized terms and full receipt. Test UI wording that gate is operational safety, not hostile-browser enforcement.
+- [ ] **Implement:** Use the exact shared functions. \`commercialApprovalIssue\` alone unwraps its signed \`json.commercialApproval\`; \`commercialApprovalVerify\` accepts that receipt in its request and returns only the verification acknowledgement. Both \`commercialNow\` and verification measure a monotonic request round trip of at most 10 seconds; verification uses a second fresh nonce before the trusted-time result reaches 60 seconds. Compute a conservative monotonic use deadline from the verify request start plus the server acknowledgement lifetime, capped by the earlier trusted-time deadline, then recheck it after the snapshot and immediately before durable mutation. Consume one successful acknowledgement once; the relay nonce claim remains authoritative and the immutable receipt itself can be reverified with a new nonce. Validate \`create-order→visit\` and \`transition-state→visit|work|billed\`; \`createDraft\` is a frozen plain object only for create-order, its \`id\` equals \`subjectId\`, its initial state is \`visit\`, and it is absent for transition-state. \`transitionAptOrderWithGate({orderId,targetState,commercialTerms,commercialApproval})\` loads the current order and calls \`executePaidWorkGate({commandKind:'transition-state',subjectType:'aptOrder',subjectId:orderId,targetState,commercialTerms,commercialApproval})\`.
 \`\`\`js
 async function updateCommercialTerms(orderId,nextTerms){
-  const order=state.aptOrders.find(x=>x.id===orderId); if(!order) throw new Error('order not found');
-  const commercialTerms=normalizeCommercialTerms(nextTerms), previousApproval=order.commercialApproval||null;
-  await hjSnapshot('유상 조건 변경',true);
-  order.commercialTerms=commercialTerms; order.commercialApproval=null;
-  order.commercialApprovalAudit=[...(order.commercialApprovalAudit||[]),{event:'terms-replaced',at:new Date().toISOString(),previousApproval}];
-  await saveData(); return {order,previousApprovalAuditId:order.commercialApprovalAudit.at(-1).at};
+  const current=state.aptOrders.find(x=>x.id===orderId); if(!current) throw new Error('order not found');
+  const commercialTerms=normalizeCommercialTerms(nextTerms), previousApproval=current.commercialApproval||null, at=new Date().toISOString();
+  return durableLocalMutation({snapshotLabel:'유상 조건 변경',mutateDraft:next=>{
+    const order=next.aptOrders.find(x=>x.id===orderId); if(!order) throw new Error('order not found');
+    order.commercialTerms=commercialTerms; order.commercialApproval=null;
+    order.commercialApprovalAudit=[...(order.commercialApprovalAudit||[]),{event:'terms-replaced',at,previousApproval}];
+    return {order,previousApprovalAuditId:at};
+  }});
 }
 \`\`\`
 The test asserts \`updateCommercialTerms\` never calls \`commercialApprovalIssue\`, never invokes the gate, and a compound conditions-change-plus-transition returns \`compound-command-not-allowed\` with no local mutation.
@@ -306,7 +319,7 @@ git commit -m \"refactor: route every paid order path through gate\"
 
 **Files:** modify \`index.html\`, \`tests/office-ops-conversion.e2e.js\`, \`tests/office-ops-isolation.e2e.js\`.
 
-- [ ] **RED:** Inject failure after receipt persistence, begin, arm, local write, and record. Require trusted-time receipt verification plus a successful snapshot before begin, another gate verification immediately before the local write, full signed receipt metadata available after reload, no duplicate \`pendingOrderId\`, revision conflict for second tab, and finalization refusal for any mismatched ID/terms. Expected failure: saga/resume absent.
+- [ ] **RED:** Inject failure before begin, after begin, arm, local write, and record. Require trusted-time receipt verification plus a successful snapshot before begin, another gate verification immediately before the local write, full signed receipt metadata available after reload, no duplicate \`pendingOrderId\`, revision conflict for second tab, and finalization refusal for any mismatched ID/terms. Prove any failure before a successful begin leaves both stores unchanged; begin atomically freezes the full normalized terms and full signed receipt; begin/arm/record/finalize safely return the prior success for an exact frozen-proof replay after response loss; and record retry with a new mutation ID plus the prior revision cannot duplicate the order. After local durable commit but before RecordLocalCommit acknowledgement, resume must recognize the exact existing local order, verify all source/terms/full-receipt identities, record it without re-running create or issuing a receipt, and continue finalize; any mismatch stops. Expected failure: saga/resume absent.
 - [ ] **Implement exact payload and saga:**
 \`\`\`js
 function conversionPayload({inspectionId,conversionId,pendingOrderId,receipt}){
@@ -319,11 +332,10 @@ async function convertOfficeOpsInspectionToAptOrder(inspectionId,approvalInput){
   const receipt=await issueCommercialApproval({subjectId:pendingOrderId,commercialTerms:terms,approvalEvidenceFileId:approvalInput.approvalEvidenceFileId,approvalEvidenceType:approvalInput.approvalEvidenceType,approvedAt:approvalInput.approvedAt,approvedByRole:approvalInput.approvedByRole});
   await validateCommercialApproval({subjectType:'aptOrder',subjectId:pendingOrderId,commercialTerms:terms,commercialApproval:receipt});
   await hjSnapshot('OfficeOps 예방점검 오더 전환 준비',true);
-  await officeOpsMutation('officeInspectionUpdate',{inspectionId,expectedRevision:__officeOps.revision,commercialTerms:terms,commercialApproval:receipt});
   const base=conversionPayload({inspectionId,conversionId,pendingOrderId,receipt});
-  await officeOpsMutation('officeInspectionBeginConversion',{...base,expectedRevision:__officeOps.revision});
+  await officeOpsMutation('officeInspectionBeginConversion',{...base,commercialTerms:terms,commercialApproval:receipt,expectedRevision:__officeOps.revision});
   await officeOpsMutation('officeInspectionArmLocalCommit',{...base,expectedRevision:__officeOps.revision});
-  const order=await executePaidWorkGate({commandKind:'create-order',subjectId:pendingOrderId,targetState:'visit',commercialTerms:terms,commercialApproval:receipt,createDraft:Object.freeze(officeOpsAptOrderDraft(inspection,{conversionId,pendingOrderId,terms}))});
+  const order=await executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:pendingOrderId,targetState:'visit',commercialTerms:terms,commercialApproval:receipt,createDraft:Object.freeze(officeOpsAptOrderDraft(inspection,{conversionId,pendingOrderId,terms}))});
   await officeOpsMutation('officeInspectionRecordLocalCommit',{...base,linkedOrderId:order.id,expectedRevision:__officeOps.revision});
   return officeOpsMutation('officeInspectionFinalizeConversion',{...base,linkedOrderId:order.id,expectedRevision:__officeOps.revision});
 }
@@ -338,10 +350,19 @@ async function resumeOfficeOpsInspectionConversion({inspectionId,conversionId,pe
     await officeOpsMutation('officeInspectionArmLocalCommit',{...base,expectedRevision:__officeOps.revision});
     return resumeOfficeOpsInspectionConversion({...base,linkedOrderId});
   }
+  if(inspection.status==='conversion-writing'&&order){
+    const storedTerms=normalizeCommercialTerms(inspection.commercialTerms), storedReceipt=normalizeReceipt(inspection.commercialApproval,pendingOrderId);
+    const orderTerms=normalizeCommercialTerms(order.commercialTerms), orderReceipt=normalizeReceipt(order.commercialApproval,pendingOrderId);
+    if(order.id!==pendingOrderId||order.sourceOfficeOpsInspectionId!==inspectionId||order.sourceOfficeOpsConversionId!==conversionId||
+      JSON.stringify(orderTerms)!==JSON.stringify(storedTerms)||JSON.stringify(orderReceipt)!==JSON.stringify(storedReceipt)||
+      orderReceipt.receiptId!==receiptId||orderReceipt.approvedTermsSha256!==termsSha256) throw new Error('existing local order identity conflict');
+    await officeOpsMutation('officeInspectionRecordLocalCommit',{...base,linkedOrderId:order.id,expectedRevision:__officeOps.revision});
+    return resumeOfficeOpsInspectionConversion({...base,linkedOrderId:order.id});
+  }
   if(inspection.status==='conversion-writing'&&!order){
     const terms=normalizeCommercialTerms(inspection.commercialTerms), receipt=normalizeReceipt(inspection.commercialApproval,pendingOrderId);
     if(receipt.receiptId!==receiptId||receipt.subjectType!==receiptSubjectType||receipt.subjectId!==receiptSubjectId||receipt.approvedTermsSha256!==termsSha256) throw new Error('conversion receipt conflict');
-    const created=await executePaidWorkGate({commandKind:'create-order',subjectId:pendingOrderId,targetState:'visit',commercialTerms:terms,commercialApproval:receipt,createDraft:Object.freeze(officeOpsAptOrderDraft(inspection,{conversionId,pendingOrderId,terms}))});
+    const created=await executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:pendingOrderId,targetState:'visit',commercialTerms:terms,commercialApproval:receipt,createDraft:Object.freeze(officeOpsAptOrderDraft(inspection,{conversionId,pendingOrderId,terms}))});
     await officeOpsMutation('officeInspectionRecordLocalCommit',{...base,linkedOrderId:created.id,expectedRevision:__officeOps.revision});
     return resumeOfficeOpsInspectionConversion({...base,linkedOrderId:created.id});
   }
@@ -352,7 +373,7 @@ async function resumeOfficeOpsInspectionConversion({inspectionId,conversionId,pe
   return inspection;
 }
 \`\`\`
-Client resume revalidates the server-fixed \`inspectionId\`, conversion/order/receipt IDs and hash; begin/arm/record/finalize revalidate all seven base fields plus \`linkedOrderId\` server-side.
+Client resume revalidates the server-fixed \`inspectionId\`, conversion/order/receipt IDs and hash; begin atomically persists and freezes the full \`commercialTerms\` and full signed \`commercialApproval\`, while arm/record/finalize revalidate all seven base fields plus \`linkedOrderId\` server-side. Resume always reuses the stored full receipt with a fresh verification nonce and never reissues it.
 - [ ] **UI:** \`재개\` only at legal recovery stage; \`취소\` only pre-arm. Post-arm cancellation is a non-mutating conflict; in-flight states hide edit/terms/archive/restore/duplicate controls.
 - [ ] **GREEN/commit:**
 \`\`\`powershell
