@@ -6,6 +6,7 @@ for (const required of ['COMMERCIAL_APPROVAL_ENABLED', 'COMMERCIAL_APPROVAL_TOKE
   assert.equal(readme.includes(required), true, 'README must state ' + required);
 }
 assert.equal(readme.includes('APP_TOKEN value'), false);
+assert.equal(readme.includes('...'), false, 'README must not use ellipses or partial shapes');
 const gateMarkers = [1, 2, 3, 4, 5, 6, 7].map(n => '### Gate ' + n);
 const gateIndexes = gateMarkers.map(marker => readme.indexOf(marker));
 assert.equal(gateIndexes.every(index => index >= 0), true, 'README must label all seven gates');
