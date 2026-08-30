@@ -37,18 +37,59 @@ for (const field of ['approvedTermsSha256', 'approvalEvidenceSha256', 'receiptHm
 assert.equal(verifyExample.includes('fake-sha256'), false, 'verify must not use fake-sha256 placeholders');
 assert.equal(verifyExample.includes('<runtimeNowKst-plus-60-seconds>'), false, 'verify ACK must show concrete KST timestamp');
 assert.match(verifyExample, /"verifyExpiresAtKst"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00"/);
-for (const [action, trigger, code] of [
-  ['commercialNow', 'invalid nonce', 'invalid-nonce'],
-  ['commercialApprovalIssue', 'forbidden evidence', 'forbidden-evidence'],
-  ['commercialApprovalVerify', 'same nonce second transmission', 'nonce-replay']
-]) {
-  assert.equal(readme.includes(action + ' failure request'), true, action + ' failure request missing');
-  assert.equal(readme.includes(trigger), true, action + ' failure trigger missing');
-  assert.equal(readme.includes(action + ' failure response'), true, action + ' failure response missing');
-  assert.equal(readme.includes('"error": "' + code + '"'), true, action + ' failure code missing');
+function sectionBetween(start, end) {
+  const startIndex = readme.indexOf(start);
+  const endIndex = readme.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, 'README section missing: ' + start);
+  assert.notEqual(endIndex, -1, 'README section end missing: ' + end);
+  return readme.slice(startIndex, endIndex);
 }
+
+function assertPhrasesInOrder(text, phrases, label) {
+  let cursor = -1;
+  for (const phrase of phrases) {
+    const next = text.indexOf(phrase, cursor + 1);
+    assert.notEqual(next, -1, label + ' must state in order: ' + phrase);
+    cursor = next;
+  }
+}
+
+const shapeOnly = sectionBetween('## Shape-only fake response examples (not executable)', '## Executable controlled failure procedures');
+for (const phrase of ['test-only/redacted', 'not executable', 'server-issued receipt', 'runtime Drive file ID']) {
+  assert.equal(shapeOnly.includes(phrase), true, 'shape-only boundary missing: ' + phrase);
+}
+
+const executable = sectionBetween('## Executable controlled failure procedures', '승인 evidence는');
+for (const forbidden of ['fake-forbidden-evidence-0001', 'fake-evidence-file-0001', 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210']) {
+  assert.equal(executable.includes(forbidden), false, 'executable procedure must not use shape-only fake value: ' + forbidden);
+}
+for (const phrase of ['test-only/redacted', 'real token/key/file/customer data 금지', 'repository-external variable', 'cleanup']) {
+  assert.equal(executable.includes(phrase), true, 'executable procedure safety requirement missing: ' + phrase);
+}
+
+const invalidNonce = sectionBetween('### Executable: `commercialNow` invalid-nonce', '### Executable: `commercialApprovalIssue` forbidden-evidence');
+assertPhrasesInOrder(invalidNonce, [
+  '`COMMERCIAL_APPROVAL_TOKEN` test property', '`TEST_COMMERCIAL_APPROVAL_TOKEN`', 'exactly matches',
+  'complete request', 'invalid nonce', 'invalid-nonce'
+], 'commercialNow invalid-nonce procedure');
+
+const forbiddenEvidence = sectionBetween('### Executable: `commercialApprovalIssue` forbidden-evidence', '### Executable: `commercialApprovalVerify` nonce-replay');
+assertPhrasesInOrder(forbiddenEvidence, [
+  'existing deliberately-created non-production', '`application/json`', 'runtime exact Drive file ID',
+  '`TEST_FORBIDDEN_EVIDENCE_FILE_ID`', 'repository-external variable', 'complete issue request',
+  '`DriveApp.getFileById`', '`evidence-not-found`', '`forbidden-evidence`', 'cleanup'
+], 'commercialApprovalIssue forbidden-evidence procedure');
+
+const nonceReplay = sectionBetween('### Executable: `commercialApprovalVerify` nonce-replay', '승인 evidence는');
+assertPhrasesInOrder(nonceReplay, [
+  'successful issue response', 'actual server-signed `commercialApproval`', 'same evidence',
+  'same complete verify request', 'same nonce', 'first verify', '`{ "ok": true',
+  'identical second request', 'second verify', '`{ "ok": false, "error": "nonce-replay" }`'
+], 'commercialApprovalVerify nonce-replay procedure');
+assert.equal(nonceReplay.includes('shape-only fake receipt'), true, 'nonce replay must reject shape-only fake receipt as a trigger');
 const source = ['Code.gs', 'CommercialApprovalPure.gs', 'CommercialApproval.gs']
   .map(name => fs.readFileSync(require('node:path').join(root, name), 'utf8')).join('\n');
+const commercialSource = fs.readFileSync(require('node:path').join(root, 'CommercialApproval.gs'), 'utf8');
 
 const envelopeFields = "['token', 'action', 'timestamp', 'payload']";
 assert.equal(source.includes(envelopeFields), true, 'production must enforce exact four-field envelope');
@@ -56,6 +97,19 @@ assert.equal(source.includes("['commercialNow', 'commercialApprovalIssue', 'comm
 assert.equal(source.includes("return caFail_('commercial-disabled')"), true, 'production disabled semantics missing');
 assert.equal(source.includes("['application/pdf', 'image/jpeg', 'image/png']") && source.includes('20 * 1024 * 1024'), true, 'production evidence policy missing');
 assert.equal(source.includes("'nonce-replay'"), true, 'production nonce replay literal missing');
+
+const evidenceHelper = commercialSource.slice(commercialSource.indexOf('function caEvidenceByExactId_'), commercialSource.indexOf('function caEnabled_'));
+assertPhrasesInOrder(evidenceHelper, [
+  'DriveApp.getFileById', "caFail_('evidence-not-found')", 'file.isTrashed()', "caFail_('forbidden-evidence')",
+  'file.getMimeType()', 'file.getSize() > 20 * 1024 * 1024', "caFail_('forbidden-evidence')"
+], 'production evidence error ordering');
+const verifyHandler = commercialSource.slice(commercialSource.indexOf('function caCommercialApprovalVerify_'), commercialSource.indexOf('function caClaimVerifyNonce_'));
+assertPhrasesInOrder(verifyHandler, [
+  'caValidateNonce_', "caFail_('invalid-nonce')", 'caVerifyReceiptMac_', "caFail_('invalid-receipt')",
+  'caEvidenceByExactId_', "caFail_('evidence-hash-mismatch')", 'caClaimVerifyNonce_'
+], 'production verify error ordering');
+const nonceClaim = commercialSource.slice(commercialSource.indexOf('function caClaimVerifyNonce_'), commercialSource.indexOf('function caEvidenceByExactId_'));
+assertPhrasesInOrder(nonceClaim, ['cache.get(cacheKey)', "caFail_('nonce-replay')", "cache.put(cacheKey, '1', 60)"], 'production nonce claim ordering');
 
 assert.match(source, /function caIsAllowedAction_\(action\)/);
 assert.deepEqual([...source.matchAll(/'commercial(?:Now|ApprovalIssue|ApprovalVerify)'/g)].map(m => m[0]).sort(),
