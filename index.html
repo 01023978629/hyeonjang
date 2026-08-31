@@ -3401,6 +3401,18 @@ function openGdriveSetup(){
       <span id="rvState" style="align-self:center;font-size:12px;color:var(--muted-2)">${__reviewUrl?'✅ 저장됨':'미설정'}</span>
     </div>
   </div>`;
+  const officeOpsSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--blueprint,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
+    <b style="font-size:14px">🏢 OfficeOps 연결</b>
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">주소·토큰과 마지막 정상 조회본은 <b>이 기기(IndexedDB)에만</b> 저장됩니다. 현장 백업·중계·관리사무소 접수에 섞이지 않습니다. 빈 칸으로 저장하면 기존 설정을 유지합니다.</p>
+    <label style="display:block;margin-bottom:6px">OfficeOps 웹앱 주소 <input type="text" id="ooUrl" value="${escapeAttr(__officeOps.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
+    <label style="display:block;margin-bottom:6px">OfficeOps 토큰 <input type="password" id="ooTok" value="" placeholder="${escapeAttr(__officeOps.token?'저장됨 · 끝 4자리 ****'+String(__officeOps.token).slice(-4):'OfficeOps 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
+    <label style="display:block;margin-bottom:6px">상업 승인 웹앱 주소 <input type="text" id="caUrl" value="${escapeAttr(__commercialApproval.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
+    <label style="display:block;margin-bottom:6px">상업 승인 토큰 <input type="password" id="caTok" value="" placeholder="${escapeAttr(__commercialApproval.token?'저장됨 · 끝 4자리 ****'+String(__commercialApproval.token).slice(-4):'상업 승인 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+      <button class="clay tiny" id="ooSave">💾 저장</button><button class="ghost tiny" id="ooExport">⬇️ 마지막 정상 조회본</button><button class="ghost tiny" id="ooDelete">🗑 연결 정보 지우기</button>
+      <span id="ooState" role="status" aria-live="polite" style="align-self:center;font-size:12px;color:var(--muted-2)">${__officeOps.mode==='export-only'?'⚠️ 서버 사용 중지됨 — 마지막 정상 조회본만 내보낼 수 있습니다':(__officeOps.url&&__officeOps.token?'✅ OfficeOps 설정됨':'미설정')}</span>
+    </div>
+  </div>`;
   const gdBody=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 10px">구글드라이브 <b>만물인테리어 폴더</b>에 <b>현장데이터.json</b>을 자동 저장/불러와 PC↔폰을 맞춥니다(고정). <b>이미 연결 준비됨</b> — 아래 <b>‘🔑 구글 로그인 & 연결’</b>만 누르세요.</p>
     <label style="display:block;margin-bottom:6px">클라이언트 ID (구글 클라우드 콘솔에서 발급)
@@ -3479,6 +3491,7 @@ function openGdriveSetup(){
   const TABS=[
     {id:'save',   ic:'💾', label:'저장·백업', html:relaySec,   on:!!(__relay.url&&__relay.token)},
     {id:'ct',     ic:'📨', label:'전자계약',   html:contractSec, on:ctUnlocked, warn:!!(__contract.url&&__contract.token)&&!ctUnlocked},
+    {id:'office', ic:'🏢', label:'OfficeOps',  html:officeOpsSec, on:!!(__officeOps.url&&__officeOps.token), warn:__officeOps.mode==='export-only'},
     {id:'keys',   ic:'🔑', label:'AI·지도 키', html:keysSec,     on:!!(window.__geminiKey||window.__visionKey||window.__kakaoKey||window.__openaiKey)},
     {id:'etc',    ic:'⭐', label:'기타',       html:reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
   ];
@@ -3758,6 +3771,23 @@ function openGdriveSetup(){
     try{await idbSet('review_url',v);}catch(e){}
     const st=root.querySelector('#rvState');if(st)st.textContent=v?'✅ 저장됨':'미설정';
     toast(v?'⭐ 리뷰 링크 저장됨 — 리뷰 요청 문자에 자동 포함됩니다':'리뷰 링크를 비웠습니다 (링크 없이 문안만 생성)');
+  };}
+  {const save=root.querySelector('#ooSave');if(save)save.onclick=async()=>{
+    try{
+      await officeOpsSaveSettings({
+        url:(root.querySelector('#ooUrl').value||'').trim(),token:(root.querySelector('#ooTok').value||'').trim(),
+        commercialUrl:(root.querySelector('#caUrl').value||'').trim(),commercialToken:(root.querySelector('#caTok').value||'').trim()
+      });
+      const status=root.querySelector('#ooState');if(status)status.textContent=__officeOps.url&&__officeOps.token?'✅ OfficeOps 설정됨':'미설정';
+      toast('🏢 OfficeOps 연결 정보를 이 기기에 저장했습니다');
+    }catch(e){toast('OfficeOps 저장 실패: '+(e.message||e));}
+  };}
+  {const exp=root.querySelector('#ooExport');if(exp)exp.onclick=async()=>{try{await officeOpsExportLastCache();toast('⬇️ 마지막 정상 OfficeOps 조회본을 내보냈습니다');}catch(e){toast('내보낼 정상 조회본이 없습니다');}};}
+  {const del=root.querySelector('#ooDelete');if(del)del.onclick=async()=>{
+    if(!confirm('OfficeOps와 상업 승인 연결 주소·토큰을 이 기기에서 지울까요? 마지막 정상 조회본은 내보내기용으로 남습니다.'))return;
+    await officeOpsClearCredentials(true);
+    ['#ooUrl','#ooTok','#caUrl','#caTok'].forEach(function(selector){const input=root.querySelector(selector);if(input)input.value='';});
+    const status=root.querySelector('#ooState');if(status)status.textContent='미설정';toast('OfficeOps 연결 정보를 지웠습니다');
   };}
 }
 
@@ -26573,6 +26603,105 @@ function idbDel(key){return new Promise((res)=>{const r=indexedDB.open('hyeonjan
   r.onupgradeneeded=()=>r.result.createObjectStore('kv');
   r.onsuccess=()=>{try{const tx=r.result.transaction('kv','readwrite');tx.objectStore('kv').delete(key);tx.oncomplete=()=>res();tx.onerror=()=>res();}catch(e){res();}};
   r.onerror=()=>res();});}
+
+/* ===== OfficeOps는 현장 저장·legacy relay·OfficeIntake와 분리된 IDB 전용 클라이언트 ===== */
+const __officeOps={url:'',token:'',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};
+const __commercialApproval={url:'',token:'',lastTrustedNow:null};
+function normalizeHttpsUrl(value){
+  const raw=String(value||'').trim();if(!raw)return '';
+  let url;try{url=new URL(raw);}catch(e){throw new Error('HTTPS 주소 형식이 아닙니다');}
+  if(url.protocol!=='https:')throw new Error('HTTPS 주소만 사용할 수 있습니다');
+  return url.toString();
+}
+function officeOpsError(value){const error=new Error(String(value&&value.error||'OfficeOps 요청 실패'));error.code=String(value&&value.error||'office-error');return error;}
+function commercialError(value){const error=new Error(String(value&&value.error||'상업 승인 요청 실패'));error.code=String(value&&value.error||'commercial-error');return error;}
+async function officeOpsDeviceId(){
+  let id=await idbGet('office_ops_device_id');
+  if(!id){ id=crypto.randomUUID(); await idbSet('office_ops_device_id',id); }
+  return id;
+}
+async function officeOpsEnvelope(token,action,payload,mutationId){
+  const body={token,action,deviceId:await officeOpsDeviceId(),timestamp:new Date().toISOString(),payload};
+  if(mutationId) body.mutationId=mutationId;
+  return body;
+}
+function commercialEnvelope(token,action,payload){
+  return {token,action,timestamp:new Date().toISOString(),payload};
+}
+async function postIsolated(url,body,errorFactory){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+  const json=await r.json();
+  if(!r.ok||!json||json.ok!==true)throw errorFactory(json);
+  return json;
+}
+async function officeOpsCall(action,payload,{mutationId}={}){
+  return postIsolated(__officeOps.url,await officeOpsEnvelope(__officeOps.token,action,payload,mutationId),officeOpsError);
+}
+async function commercialCall(action,payload){
+  return postIsolated(__commercialApproval.url,commercialEnvelope(__commercialApproval.token,action,payload),commercialError);
+}
+async function commercialApprovalBoot(){
+  __commercialApproval.url=normalizeHttpsUrl(await idbGet('commercial_approval_url')||'');
+  __commercialApproval.token=await idbGet('commercial_approval_token')||'';
+  __commercialApproval.lastTrustedNow=null;
+  return {configured:!!(__commercialApproval.url&&__commercialApproval.token),url:__commercialApproval.url};
+}
+function normalizeOfficeOpsStore(raw){
+  const keys=['schemaVersion','revision','updatedAt','pilots','consents','inspections','opportunities','audit'];
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(','))throw new Error('invalid OfficeOps store');
+  if(!Number.isInteger(raw.schemaVersion)||!Number.isInteger(raw.revision)||typeof raw.updatedAt!=='string')throw new Error('invalid OfficeOps store');
+  for(const key of ['pilots','consents','inspections','opportunities','audit'])if(!Array.isArray(raw[key]))throw new Error('invalid OfficeOps store');
+  return {schemaVersion:raw.schemaVersion,revision:raw.revision,updatedAt:raw.updatedAt,pilots:raw.pilots,consents:raw.consents,inspections:raw.inspections,opportunities:raw.opportunities,audit:raw.audit};
+}
+async function officeOpsLoad(){
+  const json=await officeOpsCall('officeOpsList',{});
+  const store=normalizeOfficeOpsStore(json.store);
+  if(!Number.isInteger(store.revision)||typeof store.updatedAt!=='string')throw new Error('invalid OfficeOps list');
+  __officeOps.cache=store;__officeOps.revision=store.revision;__officeOps.updatedAt=store.updatedAt;
+  __officeOps.loadedAt=new Date().toISOString();await idbSet('office_ops_cache',{store,revision:store.revision,updatedAt:store.updatedAt});
+  __officeOps.mode='fresh';return store;
+}
+async function officeOpsMutationWithAck(action,payload){
+  if(__officeOps.mode==='export-only')throw new Error('office-disabled');
+  const json=await officeOpsCall(action,payload,{mutationId:crypto.randomUUID()});
+  if(Object.keys(json).sort().join(',')!=='id,ok,revision,updatedAt'||json.ok!==true)throw new Error('invalid mutation acknowledgement');
+  const store=await officeOpsLoad();
+  return {ack:Object.freeze({id:json.id,revision:json.revision,updatedAt:json.updatedAt}),store};
+}
+async function officeOpsMutation(action,payload){
+  return (await officeOpsMutationWithAck(action,payload)).store;
+}
+async function officeOpsRefresh(){
+  try{return await officeOpsLoad();}catch(e){if(e&&e.code==='office-disabled'){__officeOps.mode='export-only';return null;}throw e;}
+}
+async function officeOpsBoot(){
+  __officeOps.url=normalizeHttpsUrl(await idbGet('office_ops_url')||'');
+  __officeOps.token=await idbGet('office_ops_token')||'';
+  __officeOps.mode='unloaded';
+  const cached=await idbGet('office_ops_cache');
+  try{if(cached&&cached.store){const store=normalizeOfficeOpsStore(cached.store);if(cached.revision===store.revision&&cached.updatedAt===store.updatedAt){__officeOps.cache=store;__officeOps.revision=store.revision;__officeOps.updatedAt=store.updatedAt;__officeOps.mode='stale-export-only';}}}catch(e){}
+  await commercialApprovalBoot();
+  return {configured:!!(__officeOps.url&&__officeOps.token),cache:__officeOps.cache,mode:__officeOps.mode};
+}
+async function officeOpsSaveSettings(values){
+  const next=values||{},url=String(next.url||'').trim(),token=String(next.token||'').trim(),commercialUrl=String(next.commercialUrl||'').trim(),commercialToken=String(next.commercialToken||'').trim();
+  if(url){__officeOps.url=normalizeHttpsUrl(url);await idbSet('office_ops_url',__officeOps.url);}if(token){__officeOps.token=token;await idbSet('office_ops_token',token);}
+  if(commercialUrl){__commercialApproval.url=normalizeHttpsUrl(commercialUrl);await idbSet('commercial_approval_url',__commercialApproval.url);}if(commercialToken){__commercialApproval.token=commercialToken;await idbSet('commercial_approval_token',commercialToken);}
+  return {configured:!!(__officeOps.url&&__officeOps.token),commercialConfigured:!!(__commercialApproval.url&&__commercialApproval.token)};
+}
+async function officeOpsClearCredentials(confirmed){
+  if(confirmed!==true)throw new Error('credential deletion requires confirmation');
+  await Promise.all(['office_ops_url','office_ops_token','commercial_approval_url','commercial_approval_token'].map(idbDel));
+  __officeOps.url='';__officeOps.token='';__commercialApproval.url='';__commercialApproval.token='';__commercialApproval.lastTrustedNow=null;
+}
+async function officeOpsExportLastCache(){
+  const cached=await idbGet('office_ops_cache');
+  if(!cached||!cached.store)throw new Error('no OfficeOps cache');
+  const store=normalizeOfficeOpsStore(cached.store);
+  if(cached.revision!==store.revision||cached.updatedAt!==store.updatedAt)throw new Error('invalid OfficeOps cache');
+  const blob=new Blob([JSON.stringify({store,revision:store.revision,updatedAt:store.updatedAt},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='office_ops_cache_'+store.updatedAt.replace(/[:.]/g,'-')+'.json';document.body.appendChild(link);link.click();link.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
 async function rememberDir(handle){try{await idbSet('lastDir',handle);}catch(e){}}
 async function tryRestoreDir(){
   if(!FS_OK)return;
@@ -26689,6 +26818,7 @@ window.addEventListener('hashchange',function(){try{if(/[#&]lead=/.test(location
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
+  try{await officeOpsBoot();}catch(e){}
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
   try{window.__geminiKey=(await idbGet('gemini_key'))||null;}catch(e){}
   try{window.__kakaoKey=(await idbGet('kakao_key'))||null;}catch(e){}
