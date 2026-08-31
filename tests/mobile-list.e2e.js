@@ -114,6 +114,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     });
     assert(r.d === true, '검색어와 맞는 현장은 보여야 함');
     assert(r.w === false, '검색어와 다른 현장은 숨어야 함');
+    await page.waitForFunction(() => !history.state || !history.state.__hjMobileSheet, null, { timeout: 2000 });
   });
 
   await test('④ 맨 위로: 스크롤하면 뜨고, 누르면 실제로 올라간다', async () => {
