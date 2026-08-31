@@ -27118,6 +27118,7 @@ function aptCommercialGlobalFailure(error){
 async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted,manualCreateIntent}){
   if(typeof mutateDraft!=='function')throw new Error('invalid durable mutation');
   return withAppStateWriteLock(async()=>{
+    if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
     const expectedPointer=__paidCommitPointerKey,expectedStamp=typeof __tabStamp==='undefined'?null:__tabStamp;
     if(!(await hjSnapshot(snapshotLabel,true,true)))throw new Error('required recovery snapshot failed');
     if(beforeCommit)await beforeCommit();

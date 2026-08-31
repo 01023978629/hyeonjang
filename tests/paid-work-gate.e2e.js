@@ -136,7 +136,7 @@ for(const name of ['commercialNow','validateCommercialApproval','issueCommercial
   assert.equal(sandbox.__tabStale,true,'failed final exact check marks the paid tab stale before releasing the lock');
   assert.deepEqual(committed.notes,[],'render-time live mutation never enters the already committed paid generation');
   assert.deepEqual(order,['snapshot:true','validate','transaction','apply','exact','render-mutate','exact']);
-  const before=copy(live);sandbox.paidCommitWriteAtomic=async()=>{order.push('transaction-fail');throw Error('abort');};
+  const before=copy(live);sandbox.__tabStale=false;sandbox.paidCommitWriteAtomic=async()=>{order.push('transaction-fail');throw Error('abort');};
   await assert.rejects(sandbox.durableLocalMutation({snapshotLabel:'유상 실패',mutateDraft:next=>{next.aptOrders.push({id:'two'});},onCommitted:()=>consumed++}),/abort/);
   assert.deepEqual(live,before,'transaction failure leaves live state unchanged');assert.equal(consumed,1,'transaction failure does not consume an ACK');
   console.log('PASS  commercial canonical, relay gate, and deterministic durable failures');

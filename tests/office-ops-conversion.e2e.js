@@ -403,6 +403,49 @@ function proofFromInspection(inspection) {
   };
 }
 
+async function runDurableStaleQueueVmContract() {
+  const counts = {
+    pointer: 0, stamp: 0, snapshot: 0, beforeCommit: 0, serialize: 0, mutate: 0,
+    id: 0, atomic: 0, onCommitted: 0, apply: 0, exact: 0, render: 0, broadcast: 0
+  };
+  let releaseLock;
+  const sandbox = {
+    console, JSON, Object, Array, String, Number, Boolean, RegExp, Error, TypeError, Promise, Date,
+    structuredClone, crypto: { randomUUID: () => { counts.id += 1; return 'queued_paid_generation_id'; } }, counts,
+    state: {}, __tabStale: false, PAID_COMMIT_GENERATION_PREFIX: 'paid_commit_generation:',
+    withAppStateWriteLock: work => new Promise((resolve, reject) => {
+      releaseLock = () => Promise.resolve().then(work).then(resolve, reject);
+    }),
+    hjSnapshot: async () => { counts.snapshot += 1; return true; },
+    serializeData: () => { counts.serialize += 1; return { savedAt: '2026-09-01T00:00:01.000Z' }; },
+    validatePaidSerializedState: value => value,
+    paidCommitWriteAtomic: async () => { counts.atomic += 1; return { pointer: 'paid_commit_generation:queued' }; },
+    applyPaidCommittedState: () => { counts.apply += 1; },
+    assertPaidLiveStateExact: () => { counts.exact += 1; },
+    render: () => { counts.render += 1; },
+    paidCommitRecoveryBanner: () => {}, multiTabStaleWarn: () => {},
+    __tabBC: { postMessage: () => { counts.broadcast += 1; } }
+  };
+  Object.defineProperty(sandbox, '__paidCommitPointerKey', { configurable: true, get() { counts.pointer += 1; return 'paid_commit_generation:base'; }, set() {} });
+  Object.defineProperty(sandbox, '__tabStamp', { configurable: true, get() { counts.stamp += 1; return '2026-09-01T00:00:00.000Z'; }, set() {} });
+  vm.createContext(sandbox);
+  vm.runInContext(extractFunction('durableLocalMutation'), sandbox);
+  const mutation = vm.runInContext(`durableLocalMutation({
+    snapshotLabel:'queued stale contract',
+    beforeCommit:()=>{counts.beforeCommit+=1;},
+    mutateDraft:()=>{counts.mutate+=1;return true;},
+    onCommitted:()=>{counts.onCommitted+=1;}
+  })`, sandbox);
+  assert.equal(typeof releaseLock, 'function', 'durable mutation queues behind the delayed shared lock while the tab is fresh');
+  sandbox.__tabStale = true;
+  releaseLock();
+  await assert.rejects(mutation, error => error && error.message === 'stale appState conflict');
+  assert.deepEqual(counts, {
+    pointer: 0, stamp: 0, snapshot: 0, beforeCommit: 0, serialize: 0, mutate: 0,
+    id: 0, atomic: 0, onCommitted: 0, apply: 0, exact: 0, render: 0, broadcast: 0
+  }, 'inside-lock stale rejection occurs before every candidate, snapshot, commit, consumption, and live side effect');
+}
+
 async function runVmContracts() {
   const { scenario, sandbox, run, resetState } = createVmHarness();
   const plain = value => JSON.parse(JSON.stringify(value));
@@ -685,11 +728,19 @@ async function runVmContracts() {
   assert.doesNotMatch(extractFunction('officeOpsInspectionCardHtml'), /data-officeops-(?:edit|terms|archive|restore|duplicate)/,
     'conversion card exposes no unrelated mutation controls');
   const sharedLockSource = extractFunction('withAppStateWriteLock'), terminalSource = extractFunction('officeOpsTerminalConversionStep'), candidateSource = extractFunction('officeOpsAssertConversionCandidate');
+  const durableMutationSource = extractFunction('durableLocalMutation');
   assert.match(sharedLockSource, /navigator\.locks/); assert.match(sharedLockSource, /PAID_APPSTATE_LOCK_NAME/);
   assert.match(extractFunction('guardedPersistCurrentState'), /return\s+withAppStateWriteLock\s*\(/,
     'guarded normal persistence itself returns through the shared paid/appState lock');
-  assert.match(extractFunction('durableLocalMutation'), /return\s+withAppStateWriteLock\s*\(/,
+  assert.match(durableMutationSource, /return\s+withAppStateWriteLock\s*\(/,
     'durable paid mutation itself returns through the shared paid/appState lock');
+  const durableCallback = durableMutationSource.slice(durableMutationSource.indexOf('withAppStateWriteLock'));
+  assert.match(durableCallback, /^withAppStateWriteLock\s*\(\s*async\s*\(\)\s*=>\s*\{\s*if\s*\(\s*typeof\s+__tabStale\s*!==\s*['"]undefined['"]\s*&&\s*__tabStale\s*\)\s*throw\s+new\s+Error\s*\(\s*['"]stale appState conflict['"]\s*\)\s*;/,
+    'durableLocalMutation owns the stale rejection as the first operation inside its shared-lock callback');
+  assert.ok(durableCallback.indexOf('stale appState conflict') < durableCallback.indexOf('hjSnapshot('),
+    'inside-lock stale rejection precedes the required recovery snapshot');
+  assert.ok(durableCallback.indexOf('stale appState conflict') < durableCallback.indexOf('paidCommitWriteAtomic('),
+    'inside-lock stale rejection precedes every atomic paid-generation write');
   assert.match(terminalSource, /requireCrossTab\s*:\s*true/, 'terminal section requires the cross-tab lock');
   assert.equal((terminalSource.match(/officeOpsAssertFenceRelease\s*\(/g) || []).length, 4,
     'converted, post-fence failure, request rethrow, and normal success each own a final synchronous exact release guard');
@@ -1730,6 +1781,85 @@ async function runBrowserAcceptance() {
       } finally { await actual.context.close(); }
     }
 
+    const durableReleaseBoundaryScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, durableReleaseBoundaryScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, durableReleaseBoundaryScenario, 'converted');
+        await actual.page.evaluate(value => {
+          window.__durableBoundaryNativeFence = guardedAppStateWriteAtomic; window.__durableBoundaryFenceCalls = 0;
+          guardedAppStateWriteAtomic = async function(...args) {
+            window.__durableBoundaryFenceCalls += 1;
+            const result = await window.__durableBoundaryNativeFence(...args);
+            if (window.__durableBoundaryFenceCalls === 1) {
+              const pointer = await idbGet('paid_commit_pointer');
+              window.__durableBoundaryBefore = {
+                pointer, journal: await idbGet('paid_commit_journal'), generation: await idbGet(pointer), appState: await idbGet('appState')
+              };
+            }
+            return result;
+          };
+          window.__durableBoundaryNativePaidCommit = paidCommitWriteAtomic; window.__durableBoundaryPaidCommits = 0;
+          paidCommitWriteAtomic = async function(...args) {
+            window.__durableBoundaryPaidCommits += 1;
+            return window.__durableBoundaryNativePaidCommit(...args);
+          };
+          window.__durableBoundaryNativeSnapshot = hjSnapshot; window.__durableBoundarySnapshots = 0;
+          hjSnapshot = async function(...args) {
+            window.__durableBoundarySnapshots += 1;
+            return window.__durableBoundaryNativeSnapshot(...args);
+          };
+          window.__durableBoundaryWriter = null; window.__durableBoundaryTerminal = null; window.__durableBoundaryTriggered = false;
+          const nativePost = __tabBC && __tabBC.postMessage.bind(__tabBC);
+          if (!nativePost) throw new Error('BroadcastChannel unavailable for durable release-boundary fixture');
+          __tabBC.postMessage = function(message) {
+            if (!window.__durableBoundaryTriggered && message && message.t === 'saved') {
+              window.__durableBoundaryTriggered = true;
+              state.notes = [{ id: 'unvalidated-durable-release-boundary' }];
+              durableLocalMutation({
+                snapshotLabel: 'queued durable release boundary',
+                mutateDraft: candidate => { candidate.notes = [{ id: 'queued-durable-overwrite' }]; return true; }
+              }).then(
+                result => { window.__durableBoundaryWriter = { status: 'fulfilled', value: result }; },
+                error => { window.__durableBoundaryWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+              );
+            }
+            return nativePost(message);
+          };
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__durableBoundaryTerminal = { status: 'fulfilled', value: result.status }; },
+            error => { window.__durableBoundaryTerminal = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await actual.page.waitForFunction(() => window.__durableBoundaryTerminal !== null && window.__durableBoundaryWriter !== null);
+        const boundary = await actual.page.evaluate(async () => {
+          const pointer = await idbGet('paid_commit_pointer');
+          return {
+            triggered: window.__durableBoundaryTriggered,
+            terminal: window.__durableBoundaryTerminal, writer: window.__durableBoundaryWriter,
+            before: window.__durableBoundaryBefore,
+            after: { pointer, journal: await idbGet('paid_commit_journal'), generation: await idbGet(pointer), appState: await idbGet('appState') },
+            fenceCalls: window.__durableBoundaryFenceCalls, paidCommits: window.__durableBoundaryPaidCommits,
+            snapshots: window.__durableBoundarySnapshots, stale: __tabStale,
+            recovery: !!document.getElementById('hjPaidCommitRecovery'),
+            reacquired: await navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true)
+          };
+        });
+        assert.equal(boundary.triggered, true, 'durable fixture queues its writer at the final synchronous release boundary');
+        assert.equal(boundary.terminal.status, 'rejected'); assert.match(boundary.terminal.value, /durable fence recovery required/);
+        assert.deepEqual(boundary.writer, { status: 'rejected', value: 'stale appState conflict' },
+          'durable writer queued while fresh rechecks stale only after it acquires the shared lock');
+        assert.deepEqual(boundary.after, boundary.before,
+          'queued durable writer preserves the exact pointer, journal, pointed generation, and appState after the terminal fence');
+        assert.equal(boundary.fenceCalls, 1, 'only the terminal same-generation fence reaches durable storage');
+        assert.equal(boundary.paidCommits, 0, 'queued stale durable writer creates zero paid generations');
+        assert.equal(boundary.snapshots, 0, 'queued stale durable writer creates zero recovery snapshots');
+        assert.doesNotMatch(JSON.stringify(boundary.after), /unvalidated-durable-release-boundary|queued-durable-overwrite/);
+        assert.deepEqual([boundary.stale, boundary.recovery, boundary.reacquired], [true, true, true],
+          'durable release-boundary mismatch marks recovery and releases the lock');
+      } finally { await actual.context.close(); }
+    }
+
     for (const [label, mode, bindTab, stale, expectedError] of [
       ['stale memory plus advanced missing-order generation', 'missing', false, true, /stale appState conflict/],
       ['native pointer advanced without BroadcastChannel', 'missing', false, false, /durable|pointer|local order/],
@@ -1894,6 +2024,7 @@ async function runBrowserAcceptance() {
 }
 
 (async () => {
+  await runDurableStaleQueueVmContract();
   await runVmContracts();
   await runBrowserAcceptance();
   console.log('PASS  OfficeOps conversion proof, recovery, cancel, UI, and durable isolation');
