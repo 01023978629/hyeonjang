@@ -5225,7 +5225,7 @@ function openProjectSheet(openerOverride){
   const tg=document.getElementById('psArcTg');
   if(tg)tg.onclick=e=>{e.stopPropagation();const original=sh.__mobileSheetOpener;__showArchived=!__showArchived;close(false);openProjectSheet(original);};
 }
-function moreActionHandler(a){if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='claudeinbox'){claudeInboxView();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
+function moreActionHandler(a){if(a==='officeops')officeOpsView();else if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='claudeinbox'){claudeInboxView();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
   try{return openMoreSheetV2();}catch(e){console.log('moreV2 fallback',e);}
   let sheet=document.getElementById('moreSheet');
@@ -18763,7 +18763,7 @@ const MORE_CATS=[
     ['goal','🎯','매출 목표'],['forecast','📈','매출 예측'],['budget','📅','현장 예산'],['settle','📄','정산 문서'],['taxinv','📇','세금계산서'],['payplan','📅','분할납 계획']
   ]},
   {id:'customer',name:'고객·영업',ic:'👥',items:[
-    ['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
+    ['officeops','🏢','영업·정기관리'],['crm','👥','고객 관리'],['repeatcust','🔄','반복 고객'],['satisfaction','⭐','고객 만족도'],['reviewreq','🗣','리뷰 요청'],
     ['custprogress','📱','진행 공유'],['custreply','💬','고객 문자'],['asintake','📩','AS 접수 링크'],['companyintro','🪪','회사 소개'],
     ['salestarget','🎯','영업 타깃'],['funnel','📊','전환율 퍼널'],['bulkassign','🎯','견적 일괄 배정'],['quotefollowup','⏰','견적 팔로업'],['negotiate','🤝','견적 협상'],
     ['selfquote','💬','셀프 견적'],['photoquote','📸','사진 견적'],['similarquotes','🔍','유사 견적'],['winrate','📈','수주 분석'],['contractdraft','📝','계약서 초안'],['msgcenter','💬','문자 센터'],['adstab','📣','광고 관리'],['kakaoin','💬','카카오 문의'],['ptlist','🔗','고객 페이지 관리'],['contractreview','📝','계약 검토']
@@ -26646,12 +26646,137 @@ async function commercialApprovalBoot(){
   __commercialApproval.lastTrustedNow=null;
   return {configured:!!(__commercialApproval.url&&__commercialApproval.token),url:__commercialApproval.url};
 }
+function isRealIsoDate(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const [year,month,day]=value.split('-').map(Number),date=new Date(Date.UTC(year,month-1,day));
+  return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day;
+}
+function formatKstIso(ms){
+  const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(ms).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+09:00`;
+}
+function pilotEndsAtKst(startDateKst){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(startDateKst); if(!m||!isRealIsoDate(startDateKst)) throw new Error('invalid pilot start date');
+  const [y,mo,d]=m.slice(1).map(Number); return formatKstIso(Date.UTC(y,mo-1,d,-9)+(30*86400000)-1000);
+}
+function parseStrictKstDateTime(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(value)) return null;
+  const ms=Date.parse(value);
+  return Number.isFinite(ms)&&formatKstIso(ms)===value?ms:null;
+}
+function normalizePilotEditable(raw){
+  const keys=['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid pilot editable keys');
+  const value={complexName:String(raw.complexName||''),source:String(raw.source||''),stage:String(raw.stage||''),pilotStartedAt:raw.pilotStartedAt,
+    pilotEndsAt:raw.pilotEndsAt,extensionApprovedAt:raw.extensionApprovedAt,nextActionAt:String(raw.nextActionAt||''),owner:String(raw.owner||''),notes:String(raw.notes||'')};
+  const start=value.pilotStartedAt===null?null:parseStrictKstDateTime(value.pilotStartedAt), end=value.pilotEndsAt===null?null:parseStrictKstDateTime(value.pilotEndsAt);
+  const extension=value.extensionApprovedAt===null?null:parseStrictKstDateTime(value.extensionApprovedAt), normalEnd=start===null?null:pilotEndsAtKst(value.pilotStartedAt.slice(0,10));
+  if(!value.complexName||value.complexName.length>100||!['website','phone','referral','kapt'].includes(value.source)||
+    !['new','contacted','meeting','pilot','converted','closed'].includes(value.stage)||(start===null)!==(end===null)||
+    (value.stage==='pilot'&&(start===null||end===null))||(value.extensionApprovedAt!==null&&extension===null)||(extension!==null&&(start===null||end<=Date.parse(normalEnd)))||
+    (extension===null&&start!==null&&value.pilotEndsAt!==normalEnd)||
+    !isRealIsoDate(value.nextActionAt)||!value.owner||value.owner.length>100||value.notes.length>2000) throw new Error('invalid pilot editable values');
+  return Object.freeze(value);
+}
+function normalizePilotRecord(raw){
+  const keys=['pilotId','complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes','createdAt','updatedAt','retentionStartedAt','archivedAt','archivedBy','archiveReason','restoredAt'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid pilot record keys');
+  const editable=normalizePilotEditable(Object.fromEntries(['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'].map(key=>[key,raw[key]])));
+  const value={pilotId:raw.pilotId,complexName:editable.complexName,source:editable.source,stage:editable.stage,pilotStartedAt:editable.pilotStartedAt,pilotEndsAt:editable.pilotEndsAt,
+    extensionApprovedAt:editable.extensionApprovedAt,nextActionAt:editable.nextActionAt,owner:editable.owner,notes:editable.notes,createdAt:raw.createdAt,updatedAt:raw.updatedAt,
+    retentionStartedAt:raw.retentionStartedAt,archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt};
+  const archived=value.archivedAt===null?false:parseStrictKstDateTime(value.archivedAt)!==null;
+  if(!/^pilot_[A-Za-z0-9_-]{1,100}$/.test(value.pilotId||'')||parseStrictKstDateTime(value.createdAt)===null||parseStrictKstDateTime(value.updatedAt)===null||Date.parse(value.updatedAt)<Date.parse(value.createdAt)||
+    (value.stage==='closed'?parseStrictKstDateTime(value.retentionStartedAt)===null:value.retentionStartedAt!==null)||(value.archivedAt!==null&&!archived)||
+    (archived&&(value.archivedBy!=='representative'||typeof value.archiveReason!=='string'||!value.archiveReason||value.restoredAt!==null))||
+    (!archived&&(value.archivedBy!==null||value.archiveReason!==null||(value.restoredAt!==null&&parseStrictKstDateTime(value.restoredAt)===null)))) throw new Error('invalid pilot record');
+  return Object.freeze(value);
+}
+function pilotWindowView(raw){
+  const pilot=normalizePilotRecord(raw);
+  return Object.freeze({pilotId:pilot.pilotId,stage:pilot.stage,pilotStartedAt:pilot.pilotStartedAt,pilotEndsAt:pilot.pilotEndsAt,extensionApprovedAt:pilot.extensionApprovedAt});
+}
+function pilotEditablePayload(raw,changes,expectedRevision){
+  const pilot=normalizePilotRecord(raw), editableKeys=['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'];
+  if(!changes||Object.keys(changes).some(key=>!editableKeys.includes(key))||!Number.isInteger(expectedRevision)||expectedRevision<0) throw new Error('invalid pilot update');
+  const editable=normalizePilotEditable(Object.fromEntries(editableKeys.map(key=>[key,Object.prototype.hasOwnProperty.call(changes,key)?changes[key]:pilot[key]])));
+  return {pilotId:pilot.pilotId,expectedRevision,complexName:editable.complexName,source:editable.source,stage:editable.stage,pilotStartedAt:editable.pilotStartedAt,pilotEndsAt:editable.pilotEndsAt,extensionApprovedAt:editable.extensionApprovedAt,nextActionAt:editable.nextActionAt,owner:editable.owner,notes:editable.notes};
+}
+async function updateOfficePilot(pilotId,changes){
+  const pilot=__officeOps.cache&&__officeOps.cache.pilots.find(row=>row.pilotId===pilotId); if(!pilot) throw new Error('pilot not found');
+  return officeOpsMutation('officePilotUpdate',pilotEditablePayload(pilot,changes,__officeOps.revision));
+}
+function normalizeReinspectionConsent(raw){
+  const keys=['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')||!['project','aptOrder'].includes(raw.subjectType)||
+    !/^[A-Za-z0-9_-]{1,160}$/.test(raw.subjectId||'')||raw.purpose!=='preventive-reinspection'||![6,12].includes(raw.intervalMonths)||
+    !['sms','phone','kakao'].includes(raw.channel)||raw.consentVersion!=='reinspection-v1'||
+    !raw.consentTextSnapshot||!/^[a-f0-9]{64}$/.test(raw.consentTextSha256||'')||!raw.recordedBy||
+    parseStrictKstDateTime(raw.consentedAt)===null||!['signed-document','message','recorded-call-note'].includes(raw.evidenceType)||!raw.evidenceId) throw new Error('invalid reinspection consent');
+  return Object.freeze({...raw});
+}
+async function sha256Hex(value){
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(value)));
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+function normalizeOfficeConsentRecord(raw){
+  const keys=['consentId','subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','withdrawnAt','withdrawnBy','withdrawalReason','nextDueAt','lastContactedAt','evidenceType','evidenceId','audit'];
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')||!/^consent_[A-Za-z0-9_-]{1,100}$/.test(raw.consentId||'')||!isRealIsoDate(raw.nextDueAt)||raw.lastContactedAt!==null||!Array.isArray(raw.audit)||!raw.audit.length||!/^[A-Za-z0-9_-]{1,200}$/.test(raw.evidenceId||''))throw new Error('invalid consent record');
+  normalizeReinspectionConsent(Object.fromEntries(['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'].map(key=>[key,raw[key]])));
+  const withdrawn=raw.withdrawnAt===null?false:parseStrictKstDateTime(raw.withdrawnAt)!==null;
+  for(const event of raw.audit){if(!event||Object.keys(event).sort().join(',')!=='actor,at,event,reason'||!['recorded','withdrawn'].includes(event.event)||parseStrictKstDateTime(event.at)===null||!event.actor||(event.event==='recorded'?event.reason!==null:!event.reason))throw new Error('invalid consent record');}
+  const first=raw.audit[0],last=raw.audit[raw.audit.length-1];
+  if(first.event!=='recorded'||first.actor!==raw.recordedBy||first.reason!==null||
+    (withdrawn&&(!raw.withdrawnBy||!raw.withdrawalReason||raw.audit.length!==2||last.event!=='withdrawn'||last.at!==raw.withdrawnAt||last.actor!==raw.withdrawnBy||last.reason!==raw.withdrawalReason))||
+    (!withdrawn&&(raw.withdrawnBy!==null||raw.withdrawalReason!==null||raw.audit.length!==1)))throw new Error('invalid consent record');
+  return Object.freeze({...raw});
+}
+function normalizeKAptUrl(raw){
+  let url;try{url=new URL(String(raw||'').trim());}catch(e){return null;}
+  if(url.protocol!=='https:'||!['k-apt.go.kr','www.k-apt.go.kr'].includes(url.hostname)||url.username||url.password||url.hash||url.port)return null;
+  url.hostname='www.k-apt.go.kr';return url.toString();
+}
+function normalizeOfficeOpportunityRecord(raw){
+  const keys=['opportunityId','complexName','officialUrl','observedAt','region','category','deadlineAt','stage','requirements','verifiedBy','notes','retentionStartedAt','archivedAt','archivedBy','archiveReason','restoredAt'];
+  const canonical=raw&&normalizeKAptUrl(raw.officialUrl),archived=raw&&raw.archivedAt===null?false:!!(raw&&parseStrictKstDateTime(raw.archivedAt)!==null);
+  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')||!/^opp_[A-Za-z0-9_-]{1,100}$/.test(raw.opportunityId||'')||
+    typeof raw.complexName!=='string'||!raw.complexName||raw.complexName.length>100||!canonical||parseStrictKstDateTime(raw.observedAt)===null||
+    typeof raw.region!=='string'||!raw.region||raw.region.length>100||typeof raw.category!=='string'||!raw.category||raw.category.length>100||
+    parseStrictKstDateTime(raw.deadlineAt)===null||!['watch','review','participate','skip','closed'].includes(raw.stage)||!Array.isArray(raw.requirements)||!raw.requirements.length||raw.requirements.length>20||raw.requirements.some(x=>typeof x!=='string'||!x||x.length>200)||
+    typeof raw.verifiedBy!=='string'||!raw.verifiedBy||raw.verifiedBy.length>100||typeof raw.notes!=='string'||raw.notes.length>2000||
+    (['skip','closed'].includes(raw.stage)?parseStrictKstDateTime(raw.retentionStartedAt)===null:raw.retentionStartedAt!==null)||
+    (raw.archivedAt!==null&&!archived)||(archived&&(raw.archivedBy!=='representative'||!raw.archiveReason||raw.restoredAt!==null))||
+    (!archived&&(raw.archivedBy!==null||raw.archiveReason!==null||(raw.restoredAt!==null&&parseStrictKstDateTime(raw.restoredAt)===null))))throw new Error('invalid opportunity record');
+  return Object.freeze({...raw,officialUrl:canonical});
+}
+async function persistReinspectionConsent(input,idempotencyKey){
+  if(!/^[A-Za-z0-9_-]{16,80}$/.test(idempotencyKey||'')) throw new Error('invalid consent idempotency key');
+  const consent=normalizeReinspectionConsent(input);
+  if(await sha256Hex(consent.consentTextSnapshot)!==consent.consentTextSha256)throw new Error('invalid reinspection consent hash');
+  const payload={idempotencyKey,...consent};
+  const result=await officeOpsMutationWithAck('officeConsentRecord',payload);
+  const created=result.store.consents.map(normalizeOfficeConsentRecord).find(x=>x.consentId===result.ack.id);
+  if(!created) throw new Error('created consent missing after reload');
+  return created;
+}
+async function withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason}){
+  const store=await officeOpsMutation('officeConsentWithdraw',{consentId,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
+  const consent=store.consents.map(normalizeOfficeConsentRecord).find(x=>x.consentId===consentId);
+  if(!consent)throw new Error('withdrawn consent missing after reload');
+  return consent;
+}
+function officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst}){
+  const serverMs=Date.parse(serverNowKst), deadlineMs=Date.parse(deadlineAtKst);
+  if(!Number.isFinite(serverMs)||!Number.isFinite(deadlineMs)||!Number.isFinite(deviceNowMs)) return {ok:false,reason:'parse-failed'};
+  if(Math.abs(serverMs-deviceNowMs)>5*60*1000) return {ok:false,reason:'clock-skew'};
+  return serverMs>=deadlineMs ? {ok:false,reason:'deadline-passed'} : {ok:true,reason:'eligible'};
+}
 function normalizeOfficeOpsStore(raw){
   const keys=['schemaVersion','revision','updatedAt','pilots','consents','inspections','opportunities','audit'];
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(','))throw new Error('invalid OfficeOps store');
   if(!Number.isInteger(raw.schemaVersion)||!Number.isInteger(raw.revision)||typeof raw.updatedAt!=='string')throw new Error('invalid OfficeOps store');
   for(const key of ['pilots','consents','inspections','opportunities','audit'])if(!Array.isArray(raw[key]))throw new Error('invalid OfficeOps store');
-  return {schemaVersion:raw.schemaVersion,revision:raw.revision,updatedAt:raw.updatedAt,pilots:raw.pilots,consents:raw.consents,inspections:raw.inspections,opportunities:raw.opportunities,audit:raw.audit};
+  return {schemaVersion:raw.schemaVersion,revision:raw.revision,updatedAt:raw.updatedAt,pilots:raw.pilots.map(normalizePilotRecord),consents:raw.consents,inspections:raw.inspections,opportunities:raw.opportunities,audit:raw.audit};
 }
 async function officeOpsLoad(){
   const json=await officeOpsCall('officeOpsList',{});
@@ -26701,6 +26826,30 @@ async function officeOpsExportLastCache(){
   if(cached.revision!==store.revision||cached.updatedAt!==store.updatedAt)throw new Error('invalid OfficeOps cache');
   const blob=new Blob([JSON.stringify({store,revision:store.revision,updatedAt:store.updatedAt},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download='office_ops_cache_'+store.updatedAt.replace(/[:.]/g,'-')+'.json';document.body.appendChild(link);link.click();link.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+function officeOpsPanelHtml(tab,store,mode){
+  if(mode!=='fresh')return '<div role="status" style="font-size:13px;line-height:1.7"><b>조회 전용 상태입니다.</b><p>마지막 정상 조회본은 로컬 JSON으로만 내보낼 수 있습니다. OfficeOps 설정을 확인한 뒤 다시 열어 주세요.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="ghost tiny" id="officeOpsExport">로컬 JSON 내보내기</button><button type="button" class="ghost tiny" id="officeOpsSettings">설정 안내</button></div></div>';
+  const tabs=[['pilots','시험운영 후보'],['consents','재점검 동의'],['inspections','예방점검'],['opportunities','K-apt 기회']];
+  const nav='<div role="tablist" aria-label="영업·정기관리 업무" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px">'+tabs.map(x=>'<button type="button" role="tab" class="ghost tiny" data-officeops-tab="'+x[0]+'" aria-selected="'+(x[0]===tab?'true':'false')+'" style="white-space:nowrap;min-height:40px">'+x[1]+'</button>').join('')+'</div>';
+  const rawRows=store&&Array.isArray(store[tab])?store[tab]:[];
+  const rows=tab==='consents'?rawRows.map(normalizeOfficeConsentRecord):(tab==='opportunities'?rawRows.map(normalizeOfficeOpportunityRecord):rawRows);
+  const empty='<div class="empty" style="padding:20px"><b>표시할 항목이 없습니다</b>서버의 최신 조회 결과만 표시합니다.</div>';
+  let body='';
+  if(tab==='pilots')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">단계 '+escapeHtml(row.stage||'')+' · 다음 행동 '+escapeHtml(row.nextActionAt||'')+'</div>'+(row.stage==='pilot'?'<div style="font-size:12px;margin-top:5px">기간 '+escapeHtml(row.pilotStartedAt||'')+' ~ '+escapeHtml(row.pilotEndsAt||'')+(row.extensionApprovedAt?' · 서버 기록상 변경 '+escapeHtml(row.extensionApprovedAt):'')+'</div>':'')+'</article>').join('');
+  else if(tab==='consents')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(String(row.intervalMonths||''))+'개월 · '+escapeHtml(row.consentedAt||'')+(row.withdrawnAt?' · 철회됨':' · 유효')+'</div></article>').join('');
+  else if(tab==='inspections')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId||row.inspectionId||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(row.status||'')+' · '+escapeHtml(row.nextDueAt||'')+'</div></article>').join('');
+  else body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">마감 '+escapeHtml(row.deadlineAt||'')+' · 서버 확인 후 검토</div><a href="'+escapeAttr(normalizeKAptUrl(row.officialUrl))+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">K-apt 공식 공고 수동 열기</a></article>').join('');
+  return nav+(body||empty)+'<p style="font-size:11px;color:var(--muted-2);margin:10px 0 0">대표자 확인용 조회 화면입니다. 연락·예약·참여 실행은 제공하지 않습니다. 시험운영 기간 변경은 서버 기록을 표시할 뿐이며 이 화면이 승인 권한을 강제하지 않습니다.</p>';
+}
+async function officeOpsView(tab='pilots'){
+  openModal('🏢 영업·정기관리','<div role="status" style="padding:24px;text-align:center;color:var(--muted-2)">OfficeOps 최신 자료를 확인하는 중…</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  try{await officeOpsRefresh();}catch(e){if(__officeOps.mode==='fresh')__officeOps.mode='unloaded';}
+  const fresh=__officeOps.mode==='fresh';
+  openModal('🏢 영업·정기관리',officeOpsPanelHtml(tab,__officeOps.cache,__officeOps.mode),[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');if(!root)return;
+  if(fresh)root.querySelectorAll('[data-officeops-tab]').forEach(button=>button.onclick=()=>officeOpsView(button.dataset.officeopsTab));
+  const exportButton=root.querySelector('#officeOpsExport');if(exportButton)exportButton.onclick=async()=>{try{await officeOpsExportLastCache();toast('⬇️ 마지막 정상 OfficeOps 조회본을 내보냈습니다');}catch(e){toast('내보낼 정상 조회본이 없습니다');}};
+  const settingsButton=root.querySelector('#officeOpsSettings');if(settingsButton)settingsButton.onclick=()=>{closeModal();openGdriveSetup();};
 }
 async function rememberDir(handle){try{await idbSet('lastDir',handle);}catch(e){}}
 async function tryRestoreDir(){

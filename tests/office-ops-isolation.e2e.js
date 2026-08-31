@@ -40,7 +40,7 @@ function makeClient({ replies = [], cache = new Map(), mutationImplementation = 
   const sandbox = {
     crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })() },
     Date: class extends Date { static now() { return 0; } },
-    JSON, Object, Error, Number, String, Array, Promise, URL,
+    JSON, Object, Error, Number, String, Array, Promise, URL, Intl,
     idbGet: async key => cache.get(key),
     idbSet: async (key, value) => { cache.set(key, value); },
     fetch: async (_url, init) => {
@@ -52,7 +52,7 @@ function makeClient({ replies = [], cache = new Map(), mutationImplementation = 
   };
   vm.createContext(sandbox);
   vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
-  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
+  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
     vm.runInContext(name === 'officeOpsMutationWithAck' && mutationImplementation ? mutationImplementation : extractFunction(name), sandbox);
   }
   return { sandbox, calls, cache };
@@ -144,6 +144,11 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   assert.match(exportBody, /idbGet\('office_ops_cache'\)/, 'export reads only the normalized OfficeOps cache');
   assert.doesNotMatch(exportBody, /officeOpsCall|commercialCall|fetch\(/, 'export performs no network request');
   assert.doesNotMatch(source, /String\(__officeOps\.token\)\.slice\(-4\)|String\(__commercialApproval\.token\)\.slice\(-4\)/, 'settings never render credential fragments');
+  for (const name of ['updateOfficePilot', 'persistReinspectionConsent', 'withdrawReinspectionConsent']) {
+    assert.doesNotMatch(extractFunction(name), /pilotWindowView/, name + ' never uses the display-only pilot projection as transport input');
+  }
+  assert.doesNotMatch(extractFunction('pilotWindowView'), /officeOpsMutation|officeOpsCall|fetch\(/, 'pilotWindowView remains a no-network display projection');
+  assert.doesNotMatch(extractFunction('normalizeKAptUrl'), /fetch\(|scrap|crawl/i, 'K-apt URL validation never scrapes');
   for (const inputId of ['ooTok', 'caTok']) {
     assert.match(source, new RegExp('id="' + inputId + '" value=""'), inputId + ' value is always blank in rendered settings HTML');
     assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
