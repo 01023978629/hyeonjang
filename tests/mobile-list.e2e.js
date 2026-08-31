@@ -120,16 +120,20 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     await page.evaluate(() => {
       const pad = document.createElement('div'); pad.id = '__tallPad'; pad.style.height = '3000px';
       document.getElementById('view').appendChild(pad);
+      void pad.offsetHeight;
       window.scrollTo(0, 1500);
     });
-    await page.waitForTimeout(250);
+    await page.waitForFunction(() => {
+      const tb = document.getElementById('toTopBtn');
+      return window.scrollY > 600 && tb.classList.contains('show') && getComputedStyle(tb).display !== 'none';
+    }, null, { timeout: 2000 });
     const shown = await page.evaluate(() => {
       const tb = document.getElementById('toTopBtn');
       return tb.classList.contains('show') && getComputedStyle(tb).display !== 'none';
     });
     assert(shown, '600px 이상 내려가면 맨 위로 버튼이 보여야 함');
     await page.evaluate(() => document.getElementById('toTopBtn').click());
-    await page.waitForTimeout(900);
+    await page.waitForFunction(() => window.scrollY < 50, null, { timeout: 2000 });
     const y = await page.evaluate(() => { const v = window.scrollY; const p = document.getElementById('__tallPad'); if (p) p.remove(); return v; });
     assert(y < 50, '누르면 맨 위로 올라가야 함: scrollY=' + y);
   });

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 export const FIXED_BASE = 'f44fa5727064b8cba2e1e339f646dd7598b35442';
 
 export const ALLOWED_PATHS = Object.freeze([
+  '.github/workflows/deploy-pages.yml',
   '.superpowers/sdd/.gitignore',
   'AGENTS.md',
   'apps-script-commercial/Code.gs',
@@ -28,7 +29,9 @@ export const ALLOWED_PATHS = Object.freeze([
   'tests/commercial-approval.unit.js',
   'tests/office-ops-pure.unit.js',
   'tests/office-ops-server-isolation.check.js',
-  'tests/office-ops-server.unit.js'
+  'tests/office-ops-server.unit.js',
+  'tests/mobile-list.e2e.js',
+  'tests/pages-artifact.e2e.js'
 ]);
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');

@@ -38,6 +38,8 @@ try {
   // 전체 스위트가 아니라 일부만 돌면서도 초록불이 켜진다. 그게 예전 8/82 사고다.
   assert(/node\s+tests\/run-all\.js\s*$/m.test(workflow),
     '워크플로가 전체 러너(node tests/run-all.js, 인자 없이)를 실행하지 않는다');
+  assert(/uses:\s*actions\/checkout@v4[\s\S]*?with:[\s\S]*?fetch-depth:\s*0[\s\S]*?- name:\s*Setup Node\.js/.test(workflow),
+    '고정 기준 커밋의 조상 검사를 위해 Checkout 전체 이력(fetch-depth: 0)이 필요하다');
   // 예전 게이트가 지키던 8종 검사가 러너의 수집 범위(tests/*.check|unit|e2e.js) 안에
   // 실제 파일로 존재하는지 — 파일이 지워지거나 이름이 바뀌면 여기서 잡는다.
   const guards = [

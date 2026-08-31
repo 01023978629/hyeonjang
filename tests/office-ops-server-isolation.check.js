@@ -543,6 +543,7 @@ for (const phrase of [
 const branchScopePath = path.join(ROOT, 'scripts', 'verify-office-ops-branch-scope.mjs');
 const branchScopeBase = 'f44fa5727064b8cba2e1e339f646dd7598b35442';
 const branchScopeAllowlist = [
+  '.github/workflows/deploy-pages.yml',
   '.superpowers/sdd/.gitignore',
   'AGENTS.md',
   'apps-script-commercial/Code.gs',
@@ -565,7 +566,9 @@ const branchScopeAllowlist = [
   'tests/commercial-approval.unit.js',
   'tests/office-ops-pure.unit.js',
   'tests/office-ops-server-isolation.check.js',
-  'tests/office-ops-server.unit.js'
+  'tests/office-ops-server.unit.js',
+  'tests/mobile-list.e2e.js',
+  'tests/pages-artifact.e2e.js'
 ];
 
 function gitBuffer(args) {
