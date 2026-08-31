@@ -1350,12 +1350,7 @@ function persistLocal(){
   clearTimeout(__idbSaveTimer);
   __idbSaveTimer=setTimeout(async()=>{try{
     if(__tabStale){multiTabStaleWarn();return;}
-    const cur=await idbGet('appState');
-    if(cur&&cur.savedAt&&__tabStamp&&cur.savedAt>__tabStamp){__tabStale=true;multiTabStaleWarn();return;}
-    const d=serializeData();
-    await idbSet('appState',d);
-    __tabStamp=d.savedAt;
-    try{if(__tabBC)__tabBC.postMessage({t:'saved',at:d.savedAt});}catch(e){}
+    if(!(await guardedPersistCurrentState())){__tabStale=true;multiTabStaleWarn();}
   }catch(e){}},800);
 }
 try{
@@ -1384,8 +1379,8 @@ function toggleAutoSave(){
 window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue='';}});
 window.addEventListener('unload',()=>{try{(state.files||[]).forEach(revokeThumbUrl);}catch(e){}});
 // 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
-window.addEventListener('pagehide',()=>{try{if(!state._demo&&!__tabStale)idbSet('appState',serializeData());}catch(e){}});   // 뒤처진 탭은 닫힐 때도 안 덮는다
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo&&!__tabStale)idbSet('appState',serializeData());}catch(e){}}else if(document.visibilityState==='visible'){try{setTimeout(()=>{try{aiOpsVisibilityCheck();}catch(e){}},800);}catch(e){}try{officeIntakeAutoTrigger('visible');}catch(e){}}});
+window.addEventListener('pagehide',()=>{try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}});   // 뒤처진 탭은 닫힐 때도 안 덮는다
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}}else if(document.visibilityState==='visible'){try{setTimeout(()=>{try{aiOpsVisibilityCheck();}catch(e){}},800);}catch(e){}try{officeIntakeAutoTrigger('visible');}catch(e){}}});
 try{setInterval(()=>{try{aiOpsIntervalCheck();}catch(e){}},60*60*1000);}catch(e){}
 function fileKey(f){return (f.prefix||'')+f.name+'|'+(f.size||0);}
 // 공동현관·도어락 비밀번호 같은 출입정보는 앱 백업/동기화 대상에서 제외한다.
@@ -1394,6 +1389,14 @@ function projectBackupSafe(p){
   const out={...(p||{})};
   delete out.access;
   return out;
+}
+function officeIntakeSnapshot(value){
+  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},data={...source};
+  data.inbox=Array.isArray(source.inbox)?source.inbox:[];
+  data.outbox=Array.isArray(source.outbox)?source.outbox:[];
+  data.operationalErrors=Array.isArray(source.operationalErrors)?source.operationalErrors:[];
+  data.cursor=String(source.cursor||'');data.lastSyncAt=String(source.lastSyncAt||'');data.lastError=String(source.lastError||'');
+  return data;
 }
 function serializeData(){
   return {
@@ -1407,7 +1410,7 @@ function serializeData(){
     asLog:state.asLog||[],
     aptOffices:state.aptOffices||[],
     aptOrders:state.aptOrders||[],
-    officeIntake:officeIntakeData(),
+    officeIntake:officeIntakeSnapshot(state.officeIntake),
     aptRates:state.aptRates||[],
     monthClosed:state.monthClosed||{},
     quoteSets:state.quoteSets||[],
@@ -2147,7 +2150,7 @@ async function relayLoadDriveFiles(silent){
       }
       if(added||linked){
         if(typeof __photoCache!=='undefined')__photoCache.key=null;
-        if(silent){try{await idbSet('appState',serializeData());}catch(e){}}
+        if(silent){try{await guardedPersistCurrentState();}catch(e){}}
         else{markDirty();state.tab='photos';}
         render();try{hydrateThumbs();}catch(e){}
       }
@@ -3404,6 +3407,7 @@ function openGdriveSetup(){
   const officeOpsSec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--blueprint,#1d6fe0);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(29,111,224,.05)">
     <b style="font-size:14px">🏢 OfficeOps 연결</b>
     <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">주소·토큰과 마지막 정상 조회본은 <b>이 기기(IndexedDB)에만</b> 저장됩니다. 현장 백업·중계·관리사무소 접수에 섞이지 않습니다. 빈 칸으로 저장하면 기존 설정을 유지합니다.</p>
+    <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">상업 승인 영수증은 승인 자료의 변경 여부를 확인하는 <b>운영 안전 기록</b>입니다. 결제·전자서명 또는 악의적 브라우저에 대한 권한 보안을 대신하지 않습니다.</p>
     <label style="display:block;margin-bottom:6px">OfficeOps 웹앱 주소 <input type="text" id="ooUrl" value="${escapeAttr(__officeOps.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
     <label style="display:block;margin-bottom:6px">OfficeOps 토큰 <input type="password" id="ooTok" value="" placeholder="${escapeAttr(__officeOps.token?'저장됨':'OfficeOps 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
     <label style="display:block;margin-bottom:6px">상업 승인 웹앱 주소 <input type="text" id="caUrl" value="${escapeAttr(__commercialApproval.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
@@ -9129,13 +9133,13 @@ function openWorkOrder(ref){
 
 /* ═══════════ 🛡 데이터 안전판 — 이 기기 스냅샷 이력(폰에서도 작동) + 원클릭 복구 ═══════════ */
 let __snapLastAt=0,__snapLastLabel='';
-async function hjSnapshot(label,force){
+async function hjSnapshot(label,force,allowEmpty){
   try{
     const now=Date.now();
     if(!force&&now-__snapLastAt<180000)return false;          // 3분 스로틀(강제 제외)
     if(force&&now-__snapLastAt<45000&&String(label||'').startsWith('🤖')&&String(__snapLastLabel||'').startsWith('🤖'))return false; // AI 연속작업만 묶음 // AI 연속작업 과다 방지
     const data=serializeData();
-    if(!(data.projects||[]).length&&!(data.files||[]).length&&!(data.quotes||[]).length)return false; // 빈 상태는 저장 안 함
+    if(!allowEmpty&&!(data.projects||[]).length&&!(data.files||[]).length&&!(data.quotes||[]).length)return false; // 일반 빈 상태는 저장 안 함; paid gate만 명시 허용
     let snaps=(await idbGet('hj_snaps'))||[];
     snaps.push({at:new Date().toISOString(),label:String(label||'자동'),np:(data.projects||[]).length,nf:(data.files||[]).length,nq:(data.quotes||[]).length,data});
     if(snaps.length>12)snaps=snaps.slice(-12);
@@ -9985,8 +9989,7 @@ async function officeIntakePersistNow(){
   officeIntakeMarkDirty();
   try{
     clearTimeout(__idbSaveTimer);__idbSaveTimer=null;
-    await idbSet('appState',serializeData());
-    return true;
+    return await guardedPersistCurrentState();
   }catch(e){const d=officeIntakeData();d.lastError='로컬 저장 오류';officeIntakeMarkDirty();return false;}
 }
 function officeIntakeQueuedAccept(requestId,orderId){return (officeIntakeData().outbox||[]).find(function(item){const payload=item&&item.payload||{};return item&&item.action==='officeAccept'&&String(payload.requestId||'')===String(requestId||'')&&String(payload.hyeonjangOrderId||'')===String(orderId||'');})||null;}
@@ -26507,6 +26510,160 @@ function escapeAttr(s){return escapeHtml(s);}
 if(!FS_OK){$('#btnMount').textContent='파일 선택';$('#mountHint').textContent='이 브라우저는 폴더 직접 연결·이동이 제한됩니다. ‘파일 선택’으로 분류·OCR 미리보기를 쓰세요. 실제 이동은 Chrome·Edge에서.';}
 render();
 
+/* ===== 유상 작업 durable commit: 현장 appState만 원자 저장하며 OfficeOps와 섞지 않는다 ===== */
+const PAID_COMMIT_GENERATION_PREFIX='paid_commit_generation:';
+const PAID_COMMIT_MAX_GENERATIONS=4;
+const PAID_SERIALIZED_STATE_KEYS=['version','app','savedAt','learn','quotes','schedule','calendarImports','notes','priceBook','asLog','aptOffices','aptOrders','officeIntake','aptRates','monthClosed','quoteSets','trips','tripCfg','workLogs','claudeDone','satisfaction','adPosts','portalCfg','_savedFileCount','kakaoLastAt','coworkTasks','coworkSched','_cwSchedInit','_coworkInit','payLog','expenses','goals','aiOps','suppliers','supplierMap','inventory','brand','contacts','projects','files'];
+let __appStateWriteQueue=Promise.resolve(),__paidCommitPointerKey=null,__paidCommitRecoveryMalformedPointer=false;
+const __paidApprovalConsumptions=new Set();
+const __nativeAppStateIdbSet=idbSet;
+function paidPlainObject(value){return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;}
+function paidExactKeys(value,keys){return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===keys.slice().sort().join(',');}
+function paidUtcIso(value){if(typeof value!=='string')return false;const ms=Date.parse(value);return Number.isFinite(ms)&&new Date(ms).toISOString()===value;}
+function paidGenerationKey(value){return typeof value==='string'&&new RegExp('^'+PAID_COMMIT_GENERATION_PREFIX+'[A-Za-z0-9_-]{1,160}$').test(value);}
+function paidClone(value){return JSON.parse(JSON.stringify(value));}
+function validateLegacyAppState(value){
+  if(!paidPlainObject(value)||value.app!=='현장'||value.version!==2||!paidUtcIso(value.savedAt)||!Array.isArray(value.files)||!Array.isArray(value.projects))throw new Error('invalid legacy appState');
+  const forbidden=['office_ops_url','office_ops_token','commercial_approval_url','commercial_approval_token','office_ops_device_id','office_ops_cache'];
+  if(forbidden.some(key=>Object.prototype.hasOwnProperty.call(value,key))||Object.keys(value).some(key=>/^office_ops_|^paid_commit_/.test(key)))throw new Error('invalid legacy appState');
+  for(const key of ['aptOrders','quotes','schedule','notes','contacts','payLog'])if(key in value&&!Array.isArray(value[key]))throw new Error('invalid legacy appState');
+  return paidClone(value);
+}
+function validatePaidSerializedState(value){
+  if(!paidExactKeys(value,PAID_SERIALIZED_STATE_KEYS)||value.version!==2||value.app!=='현장'||!paidUtcIso(value.savedAt))throw new Error('invalid paid serialized state');
+  for(const key of ['quotes','schedule','calendarImports','notes','asLog','aptOffices','aptOrders','aptRates','quoteSets','trips','workLogs','claudeDone','satisfaction','adPosts','coworkSched','payLog','expenses','suppliers','inventory','contacts','projects','files'])if(!Array.isArray(value[key]))throw new Error('invalid paid serialized state');
+  for(const order of value.aptOrders){
+    if(!paidPlainObject(order))throw new Error('invalid paid aptOrder');
+    if(order.commercialTerms!=null)normalizeCommercialTerms(order.commercialTerms);
+    if(order.commercialApproval!=null){if(typeof order.id!=='string')throw new Error('invalid paid aptOrder');normalizeReceipt(order.commercialApproval,order.id);}
+    if(order.commercialGateVersion!=null&&order.commercialGateVersion!==1)throw new Error('invalid commercial gate version');
+  }
+  return value;
+}
+function normalizePaidCommitJournal(raw,pointer){
+  const keys=['schemaVersion','current','previous','committedAt','generations','maxGenerations'];
+  if(!paidExactKeys(raw,keys)||raw.schemaVersion!==1||raw.current!==pointer||!paidGenerationKey(raw.current)||(raw.previous!==null&&!paidGenerationKey(raw.previous))||!paidUtcIso(raw.committedAt)||raw.maxGenerations!==PAID_COMMIT_MAX_GENERATIONS||!Array.isArray(raw.generations)||!raw.generations.length||raw.generations.length>PAID_COMMIT_MAX_GENERATIONS||raw.generations[0]!==pointer||new Set(raw.generations).size!==raw.generations.length||raw.generations.some(key=>!paidGenerationKey(key)))throw new Error('invalid paid commit journal');
+  return raw;
+}
+function withAppStateWriteLock(work){
+  const run=__appStateWriteQueue.then(work,work);
+  __appStateWriteQueue=run.then(()=>undefined,()=>undefined);
+  return run;
+}
+function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverMalformedPointer){
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('hyeonjang-db',1);let conflict=false,reason=null,tx=null;
+    const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
+    open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('kv'))open.result.createObjectStore('kv');};
+    open.onerror=()=>reject(open.error||new Error('appState open failed'));
+    open.onsuccess=()=>{const db=open.result;try{
+      tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
+      const write=(current,journal,recover)=>{const appReq=store.get('appState');
+        appReq.onerror=()=>abort(appReq.error||new Error('appState read failed'));
+        appReq.onsuccess=()=>{const currentData=appReq.result;if(currentData&&currentData.savedAt&&expectedStamp&&currentData.savedAt>expectedStamp){conflict=true;try{tx.abort();}catch(_){}return;}
+          if(recover){store.delete('paid_commit_pointer');store.delete('paid_commit_journal');}
+          else if(current){const advancedJournal={...journal,committedAt:data.savedAt};store.put(data,current);store.put(advancedJournal,'paid_commit_journal');store.put(current,'paid_commit_pointer');}
+          store.put(data,'appState');};
+      };
+      pointerReq.onerror=()=>abort(pointerReq.error||new Error('pointer read failed'));
+      pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:'malformed'),recover=current==='malformed'&&expectedPointer===null&&recoverMalformedPointer===true;
+        if(!recover&&(current==='malformed'||current!==expectedPointer)){conflict=true;try{tx.abort();}catch(_){}return;}
+        if(recover||current===null){write(null,null,recover);return;}
+        const journalReq=store.get('paid_commit_journal');journalReq.onerror=()=>abort(journalReq.error||new Error('paid journal read failed'));
+        journalReq.onsuccess=()=>{let journal=null;try{journal=normalizePaidCommitJournal(journalReq.result,current);}catch(error){abort(error);return;}
+          const generationReq=store.get(current);generationReq.onerror=()=>abort(generationReq.error||new Error('paid generation read failed'));
+          generationReq.onsuccess=()=>{try{validatePaidSerializedState(generationReq.result);if(generationReq.result.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');write(current,journal,false);}catch(error){abort(error);}};
+        };
+      };
+      tx.oncomplete=()=>{db.close();resolve(true);};
+      tx.onabort=()=>{db.close();if(conflict)resolve(false);else reject(reason||tx.error||new Error('appState transaction aborted'));};
+      tx.onerror=()=>{};
+    }catch(error){try{db.close();}catch(_){}reject(error);}};
+  });
+}
+async function guardedPersistCurrentState(){
+  return withAppStateWriteLock(async()=>{
+    if(state._demo)return false;
+    const data=serializeData();validatePaidSerializedState(data);
+    const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoveryMalformedPointer);
+    if(!ok)return false;
+    const completionObserver=window.idbSet;if(typeof completionObserver==='function'&&completionObserver!==__nativeAppStateIdbSet)await completionObserver('appState',paidClone(data));
+    __tabStamp=data.savedAt;__paidCommitRecoveryMalformedPointer=false;
+    try{if(__tabBC)__tabBC.postMessage({t:'saved',at:data.savedAt});}catch(e){}
+    return true;
+  });
+}
+function paidCommitWriteAtomic(candidate,expectedPointer,generationKey){
+  validatePaidSerializedState(candidate);
+  if(expectedPointer!==null&&!paidGenerationKey(expectedPointer))return Promise.reject(new Error('invalid expected paid pointer'));
+  if(!paidGenerationKey(generationKey))return Promise.reject(new Error('invalid paid generation key'));
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('hyeonjang-db',1);let tx=null,reason=null,committedJournal=null;
+    const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
+    open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('kv'))open.result.createObjectStore('kv');};
+    open.onerror=()=>reject(open.error||new Error('paid commit open failed'));
+    open.onsuccess=()=>{const db=open.result;try{
+      tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
+      const write=(oldJournal)=>{
+        const oldKeys=oldJournal?oldJournal.generations:[],generations=[generationKey,...oldKeys.filter(key=>key!==generationKey)].slice(0,PAID_COMMIT_MAX_GENERATIONS);
+        const journal={schemaVersion:1,current:generationKey,previous:expectedPointer,committedAt:candidate.savedAt,generations,maxGenerations:PAID_COMMIT_MAX_GENERATIONS};committedJournal=journal;
+        store.put(candidate,generationKey);store.put(journal,'paid_commit_journal');store.put(generationKey,'paid_commit_pointer');store.put(candidate,'appState');
+        oldKeys.filter(key=>!generations.includes(key)).forEach(key=>store.delete(key));
+      };
+      pointerReq.onerror=()=>abort(pointerReq.error||new Error('paid pointer read failed'));
+      pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:null);
+        if((raw!=null&&!current)||current!==expectedPointer){abort(new Error('paid commit pointer conflict'));return;}
+        const journalReq=store.get('paid_commit_journal');
+        journalReq.onerror=()=>abort(journalReq.error||new Error('paid journal read failed'));
+        journalReq.onsuccess=()=>{let oldJournal=null;try{
+          if(current===null){if(journalReq.result!=null)throw new Error('orphan paid journal');write(null);return;}
+          oldJournal=normalizePaidCommitJournal(journalReq.result,current);
+        }catch(error){abort(error);return;}
+          const generationReq=store.get(current);
+          generationReq.onerror=()=>abort(generationReq.error||new Error('paid generation read failed'));
+          generationReq.onsuccess=()=>{try{validatePaidSerializedState(generationReq.result);if(generationReq.result.savedAt!==oldJournal.committedAt)throw new Error('paid generation journal mismatch');write(oldJournal);}catch(error){abort(error);}};
+        };
+      };
+      tx.oncomplete=()=>{db.close();resolve({pointer:generationKey,journal:committedJournal});};
+      tx.onabort=()=>{db.close();reject(reason||tx.error||new Error('paid commit transaction aborted'));};tx.onerror=()=>{};
+    }catch(error){try{db.close();}catch(_){}reject(error);}};
+  });
+}
+function readPaidCommitSnapshot(){
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('hyeonjang-db',1),snapshot={appState:undefined,pointer:undefined,journal:undefined,generation:undefined};let db=null,tx=null,reason=null,pending=3,settled=false;
+    const finish=()=>{pending--;if(!settled&&pending===0){settled=true;try{db.close();}catch(_){}resolve(snapshot);}};
+    open.onupgradeneeded=()=>{const names=open.result.objectStoreNames;if(!names||!names.contains('kv'))open.result.createObjectStore('kv');};
+    open.onerror=()=>reject(open.error||new Error('paid snapshot open failed'));
+    open.onsuccess=()=>{db=open.result;try{
+      tx=db.transaction('kv','readonly');const store=tx.objectStore('kv'),appReq=store.get('appState'),pointerReq=store.get('paid_commit_pointer'),journalReq=store.get('paid_commit_journal');
+      const fail=request=>{if(settled)return;reason=request.error||new Error('paid snapshot read failed');try{tx.abort();}catch(_){settled=true;try{db.close();}catch(__){}reject(reason);}};
+      appReq.onerror=()=>fail(appReq);appReq.onsuccess=()=>{snapshot.appState=appReq.result;finish();};
+      journalReq.onerror=()=>fail(journalReq);journalReq.onsuccess=()=>{snapshot.journal=journalReq.result;finish();};
+      pointerReq.onerror=()=>fail(pointerReq);pointerReq.onsuccess=()=>{snapshot.pointer=pointerReq.result;if(paidGenerationKey(snapshot.pointer)){pending++;const generationReq=store.get(snapshot.pointer);generationReq.onerror=()=>fail(generationReq);generationReq.onsuccess=()=>{snapshot.generation=generationReq.result;finish();};}finish();};
+      tx.oncomplete=()=>{};tx.onabort=()=>{if(settled)return;settled=true;db.close();reject(reason||tx.error||new Error('paid snapshot transaction aborted'));};tx.onerror=()=>{};
+    }catch(error){try{db.close();}catch(_){}reject(error);}};
+  });
+}
+async function resolvePaidCommitState(){
+  const snapshot=await readPaidCommitSnapshot();let legacy=null;try{if(snapshot.appState)legacy=validateLegacyAppState(snapshot.appState);}catch(e){}
+  const rawPointer=snapshot.pointer;
+  if(rawPointer==null)return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null};
+  if(!paidGenerationKey(rawPointer))return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true};
+  try{
+    const journal=normalizePaidCommitJournal(snapshot.journal,rawPointer),generation=validatePaidSerializedState(snapshot.generation);
+    if(generation.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');
+    return {data:paidClone(generation),source:'paid-generation',pointer:rawPointer,journal};
+  }catch(e){return {data:legacy,source:legacy?'legacy-appState':'none',pointer:rawPointer};}
+}
+function freezePaidMetadata(){
+  (state.aptOrders||[]).forEach(order=>{if(order&&order.commercialTerms)order.commercialTerms=Object.freeze({...order.commercialTerms,exclusions:Object.freeze((order.commercialTerms.exclusions||[]).slice())});if(order&&order.commercialApproval)order.commercialApproval=Object.freeze({...order.commercialApproval});});
+}
+function applyPaidCommittedState(data){applyData(paidClone(data),{revert:true});freezePaidMetadata();__tabStamp=data.savedAt;window.__hjRestoreSource='paid-generation';}
+function paidCommitRecoveryBanner(){
+  try{let banner=document.getElementById('hjPaidCommitRecovery');if(!banner){banner=document.createElement('div');banner.id='hjPaidCommitRecovery';banner.setAttribute('role','alert');banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:100000;background:#9a3412;color:#fff;padding:10px 14px;font-weight:700';banner.textContent='유상 작업은 저장됐지만 화면 갱신에 실패했습니다. 새로고침하면 저장된 작업을 복원합니다.';document.body.appendChild(banner);}}catch(e){}
+}
+
 // 제거한 중복 사진 driveId 목록 복원(다시 불러와도 안 들어오게)
 (async()=>{ try{ const a=await idbGet('removed_ids'); if(Array.isArray(a))a.forEach(x=>__removedIds.add(x)); }catch(e){} })();
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
@@ -26514,10 +26671,15 @@ render();
 window.__hjRestoreDone = (async () => {
   let restoredSavedState = false;
   try {
+    const resolved = await resolvePaidCommitState();
+    __paidCommitPointerKey = resolved.pointer || null;
+    __paidCommitRecoveryMalformedPointer = resolved.recoveryMalformedPointer === true;
+    window.__hjRestoreSource = resolved.source;
     if (!state.projects.length && !state.files.length) {
-      const saved = await idbGet('appState');
+      const saved = resolved.data;
       if (saved && typeof saved === 'object') {
         applyData(saved);
+        freezePaidMetadata();
         restoredSavedState = true;
         try { __tabStamp = saved.savedAt || null; } catch (_) {}   // 다중 탭 가드 기준점
       }
@@ -26651,6 +26813,16 @@ function isRealIsoDate(value){
   const [year,month,day]=value.split('-').map(Number),date=new Date(Date.UTC(year,month-1,day));
   return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day;
 }
+function normalizeCommercialTerms(raw){
+  const keys=['workKind','scope','exclusions','vatMode','quotedAmount','validUntil','scheduleWindow'];
+  if(!paidExactKeys(raw,keys))throw new Error('invalid commercial terms keys');
+  const terms={workKind:String(raw.workKind||''),scope:String(raw.scope||'').replace(/^\s+|\s+$/g,''),
+    exclusions:Array.isArray(raw.exclusions)?raw.exclusions.map(String):null,vatMode:String(raw.vatMode||''),quotedAmount:Number(raw.quotedAmount),
+    validUntil:String(raw.validUntil||''),scheduleWindow:String(raw.scheduleWindow||'').replace(/^\s+|\s+$/g,'')};
+  if(!['device-diagnosis','dispatch','repair','preventive-inspection'].includes(terms.workKind)||!terms.scope||!terms.exclusions||
+    !['included','excluded'].includes(terms.vatMode)||!Number.isInteger(terms.quotedAmount)||terms.quotedAmount<1||!isRealIsoDate(terms.validUntil)||!terms.scheduleWindow)throw new Error('invalid commercial terms');
+  terms.exclusions=Object.freeze(terms.exclusions);return Object.freeze(terms);
+}
 function formatKstIso(ms){
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(ms).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+09:00`;
@@ -26663,6 +26835,91 @@ function parseStrictKstDateTime(value){
   if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(value)) return null;
   const ms=Date.parse(value);
   return Number.isFinite(ms)&&formatKstIso(ms)===value?ms:null;
+}
+function normalizeReceipt(receipt,subjectId){
+  const keys=['receiptId','subjectType','subjectId','approvedTermsSha256','approvalEvidenceType','approvalEvidenceFileId','approvalEvidenceSha256','approvedAt','approvedByRole','issuedAt','receiptHmac'];
+  if(!paidExactKeys(receipt,keys)||receipt.subjectType!=='aptOrder'||receipt.subjectId!==subjectId||!/^[A-Za-z0-9_-]{1,160}$/.test(subjectId||'')||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(receipt.receiptId||'')||
+    !/^[a-f0-9]{64}$/.test(receipt.approvedTermsSha256||'')||!['quote-file','contract-file','message-export-file'].includes(receipt.approvalEvidenceType)||
+    !/^[A-Za-z0-9_-]{1,200}$/.test(receipt.approvalEvidenceFileId||'')||!/^[a-f0-9]{64}$/.test(receipt.approvalEvidenceSha256||'')||parseStrictKstDateTime(receipt.approvedAt)===null||
+    !['customer','management-office'].includes(receipt.approvedByRole)||parseStrictKstDateTime(receipt.issuedAt)===null||Date.parse(receipt.issuedAt)<Date.parse(receipt.approvedAt)||!/^[a-f0-9]{64}$/.test(receipt.receiptHmac||''))throw new Error('invalid commercial receipt');
+  return Object.freeze({receiptId:receipt.receiptId,subjectType:receipt.subjectType,subjectId:receipt.subjectId,approvedTermsSha256:receipt.approvedTermsSha256,
+    approvalEvidenceType:receipt.approvalEvidenceType,approvalEvidenceFileId:receipt.approvalEvidenceFileId,approvalEvidenceSha256:receipt.approvalEvidenceSha256,
+    approvedAt:receipt.approvedAt,approvedByRole:receipt.approvedByRole,issuedAt:receipt.issuedAt,receiptHmac:receipt.receiptHmac});
+}
+async function commercialNow(){
+  const nonce=crypto.randomUUID(),startedAt=performance.now(),json=await commercialCall('commercialNow',{nonce}),receivedAt=performance.now();
+  if(!officeOpsExactKeys(json,['ok','serverNowKst','receivedAtKst','nonce'])||json.ok!==true||receivedAt-startedAt>10000||json.nonce!==nonce||parseStrictKstDateTime(json.serverNowKst)===null||parseStrictKstDateTime(json.receivedAtKst)===null)throw new Error('untrusted commercial time');
+  __commercialApproval.lastTrustedNow=json.serverNowKst;
+  return Object.freeze({serverNowKst:json.serverNowKst,receivedAtKst:json.receivedAtKst,nonce,receivedMonotonicMs:receivedAt,useBeforeMonotonicMs:receivedAt+60000});
+}
+async function validateCommercialApproval({subjectType,subjectId,commercialTerms,commercialApproval}){
+  if(subjectType!=='aptOrder'||!/^[A-Za-z0-9_-]{1,160}$/.test(subjectId||''))throw new Error('invalid subject type');
+  const terms=normalizeCommercialTerms(commercialTerms),receipt=normalizeReceipt(commercialApproval,subjectId),trusted=await commercialNow();
+  if(performance.now()>trusted.useBeforeMonotonicMs)throw new Error('stale commercial time');
+  const verifyNonce=crypto.randomUUID();if(!verifyNonce||verifyNonce===trusted.nonce)throw new Error('reused commercial nonce');
+  const verifyStartedAt=performance.now(),json=await commercialCall('commercialApprovalVerify',{subjectType,subjectId,commercialTerms:terms,commercialApproval:receipt,nonce:verifyNonce}),verifiedAt=performance.now();
+  const serverMs=parseStrictKstDateTime(json&&json.serverNowKst),expiryMs=parseStrictKstDateTime(json&&json.verifyExpiresAtKst);
+  if(!officeOpsExactKeys(json,['ok','receiptId','serverNowKst','nonce','verifyExpiresAtKst'])||json.ok!==true||verifiedAt-verifyStartedAt>10000||verifiedAt>trusted.useBeforeMonotonicMs||json.receiptId!==receipt.receiptId||json.nonce!==verifyNonce||serverMs===null||expiryMs===null||expiryMs<=serverMs||expiryMs-serverMs>60000)throw new Error('invalid approval verification');
+  return Object.freeze({receiptId:json.receiptId,serverNowKst:json.serverNowKst,nonce:json.nonce,verifyExpiresAtKst:json.verifyExpiresAtKst,useBeforeMonotonicMs:Math.min(trusted.useBeforeMonotonicMs,verifyStartedAt+(expiryMs-serverMs))});
+}
+async function issueCommercialApproval({subjectId,commercialTerms,approvalEvidenceFileId,approvalEvidenceType,approvedAt,approvedByRole}){
+  if(!/^[A-Za-z0-9_-]{1,160}$/.test(subjectId||'')||!/^[A-Za-z0-9_-]{1,200}$/.test(approvalEvidenceFileId||'')||!['quote-file','contract-file','message-export-file'].includes(approvalEvidenceType)||parseStrictKstDateTime(approvedAt)===null||!['customer','management-office'].includes(approvedByRole))throw new Error('missing approval evidence');
+  const terms=normalizeCommercialTerms(commercialTerms),json=await commercialCall('commercialApprovalIssue',{subjectType:'aptOrder',subjectId,commercialTerms:terms,approvalEvidenceFileId,approvalEvidenceType,approvedAt,approvedByRole});
+  return normalizeReceipt(json.commercialApproval,subjectId);
+}
+function paidGateError(code){const error=new Error(code);error.code=code;return error;}
+async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted}){
+  if(typeof mutateDraft!=='function')throw new Error('invalid durable mutation');
+  return withAppStateWriteLock(async()=>{
+    if(!(await hjSnapshot(snapshotLabel,true,true)))throw new Error('required recovery snapshot failed');
+    if(beforeCommit)await beforeCommit();
+    const candidate=structuredClone(serializeData()),result=mutateDraft(candidate);candidate.savedAt=new Date().toISOString();
+    const serialized=JSON.parse(JSON.stringify(candidate));validatePaidSerializedState(serialized);
+    if(beforeCommit)await beforeCommit();
+    const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,__paidCommitPointerKey,generationKey);
+    if(onCommitted)await onCommitted();
+    __paidCommitPointerKey=commit.pointer;applyPaidCommittedState(serialized);
+    try{render();}catch(error){paidCommitRecoveryBanner();}
+    try{if(__tabBC)__tabBC.postMessage({t:'saved',at:serialized.savedAt});}catch(e){}
+    return result;
+  });
+}
+async function durablePaidMutation({verification,snapshotLabel,mutateDraft}){
+  if(!paidPlainObject(verification)||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(verification.receiptId||'')||typeof verification.nonce!=='string'||!verification.nonce||!Number.isFinite(verification.useBeforeMonotonicMs))throw new Error('invalid paid verification');
+  const key=verification.receiptId+'|'+verification.nonce;if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');
+  const deadline=()=>{if(performance.now()>verification.useBeforeMonotonicMs)throw new Error('stale commercial verification');if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');};
+  return durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit:deadline,onCommitted:()=>{__paidApprovalConsumptions.add(key);}});
+}
+async function persistApprovedAptOrder({draft,commercialTerms,receipt,verification}){
+  if(!paidPlainObject(draft)||!Object.isFrozen(draft)||draft.id!==receipt.subjectId||draft.state!=='visit'||(state.aptOrders||[]).some(order=>order.id===draft.id))throw new Error('paid order identity conflict');
+  const terms=normalizeCommercialTerms(commercialTerms),approval=normalizeReceipt(receipt,draft.id),{state:_gateState,status:_ignoredStatus,...projection}=draft;
+  const persisted=Object.freeze({...projection,status:'visit',commercialGateVersion:1,commercialTerms:terms,commercialApproval:approval});
+  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',mutateDraft:next=>{if(!Array.isArray(next.aptOrders)||(next.aptOrders||[]).some(order=>order.id===persisted.id))throw new Error('paid order identity conflict');next.aptOrders.push(persisted);return persisted;}});
+}
+async function persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms,receipt,verification}){
+  if(subjectType!=='aptOrder')throw new Error('invalid subject type');
+  const terms=normalizeCommercialTerms(commercialTerms),approval=normalizeReceipt(receipt,subjectId);
+  return durablePaidMutation({verification,snapshotLabel:'유상 오더 상태 변경',mutateDraft:next=>{const order=(next.aptOrders||[]).find(item=>item.id===subjectId);if(!order)throw new Error('order not found');if(order.commercialTerms&&JSON.stringify(normalizeCommercialTerms(order.commercialTerms))!==JSON.stringify(terms))throw new Error('commercial terms changed');order.status=targetState;delete order.state;order.commercialGateVersion=1;order.commercialTerms=terms;order.commercialApproval=approval;return order;}});
+}
+async function executePaidWorkGate({commandKind,subjectType,subjectId,targetState,commercialTerms,commercialApproval,createDraft}){
+  const create=commandKind==='create-order',transition=commandKind==='transition-state';
+  if(subjectType!=='aptOrder'||(!create&&!transition)||!['visit','work','billed'].includes(targetState)||(create&&(targetState!=='visit'||!paidPlainObject(createDraft)||!Object.isFrozen(createDraft)||createDraft.id!==subjectId||createDraft.state!=='visit'))||(transition&&createDraft!==undefined))throw new Error('invalid paid gate command');
+  const terms=normalizeCommercialTerms(commercialTerms),receipt=normalizeReceipt(commercialApproval,subjectId),verification=await validateCommercialApproval({subjectType,subjectId,commercialTerms:terms,commercialApproval:receipt});
+  return create?persistApprovedAptOrder({draft:createDraft,commercialTerms:terms,receipt,verification}):persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms:terms,receipt,verification});
+}
+async function transitionAptOrderWithGate({orderId,targetState,commercialTerms,commercialApproval,nextTerms}){
+  if(nextTerms!==undefined)throw paidGateError('compound-command-not-allowed');
+  const order=(state.aptOrders||[]).find(item=>item.id===orderId);if(!order)throw new Error('order not found');
+  return executePaidWorkGate({commandKind:'transition-state',subjectType:'aptOrder',subjectId:orderId,targetState,commercialTerms,commercialApproval});
+}
+async function updateCommercialTerms(orderId,nextTerms){
+  const current=(state.aptOrders||[]).find(item=>item.id===orderId);if(!current)throw new Error('order not found');
+  const commercialTerms=normalizeCommercialTerms(nextTerms),previousApproval=current.commercialApproval||null,at=new Date().toISOString();
+  return durableLocalMutation({snapshotLabel:'유상 조건 변경',mutateDraft:next=>{const order=(next.aptOrders||[]).find(item=>item.id===orderId);if(!order)throw new Error('order not found');order.commercialTerms=commercialTerms;order.commercialApproval=null;order.commercialApprovalAudit=[...(order.commercialApprovalAudit||[]),{event:'terms-replaced',at,previousApproval}];return {order,previousApprovalAuditId:at};}});
+}
+async function createPaidDiagnosisOrderFromManualLead(input){
+  const id=uid(),commercialTerms=normalizeCommercialTerms(input.commercialTerms),commercialApproval=await issueCommercialApproval({subjectId:id,commercialTerms,approvalEvidenceFileId:input.approvalEvidenceFileId,approvalEvidenceType:input.approvalEvidenceType,approvedAt:input.approvedAt,approvedByRole:input.approvedByRole});
+  return executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:id,targetState:'visit',commercialTerms,commercialApproval,createDraft:Object.freeze({id,source:'manual-paid-diagnosis',state:'visit'})});
 }
 function officeOpsExactKeys(value,keys){
   return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===keys.slice().sort().join(',');
