@@ -35,7 +35,7 @@ function extractFunction(name) {
   assert.fail('unbalanced isolated function: ' + name);
 }
 
-function makeClient({ replies = [], cache = new Map() } = {}) {
+function makeClient({ replies = [], cache = new Map(), mutationImplementation = '' } = {}) {
   const calls = [];
   const sandbox = {
     crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })() },
@@ -53,9 +53,18 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   vm.createContext(sandbox);
   vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
   for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
-    vm.runInContext(extractFunction(name), sandbox);
+    vm.runInContext(name === 'officeOpsMutationWithAck' && mutationImplementation ? mutationImplementation : extractFunction(name), sandbox);
   }
   return { sandbox, calls, cache };
+}
+
+const representativeMutations = ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord'];
+async function assertRepresentativeMutationsBlocked(client, label) {
+  for (const action of representativeMutations) {
+    const before = client.calls.length;
+    await assert.rejects(() => vm.runInContext('officeOpsMutation(' + JSON.stringify(action) + ',{})', client.sandbox), /office-disabled/, label + ' blocks ' + action);
+    assert.equal(client.calls.length, before, label + ' makes zero network requests for ' + action);
+  }
 }
 
 (async () => {
@@ -82,22 +91,24 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   assert.equal(disabled.cache.get('office_ops_cache').revision, 4, 'disabled read retains the last successful cache');
   assert.equal(vm.runInContext('__officeOps.mode', disabled.sandbox), 'export-only', 'disabled mode blocks future mutations');
   assert.equal(disabled.calls.length, 1, 'export-only refresh makes one read only');
-  await assert.rejects(() => vm.runInContext("officeOpsMutation('pilotCreate',{name:'blocked'})", disabled.sandbox), /office-disabled/, 'export-only mode blocks mutation without a network retry');
-  assert.equal(disabled.calls.length, 1, 'blocked mutation makes no network call');
+  await assertRepresentativeMutationsBlocked(disabled, 'actual disabled read');
+
+  const missingGuardFixture = extractFunction('officeOpsMutationWithAck').replace("if(__officeOps.mode!=='fresh')throw new Error('office-disabled');", '');
+  assert.notEqual(missingGuardFixture, extractFunction('officeOpsMutationWithAck'), 'fixture omits the fail-closed mutation guard');
+  const missingGuard = makeClient({ mutationImplementation: missingGuardFixture });
+  vm.runInContext("__officeOps.mode='export-only'", missingGuard.sandbox);
+  let mutationGuardDetected = false;
+  try { await assertRepresentativeMutationsBlocked(missingGuard, 'missing guard fixture'); }
+  catch (_) { mutationGuardDetected = true; }
+  assert.equal(mutationGuardDetected, true, 'representative disabled-action assertions reject a missing mutation guard fixture');
 
   const stale = makeClient({ cache: disabledCache });
   await vm.runInContext('officeOpsBoot()', stale.sandbox);
   assert.equal(vm.runInContext('__officeOps.mode', stale.sandbox), 'stale-export-only', 'boot cache is never treated as a current successful load');
-  for (const action of ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord']) {
-    await assert.rejects(() => vm.runInContext('officeOpsMutation(' + JSON.stringify(action) + ',{})', stale.sandbox), /office-disabled/, action + ' blocks against a stale boot cache');
-  }
-  assert.equal(stale.calls.length, 0, 'stale create/edit/draft/convert/contact attempts perform zero network requests');
+  await assertRepresentativeMutationsBlocked(stale, 'stale boot cache');
 
   const unloaded = makeClient();
-  for (const action of ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord']) {
-    await assert.rejects(() => vm.runInContext('officeOpsMutation(' + JSON.stringify(action) + ',{})', unloaded.sandbox), /office-disabled/, action + ' blocks before the first current load');
-  }
-  assert.equal(unloaded.calls.length, 0, 'unloaded create/edit/draft/convert/contact attempts perform zero network requests');
+  await assertRepresentativeMutationsBlocked(unloaded, 'unloaded client');
 
   const ackThenDisabled = makeClient({ replies: [
     { body: { ok: true, id: 'pilot-server-43', revision: 9, updatedAt: '2026-08-31T00:01:00.000Z' } },
@@ -107,8 +118,7 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   await assert.rejects(() => vm.runInContext("officeOpsMutationWithAck('pilotCreate',{})", ackThenDisabled.sandbox), /office-disabled/, 'a disabled refresh after a valid ACK still fails closed');
   assert.equal(vm.runInContext('__officeOps.mode', ackThenDisabled.sandbox), 'export-only', 'ACK-followed disabled refresh switches to export-only');
   assert.equal(ackThenDisabled.calls.length, 2, 'valid ACK is followed directly by one list refresh');
-  await assert.rejects(() => vm.runInContext("officeOpsMutation('pilotCreate',{})", ackThenDisabled.sandbox), /office-disabled/, 'post-refresh disabled mode blocks later mutations');
-  assert.equal(ackThenDisabled.calls.length, 2, 'post-refresh blocked mutation makes zero network requests');
+  await assertRepresentativeMutationsBlocked(ackThenDisabled, 'ACK-followed disabled refresh');
 
   const exports = makeClient({ cache: disabledCache });
   const downloads = [];
@@ -141,5 +151,6 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
   const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|relay_queue|relay_url|relay_token|APP_TOKEN|officeIntake|OfficeIntake/i;
   for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
+  assert.doesNotMatch(extractFunction('commercialCall'), forbiddenReferences, 'commercialCall static transport boundary is isolated from state, relay, and OfficeIntake');
   console.log('PASS  OfficeOps isolated envelopes, acknowledgements, cache ownership, and legacy boundaries');
 })().catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });
