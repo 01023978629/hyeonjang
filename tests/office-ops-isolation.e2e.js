@@ -10,19 +10,20 @@ const { webcrypto } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
-function extractFunction(name) {
-  const match = new RegExp('(?:async\\s+)?function\\s+' + name + '\\s*\\(').exec(source);
+function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function extractFunctionFrom(candidate, name) {
+  const match = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(name) + '\\s*\\(').exec(candidate);
   assert.ok(match, 'missing isolated function: ' + name);
-  const paramsStart = source.indexOf('(', match.index + match[0].length - 1);
+  const paramsStart = candidate.indexOf('(', match.index + match[0].length - 1);
   let params = 0, open = -1;
-  for (let i = paramsStart; i < source.length; i += 1) {
-    if (source[i] === '(') params += 1;
-    if (source[i] === ')' && --params === 0) { open = source.indexOf('{', i); break; }
+  for (let i = paramsStart; i < candidate.length; i += 1) {
+    if (candidate[i] === '(') params += 1;
+    if (candidate[i] === ')' && --params === 0) { open = candidate.indexOf('{', i); break; }
   }
   assert.ok(open >= 0, 'isolated function body missing: ' + name);
   let depth = 0, quote = '', escaped = false;
-  for (let i = open; i < source.length; i += 1) {
-    const ch = source[i];
+  for (let i = open; i < candidate.length; i += 1) {
+    const ch = candidate[i];
     if (quote) {
       if (escaped) escaped = false;
       else if (ch === '\\') escaped = true;
@@ -31,9 +32,31 @@ function extractFunction(name) {
     }
     if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
     if (ch === '{') depth += 1;
-    if (ch === '}' && --depth === 0) return source.slice(match.index, i + 1);
+    if (ch === '}' && --depth === 0) return candidate.slice(match.index, i + 1);
   }
   assert.fail('unbalanced isolated function: ' + name);
+}
+function extractFunction(name) { return extractFunctionFrom(source, name); }
+function extractOrderedSection(candidate, startName, endName, label) {
+  const start = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(startName) + '\\s*\\(').exec(candidate);
+  const end = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(endName) + '\\s*\\(').exec(candidate);
+  assert.ok(start, label + ' start anchor missing: ' + startName);
+  assert.ok(end, label + ' end anchor missing: ' + endName);
+  assert.ok(start.index < end.index, label + ' anchors are not ordered');
+  const section = candidate.slice(start.index, end.index);
+  assert.ok(section.trim().length > 0, label + ' section is empty');
+  return section;
+}
+function injectFunctionStatement(candidate, name, statement) {
+  const original = extractFunctionFrom(candidate, name);
+  const brace = original.indexOf('{');
+  assert.ok(brace >= 0, 'fixture target has no body: ' + name);
+  const mutated = original.slice(0, brace + 1) + statement + original.slice(brace + 1);
+  assert.notEqual(mutated, original, 'fixture must mutate ' + name);
+  return candidate.replace(original, mutated);
+}
+function discoveredIsolatedFunctionNames(candidate) {
+  return [...candidate.matchAll(/(?:async\s+)?function\s+((?:officeOps|commercial)[A-Za-z0-9_$]*)\s*\(/g)].map(match => match[1]).filter((name, index, names) => names.indexOf(name) === index);
 }
 
 function historyAuditRow(index, overrides = {}) {
@@ -304,13 +327,34 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   assert.equal(exports.calls.length, 0, 'allowed local cache export makes zero network requests');
   assert.equal(downloads.length, 1, 'allowed local cache export creates one local download only');
 
-  const serialize = source.slice(source.indexOf('function serializeData()'), source.indexOf('function applyData('));
-  const apply = source.slice(source.indexOf('function applyData('), source.indexOf('function fixXlsxEstVat('));
-  const relay = source.slice(source.indexOf('function relayCall('), source.indexOf('function cloudApiHealth'));
-  const intake = source.slice(source.indexOf('function officeIntakeData('), source.indexOf('function aptSettle('));
-  for (const [label, section] of [['serialize', serialize], ['apply', apply], ['relay', relay], ['OfficeIntake', intake]]) {
-    assert.equal(/officeOps|office_ops|commercialApproval|commercial_approval/i.test(section), false, label + ' remains isolated from OfficeOps and commercial settings');
+  const forbiddenOwnedSettings = /officeOps|office_ops|commercialApproval|commercial_approval/i;
+  function assertProductSectionsIsolated(candidate) {
+    const sections = [
+      ['serialize', extractFunctionFrom(candidate, 'serializeData')],
+      ['apply', extractFunctionFrom(candidate, 'applyData')],
+      ['relay', extractOrderedSection(candidate, 'relayCall', 'cloudApiHealth', 'relay')],
+      ['OfficeIntake', extractOrderedSection(candidate, 'officeIntakeData', 'aptSettle', 'OfficeIntake')]
+    ];
+    for (const [label, section] of sections) {
+      assert.doesNotMatch(section, forbiddenOwnedSettings, label + ' remains isolated from OfficeOps and commercial settings');
+    }
   }
+  for (const [name, statement] of [
+    ['serializeData', 'const officeOpsLeakFixture=1;'],
+    ['applyData', 'const commercialApprovalLeakFixture=1;'],
+    ['relayCall', 'const office_ops_cache_fixture=1;'],
+    ['officeIntakeData', 'const commercial_approval_token_fixture=1;']
+  ]) {
+    const mutant = injectFunctionStatement(source, name, statement);
+    assert.throws(() => assertProductSectionsIsolated(mutant), /remains isolated/, name + ' owned-setting mutant must be rejected');
+  }
+  const missingRelayEnd = source.replace(/function\s+cloudApiHealth\s*\(/, 'function cloudApiHealthMissing(');
+  assert.notEqual(missingRelayEnd, source, 'relay boundary fixture removes the real end anchor');
+  assert.throws(() => assertProductSectionsIsolated(missingRelayEnd), /relay end anchor missing/, 'missing relay boundary fails closed');
+  const reversedIntake = source.replace(/function\s+aptSettle\s*\(/, 'function aptSettleMissing(');
+  assert.notEqual(reversedIntake, source, 'OfficeIntake boundary fixture removes the real end anchor');
+  assert.throws(() => assertProductSectionsIsolated(reversedIntake), /OfficeIntake end anchor missing/, 'missing OfficeIntake boundary fails closed');
+  assertProductSectionsIsolated(source);
   const exportBody = extractFunction('officeOpsExportLastCache');
   assert.match(exportBody, /idbGet\('office_ops_cache'\)/, 'export reads only the normalized OfficeOps cache');
   assert.doesNotMatch(exportBody, /officeOpsCall|commercialCall|fetch\(/, 'export performs no network request');
@@ -332,20 +376,33 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
   assert.doesNotMatch(extractFunction('commercialCall'), forbiddenReferences, 'commercialCall static transport boundary is isolated from state, relay, and OfficeIntake');
 
-  const conversionFunctions = [
-    'officeOpsComplexNameKey', 'officeOpsConversionPayload', 'officeOpsCanonicalConversionTerms', 'officeOpsCanonicalConversionReceipt',
-    'officeOpsAptOrderDraft', 'officeOpsValidateExistingConversionOrder', 'officeOpsProofValueInUse', 'officeOpsCreateConversionIds',
-    'officeOpsAssertCallerConversionIdentity', 'officeOpsLoadConversionContext', 'officeOpsDriveInspectionConversion',
-    'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion', 'cancelOfficeOpsInspectionConversion',
-    'officeOpsConversionCallerForInspection', 'officeOpsInspectionCardHtml', 'officeOpsSetConversionBusy',
-    'officeOpsConversionFormValue', 'officeOpsSetConversionModalBusy', 'openOfficeOpsConversionModal', 'officeOpsWireConversionActions'
-  ];
-  const forbiddenConversionSurface = /relayCall|__relay\b|relay_queue|officeIntake|OfficeIntake|cloudApi|queueHeic|heicPreview|photoUpload|gdUpload|gdBackup|gdPersist|gdQueue/i;
-  for (const name of conversionFunctions) {
-    const body = extractFunction(name);
-    assert.doesNotMatch(body, forbiddenConversionSurface, name + ' cannot route OfficeOps conversion data to relay, OfficeIntake, or media queues');
-    assert.doesNotMatch(body, /state\.aptOrders\s*\.(?:push|splice|unshift|pop|shift)\s*\(/, name + ' cannot write the local order collection directly');
+  const forbiddenCrossSurface = /relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|\bcloudApi[A-Za-z0-9_]*|\brelayBuild[A-Za-z0-9_]*(?:Upload|Payload)[A-Za-z0-9_]*|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|\bgd[A-Za-z0-9_]*(?:Backup|Blob|Drive|File|Folder|Persist|Queue|Restore|Save|Sync|Token|Upload)[A-Za-z0-9_]*|__heic[A-Za-z0-9_]*|queueHeicPreview|(?:pump|process|queue)HeicPreview[A-Za-z0-9_]*|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|officeIntake|OfficeIntake/i;
+  function assertAllPrefixedFunctionsIsolated(candidate) {
+    const names = discoveredIsolatedFunctionNames(candidate);
+    assert.ok(names.length > 0, 'OfficeOps/commercial function discovery is empty');
+    for (const name of names) {
+      const body = extractFunctionFrom(candidate, name);
+      assert.doesNotMatch(body, forbiddenCrossSurface, name + ' cannot route OfficeOps/commercial data to relay, Drive, OfficeIntake, or media queues');
+      assert.doesNotMatch(body, /state\.aptOrders\s*\.(?:push|splice|unshift|pop|shift)\s*\(/, name + ' cannot write the local order collection directly');
+    }
+    return names;
   }
+  for (const statement of [
+    'void __relay.token;',
+    'void __gdToken;',
+    'photoUploadQueue(item);',
+    'queueHeicPreview(file);',
+    'officeIntakeQueueOrderStatus(row);'
+  ]) {
+    const mutant = injectFunctionStatement(source, 'officeOpsError', statement);
+    assert.throws(() => assertAllPrefixedFunctionsIsolated(mutant), /cannot route/, 'cross-surface mutant must be rejected');
+  }
+  const discoveredFunctions = assertAllPrefixedFunctionsIsolated(source);
+  for (const requiredName of [
+    'officeOpsNormalizeConversionCandidateInvariant', 'officeOpsAssertConversionCandidate', 'officeOpsAssertUniqueLocalOrderIds',
+    'officeOpsAssertDurableConversionOrder', 'officeOpsFenceDurableConversionCandidate', 'officeOpsConversionFenceRecoveryError',
+    'officeOpsAssertFenceRelease', 'officeOpsConversionStageFromStore', 'officeOpsTerminalConversionStep'
+  ]) assert.ok(discoveredFunctions.includes(requiredName), 'automatic OfficeOps function discovery must include ' + requiredName);
   for (const name of ['officeOpsDriveInspectionConversion', 'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion', 'cancelOfficeOpsInspectionConversion']) {
     assert.doesNotMatch(extractFunction(name), /\bofficeOpsMutation\s*\(/, name + ' uses only the ACK-bound OfficeOps mutation path');
   }

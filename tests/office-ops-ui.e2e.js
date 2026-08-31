@@ -322,9 +322,12 @@ const auditRow = {
   await page.waitForTimeout(900);
   const browserStore = { schemaVersion: 1, revision: 1, updatedAt: '2026-08-31T12:00:00+09:00',
     pilots: [{ ...pilot, complexName: '<img src=x onerror=alert(1)>' }], consents: [], inspections: [], opportunities: [], audit: [auditRow] };
-  const bootMode = await page.evaluate(async store => {
+  const tokenSentinels = Object.freeze({ office: 'TEST_ONLY_OFFICEOPS_TOKEN_6F14E7A9', commercial: 'TEST_ONLY_COMMERCIAL_TOKEN_8BD2C431' });
+  const bootMode = await page.evaluate(async ({ store, sentinels }) => {
     await idbSet('office_ops_url', 'https://office.example/ops');
-    await idbSet('office_ops_token', 'office-token');
+    await idbSet('office_ops_token', sentinels.office);
+    await idbSet('commercial_approval_url', 'https://commercial.example/approval');
+    await idbSet('commercial_approval_token', sentinels.commercial);
     await idbSet('office_ops_cache', { store, revision: store.revision, updatedAt: store.updatedAt });
     window.__ooScenario = 'fresh'; window.__ooCalls = [];
     const realFetch = window.fetch.bind(window);
@@ -336,8 +339,51 @@ const auditRow = {
       return { ok: true, json: async () => ({ ok: true, store }) };
     };
     return (await officeOpsBoot()).mode;
-  }, browserStore);
+  }, { store: browserStore, sentinels: tokenSentinels });
   assert.equal(bootMode, 'stale-export-only', 'strict cached boot starts stale and requires live refresh');
+
+  const tokenMutantsDetected = await page.evaluate(sentinels => {
+    openGdriveSetup();
+    const root = document.getElementById('modalRoot');
+    const needles = [sentinels.office, sentinels.commercial, sentinels.office.slice(-8), sentinels.commercial.slice(-8), sentinels.office.slice(-4), sentinels.commercial.slice(-4)];
+    const leaks = () => {
+      const surfaces = [
+        root.innerHTML, root.textContent, document.documentElement.outerHTML,
+        [...root.querySelectorAll('input')].map(input => input.value).join('\n'),
+        [...root.querySelectorAll('[role="status"],#ooState')].map(node => node.textContent).join('\n')
+      ];
+      return needles.some(needle => surfaces.some(surface => String(surface).includes(needle)));
+    };
+    const officeInput = root.querySelector('#ooTok');
+    officeInput.value = sentinels.office;
+    const inputMutation = leaks();
+    officeInput.value = '';
+    const summary = root.querySelector('#ooState');
+    const originalSummary = summary.textContent;
+    summary.textContent = sentinels.commercial;
+    const summaryMutation = leaks();
+    summary.textContent = originalSummary;
+    return inputMutation && summaryMutation;
+  }, tokenSentinels);
+  assert.equal(tokenMutantsDetected, true, 'credential sentinel checker rejects input-value and settings-summary leak mutants');
+  const tokenDom = await page.evaluate(sentinels => {
+    openGdriveSetup();
+    const root = document.getElementById('modalRoot');
+    const officeInput = root.querySelector('#ooTok'), commercialInput = root.querySelector('#caTok');
+    const needles = [sentinels.office, sentinels.commercial, sentinels.office.slice(-8), sentinels.commercial.slice(-8), sentinels.office.slice(-4), sentinels.commercial.slice(-4)];
+    const surfaces = [
+      root.innerHTML, root.textContent, document.documentElement.outerHTML,
+      [...root.querySelectorAll('input')].map(input => input.value).join('\n'),
+      [...root.querySelectorAll('[role="status"],#ooState')].map(node => node.textContent).join('\n')
+    ];
+    return {
+      valuesBlank: officeInput.value === '' && commercialInput.value === '',
+      placeholdersStored: officeInput.placeholder === '저장됨' && commercialInput.placeholder === '저장됨',
+      leakFree: !needles.some(needle => surfaces.some(surface => String(surface).includes(needle)))
+    };
+  }, tokenSentinels);
+  assert.deepEqual(tokenDom, { valuesBlank: true, placeholdersStored: true, leakFree: true }, 'stored credential bytes and fragments never render in settings or client HTML');
+  await page.locator('#modalRoot .modal-close').click();
 
   async function openOfficeOpsFromMore() {
     await page.locator('[data-mnav="__more"]').click();

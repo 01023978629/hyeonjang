@@ -7,12 +7,27 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const nodeAssert = require('node:assert/strict');
 
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hj-pages-artifact-'));
 const out = path.join(temp, '_site');
 const expected = ['.nojekyll', 'index.html', 'privacy.html', 'sw.js', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
+const requiredGuards = [
+  'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
+  'version-sync.check.js', 'sw-cache.check.js', 'pages-artifact.e2e.js',
+  'office-ops-isolation.e2e.js', 'office-ops-ui.e2e.js', 'paid-work-gate.e2e.js',
+  'apt-commercial-ui.e2e.js', 'legacy-commercial-gate.e2e.js',
+  'office-ops-conversion.e2e.js', 'relay.e2e.js',
+  'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js'
+];
+
+function assertRequiredGuards(testNames, label) {
+  const names = testNames instanceof Set ? testNames : new Set(testNames);
+  const missing = requiredGuards.filter(name => !/\.(check|unit|e2e)\.js$/.test(name) || !names.has(name));
+  assert(missing.length === 0, label + ' 필수 검사 누락: ' + missing.join(', '));
+}
 
 function walk(dir, base = dir) {
   if (!fs.existsSync(dir)) return [];
@@ -40,16 +55,13 @@ try {
     '워크플로가 전체 러너(node tests/run-all.js, 인자 없이)를 실행하지 않는다');
   assert(/uses:\s*actions\/checkout@v4[\s\S]*?with:[\s\S]*?fetch-depth:\s*0[\s\S]*?- name:\s*Setup Node\.js/.test(workflow),
     '고정 기준 커밋의 조상 검사를 위해 Checkout 전체 이력(fetch-depth: 0)이 필요하다');
-  // 예전 게이트가 지키던 8종 검사가 러너의 수집 범위(tests/*.check|unit|e2e.js) 안에
-  // 실제 파일로 존재하는지 — 파일이 지워지거나 이름이 바뀌면 여기서 잡는다.
-  const guards = [
-    'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
-    'version-sync.check.js', 'sw-cache.check.js', 'pages-artifact.e2e.js',
-    'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js'
-  ];
-  const missingGuards = guards.filter(name =>
-    !/\.(check|unit|e2e)\.js$/.test(name) || !fs.existsSync(path.join(root, 'tests', name)));
-  assert(missingGuards.length === 0, '배포 전 필수 검사 파일이 러너 수집 범위에 없다: ' + missingGuards.join(', '));
+  // 수익·승인·격리·중계 회귀까지 포함한 필수 검사가 러너의 자동 수집 범위에
+  // 실제 파일로 존재하는지 — 파일 삭제/개명으로 녹색이 되는 일을 막는다.
+  const testNames = new Set(fs.readdirSync(path.join(root, 'tests')));
+  const missingGuardMutant = new Set(testNames);
+  missingGuardMutant.delete('office-ops-conversion.e2e.js');
+  nodeAssert.throws(() => assertRequiredGuards(missingGuardMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'missing deployment guard fixture must be rejected');
+  assertRequiredGuards(testNames, '배포 전');
   const runner = fs.readFileSync(path.join(root, 'tests', 'run-all.js'), 'utf8');
   assert(runner.includes('static-server.js') && runner.includes('mock-relay.js'),
     '러너가 테스트 서버(8299/8398)를 직접 관리하지 않는다 — CI 에서 e2e 가 전부 죽는다');

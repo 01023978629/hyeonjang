@@ -6,8 +6,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const nodeAssert = require('node:assert/strict');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+const EXPECTED_SHELL_PATHS = ['./','./index.html','./privacy.html','./terms.html'];
+const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
 const puts = [];
 const fetches = [];
@@ -63,8 +66,25 @@ async function dispatch(req, response) {
   return { intercepted: !!responsePromise, puts: puts.length, fetches: fetches.length };
 }
 function assert(value, message) { if (!value) throw new Error('FAIL  ' + message); }
+function assertShellPathsSafe(paths, label) {
+  assert(Array.isArray(paths), label + ': SHELL_PATHS is not an array');
+  assert(JSON.stringify(paths) === JSON.stringify(EXPECTED_SHELL_PATHS), label + ': SHELL_PATHS must be the exact ordered app shell');
+  assert(!FORBIDDEN_SHELL_DATA.test(paths.join('\n')), label + ': SHELL_PATHS contains isolated or external data');
+}
 
 (async () => {
+  for (const extra of [
+    'https://office.invalid/ops', './office_ops_token.txt', './office_ops_cache.json', './commercial_approval.json'
+  ]) {
+    nodeAssert.throws(() => assertShellPathsSafe([...EXPECTED_SHELL_PATHS, extra], 'mutant'), /exact ordered app shell/, 'extra isolated shell fixture must be rejected');
+  }
+  const evaluatedShell = JSON.parse(vm.runInContext('JSON.stringify({scope:SCOPE_PATH,paths:Array.from(SHELL_PATHS)})', context));
+  const actualShellPaths = evaluatedShell.paths.map(shellPath => {
+    assert(shellPath === evaluatedShell.scope || shellPath.startsWith(evaluatedShell.scope), 'actual service worker: shell path escapes its scope');
+    return shellPath === evaluatedShell.scope ? './' : './' + shellPath.slice(evaluatedShell.scope.length);
+  });
+  assertShellPathsSafe(actualShellPaths, 'actual service worker');
+
   for (const url of [
     'https://example.test/hyeonjang/',
     'https://example.test/hyeonjang/index.html',
@@ -100,6 +120,7 @@ function assert(value, message) { if (!value) throw new Error('FAIL  ' + message
   assert(r.puts === 0, 'opaque 응답을 캐시한다');
 
   console.log('PASS  같은 출처·쿼리 없는 앱 셸 허용목록만 캐시');
+  console.log('PASS  SHELL_PATHS 는 정확한 4개 앱 셸이며 격리 데이터 경로 변이를 거부');
   console.log('PASS  외부·Authorization·쿼리 navigation·민감 쿼리·POST 캐시 차단');
   console.log('PASS  실패·opaque 응답 캐시 차단');
 })().catch(e => { console.error(e && e.stack || e); process.exit(1); });
