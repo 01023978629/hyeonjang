@@ -27679,6 +27679,13 @@ function officeOpsProofValueInUse(store,inspectionId,value,allowedOrder){
     if(!order)continue;
     if(order===allowedOrder)continue;
     if(order.id===value||order.sourceOfficeOpsConversionId===value||(order.commercialApproval&&order.commercialApproval.receiptId===value))return true;
+    const audit=order.commercialApprovalAudit;
+    if(Array.isArray(audit)){
+      for(const row of audit){
+        const previous=row&&typeof row==='object'&&!Array.isArray(row)&&row.previousApproval;
+        if(previous&&typeof previous==='object'&&!Array.isArray(previous)&&previous.receiptId===value)return true;
+      }
+    }else if(audit!=null&&/^receipt_[A-Za-z0-9_-]{1,80}$/.test(value))return true;
   }
   return false;
 }
@@ -27693,16 +27700,44 @@ function officeOpsAssertCallerConversionIdentity(caller,expected){
     if(Object.prototype.hasOwnProperty.call(input,key)&&input[key]!==expected[key])throw new Error('conversion identity conflict');
   }
 }
+function officeOpsAssertUniqueLocalOrderIds(orders){
+  if(!Array.isArray(orders))throw new Error('local order identity conflict');
+  const ids=new Set();
+  for(const order of orders){
+    const id=order&&order.id;
+    if(typeof id!=='string'||id.length===0||ids.has(id))throw new Error('local order identity conflict');
+    ids.add(id);
+  }
+  return true;
+}
+async function officeOpsAssertDurableConversionOrder(context){
+  if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
+  if(!context||!context.proof||!context.order||typeof __paidCommitPointerKey!=='string'||typeof __tabStamp!=='string')throw new Error('durable local order identity conflict');
+  const resolved=await resolvePaidCommitState();
+  if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
+  const journal=resolved&&resolved.journal,data=resolved&&resolved.data;
+  if(!resolved||resolved.source!=='paid-generation'||resolved.pointer!==__paidCommitPointerKey||!journal||journal.current!==resolved.pointer||
+    journal.committedAt!==__tabStamp||!data||data.savedAt!==__tabStamp)throw new Error('durable local order identity conflict');
+  officeOpsAssertUniqueLocalOrderIds(data.aptOrders);
+  const candidates=data.aptOrders.filter(order=>order&&order.id===context.proof.pendingOrderId);
+  if(candidates.length!==1)throw new Error('durable local order identity conflict');
+  officeOpsValidateExistingConversionOrder(candidates[0],context);
+  if(JSON.stringify(candidates[0])!==JSON.stringify(context.order))throw new Error('durable local order identity conflict');
+  return candidates[0];
+}
 async function officeOpsLoadConversionContext(caller,suppliedStore){
   const input=caller||{},inspectionId=String(input.inspectionId||''),store=suppliedStore||await officeOpsLoad();
   if(__officeOps.mode!=='fresh')throw new Error('office-disabled');
   if(!store||!Array.isArray(store.inspections)||!Number.isInteger(store.revision)||store.revision<0)throw new Error('invalid OfficeOps conversion store');
+  officeOpsAssertUniqueLocalOrderIds(state.aptOrders);
   const matches=store.inspections.filter(row=>row&&row.inspectionId===inspectionId);
   if(matches.length!==1)throw new Error('invalid conversion inspection');
   const inspection=normalizeOfficeInspectionRecord(matches[0]),nameKey=officeOpsComplexNameKey(inspection.complexName);
+  if(inspection.archivedAt!==null)throw new Error('invalid conversion state');
   const localOffices=(state.aptOffices||[]).filter(row=>row&&/^[A-Za-z0-9_-]{1,160}$/.test(row.id||'')&&nameKey&&officeOpsComplexNameKey(row.complex)===nameKey);
   if(localOffices.length!==1)throw new Error('local office mapping conflict');
   const commercialTerms=officeOpsCanonicalConversionTerms(inspection.commercialTerms),localOffice=localOffices[0];
+  if((state.aptOffices||[]).filter(row=>row&&row.id===localOffice.id).length!==1)throw new Error('local office mapping conflict');
   if(inspection.status==='proposal'){
     const forbidden=['conversionId','pendingOrderId','receiptId','receiptSubjectType','receiptSubjectId','termsSha256','linkedOrderId'];
     if(forbidden.some(key=>Object.prototype.hasOwnProperty.call(input,key)))throw new Error('conversion identity conflict');
@@ -27729,7 +27764,10 @@ async function officeOpsDriveInspectionConversion(caller,initialStore){
   for(let step=0;step<7;step+=1){
     let context=await officeOpsLoadConversionContext(identity,store);
     if(context.inspection.status==='proposal')throw new Error('invalid conversion state');
+    const durableBound=(context.inspection.status==='conversion-writing'&&context.order)||['conversion-local-committed','converted'].includes(context.inspection.status);
+    if(durableBound)await officeOpsAssertDurableConversionOrder(context);
     await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
+    if(durableBound)await officeOpsAssertDurableConversionOrder(context);
     if(context.inspection.status==='converted')return context.inspection;
     if(context.inspection.status==='conversion-pending'){
       const result=await officeOpsMutationWithAck('officeInspectionArmLocalCommit',{...context.proof,expectedRevision:context.store.revision});store=result.store;identity=context.proof;continue;
@@ -27742,7 +27780,9 @@ async function officeOpsDriveInspectionConversion(caller,initialStore){
       store=await officeOpsLoad();context=await officeOpsLoadConversionContext(identity,store);
       if(context.inspection.status!=='conversion-writing')continue;
       if(!context.order)throw new Error('local order identity conflict');
+      await officeOpsAssertDurableConversionOrder(context);
       await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
+      await officeOpsAssertDurableConversionOrder(context);
       const result=await officeOpsMutationWithAck('officeInspectionRecordLocalCommit',{...context.proof,linkedOrderId:context.proof.pendingOrderId,expectedRevision:context.store.revision});
       store=result.store;identity={...context.proof,linkedOrderId:context.proof.pendingOrderId};continue;
     }
@@ -27780,11 +27820,10 @@ async function cancelOfficeOpsInspectionConversion(caller){
   if(__officeOps.mode!=='fresh'||!__officeOps.cache||!Array.isArray(__officeOps.cache.inspections))throw new Error('conversion cancel unavailable');
   const cached=__officeOps.cache.inspections.filter(row=>row&&row.inspectionId===input.inspectionId);
   if(cached.length!==1||cached[0].status!=='conversion-pending'||cached[0].conversionId!==input.conversionId)throw new Error('conversion cancel conflict');
-  const store=await officeOpsLoad(),matches=store.inspections.filter(row=>row&&row.inspectionId===input.inspectionId);
-  if(__officeOps.mode!=='fresh'||matches.length!==1)throw new Error('conversion cancel conflict');
-  const inspection=normalizeOfficeInspectionRecord(matches[0]);
-  if(inspection.status!=='conversion-pending'||inspection.conversionId!==input.conversionId||(Object.prototype.hasOwnProperty.call(input,'expectedRevision')&&input.expectedRevision!==store.revision))throw new Error('conversion cancel conflict');
-  return (await officeOpsMutationWithAck('officeInspectionCancelConversion',{inspectionId:inspection.inspectionId,conversionId:inspection.conversionId,expectedRevision:store.revision})).store;
+  const store=await officeOpsLoad(),context=await officeOpsLoadConversionContext(input,store);
+  if(__officeOps.mode!=='fresh'||context.inspection.status!=='conversion-pending'||
+    (Object.prototype.hasOwnProperty.call(input,'expectedRevision')&&input.expectedRevision!==context.store.revision))throw new Error('conversion cancel conflict');
+  return (await officeOpsMutationWithAck('officeInspectionCancelConversion',{inspectionId:context.inspection.inspectionId,conversionId:context.inspection.conversionId,expectedRevision:context.store.revision})).store;
 }
 function officeOpsConversionCallerForInspection(inspectionId){
   if(__officeOps.mode!=='fresh'||!__officeOps.cache||!Array.isArray(__officeOps.cache.inspections))throw new Error('office-disabled');

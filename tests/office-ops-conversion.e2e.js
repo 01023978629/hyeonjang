@@ -102,7 +102,7 @@ function browserStore() {
 function createBrowserScenario(options = {}) {
   return {
     store: browserStore(), lossAfter: options.lossAfter || '', failBefore: options.failBefore || '', lost: false,
-    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null
+    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null, committedMutations: [], commercialVerifyHook: null
   };
 }
 
@@ -134,7 +134,10 @@ function commitBrowserOfficeMutation(scenario, envelope) {
     backupFileId: 'backup_browser_' + store.revision, backupManifestFileId: 'manifest_browser_' + store.revision,
     backupSha256: String(store.revision).repeat(64).slice(0, 64), preMutationRevision: preRevision
   });
-  return { ok: true, id: inspection.inspectionId, revision: store.revision, updatedAt: at };
+  const acknowledgement = { ok: true, id: inspection.inspectionId, revision: store.revision, updatedAt: at };
+  scenario.committedMutations.push({ action: envelope.action, payload: structuredClone(payload), preMutationRevision: preRevision,
+    mutationId: envelope.mutationId, acknowledgement: structuredClone(acknowledgement) });
+  return acknowledgement;
 }
 
 async function routeBrowserOffice(scenario, route) {
@@ -143,6 +146,14 @@ async function routeBrowserOffice(scenario, route) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, store: scenario.store }) }); return;
   }
   if (scenario.failBefore === envelope.action && !scenario.lost) { scenario.lost = true; await route.abort('connectionfailed'); return; }
+  const prior = scenario.committedMutations.find(row => row.action === envelope.action && row.preMutationRevision === envelope.payload.expectedRevision);
+  if (prior) {
+    const exactPayload = JSON.stringify(prior.payload) === JSON.stringify(envelope.payload);
+    if (exactPayload && scenario.store.revision === prior.acknowledgement.revision) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(prior.acknowledgement) }); return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'replay-conflict' }) }); return;
+  }
   if (envelope.payload.expectedRevision !== scenario.store.revision) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'revision-conflict' }) }); return;
   }
@@ -169,6 +180,7 @@ async function routeBrowserCommercial(scenario, route) {
   }
   if (envelope.action === 'commercialApprovalVerify') {
     scenario.verifyNonces.push(payload.nonce);
+    if (typeof scenario.commercialVerifyHook === 'function') await scenario.commercialVerifyHook(structuredClone(payload));
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, receiptId: payload.commercialApproval.receiptId,
       serverNowKst: '2026-09-01T09:00:03+09:00', nonce: payload.nonce, verifyExpiresAtKst: '2026-09-01T09:00:33+09:00' }) }); return;
   }
@@ -190,6 +202,25 @@ async function createActualConversionPage(browser, appUrl, scenario) {
     state.aptOrders = []; __tabStale = false; __paidApprovalConsumptions.clear(); clearTimeout(__idbSaveTimer);
   });
   return { context, page };
+}
+
+async function writeBrowserPaidGeneration(page, mode, options = {}) {
+  return page.evaluate(async ({ mode, bindTab, stale }) => {
+    const expectedPointer = __paidCommitPointerKey, expectedStamp = __tabStamp;
+    const candidate = structuredClone(serializeData());
+    if (mode === 'missing') candidate.aptOrders = [];
+    else if (mode === 'duplicate') candidate.aptOrders.push(structuredClone(candidate.aptOrders[0]));
+    else if (mode === 'unrelated-duplicate') candidate.aptOrders.push({ id: 'unrelated_durable_duplicate' }, { id: 'unrelated_durable_duplicate' });
+    else if (mode === 'amount-mismatch') candidate.aptOrders[0].amount += 1;
+    else throw new Error('unknown paid generation fixture mode');
+    const baseMs = Date.parse(expectedStamp || candidate.savedAt || 0);
+    candidate.savedAt = new Date(Math.max(Date.now(), Number.isFinite(baseMs) ? baseMs + 1 : 0)).toISOString();
+    const generationKey = PAID_COMMIT_GENERATION_PREFIX + crypto.randomUUID();
+    const commit = await paidCommitWriteAtomic(candidate, expectedPointer, generationKey, expectedStamp);
+    if (bindTab) { __paidCommitPointerKey = commit.pointer; __tabStamp = candidate.savedAt; }
+    __tabStale = stale === true;
+    return { pointer: commit.pointer, savedAt: candidate.savedAt, boundPointer: __paidCommitPointerKey, boundStamp: __tabStamp, stale: __tabStale };
+  }, { mode, bindTab: options.bindTab === true, stale: options.stale === true });
 }
 
 function createVmHarness() {
@@ -221,6 +252,10 @@ function createVmHarness() {
       scenario.orders.push(order);
       return order;
     },
+    resolvePaidCommitState: async () => ({
+      data: { savedAt: '2026-09-01T00:00:00.000Z', aptOrders: structuredClone(scenario.orders) }, source: 'paid-generation',
+      pointer: 'paid_commit_generation:vm', journal: { current: 'paid_commit_generation:vm', committedAt: '2026-09-01T00:00:00.000Z' }
+    }),
     officeOpsLoad: async () => {
       sandbox.__officeOps.mode = scenario.mode;
       sandbox.__officeOps.cache = scenario.store;
@@ -248,14 +283,14 @@ function createVmHarness() {
     }
   };
   vm.createContext(sandbox);
-  vm.runInContext("var __officeOps={mode:'fresh',revision:10,cache:null};", sandbox);
+  vm.runInContext("var __officeOps={mode:'fresh',revision:10,cache:null},__tabStale=false,__paidCommitPointerKey='paid_commit_generation:vm',__tabStamp='2026-09-01T00:00:00.000Z';", sandbox);
   for (const name of [
     'paidPlainObject', 'paidExactKeys', 'isRealIsoDate', 'formatKstIso', 'parseStrictKstDateTime', 'sha256Hex',
     'normalizeCommercialTerms', 'normalizeReceipt', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone',
     'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity',
     'officeOpsComplexNameKey', 'officeOpsConversionPayload', 'officeOpsCanonicalConversionTerms', 'officeOpsCanonicalConversionReceipt',
     'officeOpsAptOrderDraft', 'officeOpsValidateExistingConversionOrder', 'officeOpsInspectionConversionActions',
-    'officeOpsProofValueInUse', 'officeOpsCreateConversionIds', 'officeOpsAssertCallerConversionIdentity', 'officeOpsLoadConversionContext',
+    'officeOpsProofValueInUse', 'officeOpsCreateConversionIds', 'officeOpsAssertCallerConversionIdentity', 'officeOpsAssertUniqueLocalOrderIds', 'officeOpsAssertDurableConversionOrder', 'officeOpsLoadConversionContext',
     'officeOpsDriveInspectionConversion', 'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion',
     'cancelOfficeOpsInspectionConversion'
   ]) vm.runInContext(extractFunction(name), sandbox);
@@ -266,6 +301,7 @@ function createVmHarness() {
     scenario.snapshotCalls.length = 0; scenario.gateCalls.length = 0; scenario.mutationCalls.length = 0; scenario.validationFailure = false;
     scenario.snapshotResult = true; scenario.lossAfter = ''; scenario.failBefore = ''; scenario.lost = false;
     sandbox.state.aptOffices = scenario.offices; sandbox.state.aptOrders = scenario.orders; sandbox.__officeOps.mode = 'fresh'; sandbox.__officeOps.revision = 10; sandbox.__officeOps.cache = scenario.store;
+    sandbox.__tabStale = false;
   };
   return { scenario, sandbox, run, resetState };
 }
@@ -313,6 +349,42 @@ async function runVmContracts() {
     approvalEvidenceFileId: RECEIPT.approvalEvidenceFileId, approvalEvidenceType: RECEIPT.approvalEvidenceType,
     approvedAt: RECEIPT.approvedAt, approvedByRole: RECEIPT.approvedByRole
   };
+  resetState();
+  scenario.orders.push({
+    id: 'unrelated_retired_order', sourceOfficeOpsConversionId: 'unrelated_conversion',
+    commercialApproval: { receiptId: 'receipt_current_unrelated' },
+    commercialApprovalAudit: [
+      null,
+      { previousApproval: null },
+      'malformed-neighbor',
+      { previousApproval: { receiptId: 'receipt_retired_different' } },
+      { previousApproval: { receiptId: RECEIPT.receiptId } }
+    ]
+  });
+  const retiredStoreBefore = JSON.stringify(scenario.store), retiredOrdersBefore = JSON.stringify(scenario.orders);
+  await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /conversion receipt conflict|reused conversion proof/);
+  assert.equal(scenario.issueCalls.length, 1, 'a server-issued duplicate receipt is the only unavoidable side effect');
+  assert.deepEqual([scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.gateCalls.length], [0,0,0,0],
+    'retired receipt collision stops before verification, snapshot, Begin, or local create');
+  assert.equal(JSON.stringify(scenario.store), retiredStoreBefore);
+  assert.equal(JSON.stringify(scenario.orders), retiredOrdersBefore);
+
+  resetState();
+  scenario.orders.push({ id: 'unrelated_malformed_history', sourceOfficeOpsConversionId: 'unrelated_conversion',
+    commercialApproval: { receiptId: 'receipt_current_unrelated' }, commercialApprovalAudit: 'malformed-audit' });
+  await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /conversion receipt conflict|reused conversion proof/);
+  assert.deepEqual([scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.gateCalls.length], [1,0,0,0,0],
+    'a non-array receipt history fails closed after only the unavoidable issue side effect');
+
+  resetState();
+  scenario.orders.push({
+    id: 'unrelated_retired_order', sourceOfficeOpsConversionId: 'unrelated_conversion',
+    commercialApproval: { receiptId: 'receipt_current_unrelated' },
+    commercialApprovalAudit: [{ previousApproval: { receiptId: 'receipt_retired_different' } }]
+  });
+  const nonCollision = await run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')');
+  assert.equal(nonCollision.status, 'converted', 'a different retired receipt does not false-positive');
+  resetState();
   const result = await run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')');
   assert.equal(result.status, 'converted');
   assert.deepEqual(scenario.mutationCalls.map(call => call.action), [
@@ -328,6 +400,30 @@ async function runVmContracts() {
   assert.equal(scenario.orders.length, 1);
   assert.doesNotMatch(JSON.stringify(scenario.orders[0]), /관리사무소 예방점검 제안|밸브 노후|office_remote_001/, 'local order contains no OfficeOps summary/risk/remote office PII');
   assert.ok(scenario.validateCalls.length >= 5, 'new conversion freshly validates receipt across stages and the paid gate boundary');
+
+  resetState('conversion-writing'); scenario.orders.push(exactPersistedOrder());
+  const durableContext = await run('officeOpsLoadConversionContext(' + JSON.stringify(proofFromInspection(scenario.store.inspections[0])) + ')');
+  const normalResolvePaidCommitState = sandbox.resolvePaidCommitState;
+  sandbox.resolvePaidCommitState = async () => { const resolved = await normalResolvePaidCommitState(); sandbox.__tabStale = true; return resolved; };
+  await assert.rejects(() => sandbox.officeOpsAssertDurableConversionOrder(durableContext), /stale appState conflict/,
+    'stale notification arriving while the durable snapshot is awaited is rechecked before success');
+  sandbox.resolvePaidCommitState = normalResolvePaidCommitState;
+
+  for (const [label, status, alter] of [
+    ['legacy source', 'conversion-writing', resolved => Object.assign(resolved, { source: 'legacy-appState', pointer: null, journal: null })],
+    ['none source', 'conversion-local-committed', resolved => Object.assign(resolved, { source: 'none', pointer: null, data: null, journal: null })],
+    ['malformed recovery source', 'conversion-writing', resolved => Object.assign(resolved, { source: 'none', pointer: null, data: null, journal: null, recoveryMalformedPointer: true, recoverySnapshot: {} })],
+    ['journal current mismatch', 'conversion-local-committed', resolved => { resolved.journal.current = 'paid_commit_generation:other'; }],
+    ['journal stamp mismatch', 'conversion-writing', resolved => { resolved.journal.committedAt = '2026-09-01T00:00:01.000Z'; }],
+    ['generation stamp mismatch', 'conversion-local-committed', resolved => { resolved.data.savedAt = '2026-09-01T00:00:01.000Z'; }]
+  ]) {
+    resetState(status); scenario.orders.push(exactPersistedOrder());
+    sandbox.resolvePaidCommitState = async () => { const resolved = structuredClone(await normalResolvePaidCommitState()); alter(resolved); return resolved; };
+    await assert.rejects(() => run('resumeOfficeOpsInspectionConversion(' + JSON.stringify(proofFromInspection(scenario.store.inspections[0])) + ')'), /durable local order identity/);
+    assert.deepEqual([scenario.validateCalls.length, scenario.mutationCalls.length], [0,0], label + ' fails before Record/Finalize and commercial verification');
+    assert.equal(scenario.store.inspections[0].status, status, label + ' leaves the server stage unchanged');
+  }
+  sandbox.resolvePaidCommitState = normalResolvePaidCommitState;
 
   for (const [label, lossAfter, failBefore, expectedStatus, expectedOrders] of [
     ['Begin ACK loss', 'officeInspectionBeginConversion', '', 'conversion-pending', 0],
@@ -377,6 +473,33 @@ async function runVmContracts() {
   resetState(); scenario.offices.push({ id: 'local_office_002', complex: '  테스트　단지 ' });
   await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /local office mapping/);
   assert.equal(scenario.issueCalls.length, 0, 'ambiguous mapping fails before receipt issue');
+  resetState(); scenario.offices.push({ id: 'local_office_001', complex: '다른 단지' });
+  const duplicateOfficeStoreBefore = JSON.stringify(scenario.store), duplicateOfficeRowsBefore = JSON.stringify(scenario.offices);
+  await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /local office mapping/);
+  assert.deepEqual([scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.orders.length], [0,0,0,0,0],
+    'a selected local office ID owned by another complex fails before every effect');
+  assert.equal(JSON.stringify(scenario.store), duplicateOfficeStoreBefore);
+  assert.equal(JSON.stringify(scenario.offices), duplicateOfficeRowsBefore);
+  resetState('proposal', { archivedAt: '2026-08-31T10:00:00+09:00', archivedBy: 'representative', archiveReason: '보관됨' });
+  const archivedStoreBefore = JSON.stringify(scenario.store), archivedOrdersBefore = JSON.stringify(scenario.orders);
+  await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /archived|conversion state/);
+  assert.deepEqual([scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.orders.length], [0,0,0,0,0],
+    'archived proposal fails before receipt issue or any other effect');
+  assert.equal(JSON.stringify(scenario.store), archivedStoreBefore);
+  assert.equal(JSON.stringify(scenario.orders), archivedOrdersBefore);
+
+  for (const [label, corruptOrders] of [
+    ['duplicate unrelated ID', [{ id: 'unrelated_order_duplicate' }, { id: 'unrelated_order_duplicate' }]],
+    ['empty unrelated ID', [{ id: '' }]]
+  ]) {
+    resetState(); scenario.orders.push(...corruptOrders);
+    const corruptStoreBefore = JSON.stringify(scenario.store), corruptOrdersBefore = JSON.stringify(scenario.orders);
+    await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /local order identity/);
+    assert.deepEqual([scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.gateCalls.length], [0,0,0,0,0],
+      label + ' fails before receipt issue and every conversion effect');
+    assert.equal(JSON.stringify(scenario.store), corruptStoreBefore);
+    assert.equal(JSON.stringify(scenario.orders), corruptOrdersBefore);
+  }
 
   resetState(); scenario.validationFailure = true;
   await assert.rejects(() => run('convertOfficeOpsInspectionToAptOrder("inspection_conversion_001",' + JSON.stringify(approvalInput) + ')'), /approval verification/);
@@ -389,7 +512,7 @@ async function runVmContracts() {
   assert.deepEqual([scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length, scenario.orders.length], [0,0,0,0,0]);
 
   resetState('conversion-writing'); scenario.orders.push(exactPersistedOrder(), exactPersistedOrder());
-  await assert.rejects(() => run('resumeOfficeOpsInspectionConversion(' + JSON.stringify(proofFromInspection(scenario.store.inspections[0])) + ')'), /duplicate local order/);
+  await assert.rejects(() => run('resumeOfficeOpsInspectionConversion(' + JSON.stringify(proofFromInspection(scenario.store.inspections[0])) + ')'), /duplicate local order|local order identity/);
   assert.deepEqual([scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length], [0,0,0], 'duplicate pendingOrderId fails before verification or mutation');
   for (const [label, orderOverride, setup] of [
     ['amount', { amount: TERMS.quotedAmount + 1 }],
@@ -442,8 +565,21 @@ async function runVmContracts() {
   await assert.rejects(() => run('resumeOfficeOpsInspectionConversion({inspectionId:"inspection_conversion_001"})'), /invalid conversion state/);
   assert.deepEqual([scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.mutationCalls.length], [0,0,0]);
 
+  for (const [field, changed] of Object.entries({
+    pendingOrderId: 'order_other', receiptId: 'receipt_other', receiptSubjectType: 'project', receiptSubjectId: 'order_other',
+    termsSha256: 'd'.repeat(64), linkedOrderId: 'order_other', expectedRevision: 11
+  })) {
+    resetState('conversion-pending');
+    const caller = { ...proofFromInspection(scenario.store.inspections[0]), expectedRevision: 10, [field]: changed };
+    const cancelStoreBefore = JSON.stringify(scenario.store), cancelOrdersBefore = JSON.stringify(scenario.orders);
+    await assert.rejects(() => run('cancelOfficeOpsInspectionConversion(' + JSON.stringify(caller) + ')'), /cancel|conversion identity/);
+    assert.deepEqual([scenario.mutationCalls.length, scenario.issueCalls.length, scenario.validateCalls.length, scenario.snapshotCalls.length, scenario.gateCalls.length], [0,0,0,0,0],
+      'cancel caller ' + field + ' mismatch has zero server/local/commercial/snapshot effect');
+    assert.equal(JSON.stringify(scenario.store), cancelStoreBefore);
+    assert.equal(JSON.stringify(scenario.orders), cancelOrdersBefore);
+  }
   resetState('conversion-pending');
-  const pendingProof = proofFromInspection(scenario.store.inspections[0]);
+  const pendingProof = { ...proofFromInspection(scenario.store.inspections[0]), expectedRevision: 10 };
   await run('cancelOfficeOpsInspectionConversion(' + JSON.stringify(pendingProof) + ')');
   assert.equal(scenario.store.inspections[0].status, 'proposal');
   assert.deepEqual(scenario.mutationCalls[0], { action: 'officeInspectionCancelConversion', payload: { inspectionId: pendingProof.inspectionId, conversionId: pendingProof.conversionId, expectedRevision: 10 } });
@@ -632,6 +768,46 @@ async function runBrowserAcceptance() {
         assert.equal(await actual.page.evaluate(() => state.aptOrders.length), expectedOrders);
         const lostAction = options.lossAfter || options.failBefore;
         assert.equal(scenario.officeCalls.filter(call => call.action === lostAction).length, 1, label + ' has zero automatic mutation retry');
+        let replayFixture = null;
+        if (options.lossAfter) {
+          const originalEnvelope = structuredClone(scenario.officeCalls.find(call => call.action === lostAction && call.mutationId));
+          const committed = scenario.committedMutations.find(row => row.mutationId === originalEnvelope.mutationId);
+          assert.ok(committed, label + ' captures the first committed mutation before the response is lost');
+          assert.equal(committed.preMutationRevision, originalEnvelope.payload.expectedRevision, label + ' captures the exact prior revision');
+          assert.equal(JSON.stringify(committed.payload), JSON.stringify(originalEnvelope.payload), label + ' server commit stores the exact canonical payload bytes');
+          const expectedAck = structuredClone(committed.acknowledgement);
+          const beforeReplay = { revision: scenario.store.revision, audit: scenario.store.audit.length, orders: await actual.page.evaluate(() => state.aptOrders.length) };
+          await actual.page.waitForTimeout(2);
+          const replayResult = await actual.page.evaluate(async ({ action, payload }) => {
+            try { const result = await officeOpsCall(action, payload, { mutationId: crypto.randomUUID() }); return { error: '', ack: result }; }
+            catch (error) { return { error: String(error && error.message || error), ack: null }; }
+          }, { action: lostAction, payload: originalEnvelope.payload });
+          assert.equal(replayResult.error, '', label + ' exact prior-success replay receives the original ACK');
+          assert.deepEqual(replayResult.ack, expectedAck);
+          const replayEnvelope = structuredClone(scenario.officeCalls.filter(call => call.action === lostAction && call.mutationId).at(-1));
+          assert.notEqual(replayEnvelope.mutationId, originalEnvelope.mutationId, label + ' replay uses a fresh mutation ID');
+          assert.deepEqual(replayEnvelope.payload, originalEnvelope.payload, label + ' replay preserves the exact canonical action payload and prior revision');
+          assert.equal(JSON.stringify(replayEnvelope.payload), JSON.stringify(originalEnvelope.payload), label + ' replay payload is byte-identical');
+          for (const [kind, timestamp] of [['original', originalEnvelope.timestamp], ['replay', replayEnvelope.timestamp]]) {
+            assert.ok(typeof timestamp === 'string' && Number.isFinite(Date.parse(timestamp)) && new Date(Date.parse(timestamp)).toISOString() === timestamp,
+              label + ' ' + kind + ' envelope has a valid ISO timestamp');
+          }
+          assert.notEqual(replayEnvelope.timestamp, originalEnvelope.timestamp, label + ' replay uses a fresh timestamp');
+          const stableEnvelope = envelope => { const copy = structuredClone(envelope); delete copy.mutationId; delete copy.timestamp; return copy; };
+          assert.deepEqual(stableEnvelope(replayEnvelope), stableEnvelope(originalEnvelope), label + ' replay changes only fresh envelope identity/timestamp fields');
+          assert.deepEqual({ revision: scenario.store.revision, audit: scenario.store.audit.length, orders: await actual.page.evaluate(() => state.aptOrders.length) }, beforeReplay,
+            label + ' exact replay increments no revision, audit row, or local order');
+
+          const mismatchPayload = { ...structuredClone(originalEnvelope.payload), receiptId: 'receipt_replay_mismatch' };
+          const mismatchError = await actual.page.evaluate(async ({ action, payload }) => {
+            try { await officeOpsCall(action, payload, { mutationId: crypto.randomUUID() }); return ''; }
+            catch (error) { return String(error && error.message || error); }
+          }, { action: lostAction, payload: mismatchPayload });
+          assert.match(mismatchError, /replay-conflict/, label + ' one-field payload mismatch cannot claim the prior ACK');
+          assert.deepEqual({ revision: scenario.store.revision, audit: scenario.store.audit.length, orders: await actual.page.evaluate(() => state.aptOrders.length) }, beforeReplay,
+            label + ' mismatched replay has zero mutation effects');
+          replayFixture = { action: lostAction, payload: originalEnvelope.payload, acknowledgedRevision: expectedAck.revision };
+        }
         const issueCount = scenario.issueCount;
         scenario.lossAfter = ''; scenario.failBefore = '';
         const resumed = await actual.page.evaluate(async () => {
@@ -643,6 +819,139 @@ async function runBrowserAcceptance() {
         assert.equal(await actual.page.evaluate(() => state.aptOrders.length), 1, label + ' explicit resume leaves exactly one local order');
         assert.equal(scenario.issueCount, issueCount, label + ' explicit resume issues zero new receipts');
         assert.equal(new Set(scenario.verifyNonces).size, scenario.verifyNonces.length, label + ' uses a fresh nonce at every real validation');
+        if (replayFixture && scenario.store.revision > replayFixture.acknowledgedRevision) {
+          const afterIntervening = { revision: scenario.store.revision, audit: scenario.store.audit.length, orders: await actual.page.evaluate(() => state.aptOrders.length) };
+          const interveningError = await actual.page.evaluate(async ({ action, payload }) => {
+            try { await officeOpsCall(action, payload, { mutationId: crypto.randomUUID() }); return ''; }
+            catch (error) { return String(error && error.message || error); }
+          }, replayFixture);
+          assert.match(interveningError, /replay-conflict/, label + ' exact old payload cannot replay after an intervening mutation');
+          assert.deepEqual({ revision: scenario.store.revision, audit: scenario.store.audit.length, orders: await actual.page.evaluate(() => state.aptOrders.length) }, afterIntervening,
+            label + ' intervening replay conflict has zero mutation effects');
+        }
+      } finally { await actual.context.close(); }
+    }
+
+    for (const [label, mode, bindTab, stale, expectedError] of [
+      ['stale memory plus advanced missing-order generation', 'missing', false, true, /stale appState conflict/],
+      ['native pointer advanced without BroadcastChannel', 'missing', false, false, /durable|pointer|local order/],
+      ['bound durable generation with duplicate order ID', 'duplicate', true, false, /durable|local order identity/],
+      ['bound durable generation with unrelated duplicate order IDs', 'unrelated-duplicate', true, false, /durable|local order identity/],
+      ['bound durable generation with one-field order mismatch', 'amount-mismatch', true, false, /durable|local order identity/]
+    ]) {
+      const scenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' }), actual = await createActualConversionPage(browser, appUrl, scenario);
+      try {
+        const initialFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(initialFailure, /fetch|network|failed/i);
+        assert.equal(scenario.store.inspections[0].status, 'conversion-writing');
+        assert.equal(await actual.page.evaluate(() => state.aptOrders.length), 1);
+        scenario.failBefore = '';
+        const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
+        const beforeRecord = scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        const beforeFinalize = scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        const advanced = await writeBrowserPaidGeneration(actual.page, mode, { bindTab, stale });
+        if (!bindTab) assert.notEqual(advanced.pointer, advanced.boundPointer, label + ' advances native IDB without rebinding the tab');
+        const resumeFailure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(resumeFailure, expectedError, label + ' fails closed before Record');
+        assert.equal(scenario.store.inspections[0].status, 'conversion-writing');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, beforeRecord, label + ' sends zero Record mutations');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, label + ' sends zero Finalize mutations');
+        assert.equal(await actual.page.evaluate(() => state.aptOrders.length), 1, label + ' does not rewrite live memory');
+        if (mode === 'missing') {
+          await actual.page.reload({ waitUntil: 'domcontentloaded' });
+          await actual.page.evaluate(async () => { await window.__hjRestoreDone; });
+          const restored = await actual.page.evaluate(() => ({ orders: state.aptOrders.length, source: window.__hjRestoreSource }));
+          assert.deepEqual(restored, { orders: 0, source: 'paid-generation' }, label + ' reload preserves the newer durable generation as authoritative');
+        }
+      } finally { await actual.context.close(); }
+    }
+
+    const finalizeDurableScenario = createBrowserScenario({ lossAfter: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, finalizeDurableScenario);
+      try {
+        const initialFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(initialFailure, /fetch|network|failed/i);
+        assert.equal(finalizeDurableScenario.store.inspections[0].status, 'conversion-local-committed');
+        finalizeDurableScenario.lossAfter = '';
+        const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
+        await writeBrowserPaidGeneration(actual.page, 'amount-mismatch', { bindTab: true });
+        const beforeFinalize = finalizeDurableScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        const resumeFailure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(resumeFailure, /durable|local order identity/, 'durable/live mismatch fails closed again before Finalize');
+        assert.equal(finalizeDurableScenario.store.inspections[0].status, 'conversion-local-committed');
+        assert.equal(finalizeDurableScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, 'durable mismatch sends zero Finalize mutations');
+      } finally { await actual.context.close(); }
+    }
+
+    const convertedDurableScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, convertedDurableScenario);
+      try {
+        const initialFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(initialFailure, /fetch|network|failed/i);
+        assert.equal(convertedDurableScenario.store.inspections[0].status, 'converted');
+        convertedDurableScenario.lossAfter = '';
+        const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
+        await writeBrowserPaidGeneration(actual.page, 'missing', { bindTab: true });
+        const beforeMutations = convertedDurableScenario.officeCalls.filter(call => call.mutationId).length;
+        const resumeFailure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(resumeFailure, /durable|local order identity/, 'idempotent converted return remains bound to durable order truth');
+        assert.equal(convertedDurableScenario.officeCalls.filter(call => call.mutationId).length, beforeMutations, 'converted durable failure sends zero mutations');
+      } finally { await actual.context.close(); }
+    }
+
+    for (const [label, setup, expectedStage, verifyTrigger] of [
+      ['Record validation-window stale race', { failBefore: 'officeInspectionRecordLocalCommit' }, 'conversion-writing', 2],
+      ['Finalize validation-window pointer race', { lossAfter: 'officeInspectionRecordLocalCommit' }, 'conversion-local-committed', 1],
+      ['converted return validation-window pointer race', { lossAfter: 'officeInspectionFinalizeConversion' }, 'converted', 1]
+    ]) {
+      const scenario = createBrowserScenario(setup), actual = await createActualConversionPage(browser, appUrl, scenario);
+      try {
+        const initialFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(initialFailure, /fetch|network|failed/i);
+        assert.equal(scenario.store.inspections[0].status, expectedStage);
+        scenario.failBefore = ''; scenario.lossAfter = '';
+        const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
+        const beforeRecord = scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        const beforeFinalize = scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        let verifyCount = 0;
+        scenario.commercialVerifyHook = async () => {
+          verifyCount += 1;
+          if (verifyCount !== verifyTrigger) return;
+          scenario.commercialVerifyHook = null;
+          await writeBrowserPaidGeneration(actual.page, 'missing', { bindTab: false, stale: label.includes('stale') });
+        };
+        const resumeFailure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(resumeFailure, /stale appState|durable|pointer|local order identity/, label + ' rejects after validation changes durable truth');
+        assert.ok(verifyCount >= verifyTrigger, label + ' injects the race during the intended live verification');
+        assert.equal(scenario.store.inspections[0].status, expectedStage, label + ' leaves the server pre-mutation');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, beforeRecord, label + ' sends zero new Record mutations');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, label + ' sends zero new Finalize mutations');
       } finally { await actual.context.close(); }
     }
 
