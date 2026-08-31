@@ -10293,7 +10293,6 @@ function aptOrderManage(filterOffice){
             (pn>=2?'<button class="ghost tiny apoBA" data-id="'+escapeAttr(o.id)+'" title="시공 전/후 비교 카드" style="padding:6px 8px">🖼</button>':''):'';})()+
           (aptOrderCompleted(o)?'<button class="ghost tiny apoReview" data-id="'+escapeAttr(o.id)+'" title="개인정보를 뺀 후기 작성 재료 복사" style="padding:6px 8px">후기 재료 복사</button>':'')+
           '<select class="apoStat" data-id="'+escapeAttr(o.id)+'"'+(o.status==='paid'?' disabled':'')+' style="padding:6px;font-size:12px;color:'+st[1]+'">'+aptOrderStatusOptions(o).map(k=>'<option value="'+k+'"'+(k===o.status?' selected':'')+'>'+APT_STAT[k][0]+'</option>').join('')+'</select>'+
-          (o.status==='paid'?'':'<button class="ghost tiny apoDel" data-id="'+escapeAttr(o.id)+'" style="padding:6px 8px">✕</button>')+
         '</div></div></div>';
   }).join(''):'<div class="empty" style="padding:14px"><b>오더가 없습니다</b>관리사무소에서 전화가 오면 여기 바로 남기세요 — 동/호와 작업만 있으면 됩니다.</div>';
   const offRow='<div style="display:flex;gap:6px;align-items:center;margin:12px 0 4px;flex-wrap:wrap"><b style="font-size:13px">🏢 관리사무소</b>'+
@@ -10445,13 +10444,6 @@ function aptOrderManage(filterOffice){
     baPickView(aptOfficeName(o.officeId)+' '+(o.unit||''),ph,()=>aptOrderManage(filterOffice));
   });
   root.querySelectorAll('.apoReview').forEach(b=>b.onclick=async()=>{await aptReviewMaterialCopy(b.dataset.id);});
-  root.querySelectorAll('.apoDel').forEach(b=>b.onclick=async()=>{
-    const order=(state.aptOrders||[]).find(x=>x.id===b.dataset.id);
-    if(!officeIntakeDeleteGuard(order)){toast('관리사무소 접수에서 연결된 오더는 삭제할 수 없습니다. 접수 상태를 먼저 확인하세요.');return;}
-    if(!confirm('이 오더를 삭제할까요?\n관리사무소 정산 근거가 사라집니다.'))return;
-    try{await hjSnapshot('아파트 오더 삭제 전',true);}catch(e){}
-    state.aptOrders=state.aptOrders.filter(x=>x.id!==b.dataset.id);markDirty();aptOrderManage(filterOffice);toast('삭제됨');
-  });
   return {진행:active.length,이달완료:doneThisMonth.length};
 }
 /* 월 정산서 — 그 단지·그 달의 완료(및 이미 청구된) 오더를 모아 청구 문안을 만든다.
@@ -26713,11 +26705,15 @@ async function guardedPersistCurrentState(){
     return true;
   });
 }
-function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedStamp){
+function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedStamp,manualCreateIntent){
   validatePaidSerializedState(candidate);
   if(expectedPointer!==null&&!paidGenerationKey(expectedPointer))return Promise.reject(new Error('invalid expected paid pointer'));
   if(!paidGenerationKey(generationKey))return Promise.reject(new Error('invalid paid generation key'));
   if(expectedStamp!==undefined&&expectedStamp!==null&&(!paidUtcIso(expectedStamp)||Date.parse(candidate.savedAt)<=Date.parse(expectedStamp)))return Promise.reject(new Error('invalid paid candidate stamp'));
+  let intentDescriptor=null;try{if(manualCreateIntent!==undefined)intentDescriptor=normalizeManualPaidCommitIntentDescriptor(manualCreateIntent);}catch(error){return Promise.reject(error);}
+  if(intentDescriptor){const matches=(candidate.aptOrders||[]).filter(order=>order&&order.id===intentDescriptor.id),order=matches[0],base=intentDescriptor.base;
+    if(matches.length!==1||!order||order.status!=='visit'||order.source!=='manual-paid-diagnosis'||order.officeId!==base.officeId||order.unit!==base.unit||order.text!==base.text||Number(order.amount)!==base.amount||aptPipeType(order.pipeType)!==base.pipeType||order.date!==base.date) return Promise.reject(new Error('invalid manual paid intent descriptor'));
+  }
   return new Promise((resolve,reject)=>{
     const open=indexedDB.open('hyeonjang-db',1);let tx=null,reason=null,committedJournal=null;
     const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
@@ -26726,11 +26722,15 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedS
     open.onsuccess=()=>{const db=open.result;try{
       tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
       const read=(key,onvalue,message)=>{const request=store.get(key);request.onerror=()=>abort(request.error||new Error(message));request.onsuccess=()=>onvalue(request.result);};
-      const write=(oldJournal,oldRecords)=>{
+      const write=(oldJournal,oldRecords,currentApp)=>{
         const oldKeys=oldRecords.map(record=>record.key),oldOrder=oldJournal?oldJournal.generations:[],generations=[generationKey,...oldOrder.filter(key=>key!==generationKey)].slice(0,PAID_COMMIT_MAX_GENERATIONS);
-        const journal={schemaVersion:1,current:generationKey,previous:expectedPointer,committedAt:candidate.savedAt,generations,maxGenerations:PAID_COMMIT_MAX_GENERATIONS};committedJournal=journal;
-        store.put(candidate,generationKey);store.put(journal,'paid_commit_journal');store.put(generationKey,'paid_commit_pointer');store.put(candidate,'appState');
-        oldKeys.filter(key=>!generations.includes(key)).forEach(key=>store.delete(key));
+        const journal={schemaVersion:1,current:generationKey,previous:expectedPointer,committedAt:candidate.savedAt,generations,maxGenerations:PAID_COMMIT_MAX_GENERATIONS};
+        const writeAll=()=>{committedJournal=journal;store.put(candidate,generationKey);store.put(journal,'paid_commit_journal');store.put(generationKey,'paid_commit_pointer');store.put(candidate,'appState');oldKeys.filter(key=>!generations.includes(key)).forEach(key=>store.delete(key));};
+        if(!intentDescriptor){writeAll();return;}
+        if(currentApp&&Array.isArray(currentApp.aptOrders)&&currentApp.aptOrders.some(order=>order&&order.id===intentDescriptor.id)){abort(new Error('manual paid intent order already committed'));return;}
+        let intentRequest;try{intentRequest=store.get(APT_MANUAL_INTENT_KEY);}catch(error){abort(error);return;}
+        intentRequest.onerror=()=>abort(intentRequest.error||new Error('manual paid intent read failed'));
+        intentRequest.onsuccess=()=>{try{const record=commitManualPaidIntentRecord(intentRequest.result,intentDescriptor),putRequest=store.put(record,APT_MANUAL_INTENT_KEY);putRequest.onerror=()=>abort(putRequest.error||new Error('manual paid intent write failed'));writeAll();}catch(error){abort(error);}};
       };
       pointerReq.onerror=()=>abort(pointerReq.error||new Error('paid pointer read failed'));
       pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:null);
@@ -26739,9 +26739,9 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedS
           if(current!==null)oldJournal=normalizePaidCommitJournal(journalRaw,current);
         }catch(error){abort(error);return;}
           readPaidGenerationRecords(store,(records,supported)=>{if(!supported){abort(new Error('paid generation enumeration unavailable'));return;}
-            if(current===null){if(journalRaw!=null||records.length){abort(new Error('orphan paid generation metadata'));return;}read('appState',currentApp=>{try{if(expectedStamp===null){if(currentApp!==undefined)throw new Error('paid appState stamp conflict');}else{validateLegacyAppState(currentApp);if(currentApp.savedAt!==expectedStamp)throw new Error('paid appState stamp conflict');}write(null,records);}catch(error){abort(error);}},'paid appState read failed');return;}
+            if(current===null){if(journalRaw!=null||records.length){abort(new Error('orphan paid generation metadata'));return;}read('appState',currentApp=>{try{if(expectedStamp===null){if(currentApp!==undefined)throw new Error('paid appState stamp conflict');}else{validateLegacyAppState(currentApp);if(currentApp.savedAt!==expectedStamp)throw new Error('paid appState stamp conflict');}write(null,records,currentApp);}catch(error){abort(error);}},'paid appState read failed');return;}
             let generation=null;try{generation=validateCompletePaidGenerationSet(records,oldJournal,current);if(generation.savedAt!==expectedStamp)throw new Error('paid generation stamp conflict');}catch(error){abort(error);return;}
-            read('appState',currentApp=>{try{validatePaidSerializedState(currentApp);if(currentApp.savedAt!==expectedStamp||oldJournal.committedAt!==expectedStamp)throw new Error('paid appState stamp conflict');write(oldJournal,records);}catch(error){abort(error);}},'paid appState read failed');
+            read('appState',currentApp=>{try{validatePaidSerializedState(currentApp);if(currentApp.savedAt!==expectedStamp||oldJournal.committedAt!==expectedStamp)throw new Error('paid appState stamp conflict');write(oldJournal,records,currentApp);}catch(error){abort(error);}},'paid appState read failed');
           },abort);
         },'paid journal read failed');
       };
@@ -27018,7 +27018,7 @@ function aptCommercialGlobalFailure(error){
   const code=String(error&&error.code||error&&error.message||error||'').toLowerCase();
   return /commercial-(?:setup|timeout|network|disabled|error)|unauthorized|not-configured|forbidden|internal-error|http\s*(?:401|403|408|429|5\d\d)|failed to fetch|networkerror/.test(code);
 }
-async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted}){
+async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted,manualCreateIntent}){
   if(typeof mutateDraft!=='function')throw new Error('invalid durable mutation');
   return withAppStateWriteLock(async()=>{
     const expectedPointer=__paidCommitPointerKey,expectedStamp=typeof __tabStamp==='undefined'?null:__tabStamp;
@@ -27028,7 +27028,7 @@ async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCo
     const baseMs=Date.parse(expectedStamp||''),candidateMs=Date.parse(candidate.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))candidate.savedAt=new Date(baseMs+1).toISOString();
     const serialized=JSON.parse(JSON.stringify(candidate));validatePaidSerializedState(serialized);
     if(beforeCommit)await beforeCommit();
-    const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,expectedPointer,generationKey,expectedStamp);
+    const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,expectedPointer,generationKey,expectedStamp,manualCreateIntent);
     if(onCommitted)await onCommitted();
     __paidCommitPointerKey=commit.pointer;applyPaidCommittedState(serialized);
     try{render();}catch(error){paidCommitRecoveryBanner();}
@@ -27036,19 +27036,20 @@ async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCo
     return result;
   });
 }
-async function durablePaidMutation({verification,snapshotLabel,mutateDraft}){
+async function durablePaidMutation({verification,snapshotLabel,mutateDraft,manualCreateIntent}){
   if(!paidPlainObject(verification)||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(verification.receiptId||'')||typeof verification.nonce!=='string'||!verification.nonce||!Number.isFinite(verification.useBeforeMonotonicMs))throw new Error('invalid paid verification');
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
   const key=verification.receiptId+'|'+verification.nonce;if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');
   const deadline=()=>{if(performance.now()>verification.useBeforeMonotonicMs)throw new Error('stale commercial verification');if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');};
-  return durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit:deadline,onCommitted:()=>{__paidApprovalConsumptions.add(key);}});
+  return durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit:deadline,onCommitted:()=>{__paidApprovalConsumptions.add(key);},manualCreateIntent});
 }
 async function persistApprovedAptOrder({draft,commercialTerms,receipt,verification}){
   if(!paidPlainObject(draft)||!Object.isFrozen(draft)||draft.id!==receipt.subjectId||draft.state!=='visit'||(state.aptOrders||[]).some(order=>order.id===draft.id))throw new Error('paid order identity conflict');
   const terms=normalizeCommercialTerms(commercialTerms),approval=normalizeReceipt(receipt,draft.id),{state:_gateState,status:_ignoredStatus,...projection}=draft;
   if(!Number.isInteger(Number(projection.amount))||Number(projection.amount)!==terms.quotedAmount)throw paidGateError('commercial amount mismatch');
   const persisted=Object.freeze({...projection,status:'visit',commercialGateVersion:1,commercialTerms:terms,commercialApproval:approval});
-  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',mutateDraft:next=>{if(!Array.isArray(next.aptOrders)||(next.aptOrders||[]).some(order=>order.id===persisted.id))throw new Error('paid order identity conflict');next.aptOrders.push(persisted);return persisted;}});
+  const manualCreateIntent=draft.source==='manual-paid-diagnosis'?manualPaidCommitIntentDescriptor(draft):undefined;
+  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',manualCreateIntent,mutateDraft:next=>{if(!Array.isArray(next.aptOrders)||(next.aptOrders||[]).some(order=>order.id===persisted.id))throw new Error('paid order identity conflict');next.aptOrders.push(persisted);return persisted;}});
 }
 async function persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms,receipt,verification,visitDate}){
   if(subjectType!=='aptOrder')throw new Error('invalid subject type');
@@ -27143,6 +27144,22 @@ function manualPaidDraftBase(input){
   return draft;
 }
 function manualPaidDraftFingerprint(input){return JSON.stringify(manualPaidDraftBase(input));}
+function manualPaidCommitIntentDescriptor(draft){
+  const id=String(draft&&draft.id||''),base=manualPaidDraftBase(draft);if(!/^[A-Za-z0-9_-]{1,160}$/.test(id))throw new Error('invalid manual paid intent descriptor');
+  return Object.freeze({kind:'manual-paid-create',fingerprint:JSON.stringify(base),id});
+}
+function normalizeManualPaidCommitIntentDescriptor(raw){
+  if(!paidExactKeys(raw,['kind','fingerprint','id'])||raw.kind!=='manual-paid-create'||typeof raw.fingerprint!=='string'||!/^[A-Za-z0-9_-]{1,160}$/.test(raw.id||''))throw new Error('invalid manual paid intent descriptor');
+  let parsed;try{parsed=JSON.parse(raw.fingerprint);}catch(_){throw new Error('invalid manual paid intent descriptor');}
+  const base=manualPaidDraftBase(parsed);if(JSON.stringify(base)!==raw.fingerprint)throw new Error('invalid manual paid intent descriptor');
+  return Object.freeze({kind:raw.kind,fingerprint:raw.fingerprint,id:raw.id,base:Object.freeze(base)});
+}
+function commitManualPaidIntentRecord(raw,descriptor){
+  if(!paidExactKeys(raw,['schemaVersion','intents'])||raw.schemaVersion!==1||!Array.isArray(raw.intents))throw new Error('manual paid intent missing');
+  const intents=raw.intents.slice(),fingerprintMatches=intents.filter(entry=>entry&&entry.fingerprint===descriptor.fingerprint),idMatches=intents.filter(entry=>entry&&entry.id===descriptor.id),entry=fingerprintMatches[0];
+  if(fingerprintMatches.length!==1||idMatches.length!==1||entry!==idMatches[0]||!paidExactKeys(entry,['fingerprint','id','status','expiresAt'])||entry.status!=='pending'||!Number.isFinite(entry.expiresAt)||entry.expiresAt<=Date.now())throw new Error('manual paid intent conflict');
+  return {schemaVersion:1,intents:intents.map(row=>row===entry?{fingerprint:entry.fingerprint,id:entry.id,status:'committed',expiresAt:entry.expiresAt}:row)};
+}
 function mutateManualPaidIntentRecord(mutator){
   return new Promise((resolve,reject)=>{
     const open=indexedDB.open('hyeonjang-db',1);let db=null,tx=null,result,reason=null,settled=false;
@@ -27168,15 +27185,6 @@ async function reserveManualPaidDraft(input){
     return{result:entry.id,intents:entries.slice(0,APT_MANUAL_INTENT_MAX)};
   });
   return Object.freeze({id,...base});
-}
-async function completeManualPaidDraftReservation(draft){
-  const base=manualPaidDraftBase(draft),fingerprint=JSON.stringify(base),id=String(draft&&draft.id||''),now=Date.now();if(!/^[A-Za-z0-9_-]{1,160}$/.test(id))throw new Error('invalid manual paid reservation');
-  return mutateManualPaidIntentRecord(entries=>{
-    entries=cleanManualPaidIntents(entries,now);let entry=entries.find(row=>row.fingerprint===fingerprint);
-    if(entry&&entry.id!==id)throw new Error('manual paid reservation conflict');
-    if(!entry){entry={fingerprint,id,status:'committed',expiresAt:now+APT_MANUAL_INTENT_TTL_MS};entries.unshift(entry);}else{entry.status='committed';entry.expiresAt=now+APT_MANUAL_INTENT_TTL_MS;}
-    return{result:id,intents:entries.slice(0,APT_MANUAL_INTENT_MAX)};
-  });
 }
 async function createPaidDiagnosisOrderFromManualLead(input){
   const id=String(input&&input.id||''),draft=input&&input.draft;
@@ -27266,7 +27274,7 @@ function openAptCommercialApprovalModal(options){
     busy=true;aptCommercialSetBusy(root,true);
     let result;
     try{
-      if(draft){result=await createPaidDiagnosisOrderFromManualLead({id:subjectId,draft,commercialTerms:value.commercialTerms,approvalEvidenceFileId:value.approvalEvidenceFileId,approvalEvidenceType:value.approvalEvidenceType,approvedAt:value.approvedAt,approvedByRole:value.approvedByRole});try{await completeManualPaidDraftReservation(draft);}catch(error){console.warn('수동 유상 등록 예약 완료 기록 실패',error);}}
+      if(draft){result=await createPaidDiagnosisOrderFromManualLead({id:subjectId,draft,commercialTerms:value.commercialTerms,approvalEvidenceFileId:value.approvalEvidenceFileId,approvalEvidenceType:value.approvalEvidenceType,approvedAt:value.approvedAt,approvedByRole:value.approvedByRole});}
       else{const receipt=await issueCommercialApproval({subjectId,commercialTerms:value.commercialTerms,approvalEvidenceFileId:value.approvalEvidenceFileId,approvalEvidenceType:value.approvalEvidenceType,approvedAt:value.approvedAt,approvedByRole:value.approvedByRole});result=await transitionAptOrderWithGate({orderId:subjectId,targetState:options.targetState,commercialTerms:value.commercialTerms,commercialApproval:receipt,visitDate:options.visitDate});}
     }catch(error){busy=false;aptCommercialSetBusy(root,false);errorBox.textContent=String(error&&error.message||error||'상업 승인 처리 실패');const button=root.querySelector('#aptCommercialSubmit');if(button)button.focus();return null;}
     const status=root.querySelector('#aptCommercialStatus');if(status)status.textContent='저장 완료 — 화면을 갱신합니다';
