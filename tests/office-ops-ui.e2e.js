@@ -5,15 +5,24 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const http = require('node:http');
-const { spawn } = require('node:child_process');
 const { webcrypto } = require('node:crypto');
-let chromium;
-try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
-catch (_) { ({ chromium } = require('playwright')); }
+function loadPlaywright() {
+  const candidates = [
+    'playwright',
+    path.resolve(path.dirname(process.execPath), '..', 'node_modules', 'playwright'),
+    '/opt/node22/lib/node_modules/playwright'
+  ];
+  let lastError;
+  for (const candidate of candidates) {
+    try { return require(candidate); } catch (error) { lastError = error; }
+  }
+  throw lastError;
+}
+const { chromium } = loadPlaywright();
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const APP = 'http://127.0.0.1:8299/index.html';
-let browser, staticServer;
+const appRoot = path.resolve(__dirname, '..');
+let browser, appServer, appPort;
 
 function portAlive(port) {
   return new Promise(resolve => {
@@ -22,14 +31,25 @@ function portAlive(port) {
     request.on('timeout', () => { request.destroy(); resolve(false); });
   });
 }
-async function ensureStaticServer() {
-  if (await portAlive(8299)) return;
-  staticServer = spawn(process.execPath, [path.join(__dirname, 'static-server.js')], { cwd: path.join(__dirname, '..'), stdio: 'ignore' });
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (await portAlive(8299)) return;
-    await new Promise(resolve => setTimeout(resolve, 250));
-  }
-  throw new Error('static-server.js did not start on port 8299');
+function startAppServer() {
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((request, response) => {
+      const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+      const resolved = path.resolve(appRoot, '.' + pathname);
+      if (resolved !== appRoot && !resolved.startsWith(appRoot + path.sep)) { response.writeHead(403); response.end('forbidden'); return; }
+      fs.stat(resolved, (statError, stat) => {
+        const target = !statError && stat.isDirectory() ? path.join(resolved, 'index.html') : resolved;
+        fs.readFile(target, (readError, body) => {
+          if (readError) { response.writeHead(404); response.end('not found'); return; }
+          response.writeHead(200, { 'Content-Type': mime[path.extname(target).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+          response.end(body);
+        });
+      });
+    });
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
 }
 
 function extractFunction(name) {
@@ -69,12 +89,23 @@ const storedConsent = {
 let ackConsentRow = storedConsent;
 let withdrawnConsentRow = { ...storedConsent, withdrawnAt: '2026-08-31T12:00:02+09:00', withdrawnBy: '대표', withdrawalReason: '고객 철회',
   audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '대표', reason: '고객 철회' }] };
+const withdrawAuditRow = {
+  action: 'officeConsentWithdraw', result: 'ok', id: 'consent_server_1', mutationId: 'mutation_withdraw_12', idempotencyKey: null,
+  payloadSha256: 'c'.repeat(64), at: '2026-08-31T12:00:02+09:00', actor: 'representative', lifecycleBefore: null,
+  backupFileId: 'backup_withdraw_12', backupManifestFileId: 'manifest_withdraw_12', backupSha256: 'd'.repeat(64), preMutationRevision: 11
+};
+const validWithdrawalResult = () => ({
+  ack: { id: 'consent_server_1', revision: 12, updatedAt: '2026-08-31T12:00:02+09:00' },
+  store: { revision: 12, consents: [withdrawnConsentRow], audit: [withdrawAuditRow] }
+});
+let withdrawalResult = validWithdrawalResult();
 const sandbox = {
   Intl, Date, URL, Object, String, Number, Array, RegExp, Error, Promise, TextEncoder, Uint8Array, crypto: webcrypto,
   escapeHtml: value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])),
   escapeAttr: value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])),
   officeOpsMutationWithAck: async (action, payload) => {
     calls.push({ kind: 'ack', action, payload });
+    if (action === 'officeConsentWithdraw') return withdrawalResult;
     return { ack: { id: 'consent_server_1', revision: 12, updatedAt: '2026-08-31T12:00:01+09:00' }, store: { consents: [ackConsentRow] } };
   },
   officeOpsMutation: async (action, payload) => {
@@ -90,7 +121,7 @@ for (const name of [
   'normalizePilotEditable', 'normalizePilotRecord', 'pilotWindowView', 'pilotEditablePayload',
   'updateOfficePilot', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity',
   'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity',
-  'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore',
+  'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsRevokeFresh',
   'persistReinspectionConsent', 'withdrawReinspectionConsent', 'officeOpsCanParticipate', 'officeOpsOpportunityCanParticipate', 'officeOpsPanelHtml'
 ]) vm.runInContext(extractFunction(name), sandbox);
 
@@ -186,11 +217,36 @@ const auditRow = {
   assert.deepEqual(Object.keys(calls[0].payload), ['idempotencyKey', ...Object.keys(consent)]);
   const withdrawn = await run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})');
   assert.equal(withdrawn.withdrawnAt, '2026-08-31T12:00:02+09:00', 'withdrawal timestamp comes from the refreshed server record');
-  assert.deepEqual(plain(calls[3]), { kind: 'store', action: 'officeConsentWithdraw', payload: { consentId: 'consent_server_1', withdrawnBy: '대표', withdrawalReason: '고객 철회', expectedRevision: 11 } });
+  assert.deepEqual(plain(calls[3]), { kind: 'ack', action: 'officeConsentWithdraw', payload: { consentId: 'consent_server_1', withdrawnBy: '대표', withdrawalReason: '고객 철회', expectedRevision: 11 } }, 'withdraw retains the mutation ACK result');
+  async function rejectsWithdrawal(result, label) {
+    withdrawalResult = result; run("__officeOps.mode='fresh'");
+    await assert.rejects(() => run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})'), /invalid consent withdrawal postcondition/, label);
+    assert.equal(run('__officeOps.mode'), 'stale-export-only', label + ' revokes fresh state');
+  }
+  const activeResult = validWithdrawalResult(); activeResult.store.consents = [storedConsent];
+  await rejectsWithdrawal(activeResult, 'active refreshed row');
+  const wrongActor = validWithdrawalResult(); wrongActor.store.consents = [{ ...withdrawnConsentRow, withdrawnBy: '다른 담당자', audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '다른 담당자', reason: '고객 철회' }] }];
+  await rejectsWithdrawal(wrongActor, 'wrong withdrawal actor');
+  const wrongReason = validWithdrawalResult(); wrongReason.store.consents = [{ ...withdrawnConsentRow, withdrawalReason: '다른 사유', audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '대표', reason: '다른 사유' }] }];
+  await rejectsWithdrawal(wrongReason, 'wrong withdrawal reason');
+  const wrongAckId = validWithdrawalResult(); wrongAckId.ack = { ...wrongAckId.ack, id: 'consent_other' };
+  await rejectsWithdrawal(wrongAckId, 'wrong acknowledgement ID');
+  const wrongAckType = validWithdrawalResult(); wrongAckType.ack = { ...wrongAckType.ack, revision: '12' };
+  await rejectsWithdrawal(wrongAckType, 'wrong acknowledgement type');
+  const wrongRevision = validWithdrawalResult(); wrongRevision.store.revision = 11;
+  await rejectsWithdrawal(wrongRevision, 'reload older than acknowledgement');
+  const missingAudit = validWithdrawalResult(); missingAudit.store.audit = [];
+  await rejectsWithdrawal(missingAudit, 'missing matching store audit');
+  const mismatchedAudit = validWithdrawalResult(); mismatchedAudit.store.audit = [{ ...withdrawAuditRow, at: '2026-08-31T12:00:03+09:00' }];
+  await rejectsWithdrawal(mismatchedAudit, 'mismatched store audit time');
+  withdrawalResult = validWithdrawalResult(); run("__officeOps.mode='fresh'");
   withdrawnConsentRow = { ...withdrawnConsentRow, nextDueAt: '2099-12-31' };
-  await assert.rejects(() => run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})'), /invalid consent record|invalid consent integrity/, 'tampered refreshed withdrawal row is rejected before return');
+  withdrawalResult = validWithdrawalResult();
+  await assert.rejects(() => run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})'), /invalid consent withdrawal postcondition/, 'tampered refreshed withdrawal row is rejected before return');
+  assert.equal(run('__officeOps.mode'), 'stale-export-only', 'tampered withdrawal reload revokes fresh state');
   withdrawnConsentRow = { ...storedConsent, withdrawnAt: '2026-08-31T12:00:02+09:00', withdrawnBy: '대표', withdrawalReason: '고객 철회',
     audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '대표', reason: '고객 철회' }] };
+  withdrawalResult = validWithdrawalResult();
 
   assert.equal(run("normalizeKAptUrl('https://www.k-apt.go.kr/bid/list?x=1')"), 'https://www.k-apt.go.kr/bid/list?x=1');
   assert.equal(run("normalizeKAptUrl('https://www.k-apt.go.kr:443/bid')"), 'https://www.k-apt.go.kr/bid');
@@ -214,7 +270,7 @@ const auditRow = {
   assert.match(opportunityHtml, /href="https:\/\/www\.k-apt\.go\.kr\/bid\?notice=2"/);
   assert.match(opportunityHtml, /서버 확인 후 검토/);
 
-  const strictStore = { schemaVersion: 1, revision: 7, updatedAt: '2026-08-31T12:00:00+09:00', pilots: [pilot], consents: [storedConsent], inspections: [inspection], opportunities: [opportunity], audit: [auditRow] };
+  const strictStore = { schemaVersion: 1, revision: 1, updatedAt: '2026-08-31T12:00:00+09:00', pilots: [pilot], consents: [storedConsent], inspections: [inspection], opportunities: [opportunity], audit: [auditRow] };
   const strictNormalized = await run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify(strictStore) + ')');
   assert.equal(strictNormalized.schemaVersion, 1);
   assert.equal(strictNormalized.inspections[0].inspectionId, 'inspection_test');
@@ -230,6 +286,7 @@ const auditRow = {
   await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, consentTextSnapshot: 'tampered', consentTextSha256: '0'.repeat(64) }] }) + ')'), /invalid consent integrity/);
   await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, nextDueAt: '2099-12-31' }] }) + ')'), /invalid consent record/);
   await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, audit: [{ ...storedConsent.audit[0], at: '2026-08-31T03:00:00Z' }] }] }) + ')'), /invalid consent record/, 'consent audit times must be whole-second KST');
+  await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, withdrawnAt: 'not-a-kst-time' }] }) + ')'), /invalid consent record/, 'non-null invalid withdrawal timestamp is neither active nor withdrawn');
   const terms = { workKind: 'preventive-inspection', scope: '공용부', exclusions: [], vatMode: 'included', quotedAmount: 10000, validUntil: '2026-09-30', scheduleWindow: '협의' };
   assert.throws(() => run('normalizeOfficeCommercialTerms(' + JSON.stringify({ scope: terms.scope, workKind: terms.workKind, exclusions: terms.exclusions, vatMode: terms.vatMode, quotedAmount: terms.quotedAmount, validUntil: terms.validUntil, scheduleWindow: terms.scheduleWindow }) + ')'), /invalid commercial terms/, 'stored commercial terms require canonical server key order');
 
@@ -251,17 +308,20 @@ const auditRow = {
   const viewSource = extractFunction('officeOpsView');
   assert.ok(viewSource.indexOf('officeOpsRefresh()') < viewSource.indexOf("__officeOps.mode==='fresh'"), 'view requires live refresh before fresh UI is enabled');
 
-  await ensureStaticServer();
-  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
+  appServer = await startAppServer();
+  appPort = appServer.address().port;
+  const appUrl = 'http://127.0.0.1:' + appPort + '/index.html';
+  try {
+  browser = await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {});
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   page.setDefaultTimeout(10000);
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error)));
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
-  await page.goto(APP, { waitUntil: 'domcontentloaded' });
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(900);
-  const browserStore = { schemaVersion: 1, revision: 7, updatedAt: '2026-08-31T12:00:00+09:00',
-    pilots: [{ ...pilot, complexName: '<img src=x onerror=alert(1)>' }], consents: [], inspections: [], opportunities: [], audit: [] };
+  const browserStore = { schemaVersion: 1, revision: 1, updatedAt: '2026-08-31T12:00:00+09:00',
+    pilots: [{ ...pilot, complexName: '<img src=x onerror=alert(1)>' }], consents: [], inspections: [], opportunities: [], audit: [auditRow] };
   const bootMode = await page.evaluate(async store => {
     await idbSet('office_ops_url', 'https://office.example/ops');
     await idbSet('office_ops_token', 'office-token');
@@ -336,11 +396,14 @@ const auditRow = {
   assert.equal(await page.evaluate(() => __officeOps.mode), 'export-only', 'disabled response is visibly export-only');
   assert.match(await page.locator('#modalRoot .mbody').textContent(), /로컬 JSON|조회 전용/);
   assert.equal(pageErrors.length, 0, 'actual UI has no pageerror: ' + pageErrors.join(' | '));
-  await browser.close(); browser = null;
-  if (staticServer) { staticServer.kill(); staticServer = null; }
+  } finally {
+    let cleanupError = null;
+    if (browser) { try { await browser.close(); } catch (error) { cleanupError = error; } browser = null; }
+    if (appServer) { try { await new Promise((resolve, reject) => appServer.close(error => error ? reject(error) : resolve())); } catch (error) { cleanupError = cleanupError || error; } appServer = null; }
+    if (cleanupError) throw cleanupError;
+  }
+  assert.equal(await portAlive(appPort), false, 'owned ephemeral HTTP server is no longer listening after browser acceptance');
   console.log('PASS  OfficeOps four-tab UI, KST pilots, consent, and strict K-apt contracts');
-})().catch(async error => {
+})().catch(error => {
   console.error('FAIL', error && error.stack || error); process.exitCode = 1;
-  if (browser) await browser.close().catch(() => {});
-  if (staticServer) staticServer.kill();
 });

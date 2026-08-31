@@ -36,6 +36,28 @@ function extractFunction(name) {
   assert.fail('unbalanced isolated function: ' + name);
 }
 
+function historyAuditRow(index, overrides = {}) {
+  const action = overrides.action || 'officePilotCreate';
+  return {
+    action, result: 'ok', id: overrides.id || ('pilot_history_' + index), mutationId: overrides.mutationId || ('mutation_history_' + String(index).padStart(2, '0')),
+    idempotencyKey: Object.hasOwn(overrides, 'idempotencyKey') ? overrides.idempotencyKey : (action.endsWith('Create') || action === 'officeConsentRecord' ? 'create_history_key_' + String(index).padStart(2, '0') : null),
+    payloadSha256: 'a'.repeat(64), at: overrides.at || ('2026-08-31T09:00:' + String(index).padStart(2, '0') + '+09:00'), actor: 'representative', lifecycleBefore: null,
+    backupFileId: overrides.backupFileId || ('backup_history_' + index), backupManifestFileId: overrides.backupManifestFileId || ('manifest_history_' + index),
+    backupSha256: 'b'.repeat(64), preMutationRevision: Object.hasOwn(overrides, 'preMutationRevision') ? overrides.preMutationRevision : index
+  };
+}
+function validHistoryStore(revision) {
+  const audit = Array.from({ length: revision }, (_, index) => historyAuditRow(index));
+  return { schemaVersion: 1, revision, updatedAt: revision ? audit[revision - 1].at : '2026-08-31T09:00:00+09:00', pilots: [], consents: [], inspections: [], opportunities: [], audit };
+}
+const validStoredConsent = {
+  consentId: 'consent_history_1', subjectType: 'project', subjectId: 'project_1', purpose: 'preventive-reinspection', intervalMonths: 6, channel: 'phone',
+  consentVersion: 'reinspection-v1', consentTextSnapshot: 'consent snapshot', consentTextSha256: '14f8b388a01d5ec9efb2bf24eb5015621de5fe523cb8b68522b58299d94e123a',
+  recordedBy: '대표', consentedAt: '2026-08-31T12:00:00+09:00', withdrawnAt: null, withdrawnBy: null, withdrawalReason: null,
+  nextDueAt: '2027-02-28', lastContactedAt: null, evidenceType: 'recorded-call-note', evidenceId: 'note_1',
+  audit: [{ event: 'recorded', at: '2026-08-31T12:00:00+09:00', actor: '대표', reason: null }]
+};
+
 function makeClient({ replies = [], cache = new Map(), mutationImplementation = '' } = {}) {
   const calls = [];
   const sandbox = {
@@ -53,7 +75,7 @@ function makeClient({ replies = [], cache = new Map(), mutationImplementation = 
   };
   vm.createContext(sandbox);
   vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
-  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity', 'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity', 'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsActiveConsentForDraft', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
+  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity', 'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity', 'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsRevokeFresh', 'officeOpsActiveConsentForDraft', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
     vm.runInContext(name === 'officeOpsMutationWithAck' && mutationImplementation ? mutationImplementation : extractFunction(name), sandbox);
   }
   return { sandbox, calls, cache };
@@ -69,13 +91,14 @@ async function assertRepresentativeMutationsBlocked(client, label) {
 }
 
 (async () => {
+  const storeAtEight = validHistoryStore(8);
   const client = makeClient({ replies: [
-    { body: { ok: true, id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' } },
-    { body: { ok: true, store: { schemaVersion: 1, revision: 8, updatedAt: '2026-08-31T09:00:00+09:00', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] } } }
+    { body: { ok: true, id: 'pilot_history_7', revision: 8, updatedAt: storeAtEight.updatedAt } },
+    { body: { ok: true, store: storeAtEight } }
   ] });
   vm.runInContext("__officeOps.mode='fresh'", client.sandbox);
-  const result = await vm.runInContext("officeOpsMutationWithAck('pilotCreate',{name:'same-name'})", client.sandbox);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.ack)), { id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' }, 'returned metadata preserves the exact server ID after the raw ACK validation');
+  const result = await vm.runInContext("officeOpsMutationWithAck('officePilotCreate',{name:'same-name'})", client.sandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.ack)), { id: 'pilot_history_7', revision: 8, updatedAt: storeAtEight.updatedAt }, 'returned metadata preserves the exact strictly bound server ACK');
   assert.equal(client.calls.length, 2, 'mutation acknowledgement is followed by exactly one refresh read');
   const [mutation, read] = client.calls;
   assert.deepEqual(Object.keys(mutation).sort(), ['action', 'deviceId', 'mutationId', 'payload', 'timestamp', 'token'], 'OfficeOps mutation has one isolated envelope');
@@ -86,7 +109,8 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   assert.equal(Object.hasOwn(read, 'ts'), false, 'legacy ts is never sent on reads');
   assert.deepEqual([...client.cache.keys()], ['office_ops_device_id', 'office_ops_cache'], 'only device identity and successful normalized read cache are persisted');
 
-  const disabledCache = new Map([['office_ops_cache', { store: { schemaVersion: 1, revision: 4, updatedAt: '2026-08-30T09:00:00+09:00', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] }, revision: 4, updatedAt: '2026-08-30T09:00:00+09:00' }]]);
+  const disabledStore = validHistoryStore(4);
+  const disabledCache = new Map([['office_ops_cache', { store: disabledStore, revision: disabledStore.revision, updatedAt: disabledStore.updatedAt }]]);
   const disabled = makeClient({ cache: disabledCache, replies: [{ body: { ok: false, error: 'office-disabled' } }] });
   assert.equal(await vm.runInContext('officeOpsRefresh()', disabled.sandbox), null, 'disabled reads enter export-only mode instead of treating cache as current');
   assert.equal(disabled.cache.get('office_ops_cache').revision, 4, 'disabled read retains the last successful cache');
@@ -112,7 +136,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   await assertRepresentativeMutationsBlocked(unloaded, 'unloaded client');
 
   const ackThenDisabled = makeClient({ replies: [
-    { body: { ok: true, id: 'pilot-server-43', revision: 9, updatedAt: '2026-08-31T00:01:00.000Z' } },
+    { body: { ok: true, id: 'pilot_history_8', revision: 9, updatedAt: '2026-08-31T09:00:08+09:00' } },
     { body: { ok: false, error: 'office-disabled' } }
   ] });
   vm.runInContext("__officeOps.mode='fresh'", ackThenDisabled.sandbox);
@@ -132,6 +156,65 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   const callsAfterFailedReload = ackThenNetworkFailure.calls.length;
   await assert.rejects(() => vm.runInContext("officeOpsMutation('consentDraft',{})", ackThenNetworkFailure.sandbox), /office-disabled/);
   assert.equal(ackThenNetworkFailure.calls.length, callsAfterFailedReload, 'revoked mode blocks every subsequent mutation with no network request');
+
+  const replayStore = validHistoryStore(8);
+  const concurrentReplay = makeClient({ replies: [
+    { body: { ok: true, id: 'pilot_history_6', revision: 7, updatedAt: replayStore.audit[6].at } },
+    { body: { ok: true, store: replayStore } }
+  ] });
+  vm.runInContext("__officeOps.mode='fresh'", concurrentReplay.sandbox);
+  const replay = await vm.runInContext("officeOpsMutationWithAck('officePilotCreate',{})", concurrentReplay.sandbox);
+  assert.equal(replay.store.revision, 8, 'a later concurrent revision remains valid when the acknowledged audit event is still bound in history');
+
+  for (const [label, body] of [
+    ['non-string ACK id', { ok: true, id: 7, revision: 8, updatedAt: storeAtEight.updatedAt }],
+    ['non-integer ACK revision', { ok: true, id: 'pilot_history_7', revision: '8', updatedAt: storeAtEight.updatedAt }],
+    ['non-KST ACK updatedAt', { ok: true, id: 'pilot_history_7', revision: 8, updatedAt: '2026-08-31T00:00:07Z' }]
+  ]) {
+    const invalidAck = makeClient({ replies: [{ body }] });
+    vm.runInContext("__officeOps.mode='fresh'", invalidAck.sandbox);
+    await assert.rejects(() => vm.runInContext("officeOpsMutationWithAck('officePilotCreate',{})", invalidAck.sandbox), /invalid mutation acknowledgement/, label);
+    assert.equal(vm.runInContext('__officeOps.mode', invalidAck.sandbox), 'unloaded', label + ' revokes fresh state before any reload');
+  }
+
+  for (const [label, ack, reloaded] of [
+    ['reload revision older than ACK', { ok: true, id: 'pilot_history_7', revision: 9, updatedAt: storeAtEight.updatedAt }, storeAtEight],
+    ['ACK audit time mismatch', { ok: true, id: 'pilot_history_7', revision: 8, updatedAt: '2026-08-31T09:00:09+09:00' }, storeAtEight],
+    ['ACK ID mismatch', { ok: true, id: 'pilot_other', revision: 8, updatedAt: storeAtEight.updatedAt }, storeAtEight]
+  ]) {
+    const mismatched = makeClient({ replies: [{ body: ack }, { body: { ok: true, store: reloaded } }] });
+    vm.runInContext("__officeOps.mode='fresh'", mismatched.sandbox);
+    await assert.rejects(() => vm.runInContext("officeOpsMutationWithAck('officePilotCreate',{})", mismatched.sandbox), /invalid mutation reload binding/, label);
+    assert.equal(vm.runInContext('__officeOps.mode', mismatched.sandbox), 'stale-export-only', label + ' revokes fresh state');
+  }
+
+  const historyBase = validHistoryStore(2), second = historyBase.audit[1];
+  const createDuplicate = historyAuditRow(1, { action: 'officePilotCreate', id: 'pilot_history_other', idempotencyKey: historyBase.audit[0].idempotencyKey, at: second.at });
+  const nonCreateWithKey = historyAuditRow(1, { action: 'officePilotUpdate', id: 'pilot_history_other', idempotencyKey: 'forbidden_update_key', at: second.at });
+  const corruptStores = [
+    ['invalid consent withdrawal state', { ...historyBase, consents: [{ ...validStoredConsent, withdrawnAt: 'not-a-kst-time' }] }],
+    ['revision and audit length mismatch', { ...historyBase, audit: [historyBase.audit[0]] }],
+    ['non-contiguous preMutationRevision', { ...historyBase, audit: [historyBase.audit[0], { ...second, preMutationRevision: 0 }] }],
+    ['duplicate mutationId', { ...historyBase, audit: [historyBase.audit[0], { ...second, mutationId: historyBase.audit[0].mutationId }] }],
+    ['same-row backup artifacts', { ...historyBase, audit: [historyBase.audit[0], { ...second, backupManifestFileId: second.backupFileId }] }],
+    ['globally repeated backup artifact', { ...historyBase, audit: [historyBase.audit[0], { ...second, backupFileId: historyBase.audit[0].backupFileId }] }],
+    ['duplicate create action and idempotency key', { ...historyBase, audit: [historyBase.audit[0], createDuplicate] }],
+    ['non-create idempotency key', { ...historyBase, audit: [historyBase.audit[0], nonCreateWithKey] }],
+    ['last audit time differs from store updatedAt', { ...historyBase, updatedAt: '2026-08-31T09:00:09+09:00' }]
+  ];
+  for (const [label, store] of corruptStores) {
+    const live = makeClient({ replies: [{ body: { ok: true, store } }] });
+    vm.runInContext("__officeOps.mode='fresh'", live.sandbox);
+    await assert.rejects(() => vm.runInContext('officeOpsRefresh()', live.sandbox), /invalid (OfficeOps store|consent record|audit record)/, label + ' is rejected on live load');
+    assert.notEqual(vm.runInContext('__officeOps.mode', live.sandbox), 'fresh', label + ' cannot remain fresh');
+    assert.equal(live.cache.has('office_ops_cache'), false, label + ' is never persisted after live load');
+
+    const cached = new Map([['office_ops_cache', { store, revision: store.revision, updatedAt: store.updatedAt }]]);
+    const boot = makeClient({ cache: cached });
+    await vm.runInContext('officeOpsBoot()', boot.sandbox);
+    assert.equal(vm.runInContext('__officeOps.mode', boot.sandbox), 'unloaded', label + ' cannot be promoted from IDB');
+    assert.equal(vm.runInContext('__officeOps.cache', boot.sandbox), null, label + ' leaves no in-memory cache');
+  }
 
   const exports = makeClient({ cache: disabledCache });
   const downloads = [];
@@ -166,7 +249,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.match(source, new RegExp('id="' + inputId + '" value=""'), inputId + ' value is always blank in rendered settings HTML');
     assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
   }
-  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
+  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'officeOpsRevokeFresh', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
   const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|\bcloudApi[A-Za-z0-9_]*|\brelayBuild[A-Za-z0-9_]*(?:Upload|Payload)[A-Za-z0-9_]*|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|\bgd[A-Za-z0-9_]*(?:Backup|Blob|Drive|File|Folder|Persist|Queue|Restore|Save|Sync|Token|Upload)[A-Za-z0-9_]*|__heic[A-Za-z0-9_]*|queueHeicPreview|(?:pump|process|queue)HeicPreview[A-Za-z0-9_]*|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|APP_TOKEN|officeIntake|OfficeIntake/i;
   for (const snippet of ['__relay.token', 'RELAY_URL_DEFAULT', "idbGet('relay_queue')", '__gdToken', 'GD_FOLDER_ID', 'queueHeicPreview(file)', 'photoUploadQueue(item)', 'cloudApiUploadFile', 'relayBuildUploadPayload', 'gdUploadBlob', '__heicPreviewQueue', 'pumpHeicPreviewQueue']) {
     assert.match(snippet, forbiddenReferences, 'relay/photo/Drive fixture must be rejected: ' + snippet);

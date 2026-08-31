@@ -26740,15 +26740,16 @@ function normalizeOfficeConsentRecord(raw){
   const keys=['consentId','subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','withdrawnAt','withdrawnBy','withdrawalReason','nextDueAt','lastContactedAt','evidenceType','evidenceId','audit'];
   if(!officeOpsExactKeys(raw,keys)||!/^consent_[A-Za-z0-9_-]{1,100}$/.test(raw.consentId||'')||raw.nextDueAt!==reinspectionNextDueAtKst(raw.consentedAt,raw.intervalMonths)||raw.lastContactedAt!==null||!Array.isArray(raw.audit)||!raw.audit.length||!/^[A-Za-z0-9_-]{1,200}$/.test(raw.evidenceId||''))throw new Error('invalid consent record');
   const input=normalizeReinspectionConsent(Object.fromEntries(['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'].map(key=>[key,raw[key]])));
-  const withdrawn=raw.withdrawnAt===null?false:parseStrictKstDateTime(raw.withdrawnAt)!==null;
+  const active=raw.withdrawnAt===null&&raw.withdrawnBy===null&&raw.withdrawalReason===null;
+  const withdrawn=parseStrictKstDateTime(raw.withdrawnAt)!==null&&validOfficeString(raw.withdrawnBy,1,100)&&validOfficeString(raw.withdrawalReason,1,500);
   const audit=raw.audit.map(event=>{
     if(!officeOpsExactKeys(event,['event','at','actor','reason'])||!['recorded','withdrawn'].includes(event.event)||parseStrictKstDateTime(event.at)===null||!validOfficeString(event.actor,1,100)||(event.event==='recorded'?event.reason!==null:!validOfficeString(event.reason,1,500)))throw new Error('invalid consent record');
     return Object.freeze({event:event.event,at:event.at,actor:event.actor,reason:event.reason});
   });
   const first=audit[0],last=audit[audit.length-1];
-  if(!validOfficeString(raw.recordedBy,1,100)||first.event!=='recorded'||first.actor!==raw.recordedBy||first.reason!==null||
-    (withdrawn&&(!validOfficeString(raw.withdrawnBy,1,100)||!validOfficeString(raw.withdrawalReason,1,500)||audit.length!==2||last.event!=='withdrawn'||last.at!==raw.withdrawnAt||last.actor!==raw.withdrawnBy||last.reason!==raw.withdrawalReason))||
-    (!withdrawn&&(raw.withdrawnBy!==null||raw.withdrawalReason!==null||audit.length!==1)))throw new Error('invalid consent record');
+  if(!validOfficeString(raw.recordedBy,1,100)||first.event!=='recorded'||first.actor!==raw.recordedBy||first.reason!==null||(!active&&!withdrawn)||
+    (withdrawn&&(audit.length!==2||last.event!=='withdrawn'||last.at!==raw.withdrawnAt||last.actor!==raw.withdrawnBy||last.reason!==raw.withdrawalReason))||
+    (active&&audit.length!==1))throw new Error('invalid consent record');
   return Object.freeze({consentId:raw.consentId,subjectType:input.subjectType,subjectId:input.subjectId,purpose:input.purpose,intervalMonths:input.intervalMonths,channel:input.channel,
     consentVersion:input.consentVersion,consentTextSnapshot:input.consentTextSnapshot,consentTextSha256:input.consentTextSha256,recordedBy:input.recordedBy,consentedAt:input.consentedAt,
     withdrawnAt:raw.withdrawnAt,withdrawnBy:raw.withdrawnBy,withdrawalReason:raw.withdrawalReason,nextDueAt:raw.nextDueAt,lastContactedAt:raw.lastContactedAt,
@@ -26833,10 +26834,18 @@ async function persistReinspectionConsent(input,idempotencyKey){
   return validateOfficeConsentIntegrity(created);
 }
 async function withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason}){
-  const store=await officeOpsMutation('officeConsentWithdraw',{consentId,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
-  const consent=store.consents.map(normalizeOfficeConsentRecord).find(x=>x.consentId===consentId);
-  if(!consent)throw new Error('withdrawn consent missing after reload');
-  return validateOfficeConsentIntegrity(consent);
+  const result=await officeOpsMutationWithAck('officeConsentWithdraw',{consentId,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
+  try{
+    const ack=result&&result.ack,store=result&&result.store;
+    if(!officeOpsExactKeys(ack,['id','revision','updatedAt'])||ack.id!==consentId||!Number.isInteger(ack.revision)||ack.revision<1||parseStrictKstDateTime(ack.updatedAt)===null||
+      !store||!Number.isInteger(store.revision)||store.revision<ack.revision||!Array.isArray(store.audit))throw new Error('invalid consent withdrawal postcondition');
+    const mutationAudit=store.audit.find(row=>row.action==='officeConsentWithdraw'&&row.id===consentId&&row.preMutationRevision===ack.revision-1&&row.at===ack.updatedAt);
+    const consent=Array.isArray(store.consents)?store.consents.map(normalizeOfficeConsentRecord).find(row=>row.consentId===consentId):null;
+    const terminal=consent&&consent.audit[consent.audit.length-1];
+    if(!mutationAudit||!consent||parseStrictKstDateTime(consent.withdrawnAt)===null||consent.withdrawnBy!==withdrawnBy||consent.withdrawalReason!==withdrawalReason||
+      !terminal||terminal.event!=='withdrawn'||terminal.at!==consent.withdrawnAt||terminal.at!==ack.updatedAt||terminal.actor!==withdrawnBy||terminal.reason!==withdrawalReason)throw new Error('invalid consent withdrawal postcondition');
+    return await validateOfficeConsentIntegrity(consent);
+  }catch(e){officeOpsRevokeFresh();throw new Error('invalid consent withdrawal postcondition');}
 }
 function officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst}){
   const serverMs=Date.parse(serverNowKst), deadlineMs=Date.parse(deadlineAtKst);
@@ -26891,7 +26900,20 @@ function normalizeOfficeOpsStore(raw){
   }
   return Object.freeze({schemaVersion:1,revision:raw.revision,updatedAt:raw.updatedAt,pilots:Object.freeze(pilots),consents:Object.freeze(consents),inspections:Object.freeze(inspections),opportunities:Object.freeze(opportunities),audit:Object.freeze(audit)});
 }
+function validateOfficeOpsAuditHistory(store){
+  if(!store||!Array.isArray(store.audit)||store.audit.length!==store.revision)throw new Error('invalid OfficeOps store');
+  const mutationIds=new Set(),createKeys=new Set(),artifactIds=new Set(),createActions=new Set(['officePilotCreate','officeConsentRecord','officeInspectionCreate','officeOpportunityCreate']);
+  store.audit.forEach((row,index)=>{
+    if(row.preMutationRevision!==index||mutationIds.has(row.mutationId)||row.backupFileId===row.backupManifestFileId||artifactIds.has(row.backupFileId)||artifactIds.has(row.backupManifestFileId))throw new Error('invalid OfficeOps store');
+    mutationIds.add(row.mutationId);artifactIds.add(row.backupFileId);artifactIds.add(row.backupManifestFileId);
+    if(createActions.has(row.action)){const key=row.action+'\u0000'+row.idempotencyKey;if(createKeys.has(key))throw new Error('invalid OfficeOps store');createKeys.add(key);}
+    else if(row.idempotencyKey!==null)throw new Error('invalid OfficeOps store');
+  });
+  if(store.audit.length&&store.audit[store.audit.length-1].at!==store.updatedAt)throw new Error('invalid OfficeOps store');
+  return store;
+}
 async function validateOfficeOpsStoreIntegrity(store){
+  validateOfficeOpsAuditHistory(store);
   await Promise.all(store.consents.map(validateOfficeConsentIntegrity));
   await Promise.all(store.inspections.map(validateOfficeInspectionIntegrity));
   return store;
@@ -26906,6 +26928,9 @@ function officeOpsActiveConsentForDraft(consentId){
   const consent=__officeOps.cache.consents.find(row=>row.consentId===consentId);
   return consent&&consent.withdrawnAt===null?consent:null;
 }
+function officeOpsRevokeFresh(){
+  __officeOps.mode=__officeOps.cache?'stale-export-only':'unloaded';
+}
 async function officeOpsLoad(){
   const json=await officeOpsCall('officeOpsList',{});
   const store=await normalizeAndValidateOfficeOpsStore(json.store);
@@ -26916,8 +26941,10 @@ async function officeOpsLoad(){
 async function officeOpsMutationWithAck(action,payload){
   if(__officeOps.mode!=='fresh')throw new Error('office-disabled');
   const json=await officeOpsCall(action,payload,{mutationId:crypto.randomUUID()});
-  if(Object.keys(json).sort().join(',')!=='id,ok,revision,updatedAt'||json.ok!==true)throw new Error('invalid mutation acknowledgement');
+  if(!officeOpsExactKeys(json,['ok','id','revision','updatedAt'])||json.ok!==true||!validOfficeString(json.id,1,200)||!Number.isInteger(json.revision)||json.revision<1||parseStrictKstDateTime(json.updatedAt)===null){officeOpsRevokeFresh();throw new Error('invalid mutation acknowledgement');}
   let store;try{store=await officeOpsLoad();}catch(e){__officeOps.mode=e&&e.code==='office-disabled'?'export-only':(__officeOps.cache?'stale-export-only':'unloaded');throw e;}
+  const audit=store.audit[json.revision-1];
+  if(store.revision<json.revision||!audit||audit.action!==action||audit.id!==json.id||audit.preMutationRevision!==json.revision-1||audit.at!==json.updatedAt){officeOpsRevokeFresh();throw new Error('invalid mutation reload binding');}
   return {ack:Object.freeze({id:json.id,revision:json.revision,updatedAt:json.updatedAt}),store};
 }
 async function officeOpsMutation(action,payload){
