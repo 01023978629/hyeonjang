@@ -26543,6 +26543,19 @@ function paidSameValue(left,right,seen){
   if(!paidPlainObject(left)||!paidPlainObject(right))return false;
   const leftKeys=Object.keys(left),rightKeys=Object.keys(right);return leftKeys.length===rightKeys.length&&leftKeys.every(key=>Object.prototype.hasOwnProperty.call(right,key)&&paidSameValue(left[key],right[key],seen));
 }
+function readPaidGenerationRecords(store,oncomplete,onerror){
+  if(!store||typeof store.getAllKeys!=='function'){oncomplete([],false);return;}
+  const keysRequest=store.getAllKeys();keysRequest.onerror=()=>onerror(keysRequest.error||new Error('paid generation keys read failed'));
+  keysRequest.onsuccess=()=>{const keys=keysRequest.result.filter(key=>typeof key==='string'&&key.startsWith(PAID_COMMIT_GENERATION_PREFIX)).sort();if(!keys.length){oncomplete([],true);return;}const records=new Array(keys.length);let pending=keys.length;
+    keys.forEach((key,index)=>{const request=store.get(key);request.onerror=()=>onerror(request.error||new Error('paid generation record read failed'));request.onsuccess=()=>{records[index]={key,value:request.result};pending--;if(pending===0)oncomplete(records,true);};});
+  };
+}
+function validateCompletePaidGenerationSet(records,journal,pointer){
+  if(!Array.isArray(records)||records.length>PAID_COMMIT_MAX_GENERATIONS)throw new Error('paid generation set exceeds bound');
+  const actual=[];for(const record of records){if(!paidExactKeys(record,['key','value'])||!paidGenerationKey(record.key))throw new Error('invalid paid generation record');validatePaidSerializedState(record.value);actual.push(record.key);}
+  const expected=journal.generations.slice().sort();if(new Set(actual).size!==actual.length||actual.slice().sort().join('\n')!==expected.join('\n'))throw new Error('paid generation set mismatch');
+  const current=records.find(record=>record.key===pointer);if(!current||current.value.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');return current.value;
+}
 function validateOfficeIntakeSnapshot(value){
   if(!paidExactKeys(value,OFFICE_INTAKE_STATE_KEYS)||!Array.isArray(value.inbox)||!Array.isArray(value.outbox)||!Array.isArray(value.operationalErrors)||typeof value.cursor!=='string'||typeof value.lastSyncAt!=='string'||typeof value.lastError!=='string')throw new Error('invalid office intake state');
   rejectOfficeIntakeOwnership(value);return value;
@@ -26595,11 +26608,9 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
       const repair=(rawPointer)=>{if(!paidPlainObject(recoverySnapshot)||!paidSameValue(rawPointer,recoverySnapshot.pointer)){abortConflict();return;}
         read('paid_commit_journal',currentJournal=>{if(!paidSameValue(currentJournal,recoverySnapshot.journal)){abortConflict();return;}
           read('appState',currentApp=>{if(!paidSameValue(currentApp,recoverySnapshot.appState)){abortConflict();return;}
-            const finish=currentGeneration=>{if(!paidSameValue(currentGeneration,recoverySnapshot.generation)){abortConflict();return;}
-              const orphanKeys=new Set();if(paidGenerationKey(recoverySnapshot.pointer))orphanKeys.add(recoverySnapshot.pointer);const observedJournal=recoverySnapshot.journal;if(observedJournal&&Array.isArray(observedJournal.generations))observedJournal.generations.forEach(key=>{if(paidGenerationKey(key))orphanKeys.add(key);});
-              orphanKeys.forEach(key=>store.delete(key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');
-            };
-            if(paidGenerationKey(recoverySnapshot.pointer))read(recoverySnapshot.pointer,finish,'paid generation recovery read failed');else finish(undefined);
+            readPaidGenerationRecords(store,(currentRecords,supported)=>{if(!supported||recoverySnapshot.generationEnumerationSupported!==true||!paidSameValue(currentRecords,recoverySnapshot.generationRecords)){abortConflict();return;}
+              currentRecords.forEach(record=>store.delete(record.key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');
+            },abort);
           },'appState recovery read failed');
         },'paid journal recovery read failed');
       };
@@ -26607,11 +26618,12 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
       pointerReq.onsuccess=()=>{const raw=pointerReq.result;if(recoverySnapshot){repair(raw);return;}const current=raw==null?null:(paidGenerationKey(raw)?raw:'malformed');
         if(current==='malformed'||current!==expectedPointer){abortConflict();return;}
         read('paid_commit_journal',journalRaw=>{
-          if(current===null){if(journalRaw!=null){abortConflict();return;}read('appState',currentData=>{if(!appMatches(currentData,false)){abortConflict();return;}writeNormal(null,null);},'appState read failed');return;}
-          let journal=null;try{journal=normalizePaidCommitJournal(journalRaw,current);}catch(error){abort(error);return;}
-          read(current,generation=>{try{validatePaidSerializedState(generation);if(generation.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');}catch(error){abort(error);return;}if(generation.savedAt!==expectedStamp){abortConflict();return;}
+          readPaidGenerationRecords(store,(records,supported)=>{if(!supported){abort(new Error('paid generation enumeration unavailable'));return;}
+            if(current===null){if(journalRaw!=null||records.length){abortConflict();return;}read('appState',currentData=>{if(!appMatches(currentData,false)){abortConflict();return;}writeNormal(null,null);},'appState read failed');return;}
+            let journal=null,generation=null;try{journal=normalizePaidCommitJournal(journalRaw,current);generation=validateCompletePaidGenerationSet(records,journal,current);}catch(error){abort(error);return;}
+            if(generation.savedAt!==expectedStamp){abortConflict();return;}
             read('appState',currentData=>{if(!appMatches(currentData,true)||journal.committedAt!==expectedStamp){abortConflict();return;}writeNormal(current,journal);},'appState read failed');
-          },'paid generation read failed');
+          },abort);
         },'paid journal read failed');
       };
       tx.oncomplete=()=>{db.close();resolve(true);};
@@ -26645,8 +26657,8 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedS
     open.onsuccess=()=>{const db=open.result;try{
       tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
       const read=(key,onvalue,message)=>{const request=store.get(key);request.onerror=()=>abort(request.error||new Error(message));request.onsuccess=()=>onvalue(request.result);};
-      const write=(oldJournal)=>{
-        const oldKeys=oldJournal?oldJournal.generations:[],generations=[generationKey,...oldKeys.filter(key=>key!==generationKey)].slice(0,PAID_COMMIT_MAX_GENERATIONS);
+      const write=(oldJournal,oldRecords)=>{
+        const oldKeys=oldRecords.map(record=>record.key),oldOrder=oldJournal?oldJournal.generations:[],generations=[generationKey,...oldOrder.filter(key=>key!==generationKey)].slice(0,PAID_COMMIT_MAX_GENERATIONS);
         const journal={schemaVersion:1,current:generationKey,previous:expectedPointer,committedAt:candidate.savedAt,generations,maxGenerations:PAID_COMMIT_MAX_GENERATIONS};committedJournal=journal;
         store.put(candidate,generationKey);store.put(journal,'paid_commit_journal');store.put(generationKey,'paid_commit_pointer');store.put(candidate,'appState');
         oldKeys.filter(key=>!generations.includes(key)).forEach(key=>store.delete(key));
@@ -26655,12 +26667,13 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedS
       pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:null);
         if((raw!=null&&!current)||current!==expectedPointer){abort(new Error('paid commit pointer conflict'));return;}
         read('paid_commit_journal',journalRaw=>{let oldJournal=null;try{
-          if(current===null){if(journalRaw!=null)throw new Error('orphan paid journal');read('appState',currentApp=>{try{if(expectedStamp===null){if(currentApp!==undefined)throw new Error('paid appState stamp conflict');}else{validateLegacyAppState(currentApp);if(currentApp.savedAt!==expectedStamp)throw new Error('paid appState stamp conflict');}write(null);}catch(error){abort(error);}},'paid appState read failed');return;}
-          oldJournal=normalizePaidCommitJournal(journalRaw,current);
+          if(current!==null)oldJournal=normalizePaidCommitJournal(journalRaw,current);
         }catch(error){abort(error);return;}
-          read(current,generation=>{try{validatePaidSerializedState(generation);if(generation.savedAt!==oldJournal.committedAt||generation.savedAt!==expectedStamp)throw new Error('paid generation stamp conflict');}catch(error){abort(error);return;}
-            read('appState',currentApp=>{try{validatePaidSerializedState(currentApp);if(currentApp.savedAt!==expectedStamp||oldJournal.committedAt!==expectedStamp)throw new Error('paid appState stamp conflict');write(oldJournal);}catch(error){abort(error);}},'paid appState read failed');
-          },'paid generation read failed');
+          readPaidGenerationRecords(store,(records,supported)=>{if(!supported){abort(new Error('paid generation enumeration unavailable'));return;}
+            if(current===null){if(journalRaw!=null||records.length){abort(new Error('orphan paid generation metadata'));return;}read('appState',currentApp=>{try{if(expectedStamp===null){if(currentApp!==undefined)throw new Error('paid appState stamp conflict');}else{validateLegacyAppState(currentApp);if(currentApp.savedAt!==expectedStamp)throw new Error('paid appState stamp conflict');}write(null,records);}catch(error){abort(error);}},'paid appState read failed');return;}
+            let generation=null;try{generation=validateCompletePaidGenerationSet(records,oldJournal,current);if(generation.savedAt!==expectedStamp)throw new Error('paid generation stamp conflict');}catch(error){abort(error);return;}
+            read('appState',currentApp=>{try{validatePaidSerializedState(currentApp);if(currentApp.savedAt!==expectedStamp||oldJournal.committedAt!==expectedStamp)throw new Error('paid appState stamp conflict');write(oldJournal,records);}catch(error){abort(error);}},'paid appState read failed');
+          },abort);
         },'paid journal read failed');
       };
       tx.oncomplete=()=>{db.close();resolve({pointer:generationKey,journal:committedJournal});};
@@ -26670,30 +26683,30 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedS
 }
 function readPaidCommitSnapshot(){
   return new Promise((resolve,reject)=>{
-    const open=indexedDB.open('hyeonjang-db',1),snapshot={appState:undefined,pointer:undefined,journal:undefined,generation:undefined};let db=null,tx=null,reason=null,pending=3,settled=false;
-    const finish=()=>{pending--;if(!settled&&pending===0){settled=true;try{db.close();}catch(_){}resolve(snapshot);}};
+    const open=indexedDB.open('hyeonjang-db',1),snapshot={appState:undefined,pointer:undefined,journal:undefined,generation:undefined,generationRecords:[],generationEnumerationSupported:false};let db=null,tx=null,reason=null,pending=4,settled=false;
+    const finish=()=>{pending--;if(!settled&&pending===0){if(paidGenerationKey(snapshot.pointer)){const current=snapshot.generationRecords.find(record=>record.key===snapshot.pointer);snapshot.generation=current&&current.value;}settled=true;try{db.close();}catch(_){}resolve(snapshot);}};
     open.onupgradeneeded=()=>{const names=open.result.objectStoreNames;if(!names||!names.contains('kv'))open.result.createObjectStore('kv');};
     open.onerror=()=>reject(open.error||new Error('paid snapshot open failed'));
     open.onsuccess=()=>{db=open.result;try{
       tx=db.transaction('kv','readonly');const store=tx.objectStore('kv'),appReq=store.get('appState'),pointerReq=store.get('paid_commit_pointer'),journalReq=store.get('paid_commit_journal');
-      const fail=request=>{if(settled)return;reason=request.error||new Error('paid snapshot read failed');try{tx.abort();}catch(_){settled=true;try{db.close();}catch(__){}reject(reason);}};
+      const fail=request=>{if(settled)return;reason=request&&request.error||request||new Error('paid snapshot read failed');try{tx.abort();}catch(_){settled=true;try{db.close();}catch(__){}reject(reason);}};
       appReq.onerror=()=>fail(appReq);appReq.onsuccess=()=>{snapshot.appState=appReq.result;finish();};
       journalReq.onerror=()=>fail(journalReq);journalReq.onsuccess=()=>{snapshot.journal=journalReq.result;finish();};
-      pointerReq.onerror=()=>fail(pointerReq);pointerReq.onsuccess=()=>{snapshot.pointer=pointerReq.result;if(paidGenerationKey(snapshot.pointer)){pending++;const generationReq=store.get(snapshot.pointer);generationReq.onerror=()=>fail(generationReq);generationReq.onsuccess=()=>{snapshot.generation=generationReq.result;finish();};}finish();};
+      pointerReq.onerror=()=>fail(pointerReq);pointerReq.onsuccess=()=>{snapshot.pointer=pointerReq.result;finish();};
+      readPaidGenerationRecords(store,(records,supported)=>{snapshot.generationRecords=records;snapshot.generationEnumerationSupported=supported;finish();},fail);
       tx.oncomplete=()=>{};tx.onabort=()=>{if(settled)return;settled=true;db.close();reject(reason||tx.error||new Error('paid snapshot transaction aborted'));};tx.onerror=()=>{};
     }catch(error){try{db.close();}catch(_){}reject(error);}};
   });
 }
 async function resolvePaidCommitState(){
   const snapshot=await readPaidCommitSnapshot();let legacy=null;try{if(snapshot.appState)legacy=validateLegacyAppState(snapshot.appState);}catch(e){}
-  const rawPointer=snapshot.pointer;
-  if(rawPointer==null)return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null};
-  if(!paidGenerationKey(rawPointer))return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true,recoverySnapshot:paidObservedClone(snapshot)};
+  const rawPointer=snapshot.pointer,records=snapshot.generationRecords||[],fallback=()=>({data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true,recoverySnapshot:paidObservedClone(snapshot)});
+  if(rawPointer==null){if(snapshot.journal!=null||records.length)return fallback();return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null};}
+  if(!paidGenerationKey(rawPointer)||snapshot.generationEnumerationSupported!==true)return fallback();
   try{
-    const journal=normalizePaidCommitJournal(snapshot.journal,rawPointer),generation=validatePaidSerializedState(snapshot.generation);
-    if(generation.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');
+    const journal=normalizePaidCommitJournal(snapshot.journal,rawPointer),generation=validateCompletePaidGenerationSet(records,journal,rawPointer);snapshot.generation=generation;
     return {data:paidClone(generation),source:'paid-generation',pointer:rawPointer,journal};
-  }catch(e){return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true,recoverySnapshot:paidObservedClone(snapshot)};}
+  }catch(e){return fallback();}
 }
 function freezePaidMetadata(){
   (state.aptOrders||[]).forEach(order=>{if(order&&order.commercialTerms)order.commercialTerms=Object.freeze({...order.commercialTerms,exclusions:Object.freeze((order.commercialTerms.exclusions||[]).slice())});if(order&&order.commercialApproval)order.commercialApproval=Object.freeze({...order.commercialApproval});});
