@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const nodeAssert = require('node:assert/strict');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hj-pages-artifact-'));
@@ -27,6 +28,53 @@ function assertRequiredGuards(testNames, label) {
   const names = testNames instanceof Set ? testNames : new Set(testNames);
   const missing = requiredGuards.filter(name => !/\.(check|unit|e2e)\.js$/.test(name) || !names.has(name));
   assert(missing.length === 0, label + ' 필수 검사 누락: ' + missing.join(', '));
+}
+
+function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function extractFunctionFrom(candidate, name) {
+  const match = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(name) + '\\s*\\(').exec(candidate);
+  assert(match, 'runner function missing: ' + name);
+  const paramsStart = candidate.indexOf('(', match.index + match[0].length - 1);
+  let params = 0, open = -1;
+  for (let i = paramsStart; i < candidate.length; i += 1) {
+    if (candidate[i] === '(') params += 1;
+    if (candidate[i] === ')' && --params === 0) { open = candidate.indexOf('{', i); break; }
+  }
+  assert(open >= 0, 'runner function body missing: ' + name);
+  let depth = 0, quote = '', escaped = false;
+  for (let i = open; i < candidate.length; i += 1) {
+    const ch = candidate[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === '{') depth += 1;
+    if (ch === '}' && --depth === 0) return candidate.slice(match.index, i + 1);
+  }
+  throw new Error('runner function unbalanced: ' + name);
+}
+function noFilterSuiteBasenames(candidate) {
+  const sandbox = { fs, path, process: { argv: ['node', 'tests/run-all.js'] }, TESTS: path.join(root, 'tests') };
+  vm.createContext(sandbox);
+  vm.runInContext(extractFunctionFrom(candidate, 'listSuite'), sandbox);
+  const suite = vm.runInContext('listSuite()', sandbox);
+  assert(Array.isArray(suite), 'listSuite() did not return an array');
+  return suite.map(file => path.basename(String(file)));
+}
+function withoutRunnerGuard(candidate, guard) {
+  const original = extractFunctionFrom(candidate, 'listSuite');
+  const mutated = original.replace(/return\s+(\[[\s\S]*?\]);/, "return $1.filter(file => path.basename(file) !== " + JSON.stringify(guard) + ');');
+  assert(mutated !== original, 'runner mutant did not alter listSuite');
+  return candidate.replace(original, mutated);
+}
+function assertRunnerContainsRequiredGuards(candidate, label) {
+  const suite = new Set(noFilterSuiteBasenames(candidate));
+  const missing = requiredGuards.filter(name => !suite.has(name));
+  assert(missing.length === 0, label + ' 무필터 run-all 필수 검사 누락: ' + missing.join(', '));
+  return suite;
 }
 
 function walk(dir, base = dir) {
@@ -63,6 +111,15 @@ try {
   nodeAssert.throws(() => assertRequiredGuards(missingGuardMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'missing deployment guard fixture must be rejected');
   assertRequiredGuards(testNames, '배포 전');
   const runner = fs.readFileSync(path.join(root, 'tests', 'run-all.js'), 'utf8');
+  const missingListSuiteMutant = runner.replace(/function\s+listSuite\s*\(/, 'function listSuiteMissing(');
+  assert(missingListSuiteMutant !== runner, 'missing listSuite fixture must alter the runner');
+  nodeAssert.throws(() => noFilterSuiteBasenames(missingListSuiteMutant), /runner function missing: listSuite/, 'missing listSuite extraction fails closed');
+  const unbalancedListSuiteMutant = extractFunctionFrom(runner, 'listSuite').slice(0, -1);
+  nodeAssert.throws(() => extractFunctionFrom(unbalancedListSuiteMutant, 'listSuite'), /runner function unbalanced: listSuite/, 'unbalanced listSuite extraction fails closed');
+  const filteredRunnerMutant = withoutRunnerGuard(runner, 'office-ops-conversion.e2e.js');
+  assert(testNames.has('office-ops-conversion.e2e.js'), 'runner mutant prerequisite keeps the required test file on disk');
+  nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRunnerMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'no-filter runner mutation must be rejected while the file stays on disk');
+  assertRunnerContainsRequiredGuards(runner, '배포 전 실제');
   assert(runner.includes('static-server.js') && runner.includes('mock-relay.js'),
     '러너가 테스트 서버(8299/8398)를 직접 관리하지 않는다 — CI 에서 e2e 가 전부 죽는다');
   assert(/node\s+scripts\/stage-pages\.mjs\s+_site/.test(workflow), '워크플로가 검증된 staging 스크립트를 실행하지 않는다');

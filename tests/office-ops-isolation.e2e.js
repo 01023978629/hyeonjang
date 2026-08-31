@@ -368,13 +368,16 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.match(source, new RegExp('id="' + inputId + '" value=""'), inputId + ' value is always blank in rendered settings HTML');
     assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
   }
-  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsTimeoutError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'officeOpsRevokeFresh', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
+  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsTimeoutError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialRequestWithTimeout', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'officeOpsRevokeFresh', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
   const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|\bcloudApi[A-Za-z0-9_]*|\brelayBuild[A-Za-z0-9_]*(?:Upload|Payload)[A-Za-z0-9_]*|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|\bgd[A-Za-z0-9_]*(?:Backup|Blob|Drive|File|Folder|Persist|Queue|Restore|Save|Sync|Token|Upload)[A-Za-z0-9_]*|__heic[A-Za-z0-9_]*|queueHeicPreview|(?:pump|process|queue)HeicPreview[A-Za-z0-9_]*|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|APP_TOKEN|officeIntake|OfficeIntake/i;
   for (const snippet of ['__relay.token', 'RELAY_URL_DEFAULT', "idbGet('relay_queue')", '__gdToken', 'GD_FOLDER_ID', 'queueHeicPreview(file)', 'photoUploadQueue(item)', 'cloudApiUploadFile', 'relayBuildUploadPayload', 'gdUploadBlob', '__heicPreviewQueue', 'pumpHeicPreviewQueue']) {
     assert.match(snippet, forbiddenReferences, 'relay/photo/Drive fixture must be rejected: ' + snippet);
   }
-  for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
-  assert.doesNotMatch(extractFunction('commercialCall'), forbiddenReferences, 'commercialCall static transport boundary is isolated from state, relay, and OfficeIntake');
+  function assertStrongTransportIsolation(candidate) {
+    for (const name of isolatedFunctions) {
+      assert.doesNotMatch(extractFunctionFrom(candidate, name), forbiddenReferences, name + ' is isolated from app state, serialization, relay, and OfficeIntake');
+    }
+  }
 
   const forbiddenCrossSurface = /relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|\bcloudApi[A-Za-z0-9_]*|\brelayBuild[A-Za-z0-9_]*(?:Upload|Payload)[A-Za-z0-9_]*|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|\bgd[A-Za-z0-9_]*(?:Backup|Blob|Drive|File|Folder|Persist|Queue|Restore|Save|Sync|Token|Upload)[A-Za-z0-9_]*|__heic[A-Za-z0-9_]*|queueHeicPreview|(?:pump|process|queue)HeicPreview[A-Za-z0-9_]*|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|officeIntake|OfficeIntake/i;
   function assertAllPrefixedFunctionsIsolated(candidate) {
@@ -387,6 +390,9 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     }
     return names;
   }
+  const commercialStateLeakMutant = injectFunctionStatement(source, 'commercialRequestWithTimeout', 'void state.officeOpsLeak;');
+  assert.throws(() => assertStrongTransportIsolation(commercialStateLeakMutant), /commercialRequestWithTimeout is isolated/, 'strong transport isolation rejects commercial deadline state access');
+  assertStrongTransportIsolation(source);
   for (const statement of [
     'void __relay.token;',
     'void __gdToken;',
