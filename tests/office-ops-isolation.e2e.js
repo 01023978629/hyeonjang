@@ -256,5 +256,36 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   }
   for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
   assert.doesNotMatch(extractFunction('commercialCall'), forbiddenReferences, 'commercialCall static transport boundary is isolated from state, relay, and OfficeIntake');
+
+  const conversionFunctions = [
+    'officeOpsComplexNameKey', 'officeOpsConversionPayload', 'officeOpsCanonicalConversionTerms', 'officeOpsCanonicalConversionReceipt',
+    'officeOpsAptOrderDraft', 'officeOpsValidateExistingConversionOrder', 'officeOpsProofValueInUse', 'officeOpsCreateConversionIds',
+    'officeOpsAssertCallerConversionIdentity', 'officeOpsLoadConversionContext', 'officeOpsDriveInspectionConversion',
+    'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion', 'cancelOfficeOpsInspectionConversion',
+    'officeOpsConversionCallerForInspection', 'officeOpsInspectionCardHtml', 'officeOpsSetConversionBusy',
+    'officeOpsConversionFormValue', 'officeOpsSetConversionModalBusy', 'openOfficeOpsConversionModal', 'officeOpsWireConversionActions'
+  ];
+  const forbiddenConversionSurface = /relayCall|__relay\b|relay_queue|officeIntake|OfficeIntake|cloudApi|queueHeic|heicPreview|photoUpload|gdUpload|gdBackup|gdPersist|gdQueue/i;
+  for (const name of conversionFunctions) {
+    const body = extractFunction(name);
+    assert.doesNotMatch(body, forbiddenConversionSurface, name + ' cannot route OfficeOps conversion data to relay, OfficeIntake, or media queues');
+    assert.doesNotMatch(body, /state\.aptOrders\s*\.(?:push|splice|unshift|pop|shift)\s*\(/, name + ' cannot write the local order collection directly');
+  }
+  for (const name of ['officeOpsDriveInspectionConversion', 'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion', 'cancelOfficeOpsInspectionConversion']) {
+    assert.doesNotMatch(extractFunction(name), /\bofficeOpsMutation\s*\(/, name + ' uses only the ACK-bound OfficeOps mutation path');
+  }
+  assert.match(extractFunction('officeOpsDriveInspectionConversion'), /executePaidWorkGate\(/, 'the conversion driver delegates its only local create to the paid gate');
+  assert.doesNotMatch(extractFunction('officeOpsDriveInspectionConversion'), /issueCommercialApproval\(/, 'resume stages never issue a new receipt');
+  assert.doesNotMatch(extractFunction('resumeOfficeOpsInspectionConversion').replace(/^async function resumeOfficeOpsInspectionConversion[^\{]*\{/, ''), /resumeOfficeOpsInspectionConversion\s*\(/, 'resume is bounded and non-recursive');
+  const cancelBody = extractFunction('cancelOfficeOpsInspectionConversion');
+  assert.doesNotMatch(cancelBody, /issueCommercialApproval|validateCommercialApproval|hjSnapshot|executePaidWorkGate/, 'cancel has no commercial, snapshot, or local-order effect');
+  assert.deepEqual((extractFunction('officeOpsAptOrderDraft').match(/sourceOfficeOps[A-Za-z]+/g) || []).sort(), ['sourceOfficeOpsConversionId','sourceOfficeOpsInspectionId'], 'draft carries only the two approved OfficeOps source IDs');
+  assert.doesNotMatch(extractFunction('officeOpsInspectionCardHtml'), /receiptHmac|approvalEvidenceFileId|approvalEvidenceSha256|conversionReceiptId|conversionTermsSha256/, 'conversion cards never render signed receipt or proof secrets');
+
+  const queueSandbox = { state: { aptOrders: [], officeIntake: { outbox: [] } }, queued: 0, setTimeout, officeIntakeQueueOrderStatus: () => { queueSandbox.queued += 1; } };
+  vm.createContext(queueSandbox); vm.runInContext(extractFunction('officeIntakeQueueCommittedOrderStatus'), queueSandbox);
+  const queueResult = vm.runInContext("officeIntakeQueueCommittedOrderStatus({id:'order_1',source:'officeops-preventive-inspection',status:'visit'})", queueSandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(queueResult)), { queued: false, skipped: true }, 'OfficeOps-created paid order is not projected into OfficeIntake');
+  assert.equal(queueSandbox.queued, 0, 'OfficeOps-created paid order makes zero OfficeIntake queue calls');
   console.log('PASS  OfficeOps isolated envelopes, acknowledgements, cache ownership, and legacy boundaries');
 })().catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });
