@@ -1390,13 +1390,24 @@ function projectBackupSafe(p){
   delete out.access;
   return out;
 }
+const OFFICE_INTAKE_STATE_KEYS=['inbox','outbox','operationalErrors','cursor','lastSyncAt','lastError'];
+function rejectOfficeIntakeOwnership(value,seen){
+  if(!value||typeof value!=='object')return;
+  seen=seen||new WeakSet();if(seen.has(value))throw new Error('invalid office intake state');seen.add(value);
+  for(const key of Object.keys(value)){
+    if(/^(?:office_ops_|commercial_approval_|paid_commit_)/.test(key))throw new Error('forbidden office intake ownership');
+    rejectOfficeIntakeOwnership(value[key],seen);
+  }
+}
 function officeIntakeSnapshot(value){
-  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},data={...source};
-  data.inbox=Array.isArray(source.inbox)?source.inbox:[];
-  data.outbox=Array.isArray(source.outbox)?source.outbox:[];
-  data.operationalErrors=Array.isArray(source.operationalErrors)?source.operationalErrors:[];
-  data.cursor=String(source.cursor||'');data.lastSyncAt=String(source.lastSyncAt||'');data.lastError=String(source.lastError||'');
-  return data;
+  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  rejectOfficeIntakeOwnership(source);
+  return {
+    inbox:structuredClone(Array.isArray(source.inbox)?source.inbox:[]),
+    outbox:structuredClone(Array.isArray(source.outbox)?source.outbox:[]),
+    operationalErrors:structuredClone(Array.isArray(source.operationalErrors)?source.operationalErrors:[]),
+    cursor:String(source.cursor||''),lastSyncAt:String(source.lastSyncAt||''),lastError:String(source.lastError||'')
+  };
 }
 function serializeData(){
   return {
@@ -26514,7 +26525,7 @@ render();
 const PAID_COMMIT_GENERATION_PREFIX='paid_commit_generation:';
 const PAID_COMMIT_MAX_GENERATIONS=4;
 const PAID_SERIALIZED_STATE_KEYS=['version','app','savedAt','learn','quotes','schedule','calendarImports','notes','priceBook','asLog','aptOffices','aptOrders','officeIntake','aptRates','monthClosed','quoteSets','trips','tripCfg','workLogs','claudeDone','satisfaction','adPosts','portalCfg','_savedFileCount','kakaoLastAt','coworkTasks','coworkSched','_cwSchedInit','_coworkInit','payLog','expenses','goals','aiOps','suppliers','supplierMap','inventory','brand','contacts','projects','files'];
-let __appStateWriteQueue=Promise.resolve(),__paidCommitPointerKey=null,__paidCommitRecoveryMalformedPointer=false;
+let __appStateWriteQueue=Promise.resolve(),__paidCommitPointerKey=null,__paidCommitRecoveryMalformedPointer=false,__paidCommitRecoverySnapshot=null;
 const __paidApprovalConsumptions=new Set();
 const __nativeAppStateIdbSet=idbSet;
 function paidPlainObject(value){return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.getPrototypeOf(value)===Object.prototype;}
@@ -26522,16 +26533,31 @@ function paidExactKeys(value,keys){return !!value&&typeof value==='object'&&!Arr
 function paidUtcIso(value){if(typeof value!=='string')return false;const ms=Date.parse(value);return Number.isFinite(ms)&&new Date(ms).toISOString()===value;}
 function paidGenerationKey(value){return typeof value==='string'&&new RegExp('^'+PAID_COMMIT_GENERATION_PREFIX+'[A-Za-z0-9_-]{1,160}$').test(value);}
 function paidClone(value){return JSON.parse(JSON.stringify(value));}
+function paidObservedClone(value){return structuredClone(value);}
+function paidSameValue(left,right,seen){
+  if(Object.is(left,right))return true;
+  if(!left||!right||typeof left!=='object'||typeof right!=='object')return false;
+  seen=seen||new WeakMap();if(seen.has(left))return seen.get(left)===right;seen.set(left,right);
+  if(Array.isArray(left)||Array.isArray(right))return Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&left.every((value,index)=>paidSameValue(value,right[index],seen));
+  if(left instanceof Date||right instanceof Date)return left instanceof Date&&right instanceof Date&&left.getTime()===right.getTime();
+  if(!paidPlainObject(left)||!paidPlainObject(right))return false;
+  const leftKeys=Object.keys(left),rightKeys=Object.keys(right);return leftKeys.length===rightKeys.length&&leftKeys.every(key=>Object.prototype.hasOwnProperty.call(right,key)&&paidSameValue(left[key],right[key],seen));
+}
+function validateOfficeIntakeSnapshot(value){
+  if(!paidExactKeys(value,OFFICE_INTAKE_STATE_KEYS)||!Array.isArray(value.inbox)||!Array.isArray(value.outbox)||!Array.isArray(value.operationalErrors)||typeof value.cursor!=='string'||typeof value.lastSyncAt!=='string'||typeof value.lastError!=='string')throw new Error('invalid office intake state');
+  rejectOfficeIntakeOwnership(value);return value;
+}
 function validateLegacyAppState(value){
   if(!paidPlainObject(value)||value.app!=='현장'||value.version!==2||!paidUtcIso(value.savedAt)||!Array.isArray(value.files)||!Array.isArray(value.projects))throw new Error('invalid legacy appState');
   const forbidden=['office_ops_url','office_ops_token','commercial_approval_url','commercial_approval_token','office_ops_device_id','office_ops_cache'];
-  if(forbidden.some(key=>Object.prototype.hasOwnProperty.call(value,key))||Object.keys(value).some(key=>/^office_ops_|^paid_commit_/.test(key)))throw new Error('invalid legacy appState');
+  if(forbidden.some(key=>Object.prototype.hasOwnProperty.call(value,key))||Object.keys(value).some(key=>/^(?:office_ops_|commercial_approval_|paid_commit_)/.test(key)))throw new Error('invalid legacy appState');
   for(const key of ['aptOrders','quotes','schedule','notes','contacts','payLog'])if(key in value&&!Array.isArray(value[key]))throw new Error('invalid legacy appState');
-  return paidClone(value);
+  const clone=paidClone(value);clone.officeIntake=value.officeIntake===undefined?officeIntakeSnapshot(undefined):paidClone(validateOfficeIntakeSnapshot(value.officeIntake));return clone;
 }
 function validatePaidSerializedState(value){
   if(!paidExactKeys(value,PAID_SERIALIZED_STATE_KEYS)||value.version!==2||value.app!=='현장'||!paidUtcIso(value.savedAt))throw new Error('invalid paid serialized state');
   for(const key of ['quotes','schedule','calendarImports','notes','asLog','aptOffices','aptOrders','aptRates','quoteSets','trips','workLogs','claudeDone','satisfaction','adPosts','coworkSched','payLog','expenses','suppliers','inventory','contacts','projects','files'])if(!Array.isArray(value[key]))throw new Error('invalid paid serialized state');
+  validateOfficeIntakeSnapshot(value.officeIntake);
   for(const order of value.aptOrders){
     if(!paidPlainObject(order))throw new Error('invalid paid aptOrder');
     if(order.commercialTerms!=null)normalizeCommercialTerms(order.commercialTerms);
@@ -26550,30 +26576,43 @@ function withAppStateWriteLock(work){
   __appStateWriteQueue=run.then(()=>undefined,()=>undefined);
   return run;
 }
-function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverMalformedPointer){
+function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverySnapshot){
   return new Promise((resolve,reject)=>{
     const open=indexedDB.open('hyeonjang-db',1);let conflict=false,reason=null,tx=null;
     const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
+    const abortConflict=()=>{conflict=true;try{tx.abort();}catch(_){}};
     open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('kv'))open.result.createObjectStore('kv');};
     open.onerror=()=>reject(open.error||new Error('appState open failed'));
     open.onsuccess=()=>{const db=open.result;try{
       tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
-      const write=(current,journal,recover)=>{const appReq=store.get('appState');
-        appReq.onerror=()=>abort(appReq.error||new Error('appState read failed'));
-        appReq.onsuccess=()=>{const currentData=appReq.result;if(currentData&&currentData.savedAt&&expectedStamp&&currentData.savedAt>expectedStamp){conflict=true;try{tx.abort();}catch(_){}return;}
-          if(recover){store.delete('paid_commit_pointer');store.delete('paid_commit_journal');}
-          else if(current){const advancedJournal={...journal,committedAt:data.savedAt};store.put(data,current);store.put(advancedJournal,'paid_commit_journal');store.put(current,'paid_commit_pointer');}
-          store.put(data,'appState');};
+      const read=(key,onvalue,message)=>{const request=store.get(key);request.onerror=()=>abort(request.error||new Error(message));request.onsuccess=()=>onvalue(request.result);};
+      const writeNormal=(current,journal)=>{if(current){const advancedJournal={...journal,committedAt:data.savedAt};store.put(data,current);store.put(advancedJournal,'paid_commit_journal');store.put(current,'paid_commit_pointer');}store.put(data,'appState');};
+      const appMatches=(currentData,paid)=>{try{
+        if(expectedStamp===null)return currentData===undefined;
+        if(!paidUtcIso(expectedStamp)||currentData===undefined)return false;
+        (paid?validatePaidSerializedState:validateLegacyAppState)(currentData);return currentData.savedAt===expectedStamp;
+      }catch(_){return false;}};
+      const repair=(rawPointer)=>{if(!paidPlainObject(recoverySnapshot)||!paidSameValue(rawPointer,recoverySnapshot.pointer)){abortConflict();return;}
+        read('paid_commit_journal',currentJournal=>{if(!paidSameValue(currentJournal,recoverySnapshot.journal)){abortConflict();return;}
+          read('appState',currentApp=>{if(!paidSameValue(currentApp,recoverySnapshot.appState)){abortConflict();return;}
+            const finish=currentGeneration=>{if(!paidSameValue(currentGeneration,recoverySnapshot.generation)){abortConflict();return;}
+              const orphanKeys=new Set();if(paidGenerationKey(recoverySnapshot.pointer))orphanKeys.add(recoverySnapshot.pointer);const observedJournal=recoverySnapshot.journal;if(observedJournal&&Array.isArray(observedJournal.generations))observedJournal.generations.forEach(key=>{if(paidGenerationKey(key))orphanKeys.add(key);});
+              orphanKeys.forEach(key=>store.delete(key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');
+            };
+            if(paidGenerationKey(recoverySnapshot.pointer))read(recoverySnapshot.pointer,finish,'paid generation recovery read failed');else finish(undefined);
+          },'appState recovery read failed');
+        },'paid journal recovery read failed');
       };
       pointerReq.onerror=()=>abort(pointerReq.error||new Error('pointer read failed'));
-      pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:'malformed'),recover=current==='malformed'&&expectedPointer===null&&recoverMalformedPointer===true;
-        if(!recover&&(current==='malformed'||current!==expectedPointer)){conflict=true;try{tx.abort();}catch(_){}return;}
-        if(recover||current===null){write(null,null,recover);return;}
-        const journalReq=store.get('paid_commit_journal');journalReq.onerror=()=>abort(journalReq.error||new Error('paid journal read failed'));
-        journalReq.onsuccess=()=>{let journal=null;try{journal=normalizePaidCommitJournal(journalReq.result,current);}catch(error){abort(error);return;}
-          const generationReq=store.get(current);generationReq.onerror=()=>abort(generationReq.error||new Error('paid generation read failed'));
-          generationReq.onsuccess=()=>{try{validatePaidSerializedState(generationReq.result);if(generationReq.result.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');write(current,journal,false);}catch(error){abort(error);}};
-        };
+      pointerReq.onsuccess=()=>{const raw=pointerReq.result;if(recoverySnapshot){repair(raw);return;}const current=raw==null?null:(paidGenerationKey(raw)?raw:'malformed');
+        if(current==='malformed'||current!==expectedPointer){abortConflict();return;}
+        read('paid_commit_journal',journalRaw=>{
+          if(current===null){if(journalRaw!=null){abortConflict();return;}read('appState',currentData=>{if(!appMatches(currentData,false)){abortConflict();return;}writeNormal(null,null);},'appState read failed');return;}
+          let journal=null;try{journal=normalizePaidCommitJournal(journalRaw,current);}catch(error){abort(error);return;}
+          read(current,generation=>{try{validatePaidSerializedState(generation);if(generation.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');}catch(error){abort(error);return;}if(generation.savedAt!==expectedStamp){abortConflict();return;}
+            read('appState',currentData=>{if(!appMatches(currentData,true)||journal.committedAt!==expectedStamp){abortConflict();return;}writeNormal(current,journal);},'appState read failed');
+          },'paid generation read failed');
+        },'paid journal read failed');
       };
       tx.oncomplete=()=>{db.close();resolve(true);};
       tx.onabort=()=>{db.close();if(conflict)resolve(false);else reject(reason||tx.error||new Error('appState transaction aborted'));};
@@ -26584,19 +26623,20 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverMa
 async function guardedPersistCurrentState(){
   return withAppStateWriteLock(async()=>{
     if(state._demo)return false;
-    const data=serializeData();validatePaidSerializedState(data);
-    const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoveryMalformedPointer);
+    const data=serializeData(),baseMs=Date.parse(__tabStamp||''),candidateMs=Date.parse(data.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))data.savedAt=new Date(baseMs+1).toISOString();validatePaidSerializedState(data);
+    const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoverySnapshot);
     if(!ok)return false;
     const completionObserver=window.idbSet;if(typeof completionObserver==='function'&&completionObserver!==__nativeAppStateIdbSet)await completionObserver('appState',paidClone(data));
-    __tabStamp=data.savedAt;__paidCommitRecoveryMalformedPointer=false;
+    __tabStamp=data.savedAt;__paidCommitRecoveryMalformedPointer=false;__paidCommitRecoverySnapshot=null;
     try{if(__tabBC)__tabBC.postMessage({t:'saved',at:data.savedAt});}catch(e){}
     return true;
   });
 }
-function paidCommitWriteAtomic(candidate,expectedPointer,generationKey){
+function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedStamp){
   validatePaidSerializedState(candidate);
   if(expectedPointer!==null&&!paidGenerationKey(expectedPointer))return Promise.reject(new Error('invalid expected paid pointer'));
   if(!paidGenerationKey(generationKey))return Promise.reject(new Error('invalid paid generation key'));
+  if(expectedStamp!==undefined&&expectedStamp!==null&&(!paidUtcIso(expectedStamp)||Date.parse(candidate.savedAt)<=Date.parse(expectedStamp)))return Promise.reject(new Error('invalid paid candidate stamp'));
   return new Promise((resolve,reject)=>{
     const open=indexedDB.open('hyeonjang-db',1);let tx=null,reason=null,committedJournal=null;
     const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
@@ -26604,6 +26644,7 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey){
     open.onerror=()=>reject(open.error||new Error('paid commit open failed'));
     open.onsuccess=()=>{const db=open.result;try{
       tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
+      const read=(key,onvalue,message)=>{const request=store.get(key);request.onerror=()=>abort(request.error||new Error(message));request.onsuccess=()=>onvalue(request.result);};
       const write=(oldJournal)=>{
         const oldKeys=oldJournal?oldJournal.generations:[],generations=[generationKey,...oldKeys.filter(key=>key!==generationKey)].slice(0,PAID_COMMIT_MAX_GENERATIONS);
         const journal={schemaVersion:1,current:generationKey,previous:expectedPointer,committedAt:candidate.savedAt,generations,maxGenerations:PAID_COMMIT_MAX_GENERATIONS};committedJournal=journal;
@@ -26613,16 +26654,14 @@ function paidCommitWriteAtomic(candidate,expectedPointer,generationKey){
       pointerReq.onerror=()=>abort(pointerReq.error||new Error('paid pointer read failed'));
       pointerReq.onsuccess=()=>{const raw=pointerReq.result,current=raw==null?null:(paidGenerationKey(raw)?raw:null);
         if((raw!=null&&!current)||current!==expectedPointer){abort(new Error('paid commit pointer conflict'));return;}
-        const journalReq=store.get('paid_commit_journal');
-        journalReq.onerror=()=>abort(journalReq.error||new Error('paid journal read failed'));
-        journalReq.onsuccess=()=>{let oldJournal=null;try{
-          if(current===null){if(journalReq.result!=null)throw new Error('orphan paid journal');write(null);return;}
-          oldJournal=normalizePaidCommitJournal(journalReq.result,current);
+        read('paid_commit_journal',journalRaw=>{let oldJournal=null;try{
+          if(current===null){if(journalRaw!=null)throw new Error('orphan paid journal');read('appState',currentApp=>{try{if(expectedStamp===null){if(currentApp!==undefined)throw new Error('paid appState stamp conflict');}else{validateLegacyAppState(currentApp);if(currentApp.savedAt!==expectedStamp)throw new Error('paid appState stamp conflict');}write(null);}catch(error){abort(error);}},'paid appState read failed');return;}
+          oldJournal=normalizePaidCommitJournal(journalRaw,current);
         }catch(error){abort(error);return;}
-          const generationReq=store.get(current);
-          generationReq.onerror=()=>abort(generationReq.error||new Error('paid generation read failed'));
-          generationReq.onsuccess=()=>{try{validatePaidSerializedState(generationReq.result);if(generationReq.result.savedAt!==oldJournal.committedAt)throw new Error('paid generation journal mismatch');write(oldJournal);}catch(error){abort(error);}};
-        };
+          read(current,generation=>{try{validatePaidSerializedState(generation);if(generation.savedAt!==oldJournal.committedAt||generation.savedAt!==expectedStamp)throw new Error('paid generation stamp conflict');}catch(error){abort(error);return;}
+            read('appState',currentApp=>{try{validatePaidSerializedState(currentApp);if(currentApp.savedAt!==expectedStamp||oldJournal.committedAt!==expectedStamp)throw new Error('paid appState stamp conflict');write(oldJournal);}catch(error){abort(error);}},'paid appState read failed');
+          },'paid generation read failed');
+        },'paid journal read failed');
       };
       tx.oncomplete=()=>{db.close();resolve({pointer:generationKey,journal:committedJournal});};
       tx.onabort=()=>{db.close();reject(reason||tx.error||new Error('paid commit transaction aborted'));};tx.onerror=()=>{};
@@ -26649,12 +26688,12 @@ async function resolvePaidCommitState(){
   const snapshot=await readPaidCommitSnapshot();let legacy=null;try{if(snapshot.appState)legacy=validateLegacyAppState(snapshot.appState);}catch(e){}
   const rawPointer=snapshot.pointer;
   if(rawPointer==null)return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null};
-  if(!paidGenerationKey(rawPointer))return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true};
+  if(!paidGenerationKey(rawPointer))return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true,recoverySnapshot:paidObservedClone(snapshot)};
   try{
     const journal=normalizePaidCommitJournal(snapshot.journal,rawPointer),generation=validatePaidSerializedState(snapshot.generation);
     if(generation.savedAt!==journal.committedAt)throw new Error('paid generation journal mismatch');
     return {data:paidClone(generation),source:'paid-generation',pointer:rawPointer,journal};
-  }catch(e){return {data:legacy,source:legacy?'legacy-appState':'none',pointer:rawPointer};}
+  }catch(e){return {data:legacy,source:legacy?'legacy-appState':'none',pointer:null,recoveryMalformedPointer:true,recoverySnapshot:paidObservedClone(snapshot)};}
 }
 function freezePaidMetadata(){
   (state.aptOrders||[]).forEach(order=>{if(order&&order.commercialTerms)order.commercialTerms=Object.freeze({...order.commercialTerms,exclusions:Object.freeze((order.commercialTerms.exclusions||[]).slice())});if(order&&order.commercialApproval)order.commercialApproval=Object.freeze({...order.commercialApproval});});
@@ -26674,6 +26713,7 @@ window.__hjRestoreDone = (async () => {
     const resolved = await resolvePaidCommitState();
     __paidCommitPointerKey = resolved.pointer || null;
     __paidCommitRecoveryMalformedPointer = resolved.recoveryMalformedPointer === true;
+    __paidCommitRecoverySnapshot = resolved.recoverySnapshot || null;
     window.__hjRestoreSource = resolved.source;
     if (!state.projects.length && !state.files.length) {
       const saved = resolved.data;
@@ -26871,12 +26911,14 @@ function paidGateError(code){const error=new Error(code);error.code=code;return 
 async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted}){
   if(typeof mutateDraft!=='function')throw new Error('invalid durable mutation');
   return withAppStateWriteLock(async()=>{
+    const expectedPointer=__paidCommitPointerKey,expectedStamp=typeof __tabStamp==='undefined'?null:__tabStamp;
     if(!(await hjSnapshot(snapshotLabel,true,true)))throw new Error('required recovery snapshot failed');
     if(beforeCommit)await beforeCommit();
     const candidate=structuredClone(serializeData()),result=mutateDraft(candidate);candidate.savedAt=new Date().toISOString();
+    const baseMs=Date.parse(expectedStamp||''),candidateMs=Date.parse(candidate.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))candidate.savedAt=new Date(baseMs+1).toISOString();
     const serialized=JSON.parse(JSON.stringify(candidate));validatePaidSerializedState(serialized);
     if(beforeCommit)await beforeCommit();
-    const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,__paidCommitPointerKey,generationKey);
+    const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,expectedPointer,generationKey,expectedStamp);
     if(onCommitted)await onCommitted();
     __paidCommitPointerKey=commit.pointer;applyPaidCommittedState(serialized);
     try{render();}catch(error){paidCommitRecoveryBanner();}
@@ -26886,6 +26928,7 @@ async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCo
 }
 async function durablePaidMutation({verification,snapshotLabel,mutateDraft}){
   if(!paidPlainObject(verification)||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(verification.receiptId||'')||typeof verification.nonce!=='string'||!verification.nonce||!Number.isFinite(verification.useBeforeMonotonicMs))throw new Error('invalid paid verification');
+  if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
   const key=verification.receiptId+'|'+verification.nonce;if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');
   const deadline=()=>{if(performance.now()>verification.useBeforeMonotonicMs)throw new Error('stale commercial verification');if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');};
   return durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit:deadline,onCommitted:()=>{__paidApprovalConsumptions.add(key);}});
@@ -26914,8 +26957,8 @@ async function transitionAptOrderWithGate({orderId,targetState,commercialTerms,c
 }
 async function updateCommercialTerms(orderId,nextTerms){
   const current=(state.aptOrders||[]).find(item=>item.id===orderId);if(!current)throw new Error('order not found');
-  const commercialTerms=normalizeCommercialTerms(nextTerms),previousApproval=current.commercialApproval||null,at=new Date().toISOString();
-  return durableLocalMutation({snapshotLabel:'유상 조건 변경',mutateDraft:next=>{const order=(next.aptOrders||[]).find(item=>item.id===orderId);if(!order)throw new Error('order not found');order.commercialTerms=commercialTerms;order.commercialApproval=null;order.commercialApprovalAudit=[...(order.commercialApprovalAudit||[]),{event:'terms-replaced',at,previousApproval}];return {order,previousApprovalAuditId:at};}});
+  const commercialTerms=normalizeCommercialTerms(nextTerms),at=new Date().toISOString();
+  return durableLocalMutation({snapshotLabel:'유상 조건 변경',mutateDraft:next=>{const order=(next.aptOrders||[]).find(item=>item.id===orderId);if(!order)throw new Error('order not found');const previousApproval=order.commercialApproval||null;order.commercialTerms=commercialTerms;order.commercialApproval=null;order.commercialApprovalAudit=[...(order.commercialApprovalAudit||[]),{event:'terms-replaced',at,previousApproval}];return {order,previousApprovalAuditId:at};}});
 }
 async function createPaidDiagnosisOrderFromManualLead(input){
   const id=uid(),commercialTerms=normalizeCommercialTerms(input.commercialTerms),commercialApproval=await issueCommercialApproval({subjectId:id,commercialTerms,approvalEvidenceFileId:input.approvalEvidenceFileId,approvalEvidenceType:input.approvalEvidenceType,approvedAt:input.approvedAt,approvedByRole:input.approvedByRole});
