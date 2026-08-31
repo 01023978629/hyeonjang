@@ -26,6 +26,7 @@ const codeSource = sourceByName['Code.gs'];
 const serverSource = sourceByName['OfficeOps.gs'];
 const readme = fs.readFileSync(path.join(PROJECT, 'README_APPS_SCRIPT.md'), 'utf8');
 const BASE = '19657c3';
+const serverOwnedProtectedPaths = ['apps-script', 'apps-script-commercial'];
 
 const allowedActions = [
   'officeOpsList',
@@ -432,25 +433,25 @@ assert.doesNotThrow(() => {
 }, 'HEAD must descend from the fixed Task 1 base');
 
 assert.doesNotThrow(() => {
-    childProcess.execFileSync('git', ['diff', '--exit-code', BASE, 'HEAD', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
+    childProcess.execFileSync('git', ['diff', '--exit-code', BASE, 'HEAD', '--', ...serverOwnedProtectedPaths], {
     cwd: ROOT,
     stdio: 'pipe'
   });
-}, 'OfficeOps commits must preserve every protected path from the fixed Task 1 base');
+}, 'OfficeOps commits must preserve legacy/commercial server source isolation from the fixed Task 1 base');
 
 assert.doesNotThrow(() => {
-    childProcess.execFileSync('git', ['diff', '--exit-code', 'HEAD', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'], {
+    childProcess.execFileSync('git', ['diff', '--exit-code', 'HEAD', '--', ...serverOwnedProtectedPaths], {
     cwd: ROOT,
     stdio: 'pipe'
   });
-}, 'OfficeOps must not leave an uncommitted protected-path change');
+}, 'OfficeOps must not leave an uncommitted legacy/commercial server source change');
 
 const untrackedProtected = childProcess.execFileSync(
   'git',
-  ['status', '--porcelain', '--untracked-files=all', '--', 'apps-script', 'apps-script-commercial', 'index.html', 'sw.js', '.superpowers/sdd/.gitignore'],
+  ['status', '--porcelain', '--untracked-files=all', '--', ...serverOwnedProtectedPaths],
   { cwd: ROOT, encoding: 'utf8' }
 );
-assert.equal(untrackedProtected, '', 'OfficeOps must not add untracked files beneath protected paths');
+assert.equal(untrackedProtected, '', 'OfficeOps must not add untracked files beneath legacy/commercial server source paths');
 
 for (const phrase of [
   'schemaVersion: 1',
