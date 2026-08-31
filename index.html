@@ -26664,6 +26664,18 @@ function parseStrictKstDateTime(value){
   const ms=Date.parse(value);
   return Number.isFinite(ms)&&formatKstIso(ms)===value?ms:null;
 }
+function officeOpsExactKeys(value,keys){
+  return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===keys.slice().sort().join(',');
+}
+function validOfficeString(value,minimum,maximum){
+  return typeof value==='string'&&value.length>=minimum&&value.length<=maximum;
+}
+function normalizeOfficeTombstone(raw,errorMessage){
+  const archived=raw.archivedAt===null?false:parseStrictKstDateTime(raw.archivedAt)!==null;
+  if((raw.archivedAt!==null&&!archived)||(archived&&(raw.archivedBy!=='representative'||!validOfficeString(raw.archiveReason,1,500)||raw.restoredAt!==null))||
+    (!archived&&(raw.archivedBy!==null||raw.archiveReason!==null||(raw.restoredAt!==null&&parseStrictKstDateTime(raw.restoredAt)===null))))throw new Error(errorMessage);
+  return {archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt};
+}
 function normalizePilotEditable(raw){
   const keys=['complexName','source','stage','pilotStartedAt','pilotEndsAt','extensionApprovedAt','nextActionAt','owner','notes'];
   if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')) throw new Error('invalid pilot editable keys');
@@ -26685,11 +26697,10 @@ function normalizePilotRecord(raw){
   const value={pilotId:raw.pilotId,complexName:editable.complexName,source:editable.source,stage:editable.stage,pilotStartedAt:editable.pilotStartedAt,pilotEndsAt:editable.pilotEndsAt,
     extensionApprovedAt:editable.extensionApprovedAt,nextActionAt:editable.nextActionAt,owner:editable.owner,notes:editable.notes,createdAt:raw.createdAt,updatedAt:raw.updatedAt,
     retentionStartedAt:raw.retentionStartedAt,archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt};
-  const archived=value.archivedAt===null?false:parseStrictKstDateTime(value.archivedAt)!==null;
-  if(!/^pilot_[A-Za-z0-9_-]{1,100}$/.test(value.pilotId||'')||parseStrictKstDateTime(value.createdAt)===null||parseStrictKstDateTime(value.updatedAt)===null||Date.parse(value.updatedAt)<Date.parse(value.createdAt)||
-    (value.stage==='closed'?parseStrictKstDateTime(value.retentionStartedAt)===null:value.retentionStartedAt!==null)||(value.archivedAt!==null&&!archived)||
-    (archived&&(value.archivedBy!=='representative'||typeof value.archiveReason!=='string'||!value.archiveReason||value.restoredAt!==null))||
-    (!archived&&(value.archivedBy!==null||value.archiveReason!==null||(value.restoredAt!==null&&parseStrictKstDateTime(value.restoredAt)===null)))) throw new Error('invalid pilot record');
+  normalizeOfficeTombstone(value,'invalid pilot record');
+  if(!/^pilot_[A-Za-z0-9_-]{1,100}$/.test(value.pilotId||'')||typeof raw.complexName!=='string'||typeof raw.source!=='string'||typeof raw.stage!=='string'||typeof raw.nextActionAt!=='string'||typeof raw.owner!=='string'||typeof raw.notes!=='string'||
+    parseStrictKstDateTime(value.createdAt)===null||parseStrictKstDateTime(value.updatedAt)===null||Date.parse(value.updatedAt)<Date.parse(value.createdAt)||
+    (value.stage==='closed'?parseStrictKstDateTime(value.retentionStartedAt)===null:value.retentionStartedAt!==null)) throw new Error('invalid pilot record');
   return Object.freeze(value);
 }
 function pilotWindowView(raw){
@@ -26719,17 +26730,78 @@ async function sha256Hex(value){
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(value)));
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
+function reinspectionNextDueAtKst(consentedAt,intervalMonths){
+  if(parseStrictKstDateTime(consentedAt)===null||![6,12].includes(intervalMonths))throw new Error('invalid consent due date');
+  const [year,month,day]=consentedAt.slice(0,10).split('-').map(Number),monthIndex=month-1+intervalMonths;
+  const targetYear=year+Math.floor(monthIndex/12),targetMonth=monthIndex%12,daysInTarget=new Date(Date.UTC(targetYear,targetMonth+1,0)).getUTCDate();
+  return `${targetYear}-${String(targetMonth+1).padStart(2,'0')}-${String(Math.min(day,daysInTarget)).padStart(2,'0')}`;
+}
 function normalizeOfficeConsentRecord(raw){
   const keys=['consentId','subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','withdrawnAt','withdrawnBy','withdrawalReason','nextDueAt','lastContactedAt','evidenceType','evidenceId','audit'];
-  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')||!/^consent_[A-Za-z0-9_-]{1,100}$/.test(raw.consentId||'')||!isRealIsoDate(raw.nextDueAt)||raw.lastContactedAt!==null||!Array.isArray(raw.audit)||!raw.audit.length||!/^[A-Za-z0-9_-]{1,200}$/.test(raw.evidenceId||''))throw new Error('invalid consent record');
-  normalizeReinspectionConsent(Object.fromEntries(['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'].map(key=>[key,raw[key]])));
+  if(!officeOpsExactKeys(raw,keys)||!/^consent_[A-Za-z0-9_-]{1,100}$/.test(raw.consentId||'')||raw.nextDueAt!==reinspectionNextDueAtKst(raw.consentedAt,raw.intervalMonths)||raw.lastContactedAt!==null||!Array.isArray(raw.audit)||!raw.audit.length||!/^[A-Za-z0-9_-]{1,200}$/.test(raw.evidenceId||''))throw new Error('invalid consent record');
+  const input=normalizeReinspectionConsent(Object.fromEntries(['subjectType','subjectId','purpose','intervalMonths','channel','consentVersion','consentTextSnapshot','consentTextSha256','recordedBy','consentedAt','evidenceType','evidenceId'].map(key=>[key,raw[key]])));
   const withdrawn=raw.withdrawnAt===null?false:parseStrictKstDateTime(raw.withdrawnAt)!==null;
-  for(const event of raw.audit){if(!event||Object.keys(event).sort().join(',')!=='actor,at,event,reason'||!['recorded','withdrawn'].includes(event.event)||parseStrictKstDateTime(event.at)===null||!event.actor||(event.event==='recorded'?event.reason!==null:!event.reason))throw new Error('invalid consent record');}
-  const first=raw.audit[0],last=raw.audit[raw.audit.length-1];
-  if(first.event!=='recorded'||first.actor!==raw.recordedBy||first.reason!==null||
-    (withdrawn&&(!raw.withdrawnBy||!raw.withdrawalReason||raw.audit.length!==2||last.event!=='withdrawn'||last.at!==raw.withdrawnAt||last.actor!==raw.withdrawnBy||last.reason!==raw.withdrawalReason))||
-    (!withdrawn&&(raw.withdrawnBy!==null||raw.withdrawalReason!==null||raw.audit.length!==1)))throw new Error('invalid consent record');
-  return Object.freeze({...raw});
+  const audit=raw.audit.map(event=>{
+    if(!officeOpsExactKeys(event,['event','at','actor','reason'])||!['recorded','withdrawn'].includes(event.event)||parseStrictKstDateTime(event.at)===null||!validOfficeString(event.actor,1,100)||(event.event==='recorded'?event.reason!==null:!validOfficeString(event.reason,1,500)))throw new Error('invalid consent record');
+    return Object.freeze({event:event.event,at:event.at,actor:event.actor,reason:event.reason});
+  });
+  const first=audit[0],last=audit[audit.length-1];
+  if(!validOfficeString(raw.recordedBy,1,100)||first.event!=='recorded'||first.actor!==raw.recordedBy||first.reason!==null||
+    (withdrawn&&(!validOfficeString(raw.withdrawnBy,1,100)||!validOfficeString(raw.withdrawalReason,1,500)||audit.length!==2||last.event!=='withdrawn'||last.at!==raw.withdrawnAt||last.actor!==raw.withdrawnBy||last.reason!==raw.withdrawalReason))||
+    (!withdrawn&&(raw.withdrawnBy!==null||raw.withdrawalReason!==null||audit.length!==1)))throw new Error('invalid consent record');
+  return Object.freeze({consentId:raw.consentId,subjectType:input.subjectType,subjectId:input.subjectId,purpose:input.purpose,intervalMonths:input.intervalMonths,channel:input.channel,
+    consentVersion:input.consentVersion,consentTextSnapshot:input.consentTextSnapshot,consentTextSha256:input.consentTextSha256,recordedBy:input.recordedBy,consentedAt:input.consentedAt,
+    withdrawnAt:raw.withdrawnAt,withdrawnBy:raw.withdrawnBy,withdrawalReason:raw.withdrawalReason,nextDueAt:raw.nextDueAt,lastContactedAt:raw.lastContactedAt,
+    evidenceType:input.evidenceType,evidenceId:input.evidenceId,audit:Object.freeze(audit)});
+}
+async function validateOfficeConsentIntegrity(consent){
+  const normalized=normalizeOfficeConsentRecord(consent);
+  if(await sha256Hex(normalized.consentTextSnapshot)!==normalized.consentTextSha256)throw new Error('invalid consent integrity');
+  return normalized;
+}
+function normalizeOfficeCommercialTerms(raw){
+  const keys=['workKind','scope','exclusions','vatMode','quotedAmount','validUntil','scheduleWindow'];
+  if(!officeOpsExactKeys(raw,keys)||!['device-diagnosis','dispatch','repair','preventive-inspection'].includes(raw.workKind)||typeof raw.scope!=='string'||!raw.scope||raw.scope.trim()!==raw.scope||
+    !Array.isArray(raw.exclusions)||raw.exclusions.some(value=>typeof value!=='string')||!['included','excluded'].includes(raw.vatMode)||!Number.isInteger(raw.quotedAmount)||raw.quotedAmount<1||
+    !isRealIsoDate(raw.validUntil)||typeof raw.scheduleWindow!=='string'||!raw.scheduleWindow||raw.scheduleWindow.trim()!==raw.scheduleWindow)throw new Error('invalid commercial terms');
+  const value={workKind:raw.workKind,scope:raw.scope,exclusions:raw.exclusions.slice(),vatMode:raw.vatMode,quotedAmount:raw.quotedAmount,validUntil:raw.validUntil,scheduleWindow:raw.scheduleWindow};
+  if(JSON.stringify(raw)!==JSON.stringify(value))throw new Error('invalid commercial terms');
+  value.exclusions=Object.freeze(value.exclusions);return Object.freeze(value);
+}
+function normalizeOfficeApprovalMetadata(raw){
+  const keys=['receiptId','subjectType','subjectId','approvedTermsSha256','approvalEvidenceType','approvalEvidenceFileId','approvalEvidenceSha256','approvedAt','approvedByRole','issuedAt','receiptHmac'];
+  if(!officeOpsExactKeys(raw,keys)||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(raw.receiptId||'')||raw.subjectType!=='aptOrder'||!/^[A-Za-z0-9_-]{1,160}$/.test(raw.subjectId||'')||
+    !/^[a-f0-9]{64}$/.test(raw.approvedTermsSha256||'')||!['quote-file','contract-file','message-export-file'].includes(raw.approvalEvidenceType)||!/^[A-Za-z0-9_-]{1,200}$/.test(raw.approvalEvidenceFileId||'')||
+    !/^[a-f0-9]{64}$/.test(raw.approvalEvidenceSha256||'')||parseStrictKstDateTime(raw.approvedAt)===null||!['customer','management-office'].includes(raw.approvedByRole)||
+    parseStrictKstDateTime(raw.issuedAt)===null||Date.parse(raw.issuedAt)<Date.parse(raw.approvedAt)||!/^[a-f0-9]{64}$/.test(raw.receiptHmac||''))throw new Error('invalid commercial approval');
+  return Object.freeze({receiptId:raw.receiptId,subjectType:raw.subjectType,subjectId:raw.subjectId,approvedTermsSha256:raw.approvedTermsSha256,approvalEvidenceType:raw.approvalEvidenceType,
+    approvalEvidenceFileId:raw.approvalEvidenceFileId,approvalEvidenceSha256:raw.approvalEvidenceSha256,approvedAt:raw.approvedAt,approvedByRole:raw.approvedByRole,issuedAt:raw.issuedAt,receiptHmac:raw.receiptHmac});
+}
+function normalizeOfficeInspectionRecord(raw){
+  const keys=['inspectionId','officeId','complexName','templateId','status','nextDueAt','riskItems','summary','commercialTerms','commercialApproval','conversionId','conversionTermsSha256','conversionReceiptId','pendingOrderId','linkedOrderId','conversionStartedAt','updatedAt','archivedAt','archivedBy','archiveReason','restoredAt'];
+  if(!officeOpsExactKeys(raw,keys)||!/^inspection_[A-Za-z0-9_-]{1,100}$/.test(raw.inspectionId||'')||!/^office_[A-Za-z0-9_-]{1,100}$/.test(raw.officeId||'')||
+    !validOfficeString(raw.complexName,1,100)||!/^[A-Za-z0-9_-]{1,80}$/.test(raw.templateId||'')||!isRealIsoDate(raw.nextDueAt)||!Array.isArray(raw.riskItems)||raw.riskItems.length>20||
+    raw.riskItems.some(value=>!validOfficeString(value,1,200))||!validOfficeString(raw.summary,0,2000)||parseStrictKstDateTime(raw.updatedAt)===null)throw new Error('invalid inspection record');
+  const terms=raw.commercialTerms===null?null:normalizeOfficeCommercialTerms(raw.commercialTerms),normal=['planned','checked','proposal','closed'].includes(raw.status),conversion=['conversion-pending','conversion-writing','conversion-local-committed','converted'].includes(raw.status);
+  let approval=null;
+  if(normal){
+    if(raw.commercialApproval!==null||raw.conversionId!==null||raw.conversionTermsSha256!==null||raw.conversionReceiptId!==null||raw.pendingOrderId!==null||raw.linkedOrderId!==null||raw.conversionStartedAt!==null)throw new Error('invalid inspection record');
+  }else if(conversion){
+    approval=normalizeOfficeApprovalMetadata(raw.commercialApproval);
+    if(!terms||!/^[A-Za-z0-9_-]{1,160}$/.test(raw.conversionId||'')||!/^[a-f0-9]{64}$/.test(raw.conversionTermsSha256||'')||!/^receipt_[A-Za-z0-9_-]{1,80}$/.test(raw.conversionReceiptId||'')||
+      !/^[A-Za-z0-9_-]{1,160}$/.test(raw.pendingOrderId||'')||parseStrictKstDateTime(raw.conversionStartedAt)===null||approval.approvedTermsSha256!==raw.conversionTermsSha256||approval.receiptId!==raw.conversionReceiptId||approval.subjectId!==raw.pendingOrderId||
+      (['conversion-pending','conversion-writing'].includes(raw.status)?raw.linkedOrderId!==null:raw.linkedOrderId!==raw.pendingOrderId))throw new Error('invalid inspection record');
+  }else throw new Error('invalid inspection record');
+  normalizeOfficeTombstone(raw,'invalid inspection record');
+  return Object.freeze({inspectionId:raw.inspectionId,officeId:raw.officeId,complexName:raw.complexName,templateId:raw.templateId,status:raw.status,nextDueAt:raw.nextDueAt,
+    riskItems:Object.freeze(raw.riskItems.slice()),summary:raw.summary,commercialTerms:terms,commercialApproval:approval,conversionId:raw.conversionId,conversionTermsSha256:raw.conversionTermsSha256,
+    conversionReceiptId:raw.conversionReceiptId,pendingOrderId:raw.pendingOrderId,linkedOrderId:raw.linkedOrderId,conversionStartedAt:raw.conversionStartedAt,updatedAt:raw.updatedAt,
+    archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt});
+}
+async function validateOfficeInspectionIntegrity(inspection){
+  const normalized=normalizeOfficeInspectionRecord(inspection);
+  if(normalized.conversionTermsSha256!==null&&await sha256Hex(JSON.stringify(normalized.commercialTerms))!==normalized.conversionTermsSha256)throw new Error('invalid inspection integrity');
+  return normalized;
 }
 function normalizeKAptUrl(raw){
   let url;try{url=new URL(String(raw||'').trim());}catch(e){return null;}
@@ -26738,16 +26810,17 @@ function normalizeKAptUrl(raw){
 }
 function normalizeOfficeOpportunityRecord(raw){
   const keys=['opportunityId','complexName','officialUrl','observedAt','region','category','deadlineAt','stage','requirements','verifiedBy','notes','retentionStartedAt','archivedAt','archivedBy','archiveReason','restoredAt'];
-  const canonical=raw&&normalizeKAptUrl(raw.officialUrl),archived=raw&&raw.archivedAt===null?false:!!(raw&&parseStrictKstDateTime(raw.archivedAt)!==null);
-  if(!raw||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(',')||!/^opp_[A-Za-z0-9_-]{1,100}$/.test(raw.opportunityId||'')||
+  const canonical=raw&&normalizeKAptUrl(raw.officialUrl);
+  if(!officeOpsExactKeys(raw,keys)||!/^opp_[A-Za-z0-9_-]{1,100}$/.test(raw.opportunityId||'')||
     typeof raw.complexName!=='string'||!raw.complexName||raw.complexName.length>100||!canonical||parseStrictKstDateTime(raw.observedAt)===null||
     typeof raw.region!=='string'||!raw.region||raw.region.length>100||typeof raw.category!=='string'||!raw.category||raw.category.length>100||
-    parseStrictKstDateTime(raw.deadlineAt)===null||!['watch','review','participate','skip','closed'].includes(raw.stage)||!Array.isArray(raw.requirements)||!raw.requirements.length||raw.requirements.length>20||raw.requirements.some(x=>typeof x!=='string'||!x||x.length>200)||
+    parseStrictKstDateTime(raw.deadlineAt)===null||!['watch','review','participate','skip','closed'].includes(raw.stage)||!Array.isArray(raw.requirements)||raw.requirements.length>20||raw.requirements.some(x=>typeof x!=='string'||!x||x.length>200)||
     typeof raw.verifiedBy!=='string'||!raw.verifiedBy||raw.verifiedBy.length>100||typeof raw.notes!=='string'||raw.notes.length>2000||
-    (['skip','closed'].includes(raw.stage)?parseStrictKstDateTime(raw.retentionStartedAt)===null:raw.retentionStartedAt!==null)||
-    (raw.archivedAt!==null&&!archived)||(archived&&(raw.archivedBy!=='representative'||!raw.archiveReason||raw.restoredAt!==null))||
-    (!archived&&(raw.archivedBy!==null||raw.archiveReason!==null||(raw.restoredAt!==null&&parseStrictKstDateTime(raw.restoredAt)===null))))throw new Error('invalid opportunity record');
-  return Object.freeze({...raw,officialUrl:canonical});
+    (['skip','closed'].includes(raw.stage)?parseStrictKstDateTime(raw.retentionStartedAt)===null:raw.retentionStartedAt!==null))throw new Error('invalid opportunity record');
+  normalizeOfficeTombstone(raw,'invalid opportunity record');
+  return Object.freeze({opportunityId:raw.opportunityId,complexName:raw.complexName,officialUrl:canonical,observedAt:raw.observedAt,region:raw.region,category:raw.category,
+    deadlineAt:raw.deadlineAt,stage:raw.stage,requirements:Object.freeze(raw.requirements.slice()),verifiedBy:raw.verifiedBy,notes:raw.notes,retentionStartedAt:raw.retentionStartedAt,
+    archivedAt:raw.archivedAt,archivedBy:raw.archivedBy,archiveReason:raw.archiveReason,restoredAt:raw.restoredAt});
 }
 async function persistReinspectionConsent(input,idempotencyKey){
   if(!/^[A-Za-z0-9_-]{16,80}$/.test(idempotencyKey||'')) throw new Error('invalid consent idempotency key');
@@ -26757,13 +26830,13 @@ async function persistReinspectionConsent(input,idempotencyKey){
   const result=await officeOpsMutationWithAck('officeConsentRecord',payload);
   const created=result.store.consents.map(normalizeOfficeConsentRecord).find(x=>x.consentId===result.ack.id);
   if(!created) throw new Error('created consent missing after reload');
-  return created;
+  return validateOfficeConsentIntegrity(created);
 }
 async function withdrawReinspectionConsent({consentId,withdrawnBy,withdrawalReason}){
   const store=await officeOpsMutation('officeConsentWithdraw',{consentId,withdrawnBy,withdrawalReason,expectedRevision:__officeOps.revision});
   const consent=store.consents.map(normalizeOfficeConsentRecord).find(x=>x.consentId===consentId);
   if(!consent)throw new Error('withdrawn consent missing after reload');
-  return consent;
+  return validateOfficeConsentIntegrity(consent);
 }
 function officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst}){
   const serverMs=Date.parse(serverNowKst), deadlineMs=Date.parse(deadlineAtKst);
@@ -26771,17 +26844,71 @@ function officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst}){
   if(Math.abs(serverMs-deviceNowMs)>5*60*1000) return {ok:false,reason:'clock-skew'};
   return serverMs>=deadlineMs ? {ok:false,reason:'deadline-passed'} : {ok:true,reason:'eligible'};
 }
+function officeOpsOpportunityCanParticipate(raw,{serverNowKst,deviceNowMs}){
+  const opportunity=normalizeOfficeOpportunityRecord(raw);
+  if(opportunity.stage!=='participate')return {ok:false,reason:'not-participating'};
+  if(!opportunity.requirements.length)return {ok:false,reason:'requirements-missing'};
+  if(!['대표','representative'].includes(opportunity.verifiedBy))return {ok:false,reason:'representative-unverified'};
+  return officeOpsCanParticipate({serverNowKst,deviceNowMs,deadlineAtKst:opportunity.deadlineAt});
+}
+function officeOpsAuditIdValid(action,id){
+  if(action.startsWith('officePilot'))return /^pilot_[A-Za-z0-9_-]{1,100}$/.test(id||'');
+  if(action.startsWith('officeConsent'))return /^consent_[A-Za-z0-9_-]{1,100}$/.test(id||'');
+  if(action.startsWith('officeInspection'))return /^inspection_[A-Za-z0-9_-]{1,100}$/.test(id||'');
+  if(action.startsWith('officeOpportunity'))return /^opp_[A-Za-z0-9_-]{1,100}$/.test(id||'');
+  return false;
+}
+function normalizeOfficeAuditRow(raw){
+  const keys=['action','result','id','mutationId','idempotencyKey','payloadSha256','at','actor','lifecycleBefore','backupFileId','backupManifestFileId','backupSha256','preMutationRevision'];
+  const actions=['officePilotCreate','officePilotUpdate','officePilotArchive','officePilotRestore','officeConsentRecord','officeConsentWithdraw','officeInspectionCreate','officeInspectionUpdate','officeInspectionArchive','officeInspectionBeginConversion','officeInspectionArmLocalCommit','officeInspectionRecordLocalCommit','officeInspectionFinalizeConversion','officeInspectionCancelConversion','officeInspectionRestore','officeOpportunityCreate','officeOpportunityUpdate','officeOpportunityArchive','officeOpportunityRestore'];
+  const creates=['officePilotCreate','officeConsentRecord','officeInspectionCreate','officeOpportunityCreate'];
+  if(!officeOpsExactKeys(raw,keys)||!actions.includes(raw.action)||raw.result!=='ok'||!officeOpsAuditIdValid(raw.action,raw.id)||!/^[A-Za-z0-9_-]{16,100}$/.test(raw.mutationId||'')||
+    !/^[a-f0-9]{64}$/.test(raw.payloadSha256||'')||parseStrictKstDateTime(raw.at)===null||raw.actor!=='representative'||typeof raw.backupFileId!=='string'||!raw.backupFileId||typeof raw.backupManifestFileId!=='string'||!raw.backupManifestFileId||
+    !/^[a-f0-9]{64}$/.test(raw.backupSha256||'')||!Number.isInteger(raw.preMutationRevision)||raw.preMutationRevision<0||
+    (creates.includes(raw.action)?!/^[A-Za-z0-9_-]{16,80}$/.test(raw.idempotencyKey||''):raw.idempotencyKey!==null))throw new Error('invalid audit record');
+  let lifecycle=null;
+  if(/(?:Archive|Restore)$/.test(raw.action)){
+    if(!officeOpsExactKeys(raw.lifecycleBefore,['archivedAt','archivedBy','archiveReason','restoredAt']))throw new Error('invalid audit record');
+    lifecycle=Object.freeze(normalizeOfficeTombstone(raw.lifecycleBefore,'invalid audit record'));
+  }else if(raw.lifecycleBefore!==null)throw new Error('invalid audit record');
+  return Object.freeze({action:raw.action,result:raw.result,id:raw.id,mutationId:raw.mutationId,idempotencyKey:raw.idempotencyKey,payloadSha256:raw.payloadSha256,at:raw.at,actor:raw.actor,
+    lifecycleBefore:lifecycle,backupFileId:raw.backupFileId,backupManifestFileId:raw.backupManifestFileId,backupSha256:raw.backupSha256,preMutationRevision:raw.preMutationRevision});
+}
 function normalizeOfficeOpsStore(raw){
   const keys=['schemaVersion','revision','updatedAt','pilots','consents','inspections','opportunities','audit'];
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!==keys.slice().sort().join(','))throw new Error('invalid OfficeOps store');
-  if(!Number.isInteger(raw.schemaVersion)||!Number.isInteger(raw.revision)||typeof raw.updatedAt!=='string')throw new Error('invalid OfficeOps store');
+  if(!officeOpsExactKeys(raw,keys)||raw.schemaVersion!==1||!Number.isInteger(raw.revision)||raw.revision<0||parseStrictKstDateTime(raw.updatedAt)===null)throw new Error('invalid OfficeOps store');
   for(const key of ['pilots','consents','inspections','opportunities','audit'])if(!Array.isArray(raw[key]))throw new Error('invalid OfficeOps store');
-  return {schemaVersion:raw.schemaVersion,revision:raw.revision,updatedAt:raw.updatedAt,pilots:raw.pilots.map(normalizePilotRecord),consents:raw.consents,inspections:raw.inspections,opportunities:raw.opportunities,audit:raw.audit};
+  const pilots=raw.pilots.map(normalizePilotRecord),consents=raw.consents.map(normalizeOfficeConsentRecord),inspections=raw.inspections.map(normalizeOfficeInspectionRecord),
+    opportunities=raw.opportunities.map(normalizeOfficeOpportunityRecord),audit=raw.audit.map(normalizeOfficeAuditRow),seen=new Set();
+  for(const [rows,idKey] of [[pilots,'pilotId'],[consents,'consentId'],[inspections,'inspectionId'],[opportunities,'opportunityId']])for(const row of rows){if(seen.has(row[idKey]))throw new Error('invalid OfficeOps store');seen.add(row[idKey]);}
+  const conversionOwners=new Map();
+  for(const row of inspections){
+    const local=new Map();
+    for(const field of ['conversionId','pendingOrderId','linkedOrderId','conversionReceiptId']){const id=row[field];if(id===null)continue;
+      if(local.has(id)&&!((field==='linkedOrderId'&&local.get(id)==='pendingOrderId')||(field==='pendingOrderId'&&local.get(id)==='linkedOrderId')))throw new Error('invalid OfficeOps store');
+      local.set(id,field);if(conversionOwners.has(id)&&conversionOwners.get(id)!==row.inspectionId)throw new Error('invalid OfficeOps store');conversionOwners.set(id,row.inspectionId);
+    }
+  }
+  return Object.freeze({schemaVersion:1,revision:raw.revision,updatedAt:raw.updatedAt,pilots:Object.freeze(pilots),consents:Object.freeze(consents),inspections:Object.freeze(inspections),opportunities:Object.freeze(opportunities),audit:Object.freeze(audit)});
+}
+async function validateOfficeOpsStoreIntegrity(store){
+  await Promise.all(store.consents.map(validateOfficeConsentIntegrity));
+  await Promise.all(store.inspections.map(validateOfficeInspectionIntegrity));
+  return store;
+}
+async function normalizeAndValidateOfficeOpsStore(raw){
+  const store=normalizeOfficeOpsStore(raw);
+  await validateOfficeOpsStoreIntegrity(store);
+  return store;
+}
+function officeOpsActiveConsentForDraft(consentId){
+  if(__officeOps.mode!=='fresh'||!__officeOps.cache)return null;
+  const consent=__officeOps.cache.consents.find(row=>row.consentId===consentId);
+  return consent&&consent.withdrawnAt===null?consent:null;
 }
 async function officeOpsLoad(){
   const json=await officeOpsCall('officeOpsList',{});
-  const store=normalizeOfficeOpsStore(json.store);
-  if(!Number.isInteger(store.revision)||typeof store.updatedAt!=='string')throw new Error('invalid OfficeOps list');
+  const store=await normalizeAndValidateOfficeOpsStore(json.store);
   __officeOps.cache=store;__officeOps.revision=store.revision;__officeOps.updatedAt=store.updatedAt;
   __officeOps.loadedAt=new Date().toISOString();await idbSet('office_ops_cache',{store,revision:store.revision,updatedAt:store.updatedAt});
   __officeOps.mode='fresh';return store;
@@ -26790,21 +26917,21 @@ async function officeOpsMutationWithAck(action,payload){
   if(__officeOps.mode!=='fresh')throw new Error('office-disabled');
   const json=await officeOpsCall(action,payload,{mutationId:crypto.randomUUID()});
   if(Object.keys(json).sort().join(',')!=='id,ok,revision,updatedAt'||json.ok!==true)throw new Error('invalid mutation acknowledgement');
-  let store;try{store=await officeOpsLoad();}catch(e){if(e&&e.code==='office-disabled')__officeOps.mode='export-only';throw e;}
+  let store;try{store=await officeOpsLoad();}catch(e){__officeOps.mode=e&&e.code==='office-disabled'?'export-only':(__officeOps.cache?'stale-export-only':'unloaded');throw e;}
   return {ack:Object.freeze({id:json.id,revision:json.revision,updatedAt:json.updatedAt}),store};
 }
 async function officeOpsMutation(action,payload){
   return (await officeOpsMutationWithAck(action,payload)).store;
 }
 async function officeOpsRefresh(){
-  try{return await officeOpsLoad();}catch(e){if(e&&e.code==='office-disabled'){__officeOps.mode='export-only';return null;}throw e;}
+  try{return await officeOpsLoad();}catch(e){if(e&&e.code==='office-disabled'){__officeOps.mode='export-only';return null;}__officeOps.mode=__officeOps.cache?'stale-export-only':'unloaded';throw e;}
 }
 async function officeOpsBoot(){
   __officeOps.url=normalizeHttpsUrl(await idbGet('office_ops_url')||'');
   __officeOps.token=await idbGet('office_ops_token')||'';
-  __officeOps.mode='unloaded';
+  __officeOps.cache=null;__officeOps.revision=0;__officeOps.updatedAt='';__officeOps.loadedAt='';__officeOps.mode='unloaded';
   const cached=await idbGet('office_ops_cache');
-  try{if(cached&&cached.store){const store=normalizeOfficeOpsStore(cached.store);if(cached.revision===store.revision&&cached.updatedAt===store.updatedAt){__officeOps.cache=store;__officeOps.revision=store.revision;__officeOps.updatedAt=store.updatedAt;__officeOps.mode='stale-export-only';}}}catch(e){}
+  try{if(cached&&cached.store){const store=await normalizeAndValidateOfficeOpsStore(cached.store);if(cached.revision===store.revision&&cached.updatedAt===store.updatedAt){__officeOps.cache=store;__officeOps.revision=store.revision;__officeOps.updatedAt=store.updatedAt;__officeOps.mode='stale-export-only';}}}catch(e){}
   await commercialApprovalBoot();
   return {configured:!!(__officeOps.url&&__officeOps.token),cache:__officeOps.cache,mode:__officeOps.mode};
 }
@@ -26822,7 +26949,7 @@ async function officeOpsClearCredentials(confirmed){
 async function officeOpsExportLastCache(){
   const cached=await idbGet('office_ops_cache');
   if(!cached||!cached.store)throw new Error('no OfficeOps cache');
-  const store=normalizeOfficeOpsStore(cached.store);
+  const store=await normalizeAndValidateOfficeOpsStore(cached.store);
   if(cached.revision!==store.revision||cached.updatedAt!==store.updatedAt)throw new Error('invalid OfficeOps cache');
   const blob=new Blob([JSON.stringify({store,revision:store.revision,updatedAt:store.updatedAt},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download='office_ops_cache_'+store.updatedAt.replace(/[:.]/g,'-')+'.json';document.body.appendChild(link);link.click();link.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
@@ -26830,24 +26957,31 @@ async function officeOpsExportLastCache(){
 function officeOpsPanelHtml(tab,store,mode){
   if(mode!=='fresh')return '<div role="status" style="font-size:13px;line-height:1.7"><b>조회 전용 상태입니다.</b><p>마지막 정상 조회본은 로컬 JSON으로만 내보낼 수 있습니다. OfficeOps 설정을 확인한 뒤 다시 열어 주세요.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="ghost tiny" id="officeOpsExport">로컬 JSON 내보내기</button><button type="button" class="ghost tiny" id="officeOpsSettings">설정 안내</button></div></div>';
   const tabs=[['pilots','시험운영 후보'],['consents','재점검 동의'],['inspections','예방점검'],['opportunities','K-apt 기회']];
-  const nav='<div role="tablist" aria-label="영업·정기관리 업무" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px">'+tabs.map(x=>'<button type="button" role="tab" class="ghost tiny" data-officeops-tab="'+x[0]+'" aria-selected="'+(x[0]===tab?'true':'false')+'" style="white-space:nowrap;min-height:40px">'+x[1]+'</button>').join('')+'</div>';
-  const rawRows=store&&Array.isArray(store[tab])?store[tab]:[];
-  const rows=tab==='consents'?rawRows.map(normalizeOfficeConsentRecord):(tab==='opportunities'?rawRows.map(normalizeOfficeOpportunityRecord):rawRows);
   const empty='<div class="empty" style="padding:20px"><b>표시할 항목이 없습니다</b>서버의 최신 조회 결과만 표시합니다.</div>';
-  let body='';
-  if(tab==='pilots')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">단계 '+escapeHtml(row.stage||'')+' · 다음 행동 '+escapeHtml(row.nextActionAt||'')+'</div>'+(row.stage==='pilot'?'<div style="font-size:12px;margin-top:5px">기간 '+escapeHtml(row.pilotStartedAt||'')+' ~ '+escapeHtml(row.pilotEndsAt||'')+(row.extensionApprovedAt?' · 서버 기록상 변경 '+escapeHtml(row.extensionApprovedAt):'')+'</div>':'')+'</article>').join('');
-  else if(tab==='consents')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(String(row.intervalMonths||''))+'개월 · '+escapeHtml(row.consentedAt||'')+(row.withdrawnAt?' · 철회됨':' · 유효')+'</div></article>').join('');
-  else if(tab==='inspections')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId||row.inspectionId||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(row.status||'')+' · '+escapeHtml(row.nextDueAt||'')+'</div></article>').join('');
-  else body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName||'')+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">마감 '+escapeHtml(row.deadlineAt||'')+' · 서버 확인 후 검토</div><a href="'+escapeAttr(normalizeKAptUrl(row.officialUrl))+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">K-apt 공식 공고 수동 열기</a></article>').join('');
-  return nav+(body||empty)+'<p style="font-size:11px;color:var(--muted-2);margin:10px 0 0">대표자 확인용 조회 화면입니다. 연락·예약·참여 실행은 제공하지 않습니다. 시험운영 기간 변경은 서버 기록을 표시할 뿐이며 이 화면이 승인 권한을 강제하지 않습니다.</p>';
+  const nav='<div role="tablist" aria-label="영업·정기관리 업무" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px">'+tabs.map((item,index)=>'<button type="button" role="tab" class="ghost tiny" id="officeOpsTab-'+item[0]+'" data-officeops-tab="'+item[0]+'" aria-controls="officeOpsPanel-'+item[0]+'" aria-selected="'+(item[0]===tab?'true':'false')+'" tabindex="'+(item[0]===tab?'0':'-1')+'" style="white-space:nowrap;min-height:40px">'+item[1]+'</button>').join('')+'</div>';
+  const panel=tabs.map(item=>{
+    const name=item[0],rawRows=store&&Array.isArray(store[name])?store[name]:[],rows=name==='pilots'?rawRows.map(normalizePilotRecord):(name==='consents'?rawRows.map(normalizeOfficeConsentRecord):(name==='inspections'?rawRows.map(normalizeOfficeInspectionRecord):rawRows.map(normalizeOfficeOpportunityRecord)));
+    let body='';
+    if(name==='pilots')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">단계 '+escapeHtml(row.stage)+' · 다음 행동 '+escapeHtml(row.nextActionAt)+'</div>'+(row.stage==='pilot'?'<div style="font-size:12px;margin-top:5px">기간 '+escapeHtml(row.pilotStartedAt)+' ~ '+escapeHtml(row.pilotEndsAt)+(row.extensionApprovedAt?' · 서버 기록상 변경 '+escapeHtml(row.extensionApprovedAt):'')+'</div>':'')+'</article>').join('');
+    else if(name==='consents')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(String(row.intervalMonths))+'개월 · '+escapeHtml(row.consentedAt)+(row.withdrawnAt?' · 철회됨':' · 유효')+'</div></article>').join('');
+    else if(name==='inspections')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(row.status)+' · '+escapeHtml(row.nextDueAt)+'</div></article>').join('');
+    else body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">마감 '+escapeHtml(row.deadlineAt)+' · 서버 확인 후 검토</div><a href="'+escapeAttr(row.officialUrl)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">K-apt 공식 공고 수동 열기</a></article>').join('');
+    return '<section role="tabpanel" id="officeOpsPanel-'+name+'" aria-labelledby="officeOpsTab-'+name+'"'+(name===tab?'':' hidden')+'>'+(body||empty)+'</section>';
+  }).join('');
+  return nav+panel+'<p style="font-size:11px;color:var(--muted-2);margin:10px 0 0">대표자 확인용 조회 화면입니다. 연락·예약·참여 실행은 제공하지 않습니다. 시험운영 기간 변경은 서버 기록을 표시할 뿐이며 이 화면이 승인 권한을 강제하지 않습니다.</p>';
+}
+function officeOpsWireTabs(root){
+  const tabs=[...root.querySelectorAll('[role="tab"][data-officeops-tab]')],panels=[...root.querySelectorAll('[role="tabpanel"]')];
+  const select=(index,focus)=>{tabs.forEach((button,i)=>{const selected=i===index;button.setAttribute('aria-selected',selected?'true':'false');button.tabIndex=selected?0:-1;});panels.forEach((panel,i)=>{panel.hidden=i!==index;});if(focus)tabs[index].focus();};
+  tabs.forEach((button,index)=>{button.onclick=()=>select(index,false);button.onkeydown=event=>{let next=null;if(event.key==='ArrowRight')next=(index+1)%tabs.length;else if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;if(next!==null){event.preventDefault();select(next,true);}};});
 }
 async function officeOpsView(tab='pilots'){
-  openModal('🏢 영업·정기관리','<div role="status" style="padding:24px;text-align:center;color:var(--muted-2)">OfficeOps 최신 자료를 확인하는 중…</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  try{await officeOpsRefresh();}catch(e){if(__officeOps.mode==='fresh')__officeOps.mode='unloaded';}
+  openModal('🏢 영업·정기관리','<div id="officeOpsBody" role="status" style="padding:24px;text-align:center;color:var(--muted-2)">OfficeOps 최신 자료를 확인하는 중…</div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  try{await officeOpsRefresh();}catch(e){}
   const fresh=__officeOps.mode==='fresh';
-  openModal('🏢 영업·정기관리',officeOpsPanelHtml(tab,__officeOps.cache,__officeOps.mode),[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  const root=document.getElementById('modalRoot');if(!root)return;
-  if(fresh)root.querySelectorAll('[data-officeops-tab]').forEach(button=>button.onclick=()=>officeOpsView(button.dataset.officeopsTab));
+  const root=document.getElementById('modalRoot'),body=root&&root.querySelector('#officeOpsBody');if(!body)return;
+  body.removeAttribute('role');body.removeAttribute('style');body.innerHTML=officeOpsPanelHtml(tab,__officeOps.cache,__officeOps.mode);
+  if(fresh)officeOpsWireTabs(body);
   const exportButton=root.querySelector('#officeOpsExport');if(exportButton)exportButton.onclick=async()=>{try{await officeOpsExportLastCache();toast('⬇️ 마지막 정상 OfficeOps 조회본을 내보냈습니다');}catch(e){toast('내보낼 정상 조회본이 없습니다');}};
   const settingsButton=root.querySelector('#officeOpsSettings');if(settingsButton)settingsButton.onclick=()=>{closeModal();openGdriveSetup();};
 }

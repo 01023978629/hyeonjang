@@ -4,9 +4,33 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const http = require('node:http');
+const { spawn } = require('node:child_process');
 const { webcrypto } = require('node:crypto');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const APP = 'http://127.0.0.1:8299/index.html';
+let browser, staticServer;
+
+function portAlive(port) {
+  return new Promise(resolve => {
+    const request = http.get({ host: '127.0.0.1', port, path: '/', timeout: 1000 }, response => { response.resume(); resolve(true); });
+    request.on('error', () => resolve(false));
+    request.on('timeout', () => { request.destroy(); resolve(false); });
+  });
+}
+async function ensureStaticServer() {
+  if (await portAlive(8299)) return;
+  staticServer = spawn(process.execPath, [path.join(__dirname, 'static-server.js')], { cwd: path.join(__dirname, '..'), stdio: 'ignore' });
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await portAlive(8299)) return;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error('static-server.js did not start on port 8299');
+}
 
 function extractFunction(name) {
   const match = new RegExp('(?:async\\s+)?function\\s+' + name + '\\s*\\(').exec(source);
@@ -42,27 +66,32 @@ const storedConsent = {
   nextDueAt: '2027-02-28', lastContactedAt: null, evidenceType: 'recorded-call-note', evidenceId: 'note_1',
   audit: [{ event: 'recorded', at: '2026-08-31T12:00:00+09:00', actor: '대표', reason: null }]
 };
+let ackConsentRow = storedConsent;
+let withdrawnConsentRow = { ...storedConsent, withdrawnAt: '2026-08-31T12:00:02+09:00', withdrawnBy: '대표', withdrawalReason: '고객 철회',
+  audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '대표', reason: '고객 철회' }] };
 const sandbox = {
   Intl, Date, URL, Object, String, Number, Array, RegExp, Error, Promise, TextEncoder, Uint8Array, crypto: webcrypto,
   escapeHtml: value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])),
   escapeAttr: value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])),
   officeOpsMutationWithAck: async (action, payload) => {
     calls.push({ kind: 'ack', action, payload });
-    return { ack: { id: 'consent_server_1', revision: 12, updatedAt: '2026-08-31T12:00:01+09:00' }, store: { consents: [storedConsent] } };
+    return { ack: { id: 'consent_server_1', revision: 12, updatedAt: '2026-08-31T12:00:01+09:00' }, store: { consents: [ackConsentRow] } };
   },
   officeOpsMutation: async (action, payload) => {
     calls.push({ kind: 'store', action, payload });
-    return { consents: [{ ...storedConsent, withdrawnAt: '2026-08-31T12:00:02+09:00', withdrawnBy: payload.withdrawnBy, withdrawalReason: payload.withdrawalReason,
-      audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: payload.withdrawnBy, reason: payload.withdrawalReason }] }] };
+    return { consents: [{ ...withdrawnConsentRow, withdrawnBy: payload.withdrawnBy, withdrawalReason: payload.withdrawalReason }] };
   }
 };
 vm.createContext(sandbox);
 vm.runInContext("const __officeOps={mode:'fresh',revision:11,cache:{pilots:[]}};", sandbox);
 for (const name of [
   'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime',
+  'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone',
   'normalizePilotEditable', 'normalizePilotRecord', 'pilotWindowView', 'pilotEditablePayload',
-  'updateOfficePilot', 'normalizeReinspectionConsent', 'sha256Hex', 'normalizeOfficeConsentRecord', 'normalizeOfficeOpportunityRecord', 'persistReinspectionConsent',
-  'withdrawReinspectionConsent', 'normalizeKAptUrl', 'officeOpsCanParticipate', 'officeOpsPanelHtml'
+  'updateOfficePilot', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity',
+  'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity',
+  'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore',
+  'persistReinspectionConsent', 'withdrawReinspectionConsent', 'officeOpsCanParticipate', 'officeOpsOpportunityCanParticipate', 'officeOpsPanelHtml'
 ]) vm.runInContext(extractFunction(name), sandbox);
 
 const run = expression => vm.runInContext(expression, sandbox);
@@ -75,6 +104,17 @@ const pilot = {
   nextActionAt: '2026-09-02', owner: '대표', notes: '대표 메모',
   createdAt: '2026-08-30T12:00:00+09:00', updatedAt: '2026-08-31T12:00:00+09:00', retentionStartedAt: null,
   archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
+};
+const inspection = {
+  inspectionId: 'inspection_test', officeId: 'office_test', complexName: '테스트 단지', templateId: 'preventive-v1', status: 'proposal',
+  nextDueAt: '2026-09-02', riskItems: [], summary: '', commercialTerms: null, commercialApproval: null,
+  conversionId: null, conversionTermsSha256: null, conversionReceiptId: null, pendingOrderId: null, linkedOrderId: null,
+  conversionStartedAt: null, updatedAt: '2026-08-31T12:00:00+09:00', archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
+};
+const auditRow = {
+  action: 'officePilotCreate', result: 'ok', id: 'pilot_alpha', mutationId: 'mutation_12345678', idempotencyKey: 'create_pilot_12345',
+  payloadSha256: 'a'.repeat(64), at: '2026-08-31T12:00:00+09:00', actor: 'representative', lifecycleBefore: null,
+  backupFileId: 'backup_file_1', backupManifestFileId: 'backup_manifest_1', backupSha256: 'b'.repeat(64), preMutationRevision: 0
 };
 
 (async () => {
@@ -133,6 +173,10 @@ const pilot = {
   const retryKey = 'logical_create_001';
   await assert.rejects(() => run('persistReinspectionConsent(' + JSON.stringify({ ...consent, consentTextSha256: '0'.repeat(64) }) + ',"logical_create_bad")'), /invalid reinspection consent hash/);
   await assert.rejects(() => run('persistReinspectionConsent(' + JSON.stringify(consent) + ',"too_short")'), /invalid consent idempotency key/);
+  ackConsentRow = { ...storedConsent, consentTextSnapshot: 'tampered', consentTextSha256: '0'.repeat(64) };
+  await assert.rejects(() => run('persistReinspectionConsent(' + JSON.stringify(consent) + ',"logical_tamper_001")'), /invalid consent integrity/, 'tampered refreshed create row is rejected before return');
+  ackConsentRow = storedConsent;
+  calls.length = 0;
   const created = await run('persistReinspectionConsent(' + JSON.stringify(consent) + ',' + JSON.stringify(retryKey) + ')');
   await run('persistReinspectionConsent(' + JSON.stringify(consent) + ',' + JSON.stringify(retryKey) + ')');
   await run('persistReinspectionConsent(' + JSON.stringify(consent) + ',"logical_create_002")');
@@ -143,6 +187,10 @@ const pilot = {
   const withdrawn = await run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})');
   assert.equal(withdrawn.withdrawnAt, '2026-08-31T12:00:02+09:00', 'withdrawal timestamp comes from the refreshed server record');
   assert.deepEqual(plain(calls[3]), { kind: 'store', action: 'officeConsentWithdraw', payload: { consentId: 'consent_server_1', withdrawnBy: '대표', withdrawalReason: '고객 철회', expectedRevision: 11 } });
+  withdrawnConsentRow = { ...withdrawnConsentRow, nextDueAt: '2099-12-31' };
+  await assert.rejects(() => run('withdrawReinspectionConsent({consentId:"consent_server_1",withdrawnBy:"대표",withdrawalReason:"고객 철회"})'), /invalid consent record|invalid consent integrity/, 'tampered refreshed withdrawal row is rejected before return');
+  withdrawnConsentRow = { ...storedConsent, withdrawnAt: '2026-08-31T12:00:02+09:00', withdrawnBy: '대표', withdrawalReason: '고객 철회',
+    audit: [...storedConsent.audit, { event: 'withdrawn', at: '2026-08-31T12:00:02+09:00', actor: '대표', reason: '고객 철회' }] };
 
   assert.equal(run("normalizeKAptUrl('https://www.k-apt.go.kr/bid/list?x=1')"), 'https://www.k-apt.go.kr/bid/list?x=1');
   assert.equal(run("normalizeKAptUrl('https://www.k-apt.go.kr:443/bid')"), 'https://www.k-apt.go.kr/bid');
@@ -156,14 +204,34 @@ const pilot = {
 
   const opportunity = {
     opportunityId: 'opp_test', complexName: '테스트 단지', officialUrl: 'https://k-apt.go.kr/bid?notice=2', observedAt: '2026-08-31T10:00:00+09:00',
-    region: '대전', category: '배관', deadlineAt: '2026-09-02T12:00:00+09:00', stage: 'review', requirements: ['면허 확인'], verifiedBy: '대표', notes: '',
+    region: '대전', category: '배관', deadlineAt: '2026-09-02T12:00:00+09:00', stage: 'review', requirements: [], verifiedBy: '대표', notes: '',
     retentionStartedAt: null, archivedAt: null, archivedBy: null, archiveReason: null, restoredAt: null
   };
   assert.equal(run('normalizeOfficeOpportunityRecord(' + JSON.stringify(opportunity) + ').officialUrl'), 'https://www.k-apt.go.kr/bid?notice=2');
+  assert.deepEqual(plain(run('officeOpsOpportunityCanParticipate(' + JSON.stringify({ ...opportunity, stage: 'participate' }) + ',{serverNowKst:"2026-09-01T12:00:00+09:00",deviceNowMs:Date.parse("2026-09-01T12:00:00+09:00")})')), { ok: false, reason: 'requirements-missing' }, 'participate requires a non-empty server checklist even though watch/review storage does not');
   assert.throws(() => run('normalizeOfficeOpportunityRecord(' + JSON.stringify({ ...opportunity, surprise: true }) + ')'), /invalid opportunity record/);
   const opportunityHtml = run('officeOpsPanelHtml("opportunities",{opportunities:[' + JSON.stringify(opportunity) + ']},"fresh")');
   assert.match(opportunityHtml, /href="https:\/\/www\.k-apt\.go\.kr\/bid\?notice=2"/);
   assert.match(opportunityHtml, /서버 확인 후 검토/);
+
+  const strictStore = { schemaVersion: 1, revision: 7, updatedAt: '2026-08-31T12:00:00+09:00', pilots: [pilot], consents: [storedConsent], inspections: [inspection], opportunities: [opportunity], audit: [auditRow] };
+  const strictNormalized = await run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify(strictStore) + ')');
+  assert.equal(strictNormalized.schemaVersion, 1);
+  assert.equal(strictNormalized.inspections[0].inspectionId, 'inspection_test');
+  assert.equal(strictNormalized.audit[0].mutationId, 'mutation_12345678');
+  for (const malformed of [
+    { ...strictStore, schemaVersion: 99 },
+    { ...strictStore, revision: -1 },
+    { ...strictStore, updatedAt: '2026-08-31T03:00:00Z' },
+    { ...strictStore, pilots: [pilot, pilot] },
+    { ...strictStore, inspections: [{ ...inspection, status: 'bogus' }] },
+    { ...strictStore, audit: [{ ...auditRow, mutationId: 'short' }] }
+  ]) await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify(malformed) + ')'), /invalid (OfficeOps store|inspection|audit)/);
+  await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, consentTextSnapshot: 'tampered', consentTextSha256: '0'.repeat(64) }] }) + ')'), /invalid consent integrity/);
+  await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, nextDueAt: '2099-12-31' }] }) + ')'), /invalid consent record/);
+  await assert.rejects(() => run('normalizeAndValidateOfficeOpsStore(' + JSON.stringify({ ...strictStore, consents: [{ ...storedConsent, audit: [{ ...storedConsent.audit[0], at: '2026-08-31T03:00:00Z' }] }] }) + ')'), /invalid consent record/, 'consent audit times must be whole-second KST');
+  const terms = { workKind: 'preventive-inspection', scope: '공용부', exclusions: [], vatMode: 'included', quotedAmount: 10000, validUntil: '2026-09-30', scheduleWindow: '협의' };
+  assert.throws(() => run('normalizeOfficeCommercialTerms(' + JSON.stringify({ scope: terms.scope, workKind: terms.workKind, exclusions: terms.exclusions, vatMode: terms.vatMode, quotedAmount: terms.quotedAmount, validUntil: terms.validUntil, scheduleWindow: terms.scheduleWindow }) + ')'), /invalid commercial terms/, 'stored commercial terms require canonical server key order');
 
   const freshStore = { pilots: [{ ...pilot, complexName: '<img src=x onerror=alert(1)>' }], consents: [], inspections: [], opportunities: [] };
   const html = run('officeOpsPanelHtml("pilots",' + JSON.stringify(freshStore) + ',"fresh")');
@@ -182,5 +250,97 @@ const pilot = {
   assert.match(extractFunction('moreActionHandler'), /a==='officeops'.*officeOpsView\(\)/, 'More action reaches the OfficeOps modal');
   const viewSource = extractFunction('officeOpsView');
   assert.ok(viewSource.indexOf('officeOpsRefresh()') < viewSource.indexOf("__officeOps.mode==='fresh'"), 'view requires live refresh before fresh UI is enabled');
+
+  await ensureStaticServer();
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  page.setDefaultTimeout(10000);
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error)));
+  await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
+  await page.goto(APP, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(900);
+  const browserStore = { schemaVersion: 1, revision: 7, updatedAt: '2026-08-31T12:00:00+09:00',
+    pilots: [{ ...pilot, complexName: '<img src=x onerror=alert(1)>' }], consents: [], inspections: [], opportunities: [], audit: [] };
+  const bootMode = await page.evaluate(async store => {
+    await idbSet('office_ops_url', 'https://office.example/ops');
+    await idbSet('office_ops_token', 'office-token');
+    await idbSet('office_ops_cache', { store, revision: store.revision, updatedAt: store.updatedAt });
+    window.__ooScenario = 'fresh'; window.__ooCalls = [];
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, options) => {
+      if (!String(url).includes('office.example')) return realFetch(url, options);
+      const request = JSON.parse(options.body); window.__ooCalls.push(request);
+      if (window.__ooScenario === 'disabled') return { ok: true, json: async () => ({ ok: false, error: 'office-disabled' }) };
+      if (window.__ooScenario === 'malformed') return { ok: true, json: async () => ({ ok: true, store: { ...store, schemaVersion: 99 } }) };
+      return { ok: true, json: async () => ({ ok: true, store }) };
+    };
+    return (await officeOpsBoot()).mode;
+  }, browserStore);
+  assert.equal(bootMode, 'stale-export-only', 'strict cached boot starts stale and requires live refresh');
+
+  async function openOfficeOpsFromMore() {
+    await page.locator('[data-mnav="__more"]').click();
+    const customer = page.locator('#moreSheet details').filter({ hasText: '고객·영업' }).first();
+    if (!await customer.evaluate(element => element.open)) await customer.locator('summary').click();
+    await customer.locator('[data-moreaction="officeops"]').click();
+  }
+
+  await openOfficeOpsFromMore();
+  await page.locator('#officeOpsTab-pilots').waitFor();
+  const freshDom = await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('#modalRoot [role="tab"]')];
+    const panels = [...document.querySelectorAll('#modalRoot [role="tabpanel"]')];
+    window.__ooModalNode = document.querySelector('#modalRoot .modal');
+    return {
+      labels: tabs.map(tab => tab.textContent.trim()), calls: window.__ooCalls.map(call => call.action),
+      mappings: tabs.map(tab => ({ id: tab.id, controls: tab.getAttribute('aria-controls'), selected: tab.getAttribute('aria-selected'), tabindex: tab.getAttribute('tabindex') })),
+      panels: panels.map(panel => ({ id: panel.id, labelledby: panel.getAttribute('aria-labelledby'), hidden: panel.hidden })),
+      injectedImages: document.querySelectorAll('#officeOpsPanel-pilots img').length,
+      pilotText: document.getElementById('officeOpsPanel-pilots').textContent
+    };
+  });
+  assert.deepEqual(freshDom.labels, ['시험운영 후보','재점검 동의','예방점검','K-apt 기회']);
+  assert.deepEqual(freshDom.calls, ['officeOpsList'], 'More entry performs exactly one live refresh');
+  assert.equal(freshDom.injectedImages, 0, 'actual production escaping creates no injected element');
+  assert.match(freshDom.pilotText, /<img src=x onerror=alert\(1\)>/);
+  assert.equal(freshDom.mappings.length, 4); assert.equal(freshDom.panels.length, 4);
+  freshDom.mappings.forEach((tab, index) => {
+    assert.equal(tab.controls, freshDom.panels[index].id);
+    assert.equal(freshDom.panels[index].labelledby, tab.id);
+    assert.equal(tab.tabindex, index === 0 ? '0' : '-1');
+  });
+  await page.locator('#officeOpsTab-pilots').focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'officeOpsTab-opportunities');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'officeOpsTab-inspections');
+  await page.keyboard.press('Home');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'officeOpsTab-pilots');
+  await page.keyboard.press('ArrowRight');
+  const tabSwitch = await page.evaluate(() => ({ active: document.activeElement.id, selected: document.querySelector('#officeOpsBody [role="tab"][aria-selected="true"]').id,
+    shown: [...document.querySelectorAll('#officeOpsBody [role="tabpanel"]')].filter(panel => !panel.hidden).map(panel => panel.id), sameModal: window.__ooModalNode === document.querySelector('#modalRoot .modal'), calls: window.__ooCalls.length }));
+  assert.deepEqual(tabSwitch, { active: 'officeOpsTab-consents', selected: 'officeOpsTab-consents', shown: ['officeOpsPanel-consents'], sameModal: true, calls: 1 }, 'tab switch retains focus and reuses the modal without another refresh');
+
+  await page.locator('#modalRoot .modal-close').click();
+  await page.evaluate(() => { window.__ooScenario = 'malformed'; });
+  await openOfficeOpsFromMore();
+  await page.locator('#officeOpsExport').waitFor();
+  assert.equal(await page.evaluate(() => __officeOps.mode), 'stale-export-only', 'malformed live response revokes fresh cache');
+  assert.equal(await page.locator('#modalRoot [role="tab"]').count(), 0, 'malformed response exposes only export guidance');
+
+  await page.locator('#modalRoot .modal-close').click();
+  await page.evaluate(() => { window.__ooScenario = 'disabled'; });
+  await openOfficeOpsFromMore();
+  await page.locator('#officeOpsExport').waitFor();
+  assert.equal(await page.evaluate(() => __officeOps.mode), 'export-only', 'disabled response is visibly export-only');
+  assert.match(await page.locator('#modalRoot .mbody').textContent(), /로컬 JSON|조회 전용/);
+  assert.equal(pageErrors.length, 0, 'actual UI has no pageerror: ' + pageErrors.join(' | '));
+  await browser.close(); browser = null;
+  if (staticServer) { staticServer.kill(); staticServer = null; }
   console.log('PASS  OfficeOps four-tab UI, KST pilots, consent, and strict K-apt contracts');
-})().catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });
+})().catch(async error => {
+  console.error('FAIL', error && error.stack || error); process.exitCode = 1;
+  if (browser) await browser.close().catch(() => {});
+  if (staticServer) staticServer.kill();
+});

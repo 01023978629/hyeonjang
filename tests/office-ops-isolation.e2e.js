@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
@@ -38,9 +39,9 @@ function extractFunction(name) {
 function makeClient({ replies = [], cache = new Map(), mutationImplementation = '' } = {}) {
   const calls = [];
   const sandbox = {
-    crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })() },
+    crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })(), subtle: webcrypto.subtle },
     Date: class extends Date { static now() { return 0; } },
-    JSON, Object, Error, Number, String, Array, Promise, URL, Intl,
+    JSON, Object, Error, Number, String, Array, Promise, URL, Intl, TextEncoder, Uint8Array, Map, Set,
     idbGet: async key => cache.get(key),
     idbSet: async (key, value) => { cache.set(key, value); },
     fetch: async (_url, init) => {
@@ -52,7 +53,7 @@ function makeClient({ replies = [], cache = new Map(), mutationImplementation = 
   };
   vm.createContext(sandbox);
   vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
-  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
+  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity', 'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity', 'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsActiveConsentForDraft', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
     vm.runInContext(name === 'officeOpsMutationWithAck' && mutationImplementation ? mutationImplementation : extractFunction(name), sandbox);
   }
   return { sandbox, calls, cache };
@@ -70,7 +71,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
 (async () => {
   const client = makeClient({ replies: [
     { body: { ok: true, id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' } },
-    { body: { ok: true, store: { schemaVersion: 1, revision: 8, updatedAt: '2026-08-31T00:00:00.000Z', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] } } }
+    { body: { ok: true, store: { schemaVersion: 1, revision: 8, updatedAt: '2026-08-31T09:00:00+09:00', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] } } }
   ] });
   vm.runInContext("__officeOps.mode='fresh'", client.sandbox);
   const result = await vm.runInContext("officeOpsMutationWithAck('pilotCreate',{name:'same-name'})", client.sandbox);
@@ -85,7 +86,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   assert.equal(Object.hasOwn(read, 'ts'), false, 'legacy ts is never sent on reads');
   assert.deepEqual([...client.cache.keys()], ['office_ops_device_id', 'office_ops_cache'], 'only device identity and successful normalized read cache are persisted');
 
-  const disabledCache = new Map([['office_ops_cache', { store: { schemaVersion: 1, revision: 4, updatedAt: '2026-08-30T00:00:00.000Z', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] }, revision: 4, updatedAt: '2026-08-30T00:00:00.000Z' }]]);
+  const disabledCache = new Map([['office_ops_cache', { store: { schemaVersion: 1, revision: 4, updatedAt: '2026-08-30T09:00:00+09:00', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] }, revision: 4, updatedAt: '2026-08-30T09:00:00+09:00' }]]);
   const disabled = makeClient({ cache: disabledCache, replies: [{ body: { ok: false, error: 'office-disabled' } }] });
   assert.equal(await vm.runInContext('officeOpsRefresh()', disabled.sandbox), null, 'disabled reads enter export-only mode instead of treating cache as current');
   assert.equal(disabled.cache.get('office_ops_cache').revision, 4, 'disabled read retains the last successful cache');
@@ -119,6 +120,18 @@ async function assertRepresentativeMutationsBlocked(client, label) {
   assert.equal(vm.runInContext('__officeOps.mode', ackThenDisabled.sandbox), 'export-only', 'ACK-followed disabled refresh switches to export-only');
   assert.equal(ackThenDisabled.calls.length, 2, 'valid ACK is followed directly by one list refresh');
   await assertRepresentativeMutationsBlocked(ackThenDisabled, 'ACK-followed disabled refresh');
+
+  const ackThenNetworkFailure = makeClient({ replies: [
+    { body: { ok: true, id: 'consent_server_1', revision: 10, updatedAt: '2026-08-31T12:00:01+09:00' } },
+    new Error('list network failed')
+  ] });
+  vm.runInContext("__officeOps.mode='fresh';__officeOps.cache={pilots:[],consents:[{consentId:'consent_server_1',withdrawnAt:null}],inspections:[],opportunities:[],audit:[]}", ackThenNetworkFailure.sandbox);
+  await assert.rejects(() => vm.runInContext("officeOpsMutationWithAck('officeConsentWithdraw',{consentId:'consent_server_1'})", ackThenNetworkFailure.sandbox), /list network failed/, 'generic post-ACK reload failure is surfaced');
+  assert.equal(vm.runInContext('__officeOps.mode', ackThenNetworkFailure.sandbox), 'stale-export-only', 'any post-ACK reload failure revokes fresh state');
+  assert.equal(vm.runInContext("officeOpsActiveConsentForDraft('consent_server_1')", ackThenNetworkFailure.sandbox), null, 'old active consent cannot feed a draft after withdrawal ACK without strict reload');
+  const callsAfterFailedReload = ackThenNetworkFailure.calls.length;
+  await assert.rejects(() => vm.runInContext("officeOpsMutation('consentDraft',{})", ackThenNetworkFailure.sandbox), /office-disabled/);
+  assert.equal(ackThenNetworkFailure.calls.length, callsAfterFailedReload, 'revoked mode blocks every subsequent mutation with no network request');
 
   const exports = makeClient({ cache: disabledCache });
   const downloads = [];
