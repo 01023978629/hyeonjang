@@ -40,7 +40,7 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   const sandbox = {
     crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })() },
     Date: class extends Date { static now() { return 0; } },
-    JSON, Object, Error, Number, String, Array, Promise,
+    JSON, Object, Error, Number, String, Array, Promise, URL,
     idbGet: async key => cache.get(key),
     idbSet: async (key, value) => { cache.set(key, value); },
     fetch: async (_url, init) => {
@@ -51,8 +51,8 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
     }
   };
   vm.createContext(sandbox);
-  vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};", sandbox);
-  for (const name of ['officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh']) {
+  vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
+  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'normalizeOfficeOpsStore', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
     vm.runInContext(extractFunction(name), sandbox);
   }
   return { sandbox, calls, cache };
@@ -63,8 +63,9 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
     { body: { ok: true, id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' } },
     { body: { ok: true, store: { schemaVersion: 1, revision: 8, updatedAt: '2026-08-31T00:00:00.000Z', pilots: [], consents: [], inspections: [], opportunities: [], audit: [] } } }
   ] });
+  vm.runInContext("__officeOps.mode='fresh'", client.sandbox);
   const result = await vm.runInContext("officeOpsMutationWithAck('pilotCreate',{name:'same-name'})", client.sandbox);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.ack)), { id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' }, 'mutation returns the exact server ID acknowledgement');
+  assert.deepEqual(JSON.parse(JSON.stringify(result.ack)), { id: 'pilot-server-42', revision: 8, updatedAt: '2026-08-31T00:00:00.000Z' }, 'returned metadata preserves the exact server ID after the raw ACK validation');
   assert.equal(client.calls.length, 2, 'mutation acknowledgement is followed by exactly one refresh read');
   const [mutation, read] = client.calls;
   assert.deepEqual(Object.keys(mutation).sort(), ['action', 'deviceId', 'mutationId', 'payload', 'timestamp', 'token'], 'OfficeOps mutation has one isolated envelope');
@@ -84,6 +85,44 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   await assert.rejects(() => vm.runInContext("officeOpsMutation('pilotCreate',{name:'blocked'})", disabled.sandbox), /office-disabled/, 'export-only mode blocks mutation without a network retry');
   assert.equal(disabled.calls.length, 1, 'blocked mutation makes no network call');
 
+  const stale = makeClient({ cache: disabledCache });
+  await vm.runInContext('officeOpsBoot()', stale.sandbox);
+  assert.equal(vm.runInContext('__officeOps.mode', stale.sandbox), 'stale-export-only', 'boot cache is never treated as a current successful load');
+  for (const action of ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord']) {
+    await assert.rejects(() => vm.runInContext('officeOpsMutation(' + JSON.stringify(action) + ',{})', stale.sandbox), /office-disabled/, action + ' blocks against a stale boot cache');
+  }
+  assert.equal(stale.calls.length, 0, 'stale create/edit/draft/convert/contact attempts perform zero network requests');
+
+  const unloaded = makeClient();
+  for (const action of ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord']) {
+    await assert.rejects(() => vm.runInContext('officeOpsMutation(' + JSON.stringify(action) + ',{})', unloaded.sandbox), /office-disabled/, action + ' blocks before the first current load');
+  }
+  assert.equal(unloaded.calls.length, 0, 'unloaded create/edit/draft/convert/contact attempts perform zero network requests');
+
+  const ackThenDisabled = makeClient({ replies: [
+    { body: { ok: true, id: 'pilot-server-43', revision: 9, updatedAt: '2026-08-31T00:01:00.000Z' } },
+    { body: { ok: false, error: 'office-disabled' } }
+  ] });
+  vm.runInContext("__officeOps.mode='fresh'", ackThenDisabled.sandbox);
+  await assert.rejects(() => vm.runInContext("officeOpsMutationWithAck('pilotCreate',{})", ackThenDisabled.sandbox), /office-disabled/, 'a disabled refresh after a valid ACK still fails closed');
+  assert.equal(vm.runInContext('__officeOps.mode', ackThenDisabled.sandbox), 'export-only', 'ACK-followed disabled refresh switches to export-only');
+  assert.equal(ackThenDisabled.calls.length, 2, 'valid ACK is followed directly by one list refresh');
+  await assert.rejects(() => vm.runInContext("officeOpsMutation('pilotCreate',{})", ackThenDisabled.sandbox), /office-disabled/, 'post-refresh disabled mode blocks later mutations');
+  assert.equal(ackThenDisabled.calls.length, 2, 'post-refresh blocked mutation makes zero network requests');
+
+  const exports = makeClient({ cache: disabledCache });
+  const downloads = [];
+  Object.assign(exports.sandbox, {
+    Blob: class Blob { constructor(parts, options) { this.parts = parts; this.options = options; } },
+    URL: Object.assign(URL, { createObjectURL: () => 'blob:office-cache', revokeObjectURL: () => {} }),
+    document: { body: { appendChild: node => downloads.push(node) }, createElement: () => ({ click: () => {}, remove: () => {} }) },
+    setTimeout: callback => callback()
+  });
+  vm.runInContext(extractFunction('officeOpsExportLastCache'), exports.sandbox);
+  await vm.runInContext('officeOpsExportLastCache()', exports.sandbox);
+  assert.equal(exports.calls.length, 0, 'allowed local cache export makes zero network requests');
+  assert.equal(downloads.length, 1, 'allowed local cache export creates one local download only');
+
   const serialize = source.slice(source.indexOf('function serializeData()'), source.indexOf('function applyData('));
   const apply = source.slice(source.indexOf('function applyData('), source.indexOf('function fixXlsxEstVat('));
   const relay = source.slice(source.indexOf('function relayCall('), source.indexOf('function cloudApiHealth'));
@@ -94,5 +133,13 @@ function makeClient({ replies = [], cache = new Map() } = {}) {
   const exportBody = extractFunction('officeOpsExportLastCache');
   assert.match(exportBody, /idbGet\('office_ops_cache'\)/, 'export reads only the normalized OfficeOps cache');
   assert.doesNotMatch(exportBody, /officeOpsCall|commercialCall|fetch\(/, 'export performs no network request');
+  assert.doesNotMatch(source, /String\(__officeOps\.token\)\.slice\(-4\)|String\(__commercialApproval\.token\)\.slice\(-4\)/, 'settings never render credential fragments');
+  for (const inputId of ['ooTok', 'caTok']) {
+    assert.match(source, new RegExp('id="' + inputId + '" value=""'), inputId + ' value is always blank in rendered settings HTML');
+    assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
+  }
+  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
+  const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|relay_queue|relay_url|relay_token|APP_TOKEN|officeIntake|OfficeIntake/i;
+  for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
   console.log('PASS  OfficeOps isolated envelopes, acknowledgements, cache ownership, and legacy boundaries');
 })().catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });

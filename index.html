@@ -3405,9 +3405,9 @@ function openGdriveSetup(){
     <b style="font-size:14px">🏢 OfficeOps 연결</b>
     <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">주소·토큰과 마지막 정상 조회본은 <b>이 기기(IndexedDB)에만</b> 저장됩니다. 현장 백업·중계·관리사무소 접수에 섞이지 않습니다. 빈 칸으로 저장하면 기존 설정을 유지합니다.</p>
     <label style="display:block;margin-bottom:6px">OfficeOps 웹앱 주소 <input type="text" id="ooUrl" value="${escapeAttr(__officeOps.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
-    <label style="display:block;margin-bottom:6px">OfficeOps 토큰 <input type="password" id="ooTok" value="" placeholder="${escapeAttr(__officeOps.token?'저장됨 · 끝 4자리 ****'+String(__officeOps.token).slice(-4):'OfficeOps 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
+    <label style="display:block;margin-bottom:6px">OfficeOps 토큰 <input type="password" id="ooTok" value="" placeholder="${escapeAttr(__officeOps.token?'저장됨':'OfficeOps 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
     <label style="display:block;margin-bottom:6px">상업 승인 웹앱 주소 <input type="text" id="caUrl" value="${escapeAttr(__commercialApproval.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px"></label>
-    <label style="display:block;margin-bottom:6px">상업 승인 토큰 <input type="password" id="caTok" value="" placeholder="${escapeAttr(__commercialApproval.token?'저장됨 · 끝 4자리 ****'+String(__commercialApproval.token).slice(-4):'상업 승인 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
+    <label style="display:block;margin-bottom:6px">상업 승인 토큰 <input type="password" id="caTok" value="" placeholder="${escapeAttr(__commercialApproval.token?'저장됨':'상업 승인 토큰')}" autocomplete="off" spellcheck="false" style="width:100%;margin-top:4px"></label>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
       <button class="clay tiny" id="ooSave">💾 저장</button><button class="ghost tiny" id="ooExport">⬇️ 마지막 정상 조회본</button><button class="ghost tiny" id="ooDelete">🗑 연결 정보 지우기</button>
       <span id="ooState" role="status" aria-live="polite" style="align-self:center;font-size:12px;color:var(--muted-2)">${__officeOps.mode==='export-only'?'⚠️ 서버 사용 중지됨 — 마지막 정상 조회본만 내보낼 수 있습니다':(__officeOps.url&&__officeOps.token?'✅ OfficeOps 설정됨':'미설정')}</span>
@@ -26662,10 +26662,10 @@ async function officeOpsLoad(){
   __officeOps.mode='fresh';return store;
 }
 async function officeOpsMutationWithAck(action,payload){
-  if(__officeOps.mode==='export-only')throw new Error('office-disabled');
+  if(__officeOps.mode!=='fresh')throw new Error('office-disabled');
   const json=await officeOpsCall(action,payload,{mutationId:crypto.randomUUID()});
   if(Object.keys(json).sort().join(',')!=='id,ok,revision,updatedAt'||json.ok!==true)throw new Error('invalid mutation acknowledgement');
-  const store=await officeOpsLoad();
+  let store;try{store=await officeOpsLoad();}catch(e){if(e&&e.code==='office-disabled')__officeOps.mode='export-only';throw e;}
   return {ack:Object.freeze({id:json.id,revision:json.revision,updatedAt:json.updatedAt}),store};
 }
 async function officeOpsMutation(action,payload){
