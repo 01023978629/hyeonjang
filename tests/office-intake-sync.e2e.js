@@ -316,8 +316,8 @@ const TOKEN = 'test-token-123';
   await fetch(MOCK + '/__reset');
   const durable = await page.evaluate(() => {
     state.officeIntake = { inbox: [], cursor: '', outbox: [], lastSyncAt: '', lastError: '' };
-    const realDirty = window.markDirty; let dirtyCalls = 0;
-    window.markDirty = () => { dirtyCalls++; };
+    const realDirty = window.officeIntakeMarkDirty; let dirtyCalls = 0;
+    window.officeIntakeMarkDirty = () => { dirtyCalls++; };
     const RealDate = window.Date;
     class FixedDate extends RealDate { constructor(...args) { return args.length ? new RealDate(...args) : new RealDate('2026-08-26T00:00:00.000Z'); } static now() { return Date.parse('2026-08-26T00:00:00.000Z'); } }
     window.Date = FixedDate;
@@ -340,7 +340,7 @@ const TOKEN = 'test-token-123';
     const restored = officeIntakeData();
     const roundTrip = { order: restored.outbox.map(x => x.id), attempts: restored.outbox.map(x => x.attempts), errors: restored.outbox.map(x => x.lastError), cursor: restored.cursor };
     dirtyCalls = 0;
-    return officeIntakeFlush().then(sent => { const flushDirty = dirtyCalls; window.markDirty = realDirty; return { canonicalActions, queueDirty, malformed, roundTrip, sent, flushDirty, remaining: officeIntakeData().outbox.length }; });
+    return officeIntakeFlush().then(sent => { const flushDirty = dirtyCalls; window.officeIntakeMarkDirty = realDirty; return { canonicalActions, queueDirty, malformed, roundTrip, sent, flushDirty, remaining: officeIntakeData().outbox.length }; });
   });
   assert.deepEqual(durable.canonicalActions, ['officeSetStatus', 'officeAccept', 'officeSetStatus'], 'canonical key-sorted payloads dedupe only when adjacent; A→B→A survives');
   assert.equal(durable.queueDirty, 3, 'each persisted queue change marks data dirty while adjacent dedupe is a no-op');
