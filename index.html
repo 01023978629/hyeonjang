@@ -26535,6 +26535,29 @@ function paidGenerationKey(value){return typeof value==='string'&&new RegExp('^'
 function paidClone(value){return JSON.parse(JSON.stringify(value));}
 function paidObservedClone(value){return structuredClone(value);}
 function paidSameBytes(left,right){const a=new Uint8Array(left),b=new Uint8Array(right);if(a.byteLength!==b.byteLength)return false;for(let index=0;index<a.byteLength;index++)if(a[index]!==b[index])return false;return true;}
+function paidSameBufferMetadata(left,right,tag){
+  if(tag==='[object ArrayBuffer]'){
+    const leftResizable=typeof left.resizable==='boolean'?left.resizable:null,rightResizable=typeof right.resizable==='boolean'?right.resizable:null;
+    const leftMax=typeof left.maxByteLength==='number'?left.maxByteLength:null,rightMax=typeof right.maxByteLength==='number'?right.maxByteLength:null;
+    return leftResizable===rightResizable&&leftMax===rightMax;
+  }
+  if(tag==='[object SharedArrayBuffer]'){
+    const leftGrowable=typeof left.growable==='boolean'?left.growable:null,rightGrowable=typeof right.growable==='boolean'?right.growable:null;
+    const leftMax=typeof left.maxByteLength==='number'?left.maxByteLength:null,rightMax=typeof right.maxByteLength==='number'?right.maxByteLength:null;
+    return leftGrowable===rightGrowable&&leftMax===rightMax;
+  }
+  return false;
+}
+function paidResizableViewMode(value){
+  const buffer=value.buffer,tag=Object.prototype.toString.call(buffer),resizable=tag==='[object ArrayBuffer]'&&buffer.resizable===true,growable=tag==='[object SharedArrayBuffer]'&&buffer.growable===true;
+  if(!resizable&&!growable)return'fixed-buffer';
+  if(growable)throw new Error('unsupported paid recovery growable SharedArrayBuffer view');
+  const step=typeof value.BYTES_PER_ELEMENT==='number'?value.BYTES_PER_ELEMENT:1,current=buffer.byteLength,max=buffer.maxByteLength;
+  if(!Number.isSafeInteger(current)||!Number.isSafeInteger(max)||step<1||current+step>max)throw new Error('ambiguous paid recovery resizable buffer view');
+  const clone=structuredClone(value),beforeByteLength=clone.byteLength,beforeLength='length'in clone?clone.length:null;
+  clone.buffer.resize(current+step);
+  return clone.byteLength!==beforeByteLength||('length'in clone&&clone.length!==beforeLength)?'length-tracking':'fixed-length';
+}
 async function paidSameValue(left,right,graph){
   if(Object.is(left,right))return true;
   if(left===null||right===null||typeof left!=='object'||typeof right!=='object')return false;
@@ -26549,9 +26572,10 @@ async function paidSameValue(left,right,graph){
     if(tag==='[object File]'&&(left.name!==right.name||left.lastModified!==right.lastModified||left.webkitRelativePath!==right.webkitRelativePath))return false;
     const buffers=await Promise.all([left.arrayBuffer(),right.arrayBuffer()]);return paidSameBytes(buffers[0],buffers[1])&&await sameProperties();
   }
-  if(tag==='[object ArrayBuffer]'||tag==='[object SharedArrayBuffer]')return paidSameBytes(left,right)&&await sameProperties();
+  if(tag==='[object ArrayBuffer]'||tag==='[object SharedArrayBuffer]')return paidSameBufferMetadata(left,right,tag)&&paidSameBytes(left,right)&&await sameProperties();
   if(ArrayBuffer.isView(left)||ArrayBuffer.isView(right)){
     if(!ArrayBuffer.isView(left)||!ArrayBuffer.isView(right)||left.byteOffset!==right.byteOffset||left.byteLength!==right.byteLength||('length'in left&&left.length!==right.length))return false;
+    if(paidResizableViewMode(left)!==paidResizableViewMode(right))return false;
     return await paidSameValue(left.buffer,right.buffer,graph)&&await sameProperties();
   }
   if(tag==='[object Map]'){
