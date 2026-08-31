@@ -15,7 +15,7 @@
 
    지키는 것
      ① 첫 화면이 한 화면에 들어온다 (스크롤이 생기지 않는다)
-     ② 탭 넷이 다 있고, 각각 자기 내용을 연다
+     ② 탭 다섯이 다 있고, 각각 자기 내용을 연다
      ③ 한 번에 한 패널만 보인다 (숨긴 패널은 hidden)
      ④ 좌우 화살표로 탭을 옮길 수 있다 (탭 목록의 표준 동작)
      ⑤ 열지 않아도 상태가 보인다 — 탭마다 설정됨/미설정 점
@@ -35,7 +35,7 @@ const APP = 'http://localhost:8299/index.html';
 const assert = (v, m) => { if (!v) throw new Error(m); };
 let browser;
 
-const TABS = ['save', 'ct', 'keys', 'etc'];
+const TABS = ['save', 'ct', 'office', 'keys', 'etc'];
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
@@ -53,12 +53,12 @@ const TABS = ['save', 'ct', 'keys', 'etc'];
     const m = document.querySelector('#modalRoot .modal');
     return { scroll: m.scrollHeight, view: m.clientHeight, tabs: document.querySelectorAll('#modalRoot .setTab').length };
   });
-  assert(size.tabs === 4, '① 탭이 4개가 아님: ' + size.tabs);
+  assert(size.tabs === 5, '① 탭이 5개가 아님: ' + size.tabs);
   assert(size.scroll <= size.view + 40,
     '① 설정 첫 화면에 스크롤이 생겼다 (' + size.scroll + 'px / 화면 ' + size.view + 'px) — 나눈 의미가 없다');
 
   // ②③ 탭마다 자기 내용이 열리고, 한 번에 하나만 보인다
-  const MARK = { save: '#ryUrl', ct: '#ctUrl', keys: '#gdGemini', etc: '#rvUrl' };
+  const MARK = { save: '#ryUrl', ct: '#ctUrl', office: '#ooUrl', keys: '#gdGemini', etc: '#rvUrl' };
   for (const t of TABS) {
     const r = await page.evaluate(({ t, MARK, TABS }) => {
       document.getElementById('setTab-' + t).click();
@@ -72,14 +72,14 @@ const TABS = ['save', 'ct', 'keys', 'etc'];
   }
 
   // ④ 좌우 화살표로 이동
-  const arrow = await page.evaluate(async () => {
+  const arrow = await page.evaluate(async ({ TABS }) => {
     const first = document.getElementById('setTab-save');
     first.click(); first.focus();
     first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     const after = document.activeElement && document.activeElement.dataset.tab;
-    const shown = ['save', 'ct', 'keys', 'etc'].filter(x => !document.getElementById('setPanel-' + x).hidden);
+    const shown = TABS.filter(x => !document.getElementById('setPanel-' + x).hidden);
     return { after, shown };
-  });
+  }, { TABS });
   assert(arrow.after === 'ct' && arrow.shown[0] === 'ct',
     '④ 화살표로 탭이 안 옮겨진다 (초점 ' + arrow.after + ' · 열린 패널 ' + arrow.shown.join(',') + ')');
 
@@ -160,7 +160,7 @@ const TABS = ['save', 'ct', 'keys', 'etc'];
   assert(errors.length === 0, '⑪ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 설정 첫 화면이 한 화면에 들어온다 (' + size.scroll + 'px / ' + size.view + 'px)');
-  console.log('PASS  ② 탭 넷이 각각 자기 내용을 연다');
+  console.log('PASS  ② 탭 다섯이 각각 자기 내용을 연다');
   console.log('PASS  ③ 한 번에 한 패널만 · aria-selected 표시');
   console.log('PASS  ④ 좌우 화살표로 탭 이동');
   console.log('PASS  ⑤ 열지 않아도 탭마다 상태가 보인다');
