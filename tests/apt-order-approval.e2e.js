@@ -76,26 +76,36 @@ let browser;
   assert(JSON.stringify(integrity.options) === JSON.stringify(['recv','visit']) && integrity.after === 'recv' && integrity.outbox === 0, '⑤ 변조된 intake 상태 선택은 되돌리고 outbox에 넣으면 안 된다');
   assert(!/홍길동|(?:\d[\s().-]*){7,}/.test(integrity.payload.summary) && /\[고객명\]|\[연락처\]/.test(integrity.payload.summary), '⑤ 공개 완료 메모는 알려진 이름·휴대폰·지역번호를 placeholder로 바꿔야 한다: '+integrity.payload.summary);
   assert(integrity.overflow === false, '⑤ 390px 폭에서 Task 4 controls가 넘치면 안 된다');
-  const monthly = await page.evaluate(() => {
+  const monthly = await page.evaluate(async () => {
     const ym=localDate().slice(0,7), doneAt=ym+'-10';
     state.aptOffices=[{id:'bulk-office',complex:'일괄 단지'}];
+    const mkApproved=(id,scope,amount)=>({commercialGateVersion:1,
+      commercialTerms:{workKind:'repair',scope,exclusions:[],vatMode:'excluded',quotedAmount:amount,validUntil:'2027-12-31',scheduleWindow:'협의 후 방문'},
+      commercialApproval:{receiptId:'receipt_'+id,subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'message-export-file',approvalEvidenceFileId:'DRIVEFILE1234567890',approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T09:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T09:00:01+09:00',receiptHmac:'c'.repeat(64)}});
     state.aptOrders=[
-      {id:'bulk-intake',officeId:'bulk-office',source:'office-intake',sourceRequestId:'bulk-request',status:'done',doneAt,amount:10000},
-      {id:'bulk-manual',officeId:'bulk-office',status:'done',doneAt,amount:20000}
+      {id:'bulk-intake',officeId:'bulk-office',source:'office-intake',sourceRequestId:'bulk-request',unit:'관리동',text:'접수 보수',date:localDate(),status:'done',doneAt,amount:10000,...mkApproved('bulk-intake','접수 보수',10000)},
+      {id:'bulk-manual',officeId:'bulk-office',unit:'101동 101호',text:'수동 보수',date:localDate(),status:'done',doneAt,amount:20000,...mkApproved('bulk-manual','수동 보수',20000)}
     ];
     state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
+    state.payLog=[];
+    __commercialApproval.url='https://commercial.test/exec';__commercialApproval.token='TEST-TOKEN';
+    window.commercialCall=async(action,payload)=>{
+      if(action==='commercialNow')return {ok:true,serverNowKst:'2026-08-31T10:00:00+09:00',receivedAtKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce};
+      if(action==='commercialApprovalVerify')return {ok:true,receiptId:payload.commercialApproval.receiptId,serverNowKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce,verifyExpiresAtKst:'2026-08-31T10:00:30+09:00'};
+      throw new Error('unexpected commercial action '+action);
+    };
     window.confirm=()=>true;
     aptSettle('bulk-office',ym);
-    [...document.querySelectorAll('#modalRoot .mfoot button')].find(button=>button.textContent.includes('청구 처리')).click();
+    await [...document.querySelectorAll('#modalRoot .mfoot button')].find(button=>button.textContent.includes('청구 처리')).onclick();
     const billed=officeIntakeData().outbox.map(item=>item.payload);
-    [...document.querySelectorAll('#modalRoot .mfoot button')].find(button=>button.textContent.includes('입금 확인')).click();
+    await [...document.querySelectorAll('#modalRoot .mfoot button')].find(button=>button.textContent.includes('입금 확인')).onclick();
     const paid=officeIntakeData().outbox.map(item=>item.payload);
     return { statuses:state.aptOrders.map(order=>[order.id,order.status]), billed, paid };
   });
-  const bulkReport={summary:'',photoIds:[],publicPhotoIds:[]};
+  const bulkReport={summary:'접수 보수',photoIds:[],publicPhotoIds:[]};
   assert(JSON.stringify(monthly.statuses) === JSON.stringify([['bulk-intake','paid'],['bulk-manual','paid']]), '⑥ 월 청구·입금은 실제 변경된 intake만 발행하고 manual은 기존 정산만 적용해야 한다: '+JSON.stringify(monthly));
-  assert(JSON.stringify(monthly.billed) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1}]), '⑥ 청구는 intake 상태 1건의 정확한 payload만 대기열에 넣어야 한다');
-  assert(JSON.stringify(monthly.paid) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1},{requestId:'bulk-request',status:'paid',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:2}]), '⑥ 입금도 실제 변경된 intake 상태만 순서대로 대기열에 넣어야 한다');
+  assert(JSON.stringify(monthly.billed) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1}]), '⑥ 청구는 intake 상태 1건의 정확한 payload만 대기열에 넣어야 한다: '+JSON.stringify(monthly.billed));
+  assert(JSON.stringify(monthly.paid) === JSON.stringify([{requestId:'bulk-request',status:'billed',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:1},{requestId:'bulk-request',status:'paid',visitAt:null,publicAmount:null,completionReport:bulkReport,completionPhotoIds:[],projectionRevision:2}]), '⑥ 입금도 실제 변경된 intake 상태만 순서대로 대기열에 넣어야 한다: '+JSON.stringify(monthly.paid));
   assert(errors.length === 0, '④ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 승인 라벨에 금액/금액 미정 표시');

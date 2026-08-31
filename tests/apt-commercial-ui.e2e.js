@@ -1,0 +1,335 @@
+'use strict';
+/* Task 4: every apartment paid-work path must enter the representative gate. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const http=require('node:http');
+const path=require('node:path');
+
+function playwright(){for(const candidate of ['playwright',path.resolve(path.dirname(process.execPath),'..','node_modules','playwright'),'/opt/node22/lib/node_modules/playwright']){try{return require(candidate);}catch(_){}}throw Error('playwright unavailable');}
+const {chromium}=playwright();
+const root=path.resolve(__dirname,'..');
+const source=fs.readFileSync(path.join(root,'index.html'),'utf8');
+
+function balancedEnd(start,open,close){
+  let depth=0,quote='',line=false,block=false;
+  for(let index=start;index<source.length;index++){
+    const char=source[index],next=source[index+1];
+    if(line){if(char==='\n')line=false;continue;}
+    if(block){if(char==='*'&&next==='/'){block=false;index++;}continue;}
+    if(quote){if(char==='\\'){index++;continue;}if(char===quote)quote='';continue;}
+    if(char==='/'&&next==='/'){line=true;index++;continue;}
+    if(char==='/'&&next==='*'){block=true;index++;continue;}
+    if(char==='"'||char==="'"||char==='`'){quote=char;continue;}
+    if(char===open)depth++;
+    else if(char===close&&--depth===0)return index+1;
+  }
+  return source.length;
+}
+function functionRanges(){
+  const starts=[];
+  const re=/(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g;
+  for(let match;(match=re.exec(source));){const params=match.index+match[0].lastIndexOf('('),afterParams=balancedEnd(params,'(',')'),bodyStart=source.indexOf('{',afterParams);if(bodyStart<0)continue;const end=balancedEnd(bodyStart,'{','}');starts.push({name:match[1],start:match.index,end});}
+  return starts.map(row=>({...row,body:source.slice(row.start,row.end)}));
+}
+const ranges=functionRanges();
+function fn(name){const row=ranges.find(item=>item.name===name);assert.ok(row,'missing function '+name);return row.body;}
+function toolCase(name){const body=fn('aiToolRun'),start=body.indexOf("case '"+name+"':");assert.ok(start>=0,'missing aiToolRun case '+name);const rest=body.slice(start+1),next=rest.search(/\n\s*case\s+'[^']+'\s*:/);return body.slice(start,next<0?body.length:start+1+next);}
+function enclosing(offset){const candidates=ranges.filter(item=>item.start<=offset&&offset<item.end).sort((a,b)=>(a.end-a.start)-(b.end-b.start));return candidates[0]&&candidates[0].name||'<top-level>';}
+function writerFunctions(pattern){const found=[];for(let match;(match=pattern.exec(source));)found.push(enclosing(match.index));return [...new Set(found)].sort();}
+function aliasedArrayMutators(property){
+  const found=[];
+  for(const row of ranges){
+    const aliases=[];
+    const direct=new RegExp('(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:state|next)\\.'+property+'\\b(?!\\s*[\\[.(])','g');for(let match;(match=direct.exec(row.body));)aliases.push(match[1]);
+    const destructured=/(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:state|next)\b/g;for(let match;(match=destructured.exec(row.body));){const propertyMatch=new RegExp('(?:^|,)\\s*'+property+'(?:\\s*:\\s*([A-Za-z_$][\\w$]*))?\\s*(?:,|$)').exec(match[1]);if(propertyMatch)aliases.push(propertyMatch[1]||property);}
+    if(aliases.some(alias=>new RegExp('\\b'+alias+'\\s*\\.\\s*(?:push|splice|pop|shift|unshift|sort|reverse|copyWithin|fill)\\s*\\(').test(row.body)))found.push(row.name);
+  }
+  return [...new Set(found)].sort();
+}
+
+/* RED 1: name every direct order append before closing the bypasses. */
+assert.deepEqual(writerFunctions(/(?:state|next)\.aptOrders\.push\s*\(/g),['persistApprovedAptOrder','persistFreeOfficeIntakeRecvOrder'],
+  'aptOrders append allowlist changed; paid/manual/AI code may not append directly');
+assert.deepEqual(aliasedArrayMutators('aptOrders'),[],'aptOrders aliases may not hide array mutations from the writer allowlist');
+assert.deepEqual(writerFunctions(/state\.aptOrders\s*=(?!=)/g),['applyData','aptData','aptOrderManage','officeIntakeResolveAcceptConflict','officeIntakeResolveQueuedAcceptConflict','persistFreeOfficeIntakeRecvOrder'],
+  'every live aptOrders replacement must stay in the reviewed restore/free-recv/cleanup/UI-delete inventory');
+assert.deepEqual(writerFunctions(/next\.payLog\.push\s*\(/g),['settlePaidAptOrders'],'paid settlement is the only candidate payLog append');
+assert.deepEqual(writerFunctions(/\border\.status\s*=(?!=)/g),['persistAptDoneTransition','persistGatedAptTransition','settlePaidAptOrders'],'aptOrder status assignments must stay inside the reviewed durable candidate writers');
+assert.deepEqual(writerFunctions(/(?:state|next)\.aptOrders\s*\[[^\]]+\]\s*=(?!=)/g),[],'indexed aptOrder replacement is forbidden');
+assert.deepEqual(writerFunctions(/\border\s*\[\s*['"]status['"]\s*\]\s*=(?!=)/g),[],'computed aptOrder status assignment is forbidden');
+assert.deepEqual(writerFunctions(/Object\.assign\s*\(\s*order\s*,\s*\{[^}]*\bstatus\s*:/g),[],'Object.assign may not hide aptOrder status writes');
+for(const name of ['apt_order_add','apt_order_update']){
+  const body=toolCase(name);
+  assert.match(body,/return\s+['"]상업 승인 필요['"]\s*;/,name+' must return the exact unresolved result');
+  assert.doesNotMatch(body,/state\.aptOrders|\.status\s*=|executePaidWorkGate\s*\(|issueCommercialApproval\s*\(|hjSnapshot\s*\(|markDirty\s*\(|render\s*\(/,
+    name+' must not snapshot, gate, issue, render, or write a paid order');
+}
+assert.doesNotMatch(fn('aptOrderManage'),/state\.aptOrders\.push\s*\(/,'manual UI must not append an order directly');
+assert.match(fn('aptOrderManage'),/await\s+reserveManualPaidDraft\s*\(/,'manual add UI must reserve its stable ID through native IDB before opening approval');
+assert.doesNotMatch(fn('aptOrderManage'),/manualPaidDraft\s*=\s*Object\.freeze\s*\(\s*\{\s*id\s*:\s*uid\s*\(/,'manual add UI must not mint a tab-local subject ID');
+for(const name of ['aptAllowedTransition','persistAptDoneTransition','updateAptCommercialFields','billAptOrders','settlePaidAptOrders','aptOrderStatusOptions'])fn(name);
+for(const name of ['openAptCommercialApprovalModal','aptCommercialFormValue','commercialRequestWithTimeout','commercialLocalInputToKst','aptCommercialEvidenceFiles','strictDriveFileId','aptFocusOrder'])fn(name);
+for(const name of ['manualPaidDraftFingerprint','mutateManualPaidIntentRecord','reserveManualPaidDraft','completeManualPaidDraftReservation'])fn(name);
+assert.match(fn('commercialCall'),/commercialRequestWithTimeout\s*\(/,'commercial transport must use the bounded timeout helper');
+assert.doesNotMatch(fn('aptOrderManage'),/(?:\bo|\border)\.status\s*=(?!=)|state\.schedule\.push\s*\(/,
+  'order UI must delegate candidate status and visit schedule changes');
+assert.doesNotMatch(fn('aptSettle'),/(?:\bo|\border)\.status\s*=(?!=)|state\.payLog\.push\s*\(/,
+  'settlement UI must delegate billed/paid/payLog commits');
+
+function server(){const instance=http.createServer((req,res)=>{const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname),candidate=path.resolve(root,'.'+pathname);if(candidate!==root&&!candidate.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}fs.stat(candidate,(error,stat)=>{const file=!error&&stat.isDirectory()?path.join(candidate,'index.html'):candidate;fs.readFile(file,(readError,bytes)=>{if(readError){res.writeHead(404);res.end();return;}res.writeHead(200,{'Content-Type':path.extname(file)==='.js'?'text/javascript':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(bytes);});});});return new Promise((resolve,reject)=>{instance.once('error',reject);instance.listen(0,'127.0.0.1',()=>resolve(instance));});}
+
+(async()=>{
+  const instance=await server(),port=instance.address().port,browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
+    await page.addInitScript(()=>localStorage.setItem('hj_onboard_done','1'));
+    await page.route('https://**/*',route=>route.abort());
+    await page.goto('http://127.0.0.1:'+port+'/index.html',{waitUntil:'domcontentloaded'});
+    await page.waitForFunction(()=>window.__hjRestoreDone&&typeof aiToolRun==='function');
+    await page.evaluate(()=>Promise.resolve(window.__hjRestoreDone));
+    await page.evaluate(()=>{for(const name of ['aiOpsBootCheck','backupBootCheck','taxCalendarEnsure','coworkSchedEnsure','aiQueueSanitize','kakaoCheckNew'])if(typeof window[name]==='function')window[name]=()=>{};});
+    const result=await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;
+      state.aptOffices=[{id:'office-ai',complex:'AI 차단 아파트',manager:'',phone:''}];
+      let arrayMutations=0;state.aptOrders=new Proxy([],{set(target,key,value){arrayMutations++;target[key]=value;return true;},deleteProperty(target,key){arrayMutations++;return delete target[key];}});state.schedule=[];state.payLog=[];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};
+      const before=JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog,outbox:state.officeIntake.outbox});
+      const calls={snapshot:0,gate:0,issue:0,dirty:0,render:0};
+      const originals={snapshot:hjSnapshot,gate:executePaidWorkGate,issue:issueCommercialApproval,dirty:markDirty,render};
+      hjSnapshot=async()=>{calls.snapshot+=1;return true;};executePaidWorkGate=async()=>{calls.gate+=1;throw Error('gate must not run');};
+      issueCommercialApproval=async()=>{calls.issue+=1;throw Error('issue must not run');};markDirty=()=>{calls.dirty+=1;};render=()=>{calls.render+=1;};
+      let add,update;
+      try{add=await aiToolRun('apt_order_add',{complex:'AI 차단 아파트',unit:'101동 101호',work:'누수 보수',amount:100000});update=await aiToolRun('apt_order_update',{orderId:'missing',work:'변경'});}
+      finally{hjSnapshot=originals.snapshot;executePaidWorkGate=originals.gate;issueCommercialApproval=originals.issue;markDirty=originals.dirty;render=originals.render;}
+      return {add,update,calls,arrayMutations,unchanged:before===JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog,outbox:state.officeIntake.outbox})};
+    });
+    assert.equal(result.add,'상업 승인 필요');assert.equal(result.update,'상업 승인 필요');
+    assert.deepEqual(result.calls,{snapshot:0,gate:0,issue:0,dirty:0,render:0});assert.equal(result.arrayMutations,0,'runtime Proxy detects hidden aptOrders writes');assert.equal(result.unchanged,true);
+    console.log('PASS  apt order AI add/update are unresolved zero-mutation requests');
+
+    const transitions=await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;__paidCommitPointerKey=null;__paidApprovalConsumptions.clear();
+      const keys=await new Promise((resolve,reject)=>{const open=indexedDB.open('hyeonjang-db',1);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('kv','readonly'),req=tx.objectStore('kv').getAllKeys();req.onerror=()=>reject(req.error);req.onsuccess=()=>{db.close();resolve(req.result.map(String));};};});
+      for(const key of keys.filter(key=>key.startsWith(PAID_COMMIT_GENERATION_PREFIX)))await idbDel(key);
+      for(const key of ['appState','paid_commit_pointer','paid_commit_journal','hj_snaps'])await idbDel(key);
+      state._demo=false;state.aptOffices=[{id:'office-1',complex:'원자 아파트',manager:'',phone:''}];state.schedule=[];state.payLog=[];state.projects=[];state.files=[];state.quotes=[];state.notes=[];
+      state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};
+      __commercialApproval.url='https://commercial.example/exec';__commercialApproval.token='task4-token';
+      state.aptOrders=[
+        {id:'order-flow',officeId:'office-1',unit:'101동 101호',text:'욕실 누수 보수',amount:250000,date:'2026-08-31',status:'recv',doneAt:''},
+        {id:'order-missing',officeId:'office-1',unit:'102동 102호',text:'공용부 배수 보수',amount:150000,date:'2026-08-31',status:'done',doneAt:'2026-08-31'}
+      ];
+      await guardedPersistCurrentState();
+      let nonce=0;validateCommercialApproval=async({commercialApproval})=>Object.freeze({receiptId:commercialApproval.receiptId,nonce:'task4_nonce_'+(++nonce),serverNowKst:'2026-08-31T12:00:00+09:00',verifyExpiresAtKst:'2026-08-31T12:01:00+09:00',useBeforeMonotonicMs:Number.MAX_SAFE_INTEGER});
+      const terms={workKind:'repair',scope:'욕실 누수 보수',exclusions:['타일 전체 교체'],vatMode:'included',quotedAmount:250000,validUntil:'2026-09-30',scheduleWindow:'2026-09-02 오전'};
+      const makeReceipt=(suffix)=>({receiptId:'receipt_task4_'+suffix,subjectType:'aptOrder',subjectId:'order-flow',approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'drive_task4_'+suffix,approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)});
+      const receiptA=makeReceipt('A'),errors=[];
+      const capture=async fn=>{try{await fn();return '';}catch(error){return String(error.code||error.message||error);}};
+      const beforeJump=JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog});
+      errors.push(await capture(()=>transitionAptOrderWithGate({orderId:'order-flow',targetState:'work',commercialTerms:terms,commercialApproval:receiptA})));
+      const jumpUnchanged=beforeJump===JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog});
+      await transitionAptOrderWithGate({orderId:'order-flow',targetState:'visit',commercialTerms:terms,commercialApproval:receiptA,visitDate:'2026-09-02'});
+      const afterVisit={status:state.aptOrders.find(row=>row.id==='order-flow').status,visitAt:state.aptOrders.find(row=>row.id==='order-flow').visitAt,schedules:state.schedule.length};
+      errors.push(await capture(()=>transitionAptOrderWithGate({orderId:'order-flow',targetState:'visit',commercialTerms:terms,commercialApproval:receiptA})));
+      const edit=await updateAptCommercialFields('order-flow',{unit:'101동 101호',text:'욕실 누수 정밀 보수',amount:300000,pipeType:'PVC'});
+      const edited=state.aptOrders.find(row=>row.id==='order-flow');
+      const nextTerms={...terms,scope:'욕실 누수 정밀 보수',quotedAmount:300000};
+      errors.push(await capture(()=>transitionAptOrderWithGate({orderId:'order-flow',targetState:'work',commercialTerms:nextTerms,commercialApproval:receiptA})));
+      const receiptB={...makeReceipt('B'),approvedTermsSha256:'d'.repeat(64)};
+      await transitionAptOrderWithGate({orderId:'order-flow',targetState:'work',commercialTerms:nextTerms,commercialApproval:receiptB});
+      const blockedEdit=await capture(()=>updateAptCommercialFields('order-flow',{unit:'101동 102호',text:'변경 금지',amount:310000,pipeType:'PVC'}));
+      await persistAptDoneTransition('order-flow','2026-08-31');
+      errors.push(await capture(()=>transitionAptOrderWithGate({orderId:'order-flow',targetState:'work',commercialTerms:nextTerms,commercialApproval:receiptB})));
+      const bill=await billAptOrders(['order-flow','order-missing']);
+      const afterBill=state.aptOrders.map(row=>({id:row.id,status:row.status}));
+      const paid=await settlePaidAptOrders(['order-flow'],{project:'원자 아파트 관리사무소',date:'2026-08-31'});
+      const retry=await capture(()=>settlePaidAptOrders(['order-flow'],{project:'원자 아파트 관리사무소',date:'2026-08-31'}));
+      const saved=await idbGet(await idbGet('paid_commit_pointer'));
+      return {errors,jumpUnchanged,afterVisit,edit:{approval:edited.commercialApproval,audit:edited.commercialApprovalAudit,terms:edited.commercialTerms,result:edit},blockedEdit,bill,afterBill,paid,retry,payLog:state.payLog,final:state.aptOrders.map(row=>({id:row.id,status:row.status})),savedPayLog:saved.payLog};
+    });
+    assert.equal(transitions.jumpUnchanged,true,'skipped transition must be zero mutation');
+    assert.match(transitions.errors[0],/transition/);assert.match(transitions.errors[1],/transition/);assert.match(transitions.errors[2],/retired|approval/);assert.match(transitions.errors[3],/transition/);
+    assert.deepEqual(transitions.afterVisit,{status:'visit',visitAt:'2026-09-02T10:00:00+09:00',schedules:1});
+    assert.equal(transitions.edit.approval,null);assert.equal(transitions.edit.audit.length,1);assert.equal(transitions.edit.audit[0].previousApproval.receiptId,'receipt_task4_A');assert.equal(transitions.edit.terms.quotedAmount,300000);
+    assert.match(transitions.blockedEdit,/blocked|closed/);assert.deepEqual(transitions.bill.succeeded,['order-flow']);assert.equal(transitions.bill.failed[0].orderId,'order-missing');
+    assert.deepEqual(transitions.afterBill,[{id:'order-flow',status:'billed'},{id:'order-missing',status:'done'}]);
+    assert.equal(transitions.paid.total,300000);assert.match(transitions.retry,/billed/);assert.equal(transitions.payLog.length,1);assert.deepEqual(transitions.payLog,transitions.savedPayLog);
+    assert.deepEqual(transitions.final,[{id:'order-flow',status:'paid'},{id:'order-missing',status:'done'}]);
+    console.log('PASS  candidate transitions, edits, partial billing, and paid settlement are atomic');
+
+    const policy=await page.evaluate(()=>{
+      const states=['recv','visit','work','done','billed','paid'],kinds=['gate','done','settlement'],matrix={};for(const from of states)for(const to of states)for(const kind of kinds)matrix[from+'>'+to+'@'+kind]=aptAllowedTransition(from,to,kind);
+      const options=Object.fromEntries(states.map(status=>[status,aptOrderStatusOptions({status})]));return{matrix,options};
+    });
+    const legal=new Set(['recv>visit@gate','visit>work@gate','work>done@done','done>billed@gate','billed>paid@settlement']);for(const [key,value] of Object.entries(policy.matrix))assert.equal(value,legal.has(key),'unexpected transition verdict '+key);assert.deepEqual(policy.options,{recv:['recv','visit'],visit:['visit','work'],work:['work','done'],done:['done','billed'],billed:['billed'],paid:['paid']});
+
+    const edgePolicies=await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;const baseTerms=amount=>({workKind:'repair',scope:'관리사무소 누수 보수',exclusions:[],vatMode:'included',quotedAmount:amount,validUntil:'2026-09-30',scheduleWindow:'2026-09-02 오전'});
+      const receipt=(id,suffix)=>({receiptId:'receipt_edge_'+suffix,subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'drive_edge_'+suffix,approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)});
+      const capture=async run=>{try{return{value:await run(),error:''};}catch(error){return{value:null,error:String(error.code||error.message||error)};}};
+      state.aptOrders=[{id:'invalid-date',officeId:'office-1',unit:'101동 101호',text:'날짜 검증',amount:110000,pipeType:'미확정',date:'2026-08-31',status:'work',doneAt:'',commercialTerms:baseTerms(110000),commercialApproval:receipt('invalid-date','date')}];state.schedule=[];state.payLog=[];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();
+      const beforeInvalid=JSON.stringify({orders:state.aptOrders,outbox:state.officeIntake.outbox,pointer:await idbGet('paid_commit_pointer'),appState:await idbGet('appState')}),invalid=await capture(()=>persistAptDoneTransition('invalid-date','2026-02-30')),afterInvalid=JSON.stringify({orders:state.aptOrders,outbox:state.officeIntake.outbox,pointer:await idbGet('paid_commit_pointer'),appState:await idbGet('appState')});
+
+      const pipeReceipt=receipt('pipe-only','pipe');state.aptOrders=[{id:'pipe-only',officeId:'office-1',unit:'101동 101호',text:'배관 점검',amount:120000,pipeType:'미확정',date:'2026-08-31',status:'visit',doneAt:'',commercialTerms:{...baseTerms(120000),scope:'배관 점검'},commercialApproval:pipeReceipt}];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();await updateAptCommercialFields('pipe-only',{unit:'101동 101호',text:'배관 점검',amount:120000,pipeType:'우수'});const pipeOnly=state.aptOrders[0];
+
+      const pipeOrder=(id,status,amount)=>({id,officeId:'office-1',unit:'101동 101호',text:'배관 점검',amount,pipeType:'미확정',date:'2026-08-31',status,doneAt:status==='billed'||status==='paid'?'2026-08-31':'',commercialTerms:{...baseTerms(amount),scope:'배관 점검'},commercialApproval:receipt(id,id)});state.aptOrders=[pipeOrder('pipe-work','work',121000),pipeOrder('pipe-billed','billed',122000),pipeOrder('pipe-paid','paid',123000)];await guardedPersistCurrentState();await updateAptCommercialFields('pipe-work',{unit:'101동 101호',text:'배관 점검',amount:121000,pipeType:'우수'});await updateAptCommercialFields('pipe-billed',{unit:'101동 101호',text:'배관 점검',amount:122000,pipeType:'오수'});const workIdentity=await capture(()=>updateAptCommercialFields('pipe-work',{unit:'101동 101호',text:'승인 범위 변경',amount:121000,pipeType:'우수'})),paidPipe=await capture(()=>updateAptCommercialFields('pipe-paid',{unit:'101동 101호',text:'배관 점검',amount:123000,pipeType:'우수'}));const pipeStates=state.aptOrders.map(order=>({id:order.id,status:order.status,pipeType:order.pipeType,receiptId:order.commercialApproval&&order.commercialApproval.receiptId,audit:order.commercialApprovalAudit||[]}));
+
+      const makeOffice=(id,status,amount)=>({id,officeId:'office-1',unit:'102동 102호',text:'관리사무소 누수 보수',amount,pipeType:'우수',date:'2026-08-31',status,doneAt:status==='done'||status==='billed'?'2026-08-31':'',source:'office-intake',sourceRequestId:'request_'+id,receiptNo:'MM-'+id,commercialTerms:baseTerms(amount),commercialApproval:receipt(id,id)});
+      state.aptOrders=[makeOffice('queue-done','work',130000),makeOffice('queue-bill','done',140000),makeOffice('queue-paid','billed',150000)];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();
+      const originalQueue=officeIntakeQueueOrderStatus,originalQueues=officeIntakeQueueOrderStatuses;officeIntakeQueueOrderStatus=()=>{throw new Error('injected queue failure');};officeIntakeQueueOrderStatuses=()=>{throw new Error('injected queue failure');};let done,bill,paid;
+      try{done=await capture(()=>persistAptDoneTransition('queue-done','2026-08-31'));bill=await billAptOrders(['queue-bill']);paid=await capture(()=>settlePaidAptOrders(['queue-paid'],{project:'원자 아파트 관리사무소',date:'2026-08-31'}));}finally{officeIntakeQueueOrderStatus=originalQueue;officeIntakeQueueOrderStatuses=originalQueues;}
+      return{invalid,beforeInvalid,afterInvalid,pipeOnly:{pipeType:pipeOnly.pipeType,approval:pipeOnly.commercialApproval,audit:pipeOnly.commercialApprovalAudit||[]},pipeStates,workIdentity,paidPipe,done,bill,paid,statuses:Object.fromEntries(state.aptOrders.map(order=>[order.id,order.status])),payLog:state.payLog.slice()};
+    });
+    assert.match(edgePolicies.invalid.error,/invalid done date/);assert.equal(edgePolicies.afterInvalid,edgePolicies.beforeInvalid,'invalid completion date must be zero state/IDB mutation');assert.equal(edgePolicies.pipeOnly.pipeType,'우수');assert.equal(edgePolicies.pipeOnly.approval.receiptId,'receipt_edge_pipe');assert.deepEqual(edgePolicies.pipeOnly.audit,[],'operational-only pipe edit must retain approval');assert.deepEqual(edgePolicies.pipeStates,[{id:'pipe-work',status:'work',pipeType:'우수',receiptId:'receipt_edge_pipe-work',audit:[]},{id:'pipe-billed',status:'billed',pipeType:'오수',receiptId:'receipt_edge_pipe-billed',audit:[]},{id:'pipe-paid',status:'paid',pipeType:'미확정',receiptId:'receipt_edge_pipe-paid',audit:[]}]);assert.match(edgePolicies.workIdentity.error,/blocked/);assert.match(edgePolicies.paidPipe.error,/blocked/);assert.equal(edgePolicies.done.error,'','post-commit queue failure must not turn done into a failed result');assert.deepEqual(edgePolicies.bill.succeeded,['queue-bill']);assert.deepEqual(edgePolicies.bill.failed,[]);assert.equal(edgePolicies.paid.error,'');assert.deepEqual(edgePolicies.statuses,{'queue-done':'done','queue-bill':'billed','queue-paid':'paid'});assert.equal(edgePolicies.payLog.length,1);
+    console.log('PASS  exhaustive transition policy, completion date, pipe metadata, and post-commit queue isolation');
+
+    const billingPolicy=await page.evaluate(async()=>{
+      const terms={workKind:'repair',scope:'배치 보수',exclusions:[],vatMode:'included',quotedAmount:100000,validUntil:'2026-09-30',scheduleWindow:'협의 후 확정'},approval=id=>({receiptId:'receipt_batch_'+id,subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'drive_batch_'+id,approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)}),order=id=>({id,officeId:'office-1',unit:id,text:'배치 보수',amount:100000,date:'2026-08-31',status:'done',doneAt:'2026-08-31',commercialTerms:terms,commercialApproval:approval(id)});
+      const original=transitionAptOrderWithGate,calls=[];state.aptOrders=['A','B','C'].map(order);__commercialApproval.url='https://commercial.example/exec';__commercialApproval.token='task4-token';transitionAptOrderWithGate=async input=>{calls.push(input.orderId);if(input.orderId==='B'){const error=new Error('unauthorized');error.code='unauthorized';throw error;}state.aptOrders.find(row=>row.id===input.orderId).status='billed';return state.aptOrders.find(row=>row.id===input.orderId);};let global;
+      try{global=await billAptOrders(['A','B','C','A']);}finally{transitionAptOrderWithGate=original;}
+      const localCalls=[];state.aptOrders=['L1','L2'].map(order);transitionAptOrderWithGate=async input=>{localCalls.push(input.orderId);if(input.orderId==='L1')throw new Error('retired commercial approval');state.aptOrders.find(row=>row.id===input.orderId).status='billed';return state.aptOrders.find(row=>row.id===input.orderId);};let local;
+      try{local=await billAptOrders(['L1','L2']);}finally{transitionAptOrderWithGate=original;}
+      return{global,calls,statuses:Object.fromEntries(['A','B','C'].map(id=>[id,id==='A'?'billed':'done'])),actualGlobal:Object.fromEntries(state.aptOrders.filter(row=>['A','B','C'].includes(row.id)).map(row=>[row.id,row.status])),local,localCalls,localStatuses:Object.fromEntries(state.aptOrders.map(row=>[row.id,row.status]))};
+    });
+    assert.deepEqual(billingPolicy.calls,['A','B'],'global failure must stop before C and fixed IDs must deduplicate A');assert.deepEqual(billingPolicy.global.succeeded,['A']);assert.deepEqual(billingPolicy.global.failed,[]);assert.deepEqual(billingPolicy.global.unprocessed.map(row=>row.orderId),['B','C']);assert.equal(billingPolicy.global.stopped,true);assert.deepEqual(billingPolicy.localCalls,['L1','L2']);assert.deepEqual(billingPolicy.local.succeeded,['L2']);assert.deepEqual(billingPolicy.local.failed.map(row=>row.orderId),['L1']);assert.deepEqual(billingPolicy.local.unprocessed,[]);assert.deepEqual(billingPolicy.localStatuses,{L1:'done',L2:'billed'});
+    console.log('PASS  billing uses fixed IDs, continues per-order failures, and stops global failures');
+
+    const settlementPolicy=await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;const terms=amount=>({workKind:'repair',scope:'정산 보수',exclusions:[],vatMode:'included',quotedAmount:amount,validUntil:'2026-09-30',scheduleWindow:'협의 후 확정'}),receipt=(id,amount)=>({receiptId:'receipt_settle_'+id,subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'drive_settle_'+id,approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)}),order=(id,amount)=>({id,officeId:'office-1',unit:id,text:'정산 보수',amount,date:'2026-08-31',status:'billed',doneAt:'2026-08-31',commercialTerms:terms(amount),commercialApproval:receipt(id,amount)}),capture=async run=>{try{return{value:await run(),error:''};}catch(error){return{value:null,error:String(error.code||error.message||error)};}};
+      const paidFingerprint=async()=>{const pointer=await idbGet('paid_commit_pointer');return JSON.stringify({orders:state.aptOrders,payLog:state.payLog,outbox:state.officeIntake.outbox,pointer,journal:await idbGet('paid_commit_journal'),appState:await idbGet('appState'),generation:pointer&&await idbGet(pointer)});};
+      state.aptOrders=[order('S1',160000),order('S2',170000)];state.payLog=[];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();const nativeWriter=paidCommitWriteAtomic;let writes=0;paidCommitWriteAtomic=async(...args)=>{writes++;return nativeWriter(...args);};let success;try{success=await settlePaidAptOrders(['S1','S2','S1'],{project:'정산 아파트 관리사무소',date:'2026-08-31'});}finally{paidCommitWriteAtomic=nativeWriter;}const pointer=await idbGet('paid_commit_pointer'),saved=await idbGet(pointer),retry=await capture(()=>settlePaidAptOrders(['S1','S2'],{project:'정산 아파트 관리사무소',date:'2026-08-31'}));
+      state.aptOrders=[order('F1',180000),{...order('F2',190000),commercialTerms:terms(191000)}];state.payLog=[];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();const mismatchBefore=await paidFingerprint(),mismatch=await capture(()=>settlePaidAptOrders(['F1','F2'],{project:'실패 아파트 관리사무소',date:'2026-08-31'})),mismatchAfter=await paidFingerprint();
+      state.aptOrders=[order('I1',200000),order('I2',210000)];state.payLog=[];await guardedPersistCurrentState();const idbBefore=await paidFingerprint();paidCommitWriteAtomic=async()=>{throw new Error('injected settlement IDB failure');};const idbFailure=await capture(()=>settlePaidAptOrders(['I1','I2'],{project:'저장실패 아파트 관리사무소',date:'2026-08-31'}));paidCommitWriteAtomic=nativeWriter;const idbAfter=await paidFingerprint();
+      return{success,writes,liveStatuses:saved.aptOrders.filter(row=>['S1','S2'].includes(row.id)).map(row=>row.status),savedPayLog:saved.payLog,retry,retryPayLog:state.payLog.length,mismatch,mismatchSame:mismatchBefore===mismatchAfter,idbFailure,idbSame:idbBefore===idbAfter};
+    });
+    assert.deepEqual(settlementPolicy.success,{ids:['S1','S2'],total:330000});assert.equal(settlementPolicy.writes,1,'multi-target settlement must use one native paid transaction');assert.deepEqual(settlementPolicy.liveStatuses,['paid','paid']);assert.deepEqual(settlementPolicy.savedPayLog,[{d:'2026-08-31',project:'정산 아파트 관리사무소',amt:330000}]);assert.match(settlementPolicy.retry.error,/billed/);assert.match(settlementPolicy.mismatch.error,/invalid billed commercial order/);assert.equal(settlementPolicy.mismatchSame,true);assert.match(settlementPolicy.idbFailure.error,/injected settlement IDB failure/);assert.equal(settlementPolicy.idbSame,true);
+    console.log('PASS  multi-order settlement is deduplicated, single-transaction, and all-or-nothing');
+
+    const timeoutProbe=await page.evaluate(async()=>{const started=performance.now();let error='';try{await commercialRequestWithTimeout(()=>new Promise(()=>{}),25);}catch(e){error=String(e.code||e.message||e);}return{error,elapsed:performance.now()-started};});
+    assert.match(timeoutProbe.error,/commercial-timeout/);assert.ok(timeoutProbe.elapsed>=20&&timeoutProbe.elapsed<500,'bounded timeout helper did not settle promptly in the probe');
+
+    await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;__paidCommitPointerKey=null;__tabStamp=null;__paidCommitRecoverySnapshot=null;__paidApprovalConsumptions.clear();
+      const keys=await new Promise((resolve,reject)=>{const open=indexedDB.open('hyeonjang-db',1);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('kv','readonly'),req=tx.objectStore('kv').getAllKeys();req.onerror=()=>reject(req.error);req.onsuccess=()=>{db.close();resolve(req.result.map(String));};};});
+      for(const key of keys.filter(key=>key.startsWith(PAID_COMMIT_GENERATION_PREFIX)))await idbDel(key);for(const key of ['appState','paid_commit_pointer','paid_commit_journal','hj_snaps'])await idbDel(key);
+      state._demo=false;state.aptOffices=[{id:'office-modal',complex:'모달 아파트',manager:'',phone:''}];state.aptOrders=[];state.schedule=[];state.payLog=[];state.projects=[];state.quotes=[];state.notes=[];
+      state.files=[
+        {id:'evidence-local',name:'모달아파트_견적.pdf',kind:'estimate',ext:'pdf',_driveId:'driveEvidenceModal123',_driveMimeType:'application/pdf'},
+        {id:'evidence-photo',name:'승인문자.jpg',kind:'photo',ext:'jpg',_driveId:'driveEvidencePhoto456',_driveMimeType:'image/jpeg'},
+        {id:'evidence-duplicate',name:'중복.pdf',kind:'estimate',ext:'pdf',_driveId:'driveEvidenceModal123',_driveMimeType:'application/pdf'},
+        {id:'evidence-local-only',name:'로컬뿐.pdf',kind:'estimate',ext:'pdf'},
+        {id:'evidence-text',name:'메모.txt',kind:'other',ext:'txt',_driveId:'driveEvidenceText789',_driveMimeType:'text/plain'}
+      ];
+      state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};__commercialApproval.url='';__commercialApproval.token='';await guardedPersistCurrentState();
+      window.__task4Native={issue:issueCommercialApproval,verify:validateCommercialApproval,snapshot:hjSnapshot,serialize:serializeData,writer:paidCommitWriteAtomic,post:postIsolated,commercialCall};window.__task4SideCalls={snapshot:0,network:0};
+      hjSnapshot=async(...args)=>{window.__task4SideCalls.snapshot++;return window.__task4Native.snapshot(...args);};postIsolated=async(...args)=>{window.__task4SideCalls.network++;return window.__task4Native.post(...args);};aptOrderManage('office-modal');
+    });
+    await page.locator('#apoUnit').fill('103동 1204호');await page.locator('#apoText').fill('욕실 누수 보수');await page.locator('#apoAmt').fill('250000');await page.locator('#apoAdd').click();
+    await page.waitForSelector('.apt-commercial-modal');
+    const missing=await page.evaluate(()=>{const modal=document.querySelector('.apt-commercial-modal'),alert=modal.querySelector('[role="alert"]'),submit=modal.querySelector('#aptCommercialSubmit'),evidence=modal.querySelector('#aptCommercialEvidenceFile');return{alert:alert.textContent,disabled:submit.disabled,orders:state.aptOrders.length,schedule:state.schedule.length,payLog:state.payLog.length,outbox:state.officeIntake.outbox.length,labels:['aptCommercialWorkKind','aptCommercialScope','aptCommercialExclusions','aptCommercialVat','aptCommercialAmount','aptCommercialValidUntil','aptCommercialSchedule','aptCommercialEvidenceType','aptCommercialEvidenceFile','aptCommercialEvidencePaste','aptCommercialApprovedAt','aptCommercialRole'].every(id=>!!modal.querySelector('label[for="'+id+'"]')),legends:modal.querySelectorAll('fieldset legend').length,status:!!modal.querySelector('[role="status"][aria-live="polite"]'),minTarget:Math.min(...Array.from(modal.querySelectorAll('button,input,select,textarea')).map(node=>node.getBoundingClientRect().height)),overflow:modal.scrollWidth-modal.clientWidth,evidence:Array.from(evidence.options).map(option=>option.value),evidenceDefault:evidence.value,side:{...window.__task4SideCalls}};});
+    assert.match(missing.alert,/상업 승인 연결이 필요합니다/);assert.equal(missing.disabled,true);assert.deepEqual([missing.orders,missing.schedule,missing.payLog,missing.outbox],[0,0,0,0]);assert.equal(missing.labels,true);assert.ok(missing.legends>=2);assert.equal(missing.status,true);assert.ok(missing.minTarget>=43);assert.ok(missing.overflow<=1);assert.deepEqual(missing.evidence,['','driveEvidenceModal123','driveEvidencePhoto456']);assert.equal(missing.evidenceDefault,'','another order/file is never auto-selected');assert.deepEqual(missing.side,{snapshot:0,network:0});
+    const strictIds=await page.evaluate(()=>[strictDriveFileId('driveEvidenceModal123'),strictDriveFileId('https://drive.google.com/file/d/driveEvidenceModal123/view'),strictDriveFileId('https://evil.example/?id=driveEvidenceModal123'),strictDriveFileId('short')]);assert.deepEqual(strictIds,['driveEvidenceModal123','driveEvidenceModal123','','']);
+    await page.click('#aptCommercialSettings');await page.click('#setTab-office');await page.waitForSelector('#caUrl',{state:'visible'});assert.deepEqual(await page.evaluate(()=>({...window.__task4SideCalls})),{snapshot:0,network:0},'settings navigation has no paid side effect');await page.keyboard.press('Escape');
+    const openMissing=async()=>{await page.evaluate(()=>aptOrderManage('office-modal'));await page.locator('#apoUnit').fill('103동 1204호');await page.locator('#apoText').fill('욕실 누수 보수');await page.locator('#apoAmt').fill('250000');await page.locator('#apoAdd').click();await page.waitForSelector('.apt-commercial-modal');};
+    await openMissing();await page.locator('.apt-commercial-modal .modal-close').click();assert.equal(await page.locator('.apt-commercial-modal').count(),0,'X cancels an idle modal');
+    await openMissing();await page.locator('.modal-bg').click({position:{x:2,y:2}});assert.equal(await page.locator('.apt-commercial-modal').count(),0,'backdrop cancels an idle modal');
+    await openMissing();await page.keyboard.press('Escape');assert.equal(await page.locator('.apt-commercial-modal').count(),0,'Escape cancels an idle modal');
+
+    await page.evaluate(()=>{hjSnapshot=window.__task4Native.snapshot;postIsolated=window.__task4Native.post;__commercialApproval.url='https://commercial.example/exec';__commercialApproval.token='task4-token';aptOrderManage('office-modal');});
+    await page.locator('#apoUnit').fill('103동 1204호');await page.locator('#apoText').fill('욕실 누수 보수');await page.locator('#apoAmt').fill('250000');await page.locator('#apoAdd').click();await page.waitForSelector('.apt-commercial-modal');
+    await page.setViewportSize({width:360,height:640});const mobileLayout=await page.evaluate(()=>{const modal=document.querySelector('.apt-commercial-modal'),form=modal.querySelector('.apt-commercial-form'),field=modal.querySelector('fieldset'),footer=modal.querySelector('.mfoot'),labels=field.querySelectorAll('label'),first=labels[0].getBoundingClientRect(),second=labels[1].getBoundingClientRect();return{overflow:modal.scrollWidth-modal.clientWidth,formColumns:getComputedStyle(form).gridTemplateColumns.trim().split(/\s+/).length,oneColumn:Math.abs(first.left-second.left)<1&&second.top>=first.bottom-1,footer:getComputedStyle(footer).position};});assert.deepEqual(mobileLayout,{overflow:0,formColumns:1,oneColumn:true,footer:'sticky'});await page.setViewportSize({width:390,height:844});
+    await page.selectOption('#aptCommercialEvidenceFile','driveEvidenceModal123');await page.fill('#aptCommercialExclusions','타일 전체 교체\n  현장 협의  ');await page.fill('#aptCommercialApprovedAt','2026-08-31T11:22:33');await page.fill('#aptCommercialSchedule','');await page.click('#aptCommercialSubmit');
+    const invalid=await page.evaluate(()=>({alert:document.querySelector('#aptCommercialError').textContent,focus:document.activeElement&&document.activeElement.id,orders:state.aptOrders.length}));
+    assert.match(invalid.alert,/방문|일정/);assert.equal(invalid.focus,'aptCommercialSchedule');assert.equal(invalid.orders,0);
+    await page.fill('#aptCommercialSchedule','2026-09-02 오전');
+    await page.evaluate(()=>{
+      window.__task4IssueIds=[];window.__task4ReleaseIssue=null;
+      issueCommercialApproval=({subjectId})=>{window.__task4IssueIds.push(subjectId);return new Promise((resolve,reject)=>{window.__task4ReleaseIssue={resolve,reject,subjectId};});};
+    });
+    await page.click('#aptCommercialSubmit');await page.waitForFunction(()=>document.querySelector('.apt-commercial-modal').getAttribute('aria-busy')==='true');
+    await page.keyboard.press('Escape');await page.locator('.modal-bg').click({position:{x:2,y:2}});await page.evaluate(()=>{document.querySelector('.apt-commercial-modal .modal-close').click();history.back();});await page.waitForTimeout(100);assert.equal(await page.locator('.apt-commercial-modal').count(),1,'busy X/Escape/backdrop/back must stay locked');
+    const busy=await page.evaluate(()=>({closeDisabled:document.querySelector('.apt-commercial-modal .modal-close').disabled,submitDisabled:document.querySelector('#aptCommercialSubmit').disabled,orders:state.aptOrders.length}));assert.deepEqual(busy,{closeDisabled:true,submitDisabled:true,orders:0});
+    await page.evaluate(()=>window.__task4ReleaseIssue.reject(new Error('injected network failure')));await page.waitForFunction(()=>document.querySelector('.apt-commercial-modal').getAttribute('aria-busy')==='false');
+    const failed=await page.evaluate(()=>({ids:window.__task4IssueIds.slice(),orders:state.aptOrders.length,schedule:state.schedule.length,payLog:state.payLog.length,outbox:state.officeIntake.outbox.length,enabled:!document.querySelector('#aptCommercialSubmit').disabled}));assert.deepEqual([failed.orders,failed.schedule,failed.payLog,failed.outbox],[0,0,0,0]);assert.equal(failed.enabled,true);
+
+    const durableFingerprint=()=>page.evaluate(async()=>{
+      const keys=await new Promise((resolve,reject)=>{const open=indexedDB.open('hyeonjang-db',1);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('kv','readonly'),request=tx.objectStore('kv').getAllKeys();request.onerror=()=>reject(request.error);request.onsuccess=()=>{db.close();resolve(request.result.map(String).filter(key=>key==='appState'||key==='paid_commit_pointer'||key==='paid_commit_journal'||key.startsWith(PAID_COMMIT_GENERATION_PREFIX)).sort());};};});
+      const persisted={};for(const key of keys)persisted[key]=await idbGet(key);
+      return JSON.stringify({business:{orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog,outbox:state.officeIntake.outbox},persisted});
+    });
+    const installModalFailure=kind=>page.evaluate(kind=>{
+      const native=window.__task4Native,receiptFor=subjectId=>({receiptId:'receipt_modal_'+kind,subjectType:'aptOrder',subjectId,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'driveEvidenceModal123',approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)});
+      issueCommercialApproval=async input=>receiptFor(input.subjectId);validateCommercialApproval=async({commercialApproval})=>Object.freeze({receiptId:commercialApproval.receiptId,nonce:'modal_failure_'+kind,serverNowKst:'2026-08-31T12:00:00+09:00',verifyExpiresAtKst:'2026-08-31T12:01:00+09:00',useBeforeMonotonicMs:Number.MAX_SAFE_INTEGER});hjSnapshot=async()=>true;serializeData=native.serialize;paidCommitWriteAtomic=native.writer;postIsolated=native.post;commercialCall=native.commercialCall;
+      if(kind==='receipt'){issueCommercialApproval=native.issue;commercialCall=async()=>({commercialApproval:{bad:true}});}
+      if(kind==='verify')validateCommercialApproval=async()=>{throw new Error('injected verify failure');};
+      if(kind==='snapshot')hjSnapshot=async()=>false;
+      if(kind==='serialization')serializeData=()=>{const value=native.serialize();value.notes=[{unsupported:1n}];return value;};
+      if(kind==='idb')paidCommitWriteAtomic=async()=>{throw new Error('injected IDB/CAS failure');};
+    },kind);
+    const expectModalFailure=async(kind,pattern)=>{
+      const before=await durableFingerprint();await installModalFailure(kind);await page.click('#aptCommercialSubmit');
+      await page.waitForFunction(()=>{const modal=document.querySelector('.apt-commercial-modal'),error=modal&&modal.querySelector('#aptCommercialError');return modal&&modal.getAttribute('aria-busy')==='false'&&error&&error.textContent.length>0;});
+      const after=await durableFingerprint(),view=await page.evaluate(()=>({error:document.querySelector('#aptCommercialError').textContent,enabled:!document.querySelector('#aptCommercialSubmit').disabled,modal:!!document.querySelector('.apt-commercial-modal')}));
+      assert.match(view.error,pattern,kind+' must surface its exact failure stage');assert.equal(view.enabled,true,kind+' must unlock retry');assert.equal(view.modal,true,kind+' must retain the representative modal');assert.equal(after,before,kind+' must leave business state and paid IDB records byte-identical');
+    };
+
+    const beforeTimeout=await durableFingerprint();await page.evaluate(()=>{const native=window.__task4Native;issueCommercialApproval=native.issue;validateCommercialApproval=native.verify;commercialCall=native.commercialCall;postIsolated=()=>new Promise(()=>{});hjSnapshot=async()=>true;serializeData=native.serialize;paidCommitWriteAtomic=native.writer;});
+    const timeoutStarted=Date.now();await page.click('#aptCommercialSubmit');await page.waitForFunction(()=>document.querySelector('.apt-commercial-modal').getAttribute('aria-busy')==='true');await page.waitForFunction(()=>document.querySelector('.apt-commercial-modal').getAttribute('aria-busy')==='false',undefined,{timeout:12500});const timeoutElapsed=Date.now()-timeoutStarted;
+    const afterTimeout=await durableFingerprint(),timeoutView=await page.evaluate(()=>({error:document.querySelector('#aptCommercialError').textContent,enabled:!document.querySelector('#aptCommercialSubmit').disabled}));
+    assert.ok(timeoutElapsed>=10000&&timeoutElapsed<=12500,'commercial modal must unlock only inside the 10-12 second bound');assert.match(timeoutView.error,/시간이 초과/);assert.equal(timeoutView.enabled,true);assert.equal(afterTimeout,beforeTimeout,'commercial timeout must not change business state or paid IDB records');
+    await expectModalFailure('receipt',/invalid commercial receipt/);
+    await expectModalFailure('verify',/injected verify failure/);
+    await expectModalFailure('snapshot',/required recovery snapshot failed/);
+    await expectModalFailure('serialization',/BigInt|serializ/i);
+    await expectModalFailure('idb',/injected IDB\/CAS failure/);
+    await page.evaluate(()=>{
+      let verifySerial=0;validateCommercialApproval=async({commercialApproval})=>Object.freeze({receiptId:commercialApproval.receiptId,nonce:'modal_nonce_'+(++verifySerial),serverNowKst:'2026-08-31T12:00:00+09:00',verifyExpiresAtKst:'2026-08-31T12:01:00+09:00',useBeforeMonotonicMs:Number.MAX_SAFE_INTEGER});
+      hjSnapshot=window.__task4Native.snapshot;serializeData=window.__task4Native.serialize;paidCommitWriteAtomic=window.__task4Native.writer;postIsolated=window.__task4Native.post;commercialCall=window.__task4Native.commercialCall;
+      issueCommercialApproval=async input=>{window.__task4Issued=structuredClone(input);window.__task4IssueIds.push(input.subjectId);window.__task4Receipt={receiptId:'receipt_modal_success',subjectType:'aptOrder',subjectId:input.subjectId,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'quote-file',approvalEvidenceFileId:'driveEvidenceModal123',approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T12:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)};return Object.freeze({...window.__task4Receipt});};
+    });
+    await page.locator('#aptCommercialSubmit').dblclick({delay:5});
+    await page.waitForFunction(()=>state.aptOrders.length===1);
+    await page.waitForFunction(()=>/저장 완료/.test(document.querySelector('#aptCommercialStatus')&&document.querySelector('#aptCommercialStatus').textContent||''));
+    const successGuard=await page.evaluate(()=>({modal:!!document.querySelector('.apt-commercial-modal'),busy:document.querySelector('.apt-commercial-modal')&&document.querySelector('.apt-commercial-modal').getAttribute('aria-busy'),status:document.querySelector('#aptCommercialStatus')&&document.querySelector('#aptCommercialStatus').textContent,stats:document.querySelector('#modalTitle')&&document.querySelector('#modalTitle').textContent}));assert.equal(successGuard.modal,true,'the successful modal must absorb the rest of a double-click');assert.equal(successGuard.busy,'true');assert.match(successGuard.status,/저장 완료/);assert.doesNotMatch(successGuard.stats||'',/통계/);
+    await page.waitForSelector('.apt-commercial-modal',{state:'detached'});
+    const createdOrderId=await page.evaluate(()=>state.aptOrders[0].id);await page.waitForSelector('[data-apt-order-row="'+createdOrderId+'"]');await page.waitForFunction(orderId=>document.activeElement&&document.activeElement.getAttribute('data-apt-order-row')===orderId,createdOrderId,{timeout:3000});
+    const success=await page.evaluate(async()=>{const order=state.aptOrders[0],pointer=await idbGet('paid_commit_pointer'),saved=await idbGet(pointer),focused=document.activeElement;return{ids:window.__task4IssueIds,issued:window.__task4Issued,receipt:window.__task4Receipt,order,persisted:saved.aptOrders[0],focusedId:focused&&focused.getAttribute('data-apt-order-row'),count:state.aptOrders.length};});
+    const exactTerms={workKind:'repair',scope:'욕실 누수 보수',exclusions:['타일 전체 교체','  현장 협의  '],vatMode:'excluded',quotedAmount:250000,validUntil:success.issued.commercialTerms.validUntil,scheduleWindow:'2026-09-02 오전'};
+    assert.deepEqual(Object.keys(success.issued),['subjectId','commercialTerms','approvalEvidenceFileId','approvalEvidenceType','approvedAt','approvedByRole']);assert.deepEqual(success.issued.commercialTerms,exactTerms);assert.deepEqual(Object.keys(success.issued.commercialTerms),['workKind','scope','exclusions','vatMode','quotedAmount','validUntil','scheduleWindow']);assert.equal(success.issued.approvalEvidenceFileId,'driveEvidenceModal123');assert.equal(success.issued.approvalEvidenceType,'quote-file');assert.equal(success.issued.approvedAt,'2026-08-31T11:22:33+09:00');assert.equal(success.issued.approvedByRole,'management-office');
+    assert.equal(new Set(success.ids).size,1,'retry must reuse one stable subject ID');assert.equal(success.ids.length,2,'one failed issue plus one double-click-suppressed retry');assert.equal(success.count,1);assert.deepEqual(success.order,success.persisted);assert.deepEqual(success.order.commercialTerms,exactTerms);assert.deepEqual(success.order.commercialApproval,success.receipt);assert.equal(success.order.status,'visit');assert.equal(Object.hasOwn(success.order,'state'),false);assert.equal(success.order.amount,success.order.commercialTerms.quotedAmount);assert.equal(success.order.officeId,'office-modal');assert.equal(success.order.unit,'103동 1204호');assert.equal(success.order.text,'욕실 누수 보수');assert.equal(success.order.pipeType,'미확정');assert.equal(success.order.source,'manual-paid-diagnosis');assert.match(success.order.date,/^\d{4}-\d{2}-\d{2}$/);assert.equal(success.focusedId,success.order.id);
+    await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__hjRestoreDone);await page.evaluate(()=>Promise.resolve(window.__hjRestoreDone));assert.equal(await page.evaluate(()=>state.aptOrders.filter(order=>order.id===state.aptOrders[0].id).length),1,'manual paid order must survive reload exactly once');
+    const claude=await page.evaluate(async()=>{
+      clearTimeout(__idbSaveTimer);__idbSaveTimer=null;state.claudeDone=[];const before=JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog,outbox:state.officeIntake.outbox});
+      const calls={snapshot:0,dirty:0},messages=[],original={snapshot:hjSnapshot,dirty:markDirty,toast};hjSnapshot=async()=>{calls.snapshot++;return true;};markDirty=()=>{calls.dirty++;};toast=message=>messages.push(String(message));
+      try{await claudeInboxView({ok:true,requests:[{id:'claude_paid_unresolved_1',tool:'apt_order_add',args:{complex:'모달 아파트',unit:'104동 1001호',work:'유상 누수 보수',amount:180000},why:'관리사무소 요청'}],bad:[],total:1,via:'link'});await new Promise(resolve=>setTimeout(resolve,650));const button=document.querySelector('.clai');button.click();await new Promise(resolve=>setTimeout(resolve,0));return{calls,messages,done:state.claudeDone.slice(),buttonDisabled:button.disabled,buttonText:button.textContent,unchanged:before===JSON.stringify({orders:state.aptOrders,schedule:state.schedule,payLog:state.payLog,outbox:state.officeIntake.outbox})};}
+      finally{hjSnapshot=original.snapshot;markDirty=original.dirty;toast=original.toast;}
+    });
+    assert.deepEqual(claude.calls,{snapshot:0,dirty:0});assert.deepEqual(claude.done,[]);assert.equal(claude.buttonDisabled,false);assert.equal(claude.buttonText,'✓ 승인·적용');assert.equal(claude.unchanged,true);assert.equal(claude.messages.at(-1),'상업 승인 필요 — 아파트 오더 화면에서 대표가 직접 등록하세요');
+    console.log('PASS  writer/runtime invariant, exact modal payload, and Claude unresolved handling');
+    console.log('PASS  accessible commercial modal is zero-mutation, busy-locked, stable-ID, and durable');
+
+    const raceContext=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});try{
+      await raceContext.addInitScript(()=>localStorage.setItem('hj_onboard_done','1'));
+      const raceA=await raceContext.newPage();await raceA.route('https://**/*',route=>route.abort());await raceA.goto('http://127.0.0.1:'+port+'/index.html',{waitUntil:'domcontentloaded'});await raceA.waitForFunction(()=>window.__hjRestoreDone&&typeof reserveManualPaidDraft==='function');await raceA.evaluate(()=>Promise.resolve(window.__hjRestoreDone));
+      await raceA.evaluate(async()=>{
+        for(const name of ['aiOpsBootCheck','backupBootCheck','taxCalendarEnsure','coworkSchedEnsure','aiQueueSanitize','kakaoCheckNew'])if(typeof window[name]==='function')window[name]=()=>{};clearTimeout(__idbSaveTimer);__idbSaveTimer=null;
+        const keys=await new Promise((resolve,reject)=>{const open=indexedDB.open('hyeonjang-db',1);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('kv','readonly'),request=tx.objectStore('kv').getAllKeys();request.onerror=()=>reject(request.error);request.onsuccess=()=>{db.close();resolve(request.result.map(String));};};});for(const key of keys)await idbDel(key);
+        __paidCommitPointerKey=null;__tabStamp=null;__paidCommitRecoverySnapshot=null;__paidApprovalConsumptions.clear();state._demo=false;state.aptOffices=[{id:'race-office',complex:'동시성 아파트',manager:'',phone:''}];state.aptOrders=[];state.schedule=[];state.payLog=[];state.projects=[];state.files=[{id:'race-evidence',name:'동시성견적.pdf',kind:'estimate',ext:'pdf',_driveId:'driveRaceEvidence123',_driveMimeType:'application/pdf'}];state.quotes=[];state.notes=[];state.officeIntake={inbox:[],outbox:[],operationalErrors:[],cursor:'',lastSyncAt:'',lastError:''};await guardedPersistCurrentState();state._demo=true;
+      });
+      const raceB=await raceContext.newPage();await raceB.route('https://**/*',route=>route.abort());await raceB.goto('http://127.0.0.1:'+port+'/index.html',{waitUntil:'domcontentloaded'});await raceB.waitForFunction(()=>window.__hjRestoreDone&&typeof reserveManualPaidDraft==='function');await raceB.evaluate(()=>Promise.resolve(window.__hjRestoreDone));
+      const prep=async(page,suffix,expectModal=true)=>{
+        const start=await page.evaluate(suffix=>{for(const name of ['aiOpsBootCheck','backupBootCheck','taxCalendarEnsure','coworkSchedEnsure','aiQueueSanitize','kakaoCheckNew'])if(typeof window[name]==='function')window[name]=()=>{};clearTimeout(__idbSaveTimer);__idbSaveTimer=null;state._demo=false;if(__tabBC){__tabBC.close();__tabBC=null;}__tabStale=false;__commercialApproval.url='https://commercial.example/exec';__commercialApproval.token='task4-token';window.__raceIssueIds=[];let serial=0;hjSnapshot=async()=>true;issueCommercialApproval=async input=>{window.__raceIssueIds.push(input.subjectId);return Object.freeze({receiptId:'receipt_race_manual_'+suffix,subjectType:'aptOrder',subjectId:input.subjectId,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:input.approvalEvidenceType,approvalEvidenceFileId:input.approvalEvidenceFileId,approvalEvidenceSha256:'b'.repeat(64),approvedAt:input.approvedAt,approvedByRole:input.approvedByRole,issuedAt:'2026-08-31T12:00:01+09:00',receiptHmac:'c'.repeat(64)});};validateCommercialApproval=async({commercialApproval})=>Object.freeze({receiptId:commercialApproval.receiptId,nonce:'race_nonce_'+suffix+'_'+(++serial),serverNowKst:'2026-08-31T12:00:00+09:00',verifyExpiresAtKst:'2026-08-31T12:01:00+09:00',useBeforeMonotonicMs:Number.MAX_SAFE_INTEGER});aptOrderManage('race-office');return{pointer:__paidCommitPointerKey,stamp:__tabStamp,count:state.aptOrders.length};},suffix);
+        await page.locator('#apoUnit').fill('105동 501호');await page.locator('#apoText').fill('동일 신규 누수 보수');await page.locator('#apoAmt').fill('100000');await page.locator('#apoAdd').click();if(expectModal){await page.waitForSelector('.apt-commercial-modal');await page.selectOption('#aptCommercialEvidenceFile','driveRaceEvidence123');await page.fill('#aptCommercialApprovedAt','2026-08-31T11:22:33');}return start;
+      };
+      const [prepA,prepB]=await Promise.all([prep(raceA,'A'),prep(raceB,'B')]);assert.deepEqual(prepA,prepB,'two tabs must start from the same native pointer and stamp');
+      await Promise.all([raceA.click('#aptCommercialSubmit'),raceB.click('#aptCommercialSubmit')]);
+      const waitRace=page=>page.waitForFunction(()=>{const modal=document.querySelector('.apt-commercial-modal');return !modal||(modal.getAttribute('aria-busy')==='false'&&!!modal.querySelector('[role="alert"]').textContent);});await Promise.all([waitRace(raceA),waitRace(raceB)]);
+      const view=page=>page.evaluate(()=>({ids:window.__raceIssueIds.slice(),orders:state.aptOrders.map(row=>({id:row.id,status:row.status})),error:(document.querySelector('.apt-commercial-modal [role="alert"]')||{}).textContent||'',consumed:[...__paidApprovalConsumptions]}));const [viewA,viewB]=await Promise.all([view(raceA),view(raceB)]),views=[viewA,viewB],winnerIndex=views.findIndex(row=>row.orders.length===1),loserIndex=winnerIndex===0?1:0,loserPage=loserIndex===0?raceA:raceB,stableId=viewA.ids[0];
+      assert.ok(stableId);assert.deepEqual(viewA.ids,[stableId]);assert.deepEqual(viewB.ids,[stableId],'actual manual forms in two tabs must issue against one stable subject ID');assert.equal(views.filter(row=>row.orders.length===1).length,1);assert.match(views[loserIndex].error,/pointer conflict/);assert.deepEqual(views[loserIndex].consumed,[],'losing native CAS must not consume its commercial acknowledgement');
+      const nativeRace=await raceA.evaluate(async()=>{const pointer=await idbGet('paid_commit_pointer'),journal=await idbGet('paid_commit_journal'),appState=await idbGet('appState'),intent=await idbGet(APT_MANUAL_INTENT_KEY),keys=await new Promise((resolve,reject)=>{const open=indexedDB.open('hyeonjang-db',1);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('kv','readonly'),request=tx.objectStore('kv').getAllKeys();request.onerror=()=>reject(request.error);request.onsuccess=()=>{db.close();resolve(request.result.map(String).filter(key=>key.startsWith(PAID_COMMIT_GENERATION_PREFIX)));};};});return{pointer,journal,appOrders:appState.aptOrders.map(order=>({id:order.id,status:order.status})),intent,generationCount:keys.length};});assert.equal(nativeRace.generationCount,1);assert.equal(nativeRace.journal.current,nativeRace.pointer);assert.deepEqual(nativeRace.appOrders,[{id:stableId,status:'visit'}]);assert.equal(nativeRace.intent.intents.find(row=>row.id===stableId).status,'committed');assert.ok(nativeRace.intent.intents.length<=24);
+      await loserPage.reload({waitUntil:'domcontentloaded'});await loserPage.waitForFunction(()=>window.__hjRestoreDone);await loserPage.evaluate(()=>Promise.resolve(window.__hjRestoreDone));await prep(loserPage,'retry',false);await loserPage.waitForTimeout(100);const retry=await view(loserPage);assert.deepEqual(retry.ids,[],'a reloaded losing tab must stop before issuing a second receipt for the committed stable ID');assert.equal(await loserPage.locator('.apt-commercial-modal').count(),0);assert.deepEqual(retry.orders,[{id:stableId,status:'visit'}]);
+      const differentId=await loserPage.evaluate(()=>reserveManualPaidDraft({officeId:'race-office',unit:'105동 501호',text:'서로 다른 추가 보수',amount:100000,pipeType:'미확정',date:localDate(),state:'visit',source:'manual-paid-diagnosis'}).then(row=>row.id));assert.notEqual(differentId,stableId,'a different work fingerprint must receive an independent short-lived intent');
+      const afterExpiryId=await loserPage.evaluate(async stableId=>{const record=await idbGet(APT_MANUAL_INTENT_KEY),entry=record.intents.find(row=>row.id===stableId);entry.expiresAt=Date.now()-1;await idbSet(APT_MANUAL_INTENT_KEY,record);return reserveManualPaidDraft({officeId:'race-office',unit:'105동 501호',text:'동일 신규 누수 보수',amount:100000,pipeType:'미확정',date:localDate(),state:'visit',source:'manual-paid-diagnosis'}).then(row=>row.id);},stableId);assert.notEqual(afterExpiryId,stableId,'the five-minute lease must not permanently block an intentional later order');
+      console.log('PASS  two native tabs use the actual manual modal, share one stable ID, and persist exactly one order across loser retry');
+    }finally{await raceContext.close();}
+  }finally{await browser.close();await new Promise(resolve=>instance.close(resolve));}
+})().catch(error=>{console.error('FAIL',error&&error.stack||error);process.exitCode=1;});

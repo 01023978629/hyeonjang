@@ -6,8 +6,8 @@
    있고, 장부를 어긋나게 하는 길(입금완료 수정)은 막혀 있음을 지킨다.
 
      ① 금액 미정을 눌러 금액을 넣으면 반영되고, 정산서 합계에도 들어간다
-     ② 이미 있는 금액도 고칠 수 있다 (청구됨 포함 — 재정산하면 된다)
-     ③ 입금완료(paid)는 수정이 막힌다 — 그 금액은 수금 장부에 이미 실렸다
+     ② 이미 있는 금액도 완료(done)까지 고칠 수 있다
+     ③ 청구됨·입금완료는 수정이 막힌다 — 확정된 정산 근거를 지킨다
      ④ 취소·빈 값은 '안 바꿈' — 키 저장과 같은 규칙
      ⑤ 숫자가 아닌 입력은 거부하고 값을 지키지 않는다
      ⑥ pageerror 0
@@ -44,10 +44,10 @@ let browser;
   });
 
   // ① 미정 → 입력 → 반영 + 정산서 합계
-  const fill = await page.evaluate(() => {
+  const fill = await page.evaluate(async () => {
     window.prompt = () => '85000';
     aptOrderManage('of1');
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
     const amt = state.aptOrders.find(o => o.id === 'e1').amount;
     const settle = aptSettle('of1', window.__ym);   // done(85000)+billed(100000) = 185000
     // 경고 배너의 고유 문구를 겨냥한다 — '금액 미정' 넉 자만 찾으면 작업 내용에
@@ -59,52 +59,56 @@ let browser;
   assert(fill.sum === 185000, '① 정산서 합계에 안 들어감: ' + fill.sum);
   assert(fill.noWarn, '① 금액을 다 채웠는데 정산서에 미정 경고가 남아 있다');
 
-  // ② 청구됨도 고칠 수 있다
-  const editBilled = await page.evaluate(() => {
+  // ② 완료 상태의 기존 금액은 고칠 수 있다
+  const editDone = await page.evaluate(async () => {
     window.prompt = () => '120,000';   // 콤마 입력도 받아야 한다
     aptOrderManage('of1');
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e2"]').onclick();
-    return state.aptOrders.find(o => o.id === 'e2').amount;
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
+    return state.aptOrders.find(o => o.id === 'e1').amount;
   });
-  assert(editBilled === 120000, '② 청구된 오더 금액 수정이 안 됨(콤마 처리 포함): ' + editBilled);
+  assert(editDone === 120000, '② 완료 오더 금액 수정이 안 됨(콤마 처리 포함): ' + editDone);
 
-  // ③ 입금완료는 막힌다
-  const paidBlock = await page.evaluate(() => {
+  // ③ 청구됨·입금완료는 모두 막힌다
+  const sealed = await page.evaluate(async () => {
     let promptCalled = false;
     window.prompt = () => { promptCalled = true; return '999999'; };
     let toastMsg = ''; const rt = window.toast; window.toast = (m) => { toastMsg = m; rt(m); };
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e3"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e2"]').onclick();
+    const billedToast=toastMsg;
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e3"]').onclick();
     window.toast = rt;
-    return { amt: state.aptOrders.find(o => o.id === 'e3').amount, promptCalled, toastMsg };
+    return { billed:state.aptOrders.find(o => o.id === 'e2').amount,paid:state.aptOrders.find(o => o.id === 'e3').amount,promptCalled,billedToast,toastMsg };
   });
-  assert(paidBlock.amt === 70000 && !paidBlock.promptCalled, '③ 입금완료 금액이 고쳐짐 — 수금 장부와 어긋난다');
-  assert(/수금 장부/.test(paidBlock.toastMsg), '③ 왜 안 되는지 설명이 없다: ' + paidBlock.toastMsg);
+  assert(sealed.billed === 100000 && sealed.paid === 70000 && !sealed.promptCalled,
+    '③ 청구·입금완료 금액이 고쳐짐 — 정산 근거와 어긋난다');
+  assert(/고칠 수 없습니다/.test(sealed.billedToast) && /고칠 수 없습니다/.test(sealed.toastMsg),
+    '③ 왜 안 되는지 설명이 없다: ' + JSON.stringify(sealed));
 
   // ④ 취소·빈 값은 안 바꿈
-  const keep = await page.evaluate(() => {
+  const keep = await page.evaluate(async () => {
     window.prompt = () => null;
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
     const afterCancel = state.aptOrders.find(o => o.id === 'e1').amount;
     window.prompt = () => '';
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
     const afterEmpty = state.aptOrders.find(o => o.id === 'e1').amount;
     return { afterCancel, afterEmpty };
   });
-  assert(keep.afterCancel === 85000 && keep.afterEmpty === 85000, '④ 취소/빈 값인데 금액이 바뀜: ' + JSON.stringify(keep));
+  assert(keep.afterCancel === 120000 && keep.afterEmpty === 120000, '④ 취소/빈 값인데 금액이 바뀜: ' + JSON.stringify(keep));
 
   // ⑤ 숫자 아닌 입력 거부
-  const bad = await page.evaluate(() => {
+  const bad = await page.evaluate(async () => {
     window.prompt = () => '팔만원';
-    document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoAmt[data-id="e1"]').onclick();
     return state.aptOrders.find(o => o.id === 'e1').amount;
   });
-  assert(bad === 85000, '⑤ "팔만원" 같은 입력으로 금액이 망가짐: ' + bad);
+  assert(bad === 120000, '⑤ "팔만원" 같은 입력으로 금액이 망가짐: ' + bad);
 
   assert(errors.length === 0, '⑥ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 금액 미정 → 채우기 → 정산서 합계 반영');
-  console.log('PASS  ② 청구된 건도 수정 가능 (콤마 입력 포함)');
-  console.log('PASS  ③ 입금완료는 수정 차단 + 이유 설명');
+  console.log('PASS  ② 완료된 건 수정 가능 (콤마 입력 포함)');
+  console.log('PASS  ③ 청구·입금완료 수정 차단 + 이유 설명');
   console.log('PASS  ④ 취소·빈 값은 안 바꿈');
   console.log('PASS  ⑤ 숫자 아닌 입력 거부');
   console.log('PASS  ⑥ pageerror 0');

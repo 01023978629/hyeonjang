@@ -5,8 +5,8 @@
 
      ① 방문예정으로 바꾸면 날짜를 물어 일정표(state.schedule)에 올린다
         — 일정에 없으면 아침 브리핑에서 빠져 그날 잊는다. 이게 연동의 이유다.
-     ② 날짜를 취소·비움하면 일정 없이 상태만 바뀐다 (전화로 아직 조율 중일 수 있다)
-     ③ 잘못된 날짜 형식은 일정으로 만들지 않는다 (쓰레기 일정 방지)
+     ② 날짜를 취소하면 일정·상태 모두 그대로 둔다
+     ③ 잘못된 날짜 형식은 일정·상태를 바꾸지 않는다 (쓰레기 일정 방지)
      ④ 단지 통계 — 완료월(doneAt) 기준, 그 단지 것만, 입금/미수를 가른다
         접수월로 세면 정산서와 숫자가 어긋난다. 기준이 같아야 장부가 하나다.
      ⑤ 다른 단지의 오더가 통계에 섞이지 않는다
@@ -41,8 +41,13 @@ let browser;
     ];
     const ym = localDate().slice(0, 7);
     window.__ym = ym;
+    const mkApproved=(id,scope,amount)=>({commercialGateVersion:1,
+      commercialTerms:{workKind:'repair',scope,exclusions:[],vatMode:'excluded',quotedAmount:amount,validUntil:'2027-12-31',scheduleWindow:'협의 후 방문'},
+      commercialApproval:{receiptId:'receipt_'+id,subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'message-export-file',approvalEvidenceFileId:'DRIVEFILE1234567890',approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T09:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T09:00:01+09:00',receiptHmac:'c'.repeat(64)}});
     state.aptOrders = [
-      { id: 'a1', officeId: 'of1', unit: '103동 1204호', text: '욕실 실리콘', amount: 80000, date: localDate(), status: 'recv', doneAt: '' },
+      { id: 'a1', officeId: 'of1', unit: '103동 1204호', text: '욕실 실리콘', amount: 80000, date: localDate(), status: 'recv', doneAt: '',...mkApproved('a1','욕실 실리콘',80000) },
+      { id: 'a-cancel', officeId: 'of1', unit: '103동 1205호', text: '방문 협의', amount: 70000, date: localDate(), status: 'recv', doneAt: '',...mkApproved('a-cancel','방문 협의',70000) },
+      { id: 'a-bad', officeId: 'of1', unit: '103동 1206호', text: '날짜 확인', amount: 60000, date: localDate(), status: 'recv', doneAt: '',...mkApproved('a-bad','날짜 확인',60000) },
       { id: 'a2', officeId: 'of1', unit: '105동 202호', text: '문 경첩', amount: 50000, date: localDate(), status: 'paid', doneAt: ym + '-05' },
       { id: 'a3', officeId: 'of1', unit: '지하주차장', text: '도장 보수', amount: 300000, date: localDate(), status: 'billed', doneAt: ym + '-10' },
       { id: 'a4', officeId: 'of1', unit: '101동 101호', text: '지난달 작업', amount: 999000, date: '2026-06-01', status: 'paid', doneAt: '2026-06-15' },
@@ -50,14 +55,20 @@ let browser;
       { id: 'b1', officeId: 'of2', unit: '1동 1호', text: '다른 단지 작업', amount: 700000, date: localDate(), status: 'billed', doneAt: ym + '-11' }
     ];
     state.schedule = []; state.payLog = [];
+    __commercialApproval.url='https://commercial.test/exec';__commercialApproval.token='TEST-TOKEN';
+    window.commercialCall=async(action,payload)=>{
+      if(action==='commercialNow')return {ok:true,serverNowKst:'2026-08-31T10:00:00+09:00',receivedAtKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce};
+      if(action==='commercialApprovalVerify')return {ok:true,receiptId:payload.commercialApproval.receiptId,serverNowKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce,verifyExpiresAtKst:'2026-08-31T10:00:30+09:00'};
+      throw new Error('unexpected commercial action '+action);
+    };
   });
 
   // ①  방문예정 → 날짜 입력 → 일정표에 올라간다
-  const visit = await page.evaluate(() => {
+  const visit = await page.evaluate(async () => {
     window.prompt = () => '2026-08-20';
     aptOrderManage('of1');
     const sel = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a1"]');
-    sel.value = 'visit'; sel.onchange();
+    sel.value = 'visit'; await sel.onchange();
     const s = (state.schedule || [])[0];
     return { n: state.schedule.length, status: state.aptOrders.find(o => o.id === 'a1').status,
              date: s && s.date, title: s && s.title, hasId: !!(s && s.id) };
@@ -67,29 +78,27 @@ let browser;
   assert(/신흥마을아파트/.test(visit.title) && /103동 1204호/.test(visit.title), '① 일정 제목에 단지·동/호가 없다: ' + visit.title);
   assert(visit.status === 'visit' && visit.hasId, '① 상태·일정 형식이 틀렸다');
 
-  // ② 취소하면 일정 없이 상태만
-  const cancel = await page.evaluate(() => {
+  // ② 취소하면 일정·상태 모두 그대로
+  const cancel = await page.evaluate(async () => {
     state.schedule = [];
     window.prompt = () => null;   // 취소
-    const sel = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a1"]');
-    sel.value = 'recv'; sel.onchange();
-    const sel2 = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a1"]');
-    sel2.value = 'visit'; sel2.onchange();
-    return { n: state.schedule.length, status: state.aptOrders.find(o => o.id === 'a1').status };
+    aptOrderManage('of1');
+    const sel = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a-cancel"]');
+    sel.value = 'visit'; await sel.onchange();
+    return { n: state.schedule.length, status: state.aptOrders.find(o => o.id === 'a-cancel').status };
   });
-  assert(cancel.n === 0 && cancel.status === 'visit', '② 취소했는데 일정이 생겼거나 상태가 안 바뀜');
+  assert(cancel.n === 0 && cancel.status === 'recv', '② 취소했는데 일정 또는 상태가 바뀜');
 
-  // ③ 형식이 틀리면 일정을 만들지 않는다
-  const badDate = await page.evaluate(() => {
+  // ③ 형식이 틀리면 일정·상태를 바꾸지 않는다
+  const badDate = await page.evaluate(async () => {
     state.schedule = [];
     window.prompt = () => '내일쯤';
-    const sel = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a1"]');
-    sel.value = 'recv'; sel.onchange();
-    const sel2 = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a1"]');
-    sel2.value = 'visit'; sel2.onchange();
-    return { n: state.schedule.length };
+    aptOrderManage('of1');
+    const sel = document.getElementById('modalRoot').querySelector('.apoStat[data-id="a-bad"]');
+    sel.value = 'visit'; await sel.onchange();
+    return { n: state.schedule.length,status:state.aptOrders.find(o=>o.id==='a-bad').status };
   });
-  assert(badDate.n === 0, '③ "내일쯤" 같은 값으로 쓰레기 일정이 생겼다');
+  assert(badDate.n === 0 && badDate.status==='recv', '③ "내일쯤" 같은 값으로 일정·상태가 바뀌었다');
 
   // ④⑤ 단지 통계 — 완료월 기준 · 입금/미수 구분 · 다른 단지 제외
   const stats = await page.evaluate(() => {
@@ -158,8 +167,8 @@ let browser;
   assert(errors.length === 0, '⑧ pageerror: ' + errors.join(' | '));
 
   console.log('PASS  ① 방문예정 → 일정표 자동 등록 (단지·동/호 제목)');
-  console.log('PASS  ② 날짜 취소 시 일정 없이 상태만');
-  console.log('PASS  ③ 형식 틀린 날짜는 일정 안 만듦');
+  console.log('PASS  ② 날짜 취소 시 일정·상태 무변경');
+  console.log('PASS  ③ 형식 틀린 날짜는 일정·상태 무변경');
   console.log('PASS  ④ 단지 통계 — 완료월 기준 · 입금/미수 구분');
   console.log('PASS  ⑤ 다른 단지 미포함');
   console.log('PASS  ⑥ 정산서 엑셀 — 청구분 그대로 · 파일명에 단지·월');

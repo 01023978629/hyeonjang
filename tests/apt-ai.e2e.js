@@ -1,16 +1,15 @@
-/* apt-ai.e2e.js — AI 비서로 아파트 오더 접수·조회
+/* apt-ai.e2e.js — AI 비서로 아파트 오더 요청·조회
 
    배경: "오더 기록은 AI 비서에게 말로 시켜도 됩니다" 라고 안내해 놓고
-   정작 비서의 도구 목록에 아파트 오더가 없었다. 안내가 거짓이었다.
-   이 테스트는 도구가 실재하고, **쓰기 도구가 승인 게이트(AI_WRITE) 안에**
-   있음을 지킨다 — 게이트에서 빠지면 비서가 승인 없이 장부에 쓴다.
+   유료 오더는 고객·관리사무소의 증빙 승인을 앱 화면에서 받아야 한다.
+   AI는 대화 중 직접 장부를 쓰거나 승인 모달을 열 수 없고, 대표가
+   아파트 오더 화면에서 직접 등록하도록 정확히 안내해야 한다.
 
-     ① apt_order_add · apt_orders 가 도구 목록(AI_TOOLS)에 선언돼 있다
-     ② apt_order_add 는 AI_WRITE 에 있다 — 자동 모드가 아니면 승인을 받는다
-     ③ 접수 실행 — recv 상태·오늘 날짜·금액 미정 허용으로 장부에 들어간다
-     ④ 단지 부분 일치 — "신흥마을" 만 말해도 신흥마을아파트에 붙는다
-     ⑤ 미등록 단지는 실패하되, 등록된 단지 목록을 알려 준다 (비서가 되물을 수 있게)
-     ⑥ apt_orders 조회 — 단지 필터가 맞다. 미입금 합계는 내지 않는다(2026-08-13 대표 결정)
+     ① apt_order_add · apt_order_update · apt_orders 가 도구 목록에 선언돼 있다
+     ② add/update 는 AI_WRITE 에 없고 직접 실행해도 정확히 수동 승인을 요구한다
+     ③ add/update 는 상태·스냅샷·게이트·writer 를 전혀 건드리지 않는다
+     ④ AI는 승인 모달을 열지 않는다
+     ⑤ apt_orders 조회 — 단지 필터가 맞다. 미입금 합계는 내지 않는다(2026-08-13 대표 결정)
      ⑦ 승인 대화상자용 라벨·결과 요약이 사람 말로 나온다
      ⑧ pageerror 0
 
@@ -43,44 +42,47 @@ let browser;
   // ① 선언 ② 승인 게이트
   const decl = await page.evaluate(() => ({
     add: AI_TOOLS.some(t => t.name === 'apt_order_add'),
+    update: AI_TOOLS.some(t => t.name === 'apt_order_update'),
     list: AI_TOOLS.some(t => t.name === 'apt_orders'),
-    gated: AI_WRITE.has('apt_order_add'),
+    addNotGated: !AI_WRITE.has('apt_order_add'),
+    updateNotGated: !AI_WRITE.has('apt_order_update'),
     listNotGated: !AI_WRITE.has('apt_orders')
   }));
-  assert(decl.add && decl.list, '① 도구가 AI_TOOLS 에 없다 — "말로 시켜도 됩니다"가 거짓이 된다');
-  assert(decl.gated, '② apt_order_add 가 AI_WRITE 에 없다 — 비서가 승인 없이 장부에 쓴다');
+  assert(decl.add && decl.update && decl.list, '① add/update/list 도구가 AI_TOOLS 에 없다');
+  assert(decl.addNotGated && decl.updateNotGated,
+    '② add/update 가 AI_WRITE 에 있다 — 스냅샷 뒤 실행되거나 일반 AI 승인으로 우회한다');
   assert(decl.listNotGated, '② 조회 도구까지 승인을 받으면 물어볼 때마다 확인창이 떠 못 쓴다');
 
-  // ③④ 접수 — 부분 일치 단지
-  const add = await page.evaluate(async () => {
-    const r = await aiToolRun('apt_order_add', { complex: '신흥마을', unit: '103동 1204호', work: '욕실 실리콘', amount: 80000 });
-    const o = state.aptOrders.find(x => x.unit === '103동 1204호');
-    return { r, status: o && o.status, date: o && o.date, amount: o && o.amount };
+  // ③④ add/update 는 정확한 수동 조치 결과만 내고, 어떤 상업 writer도 부르지 않는다.
+  const blocked = await page.evaluate(async () => {
+    const before=JSON.stringify(state.aptOrders);
+    const calls={snapshot:0,gate:0,writer:0,modal:0};
+    const oldSnap=window.hjSnapshot, oldGate=window.paidWorkGateRequest,
+      oldWriter=window.persistApprovedAptOrder, oldModal=window.openAptCommercialApprovalModal;
+    window.hjSnapshot=async()=>{calls.snapshot++;};
+    window.paidWorkGateRequest=async()=>{calls.gate++;throw new Error('gate must not run');};
+    window.persistApprovedAptOrder=async()=>{calls.writer++;throw new Error('writer must not run');};
+    window.openAptCommercialApprovalModal=async()=>{calls.modal++;throw new Error('modal must not open');};
+    let add,update;
+    try{
+      add=await aiToolRun('apt_order_add', { complex: '신흥마을', unit: '103동 1204호', work: '욕실 실리콘', amount: 80000 });
+      update=await aiToolRun('apt_order_update', { orderId: 'x1', amount: 300000 });
+    }finally{
+      window.hjSnapshot=oldSnap;window.paidWorkGateRequest=oldGate;
+      window.persistApprovedAptOrder=oldWriter;window.openAptCommercialApprovalModal=oldModal;
+    }
+    return {add,update,calls,before,after:JSON.stringify(state.aptOrders),modalOpen:!!document.querySelector('[data-apt-commercial-modal]')};
   });
-  assert(add.r.결과 === '오더 접수됨' && add.r.단지 === '신흥마을아파트', '④ 부분 일치("신흥마을")가 안 된다: ' + JSON.stringify(add.r));
-  assert(add.status === 'recv' && add.date === (await page.evaluate(() => localDate())), '③ 접수 상태·날짜가 틀리다');
-  assert(add.amount === 80000, '③ 금액이 반영 안 됨');
+  assert(blocked.add === '상업 승인 필요' && blocked.update === '상업 승인 필요',
+    '② add/update 결과가 정확한 수동 승인 안내가 아니다: '+JSON.stringify(blocked));
+  assert(blocked.before === blocked.after, '③ AI add/update 가 장부를 변경했다');
+  assert(Object.values(blocked.calls).every(n=>n===0), '③ AI add/update 가 상업 경로를 호출했다: '+JSON.stringify(blocked.calls));
+  assert(!blocked.modalOpen, '④ AI가 대화 중 상업 승인 모달을 열었다');
 
-  // ③-2 금액 생략 = 미정
-  const noAmt = await page.evaluate(async () => {
-    const r = await aiToolRun('apt_order_add', { complex: '신흥마을아파트', unit: '지하주차장', work: '도장 보수' });
-    return { r, amount: state.aptOrders.find(x => x.unit === '지하주차장').amount };
-  });
-  assert(noAmt.r.금액 === '미정' && noAmt.amount === 0, '③ 금액 생략이 미정으로 안 남는다');
-
-  // ⑤ 미등록 단지 — 등록된 단지를 알려주는 실패
-  const miss = await page.evaluate(async () => {
-    try { await aiToolRun('apt_order_add', { complex: '없는단지', unit: '1동 1호', work: 'x' }); return { threw: false }; }
-    catch (e) { return { threw: true, msg: e.message || String(e) }; }
-  });
-  assert(miss.threw, '⑤ 미등록 단지인데 접수됨 — 유령 단지가 생긴다');
-  assert(/신흥마을아파트/.test(miss.msg) && /등록/.test(miss.msg), '⑤ 실패 안내에 등록된 단지 목록이 없다 — 비서가 되물을 수 없다: ' + miss.msg);
-
-  // ⑥ 조회 — 필터. 앱이 못 받은 돈을 집계하지 않으므로 미입금 합계는 나오면 안 된다.
+  // ⑤ 조회 — 필터. 앱이 못 받은 돈을 집계하지 않으므로 미입금 합계는 나오면 안 된다.
   const q = await page.evaluate(async () => await aiToolRun('apt_orders', { complex: '신흥마을' }));
-  assert(q.건수 === 3, '⑥ 조회 건수가 틀리다: ' + q.건수);
-  assert(q.미입금원 === undefined, '⑥ 미입금 합계가 되살아났다: ' + q.미입금원);
-  assert(q.목록.some(o => o.금액 === '미정'), '⑥ 미정 금액이 "미정"으로 표기되지 않는다');
+  assert(q.건수 === 1, '⑤ 조회 건수가 틀리다: ' + q.건수);
+  assert(q.미입금원 === undefined, '⑤ 미입금 합계가 되살아났다: ' + q.미입금원);
 
   // ⑦ 라벨·요약 — 쓰기·조회 둘 다. 조회에 라벨이 없으면 채팅에 원시 도구명이 그대로 찍힌다(감사 지적).
   const label = await page.evaluate(() => ({
@@ -95,30 +97,14 @@ let browser;
   assert(/3건/.test(label.qBrief), '⑦ 조회 결과 요약이 비었다: ' + label.qBrief);
   assert(!/미입금/.test(label.qBrief), '⑦ 결과 요약에 미입금이 되살아났다: ' + label.qBrief);
 
-  // ⑦-2 감사 권고 반영 — 음수 금액 거부 · 동명 단지 모호성
-  const guard = await page.evaluate(async () => {
-    let neg = false;
-    try { await aiToolRun('apt_order_add', { complex: '신흥마을아파트', unit: '1동 1호', work: 'x', amount: -50000 }); }
-    catch (e) { neg = /0 이상/.test(e.message || ''); }
-    state.aptOffices.push({ id: 'of2', complex: '신흥마을2단지', manager: '', phone: '' });
-    let ambi = false;
-    try { await aiToolRun('apt_order_add', { complex: '신흥마을', unit: '1동 1호', work: 'x' }); }
-    catch (e) { ambi = /여러 곳/.test(e.message || '') && /신흥마을2단지/.test(e.message || ''); }
-    state.aptOffices = state.aptOffices.filter(o => o.id !== 'of2');
-    return { neg, ambi };
-  });
-  assert(guard.neg, '⑦-2 음수 금액이 통과된다 — 청구 합계가 왜곡된다');
-  assert(guard.ambi, '⑦-2 동명 단지가 여럿인데 조용히 첫 번째에 접수된다 — 남의 단지 장부에 실린다');
-
   assert(errors.length === 0, '⑧ pageerror: ' + errors.join(' | '));
 
-  console.log('PASS  ① 도구 선언 (apt_order_add · apt_orders)');
-  console.log('PASS  ② 쓰기만 승인 게이트 · 조회는 게이트 밖');
-  console.log('PASS  ③ 접수 — recv·오늘 날짜·금액 미정 허용');
-  console.log('PASS  ④ 단지 부분 일치');
-  console.log('PASS  ⑤ 미등록 단지 실패 + 등록 단지 안내');
-  console.log('PASS  ⑥ 조회 — 단지 필터 · 미입금 합계 없음');
-  console.log('PASS  ⑦ 승인 라벨·결과 요약 (쓰기·조회) + 음수·모호성 방어');
+  console.log('PASS  ① 도구 선언 (apt_order_add · apt_order_update · apt_orders)');
+  console.log('PASS  ② add/update 정확한 상업 승인 필요 응답');
+  console.log('PASS  ③ 상태·스냅샷·게이트·writer 무변경');
+  console.log('PASS  ④ AI 대화 중 승인 모달 없음');
+  console.log('PASS  ⑤ 조회 — 단지 필터 · 미입금 합계 없음');
+  console.log('PASS  ⑦ 라벨·결과 요약 (쓰기·조회)');
   console.log('PASS  ⑧ pageerror 0');
   console.log('\n전부 통과 (8건)');
   await browser.close();

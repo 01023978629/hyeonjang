@@ -40,10 +40,10 @@ let browser;
   assert(/등록 업체만 시공할 수 있습니다/.test(warning), '② 등록 업체 안내 없음: ' + warning);
   assert(/계약서 제5조⑨/.test(warning), '② 계약서 조항 안내 없음: ' + warning);
 
-  // ③ 선택 변경이 오더 안에 저장되고 직렬화·복원된다.
-  const saved = await page.evaluate(() => {
+  // ③ 선택 변경이 오더 안에 내구 저장되고 직렬화·복원된다.
+  const saved = await page.evaluate(async () => {
     const select = document.querySelector('.apoPipe[data-id="old"]');
-    select.value = '오수'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    select.value = '오수'; await select.onchange();
     const payload = serializeData();
     const copy = JSON.parse(JSON.stringify(payload));
     state.aptOrders = [];
@@ -53,16 +53,21 @@ let browser;
   });
   assert(saved.saved === '오수' && saved.restored === '오수', '③ 저장·복원 실패: ' + JSON.stringify(saved));
 
-  // ④ 새 오더에서도 선택값이 저장된다.
-  const added = await page.evaluate(() => {
+  // ④ 새 오더 선택값은 로컬 직접 저장하지 않고 승인용 immutable draft에 실린다.
+  const added = await page.evaluate(async () => {
+    const before=state.aptOrders.length,real=window.openAptCommercialApprovalModal;window.__captured=null;
+    window.openAptCommercialApprovalModal=input=>{window.__captured=input;};
     aptOrderManage('of1'); const root = document.getElementById('modalRoot');
     root.querySelector('#apoUnit').value = '지하주차장';
     root.querySelector('#apoText').value = '잡배수 보수';
     root.querySelector('#apoPipe').value = '잡배수';
-    root.querySelector('#apoAdd').click();
-    return state.aptOrders.find(o => o.unit === '지하주차장')?.pipeType;
+    root.querySelector('#apoAmt').value = '90000';
+    await root.querySelector('#apoAdd').onclick();
+    const draft=window.__captured&&window.__captured.draft;window.openAptCommercialApprovalModal=real;
+    return {pipeType:draft&&draft.pipeType,frozen:!!draft&&Object.isFrozen(draft),orders:state.aptOrders.length,before};
   });
-  assert(added === '잡배수', '④ 새 오더 배관 종류가 저장되지 않음: ' + added);
+  assert(added.pipeType === '잡배수' && added.frozen, '④ 승인용 draft에 배관 종류가 정확히 실리지 않음: ' + JSON.stringify(added));
+  assert(added.orders===added.before, '④ 승인 전 새 오더가 로컬 장부에 직접 저장됨');
 
   // ⑤ 미확정·오수·우수·잡배수는 면허 경고를 띄우지 않는다.
   const quiet = await page.evaluate(() => ['미확정','오수','우수','잡배수'].map(aptPipeTypeGuide));
@@ -72,7 +77,7 @@ let browser;
   console.log('PASS  ① 구형 자료는 미확정·원본 불변');
   console.log('PASS  ② 난방·급수 유자격 업체 안내');
   console.log('PASS  ③ 기존 오더 저장·직렬화·복원');
-  console.log('PASS  ④ 새 오더 선택값 저장');
+  console.log('PASS  ④ 새 오더 선택값 → immutable 승인 draft · 승인 전 무저장');
   console.log('PASS  ⑤ 일반 선택 오경고 없음');
   console.log('PASS  ⑥ pageerror 0');
   console.log('\n전부 통과 (6건)');

@@ -1,15 +1,15 @@
-/* claude-link.e2e.js — 클로드가 준 링크·코드로 앱에 작업 요청
+/* claude-link.e2e.js — 클로드가 준 링크·코드로 앱에 상업 작업 요청
 
    배경: 대표가 "여기서 작업 지시를 해서 앱에 적용되면 된다"고 했다.
    드라이브 요청함은 폴더 공유가 선행돼야 하는데 계정이 갈려 있어 막혔다.
    그래서 링크(?hjreq=) 와 붙여넣기로도 같은 요청을 받게 한다.
-   **승인 게이트·중복 방지·도구 허용목록은 드라이브 경로와 동일해야 한다.**
+   **상업 요청의 수동 처리·도구 허용목록은 드라이브 경로와 동일해야 한다.**
 
      ① base64url 링크를 풀어 요청을 읽는다 (한글 깨지지 않음)
      ② 원문 JSON·전체 URL 도 받는다
      ③ 깨진 코드는 이유를 말하고 아무것도 안 한다
-     ④ 링크로 와도 승인해야 적용된다 (열기만으로 안 바뀜)
-     ⑤ 이미 처리한 요청은 링크로 다시 와도 안 나온다 (중복 적용 금지)
+     ④ 링크의 승인 버튼을 눌러도 상업 요청은 직접 적용되지 않는다
+     ⑤ 미해결 상업 요청은 claudeDone 에 넣지 않고 다시 처리할 수 있게 남긴다
      ⑥ 모르는 도구는 링크로 와도 실행되지 않는다
      ⑦ 주소창의 hjreq 는 즉시 지워진다 (새로고침 재적용 방지)
      ⑧ 출처가 링크임을 화면에 밝힌다
@@ -69,26 +69,33 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   assert(view.locked, '④ 모달이 뜨자마자 승인이 눌린다 — 카톡→브라우저 전환 직후 오탭으로 적용된다');
   assert(/링크로 받은/.test(view.txt), '⑧ 출처가 링크임을 안 밝힌다');
 
-  // ④-2 승인하면 들어간다
+  // ④-2 승인 버튼도 상업 우회 통로가 아니다 — 정확한 수동 처리 안내 후 재활성화한다.
   const applied = await page.evaluate(async () => {
     // 오탭 방지로 승인 버튼은 0.6초간 잠겨 있다 — 풀릴 때까지 기다린다
     await new Promise(r => setTimeout(r, 700));
     if (document.getElementById('modalRoot').querySelectorAll('.clai')[0].disabled) throw new Error('승인 버튼이 계속 잠겨 있다');
-    document.getElementById('modalRoot').querySelectorAll('.clai')[0].click();
+    let msg='';const oldToast=window.toast;window.toast=m=>{msg=String(m||'');};
+    const btn=document.getElementById('modalRoot').querySelectorAll('.clai')[0];
+    btn.click();
     await new Promise(r => setTimeout(r, 600));
+    window.toast=oldToast;
     const o = state.aptOrders.find(x => x.unit === '315동 1401호');
-    return { n: state.aptOrders.length, amt: o && o.amount, done: (state.claudeDone || []).indexOf('L1') };
+    return { n: state.aptOrders.length, found:!!o, done: (state.claudeDone || []).indexOf('L1'),
+      msg,disabled:btn.disabled,text:btn.textContent };
   });
-  assert(applied.n === 1 && applied.amt === 150000, '④ 승인했는데 안 들어간다: ' + JSON.stringify(applied));
-  assert(applied.done >= 0, '⑤ 처리 표시가 안 남는다');
+  assert(applied.n === 0 && !applied.found, '④ 링크 상업 요청이 장부에 직접 들어갔다: ' + JSON.stringify(applied));
+  assert(applied.msg === '상업 승인 필요 — 아파트 오더 화면에서 대표가 직접 등록하세요',
+    '④ 수동 조치 안내가 정확하지 않다: '+applied.msg);
+  assert(!applied.disabled && /승인·적용/.test(applied.text), '④ 미해결 요청 버튼이 다시 활성화되지 않았다');
+  assert(applied.done < 0, '⑤ 미해결 상업 요청이 처리 완료로 표시됐다');
 
-  // ⑤ 같은 링크 재사용 — 요청이 비어야 한다
+  // ⑤ 같은 링크 재사용 — 미해결 요청은 남고 장부는 계속 그대로여야 한다.
   const again = await page.evaluate((b64) => {
     const d = claudeReqDecode(b64);
     return { n: d.requests.length, orders: state.aptOrders.length };
   }, mk(OK1));
-  assert(again.n === 0, '⑤ 같은 링크로 또 적용된다 — 금액이 두 번 들어간다');
-  assert(again.orders === 1, '⑤ 장부가 중복됐다');
+  assert(again.n === 1, '⑤ 미해결 요청이 사라졌다 — 대표가 수동 처리할 수 없다');
+  assert(again.orders === 0, '⑤ 링크 재사용 중 장부가 변경됐다');
 
   // ② 원문 JSON · 전체 URL 형태
   const forms = await page.evaluate((b64) => {
@@ -169,7 +176,7 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   assert(warn.warn && warn.advise, '⑪ 출처 미검증 경고가 없다 — 위장 링크를 구분할 수 없다');
   assert(warn.caption, '⑪ 요청자가 쓴 설명임을 안 밝힌다 — 안내문으로 위장할 수 있다');
 
-  // ⑫ 승인 직전 안전판 — 잘못 눌러도 되돌릴 수 있어야 한다
+  // ⑫ 상업 요청은 snapshot 이전에 차단되어 어떤 저장 경로도 시작하지 않는다.
   const snap = await page.evaluate(async () => {
     window.__snaps = [];
     const real = window.hjSnapshot;
@@ -177,18 +184,22 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
     window.hjSnapshot = async (label, force) => { window.__snaps.push({ label: String(label || ''), orders: (state.aptOrders || []).length }); return true; };
     await new Promise(r => setTimeout(r, 700));
     const before = (state.aptOrders || []).length;
-    document.getElementById('modalRoot').querySelectorAll('.clai')[0].click();
+    let msg='';const oldToast=window.toast;window.toast=m=>{msg=String(m||'');};
+    const btn=document.getElementById('modalRoot').querySelectorAll('.clai')[0];
+    btn.click();
     await new Promise(r => setTimeout(r, 700));
-    window.hjSnapshot = real;
+    window.hjSnapshot = real;window.toast=oldToast;
     window.__before = before;
     // 자동저장('작업 중')이 섞이므로 개수가 아니라 **내 스냅샷이 적용 전 시점인지**를 본다
     const mine = window.__snaps.filter(x => /요청 적용 전/.test(x.label));
-    return { mine, before: window.__before, orders: state.aptOrders.length };
+    return { mine, before: window.__before, orders: state.aptOrders.length,msg,
+      done:(state.claudeDone||[]).indexOf('W1'),disabled:btn.disabled };
   });
-  assert(snap.mine.length >= 1, '⑫ 승인 전 안전판을 안 찍는다 — "안전판에서 복구하세요" 안내가 거짓이 된다');
-  assert(snap.orders === snap.before + 1, '⑫ 승인이 적용되지 않아 시점 판정을 못 한다');
-  assert(snap.mine[0].orders === snap.before, '⑫ 안전판이 적용 뒤에 찍힌다 — 되돌릴 시점이 이미 지났다 (' + snap.mine[0].orders + ' vs ' + snap.before + ')');
-  assert(/아파트 오더 접수/.test(snap.mine[0].label), '⑫ 안전판 이름으로 무엇을 되돌릴지 알 수 없다: ' + snap.mine[0].label);
+  assert(snap.mine.length === 0, '⑫ 상업 요청 차단 전에 snapshot을 만들었다');
+  assert(snap.orders === snap.before, '⑫ 상업 요청이 장부를 변경했다');
+  assert(snap.done < 0 && !snap.disabled, '⑫ 미해결 요청이 완료 처리됐거나 버튼이 잠겼다');
+  assert(snap.msg === '상업 승인 필요 — 아파트 오더 화면에서 대표가 직접 등록하세요',
+    '⑫ 상업 요청 안내가 정확하지 않다: '+snap.msg);
 
   // ⑬ 길이·건수 상한 — claudeDone 은 직렬화돼 서버까지 나간다
   const caps = await page.evaluate(() => {
@@ -209,14 +220,14 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   console.log('PASS  ① base64url 링크 해독 (한글 보존)');
   console.log('PASS  ② 원문 JSON · 전체 URL 수용');
   console.log('PASS  ③ 깨진 코드는 이유 설명 후 중단');
-  console.log('PASS  ④ 링크로 와도 승인해야 적용');
-  console.log('PASS  ⑤ 같은 링크 재사용 시 중복 적용 없음');
+  console.log('PASS  ④ 링크 상업 요청도 직접 적용 없음 + 정확한 수동 안내');
+  console.log('PASS  ⑤ 미해결 요청 claudeDone 미기록 + 재시도 가능');
   console.log('PASS  ⑥ 모르는 도구 차단 + 삭제·고객 발송 도구 차단');
   console.log('PASS  ⑦ 주소창 hjreq 즉시 제거');
   console.log('PASS  ⑧ 출처(링크) 표시');
   console.log('PASS  ⑩ 위험 도구 확대 차단 (PII 반출·덮어쓰기·설정변경)');
   console.log('PASS  ⑪ 출처 미검증 경고 + 설명 출처 표기');
-  console.log('PASS  ⑫ 승인 직전 안전판');
+  console.log('PASS  ⑫ 상업 요청은 snapshot 이전 차단');
   console.log('PASS  ⑬ 건수·id·설명 길이 상한');
   console.log('PASS  ⑨ pageerror 0');
   console.log('\n전부 통과 (13건)');

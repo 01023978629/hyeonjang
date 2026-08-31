@@ -43,11 +43,11 @@ let browser;
   });
 
   // ① 동/호 오타 수정 → 사진 검색어까지 맞춰진다
-  const unit = await page.evaluate(() => {
+  const unit = await page.evaluate(async () => {
     aptOrderManage('of1');
     const before = aptPhotoCount(state.aptOrders.find(o => o.id === 'd1'));   // 오타라 0장
     window.prompt = () => '103동 1204호';
-    document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d1"]').onclick();
     const o = state.aptOrders.find(x => x.id === 'd1');
     return { before, unit: o.unit, after: aptPhotoCount(o) };
   });
@@ -55,9 +55,9 @@ let browser;
     '① 동/호 수정이 사진 연결까지 살리지 못한다: ' + JSON.stringify(unit));
 
   // ② 작업내용 수정 → 정산서 문안 반영
-  const text = await page.evaluate(() => {
+  const text = await page.evaluate(async () => {
     window.prompt = () => '욕실 실리콘 교체';
-    document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
     aptSettle('of1', window.__ym);
     const t = document.getElementById('modalRoot').querySelector('#apsText').value;
     const back = (aptOrderManage('of1'), true);
@@ -66,25 +66,25 @@ let browser;
   assert(text.text === '욕실 실리콘 교체' && text.inSettle, '② 작업내용 수정이 정산서에 안 실린다');
 
   // ③ 입금완료는 봉인
-  const sealed = await page.evaluate(() => {
+  const sealed = await page.evaluate(async () => {
     let promptCalled = false; window.prompt = () => { promptCalled = true; return '바꾼값'; };
     let toastMsg = ''; const rt = window.toast; window.toast = (m) => { toastMsg = m; rt(m); };
-    document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d2"]').onclick();
-    document.getElementById('modalRoot').querySelector('.apoText[data-id="d2"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d2"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoText[data-id="d2"]').onclick();
     window.toast = rt;
     const o = state.aptOrders.find(x => x.id === 'd2');
     return { unit: o.unit, text: o.text, promptCalled, toastMsg };
   });
   assert(sealed.unit === '301동 707호' && sealed.text === '입금된 건' && !sealed.promptCalled,
     '③ 입금완료 기록이 고쳐진다 — 정산 근거가 흔들린다');
-  assert(/정산이 끝난/.test(sealed.toastMsg), '③ 왜 안 되는지 설명이 없다: ' + sealed.toastMsg);
+  assert(/고칠 수 없습니다|새 오더/.test(sealed.toastMsg), '③ 왜 안 되는지 설명이 없다: ' + sealed.toastMsg);
 
   // ④ 취소·빈 값은 안 바꿈
-  const keep = await page.evaluate(() => {
+  const keep = await page.evaluate(async () => {
     window.prompt = () => null;
-    document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoUnit[data-id="d1"]').onclick();
     window.prompt = () => '  ';
-    document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
     const o = state.aptOrders.find(x => x.id === 'd1');
     return { unit: o.unit, text: o.text };
   });
@@ -94,7 +94,7 @@ let browser;
   const xss = await page.evaluate(async () => {
     window.__xssEdit = false;
     window.prompt = () => '<img src=x onerror="window.__xssEdit=true">';
-    document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
+    await document.getElementById('modalRoot').querySelector('.apoText[data-id="d1"]').onclick();
     await new Promise(r => setTimeout(r, 200));
     const root = document.getElementById('modalRoot');
     return { fired: window.__xssEdit, img: !!root.querySelector('img[src="x"]') };
