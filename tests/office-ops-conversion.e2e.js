@@ -102,12 +102,25 @@ function browserStore() {
 function createBrowserScenario(options = {}) {
   return {
     store: browserStore(), lossAfter: options.lossAfter || '', failBefore: options.failBefore || '', lost: false,
-    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null, committedMutations: [], commercialVerifyHook: null
+    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null, committedMutations: [], commercialVerifyHook: null, invalidVerify: false
   };
 }
 
 function browserAuditAt(revision) {
-  return '2026-09-01T09:00:0' + revision + '+09:00';
+  return '2026-09-01T09:00:' + String(revision).padStart(2, '0') + '+09:00';
+}
+
+function commitBrowserUnrelatedInspectionUpdate(scenario) {
+  const store = scenario.store, inspection = store.inspections[0], preRevision = store.revision, revision = preRevision + 1;
+  const at = browserAuditAt(revision), payload = { inspectionId: inspection.inspectionId, summary: 'unrelated server update ' + revision, expectedRevision: preRevision };
+  inspection.summary = payload.summary; inspection.updatedAt = at; store.revision = revision; store.updatedAt = at;
+  store.audit.push({
+    action: 'officeInspectionUpdate', result: 'ok', id: inspection.inspectionId,
+    mutationId: 'mutation_unrelated_' + String(revision).padStart(3, '0'), idempotencyKey: null,
+    payloadSha256: nodeSha256(JSON.stringify(payload)), at, actor: 'representative', lifecycleBefore: null,
+    backupFileId: 'backup_unrelated_' + revision, backupManifestFileId: 'manifest_unrelated_' + revision,
+    backupSha256: String(revision).repeat(64).slice(0, 64), preMutationRevision: preRevision
+  });
 }
 
 function commitBrowserOfficeMutation(scenario, envelope) {
@@ -181,6 +194,10 @@ async function routeBrowserCommercial(scenario, route) {
   if (envelope.action === 'commercialApprovalVerify') {
     scenario.verifyNonces.push(payload.nonce);
     if (typeof scenario.commercialVerifyHook === 'function') await scenario.commercialVerifyHook(structuredClone(payload));
+    if (scenario.invalidVerify) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, receiptId: payload.commercialApproval.receiptId,
+        serverNowKst: '2026-09-01T09:00:03+09:00', nonce: payload.nonce, verifyExpiresAtKst: '2026-09-01T09:00:33+09:00' }) }); return;
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, receiptId: payload.commercialApproval.receiptId,
       serverNowKst: '2026-09-01T09:00:03+09:00', nonce: payload.nonce, verifyExpiresAtKst: '2026-09-01T09:00:33+09:00' }) }); return;
   }
@@ -202,6 +219,31 @@ async function createActualConversionPage(browser, appUrl, scenario) {
     state.aptOrders = []; __tabStale = false; __paidApprovalConsumptions.clear(); clearTimeout(__idbSaveTimer);
   });
   return { context, page };
+}
+
+async function openActualSiblingPage(context, appUrl) {
+  const page = await context.newPage(); page.setDefaultTimeout(12000);
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+  return page;
+}
+
+async function browserPaidSnapshot(page) {
+  return page.evaluate(async () => {
+    const snapshot = await readPaidCommitSnapshot();
+    return JSON.stringify({ pointer: snapshot.pointer, journal: snapshot.journal, appState: snapshot.appState, generationRecords: snapshot.generationRecords });
+  });
+}
+
+async function prepareBrowserTerminalStage(page, scenario, expectedStage) {
+  const failure = await page.evaluate(async input => {
+    try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+    catch (error) { return String(error && error.message || error); }
+  }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+  assert.match(failure, /fetch|network|failed/i);
+  assert.equal(scenario.store.inspections[0].status, expectedStage);
+  scenario.failBefore = ''; scenario.lossAfter = ''; scenario.lost = false; scenario.invalidVerify = false; scenario.commercialVerifyHook = null;
+  return page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
 }
 
 async function writeBrowserPaidGeneration(page, mode, options = {}) {
@@ -253,9 +295,14 @@ function createVmHarness() {
       return order;
     },
     resolvePaidCommitState: async () => ({
-      data: { savedAt: '2026-09-01T00:00:00.000Z', aptOrders: structuredClone(scenario.orders) }, source: 'paid-generation',
-      pointer: 'paid_commit_generation:vm', journal: { current: 'paid_commit_generation:vm', committedAt: '2026-09-01T00:00:00.000Z' }
+      data: { savedAt: sandbox.__tabStamp, aptOffices: structuredClone(scenario.offices), aptOrders: structuredClone(scenario.orders) }, source: 'paid-generation',
+      pointer: 'paid_commit_generation:vm', journal: { current: 'paid_commit_generation:vm', committedAt: sandbox.__tabStamp }
     }),
+    withAppStateWriteLock: async work => work(),
+    validatePaidSerializedState: value => value,
+    guardedAppStateWriteAtomic: async () => true,
+    applyPaidCommittedState: data => { sandbox.__tabStamp = data.savedAt; sandbox.state.aptOffices = structuredClone(data.aptOffices); sandbox.state.aptOrders = scenario.orders; },
+    paidCommitRecoveryBanner: () => {}, multiTabStaleWarn: () => {},
     officeOpsLoad: async () => {
       sandbox.__officeOps.mode = scenario.mode;
       sandbox.__officeOps.cache = scenario.store;
@@ -283,7 +330,7 @@ function createVmHarness() {
     }
   };
   vm.createContext(sandbox);
-  vm.runInContext("var __officeOps={mode:'fresh',revision:10,cache:null},__tabStale=false,__paidCommitPointerKey='paid_commit_generation:vm',__tabStamp='2026-09-01T00:00:00.000Z';", sandbox);
+  vm.runInContext("var __officeOps={mode:'fresh',revision:10,cache:null},__tabStale=false,__paidCommitPointerKey='paid_commit_generation:vm',__tabStamp='2026-09-01T00:00:00.000Z',__tabBC=null,__paidCommitRecoveryMalformedPointer=false,__paidCommitRecoverySnapshot=null;", sandbox);
   for (const name of [
     'paidPlainObject', 'paidExactKeys', 'isRealIsoDate', 'formatKstIso', 'parseStrictKstDateTime', 'sha256Hex',
     'normalizeCommercialTerms', 'normalizeReceipt', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone',
@@ -291,6 +338,7 @@ function createVmHarness() {
     'officeOpsComplexNameKey', 'officeOpsConversionPayload', 'officeOpsCanonicalConversionTerms', 'officeOpsCanonicalConversionReceipt',
     'officeOpsAptOrderDraft', 'officeOpsValidateExistingConversionOrder', 'officeOpsInspectionConversionActions',
     'officeOpsProofValueInUse', 'officeOpsCreateConversionIds', 'officeOpsAssertCallerConversionIdentity', 'officeOpsAssertUniqueLocalOrderIds', 'officeOpsAssertDurableConversionOrder', 'officeOpsLoadConversionContext',
+    'officeOpsFenceDurableConversionCandidate', 'officeOpsConversionFenceRecoveryError', 'officeOpsConversionStageFromStore', 'officeOpsTerminalConversionStep',
     'officeOpsDriveInspectionConversion', 'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion',
     'cancelOfficeOpsInspectionConversion'
   ]) vm.runInContext(extractFunction(name), sandbox);
@@ -596,6 +644,13 @@ async function runVmContracts() {
   assert.deepEqual(actions('converted'), []);
   assert.doesNotMatch(extractFunction('officeOpsInspectionCardHtml'), /data-officeops-(?:edit|terms|archive|restore|duplicate)/,
     'conversion card exposes no unrelated mutation controls');
+  const sharedLockSource = extractFunction('withAppStateWriteLock'), terminalSource = extractFunction('officeOpsTerminalConversionStep'), candidateSource = extractFunction('officeOpsAssertConversionCandidate');
+  assert.match(sharedLockSource, /navigator\.locks/); assert.match(sharedLockSource, /PAID_APPSTATE_LOCK_NAME/);
+  assert.match(terminalSource, /requireCrossTab\s*:\s*true/, 'terminal section requires the cross-tab lock');
+  assert.doesNotMatch(terminalSource, /guardedPersistCurrentState|durableLocalMutation|paidCommitWriteAtomic/, 'terminal fence never relocks through a high-level writer');
+  assert.doesNotMatch(candidateSource, /\bstate\b/, 'final conversion-candidate decision is independent of mutable live state');
+  assert.equal((source.match(/guardedAppStateWriteAtomic\s*\(/g) || []).length, 3, 'low-level same-generation writer is owned only by guarded persistence and the no-relock fence');
+  assert.equal((source.match(/paidCommitWriteAtomic\s*\(/g) || []).length, 2, 'low-level new-generation writer is owned only by durableLocalMutation');
   assert.equal(sandbox.state.aptOrders, scenario.orders);
 }
 
@@ -832,6 +887,351 @@ async function runBrowserAcceptance() {
       } finally { await actual.context.close(); }
     }
 
+    for (const race of [
+      { label: 'Record shared-lock race', setup: { failBefore: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-writing', lossAfter: '', expectedAfter: 'converted', recordDelta: 1, finalizeDelta: 1 },
+      { label: 'Finalize shared-lock race', setup: { lossAfter: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-local-committed', lossAfter: '', expectedAfter: 'converted', recordDelta: 0, finalizeDelta: 1 },
+      { label: 'converted shared-lock verification race', setup: { lossAfter: 'officeInspectionFinalizeConversion' }, stage: 'converted', lossAfter: '', expectedAfter: 'converted', recordDelta: 0, finalizeDelta: 0 },
+      { label: 'Record response-loss shared-lock fence', setup: { failBefore: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-writing', lossAfter: 'officeInspectionRecordLocalCommit', expectedAfter: 'conversion-local-committed', recordDelta: 1, finalizeDelta: 0 },
+      { label: 'Finalize response-loss shared-lock fence', setup: { lossAfter: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-local-committed', lossAfter: 'officeInspectionFinalizeConversion', expectedAfter: 'converted', recordDelta: 0, finalizeDelta: 1 }
+    ]) {
+      const scenario = createBrowserScenario(race.setup), actual = await createActualConversionPage(browser, appUrl, scenario);
+      try {
+        const initialFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(initialFailure, /fetch|network|failed/i);
+        assert.equal(scenario.store.inspections[0].status, race.stage);
+        assert.equal(await actual.page.evaluate(() => state.aptOrders.length), 1);
+        scenario.failBefore = ''; scenario.lossAfter = race.lossAfter; scenario.lost = false;
+        const recordCallsBeforeRace = scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        const finalizeCallsBeforeRace = scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        const sibling = await openActualSiblingPage(actual.context, appUrl);
+        assert.equal(await sibling.evaluate(() => state.aptOrders.length), 1, race.label + ' sibling restores the exact paid generation before racing');
+        const durableBeforeRace = await sibling.evaluate(() => ({ pointer: __paidCommitPointerKey, orderJson: JSON.stringify(state.aptOrders[0]) }));
+        const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
+        await actual.page.evaluate(() => {
+          window.__raceNativeFenceAtomic = guardedAppStateWriteAtomic; window.__raceFenceAtomicCalls = 0;
+          guardedAppStateWriteAtomic = async function(...args) { window.__raceFenceAtomicCalls += 1; return window.__raceNativeFenceAtomic(...args); };
+        });
+        let durableBarrierInstalledResolve;
+        const durableBarrierInstalled = new Promise(resolve => { durableBarrierInstalledResolve = resolve; });
+        scenario.commercialVerifyHook = async () => {
+          scenario.commercialVerifyHook = null;
+          await actual.page.evaluate(() => {
+            const nativeAssert = officeOpsAssertDurableConversionOrder;
+            window.__durableReadEntered = false; window.__releaseDurableRead = null;
+            window.__durableReadRelease = new Promise(resolve => { window.__releaseDurableRead = resolve; });
+            officeOpsAssertDurableConversionOrder = async function(context, suppliedResolved) {
+              const binding = await nativeAssert(context, suppliedResolved);
+              if (!window.__durableReadEntered) { window.__durableReadEntered = true; await window.__durableReadRelease; }
+              return binding;
+            };
+          });
+          durableBarrierInstalledResolve();
+        };
+        await actual.page.evaluate(value => {
+          window.__terminalRaceResult = null;
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__terminalRaceResult = { status: 'fulfilled', value: result.status }; },
+            error => { window.__terminalRaceResult = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await Promise.race([durableBarrierInstalled, new Promise((_, reject) => setTimeout(() => reject(new Error(race.label + ' durable barrier install timeout')), 12000))]);
+        await actual.page.waitForFunction(() => window.__durableReadEntered === true);
+        const lockState = await actual.page.evaluate(async () => {
+          const snapshot = await navigator.locks.query();
+          return { held: snapshot.held.map(row => row.name), pending: snapshot.pending.map(row => row.name) };
+        });
+        await sibling.evaluate(() => {
+          state.aptOrders = [];
+          window.__siblingWriterResult = null;
+          guardedPersistCurrentState().then(
+            value => { window.__siblingWriterResult = { status: 'fulfilled', value }; },
+            error => { window.__siblingWriterResult = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        });
+        let writerWhileHeld = null, pendingState = [];
+        for (let poll = 0; poll < 100; poll += 1) {
+          [writerWhileHeld, pendingState] = await Promise.all([
+            sibling.evaluate(() => window.__siblingWriterResult),
+            actual.page.evaluate(async () => { const snapshot = await navigator.locks.query(); return snapshot.pending.map(row => row.name); })
+          ]);
+          if (writerWhileHeld !== null || pendingState.includes('hyeonjang-paid-appstate-v1')) break;
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        await actual.page.evaluate(() => window.__releaseDurableRead());
+        await actual.page.waitForFunction(() => window.__terminalRaceResult !== null);
+        await sibling.waitForFunction(() => window.__siblingWriterResult !== null);
+        const terminalResult = await actual.page.evaluate(() => window.__terminalRaceResult);
+        const writerResult = await sibling.evaluate(() => window.__siblingWriterResult);
+        assert.ok(lockState.held.includes('hyeonjang-paid-appstate-v1'), race.label + ' holds the stable origin-scoped paid/appState Web Lock during validation');
+        assert.equal(writerWhileHeld, null, race.label + ' blocks the sibling normal writer while terminal validation is pending');
+        assert.ok(pendingState.includes('hyeonjang-paid-appstate-v1'), race.label + ' queues the sibling writer on the same cross-tab lock');
+        assert.deepEqual(writerResult, { status: 'fulfilled', value: false }, race.label + ' releases the sibling only after the terminal fence, so its old CAS loses');
+        if (race.lossAfter) assert.match(terminalResult.value, /fetch|network|failed/i, race.label + ' surfaces the lost response after post-attempt fencing');
+        else assert.deepEqual(terminalResult, { status: 'fulfilled', value: race.expectedAfter });
+        if (race.lossAfter) assert.equal(await actual.page.evaluate(() => window.__raceFenceAtomicCalls), 2,
+          race.label + ' executes exactly one pre-request and one post-attempt exact fence despite the lost response');
+        assert.equal(scenario.store.inspections[0].status, race.expectedAfter);
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length - recordCallsBeforeRace, race.recordDelta, race.label + ' has the exact Record call delta');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeCallsBeforeRace, race.finalizeDelta, race.label + ' has the exact Finalize call delta');
+        scenario.lossAfter = ''; scenario.lost = false;
+        await actual.page.evaluate(() => { guardedAppStateWriteAtomic = window.__raceNativeFenceAtomic; });
+        const finalStatus = await actual.page.evaluate(async () => {
+          await officeOpsLoad();
+          const current = officeOpsConversionCallerForInspection('inspection_conversion_001');
+          return (await resumeOfficeOpsInspectionConversion(current)).status;
+        });
+        assert.equal(finalStatus, 'converted', race.label + ' releases the lock for explicit recovery');
+        await sibling.reload({ waitUntil: 'domcontentloaded' });
+        await sibling.evaluate(async () => { await window.__hjRestoreDone; });
+        const durable = await sibling.evaluate(async () => {
+          const pointer = await idbGet('paid_commit_pointer'), journal = await idbGet('paid_commit_journal'), generation = await idbGet(pointer), appState = await idbGet('appState');
+          return { count: state.aptOrders.length, order: state.aptOrders[0], pointer, journal, generationStamp: generation.savedAt, appStateStamp: appState.savedAt, restoreSource: window.__hjRestoreSource };
+        });
+        assert.equal(durable.count, 1, race.label + ' reload keeps exactly one byte-valid conversion order');
+        assert.equal(durable.pointer, durableBeforeRace.pointer, race.label + ' terminal fences preserve the paid generation pointer identity');
+        assert.equal(durable.journal.current, durable.pointer); assert.equal(durable.journal.committedAt, durable.generationStamp); assert.equal(durable.appStateStamp, durable.generationStamp);
+        assert.equal(durable.restoreSource, 'paid-generation');
+        assert.equal(durable.order.sourceOfficeOpsConversionId, scenario.store.inspections[0].conversionId);
+        assert.deepEqual(durable.order.commercialApproval, scenario.receipt, race.label + ' preserves all eleven receipt fields byte-for-byte');
+        assert.equal(JSON.stringify(durable.order), durableBeforeRace.orderJson, race.label + ' preserves the complete conversion-order bytes');
+      } finally {
+        try { await actual.page.evaluate(() => { if (window.__releaseDurableRead) window.__releaseDurableRead(); }); } catch (_) {}
+        await actual.context.close();
+      }
+    }
+
+    const exactLiveApplyScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, exactLiveApplyScenario);
+      let releaseValidation;
+      try {
+        await actual.page.evaluate(() => {
+          state.aiOps = null; state.coworkTasks = null; state._coworkInit = false; state._cwSchedInit = false;
+          state.kakaoLastAt = ''; state.brand = null; state._savedFileCount = 0;
+        });
+        const caller = await prepareBrowserTerminalStage(actual.page, exactLiveApplyScenario, 'conversion-writing');
+        let validationEnteredResolve;
+        const validationEntered = new Promise(resolve => { validationEnteredResolve = resolve; });
+        const validationRelease = new Promise(resolve => { releaseValidation = resolve; });
+        exactLiveApplyScenario.commercialVerifyHook = async () => {
+          exactLiveApplyScenario.commercialVerifyHook = null; validationEnteredResolve(); await validationRelease;
+        };
+        await actual.page.evaluate(value => {
+          window.__exactApplyTerminal = null;
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__exactApplyTerminal = { status: 'fulfilled', value: result.status }; },
+            error => { window.__exactApplyTerminal = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await Promise.race([validationEntered, new Promise((_, reject) => setTimeout(() => reject(new Error('exact live apply validation timeout')), 12000))]);
+        await actual.page.evaluate(() => {
+          state.aiOps = { source: 'unvalidated-live' }; state.coworkTasks = [{ id: 'unvalidated-live' }];
+          state._coworkInit = true; state._cwSchedInit = true; state.kakaoLastAt = '2099-01-01T00:00:00.000Z';
+          state.brand = { name: 'unvalidated-live' }; state._savedFileCount = 99;
+          window.__exactApplyQueuedWriter = null;
+          guardedPersistCurrentState().then(
+            value => { window.__exactApplyQueuedWriter = { status: 'fulfilled', value }; },
+            error => { window.__exactApplyQueuedWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        });
+        releaseValidation(); releaseValidation = null;
+        await actual.page.waitForFunction(() => window.__exactApplyTerminal !== null && window.__exactApplyQueuedWriter !== null);
+        assert.deepEqual(await actual.page.evaluate(() => window.__exactApplyTerminal), { status: 'fulfilled', value: 'converted' });
+        assert.deepEqual(await actual.page.evaluate(() => window.__exactApplyQueuedWriter), { status: 'fulfilled', value: true }, 'same-tab normal writer runs after the terminal fence releases');
+        const saved = await actual.page.evaluate(async () => {
+          const pointer = await idbGet('paid_commit_pointer'), generation = await idbGet(pointer), appState = await idbGet('appState');
+          return { generation: { aiOps: generation.aiOps, coworkTasks: generation.coworkTasks, coworkInit: generation._coworkInit, cwSchedInit: generation._cwSchedInit,
+            kakaoLastAt: generation.kakaoLastAt, brand: generation.brand, savedFileCount: generation._savedFileCount },
+          appState: { aiOps: appState.aiOps, coworkTasks: appState.coworkTasks, coworkInit: appState._coworkInit, cwSchedInit: appState._cwSchedInit,
+            kakaoLastAt: appState.kakaoLastAt, brand: appState.brand, savedFileCount: appState._savedFileCount } };
+        });
+        const exactFalsey = { aiOps: null, coworkTasks: null, coworkInit: false, cwSchedInit: false, kakaoLastAt: '', brand: null, savedFileCount: 0 };
+        assert.deepEqual(saved.generation, exactFalsey, 'queued writer cannot reintroduce unvalidated falsey/null live fields into the fenced generation');
+        assert.deepEqual(saved.appState, exactFalsey, 'queued writer cannot reintroduce unvalidated falsey/null live fields into appState');
+      } finally {
+        if (releaseValidation) releaseValidation();
+        await actual.context.close();
+      }
+    }
+
+    for (const candidateCase of [
+      { label: 'unrelated duplicate order IDs', kind: 'duplicate-order-ids' },
+      { label: 'empty unrelated order ID', kind: 'empty-order-id' },
+      { label: 'duplicate selected office ownership', kind: 'duplicate-selected-office' },
+      { label: 'unrelated retired receipt collision', kind: 'retired-receipt' }
+    ]) {
+      const scenario = createBrowserScenario(), actual = await createActualConversionPage(browser, appUrl, scenario);
+      try {
+        const baselineSeeded = await actual.page.evaluate(async () => {
+          await durableLocalMutation({ snapshotLabel: 'OfficeOps candidate baseline', mutateDraft: next => { next.notes = [{ id: 'candidate_baseline' }]; return true; } });
+          return guardedPersistCurrentState();
+        });
+        assert.equal(baselineSeeded, true, candidateCase.label + ' starts from a guarded preexisting paid generation');
+        const durableBefore = await browserPaidSnapshot(actual.page);
+        let writingVerifyCount = 0, injected = false;
+        scenario.commercialVerifyHook = async () => {
+          if (scenario.store.inspections[0].status !== 'conversion-writing') return;
+          writingVerifyCount += 1;
+          if (writingVerifyCount !== 2) return;
+          scenario.commercialVerifyHook = null; injected = true;
+          await actual.page.evaluate(({ kind, receipt }) => {
+            if (kind === 'duplicate-order-ids') state.aptOrders.push({ id: 'unrelated_duplicate' }, { id: 'unrelated_duplicate' });
+            else if (kind === 'empty-order-id') state.aptOrders.push({ id: '' });
+            else if (kind === 'duplicate-selected-office') state.aptOffices.push({ id: 'local_office_browser', complex: '테스트 단지', manager: '중복', phone: '' });
+            else if (kind === 'retired-receipt') state.aptOrders.push({ id: 'unrelated_retired_owner', commercialApprovalAudit: [{ event: 'terms-replaced', at: new Date().toISOString(), previousApproval: { ...receipt, subjectId: 'unrelated_retired_owner' } }] });
+            else throw new Error('unknown candidate corruption');
+          }, { kind: candidateCase.kind, receipt: scenario.receipt });
+        };
+        const failure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.equal(injected, true, candidateCase.label + ' is injected in the final create verification window');
+        assert.match(failure, /candidate|local order identity|office mapping|receipt/i, candidateCase.label + ' is rejected by the final cloned candidate invariant');
+        assert.equal(await browserPaidSnapshot(actual.page), durableBefore, candidateCase.label + ' preserves the old durable pointer/journal/generation/appState bytes');
+        assert.equal(await actual.page.evaluate(() => state.aptOrders.filter(order => order && order.source === 'officeops-preventive-inspection').length), 0,
+          candidateCase.label + ' creates no conversion order');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, 0, candidateCase.label + ' sends zero Record mutations');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, 0, candidateCase.label + ' sends zero Finalize mutations');
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        await actual.page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+        const rebased = await actual.page.evaluate(() => ({ orders: state.aptOrders.length, offices: state.aptOffices.filter(row => row.id === 'local_office_browser').length, source: window.__hjRestoreSource }));
+        assert.deepEqual(rebased, { orders: 0, offices: 1, source: 'paid-generation' }, candidateCase.label + ' reload rebases to the unchanged clean paid head');
+        scenario.commercialVerifyHook = null;
+        const clean = await actual.page.evaluate(async () => {
+          await officeOpsLoad();
+          return resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'));
+        });
+        assert.equal(clean.status, 'converted', candidateCase.label + ' clean rebased candidate completes');
+        assert.equal(await actual.page.evaluate(() => state.aptOrders.filter(order => order && order.source === 'officeops-preventive-inspection').length), 1,
+          candidateCase.label + ' clean retry commits exactly one conversion order');
+      } finally { await actual.context.close(); }
+    }
+
+    const renderedCancelScenario = createBrowserScenario({ lossAfter: 'officeInspectionBeginConversion' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, renderedCancelScenario);
+      try {
+        const beginFailure = await actual.page.evaluate(async input => {
+          try { await convertOfficeOpsInspectionToAptOrder('inspection_conversion_001', input); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, { approvalEvidenceFileId: 'drive_file_conversion_001', approvalEvidenceType: 'quote-file', approvedAt: '2026-08-31T10:00:00+09:00', approvedByRole: 'management-office' });
+        assert.match(beginFailure, /fetch|network|failed/i);
+        assert.equal(renderedCancelScenario.store.inspections[0].status, 'conversion-pending');
+        renderedCancelScenario.lossAfter = ''; renderedCancelScenario.lost = false;
+        while (renderedCancelScenario.store.revision < 10) commitBrowserUnrelatedInspectionUpdate(renderedCancelScenario);
+        await actual.page.evaluate(() => officeOpsView('inspections'));
+        const card = actual.page.locator('#officeOpsPanel-inspections [data-officeops-inspection="inspection_conversion_001"]');
+        await card.locator('[data-officeops-cancel]').waitFor();
+        const renderedRevision = await card.getAttribute('data-officeops-revision');
+        commitBrowserUnrelatedInspectionUpdate(renderedCancelScenario);
+        assert.equal(renderedCancelScenario.store.revision, 11, 'server advances to revision 11 without rerendering the revision-10 card');
+        const cancelCallsBefore = renderedCancelScenario.officeCalls.filter(call => call.action === 'officeInspectionCancelConversion').length;
+        await card.locator('[data-officeops-cancel]').click();
+        await actual.page.waitForTimeout(350);
+        assert.equal(renderedRevision, '10', 'pending card binds the exact rendered server revision');
+        assert.equal(renderedCancelScenario.officeCalls.filter(call => call.action === 'officeInspectionCancelConversion').length, cancelCallsBefore,
+          'stale rendered cancel sends zero cancel mutations');
+        assert.equal(renderedCancelScenario.store.inspections[0].status, 'conversion-pending', 'stale rendered cancel preserves the in-flight conversion');
+      } finally { await actual.context.close(); }
+    }
+
+    for (const unavailableCase of [
+      { label: 'Record', setup: { failBefore: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-writing' },
+      { label: 'Finalize', setup: { lossAfter: 'officeInspectionRecordLocalCommit' }, stage: 'conversion-local-committed' },
+      { label: 'converted', setup: { lossAfter: 'officeInspectionFinalizeConversion' }, stage: 'converted' }
+    ]) {
+      const scenario = createBrowserScenario(unavailableCase.setup), actual = await createActualConversionPage(browser, appUrl, scenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, scenario, unavailableCase.stage);
+        const mutationCallsBefore = scenario.officeCalls.filter(call => call.mutationId).length;
+        const unavailable = await actual.page.evaluate(async value => {
+          Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true });
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+          finally { delete navigator.locks; }
+        }, caller);
+        assert.match(unavailable, /cross-tab paid\/appState lock unavailable/, unavailableCase.label + ' fails closed when Web Locks are unavailable');
+        assert.equal(scenario.officeCalls.filter(call => call.mutationId).length, mutationCallsBefore, unavailableCase.label + ' sends zero terminal mutations without Web Locks');
+        const recovered = await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller);
+        assert.equal(recovered, 'converted', unavailableCase.label + ' can resume after Web Locks become available again');
+      } finally { await actual.context.close(); }
+    }
+
+    const validationReleaseScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, validationReleaseScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, validationReleaseScenario, 'conversion-writing');
+        const recordBefore = validationReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        validationReleaseScenario.invalidVerify = true;
+        const failure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(failure, /invalid approval verification|상업 승인 요청 실패/, 'validation error escapes the terminal section: ' + failure);
+        assert.equal(validationReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, recordBefore, 'validation error sends zero Record mutations');
+        validationReleaseScenario.invalidVerify = false;
+        assert.equal(await actual.page.evaluate(() => navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true)), true,
+          'validation error releases the shared lock');
+        assert.equal(await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller), 'converted');
+      } finally { await actual.context.close(); }
+    }
+
+    const preFenceReleaseScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, preFenceReleaseScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, preFenceReleaseScenario, 'conversion-writing');
+        const recordBefore = preFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        await actual.page.evaluate(() => {
+          window.__nativeGuardedFenceAtomic = guardedAppStateWriteAtomic; window.__guardedFenceCalls = 0;
+          guardedAppStateWriteAtomic = async function(...args) { window.__guardedFenceCalls += 1; if (window.__guardedFenceCalls === 1) return false; return window.__nativeGuardedFenceAtomic(...args); };
+        });
+        const failure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(failure, /durable fence conflict/, 'pre-fence CAS failure is surfaced');
+        assert.equal(preFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, recordBefore, 'pre-fence failure sends zero Record mutations');
+        assert.equal(await actual.page.evaluate(() => navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true)), true,
+          'pre-fence error releases the shared lock');
+        await actual.page.evaluate(() => { guardedAppStateWriteAtomic = window.__nativeGuardedFenceAtomic; });
+        assert.equal(await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller), 'converted');
+      } finally { await actual.context.close(); }
+    }
+
+    const postFenceReleaseScenario = createBrowserScenario({ lossAfter: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, postFenceReleaseScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, postFenceReleaseScenario, 'conversion-local-committed');
+        const finalizeBefore = postFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        await actual.page.evaluate(() => {
+          window.__nativeGuardedFenceAtomic = guardedAppStateWriteAtomic; window.__guardedFenceCalls = 0;
+          guardedAppStateWriteAtomic = async function(...args) { window.__guardedFenceCalls += 1; if (window.__guardedFenceCalls === 2) return false; return window.__nativeGuardedFenceAtomic(...args); };
+        });
+        const failure = await actual.page.evaluate(async value => {
+          try { await resumeOfficeOpsInspectionConversion(value); return ''; }
+          catch (error) { return String(error && error.message || error); }
+        }, caller);
+        assert.match(failure, /durable fence recovery required/, 'post-attempt fence failure overrides the successful terminal response');
+        assert.equal(postFenceReleaseScenario.store.inspections[0].status, 'converted', 'Finalize was committed before the injected post-fence failure');
+        assert.equal(postFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeBefore, 1, 'post-fence case sends exactly one Finalize');
+        assert.deepEqual(await actual.page.evaluate(() => ({ stale: __tabStale, recovery: !!document.getElementById('hjPaidCommitRecovery') })), { stale: true, recovery: true },
+          'post-fence failure marks the tab stale and recovery-required');
+        assert.equal(await actual.page.evaluate(() => navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true)), true,
+          'post-fence error releases the shared lock');
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        await actual.page.evaluate(async () => { await window.__hjRestoreDone; });
+        assert.equal(await actual.page.evaluate(async () => { await officeOpsLoad(); return (await resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'))).status; }), 'converted',
+          'reload recovers from the post-fence failure without duplicating the terminal mutation');
+      } finally { await actual.context.close(); }
+    }
+
     for (const [label, mode, bindTab, stale, expectedError] of [
       ['stale memory plus advanced missing-order generation', 'missing', false, true, /stale appState conflict/],
       ['native pointer advanced without BroadcastChannel', 'missing', false, false, /durable|pointer|local order/],
@@ -858,7 +1258,7 @@ async function runBrowserAcceptance() {
           try { await resumeOfficeOpsInspectionConversion(value); return ''; }
           catch (error) { return String(error && error.message || error); }
         }, caller);
-        assert.match(resumeFailure, expectedError, label + ' fails closed before Record');
+        assert.match(resumeFailure, expectedError, label + ' fails closed before Record: ' + resumeFailure);
         assert.equal(scenario.store.inspections[0].status, 'conversion-writing');
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, beforeRecord, label + ' sends zero Record mutations');
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, label + ' sends zero Finalize mutations');
@@ -920,7 +1320,7 @@ async function runBrowserAcceptance() {
     }
 
     for (const [label, setup, expectedStage, verifyTrigger] of [
-      ['Record validation-window stale race', { failBefore: 'officeInspectionRecordLocalCommit' }, 'conversion-writing', 2],
+      ['Record validation-window stale race', { failBefore: 'officeInspectionRecordLocalCommit' }, 'conversion-writing', 1],
       ['Finalize validation-window pointer race', { lossAfter: 'officeInspectionRecordLocalCommit' }, 'conversion-local-committed', 1],
       ['converted return validation-window pointer race', { lossAfter: 'officeInspectionFinalizeConversion' }, 'converted', 1]
     ]) {

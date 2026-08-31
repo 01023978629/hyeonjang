@@ -26644,8 +26644,16 @@ function normalizePaidCommitJournal(raw,pointer){
   if(!paidExactKeys(raw,keys)||raw.schemaVersion!==1||raw.current!==pointer||!paidGenerationKey(raw.current)||(raw.previous!==null&&!paidGenerationKey(raw.previous))||!paidUtcIso(raw.committedAt)||raw.maxGenerations!==PAID_COMMIT_MAX_GENERATIONS||!Array.isArray(raw.generations)||!raw.generations.length||raw.generations.length>PAID_COMMIT_MAX_GENERATIONS||raw.generations[0]!==pointer||new Set(raw.generations).size!==raw.generations.length||raw.generations.some(key=>!paidGenerationKey(key)))throw new Error('invalid paid commit journal');
   return raw;
 }
-function withAppStateWriteLock(work){
-  const run=__appStateWriteQueue.then(work,work);
+const PAID_APPSTATE_LOCK_NAME='hyeonjang-paid-appstate-v1';
+function withAppStateWriteLock(work,options){
+  if(typeof work!=='function')return Promise.reject(new Error('invalid appState writer'));
+  const requireCrossTab=!!(options&&options.requireCrossTab),invoke=()=>{
+    const locks=typeof navigator!=='undefined'&&navigator&&navigator.locks;
+    if(locks&&typeof locks.request==='function')return locks.request(PAID_APPSTATE_LOCK_NAME,{mode:'exclusive'},work);
+    if(requireCrossTab)throw new Error('cross-tab paid/appState lock unavailable');
+    return work();
+  };
+  const run=__appStateWriteQueue.then(invoke,invoke);
   __appStateWriteQueue=run.then(()=>undefined,()=>undefined);
   return run;
 }
@@ -26780,7 +26788,16 @@ async function resolvePaidCommitState(){
 function freezePaidMetadata(){
   (state.aptOrders||[]).forEach(order=>{if(order&&order.commercialTerms)order.commercialTerms=Object.freeze({...order.commercialTerms,exclusions:Object.freeze((order.commercialTerms.exclusions||[]).slice())});if(order&&order.commercialApproval)order.commercialApproval=Object.freeze({...order.commercialApproval});});
 }
-function applyPaidCommittedState(data){applyData(paidClone(data),{revert:true});freezePaidMetadata();__tabStamp=data.savedAt;window.__hjRestoreSource='paid-generation';}
+function applyPaidCommittedState(data){
+  const exact=paidClone(data);applyData(paidClone(exact),{revert:true});
+  // applyData's general restore mode preserves absent/falsey legacy values.  A
+  // paid commit/fence has a complete validated schema, so these nullable,
+  // boolean, numeric, and string fields must overwrite changed live memory
+  // exactly before the next queued writer is allowed to serialize it.
+  state.aiOps=paidClone(exact.aiOps);state.coworkTasks=paidClone(exact.coworkTasks);state._coworkInit=exact._coworkInit;
+  state._cwSchedInit=exact._cwSchedInit;state._savedFileCount=exact._savedFileCount;state.kakaoLastAt=exact.kakaoLastAt;state.brand=paidClone(exact.brand);
+  try{hjBrandApplyUI();}catch(e){}freezePaidMetadata();__tabStamp=exact.savedAt;window.__hjRestoreSource='paid-generation';
+}
 function paidCommitRecoveryBanner(){
   try{let banner=document.getElementById('hjPaidCommitRecovery');if(!banner){banner=document.createElement('div');banner.id='hjPaidCommitRecovery';banner.setAttribute('role','alert');banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:100000;background:#9a3412;color:#fff;padding:10px 14px;font-weight:700';banner.textContent='유상 작업은 저장됐지만 화면 갱신에 실패했습니다. 새로고침하면 저장된 작업을 복원합니다.';document.body.appendChild(banner);}}catch(e){}
 }
@@ -27043,13 +27060,21 @@ async function durablePaidMutation({verification,snapshotLabel,mutateDraft,manua
   const deadline=()=>{if(performance.now()>verification.useBeforeMonotonicMs)throw new Error('stale commercial verification');if(__paidApprovalConsumptions.has(key))throw new Error('commercial acknowledgement already consumed');};
   return durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit:deadline,onCommitted:()=>{__paidApprovalConsumptions.add(key);},manualCreateIntent});
 }
-async function persistApprovedAptOrder({draft,commercialTerms,receipt,verification}){
+async function persistApprovedAptOrder({draft,commercialTerms,receipt,verification,conversionInvariant}){
   if(!paidPlainObject(draft)||!Object.isFrozen(draft)||draft.id!==receipt.subjectId||draft.state!=='visit'||(state.aptOrders||[]).some(order=>order.id===draft.id))throw new Error('paid order identity conflict');
   const terms=normalizeCommercialTerms(commercialTerms),approval=normalizeReceipt(receipt,draft.id),{state:_gateState,status:_ignoredStatus,...projection}=draft;
   if(!Number.isInteger(Number(projection.amount))||Number(projection.amount)!==terms.quotedAmount)throw paidGateError('commercial amount mismatch');
   const persisted=Object.freeze({...projection,status:'visit',commercialGateVersion:1,commercialTerms:terms,commercialApproval:approval});
   const manualCreateIntent=draft.source==='manual-paid-diagnosis'?manualPaidCommitIntentDescriptor(draft):undefined;
-  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',manualCreateIntent,mutateDraft:next=>{if(!Array.isArray(next.aptOrders)||(next.aptOrders||[]).some(order=>order.id===persisted.id))throw new Error('paid order identity conflict');next.aptOrders.push(persisted);return persisted;}});
+  const officeOpsInvariant=draft.source==='officeops-preventive-inspection'?officeOpsNormalizeConversionCandidateInvariant(conversionInvariant):null;
+  if(draft.source!=='officeops-preventive-inspection'&&conversionInvariant!==undefined)throw new Error('invalid OfficeOps conversion candidate invariant');
+  return durablePaidMutation({verification,snapshotLabel:'유상 오더 승인 저장',manualCreateIntent,mutateDraft:next=>{
+    if(!Array.isArray(next.aptOrders)||(next.aptOrders||[]).some(order=>order.id===persisted.id))throw new Error('paid order identity conflict');
+    if(officeOpsInvariant)officeOpsAssertConversionCandidate(next,officeOpsInvariant,null);
+    next.aptOrders.push(persisted);
+    if(officeOpsInvariant)officeOpsAssertConversionCandidate(next,officeOpsInvariant,persisted);
+    return persisted;
+  }});
 }
 async function persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms,receipt,verification,visitDate}){
   if(subjectType!=='aptOrder')throw new Error('invalid subject type');
@@ -27071,11 +27096,11 @@ async function persistGatedAptTransition({subjectType,subjectId,targetState,comm
     return order;
   }});
 }
-async function executePaidWorkGate({commandKind,subjectType,subjectId,targetState,commercialTerms,commercialApproval,createDraft,visitDate}){
+async function executePaidWorkGate({commandKind,subjectType,subjectId,targetState,commercialTerms,commercialApproval,createDraft,visitDate,conversionInvariant}){
   const create=commandKind==='create-order',transition=commandKind==='transition-state';
-  if(subjectType!=='aptOrder'||(!create&&!transition)||!['visit','work','billed'].includes(targetState)||(create&&(targetState!=='visit'||!paidPlainObject(createDraft)||!Object.isFrozen(createDraft)||createDraft.id!==subjectId||createDraft.state!=='visit'||visitDate!==undefined))||(transition&&createDraft!==undefined))throw new Error('invalid paid gate command');
+  if(subjectType!=='aptOrder'||(!create&&!transition)||!['visit','work','billed'].includes(targetState)||(create&&(targetState!=='visit'||!paidPlainObject(createDraft)||!Object.isFrozen(createDraft)||createDraft.id!==subjectId||createDraft.state!=='visit'||visitDate!==undefined))||(transition&&(createDraft!==undefined||conversionInvariant!==undefined)))throw new Error('invalid paid gate command');
   const terms=normalizeCommercialTerms(commercialTerms),receipt=normalizeReceipt(commercialApproval,subjectId),verification=await validateCommercialApproval({subjectType,subjectId,commercialTerms:terms,commercialApproval:receipt});
-  return create?persistApprovedAptOrder({draft:createDraft,commercialTerms:terms,receipt,verification}):persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms:terms,receipt,verification,visitDate});
+  return create?persistApprovedAptOrder({draft:createDraft,commercialTerms:terms,receipt,verification,conversionInvariant}):persistGatedAptTransition({subjectType,subjectId,targetState,commercialTerms:terms,receipt,verification,visitDate});
 }
 async function transitionAptOrderWithGate({orderId,targetState,commercialTerms,commercialApproval,nextTerms,visitDate}){
   if(nextTerms!==undefined)throw paidGateError('compound-command-not-allowed');
@@ -27644,6 +27669,43 @@ function officeOpsCanonicalConversionReceipt(raw,subjectId){
   if(JSON.stringify(office)!==JSON.stringify(browser))throw new Error('commercial receipt normalization drift');
   return browser;
 }
+function officeOpsNormalizeConversionCandidateInvariant(raw){
+  const keys=['inspectionId','conversionId','pendingOrderId','receiptId','receiptSubjectType','receiptSubjectId','termsSha256','localOfficeId','complexNameKey','commercialTerms','commercialApproval'];
+  if(!paidExactKeys(raw,keys)||!/^[A-Za-z0-9_-]{1,160}$/.test(raw.localOfficeId||'')||typeof raw.complexNameKey!=='string'||!raw.complexNameKey)throw new Error('invalid OfficeOps conversion candidate invariant');
+  const proof=officeOpsConversionPayload(raw),commercialTerms=officeOpsCanonicalConversionTerms(raw.commercialTerms),commercialApproval=officeOpsCanonicalConversionReceipt(raw.commercialApproval,proof.pendingOrderId);
+  if(commercialApproval.receiptId!==proof.receiptId||commercialApproval.subjectType!==proof.receiptSubjectType||commercialApproval.subjectId!==proof.receiptSubjectId||commercialApproval.approvedTermsSha256!==proof.termsSha256)throw new Error('invalid OfficeOps conversion candidate invariant');
+  return Object.freeze({...proof,localOfficeId:raw.localOfficeId,complexNameKey:raw.complexNameKey,commercialTerms,commercialApproval});
+}
+function officeOpsAssertConversionCandidate(candidate,expectation,appendedOrder){
+  if(!paidPlainObject(candidate)||!Array.isArray(candidate.aptOrders)||!Array.isArray(candidate.aptOffices)||!expectation)throw new Error('OfficeOps conversion candidate conflict');
+  const expected=officeOpsNormalizeConversionCandidateInvariant(expectation),namespace=new Map();
+  const own=(value,owner)=>{if(typeof value!=='string'||value.length===0||namespace.has(value))throw new Error('OfficeOps conversion candidate identity conflict');namespace.set(value,owner);};
+  for(const order of candidate.aptOrders){
+    if(!paidPlainObject(order))throw new Error('OfficeOps conversion candidate conflict');
+    own(order.id,order);
+    if(order.sourceOfficeOpsConversionId!=null)own(order.sourceOfficeOpsConversionId,order);
+    if(order.commercialApproval!=null){const active=normalizeReceipt(order.commercialApproval,order.id);own(active.receiptId,order);}
+    if(order.commercialApprovalAudit!=null){
+      if(!Array.isArray(order.commercialApprovalAudit))throw new Error('OfficeOps conversion candidate audit conflict');
+      for(const audit of order.commercialApprovalAudit){
+        if(!paidPlainObject(audit)||!Object.prototype.hasOwnProperty.call(audit,'previousApproval'))throw new Error('OfficeOps conversion candidate audit conflict');
+        if(audit.previousApproval!==null){const retired=normalizeReceipt(audit.previousApproval,order.id);own(retired.receiptId,order);}
+      }
+    }
+  }
+  const selectedOffices=candidate.aptOffices.filter(row=>row&&row.id===expected.localOfficeId),complexOffices=candidate.aptOffices.filter(row=>row&&officeOpsComplexNameKey(row.complex)===expected.complexNameKey);
+  if(selectedOffices.length!==1||complexOffices.length!==1||complexOffices[0]!==selectedOffices[0])throw new Error('OfficeOps conversion candidate office mapping conflict');
+  const matches=candidate.aptOrders.filter(order=>order&&order.id===expected.pendingOrderId);
+  if(appendedOrder===null){
+    if(matches.length!==0||namespace.has(expected.pendingOrderId)||namespace.has(expected.conversionId)||namespace.has(expected.receiptId))throw new Error('OfficeOps conversion candidate identity conflict');
+    return true;
+  }
+  if(matches.length!==1||matches[0]!==appendedOrder||namespace.get(expected.pendingOrderId)!==matches[0]||namespace.get(expected.conversionId)!==matches[0]||namespace.get(expected.receiptId)!==matches[0])throw new Error('OfficeOps conversion candidate identity conflict');
+  const context={proof:expected,commercialTerms:expected.commercialTerms,commercialApproval:expected.commercialApproval,localOffice:selectedOffices[0]};
+  officeOpsValidateExistingConversionOrder(matches[0],context);
+  if(JSON.stringify(matches[0])!==JSON.stringify(appendedOrder))throw new Error('OfficeOps conversion candidate identity conflict');
+  return true;
+}
 function officeOpsAptOrderDraft(inspection,options){
   const input=options||{},terms=officeOpsCanonicalConversionTerms(input.commercialTerms),localOffice=input.localOffice;
   if(!inspection||!/^inspection_[A-Za-z0-9_-]{1,100}$/.test(inspection.inspectionId||'')||!localOffice||!/^[A-Za-z0-9_-]{1,160}$/.test(localOffice.id||'')||
@@ -27669,13 +27731,13 @@ function officeOpsInspectionConversionActions(raw){
   if(raw.status==='conversion-writing'||raw.status==='conversion-local-committed')return Object.freeze([Object.freeze({action:'resume',label:'전환 재개'})]);
   return Object.freeze([]);
 }
-function officeOpsProofValueInUse(store,inspectionId,value,allowedOrder){
+function officeOpsProofValueInUse(store,inspectionId,value,allowedOrder,localOrders){
   if(!value)return false;
   for(const row of store&&Array.isArray(store.inspections)?store.inspections:[]){
     if(!row||row.inspectionId===inspectionId)continue;
     if([row.conversionId,row.pendingOrderId,row.linkedOrderId,row.conversionReceiptId].includes(value))return true;
   }
-  for(const order of state.aptOrders||[]){
+  for(const order of (Array.isArray(localOrders)?localOrders:(state.aptOrders||[]))){
     if(!order)continue;
     if(order===allowedOrder)continue;
     if(order.id===value||order.sourceOfficeOpsConversionId===value||(order.commercialApproval&&order.commercialApproval.receiptId===value))return true;
@@ -27710,10 +27772,10 @@ function officeOpsAssertUniqueLocalOrderIds(orders){
   }
   return true;
 }
-async function officeOpsAssertDurableConversionOrder(context){
+async function officeOpsAssertDurableConversionOrder(context,suppliedResolved){
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
   if(!context||!context.proof||!context.order||typeof __paidCommitPointerKey!=='string'||typeof __tabStamp!=='string')throw new Error('durable local order identity conflict');
-  const resolved=await resolvePaidCommitState();
+  const resolved=suppliedResolved||await resolvePaidCommitState();
   if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
   const journal=resolved&&resolved.journal,data=resolved&&resolved.data;
   if(!resolved||resolved.source!=='paid-generation'||resolved.pointer!==__paidCommitPointerKey||!journal||journal.current!==resolved.pointer||
@@ -27723,21 +27785,22 @@ async function officeOpsAssertDurableConversionOrder(context){
   if(candidates.length!==1)throw new Error('durable local order identity conflict');
   officeOpsValidateExistingConversionOrder(candidates[0],context);
   if(JSON.stringify(candidates[0])!==JSON.stringify(context.order))throw new Error('durable local order identity conflict');
-  return candidates[0];
+  return Object.freeze({order:candidates[0],data:structuredClone(data),pointer:resolved.pointer,savedAt:data.savedAt});
 }
-async function officeOpsLoadConversionContext(caller,suppliedStore){
+async function officeOpsLoadConversionContext(caller,suppliedStore,localState){
   const input=caller||{},inspectionId=String(input.inspectionId||''),store=suppliedStore||await officeOpsLoad();
   if(__officeOps.mode!=='fresh')throw new Error('office-disabled');
   if(!store||!Array.isArray(store.inspections)||!Number.isInteger(store.revision)||store.revision<0)throw new Error('invalid OfficeOps conversion store');
-  officeOpsAssertUniqueLocalOrderIds(state.aptOrders);
+  const local=localState||state,localOrders=local&&local.aptOrders,localOfficesSource=local&&local.aptOffices;
+  officeOpsAssertUniqueLocalOrderIds(localOrders);
   const matches=store.inspections.filter(row=>row&&row.inspectionId===inspectionId);
   if(matches.length!==1)throw new Error('invalid conversion inspection');
   const inspection=normalizeOfficeInspectionRecord(matches[0]),nameKey=officeOpsComplexNameKey(inspection.complexName);
   if(inspection.archivedAt!==null)throw new Error('invalid conversion state');
-  const localOffices=(state.aptOffices||[]).filter(row=>row&&/^[A-Za-z0-9_-]{1,160}$/.test(row.id||'')&&nameKey&&officeOpsComplexNameKey(row.complex)===nameKey);
+  const localOffices=(Array.isArray(localOfficesSource)?localOfficesSource:[]).filter(row=>row&&/^[A-Za-z0-9_-]{1,160}$/.test(row.id||'')&&nameKey&&officeOpsComplexNameKey(row.complex)===nameKey);
   if(localOffices.length!==1)throw new Error('local office mapping conflict');
   const commercialTerms=officeOpsCanonicalConversionTerms(inspection.commercialTerms),localOffice=localOffices[0];
-  if((state.aptOffices||[]).filter(row=>row&&row.id===localOffice.id).length!==1)throw new Error('local office mapping conflict');
+  if((Array.isArray(localOfficesSource)?localOfficesSource:[]).filter(row=>row&&row.id===localOffice.id).length!==1)throw new Error('local office mapping conflict');
   if(inspection.status==='proposal'){
     const forbidden=['conversionId','pendingOrderId','receiptId','receiptSubjectType','receiptSubjectId','termsSha256','linkedOrderId'];
     if(forbidden.some(key=>Object.prototype.hasOwnProperty.call(input,key)))throw new Error('conversion identity conflict');
@@ -27750,46 +27813,90 @@ async function officeOpsLoadConversionContext(caller,suppliedStore){
   const hash=await sha256Hex(JSON.stringify(commercialTerms));
   if(hash!==proof.termsSha256||commercialApproval.approvedTermsSha256!==hash||(inspection.linkedOrderId!==null&&inspection.linkedOrderId!==proof.pendingOrderId))throw new Error('conversion proof conflict');
   const expected={...proof,linkedOrderId:inspection.linkedOrderId};officeOpsAssertCallerConversionIdentity(input,expected);
-  const candidates=(state.aptOrders||[]).filter(order=>order&&(order.id===proof.pendingOrderId||(inspection.linkedOrderId!==null&&order.id===inspection.linkedOrderId)));
+  const candidates=localOrders.filter(order=>order&&(order.id===proof.pendingOrderId||(inspection.linkedOrderId!==null&&order.id===inspection.linkedOrderId)));
   if(candidates.length>1)throw new Error('duplicate local order identity conflict');
   const context={store,inspection,commercialTerms,commercialApproval,proof,localOffice,order:candidates[0]||null};
   if(context.order)officeOpsValidateExistingConversionOrder(context.order,context);
-  for(const value of [proof.conversionId,proof.pendingOrderId,proof.receiptId])if(officeOpsProofValueInUse(store,inspection.inspectionId,value,context.order))throw new Error('reused conversion proof identity');
+  for(const value of [proof.conversionId,proof.pendingOrderId,proof.receiptId])if(officeOpsProofValueInUse(store,inspection.inspectionId,value,context.order,localOrders))throw new Error('reused conversion proof identity');
   if(inspection.status==='conversion-pending'&&context.order)throw new Error('existing local order identity conflict');
   if(['conversion-local-committed','converted'].includes(inspection.status)&&!context.order)throw new Error('local order identity conflict');
   return Object.freeze(context);
 }
+async function officeOpsFenceDurableConversionCandidate(binding){
+  if(!binding||!paidPlainObject(binding.data)||typeof binding.pointer!=='string'||typeof binding.savedAt!=='string'||!binding.order)throw new Error('OfficeOps durable fence conflict');
+  const candidate=structuredClone(binding.data),baseMs=Date.parse(binding.savedAt);
+  if(!Number.isFinite(baseMs)||candidate.savedAt!==binding.savedAt)throw new Error('OfficeOps durable fence conflict');
+  candidate.savedAt=new Date(Math.max(Date.now(),baseMs+1)).toISOString();validatePaidSerializedState(candidate);
+  const ok=await guardedAppStateWriteAtomic(candidate,binding.pointer,binding.savedAt,null);
+  if(ok!==true)throw new Error('OfficeOps durable fence conflict');
+  const order=(candidate.aptOrders||[]).filter(row=>row&&row.id===binding.order.id);
+  if(order.length!==1||JSON.stringify(order[0])!==JSON.stringify(binding.order))throw new Error('OfficeOps durable fence conflict');
+  __paidCommitPointerKey=binding.pointer;__paidCommitRecoveryMalformedPointer=false;__paidCommitRecoverySnapshot=null;applyPaidCommittedState(candidate);
+  try{if(__tabBC)__tabBC.postMessage({t:'saved',at:candidate.savedAt});}catch(e){}
+  return Object.freeze({order:order[0],data:structuredClone(candidate),pointer:binding.pointer,savedAt:candidate.savedAt});
+}
+function officeOpsConversionFenceRecoveryError(error){
+  try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}
+  const failure=new Error('OfficeOps durable fence recovery required: '+String(error&&error.message||error||'conflict'));failure.cause=error;return failure;
+}
+function officeOpsConversionStageFromStore(caller,store){
+  const inspectionId=String(caller&&caller.inspectionId||''),rows=store&&Array.isArray(store.inspections)?store.inspections.filter(row=>row&&row.inspectionId===inspectionId):[];
+  if(rows.length!==1)throw new Error('invalid conversion inspection');
+  return normalizeOfficeInspectionRecord(rows[0]);
+}
+async function officeOpsTerminalConversionStep(caller){
+  return withAppStateWriteLock(async()=>{
+    if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
+    let store=await officeOpsLoad(),resolved=await resolvePaidCommitState(),inspection=officeOpsConversionStageFromStore(caller,store),durableOrders=resolved&&resolved.data&&resolved.data.aptOrders;
+    officeOpsAssertUniqueLocalOrderIds(Array.isArray(durableOrders)?durableOrders:[]);
+    const durableTargets=(Array.isArray(durableOrders)?durableOrders:[]).filter(order=>order&&(order.id===inspection.pendingOrderId||(inspection.linkedOrderId!==null&&order.id===inspection.linkedOrderId)));
+    if(inspection.status==='conversion-writing'&&durableTargets.length===0){
+      const liveTargets=(state.aptOrders||[]).filter(order=>order&&(order.id===inspection.pendingOrderId||(inspection.linkedOrderId!==null&&order.id===inspection.linkedOrderId)));
+      if(liveTargets.length)throw new Error('durable local order identity conflict');
+      return Object.freeze({done:false,needsCreate:true,inspection:null,store,identity:caller});
+    }
+    let context=await officeOpsLoadConversionContext(caller,store,resolved&&resolved.data);
+    if(!['conversion-writing','conversion-local-committed','converted'].includes(context.inspection.status)||!context.order)throw new Error('local order identity conflict');
+    let binding=await officeOpsAssertDurableConversionOrder(context,resolved);
+    await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
+    store=await officeOpsLoad();resolved=await resolvePaidCommitState();context=await officeOpsLoadConversionContext(caller,store,resolved&&resolved.data);
+    if(!['conversion-writing','conversion-local-committed','converted'].includes(context.inspection.status)||!context.order)throw new Error('local order identity conflict');
+    binding=await officeOpsAssertDurableConversionOrder(context,resolved);
+    binding=await officeOpsFenceDurableConversionCandidate(binding);
+    if(context.inspection.status==='converted')return Object.freeze({done:true,needsCreate:false,inspection:context.inspection,store:context.store,identity:context.proof});
+    const action=context.inspection.status==='conversion-writing'?'officeInspectionRecordLocalCommit':'officeInspectionFinalizeConversion';
+    const payload={...context.proof,linkedOrderId:context.proof.pendingOrderId,expectedRevision:context.store.revision};
+    let result=null,requestError=null,postFenceError=null;
+    try{result=await officeOpsMutationWithAck(action,payload);}catch(error){requestError=error;}
+    try{binding=await officeOpsFenceDurableConversionCandidate(binding);}catch(error){postFenceError=error;}
+    if(postFenceError)throw officeOpsConversionFenceRecoveryError(postFenceError);
+    if(requestError)throw requestError;
+    return Object.freeze({done:false,needsCreate:false,inspection:null,store:result.store,identity:{...context.proof,linkedOrderId:context.proof.pendingOrderId}});
+  },{requireCrossTab:true});
+}
 async function officeOpsDriveInspectionConversion(caller,initialStore){
   let store=initialStore||await officeOpsLoad(),identity=caller;
   for(let step=0;step<7;step+=1){
-    let context=await officeOpsLoadConversionContext(identity,store);
-    if(context.inspection.status==='proposal')throw new Error('invalid conversion state');
-    const durableBound=(context.inspection.status==='conversion-writing'&&context.order)||['conversion-local-committed','converted'].includes(context.inspection.status);
-    if(durableBound)await officeOpsAssertDurableConversionOrder(context);
-    await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
-    if(durableBound)await officeOpsAssertDurableConversionOrder(context);
-    if(context.inspection.status==='converted')return context.inspection;
-    if(context.inspection.status==='conversion-pending'){
+    const stage=officeOpsConversionStageFromStore(identity,store);
+    if(stage.status==='proposal')throw new Error('invalid conversion state');
+    if(stage.status==='conversion-pending'){
+      const context=await officeOpsLoadConversionContext(identity,store);
+      await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
       const result=await officeOpsMutationWithAck('officeInspectionArmLocalCommit',{...context.proof,expectedRevision:context.store.revision});store=result.store;identity=context.proof;continue;
     }
-    if(context.inspection.status==='conversion-writing'){
-      if(!context.order){
+    if(['conversion-writing','conversion-local-committed','converted'].includes(stage.status)){
+      const terminal=await officeOpsTerminalConversionStep(identity);
+      if(terminal.done)return terminal.inspection;
+      if(terminal.needsCreate){
+        const context=await officeOpsLoadConversionContext(identity,terminal.store);
+        if(context.inspection.status!=='conversion-writing'||context.order)throw new Error('local order identity conflict');
+        await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
         const draft=officeOpsAptOrderDraft(context.inspection,{conversionId:context.proof.conversionId,pendingOrderId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,localOffice:context.localOffice});
-        await executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,targetState:'visit',commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval,createDraft:draft});
+        const conversionInvariant=Object.freeze({...context.proof,localOfficeId:context.localOffice.id,complexNameKey:officeOpsComplexNameKey(context.inspection.complexName),commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
+        await executePaidWorkGate({commandKind:'create-order',subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,targetState:'visit',commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval,createDraft:draft,conversionInvariant});
+        store=await officeOpsLoad();continue;
       }
-      store=await officeOpsLoad();context=await officeOpsLoadConversionContext(identity,store);
-      if(context.inspection.status!=='conversion-writing')continue;
-      if(!context.order)throw new Error('local order identity conflict');
-      await officeOpsAssertDurableConversionOrder(context);
-      await validateCommercialApproval({subjectType:'aptOrder',subjectId:context.proof.pendingOrderId,commercialTerms:context.commercialTerms,commercialApproval:context.commercialApproval});
-      await officeOpsAssertDurableConversionOrder(context);
-      const result=await officeOpsMutationWithAck('officeInspectionRecordLocalCommit',{...context.proof,linkedOrderId:context.proof.pendingOrderId,expectedRevision:context.store.revision});
-      store=result.store;identity={...context.proof,linkedOrderId:context.proof.pendingOrderId};continue;
-    }
-    if(context.inspection.status==='conversion-local-committed'){
-      if(!context.order||context.inspection.linkedOrderId!==context.proof.pendingOrderId)throw new Error('local order identity conflict');
-      const result=await officeOpsMutationWithAck('officeInspectionFinalizeConversion',{...context.proof,linkedOrderId:context.proof.pendingOrderId,expectedRevision:context.store.revision});
-      store=result.store;identity={...context.proof,linkedOrderId:context.proof.pendingOrderId};continue;
+      store=terminal.store;identity=terminal.identity;continue;
     }
     throw new Error('invalid conversion state');
   }
@@ -27818,27 +27925,29 @@ async function resumeOfficeOpsInspectionConversion(caller){
 async function cancelOfficeOpsInspectionConversion(caller){
   const input=caller||{};
   if(__officeOps.mode!=='fresh'||!__officeOps.cache||!Array.isArray(__officeOps.cache.inspections))throw new Error('conversion cancel unavailable');
+  if(!Number.isInteger(input.expectedRevision)||input.expectedRevision<0||__officeOps.cache.revision!==input.expectedRevision||__officeOps.revision!==input.expectedRevision)throw new Error('conversion cancel conflict');
   const cached=__officeOps.cache.inspections.filter(row=>row&&row.inspectionId===input.inspectionId);
   if(cached.length!==1||cached[0].status!=='conversion-pending'||cached[0].conversionId!==input.conversionId)throw new Error('conversion cancel conflict');
   const store=await officeOpsLoad(),context=await officeOpsLoadConversionContext(input,store);
-  if(__officeOps.mode!=='fresh'||context.inspection.status!=='conversion-pending'||
-    (Object.prototype.hasOwnProperty.call(input,'expectedRevision')&&input.expectedRevision!==context.store.revision))throw new Error('conversion cancel conflict');
-  return (await officeOpsMutationWithAck('officeInspectionCancelConversion',{inspectionId:context.inspection.inspectionId,conversionId:context.inspection.conversionId,expectedRevision:context.store.revision})).store;
+  if(__officeOps.mode!=='fresh'||context.inspection.status!=='conversion-pending'||input.expectedRevision!==context.store.revision)throw new Error('conversion cancel conflict');
+  return (await officeOpsMutationWithAck('officeInspectionCancelConversion',{inspectionId:context.inspection.inspectionId,conversionId:context.inspection.conversionId,expectedRevision:input.expectedRevision})).store;
 }
-function officeOpsConversionCallerForInspection(inspectionId){
+function officeOpsConversionCallerForInspection(inspectionId,expectedRevision){
   if(__officeOps.mode!=='fresh'||!__officeOps.cache||!Array.isArray(__officeOps.cache.inspections))throw new Error('office-disabled');
+  const hasRevision=expectedRevision!==undefined;if(hasRevision&&(!Number.isInteger(expectedRevision)||expectedRevision<0))throw new Error('invalid conversion revision');
   const rows=__officeOps.cache.inspections.filter(row=>row&&row.inspectionId===inspectionId);
   if(rows.length!==1)throw new Error('invalid conversion inspection');
   const inspection=normalizeOfficeInspectionRecord(rows[0]);
   if(!['conversion-pending','conversion-writing','conversion-local-committed','converted'].includes(inspection.status))throw new Error('invalid conversion state');
   const receipt=officeOpsCanonicalConversionReceipt(inspection.commercialApproval,inspection.pendingOrderId);
   return Object.freeze({...officeOpsConversionPayload({inspectionId:inspection.inspectionId,conversionId:inspection.conversionId,pendingOrderId:inspection.pendingOrderId,
-    receiptId:inspection.conversionReceiptId,receiptSubjectType:receipt.subjectType,receiptSubjectId:receipt.subjectId,termsSha256:inspection.conversionTermsSha256}),linkedOrderId:inspection.linkedOrderId});
+    receiptId:inspection.conversionReceiptId,receiptSubjectType:receipt.subjectType,receiptSubjectId:receipt.subjectId,termsSha256:inspection.conversionTermsSha256}),linkedOrderId:inspection.linkedOrderId,...(hasRevision?{expectedRevision}: {})});
 }
-function officeOpsInspectionCardHtml(row){
+function officeOpsInspectionCardHtml(row,renderedRevision){
+  if(!Number.isInteger(renderedRevision)||renderedRevision<0)throw new Error('invalid OfficeOps rendered revision');
   const actions=officeOpsInspectionConversionActions(row),inFlight=['conversion-pending','conversion-writing','conversion-local-committed'].includes(row.status);
   const buttons=actions.map(item=>'<button type="button" class="'+(item.action==='cancel'?'ghost':'clay')+' tiny" data-officeops-'+item.action+' data-officeops-action="'+item.action+'" style="min-height:44px;padding:9px 12px">'+escapeHtml(item.label)+'</button>').join('');
-  return '<article data-officeops-inspection="'+escapeAttr(row.inspectionId)+'" data-officeops-status="'+escapeAttr(row.status)+'" aria-busy="false"'+(inFlight?' data-officeops-inflight="true"':'')+' style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px;min-width:0;overflow:hidden"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(row.status)+' · '+escapeHtml(row.nextDueAt)+'</div>'+(buttons?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+buttons+'</div>':'')+'<div data-officeops-conversion-status role="status" aria-live="polite" style="font-size:11px;color:var(--muted-2);min-height:16px;margin-top:4px"></div></article>';
+  return '<article data-officeops-inspection="'+escapeAttr(row.inspectionId)+'" data-officeops-status="'+escapeAttr(row.status)+'" data-officeops-revision="'+escapeAttr(String(renderedRevision))+'" aria-busy="false"'+(inFlight?' data-officeops-inflight="true"':'')+' style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px;min-width:0;overflow:hidden"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(row.status)+' · '+escapeHtml(row.nextDueAt)+'</div>'+(buttons?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+buttons+'</div>':'')+'<div data-officeops-conversion-status role="status" aria-live="polite" style="font-size:11px;color:var(--muted-2);min-height:16px;margin-top:4px"></div></article>';
 }
 function officeOpsSetConversionBusy(container,busy,message){
   if(!container)return false;
@@ -27912,14 +28021,14 @@ function openOfficeOpsConversionModal(inspectionId){
 }
 function officeOpsWireConversionActions(root){
   root.querySelectorAll('[data-officeops-inspection]').forEach(card=>{
-    const inspectionId=String(card.dataset.officeopsInspection||'');
+    const inspectionId=String(card.dataset.officeopsInspection||''),renderedRevision=Number(card.dataset.officeopsRevision);
     card.querySelectorAll('button[data-officeops-action]').forEach(button=>{button.onclick=async()=>{
       if(card.dataset.officeopsBusy==='true')return;
       const action=String(button.dataset.officeopsAction||'');
       if(action==='convert'){openOfficeOpsConversionModal(inspectionId);return;}
       officeOpsSetConversionBusy(card,true,action==='cancel'?'전환 취소 상태 확인 중…':'전환 재개 상태 확인 중…');
       try{
-        const caller=officeOpsConversionCallerForInspection(inspectionId);
+        const caller=officeOpsConversionCallerForInspection(inspectionId,renderedRevision);
         if(action==='resume')await resumeOfficeOpsInspectionConversion(caller);else if(action==='cancel')await cancelOfficeOpsInspectionConversion(caller);else throw new Error('invalid conversion action');
         officeOpsSetConversionBusy(card,false);await officeOpsView('inspections');
       }catch(error){
@@ -27938,7 +28047,7 @@ function officeOpsPanelHtml(tab,store,mode){
     let body='';
     if(name==='pilots')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">단계 '+escapeHtml(row.stage)+' · 다음 행동 '+escapeHtml(row.nextActionAt)+'</div>'+(row.stage==='pilot'?'<div style="font-size:12px;margin-top:5px">기간 '+escapeHtml(row.pilotStartedAt)+' ~ '+escapeHtml(row.pilotEndsAt)+(row.extensionApprovedAt?' · 서버 기록상 변경 '+escapeHtml(row.extensionApprovedAt):'')+'</div>':'')+'</article>').join('');
     else if(name==='consents')body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.subjectId)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">'+escapeHtml(String(row.intervalMonths))+'개월 · '+escapeHtml(row.consentedAt)+(row.withdrawnAt?' · 철회됨':' · 유효')+'</div></article>').join('');
-    else if(name==='inspections')body=rows.map(row=>officeOpsInspectionCardHtml(row)).join('');
+    else if(name==='inspections')body=rows.map(row=>officeOpsInspectionCardHtml(row,store.revision)).join('');
     else body=rows.map(row=>'<article style="border:1px solid var(--line-soft);border-radius:10px;padding:11px;margin-bottom:8px"><b>'+escapeHtml(row.complexName)+'</b><div style="font-size:12px;color:var(--muted-2);margin-top:4px">마감 '+escapeHtml(row.deadlineAt)+' · 서버 확인 후 검토</div><a href="'+escapeAttr(row.officialUrl)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">K-apt 공식 공고 수동 열기</a></article>').join('');
     return '<section role="tabpanel" id="officeOpsPanel-'+name+'" aria-labelledby="officeOpsTab-'+name+'"'+(name===tab?'':' hidden')+'>'+(body||empty)+'</section>';
   }).join('');
