@@ -149,7 +149,10 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
   }
   const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
-  const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|relay_queue|relay_url|relay_token|APP_TOKEN|officeIntake|OfficeIntake/i;
+  const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|queueHeicPreview|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|APP_TOKEN|officeIntake|OfficeIntake/i;
+  for (const snippet of ['__relay.token', 'RELAY_URL_DEFAULT', "idbGet('relay_queue')", '__gdToken', 'GD_FOLDER_ID', 'queueHeicPreview(file)', 'photoUploadQueue(item)']) {
+    assert.match(snippet, forbiddenReferences, 'relay/photo/Drive fixture must be rejected: ' + snippet);
+  }
   for (const name of isolatedFunctions) assert.doesNotMatch(extractFunction(name), forbiddenReferences, name + ' is isolated from app state, relay, and OfficeIntake');
   assert.doesNotMatch(extractFunction('commercialCall'), forbiddenReferences, 'commercialCall static transport boundary is isolated from state, relay, and OfficeIntake');
   console.log('PASS  OfficeOps isolated envelopes, acknowledgements, cache ownership, and legacy boundaries');
