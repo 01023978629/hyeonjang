@@ -26534,14 +26534,40 @@ function paidUtcIso(value){if(typeof value!=='string')return false;const ms=Date
 function paidGenerationKey(value){return typeof value==='string'&&new RegExp('^'+PAID_COMMIT_GENERATION_PREFIX+'[A-Za-z0-9_-]{1,160}$').test(value);}
 function paidClone(value){return JSON.parse(JSON.stringify(value));}
 function paidObservedClone(value){return structuredClone(value);}
-function paidSameValue(left,right,seen){
+function paidSameBytes(left,right){const a=new Uint8Array(left),b=new Uint8Array(right);if(a.byteLength!==b.byteLength)return false;for(let index=0;index<a.byteLength;index++)if(a[index]!==b[index])return false;return true;}
+async function paidSameValue(left,right,graph){
   if(Object.is(left,right))return true;
-  if(!left||!right||typeof left!=='object'||typeof right!=='object')return false;
-  seen=seen||new WeakMap();if(seen.has(left))return seen.get(left)===right;seen.set(left,right);
-  if(Array.isArray(left)||Array.isArray(right))return Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&left.every((value,index)=>paidSameValue(value,right[index],seen));
-  if(left instanceof Date||right instanceof Date)return left instanceof Date&&right instanceof Date&&left.getTime()===right.getTime();
-  if(!paidPlainObject(left)||!paidPlainObject(right))return false;
-  const leftKeys=Object.keys(left),rightKeys=Object.keys(right);return leftKeys.length===rightKeys.length&&leftKeys.every(key=>Object.prototype.hasOwnProperty.call(right,key)&&paidSameValue(left[key],right[key],seen));
+  if(left===null||right===null||typeof left!=='object'||typeof right!=='object')return false;
+  graph=graph||{left:new WeakMap(),right:new WeakMap()};const leftSeen=graph.left.has(left),rightSeen=graph.right.has(right);if(leftSeen||rightSeen)return leftSeen&&rightSeen&&graph.left.get(left)===right&&graph.right.get(right)===left;
+  const tag=Object.prototype.toString.call(left);if(tag!==Object.prototype.toString.call(right))return false;graph.left.set(left,right);graph.right.set(right,left);
+  const sameProperties=async()=>{const leftKeys=Object.keys(left),rightKeys=Object.keys(right);if(leftKeys.length!==rightKeys.length||leftKeys.some((key,index)=>key!==rightKeys[index]))return false;for(const key of leftKeys)if(!await paidSameValue(left[key],right[key],graph))return false;return true;};
+  if(Array.isArray(left))return left.length===right.length&&await sameProperties();
+  if(tag==='[object Date]')return Object.is(left.getTime(),right.getTime())&&await sameProperties();
+  if(tag==='[object RegExp]')return left.source===right.source&&left.flags===right.flags&&left.lastIndex===right.lastIndex&&await sameProperties();
+  if(tag==='[object Blob]'||tag==='[object File]'){
+    if(left.size!==right.size||left.type!==right.type)return false;
+    if(tag==='[object File]'&&(left.name!==right.name||left.lastModified!==right.lastModified||left.webkitRelativePath!==right.webkitRelativePath))return false;
+    const buffers=await Promise.all([left.arrayBuffer(),right.arrayBuffer()]);return paidSameBytes(buffers[0],buffers[1])&&await sameProperties();
+  }
+  if(tag==='[object ArrayBuffer]'||tag==='[object SharedArrayBuffer]')return paidSameBytes(left,right)&&await sameProperties();
+  if(ArrayBuffer.isView(left)||ArrayBuffer.isView(right)){
+    if(!ArrayBuffer.isView(left)||!ArrayBuffer.isView(right)||left.byteOffset!==right.byteOffset||left.byteLength!==right.byteLength||('length'in left&&left.length!==right.length))return false;
+    return await paidSameValue(left.buffer,right.buffer,graph)&&await sameProperties();
+  }
+  if(tag==='[object Map]'){
+    if(left.size!==right.size)return false;const leftEntries=left.entries(),rightEntries=right.entries();for(let index=0;index<left.size;index++){const leftEntry=leftEntries.next().value,rightEntry=rightEntries.next().value;if(!await paidSameValue(leftEntry[0],rightEntry[0],graph)||!await paidSameValue(leftEntry[1],rightEntry[1],graph))return false;}return await sameProperties();
+  }
+  if(tag==='[object Set]'){
+    if(left.size!==right.size)return false;const leftValues=left.values(),rightValues=right.values();for(let index=0;index<left.size;index++)if(!await paidSameValue(leftValues.next().value,rightValues.next().value,graph))return false;return await sameProperties();
+  }
+  if(['[object Boolean]','[object Number]','[object String]','[object BigInt]'].includes(tag))return Object.is(left.valueOf(),right.valueOf())&&await sameProperties();
+  if(tag==='[object Object]'){const leftNull=Object.getPrototypeOf(left)===null,rightNull=Object.getPrototypeOf(right)===null;return leftNull===rightNull&&await sameProperties();}
+  throw new Error('unsupported paid recovery structured clone value '+tag);
+}
+function comparePaidRecoveryInTransaction(store,left,right,oncomplete,onerror){
+  let settled=false,result=false,failure=null,finished=false;const fail=error=>{if(finished)return;finished=true;onerror(error);};
+  const pulse=()=>{let request=null;try{request=store.get('paid_commit_pointer');}catch(error){fail(error);return;}request.onerror=()=>fail(request.error||new Error('paid recovery keep-alive failed'));request.onsuccess=()=>{if(finished)return;if(!settled){pulse();return;}finished=true;if(failure)onerror(failure);else oncomplete(result);};};
+  pulse();Promise.resolve().then(()=>paidSameValue(left,right)).then(value=>{result=value;settled=true;},error=>{failure=error;settled=true;});
 }
 function readPaidGenerationRecords(store,oncomplete,onerror){
   if(!store||typeof store.getAllKeys!=='function'){oncomplete([],false);return;}
@@ -26605,11 +26631,12 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
         if(!paidUtcIso(expectedStamp)||currentData===undefined)return false;
         (paid?validatePaidSerializedState:validateLegacyAppState)(currentData);return currentData.savedAt===expectedStamp;
       }catch(_){return false;}};
-      const repair=(rawPointer)=>{if(!paidPlainObject(recoverySnapshot)||!paidSameValue(rawPointer,recoverySnapshot.pointer)){abortConflict();return;}
-        read('paid_commit_journal',currentJournal=>{if(!paidSameValue(currentJournal,recoverySnapshot.journal)){abortConflict();return;}
-          read('appState',currentApp=>{if(!paidSameValue(currentApp,recoverySnapshot.appState)){abortConflict();return;}
-            readPaidGenerationRecords(store,(currentRecords,supported)=>{if(!supported||recoverySnapshot.generationEnumerationSupported!==true||!paidSameValue(currentRecords,recoverySnapshot.generationRecords)){abortConflict();return;}
-              currentRecords.forEach(record=>store.delete(record.key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');
+      const repair=(rawPointer)=>{if(!paidPlainObject(recoverySnapshot)||!Object.is(rawPointer,recoverySnapshot.pointer)){abortConflict();return;}
+        read('paid_commit_journal',currentJournal=>{
+          read('appState',currentApp=>{
+            readPaidGenerationRecords(store,(currentRecords,supported)=>{if(!supported||recoverySnapshot.generationEnumerationSupported!==true){abortConflict();return;}
+              const currentSnapshot={pointer:rawPointer,journal:currentJournal,appState:currentApp,generationRecords:currentRecords},expectedSnapshot={pointer:recoverySnapshot.pointer,journal:recoverySnapshot.journal,appState:recoverySnapshot.appState,generationRecords:recoverySnapshot.generationRecords};
+              comparePaidRecoveryInTransaction(store,currentSnapshot,expectedSnapshot,same=>{if(!same){abortConflict();return;}currentRecords.forEach(record=>store.delete(record.key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');},abort);
             },abort);
           },'appState recovery read failed');
         },'paid journal recovery read failed');
