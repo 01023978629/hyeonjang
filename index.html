@@ -1425,49 +1425,52 @@ function officeIntakeSnapshot(value){
     cursor:String(source.cursor||''),lastSyncAt:String(source.lastSyncAt||''),lastError:String(source.lastError||'')
   };
 }
-function serializeData(){
+function serializeData(source,savedAt){
+  const supplied=arguments.length>0,current=supplied?source:state;
+  if(!current||typeof current!=='object')throw new Error('invalid serialized state source');
   return {
-    version:2, app:'현장', savedAt:new Date().toISOString(),
-    learn:state.learn||{estimateByBiz:{}},
-    quotes:state.quotes||[],
-    schedule:state.schedule||[],
-    calendarImports:state.calendarImports||[],
-    notes:state.notes||[],
-    priceBook:state.priceBook||{},
-    asLog:state.asLog||[],
-    aptOffices:state.aptOffices||[],
-    aptOrders:state.aptOrders||[],
-    officeIntake:officeIntakeSnapshot(state.officeIntake),
-    aptRates:state.aptRates||[],
-    monthClosed:state.monthClosed||{},
-    quoteSets:state.quoteSets||[],
-    trips:state.trips||[],
-    tripCfg:state.tripCfg||{},
-    workLogs:state.workLogs||[],
-    claudeDone:(state.claudeDone||[]).slice(-500),   // 처리한 클로드 요청 id — 기기끼리 공유해야 두 번 적용되지 않는다
-    satisfaction:state.satisfaction||[],
-    adPosts:state.adPosts||[],
-    portalCfg:state.portalCfg||{},
-    _savedFileCount:(state.files||[]).length,
-    kakaoLastAt:state.kakaoLastAt||'',
-    coworkTasks:state.coworkTasks||null,
-    coworkSched:state.coworkSched||[],
-    _cwSchedInit:state._cwSchedInit||false,
-    _coworkInit:state._coworkInit||false,
-    payLog:(state.payLog||[]).slice(-5000),   // 장부 보존: 1인 시공사 수년치 여유(과거 수금 이력 유실 방지)
-    expenses:(state.expenses||[]).slice(-8000),
-    goals:state.goals||{},
-    aiOps:state.aiOps||null,
-    suppliers:state.suppliers||[],
-    supplierMap:state.supplierMap||{},
-    inventory:state.inventory||[],
-    brand:state.brand||null,
-    contacts:state.contacts||[],
-    projects:(state.projects||[]).map(projectBackupSafe),
-    files:state.files.filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:f.text||'',ocr:f.ocr,est:f.est,exSum:f.exSum||false,ledger:f.ledger||null,quote:f.quote||null,contact:f.contact,address:f.address,phase:f._phase||null,worklabel:f._worklabel||null,gdFolder:f._gdFolder||null,
-      driveId:f._driveId||null,driveMimeType:f._driveMimeType||null,driveSize:Number(f._driveSize)||0,size:f.size||0,
-      lat:f.lat,lng:f.lng,when:f.when?f.when.toISOString():null}))
+    version:2, app:'현장', savedAt:savedAt!==undefined?savedAt:new Date().toISOString(),
+    learn:supplied?current.learn:(current.learn||{estimateByBiz:{}}),
+    quotes:supplied?current.quotes:(current.quotes||[]),
+    schedule:supplied?current.schedule:(current.schedule||[]),
+    calendarImports:supplied?current.calendarImports:(current.calendarImports||[]),
+    notes:supplied?current.notes:(current.notes||[]),
+    priceBook:supplied?current.priceBook:(current.priceBook||{}),
+    asLog:supplied?current.asLog:(current.asLog||[]),
+    aptOffices:supplied?current.aptOffices:(current.aptOffices||[]),
+    aptOrders:supplied?current.aptOrders:(current.aptOrders||[]),
+    officeIntake:officeIntakeSnapshot(current.officeIntake),
+    aptRates:supplied?current.aptRates:(current.aptRates||[]),
+    monthClosed:supplied?current.monthClosed:(current.monthClosed||{}),
+    quoteSets:supplied?current.quoteSets:(current.quoteSets||[]),
+    trips:supplied?current.trips:(current.trips||[]),
+    tripCfg:supplied?current.tripCfg:(current.tripCfg||{}),
+    workLogs:supplied?current.workLogs:(current.workLogs||[]),
+    claudeDone:(supplied?current.claudeDone:(current.claudeDone||[])).slice(-500),   // 처리한 클로드 요청 id — 기기끼리 공유해야 두 번 적용되지 않는다
+    satisfaction:supplied?current.satisfaction:(current.satisfaction||[]),
+    adPosts:supplied?current.adPosts:(current.adPosts||[]),
+    portalCfg:supplied?current.portalCfg:(current.portalCfg||{}),
+    _savedFileCount:supplied?current._savedFileCount:(current.files||[]).length,
+    kakaoLastAt:supplied?current.kakaoLastAt:(current.kakaoLastAt||''),
+    coworkTasks:supplied?current.coworkTasks:(current.coworkTasks||null),
+    coworkSched:supplied?current.coworkSched:(current.coworkSched||[]),
+    _cwSchedInit:supplied?current._cwSchedInit:(current._cwSchedInit||false),
+    _coworkInit:supplied?current._coworkInit:(current._coworkInit||false),
+    payLog:(supplied?current.payLog:(current.payLog||[])).slice(-5000),   // 장부 보존: 1인 시공사 수년치 여유(과거 수금 이력 유실 방지)
+    expenses:(supplied?current.expenses:(current.expenses||[])).slice(-8000),
+    goals:supplied?current.goals:(current.goals||{}),
+    aiOps:supplied?current.aiOps:(current.aiOps||null),
+    suppliers:supplied?current.suppliers:(current.suppliers||[]),
+    supplierMap:supplied?current.supplierMap:(current.supplierMap||{}),
+    inventory:supplied?current.inventory:(current.inventory||[]),
+    brand:supplied?current.brand:(current.brand||null),
+    contacts:supplied?current.contacts:(current.contacts||[]),
+    projects:(supplied?current.projects:(current.projects||[])).map(projectBackupSafe),
+    files:(Array.isArray(current.files)?current.files:[]).filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
+      text:supplied?f.text:(f.text||''),ocr:f.ocr,est:f.est,exSum:supplied?f.exSum:(f.exSum||false),ledger:supplied?f.ledger:(f.ledger||null),quote:supplied?f.quote:(f.quote||null),contact:f.contact,address:f.address,
+      phase:supplied?f._phase:(f._phase||null),worklabel:supplied?f._worklabel:(f._worklabel||null),gdFolder:supplied?f._gdFolder:(f._gdFolder||null),
+      driveId:supplied?f._driveId:(f._driveId||null),driveMimeType:supplied?f._driveMimeType:(f._driveMimeType||null),driveSize:supplied?f._driveSize:(Number(f._driveSize)||0),size:supplied?f.size:(f.size||0),
+      lat:f.lat,lng:f.lng,when:f.when==null?null:(f.when instanceof Date?f.when.toISOString():new Date(f.when).toISOString())}))
   };
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
@@ -17675,6 +17678,11 @@ function aiOpsBootCheck(){
     aiOpsRunDueLoops('boot');
   }catch(e){}
 }
+function aiOpsExistingStateReady(){
+  const current=state.aiOps;if(!current||typeof current!=='object'||Array.isArray(current))return false;
+  let probe=null,before='';try{before=JSON.stringify(current);probe=typeof structuredClone==='function'?structuredClone(current):JSON.parse(before);}catch(e){return false;}
+  const live=state.aiOps;try{state.aiOps=probe;aiOpsEnsureState();return JSON.stringify(state.aiOps)===before;}catch(e){return false;}finally{state.aiOps=live;}
+}
 function aiOpsVisibilityCheck(){
   try{
     const o=aiOpsEnsureState();if(!o.enabled)return;
@@ -26703,6 +26711,7 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
 }
 async function guardedPersistCurrentState(){
   return withAppStateWriteLock(async()=>{
+    if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
     if(state._demo)return false;
     const data=serializeData(),baseMs=Date.parse(__tabStamp||''),candidateMs=Date.parse(data.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))data.savedAt=new Date(baseMs+1).toISOString();validatePaidSerializedState(data);
     const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoverySnapshot);
@@ -26788,15 +26797,74 @@ async function resolvePaidCommitState(){
 function freezePaidMetadata(){
   (state.aptOrders||[]).forEach(order=>{if(order&&order.commercialTerms)order.commercialTerms=Object.freeze({...order.commercialTerms,exclusions:Object.freeze((order.commercialTerms.exclusions||[]).slice())});if(order&&order.commercialApproval)order.commercialApproval=Object.freeze({...order.commercialApproval});});
 }
+function paidExactFileMatchKey(value,serialized){
+  const file=value||{},key=serialized?file.key:fileKey(file);
+  return JSON.stringify([file.name,file.prefix,file.size,key]);
+}
+function paidCloneOptional(value){return value===undefined?undefined:paidClone(value);}
+function paidExactSameLocalResource(matched,saved){
+  if(!matched)return false;
+  const fileMatches=file=>!!(file&&file.name===saved.name&&file.size===saved.size),handleMatches=!!(matched.handle&&matched.handle.name===saved.name);
+  return handleMatches||fileMatches(matched._file)||fileMatches(matched._heicFile);
+}
+function paidExactRuntimeFiles(candidateFiles,currentFiles){
+  if(!Array.isArray(candidateFiles)||!Array.isArray(currentFiles))throw new Error('paid exact files conflict');
+  const queues=new Map();
+  currentFiles.filter(file=>file&&!file._fromQuote).forEach(file=>{const key=paidExactFileMatchKey(file,false);if(!queues.has(key))queues.set(key,[]);queues.get(key).push(file);});
+  return candidateFiles.map(saved=>{
+    if(!paidPlainObject(saved))throw new Error('paid exact file conflict');
+    const queue=queues.get(paidExactFileMatchKey(saved,true)),matched=queue&&queue.length?queue.shift():null;
+    const when=saved.when==null?null:new Date(saved.when);if(when&&(!Number.isFinite(when.getTime())||when.toISOString()!==saved.when))throw new Error('paid exact file time conflict');
+    const sameLocal=paidExactSameLocalResource(matched,saved),sameDrive=!!(matched&&saved.driveId&&matched._driveId===saved.driveId);
+    return {
+      id:matched&&matched.id!=null?matched.id:uid(),name:saved.name,handle:matched?matched.handle:null,prefix:saved.prefix,ext:matched&&matched.ext!=null?matched.ext:bestExt(saved.name,''),size:saved.size,
+      kind:saved.kind,project:saved.project,when,lat:saved.lat,lng:saved.lng,place:matched?matched.place:null,address:saved.address,
+      thumb:(sameLocal||sameDrive)?matched.thumb:null,text:saved.text,ocr:saved.ocr,est:paidCloneOptional(saved.est),exSum:saved.exSum,ledger:paidCloneOptional(saved.ledger),quote:paidCloneOptional(saved.quote),contact:paidCloneOptional(saved.contact),
+      _phase:saved.phase,_worklabel:saved.worklabel,_gdFolder:saved.gdFolder,_driveId:saved.driveId,_driveMimeType:saved.driveMimeType,_driveSize:saved.driveSize,
+      _relayLink:saved.driveId?'relay:'+saved.driveId:null,_file:matched?matched._file:null,_heicFile:matched?matched._heicFile:null,_needHeic:matched?matched._needHeic:false,
+      _virtual:matched&&Object.prototype.hasOwnProperty.call(matched,'_virtual')?matched._virtual:true
+    };
+  });
+}
+function paidExactQuoteRuntimeFiles(quotes,currentFiles){
+  if(!Array.isArray(quotes)||!Array.isArray(currentFiles))throw new Error('paid exact quote files conflict');
+  const queues=new Map();currentFiles.filter(file=>file&&file._fromQuote).forEach(file=>{const key=String(file.id||'');if(!queues.has(key))queues.set(key,[]);queues.get(key).push(file);});
+  return quotes.filter(quote=>quote&&quote.project).map(quote=>{
+    const id='quote_'+quote.id,queue=queues.get(id),matched=queue&&queue.length?queue.shift():null,calc=quoteCalc(quote);
+    const runtime=matched?{...matched}:{id,name:'[견적서] '+(quote.title||quote.no)+'.pdf',ext:'pdf',kind:'estimate',_virtual:true,_fromQuote:true};
+    runtime.id=id;runtime._fromQuote=true;runtime.project=quote.project;
+    runtime.est={amount:calc.total,supply:calc.supply,vat:calc.vat,customer:quote.title||'',date:quote.date,bizno:COMPANY.bizno,_edited:true};
+    return runtime;
+  });
+}
+function paidExactHydrationPlan(data){
+  const exact=paidClone(data);validatePaidSerializedState(exact);
+  const shadow={...state,_demo:false},topKeys=PAID_SERIALIZED_STATE_KEYS.filter(key=>!['version','app','savedAt','files'].includes(key));
+  topKeys.forEach(key=>{shadow[key]=paidClone(exact[key]);});
+  const exactFiles=paidExactRuntimeFiles(exact.files,state.files||[]),derivedFiles=paidExactQuoteRuntimeFiles(exact.quotes,state.files||[]);
+  shadow.files=exactFiles.concat(derivedFiles);
+  if(!Number.isSafeInteger(exact._savedFileCount)||exact._savedFileCount<0||shadow.files.length!==exact._savedFileCount)throw new Error('paid exact saved file count conflict');
+  const roundTrip=serializeData(shadow,exact.savedAt);validatePaidSerializedState(roundTrip);
+  if(JSON.stringify(roundTrip)!==JSON.stringify(exact))throw new Error('paid exact round-trip conflict');
+  const retainedThumbs=new Set(shadow.files.map(file=>file&&file.thumb).filter(Boolean));
+  const revoke=(state.files||[]).filter(file=>file&&typeof file.thumb==='string'&&file.thumb.startsWith('blob:')&&!retainedThumbs.has(file.thumb));
+  return Object.freeze({exact,shadow,revoke});
+}
+function assertPaidLiveStateExact(data){
+  const exact=paidClone(data);validatePaidSerializedState(exact);
+  if(!Number.isSafeInteger(exact._savedFileCount)||exact._savedFileCount<0||(state.files||[]).length!==exact._savedFileCount)throw new Error('paid exact live file count conflict');
+  const live=serializeData(state,exact.savedAt);validatePaidSerializedState(live);
+  if(JSON.stringify(live)!==JSON.stringify(exact))throw new Error('paid exact live state conflict');
+  return true;
+}
 function applyPaidCommittedState(data){
-  const exact=paidClone(data);applyData(paidClone(exact),{revert:true});
-  // applyData's general restore mode preserves absent/falsey legacy values.  A
-  // paid commit/fence has a complete validated schema, so these nullable,
-  // boolean, numeric, and string fields must overwrite changed live memory
-  // exactly before the next queued writer is allowed to serialize it.
-  state.aiOps=paidClone(exact.aiOps);state.coworkTasks=paidClone(exact.coworkTasks);state._coworkInit=exact._coworkInit;
-  state._cwSchedInit=exact._cwSchedInit;state._savedFileCount=exact._savedFileCount;state.kakaoLastAt=exact.kakaoLastAt;state.brand=paidClone(exact.brand);
-  try{hjBrandApplyUI();}catch(e){}freezePaidMetadata();__tabStamp=exact.savedAt;window.__hjRestoreSource='paid-generation';
+  const plan=paidExactHydrationPlan(data),topKeys=PAID_SERIALIZED_STATE_KEYS.filter(key=>!['version','app','savedAt','files'].includes(key)),previous={files:state.files,_demo:state._demo};
+  topKeys.forEach(key=>{previous[key]=state[key];});
+  try{
+    topKeys.forEach(key=>{state[key]=plan.shadow[key];});state.files=plan.shadow.files;state._demo=false;freezePaidMetadata();assertPaidLiveStateExact(plan.exact);
+  }catch(error){topKeys.forEach(key=>{state[key]=previous[key];});state.files=previous.files;state._demo=previous._demo;throw error;}
+  __lastData=paidClone(plan.exact);__dataAt=plan.exact.savedAt;__tabStamp=plan.exact.savedAt;window.__hjRestoreSource='paid-generation';
+  try{hjBrandApplyUI();}catch(e){}plan.revoke.forEach(revokeThumbUrl);return plan.exact;
 }
 function paidCommitRecoveryBanner(){
   try{let banner=document.getElementById('hjPaidCommitRecovery');if(!banner){banner=document.createElement('div');banner.id='hjPaidCommitRecovery';banner.setAttribute('role','alert');banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:100000;background:#9a3412;color:#fff;padding:10px 14px;font-weight:700';banner.textContent='유상 작업은 저장됐지만 화면 갱신에 실패했습니다. 새로고침하면 저장된 작업을 복원합니다.';document.body.appendChild(banner);}}catch(e){}
@@ -26807,7 +26875,7 @@ function paidCommitRecoveryBanner(){
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
 // 완료 시점을 promise로 노출(__hjRestoreDone) — 리드 인입 등이 복원 완료 후 실행되도록 (부팅 경합 방지)
 window.__hjRestoreDone = (async () => {
-  let restoredSavedState = false;
+  let restoredSavedState = false,restoredPaidState=null;
   try {
     const resolved = await resolvePaidCommitState();
     __paidCommitPointerKey = resolved.pointer || null;
@@ -26817,8 +26885,7 @@ window.__hjRestoreDone = (async () => {
     if (!state.projects.length && !state.files.length) {
       const saved = resolved.data;
       if (saved && typeof saved === 'object') {
-        applyData(saved);
-        freezePaidMetadata();
+        if(resolved.source==='paid-generation'){applyPaidCommittedState(saved);restoredPaidState=paidClone(saved);}else{applyData(saved);freezePaidMetadata();}
         restoredSavedState = true;
         try { __tabStamp = saved.savedAt || null; } catch (_) {}   // 다중 탭 가드 기준점
       }
@@ -26832,6 +26899,10 @@ window.__hjRestoreDone = (async () => {
       if (mountName) mountName.textContent = '📦 저장된 작업(이 기기)';
       render();
     } catch (_) {}
+    // 일부 레거시 뷰 헬퍼는 렌더 중 기본 상태를 삽입하거나 예외 전에
+    // 일부만 바꿀 수 있다. paid boot는 렌더 성공 여부와 무관하게 검증된
+    // generation 바이트를 다시 확정하고, 실패 시 이후 저장을 차단한다.
+    if(restoredPaidState){try{applyPaidCommittedState(restoredPaidState);}catch(error){try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}return {ok:false,restoredAt:new Date().toISOString(),errorCode:'paid-restore-exact-failed'};}}
     try { hydrateThumbs(); } catch (_) {}
   }
   try {
@@ -26847,6 +26918,7 @@ try{Promise.resolve(window.__hjRestoreDone).then(function(result){
 // 가져오기 ID를 저장하므로 사용자가 이후 일정을 삭제해도 다시 생성되지 않는다.
 try{Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){
   try{
+    if(window.__hjRestoreSource==='paid-generation')return;
     const imported=ensureBuiltInCalendarImports();
     if(imported.changed){
       markDirty();render();
@@ -26929,14 +27001,22 @@ async function officeOpsEnvelope(token,action,payload,mutationId){
 function commercialEnvelope(token,action,payload){
   return {token,action,timestamp:new Date().toISOString(),payload};
 }
-async function postIsolated(url,body,errorFactory){
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+async function postIsolated(url,body,errorFactory,signal){
+  const init={method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)};if(signal)init.signal=signal;
+  const r=await fetch(url,init);
   const json=await r.json();
   if(!r.ok||!json||json.ok!==true)throw errorFactory(json);
   return json;
 }
+const OFFICE_OPS_REQUEST_TIMEOUT_MS=11000;
+function officeOpsTimeoutError(){const error=new Error('OfficeOps 요청 시간이 초과되었습니다. 최신 상태를 다시 불러온 뒤 재개해 주세요.');error.code='office-timeout';return error;}
 async function officeOpsCall(action,payload,{mutationId}={}){
-  return postIsolated(__officeOps.url,await officeOpsEnvelope(__officeOps.token,action,payload,mutationId),officeOpsError);
+  const controller=new AbortController();let timer=null,timedOut=false;
+  const deadline=new Promise((resolve,reject)=>{timer=setTimeout(()=>{timedOut=true;controller.abort();reject(officeOpsTimeoutError());},OFFICE_OPS_REQUEST_TIMEOUT_MS);});
+  const operation=(async()=>postIsolated(__officeOps.url,await officeOpsEnvelope(__officeOps.token,action,payload,mutationId),officeOpsError,controller.signal))();
+  try{return await Promise.race([operation,deadline]);}
+  catch(error){if(timedOut)throw officeOpsTimeoutError();throw error;}
+  finally{clearTimeout(timer);}
 }
 const COMMERCIAL_REQUEST_TIMEOUT_MS=11000;
 const APT_COMMERCIAL_SUCCESS_GUARD_MS=300;
@@ -27047,9 +27127,11 @@ async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCo
     if(beforeCommit)await beforeCommit();
     const generationKey=PAID_COMMIT_GENERATION_PREFIX+crypto.randomUUID(),commit=await paidCommitWriteAtomic(serialized,expectedPointer,generationKey,expectedStamp,manualCreateIntent);
     if(onCommitted)await onCommitted();
-    __paidCommitPointerKey=commit.pointer;applyPaidCommittedState(serialized);
+    __paidCommitPointerKey=commit.pointer;
+    try{applyPaidCommittedState(serialized);assertPaidLiveStateExact(serialized);}catch(error){try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}throw error;}
     try{render();}catch(error){paidCommitRecoveryBanner();}
     try{if(__tabBC)__tabBC.postMessage({t:'saved',at:serialized.savedAt});}catch(e){}
+    try{assertPaidLiveStateExact(serialized);}catch(error){try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}throw error;}
     return result;
   });
 }
@@ -27831,13 +27913,18 @@ async function officeOpsFenceDurableConversionCandidate(binding){
   if(ok!==true)throw new Error('OfficeOps durable fence conflict');
   const order=(candidate.aptOrders||[]).filter(row=>row&&row.id===binding.order.id);
   if(order.length!==1||JSON.stringify(order[0])!==JSON.stringify(binding.order))throw new Error('OfficeOps durable fence conflict');
-  __paidCommitPointerKey=binding.pointer;__paidCommitRecoveryMalformedPointer=false;__paidCommitRecoverySnapshot=null;applyPaidCommittedState(candidate);
+  __paidCommitPointerKey=binding.pointer;__paidCommitRecoveryMalformedPointer=false;__paidCommitRecoverySnapshot=null;
+  try{applyPaidCommittedState(candidate);}catch(error){throw officeOpsConversionFenceRecoveryError(error);}
   try{if(__tabBC)__tabBC.postMessage({t:'saved',at:candidate.savedAt});}catch(e){}
   return Object.freeze({order:order[0],data:structuredClone(candidate),pointer:binding.pointer,savedAt:candidate.savedAt});
 }
 function officeOpsConversionFenceRecoveryError(error){
   try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}
   const failure=new Error('OfficeOps durable fence recovery required: '+String(error&&error.message||error||'conflict'));failure.cause=error;return failure;
+}
+function officeOpsAssertFenceRelease(candidate){
+  try{assertPaidLiveStateExact(candidate);}
+  catch(error){throw officeOpsConversionFenceRecoveryError(error);}
 }
 function officeOpsConversionStageFromStore(caller,store){
   const inspectionId=String(caller&&caller.inspectionId||''),rows=store&&Array.isArray(store.inspections)?store.inspections.filter(row=>row&&row.inspectionId===inspectionId):[];
@@ -27847,7 +27934,7 @@ function officeOpsConversionStageFromStore(caller,store){
 async function officeOpsTerminalConversionStep(caller){
   return withAppStateWriteLock(async()=>{
     if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
-    let store=await officeOpsLoad(),resolved=await resolvePaidCommitState(),inspection=officeOpsConversionStageFromStore(caller,store),durableOrders=resolved&&resolved.data&&resolved.data.aptOrders;
+    let releaseCandidate=null,store=await officeOpsLoad(),resolved=await resolvePaidCommitState(),inspection=officeOpsConversionStageFromStore(caller,store),durableOrders=resolved&&resolved.data&&resolved.data.aptOrders;
     officeOpsAssertUniqueLocalOrderIds(Array.isArray(durableOrders)?durableOrders:[]);
     const durableTargets=(Array.isArray(durableOrders)?durableOrders:[]).filter(order=>order&&(order.id===inspection.pendingOrderId||(inspection.linkedOrderId!==null&&order.id===inspection.linkedOrderId)));
     if(inspection.status==='conversion-writing'&&durableTargets.length===0){
@@ -27862,15 +27949,16 @@ async function officeOpsTerminalConversionStep(caller){
     store=await officeOpsLoad();resolved=await resolvePaidCommitState();context=await officeOpsLoadConversionContext(caller,store,resolved&&resolved.data);
     if(!['conversion-writing','conversion-local-committed','converted'].includes(context.inspection.status)||!context.order)throw new Error('local order identity conflict');
     binding=await officeOpsAssertDurableConversionOrder(context,resolved);
-    binding=await officeOpsFenceDurableConversionCandidate(binding);
-    if(context.inspection.status==='converted')return Object.freeze({done:true,needsCreate:false,inspection:context.inspection,store:context.store,identity:context.proof});
+    binding=await officeOpsFenceDurableConversionCandidate(binding);releaseCandidate=binding.data;
+    if(context.inspection.status==='converted'){officeOpsAssertFenceRelease(releaseCandidate);return Object.freeze({done:true,needsCreate:false,inspection:context.inspection,store:context.store,identity:context.proof});}
     const action=context.inspection.status==='conversion-writing'?'officeInspectionRecordLocalCommit':'officeInspectionFinalizeConversion';
     const payload={...context.proof,linkedOrderId:context.proof.pendingOrderId,expectedRevision:context.store.revision};
     let result=null,requestError=null,postFenceError=null;
     try{result=await officeOpsMutationWithAck(action,payload);}catch(error){requestError=error;}
-    try{binding=await officeOpsFenceDurableConversionCandidate(binding);}catch(error){postFenceError=error;}
-    if(postFenceError)throw officeOpsConversionFenceRecoveryError(postFenceError);
-    if(requestError)throw requestError;
+    try{binding=await officeOpsFenceDurableConversionCandidate(binding);releaseCandidate=binding.data;}catch(error){postFenceError=error;}
+    if(postFenceError){officeOpsAssertFenceRelease(releaseCandidate);throw officeOpsConversionFenceRecoveryError(postFenceError);}
+    if(requestError){officeOpsAssertFenceRelease(releaseCandidate);throw requestError;}
+    officeOpsAssertFenceRelease(releaseCandidate);
     return Object.freeze({done:false,needsCreate:false,inspection:null,store:result.store,identity:{...context.proof,linkedOrderId:context.proof.pendingOrderId}});
   },{requireCrossTab:true});
 }
@@ -28185,13 +28273,19 @@ try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
   try{await officeOpsBoot();}catch(e){}
+  // paid generation hydration is the committed byte-for-byte truth. Wait until
+  // that choice is known before scheduling legacy boot seeders, which otherwise
+  // add defaults back into an intentionally empty/null paid snapshot.
+  try{await Promise.resolve(window.__hjRestoreDone);}catch(e){}
+  const suppressPaidStateSeeders=window.__hjRestoreSource==='paid-generation';
+  const runConfiguredPaidAiOps=!suppressPaidStateSeeders||aiOpsExistingStateReady();
   try{window.__visionKey=(await idbGet('vision_key'))||null;}catch(e){}
   try{window.__geminiKey=(await idbGet('gemini_key'))||null;}catch(e){}
   try{window.__kakaoKey=(await idbGet('kakao_key'))||null;}catch(e){}
   try{window.__openaiKey=(await idbGet('openai_key'))||null;}catch(e){}
   try{aiProviderLoad();}catch(e){}
   try{await llamaConfigLoad();}catch(e){}
-  try{setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);setTimeout(()=>{try{coworkSchedEnsure();}catch(e){}},4500);setTimeout(()=>{try{aiQueueSanitize();}catch(e){}},5000);setTimeout(()=>{try{kakaoCheckNew();}catch(e){}},6000);}catch(e){}
+  try{if(runConfiguredPaidAiOps){setTimeout(()=>{try{aiOpsBootCheck();}catch(e){}},1500);setTimeout(()=>{try{aiQueueSanitize();}catch(e){}},5000);}if(!suppressPaidStateSeeders){setTimeout(()=>{try{taxCalendarEnsure();}catch(e){}},4000);setTimeout(()=>{try{coworkSchedEnsure();}catch(e){}},4500);}setTimeout(()=>{try{backupBootCheck();}catch(e){}},3000);setTimeout(()=>{try{kakaoCheckNew();}catch(e){}},6000);}catch(e){}
   const dark=await idbGet('pref_dark');if(dark){document.body.classList.add('dark');$('#btnDark').textContent='☀️';}
   const fstep=await idbGet('pref_font');if(fstep){__fontStep=fstep;document.documentElement.style.setProperty('--fs',FONT_SCALES[fstep]);}
   const as=await idbGet('pref_autosave');if(as===false){__autoSaveOn=false;const b=$('#btnAutoSave');if(b){b.textContent='⏸ 수동저장';b.classList.remove('blue');b.classList.add('ghost');}}

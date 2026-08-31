@@ -102,7 +102,9 @@ function browserStore() {
 function createBrowserScenario(options = {}) {
   return {
     store: browserStore(), lossAfter: options.lossAfter || '', failBefore: options.failBefore || '', lost: false,
-    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null, committedMutations: [], commercialVerifyHook: null, invalidVerify: false
+    officeCalls: [], commercialCalls: [], issueCount: 0, verifyNonces: [], receipt: null, committedMutations: [], commercialVerifyHook: null, invalidVerify: false,
+    hangInitialList: options.hangInitialList === true, hangListAfterAction: options.hangListAfterAction || '',
+    hangDelayMs: Number(options.hangDelayMs) || 12000, hangConsumed: false, hungLists: 0, hangCompleted: 0, hangRelease: null, hangPromise: null
   };
 }
 
@@ -156,6 +158,17 @@ function commitBrowserOfficeMutation(scenario, envelope) {
 async function routeBrowserOffice(scenario, route) {
   const envelope = route.request().postDataJSON(); scenario.officeCalls.push(structuredClone(envelope));
   if (envelope.action === 'officeOpsList') {
+    const lastMutation = scenario.committedMutations.at(-1);
+    const shouldHang = !scenario.hangConsumed && (scenario.hangInitialList ||
+      (scenario.hangListAfterAction && lastMutation && lastMutation.action === scenario.hangListAfterAction));
+    if (shouldHang) {
+      scenario.hangConsumed = true; scenario.hungLists += 1;
+      scenario.hangPromise = new Promise(resolve => { scenario.hangRelease = resolve; });
+      await Promise.race([scenario.hangPromise, new Promise(resolve => setTimeout(resolve, scenario.hangDelayMs))]);
+      scenario.hangCompleted += 1;
+      try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, store: scenario.store }) }); } catch (_) {}
+      return;
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, store: scenario.store }) }); return;
   }
   if (scenario.failBefore === envelope.action && !scenario.lost) { scenario.lost = true; await route.abort('connectionfailed'); return; }
@@ -265,6 +278,32 @@ async function writeBrowserPaidGeneration(page, mode, options = {}) {
   }, { mode, bindTab: options.bindTab === true, stale: options.stale === true });
 }
 
+async function installShortOfficeOpsDeadline(page) {
+  await page.evaluate(() => {
+    window.__nativeOfficeOpsSetTimeout = window.setTimeout.bind(window);
+    window.setTimeout = function(callback, delay, ...args) {
+      const officeDeadline = Number(delay) === 11000 && /controller\.abort/.test(Function.prototype.toString.call(callback));
+      return window.__nativeOfficeOpsSetTimeout(callback, officeDeadline ? 1200 : delay, ...args);
+    };
+    window.__nativeOfficeOpsFetch = window.fetch.bind(window); window.__officeOpsAbortCount = 0; window.__officeOpsSignalCount = 0;
+    window.fetch = function(url, init) {
+      if (String(url).includes('office.example') && init && init.signal) {
+        window.__officeOpsSignalCount += 1;
+        init.signal.addEventListener('abort', () => { window.__officeOpsAbortCount += 1; }, { once: true });
+      }
+      return window.__nativeOfficeOpsFetch(url, init);
+    };
+  });
+}
+
+async function waitForScenario(predicate, label) {
+  for (let poll = 0; poll < 1200; poll += 1) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(label + ' timeout');
+}
+
 function createVmHarness() {
   const scenario = {
     store: freshStore(), mode: 'fresh', offices: [{ id: 'local_office_001', complex: '테스트 단지' }], orders: [],
@@ -300,6 +339,7 @@ function createVmHarness() {
     }),
     withAppStateWriteLock: async work => work(),
     validatePaidSerializedState: value => value,
+    assertPaidLiveStateExact: () => true,
     guardedAppStateWriteAtomic: async () => true,
     applyPaidCommittedState: data => { sandbox.__tabStamp = data.savedAt; sandbox.state.aptOffices = structuredClone(data.aptOffices); sandbox.state.aptOrders = scenario.orders; },
     paidCommitRecoveryBanner: () => {}, multiTabStaleWarn: () => {},
@@ -338,7 +378,7 @@ function createVmHarness() {
     'officeOpsComplexNameKey', 'officeOpsConversionPayload', 'officeOpsCanonicalConversionTerms', 'officeOpsCanonicalConversionReceipt',
     'officeOpsAptOrderDraft', 'officeOpsValidateExistingConversionOrder', 'officeOpsInspectionConversionActions',
     'officeOpsProofValueInUse', 'officeOpsCreateConversionIds', 'officeOpsAssertCallerConversionIdentity', 'officeOpsAssertUniqueLocalOrderIds', 'officeOpsAssertDurableConversionOrder', 'officeOpsLoadConversionContext',
-    'officeOpsFenceDurableConversionCandidate', 'officeOpsConversionFenceRecoveryError', 'officeOpsConversionStageFromStore', 'officeOpsTerminalConversionStep',
+    'officeOpsFenceDurableConversionCandidate', 'officeOpsConversionFenceRecoveryError', 'officeOpsAssertFenceRelease', 'officeOpsConversionStageFromStore', 'officeOpsTerminalConversionStep',
     'officeOpsDriveInspectionConversion', 'convertOfficeOpsInspectionToAptOrder', 'resumeOfficeOpsInspectionConversion',
     'cancelOfficeOpsInspectionConversion'
   ]) vm.runInContext(extractFunction(name), sandbox);
@@ -646,7 +686,13 @@ async function runVmContracts() {
     'conversion card exposes no unrelated mutation controls');
   const sharedLockSource = extractFunction('withAppStateWriteLock'), terminalSource = extractFunction('officeOpsTerminalConversionStep'), candidateSource = extractFunction('officeOpsAssertConversionCandidate');
   assert.match(sharedLockSource, /navigator\.locks/); assert.match(sharedLockSource, /PAID_APPSTATE_LOCK_NAME/);
+  assert.match(extractFunction('guardedPersistCurrentState'), /return\s+withAppStateWriteLock\s*\(/,
+    'guarded normal persistence itself returns through the shared paid/appState lock');
+  assert.match(extractFunction('durableLocalMutation'), /return\s+withAppStateWriteLock\s*\(/,
+    'durable paid mutation itself returns through the shared paid/appState lock');
   assert.match(terminalSource, /requireCrossTab\s*:\s*true/, 'terminal section requires the cross-tab lock');
+  assert.equal((terminalSource.match(/officeOpsAssertFenceRelease\s*\(/g) || []).length, 4,
+    'converted, post-fence failure, request rethrow, and normal success each own a final synchronous exact release guard');
   assert.doesNotMatch(terminalSource, /guardedPersistCurrentState|durableLocalMutation|paidCommitWriteAtomic/, 'terminal fence never relocks through a high-level writer');
   assert.doesNotMatch(candidateSource, /\bstate\b/, 'final conversion-candidate decision is independent of mutable live state');
   assert.equal((source.match(/guardedAppStateWriteAtomic\s*\(/g) || []).length, 3, 'low-level same-generation writer is owned only by guarded persistence and the no-relock fence');
@@ -760,6 +806,245 @@ async function runBrowserAcceptance() {
     await page.evaluate(store => window.__uiResolveConversion(store.inspections[0]), freshStore());
     await page.locator('.officeops-conversion-modal').waitFor({ state: 'detached' });
     assert.equal(errors.length, 0, 'conversion UI raises no pageerror: ' + errors.join(' | '));
+
+    const exactHydrationScenario = createBrowserScenario();
+    {
+      const actual = await createActualConversionPage(browser, appUrl, exactHydrationScenario);
+      try {
+        const hydration = await actual.page.evaluate(async () => {
+          await idbDel('appState'); await idbDel('paid_commit_pointer'); await idbDel('paid_commit_journal');
+          __paidCommitPointerKey = null; __tabStamp = null; __paidCommitRecoveryMalformedPointer = false; __paidCommitRecoverySnapshot = null;
+          const runtimeFile = new File(['exact-local-bytes'], 'exact-local.jpg', { type: 'image/jpeg', lastModified: 1234 });
+          let runtimeHandle = null;
+          try {
+            const root = await navigator.storage.getDirectory();
+            runtimeHandle = await root.getFileHandle('exact-local.jpg', { create: true });
+          } catch (_) { runtimeHandle = { kind: 'file', name: 'exact-local.jpg' }; }
+          const localThumb = URL.createObjectURL(runtimeFile), unsafeThumb = URL.createObjectURL(new Blob(['unsafe'], { type: 'image/jpeg' }));
+          const wrongLocalFile = new File(['different-local-bytes'], 'different-local.jpg', { type: 'image/jpeg', lastModified: 4321 });
+          const wrongLocalThumb = URL.createObjectURL(wrongLocalFile);
+          const queueFileA = new File(['AAAA'], 'queue-duplicate.jpg', { type: 'image/jpeg', lastModified: 11 });
+          const queueFileB = new File(['BBBB'], 'queue-duplicate.jpg', { type: 'image/jpeg', lastModified: 22 });
+          const queueThumbA = URL.createObjectURL(queueFileA), queueThumbB = URL.createObjectURL(queueFileB);
+          const runtime = (name, prefix, size, extra = {}) => ({ id: 'runtime_' + name + '_' + prefix, name, prefix, size, ext: 'jpg', kind: 'photo', project: null,
+            when: null, lat: null, lng: null, place: null, address: '', thumb: null, text: '', ocr: '', est: null, exSum: false, ledger: null, quote: null,
+            contact: null, _phase: null, _worklabel: null, _gdFolder: null, _driveId: null, _driveMimeType: null, _driveSize: 0,
+            _relayLink: null, handle: null, _file: null, _heicFile: null, _needHeic: false, _virtual: false, ...extra });
+          const local = runtime('exact-local.jpg', '', runtimeFile.size, { handle: runtimeHandle, _file: runtimeFile, thumb: localThumb });
+          const duplicateOriginal = runtime('duplicate-photo.jpg', '원본/', 20);
+          const duplicateOrganized = runtime('duplicate-photo.jpg', '_정리완료/테스트/사진/', 20);
+          const changedDrive = runtime('changed-drive.jpg', '', 30, { _driveId: 'drive-new', _driveMimeType: 'image/jpeg', _driveSize: 30,
+            _relayLink: 'relay:drive-new', thumb: unsafeThumb, _virtual: true });
+          const mismatchedLocal = runtime('wrapper-local.jpg', '', 40, { _file: wrongLocalFile, thumb: wrongLocalThumb });
+          const queueDuplicateA = runtime('queue-duplicate.jpg', 'same/', queueFileA.size, { _file: queueFileA, thumb: queueThumbA });
+          const queueDuplicateB = runtime('queue-duplicate.jpg', 'same/', queueFileB.size, { _file: queueFileB, thumb: queueThumbB });
+          const quote = { id: 'quote_exact_1', no: 'Q-EXACT-1', title: '정확 견적', project: 'Sparse Project', date: '2026-09-01', vatIncluded: true,
+            items: [{ name: '점검', spec: '', qty: 1, price: 1000 }] };
+          state.files = [local, duplicateOriginal, duplicateOrganized, changedDrive, mismatchedLocal, queueDuplicateA, queueDuplicateB]; state.projects = [{ name: 'Sparse Project' }]; state.quotes = [quote];
+          syncQuoteToProject(quote);
+          Object.assign(state, {
+            learn: null, schedule: [], calendarImports: [], notes: [], priceBook: {}, asLog: [], aptOffices: [], aptOrders: [],
+            officeIntake: { inbox: [], outbox: [], operationalErrors: [], cursor: '', lastSyncAt: '', lastError: '' }, aptRates: [], monthClosed: {}, quoteSets: [],
+            trips: [], tripCfg: {}, workLogs: [], claudeDone: [], satisfaction: [], adPosts: [], portalCfg: {}, kakaoLastAt: '', coworkTasks: null,
+            coworkSched: [], _cwSchedInit: false, _coworkInit: false, payLog: [], expenses: [], goals: {}, aiOps: null, suppliers: [], supplierMap: {},
+            inventory: [], brand: null, contacts: []
+          });
+          const candidate = serializeData(); candidate.savedAt = '2026-09-01T01:00:00.000Z'; candidate.learn = null;
+          validatePaidSerializedState(candidate);
+          const queueCandidateRows = candidate.files.filter(file => file && file.name === 'queue-duplicate.jpg');
+          const identicalQueueCandidateRows = queueCandidateRows.length === 2 && JSON.stringify(queueCandidateRows[0]) === JSON.stringify(queueCandidateRows[1]);
+          window.__exactRuntimeFile = runtimeFile; window.__exactRuntimeHandle = runtimeHandle; window.__exactLocalThumb = localThumb; window.__exactUnsafeThumb = unsafeThumb;
+          window.__exactQueueFileA = queueFileA; window.__exactQueueFileB = queueFileB; window.__exactQueueThumbA = queueThumbA; window.__exactQueueThumbB = queueThumbB;
+          for (const key of PAID_SERIALIZED_STATE_KEYS.filter(key => !['version','app','savedAt','files','_savedFileCount'].includes(key))) {
+            const value = candidate[key];
+            state[key] = Array.isArray(value) ? [{ unvalidated: key }] : value === null ? { unvalidated: key } :
+              typeof value === 'boolean' ? !value : typeof value === 'number' ? value + 1 : typeof value === 'string' ? 'unvalidated-' + key : { unvalidated: key };
+          }
+          state.files.filter(file => file && !file._fromQuote).forEach(file => Object.assign(file, {
+            kind: 'other', project: 'unvalidated-project', text: 'unvalidated-text', ocr: 'unvalidated-ocr', est: { unvalidated: true }, exSum: true,
+            ledger: { unvalidated: true }, quote: { unvalidated: true }, contact: { unvalidated: true }, address: 'unvalidated-address',
+            _phase: 'unvalidated-phase', _worklabel: 'unvalidated-work', _gdFolder: 'unvalidated-folder',
+            lat: 36.1, lng: 127.1, when: new Date('2099-01-01T00:00:00.000Z')
+          }));
+          local._driveId = 'unvalidated_drive_id'; local._driveMimeType = 'image/unvalidated'; local._driveSize = 999; local._relayLink = 'relay:unvalidated_drive_id';
+          changedDrive._driveId = 'drive-old'; changedDrive._driveMimeType = 'image/unsafe'; changedDrive._driveSize = 777; changedDrive._relayLink = 'relay:drive-old';
+          const unmatchedThumb = URL.createObjectURL(new Blob(['unmatched-runtime'], { type: 'image/jpeg' }));
+          state.files.push(runtime('unmatched-runtime.jpg', '', 17, { thumb: unmatchedThumb }));
+          const nativeRevokeObjectURL = URL.revokeObjectURL, revokes = [];
+          URL.revokeObjectURL = function(url) {
+            revokes.push({ url, exactAtRevoke: JSON.stringify(serializeData(state, candidate.savedAt)) === JSON.stringify(candidate) });
+            return nativeRevokeObjectURL.call(URL, url);
+          };
+          state._savedFileCount = 99;
+          let applyError = '';
+          try { applyPaidCommittedState(candidate); } catch (error) { applyError = String(error && error.message || error); }
+          const roundTrip = serializeData(state, candidate.savedAt);
+          const localAfter = state.files.find(file => file && file.name === 'exact-local.jpg');
+          const changedAfter = state.files.find(file => file && file.name === 'changed-drive.jpg');
+          const mismatchedAfter = state.files.find(file => file && file.name === 'wrapper-local.jpg');
+          const queueAfter = state.files.filter(file => file && file.name === 'queue-duplicate.jpg');
+          const runtimeCheck = {
+            localFile: !!localAfter && localAfter._file === window.__exactRuntimeFile,
+            localHandle: !!localAfter && localAfter.handle === window.__exactRuntimeHandle,
+            localThumb: !!localAfter && localAfter.thumb === window.__exactLocalThumb,
+            localDrive: localAfter && [localAfter._driveId, localAfter._driveMimeType, localAfter._driveSize, localAfter._relayLink],
+            changedThumbDropped: !!changedAfter && changedAfter.thumb == null,
+            mismatchedLocalThumbDropped: !!mismatchedAfter && mismatchedAfter.thumb == null,
+            changedRelay: changedAfter && changedAfter._relayLink,
+            duplicateRows: state.files.filter(file => file && file.name === 'duplicate-photo.jpg').map(file => file.prefix),
+            identicalQueueCandidateRows,
+            queueFilesInOrder: queueAfter.length === 2 && queueAfter[0]._file === window.__exactQueueFileA && queueAfter[1]._file === window.__exactQueueFileB,
+            queueThumbsInOrder: queueAfter.length === 2 && queueAfter[0].thumb === window.__exactQueueThumbA && queueAfter[1].thumb === window.__exactQueueThumbB,
+            derivedQuoteRows: state.files.filter(file => file && file._fromQuote).map(file => file.id),
+            sparseProjectKeys: Object.keys(state.projects[0] || {}), fileCount: state.files.length, savedFileCount: state._savedFileCount
+          };
+          const committedRevokes = revokes.map(row => ({ ...row }));
+          const badUnmatchedThumb = URL.createObjectURL(new Blob(['bad-unmatched-runtime'], { type: 'image/jpeg' }));
+          state.files.push(runtime('bad-unmatched-runtime.jpg', '', 21, { thumb: badUnmatchedThumb })); revokes.length = 0;
+          const beforeBad = JSON.stringify(serializeData(state, candidate.savedAt)), bad = structuredClone(candidate); bad._savedFileCount += 1;
+          let badError = '';
+          try { applyPaidCommittedState(bad); } catch (error) { badError = String(error && error.message || error); }
+          const afterBad = JSON.stringify(serializeData(state, candidate.savedAt));
+          const failedRevokes = revokes.map(row => ({ ...row })); URL.revokeObjectURL = nativeRevokeObjectURL; nativeRevokeObjectURL.call(URL, badUnmatchedThumb);
+          const generationKey = PAID_COMMIT_GENERATION_PREFIX + crypto.randomUUID();
+          const commit = await paidCommitWriteAtomic(candidate, null, generationKey, null); __paidCommitPointerKey = commit.pointer;
+          return { candidate, applyError, roundTrip, runtimeCheck, committedRevokes, unmatchedThumb, unsafeThumb, wrongLocalThumb, failedRevokes, badError, badUnchanged: beforeBad === afterBad };
+        });
+        assert.equal(hydration.applyError, '', 'a valid complete paid candidate hydrates atomically');
+        assert.equal(JSON.stringify(hydration.roundTrip), JSON.stringify(hydration.candidate),
+          'every PAID_SERIALIZED_STATE_KEYS field round-trips byte-for-byte with the exact savedAt and key order');
+        assert.deepEqual(hydration.runtimeCheck.localDrive, [null, null, 0, null], 'candidate null/zero Drive metadata overwrites unvalidated live metadata');
+        assert.deepEqual(hydration.runtimeCheck.duplicateRows, ['원본/', '_정리완료/테스트/사진/'], 'paid exact hydration preserves duplicate photo rows and order');
+        assert.equal(hydration.runtimeCheck.identicalQueueCandidateRows, true, 'fixture contains two byte-identical saved rows with one shared stable match key');
+        assert.deepEqual([hydration.runtimeCheck.queueFilesInOrder, hydration.runtimeCheck.queueThumbsInOrder], [true, true],
+          'identical stable-key rows consume distinct File and thumbnail resources exactly once in queue order');
+        assert.deepEqual(hydration.runtimeCheck.derivedQuoteRows, ['quote_quote_exact_1'], 'quote-derived runtime row is reconstructed once and excluded from serialized files');
+        assert.deepEqual(hydration.runtimeCheck.sparseProjectKeys, ['name'], 'paid exact hydration adds no sparse-project defaults');
+        assert.deepEqual([hydration.runtimeCheck.localFile, hydration.runtimeCheck.localHandle, hydration.runtimeCheck.localThumb], [true, true, true],
+          'one-to-one matching preserves the same local File, handle, and safe thumbnail resources');
+        assert.equal(hydration.runtimeCheck.changedThumbDropped, true, 'a changed Drive identity drops an unsafe runtime thumbnail');
+        assert.equal(hydration.runtimeCheck.mismatchedLocalThumbDropped, true, 'a wrapper match cannot preserve a thumbnail for a different physical local file');
+        assert.equal(hydration.runtimeCheck.changedRelay, 'relay:drive-new', 'relay link is recomputed only from the candidate Drive ID');
+        assert.equal(hydration.runtimeCheck.fileCount, hydration.runtimeCheck.savedFileCount, 'quote-derived rows make the exact saved file count real');
+        assert.deepEqual(hydration.committedRevokes.map(row => row.url).sort(),
+          [hydration.unsafeThumb, hydration.wrongLocalThumb, hydration.unmatchedThumb].sort(),
+          'only unsafe, mismatched, and unmatched blob thumbnails are revoked; retained local and queued thumbnails remain live');
+        assert.ok(hydration.committedRevokes.every(row => row.exactAtRevoke === true),
+          'dropped blob thumbnails are revoked only after the exact candidate is live');
+        assert.match(hydration.badError, /paid exact|saved file count|round.?trip/i, 'an impossible saved-file-count candidate fails closed');
+        assert.equal(hydration.badUnchanged, true, 'an impossible candidate leaves no partial live state');
+        assert.deepEqual(hydration.failedRevokes, [], 'an impossible candidate revokes no live blob resources');
+
+        await actual.context.addInitScript(() => {
+          const nativeSetTimeout = window.setTimeout.bind(window); window.__task5PaidSeederTimers = [];
+          window.setTimeout = function(callback, delay, ...args) {
+            const source = Function.prototype.toString.call(callback), seeder = source.match(/aiOpsBootCheck|taxCalendarEnsure|coworkSchedEnsure|aiQueueSanitize/);
+            if (seeder) { window.__task5PaidSeederTimers.push(seeder[0]); return nativeSetTimeout(callback, 20, ...args); }
+            return nativeSetTimeout(callback, delay, ...args);
+          };
+        });
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        await actual.page.evaluate(async () => { await window.__hjRestoreDone; await new Promise(resolve => setTimeout(resolve, 150)); });
+        const boot = await actual.page.evaluate(savedAt => ({ source: window.__hjRestoreSource, serialized: serializeData(state, savedAt),
+          duplicateRows: state.files.filter(file => file && file.name === 'duplicate-photo.jpg').map(file => file.prefix),
+          derivedQuoteRows: state.files.filter(file => file && file._fromQuote).map(file => file.id), calendarImports: state.calendarImports,
+          schedule: state.schedule, sparseProjectKeys: Object.keys(state.projects[0] || {}), fileCount: state.files.length, savedFileCount: state._savedFileCount,
+          stateSeederTimers: window.__task5PaidSeederTimers || [] }), hydration.candidate.savedAt);
+        assert.equal(boot.source, 'paid-generation');
+        assert.equal(JSON.stringify(boot.serialized), JSON.stringify(hydration.candidate), 'paid-generation boot uses the same exact round-trip hydration path');
+        assert.deepEqual(boot.duplicateRows, ['원본/', '_정리완료/테스트/사진/'], 'paid-generation boot preserves both duplicate durable photo rows');
+        assert.deepEqual(boot.derivedQuoteRows, ['quote_quote_exact_1']);
+        assert.deepEqual([boot.schedule, boot.calendarImports], [[], []], 'paid-generation boot inserts no schedule/calendar defaults');
+        assert.deepEqual(boot.sparseProjectKeys, ['name']);
+        assert.equal(boot.fileCount, boot.savedFileCount);
+        assert.deepEqual(boot.stateSeederTimers, [], 'paid-generation boot schedules no delayed serialized-state seeders');
+        assert.equal(JSON.stringify(boot.serialized), JSON.stringify(hydration.candidate),
+          'automatic boot initializers cannot replace exact paid-generation false/null/empty sentinels');
+
+        await actual.context.route(appUrl, async route => {
+          const response = await route.fetch(), html = await response.text();
+          const marker = 'window.__hjRestoreDone = (async () => {';
+          assert.ok(html.includes(marker), 'paid boot render-failure fixture finds the restore boundary');
+          const injection = "window.__task5BootRenderCalled=false;render=function(){window.__task5BootRenderCalled=true;state.aiOps={source:'render-mutated-before-throw'};state.files=state.files.slice(0,1);throw new Error('injected paid boot render failure');};\n";
+          await route.fulfill({ response, body: html.replace(marker, injection + marker) });
+        });
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        const renderRecovery = await actual.page.evaluate(async savedAt => {
+          const restore = await window.__hjRestoreDone;
+          return { restore, called: window.__task5BootRenderCalled, source: window.__hjRestoreSource,
+            serialized: serializeData(state, savedAt), stale: __tabStale, recovery: !!document.getElementById('hjPaidCommitRecovery') };
+        }, hydration.candidate.savedAt);
+        assert.equal(renderRecovery.called, true, 'fixture mutates serialized live state and throws from paid boot render');
+        assert.equal(renderRecovery.restore.ok, true, 'render failure does not prevent paid-generation boot recovery');
+        assert.equal(renderRecovery.source, 'paid-generation');
+        assert.equal(JSON.stringify(renderRecovery.serialized), JSON.stringify(hydration.candidate),
+          'paid boot always reapplies the exact generation even when render mutates then throws');
+        assert.deepEqual([renderRecovery.stale, renderRecovery.recovery], [false, false]);
+
+        await actual.context.unroute(appUrl);
+        await actual.context.route(appUrl, async route => {
+          const response = await route.fetch(), html = await response.text(), marker = 'window.__hjRestoreDone = (async () => {';
+          const injection = "window.__task5NativePaidBootApply=applyPaidCommittedState;window.__task5PaidBootApplyCalls=0;applyPaidCommittedState=function(candidate){window.__task5PaidBootApplyCalls+=1;if(window.__task5PaidBootApplyCalls===2)throw new Error('injected second paid boot exact apply failure');return window.__task5NativePaidBootApply(candidate);};\n";
+          await route.fulfill({ response, body: html.replace(marker, injection + marker) });
+        });
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        const failedReapply = await actual.page.evaluate(async () => {
+          const restore = await window.__hjRestoreDone, pointer = await idbGet('paid_commit_pointer'), generation = await idbGet(pointer), appState = await idbGet('appState');
+          return { restore, calls: window.__task5PaidBootApplyCalls, stale: __tabStale, recovery: !!document.getElementById('hjPaidCommitRecovery'),
+            sameDurableBytes: JSON.stringify(generation) === JSON.stringify(appState) };
+        });
+        assert.deepEqual([failedReapply.restore.ok, failedReapply.restore.errorCode, failedReapply.calls], [false, 'paid-restore-exact-failed', 2]);
+        assert.deepEqual([failedReapply.stale, failedReapply.recovery, failedReapply.sameDurableBytes], [true, true, true],
+          'a failed final paid boot exact apply blocks later writes and exposes recovery-required state');
+      } finally { await actual.context.close(); }
+    }
+
+    const configuredPaidAiScenario = createBrowserScenario();
+    {
+      const actual = await createActualConversionPage(browser, appUrl, configuredPaidAiScenario);
+      try {
+        const configured = await actual.page.evaluate(async () => {
+          const snapshot = await readPaidCommitSnapshot();
+          for (const record of snapshot.generationRecords || []) await idbDel(record.key);
+          await idbDel('appState'); await idbDel('paid_commit_pointer'); await idbDel('paid_commit_journal');
+          __paidCommitPointerKey = null; __tabStamp = null; __paidCommitRecoveryMalformedPointer = false; __paidCommitRecoverySnapshot = null;
+          state.aiOps = null; const aiOps = aiOpsEnsureState(); aiOps.enabled = true;
+          aiOps.nextCheck = '2000-01-01T00:00:00.000Z'; aiOps.lastDailyKey = aiOpsTodayKey(); aiOps.lastWeeklyKey = aiOpsWeekKey(); aiOps.lastMonthlyKey = aiOpsMonthKey();
+          const legacyTask = { id: 'paid_boot_sanitize_1', type: 'receivable', category: '미수금', title: '미수금 독촉', reason: 'legacy removed feature',
+            project: '테스트 단지', status: 'pending', priority: 'normal', priorityScore: 40, createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:00:00.000Z', action: { kind: 'open' } };
+          aiOpsMigrateTask(legacyTask); aiOps.queue = [legacyTask];
+          const ready = aiOpsExistingStateReady(), candidate = serializeData(); candidate.savedAt = '2026-09-01T02:00:00.000Z'; validatePaidSerializedState(candidate);
+          const generationKey = PAID_COMMIT_GENERATION_PREFIX + crypto.randomUUID(), commit = await paidCommitWriteAtomic(candidate, null, generationKey, null);
+          __paidCommitPointerKey = commit.pointer; __tabStamp = candidate.savedAt;
+          return { ready, candidate };
+        });
+        assert.equal(configured.ready, true, 'a fully initialized paid aiOps state needs no default-seeding migration');
+        await actual.context.addInitScript(() => {
+          const nativeSetTimeout = window.setTimeout.bind(window); window.__task5PaidSeederTimers = [];
+          window.setTimeout = function(callback, delay, ...args) {
+            const source = Function.prototype.toString.call(callback), seeder = source.match(/aiOpsBootCheck|taxCalendarEnsure|coworkSchedEnsure|aiQueueSanitize/);
+            if (seeder) { window.__task5PaidSeederTimers.push(seeder[0]); return nativeSetTimeout(callback, 20, ...args); }
+            return nativeSetTimeout(callback, delay, ...args);
+          };
+        });
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        const configuredBoot = await actual.page.evaluate(async candidate => {
+          const restore = await window.__hjRestoreDone; await new Promise(resolve => setTimeout(resolve, 200));
+          const serialized = serializeData(state, candidate.savedAt), changedKeys = PAID_SERIALIZED_STATE_KEYS.filter(key => JSON.stringify(serialized[key]) !== JSON.stringify(candidate[key]));
+          const legacyTask = state.aiOps && state.aiOps.queue.find(task => task && task.id === 'paid_boot_sanitize_1');
+          return { restore, source: window.__hjRestoreSource, timers: window.__task5PaidSeederTimers || [], changedKeys,
+            taskStatus: legacyTask && legacyTask.status, lastRunSource: state.aiOps && state.aiOps.stats.lastRunSource,
+            nextCheckFuture: !!(state.aiOps && Date.parse(state.aiOps.nextCheck) > Date.now()) };
+        }, configured.candidate);
+        assert.deepEqual([configuredBoot.restore.ok, configuredBoot.source], [true, 'paid-generation']);
+        assert.deepEqual(configuredBoot.timers, ['aiOpsBootCheck', 'aiQueueSanitize'],
+          'configured paid aiOps keeps its due-loop and queue-sanitize boot callbacks without scheduling tax or cowork defaults');
+        assert.deepEqual([configuredBoot.lastRunSource, configuredBoot.nextCheckFuture], ['boot', true], 'configured paid aiOps still runs its due boot loop');
+        assert.equal(configuredBoot.taskStatus, 'dismissed', 'configured paid aiOps still sanitizes a removed-feature queue task');
+        assert.deepEqual(configuredBoot.changedKeys, ['aiOps'], 'configured AI automation changes only its owned serialized state after exact hydration');
+      } finally { await actual.context.close(); }
+    }
 
     const successScenario = createBrowserScenario();
     {
@@ -968,7 +1253,9 @@ async function runBrowserAcceptance() {
         assert.ok(lockState.held.includes('hyeonjang-paid-appstate-v1'), race.label + ' holds the stable origin-scoped paid/appState Web Lock during validation');
         assert.equal(writerWhileHeld, null, race.label + ' blocks the sibling normal writer while terminal validation is pending');
         assert.ok(pendingState.includes('hyeonjang-paid-appstate-v1'), race.label + ' queues the sibling writer on the same cross-tab lock');
-        assert.deepEqual(writerResult, { status: 'fulfilled', value: false }, race.label + ' releases the sibling only after the terminal fence, so its old CAS loses');
+        assert.ok((writerResult.status === 'fulfilled' && writerResult.value === false) ||
+          (writerResult.status === 'rejected' && /stale appState conflict/.test(writerResult.value)),
+        race.label + ' releases the sibling only after the terminal fence, so its old CAS loses or the queued stale guard rejects it');
         if (race.lossAfter) assert.match(terminalResult.value, /fetch|network|failed/i, race.label + ' surfaces the lost response after post-attempt fencing');
         else assert.deepEqual(terminalResult, { status: 'fulfilled', value: race.expectedAfter });
         if (race.lossAfter) assert.equal(await actual.page.evaluate(() => window.__raceFenceAtomicCalls), 2,
@@ -1003,6 +1290,127 @@ async function runBrowserAcceptance() {
       }
     }
 
+    const ackReloadTimeoutScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, ackReloadTimeoutScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, ackReloadTimeoutScenario, 'conversion-writing');
+        const sibling = await openActualSiblingPage(actual.context, appUrl);
+        const orderBeforeTimeout = await sibling.evaluate(() => JSON.stringify(state.aptOrders));
+        await installShortOfficeOpsDeadline(actual.page);
+        ackReloadTimeoutScenario.hangListAfterAction = 'officeInspectionRecordLocalCommit'; ackReloadTimeoutScenario.hangConsumed = false;
+        const recordBefore = ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        const finalizeBefore = ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        await actual.page.evaluate(value => {
+          window.__ackTimeoutNativeAtomic = guardedAppStateWriteAtomic; window.__ackTimeoutAtomicCalls = 0; window.__ackTimeoutTerminal = null;
+          guardedAppStateWriteAtomic = async function(...args) { window.__ackTimeoutAtomicCalls += 1; return window.__ackTimeoutNativeAtomic(...args); };
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__ackTimeoutTerminal = { status: 'fulfilled', value: result.status }; },
+            error => { window.__ackTimeoutTerminal = { status: 'rejected', code: error && error.code, value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await waitForScenario(() => ackReloadTimeoutScenario.hungLists === 1, 'Record ACK reload hang');
+        await sibling.evaluate(() => {
+          __tabStale = false; state.notes = [{ id: 'queued-during-ack-timeout' }]; window.__ackTimeoutWriter = null;
+          guardedPersistCurrentState().then(
+            value => { window.__ackTimeoutWriter = { status: 'fulfilled', value }; },
+            error => { window.__ackTimeoutWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        });
+        let lockSnapshot = null;
+        for (let poll = 0; poll < 100; poll += 1) {
+          lockSnapshot = await actual.page.evaluate(async () => { const locks = await navigator.locks.query(); return { held: locks.held.map(row => row.name), pending: locks.pending.map(row => row.name) }; });
+          if (lockSnapshot.pending.includes('hyeonjang-paid-appstate-v1')) break;
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.ok(lockSnapshot.held.includes('hyeonjang-paid-appstate-v1'), 'Record ACK reload timeout holds the shared lock before the deadline');
+        assert.ok(lockSnapshot.pending.includes('hyeonjang-paid-appstate-v1'), 'sibling writer waits on the same lock before the deadline');
+        assert.equal(await sibling.evaluate(() => window.__ackTimeoutWriter), null);
+        await actual.page.waitForFunction(() => window.__ackTimeoutTerminal !== null);
+        await sibling.waitForFunction(() => window.__ackTimeoutWriter !== null);
+        const ackTimedOut = await actual.page.evaluate(async () => ({ terminal: window.__ackTimeoutTerminal, atomicCalls: window.__ackTimeoutAtomicCalls,
+          aborts: window.__officeOpsAbortCount, signals: window.__officeOpsSignalCount,
+          reacquired: await navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true) }));
+        const ackWriter = await sibling.evaluate(() => window.__ackTimeoutWriter);
+        assert.deepEqual(ackTimedOut.terminal.status, 'rejected'); assert.equal(ackTimedOut.terminal.code, 'office-timeout'); assert.match(ackTimedOut.terminal.value, /시간.*초과|다시 불러온 뒤 재개/);
+        assert.deepEqual([ackTimedOut.atomicCalls, ackTimedOut.aborts, ackTimedOut.reacquired], [2, 1, true], 'ACK reload timeout aborts once, post-fences exactly once, and releases the lock');
+        assert.ok(ackTimedOut.signals >= 2, 'each OfficeOps request receives an AbortSignal without changing its envelope');
+        assert.ok((ackWriter.status === 'fulfilled' && ackWriter.value === false) || (ackWriter.status === 'rejected' && /stale appState conflict/.test(ackWriter.value)),
+          'queued sibling writer settles without overwriting the fenced generation');
+        assert.equal(ackReloadTimeoutScenario.store.inspections[0].status, 'conversion-local-committed');
+        assert.equal(ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length - recordBefore, 1);
+        assert.equal(ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeBefore, 0);
+        assert.equal(await sibling.evaluate(async () => { const pointer = await idbGet('paid_commit_pointer'); return JSON.stringify((await idbGet(pointer)).aptOrders); }), orderBeforeTimeout,
+          'timed-out ACK reload and queued writer keep the exact validated order bytes');
+        ackReloadTimeoutScenario.hangRelease();
+        await waitForScenario(() => ackReloadTimeoutScenario.hangCompleted === 1, 'aborted ACK reload handler completion');
+        const resumed = await actual.page.evaluate(async () => { await officeOpsLoad(); return resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001')); });
+        assert.equal(resumed.status, 'converted');
+        assert.equal(ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length - recordBefore, 1, 'explicit resume sends no duplicate Record');
+        assert.equal(ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeBefore, 1, 'explicit resume sends one Finalize');
+      } finally {
+        if (ackReloadTimeoutScenario.hangRelease) ackReloadTimeoutScenario.hangRelease();
+        await actual.context.close();
+      }
+    }
+
+    const initialLoadTimeoutScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, initialLoadTimeoutScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, initialLoadTimeoutScenario, 'conversion-writing');
+        const sibling = await openActualSiblingPage(actual.context, appUrl);
+        const orderBeforeTimeout = await sibling.evaluate(() => JSON.stringify(state.aptOrders));
+        await installShortOfficeOpsDeadline(actual.page);
+        initialLoadTimeoutScenario.hangInitialList = true; initialLoadTimeoutScenario.hangConsumed = false;
+        const recordBefore = initialLoadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
+        const finalizeBefore = initialLoadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
+        await actual.page.evaluate(value => {
+          window.__initialTimeoutTerminal = null;
+          officeOpsTerminalConversionStep(value).then(
+            result => { window.__initialTimeoutTerminal = { status: 'fulfilled', value: result.done }; },
+            error => { window.__initialTimeoutTerminal = { status: 'rejected', code: error && error.code, value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await waitForScenario(() => initialLoadTimeoutScenario.hungLists === 1, 'initial terminal load hang');
+        await sibling.evaluate(() => {
+          __tabStale = false; state.notes = [{ id: 'allowed-after-initial-timeout' }]; window.__initialTimeoutWriter = null;
+          guardedPersistCurrentState().then(
+            value => { window.__initialTimeoutWriter = { status: 'fulfilled', value }; },
+            error => { window.__initialTimeoutWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        });
+        let lockSnapshot = null;
+        for (let poll = 0; poll < 100; poll += 1) {
+          lockSnapshot = await actual.page.evaluate(async () => { const locks = await navigator.locks.query(); return { held: locks.held.map(row => row.name), pending: locks.pending.map(row => row.name) }; });
+          if (lockSnapshot.pending.includes('hyeonjang-paid-appstate-v1')) break;
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.ok(lockSnapshot.held.includes('hyeonjang-paid-appstate-v1')); assert.ok(lockSnapshot.pending.includes('hyeonjang-paid-appstate-v1'));
+        assert.equal(await actual.page.evaluate(() => window.__initialTimeoutTerminal), null); assert.equal(await sibling.evaluate(() => window.__initialTimeoutWriter), null);
+        await actual.page.waitForFunction(() => window.__initialTimeoutTerminal !== null);
+        await sibling.waitForFunction(() => window.__initialTimeoutWriter !== null);
+        const initialTimedOut = await actual.page.evaluate(async () => ({ terminal: window.__initialTimeoutTerminal, aborts: window.__officeOpsAbortCount,
+          reacquired: await navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true) }));
+        assert.equal(initialTimedOut.terminal.status, 'rejected'); assert.equal(initialTimedOut.terminal.code, 'office-timeout'); assert.equal(initialTimedOut.aborts, 1); assert.equal(initialTimedOut.reacquired, true);
+        assert.deepEqual(await sibling.evaluate(() => window.__initialTimeoutWriter), { status: 'fulfilled', value: true }, 'initial-load timeout releases a normal sibling writer');
+        assert.equal(initialLoadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length - recordBefore, 0, 'initial-load timeout sends zero Record');
+        assert.equal(initialLoadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeBefore, 0, 'initial-load timeout sends zero Finalize');
+        assert.equal(await sibling.evaluate(() => state.aptOrders.length), 1, 'normal writer preserves the validated conversion order');
+        assert.equal(await sibling.evaluate(async () => { const pointer = await idbGet('paid_commit_pointer'); return JSON.stringify((await idbGet(pointer)).aptOrders); }), orderBeforeTimeout,
+          'initial-load timeout and queued writer preserve the complete validated order bytes');
+        initialLoadTimeoutScenario.hangRelease();
+        await waitForScenario(() => initialLoadTimeoutScenario.hangCompleted === 1, 'aborted initial List handler completion');
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        await actual.page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+        const resumed = await actual.page.evaluate(async () => { await officeOpsLoad(); return resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001')); });
+        assert.equal(resumed.status, 'converted');
+      } finally {
+        if (initialLoadTimeoutScenario.hangRelease) initialLoadTimeoutScenario.hangRelease();
+        await actual.context.close();
+      }
+    }
+
     const exactLiveApplyScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
     {
       const actual = await createActualConversionPage(browser, appUrl, exactLiveApplyScenario);
@@ -1011,8 +1419,14 @@ async function runBrowserAcceptance() {
         await actual.page.evaluate(() => {
           state.aiOps = null; state.coworkTasks = null; state._coworkInit = false; state._cwSchedInit = false;
           state.kakaoLastAt = ''; state.brand = null; state._savedFileCount = 0;
+          const exactFile = (name, prefix, size) => ({ id: 'fence_' + name + '_' + prefix, name, prefix, size, ext: 'jpg', kind: 'photo', project: null,
+            when: null, lat: null, lng: null, place: null, address: '', thumb: null, text: '', ocr: '', est: null, exSum: false, ledger: null, quote: null,
+            contact: null, _phase: null, _worklabel: null, _gdFolder: null, _driveId: null, _driveMimeType: null, _driveSize: 0,
+            _relayLink: null, handle: null, _file: null, _heicFile: null, _needHeic: false, _virtual: false });
+          state.files = [exactFile('fence-null-drive.jpg', '', 11), exactFile('fence-duplicate.jpg', '원본/', 22), exactFile('fence-duplicate.jpg', '_정리완료/테스트/사진/', 22)];
         });
         const caller = await prepareBrowserTerminalStage(actual.page, exactLiveApplyScenario, 'conversion-writing');
+        const expectedFenceFiles = await actual.page.evaluate(async () => { const pointer = await idbGet('paid_commit_pointer'); return (await idbGet(pointer)).files; });
         let validationEnteredResolve;
         const validationEntered = new Promise(resolve => { validationEnteredResolve = resolve; });
         const validationRelease = new Promise(resolve => { releaseValidation = resolve; });
@@ -1031,6 +1445,9 @@ async function runBrowserAcceptance() {
           state.aiOps = { source: 'unvalidated-live' }; state.coworkTasks = [{ id: 'unvalidated-live' }];
           state._coworkInit = true; state._cwSchedInit = true; state.kakaoLastAt = '2099-01-01T00:00:00.000Z';
           state.brand = { name: 'unvalidated-live' }; state._savedFileCount = 99;
+          const nullDrive = state.files.find(file => file && file.name === 'fence-null-drive.jpg');
+          nullDrive._driveId = 'unvalidated_drive_id'; nullDrive._driveMimeType = 'image/unvalidated'; nullDrive._driveSize = 999; nullDrive._relayLink = 'relay:unvalidated_drive_id';
+          state.files = state.files.filter(file => !(file && file.name === 'fence-duplicate.jpg' && file.prefix === '_정리완료/테스트/사진/'));
           window.__exactApplyQueuedWriter = null;
           guardedPersistCurrentState().then(
             value => { window.__exactApplyQueuedWriter = { status: 'fulfilled', value }; },
@@ -1046,11 +1463,15 @@ async function runBrowserAcceptance() {
           return { generation: { aiOps: generation.aiOps, coworkTasks: generation.coworkTasks, coworkInit: generation._coworkInit, cwSchedInit: generation._cwSchedInit,
             kakaoLastAt: generation.kakaoLastAt, brand: generation.brand, savedFileCount: generation._savedFileCount },
           appState: { aiOps: appState.aiOps, coworkTasks: appState.coworkTasks, coworkInit: appState._coworkInit, cwSchedInit: appState._cwSchedInit,
-            kakaoLastAt: appState.kakaoLastAt, brand: appState.brand, savedFileCount: appState._savedFileCount } };
+            kakaoLastAt: appState.kakaoLastAt, brand: appState.brand, savedFileCount: appState._savedFileCount }, generationFiles: generation.files, appStateFiles: appState.files };
         });
-        const exactFalsey = { aiOps: null, coworkTasks: null, coworkInit: false, cwSchedInit: false, kakaoLastAt: '', brand: null, savedFileCount: 0 };
+        const exactFalsey = { aiOps: null, coworkTasks: null, coworkInit: false, cwSchedInit: false, kakaoLastAt: '', brand: null, savedFileCount: 3 };
         assert.deepEqual(saved.generation, exactFalsey, 'queued writer cannot reintroduce unvalidated falsey/null live fields into the fenced generation');
         assert.deepEqual(saved.appState, exactFalsey, 'queued writer cannot reintroduce unvalidated falsey/null live fields into appState');
+        assert.deepEqual(saved.generationFiles, expectedFenceFiles, 'fence plus queued writer preserves candidate file bytes, null Drive metadata, and duplicate row order');
+        assert.deepEqual(saved.appStateFiles, expectedFenceFiles);
+        assert.deepEqual(saved.generationFiles.filter(file => file.name === 'fence-duplicate.jpg').map(file => file.prefix), ['원본/', '_정리완료/테스트/사진/']);
+        assert.deepEqual([saved.generationFiles[0].driveId, saved.generationFiles[0].driveMimeType, saved.generationFiles[0].driveSize], [null, null, 0]);
       } finally {
         if (releaseValidation) releaseValidation();
         await actual.context.close();
@@ -1060,8 +1481,10 @@ async function runBrowserAcceptance() {
     for (const candidateCase of [
       { label: 'unrelated duplicate order IDs', kind: 'duplicate-order-ids' },
       { label: 'empty unrelated order ID', kind: 'empty-order-id' },
-      { label: 'duplicate selected office ownership', kind: 'duplicate-selected-office' },
-      { label: 'unrelated retired receipt collision', kind: 'retired-receipt' }
+      { label: 'duplicate selected office ID ownership', kind: 'duplicate-selected-office-id' },
+      { label: 'duplicate normalized office name ambiguity', kind: 'duplicate-office-name' },
+      { label: 'unrelated retired receipt collision', kind: 'retired-receipt' },
+      { label: 'malformed unrelated approval audit', kind: 'malformed-audit' }
     ]) {
       const scenario = createBrowserScenario(), actual = await createActualConversionPage(browser, appUrl, scenario);
       try {
@@ -1080,8 +1503,10 @@ async function runBrowserAcceptance() {
           await actual.page.evaluate(({ kind, receipt }) => {
             if (kind === 'duplicate-order-ids') state.aptOrders.push({ id: 'unrelated_duplicate' }, { id: 'unrelated_duplicate' });
             else if (kind === 'empty-order-id') state.aptOrders.push({ id: '' });
-            else if (kind === 'duplicate-selected-office') state.aptOffices.push({ id: 'local_office_browser', complex: '테스트 단지', manager: '중복', phone: '' });
+            else if (kind === 'duplicate-selected-office-id') state.aptOffices.push({ id: 'local_office_browser', complex: '다른 단지', manager: '중복', phone: '' });
+            else if (kind === 'duplicate-office-name') state.aptOffices.push({ id: 'local_office_other', complex: '  테스트\u3000단지 ', manager: '중복', phone: '' });
             else if (kind === 'retired-receipt') state.aptOrders.push({ id: 'unrelated_retired_owner', commercialApprovalAudit: [{ event: 'terms-replaced', at: new Date().toISOString(), previousApproval: { ...receipt, subjectId: 'unrelated_retired_owner' } }] });
+            else if (kind === 'malformed-audit') state.aptOrders.push({ id: 'unrelated_malformed_audit', commercialApprovalAudit: 'malformed-audit' });
             else throw new Error('unknown candidate corruption');
           }, { kind: candidateCase.kind, receipt: scenario.receipt });
         };
@@ -1098,6 +1523,7 @@ async function runBrowserAcceptance() {
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, 0, candidateCase.label + ' sends zero Finalize mutations');
         await actual.page.reload({ waitUntil: 'domcontentloaded' });
         await actual.page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+        assert.equal(await browserPaidSnapshot(actual.page), durableBefore, candidateCase.label + ' reload preserves byte-identical pointer/journal/generation/appState');
         const rebased = await actual.page.evaluate(() => ({ orders: state.aptOrders.length, offices: state.aptOffices.filter(row => row.id === 'local_office_browser').length, source: window.__hjRestoreSource }));
         assert.deepEqual(rebased, { orders: 0, offices: 1, source: 'paid-generation' }, candidateCase.label + ' reload rebases to the unchanged clean paid head');
         scenario.commercialVerifyHook = null;
@@ -1108,6 +1534,8 @@ async function runBrowserAcceptance() {
         assert.equal(clean.status, 'converted', candidateCase.label + ' clean rebased candidate completes');
         assert.equal(await actual.page.evaluate(() => state.aptOrders.filter(order => order && order.source === 'officeops-preventive-inspection').length), 1,
           candidateCase.label + ' clean retry commits exactly one conversion order');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, 1, candidateCase.label + ' clean retry sends exactly one Record');
+        assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, 1, candidateCase.label + ' clean retry sends exactly one Finalize');
       } finally { await actual.context.close(); }
     }
 
@@ -1199,8 +1627,34 @@ async function runBrowserAcceptance() {
         assert.equal(preFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, recordBefore, 'pre-fence failure sends zero Record mutations');
         assert.equal(await actual.page.evaluate(() => navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true)), true,
           'pre-fence error releases the shared lock');
-        await actual.page.evaluate(() => { guardedAppStateWriteAtomic = window.__nativeGuardedFenceAtomic; });
-        assert.equal(await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller), 'converted');
+        await actual.page.evaluate(value => {
+          guardedAppStateWriteAtomic = window.__nativeGuardedFenceAtomic;
+          window.__nativePreFenceApply = applyPaidCommittedState; window.__preFenceApplyWriter = null;
+          applyPaidCommittedState = function(candidate) {
+            window.__nativePreFenceApply(candidate); state.notes = [{ id: 'unvalidated-pre-fence-apply' }];
+            guardedPersistCurrentState().then(
+              result => { window.__preFenceApplyWriter = { status: 'fulfilled', value: result }; },
+              error => { window.__preFenceApplyWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+            );
+            throw new Error('injected exact apply failure');
+          };
+          window.__preFenceApplyTerminal = null;
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__preFenceApplyTerminal = { status: 'fulfilled', value: result.status }; },
+            error => { window.__preFenceApplyTerminal = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await actual.page.waitForFunction(() => window.__preFenceApplyTerminal !== null && window.__preFenceApplyWriter !== null);
+        const applyFailure = await actual.page.evaluate(async () => { const pointer = await idbGet('paid_commit_pointer'), generation = await idbGet(pointer);
+          return { terminal: window.__preFenceApplyTerminal, writer: window.__preFenceApplyWriter, stale: __tabStale,
+            recovery: !!document.getElementById('hjPaidCommitRecovery'), durableNotes: generation.notes }; });
+        assert.equal(applyFailure.terminal.status, 'rejected'); assert.match(applyFailure.terminal.value, /durable fence recovery required/);
+        assert.deepEqual(applyFailure.writer, { status: 'rejected', value: 'stale appState conflict' }, 'writer queued before pre-fence exact-apply failure performs zero overwrite');
+        assert.deepEqual([applyFailure.stale, applyFailure.recovery], [true, true]); assert.doesNotMatch(JSON.stringify(applyFailure.durableNotes), /unvalidated-pre-fence-apply/);
+        assert.equal(preFenceReleaseScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, recordBefore, 'pre-fence exact-apply failure sends zero Record mutations');
+        await actual.page.reload({ waitUntil: 'domcontentloaded' });
+        await actual.page.evaluate(async () => { await window.__hjRestoreDone; });
+        assert.equal(await actual.page.evaluate(async () => { await officeOpsLoad(); return (await resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'))).status; }), 'converted');
       } finally { await actual.context.close(); }
     }
 
@@ -1229,6 +1683,50 @@ async function runBrowserAcceptance() {
         await actual.page.evaluate(async () => { await window.__hjRestoreDone; });
         assert.equal(await actual.page.evaluate(async () => { await officeOpsLoad(); return (await resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'))).status; }), 'converted',
           'reload recovers from the post-fence failure without duplicating the terminal mutation');
+      } finally { await actual.context.close(); }
+    }
+
+    const releaseBoundaryScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
+    {
+      const actual = await createActualConversionPage(browser, appUrl, releaseBoundaryScenario);
+      try {
+        const caller = await prepareBrowserTerminalStage(actual.page, releaseBoundaryScenario, 'converted');
+        await actual.page.evaluate(value => {
+          window.__releaseBoundaryNativeAtomic = guardedAppStateWriteAtomic; window.__releaseBoundaryAtomicCalls = 0;
+          guardedAppStateWriteAtomic = async function(...args) { window.__releaseBoundaryAtomicCalls += 1; return window.__releaseBoundaryNativeAtomic(...args); };
+          window.__releaseBoundaryWriter = null; window.__releaseBoundaryTerminal = null; window.__releaseBoundaryTriggered = false;
+          const nativePost = __tabBC && __tabBC.postMessage.bind(__tabBC);
+          if (!nativePost) throw new Error('BroadcastChannel unavailable for release-boundary fixture');
+          __tabBC.postMessage = function(message) {
+            if (!window.__releaseBoundaryTriggered && message && message.t === 'saved') {
+              window.__releaseBoundaryTriggered = true;
+              state.notes = [{ id: 'unvalidated-release-boundary' }];
+              guardedPersistCurrentState().then(
+                result => { window.__releaseBoundaryWriter = { status: 'fulfilled', value: result }; },
+                error => { window.__releaseBoundaryWriter = { status: 'rejected', value: String(error && error.message || error) }; }
+              );
+            }
+            return nativePost(message);
+          };
+          resumeOfficeOpsInspectionConversion(value).then(
+            result => { window.__releaseBoundaryTerminal = { status: 'fulfilled', value: result.status }; },
+            error => { window.__releaseBoundaryTerminal = { status: 'rejected', value: String(error && error.message || error) }; }
+          );
+        }, caller);
+        await actual.page.waitForFunction(() => window.__releaseBoundaryTerminal !== null && window.__releaseBoundaryWriter !== null);
+        const boundary = await actual.page.evaluate(async () => {
+          const pointer = await idbGet('paid_commit_pointer'), generation = await idbGet(pointer), appState = await idbGet('appState');
+          return { triggered: window.__releaseBoundaryTriggered, terminal: window.__releaseBoundaryTerminal, writer: window.__releaseBoundaryWriter,
+            atomicCalls: window.__releaseBoundaryAtomicCalls, stale: __tabStale, recovery: !!document.getElementById('hjPaidCommitRecovery'),
+            generationNotes: generation.notes, appStateNotes: appState.notes,
+            reacquired: await navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true) };
+        });
+        assert.equal(boundary.triggered, true, 'fixture mutates live serialized state at the last synchronous release boundary');
+        assert.equal(boundary.terminal.status, 'rejected'); assert.match(boundary.terminal.value, /durable fence recovery required/);
+        assert.deepEqual(boundary.writer, { status: 'rejected', value: 'stale appState conflict' }, 'queued writer fails its inside-lock stale guard');
+        assert.equal(boundary.atomicCalls, 1, 'release-boundary writer performs zero durable overwrite after the one terminal fence');
+        assert.deepEqual(boundary.generationNotes, boundary.appStateNotes); assert.doesNotMatch(JSON.stringify(boundary.generationNotes), /unvalidated-release-boundary/);
+        assert.deepEqual([boundary.stale, boundary.recovery, boundary.reacquired], [true, true, true], 'release-boundary mismatch marks recovery and releases the lock');
       } finally { await actual.context.close(); }
     }
 

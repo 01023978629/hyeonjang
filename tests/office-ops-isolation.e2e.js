@@ -58,27 +58,32 @@ const validStoredConsent = {
   audit: [{ event: 'recorded', at: '2026-08-31T12:00:00+09:00', actor: '대표', reason: null }]
 };
 
-function makeClient({ replies = [], cache = new Map(), mutationImplementation = '' } = {}) {
-  const calls = [];
+function makeClient({ replies = [], cache = new Map(), mutationImplementation = '', timeoutMs = 11000, fetchImplementation = null,
+  idbGetImplementation = null, clearTimerObserver = null } = {}) {
+  const calls = [], requests = [];
   const sandbox = {
     crypto: { randomUUID: (() => { let n = 0; return () => 'uuid-' + (++n); })(), subtle: webcrypto.subtle },
     Date: class extends Date { static now() { return 0; } },
     JSON, Object, Error, Number, String, Array, Promise, URL, Intl, TextEncoder, Uint8Array, Map, Set,
-    idbGet: async key => cache.get(key),
+    AbortController, setTimeout,
+    clearTimeout: timer => { if (clearTimerObserver) clearTimerObserver(timer); clearTimeout(timer); },
+    idbGet: async key => idbGetImplementation ? idbGetImplementation(key, cache) : cache.get(key),
     idbSet: async (key, value) => { cache.set(key, value); },
     fetch: async (_url, init) => {
+      requests.push({ url: _url, init });
       calls.push(JSON.parse(init.body));
+      if (fetchImplementation) return fetchImplementation(_url, init);
       const next = replies.shift();
       if (next instanceof Error) throw next;
       return { ok: next && next.httpOk !== false, json: async () => next && next.body };
     }
   };
   vm.createContext(sandbox);
-  vm.runInContext("const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
-  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity', 'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity', 'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsRevokeFresh', 'officeOpsActiveConsentForDraft', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
+  vm.runInContext("const OFFICE_OPS_REQUEST_TIMEOUT_MS=" + Number(timeoutMs) + ";const __officeOps={url:'https://office.example/ops',token:'office-token',cache:null,revision:0,updatedAt:'',loadedAt:'',loading:false};const __commercialApproval={url:'',token:'',lastTrustedNow:null};", sandbox);
+  for (const name of ['normalizeHttpsUrl', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsError', 'commercialError', 'officeOpsTimeoutError', 'isRealIsoDate', 'formatKstIso', 'pilotEndsAtKst', 'parseStrictKstDateTime', 'officeOpsExactKeys', 'validOfficeString', 'normalizeOfficeTombstone', 'normalizePilotEditable', 'normalizePilotRecord', 'normalizeReinspectionConsent', 'sha256Hex', 'reinspectionNextDueAtKst', 'normalizeOfficeConsentRecord', 'validateOfficeConsentIntegrity', 'normalizeOfficeCommercialTerms', 'normalizeOfficeApprovalMetadata', 'normalizeOfficeInspectionRecord', 'validateOfficeInspectionIntegrity', 'normalizeKAptUrl', 'normalizeOfficeOpportunityRecord', 'officeOpsAuditIdValid', 'normalizeOfficeAuditRow', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'validateOfficeOpsStoreIntegrity', 'normalizeAndValidateOfficeOpsStore', 'officeOpsRevokeFresh', 'officeOpsActiveConsentForDraft', 'officeOpsCall', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'commercialApprovalBoot', 'officeOpsBoot']) {
     vm.runInContext(name === 'officeOpsMutationWithAck' && mutationImplementation ? mutationImplementation : extractFunction(name), sandbox);
   }
-  return { sandbox, calls, cache };
+  return { sandbox, calls, requests, cache };
 }
 
 const representativeMutations = ['pilotCreate', 'pilotUpdate', 'consentDraft', 'inspectionConvert', 'contactRecord'];
@@ -91,6 +96,76 @@ async function assertRepresentativeMutationsBlocked(client, label) {
 }
 
 (async () => {
+  let timeoutAborts = 0, timeoutSignals = 0, timeoutClears = 0;
+  const timeoutClient = makeClient({ timeoutMs: 25, clearTimerObserver: () => { timeoutClears += 1; },
+    fetchImplementation: (_url, init) => new Promise((resolve, reject) => {
+      if (init.signal) {
+        timeoutSignals += 1;
+        init.signal.addEventListener('abort', () => { timeoutAborts += 1; const error = new Error('aborted'); error.name = 'AbortError'; reject(error); }, { once: true });
+      }
+      setTimeout(() => resolve({ ok: true, json: async () => ({ ok: true, store: validHistoryStore(0) }) }), 90);
+    }) });
+  let timeoutError = null;
+  try { await vm.runInContext("officeOpsCall('officeOpsList',{})", timeoutClient.sandbox); }
+  catch (error) { timeoutError = error; }
+  assert.equal(timeoutError && timeoutError.code, 'office-timeout', 'a never-settling OfficeOps response is bounded by one stable timeout error');
+  assert.match(String(timeoutError && timeoutError.message || ''), /시간이 초과.*다시 불러온 뒤 재개/, 'OfficeOps timeout gives an actionable Korean recovery message');
+  assert.deepEqual({ requests: timeoutClient.calls.length, signals: timeoutSignals, aborts: timeoutAborts, clears: timeoutClears },
+    { requests: 1, signals: 1, aborts: 1, clears: 1 }, 'one OfficeOps request receives one AbortSignal, aborts once, and clears its timer');
+  const timeoutRequest = timeoutClient.requests[0], timeoutEnvelope = timeoutClient.calls[0];
+  assert.equal(timeoutRequest.url, 'https://office.example/ops');
+  assert.deepEqual(Object.keys(timeoutRequest.init).sort(), ['body','headers','method','signal']);
+  assert.equal(timeoutRequest.init.method, 'POST');
+  assert.deepEqual(Object.keys(timeoutRequest.init.headers), ['Content-Type']);
+  assert.equal(timeoutRequest.init.headers['Content-Type'], 'text/plain;charset=utf-8');
+  assert.equal(timeoutRequest.init.signal instanceof AbortSignal, true, 'AbortSignal lives only in fetch init');
+  assert.deepEqual(timeoutEnvelope, { token: 'office-token', action: 'officeOpsList', deviceId: 'uuid-1', timestamp: timeoutEnvelope.timestamp, payload: {} });
+  assert.ok(Number.isFinite(Date.parse(timeoutEnvelope.timestamp)) && new Date(timeoutEnvelope.timestamp).toISOString() === timeoutEnvelope.timestamp);
+  assert.deepEqual(Object.keys(timeoutEnvelope).sort(), ['action','deviceId','payload','timestamp','token'], 'timeout control never enters the exact OfficeOps envelope');
+
+  let successClears = 0;
+  const timeoutSuccess = makeClient({ timeoutMs: 25, clearTimerObserver: () => { successClears += 1; }, replies: [{ body: { ok: true, store: validHistoryStore(0) } }] });
+  assert.equal((await vm.runInContext("officeOpsCall('officeOpsList',{})", timeoutSuccess.sandbox)).ok, true);
+  assert.equal(successClears, 1, 'successful OfficeOps calls always clear the deadline timer');
+  let errorClears = 0; const networkSentinel = new Error('network sentinel');
+  const timeoutNetwork = makeClient({ timeoutMs: 25, clearTimerObserver: () => { errorClears += 1; }, replies: [networkSentinel] });
+  await assert.rejects(() => vm.runInContext("officeOpsCall('officeOpsList',{})", timeoutNetwork.sandbox), error => error === networkSentinel,
+    'non-timeout OfficeOps failures preserve the original error');
+  assert.equal(errorClears, 1, 'non-timeout failures also clear the deadline timer');
+
+  let jsonAborts = 0, jsonClears = 0;
+  const timeoutJson = makeClient({ timeoutMs: 25, clearTimerObserver: () => { jsonClears += 1; },
+    fetchImplementation: (_url, init) => {
+      init.signal.addEventListener('abort', () => { jsonAborts += 1; }, { once: true });
+      return Promise.resolve({ ok: true, json: () => new Promise(() => {}) });
+    } });
+  await assert.rejects(() => vm.runInContext("officeOpsCall('officeOpsList',{})", timeoutJson.sandbox), error => error && error.code === 'office-timeout',
+    'a response body/json read that never settles is included in the same OfficeOps deadline');
+  assert.deepEqual({ requests: timeoutJson.calls.length, aborts: jsonAborts, clears: jsonClears }, { requests: 1, aborts: 1, clears: 1 });
+
+  let lateFetchAborted = false, lateFetchCalls = 0, releaseLateDevice, observeLateFetch;
+  const lateDevice = new Promise(resolve => { releaseLateDevice = resolve; });
+  const lateFetchObserved = new Promise(resolve => { observeLateFetch = resolve; });
+  const lateEnvelopeClient = makeClient({ timeoutMs: 25,
+    idbGetImplementation: key => key === 'office_ops_device_id' ? lateDevice : undefined,
+    fetchImplementation: (_url, init) => {
+      lateFetchCalls += 1; lateFetchAborted = !!(init.signal && init.signal.aborted); observeLateFetch();
+      const error = new Error('already aborted'); error.name = 'AbortError'; return Promise.reject(error);
+    } });
+  let lateError = null;
+  try { await vm.runInContext("officeOpsCall('officeOpsList',{})", lateEnvelopeClient.sandbox); }
+  catch (error) { lateError = error; }
+  assert.equal(lateError && lateError.code, 'office-timeout', 'the timeout begins before asynchronous device/envelope work');
+  assert.equal(lateFetchCalls, 0, 'the bounded caller returns before delayed device work reaches fetch');
+  releaseLateDevice('device-late');
+  await Promise.race([lateFetchObserved, new Promise((_, reject) => setTimeout(() => reject(new Error('late fetch observation timeout')), 1000))]);
+  assert.equal(lateFetchCalls, 1);
+  assert.equal(lateFetchAborted, true, 'pre-fetch work finishing after the deadline cannot start an un-aborted request');
+
+  assert.match(source, /const OFFICE_OPS_REQUEST_TIMEOUT_MS=11000;/, 'the production OfficeOps deadline remains fixed at eleven seconds');
+  assert.match(extractFunction('officeOpsCall'), /^async function officeOpsCall\(action,payload,\{mutationId\}=\{\}\)/,
+    'production callers have no timeout override surface');
+
   const storeAtEight = validHistoryStore(8);
   const client = makeClient({ replies: [
     { body: { ok: true, id: 'pilot_history_7', revision: 8, updatedAt: storeAtEight.updatedAt } },
@@ -249,7 +324,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.match(source, new RegExp('id="' + inputId + '" value=""'), inputId + ' value is always blank in rendered settings HTML');
     assert.doesNotMatch(source, new RegExp('id="' + inputId + '"[^>]*value="\\$\\{'), inputId + ' never interpolates a credential into the rendered value');
   }
-  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'officeOpsRevokeFresh', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
+  const isolatedFunctions = ['normalizeHttpsUrl', 'officeOpsError', 'commercialError', 'officeOpsTimeoutError', 'officeOpsDeviceId', 'officeOpsEnvelope', 'commercialEnvelope', 'postIsolated', 'officeOpsCall', 'commercialCall', 'commercialApprovalBoot', 'normalizeOfficeOpsStore', 'validateOfficeOpsAuditHistory', 'officeOpsRevokeFresh', 'officeOpsLoad', 'officeOpsMutationWithAck', 'officeOpsMutation', 'officeOpsRefresh', 'officeOpsBoot', 'officeOpsSaveSettings', 'officeOpsClearCredentials', 'officeOpsExportLastCache'];
   const forbiddenReferences = /\bstate\b|serializeData|applyData|DATA_FILE_NAME|OFFICE_STORE_FILE|relayCall|relayBoot|__relay\b|RELAY_URL_DEFAULT|relay(?:Queue|Upload)[A-Za-z0-9_]*|relay_queue|relay_url|relay_token|\bcloudApi[A-Za-z0-9_]*|\brelayBuild[A-Za-z0-9_]*(?:Upload|Payload)[A-Za-z0-9_]*|__gd[A-Za-z0-9_]*|GD_[A-Z0-9_]*|\bgd[A-Za-z0-9_]*(?:Backup|Blob|Drive|File|Folder|Persist|Queue|Restore|Save|Sync|Token|Upload)[A-Za-z0-9_]*|__heic[A-Za-z0-9_]*|queueHeicPreview|(?:pump|process|queue)HeicPreview[A-Za-z0-9_]*|(?:photo|heic)(?:Queue|Upload)[A-Za-z0-9_]*|(?:queue|upload)(?:Photo|Heic)[A-Za-z0-9_]*|APP_TOKEN|officeIntake|OfficeIntake/i;
   for (const snippet of ['__relay.token', 'RELAY_URL_DEFAULT', "idbGet('relay_queue')", '__gdToken', 'GD_FOLDER_ID', 'queueHeicPreview(file)', 'photoUploadQueue(item)', 'cloudApiUploadFile', 'relayBuildUploadPayload', 'gdUploadBlob', '__heicPreviewQueue', 'pumpHeicPreviewQueue']) {
     assert.match(snippet, forbiddenReferences, 'relay/photo/Drive fixture must be rejected: ' + snippet);
