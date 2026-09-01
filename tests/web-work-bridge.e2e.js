@@ -20,6 +20,7 @@ for (const forbidden of ['location', 'navigator.clipboard', 'clipboard.read', 'f
   assert.equal(bridge.includes(forbidden), false, 'bridge must not use forbidden automatic ingress/storage/action: ' + forbidden);
 }
 assert.ok(bridge.indexOf("await hjSnapshot('웹 업무 연결 등록 전'") < bridge.indexOf('state.projects=priorProjects.concat'), 'snapshot precedes state mutation');
+assert.ok(bridge.indexOf('await guardedPersistCurrentState()') > bridge.indexOf('state.projects=priorProjects.concat'), 'registration awaits durable local persistence after mutation');
 assert.match(bridge, /crypto\.subtle\.digest\('SHA-256'/, 'deterministic cryptographic inquiry id');
 assert.match(bridge, /sourceInquiryId:draft\.id/, 'project preserves additive dedupe id');
 assert.match(bridge, /sourceService:draft\.service/, 'project preserves service classification');
@@ -97,7 +98,16 @@ let browser;
     });
     const a=webWorkParse(fixtures.interior), b=webWorkParse(fixtures.leak), c=webWorkParse(fixtures.office);
     const d1=await webWorkDraftFromText(fixtures.office),d2=await webWorkDraftFromText(fixtures.office);
-    return { interior:pick(a), leak:pick(b), office:pick(c), sameId:d1.id===d2.id, id:d1.id, customerName:d1.customerName };
+    const baseCanonical=webWorkCanonical(c);
+    const canonicalFields=WEB_WORK_FIELD_ORDER.map(key => {
+      const changed={...c,fields:{...c.fields,[key]:(c.fields[key]||'')+' changed '+key}};
+      return {key,changed:webWorkCanonical(changed)!==baseCanonical};
+    });
+    const linked=webWorkParse(fixtures.interior.replace('\uC2E4\uCE21 \uC0C1\uB2F4\uC744 \uC6D0\uD569\uB2C8\uB2E4.','ftp://evil.invalid file://local/secret mailto:test@evil.invalid x://localhost/private bare.example/path 만물.한국/secret 홍길동@예시.한국 \uC81C\uC678'));
+    return {
+      interior:pick(a), leak:pick(b), office:pick(c), sameId:d1.id===d2.id, id:d1.id, customerName:d1.customerName,
+      canonicalFields,linkedFields:JSON.stringify(linked.fields)
+    };
   }, FIXTURES);
   assert.deepEqual(parsed.interior, {service:'interior',phone:'042-123-4567',name:'A&B 고객',officeContactName:'',complexName:'',region:'대전 유성구',intakeSource:'website',hasDiscardedUrl:false});
   assert.deepEqual(parsed.leak, {service:'leak-pipe',phone:'02-1234-5678',name:'',officeContactName:'',complexName:'',region:'대전 서구 아파트',intakeSource:'leak-page',hasDiscardedUrl:false});
@@ -105,6 +115,10 @@ let browser;
   assert.equal(parsed.sameId, true, 'same sanitized inquiry yields same id');
   assert.match(parsed.id, /^webmail-[a-f0-9]{64}$/);
   assert.equal(parsed.customerName, '시설 담당자', 'office contact is the customer display name');
+
+  assert.equal(parsed.canonicalFields.length, 22, 'canonical field contract covers every declared field');
+  assert.equal(parsed.canonicalFields.every(item => item.changed), true, 'every canonical field changes the dedupe id input');
+  assert.doesNotMatch(parsed.linkedFields, /evil\.invalid|file:\/\/|mailto:|x:\/\/|bare\.example|만물\.한국|예시\.한국/i, 'all URI schemes, email links and internationalized bare domains are removed before persistence');
 
   const rejection = await page.evaluate(fixtures => {
     const mutate = (base, from, to) => base.replace(from, to);
@@ -148,15 +162,44 @@ let browser;
   assert.match(preview.html, /A&amp;B 고객/, 'preview escapes structured values');
   assert.match(preview.text, /A&B 고객/);
 
+  const closedPreview = await page.evaluate(() => {
+    document.querySelector('#modalRoot .modal-close').click();
+    return {draft:__webWorkDraft,modal:!!document.querySelector('#modalRoot .modal')};
+  });
+  assert.deepEqual(closedPreview,{draft:null,modal:false},'every preview close path clears the PII draft');
+
+  const cancelledParse = await page.evaluate(async fixture => {
+    webWorkCenterOpen();
+    const paste=document.getElementById('webWorkPaste'),parse=document.getElementById('webWorkParse');
+    paste.value=fixture;
+    const originalHash=webWorkSha256Hex;
+    let releaseHash,markStarted;
+    const started=new Promise(resolve => { markStarted=resolve; });
+    const blocked=new Promise(resolve => { releaseHash=resolve; });
+    webWorkSha256Hex=async () => { markStarted(); return blocked; };
+    parse.click();await started;
+    document.querySelector('#modalRoot .modal-close').click();
+    releaseHash('0'.repeat(64));await new Promise(resolve => setTimeout(resolve,0));
+    webWorkSha256Hex=originalHash;
+    return {draft:__webWorkDraft,modal:!!document.querySelector('#modalRoot .modal'),pasteConnected:paste.isConnected};
+  }, FIXTURES.leak);
+  assert.deepEqual(cancelledParse,{draft:null,modal:false,pasteConnected:false},'closing during async hashing invalidates the parse and cannot reopen PII preview');
+
+  await page.evaluate(() => webWorkCenterOpen());
+  await page.locator('#webWorkPaste').fill(FIXTURES.interior);
+  await page.locator('#webWorkParse').click();
+  await page.waitForSelector('[data-web-work-preview]');
+
   const registered = await page.evaluate(async () => {
     const events=[];
     hjSnapshot=async () => { events.push('snapshot'); return true; };
-    markDirty=() => events.push('dirty'); render=() => events.push('render');
+    guardedPersistCurrentState=async () => { events.push('persist'); return true; };
+    webWorkMarkDirtyAfterPersist=() => events.push('post-persist');render=() => events.push('render');
     const draft=__webWorkDraft,ok=await webWorkRegister(draft.id);
     return {ok,events,projects:state.projects,notes:state.notes,serialized:JSON.stringify({projects:state.projects,notes:state.notes})};
   });
   assert.equal(registered.ok, true);
-  assert.deepEqual(registered.events.slice(0,2), ['snapshot','dirty'], 'explicit registration snapshots before persistence');
+  assert.deepEqual(registered.events, ['snapshot','persist','post-persist','render'], 'explicit registration snapshots, durably persists, then triggers background sync and render');
   assert.equal(registered.projects.length, 1);
   assert.equal(registered.projects[0].stage, 0);
   assert.equal(registered.projects[0].source, 'web3forms-email');
@@ -166,8 +209,10 @@ let browser;
   assert.doesNotMatch(registered.serialized, /\[만물인테리어 상담 신청\]|example\.invalid/, 'raw email/header and external URL are not persisted');
 
   const guards = await page.evaluate(async fixtures => {
-    let snapshots=0;
-    hjSnapshot=async () => { snapshots++; return true; }; markDirty=()=>{};render=()=>{};
+    let snapshots=0,persists=0,postPersists=0;
+    render=()=>{};webWorkMarkDirtyAfterPersist=()=>{postPersists++;};
+    hjSnapshot=async () => { snapshots++; return true; };
+    guardedPersistCurrentState=async()=>{persists++;return true;};
     __webWorkDraft=await webWorkDraftFromText(fixtures.interior);
     const beforeDupe=state.projects.length,dupe=await webWorkRegister(__webWorkDraft.id),afterDupe=state.projects.length;
     __webWorkDraft=await webWorkDraftFromText(fixtures.leak);
@@ -176,13 +221,38 @@ let browser;
     const snapshotFail=await webWorkRegister(__webWorkDraft.id);
     const afterFail=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
     __webWorkDraft=await webWorkDraftFromText(fixtures.office);
-    hjSnapshot=async () => { snapshots++; return true; };markDirty=()=>{throw new Error('break-caught');};
-    const beforeDirty=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
-    const dirtyFail=await webWorkRegister(__webWorkDraft.id);
-    const afterDirty=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
-    return {beforeDupe,dupe,afterDupe,snapshotFail,sameAfterSnapshot:beforeFail===afterFail,dirtyFail,sameAfterDirty:beforeDirty===afterDirty,snapshots};
+    hjSnapshot=async () => { snapshots++; return true; };guardedPersistCurrentState=async()=>{persists++;return false;};
+    const beforePersistFalse=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
+    const persistFalse=await webWorkRegister(__webWorkDraft.id);
+    const afterPersistFalse=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
+    __webWorkDraft=await webWorkDraftFromText(fixtures.office.replace('\uC2DC\uC124 \uB2F4\uB2F9\uC790','\uC2DC\uC124 \uB2F4\uB2F9\uC790 2'));
+    guardedPersistCurrentState=async()=>{persists++;throw new Error('persist-break');};
+    const beforePersistThrow=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
+    const persistThrow=await webWorkRegister(__webWorkDraft.id);
+    const afterPersistThrow=JSON.stringify({projects:state.projects,notes:state.notes,active:state.activeProject});
+    __webWorkDraft=await webWorkDraftFromText(fixtures.office.replace('\uC2DC\uC124 \uB2F4\uB2F9\uC790','\uC2DC\uC124 \uB2F4\uB2F9\uC790 3'));
+    guardedPersistCurrentState=async()=>{persists++;return true;};render=()=>{throw new Error('render-break');};
+    const beforeRender=state.projects.length,renderResult=await webWorkRegister(__webWorkDraft.id),afterRender=state.projects.length;
+    render=()=>{};
+    __webWorkDraft=await webWorkDraftFromText(fixtures.leak.replace('2026-09-03','2026-09-04'));
+    const raceId=__webWorkDraft.id,raceBefore=state.projects.length;
+    hjSnapshot=async()=>{snapshots++;state.projects=state.projects.concat([{name:'race insert',sourceInquiryId:raceId}]);return true;};
+    guardedPersistCurrentState=async()=>{persists++;return true;};
+    const raceResult=await webWorkRegister(raceId),raceAfter=state.projects.length;
+    return {
+      beforeDupe,dupe,afterDupe,snapshotFail,sameAfterSnapshot:beforeFail===afterFail,
+      persistFalse,sameAfterPersistFalse:beforePersistFalse===afterPersistFalse,
+      persistThrow,sameAfterPersistThrow:beforePersistThrow===afterPersistThrow,
+      renderResult,renderAdded:afterRender===beforeRender+1,raceResult,raceAddedOnlyCompeting:raceAfter===raceBefore+1,
+      snapshots,persists,postPersists
+    };
   }, FIXTURES);
-  assert.deepEqual(guards,{beforeDupe:1,dupe:false,afterDupe:1,snapshotFail:false,sameAfterSnapshot:true,dirtyFail:false,sameAfterDirty:true,snapshots:2},'Break caught: dedupe, failed snapshot and failed persistence never leave partial projects');
+  assert.deepEqual(guards,{
+    beforeDupe:1,dupe:false,afterDupe:1,snapshotFail:false,sameAfterSnapshot:true,
+    persistFalse:false,sameAfterPersistFalse:true,persistThrow:false,sameAfterPersistThrow:true,
+    renderResult:true,renderAdded:true,raceResult:false,raceAddedOnlyCompeting:true,
+    snapshots:5,persists:3,postPersists:1
+  },'Break caught: dedupe races, failed snapshot/persistence, and post-persist UI failure preserve atomic outcomes');
   assert.equal(errors.length, 0, 'no page errors: ' + errors.join(' | '));
   await browser.close();
   console.log('PASS  웹 업무 연결: 3종 실메일·국내전화·동의/출처·미리보기 승인·안전판·중복·rollback·OfficeIntake 분리');
