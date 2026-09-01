@@ -14,85 +14,131 @@ function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g
 function bindingTokens(candidate) {
   const input = String(candidate), scripts = [...input.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   const lastScriptEnd = input.toLowerCase().lastIndexOf('</script>');
-  const text = scripts.length ? scripts.map(match => match[1]).join('\n') + '\n' + input.slice(lastScriptEnd + 9) : input;
+  const closingHtmlAt = input.toLowerCase().indexOf('</html>', lastScriptEnd + 9);
+  const appendedTail = input.slice(closingHtmlAt >= 0 ? closingHtmlAt + 7 : lastScriptEnd + 9);
+  const text = scripts.length ? scripts.map(match => match[1]).join('\n') + '\n;\n' + appendedTail : input;
   const tokens = [];
   const punctuators = ['>>>=', '**=', '&&=', '||=', '??=', '<<=', '>>=', '=>', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '='];
   const regexPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
   const regexPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=', '=>']);
   const controlKeywords = new Set(['if', 'while', 'for', 'with', 'switch', 'catch']);
   const controlBlockKeywords = new Set(['else', 'do', 'try', 'finally']);
-  let i = 0;
-  const push = (type, value, index) => tokens.push({ type, value, index });
-  const closesControlParen = closeAt => {
-    if (!tokens[closeAt] || tokens[closeAt].value !== ')') return false;
+  const declarationExpressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'extends', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=']);
+  let i = 0, lastTokenEnd = 0;
+  const push = (type, value, index, end = index + String(value).length) => {
+    const lineBreakBefore = tokens.length > 0 && /[\r\n\u2028\u2029]/.test(text.slice(lastTokenEnd, index));
+    tokens.push({ type, value, index, end, lineBreakBefore });
+    lastTokenEnd = Math.max(lastTokenEnd, end);
+  };
+  const matchingOpen = (closeAt, openValue, closeValue) => {
+    if (!tokens[closeAt] || tokens[closeAt].value !== closeValue) return -1;
     let depth = 0;
     for (let at = closeAt; at >= 0; at -= 1) {
-      if (tokens[at].value === ')') depth += 1;
-      else if (tokens[at].value === '(' && --depth === 0) return !!(tokens[at - 1] && tokens[at - 1].type === 'identifier' && controlKeywords.has(tokens[at - 1].value));
+      if (tokens[at].value === closeValue) depth += 1;
+      else if (tokens[at].value === openValue && --depth === 0) return at;
+    }
+    return -1;
+  };
+  const closesControlParen = closeAt => {
+    const openAt = matchingOpen(closeAt, '(', ')');
+    return openAt >= 0 && !!(tokens[openAt - 1] && tokens[openAt - 1].type === 'identifier' && controlKeywords.has(tokens[openAt - 1].value));
+  };
+  const followsControlParen = () => closesControlParen(tokens.length - 1);
+  const declarationKeywordAt = keywordAt => {
+    let contextAt = keywordAt - 1;
+    if (tokens[contextAt] && tokens[contextAt].value === 'async') contextAt -= 1;
+    const preceding = tokens[contextAt];
+    return !preceding || !declarationExpressionPrefixes.has(preceding.value);
+  };
+  const isFunctionDeclarationBlock = openAt => {
+    const paramsClose = openAt - 1, paramsOpen = matchingOpen(paramsClose, '(', ')');
+    if (paramsOpen < 0) return false;
+    let functionAt = paramsOpen - 1;
+    if (tokens[functionAt] && tokens[functionAt].type === 'identifier' && tokens[functionAt].value !== 'function') functionAt -= 1;
+    if (tokens[functionAt] && tokens[functionAt].value === '*') functionAt -= 1;
+    return !!(tokens[functionAt] && tokens[functionAt].value === 'function' && declarationKeywordAt(functionAt));
+  };
+  const isClassDeclarationBlock = openAt => {
+    let classAt = openAt - 1;
+    while (classAt >= 0 && ![';', '{', '}'].includes(tokens[classAt].value)) {
+      if (isClassKeywordToken(tokens, classAt)) return declarationKeywordAt(classAt);
+      classAt -= 1;
     }
     return false;
   };
-  const followsControlParen = () => closesControlParen(tokens.length - 1);
-  const followsControlBlock = () => {
+  const followsStatementBlock = () => {
     if (!tokens.length || tokens[tokens.length - 1].value !== '}') return false;
-    let depth = 0;
-    for (let at = tokens.length - 1; at >= 0; at -= 1) {
-      if (tokens[at].value === '}') depth += 1;
-      else if (tokens[at].value === '{' && --depth === 0) {
-        const beforeBlock = tokens[at - 1];
-        return !!(beforeBlock && ((beforeBlock.value === ')' && closesControlParen(at - 1)) || (beforeBlock.type === 'identifier' && controlBlockKeywords.has(beforeBlock.value))));
-      }
-    }
-    return false;
+    const openAt = matchingOpen(tokens.length - 1, '{', '}');
+    if (openAt < 0) return false;
+    const beforeBlock = tokens[openAt - 1];
+    if (!beforeBlock) return true;
+    if ((beforeBlock.value === ')' && closesControlParen(openAt - 1)) || (beforeBlock.type === 'identifier' && controlBlockKeywords.has(beforeBlock.value))) return true;
+    if (isFunctionDeclarationBlock(openAt) || isClassDeclarationBlock(openAt)) return true;
+    return [';', '{', '}'].includes(beforeBlock.value);
   };
   const canStartRegex = () => {
     if (!tokens.length) return true;
     const previous = tokens[tokens.length - 1];
-    return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsControlBlock();
+    return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsStatementBlock();
   };
   const scanCode = stopAtTemplateBrace => {
     let braces = 0;
     while (i < text.length) {
       const start = i, ch = text[i], next = text[i + 1];
       if (/\s/.test(ch)) { i += 1; continue; }
-      if (ch === '/' && next === '/') { i = text.indexOf('\n', i + 2); if (i < 0) { i = text.length; return; } continue; }
-      if (ch === '/' && next === '*') { i = text.indexOf('*/', i + 2); if (i < 0) { i = text.length; return; } i += 2; continue; }
+      if (ch === '/' && next === '/') {
+        i += 2;
+        while (i < text.length && !/[\r\n\u2028\u2029]/.test(text[i])) i += 1;
+        if (i >= text.length) break;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        const closeAt = text.indexOf('*/', i + 2);
+        if (closeAt < 0) throw new Error('malformed supplied source: unterminated block comment');
+        i = closeAt + 2; continue;
+      }
       if (ch === '/' && canStartRegex()) {
-        let inClass = false; i += 1;
+        let inClass = false, closed = false; i += 1;
         while (i < text.length) {
           if (text[i] === '\\') { i += 2; continue; }
+          if (text[i] === '\r' || text[i] === '\n') break;
           if (text[i] === '[') inClass = true;
           else if (text[i] === ']') inClass = false;
-          else if (text[i] === '/' && !inClass) { i += 1; while (/[A-Za-z]/.test(text[i] || '')) i += 1; break; }
+          else if (text[i] === '/' && !inClass) { closed = true; i += 1; while (/[A-Za-z]/.test(text[i] || '')) i += 1; break; }
           i += 1;
         }
-        push('regex', '/', start); continue;
+        if (!closed) throw new Error('malformed supplied source: unterminated regex literal');
+        push('regex', '/', start, i); continue;
       }
       if (text.startsWith('<!--', i)) { i = text.indexOf('-->', i + 4); if (i < 0) { i = text.length; return; } i += 3; continue; }
       if (ch === "'" || ch === '"') {
-        const quote = ch; let value = ''; i += 1;
+        const quote = ch; let value = '', closed = false; i += 1;
         while (i < text.length) {
           if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
-          if (text[i] === quote) { i += 1; break; }
+          if (text[i] === '\r' || text[i] === '\n') break;
+          if (text[i] === quote) { closed = true; i += 1; break; }
           value += text[i++];
         }
-        push('string', value, start); continue;
+        if (!closed) throw new Error('malformed supplied source: unterminated quoted string');
+        push('string', value, start, i); continue;
       }
       if (ch === '`') {
-        let value = '', interpolated = false; i += 1;
+        let value = '', interpolated = false, closed = false; i += 1;
         while (i < text.length) {
           if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
-          if (text[i] === '`') { i += 1; if (!interpolated) push('string', value, start); break; }
+          if (text[i] === '`') { closed = true; i += 1; if (!interpolated) push('string', value, start, i); break; }
           if (text[i] === '$' && text[i + 1] === '{') {
-            interpolated = true; push('punctuator', '(', i); i += 2; scanCode(true); push('punctuator', ')', i - 1); continue;
+            interpolated = true; push('punctuator', '(', i, i + 2); i += 2; scanCode(true); push('punctuator', ')', i - 1, i); continue;
           }
           value += text[i++];
         }
+        if (!closed) throw new Error('malformed supplied source: unterminated template literal');
+        lastTokenEnd = Math.max(lastTokenEnd, i);
         continue;
       }
       if (/[A-Za-z_$]/.test(ch)) {
         i += 1; while (i < text.length && /[A-Za-z0-9_$]/.test(text[i])) i += 1;
-        push('identifier', text.slice(start, i), start); continue;
+        push('identifier', text.slice(start, i), start, i); continue;
       }
       if (ch === '{') { braces += 1; push('punctuator', ch, start); i += 1; continue; }
       if (ch === '}') {
@@ -103,13 +149,21 @@ function bindingTokens(candidate) {
       if (punctuator) { push('punctuator', punctuator, start); i += punctuator.length; continue; }
       push('punctuator', ch, start); i += 1;
     }
+    if (stopAtTemplateBrace) throw new Error('malformed supplied source: unterminated template expression');
   };
   scanCode(false);
   return tokens;
 }
+function isClassKeywordToken(tokens, at) {
+  const token = tokens[at], previous = tokens[at - 1], next = tokens[at + 1];
+  if (!token || token.type !== 'identifier' || token.value !== 'class' || !next) return false;
+  if (previous && previous.value === '.') return false;
+  if ([':', '(', '=', '+=', '-=', '*=', '/=', '%=', '&&=', '||=', '??=', ',', ';', ')', ']', '.'].includes(next.value)) return false;
+  return next.value === '{' || next.type === 'identifier';
+}
 const bindingAssignmentOperators = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=']);
 function functionDeclarations(tokens) {
-  const names = [], expressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', ...bindingAssignmentOperators]);
+  const names = [], expressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'extends', ...bindingAssignmentOperators]);
   for (let i = 0; i < tokens.length; i += 1) {
     if (tokens[i].type !== 'identifier' || tokens[i].value !== 'function') continue;
     const preceding = tokens[i - 1] && tokens[i - 1].value === 'async' ? tokens[i - 2] : tokens[i - 1];
@@ -127,34 +181,136 @@ function memberToken(tokens, at) {
 }
 const groupingPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=', '=>', ...bindingAssignmentOperators]);
 const groupingPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'in', 'instanceof', 'of']);
-function groupedReference(tokens, at) {
-  let start = at, end = at + 1;
+const groupingControlKeywords = new Set(['if', 'while', 'for', 'with', 'switch', 'catch']);
+function matchingCloseToken(tokens, openAt, openValue, closeValue) {
+  if (!tokens[openAt] || tokens[openAt].value !== openValue) return -1;
+  let depth = 0;
+  for (let at = openAt; at < tokens.length; at += 1) {
+    if (tokens[at].value === openValue) depth += 1;
+    else if (tokens[at].value === closeValue && --depth === 0) return at;
+  }
+  return -1;
+}
+function closesGroupedControlParen(tokens, closeAt) {
+  if (!tokens[closeAt] || tokens[closeAt].value !== ')') return false;
+  let depth = 0;
+  for (let at = closeAt; at >= 0; at -= 1) {
+    if (tokens[at].value === ')') depth += 1;
+    else if (tokens[at].value === '(' && --depth === 0) return !!(tokens[at - 1] && groupingControlKeywords.has(tokens[at - 1].value));
+  }
+  return false;
+}
+function groupedSpan(tokens, start, end) {
   while (tokens[start - 1] && tokens[start - 1].value === '(' && tokens[end] && tokens[end].value === ')') {
     const beforeOpen = tokens[start - 2];
-    if (beforeOpen && !groupingPrefixPunctuators.has(beforeOpen.value) && !(beforeOpen.type === 'identifier' && groupingPrefixKeywords.has(beforeOpen.value))) break;
+    const allowedPrefix = !beforeOpen || groupingPrefixPunctuators.has(beforeOpen.value) || (beforeOpen.type === 'identifier' && groupingPrefixKeywords.has(beforeOpen.value)) || closesGroupedControlParen(tokens, start - 2);
+    if (!allowedPrefix || matchingCloseToken(tokens, start - 1, '(', ')') !== end) break;
     start -= 1;
     end += 1;
   }
   return { start, end };
 }
+function groupedReference(tokens, at) { return groupedSpan(tokens, at, at + 1); }
+function matchingOpenToken(tokens, closeAt, openValue, closeValue) {
+  if (!tokens[closeAt] || tokens[closeAt].value !== closeValue) return -1;
+  let depth = 0;
+  for (let at = closeAt; at >= 0; at -= 1) {
+    if (tokens[at].value === closeValue) depth += 1;
+    else if (tokens[at].value === openValue && --depth === 0) return at;
+  }
+  return -1;
+}
+function isFunctionExpressionBody(tokens, openAt) {
+  const paramsOpen = matchingOpenToken(tokens, openAt - 1, '(', ')');
+  if (paramsOpen < 0) return false;
+  let functionAt = paramsOpen - 1;
+  if (tokens[functionAt] && tokens[functionAt].type === 'identifier' && tokens[functionAt].value !== 'function') functionAt -= 1;
+  if (tokens[functionAt] && tokens[functionAt].value === '*') functionAt -= 1;
+  return !!(tokens[functionAt] && tokens[functionAt].value === 'function');
+}
+function isNestedClassExpressionBody(tokens, outerClassAt, openAt) {
+  for (let at = openAt - 1; at > outerClassAt; at -= 1) {
+    if (['{', '}', ';'].includes(tokens[at].value)) return false;
+    if (isClassKeywordToken(tokens, at)) return true;
+  }
+  return false;
+}
+function isExtendsExpressionBody(tokens, outerClassAt, openAt) {
+  const hasExtends = tokens.slice(outerClassAt + 1, openAt).some(token => token.type === 'identifier' && token.value === 'extends');
+  return hasExtends && (isFunctionExpressionBody(tokens, openAt) || isNestedClassExpressionBody(tokens, outerClassAt, openAt));
+}
+function bindingStructure(tokens) {
+  const bracePairs = new Map(), braceStack = [], depthAt = [], parenDepthAt = [], bracketDepthAt = [];
+  let depth = 0, parens = 0, brackets = 0;
+  for (let at = 0; at < tokens.length; at += 1) {
+    depthAt[at] = depth;
+    parenDepthAt[at] = parens;
+    bracketDepthAt[at] = brackets;
+    if (tokens[at].value === '{') { braceStack.push(at); depth += 1; }
+    else if (tokens[at].value === '}') {
+      const openAt = braceStack.pop(); depth = Math.max(0, depth - 1);
+      if (Number.isInteger(openAt)) { bracePairs.set(openAt, at); bracePairs.set(at, openAt); }
+    }
+    else if (tokens[at].value === '(') parens += 1;
+    else if (tokens[at].value === ')') parens = Math.max(0, parens - 1);
+    else if (tokens[at].value === '[') brackets += 1;
+    else if (tokens[at].value === ']') brackets = Math.max(0, brackets - 1);
+  }
+  const classRanges = [];
+  for (let classAt = 0; classAt < tokens.length; classAt += 1) {
+    if (!isClassKeywordToken(tokens, classAt)) continue;
+    let parens = 0, brackets = 0;
+    for (let at = classAt + 1; at < tokens.length; at += 1) {
+      if (tokens[at].value === '(') parens += 1;
+      else if (tokens[at].value === ')') parens -= 1;
+      else if (tokens[at].value === '[') brackets += 1;
+      else if (tokens[at].value === ']') brackets -= 1;
+      else if (tokens[at].value === '{' && parens === 0 && brackets === 0) {
+        const close = bracePairs.get(at);
+        if (Number.isInteger(close) && isExtendsExpressionBody(tokens, classAt, at)) { at = close; continue; }
+        if (Number.isInteger(close)) classRanges.push({ open: at, close });
+        break;
+      }
+      else if ((tokens[at].value === ';' || tokens[at].value === '}') && parens === 0 && brackets === 0) break;
+    }
+  }
+  return { bracePairs, depthAt, parenDepthAt, bracketDepthAt, classRanges };
+}
+function containingClass(structure, at) {
+  return structure.classRanges.filter(range => range.open < at && at < range.close).sort((a, b) => (a.close - a.open) - (b.close - b.open))[0] || null;
+}
+function isDirectClassField(tokens, at, reference, operatorAt, structure) {
+  if (!tokens[operatorAt] || tokens[operatorAt].value !== '=' || reference.start !== at || reference.end !== at + 1) return false;
+  const range = containingClass(structure, at);
+  if (!range || structure.depthAt[at] !== structure.depthAt[range.open] + 1 || structure.parenDepthAt[at] !== structure.parenDepthAt[range.open] || structure.bracketDepthAt[at] !== structure.bracketDepthAt[range.open]) return false;
+  let fieldStart = at, boundaryAt = at - 1;
+  if (tokens[boundaryAt] && tokens[boundaryAt].value === 'static') { fieldStart = boundaryAt; boundaryAt -= 1; }
+  if (boundaryAt === range.open) return true;
+  const boundary = tokens[boundaryAt];
+  if (boundary && (boundary.value === ';' || (boundary.value === '}' && structure.bracePairs.get(boundaryAt) > range.open))) return true;
+  const continuationTokens = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=', '(', '[', '{', ',', '.', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=>']);
+  return !!(boundary && tokens[fieldStart].lineBreakBefore && !continuationTokens.has(boundary.value));
+}
 function bindingReassignments(tokens, protectedNames) {
-  const findings = [], globals = new Set(['globalThis', 'global', 'window', 'self', 'this', 'exports']);
+  const findings = [], globals = new Set(['globalThis', 'global', 'window', 'self', 'this', 'exports']), structure = bindingStructure(tokens);
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
     const reference = token.type === 'identifier' ? groupedReference(tokens, i) : { start: i, end: i + 1 };
-    if (token.type === 'identifier' && protectedNames.has(token.value) && bindingAssignmentOperators.has(tokens[reference.end] && tokens[reference.end].value) && (!tokens[reference.start - 1] || tokens[reference.start - 1].value !== '.')) {
+    if (token.type === 'identifier' && protectedNames.has(token.value) && bindingAssignmentOperators.has(tokens[reference.end] && tokens[reference.end].value) && (!tokens[reference.start - 1] || tokens[reference.start - 1].value !== '.') && !isDirectClassField(tokens, i, reference, reference.end, structure)) {
       findings.push(token.value + ' ' + tokens[reference.end].value);
     }
-    if (token.type !== 'identifier' || (tokens[reference.start - 1] && tokens[reference.start - 1].value === '.') || (!globals.has(token.value) && token.value !== 'module')) continue;
-    let at = reference.end;
+    if (token.type !== 'identifier' || (tokens[reference.start - 1] && tokens[reference.start - 1].value === '.') || (token.value === 'this' && containingClass(structure, i)) || (!globals.has(token.value) && token.value !== 'module')) continue;
+    let rootSpan = reference, at = rootSpan.end;
     if (token.value === 'module') {
       const exportsMember = memberToken(tokens, at);
       if (!exportsMember || exportsMember.name !== 'exports') continue;
-      at = exportsMember.end;
+      rootSpan = groupedSpan(tokens, rootSpan.start, exportsMember.end);
+      at = rootSpan.end;
     }
     const bindingMember = memberToken(tokens, at);
-    if (bindingMember && protectedNames.has(bindingMember.name) && bindingAssignmentOperators.has(tokens[bindingMember.end] && tokens[bindingMember.end].value)) {
-      findings.push(token.value + '.' + bindingMember.name + ' ' + tokens[bindingMember.end].value);
+    const bindingLvalue = bindingMember && groupedSpan(tokens, rootSpan.start, bindingMember.end);
+    if (bindingMember && protectedNames.has(bindingMember.name) && bindingAssignmentOperators.has(tokens[bindingLvalue.end] && tokens[bindingLvalue.end].value)) {
+      findings.push(token.value + '.' + bindingMember.name + ' ' + tokens[bindingLvalue.end].value);
     }
   }
   return findings;
@@ -569,6 +725,89 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.throws(() => assertStrongTransportIsolation(mutant), expectedError, 'strong scan rejects ' + label);
     assert.throws(() => assertAllPrefixedFunctionsIsolated(mutant), expectedError, 'dynamic scan rejects ' + label);
   }
+  const groupedMemberMisses = [];
+  for (const [label, mutant] of [
+    ['grouped classic-script this dot member', source + '\n(this.commercialRequestWithTimeout)=function(){void state.officeOpsLeak;};\n'],
+    ['nested grouped window quoted member', source + '\n((window["commercialRequestWithTimeout"]))=function(){void state.officeOpsLeak;};\n'],
+    ['grouped globalThis template member compound', source + '\n(globalThis[`commercialRequestWithTimeout`])+=function(){void state.officeOpsLeak;};\n'],
+    ['nested grouped module.exports dot member logical', source + '\n((module.exports.commercialRequestWithTimeout))&&=function(){void state.officeOpsLeak;};\n'],
+    ['grouped self quoted member logical', source + '\n(self["commercialRequestWithTimeout"])??=function(){void state.officeOpsLeak;};\n'],
+    ['grouped exports dot member compound', source + '\n(exports.commercialRequestWithTimeout)^=function(){void state.officeOpsLeak;};\n'],
+    ['grouped module.exports root then dot member', source + '\n((module.exports)).commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n'],
+    ['control-body grouped direct binding', source + '\nif(true)(commercialRequestWithTimeout)=function(){void state.officeOpsLeak;};\n'],
+    ['control-body grouped true-root member', source + '\nif(true)(globalThis.commercialRequestWithTimeout)=function(){void state.officeOpsLeak;};\n']
+  ]) {
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(mutant); groupedMemberMisses.push(label + ' (' + scanLabel + ')'); }
+      catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+    }
+  }
+  assert.deepEqual(groupedMemberMisses, [], 'grouped complete-member replacements must fail closed');
+  const malformedAccepted = [];
+  for (const [label, candidate] of [
+    ['unterminated block comment', source + '\n/* unterminated block comment'],
+    ['unterminated single-quoted string', source + "\nconst malformed='unterminated"],
+    ['unterminated double-quoted string', source + '\nconst malformed="unterminated'],
+    ['unterminated template literal', source + '\nconst malformed=`unterminated'],
+    ['unterminated template expression', source + '\nconst malformed=`value ${1 + 2'],
+    ['unterminated regex literal', source + '\nconst malformed=/unterminated']
+  ]) {
+    try { assertStrongTransportIsolation(candidate); malformedAccepted.push(label + ' (strong)'); }
+    catch (error) { if (!/malformed supplied source/.test(String(error && error.message || error))) throw error; }
+    try { assertAllPrefixedFunctionsIsolated(candidate); malformedAccepted.push(label + ' (dynamic)'); }
+    catch (error) { if (!/malformed supplied source/.test(String(error && error.message || error))) throw error; }
+  }
+  assert.deepEqual(malformedAccepted, [], 'malformed supplied Office source must fail closed');
+  const lineCommentSeparatorMisses = [];
+  for (const [label, candidate] of [
+    ['LF line-comment reassignment', source + '\n// comment\ncommercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n'],
+    ['CR line-comment reassignment', source + '\n// comment\rcommercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n'],
+    ['U+2028 line-comment reassignment', source + '\n// comment\u2028commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n'],
+    ['U+2029 line-comment reassignment', source + '\n// comment\u2029commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n']
+  ]) {
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(candidate); lineCommentSeparatorMisses.push(label + ' (' + scanLabel + ')'); }
+      catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+    }
+  }
+  assert.deepEqual(lineCommentSeparatorMisses, [], 'every ECMAScript line terminator must end a line comment before a protected reassignment');
+  const contextualAcceptanceFailures = [];
+  for (const [label, candidate] of [
+    ['instance class field', source + '\nclass OfficeField { commercialRequestWithTimeout = function(){} }\n'],
+    ['static class field', source + '\nclass OfficeStaticField { static commercialRequestWithTimeout = function(){} }\n'],
+    ['semicolonless consecutive class field', source + '\nclass OfficeConsecutiveField { other=1\ncommercialRequestWithTimeout=function(){} }\n'],
+    ['semicolonless consecutive static class field', source + '\nclass OfficeConsecutiveStaticField { other=1\nstatic commercialRequestWithTimeout=function(){} }\n'],
+    ['extends function expression class field', source + '\nclass OfficeExtendsFunction extends function(){} { commercialRequestWithTimeout=function(){} }\n'],
+    ['extends class expression class field', source + '\nclass OfficeExtendsClass extends class {} { commercialRequestWithTimeout=function(){} }\n'],
+    ['extends function expression static class field', source + '\nclass OfficeExtendsFunctionStatic extends function(){} { static commercialRequestWithTimeout=function(){} }\n'],
+    ['extends class expression static class field', source + '\nclass OfficeExtendsClassStatic extends class {} { static commercialRequestWithTimeout=function(){} }\n'],
+    ['named extends function expression class field', source + '\nclass OfficeNamedExtendsFunction extends function commercialRequestWithTimeout(){} { commercialRequestWithTimeout=function(){} }\n'],
+    ['regex after function declaration', source + "\nfunction officeRegexHelper(){} /commercialRequestWithTimeout=/.test('x');\n"],
+    ['regex after class declaration', source + "\nclass OfficeRegexHelper{} /commercialRequestWithTimeout=/.test('x');\n"],
+    ['regex after plain statement block', source + "\n{ const local=1; } /commercialRequestWithTimeout=/.test('x');\n"],
+    ['class-local this members', source + '\nclass OfficeThisMembers { commercialRequestWithTimeout=function(){}; run(){this.commercialRequestWithTimeout=function(){};} static {this.commercialRequestWithTimeout=function(){};} }\n']
+  ]) {
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(candidate); }
+      catch (error) { contextualAcceptanceFailures.push(label + ' (' + scanLabel + '): ' + String(error && error.message || error)); }
+    }
+  }
+  assert.deepEqual(contextualAcceptanceFailures, [], 'valid class fields and post-block regex statements must be accepted');
+  for (const [label, mutant] of [
+    ['outer assignment inside class method', source + '\nclass OfficeMethod { run(){ commercialRequestWithTimeout=function(){}; } }\n'],
+    ['outer assignment inside static block', source + '\nclass OfficeStaticBlock { static { commercialRequestWithTimeout=function(){}; } }\n'],
+    ['outer assignment inside field initializer', source + '\nclass OfficeFieldInitializer { value=(commercialRequestWithTimeout=function(){}); }\n'],
+    ['object-literal division assignment', source + '\nconst officeQuotient={n:1}/(commercialRequestWithTimeout=function(){},2);\n'],
+    ['function-expression division assignment', source + '\nconst officeFunctionQuotient=function helper(){return 1;}/(commercialRequestWithTimeout=function(){},2);\n'],
+    ['class-expression division assignment', source + '\nconst officeClassQuotient=class {}/(commercialRequestWithTimeout=function(){},2);\n'],
+    ['arrow-body division assignment', source + '\nconst officeArrowQuotient=(()=>{})/(commercialRequestWithTimeout=function(){},2);\n'],
+    ['property-named-class phantom range', source + '\nobj.class;{commercialRequestWithTimeout=function(){};}\n'],
+    ['object-key-class phantom range', source + '\nconst officeMarker={class:true};{commercialRequestWithTimeout=function(){};}\n'],
+    ['outer assignment inside extends function body', source + '\nclass OfficeExtendsFunctionWrite extends function helper(){ commercialRequestWithTimeout=function(){}; } { safe=1 }\n']
+  ]) {
+    assert.throws(() => assertStrongTransportIsolation(mutant), /binding reassignment/, 'strong scan rejects ' + label);
+    assert.throws(() => assertAllPrefixedFunctionsIsolated(mutant), /binding reassignment/, 'dynamic scan rejects ' + label);
+  }
   const ordinaryObjectFixture = source + '\nconst commercialDiagnostics={commercialRequestWithTimeout:function(){return null;}};commercialDiagnostics.commercialRequestWithTimeout=function(){return null;};const namedDiagnostic=function commercialRequestWithTimeout(){return null;};\n';
   assertStrongTransportIsolation(ordinaryObjectFixture);
   assertAllPrefixedFunctionsIsolated(ordinaryObjectFixture);
@@ -589,7 +828,14 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     ['control-block regex rejected', source + "\nif(true){} /commercialRequestWithTimeout=/.test('x');\n"],
     ['comment or string text rejected', source + '\nconst bindingText="commercialRequestWithTimeout=";/* commercialRequestWithTimeout=function(){} */\n'],
     ['common regex literal rejected', source + "\nconst regexMatch=/commercialRequestWithTimeout=/.test('x');\n"],
-    ['nested global/this/module properties rejected', source + '\nconst diagnostics={window:{},this:{},module:{exports:{}}};diagnostics.window.commercialRequestWithTimeout=function(){return null;};diagnostics.this.commercialRequestWithTimeout=function(){return null;};diagnostics.module.exports.commercialRequestWithTimeout=function(){return null;};\n']
+    ['line comment at EOF rejected', source + '\n// valid line comment at EOF'],
+    ['escaped quoted strings rejected', source + '\nconst escapedSingle=\'it\\\'s\';const escapedDouble="a\\\"b";\n'],
+    ['regex character class rejected', source + '\nconst characterClass=/[a-z=]+/;\n'],
+    ['nested template interpolation rejected', source + '\nconst nestedTemplate=`outer ${`inner ${1+2}`}`;\n'],
+    ['multiline template rejected', source + '\nconst multilineTemplate=`line one\nline two`;\n'],
+    ['HTML close text inside appended string rejected', source + '\nconst htmlCloseText="</html>";\n'],
+    ['nested global/this/module properties rejected', source + '\nconst diagnostics={window:{},this:{},module:{exports:{}}};diagnostics.window.commercialRequestWithTimeout=function(){return null;};diagnostics.this.commercialRequestWithTimeout=function(){return null;};diagnostics.module.exports.commercialRequestWithTimeout=function(){return null;};\n'],
+    ['grouped nested ordinary members rejected', source + '\nconst groupedDiagnostics={window:{},module:{exports:{}}};(groupedDiagnostics.window.commercialRequestWithTimeout)=function(){return null;};(groupedDiagnostics.module.exports.commercialRequestWithTimeout)=function(){return null;};\n']
   ]) {
     assertStrongTransportIsolation(fixture);
     assertAllPrefixedFunctionsIsolated(fixture);
