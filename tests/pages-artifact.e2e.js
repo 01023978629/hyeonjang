@@ -96,6 +96,11 @@ function bindingTokens(candidate) {
     const previous = tokens[tokens.length - 1];
     return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsStatementBlock();
   };
+  const consumeHtmlLineComment = markerLength => {
+    i += markerLength;
+    while (i < text.length && !/[\r\n\u2028\u2029]/.test(text[i])) i += 1;
+  };
+  const startsHtmlCloseComment = at => text.startsWith('-->', at) && (!tokens.length || /[\r\n\u2028\u2029]/.test(text.slice(lastTokenEnd, at)));
   const scanCode = stopAtTemplateBrace => {
     let braces = 0;
     while (i < text.length) {
@@ -125,7 +130,8 @@ function bindingTokens(candidate) {
         if (!closed) throw new Error('malformed supplied source: unterminated regex literal');
         push('regex', '/', start, i); continue;
       }
-      if (text.startsWith('<!--', i)) { i = text.indexOf('-->', i + 4); if (i < 0) { i = text.length; return; } i += 3; continue; }
+      if (text.startsWith('<!--', i)) { consumeHtmlLineComment(4); continue; }
+      if (startsHtmlCloseComment(i)) { consumeHtmlLineComment(3); continue; }
       if (ch === "'" || ch === '"') {
         const quote = ch; let value = '', closed = false; i += 1;
         while (i < text.length) {
@@ -480,6 +486,50 @@ try {
     catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
   }
   nodeAssert.deepEqual(lineCommentSeparatorMisses, [], 'every ECMAScript line terminator must end a line comment before a protected reassignment');
+  const htmlOpenCommentMisses = [];
+  const listSuiteProbeSource = extractFunctionFrom(runner, 'listSuite');
+  for (const [label, separator] of [
+    ['LF', '\n'],
+    ['CR', '\r'],
+    ['U+2028', '\u2028'],
+    ['U+2029', '\u2029']
+  ]) {
+    const probe = listSuiteProbeSource + '\nconst originalListSuite=listSuite;\n<!-- legacy HTML open comment' + separator + 'listSuite=function(){return [];};\noriginalListSuite===listSuite;';
+    nodeAssert.equal(vm.runInNewContext(probe), false, label + ' engine probe must execute the protected reassignment after <!--');
+    const candidate = runner + '\n<!-- legacy HTML open comment' + separator + 'listSuite=function(){return [];};\n';
+    try { assertRunnerContainsRequiredGuards(candidate, 'HTML open-comment mutant'); htmlOpenCommentMisses.push(label); }
+    catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+  }
+  nodeAssert.deepEqual(htmlOpenCommentMisses, [], '<!-- must stop at every ECMAScript line terminator before a protected reassignment');
+  const htmlCloseCommentMisses = [];
+  for (const [label, separator] of [
+    ['LF', '\n'],
+    ['CR', '\r'],
+    ['U+2028', '\u2028'],
+    ['U+2029', '\u2029']
+  ]) {
+    const probe = listSuiteProbeSource + '\nconst originalListSuite=listSuite;\n--> legacy HTML close comment' + separator + 'listSuite=function(){return [];};\noriginalListSuite===listSuite;';
+    nodeAssert.equal(vm.runInNewContext(probe), false, label + ' engine probe must execute the protected reassignment after line-start -->');
+    const candidate = runner + '\n--> legacy HTML close comment' + separator + 'listSuite=function(){return [];};\n';
+    try { assertRunnerContainsRequiredGuards(candidate, 'HTML close-comment mutant'); htmlCloseCommentMisses.push(label); }
+    catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+  }
+  nodeAssert.deepEqual(htmlCloseCommentMisses, [], 'line-start --> must stop at every ECMAScript line terminator before a protected reassignment');
+  const htmlLikeAcceptanceFailures = [];
+  const htmlLikeAcceptanceFixtures = [
+    ['HTML open comment at EOF', runner + '\n<!-- listSuite=function(){return [];}'],
+    ['HTML close comment at EOF', runner + '\n--> listSuite=function(){return [];}'],
+    ['HTML close comment after leading block comment at EOF', runner + '\n \t/* lead */ --> listSuite=function(){return [];}'],
+    ['decrement-greater-than operator context', runner + '\nlet pageHtmlCounter=1;const pageHtmlCompare=pageHtmlCounter-->0;\n']
+  ];
+  nodeAssert.equal(vm.runInNewContext(listSuiteProbeSource + '\nconst originalListSuite=listSuite;\noriginalListSuite===listSuite;\n--> listSuite=function(){return [];}'), true, 'line-start --> engine probe keeps protected-looking EOF comment inert');
+  nodeAssert.equal(vm.runInNewContext(listSuiteProbeSource + '\nconst originalListSuite=listSuite;\noriginalListSuite===listSuite;\n \t/* lead */ --> listSuite=function(){return [];}'), true, 'line-start block-comment-prefixed --> remains an inert EOF comment');
+  nodeAssert.equal(vm.runInNewContext('let pageHtmlCounter=1;const pageHtmlCompare=pageHtmlCounter-->0;pageHtmlCounter===0&&pageHtmlCompare===true;'), true, '--> in an expression remains decrement plus greater-than');
+  for (const [label, candidate] of htmlLikeAcceptanceFixtures) {
+    try { assertRunnerContainsRequiredGuards(candidate, 'HTML-like acceptance fixture'); }
+    catch (error) { htmlLikeAcceptanceFailures.push(label + ': ' + String(error && error.message || error)); }
+  }
+  nodeAssert.deepEqual(htmlLikeAcceptanceFailures, [], 'valid HTML-like EOF comments and --> operator contexts must be accepted');
   const contextualAcceptanceFailures = [];
   for (const [label, candidate] of [
     ['instance class field', runner + '\nclass PageField { listSuite = function(){} }\n'],

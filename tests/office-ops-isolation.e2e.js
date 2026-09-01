@@ -81,6 +81,11 @@ function bindingTokens(candidate) {
     const previous = tokens[tokens.length - 1];
     return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsStatementBlock();
   };
+  const consumeHtmlLineComment = markerLength => {
+    i += markerLength;
+    while (i < text.length && !/[\r\n\u2028\u2029]/.test(text[i])) i += 1;
+  };
+  const startsHtmlCloseComment = at => text.startsWith('-->', at) && (!tokens.length || /[\r\n\u2028\u2029]/.test(text.slice(lastTokenEnd, at)));
   const scanCode = stopAtTemplateBrace => {
     let braces = 0;
     while (i < text.length) {
@@ -110,7 +115,8 @@ function bindingTokens(candidate) {
         if (!closed) throw new Error('malformed supplied source: unterminated regex literal');
         push('regex', '/', start, i); continue;
       }
-      if (text.startsWith('<!--', i)) { i = text.indexOf('-->', i + 4); if (i < 0) { i = text.length; return; } i += 3; continue; }
+      if (text.startsWith('<!--', i)) { consumeHtmlLineComment(4); continue; }
+      if (startsHtmlCloseComment(i)) { consumeHtmlLineComment(3); continue; }
       if (ch === "'" || ch === '"') {
         const quote = ch; let value = '', closed = false; i += 1;
         while (i < text.length) {
@@ -771,6 +777,56 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     }
   }
   assert.deepEqual(lineCommentSeparatorMisses, [], 'every ECMAScript line terminator must end a line comment before a protected reassignment');
+  const htmlOpenCommentMisses = [];
+  const commercialProbeSource = extractFunctionFrom(source, 'commercialRequestWithTimeout');
+  for (const [label, separator] of [
+    ['LF', '\n'],
+    ['CR', '\r'],
+    ['U+2028', '\u2028'],
+    ['U+2029', '\u2029']
+  ]) {
+    const probe = commercialProbeSource + '\nconst originalCommercialRequestWithTimeout=commercialRequestWithTimeout;\n<!-- legacy HTML open comment' + separator + 'commercialRequestWithTimeout=function(){};\noriginalCommercialRequestWithTimeout===commercialRequestWithTimeout;';
+    assert.equal(vm.runInNewContext(probe), false, label + ' engine probe must execute the protected reassignment after <!--');
+    const candidate = source + '\n<!-- legacy HTML open comment' + separator + 'commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n';
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(candidate); htmlOpenCommentMisses.push(label + ' (' + scanLabel + ')'); }
+      catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+    }
+  }
+  assert.deepEqual(htmlOpenCommentMisses, [], '<!-- must stop at every ECMAScript line terminator before a protected reassignment');
+  const htmlCloseCommentMisses = [];
+  for (const [label, separator] of [
+    ['LF', '\n'],
+    ['CR', '\r'],
+    ['U+2028', '\u2028'],
+    ['U+2029', '\u2029']
+  ]) {
+    const probe = commercialProbeSource + '\nconst originalCommercialRequestWithTimeout=commercialRequestWithTimeout;\n--> legacy HTML close comment' + separator + 'commercialRequestWithTimeout=function(){};\noriginalCommercialRequestWithTimeout===commercialRequestWithTimeout;';
+    assert.equal(vm.runInNewContext(probe), false, label + ' engine probe must execute the protected reassignment after line-start -->');
+    const candidate = source + '\n--> legacy HTML close comment' + separator + 'commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n';
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(candidate); htmlCloseCommentMisses.push(label + ' (' + scanLabel + ')'); }
+      catch (error) { if (!/binding reassignment/.test(String(error && error.message || error))) throw error; }
+    }
+  }
+  assert.deepEqual(htmlCloseCommentMisses, [], 'line-start --> must stop at every ECMAScript line terminator before a protected reassignment');
+  const htmlLikeAcceptanceFailures = [];
+  const htmlLikeAcceptanceFixtures = [
+    ['HTML open comment at EOF', source + '\n<!-- commercialRequestWithTimeout=function(){}'],
+    ['HTML close comment at EOF', source + '\n--> commercialRequestWithTimeout=function(){}'],
+    ['HTML close comment after leading block comment at EOF', source + '\n \t/* lead */ --> commercialRequestWithTimeout=function(){}'],
+    ['decrement-greater-than operator context', source + '\nlet officeHtmlCounter=1;const officeHtmlCompare=officeHtmlCounter-->0;\n']
+  ];
+  assert.equal(vm.runInNewContext(commercialProbeSource + '\nconst originalCommercialRequestWithTimeout=commercialRequestWithTimeout;\noriginalCommercialRequestWithTimeout===commercialRequestWithTimeout;\n--> commercialRequestWithTimeout=function(){}'), true, 'line-start --> engine probe keeps protected-looking EOF comment inert');
+  assert.equal(vm.runInNewContext(commercialProbeSource + '\nconst originalCommercialRequestWithTimeout=commercialRequestWithTimeout;\noriginalCommercialRequestWithTimeout===commercialRequestWithTimeout;\n \t/* lead */ --> commercialRequestWithTimeout=function(){}'), true, 'line-start block-comment-prefixed --> remains an inert EOF comment');
+  assert.equal(vm.runInNewContext('let officeHtmlCounter=1;const officeHtmlCompare=officeHtmlCounter-->0;officeHtmlCounter===0&&officeHtmlCompare===true;'), true, '--> in an expression remains decrement plus greater-than');
+  for (const [label, candidate] of htmlLikeAcceptanceFixtures) {
+    for (const [scanLabel, scan] of [['strong', assertStrongTransportIsolation], ['dynamic', assertAllPrefixedFunctionsIsolated]]) {
+      try { scan(candidate); }
+      catch (error) { htmlLikeAcceptanceFailures.push(label + ' (' + scanLabel + '): ' + String(error && error.message || error)); }
+    }
+  }
+  assert.deepEqual(htmlLikeAcceptanceFailures, [], 'valid HTML-like EOF comments and --> operator contexts must be accepted');
   const contextualAcceptanceFailures = [];
   for (const [label, candidate] of [
     ['instance class field', source + '\nclass OfficeField { commercialRequestWithTimeout = function(){} }\n'],
