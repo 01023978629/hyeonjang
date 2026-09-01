@@ -11,6 +11,166 @@ const { webcrypto } = require('node:crypto');
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function bindingTokens(candidate) {
+  const input = String(candidate), scripts = [...input.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+  const lastScriptEnd = input.toLowerCase().lastIndexOf('</script>');
+  const text = scripts.length ? scripts.map(match => match[1]).join('\n') + '\n' + input.slice(lastScriptEnd + 9) : input;
+  const tokens = [];
+  const punctuators = ['>>>=', '**=', '&&=', '||=', '??=', '<<=', '>>=', '=>', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '='];
+  const regexPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
+  const regexPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=', '=>']);
+  const controlKeywords = new Set(['if', 'while', 'for', 'with', 'switch', 'catch']);
+  const controlBlockKeywords = new Set(['else', 'do', 'try', 'finally']);
+  let i = 0;
+  const push = (type, value, index) => tokens.push({ type, value, index });
+  const closesControlParen = closeAt => {
+    if (!tokens[closeAt] || tokens[closeAt].value !== ')') return false;
+    let depth = 0;
+    for (let at = closeAt; at >= 0; at -= 1) {
+      if (tokens[at].value === ')') depth += 1;
+      else if (tokens[at].value === '(' && --depth === 0) return !!(tokens[at - 1] && tokens[at - 1].type === 'identifier' && controlKeywords.has(tokens[at - 1].value));
+    }
+    return false;
+  };
+  const followsControlParen = () => closesControlParen(tokens.length - 1);
+  const followsControlBlock = () => {
+    if (!tokens.length || tokens[tokens.length - 1].value !== '}') return false;
+    let depth = 0;
+    for (let at = tokens.length - 1; at >= 0; at -= 1) {
+      if (tokens[at].value === '}') depth += 1;
+      else if (tokens[at].value === '{' && --depth === 0) {
+        const beforeBlock = tokens[at - 1];
+        return !!(beforeBlock && ((beforeBlock.value === ')' && closesControlParen(at - 1)) || (beforeBlock.type === 'identifier' && controlBlockKeywords.has(beforeBlock.value))));
+      }
+    }
+    return false;
+  };
+  const canStartRegex = () => {
+    if (!tokens.length) return true;
+    const previous = tokens[tokens.length - 1];
+    return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsControlBlock();
+  };
+  const scanCode = stopAtTemplateBrace => {
+    let braces = 0;
+    while (i < text.length) {
+      const start = i, ch = text[i], next = text[i + 1];
+      if (/\s/.test(ch)) { i += 1; continue; }
+      if (ch === '/' && next === '/') { i = text.indexOf('\n', i + 2); if (i < 0) { i = text.length; return; } continue; }
+      if (ch === '/' && next === '*') { i = text.indexOf('*/', i + 2); if (i < 0) { i = text.length; return; } i += 2; continue; }
+      if (ch === '/' && canStartRegex()) {
+        let inClass = false; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { i += 2; continue; }
+          if (text[i] === '[') inClass = true;
+          else if (text[i] === ']') inClass = false;
+          else if (text[i] === '/' && !inClass) { i += 1; while (/[A-Za-z]/.test(text[i] || '')) i += 1; break; }
+          i += 1;
+        }
+        push('regex', '/', start); continue;
+      }
+      if (text.startsWith('<!--', i)) { i = text.indexOf('-->', i + 4); if (i < 0) { i = text.length; return; } i += 3; continue; }
+      if (ch === "'" || ch === '"') {
+        const quote = ch; let value = ''; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+          if (text[i] === quote) { i += 1; break; }
+          value += text[i++];
+        }
+        push('string', value, start); continue;
+      }
+      if (ch === '`') {
+        let value = '', interpolated = false; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+          if (text[i] === '`') { i += 1; if (!interpolated) push('string', value, start); break; }
+          if (text[i] === '$' && text[i + 1] === '{') {
+            interpolated = true; push('punctuator', '(', i); i += 2; scanCode(true); push('punctuator', ')', i - 1); continue;
+          }
+          value += text[i++];
+        }
+        continue;
+      }
+      if (/[A-Za-z_$]/.test(ch)) {
+        i += 1; while (i < text.length && /[A-Za-z0-9_$]/.test(text[i])) i += 1;
+        push('identifier', text.slice(start, i), start); continue;
+      }
+      if (ch === '{') { braces += 1; push('punctuator', ch, start); i += 1; continue; }
+      if (ch === '}') {
+        if (stopAtTemplateBrace && braces === 0) { i += 1; return; }
+        braces -= 1; push('punctuator', ch, start); i += 1; continue;
+      }
+      const punctuator = punctuators.find(value => text.startsWith(value, i));
+      if (punctuator) { push('punctuator', punctuator, start); i += punctuator.length; continue; }
+      push('punctuator', ch, start); i += 1;
+    }
+  };
+  scanCode(false);
+  return tokens;
+}
+const bindingAssignmentOperators = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=']);
+function functionDeclarations(tokens) {
+  const names = [], expressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', ...bindingAssignmentOperators]);
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].type !== 'identifier' || tokens[i].value !== 'function') continue;
+    const preceding = tokens[i - 1] && tokens[i - 1].value === 'async' ? tokens[i - 2] : tokens[i - 1];
+    if (preceding && expressionPrefixes.has(preceding.value)) continue;
+    let nameAt = i + 1;
+    if (tokens[nameAt] && tokens[nameAt].value === '*') nameAt += 1;
+    if (tokens[nameAt] && tokens[nameAt].type === 'identifier' && tokens[nameAt + 1] && tokens[nameAt + 1].value === '(') names.push(tokens[nameAt].value);
+  }
+  return names;
+}
+function memberToken(tokens, at) {
+  if (tokens[at] && tokens[at].value === '.' && tokens[at + 1] && tokens[at + 1].type === 'identifier') return { name: tokens[at + 1].value, end: at + 2 };
+  if (tokens[at] && tokens[at].value === '[' && tokens[at + 1] && tokens[at + 1].type === 'string' && tokens[at + 2] && tokens[at + 2].value === ']') return { name: tokens[at + 1].value, end: at + 3 };
+  return null;
+}
+const groupingPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=', '=>', ...bindingAssignmentOperators]);
+const groupingPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'in', 'instanceof', 'of']);
+function groupedReference(tokens, at) {
+  let start = at, end = at + 1;
+  while (tokens[start - 1] && tokens[start - 1].value === '(' && tokens[end] && tokens[end].value === ')') {
+    const beforeOpen = tokens[start - 2];
+    if (beforeOpen && !groupingPrefixPunctuators.has(beforeOpen.value) && !(beforeOpen.type === 'identifier' && groupingPrefixKeywords.has(beforeOpen.value))) break;
+    start -= 1;
+    end += 1;
+  }
+  return { start, end };
+}
+function bindingReassignments(tokens, protectedNames) {
+  const findings = [], globals = new Set(['globalThis', 'global', 'window', 'self', 'this', 'exports']);
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    const reference = token.type === 'identifier' ? groupedReference(tokens, i) : { start: i, end: i + 1 };
+    if (token.type === 'identifier' && protectedNames.has(token.value) && bindingAssignmentOperators.has(tokens[reference.end] && tokens[reference.end].value) && (!tokens[reference.start - 1] || tokens[reference.start - 1].value !== '.')) {
+      findings.push(token.value + ' ' + tokens[reference.end].value);
+    }
+    if (token.type !== 'identifier' || (tokens[reference.start - 1] && tokens[reference.start - 1].value === '.') || (!globals.has(token.value) && token.value !== 'module')) continue;
+    let at = reference.end;
+    if (token.value === 'module') {
+      const exportsMember = memberToken(tokens, at);
+      if (!exportsMember || exportsMember.name !== 'exports') continue;
+      at = exportsMember.end;
+    }
+    const bindingMember = memberToken(tokens, at);
+    if (bindingMember && protectedNames.has(bindingMember.name) && bindingAssignmentOperators.has(tokens[bindingMember.end] && tokens[bindingMember.end].value)) {
+      findings.push(token.value + '.' + bindingMember.name + ' ' + tokens[bindingMember.end].value);
+    }
+  }
+  return findings;
+}
+function auditIsolatedFunctionBindings(candidate, requiredNames = []) {
+  const tokens = bindingTokens(candidate), declarations = functionDeclarations(tokens);
+  const prefixedNames = declarations.filter(name => /^(?:officeOps|commercial)/.test(name));
+  const protectedNames = new Set([...requiredNames, ...prefixedNames]);
+  for (const name of protectedNames) {
+    const count = declarations.filter(declared => declared === name).length;
+    assert.equal(count, 1, 'isolated binding declaration count for ' + name + ' must be 1, got ' + count);
+  }
+  const reassignments = bindingReassignments(tokens, protectedNames);
+  assert.equal(reassignments.length, 0, 'isolated binding reassignment: ' + reassignments.join(', '));
+  return prefixedNames;
+}
 function extractFunctionFrom(candidate, name) {
   const match = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(name) + '\\s*\\(').exec(candidate);
   assert.ok(match, 'missing isolated function: ' + name);
@@ -56,7 +216,7 @@ function injectFunctionStatement(candidate, name, statement) {
   return candidate.replace(original, mutated);
 }
 function discoveredIsolatedFunctionNames(candidate) {
-  return [...candidate.matchAll(/(?:async\s+)?function\s+((?:officeOps|commercial)[A-Za-z0-9_$]*)\s*\(/g)].map(match => match[1]).filter((name, index, names) => names.indexOf(name) === index);
+  return auditIsolatedFunctionBindings(candidate);
 }
 
 function historyAuditRow(index, overrides = {}) {
@@ -374,6 +534,7 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     assert.match(snippet, forbiddenReferences, 'relay/photo/Drive fixture must be rejected: ' + snippet);
   }
   function assertStrongTransportIsolation(candidate) {
+    auditIsolatedFunctionBindings(candidate, isolatedFunctions);
     for (const name of isolatedFunctions) {
       assert.doesNotMatch(extractFunctionFrom(candidate, name), forbiddenReferences, name + ' is isolated from app state, serialization, relay, and OfficeIntake');
     }
@@ -389,6 +550,49 @@ async function assertRepresentativeMutationsBlocked(client, label) {
       assert.doesNotMatch(body, /state\.aptOrders\s*\.(?:push|splice|unshift|pop|shift)\s*\(/, name + ' cannot write the local order collection directly');
     }
     return names;
+  }
+  const duplicateCommercialBindingMutant = source + '\nfunction commercialRequestWithTimeout(){void state.officeOpsLeak;}\n';
+  const reassignedCommercialBindingMutant = source + '\ncommercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n';
+  for (const [label, mutant, expectedError] of [
+    ['duplicate declaration', duplicateCommercialBindingMutant, /binding declaration count/],
+    ['direct reassignment', reassignedCommercialBindingMutant, /binding reassignment/],
+    ['compound reassignment', source + '\ncommercialRequestWithTimeout += function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['logical reassignment', source + '\ncommercialRequestWithTimeout &&= function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['global property reassignment', source + '\nglobalThis.commercialRequestWithTimeout = function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['module property reassignment', source + '\nmodule.exports["commercialRequestWithTimeout"] = function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['grouped direct reassignment', source + '\n(commercialRequestWithTimeout)=function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['grouped global property reassignment', source + '\n(globalThis).commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['grouped classic-script this reassignment', source + '\n(this).commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['grouped window member reassignment', source + '\n(window)[`commercialRequestWithTimeout`]=function(){void state.officeOpsLeak;};\n', /binding reassignment/],
+    ['grouped module property reassignment', source + '\n(module).exports.commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n', /binding reassignment/]
+  ]) {
+    assert.throws(() => assertStrongTransportIsolation(mutant), expectedError, 'strong scan rejects ' + label);
+    assert.throws(() => assertAllPrefixedFunctionsIsolated(mutant), expectedError, 'dynamic scan rejects ' + label);
+  }
+  const ordinaryObjectFixture = source + '\nconst commercialDiagnostics={commercialRequestWithTimeout:function(){return null;}};commercialDiagnostics.commercialRequestWithTimeout=function(){return null;};const namedDiagnostic=function commercialRequestWithTimeout(){return null;};\n';
+  assertStrongTransportIsolation(ordinaryObjectFixture);
+  assertAllPrefixedFunctionsIsolated(ordinaryObjectFixture);
+  for (const [label, mutant] of [
+    ['template expression reassignment accepted', source + '\nconst p=`${(commercialRequestWithTimeout=function(){void state.officeOpsLeak;})}`;\n'],
+    ['static template member reassignment accepted', source + '\nglobalThis[`commercialRequestWithTimeout`]=function(){void state.officeOpsLeak;};\n'],
+    ['classic-script this reassignment accepted', source + '\nthis.commercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n'],
+    ['classic-script this member reassignment accepted', source + '\nthis["commercialRequestWithTimeout"]=function(){void state.officeOpsLeak;};\n']
+  ]) {
+    assert.throws(() => assertStrongTransportIsolation(mutant), /binding reassignment/, 'strong scan: ' + label);
+    assert.throws(() => assertAllPrefixedFunctionsIsolated(mutant), /binding reassignment/, 'dynamic scan: ' + label);
+  }
+  for (const [label, fixture] of [
+    ['async named function expression rejected', source + '\nconst asyncNamed=async function commercialRequestWithTimeout(){return null;};\n'],
+    ['unary named function expression rejected', source + '\n!function commercialRequestWithTimeout(){return null;};\n'],
+    ['unary async named function expression rejected', source + '\nvoid async function commercialRequestWithTimeout(){return null;};\n'],
+    ['control-paren regex rejected', source + "\nif(true) /commercialRequestWithTimeout=/.test('x');\n"],
+    ['control-block regex rejected', source + "\nif(true){} /commercialRequestWithTimeout=/.test('x');\n"],
+    ['comment or string text rejected', source + '\nconst bindingText="commercialRequestWithTimeout=";/* commercialRequestWithTimeout=function(){} */\n'],
+    ['common regex literal rejected', source + "\nconst regexMatch=/commercialRequestWithTimeout=/.test('x');\n"],
+    ['nested global/this/module properties rejected', source + '\nconst diagnostics={window:{},this:{},module:{exports:{}}};diagnostics.window.commercialRequestWithTimeout=function(){return null;};diagnostics.this.commercialRequestWithTimeout=function(){return null;};diagnostics.module.exports.commercialRequestWithTimeout=function(){return null;};\n']
+  ]) {
+    assertStrongTransportIsolation(fixture);
+    assertAllPrefixedFunctionsIsolated(fixture);
   }
   const commercialStateLeakMutant = injectFunctionStatement(source, 'commercialRequestWithTimeout', 'void state.officeOpsLeak;');
   assert.throws(() => assertStrongTransportIsolation(commercialStateLeakMutant), /commercialRequestWithTimeout is isolated/, 'strong transport isolation rejects commercial deadline state access');

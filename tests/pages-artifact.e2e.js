@@ -31,6 +31,158 @@ function assertRequiredGuards(testNames, label) {
 }
 
 function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function bindingTokens(candidate) {
+  const tokens = [], text = String(candidate);
+  const punctuators = ['>>>=', '**=', '&&=', '||=', '??=', '<<=', '>>=', '=>', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '='];
+  const regexPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
+  const regexPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=', '=>']);
+  const controlKeywords = new Set(['if', 'while', 'for', 'with', 'switch', 'catch']);
+  const controlBlockKeywords = new Set(['else', 'do', 'try', 'finally']);
+  let i = 0;
+  const push = (type, value, index) => tokens.push({ type, value, index });
+  const closesControlParen = closeAt => {
+    if (!tokens[closeAt] || tokens[closeAt].value !== ')') return false;
+    let depth = 0;
+    for (let at = closeAt; at >= 0; at -= 1) {
+      if (tokens[at].value === ')') depth += 1;
+      else if (tokens[at].value === '(' && --depth === 0) return !!(tokens[at - 1] && tokens[at - 1].type === 'identifier' && controlKeywords.has(tokens[at - 1].value));
+    }
+    return false;
+  };
+  const followsControlParen = () => closesControlParen(tokens.length - 1);
+  const followsControlBlock = () => {
+    if (!tokens.length || tokens[tokens.length - 1].value !== '}') return false;
+    let depth = 0;
+    for (let at = tokens.length - 1; at >= 0; at -= 1) {
+      if (tokens[at].value === '}') depth += 1;
+      else if (tokens[at].value === '{' && --depth === 0) {
+        const beforeBlock = tokens[at - 1];
+        return !!(beforeBlock && ((beforeBlock.value === ')' && closesControlParen(at - 1)) || (beforeBlock.type === 'identifier' && controlBlockKeywords.has(beforeBlock.value))));
+      }
+    }
+    return false;
+  };
+  const canStartRegex = () => {
+    if (!tokens.length) return true;
+    const previous = tokens[tokens.length - 1];
+    return regexPrefixPunctuators.has(previous.value) || (previous.type === 'identifier' && regexPrefixKeywords.has(previous.value)) || followsControlParen() || followsControlBlock();
+  };
+  const scanCode = stopAtTemplateBrace => {
+    let braces = 0;
+    while (i < text.length) {
+      const start = i, ch = text[i], next = text[i + 1];
+      if (/\s/.test(ch)) { i += 1; continue; }
+      if (ch === '/' && next === '/') { i = text.indexOf('\n', i + 2); if (i < 0) { i = text.length; return; } continue; }
+      if (ch === '/' && next === '*') { i = text.indexOf('*/', i + 2); if (i < 0) { i = text.length; return; } i += 2; continue; }
+      if (ch === '/' && canStartRegex()) {
+        let inClass = false; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { i += 2; continue; }
+          if (text[i] === '[') inClass = true;
+          else if (text[i] === ']') inClass = false;
+          else if (text[i] === '/' && !inClass) { i += 1; while (/[A-Za-z]/.test(text[i] || '')) i += 1; break; }
+          i += 1;
+        }
+        push('regex', '/', start); continue;
+      }
+      if (text.startsWith('<!--', i)) { i = text.indexOf('-->', i + 4); if (i < 0) { i = text.length; return; } i += 3; continue; }
+      if (ch === "'" || ch === '"') {
+        const quote = ch; let value = ''; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+          if (text[i] === quote) { i += 1; break; }
+          value += text[i++];
+        }
+        push('string', value, start); continue;
+      }
+      if (ch === '`') {
+        let value = '', interpolated = false; i += 1;
+        while (i < text.length) {
+          if (text[i] === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+          if (text[i] === '`') { i += 1; if (!interpolated) push('string', value, start); break; }
+          if (text[i] === '$' && text[i + 1] === '{') {
+            interpolated = true; push('punctuator', '(', i); i += 2; scanCode(true); push('punctuator', ')', i - 1); continue;
+          }
+          value += text[i++];
+        }
+        continue;
+      }
+      if (/[A-Za-z_$]/.test(ch)) {
+        i += 1; while (i < text.length && /[A-Za-z0-9_$]/.test(text[i])) i += 1;
+        push('identifier', text.slice(start, i), start); continue;
+      }
+      if (ch === '{') { braces += 1; push('punctuator', ch, start); i += 1; continue; }
+      if (ch === '}') {
+        if (stopAtTemplateBrace && braces === 0) { i += 1; return; }
+        braces -= 1; push('punctuator', ch, start); i += 1; continue;
+      }
+      const punctuator = punctuators.find(value => text.startsWith(value, i));
+      if (punctuator) { push('punctuator', punctuator, start); i += punctuator.length; continue; }
+      push('punctuator', ch, start); i += 1;
+    }
+  };
+  scanCode(false);
+  return tokens;
+}
+const bindingAssignmentOperators = new Set(['=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=']);
+function functionDeclarations(tokens) {
+  const names = [], expressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', ...bindingAssignmentOperators]);
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].type !== 'identifier' || tokens[i].value !== 'function') continue;
+    const preceding = tokens[i - 1] && tokens[i - 1].value === 'async' ? tokens[i - 2] : tokens[i - 1];
+    if (preceding && expressionPrefixes.has(preceding.value)) continue;
+    let nameAt = i + 1;
+    if (tokens[nameAt] && tokens[nameAt].value === '*') nameAt += 1;
+    if (tokens[nameAt] && tokens[nameAt].type === 'identifier' && tokens[nameAt + 1] && tokens[nameAt + 1].value === '(') names.push(tokens[nameAt].value);
+  }
+  return names;
+}
+function memberToken(tokens, at) {
+  if (tokens[at] && tokens[at].value === '.' && tokens[at + 1] && tokens[at + 1].type === 'identifier') return { name: tokens[at + 1].value, end: at + 2 };
+  if (tokens[at] && tokens[at].value === '[' && tokens[at + 1] && tokens[at + 1].type === 'string' && tokens[at + 2] && tokens[at + 2].value === ']') return { name: tokens[at + 1].value, end: at + 3 };
+  return null;
+}
+const groupingPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=', '=>', ...bindingAssignmentOperators]);
+const groupingPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'in', 'instanceof', 'of']);
+function groupedReference(tokens, at) {
+  let start = at, end = at + 1;
+  while (tokens[start - 1] && tokens[start - 1].value === '(' && tokens[end] && tokens[end].value === ')') {
+    const beforeOpen = tokens[start - 2];
+    if (beforeOpen && !groupingPrefixPunctuators.has(beforeOpen.value) && !(beforeOpen.type === 'identifier' && groupingPrefixKeywords.has(beforeOpen.value))) break;
+    start -= 1;
+    end += 1;
+  }
+  return { start, end };
+}
+function bindingReassignments(tokens, protectedNames) {
+  const findings = [], globals = new Set(['globalThis', 'global', 'window', 'self', 'exports']);
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    const reference = token.type === 'identifier' ? groupedReference(tokens, i) : { start: i, end: i + 1 };
+    if (token.type === 'identifier' && protectedNames.has(token.value) && bindingAssignmentOperators.has(tokens[reference.end] && tokens[reference.end].value) && (!tokens[reference.start - 1] || tokens[reference.start - 1].value !== '.')) {
+      findings.push(token.value + ' ' + tokens[reference.end].value);
+    }
+    if (token.type !== 'identifier' || (tokens[reference.start - 1] && tokens[reference.start - 1].value === '.') || (!globals.has(token.value) && token.value !== 'module')) continue;
+    let at = reference.end;
+    if (token.value === 'module') {
+      const exportsMember = memberToken(tokens, at);
+      if (!exportsMember || exportsMember.name !== 'exports') continue;
+      at = exportsMember.end;
+    }
+    const bindingMember = memberToken(tokens, at);
+    if (bindingMember && protectedNames.has(bindingMember.name) && bindingAssignmentOperators.has(tokens[bindingMember.end] && tokens[bindingMember.end].value)) {
+      findings.push(token.value + '.' + bindingMember.name + ' ' + tokens[bindingMember.end].value);
+    }
+  }
+  return findings;
+}
+function assertUniqueRunnerBinding(candidate) {
+  const tokens = bindingTokens(candidate), count = functionDeclarations(tokens).filter(name => name === 'listSuite').length;
+  if (count === 0) throw new Error('runner function missing: listSuite');
+  assert(count === 1, 'runner binding declaration count for listSuite must be 1, got ' + count);
+  const reassignments = bindingReassignments(tokens, new Set(['listSuite']));
+  assert(reassignments.length === 0, 'runner binding reassignment: ' + reassignments.join(', '));
+}
 function extractFunctionFrom(candidate, name) {
   const match = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(name) + '\\s*\\(').exec(candidate);
   assert(match, 'runner function missing: ' + name);
@@ -57,6 +209,7 @@ function extractFunctionFrom(candidate, name) {
   throw new Error('runner function unbalanced: ' + name);
 }
 function noFilterSuiteBasenames(candidate) {
+  assertUniqueRunnerBinding(candidate);
   const sandbox = { fs, path, process: { argv: ['node', 'tests/run-all.js'] }, TESTS: path.join(root, 'tests') };
   vm.createContext(sandbox);
   vm.runInContext(extractFunctionFrom(candidate, 'listSuite'), sandbox);
@@ -120,6 +273,35 @@ try {
   assert(testNames.has('office-ops-conversion.e2e.js'), 'runner mutant prerequisite keeps the required test file on disk');
   nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRunnerMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'no-filter runner mutation must be rejected while the file stays on disk');
   assertRunnerContainsRequiredGuards(runner, '배포 전 실제');
+  const duplicateRunnerBindingMutant = runner + "\nfunction listSuite(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));}\n";
+  const reassignedRunnerBindingMutant = runner + "\nlistSuite=function(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));};\n";
+  for (const [label, mutant, expectedError] of [
+    ['duplicate declaration', duplicateRunnerBindingMutant, /binding declaration count/],
+    ['direct reassignment', reassignedRunnerBindingMutant, /binding reassignment/],
+    ['compound reassignment', runner + '\nlistSuite += "disabled";\n', /binding reassignment/],
+    ['logical reassignment', runner + '\nlistSuite &&= function(){return [];};\n', /binding reassignment/],
+    ['global property reassignment', runner + '\nglobalThis.listSuite = function(){return [];};\n', /binding reassignment/],
+    ['module property reassignment', runner + '\nmodule.exports["listSuite"] = function(){return [];};\n', /binding reassignment/],
+    ['grouped direct reassignment', runner + '\n(listSuite)=function(){return [];};\n', /binding reassignment/],
+    ['grouped global property reassignment', runner + '\n(globalThis).listSuite=function(){return [];};\n', /binding reassignment/],
+    ['grouped module property reassignment', runner + '\n(module).exports.listSuite=function(){return [];};\n', /binding reassignment/]
+  ]) nodeAssert.throws(() => assertRunnerContainsRequiredGuards(mutant, 'binding mutant'), expectedError, label + ' must fail closed');
+  const ordinaryObjectFixture = runner + '\nconst runnerDiagnostics={listSuite:function(){return [];}};runnerDiagnostics.listSuite=function(){return [];};const namedDiagnostic=function listSuite(){return [];};\n';
+  assertRunnerContainsRequiredGuards(ordinaryObjectFixture, 'ordinary object property fixture');
+  for (const [label, mutant] of [
+    ['template expression reassignment accepted', runner + '\nconst p=`${(listSuite=function(){return [];})}`;\n'],
+    ['static template member reassignment accepted', runner + '\nglobalThis[`listSuite`]=function(){return [];};\n']
+  ]) nodeAssert.throws(() => assertRunnerContainsRequiredGuards(mutant, 'adversarial binding mutant'), /binding reassignment/, label);
+  for (const [label, fixture] of [
+    ['async named function expression rejected', runner + '\nconst asyncNamed=async function listSuite(){return [];};\n'],
+    ['unary named function expression rejected', runner + '\n!function listSuite(){return [];};\n'],
+    ['unary async named function expression rejected', runner + '\nvoid async function listSuite(){return [];};\n'],
+    ['control-paren regex rejected', runner + "\nif(true) /listSuite=/.test('x');\n"],
+    ['control-block regex rejected', runner + "\nif(true){} /listSuite=/.test('x');\n"],
+    ['comment or string text rejected', runner + '\nconst bindingText="listSuite=";/* listSuite=function(){} */\n'],
+    ['common regex literal rejected', runner + "\nconst regexMatch=/listSuite=/.test('x');\n"],
+    ['nested global/module properties rejected', runner + '\nconst diagnostics={globalThis:{},module:{exports:{}}};diagnostics.globalThis.listSuite=function(){return [];};diagnostics.module.exports.listSuite=function(){return [];};\n']
+  ]) assertRunnerContainsRequiredGuards(fixture, 'valid syntax fixture: ' + label);
   assert(runner.includes('static-server.js') && runner.includes('mock-relay.js'),
     '러너가 테스트 서버(8299/8398)를 직접 관리하지 않는다 — CI 에서 e2e 가 전부 죽는다');
   assert(/node\s+scripts\/stage-pages\.mjs\s+_site/.test(workflow), '워크플로가 검증된 staging 스크립트를 실행하지 않는다');

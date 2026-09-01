@@ -1353,8 +1353,8 @@ async function runBrowserAcceptance() {
         const recordBefore = ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length;
         const finalizeBefore = ackReloadTimeoutScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length;
         await actual.page.evaluate(value => {
-          window.__ackTimeoutNativeAtomic = guardedAppStateWriteAtomic; window.__ackTimeoutAtomicCalls = 0; window.__ackTimeoutTerminal = null;
-          guardedAppStateWriteAtomic = async function(...args) { window.__ackTimeoutAtomicCalls += 1; return window.__ackTimeoutNativeAtomic(...args); };
+          window.__ackTimeoutNativeFence = officeOpsFenceDurableConversionCandidate; window.__ackTimeoutFenceCalls = 0; window.__ackTimeoutTerminal = null;
+          officeOpsFenceDurableConversionCandidate = async function(...args) { window.__ackTimeoutFenceCalls += 1; return window.__ackTimeoutNativeFence(...args); };
           resumeOfficeOpsInspectionConversion(value).then(
             result => { window.__ackTimeoutTerminal = { status: 'fulfilled', value: result.status }; },
             error => { window.__ackTimeoutTerminal = { status: 'rejected', code: error && error.code, value: String(error && error.message || error) }; }
@@ -1379,12 +1379,12 @@ async function runBrowserAcceptance() {
         assert.equal(await sibling.evaluate(() => window.__ackTimeoutWriter), null);
         await actual.page.waitForFunction(() => window.__ackTimeoutTerminal !== null);
         await sibling.waitForFunction(() => window.__ackTimeoutWriter !== null);
-        const ackTimedOut = await actual.page.evaluate(async () => ({ terminal: window.__ackTimeoutTerminal, atomicCalls: window.__ackTimeoutAtomicCalls,
+        const ackTimedOut = await actual.page.evaluate(async () => ({ terminal: window.__ackTimeoutTerminal, fenceCalls: window.__ackTimeoutFenceCalls,
           aborts: window.__officeOpsAbortCount, signals: window.__officeOpsSignalCount,
           reacquired: await navigator.locks.request('hyeonjang-paid-appstate-v1', { mode: 'exclusive' }, () => true) }));
         const ackWriter = await sibling.evaluate(() => window.__ackTimeoutWriter);
         assert.deepEqual(ackTimedOut.terminal.status, 'rejected'); assert.equal(ackTimedOut.terminal.code, 'office-timeout'); assert.match(ackTimedOut.terminal.value, /시간.*초과|다시 불러온 뒤 재개/);
-        assert.deepEqual([ackTimedOut.atomicCalls, ackTimedOut.aborts, ackTimedOut.reacquired], [2, 1, true], 'ACK reload timeout aborts once, post-fences exactly once, and releases the lock');
+        assert.deepEqual([ackTimedOut.fenceCalls, ackTimedOut.aborts, ackTimedOut.reacquired], [2, 1, true], 'ACK reload timeout runs one pre-fence and one post-fence, aborts once, and releases the lock');
         assert.ok(ackTimedOut.signals >= 2, 'each OfficeOps request receives an AbortSignal without changing its envelope');
         assert.ok((ackWriter.status === 'fulfilled' && ackWriter.value === false) || (ackWriter.status === 'rejected' && /stale appState conflict/.test(ackWriter.value)),
           'queued sibling writer settles without overwriting the fenced generation');
