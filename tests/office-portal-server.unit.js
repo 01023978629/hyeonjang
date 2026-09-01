@@ -140,9 +140,17 @@ const catches = (fn, code) => assert.throws(fn, error => error && error.portalCo
 
 sandbox.portalSetupSheets_();
 assert.deepEqual(Array.from(spreadsheet.sheets.keys()).sort(), [
-  'ManagementLogs', 'ManagementStatus', 'Offices', 'OtpChallenges', 'PortalAudit',
-  'PortalOperations', 'RolePermissions', 'Sessions', 'Users',
+  'CostItems', 'ManagementLogs', 'ManagementStatus', 'Notices', 'Offices', 'OtpChallenges',
+  'PortalAudit', 'PortalOperations', 'RolePermissions', 'Sessions', 'Users', 'WorkOrders',
 ]);
+for (const name of ['WorkOrders', 'Notices', 'CostItems']) spreadsheet.sheets.delete(name);
+const existingSheetSnapshot = new Map(Array.from(spreadsheet.sheets.entries()).map(([name, sheet]) => [name, JSON.stringify(sheet.rows)]));
+sandbox.portalSetupSheets_();
+for (const [name, snapshot] of existingSheetSnapshot) {
+  assert.equal(JSON.stringify(spreadsheet.getSheetByName(name).rows), snapshot,
+    `schema v2 setup modified existing ${name} rows`);
+}
+for (const name of ['WorkOrders', 'Notices', 'CostItems']) assert(spreadsheet.getSheetByName(name));
 
 const now = new Date().toISOString();
 function addOffice(officeId, slug, name) {
@@ -173,6 +181,7 @@ addUser('usr_expired', 'of_alpha', 'expired@example.com', '만료 검증', 'resi
 addUser('usr_gate', 'of_alpha', 'gate@example.com', '전역 제한', 'resident');
 addUser('usr_email_change', 'of_alpha', 'old-email@example.com', '이메일 변경', 'resident');
 addUser('usr_permission_durable', 'of_alpha', 'permission-durable@example.com', '권한 내구성', 'resident');
+addUser('usr_fac_ops', 'of_alpha', 'facility-ops@example.com', '운영 관리과장', 'facility_manager');
 
 function post(body) {
   return JSON.parse(sandbox.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
@@ -249,6 +258,208 @@ const roleReadsAfterUserList = dataRangeReadsBySheet.get('RolePermissions') || 0
 assert(bulkUserList.users.length >= 100);
 assert.equal(roleReadsAfterUserList - roleReadsBeforeUserList, 1,
   'portalUserList must read RolePermissions once regardless of user count');
+
+const facilityOps = login('alpha', 'facility-ops@example.com');
+assert(facilityOps.permissions.includes('workorders.manage'));
+assert(!facilityOps.permissions.includes('workorders.assign'));
+assert(!facilityOps.permissions.includes('notices.publish'));
+assert(!facilityOps.permissions.includes('costs.approve'));
+const operationCount = () => sandbox.portalRows_('PortalOperations').length;
+
+const workOrderCreated = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: chiefA.sessionToken,
+  payload: {
+    requestId: newRequestId(), receiptNo: '20260901-001', title: '지하실 주철관 보수',
+    location: '지하실', category: '배관', priority: 'urgent', status: 'received',
+    assigneeUserId: 'usr_fac_ops', dueDate: '2026-09-05', instructions: '누수 구간 확인 후 보수',
+    visibility: 'internal', revision: 0,
+  },
+});
+assert.equal(workOrderCreated.workOrder.assigneeUserId, 'usr_fac_ops');
+const facilityWorkOrders = sandbox.portalDispatch_({
+  action: 'portalWorkOrderList', sessionToken: facilityOps.sessionToken,
+});
+assert(!Object.hasOwn(facilityWorkOrders, 'assignees'));
+const chiefWorkOrderContext = sandbox.portalAuthenticate_(chiefA.sessionToken);
+const usersReadsBeforeChiefWorkOrders = dataRangeReadsBySheet.get('Users') || 0;
+const chiefWorkOrders = sandbox.portalWorkOrderList_(chiefWorkOrderContext, {});
+const usersReadsAfterChiefWorkOrders = dataRangeReadsBySheet.get('Users') || 0;
+assert.equal(usersReadsAfterChiefWorkOrders - usersReadsBeforeChiefWorkOrders, 1,
+  'work-order rows and assignment candidates must share one Users read');
+assert(chiefWorkOrders.assignees.some(user => user.id === 'usr_fac_ops'));
+assert(chiefWorkOrders.assignees.every(user => Object.keys(user).sort().join(',') === 'id,name,role'));
+const facilityWorkOrderRows = facilityWorkOrders.workOrders;
+assert(facilityWorkOrderRows.some(row => row.workOrderId === workOrderCreated.workOrder.workOrderId));
+assert.equal(workOrderCreated.workOrder.assigneeName, '운영 관리과장');
+catches(() => sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), title: '임의 배정', location: '기계실', category: '배관',
+    priority: 'normal', status: 'received', assigneeUserId: 'usr_fac_ops', dueDate: '',
+    instructions: '임의 배정 금지', visibility: 'internal', revision: 0,
+  },
+}), 'forbidden');
+const workOrderWorkingRequestId = newRequestId();
+const workOrderWorkingPayload = {
+  requestId: workOrderWorkingRequestId, workOrderId: workOrderCreated.workOrder.workOrderId,
+  receiptNo: '20260901-001', title: '지하실 주철관 보수', location: '지하실', category: '배관',
+  priority: 'urgent', status: 'planned', dueDate: '2026-09-05',
+  instructions: '작업 계획 확정', visibility: 'internal', revision: workOrderCreated.workOrder.revision,
+};
+const workOrderWorking = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: workOrderWorkingPayload,
+});
+assert.equal(workOrderWorking.workOrder.assigneeUserId, 'usr_fac_ops',
+  'an editor without assign permission must preserve an omitted existing assignee');
+const workOrderReassigned = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: chiefA.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...workOrderWorking.workOrder, assigneeUserId: 'usr_fac_a',
+  },
+});
+const workOrderWorkingReplay = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: workOrderWorkingPayload,
+});
+assert.equal(workOrderWorkingReplay.replayed, true,
+  'an omitted-assignee retry hash must stay stable after another user reassigns the work order');
+assert.equal(workOrderWorkingReplay.workOrder.assigneeUserId, 'usr_fac_a');
+const workOrderActive = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...workOrderReassigned.workOrder, status: 'working', instructions: '작업 중',
+  },
+});
+const workOrderCompleted = sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...workOrderActive.workOrder, status: 'completed',
+    instructions: '작업 완료', visibility: 'board',
+  },
+});
+const operationsBeforeInvalidCompletedWorkOrder = operationCount();
+catches(() => sandbox.portalDispatch_({
+  action: 'portalWorkOrderSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...workOrderCompleted.workOrder, status: 'working', instructions: '완료 후 변조',
+  },
+}), 'invalid_transition');
+assert.equal(operationCount(), operationsBeforeInvalidCompletedWorkOrder,
+  'a rejected work-order transition must not leave a started operation');
+
+const noticeDraft = sandbox.portalDispatch_({
+  action: 'portalNoticeSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), title: '단수 안내', content: '오전 9시부터 단수 예정',
+    visibility: 'public', state: 'draft', publishDate: '2026-01-01', expiresDate: '2026-12-31', revision: 0,
+  },
+});
+const operationsBeforeForbiddenNoticePublish = operationCount();
+catches(() => sandbox.portalDispatch_({
+  action: 'portalNoticeSave', sessionToken: facilityOps.sessionToken,
+  payload: { requestId: newRequestId(), ...noticeDraft.notice, state: 'published' },
+}), 'forbidden');
+assert.equal(operationCount(), operationsBeforeForbiddenNoticePublish,
+  'a rejected notice publish must not leave a started operation');
+const noticePublished = sandbox.portalDispatch_({
+  action: 'portalNoticeSave', sessionToken: chiefA.sessionToken,
+  payload: { requestId: newRequestId(), ...noticeDraft.notice, state: 'published' },
+});
+assert.equal(noticePublished.notice.state, 'published');
+
+const costSubmitted = sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), workOrderId: workOrderCompleted.workOrder.workOrderId,
+    category: '배관', description: '주철관 보수비', amountKrw: 450000,
+    taxMode: 'included', status: 'submitted', revision: 0,
+  },
+});
+const operationsBeforeSubmittedCostEdit = operationCount();
+catches(() => sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...costSubmitted.cost, description: '승인 요청 후 임의 수정',
+  },
+}), 'invalid_transition');
+assert.equal(operationCount(), operationsBeforeSubmittedCostEdit,
+  'a rejected submitted-cost edit must not leave a started operation');
+catches(() => sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: facilityOps.sessionToken,
+  payload: { requestId: newRequestId(), costId: costSubmitted.cost.costId, targetState: 'approved', revision: costSubmitted.cost.revision },
+}), 'forbidden');
+const costApproved = sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: chiefA.sessionToken,
+  payload: { requestId: newRequestId(), costId: costSubmitted.cost.costId, targetState: 'approved', revision: costSubmitted.cost.revision },
+});
+catches(() => sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), ...costApproved.cost, description: '승인 후 변조', status: 'submitted',
+  },
+}), 'invalid_transition');
+const costPaid = sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: chiefA.sessionToken,
+  payload: { requestId: newRequestId(), costId: costApproved.cost.costId, targetState: 'paid', revision: costApproved.cost.revision },
+});
+assert.equal(costPaid.cost.status, 'paid');
+const costDraftExcluded = sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), category: '자재', description: '부가세 별도 초안', amountKrw: 100000,
+    taxMode: 'excluded', status: 'draft', revision: 0,
+  },
+});
+const costPendingExempt = sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), category: '인건비', description: '면세 승인 요청', amountKrw: 50000,
+    taxMode: 'exempt', status: 'submitted', revision: 0,
+  },
+});
+const costApprovalBase = sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), category: '장비', description: '부가세 별도 승인 건', amountKrw: 200000,
+    taxMode: 'excluded', status: 'submitted', revision: 0,
+  },
+});
+const costApprovedUnpaid = sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: chiefA.sessionToken,
+  payload: {
+    requestId: newRequestId(), costId: costApprovalBase.cost.costId,
+    targetState: 'approved', revision: costApprovalBase.cost.revision,
+  },
+});
+const costCancelBase = sandbox.portalDispatch_({
+  action: 'portalCostSave', sessionToken: facilityOps.sessionToken,
+  payload: {
+    requestId: newRequestId(), category: '기타', description: '취소 예정 비용', amountKrw: 70000,
+    taxMode: 'included', status: 'submitted', revision: 0,
+  },
+});
+const costCancelled = sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: chiefA.sessionToken,
+  payload: {
+    requestId: newRequestId(), costId: costCancelBase.cost.costId,
+    targetState: 'cancelled', revision: costCancelBase.cost.revision,
+  },
+});
+assert.equal(costDraftExcluded.cost.status, 'draft');
+assert.equal(costPendingExempt.cost.status, 'submitted');
+assert.equal(costApprovedUnpaid.cost.status, 'approved');
+assert.equal(costCancelled.cost.status, 'cancelled');
+const operationsBeforeInvalidPaidTransition = operationCount();
+catches(() => sandbox.portalDispatch_({
+  action: 'portalCostApprove', sessionToken: chiefA.sessionToken,
+  payload: {
+    requestId: newRequestId(), costId: costPaid.cost.costId,
+    targetState: 'approved', revision: costPaid.cost.revision,
+  },
+}), 'invalid_transition');
+assert.equal(operationCount(), operationsBeforeInvalidPaidTransition,
+  'a rejected cost transition must not leave a started operation');
 
 const internal = sandbox.portalDispatch_({
   action: 'portalStatusSave', sessionToken: chiefA.sessionToken,
@@ -411,7 +622,8 @@ assert.equal(Number(sandbox.portalUserById_(userCreated.user.id).permissionVersi
 
 const permissionRequestId = newRequestId();
 const permissionPayload = {
-  requestId: permissionRequestId, userId: 'usr_rep_a', permissions: ['dashboard.view', 'status.view'],
+  requestId: permissionRequestId, userId: 'usr_rep_a',
+  permissions: ['dashboard.view', 'status.view', 'reports.view', 'notices.view'],
 };
 const permissionVersionBefore = Number(sandbox.portalUserById_('usr_rep_a').permissionVersion);
 appendFailuresBySheet.set('PortalAudit', 1);
@@ -436,8 +648,52 @@ assert(repStatuses.every(row => !Object.hasOwn(row, 'officeId') && !Object.hasOw
 const residentLogs = sandbox.portalDispatch_({ action: 'portalLogList', sessionToken: residentA.sessionToken }).logs;
 assert.equal(residentLogs[0].logId.startsWith('log_'), true);
 assert.equal(residentLogs[0].content, '이상 없음');
+const residentNotices = sandbox.portalDispatch_({ action: 'portalNoticeList', sessionToken: residentA.sessionToken }).notices;
+assert(residentNotices.some(row => row.noticeId === noticePublished.notice.noticeId));
+assert(!residentNotices.some(row => row.noticeId === noticeDraft.notice.noticeId && row.state === 'draft'));
+const repReport = sandbox.portalDispatch_({
+  action: 'portalReportSummary', sessionToken: repA.sessionToken,
+  payload: { startDate: '2026-01-01', endDate: '2026-12-31' },
+}).report;
+assert(!Object.hasOwn(repReport, 'totalAmountKrw'));
+assert(!Object.hasOwn(repReport, 'pendingAmountKrw'));
+assert(!Object.hasOwn(repReport, 'approvedUnpaidAmountKrw'));
+assert(!Object.hasOwn(repReport, 'paidAmountKrw'));
+assert(!Object.hasOwn(repReport, 'amountKrwByStatus'));
+assert(!Object.hasOwn(repReport.counts, 'costs'));
+assert.equal(repReport.counts.workOrders, 1,
+  'reports.view must include visibility-filtered work order aggregates without exposing rows');
+const chiefReportContext = sandbox.portalAuthenticate_(chiefA.sessionToken);
+const usersReadsBeforeChiefReport = dataRangeReadsBySheet.get('Users') || 0;
+const chiefReport = sandbox.portalReportSummary_(chiefReportContext, {
+  startDate: '2026-01-01', endDate: '2026-12-31',
+}).report;
+assert.equal((dataRangeReadsBySheet.get('Users') || 0) - usersReadsBeforeChiefReport, 0,
+  'aggregate reports must not load assignee names');
+assert.equal(sandbox.portalReportDate_('2026-08-31T15:30:00.000Z'), '2026-09-01',
+  'UTC timestamps must be grouped by the Asia/Seoul operating date');
+assert.equal(sandbox.portalReportDate_('2026-09-01'), '2026-09-01');
+assert.equal(chiefReport.totalAmountKrw, 830000);
+assert.equal(chiefReport.pendingAmountKrw, 160000);
+assert.equal(chiefReport.approvedUnpaidAmountKrw, 220000);
+assert.equal(chiefReport.paidAmountKrw, 450000);
+assert.equal(chiefReport.amountKrwByStatus.paid, 450000);
+assert.equal(chiefReport.amountKrwByStatus.draft, 110000);
+assert.equal(chiefReport.amountKrwByStatus.submitted, 50000);
+assert.equal(chiefReport.amountKrwByStatus.approved, 220000);
+assert.equal(chiefReport.amountKrwByStatus.cancelled, 70000);
+assert(chiefReport.counts.workOrders >= 1 && chiefReport.counts.notices >= 1);
+const operationsDashboard = sandbox.portalDispatch_({ action: 'portalDashboard', sessionToken: chiefA.sessionToken });
+assert(operationsDashboard.counts.workOrders >= 1);
+assert(operationsDashboard.counts.notices >= 1);
+assert(operationsDashboard.notices.every(notice => !Object.hasOwn(notice, 'content')),
+  'dashboard notice summaries must not include notice bodies');
+assert(!operationsDashboard.metrics.some(metric => metric.label === '접수 대기'));
 
 const chiefB = login('beta', 'chief-b@example.com');
+assert.equal(sandbox.portalDispatch_({ action: 'portalWorkOrderList', sessionToken: chiefB.sessionToken }).workOrders.length, 0);
+assert.equal(sandbox.portalDispatch_({ action: 'portalNoticeList', sessionToken: chiefB.sessionToken }).notices.length, 0);
+assert.equal(sandbox.portalDispatch_({ action: 'portalCostList', sessionToken: chiefB.sessionToken }).costs.length, 0);
 sandbox.portalDispatch_({
   action: 'portalStatusSave', sessionToken: chiefB.sessionToken,
   payload: { requestId: newRequestId(), location: '베타동', category: '시설', state: 'normal', summary: '타 단지 데이터', visibility: 'public' },

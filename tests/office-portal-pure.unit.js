@@ -12,12 +12,14 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 assert.deepEqual(plain(sandbox.PORTAL_CAPABILITIES), [
   'dashboard.view', 'status.view', 'status.manage', 'logs.view', 'logs.manage',
-  'requests.view', 'reports.view', 'notices.view', 'costs.view',
+  'requests.view', 'reports.view', 'notices.view', 'notices.manage', 'notices.publish',
+  'costs.view', 'costs.manage', 'costs.approve',
+  'workorders.view', 'workorders.manage', 'workorders.assign',
   'admin.users.view', 'admin.users.manage', 'admin.permissions.manage', 'admin.audit.view',
 ]);
 assert.deepEqual(plain(sandbox.PORTAL_VIEW_CAPABILITIES), [
   'dashboard.view', 'status.view', 'logs.view', 'requests.view', 'reports.view',
-  'notices.view', 'costs.view', 'admin.users.view', 'admin.audit.view',
+  'notices.view', 'costs.view', 'workorders.view', 'admin.users.view', 'admin.audit.view',
 ]);
 assert.equal(sandbox.portalPureRequestId_('01234567-89ab-4cde-8f01-23456789abcd'),
   '01234567-89ab-4cde-8f01-23456789abcd');
@@ -32,8 +34,18 @@ const facilityPermissions = plain(sandbox.portalPureEffectivePermissions_('facil
   { capability: 'status.view', allowed: false },
 ]));
 assert(!facilityPermissions.includes('status.view'));
-assert(facilityPermissions.includes('status.manage'), 'view override must not silently remove write capability');
+assert(!facilityPermissions.includes('status.manage'), 'removing module view must also remove write capability');
 assert(facilityPermissions.includes('logs.manage'));
+const dependencyPermissions = plain(sandbox.portalPureEffectivePermissions_('manager_chief', [
+  { capability: 'workorders.view', allowed: false },
+  { capability: 'notices.view', allowed: false },
+  { capability: 'costs.view', allowed: false },
+  { capability: 'admin.users.view', allowed: false },
+]));
+for (const capability of [
+  'workorders.manage', 'workorders.assign', 'notices.manage', 'notices.publish',
+  'costs.manage', 'costs.approve', 'admin.users.manage', 'admin.permissions.manage',
+]) assert(!dependencyPermissions.includes(capability), `${capability} survived its removed view capability`);
 
 assert.deepEqual(plain(sandbox.portalPurePermissionSet_('resident', ['dashboard.view', 'status.view'])), [
   'dashboard.view', 'status.view',
@@ -61,6 +73,35 @@ const logInput = plain(sandbox.portalPureRecordInput_({
 }, 'log'));
 assert.equal(logInput.workDate, '2026-09-01');
 assert.equal(logInput.content, '이상 없음');
+
+const workOrderInput = plain(sandbox.portalPureWorkOrderInput_({
+  receiptNo: '20260901-001', title: '지하실 배관 보수', location: '지하실', category: '배관',
+  priority: 'urgent', status: 'received', assigneeUserId: '', dueDate: '2026-09-03',
+  instructions: '누수 구간 확인 후 보수', visibility: 'internal', revision: 0,
+}));
+assert.equal(workOrderInput.priority, 'urgent');
+assert(sandbox.portalPureWorkOrderTransitionAllowed_('planned', 'working'));
+assert(!sandbox.portalPureWorkOrderTransitionAllowed_('completed', 'working'));
+const noticeInput = plain(sandbox.portalPureNoticeInput_({
+  title: '단수 안내', content: '오전 중 단수 예정', visibility: 'public', state: 'draft',
+  publishDate: '2026-09-02', expiresDate: '2026-09-03', revision: 0,
+}));
+assert.equal(noticeInput.state, 'draft');
+assert(sandbox.portalPureNoticeTransitionAllowed_('draft', 'published'));
+assert(!sandbox.portalPureNoticeTransitionAllowed_('published', 'draft'));
+assert.throws(() => sandbox.portalPureNoticeInput_({
+  title: '날짜 오류', content: '오류', visibility: 'public', state: 'draft',
+  publishDate: '2026-09-04', expiresDate: '2026-09-03',
+}), /date range/);
+const costInput = plain(sandbox.portalPureCostInput_({
+  category: '배관', description: '보수 자재', amountKrw: 120000, taxMode: 'included', status: 'submitted',
+}));
+assert.equal(costInput.amountKrw, 120000);
+assert.throws(() => sandbox.portalPureCostInput_({
+  category: '배관', description: '비정상', amountKrw: 1000000001, taxMode: 'included', status: 'draft',
+}), /amountKrw/);
+assert(sandbox.portalPureCostTransitionAllowed_('submitted', 'approved'));
+assert(!sandbox.portalPureCostTransitionAllowed_('paid', 'approved'));
 
 const baseStatus = {
   statusId: 'sts_1', officeId: 'of_alpha', location: '101동', category: '배관',
@@ -130,6 +171,13 @@ assertUnsafeTextRejected('email', value => () => sandbox.portalPureUserInput_({
 assertUnsafeTextRejected('complexName', value => () => sandbox.portalPureOfficeInput_({
   officeId: 'of_formula', slug: 'formula', complexName: value, enabled: true,
 }));
+assertUnsafeTextRejected('instructions', value => () => sandbox.portalPureWorkOrderInput_({
+  title: '작업', location: '지하실', category: '배관', priority: 'normal', status: 'received',
+  instructions: value, visibility: 'internal',
+}));
+assertUnsafeTextRejected('description', value => () => sandbox.portalPureCostInput_({
+  category: '배관', description: value, amountKrw: 1, taxMode: 'included', status: 'draft',
+}));
 
 const safeUser = plain(sandbox.portalPureSafeUser_({
   userId: 'usr_1', email: 'user@example.com', displayName: '관리자', role: 'manager_chief',
@@ -139,5 +187,43 @@ assert.deepEqual(safeUser, {
   id: 'usr_1', name: '관리자', role: 'manager_chief', active: true,
   permissions: ['dashboard.view'], email: 'user@example.com',
 });
+
+function loadMutant(from, to) {
+  const mutatedSource = source.replace(from, to);
+  assert.notEqual(mutatedSource, source, 'mutation target not found');
+  const mutated = {};
+  vm.createContext(mutated);
+  vm.runInContext(mutatedSource, mutated);
+  return mutated;
+}
+function assertCriticalInvariants(api) {
+  const permissions = plain(api.portalPureEffectivePermissions_('manager_chief', [
+    { capability: 'costs.view', allowed: false },
+    { capability: 'workorders.view', allowed: false },
+    { capability: 'notices.view', allowed: false },
+  ]));
+  assert(!permissions.includes('costs.approve'), 'cost approval survived removed cost view');
+  assert(!permissions.includes('workorders.assign'), 'work-order assignment survived removed work-order view');
+  assert(!permissions.includes('notices.publish'), 'notice publishing survived removed notice view');
+  assert(!api.portalPureWorkOrderTransitionAllowed_('completed', 'working'), 'terminal work order reopened');
+}
+assertCriticalInvariants(sandbox);
+const permissionDependencyMutant = loadMutant(
+  "requireView('costs.view', ['costs.manage', 'costs.approve']);",
+  "/* mutation: missing costs dependency */"
+);
+assert.throws(() => assertCriticalInvariants(permissionDependencyMutant), /cost approval survived/);
+const workOrderDependencyMutant = loadMutant(
+  "requireView('workorders.view', ['workorders.manage', 'workorders.assign']);",
+  '/* mutation: missing work-order dependency */'
+);
+assert.throws(() => assertCriticalInvariants(workOrderDependencyMutant), /work-order assignment survived/);
+const noticeDependencyMutant = loadMutant(
+  "requireView('notices.view', ['notices.manage', 'notices.publish']);",
+  '/* mutation: missing notice dependency */'
+);
+assert.throws(() => assertCriticalInvariants(noticeDependencyMutant), /notice publishing survived/);
+const terminalTransitionMutant = loadMutant("completed: [],", "completed: ['working'],");
+assert.throws(() => assertCriticalInvariants(terminalTransitionMutant), /terminal work order reopened/);
 
 console.log('PASS  office portal pure RBAC, validation, visibility, and projection contracts');

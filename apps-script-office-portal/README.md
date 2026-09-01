@@ -15,7 +15,7 @@
 - 보호 action: 매 호출마다 현재 `Users.enabled`, 역할, `sessionVersion`, `permissionVersion`, 단지 활성 상태와 버전을 재검증
 - 이메일 변경: 같은 잠금 안에서 해당 사용자의 미사용 OTP를 모두 폐기하고, OTP 검증 때 challenge identity와 현재 `Users.emailHash`를 다시 비교
 - 단지 격리: 일반 사용자의 `officeId`는 요청값을 사용하지 않고 세션에서 강제
-- 쓰기 멱등성: 상태·일지·사용자·권한 저장은 클라이언트 UUID `requestId`와 `PortalOperations` 기록으로 중복 실행을 차단
+- 쓰기 멱등성: 상태·일지·작업지시·공지·비용·사용자·권한 저장은 클라이언트 UUID `requestId`와 `PortalOperations` 기록으로 중복 실행을 차단
 - 응답 최소화: OTP·토큰 해시·내부 저장 키는 어떤 API 응답에도 포함하지 않음
 - 감사 로그: action, 대상 ID, 결과 같은 메타데이터만 기록. 이메일·OTP·세션 원문·상태/일지 본문은 기록하지 않음
 
@@ -26,10 +26,10 @@
 | 역할 | 기본 범위 |
 |---|---|
 | `system_admin` | 단지/사용자 부트스트랩, 권한, 감사. 상태·일지·대시보드 콘텐츠 권한 없음 |
-| `manager_chief` | 자기 단지의 상태·일지·사용자·권한·감사 전체 |
-| `facility_manager` | 자기 단지의 운영 상태·일지 조회/작성 |
-| `resident_rep` | `board`, `public` 상태·일지 조회 |
-| `resident` | `public` 상태·일지 조회 |
+| `manager_chief` | 자기 단지의 상태·일지·작업지시·공지·비용 승인·보고서·사용자·권한·감사 전체 |
+| `facility_manager` | 상태·일지·작업지시·공지 초안·비용 초안/제출·보고서. 담당자 배정·공지 발행·비용 승인은 제외 |
+| `resident_rep` | `board`, `public` 상태·일지·발행 공지와 비금액 집계 보고서 |
+| `resident` | `public` 상태·일지·유효기간 안의 발행 공지 |
 
 사용자별 `permissions`는 역할 ceiling 안에서만 저장할 수 있습니다. `system_admin`과 `manager_chief`의 마지막 활성 계정 제거를 막고, 로그인 중인 관리자가 자기 역할·활성 상태·로그인 이메일·권한을 바꿔 스스로 잠기는 것도 막습니다.
 
@@ -44,7 +44,14 @@ logs.manage
 requests.view
 reports.view
 notices.view
+notices.manage
+notices.publish
 costs.view
+costs.manage
+costs.approve
+workorders.view
+workorders.manage
+workorders.assign
 admin.users.view
 admin.users.manage
 admin.permissions.manage
@@ -61,7 +68,7 @@ admin.audit.view
    - `OFFICE_PORTAL_SESSION_SECRET`: 암호학적으로 생성한 32자 이상의 서로 다른 비밀값
    - `OFFICE_PORTAL_OTP_PEPPER`: 위 세션 비밀과 다른, 암호학적으로 생성한 32자 이상의 비밀값
 4. 편집기에서 `portalSetupSheets_()`를 직접 한 번 실행하고 Sheets·메일 권한을 승인합니다. 다음 탭과 고정 헤더가 생성됩니다.
-   - `Offices`, `Users`, `OtpChallenges`, `Sessions`, `PortalOperations`, `RolePermissions`, `ManagementStatus`, `ManagementLogs`, `PortalAudit`
+   - `Offices`, `Users`, `OtpChallenges`, `Sessions`, `PortalOperations`, `RolePermissions`, `ManagementStatus`, `ManagementLogs`, `WorkOrders`, `Notices`, `CostItems`, `PortalAudit`
 5. 최초 관리자 생성을 위해 아래 임시 스크립트 속성을 등록합니다.
    - `OFFICE_PORTAL_BOOTSTRAP_OFFICE_ID`
    - `OFFICE_PORTAL_BOOTSTRAP_SLUG`
@@ -82,9 +89,22 @@ admin.audit.view
 - `portalRequestCode`: `{action, payload:{officeCode,email}}`
 - `portalVerifyCode`: `{action, payload:{officeCode,email,code,challengeId}}`
 - 보호 action: 최상위에 `sessionToken`을 넣고 필요 입력은 `payload`에 둡니다.
-- `portalStatusSave`, `portalLogSave`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
+- `portalStatusSave`, `portalLogSave`, `portalWorkOrderSave`, `portalNoticeSave`, `portalCostSave`, `portalCostApprove`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
 - 같은 `requestId`와 같은 정규화 입력을 재전송하면 기존 entity와 revision을 그대로 반환하며 `replayed:true`가 표시됩니다. 같은 `requestId`에 다른 입력을 보내면 `invalid-input`입니다.
 - `portalLogout` 성공 후 같은 token은 재사용할 수 없습니다.
+
+### 운영 API
+
+- `portalWorkOrderList` → `{workOrders, assignees?}`. 작업지시의 담당자 표시는 최소 필드 `assigneeUserId`, `assigneeName`만 사용하고, 배정 후보 `assignees`는 `workorders.assign` 보유자에게만 `{id,name,role}`로 반환합니다. 이메일과 동·호 정보는 포함하지 않습니다.
+- `portalWorkOrderSave` → `{workOrder,replayed,auditPending}`. 신규 상태는 `received|planned`; `received→planned|cancelled`, `planned→working|blocked|cancelled`, `working→blocked|completed|cancelled`, `blocked→planned|working|cancelled`만 허용합니다. `completed|cancelled`은 종료 상태입니다.
+- `portalNoticeList` → `{notices}`. 입주민·동대표에게는 visibility, `published`, 발행일·만료일 조건을 모두 통과한 행만 반환합니다.
+- `portalNoticeSave` → `{notice,replayed,auditPending}`. `published` 전환과 발행 후 변경에는 `notices.publish`가 필요합니다.
+- `portalCostList` → `{costs}`. `costs.view`가 없으면 호출 자체를 거부합니다.
+- `portalCostSave` → `{cost,replayed,auditPending}`. 신규 행은 `draft|submitted`로 만들 수 있고 기존 행은 `draft` 상태에서만 수정·제출할 수 있습니다. 제출 뒤 정정은 관리소장이 취소한 후 새 비용으로 다시 등록합니다.
+- `portalCostApprove` payload는 `{requestId,costId,targetState,revision}`이며 `submitted→approved|cancelled`, `approved→paid|cancelled`만 허용합니다.
+- `portalReportSummary` payload는 `{startDate,endDate}`이며 최대 366일입니다. 날짜는 현장 운영 기준인 한국시간으로 집계합니다. 응답은 `{report:{startDate,endDate,counts,statusByState,workOrdersByStatus,noticesByState}}`이고, `reports.view` 사용자는 공개 범위를 통과한 작업지시의 집계만 받습니다. `costs.view`가 있을 때만 `counts.costs`와 부가세를 반영한 `totalAmountKrw`(취소 제외 등록액), `pendingAmountKrw`(초안·승인 요청), `approvedUnpaidAmountKrw`, `paidAmountKrw`, `amountKrwByStatus`가 추가됩니다. `taxMode=excluded`는 10% 부가세를 더하고 `included|exempt`는 입력 금액을 그대로 사용합니다.
+
+`requests.view`는 기존 관리사무소 PIN 접수 화면/링크를 위한 capability입니다. 이 포털은 접수 원본이나 사진을 복제하지 않으며 기존 `apps-script/OfficeIntake.gs` relay의 `APP_TOKEN`, PIN 세션, Drive 파일에 직접 접근하지 않습니다.
 
 공개 오류 코드는 `not-configured`, `invalid-input`, `invalid-credentials`, `rate-limited`, `session-expired`, `forbidden`, `last-admin`, `not-found`, `bad-request`, `server-error` 중 하나입니다. 가짜·사용됨·폐기됨·만료된 challenge와 OTP 불일치는 모두 `invalid-credentials`로 응답합니다. 등록되지 않은 이메일과 발송 제한 상황도 계정 존재 여부가 드러나지 않도록 동일한 accepted 응답을 사용하며, 가짜 UUID challenge만 돌려주고 Sheets에는 저장하지 않습니다. 로그인 실패 시에는 원인을 구분해 표시하지 말고 새 인증번호를 요청하도록 안내하세요.
 
@@ -93,20 +113,20 @@ admin.audit.view
 - `.gs` 소스의 GitHub 배포는 Apps Script 운영 배포를 갱신하지 않습니다. Apps Script에서 새 버전을 배포한 뒤 실제 `/exec` 응답을 별도로 확인해야 합니다.
 - `portalSetupSheets_`, `portalBootstrapFromProperties_`는 웹 action allowlist에 없으므로 편집기 소유자만 실행할 수 있습니다.
 - Sheets 헤더가 예상 스키마와 다르면 쓰기를 계속하지 않고 `not-configured`로 중단합니다.
-- 기존 배포를 업그레이드할 때는 새 버전 배포 전에 편집기에서 `portalSetupSheets_()`를 다시 실행해 `PortalOperations` 탭을 생성하세요. 기존 상태·일지·사용자 행은 수정하지 않습니다.
+- v1 배포를 v2로 업그레이드할 때는 새 버전 배포 전에 편집기에서 `portalSetupSheets_()`를 다시 실행해 `WorkOrders`, `Notices`, `CostItems` 탭을 추가하세요. 함수는 기존 탭의 헤더와 행을 수정하지 않습니다.
 - OTP 이메일 전송 실패는 challenge를 즉시 폐기하고 본문이나 이메일을 남기지 않는 메타데이터 감사 이벤트만 기록합니다. 공개 응답은 계정 열거를 막기 위해 accepted 형태를 유지합니다.
 - `MailApp.sendEmail`은 동기 호출이므로 등록 계정의 실제 메일 발송과 미등록 계정의 가짜 accepted 응답 사이에 통계적인 응답 시간 차이가 생길 수 있습니다. 이 구현은 공개 본문·오류를 통일하지만 네트워크 timing oracle을 완전히 제거하지는 못합니다. 고위험 운영에서는 앞단 WAF/프록시 제한과 모니터링을 적용하고, 가능하면 공개 요청과 분리된 비동기 발송 큐/트리거로 메일 전송을 옮기세요.
 - 비밀 교체 시 기존 세션은 즉시 무효화됩니다. 사용자 권한·역할 변경도 버전 불일치로 기존 세션을 무효화합니다.
 
 ### 인증 행 보관 정리
 
-`portalPruneExpiredAuthRows_()`는 웹 action이 아닌 편집기/트리거 전용 함수입니다. 만료·사용·폐기된 OTP challenge는 마지막 종료 시점 7일 후, 만료·폐기된 session은 마지막 종료 시점 30일 후 뒤에서부터 삭제합니다. `PortalOperations`는 `complete` 상태로 90일이 지난 행만 삭제하며 `started`, `primary_committed`, `audit_pending`은 기간과 관계없이 보존합니다. 반환값은 종류별 삭제 건수와 실행 시각뿐이며 이메일·사용자 ID·토큰 같은 식별자를 포함하지 않습니다. `ManagementStatus`, `ManagementLogs`, `PortalAudit`는 이 함수가 삭제하지 않습니다.
+`portalPruneExpiredAuthRows_()`는 웹 action이 아닌 편집기/트리거 전용 함수입니다. 만료·사용·폐기된 OTP challenge는 마지막 종료 시점 7일 후, 만료·폐기된 session은 마지막 종료 시점 30일 후 뒤에서부터 삭제합니다. `PortalOperations`는 `complete` 상태로 90일이 지난 행만 삭제하며 `started`, `primary_committed`, `audit_pending`은 기간과 관계없이 보존합니다. 반환값은 종류별 삭제 건수와 실행 시각뿐이며 이메일·사용자 ID·토큰 같은 식별자를 포함하지 않습니다. 운영 상태·일지·작업지시·공지·비용·감사 행은 이 함수가 삭제하지 않습니다.
 
 Apps Script 왼쪽의 **트리거 → 트리거 추가**에서 실행 함수 `portalPruneExpiredAuthRows_`, 이벤트 소스 **시간 기반**, 주기 **일일**로 등록하는 것을 권장합니다. 최초 등록과 권한 승인은 프로젝트 소유자가 직접 수행하세요.
 
 ### 쓰기 재시도와 감사 복구
 
-Sheets는 트랜잭션을 제공하지 않으므로 포털은 primary row를 쓰기 전에 `PortalOperations`에 `requestId`, 입력 해시, 미리 확정한 entity ID를 기록합니다. primary row 이후 감사 append가 실패해도 API는 저장 결과와 `auditPending:true`를 반환하며, 같은 `requestId` 재전송은 새 행을 만들지 않고 deterministic audit ID로 누락 감사를 보완합니다. 운영 중 남은 `audit_pending`은 웹 action이 아닌 `portalRepairPendingOperationAudits_()`를 편집기에서 실행해 복구할 수 있습니다.
+Sheets는 트랜잭션을 제공하지 않으므로 포털은 권한·revision·상태 전이·연결 대상을 먼저 검증한 뒤, primary row를 쓰기 전에 `PortalOperations`에 `requestId`, 클라이언트 정규화 입력 해시, 미리 확정한 entity ID를 기록합니다. 거부된 입력은 `started` 행을 만들지 않습니다. primary row 이후 감사 append가 실패해도 API는 저장 결과와 `auditPending:true`를 반환하며, 같은 `requestId` 재전송은 새 행을 만들지 않고 deterministic audit ID로 누락 감사를 보완합니다. 담당자를 생략한 작업지시 수정은 현재 담당자가 바뀌어도 같은 요청 해시를 유지합니다. 운영 중 남은 `audit_pending`은 웹 action이 아닌 `portalRepairPendingOperationAudits_()`를 편집기에서 실행해 복구할 수 있습니다.
 
 `portalRepairPendingOperationAudits_()`도 일일 시간 기반 트리거로 등록하는 것을 권장합니다. 반환값은 복구·잔여 건수와 실행 시각뿐입니다. `PortalOperations`에는 이메일·본문·입력 원문을 저장하지 않고 해시와 내부 ID만 저장합니다.
 

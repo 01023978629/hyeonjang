@@ -7,6 +7,8 @@
 var PORTAL_ACTIONS = Object.freeze([
   'portalHealth', 'portalRequestCode', 'portalVerifyCode', 'portalMe', 'portalLogout',
   'portalDashboard', 'portalStatusList', 'portalStatusSave', 'portalLogList', 'portalLogSave',
+  'portalWorkOrderList', 'portalWorkOrderSave', 'portalNoticeList', 'portalNoticeSave',
+  'portalCostList', 'portalCostSave', 'portalCostApprove', 'portalReportSummary',
   'portalUserList', 'portalUserSave', 'portalPermissionSave', 'portalAuditList'
 ]);
 
@@ -23,6 +25,9 @@ var PORTAL_HEADERS = Object.freeze({
   RolePermissions: ['officeId', 'userId', 'role', 'capability', 'allowed', 'updatedAt', 'updatedBy'],
   ManagementStatus: ['statusId', 'officeId', 'location', 'category', 'state', 'summary', 'visibility', 'createdAt', 'updatedAt', 'updatedBy', 'revision'],
   ManagementLogs: ['logId', 'officeId', 'workDate', 'category', 'title', 'content', 'visibility', 'createdAt', 'updatedAt', 'updatedBy', 'revision'],
+  WorkOrders: ['workOrderId', 'officeId', 'receiptNo', 'title', 'location', 'category', 'priority', 'status', 'assigneeUserId', 'dueDate', 'instructions', 'visibility', 'createdAt', 'updatedAt', 'updatedBy', 'revision'],
+  Notices: ['noticeId', 'officeId', 'title', 'content', 'visibility', 'state', 'publishDate', 'expiresDate', 'createdAt', 'updatedAt', 'updatedBy', 'revision'],
+  CostItems: ['costId', 'officeId', 'workOrderId', 'category', 'description', 'amountKrw', 'taxMode', 'status', 'createdAt', 'updatedAt', 'updatedBy', 'approvedBy', 'approvedAt', 'revision'],
   PortalAudit: ['auditId', 'officeId', 'actorUserId', 'role', 'action', 'entityType', 'entityId', 'result', 'at']
 });
 
@@ -81,6 +86,14 @@ function portalDispatch_(request) {
   if (action === 'portalStatusSave') return portalStatusSave_(context, payload);
   if (action === 'portalLogList') return portalLogList_(context, payload);
   if (action === 'portalLogSave') return portalLogSave_(context, payload);
+  if (action === 'portalWorkOrderList') return portalWorkOrderList_(context, payload);
+  if (action === 'portalWorkOrderSave') return portalWorkOrderSave_(context, payload);
+  if (action === 'portalNoticeList') return portalNoticeList_(context, payload);
+  if (action === 'portalNoticeSave') return portalNoticeSave_(context, payload);
+  if (action === 'portalCostList') return portalCostList_(context, payload);
+  if (action === 'portalCostSave') return portalCostSave_(context, payload);
+  if (action === 'portalCostApprove') return portalCostApprove_(context, payload);
+  if (action === 'portalReportSummary') return portalReportSummary_(context, payload);
   if (action === 'portalUserList') return portalUserList_(context, payload);
   if (action === 'portalUserSave') return portalUserSave_(context, payload);
   if (action === 'portalPermissionSave') return portalPermissionSave_(context, payload);
@@ -348,11 +361,15 @@ function portalOperationAuditId_(operation) {
   return 'audop_' + String(operation.requestId).replace(/-/g, '');
 }
 
-function portalBeginOperation_(context, requestId, action, entityType, entityId, inputHash, officeId) {
-  requestId = portalPureRequestId_(requestId);
-  var existing = portalRows_('PortalOperations').filter(function (row) {
+function portalOperationByRequestId_(requestId) {
+  return portalRows_('PortalOperations').filter(function (row) {
     return row.requestId === requestId;
-  })[0];
+  })[0] || null;
+}
+
+function portalBeginOperation_(context, requestId, action, entityType, entityId, inputHash, officeId, existingOperation) {
+  requestId = portalPureRequestId_(requestId);
+  var existing = arguments.length >= 8 ? existingOperation : portalOperationByRequestId_(requestId);
   if (existing) {
     var sameOperation = existing.officeId === officeId && existing.userId === context.userId &&
       existing.action === action && existing.entityType === entityType && existing.inputHash === inputHash;
@@ -630,29 +647,43 @@ function portalDashboard_(context) {
   portalRequirePermission_(context, 'dashboard.view');
   var canSeeStatuses = portalPureCan_(context.permissions, 'status.view');
   var canSeeLogs = portalPureCan_(context.permissions, 'logs.view');
-  var canSeeRequests = portalPureCan_(context.permissions, 'requests.view');
   var canSeeNotices = portalPureCan_(context.permissions, 'notices.view');
+  var canSeeWorkOrders = portalPureCan_(context.permissions, 'workorders.view');
   var statuses = canSeeStatuses ? portalVisibleRecords_('ManagementStatus', context, 'status') : [];
   var logs = canSeeLogs ? portalVisibleRecords_('ManagementLogs', context, 'log') : [];
+  var workOrders = canSeeWorkOrders ? portalVisibleWorkOrders_(context) : [];
+  var notices = canSeeNotices ? portalVisibleNotices_(context) : [];
+  var today = portalToday_();
+  statuses.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  logs.sort(function (a, b) { return String(b.workDate + '|' + b.updatedAt).localeCompare(String(a.workDate + '|' + a.updatedAt)); });
+  workOrders.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  notices = notices.filter(function (notice) {
+    return notice.state === 'published' && (!notice.publishDate || notice.publishDate <= today) &&
+      (!notice.expiresDate || notice.expiresDate >= today);
+  });
+  notices.sort(function (a, b) { return String(b.publishDate + '|' + b.updatedAt).localeCompare(String(a.publishDate + '|' + a.updatedAt)); });
   var counts = {
       statuses: statuses.length,
       logs: logs.length,
-      requests: 0,
+      workOrders: workOrders.length,
       reports: 0,
-      notices: 0,
+      notices: notices.length,
       costs: 0
     };
   var metrics = [];
   if (canSeeStatuses) metrics.push({ label: '관리 상태', value: counts.statuses });
   if (canSeeLogs) metrics.push({ label: '관리 일지', value: counts.logs });
-  if (canSeeRequests) metrics.push({ label: '접수 대기', value: counts.requests });
+  if (canSeeWorkOrders) metrics.push({ label: '작업 지시', value: counts.workOrders });
   if (canSeeNotices) metrics.push({ label: '공지', value: counts.notices });
   return {
     metrics: metrics,
-    notices: canSeeNotices ? [] : [],
+    notices: notices.slice(0, 5).map(function (notice) {
+      return { noticeId: notice.noticeId, title: notice.title, publishDate: notice.publishDate, state: notice.state };
+    }),
     counts: counts,
-    recentStatuses: statuses.slice(-5).reverse(),
-    recentLogs: logs.slice(-5).reverse()
+    recentStatuses: statuses.slice(0, 5),
+    recentLogs: logs.slice(0, 5),
+    recentWorkOrders: workOrders.slice(0, 5)
   };
 }
 
@@ -773,6 +804,387 @@ function portalLogSave_(context, payload) {
     var auditPending = portalFinishOperation_(operation, input.id ? 'updated' : 'created');
     return { log: portalPureProjectRecord_(row, context, 'log'), replayed: started.replayed, auditPending: auditPending };
   });
+}
+
+function portalToday_() {
+  try { return Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Seoul', 'yyyy-MM-dd'); }
+  catch (ignored) { return new Date().toISOString().slice(0, 10); }
+}
+
+function portalProjectWorkOrder_(row, context, assigneeNames) {
+  if (!portalPureCanSeeRecord_(row, context)) return null;
+  return {
+    workOrderId: row.workOrderId, receiptNo: row.receiptNo || '', title: row.title,
+    location: row.location, category: row.category, priority: row.priority, status: row.status,
+    assigneeUserId: row.assigneeUserId || '',
+    assigneeName: row.assigneeUserId && assigneeNames ? String(assigneeNames[row.assigneeUserId] || '') : '',
+    dueDate: row.dueDate || '', instructions: row.instructions,
+    visibility: row.visibility, createdAt: row.createdAt, updatedAt: row.updatedAt,
+    revision: portalNumber_(row.revision, 0)
+  };
+}
+
+function portalStaffUsers_(officeId) {
+  return portalRows_('Users').filter(function (user) {
+    return user.officeId === officeId && portalTruth_(user.enabled) && portalPureIsStaff_(user.role);
+  });
+}
+
+function portalAssigneeNames_(officeId, staffUsers) {
+  var assigneeNames = {};
+  (staffUsers || portalStaffUsers_(officeId)).forEach(function (user) {
+    assigneeNames[user.userId] = user.displayName;
+  });
+  return assigneeNames;
+}
+
+function portalVisibleWorkOrders_(context, staffUsers) {
+  var assigneeNames = portalAssigneeNames_(context.officeId, staffUsers);
+  return portalRows_('WorkOrders').filter(function (row) {
+    return row.officeId === context.officeId && portalPureCanSeeRecord_(row, context);
+  }).map(function (row) { return portalProjectWorkOrder_(row, context, assigneeNames); });
+}
+
+function portalWorkOrderList_(context, payload) {
+  portalRequirePermission_(context, 'workorders.view');
+  var limit = portalPureLimit_(payload.limit, 100, 200);
+  var staffUsers = portalStaffUsers_(context.officeId);
+  var items = portalVisibleWorkOrders_(context, staffUsers);
+  if (payload.status) items = items.filter(function (row) { return row.status === payload.status; });
+  items.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  var result = { workOrders: items.slice(0, limit) };
+  if (portalPureCan_(context.permissions, 'workorders.assign')) {
+    result.assignees = staffUsers.map(function (user) {
+      return { id: user.userId, name: user.displayName, role: user.role };
+    });
+  }
+  return result;
+}
+
+function portalValidateWorkOrderMutation_(context, input, row) {
+  if (input.workOrderId) {
+    if (!row) throw portalApiError_('not_found');
+    if (portalNumber_(row.revision, 0) !== input.revision) throw portalApiError_('revision_conflict');
+    if (row.status === 'completed' || row.status === 'cancelled') throw portalApiError_('invalid_transition');
+    if (!portalPureWorkOrderTransitionAllowed_(row.status, input.status)) throw portalApiError_('invalid_transition');
+  } else if (!portalPureWorkOrderTransitionAllowed_('', input.status)) {
+    throw portalApiError_('invalid_transition');
+  }
+  var assigneeChanged = (!row && input.assigneeUserId) ||
+    (row && String(row.assigneeUserId || '') !== input.assigneeUserId);
+  if (!assigneeChanged) return;
+  portalRequirePermission_(context, 'workorders.assign');
+  if (input.assigneeUserId) {
+    var assignee = portalUserById_(input.assigneeUserId);
+    if (!assignee || assignee.officeId !== context.officeId || !portalTruth_(assignee.enabled) ||
+        !portalPureIsStaff_(assignee.role)) throw portalApiError_('invalid_assignee');
+  }
+}
+
+function portalWorkOrderSave_(context, payload) {
+  portalRequirePermission_(context, 'workorders.manage');
+  var source = payload.workOrder || payload;
+  var requestId = portalPureRequestId_(payload.requestId || source.requestId);
+  var assigneeSpecified = Object.prototype.hasOwnProperty.call(source, 'assigneeUserId');
+  var input = portalPureWorkOrderInput_(source);
+  var hashInput = JSON.parse(JSON.stringify(input));
+  if (!assigneeSpecified) delete hashInput.assigneeUserId;
+  var inputHash = portalInputHash_({
+    kind: 'workorder', input: hashInput, assigneeMode: assigneeSpecified ? 'replace' : 'preserve'
+  });
+  return portalWithLock_(function () {
+    var knownOperation = portalOperationByRequestId_(requestId);
+    var existing = input.workOrderId ? portalRows_('WorkOrders').filter(function (item) {
+      return item.workOrderId === input.workOrderId && item.officeId === context.officeId;
+    })[0] : null;
+    if (existing && !assigneeSpecified) input.assigneeUserId = String(existing.assigneeUserId || '');
+    if (!knownOperation) portalValidateWorkOrderMutation_(context, input, existing);
+    var started = portalBeginOperation_(context, requestId, 'portalWorkOrderSave', 'workorder',
+      input.workOrderId || portalRandomId_('wrk'), inputHash, context.officeId, knownOperation);
+    var operation = started.operation;
+    var row = portalRows_('WorkOrders').filter(function (item) {
+      return item.workOrderId === operation.entityId && item.officeId === context.officeId;
+    })[0];
+    var workOrderMatches = row && portalNumber_(row.revision, 0) === input.revision + 1 &&
+      String(row.receiptNo || '') === input.receiptNo && row.title === input.title && row.location === input.location &&
+      row.category === input.category && row.priority === input.priority && row.status === input.status &&
+      String(row.assigneeUserId || '') === input.assigneeUserId && String(row.dueDate || '') === input.dueDate &&
+      row.instructions === input.instructions && row.visibility === input.visibility;
+    if (started.replayed && row && (operation.status !== 'started' || workOrderMatches)) {
+      var replayPending = portalFinishOperation_(operation, input.workOrderId ? 'updated' : 'created');
+      return { workOrder: portalProjectWorkOrder_(row, context, portalAssigneeNames_(context.officeId)), replayed: true, auditPending: replayPending };
+    }
+    if (knownOperation) portalValidateWorkOrderMutation_(context, input, row);
+    var now = portalNow_();
+    if (!row) row = { workOrderId: operation.entityId, officeId: context.officeId, createdAt: now, revision: 0 };
+    row.receiptNo = input.receiptNo; row.title = input.title; row.location = input.location;
+    row.category = input.category; row.priority = input.priority; row.status = input.status;
+    row.assigneeUserId = input.assigneeUserId; row.dueDate = input.dueDate;
+    row.instructions = input.instructions; row.visibility = input.visibility;
+    row.updatedAt = now; row.updatedBy = context.userId; row.revision = portalNumber_(row.revision, 0) + 1;
+    portalSaveRow_('WorkOrders', row);
+    var auditPending = portalFinishOperation_(operation, input.workOrderId ? 'updated' : 'created');
+    return { workOrder: portalProjectWorkOrder_(row, context, portalAssigneeNames_(context.officeId)), replayed: started.replayed, auditPending: auditPending };
+  });
+}
+
+function portalNoticeVisible_(row, context, today) {
+  if (!portalPureCanSeeRecord_(row, context)) return false;
+  if (portalPureIsStaff_(context.role)) return true;
+  if (row.state !== 'published') return false;
+  if (row.publishDate && row.publishDate > today) return false;
+  if (row.expiresDate && row.expiresDate < today) return false;
+  return true;
+}
+
+function portalProjectNotice_(row) {
+  return {
+    noticeId: row.noticeId, title: row.title, content: row.content, visibility: row.visibility,
+    state: row.state, publishDate: row.publishDate || '', expiresDate: row.expiresDate || '',
+    createdAt: row.createdAt, updatedAt: row.updatedAt, revision: portalNumber_(row.revision, 0)
+  };
+}
+
+function portalVisibleNotices_(context) {
+  var today = portalToday_();
+  return portalRows_('Notices').filter(function (row) {
+    return row.officeId === context.officeId && portalNoticeVisible_(row, context, today);
+  }).map(portalProjectNotice_);
+}
+
+function portalNoticeList_(context, payload) {
+  portalRequirePermission_(context, 'notices.view');
+  var items = portalVisibleNotices_(context);
+  items.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return { notices: items.slice(0, portalPureLimit_(payload.limit, 100, 200)) };
+}
+
+function portalValidateNoticeMutation_(context, input, row) {
+  if (input.noticeId) {
+    if (!row) throw portalApiError_('not_found');
+    if (portalNumber_(row.revision, 0) !== input.revision) throw portalApiError_('revision_conflict');
+    if (row.state === 'archived') throw portalApiError_('invalid_transition');
+    if (row.state === 'published') portalRequirePermission_(context, 'notices.publish');
+  }
+  if (!portalPureNoticeTransitionAllowed_(row ? row.state : '', input.state)) {
+    throw portalApiError_('invalid_transition');
+  }
+  if (input.state === 'published' && (!row || row.state !== 'published')) {
+    portalRequirePermission_(context, 'notices.publish');
+  }
+}
+
+function portalNoticeSave_(context, payload) {
+  portalRequirePermission_(context, 'notices.manage');
+  var source = payload.notice || payload;
+  var requestId = portalPureRequestId_(payload.requestId || source.requestId);
+  var input = portalPureNoticeInput_(source);
+  var inputHash = portalInputHash_({ kind: 'notice', input: input });
+  return portalWithLock_(function () {
+    var knownOperation = portalOperationByRequestId_(requestId);
+    var existing = input.noticeId ? portalRows_('Notices').filter(function (item) {
+      return item.noticeId === input.noticeId && item.officeId === context.officeId;
+    })[0] : null;
+    if (!knownOperation) portalValidateNoticeMutation_(context, input, existing);
+    var started = portalBeginOperation_(context, requestId, 'portalNoticeSave', 'notice',
+      input.noticeId || portalRandomId_('ntc'), inputHash, context.officeId, knownOperation);
+    var operation = started.operation;
+    var row = portalRows_('Notices').filter(function (item) {
+      return item.noticeId === operation.entityId && item.officeId === context.officeId;
+    })[0];
+    var noticeMatches = row && portalNumber_(row.revision, 0) === input.revision + 1 &&
+      row.title === input.title && row.content === input.content && row.visibility === input.visibility &&
+      row.state === input.state && String(row.publishDate || '') === input.publishDate &&
+      String(row.expiresDate || '') === input.expiresDate;
+    if (started.replayed && row && (operation.status !== 'started' || noticeMatches)) {
+      var replayPending = portalFinishOperation_(operation, input.noticeId ? 'updated' : 'created');
+      return { notice: portalProjectNotice_(row), replayed: true, auditPending: replayPending };
+    }
+    if (knownOperation) portalValidateNoticeMutation_(context, input, row);
+    var now = portalNow_();
+    if (!row) row = { noticeId: operation.entityId, officeId: context.officeId, createdAt: now, revision: 0 };
+    row.title = input.title; row.content = input.content; row.visibility = input.visibility;
+    row.state = input.state; row.publishDate = input.publishDate; row.expiresDate = input.expiresDate;
+    row.updatedAt = now; row.updatedBy = context.userId; row.revision = portalNumber_(row.revision, 0) + 1;
+    portalSaveRow_('Notices', row);
+    var auditPending = portalFinishOperation_(operation, input.noticeId ? 'updated' : 'created');
+    return { notice: portalProjectNotice_(row), replayed: started.replayed, auditPending: auditPending };
+  });
+}
+
+function portalProjectCost_(row) {
+  return {
+    costId: row.costId, workOrderId: row.workOrderId || '', category: row.category,
+    description: row.description, amountKrw: portalNumber_(row.amountKrw, 0), taxMode: row.taxMode,
+    status: row.status, approvedBy: row.approvedBy || '', approvedAt: row.approvedAt || '',
+    createdAt: row.createdAt, updatedAt: row.updatedAt, revision: portalNumber_(row.revision, 0)
+  };
+}
+
+function portalCostList_(context, payload) {
+  portalRequirePermission_(context, 'costs.view');
+  var items = portalRows_('CostItems').filter(function (row) { return row.officeId === context.officeId; })
+    .map(portalProjectCost_);
+  items.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return { costs: items.slice(0, portalPureLimit_(payload.limit, 100, 200)) };
+}
+
+function portalValidateCostMutation_(context, input, row) {
+  if (input.costId) {
+    if (!row) throw portalApiError_('not_found');
+    if (portalNumber_(row.revision, 0) !== input.revision) throw portalApiError_('revision_conflict');
+    /* 승인 요청 이후 원문 변경은 금지한다. 취소 후 새 비용으로 다시 제출해야 한다. */
+    if (row.status !== 'draft') throw portalApiError_('invalid_transition');
+  }
+  if (input.workOrderId) {
+    var linked = portalRows_('WorkOrders').some(function (item) {
+      return item.workOrderId === input.workOrderId && item.officeId === context.officeId;
+    });
+    if (!linked) throw portalApiError_('not_found');
+  }
+}
+
+function portalCostSave_(context, payload) {
+  portalRequirePermission_(context, 'costs.manage');
+  var source = payload.cost || payload;
+  var requestId = portalPureRequestId_(payload.requestId || source.requestId);
+  var input = portalPureCostInput_(source);
+  var inputHash = portalInputHash_({ kind: 'cost', input: input });
+  return portalWithLock_(function () {
+    var knownOperation = portalOperationByRequestId_(requestId);
+    var existing = input.costId ? portalRows_('CostItems').filter(function (item) {
+      return item.costId === input.costId && item.officeId === context.officeId;
+    })[0] : null;
+    if (!knownOperation) portalValidateCostMutation_(context, input, existing);
+    var started = portalBeginOperation_(context, requestId, 'portalCostSave', 'cost',
+      input.costId || portalRandomId_('cst'), inputHash, context.officeId, knownOperation);
+    var operation = started.operation;
+    var row = portalRows_('CostItems').filter(function (item) {
+      return item.costId === operation.entityId && item.officeId === context.officeId;
+    })[0];
+    var costMatches = row && portalNumber_(row.revision, 0) === input.revision + 1 &&
+      String(row.workOrderId || '') === input.workOrderId && row.category === input.category &&
+      row.description === input.description && portalNumber_(row.amountKrw, 0) === input.amountKrw &&
+      row.taxMode === input.taxMode && row.status === input.status;
+    if (started.replayed && row && (operation.status !== 'started' || costMatches)) {
+      var replayPending = portalFinishOperation_(operation, input.costId ? 'updated' : 'created');
+      return { cost: portalProjectCost_(row), replayed: true, auditPending: replayPending };
+    }
+    if (knownOperation) portalValidateCostMutation_(context, input, row);
+    var now = portalNow_();
+    if (!row) row = { costId: operation.entityId, officeId: context.officeId, createdAt: now, approvedBy: '', approvedAt: '', revision: 0 };
+    row.workOrderId = input.workOrderId; row.category = input.category; row.description = input.description;
+    row.amountKrw = input.amountKrw; row.taxMode = input.taxMode; row.status = input.status;
+    row.updatedAt = now; row.updatedBy = context.userId; row.revision = portalNumber_(row.revision, 0) + 1;
+    portalSaveRow_('CostItems', row);
+    var auditPending = portalFinishOperation_(operation, input.costId ? 'updated' : 'created');
+    return { cost: portalProjectCost_(row), replayed: started.replayed, auditPending: auditPending };
+  });
+}
+
+function portalCostApprove_(context, payload) {
+  portalRequirePermission_(context, 'costs.approve');
+  var requestId = portalPureRequestId_(payload.requestId);
+  var costId = portalPureId_(payload.costId, 'costId');
+  var nextStatus = portalPureEnum_(payload.targetState, 'targetState', ['approved', 'paid', 'cancelled']);
+  var revision = portalPureRevision_(payload.revision);
+  var inputHash = portalInputHash_({ kind: 'costApprove', costId: costId, status: nextStatus, revision: revision });
+  return portalWithLock_(function () {
+    var knownOperation = portalOperationByRequestId_(requestId);
+    var existing = portalRows_('CostItems').filter(function (item) {
+      return item.costId === costId && item.officeId === context.officeId;
+    })[0];
+    if (!knownOperation) {
+      if (!existing) throw portalApiError_('not_found');
+      if (portalNumber_(existing.revision, 0) !== revision) throw portalApiError_('revision_conflict');
+      if (!portalPureCostTransitionAllowed_(existing.status, nextStatus)) throw portalApiError_('invalid_transition');
+    }
+    var started = portalBeginOperation_(context, requestId, 'portalCostApprove', 'cost', costId, inputHash,
+      context.officeId, knownOperation);
+    var operation = started.operation;
+    var row = portalRows_('CostItems').filter(function (item) {
+      return item.costId === costId && item.officeId === context.officeId;
+    })[0];
+    var transitionMatches = row && row.status === nextStatus && portalNumber_(row.revision, 0) === revision + 1;
+    if (started.replayed && row && (operation.status !== 'started' || transitionMatches)) {
+      var replayPending = portalFinishOperation_(operation, 'transitioned');
+      return { cost: portalProjectCost_(row), replayed: true, auditPending: replayPending };
+    }
+    if (knownOperation) {
+      if (!row) throw portalApiError_('not_found');
+      if (portalNumber_(row.revision, 0) !== revision) throw portalApiError_('revision_conflict');
+      if (!portalPureCostTransitionAllowed_(row.status, nextStatus)) throw portalApiError_('invalid_transition');
+    }
+    var now = portalNow_();
+    row.status = nextStatus; row.updatedAt = now; row.updatedBy = context.userId;
+    if (nextStatus === 'approved') { row.approvedBy = context.userId; row.approvedAt = now; }
+    row.revision = portalNumber_(row.revision, 0) + 1;
+    portalSaveRow_('CostItems', row);
+    var auditPending = portalFinishOperation_(operation, 'transitioned');
+    return { cost: portalProjectCost_(row), replayed: started.replayed, auditPending: auditPending };
+  });
+}
+
+function portalCountBy_(items, field) {
+  var counts = {};
+  items.forEach(function (item) { var key = String(item[field] || 'unknown'); counts[key] = (counts[key] || 0) + 1; });
+  return counts;
+}
+
+function portalReportDate_(value) {
+  var text = String(value || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  var stamp = new Date(text).getTime();
+  if (!isFinite(stamp)) return '';
+  /* 현장 운영 기준은 Asia/Seoul(+09:00)이며 한국은 일광절약시간을 사용하지 않는다. */
+  return new Date(stamp + (9 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+}
+
+function portalCostGrossAmount_(row) {
+  var amount = portalNumber_(row.amountKrw, 0);
+  return String(row.taxMode || '') === 'excluded' ? Math.round(amount * 1.1) : amount;
+}
+
+function portalReportSummary_(context, payload) {
+  portalRequirePermission_(context, 'reports.view');
+  var startDate = portalPureIsoDate_(payload.startDate, 'startDate');
+  var endDate = portalPureIsoDate_(payload.endDate, 'endDate');
+  var span = (new Date(endDate + 'T00:00:00.000Z').getTime() - new Date(startDate + 'T00:00:00.000Z').getTime()) / 86400000;
+  if (span < 0 || span > 365) throw portalApiError_('invalid_date_range');
+  function inRange(value) { var date = portalReportDate_(value); return date >= startDate && date <= endDate; }
+  var statuses = portalPureCan_(context.permissions, 'status.view') ?
+    portalVisibleRecords_('ManagementStatus', context, 'status').filter(function (row) { return inRange(row.updatedAt); }) : [];
+  var logs = portalPureCan_(context.permissions, 'logs.view') ?
+    portalVisibleRecords_('ManagementLogs', context, 'log').filter(function (row) { return inRange(row.workDate); }) : [];
+  /* reports.view authorizes aggregate counts; row visibility still filters board/public/internal scope. */
+  var workOrders = portalVisibleWorkOrders_(context, []).filter(function (row) { return inRange(row.updatedAt); });
+  var notices = portalPureCan_(context.permissions, 'notices.view') ?
+    portalVisibleNotices_(context).filter(function (row) { return inRange(row.publishDate || row.updatedAt); }) : [];
+  var result = {
+    startDate: startDate, endDate: endDate,
+    counts: { statuses: statuses.length, logs: logs.length, workOrders: workOrders.length, notices: notices.length },
+    statusByState: portalCountBy_(statuses, 'state'), workOrdersByStatus: portalCountBy_(workOrders, 'status'),
+    noticesByState: portalCountBy_(notices, 'state')
+  };
+  if (portalPureCan_(context.permissions, 'costs.view')) {
+    var costs = portalRows_('CostItems').filter(function (row) { return row.officeId === context.officeId && inRange(row.updatedAt); });
+    var amountByStatus = {}, total = 0, pendingTotal = 0, approvedUnpaidTotal = 0, paidTotal = 0;
+    costs.forEach(function (row) {
+      var amount = portalCostGrossAmount_(row), status = String(row.status || 'unknown');
+      if (status !== 'cancelled') total += amount;
+      if (status === 'draft' || status === 'submitted') pendingTotal += amount;
+      if (status === 'approved') approvedUnpaidTotal += amount;
+      if (status === 'paid') paidTotal += amount;
+      amountByStatus[status] = (amountByStatus[status] || 0) + amount;
+    });
+    result.counts.costs = costs.length;
+    result.totalAmountKrw = total;
+    result.pendingAmountKrw = pendingTotal;
+    result.approvedUnpaidAmountKrw = approvedUnpaidTotal;
+    result.paidAmountKrw = paidTotal;
+    result.amountKrwByStatus = amountByStatus;
+  }
+  return { report: result };
 }
 
 function portalTargetOffice_(context, payload) {

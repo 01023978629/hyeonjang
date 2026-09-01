@@ -6,7 +6,7 @@
  */
 'use strict';
 
-var PORTAL_SCHEMA_VERSION = 'office-portal-v1';
+var PORTAL_SCHEMA_VERSION = 'office-portal-v2';
 
 var PORTAL_ROLES = Object.freeze([
   'system_admin',
@@ -25,7 +25,14 @@ var PORTAL_CAPABILITIES = Object.freeze([
   'requests.view',
   'reports.view',
   'notices.view',
+  'notices.manage',
+  'notices.publish',
   'costs.view',
+  'costs.manage',
+  'costs.approve',
+  'workorders.view',
+  'workorders.manage',
+  'workorders.assign',
   'admin.users.view',
   'admin.users.manage',
   'admin.permissions.manage',
@@ -46,7 +53,10 @@ var PORTAL_ROLE_CEILINGS = Object.freeze({
     'dashboard.view',
     'status.view', 'status.manage',
     'logs.view', 'logs.manage',
-    'requests.view', 'reports.view', 'notices.view', 'costs.view'
+    'requests.view', 'reports.view',
+    'notices.view', 'notices.manage',
+    'costs.view', 'costs.manage',
+    'workorders.view', 'workorders.manage'
   ]),
   resident_rep: Object.freeze([
     'dashboard.view', 'status.view', 'logs.view', 'reports.view', 'notices.view'
@@ -73,6 +83,12 @@ var PORTAL_VISIBILITIES = Object.freeze([
 var PORTAL_STATUS_STATES = Object.freeze([
   'normal', 'watch', 'repair', 'working', 'complete'
 ]);
+
+var PORTAL_WORKORDER_PRIORITIES = Object.freeze(['low', 'normal', 'high', 'urgent']);
+var PORTAL_WORKORDER_STATUSES = Object.freeze(['received', 'planned', 'working', 'blocked', 'completed', 'cancelled']);
+var PORTAL_NOTICE_STATES = Object.freeze(['draft', 'published', 'archived']);
+var PORTAL_COST_TAX_MODES = Object.freeze(['included', 'excluded', 'exempt']);
+var PORTAL_COST_STATUSES = Object.freeze(['draft', 'submitted', 'approved', 'paid', 'cancelled']);
 
 function portalPureError_(code, message) {
   var err = new Error(message || code);
@@ -160,6 +176,11 @@ function portalPureIsoDate_(value, field) {
   return text;
 }
 
+function portalPureOptionalIsoDate_(value, field) {
+  if (value === undefined || value === null || value === '') return '';
+  return portalPureIsoDate_(value, field);
+}
+
 function portalPureLimit_(value, fallback, max) {
   if (value === undefined || value === null || value === '') return fallback;
   var number = Number(value);
@@ -180,7 +201,37 @@ function portalPureEffectivePermissions_(role, overrides) {
     if (!entry || !portalPureHas_(ceiling, entry.capability)) return;
     if (entry.allowed === true || entry.allowed === false) state[entry.capability] = entry.allowed;
   });
+  function requireView(viewCapability, dependentCapabilities) {
+    if (state[viewCapability] === true) return;
+    dependentCapabilities.forEach(function (capability) { state[capability] = false; });
+  }
+  requireView('status.view', ['status.manage']);
+  requireView('logs.view', ['logs.manage']);
+  requireView('workorders.view', ['workorders.manage', 'workorders.assign']);
+  requireView('notices.view', ['notices.manage', 'notices.publish']);
+  requireView('costs.view', ['costs.manage', 'costs.approve']);
+  requireView('admin.users.view', ['admin.users.manage', 'admin.permissions.manage']);
   return ceiling.filter(function (capability) { return state[capability] === true; });
+}
+
+function portalPureEnum_(value, field, allowed) {
+  var text = portalPureString_(String(value || ''), field, 2, 32, /^[a-z_]+$/);
+  if (!portalPureHas_(allowed, text)) throw portalPureError_('invalid_' + field, field + ' is invalid');
+  return text;
+}
+
+function portalPureRevision_(value) {
+  var revision = value === undefined || value === null || value === '' ? 0 : Number(value);
+  if (!isFinite(revision) || Math.floor(revision) !== revision || revision < 0) {
+    throw portalPureError_('invalid_revision', 'revision is invalid');
+  }
+  return revision;
+}
+
+function portalPureVisibility_(value) {
+  var visibility = portalPureString_(String(value || ''), 'visibility', 3, 16, /^[a-z_]+$/);
+  if (!portalPureHas_(PORTAL_VISIBILITIES, visibility)) throw portalPureError_('invalid_visibility', 'visibility is invalid');
+  return visibility;
 }
 
 function portalPureCan_(permissions, capability) {
@@ -242,6 +293,85 @@ function portalPureRecordInput_(input, kind) {
     result.content = portalPureString_(String(input.content || ''), 'content', 1, 5000, null);
   }
   return result;
+}
+
+function portalPureWorkOrderInput_(input) {
+  input = input || {};
+  return {
+    workOrderId: input.workOrderId ? portalPureId_(input.workOrderId, 'workOrderId') : '',
+    receiptNo: portalPureOptionalString_(input.receiptNo, 'receiptNo', 80),
+    title: portalPureString_(String(input.title || ''), 'title', 2, 120, null),
+    location: portalPureString_(String(input.location || ''), 'location', 1, 120, null),
+    category: portalPureString_(String(input.category || ''), 'category', 1, 48, null),
+    priority: portalPureEnum_(input.priority, 'priority', PORTAL_WORKORDER_PRIORITIES),
+    status: portalPureEnum_(input.status, 'status', PORTAL_WORKORDER_STATUSES),
+    assigneeUserId: input.assigneeUserId ? portalPureId_(input.assigneeUserId, 'assigneeUserId') : '',
+    dueDate: portalPureOptionalIsoDate_(input.dueDate, 'dueDate'),
+    instructions: portalPureString_(String(input.instructions || ''), 'instructions', 1, 3000, null),
+    visibility: portalPureVisibility_(input.visibility),
+    revision: portalPureRevision_(input.revision)
+  };
+}
+
+function portalPureWorkOrderTransitionAllowed_(from, to) {
+  if (!from) return to === 'received' || to === 'planned';
+  var allowed = {
+    received: ['planned', 'cancelled'],
+    planned: ['working', 'blocked', 'cancelled'],
+    working: ['blocked', 'completed', 'cancelled'],
+    blocked: ['planned', 'working', 'cancelled'],
+    completed: [],
+    cancelled: []
+  };
+  return from === to || portalPureHas_(allowed[from] || [], to);
+}
+
+function portalPureNoticeInput_(input) {
+  input = input || {};
+  var publishDate = portalPureOptionalIsoDate_(input.publishDate, 'publishDate');
+  var expiresDate = portalPureOptionalIsoDate_(input.expiresDate, 'expiresDate');
+  if (publishDate && expiresDate && publishDate > expiresDate) {
+    throw portalPureError_('invalid_date_range', 'notice date range is invalid');
+  }
+  return {
+    noticeId: input.noticeId ? portalPureId_(input.noticeId, 'noticeId') : '',
+    title: portalPureString_(String(input.title || ''), 'title', 2, 160, null),
+    content: portalPureString_(String(input.content || ''), 'content', 1, 5000, null),
+    visibility: portalPureVisibility_(input.visibility),
+    state: portalPureEnum_(input.state, 'state', PORTAL_NOTICE_STATES),
+    publishDate: publishDate,
+    expiresDate: expiresDate,
+    revision: portalPureRevision_(input.revision)
+  };
+}
+
+function portalPureNoticeTransitionAllowed_(from, to) {
+  if (!from) return to === 'draft' || to === 'published';
+  var allowed = { draft: ['published', 'archived'], published: ['archived'], archived: [] };
+  return from === to || portalPureHas_(allowed[from] || [], to);
+}
+
+function portalPureCostInput_(input) {
+  input = input || {};
+  var amount = Number(input.amountKrw);
+  if (!isFinite(amount) || Math.floor(amount) !== amount || amount < 1 || amount > 1000000000) {
+    throw portalPureError_('invalid_amountKrw', 'amountKrw is invalid');
+  }
+  return {
+    costId: input.costId ? portalPureId_(input.costId, 'costId') : '',
+    workOrderId: input.workOrderId ? portalPureId_(input.workOrderId, 'workOrderId') : '',
+    category: portalPureString_(String(input.category || ''), 'category', 1, 48, null),
+    description: portalPureString_(String(input.description || ''), 'description', 1, 1000, null),
+    amountKrw: amount,
+    taxMode: portalPureEnum_(input.taxMode, 'taxMode', PORTAL_COST_TAX_MODES),
+    status: portalPureEnum_(input.status, 'status', ['draft', 'submitted']),
+    revision: portalPureRevision_(input.revision)
+  };
+}
+
+function portalPureCostTransitionAllowed_(from, to) {
+  var allowed = { submitted: ['approved', 'cancelled'], approved: ['paid', 'cancelled'] };
+  return portalPureHas_(allowed[from] || [], to);
 }
 
 function portalPureUserInput_(input) {
