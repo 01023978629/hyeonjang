@@ -1,0 +1,123 @@
+# 관리사무소 포털 Apps Script 백엔드
+
+현장 웹·만물 공개 사이트와 분리해 배포하는 개인 계정 기반 포털 API입니다. 정적 GitHub Pages 프런트는 신뢰 경계가 아니며, 단지 범위·사용자 상태·역할·권한·세션 버전은 모든 보호 action에서 서버가 다시 확인합니다.
+
+이 폴더는 기존 `apps-script/` Drive relay와 **별도 Apps Script 프로젝트**로 배포해야 합니다. 기존 relay의 Script Properties, 스프레드시트, 배포 URL과 섞지 마세요.
+
+## 보안 모델
+
+- 로그인: 등록된 이메일로 보내는 6자리 OTP
+- OTP: HMAC 해시만 Sheets에 저장, 10분 유효, 5회 실패 시 폐기
+- 재발송: 동일 이메일 기준 60초 간격, 시간당 최대 5회
+- 공개 요청 보호: 10분 단위 Script Cache 전역 best-effort 한도 적용. 미등록·비활성 이메일과 제한된 요청은 Sheets 행을 만들지 않음
+- 입력 안전: Sheets에 저장되는 외부 문자열이 `=`, `+`, `-`, `@`, 탭 또는 줄바꿈으로 시작하면 `invalid-input`으로 거부해 수식 주입을 차단
+- 세션: 8시간 유효한 opaque token. 원문은 로그인 성공 응답에서 한 번만 반환하고 서버에는 HMAC 해시만 저장
+- 보호 action: 매 호출마다 현재 `Users.enabled`, 역할, `sessionVersion`, `permissionVersion`, 단지 활성 상태와 버전을 재검증
+- 이메일 변경: 같은 잠금 안에서 해당 사용자의 미사용 OTP를 모두 폐기하고, OTP 검증 때 challenge identity와 현재 `Users.emailHash`를 다시 비교
+- 단지 격리: 일반 사용자의 `officeId`는 요청값을 사용하지 않고 세션에서 강제
+- 쓰기 멱등성: 상태·일지·사용자·권한 저장은 클라이언트 UUID `requestId`와 `PortalOperations` 기록으로 중복 실행을 차단
+- 응답 최소화: OTP·토큰 해시·내부 저장 키는 어떤 API 응답에도 포함하지 않음
+- 감사 로그: action, 대상 ID, 결과 같은 메타데이터만 기록. 이메일·OTP·세션 원문·상태/일지 본문은 기록하지 않음
+
+로그인 없이 호출 가능한 action은 `portalHealth`, `portalRequestCode`, `portalVerifyCode`뿐입니다.
+
+## 역할과 기본 권한
+
+| 역할 | 기본 범위 |
+|---|---|
+| `system_admin` | 단지/사용자 부트스트랩, 권한, 감사. 상태·일지·대시보드 콘텐츠 권한 없음 |
+| `manager_chief` | 자기 단지의 상태·일지·사용자·권한·감사 전체 |
+| `facility_manager` | 자기 단지의 운영 상태·일지 조회/작성 |
+| `resident_rep` | `board`, `public` 상태·일지 조회 |
+| `resident` | `public` 상태·일지 조회 |
+
+사용자별 `permissions`는 역할 ceiling 안에서만 저장할 수 있습니다. `system_admin`과 `manager_chief`의 마지막 활성 계정 제거를 막고, 로그인 중인 관리자가 자기 역할·활성 상태·로그인 이메일·권한을 바꿔 스스로 잠기는 것도 막습니다.
+
+프런트와 서버가 공유하는 capability allowlist는 다음과 같습니다.
+
+```text
+dashboard.view
+status.view
+status.manage
+logs.view
+logs.manage
+requests.view
+reports.view
+notices.view
+costs.view
+admin.users.view
+admin.users.manage
+admin.permissions.manage
+admin.audit.view
+```
+
+## 최초 설치
+
+1. 포털 전용 Google Spreadsheet를 새로 만듭니다. 다른 현장 데이터 스프레드시트를 재사용하지 마세요.
+2. 독립된 Apps Script 프로젝트를 만들고 이 폴더의 `Code.gs`, `PortalPure.gs`, `appsscript.json`을 같은 프로젝트에 추가합니다.
+3. Apps Script의 **프로젝트 설정 → 스크립트 속성**에 아래 영구 속성을 등록합니다.
+   - `OFFICE_PORTAL_ENABLED`: 운영 활성화 시 `1`
+   - `OFFICE_PORTAL_SHEET_ID`: 1단계 스프레드시트 ID
+   - `OFFICE_PORTAL_SESSION_SECRET`: 암호학적으로 생성한 32자 이상의 서로 다른 비밀값
+   - `OFFICE_PORTAL_OTP_PEPPER`: 위 세션 비밀과 다른, 암호학적으로 생성한 32자 이상의 비밀값
+4. 편집기에서 `portalSetupSheets_()`를 직접 한 번 실행하고 Sheets·메일 권한을 승인합니다. 다음 탭과 고정 헤더가 생성됩니다.
+   - `Offices`, `Users`, `OtpChallenges`, `Sessions`, `PortalOperations`, `RolePermissions`, `ManagementStatus`, `ManagementLogs`, `PortalAudit`
+5. 최초 관리자 생성을 위해 아래 임시 스크립트 속성을 등록합니다.
+   - `OFFICE_PORTAL_BOOTSTRAP_OFFICE_ID`
+   - `OFFICE_PORTAL_BOOTSTRAP_SLUG`
+   - `OFFICE_PORTAL_BOOTSTRAP_COMPLEX_NAME`
+   - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL`
+   - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME`
+6. 편집기에서 `portalBootstrapFromProperties_()`를 직접 한 번 실행합니다. 첫 단지와 첫 `system_admin`이 생성되며, 성공하면 5단계 임시 속성은 자동 삭제됩니다. 활성 `system_admin`이 이미 있으면 재실행은 거부됩니다.
+7. **배포 → 새 배포 → 웹 앱**에서 실행 사용자를 배포 소유자로, 액세스 사용자를 누구나로 설정해 배포합니다. 익명 액세스는 로그인 action을 호출하기 위한 전송 경로일 뿐이며, 보호 action은 서버 세션 없이는 실행되지 않습니다.
+8. 배포된 `/exec` URL에 POST `{"action":"portalHealth"}`를 보내 `ok`, `service`, `enabled`를 확인합니다.
+9. 프런트의 포털 API URL을 이 독립 배포의 `/exec` URL로 설정합니다. 기존 Drive relay URL을 덮어쓰지 마세요.
+
+비밀값은 소스, README, 채팅, Git, 브라우저 코드에 넣지 않습니다. Apps Script Script Properties에만 보관하고 운영 인계 시에도 실제 값을 문서화하지 않습니다.
+
+## 로그인 API 계약
+
+성공은 `{ "ok": true, ... }`, 실패는 `{ "ok": false, "error": "code" }` 형태입니다.
+
+- `portalRequestCode`: `{action, payload:{officeCode,email}}`
+- `portalVerifyCode`: `{action, payload:{officeCode,email,code,challengeId}}`
+- 보호 action: 최상위에 `sessionToken`을 넣고 필요 입력은 `payload`에 둡니다.
+- `portalStatusSave`, `portalLogSave`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
+- 같은 `requestId`와 같은 정규화 입력을 재전송하면 기존 entity와 revision을 그대로 반환하며 `replayed:true`가 표시됩니다. 같은 `requestId`에 다른 입력을 보내면 `invalid-input`입니다.
+- `portalLogout` 성공 후 같은 token은 재사용할 수 없습니다.
+
+공개 오류 코드는 `not-configured`, `invalid-input`, `invalid-credentials`, `rate-limited`, `session-expired`, `forbidden`, `last-admin`, `not-found`, `bad-request`, `server-error` 중 하나입니다. 가짜·사용됨·폐기됨·만료된 challenge와 OTP 불일치는 모두 `invalid-credentials`로 응답합니다. 등록되지 않은 이메일과 발송 제한 상황도 계정 존재 여부가 드러나지 않도록 동일한 accepted 응답을 사용하며, 가짜 UUID challenge만 돌려주고 Sheets에는 저장하지 않습니다. 로그인 실패 시에는 원인을 구분해 표시하지 말고 새 인증번호를 요청하도록 안내하세요.
+
+## 운영 및 배포 경계
+
+- `.gs` 소스의 GitHub 배포는 Apps Script 운영 배포를 갱신하지 않습니다. Apps Script에서 새 버전을 배포한 뒤 실제 `/exec` 응답을 별도로 확인해야 합니다.
+- `portalSetupSheets_`, `portalBootstrapFromProperties_`는 웹 action allowlist에 없으므로 편집기 소유자만 실행할 수 있습니다.
+- Sheets 헤더가 예상 스키마와 다르면 쓰기를 계속하지 않고 `not-configured`로 중단합니다.
+- 기존 배포를 업그레이드할 때는 새 버전 배포 전에 편집기에서 `portalSetupSheets_()`를 다시 실행해 `PortalOperations` 탭을 생성하세요. 기존 상태·일지·사용자 행은 수정하지 않습니다.
+- OTP 이메일 전송 실패는 challenge를 즉시 폐기하고 본문이나 이메일을 남기지 않는 메타데이터 감사 이벤트만 기록합니다. 공개 응답은 계정 열거를 막기 위해 accepted 형태를 유지합니다.
+- `MailApp.sendEmail`은 동기 호출이므로 등록 계정의 실제 메일 발송과 미등록 계정의 가짜 accepted 응답 사이에 통계적인 응답 시간 차이가 생길 수 있습니다. 이 구현은 공개 본문·오류를 통일하지만 네트워크 timing oracle을 완전히 제거하지는 못합니다. 고위험 운영에서는 앞단 WAF/프록시 제한과 모니터링을 적용하고, 가능하면 공개 요청과 분리된 비동기 발송 큐/트리거로 메일 전송을 옮기세요.
+- 비밀 교체 시 기존 세션은 즉시 무효화됩니다. 사용자 권한·역할 변경도 버전 불일치로 기존 세션을 무효화합니다.
+
+### 인증 행 보관 정리
+
+`portalPruneExpiredAuthRows_()`는 웹 action이 아닌 편집기/트리거 전용 함수입니다. 만료·사용·폐기된 OTP challenge는 마지막 종료 시점 7일 후, 만료·폐기된 session은 마지막 종료 시점 30일 후 뒤에서부터 삭제합니다. `PortalOperations`는 `complete` 상태로 90일이 지난 행만 삭제하며 `started`, `primary_committed`, `audit_pending`은 기간과 관계없이 보존합니다. 반환값은 종류별 삭제 건수와 실행 시각뿐이며 이메일·사용자 ID·토큰 같은 식별자를 포함하지 않습니다. `ManagementStatus`, `ManagementLogs`, `PortalAudit`는 이 함수가 삭제하지 않습니다.
+
+Apps Script 왼쪽의 **트리거 → 트리거 추가**에서 실행 함수 `portalPruneExpiredAuthRows_`, 이벤트 소스 **시간 기반**, 주기 **일일**로 등록하는 것을 권장합니다. 최초 등록과 권한 승인은 프로젝트 소유자가 직접 수행하세요.
+
+### 쓰기 재시도와 감사 복구
+
+Sheets는 트랜잭션을 제공하지 않으므로 포털은 primary row를 쓰기 전에 `PortalOperations`에 `requestId`, 입력 해시, 미리 확정한 entity ID를 기록합니다. primary row 이후 감사 append가 실패해도 API는 저장 결과와 `auditPending:true`를 반환하며, 같은 `requestId` 재전송은 새 행을 만들지 않고 deterministic audit ID로 누락 감사를 보완합니다. 운영 중 남은 `audit_pending`은 웹 action이 아닌 `portalRepairPendingOperationAudits_()`를 편집기에서 실행해 복구할 수 있습니다.
+
+`portalRepairPendingOperationAudits_()`도 일일 시간 기반 트리거로 등록하는 것을 권장합니다. 반환값은 복구·잔여 건수와 실행 시각뿐입니다. `PortalOperations`에는 이메일·본문·입력 원문을 저장하지 않고 해시와 내부 ID만 저장합니다.
+
+## 로컬 검증
+
+저장소 루트에서 실행합니다.
+
+```powershell
+node tests/office-portal-pure.unit.js
+node tests/office-portal-server.unit.js
+node tests/run-all.js office-portal
+```
+
+Node VM 테스트는 Apps Script API를 메모리 mock으로 바꿔 OTP 평문 비저장, 세션 해시 저장, 권한 ceiling, 단지 격리, 가시성 redaction, 마지막 관리자 보호와 logout을 확인합니다. 실제 메일 수신·Google 권한 동의·Apps Script 새 버전 배포 여부는 Google 계정에서 별도로 확인해야 합니다.
