@@ -25,14 +25,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Install security test browser
         shell: bash
@@ -41,7 +42,7 @@ jobs:
           "$RUNNER_TEMP/hj-e2e/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Verify release guards (full suite)
         shell: bash
@@ -62,11 +63,13 @@ jobs:
         run: node scripts/stage-pages.mjs _site
 
       - name: Upload site artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           # 공개 앱 셸만 업로드 — backup/, tests/, apps-script/는 Pages에 노출하지 않는다.
           path: "_site"
+          # v5는 숨김 파일을 기본 제외하므로 Pages의 .nojekyll을 명시적으로 보존한다.
+          include-hidden-files: true
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

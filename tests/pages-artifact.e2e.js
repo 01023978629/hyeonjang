@@ -414,7 +414,7 @@ try {
   // 전체 스위트가 아니라 일부만 돌면서도 초록불이 켜진다. 그게 예전 8/82 사고다.
   assert(/node\s+tests\/run-all\.js\s*$/m.test(workflow),
     '워크플로가 전체 러너(node tests/run-all.js, 인자 없이)를 실행하지 않는다');
-  assert(/uses:\s*actions\/checkout@v4[\s\S]*?with:[\s\S]*?fetch-depth:\s*0[\s\S]*?- name:\s*Setup Node\.js/.test(workflow),
+  assert(/uses:\s*actions\/checkout@v7[\s\S]*?with:[\s\S]*?fetch-depth:\s*0[\s\S]*?- name:\s*Setup Node\.js/.test(workflow),
     '고정 기준 커밋의 조상 검사를 위해 Checkout 전체 이력(fetch-depth: 0)이 필요하다');
   // 수익·승인·격리·중계 회귀까지 포함한 필수 검사가 러너의 자동 수집 범위에
   // 실제 파일로 존재하는지 — 파일 삭제/개명으로 녹색이 되는 일을 막는다.
@@ -587,7 +587,9 @@ try {
     '러너가 테스트 서버(8299/8398)를 직접 관리하지 않는다 — CI 에서 e2e 가 전부 죽는다');
   assert(/node\s+scripts\/stage-pages\.mjs\s+_site/.test(workflow), '워크플로가 검증된 staging 스크립트를 실행하지 않는다');
   assert(/path:\s*["']?_site["']?/.test(workflow), 'Pages 업로드 경로가 _site 허용목록 산출물이 아니다');
-  assert(/actions\/setup-node@v4/.test(workflow), '보안 E2E용 Node 준비 단계가 없다');
+  assert(/actions\/setup-node@v7/.test(workflow), '보안 E2E용 Node 준비 단계가 없다');
+  assert(/actions\/upload-pages-artifact@v5[\s\S]*?include-hidden-files:\s*true/.test(workflow),
+    'Pages 업로드에서 .nojekyll 숨김 파일 보존 설정이 없다');
   assert(/playwright[^\n]*(?:install|@)/i.test(workflow), '보안 E2E용 Playwright 설치 단계가 없다');
   assert(/\/opt\/pw-browsers/.test(workflow), '하드코딩 브라우저 경로(/opt/pw-browsers) 심링크 단계가 없다 — 옛 e2e 30여 개가 CI 에서 못 뜬다');
   const verifyAt = workflow.indexOf('Verify release guards');
