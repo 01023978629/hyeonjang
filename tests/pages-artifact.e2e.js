@@ -21,7 +21,8 @@ const requiredGuards = [
   'office-ops-isolation.e2e.js', 'office-ops-ui.e2e.js', 'paid-work-gate.e2e.js',
   'apt-commercial-ui.e2e.js', 'legacy-commercial-gate.e2e.js',
   'office-ops-conversion.e2e.js', 'relay.e2e.js',
-  'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js'
+  'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js',
+  'web-work-bridge.e2e.js'
 ];
 
 function assertRequiredGuards(testNames, label) {
@@ -398,6 +399,17 @@ function walk(dir, base = dir) {
   });
 }
 
+function assertNoindexPolicy(candidate, label) {
+  const marker = '<meta name="robots" content="noindex,nofollow">';
+  const count = String(candidate).split(marker).length - 1;
+  assert(count === 1, label + ' noindex,nofollow meta가 정확히 1개여야 한다');
+  const headStart = candidate.search(/<head(?:\s|>)/i);
+  const markerAt = candidate.indexOf(marker);
+  const headEnd = candidate.search(/<\/head>/i);
+  assert(headStart >= 0 && markerAt > headStart && headEnd > markerAt,
+    label + ' noindex,nofollow meta가 head 안에 있어야 한다');
+}
+
 try {
   const run = spawnSync(process.execPath, [path.join(root, 'scripts', 'stage-pages.mjs'), out], {
     cwd: root, encoding: 'utf8'
@@ -408,6 +420,18 @@ try {
     '공개 산출물이 허용목록과 다르다\nwant: ' + expected.join(', ') + '\n got: ' + files.join(', '));
   assert(!fs.existsSync(path.join(out, 'backup', 'index_v104_original.html')), '공개 백업 HTML이 산출물에 포함됐다');
   assert(!fs.existsSync(path.join(out, 'tests')) && !fs.existsSync(path.join(out, 'apps-script')), '내부 테스트/서버 소스가 산출물에 포함됐다');
+  for (const pageName of ['index.html', 'privacy.html', 'terms.html']) {
+    const sourceHtml = fs.readFileSync(path.join(root, pageName), 'utf8');
+    const stagedHtml = fs.readFileSync(path.join(out, pageName), 'utf8');
+    assertNoindexPolicy(sourceHtml, '소스 ' + pageName);
+    assertNoindexPolicy(stagedHtml, '배포 산출물 ' + pageName);
+    const marker = '<meta name="robots" content="noindex,nofollow">';
+    nodeAssert.throws(
+      () => assertNoindexPolicy(sourceHtml.replace(marker, ''), '변이 ' + pageName),
+      /noindex,nofollow meta/,
+      pageName + ' noindex 제거 변이를 거절해야 한다'
+    );
+  }
 
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
   // 게이트는 run-all.js 를 "인자 없이" 불러야 한다 — 인자를 붙이면 필터가 걸려
