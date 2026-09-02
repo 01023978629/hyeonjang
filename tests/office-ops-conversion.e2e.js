@@ -1247,8 +1247,8 @@ async function runBrowserAcceptance() {
         const durableBeforeRace = await sibling.evaluate(() => ({ pointer: __paidCommitPointerKey, orderJson: JSON.stringify(state.aptOrders[0]) }));
         const caller = await actual.page.evaluate(async () => { await officeOpsLoad(); return officeOpsConversionCallerForInspection('inspection_conversion_001'); });
         await actual.page.evaluate(() => {
-          window.__raceNativeFenceAtomic = guardedAppStateWriteAtomic; window.__raceFenceAtomicCalls = 0;
-          guardedAppStateWriteAtomic = async function(...args) { window.__raceFenceAtomicCalls += 1; return window.__raceNativeFenceAtomic(...args); };
+          window.__raceNativeFence = officeOpsFenceDurableConversionCandidate; window.__raceFenceCalls = 0;
+          officeOpsFenceDurableConversionCandidate = async function(...args) { window.__raceFenceCalls += 1; return window.__raceNativeFence(...args); };
         });
         let durableBarrierInstalledResolve;
         const durableBarrierInstalled = new Promise(resolve => { durableBarrierInstalledResolve = resolve; });
@@ -1309,13 +1309,13 @@ async function runBrowserAcceptance() {
         race.label + ' releases the sibling only after the terminal fence, so its old CAS loses or the queued stale guard rejects it');
         if (race.lossAfter) assert.match(terminalResult.value, /fetch|network|failed/i, race.label + ' surfaces the lost response after post-attempt fencing');
         else assert.deepEqual(terminalResult, { status: 'fulfilled', value: race.expectedAfter });
-        if (race.lossAfter) assert.equal(await actual.page.evaluate(() => window.__raceFenceAtomicCalls), 2,
+        if (race.lossAfter) assert.equal(await actual.page.evaluate(() => window.__raceFenceCalls), 2,
           race.label + ' executes exactly one pre-request and one post-attempt exact fence despite the lost response');
         assert.equal(scenario.store.inspections[0].status, race.expectedAfter);
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length - recordCallsBeforeRace, race.recordDelta, race.label + ' has the exact Record call delta');
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length - finalizeCallsBeforeRace, race.finalizeDelta, race.label + ' has the exact Finalize call delta');
         scenario.lossAfter = ''; scenario.lost = false;
-        await actual.page.evaluate(() => { guardedAppStateWriteAtomic = window.__raceNativeFenceAtomic; });
+        await actual.page.evaluate(() => { officeOpsFenceDurableConversionCandidate = window.__raceNativeFence; });
         const finalStatus = await actual.page.evaluate(async () => {
           await officeOpsLoad();
           const current = officeOpsConversionCallerForInspection('inspection_conversion_001');
