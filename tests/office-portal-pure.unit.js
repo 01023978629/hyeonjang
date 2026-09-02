@@ -130,11 +130,18 @@ const projectedLog = plain(sandbox.portalPureProjectRecord_({
 assert.equal(projectedLog.logId, 'log_1');
 
 const userInput = plain(sandbox.portalPureUserInput_({
-  email: 'USER@EXAMPLE.COM', name: '관리자', role: 'manager_chief', active: true, unit: '',
+  email: 'USER@EXAMPLE.COM', name: '관리자', role: 'manager_chief', active: true, unit: '', loginCode: '123456',
 }));
 assert.equal(userInput.email, 'user@example.com');
 assert.equal(userInput.name, '관리자');
 assert.equal(userInput.active, true);
+assert.equal(userInput.loginCode, '123456');
+assert.equal(sandbox.portalPureUserInput_({
+  email: 'user@example.com', name: '관리자', role: 'manager_chief', active: true, unit: '',
+}).loginCode, '');
+for (const invalid of ['12345', '1234567', '12a456']) {
+  assert.throws(() => sandbox.portalPureLoginCode_(invalid, true), error => error && error.portalCode === 'invalid_loginCode');
+}
 
 const unsafeFormulaPrefixes = ['=', '+', '-', '@', '\t', '\r', '\n', ' ='];
 function assertUnsafeTextRejected(field, build) {
@@ -181,11 +188,11 @@ assertUnsafeTextRejected('description', value => () => sandbox.portalPureCostInp
 
 const safeUser = plain(sandbox.portalPureSafeUser_({
   userId: 'usr_1', email: 'user@example.com', displayName: '관리자', role: 'manager_chief',
-  enabled: true, unit: '', permissions: ['dashboard.view'],
+  enabled: true, unit: '', permissions: ['dashboard.view'], loginCodeHash: 'hash', loginCodeSalt: 'salt',
 }, true));
 assert.deepEqual(safeUser, {
   id: 'usr_1', name: '관리자', role: 'manager_chief', active: true,
-  permissions: ['dashboard.view'], email: 'user@example.com',
+  permissions: ['dashboard.view'], email: 'user@example.com', loginCodeConfigured: true,
 });
 
 function loadMutant(from, to) {

@@ -6,7 +6,7 @@
  */
 'use strict';
 
-var PORTAL_SCHEMA_VERSION = 'office-portal-v2';
+var PORTAL_SCHEMA_VERSION = 'office-portal-v3';
 
 var PORTAL_ROLES = Object.freeze([
   'system_admin',
@@ -138,6 +138,11 @@ function portalPureEmail_(value) {
     throw portalPureError_('invalid_email', 'email is invalid');
   }
   return email;
+}
+
+function portalPureLoginCode_(value, required) {
+  if ((value === undefined || value === null || value === '') && !required) return '';
+  return portalPureString_(String(value || ''), 'loginCode', 6, 6, /^\d{6}$/);
 }
 
 function portalPureSlug_(value) {
@@ -382,7 +387,8 @@ function portalPureUserInput_(input) {
     name: portalPureString_(String(input.name || ''), 'name', 1, 80, null),
     role: portalPureRole_(input.role),
     unit: portalPureOptionalString_(input.unit, 'unit', 40),
-    active: portalPureBool_(input.active, 'active')
+    active: portalPureBool_(input.active, 'active'),
+    loginCode: portalPureLoginCode_(input.loginCode, false)
   };
 }
 
@@ -442,7 +448,8 @@ function portalPureSafeUser_(user, includeEmail) {
     name: user.displayName,
     role: user.role,
     active: user.enabled === true || String(user.enabled).toLowerCase() === 'true',
-    permissions: Array.isArray(user.permissions) ? user.permissions.slice() : []
+    permissions: Array.isArray(user.permissions) ? user.permissions.slice() : [],
+    loginCodeConfigured: Boolean(user.loginCodeHash && user.loginCodeSalt)
   };
   result.email = includeEmail ? user.email : '';
   if (user.unit) result.unit = user.unit;
