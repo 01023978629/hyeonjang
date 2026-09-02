@@ -6,20 +6,20 @@
 
 ## 보안 모델
 
-- 로그인: 등록된 이메일로 보내는 6자리 OTP
-- OTP: HMAC 해시만 Sheets에 저장, 10분 유효, 5회 실패 시 폐기
-- 재발송: 동일 이메일 기준 60초 간격, 시간당 최대 5회
-- 공개 요청 보호: 10분 단위 Script Cache 전역 best-effort 한도 적용. 미등록·비활성 이메일과 제한된 요청은 Sheets 행을 만들지 않음
+- 로그인: 관리자가 사용자별로 발급한 6자리 인증번호
+- 인증번호: 사용자별 무작위 소금값과 HMAC 해시만 Sheets에 저장하며 원문은 저장하지 않음
+- 실패 제한: 5회 연속 오류 시 해당 사용자를 15분간 잠금
+- 공개 요청 보호: 10분 단위 Script Cache 전역 best-effort 한도 적용
 - 입력 안전: Sheets에 저장되는 외부 문자열이 `=`, `+`, `-`, `@`, 탭 또는 줄바꿈으로 시작하면 `invalid-input`으로 거부해 수식 주입을 차단
 - 세션: 8시간 유효한 opaque token. 원문은 로그인 성공 응답에서 한 번만 반환하고 서버에는 HMAC 해시만 저장
 - 보호 action: 매 호출마다 현재 `Users.enabled`, 역할, `sessionVersion`, `permissionVersion`, 단지 활성 상태와 버전을 재검증
-- 이메일 변경: 같은 잠금 안에서 해당 사용자의 미사용 OTP를 모두 폐기하고, OTP 검증 때 challenge identity와 현재 `Users.emailHash`를 다시 비교
+- 인증번호 변경: 같은 잠금 안에서 사용자별 해시를 교체하고 `sessionVersion`을 올려 기존 세션을 무효화
 - 단지 격리: 일반 사용자의 `officeId`는 요청값을 사용하지 않고 세션에서 강제
 - 쓰기 멱등성: 상태·일지·작업지시·공지·비용·사용자·권한 저장은 클라이언트 UUID `requestId`와 `PortalOperations` 기록으로 중복 실행을 차단
-- 응답 최소화: OTP·토큰 해시·내부 저장 키는 어떤 API 응답에도 포함하지 않음
-- 감사 로그: action, 대상 ID, 결과 같은 메타데이터만 기록. 이메일·OTP·세션 원문·상태/일지 본문은 기록하지 않음
+- 응답 최소화: 인증번호 해시·소금값·토큰 해시·내부 저장 키는 어떤 API 응답에도 포함하지 않음
+- 감사 로그: action, 대상 ID, 결과 같은 메타데이터만 기록. 이메일·인증번호·세션 원문·상태/일지 본문은 기록하지 않음
 
-로그인 없이 호출 가능한 action은 `portalHealth`, `portalRequestCode`, `portalVerifyCode`뿐입니다.
+로그인 없이 호출 가능한 action은 `portalHealth`, `portalLogin`뿐입니다.
 
 ## 역할과 기본 권한
 
@@ -66,8 +66,9 @@ admin.audit.view
    - `OFFICE_PORTAL_ENABLED`: 운영 활성화 시 `1`
    - `OFFICE_PORTAL_SHEET_ID`: 1단계 스프레드시트 ID
    - `OFFICE_PORTAL_SESSION_SECRET`: 암호학적으로 생성한 32자 이상의 서로 다른 비밀값
-   - `OFFICE_PORTAL_OTP_PEPPER`: 위 세션 비밀과 다른, 암호학적으로 생성한 32자 이상의 비밀값
-4. 편집기에서 `portalSetupSheets_()`를 직접 한 번 실행하고 Sheets·메일 권한을 승인합니다. 다음 탭과 고정 헤더가 생성됩니다.
+   - `OFFICE_PORTAL_OTP_PEPPER`: 이메일 식별자 해시용 32자 이상의 비밀값
+   - `OFFICE_PORTAL_LOGIN_PEPPER`: 위 두 비밀과 다른, 인증번호 해시용 32자 이상의 비밀값
+4. 편집기에서 `portalSetupSheets_()`를 직접 한 번 실행하고 Sheets 권한을 승인합니다. 다음 탭과 고정 헤더가 생성됩니다.
    - `Offices`, `Users`, `OtpChallenges`, `Sessions`, `PortalOperations`, `RolePermissions`, `ManagementStatus`, `ManagementLogs`, `WorkOrders`, `Notices`, `CostItems`, `PortalAudit`
 5. 최초 관리자 생성을 위해 아래 임시 스크립트 속성을 등록합니다.
    - `OFFICE_PORTAL_BOOTSTRAP_OFFICE_ID`
@@ -75,6 +76,7 @@ admin.audit.view
    - `OFFICE_PORTAL_BOOTSTRAP_COMPLEX_NAME`
    - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL`
    - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME`
+   - `OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE`: 관리자가 정한 6자리 숫자
 6. 편집기에서 `portalBootstrapFromProperties_()`를 직접 한 번 실행합니다. 첫 단지와 첫 `system_admin`이 생성되며, 성공하면 5단계 임시 속성은 자동 삭제됩니다. 활성 `system_admin`이 이미 있으면 재실행은 거부됩니다.
 7. **배포 → 새 배포 → 웹 앱**에서 실행 사용자를 배포 소유자로, 액세스 사용자를 누구나로 설정해 배포합니다. 익명 액세스는 로그인 action을 호출하기 위한 전송 경로일 뿐이며, 보호 action은 서버 세션 없이는 실행되지 않습니다.
 8. 배포된 `/exec` URL에 POST `{"action":"portalHealth"}`를 보내 `ok`, `service`, `enabled`를 확인합니다.
@@ -86,10 +88,9 @@ admin.audit.view
 
 성공은 `{ "ok": true, ... }`, 실패는 `{ "ok": false, "error": "code" }` 형태입니다.
 
-- `portalRequestCode`: `{action, payload:{officeCode,email}}`
-- `portalVerifyCode`: `{action, payload:{officeCode,email,code,challengeId}}`
+- `portalLogin`: `{action, payload:{officeCode,email,loginCode}}`
 - 보호 action: 최상위에 `sessionToken`을 넣고 필요 입력은 `payload`에 둡니다.
-- `portalStatusSave`, `portalLogSave`, `portalWorkOrderSave`, `portalNoticeSave`, `portalCostSave`, `portalCostApprove`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
+- `portalStatusSave`, `portalLogSave`, `portalWorkOrderSave`, `portalNoticeSave`, `portalCostSave`, `portalCostApprove`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 신규 사용자의 `portalUserSave`에는 `loginCode`가 필수이고, 기존 사용자에서는 인증번호를 바꿀 때만 보냅니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
 - 같은 `requestId`와 같은 정규화 입력을 재전송하면 기존 entity와 revision을 그대로 반환하며 `replayed:true`가 표시됩니다. 같은 `requestId`에 다른 입력을 보내면 `invalid-input`입니다.
 - `portalLogout` 성공 후 같은 token은 재사용할 수 없습니다.
 
@@ -106,16 +107,14 @@ admin.audit.view
 
 `requests.view`는 기존 관리사무소 PIN 접수 화면/링크를 위한 capability입니다. 이 포털은 접수 원본이나 사진을 복제하지 않으며 기존 `apps-script/OfficeIntake.gs` relay의 `APP_TOKEN`, PIN 세션, Drive 파일에 직접 접근하지 않습니다.
 
-공개 오류 코드는 `not-configured`, `invalid-input`, `invalid-credentials`, `rate-limited`, `session-expired`, `forbidden`, `last-admin`, `not-found`, `bad-request`, `server-error` 중 하나입니다. 가짜·사용됨·폐기됨·만료된 challenge와 OTP 불일치는 모두 `invalid-credentials`로 응답합니다. 등록되지 않은 이메일과 발송 제한 상황도 계정 존재 여부가 드러나지 않도록 동일한 accepted 응답을 사용하며, 가짜 UUID challenge만 돌려주고 Sheets에는 저장하지 않습니다. 로그인 실패 시에는 원인을 구분해 표시하지 말고 새 인증번호를 요청하도록 안내하세요.
+공개 오류 코드는 `not-configured`, `invalid-input`, `invalid-credentials`, `rate-limited`, `session-expired`, `forbidden`, `last-admin`, `not-found`, `bad-request`, `server-error` 중 하나입니다. 잘못된 단지·이메일·인증번호는 `invalid-credentials`로 통일하고, 5회 실패 잠금과 전역 제한은 `rate-limited`로 응답합니다.
 
 ## 운영 및 배포 경계
 
 - `.gs` 소스의 GitHub 배포는 Apps Script 운영 배포를 갱신하지 않습니다. Apps Script에서 새 버전을 배포한 뒤 실제 `/exec` 응답을 별도로 확인해야 합니다.
-- `portalSetupSheets_`, `portalBootstrapFromProperties_`는 웹 action allowlist에 없으므로 편집기 소유자만 실행할 수 있습니다.
+- `portalSetupSheets_`, `portalBootstrapFromProperties_`, `portalSetLoginCodeFromProperties_`는 웹 action allowlist에 없으므로 편집기 소유자만 실행할 수 있습니다.
 - Sheets 헤더가 예상 스키마와 다르면 쓰기를 계속하지 않고 `not-configured`로 중단합니다.
-- v1 배포를 v2로 업그레이드할 때는 새 버전 배포 전에 편집기에서 `portalSetupSheets_()`를 다시 실행해 `WorkOrders`, `Notices`, `CostItems` 탭을 추가하세요. 함수는 기존 탭의 헤더와 행을 수정하지 않습니다.
-- OTP 이메일 전송 실패는 challenge를 즉시 폐기하고 본문이나 이메일을 남기지 않는 메타데이터 감사 이벤트만 기록합니다. 공개 응답은 계정 열거를 막기 위해 accepted 형태를 유지합니다.
-- `MailApp.sendEmail`은 동기 호출이므로 등록 계정의 실제 메일 발송과 미등록 계정의 가짜 accepted 응답 사이에 통계적인 응답 시간 차이가 생길 수 있습니다. 이 구현은 공개 본문·오류를 통일하지만 네트워크 timing oracle을 완전히 제거하지는 못합니다. 고위험 운영에서는 앞단 WAF/프록시 제한과 모니터링을 적용하고, 가능하면 공개 요청과 분리된 비동기 발송 큐/트리거로 메일 전송을 옮기세요.
+- v2 배포를 v3로 업그레이드할 때는 새 버전 배포 전에 편집기에서 `portalSetupSheets_()`를 실행해 `Users` 뒤에 인증번호 보안 열을 추가합니다. 기존 열과 행은 삭제하거나 이동하지 않습니다. 이어 임시 `OFFICE_PORTAL_BOOTSTRAP_SLUG`, `OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL`, `OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE`를 설정하고 `portalSetLoginCodeFromProperties_()`를 실행합니다. 성공 시 임시 속성은 즉시 삭제됩니다.
 - 비밀 교체 시 기존 세션은 즉시 무효화됩니다. 사용자 권한·역할 변경도 버전 불일치로 기존 세션을 무효화합니다.
 
 ### 인증 행 보관 정리
@@ -140,4 +139,4 @@ node tests/office-portal-server.unit.js
 node tests/run-all.js office-portal
 ```
 
-Node VM 테스트는 Apps Script API를 메모리 mock으로 바꿔 OTP 평문 비저장, 세션 해시 저장, 권한 ceiling, 단지 격리, 가시성 redaction, 마지막 관리자 보호와 logout을 확인합니다. 실제 메일 수신·Google 권한 동의·Apps Script 새 버전 배포 여부는 Google 계정에서 별도로 확인해야 합니다.
+Node VM 테스트는 Apps Script API를 메모리 mock으로 바꿔 인증번호 평문 비저장, 5회 실패 잠금, 세션 해시 저장, 권한 ceiling, 단지 격리, 가시성 redaction, 마지막 관리자 보호와 logout을 확인합니다. 실제 계정 로그인·Google 권한 동의·Apps Script 새 버전 배포 여부는 Google 계정에서 별도로 확인해야 합니다.

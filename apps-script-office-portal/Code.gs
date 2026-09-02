@@ -5,20 +5,16 @@
 'use strict';
 
 var PORTAL_ACTIONS = Object.freeze([
-  'portalHealth', 'portalRequestCode', 'portalVerifyCode', 'portalMe', 'portalLogout',
+  'portalHealth', 'portalLogin', 'portalMe', 'portalLogout',
   'portalDashboard', 'portalStatusList', 'portalStatusSave', 'portalLogList', 'portalLogSave',
   'portalWorkOrderList', 'portalWorkOrderSave', 'portalNoticeList', 'portalNoticeSave',
   'portalCostList', 'portalCostSave', 'portalCostApprove', 'portalReportSummary',
   'portalUserList', 'portalUserSave', 'portalPermissionSave', 'portalAuditList'
 ]);
 
-var PORTAL_PUBLIC_ACTIONS = Object.freeze([
-  'portalHealth', 'portalRequestCode', 'portalVerifyCode'
-]);
-
 var PORTAL_HEADERS = Object.freeze({
   Offices: ['officeId', 'slug', 'complexName', 'enabled', 'permissionVersion', 'createdAt', 'updatedAt'],
-  Users: ['userId', 'officeId', 'email', 'emailHash', 'displayName', 'role', 'unit', 'enabled', 'sessionVersion', 'permissionVersion', 'createdAt', 'updatedAt', 'lastLoginAt'],
+  Users: ['userId', 'officeId', 'email', 'emailHash', 'displayName', 'role', 'unit', 'enabled', 'sessionVersion', 'permissionVersion', 'createdAt', 'updatedAt', 'lastLoginAt', 'loginCodeHash', 'loginCodeSalt', 'loginCodeUpdatedAt', 'loginFailedAttempts', 'loginLockedUntil'],
   OtpChallenges: ['challengeId', 'officeId', 'userId', 'identityHash', 'codeHash', 'createdAt', 'expiresAt', 'attempts', 'lastSentAt', 'usedAt', 'revokedAt'],
   Sessions: ['sessionId', 'tokenHash', 'officeId', 'userId', 'issuedAt', 'expiresAt', 'revokedAt', 'sessionVersion', 'permissionVersion', 'officePermissionVersion', 'lastSeenAt'],
   PortalOperations: ['requestId', 'officeId', 'userId', 'role', 'action', 'entityType', 'entityId', 'inputHash', 'status', 'auditResult', 'createdAt', 'updatedAt'],
@@ -31,14 +27,11 @@ var PORTAL_HEADERS = Object.freeze({
   PortalAudit: ['auditId', 'officeId', 'actorUserId', 'role', 'action', 'entityType', 'entityId', 'result', 'at']
 });
 
-var PORTAL_OTP_TTL_MS = 10 * 60 * 1000;
 var PORTAL_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-var PORTAL_OTP_RESEND_MS = 60 * 1000;
-var PORTAL_OTP_HOURLY_LIMIT = 5;
-var PORTAL_OTP_MAX_ATTEMPTS = 5;
-var PORTAL_OTP_DIGITS = 6;
-var PORTAL_OTP_GLOBAL_WINDOW_SECONDS = 10 * 60;
-var PORTAL_OTP_GLOBAL_WINDOW_LIMIT = 500;
+var PORTAL_LOGIN_MAX_ATTEMPTS = 5;
+var PORTAL_LOGIN_LOCK_MS = 15 * 60 * 1000;
+var PORTAL_LOGIN_GLOBAL_WINDOW_SECONDS = 10 * 60;
+var PORTAL_LOGIN_GLOBAL_WINDOW_LIMIT = 500;
 var PORTAL_OTP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 var PORTAL_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 var PORTAL_OPERATION_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -74,8 +67,7 @@ function portalDispatch_(request) {
   if (PORTAL_ACTIONS.indexOf(action) === -1) throw portalApiError_('invalid_action');
   if (action === 'portalHealth') return portalHealth_();
   portalRequireEnabled_();
-  if (action === 'portalRequestCode') return portalRequestCode_(portalPayload_(request));
-  if (action === 'portalVerifyCode') return portalVerifyCode_(portalPayload_(request));
+  if (action === 'portalLogin') return portalLogin_(portalPayload_(request));
 
   var context = portalAuthenticate_(request.sessionToken);
   var payload = portalPayload_(request);
@@ -231,26 +223,33 @@ function portalRandomToken_() {
   return output;
 }
 
-function portalRandomCode_() {
-  var material = Utilities.getUuid() + '|' + Utilities.getUuid() + '|' + portalNow_();
-  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, material);
-  var code = '';
-  for (var i = 0; i < PORTAL_OTP_DIGITS; i += 1) code += String((bytes[i] & 255) % 10);
-  return code;
-}
-
-function portalBestEffortOtpGate_(now) {
+function portalBestEffortLoginGate_(now) {
   try {
     var cache = CacheService.getScriptCache();
-    var bucket = Math.floor(now / (PORTAL_OTP_GLOBAL_WINDOW_SECONDS * 1000));
-    var key = 'office-portal-otp-global-' + bucket;
+    var bucket = Math.floor(now / (PORTAL_LOGIN_GLOBAL_WINDOW_SECONDS * 1000));
+    var key = 'office-portal-login-global-' + bucket;
     var count = portalNumber_(cache.get(key), 0);
-    if (count >= PORTAL_OTP_GLOBAL_WINDOW_LIMIT) return false;
-    cache.put(key, String(count + 1), PORTAL_OTP_GLOBAL_WINDOW_SECONDS);
+    if (count >= PORTAL_LOGIN_GLOBAL_WINDOW_LIMIT) return false;
+    cache.put(key, String(count + 1), PORTAL_LOGIN_GLOBAL_WINDOW_SECONDS);
     return true;
   } catch (cacheError) {
     return true;
   }
+}
+
+function portalLoginCodeHash_(user, salt, loginCode) {
+  return portalHmac_('OFFICE_PORTAL_LOGIN_PEPPER',
+    user.officeId + '|' + user.userId + '|' + salt + '|' + loginCode);
+}
+
+function portalSetUserLoginCode_(user, loginCode, now) {
+  loginCode = portalPureLoginCode_(loginCode, true);
+  var salt = Utilities.getUuid().replace(/-/g, '');
+  user.loginCodeSalt = salt;
+  user.loginCodeHash = portalLoginCodeHash_(user, salt, loginCode);
+  user.loginCodeUpdatedAt = now || portalNow_();
+  user.loginFailedAttempts = 0;
+  user.loginLockedUntil = '';
 }
 
 function portalHmac_(propertyName, value) {
@@ -431,161 +430,67 @@ function portalFinishOperation_(operation, auditResult) {
   }
 }
 
-function portalHtml_(value) {
-  return String(value || '').replace(/[&<>"']/g, function (character) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character];
-  });
-}
-
-function portalRequestCode_(payload) {
+function portalLogin_(payload) {
   var slug = portalPureSlug_(payload.officeCode);
   var email = portalPureEmail_(payload.email);
+  var loginCode = portalPureLoginCode_(payload.loginCode, true);
   var identityHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
-  if (!portalBestEffortOtpGate_(Date.now())) {
-    return {
-      accepted: true,
-      challengeId: Utilities.getUuid().toLowerCase(),
-      expiresInSeconds: Math.floor(PORTAL_OTP_TTL_MS / 1000)
-    };
-  }
-  var prepared = portalWithLock_(function () {
-    var now = Date.now();
+  if (!portalBestEffortLoginGate_(Date.now())) throw portalApiError_('rate_limited');
+  return portalWithLock_(function () {
+    var nowMs = Date.now();
+    var now = portalNow_();
     var office = portalOfficeBySlug_(slug);
     var user = office ? portalUserByIdentity_(office.officeId, identityHash) : null;
-    var eligible = Boolean(office && user && portalTruth_(office.enabled) && portalTruth_(user.enabled));
-    var recent = portalRows_('OtpChallenges').filter(function (row) {
-      return row.identityHash === identityHash && portalTime_(row.createdAt) > now - 60 * 60 * 1000;
-    });
-    var lastSent = recent.reduce(function (latest, row) {
-      return Math.max(latest, portalTime_(row.lastSentAt) || 0);
-    }, 0);
-    var rateAllowed = recent.length < PORTAL_OTP_HOURLY_LIMIT && now - lastSent >= PORTAL_OTP_RESEND_MS;
-    var challengeId = Utilities.getUuid().toLowerCase();
-    if (!eligible || !rateAllowed) return { challengeId: challengeId, send: false };
+    var eligible = Boolean(office && user && portalTruth_(office.enabled) && portalTruth_(user.enabled) &&
+      user.loginCodeHash && user.loginCodeSalt);
 
-    var code = portalRandomCode_();
-    var createdAt = portalNow_();
-    var expiresAt = new Date(now + PORTAL_OTP_TTL_MS).toISOString();
-    portalSaveRow_('OtpChallenges', {
-      challengeId: challengeId,
-      officeId: office.officeId,
-      userId: user.userId,
-      identityHash: identityHash,
-      codeHash: portalHmac_('OFFICE_PORTAL_OTP_PEPPER', challengeId + '|' + code),
-      createdAt: createdAt,
-      expiresAt: expiresAt,
-      attempts: 0,
-      lastSentAt: createdAt,
-      usedAt: '',
-      revokedAt: ''
-    });
-    return {
-      challengeId: challengeId,
-      expiresAt: expiresAt,
-      send: true,
-      email: user.email,
-      complexName: office.complexName,
-      code: code
-    };
-  });
+    /* Unknown accounts run the same keyed digest before returning a generic error. */
+    if (!eligible) {
+      portalHmac_('OFFICE_PORTAL_LOGIN_PEPPER', 'invalid|invalid|' + loginCode);
+      throw portalApiError_('invalid_credentials');
+    }
 
-  if (prepared.send) {
-    try {
-      MailApp.sendEmail({
-        to: prepared.email,
-        subject: '[만물 관리포털] 로그인 인증번호',
-        name: '만물 관리포털',
-        htmlBody: '<p>' + portalHtml_(prepared.complexName) + ' 관리포털 로그인 인증번호입니다.</p>' +
-          '<p style="font-size:24px;font-weight:700;letter-spacing:4px">' + prepared.code + '</p>' +
-          '<p>10분 안에 입력해 주세요. 본인이 요청하지 않았다면 이 메일을 무시하세요.</p>'
-      });
-    } catch (deliveryError) {
-      try {
-        portalWithLock_(function () {
-          var row = portalRows_('OtpChallenges').filter(function (item) {
-            return item.challengeId === prepared.challengeId;
-          })[0];
-          if (row) {
-            row.revokedAt = portalNow_();
-            portalSaveRow_('OtpChallenges', row);
-            portalAudit_(null, 'portalRequestCodeDelivery', 'otp_challenge', row.challengeId, 'delivery_failed', row.officeId);
-          }
-        });
-      } catch (ignoredDeliveryAuditError) {
-        // Public response remains generic to avoid account enumeration.
+    var lockedUntil = portalTime_(user.loginLockedUntil);
+    if (isFinite(lockedUntil) && lockedUntil > nowMs) throw portalApiError_('rate_limited');
+    if (isFinite(lockedUntil) && lockedUntil <= nowMs) {
+      user.loginFailedAttempts = 0;
+      user.loginLockedUntil = '';
+    }
+
+    var candidateHash = portalLoginCodeHash_(user, user.loginCodeSalt, loginCode);
+    if (!portalConstantTimeEqual_(user.loginCodeHash, candidateHash)) {
+      var failures = portalNumber_(user.loginFailedAttempts, 0) + 1;
+      user.loginFailedAttempts = failures;
+      if (failures >= PORTAL_LOGIN_MAX_ATTEMPTS) {
+        user.loginLockedUntil = new Date(nowMs + PORTAL_LOGIN_LOCK_MS).toISOString();
       }
-    }
-  }
-  return {
-    accepted: true,
-    challengeId: prepared.challengeId,
-    expiresInSeconds: Math.floor(PORTAL_OTP_TTL_MS / 1000)
-  };
-}
-
-function portalVerifyCode_(payload) {
-  var challengeId = portalPureId_(payload.challengeId, 'challengeId');
-  var slug = portalPureSlug_(payload.officeCode);
-  var email = portalPureEmail_(payload.email);
-  var code = portalPureString_(String(payload.code || ''), 'code', PORTAL_OTP_DIGITS, PORTAL_OTP_DIGITS, /^\d{6}$/);
-  var identityHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
-  /* Reject floods before taking the global script lock or scanning Sheets. */
-  if (!portalBestEffortOtpGate_(Date.now())) throw portalApiError_('rate_limited');
-  return portalWithLock_(function () {
-    var challenge = portalRows_('OtpChallenges').filter(function (row) {
-      return row.challengeId === challengeId;
-    })[0];
-    if (!challenge || challenge.usedAt || challenge.revokedAt) {
-      throw portalApiError_('invalid_credentials');
-    }
-    if (portalTime_(challenge.expiresAt) <= Date.now()) {
-      throw portalApiError_('invalid_credentials');
-    }
-    var requestedOffice = portalOfficeBySlug_(slug);
-    var attempts = portalNumber_(challenge.attempts, 0) + 1;
-    challenge.attempts = attempts;
-    var codeHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', challengeId + '|' + code);
-    var valid = attempts <= PORTAL_OTP_MAX_ATTEMPTS &&
-      portalConstantTimeEqual_(challenge.identityHash, identityHash) &&
-      portalConstantTimeEqual_(challenge.codeHash, codeHash) &&
-      Boolean(requestedOffice && challenge.officeId === requestedOffice.officeId);
-    if (!valid) {
-      if (attempts >= PORTAL_OTP_MAX_ATTEMPTS) challenge.revokedAt = portalNow_();
-      portalSaveRow_('OtpChallenges', challenge);
-      throw portalApiError_('invalid_credentials');
+      portalSaveRow_('Users', user);
+      portalAudit_({ officeId: office.officeId, userId: user.userId, role: user.role },
+        'portalLogin', 'user', user.userId, failures >= PORTAL_LOGIN_MAX_ATTEMPTS ? 'locked' : 'failed');
+      throw portalApiError_(failures >= PORTAL_LOGIN_MAX_ATTEMPTS ? 'rate_limited' : 'invalid_credentials');
     }
 
-    var user = portalUserById_(challenge.userId);
-    var office = portalOfficeById_(challenge.officeId);
-    if (!user || !office || user.officeId !== office.officeId || !portalTruth_(user.enabled) ||
-        !portalTruth_(office.enabled) || !portalConstantTimeEqual_(user.emailHash, challenge.identityHash)) {
-      challenge.revokedAt = portalNow_();
-      portalSaveRow_('OtpChallenges', challenge);
-      throw portalApiError_('invalid_credentials');
-    }
-    challenge.usedAt = portalNow_();
-    portalSaveRow_('OtpChallenges', challenge);
-
+    user.loginFailedAttempts = 0;
+    user.loginLockedUntil = '';
+    user.lastLoginAt = now;
+    portalSaveRow_('Users', user);
     var rawToken = portalRandomToken_();
-    var issuedAt = portalNow_();
     var session = {
       sessionId: portalRandomId_('ses'),
       tokenHash: portalHmac_('OFFICE_PORTAL_SESSION_SECRET', rawToken),
       officeId: office.officeId,
       userId: user.userId,
-      issuedAt: issuedAt,
-      expiresAt: new Date(Date.now() + PORTAL_SESSION_TTL_MS).toISOString(),
+      issuedAt: now,
+      expiresAt: new Date(nowMs + PORTAL_SESSION_TTL_MS).toISOString(),
       revokedAt: '',
       sessionVersion: portalNumber_(user.sessionVersion, 0),
       permissionVersion: portalNumber_(user.permissionVersion, 0),
       officePermissionVersion: portalNumber_(office.permissionVersion, 0),
-      lastSeenAt: issuedAt
+      lastSeenAt: now
     };
     portalSaveRow_('Sessions', session);
-    user.lastLoginAt = issuedAt;
-    portalSaveRow_('Users', user);
     var context = { officeId: office.officeId, userId: user.userId, role: user.role };
-    portalAudit_(context, 'portalVerifyCode', 'session', session.sessionId, 'success');
+    portalAudit_(context, 'portalLogin', 'session', session.sessionId, 'success');
     return {
       sessionToken: rawToken,
       expiresAt: portalTime_(session.expiresAt),
@@ -1284,7 +1189,11 @@ function portalUserSave_(context, payload) {
   var officeInput = payload.office ? portalPureOfficeInput_(payload.office) : null;
   var requestedOfficeId = officeInput ? officeInput.officeId :
     (payload.officeId ? portalPureId_(payload.officeId, 'officeId') : context.officeId);
-  var inputHash = portalInputHash_({ kind: 'user', input: input, office: officeInput || requestedOfficeId });
+  var inputForHash = {};
+  Object.keys(input).forEach(function (key) { if (key !== 'loginCode') inputForHash[key] = input[key]; });
+  inputForHash.loginCodeDigest = input.loginCode ?
+    portalHmac_('OFFICE_PORTAL_LOGIN_PEPPER', requestId + '|' + input.loginCode) : '';
+  var inputHash = portalInputHash_({ kind: 'user', input: inputForHash, office: officeInput || requestedOfficeId });
   return portalWithLock_(function () {
     var office = officeInput ? portalOfficeById_(officeInput.officeId) : portalTargetOffice_(context, payload);
     var started = portalBeginOperation_(context, requestId, 'portalUserSave', 'user',
@@ -1306,6 +1215,7 @@ function portalUserSave_(context, payload) {
     if (officeInput) office = portalUpsertOfficeForSystemAdmin_(context, officeInput);
     if (input.userId && !target) throw portalApiError_('user_not_found');
     if (target && target.officeId !== office.officeId) throw portalApiError_('office_scope_denied');
+    if (!target && !input.loginCode) throw portalApiError_('invalid_loginCode');
     portalAssertCanManageUser_(context, target, input);
     var emailHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', input.email);
     var duplicate = users.filter(function (row) {
@@ -1337,6 +1247,7 @@ function portalUserSave_(context, payload) {
     row.unit = input.unit;
     row.enabled = input.active;
     row.updatedAt = now;
+    if (input.loginCode) portalSetUserLoginCode_(row, input.loginCode, now);
     if (target) {
       row.sessionVersion = portalNumber_(row.sessionVersion, 0) + 1;
       row.permissionVersion = portalNumber_(row.permissionVersion, 0) + 1;
@@ -1516,8 +1427,17 @@ function portalSetupSheets_() {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
     } else {
-      var actual = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-      if (actual.join('\u001f') !== headers.join('\u001f')) throw portalApiError_('server_schema_error');
+      var width = Math.max(1, sheet.getLastColumn());
+      var actual = sheet.getRange(1, 1, 1, width).getValues()[0];
+      while (actual.length && actual[actual.length - 1] === '') actual.pop();
+      var prefixMatches = actual.length <= headers.length && actual.every(function (value, index) {
+        return value === headers[index];
+      });
+      if (!prefixMatches) throw portalApiError_('server_schema_error');
+      if (actual.length < headers.length) {
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+      sheet.setFrozenRows(1);
     }
   });
   return { schema: PORTAL_SCHEMA_VERSION, sheets: Object.keys(PORTAL_HEADERS).length };
@@ -1540,6 +1460,7 @@ function portalBootstrapFromProperties_() {
     });
     var email = portalPureEmail_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL'));
     var name = portalPureString_(String(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME') || ''), 'name', 1, 80, null);
+    var loginCode = portalPureLoginCode_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true);
     var now = portalNow_();
     var office = portalOfficeById_(officeInput.officeId) || {
       officeId: officeInput.officeId,
@@ -1566,6 +1487,7 @@ function portalBootstrapFromProperties_() {
       updatedAt: now,
       lastLoginAt: ''
     };
+    portalSetUserLoginCode_(user, loginCode, now);
     portalSaveRow_('Users', user);
     portalAudit_({ officeId: office.officeId, userId: user.userId, role: 'system_admin' },
       'portalBootstrapFromProperties', 'user', user.userId, 'created');
@@ -1574,8 +1496,40 @@ function portalBootstrapFromProperties_() {
       'OFFICE_PORTAL_BOOTSTRAP_SLUG',
       'OFFICE_PORTAL_BOOTSTRAP_COMPLEX_NAME',
       'OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL',
-      'OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME'
+      'OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME',
+      'OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'
     ].forEach(function (key) { props.deleteProperty(key); });
     return { officeId: office.officeId, userId: user.userId };
+  });
+}
+
+/*
+ * 기존 설치의 최초 로그인 인증번호를 설정하거나 소유자가 긴급 초기화할 때만
+ * Apps Script 편집기에서 실행한다. 인증번호 원문은 성공 즉시 Script Properties에서 삭제한다.
+ */
+function portalSetLoginCodeFromProperties_() {
+  portalSetupSheets_();
+  return portalWithLock_(function () {
+    var props = portalProps_();
+    var slug = portalPureSlug_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_SLUG'));
+    var email = portalPureEmail_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL'));
+    var loginCode = portalPureLoginCode_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true);
+    var office = portalOfficeBySlug_(slug);
+    var identityHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
+    var user = office ? portalUserByIdentity_(office.officeId, identityHash) : null;
+    if (!office || !user || !portalTruth_(user.enabled)) throw portalApiError_('user_not_found');
+    var now = portalNow_();
+    portalSetUserLoginCode_(user, loginCode, now);
+    user.sessionVersion = portalNumber_(user.sessionVersion, 0) + 1;
+    user.updatedAt = now;
+    portalSaveRow_('Users', user);
+    portalAudit_({ officeId: office.officeId, userId: user.userId, role: user.role },
+      'portalSetLoginCodeFromProperties', 'user', user.userId, 'reset');
+    [
+      'OFFICE_PORTAL_BOOTSTRAP_SLUG',
+      'OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL',
+      'OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'
+    ].forEach(function (key) { props.deleteProperty(key); });
+    return { officeId: office.officeId, userId: user.userId, loginCodeConfigured: true };
   });
 }

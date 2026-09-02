@@ -64,6 +64,7 @@ class SheetMock {
     this.rows.splice(rowNumber - 1, 1);
   }
   getLastRow() { return this.rows.length; }
+  getLastColumn() { return Math.max(0, ...this.rows.map(row => row.length)); }
   setFrozenRows() {}
 }
 
@@ -82,11 +83,10 @@ const properties = new Map([
   ['OFFICE_PORTAL_SHEET_ID', 'sheet_for_unit_test'],
   ['OFFICE_PORTAL_SESSION_SECRET', 'unit-test-session-secret-that-is-over-32-characters'],
   ['OFFICE_PORTAL_OTP_PEPPER', 'unit-test-otp-pepper-that-is-different-and-long'],
+  ['OFFICE_PORTAL_LOGIN_PEPPER', 'unit-test-login-pepper-that-is-different-and-long'],
 ]);
 const spreadsheet = new SpreadsheetMock();
-const sentMail = [];
 const cacheValues = new Map();
-let failNextMail = false;
 let uuidCounter = 0;
 let lockWaitCount = 0;
 
@@ -108,10 +108,6 @@ const sandbox = {
     get: key => cacheValues.get(key) ?? null,
     put: (key, value) => cacheValues.set(key, String(value)),
   }) },
-  MailApp: { sendEmail: message => {
-    if (failNextMail) { failNextMail = false; throw new Error('simulated delivery failure'); }
-    sentMail.push({ ...message });
-  } },
   Utilities: {
     DigestAlgorithm: { SHA_256: 'sha256' },
     getUuid: () => {
@@ -138,7 +134,14 @@ for (const filename of ['PortalPure.gs', 'Code.gs']) {
 const plain = value => JSON.parse(JSON.stringify(value));
 const catches = (fn, code) => assert.throws(fn, error => error && error.portalCode === code);
 
+const legacyUsers = spreadsheet.insertSheet('Users');
+const legacyUserHeaders = plain(sandbox.PORTAL_HEADERS.Users).slice(0, 13);
+legacyUsers.appendRow(legacyUserHeaders);
 sandbox.portalSetupSheets_();
+assert.deepEqual(legacyUsers.rows[0].slice(0, 13), legacyUserHeaders,
+  'v3 migration must preserve every v2 Users header in place');
+assert.deepEqual(legacyUsers.rows[0], plain(sandbox.PORTAL_HEADERS.Users),
+  'v3 migration must append login security headers');
 assert.deepEqual(Array.from(spreadsheet.sheets.keys()).sort(), [
   'CostItems', 'ManagementLogs', 'ManagementStatus', 'Notices', 'Offices', 'OtpChallenges',
   'PortalAudit', 'PortalOperations', 'RolePermissions', 'Sessions', 'Users', 'WorkOrders',
@@ -148,7 +151,7 @@ const existingSheetSnapshot = new Map(Array.from(spreadsheet.sheets.entries()).m
 sandbox.portalSetupSheets_();
 for (const [name, snapshot] of existingSheetSnapshot) {
   assert.equal(JSON.stringify(spreadsheet.getSheetByName(name).rows), snapshot,
-    `schema v2 setup modified existing ${name} rows`);
+    `schema v3 setup modified existing ${name} rows`);
 }
 for (const name of ['WorkOrders', 'Notices', 'CostItems']) assert(spreadsheet.getSheetByName(name));
 
@@ -159,12 +162,14 @@ function addOffice(officeId, slug, name) {
   });
 }
 function addUser(userId, officeId, email, name, role, unit = '') {
-  sandbox.portalSaveRow_('Users', {
+  const user = {
     userId, officeId, email,
     emailHash: sandbox.portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email),
     displayName: name, role, unit, enabled: true, sessionVersion: 0, permissionVersion: 0,
     createdAt: now, updatedAt: now, lastLoginAt: '',
-  });
+  };
+  sandbox.portalSetUserLoginCode_(user, '123456', now);
+  sandbox.portalSaveRow_('Users', user);
 }
 addOffice('of_system', 'system', '시스템 관리');
 addOffice('of_alpha', 'alpha', '알파아파트');
@@ -196,36 +201,13 @@ assert(!Object.hasOwn(health, 'data'), 'success response must be flat for the fr
 assert.deepEqual(post({ action: 'portalMe' }), { ok: false, error: 'session-expired' });
 assert.deepEqual(post({ action: 'notAnAction' }), { ok: false, error: 'bad-request' });
 assert.deepEqual(JSON.parse(sandbox.doPost({ postData: { contents: '{bad json' } }).getContent()), { ok: false, error: 'bad-request' });
-const beforeUnknownRows = sandbox.portalRows_('OtpChallenges').length;
-const unknownRequest = post({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'unknown@example.com' },
-});
-assert.equal(unknownRequest.ok, true);
-assert.equal(unknownRequest.accepted, true);
-assert.equal(sentMail.length, 0);
-assert.equal(sandbox.portalRows_('OtpChallenges').length, beforeUnknownRows, 'unknown identity must not grow the sheet');
+assert.deepEqual(post({
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'unknown@example.com', loginCode: '123456' },
+}), { ok: false, error: 'invalid-credentials' });
 
 function login(officeCode, email) {
-  const before = sentMail.length;
-  const requested = sandbox.portalDispatch_({ action: 'portalRequestCode', payload: { officeCode, email } });
-  assert.equal(requested.accepted, true);
-  assert.match(requested.challengeId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-  assert.equal(sentMail.length, before + 1, `OTP mail not sent for ${email}`);
-  const html = sentMail.at(-1).htmlBody;
-  const match = html.match(/>(\d{6})</);
-  assert(match, 'six digit code was not present in the captured email');
-  const verified = sandbox.portalDispatch_({
-    action: 'portalVerifyCode',
-    payload: { officeCode, email, code: match[1], challengeId: requested.challengeId },
-  });
-  return { ...verified, code: match[1], challengeId: requested.challengeId };
-}
-function ageOtp(email) {
-  const hash = sandbox.portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
-  sandbox.portalRows_('OtpChallenges').filter(row => row.identityHash === hash).forEach(row => {
-    row.createdAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    row.lastSentAt = row.createdAt;
-    sandbox.portalSaveRow_('OtpChallenges', row);
+  return sandbox.portalDispatch_({
+    action: 'portalLogin', payload: { officeCode, email, loginCode: '123456' },
   });
 }
 
@@ -238,13 +220,12 @@ assert.equal(typeof chiefA.expiresAt, 'number');
 const chiefSessionRow = sandbox.portalRows_('Sessions').find(row => row.userId === 'usr_chief_a');
 assert(chiefSessionRow.tokenHash);
 assert(!Object.values(chiefSessionRow).includes(chiefA.sessionToken), 'raw session token must never be stored');
-const chiefOtpRow = sandbox.portalRows_('OtpChallenges').find(row => row.challengeId === chiefA.challengeId);
-assert(chiefOtpRow.codeHash);
-assert(!Object.hasOwn(chiefOtpRow, 'code'));
-assert(!Object.values(chiefOtpRow).includes(chiefA.code), 'raw OTP must never be stored');
+const chiefUserRow = sandbox.portalUserById_('usr_chief_a');
+assert(chiefUserRow.loginCodeHash && chiefUserRow.loginCodeSalt);
+assert(!Object.values(chiefUserRow).includes('123456'), 'raw login code must never be stored');
 
 const me = sandbox.portalDispatch_({ action: 'portalMe', sessionToken: chiefA.sessionToken });
-assert.deepEqual(Object.keys(plain(me.user)).sort(), ['active', 'email', 'id', 'name', 'permissions', 'role'].sort());
+assert.deepEqual(Object.keys(plain(me.user)).sort(), ['active', 'email', 'id', 'loginCodeConfigured', 'name', 'permissions', 'role'].sort());
 assert.deepEqual(plain(me.permissions), plain(me.user.permissions));
 assert.equal(typeof me.expiresAt, 'number');
 
@@ -581,7 +562,7 @@ assert.equal(sandbox.portalRows_('ManagementLogs').length, logRowsBeforeReplay +
 const userRequestId = newRequestId();
 const userPayload = {
   requestId: userRequestId, email: 'dedupe@example.com', name: '재시도 입주민',
-  role: 'resident', active: true, unit: '102-202',
+  role: 'resident', active: true, unit: '102-202', loginCode: '654321',
 };
 const userRowsBeforeReplay = sandbox.portalRows_('Users').length;
 appendFailuresBySheet.set('PortalAudit', 1);
@@ -710,7 +691,6 @@ sandbox.portalDispatch_({
   payload: { requestId: newRequestId(), userId: 'usr_fac_a', permissions: ['dashboard.view', 'status.view', 'logs.view'] },
 });
 catches(() => sandbox.portalDispatch_({ action: 'portalMe', sessionToken: facility.sessionToken }), 'session_stale');
-ageOtp('fac-a@example.com');
 const facilityAgain = login('alpha', 'fac-a@example.com');
 assert(facilityAgain.user.permissions.includes('status.manage'), 'view override removed status.manage');
 assert(facilityAgain.user.permissions.includes('logs.manage'), 'view override removed logs.manage');
@@ -755,102 +735,70 @@ catches(() => sandbox.portalDispatch_({
   payload: { requestId: newRequestId(), officeId: 'of_alpha', userId: 'usr_chief_a', email: 'chief-a@example.com', name: '알파 관리소장', role: 'facility_manager', active: true, unit: '' },
 }), 'last_manager_chief');
 
-const oldEmailRequest = sandbox.portalDispatch_({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'old-email@example.com' },
-});
-const oldEmailCode = sentMail.at(-1).htmlBody.match(/>(\d{6})</)[1];
 sandbox.portalDispatch_({
   action: 'portalUserSave', sessionToken: chiefA.sessionToken,
   payload: {
     requestId: newRequestId(), userId: 'usr_email_change', email: 'new-email@example.com',
-    name: '이메일 변경', role: 'resident', active: true, unit: '',
+    name: '이메일 변경', role: 'resident', active: true, unit: '', loginCode: '654321',
   },
 });
-const changedEmailChallenge = sandbox.portalRows_('OtpChallenges').find(row => row.challengeId === oldEmailRequest.challengeId);
-assert(changedEmailChallenge.revokedAt, 'email change must revoke unused challenges in the same lock');
-changedEmailChallenge.revokedAt = '';
-sandbox.portalSaveRow_('OtpChallenges', changedEmailChallenge);
 assert.deepEqual(post({
-  action: 'portalVerifyCode',
-  payload: {
-    officeCode: 'alpha', email: 'old-email@example.com', code: oldEmailCode,
-    challengeId: oldEmailRequest.challengeId,
-  },
-}), { ok: false, error: 'invalid-credentials' },
-'verify must compare the challenge identity with the user current email hash even for a legacy unrevoked row');
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'old-email@example.com', loginCode: '123456' },
+}), { ok: false, error: 'invalid-credentials' });
+assert.equal(sandbox.portalDispatch_({
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'new-email@example.com', loginCode: '654321' },
+}).user.id, 'usr_email_change');
+const changedUser = sandbox.portalUserById_('usr_email_change');
+assert(changedUser.loginCodeHash && changedUser.loginCodeSalt);
+assert(!Object.values(changedUser).includes('654321'), 'raw changed login code must never be stored');
 
 const genericInvalidCredentials = { ok: false, error: 'invalid-credentials' };
 assert.deepEqual(post({
-  action: 'portalVerifyCode',
-  payload: {
-    officeCode: 'alpha', email: 'expired@example.com', code: '123456',
-    challengeId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
-  },
-}), genericInvalidCredentials, 'a fake challenge must use the generic credential error');
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'expired@example.com', loginCode: '000000' },
+}), genericInvalidCredentials, 'wrong login code must use the generic credential error');
 
-const expiredRequest = sandbox.portalDispatch_({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'expired@example.com' },
-});
-const expiredCode = sentMail.at(-1).htmlBody.match(/>(\d{6})</)[1];
-const expiredChallenge = sandbox.portalRows_('OtpChallenges').find(row => row.challengeId === expiredRequest.challengeId);
-expiredChallenge.expiresAt = new Date(Date.now() - 1000).toISOString();
-sandbox.portalSaveRow_('OtpChallenges', expiredChallenge);
-assert.deepEqual(post({
-  action: 'portalVerifyCode',
-  payload: {
-    officeCode: 'alpha', email: 'expired@example.com', code: expiredCode,
-    challengeId: expiredRequest.challengeId,
-  },
-}), genericInvalidCredentials, 'an expired challenge must not be distinguishable from a fake challenge');
-
-const gateRequest = sandbox.portalDispatch_({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'gate@example.com' },
-});
-const gateCode = sentMail.at(-1).htmlBody.match(/>(\d{6})</)[1];
-const gateBucket = Math.floor(Date.now() / (sandbox.PORTAL_OTP_GLOBAL_WINDOW_SECONDS * 1000));
-const gateCacheKey = `office-portal-otp-global-${gateBucket}`;
-cacheValues.set(gateCacheKey, String(sandbox.PORTAL_OTP_GLOBAL_WINDOW_LIMIT));
+const gateBucket = Math.floor(Date.now() / (sandbox.PORTAL_LOGIN_GLOBAL_WINDOW_SECONDS * 1000));
+const gateCacheKey = `office-portal-login-global-${gateBucket}`;
+cacheValues.set(gateCacheKey, String(sandbox.PORTAL_LOGIN_GLOBAL_WINDOW_LIMIT));
 const lockWaitsBeforeGate = lockWaitCount;
 assert.deepEqual(post({
-  action: 'portalVerifyCode',
-  payload: {
-    officeCode: 'alpha', email: 'gate@example.com', code: gateCode,
-    challengeId: gateRequest.challengeId,
-  },
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'gate@example.com', loginCode: '123456' },
 }), { ok: false, error: 'rate-limited' });
 assert.equal(lockWaitCount, lockWaitsBeforeGate,
-  'verify flood gate must reject before taking the global script lock');
-assert.equal(sandbox.portalRows_('OtpChallenges').find(row => row.challengeId === gateRequest.challengeId).attempts, 0,
-  'verify flood gate must reject before scanning/updating the challenge');
+  'login flood gate must reject before taking the global script lock');
 cacheValues.delete(gateCacheKey);
 
-const wrongRequest = sandbox.portalDispatch_({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'attempts@example.com' },
-});
-const correctWrongCode = sentMail.at(-1).htmlBody.match(/>(\d{6})</)[1];
-for (let attempt = 0; attempt < 5; attempt += 1) {
-  catches(() => sandbox.portalDispatch_({
-    action: 'portalVerifyCode',
-    payload: { officeCode: 'alpha', email: 'attempts@example.com', code: '999999', challengeId: wrongRequest.challengeId },
-  }), 'invalid_credentials');
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  catches(() => sandbox.portalDispatch_({ action: 'portalLogin',
+    payload: { officeCode: 'alpha', email: 'attempts@example.com', loginCode: '999999' },
+  }), attempt === 5 ? 'rate_limited' : 'invalid_credentials');
 }
 catches(() => sandbox.portalDispatch_({
-  action: 'portalVerifyCode',
-  payload: { officeCode: 'alpha', email: 'attempts@example.com', code: correctWrongCode, challengeId: wrongRequest.challengeId },
-}), 'invalid_credentials');
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'attempts@example.com', loginCode: '123456' },
+}), 'rate_limited');
+const lockedUser = sandbox.portalUserById_('usr_bad');
+assert.equal(Number(lockedUser.loginFailedAttempts), 5);
+assert(sandbox.portalTime_(lockedUser.loginLockedUntil) > Date.now());
+lockedUser.loginLockedUntil = new Date(Date.now() - 1000).toISOString();
+sandbox.portalSaveRow_('Users', lockedUser);
+assert.equal(login('alpha', 'attempts@example.com').user.id, 'usr_bad');
 
-failNextMail = true;
-const deliveryResponse = post({
-  action: 'portalRequestCode', payload: { officeCode: 'alpha', email: 'delivery@example.com' },
-});
-assert.equal(deliveryResponse.ok, true, 'mail failure must not reveal an eligible account');
-assert.equal(deliveryResponse.accepted, true);
-const deliveryChallenge = sandbox.portalRows_('OtpChallenges').find(row => row.challengeId === deliveryResponse.challengeId);
-assert(deliveryChallenge.revokedAt);
+properties.set('OFFICE_PORTAL_BOOTSTRAP_SLUG', 'alpha');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL', 'delivery@example.com');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE', '456789');
+const ownerReset = plain(sandbox.portalSetLoginCodeFromProperties_());
+assert.equal(ownerReset.userId, 'usr_fail');
+assert.equal(ownerReset.loginCodeConfigured, true);
+for (const key of ['OFFICE_PORTAL_BOOTSTRAP_SLUG', 'OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL', 'OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE']) {
+  assert.equal(properties.has(key), false, `${key} must be deleted after owner reset`);
+}
+assert.equal(sandbox.portalDispatch_({
+  action: 'portalLogin', payload: { officeCode: 'alpha', email: 'delivery@example.com', loginCode: '456789' },
+}).user.id, 'usr_fail');
 
 const audits = sandbox.portalRows_('PortalAudit');
 const auditJson = JSON.stringify(audits);
-for (const forbiddenValue of [chiefA.sessionToken, chiefA.code, 'chief-a@example.com', '주철관 보수', '이상 없음']) {
+for (const forbiddenValue of [chiefA.sessionToken, '123456', '654321', '456789', 'chief-a@example.com', '주철관 보수', '이상 없음']) {
   assert(!auditJson.includes(forbiddenValue), `audit leaked sensitive/content value: ${forbiddenValue}`);
 }
 const auditList = sandbox.portalDispatch_({
@@ -920,4 +868,4 @@ assert.deepEqual({
 assert(!plain(sandbox.PORTAL_ACTIONS).includes('portalPruneExpiredAuthRows_'),
   'the prune function must not be exposed as a public web action');
 
-console.log('PASS  office portal server OTP, hashed session, RBAC, office isolation, redaction, and admin safety');
+console.log('PASS  office portal server admin login code, lockout, hashed session, RBAC, office isolation, redaction, and admin safety');
