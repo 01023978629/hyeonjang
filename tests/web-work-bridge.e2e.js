@@ -71,6 +71,7 @@ UTM Campaign: office-pilot
 개인정보 수집·이용 동의: 동의
 문의 내용: 입주민 정보 없이 시험 운영 상담을 원합니다.`
 };
+FIXTURES.inbox = FIXTURES.leak + '\n접수번호: LD-20260903-0007';
 
 let browser;
 (async () => {
@@ -130,14 +131,15 @@ let browser;
       noConsent:fixtures.interior.replace('\n개인정보 수집·이용 동의: 동의',''),
       declined:mutate(fixtures.leak, '개인정보 수집·이용 동의: 동의', '개인정보 수집·이용 동의: 미동의'),
       sourceMismatch:mutate(fixtures.office, '접수 경로: office-pilot', '접수 경로: website'),
-      officeMissing:fixtures.office.replace('\n단지명: 테스트 한빛아파트','')
+      officeMissing:fixtures.office.replace('\n단지명: 테스트 한빛아파트',''),
+      badReceipt:fixtures.interior+'\n접수번호: 7'
     };
     return Object.fromEntries(Object.entries(cases).map(([key,text]) => {
       try { webWorkParse(text); return [key,'accepted']; }
       catch (error) { return [key,error && error.code]; }
     }));
   }, FIXTURES);
-  assert.deepEqual(rejection, {unknown:'web-work-invalid',duplicate:'web-work-invalid',html:'web-work-invalid',oversize:'web-work-invalid',noConsent:'web-work-invalid',declined:'web-work-invalid',sourceMismatch:'web-work-invalid',officeMissing:'web-work-invalid'}, 'strict parser rejects malformed, non-consented and mismatched-source mail');
+  assert.deepEqual(rejection, {unknown:'web-work-invalid',duplicate:'web-work-invalid',html:'web-work-invalid',oversize:'web-work-invalid',noConsent:'web-work-invalid',declined:'web-work-invalid',sourceMismatch:'web-work-invalid',officeMissing:'web-work-invalid',badReceipt:'web-work-invalid'}, 'strict parser rejects malformed, non-consented and mismatched-source mail');
 
   const before = await page.evaluate(() => {
     state.projects=[];state.notes=[];state.aptOrders=[];
@@ -207,6 +209,20 @@ let browser;
   assert.equal(registered.projects[0].sourceInquiryOrigin, 'website');
   assert.match(registered.notes[0].text, /개인정보 동의: 동의/);
   assert.doesNotMatch(registered.serialized, /\[만물인테리어 상담 신청\]|example\.invalid/, 'raw email/header and external URL are not persisted');
+
+  // 접수함(lead-inbox)이 붙인 접수번호: 현장에 남고, 같은 번호는 본문이 달라도 두 번 등록되지 않는다.
+  const receipt = await page.evaluate(async fixtures => {
+    const parsed=webWorkParse(fixtures.inbox);
+    const plain=webWorkParse(fixtures.leak);
+    __webWorkDraft=await webWorkDraftFromText(fixtures.inbox);
+    const firstId=__webWorkDraft.id,ok=await webWorkRegister(firstId);
+    const projects=state.projects.length,project=state.projects[state.projects.length-1],note=state.notes[state.notes.length-1].text;
+    __webWorkDraft=await webWorkDraftFromText(fixtures.inbox.replace('이름은 선택 입력이라 비워 두었습니다.','다른 메모입니다.'));
+    const secondId=__webWorkDraft.id,again=await webWorkRegister(secondId),projectsAfter=state.projects.length;
+    state.projects=state.projects.slice(0,1);state.notes=state.notes.slice(0,1);
+    return {receiptNo:parsed.fields.receiptNo,plainReceipt:plain.fields.receiptNo||'',sameIdAsPlain:firstId===(await webWorkDraftFromText(fixtures.leak)).id,ok,projects,projectReceipt:project.sourceReceiptNo,noteHasReceipt:/^접수번호: LD-20260903-0007$/m.test(note),idsDiffer:firstId!==secondId,again,projectsAfter};
+  }, FIXTURES);
+  assert.deepEqual(receipt,{receiptNo:'LD-20260903-0007',plainReceipt:'',sameIdAsPlain:true,ok:true,projects:2,projectReceipt:'LD-20260903-0007',noteHasReceipt:true,idsDiffer:true,again:false,projectsAfter:2},'receipt number is kept on the project and note, does not change the dedupe id, and blocks a second registration of the same inbox lead');
 
   const guards = await page.evaluate(async fixtures => {
     let snapshots=0,persists=0,postPersists=0;
