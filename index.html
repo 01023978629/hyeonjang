@@ -2400,7 +2400,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v248-pwdwording';
+const APP_BUILD='hyeonjang-v249-receiptno';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -28171,7 +28171,7 @@ const WEB_WORK_FIELD_LIMITS=Object.freeze({
   name:60,phone:30,space:180,symptoms:500,scope:700,budgetTime:180,design:500,
   estimate:240,reference:500,memo:1200,simSpec:1400,lookSpec:1400,
   complexName:80,officeContactName:50,region:80,pilotInterest:240,desiredStart:80,
-  inquiryPurpose:120,preferredSchedule:120,bookingStatus:30,intakeSource:60,privacyConsent:20,
+  inquiryPurpose:120,preferredSchedule:120,bookingStatus:30,intakeSource:60,privacyConsent:20,receiptNo:40,
   discardLink:1000,discardSourcePage:300,discardCta:100,discardUtmSource:100,discardUtmMedium:100,discardUtmCampaign:160
 });
 const WEB_WORK_LABEL_MAP=Object.freeze({
@@ -28181,7 +28181,7 @@ const WEB_WORK_LABEL_MAP=Object.freeze({
   '관리사무소 담당자':'officeContactName','지역':'region','관심 업무':'pilotInterest',
   '도입 희망 시점':'desiredStart','신청 목적':'inquiryPurpose','희망 일정':'preferredSchedule',
   '예약 상태':'bookingStatus','접수 경로':'intakeSource','개인정보 수집·이용 동의':'privacyConsent',
-  '개인정보 동의':'privacyConsent','재현 링크':'discardLink','유입 페이지':'discardSourcePage',
+  '개인정보 동의':'privacyConsent','접수번호':'receiptNo','재현 링크':'discardLink','유입 페이지':'discardSourcePage',
   '신청 진입점':'discardCta','UTM Source':'discardUtmSource','UTM Medium':'discardUtmMedium','UTM Campaign':'discardUtmCampaign'
 });
 const WEB_WORK_FIELD_ORDER=['name','phone','space','symptoms','scope','budgetTime','design','estimate','reference','memo','simSpec','lookSpec','complexName','officeContactName','region','pilotInterest','desiredStart','inquiryPurpose','preferredSchedule','bookingStatus','intakeSource','privacyConsent'];
@@ -28267,6 +28267,8 @@ function webWorkParse(text){
   }
   if(!fields.phone||!fields.space)throw webWorkInvalid('연락처·공간 항목이 모두 필요합니다.');
   fields.phone=webWorkNormalizePhone(fields.phone);
+  // 접수번호는 공개 사이트 문의 접수함(lead-inbox)이 붙이는 LD-날짜-순번. 있으면 형식을 지키고, 같은 번호는 두 번 등록하지 않는다.
+  if(fields.receiptNo&&!/^LD-\d{8}-\d{4,6}$/.test(fields.receiptNo))throw webWorkInvalid('접수번호 형식(LD-날짜-순번)을 확인해 주세요.');
   const classification=webWorkClassify(fields.space);
   if(fields.privacyConsent!=='동의')throw webWorkInvalid('개인정보 수집·이용 동의가 확인된 문의만 등록할 수 있습니다.');
   if(fields.bookingStatus&&fields.bookingStatus!=='inquiry-only')throw webWorkInvalid('예약 상태 항목을 확인해 주세요.');
@@ -28362,7 +28364,7 @@ function webWorkCenterOpen(){
 }
 function webWorkPreviewRows(draft){
   const f=draft.fields,rows=[
-    ['분류',draft.serviceLabel],['이름',draft.customerName],['연락처',f.phone],['단지명',f.complexName],
+    ['분류',draft.serviceLabel],['접수번호',f.receiptNo],['이름',draft.customerName],['연락처',f.phone],['단지명',f.complexName],
     ['관리사무소 담당자',f.officeContactName],['지역',f.region],['관심 업무',f.pilotInterest],['도입 희망 시점',f.desiredStart],['공간',f.space],
     ['증상',f.symptoms],['범위',f.scope],['예산/시기',f.budgetTime],['관심 디자인',f.design],
     ['참고 견적',f.estimate],['신청 목적',f.inquiryPurpose],['희망 일정',f.preferredSchedule],['예약 상태',f.bookingStatus],
@@ -28375,7 +28377,7 @@ function webWorkPreviewRows(draft){
 }
 function webWorkPreviewOpen(draft){
   if(!draft||draft!==__webWorkDraft)return;
-  const duplicate=webWorkDupe(draft.id);
+  const duplicate=webWorkDupe(draft.id,draft.fields.receiptNo);
   const body=
     '<section class="web-work-preview">'+webWorkServiceCardsHtml(draft.service)+
       '<p style="margin:0 0 8px;font-size:12px;line-height:1.5"><b>아래 내용만 저장 대상입니다.</b> 붙여넣은 원문과 외부 링크는 저장하지 않습니다.</p>'+
@@ -28390,9 +28392,10 @@ function webWorkPreviewOpen(draft){
   buttons.push({label:'닫기',cls:'ghost',fn:closeModal});
   openModal('🔎 웹 문의 미리보기',body,buttons,true);
 }
-function webWorkDupe(inquiryId){
-  const id=String(inquiryId||''),line='리드ID: '+id;
+function webWorkDupe(inquiryId,receiptNo){
+  const id=String(inquiryId||''),line='리드ID: '+id,receipt=String(receiptNo||'');
   if(!/^webmail-[a-f0-9]{64}$/.test(id))return false;
+  if(receipt&&(state.projects||[]).some(function(project){return project&&project.sourceReceiptNo===receipt;}))return true;
   return (state.projects||[]).some(function(project){return project&&project.sourceInquiryId===id;})||
     (state.notes||[]).some(function(note){return note&&String(note.text||'').split('\n').some(function(value){return value.trim()===line;});});
 }
@@ -28405,7 +28408,7 @@ function webWorkProjectName(draft){
 }
 function webWorkNote(draft,projectName){
   const f=draft.fields,lines=['[웹 업무 연결]','서비스: '+draft.serviceLabel,'접수경로: Web3Forms 이메일 붙여넣기','원본 접수경로: '+draft.sourceOrigin,'개인정보 동의: 동의'];
-  [['단지명',f.complexName],['관리사무소 담당자',f.officeContactName],['지역',f.region],['관심 업무',f.pilotInterest],['도입 희망 시점',f.desiredStart],['공간',f.space],['증상',f.symptoms],['범위',f.scope],['예산/시기',f.budgetTime],['관심 디자인',f.design],['참고 견적',f.estimate],['신청 목적',f.inquiryPurpose],['희망 일정',f.preferredSchedule],['예약 상태',f.bookingStatus],['참고 사례',f.reference],['메모',f.memo],['우리집 사양서',f.simSpec],['우리집 한 채',f.lookSpec]].forEach(function(row){if(row[1])lines.push(row[0]+': '+row[1]);});
+  [['접수번호',f.receiptNo],['단지명',f.complexName],['관리사무소 담당자',f.officeContactName],['지역',f.region],['관심 업무',f.pilotInterest],['도입 희망 시점',f.desiredStart],['공간',f.space],['증상',f.symptoms],['범위',f.scope],['예산/시기',f.budgetTime],['관심 디자인',f.design],['참고 견적',f.estimate],['신청 목적',f.inquiryPurpose],['희망 일정',f.preferredSchedule],['예약 상태',f.bookingStatus],['참고 사례',f.reference],['메모',f.memo],['우리집 사양서',f.simSpec],['우리집 한 채',f.lookSpec]].forEach(function(row){if(row[1])lines.push(row[0]+': '+row[1]);});
   lines.push('리드ID: '+draft.id);
   return {id:uid(),date:new Date().toLocaleString('ko-KR'),text:lines.join('\n'),project:projectName};
 }
@@ -28420,7 +28423,7 @@ async function webWorkRegister(inquiryId){
   if(__webWorkRegistering)return false;
   const draft=__webWorkDraft;
   if(!draft||draft.id!==inquiryId){toast('미리보기 정보가 만료되었습니다. 다시 붙여넣어 주세요.');return false;}
-  if(webWorkDupe(inquiryId)){toast('이미 등록된 문의입니다.');webWorkPreviewOpen(draft);return false;}
+  if(webWorkDupe(inquiryId,draft.fields.receiptNo)){toast('이미 등록된 문의입니다.');webWorkPreviewOpen(draft);return false;}
   __webWorkRegistering=true;__modalCloseLocked=true;
   const status=document.getElementById('webWorkRegisterStatus'),buttons=[...document.querySelectorAll('#modalRoot .mfoot button')];
   buttons.forEach(function(button){button.disabled=true;});if(status)status.textContent='등록 전 안전판을 만드는 중…';
@@ -28428,12 +28431,12 @@ async function webWorkRegister(inquiryId){
   try{
     const snapped=await hjSnapshot('웹 업무 연결 등록 전',true,true);
     if(!snapped)throw new Error('snapshot-failed');
-    if(webWorkDupe(inquiryId)){toast('이미 등록된 문의입니다.');return false;}
+    if(webWorkDupe(inquiryId,draft.fields.receiptNo)){toast('이미 등록된 문의입니다.');return false;}
     const projectName=webWorkProjectName(draft);
     const project={
       name:projectName,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},
       customer:{name:draft.customerName,phone:draft.fields.phone,addr:draft.region||''},geo:null,
-      source:'web3forms-email',sourceInquiryId:draft.id,sourceService:draft.service,sourceInquiryOrigin:draft.sourceOrigin
+      source:'web3forms-email',sourceInquiryId:draft.id,sourceService:draft.service,sourceInquiryOrigin:draft.sourceOrigin,sourceReceiptNo:draft.fields.receiptNo||''
     };
     const priorProjects=state.projects||[],priorNotes=state.notes||[],priorActive=state.activeProject,priorDirty=state.dirty;
     rollback={projects:priorProjects,notes:priorNotes,activeProject:priorActive,dirty:priorDirty};
