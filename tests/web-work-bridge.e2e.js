@@ -16,6 +16,8 @@ const bridge = source.slice(start, end);
 
 assert.match(source, /\['webbridge','📥','웹 업무 연결'\]/, 'more menu exposes the bridge');
 assert.match(source, /a==='webbridge'\)webWorkCenterOpen\(\)/, 'more action routes to the bridge');
+assert.match(bridge, /const LEAD_INBOX_URL='https:\/\/01023978629\.github\.io\/manmool\/lead-inbox\.html';/, 'bridge links to the public inquiry inbox page');
+assert.match(bridge, /<a href="'\+LEAD_INBOX_URL\+'" target="_blank" rel="noopener noreferrer"/, 'inbox link opens a new tab with noopener and never reads the inbox automatically');
 for (const forbidden of ['location', 'navigator.clipboard', 'clipboard.read', 'fetch(', 'localStorage', 'sessionStorage', 'idbSet(', 'idbGet(', 'officeIntakeAccept(', 'officeIntakeOrderFromRequest(', 'state.aptOrders']) {
   assert.equal(bridge.includes(forbidden), false, 'bridge must not use forbidden automatic ingress/storage/action: ' + forbidden);
 }
