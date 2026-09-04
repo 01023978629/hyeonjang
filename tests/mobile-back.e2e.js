@@ -25,7 +25,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
 
   async function makePage() {
     const page = await ctx.newPage();
-    page.setDefaultTimeout(2500);
+    page.setDefaultTimeout(9000); // 2.5초는 CI 부하에서 이동 대기가 끊겨 간헐 실패했다(2026-09-03). 동작 검증은 아래 어서션이 한다
     page.on('pageerror', e => pageErrors.push(String(e)));
     await page.addInitScript(() => {
       try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); } catch (e) {}

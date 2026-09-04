@@ -40,10 +40,11 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
   await page.waitForTimeout(1200);
 
   // 시드 — 둔산(좌표) · 은행(좌표 없음, 배정 사진 2장이 기준) · 유성(좌표 없음, F1 에 3장이 최대 묶음, F2 에 1장) · 보관(archived, 좌표)
-  const seed = await page.evaluate(() => {
+  const SEED = () => {
+    let SEED_N = 0;
     const d = (s) => new Date(s);
     const P = (name, extra) => Object.assign({ name, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false }, extra || {});
-    const ph = (id, project, when, lat, lng, extra) => Object.assign({ id, name: id + '.jpg', ext: 'jpg', kind: 'photo', project, when: d(when), lat, lng, size: 100 + id.length * 7 + (when.length) }, extra || {});
+    const ph = (id, project, when, lat, lng, extra) => Object.assign({ id, name: id + '.jpg', ext: 'jpg', kind: 'photo', project, when: d(when), lat, lng, size: 1000 + (++SEED_N) * 7, _driveId: 'drive-' + id, address: lat ? '대전 서구 둔산동 1234 · 어느아파트' : '' }, extra || {});
     state.projects = [P('둔산현장', { lat: 36.35, lng: 127.38 }), P('은행현장'), P('유성현장'), P('보관현장', { archived: true, lat: 36.3505, lng: 127.3805 })];
     state.files = [
       ph('bank1', '은행현장', '2026-08-01T09:00:00', 36.3300, 127.4300), ph('bank2', '은행현장', '2026-08-01T09:10:00', 36.3299, 127.4301),
@@ -59,6 +60,9 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
     state.tab = 'photos'; state.activeProject = null; state.search = '';
     if (typeof __photoCache !== 'undefined') __photoCache.key = null;
     render();
+  };
+  await page.evaluate(SEED);
+  const seed = await page.evaluate(() => {
     const byFirst = {};
     (window.__clusters || []).forEach((c, i) => { const sg = window.__clusterSuggest[i]; byFirst[c.items[0].id] = sg ? { name: sg.name, why: sg.why, km: sg.km, ids: sg.ids } : null; });
     const view = document.querySelector('#view');
@@ -66,7 +70,9 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
       byFirst,
       clusterCount: window.__clusters.length,
       btns: [...view.querySelectorAll('.suggest-btn')].map(b => ({ i: b.dataset.suggest, text: b.textContent.replace(/\s+/g, ' ').trim(), clay: b.classList.contains('clay') })),
-      bar: (view.querySelector('#suggestBar') || {}).textContent || '',
+      bar: (view.querySelector('.photo-bar #btnSuggestAll') || {}).textContent || '',
+      badges: view.querySelectorAll('.unassigned-badge').length, badgesInBtn: view.querySelectorAll('.suggest-btn .unassigned-badge').length,
+      hint: [...view.querySelectorAll('.hint')].map(h => h.textContent).join(' | '),
     };
   });
   const S = seed.byFirst;
@@ -79,11 +85,13 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
   assert(S.bank1 === null && S.yus1 === null && S.yus4 === null, '다 배정된 묶음은 제안 없음');
   assert(!Object.values(S).some(sg => sg && sg.name === '보관현장'), '⑥ 보관 현장은 후보에서 제외(둔산 옆에 같은 좌표로 두어도)');
   assert(seed.btns.length === 5, '헤더 추천 버튼 5개(a·b·c·d·p): ' + JSON.stringify(seed.btns));
-  const dBtn = seed.btns.find(b => /은행현장 배정 참고: 같은 날 배정한 현장 \(확인 후 누르세요\)/.test(b.text));
+  const dBtn = seed.btns.find(b => /^👉 은행현장 참고: 같은 날 배정한 현장 \(확인 후 누르세요\)/.test(b.text));
   assert(dBtn && !dBtn.clay, '③ 참고 제안은 글로도 \'참고\'라 적고 강조하지 않는다: ' + JSON.stringify(dBtn));
   assert(seed.btns.filter(b => /^👉 /.test(b.text) && !/참고:/.test(b.text)).length === 4, '확실한 제안 4개에는 참고 표시가 없다');
+  assert(seed.badges === 6 && seed.badgesInBtn === 0, '미지정 사진이 있는 묶음 6개(a·b·c·d·e·p) 모두 「현장 미지정 N장」 배지를 그대로 둔다(추천 버튼은 셀렉트 옆): ' + JSON.stringify([seed.badges, seed.badgesInBtn]));
   assert(seed.btns.filter(b => b.clay).length === 4, '확실한 제안 4개는 강조 버튼');
-  assert(/추천이 확실한\s*4묶음/.test(seed.bar.replace(/\s+/g, ' ')) && /추천대로 전부 배정/.test(seed.bar) && /절반 배정된 묶음의 나머지/.test(seed.bar) && /안전판/.test(seed.bar), '⑧ 일괄 막대는 확실한 4묶음만 세고 무엇을 하는지 적는다: ' + seed.bar);
+  assert(/추천대로 4묶음 배정/.test(seed.bar), '⑧ 상단 요약 줄의 일괄 버튼은 확실한 4묶음만 센다: ' + seed.bar);
+  assert(/절반 배정된 묶음의 나머지/.test(seed.hint) && /안전판/.test(seed.hint) && /선택 모드와 무관/.test(seed.hint), '⑧ PC 안내문이 무엇을 하는지 적는다: ' + seed.hint);
 
   // ⑦ 한 번 눌러 배정 — a 묶음
   const one = await page.evaluate(() => {
@@ -112,12 +120,12 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
   const after = await page.evaluate(() => {
     const idx = window.__clusters.findIndex(c => c.items[0].id === 'a1');
     const h = [...document.querySelectorAll('#view .cluster')].find(el => el.querySelector('select[data-act=cluster]').dataset.ids.split(',').includes('a1'));
-    return { btn: !!document.querySelector('#view .suggest-btn[data-suggest="' + idx + '"]'), sel: h.querySelector('select[data-act=cluster]').value, sg: window.__clusterSuggest[idx], bar: (document.querySelector('#suggestBar') || {}).textContent || '' };
+    return { btn: !!document.querySelector('#view .suggest-btn[data-suggest="' + idx + '"]'), sel: h.querySelector('select[data-act=cluster]').value, sg: window.__clusterSuggest[idx], bar: (document.querySelector('#btnSuggestAll') || {}).textContent || '' };
   });
   assert(after.btn === false && after.sel === '둔산현장' && after.sg === null, '⑨ 배정 뒤 추천 버튼 사라짐·셀렉트 반영: ' + JSON.stringify(after));
   const focused = await page.evaluate(() => { const el = document.activeElement; return el && el.matches('select[data-act=cluster]') ? (el.dataset.ids.split(',').includes('p1') || el.dataset.ids.split(',').includes('a1')) : false; });
   assert(focused, '⑨ 원탭 뒤 포커스가 그 묶음의 현장 셀렉트로 간다');
-  assert(/2묶음/.test(after.bar), '⑨ 일괄 막대 개수가 2로 준다(a·p 배정 뒤): ' + after.bar);
+  assert(/2묶음/.test(after.bar), '⑨ 일괄 버튼 개수가 2로 준다(a·p 배정 뒤): ' + after.bar);
 
   // ⑧ 안전판 실패 → 아무것도 바꾸지 않는다
   const failed = await page.evaluate(async () => {
@@ -137,18 +145,43 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
     window.__dirtyCalls = 0; const origDirty = markDirty; markDirty = () => { window.__dirtyCalls++; return origDirty(); };
     const n = await photoSuggestApplyAll();
     const f = id => state.files.find(x => x.id === id).project;
-    return { n, b1: f('b1'), c1: f('c1'), p2: f('p2'), d1: f('d1'), e1: f('e1'), yus4: f('yus4'), dirty: window.__dirtyCalls, toast: document.querySelector('#toast').textContent, bar: !!document.querySelector('#suggestBar'), btns: document.querySelectorAll('#view .suggest-btn').length };
+    return { n, b1: f('b1'), c1: f('c1'), p2: f('p2'), d1: f('d1'), e1: f('e1'), yus4: f('yus4'), dirty: window.__dirtyCalls, toast: document.querySelector('#toast').textContent, bar: !!document.querySelector('#btnSuggestAll'), btns: document.querySelectorAll('#view .suggest-btn').length };
   });
   assert(bulk.n === 2 && bulk.b1 === '은행현장' && bulk.c1 === '유성현장' && bulk.p2 === '둔산현장', '⑧ 확실한 2묶음 2장 배정(p 는 원탭으로 이미): ' + JSON.stringify(bulk));
   assert(bulk.d1 === '' && bulk.e1 === '', '⑧ 참고 제안(같은 날)·근거 없음은 일괄에서 제외: ' + JSON.stringify(bulk));
   assert(bulk.yus4 === '유성현장' && bulk.dirty >= 1, '기존 배정 불변 · 저장 표시');
   assert(/2묶음 2장을 추천 현장에 배정/.test(bulk.toast), '토스트: ' + bulk.toast);
-  assert(bulk.bar === false && bulk.btns === 1, '⑨ 일괄 뒤 막대는 사라지고 참고 제안(d) 버튼만 남는다: ' + JSON.stringify(bulk));
+  assert(bulk.bar === false && bulk.btns === 1, '⑨ 일괄 뒤 버튼은 사라지고 참고 제안(d) 버튼만 남는다: ' + JSON.stringify(bulk));
 
-  // 폰(390px)에서 추천 버튼은 손가락 크기(44px 이상)
-  await page.setViewportSize({ width: 390, height: 844 });
-  const tap = await page.evaluate(() => { __photoCache.key = null; render(); const b = document.querySelector('#view .suggest-btn'); return b ? Math.round(b.getBoundingClientRect().height) : 0; });
-  assert(tap >= 44, '폰에서 추천 버튼 높이 44px 이상: ' + tap);
+  // 폰(390×844)은 새로 연 페이지에서 잰다(photo-first-screen.e2e.js 와 같은 방식 — 폭만 줄이면 PC 배치가 남는다)
+  const m = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  m.setDefaultTimeout(9000); m.on('pageerror', e => errors.push(String(e)));
+  await m.route('https://**/*', route => route.abort());
+  await m.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
+  await m.goto(APP, { waitUntil: 'domcontentloaded' });
+  await m.waitForTimeout(1200);
+  await m.evaluate(SEED);
+  const phone = await m.evaluate(() => {
+    const top = () => { const ph = document.querySelector('#view .ph'); return ph ? Math.round(ph.getBoundingClientRect().top) : 9999; };
+    // 첫 묶음에 확실한 추천이 있는 상태로 잰다(가장 최근 미지정 묶음 = a). 그 다음 추천을 끄고 같은 화면을 다시 재 차이를 본다
+    state.files.forEach(f => { if (f.id === 'a1' || f.id === 'a2') f.when = new Date('2026-08-20T09:00:00'); });
+    __photoCache.key = null; render();
+    const b = document.querySelector('#view .cluster .suggest-btn'); const all = document.querySelector('#btnSuggestAll');
+    const tap = b ? Math.round(b.getBoundingClientRect().height) : 0, inBar = !!(all && all.closest('.photo-bar')), sure = all ? all.textContent : '';
+    const btnText = b ? b.textContent.replace(/\s+/g, ' ') : '', refText = ([...document.querySelectorAll('#view .suggest-btn')].find(x => /참고/.test(x.textContent)) || {}).textContent || '';
+    const barH = () => Math.round(document.querySelector('#view .photo-bar').getBoundingClientRect().height);
+    const withSg = top(); const firstHasBtn = !!b; const barWith = barH();
+    const orig = photoSuggestFor; photoSuggestFor = () => null; __photoCache.key = null; render(); const without = top(); const barWithout = barH(); photoSuggestFor = orig; __photoCache.key = null; render();
+    return { tap, inBar, sure, withSg, without, firstHasBtn, btnText, refText, barWith, barWithout };
+  });
+  assert(phone.tap >= 44, '폰에서 추천 버튼 높이 44px 이상: ' + phone.tap);
+  assert(/^👉 둔산현장 \d+m$/.test(phone.btnText.trim()) && /참고: 같은 날$/.test(phone.refText.trim()), '폰에서는 근거를 짧게 적는다(긴 설명은 title·aria-label): ' + JSON.stringify([phone.btnText, phone.refText]));
+  assert(phone.inBar && /^✨ 추천 4묶음 배정$/.test(phone.sure.trim()), '폰에서도 일괄 버튼은 상단 요약 줄 안에 있고 짧은 이름을 쓴다(줄바꿈 방지): ' + JSON.stringify(phone));
+  // v243 규칙: 추천이 있어도 폰 첫 화면에 첫 사진이 보인다(첫 썸네일 y≤650). 별도 막대로 두면 863 까지 밀렸다(v253 실측)
+  assert(phone.barWith - phone.barWithout <= 24, '폰 상단 요약 줄은 일괄 버튼이 있어도 줄이 늘지 않는다(버튼 키 44px 만큼만) — 있음 ' + phone.barWith + 'px / 없음 ' + phone.barWithout + 'px (한 줄 더 접히면 +58)');
+  const headerDelta = (phone.withSg - phone.without) - (phone.barWith - phone.barWithout);
+  assert(phone.firstHasBtn && headerDelta <= 60, '묶음 헤더의 추천 버튼은 폰 첫 사진을 한 줄(≤60px) 넘게 밀지 않는다 — 헤더 몫 +' + headerDelta + 'px (있음 ' + phone.withSg + ' / 없음 ' + phone.without + ', 별도 막대였던 v253 은 +130)');
+  await m.close();
 
   assert(errors.length === 0, '⑩ pageerror: ' + errors.join(' | '));
   console.log('PASS  photo-suggest: gps·재방문·같은 날·절반 배정 제안, 원탭 배정, 확실한 것만 일괄(안전판 뒤), 보관 제외, pageerror 0');
