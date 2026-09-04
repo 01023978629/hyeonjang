@@ -10,6 +10,9 @@
      · 8299(static-server)·8398(mock-relay)이 안 떠 있으면 직접 띄우고,
        직접 띄운 것만 끝나고 끈다(남이 띄운 서버는 건드리지 않는다)
      · 파일당 180초 제한 — 로컬 관례와 같다
+     · (2026-09-04) 파일 몇 개를 동시에 돌린다 — 기본 min(3, CPU-1), HJ_TEST_JOBS 로 조정, 1 이면 예전처럼 순서대로.
+       공용 mock-relay(8398)를 쓰는 파일은 서로 겹치지 않게 마지막에 하나씩. 병렬 부하로 떨어진 파일은
+       끝에 한 번만 단독으로 다시 돌려 그 결과를 쓴다(로그에 '재시도' 로 남는다 — 두 번 다 떨어지면 실패).
      · 실패한 파일은 출력 꼬리를 그 자리에서 보여주고, 전부 돈 뒤 요약
      · 하나라도 실패하면 exit 1 → CI 가 배포를 멈춘다
 
@@ -18,14 +21,17 @@
    CI 주의: 브라우저 경로를 하드코딩한 옛 테스트들 때문에
    /opt/pw-browsers/chromium 이 실제 크로미움을 가리켜야 한다(심링크로 충분). */
 'use strict';
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const os = require('os');
 
 const TESTS = path.join(__dirname);
 const ROOT = path.join(__dirname, '..');
 const PER_FILE_TIMEOUT_MS = 180000;
+const JOBS = Math.max(1, Number(process.env.HJ_TEST_JOBS) || Math.min(3, (os.cpus().length || 2) - 1));
+const SERIAL_RE = /8398/;   // 공용 mock-relay 를 쓰는 파일은 동시에 돌리지 않는다
 
 function listSuite() {
   const filters = process.argv.slice(2);   // 인자 없으면 전체 — 게이트는 인자 없이 부른다
@@ -68,31 +74,74 @@ async function ensureServer(port, script, spawned) {
 
   const suite = listSuite();
   const failed = [];
+  const retried = [];
   let done = 0;
   const t0 = Date.now();
-  for (const f of suite) {
+
+  // 파일 하나 실행 — 끝나면 {ok, sec, tail}
+  const runOne = (f) => new Promise(resolve => {
     const s = Date.now();
-    const r = spawnSync(process.execPath, [f], {
-      cwd: ROOT, encoding: 'utf8', timeout: PER_FILE_TIMEOUT_MS,
-      maxBuffer: 16 * 1024 * 1024, env: process.env
+    const child = spawn(process.execPath, [f], { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', err = '', killed = false;
+    const cap = (buf, add) => (buf.length > 4 * 1024 * 1024 ? buf : buf + add);
+    child.stdout.on('data', d => { out = cap(out, String(d)); });
+    child.stderr.on('data', d => { err = cap(err, String(d)); });
+    const timer = setTimeout(() => { killed = true; try { child.kill('SIGKILL'); } catch (e) {} }, PER_FILE_TIMEOUT_MS);
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const sec = ((Date.now() - s) / 1000).toFixed(1);
+      const why = killed ? 'timeout ' + (PER_FILE_TIMEOUT_MS / 1000) + 's' : 'exit ' + code;
+      resolve({ ok: code === 0 && !killed, sec, why, tail: (out + '\n' + err).trim().split('\n').slice(-20) });
     });
-    const sec = ((Date.now() - s) / 1000).toFixed(1);
-    const ok = r.status === 0 && !r.error;
+    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, sec: '0.0', why: String(e), tail: [] }); });
+  });
+  const report = (f, r, note) => {
     done++;
-    if (ok) {
-      console.log('PASS  ' + f + '  (' + sec + 's)');
-    } else {
+    if (r.ok) console.log('PASS  ' + f + '  (' + r.sec + 's' + (note ? ', ' + note : '') + ')');
+    else {
       failed.push(f);
-      const why = r.error ? String(r.error) : 'exit ' + r.status;
-      console.log('FAIL  ' + f + '  (' + sec + 's, ' + why + ')');
-      const tail = ((r.stdout || '') + '\n' + (r.stderr || '')).trim().split('\n').slice(-20);
-      tail.forEach(l => console.log('      | ' + l));
+      console.log('FAIL  ' + f + '  (' + r.sec + 's, ' + r.why + (note ? ', ' + note : '') + ')');
+      r.tail.forEach(l => console.log('      | ' + l));
     }
+  };
+
+  const isSerial = (f) => { try { return SERIAL_RE.test(fs.readFileSync(path.join(ROOT, f), 'utf8')); } catch (e) { return true; } };
+  const parallelFiles = suite.filter(f => !/\.e2e\.js$/.test(f) || !isSerial(f));
+  const serialFiles = suite.filter(f => /\.e2e\.js$/.test(f) && isSerial(f));
+  const firstFail = [];   // 병렬에서 떨어진 파일 — 단독 재시도 대상
+
+  // 정적·단위 검사는 순서대로(빠르고, 문법이 깨졌으면 여기서 멈춘다)
+  const quick = parallelFiles.filter(f => !/\.e2e\.js$/.test(f));
+  for (const f of quick) { const r = await runOne(f); report(f, r); }
+  if (failed.length) {
+    console.log('\n정적·단위 검사가 실패해 브라우저 검사를 시작하지 않는다.');
+  } else {
+    // 브라우저 검사 — JOBS 개씩
+    const queue = parallelFiles.filter(f => /\.e2e\.js$/.test(f));
+    const results = new Map();
+    const worker = async () => {
+      while (queue.length) {
+        const f = queue.shift();
+        const r = await runOne(f);
+        if (r.ok || JOBS === 1) report(f, r); else { results.set(f, r); firstFail.push(f); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(JOBS, queue.length) }, worker));
+    // 병렬에서 떨어진 파일은 단독으로 한 번 더 — 부하 탓이면 살고, 진짜면 두 번째도 떨어진다
+    for (const f of firstFail) {
+      const first = results.get(f);
+      console.log('RETRY ' + f + '  (병렬에서 ' + first.why + ' — 단독 재시도)');
+      const r = await runOne(f);
+      if (r.ok) retried.push(f);
+      report(f, r, r.ok ? '재시도' : '재시도도 실패');
+    }
+    for (const f of serialFiles) { const r = await runOne(f); report(f, r, 'relay 직렬'); }
   }
 
   const total = ((Date.now() - t0) / 60000).toFixed(1);
   console.log('\n== ' + done + '개 중 ' + (done - failed.length) + ' 통과, '
-    + failed.length + ' 실패  (' + total + '분)');
+    + failed.length + ' 실패  (' + total + '분, 동시 ' + JOBS + ')');
+  if (retried.length) { console.log('재시도로 통과(병렬 부하 의심):'); retried.forEach(f => console.log('  · ' + f)); }
   if (failed.length) {
     console.log('실패 목록:');
     failed.forEach(f => console.log('  · ' + f));

@@ -47,6 +47,9 @@ node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
 #    러너의 파일당 180초 제한을 제거하지 마라 — 한 파일이 멈춰도 실패로 끝나야 한다.
 node tests/run-all.js
+#    (2026-09-04) 브라우저 검사는 min(3, CPU-1)개씩 동시에 돈다(약 9분 → 4분). HJ_TEST_JOBS=1 이면 예전처럼 순서대로.
+#    병렬에서 떨어진 파일은 끝에 단독으로 한 번 더 돌고 로그에 '재시도'로 남는다 — 재시도로만 통과한 파일이
+#    반복되면 그 검사의 대기 조건을 고쳐라(러너의 재시도 횟수를 늘리지 마라).
 
 # 4) 이번 OfficeOps source-only 인수인계 브랜치에서만 실행 (일반 PWA 변경은 제외)
 node tests/commercial-approval-isolation.check.js
