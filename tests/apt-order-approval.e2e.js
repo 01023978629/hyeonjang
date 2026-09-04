@@ -88,6 +88,7 @@ let browser;
     ];
     state.officeIntake={inbox:[],cursor:'',outbox:[],lastSyncAt:'',lastError:''};
     state.payLog=[];
+    await Promise.resolve(window.__hjOfficeOpsBootDone); /* 부팅이 저장값으로 덮기 전에 모의값을 넣지 않는다 */
     __commercialApproval.url='https://commercial.test/exec';__commercialApproval.token='TEST-TOKEN';
     window.commercialCall=async(action,payload)=>{
       if(action==='commercialNow')return {ok:true,serverNowKst:'2026-08-31T10:00:00+09:00',receivedAtKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce};

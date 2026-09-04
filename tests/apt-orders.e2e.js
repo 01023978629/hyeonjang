@@ -65,6 +65,7 @@ let browser;
     const officeId=state.aptOffices[0].id,id='approved-order-1',terms={workKind:'repair',scope:'욕실 실리콘 교체',exclusions:[],vatMode:'excluded',quotedAmount:80000,validUntil:'2027-12-31',scheduleWindow:'협의 후 방문'};
     const receipt={receiptId:'receipt_approved_order_1',subjectType:'aptOrder',subjectId:id,approvedTermsSha256:'a'.repeat(64),approvalEvidenceType:'message-export-file',approvalEvidenceFileId:'DRIVEFILE1234567890',approvalEvidenceSha256:'b'.repeat(64),approvedAt:'2026-08-31T09:00:00+09:00',approvedByRole:'management-office',issuedAt:'2026-08-31T09:00:01+09:00',receiptHmac:'c'.repeat(64)};
     state.aptOrders.push({id,officeId,unit:'103동 1204호',text:'욕실 실리콘 교체',amount:80000,pipeType:'기타/미지정',date:localDate(),status:'visit',source:'manual-paid-diagnosis',commercialGateVersion:1,commercialTerms:terms,commercialApproval:receipt});
+    await Promise.resolve(window.__hjOfficeOpsBootDone); /* 부팅이 저장값으로 덮기 전에 모의값을 넣지 않는다 */
     __commercialApproval.url='https://commercial.test/exec';__commercialApproval.token='TEST-TOKEN';
     window.commercialCall=async(action,payload)=>{
       if(action==='commercialNow')return {ok:true,serverNowKst:'2026-08-31T10:00:00+09:00',receivedAtKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce};
