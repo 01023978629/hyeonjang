@@ -34,7 +34,7 @@ let browser;
   await page.waitForTimeout(800);
 
   // 공통 픽스처 — 단지 2곳, 이번 달·지난달 오더
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     state.aptOffices = [
       { id: 'of1', complex: '신흥마을아파트', manager: '김소장', phone: '' },
       { id: 'of2', complex: '한밭타운', manager: '', phone: '' }
@@ -55,6 +55,7 @@ let browser;
       { id: 'b1', officeId: 'of2', unit: '1동 1호', text: '다른 단지 작업', amount: 700000, date: localDate(), status: 'billed', doneAt: ym + '-11' }
     ];
     state.schedule = []; state.payLog = [];
+    await Promise.resolve(window.__hjOfficeOpsBootDone); /* 부팅이 저장값으로 덮기 전에 모의값을 넣지 않는다 */
     __commercialApproval.url='https://commercial.test/exec';__commercialApproval.token='TEST-TOKEN';
     window.commercialCall=async(action,payload)=>{
       if(action==='commercialNow')return {ok:true,serverNowKst:'2026-08-31T10:00:00+09:00',receivedAtKst:'2026-08-31T10:00:00+09:00',nonce:payload.nonce};

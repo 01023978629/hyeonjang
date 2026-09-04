@@ -2400,7 +2400,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v251-photoaudit';
+const APP_BUILD='hyeonjang-v252-bootsync';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -28668,7 +28668,9 @@ window.addEventListener('hashchange',function(){try{if(/[#&]lead=/.test(location
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
-  try{await officeOpsBoot();}catch(e){}
+  /* 상업 승인·관리사무소 연결 설정을 IndexedDB 에서 읽는 부팅 — 완료 promise 를 노출한다(__hjRestoreDone 처럼).
+     끝나기 전에 __commercialApproval 을 바꾸면(검사 모의·설정 화면) 뒤늦게 저장값으로 덮인다(v251 배포 게이트 실패 원인). */
+  try{window.__hjOfficeOpsBootDone=officeOpsBoot().catch(function(){return null;});await window.__hjOfficeOpsBootDone;}catch(e){}
   // paid generation hydration is the committed byte-for-byte truth. Wait until
   // that choice is known before scheduling legacy boot seeders, which otherwise
   // add defaults back into an intentionally empty/null paid snapshot.
