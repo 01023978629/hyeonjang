@@ -42,6 +42,7 @@ node tests/syntax.check.js             # 문법
 node tests/dead-endpoint.check.js      # 죽은 주소·옛 규약
 node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
+node tests/serialized-keys.check.js    # 직렬화 최상위 키 목록 네 곳 일치(키를 더했으면 반드시)
 
 # 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-04 기준 105개)
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
@@ -71,7 +72,7 @@ node scripts/verify-office-ops-branch-scope.mjs
 
 | 불변식 | 지키는 테스트 |
 |---|---|
-| 직렬화 최상위 키는 허용목록에만 추가 (두 곳 동시 갱신) | `health-board`, `marketing-draft` |
+| 직렬화 최상위 키는 허용목록에만 추가 — 키 하나에 **여섯 곳**(serializeData·applyData·PAID_SERIALIZED_STATE_KEYS·유상 배열 목록·검사 허용목록 2곳) | `serialized-keys.check`(정적 대조), `health-board`, `marketing-draft`, `restore-parity`, `office-ops-conversion` |
 | 키 입력칸: 빈 값 저장 = "안 바꿈", 삭제는 [지우기]+확인만 | `key-persist` |
 | 요금은 조건형으로만 ("결제계정이 없을 때만 무료") | `cost-honesty.check` |
 | 전자계약 버튼은 서버 자가진단 통과 전까지 잠김, 잠긴 동안 요청 0 | `contract` |
