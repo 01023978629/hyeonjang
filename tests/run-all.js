@@ -131,6 +131,7 @@ async function ensureServer(port, script, spawned) {
     for (const f of firstFail) {
       const first = results.get(f);
       console.log('RETRY ' + f + '  (병렬에서 ' + first.why + ' — 단독 재시도)');
+      first.tail.slice(-8).forEach(l => console.log('      ¦ ' + l));   // 병렬 때 실패 꼬리 — 재시도로 살아나도 원인이 보이게
       const r = await runOne(f);
       if (r.ok) retried.push(f);
       report(f, r, r.ok ? '재시도' : '재시도도 실패');
