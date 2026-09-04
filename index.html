@@ -457,6 +457,9 @@
   .pb-stat{font-size:12.5px;color:var(--muted-2)}.pb-stat b{color:var(--blueprint);font-size:15px;margin-left:3px}
   .pb-stat.warn b{color:var(--warn)}
   .revisit{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(29,111,224,.12);color:var(--blueprint);font-weight:700}
+  .suggest-btn small{font-weight:600;font-size:11px;margin-left:4px}
+  .suggest-bar{border-left:4px solid var(--blueprint)}
+  @media(max-width:720px){.suggest-btn,#btnSuggestAll{min-height:44px;padding:8px 12px}}
   .unassigned-badge{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(232,145,45,.16);color:#9a5b12;font-weight:800}
   .photo-drop{padding:18px;margin-bottom:12px;border-width:2px;border-style:dashed;border-color:var(--line);background:var(--paper-2);text-align:center;font-size:13px;color:var(--muted-2);border-radius:10px;transition:.15s}
   .photo-drop.hot{border-color:var(--clay);background:#e8f1fd;color:var(--ink)}
@@ -2400,7 +2403,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v252-bootsync';
+const APP_BUILD='hyeonjang-v253-suggest';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4708,6 +4711,86 @@ async function photoAssignmentApply(picks){
     f.project=x.to;f._phase=null;n++;
   });
   if(n){try{__photoCache.key=null;}catch(e){}try{markDirty();}catch(e){}}
+  return n;
+}
+
+/* ---------- 추천 배정: 새로 들어온 묶음에 현장을 알아서 제안 ----------
+   대표 요청(9/4): "사진 분류를 더 편하게". 지금은 묶음마다 셀렉트에서 현장을 찾아야 한다.
+   묶음에 현장 없는 사진이 있으면 근거 순으로 현장을 하나 제안한다:
+     gps      묶음 GPS 가 어느 현장 기준 좌표(현장 lat/lng, 없으면 그 현장 사진의 최대 묶음)에서 500m 안 — 확실
+     revisit  같은 자리(재방문 묶음)의 다른 방문이 이미 어떤 현장에 배정됨 — 확실
+     sameday  GPS 없는 묶음인데 같은 날 다른 묶음이 배정됨 — 참고(한 번 눌러야만 반영, 일괄에는 안 넣는다)
+   한 번 누르면 그 묶음의 현장 없는 사진만 그 현장으로(이미 배정된 사진은 건드리지 않는다).
+   「추천대로 전부 배정」은 확실한 것만, 안전판 스냅샷 뒤에만. */
+const PHOTO_SUGGEST_SURE=['gps','revisit','partial'];
+function photoSuggestContext(){
+  const all=(state.files||[]).filter(f=>f&&f.kind==='photo');
+  const projects=(state.projects||[]).filter(p=>p&&p.name&&!p.archived);
+  const coords={};
+  projects.forEach(p=>{coords[p.name]=photoAuditProjectCoord(p.name,all);});
+  return {projects,coords};
+}
+function photoSuggestFor(c,ctx,clusters){
+  if(!c||!ctx)return null;
+  const open=(c.items||[]).filter(p=>!p._dup&&!p.project);
+  if(!open.length)return null;
+  const day=w=>{if(!w)return 0;const d=new Date(w);return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();};
+  const cur=mostCommon(c.items.filter(p=>!p._dup&&p.project).map(p=>p.project));
+  if(cur)return {name:cur,why:'partial',km:null,ids:open.map(p=>p.id)};
+  if(num(c.lat)&&num(c.lng)){
+    let best=null;
+    ctx.projects.forEach(p=>{
+      const ref=ctx.coords[p.name];if(!ref)return;
+      const d=geoDist(num(c.lat),num(c.lng),ref.lat,ref.lng);
+      if(d<=PHOTO_AUDIT_NEAR_KM&&(!best||d<best.km))best={name:p.name,km:d};
+    });
+    if(best)return {name:best.name,why:'gps',km:Math.round(best.km*1000),ids:open.map(p=>p.id)};
+    if(c._site&&c._site.visits){
+      const names=[];c._site.visits.forEach(v=>{if(v===c)return;v.items.forEach(p=>{if(!p._dup&&p.project)names.push(p.project);});});
+      const hit=mostCommon(names);
+      if(hit&&ctx.coords[hit]!==undefined)return {name:hit,why:'revisit',km:null,ids:open.map(p=>p.id)};
+    }
+    return null;
+  }
+  const w=c.items.find(p=>p.when)?.when;const dk=day(w);
+  if(!dk)return null;
+  const names=[];
+  (clusters||[]).forEach(o=>{if(o===c)return;const ow=o.items.find(p=>p.when)?.when;if(day(ow)!==dk)return;o.items.forEach(p=>{if(!p._dup&&p.project)names.push(p.project);});});
+  const hit=mostCommon(names);
+  if(hit&&ctx.coords[hit]!==undefined)return {name:hit,why:'sameday',km:null,ids:open.map(p=>p.id)};
+  return null;
+}
+function photoSuggestLabel(sg){
+  if(!sg)return '';
+  if(sg.why==='gps')return sg.km+'m 거리';
+  if(sg.why==='revisit')return '같은 자리 재방문';
+  if(sg.why==='partial')return '이 묶음의 나머지 사진과 같은 현장';
+  return '참고: 같은 날 배정한 현장 (확인 후 누르세요)';
+}
+function photoSuggestApply(i){
+  const c=(window.__clusters||[])[i];const sg=(window.__clusterSuggest||[])[i];
+  if(!c||!sg){toast('추천할 현장이 없습니다.');return;}
+  const ids=c.items.filter(p=>!p._dup&&!p.project).map(p=>p.id);
+  if(!ids.length){toast('이미 다 배정된 묶음입니다.');return;}
+  assignProjectMany(ids,sg.name);
+  // 버튼이 사라지므로 포커스를 그 묶음의 현장 셀렉트로 옮긴다(키보드·음성 제어)
+  setTimeout(()=>{try{const sel=[...document.querySelectorAll('#view select[data-act=cluster]')].find(el=>el.dataset.ids.split(',').includes(ids[0]));if(sel)sel.focus();}catch(e){}},150);
+}
+async function photoSuggestApplyAll(){
+  const picks=[];
+  (window.__clusters||[]).forEach((c,i)=>{const sg=(window.__clusterSuggest||[])[i];if(sg&&PHOTO_SUGGEST_SURE.includes(sg.why))picks.push({c,sg});});
+  if(!picks.length){toast('확실한 추천이 없습니다.');return 0;}
+  let snapped=false;
+  try{snapped=await hjSnapshot('추천 배정 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){toast('안전판을 만들지 못해 추천 배정을 멈췄습니다. 잠시 후 다시 시도하세요.');return 0;}
+  const names=new Set((state.projects||[]).filter(p=>!p.archived).map(p=>p.name));
+  let n=0,g=0;
+  picks.forEach(({c,sg})=>{
+    if(!names.has(sg.name))return;
+    let k=0;c.items.forEach(p=>{if(p._dup||p.project)return;p.project=sg.name;k++;});
+    if(k){n+=k;g++;try{portalAutoSync(sg.name);}catch(e){}}
+  });
+  if(n){try{__photoCache.key=null;}catch(e){}markDirty();render();toast(g+'묶음 '+n+'장을 추천 현장에 배정했습니다. 되돌리려면 안전판을 여세요.');try{const sel=document.querySelector('#view select[data-act=cluster]');if(sel)sel.focus();}catch(e){}}
   return n;
 }
 
@@ -22154,6 +22237,12 @@ function viewPhotos(){
     at=end;
   }
   window.__clusters=ordered;
+  // 추천 배정: 묶음별 제안을 미리 계산해 헤더 버튼과 「추천대로 전부 배정」에 쓴다
+  const __sugCtx=photoSuggestContext();
+  const __sug=ordered.map(c=>photoSuggestFor(c,__sugCtx,ordered));
+  window.__clusterSuggest=__sug;
+  const __sureN=__sug.filter(sg=>sg&&PHOTO_SUGGEST_SURE.includes(sg.why)).length;
+  if(__sureN)html+=`<div class="photo-bar suggest-bar" id="suggestBar"><span class="pb-stat">✨ 추천이 확실한 <b>${__sureN}</b>묶음</span><button class="clay tiny" id="btnSuggestAll">추천대로 전부 배정</button><span class="hint" style="margin:0">현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.</span></div>`;
   // 초대형 목록 최적화: 클러스터를 한꺼번에 다 그리지 않고 12개씩 점진 표시(1,000장+에서도 가볍게)
   const CHUNK=12;
   if(typeof __clusterShowN!=='number'||__clusterShowKey!==state.activeProject+'|'+state.search){__clusterShowN=CHUNK;__clusterShowKey=state.activeProject+'|'+state.search;}
@@ -22176,6 +22265,8 @@ function viewPhotos(){
     const unBadge=unN?`<span class="unassigned-badge">현장 미지정 ${unN}장</span>`:'';
     const dupN=c.items.length-visible.length;
     const repairBtn=clusterRepairButton(visible);
+    const sg=__sug[i];
+    const suggestBtn=sg?`<button class="${PHOTO_SUGGEST_SURE.includes(sg.why)||sg.why==='partial'?'clay':'ghost'} tiny suggest-btn" data-suggest="${i}" aria-label="${escapeAttr(sg.name)} 배정 — ${escapeAttr(fmtDay(when))} 묶음, ${escapeAttr(photoSuggestLabel(sg))}">👉 ${escapeHtml(sg.name)} 배정 <small>${escapeHtml(photoSuggestLabel(sg))}</small></button>`:'';
     // 작업명: 이 묶음 사진들에 저장된 _worklabel(공통)
     const worklabel=mostCommon(c.items.map(p=>p._worklabel).filter(Boolean))||'';
     // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
@@ -22184,6 +22275,7 @@ function viewPhotos(){
     html+=`<div class="cluster"><div class="cluster-h">
       <span class="when">현장 방문 ${i+1} · ${fmtDay(when)}</span>
       ${unBadge}
+      ${suggestBtn}
       ${revisit}
       <span class="where">${where}</span>${geoBtn}${nmapBtn}${bnameBtn}
       <span class="n">${visible.length}장${dupN?` (+중복 ${dupN})`:''}</span>
@@ -24072,7 +24164,7 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -24224,6 +24316,8 @@ function setupDelegation(){
     if(d.pdf!==undefined)return exportProjectPDF(d.pdf);
     if(d.zip!==undefined)return exportProjectZIP(d.zip);
     if(d.portfolio!==undefined)return exportPortfolio(d.portfolio);
+    if(d.suggest!==undefined){e.stopPropagation();return photoSuggestApply(+d.suggest);}
+    if(t.id==='btnSuggestAll'){e.stopPropagation();return photoSuggestApplyAll();}
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.nmap!==undefined)return openNaverMapFor((window.__clusters||[])[+d.nmap]);
     if(d.bname!==undefined)return setClusterBuilding((window.__clusters||[])[+d.bname]);
