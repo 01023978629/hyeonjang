@@ -87,7 +87,10 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(out.closed, 'Esc를 누르면 촬영 현장 선택 시트가 닫혀야 함');
     assert(out.restored, '닫힌 뒤 초점이 촬영 버튼으로 돌아와야 함');
     assert(out.unlocked, '닫힌 뒤 화면 스크롤 잠금을 풀어야 함');
+    // 시트를 닫으면 history.back() 이 setTimeout(0) 뒤에 돌아온다 — 그 popstate 가 오기 전에 다음 시트를 열면 열기가 미뤄져(deferred) 시트가 없다
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
     await page.evaluate(() => openCamera());
+    await page.waitForSelector('#cameraProjectSheet');
   });
 
   await test('① 현장을 고르면 그 현장이 활성화되고 카메라가 열린다', async () => {
@@ -107,11 +110,13 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   });
 
   await test('① 미배정 촬영은 경고된 보조 버튼을 직접 눌렀을 때만 열린다', async () => {
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
     await page.evaluate(() => {
       state.activeProject = null;
       const old = document.getElementById('camInput'); if (old) old.remove();
       openCamera();
     });
+    await page.waitForSelector('#cameraProjectSheet');
     const btn = page.locator('#cameraUnassigned');
     assert(await btn.count() === 1, '미배정 촬영 버튼은 선택 시트 안에 한 개 있어야 함');
     const chooserReady = page.waitForEvent('filechooser');

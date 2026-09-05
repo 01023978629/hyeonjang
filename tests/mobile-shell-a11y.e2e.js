@@ -92,8 +92,11 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('② 더보기 시트는 검색에 초점을 두고 Esc·Tab·스크롤 잠금을 지원한다', async () => {
     const opener = page.locator('[data-mnav="__more"]');
+    // 시트를 닫으면 history.back() 이 setTimeout(0) 뒤에 돌아온다 — 그 popstate 가 오기 전에 다음 시트를 열면 열기가 미뤄져(deferred) 시트가 없다
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
     await opener.focus();
     await opener.click();
+    await page.waitForSelector('#moreSheet');
     await page.waitForTimeout(30);
     const before = await page.evaluate(() => {
       const sheet = document.getElementById('moreSheet');

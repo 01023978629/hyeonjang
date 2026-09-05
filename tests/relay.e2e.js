@@ -168,7 +168,8 @@ async function pollMock(pred, ms, label) {
     const st = await pollMock(s => s.revision === 5, 12000, 'revision 5(큐 재전송)');
     assert(st.data.projects[0].received === 3000, '최신 데이터로 재전송');
     // flush가 전송 후 큐 정리를 마칠 때까지 폴링(전송 도착≠정리 완료)
-    await page.waitForFunction(async () => ((await idbGet('relay_queue')) || []).length === 0, null, { timeout: 8000 });
+    // waitForFunction 에 async 함수를 주면 Promise 자체가 참으로 잡혀 바로 통과한다(기다리지 않음) — 페이지 안에서 직접 폴링한다
+    await page.evaluate(async () => { for (let i = 0; i < 320; i++) { if (((await idbGet('relay_queue')) || []).length === 0) return; await new Promise(r => setTimeout(r, 25)); } throw new Error('relay_queue 가 8초 안에 비지 않았다'); });
     await page.waitForFunction(() => { const el = document.getElementById('relayStat'); return el && el.textContent.indexOf('클라우드 저장 완료') >= 0; }, null, { timeout: 8000 });
   });
 
@@ -186,7 +187,8 @@ async function pollMock(pred, ms, label) {
     await page.evaluate(() => { __relay.url = ''; });
     await page.evaluate(() => { state.projects[0].received = 5000; markDirty(); });
     await page.waitForFunction(() => { const el = document.getElementById('relayStat'); return el && el.textContent.indexOf('기기에만 저장됨') >= 0; }, null, { timeout: 10000 });
-    await page.waitForTimeout(1200);
+    // '기기에만 저장됨' 은 markDirty 안에서 바로 찍힌다 — 실제 IDB 저장(0.8초 디바운스+잠금)은 값이 들어갈 때까지 기다린다
+    await page.evaluate(async () => { for (let i = 0; i < 320; i++) { const s = await idbGet('appState'); if (s && s.projects && s.projects[0] && s.projects[0].received === 5000) return; await new Promise(r => setTimeout(r, 25)); } });
     const saved = await page.evaluate(async () => { const s = await idbGet('appState'); return s && s.projects && s.projects[0].received; });
     assert(saved === 5000, '로컬(idb appState) 저장 유지, got ' + saved);
     assert(errsA.length === before, 'pageerror 없음');
@@ -343,7 +345,8 @@ async function pollMock(pred, ms, label) {
       const confirmText = document.querySelector('#modalRoot .modal')?.innerText || '';
       const unchanged = recs.every(x => !x.thumb && x._virtual);
       const confirmBtn = [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => b.textContent.includes('선택 순서'));
-      confirmBtn.click(); await new Promise(resolve => setTimeout(resolve, 500));
+      confirmBtn.click();
+      for (let i = 0; i < 200 && !recs.every(x => x.thumb && x._virtual === false); i++) await new Promise(resolve => setTimeout(resolve, 25));   // 미리보기 복구(디코드+IDB 쓰기)가 끝날 때까지
       const linked = recs.every(x => /^data:image\//.test(x.thumb || '') && x._virtual === false);
       const preserved = recs.every(x => x.project === '테스트현장' && x._phase === '철거');
       for (const x of recs) await idbDel('thumb-local:' + fileKey(x));

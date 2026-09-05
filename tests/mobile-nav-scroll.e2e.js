@@ -161,7 +161,9 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
     assert(near(afterMore, before, 5), '더보기 시트가 위치를 바꾸면 안 됨: ' + before + '→' + afterMore);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(100);
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
     await page.click('.mnav-btn[data-mnav="__camera"]');
+    await page.waitForSelector('#cameraProjectSheet', { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(120);
     const afterCamera = await page.evaluate(() => window.scrollY);
     assert(near(afterCamera, before, 5), '촬영 현장 선택이 위치를 바꾸면 안 됨: ' + before + '→' + afterCamera);

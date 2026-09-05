@@ -83,7 +83,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       await page.waitForSelector('#' + sheetId);
 
       await page.evaluate(() => history.back());
-      await page.waitForFunction(id => !document.getElementById(id), sheetId, { timeout: 900 });
+      await page.waitForFunction(id => !document.getElementById(id), sheetId);
       const after = await snapshot(page);
       const closed = await page.evaluate(({ backdropId, bodyClass }) => ({
         backdropGone: !document.getElementById(backdropId),
@@ -95,7 +95,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       assert(after.projectNames === before.projectNames && after.fileIds === before.fileIds, kind + ' 뒤로가기가 업무 데이터를 바꾸면 안 됨');
       assert(near(after.scrollY, before.scrollY, 5), kind + ' 뒤로가기가 목록 위치를 바꾸면 안 됨: ' + before.scrollY + ' → ' + after.scrollY);
       assert(closed.backdropGone && closed.unlocked, kind + ' 시트 배경과 스크롤 잠금도 함께 정리돼야 함');
-      await page.waitForFunction(sel => document.activeElement === document.querySelector(sel), openerSelector, { timeout: 900 });
+      await page.waitForFunction(sel => document.activeElement === document.querySelector(sel), openerSelector);
     } finally {
       await page.close();
     }
@@ -123,7 +123,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       await page.waitForTimeout(80);
       assert(await page.locator('#projSheet').count() === 1, '보관 목록을 펼쳐 다시 만든 현장 선택 시트가 사라지면 안 됨');
       await page.evaluate(() => history.back());
-      await page.waitForFunction(() => !document.getElementById('projSheet'), null, { timeout: 900 });
+      await page.waitForFunction(() => !document.getElementById('projSheet'));
       const stateAfter = await page.evaluate(() => ({ href: location.href, marker: history.state && history.state.hjTest }));
       assert(stateAfter.href === APP && stateAfter.marker === 'top', '한 번의 뒤로가기는 시트만 닫고 앱 기록을 유지해야 함: ' + JSON.stringify(stateAfter));
     } finally {
@@ -140,7 +140,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
         const finish = value => { if (done) return; done = true; window.removeEventListener('popstate', onPop); resolve(value); };
         const onPop = () => finish(history.state && history.state.hjTest);
         window.addEventListener('popstate', onPop);
-        setTimeout(() => finish('__timeout__'), 900);
+        setTimeout(() => finish('__timeout__'), 5000);   // 기록 이동은 브라우저 프로세스 왕복 — CI 부하에서 0.9초를 넘긴다(기본 대기 9초와 맞춤)
       }));
       await page.locator('#moreSheetClose').click();
       const restored = await sheetEntryClosed;
@@ -178,7 +178,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       assert(afterLatePop.appEntry === 'top', '경합 처리 중 기존 앱 기록을 바꾸면 안 됨: ' + JSON.stringify(afterLatePop));
 
       await page.evaluate(() => history.back());
-      await page.waitForFunction(() => !document.getElementById('projSheet'), null, { timeout: 900 });
+      await page.waitForFunction(() => !document.getElementById('projSheet'));
       const afterBack = await page.evaluate(() => ({ marker: history.state && history.state.hjTest, href: location.href }));
       assert(afterBack.marker === 'top' && afterBack.href === APP, '다음 뒤로가기는 새 시트만 닫아야 함: ' + JSON.stringify(afterBack));
     } finally {
@@ -193,7 +193,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       await page.waitForSelector('#moreSheet');
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);
-      await page.waitForFunction(() => !(history.state && history.state.__hjMobileSheet), null, { timeout: 1200 });
+      await page.waitForFunction(() => !(history.state && history.state.__hjMobileSheet));
       const cleaned = await page.evaluate(() => ({
         sheet: !!document.getElementById('moreSheet'),
         appEntry: history.state && history.state.hjTest,
@@ -233,7 +233,8 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
           observer.observe(document.body, { childList: true });
         }, 0);
       });
-      await page.waitForTimeout(500);
+      await page.waitForFunction(() => !document.getElementById('projSheet') && !__mobileSheetHistoryRetire && !__mobileSheetHistoryDeferredOpen, null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(50);
       const afterRapidBack = await page.evaluate(() => ({
         sheet: !!document.getElementById('projSheet'),
         appEntry: history.state && history.state.hjTest,
@@ -259,7 +260,8 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
           history.back();
         }, 0);
       });
-      await page.waitForTimeout(500);
+      await page.waitForFunction(() => !document.getElementById('projSheet') && !__mobileSheetHistoryActive && !__mobileSheetHistoryDeferredOpen && !!(history.state && history.state.hjTest === 'base'), null, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(50);
       const afterBackBeforeOpen = await page.evaluate(() => ({
         sheet: !!document.getElementById('projSheet'),
         appEntry: history.state && history.state.hjTest,

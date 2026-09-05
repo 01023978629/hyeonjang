@@ -62,6 +62,7 @@ let browser;
   await p3.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await p3.goto(APP + '#hjreq=' + req, { waitUntil: 'domcontentloaded' });
   await p3.waitForTimeout(1500);
+  await p3.waitForSelector('#modalRoot .clai', { timeout: 9000 }).catch(() => {});   // 요청함은 복원 뒤 0.5초에 열린다 — 느린 복원도 기다린다
   const fragment = await p3.evaluate(() => ({
     text: (document.getElementById('modalRoot') || {}).textContent || '',
     approvals: document.querySelectorAll('#modalRoot .clai').length

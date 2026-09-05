@@ -224,7 +224,7 @@ async function createActualConversionPage(browser, appUrl, scenario) {
   await context.route('https://commercial.example/**', route => routeBrowserCommercial(scenario, route));
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+  await page.evaluate(async () => { await window.__hjRestoreDone; await window.__hjOfficeOpsBootDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
   await page.evaluate(async () => {
     await idbSet('office_ops_url', 'https://office.example/ops'); await idbSet('office_ops_token', 'office-token');
     await idbSet('commercial_approval_url', 'https://commercial.example/approval'); await idbSet('commercial_approval_token', 'commercial-token');
@@ -789,6 +789,8 @@ async function runBrowserAcceptance() {
     await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(800);
+    // 부팅의 IDB 읽기(복원·중계 설정·접수함 설정)가 끝난 뒤에 모의값을 넣는다 — 고정 대기만으로는 늦게 끝난 부팅이 모의값을 덮어쓴다(v251 CI 실패와 같은 종류)
+    await page.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]));
     await page.evaluate(store => {
       __officeOps.mode = 'fresh'; __officeOps.cache = store; __officeOps.revision = store.revision;
       __commercialApproval.url = 'https://commercial.example/approval'; __commercialApproval.token = 'commercial-token';
@@ -1081,7 +1083,9 @@ async function runBrowserAcceptance() {
         });
         await actual.page.reload({ waitUntil: 'domcontentloaded' });
         const configuredBoot = await actual.page.evaluate(async candidate => {
-          const restore = await window.__hjRestoreDone; await new Promise(resolve => setTimeout(resolve, 200));
+          const restore = await window.__hjRestoreDone;
+          for (let i = 0; i < 120 && (window.__task5PaidSeederTimers || []).length < 2; i++) await new Promise(resolve => setTimeout(resolve, 25));   // 부팅 타이머 두 개가 예약될 때까지(느린 러너)
+          await new Promise(resolve => setTimeout(resolve, 200));
           const serialized = serializeData(state, candidate.savedAt), changedKeys = PAID_SERIALIZED_STATE_KEYS.filter(key => JSON.stringify(serialized[key]) !== JSON.stringify(candidate[key]));
           const legacyTask = state.aiOps && state.aiOps.queue.find(task => task && task.id === 'paid_boot_sanitize_1');
           return { restore, source: window.__hjRestoreSource, timers: window.__task5PaidSeederTimers || [], changedKeys,
