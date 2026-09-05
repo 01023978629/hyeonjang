@@ -47,8 +47,10 @@ async function boot(ctx, errors) {
   // ① 정상 저장 — savedAt 전진
   const first = await p1.evaluate(async () => {
     state.notes = [{ id: 'n1', text: '탭1 메모' }];
-    markDirty();
-    await new Promise(r => setTimeout(r, 1300));
+    const stampBefore = __tabStamp; markDirty();
+    // 저장은 0.8초 디바운스 뒤 잠금·IDB 왕복 — 스탬프가 바뀔 때까지 기다린다(최대 +5초)
+    await new Promise(r => setTimeout(r, 900));
+    for (let i = 0; i < 200 && __tabStamp === stampBefore; i++) await new Promise(r => setTimeout(r, 25));
     const cur = await idbGet('appState');
     return { savedAt: cur && cur.savedAt, stamp: __tabStamp };
   });
@@ -125,7 +127,8 @@ async function boot(ctx, errors) {
     await idbSet('appState', foreign);
     state.notes = [{ id: 'n2b', text: '탭2 수정' }];
     markDirty();
-    await new Promise(r => setTimeout(r, 1300));
+    await new Promise(r => setTimeout(r, 900));
+    for (let i = 0; i < 200 && !__tabStale; i++) await new Promise(r => setTimeout(r, 25));
     const after = await idbGet('appState');
     return { savedAt: after.savedAt, note: after.notes && after.notes[0] && after.notes[0].id, stale: __tabStale };
   });

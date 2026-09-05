@@ -79,7 +79,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const btns = [...document.querySelectorAll('#modalRoot button')];
       const del = btns.find(b => b.textContent.trim() === '삭제');
       del.click();
-      await new Promise(r2 => setTimeout(r2, 400));
+      // 삭제는 강제 스냅샷(IDB 왕복)과 removed_ids 기록 뒤에 일어난다 — 빠질 때까지 기다린다(최대 5초)
+      for (let i = 0; i < 200 && state.files.some(f => f.id === 'del1'); i++) await new Promise(r2 => setTimeout(r2, 25));
       const after = salesEstimateFiles().reduce((s, f) => s + (f.est.amount || 0), 0);
       return { before, after, gone: !state.files.some(f => f.id === 'del1'),
         kept: state.files.some(f => f.id === 'keep1'),
@@ -126,7 +127,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const warnTxt = (document.getElementById('modalRoot') || {}).textContent || '';
       const del = [...document.querySelectorAll('#modalRoot button')].find(b => b.textContent.trim() === '삭제');
       del.click();
-      await new Promise(r2 => setTimeout(r2, 400));
+      for (let i = 0; i < 200 && state.files.some(f => f.id === 'pc1'); i++) await new Promise(r2 => setTimeout(r2, 25));
       return { removed, warned: /폴더의 실제 파일이 삭제됩니다/.test(warnTxt), gone: !state.files.some(f => f.id === 'pc1') };
     });
     assert(r.warned, 'PC에서는 원본 삭제를 경고해야 함');

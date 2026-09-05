@@ -67,6 +67,12 @@ node scripts/verify-office-ops-branch-scope.mjs
   아무도 안 고쳤고, v183 폰이 화면에 '2026-07-30' 을 띄웠다. 틀린 번호는 없는
   번호보다 나쁘다 — 그 답을 믿고 엉뚱한 데를 판다. `version-sync.check.js` 가 막는다.
 - 커밋 메시지는 "무엇을" 이 아니라 **"왜"** 를 적는 것이 이 저장소의 관례다.
+- **브라우저 검사의 대기는 '끝 신호'로.** 고정 `waitForTimeout` 은 느린 러너에서 경쟁 조건이 된다(2026-09-05, manmool 배포가
+  이걸로 한 번 떨어졌다). 부팅 IDB 읽기 뒤에 모의값을 넣을 때는 `__hjRestoreDone`·`__hjRelayConfigDone`·`__hjOfficeOpsBootDone` 을
+  기다리고, IDB 왕복 뒤에 바뀌는 상태는 값이 바뀔 때까지 폴링하고, 시트를 닫은 뒤 다음 시트를 열 때는 `__mobileSheetHistoryRetire`
+  가 비기를 기다려라. **`page.waitForFunction` 에 async 함수를 주지 마라** — Promise 자체가 참으로 잡혀 기다리지 않고 바로
+  통과한다(실험으로 확인). IDB 를 읽어야 하면 `page.evaluate(async () => { for (...) { ... await idbGet(...) } throw ... })` 로
+  페이지 안에서 폴링하라(relay·storage-durability 가 그 예).
 
 ## 지켜야 할 불변식 (각각 테스트가 못박고 있다)
 

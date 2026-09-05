@@ -41,6 +41,9 @@ const BADTOOL = [{ id: 'L9', tool: 'wipe_everything', args: {}, why: '위험' }]
   // ⑦ 링크로 진입 — 주소가 지워지고 요청함이 열린다
   await page.goto(APP + '#hjreq=' + mk(OK1), { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1800);
+  // 링크 진입은 복원 뒤 0.5초에 앱이 스스로 요청함을 연다 — 복원 완료와 그 모달을 기다려 순서를 고정한다
+  await page.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone]));
+  await page.waitForSelector('#modalRoot .clai');
   await page.evaluate(() => {
     state.aptOffices = [{ id: 'of1', complex: '선비마을3단지', manager: '', phone: '' }];
     state.aptOrders = []; state.claudeDone = [];

@@ -43,7 +43,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const before = await page.evaluate(async () => ((await idbGet('hj_snaps')) || []).length);
     page.once('dialog', d => d.accept());
     await page.click('.asmDel');
-    await page.waitForTimeout(500);
+    // 삭제는 강제 스냅샷(IDB 왕복) 뒤에 일어난다 — 고정 대기 대신 상태가 바뀔 때까지 기다린다(못 바뀌면 아래 단언이 알린다)
+    await page.waitForFunction(() => state.asLog.length === 0, null, { timeout: 5000 }).catch(() => {});
     const r = await page.evaluate(async () => ({ n: state.asLog.length, snaps: ((await idbGet('hj_snaps')) || []).length }));
     assert(r.n === 0, '확인(accept) 시 AS 기록 삭제되어야: ' + r.n);
     assert(r.snaps > before, '삭제 전 강제 스냅샷이 안전판에 남아야: ' + before + '→' + r.snaps);
@@ -63,7 +64,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(afterCancel === 1, '취소 시 회의록 유지: ' + afterCancel);
     page.once('dialog', d => d.accept());
     await page.click('[data-notedel]');
-    await page.waitForTimeout(400);
+    await page.waitForFunction(() => state.notes.length === 0, null, { timeout: 5000 }).catch(() => {});
     const n = await page.evaluate(() => state.notes.length);
     assert(n === 0, '확인 시 회의록 삭제: ' + n);
   });

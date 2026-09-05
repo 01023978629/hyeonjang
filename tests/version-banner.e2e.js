@@ -64,22 +64,25 @@ let browser;
   // ③ 같은 번호 → 배너 없음
   const p3 = await open({});
   await p3.waitForTimeout(3300);
+  // 확인 시각은 서버 응답을 받은 뒤에만 남는다 — 2.5초 타이머+캐시 조회+응답이 느린 러너에서 3.3초를 넘겨도 기다린다
+  await p3.waitForFunction(() => !!localStorage.getItem('hj_ver_checked_at'), null, { timeout: 9000 }).catch(() => {});
   assert(await banner(p3) === null && p3.__swHits >= 1, '③ 같은 번호면 배너 없음(확인은 했다): hits=' + p3.__swHits);
   await p3.close();
 
   // ④ 6시간 안에 확인했으면 요청도 배너도 없다
   const p4 = await open({ server: 'hyeonjang-v999-future', checkedAt: Date.now() - 60 * 60 * 1000 });
   await p4.waitForTimeout(3300);
+  await p4.evaluate(() => appVersionAutoCheck());   // 부팅 타이머가 아직 안 돌았어도 6시간 규칙을 직접 한 번 더 태운다
   assert(await banner(p4) === null && p4.__swHits === 0, '④ 6시간 안 재확인 없음: hits=' + p4.__swHits);
 
   // ⑥ 다시 볼 때 6시간이 지났으면 확인한다
-  const shown = await p4.evaluate(async () => {
+  await p4.evaluate(() => {
     localStorage.setItem('hj_ver_checked_at', String(Date.now() - 7 * 60 * 60 * 1000));
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    await new Promise(r => setTimeout(r, 800));
-    return !!document.getElementById('hjVerNew');
   });
+  await p4.waitForSelector('#hjVerNew', { timeout: 9000 }).catch(() => {});   // 캐시 조회·sw.js 응답·배너 삽입까지 기다린다
+  const shown = await p4.evaluate(() => !!document.getElementById('hjVerNew'));
   assert(shown && p4.__swHits === 1, '⑥ 다시 볼 때 6시간 지났으면 확인·배너: shown=' + shown + ' hits=' + p4.__swHits);
 
   // ⑦ 「나중에」 → 같은 번호로 다시 안 띄운다
@@ -96,6 +99,7 @@ let browser;
   // ⑤ 오프라인 → 확인 안 함, 시각 안 남김
   const p5 = await open({ server: 'hyeonjang-v999-future', offline: true });
   await p5.waitForTimeout(3300);
+  await p5.evaluate(() => appVersionAutoCheck());   // 오프라인 규칙도 직접 한 번 더 태운다
   const off = await p5.evaluate(() => ({ banner: !!document.getElementById('hjVerNew'), stamp: localStorage.getItem('hj_ver_checked_at') }));
   assert(!off.banner && off.stamp === null && p5.__swHits === 0, '⑤ 오프라인이면 확인·기록 없음: ' + JSON.stringify(off) + ' hits=' + p5.__swHits);
   await p5.close();

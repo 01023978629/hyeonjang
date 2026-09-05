@@ -99,7 +99,8 @@ let browser;
     const b = document.querySelector('[data-oi-accept="req-xss"]');
     b.click(); b.click();
   });
-  await page.waitForTimeout(120);
+  // 승인은 잠금·직렬화·IDB 저장 뒤에 상태가 바뀐다 — 바뀔 때까지 기다린다(못 바뀌면 아래 단언이 알린다)
+  await page.waitForFunction(() => officeIntakeFindRequest('req-xss').status === 'accepted', null, { timeout: 5000 }).catch(() => {});
   const accepted = await page.evaluate(() => ({
     orders: state.aptOrders.filter(o => o.sourceRequestId === 'req-xss'),
     request: officeIntakeFindRequest('req-xss'),

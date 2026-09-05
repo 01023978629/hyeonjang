@@ -47,6 +47,8 @@ const selfTestReply = (allOk) => ({
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(700);
+  // 부팅의 IDB 읽기(복원·중계 설정·접수함 설정)가 끝난 뒤에 모의값을 넣는다 — 고정 대기만으로는 늦게 끝난 부팅이 모의값을 덮어쓴다(v251 CI 실패와 같은 종류)
+  await page.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]));
 
   // ①③ 기본은 잠김. 안내가 뜨고, 그래도 주소 입력칸은 열려 있다.
   const boot = await page.evaluate(() => {

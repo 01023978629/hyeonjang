@@ -115,8 +115,9 @@ assert(/PHOTO_SUGGEST_SURE=\['gps','revisit','partial'\]/.test(source), '일괄 
   });
   assert(partial.calls.length === 1 && partial.calls[0].ids.join() === 'p2' && partial.calls[0].p === '둔산현장' && partial.p2 === '둔산현장', '⑦ 절반 배정 묶음은 나머지 사진만 넘긴다: ' + JSON.stringify(partial));
 
-  // ⑨ 다시 그리면 a 묶음의 버튼은 없고 셀렉트가 둔산을 가리킨다
-  await page.waitForTimeout(150);
+  // ⑨ 다시 그리면 a 묶음의 버튼은 없고 셀렉트가 둔산을 가리킨다 — 앱의 rAF 재렌더와 150ms 포커스 타이머가 끝난 뒤 본다(고정 150ms 는 같은 길이라 여유가 0)
+  await page.waitForFunction(() => { const idx = window.__clusters.findIndex(c => c.items[0].id === 'a1'); return idx >= 0 && !document.querySelector('#view .suggest-btn[data-suggest="' + idx + '"]'); }, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => { const el = document.activeElement; return !!el && el.matches('select[data-act=cluster]'); }, null, { timeout: 2000 }).catch(() => {});
   const after = await page.evaluate(() => {
     const idx = window.__clusters.findIndex(c => c.items[0].id === 'a1');
     const h = [...document.querySelectorAll('#view .cluster')].find(el => el.querySelector('select[data-act=cluster]').dataset.ids.split(',').includes('a1'));

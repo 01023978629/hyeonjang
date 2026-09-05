@@ -145,15 +145,14 @@ async function waitForStorageRefresh(page) {
 }
 
 async function settleBootAppStateSave(page) {
-  await page.waitForFunction(async () => {
-    const saved = await idbGet('appState');
-    return !!(
-      saved &&
-      saved.app === '현장' &&
-      saved.version === 2 &&
-      Array.isArray(saved.calendarImports) &&
-      saved.calendarImports.length > 0
-    );
+  // waitForFunction 에 async 함수를 주면 Promise 자체가 참으로 잡혀 바로 통과한다(기다리지 않음) — 페이지 안에서 직접 폴링한다(최대 10초)
+  await page.evaluate(async () => {
+    for (let i = 0; i < 400; i++) {
+      const saved = await idbGet('appState');
+      if (saved && saved.app === '현장' && saved.version === 2 && Array.isArray(saved.calendarImports) && saved.calendarImports.length > 0) return;
+      await new Promise(r => setTimeout(r, 25));
+    }
+    throw new Error('부팅 appState 저장(calendarImports)이 10초 안에 끝나지 않았다');
   });
   const remainingBootMigrations = await page.evaluate(async () => {
     if (typeof taxCalendarEnsure !== 'function') {

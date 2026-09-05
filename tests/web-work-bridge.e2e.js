@@ -91,6 +91,8 @@ let browser;
   await page.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await page.goto('http://127.0.0.1:8299/index.html', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof webWorkParse === 'function' && typeof officeIntakeData === 'function');
+  // 복원 뒤 기본 달력 가져오기가 markDirty→0.8초 뒤 저장을 예약한다 — 아래에서 hjSnapshot/guardedPersist 를 세는 스텁을 깔기 전에 그 저장을 끝낸다
+  await page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
 
   const parsed = await page.evaluate(async fixtures => {
     const pick = value => ({
