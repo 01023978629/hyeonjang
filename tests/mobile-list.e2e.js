@@ -107,7 +107,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const r = await page.evaluate(() => {
       const inp = document.getElementById('psSearch');
       inp.value = '둔산'; inp.dispatchEvent(new Event('input'));
-      const vis = (nm) => { const el = [...document.querySelectorAll('#psList [data-psel]')].find(x => x.dataset.psel === nm); return el ? el.style.display !== 'none' : null; };
+      const vis = (nm) => { const el = [...document.querySelectorAll('#psList [data-psel]')].find(x => x.dataset.psel === nm); return !!el && el.getClientRects().length > 0; };
       const out = { d: vis('둔산현장'), w: vis('완납현장') };
       const bd = document.getElementById('projSheetBd'); if (bd) bd.click();
       return out;

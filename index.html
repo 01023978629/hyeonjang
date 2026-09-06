@@ -2405,7 +2405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v261-orderflow';
+const APP_BUILD='hyeonjang-v262-searchrecovery';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5475,24 +5475,41 @@ function openProjectSheet(openerOverride){
       <span style="display:flex;gap:3px;flex-shrink:0">${STAGES.map((s,i)=>`<span class="stage-dot ${i<=(p.stage||0)?'on':''}" title="${s}"></span>`).join('')}</span>
       <span style="font-size:12px;color:var(--muted);min-width:34px;text-align:right">${n}</span></button>`;};
   sh.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h4 id="projSheetTitle" style="margin:0;flex:1">🏗️ 현장 선택</h4><button type="button" class="ghost" id="projSheetClose" aria-label="현장 선택 닫기">✕</button></div>
-    ${state.projects.length>0?`<input type="text" id="psSearch" placeholder="🔍 현장 이름 검색" style="width:100%;padding:11px;margin-bottom:6px;font-size:15px;position:sticky;top:0">`:''}
-    <div id="psList" style="max-height:58vh;overflow:auto">
+    ${state.projects.length>0?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="search" id="psSearch" aria-label="현장 이름 검색" aria-describedby="psSearchHint" placeholder="🔍 보관 현장도 함께 검색" autocomplete="off" style="flex:1;min-width:0;width:100%;min-height:44px;padding:11px;font-size:15px"><button type="button" id="psSearchClear" class="ghost" hidden style="width:auto;min-width:44px;min-height:44px;white-space:nowrap">검색 지우기</button></div><p id="psSearchHint" class="hint" style="margin:0 0 6px">띄어쓰기와 관계없이 진행·보관 현장을 함께 찾습니다.</p><div id="psResultStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>`:''}
+    <div id="psList" style="max-height:58vh;overflow:auto"></div>`;
+  const list=sh.querySelector('#psList');
+  const normalize=q=>String(q||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'');
+  const drawList=()=>{
+    const q=normalize(sh.querySelector('#psSearch')?.value);
+    const active=act.filter(p=>!q||normalize(p.name).includes(q));
+    const archived=arc.filter(p=>!q||normalize(p.name).includes(q));
+    const status=sh.querySelector('#psResultStatus');
+    if(status)status.textContent=q?'검색 결과 '+(active.length+archived.length)+'곳 · 진행 '+active.length+'곳 / 보관 '+archived.length+'곳':'';
+    const clear=sh.querySelector('#psSearchClear');if(clear)clear.hidden=!q;
+    list.innerHTML=`
       <button type="button" data-psel="" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 8px;font-weight:700;border:0;border-bottom:1px solid var(--line-soft);background:${!state.activeProject?'var(--paper-2)':'transparent'};border-radius:${!state.activeProject?'8px':'0'};color:var(--ink);font:inherit;text-align:left"><span>● 전체 보기</span><span style="color:var(--muted);font-size:12px;font-weight:400">${state.files.length}</span></button>
-      ${act.map(p=>row(p,false)).join('')||'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>'}
-      ${arc.length?`<button type="button" id="psArcTg" style="width:100%;padding:13px 8px;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--muted)">${__showArchived?'▾':'▸'} 📦 보관 ${arc.length}곳</button>${__showArchived?arc.map(p=>row(p,true)).join(''):''}`:''}
-    </div>`;
+      ${active.map(p=>row(p,false)).join('')||(!q?'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>':'')}
+      ${q?(archived.length?'<div style="padding:10px 8px;font-size:13px;color:var(--muted)">📦 보관 현장 검색 결과 (보관 상태 유지)</div>'+archived.map(p=>row(p,true)).join(''):''):(arc.length?`<button type="button" id="psArcTg" aria-expanded="${__showArchived?'true':'false'}" style="width:100%;min-height:44px;padding:13px 8px;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--muted)">${__showArchived?'▾':'▸'} 📦 보관 ${arc.length}곳</button>${__showArchived?arc.map(p=>row(p,true)).join(''):''}`:'')}
+      ${q&&!active.length&&!archived.length?'<div id="psSearchEmpty" style="padding:16px 8px;font-size:14px;color:var(--muted)">일치하는 현장이 없습니다. 이름 일부로 다시 검색하거나 ‘검색 지우기’를 눌러 주세요.</div>':''}`;
+  };
+  drawList();
   document.body.appendChild(bd);document.body.appendChild(sh);
   const close=mobileSheetA11y(sh,bd,{opener,labelledBy:'projSheetTitle',initialFocus:'#psSearch, #projSheetClose'});
   document.getElementById('projSheetClose').onclick=()=>close();
   const pss=document.getElementById('psSearch');
-  if(pss)pss.oninput=()=>{const q=pss.value.trim().toLowerCase();
-    sh.querySelectorAll('#psList [data-psel]').forEach(el=>{const nm=el.dataset.psel;if(!nm){return;}el.style.display=(!q||nm.toLowerCase().includes(q))?'':'none';});};
-  sh.querySelectorAll('[data-psel]').forEach(el=>el.onclick=()=>{const nm=el.dataset.psel;close(false);
+  if(pss)pss.oninput=drawList;
+  const clear=sh.querySelector('#psSearchClear');
+  if(clear)clear.onclick=()=>{pss.value='';drawList();pss.focus();};
+  list.onclick=e=>{
+    const toggle=e.target.closest('#psArcTg');
+    if(toggle){__showArchived=!__showArchived;drawList();sh.querySelector('#psArcTg')?.focus();return;}
+    const el=e.target.closest('[data-psel]');if(!el)return;
+    const nm=el.dataset.psel;
+    if(nm&&!state.projects.some(p=>p.name===nm)){toast('현장을 찾을 수 없어요. 다시 검색해 주세요.');return;}
+    close(false);
     if(nm){state.activeProject=nm;state.tab='project';}
     else{state.activeProject=null;if(state.tab==='project')state.tab='dashboard';}
-    __projView=null;render();syncMobileNav();});
-  const tg=document.getElementById('psArcTg');
-  if(tg)tg.onclick=e=>{e.stopPropagation();const original=sh.__mobileSheetOpener;__showArchived=!__showArchived;close(false);openProjectSheet(original);};
+    __projView=null;render();syncMobileNav();};
 }
 function moreActionHandler(a){if(a==='webbridge')webWorkCenterOpen();else if(a==='officeops')officeOpsView();else if(a==='biz')shareBizCard();else if(a==='gdrive')openGdriveSetup();else if(a==='opendrive')openDrive();else if(a==='photobundle')sendPhotoBundles();else if(a==='sheet')exportToSheet();else if(a==='voice')voiceMemo();else if(a==='ai')aiHelper();else if(a==='addproject'){const v=prompt('새 현장명 (예: 망원동 카페)');if(v&&v.trim()){const inp=$('#newProj');if(inp)inp.value=v.trim();addProject();}}else if(a==='restore'){openRestore();}else if(a==='backups'){backupHistory();}else if(a==='asmanage'){asManage();}else if(a==='aptorders'){aptOrderManage();}else if(a==='pjmap'){allProjectsMap();}else if(a==='fullxlsx'){exportFullXlsx();}else if(a==='activebrief'){aiActiveBrief();}else if(a==='opsreport'){opsReport('week');}else if(a==='aiprovider'){aiProviderManage();}else if(a==='llama'){llamaSetup();}else if(a==='autopilot'){aiAutoOperateView();}else if(a==='cowork'){coworkTasksManage();}else if(a==='backupcenter'){backupCenter();}else if(a==='claudeinbox'){claudeInboxView();}else if(a==='bulkassign'){bulkAssignCenter();}else if(a==='taxcal'){taxCalendarView();}else if(a==='contractdraft'){contractDraftView();}else if(a==='beforeafter'){baCompareView();}else if(a==='voicein'){voiceInputView();}else if(a==='cwsched'){coworkSchedView();}else if(a==='msgcenter'){msgCenterView();}else if(a==='ledgertab'){state.tab='ledger';state.activeProject=null;render();}else if(a==='vatc'){vatCenterView();}else if(a==='adstab'){state.tab='ads';state.activeProject=null;render();}else if(a==='kakaoin'){kakaoOpenInbox();}else if(a==='ptlist'){portalListView();}else if(a==='yearreport'){try{yearReport();}catch(e){toast('연간 결산을 열 수 없어요');}}else if(a==='aiops'){aiOpsCenter();}else if(a==='loopstatus'){aiOpsLoopStatus();}else if(a==='aibrain'){aiOpsBrain();}else if(a==='asintake'){asIntake();}else if(a==='satisfaction'){satisfactionManage();}else if(a==='funnel'){funnelView();}else if(a==='payplan'){payPlanDialog();}else if(a==='crm'){crmDialog();}else if(a==='inventory'){inventoryManage();}else if(a==='profitrank'){profitRank();}else if(a==='weekplan'){weekPlan();}else if(a==='companyintro'){companyIntro();}else if(a==='datahealth'){dataHealth();}else if(a==='photoaudit'){photoAssignmentAudit();}else if(a==='staleproj'){staleProjects();}else if(a==='reviewreq'){reviewRequest();}else if(a==='featurecoach'){featureCoach();}else if(a==='quotefollowup'){quoteFollowup();}else if(a==='similarquotes'){similarQuoteDialog();}else if(a==='contractreview'){contractReview();}else if(a==='repeatcust'){repeatCustomers();}else if(a==='cashflow'){cashFlow();}else if(a==='expenseclassify'){expenseAutoClassify();}else if(a==='budgetalert'){budgetAlert();}else if(a==='lossalert'){lossAlert();}else if(a==='voicebrief'){voiceBrief();}else if(a==='selfquote'){selfQuoteDialog();}else if(a==='salestarget'){salesTarget();}else if(a==='alertcenter'){alertCenter();}else if(a==='photoquote'){photoQuoteScan();}else if(a==='route'){routeToday();}else if(a==='monthreport'){monthlyReport();}else if(a==='safety'){safetyChecklist();}else if(a==='season'){seasonCalendar();}else if(a==='warranty'){warrantyManage();}else if(a==='knowhow'){knowhowManage();}else if(a==='scheduleplan'){schedulePlanDialog();}else if(a==='negotiate'){negotiateDialog();}else if(a==='siteconv'){siteConversation();}else if(a==='winrate'){winRateCoach();}else if(a==='bagallery'){beforeAfterGallery();}else if(a==='custprogress'){customerProgressV2();}else if(a==='weather'){weatherSmart();}else if(a==='scancard'){cardReceiptScan('card');}else if(a==='scanreceipt'){cardReceiptScan('receipt');}else if(a==='aiusage'){aiUsageDashboard();}else if(a==='a11y'){a11yManage();}else if(a==='syncguide'){syncGuide();}else if(a==='custreply'){customerReplyDialog();}else if(a==='forecast'){salesForecast();}else if(a==='automode'){aiOperateMode();}else if(a==='guide'){hjGuideHome();}else if(a==='help'){helpGuide('');}else if(a==='brand'){brandSettings();}else if(a==='import'){importWizard();}else if(a==='settle'){settleDocs();}else if(a==='taxinv'){taxInvoiceInfo();}else if(a==='photorep'){photoReport();}else if(a==='notify'){notifySettings();}else if(a==='expense'){expenseLedger();}else if(a==='pnl'){pnl();}else if(a==='search'){hjGlobalSearch();}else if(a==='materials'){materialCatalog();}else if(a==='suppliers'){suppliers();}else if(a==='annual'){annualReport();}else if(a==='goal'){goalManage();}else if(a==='schedbrief'){scheduleBrief();}else if(a==='aiquote'){aiQuoteDialog();}else if(a==='photodefect'){photoDefectDialog();}else if(a==='worklog'){voiceWorkLog();}else if(a==='analysis'){bizAnalysis();}else if(a==='budget'){budgetManage();}else if(a==='weekbrief'){weekBrief();}else if(a==='undo'){if(state.lastMove){const b=$('#btnUndo');if(b)b.click();}else toast('되돌릴 작업이 없습니다.');}else if(a==='diag'){runDiagnostics();}}
 function openMoreSheet(){
@@ -22401,6 +22418,9 @@ function showBundleSender(bundles,label,size){
 function viewPhotos(){
   phasesTableBuild();
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
+  if(!photos.length&&state.search&&state.files.some(f=>f.kind==='photo')){
+    return `<div class="empty" id="photoSearchEmpty" role="status"><b>검색 결과가 없습니다</b><div style="margin:8px 0 14px;color:var(--muted);overflow-wrap:anywhere">‘${escapeHtml(state.search)}’와 일치하는 사진을 찾지 못했습니다.<br>저장된 사진은 그대로 있습니다. 검색을 지우면 전체 사진을 볼 수 있습니다.</div><button type="button" class="clay" id="btnClearPhotoSearch" style="width:auto;min-width:44px;min-height:44px;padding:12px 20px">검색 지우고 사진 보기</button></div>`;
+  }
   if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)"><b>PC:</b> 왼쪽 ‘📁 로컬 폴더 연결’로 사진 폴더를 열어 정리합니다.<br><b>폰:</b> 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
@@ -24474,6 +24494,13 @@ function setupDelegation(){
   const view=$('#view');
   // ---- 클릭 위임 ----
   view.addEventListener('click',e=>{
+    if(e.target.closest('#btnClearPhotoSearch')){
+      clearTimeout(__searchTimer);state.search='';
+      const input=$('#globalSearch');if(input)input.value='';
+      hjCmdClose();render();
+      if(input&&input.getClientRects().length)input.focus();
+      return;
+    }
     const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,[data-ledgercost],#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
