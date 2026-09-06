@@ -697,6 +697,11 @@
   .apt-unit-modal button,.apt-unit-modal input:not([type=checkbox]),.apt-unit-modal select{min-height:44px;min-width:44px;font-size:16px}
   .apt-unit-modal .modal-close{min-width:44px;min-height:44px}
   .apt-unit-modal .mfoot button{min-height:44px}
+  .estimate-info-modal button,.estimate-info-modal select{min-width:44px;min-height:44px;font-size:16px}
+  .estimate-info-modal .mfoot button,.estimate-info-modal .modal-close{min-width:44px;min-height:44px}
+  .estimate-info-dates{display:grid;gap:8px;margin:12px 0;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+  .estimate-info-dates span{color:var(--muted)}
+  .estimate-info-trigger{min-height:44px;white-space:normal;overflow-wrap:anywhere}
   .apt-unit-panel{min-width:0;overflow-wrap:anywhere}
   .apt-unit-panel input:not([type=checkbox]),.apt-unit-panel select,.apt-unit-panel textarea{width:100%;box-sizing:border-box;margin:5px 0 12px}
   .apt-unit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
@@ -985,6 +990,7 @@ function rebuildOrganizedProjectAliases(){
 }
 function recoverOrganizedMetadata(rec){
   if(!rec)return false;
+  if(rec.kind==='estimate'&&rec._estimateProjectRestored)return false;
   const info=organizedPrefixInfo(rec.prefix);if(!info)return false;
   let changed=false;
   const valid=()=>new Set((state.projects||[]).map(p=>p.name));
@@ -1509,7 +1515,8 @@ function serializeData(source,savedAt){
       phase:supplied?f._phase:(f._phase||null),worklabel:supplied?f._worklabel:(f._worklabel||null),gdFolder:supplied?f._gdFolder:(f._gdFolder||null),
       driveId:supplied?f._driveId:(f._driveId||null),driveMimeType:supplied?f._driveMimeType:(f._driveMimeType||null),driveSize:supplied?f._driveSize:(Number(f._driveSize)||0),size:supplied?f.size:(f.size||0),
       lat:f.lat,lng:f.lng,when:f.when==null?null:(f.when instanceof Date?f.when.toISOString():new Date(f.when).toISOString()),
-      ...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{})}))
+      ...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{}),
+      ...(Object.prototype.hasOwnProperty.call(f,'sourceModifiedAt')?{sourceModifiedAt:f.sourceModifiedAt}:{})}))
   };
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
@@ -1594,6 +1601,8 @@ function applyData(data,opts){
       f.kind=sk;f.project=s.project||null;
       if(Object.prototype.hasOwnProperty.call(s,'aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
       else if(__revert)delete f._aptUnit;
+      if(Object.prototype.hasOwnProperty.call(s,'sourceModifiedAt'))f.sourceModifiedAt=s.sourceModifiedAt;
+      else if(__revert)delete f.sourceModifiedAt;
       if(__revert){
         // 복구: 스냅샷 값 그대로 — 병합(s.x||f.x)이면 스냅샷 이후 붙인 est·메모·
         // 집계 제외가 안 지워져 "되돌렸다"가 거짓말이 된다. 드라이브 신원 필드는
@@ -1634,6 +1643,7 @@ function applyData(data,opts){
     // 다시 잡히고, 그 상태로 저장되면 서버 사본까지 오염된다(실제 재현됨).
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
       ...(Object.prototype.hasOwnProperty.call(s,'aptUnit')?{_aptUnit:structuredClone(s.aptUnit)}:{}),
+      ...(Object.prototype.hasOwnProperty.call(s,'sourceModifiedAt')?{sourceModifiedAt:s.sourceModifiedAt}:{}),
       kind:fkind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
       est:s.est||null,exSum:s.exSum||false,ledger:s.ledger||null,quote:s.quote||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_driveMimeType:s.driveMimeType||null,_driveSize:Number(s.driveSize)||0,_relayLink:s.driveId?'relay:'+s.driveId:null,_file:null,_virtual:true});
@@ -2443,7 +2453,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v266-aptunits';
+const APP_BUILD='hyeonjang-v267-estimateinfo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3213,7 +3223,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize){
   if(!dr.ok)return 0;
   const blob=await dr.blob();
   // HEIC 원본 그대로 보관(변환 안 함) → EXIF(GPS·날짜) 보존. 표시는 드라이브 썸네일 URL(photoSrc)로 바로, GPS는 extractImage가 exifr로 읽음
-  const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
+  const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'}),null,'',{sourceModified:false}); if(!rec)return 0;
   // 동명 파일 편집 백업은 서버 파일의 신원이 아니다. 아래 동일 Drive ID의 placeholder만 승계한다.
   delete rec._aptUnit;
   rec._driveId=id;rec._driveMimeType=String(mime||blob.type||'');rec._driveSize=Number(driveSize)||Number(blob.size)||0;
@@ -3228,7 +3238,8 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize){
     // tests/gd-reingest.e2e.js ④ 가 두 목록이 갈라지지 않는지 지킨다.
 
     // ① 사장님이 손으로 넣은 값 — 새 레코드에는 있을 수 없으므로 그대로 덮어쓴다
-    rec.project=ph.project||rec.project;
+    rec.project=ph.kind==='estimate'?(ph.project||null):(ph.project||rec.project);
+    if(existing&&Object.prototype.hasOwnProperty.call(ph,'sourceModifiedAt'))rec.sourceModifiedAt=ph.sourceModifiedAt;
     if(ph._phase)rec._phase=ph._phase;
     if(ph.est)rec.est=ph.est;
     if(ph.contact)rec.contact=ph.contact;
@@ -4243,7 +4254,8 @@ function restoreUserEdits(rec){
     // [v101 BUG-5] 파일이 다른 폴더로 옮겨졌으면 이름만으로 복원(배정 풀림 방지)
     if(!b&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
     if(!b)return rec;
-    if(b.project)rec.project=b.project;          // 현장 배정 복원
+    if(b.project||b.kind==='estimate')rec.project=b.project||null; // 견적의 명시 해제도 복원
+    if(b.kind==='estimate')rec._estimateProjectRestored=true;
     if(b.est)rec.est=b.est;                      // 수기 금액 복원
     if(b.kind&&b.kind!=='other')rec.kind=b.kind; // 사용자가 바꾼 분류 복원
     if(b.exSum)rec.exSum=true;                   // Σ 집계 제외 복원
@@ -4267,6 +4279,8 @@ async function ingestFile(file,handle=null,prefix='',options=null){
     lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':((e==='pdf'||e==='xlsx'||e==='xls')?'pending':'na'),
     est:null,contact:null,_driveMimeType:null,_driveSize:0,_file:handle?null:file};
   if(isImg)await extractImage(file,rec);
+  // File API는 생성일이 아닌 수정시각을 제공한다. 사진 EXIF when과 별도로 출처를 보존한다.
+  if((!options||options.sourceModified!==false)&&Number.isFinite(file.lastModified)&&file.lastModified>0&&Number.isFinite(new Date(file.lastModified).getTime()))rec.sourceModifiedAt=new Date(file.lastModified).toISOString();
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
@@ -4802,6 +4816,8 @@ function ensureProjectExists(name){
   }catch(e){return false;}
 }
 function assignProject(id,p){
+  const estimate=state.files.find(x=>x.id===id&&x.kind==='estimate');
+  if(estimate)return estimateInfoOpen('file',id,p||null);
   if(p)ensureProjectExists(p);const f=state.files.find(x=>x.id===id);if(f){f.project=p||null;markDirty();scheduleRender();try{if(p)portalAutoSync(p);}catch(e){}}}
 function assignProjectMany(ids,p){if(p)ensureProjectExists(p);ids.forEach(id=>{const f=state.files.find(x=>x.id===id);if(f)f.project=p||null;});markDirty();scheduleRender();try{if(p)portalAutoSync(p);}catch(e){}toast(ids.length+'장을 “'+p+'”에 배정');}
 // 작업명: 묶음 사진 전체에 _worklabel 저장(날짜+위치는 자동, 작업명만 입력)
@@ -6204,11 +6220,11 @@ function cardHtml(f){
   return `<div class="card k-${f.kind}" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
-      <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.when)}</div>${gps}${extra}</div>
+      <div class="sub">${fmtSize(f.size)} · ${f.kind==='estimate'?escapeHtml(estimateDateSummary(f)):fmtDate(f.when)}</div>${gps}${extra}</div>
     ${actbtns}
     <div class="cardact">
       <select data-act="kind" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 파일 종류">${kindOptions(f.kind)}</select>
-      <select data-act="proj" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 현장 배정">${projectOptions(f.project)}</select>
+      ${f.kind==='estimate'?estimateInfoButton('file',f.id,f.project):`<select data-act="proj" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 현장 배정">${projectOptions(f.project)}</select>`}
     </div></div>`;
 }
 /* ---------- 대시보드 ---------- */
@@ -23558,6 +23574,109 @@ function photoCell(p){
     </div>
   </div>`;
 }
+/* 견적 날짜는 서로 바꿔 쓰지 않는다: 견적일 / 앱 생성일 / 파일 수정일 / 출처 미확인. */
+function estimateDay(value){
+  const m=String(value||'').trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
+  if(!m)return '';
+  const date=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  return isRealIsoDate(date)?date:'';
+}
+function estimateInstant(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)||!estimateDay(value.slice(0,10)))return '';
+  if(Number(value.slice(11,13))>23||Number(value.slice(14,16))>59||Number(value.slice(17,19))>59)return '';
+  const d=new Date(value);if(!Number.isFinite(d.getTime()))return '';
+  return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d)+' (한국시간)';
+}
+function estimateQuoteForFile(f,source=state){
+  if(!f||!f._fromQuote)return null;
+  const rows=(source.quotes||[]).filter(q=>q&&'quote_'+q.id===f.id);
+  return rows.length===1?rows[0]:null;
+}
+function estimateDateRows(f,q){
+  if(!q&&f&&f._fromQuote)q=estimateQuoteForFile(f);
+  const rows=[{label:'견적일',value:estimateDay(q?q.date:f&&f.est&&f.est.date)||'미확인'}];
+  if(q){rows.push({label:'앱 생성일',value:estimateInstant(q.createdAt)||'미확인 (기존·외부 견적은 소급 기록하지 않음)'});}
+  else{
+    rows.push({label:'원본 생성일',value:'미확인 (브라우저에서 확인할 수 없음)'});
+    const modified=estimateInstant(f&&f.sourceModifiedAt);
+    if(modified)rows.push({label:'파일 수정일',value:modified});
+    else{
+      let old='';try{old=f&&f.when?estimateInstant(new Date(f.when).toISOString()):'';}catch(_){}
+      rows.push({label:old?'기존 파일 날짜 (출처 미확인)':'파일 수정일',value:old||'미확인'});
+    }
+  }
+  return rows;
+}
+function estimateDateSummary(f,q){return estimateDateRows(f,q).map(row=>row.label+' '+row.value).join(' · ');}
+function estimateInfoButton(type,id,project){return '<button class="ghost estimate-info-trigger" data-estimate-info="'+escapeAttr(id)+'" data-estimate-type="'+type+'">📅 날짜 · 프로젝트<br><small>'+escapeHtml(project||'프로젝트 미지정')+'</small></button>';}
+function estimateInfoTarget(type,id){
+  if(type==='quote'){const qs=(state.quotes||[]).filter(q=>q&&q.id===id);return qs.length===1?{type:'quote',id,q:qs[0],f:null}:null;}
+  if(type!=='file')return null;
+  const fs=(state.files||[]).filter(f=>f&&f.id===id&&f.kind==='estimate');if(fs.length!==1)return null;
+  const f=fs[0];if(f._fromQuote){const q=estimateQuoteForFile(f);return q?{type:'quote',id:q.id,q,f}:null;}
+  return {type:'file',id,f,q:null};
+}
+function estimateDerivedQuotesConsistent(){
+  const quotes=(state.quotes||[]).filter(Boolean),files=(state.files||[]).filter(f=>f&&f._fromQuote),seen=new Set();
+  for(const q of quotes){
+    if(!q.id||seen.has(q.id))return false;seen.add(q.id);
+    const fs=files.filter(f=>f.id==='quote_'+q.id);
+    if(fs.length!==(q.project?1:0))return false;
+    if(!fs.length)continue;
+    const calc=quoteCalc(q),expected={amount:calc.total,supply:calc.supply,vat:calc.vat,customer:q.title||'',date:q.date,bizno:COMPANY.bizno,_edited:true},f=fs[0];
+    if(f.project!==q.project||!f.est||Object.keys(f.est).sort().join('|')!==Object.keys(expected).sort().join('|')||Object.keys(expected).some(k=>f.est[k]!==expected[k]))return false;
+  }
+  return files.every(f=>quotes.some(q=>'quote_'+q.id===f.id&&q.project));
+}
+let __estimateProjectBusy=false;
+async function estimateProjectAssign(type,id,project){
+  if(__estimateProjectBusy||state.editingQuote||photoIntakePending()||__appVersionUpdating)throw new Error('견적 편집·사진 추가·다른 저장을 마친 뒤 다시 시도하세요.');
+  const target=estimateInfoTarget(type,id),name=project==null||project===''?null:String(project);
+  if(!target)throw new Error('견적 연결이 없거나 중복되었습니다. 목록을 다시 확인하세요.');
+  if(!estimateDerivedQuotesConsistent())throw new Error('작성 견적과 정산표의 금액·날짜·연결이 다릅니다. 견적 편집기에서 확인한 뒤 다시 지정하세요.');
+  if(name&&!aptUnitProject(name))throw new Error('프로젝트가 없거나 이름이 중복되었습니다.');
+  const prior=target.q?target.q.project:target.f.project;
+  if((prior||null)===name)return false;
+  const before=JSON.stringify(target.q||target.f.est),key=target.f&&!target.q?fileKey(target.f):null;
+  __estimateProjectBusy=true;
+  try{return await durableLocalMutation({snapshotLabel:'견적 프로젝트 지정 전',beforeCommit:()=>{if(!estimateDerivedQuotesConsistent())throw new Error('작성 견적 정보가 변경되었습니다. 편집기에서 확인하세요.');},mutateDraft:draft=>{
+    if(state.editingQuote||name&&!aptUnitProject(name,draft))throw new Error('견적 또는 프로젝트가 변경되었습니다. 다시 확인하세요.');
+    if(target.q){
+      const qs=draft.quotes.filter(q=>q&&q.id===target.id);
+      if(qs.length!==1||JSON.stringify(qs[0])!==before)throw new Error('견적 정보가 변경되었습니다. 다시 확인하세요.');
+      const runtime=(state.files||[]).filter(f=>f.id==='quote_'+target.id);
+      if(runtime.length!==(prior?1:0)||runtime.some(f=>!f._fromQuote||f.project!==prior))throw new Error('작성 견적의 프로젝트 연결을 확인하세요.');
+      qs[0].project=name;
+      draft._savedFileCount+=Number(!!name)-Number(!!prior);
+    }else{
+      const fs=draft.files.filter(f=>f.key===key);
+      if(fs.length!==1||fs[0].kind!=='estimate'||JSON.stringify(fs[0].est)!==before||(fs[0].project||null)!==(prior||null))throw new Error('견적 파일이 변경되거나 중복되었습니다. 다시 확인하세요.');
+      fs[0].project=name;
+    }
+    return true;
+  }});}finally{__estimateProjectBusy=false;}
+}
+function estimateInfoOpen(type,id,selected){
+  if(window.__modalCloseLocked||photoIntakePending()||__estimateProjectBusy)return false;
+  const target=estimateInfoTarget(type,id);if(!target){toast('견적 연결이 없거나 중복되었습니다. 목록을 확인하세요.');return false;}
+  const q=target.q,f=target.f,title=q?(q.title||q.no||'작성 견적서'):f.name,current=(q?q.project:f.project)||null;
+  const names=[...new Set(state.projects.filter(p=>p&&!p.archived||p&&p.name===current).map(p=>p.name))];
+  if(current&&!names.includes(current))names.unshift(current);
+  const chosen=selected===undefined?current:selected;
+  const options='<option value="">프로젝트 미지정</option>'+names.map((n,i)=>'<option value="'+(i+1)+'"'+(n===chosen?' selected':'')+'>'+escapeHtml(n)+'</option>').join('');
+  openModal('견적서 날짜 · 프로젝트', '<section id="estimateInfoPanel"><b style="overflow-wrap:anywhere">'+escapeHtml(title)+'</b><div class="estimate-info-dates">'+estimateDateRows(f,q).map(r=>'<div><span>'+escapeHtml(r.label)+'</span><br><b>'+escapeHtml(r.value)+'</b></div>').join('')+'</div><label for="estimateProject">연결 프로젝트</label><select id="estimateProject" style="width:100%;margin:6px 0 10px">'+options+'</select><p class="hint">날짜는 확인용입니다. 프로젝트 지정은 현장별 집계와 견적 이력의 수주 분류에 반영됩니다. 금액·수금·파일 이름과 실제 파일 위치는 바꾸지 않습니다.</p><p id="estimateInfoError" role="alert" style="color:var(--warn)"></p></section>',[
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'프로젝트 저장',cls:'blue',fn:async()=>{
+      const root=document.getElementById('modalRoot'),buttons=[...root.querySelectorAll('button,select')];if(__estimateProjectBusy)return;
+      const val=$('#estimateProject').value,name=val?names[Number(val)-1]:null;buttons.forEach(b=>b.disabled=true);window.__modalCloseLocked=true;
+      try{await estimateProjectAssign(target.type,target.id,name);window.__modalCloseLocked=false;closeModal();toast('견적 프로젝트를 저장했습니다');}
+      catch(e){$('#estimateInfoError').textContent='저장하지 못했습니다. '+String(e.message||e);}
+      finally{window.__modalCloseLocked=false;buttons.forEach(b=>b.disabled=false);}
+    }}]);
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('estimate-info-modal');
+  return true;
+}
+document.addEventListener('click',event=>{const b=event.target.closest('[data-estimate-info]');if(b){event.preventDefault();estimateInfoOpen(b.dataset.estimateType,b.dataset.estimateInfo);}});
 function viewEstimates(){
   const list=state.files.filter(f=>f.kind==='estimate');
   if(!list.length){
@@ -23572,7 +23691,7 @@ function viewEstimates(){
   html+=`<p class="hint" style="margin-bottom:12px">추출값은 틀릴 수 있어 직접 수정 가능합니다. 칸을 고치면 합계가 바로 갱신됩니다.</p>`;
   // [v91] 사본 그룹 뱃지 준비
   const __gb={};try{estimateGroups(list.filter(f=>!f.exSum)).forEach(g=>{if(g.dups.length){__gb[g.rep.id]='rep:'+(g.dups.length+1);g.dups.forEach(d=>__gb[d.id]='dup');}});}catch(e){}
-  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>날짜</th><th>사업자번호</th><th>현장 배정</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table"><thead><tr><th>파일</th><th>내용</th><th>고객/현장</th><th>견적일</th><th>사업자번호</th><th>날짜 · 프로젝트</th><th class="amt">금액</th><th></th></tr></thead><tbody>`;
   list.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
       <td>${escapeHtml(f.name)}${e._edited?' <span style="color:var(--ok);font-size:10px">✎수정됨</span>':''}${__gb[f.id]?(String(__gb[f.id]).startsWith('rep')?` <span style="background:#eef2ff;color:#4338ca;border-radius:7px;padding:1px 6px;font-size:10px">📎 사본 ${String(__gb[f.id]).split(':')[1]}</span>`:' <span style="color:var(--muted);font-size:10px">📎</span>'):''}${f.exSum?' <span style="background:#fef3c7;color:#92400e;border-radius:7px;padding:1px 6px;font-size:10px">Σ제외</span>':''} <button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외" style="padding:1px 6px;font-size:10px">${f.exSum?'↩ 포함':'Σ 제외'}</button></td>
@@ -23580,7 +23699,7 @@ function viewEstimates(){
       <td><input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></td>
       <td><input type="text" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}" style="width:96px"></td>
       <td><input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}" style="width:118px"></td>
-      <td><select data-act="proj" data-id="${f.id}">${projectOptions(f.project)}</select></td>
+      <td>${estimateInfoButton('file',f.id,f.project)}<div class="hint">${escapeHtml(estimateDateSummary(f))}</div></td>
       <td class="amt"><input type="text" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}" style="text-align:right;width:120px"></td>
       <td style="white-space:nowrap">${previewButtonHtml(f,'미리보기')} <button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 기억</button> <button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></td>
     </tr>`;});
@@ -23627,12 +23746,13 @@ function monthlyQuoteHTML(){
 }
 
 /* ==================== 견적 작성 모듈 ==================== */
-function newQuote(){
+function newQuote(recordCreation=true){
   return {
     id:uid(), title:'', no:'제'+localDate().replace(/-/g,''),
     date:localDate(), place:'', vatIncluded:true,
     accountIdx:0, memo:'', project:null,
-    items:[{name:'',spec:'',qty:1,price:0}]
+    items:[{name:'',spec:'',qty:1,price:0}],
+    ...(recordCreation?{createdAt:new Date().toISOString()}:{})
   };
 }
 function num(v){return +String(v).replace(/[^\d.-]/g,'')||0;}
@@ -23677,11 +23797,12 @@ function viewQuoteMaker(){
       html+=`<div class="card" style="cursor:default">
         <div class="meta" style="padding:14px">
           <div class="nm" style="font-size:14px">${escapeHtml(q.title||'(제목 없음)')}</div>
-          <div class="sub">${q.no} · ${q.date}</div>
+          <div class="sub">${escapeHtml(q.no||'')} · ${escapeHtml(estimateDateSummary(null,q))}</div>
           <div class="ext-info" style="font-size:15px;color:var(--clay);font-weight:700">${won(c.total)}</div>
           <div class="sub">${q.vatIncluded?'부가세 포함':'부가세 별도'} · ${q.project?('🏗️ '+escapeHtml(q.project)):'현장 미연결'}</div>
         </div>
         <div class="card-tools" style="padding:0 14px 12px">
+          ${estimateInfoButton('quote',q.id,q.project)}
           <button class="mini-btn" data-qedit="${q.id}">✎ 편집</button>
           <button class="mini-btn" data-qpdf="${q.id}">📄 PDF</button>
           <button class="mini-btn" data-qpay="${q.id}" title="계좌·금액이 담긴 입금 안내를 만들어 카톡·문자로 보냅니다">💳 입금안내</button>
@@ -23758,9 +23879,9 @@ function startNewQuote(){state.editingQuote=newQuote();render();}
 function quoteFromExisting(fileId){
   const f=state.files.find(x=>x.id===fileId);if(!f){toast('견적서를 찾을 수 없습니다.');return;}
   const e=f.est||{};
-  const q=newQuote();
+  const q=newQuote(false);
   q.title=e.customer||f.name.replace(/\.[^.]+$/,'');
-  if(e.date)q.date=(/\d{4}-\d{2}-\d{2}/.test(e.date)?e.date:q.date);
+  q.date=estimateDay(e.date);
   q.project=f.project||null;
   // 추출은 항목 단위가 아니므로 총액을 단일 품목으로 시작 (사용자가 쪼개 편집)
   q.vatIncluded=true;
@@ -23832,10 +23953,11 @@ async function importQuoteXlsx(){
 // 헤더(품명/규격/수량/단가/공급가액)를 키워드로 자동 탐지하는 견고한 파서
 function parseQuoteFromGrid(grid,filename){
   const norm=s=>String(s==null?'':s).replace(/\s+/g,'');
-  const q=newQuote();
+  const q=newQuote(false);q.date='';
   const base=String(filename||'').replace(/\.[^.]+$/,'');
   const dm=base.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
-  if(dm){q.date=`${dm[1]}-${dm[2]}-${dm[3]}`;q.no='견'+dm[1]+dm[2]+dm[3];}
+  if(dm&&estimateDay(`${dm[1]}-${dm[2]}-${dm[3]}`)){q.date=`${dm[1]}-${dm[2]}-${dm[3]}`;q.no='견'+dm[1]+dm[2]+dm[3];}
+  for(const row of grid){const i=(row||[]).findIndex(c=>/^견적일(?:자)?$/.test(norm(c)));if(i>=0){const day=estimateDay(row[i+1]);if(day){q.date=day;break;}}}
   q.title=base.replace(/20\d{2}[.\-_ ]?\d{2}[.\-_ ]?\d{2}/,'').replace(/[-_]+/g,' ').trim()||base;
   let hr=-1,cN=-1,cS=-1,cQ=-1,cP=-1,cA=-1;
   for(let r=0;r<grid.length;r++){
@@ -27796,6 +27918,7 @@ function paidExactRuntimeFiles(candidateFiles,currentFiles){
       thumb:(sameLocal||sameDrive)?matched.thumb:null,text:saved.text,ocr:saved.ocr,est:paidCloneOptional(saved.est),exSum:saved.exSum,ledger:paidCloneOptional(saved.ledger),quote:paidCloneOptional(saved.quote),contact:paidCloneOptional(saved.contact),
       _phase:saved.phase,_worklabel:saved.worklabel,_gdFolder:saved.gdFolder,_driveId:saved.driveId,_driveMimeType:saved.driveMimeType,_driveSize:saved.driveSize,
       ...(Object.prototype.hasOwnProperty.call(saved,'aptUnit')?{_aptUnit:paidCloneOptional(saved.aptUnit)}:{}),
+      ...(Object.prototype.hasOwnProperty.call(saved,'sourceModifiedAt')?{sourceModifiedAt:saved.sourceModifiedAt}:{}),
       _relayLink:saved.driveId?'relay:'+saved.driveId:null,_file:matched?matched._file:null,_heicFile:matched?matched._heicFile:null,_needHeic:matched?matched._needHeic:false,
       _virtual:matched&&Object.prototype.hasOwnProperty.call(matched,'_virtual')?matched._virtual:true
     };
