@@ -8,6 +8,8 @@
    ② 건물명(address) — 네이버지도로 확인해 적은 값. 사람이 손으로 넣은 것이라 자동 복구가 없다
    ③ 작업명(_worklabel) · 견적 품목(quote) · 장부(ledger) · 정리 폴더(_gdFolder) · OCR 결과(text/ocr)
    ④ 승계 목록이 serializeData 가 저장하는 목록과 갈라지지 않는다
+   ⑤ 아파트 동·호수 연결(_aptUnit/aptUnit)은 다운로드·재스캔에 남고 새 사진에는 승계되지 않는다
+   HJ_GD_REINGEST_MUTATION=unit-download|unit-rescan 으로 페이지 함수만 바꿔 유실을 잡는지 확인한다.
    전제: tests/static-server.js(8299). serviceWorkers:'block'. 네트워크는 fetch 스텁으로 대체. */
 'use strict';
 let chromium;
@@ -15,6 +17,8 @@ try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
 
 const APP = 'http://127.0.0.1:8299/index.html';
+const MUTATION = process.env.HJ_GD_REINGEST_MUTATION || '';
+if (!['', 'unit-download', 'unit-rescan'].includes(MUTATION)) throw new Error('unknown HJ_GD_REINGEST_MUTATION');
 const results = [];
 async function test(name, fn) {
   try { await fn(); results.push({ name, ok: true }); console.log('PASS  ' + name); }
@@ -30,7 +34,30 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   page.on('pageerror', e => errs.push(String(e)));
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
+  await page.evaluate(async (mutation) => {
+    await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]);
+    taxCalendarEnsure(); coworkSchedEnsure(); aiOpsEnsureState().enabled = false;
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+    window.__unitReingestMutationApplied = 0;
+    if (mutation === 'unit-download') {
+      const original = __gdIngestOne;
+      __gdIngestOne = async function() {
+        const result = await original.apply(this, arguments);
+        const file = state.files.find(f => f._driveId === 'FAKE-UNIT-DRIVE');
+        if (file && file._aptUnit) { delete file._aptUnit; window.__unitReingestMutationApplied++; }
+        return result;
+      };
+    }
+    if (mutation === 'unit-rescan') {
+      const original = restoreUserEdits;
+      restoreUserEdits = function(file) {
+        const result = original.apply(this, arguments);
+        if (file && file._aptUnit) { delete file._aptUnit; window.__unitReingestMutationApplied++; }
+        return result;
+      };
+    }
+  }, MUTATION);
 
   // 드라이브 다운로드만 가로채는 스텁을 심는다(그 외 fetch 는 그대로).
   const stub = () => {
@@ -136,10 +163,132 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       'Drive metadata는 사용자값을 덮은 것이 아니라 실제 blob ingest에서 정밀화돼야 한다: ' + JSON.stringify(r.driveMeta));
   });
 
+  await test('⑤ 동·호수 사진의 재다운로드와 직렬화에서 연결이 유지된다', async () => {
+    const r = await page.evaluate(async (src) => {
+      eval('(' + src + ')()');
+      const link = { project: '가상 검증 아파트', unitId: 'unit-101-501' };
+      state.projects = [{ name: link.project, stage: 2, received: 0, phases: [], cost: {}, customer: {},
+        aptUnits: [{ id: link.unitId, type: 'unit', dong: '101', ho: '501', name: '', note: '가상 검증용' }] }];
+      state.files = [{ id: 'unit-photo', name: '가상세대사진.jpg', ext: 'jpg', kind: 'photo',
+        _virtual: true, _driveId: 'FAKE-UNIT-DRIVE', project: link.project, _aptUnit: { ...link },
+        _worklabel: '가상 방수 작업', _phase: '시공 중', when: new Date('2026-09-07T10:00:00') }];
+      const before = serializeData().files[0];
+      const ret = await __gdIngestOne('FAKE-UNIT-DRIVE', '가상세대사진.jpg', 'image/jpeg', 'FAKE-DRIVE-TOKEN');
+      const file = state.files.find(f => f._driveId === 'FAKE-UNIT-DRIVE');
+      const after = serializeData().files[0];
+      const lost = Object.keys(before).filter(key => {
+        if (['key', 'size', 'driveId', 'driveMimeType', 'driveSize', 'when', 'prefix'].includes(key)) return false;
+        return before[key] != null && before[key] !== '' && before[key] !== false &&
+          JSON.stringify(before[key]) !== JSON.stringify(after[key]);
+      });
+      return { ret, expected: link, before: before.aptUnit, after: after.aptUnit,
+        runtime: file && file._aptUnit, count: state.files.length, work: file && file._worklabel, lost };
+    }, stub.toString());
+    assert(r.ret === 1 && r.count === 1, '가상 세대 사진이 중복 없이 실제 바이트로 교체되어야 함');
+    assert(JSON.stringify(r.before) === JSON.stringify(r.expected), '동·호수 연결이 aptUnit으로 직렬화되지 않았다');
+    assert(JSON.stringify(r.runtime) === JSON.stringify(r.expected), '재다운로드에서 동·호수 연결이 사라졌다');
+    assert(JSON.stringify(r.after) === JSON.stringify(r.expected), '재다운로드 후 저장할 동·호수 연결이 사라졌다');
+    assert(r.work === '가상 방수 작업' && r.lost.length === 0, '세대 사진의 기존 저장 필드가 바뀌었다: ' + r.lost.join(', '));
+  });
+
+  await test('⑥ 재스캔 편집 복구는 정확한 경로의 동·호수 연결을 보존한다', async () => {
+    const r = await page.evaluate(() => {
+      const project = '가상 검증 아파트';
+      const links = [{ project, unitId: 'unit-101-501' }, { project, unitId: 'unit-102-501' }];
+      state.projects = [{ name: project, stage: 2, phases: [], aptUnits: links.map((link, i) => ({
+        id: link.unitId, type: 'unit', dong: String(101 + i), ho: '501', name: '', note: ''
+      })) }];
+      state.files = links.map((link, i) => ({ id: 'saved-unit-' + i, name: '동명사진.jpg',
+        prefix: '현장사진/가상세대' + i + '/', size: 123, ext: 'jpg', kind: 'photo',
+        project, _aptUnit: { ...link }, _worklabel: '가상 작업 ' + i }));
+      const backed = backupUserEdits();
+      const restored = state.files.map(file => {
+        const fresh = { id: 'fresh-' + file.id, name: file.name, prefix: file.prefix, size: file.size,
+          ext: file.ext, kind: 'photo', project: null };
+        restoreUserEdits(fresh);
+        return { project: fresh.project, unit: fresh._aptUnit, work: fresh._worklabel };
+      });
+      return { backed, expected: links, restored };
+    });
+    assert(r.backed === 2, '경로가 다른 동명 사진 두 건을 각각 백업해야 함');
+    assert(r.restored.every((file, i) => file.project === r.expected[i].project &&
+      JSON.stringify(file.unit) === JSON.stringify(r.expected[i]) && file.work === '가상 작업 ' + i),
+    '재스캔에서 다른 세대 연결로 바뀌거나 기존 연결이 사라졌다');
+  });
+
+  await test('⑦ 새로 선택한 동명 사진은 과거 동·호수 연결을 승계하지 않는다', async () => {
+    const r = await page.evaluate(async () => {
+      const old = state.files[0];
+      const before = JSON.stringify(old._aptUnit);
+      const fresh = await ingestFile(new File(['fake-image-for-ingest'], old.name, { type: 'image/jpeg' }), null, old.prefix, { restoreEdits: false });
+      fresh.kind = 'photo';
+      const saved = serializeData().files.find(file => file.key === fileKey(fresh));
+      return { unit: fresh._aptUnit || null, serialized: saved && saved.aptUnit || null,
+        oldUnchanged: JSON.stringify(old._aptUnit) === before, distinct: fresh !== old };
+    });
+    assert(r.distinct && r.oldUnchanged, '새 사진 추가가 과거 사진의 연결을 바꾸면 안 됨');
+    assert(r.unit === null && r.serialized === null, '새 사진에 과거 동·호수 연결이 복원됐다');
+  });
+
+  await test('⑧ 경로가 달라진 동명 사진은 이름만으로 다른 세대 연결을 복원하지 않는다', async () => {
+    const r = await page.evaluate(() => {
+      const project = '가상 검증 아파트';
+      state.files = ['unit-101-501', 'unit-102-501'].map((unitId, i) => ({
+        id: 'ambiguous-unit-' + i, name: '중복파일명.jpg', prefix: '현장사진/원래세대' + i + '/',
+        size: 123, ext: 'jpg', kind: 'photo', project, _aptUnit: { project, unitId }
+      }));
+      const saved = JSON.stringify(state.files.map(file => file._aptUnit));
+      backupUserEdits();
+      const moved = { id: 'ambiguous-moved', name: '중복파일명.jpg', prefix: '현장사진/새폴더/',
+        size: 123, ext: 'jpg', kind: 'photo', project: null };
+      restoreUserEdits(moved);
+      return { link: moved._aptUnit || null, same: saved === JSON.stringify(state.files.map(file => file._aptUnit)) };
+    });
+    assert(r.same, '복구 후보를 조사하면서 기존 사진 연결을 바꾸면 안 됨');
+    assert(r.link === null, '경로가 다른 동명 사진에 이름만으로 세대 연결을 승계했다');
+  });
+
+  await test('⑨ 같은 경로의 중복 기록이 다른 세대를 가리키면 복구를 확정하지 않는다', async () => {
+    const r = await page.evaluate(() => {
+      const project = '가상 검증 아파트';
+      state.files = ['unit-101-501', 'unit-102-501'].map((unitId, i) => ({
+        id: 'same-path-unit-' + i, name: '경로중복사진.jpg', prefix: '현장사진/같은폴더/',
+        size: 123, ext: 'jpg', kind: 'photo', project, _aptUnit: { project, unitId }
+      }));
+      const before = JSON.stringify(state.files.map(file => file._aptUnit));
+      backupUserEdits();
+      const fresh = { id: 'same-path-fresh', name: '경로중복사진.jpg', prefix: '현장사진/같은폴더/',
+        size: 123, ext: 'jpg', kind: 'photo', project: null };
+      restoreUserEdits(fresh);
+      return { link: fresh._aptUnit || null, unchanged: before === JSON.stringify(state.files.map(file => file._aptUnit)) };
+    });
+    assert(r.unchanged, '복구 후보 충돌을 조사하면서 원래 연결을 변경하면 안 됨');
+    assert(r.link === null, '동일 경로의 서로 다른 세대 중 마지막 기록을 임의로 복원했다');
+  });
+
+  await test('⑩ 서버 ID가 확인되지 않은 동명 다운로드는 기존 세대 사진을 대체하지 않는다', async () => {
+    const r = await page.evaluate(async (src) => {
+      eval('(' + src + ')()');
+      const link = { project: '가상 검증 아파트', unitId: 'unit-101-501' };
+      const original = { id: 'unverified-placeholder', name: '가상보호세대.jpg', prefix: '현장사진/',
+        ext: 'jpg', kind: 'photo', _virtual: true, project: link.project, _aptUnit: { ...link } };
+      state.files = [original];
+      await __gdIngestOne('FAKE-UNMATCHED-DRIVE', original.name, 'image/jpeg', 'FAKE-DRIVE-TOKEN');
+      const downloaded = state.files.find(file => file._driveId === 'FAKE-UNMATCHED-DRIVE');
+      return { link: downloaded && downloaded._aptUnit || null,
+        originalKept: state.files.includes(original), originalUnit: original._aptUnit,
+        expected: link, originalDrive: original._driveId || null };
+    }, stub.toString());
+    assert(r.originalKept && r.originalDrive === null && JSON.stringify(r.originalUnit) === JSON.stringify(r.expected),
+      '파일명만 같은 서버 사진이 세대가 지정된 기존 기록을 지우거나 바꿨다');
+    assert(r.link === null, '서버 ID 일치 없이 동명 사진의 세대 연결을 승계했다');
+  });
+
   await test('★pageerror 0', async () => {
     assert(errs.length === 0, 'pageerror: ' + errs.join(' | '));
   });
 
+  if (MUTATION) console.log('MUTATION ' + MUTATION + ' applied=' + await page.evaluate(() => window.__unitReingestMutationApplied));
   await browser.close();
   const fail = results.filter(r => !r.ok).length;
   console.log(fail ? '\n' + fail + '건 실패' : '\n전부 통과 (' + results.length + '건)');
