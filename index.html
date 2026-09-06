@@ -2405,7 +2405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v260-refreshflush';
+const APP_BUILD='hyeonjang-v261-orderflow';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9392,6 +9392,7 @@ function openWorkOrder(ref){
 
 /* ═══════════ 🛡 데이터 안전판 — 이 기기 스냅샷 이력(폰에서도 작동) + 원클릭 복구 ═══════════ */
 let __snapLastAt=0,__snapLastLabel='';
+function hjSnapRoutine(label){const l=String(label||'').trim();return l===''||l==='작업 중'||l==='자동'||l==='자동 저장';}
 async function hjSnapshot(label,force,allowEmpty){
   try{
     const now=Date.now();
@@ -9403,7 +9404,9 @@ async function hjSnapshot(label,force,allowEmpty){
     let snaps;try{snaps=(await idbGetStrict('hj_snaps'))||[];}catch(e){return false;}
     if(!Array.isArray(snaps))return false;
     snaps.push({at:new Date().toISOString(),label:String(label||'자동'),np:(data.projects||[]).length,nf:(data.files||[]).length,nq:(data.quotes||[]).length,data});
-    if(snaps.length>12)snaps=snaps.slice(-12);
+    // 12칸 정리: 예전엔 오래된 순으로만 버려 '작업 중'(3분마다) 36분이면 '사진 삭제 전'·'복구 직전' 같은 강제 스냅샷이 밀려 나갔다.
+    // 이제 routine('작업 중'·'자동'·빈 라벨) 중 가장 오래된 것부터 버리고, routine 이 없을 때만 강제 중 가장 오래된 것을 버린다(방금 넣은 것은 안 버림).
+    while(snaps.length>12){let i=-1;for(let j=0;j<snaps.length-1;j++){if(hjSnapRoutine(snaps[j].label)){i=j;break;}}snaps.splice(i<0?0:i,1);}
     await idbSet('hj_snaps',snaps);
     __snapLastAt=now;__snapLastLabel=String(label||'');
     return true;
@@ -9414,7 +9417,7 @@ async function backupHistory(){
   const snaps=((await idbGet('hj_snaps'))||[]).slice().reverse();
   const rows=snaps.length?snaps.map((s,i)=>
     '<div style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px dashed var(--line-soft)">'+
-      '<div style="flex:1;min-width:0"><b style="font-size:13.5px">'+hjSnapTime(s.at)+'</b> <span style="font-size:12px;color:'+(String(s.label).startsWith('🤖')?'var(--clay)':'var(--muted)')+'">'+escapeHtml(s.label)+'</span>'+
+      '<div style="flex:1;min-width:0"><b style="font-size:13.5px">'+hjSnapTime(s.at)+'</b> <span style="font-size:12px;'+(hjSnapRoutine(s.label)?'':'font-weight:700;')+'color:'+(String(s.label).startsWith('🤖')?'var(--clay)':(hjSnapRoutine(s.label)?'var(--muted)':'var(--ink)'))+'">'+escapeHtml(s.label)+'</span>'+
       '<div style="font-size:11px;color:var(--muted)">현장 '+s.np+' · 파일 '+s.nf+' · 견적 '+s.nq+'</div></div>'+
       '<button class="blue tiny snapRestore" data-i="'+i+'" style="padding:7px 12px">복구</button>'+
     '</div>').join('')
@@ -11037,7 +11040,13 @@ function hjKakaoCard(p){
 }
 
 /* ═══════════ 📦 자재 발주서 — 견적 품목 → 거래처별 주문 문자 (거래처 자동 기억) ═══════════ */
-function hjSupplierOf(name){return (state.supplierMap||{})[String(name||'').trim()]||'';}
+function hjSupplierOf(name){
+  const k=String(name||'').trim();const v=(state.supplierMap||{})[k];if(v)return v;
+  // 발주서 거래처 폴백: 🛒 자재 구매처·단가에 같은 이름 자재가 있으면 최저가 구매처(가격 없으면 첫 구매처) — 대표가 자재 화면에 적은 걸 발주서에서 다시 치지 않게
+  const m=matByName(k);if(!m)return '';const b=matBest(m)||(m.entries||[])[0];return b&&b.supplier?String(b.supplier):'';
+}
+function matSupplierNames(){const out=new Set();(state.materials||[]).forEach(m=>(m.entries||[]).forEach(e=>{if(e&&e.supplier)out.add(String(e.supplier));}));return [...out];}
+function matSupplierUrl(sup){const k=String(sup||'').trim();if(!k)return '';for(const m of (state.materials||[]))for(const e of (m.entries||[]))if(e&&String(e.supplier||'').trim()===k&&e.url)return String(e.url);return '';}
 function materialOrder(quoteId){
   const quotes=(state.quotes||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   let q=state.editingQuote&&quoteRealItems(state.editingQuote).length?state.editingQuote:null;
@@ -11045,7 +11054,7 @@ function materialOrder(quoteId){
   if(!q)q=quotes.find(x=>quoteRealItems(x).length)||null;
   if(!q){openModal('📦 자재 발주서','<div class="empty" style="padding:18px"><b>발주로 만들 견적이 없습니다</b>견적서를 먼저 작성하면 품목을 그대로 발주 문자로 바꿔줍니다.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);return {오류:'견적 없음'};}
   const items=quoteRealItems(q);
-  const supNames=[...new Set([...(state.suppliers||[]).map(s=>s.name),...Object.values(state.supplierMap||{})])].filter(Boolean);
+  const supNames=[...new Set([...(state.suppliers||[]).map(s=>s.name),...Object.values(state.supplierMap||{}),...matSupplierNames()])].filter(Boolean);
   const qOpts=quotes.map(x=>'<option value="'+escapeAttr(x.id)+'"'+(x.id===q.id?' selected':'')+'>'+escapeHtml(x.title||x.no)+(x.project?' @'+escapeHtml(x.project):'')+'</option>').join('');
   const rows=items.map((it,i)=>{
     const sup=hjSupplierOf(it.name);
@@ -11078,7 +11087,7 @@ function materialOrder(quoteId){
     if(!picked.length){toast('품목을 하나 이상 체크하세요.');return;}
     // 거래처 학습
     state.supplierMap=state.supplierMap||{};state.suppliers=state.suppliers||[];
-    picked.forEach(x=>{if(x.sup){state.supplierMap[x.name]=x.sup;if(!state.suppliers.some(s=>s.name===x.sup))state.suppliers.push({name:x.sup,phone:''});}});
+    picked.forEach(x=>{if(x.sup){state.supplierMap[x.name]=x.sup;if(!state.suppliers.some(s=>s.name===x.sup)&&!matSupplierUrl(x.sup))state.suppliers.push({name:x.sup,phone:''});}});   // 링크로 사는 쇼핑몰은 📇 거래처 목록에 넣지 않는다
     markDirty();
     materialOrderResult(q,picked,date);
   };
@@ -11110,6 +11119,7 @@ function materialOrderResult(q,picked,date){
         '<input class="moPhone" data-g="'+gi+'" placeholder="거래처 연락처" value="'+escapeAttr(known?known.phone||'':'')+'" inputmode="tel" style="flex:1;min-width:130px;padding:8px;font-size:12.5px">'+
         '<button class="clay tiny moSend" data-g="'+gi+'" data-sup="'+escapeAttr(sup)+'" style="padding:8px 13px">✉️ 문자</button>'+
         '<button class="ghost tiny moCopy" data-g="'+gi+'" style="padding:8px 13px">복사</button>'+
+        (matSupplierUrl(sup)?'<a class="ghost tiny moLink" href="'+escapeAttr(matSupplierUrl(sup))+'" target="_blank" rel="noopener" style="padding:8px 13px;text-decoration:none">🔗 구매 링크</a>':'')+
       '</div></div>';
   }).join('');
   openModal('📦 발주 문자 — '+keys.length+'곳',cards,[{label:'← 품목으로',cls:'ghost',fn:()=>materialOrder(q.id)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -23651,6 +23661,10 @@ function ensureBuiltInCalendarImports(){
 function openScheduleEdit(id){
   const s=id?state.schedule.find(x=>x.id===id):newSchedule();
   if(!s)return;
+  if(!id){   // 「+ 일정 추가」: 달력에서 고른 날짜와 보고 있던 현장을 미리 채운다(newSchedule 자체는 다른 호출자가 있어 그대로) — 폰에서 매번 다시 고르던 두 조작
+    if(__calSelDate)s.date=__calSelDate;
+    const ap=state.activeProject;if(ap&&(state.projects||[]).some(p=>p.name===ap&&!p.archived))s.project=ap;
+  }
   const isNew=!id;
   const projOpts=`<option value="">현장 선택 안 함</option>`+state.projects.filter(p=>!p.archived||s.project===p.name).map(p=>`<option value="${escapeAttr(p.name)}"${s.project===p.name?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
   const body=`<div class="sch-form">
