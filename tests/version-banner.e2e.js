@@ -4,7 +4,8 @@
    앱을 켤 때·다시 볼 때 서버 sw.js 번호로 확인해 위에 한 줄 배너로 알린다.
 
      ① 서버 sw.js 가 더 새 번호면 부팅 뒤 배너(#hjVerNew)가 뜨고 새 번호·현재 번호·「지금 새로고침」·「나중에」가 있다
-     ② 「지금 새로고침」은 저장 안 한 변경이 있으면 막고(토스트), 없으면 appVersionUpdate 를 한 번 부른다
+     ② 「지금 새로고침」(v260): 폰(폴더 없음)은 예약된 IDB 저장을 끝낸 뒤 appVersionUpdate, 저장 실패·throw 면 이유와 함께 막고 버튼 복구,
+        폴더 연결 PC 의 밀린 파일 저장은 예전처럼 막는다 — v255 규칙(state.dirty 면 무조건 차단)은 폰에서 영원히 막혔다
      ③ 서버와 같은 번호면 배너가 없다
      ④ 6시간 안에 확인한 적이 있으면 다시 확인하지 않는다(서버가 새 번호여도 배너 없음, 요청도 없음)
      ⑤ 오프라인이면 확인하지 않고 확인 시각도 남기지 않는다
@@ -49,16 +50,33 @@ let browser;
   const stamped = await p1.evaluate(() => +localStorage.getItem('hj_ver_checked_at') > Date.now() - 60000);
   assert(stamped, '① 확인 시각을 남긴다');
 
-  // ② 저장 안 한 변경이 있으면 막고, 없으면 한 번 새로고침
+  // ② 새로고침 전 저장 규칙 (v260): 폰(폴더 없음)은 dirty 여도 예약된 IDB 저장을 지금 끝내고 새로고침한다 —
+  //    v255 는 state.dirty 만 보고 막았는데 폰에서는 clearDirty 가 불릴 일이 없어 한 번 편집하면 영원히 막혔다.
+  //    저장이 실패하면(false/throw) 막고 이유를 말한다. 폴더가 연결된 PC 는 파일 저장이 밀렸으면 예전처럼 막는다.
   const guard = await p1.evaluate(async () => {
-    window.__upd = 0; appVersionUpdate = async () => { window.__upd++; return true; };
-    state.dirty = true; document.getElementById('hjVerNewGo').click(); await new Promise(r => setTimeout(r, 50));
-    const blocked = { upd: window.__upd, toast: document.querySelector('#toast').textContent };
-    state.dirty = false; document.getElementById('hjVerNewGo').click(); await new Promise(r => setTimeout(r, 50));
-    return { blocked, upd: window.__upd };
+    window.__upd = 0; window.__flush = 0; appVersionUpdate = async () => { window.__upd++; return true; };
+    const go = () => new Promise(r => { document.getElementById('hjVerNewGo').click(); setTimeout(r, 80); });
+    const btn = () => document.getElementById('hjVerNewGo');
+    guardedPersistCurrentState = async () => { window.__flush++; return true; };
+    state.dirHandle = null; state.dirty = true; await go();
+    const phone = { upd: window.__upd, flush: window.__flush };
+    btn().disabled = false;
+    guardedPersistCurrentState = async () => { window.__flush++; return false; };
+    await go();
+    const failed = { upd: window.__upd, flush: window.__flush, toast: document.querySelector('#toast').textContent, enabled: !btn().disabled };
+    guardedPersistCurrentState = async () => { window.__flush++; throw new Error('stale appState conflict'); };
+    await go();
+    const threw = { upd: window.__upd, toast: document.querySelector('#toast').textContent, enabled: !btn().disabled };
+    guardedPersistCurrentState = async () => { window.__flush++; return true; };
+    state.dirHandle = {}; state.dirty = true; await go();
+    const pc = { upd: window.__upd, flush: window.__flush, toast: document.querySelector('#toast').textContent };
+    state.dirHandle = null; state.dirty = false;
+    return { phone, failed, threw, pc };
   });
-  assert(guard.blocked.upd === 0 && /저장/.test(guard.blocked.toast), '② 저장 안 한 변경이 있으면 새로고침을 막는다: ' + JSON.stringify(guard));
-  assert(guard.upd === 1, '② 변경이 없으면 appVersionUpdate 한 번: ' + JSON.stringify(guard));
+  assert(guard.phone.upd === 1 && guard.phone.flush === 1, '② 폰: dirty 여도 저장을 끝낸(flush 1) 뒤 새로고침(upd 1): ' + JSON.stringify(guard.phone));
+  assert(guard.failed.upd === 1 && guard.failed.flush === 2 && /저장이 끝나지 않아/.test(guard.failed.toast) && guard.failed.enabled, '② 저장 실패(false)면 막고 버튼을 되살린다: ' + JSON.stringify(guard.failed));
+  assert(guard.threw.upd === 1 && /저장이 끝나지 않아/.test(guard.threw.toast) && /stale/.test(guard.threw.toast) && guard.threw.enabled, '② 저장이 throw 하면 이유와 함께 막는다: ' + JSON.stringify(guard.threw));
+  assert(guard.pc.upd === 1 && guard.pc.flush === 3 && /폴더에 저장/.test(guard.pc.toast), '② 폴더 연결 PC 의 밀린 파일 저장은 예전처럼 막는다(flush 안 함): ' + JSON.stringify(guard.pc));
   await p1.close();
 
   // ③ 같은 번호 → 배너 없음
