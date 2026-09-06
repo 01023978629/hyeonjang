@@ -4,10 +4,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { execFileSync } = require('node:child_process');
 
 (async () => {
-  const mod = await import(path.join(__dirname, '..', 'tools', 'photo-audit-offline.mjs'));
+  const mod = await import(pathToFileURL(path.join(__dirname, '..', 'tools', 'photo-audit-offline.mjs')).href);
   const P = (name, extra) => Object.assign({ name, stage: 2, received: 0, phases: [], customer: {} }, extra || {});
   const data = {
     version: 2, app: '현장', savedAt: '2026-09-03T00:00:00.000Z', _savedFileCount: 10, unknownTopLevel: { keep: true },

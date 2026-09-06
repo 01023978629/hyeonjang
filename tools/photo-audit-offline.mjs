@@ -16,6 +16,7 @@
    1km 넘게 떨어졌고 다른 현장이 0.5km 안이면 재배정, 아니면 확인 필요. 보관(archived) 현장 제외. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const FAR_KM = 1.0, NEAR_KM = 0.5, CLUSTER_DEG = 0.0045, DUP_BUCKET_MS = 2000;
 
@@ -152,7 +153,7 @@ function stampNow() {
   return d.toISOString().slice(0, 16).replace('T', '_').replace(/[-:]/g, '');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
   const input = args.find((a) => !a.startsWith('--'));
   if (!input) { console.error('사용: node tools/photo-audit-offline.mjs <현장데이터.json> [--out DIR] [--apply] [--drop-dups]'); process.exit(2); }
