@@ -694,6 +694,16 @@
   #photoSourcePanel button{min-height:44px;white-space:normal}
   .photo-source-modal .mfoot button{min-height:44px}
   .photo-source-modal .modal-close{min-width:44px;min-height:44px}
+  .apt-unit-modal button,.apt-unit-modal input:not([type=checkbox]),.apt-unit-modal select{min-height:44px;min-width:44px;font-size:16px}
+  .apt-unit-modal .modal-close{min-width:44px;min-height:44px}
+  .apt-unit-modal .mfoot button{min-height:44px}
+  .apt-unit-panel{min-width:0;overflow-wrap:anywhere}
+  .apt-unit-panel input:not([type=checkbox]),.apt-unit-panel select,.apt-unit-panel textarea{width:100%;box-sizing:border-box;margin:5px 0 12px}
+  .apt-unit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
+  .apt-unit-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;min-height:44px}
+  .apt-unit-row input[type=checkbox]{width:24px;height:24px;flex-shrink:0}
+  .apt-unit-row span{min-width:0;flex:1}
+  .apt-unit-row button{flex-shrink:0}
   #photoSourcePanel .ps-search{grid-column:1/-1}
   #photoSourceSummary{font-size:13px;margin:12px 0}
   #photoSourceList{list-style:none;padding:0;margin:0}
@@ -1002,6 +1012,8 @@ function recoverOrganizedMetadata(rec){
 // 정리본의 위치·현장·공정은 그대로 두고, 원본 쪽 서버 사진 연결값만 이어 붙인다.
 function mergeOrganizedPhotoDuplicates(files){
   const src=Array.isArray(files)?files:[],byName=new Map();
+  // 명시 세대 연결이 한쪽에만 있거나 다르면 합치지 않는다. 파일명은 세대 소유권 근거가 아니다.
+  const sameUnit=(a,b)=>JSON.stringify(a.aptUnit??null)===JSON.stringify(b.aptUnit??null);
   const mergeMissing=(keep,old)=>{
     ['text','ocr','est','ledger','quote','contact','address','gdFolder','lat','lng','when','project','phase','worklabel'].forEach(k=>{
       if((keep[k]===undefined||keep[k]===null||keep[k]==='')&&old[k]!==undefined&&old[k]!==null&&old[k]!=='')keep[k]=old[k];
@@ -1021,6 +1033,7 @@ function mergeOrganizedPhotoDuplicates(files){
     const original=group.filter(x=>!String(x.f.prefix||'').startsWith('_정리완료/'));
     if(organized.length!==1||original.length!==1)return;
     const keep=organized[0].f,old=original[0].f;
+    if(!sameUnit(keep,old))return;
     if(keep.project&&old.project&&keep.project!==old.project)return;
     if(!keep.driveId&&old.driveId){keep.driveId=old.driveId;linked++;}
     mergeMissing(keep,old);
@@ -1037,6 +1050,7 @@ function mergeOrganizedPhotoDuplicates(files){
   const driveDrop=new Set();let driveDeduped=0;
   byDrive.forEach(group=>{
     if(group.length!==2||String(group[0].f.name||'').toLowerCase()!==String(group[1].f.name||'').toLowerCase())return;
+    if(!sameUnit(group[0].f,group[1].f)||group[0].f.project!==group[1].f.project)return;
     group.sort((a,b)=>Number(String(b.f.prefix||'').startsWith('_정리완료/'))-Number(String(a.f.prefix||'').startsWith('_정리완료/'))||(Number(b.f.size)||0)-(Number(a.f.size)||0));
     mergeMissing(group[0].f,group[1].f);driveDrop.add(group[1].i);driveDeduped++;
   });
@@ -1494,7 +1508,8 @@ function serializeData(source,savedAt){
       text:supplied?f.text:(f.text||''),ocr:f.ocr,est:f.est,exSum:supplied?f.exSum:(f.exSum||false),ledger:supplied?f.ledger:(f.ledger||null),quote:supplied?f.quote:(f.quote||null),contact:f.contact,address:f.address,
       phase:supplied?f._phase:(f._phase||null),worklabel:supplied?f._worklabel:(f._worklabel||null),gdFolder:supplied?f._gdFolder:(f._gdFolder||null),
       driveId:supplied?f._driveId:(f._driveId||null),driveMimeType:supplied?f._driveMimeType:(f._driveMimeType||null),driveSize:supplied?f._driveSize:(Number(f._driveSize)||0),size:supplied?f.size:(f.size||0),
-      lat:f.lat,lng:f.lng,when:f.when==null?null:(f.when instanceof Date?f.when.toISOString():new Date(f.when).toISOString())}))
+      lat:f.lat,lng:f.lng,when:f.when==null?null:(f.when instanceof Date?f.when.toISOString():new Date(f.when).toISOString()),
+      ...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{})}))
   };
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
@@ -1577,6 +1592,8 @@ function applyData(data,opts){
       let sk=s.kind||f.kind;
       if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;
+      if(Object.prototype.hasOwnProperty.call(s,'aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
+      else if(__revert)delete f._aptUnit;
       if(__revert){
         // 복구: 스냅샷 값 그대로 — 병합(s.x||f.x)이면 스냅샷 이후 붙인 est·메모·
         // 집계 제외가 안 지워져 "되돌렸다"가 거짓말이 된다. 드라이브 신원 필드는
@@ -1616,6 +1633,7 @@ function applyData(data,opts){
     // 부팅·서버·드라이브 복원 한 번에 '집계 제외' 표시가 풀려 초안 견적이 매출·부가세에
     // 다시 잡히고, 그 상태로 저장되면 서버 사본까지 오염된다(실제 재현됨).
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
+      ...(Object.prototype.hasOwnProperty.call(s,'aptUnit')?{_aptUnit:structuredClone(s.aptUnit)}:{}),
       kind:fkind,project:s.project||null,when:s.when?new Date(s.when):null,
       lat:s.lat,lng:s.lng,place:null,address:s.address||null,thumb:null,text:s.text||'',ocr:s.ocr||'na',
       est:s.est||null,exSum:s.exSum||false,ledger:s.ledger||null,quote:s.quote||null,contact:s.contact||null,_phase:s.phase||null,_worklabel:s.worklabel||null,_gdFolder:s.gdFolder||null,_driveId:s.driveId||null,_driveMimeType:s.driveMimeType||null,_driveSize:Number(s.driveSize)||0,_relayLink:s.driveId?'relay:'+s.driveId:null,_file:null,_virtual:true});
@@ -2163,7 +2181,7 @@ async function relayLoadDriveFiles(silent){
       if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);return 0;}
       if(!(res&&res.ok&&Array.isArray(res.files))){if(!silent)toast('서버 사진 목록을 불러오지 못했습니다');return 0;}
       let added=0,linked=0;
-      const unlinked=state.files.filter(x=>x&&!x._driveId&&x.name&&IMG.includes(bestExt(x.name,x.ext||'')));
+      const unlinked=state.files.filter(x=>x&&!x._driveId&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&x.name&&IMG.includes(bestExt(x.name,x.ext||'')));
       const usedRec=new Set();
       const takeRecord=(sf)=>{
         let pool=unlinked.filter(x=>!usedRec.has(x)&&x.name===sf.name);
@@ -2182,7 +2200,7 @@ async function relayLoadDriveFiles(silent){
         if(existing){
           existing._driveMimeType=String(f.mimeType||'');existing._driveSize=Number(f.size)||0;
           // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
-          if(same&&existing!==same&&existing._virtual&&baseName(existing.name)===baseName(same.name)){
+          if(same&&existing!==same&&existing._virtual&&!existing._aptUnit&&!aptUnitManaged(aptUnitProject(existing.project))&&baseName(existing.name)===baseName(same.name)){
             same._driveId=f.id;same._driveMimeType=String(f.mimeType||existing._driveMimeType||'');same._driveSize=Number(f.size)||Number(existing._driveSize)||0;same.size=same.size||existing.size||(+f.size||0);
             if(!same.kind||same.kind==='other')same.kind='photo';
             if(!same.when&&existing.when)same.when=existing.when;
@@ -2425,7 +2443,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v265-photosource';
+const APP_BUILD='hyeonjang-v266-aptunits';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -2983,12 +3001,12 @@ function photoIntakeUpdateGuard(){
   toast('새 버전을 받는 중입니다 — 화면이 다시 열린 뒤 사진을 다시 선택해 주세요');
   return true;
 }
-function gdUploadPhotos(){
+function gdUploadPhotos(unitContext){
   if(photoIntakeUpdateGuard())return;
   if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('열려 있는 사진 추가를 먼저 마쳐 주세요');return;}
   let inp=document.getElementById('photoGalleryInput');
   if(!inp){inp=document.createElement('input');inp.id='photoGalleryInput';inp.type='file';inp.accept='image/*';inp.multiple=true;inp.hidden=true;document.body.appendChild(inp);}
-  const context={project:state.activeProject||null,source:'gallery'};
+  const context={project:unitContext&&unitContext.project||state.activeProject||null,unitId:unitContext&&unitContext.unitId||'',source:'gallery'};
   inp.value='';
   inp.onchange=()=>{const files=[...inp.files];inp.value='';if(files.length)openPhotoIntake(files,context);};
   inp.click();
@@ -3006,6 +3024,8 @@ function openPhotoIntake(files,context){
     <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':'갤러리 사진'}</p>
     <label for="photoIntakeProject">사진을 추가할 현장</label>
     <select id="photoIntakeProject" aria-describedby="photoIntakeIssue" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"><option value="">현장을 선택해 주세요</option>${options}<option value="none">미배정으로 추가 (나중에 배정)</option></select>
+    <label for="photoIntakeUnit">동·호수 / 공용부 (선택)</label>
+    <select id="photoIntakeUnit" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"></select>
     <label for="photoIntakeWork">작업 내용 (선택 · 최대 80자)</label>
     <input id="photoIntakeWork" maxlength="80" placeholder="예: 화장실 2차 방수 완료" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px">
     <p class="hint">선택한 사진에만 현장과 작업 내용을 적용합니다. 촬영일·위치는 원본 정보를 유지합니다.</p>
@@ -3019,11 +3039,23 @@ function openPhotoIntake(files,context){
       const target=sel.value==='none'?null:projects[Number(sel.value)-1];
       if(sel.value!=='none'&&(!target||!state.projects.some(p=>p.name===target.name))){issue.textContent='추가할 현장을 선택해 주세요. 삭제·이름 변경된 현장은 다시 선택해야 합니다.';sel.focus();return;}
       const approved={project:target?target.name:null,workLabel:document.getElementById('photoIntakeWork').value.trim().slice(0,80)};
+      approved.unitId=document.getElementById('photoIntakeUnit').value;
+      const unit=aptUnitList(aptUnitProject(approved.project)).find(u=>u.id===approved.unitId);
+      if(approved.unitId&&!unit){issue.textContent='동·호수가 변경되었습니다. 다시 선택해 주세요.';return;}
+      approved.unitLabel=unit?aptUnitLabel(unit):'';
       __photoIntakeBusy=true;
       runPhotoIntake(picked,approved);
     }}]);
   const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons[0].id='photoIntakeCancel';buttons[1].id='photoIntakeConfirm';
   buttons.forEach(b=>{b.style.minHeight='44px';b.style.minWidth='44px';});
+  const unitSelect=document.getElementById('photoIntakeUnit'),projectSelect=document.getElementById('photoIntakeProject');
+  const refreshUnits=initial=>{
+    const target=projects[Number(projectSelect.value)-1],units=aptUnitList(aptUnitProject(target&&target.name));
+    unitSelect.innerHTML='<option value="">동·호수 미지정</option>'+units.map(u=>`<option value="${escapeAttr(u.id)}">${escapeHtml(aptUnitLabel(u))}</option>`).join('');
+    unitSelect.disabled=!units.length;
+    if(initial&&units.some(u=>u.id===context.unitId))unitSelect.value=context.unitId;
+  };
+  projectSelect.onchange=()=>refreshUnits(false);refreshUnits(true);
 }
 async function runPhotoIntake(files,approved){
   const pairs=[],readFailed=[];
@@ -3036,6 +3068,7 @@ async function runPhotoIntake(files,approved){
   try{
     if(!(await hjSnapshot('사진 추가 전',true,true)))throw new Error('안전 스냅샷을 저장하지 못해 사진을 추가하지 않았습니다. 저장 공간을 확인한 뒤 다시 선택해 주세요.');
     if(approved.project&&!state.projects.some(p=>p.name===approved.project))throw new Error('선택한 현장이 변경되어 중단했습니다. 현장을 다시 선택해 주세요.');
+    if(approved.unitId&&!aptUnitList(aptUnitProject(approved.project)).some(u=>u.id===approved.unitId))throw new Error('선택한 동·호수가 변경되어 중단했습니다. 다시 선택해 주세요.');
     for(let i=0;i<files.length;i++){
       const file=files[i];progress('앱 목록에 추가 중 '+(i+1)+' / '+files.length);
       try{
@@ -3043,6 +3076,7 @@ async function runPhotoIntake(files,approved){
         const rec=await ingestFile(file,null,'',{restoreEdits:false});
         // 재스캔이 아닌 명시적인 새 사진 추가: 파일명 추정보다 승인한 현장·작업명이 우선이다.
         rec.kind='photo';rec.project=approved.project;rec._worklabel=approved.workLabel||null;
+        if(approved.unitId)rec._aptUnit={project:approved.project,unitId:approved.unitId};
         pairs.push({file,rec});
       }catch(e){readFailed.push(file.name||'사진');}
     }
@@ -3075,7 +3109,7 @@ async function runPhotoIntake(files,approved){
     const names=(label,items)=>items.length?`<details><summary style="min-height:44px;cursor:pointer">${label} ${items.length}장 보기</summary><ul style="padding-left:20px;max-height:160px;overflow:auto">${items.map(n=>`<li>${escapeHtml(n)}</li>`).join('')}</ul></details>`:'';
     openModal('사진 추가 결과',`<div id="photoIntakeResult" role="status" style="overflow-wrap:anywhere">
       <p><b>앱 목록 추가 ${pairs.length}장</b> / 선택 ${files.length}장${readFailed.length?' · 읽기 실패 '+readFailed.length+'장':''}</p>
-      <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
+      <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.unitLabel?'<br>동·호수: '+escapeHtml(approved.unitLabel):''}${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
       <p>서버·드라이브 백업 확인 ${report.ok}장 · 전송 대기 ${report.queued}장 · 백업 실패 ${report.failed}장</p>
       ${error?`<p role="alert" style="color:var(--warn)">${escapeHtml(error)}</p>`:''}
       ${!cloudAttempted&&pairs.length?'<p>서버·드라이브 백업은 실행하지 않았습니다.</p>':''}
@@ -3174,12 +3208,14 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize){
     try{ const c=await idbGet('thumb:'+id); if(c)return 0; }catch(e){}
   }
   // _driveId가 같은 가상분, 또는 (레거시: _driveId 없이 저장된) 같은 이름의 가상분을 교체 대상으로
-  const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId);
+  const ph=existing||state.files.find(x=>x._virtual&&x.name===name&&!x._driveId&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project)));
   const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
   if(!dr.ok)return 0;
   const blob=await dr.blob();
   // HEIC 원본 그대로 보관(변환 안 함) → EXIF(GPS·날짜) 보존. 표시는 드라이브 썸네일 URL(photoSrc)로 바로, GPS는 extractImage가 exifr로 읽음
   const rec=await ingestFile(new File([blob],name,{type:mime||blob.type||'application/octet-stream'})); if(!rec)return 0;
+  // 동명 파일 편집 백업은 서버 파일의 신원이 아니다. 아래 동일 Drive ID의 placeholder만 승계한다.
+  delete rec._aptUnit;
   rec._driveId=id;rec._driveMimeType=String(mime||blob.type||'');rec._driveSize=Number(driveSize)||Number(blob.size)||0;
   if(forceKind)rec.kind=forceKind;   // 견적서 폴더 등 위치 기반 강제 분류
   if(IMG.includes(rec.ext))cacheThumb(id,rec._file);   // 작은 미리보기 캐시(백그라운드)
@@ -3201,6 +3237,7 @@ async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize){
     if(ph.ledger)rec.ledger=ph.ledger;
     if(ph.address)rec.address=ph.address;       // 네이버지도로 확인해 적은 건물명 — 자동 복구 경로가 없다
     if(ph._worklabel)rec._worklabel=ph._worklabel;
+    if(existing&&Object.prototype.hasOwnProperty.call(ph,'_aptUnit'))rec._aptUnit=structuredClone(ph._aptUnit);
     if(ph._gdFolder)rec._gdFolder=ph._gdFolder;
     if(ph.prefix&&!rec.prefix)rec.prefix=ph.prefix;
     if(!forceKind && ph.kind&&ph.kind!=='other')rec.kind=ph.kind;   // forceKind면 그대로 유지
@@ -4169,9 +4206,11 @@ async function walk(dir,prefix){
    스캔 전에 경로(prefix+name) 기준으로 사용자 편집 필드를 백업하고,
    ingestFile에서 새 파일을 만들 때 매칭되면 복원한다. */
 let __editBackup=new Map();
+let __aptEditAmbiguousPaths=new Set();
 function fileEditKey(prefix,name){return String((prefix||'')+(name||'')).toLowerCase();}
 function backupUserEdits(){
   __editBackup=new Map();
+  __aptEditAmbiguousPaths=new Set();
   window.__editByName=new Map();
   rebuildOrganizedProjectAliases();
   try{
@@ -4184,8 +4223,11 @@ function backupUserEdits(){
         project:f.project||null,est:f.est||null,kind:f.kind||null,phase:f._phase||null,
         contact:f.contact||null,_worklabel:f._worklabel||null,driveId:f._driveId||null,driveMimeType:f._driveMimeType||null,driveSize:Number(f._driveSize)||0,text:f.text||'',ocr:f.ocr||null,
         exSum:f.exSum||false
+        ,...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{})
       };
-      __editBackup.set(fileEditKey(f.prefix,f.name),_rec);
+      const editKey=fileEditKey(f.prefix,f.name),previous=__editBackup.get(editKey);
+      if(previous&&JSON.stringify(previous.aptUnit??null)!==JSON.stringify(_rec.aptUnit??null))__aptEditAmbiguousPaths.add(editKey);
+      __editBackup.set(editKey,_rec);
       // [v101 BUG-5] 이름만으로도 찾을 수 있게(파일이 다른 폴더로 옮겨진 경우 배정 복원)
       window.__editByName.set(String(f.name||'').toLowerCase(),_rec);
     });
@@ -4195,7 +4237,9 @@ function backupUserEdits(){
 function restoreUserEdits(rec){
   try{
     if(!rec||!__editBackup||!__editBackup.size)return rec;
-    let b=__editBackup.get(fileEditKey(rec.prefix,rec.name));
+    const editKey=fileEditKey(rec.prefix,rec.name);
+    let b=__editBackup.get(editKey);
+    const exactUnitPath=!!b&&!__aptEditAmbiguousPaths.has(editKey);
     // [v101 BUG-5] 파일이 다른 폴더로 옮겨졌으면 이름만으로 복원(배정 풀림 방지)
     if(!b&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
     if(!b)return rec;
@@ -4204,6 +4248,7 @@ function restoreUserEdits(rec){
     if(b.kind&&b.kind!=='other')rec.kind=b.kind; // 사용자가 바꾼 분류 복원
     if(b.exSum)rec.exSum=true;                   // Σ 집계 제외 복원
     if(b.phase)rec._phase=b.phase;
+    if(exactUnitPath&&Object.prototype.hasOwnProperty.call(b,'aptUnit'))rec._aptUnit=structuredClone(b.aptUnit);
     if(b.contact)rec.contact=b.contact;
     if(b._worklabel)rec._worklabel=b._worklabel;
     if(b.driveId&&!rec._driveId)rec._driveId=b.driveId;
@@ -4709,7 +4754,7 @@ function renameProject(oldName){
       const projectIdentity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
       p.name=nv;
       // 연결된 모든 항목의 현장명 변경
-      state.files.forEach(f=>{if(f.project===oldName)f.project=nv;});
+      state.files.forEach(f=>{if(f.project===oldName){f.project=nv;if(f._aptUnit&&f._aptUnit.project===oldName)f._aptUnit={...f._aptUnit,project:nv};}});
       if(projectIdentity)(state.aptOrders||[]).forEach(function(order){if(order&&officeIntakeValidProjectIdentity(order.projectIdentity)===projectIdentity)order.project=nv;});
       (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
       if(state.activeProject===oldName)state.activeProject=nv;
@@ -10362,10 +10407,12 @@ function officeCompletionPhotoSafe(file){
 }
 function officeCompletionPhotoIds(order){
   const project=officeIntakeBoundProject(order);if(!project)return [];
+  const managed=aptUnitManaged(project),unit=managed?aptUnitForOrder(order,project):null;
+  if(managed&&!unit)return [];
   const ids=[],seen={},intake=new Set(Array.isArray(order&&order.intakePhotoIds)?order.intakePhotoIds.map(String):[]);
   (state.files||[]).forEach(function(file){
     const id=String(file&&file._driveId||'').trim();
-    if(file&&file.project===project.name&&!intake.has(id)&&officeCompletionPhotoSafe(file)&&!seen[id]&&ids.length<10){seen[id]=true;ids.push(id);}
+    if(file&&file.project===project.name&&(!managed||aptUnitForPhoto(file,project)?.id===unit.id)&&!intake.has(id)&&officeCompletionPhotoSafe(file)&&!seen[id]&&ids.length<10){seen[id]=true;ids.push(id);}
   });
   return ids;
 }
@@ -10671,13 +10718,159 @@ function aptOfficeName(id){const o=(state.aptOffices||[]).find(x=>x.id===id);ret
    검색어는 공백을 뺀 동/호("103동1204호") — 파일명에 공백을 안 쓰는 관행과 맞춘다.
    개수는 사진 탭이 실제로 쓰는 matchSearch 와 같은 판정으로 센다 —
    배지가 3장이라는데 탭에서 0장이 보이면 기능을 못 믿게 된다. */
+// 아파트 하나를 프로젝트로 유지한다. 세대 등록은 유상 오더 생성이나 기존 사진 추정 배정이 아니다.
+function aptUnitProject(name,source=state){const ps=(source.projects||[]).filter(p=>p&&p.name===name);return ps.length===1?ps[0]:null;}
+function aptUnitManaged(p){return !!p&&Object.prototype.hasOwnProperty.call(p,'aptUnits');}
+function aptUnitNormalize(input){
+  const v=input||{},type=v.type==='common'?'common':'unit',note=String(v.note||'').trim();
+  if(note.length>800)throw new Error('작업 메모는 800자 이내로 입력하세요.');
+  if(type==='common'){
+    const name=String(v.name||'').trim().replace(/\s+/g,' ');
+    if(!name||name.length>40)throw new Error('공용부 이름을 1~40자로 입력하세요.');
+    return {type,dong:'',ho:'',name,note};
+  }
+  const number=(raw,suffix)=>{const text=String(raw??'').replace(/\s+/g,'').replace(new RegExp(suffix+'$'),'');if(!/^\d{1,6}$/.test(text)||Number(text)<1)throw new Error('동과 호수를 숫자로 입력하세요. 예: 101동 501호');return String(Number(text));};
+  return {type,dong:number(v.dong,'동'),ho:number(v.ho,'호'),name:'',note};
+}
+function aptUnitLabel(u){return u&&u.type==='common'?String(u.name||''):(u?u.dong+'동 '+u.ho+'호':'동·호수 미지정');}
+function aptUnitLabelKey(text){
+  const compact=String(text||'').replace(/\s+/g,'').toLowerCase(),m=compact.match(/^(\d{1,6})동(\d{1,6})호$/);
+  return m?Number(m[1])+'동'+Number(m[2])+'호':compact;
+}
+function aptUnitList(p){
+  if(!p||!Array.isArray(p.aptUnits)||p.aptUnits.length>500)return [];
+  const ids=new Map(),labels=new Map();p.aptUnits.forEach(u=>{if(u)ids.set(u.id,(ids.get(u.id)||0)+1);});
+  const valid=p.aptUnits.filter(u=>{try{return u&&typeof u.id==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(u.id)&&['unit','common'].includes(u.type)&&JSON.stringify(aptUnitNormalize(u))===JSON.stringify({type:u.type,dong:u.dong,ho:u.ho,name:u.name,note:u.note});}catch(_){return false;}});
+  valid.forEach(u=>{const key=aptUnitLabelKey(aptUnitLabel(u));labels.set(key,(labels.get(key)||0)+1);});
+  return valid.filter(u=>ids.get(u.id)===1&&labels.get(aptUnitLabelKey(aptUnitLabel(u)))===1);
+}
+function aptUnitForPhoto(f,p,units=aptUnitList(p)){
+  const link=f&&f._aptUnit;
+  if(!p||!link||f.kind!=='photo'||f.project!==p.name||link.project!==p.name)return null;
+  return units.find(u=>u.id===link.unitId)||null;
+}
+function aptUnitPhotoGroups(p,units=aptUnitList(p)){
+  const groups=new Map([['',[]]]);units.forEach(u=>groups.set(u.id,[]));
+  if(p)(state.files||[]).forEach(f=>{if(f.kind==='photo'&&f.project===p.name){const id=aptUnitForPhoto(f,p,units)?.id||'';groups.get(id).push(f);}});
+  return groups;
+}
+function aptUnitPhotos(p,unitId){return aptUnitPhotoGroups(p).get(unitId||'')||[];}
+function aptUnitOrderProject(o){
+  if(!o)return null;
+  if(o.source==='office-intake'||o.projectIdentity)return officeIntakeBoundProject(o);
+  return aptUnitProject(o.project)||aptUnitProject(aptOfficeName(o.officeId));
+}
+function aptUnitForOrder(o,p){const key=aptUnitLabelKey(o&&o.unit);return aptUnitList(p).find(u=>aptUnitLabelKey(aptUnitLabel(u))===key)||null;}
+let __aptUnitBusy=false;
+async function aptUnitMutation(options){
+  if(__aptUnitBusy||photoIntakePending()||__appVersionUpdating)throw new Error('다른 저장 또는 사진 추가가 끝난 뒤 다시 시도하세요.');
+  __aptUnitBusy=true;
+  try{return await durableLocalMutation(options);}finally{__aptUnitBusy=false;}
+}
+async function aptUnitSave(projectName,input,id=''){
+  const normalized=aptUnitNormalize(input),project=aptUnitProject(projectName);
+  if(!project)throw new Error('프로젝트가 변경되었습니다. 다시 열어 주세요.');
+  const before=JSON.stringify(project.aptUnits),unitId=id||('unit_'+uid());
+  return aptUnitMutation({snapshotLabel:'동·호수 저장 전',mutateDraft:draft=>{
+    const p=aptUnitProject(projectName,draft);
+    if(!p||JSON.stringify(p.aptUnits)!==before)throw new Error('동·호수 목록이 변경되었습니다. 다시 열어 주세요.');
+    const units=aptUnitList(p);
+    if(aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||units.length!==p.aptUnits.length))throw new Error('동·호수 관리 정보에 오류가 있습니다. 기존 자료를 확인해 주세요.');
+    if(id&&!units.some(u=>u.id===id))throw new Error('수정할 동·호수가 없습니다.');
+    if(!id&&units.length>=500)throw new Error('한 프로젝트에는 최대 500곳을 등록할 수 있습니다.');
+    if(units.some(u=>u.id!==id&&aptUnitLabelKey(aptUnitLabel(u))===aptUnitLabelKey(aptUnitLabel(normalized))))throw new Error('이미 등록된 동·호수 또는 공용부입니다.');
+    p.aptUnits=id?units.map(u=>u.id===id?{...u,...normalized}:u):units.concat({id:unitId,...normalized});
+    return unitId;
+  }});
+}
+function aptUnitPhotoKey(f,serialized){return JSON.stringify([serialized?f.key:fileKey(f),f.name,f.prefix||'',f.size||0,(serialized?f.driveId:f._driveId)||null]);}
+async function aptUnitAssign(projectName,unitId,fileIds){
+  const ids=[...new Set(fileIds||[])],p=aptUnitProject(projectName);
+  if(!p||!ids.length)throw new Error('배정할 사진을 선택하세요.');
+  if(unitId&&!aptUnitList(p).some(u=>u.id===unitId))throw new Error('등록된 동·호수를 선택하세요.');
+  const selected=ids.map(id=>{const fs=state.files.filter(f=>f.id===id&&f.kind==='photo'&&f.project===projectName&&!f._fromQuote);if(fs.length!==1)throw new Error('사진 정보가 변경되었습니다. 다시 선택하세요.');return {key:aptUnitPhotoKey(fs[0],false),link:JSON.stringify(fs[0]._aptUnit)};});
+  if(new Set(selected.map(f=>f.key)).size!==selected.length)throw new Error('동일한 파일 기록이 겹칩니다. 사진 연결 상태를 먼저 확인하세요.');
+  return aptUnitMutation({snapshotLabel:'동·호수 사진 배정 전',mutateDraft:draft=>{
+    const project=aptUnitProject(projectName,draft);
+    if(!project||(unitId&&!aptUnitList(project).some(u=>u.id===unitId)))throw new Error('프로젝트 또는 동·호수가 변경되었습니다.');
+    selected.forEach(item=>{
+      const matches=draft.files.filter(f=>f.kind==='photo'&&f.project===projectName&&aptUnitPhotoKey(f,true)===item.key);
+      if(matches.length!==1||JSON.stringify(matches[0].aptUnit)!==item.link)throw new Error('사진 연결이 변경되었거나 중복됩니다. 다시 확인하세요.');
+      matches[0].aptUnit=unitId?{project:projectName,unitId}:null;
+    });return selected.length;
+  }});
+}
+function aptUnitModalStyle(){const m=document.querySelector('#modalRoot .modal');if(m)m.classList.add('apt-unit-modal');}
+async function aptUnitUiWrite(action,done){
+  if(__aptUnitBusy)return;
+  const panel=document.querySelector('#modalRoot .modal'),buttons=panel?[...panel.querySelectorAll('button,input,select,textarea')]:[];
+  buttons.forEach(b=>b.disabled=true);__modalCloseLocked=true;
+  let result,error;
+  try{result=await action();}catch(e){error=e;}finally{__modalCloseLocked=false;buttons.forEach(b=>b.disabled=false);}
+  if(error){const issue=document.getElementById('aptUnitIssue');if(issue)issue.textContent=error.message||'저장하지 못했습니다. 다시 시도하세요.';return;}
+  done(result);
+}
+function aptUnitEdit(projectName,id=''){
+  const p=aptUnitProject(projectName),u=aptUnitList(p).find(u=>u.id===id);if(!p||(id&&!u))return;
+  openModal(id?'동·호수 수정':'동·호수 / 공용부 등록',`<div class="apt-unit-panel">
+    <p><b>${escapeHtml(projectName)}</b></p>
+    <label for="aptUnitType">구분</label><select id="aptUnitType"><option value="unit">세대 (동·호수)</option><option value="common">공용부</option></select>
+    <div id="aptUnitNumbers" class="apt-unit-grid"><label>동<input id="aptUnitDong" inputmode="numeric" maxlength="10" placeholder="예: 101" value="${escapeAttr(u?.dong||'')}"></label><label>호<input id="aptUnitHo" inputmode="numeric" maxlength="10" placeholder="예: 501" value="${escapeAttr(u?.ho||'')}"></label></div>
+    <label id="aptUnitNameLabel">공용부 이름<input id="aptUnitName" maxlength="40" placeholder="예: 지하주차장" value="${escapeAttr(u?.name||'')}"></label>
+    <label>작업 메모 (선택 · 800자)<textarea id="aptUnitNote" maxlength="800" rows="4" placeholder="예: 화장실 방수 진행 · 다음 방문 시 마감 확인">${escapeHtml(u?.note||'')}</textarea></label>
+    <p class="hint">기존 사진은 동·호수 미지정으로 유지되며, 배정 전에는 해당 세대 완료보고 후보에서 제외됩니다. 사진은 다음 화면에서 직접 선택하세요.</p>
+    ${id?'<p class="hint">표시명을 바꿔도 사진 연결은 유지됩니다. 기존 오더의 동·호수는 자동 변경하지 않으므로 오더 사진 조회는 별도 확인하세요.</p>':''}
+    <p id="aptUnitIssue" role="alert" style="color:var(--warn)"></p></div>`,[
+    {label:'취소',cls:'ghost',fn:()=>aptUnitView(projectName,id)},
+    {label:'저장',cls:'clay',fn:()=>aptUnitUiWrite(()=>aptUnitSave(projectName,{type:$('#aptUnitType').value,dong:$('#aptUnitDong').value,ho:$('#aptUnitHo').value,name:$('#aptUnitName').value,note:$('#aptUnitNote').value},id),saved=>{aptUnitView(projectName,saved);toast('동·호수 정보를 저장했습니다');})}]);
+  const bs=document.querySelectorAll('#modalRoot .mfoot button');bs[0].id='aptUnitCancel';bs[1].id='aptUnitSave';
+  $('#aptUnitType').value=u?.type||'unit';
+  const show=()=>{const common=$('#aptUnitType').value==='common';$('#aptUnitNumbers').hidden=common;$('#aptUnitNumbers').style.display=common?'none':'';$('#aptUnitNameLabel').hidden=!common;};
+  $('#aptUnitType').onchange=show;show();aptUnitModalStyle();
+}
+function aptUnitView(projectName,unitId='',limit=80){
+  const p=aptUnitProject(projectName);if(!p){toast('프로젝트를 다시 선택하세요');return;}
+  const units=aptUnitList(p),unit=units.find(u=>u.id===unitId);if(unitId&&!unit){toast('동·호수 연결을 확인해 주세요');unitId='';}
+  const groups=aptUnitPhotoGroups(p,units),photos=(groups.get(unitId)||[]).slice().sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)),shown=photos.slice(0,limit);
+  const broken=aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||p.aptUnits.length!==units.length);
+  openModal('동·호수 관리',`<div class="apt-unit-panel" id="aptUnitPanel">
+    <p><b>${escapeHtml(projectName)}</b> · ${units.length}곳 등록</p>
+    <button id="aptUnitAdd" class="clay">＋ 동·호수 / 공용부 등록</button>
+    ${broken?'<p role="alert">관리 정보 확인 필요 — 잘못된 항목은 사진 연결에 사용하지 않습니다.</p>':''}
+    <label for="aptUnitSearch" style="display:block;margin-top:12px">동·호수 찾기</label><input id="aptUnitSearch" type="search" placeholder="예: 101동, 501호, 지하주차장">
+    <div class="apt-unit-grid" id="aptUnitList"><button data-apt-unit="" class="${unitId?'ghost':'blue'}">미지정 · ${groups.get('').length}장</button>${units.map(u=>`<button data-apt-unit="${escapeAttr(u.id)}" data-unit-label="${escapeAttr(aptUnitLabelKey(aptUnitLabel(u)))}" class="${u.id===unitId?'blue':'ghost'}">${escapeHtml(aptUnitLabel(u))}<br><small>${groups.get(u.id).length}장</small></button>`).join('')}</div>
+    <h3>${escapeHtml(unit?aptUnitLabel(unit):'동·호수 미지정')} · 사진 ${photos.length}장</h3>
+    ${unit?`<p style="white-space:pre-wrap">${escapeHtml(unit.note||'등록된 작업 메모가 없습니다.')}</p><button id="aptUnitEdit" class="ghost">동·호수 / 메모 수정</button>`:'<p class="hint">기존 사진과 연결 확인이 필요한 사진입니다. 현장명을 바꾸지 않고 사진을 직접 선택해 배정할 수 있습니다.</p>'}
+    <button id="aptUnitUpload" class="blue">이 위치에 사진 추가</button>
+    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small>${escapeHtml(f._worklabel||'작업 내용 미입력')}${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
+    ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
+    <label for="aptUnitAssignTarget" style="display:block;margin-top:12px">선택한 사진을 배정할 위치</label>
+    <select id="aptUnitAssignTarget"><option value="">동·호수 미지정</option>${units.map(u=>`<option value="${escapeAttr(u.id)}">${escapeHtml(aptUnitLabel(u))}</option>`).join('')}</select>
+    <p class="hint">선택한 사진의 동·호수 연결만 바꿉니다. 원본 파일·프로젝트명·작업명은 유지합니다.</p>
+    <p id="aptUnitIssue" role="alert" style="color:var(--warn)"></p></div>`,[
+    {label:'닫기',cls:'ghost',fn:closeModal},
+    {label:'선택 사진 배정 저장',cls:'clay',fn:()=>{const target=$('#aptUnitAssignTarget').value,ids=[...document.querySelectorAll('.apt-unit-photo-check:checked')].map(x=>x.value);aptUnitUiWrite(()=>aptUnitAssign(projectName,target,ids),n=>{aptUnitView(projectName,target);toast(n+'장 동·호수 배정 저장');});}}]);
+  aptUnitModalStyle();document.querySelectorAll('#modalRoot .mfoot button')[1].id='aptUnitAssignSave';
+  $('#aptUnitAssignTarget').value=unitId;
+  $('#aptUnitAdd').onclick=()=>aptUnitEdit(projectName);
+  if($('#aptUnitEdit'))$('#aptUnitEdit').onclick=()=>aptUnitEdit(projectName,unitId);
+  $('#aptUnitUpload').onclick=()=>gdUploadPhotos({project:projectName,unitId});
+  $('#aptUnitSearch').oninput=e=>{const q=aptUnitLabelKey(e.target.value);document.querySelectorAll('[data-unit-label]').forEach(b=>b.hidden=!b.dataset.unitLabel.includes(q));};
+  document.querySelectorAll('[data-apt-unit]').forEach(b=>b.onclick=()=>aptUnitView(projectName,b.dataset.aptUnit));
+  document.querySelectorAll('[data-unit-photo]').forEach(b=>b.onclick=e=>{e.preventDefault();openLightbox(b.dataset.unitPhoto,photos.map(f=>f.id));});
+  if($('#aptUnitMore'))$('#aptUnitMore').onclick=()=>{const selected=new Set([...document.querySelectorAll('.apt-unit-photo-check:checked')].map(x=>x.value)),target=$('#aptUnitAssignTarget').value;aptUnitView(projectName,unitId,limit+80);document.querySelectorAll('.apt-unit-photo-check').forEach(x=>x.checked=selected.has(x.value));$('#aptUnitAssignTarget').value=target;};
+}
+function aptUnitProjectCard(p){return p?`<div class="cust-card" style="margin:0 0 10px"><b>동·호수 / 공용부</b> · ${aptUnitList(p).length}곳 <button class="blue" data-aptunits="${escapeAttr(p.name)}" style="min-height:44px;margin-left:8px">동·호수 관리</button><p class="hint" style="margin-bottom:0">아파트 프로젝트 하나에서 세대별 사진과 작업 메모를 관리합니다.</p></div>`:'';}
 function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
 // 이 오더(동/호)에 걸리는 사진 목록. 아파트 오더는 현장 배정이 아니라 파일명으로 잡는다.
 function aptPhotoList(o){
+  const p=aptUnitOrderProject(o);
+  if(o&&(o.source==='office-intake'||o.projectIdentity)&&!p)return [];
+  if(aptUnitManaged(p)){const u=aptUnitForOrder(o,p);return u?aptUnitPhotos(p,u.id):[];}
   const q=aptPhotoQuery(o); if(!q)return [];
   const prev=state.search; state.search=q;
   // 사진 작업명 검색을 동/호 연결 근거로 확대하지 않는다. 기존 오더 연결 기준을 유지한다.
-  let list=[]; try{ list=state.files.filter(f=>f.kind==='photo'&&matchSearch(f,{photoTags:false})); } finally{ state.search=prev; }
+  let list=[]; try{ list=state.files.filter(f=>f.kind==='photo'&&!f._aptUnit&&!state.projects.some(p=>p.name===f.project&&aptUnitManaged(p))&&matchSearch(f,{photoTags:false})); } finally{ state.search=prev; }
   return list;
 }
 function aptPhotoCount(o){return aptPhotoList(o).length;}
@@ -10903,6 +11096,8 @@ function aptOrderManage(filterOffice){
   });
   root.querySelectorAll('.apoPh').forEach(b=>b.onclick=()=>{
     const o=state.aptOrders.find(x=>x.id===b.dataset.id); if(!o)return;
+    const project=aptUnitOrderProject(o);
+    if(aptUnitManaged(project)){const unit=aptUnitForOrder(o,project);if(unit)aptUnitView(project.name,unit.id);else toast('오더와 일치하는 동·호수를 확인해 주세요');return;}
     const q=aptPhotoQuery(o);
     state.search=q;__aptPhotoSearchQuery=q;
     const gi=document.getElementById('globalSearch'); if(gi)gi.value=q;   // 입력칸도 맞춰야 사용자가 지울 수 있다
@@ -24481,7 +24676,7 @@ function viewProject(){
       const open=__projPhotoOpen.has(p.name);
       html+=`<div class="panel-head" style="margin:14px 0 6px"><h2 style="font-size:17px"><span style="color:var(--clay)">●</span> ${escapeHtml(p.name)} <span style="color:var(--muted);font-size:13px;font-weight:400">· ${list.length}개</span></h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(p.name)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(p.name)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(p.name)}" title="현장 삭제">🗑</button><button class="ghost tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오</button><button class="ghost tiny" data-zip="${escapeAttr(p.name)}">📦 ZIP</button><button class="ghost tiny" data-aptreport="${escapeAttr(p.name)}">📄 보고서</button><button class="ghost tiny" data-pdf="${escapeAttr(p.name)}">PDF 묶음</button><button class="ghost tiny pc-only-action" data-save="${escapeAttr(p.name)}">정리(이동)</button></div></div>`;
-      html+=stageBar(p);
+      html+=stageBar(p)+aptUnitProjectCard(p);
       // 사진이 아닌 서류(견적서·사업자등록증·명함 등)는 그대로 표시
       if(docs.length)html+=`<div class="grid">${docs.map(cardHtml).join('')}</div>`;
       // 현장 사진은 기본 숨김 → 버튼 클릭 시 그 프로젝트 사진만 펼침
@@ -24502,7 +24697,7 @@ function viewProject(){
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
-  html+=stageBar(p);
+  html+=stageBar(p)+aptUnitProjectCard(p);
 
   // ⏱ 작업시간 · 🚗 운행
   {
@@ -24738,6 +24933,7 @@ function setupDelegation(){
     if(d.briefleadcall!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadcall,'call');}
     if(d.briefleadsms!==undefined){e.stopPropagation();return hjBriefLeadContact(d.briefleadsms,'sms');}
     if(d.boardtoggle!==undefined){e.stopPropagation();__boardOpen=!__boardOpen;if(!__boardOpen)__boardFilter=false;return render();}
+    if(d.aptunits!==undefined)return aptUnitView(d.aptunits);
     if(d.boardfilter!==undefined){e.stopPropagation();__boardFilter=!__boardFilter;return render();}
     if(d.boardreason!==undefined){e.stopPropagation();if(BOARD_ACTIONS.has(d.boardreason)){const fn=window[d.boardreason];if(typeof fn==='function'){try{fn();}catch(_){}}}return;}
     if(d.boardproj!==undefined){e.stopPropagation();state.activeProject=d.boardproj;state.tab='project';__projView=null;return render();}
@@ -27599,6 +27795,7 @@ function paidExactRuntimeFiles(candidateFiles,currentFiles){
       kind:saved.kind,project:saved.project,when,lat:saved.lat,lng:saved.lng,place:matched?matched.place:null,address:saved.address,
       thumb:(sameLocal||sameDrive)?matched.thumb:null,text:saved.text,ocr:saved.ocr,est:paidCloneOptional(saved.est),exSum:saved.exSum,ledger:paidCloneOptional(saved.ledger),quote:paidCloneOptional(saved.quote),contact:paidCloneOptional(saved.contact),
       _phase:saved.phase,_worklabel:saved.worklabel,_gdFolder:saved.gdFolder,_driveId:saved.driveId,_driveMimeType:saved.driveMimeType,_driveSize:saved.driveSize,
+      ...(Object.prototype.hasOwnProperty.call(saved,'aptUnit')?{_aptUnit:paidCloneOptional(saved.aptUnit)}:{}),
       _relayLink:saved.driveId?'relay:'+saved.driveId:null,_file:matched?matched._file:null,_heicFile:matched?matched._heicFile:null,_needHeic:matched?matched._needHeic:false,
       _virtual:matched&&Object.prototype.hasOwnProperty.call(matched,'_virtual')?matched._virtual:true
     };
