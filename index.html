@@ -1894,8 +1894,8 @@ function relaySetStatus(code){
 function relayAuthFail(res){relaySetStatus('auth');if(!__relayAuthToasted){__relayAuthToasted=true;toast('🔑 서버 인증키 오류 — ☁️ 설정에서 서버 주소·인증키를 확인하세요'+((res&&res.message)?(' ('+res.message+')'):''));}}
 /* ── 오프라인 동기화 대기열(idb relay_queue) — save는 최신 1건 병합, upload는 개별 누적 ── */
 async function relayQueueGet(){try{return (await idbGet('relay_queue'))||[];}catch(e){return [];}}
-async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){try{console.warn('relay_queue 저장 실패',e);}catch(_){}relaySetStatus('qfail');}   // idb 실패를 조용히 삼키지 않음
-  __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;}
+async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){try{console.warn('relay_queue 저장 실패',e);}catch(_){}relaySetStatus('qfail');return false;}   // 저장 실패를 호출자에게도 전달
+  __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;return true;}
 async function relayUpdateQueueBadge(){const q=await relayQueueGet();__relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;if(__relayQn&&(__relayState==='offline'||__relayState==='netfail'))relaySetStatus(__relayState);return __relayQn;}
 async function relayQueuePush(action,payload){
   let q=await relayQueueGet();
@@ -1904,8 +1904,7 @@ async function relayQueuePush(action,payload){
   if(action==='upload'&&q.filter(function(it){return it.action==='upload';}).length>=15){toast('업로드 대기열이 가득 찼습니다 — 온라인 상태에서 [📮 다시 보내기] 후 다시 시도하세요');return false;}
   // save의 payload는 null — 전송 시점에 최신 serializeData()로 재구성(오래된 본문 전송 방지)
   q.push({id:'q'+Date.now()+'_'+Math.floor(Math.random()*100000),action:action,payload:action==='save'?null:payload,createdAt:Date.now(),retryCount:0,deviceId:__relay.device,baseRevision:__relay.rev||0});
-  await relayQueueSet(q);
-  return true;
+  return await relayQueueSet(q);
 }
 async function cloudFlushQueue(manual){
   if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
@@ -2113,24 +2112,26 @@ async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
 /* ── 서버 중계 업로드: 한 개씩 순차 + 진행 토스트.
    targets[i]를 주면 성공 fileId를 레거시(카메라 경로 added[i]._driveId=id)와 동일하게 주입.
    targets가 있으면 업로드 직후와 다음 실행 모두 같은 사진을 찾도록 Drive ID를 저장한다. ── */
-async function relayUploadFiles(files,kind,targets){
+async function relayUploadFiles(files,kind,targets,report){
   let ok=0,queued=0,failed=0,injected=0;
+  const failedFiles=[],queuedFiles=[];
   for(let i=0;i<files.length;i++){
     const f=files[i];
     toast('☁️ 서버 업로드 중… '+(i+1)+'/'+files.length+(f.name?(' · '+f.name):''));
     let payload=null;
-    try{payload=await relayBuildUploadPayload(f,kind);}catch(e){failed++;toast((f.name||'파일')+' — '+(e.message||e));continue;}   // 형식·크기 문제는 대기열에 안 넣고 바로 안내
+    try{payload=await relayBuildUploadPayload(f,kind);}catch(e){failed++;failedFiles.push(f.name||'파일');toast((f.name||'파일')+' — '+(e.message||e));continue;}   // 형식·크기 문제는 대기열에 안 넣고 바로 안내
     try{
       const r=await relayCall('upload',payload);
-      if(r&&r.ok){ok++;if(targets&&targets[i]&&r.fileId){targets[i]._driveId=r.fileId;targets[i]._driveMimeType=String(r.mimeType||payload.mimeType||'');targets[i]._driveSize=Number(r.size)||Math.max(0,Math.floor(String(payload.dataB64||'').length*3/4)-(String(payload.dataB64||'').endsWith('==')?2:String(payload.dataB64||'').endsWith('=')?1:0));injected++;}}
-      else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;break;}
-      else{failed++;toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
-    }catch(e){queued++;try{if(!(await relayQueuePush('upload',payload)))failed++;}catch(e2){failed++;}}   // 네트워크 실패 → 압축본을 대기열에(가득 차면 실패 처리)
+      if(r&&r.ok&&r.fileId){ok++;if(targets&&targets[i]){targets[i]._driveId=r.fileId;targets[i]._driveMimeType=String(r.mimeType||payload.mimeType||'');targets[i]._driveSize=Number(r.size)||Math.max(0,Math.floor(String(payload.dataB64||'').length*3/4)-(String(payload.dataB64||'').endsWith('==')?2:String(payload.dataB64||'').endsWith('=')?1:0));injected++;}}
+      else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;failedFiles.push(...files.slice(i).map(x=>x.name||'파일'));break;}
+      else{failed++;failedFiles.push(f.name||'파일');toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
+    }catch(e){let stored=false;try{stored=!!(await relayQueuePush('upload',payload));}catch(e2){}if(stored){queued++;queuedFiles.push(f.name||'파일');}else{failed++;failedFiles.push(f.name||'파일');}}   // 실제 대기열 저장 성공만 전송 대기로 집계
   }
   if(injected)markDirty();   // _driveId 주입분 저장(레거시 카메라 경로와 동일)
   await relayUpdateQueueBadge();
   if(queued)relaySetStatus(navigator.onLine===false?'offline':'netfail');
   toast('☁️ '+ok+'/'+files.length+'개 서버 업로드 완료'+(queued?(' · '+queued+'건 전송 대기'):'')+(failed?(' · '+failed+'건 실패'):''));
+  if(report)Object.assign(report,{ok,queued,failed,failedFiles,queuedFiles});
   return ok;
 }
 let __relayFilesInflight=null;
@@ -2405,7 +2406,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v262-searchrecovery';
+const APP_BUILD='hyeonjang-v263-photointake';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -2915,33 +2916,107 @@ async function gdUploadBlob(blob,name,mime,subName){
   if(!u.ok)throw new Error('업로드 '+u.status);
   return id;
 }
-// 현장 사진을 구글드라이브 만물인테리어▸현장사진 에 직접 업로드(API)
+// 갤러리와 촬영은 같은 확인·추가 흐름을 사용한다. 실제 원본 영구저장/중계 큐 계약은 변경하지 않는다.
+let __photoIntakeBusy=false;
 function gdUploadPhotos(){
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
-  inp.onchange=async()=>{
-    const files=[...inp.files];if(!files.length)return;
-    if(typeof relayReady==='function'&&relayReady()){
-      const added=[];
-      for(const f of files){try{added.push(await ingestFile(f));}catch(e){added.push(null);}}
-      markDirty();
-      await relayUploadFiles(files,'photo',added);
-      if(typeof __photoCache!=='undefined')__photoCache.key=null;
-      state.tab='photos';render();inp.value='';return;
-    }   // 서버 중계 우선(모바일 OK, 압축·순차, 앱 목록 즉시 연결)
-    // 릴레이 미설정 → 촬영과 동일하게 '폰에 먼저 저장'(구글 로그인 없이 항상 됨). 클라우드는 가능할 때만 백업.
-    // (예전엔 여기서 구글 로그인을 강제해, 아이폰 팝업/redirect_uri 오류 시 사진 자체가 안 올라갔음)
-    const added=[];
-    for(const f of files){ try{ added.push(await ingestFile(f)); }catch(e){ added.push(null); } }
-    if(state.activeProject)added.forEach(f=>{ if(f&&f.kind==='photo')f.project=state.activeProject; });
-    if(typeof __photoCache!=='undefined')__photoCache.key=null;
-    markDirty(); state.tab='photos'; render(); try{syncMobileNav();}catch(e){} inp.value='';
-    toast(files.length+'장 저장됨'+(state.activeProject?` · ${state.activeProject}`:'')+' — 폰에 먼저 담았어요');
-    // 이미 구글 로그인돼 있으면(토큰 보유) 백그라운드로 드라이브에도 백업. 없으면 로그인 강요하지 않음.
-    if(typeof __gdToken!=='undefined'&&__gdToken){
-      (async()=>{ let ok=0; for(let i=0;i<files.length;i++){const f=files[i];try{const id=await gdUploadBlob(f, f.name, f.type||'image/jpeg', '현장사진');if(id&&added[i]){added[i]._driveId=id;added[i]._driveMimeType=String(f.type||'');added[i]._driveSize=Number(f.size)||0;}ok++;}catch(e){} } if(ok){markDirty();toast(ok+'장 드라이브에도 백업됨');} })();
-    }
-  };
+  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('열려 있는 사진 추가를 먼저 마쳐 주세요');return;}
+  let inp=document.getElementById('photoGalleryInput');
+  if(!inp){inp=document.createElement('input');inp.id='photoGalleryInput';inp.type='file';inp.accept='image/*';inp.multiple=true;inp.hidden=true;document.body.appendChild(inp);}
+  const context={project:state.activeProject||null,source:'gallery'};
+  inp.value='';
+  inp.onchange=()=>{const files=[...inp.files];inp.value='';if(files.length)openPhotoIntake(files,context);};
   inp.click();
+}
+function openPhotoIntake(files,context){
+  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('사진 추가가 이미 열려 있습니다');return;}
+  const picked=Array.from(files||[]);if(!picked.length)return;
+  context=context||{};
+  const projects=state.projects.map(p=>({name:p.name,archived:!!p.archived}));
+  const selected=projects.findIndex(p=>p.name===context.project);
+  const options=projects.map((p,i)=>`<option value="${i+1}"${i===selected?' selected':''}>${escapeHtml(p.name)}${p.archived?' (보관 현장)':''}</option>`).join('');
+  const total=picked.reduce((n,f)=>n+(Number(f.size)||0),0);
+  openModal('사진 추가 확인',`<div id="photoIntakeForm" style="min-width:0;overflow-wrap:anywhere">
+    <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':'갤러리 사진'}</p>
+    <label for="photoIntakeProject">사진을 추가할 현장</label>
+    <select id="photoIntakeProject" aria-describedby="photoIntakeIssue" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"><option value="">현장을 선택해 주세요</option>${options}<option value="none">미배정으로 추가 (나중에 배정)</option></select>
+    <label for="photoIntakeWork">작업 내용 (선택 · 최대 80자)</label>
+    <input id="photoIntakeWork" maxlength="80" placeholder="예: 화장실 2차 방수 완료" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px">
+    <p class="hint">선택한 사진에만 현장과 작업 내용을 적용합니다. 촬영일·위치는 원본 정보를 유지합니다.</p>
+    <details><summary style="min-height:44px;cursor:pointer">선택한 파일 확인</summary><ul style="padding-left:20px;max-height:160px;overflow:auto">${picked.map(f=>`<li>${escapeHtml(f.name||'사진')}</li>`).join('')}</ul></details>
+    <p class="hint">사진은 앱 목록에 추가하고, 서버 또는 Google Drive가 연결돼 있을 때만 백업합니다. 백업 확인 전 원본을 지우거나 앱을 새로고침하지 마세요.</p>
+    <p id="photoIntakeIssue" role="alert" style="color:var(--warn);min-height:20px"></p></div>`,[
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'이 내용으로 사진 추가',cls:'clay',fn:()=>{
+      if(__photoIntakeBusy)return;
+      const sel=document.getElementById('photoIntakeProject'),issue=document.getElementById('photoIntakeIssue');
+      const target=sel.value==='none'?null:projects[Number(sel.value)-1];
+      if(sel.value!=='none'&&(!target||!state.projects.some(p=>p.name===target.name))){issue.textContent='추가할 현장을 선택해 주세요. 삭제·이름 변경된 현장은 다시 선택해야 합니다.';sel.focus();return;}
+      const approved={project:target?target.name:null,workLabel:document.getElementById('photoIntakeWork').value.trim().slice(0,80)};
+      __photoIntakeBusy=true;
+      runPhotoIntake(picked,approved);
+    }}]);
+  const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons[0].id='photoIntakeCancel';buttons[1].id='photoIntakeConfirm';
+  buttons.forEach(b=>{b.style.minHeight='44px';b.style.minWidth='44px';});
+}
+async function runPhotoIntake(files,approved){
+  const pairs=[],readFailed=[];
+  const report={ok:0,queued:0,failed:0,failedFiles:[],queuedFiles:[]};
+  let error='',metadataSaved=false,cloudAttempted=false;
+  openModal('사진 추가 중',`<p id="photoIntakeProgress" role="status" aria-live="polite">추가 전 안전 스냅샷을 확인합니다.</p><p class="hint">처리가 끝날 때까지 앱을 닫거나 새로고침하지 마세요.</p>`,[]);
+  __modalCloseLocked=true;
+  const close=document.querySelector('#modalRoot .modal-close');if(close)close.disabled=true;
+  const progress=text=>{const el=document.getElementById('photoIntakeProgress');if(el)el.textContent=text;};
+  try{
+    if(!(await hjSnapshot('사진 추가 전',true,true)))throw new Error('안전 스냅샷을 저장하지 못해 사진을 추가하지 않았습니다. 저장 공간을 확인한 뒤 다시 선택해 주세요.');
+    if(approved.project&&!state.projects.some(p=>p.name===approved.project))throw new Error('선택한 현장이 변경되어 중단했습니다. 현장을 다시 선택해 주세요.');
+    for(let i=0;i<files.length;i++){
+      const file=files[i];progress('앱 목록에 추가 중 '+(i+1)+' / '+files.length);
+      try{
+        if(!IMG.includes(bestExt(file.name,file.type)))throw new Error('지원하지 않는 사진 형식');
+        const rec=await ingestFile(file,null,'',{restoreEdits:false});
+        // 재스캔이 아닌 명시적인 새 사진 추가: 파일명 추정보다 승인한 현장·작업명이 우선이다.
+        rec.kind='photo';rec.project=approved.project;rec._worklabel=approved.workLabel||null;
+        pairs.push({file,rec});
+      }catch(e){readFailed.push(file.name||'사진');}
+    }
+    if(pairs.length){
+      markDirty();
+      // 원본 바이트의 영구 보관이 아니라 기존 앱 기록 저장의 성공 여부만 확인한다.
+      metadataSaved=await guardedPersistCurrentState();
+      if(!metadataSaved)throw new Error('다른 탭의 변경 또는 저장 공간 문제로 앱 기록 저장을 확인하지 못했습니다. 원본을 유지하고 저장 상태를 확인해 주세요.');
+      state.tab='photos';state.search='';const search=document.getElementById('globalSearch');if(search)search.value='';render();syncMobileNav();
+      if(relayReady()){
+        cloudAttempted=true;progress('서버에 백업 중 · '+pairs.length+'장');
+        await relayUploadFiles(pairs.map(p=>p.file),'photo',pairs.map(p=>p.rec),report);
+      }else if(typeof __gdToken!=='undefined'&&__gdToken){
+        cloudAttempted=true;
+        for(let i=0;i<pairs.length;i++){
+          const {file,rec}=pairs[i];progress('드라이브에 백업 중 '+(i+1)+' / '+pairs.length);
+          try{
+            const id=await gdUploadBlob(file,file.name,file.type||'image/jpeg','현장사진');
+            if(!id)throw new Error('업로드 확인 없음');
+            rec._driveId=id;rec._driveMimeType=String(file.type||'');rec._driveSize=Number(file.size)||0;report.ok++;
+          }catch(e){report.failed++;report.failedFiles.push(file.name||'사진');}
+        }
+        if(report.ok)markDirty();
+      }
+      if(cloudAttempted){metadataSaved=await guardedPersistCurrentState();if(!metadataSaved)error='백업 결과의 앱 기록 저장을 확인하지 못했습니다. 앱을 새로고침하지 말고 저장 상태를 확인해 주세요.';}
+    }
+  }catch(e){error=String(e&&e.message||'사진 추가 중 오류가 발생했습니다. 원본을 유지하고 저장 상태를 확인해 주세요.');}
+  finally{
+    __photoIntakeBusy=false;__modalCloseLocked=false;
+    const names=(label,items)=>items.length?`<details><summary style="min-height:44px;cursor:pointer">${label} ${items.length}장 보기</summary><ul style="padding-left:20px;max-height:160px;overflow:auto">${items.map(n=>`<li>${escapeHtml(n)}</li>`).join('')}</ul></details>`:'';
+    openModal('사진 추가 결과',`<div id="photoIntakeResult" role="status" style="overflow-wrap:anywhere">
+      <p><b>앱 목록 추가 ${pairs.length}장</b> / 선택 ${files.length}장${readFailed.length?' · 읽기 실패 '+readFailed.length+'장':''}</p>
+      <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
+      <p>서버·드라이브 백업 확인 ${report.ok}장 · 전송 대기 ${report.queued}장 · 백업 실패 ${report.failed}장</p>
+      ${error?`<p role="alert" style="color:var(--warn)">${escapeHtml(error)}</p>`:''}
+      ${!cloudAttempted&&pairs.length?'<p>서버·드라이브 백업은 실행하지 않았습니다.</p>':''}
+      ${names('읽지 못한 사진',readFailed)}${names('백업 실패 사진',report.failedFiles)}${names('전송 대기 사진',report.queuedFiles)}
+      <p class="hint">${metadataSaved?'현장·작업명 등 앱 기록은 저장되었습니다. ':''}앱 기록 저장은 원본 사진 백업과 다릅니다. 원본은 휴대폰에 유지해 주세요.</p>
+      ${(report.queued||report.failed||report.ok<pairs.length)?'<p class="hint">백업 확인 전 앱을 닫거나 새로고침하지 마세요. [연결·대기열 확인]에서 서버 설정과 전송 대기를 확인할 수 있습니다. 이미 추가된 사진을 다시 선택하면 중복될 수 있습니다.</p>':''}
+      ${readFailed.length?'<p class="hint">읽기 실패한 사진만 다시 선택해 추가하세요.</p>':''}</div>`,[{label:'사진 목록 보기',cls:'clay',fn:closeModal},...(pairs.length&&report.ok<pairs.length?[{label:'연결·대기열 확인',cls:'ghost',fn:()=>openGdriveSetup()}]:[])]);
+  }
 }
 // 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
 let __gdPullInflight=null;
@@ -4072,7 +4147,7 @@ function restoreUserEdits(rec){
   }catch(e){}
   return rec;
 }
-async function ingestFile(file,handle=null,prefix=''){
+async function ingestFile(file,handle=null,prefix='',options=null){
   state._demo=false; // 실제 파일 추가 → 데모 모드 해제
   const e=bestExt(file.name,file.type),isImg=IMG.includes(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
@@ -4083,9 +4158,12 @@ async function ingestFile(file,handle=null,prefix=''){
   rec.kind=classify(rec);
   const folderKind=kindFromSourceFolder(prefix);
   if(folderKind)rec.kind=folderKind;
-  restoreUserEdits(rec);   // 재스캔이어도 사용자 편집(현장 배정·수기 금액·분류) 복원
-  // 정리된 경로와 기존 작업명에서 현장·공정을 함께 복구한다.
-  if(recoverOrganizedMetadata(rec))window.__organizedRecovered=(window.__organizedRecovered||0)+1;
+  // 재스캔은 종전대로 편집을 복구한다. 새 촬영·갤러리는 동명 파일의 옛 Drive ID/OCR/공정을 가져오면 안 된다.
+  if(!options||options.restoreEdits!==false){
+    restoreUserEdits(rec);
+    // 정리된 경로와 기존 작업명에서 현장·공정을 함께 복구한다.
+    if(recoverOrganizedMetadata(rec))window.__organizedRecovered=(window.__organizedRecovered||0)+1;
+  }
   state.files.push(rec);
   return rec;   // 호출부가 마지막 인덱스 추정 대신 이 반환값을 쓰도록(동시성 안전)
 }
@@ -5585,41 +5663,16 @@ function openCameraProjectSheet(openerOverride){
   setTimeout(()=>{try{document.getElementById('cameraProjectSearch').focus();}catch(e){}},0);
 }
 function triggerCameraInput(){
+  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('열려 있는 사진 추가를 먼저 마쳐 주세요');return;}
   // 현장사진 탭으로 이동 후 카메라 입력 트리거
   let inp=document.getElementById('camInput');
   if(!inp){
-    inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.id='camInput';inp.multiple=true;inp.style.display='none';
+    inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');inp.id='camInput';inp.multiple=true;inp.style.display='none';
     document.body.appendChild(inp);
-    inp.onchange=async()=>{
-      const files=[...inp.files];if(!files.length)return;
-      const before=state.files.length;
-      for(const f of files)await ingestFile(f);
-      const added=state.files.slice(before);
-      // 현재 활성 현장이 있으면 자동 배정
-      if(state.activeProject){added.forEach(f=>{if(f.kind==='photo')f.project=state.activeProject;});}
-      if(typeof __photoCache!=='undefined')__photoCache.key=null;
-      markDirty();state.tab='photos';render();syncMobileNav();
-      toast(added.length+'장 촬영 추가'+(state.activeProject?` · ${state.activeProject}`:''));
-      // 모바일=올리기 우선: 드라이브 연동돼 있으면 촬영분을 곧바로 자동 백업
-      if(typeof relayReady==='function'&&relayReady()){
-        await relayUploadFiles(files,'photo',added);   // 서버 중계 업로드(압축·순차) — 성공 fileId를 레거시와 동일하게 added[i]._driveId로 주입
-      }else if(typeof __gdToken!=='undefined'&&__gdToken){
-        let ok=0;
-        for(let i=0;i<files.length;i++){
-          const f=files[i];
-          try{
-            const id=await gdUploadBlob(f, f.name||('photo_'+Date.now()+'_'+i+'.jpg'), f.type||'image/jpeg', '현장사진');
-            if(id){ok++; if(added[i]){added[i]._driveId=id;added[i]._driveMimeType=String(f.type||'');added[i]._driveSize=Number(f.size)||0;}}
-          }catch(e){}
-        }
-        if(ok)markDirty();
-        toast(ok?('☁️ '+ok+'/'+files.length+'장 드라이브 자동 백업 완료'):'드라이브 백업 실패 — 나중에 다시 시도하세요');
-      }else{
-        toast('💡 ☁️ 구글드라이브 연동하면 촬영 즉시 자동 백업됩니다');
-      }
-      inp.value='';
-    };
   }
+  const context={project:state.activeProject||null,source:'camera'};
+  inp.value='';
+  inp.onchange=()=>{const files=[...inp.files];inp.value='';if(files.length)openPhotoIntake(files,context);};
   inp.click();
 }
 function openCamera(){
@@ -5923,13 +5976,13 @@ function emptyState(tab){
   // 탭 목적에 맞는 빈 상태 안내 — 범용 문구 하나만 쓰면 회계 탭에서도 '파일을 끌어놓으세요'만 보인다
   const BY={
     docs:['서류가 아직 없어요','견적서·계약서·사업자등록증 같은 서류 파일을 올리면 자동 분류됩니다.'],
-    photos:['현장 사진이 아직 없어요','폰으로 찍은 현장 사진을 올리면 날짜·GPS로 현장별 자동 정리됩니다.'],
+    photos:['현장 사진이 아직 없어요','사진을 선택하고 현장·작업 내용을 확인해 추가하세요. 촬영일·GPS는 원본 정보를 사용합니다.'],
     estimates:['견적 파일이 아직 없어요','견적서 엑셀을 올리면 현장별 매출로 집계됩니다.'],
     ledger:['홈택스 자료가 아직 없어요','홈택스에서 내려받은 카드·매출·매입 엑셀을 올리면 자동 분류·대조됩니다.']
   };
   const t=BY[tab]||['아직 불러온 파일이 없습니다','드라이브의 현장·견적·사진을 한 번에 불러오세요.'];
   return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓아도 됩니다</b> — PC는 왼쪽 ‘작업 폴더’, 폰은 아래 드라이브 버튼으로 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>${t[0]}</b>${t[1]}
-  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
+  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${tab==='photos'?'<button class="clay" id="btnGdPhotos" style="font-size:15px;padding:12px 20px;min-height:44px">📷 사진 선택해서 올리기</button>':''}<button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
 function projectOptions(sel){let o=`<option value="">현장 미지정</option>`;state.projects.filter(p=>!p.archived||p.name===sel).forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v.label}</option>`).join('');}
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
@@ -22421,7 +22474,7 @@ function viewPhotos(){
   if(!photos.length&&state.search&&state.files.some(f=>f.kind==='photo')){
     return `<div class="empty" id="photoSearchEmpty" role="status"><b>검색 결과가 없습니다</b><div style="margin:8px 0 14px;color:var(--muted);overflow-wrap:anywhere">‘${escapeHtml(state.search)}’와 일치하는 사진을 찾지 못했습니다.<br>저장된 사진은 그대로 있습니다. 검색을 지우면 전체 사진을 볼 수 있습니다.</div><button type="button" class="clay" id="btnClearPhotoSearch" style="width:auto;min-width:44px;min-height:44px;padding:12px 20px">검색 지우고 사진 보기</button></div>`;
   }
-  if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)"><b>PC:</b> 왼쪽 ‘📁 로컬 폴더 연결’로 사진 폴더를 열어 정리합니다.<br><b>폰:</b> 구글드라이브 <b>만물인테리어 ▸ 현장사진</b> 폴더에 <b>＋</b> 로 올리세요.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)">휴대폰·PC에서 사진을 선택한 뒤 현장과 작업 내용을 확인해 추가하세요.<br>기존 드라이브 사진도 아래에서 불러올 수 있습니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="btnGdPhotos" style="font-size:15px;padding:13px 22px;width:auto;min-height:44px">📷 사진 선택해서 올리기</button><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -22458,7 +22511,7 @@ function viewPhotos(){
       <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>`;
   html+=`<div style="margin:0 0 10px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <span style="font-size:11px;color:var(--muted);font-weight:700">☁️ 드라이브</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:700">📷 사진</span>
       <button class="clay tiny" id="btnGdPhotos" style="font-size:12.5px;padding:8px 12px">올리기</button>
       <button class="ghost tiny" id="btnGdLoad" style="font-size:12.5px;padding:8px 12px">불러오기</button>
       ${__narrow?__selBtn+`<button class="ghost tiny" id="btnPhotoMore" style="font-size:12.5px;padding:8px 12px">${__photoMoreOpen?'접기 ▴':'더보기 ▾'}</button>`:__moreBtns}
@@ -22468,7 +22521,7 @@ function viewPhotos(){
       ${__selBtn}
       <span class="hint" style="margin:0">켜고 사진을 누르면 선택 → 날짜별 '전체 선택'·아래 막대에서 현장/공정 한번에 배정</span>
     </div>`}
-    ${(!__narrow||__photoMoreOpen)?`<span class="hint" style="margin:4px 0 0;display:block">올리기=드라이브 저장 · 불러오기=앱으로 가져오기(사진+견적서/PDF) · 골라 불러오기=드라이브에서 직접 선택(사진·PDF)</span>`:''}
+    ${(!__narrow||__photoMoreOpen)?`<span class="hint" style="margin:4px 0 0;display:block">올리기=사진 선택 → 현장·작업명 확인 → 앱에 추가(연결 시 백업) · 불러오기=드라이브에서 앱으로 가져오기</span>`:''}
   </div>`;
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
@@ -27034,6 +27087,11 @@ let __modalReturnFocus=null,__modalCloseLocked=false;
    mobileSheetHistoryOpen 을 재사용. 예전에는 모달을 띄운 채 뒤로가기를 누르면 앱이
    통째로 이탈했다(실측: about:blank). 저장 전 촬영분이 있으면 그 이탈로 날아간다. */
 let __modalHistoryCleanup=null;
+function modalCloseFromHistory(){
+  __modalHistoryCleanup=null;
+  // 업로드/등록 중 닫기를 거부했으면 보호 항목을 다시 둔다. 두 번째 뒤로가기로 앱이 이탈하지 않게 한다.
+  if(closeModal()===false&&$('#modalRoot .modal'))__modalHistoryCleanup=mobileSheetHistoryOpen(modalCloseFromHistory);
+}
 function openModal(title,body,btns,wide){
   btns=btns||[{label:'닫기',cls:'ghost',fn:closeModal}];   // 미전달 시 기본 닫기 버튼
   __modalCloseLocked=false;window.__modalOnClose=null;   // 새 모달이 열리면 이전 모달의 닫힘 훅은 버린다
@@ -27049,7 +27107,7 @@ function openModal(title,body,btns,wide){
   root.querySelector('.modal-bg').addEventListener('click',e=>{if(e.target===root.querySelector('.modal-bg'))closeModal();});
   setTimeout(()=>{try{root.querySelector('.modal').focus();}catch(e){}},0);
   if(freshOpen&&!__modalHistoryCleanup&&typeof mobileSheetHistoryOpen==='function'){
-    __modalHistoryCleanup=mobileSheetHistoryOpen(()=>{__modalHistoryCleanup=null;closeModal();});
+    __modalHistoryCleanup=mobileSheetHistoryOpen(modalCloseFromHistory);
   }
 }
 function closeModal(force){
