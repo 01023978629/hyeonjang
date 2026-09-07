@@ -27,7 +27,7 @@ let browser;
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert(/\['photoaudit','📍','사진 배정 점검'\]/.test(source), 'more menu group exposes the audit');
 assert(/data-moreaction="photoaudit"/.test(source), 'more sheet exposes the audit');
-assert(/a==='photoaudit'\)\{photoAssignmentAudit\(\);\}/.test(source), 'more action routes to the audit');
+assert(/a==='photoaudit'\)\{return\s+photoAssignmentAudit\(\);\}/.test(source), 'more action routes to the audit and returns result');
 assert(/it\('📍','사진 배정 점검'[^)]*'photoAssignmentAudit'\)/.test(source), 'photo tools expose the audit');
 
 (async () => {
