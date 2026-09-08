@@ -1,5 +1,5 @@
 /* Local UI regression: fake documents only; no original reads, external account or downloads.
-   HJ_DOCUMENT_ESTIMATE_MUTATION=css|filter must fail a real layout/read-only assertion. */
+   HJ_DOCUMENT_ESTIMATE_MUTATION=css|filter|metadata must fail a real layout/read-only assertion. */
 'use strict';
 const assert=require('node:assert/strict');
 const {isDeepStrictEqual}=require('node:util');
@@ -7,7 +7,7 @@ const path=require('node:path');
 let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'));}catch(_){({chromium}=require('playwright'));}
 const APP='http://127.0.0.1:8299/index.html',ORIGIN=new URL(APP).origin;
 const MUTATION=process.env.HJ_DOCUMENT_ESTIMATE_MUTATION||'';
-assert(['','css','filter'].includes(MUTATION));
+assert(['','css','filter','metadata'].includes(MUTATION));
 const A='가상 가아파트',B='가상 나아파트',X='<img src=x onerror=window.__documentXss=1>';
 const IDS=['fake-alpha','fake-beta','fake-gamma','fake-unknown'];
 let browser,passed=0;
@@ -49,6 +49,7 @@ async function boot(width=390,forced=false){
     const originalDirty=markDirty;markDirty=function(){window.__documentDirty++;return originalDirty.apply(this,arguments);};
     if(mutation==='filter'){const original=viewEstimates;viewEstimates=function(){if(__estimateListUI.search){state.files[0].est.amount++;window.__documentMutation++;}return original.apply(this,arguments);};}
     if(mutation==='css'){const s=document.createElement('style');s.textContent='.documents-view .document-list.grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}';document.head.appendChild(s);window.__documentMutation++;}
+    if(mutation==='metadata'){const s=document.createElement('style');s.textContent='#view .document-row .meta{overflow-wrap:normal!important}';document.head.appendChild(s);window.__documentMutation++;}
   },{a:A,b:B,x:X,forced,mutation:MUTATION});
   observe=true;return{context,page,errors,requests,width,forced};
 }
@@ -143,6 +144,35 @@ async function capture(t,name){if(!process.env.HJ_DOCUMENT_ESTIMATE_SCREENSHOT_D
     await t.page.locator('#btnClearDocSearch').click();assert.equal(await t.page.evaluate(()=>state.search),'');assert.equal(await t.page.locator('.document-row.card').count(),6);
     await readonly(t,before);
   });
+  await run('긴 고객명·원화 금액·OCR 메타데이터 줄바꿈 및 사진 화면 격리',async t=>{
+    await t.page.evaluate(()=>{
+      const file=state.files.find(f=>f.id==='fake-alpha');
+      window.__longDocCustomer='FAKELONGCUSTOMERWITHOUTSPACES'.repeat(4);
+      window.__longDocOcr='FAKEOCRDOCUMENTRECOGNITIONPENDING'.repeat(3)+' 긴 문서 확인 대기';
+      file.est.customer=window.__longDocCustomer;file.est.amount=23456789;
+      // Artificial stress label, not a new production OCR state or OCR read.
+      const original=ocrTag;ocrTag=f=>f.id==='fake-alpha'?'<span class="ocrtag">'+escapeHtml(window.__longDocOcr)+'</span>':original(f);
+      document.body.classList.add('a11y-big2');state.tab='photos';render();
+    });
+    await t.page.locator('.ph-cell').waitFor();
+    const photoMetrics=()=>t.page.locator('.ph-cell,.ph-cell .ph,.ph-cell .ph-meta').evaluateAll(els=>els.map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{class:e.className,width:r.width,height:r.height,display:s.display,wrap:s.overflowWrap,position:s.position,html:e.innerHTML};}));
+    const photoBefore=await photoMetrics(),before=await snap(t.page);await view(t,'docs');
+    const card=t.page.locator('.document-row[data-id="fake-alpha"]');
+    const expected=await t.page.evaluate(()=>({customer:window.__longDocCustomer,ocr:window.__longDocOcr,amount:won(23456789)}));
+    assert(expected.amount.includes('원'),'test covers Korean currency label');
+    for(const size of [0,1,2]){
+      await t.page.evaluate(size=>{document.body.classList.remove('a11y-big1','a11y-big2');if(size)document.body.classList.add('a11y-big'+size);},size);
+      assert.equal(await card.locator('.ext-info').textContent(),expected.customer+' · '+expected.amount,'customer/currency DOM value is not shortened');
+      assert.equal(await card.locator('.ocrtag').textContent(),expected.ocr,'OCR DOM value is not shortened');
+      await noOverflow(t.page,'.document-row[data-id="fake-alpha"],.document-row[data-id="fake-alpha"] .meta,.document-row[data-id="fake-alpha"] .ext-info,.document-row[data-id="fake-alpha"] .ocrtag',320);
+      const clipped=await card.locator('.ext-info,.ocrtag').evaluateAll(els=>els.map(e=>({class:e.className,client:e.clientHeight,scroll:e.scrollHeight,overflow:getComputedStyle(e).overflow,whiteSpace:getComputedStyle(e).whiteSpace})).filter(e=>e.scroll>e.client+2));assert.deepEqual(clipped,[],'metadata wraps instead of being vertically clipped');
+      await touchTargets(t.page,'.documents-view');
+    }
+    if(process.env.HJ_DOCUMENT_ESTIMATE_SCREENSHOT_DIR)await card.screenshot({path:path.join(process.env.HJ_DOCUMENT_ESTIMATE_SCREENSHOT_DIR,'documents-metadata-big2-320.png')});
+    await t.page.evaluate(()=>{state.tab='photos';render();});await t.page.locator('.ph-cell').waitFor();
+    assert.deepEqual(await photoMetrics(),photoBefore,'document metadata CSS does not alter photo-card layout or DOM');
+    assert.equal(await t.page.locator('.document-row').count(),0);await readonly(t,before);
+  },320);
   for(const [width,forced] of [[1280,false],[960,false],[390,false],[360,false],[320,false],[1280,true]])await run('서류 가로 카드·견적 4열/폰 2열·44px·긴 이름·XSS',async t=>{
     const before=await snap(t.page);await view(t,'docs');
     const layout=await t.page.locator('.document-list.grid').evaluateAll(els=>els.map(e=>({columns:getComputedStyle(e).gridTemplateColumns.split(/\s+/).length,rows:[...e.querySelectorAll('.document-row')].map(r=>{const box=r.getBoundingClientRect(),thumb=r.querySelector('.thumb').getBoundingClientRect(),meta=r.querySelector('.meta').getBoundingClientRect();return{left:box.left,right:box.right,width:box.width,thumbRight:thumb.right,metaLeft:meta.left,thumbTop:thumb.top,thumbBottom:thumb.bottom,metaTop:meta.top,metaBottom:meta.bottom};})})));
