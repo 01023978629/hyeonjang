@@ -7,6 +7,7 @@
 'use strict';
 
 var PORTAL_SCHEMA_VERSION = 'office-portal-v3';
+var PORTAL_AUTH_POLICY = 'master-password-v1';
 
 var PORTAL_ROLES = Object.freeze([
   'system_admin',
@@ -140,9 +141,25 @@ function portalPureEmail_(value) {
   return email;
 }
 
-function portalPureLoginCode_(value, required) {
+function portalPureLoginCodeValid_(value, role) {
+  if (typeof value !== 'string' || PORTAL_ROLES.indexOf(role) < 0) return false;
+  if (value.length === 6 && !/[^0-9]/.test(value)) return true;
+  return role === 'system_admin' && value.length >= 8 && value.length <= 64 && !/[^\x21-\x7e]/.test(value);
+}
+
+function portalPureLoginCode_(value, required, role) {
   if ((value === undefined || value === null || value === '') && !required) return '';
-  return portalPureString_(String(value || ''), 'loginCode', 6, 6, /^\d{6}$/);
+  // Credentials are hashed, not written into Sheets as text. Never trim/coerce them
+  // or apply the formula-prefix rules used for names and other stored text.
+  if (!portalPureLoginCodeValid_(value, role || 'resident')) {
+    throw portalPureError_('invalid_loginCode', 'loginCode is invalid');
+  }
+  return value;
+}
+
+function portalPureLoginCandidate_(value, required) {
+  // Before lookup only the union grammar is known; Code.gs enforces the stored role.
+  return portalPureLoginCode_(value, required, 'system_admin');
 }
 
 function portalPureSlug_(value) {
@@ -388,7 +405,7 @@ function portalPureUserInput_(input) {
     role: portalPureRole_(input.role),
     unit: portalPureOptionalString_(input.unit, 'unit', 40),
     active: portalPureBool_(input.active, 'active'),
-    loginCode: portalPureLoginCode_(input.loginCode, false)
+    loginCode: portalPureLoginCandidate_(input.loginCode, false)
   };
 }
 
