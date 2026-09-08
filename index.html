@@ -745,7 +745,7 @@
   #view .document-row{display:grid;grid-template-columns:64px minmax(180px,1fr) minmax(170px,220px) minmax(140px,185px);flex-direction:row;align-items:center;gap:16px;padding:14px;overflow:visible;box-shadow:none}
   #view .document-row .thumb{width:64px;height:64px;min-width:0;margin:0;border-radius:8px;flex:0 0 64px}
   #view .document-row .thumb .ext{font-size:13px}
-  #view .document-row .meta{min-width:0;padding:0}
+  #view .document-row .meta{min-width:0;padding:0;overflow-wrap:anywhere}
   #view .document-row .nm{font-size:14px;line-height:1.55;overflow-wrap:anywhere}
   #view .document-row .sub{font-size:12px;line-height:1.6;margin-top:4px;word-break:keep-all;overflow-wrap:anywhere}
   #view .document-row .ocrtag{position:static;display:inline-block;align-self:flex-start;margin-top:6px;font-size:11px}
@@ -2575,7 +2575,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v271-reportoutput';
+const APP_BUILD='hyeonjang-v272-docwrap';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
