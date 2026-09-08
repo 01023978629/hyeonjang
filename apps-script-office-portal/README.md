@@ -6,7 +6,10 @@
 
 ## 보안 모델
 
-- 로그인: 관리자가 사용자별로 발급한 6자리 인증번호
+- 로그인: 관리자가 사용자별로 발급한 비밀번호. 일반 직원은 기존 숫자 6자리,
+  `system_admin`은 기존 숫자 6자리 또는 공백 없는 8~64자 영문·숫자·특수문자를 사용한다.
+  추가 형식은 ASCII `!`부터 `~`까지이며 공백·제어문자·비 ASCII 문자는 허용하지 않는다.
+  비밀번호는 원문 문자열로 검증하며 앞뒤 공백 제거, 대소문자 변환, 숫자 자동 변환을 하지 않는다.
 - 인증번호: 사용자별 무작위 소금값과 HMAC 해시만 Sheets에 저장하며 원문은 저장하지 않음
 - 실패 제한: 5회 연속 오류 시 해당 사용자를 15분간 잠금
 - 공개 요청 보호: 10분 단위 Script Cache 전역 best-effort 한도 적용
@@ -76,7 +79,8 @@ admin.audit.view
    - `OFFICE_PORTAL_BOOTSTRAP_COMPLEX_NAME`
    - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL`
    - `OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME`
-   - `OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE`: 관리자가 정한 6자리 숫자
+   - `OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE`: 최초 마스터 비밀번호(숫자 6자리 또는 위의 8~64자 형식).
+     실제 값은 Script Properties에만 입력하며 예시 코드·문서·테스트에 복사하지 않는다.
 6. 편집기에서 `portalBootstrapFromProperties_()`를 직접 한 번 실행합니다. 첫 단지와 첫 `system_admin`이 생성되며, 성공하면 5단계 임시 속성은 자동 삭제됩니다. 활성 `system_admin`이 이미 있으면 재실행은 거부됩니다.
 7. **배포 → 새 배포 → 웹 앱**에서 실행 사용자를 배포 소유자로, 액세스 사용자를 누구나로 설정해 배포합니다. 익명 액세스는 로그인 action을 호출하기 위한 전송 경로일 뿐이며, 보호 action은 서버 세션 없이는 실행되지 않습니다.
 8. 배포된 `/exec` URL에 POST `{"action":"portalHealth"}`를 보내 `ok`, `service`, `enabled`를 확인합니다.
@@ -89,6 +93,14 @@ admin.audit.view
 성공은 `{ "ok": true, ... }`, 실패는 `{ "ok": false, "error": "code" }` 형태입니다.
 
 - `portalLogin`: `{action, payload:{officeCode,email,loginCode}}`
+- `loginCode` 필드명과 기존 해시·소금값·세션 스키마는 유지한다. 로그인 입력 단계는 두 형식을
+  모두 받을 수 있지만 마스터 여부는 클라이언트 선택값이 아니라 서버의 현재 `Users.role`로 결정한다.
+  일반 직원에게 긴 비밀번호를 제출해도 로그인되지 않으며 실패 횟수·잠금 규칙을 동일하게 적용한다.
+  계정·역할 유무를 노출하는 별도 공개 조회 API는 추가하지 않는다.
+- `portalUserSave`는 권한 검사를 통과한 대상 역할에 맞는 비밀번호만 발급한다.
+  기존 `system_admin`을 다른 역할로 바꿀 때는 새 숫자 6자리 비밀번호를 함께 입력해야 한다.
+  새 비밀번호 없이 강등해 기존 마스터 비밀번호로 로그인할 수 없게 만드는 변경은 거부한다.
+  일반적인 수정의 빈 비밀번호는 기존 값 유지이며, 마지막 관리자·자기 잠금 방지 규칙은 유지한다.
 - 보호 action: 최상위에 `sessionToken`을 넣고 필요 입력은 `payload`에 둡니다.
 - `portalStatusSave`, `portalLogSave`, `portalWorkOrderSave`, `portalNoticeSave`, `portalCostSave`, `portalCostApprove`, `portalUserSave`, `portalPermissionSave`의 payload에는 브라우저 `crypto.randomUUID()`로 만든 v4 UUID `requestId`가 필수입니다. 신규 사용자의 `portalUserSave`에는 `loginCode`가 필수이고, 기존 사용자에서는 인증번호를 바꿀 때만 보냅니다. 한 번의 사용자 저장 동작과 네트워크 재시도는 같은 `requestId`를 유지하고, 다음 저장 동작에는 새 UUID를 사용하세요.
 - 같은 `requestId`와 같은 정규화 입력을 재전송하면 기존 entity와 revision을 그대로 반환하며 `replayed:true`가 표시됩니다. 같은 `requestId`에 다른 입력을 보내면 `invalid-input`입니다.
@@ -111,6 +123,14 @@ admin.audit.view
 
 ## 운영 및 배포 경계
 
+- 2026-09-08 마스터 비밀번호 확장은 로컬 개발 후보이며 실제 계정·비밀번호를 생성하거나 변경한 것이 아니다.
+  새 서버의 비인증 `portalHealth` 응답에는 `authPolicy: "master-password-v1"`가 추가된다.
+  이는 입력 규칙 배포 확인용이며 인증·소유권 확인이나 특정 계정의 존재 증거가 아니다.
+  이 후보는 포털 Apps Script 백엔드를 먼저 승인·배포하고, 프런트 Pages를 배포한 뒤 적용한다.
+  새 형식 비밀번호 발급은 두 배포 확인 후에만 진행한다. 기존 활성 마스터가 있으면 신규 부트스트랩을
+  반복하거나 임의 초기화하지 말고, 소유자가 승인한 기존 계정 관리 경로를 사용한다.
+  이전 6자리 전용 서버로 되돌리면 긴 비밀번호를 사용하는 마스터는 로그인할 수 없으므로,
+  운영 중 단순 롤백 대신 소유자 인증을 통한 승인된 비밀번호 복구 절차가 필요하다.
 - `.gs` 소스의 GitHub 배포는 Apps Script 운영 배포를 갱신하지 않습니다. Apps Script에서 새 버전을 배포한 뒤 실제 `/exec` 응답을 별도로 확인해야 합니다.
 - `portalSetupSheets_`, `portalBootstrapFromProperties_`, `portalSetLoginCodeFromProperties_`는 웹 action allowlist에 없으므로 편집기 소유자만 실행할 수 있습니다.
 - Sheets 헤더가 예상 스키마와 다르면 쓰기를 계속하지 않고 `not-configured`로 중단합니다.
@@ -126,6 +146,11 @@ Apps Script 왼쪽의 **트리거 → 트리거 추가**에서 실행 함수 `po
 ### 쓰기 재시도와 감사 복구
 
 Sheets는 트랜잭션을 제공하지 않으므로 포털은 권한·revision·상태 전이·연결 대상을 먼저 검증한 뒤, primary row를 쓰기 전에 `PortalOperations`에 `requestId`, 클라이언트 정규화 입력 해시, 미리 확정한 entity ID를 기록합니다. 거부된 입력은 `started` 행을 만들지 않습니다. primary row 이후 감사 append가 실패해도 API는 저장 결과와 `auditPending:true`를 반환하며, 같은 `requestId` 재전송은 새 행을 만들지 않고 deterministic audit ID로 누락 감사를 보완합니다. 담당자를 생략한 작업지시 수정은 현재 담당자가 바뀌어도 같은 요청 해시를 유지합니다. 운영 중 남은 `audit_pending`은 웹 action이 아닌 `portalRepairPendingOperationAudits_()`를 편집기에서 실행해 복구할 수 있습니다.
+
+비밀번호 변경 재시도는 현재 관리 권한을 다시 확인하며, `started` 요청을 이미 저장된 것으로
+판단할 때 대상 역할과 현재 소금값으로 계산한 비밀번호 해시도 비교한다. 비밀번호-only 변경이
+사용자 행 저장 전에 실패한 경우에는 실제로 다시 저장하고, 저장 직후 실패한 경우에는
+세션 버전·소금값·해시를 두 번 변경하지 않는다. 비밀번호 원문은 재시도 기록에도 남기지 않는다.
 
 `portalRepairPendingOperationAudits_()`도 일일 시간 기반 트리거로 등록하는 것을 권장합니다. 반환값은 복구·잔여 건수와 실행 시각뿐입니다. `PortalOperations`에는 이메일·본문·입력 원문을 저장하지 않고 해시와 내부 ID만 저장합니다.
 

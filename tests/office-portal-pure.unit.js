@@ -143,6 +143,34 @@ for (const invalid of ['12345', '1234567', '12a456']) {
   assert.throws(() => sandbox.portalPureLoginCode_(invalid, true), error => error && error.portalCode === 'invalid_loginCode');
 }
 
+// Credentials use their original string bytes, not the general Sheets text parser.
+const fakeMasterPasswords = ['FAKE123!', '=FAKE-password|9', '+FAKE-password9', '-FAKE-password9', '@FAKE-password9', 'A'.repeat(64)];
+for (const value of fakeMasterPasswords) {
+  assert.equal(sandbox.portalPureLoginCandidate_(value, true), value);
+  assert.equal(sandbox.portalPureLoginCode_(value, true, 'system_admin'), value);
+  for (const role of ['manager_chief', 'facility_manager', 'resident_rep', 'resident', 'invalid_role']) {
+    assert.equal(sandbox.portalPureLoginCodeValid_(value, role), false, 'only stored system_admin may use the extended grammar');
+  }
+}
+const everyVisibleAscii = Array.from({ length: 94 }, (_, i) => String.fromCharCode(i + 33)).join('');
+for (const value of [everyVisibleAscii.slice(0, 64), everyVisibleAscii.slice(64)]) {
+  assert.equal(sandbox.portalPureLoginCode_(value, true, 'system_admin'), value);
+}
+for (const role of plain(sandbox.PORTAL_ROLES)) {
+  assert.equal(sandbox.portalPureLoginCode_('012345', true, role), '012345');
+}
+for (const invalid of [
+  123456, 12345678, new String('FAKE123!'), true, {}, ['123456'], null, undefined, '',
+  '12345', '1234567', 'abcdef', 'A'.repeat(65), ' FAKE123!', 'FAKE123! ', 'FAKE 123!',
+  'FAKE\t123!', 'FAKE\u0000123!', 'FAKE\u007f123!', '한글FAKE123!',
+  ...['\n', '\r', '\r\n', '\u2028', '\u2029'].flatMap(end => ['123456' + end, 'FAKE123!' + end]),
+]) {
+  assert.throws(() => sandbox.portalPureLoginCandidate_(invalid, true),
+    error => error && error.portalCode === 'invalid_loginCode', 'invalid raw credential must be rejected without coercion or trim');
+}
+assert.equal(sandbox.PORTAL_SCHEMA_VERSION, 'office-portal-v3');
+assert.equal(sandbox.PORTAL_AUTH_POLICY, 'master-password-v1');
+
 const unsafeFormulaPrefixes = ['=', '+', '-', '@', '\t', '\r', '\n', ' ='];
 function assertUnsafeTextRejected(field, build) {
   for (const prefix of unsafeFormulaPrefixes) {

@@ -128,9 +128,27 @@ const sandbox = {
   },
 };
 vm.createContext(sandbox);
+const masterMutation = process.env.HJ_MASTER_PASSWORD_MUTATION || '';
+if (masterMutation && !['raw', 'role', 'demotion', 'replay'].includes(masterMutation)) throw new Error('unknown master password mutation');
+let masterMutationApplied = 0;
 for (const filename of ['PortalPure.gs', 'Code.gs']) {
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script-office-portal', filename), 'utf8'), sandbox, { filename });
+  let source = fs.readFileSync(path.join(__dirname, '..', 'apps-script-office-portal', filename), 'utf8');
+  const mutations = {
+    raw: ['PortalPure.gs', "if (!portalPureLoginCodeValid_(value, role || 'resident')) {", "if (typeof value === 'string') value = value.trim();\n  if (!portalPureLoginCodeValid_(value, role || 'resident')) {"],
+    role: ['Code.gs', 'if (!hashMatches || !portalPureLoginCodeValid_(loginCode, user.role)) {', 'if (!hashMatches) {'],
+    demotion: ['Code.gs', 'portalPureLoginCode_(input.loginCode, !target || Boolean(demotesMaster), input.role);', 'portalPureLoginCode_(input.loginCode, !target, input.role);'],
+    replay: ['Code.gs', '      replayPasswordMatches;', '      true;'],
+  };
+  const mutation = mutations[masterMutation];
+  if (mutation && filename === mutation[0]) {
+    assert.equal(source.split(mutation[1]).length - 1, 1, 'mutation must match exactly one production guard');
+    source = source.replace(mutation[1], mutation[2]);
+    masterMutationApplied += 1;
+    console.log(`MUTATION ${masterMutation} applied=${masterMutationApplied}`);
+  }
+  vm.runInContext(source, sandbox, { filename });
 }
+if (masterMutation) assert.equal(masterMutationApplied, 1);
 const plain = value => JSON.parse(JSON.stringify(value));
 const catches = (fn, code) => assert.throws(fn, error => error && error.portalCode === code);
 
@@ -868,4 +886,211 @@ assert.deepEqual({
 assert(!plain(sandbox.PORTAL_ACTIONS).includes('portalPruneExpiredAuthRows_'),
   'the prune function must not be exposed as a public web action');
 
+// Master-password extension: synthetic fixtures only; no production account/API.
+const sheetSnapshot = () => JSON.stringify(Array.from(spreadsheet.sheets, ([name, sheet]) => [name, sheet.rows]));
+const saveUser = payload => sandbox.portalDispatch_({ action: 'portalUserSave', sessionToken: system.sessionToken, payload });
+const passwordLogin = (email, loginCode, extra = {}) => sandbox.portalDispatch_({
+  action: 'portalLogin', payload: { officeCode: 'system', email, loginCode, ...extra },
+});
+assert.deepEqual(plain(sandbox.portalHealth_()), {
+  service: 'office-portal-v3', authPolicy: 'master-password-v1', enabled: true,
+});
+const unchangedLegacy = sandbox.portalUserById_('usr_sys');
+assert.equal(unchangedLegacy.loginCodeHash, crypto.createHmac('sha256', properties.get('OFFICE_PORTAL_LOGIN_PEPPER'))
+  .update(`${unchangedLegacy.officeId}|${unchangedLegacy.userId}|${unchangedLegacy.loginCodeSalt}|123456`).digest('base64url'),
+  'legacy six-digit HMAC format must remain exactly compatible');
+
+const fakePassword = '=FAKE-master|Password!9';
+const masterPayload = {
+  requestId: newRequestId(), officeId: 'of_system', email: 'fake-master@example.com',
+  name: '가상 추가 총관리자', role: 'system_admin', active: true, unit: '', loginCode: fakePassword,
+};
+const createdMaster = saveUser(masterPayload);
+const masterId = createdMaster.user.id;
+assert(createdMaster.user.loginCodeConfigured);
+assert.equal(saveUser(masterPayload).replayed, true, 'new master creation must remain idempotent');
+assert.equal(sandbox.portalRows_('Users').filter(row => row.userId === masterId).length, 1);
+const storedMaster = sandbox.portalUserById_(masterId);
+assert.equal(storedMaster.loginCodeHash, crypto.createHmac('sha256', properties.get('OFFICE_PORTAL_LOGIN_PEPPER'))
+  .update(`${storedMaster.officeId}|${storedMaster.userId}|${storedMaster.loginCodeSalt}|${fakePassword}`).digest('base64url'),
+  'special prefixes and delimiter characters must be hashed as the exact original password');
+assert(!JSON.stringify(createdMaster).includes(fakePassword));
+assert(!sheetSnapshot().includes(fakePassword), 'password must not appear in any sheet, operation or audit row');
+const masterSession = passwordLogin(masterPayload.email, fakePassword);
+assert.equal(masterSession.user.id, masterId);
+assert.equal(masterSession.user.role, 'system_admin');
+assert(!masterSession.user.permissions.includes('dashboard.view'), 'new password must not widen role ceiling');
+catches(() => passwordLogin(masterPayload.email, fakePassword.toLowerCase()), 'invalid_credentials');
+passwordLogin(masterPayload.email, fakePassword);
+
+// A password-only edit interrupted before the primary write must retry the actual
+// credential change; an interruption after the write must not rotate/version it twice.
+for (const failurePoint of ['before', 'after']) {
+  const pendingPassword = `!FAKE-${failurePoint}-primary|9`;
+  const current = sandbox.portalUserById_(masterId);
+  const pendingPayload = { ...masterPayload, requestId: newRequestId(), userId: masterId, loginCode: pendingPassword };
+  const originalSaveRow = sandbox.portalSaveRow_;
+  let injected = false;
+  sandbox.portalSaveRow_ = function (table, row) {
+    if (table === 'Users' && row.userId === masterId && !injected) {
+      injected = true;
+      if (failurePoint === 'after') originalSaveRow(table, row);
+      throw new Error(`FAKE ${failurePoint} password primary failure`);
+    }
+    return originalSaveRow(table, row);
+  };
+  try { assert.throws(() => saveUser(pendingPayload), /FAKE .* password primary failure/); }
+  finally { sandbox.portalSaveRow_ = originalSaveRow; }
+  assert(injected);
+  const interrupted = sandbox.portalUserById_(masterId);
+  assert.equal(interrupted.loginCodeHash === current.loginCodeHash, failurePoint === 'before');
+  assert.equal(sandbox.portalOperationByRequestId_(pendingPayload.requestId).status, 'started');
+  const retried = saveUser(pendingPayload);
+  assert.equal(retried.replayed, true);
+  const durable = sandbox.portalUserById_(masterId);
+  assert.notEqual(durable.loginCodeHash, current.loginCodeHash, 'password-only retry must commit the new credential');
+  assert.equal(Number(durable.sessionVersion), Number(current.sessionVersion) + 1, 'primary retry bumps session version exactly once');
+  assert.equal(Number(durable.permissionVersion), Number(current.permissionVersion) + 1);
+  if (failurePoint === 'after') {
+    assert.equal(durable.loginCodeSalt, interrupted.loginCodeSalt, 'post-primary retry preserves the committed salt');
+    assert.equal(durable.loginCodeHash, interrupted.loginCodeHash);
+  }
+  assert.equal(passwordLogin(masterPayload.email, pendingPassword).user.id, masterId);
+  assert.equal(sandbox.portalOperationByRequestId_(pendingPayload.requestId).status, 'complete');
+}
+saveUser({ ...masterPayload, requestId: newRequestId(), userId: masterId });
+assert.equal(passwordLogin(masterPayload.email, fakePassword).user.id, masterId);
+
+// All whitespace/control endings and non-string JSON inputs fail before a write.
+for (const invalid of [
+  123456, 12345678, {}, ['123456'], true, ' ' + fakePassword, fakePassword + ' ',
+  ...['\n', '\r', '\r\n', '\u2028', '\u2029'].flatMap(end => [fakePassword + end, '123456' + end]),
+]) {
+  const before = sheetSnapshot();
+  catches(() => saveUser({ ...masterPayload, requestId: newRequestId(), userId: masterId, loginCode: invalid }), 'invalid_loginCode');
+  assert.equal(sheetSnapshot(), before, 'invalid raw credential must not mutate users, offices, operations or audits');
+  assert.deepEqual(post({ action: 'portalLogin', payload: { officeCode: 'system', email: masterPayload.email, loginCode: invalid } }),
+    { ok: false, error: 'invalid-input' });
+  assert.equal(sheetSnapshot(), before, 'invalid input must not be silently normalized into a login');
+}
+
+// An authorized next role controls creation/reset. Client role hints confer nothing.
+for (const role of ['manager_chief', 'facility_manager', 'resident_rep', 'resident']) {
+  const before = sheetSnapshot();
+  catches(() => saveUser({ ...masterPayload, requestId: newRequestId(), email: `fake-${role}@example.com`, role }), 'invalid_loginCode');
+  assert.equal(sheetSnapshot(), before, 'nonmaster long-password create must fail before the operation row');
+}
+const authorityBefore = sheetSnapshot();
+catches(() => sandbox.portalDispatch_({ action: 'portalUserSave', sessionToken: chiefA.sessionToken,
+  payload: { ...masterPayload, requestId: newRequestId(), officeId: 'of_alpha' },
+}), 'protected_admin');
+assert.equal(sheetSnapshot(), authorityBefore, 'unprivileged master creation must not start an operation');
+
+// Simulate an old/malformed stored role change: matching HMAC is insufficient for staff.
+addUser('usr_fake_role', 'of_system', 'fake-role@example.com', '가상 역할 검사', 'system_admin');
+const malformedRoleUser = sandbox.portalUserById_('usr_fake_role');
+sandbox.portalSetUserLoginCode_(malformedRoleUser, fakePassword, now);
+malformedRoleUser.role = 'resident';
+sandbox.portalSaveRow_('Users', malformedRoleUser);
+let comparedCandidates = 0;
+const originalCompare = sandbox.portalConstantTimeEqual_;
+sandbox.portalConstantTimeEqual_ = function (left, right) { comparedCandidates += 1; return originalCompare(left, right); };
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  assert.deepEqual(post({ action: 'portalLogin', payload: {
+    officeCode: 'system', email: 'fake-role@example.com', loginCode: fakePassword, role: 'system_admin',
+  } }), { ok: false, error: attempt === 5 ? 'rate-limited' : 'invalid-credentials' },
+  'actual stored role must reject a matching long-password HMAC using the ordinary failure path');
+  assert.equal(Number(sandbox.portalUserById_('usr_fake_role').loginFailedAttempts), attempt);
+}
+assert.equal(comparedCandidates, 5, 'role-policy mismatch must still compare the HMAC');
+sandbox.portalConstantTimeEqual_ = originalCompare;
+assert(sandbox.portalTime_(sandbox.portalUserById_('usr_fake_role').loginLockedUntil) > Date.now());
+assert.deepEqual(post({ action: 'portalLogin', payload: {
+  officeCode: 'system', email: 'missing-fake@example.com', loginCode: fakePassword,
+} }), { ok: false, error: 'invalid-credentials' });
+
+// Master demotion without a new six-digit password must stop before every write,
+// including a supplied office edit; blank edits without a role change preserve the hash.
+const beforeBlankHash = sandbox.portalUserById_(masterId).loginCodeHash;
+const blankEdit = saveUser({ ...masterPayload, requestId: newRequestId(), userId: masterId, loginCode: '' });
+assert.equal(blankEdit.user.role, 'system_admin');
+assert.equal(sandbox.portalUserById_(masterId).loginCodeHash, beforeBlankHash);
+const activeMasterSession = passwordLogin(masterPayload.email, fakePassword);
+for (const value of ['', undefined, null, fakePassword]) {
+  const before = sheetSnapshot();
+  catches(() => saveUser({ ...masterPayload, requestId: newRequestId(), userId: masterId,
+    role: 'resident', loginCode: value,
+    office: { officeId: 'of_system', slug: 'system', complexName: '저장되면 안 되는 가상 이름', enabled: true },
+  }), 'invalid_loginCode');
+  assert.equal(sheetSnapshot(), before, 'master demotion must reject before office/version/operation/user mutation');
+}
+const demotionPayload = { ...masterPayload, requestId: newRequestId(), userId: masterId, role: 'resident', loginCode: '234567' };
+const demoted = saveUser(demotionPayload);
+assert.equal(demoted.user.role, 'resident');
+assert.equal(saveUser(demotionPayload).replayed, true);
+catches(() => sandbox.portalDispatch_({ action: 'portalMe', sessionToken: activeMasterSession.sessionToken }), 'session_stale');
+assert.equal(passwordLogin(masterPayload.email, '234567').user.role, 'resident');
+catches(() => passwordLogin(masterPayload.email, fakePassword), 'invalid_credentials');
+const beforePromotionHash = sandbox.portalUserById_(masterId).loginCodeHash;
+saveUser({ ...masterPayload, requestId: newRequestId(), userId: masterId, loginCode: '' });
+assert.equal(sandbox.portalUserById_(masterId).loginCodeHash, beforePromotionHash, 'legacy numeric master promotion retains the existing HMAC');
+assert.equal(passwordLogin(masterPayload.email, '234567').user.role, 'system_admin');
+
+// Editor-only resets use the target's actual stored role and revoke old sessions.
+const resetMasterSession = passwordLogin(masterPayload.email, '234567');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_SLUG', 'system');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL', masterPayload.email);
+properties.set('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE', '+FAKE-reset|Only!');
+assert.equal(sandbox.portalSetLoginCodeFromProperties_().userId, masterId);
+catches(() => sandbox.portalDispatch_({ action: 'portalMe', sessionToken: resetMasterSession.sessionToken }), 'session_stale');
+assert.equal(passwordLogin(masterPayload.email, '+FAKE-reset|Only!').user.id, masterId);
+properties.set('OFFICE_PORTAL_BOOTSTRAP_SLUG', 'system');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL', 'fake-role@example.com');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE', '+FAKE-staff-reset!');
+const beforeStaffReset = sheetSnapshot();
+catches(() => sandbox.portalSetLoginCodeFromProperties_(), 'invalid_loginCode');
+assert.equal(sheetSnapshot(), beforeStaffReset, 'invalid staff reset must not reset the lock or bump its session version');
+assert(properties.has('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), 'failed editor reset must preserve its temporary properties');
+properties.set('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE', '345678');
+assert.equal(sandbox.portalSetLoginCodeFromProperties_().userId, 'usr_fake_role');
+assert.equal(passwordLogin('fake-role@example.com', '345678').user.role, 'resident');
+assert.equal(Number(sandbox.portalUserById_('usr_fake_role').loginFailedAttempts), 0);
+
+// An actor who lost system_admin authority cannot replay an old master create.
+const actorBeforeRoleChange = sandbox.portalUserById_('usr_sys');
+sandbox.portalSaveRow_('Users', { ...actorBeforeRoleChange, role: 'manager_chief' });
+const reducedActor = passwordLogin('sys@example.com', '123456');
+const replayAuthoritySnapshot = sheetSnapshot();
+catches(() => sandbox.portalDispatch_({ action: 'portalUserSave', sessionToken: reducedActor.sessionToken,
+  payload: masterPayload,
+}), 'protected_admin');
+assert.equal(sheetSnapshot(), replayAuthoritySnapshot, 'completed operation replay must still enforce current role authority');
+sandbox.portalSaveRow_('Users', actorBeforeRoleChange);
+
+// Bootstrap runs last on cleared fake rows, never on live data. Schema stays v3.
+for (const sheet of spreadsheet.sheets.values()) sheet.rows = sheet.rows.slice(0, 1);
+const bootstrapProps = {
+  OFFICE_PORTAL_BOOTSTRAP_OFFICE_ID: 'of_fake_bootstrap',
+  OFFICE_PORTAL_BOOTSTRAP_SLUG: 'fake-bootstrap',
+  OFFICE_PORTAL_BOOTSTRAP_COMPLEX_NAME: '가상 최초 설치',
+  OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL: 'fake-bootstrap@example.com',
+  OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME: '가상 최초 관리자',
+  OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE: '@FAKE-bootstrap!9',
+};
+for (const [key, value] of Object.entries(bootstrapProps)) properties.set(key, value);
+const bootstrapped = sandbox.portalBootstrapFromProperties_();
+assert.equal(sandbox.portalUserById_(bootstrapped.userId).role, 'system_admin');
+for (const key of Object.keys(bootstrapProps)) assert.equal(properties.has(key), false);
+assert.equal(sandbox.portalDispatch_({ action: 'portalLogin', payload: {
+  officeCode: 'fake-bootstrap', email: 'fake-bootstrap@example.com', loginCode: '@FAKE-bootstrap!9',
+} }).user.id, bootstrapped.userId);
+assert(!sheetSnapshot().includes('@FAKE-bootstrap!9'));
+const afterBootstrap = sheetSnapshot();
+catches(() => sandbox.portalBootstrapFromProperties_(), 'bootstrap_already_completed');
+assert.equal(sheetSnapshot(), afterBootstrap);
+assert.deepEqual(legacyUsers.rows[0], plain(sandbox.PORTAL_HEADERS.Users));
+assert(!plain(sandbox.PORTAL_ACTIONS).some(action => /Bootstrap|SetLoginCode|password/i.test(action)),
+  'master-password support must not expose owner helpers as web actions');
+
 console.log('PASS  office portal server admin login code, lockout, hashed session, RBAC, office isolation, redaction, and admin safety');
+console.log('PASS  master password original bytes, role authority, demotion preflight, bootstrap/reset, replay, schema and legacy compatibility');

@@ -151,6 +151,7 @@ function portalHealth_() {
   var props = portalProps_();
   return {
     service: PORTAL_SCHEMA_VERSION,
+    authPolicy: PORTAL_AUTH_POLICY,
     enabled: props.getProperty('OFFICE_PORTAL_ENABLED') === '1'
   };
 }
@@ -243,7 +244,7 @@ function portalLoginCodeHash_(user, salt, loginCode) {
 }
 
 function portalSetUserLoginCode_(user, loginCode, now) {
-  loginCode = portalPureLoginCode_(loginCode, true);
+  loginCode = portalPureLoginCode_(loginCode, true, user.role);
   var salt = Utilities.getUuid().replace(/-/g, '');
   user.loginCodeSalt = salt;
   user.loginCodeHash = portalLoginCodeHash_(user, salt, loginCode);
@@ -433,7 +434,7 @@ function portalFinishOperation_(operation, auditResult) {
 function portalLogin_(payload) {
   var slug = portalPureSlug_(payload.officeCode);
   var email = portalPureEmail_(payload.email);
-  var loginCode = portalPureLoginCode_(payload.loginCode, true);
+  var loginCode = portalPureLoginCandidate_(payload.loginCode, true);
   var identityHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
   if (!portalBestEffortLoginGate_(Date.now())) throw portalApiError_('rate_limited');
   return portalWithLock_(function () {
@@ -458,7 +459,8 @@ function portalLogin_(payload) {
     }
 
     var candidateHash = portalLoginCodeHash_(user, user.loginCodeSalt, loginCode);
-    if (!portalConstantTimeEqual_(user.loginCodeHash, candidateHash)) {
+    var hashMatches = portalConstantTimeEqual_(user.loginCodeHash, candidateHash);
+    if (!hashMatches || !portalPureLoginCodeValid_(loginCode, user.role)) {
       var failures = portalNumber_(user.loginFailedAttempts, 0) + 1;
       user.loginFailedAttempts = failures;
       if (failures >= PORTAL_LOGIN_MAX_ATTEMPTS) {
@@ -1196,14 +1198,26 @@ function portalUserSave_(context, payload) {
   var inputHash = portalInputHash_({ kind: 'user', input: inputForHash, office: officeInput || requestedOfficeId });
   return portalWithLock_(function () {
     var office = officeInput ? portalOfficeById_(officeInput.officeId) : portalTargetOffice_(context, payload);
-    var started = portalBeginOperation_(context, requestId, 'portalUserSave', 'user',
-      input.userId || portalRandomId_('usr'), inputHash, requestedOfficeId);
-    var operation = started.operation;
+    var knownOperation = portalOperationByRequestId_(requestId);
+    var entityId = knownOperation ? knownOperation.entityId : (input.userId || portalRandomId_('usr'));
+    var started = knownOperation ? portalBeginOperation_(context, requestId, 'portalUserSave', 'user',
+      entityId, inputHash, requestedOfficeId, knownOperation) : null;
+    var operation = started ? started.operation : null;
     var users = portalRows_('Users');
-    var target = users.filter(function (row) { return row.userId === operation.entityId; })[0] || null;
+    var target = users.filter(function (row) { return row.userId === entityId; })[0] || null;
+    if (input.userId && !target) throw portalApiError_('user_not_found');
+    if (target && target.officeId !== requestedOfficeId) throw portalApiError_('office_scope_denied');
+    portalAssertCanManageUser_(context, target, input);
+    // Replays also require current authority. Validate before every possible write.
+    var demotesMaster = target && target.role === 'system_admin' && input.role !== 'system_admin';
+    portalPureLoginCode_(input.loginCode, !target || Boolean(demotesMaster), input.role);
+    var replayPasswordMatches = !input.loginCode || Boolean(target && target.loginCodeSalt && target.loginCodeHash &&
+      portalPureLoginCodeValid_(input.loginCode, target.role) &&
+      portalConstantTimeEqual_(target.loginCodeHash, portalLoginCodeHash_(target, target.loginCodeSalt, input.loginCode)));
     var replayMatches = target && target.email === input.email && target.displayName === input.name &&
-      target.role === input.role && String(target.unit || '') === input.unit && portalTruth_(target.enabled) === input.active;
-    if (started.replayed && target && (operation.status !== 'started' || !input.userId || replayMatches)) {
+      target.role === input.role && String(target.unit || '') === input.unit && portalTruth_(target.enabled) === input.active &&
+      replayPasswordMatches;
+    if (started && started.replayed && target && (operation.status !== 'started' || replayMatches)) {
       var replayOffice = portalOfficeById_(target.officeId);
       if (!replayOffice) throw portalApiError_('office_not_found');
       var replayAuditPending = portalFinishOperation_(operation, input.userId ? 'updated' : 'created');
@@ -1212,11 +1226,10 @@ function portalUserSave_(context, payload) {
         replayed: true, auditPending: replayAuditPending
       };
     }
+    if (!started) started = portalBeginOperation_(context, requestId, 'portalUserSave', 'user',
+      entityId, inputHash, requestedOfficeId, null);
+    operation = started.operation;
     if (officeInput) office = portalUpsertOfficeForSystemAdmin_(context, officeInput);
-    if (input.userId && !target) throw portalApiError_('user_not_found');
-    if (target && target.officeId !== office.officeId) throw portalApiError_('office_scope_denied');
-    if (!target && !input.loginCode) throw portalApiError_('invalid_loginCode');
-    portalAssertCanManageUser_(context, target, input);
     var emailHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', input.email);
     var duplicate = users.filter(function (row) {
       return row.officeId === office.officeId && row.emailHash === emailHash && (!target || row.userId !== target.userId);
@@ -1460,7 +1473,7 @@ function portalBootstrapFromProperties_() {
     });
     var email = portalPureEmail_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL'));
     var name = portalPureString_(String(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_NAME') || ''), 'name', 1, 80, null);
-    var loginCode = portalPureLoginCode_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true);
+    var loginCode = portalPureLoginCode_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true, 'system_admin');
     var now = portalNow_();
     var office = portalOfficeById_(officeInput.officeId) || {
       officeId: officeInput.officeId,
@@ -1513,7 +1526,7 @@ function portalSetLoginCodeFromProperties_() {
     var props = portalProps_();
     var slug = portalPureSlug_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_SLUG'));
     var email = portalPureEmail_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_ADMIN_EMAIL'));
-    var loginCode = portalPureLoginCode_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true);
+    var loginCode = portalPureLoginCandidate_(props.getProperty('OFFICE_PORTAL_BOOTSTRAP_LOGIN_CODE'), true);
     var office = portalOfficeBySlug_(slug);
     var identityHash = portalHmac_('OFFICE_PORTAL_OTP_PEPPER', email);
     var user = office ? portalUserByIdentity_(office.officeId, identityHash) : null;
