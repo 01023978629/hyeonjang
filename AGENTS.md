@@ -10,6 +10,9 @@
 표시하지 않는다. 운영 기준선은 main `7971987`의 `hyeonjang-v273-officeconnect`다.
 이번 로컬 후보 `hyeonjang-v274-recoveryguard`는 복구 전 안전 스냅샷 성공 강제와
 동기화 대기열 읽기/쓰기 실패 시 기존 기록 보존 및 실패 안내를 보완한다.
+(2026-09-09) 그 위의 로컬 후보 `hyeonjang-v275-video`: 대표 요청으로 현장 동영상(mp4·mov 등)을 사진 묶음으로
+인식한다 — 첫 장면 썸네일·▶ 배지·재생기, 서버 중계(사진 전용)에는 보내지 않는다. 저장 스키마 변경 없음.
+집계는 러너 마지막 줄을 믿어라(v274 129개 + video-files 1개).
 사진 원본·실제 자료·계정·서버·저장 스키마·SAFE_AUTO를 변경하지 않는다.
 v201 원본 동기화 및 OfficeOps 활성화의 운영 검증 게이트는 계속 유지한다.
 최종 전체 회귀 129/129 통과(12.9분, 동시 2, 종료 코드 0, 재시도 없음).
@@ -167,7 +170,7 @@ node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 node tests/serialized-keys.check.js    # 직렬화 최상위 키 목록 네 곳 일치(키를 더했으면 반드시)
 
-# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-06 기준 116개)
+# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-09 기준 117개)
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
 #    러너의 파일당 180초 제한을 제거하지 마라 — 한 파일이 멈춰도 실패로 끝나야 한다.
 node tests/run-all.js
@@ -278,7 +281,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 - (2026-09-04) 운영 기준선은 main 최신 `hyeonjang-v254-suggestbar`. v249~v254: 접수함 접수번호 읽기(v249)·접수함 링크(v250)·📍 사진 배정 점검(v251)·부팅 설정 읽기 완료 신호 `__hjOfficeOpsBootDone`(v252, 검사가 `__commercialApproval` 모의값을 넣기 전에 기다려야 한다)·👉 추천 배정(v253)·추천 버튼을 상단 요약 줄로(v254, 폰 첫 화면 규칙). 아래는 2026-09-01 기록: 소스 브랜치 기준선은 `hyeonjang-v243-photofirst`였다. 232~236 이력에서 v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가했다. v234는 신규 접수의 사진 슬롯 선언을 필수화하고, 오프라인 승인 뒤 `photos-pending` 복구와 완료 사진 오류의 strict FIFO·상위 revision 교체 계약을 추가했다. v235는 완료 보고 수정의 합법적인 상태 전이 체인과 승인 payload 입력 오류 차단을 추가했다. 해당 범위의 마지막 버전은 승인 오더·outbox 선저장과 단일 FIFO 발송, request 단위 projection revision 재기준화, 익명 로그인 선행 캐시 제한, canonical slug·PNG 8-byte·slash 전화 마스킹 계약을 추가했다.
 - OfficeOps·paid gate 작업은 이 소스 브랜치에만 있다. Task 6 최종 버전 마커·검토와 이후 대표의 명시적 병합·배포 승인이 모두 끝나기 전에는 운영 배포 상태로 보지 않는다. `apps-script-office-ops/conversion-promotion.json`의 `enabled`는 현재 `false`라 운영 OfficeOps 전환 승격도 꺼져 있다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
-- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-09-06 현재 116개)다. 과거의 브라우저·정적 60개 집계는
+- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-09-09 현재 117개)다. 과거의 브라우저·정적 60개 집계는
   OfficeIntake 서버·회귀 검사를 추가하기 전 기록이므로 완료 기준으로 쓰지 않는다.
 - `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
   `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.

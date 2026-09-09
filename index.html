@@ -377,6 +377,7 @@
   .cluster-body{padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
   .ph{aspect-ratio:1;border-radius:6px;overflow:hidden;background:var(--paper-2);border:1px solid var(--line-soft);position:relative}
   .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .vidbadge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;pointer-events:none;letter-spacing:0;padding-left:3px}
   .ph.dup{opacity:.55;filter:grayscale(.3)}
   .ph-tag{position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;color:#fff;font-weight:700}
   .ph-tag.ok{background:var(--ok)} .ph-tag.warn{background:var(--warn)}
@@ -1058,7 +1059,7 @@ function ext(n){
   if(m)return m[1];
   // 2) 구글드라이브 등이 붙인 꼬리표 처리: "IMG_3544.heic의 사본", "photo.jpg의 사본 (1)", "x.png의 복사본", "x.jpeg - copy"
   //    알려진 확장자가 점 뒤에 오고, 그 뒤에 꼬리표가 붙은 경우 그 확장자를 인정
-  const KNOWN='jpg|jpeg|png|heic|heif|webp|gif|bmp|tif|tiff|pdf|doc|docx|xls|xlsx|hwp|txt|csv|md|zip';
+  const KNOWN='jpg|jpeg|png|heic|heif|webp|gif|bmp|tif|tiff|mp4|mov|m4v|webm|3gp|3gpp|mkv|avi|pdf|doc|docx|xls|xlsx|hwp|txt|csv|md|zip';
   m=s.match(new RegExp('\\.('+KNOWN+')(?=[^a-z0-9]|$)'));
   if(m)return m[1];
   return '';
@@ -1071,14 +1072,20 @@ function fmtDate(d){if(!d)return'날짜 없음';return `${d.getFullYear()}.${pad
 function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;}
 function won(n){return (n||0).toLocaleString('ko-KR')+'원';}
 const IMG=['jpg','jpeg','png','heic','heif','webp','gif','bmp','tif','tiff'];
+// (v262) 현장 동영상 — 사진 탭에서 사진과 같은 묶음(kind 'photo')으로 다루되, 썸네일은 첫 장면, 크게 보기는 재생기, 서버 중계(사진 전용)에는 안 보낸다
+const VID=['mp4','mov','m4v','webm','3gp','3gpp','mkv','avi'];
+function isVideoExt(e){return VID.includes(String(e||'').toLowerCase());}
+function isVideoRec(f){return !!f&&isVideoExt(f.ext);}
+function isMediaExt(e){return IMG.includes(e)||isVideoExt(e);}
 const DOCEXT=['pdf','doc','docx','xls','xlsx','hwp','hwpx','ppt','pptx','txt'];
 const SHEETEXT=['xls','xlsx'];
 // 확장자 보정: 끝에 확장자가 없을 때(예: 'IMG_3544.HEIC의 사본')도 중간 확장자/마임으로 실제 형식을 찾음 → 사진 오분류('other') 방지
 function bestExt(name,type){
-  let e=ext(name); if(IMG.includes(e)||DOCEXT.includes(e))return e;
-  const mm=(name||'').toLowerCase().match(/\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?|pdf|hwpx?|docx?|xlsx?|pptx?|txt)(?![a-z0-9])/);
+  let e=ext(name); if(IMG.includes(e)||DOCEXT.includes(e)||VID.includes(e))return e;
+  const mm=(name||'').toLowerCase().match(/\.(jpe?g|png|heic|heif|webp|gif|bmp|tiff?|mp4|mov|m4v|webm|3gpp?|mkv|avi|pdf|hwpx?|docx?|xlsx?|pptx?|txt)(?![a-z0-9])/);
   if(mm)return (mm[1]==='jpeg')?'jpg':mm[1];
   if((type||'').indexOf('image/')===0)return (type.split('/')[1]||'jpg').replace('jpeg','jpg').replace('heif','heic');
+  if((type||'').indexOf('video/')===0){const t=type.split('/')[1]||'';return t==='quicktime'?'mov':(t==='x-matroska'?'mkv':(t==='3gpp'?'3gp':(t||'mp4')));}
   if(type==='application/pdf')return 'pdf';
   return e;
 }
@@ -1226,9 +1233,10 @@ async function __driveThumbRescue(id,img){
   })();
   await rec.__rescuing;
 }
-function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps)return (f&&f._needHeic&&f._heicFile)?`<div data-heic="${escapeAttr(f.id)}">IMG</div>`:(dataLight?`<button type="button" class="ph-repair" data-repair="${escapeAttr(dataLight)}" title="원본 사진을 찾아 미리보기를 복구합니다"><b aria-hidden="true">▧</b><small>사진 연결</small></button>`:'<div>IMG</div>');
+function photoImg(f,w,dataLight){ const ps=photoSrc(f,w); if(!ps&&isVideoRec(f))return `<div${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''}>VIDEO<span class="vidbadge" aria-label="동영상">▶</span></div>`; if(!ps)return (f&&f._needHeic&&f._heicFile)?`<div data-heic="${escapeAttr(f.id)}">IMG</div>`:(dataLight?`<button type="button" class="ph-repair" data-repair="${escapeAttr(dataLight)}" title="원본 사진을 찾아 미리보기를 복구합니다"><b aria-hidden="true">▧</b><small>사진 연결</small></button>`:'<div>IMG</div>');
   const oe=f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:'';
-  return `<img src="${ps}" loading="lazy" decoding="async"${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''} referrerpolicy="no-referrer"${oe}>`; }
+  const vb=isVideoRec(f)?'<span class="vidbadge" aria-label="동영상">▶</span>':'';
+  return `<img src="${ps}" loading="lazy" decoding="async"${dataLight?` data-light="${dataLight}" style="cursor:zoom-in"`:''} referrerpolicy="no-referrer"${oe}>${vb}`; }
 function revokeThumbUrl(f){const u=f&&f.thumb;if(typeof u==='string'&&u.startsWith('blob:')){try{URL.revokeObjectURL(u);}catch(e){} } }
 function clearFileList(){(state.files||[]).forEach(revokeThumbUrl);state.files=[];}
 let __removedIds=new Set();   // 사용자가 '제거'한 중복 사진의 driveId — 다시 불러와도 안 들어오게 기록(idb removed_ids)
@@ -1253,7 +1261,7 @@ function classify(rec){
     if(/원정|₩|\d{1,3}(,\d{3}){1,}\s*원/.test(txt))sig++;   // 금액 표기
     if(sig>=2) return 'estimate';
   }
-  if(IMG.includes(rec.ext)) return 'photo';
+  if(IMG.includes(rec.ext)||isVideoExt(rec.ext)) return 'photo';
   return 'other';
 }
 
@@ -1728,7 +1736,7 @@ function applyData(data,opts){
     if(s){used.add(s);
       // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
       let sk=s.kind||f.kind;
-      if((sk==='other'||!sk)&&IMG.includes(f.ext))sk='photo';
+      if((sk==='other'||!sk)&&isMediaExt(f.ext))sk='photo';
       f.kind=sk;f.project=s.project||null;
       if(Object.prototype.hasOwnProperty.call(s,'aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
       else if(__revert)delete f._aptUnit;
@@ -1768,7 +1776,7 @@ function applyData(data,opts){
     const fext=bestExt(s.name,'');   // ext()는 'IMG.HEIC의 사본'에서 ''반환 → bestExt로 실제 확장자 인식(재분류가 실제로 먹게)
     // 교정: 저장된 kind가 'other'인데 실제로는 이미지 확장자면 photo로 바로잡음("의 사본" 등으로 과거에 오분류된 것 복구)
     let fkind=s.kind||'other';
-    if((fkind==='other'||!fkind)&&IMG.includes(fext))fkind='photo';
+    if((fkind==='other'||!fkind)&&isMediaExt(fext))fkind='photo';
     // exSum·ledger 는 직렬화(serializeData)가 저장하는 장부 필드다. 여기서 빠뜨리면
     // 부팅·서버·드라이브 복원 한 번에 '집계 제외' 표시가 풀려 초안 견적이 매출·부가세에
     // 다시 잡히고, 그 상태로 저장되면 서버 사본까지 오염된다(실제 재현됨).
@@ -2300,6 +2308,11 @@ async function relayBuildUploadPayload(fileOrBlob,kind,name,mime){
 async function relayUploadFiles(files,kind,targets,report){
   let ok=0,queued=0,failed=0,injected=0;
   const failedFiles=[],queuedFiles=[];
+  if(kind!=='doc'){   // 서버 중계(apps-script)는 사진만 받는다 — 동영상은 기기·폴더에만 두고 한 번만 안내
+    const keep=[],keepT=[];let vids=0;
+    for(let i=0;i<files.length;i++){const f=files[i];const vid=(f&&((f.type||'').indexOf('video/')===0||isVideoExt(ext(f.name||''))));if(vid){vids++;continue;}keep.push(f);if(targets)keepT.push(targets[i]);}
+    if(vids){toast('🎬 동영상 '+vids+'개는 서버 중계로 보내지 않습니다(사진 전용) — 이 기기·폴더에 보관됩니다');files=keep;targets=targets?keepT:targets;if(!files.length)return 0;}
+  }
   for(let i=0;i<files.length;i++){
     const f=files[i];
     toast('☁️ 서버 업로드 중… '+(i+1)+'/'+files.length+(f.name?(' · '+f.name):''));
@@ -2393,7 +2406,7 @@ async function repairPhotoFromServer(id){
 }
 function choosePhotoRelink(targetId,targetIds){
   const scope=Array.isArray(targetIds)?targetIds.filter(Boolean):[];
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=!targetId;
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/*';inp.multiple=!targetId;
   inp.onchange=async()=>{const files=[...inp.files];if(!files.length)return;await relinkSelectedPhotos(files,targetId,scope,false);};
   inp.click();
 }
@@ -2591,7 +2604,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v274-recoveryguard';
+const APP_BUILD='hyeonjang-v275-video';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3305,7 +3318,26 @@ async function gdFindSubfolder(name){
   return id;
 }
 // 썸네일 캐시: 드라이브 이미지의 작은 미리보기를 IndexedDB에 저장 → 다음 부팅 때 원본 재다운로드 없이 표시
+function makeVideoThumbDataUrl(file,max){
+  return new Promise(res=>{
+    let done=false;const fin=v=>{if(done)return;done=true;try{URL.revokeObjectURL(url);}catch(e){}res(v);};
+    let url='';try{url=URL.createObjectURL(file);}catch(e){return res(null);}
+    const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.src=url;
+    const timer=setTimeout(()=>fin(null),8000);
+    const draw=()=>{try{
+      let w=v.videoWidth,h=v.videoHeight;const m=max||480;if(!w||!h)return fin(null);
+      if(w>h){if(w>m){h=Math.round(h*m/w);w=m;}}else{if(h>m){w=Math.round(w*m/h);h=m;}}
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(v,0,0,w,h);
+      clearTimeout(timer);fin(cv.toDataURL('image/jpeg',0.82));
+    }catch(e){clearTimeout(timer);fin(null);}};
+    v.onerror=()=>{clearTimeout(timer);fin(null);};
+    v.onloadedmetadata=()=>{try{const d=v.duration;v.currentTime=(isFinite(d)&&d>0)?Math.min(1,d/2):0;}catch(e){}};
+    v.onseeked=draw;
+    v.onloadeddata=()=>{if(v.currentTime===0&&!(v.duration>0))draw();};
+  });
+}
 function makeThumbDataUrl(file,max){
+  if(file&&((file.type||'').indexOf('video/')===0||isVideoExt(ext(file.name||''))))return makeVideoThumbDataUrl(file,max);
   return new Promise(async res=>{
     // HEIC/HEIF는 브라우저 Image로 못 그림 → 먼저 JPG로 변환
     let src=file;
@@ -4413,12 +4445,13 @@ function restoreUserEdits(rec){
 }
 async function ingestFile(file,handle=null,prefix='',options=null){
   state._demo=false; // 실제 파일 추가 → 데모 모드 해제
-  const e=bestExt(file.name,file.type),isImg=IMG.includes(e);
+  const e=bestExt(file.name,file.type),isImg=IMG.includes(e),isVid=isVideoExt(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
     lat:null,lng:null,place:null,address:null,thumb:null,text:'',ocr:isImg?'pending':((e==='pdf'||e==='xlsx'||e==='xls')?'pending':'na'),
     est:null,contact:null,_driveMimeType:null,_driveSize:0,_file:handle?null:file};
   if(isImg)await extractImage(file,rec);
+  else if(isVid){try{const t=await makeThumbDataUrl(file,480);if(t){rec.thumb=t;await idbSet('thumb-local:'+fileKey(rec),t);}}catch(err){}}   // 동영상: 첫 장면을 썸네일로, 글자 인식·GPS 없음
   // File API는 생성일이 아닌 수정시각을 제공한다. 사진 EXIF when과 별도로 출처를 보존한다.
   if((!options||options.sourceModified!==false)&&Number.isFinite(file.lastModified)&&file.lastModified>0&&Number.isFinite(new Date(file.lastModified).getTime()))rec.sourceModifiedAt=new Date(file.lastModified).toISOString();
   rec.kind=classify(rec);
@@ -5936,7 +5969,7 @@ function triggerCameraInput(){
   // 현장사진 탭으로 이동 후 카메라 입력 트리거
   let inp=document.getElementById('camInput');
   if(!inp){
-    inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');inp.id='camInput';inp.multiple=true;inp.style.display='none';
+    inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/*';inp.setAttribute('capture','environment');inp.id='camInput';inp.multiple=true;inp.style.display='none';
     document.body.appendChild(inp);
   }
   const context={project:state.activeProject||null,source:'camera'};
@@ -6344,7 +6377,7 @@ function kindOptions(sel){return Object.entries(KIND).map(([k,v])=>`<option valu
 function ocrTag(f){if(f.ocr==='na')return'';if(f.ocr==='done')return'<span class="ocrtag done">읽음</span>';return'<span class="ocrtag">OCR 대기</span>';}
 function cardHtml(f,layout){
   const documentRow=layout==='document'; // map(cardHtml)의 index 인자를 화면 옵션으로 오인하지 않는다.
-  const isImg=IMG.includes(f.ext),k=KIND[f.kind];
+  const isImg=isMediaExt(f.ext),k=KIND[f.kind];
   const thumb=(isImg&&photoSrc(f,600))?photoImg(f,600):`<div class="ext">.${(f.ext||'?').toUpperCase()}</div>`;
   const gps=f.address?`<div class="gps">📍 ${escapeHtml(f.address)}</div>`:(f.place?`<div class="gps">📍 ${f.place}</div>`:'');
   let extra='';
@@ -25812,7 +25845,7 @@ async function exportProjectPDF(proj){
   doc.text('Files: '+list.length+'    Estimate total: '+(est?est.toLocaleString('ko-KR')+' KRW':'-'),40,y);y+=24;
   ['estimate','bizreg','card','photo','other'].forEach(k=>{const n=list.filter(f=>f.kind===k).length;if(n)doc.text('· '+KIND[k].folder+': '+n,48,y),y+=18;});
   // 이미지 페이지
-  const imgs=list.filter(f=>IMG.includes(f.ext)&&(f.thumb||f._driveId||f._file||f.handle));
+  const imgs=list.filter(f=>IMG.includes(f.ext)&&!isVideoExt(f.ext)&&(f.thumb||f._driveId||f._file||f.handle));
   let skipped=0;
   for(const f of imgs){
     let loaded=null;
@@ -26291,9 +26324,14 @@ function renderLightbox(){
   root.innerHTML=`<div class="lb-bg">
     <button class="lb-close" id="lbClose">✕</button>
     ${__lightboxList.length>1?`<button class="lb-nav lb-prev" id="lbPrev">‹</button><button class="lb-nav lb-next" id="lbNext">›</button>`:''}
-    <div class="lb-stage"><img src="${f.thumb||(f._driveId?driveThumbUrl(f._driveId,1600):'')}" class="lb-img" id="lbImg" referrerpolicy="no-referrer"${f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:''}></div>
+    <div class="lb-stage">${isVideoRec(f)?`<video id="lbVideo" class="lb-img" controls playsinline preload="metadata"${f.thumb?` poster="${f.thumb}"`:''}></video>`:`<img src="${f.thumb||(f._driveId?driveThumbUrl(f._driveId,1600):'')}" class="lb-img" id="lbImg" referrerpolicy="no-referrer"${f._driveId?` onerror="__thumbErr(this,'${f._driveId}',0)"`:''}>`}</div>
     <div class="lb-meta"><b>${escapeHtml(f.name)}</b>${meta?`<span>${escapeHtml(meta)}</span>`:''}<span class="lb-count">${__lightboxIdx+1} / ${__lightboxList.length}</span></div>
   </div>`;
+  if(isVideoRec(f)){   // 동영상: 기기·폴더의 원본을 재생기에 연결(서버 중계는 사진 전용이라 드라이브 사본은 없다)
+    (async()=>{try{const src=(f.handle||f._file)?await getFileOf(f):null;const vd=document.getElementById('lbVideo');if(!vd||!__stillCurrent())return;
+      if(!src){const st=document.querySelector('.lb-stage');if(st)st.insertAdjacentHTML('beforeend','<div style="position:absolute;left:0;right:0;bottom:8px;text-align:center;color:#fff;font-size:12.5px;text-shadow:0 1px 2px #000">원본 동영상이 이 기기에 없습니다 — 폴더를 다시 연결하거나 파일을 다시 넣어 주세요</div>');return;}
+      const u=URL.createObjectURL(src);window.__lbUrl&&URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=u;vd.src=u;}catch(e){}})();
+  } else
   // 가상(미다운로드) 이미지면 드라이브에서 원본을 받아 선명하게 교체(캐시 썸네일은 즉시, 원본은 곧)
   if(f._virtual&&f._driveId&&IMG.includes(f.ext)){
     (async()=>{ try{
