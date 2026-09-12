@@ -19221,14 +19221,14 @@ const HJ_CALC_CATS=[
   {id:'electric',ic:'⚡',name:'전기',hint:'부하(W)로 전류를 내고 차단기·전선 굵기를 참고로 보여줍니다(여유율 1.25). 실제 선정은 KEC·설계·배선 거리가 우선.',
    fields:[{k:'w',l:'부하 W'},{k:'volt',l:'전압',t:'sel',p:1,o:[['220','단상 220V'],['380','삼상 380V']]},{k:'pf',l:'역률 (1 = 저항 부하)',d:1,p:1}]}
 ];
-function hjCalcNum(v){const n=parseFloat(String(v==null?'':v).replace(/,/g,''));return isFinite(n)&&n>0?n:0;}
-function hjCalcFmt(n,d){return Number(n).toLocaleString('ko-KR',{maximumFractionDigits:d==null?2:d});}
+function hjCalcNum(v){const n=parseFloat(String(v==null?'':v).replace(/,/g,''));return isFinite(n)&&n>0?Math.min(n,1e9):0;}   // 1e9 로 자른다 — 곱하다 ∞ 가 되면 결과·견적 수량이 망가진다
+function hjCalcFmt(n,d){return isFinite(n)?Number(n).toLocaleString('ko-KR',{maximumFractionDigits:d==null?2:d}):'—';}
 /* 순수 계산. v: {키:값}(문자열). 돌려주는 값 {rows:[[라벨,값글자]], note, main} — 입력이 모자라면 rows 가 비고 note 에 이유.
    main = 견적 품목·예상 자재비용 대표 수량 {name, spec, qty, unit, key(자재명 찾기 정규식), alt:{qty,unit}}.
    바닥 폭 수 계산은 화면이 가로×세로 모드일 때 넣어 주는 v.aw·v.ah 를 쓴다. */
 function hjCalcRun(id,v){
   v=v||{};const cat=HJ_CALC_CATS.find(c=>c.id===id);const rows=[];let note='';let main=null;
-  const R=(rows,note,main)=>({rows,note:note||'',main:main||null});
+  const R=(rows,note,main)=>({rows,note:note||'',main:(main&&isFinite(main.qty)&&main.qty>0)?main:null});   // 수량이 ∞·0 이면 견적에 담지 않는다
   if(!cat)return R(rows,'없는 계산기입니다.');
   const n=k=>hjCalcNum(v[k]);const s=k=>String(v[k]==null?'':v[k]);const loss=1+n('loss')/100;
   const lab=k=>{const f=cat.fields.find(f=>f.k===k);const o=f&&f.o&&f.o.find(o=>o[0]===s(k));return o?o[1]:s(k);};
@@ -19242,7 +19242,7 @@ function hjCalcRun(id,v){
     if(!n('m2')||!n('tw')||!n('th'))return R(rows,'면적과 타일 크기를 넣어 주세요.');
     const one=(n('tw')+n('joint'))*(n('th')+n('joint'))/1e6;const pure=n('m2')/one;const cnt=Math.ceil(pure*loss);
     rows.push(['타일 (로스 포함)',hjCalcFmt(cnt,0)+' 장'],['순수 소요',hjCalcFmt(Math.ceil(pure),0)+' 장'],['타일 1장+줄눈',hjCalcFmt(one,4)+' ㎡']);
-    main={name:'타일',spec:hjCalcFmt(n('tw'),0)+'×'+hjCalcFmt(n('th'),0)+' (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:cnt,unit:'장',key:'타일'};
+    main={name:'타일',spec:hjCalcFmt(n('tw'),0)+'×'+hjCalcFmt(n('th'),0)+' (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:cnt,unit:'장',key:'타일',not:'데코타일|장판|마루|본드|줄눈|사춤'};
     if(n('box')){const bx=Math.ceil(cnt/n('box'));rows.push(['박스',hjCalcFmt(bx,0)+' 박스 ('+hjCalcFmt(n('box'),0)+'장/박스)']);main.alt={qty:bx,unit:'박스'};}
   }else if(id==='concrete'){
     if(!n('w')||!n('h')||!n('t'))return R(rows,'가로·세로·두께를 넣어 주세요.');
@@ -19253,7 +19253,7 @@ function hjCalcRun(id,v){
     if(!n('m2')||!n('t'))return R(rows,'면적과 두께를 넣어 주세요.');
     const vol=n('m2')*n('t')/1000*loss;const bags=Math.ceil(vol/0.02);
     rows.push(['레미탈 40kg',hjCalcFmt(bags,0)+' 포'],['시공 부피 (로스 포함)',hjCalcFmt(vol,3)+' ㎥'],['무게',hjCalcFmt(bags*40,0)+' kg']);
-    main={name:'레미탈 40kg',spec:'두께 '+hjCalcFmt(n('t'),0)+'mm',qty:bags,unit:'포',key:'레미탈|몰탈|모르타르'};
+    main={name:'레미탈 40kg',spec:'두께 '+hjCalcFmt(n('t'),0)+'mm',qty:bags,unit:'포',key:'레미탈|몰탈|모르타르',not:'방수제|프라이머'};
   }else if(id==='paint'){
     if(!n('m2')||!n('cov'))return R(rows,'면적과 도포량을 넣어 주세요.');
     const coats=Math.max(1,n('coats'));const l=n('m2')*coats/n('cov')*loss;
@@ -19281,7 +19281,7 @@ function hjCalcRun(id,v){
   }else if(id==='floor'){
     if(!n('m2'))return R(rows,'면적을 넣어 주세요.');
     const need=n('m2')*loss;const roll=n('roll')||1.8;
-    if(n('box')){const bx=Math.ceil(need/n('box'));rows.push(['마루·타일형',hjCalcFmt(bx,0)+' 박스 ('+hjCalcFmt(n('box'),2)+'㎡/박스)']);main={name:'바닥재',spec:hjCalcFmt(n('box'),2)+'㎡/박스 (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:bx,unit:'박스',key:'마루|장판|데코|바닥|spc'};}
+    if(n('box')){const bx=Math.ceil(need/n('box'));rows.push(['마루·타일형',hjCalcFmt(bx,0)+' 박스 ('+hjCalcFmt(n('box'),2)+'㎡/박스)']);main={name:'바닥재',spec:hjCalcFmt(n('box'),2)+'㎡/박스 (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:bx,unit:'박스',key:'마루|장판|데코타일|바닥재|spc'};}
     if(n('aw')&&n('ah')){   // 가로×세로를 알면 폭 수로 — 두 방향 중 총 길이가 짧은 쪽, 폭마다 여유 10cm
       const na=Math.ceil(n('aw')/roll),nb=Math.ceil(n('ah')/roll);const a=na*(n('ah')+0.1)*loss,b=nb*(n('aw')+0.1)*loss;const useA=a<=b;   // 로스는 면적법과 똑같이 반영한다
       rows.push(['장판 (폭 '+hjCalcFmt(roll,1)+'m · 폭 수)',hjCalcFmt(useA?a:b,1)+' m ('+(useA?na:nb)+'폭, 여유 10cm'+(n('loss')?', 로스 '+hjCalcFmt(n('loss'),0)+'%':'')+')']);
@@ -19306,15 +19306,16 @@ function hjCalcRun(id,v){
     if(!total)return R(rows,'벽 둘레와 높이(또는 천장 면적)를 넣어 주세요.');
     const kind=s('kind');let rw=0,rl=0;if(kind.indexOf('|')>0){rw=hjCalcNum(kind.split('|')[0]);rl=hjCalcNum(kind.split('|')[1]);}
     const rollM2=rw&&rl?rw*rl:(n('kind')||16.5);
-    let rollsWall=0,strips=0,perRoll=0;
-    if(rw&&rl&&n('peri')&&n('hgt')){strips=Math.ceil(n('peri')/rw);perRoll=Math.max(1,Math.floor(rl/(n('hgt')+0.1)));rollsWall=Math.ceil(strips/perRoll);}
+    let rollsWall=0,strips=0,perRoll=0,cornerStrips=0;const walls=Math.round(n('walls'));
+    if(rw&&rl&&n('peri')&&n('hgt')){strips=Math.ceil(n('peri')/rw);perRoll=Math.max(1,Math.floor(rl/(n('hgt')+0.1)));
+      cornerStrips=walls>1?strips+walls-1:0;   // 벽마다 따로 재단하면 코너에서 한 폭씩 더 든다
+      rollsWall=Math.ceil((cornerStrips||strips)/perRoll);}
     else if(wall)rollsWall=Math.ceil(wall*loss/rollM2);
     const rollsCeil=ceilA?Math.ceil(ceilA*loss/rollM2):0;const rolls=rollsWall+rollsCeil;
     rows.push(['벽지',hjCalcFmt(rolls,0)+' 롤 ('+(rw?lab('kind'):hjCalcFmt(rollM2,1)+'㎡/롤')+')']);
     if(strips){rows.push(['벽 폭 수',hjCalcFmt(strips,0)+' 폭 (롤당 '+perRoll+'폭, 여유 10cm)']);
-      const walls=Math.round(n('walls'));
-      if(walls>1){const safe=strips+walls-1;rows.push(['코너 여유 포함',hjCalcFmt(safe,0)+' 폭 → '+hjCalcFmt(Math.ceil(safe/perRoll),0)+' 롤 ('+walls+'면 각각 재단할 때)']);}
-      else note='둘레를 폭으로 나눈 값이라 코너에서 자투리가 생기면 벽마다 한 폭씩 더 듭니다 — 벽 면수를 넣으면 여유분도 같이 냅니다.';}
+      if(cornerStrips)rows.push(['코너 여유 포함',hjCalcFmt(cornerStrips,0)+' 폭 → '+hjCalcFmt(Math.ceil(cornerStrips/perRoll),0)+' 롤 ('+walls+'면 각각 재단, 위 벽지에 반영)']);
+      else note='둘레를 폭으로 나눈 값이라 코너에서 자투리가 생기면 벽마다 한 폭씩 더 듭니다 — 벽 면수를 넣으면 여유분까지 반영합니다.';}
     if(rollsCeil)rows.push(['천장 (면적법)',hjCalcFmt(rollsCeil,0)+' 롤']);
     rows.push(['벽 면적',hjCalcFmt(wall,2)+' ㎡'],['총 면적',hjCalcFmt(total,2)+' ㎡'],['도배 평 (창·문 뺀 실면적)',hjCalcFmt(total/HJ_CALC_PY,1)+' 평']);
     if(strips)rows.push(['면적법 참고',hjCalcFmt(Math.ceil(total*loss/rollM2),0)+' 롤 (로스 '+hjCalcFmt(n('loss'),0)+'%)']);
@@ -19356,7 +19357,9 @@ function hjCalcRun(id,v){
 }
 function hjCalcInputs(cat,v){
   return cat.fields.map(f=>{const val=v[f.k];if(val==null||val==='')return null;
-    const lab=f.t==='sel'?((f.o.find(o=>o[0]===String(val))||[])[1]||val):val;let t=f.l.replace(/\(.*?\)/g,'').trim()+' '+lab;
+    // 숫자 칸은 계산에 실제로 쓰인 값을 적는다 — 음수·글자를 넣으면 0 으로 계산되므로 복사 글에 원본을 적으면 서로 어긋난다
+    const lab=f.t==='sel'?((f.o.find(o=>o[0]===String(val))||[])[1]||val):(isFinite(parseFloat(val))&&parseFloat(val)!==hjCalcNum(val)?hjCalcFmt(hjCalcNum(val),4):val);
+    let t=f.l.replace(/\(.*?\)/g,'').trim()+' '+lab;
     if(f.a&&v.m2_mode==='py'&&v.m2_py)t+=' ('+v.m2_py+'평)';if(f.a&&v.m2_mode==='wh'&&v.m2_w&&v.m2_h)t+=' ('+v.m2_w+'×'+v.m2_h+'m)';return t;}).filter(Boolean).join(', ');
 }
 function hjCalcText(cat,v,res,extra){
@@ -19387,7 +19390,14 @@ function hjCalcEstimate(main){
   if(!main||!main.key||typeof state==='undefined'||!Array.isArray(state.materials)||!state.materials.length)return null;
   let re;try{re=new RegExp(main.key,'i');}catch(_){return null;}
   const un=u=>String(u||'').replace(/\s/g,'').toLowerCase();
-  const cands=state.materials.filter(m=>m&&re.test(String(m.name||''))&&matBest(m));
+  let no=null;if(main.not){try{no=new RegExp(main.not,'i');}catch(_){no=null;}}
+  const size=t=>{const m=String(t||'').match(/(\d+(?:\.\d+)?)\s*(kg|l|㎏|리터)/i);return m?m[1]+m[2].toLowerCase().replace('㎏','kg'):'';};
+  const mySize=size(main.name)||size(main.spec);
+  const cands=state.materials.filter(m=>{if(!m||!matBest(m))return false;const nm=String(m.name||'')+' '+String(m.spec||'');
+    if(!re.test(String(m.name||'')))return false;
+    if(no&&no.test(nm))return false;
+    const theirs=size(nm);if(mySize&&theirs&&theirs!==mySize)return false;   // 40kg 포수에 20kg 단가를 곱하지 않는다
+    return true;});
   const tryUnit=(qty,unit)=>{if(!qty||!unit)return null;const c=cands.filter(m=>un(m.unit)===un(unit)).sort((a,b)=>matSupplyPrice(matBest(a).price)-matSupplyPrice(matBest(b).price));if(!c.length)return null;const m=c[0];const price=matSupplyPrice(matBest(m).price);
     return {name:m.name,spec:m.spec||'',qty,unit,price,total:Math.round(price*qty),others:c.length-1};};
   return tryUnit(main.qty,main.unit)||(main.alt?tryUnit(main.alt.qty,main.alt.unit):null);
@@ -19474,8 +19484,10 @@ function materialCalc(catId,preset,logId,focusK){
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
   const copyText=()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
   root.querySelectorAll('.calcIn').forEach(i=>{i.oninput=()=>paint();i.onchange=()=>paint();});
-  root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();const m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
-    if(m)cur.m2Keep=String(Math.round(m*100)/100);const keep=hjCalcNum(cur.m2Keep);   // 가로×세로로 갔다가 돌아와도 넣어 둔 면적이 살아 있게
+  root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();let m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
+    let keep=hjCalcNum(cur.m2Keep);   // 떠나기 전 면적 — 가로×세로로 갔다가 돌아와도 살아 있고, 왕복 반올림(10 → 10.02)도 막는다
+    if(m&&keep&&Math.abs(m-keep)<0.05)m=keep;
+    if(m){cur.m2Keep=String(Math.round(m*100)/100);keep=m;}
     if(to==='py')cur.m2_py=m?String(Math.round(m/HJ_CALC_PY*100)/100):(keep?String(Math.round(keep/HJ_CALC_PY*100)/100):'');   // 예전 평수가 되살아나 지금 면적을 덮지는 않는다
     if(to==='m2')cur.m2=m?String(Math.round(m*100)/100):(keep?String(keep):'');
     if(to==='wh'&&Math.abs(hjCalcNum(cur.m2_w)*hjCalcNum(cur.m2_h)-m)>0.02){cur.m2_w='';cur.m2_h='';}

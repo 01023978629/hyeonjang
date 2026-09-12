@@ -92,7 +92,12 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   assert(r.main.qty === 3 && r.main.unit === '롤', '② 도배 main: ' + JSON.stringify(r.main));
   r = await run('paper', { peri: '14', hgt: '2.3', open: '4', ceil: '0', kind: '0.93|17.75', walls: '4', loss: '15' });
   // 16폭 + (4면−1) = 19폭 → 롤당 7폭 → 3롤
-  assert(val(r, '코너 여유 포함') === '19 폭 → 3 롤 (4면 각각 재단할 때)' && !/코너에서 자투리/.test(r.note), '② 도배 코너 여유: ' + JSON.stringify(r));
+  assert(val(r, '코너 여유 포함') === '19 폭 → 3 롤 (4면 각각 재단, 위 벽지에 반영)' && !/코너에서 자투리/.test(r.note), '② 도배 코너 여유: ' + JSON.stringify(r));
+  r = await run('paper', { peri: '13', hgt: '2.3', kind: '0.93|17.75', walls: '4', loss: '15' });
+  // 14폭 → 2롤이지만 코너 여유 17폭이면 3롤 — 맨 위 벽지·견적 수량도 3롤이어야 한다
+  assert(val(r, '벽지').startsWith('3 롤') && val(r, '코너 여유 포함').startsWith('17 폭 → 3 롤') && r.main.qty === 3, '② 코너 여유가 대표 수량에 반영: ' + JSON.stringify(r));
+  r = await run('paper', { peri: '13', hgt: '2.3', ceil: '12', kind: '0.93|17.75', walls: '4', loss: '15' });
+  assert(val(r, '벽지').startsWith('4 롤') && r.main.qty === 4, '② 코너 여유 + 천장 롤: ' + JSON.stringify(r));
   r = await run('paper', { peri: '14', hgt: '2.3', open: '0', ceil: '12', kind: '0.93|17.75', loss: '15' });
   assert(val(r, '벽지').startsWith('4 롤') && val(r, '천장 (면적법)') === '1 롤', '② 도배 천장 추가: ' + JSON.stringify(r));
   r = await run('paper', { peri: '14', hgt: '2.3', open: '4', ceil: '0', kind: '16.5', loss: '15' });
@@ -176,6 +181,13 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   assert(val(r, '레미콘 발주 참고').startsWith('1 ㎥'), '② 레미콘 최소 1㎥: ' + JSON.stringify(r));
   r = await run('tile', { m2: '', tw: '300', th: '600' });
   assert(r.rows.length === 0 && /면적/.test(r.note) && r.main === null, '② 입력 부족 안내: ' + JSON.stringify(r));
+  // 음수·글자를 넣으면 0 으로 계산되는데, 복사 글에 원본을 적으면 적힌 값과 쓰인 값이 어긋난다
+  r = await run('tile', { m2: '10', tw: '300', th: '600', joint: '-3', loss: '-50' });
+  const negText = await page.evaluate(([v, res]) => hjCalcText(HJ_CALC_CATS.find(c => c.id === 'tile'), v, res, ''), [{ m2: '10', tw: '300', th: '600', joint: '-3', loss: '-50' }, r]);
+  assert(!/-3|-50/.test(negText) && /줄눈 mm 0/.test(negText) && /로스 % 0/.test(negText), '② 음수는 0 으로 계산되고 복사 글에도 0 으로 적힌다: ' + negText);
+  // 말도 안 되게 큰 값을 넣어도 ∞ 가 화면·견적에 들어가지 않는다
+  r = await run('tile', { m2: '1e308', tw: '1', th: '1', joint: '0', loss: '0' });
+  assert(r.rows.every(x => !/∞|Infinity|NaN|—/.test(x[1])) && (!r.main || (isFinite(r.main.qty) && r.main.qty > 0)), '② 큰 값에서도 ∞ 가 안 나온다: ' + JSON.stringify(r));
   r = await run('nope', {});
   assert(r.rows.length === 0 && /없는 계산기/.test(r.note), '② 모르는 종류: ' + JSON.stringify(r));
   // 선택지·칩에 적힌 숫자와 실제로 쓰는 값이 같은가 — 벽돌 매/㎡, 석고·합판 규격, 벽지 폭×길이, 강판 유효폭, 칩이 넣는 값
@@ -342,6 +354,15 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   assert(d.m2 === '12' && /3.63 평/.test(await page.evaluate(() => document.querySelector('.calcAreaEcho').textContent)), '⑨ ㎡ 모드로 돌아오면 환산값: ' + JSON.stringify(d));
   await page.click('#modalRoot .calcSeg[data-mode="py"]');
   assert((await inputs()).m2_py === '3.63', '⑨ 다시 평으로 가면 지금 면적(12㎡=3.63평) — 아까 넣은 10평이 되살아나지 않는다: ' + JSON.stringify(await inputs()));
+  await page.click('#modalRoot .calcSeg[data-mode="m2"]');
+  assert((await inputs()).m2 === '12', '⑨ ㎡ → 평 → ㎡ 로 돌아와도 넣은 숫자 그대로: ' + JSON.stringify(await inputs()));
+  await page.evaluate(() => { window.__hjCalcMem.tile = { m2: '10' }; materialCalc('tile'); });
+  await page.click('#modalRoot .calcSeg[data-mode="py"]');
+  assert((await inputs()).m2_py === '3.03', '⑨ 10㎡ = 3.03평');
+  await page.click('#modalRoot .calcSeg[data-mode="m2"]');
+  assert((await inputs()).m2 === '10', '⑨ 10 → 3.03평 → 다시 ㎡ 면 10 그대로(반올림으로 10.02 가 되지 않는다): ' + JSON.stringify(await inputs()));
+  await page.evaluate(() => { window.__hjCalcMem.tile = { m2: '12', m2_w: '4', m2_h: '3', m2_mode: 'wh' }; materialCalc('tile'); });
+  await page.click('#modalRoot .calcSeg[data-mode="py"]');
   await page.click('#modalRoot .calcSeg[data-mode="wh"]');
   assert((await inputs()).m2_w === '4' && (await inputs()).m2_h === '3', '⑨ 가로×세로는 곱이 맞으면 그대로 둔다');
   await page.click('#modalRoot .calcSeg[data-mode="py"]');
@@ -465,6 +486,20 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   await page.click('#calcQuote');
   q = await page.evaluate(() => state.editingQuote.items);
   assert(q.length === 1 && q[0].qty === 61 && q[0].price === 0 && !/단위/.test(q[0].spec), '⑫ 단가를 못 찾으면 계산 수량 그대로·단가 0: ' + JSON.stringify(q));
+  // 이름이 스쳐 맞는 남의 자재에는 단가를 붙이지 않는다 — 40kg 포수에 20kg 단가, '바닥' 한 토큰에 욕실 타일, 타일에 데코타일
+  const est = await page.evaluate(([mats, id, v]) => { state.materials = mats; const r = hjCalcRun(id, v); const e = hjCalcEstimate(r.main); return e ? e.name : null; },
+    [[{ id: 'x1', name: '방수 몰탈 20kg', unit: '포', entries: [{ supplier: 'x', price: 9900 }] }], 'mortar', { m2: '10', t: '20', loss: '10' }]);
+  assert(est === null, '⑫ 40kg 포수에 20kg 단가를 붙이지 않는다: ' + est);
+  const est2 = await page.evaluate(([mats, id, v]) => { state.materials = mats; const r = hjCalcRun(id, v); const e = hjCalcEstimate(r.main); return e ? e.name : null; },
+    [[{ id: 'x2', name: '욕실 바닥 타일', unit: '박스', entries: [{ supplier: 'x', price: 33000 }] }], 'floor', { m2: '20', box: '1.5', loss: '7' }]);
+  assert(est2 === null, '⑫ 바닥 마감재에 욕실 타일을 갖다 붙이지 않는다: ' + est2);
+  const est3 = await page.evaluate(([mats, id, v]) => { state.materials = mats; const r = hjCalcRun(id, v); const e = hjCalcEstimate(r.main); return e ? e.name : null; },
+    [[{ id: 'x3', name: '데코타일 3T', unit: '장', entries: [{ supplier: 'x', price: 1650 }] }], 'tile', { m2: '10', tw: '300', th: '600', joint: '3', loss: '10' }]);
+  assert(est3 === null, '⑫ 타일 계산에 데코타일(바닥재) 단가를 붙이지 않는다: ' + est3);
+  const est4 = await page.evaluate(([mats, id, v]) => { state.materials = mats; const r = hjCalcRun(id, v); const e = hjCalcEstimate(r.main); return e ? [e.name, e.price, e.qty] : null; },
+    [[{ id: 'x4', name: '방수 몰탈 20kg', unit: '포', entries: [{ supplier: 'x', price: 9900 }] }, { id: 'x5', name: '레미탈 40kg', unit: '포', entries: [{ supplier: 'x', price: 5500 }] }], 'mortar', { m2: '10', t: '20', loss: '10' }]);
+  assert(est4 && est4[0] === '레미탈 40kg' && est4[1] === 5000 && est4[2] === 12, '⑫ 맞는 자재가 있으면 그것으로: ' + JSON.stringify(est4));
+  await page.evaluate(() => { state.materials = []; });
   // 저장된 값이 깨져 있어도 화면은 열린다 / 사라진 선택지는 처음값으로
   await flushLog();   // 방금 계산한 건이 나중에 끼어들지 않게 먼저 쓴다
   await page.evaluate(() => { localStorage.setItem('hj_calc_log', JSON.stringify([null, { id: 'ok1', cat: 'tile', t: '시험', head: 'h', v: { m2: '3' } }, { nope: 1 }])); materialCalcLog(); });
@@ -484,6 +519,6 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   // ⑬ 오류 0
   assert(errors.length === 0, '⑬ pageerror: ' + errors.join(' | '));
 
-  console.log('material-calc.e2e OK (① 메뉴 ② 계산 54건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
+  console.log('material-calc.e2e OK (① 메뉴 ② 계산 59건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
