@@ -4,7 +4,8 @@
    새 화면을 만들지 않고 🕘 작업기록과 🧺 발주 목록을 현장으로 잇는다.
      ① 작업기록이 현장별로 묶인다(현장 없는 것은 맨 뒤 '현장 미지정'), 최근 50건
      ② 「🧺 이 현장 담기」로 그 현장 계산이 한 번에 발주 목록에 들어간다
-     ③ 같은 자재는 더해진다(물량표는 '다 해서 몇 장'이라야 쓸모가 있다)
+     ③ 같은 자재는 한 줄로 더해진다(물량표는 '다 해서 몇 장'이라야 쓸모가 있다)
+       — 다만 같은 현장을 다시 담는 것은 '쌓기'가 아니라 '다시 만들기'다(두 번 눌러 두 배가 되면 안 된다)
      ④ 수량이 나오지 않는 계산(헤베 환산·전기 굵기)은 담기지 않고 그렇다고 말해 준다
      ⑤ 발주 목록이 현장별로 묶이고 예상 매입가 합계가 나온다 — 단가 없는 줄은 빠졌다고 밝힌다
      ⑥ 현장이 둘 이상이면 전체 합계도 보여 준다, 금액은 견적가가 아니라 매입 공급가(÷1.1)
@@ -15,6 +16,8 @@
      ⑪ 목록 상한에 잘리면 잘렸다고 말한다
      ⑫ 금액은 고른 거래처 값으로 센다, 줄 고르기는 44px·현장까지 읽어 준다
      ⑬ 옛 기록을 다시 열어 고쳐도 그 계산의 현장은 그대로다
+     ⑭ 발주 문자에 단위가 들어간다(42인지 42장인지 자재상이 알아야 한다)
+     ⑮ 거래처를 비우면 비운 채로 남고, 줄 하나를 빼도 꺼 둔 체크는 꺼진 채로다
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -39,8 +42,8 @@ assert(!/'sitebom'|'bom'/.test(source), '① 더보기 항목을 늘리지 않�
   page.setDefaultTimeout(9000);
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
-  let sayYes = true;
-  page.on('dialog', d => sayYes ? d.accept() : d.dismiss());
+  let sayYes = true, asked = [];
+  page.on('dialog', d => { asked.push(d.message()); return sayYes ? d.accept() : d.dismiss(); });
   await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
@@ -104,12 +107,43 @@ assert(!/'sitebom'|'bom'/.test(source), '① 더보기 항목을 늘리지 않�
   assert(!c.some(x => !x.name || !(Number(x.qty) > 0)), '④ 빈 줄이 들어가지 않는다: ' + JSON.stringify(c));
   const merged = tile[0].qty;
 
-  // ③ 다시 담으면 또 더해진다(같은 줄에)
+  // ③ 같은 현장을 다시 담아도 두 배가 되지 않는다 — 물어보고 지금 계산대로 다시 만든다
+  asked = []; sayYes = true;
   await page.evaluate(() => materialCalcLog());
   await page.click('#modalRoot .calcLogBom[data-p="평화로운아파트"]');
   c = await cart();
-  assert(c.length === 2 && Math.abs(c.find(x => /타일/.test(x.name)).qty - merged * 2) < 0.05,
-    '③ 다시 담으면 있던 줄에 더한다: ' + JSON.stringify(c.map(x => x.name + ' ' + x.qty)));
+  assert(asked.length === 1 && /이미 .*줄 담겨 있습니다/.test(asked[0]), '③ 다시 담을 때는 물어본다: ' + JSON.stringify(asked));
+  assert(c.length === 2 && Math.abs(c.find(x => /타일/.test(x.name)).qty - merged) < 0.05,
+    '③ 두 번 눌러도 두 배가 되지 않는다: ' + JSON.stringify(c.map(x => x.name + ' ' + x.qty)));
+  // 아니라고 하면 그대로 둔다
+  asked = []; sayYes = false;
+  await page.evaluate(() => materialCalcLog());
+  await page.click('#modalRoot .calcLogBom[data-p="평화로운아파트"]');
+  c = await cart();
+  assert(asked.length === 1 && c.length === 2 && Math.abs(c.find(x => /타일/.test(x.name)).qty - merged) < 0.05,
+    '③ 아니라고 하면 그대로: ' + JSON.stringify(c.map(x => x.name + ' ' + x.qty)));
+  sayYes = true;
+  // 손으로 담은 줄은 다시 만들어도 살아남는다
+  const manual = await page.evaluate(async () => {
+    const l = hjCalcCartRead();
+    l.push({ id: 'MANUAL', cat: 'tile', project: '평화로운아파트', t: '', name: '손으로담은것', spec: '', qty: 3, unit: '개' });
+    hjCalcCartWrite(l);
+    materialCalcLog();
+    document.querySelector('#modalRoot .calcLogBom[data-p="평화로운아파트"]').click();
+    await new Promise(r => setTimeout(r, 60));
+    const c = hjCalcCartRead();
+    return { kept: !!c.find(x => x.id === 'MANUAL'), n: c.length, tile: (c.find(x => /타일/.test(x.name)) || {}).qty };
+  });
+  assert(manual.kept && Math.abs(manual.tile - merged) < 0.05, '③ 손으로 담은 줄은 그대로: ' + JSON.stringify(manual));
+  await page.evaluate(() => hjCalcCartWrite(hjCalcCartRead().filter(x => x.id !== 'MANUAL')));
+  // 로스만 다른 같은 타일은 한 줄이다(로스는 자재의 규격이 아니다)
+  const loss = await page.evaluate(() => {
+    const l = [];
+    hjCartMergeAdd(l, { id: 'a', project: '가', name: '타일', spec: '300×600 (로스 10%)', qty: 10, unit: '장' });
+    hjCartMergeAdd(l, { id: 'b', project: '가', name: '타일', spec: '300×600 (로스 15%)', qty: 5, unit: '장' });
+    return { n: l.length, qty: l[0].qty };
+  });
+  assert(loss.n === 1 && loss.qty === 15, '③ 로스만 다르면 한 줄: ' + JSON.stringify(loss));
 
   // ⑤⑥ 발주 목록 — 현장별 묶음·예상 매입가
   await page.evaluate(() => { hjCalcCartWrite([]); materialCalcLog(); });
@@ -120,7 +154,8 @@ assert(!/'sitebom'|'bom'/.test(source), '① 더보기 항목을 늘리지 않�
   t = await modalText();
   assert(/📦 평화로운아파트/.test(t) && /📦 유성빌라/.test(t), '⑤ 발주 목록이 현장별로 묶인다: ' + t.slice(0, 140));
   assert(/전체 합계/.test(t), '⑥ 현장이 둘이면 전체 합계');
-  assert(/매입 공급가 기준/.test(t) && /견적가가 아닙니다/.test(t), '⑥ 매입가라고 밝힌다');
+  assert(/매입 공급가·부가세 별도/.test(t) && /견적가가 아니고, 실제 결제액은 부가세만큼 더 나옵니다/.test(t),
+    '⑥ 매입가·부가세 별도라고 밝힌다: ' + t.slice(0, 260));
   assert(/단가 없는 1줄 빠짐/.test(t), '⑤ 단가 없는 줄을 밝힌다: ' + t.slice(0, 200));
   // 금액은 공급가(÷1.1) × 수량
   const money = await page.evaluate(() => {
@@ -287,6 +322,40 @@ assert(!/'sitebom'|'bom'/.test(source), '① 더보기 항목을 늘리지 않�
   assert(ga && na, '⑨ 현장마다 하나씩: ' + JSON.stringify(perSite));
   assert(/■ 현장: 가현장 \(대전 중구 가길 1\)/.test(ga) && /× 10/.test(ga) && !/× 7/.test(ga), '⑨ 가현장 문자: ' + ga);
   assert(/■ 현장: 나현장 \(대전 서구 나길 2\)/.test(na) && /× 7/.test(na) && !/× 10/.test(na), '⑨ 나현장 문자: ' + na);
+  // ⑭ 단위가 들어간다
+  assert(/× 10장/.test(ga) && /× 7장/.test(na), '⑭ 발주 문자에 단위: ' + ga.split('\n').find(l => /×/.test(l)));
+
+  // ⑮ 거래처를 비우면 비운 채로
+  const supCleared = await page.evaluate(async () => {
+    state.supplierMap = { 타일: '한밭타일' };
+    hjCalcCartWrite([{ id: 's1', cat: 'tile', project: '가현장', t: '', name: '타일', spec: '', qty: 1, unit: '장', sup: '한밭타일' }]);
+    materialCalcCart();
+    const el = document.querySelector('#modalRoot .ccSup');
+    el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 40));
+    materialCalcCart();
+    return { stored: hjCalcCartRead()[0].sup, shown: document.querySelector('#modalRoot .ccSup').value };
+  });
+  assert(supCleared.stored === '' && supCleared.shown === '', '⑮ 비운 거래처가 되살아나면 안 된다: ' + JSON.stringify(supCleared));
+
+  // ⑮ 줄을 빼도 꺼 둔 체크는 꺼진 채로
+  const checks = await page.evaluate(async () => {
+    hjCalcCartWrite([
+      { id: 'k1', cat: 'tile', project: '가현장', t: '', name: '가자재', spec: '', qty: 1, unit: '장' },
+      { id: 'k2', cat: 'tile', project: '나현장', t: '', name: '나자재', spec: '', qty: 1, unit: '장' },
+      { id: 'k3', cat: 'tile', project: '다현장', t: '', name: '다자재', spec: '', qty: 1, unit: '장' }]);
+    materialCalcCart();
+    const off = [...document.querySelectorAll('#modalRoot .ccChk')].find(c => hjCalcCartRead()[+c.dataset.i].id === 'k2');
+    off.checked = false; off.dispatchEvent(new Event('change', { bubbles: true }));
+    const del = document.querySelector('#modalRoot .ccDel[data-id="k3"]');
+    del.click();
+    await new Promise(r => setTimeout(r, 40));
+    const now = [...document.querySelectorAll('#modalRoot .ccChk')]
+      .map(c => ({ id: hjCalcCartRead()[+c.dataset.i].id, on: c.checked }));
+    return now;
+  });
+  assert(checks.length === 2 && checks.find(x => x.id === 'k1').on === true && checks.find(x => x.id === 'k2').on === false,
+    '⑮ 꺼 둔 체크가 되살아나면 안 된다: ' + JSON.stringify(checks));
 
   // ⑬ 옛 기록을 다시 열어 값을 고쳐도 그 계산의 현장은 그대로 — 지금 보는 현장으로 끌려가면 묶음에서 빠진다
   await page.evaluate(() => {
@@ -314,6 +383,6 @@ assert(!/'sitebom'|'bom'/.test(source), '① 더보기 항목을 늘리지 않�
   assert(!keys.some(k => /cart|bom/i.test(k)), '⑦ serializeData 최상위 키는 그대로: ' + keys.join(','));
   assert(errors.length === 0, '⑦ pageerror: ' + errors.join(' | '));
 
-  console.log('site-bom.e2e OK (① 현장 묶음·50건 ② 이 현장 담기 ③ 같은 자재 합치기 ④ 수량 없는 계산 ⑤ 현장 합계 ⑥ 전체 합계·매입가 ⑦ 줄 번호·저장 키 ⑧ 고친 값 유지 ⑨ 현장별 발주 문자 ⑩ 규격 구분 ⑪ 상한 알림 ⑫ 거래처 단가·44px ⑬ 옛 기록의 현장 유지)');
+  console.log('site-bom.e2e OK (① 현장 묶음·50건 ② 이 현장 담기 ③ 같은 자재 합치기 ④ 수량 없는 계산 ⑤ 현장 합계 ⑥ 전체 합계·매입가 ⑦ 줄 번호·저장 키 ⑧ 고친 값 유지 ⑨ 현장별 발주 문자 ⑩ 규격 구분 ⑪ 상한 알림 ⑫ 거래처 단가·44px ⑬ 옛 기록의 현장 유지 ⑭ 문자 단위 ⑮ 거래처 비우기·체크 유지)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
