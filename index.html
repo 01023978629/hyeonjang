@@ -19283,8 +19283,8 @@ function hjCalcRun(id,v){
     const need=n('m2')*loss;const roll=n('roll')||1.8;
     if(n('box')){const bx=Math.ceil(need/n('box'));rows.push(['마루·타일형',hjCalcFmt(bx,0)+' 박스 ('+hjCalcFmt(n('box'),2)+'㎡/박스)']);main={name:'바닥재',spec:hjCalcFmt(n('box'),2)+'㎡/박스 (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:bx,unit:'박스',key:'마루|장판|데코|바닥|spc'};}
     if(n('aw')&&n('ah')){   // 가로×세로를 알면 폭 수로 — 두 방향 중 총 길이가 짧은 쪽, 폭마다 여유 10cm
-      const na=Math.ceil(n('aw')/roll),nb=Math.ceil(n('ah')/roll);const a=na*(n('ah')+0.1),b=nb*(n('aw')+0.1);const useA=a<=b;
-      rows.push(['장판 (폭 '+hjCalcFmt(roll,1)+'m · 폭 수)',hjCalcFmt(useA?a:b,1)+' m ('+(useA?na:nb)+'폭, 여유 10cm)']);
+      const na=Math.ceil(n('aw')/roll),nb=Math.ceil(n('ah')/roll);const a=na*(n('ah')+0.1)*loss,b=nb*(n('aw')+0.1)*loss;const useA=a<=b;   // 로스는 면적법과 똑같이 반영한다
+      rows.push(['장판 (폭 '+hjCalcFmt(roll,1)+'m · 폭 수)',hjCalcFmt(useA?a:b,1)+' m ('+(useA?na:nb)+'폭, 여유 10cm'+(n('loss')?', 로스 '+hjCalcFmt(n('loss'),0)+'%':'')+')']);
     }else if(n('roll')||!n('box')){rows.push(['장판 (폭 '+hjCalcFmt(roll,1)+'m · 자투리 미포함)',hjCalcFmt(need/roll,1)+' m']);
       note='장판은 폭마다 방 길이만큼 잘라 쓰기 때문에 면적만으로는 모자랍니다 — 면적을 「가로×세로」로 넣으면 폭 수로 셉니다.';}
     rows.push(['소요 면적 (로스 포함)',hjCalcFmt(need,2)+' ㎡']);

@@ -156,6 +156,9 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   r = await run('floor', { m2: '12', aw: '4', ah: '3', roll: '1.8', box: '1.5', loss: '0' });
   // 가로 4/1.8 → 3폭×3.1=9.3m, 세로 3/1.8 → 2폭×4.1=8.2m → 짧은 쪽
   assert(val(r, '장판 (폭 1.8m · 폭 수)') === '8.2 m (2폭, 여유 10cm)' && val(r, '마루·타일형').startsWith('8 박스'), '② 바닥 폭 수: ' + JSON.stringify(r));
+  r = await run('floor', { m2: '12', aw: '4', ah: '3', roll: '1.8', box: '', loss: '7' });
+  // 8.2 × 1.07 = 8.8 — 폭 수로 셀 때도 로스를 면적법과 똑같이 반영한다
+  assert(val(r, '장판 (폭 1.8m · 폭 수)') === '8.8 m (2폭, 여유 10cm, 로스 7%)', '② 폭 수에도 로스: ' + JSON.stringify(r));
   r = await run('floor', { m2: '12', roll: '2', box: '', loss: '0' });
   // 면적만 알면 폭 자투리를 셀 수 없다 — 값은 내되 모자랄 수 있다고 알린다
   assert(val(r, '장판 (폭 2m · 자투리 미포함)') === '6 m' && /가로×세로/.test(r.note) && r.main === null, '② 장판 면적법·자투리 안내: ' + JSON.stringify(r));
@@ -464,6 +467,6 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   // ⑬ 오류 0
   assert(errors.length === 0, '⑬ pageerror: ' + errors.join(' | '));
 
-  console.log('material-calc.e2e OK (① 메뉴 ② 계산 50건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
+  console.log('material-calc.e2e OK (① 메뉴 ② 계산 52건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
