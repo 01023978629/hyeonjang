@@ -6,7 +6,7 @@
      ② 순수 계산 hjCalcRun — 헤베·평, 타일(줄눈·로스·박스), 레미탈 포대, 페인트 L·통 구성·프라이머, 벽돌(0.5B~2.0B·블록·조적 몰탈),
         도배(폭 재단법 + 면적법 참고), 전기(여유율·역률·전선표 60A=16㎟), 지붕(각도·치·%), 필름, 칼라강판(폭·경사·면수 / 실면적), 석고(양면·피스),
         목재(간격 어림), 바닥(폭 수), 콘크리트(0.5㎥ 발주), 입력 부족 안내, 대표 수량 main
-     ③ 더보기 → 자재 계산기: 14개 종류 그리드가 열리고, 타일을 고르면 입력 폼·기본값·칩
+     ③ 더보기 → 자재 계산기: 15개 종류 그리드가 열리고, 타일을 고르면 입력 폼·기본값·칩
      ④ 값을 넣으면 입력 즉시 결과가 바뀌고, 「← 다른 계산」으로 돌아갔다가(최근 줄) 다시 들어오면 값이 남아 있다(세션 기억)
      ⑤ 결과 복사 글에 입력값과 결과가 들어간다
      ⑥ 저장 구조 변경 없음 — serializeData 에 calc 키가 없다
@@ -212,7 +212,7 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   await page.evaluate(() => moreActionHandler('calc'));
   let t = await modalText();
   const cats = await page.evaluate(() => document.querySelectorAll('#modalRoot .calcCat').length);
-  assert(/자재 계산기/.test(t) && cats === 14, '③ 그리드 14종: ' + cats);
+  assert(/자재 계산기/.test(t) && cats === 15, '③ 그리드 15종: ' + cats);
   assert((await page.evaluate(() => document.querySelectorAll('#modalRoot .calcRecent').length)) === 0, '③ 처음엔 최근 줄 없음');
   await page.click('#modalRoot .calcCat[data-id="tile"]');
   t = await modalText();
@@ -248,7 +248,7 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   assert(/타일 \(로스 포함\)61 장/.test(out) && /7 박스/.test(out), '④ 즉시 계산: ' + out);
   assert(await page.evaluate(() => document.querySelector('#calcTools').hidden === false), '④ 결과가 나오면 도구 줄');
   await page.click('#modalRoot .mfoot button:has-text("다른 계산")');
-  assert((await page.evaluate(() => document.querySelectorAll('#modalRoot .calcCat').length)) === 14, '④ 그리드로 돌아감');
+  assert((await page.evaluate(() => document.querySelectorAll('#modalRoot .calcCat').length)) === 15, '④ 그리드로 돌아감');
   assert((await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcRecent')].map(b => b.dataset.id).join())) === 'tile,paper', '④ 최근 줄은 마지막에 쓴 순서: ' + (await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcRecent')].map(b => b.dataset.id).join())));
   await page.click('#modalRoot .calcRecent[data-id="tile"]');
   await waitOut(/61 장/);
