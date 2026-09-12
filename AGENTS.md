@@ -42,6 +42,11 @@ tests/calc-flow.e2e.js ①~⑥ — 변이 18종 전부 검출. 전체 회귀 132
 합계가 나오고, 각 방의 🧮 를 누르면 계산기가 그 값을 받는다(도배는 둘레·천장고·개구부, 면적 칸이 있는 종류는 가로×세로).
 값은 현장 객체(state.projects[].measure)에 붙어 저장된다 — serializeData 최상위 키는 늘지 않는다(projects 는 이미 저장 대상).
 더보기 행동 계약 113→114(mobile-more-tools TARGETS·mobile-office-connect). tests/measure-note.e2e.js ①~⑥ — 변이 13종 전부 검출.
+(2026-09-12) `hyeonjang-v280-receipt`: 기능 후보 조사에서 1순위로 나온 빈틈 — 영수증으로 넣은 지출에 현장이 안 붙어
+현장 예산이 0원 그대로였다. 확인 화면에 현장(최근 3개 칩 + 목록·지금 보고 있는 현장 기본)과 결제 수단(카드 기본)을 넣고,
+읽어만 놓고 버리던 거래처(vendor)를 지출 레코드에 저장한다 — 경비 분류(guessExpenseCategory)가 이미 e.vendor 를 읽고 있어
+그동안 죽은 값이었다. 자재비를 수기로 넣어 둔 현장은 projStats 가 장부 대신 수기값을 쓰므로(이중 계산 방지) 그 사실을 화면에 알린다.
+state.expenses 레코드 안의 필드만 늘고 serializeData 최상위 키는 그대로. tests/receipt-project.e2e.js ①~⑤ — 변이 7종 전부 검출.
 사진 원본·실제 자료·계정·서버·저장 스키마·SAFE_AUTO를 변경하지 않는다.
 v201 원본 동기화 및 OfficeOps 활성화의 운영 검증 게이트는 계속 유지한다.
 최종 전체 회귀 129/129 통과(12.9분, 동시 2, 종료 코드 0, 재시도 없음).
