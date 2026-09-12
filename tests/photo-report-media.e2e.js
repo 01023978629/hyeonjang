@@ -59,6 +59,7 @@ async function boot(width = 390) {
     if (navigator.share) navigator.share = reject('share');
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => window.__mediaCopies.push(String(text)) } });
     relayCall = reject('relay'); portalAutoSync = reject('portal'); getFileOf = reject('original');
+    window.__mediaRealDocExport = __docExport;
     loadPhotoForExport = reject('image-before-click'); geminiAsk = reject('AI-before-consent'); __docExport = reject('image-export-before-click');
     const create = URL.createObjectURL, revoke = URL.revokeObjectURL, anchor = HTMLAnchorElement.prototype.click;
     URL.createObjectURL = function (blob) { const url = create.call(URL, blob); window.__mediaBlobs.push({ url, blob }); return url; };
@@ -141,8 +142,68 @@ async function imageStub(t, { deferred = false, fail = [], exportFails = false }
       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
       img.__fakeMediaId = f.id; window.__mediaImageUrls.push(url); return { img, url };
     };
-    __docExport = async (canvas, name, pdf) => { window.__mediaExports.push({ name, pdf, width: canvas.width, height: canvas.height }); if (exportFails) throw new Error('FAKE-EXPORT-FAILURE'); };
+    __docExport = async (canvas, name, pdf, options) => { window.__mediaExports.push({ name, pdf, width: canvas.width, height: canvas.height, pageBreaks: Array.isArray(options?.pageBreaks) ? [...options.pageBreaks] : null }); if (exportFails) throw new Error('FAKE-EXPORT-FAILURE'); };
   }, { png: PNG, deferred, fail, exportFails });
+}
+
+async function fakePdf(t) {
+  await t.page.evaluate(() => {
+    window.__mediaPdfDocs = []; window.__mediaPdfInputs = [];
+    const rasters = new Map(), crops = new WeakMap();
+    const toDataURL = HTMLCanvasElement.prototype.toDataURL, drawImage = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function (image, ...args) {
+      if (image === window.__mediaPdfSource) {
+        let crop;
+        if (args.length === 8) crop = { x: args[0], y: args[1], width: args[2], height: args[3] };
+        else if (args.length === 2) crop = { x: -args[0], y: -args[1], width: this.canvas.width, height: this.canvas.height };
+        else if (args.length === 4) crop = { x: -args[0] * image.width / args[2], y: -args[1] * image.height / args[3], width: this.canvas.width * image.width / args[2], height: this.canvas.height * image.height / args[3] };
+        if (crop) crops.set(this.canvas, crop);
+      }
+      return drawImage.call(this, image, ...args);
+    };
+    HTMLCanvasElement.prototype.toDataURL = function () {
+      const value = toDataURL.apply(this, arguments);
+      rasters.set(value, { width: this.width, height: this.height, crop: crops.get(this) || null }); return value;
+    };
+    window.jspdf = { jsPDF: class FakePdf {
+      constructor(options) {
+        this.record = { options, pages: [[]], saved: [] }; window.__mediaPdfDocs.push(this.record);
+        this.internal = { pageSize: { width: 595.28, height: 841.89, getWidth: () => 595.28, getHeight: () => 841.89 } };
+      }
+      addPage() { this.record.pages.push([]); return this; }
+      addImage(image, format, x, y, width, height) {
+        const raster = image instanceof HTMLCanvasElement ? { width: image.width, height: image.height, crop: crops.get(image) || null } : rasters.get(image);
+        if (!raster) throw new Error('fake PDF expected an actual canvas raster');
+        this.record.pages.at(-1).push({ format, x, y, width, height, raster }); return this;
+      }
+      save(name) { this.record.saved.push(name); return this; }
+      getNumberOfPages() { return this.record.pages.length; }
+    } };
+    ensureJsPDF = async () => {};
+    __docExport = async function (canvas, name, pdf, options) {
+      window.__mediaPdfSource = canvas;
+      window.__mediaPdfInputs.push({ width: canvas.width, height: canvas.height, name, pdf, pageBreaks: Array.isArray(options?.pageBreaks) ? [...options.pageBreaks] : null });
+      return window.__mediaRealDocExport(canvas, name, pdf, options);
+    };
+  });
+}
+
+function assertPdfCoverage(doc, input) {
+  const images = doc.pages.flat();
+  assert(doc.pages.length > 1 && doc.pages.every(page => page.length === 1), 'long document is split into populated PDF pages');
+  let nextY = 0;
+  for (const [i, image] of images.entries()) {
+    const crop = image.raster.crop;
+    assert(crop, 'PDF page uses a real source canvas crop');
+    assert.equal(crop.x, 0); assert.equal(crop.width, input.width); assert.equal(crop.y, nextY, 'source rows have neither gaps nor repeated strips');
+    assert(crop.height > 0); nextY += crop.height;
+    assert(Math.abs(image.width / image.raster.width - image.height / image.raster.height) < 0.00001, 'PDF page preserves its image aspect ratio');
+    assert(Math.abs(image.raster.width / crop.width - image.raster.height / crop.height) < 0.00001, 'crop itself preserves source aspect ratio');
+    assert(image.x >= 0 && image.y >= 0 && image.x + image.width <= 595.29 && image.y + image.height <= 841.90, 'scaled page image stays inside A4');
+    if (i < images.length - 1 && input.pageBreaks.length) assert(input.pageBreaks.some(y => Math.abs(y - nextY) <= 1), 'page ends on a supplied safe break');
+  }
+  assert.equal(nextY, input.height, 'last page includes the original bottom edge');
+  assert.deepEqual(doc.saved, [input.name + '.pdf'], 'fake PDF save is requested exactly once');
 }
 
 (async () => {
@@ -243,6 +304,11 @@ async function imageStub(t, { deferred = false, fail = [], exportFails = false }
     await t.page.waitForFunction(() => { const v = document.getElementById('lbVideo'); return v && v.readyState >= 1 && /^blob:/.test(v.currentSrc || v.src); });
     const video = await t.page.locator('#lbVideo').evaluate(v => ({ url: v.currentSrc || v.src, controls: v.controls, hidden: v.hidden, width: v.videoWidth, height: v.videoHeight }));
     assert(video.controls && !video.hidden && video.width > 0 && video.height > 0, 'actual generated media is decoded by the native video player');
+    const nativeTabs = await t.page.locator('#lbVideo').evaluate(v => [false, true].map(shiftKey => {
+      v.focus(); const e = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }); v.dispatchEvent(e);
+      return { shiftKey, defaultPrevented: e.defaultPrevented };
+    }));
+    assert(nativeTabs.every(e => !e.defaultPrevented), 'video-focused Tab/Shift+Tab leaves native controls default navigation enabled');
     for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab']) {
       await t.page.keyboard.press(key);
       assert(await t.page.evaluate(() => document.getElementById('lightbox').contains(document.activeElement)), 'native controls keep ' + key + ' inside the lightbox');
@@ -370,7 +436,45 @@ async function imageStub(t, { deferred = false, fail = [], exportFails = false }
     assert.equal(bounds.length, 4, 'all four real image elements are drawn');
     assert(bounds.every(b => b.top >= 0 && b.bottom < b.canvasHeight - 80), 'every photo ends above the footer and canvas boundary: ' + JSON.stringify(bounds));
     assert((await t.page.evaluate(() => window.__mediaExports[0].height)) > 1400, 'long work text and four images increase canvas height');
+    const pageBreaks = await t.page.evaluate(() => window.__mediaExports[0].pageBreaks);
+    assert(Array.isArray(pageBreaks) && pageBreaks.length > 2, 'daily report supplies text-line and photo-row safe PDF breaks');
+    for (const bottom of new Set(bounds.map(b => b.bottom))) assert(pageBreaks.some(y => y >= bottom && y <= bottom + 20), 'safe PDF break follows every photo row');
     assert(await t.page.evaluate(() => window.__mediaImageUrls.length === 4 && window.__mediaImageUrls.every(u => window.__mediaRevoked.includes(u)))); await readonly(t, before);
+  });
+
+  await run('실제 PDF 경로는 안전 경계별 분할·비율 유지·원본 전체 포함·기존 기본문서 호환', async t => {
+    const before = await snap(t.page); await fakePdf(t);
+    await t.page.evaluate(async () => {
+      const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 4200;
+      const ctx = canvas.getContext('2d');
+      for (let y = 0; y < canvas.height; y += 100) { ctx.fillStyle = 'hsl(' + (y % 360) + ' 70% 50%)'; ctx.fillRect(0, y, canvas.width, 100); }
+      await __docExport(canvas, 'SYNTHETIC_MULTIPAGE', true, { pageBreaks: [700, 1400, 2100, 2800, 3500, 4200] });
+      const legacy = document.createElement('canvas'); legacy.width = 900; legacy.height = 700;
+      legacy.getContext('2d').fillRect(0, 0, legacy.width, legacy.height);
+      await __docExport(legacy, 'SYNTHETIC_LEGACY_DOCUMENT', true);
+    });
+    const result = await t.page.evaluate(() => ({ docs: window.__mediaPdfDocs, inputs: window.__mediaPdfInputs }));
+    assert.equal(result.docs.length, 2); assertPdfCoverage(result.docs[0], result.inputs[0]);
+    const legacy = result.docs[1]; assert.equal(legacy.pages.length, 1); assert.equal(legacy.pages[0].length, 1);
+    assert.deepEqual(legacy.pages[0][0], { format: 'JPEG', x: 0, y: 0, width: 595.28, height: 841.89, raster: { width: 900, height: 700, crop: null } }, 'no pageBreaks retains the pre-existing one-page document path');
+    assert.deepEqual(legacy.saved, ['SYNTHETIC_LEGACY_DOCUMENT.pdf']); assert.deepEqual(await t.page.evaluate(() => window.__mediaDownloads), []); await readonly(t, before);
+  });
+
+  await run('일일 작업일보 실제 PDF 호출은 본문/사진 안전경계와 모든 페이지를 전달', async t => {
+    await t.page.evaluate(a => {
+      const base = state.files.find(f => f.id === 'p1'); state.files.find(f => f.id === 'p2').when = new Date(base.when);
+      state.files.push({ ...base, id: 'pdf-p3', name: '가상_pdf_p3.png', size: 9110 }, { ...base, id: 'pdf-p4', name: '가상_pdf_p4.png', size: 9111 });
+      state.schedule = [{ id: 'media-pdf-report', project: a, date: '2026-09-12', title: '가상 PDF 작업', workers: 2, report: { done: '가상 방수 작업과 배관 연결을 기록한 내용입니다. '.repeat(45), material: '가상 자재와 현장 작업 기록입니다. '.repeat(12), issue: '가상 특이사항과 다음 작업 확인사항입니다. '.repeat(12) } }];
+    }, A);
+    const before = await snap(t.page); await imageStub(t); await fakePdf(t);
+    await t.page.evaluate(() => exportReport('media-pdf-report', true));
+    const result = await t.page.evaluate(() => ({ docs: window.__mediaPdfDocs, inputs: window.__mediaPdfInputs, bounds: window.__mediaBounds }));
+    assert.equal(result.docs.length, 1); assert.equal(result.inputs.length, 1); assert(result.inputs[0].pdf);
+    assert(Array.isArray(result.inputs[0].pageBreaks) && result.inputs[0].pageBreaks.length > 4, 'exportReport forwards line/row break candidates to the real exporter');
+    assertPdfCoverage(result.docs[0], result.inputs[0]);
+    for (const bottom of new Set(result.bounds.map(b => b.bottom))) assert(result.inputs[0].pageBreaks.some(y => y >= bottom && y <= bottom + 20), 'both photo rows have safe break candidates');
+    assert.equal(result.bounds.length, 4); assert(await t.page.evaluate(() => window.__mediaImageUrls.length === 4 && window.__mediaImageUrls.every(u => window.__mediaRevoked.includes(u))));
+    assert.deepEqual(await t.page.evaluate(() => window.__mediaDownloads), []); await readonly(t, before);
   });
 
   assert(passed > 0, 'at least one selected scenario ran');
