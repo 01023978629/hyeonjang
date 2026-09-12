@@ -1898,7 +1898,7 @@ async function loadProject(){
 }
 /* 데이터 내보내기: 어디서나(폰 포함) 다운로드되는 파일 1개 */
 function exportData(){
-  if(!state.projects.length && !state.files.length){toast('내보낼 데이터가 없습니다.');return;}
+  if(!state.projects.length && !state.files.length && !(state.quotes||[]).length && !(state.notes||[]).length){toast('내보낼 데이터가 없습니다.');return;}
   const data=serializeData();
   const stamp=localDate().replace(/-/g,'');
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
@@ -2210,7 +2210,7 @@ async function relayDailyBackup(){
 }
 /* ── 안전판 가드: 이 기기에 자료가 있으면 스냅샷 '성공'을 확인한 뒤에만 덮어쓰는 적용을 진행 ── */
 async function relayGuardSnapshot(label){
-  const has=((state.projects||[]).length||(state.files||[]).length||(state.quotes||[]).length)>0;
+  const has=((state.projects||[]).length||(state.files||[]).length||(state.quotes||[]).length||(state.notes||[]).length)>0;
   if(!has)return true;   // 빈 기기 — 보호할 자료 없음(hjSnapshot도 빈 상태는 저장하지 않는 정책)
   let ok=false;try{ok=await hjSnapshot(label,true);}catch(e){ok=false;}   // force=true인데 false/throw면 실패로 간주
   if(!ok)toast('🛡 안전판 백업 실패 — 적용을 중단했습니다. 저장공간을 확인하세요');
@@ -2634,7 +2634,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v290-mobileops';
+const APP_BUILD='hyeonjang-v291-teamwork';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4959,6 +4959,7 @@ function renameProject(oldName){
       state.files.forEach(f=>{if(f.project===oldName){f.project=nv;if(f._aptUnit&&f._aptUnit.project===oldName)f._aptUnit={...f._aptUnit,project:nv};}});
       if(projectIdentity)(state.aptOrders||[]).forEach(function(order){if(order&&officeIntakeValidProjectIdentity(order.projectIdentity)===projectIdentity)order.project=nv;});
       (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
+      (state.notes||[]).forEach(n=>{if(hjIsTeamTask(n)&&n.project===oldName)n.project=nv;});
       if(state.activeProject===oldName)state.activeProject=nv;
       markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”');
     }},
@@ -7205,7 +7206,9 @@ function dashboardTodoHTML(){
   return '<section id="dashboardTodo" aria-labelledby="dashboardTodoTitle" style="border:1px solid var(--line-soft);border-radius:12px;padding:13px;margin-bottom:12px">'+
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardTodoOpen" class="clay" onclick="todoView()" style="min-height:44px">할 일 확인·추가</button>'+
-    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button></div>'+
+    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
+    '<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button></div>'+
+    '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px">'+escapeHtml(hjTeamSummary())+'</p>'+
     '<p class="hint" style="margin:7px 0 0">밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
 }
 function dashboardPrepLabel(s){
@@ -7218,6 +7221,7 @@ function dashboardOperationsRefresh(){
   // 버튼을 교체하지 않아 모달을 닫았을 때 원래 누른 곳으로 초점이 돌아간다.
   const summary=document.getElementById('dashboardTodoSummary');
   if(summary)summary.textContent=dashboardTodoSummary();
+  const team=document.getElementById('dashboardTeamSummary');if(team)team.textContent=hjTeamSummary();
   document.querySelectorAll('[data-dashboard-prep]').forEach(el=>{
     const matches=(state.schedule||[]).filter(s=>String(s.id)===el.dataset.dashboardPrep);
     el.textContent=dashboardPrepLabel(matches.length===1?matches[0]:null);
@@ -7362,7 +7366,7 @@ async function sendPaymentInfo(qid){
 let __vrec=null, __vtext='';
 function voiceMemo(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const supported=!!SR;
-  const notes=(state.notes||[]).filter(n=>n&&!n.todo).slice().reverse();   // ✅ 할일은 별도 화면에서 본다
+  const notes=(state.notes||[]).filter(n=>n&&!n.todo&&!hjIsTeamTask(n)).slice().reverse();   // 개인/팀 업무는 별도 화면에서 본다
   const list=notes.length?notes.map(n=>'<div style="border:1px solid var(--line-soft);border-radius:8px;padding:8px;margin:6px 0"><div style="font-size:11px;color:var(--muted)">'+escapeHtml(n.date||'')+(n.project?' · <b style="color:var(--blueprint)">'+escapeHtml(n.project)+'</b>':'')+'</div><div style="white-space:pre-wrap;font-size:13px;margin:4px 0">'+escapeHtml((n.text||'').slice(0,500))+'</div><div style="display:flex;gap:6px"><button class="ghost tiny" data-noteshare="'+n.id+'">📤 공유</button><button class="ghost tiny" data-notedel="'+n.id+'">🗑 삭제</button></div></div>').join(''):'<div style="color:var(--muted);font-size:13px">저장된 회의록이 없습니다.</div>';
   const body='<div style="font-size:13px">'+
     (supported?'<select id="vmProj" style="width:100%;margin-bottom:6px;padding:8px"><option value="">현장 연결 안 함</option>'+(state.projects||[]).map(p=>'<option value="'+escapeAttr(p.name)+'"'+(state.activeProject===p.name?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')+'</select><button class="clay" id="vmStart" style="width:100%;padding:12px">🎙 녹음 시작 (말하면 글로 적힘)</button><button class="warn" id="vmStop" style="width:100%;padding:10px;margin-top:6px;display:none">⏹ 멈춤</button><textarea id="vmText" placeholder="말한 내용이 여기에 적힙니다. 직접 수정도 가능." style="width:100%;height:120px;margin-top:8px"></textarea><div style="display:flex;gap:6px;margin-top:6px"><button class="blue tiny" id="vmSave">💾 회의록 저장</button><button class="moss tiny" id="vmShare">📤 공유</button></div>':'<p style="color:var(--clay)">이 브라우저는 음성인식을 지원하지 않습니다. (안드로이드 크롬에서 잘 됩니다 · 아이폰은 제한적)</p>')+
@@ -7386,9 +7390,9 @@ function voiceMemo(){
   root.querySelectorAll('[data-notedel]').forEach(el=>el.onclick=async()=>{
     if(!confirm('이 회의록을 삭제할까요?'))return;
     try{await hjSnapshot('회의록 삭제 전',true);}catch(e){}
-    const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id);markDirty();voiceMemo();toast('삭제됨');
+    const id=el.dataset.notedel;state.notes=(state.notes||[]).filter(n=>n.id!==id||n.todo||hjIsTeamTask(n));markDirty();voiceMemo();toast('삭제됨');
   });
-  root.querySelectorAll('[data-noteshare]').forEach(el=>el.onclick=async()=>{const n=(state.notes||[]).find(x=>x.id===el.dataset.noteshare);if(n){try{if(navigator.share)await navigator.share({title:'회의록',text:n.text});else if(navigator.clipboard){navigator.clipboard.writeText(n.text);toast('복사됨');}}catch(e){}}});
+  root.querySelectorAll('[data-noteshare]').forEach(el=>el.onclick=async()=>{const n=(state.notes||[]).find(x=>!x.todo&&!hjIsTeamTask(x)&&x.id===el.dataset.noteshare);if(n){try{if(navigator.share)await navigator.share({title:'회의록',text:n.text});else if(navigator.clipboard){navigator.clipboard.writeText(n.text);toast('복사됨');}}catch(e){}}});
 }
 /* ----- Gemini AI 도우미 (무료티어, 키 필요) ----- */
 function geminiHeaders(key){return {'Content-Type':'application/json','x-goog-api-key':key};}
@@ -9908,7 +9912,7 @@ async function hjSnapshot(label,force,allowEmpty){
     if(!force&&now-__snapLastAt<180000)return false;          // 3분 스로틀(강제 제외)
     if(force&&now-__snapLastAt<45000&&String(label||'').startsWith('🤖')&&String(__snapLastLabel||'').startsWith('🤖'))return false; // AI 연속작업만 묶음 // AI 연속작업 과다 방지
     const data=serializeData();
-    if(!allowEmpty&&!(data.projects||[]).length&&!(data.files||[]).length&&!(data.quotes||[]).length)return false; // 일반 빈 상태는 저장 안 함; 검토된 복구/paid gate만 명시 허용
+    if(!allowEmpty&&!(data.projects||[]).length&&!(data.files||[]).length&&!(data.quotes||[]).length&&!(data.notes||[]).length)return false; // 업무만 있는 신규 기기도 보호
     // 읽기 오류는 '비어 있음'이 아니다 — 실패면 아무것도 쓰지 않고 false (기존 안전판 보존)
     let snaps;try{snaps=(await idbGetStrict('hj_snaps'))||[];}catch(e){return false;}
     if(!Array.isArray(snaps))return false;
@@ -9952,7 +9956,7 @@ async function backupHistory(){
   const rows=snaps.length?snaps.map((s,i)=>
     '<div style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px dashed var(--line-soft)">'+
       '<div style="flex:1;min-width:0"><b style="font-size:13.5px">'+hjSnapTime(s.at)+'</b> <span style="font-size:12px;'+(hjSnapRoutine(s.label)?'':'font-weight:700;')+'color:'+(String(s.label).startsWith('🤖')?'var(--clay)':(hjSnapRoutine(s.label)?'var(--muted)':'var(--ink)'))+'">'+escapeHtml(s.label)+'</span>'+
-      '<div style="font-size:11px;color:var(--muted)">현장 '+s.np+' · 파일 '+s.nf+' · 견적 '+s.nq+'</div></div>'+
+      '<div style="font-size:11px;color:var(--muted)">현장 '+s.np+' · 파일 '+s.nf+' · 견적 '+s.nq+' · 메모/업무 '+((s.data?.notes||[]).length)+'</div></div>'+
       '<button class="blue tiny snapRestore" data-i="'+i+'" style="padding:7px 12px">복구</button>'+
     '</div>').join('')
     :'<div class="empty" style="padding:18px"><b>아직 스냅샷이 없습니다</b>작업하면 3분 간격으로 자동 저장되고, AI가 변경 작업을 하기 직전에도 자동으로 남습니다.</div>';
@@ -9966,7 +9970,7 @@ async function backupHistory(){
   root.querySelectorAll('.snapRestore').forEach(b=>b.onclick=()=>{
     const s=snaps[+b.dataset.i];
     openModal('⚠️ 이 시점으로 복구할까요?',
-      '<div style="font-size:13.5px;line-height:1.7"><b>'+hjSnapTime(s.at)+' · '+escapeHtml(s.label)+'</b><br>현장 '+s.np+' · 파일 '+s.nf+' · 견적 '+s.nq+'<br><br>먼저 지금 상태를 <b>「복구 직전」 스냅샷</b>으로 저장합니다. 저장 성공을 확인한 뒤에만 복구하며, 실패하면 현재 자료를 유지합니다. 이 기기의 안전판이며 클라우드 백업과는 별개입니다.</div>',
+      '<div style="font-size:13.5px;line-height:1.7"><b>'+hjSnapTime(s.at)+' · '+escapeHtml(s.label)+'</b><br>현장 '+s.np+' · 파일 '+s.nf+' · 견적 '+s.nq+' · 메모/업무 '+((s.data?.notes||[]).length)+'<br><br>먼저 지금 상태를 <b>「복구 직전」 스냅샷</b>으로 저장합니다. 저장 성공을 확인한 뒤에만 복구하며, 실패하면 현재 자료를 유지합니다. 이 기기의 안전판이며 클라우드 백업과는 별개입니다.</div>',
       [{label:'✅ 복구',cls:'clay',fn:()=>hjRestoreSnapshot(s)},
        {label:'취소',cls:'ghost',fn:()=>backupHistory()}]);
   });
@@ -13274,6 +13278,7 @@ function aiAddNote(text,project){
 function aiListNotes(query){
   const q=String(query||'').trim().toLowerCase();
   const rows=(state.notes||[]).slice().reverse()
+    .filter(n=>n&&!hjIsTeamTask(n))
     .filter(n=>!q||(n.text+' '+(n.project||'')).toLowerCase().includes(q))
     .slice(0,20).map(n=>({시각:n.date,내용:n.text,현장:n.project||''}));
   return {개수:rows.length,메모:rows};
@@ -19590,12 +19595,117 @@ function extraWork(projectName){
         '<div style="display:flex;justify-content:space-between"><span>건수 · 늘어난 공기</span><b>'+hjExtraList(p).length+'건'+(sm.days?' · +'+sm.days+'일':'')+'</b></div>'+
         '<div style="display:flex;justify-content:space-between"><span>확인받음</span><b>'+hjExtraList(p).filter(y=>y.agreed).length+'건</b></div>';};});
 }
+/* ── 팀 업무판 (v291). 기존 notes 왕복/안전판 사용, 본문은 전용 객체에만 저장한다.
+   담당자/기록자 문자열은 사용자가 적은 분류이며 인증·권한·열람 확인이 아니다.
+   전체 JSON 동기화 한계 때문에 실시간 공동 편집이나 직원별 접근 제한을 약속하지 않는다. */
+const HJ_TEAM_STATUS=Object.freeze({todo:'대기',doing:'진행',blocked:'막힘',review:'확인 요청',done:'완료'});
+let __hjTeamBusy=false;
+function hjIsTeamTask(n){return !!(n&&Object.prototype.hasOwnProperty.call(n,'teamTask'));}
+function hjTeamList(){return (state.notes||[]).filter(hjIsTeamTask);}
+function hjTeamData(n){return n&&n.teamTask&&typeof n.teamTask==='object'&&!Array.isArray(n.teamTask)?n.teamTask:{};}
+function hjTeamSummary(){
+  const open=hjTeamList().filter(n=>hjTeamData(n).status!=='done'),today=localDate();
+  return '팀 업무 '+open.length+'건 미완료 · 미배정 '+open.filter(n=>!hjTeamData(n).assignee).length+'건 · 기한 지남 '+open.filter(n=>hjTeamDate(hjTeamData(n).due)&&hjTeamData(n).due<today).length+'건';
+}
+function hjTeamDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(value||'')))return false;
+  const date=new Date(value+'T00:00:00Z');return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
+function hjTeamBoard(filters){
+  if(__modalCloseLocked)return;
+  const f=Object.assign({project:'',assignee:'',status:'open',limit:50},filters||{}),all=hjTeamList(),today=localDate();
+  const projects=[...new Set(all.map(n=>String(n.project||'')).filter(Boolean))].sort();
+  const names=[...new Set(all.map(n=>String(hjTeamData(n).assignee||'')).filter(Boolean))].sort();
+  if(f.project&&!projects.includes(f.project))f.project='';
+  if(f.assignee&&f.assignee!=='@unassigned'&&!names.includes(f.assignee))f.assignee='';
+  let rows=all.filter(n=>{const t=hjTeamData(n);return (!f.project||n.project===f.project)&&(!f.assignee||(f.assignee==='@unassigned'?!t.assignee:t.assignee===f.assignee))&&
+    (!f.status||(f.status==='open'?t.status!=='done':f.status==='late'?t.status!=='done'&&hjTeamDate(t.due)&&t.due<today:t.status===f.status));});
+  const urgency=n=>{const t=hjTeamData(n);return t.status==='done'?3:t.status==='blocked'?0:hjTeamDate(t.due)&&t.due<today?1:2;};
+  rows=rows.slice().sort((a,b)=>urgency(a)-urgency(b)||String(hjTeamData(a).due||'9999').localeCompare(String(hjTeamData(b).due||'9999'))||String(a.id).localeCompare(String(b.id)));
+  const option=(value,label,current)=>'<option value="'+escapeAttr(value)+'"'+(value===current?' selected':'')+'>'+escapeHtml(label)+'</option>';
+  const choices=(id,label,options,current)=>'<label>'+label+'<select id="'+id+'">'+options.map(x=>option(x[0],x[1],current)).join('')+'</select></label>';
+  const css='<style>#teamBoard,#teamEditor{font-size:16px;overflow-wrap:anywhere}#teamBoard button,#teamEditor button{min-width:44px;min-height:44px;white-space:normal}#teamBoard select,#teamEditor input,#teamEditor select,#teamEditor textarea{display:block;width:100%;box-sizing:border-box;min-width:0;min-height:44px;font:inherit;margin:5px 0 12px;padding:9px}#teamBoard label,#teamEditor label{display:block;font-size:14px}#teamBoard .teamFilters,#teamEditor .teamFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px}#teamBoard .teamCard{border:1px solid var(--line-soft);border-radius:10px;padding:12px;margin:10px 0}#teamBoard p,#teamEditor p{line-height:1.6}#teamBoard .teamActions{display:flex;gap:8px;flex-wrap:wrap}</style>';
+  const cards=rows.slice(0,f.limit).map(n=>{const t=hjTeamData(n),linked=(state.projects||[]).filter(p=>p.name===n.project).length===1;
+    const late=t.status!=='done'&&hjTeamDate(t.due)&&t.due<today;
+    return '<article class="teamCard" data-team-card="'+escapeAttr(n.id)+'"><div style="font-size:14px;color:var(--blueprint)">'+escapeHtml(HJ_TEAM_STATUS[t.status]||'형식 확인 필요')+(late?' · 기한 지남':'')+'</div><h3 style="font-size:17px;margin:7px 0">'+escapeHtml(t.title||'업무 정보 확인 필요')+'</h3>'+
+      '<p style="font-size:14px;margin:5px 0">담당: '+escapeHtml(t.assignee||'미배정')+' · 기한: '+escapeHtml(t.due||'미정')+'<br>현장: '+escapeHtml(n.project||'공통 업무')+(n.project&&!linked?' · 연결 확인 필요':'')+'</p>'+
+      (t.handoff?'<p style="white-space:pre-wrap"><b>다음 할 일·인수인계</b><br>'+escapeHtml(t.handoff)+'</p>':'')+
+      '<p style="font-size:13px">최근 기록: '+escapeHtml(t.recorder||'미기록')+' · '+escapeHtml(t.updatedAt?new Date(t.updatedAt).toLocaleString('ko-KR'):'시각 없음')+' (직접 입력 이름)</p>'+
+      '<div class="teamActions"><button type="button" class="blue" data-team-edit="'+escapeAttr(n.id)+'">업무 수정·인계</button>'+(linked?'<button type="button" class="ghost" data-team-project="'+escapeAttr(n.project)+'">현장 열기</button>':'')+'</div></article>';}).join('');
+  const load=names.map(name=>{const mine=all.filter(n=>hjTeamData(n).assignee===name&&hjTeamData(n).status!=='done');return name+' '+mine.length+'건';}).join(' / ');
+  openModal('팀 업무·인수인계',css+'<style>#teamBoard select{font-size:16px}#teamBoard .teamFilters{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}</style><section id="teamBoard"><p id="teamBoardSummary" role="status">'+escapeHtml(hjTeamSummary())+'</p>'+
+    '<p style="font-size:14px">담당별 미완료: '+escapeHtml(load||'담당자를 입력하면 여기에 표시됩니다.')+'</p><button type="button" class="clay" id="teamAdd">새 팀 업무</button>'+
+    '<div class="teamFilters" style="margin-top:12px">'+choices('teamProjectFilter','현장',[['','전체 현장'],...projects.map(x=>[x,x])],f.project)+
+    choices('teamAssigneeFilter','담당자',[['','전체 담당'],['@unassigned','미배정'],...names.map(x=>[x,x])],f.assignee)+
+    choices('teamStatusFilter','진행 상태',[['open','미완료 전체'],['','완료 포함 전체'],['late','기한 지남'],...Object.entries(HJ_TEAM_STATUS)],f.status)+'</div>'+
+    '<div id="teamCards">'+(cards||'<p>조건에 맞는 팀 업무가 없습니다. 개인 할 일은 별도 화면에서 관리합니다.</p>')+'</div>'+
+    (rows.length>f.limit?'<button id="teamMore" type="button" class="ghost">다음 50건 더 보기 ('+f.limit+'/'+rows.length+')</button>':'')+
+    '<details style="margin-top:16px;font-size:14px"><summary style="min-height:44px;cursor:pointer">5인 운영 전 확인할 점</summary><p>담당자·기록자 이름은 업무 구분용이며 로그인·접근권한이 아닙니다. 연결된 자료를 사용하는 사람은 전체 업무를 볼 수 있습니다. 동명이인은 이름 뒤에 팀명 등 구분을 적으세요.</p><p>실시간 공동 편집은 지원하지 않습니다. 다섯 기기 모두 최신 버전을 사용하고 저장 경로를 하나로 통일하세요. 한 사람이 저장을 마친 뒤 다음 사람이 최신 자료를 불러와 수정하세요. 충돌 시 전체 자료 확인이 필요합니다.</p><p>아래 저장 완료는 이 기기 기준입니다. 서버 전송·다른 직원의 수신 여부는 별도로 확인해야 합니다. 자동 문자·직원 알림은 발송하지 않습니다.</p></details></section>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('teamBoard');
+  const readFilters=()=>({project:root.querySelector('#teamProjectFilter').value,assignee:root.querySelector('#teamAssigneeFilter').value,status:root.querySelector('#teamStatusFilter').value});
+  root.querySelectorAll('select').forEach(el=>el.onchange=()=>{const focusId=el.id;hjTeamBoard(readFilters());setTimeout(()=>document.getElementById(focusId)?.focus(),0);});
+  root.querySelector('#teamAdd').onclick=()=>hjTeamEdit(null,readFilters());
+  root.querySelectorAll('[data-team-edit]').forEach(el=>el.onclick=()=>hjTeamEdit(el.dataset.teamEdit,readFilters()));
+  root.querySelectorAll('[data-team-project]').forEach(el=>el.onclick=()=>hjSearchProjectOpen(el.dataset.teamProject));
+  const more=root.querySelector('#teamMore');if(more)more.onclick=()=>hjTeamBoard({...readFilters(),limit:f.limit+50});
+}
+function hjTeamEdit(id,filters){
+  if(__modalCloseLocked)return;
+  const matches=hjTeamList().filter(n=>String(n.id)===id),original=id?matches[0]:null;
+  if(id&&(matches.length!==1||hjTeamData(original).schema!==1)){toast('업무가 변경되었거나 지원하지 않는 형식입니다. 목록을 다시 확인하세요.');return;}
+  const t=hjTeamData(original),originalText=original?JSON.stringify(original):null;
+  const projects=(state.projects||[]).filter(p=>!p.archived),names=[...new Set(hjTeamList().map(n=>String(hjTeamData(n).assignee||'')).filter(Boolean))];
+  const project=original?String(original.project||''):String(filters?.project||'');
+  const options='<option value="">공통 업무</option>'+[...new Set([...projects.map(p=>p.name),...(project?[project]:[])])].map(name=>'<option value="'+escapeAttr(name)+'"'+(name===project?' selected':'')+'>'+escapeHtml(name)+'</option>').join('');
+  // board 스타일을 editor에도 사용하되 직접 호출/새로 열기에도 독립적으로 동작한다.
+  openModal(original?'팀 업무 수정·인수인계':'새 팀 업무','<style>#teamEditor{font-size:16px;overflow-wrap:anywhere}#teamEditor label{display:block;font-size:14px}#teamEditor input,#teamEditor select,#teamEditor textarea{display:block;width:100%;box-sizing:border-box;min-width:0;min-height:44px;font:inherit;margin:5px 0 12px;padding:9px}#teamEditor .teamFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px}#teamEditor button{min-height:44px;min-width:44px}</style>'+
+    '<style>#teamEditor input,#teamEditor select,#teamEditor textarea{font-size:16px}</style><form id="teamEditor"><label>업무명 (필수)<input id="teamTitle" maxlength="160" required value="'+escapeAttr(t.title||'')+'"></label><label>현장<select id="teamProject">'+options+'</select></label><div class="teamFields">'+
+    '<label>담당자 이름 · 동명이인은 구분 입력<input id="teamAssignee" maxlength="40" list="teamNames" value="'+escapeAttr(t.assignee||'')+'" placeholder="예: 김담당(시공)"><datalist id="teamNames">'+names.map(name=>'<option value="'+escapeAttr(name)+'"></option>').join('')+'</datalist></label>'+
+    '<label>완료 기한<input id="teamDue" type="date" value="'+escapeAttr(t.due||'')+'"></label></div><label>진행 상태<select id="teamStatus">'+Object.entries(HJ_TEAM_STATUS).map(([value,label])=>'<option value="'+value+'"'+(value===(t.status||'todo')?' selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
+    '<label>다음 할 일·인수인계 메모<textarea id="teamHandoff" rows="4" maxlength="2000" placeholder="다음 작업, 필요한 자재, 막힌 이유 등을 적으세요.">'+escapeHtml(t.handoff||'')+'</textarea></label>'+
+    '<label>이번 기록자 이름 (필수 · 직접 입력)<input id="teamRecorder" maxlength="40" required autocomplete="off" placeholder="이번 내용을 기록하는 사람"></label>'+
+    '<p style="font-size:14px">막힘·확인 요청은 인수인계 메모를 적어 주세요. 완료는 직접 기록한 상태이며 승인·검수 인증이 아닙니다. 저장 전 입력은 창을 닫으면 사라집니다.</p>'+
+    '<p id="teamSaveStatus" role="status" aria-live="polite"></p><button type="submit" class="blue" id="teamSave">이 기기에 저장</button></form>',[{label:'목록으로',cls:'ghost',fn:()=>hjTeamBoard(filters)}],true);
+  const form=document.getElementById('teamEditor');
+  form.onsubmit=async event=>{
+    event.preventDefault();if(__hjTeamBusy)return;
+    const value=id=>form.querySelector('#'+id).value.trim(),status=form.querySelector('#teamSaveStatus');
+    const draft={schema:1,title:value('teamTitle'),assignee:value('teamAssignee'),due:value('teamDue'),status:value('teamStatus'),handoff:value('teamHandoff'),recorder:value('teamRecorder'),updatedAt:new Date().toISOString(),revision:(Number(t.revision)||0)+1};
+    const selected=value('teamProject'),keepsExisting=!!original&&selected===original.project;
+    const eligible=p=>p.name===selected&&(!p.archived||keepsExisting),selectedProject=selected?(state.projects||[]).find(eligible):null;
+    const validProject=()=>!selected||((state.projects||[]).filter(p=>p.name===selected).length===1&&(state.projects||[]).includes(selectedProject)&&eligible(selectedProject));
+    const current=()=>!__tabStale&&validProject()&&(!original?true:(state.notes||[]).filter(n=>String(n.id)===id).length===1&&(state.notes||[]).includes(original)&&JSON.stringify(original)===originalText);
+    if(!draft.title||draft.title.length>160||!draft.recorder||draft.recorder.length>40||draft.assignee.length>40||draft.assignee==='@unassigned'||draft.handoff.length>2000||!Object.hasOwn(HJ_TEAM_STATUS,draft.status)||draft.due&&!hjTeamDate(draft.due)){status.textContent='업무명·기록자·기한과 입력 길이를 확인해 주세요.';return;}
+    if(['blocked','review'].includes(draft.status)&&!draft.handoff){status.textContent='막힌 이유 또는 확인받을 내용을 인수인계 메모에 적어 주세요.';return;}
+    if(!current()){status.textContent='업무 또는 현장이 변경되었습니다. 입력을 복사해 두고 목록을 다시 열어 주세요.';return;}
+    const priorNotes=state.notes||[],priorText=JSON.stringify(priorNotes);
+    const controls=[...document.querySelectorAll('#modalRoot input,#modalRoot select,#modalRoot textarea,#modalRoot button')];controls.forEach(el=>el.disabled=true);
+    __hjTeamBusy=true;__modalCloseLocked=true;status.textContent='안전판과 이 기기 저장을 확인하는 중…';
+    try{
+      if(!(await hjSnapshot('팀 업무 변경 전',true,true)))throw new Error('snapshot');
+      if(!current()||state.notes!==priorNotes||JSON.stringify(priorNotes)!==priorText)throw new Error('changed');
+      const note={...(original||{}),id:original?original.id:uid(),date:new Date().toLocaleString('ko-KR'),day:localDate(),text:'[팀 업무]',todo:true,done:draft.status==='done',project:selected,teamTask:draft};
+      const candidate=original?priorNotes.map(n=>n===original?note:n):priorNotes.concat([note]);
+      const saved=await hjTeamPersistNotes(candidate,()=>current()&&state.notes===priorNotes&&JSON.stringify(priorNotes)===priorText);
+      if(!saved.saved)throw new Error('persist');
+      if(!saved.published){status.textContent='이 기기 저장 직후 다른 자료 변경을 감지했습니다. 최신 화면을 덮어쓰지 않았습니다. 입력을 복사하고 저장 상태를 확인해 주세요.';return;}
+      webWorkMarkDirtyAfterPersist();dashboardOperationsRefresh();
+      __modalCloseLocked=false;hjTeamBoard(filters);toast('이 기기에 저장했습니다. 다른 기기 반영은 저장·불러오기 상태를 확인하세요.');
+    }catch(error){
+      status.textContent='안전판·기기 저장 실패 또는 자료 변경으로 중단했습니다. 입력은 유지됩니다. 다른 탭과 저장 공간을 확인해 주세요.';
+    }finally{__hjTeamBusy=false;__modalCloseLocked=false;controls.forEach(el=>{if(el.isConnected)el.disabled=false;});}
+  };
+}
+async function hjTeamPersistNotes(notes,stillCurrent){
+  // 공통 저장 진입점만 사용한다. 후보는 기기 저장 성공 전 live state에 노출하지 않는다.
+  return guardedPersistCurrentState({teamNotes:notes,stillCurrent});
+}
 /* ── ✅ 오늘 할일 (v281) — 대표 요청(9/12): 현장에서 "실리콘 사야 돼" 가 떠오르면 한 줄 적고, 끝나면 체크한다.
    메모(state.notes)에 todo:true 로 얹는다 — 저장 키를 늘리지 않고 백업·복원·PC↔폰 동기화를 그대로 탄다.
    한 줄 = {id, date, text, project, todo:true, done, doneAt, day(YYYY-MM-DD)}.
    날짜 약속(오늘/내일)은 넣지 않는다 — 일정(state.schedule)과 두 집 살림이 되면 '어디 적었더라'가 되살아난다.
    대신 어제까지 안 끝난 것을 '밀린 할일'로 맨 위에 올린다. */
-function hjTodoList(){return (typeof state!=='undefined'&&Array.isArray(state.notes))?state.notes.filter(n=>n&&n.todo):[];}
+function hjTodoList(){return (typeof state!=='undefined'&&Array.isArray(state.notes))?state.notes.filter(n=>n&&n.todo&&!hjIsTeamTask(n)):[];}
 function hjTodoAdd(text,project){
   const t=String(text||'').trim();if(!t)return null;
   state.notes=state.notes||[];
@@ -19630,7 +19740,7 @@ function todoView(projectName){
   openModal('✅ 오늘 할일'+(open.length?' ('+open.length+')':''),body,
     [{label:'끝낸 일 지우기',cls:'ghost',fn:()=>{const fin=hjTodoList().filter(n=>n.done);if(!fin.length){toast('지울 것이 없습니다');return;}
         if(!confirm('끝낸 할일 '+fin.length+'건을 지울까요?'))return;
-        const ids=new Set(fin.map(n=>n.id));state.notes=state.notes.filter(n=>!ids.has(n.id));markDirty();toast(fin.length+'건을 지웠습니다');todoView(currentProject());}},
+        const finished=new Set(fin);state.notes=state.notes.filter(n=>!finished.has(n));markDirty();toast(fin.length+'건을 지웠습니다');todoView(currentProject());}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   const currentProject=()=>root.querySelector('#todoProj')?.value||'';
@@ -19644,7 +19754,7 @@ function todoView(projectName){
     n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();todoView(currentProject());});
   root.querySelectorAll('.todoDel').forEach(b=>b.onclick=()=>{const n=hjTodoList().find(x=>x.id===b.dataset.id);if(!n)return;
     if(!confirm('「'+n.text+'」 를 지울까요?'))return;
-    state.notes=state.notes.filter(x=>x.id!==n.id);markDirty();todoView(currentProject());});
+    state.notes=state.notes.filter(x=>x!==n);markDirty();todoView(currentProject());});
   const first=root.querySelector('#todoText');if(first)setTimeout(()=>{try{first.focus();}catch(_){}},0);
 }
 /* ── 📐 실측 노트 (v279) — 대표 요청(9/12): 실측 때 방마다 한 번 넣어 두면 계산기·견적이 그 값을 가져다 쓴다.
@@ -29516,7 +29626,7 @@ function withAppStateWriteLock(work,options){
   __appStateWriteQueue=run.then(()=>undefined,()=>undefined);
   return run;
 }
-function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverySnapshot){
+function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoverySnapshot,canWrite){
   return new Promise((resolve,reject)=>{
     const open=indexedDB.open('hyeonjang-db',1);let conflict=false,reason=null,tx=null;
     const abort=error=>{reason=error;try{tx.abort();}catch(_){}};
@@ -29526,7 +29636,8 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
     open.onsuccess=()=>{const db=open.result;try{
       tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv'),pointerReq=store.get('paid_commit_pointer');
       const read=(key,onvalue,message)=>{const request=store.get(key);request.onerror=()=>abort(request.error||new Error(message));request.onsuccess=()=>onvalue(request.result);};
-      const writeNormal=(current,journal)=>{if(current){const advancedJournal={...journal,committedAt:data.savedAt};store.put(data,current);store.put(advancedJournal,'paid_commit_journal');store.put(current,'paid_commit_pointer');}store.put(data,'appState');};
+      const candidateCurrent=()=>{try{return !canWrite||canWrite()===true;}catch(_){return false;}};
+      const writeNormal=(current,journal)=>{if(!candidateCurrent()){abortConflict();return;}if(current){const advancedJournal={...journal,committedAt:data.savedAt};store.put(data,current);store.put(advancedJournal,'paid_commit_journal');store.put(current,'paid_commit_pointer');}store.put(data,'appState');};
       const appMatches=(currentData,paid)=>{try{
         if(expectedStamp===null)return currentData===undefined;
         if(!paidUtcIso(expectedStamp)||currentData===undefined)return false;
@@ -29537,7 +29648,7 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
           read('appState',currentApp=>{
             readPaidGenerationRecords(store,(currentRecords,supported)=>{if(!supported||recoverySnapshot.generationEnumerationSupported!==true){abortConflict();return;}
               const currentSnapshot={pointer:rawPointer,journal:currentJournal,appState:currentApp,generationRecords:currentRecords},expectedSnapshot={pointer:recoverySnapshot.pointer,journal:recoverySnapshot.journal,appState:recoverySnapshot.appState,generationRecords:recoverySnapshot.generationRecords};
-              comparePaidRecoveryInTransaction(store,currentSnapshot,expectedSnapshot,same=>{if(!same){abortConflict();return;}currentRecords.forEach(record=>store.delete(record.key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');},abort);
+              comparePaidRecoveryInTransaction(store,currentSnapshot,expectedSnapshot,same=>{if(!same||!candidateCurrent()){abortConflict();return;}currentRecords.forEach(record=>store.delete(record.key));store.delete('paid_commit_pointer');store.delete('paid_commit_journal');store.put(data,'appState');},abort);
             },abort);
           },'appState recovery read failed');
         },'paid journal recovery read failed');
@@ -29560,17 +29671,23 @@ function guardedAppStateWriteAtomic(data,expectedPointer,expectedStamp,recoveryS
     }catch(error){try{db.close();}catch(_){}reject(error);}};
   });
 }
-async function guardedPersistCurrentState(){
+async function guardedPersistCurrentState(teamUpdate){
   return withAppStateWriteLock(async()=>{
     if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
-    if(state._demo)return false;
-    const data=serializeData(),baseMs=Date.parse(__tabStamp||''),candidateMs=Date.parse(data.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))data.savedAt=new Date(baseMs+1).toISOString();validatePaidSerializedState(data);
-    const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoverySnapshot);
-    if(!ok)return false;
-    const completionObserver=window.idbSet;if(typeof completionObserver==='function'&&completionObserver!==__nativeAppStateIdbSet)await completionObserver('appState',paidClone(data));
+    if(state._demo)return teamUpdate?{saved:false}:false;
+    if(teamUpdate&&(!Array.isArray(teamUpdate.teamNotes)||typeof teamUpdate.stillCurrent!=='function'||!teamUpdate.stillCurrent()))return {saved:false};
+    const base=serializeData(),fingerprint=teamUpdate?JSON.stringify({...base,savedAt:''}):null;
+    const unchanged=teamUpdate?()=>teamUpdate.stillCurrent()&&JSON.stringify({...serializeData(),savedAt:''})===fingerprint:undefined;
+    const data=teamUpdate?paidClone(base):base;if(teamUpdate)data.notes=paidClone(teamUpdate.teamNotes);
+    const baseMs=Date.parse(__tabStamp||''),candidateMs=Date.parse(data.savedAt);if(Number.isFinite(baseMs)&&(!Number.isFinite(candidateMs)||candidateMs<=baseMs))data.savedAt=new Date(baseMs+1).toISOString();validatePaidSerializedState(data);
+    const ok=await guardedAppStateWriteAtomic(data,__paidCommitPointerKey,__tabStamp,__paidCommitRecoverySnapshot,unchanged);
+    if(!ok)return teamUpdate?{saved:false}:false;
+    const completionObserver=window.idbSet;if(!teamUpdate&&typeof completionObserver==='function'&&completionObserver!==__nativeAppStateIdbSet)await completionObserver('appState',paidClone(data));
+    const published=teamUpdate?unchanged():true;
     __tabStamp=data.savedAt;__paidCommitRecoveryMalformedPointer=false;__paidCommitRecoverySnapshot=null;
+    if(teamUpdate){if(published)state.notes=teamUpdate.teamNotes;else{__tabStale=true;toast('자료 변경 감지 — 최신 자료 확인 후 다시 편집하세요.');}}
     try{if(__tabBC)__tabBC.postMessage({t:'saved',at:data.savedAt});}catch(e){}
-    return true;
+    return teamUpdate?{saved:true,published}:true;
   });
 }
 function paidCommitWriteAtomic(candidate,expectedPointer,generationKey,expectedStamp,manualCreateIntent){
