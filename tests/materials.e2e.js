@@ -106,6 +106,9 @@ assert(/materials:supplied\?current\.materials:\(current\.materials\|\|\[\]\)/.t
   await page.evaluate(() => { state.materials.push({ id: 'mat_x', name: '타일 본드', spec: '20kg', unit: '통', entries: [{ id: 'me_x', supplier: '한밭철물', url: '', price: 18000, checkedAt: '2026-09-01' }], createdAt: '', updatedAt: '' }); materialCatalog(''); });
   t = await modalText();
   assert(/자재 구매처·단가 \(2\)/.test(t) && /실크 벽지/.test(t) && /타일 본드/.test(t) && /11,900원\/롤/.test(t), '⑦ 목록 2건·최저가 요약: ' + t.slice(0, 120));
+  // 모달이 열리며 스스로 거는 첫 포커스(openModal 의 setTimeout)가 끝난 뒤에 친다 —
+  // 사람 손으로는 생기지 않지만 테스트가 앱보다 빨라 포커스를 뺏기는 경쟁이 있었다(검사 내용은 그대로).
+  await page.waitForFunction(() => document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('modal'));
   await page.evaluate(() => { document.getElementById('matSearch').__same = true; });
   await page.fill('#matSearch', '본드'); await page.waitForTimeout(300);
   t = await modalText();
