@@ -109,6 +109,12 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   r = await run('electric', { w: '10000', volt: '220' });
   // 45.5A ×1.25 = 56.8 → 60A → 16㎟ (옛 표는 10㎟ 로 얇았다)
   assert(val(r, '차단기 참고') === '60 A' && /16㎟/.test(val(r, '전선 굵기 참고')), '② 전기 60A 전선 16㎟: ' + JSON.stringify(r));
+  r = await run('electric', { w: '14000', volt: '220' });
+  // 63.6A ×1.25 = 79.5 → 75A 로는 모자라 100A → 35㎟ (25㎟ 는 84A 라 100A 차단기에 얇다)
+  assert(val(r, '차단기 참고') === '100 A' && /35㎟/.test(val(r, '전선 굵기 참고')), '② 전기 100A 전선 35㎟: ' + JSON.stringify(r));
+  r = await run('electric', { w: '12000', volt: '220' });
+  // 54.5A ×1.25 = 68.2 → 75A → 25㎟ (16㎟ 는 66A 라 모자란다)
+  assert(val(r, '차단기 참고') === '75 A' && /25㎟/.test(val(r, '전선 굵기 참고')), '② 전기 75A 전선 25㎟: ' + JSON.stringify(r));
   r = await run('electric', { w: '3000', volt: '220', pf: '0.8' });
   assert(val(r, '전류') === '17 A (220V, 역률 0.8)' && val(r, '차단기 참고') === '30 A' && !/모터/.test(r.note), '② 전기 역률: ' + JSON.stringify(r));
   r = await run('electric', { w: '3000', volt: '380' });
@@ -455,6 +461,6 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   // ⑬ 오류 0
   assert(errors.length === 0, '⑬ pageerror: ' + errors.join(' | '));
 
-  console.log('material-calc.e2e OK (① 메뉴 ② 계산 44건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
+  console.log('material-calc.e2e OK (① 메뉴 ② 계산 50건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
