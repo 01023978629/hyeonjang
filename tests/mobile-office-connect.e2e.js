@@ -93,9 +93,9 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_OFFICE_SCREENSHOT_DIR)r
     assert.deepEqual(Object.fromEntries(Object.entries(result).map(([k,v])=>[k,v.mode])),{recent:'recent',stale:'stale',offline:'offline',error:'error',future:'never',invalid:'never',dateOnly:'never',invalidDay:'never',invalidHour:'never',invalidMinute:'never',leap:'stale'});
     assert.equal(result.offline.lastAt,'2026-09-07T23:59:00.000Z');assert.equal(result.error.lastAt,'2026-09-07T23:59:00.000Z');
   });
-  await run('바로가기 정확한 기존 대상·고정 포털·116 메뉴 유지',async t=>{
+  await run('바로가기 정확한 기존 대상·고정 포털·117 메뉴 유지',async t=>{
     const before=await snap(t.page);await open(t);
-    assert.equal(await t.page.evaluate(()=>MORE_CATS.flatMap(c=>c.items).length),116);
+    assert.equal(await t.page.evaluate(()=>MORE_CATS.flatMap(c=>c.items).length),117);
     const link=await t.page.locator('#webWorkStaffPortal').evaluate(e=>({href:e.href,target:e.target,rel:e.rel}));assert.deepEqual(link,{href:'https://01023978629.github.io/manmool/office-login.html',target:'_blank',rel:'noopener noreferrer'});
     for(const [id,fn] of [['webWorkOfficeOpen','officeIntakeOpen'],['webWorkApartmentOpen','aptOrderManage'],['webWorkConnectionSettings','openGdriveSetup']]){
       await t.page.evaluate(fn=>{window.__shortcut=[];window.__oldShortcut=window[fn];window[fn]=(...args)=>window.__shortcut.push({fn,args});},fn);
