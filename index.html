@@ -2634,7 +2634,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v289-reportmedia';
+const APP_BUILD='hyeonjang-v290-mobileops';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6744,7 +6744,7 @@ function viewDashboard(){
   if(!state.projects.length){
     const estHtml=dashboardEstimateDetailsHTML();
     const monthHtml=monthlyQuoteHTML();
-    return `<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
+    return dashboardTodoHTML()+dashboardTodayHTML()+`<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
         <button class="moss" id="gdPickFolder" style="font-size:15px;padding:12px 20px">📁 폴더 한번에 선택(자동)</button>
@@ -6763,7 +6763,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+dashboardTodayHTML();
+  let html=dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -7195,7 +7195,35 @@ function hjCallFollowup(c){
       {label:'건너뛰기',cls:'ghost',fn:closeModal}
     ]);
 }
-// 대시보드 맨 위 '오늘 일정' — 현장 가는 1인 사장님이 아침에 앱 열면 오늘 작업·현장이 바로 보이게
+// 보기 전용 운영 요약. 기존 notes/schedule을 읽으며 완료·배정·동기화를 자동 실행하지 않는다.
+function dashboardTodoSummary(){
+  const open=hjTodoList().filter(n=>!n.done),today=localDate();
+  const late=open.filter(n=>n.day&&n.day<today).length;
+  return open.length?'미완료 '+open.length+'건 · 밀린 할일 '+late+'건':'등록된 미완료 할 일이 없습니다.';
+}
+function dashboardTodoHTML(){
+  return '<section id="dashboardTodo" aria-labelledby="dashboardTodoTitle" style="border:1px solid var(--line-soft);border-radius:12px;padding:13px;margin-bottom:12px">'+
+    '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardTodoOpen" class="clay" onclick="todoView()" style="min-height:44px">할 일 확인·추가</button>'+
+    '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button></div>'+
+    '<p class="hint" style="margin:7px 0 0">밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
+}
+function dashboardPrepLabel(s){
+  if(!s)return '일정 변경됨 · 다시 확인';
+  const p=state.projects.find(p=>p.name===s.project),items=hjPrepFor(s,p).items;
+  const done=items.filter(x=>hjPrepState(s)[x]).length;
+  return items.length?'챙김 '+done+'/'+items.length+'개':'준비물 목록 확인';
+}
+function dashboardOperationsRefresh(){
+  // 버튼을 교체하지 않아 모달을 닫았을 때 원래 누른 곳으로 초점이 돌아간다.
+  const summary=document.getElementById('dashboardTodoSummary');
+  if(summary)summary.textContent=dashboardTodoSummary();
+  document.querySelectorAll('[data-dashboard-prep]').forEach(el=>{
+    const matches=(state.schedule||[]).filter(s=>String(s.id)===el.dataset.dashboardPrep);
+    el.textContent=dashboardPrepLabel(matches.length===1?matches[0]:null);
+  });
+}
+// 대시보드 맨 위 '오늘 일정' — 출발 전 챙김과 작업일지에 바로 연결한다.
 function dashboardTodayHTML(){
   const sch=(state.schedule||[]); if(!sch.length)return '';
   const today=localDate();
@@ -7203,14 +7231,14 @@ function dashboardTodayHTML(){
   const upcoming=sch.filter(s=>s.date>today).slice().sort((a,b)=>String((a.date||'')+(a.time||'')).localeCompare(String((b.date||'')+(b.time||'')))).slice(0,3);
   if(!todays.length&&!upcoming.length)return '';
   const chip=(s,showDate)=>{
-    const inner=`<button data-gosch="${escapeAttr(s.id)}" style="display:block;${s.routine?'flex:1;min-width:0;margin:0;':'width:100%;margin:4px 0;'}text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;cursor:pointer;font:inherit">`+
+    const inner=`<button data-gosch="${escapeAttr(s.id)}" style="display:block;min-height:44px;white-space:normal;overflow-wrap:anywhere;${s.routine?'flex:1;min-width:0;margin:0;':'width:100%;margin:4px 0;'}text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;cursor:pointer;font:inherit">`+
     `<b style="color:var(--blueprint)">${showDate?escapeHtml(String(s.date).slice(5))+' ':''}${s.time?escapeHtml(s.time)+' ':''}${escapeHtml(s.title||'작업')}</b>`+
     `${s.project?`<span style="margin-left:8px;font-size:12px;color:var(--muted)">📍${escapeHtml(s.project)}</span>`:''}`+
     `${s.workers?`<span style="margin-left:6px;font-size:12px;color:var(--muted)">👷${escapeHtml(String(s.workers))}명</span>`:''}</button>`;
     // 운영 루틴 일정은 [▶ 바로] 한 번으로 해당 화면(사진/광고/회계)이나 백업 실행으로 점프
     return s.routine
       ?`<div style="display:flex;gap:6px;align-items:stretch;margin:4px 0">${inner}<button class="blue tiny" data-routinego="${escapeAttr(s.title)}" style="flex:0 0 auto;padding:0 14px;border-radius:9px" title="바로 실행">▶ 바로</button></div>`
-      :inner;
+      :inner+`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px"><button type="button" class="ghost" data-schprep="${escapeAttr(s.id)}" aria-label="${escapeAttr((s.title||'일정')+' 출발 전 챙김')}" style="min-height:44px;white-space:normal">🧰 <span data-dashboard-prep="${escapeAttr(s.id)}">${escapeHtml(dashboardPrepLabel(s))}</span></button><button type="button" class="ghost" data-schreport="${escapeAttr(s.id)}" aria-label="${escapeAttr((s.title||'일정')+' 작업일지')}" style="min-height:44px">📋 작업일지</button></div>`;
   };
   let h=`<div class="dash-sec">📅 오늘 일정 <span style="font-size:11px;color:var(--muted);font-weight:400">· ${today}</span></div>`;
   h+= todays.length ? todays.map(s=>chip(s,false)).join('') : `<div class="hint" style="margin:0 0 6px">오늘 등록된 작업이 없습니다.</div>`;
@@ -14383,6 +14411,15 @@ function aiWelcomeRich(){
 }
 
 /* ═══════════ 🔍 검색 강화 — 상단 통합 검색(현장·사진·메모·거래처) ═══════════ */
+function hjSearchProjectOpen(name){
+  const matches=state.projects.filter(p=>p.name===name);
+  if(matches.length!==1){toast('현장이 변경되었거나 같은 이름이 겹칩니다. 다시 검색해 주세요.');return false;}
+  if(closeModal()===false)return false;
+  state.activeProject=name;state.tab='project';__projView=null;
+  state.search='';__aptPhotoSearchQuery=null;__showDup=false;
+  const input=document.getElementById('globalSearch');if(input)input.value='';
+  render();syncMobileNav();return true;
+}
 function hjGlobalSearch(){
   const body=
     '<input id="gsInput" placeholder="현장·작업명·공정·사진·메모 검색…" aria-label="통합 검색어" style="width:100%;padding:12px;font-size:16px;border:2px solid var(--clay);border-radius:11px;margin-bottom:10px" autocomplete="off">'+
@@ -14396,7 +14433,7 @@ function hjGlobalSearch(){
     if(!q){box.innerHTML='<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:20px">검색어를 입력하세요</div>';return;}
     const r=universalSearch(q);
     if(!r.총건수){box.innerHTML='<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:20px">"'+escapeHtml(q)+'" 검색 결과가 없습니다</div>';return;}
-    const GROUP_TAB={'현장':'projects','파일':'photos','일정·일지':'schedule','견적':'estimates','연락처':'contacts','메모':'dashboard','거래처':'dashboard'};
+    const GROUP_TAB={'현장':'project','파일':'photos','일정·일지':'schedule','견적':'estimates','연락처':'contacts','메모':'dashboard','거래처':'dashboard'};
     const titleOf=(g,o)=>{if(g==='현장')return o.현장;if(g==='파일')return o.이름;if(g==='일정·일지')return (o.날짜?o.날짜+' ':'')+(o.제목||'');if(g==='견적')return o.제목;if(g==='연락처')return o.이름;if(g==='메모')return o.내용||o.메모||'';if(g==='거래처')return o.이름||o.거래처;const k=Object.keys(o)[0];return o[k];};
     const subOf=(g,o)=>{const parts=[];if(o.일치)parts.push(o.일치);if(g==='현장'&&o.단계)parts.unshift(o.단계);if(g==='견적'&&o.합계원)parts.unshift(hjMan(o.합계원));if((g==='연락처'||g==='거래처')&&o.전화)parts.unshift(o.전화);if(g==='파일'&&o.현장)parts.unshift(o.현장);return parts.filter(Boolean).slice(0,2).join(' · ');};
     let html='<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">'+r.총건수+'건</div>';
@@ -14406,11 +14443,12 @@ function hjGlobalSearch(){
       html+='<div style="font-size:12px;font-weight:700;margin:8px 0 4px;color:'+hjBrandColor('#0b4ea2')+'">'+g+' ('+items.length+')</div>';
       html+=items.slice(0,6).map(it=>{
         const title=titleOf(g,it),sub=subOf(g,it),photo=g==='파일'&&it.종류==='photo';
-        return '<'+(photo?'button type="button"':'div')+' class="gsItem" data-tab="'+escapeAttr(tab)+'"'+(photo?' data-photo-query="'+escapeAttr(q)+'"':'')+' style="display:block;width:100%;text-align:left;min-height:44px;white-space:normal;overflow-wrap:anywhere;background:var(--paper);color:var(--ink);padding:9px 10px;border:1px solid var(--line-soft);border-radius:9px;margin-bottom:5px;cursor:pointer"><b style="font-size:12.5px">'+escapeHtml(title||'(제목 없음)')+'</b>'+(sub?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(sub)+'</span>':'')+'</'+(photo?'button':'div')+'>';
+        return '<button type="button" class="gsItem" data-tab="'+escapeAttr(tab)+'"'+(g==='현장'?' data-search-project="'+escapeAttr(it.현장)+'"':'')+(photo?' data-photo-query="'+escapeAttr(q)+'"':'')+' style="display:block;width:100%;text-align:left;min-height:44px;white-space:normal;overflow-wrap:anywhere;background:var(--paper);color:var(--ink);padding:9px 10px;border:1px solid var(--line-soft);border-radius:9px;margin-bottom:5px;cursor:pointer"><b style="font-size:12.5px">'+escapeHtml(title||'(제목 없음)')+'</b>'+(sub?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(sub)+'</span>':'')+'</button>';
       }).join('');
     });
     box.innerHTML=html;
     box.querySelectorAll('.gsItem').forEach(el=>{el.onclick=()=>{
+      if(el.hasAttribute('data-search-project'))return hjSearchProjectOpen(el.dataset.searchProject);
       if(closeModal()===false)return;
       try{
         state.tab=el.dataset.tab;
@@ -14776,10 +14814,22 @@ function hjPrepFor(sch,project){
 }
 function hjPrepState(sch){return (sch&&sch.prep&&typeof sch.prep==='object')?sch.prep:{};}
 function prepCheck(schId){
-  const sch=(state.schedule||[]).find(x=>String(x.id)===String(schId));
+  dashboardOperationsRefresh();
+  const matches=(state.schedule||[]).filter(x=>String(x.id)===String(schId));
+  const sch=matches.length===1?matches[0]:null;
   if(!sch){toast('일정을 찾지 못했습니다');return;}
   const project=(state.projects||[]).find(p=>p.name===sch.project);
   const {kinds,items}=hjPrepFor(sch,project);
+  const recordKey=()=>JSON.stringify([sch.project,sch.date,sch.time,sch.title,sch.memo,hjPrepFor(sch,state.projects.find(p=>p.name===sch.project)).items]);
+  const openedKey=recordKey();
+  const stillCurrent=()=>{
+    const live=(state.schedule||[]).filter(x=>String(x.id)===String(schId));
+    if(live.length===1&&live[0]===sch&&recordKey()===openedKey)return true;
+    toast('일정이나 준비물이 변경되었습니다. 내용을 다시 확인하고 체크해 주세요.');
+    dashboardOperationsRefresh();
+    if(live.length===1)prepCheck(schId);
+    return false;
+  };
   const done=hjPrepState(sch);
   const left=items.filter(x=>!done[x]).length;
   const rows=items.map(x=>'<label class="prepRow" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line-soft);min-height:46px">'+
@@ -14799,11 +14849,11 @@ function prepCheck(schId){
         if(!had){toast('이미 기본 목록입니다');return;}
         if(!confirm('고쳐 둔 '+kinds.join('·')+' 준비물을 기본 목록으로 되돌릴까요?'))return;
         kinds.forEach(k=>{delete mine[k];});hjPrepSetsSave(mine);toast('기본 목록으로 되돌렸습니다');prepCheck(schId);}},
-     {label:'전부 체크',cls:'ghost',fn:()=>{const st=Object.assign({},hjPrepState(sch));items.forEach(x=>{st[x]=true;});sch.prep=st;markDirty();toast('전부 실었음으로 표시했습니다');prepCheck(schId);}},
+     {label:'전부 체크',cls:'ghost',fn:()=>{if(!stillCurrent())return;const st=Object.assign({},hjPrepState(sch));items.forEach(x=>{st[x]=true;});sch.prep=st;markDirty();toast('전부 실었음으로 표시했습니다');prepCheck(schId);}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   hjSiteBriefBind();hjModalTapTargets();
-  root.querySelectorAll('.prepChk').forEach(c=>c.onchange=()=>{const st=Object.assign({},hjPrepState(sch));
+  root.querySelectorAll('.prepChk').forEach(c=>c.onchange=()=>{if(!stillCurrent())return;const st=Object.assign({},hjPrepState(sch));
     if(c.checked)st[c.dataset.x]=true;else delete st[c.dataset.x];
     sch.prep=st;markDirty();prepCheck(schId);});
   root.querySelectorAll('.prepDel').forEach(b=>b.onclick=()=>{const x=b.dataset.x;
@@ -19550,18 +19600,19 @@ function hjTodoAdd(text,project){
   const t=String(text||'').trim();if(!t)return null;
   state.notes=state.notes||[];
   const n={id:uid(),date:new Date().toLocaleString('ko-KR'),day:localDate(),text:t,project:String(project||''),todo:true,done:false};
-  state.notes.push(n);markDirty();return n;
+  state.notes.push(n);markDirty();dashboardOperationsRefresh();return n;
 }
 function hjTodoOpenCount(){return hjTodoList().filter(n=>!n.done).length;}
-function todoView(){
+function todoView(projectName){
+  dashboardOperationsRefresh();
   const list=hjTodoList();
   const today=localDate();
   const open=list.filter(n=>!n.done);
   const late=open.filter(n=>(n.day||today)<today);
   const now=open.filter(n=>!((n.day||today)<today));
   const done=list.filter(n=>n.done).slice(-15).reverse();
-  const projs=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects.filter(p=>!p.archived).slice(0,30):[];
-  const active=(typeof state!=='undefined'&&state.activeProject)||'';
+  const projs=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects.filter(p=>!p.archived):[];
+  const active=typeof projectName==='string'?projectName:(state.activeProject||'');
   const row=(n,dim)=>'<div class="todoRow" data-id="'+escapeAttr(n.id)+'" style="display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--line-soft)'+(dim?';opacity:.55':'')+'">'+
       '<input type="checkbox" class="todoChkBox" data-id="'+escapeAttr(n.id)+'"'+(n.done?' checked':'')+' aria-label="'+escapeAttr(n.text+' 끝냈음')+'" style="width:22px;height:22px;flex:none">'+
       '<span style="flex:1;min-width:0;font-size:13.5px'+(n.done?';text-decoration:line-through':'')+'">'+escapeHtml(n.text)+
@@ -19579,19 +19630,21 @@ function todoView(){
   openModal('✅ 오늘 할일'+(open.length?' ('+open.length+')':''),body,
     [{label:'끝낸 일 지우기',cls:'ghost',fn:()=>{const fin=hjTodoList().filter(n=>n.done);if(!fin.length){toast('지울 것이 없습니다');return;}
         if(!confirm('끝낸 할일 '+fin.length+'건을 지울까요?'))return;
-        const ids=new Set(fin.map(n=>n.id));state.notes=state.notes.filter(n=>!ids.has(n.id));markDirty();toast(fin.length+'건을 지웠습니다');todoView();}},
+        const ids=new Set(fin.map(n=>n.id));state.notes=state.notes.filter(n=>!ids.has(n.id));markDirty();toast(fin.length+'건을 지웠습니다');todoView(currentProject());}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
+  const currentProject=()=>root.querySelector('#todoProj')?.value||'';
   const add=()=>{const el=root.querySelector('#todoText');const pj=(root.querySelector('#todoProj')||{}).value||'';
     if(!el.value.trim()){toast('할 일을 한 줄 적어 주세요');return;}
-    hjTodoAdd(el.value,pj);toast('할일에 넣었습니다');todoView();};
+    if(pj&&state.projects.filter(p=>p.name===pj&&!p.archived).length!==1){toast('현장이 변경되었습니다. 할 일을 복사한 뒤 창을 다시 열어 주세요.');return;}
+    hjTodoAdd(el.value,pj);toast('할일에 넣었습니다');todoView(pj);};
   root.querySelector('#todoAdd').onclick=add;
   root.querySelector('#todoText').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add();}};
   root.querySelectorAll('.todoChkBox').forEach(c=>c.onchange=()=>{const n=hjTodoList().find(x=>x.id===c.dataset.id);if(!n)return;
-    n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();todoView();});
+    n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();todoView(currentProject());});
   root.querySelectorAll('.todoDel').forEach(b=>b.onclick=()=>{const n=hjTodoList().find(x=>x.id===b.dataset.id);if(!n)return;
     if(!confirm('「'+n.text+'」 를 지울까요?'))return;
-    state.notes=state.notes.filter(x=>x.id!==n.id);markDirty();todoView();});
+    state.notes=state.notes.filter(x=>x.id!==n.id);markDirty();todoView(currentProject());});
   const first=root.querySelector('#todoText');if(first)setTimeout(()=>{try{first.focus();}catch(_){}},0);
 }
 /* ── 📐 실측 노트 (v279) — 대표 요청(9/12): 실측 때 방마다 한 번 넣어 두면 계산기·견적이 그 값을 가져다 쓴다.
