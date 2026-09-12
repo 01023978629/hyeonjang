@@ -17,6 +17,10 @@
      ⑭ 키보드가 올라와도 아래 버튼 바가 입력칸을 덮지 않는다, 버튼은 44px, 제목은 이름 그대로
      ⑮ 현장을 바꿔도 포커스가 현장 고르기에 남고, 글자마다 안내 문장을 다시 읽지 않는다, 테두리 색이 글과 같이 간다
      ⑯ 정작 필요한 순간에 보인다 — 「📋 착공 전 체크」와 「🧰 출발 전 챙김」에서 바로 열린다
+     ⑰ 한 글자씩 쳐도 번호 앞자리가 남지 않는다(실제 키보드), 막힌 입력은 아무것도 만들지 않는다
+     ⑱ 낱말 하나하나·단위 하나하나를 따로 확인한다(한 낱말만 살아 있어도 통과하면 안 된다)
+     ⑲ 칸마다 확인일이 따로 남는다 — 다른 칸을 고쳐도 옛 칸의 날짜는 그대로다
+     ⑳ 복사·공유가 자료 교체 뒤에도 새 객체를 읽고, 나가는 글에는 번호가 섞이지 않는다
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -217,12 +221,16 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
     return { out, kept: q.siteRules.etc };
   });
   assert(scrub.out.etc === undefined && scrub.out.office === '정문 옆 1층, 042-000-0000' && scrub.out.at === '2026-09-12', '⑧ 백업에서 빠진다: ' + JSON.stringify(scrub.out));
+  assert(scrub.kept === '도어락 9876', '⑧ 백업에서 빼는 것이지 화면 자료를 지우는 것이 아니다: ' + JSON.stringify(scrub.kept));
+  const warnRole = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .srWarn')].map(w => w.getAttribute('role')));
+  assert(warnRole.length === 8 && warnRole.every(r => r === 'alert'), '⑧ 경고는 읽어 주는 자리다: ' + JSON.stringify(warnRole));
   await page.evaluate(() => { delete state.projects.find(x => x.name === '평화로운아파트').siteRules.etc; });
 
   // ⑨ 보관 현장도 열린다
   await page.evaluate(() => { state.projects.find(x => x.name === '유성빌라').archived = true; siteRulesView(); });
   opts = await page.evaluate(() => [...document.querySelectorAll('#srProj option')].map(o => o.textContent));
   assert(opts.some(o => /유성빌라 「보관」/.test(o)), '⑨ 보관 현장이 목록에: ' + JSON.stringify(opts));
+  assert(opts.findIndex(o => /「보관」/.test(o)) === opts.length - 1, '⑨ 보관 현장은 뒤쪽에: ' + JSON.stringify(opts));
   await page.selectOption('#srProj', '유성빌라');
   assert(/현장 부대사항 — 유성빌라/.test(await modalText()), '⑨ 보관 현장이 열린다');
   await type('park', '지상 방문차 30분');
@@ -409,7 +417,97 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
   await page.click('#modalRoot .hjSiteOpen');
   assert(/현장 부대사항 — 평화로운아파트/.test(await modalText()), '⑯ 출발 전 챙김에서 바로 열린다');
 
+  // ⑰ 실제 키보드로 한 글자씩 — 네 자리를 다 치기 전 앞자리가 남으면 안 된다
+  const typed = await page.evaluate(() => {
+    state.projects = [{ name: '타자현장', stage: 1, received: 0, phases: [], cost: {} }];
+    state.activeProject = '타자현장'; state.dirty = false;
+    siteRulesView('타자현장');
+    return true;
+  });
+  assert(typed);
+  await page.click('#modalRoot .srIn[data-k="etc"]');
+  await page.keyboard.type('도어락 9876', { delay: 5 });
+  let after = await rules('타자현장');
+  // 숫자는 한 자리도 남으면 안 된다(네 자리를 다 치기 전 앞자리가 남으면 경우의 수가 열 가지로 줄어든다)
+  assert(!/[0-9]/.test(String((after || {}).etc || '')), '⑰ 번호 앞자리도 남지 않는다: ' + JSON.stringify(after));
+  const backup = await page.evaluate(() => JSON.stringify(serializeData().projects[0].siteRules || {}));
+  assert(!/9|8|7|6/.test(backup.replace(/2026-\d\d-\d\d/g, '')), '⑰ 백업에도 없다: ' + backup);
+  const copyOut = await page.evaluate(() => hjSiteText('타자현장', (state.projects[0].siteRules) || {}));
+  assert(!/987|9876/.test(copyOut), '⑰ 복사 글에도 없다: ' + copyOut);
+  // 처음부터 번호만 치면 아무것도 만들지 않는다
+  const onlyNum = await page.evaluate(async () => {
+    state.projects.push({ name: '번호만현장', stage: 0, received: 0, phases: [], cost: {} });
+    state.dirty = false;
+    siteRulesView('번호만현장');
+    const el = document.querySelector('#modalRoot .srIn[data-k="etc"]');
+    for (const v of ['1', '12', '123', '1234']) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    const p = state.projects.find(x => x.name === '번호만현장');
+    return { has: Object.prototype.hasOwnProperty.call(p, 'siteRules'), dirty: state.dirty };
+  });
+  assert(onlyNum.has === false && onlyNum.dirty === false, '⑰ 막힌 입력은 빈 규칙 객체도 저장 대기도 만들지 않는다: ' + JSON.stringify(onlyNum));
+  await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== '번호만현장'); siteRulesView('타자현장'); });
+  // 단위를 붙이면 그대로 저장된다
+  await page.fill('#modalRoot .srIn[data-k="etc"]', '');
+  await page.click('#modalRoot .srIn[data-k="park"]');
+  await page.keyboard.type('지하 2층 B구역', { delay: 5 });
+  assert((await rules('타자현장')).park === '지하 2층 B구역', '⑰ 단위가 붙은 숫자는 그대로: ' + JSON.stringify(await rules('타자현장')));
+
+  // ⑱ 낱말·단위를 하나씩 따로 확인한다
+  const words = await page.evaluate(() => ({
+    yes: ['비밀번호 1234', '비번 12', '도어락 9', '도어록 98', '도어키 4321', '번호키 8282', '마스터키 7', '공동현관 0000', '현관 1234', '출입 5678', '1234', '#12', '5678*'].map(v => [v, hjLooksLikeAccessCode(v)]),
+    no: ['현관 1층', '공동현관 폭 1100mm', '보양비 30000원', '출입 2명', '현관 앞 3m', '엘리베이터 3호기', '2026년 준공', '톤백 25000*2대', '042-486-1234', '도어락 교체 예정 (2026년)', '방문차량 등록 #1234 (관리실)'].map(v => [v, hjLooksLikeAccessCode(v)])
+  }));
+  assert(words.yes.every(x => x[1] === true), '⑱ 막아야 하는데 통과: ' + JSON.stringify(words.yes.filter(x => !x[1])));
+  assert(words.no.every(x => x[1] === false), '⑱ 정상 메모를 막는다: ' + JSON.stringify(words.no.filter(x => x[1])));
+
+  // ⑲ 칸마다 확인일 — 다른 칸을 고쳐도 옛 날짜가 살아 있다
+  const dated = await page.evaluate(async () => {
+    const p = state.projects[0];
+    p.siteRules = { hours: '평일 09~18시', park: '지하 2층', at: '2026-03-01', atMap: { hours: '2026-03-01', park: '2026-03-01' } };
+    siteRulesView('타자현장');
+    const el = document.querySelector('#modalRoot .srIn[data-k="waste"]');
+    el.value = '만물 자가 반출'; el.dispatchEvent(new Event('input', { bubbles: true }));
+    const r = state.projects[0].siteRules;
+    return { map: r.atMap, text: hjSiteText('타자현장', r), today: localDate() };
+  });
+  assert(dated.map.hours === '2026-03-01' && dated.map.park === '2026-03-01' && dated.map.waste === dated.today,
+    '⑲ 고친 칸만 오늘로: ' + JSON.stringify(dated.map));
+  assert(dated.text.indexOf('· 출입·작업 시간: 평일 09~18시 (2026-03-01 확인)') > 0, '⑲ 줄마다 언제 들은 것인지: ' + dated.text);
+  assert(dated.text.indexOf('※ 2026-03-01~' + dated.today + ' 현장에서') > 0, '⑲ 기간으로 밝힌다: ' + dated.text);
+
+  // ⑳ 자료 교체 뒤에도 새 객체를 읽고, 나가는 글에 번호가 섞이지 않는다
+  const fresh = await page.evaluate(() => {
+    window.__copied = ''; navigator.clipboard = { writeText: t => { window.__copied = t; return Promise.resolve(); } };
+    siteRulesView('타자현장');
+    const snap = JSON.parse(JSON.stringify(serializeData()));
+    snap.projects[0].siteRules.park = '지상 방문차 30분';
+    snap.projects[0].siteRules.etc = '도어락 9876';        // 옛 자료·다른 기기에서 섞여 들어온 번호
+    applyData(snap);
+    [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /복사/.test(b.textContent)).click();
+    return window.__copied;
+  });
+  await page.waitForFunction(() => !!window.__copied);
+  const copied2 = await page.evaluate(() => window.__copied);
+  assert(/지상 방문차 30분/.test(copied2), '⑳ 자료를 바꾸면 새 객체를 읽는다: ' + copied2);
+  assert(!/9876/.test(copied2), '⑳ 나가는 글에 번호가 섞이지 않는다: ' + copied2);
+  // 복원을 거치지 않고 화면 자료에 직접 섞여 있는 번호도 나가는 글에는 들어가면 안 된다
+  const direct = await page.evaluate(() => {
+    // 복원을 거치지 않고 화면 자료에 그대로 들어 있는 경우를 따로 세운다
+    state.projects = [{ name: '섞인현장', stage: 1, received: 0, phases: [], cost: {},
+      siteRules: { park: '지상 방문차 30분', etc: '도어락 9876', atMap: { park: '2026-03-01' } } }];
+    state.activeProject = '섞인현장';
+    window.__copied = '';
+    siteRulesView('섞인현장');
+    const has = !!(state.projects[0].siteRules || {}).etc;
+    [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /복사/.test(b.textContent)).click();
+    return has;
+  });
+  const copied3 = await page.evaluate(() => hjSiteText('섞인현장', state.projects[0].siteRules));
+  assert(direct && !/9876|987/.test(copied3), '⑳ 화면 자료에 남아 있어도 나가는 글에는 안 넣는다: ' + copied3);
+  assert(/지상 방문차 30분/.test(copied3), '⑳ 나머지 줄은 그대로: ' + copied3);
+  assert((await page.evaluate(() => state.projects[0].siteRules.etc)) === '도어락 9876', '⑳ 화면 자료를 지우는 것은 아니다');
+
   assert(errors.length === 0, '⑦ pageerror: ' + errors.join(' | '));
-  console.log('site-rules.e2e OK (① 메뉴·빈 현장 ② 현장에 저장·개수 ③ 왕복·출입정보 구분 ④ 복사 글 ⑤ 공유 ⑥ 현장 전환 ⑦ 비밀번호 칸 없음 ⑧ 출입번호 차단 ⑨ 보관 현장 ⑩ 자료 교체 ⑪ 읽기는 읽기만 ⑫ 폴백 ⑬ 선택 복원 ⑭ 키보드·44px·제목 ⑮ 포커스·낭독·테두리 ⑯ 착공 전·출발 전 진입점)');
+  console.log('site-rules.e2e OK (① 메뉴·빈 현장 ② 현장에 저장·개수 ③ 왕복·출입정보 구분 ④ 복사 글 ⑤ 공유 ⑥ 현장 전환 ⑦ 비밀번호 칸 없음 ⑧ 출입번호 차단 ⑨ 보관 현장 ⑩ 자료 교체 ⑪ 읽기는 읽기만 ⑫ 폴백 ⑬ 선택 복원 ⑭ 키보드·44px·제목 ⑮ 포커스·낭독·테두리 ⑯ 착공 전·출발 전 진입점 ⑰ 한 글자씩 ⑱ 낱말·단위 ⑲ 칸별 확인일 ⑳ 교체·유출)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
