@@ -19457,7 +19457,11 @@ function materialCalc(catId,preset,logId,focusK){
     root.querySelectorAll('.calcChip').forEach(ch=>{let set={};try{set=JSON.parse(ch.dataset.set||'{}');}catch(_){}const on=Object.keys(set).length&&Object.keys(set).every(k=>String(v[k])===String(set[k]));ch.setAttribute('aria-pressed',on?'true':'false');ch.style.borderColor=on?'var(--moss)':'var(--line-soft)';ch.style.background=on?'var(--paper-2)':'var(--paper)';ch.style.fontWeight=on?'700':'400';});
     if(!res.rows.length){out.innerHTML='<span style="color:var(--muted-2)">'+escapeHtml(res.note||'값을 넣어 주세요')+'</span>';if(tools)tools.hidden=true;return '';}
     const est=hjCalcEstimate(res.main);
-    out.innerHTML=res.rows.map((r,i)=>'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span'+(i===0?' style="font-weight:700"':'')+'>'+escapeHtml(r[0])+'</span><b style="text-align:right'+(i===0?';color:#0a7f43;font-size:20px':'')+'">'+escapeHtml(r[1])+'</b></div>').join('')+
+    out.innerHTML=res.rows.map((r,i)=>{   // 첫 줄은 크게, 괄호 안 설명은 작은 글씨로 아래에 — 폰 폭에서 라벨이 두 줄로 깨지지 않게
+      const cut=i===0?String(r[1]).indexOf(' ('):-1;const head=cut>0?String(r[1]).slice(0,cut):r[1];const tail=cut>0?String(r[1]).slice(cut+1):'';
+      return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span style="white-space:nowrap'+(i===0?';font-weight:700':'')+'">'+escapeHtml(r[0])+'</span>'+
+        '<b style="text-align:right;min-width:0'+(i===0?';color:#0a7f43;font-size:20px':'')+'">'+escapeHtml(head)+
+        (tail?'<span style="display:block;font-size:11.5px;color:var(--muted-2);font-weight:400">'+escapeHtml(tail)+'</span>':'')+'</b></div>';}).join('')+
       (est?'<div style="margin-top:6px;font-size:12px;color:var(--moss)">💰 '+escapeHtml(hjCalcEstText(est))+'</div>':'')+(res.note?'<div style="margin-top:6px;font-size:12px;color:var(--muted-2)">'+escapeHtml(res.note)+'</div>':'');
     if(tools)tools.hidden=false;
     if(prefs.ui.log!==false)hjCalcLogPutSoon({id:visit,t:new Date().toLocaleString('ko-KR'),cat:cat.id,v:window.__hjCalcMem[cat.id],head:res.rows[0][0]+' '+res.rows[0][1],sub:hjCalcInputs(cat,v)});
