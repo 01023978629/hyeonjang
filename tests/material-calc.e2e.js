@@ -157,7 +157,10 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   // 가로 4/1.8 → 3폭×3.1=9.3m, 세로 3/1.8 → 2폭×4.1=8.2m → 짧은 쪽
   assert(val(r, '장판 (폭 1.8m · 폭 수)') === '8.2 m (2폭, 여유 10cm)' && val(r, '마루·타일형').startsWith('8 박스'), '② 바닥 폭 수: ' + JSON.stringify(r));
   r = await run('floor', { m2: '12', roll: '2', box: '', loss: '0' });
-  assert(val(r, '장판 (폭 2m)') === '6 m' && r.main === null, '② 장판 면적법: ' + JSON.stringify(r));
+  // 면적만 알면 폭 자투리를 셀 수 없다 — 값은 내되 모자랄 수 있다고 알린다
+  assert(val(r, '장판 (폭 2m · 자투리 미포함)') === '6 m' && /가로×세로/.test(r.note) && r.main === null, '② 장판 면적법·자투리 안내: ' + JSON.stringify(r));
+  r = await run('floor', { m2: '12', aw: '4', ah: '3', roll: '2', box: '', loss: '0' });
+  assert(!/가로×세로/.test(r.note) && val(r, '장판 (폭 2m · 폭 수)').startsWith('6.2 m'), '② 가로×세로를 알면 폭 수로 세고 안내는 없다: ' + JSON.stringify(r));
   r = await run('concrete', { w: '5', h: '4', t: '10', loss: '5' });
   assert(val(r, '순 부피') === '2 ㎥' && val(r, '레미콘 (로스 포함)') === '2.1 ㎥' && val(r, '레미콘 발주 참고').startsWith('2.5 ㎥') && r.main.qty === 2.5, '② 콘크리트: ' + JSON.stringify(r));
   r = await run('concrete', { w: '1', h: '1', t: '10', loss: '0' });
