@@ -19189,7 +19189,7 @@ const HJ_CALC_CATS=[
           {g:'로스',items:[{l:'일자 10%',v:{loss:10}},{l:'대각 15%',v:{loss:15}},{l:'소형 20%',v:{loss:20}}]}]},
   {id:'paper',ic:'🧻',name:'도배',hint:'폭 재단법: 둘레÷벽지 폭 = 폭 수, 롤 길이÷(천장 높이+여유 10cm) = 롤당 폭 수. 창·문은 빼지 않는 게 안전하고, 면적법 롤 수는 참고로 같이 보여줍니다.',
    fields:[{k:'peri',l:'벽 둘레 m'},{k:'hgt',l:'천장 높이 m',d:2.3,p:1},{k:'open',l:'창·문 면적 ㎡(면적법용)',d:0},{k:'ceil',l:'천장 면적 ㎡(선택)',d:0},
-     {k:'kind',l:'벽지',t:'sel',p:1,o:[['0.93|17.75','합지 광폭 93cm×17.75m'],['0.53|12.5','합지 소폭 53cm×12.5m'],['1.06|15.6','실크 106cm×15.6m']]},{k:'loss',l:'로스 % (면적법)',d:15,p:1}],
+     {k:'kind',l:'벽지',t:'sel',p:1,o:[['0.93|17.75','합지 광폭 93cm×17.75m'],['0.53|12.5','합지 소폭 53cm×12.5m'],['1.06|15.6','실크 106cm×15.6m']]},{k:'walls',l:'벽 면수(선택·코너 여유)',p:1},{k:'loss',l:'로스 % (면적법)',d:15,p:1}],
    chips:[{g:'로스',items:[{l:'합지 10%',v:{loss:10}},{l:'실크 15%',v:{loss:15}},{l:'무늬 맞춤 20%',v:{loss:20}}]}]},
   {id:'paint',ic:'🎨',name:'페인트',hint:'도포량은 1회 칠 기준(수성 보통 8~10㎡/L). 제품 표기를 우선하세요. 통 구성은 18L 우선, 나머지는 4L.',
    fields:[{k:'m2',l:'면적 ㎡',a:1},{k:'cov',l:'도포량 ㎡/L (1회)',d:8,p:1},{k:'coats',l:'칠 횟수',d:2,p:1},{k:'loss',l:'로스 %',d:10,p:1},{k:'pcov',l:'프라이머 도포량 ㎡/L(선택)',p:1}],
@@ -19267,12 +19267,15 @@ function hjCalcRun(id,v){
     if(!n('m2')&&!len)return R(rows,'합판 면적이나 각재 총 길이를 넣어 주세요.');
     const stick=n('stick')||3.6;
     if(n('m2')){const sh=Math.ceil(n('m2')/(n('sheet')||2.9768)*loss);rows.push(['합판',hjCalcFmt(sh,0)+' 장 ('+short('sheet')+')']);main={name:'합판',spec:short('sheet'),qty:sh,unit:'장',key:'합판'};}
-    if(len){const st=Math.ceil(len/stick*loss);rows.push([est?'각재 (간격 '+hjCalcFmt(sp,0)+'mm 한 방향 어림)':'각재',hjCalcFmt(st,0)+' 본 ('+hjCalcFmt(stick,1)+'m, 총 '+hjCalcFmt(len,1)+'m)']);if(!main)main={name:'각재',spec:hjCalcFmt(stick,1)+'m',qty:st,unit:'본',key:'각재'};}
+    if(len){const st=Math.ceil(len/stick*loss);rows.push([est?'각재 (간격 '+hjCalcFmt(sp,0)+'mm 한 방향 어림)':'각재',hjCalcFmt(st,0)+' 본 ('+hjCalcFmt(stick,1)+'m, 총 '+hjCalcFmt(len,1)+'m)']);
+      if(!main||est)main={name:'각재',spec:hjCalcFmt(stick,1)+'m',qty:st,unit:'본',key:'각재'};}   // 간격으로 뽑았으면 찾던 것은 각재다
     if(est)note='각재 어림은 한 방향 기준 — 가로·세로 양방향 틀이면 두 배로 잡으세요.';
   }else if(id==='roof'){
     if(!n('m2'))return R(rows,'투영 면적을 넣어 주세요.');
     const u=s('unit')||'deg';const raw=n('deg');const deg=u==='chi'?Math.atan(raw/10)*180/Math.PI:u==='pct'?Math.atan(raw/100)*180/Math.PI:raw;
+    if(deg>=90)return R(rows,'경사가 90° 이상입니다 — 각도·치·% 단위를 확인해 주세요.');
     const k=1/Math.cos(Math.min(89,deg)*Math.PI/180);const real=n('m2')*k;
+    if(deg>=80)note='경사가 매우 급합니다 — 단위(각도·치·%)를 다시 확인하세요.';
     rows.push(['지붕 실면적',hjCalcFmt(real,2)+' ㎡'],['자재 면적 (로스 포함)',hjCalcFmt(real*loss,2)+' ㎡'],['경사 계수',hjCalcFmt(k,3)+(u!=='deg'?' ('+hjCalcFmt(deg,1)+'°)':'')]);
     main={name:'지붕재',spec:'경사 '+hjCalcFmt(deg,1)+'° (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:Math.ceil(real*loss*100)/100,unit:'㎡',key:'지붕|기와|슁글'};
   }else if(id==='floor'){
@@ -19287,7 +19290,8 @@ function hjCalcRun(id,v){
   }else if(id==='gypsum'){
     if(!n('m2'))return R(rows,'면적을 넣어 주세요.');
     const sides=n('sides')||1;const layers=Math.max(1,n('layers'));const sh=Math.ceil(n('m2')*layers*sides/(n('sheet')||1.62)*loss);
-    rows.push(['석고보드',hjCalcFmt(sh,0)+' 장'+(sides>1?' (양면)':'')],['피스 참고',hjCalcFmt(sh*32,0)+' 개 (장당 32개 기준)']);
+    const sheetA=n('sheet')||1.62;const perSheet=Math.ceil(sheetA*20);   // 300mm 간격 어림 ≈ ㎡당 20개 (1.62㎡ 보드면 33개)
+    rows.push(['석고보드',hjCalcFmt(sh,0)+' 장'+(sides>1?' (양면)':'')],['피스 참고',hjCalcFmt(sh*perSheet,0)+' 개 (장당 '+perSheet+'개, ㎡당 20개 기준)']);
     main={name:'석고보드',spec:short('sheet')+' '+layers+'P'+(sides>1?' 양면':''),qty:sh,unit:'장',key:'석고'};
   }else if(id==='brick'){
     if(!n('m2'))return R(rows,'벽 면적을 넣어 주세요.');
@@ -19306,9 +19310,12 @@ function hjCalcRun(id,v){
     else if(wall)rollsWall=Math.ceil(wall*loss/rollM2);
     const rollsCeil=ceilA?Math.ceil(ceilA*loss/rollM2):0;const rolls=rollsWall+rollsCeil;
     rows.push(['벽지',hjCalcFmt(rolls,0)+' 롤 ('+(rw?lab('kind'):hjCalcFmt(rollM2,1)+'㎡/롤')+')']);
-    if(strips)rows.push(['벽 폭 수',hjCalcFmt(strips,0)+' 폭 (롤당 '+perRoll+'폭, 여유 10cm)']);
+    if(strips){rows.push(['벽 폭 수',hjCalcFmt(strips,0)+' 폭 (롤당 '+perRoll+'폭, 여유 10cm)']);
+      const walls=Math.round(n('walls'));
+      if(walls>1){const safe=strips+walls-1;rows.push(['코너 여유 포함',hjCalcFmt(safe,0)+' 폭 → '+hjCalcFmt(Math.ceil(safe/perRoll),0)+' 롤 ('+walls+'면 각각 재단할 때)']);}
+      else note='둘레를 폭으로 나눈 값이라 코너에서 자투리가 생기면 벽마다 한 폭씩 더 듭니다 — 벽 면수를 넣으면 여유분도 같이 냅니다.';}
     if(rollsCeil)rows.push(['천장 (면적법)',hjCalcFmt(rollsCeil,0)+' 롤']);
-    rows.push(['벽 면적',hjCalcFmt(wall,2)+' ㎡'],['총 면적',hjCalcFmt(total,2)+' ㎡'],['도배 평',hjCalcFmt(total/HJ_CALC_PY,1)+' 평']);
+    rows.push(['벽 면적',hjCalcFmt(wall,2)+' ㎡'],['총 면적',hjCalcFmt(total,2)+' ㎡'],['도배 평 (창·문 뺀 실면적)',hjCalcFmt(total/HJ_CALC_PY,1)+' 평']);
     if(strips)rows.push(['면적법 참고',hjCalcFmt(Math.ceil(total*loss/rollM2),0)+' 롤 (로스 '+hjCalcFmt(n('loss'),0)+'%)']);
     main={name:'벽지',spec:rw?lab('kind'):'',qty:rolls,unit:'롤',key:'벽지|도배'};
   }else if(id==='film'){
@@ -19322,7 +19329,8 @@ function hjCalcRun(id,v){
     const std=[15,20,30,40,50,60,75,100];const br=std.find(a=>a>=amps*1.25)||null;
     const wire={15:'2.5㎟',20:'2.5㎟',30:'4㎟',40:'6㎟',50:'10㎟',60:'16㎟',75:'16㎟',100:'25㎟'};
     rows.push(['전류',hjCalcFmt(amps,1)+' A ('+volt+'V'+(pf<1?', 역률 '+pf:'')+')'],['차단기 참고',br?br+' A':'100A 초과 — 설계 필요'],['전선 굵기 참고',br?wire[br]+' (PVC 구리선, 짧은 거리)':'설계 필요']);
-    note='참고값입니다. 전선은 PVC 절연 구리선·관로 2조·짧은 거리 기준이며 전압강하·KEC 규정·설계가 우선합니다.';
+    note='참고값입니다. 전선은 PVC 절연 구리선·관로 2조·짧은 거리 기준이며 전압강하·KEC 규정·설계가 우선합니다.'+
+      (pf>=1?' 모터·에어컨 같은 부하는 역률 0.8 정도로 넣어야 전류가 제대로 나옵니다.':'');
   }else if(id==='steel'){
     const eff=s('eff')==='c'?n('effc'):(n('eff')||n('effc'));
     if(!eff)return R(rows,'유효폭을 고르거나 직접 넣어 주세요.');
@@ -19351,39 +19359,56 @@ function hjCalcText(cat,v,res,extra){
 /* 이 폰의 설정(hj_calc_prefs): d = 종류별 ⭐ 기본값(처음값과 다른 규격·로스만), ui = {areaMode:'m2'|'py'|'wh', log:true/false, recent:[id]} */
 function hjCalcPrefs(){let p=null;try{p=JSON.parse(localStorage.getItem('hj_calc_prefs')||'null');}catch(_){p=null;}if(!p||typeof p!=='object')p={};if(!p.d||typeof p.d!=='object')p.d={};if(!p.ui||typeof p.ui!=='object')p.ui={};return p;}
 function hjCalcPrefsSave(p){try{localStorage.setItem('hj_calc_prefs',JSON.stringify(p));return true;}catch(_){return false;}}
-function hjCalcDefault(cat,f,prefs){const d=(prefs||hjCalcPrefs()).d[cat.id]||{};return d[f.k]!=null?d[f.k]:(f.d!=null?f.d:'');}
-/* 작업기록(hj_calc_log): 최근 20건, 화면 한 번 열 때 한 건(같은 id 는 덮어씀) */
-function hjCalcLogRead(){try{const l=JSON.parse(localStorage.getItem('hj_calc_log')||'[]');return Array.isArray(l)?l:[];}catch(_){return [];}}
-function hjCalcLogWrite(l){try{localStorage.setItem('hj_calc_log',JSON.stringify(l.slice(0,20)));}catch(_){}}
-function hjCalcLogPut(e){const l=hjCalcLogRead().filter(x=>x&&x.id!==e.id);l.unshift(e);hjCalcLogWrite(l);}
+/* 처음값 — 고르는 칸은 값을 안 넣으면 브라우저가 첫 선택지를 고르므로 그게 처음값이다(안 그러면 안 바꿔도 ⭐ 에 저장된다) */
+function hjCalcFirst(f){return f.d!=null?String(f.d):(f.t==='sel'&&f.o&&f.o.length?String(f.o[0][0]):'');}
+function hjCalcDefault(cat,f,prefs){const d=(prefs||hjCalcPrefs()).d[cat.id]||{};const v=d[f.k];
+  if(v==null)return hjCalcFirst(f);
+  if(f.t==='sel'&&f.o&&!f.o.some(o=>o[0]===String(v)))return hjCalcFirst(f);   // 앱이 올라가며 선택지가 바뀐 경우 — 옛 값은 버린다
+  return v;}
+/* 작업기록(hj_calc_log): 최근 20건, 화면 한 번 열 때 한 건(같은 id 는 덮어씀). 글자를 칠 때마다 쓰지 않고 잠깐 모았다 쓴다 */
+function hjCalcLogRead(){try{const l=JSON.parse(localStorage.getItem('hj_calc_log')||'[]');return Array.isArray(l)?l.filter(e=>e&&typeof e==='object'&&e.id&&e.cat):[];}catch(_){return [];}}
+function hjCalcLogWrite(l){try{localStorage.setItem('hj_calc_log',JSON.stringify(l.slice(0,20)));return true;}catch(_){return false;}}
+function hjCalcLogPut(e){const l=hjCalcLogRead().filter(x=>x&&x.id!==e.id);l.unshift(e);return hjCalcLogWrite(l);}
+function hjCalcLogPutSoon(e){clearTimeout(window.__hjCalcLogT);window.__hjCalcLogPending=e;
+  window.__hjCalcLogT=setTimeout(()=>{const p=window.__hjCalcLogPending;window.__hjCalcLogPending=null;if(!p)return;
+    if(!hjCalcLogPut(p)&&!window.__hjCalcLogWarned){window.__hjCalcLogWarned=true;toast('이 폰 저장소가 꽉 차 작업기록을 남기지 못했습니다');}},500);}
+function hjCalcLogFlush(){clearTimeout(window.__hjCalcLogT);const p=window.__hjCalcLogPending;window.__hjCalcLogPending=null;if(p)hjCalcLogPut(p);}
+/* 화면을 떠나는 순간 칸에서 손이 떨어지며 오는 change 가 한 번 더 기록을 예약한다 —
+   그대로 두면 작업기록에서 지운 건이 잠시 뒤 되살아난다. 새 화면을 그린 뒤 예약을 버린다. */
+function hjCalcLogDrop(){clearTimeout(window.__hjCalcLogT);window.__hjCalcLogPending=null;}
 /* 자재 구매처·단가에 같은 이름·단위의 자재가 있으면 공급가(÷1.1)로 예상 자재비 — 이름은 정규식(key), 단위는 똑같을 때만(보수적) */
 function hjCalcEstimate(main){
   if(!main||!main.key||typeof state==='undefined'||!Array.isArray(state.materials)||!state.materials.length)return null;
   let re;try{re=new RegExp(main.key,'i');}catch(_){return null;}
   const un=u=>String(u||'').replace(/\s/g,'').toLowerCase();
   const cands=state.materials.filter(m=>m&&re.test(String(m.name||''))&&matBest(m));
-  const tryUnit=(qty,unit)=>{if(!qty||!unit)return null;const c=cands.filter(m=>un(m.unit)===un(unit));if(!c.length)return null;const m=c[0];const price=matSupplyPrice(matBest(m).price);
+  const tryUnit=(qty,unit)=>{if(!qty||!unit)return null;const c=cands.filter(m=>un(m.unit)===un(unit)).sort((a,b)=>matSupplyPrice(matBest(a).price)-matSupplyPrice(matBest(b).price));if(!c.length)return null;const m=c[0];const price=matSupplyPrice(matBest(m).price);
     return {name:m.name,spec:m.spec||'',qty,unit,price,total:Math.round(price*qty),others:c.length-1};};
   return tryUnit(main.qty,main.unit)||(main.alt?tryUnit(main.alt.qty,main.alt.unit):null);
 }
-function hjCalcEstText(e){return e?'예상 자재비 참고 ≈ '+won(e.total)+' ('+e.name+(e.spec?' '+e.spec:'')+', 공급가 '+won(e.price)+'/'+e.unit+' × '+hjCalcFmt(e.qty,2)+e.unit+(e.others?', 다른 후보 '+e.others+'건':'')+')':'';}
-function hjCalcHook(){window.__modalOnClose=()=>{if(window.__hjCalcQuotePushed){window.__hjCalcQuotePushed=false;try{render();}catch(_){}}};}
-const HJ_CALC_IN='width:100%;padding:9px 10px;font-size:15px;min-height:44px;box-sizing:border-box';
-/* 화면. catId 없으면 종류 고르기. preset = 작업기록에서 다시 열 때 입력값, logId = 그 기록을 덮어쓸 id */
-function materialCalc(catId,preset,logId){
+function hjCalcEstText(e){return e?'예상 자재비 참고 ≈ '+won(e.total)+' ('+e.name+(e.spec?' '+e.spec:'')+', 최저 공급가 '+won(e.price)+'/'+e.unit+' × '+hjCalcFmt(e.qty,2)+e.unit+(e.others?', 다른 후보 '+e.others+'건':'')+') — 내 매입가 기준, 부가세 별도·실측 후 확정':'';}
+/* 어느 경로로 닫혀도 한 번: 모아 둔 작업기록을 쓰고, 견적에 담았으면 견적표를 다시 그린다 */
+function hjCalcHook(){window.__modalOnClose=()=>{hjCalcLogFlush();if(window.__hjCalcQuotePushed){window.__hjCalcQuotePushed=false;try{render();}catch(_){}}};}
+const HJ_CALC_IN='width:100%;padding:9px 10px;font-size:16px;min-height:44px;box-sizing:border-box';   // 16px 미만이면 아이폰이 칸을 누를 때마다 화면을 확대한다
+const HJ_CALC_LAB='display:block;font-size:12px;color:var(--muted-2)';
+const HJ_CALC_PILL='min-height:44px;padding:6px 12px;border-radius:999px;font-size:12.5px;cursor:pointer';
+/* 화면. catId 없으면 종류 고르기. preset = 작업기록에서 다시 열 때 입력값, logId = 그 기록을 덮어쓸 id, focusK = 다시 그린 뒤 커서를 둘 칸 */
+function materialCalc(catId,preset,logId,focusK){
   window.__hjCalcMem=window.__hjCalcMem||{};
   const prefs=hjCalcPrefs();
   const cat=HJ_CALC_CATS.find(c=>c.id===catId);
   const btnStyle='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:72px;padding:10px 6px;border:1px solid var(--line-soft);border-radius:12px;background:var(--paper);cursor:pointer';
   if(!cat){
+    hjCalcLogFlush();
     const recent=(Array.isArray(prefs.ui.recent)?prefs.ui.recent:[]).map(id=>HJ_CALC_CATS.find(c=>c.id===id)).filter(Boolean).slice(0,4);
-    const recentHtml=recent.length?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:11.5px;color:var(--muted)">최근</span>'+recent.map(c=>'<button type="button" class="calcRecent" data-id="'+c.id+'" style="min-height:40px;padding:6px 12px;border:1px solid var(--line-soft);border-radius:999px;background:var(--paper-2);font-size:12.5px;cursor:pointer">'+c.ic+' '+escapeHtml(c.name)+'</button>').join('')+'</div>':'';
-    const grid=HJ_CALC_CATS.map(c=>'<button type="button" class="calcCat" data-id="'+c.id+'" style="'+btnStyle+'"><span style="font-size:24px">'+c.ic+'</span><b style="font-size:12.5px">'+escapeHtml(c.name)+'</b>'+(prefs.d[c.id]?'<span style="font-size:10px;color:var(--moss)">⭐ 내 기본값</span>':'')+'</button>').join('');
+    const recentHtml=recent.length?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:12px;color:var(--muted-2)">최근</span>'+recent.map(c=>'<button type="button" class="calcRecent" data-id="'+c.id+'" style="'+HJ_CALC_PILL+';border:1px solid var(--line-soft);background:var(--paper-2)">'+c.ic+' '+escapeHtml(c.name)+'</button>').join('')+'</div>':'';
+    const grid=HJ_CALC_CATS.map(c=>'<button type="button" class="calcCat" data-id="'+c.id+'" style="'+btnStyle+'"><span style="font-size:24px" aria-hidden="true">'+c.ic+'</span><b style="font-size:12.5px">'+escapeHtml(c.name)+'</b>'+(prefs.d[c.id]?'<span style="font-size:10px;color:var(--moss)">⭐ 내 기본값</span>':'')+'</button>').join('');
     const logN=hjCalcLogRead().length;
-    openModal('🧮 자재 계산기','<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">면적·규격을 넣으면 소요량을 바로 냅니다. 결과는 참고값 — 로스율·규격은 현장에 맞게 바꾸고, 자주 쓰는 규격은 ⭐ 기본값으로 저장하세요.</div>'+recentHtml+'<div id="calcGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+grid+'</div>',
+    openModal('🧮 자재 계산기','<div style="font-size:12px;color:var(--muted-2);margin-bottom:10px">면적·규격을 넣으면 소요량을 바로 냅니다. 결과는 참고값 — 로스율·규격은 현장에 맞게 바꾸고, 자주 쓰는 규격은 ⭐ 기본값으로 저장하세요.</div>'+recentHtml+'<div id="calcGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+grid+'</div>',
       [{label:'⚙ 기본값',cls:'ghost',fn:()=>materialCalcSettings()},{label:'🕘 작업기록'+(logN?' '+logN:''),cls:'ghost',fn:()=>materialCalcLog()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
     hjCalcHook();
     document.getElementById('modalRoot').querySelectorAll('.calcCat,.calcRecent').forEach(b=>b.onclick=()=>materialCalc(b.dataset.id));
+    hjCalcLogDrop();
     return;
   }
   if(preset&&typeof preset==='object')window.__hjCalcMem[cat.id]=Object.assign({},preset);
@@ -19391,27 +19416,30 @@ function materialCalc(catId,preset,logId){
   const visit=logId||uid();
   prefs.ui.recent=[cat.id].concat((Array.isArray(prefs.ui.recent)?prefs.ui.recent:[]).filter(x=>x!==cat.id)).slice(0,4);hjCalcPrefsSave(prefs);
   const valOf=f=>mem[f.k]!=null?mem[f.k]:hjCalcDefault(cat,f,prefs);
-  const numIn=(k,val,ph)=>'<input class="calcIn" data-k="'+k+'" type="number" inputmode="decimal" step="any" min="0"'+(ph?' placeholder="'+escapeAttr(ph)+'"':'')+' value="'+escapeAttr(String(val==null?'':val))+'" style="'+HJ_CALC_IN+'">';
-  const areaHtml=(f)=>{   // 면적 3가지 입력 — 모드는 이 화면을 쓰는 동안 기억, 처음 모드는 ⚙ 기본값의 설정
+  const numIn=(k,val,ph,aria)=>'<input class="calcIn" data-k="'+k+'" type="number" inputmode="decimal" step="any" min="0"'+(ph?' placeholder="'+escapeAttr(ph)+'"':'')+(aria?' aria-label="'+escapeAttr(aria)+'"':'')+' value="'+escapeAttr(String(val==null?'':val))+'" style="'+HJ_CALC_IN+'">';
+  const areaHtml=(f)=>{   // 면적 3가지 입력 — 모드는 이 화면을 쓰는 동안 기억, 처음 모드는 ⚙ 기본값의 설정. 라벨도 모드를 따라 바뀐다(평을 ㎡ 로 오해하면 3.3배 틀어진다)
     const mode=mem.m2_mode||prefs.ui.areaMode||'m2';
-    const seg=[['m2','㎡'],['py','평'],['wh','가로×세로']].map(m=>'<button type="button" class="calcSeg" data-mode="'+m[0]+'" aria-pressed="'+(mode===m[0])+'" style="flex:1;min-height:34px;padding:0 6px;border:1px solid '+(mode===m[0]?'var(--blueprint)':'var(--line-soft)')+';border-radius:8px;background:'+(mode===m[0]?'var(--blueprint)':'var(--paper)')+';color:'+(mode===m[0]?'#fff':'var(--ink)')+';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">'+m[1]+'</button>').join('');
+    const base=f.l.replace(/\s*㎡\s*$/,'');
+    const lab=mode==='py'?base+' 평':mode==='wh'?base+' 가로×세로 m':f.l;
+    const seg=[['m2','㎡'],['py','평'],['wh','가로×세로']].map(m=>'<button type="button" class="calcSeg" data-mode="'+m[0]+'" aria-pressed="'+(mode===m[0])+'" style="flex:1;min-height:44px;padding:0 6px;border:1px solid '+(mode===m[0]?'var(--blueprint)':'var(--line-soft)')+';border-radius:8px;background:'+(mode===m[0]?'var(--blueprint)':'var(--paper)')+';color:'+(mode===m[0]?'#fff':'var(--ink)')+';font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap">'+m[1]+'</button>').join('');
     let ctl;
-    if(mode==='py')ctl=numIn('m2_py',mem.m2_py,'평');
-    else if(mode==='wh')ctl='<div style="display:flex;gap:6px;align-items:center">'+numIn('m2_w',mem.m2_w,'가로 m')+'<span style="color:var(--muted)">×</span>'+numIn('m2_h',mem.m2_h,'세로 m')+'</div>';
-    else ctl=numIn('m2',mem.m2,'');
-    return '<div class="calcArea" style="grid-column:1/-1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:11.5px;color:var(--muted);flex:1">'+escapeHtml(f.l)+'</span><span style="display:flex;gap:4px;width:min(220px,60%)">'+seg+'</span></div>'+ctl+'<div class="calcAreaEcho" aria-live="polite" style="font-size:11.5px;color:var(--muted);min-height:16px;margin-top:2px"></div><input type="hidden" class="calcMode" value="'+mode+'"></div>';
+    if(mode==='py')ctl=numIn('m2_py',mem.m2_py,'평',lab);
+    else if(mode==='wh')ctl='<div style="display:flex;gap:6px;align-items:center">'+numIn('m2_w',mem.m2_w,'가로 m',base+' 가로 m')+'<span aria-hidden="true" style="color:var(--muted-2)">×</span>'+numIn('m2_h',mem.m2_h,'세로 m',base+' 세로 m')+'</div>';
+    else ctl=numIn('m2',mem.m2,'',lab);
+    return '<div class="calcArea" style="grid-column:1/-1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;color:var(--muted-2);flex:1">'+escapeHtml(lab)+'</span><span role="group" aria-label="면적 입력 방식" style="display:flex;gap:4px;width:min(220px,60%)">'+seg+'</span></div>'+ctl+'<div class="calcAreaEcho" style="font-size:12px;color:var(--muted-2);min-height:16px;margin-top:2px"></div><input type="hidden" class="calcMode" value="'+mode+'"></div>';
   };
   const form=cat.fields.map(f=>{if(f.a)return areaHtml(f);const val=valOf(f);
-    const ctl=f.t==='sel'?'<select class="calcIn" data-k="'+f.k+'" style="'+HJ_CALC_IN+'">'+f.o.map(o=>'<option value="'+escapeAttr(o[0])+'"'+(String(val)===o[0]?' selected':'')+'>'+escapeHtml(o[1])+'</option>').join('')+'</select>':numIn(f.k,val,'');
-    return '<label style="display:block;font-size:11.5px;color:var(--muted)">'+escapeHtml(f.l)+(f.p&&prefs.d[cat.id]&&prefs.d[cat.id][f.k]!=null?' <span style="color:var(--moss)">⭐</span>':'')+ctl+'</label>';}).join('');
-  const chips=(cat.chips||[]).map(g=>'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:11px;color:var(--muted);min-width:36px">'+escapeHtml(g.g)+'</span>'+g.items.map(it=>'<button type="button" class="calcChip" data-set="'+escapeAttr(JSON.stringify(it.v))+'" aria-pressed="false" style="min-height:34px;padding:4px 10px;border:1px solid var(--line-soft);border-radius:999px;background:var(--paper);font-size:12px;cursor:pointer">'+escapeHtml(it.l)+'</button>').join('')+'</div>').join('');
+    const ctl=f.t==='sel'?'<select class="calcIn" data-k="'+f.k+'" style="'+HJ_CALC_IN+'">'+f.o.map(o=>'<option value="'+escapeAttr(o[0])+'"'+(String(val)===o[0]?' selected':'')+'>'+escapeHtml(o[1])+'</option>').join('')+'</select>':numIn(f.k,val,'',f.l);
+    return '<label style="'+HJ_CALC_LAB+'">'+escapeHtml(f.l)+(f.p&&prefs.d[cat.id]&&prefs.d[cat.id][f.k]!=null?' <span style="color:var(--moss)">⭐</span>':'')+ctl+'</label>';}).join('');
+  const chips=(cat.chips||[]).map(g=>'<div role="group" aria-label="'+escapeAttr(g.g)+'" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:11.5px;color:var(--muted-2);min-width:36px">'+escapeHtml(g.g)+'</span>'+g.items.map(it=>'<button type="button" class="calcChip" data-set="'+escapeAttr(JSON.stringify(it.v))+'" aria-pressed="false" style="'+HJ_CALC_PILL+';border:1px solid var(--line-soft);background:var(--paper)">'+escapeHtml(it.l)+'</button>').join('')+'</div>').join('');
   const canQuote=typeof state!=='undefined'&&!!state.editingQuote;
-  const tool=(id,label)=>'<button type="button" id="'+id+'" class="ghost tiny" style="min-height:40px;padding:0 12px">'+label+'</button>';
-  const body='<div id="calcOut" role="status" aria-live="polite" style="position:sticky;top:0;z-index:2;margin:-4px 0 10px;padding:12px 14px;border:1px solid var(--line-soft);border-radius:11px;background:var(--paper);box-shadow:0 6px 16px -12px rgba(13,78,162,.5);font-size:13.5px;line-height:1.7;min-height:48px"></div>'+
-    '<div id="calcTools" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" hidden>'+tool('calcNote','📝 현장 메모로')+(canQuote?tool('calcQuote','➕ 견적에 담기'):'')+tool('calcShare','📤 공유')+'</div>'+
+  const tool=(id,label)=>'<button type="button" id="'+id+'" class="ghost" style="'+HJ_CALC_PILL+'">'+label+'</button>';
+  const body='<div id="calcTop" style="position:sticky;top:0;z-index:2;margin:-4px 0 10px;padding:4px 0 6px;background:var(--paper)">'+
+      '<div id="calcOut" role="status" aria-live="polite" style="padding:12px 14px;border:1px solid var(--line-soft);border-radius:11px;background:var(--paper);box-shadow:0 6px 16px -12px rgba(13,78,162,.5);font-size:13.5px;line-height:1.7;min-height:48px"></div>'+
+      '<div id="calcTools" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" hidden>'+tool('calcNote','📝 현장 메모로')+(canQuote?tool('calcQuote','➕ 견적에 담기'):'')+tool('calcShare','📤 공유')+'</div></div>'+
     chips+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 10px">'+form+'</div>'+
-    '<div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.55">'+escapeHtml(cat.hint)+'</div>'+
-    (cat.fields.some(f=>f.p)?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px">'+tool('calcSaveDef','⭐ 기본값으로')+tool('calcResetDef','↺ 처음값')+'<span id="calcDefStatus" style="font-size:11px;color:var(--muted);flex:1;min-width:120px"></span></div>':'');
+    '<div style="font-size:12px;color:var(--muted-2);margin-top:8px;line-height:1.55">'+escapeHtml(cat.hint)+'</div>'+
+    (cat.fields.some(f=>f.p)?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px">'+tool('calcSaveDef','⭐ 기본값으로')+tool('calcResetDef','↺ 처음값으로')+'<span id="calcDefStatus" style="font-size:11.5px;color:var(--muted-2);flex:1;min-width:120px"></span></div>':'');
   openModal(cat.ic+' '+cat.name+' 계산',body,[{label:'← 다른 계산',cls:'ghost',fn:()=>materialCalc()},{label:'📋 결과 복사',cls:'ghost',fn:()=>copyText()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjCalcHook();
   const root=document.getElementById('modalRoot');
@@ -19422,72 +19450,104 @@ function materialCalc(catId,preset,logId){
     window.__hjCalcMem[cat.id]=Object.assign({},window.__hjCalcMem[cat.id]||{},v);return v;};
   const paintDefStatus=()=>{const el=root.querySelector('#calcDefStatus');if(!el)return;const d=hjCalcPrefs().d[cat.id];
     el.textContent=d?'⭐ 내 기본값: '+Object.keys(d).map(k=>{const f=cat.fields.find(f=>f.k===k);return (f?f.l.replace(/\(.*?\)/g,'').trim():k)+' '+d[k];}).join(', '):'규격·로스를 바꾼 뒤 ⭐ 를 누르면 다음부터 그 값으로 시작합니다';};
-  const paint=(textOnly)=>{const v=read();const res=hjCalcRun(cat.id,v);const out=root.querySelector('#calcOut');const tools=root.querySelector('#calcTools');
+  const paint=(textOnly)=>{const out=root.querySelector('#calcOut');
+    if(!out)return '';   // 다른 화면(작업기록·기본값)으로 넘어간 뒤 칸이 blur 되며 오는 change — 여기서 멈추지 않으면 지운 기록이 되살아난다
+    const v=read();const res=hjCalcRun(cat.id,v);const tools=root.querySelector('#calcTools');
     const echo=root.querySelector('.calcAreaEcho');if(echo){const m=hjCalcNum(v.m2);echo.textContent=!m?'':v.m2_mode==='m2'?'= '+hjCalcFmt(m/HJ_CALC_PY,2)+' 평':'= '+hjCalcFmt(m,2)+' ㎡'+(v.m2_mode==='wh'?' ('+hjCalcFmt(m/HJ_CALC_PY,2)+'평)':'');}
     root.querySelectorAll('.calcChip').forEach(ch=>{let set={};try{set=JSON.parse(ch.dataset.set||'{}');}catch(_){}const on=Object.keys(set).length&&Object.keys(set).every(k=>String(v[k])===String(set[k]));ch.setAttribute('aria-pressed',on?'true':'false');ch.style.borderColor=on?'var(--moss)':'var(--line-soft)';ch.style.background=on?'var(--paper-2)':'var(--paper)';ch.style.fontWeight=on?'700':'400';});
-    if(!res.rows.length){if(out)out.innerHTML='<span style="color:var(--muted)">'+escapeHtml(res.note||'값을 넣어 주세요')+'</span>';if(tools)tools.hidden=true;return '';}
+    if(!res.rows.length){out.innerHTML='<span style="color:var(--muted-2)">'+escapeHtml(res.note||'값을 넣어 주세요')+'</span>';if(tools)tools.hidden=true;return '';}
     const est=hjCalcEstimate(res.main);
-    if(out)out.innerHTML=res.rows.map((r,i)=>'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span'+(i===0?' style="font-weight:700"':'')+'>'+escapeHtml(r[0])+'</span><b style="text-align:right'+(i===0?';color:#0a7f43;font-size:20px':'')+'">'+escapeHtml(r[1])+'</b></div>').join('')+
-      (est?'<div style="margin-top:6px;font-size:12px;color:var(--moss)">💰 '+escapeHtml(hjCalcEstText(est))+'</div>':'')+(res.note?'<div style="margin-top:6px;font-size:11.5px;color:var(--muted)">'+escapeHtml(res.note)+'</div>':'');
+    out.innerHTML=res.rows.map((r,i)=>'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span'+(i===0?' style="font-weight:700"':'')+'>'+escapeHtml(r[0])+'</span><b style="text-align:right'+(i===0?';color:#0a7f43;font-size:20px':'')+'">'+escapeHtml(r[1])+'</b></div>').join('')+
+      (est?'<div style="margin-top:6px;font-size:12px;color:var(--moss)">💰 '+escapeHtml(hjCalcEstText(est))+'</div>':'')+(res.note?'<div style="margin-top:6px;font-size:12px;color:var(--muted-2)">'+escapeHtml(res.note)+'</div>':'');
     if(tools)tools.hidden=false;
-    if(prefs.ui.log!==false)hjCalcLogPut({id:visit,t:new Date().toLocaleString('ko-KR'),cat:cat.id,v:window.__hjCalcMem[cat.id],head:res.rows[0][0]+' '+res.rows[0][1],sub:hjCalcInputs(cat,v)});
+    if(prefs.ui.log!==false)hjCalcLogPutSoon({id:visit,t:new Date().toLocaleString('ko-KR'),cat:cat.id,v:window.__hjCalcMem[cat.id],head:res.rows[0][0]+' '+res.rows[0][1],sub:hjCalcInputs(cat,v)});
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
   const copyText=()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
   root.querySelectorAll('.calcIn').forEach(i=>{i.oninput=()=>paint();i.onchange=()=>paint();});
   root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();const m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
-    if(to==='py'&&!hjCalcNum(cur.m2_py)&&m)cur.m2_py=String(Math.round(m/HJ_CALC_PY*100)/100);if(to==='m2'&&m)cur.m2=String(Math.round(m*100)/100);
-    materialCalc(cat.id,null,visit);});
+    if(to==='py')cur.m2_py=m?String(Math.round(m/HJ_CALC_PY*100)/100):'';   // 예전에 넣어 둔 평수가 되살아나 지금 면적을 덮지 않게 항상 새로 쓴다
+    if(to==='m2')cur.m2=m?String(Math.round(m*100)/100):'';
+    if(to==='wh'&&Math.abs(hjCalcNum(cur.m2_w)*hjCalcNum(cur.m2_h)-m)>0.02){cur.m2_w='';cur.m2_h='';}
+    materialCalc(cat.id,null,visit,to==='py'?'m2_py':to==='wh'?'m2_w':'m2');});
   root.querySelectorAll('.calcChip').forEach(ch=>ch.onclick=()=>{let set={};try{set=JSON.parse(ch.dataset.set||'{}');}catch(_){}Object.keys(set).forEach(k=>{const el=root.querySelector('.calcIn[data-k="'+k+'"]');if(el)el.value=String(set[k]);});paint();});
   const on=(id,fn)=>{const el=root.querySelector('#'+id);if(el)el.onclick=fn;};
-  on('calcSaveDef',()=>{const v=read();const d={};cat.fields.filter(f=>f.p).forEach(f=>{const cur=String(v[f.k]==null?'':v[f.k]);if(cur!==String(f.d!=null?f.d:''))d[f.k]=cur;});
+  on('calcSaveDef',()=>{const v=read();const d={};cat.fields.filter(f=>f.p).forEach(f=>{const cur=String(v[f.k]==null?'':v[f.k]);if(cur!==hjCalcFirst(f))d[f.k]=cur;});
     const p=hjCalcPrefs();if(Object.keys(d).length)p.d[cat.id]=d;else delete p.d[cat.id];
     if(!hjCalcPrefsSave(p)){toast('이 폰 저장소에 쓸 수 없어 기본값을 저장하지 못했습니다');return;}
     toast(Object.keys(d).length?cat.name+' 기본값 저장 — 다음에 열면 이 규격·로스로 시작합니다':cat.name+' — 처음값과 같아 저장할 게 없습니다');paintDefStatus();});
-  on('calcResetDef',()=>{const p=hjCalcPrefs();const had=!!p.d[cat.id];delete p.d[cat.id];hjCalcPrefsSave(p);
-    const cur=window.__hjCalcMem[cat.id]||{};cat.fields.filter(f=>f.p).forEach(f=>{cur[f.k]=f.d!=null?String(f.d):'';});window.__hjCalcMem[cat.id]=cur;
-    toast(had?'처음값으로 — 저장한 기본값을 지웠습니다':'처음값으로');materialCalc(cat.id,null,visit);});
+  on('calcResetDef',()=>{const p=hjCalcPrefs();const had=!!p.d[cat.id];
+    if(had&&!confirm('저장한 「'+cat.name+'」 기본값을 지우고 처음값(규격·로스)으로 되돌릴까요? 넣은 면적은 그대로 둡니다.'))return;
+    delete p.d[cat.id];const okSave=hjCalcPrefsSave(p);
+    const cur=window.__hjCalcMem[cat.id]||{};cat.fields.filter(f=>f.p).forEach(f=>{cur[f.k]=hjCalcFirst(f);});window.__hjCalcMem[cat.id]=cur;
+    toast(had?(okSave?'처음값으로 — 저장한 기본값을 지웠습니다':'처음값으로 되돌렸지만 이 폰 저장소에 쓸 수 없어 기본값은 남아 있습니다'):'처음값으로');materialCalc(cat.id,null,visit);});
   on('calcNote',()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(typeof state==='undefined'){toast('앱 데이터가 아직 없습니다');return;}
     state.notes=state.notes||[];const pj=state.activeProject||null;state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t,project:pj});markDirty();
+    try{render();}catch(_){}   // 넣자마자 메모 목록에 보이게(안 그리면 "넣었다는데 안 보인다"가 된다)
     toast(pj?'현장 메모에 넣었습니다 · '+pj:'현장 메모에 넣었습니다 (현장 미지정)');});
   on('calcQuote',()=>{const q=typeof state!=='undefined'&&state.editingQuote;if(!q){toast('견적 작성 화면에서 쓰는 기능입니다');return;}
     const v=read();const res=hjCalcRun(cat.id,v);if(!res.main){toast(res.rows.length?'이 계산은 견적 품목으로 담을 수량이 없습니다':'먼저 값을 넣어 주세요');return;}
-    const m=res.main;const est=hjCalcEstimate(m);const item={name:m.name,spec:m.spec||'',qty:m.qty,price:est&&est.price?est.price:0};
+    const m=res.main;const est=hjCalcEstimate(m);
+    // 단가는 그 단가가 붙은 단위의 수량과 함께 넣는다 — 박스 단가를 장 수량에 곱하면 몇 배로 부풀어 나간다
+    const item=est?{name:m.name,spec:(m.spec?m.spec+' · ':'')+'단위 '+est.unit,qty:est.qty,price:est.price}:{name:m.name,spec:m.spec||'',qty:m.qty,price:0};
     q.items=Array.isArray(q.items)?q.items:[];const last=q.items[q.items.length-1];
     if(last&&!String(last.name||'').trim()&&!num(last.price)){q.items[q.items.length-1]=item;}else{q.items.push(item);}
     markDirty();window.__hjCalcQuotePushed=true;
-    toast('견적 품목에 넣었습니다 — '+m.name+' '+hjCalcFmt(m.qty,2)+m.unit+(item.price?' · 공급가 '+won(item.price):' · 단가는 견적에서 넣으세요'));});
+    toast('견적 품목에 넣었습니다 — '+item.name+' '+hjCalcFmt(item.qty,2)+(est?est.unit:m.unit)+(item.price?' · 자재 매입 공급가 '+won(item.price)+' — 마진은 견적에서 얹으세요':' · 단가는 견적에서 넣으세요'));});
   on('calcShare',()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.share){navigator.share({text:t,title:'🧮 '+cat.name+' 계산'}).catch(()=>{});}else copyText();});
   paintDefStatus();paint();
-  const first=root.querySelector('.calcIn');if(first&&!first.value)try{first.focus();}catch(_){}
+  setTimeout(()=>{try{   // openModal 이 모달 상자에 초점을 주므로(같은 0ms 큐) 그 뒤에 칸으로 옮긴다
+    const want=focusK?root.querySelector('.calcIn[data-k="'+focusK+'"]'):null;
+    const first=want||[...root.querySelectorAll('.calcIn')].find(i=>!i.value);
+    if(first)first.focus();
+  }catch(_){}},0);
 }
 /* ⚙ 기본값 — 저장한 종류별 기본값 목록(✕로 하나씩), 면적 입력 시작 모드, 작업기록 켬·끔 */
 function materialCalcSettings(){
+  hjCalcLogFlush();
   const p=hjCalcPrefs();const mode=p.ui.areaMode||'m2';
   const rows=Object.keys(p.d).map(id=>{const c=HJ_CALC_CATS.find(c=>c.id===id);if(!c)return '';const d=p.d[id]||{};
     const txt=Object.keys(d).map(k=>{const f=c.fields.find(f=>f.k===k);const lab=f&&f.t==='sel'?((f.o.find(o=>o[0]===String(d[k]))||[])[1]||d[k]):d[k];return (f?f.l.replace(/\(.*?\)/g,'').trim():k)+' '+lab;}).join(', ');
-    return '<div class="calcDefRow" data-id="'+c.id+'" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft)"><span style="flex:1;min-width:0;font-size:13px"><b>'+c.ic+' '+escapeHtml(c.name)+'</b><br><span style="font-size:11.5px;color:var(--muted-2)">'+escapeHtml(txt)+'</span></span><button type="button" class="ghost tiny calcDefDel" data-id="'+c.id+'" aria-label="'+escapeAttr(c.name+' 기본값 지우기')+'" style="min-height:40px;min-width:40px">✕</button></div>';}).join('');
-  const body='<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.55">각 계산 화면에서 규격·로스를 바꾼 뒤 <b>⭐ 기본값으로</b>를 누르면 여기에 쌓입니다. 앱 데이터가 아니라 이 폰에만 저장됩니다.</div>'+
-    '<label style="display:block;font-size:11.5px;color:var(--muted);margin-bottom:8px">면적 칸 시작 모드<select id="calcAreaMode" style="'+HJ_CALC_IN+'">'+[['m2','㎡'],['py','평'],['wh','가로×세로']].map(m=>'<option value="'+m[0]+'"'+(mode===m[0]?' selected':'')+'>'+m[1]+'</option>').join('')+'</select></label>'+
+    return '<div class="calcDefRow" data-id="'+c.id+'" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft)"><span style="flex:1;min-width:0;font-size:13px"><b>'+c.ic+' '+escapeHtml(c.name)+'</b><br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(txt)+'</span></span><button type="button" class="ghost calcDefDel" data-id="'+c.id+'" aria-label="'+escapeAttr(c.name+' 기본값 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>';}).join('');
+  const body='<div style="font-size:12px;color:var(--muted-2);margin-bottom:10px;line-height:1.55">각 계산 화면에서 규격·로스를 바꾼 뒤 <b>⭐ 기본값으로</b>를 누르면 여기에 쌓입니다. 앱 데이터가 아니라 이 폰에만 저장됩니다.</div>'+
+    '<label style="'+HJ_CALC_LAB+';margin-bottom:8px">면적 칸 시작 모드<select id="calcAreaMode" style="'+HJ_CALC_IN+'">'+[['m2','㎡'],['py','평'],['wh','가로×세로']].map(m=>'<option value="'+m[0]+'"'+(mode===m[0]?' selected':'')+'>'+m[1]+'</option>').join('')+'</select></label>'+
     '<label style="display:flex;align-items:center;gap:8px;min-height:44px;font-size:13.5px"><input type="checkbox" id="calcLogOn"'+(p.ui.log!==false?' checked':'')+' style="width:20px;height:20px"> 🕘 작업기록 남기기 (최근 20건, 이 폰에만)</label>'+
     '<div style="font-size:12px;font-weight:700;margin:12px 0 4px">⭐ 저장한 기본값</div>'+(rows||'<div class="empty" style="padding:14px"><b>저장한 기본값이 없습니다</b>계산 화면에서 ⭐ 기본값으로 를 누르세요.</div>');
-  openModal('⚙ 계산기 기본값',body,[{label:'전부 처음으로',cls:'ghost',fn:()=>{const q=hjCalcPrefs();q.d={};hjCalcPrefsSave(q);toast('저장한 기본값을 모두 지웠습니다');materialCalcSettings();}},{label:'← 계산기',cls:'ghost',fn:()=>materialCalc()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  openModal('⚙ 계산기 기본값',body,[{label:'전부 처음으로',cls:'ghost',fn:()=>{const q=hjCalcPrefs();
+      if(!Object.keys(q.d).length){toast('저장한 기본값이 없습니다');return;}
+      if(!confirm('저장한 기본값 '+Object.keys(q.d).length+'종을 모두 지울까요? 되돌릴 수 없습니다.'))return;
+      q.d={};toast(hjCalcPrefsSave(q)?'저장한 기본값을 모두 지웠습니다':'이 폰 저장소에 쓸 수 없어 지우지 못했습니다');materialCalcSettings();}},
+    {label:'← 계산기',cls:'ghost',fn:()=>materialCalc()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjCalcHook();
   const root=document.getElementById('modalRoot');
-  root.querySelector('#calcAreaMode').onchange=e=>{const q=hjCalcPrefs();q.ui.areaMode=e.target.value;hjCalcPrefsSave(q);toast('면적 칸은 이제 '+e.target.options[e.target.selectedIndex].text+' 로 시작합니다');};
-  root.querySelector('#calcLogOn').onchange=e=>{const q=hjCalcPrefs();q.ui.log=!!e.target.checked;hjCalcPrefsSave(q);if(!q.ui.log){hjCalcLogWrite([]);}toast(q.ui.log?'작업기록을 남깁니다':'작업기록을 끄고 지웠습니다');};
-  root.querySelectorAll('.calcDefDel').forEach(b=>b.onclick=()=>{const q=hjCalcPrefs();delete q.d[b.dataset.id];hjCalcPrefsSave(q);toast('기본값을 지웠습니다');materialCalcSettings();});
+  root.querySelector('#calcAreaMode').onchange=e=>{const q=hjCalcPrefs();q.ui.areaMode=e.target.value;
+    toast(hjCalcPrefsSave(q)?('면적 칸은 이제 '+e.target.options[e.target.selectedIndex].text+' 로 시작합니다'):'이 폰 저장소에 쓸 수 없어 설정을 저장하지 못했습니다');};
+  root.querySelector('#calcLogOn').onchange=e=>{const q=hjCalcPrefs();const on=!!e.target.checked;const had=hjCalcLogRead().length;
+    q.ui.log=on;
+    if(!hjCalcPrefsSave(q)){e.target.checked=!on;toast('이 폰 저장소에 쓸 수 없어 설정을 저장하지 못했습니다');return;}
+    if(on){toast('작업기록을 남깁니다');return;}
+    if(had&&confirm('앞으로 기록하지 않습니다. 이미 쌓인 '+had+'건도 지울까요? (취소하면 그대로 둡니다)')){hjCalcLogWrite([]);toast('기록을 끄고 '+had+'건을 지웠습니다');}
+    else toast(had?'기록만 끕니다 — 쌓인 '+had+'건은 그대로 둡니다':'작업기록을 끕니다');};
+  root.querySelectorAll('.calcDefDel').forEach(b=>b.onclick=()=>{const c=HJ_CALC_CATS.find(c=>c.id===b.dataset.id);
+    if(!confirm('저장한 「'+(c?c.name:b.dataset.id)+'」 기본값을 지울까요?'))return;
+    const q=hjCalcPrefs();delete q.d[b.dataset.id];toast(hjCalcPrefsSave(q)?'기본값을 지웠습니다':'이 폰 저장소에 쓸 수 없어 지우지 못했습니다');materialCalcSettings();});
+  hjCalcLogDrop();
 }
 /* 🕘 작업기록 — 누르면 그 입력값으로 다시 열림, ✕ 하나 지우기, 모두 지우기 */
 function materialCalcLog(){
+  hjCalcLogFlush();
   const log=hjCalcLogRead();
   const rows=log.map(e=>{const c=HJ_CALC_CATS.find(c=>c.id===e.cat);if(!c)return '';
-    return '<div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line-soft)"><button type="button" class="calcLogRow" data-id="'+escapeAttr(e.id)+'" style="flex:1;min-width:0;text-align:left;padding:10px 4px;border:0;background:transparent;cursor:pointer;min-height:52px"><b style="font-size:13.5px">'+c.ic+' '+escapeHtml(c.name)+' · '+escapeHtml(e.head||'')+'</b><br><span style="font-size:11.5px;color:var(--muted-2)">'+escapeHtml(e.t||'')+(e.sub?' · '+escapeHtml(e.sub):'')+'</span></button><button type="button" class="ghost tiny calcLogDel" data-id="'+escapeAttr(e.id)+'" aria-label="기록 지우기" style="min-height:40px;min-width:40px">✕</button></div>';}).join('');
-  const body='<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">계산할 때마다 한 건씩, 최근 20건이 이 폰에 남습니다. 누르면 그 값으로 다시 엽니다.</div>'+(rows||'<div class="empty" style="padding:14px"><b>아직 기록이 없습니다</b>계산하면 여기 쌓입니다.</div>');
-  openModal('🕘 계산 작업기록',body,[{label:'모두 지우기',cls:'ghost',fn:()=>{if(!log.length){toast('지울 기록이 없습니다');return;}hjCalcLogWrite([]);toast('작업기록을 모두 지웠습니다');materialCalcLog();}},{label:'← 계산기',cls:'ghost',fn:()=>materialCalc()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    return '<div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line-soft)"><button type="button" class="calcLogRow" data-id="'+escapeAttr(e.id)+'" style="flex:1;min-width:0;text-align:left;padding:10px 4px;border:0;background:transparent;cursor:pointer;min-height:52px"><b style="font-size:13.5px">'+c.ic+' '+escapeHtml(c.name)+' · '+escapeHtml(e.head||'')+'</b><br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(e.t||'')+(e.sub?' · '+escapeHtml(e.sub):'')+'</span></button><button type="button" class="ghost calcLogDel" data-id="'+escapeAttr(e.id)+'" aria-label="'+escapeAttr((c.name+' '+(e.head||''))+' 기록 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>';}).join('');
+  const body='<div style="font-size:12px;color:var(--muted-2);margin-bottom:8px">계산할 때마다 한 건씩, 최근 20건이 이 폰에 남습니다. 누르면 그 값으로 다시 엽니다.</div>'+(rows||'<div class="empty" style="padding:14px"><b>아직 기록이 없습니다</b>계산하면 여기 쌓입니다.</div>');
+  openModal('🕘 계산 작업기록',body,[{label:'모두 지우기',cls:'ghost',fn:()=>{if(!log.length){toast('지울 기록이 없습니다');return;}
+      if(!confirm('작업기록 '+log.length+'건을 모두 지울까요? 되돌릴 수 없습니다.'))return;
+      hjCalcLogWrite([]);toast('작업기록을 모두 지웠습니다');materialCalcLog();}},
+    {label:'← 계산기',cls:'ghost',fn:()=>materialCalc()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjCalcHook();
   const root=document.getElementById('modalRoot');
   root.querySelectorAll('.calcLogRow').forEach(b=>b.onclick=()=>{const e=log.find(x=>x.id===b.dataset.id);if(!e)return;materialCalc(e.cat,e.v||{},e.id);});
   root.querySelectorAll('.calcLogDel').forEach(b=>b.onclick=()=>{hjCalcLogWrite(hjCalcLogRead().filter(x=>x.id!==b.dataset.id));materialCalcLog();});
+  hjCalcLogDrop();
 }
 function materialCatalog(q){
   const list=materialsEnsure().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
