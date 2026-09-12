@@ -2634,7 +2634,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v286-accessfix';
+const APP_BUILD='hyeonjang-v287-ordersite';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11758,14 +11758,21 @@ function materialOrderText(q,group,sup,date){
   return L.join('\n');
 }
 function materialOrderResult(q,picked,date,back){
-  const groups={};picked.forEach(x=>{(groups[x.sup||'']=groups[x.sup||'']||[]).push(x);});
-  const keys=Object.keys(groups).sort((a,b)=>(a===''?1:b===''?-1:a.localeCompare(b,'ko')));
-  const cards=keys.map((sup,gi)=>{
-    const g=groups[sup];
+  /* 거래처뿐 아니라 현장으로도 나눈다 — 장바구니에 여러 현장이 섞여 있는데 머리에 현장 하나만 붙이면
+     자재가 엉뚱한 주소로 간다(발주 문자의 ■ 현장·주소는 그 줄들이 갈 곳이어야 한다). */
+  const groups={};const meta={};
+  picked.forEach(x=>{const pj=String(x.project||'');const k=(x.sup||'')+'\u0000'+pj;
+    (groups[k]=groups[k]||[]).push(x);meta[k]={sup:x.sup||'',project:pj};});
+  const keys=Object.keys(groups).sort((a,b)=>{const A=meta[a],B=meta[b];
+    if(A.sup!==B.sup)return A.sup===''?1:B.sup===''?-1:A.sup.localeCompare(B.sup,'ko');
+    return String(A.project).localeCompare(String(B.project),'ko');});
+  const multiSite=new Set(picked.map(x=>String(x.project||''))).size>1;
+  const cards=keys.map((key,gi)=>{
+    const g=groups[key];const sup=meta[key].sup;const gp=meta[key].project;
     const known=(state.suppliers||[]).find(s=>s.name===sup);
-    const txt=materialOrderText(q,g,sup||'(거래처 미지정)',date);
+    const txt=materialOrderText({id:q.id,project:gp||q.project},g,sup||'(거래처 미지정)',date);
     return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:10px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b style="font-size:13.5px">'+(sup?escapeHtml(sup):'❔ 거래처 미지정')+'</b><span style="font-size:11.5px;color:var(--muted)">'+g.length+'종</span></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b style="font-size:13.5px">'+(sup?escapeHtml(sup):'❔ 거래처 미지정')+(multiSite&&gp?' <span style="font-size:11.5px;color:var(--moss)">'+escapeHtml(gp)+'</span>':'')+'</b><span style="font-size:11.5px;color:var(--muted)">'+g.length+'종</span></div>'+
       '<pre class="moTxt" data-g="'+gi+'" style="white-space:pre-wrap;font-size:12.5px;line-height:1.6;background:var(--paper-2);border-radius:8px;padding:9px;margin:7px 0">'+escapeHtml(txt)+'</pre>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
         '<input class="moPhone" data-g="'+gi+'" placeholder="거래처 연락처" value="'+escapeAttr(known?known.phone||'':'')+'" inputmode="tel" style="flex:1;min-width:130px;padding:8px;font-size:12.5px">'+
@@ -19650,7 +19657,7 @@ function measureNote(projectName){
 }
 /* ── 🧮 자재 계산기 (v277) — 대표 요청(9/11): 다른 현장 앱의 '계산기'처럼 자재별 소요량을 폰에서 바로 뽑는다.
    같은 날 2차 "선택지가 필요하면 설정 가능하게, 더 쓰기 좋게": ⭐ 기본값 저장(규격·로스는 내 현장 기준으로), 면적 3가지 입력(㎡·평·가로×세로),
-   규격·로스 칩, 결과가 맨 위(입력하면 바로), 🕘 작업기록(최근 20건), 📝 현장 메모로, ➕ 견적 품목 담기, 자재 단가가 있으면 💰 예상 자재비.
+   규격·로스 칩, 결과가 맨 위(입력하면 바로), 🕘 작업기록(최근 50건), 📝 현장 메모로, ➕ 견적 품목 담기, 자재 단가가 있으면 💰 예상 자재비.
    순수 계산(hjCalcRun)과 화면(materialCalc)을 나눈다. 앱 데이터(serializeData)는 건드리지 않는다 —
    기본값·작업기록은 이 폰의 localStorage(hj_calc_prefs·hj_calc_log), 입력값은 이 화면을 쓰는 동안만 기억(window.__hjCalcMem).
    결과는 참고값 — 로스율·규격·도포량은 현장에 맞게 바꾼다. 전기는 규정(KEC)·설계가 우선이다. */
@@ -19863,7 +19870,7 @@ function hjCalcDefault(cat,f,prefs){const d=(prefs||hjCalcPrefs()).d[cat.id]||{}
   if(v==null)return hjCalcFirst(f);
   if(f.t==='sel'&&f.o&&!f.o.some(o=>o[0]===String(v)))return hjCalcFirst(f);   // 앱이 올라가며 선택지가 바뀐 경우 — 옛 값은 버린다
   return v;}
-/* 작업기록(hj_calc_log): 최근 20건, 화면 한 번 열 때 한 건(같은 id 는 덮어씀). 글자를 칠 때마다 쓰지 않고 잠깐 모았다 쓴다 */
+/* 작업기록(hj_calc_log): 최근 50건, 화면 한 번 열 때 한 건(같은 id 는 덮어씀). 글자를 칠 때마다 쓰지 않고 잠깐 모았다 쓴다 */
 function hjCalcLogRead(){try{const l=JSON.parse(localStorage.getItem('hj_calc_log')||'[]');return Array.isArray(l)?l.filter(e=>e&&typeof e==='object'&&e.id&&e.cat):[];}catch(_){return [];}}
 const HJ_CALC_LOG_MAX=50;   // 20이면 한 현장 몇 번 계산에 다른 현장 줄이 조용히 밀려 나갔다
 function hjCalcLogWrite(l){try{localStorage.setItem('hj_calc_log',JSON.stringify(l.slice(0,HJ_CALC_LOG_MAX)));return true;}catch(_){return false;}}
@@ -19878,7 +19885,8 @@ function hjCalcLogDrop(){clearTimeout(window.__hjCalcLogT);window.__hjCalcLogPen
 /* 🧺 발주 담기 — 계산 결과를 이 폰의 장바구니(hj_calc_cart)에 모았다가 거래처별 발주 문자로 넘긴다.
    앱 저장 구조는 건드리지 않는다. 보내기는 대표가 문자 앱에서 직접 누른다(자동 발송 없음). */
 function hjCalcCartRead(){try{const l=JSON.parse(localStorage.getItem('hj_calc_cart')||'[]');return Array.isArray(l)?l.filter(x=>x&&x.id&&x.name):[];}catch(_){return [];}}
-function hjCalcCartWrite(l){try{localStorage.setItem('hj_calc_cart',JSON.stringify(l.slice(0,40)));return true;}catch(_){return false;}}
+const HJ_CALC_CART_MAX=80;   // 현장 여러 곳을 한 목록에 담게 되면서 40 은 조용히 잘렸다
+function hjCalcCartWrite(l){try{localStorage.setItem('hj_calc_cart',JSON.stringify(l.slice(0,HJ_CALC_CART_MAX)));return true;}catch(_){return false;}}
 function hjCalcCartAdd(item){const l=hjCalcCartRead();l.unshift(item);return hjCalcCartWrite(l);}
 /* 자재 구매처·단가에 같은 이름·단위의 자재가 있으면 공급가(÷1.1)로 예상 자재비 — 이름은 정규식(key), 단위는 똑같을 때만(보수적) */
 function hjCalcEstimate(main){
@@ -19985,7 +19993,7 @@ function materialCalc(catId,preset,logId,focusK){
     if(tools)tools.hidden=false;
     if(prefs.ui.log!==false){const old=hjCalcLogRead().find(x=>x.id===visit);
       hjCalcLogPutSoon({id:visit,t:new Date().toLocaleString('ko-KR'),cat:cat.id,v:window.__hjCalcMem[cat.id],head:res.rows[0][0]+' '+res.rows[0][1],sub:hjCalcInputs(cat,v),
-        project:(typeof state!=='undefined'&&state.activeProject)||null,
+        project:(old&&old.project!==undefined)?old.project:((typeof state!=='undefined'&&state.activeProject)||null),   // 옛 기록을 다시 열어 고쳐도 그때 그 현장 그대로
         q:res.main?res.main.qty:0,u:res.main?res.main.unit:'',lp:hjCalcNum(v.loss),used:old&&old.used!=null?old.used:null});}
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
   const copyText=()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
@@ -20045,7 +20053,7 @@ function materialCalcSettings(){
     return '<div class="calcDefRow" data-id="'+c.id+'" style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft)"><span style="flex:1;min-width:0;font-size:13px"><b>'+c.ic+' '+escapeHtml(c.name)+'</b><br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(txt)+'</span></span><button type="button" class="ghost calcDefDel" data-id="'+c.id+'" aria-label="'+escapeAttr(c.name+' 기본값 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>';}).join('');
   const body='<div style="font-size:12px;color:var(--muted-2);margin-bottom:10px;line-height:1.55">각 계산 화면에서 규격·로스를 바꾼 뒤 <b>⭐ 기본값으로</b>를 누르면 여기에 쌓입니다. 앱 데이터가 아니라 이 폰에만 저장됩니다.</div>'+
     '<label style="'+HJ_CALC_LAB+';margin-bottom:8px">면적 칸 시작 모드<select id="calcAreaMode" style="'+HJ_CALC_IN+'">'+[['m2','㎡'],['py','평'],['wh','가로×세로']].map(m=>'<option value="'+m[0]+'"'+(mode===m[0]?' selected':'')+'>'+m[1]+'</option>').join('')+'</select></label>'+
-    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;font-size:13.5px"><input type="checkbox" id="calcLogOn"'+(p.ui.log!==false?' checked':'')+' style="width:20px;height:20px"> 🕘 작업기록 남기기 (최근 20건, 이 폰에만)</label>'+
+    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;font-size:13.5px"><input type="checkbox" id="calcLogOn"'+(p.ui.log!==false?' checked':'')+' style="width:20px;height:20px"> 🕘 작업기록 남기기 (최근 50건, 이 폰에만)</label>'+
     '<div style="font-size:12px;font-weight:700;margin:12px 0 4px">⭐ 저장한 기본값</div>'+(rows||'<div class="empty" style="padding:14px"><b>저장한 기본값이 없습니다</b>계산 화면에서 ⭐ 기본값으로 를 누르세요.</div>');
   openModal('⚙ 계산기 기본값',body,[{label:'전부 처음으로',cls:'ghost',fn:()=>{const q=hjCalcPrefs();
       if(!Object.keys(q.d).length){toast('저장한 기본값이 없습니다');return;}
@@ -20085,11 +20093,11 @@ function materialCalcCart(){
   const cart=hjCalcCartRead();
   const supNames=[...new Set([...(typeof state!=='undefined'&&state.suppliers||[]).map(x=>x.name),...Object.values((typeof state!=='undefined'&&state.supplierMap)||{}),...(typeof matSupplierNames==='function'?matSupplierNames():[])])].filter(Boolean);
   const rowOf=(it,i)=>'<div class="calcCartRow" data-id="'+escapeAttr(it.id)+'" style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line-soft)">'+
-      '<input type="checkbox" class="ccChk" data-i="'+i+'" checked style="width:20px;height:20px">'+
+      '<label style="display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto"><input type="checkbox" class="ccChk" data-i="'+i+'" checked aria-label="'+escapeAttr((it.project?it.project+' ':'')+it.name+' 발주에 넣기')+'" style="width:22px;height:22px"></label>'+
       '<span style="flex:1;min-width:0;font-size:13px"><b>'+escapeHtml(it.name)+'</b>'+(it.spec?'<br><span style="font-size:11.5px;color:var(--muted-2)">'+escapeHtml(it.spec)+'</span>':'')+(it.project?'<br><span style="font-size:11.5px;color:var(--moss)">'+escapeHtml(it.project)+'</span>':'')+'</span>'+
-      '<input class="ccQty" data-i="'+i+'" inputmode="decimal" aria-label="'+escapeAttr(it.name+' 수량')+'" value="'+escapeAttr(String(it.qty))+'" style="width:64px;text-align:center;padding:9px;font-size:16px;min-height:44px">'+
+      '<input class="ccQty" data-i="'+i+'" inputmode="decimal" aria-label="'+escapeAttr((it.project?it.project+' ':'')+it.name+' 수량')+'" value="'+escapeAttr(String(it.qty))+'" style="width:64px;text-align:center;padding:9px;font-size:16px;min-height:44px">'+
       '<span style="font-size:11.5px;color:var(--muted-2);min-width:24px">'+escapeHtml(it.unit||'')+'</span>'+
-      '<input class="ccSup" data-i="'+i+'" list="ccSupList" placeholder="거래처" aria-label="'+escapeAttr(it.name+' 거래처')+'" value="'+escapeAttr(it.sup||(typeof hjSupplierOf==='function'?hjSupplierOf(it.name):''))+'" style="width:92px;padding:9px;font-size:13px;min-height:44px">'+
+      '<input class="ccSup" data-i="'+i+'" list="ccSupList" placeholder="거래처" aria-label="'+escapeAttr((it.project?it.project+' ':'')+it.name+' 거래처')+'" value="'+escapeAttr(it.sup||(typeof hjSupplierOf==='function'?hjSupplierOf(it.name):''))+'" style="width:92px;padding:9px;font-size:13px;min-height:44px">'+
       '<button type="button" class="ghost ccDel" data-id="'+escapeAttr(it.id)+'" aria-label="'+escapeAttr(it.name+' 빼기')+'" style="min-height:44px;min-width:44px">✕</button></div>';
   // 현장별로 묶어 "이 현장 자재가 다 해서 얼마"를 보여 준다. 줄 번호(data-i)는 원래 자리를 그대로 쓴다.
   const idx=cart.map((it,i)=>({it,i}));
@@ -20143,14 +20151,15 @@ function materialCalcCart(){
   if(make)make.onclick=()=>{
     const picked=[];
     root.querySelectorAll('.ccChk:checked').forEach(c=>{const i=+c.dataset.i,it=cart[i];if(!it)return;
-      picked.push({name:it.name,spec:it.spec||'',qty:hjCalcNum(root.querySelector('.ccQty[data-i="'+i+'"]').value)||1,sup:root.querySelector('.ccSup[data-i="'+i+'"]').value.trim()});});
+      picked.push({name:it.name,spec:it.spec||'',qty:hjCalcNum(root.querySelector('.ccQty[data-i="'+i+'"]').value)||1,sup:root.querySelector('.ccSup[data-i="'+i+'"]').value.trim(),project:it.project||''});});
     if(!picked.length){toast('보낼 품목을 하나 이상 체크하세요.');return;}
     if(typeof state!=='undefined'){   // 거래처 학습은 기존 발주서와 같게
       state.supplierMap=state.supplierMap||{};state.suppliers=state.suppliers||[];
       picked.forEach(x=>{if(x.sup){state.supplierMap[x.name]=x.sup;if(!state.suppliers.some(s=>s.name===x.sup)&&!(typeof matSupplierUrl==='function'&&matSupplierUrl(x.sup)))state.suppliers.push({name:x.sup,phone:''});}});
       markDirty();
     }
-    const pj=(cart.find(x=>x.project)||{}).project||(typeof state!=='undefined'&&state.activeProject)||'';
+    // 현장은 줄마다 따라간다(picked[].project) — 여기서는 현장이 없는 줄의 기본값만 정한다
+    const pj=(typeof state!=='undefined'&&state.activeProject)||'';
     materialOrderResult({id:'',project:pj},picked,root.querySelector('#ccDate').value,()=>materialCalcCart());
   };
   hjCalcLogDrop();
@@ -20162,20 +20171,27 @@ function materialCalcCart(){
 function hjCalcGroupBy(list){                      // 현장별로 묶는다. 현장이 없는 줄은 맨 뒤 '현장 미지정'
   const map=new Map();
   (list||[]).forEach(e=>{const k=String((e&&e.project)||'');if(!map.has(k))map.set(k,[]);map.get(k).push(e);});
-  const keys=[...map.keys()].filter(k=>k).sort((a,b)=>a.localeCompare(b,'ko'));
+  const act=(typeof state!=='undefined'&&state.activeProject)||'';
+  const keys=[...map.keys()].filter(k=>k).sort((a,b)=>
+    (a===act?-1:b===act?1:a.localeCompare(b,'ko')));   // 지금 보는 현장을 맨 위로 — 오늘 쓸 것이 화면 밖에 있으면 소용이 없다
   if(map.has(''))keys.push('');
   return keys.map(k=>({project:k,items:map.get(k)}));
 }
 /* 담은 줄의 예상 매입가 — 구매처·단가에 이름이 같고 단위도 같은 자재가 있을 때만(보수적, 공급가 ÷1.1) */
 function hjCartUnitPrice(it){
   if(!it||typeof state==='undefined'||!Array.isArray(state.materials))return 0;
-  const nm=String(it.name||'').replace(/\s/g,'').toLowerCase();
-  const un=String(it.unit||'').replace(/\s/g,'').toLowerCase();
+  const low=v=>String(v||'').replace(/\s/g,'').toLowerCase();
+  const nm=low(it.name),un=low(it.unit);
   if(!nm)return 0;
   const hit=state.materials.find(m=>{if(!m||!matBest(m))return false;
-    if(String(m.name||'').replace(/\s/g,'').toLowerCase()!==nm)return false;
-    return !un||String(m.unit||'').replace(/\s/g,'').toLowerCase()===un;});
-  return hit?matSupplyPrice(matBest(hit).price):0;
+    if(low(m.name)!==nm)return false;
+    return !un||low(m.unit)===un;});
+  if(!hit)return 0;
+  /* 거래처를 골라 뒀으면 그 집 값으로 센다 — 화면 금액과 실제 주문하는 곳이 다르면 합계가 거짓말이 된다 */
+  const sup=low(it.sup);
+  const mine=sup?(hit.entries||[]).filter(e=>low(e.supplier)===sup&&matParsePrice(e.price)>0)
+                                  .sort((a,b)=>matParsePrice(a.price)-matParsePrice(b.price))[0]:null;
+  return matSupplyPrice((mine||matBest(hit)).price);
 }
 function hjCartSum(items){                         // {amount, priced, unpriced}
   let amount=0,priced=0,unpriced=0;
@@ -20194,9 +20210,10 @@ function hjCalcLogToItem(e){
 }
 /* 같은 현장·같은 이름·같은 단위면 더한다 — 물량표는 '다 해서 몇 장'이라야 쓸모가 있다 */
 function hjCartMergeAdd(list,row){
+  const norm=v=>String(v||'').replace(/\s/g,'');
   const same=list.find(x=>x&&String(x.project||'')===String(row.project||'')&&
-    String(x.name||'').replace(/\s/g,'')===String(row.name||'').replace(/\s/g,'')&&
-    String(x.unit||'')===String(row.unit||''));
+    norm(x.name)===norm(row.name)&&String(x.unit||'')===String(row.unit||'')&&
+    norm(x.spec)===norm(row.spec));   // 규격까지 같아야 합친다
   if(same){same.qty=Math.round((hjCalcNum(same.qty)+hjCalcNum(row.qty))*100)/100;return 'merged';}
   list.unshift(row);return 'added';
 }
@@ -20244,8 +20261,10 @@ function materialCalcLog(){
       const r=hjCartMergeAdd(cart,Object.assign({id:uid(),cat:e.cat,project:pj||null,t:new Date().toLocaleString('ko-KR')},it));
       if(r==='merged')merge++;else add++;});
     if(!add&&!merge){toast(skip?'이 현장 계산에는 담을 수량이 없습니다':'담을 것이 없습니다');return;}
+    const over=Math.max(0,cart.length-HJ_CALC_CART_MAX);   // 넘치면 잘린다 — 잘렸다고 말해야 한다
     if(!hjCalcCartWrite(cart)){toast('이 폰 저장소에 쓸 수 없어 담지 못했습니다');return;}
-    toast((pj||'현장 미지정')+' — '+add+'줄 담고 '+merge+'줄은 있던 줄에 더했습니다'+(skip?' ('+skip+'건은 수량이 없어 건너뜀)':''));
+    toast((pj||'현장 미지정')+' — '+add+'줄 담고 '+merge+'줄은 있던 줄에 더했습니다'+(skip?' ('+skip+'건은 수량이 없어 건너뜀)':'')+
+      (over?' ⚠ 목록이 '+HJ_CALC_CART_MAX+'줄을 넘어 오래된 '+over+'줄이 빠졌습니다':''));
     materialCalcCart();});
   root.querySelectorAll('.calcUsed').forEach(i=>{i.onchange=()=>{const v=i.value.trim();
     const l=hjCalcLogRead().map(x=>x.id===i.dataset.id?Object.assign({},x,{used:v===''?null:hjCalcNum(v)}):x);
