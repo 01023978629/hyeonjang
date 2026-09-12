@@ -214,6 +214,14 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   const noName = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcIn')].filter(el => !el.getAttribute('aria-label') && !el.closest('label')).map(el => el.dataset.k));
   assert(noName.length === 0, '③ 모든 입력칸에 이름이 있다(소리로 읽힌다): ' + noName.join(', '));
 
+  // 첫 줄 값에 괄호 설명이 붙으면(도배 '3 롤 (합지 광폭…)') 큰 글씨는 숫자만, 설명은 작은 글씨로 내려간다
+  await page.evaluate(() => { window.__hjCalcMem.paper = { peri: '16.4', hgt: '2.4' }; materialCalc('paper'); });
+  await waitOut(/롤/);
+  const head = await page.evaluate(() => { const b = document.querySelector('#calcOut b'); const sub = b.querySelector('span'); return [b.firstChild.textContent.trim(), sub ? sub.textContent.trim() : '', sub ? getComputedStyle(sub).fontSize : '', getComputedStyle(b).fontSize]; });
+  assert(head[0] === '3 롤' && /합지 광폭/.test(head[1]) && parseFloat(head[2]) < parseFloat(head[3]), '③ 첫 줄은 숫자만 크게, 규격은 작은 글씨: ' + JSON.stringify(head));
+  await page.evaluate(() => { window.__hjCalcMem.tile = { m2: '10', box: '10' }; materialCalc('tile'); });
+  await waitOut(/61 장/);
+
   // ④ 입력 즉시 결과, 뒤로 갔다 와도 값 유지
   await page.fill('#modalRoot .calcIn[data-k="m2"]', '10');
   await page.fill('#modalRoot .calcIn[data-k="box"]', '10');
@@ -223,7 +231,7 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   assert(await page.evaluate(() => document.querySelector('#calcTools').hidden === false), '④ 결과가 나오면 도구 줄');
   await page.click('#modalRoot .mfoot button:has-text("다른 계산")');
   assert((await page.evaluate(() => document.querySelectorAll('#modalRoot .calcCat').length)) === 14, '④ 그리드로 돌아감');
-  assert((await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcRecent')].map(b => b.dataset.id).join())) === 'tile', '④ 최근 줄에 타일');
+  assert((await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcRecent')].map(b => b.dataset.id).join())) === 'tile,paper', '④ 최근 줄은 마지막에 쓴 순서: ' + (await page.evaluate(() => [...document.querySelectorAll('#modalRoot .calcRecent')].map(b => b.dataset.id).join())));
   await page.click('#modalRoot .calcRecent[data-id="tile"]');
   await waitOut(/61 장/);
   assert((await inputs()).m2 === '10', '④ 값 기억');
