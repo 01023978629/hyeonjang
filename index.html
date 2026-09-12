@@ -19321,7 +19321,11 @@ function hjCalcRun(id,v){
     main={name:'벽지',spec:rw?lab('kind'):'',qty:rolls,unit:'롤',key:'벽지|도배'};
   }else if(id==='film'){
     if(!n('m2')||!n('width'))return R(rows,'면적과 필름 폭을 넣어 주세요.');
-    const len=n('m2')*loss/n('width');rows.push(['필름 길이',hjCalcFmt(len,1)+' m (폭 '+hjCalcFmt(n('width'),2)+'m)'],['50m 롤',hjCalcFmt(Math.ceil(len/50),0)+' 롤']);
+    const w=n('width');let len=n('m2')*loss/w;let strip=0;
+    if(n('aw')&&n('ah')){   // 면을 가로×세로로 알면 폭 수로 — 가로를 폭으로 나누고 세로를 통으로 뽑는다(문짝 가운데 이음매를 만들지 않는다)
+      strip=Math.ceil(n('aw')/w);len=strip*n('ah')*loss;}
+    rows.push(['필름 길이',hjCalcFmt(len,1)+' m (폭 '+hjCalcFmt(w,2)+'m'+(strip?' · '+strip+'폭':' · 자투리 미포함')+')'],['50m 롤',hjCalcFmt(Math.ceil(len/50),0)+' 롤']);
+    if(!strip)note='폭보다 좁은 문짝·몰딩은 조각마다 원단 폭이 남습니다 — 면적을 「가로×세로」로 넣으면 폭 수로 세고, 아니면 로스를 넉넉히 잡으세요.';
     if(n('pcov'))rows.push(['프라이머 (1회)',hjCalcFmt(n('m2')/n('pcov')*loss,1)+' L']);
     main={name:'인테리어 필름',spec:'폭 '+hjCalcFmt(n('width'),2)+'m (로스 '+hjCalcFmt(n('loss'),0)+'%)',qty:Math.ceil(len*10)/10,unit:'m',key:'필름',alt:{qty:Math.ceil(len/50),unit:'롤'}};
   }else if(id==='electric'){
@@ -19471,8 +19475,9 @@ function materialCalc(catId,preset,logId,focusK){
   const copyText=()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
   root.querySelectorAll('.calcIn').forEach(i=>{i.oninput=()=>paint();i.onchange=()=>paint();});
   root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();const m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
-    if(to==='py')cur.m2_py=m?String(Math.round(m/HJ_CALC_PY*100)/100):'';   // 예전에 넣어 둔 평수가 되살아나 지금 면적을 덮지 않게 항상 새로 쓴다
-    if(to==='m2')cur.m2=m?String(Math.round(m*100)/100):'';
+    if(m)cur.m2Keep=String(Math.round(m*100)/100);const keep=hjCalcNum(cur.m2Keep);   // 가로×세로로 갔다가 돌아와도 넣어 둔 면적이 살아 있게
+    if(to==='py')cur.m2_py=m?String(Math.round(m/HJ_CALC_PY*100)/100):(keep?String(Math.round(keep/HJ_CALC_PY*100)/100):'');   // 예전 평수가 되살아나 지금 면적을 덮지는 않는다
+    if(to==='m2')cur.m2=m?String(Math.round(m*100)/100):(keep?String(keep):'');
     if(to==='wh'&&Math.abs(hjCalcNum(cur.m2_w)*hjCalcNum(cur.m2_h)-m)>0.02){cur.m2_w='';cur.m2_h='';}
     materialCalc(cat.id,null,visit,to==='py'?'m2_py':to==='wh'?'m2_w':'m2');});
   root.querySelectorAll('.calcChip').forEach(ch=>ch.onclick=()=>{let set={};try{set=JSON.parse(ch.dataset.set||'{}');}catch(_){}Object.keys(set).forEach(k=>{const el=root.querySelector('.calcIn[data-k="'+k+'"]');if(el)el.value=String(set[k]);});paint();});

@@ -130,7 +130,13 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   r = await run('roof', { m2: '100', deg: '85', loss: '0' });
   assert(r.rows.length === 3 && /단위/.test(r.note), '② 지붕 급경사 확인 안내: ' + JSON.stringify(r));
   r = await run('film', { m2: '12.2', width: '1.22', loss: '0' });
-  assert(val(r, '필름 길이').startsWith('10 m') && val(r, '50m 롤') === '1 롤' && r.main.alt.unit === '롤', '② 필름: ' + JSON.stringify(r));
+  assert(val(r, '필름 길이') === '10 m (폭 1.22m · 자투리 미포함)' && val(r, '50m 롤') === '1 롤' && r.main.alt.unit === '롤' && /문짝·몰딩/.test(r.note), '② 필름 면적법·자투리 안내: ' + JSON.stringify(r));
+  r = await run('film', { m2: '1.89', aw: '0.9', ah: '2.1', width: '1.22', loss: '25' });
+  // 문짝 0.9×2.1: 폭 1.22 원단에서 가로 0.9 를 1폭으로 잡고 세로 2.1m 를 통으로 뽑는다 → 2.1×1.25 = 2.6m (면적 나누기면 1.9m 로 모자라다)
+  assert(val(r, '필름 길이') === '2.6 m (폭 1.22m · 1폭)' && !/문짝·몰딩/.test(r.note), '② 필름 폭 수(가운데 이음매 없이): ' + JSON.stringify(r));
+  r = await run('film', { m2: '6', aw: '3', ah: '2', width: '1.22', loss: '0' });
+  // 가로 3m → 3폭(1.22×3=3.66), 세로 2m 통으로 → 6m
+  assert(val(r, '필름 길이') === '6 m (폭 1.22m · 3폭)', '② 필름 폭 수 여러 폭: ' + JSON.stringify(r));
   r = await run('film', { m2: '12.2', width: '1.22', loss: '0', pcov: '6.1' });
   assert(val(r, '프라이머 (1회)') === '2 L', '② 필름 프라이머: ' + JSON.stringify(r));
   r = await run('steel', { m2: '75', eff: '0.75', slen: '6', eave: '0', loss: '0' });
@@ -343,6 +349,9 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   await waitOut(/399 장/);   // 20평=66.12㎡ → /0.182709 → 361.9 → ×1.1 → 399장
   await page.click('#modalRoot .calcSeg[data-mode="wh"]');
   assert((await inputs()).m2_w === '' && (await inputs()).m2_h === '' && /가로·세로|면적/.test(await outText()), '⑨ 면적이 바뀌었으면 안 맞는 가로·세로는 비운다: ' + JSON.stringify(await inputs()));
+  await page.click('#modalRoot .calcSeg[data-mode="m2"]');
+  await waitOut(/399 장/);
+  assert((await inputs()).m2 === '66.12', '⑨ 가로×세로로 갔다 돌아와도 넣어 둔 면적(20평=66.12㎡)이 살아 있다: ' + JSON.stringify(await inputs()));
   await page.evaluate(() => materialCalcSettings());
   await page.selectOption('#calcAreaMode', 'py');
   await page.evaluate(() => materialCalc('paint'));
@@ -475,6 +484,6 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   // ⑬ 오류 0
   assert(errors.length === 0, '⑬ pageerror: ' + errors.join(' | '));
 
-  console.log('material-calc.e2e OK (① 메뉴 ② 계산 52건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
+  console.log('material-calc.e2e OK (① 메뉴 ② 계산 54건 ③ 그리드·폼·칩 ④ 즉시·기억·최근 ⑤ 복사 ⑥ 저장 무변경 ⑦ 칩 ⑧ 기본값·설정 ⑨ 면적 3모드 ⑩ 작업기록 ⑪ 현장 메모 ⑫ 견적 담기·예상 자재비 ⑬ 오류 0)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
