@@ -622,6 +622,23 @@
   .mc-row.total{border-bottom:none;border-top:2px solid var(--line);margin-top:4px;padding-top:11px;font-size:15px;font-weight:700}
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:80;max-width:90vw;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  body.mobile-mode #toast{bottom:calc(72px + env(safe-area-inset-bottom,0px));width:max-content;max-width:calc(100vw - 32px);overflow-wrap:anywhere}
+  .worklog-row,.worklog-head{display:grid;grid-template-columns:58px minmax(0,1fr) 96px 150px;gap:6px;padding:10px;align-items:center}
+  .worklog-row{font-size:11.5px;border-top:1px solid var(--line-soft)}
+  .worklog-head{background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700}
+  .worklog-project{min-width:0;overflow-wrap:anywhere}
+  .worklog-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+  .worklog-actions button{min-height:44px;min-width:44px}
+  body.mobile-mode .worklog-head{display:none}
+  body.mobile-mode .worklog-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;font-size:14px}
+  body.mobile-mode .worklog-date{grid-column:1;grid-row:1}
+  body.mobile-mode .worklog-time{grid-column:2;grid-row:1}
+  body.mobile-mode .worklog-project{grid-column:1/-1;grid-row:2}
+  body.mobile-mode .worklog-actions{grid-column:1/-1;grid-row:3}
+  body.mobile-mode .modal.mobile-scroll-modal{display:flex;flex-direction:column;overflow:hidden}
+  body.mobile-mode .mobile-scroll-modal .modal-head,body.mobile-mode .mobile-scroll-modal .mfoot{flex-shrink:0}
+  body.mobile-mode .mobile-scroll-modal .mbody{min-height:0;overflow:auto}
+  body.mobile-mode .mobile-scroll-modal .mfoot{position:static}
   .hint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:4px 0 16px}
   .legend span{display:flex;align-items:center;gap:5px}
@@ -2634,7 +2651,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v291-teamwork';
+const APP_BUILD='hyeonjang-v293-mobilescreen';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3237,6 +3254,7 @@ function openPhotoIntake(files,context){
       __photoIntakeBusy=true;
       runPhotoIntake(picked,approved);
     }}]);
+  document.querySelector('#modalRoot .modal').classList.add('mobile-scroll-modal','photo-intake-modal');
   const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons[0].id='photoIntakeCancel';buttons[1].id='photoIntakeConfirm';
   buttons.forEach(b=>{b.style.minHeight='44px';b.style.minWidth='44px';});
   const unitSelect=document.getElementById('photoIntakeUnit'),projectSelect=document.getElementById('photoIntakeProject');
@@ -28551,11 +28569,12 @@ function workView(pjName){
   const tile=function(l,v,c){return '<div style="flex:1;min-width:92px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div></div>';};
   const rows=all.slice(0,30).map(function(w,i){
     const m=workMinutes(w);
-    return '<div style="display:grid;grid-template-columns:58px 1fr 96px 62px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
-      '<div style="color:var(--muted)">'+String(w.date||'').slice(5)+'</div>'+
-      '<div style="min-width:0"><b>'+escapeHtml(w.project||'')+'</b></div>'+
-      '<div style="text-align:right;font-weight:700;color:'+(w.out?'var(--ink)':'#c2410c')+'">'+w.in+'~'+(w.out||'진행 중')+(w.out?'<div style="font-size:10px;color:var(--muted);font-weight:400">'+workHM(m)+'</div>':'')+'</div>'+
-      '<div style="display:flex;gap:2px"><button class="ghost tiny wkEdit" data-id="'+w.id+'" style="padding:6px 7px">✏️</button><button class="ghost tiny wkDel" data-id="'+w.id+'" style="padding:6px 7px">🗑</button></div>'+
+    const label=escapeAttr((w.project||'현장 미지정')+' '+(w.date||'')+' 작업시간');
+    return '<div class="worklog-row" style="'+(i%2?'background:var(--paper-2);':'')+'">'+
+      '<div class="worklog-date" style="color:var(--muted)">'+escapeHtml(String(w.date||'').slice(5))+'</div>'+
+      '<div class="worklog-project"><b>'+escapeHtml(w.project||'')+'</b></div>'+
+      '<div class="worklog-time" style="text-align:right;font-weight:700;color:'+(w.out?'var(--ink)':'#c2410c')+'">'+escapeHtml(w.in||'')+'~'+escapeHtml(w.out||'진행 중')+(w.out?'<div style="font-size:10px;color:var(--muted);font-weight:400">'+workHM(m)+'</div>':'')+'</div>'+
+      '<div class="worklog-actions"><button class="ghost tiny wkEdit" data-id="'+escapeAttr(w.id)+'" aria-label="'+label+' 수정" style="padding:6px 7px">✏️ 수정</button><button class="ghost tiny wkDel" data-id="'+escapeAttr(w.id)+'" aria-label="'+label+' 삭제" style="padding:6px 7px">🗑 삭제</button></div>'+
     '</div>';
   }).join('');
   openModal('⏱ 작업시간'+(pjName?' — '+pjName:''),
@@ -28563,13 +28582,17 @@ function workView(pjName){
       tile('작업 일수',days+'일')+tile('누적 시간',workHM(totalM),'#1d4ed8')+tile('이번 달',workHM(thisM),'#15803d')+
     '</div>'+
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
-      '<div style="display:grid;grid-template-columns:58px 1fr 96px 62px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>현장</div><div style="text-align:right">시간</div><div></div></div>'+
+      '<div class="worklog-head"><div>일자</div><div>현장</div><div style="text-align:right">시간</div><div style="text-align:right">관리</div></div>'+
       (rows||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">기록이 없어요</div>')+
     '</div>'+
     '<p class="hint" style="margin-top:9px">현장 화면의 [⏱ 시작]/[⏱ 종료]로 찍습니다. 실제 투입 시간을 알면 다음 견적 단가가 정확해져요.</p>',
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelector('#modalRoot .modal').classList.add('mobile-scroll-modal','worklog-modal');
   document.querySelectorAll('#modalRoot .wkEdit').forEach(function(b){b.onclick=function(){workEditView(b.dataset.id,pjName);};});
   document.querySelectorAll('#modalRoot .wkDel').forEach(function(b){b.onclick=function(){
+    const record=workData().find(function(w){return w.id===b.dataset.id;});
+    if(!record){toast('작업시간 기록을 찾을 수 없어요');return;}
+    if(!confirm((record.project||'현장 미지정')+' · '+(record.date||'날짜 미지정')+' 작업시간 기록을 삭제할까요?\n선택한 기록 1건만 삭제합니다.'))return;
     state.workLogs=workData().filter(function(w){return w.id!==b.dataset.id;});markDirty();workView(pjName);};});
   return {일수:days,분:totalM};
 }
