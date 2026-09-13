@@ -53,9 +53,21 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await page.route('https://**/*', route => route.abort());
-  await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
+  await page.addInitScript(() => {
+    try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {}
+    // Never touch the OS clipboard/share picker. Own writable fixtures also make
+    // later replacement/restoration independent of browser getter descriptors.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, writable: true,
+      value: { writeText(t) { window.__copied = t; return Promise.resolve(); } } });
+    Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: undefined });
+    document.execCommand = () => { throw new Error('Unexpected unmocked clipboard fallback'); };
+  });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.siteRulesView === 'function' && typeof window.hjSiteText === 'function');
+  // A declared function does not mean asynchronous local/relay/office hydration
+  // finished. Do not race later boot state/render changes with synthetic data.
+  await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
+  await page.evaluate(async () => { await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]); });
   const modalText = () => page.evaluate(() => (document.querySelector('#modalRoot') || {}).textContent || '');
   const sumText = () => page.evaluate(() => (document.querySelector('#srSum') || {}).textContent || '');
   const rules = n => page.evaluate(nm => ((state.projects.find(p => p.name === nm) || {}).siteRules || null), n);
@@ -148,7 +160,7 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
   });
   assert(shared && /출입·작업 시간/.test(shared.text) && /평화로운아파트/.test(shared.title), '⑤ 공유: ' + JSON.stringify(shared));
   const fallback = await page.evaluate(() => {
-    try { delete navigator.share; } catch (e) {}
+    Object.defineProperty(navigator, 'share', { configurable: true, writable: true, value: undefined });
     window.__copied = '';
     siteRulesView('평화로운아파트');
     [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /공유/.test(b.textContent)).click();
@@ -267,11 +279,11 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
   const fellBack = await page.evaluate(() => {
     window.__toasts = []; const o = window.toast; window.toast = m => { window.__toasts.push(m); return o(m); };
     const saved = navigator.clipboard;
-    try { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); } catch (e) {}
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true, writable: true });
     let used = false; const oe = document.execCommand; document.execCommand = c => { used = true; return true; };
     siteRulesView('평화로운아파트');
     [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /복사/.test(b.textContent)).click();
-    document.execCommand = oe; if (saved) try { Object.defineProperty(navigator, 'clipboard', { value: saved, configurable: true }); } catch (e) {}
+    document.execCommand = oe; Object.defineProperty(navigator, 'clipboard', { value: saved, configurable: true, writable: true });
     return { used, toasts: window.__toasts.join('|') };
   });
   assert(fellBack.used && /복사했습니다/.test(fellBack.toasts), '⑫ 복사 폴백: ' + JSON.stringify(fellBack));
@@ -510,4 +522,4 @@ assert(!/type="password"|비밀번호[^처]{0,4}(입력|칸)/.test(viewSrc), '�
   assert(errors.length === 0, '⑦ pageerror: ' + errors.join(' | '));
   console.log('site-rules.e2e OK (① 메뉴·빈 현장 ② 현장에 저장·개수 ③ 왕복·출입정보 구분 ④ 복사 글 ⑤ 공유 ⑥ 현장 전환 ⑦ 비밀번호 칸 없음 ⑧ 출입번호 차단 ⑨ 보관 현장 ⑩ 자료 교체 ⑪ 읽기는 읽기만 ⑫ 폴백 ⑬ 선택 복원 ⑭ 키보드·44px·제목 ⑮ 포커스·낭독·테두리 ⑯ 착공 전·출발 전 진입점 ⑰ 한 글자씩 ⑱ 낱말·단위 ⑲ 칸별 확인일 ⑳ 교체·유출)');
   await browser.close();
-})().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
+})().catch(async e => { console.error('FAIL', e && e.stack || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });

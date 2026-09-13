@@ -432,26 +432,99 @@ assert.doesNotThrow(() => {
   });
 }, 'HEAD must descend from the fixed Task 1 base');
 
-assert.doesNotThrow(() => {
-    childProcess.execFileSync('git', ['diff', '--exit-code', BASE, 'HEAD', '--', ...serverOwnedProtectedPaths], {
-    cwd: ROOT,
-    stdio: 'pipe'
+// The representative approved the independent shared-todo module on 2026-09-13.
+// Do not reset BASE or exempt the relay directory: every old file stays pinned
+// to Task 1. Only one exact post-auth dispatch line and two exact new paths are
+// allowed. Check HEAD, index and working files separately so staging cannot hide
+// an unrelated change. SharedTodo auth/CRUD behavior has its own server unit gate.
+const sharedTodoAdditions = ['apps-script/SharedTodo.gs', 'apps-script/README_SHARED_TODO.md'];
+const sharedTodoDispatch = "    if (typeof sharedTodoIsAction_ === 'function' && typeof sharedTodoHandle_ === 'function' && sharedTodoIsAction_(action)) return out_(sharedTodoHandle_(action, req));\n";
+const relayAuthAnchor = "    var tk = checkToken_(req.token);\n    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');\n";
+const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
+function protectedGit(args) {
+  return childProcess.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+function protectedTree(revision) {
+  return protectedGit(['ls-tree', '-r', '-z', revision, '--', ...serverOwnedProtectedPaths]).split('\0').filter(Boolean).map(entry => {
+    const match = /^(\d+) blob ([0-9a-f]+)\t(.+)$/.exec(entry);
+    assert.notEqual(match, null, 'protected tree entries must be regular Git blobs');
+    return { mode: match[1], path: match[3], text: normalizeCheckoutLines(protectedGit(['show', revision + ':' + match[3]])) };
   });
-}, 'OfficeOps commits must preserve legacy/commercial server source isolation from the fixed Task 1 base');
+}
+const protectedBaseline = protectedTree(BASE);
+assert.equal(protectedBaseline.length > 0, true, 'fixed Task 1 server baseline must not be empty');
+const baselineRelay = protectedBaseline.find(entry => entry.path === 'apps-script/Code.gs');
+assert.notEqual(baselineRelay, undefined, 'fixed Task 1 relay source must exist');
+assert.equal(baselineRelay.text.split(relayAuthAnchor).length - 1, 1, 'fixed relay has exactly one reviewed auth insertion point');
+assert.equal(baselineRelay.text.includes(sharedTodoDispatch), false, 'Task 1 baseline predates the approved shared-todo dispatch');
+const approvedRelayText = baselineRelay.text.replace(relayAuthAnchor, relayAuthAnchor + sharedTodoDispatch);
 
-assert.doesNotThrow(() => {
-    childProcess.execFileSync('git', ['diff', '--exit-code', 'HEAD', '--', ...serverOwnedProtectedPaths], {
-    cwd: ROOT,
-    stdio: 'pipe'
+function assertProtectedSnapshot(entries, label) {
+  const paths = entries.map(entry => entry.path);
+  assert.equal(new Set(paths).size, paths.length, label + ': duplicate or conflicted protected paths are forbidden');
+  const baselinePaths = new Set(protectedBaseline.map(entry => entry.path));
+  for (const entry of entries) {
+    assert.equal(baselinePaths.has(entry.path) || sharedTodoAdditions.includes(entry.path), true,
+      label + ': an unapproved protected server path was added');
+    assert.equal(entry.mode, '100644', label + ': protected server entries must remain regular non-executable files');
+  }
+  for (const original of protectedBaseline) {
+    const current = entries.find(entry => entry.path === original.path);
+    assert.notEqual(current, undefined, label + ': fixed server baseline files must not be deleted');
+    if (original.path === 'apps-script/Code.gs') {
+      assert.equal(current.text === original.text || current.text === approvedRelayText, true,
+        label + ': relay must equal Task 1 plus only the exact single post-auth shared-todo dispatch');
+    } else {
+      assert.equal(current.text, original.text, label + ': legacy/commercial source must equal the fixed Task 1 baseline');
+    }
+  }
+}
+
+assertProtectedSnapshot(protectedBaseline, 'fixed baseline');
+const approvedSnapshot = protectedBaseline.map(entry => entry.path === 'apps-script/Code.gs' ? { ...entry, text: approvedRelayText } : entry)
+  .concat(sharedTodoAdditions.map(relativePath => ({ path: relativePath, mode: '100644', text: 'TEST-APPROVED-ADDITION' })));
+assertProtectedSnapshot(approvedSnapshot, 'approved exact extension');
+for (const [name, alteredRelay] of [
+  ['pre-auth dispatch', baselineRelay.text.replace(relayAuthAnchor, sharedTodoDispatch + relayAuthAnchor)],
+  ['duplicate dispatch', approvedRelayText.replace(sharedTodoDispatch, sharedTodoDispatch + sharedTodoDispatch)],
+  ['altered dispatch', approvedRelayText.replace('sharedTodoHandle_(action, req)', 'sharedTodoHandle_(action, {})')],
+  ['auth bypass', approvedRelayText.replace('if (tk) return fail_', 'if (false) return fail_')],
+  ['extra relay change', approvedRelayText + '\nvar TEST_UNAPPROVED_CHANGE = true;\n']
+]) {
+  assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Code.gs' ? { ...entry, text: alteredRelay } : entry), name),
+    /exact single post-auth/, 'scope mutation must reject ' + name);
+}
+assert.throws(() => assertProtectedSnapshot(approvedSnapshot.filter(entry => entry.path !== 'apps-script/Watchdog.gs'), 'deleted baseline'),
+  /must not be deleted/, 'scope mutation rejects a protected file deletion');
+assert.throws(() => assertProtectedSnapshot(approvedSnapshot.concat({ path: 'apps-script/SharedTodoOther.gs', mode: '100644', text: '' }), 'unapproved addition'),
+  /unapproved protected server path/, 'scope mutation rejects prefix-based additions');
+for (const relativePath of ['apps-script/OfficeIntake.gs', 'apps-script-commercial/Code.gs']) {
+  assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === relativePath ? { ...entry, text: entry.text + '\nTEST-CHANGE' } : entry), 'changed original'),
+    /fixed Task 1 baseline/, 'scope mutation rejects unrelated legacy/commercial edits');
+}
+assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === sharedTodoAdditions[0] ? { ...entry, mode: '120000' } : entry), 'symlink addition'),
+  /regular non-executable files/, 'scope mutation rejects symlink additions');
+
+assertProtectedSnapshot(protectedTree('HEAD'), 'committed server scope');
+const protectedIndex = protectedGit(['ls-files', '--stage', '-z', '--', ...serverOwnedProtectedPaths]).split('\0').filter(Boolean).map(entry => {
+  const match = /^(\d+) ([0-9a-f]+) (\d)\t(.+)$/.exec(entry);
+  assert.notEqual(match, null, 'protected index entries must have exact stage metadata');
+  assert.equal(match[3], '0', 'unmerged protected server entries are forbidden');
+  return { mode: match[1], path: match[4], text: normalizeCheckoutLines(protectedGit(['show', ':' + match[4]])) };
+});
+assertProtectedSnapshot(protectedIndex, 'staged server scope');
+function protectedWorkingTree(relativeDirectory) {
+  const directory = path.join(ROOT, relativeDirectory);
+  if (!fs.existsSync(directory)) return [];
+  assert.equal(fs.lstatSync(directory).isSymbolicLink(), false, 'protected server directories cannot be symlinks');
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const relativePath = relativeDirectory + '/' + entry.name;
+    if (entry.isDirectory()) return protectedWorkingTree(relativePath);
+    assert.equal(entry.isFile() && !entry.isSymbolicLink(), true, 'protected server files cannot be symlinks or special files');
+    return [{ mode: '100644', path: relativePath, text: normalizeCheckoutLines(fs.readFileSync(path.join(ROOT, relativePath), 'utf8')) }];
   });
-}, 'OfficeOps must not leave an uncommitted legacy/commercial server source change');
-
-const untrackedProtected = childProcess.execFileSync(
-  'git',
-  ['status', '--porcelain', '--untracked-files=all', '--', ...serverOwnedProtectedPaths],
-  { cwd: ROOT, encoding: 'utf8' }
-);
-assert.equal(untrackedProtected, '', 'OfficeOps must not add untracked files beneath legacy/commercial server source paths');
+}
+assertProtectedSnapshot(serverOwnedProtectedPaths.flatMap(protectedWorkingTree), 'working and untracked server scope');
 
 for (const phrase of [
   'schemaVersion: 1',

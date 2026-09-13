@@ -224,7 +224,15 @@ async function createActualConversionPage(browser, appUrl, scenario) {
   await context.route('https://commercial.example/**', route => routeBrowserCommercial(scenario, route));
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async () => { await window.__hjRestoreDone; await window.__hjOfficeOpsBootDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+  await page.evaluate(async () => {
+    await window.__hjRestoreDone; await window.__hjOfficeOpsBootDone;
+    // Isolate the synthetic conversion records from the unrelated 4s tax/4.5s
+    // Cowork seeders: either can call markDirty -> hjSnapshot during a fence test.
+    // Page-local only (not addInitScript): reload acceptance below still exercises
+    // the real paid-generation seeder suppression and configured AI boot path.
+    taxCalendarEnsure = () => 0; coworkSchedEnsure = () => 0;
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+  });
   await page.evaluate(async () => {
     await idbSet('office_ops_url', 'https://office.example/ops'); await idbSet('office_ops_token', 'office-token');
     await idbSet('commercial_approval_url', 'https://commercial.example/approval'); await idbSet('commercial_approval_token', 'commercial-token');
@@ -237,7 +245,12 @@ async function createActualConversionPage(browser, appUrl, scenario) {
 async function openActualSiblingPage(context, appUrl) {
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async () => { await window.__hjRestoreDone; clearTimeout(__idbSaveTimer); await __appStateWriteQueue; });
+  await page.evaluate(async () => {
+    await window.__hjRestoreDone;
+    // Same initial fixture isolation; a later reload restores the actual seeders.
+    taxCalendarEnsure = () => 0; coworkSchedEnsure = () => 0;
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+  });
   return page;
 }
 

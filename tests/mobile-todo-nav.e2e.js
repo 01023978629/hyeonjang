@@ -45,6 +45,9 @@ async function openTodo(page){
         await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
         await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);clearTimeout(__idbSaveTimer);await __appStateWriteQueue;});
         await page.evaluate(({spec,mutation})=>{
+          // These isolated navigation records must not race the unrelated 4s tax/4.5s
+          // Cowork startup seeders. Their own tests cover seeding; keep preservation assertions exact.
+          taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>0;
           state.projects=[{name:'모의 작업 아파트',stage:2,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{}}];
           state.activeProject=state.projects[0].name;state.files=[];state.schedule=[];state.quotes=[];state.expenses=[];state.payLog=[];state.aptOrders=[];
           state.tab=spec.tab;state.search='';state.dirHandle=null;state._demo=false;state.dirty=false;
