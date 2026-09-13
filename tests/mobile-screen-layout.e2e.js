@@ -55,10 +55,16 @@ async function screenshot(page,spec,name){if(shots){fs.mkdirSync(shots,{recursiv
           }
         },{big:spec.big,mutation});
         // Real tap navigation, modal scrolling, and close targets across five screen sizes.
-        for(const tab of ['dashboard','photos','schedule','quotemaker']){
+        for(const tab of ['dashboard','photos','schedule']){
           await page.locator('[data-mnav="'+tab+'"]').click();await settle(page);
           assert(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),spec.name+' '+tab+' page overflow');
         }
+        // Estimate creation remains reachable from More after its bottom slot becomes Today.
+        await page.locator('[data-mnav="__more"]').click();
+        await page.locator('#moreNav [data-more="quotemaker"]').click();await settle(page);
+        await page.waitForFunction(()=>!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet));
+        assert.equal(await page.evaluate(()=>state.tab),'quotemaker','More opens estimate creation');
+        assert(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),spec.name+' quotemaker page overflow');
         await screenshot(page,spec,'estimate');
         await page.locator('[data-mnav="__more"]').click();await page.locator('#moreSearch').fill('사진');
         await page.locator('#moreSearchResult [data-moreaction]').first().waitFor();await settle(page);await screenshot(page,spec,'more-search');
