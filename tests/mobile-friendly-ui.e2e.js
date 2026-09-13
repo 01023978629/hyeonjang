@@ -45,6 +45,9 @@ async function reachable(locator,label){assert(await locator.evaluate(e=>{const 
         await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
         await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);clearTimeout(__idbSaveTimer);await __appStateWriteQueue;});
         await page.evaluate(({a,b,current,png,spec,mutation})=>{
+          // These isolated UI records must not race the unrelated 4s tax/4.5s
+          // Cowork startup seeders. Their own tests cover seeding; keep serialization assertions exact.
+          taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>0;
           const p=(name,archived=false)=>({name,archived,stage:2,received:12345,phases:['배관'],cost:{material:111,labor:222,outsource:333},customer:{name:'가상 고객',phone:'FAKE-NOT-A-CONTACT'}});
           state.projects=[p(b),...Array.from({length:40},(_,i)=>p('모의 현장 '+String(40-i).padStart(2,'0'))),p(current,true),p(a),p('모의 보관 나',true),p('모의 보관 가',true)];
           const photo=(id,project)=>({id,name:id+'.png',project,kind:'photo',ext:'png',size:100+id.length,when:new Date('2026-09-13T01:00:00Z'),_phase:'배관',_worklabel:'가상 표시 점검',_virtual:true,thumb:'data:image/png;base64,'+png});

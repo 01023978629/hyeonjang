@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-13 현장별 팀 공유 할일 v296
+
+사용자가 같은 회사 서버·Drive 사용을 확인하고 전용 할일 API와 웹 구현·배포 계획에 “배포 진행”으로 승인했다.
+기준 main `9460da4`는 v295 공개 완료 상태다. 이전 후보 기록은 당시 검증 이력이다.
+이번 `codex/project-shared-todo-20260913`은 `hyeonjang-v296-sharedtodo`다.
+승인 서버 변경은 `apps-script/SharedTodo.gs` 새 모듈과 Code 인증 뒤 guarded dispatch 한 줄뿐이다.
+기존 relay actions·OfficeIntake·상업/관리사무소 서버·계정/권한·원본 자료는 바꾸지 않는다.
+서버 task 전용 파일, revision/멱등 영수증/삭제표식, 클라이언트 연결별 IDB pending CAS를 사용한다.
+기존 개인 notes는 자동 공유·삭제하지 않고 별도 목록과 선택 공유 초안 경로로 보존한다.
+실제 운영 Watchdog는 로컬과 다르므로 기존 운영 원본을 보존해 최소 변경 배포한다. 폴더 전체 clasp push 금지.
+증거와 승인·배포 경계는 `docs/project-shared-todo-plan-20260913.md` 및 `apps-script/README_SHARED_TODO.md`.
+신규 서버 22/22·변이6, UI15/15·변이2, 최종 전체148/148(25.5분·동시2·기존3개 단독 재시도) 통과.
+Apps Script 기존 배포 version7·URL/권한 보존을 배포관리 화면에서 확인. Pages/실제 기기 검증은 증거 문서에서 구분한다.
+이번 요청에 PC 종료는 포함하지 않는다.
+
 ## 2026-09-13 하단 오늘 할일 v295 후보
 
 대표 요청으로 하단 견적 자리(5번째)를 `오늘 할일`로 바꾼 로컬 `hyeonjang-v295-todonav`다.

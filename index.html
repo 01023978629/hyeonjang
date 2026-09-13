@@ -2677,7 +2677,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v295-todonav';
+const APP_BUILD='hyeonjang-v296-sharedtodo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7262,11 +7262,12 @@ function dashboardTodoSummary(){
 function dashboardTodoHTML(){
   return '<section id="dashboardTodo" aria-labelledby="dashboardTodoTitle" style="border:1px solid var(--line-soft);border-radius:12px;padding:13px;margin-bottom:12px">'+
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardTodoOpen" class="clay" onclick="todoView()" style="min-height:44px">할 일 확인·추가</button>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
+    '<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>'+
     '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
     '<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button></div>'+
     '<p id="dashboardTeamSummary" style="margin:7px 0;font-size:14px">'+escapeHtml(hjTeamSummary())+'</p>'+
-    '<p class="hint" style="margin:7px 0 0">밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
+    '<p class="hint" style="margin:7px 0 0">위 숫자는 이 기기의 기존 할일 집계이며 팀 공유 목록과 별도입니다. 밀린 할일은 작성일이 어제 이전인 미완료 항목입니다. 날짜 약속은 일정에 기록하세요.</p></section>';
 }
 function dashboardPrepLabel(s){
   if(!s)return '일정 변경됨 · 다시 확인';
@@ -16620,7 +16621,7 @@ function convTodoResult(todos,projName,ai){
       const checked=[...document.querySelectorAll('.todoChk:checked')].map(c=>todos[+c.dataset.i].t);
       if(!checked.length){toast('저장할 항목을 선택하세요');return;}
       checked.forEach(t=>hjTodoAdd(t,projName||''));
-      toast('✅ 할일 '+checked.length+'개를 담았습니다 — 더보기 ✅ 오늘 할일에서 체크하세요');
+      toast('✅ 이 기기 기존 할일에 '+checked.length+'개를 담았습니다 — 오늘 할일의 기존 할일에서 확인하세요. 팀에 자동 공유하지 않습니다.');
       closeModal();
     }},
     {label:'💾 메모로 저장',cls:'ghost',fn:()=>{
@@ -19770,7 +19771,220 @@ function hjTodoAdd(text,project){
   state.notes.push(n);markDirty();dashboardOperationsRefresh();return n;
 }
 function hjTodoOpenCount(){return hjTodoList().filter(n=>!n.done).length;}
+/* Shared todos live in their own authenticated server file, never in appState.
+   A read cannot advance __relay.rev or overwrite any local business record.
+   Pending requests are device-local and bound to the exact connection. */
+const HJ_SHARED_TODO_VERSION='shared-todo-v1';
+let __hjSharedTodo=null;
+function hjSharedTodoCurrent(s){return !!(s&&__hjSharedTodo===s&&s.root.isConnected&&s.url===__relay.url&&s.token===__relay.token&&s.device===__relay.device);}
+function hjSharedTodoStatus(s,kind,text){if(!hjSharedTodoCurrent(s))return;const el=s.root.querySelector('#stStatus');el.dataset.state=kind;el.textContent=text;}
+function hjSharedTodoUUID(id){return typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id);}
+function hjSharedTodoValidTask(t,deleted){return !!(t&&typeof t==='object'&&!Array.isArray(t)&&hjSharedTodoUUID(t.id)&&typeof t.project==='string'&&t.project.trim()&&t.project.length<=160&&typeof t.text==='string'&&t.text.trim()&&t.text.length<=500&&typeof t.done==='boolean'&&Number.isSafeInteger(t.revision)&&t.revision>0&&typeof t.updatedBy==='string'&&typeof t.createdAt==='string'&&Number.isFinite(Date.parse(t.createdAt))&&typeof t.updatedAt==='string'&&Number.isFinite(Date.parse(t.updatedAt))&&(deleted?t.deleted===true:!t.deleted));}
+// Reserve/clear the durable request atomically across tabs; never erase another tab's request.
+function hjSharedTodoPendingSwap(key,expected,next){
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('hyeonjang-db',1);let db,tx,reason,settled=false;
+    const finish=err=>{if(settled)return;settled=true;clearTimeout(timer);if(db)db.close();err?reject(err):resolve();};
+    const timer=setTimeout(()=>{reason=new Error('pending-storage-timeout');try{tx?.abort();}catch(e){}finish(reason);},10000);
+    open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('kv'))open.result.createObjectStore('kv');};
+    open.onerror=()=>finish(open.error||new Error('pending-storage'));
+    open.onsuccess=()=>{
+      db=open.result;if(settled){db.close();return;}
+      try{
+        tx=db.transaction('kv','readwrite');const kv=tx.objectStore('kv');
+        tx.oncomplete=()=>finish();tx.onabort=tx.onerror=()=>finish(reason||tx.error||new Error('pending-storage'));
+        const read=kv.get(key);
+        read.onsuccess=()=>{
+          try{
+            const current=read.result??null;
+            if(!(next===null&&current===null)&&JSON.stringify(current)!==JSON.stringify(expected)){reason=new Error('pending-other-tab');tx.abort();return;}
+            kv.put(next,key);
+          }catch(e){reason=new Error('pending-storage');try{tx.abort();}catch(abortError){finish(reason);}}
+        };
+      }catch(e){finish(e);}
+    };
+  });
+}
+function hjSharedTodoError(r){
+  const code=String(r&&r.error||'server-error');
+  const messages={'unauthorized':'서버 인증이 필요합니다. 연결 설정을 확인하세요.','not-configured':'서버 연결 설정이 필요합니다.','bad-request':'서버의 공유할일 기능을 업데이트해야 하거나 요청 형식이 맞지 않습니다.','conflict':'다른 직원이 먼저 변경했습니다. 입력은 유지됩니다. 최신 목록을 확인한 뒤 다시 수정하세요.','request-conflict':'요청 확인 정보가 다릅니다. 다시 전송하지 말고 관리자에게 확인하세요.','invalid-input':'현장과 할일 입력을 확인해 주세요.','store-full':'공유 저장소 한도에 도달했습니다. 관리자 확인이 필요합니다.','store-invalid':'공유 저장소를 확인할 수 없습니다. 기존 자료를 보존하고 관리자에게 확인하세요.'};
+  return messages[code]||'서버에서 처리하지 못했습니다. 입력을 유지한 채 연결과 저장 상태를 확인하세요.';
+}
+async function hjSharedTodoCall(s,action,payload){
+  if(!hjSharedTodoCurrent(s))throw new Error('connection-changed');
+  const abort=new AbortController();s.requests.add(abort);const timer=setTimeout(()=>abort.abort(),20000);
+  try{
+    const r=await fetch(s.url,{method:'POST',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:s.token,action,deviceId:s.device,ts:Date.now(),payload:payload||{}}),signal:abort.signal});
+    if(!r.ok)throw new Error('network');
+    const result=await r.json();if(!hjSharedTodoCurrent(s))throw new Error('connection-changed');return result;
+  }finally{clearTimeout(timer);s.requests.delete(abort);}
+}
+function hjSharedTodoDispose(s){
+  if(!s)return;clearTimeout(s.timer);s.requests.forEach(a=>a.abort());s.requests.clear();s.observer?.disconnect();document.removeEventListener('visibilitychange',s.visibility);
+  if(__hjSharedTodo===s)__hjSharedTodo=null;
+}
+function hjSharedTodoControls(s){
+  if(!hjSharedTodoCurrent(s))return;
+  s.root.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=!!s.busy;});
+  const frozen=!!(s.pending||!s.ready||s.storageFailed);
+  s.root.querySelector('#stSave').disabled=!!s.busy||frozen||!!s.conflict;
+  s.root.querySelector('#stProject').disabled=!!s.busy||!!s.pending;
+  s.root.querySelector('#stText').disabled=!!s.busy||!!s.pending;
+  s.root.querySelector('#stCancelEdit').disabled=!!s.busy||!!s.pending;
+  s.root.querySelectorAll('[data-st-edit],[data-st-done],[data-st-delete]').forEach(el=>el.disabled=!!s.busy||frozen);
+  s.root.querySelector('#stRetry').hidden=!s.pending;s.root.querySelector('#stRetry').disabled=!!s.busy||!s.key||s.storageFailed;
+  const foot=s.root.closest('.modal')?.querySelectorAll('.mfoot button');if(foot)foot.forEach(el=>el.disabled=!!s.busy);
+}
+function hjSharedTodoDraw(s){
+  if(!hjSharedTodoCurrent(s))return;
+  const filter=s.root.querySelector('#stFilter'),project=s.root.querySelector('#stProject');
+  const selected=project.value||s.project||'',f=filter.value||s.filter||'';
+  const names=[...new Set([...(state.projects||[]).filter(p=>!p.archived).map(p=>p.name),...s.tasks.map(t=>t.project),...(selected?[selected]:[])])].filter(x=>typeof x==='string'&&x.trim()).sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
+  const opts=names.map(n=>'<option value="'+escapeAttr(n)+'">'+escapeHtml(n)+'</option>').join('');
+  project.innerHTML='<option value="">현장을 선택하세요</option>'+opts;project.value=selected;
+  filter.innerHTML='<option value="">전체 현장</option>'+opts;filter.value=names.includes(f)?f:'';s.filter=filter.value;
+  const shown=s.tasks.filter(t=>!s.filter||t.project===s.filter).slice().sort((a,b)=>Number(a.done)-Number(b.done)||a.project.localeCompare(b.project,'ko')||b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id));
+  let previous='',html='';
+  for(const t of shown){
+    const heading=(t.done?'완료 · ':'진행 · ')+t.project;
+    if(heading!==previous){html+='<h3 class="st-group">'+escapeHtml(heading)+'</h3>';previous=heading;}
+    html+='<article class="st-card" data-st-id="'+t.id+'"><label class="st-check"><input type="checkbox" data-st-done="'+t.id+'"'+(t.done?' checked':'')+' aria-label="'+escapeAttr(t.text+' 완료')+'"><span'+(t.done?' class="st-done"':'')+'>'+escapeHtml(t.text)+'</span></label><p>최근 변경 '+escapeHtml(new Date(t.updatedAt).toLocaleString('ko-KR'))+'</p><div class="st-actions"><button type="button" class="ghost" data-st-edit="'+t.id+'">수정</button><button type="button" class="ghost" data-st-delete="'+t.id+'">목록에서 제외</button></div></article>';
+  }
+  s.root.querySelector('#stList').innerHTML=html||'<p class="st-empty">'+(s.ready?'이 현장의 공유 할일이 없습니다. 현장과 할일을 입력해 팀에 공유하세요.':'서버 목록을 아직 확인하지 못했습니다.')+'</p>';
+  s.root.querySelector('#stSummary').textContent=s.ready?'미완료 '+shown.filter(t=>!t.done).length+'건 · 완료 '+shown.filter(t=>t.done).length+'건':'';
+  s.root.querySelectorAll('[data-st-edit]').forEach(b=>b.onclick=()=>hjSharedTodoEdit(s,s.tasks.find(t=>t.id===b.dataset.stEdit)));
+  s.root.querySelectorAll('[data-st-done]').forEach(b=>b.onchange=()=>{const t=s.tasks.find(t=>t.id===b.dataset.stDone),done=b.checked;b.checked=!!t?.done;if(t)hjSharedTodoWrite(s,'sharedTodoSave',{expectedRevision:t.revision,task:{id:t.id,project:t.project,text:t.text,done}},'toggle');});
+  s.root.querySelectorAll('[data-st-delete]').forEach(b=>b.onclick=()=>{const t=s.tasks.find(t=>t.id===b.dataset.stDelete);if(t&&confirm('「'+t.text+'」를 팀 공유 목록에서 제외할까요?\n다른 직원의 목록에서도 사라집니다. 서버 변경 기록은 보존합니다.'))hjSharedTodoWrite(s,'sharedTodoDelete',{expectedRevision:t.revision,id:t.id},'delete');});
+  hjSharedTodoControls(s);
+}
+function hjSharedTodoEdit(s,t){
+  if(!hjSharedTodoCurrent(s)||s.busy||s.pending)return;
+  s.edit=t?JSON.parse(JSON.stringify(t)):null;s.conflict=false;
+  const project=s.root.querySelector('#stProject');s.project=t?t.project:project.value;if(t)project.value=t.project;hjSharedTodoDraw(s);
+  s.root.querySelector('#stText').value=t?t.text:'';
+  s.root.querySelector('#stSave').textContent=t?'변경 내용 공유':'팀에 공유하기';
+  s.root.querySelector('#stCancelEdit').hidden=!t;
+  if(t)hjSharedTodoStatus(s,'ready','선택한 작업을 수정합니다. 다른 직원의 변경과 겹치면 덮어쓰지 않습니다.');
+  s.root.querySelector('#stText').focus();
+}
+function hjSharedTodoSchedule(s){
+  clearTimeout(s.timer);if(!hjSharedTodoCurrent(s))return;
+  s.timer=setTimeout(()=>{if(!hjSharedTodoCurrent(s)){hjSharedTodoDispose(s);return;}if(!document.hidden&&!s.busy&&!s.pending)hjSharedTodoRefresh(s);else hjSharedTodoSchedule(s);},30000);
+}
+async function hjSharedTodoRefresh(session){
+  const s=session||__hjSharedTodo;if(!hjSharedTodoCurrent(s)||s.busy||s.loading)return false;
+  s.loading=true;const serial=++s.readSequence;
+  if(!s.pending)hjSharedTodoStatus(s,'loading','팀의 최신 할일을 확인하고 있습니다…');
+  try{
+    const r=await hjSharedTodoCall(s,'sharedTodoList',{});
+    if(!hjSharedTodoCurrent(s)||serial!==s.readSequence||s.busy)return false;
+    if(!(r&&r.ok)){s.ready=false;hjSharedTodoStatus(s,'error',hjSharedTodoError(r)+' 이전에 확인한 목록은 남겨 둡니다.');return false;}
+    if(r.version!==HJ_SHARED_TODO_VERSION||!Number.isSafeInteger(r.storeRevision)||r.storeRevision<0||!Array.isArray(r.tasks)||r.tasks.length>5000||r.tasks.some(t=>!hjSharedTodoValidTask(t,false))||new Set(r.tasks.map(t=>t.id)).size!==r.tasks.length)throw new Error('invalid-response');
+    s.tasks=r.tasks;s.ready=true;s.checkedAt=new Date().toISOString();hjSharedTodoDraw(s);
+    if(!s.pending){
+      const changed=s.edit&&s.tasks.find(t=>t.id===s.edit.id)?.revision!==s.edit.revision;
+      hjSharedTodoStatus(s,changed?'conflict':'ready',changed?'수정 중인 작업이 다른 직원에 의해 변경되었습니다. 입력은 유지됩니다. 목록의 수정 버튼으로 최신 내용을 다시 여세요.':'최신 확인 '+new Date(s.checkedAt).toLocaleTimeString('ko-KR')+' · 이 화면에서 30초마다 갱신');
+    }
+    return true;
+  }catch(e){if(hjSharedTodoCurrent(s)&&serial===s.readSequence){s.ready=false;hjSharedTodoStatus(s,'error','최신 목록을 확인하지 못했습니다. 기존 표시와 입력은 유지됩니다. 연결 후 새로고침하세요.');}return false;}
+  finally{if(hjSharedTodoCurrent(s)){s.loading=false;hjSharedTodoControls(s);hjSharedTodoSchedule(s);}}
+}
+async function hjSharedTodoWrite(s,action,payload,source){
+  if(!hjSharedTodoCurrent(s)||s.busy||s.pending||!s.ready||s.storageFailed||(source==='editor'&&s.conflict))return;
+  if(navigator.onLine===false){hjSharedTodoStatus(s,'error','오프라인입니다. 입력은 유지됩니다. 인터넷 연결 후 공유해 주세요.');return;}
+  const op={schema:1,action,payload:{...payload,requestId:crypto.randomUUID()},source:source||'editor'};
+  s.busy=true;__modalCloseLocked=true;hjSharedTodoControls(s);hjSharedTodoStatus(s,'saving','전송 전 이 기기에 요청을 안전하게 보관합니다…');
+  try{
+    await hjSharedTodoPendingSwap(s.key,null,op);if(!hjSharedTodoCurrent(s))return;s.pending=op;
+  }catch(e){if(hjSharedTodoCurrent(s))hjSharedTodoStatus(s,'error',e.message==='pending-other-tab'?'다른 탭에 확인 대기 요청이 있습니다. 서버로 보내지 않았습니다. 이 입력을 보관하고 다른 탭의 전송 결과부터 확인하세요.':'이 기기에 전송 요청을 보관하지 못했습니다. 서버로 보내지 않았으며 입력은 유지됩니다.');return;}
+  finally{s.busy=false;__modalCloseLocked=false;if(hjSharedTodoCurrent(s))hjSharedTodoControls(s);}
+  return hjSharedTodoSendPending(s);
+}
+async function hjSharedTodoSendPending(s){
+  if(!hjSharedTodoCurrent(s)||s.busy||!s.pending||s.storageFailed)return;
+  const op=s.pending;s.busy=true;s.readSequence++;__modalCloseLocked=true;clearTimeout(s.timer);hjSharedTodoControls(s);hjSharedTodoStatus(s,'saving','팀 공유 서버에 저장 중입니다…');
+  let refresh=false;
+  try{
+    const r=await hjSharedTodoCall(s,op.action,op.payload);
+    if(!hjSharedTodoCurrent(s))return;
+    if(r&&r.ok){
+      const wantedId=op.payload.task?.id||op.payload.id;
+      if(r.version!==HJ_SHARED_TODO_VERSION||!Number.isSafeInteger(r.storeRevision)||r.storeRevision<1||!hjSharedTodoValidTask(r.task,op.action==='sharedTodoDelete')||r.task.id!==wantedId||r.task.revision!==op.payload.expectedRevision+1||(op.action==='sharedTodoSave'&&['project','text','done'].some(k=>r.task[k]!==op.payload.task[k])))throw new Error('invalid-ack');
+      await hjSharedTodoPendingSwap(s.key,op,null);if(!hjSharedTodoCurrent(s))return;s.pending=null;s.conflict=false;
+      s.tasks=s.tasks.filter(t=>t.id!==r.task.id);if(!r.task.deleted)s.tasks.push(r.task);
+      if(op.source==='editor'){s.edit=null;s.root.querySelector('#stText').value='';s.root.querySelector('#stSave').textContent='팀에 공유하기';s.root.querySelector('#stCancelEdit').hidden=true;}
+      s.ready=true;hjSharedTodoDraw(s);hjSharedTodoStatus(s,'ready','서버 공유 완료. 다른 직원은 최신 조회 시 확인할 수 있습니다.');refresh=true;
+    }else if(r&&r.ok===false&&r.error==='conflict'){
+      await hjSharedTodoPendingSwap(s.key,op,null);if(!hjSharedTodoCurrent(s))return;s.pending=null;s.conflict=true;
+      s.root.querySelector('#stCancelEdit').hidden=false;
+      hjSharedTodoStatus(s,'conflict',hjSharedTodoError(r)+' 최신 수정 내용을 다시 열거나 수정 취소를 선택하세요.');
+    }else if(r&&r.ok===false){
+      // A rejection now cannot prove an earlier timed-out request did not commit.
+      if(['unauthorized','not-configured','bad-request'].includes(r.error))s.ready=false;
+      hjSharedTodoStatus(s,'pending',hjSharedTodoError(r)+' 원래 전송 요청은 보존했습니다. 연결 복구 후 같은 요청의 결과를 확인하세요.');
+    }else throw new Error('unconfirmed');
+  }catch(e){if(hjSharedTodoCurrent(s))hjSharedTodoStatus(s,'pending','서버 처리 결과를 확인하지 못했습니다. 입력·요청은 이 기기에 보관했습니다. ‘전송 결과 확인·다시 보내기’는 같은 요청으로 확인하여 중복 생성을 막습니다.');}
+  finally{
+    s.busy=false;__modalCloseLocked=false;
+    if(hjSharedTodoCurrent(s)){hjSharedTodoControls(s);hjSharedTodoSchedule(s);if(refresh)await hjSharedTodoRefresh(s);}
+  }
+}
+async function hjSharedTodoStart(s){
+  if(!s.token||!s.device||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(s.url)){
+    hjSharedTodoStatus(s,'unavailable','같은 회사 중계 서버 연결이 필요합니다. 연결 설정을 확인하거나 기존 이 기기 할일을 이용하세요.');return;
+  }
+  try{
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([s.url,s.token,s.device])));
+    s.key='shared_todo_pending:v1:'+Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,'0')).join('');
+    const pending=await idbGetStrict(s.key);if(!hjSharedTodoCurrent(s))return;
+    if(pending!=null){
+      const p=pending.payload,t=p?.task;
+      if(pending.schema!==1||!['sharedTodoSave','sharedTodoDelete'].includes(pending.action)||!p||!hjSharedTodoUUID(p.requestId)||!Number.isSafeInteger(p.expectedRevision)||p.expectedRevision<0||!['editor','toggle','delete'].includes(pending.source))throw new Error('invalid-pending');
+      if(pending.action==='sharedTodoSave'?!(t&&hjSharedTodoUUID(t.id)&&typeof t.project==='string'&&t.project.trim()&&t.project.length<=160&&typeof t.text==='string'&&t.text.trim()&&t.text.length<=500&&typeof t.done==='boolean'):!(hjSharedTodoUUID(p.id)&&p.expectedRevision>0))throw new Error('invalid-pending');
+      s.pending=pending;
+      if(t){
+        s.project=t.project;s.root.querySelector('#stProject').value=t.project;s.root.querySelector('#stText').value=t.text;
+        if(p.expectedRevision>0){s.edit={...t,revision:p.expectedRevision};s.root.querySelector('#stSave').textContent='변경 내용 공유';s.root.querySelector('#stCancelEdit').hidden=false;}
+      }
+      hjSharedTodoDraw(s);hjSharedTodoStatus(s,'pending','이 기기에 확인 대기 중인 공유 요청이 있습니다. 전송 결과를 먼저 확인해 주세요.');
+    }
+  }catch(e){if(hjSharedTodoCurrent(s)){s.storageFailed=true;hjSharedTodoStatus(s,'error','기기에 보관된 공유 요청을 확인하지 못했습니다. 덮어쓰거나 전송하지 않았습니다. 저장 공간을 확인하세요.');hjSharedTodoControls(s);}return;}
+  try{
+    const health=await hjSharedTodoCall(s,'sharedTodoHealth',{});
+    if(!(health&&health.ok&&health.version===HJ_SHARED_TODO_VERSION)){hjSharedTodoStatus(s,'unavailable',hjSharedTodoError(health));return;}
+    await hjSharedTodoRefresh(s);
+  }catch(e){hjSharedTodoStatus(s,'error','공유 서버를 확인하지 못했습니다. 인터넷 연결 또는 서버 업데이트 상태를 확인하세요.');}
+  finally{hjSharedTodoControls(s);}
+}
+function hjSharedTodoView(projectName,prefill){
+  if(__modalCloseLocked)return;hjSharedTodoDispose(__hjSharedTodo);
+  const project=typeof projectName==='string'?projectName:String(state.activeProject||'');
+  const css='<style>#sharedTodoView{font-size:16px;overflow-wrap:anywhere}#sharedTodoView label{display:block;margin:8px 0}#sharedTodoView select,#sharedTodoView textarea{width:100%;min-width:0;box-sizing:border-box;font:inherit;padding:10px;min-height:44px;margin-top:5px}#sharedTodoView button{min-height:44px;min-width:44px;white-space:normal}#sharedTodoView .st-actions{display:flex;gap:8px;flex-wrap:wrap}#sharedTodoView p{font-size:13px;line-height:1.6;margin:8px 0}#sharedTodoView .st-card{padding:10px;border:1px solid var(--line);border-radius:10px;margin:8px 0}#sharedTodoView .st-check{display:flex;align-items:center;gap:10px;min-height:44px}#sharedTodoView .st-check input{min-width:24px;width:24px;height:24px;flex-shrink:0}#sharedTodoView .st-check span{white-space:pre-wrap;min-width:0}#sharedTodoView .st-done{text-decoration:line-through;color:var(--muted)}#sharedTodoView .st-group{font-size:15px;margin:14px 0 8px}#sharedTodoView #stStatus{padding:10px;border:1px solid var(--line);border-radius:8px}#sharedTodoView #stStatus[data-state="pending"],#sharedTodoView #stStatus[data-state="conflict"],#sharedTodoView #stStatus[data-state="error"]{color:var(--warn)}#sharedTodoView [hidden]{display:none!important}</style>';
+  openModal('☁ 팀 공유 · 오늘 할일',css+'<section id="sharedTodoView"><div class="st-actions"><button type="button" class="ghost" id="stRefresh">최신 새로고침</button><button type="button" class="ghost" id="stLocal">이 기기 기존 할일</button><button type="button" class="ghost" id="stConnect">연결 설정</button></div><p id="stStatus" role="status" aria-live="polite" data-state="loading">공유 서버 연결을 확인합니다…</p><button type="button" class="blue" id="stRetry" hidden>전송 결과 확인·다시 보내기</button><form id="stForm"><label>입력할 현장<select id="stProject" required aria-label="공유할일 현장"></select></label><label>할 일<textarea id="stText" required maxlength="500" rows="2" placeholder="예: 101동 배수관 부속 준비" aria-label="공유할일 내용"></textarea></label><div class="st-actions"><button type="submit" class="blue" id="stSave" disabled>팀에 공유하기</button><button type="button" class="ghost" id="stCancelEdit" hidden>수정 취소</button></div></form><label>목록에서 볼 현장<select id="stFilter" aria-label="공유할일 현장 필터"></select></label><p id="stSummary"></p><div id="stList"></div><details><summary style="min-height:44px">공유 범위·저장 안내</summary><p>같은 회사 서버 연결을 가진 직원이 함께 보고 수정합니다. 직원별 열람 제한이나 읽음 확인 기능은 아닙니다.</p><p>공유할일은 사진·장부와 별도로 저장합니다. 이 기기의 기존 할일은 자동 공유하거나 삭제하지 않습니다. 오프라인 입력은 공유 완료가 아니며 인터넷 연결 후 저장을 확인하세요.</p></details></section>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const s={root:document.getElementById('sharedTodoView'),url:__relay.url,token:__relay.token,device:__relay.device,project,filter:project,tasks:[],requests:new Set(),pending:null,ready:false,busy:false,loading:false,readSequence:0,key:'',edit:null,storageFailed:false};
+  __hjSharedTodo=s;hjSharedTodoDraw(s);if(prefill?.text){s.root.querySelector('#stText').value=String(prefill.text).slice(0,500);hjSharedTodoStatus(s,'loading','기존 할일을 공유 초안으로 복사했습니다. 원본은 그대로이며 공유 버튼을 눌러야 전송됩니다.');}
+  s.root.querySelector('#stLocal').onclick=()=>todoLocalView(s.root.querySelector('#stProject').value);
+  s.root.querySelector('#stConnect').onclick=()=>openGdriveSetup();
+  s.root.querySelector('#stRefresh').onclick=()=>hjSharedTodoRefresh(s);
+  s.root.querySelector('#stRetry').onclick=()=>hjSharedTodoSendPending(s);
+  s.root.querySelector('#stCancelEdit').onclick=()=>hjSharedTodoEdit(s,null);
+  s.root.querySelector('#stFilter').onchange=()=>{s.filter=s.root.querySelector('#stFilter').value;hjSharedTodoDraw(s);};
+  s.root.querySelector('#stProject').onchange=()=>{s.project=s.root.querySelector('#stProject').value;};
+  s.root.querySelector('#stForm').onsubmit=e=>{
+    e.preventDefault();if(s.pending||s.busy)return;
+    const pj=s.root.querySelector('#stProject').value.trim(),text=s.root.querySelector('#stText').value.trim();
+    if(!pj||pj.length>160||!text||text.length>500){hjSharedTodoStatus(s,'error','현장을 선택하고 500자 이내의 할일을 입력하세요.');return;}
+    const task={id:s.edit?s.edit.id:crypto.randomUUID(),project:pj,text,done:s.edit?!!s.edit.done:false};
+    hjSharedTodoWrite(s,'sharedTodoSave',{expectedRevision:s.edit?s.edit.revision:0,task},'editor');
+  };
+  s.visibility=()=>{if(!document.hidden&&hjSharedTodoCurrent(s)&&!s.pending)hjSharedTodoRefresh(s);};document.addEventListener('visibilitychange',s.visibility);
+  s.observer=new MutationObserver(()=>{if(!s.root.isConnected)hjSharedTodoDispose(s);});s.observer.observe(document.getElementById('modalRoot'),{childList:true});
+  hjSharedTodoStart(s);return s.root;
+}
 function todoView(projectName){
+  return relayReady()?hjSharedTodoView(projectName):todoLocalView(projectName);
+}
+function todoLocalView(projectName){
   dashboardOperationsRefresh();
   const list=hjTodoList();
   const today=localDate();
@@ -19785,9 +19999,10 @@ function todoView(projectName){
       '<span style="flex:1;min-width:0;font-size:13.5px'+(n.done?';text-decoration:line-through':'')+'">'+escapeHtml(n.text)+
         (n.project?'<br><span style="font-size:11.5px;color:var(--moss)">'+escapeHtml(n.project)+'</span>':'')+
         (dim?'<br><span style="font-size:11.5px;color:var(--clay)">'+escapeHtml(n.day||'')+' 부터</span>':'')+'</span>'+
+      '<button type="button" class="ghost" data-local-share="'+escapeAttr(n.id)+'" aria-label="'+escapeAttr(n.text+' 팀 공유할일로 복사')+'" style="min-height:44px;min-width:44px">☁</button>'+
       '<button type="button" class="ghost todoDel" data-id="'+escapeAttr(n.id)+'" aria-label="'+escapeAttr(n.text+' 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>';
   const sec=(title,arr,dim)=>arr.length?'<div style="font-size:12px;font-weight:700;margin:10px 0 2px">'+title+' '+arr.length+'</div>'+arr.map(n=>row(n,dim)).join(''):'';
-  const body='<div style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 6px;padding:4px 0 6px">'+
+  const body='<p style="font-size:13px;line-height:1.5">이 기기의 기존 할일입니다. 다른 직원과 함께 보려면 팀 공유할일에 저장하세요. 원본은 자동 이동하지 않습니다.</p><button type="button" class="blue" id="todoShared" style="min-height:44px;margin-bottom:10px">☁ 팀 공유할일 열기</button><div style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 6px;padding:4px 0 6px">'+
       '<div style="display:flex;gap:6px"><input id="todoText" placeholder="할 일 한 줄 (예: 실리콘 사기)" aria-label="할 일" enterkeyhint="done" style="flex:1;min-width:0;padding:10px;font-size:16px;min-height:46px">'+
       '<button type="button" class="clay" id="todoAdd" style="min-height:46px;padding:0 16px">➕</button></div>'+
       (projs.length?'<select id="todoProj" aria-label="어느 현장 일인가" style="width:100%;margin-top:6px;padding:9px;font-size:16px;min-height:44px"><option value="">현장 없음</option>'+
@@ -19797,21 +20012,23 @@ function todoView(projectName){
   openModal('✅ 오늘 할일'+(open.length?' ('+open.length+')':''),body,
     [{label:'끝낸 일 지우기',cls:'ghost',fn:()=>{const fin=hjTodoList().filter(n=>n.done);if(!fin.length){toast('지울 것이 없습니다');return;}
         if(!confirm('끝낸 할일 '+fin.length+'건을 지울까요?'))return;
-        const finished=new Set(fin);state.notes=state.notes.filter(n=>!finished.has(n));markDirty();toast(fin.length+'건을 지웠습니다');todoView(currentProject());}},
+        const finished=new Set(fin);state.notes=state.notes.filter(n=>!finished.has(n));markDirty();toast(fin.length+'건을 지웠습니다');todoLocalView(currentProject());}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   const currentProject=()=>root.querySelector('#todoProj')?.value||'';
   const add=()=>{const el=root.querySelector('#todoText');const pj=(root.querySelector('#todoProj')||{}).value||'';
     if(!el.value.trim()){toast('할 일을 한 줄 적어 주세요');return;}
     if(pj&&state.projects.filter(p=>p.name===pj&&!p.archived).length!==1){toast('현장이 변경되었습니다. 할 일을 복사한 뒤 창을 다시 열어 주세요.');return;}
-    hjTodoAdd(el.value,pj);toast('할일에 넣었습니다');todoView(pj);};
+    hjTodoAdd(el.value,pj);toast('할일에 넣었습니다');todoLocalView(pj);};
+  root.querySelector('#todoShared').onclick=()=>hjSharedTodoView(currentProject());
+  root.querySelectorAll('[data-local-share]').forEach(b=>b.onclick=()=>{const n=hjTodoList().find(x=>x.id===b.dataset.localShare);if(n)hjSharedTodoView(n.project,{text:n.text});});
   root.querySelector('#todoAdd').onclick=add;
   root.querySelector('#todoText').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add();}};
   root.querySelectorAll('.todoChkBox').forEach(c=>c.onchange=()=>{const n=hjTodoList().find(x=>x.id===c.dataset.id);if(!n)return;
-    n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();todoView(currentProject());});
+    n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();todoLocalView(currentProject());});
   root.querySelectorAll('.todoDel').forEach(b=>b.onclick=()=>{const n=hjTodoList().find(x=>x.id===b.dataset.id);if(!n)return;
     if(!confirm('「'+n.text+'」 를 지울까요?'))return;
-    state.notes=state.notes.filter(x=>x!==n);markDirty();todoView(currentProject());});
+    state.notes=state.notes.filter(x=>x!==n);markDirty();todoLocalView(currentProject());});
   const first=root.querySelector('#todoText');if(first)setTimeout(()=>{try{first.focus();}catch(_){}},0);
 }
 /* ── 📐 실측 노트 (v279) — 대표 요청(9/12): 실측 때 방마다 한 번 넣어 두면 계산기·견적이 그 값을 가져다 쓴다.
