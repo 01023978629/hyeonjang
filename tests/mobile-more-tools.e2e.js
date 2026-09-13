@@ -136,7 +136,7 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)ret
   });
   await run('공백없는 검색·화면 바로가기·결과0복귀·한글조합·XSS',async t=>{
     const before=await snap(t.page);await openMore(t);
-    await search(t,'백업센터','backupcenter');await search(t,'사업자·명함','biz');await search(t,'프로젝트별문서','nav:docs');await search(t,'견적','nav:estimates');await capture(t,'mobile-more-search');
+    await search(t,'백업센터','backupcenter');await search(t,'사업자·명함','biz');await search(t,'프로젝트별문서','nav:docs');await search(t,'견적','nav:estimates');await search(t,'견적 작성','nav:quotemaker');await capture(t,'mobile-more-search');
     assert.equal(await t.page.locator('#moreResultCount').getAttribute('role'),'status');await t.page.locator('#moreSearchClear').click();
     assert.equal(await t.page.locator('#moreSearch').inputValue(),'');assert(await t.page.locator('#moreMain').isVisible());
     await t.page.locator('#moreSearch').focus();await t.page.evaluate(()=>{const e=document.getElementById('moreSearch');window.__moreImeNode=e;e.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));e.value='백업센터';e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'백업센터',isComposing:true}));});
@@ -168,7 +168,7 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)ret
   });
   await run('주요 실제 화면과 바로가기의 진입·취소',async t=>{
     const before=await snap(t.page);
-    for(const tab of ['docs','estimates','contacts','project']){await openMore(t);await t.page.locator('#moreMain [data-more="'+tab+'"]').click();await t.page.waitForFunction(tab=>state.tab===tab&&!document.getElementById('moreSheet'),tab);assert(await t.page.locator('#view').innerText());}
+    for(const tab of ['docs','estimates','quotemaker','contacts','project']){await openMore(t);await t.page.locator('#moreMain [data-more="'+tab+'"]').click();await t.page.waitForFunction(tab=>state.tab===tab&&!document.getElementById('moreSheet'),tab);assert(await t.page.locator('#view').innerText());}
     const screens=[['syncguide','#syncOpen'],['a11y','.a11yBig'],['photoaudit','#paDupCount'],['backupcenter','#bcPhotoSource']];
     await t.page.evaluate(()=>{storageGuardRefresh=async()=>{};});
     for(const [action,selector]of screens){await openMore(t);await search(t,(await t.page.evaluate(action=>MORE_CATS.flatMap(c=>c.items).find(i=>i[0]===action)[2],action)),action);await t.page.locator('#moreSearchResult [data-moreaction="'+action+'"]').click();await t.page.locator('#modalRoot '+selector).first().waitFor();await closeModal(t);}

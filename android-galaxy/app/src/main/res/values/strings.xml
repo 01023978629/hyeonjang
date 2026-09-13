@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">현장 · 갤럭시</string>
+    <string name="asset_statements" translatable="false">[{\"relation\":[\"delegate_permission/common.handle_all_urls\"],\"target\":{\"namespace\":\"web\",\"site\":\"https://01023978629.github.io\"}}]</string>
+    <string name="heading">오늘도 안전한 현장</string>
+    <string name="subtitle">사진부터 견적·일정까지,\n사용하던 현장 웹을 이어서 엽니다.</string>
+    <string name="open_field">현장 웹 열기</string>
+    <string name="launching">브라우저에 연결하고 있습니다…</string>
+    <string name="browser_chrome">연결 브라우저: Chrome</string>
+    <string name="browser_default">연결 브라우저: 지원되는 기본 브라우저</string>
+    <string name="browser_note">기존 자료가 삼성 인터넷에 있다면 아래에서 기본 브라우저로 열어 주세요. 브라우저가 다르면 저장 자료도 다릅니다.</string>
+    <string name="open_default">기본 브라우저로 열기</string>
+    <string name="storage_title">기존 자료를 그대로</string>
+    <string name="storage_body">이 앱은 사진·계정 정보를 복사하지 않습니다. 연결된 브라우저의 현장 자료와 Google 로그인을 사용합니다. 자료가 비어 보이면 새로 입력하거나 덮어쓰지 말고 원래 쓰던 브라우저부터 확인해 주세요.</string>
+    <string name="upload_title">사진 업로드 확인</string>
+    <string name="upload_body">촬영·파일 선택 권한은 브라우저에서 필요할 때 요청합니다. 업로드 결과를 확인하기 전에는 화면을 닫거나 원본을 지우지 마세요. 앱 종료 후 전송 지속과 영상 원본 자동 백업은 보장하지 않습니다.</string>
+    <string name="install_title">첫 실행 · 업데이트 안내</string>
+    <string name="install_body">Chrome을 최신 상태로 유지하세요. 기존 웹의 사진 추가·동기화 한계는 이 앱에도 적용됩니다. 도메인 소유 확인 전에는 주소줄이 보일 수 있으며 정상적인 보안 동작입니다.\n\n업데이트 APK는 같은 서명으로 덮어설치합니다. 앱이나 브라우저 데이터를 먼저 삭제하지 마세요.</string>
+    <string name="browser_missing">지원되는 브라우저가 없습니다</string>
+    <string name="browser_missing_body">Play 스토어에서 Chrome을 설치하거나 업데이트한 뒤 다시 열어 주세요. 설치가 제한된 기기에서는 기존 현장 웹을 사용하세요. 보안 보호 기능을 끄지 마세요.</string>
+    <string name="chrome_store">Chrome 설치 안내</string>
+    <string name="close">닫기</string>
+    <string name="launch_error">브라우저를 열지 못했습니다. Chrome 설치·업데이트 후 다시 시도해 주세요.</string>
+    <string name="version">연결 앱 1.0.0 · Android 7 이상\n웹 기능은 운영 중인 현장 웹 버전을 따릅니다.</string>
+    <string name="privacy">개인정보 처리방침</string>
+</resources>
