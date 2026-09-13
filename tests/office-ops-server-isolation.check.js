@@ -438,6 +438,9 @@ assert.doesNotThrow(() => {
 // allowed. Check HEAD, index and working files separately so staging cannot hide
 // an unrelated change. SharedTodo auth/CRUD behavior has its own server unit gate.
 const sharedTodoAdditions = ['apps-script/SharedTodo.gs', 'apps-script/README_SHARED_TODO.md'];
+// 2026-09-13 user-approved development 1–3; no live deployment authority implied.
+const mediaAdditions = ['apps-script/MediaRelay.gs', 'apps-script/README_MEDIA_RELAY.md'];
+const mediaDispatch = "    if (typeof mediaRelayIsAction_ === 'function' && typeof mediaRelayHandle_ === 'function' && mediaRelayIsAction_(action)) return out_(mediaRelayHandle_(action, req));\n";
 const sharedTodoDispatch = "    if (typeof sharedTodoIsAction_ === 'function' && typeof sharedTodoHandle_ === 'function' && sharedTodoIsAction_(action)) return out_(sharedTodoHandle_(action, req));\n";
 const relayAuthAnchor = "    var tk = checkToken_(req.token);\n    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');\n";
 const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
@@ -458,13 +461,18 @@ assert.notEqual(baselineRelay, undefined, 'fixed Task 1 relay source must exist'
 assert.equal(baselineRelay.text.split(relayAuthAnchor).length - 1, 1, 'fixed relay has exactly one reviewed auth insertion point');
 assert.equal(baselineRelay.text.includes(sharedTodoDispatch), false, 'Task 1 baseline predates the approved shared-todo dispatch');
 const approvedRelayText = baselineRelay.text.replace(relayAuthAnchor, relayAuthAnchor + sharedTodoDispatch);
+const approvedMediaRelayText = approvedRelayText.replace(sharedTodoDispatch, sharedTodoDispatch + mediaDispatch);
+const baselineManifest = protectedBaseline.find(entry => entry.path === 'apps-script/appsscript.json');
+assert.notEqual(baselineManifest, undefined);
+const approvedMediaManifestText = baselineManifest.text.replace('    "https://www.googleapis.com/auth/drive",\n', '    "https://www.googleapis.com/auth/drive",\n    "https://www.googleapis.com/auth/script.external_request",\n');
+assert.notEqual(approvedMediaManifestText, baselineManifest.text, 'scope insertion point must exist exactly');
 
 function assertProtectedSnapshot(entries, label) {
   const paths = entries.map(entry => entry.path);
   assert.equal(new Set(paths).size, paths.length, label + ': duplicate or conflicted protected paths are forbidden');
   const baselinePaths = new Set(protectedBaseline.map(entry => entry.path));
   for (const entry of entries) {
-    assert.equal(baselinePaths.has(entry.path) || sharedTodoAdditions.includes(entry.path), true,
+    assert.equal(baselinePaths.has(entry.path) || sharedTodoAdditions.includes(entry.path) || mediaAdditions.includes(entry.path), true,
       label + ': an unapproved protected server path was added');
     assert.equal(entry.mode, '100644', label + ': protected server entries must remain regular non-executable files');
   }
@@ -472,8 +480,11 @@ function assertProtectedSnapshot(entries, label) {
     const current = entries.find(entry => entry.path === original.path);
     assert.notEqual(current, undefined, label + ': fixed server baseline files must not be deleted');
     if (original.path === 'apps-script/Code.gs') {
-      assert.equal(current.text === original.text || current.text === approvedRelayText, true,
+      assert.equal(current.text === original.text || current.text === approvedRelayText || current.text === approvedMediaRelayText, true,
         label + ': relay must equal Task 1 plus only the exact single post-auth shared-todo dispatch');
+    } else if (original.path === 'apps-script/appsscript.json') {
+      assert.equal(current.text === original.text || current.text === approvedMediaManifestText, true,
+        label + ': manifest must equal fixed baseline plus the exact external_request scope');
     } else {
       assert.equal(current.text, original.text, label + ': legacy/commercial source must equal the fixed Task 1 baseline');
     }
@@ -484,6 +495,13 @@ assertProtectedSnapshot(protectedBaseline, 'fixed baseline');
 const approvedSnapshot = protectedBaseline.map(entry => entry.path === 'apps-script/Code.gs' ? { ...entry, text: approvedRelayText } : entry)
   .concat(sharedTodoAdditions.map(relativePath => ({ path: relativePath, mode: '100644', text: 'TEST-APPROVED-ADDITION' })));
 assertProtectedSnapshot(approvedSnapshot, 'approved exact extension');
+const mediaSnapshot = approvedSnapshot.map(entry => entry.path === 'apps-script/Code.gs' ? {...entry,text:approvedMediaRelayText} : entry.path === 'apps-script/appsscript.json' ? {...entry,text:approvedMediaManifestText} : entry)
+  .concat(mediaAdditions.map(relativePath=>({path:relativePath,mode:'100644',text:'TEST-APPROVED-MEDIA'})));
+assertProtectedSnapshot(mediaSnapshot, 'approved exact media extension');
+for(const altered of [approvedMediaRelayText.replace(mediaDispatch,''+mediaDispatch+mediaDispatch),approvedMediaRelayText.replace(relayAuthAnchor,mediaDispatch+relayAuthAnchor).replace(sharedTodoDispatch+mediaDispatch,sharedTodoDispatch),approvedMediaRelayText.replace('mediaRelayHandle_(action, req)','mediaRelayHandle_(action, {})')]){
+  assert.throws(()=>assertProtectedSnapshot(mediaSnapshot.map(entry=>entry.path==='apps-script/Code.gs'?{...entry,text:altered}:entry),'media mutation'),/exact single post-auth/);
+}
+assert.throws(()=>assertProtectedSnapshot(mediaSnapshot.map(entry=>entry.path==='apps-script/appsscript.json'?{...entry,text:entry.text.replace('auth/drive','auth/drive.readonly')}:entry),'scope mutation'),/exact external_request scope/);
 for (const [name, alteredRelay] of [
   ['pre-auth dispatch', baselineRelay.text.replace(relayAuthAnchor, sharedTodoDispatch + relayAuthAnchor)],
   ['duplicate dispatch', approvedRelayText.replace(sharedTodoDispatch, sharedTodoDispatch + sharedTodoDispatch)],

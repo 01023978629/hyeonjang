@@ -759,7 +759,14 @@ async function runVmContracts() {
     'converted, post-fence failure, request rethrow, and normal success each own a final synchronous exact release guard');
   assert.doesNotMatch(terminalSource, /guardedPersistCurrentState|durableLocalMutation|paidCommitWriteAtomic/, 'terminal fence never relocks through a high-level writer');
   assert.doesNotMatch(candidateSource, /\bstate\b/, 'final conversion-candidate decision is independent of mutable live state');
-  assert.equal((source.match(/guardedAppStateWriteAtomic\s*\(/g) || []).length, 3, 'low-level same-generation writer is owned only by guarded persistence and the no-relock fence');
+  const mediaPersistenceSource=extractFunction('guardedPersistMediaFiles');
+  assert.match(mediaPersistenceSource,/return\s+withAppStateWriteLock\s*\(/,'approved media writer owns the same appState lock');
+  assert.equal((mediaPersistenceSource.match(/guardedAppStateWriteAtomic\s*\(/g)||[]).length,1,'approved media writer owns exactly one atomic candidate commit');
+  assert.match(mediaPersistenceSource,/guardedAppStateWriteAtomic\(data,__paidCommitPointerKey,__tabStamp,null,unchanged,removedIds,removedExpected\)/,'media writer must retain pointer, stamp, candidate and removed-ID CAS guards');
+  assert.match(mediaPersistenceSource,/validatePaidSerializedState\(data\)/,'media candidate validation must exist');
+  assert.ok(mediaPersistenceSource.indexOf('validatePaidSerializedState(data)')<mediaPersistenceSource.indexOf('guardedAppStateWriteAtomic('),'media candidate validation precedes persistence');
+  assert.ok(mediaPersistenceSource.indexOf('guardedAppStateWriteAtomic(')<mediaPersistenceSource.indexOf('state.files=files'),'media changes publish only after persistence');
+  assert.equal((source.replace(mediaPersistenceSource,'').match(/guardedAppStateWriteAtomic\s*\(/g) || []).length, 3, 'outside the exact approved media helper, low-level writer is owned only by guarded persistence and the no-relock fence');
   assert.equal((source.match(/paidCommitWriteAtomic\s*\(/g) || []).length, 2, 'low-level new-generation writer is owned only by durableLocalMutation');
   assert.equal(sandbox.state.aptOrders, scenario.orders);
 }

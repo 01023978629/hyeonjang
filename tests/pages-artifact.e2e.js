@@ -13,7 +13,7 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hj-pages-artifact-'));
 const out = path.join(temp, '_site');
-const expected = ['.nojekyll', 'index.html', 'privacy.html', 'sw.js', 'terms.html'];
+const expected = ['.nojekyll', 'index.html', 'media-safety.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
   'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
@@ -22,7 +22,8 @@ const requiredGuards = [
   'apt-commercial-ui.e2e.js', 'legacy-commercial-gate.e2e.js',
   'office-ops-conversion.e2e.js', 'relay.e2e.js',
   'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js',
-  'web-work-bridge.e2e.js'
+  'web-work-bridge.e2e.js', 'media-safety.e2e.js', 'media-intake.e2e.js',
+  'media-relay-server.unit.js', 'shared-todo-backup.unit.js', 'shared-todo-backup.e2e.js'
 ];
 
 function assertRequiredGuards(testNames, label) {
@@ -420,6 +421,11 @@ try {
     '공개 산출물이 허용목록과 다르다\nwant: ' + expected.join(', ') + '\n got: ' + files.join(', '));
   assert(!fs.existsSync(path.join(out, 'backup', 'index_v104_original.html')), '공개 백업 HTML이 산출물에 포함됐다');
   assert(!fs.existsSync(path.join(out, 'tests')) && !fs.existsSync(path.join(out, 'apps-script')), '내부 테스트/서버 소스가 산출물에 포함됐다');
+  const stagedIndex=fs.readFileSync(path.join(out,'index.html'),'utf8');
+  for(const name of ['media-safety.js','shared-todo-backup.js']){
+    assert(stagedIndex.includes('<script src="./'+name+'"></script>'),'새 공개 모듈이 앱에 연결되지 않았다: '+name);
+    assert(fs.readFileSync(path.join(out,name),'utf8')===fs.readFileSync(path.join(root,name),'utf8'),'새 공개 모듈이 원본과 다르다: '+name);
+  }
   for (const pageName of ['index.html', 'privacy.html', 'terms.html']) {
     const sourceHtml = fs.readFileSync(path.join(root, pageName), 'utf8');
     const stagedHtml = fs.readFileSync(path.join(out, pageName), 'utf8');
@@ -620,7 +626,7 @@ try {
   const stageAt = workflow.indexOf('Stage public site allowlist');
   const uploadAt = workflow.indexOf('Upload site artifact');
   assert(verifyAt >= 0 && verifyAt < stageAt && stageAt < uploadAt, '검증 → staging → upload 순서가 아니다');
-  console.log('PASS  Pages 산출물은 앱 셸 5개 파일만 포함');
+  console.log('PASS  Pages 산출물은 공개 앱 셸 7개 파일만 포함');
   console.log('PASS  공개 백업 HTML·tests·apps-script 제외');
   console.log('PASS  배포 워크플로가 _site staging 산출물만 업로드');
   console.log('PASS  배포 전 전체 스위트(run-all.js, 인자 없이) 실행 후 staging/upload');

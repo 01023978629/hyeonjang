@@ -9,7 +9,7 @@ const vm = require('node:vm');
 const nodeAssert = require('node:assert/strict');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-const EXPECTED_SHELL_PATHS = ['./','./index.html','./privacy.html','./terms.html'];
+const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./privacy.html','./terms.html'];
 const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
 const puts = [];
@@ -88,6 +88,8 @@ function assertShellPathsSafe(paths, label) {
   for (const url of [
     'https://example.test/hyeonjang/',
     'https://example.test/hyeonjang/index.html',
+    'https://example.test/hyeonjang/media-safety.js',
+    'https://example.test/hyeonjang/shared-todo-backup.js',
     'https://example.test/hyeonjang/privacy.html',
     'https://example.test/hyeonjang/terms.html'
   ]) {
@@ -120,7 +122,7 @@ function assertShellPathsSafe(paths, label) {
   assert(r.puts === 0, 'opaque 응답을 캐시한다');
 
   console.log('PASS  같은 출처·쿼리 없는 앱 셸 허용목록만 캐시');
-  console.log('PASS  SHELL_PATHS 는 정확한 4개 앱 셸이며 격리 데이터 경로 변이를 거부');
+  console.log('PASS  SHELL_PATHS 는 정확한 6개 공개 앱 셸이며 격리 데이터 경로 변이를 거부');
   console.log('PASS  외부·Authorization·쿼리 navigation·민감 쿼리·POST 캐시 차단');
   console.log('PASS  실패·opaque 응답 캐시 차단');
 })().catch(e => { console.error(e && e.stack || e); process.exit(1); });

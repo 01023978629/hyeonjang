@@ -79,6 +79,7 @@ function doPost(e) {
     var tk = checkToken_(req.token);
     if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');
     if (typeof sharedTodoIsAction_ === 'function' && typeof sharedTodoHandle_ === 'function' && sharedTodoIsAction_(action)) return out_(sharedTodoHandle_(action, req));
+    if (typeof mediaRelayIsAction_ === 'function' && typeof mediaRelayHandle_ === 'function' && mediaRelayIsAction_(action)) return out_(mediaRelayHandle_(action, req));
     if (oiIsInternalAction_(action)) return out_(oiHandleInternalAction_(action, req));
     if (ALLOWED_ACTIONS.indexOf(action) < 0) return fail_('bad-request', '허용되지 않은 action');
 

@@ -10,6 +10,7 @@ const ROOT = path.resolve(__dirname, '..');
 const TOKEN = 'TEST-ONLY-SHARED-TODO-TOKEN';
 const FOLDER = '_현장_공유할일';
 const FILE = '현장_공유할일_v1.json';
+const BACKUP_FOLDER = '_공유할일_백업';
 let code = fs.readFileSync(path.join(ROOT, 'apps-script/Code.gs'), 'utf8');
 let moduleSource = fs.readFileSync(path.join(ROOT, 'apps-script/SharedTodo.gs'), 'utf8');
 const mutation = process.env.SHARED_TODO_MUTATION || '';
@@ -25,17 +26,24 @@ if (mutation === 'auth') {
   moduleSource = replaceExact(moduleSource, 'auth = checkToken_(req.token);', "auth = ''; // MUTATION");
 }
 function iter(items) { let i = 0; return { hasNext: () => i < items.length, next: () => items[i++] }; }
-function harness({ omitModule = false } = {}) {
-  const stats = { reads: 0, writes: 0, folders: 0, files: 0, lockCalls: 0, releases: 0 };
+function harness({ omitModule = false, sourceTransform = source => source } = {}) {
+  const stats = { reads: 0, writes: 0, folders: 0, files: 0, backupWrites: 0, backupFolders: 0, lockCalls: 0, releases: 0 };
   const props = { APP_TOKEN: TOKEN, DRIVE_FOLDER_ID: 'TEST-ROOT', DATA_FILE_NAME: 'TEST-LEGACY.json' };
-  let locked = false, busy = false, fault = '', rootBroken = false, onLock = null;
+  let locked = false, busy = false, fault = '', rootBroken = false, onLock = null, nextId = 1;
+  const cursors = new Map();
+  function fileIterator(items, start = 0) {
+    let index = start;
+    return { hasNext: () => index < items.length, next: () => items[index++], getContinuationToken() { const token = 'TEST-CURSOR-' + nextId++; cursors.set(token, { items, index }); return token; } };
+  }
   function checkLock() { assert(locked, 'shared storage accessed outside ScriptLock'); }
   class File {
     constructor(parent, name, content) { this.parent = parent; this.name = name; this.content = content; this.description = ''; }
-    gate() { if (this.parent.name === FOLDER) checkLock(); }
+    gate() { if (this.parent.name === FOLDER || this.parent.name === BACKUP_FOLDER) checkLock(); }
     getBlob() { this.gate(); stats.reads++; return { getDataAsString: () => this.content }; }
     setContent(content) {
       this.gate();
+      assert.notEqual(this.parent.name, BACKUP_FOLDER, 'backups must be immutable');
+      if (fault === 'silent') { fault = ''; return this; }
       if (fault === 'before') { fault = ''; throw new Error('TEST-SECRET-DRIVE-ERROR before write'); }
       if (fault === 'partial') { fault = ''; this.content = content.slice(0, 20); stats.writes++; throw new Error('TEST-SECRET-DRIVE-ERROR damaged content'); }
       this.content = content; stats.writes++;
@@ -46,14 +54,26 @@ function harness({ omitModule = false } = {}) {
     setDescription(value) { this.description = value; return this; }
     getLastUpdated() { return new Date('2026-09-13T00:00:00.000Z'); }
     getName() { return this.name; }
+    getParents() { this.gate(); return iter([this.parent]); }
   }
   class Folder {
-    constructor(name) { this.name = name; this.children = []; this.files = []; }
+    constructor(name) { this.name = name; this.children = []; this.files = []; this.id = 'TEST-FOLDER-' + nextId++; }
+    getId() { return this.id; }
     getFoldersByName(name) { if (name === FOLDER) checkLock(); return iter(this.children.filter(x => x.name === name)); }
-    createFolder(name) { checkLock(); stats.folders++; const child = new Folder(name); this.children.push(child); return child; }
+    createFolder(name) { checkLock(); if (name === BACKUP_FOLDER) stats.backupFolders++; else stats.folders++; const child = new Folder(name); this.children.push(child); return child; }
     getFilesByName(name) { if (this.name === FOLDER) checkLock(); return iter(this.files.filter(x => x.name === name)); }
+    getFiles() { checkLock(); return fileIterator(this.files.slice()); }
     createFile(name, content) {
-      if (this.name === FOLDER) checkLock();
+      if (this.name === FOLDER || this.name === BACKUP_FOLDER) checkLock();
+      if (this.name === BACKUP_FOLDER) {
+        if (fault === 'backup-before') { fault = ''; throw new Error('TEST-SECRET-DRIVE-ERROR backup before'); }
+        const file = new File(this, name, fault === 'backup-partial' ? content.slice(0, 20) : fault === 'backup-silent' ? '{}' : content);
+        if (fault === 'backup-validwrong') { const wrong = JSON.parse(content); wrong.deviceId = 'TEST-WRONG-WRITER'; file.content = JSON.stringify(wrong); fault = ''; }
+        this.files.push(file); stats.backupWrites++;
+        if (fault === 'backup-after') { fault = ''; throw new Error('TEST-SECRET-DRIVE-ERROR backup after'); }
+        if (fault === 'backup-partial' || fault === 'backup-silent') fault = '';
+        return file;
+      }
       if (fault === 'before') { fault = ''; throw new Error('TEST-SECRET-DRIVE-ERROR before create'); }
       const file = new File(this, name, content); this.files.push(file); stats.files++; stats.writes++;
       if (fault === 'after') { fault = ''; throw new Error('TEST-SECRET-DRIVE-ERROR after create'); }
@@ -65,17 +85,19 @@ function harness({ omitModule = false } = {}) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: key => props[key] ?? null }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: text => ({ text, setMimeType() { return this; } }) },
     LockService: { getScriptLock: () => ({ tryLock(ms) { assert.equal(ms, 20000); stats.lockCalls++; if (busy || locked) return false; locked = true; if (onLock) onLock(); return true; }, releaseLock() { assert(locked); locked = false; stats.releases++; } }) },
-    DriveApp: { getFolderById(id) { assert.equal(id, 'TEST-ROOT'); if (rootBroken) throw new Error('TEST-SECRET-DRIVE-ERROR root'); return root; } },
+    DriveApp: { getFolderById(id) { assert.equal(id, 'TEST-ROOT'); if (rootBroken) throw new Error('TEST-SECRET-DRIVE-ERROR root'); return root; }, continueFileIterator(token) { const saved = cursors.get(token); if (!saved) throw new Error('TEST-SECRET-DRIVE-ERROR expired'); return fileIterator(saved.items, saved.index); } },
     Utilities: { DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' }, computeDigest(algorithm, input, charset) { return [...crypto.createHash(algorithm).update(input, charset).digest()].map(v => v > 127 ? v - 256 : v); } },
     oiIsPublicAction_: () => false, oiIsInternalAction_: () => false,
   });
-  vm.runInContext(code + (omitModule ? '' : '\n' + moduleSource), context, { filename: 'shared-todo-test.gs' });
+  vm.runInContext(code + (omitModule ? '' : '\n' + sourceTransform(moduleSource)), context, { filename: 'shared-todo-test.gs' });
   function request(action, payload = {}, deviceId = 'TEST-DEVICE-A', changes = {}) {
     const req = { action, token: TOKEN, ts: Date.now(), deviceId, payload, ...changes };
     return JSON.parse(context.doPost({ postData: { contents: JSON.stringify(req) } }).text);
   }
   function storedFile() { return root.children.find(x => x.name === FOLDER)?.files.find(x => x.name === FILE); }
   return { context, root, stats, props, request, storedFile,
+    backupFolder: () => root.children.find(x => x.name === FOLDER)?.children.find(x => x.name === BACKUP_FOLDER),
+    backups: () => root.children.find(x => x.name === FOLDER)?.children.find(x => x.name === BACKUP_FOLDER)?.files || [],
     stored: () => JSON.parse(storedFile().content),
     inject(content) { let folder = root.children.find(x => x.name === FOLDER); if (!folder) { folder = new Folder(FOLDER); root.children.push(folder); } let file = storedFile(); if (!file) { file = new File(folder, FILE, ''); folder.files.push(file); } file.content = typeof content === 'string' ? content : JSON.stringify(content); },
     duplicateFolder() { root.children.push(new Folder(FOLDER)); },
@@ -91,6 +113,8 @@ let count = 0;
 function test(name, fn) { fn(); count++; console.log('PASS ' + name); }
 function expectError(result, error) { assert.equal(result.ok, false); assert.equal(result.error, error); assert(!JSON.stringify(result).includes('TEST-SECRET-DRIVE-ERROR')); }
 
+module.exports = { harness, id, save, expectError };
+if (require.main === module) {
 test('authenticated health/list are read-only and empty storage is valid', () => {
   const h = harness();
   assert.deepEqual(h.request('sharedTodoHealth'), { ok: true, version: 'shared-todo-v1' });
@@ -277,4 +301,5 @@ if (process.argv.includes('--mutations')) {
     assert((child.stderr || '').includes('AssertionError'), 'mutation must fail an assertion, not setup: ' + name);
     console.log('MUTATION DETECTED ' + name);
   }
+}
 }
