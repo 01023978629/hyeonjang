@@ -26,7 +26,18 @@ async function boot() {
     return url.origin === ORIGIN && route.request().method() === 'GET' ? route.continue() : route.abort('blockedbyclient');
   });
   const page = await context.newPage(), errors = []; page.setDefaultTimeout(12000); page.on('pageerror', e => errors.push(String(e)));
-  await page.addInitScript(() => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); });
+  await page.addInitScript(() => {
+    localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); localStorage.setItem('hj_ver_checked_at', String(Date.now()));
+    // During interception the detached input can be collected between Chromium's
+    // Page.fileChooserOpened and Playwright's DOM.resolveNode. Keep it alive until
+    // setFiles so Playwright does not silently drop the real chooser event.
+    window.__intakePickerInputs = new Set();
+    const nativeClick = HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click = function (...args) {
+      if (this.type === 'file') window.__intakePickerInputs.add(this);
+      return nativeClick.apply(this, args);
+    };
+  });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.HJMedia && window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
   await page.evaluate(async () => {
@@ -80,7 +91,10 @@ async function scenario(name, fn) {
 }
 async function pick(page, files = [FILE]) {
   await page.evaluate(() => HJMedia.view()); await page.locator('#mediaManager').waitFor({ state: 'visible' });
-  const chooser = page.waitForEvent('filechooser'); await page.locator('#mediaAdd').click(); await (await chooser).setFiles(files);
+  try {
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#mediaAdd').click()]);
+    await chooser.setFiles(files);
+  } finally { await page.evaluate(() => window.__intakePickerInputs.clear()); }
   await page.locator('#mediaIntake').waitFor({ state: 'visible' }); await page.locator('#mediaWork').fill('TEST_NEW_WORK');
 }
 async function confirm(page) {
