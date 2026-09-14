@@ -10,7 +10,7 @@ const output = path.resolve(process.cwd(), outputArg);
 if (output === root || output === path.parse(output).root) throw new Error('저장소 루트나 드라이브 루트는 출력폴더로 사용할 수 없습니다.');
 
 // Pages에서 실행·열람해도 되는 최소 앱 셸. backup/, tests/, apps-script/는 의도적으로 제외한다.
-const publicFiles = ['.nojekyll', 'index.html', 'privacy.html', 'sw.js', 'terms.html'];
+const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-backup.js', 'privacy.html', 'sw.js', 'terms.html'];
 await mkdir(output, { recursive: false });
 for (const rel of publicFiles) {
   const source = path.join(root, rel);

@@ -27,4 +27,8 @@ for (const rel of files) {
   }
 }
 if (bad) { console.error('\n스크립트가 파싱되지 않으면 앱이 통째로 안 뜬다.'); process.exit(1); }
+for (const rel of ['media-safety.js','shared-todo-backup.js']) {
+  try { new Function(fs.readFileSync(path.resolve(__dirname,'..',rel),'utf8')); n++; }
+  catch (error) { console.error('✗ '+rel+': '+error.message); process.exit(1); }
+}
 console.log(`✓ 스크립트 문법 정상 — 블록 ${n}개`);

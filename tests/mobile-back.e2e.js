@@ -22,16 +22,28 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
   const browser = await chromium.launch({ executablePath: process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined });
   const ctx = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Seoul' });
   const pageErrors = [];
+  await ctx.route('**/*', route => new URL(route.request().url()).origin === new URL(APP).origin ? route.continue() : route.abort());
 
-  async function makePage() {
+  async function waitForBoot(page) {
+    await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
+    await page.evaluate(async () => {
+      await Promise.all([__hjRestoreDone, __hjRelayConfigDone, __hjOfficeOpsBootDone]);
+      clearTimeout(__idbSaveTimer);
+      await __appStateWriteQueue;
+    });
+  }
+
+  async function makePage(controlledClock = false) {
     const page = await ctx.newPage();
+    if (controlledClock) await page.clock.install({ time: new Date('2026-09-14T00:00:00Z') });
     page.setDefaultTimeout(9000); // 2.5초는 CI 부하에서 이동 대기가 끊겨 간헐 실패했다(2026-09-03). 동작 검증은 아래 어서션이 한다
     page.on('pageerror', e => pageErrors.push(String(e)));
     await page.addInitScript(() => {
       try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); } catch (e) {}
     });
     await page.goto(APP, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
+    await waitForBoot(page);
+    if (controlledClock) await page.clock.pauseAt(new Date('2026-09-14T00:01:00Z'));
     await page.evaluate(() => {
       state.projects = [
         { name: '뒤로가기 점검현장', stage: 2, received: 0, phases: ['방수'], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' }, archived: false },
@@ -120,7 +132,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       await page.evaluate(() => openProjectSheet());
       await page.waitForSelector('#psArcTg');
       await page.locator('#psArcTg').click();
-      await page.waitForTimeout(80);
+      await page.waitForFunction(() => document.getElementById('psArcTg')?.getAttribute('aria-expanded') === 'true');
       assert(await page.locator('#projSheet').count() === 1, '보관 목록을 펼쳐 다시 만든 현장 선택 시트가 사라지면 안 됨');
       await page.evaluate(() => history.back());
       await page.waitForFunction(() => !document.getElementById('projSheet'));
@@ -166,7 +178,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
         setTimeout(() => openProjectSheet(), 0);
       });
       await page.waitForSelector('#projSheet');
-      await page.waitForTimeout(250);
+      await page.waitForFunction(() => !__mobileSheetHistoryRetire && !__mobileSheetHistoryDeferredOpen && document.getElementById('projSheet') && history.state?.__hjMobileSheet === __mobileSheetHistoryActive?.token);
       const afterLatePop = await page.evaluate(() => ({
         sheet: !!document.getElementById('projSheet'),
         marker: history.state && history.state.__hjMobileSheet,
@@ -192,7 +204,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       await page.evaluate(() => openMoreSheetV2());
       await page.waitForSelector('#moreSheet');
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(1000);
+      await waitForBoot(page);
       await page.waitForFunction(() => !(history.state && history.state.__hjMobileSheet));
       const cleaned = await page.evaluate(() => ({
         sheet: !!document.getElementById('moreSheet'),
@@ -222,19 +234,20 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
         setTimeout(() => {
           openProjectSheet();
           if (document.getElementById('projSheet')) {
+            window.__hjTestRapidBackRequested = true;
             history.back();
             return;
           }
           const observer = new MutationObserver(() => {
             if (!document.getElementById('projSheet')) return;
             observer.disconnect();
+            window.__hjTestRapidBackRequested = true;
             history.back();
           });
           observer.observe(document.body, { childList: true });
         }, 0);
       });
-      await page.waitForFunction(() => !document.getElementById('projSheet') && !__mobileSheetHistoryRetire && !__mobileSheetHistoryDeferredOpen, null, { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(50);
+      await page.waitForFunction(() => window.__hjTestRapidBackRequested && !document.getElementById('projSheet') && !__mobileSheetHistoryActive && !__mobileSheetHistoryRetire && !__mobileSheetHistoryDeferredOpen, null, { timeout: 5000 });
       const afterRapidBack = await page.evaluate(() => ({
         sheet: !!document.getElementById('projSheet'),
         appEntry: history.state && history.state.hjTest,
@@ -248,20 +261,50 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
   });
 
   await test('⑨ 예약 시트가 표시되기 전 Back은 열기 예약을 취소하고 기존 기록으로 이동한다', async () => {
-    const page = await makePage();
+    // Pause timer callbacks while real browser history/popstate still runs. This
+    // tests Back before the deferred sheet is shown; case ⑧ covers Back after it
+    // is shown. A wall-clock setTimeout(0) cannot distinguish these two states.
+    const page = await makePage(true);
     try {
       await page.evaluate(() => {
         history.replaceState({ hjTest: 'base' }, '', location.pathname + '?entry=base');
         history.pushState({ hjTest: 'top' }, '', location.pathname + '?entry=top');
+        const nativeBack = history.back;
+        window.__hjTestRetired = new Promise(resolve => {
+          window.addEventListener('popstate', () => resolve({
+            sheet: !!document.getElementById('projSheet'),
+            appEntry: history.state && history.state.hjTest,
+            active: !!__mobileSheetHistoryActive,
+            retiring: !!__mobileSheetHistoryRetire,
+            deferred: !!__mobileSheetHistoryDeferredOpen,
+            scheduled: !!__mobileSheetHistoryDeferredOpen?.scheduled,
+          }), { once: true });
+        });
+        // Request the new sheet inside the actual retirement callback, before
+        // its asynchronous popstate can arrive. Keep the real history traversal.
+        history.back = function () {
+          history.back = nativeBack;
+          const started = !!__mobileSheetHistoryRetire?.started;
+          nativeBack.call(history);
+          openProjectSheet();
+          window.__hjTestDeferredRequested = { started, deferred: !!__mobileSheetHistoryDeferredOpen, sheet: !!document.getElementById('projSheet') };
+        };
         openMoreSheetV2();
         document.getElementById('moreSheetClose').click();
-        setTimeout(() => {
-          openProjectSheet();
-          history.back();
-        }, 0);
       });
-      await page.waitForFunction(() => !document.getElementById('projSheet') && !__mobileSheetHistoryActive && !__mobileSheetHistoryDeferredOpen && !!(history.state && history.state.hjTest === 'base'), null, { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(50);
+      await page.clock.runFor(0);
+      const queued = await page.evaluate(() => window.__hjTestDeferredRequested);
+      assert(queued?.started && queued.deferred && !queued.sheet, '⑨는 실제 기록 이동 중이며 새 시트가 아직 표시되지 않은 상태에서 시작해야 함: ' + JSON.stringify(queued));
+      const retired = await page.evaluate(() => window.__hjTestRetired);
+      assert(retired.appEntry === 'top' && !retired.sheet && !retired.active && !retired.retiring && retired.deferred && retired.scheduled, '첫 popstate 뒤 표시 대기 상태를 확인해야 함: ' + JSON.stringify(retired));
+      const backEntry = await page.evaluate(() => new Promise(resolve => {
+        window.addEventListener('popstate', () => resolve(history.state && history.state.hjTest), { once: true });
+        history.back();
+      }));
+      assert(backEntry === 'base', '표시 전 실제 Back은 기존 앱 기록으로 이동해야 함: ' + backEntry);
+      // Release the queued timer turn: a cancelled callback must not reopen the
+      // sheet after Back. This advances virtual time, not a wall-clock sleep.
+      await page.clock.runFor(1);
       const afterBackBeforeOpen = await page.evaluate(() => ({
         sheet: !!document.getElementById('projSheet'),
         appEntry: history.state && history.state.hjTest,
@@ -272,6 +315,7 @@ function near(actual, expected, tolerance) { return Math.abs(actual - expected) 
       assert(!afterBackBeforeOpen.sheet && !afterBackBeforeOpen.active && !afterBackBeforeOpen.deferred, '표시 전 뒤로가기는 예약 시트와 내부 상태를 모두 취소해야 함: ' + JSON.stringify(afterBackBeforeOpen));
       assert(afterBackBeforeOpen.appEntry === 'base' && afterBackBeforeOpen.href.endsWith('?entry=base'), '시트가 보이지 않을 때 뒤로가기는 기존 앱 기록 이동을 막으면 안 됨: ' + JSON.stringify(afterBackBeforeOpen));
     } finally {
+      await page.clock.resume();
       await page.close();
     }
   });
