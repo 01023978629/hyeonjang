@@ -131,6 +131,31 @@ async function controls(page) {
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
+  // v298: 이 파일의 나머지 검사는 aptUnitView() 를 직접 불러서 화면을 열었다. 그래서 위임 셀렉터
+  // 목록에서 [data-aptunits] 가 빠져 버튼이 아예 안 눌리던 v297 회귀를 하나도 못 잡았다.
+  // 함수가 멀쩡한 것과 버튼이 눌리는 것은 다른 문제다 — 여기서만 진짜로 클릭한다.
+  await scenario('현장 화면의 [동·호수 관리] 버튼을 실제로 눌러 화면이 열린다', async test => {
+    const { page } = test;
+    await page.evaluate(a => { state.tab = 'project'; state.activeProject = a; render(); }, A);
+    const button = page.locator('#view button[data-aptunits]');
+    await button.waitFor({ state: 'visible' });
+    assert.equal((await button.innerText()).trim(), '동·호수 관리');
+    // 위임은 closest() 목록에 이름이 있어야만 동작한다 — 목록에서 빠지면 클릭이 조용히 버려진다
+    assert(await button.evaluate(el => {
+      const m = String(setupDelegation).match(/const\s+t\s*=\s*e\.target\.closest\('([^']+)'\)/);
+      return !!m && el.matches(m[1]);
+    }), '[동·호수 관리] 버튼이 클릭 위임 셀렉터 목록에 걸려야 한다');
+    await button.click();
+    await page.locator('#aptUnitPanel').waitFor({ state: 'visible' });
+    await page.locator('#aptUnitAdd').waitFor({ state: 'visible' });
+    // 0곳(등록 전) 현장에서도 열려야 한다 — 사장님이 처음 누르는 상태가 그것이다
+    await page.evaluate(() => { closeModal(); state.projects.find(p => p.name === state.activeProject).aptUnits = []; render(); });
+    await page.locator('#view button[data-aptunits]').click();
+    await page.locator('#aptUnitPanel').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#aptUnitPanel').innerText(), /0곳 등록/);
+    await page.evaluate(() => closeModal());
+    await invariant(test, false);
+  });
   await scenario('아파트+동호 ID 이중 격리·명시 연결만·미지정과 손상 데이터 fail closed', async test => {
     const actual = await test.page.evaluate(a => {
       const p = aptUnitProject(a), get = id => state.files.find(f => f.id === id);
