@@ -203,19 +203,48 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(JSON.stringify(r.zero) === JSON.stringify([]), '0장이면 넣지 않는다');
   });
 
-  await test('하자보증서 미리보기 — 사진 장수 선택칸이 현장에 있는 만큼만 열린다', async () => {
+  await test('하자보증서 미리보기 — 사진을 탭해서 직접 고른다(없음→전→후), 공정 사진은 미리 골라져 있고 한쪽 최대 4장', async () => {
     const r = await page.evaluate(() => {
-      const N = '가상사진현장';   // 위 검사의 자료(전 3장·후 2장)를 그대로 쓴다
+      const N = '가상사진현장';   // 위 검사의 자료(전 3장·후 2장 + 영상·썸네일없음·다른현장)를 그대로 쓴다
       warrantyView(N);
-      const opts = id => [...document.querySelectorAll('#' + id + ' option')].map(o => ({ v: o.value, sel: o.selected, dis: o.disabled }));
-      const out = { before: opts('wrBefore'), after: opts('wrAfter'), text: document.querySelector('#modalRoot').innerText };
+      const tiles = () => [...document.querySelectorAll('#wrPhotoGrid .wrPh')].map(el => ({ id: el.dataset.id, tag: el.querySelector('.wrTag').textContent, shown: el.querySelector('.wrTag').style.display !== 'none' }));
+      const count = () => document.getElementById('wrPickCount').textContent;
+      const tap = id => document.querySelector('#wrPhotoGrid .wrPh[data-id="' + id + '"]').click();
+      const out = { tiles0: tiles(), count0: count() };
+      tap('b-new'); out.afterTap1 = { tags: tiles().filter(x => x.shown).map(x => x.id + ':' + x.tag), count: count() };   // 없음 → 전 (전 3/4)
+      tap('b-new'); out.afterTap2 = tiles().filter(x => x.shown).map(x => x.id + ':' + x.tag);                             // 전 → 후 (후 3/4)
+      tap('b-new'); out.afterTap3 = tiles().filter(x => x.shown).map(x => x.id + ':' + x.tag);                             // 후 → 없음
+      out.pick = JSON.parse(JSON.stringify(window.__wrPick));
       closeModal(); return out;
     });
-    assert(JSON.stringify(r.before.filter(o => o.sel).map(o => o.v)) === JSON.stringify(['2']), '전 3장 있으면 기본 2장');
-    assert(JSON.stringify(r.before.filter(o => o.dis).map(o => o.v)) === JSON.stringify(['4']), '전은 3장뿐이라 4장은 못 고른다');
-    assert(JSON.stringify(r.after.filter(o => o.sel).map(o => o.v)) === JSON.stringify(['2']), '후 2장 있으면 기본 2장');
-    assert(JSON.stringify(r.after.filter(o => o.dis).map(o => o.v)) === JSON.stringify(['4']), '후는 2장뿐이라 4장은 못 고른다');
-    assert(/작업 전 \(현장에 3장\)/.test(r.text) && /작업 후 \(현장에 2장\)/.test(r.text), '현장에 몇 장 있는지 보여준다: ' + r.text.slice(0, 300));
+    assert(JSON.stringify(r.tiles0.map(x => x.id)) === JSON.stringify(['b-old', 'b-mid', 'b-new', 'a-old', 'a-new']),
+      '격자에는 이 현장의 썸네일 있는 사진만 날짜순으로(영상·썸네일없음·다른현장 제외): ' + r.tiles0.map(x => x.id));
+    assert(JSON.stringify(r.tiles0.filter(x => x.shown).map(x => x.id + ':' + x.tag)) === JSON.stringify(['b-old:전 1', 'b-mid:전 2', 'a-old:후 2', 'a-new:후 1']),
+      '공정 사진은 전 2장(오래된 순)·후 2장(최근 순)이 미리 골라져 있다: ' + JSON.stringify(r.tiles0.filter(x => x.shown)));
+    assert(r.count0 === '전 2/4 · 후 2/4', '개수 표시: ' + r.count0);
+    assert(r.afterTap1.tags.includes('b-new:전 3') && r.afterTap1.count === '전 3/4 · 후 2/4', '한 번 탭 → 전 3번: ' + JSON.stringify(r.afterTap1));
+    assert(r.afterTap2.includes('b-new:후 3') && !r.afterTap2.some(x => x === 'b-new:전 3'), '두 번 탭 → 후: ' + r.afterTap2);
+    assert(!r.afterTap3.some(x => x.startsWith('b-new:')), '세 번 탭 → 없음: ' + r.afterTap3);
+    assert(JSON.stringify(r.pick) === JSON.stringify({ before: ['b-old', 'b-mid'], after: ['a-new', 'a-old'] }), '최종 선택: ' + JSON.stringify(r.pick));
+  });
+
+  await test('하자보증서 — 직접 고른 사진(id)이 우선이고, 전은 오래된 순·후는 최근 순·한쪽 4장·이 현장 사진만', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상사진현장';
+      const ids = h => [...h.matchAll(/data-photo="([^"]+)"/g)].map(m => m[1]);
+      return {
+        picked: ids(warrantyHTML(N, { beforeIds: ['b-new', 'b-old'], afterIds: ['a-old'] })),
+        junk: ids(warrantyHTML(N, { beforeIds: ['video', 'nothumb', 'other', 'no-such', 'b-mid'], afterIds: [] })),
+        overCount: ids(warrantyHTML(N, { beforeIds: ['b-old', 'b-mid', 'b-new', 'a-old', 'a-new'], afterIds: [] })).length,
+        idsWinOverCount: ids(warrantyHTML(N, { beforeIds: ['b-mid'], afterIds: ['a-old'], beforeN: 4, afterN: 4 })),
+        emptyIds: (warrantyHTML(N, { beforeIds: [], afterIds: [] }).match(/사진 부착 \/ 삽입/g) || []).length,
+      };
+    });
+    assert(JSON.stringify(r.picked) === JSON.stringify(['b-old', 'b-new', 'a-old']), '고른 순서와 무관하게 전은 오래된 순: ' + r.picked);
+    assert(JSON.stringify(r.junk) === JSON.stringify(['b-mid']), '영상·썸네일없음·다른현장·없는 id 는 조용히 뺀다: ' + r.junk);
+    assert(r.overCount === 4, '한쪽 최대 4장: ' + r.overCount);
+    assert(JSON.stringify(r.idsWinOverCount) === JSON.stringify(['b-mid', 'a-old']), 'id 를 주면 장수는 무시한다: ' + r.idsWinOverCount);
+    assert(r.emptyIds === 2, '빈 목록이면 장수 방식으로 떨어지지 않고 빈 칸 둘');
   });
 
   // (8) 하자보증서 입구 통일 — 정산 문서의 카드도 같은 화면(사진 장수 선택)으로 간다.
@@ -227,7 +256,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const card = document.querySelector('#modalRoot .sdCard[data-k="warranty"]');
       const cardText = card ? card.textContent : '';
       if (card) card.click();
-      const routed = !!document.getElementById('wrBefore') && !!document.getElementById('wrAfter');
+      const routed = !!document.getElementById('wrPhotoGrid') && !!document.getElementById('wrPickCount');
       closeModal();
       const h = warrantyHTML(N, { beforeN: 1, afterN: 1 });
       // 셸 헤더의 로고 img 도 object-fit:cover 를 쓰므로, 사진(data-photo) 태그만 본다
@@ -236,7 +265,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         keep: (h.match(/class="keep"/g) || []).length, printRule: /\.keep\{break-inside:avoid/.test(h) };
     });
     assert(r.cardText.indexOf('하자보증서') >= 0, '정산 문서에 하자보증서 카드가 있어야 함');
-    assert(r.routed, '정산 문서에서 눌러도 사진 장수 선택칸(wrBefore/wrAfter)이 있는 같은 화면이어야 함');
+    assert(r.routed, '정산 문서에서 눌러도 사진 고르는 격자(wrPhotoGrid)가 있는 같은 화면이어야 함');
     assert(r.contain && !r.cover, '증빙 사진은 잘라내지 않는다(object-fit:contain)');
     assert(r.keep === 4 && r.printRule, '사진 칸 2 + 서명란 2 는 인쇄에서 한 덩어리(.keep): ' + r.keep);
   });
