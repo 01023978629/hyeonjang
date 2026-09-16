@@ -20,7 +20,11 @@ async function boot(width=390){
   await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
   await page.evaluate(async({a,b,x,mutation})=>{
     await Promise.all([window.__hjRestoreDone,window.__hjRelayConfigDone,window.__hjOfficeOpsBootDone]);
-    taxCalendarEnsure();coworkSchedEnsure();aiOpsEnsureState().enabled=false;clearTimeout(__idbSaveTimer);await __appStateWriteQueue;
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;aiOpsEnsureState().enabled=false;clearTimeout(__idbSaveTimer);await __appStateWriteQueue;
     const p=name=>({name,stage:1,received:12345,phases:[],cost:{material:1000,labor:2000,outsource:0},customer:{},archived:false});
     state.projects=[p(a),p(b),{...p('가상 보관아파트'),archived:true},p(x)];
     state.quotes=[{id:'fake-q1',title:'가상 작성 견적',no:'FAKE-1',date:'2026-09-01',createdAt:'2026-08-31T23:30:00.000Z',place:'',memo:'보존',accountIdx:0,

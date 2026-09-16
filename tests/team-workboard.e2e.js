@@ -46,7 +46,11 @@ async function boot(width){
     const reject=name=>()=>{throw new Error('Unexpected external '+name);};relayCall=reject('relay');window.open=reject('popup');if(navigator.share)navigator.share=reject('share');
     // Real local transaction retained. Post-commit network scheduling is observed, not executed.
     window.__teamCommitted=0;webWorkMarkDirtyAfterPersist=()=>{__teamCommitted++;state.dirty=true;};
-    taxCalendarEnsure();coworkSchedEnsure();render();clearTimeout(__idbSaveTimer);await guardedPersistCurrentState();await __appStateWriteQueue;
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;render();clearTimeout(__idbSaveTimer);await guardedPersistCurrentState();await __appStateWriteQueue;
   });
   // Explicit reload reboots existing CDN/GIS scripts (all remain blocked by routing).
   page.__teamReload=async()=>{observing=false;const bootGis=page.waitForEvent('requestfailed',{predicate:r=>r.url()==='https://accounts.google.com/gsi/client',timeout:20000});await page.reload({waitUntil:'domcontentloaded'});await bootGis;await ready(page);observing=true;};
@@ -151,9 +155,12 @@ async function fits(page,root){
     });
     assert.equal(result.ok,true);assert.equal(result.guard,false);assert.equal(result.restored,result.expected);assert.equal(result.snapshot,result.expected);
     // 여기서 suggestedFilename 이 'download' 로 나오면 앱 버그가 아니라 브라우저 빌드 문제다.
-    // 일부 Chromium(예: playwright 1.56.1 동봉본)은 blob 다운로드의 **한글 파일명**을 못 받아
-    // 'download' 로 떨어뜨린다. ASCII 이름은 같은 빌드에서도 정상이고, CI(1.55.0)와 실제 폰은 문제없다.
-    // 확인법: about:blank 에서 a.download 에 ASCII / 한글 이름을 각각 주고 suggestedFilename 을 비교.
+    // 일부 Chromium 빌드가 blob 다운로드의 **한글 파일명**을 못 받아 'download' 로 떨어뜨린다.
+    // 앱과 무관함은 about:blank 에서 확인된다 — Blob + a.download 다섯 줄로, 같은 코드에
+    // ASCII 이름을 주면 그대로 나오고 한글 이름만 'download' 가 된다.
+    // playwright 클라이언트 판(1.55.0 / 1.56.1)을 바꿔도 같은 브라우저면 결과가 같으므로
+    // 원인은 클라이언트가 아니라 브라우저 빌드다. CI 러너의 빌드는 정상이고(배포 기록에서
+    // 이 파일은 매번 통과한다), 실제 폰도 문제없다.
     // 파일명은 사장님이 백업 파일을 알아보는 수단이라 ASCII 로 바꾸지 않는다 — 검사도 약하게 만들지 않는다.
     const download=page.waitForEvent('download');await page.evaluate(()=>exportData());assert.match((await download).suggestedFilename(),/^현장데이터_\d+\.json$/);
   });

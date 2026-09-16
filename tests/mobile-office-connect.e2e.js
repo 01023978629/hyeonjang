@@ -37,7 +37,11 @@ async function boot(width=390,big=''){
     relayCall=reject('relay');cloudOfficeInbox=reject('inbox');officeIntakeFlush=reject('flush');officeIntakeAccept=reject('accept');
     window.open=reject('window.open');getFileOf=reject('file');
     if(navigator.clipboard)navigator.clipboard.writeText=reject('clipboard');
-    taxCalendarEnsure();coworkSchedEnsure();state.dirty=false;render();clearTimeout(__idbSaveTimer);
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;state.dirty=false;render();clearTimeout(__idbSaveTimer);
     if(!await guardedPersistCurrentState())throw new Error('fake fixture persistence failed');await __appStateWriteQueue;
     const dirty=markDirty;markDirty=function(){window.__officeUiDirty++;return dirty.apply(this,arguments);};
     if(mutation==='freshness'){const real=webOfficeConnectionState;webOfficeConnectionState=function(){const result=real.apply(this,arguments);if(result.configured&&!result.lastAt){window.__officeUiMutation++;result.mode='recent';result.lastAt=new Date().toISOString();}return result;};}

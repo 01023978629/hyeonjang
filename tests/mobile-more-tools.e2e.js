@@ -67,7 +67,11 @@ async function boot(width=390,forced=false){
     relayCall=reject('relay');portalAutoSync=reject('portalSync');getFileOf=reject('originalFile');
     // Seed after replacing schedule, so later boot timers are idempotent. Calling
     // ensure before clearing fake schedule would re-add tax items during capture.
-    taxCalendarEnsure();coworkSchedEnsure();state.dirty=false;render();clearTimeout(__idbSaveTimer);if(!await guardedPersistCurrentState())throw new Error('fake fixture persistence failed');await __appStateWriteQueue;
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;state.dirty=false;render();clearTimeout(__idbSaveTimer);if(!await guardedPersistCurrentState())throw new Error('fake fixture persistence failed');await __appStateWriteQueue;
     const dirty=markDirty;markDirty=function(){window.__moreDirty++;return dirty.apply(this,arguments);};
     if(mutation==='dispatch'){const real=moreActionHandler;moreActionHandler=function(action){if(action==='beforeafter'){window.__moreMutation++;return beforeAfterGallery();}return real.apply(this,arguments);};}
     if(mutation==='favorite'){const real=moreGetFavorites;moreGetFavorites=function(){window.__moreMutation++;state.files[0].project='가상 나아파트';return real.apply(this,arguments);};}

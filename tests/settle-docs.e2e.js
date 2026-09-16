@@ -308,6 +308,98 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     });
   });
 
+  // (11) v310 — 문서를 PDF·워드로 가져갈 수 있어야 한다.
+  //      그동안 .html 파일 한 벌만 떨어뜨렸다. 관리사무소에 내야 하는 종이인데 받아 놓고
+  //      할 수 있는 게 없었고, 윈도우에서는 공유창만 뜨고 끝나 "다운로드가 안 된다"가 됐다.
+  await test('하자보증서 [보증서 만들기] → PDF·워드·HTML 세 갈래를 고르는 화면이 뜬다', async () => {
+    const r = await page.evaluate(async () => {
+      state.projects = [{ name: '한밭우성아파트', stage: 4, received: 0, doneAt: '2026-09-01', phases: ['도배'],
+        cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '관리사무소' }, archived: false }];
+      state.files = []; state.quotes = [];
+      warrantyView('한밭우성아파트');
+      const btns = [...document.querySelectorAll('#modalRoot .mfoot button')];
+      const make = btns.find(b => b.textContent.includes('보증서 만들기'));
+      if (!make) return { err: '[보증서 만들기] 버튼이 없다' };
+      make.click();
+      await new Promise(r => setTimeout(r, 120));
+      const ids = ['hjDocPdf', 'hjDocWord', 'hjDocHtml'].map(id => !!document.querySelector('#modalRoot #' + id));
+      return { ids, preview: !!document.querySelector('#modalRoot iframe[srcdoc]'),
+        wired: ['hjDocPdf', 'hjDocWord', 'hjDocHtml'].map(id => typeof (document.querySelector('#modalRoot #' + id) || {}).onclick === 'function') };
+    });
+    assert(!r.err, r.err || '');
+    assert(r.ids.every(Boolean), 'PDF·워드·HTML 버튼이 다 있어야 한다: ' + JSON.stringify(r.ids));
+    assert(r.preview, '미리보기가 없다 — 사진을 잘못 골랐는지 볼 데가 있어야 한다');
+    // 모달 본문 버튼은 #view 위임이 닿지 않는다. 직접 배선하지 않으면 보이기만 하고 안 눌린다(v300 과 같은 사고).
+    assert(r.wired.every(Boolean), '세 버튼 모두 openModal 뒤 직접 배선되어야 한다: ' + JSON.stringify(r.wired));
+  });
+
+  await test('워드(.doc) 변환 — 워드가 A4로 열고, 인쇄 버튼은 종이에 안 따라간다', async () => {
+    const r = await page.evaluate(() => {
+      const html = warrantyHTML('한밭우성아파트');
+      const w = hjDocWordHtml(html);
+      return {
+        hadBtn: /window\.print\(\)/.test(html), stillBtn: /window\.print\(\)/.test(w),
+        ns: w.includes('xmlns:w="urn:schemas-microsoft-com:office:word"'),
+        page: w.includes('@page WordSection1') && w.includes('210mm 297mm'),
+        section: w.includes('<div class="WordSection1">') && w.includes('</div></body>'),
+        keptTitle: w.includes('작 업 하 자 보 증 서'),
+        keptCompany: w.includes('만물인테리어')
+      };
+    });
+    assert(r.hadBtn, '원본에는 인쇄 버튼이 있어야 검사가 뜻이 있다');
+    assert(!r.stillBtn, '워드 파일에 인쇄 버튼이 남았다 — 워드에서는 눌러도 뜻이 없고 종이에 찍힌다');
+    assert(r.ns, '워드 네임스페이스가 없다 — 워드가 웹페이지로 열어 버린다');
+    assert(r.page, '@page WordSection1 A4 설정이 없다');
+    assert(r.section, 'WordSection1 로 본문을 감싸지 않았다');
+    assert(r.keptTitle && r.keptCompany, '변환하면서 문서 내용이 날아갔다');
+  });
+
+  await test('PDF 저장 — 숨김 iframe 으로 인쇄를 열고, 사진이 뜬 뒤에 연다', async () => {
+    const r = await page.evaluate(async () => {
+      // 진짜 인쇄 대화상자는 테스트에서 못 띄우므로 print() 를 가로채 호출 여부만 본다.
+      const html = warrantyHTML('한밭우성아파트');
+      let printed = 0, before = document.querySelectorAll('iframe#hjDocPrintFrame').length;
+      const origDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+      const ok = hjDocPrint(html);
+      const frame = document.getElementById('hjDocPrintFrame');
+      if (frame && frame.contentWindow) { frame.contentWindow.print = () => { printed++; }; }
+      await new Promise(r => setTimeout(r, 600));
+      const visible = frame ? getComputedStyle(frame).visibility : 'none';
+      const after = document.querySelectorAll('iframe#hjDocPrintFrame').length;
+      // 두 번 불러도 액자가 쌓이면 안 된다
+      hjDocPrint(html);
+      await new Promise(r => setTimeout(r, 400));
+      const twice = document.querySelectorAll('iframe#hjDocPrintFrame').length;
+      return { ok, made: !!frame, printed, visible, before, after, twice, hasDesc: !!origDesc };
+    });
+    assert(r.ok === true, 'hjDocPrint 가 실패를 돌려줬다');
+    assert(r.made, '인쇄용 숨김 iframe 을 안 만들었다');
+    assert(r.printed >= 1, 'print() 가 안 불렸다 — 인쇄 창이 안 뜬다');
+    assert(r.visible === 'hidden', '인쇄용 액자가 화면에 보인다');
+    assert(r.twice === 1, '인쇄를 두 번 누르면 액자가 쌓인다(' + r.twice + '개) — 매번 지우고 새로 만들어야 한다');
+  });
+
+  await test('정산 문서(거래명세서·청구서)도 같은 세 갈래로 나간다', async () => {
+    const r = await page.evaluate(async () => {
+      state.projects = [{ name: '갈마동', stage: 2, received: 1000000, phases: [],
+        cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객' }, archived: false }];
+      state.files = [{ id: 'e9', kind: 'estimate', project: '갈마동', name: '견적',
+        est: { amount: 5000000, supply: 5000000, vat: 500000, date: '2026-05-10' }, when: new Date('2026-05-10') }];
+      settleDocs('갈마동');
+      const card = document.querySelector('#modalRoot .sdCard[data-k="statement"]');
+      if (!card) return { err: '거래명세서 카드가 없다' };
+      card.click();
+      await new Promise(r => setTimeout(r, 120));
+      return { pdf: !!document.querySelector('#modalRoot #hjDocPdf'),
+        word: !!document.querySelector('#modalRoot #hjDocWord'),
+        html: !!document.querySelector('#modalRoot #hjDocHtml'),
+        back: [...document.querySelectorAll('#modalRoot .mfoot button')].some(b => b.textContent.includes('뒤로')) };
+    });
+    assert(!r.err, r.err || '');
+    assert(r.pdf && r.word && r.html, '거래명세서도 PDF·워드·HTML 을 고를 수 있어야 한다: ' + JSON.stringify(r));
+    assert(r.back, '[← 뒤로] 가 없으면 문서 목록으로 못 돌아간다');
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

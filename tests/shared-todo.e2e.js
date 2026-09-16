@@ -22,6 +22,28 @@ async function status(page,value){await page.waitForFunction(value=>document.get
 async function closed(page){await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet));}
 async function settle(page){await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
 async function snapshot(page){return page.evaluate(()=>({serialized:JSON.stringify({...serializeData(),savedAt:'TEST-STABLE'}),notes:JSON.stringify(state.notes),projects:JSON.stringify(state.projects),relayRevision:__relay.rev,relaySyncAt:__relay.syncAt}));}
+/* Snapshot equality that says WHICH field moved.
+   assert.deepEqual on these objects prints two ~10KB serialized blobs side by side,
+   so a rare failure tells you that something changed and nothing about what. This
+   compares field by field, and for the serialized blob names the top-level key that
+   differs, so one CI log is enough to diagnose it. Strictness is identical: every
+   field of the baseline must still match exactly. */
+function sameSnapshot(actual,baseline,label){
+  for(const key of Object.keys(baseline)){
+    if(actual[key]===baseline[key])continue;
+    let detail=key;
+    if(key==='serialized'){
+      let a={},b={};
+      try{a=JSON.parse(actual[key]);b=JSON.parse(baseline[key]);}catch(_){}
+      const moved=[...new Set([...Object.keys(a),...Object.keys(b)])]
+        .filter(k=>JSON.stringify(a[k])!==JSON.stringify(b[k]));
+      detail='serialized.'+(moved.length?moved.join(','):'(unparseable)');
+    }
+    assert.fail(label+' — changed: '+detail+'\n  baseline: '+String(baseline[key]).slice(0,600)+
+      '\n  actual:   '+String(actual[key]).slice(0,600));
+  }
+  assert.deepEqual(Object.keys(actual).sort(),Object.keys(baseline).sort(),label+' — snapshot shape changed');
+}
 async function refresh(page){await page.locator('#stRefresh').click();await status(page,'ready');}
 async function add(page,mock,project,text){
   await page.locator('#stFilter').selectOption('');
@@ -60,7 +82,13 @@ async function mobileBounds(page){
     async function boot(){
       await page.goto(ORIGIN+'/index.html',{waitUntil:'domcontentloaded'});
       await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
-      await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);clearTimeout(__idbSaveTimer);await __appStateWriteQueue;});
+      /* __hjRelayBootDone must be awaited, not just __hjRelayConfigDone. relayBoot() keeps
+         running after it publishes its config result: it flushes the queue and asks the
+         server for health. This test hands the page a live relay token right after boot,
+         so if that tail is still in flight it reaches the stubbed relayCall and reports a
+         "legacy relay" side effect that no shared-work action caused. That was the rare
+         parallel-load failure here; on a loaded machine the gap widens and it is reliable. */
+      await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjRelayBootDone,__hjOfficeOpsBootDone]);clearTimeout(__idbSaveTimer);await __appStateWriteQueue;});
       await page.evaluate(({device,configured,mock,token,project,other,mutation})=>{
         state.projects=[project,other].map(name=>({name,stage:2,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{}}));
         state.activeProject=project;state.files=[];state.schedule=[];state.quotes=[];state.expenses=[];state.payLog=[];state.aptOrders=[];
@@ -319,8 +347,8 @@ async function mobileBounds(page){
       await k.setViewportSize({width:1280,height:900});await k.evaluate(()=>{__mobileMode=false;applyMobileMode();render();syncMobileNav();hjSharedTodoView();});
       await status(k,'ready');await capture(k,'shared-work-desktop-1280');await K.context.close();
     }
-    assert.deepEqual(await snapshot(a),baselineA,'shared actions never mutate serialized notes, photos, projects or whole-store revision');
-    assert.deepEqual(await snapshot(b),baselineB,'employee B whole-data state is preserved across all shared actions');
+    sameSnapshot(await snapshot(a),baselineA,'shared actions never mutate serialized notes, photos, projects or whole-store revision');
+    sameSnapshot(await snapshot(b),baselineB,'employee B whole-data state is preserved across all shared actions');
     for(const context of contexts)for(const page of context.pages())assert.deepEqual(await page.evaluate(()=>__sharedTodoUnexpected),[],'no legacy relay, upload or AI side effects');
     assert.deepEqual(effects,[]);assert.deepEqual(errors,[]);
     console.log('PASS shared todo 15: legacy serialized data, relay revision and external workflows untouched');
