@@ -143,6 +143,35 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     ['만물인테리어', '전병덕', '895-48-01132'].forEach(k => assert(r.indexOf(k) >= 0, '시공업체 정보 없음: ' + k));
   });
 
+  // (5) 하자보증서는 앱에 한 벌만 있어야 한다.
+  //     예전엔 서류 만들기만 캔버스로 따로 그려서(buildWarrantyPDF), 같은 이름의 문서 둘이
+  //     서로 다른 말을 했다. 이제 정산 문서·완료보증서·서류 만들기가 모두 warrantyHTML() 을 쓴다.
+  await test('하자보증서는 한 벌 — 서류 만들기도 같은 양식을 쓰고, 화면에서 고친 값이 반영된다', async () => {
+    const r = await page.evaluate(() => {
+      state.projects = [{ name: '가상단벌현장', stage: 3, received: 0, phases: ['욕실 방수'], cost: { material: 0, labor: 0, outsource: 0 },
+        customer: { name: '김고객', phone: '', addr: '대전' }, doneAt: '2026-09-10', archived: false }];
+      state.files = []; state.quotes = [{ id: 'q5', project: '가상단벌현장', date: '2026-09-01', items: [{ name: '욕실 방수', spec: '', qty: 1, price: 800000 }] }];
+      state.aptOffices = [];
+      docHubView('가상단벌현장');
+      const hub = [...document.querySelectorAll('#modalRoot .docHubBtn')].map(b => ({ act: b.dataset.act, text: b.textContent }));
+      closeModal();
+      return {
+        hub,
+        plain: warrantyHTML('가상단벌현장'),
+        edited: warrantyHTML('가상단벌현장', { work: '욕실 방수 + 타일 보수', client: '가상 관리사무소' }),
+        legacyGone: typeof buildWarrantyPDF === 'undefined',
+      };
+    });
+    const w = r.hub.find(h => h.act === 'warranty');
+    assert(w, '서류 만들기에 하자보증서 항목이 있어야 함');
+    assert(w.text.indexOf('관리사무소 제출용') >= 0, '서류 만들기 설명이 새 양식을 가리켜야 함: ' + w.text);
+    assert(r.plain.indexOf('작 업 하 자 보 증 서') >= 0, '기본 호출이 새 양식이 아님');
+    assert(r.edited.indexOf('욕실 방수 + 타일 보수') >= 0, '화면에서 고친 작업내용이 안 들어감');
+    assert(r.edited.indexOf('가상 관리사무소') >= 0, '화면에서 고친 의뢰인이 안 들어감');
+    assert(r.plain.indexOf('김고객') >= 0, '안 고쳤으면 앱 자료(고객명)를 쓴다');
+    assert(r.legacyGone, 'buildWarrantyPDF 가 살아 있으면 하자보증서가 다시 두 벌로 갈린다');
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
