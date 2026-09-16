@@ -237,6 +237,47 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     await invariant(test);
   });
 
+  await scenario('관리사무소 — 미등록이면 그 자리에서 등록하고, 등록되면 오더 상태를 요약해 보여준다', async (test) => {
+    const { page } = test;
+    await page.locator('.tab[data-tab="aptmgmt"]').click();
+    await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
+
+    // 가상선비마을3단지는 관리사무소가 없다 — 그 카드에 등록 버튼이 있어야 한다
+    const card = page.locator('#view .cust-card:not(#aptOthers)').filter({ hasText: '가상선비마을3단지' });
+    assert.match(await card.innerText(), /관리사무소 미등록/, '미등록이면 그렇게 적는다');
+    page.once('dialog', async d => { await d.accept('가상 소장'); page.once('dialog', async d2 => { await d2.accept(''); }); });
+    await card.locator('[data-aptoffadd]').click();
+    await page.waitForFunction(() => (state.aptOffices || []).some(o => o.complex === '가상선비마을3단지'));
+    assert.equal(await page.evaluate(() => state.aptOffices.find(o => o.complex === '가상선비마을3단지').manager), '가상 소장', '담당자가 저장돼야 한다');
+
+    // 같은 단지를 또 등록하려 하면 막는다
+    const before = await page.evaluate(() => state.aptOffices.length);
+    await page.evaluate(() => aptMgmtOfficeAdd('가상선비마을3단지'));
+    assert.equal(await page.evaluate(() => state.aptOffices.length), before, '이미 등록된 단지는 또 만들지 않는다');
+
+    // 오더가 있으면 상태별로 요약한다 — 건수만으로는 뭐가 밀렸는지 모른다
+    await page.evaluate(() => {
+      const id = state.aptOffices.find(o => o.complex === '가상금성아파트').id;
+      state.aptOrders = [{ id: 'x1', officeId: id, unit: '1동 907호', text: 'a', status: 'recv', date: '2026-09-01' },
+        { id: 'x2', officeId: id, unit: '1동 907호', text: 'b', status: 'recv', date: '2026-09-02' },
+        { id: 'x3', officeId: id, unit: '1동 1502호', text: 'c', status: 'work', date: '2026-09-03' }];
+      render();
+    });
+    const gold = page.locator('#view .cust-card:not(#aptOthers)').filter({ hasText: '가상금성아파트' });
+    const txt = await gold.innerText();
+    assert.match(txt, /오더 3건/, '총 건수: ' + txt);
+    assert.match(txt, /접수 2/, '접수 2건이 보여야 한다: ' + txt);
+    assert.match(txt, /진행중 1/, '진행중 1건이 보여야 한다: ' + txt);
+    assert.doesNotMatch(txt, /완료 0|입금완료 0/, '0건인 상태는 적지 않는다: ' + txt);
+    // 이 시나리오는 단지를 일부러 만들므로 invariant(오더·단지 0 증가)를 부르지 않는다.
+    // 대신 이 화면이 건드리면 안 되는 것만 따로 본다 — 현장명·사진 연결·바깥 전송.
+    const f = await page.evaluate(() => ({ now: JSON.stringify({ projects: state.projects.map(p => p.name), files: state.files.map(f => f.name) }),
+      baseline: window.__aptBaseline, links: state.files.map(f => f._aptUnit ? f._aptUnit.unitId : null), net: window.__aptNetwork }));
+    assert.equal(f.now, f.baseline, '단지를 등록해도 현장명·파일명은 그대로다');
+    assert.deepEqual(f.links, [null, null, 'unit-known'], '사진의 동·호수 연결도 그대로다');
+    assert.deepEqual(f.net, [], '로컬 작업 — 바깥으로 보내지 않는다');
+  });
+
   await scenario('폰: 상단 탭이 숨겨져도 더보기로 들어갈 수 있다', async ({ page }) => {
     assert(await page.locator('.tab[data-tab="aptmgmt"]').isHidden(), '폰에서 상단 탭은 숨는다');
     assert(await page.evaluate(() => MORE_NAV_SHORTCUTS.some(s => s.tab === 'aptmgmt')), '더보기에 아파트 관리가 있어야 폰에서 닿는다');
