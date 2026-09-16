@@ -2686,7 +2686,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v301-aptwords';
+const APP_BUILD='hyeonjang-v302-warrantyform';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13391,33 +13391,77 @@ function invoiceHTML(name){
   return hjDocShell('청 구 서',inner,'#b45309');
 }
 // ③ 하자보증서
+// ③ 하자보증서 — 관리사무소 제출용 「작업 하자보증서」 양식(2026-09 대표님 양식).
+//    빈 양식을 손으로 채우지 않도록, 앱이 아는 값(현장·주소·완료일·보증기간·제출처)은 미리 채운다.
+//    확인자 칸과 서명란은 비워 둔다 — 그건 현장에서 받아야 하는 것이다.
 function warrantyHTML(name){
   const d=settleDocData(name);if(!d)return null;
   const w=d.warranty;
   const startStr=hjDocDate(d.doneAt);
   const endStr=w?hjDocDate(w.end):'';
-  // 항목별 보증(방수 3년·급배수·배관 설비 2년·마감 1년 등)을 실제 기간으로 표기한다.
-  const witems=(w&&Array.isArray(w.items))?w.items:[];
-  const maxM=witems.length?Math.max.apply(null,witems.map(it=>it.months||12)):Math.max.apply(null,WARRANTY_ITEMS_DEFAULT.map(it=>it.months));
-  const badgeLabel='목적물 인도일로부터 최대 '+hjWarrantyMonthLabel(maxM)+' 하자보증';
-  const periodCell=witems.length
-    ? '<b>'+startStr+' ~ '+endStr+'</b><div style="font-size:12px;color:#5b6b82;margin-top:4px">'+escapeHtml(hjWarrantyPeriodText(witems))+'</div>'
-    : '<b>'+startStr+' ~ '+endStr+'</b>';
+  const witems=(w&&Array.isArray(w.items)&&w.items.length)?w.items:WARRANTY_ITEMS_DEFAULT;
+  const maxM=Math.max.apply(null,witems.map(it=>num(it.months)||12));
+  const termLabel=hjWarrantyMonthLabel(maxM);
+  // 제출처: 현장 이름에서 읽은 단지로 등록해 둔 관리사무소를 찾는다(없으면 단지 이름만, 그것도 없으면 빈칸)
+  const parsed=(typeof aptNameParse==='function')?aptNameParse(name):null;
+  const office=parsed?(state.aptOffices||[]).find(o=>o&&aptComplexKey(o.complex)===aptComplexKey(parsed.complex)):null;
+  const submitTo=office?office.complex:(parsed?parsed.complex:'');
+  const place=d.cust.addr||name;
+  const scope=d.items.length?d.items.map(it=>escapeHtml(it.name)).join(' · '):'';
+  const blank=n=>'<span style="display:inline-block;min-width:'+(n||150)+'px;border-bottom:1px solid #c7d2e0">&nbsp;</span>';
+  const cell=(v,n)=>v?escapeHtml(String(v)):blank(n);
+  const row=(k,v)=>'<tr><td class="nm" style="width:130px;background:#f7fafd;vertical-align:top">'+k+'</td><td>'+v+'</td></tr>';
+  const CLAUSES=[
+    ['보증기간','보증기간은 작업완료일로부터 '+escapeHtml(termLabel)+'이며, 시작일과 종료일은 위 표에 기재합니다.'],
+    ['보증범위','보증기간 내 시공상 원인으로 발생한 하자는 시공업체가 무상으로 보수하며, 본 작업의 시공상 원인으로 공용부 또는 인접 세대에 발생한 하자를 포함합니다.'],
+    ['보증제외','사용자의 과실·부주의로 인한 손상, 통상적인 마모·변색·오염, 천재지변, 제3자 또는 타 업체의 시공·변경으로 인한 하자, 작업 범위 외 기존 설비·배관의 노후로 인한 문제, 기구·제품 자체의 불량(제조사 보증 적용)은 보증에서 제외합니다.'],
+    ['접수·처리','하자는 아래 시공업체 연락처로 접수하며, 접수 후 현장을 확인하고 보수 일정을 협의하여 신속히 처리합니다.'],
+    ['기타','본 보증서는 관계 법령에 따른 하자담보책임 및 권리를 제한하지 않으며, 별도 계약서에 보증 조건이 정해진 경우 그에 따릅니다.']
+  ];
+  const signBox=(title,body)=>'<div style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
+    '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+title+'</div>'+
+    '<div style="font-size:12.5px;line-height:2">'+body+'</div>'+
+    '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab">서명 또는 직인</div></div>';
   const inner=
-    '<div style="text-align:center"><span class="warranty-badge">'+escapeHtml(badgeLabel)+'</span></div>'+
-    '<div class="prow"><span><b>고객명</b>'+escapeHtml(d.cust.name||'—')+' 님</span>'+(d.cust.addr?'<span><b>시공 현장</b>'+escapeHtml(d.cust.addr)+'</span>':'<span><b>현장</b>'+escapeHtml(name)+'</span>')+'</div>'+
-    '<div style="font-size:14px;line-height:1.9;margin:16px 0">'+
-      '<p>본 <b>'+escapeHtml(COMPANY.name)+'</b>은(는) 위 현장의 시공 품질을 보증하며, 아래 기간 동안 시공 하자에 대해 <b>무상 A/S</b>를 제공할 것을 확인합니다.</p>'+
-    '</div>'+
+    // 배지에 기산점을 남긴다 — 예전에 보증서는 '1년'이라 적고 앱의 만료 알림은 방수 3년이라 해
+    // 서로 다른 말을 하던 사고가 있었다(tests/settle-docs.e2e.js). 기간은 반드시 실제 값에서 온다.
+    '<div style="text-align:center"><span class="warranty-badge">관리사무소 제출용 · 목적물 인도일로부터 최대 '+escapeHtml(termLabel)+' 하자보증</span></div>'+
+    '<div style="font-size:13.5px;line-height:1.9;margin:16px 0">'+
+      '<p>시공업체는 아래 작업의 시공상 하자에 대하여 기재된 보증기간 동안 <b>무상 보수</b>를 이행할 것을 보증합니다.</p></div>'+
     '<table class="items"><tbody>'+
-      '<tr><td class="nm" style="width:120px;background:#f7fafd">공사 완료일</td><td>'+startStr+'</td></tr>'+
-      '<tr><td class="nm" style="background:#f7fafd">보증 기간</td><td>'+periodCell+'</td></tr>'+
-      '<tr><td class="nm" style="background:#f7fafd">보증 범위</td><td>시공 부위의 하자 (마감 들뜸, 누수, 시공 불량 등)</td></tr>'+
-      '<tr><td class="nm" style="background:#f7fafd">A/S 연락처</td><td>'+escapeHtml(COMPANY.owner)+' · '+escapeHtml(COMPANY.tel)+'</td></tr>'+
+      row('제출처',cell(submitTo,200)+' <span style="color:#5b6b82">관리사무소 귀중</span>')+
+      row('작업명',cell(name,200))+
+      row('작업장소',cell(place,240))+
+      row('작업내용 / 범위',cell(scope,300))+
+      row('작업완료일',cell(startStr,140))+
+      row('보증기간','<b>'+cell(startStr,110)+' ~ '+cell(endStr,110)+'</b> <span style="color:#5b6b82">(작업완료일로부터 '+escapeHtml(termLabel)+')</span>'+
+        (witems.length>1?'<div style="font-size:12px;color:#5b6b82;margin-top:4px">'+escapeHtml(hjWarrantyPeriodText(witems))+'</div>':''))+
     '</tbody></table>'+
-    '<div class="note">※ 고객 부주의·천재지변·정상 마모에 의한 손상은 보증에서 제외됩니다. 하자 발생 시 위 연락처로 알려주시면 신속히 처리해 드립니다.</div>'+
-    '<div class="stamp">발행일 '+hjDocDate()+'<br><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.owner)+' <span style="color:#8b98ab">(인)</span></div>';
-  return hjDocShell('하 자 보 증 서',inner,'#0e7a6b');
+    '<div class="note" style="text-align:left"><b style="display:block;margin-bottom:6px">보증 및 보수 안내</b>'+
+      '<ol style="margin:0;padding-left:18px">'+CLAUSES.map(c=>'<li style="margin-bottom:5px"><b>('+c[0]+')</b> '+c[1]+'</li>').join('')+'</ol></div>'+
+    '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:16px 0 6px">작업 사진</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'+
+      ['작업 전','작업 후'].map(t=>'<div style="flex:1;min-width:200px;border:1px solid #e5ebf2;border-radius:10px;overflow:hidden">'+
+        '<div style="background:#f7fafd;padding:7px 10px;font-size:12px;font-weight:700;color:#5b6b82">'+t+'</div>'+
+        '<div style="height:150px;display:flex;align-items:center;justify-content:center;color:#a8b4c4;font-size:12px">사진 부착 / 삽입</div></div>').join('')+
+    '</div>'+
+    '<div style="font-size:12.5px;color:#5b6b82;margin-bottom:10px">시공업체는 위 내용을 보증하며, 확인자는 작업 내용 및 보증서 수령을 확인합니다.</div>'+
+    '<div style="font-size:13px;margin-bottom:12px">작성일 : '+hjDocDate()+'</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      signBox('시공업체 (보증인)',
+        '업체명 : <b>'+escapeHtml(COMPANY.name)+'</b><br>'+
+        '대표자 : '+escapeHtml(COMPANY.owner)+'<br>'+
+        '사업자등록번호 : '+escapeHtml(COMPANY.bizno)+'<br>'+
+        '연락처 : '+escapeHtml(COMPANY.tel)+'<br>'+
+        '주소 : '+escapeHtml(COMPANY.addr))+
+      signBox('확인자 (관리사무소 / 의뢰인)',
+        '구분 : □ 관리사무소　□ 의뢰인(세대)<br>'+
+        '소속 / 동·호수 : '+blank(120)+'<br>'+
+        '성명 / 직위 : '+blank(120)+'<br>'+
+        '연락처 : '+blank(120))+
+    '</div>'+
+    '<div class="note" style="margin-top:14px">※ 본 보증서는 2부 작성하여 시공업체와 확인자가 각 1부씩 보관합니다.</div>';
+  return hjDocShell('작 업 하 자 보 증 서',inner,'#0e7a6b');
 }
 const HJ_SETTLE_DOCS={
   statement:{t:'거래명세서',ic:'📋',fn:statementHTML,desc:'공급 품목·금액·기수금을 정리한 명세'},

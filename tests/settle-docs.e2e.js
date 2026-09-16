@@ -111,6 +111,34 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.desc.indexOf(r.summary) >= 0, '문서 선택 설명도 같은 기본기간이 아님: ' + r.desc);
   });
 
+  // (4) 하자보증서 = 관리사무소 제출용 「작업 하자보증서」 양식(2026-09 대표님 양식)
+  //     아는 값은 채우고, 확인자·서명은 비워 인쇄해서 받는다. 조항 5개는 문구가 곧 약속이라 글자로 지킨다.
+  await test('하자보증서 — 관리사무소 제출용 양식의 칸과 조항이 모두 있다', async () => {
+    const r = await page.evaluate(() => {
+      state.projects = [{ name: '가상금성아파트 1동 907호', stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 },
+        customer: { name: '김고객', phone: '', addr: '대전 유성구 가상금성아파트 1동 907호' }, doneAt: '2026-09-10', archived: false }];
+      state.files = []; state.quotes = [{ id: 'qw', project: '가상금성아파트 1동 907호', date: '2026-09-01',
+        items: [{ name: '욕실 방수', spec: '', qty: 1, price: 800000 }] }];
+      state.aptOffices = [{ id: 'ow', complex: '가상금성아파트', manager: '김 소장' }];
+      return warrantyHTML('가상금성아파트 1동 907호');
+    });
+    ['작 업 하 자 보 증 서', '관리사무소 제출용', '제출처', '작업명', '작업장소', '작업내용 / 범위', '작업완료일', '보증기간']
+      .forEach(k => assert(r.indexOf(k) >= 0, '양식 칸 없음: ' + k));
+    ['(보증기간)', '(보증범위)', '(보증제외)', '(접수·처리)', '(기타)']
+      .forEach(k => assert(r.indexOf(k) >= 0, '보증 안내 조항 없음: ' + k));
+    assert(r.indexOf('공용부 또는 인접 세대에 발생한 하자를 포함') >= 0, '공용부·인접세대 포함 문구가 빠지면 관리사무소가 안 받는다');
+    assert(r.indexOf('제조사 보증 적용') >= 0, '제품 자체 불량 제외 문구 없음');
+    assert(r.indexOf('가상금성아파트') >= 0 && r.indexOf('관리사무소 귀중') >= 0, '제출처에 등록해 둔 관리사무소가 안 채워짐');
+    assert(r.indexOf('2026년 9월 10일') >= 0, '작업완료일이 안 채워짐');
+    assert(r.indexOf('욕실 방수') >= 0, '작업내용이 견적에서 안 채워짐');
+    // 확인자와 서명은 비워 둬야 한다 — 앱이 지어내면 안 되는 칸이다
+    assert(r.indexOf('□ 관리사무소') >= 0 && r.indexOf('□ 의뢰인(세대)') >= 0, '확인자 구분 선택칸 없음');
+    ['소속 / 동·호수', '성명 / 직위', '서명 또는 직인'].forEach(k => assert(r.indexOf(k) >= 0, '확인자 칸 없음: ' + k));
+    assert(r.indexOf('2부 작성') >= 0, '2부 작성·보관 안내 없음');
+    // 시공업체 정보는 앱의 COMPANY 하나에서만 온다(문서마다 따로 적으면 번호가 어긋난다)
+    ['만물인테리어', '전병덕', '895-48-01132'].forEach(k => assert(r.indexOf(k) >= 0, '시공업체 정보 없음: ' + k));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
