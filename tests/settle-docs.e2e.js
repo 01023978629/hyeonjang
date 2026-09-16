@@ -270,6 +270,44 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.keep === 4 && r.printRule, '사진 칸 2 + 서명란 2 는 인쇄에서 한 덩어리(.keep): ' + r.keep);
   });
 
+  // (9) v308 — 공정 판정 한 곳(hjPhaseHit). 화면에서 만드는 공정 이름은 '시공 전' 인데 상수는 '시공전' 이라,
+  //     글자 그대로 비교하던 전후 갤러리·후기 재료가 그 사진을 못 잡았다. 셋이 같은 기준을 써야 한다.
+  await test('전/후 공정 판정 — 띄어쓰기가 있어도 잡고, 갤러리·보증서가 같은 사진을 같은 쪽으로 본다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상공정현장';
+      const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+      state.projects = [{ name: N, stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객', addr: '대전' }, doneAt: '2026-09-10', archived: false }];
+      state.quotes = []; state.aptOffices = [];
+      const ph = (id, phase, day) => ({ id, name: id + '.jpg', kind: 'photo', ext: 'jpg', size: 9, project: N, _virtual: true, _phase: phase, when: new Date('2026-09-' + day + 'T00:00:00Z'), thumb: 'data:image/png;base64,' + PNG });
+      state.files = [ph('sp1', '시공 전', '01'), ph('sp2', '시공전', '02'), ph('done1', '완료', '08'), ph('none1', '', '09')];
+      const gal = beforeAfterPairs(N), pools = hjWarrantyPhotoPools(N);
+      return { galBefore: gal.before.map(f => f.id), galAfter: gal.after.map(f => f.id),
+        wrBefore: pools.before.map(f => f.id), wrAfter: pools.after.map(f => f.id),
+        hit: [hjPhaseHit({ _phase: '시공 전' }, PHASE_BEFORE), hjPhaseHit({ _phase: '시공전' }, PHASE_BEFORE), hjPhaseHit({ _phase: '' }, PHASE_BEFORE), hjPhaseHit({ _phase: '완료' }, PHASE_BEFORE)] };
+    });
+    assert(JSON.stringify(r.hit) === JSON.stringify([true, true, false, false]), "'시공 전'·'시공전' 둘 다 전, 빈 공정·다른 공정은 아님: " + r.hit);
+    assert(JSON.stringify(r.galBefore) === JSON.stringify(['sp1', 'sp2']), '전후 갤러리가 띄어쓰기 있는 공정도 전으로 잡아야 함: ' + r.galBefore);
+    assert(JSON.stringify(r.galAfter) === JSON.stringify(['done1']), '갤러리 후: ' + r.galAfter);
+    assert(JSON.stringify(r.wrBefore) === JSON.stringify(r.galBefore) && JSON.stringify(r.wrAfter) === JSON.stringify(r.galAfter),
+      '보증서와 갤러리가 같은 사진을 같은 쪽으로 봐야 한다: 보증서 ' + JSON.stringify([r.wrBefore, r.wrAfter]) + ' vs 갤러리 ' + JSON.stringify([r.galBefore, r.galAfter]));
+  });
+
+  // (10) v308 — 문서에서 바로 인쇄/PDF 저장. 인쇄물에는 버튼이 나오면 안 된다.
+  await test('문서에 [인쇄 / PDF 저장] 버튼 — 세 문서 모두 있고, 인쇄할 땐 숨는다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상공정현장';
+      const docs = { warranty: warrantyHTML(N), statement: statementHTML(N), invoice: invoiceHTML(N) };
+      const out = {};
+      // @media print 블록 안에 중첩 중괄호가 있어 [^}]* 로는 못 넘는다 — 두 조각이 다 있는지만 본다
+      Object.keys(docs).forEach(k => { const h = docs[k] || ''; out[k] = { btn: /window\.print\(\)/.test(h), hide: h.indexOf('@media print{') >= 0 && h.indexOf('.pbar{display:none}') >= 0 }; });
+      return out;
+    });
+    ['warranty', 'statement', 'invoice'].forEach(k => {
+      assert(r[k].btn, k + ' 에 인쇄 버튼이 없다');
+      assert(r[k].hide, k + ' 는 인쇄할 때 버튼을 숨겨야 한다(종이에 버튼이 찍힌다)');
+    });
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
