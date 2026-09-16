@@ -23,7 +23,7 @@ catch (_) { ({ chromium } = require('playwright')); }
 const APP = 'http://127.0.0.1:8299/index.html';
 const ORIGIN = new URL(APP).origin;
 const MUTATION = process.env.HJ_APT_MANAGE_MUTATION || '';
-assert(['', 'parse', 'dupe', 'preview'].includes(MUTATION), 'unknown HJ_APT_MANAGE_MUTATION');
+assert(['', 'parse', 'dupe', 'preview', 'words'].includes(MUTATION), 'unknown HJ_APT_MANAGE_MUTATION');
 let browser, passed = 0;
 
 async function boot(width = 1200) {
@@ -55,6 +55,8 @@ async function boot(width = 1200) {
       P('가상보관아파트 5동 501호', { archived: true }),   // 보관 → 제외
       P('가상기존아파트 7동 701호', { aptUnits: [{ id: 'unit-known', type: 'unit', dong: '7', ho: '701', name: '', note: '' }] }),
       P('가상동명아파트 2동 202호'), P('가상동명아파트 2동 202호'),   // 동명 2개 → 손대지 않는다
+      P('가상힐스테이트 9동 903호'),     // 브랜드만 있고 '아파트' 가 없어도 아파트로 본다
+      P('가상창고 1동 2호'),             // 형식만 같다 → 등록에서 빼고 '아파트로 보지 않은 현장' 에 보여준다
     ];
     state.files = [
       { id: 'ph-1', name: '가상_907.png', kind: 'photo', ext: 'png', size: 11, project: '가상금성아파트 1동 907호', _virtual: true, _worklabel: '기존 작업' },
@@ -93,6 +95,9 @@ async function boot(width = 1200) {
     }
     if (mutation === 'preview') {                     // 미리보기 없이 바로 등록한다
       aptBulkView = () => aptBulkApply(aptBulkPlan()).then(() => render());
+    }
+    if (mutation === 'words') {                       // 형식만 같으면 전부 아파트로 본다 (창고까지)
+      aptIsComplexName = () => true;
     }
   }, MUTATION);
   monitorNetwork = true;
@@ -140,13 +145,19 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.tab[data-tab="aptmgmt"]').getAttribute('aria-selected'), 'true');
 
-    const heads = await page.locator('#view .cust-card .cust-h').allInnerTexts();
+    const heads = await page.locator('#view .cust-card:not(#aptOthers) .cust-h').allInnerTexts();
     const names = heads.map(h => h.split('\n')[0].trim());
     // 현장 많은 순 → 같으면 가나다순. 동명 현장도 목록에는 보인다(등록만 건너뛴다) — 안 보이면 사장님이 중복을 못 고친다.
-    assert.deepEqual(names, ['가상금성아파트', '가상동명아파트', '가상기존아파트', '가상선비마을3단지'], '같은 단지는 한 묶음, 현장 많은 순');
+    // '가상힐스테이트' 는 이름에 '아파트' 가 없지만 브랜드로 알아본다.
+    assert.deepEqual(names, ['가상금성아파트', '가상동명아파트', '가상기존아파트', '가상선비마을3단지', '가상힐스테이트'],
+      '같은 단지는 한 묶음, 현장 많은 순');
     const body = await page.locator('#view').innerText();
     assert.doesNotMatch(body, /가상망원동/, '아파트가 아닌 현장은 이 화면에 없다');
     assert.doesNotMatch(body, /가상보관아파트/, '보관한 현장은 이 화면에 없다');
+    // 형식만 같은 현장은 단지로 묶지 않되 숨기지도 않는다 — 조용히 빼면 빠진 줄도 모른다
+    const otherText = await page.locator('#aptOthers').innerText();
+    assert.match(otherText, /가상창고 1동 2호/, "'창고 1동 2호' 는 아파트로 보지 않은 현장에 보인다");
+    assert.doesNotMatch(names.join('|'), /가상창고/, '단지로 묶지는 않는다');
     assert.match(heads[0], /2곳/, '금성아파트 아래 두 세대');
     assert.match(body, /관리사무소 등록됨/, '같은 이름의 단지가 있으면 관리사무소를 이어 보여준다');
     assert.match(body, /오더 1건/);
@@ -157,11 +168,13 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     await page.locator('.tab[data-tab="aptmgmt"]').click();
     await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
     const before = await units(page);
-    assert.deepEqual(before.map(u => u[1]), [0, 0, 0, 0, 0, 1, 0, 0], '누르기 전에는 아무것도 등록돼 있지 않다');
+    assert.deepEqual(before.map(u => u[1]), [0, 0, 0, 0, 0, 1, 0, 0, 0, 0], '누르기 전에는 아무것도 등록돼 있지 않다');
 
     await page.locator('#view [data-aptbulk]').click();
     await page.locator('#aptBulkPanel').waitFor({ state: 'visible' });
-    assert.match(await page.locator('#aptBulkPanel').innerText(), /3곳을 등록합니다/, '동명·보관·비아파트·기등록을 뺀 3곳만');
+    const preview = await page.locator('#aptBulkPanel').innerText();
+    assert.match(preview, /4곳을 등록합니다/, '동명·보관·기등록·형식만같은현장을 뺀 4곳만');
+    assert.doesNotMatch(preview, /가상창고/, "'창고 1동 2호' 는 제안하지 않는다");
     assert.deepEqual(await units(page), before, '미리보기를 여는 것만으로는 아무것도 바뀌지 않는다');
 
     await page.locator('#aptBulkCancel').click();
@@ -182,7 +195,8 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
       ['가상금성아파트 1동 907호', 1], ['가상금성아파트 1동 1502호', 1], ['가상선비마을3단지 315동 1401호', 1],
       ['가상망원동 카페', 0], ['가상보관아파트 5동 501호', 0], ['가상기존아파트 7동 701호', 1],
       ['가상동명아파트 2동 202호', 0], ['가상동명아파트 2동 202호', 0],
-    ], '해당 현장에만 한 곳씩');
+      ['가상힐스테이트 9동 903호', 1], ['가상창고 1동 2호', 0],
+    ], '해당 현장에만 한 곳씩 — 창고는 건드리지 않는다');
     assert.deepEqual(await page.evaluate(() => {
       const p = state.projects.find(p => p.name === '가상선비마을3단지 315동 1401호');
       return [p.aptUnits[0].dong, p.aptUnits[0].ho, p.aptUnits[0].type];
@@ -194,7 +208,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     // 다시 눌러도 중복이 생기지 않아야 한다 (버튼은 비활성이지만 오래된 화면의 클릭도 막혀야 한다)
     await page.evaluate(() => aptBulkView());
     await page.waitForFunction(() => !document.querySelector('#aptBulkPanel'));
-    assert.deepEqual((await units(page)).map(u => u[1]), [1, 1, 1, 0, 0, 1, 0, 0], '두 번째 실행은 아무것도 더하지 않는다');
+    assert.deepEqual((await units(page)).map(u => u[1]), [1, 1, 1, 0, 0, 1, 0, 0, 1, 0], '두 번째 실행은 아무것도 더하지 않는다');
 
     // 저장된 자료에도 그대로 실렸는가 (새로고침 왕복)
     await page.reload({ waitUntil: 'domcontentloaded' });

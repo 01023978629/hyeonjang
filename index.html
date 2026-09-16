@@ -2686,7 +2686,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v300-ledgercost';
+const APP_BUILD='hyeonjang-v301-aptwords';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11228,6 +11228,22 @@ function aptNameParse(name){
   return {complex,dong:String(Number(m[2])),ho:String(Number(m[3]))};
 }
 function aptUnitKeyOf(dong,ho){return aptUnitLabelKey(dong+'동'+ho+'호');}
+// 형식이 같다고 아파트인 건 아니다 — "창고 1동 2호" 도 끝이 "…동 …호" 다.
+// 아래 낱말이 있거나, 이미 관리사무소로 등록한 단지거나, 이미 동·호수를 관리 중인
+// 현장일 때만 아파트로 본다. 낱말 목록은 knowhow 쪽 BRANDS 와 용도가 다르다 —
+// 저기는 홍보 키워드용이라 상가·주택까지 넣지만, 여기는 동·호수가 있는 곳만 본다.
+// 목록에 없어 빠진 현장은 화면 아래 "아파트로 보지 않음" 에 그대로 보여준다.
+// 조용히 빼면 사장님이 빠진 줄도 모른다.
+const APT_WORDS=['아파트','단지','마을','주공','타운','맨션','오피스텔','팰리스','캐슬','빌리지',
+  '래미안','자이','힐스테이트','푸르지오','아이파크','더샵','e편한세상','롯데캐슬','sk뷰','한신',
+  '센트레빌','위브','하늘채','데시앙','베르디움','스위첸','리슈빌','유보라','우미린','어울림',
+  '해모로','스타힐스','금성백조','예미지','한라비발디','하이빌','노블랜드','s클래스','호반','트리풀시티'];
+function aptIsComplexName(complex,project){
+  if(project&&aptUnitManaged(project))return true;                                  // 이미 동·호수를 관리 중이면 아파트다
+  const key=aptComplexKey(complex);if(!key)return false;
+  if((state.aptOffices||[]).some(o=>o&&aptComplexKey(o.complex)===key))return true;  // 관리사무소로 등록해 둔 단지
+  return APT_WORDS.some(w=>key.includes(aptComplexKey(w)));
+}
 // 같은 이름의 현장이 둘 이상이면 aptUnitProject() 가 null 을 준다 — 그런 현장은 손대지 않는다.
 function aptDupeNames(){
   const n=new Map();(state.projects||[]).forEach(p=>{if(p&&p.name)n.set(p.name,(n.get(p.name)||0)+1);});
@@ -11236,20 +11252,23 @@ function aptDupeNames(){
 function aptMgmtGroups(){
   const photos=new Map();
   (state.files||[]).forEach(f=>{if(f&&f.kind==='photo'&&f.project)photos.set(f.project,(photos.get(f.project)||0)+1);});
-  const groups=new Map();
+  const groups=new Map(),others=[];
   (state.projects||[]).forEach(p=>{
     if(!p||!p.name||p.archived)return;
     const parsed=aptNameParse(p.name);
-    if(!parsed&&!aptUnitManaged(p))return;   // 아파트로 볼 근거가 없는 현장은 이 화면에 넣지 않는다
-    const complex=parsed?parsed.complex:p.name,key=aptComplexKey(complex);
-    if(!groups.has(key))groups.set(key,{name:complex,sites:[]});
+    if(!parsed&&!aptUnitManaged(p))return;   // 동·호수 형식도 아니고 관리 중도 아니면 이 화면과 무관하다
+    const complex=parsed?parsed.complex:p.name;
     const units=aptUnitList(p);
-    groups.get(key).sites.push({name:p.name,stage:p.stage||0,parsed,
+    const site={name:p.name,stage:p.stage||0,parsed,
       label:parsed?parsed.dong+'동 '+parsed.ho+'호':p.name,
       photos:photos.get(p.name)||0,units:units.length,
-      registered:!!parsed&&units.some(u=>aptUnitLabelKey(aptUnitLabel(u))===aptUnitKeyOf(parsed.dong,parsed.ho))});
+      registered:!!parsed&&units.some(u=>aptUnitLabelKey(aptUnitLabel(u))===aptUnitKeyOf(parsed.dong,parsed.ho))};
+    if(!aptIsComplexName(complex,p)){others.push(site);return;}   // 형식만 같은 현장 — 따로 보여주고 등록에선 뺀다
+    const key=aptComplexKey(complex);
+    if(!groups.has(key))groups.set(key,{name:complex,sites:[]});
+    groups.get(key).sites.push(site);
   });
-  return groups;
+  return {groups,others};
 }
 // 이름에서 읽었지만 아직 등록되지 않은 동·호수 목록. 화면과 미리보기가 같은 함수를 쓴다.
 function aptBulkPlan(){
@@ -11257,6 +11276,7 @@ function aptBulkPlan(){
   (state.projects||[]).forEach(p=>{
     if(!p||!p.name||p.archived||dupes.get(p.name)!==1)return;
     const parsed=aptNameParse(p.name);if(!parsed)return;
+    if(!aptIsComplexName(parsed.complex,p))return;   // 형식만 같은 현장(창고 1동 2호)은 제안하지 않는다
     const units=aptUnitList(p);
     if(units.length>=500)return;
     if(aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||units.length!==p.aptUnits.length))return;   // 손상된 현장은 건너뛴다
@@ -11303,7 +11323,8 @@ function aptBulkView(){
   const bs=document.querySelectorAll('#modalRoot .mfoot button');bs[0].id='aptBulkCancel';bs[1].id='aptBulkSave';
 }
 function viewAptMgmt(){
-  const groups=[...aptMgmtGroups().values()].sort((a,b)=>b.sites.length-a.sites.length||a.name.localeCompare(b.name,'ko'));
+  const scan=aptMgmtGroups(),others=scan.others;
+  const groups=[...scan.groups.values()].sort((a,b)=>b.sites.length-a.sites.length||a.name.localeCompare(b.name,'ko'));
   const plan=aptBulkPlan(),siteN=groups.reduce((n,g)=>n+g.sites.length,0),unitN=groups.reduce((n,g)=>n+g.sites.reduce((m,s)=>m+s.units,0),0);
   let html=`<div class="toolbar"><button class="clay" data-aptbulk="1" style="min-height:44px"${plan.length?'':' disabled'}>🏢 동·호수 일괄 등록${plan.length?' ('+plan.length+'곳)':''}</button>
     <span class="hint" style="margin:0;align-self:center">현장 이름에서 읽은 동·호수를 <b>미리 보고</b> 등록합니다. 누르는 즉시 바뀌지 않습니다.</span></div>`;
@@ -11311,8 +11332,9 @@ function viewAptMgmt(){
     <div class="kpi"><span class="kl">단지</span><span class="kv">${groups.length}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">현장</span><span class="kv">${siteN}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">등록된 동·호수</span><span class="kv">${unitN}<small>곳</small></span></div>
-    <div class="kpi"><span class="kl">등록 대기</span><span class="kv">${plan.length}<small>곳</small></span></div></div>`;
-  if(!groups.length)return html+`<div class="empty" style="padding:28px"><b>아직 아파트 현장이 없습니다</b>현장 이름을 "금성백조아파트 1동 907호"처럼 적으면 같은 단지끼리 묶어서 보여줍니다.</div>`;
+    <div class="kpi"><span class="kl">등록 대기</span><span class="kv">${plan.length}<small>곳</small></span></div>
+    ${others.length?`<div class="kpi"><span class="kl">아파트로 안 봄</span><span class="kv">${others.length}<small>곳</small></span></div>`:''}</div>`;
+  if(!groups.length&&!others.length)return html+`<div class="empty" style="padding:28px"><b>아직 아파트 현장이 없습니다</b>현장 이름을 "금성백조아파트 1동 907호"처럼 적으면 같은 단지끼리 묶어서 보여줍니다.</div>`;
   groups.forEach(g=>{
     const office=(state.aptOffices||[]).find(o=>o&&aptComplexKey(o.complex)===aptComplexKey(g.name))||null;
     const orders=office?(state.aptOrders||[]).filter(o=>o&&o.officeId===office.id):[];
@@ -11326,6 +11348,15 @@ function viewAptMgmt(){
       <button class="ghost tiny" data-aptgo="${escapeAttr(s.name)}" style="min-height:44px" title="이 현장 열기">${escapeHtml(s.label)}</button>
       <span class="hint" style="margin:0">${escapeHtml(STAGES[s.stage]||'')} · 사진 ${s.photos}장 · 동·호수 ${s.units}곳${s.parsed&&!s.registered?' · <b>미등록</b>':''}</span></div>`).join('')}</div></div>`;
   });
+  // 이름 끝은 "…동 …호" 인데 아파트로 볼 낱말이 없는 현장. 등록에서는 빼되 숨기지는 않는다 —
+  // 조용히 빼면 사장님은 빠진 줄도 모르고, 진짜 아파트인데 브랜드 이름만 쓴 경우를 놓친다.
+  if(others.length){
+    html+=`<div class="cust-card" id="aptOthers" style="margin:14px 0 10px;opacity:.85"><div class="cust-h" style="gap:6px;flex-wrap:wrap"><b>아파트로 보지 않은 현장</b><span>· ${others.length}곳</span></div>
+      <p class="hint" style="margin:2px 0 8px">이름 끝은 "…동 …호" 지만 아파트·단지 같은 낱말이 없어 <b>일괄 등록에서 뺐습니다</b>(예: 창고 1동 2호). 진짜 아파트인데 여기 있으면, 그 현장을 열어 [동·호수 관리]에서 직접 등록하세요. 관리사무소로 단지를 등록해 두면 다음부터 자동으로 아파트로 봅니다.</p>
+      <div>${others.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true})).map(s=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line-soft)">
+        <button class="ghost tiny" data-aptgo="${escapeAttr(s.name)}" style="min-height:44px" title="이 현장 열기">${escapeHtml(s.name)}</button>
+        <span class="hint" style="margin:0">${escapeHtml(STAGES[s.stage]||'')} · 사진 ${s.photos}장 · 동·호수 ${s.units}곳</span></div>`).join('')}</div></div>`;
+  }
   return html;
 }
 function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
