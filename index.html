@@ -2686,7 +2686,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v305-dlanchor';
+const APP_BUILD='hyeonjang-v306-warrantyphotos';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13344,7 +13344,7 @@ function hjDocShell(title,inner,accentDefault){
     '.stamp{text-align:right;font-size:14px;line-height:1.9;margin-top:18px}.stamp .big{font-size:16px;font-weight:800}'+
     '.dft{text-align:center;padding:16px;font-size:12px;color:#8b98ab;border-top:1px solid #eef2f7}'+
     '.warranty-badge{display:inline-block;background:'+c1+';color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:12px}'+
-    '@media print{body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0}}'+
+    '@media print{body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0}.keep{break-inside:avoid;page-break-inside:avoid}}'+
     '</style></head><body><div class="doc">'+
     '<div class="dhd"><div class="co">'+(logo?'<img src="'+logo+'">':'')+'<div><div class="cn">'+escapeHtml(COMPANY.name)+'</div><h1 style="margin-top:6px">'+escapeHtml(title)+'</h1></div></div>'+
     '<div class="meta">'+escapeHtml(COMPANY.owner)+'<br>'+escapeHtml(COMPANY.tel)+'<br>'+escapeHtml(COMPANY.addr)+'<br>사업자 '+escapeHtml(COMPANY.bizno)+'</div></div>'+
@@ -13409,6 +13409,17 @@ function invoiceHTML(name){
   return hjDocShell('청 구 서',inner,'#b45309');
 }
 // ③ 하자보증서
+// 하자보증서에 넣을 작업 전/후 사진 풀. 전후 갤러리와 같은 공정 낱말(PHASE_BEFORE/AFTER)로 가르되,
+// 공정 이름의 띄어쓰기는 무시한다 — 상수는 '시공전' 인데 실제 공정 이름은 '시공 전' 이라 그대로 비교하면 못 잡는다.
+// 전은 오래된 순(처음 상태), 후는 최근 순(마지막 상태). 파일에 그대로 실리므로 썸네일이 있는 사진만 쓴다.
+function hjWarrantyPhotoPools(name){
+  const norm=v=>String(v||'').replace(/\s+/g,'');
+  const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===name&&f.thumb);
+  const hit=(f,keys)=>{const ph=norm(f._phase);return !!ph&&keys.some(k=>ph.includes(norm(k)));};
+  const before=photos.filter(f=>hit(f,PHASE_BEFORE)).sort((a,b)=>new Date(a.when||0)-new Date(b.when||0));
+  const after=photos.filter(f=>hit(f,PHASE_AFTER)).sort((a,b)=>new Date(b.when||0)-new Date(a.when||0));
+  return {before,after,total:photos.length};
+}
 // ③ 하자보증서 — 관리사무소 제출용 「작업 하자보증서」 양식(2026-09 대표님 양식).
 //    빈 양식을 손으로 채우지 않도록, 앱이 아는 값(현장·주소·완료일·보증기간·제출처)은 미리 채운다.
 //    확인자 칸과 서명란은 비워 둔다 — 그건 현장에서 받아야 하는 것이다.
@@ -13428,6 +13439,10 @@ function warrantyHTML(name,opts){
   const place=d.cust.addr||name;
   const scope=ov.work?escapeHtml(String(ov.work)):(d.items.length?d.items.map(it=>escapeHtml(it.name)).join(' · '):'');
   const client=ov.client||d.cust.name||'';
+  // 작업 전/후 사진 — 장수만 받는다. 전은 오래된 순, 후는 최근 순으로 그 장수만큼. 있는 것보다 많이 달라면 있는 만큼만.
+  const wantB=Math.max(0,num(ov.beforeN)||0),wantA=Math.max(0,num(ov.afterN)||0);
+  const pools=(wantB||wantA)?hjWarrantyPhotoPools(name):{before:[],after:[]};
+  const photoPick={before:pools.before.slice(0,wantB),after:pools.after.slice(0,wantA)};
   const blank=n=>'<span style="display:inline-block;min-width:'+(n||150)+'px;border-bottom:1px solid #c7d2e0">&nbsp;</span>';
   const cell=(v,n)=>v?escapeHtml(String(v)):blank(n);
   const row=(k,v)=>'<tr><td class="nm" style="width:130px;background:#f7fafd;vertical-align:top">'+k+'</td><td>'+v+'</td></tr>';
@@ -13438,7 +13453,7 @@ function warrantyHTML(name,opts){
     ['접수·처리','하자는 아래 시공업체 연락처로 접수하며, 접수 후 현장을 확인하고 보수 일정을 협의하여 신속히 처리합니다.'],
     ['기타','본 보증서는 관계 법령에 따른 하자담보책임 및 권리를 제한하지 않으며, 별도 계약서에 보증 조건이 정해진 경우 그에 따릅니다.']
   ];
-  const signBox=(title,body)=>'<div style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
+  const signBox=(title,body)=>'<div class="keep" style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+title+'</div>'+
     '<div style="font-size:12.5px;line-height:2">'+body+'</div>'+
     '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab">서명 또는 직인</div></div>';
@@ -13462,9 +13477,14 @@ function warrantyHTML(name,opts){
       '<ol style="margin:0;padding-left:18px">'+CLAUSES.map(c=>'<li style="margin-bottom:5px"><b>('+c[0]+')</b> '+c[1]+'</li>').join('')+'</ol></div>'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:16px 0 6px">작업 사진</div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'+
-      ['작업 전','작업 후'].map(t=>'<div style="flex:1;min-width:200px;border:1px solid #e5ebf2;border-radius:10px;overflow:hidden">'+
-        '<div style="background:#f7fafd;padding:7px 10px;font-size:12px;font-weight:700;color:#5b6b82">'+t+'</div>'+
-        '<div style="height:150px;display:flex;align-items:center;justify-content:center;color:#a8b4c4;font-size:12px">사진 부착 / 삽입</div></div>').join('')+
+      [['작업 전',photoPick.before],['작업 후',photoPick.after]].map(([t,list])=>'<div class="keep" style="flex:1;min-width:200px;border:1px solid #e5ebf2;border-radius:10px;overflow:hidden">'+
+        '<div style="background:#f7fafd;padding:7px 10px;font-size:12px;font-weight:700;color:#5b6b82">'+t+(list.length?' <span style="font-weight:400;color:#8b98ab">· '+list.length+'장</span>':'')+'</div>'+
+        (list.length
+          ? '<div style="display:grid;grid-template-columns:repeat('+(list.length>=2?2:1)+',1fr);gap:4px;padding:4px">'+list.map(f=>
+              '<figure style="margin:0"><img data-photo="'+escapeAttr(f.id)+'" src="'+escapeAttr(f.thumb)+'" alt="'+escapeAttr(t)+'" style="width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:6px;display:block;background:#eef2f7">'+
+              '<figcaption style="font-size:10px;color:#8b98ab;text-align:center;margin-top:2px">'+escapeHtml(typeof fmtDay==='function'&&f.when?fmtDay(f.when):'')+'</figcaption></figure>').join('')+'</div>'
+          : '<div style="height:150px;display:flex;align-items:center;justify-content:center;color:#a8b4c4;font-size:12px">사진 부착 / 삽입</div>')+
+        '</div>').join('')+
     '</div>'+
     '<div style="font-size:12.5px;color:#5b6b82;margin-bottom:10px">시공업체는 위 내용을 보증하며, 확인자는 작업 내용 및 보증서 수령을 확인합니다.</div>'+
     '<div style="font-size:13px;margin-bottom:12px">작성일 : '+hjDocDate()+'</div>'+
@@ -13531,7 +13551,11 @@ function settleDocs(name,kind){
   const root=document.getElementById('modalRoot');
   const rcb=root.querySelector('#sdReceipt');if(rcb)rcb.onclick=()=>{closeModal();receiptDialog(name);};
   root.querySelectorAll('.sdCard').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.k;const def=HJ_SETTLE_DOCS[k];const html=def.fn(name);
+    const k=b.dataset.k;const def=HJ_SETTLE_DOCS[k];
+    // 하자보증서는 입구가 어디든 같은 화면(warrantyView)으로 — 거기서만 전/후 사진 장수를 고를 수 있다.
+    // 여기서 def.fn(name) 으로 바로 만들면 사진 없는 문서가 나가고, 같은 문서가 입구에 따라 달라진다.
+    if(k==='warranty'){closeModal();warrantyView(name);return;}
+    const html=def.fn(name);
     // 미리보기 + 공유
     openModal(def.ic+' '+def.t+' — '+escapeHtml(name),
       '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:56vh"><iframe srcdoc="'+escapeAttr(html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
@@ -29126,16 +29150,31 @@ function warrantyView(pjName){
     return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="flex:1">'+escapeHtml(it.name)+'</span><b>'+it.months+'개월</b><span style="color:var(--muted);font-size:11.5px">~'+it.expiresAt+'</span></div>';
   }).join('');
   const F=function(id,label,val,ph){return '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">';};
+  // 작업 전/후 사진 장수 — 현장에 있는 만큼만 고를 수 있다. 기본은 2장(있는 게 그보다 적으면 있는 만큼).
+  const pools=hjWarrantyPhotoPools(pjName);
+  const photoSel=function(id,label,avail){
+    const def=Math.min(2,avail);
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0"><span style="flex:1">'+label+' <span class="hint" style="margin:0">(현장에 '+avail+'장)</span></span>'+
+      '<select id="'+id+'" style="min-height:44px;padding:6px 10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">'+
+      [0,1,2,4].map(function(n){return '<option value="'+n+'"'+(n===def?' selected':'')+(n>avail?' disabled':'')+'>'+(n?n+'장':'넣지 않음')+'</option>';}).join('')+
+      '</select></label>';
+  };
   openModal('🛡 하자보증서 — '+pjName,
     F('wrWork','공사 내용',(Array.isArray(p.phases)&&p.phases.length?p.phases.map(x=>typeof x==='string'?x:(x.title||x.name||'')).filter(Boolean).join(', '):pjName+' 공사'),'예: 욕실 리모델링 일체')+
     F('wrClient','발주처·고객',(p.customer&&p.customer.name)||'','예: 홍길동 / ○○아파트 관리사무소')+
     '<div style="font-size:12px;font-weight:800;margin:14px 0 4px">보증 기간 (법정 기준)</div>'+rows+
+    '<div style="font-size:12px;font-weight:800;margin:14px 0 4px">작업 사진 넣기</div>'+
+    photoSel('wrBefore','작업 전',pools.before.length)+photoSel('wrAfter','작업 후',pools.after.length)+
+    (pools.before.length||pools.after.length
+      ? '<p class="hint" style="margin-top:4px">전은 오래된 사진부터, 후는 최근 사진부터 고른 장수만큼 들어갑니다. 넣지 않으면 빈 칸으로 나와 인쇄 후 붙이실 수 있습니다.</p>'
+      : '<p class="hint" style="margin-top:4px">이 현장 사진에 공정(철거·시공 전·완료·준공 등)을 지정해 두면 여기서 전/후 사진을 고를 수 있습니다. 지금은 빈 칸으로 나옵니다.</p>')+
     '<p class="hint" style="margin-top:9px">준공일 '+p.doneAt+' 기준입니다. <b>관리사무소 제출용 「작업 하자보증서」</b> 양식으로 만들어집니다 — 제출처·작업장소·완료일·보증기간은 채워지고, 확인자와 서명란은 비워 인쇄해 받으시면 됩니다.</p>',
     [{label:'🛡 보증서 만들기',cls:'clay',fn:async function(){
         // 하자보증서는 앱에 한 벌만 둔다 — 정산 문서·완료보증서·서류 만들기가 모두 warrantyHTML() 을 쓴다.
         // 예전에는 여기만 캔버스로 따로 그려서, 같은 이름의 문서 둘이 서로 다른 말을 했다.
-        const opts={work:(document.getElementById('wrWork')||{}).value,client:(document.getElementById('wrClient')||{}).value};
-        const html=warrantyHTML(pjName,{work:String(opts.work||'').trim(),client:String(opts.client||'').trim()});
+        const g=function(id){return (document.getElementById(id)||{}).value;};
+        const html=warrantyHTML(pjName,{work:String(g('wrWork')||'').trim(),client:String(g('wrClient')||'').trim(),
+          beforeN:num(g('wrBefore'))||0,afterN:num(g('wrAfter'))||0});
         if(!html){toast('보증서를 만들 수 없어요');return;}
         closeModal();toast('🛡 보증서 만드는 중…');
         try{await hjWarrantyShareHtml(pjName,html,safeName(pjName)+'_하자보증서_'+localDate()+'.html','하자보증서');}

@@ -172,6 +172,75 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.legacyGone, 'buildWarrantyPDF 가 살아 있으면 하자보증서가 다시 두 벌로 갈린다');
   });
 
+  // (6) 하자보증서 작업 전/후 사진 — 장수를 고르면 그만큼 문서에 들어간다.
+  //     전은 오래된 순(처음 상태), 후는 최근 순(마지막 상태). 공정 이름 띄어쓰기('시공 전')를 무시하고 가른다.
+  //     장수를 안 주면 빈 칸 그대로(완료보증서 경로가 그 길이다). 있는 것보다 많이 달라도 있는 만큼만.
+  await test('하자보증서 — 전/후 사진 장수를 고르면 그 장수만큼, 전은 오래된 순·후는 최근 순으로 들어간다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상사진현장';
+      const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+      state.projects = [{ name: N, stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객', phone: '', addr: '대전' }, doneAt: '2026-09-10', archived: false }];
+      state.quotes = []; state.aptOffices = [];
+      const ph = (id, phase, when, extra) => Object.assign({ id, name: id + '.jpg', kind: 'photo', ext: 'jpg', size: 10, project: N, _virtual: true, _phase: phase, when: new Date(when), thumb: 'data:image/png;base64,' + PNG }, extra || {});
+      state.files = [ph('b-old', '시공 전', '2026-09-01T00:00:00Z'), ph('b-mid', '시공 전', '2026-09-02T00:00:00Z'), ph('b-new', '철거', '2026-09-03T00:00:00Z'),
+        ph('a-old', '완료', '2026-09-08T00:00:00Z'), ph('a-new', '준공', '2026-09-09T00:00:00Z'),
+        ph('video', '완료', '2026-09-09T01:00:00Z', { ext: 'mp4', name: 'v.mp4' }),          // 영상은 제외
+        ph('nothumb', '완료', '2026-09-09T02:00:00Z', { thumb: '' }),                        // 썸네일 없으면 제외(파일에 못 싣는다)
+        ph('other', '완료', '2026-09-09T03:00:00Z', { project: '다른현장' })];                // 다른 현장 제외
+      const ids = h => [...h.matchAll(/data-photo="([^"]+)"/g)].map(m => m[1]);
+      const pools = hjWarrantyPhotoPools(N);
+      return {
+        pools: { before: pools.before.map(f => f.id), after: pools.after.map(f => f.id) },
+        none: warrantyHTML(N), two: ids(warrantyHTML(N, { beforeN: 2, afterN: 1 })), clamp: ids(warrantyHTML(N, { beforeN: 4, afterN: 4 })),
+        zero: ids(warrantyHTML(N, { beforeN: 0, afterN: 0 })),
+      };
+    });
+    assert(JSON.stringify(r.pools.before) === JSON.stringify(['b-old', 'b-mid', 'b-new']), "'시공 전'(띄어쓰기)·'철거' 가 전이고, 오래된 순: " + r.pools.before);
+    assert(JSON.stringify(r.pools.after) === JSON.stringify(['a-new', 'a-old']), "'완료'·'준공' 이 후이고 최근 순, 영상·썸네일없음·다른현장은 제외: " + r.pools.after);
+    assert((r.none.match(/사진 부착 \/ 삽입/g) || []).length === 2 && !/<img /.test(r.none), '장수를 안 주면 빈 칸 둘 그대로');
+    assert(JSON.stringify(r.two) === JSON.stringify(['b-old', 'b-mid', 'a-new']), '전 2장은 가장 오래된 둘, 후 1장은 가장 최근 하나: ' + r.two);
+    assert(JSON.stringify(r.clamp) === JSON.stringify(['b-old', 'b-mid', 'b-new', 'a-new', 'a-old']), '있는 것보다 많이 달라도 있는 만큼만: ' + r.clamp);
+    assert(JSON.stringify(r.zero) === JSON.stringify([]), '0장이면 넣지 않는다');
+  });
+
+  await test('하자보증서 미리보기 — 사진 장수 선택칸이 현장에 있는 만큼만 열린다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상사진현장';   // 위 검사의 자료(전 3장·후 2장)를 그대로 쓴다
+      warrantyView(N);
+      const opts = id => [...document.querySelectorAll('#' + id + ' option')].map(o => ({ v: o.value, sel: o.selected, dis: o.disabled }));
+      const out = { before: opts('wrBefore'), after: opts('wrAfter'), text: document.querySelector('#modalRoot').innerText };
+      closeModal(); return out;
+    });
+    assert(JSON.stringify(r.before.filter(o => o.sel).map(o => o.v)) === JSON.stringify(['2']), '전 3장 있으면 기본 2장');
+    assert(JSON.stringify(r.before.filter(o => o.dis).map(o => o.v)) === JSON.stringify(['4']), '전은 3장뿐이라 4장은 못 고른다');
+    assert(JSON.stringify(r.after.filter(o => o.sel).map(o => o.v)) === JSON.stringify(['2']), '후 2장 있으면 기본 2장');
+    assert(JSON.stringify(r.after.filter(o => o.dis).map(o => o.v)) === JSON.stringify(['4']), '후는 2장뿐이라 4장은 못 고른다');
+    assert(/작업 전 \(현장에 3장\)/.test(r.text) && /작업 후 \(현장에 2장\)/.test(r.text), '현장에 몇 장 있는지 보여준다: ' + r.text.slice(0, 300));
+  });
+
+  // (8) 하자보증서 입구 통일 — 정산 문서의 카드도 같은 화면(사진 장수 선택)으로 간다.
+  //     한쪽 입구만 사진 없는 문서를 만들면, 같은 이름의 문서가 입구에 따라 달라진다(v304 에서 겪은 유형).
+  await test('정산 문서의 하자보증서 카드도 사진 장수를 고르는 같은 화면으로 간다 · 사진은 잘리지 않고 인쇄에서 안 끊긴다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상사진현장';
+      settleDocs(N);
+      const card = document.querySelector('#modalRoot .sdCard[data-k="warranty"]');
+      const cardText = card ? card.textContent : '';
+      if (card) card.click();
+      const routed = !!document.getElementById('wrBefore') && !!document.getElementById('wrAfter');
+      closeModal();
+      const h = warrantyHTML(N, { beforeN: 1, afterN: 1 });
+      // 셸 헤더의 로고 img 도 object-fit:cover 를 쓰므로, 사진(data-photo) 태그만 본다
+      const photoTags = h.match(/<img data-photo="[^"]+"[^>]*>/g) || [];
+      return { cardText, routed, contain: photoTags.length === 2 && photoTags.every(x => /object-fit:contain/.test(x)), cover: photoTags.some(x => /object-fit:cover/.test(x)),
+        keep: (h.match(/class="keep"/g) || []).length, printRule: /\.keep\{break-inside:avoid/.test(h) };
+    });
+    assert(r.cardText.indexOf('하자보증서') >= 0, '정산 문서에 하자보증서 카드가 있어야 함');
+    assert(r.routed, '정산 문서에서 눌러도 사진 장수 선택칸(wrBefore/wrAfter)이 있는 같은 화면이어야 함');
+    assert(r.contain && !r.cover, '증빙 사진은 잘라내지 않는다(object-fit:contain)');
+    assert(r.keep === 4 && r.printRule, '사진 칸 2 + 서명란 2 는 인쇄에서 한 덩어리(.keep): ' + r.keep);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
