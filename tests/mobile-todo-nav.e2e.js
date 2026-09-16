@@ -110,8 +110,11 @@ async function openTodo(page){
         // Quote writer is still directly available and searchable; navigation cannot discard a draft.
         await page.locator('[data-mnav="__more"]').click();await page.locator('#moreSearch').waitFor();
         assert.equal(await page.locator('#moreNav [data-more="quotemaker"]').count(),1,'quote writing shortcut must remain accessible in More');
-        assert.equal(await page.locator('#moreNav [data-more]').count(),5,'More contains five navigation shortcuts');
-        assert.match(await page.locator('#moreResultCount').innerText(),/바로가기 5개/);
+        // 폰에서는 상단 탭이 숨으므로(.mobile-mode .tabs{display:none}) 더보기가 유일한 진입로다.
+        // v299 에서 아파트 관리가 들어와 5개 → 6개가 됐다. 숫자만 맞추지 말고 무엇이 있어야 하는지도 적는다.
+        assert.equal(await page.locator('#moreNav [data-more]').count(),6,'More contains six navigation shortcuts');
+        assert.equal(await page.locator('#moreNav [data-more="aptmgmt"]').count(),1,'아파트 관리는 폰에서 더보기로만 닿는다');
+        assert.match(await page.locator('#moreResultCount').innerText(),/바로가기 6개/);
         await page.locator('#moreNav [data-more="quotemaker"]').click();await moreClosed(page);
         assert.equal(await page.evaluate(()=>state.tab),'quotemaker');assert.equal(await page.locator('#qmTitle').inputValue(),'모의 작성 중 견적 유지');
         assert.deepEqual(await preserved(page),before,'direct quote shortcut preserves the unsaved draft');

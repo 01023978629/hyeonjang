@@ -156,6 +156,44 @@ async function controls(page) {
     await page.evaluate(() => closeModal());
     await invariant(test, false);
   });
+  // v303: 현장 이름이 "○○아파트 107동 1302호" 면 그 동·호수를 넣는 데 메뉴를 세 번 거칠 이유가 없다.
+  // 카드의 [＋ 동·호수 추가] 가 숫자를 미리 채운 채로 등록 화면을 연다 — 저장 한 번이면 끝난다.
+  await scenario('현장 카드 [＋ 동·호수 추가] — 이름에서 읽은 동·호수가 미리 채워진다', async test => {
+    const { page } = test;
+    const N = '가상 한사랑아파트 107동 1302호';
+    await page.evaluate(n => {
+      state.projects.push({ name: n, archived: false, stage: 2, received: 0, phases: [],
+        cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, geo: null });
+      state.tab = 'project'; state.activeProject = n; render();
+    }, N);
+
+    const card = page.locator('#view .cust-card').first();
+    await card.waitFor({ state: 'visible' });
+    assert.match(await card.innerText(), /107동 1302호를 읽었습니다/, '아직 안 넣은 동·호수는 카드가 먼저 알려준다');
+
+    await page.locator('#view [data-aptadd]').click();
+    await page.locator('#aptUnitDong').waitFor({ state: 'visible' });
+    assert.deepEqual([await page.locator('#aptUnitDong').inputValue(), await page.locator('#aptUnitHo').inputValue()],
+      ['107', '1302'], '현장 이름에서 읽은 동·호수가 미리 채워져야 한다');
+
+    await page.locator('#aptUnitSave').click();
+    await page.waitForFunction(n => aptUnitList(aptUnitProject(n)).length === 1, N, { timeout: 8000 });
+    assert.deepEqual(await page.evaluate(n => aptUnitList(aptUnitProject(n)).map(u => aptUnitLabel(u)), N),
+      ['107동 1302호'], '저장하면 그 동·호수가 등록된다');
+
+    // 이미 넣었으면 또 채우지 않는다 — 같은 걸 두 번 넣으려다 거절당하는 화면을 보게 된다
+    await page.evaluate(() => { closeModal(); render(); });
+    await page.locator('#view [data-aptadd]').click();
+    await page.locator('#aptUnitDong').waitFor({ state: 'visible' });
+    assert.deepEqual([await page.locator('#aptUnitDong').inputValue(), await page.locator('#aptUnitHo').inputValue()],
+      ['', ''], '이미 등록된 동·호수는 미리 채우지 않는다');
+    await page.evaluate(() => closeModal());
+
+    // 아파트가 아닌 현장은 읽지 않는다
+    await page.evaluate(a => { state.activeProject = a; render(); }, A);
+    assert.doesNotMatch(await page.locator('#view .cust-card').first().innerText(), /읽었습니다/, '아파트가 아닌 현장엔 안내가 뜨지 않는다');
+    await invariant(test, false);
+  });
   await scenario('아파트+동호 ID 이중 격리·명시 연결만·미지정과 손상 데이터 fail closed', async test => {
     const actual = await test.page.evaluate(a => {
       const p = aptUnitProject(a), get = id => state.files.find(f => f.id === id);
