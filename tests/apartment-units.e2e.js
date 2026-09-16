@@ -140,13 +140,13 @@ async function controls(page) {
     const button = page.locator('#view button[data-aptunits]');
     await button.waitFor({ state: 'visible' });
     assert.equal((await button.innerText()).trim(), '동·호수 관리');
-    // 위임은 closest() 목록에 이름이 있어야만 동작한다 — 목록에서 빠지면 클릭이 조용히 버려진다
-    assert(await button.evaluate(el => {
-      const m = String(setupDelegation).match(/const\s+t\s*=\s*e\.target\.closest\('([^']+)'\)/);
-      return !!m && el.matches(m[1]);
-    }), '[동·호수 관리] 버튼이 클릭 위임 셀렉터 목록에 걸려야 한다');
+    // 배선을 소스에서 읽어 확인하지 않는다 — 화면 안에서 setupDelegation 의 글자를 뜯어보는 방식은
+    // 부하가 걸리면 흔들렸고(재시도로만 통과), 같은 계약은 tests/click-delegation.check.js 가
+    // 파일을 읽어 확정적으로 강제한다. 여기서 볼 것은 "눌렀더니 열리더라" 하나뿐이다.
     await button.click();
-    await page.locator('#aptUnitPanel').waitFor({ state: 'visible' });
+    await page.locator('#aptUnitPanel').waitFor({ state: 'visible' }).catch(() => {
+      throw new Error('[동·호수 관리] 를 눌렀는데 화면이 열리지 않았다 — 클릭 위임 셀렉터 목록에 [data-aptunits] 가 있는지 확인하라');
+    });
     await page.locator('#aptUnitAdd').waitFor({ state: 'visible' });
     // 0곳(등록 전) 현장에서도 열려야 한다 — 사장님이 처음 누르는 상태가 그것이다
     await page.evaluate(() => { closeModal(); state.projects.find(p => p.name === state.activeProject).aptUnits = []; render(); });
