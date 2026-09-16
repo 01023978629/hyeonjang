@@ -218,6 +218,29 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(/작업 전 \(현장에 3장\)/.test(r.text) && /작업 후 \(현장에 2장\)/.test(r.text), '현장에 몇 장 있는지 보여준다: ' + r.text.slice(0, 300));
   });
 
+  // (8) 하자보증서 입구 통일 — 정산 문서의 카드도 같은 화면(사진 장수 선택)으로 간다.
+  //     한쪽 입구만 사진 없는 문서를 만들면, 같은 이름의 문서가 입구에 따라 달라진다(v304 에서 겪은 유형).
+  await test('정산 문서의 하자보증서 카드도 사진 장수를 고르는 같은 화면으로 간다 · 사진은 잘리지 않고 인쇄에서 안 끊긴다', async () => {
+    const r = await page.evaluate(() => {
+      const N = '가상사진현장';
+      settleDocs(N);
+      const card = document.querySelector('#modalRoot .sdCard[data-k="warranty"]');
+      const cardText = card ? card.textContent : '';
+      if (card) card.click();
+      const routed = !!document.getElementById('wrBefore') && !!document.getElementById('wrAfter');
+      closeModal();
+      const h = warrantyHTML(N, { beforeN: 1, afterN: 1 });
+      // 셸 헤더의 로고 img 도 object-fit:cover 를 쓰므로, 사진(data-photo) 태그만 본다
+      const photoTags = h.match(/<img data-photo="[^"]+"[^>]*>/g) || [];
+      return { cardText, routed, contain: photoTags.length === 2 && photoTags.every(x => /object-fit:contain/.test(x)), cover: photoTags.some(x => /object-fit:cover/.test(x)),
+        keep: (h.match(/class="keep"/g) || []).length, printRule: /\.keep\{break-inside:avoid/.test(h) };
+    });
+    assert(r.cardText.indexOf('하자보증서') >= 0, '정산 문서에 하자보증서 카드가 있어야 함');
+    assert(r.routed, '정산 문서에서 눌러도 사진 장수 선택칸(wrBefore/wrAfter)이 있는 같은 화면이어야 함');
+    assert(r.contain && !r.cover, '증빙 사진은 잘라내지 않는다(object-fit:contain)');
+    assert(r.keep === 4 && r.printRule, '사진 칸 2 + 서명란 2 는 인쇄에서 한 덩어리(.keep): ' + r.keep);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;

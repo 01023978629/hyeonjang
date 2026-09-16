@@ -13344,7 +13344,7 @@ function hjDocShell(title,inner,accentDefault){
     '.stamp{text-align:right;font-size:14px;line-height:1.9;margin-top:18px}.stamp .big{font-size:16px;font-weight:800}'+
     '.dft{text-align:center;padding:16px;font-size:12px;color:#8b98ab;border-top:1px solid #eef2f7}'+
     '.warranty-badge{display:inline-block;background:'+c1+';color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:12px}'+
-    '@media print{body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0}}'+
+    '@media print{body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0}.keep{break-inside:avoid;page-break-inside:avoid}}'+
     '</style></head><body><div class="doc">'+
     '<div class="dhd"><div class="co">'+(logo?'<img src="'+logo+'">':'')+'<div><div class="cn">'+escapeHtml(COMPANY.name)+'</div><h1 style="margin-top:6px">'+escapeHtml(title)+'</h1></div></div>'+
     '<div class="meta">'+escapeHtml(COMPANY.owner)+'<br>'+escapeHtml(COMPANY.tel)+'<br>'+escapeHtml(COMPANY.addr)+'<br>사업자 '+escapeHtml(COMPANY.bizno)+'</div></div>'+
@@ -13453,7 +13453,7 @@ function warrantyHTML(name,opts){
     ['접수·처리','하자는 아래 시공업체 연락처로 접수하며, 접수 후 현장을 확인하고 보수 일정을 협의하여 신속히 처리합니다.'],
     ['기타','본 보증서는 관계 법령에 따른 하자담보책임 및 권리를 제한하지 않으며, 별도 계약서에 보증 조건이 정해진 경우 그에 따릅니다.']
   ];
-  const signBox=(title,body)=>'<div style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
+  const signBox=(title,body)=>'<div class="keep" style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+title+'</div>'+
     '<div style="font-size:12.5px;line-height:2">'+body+'</div>'+
     '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab">서명 또는 직인</div></div>';
@@ -13477,11 +13477,11 @@ function warrantyHTML(name,opts){
       '<ol style="margin:0;padding-left:18px">'+CLAUSES.map(c=>'<li style="margin-bottom:5px"><b>('+c[0]+')</b> '+c[1]+'</li>').join('')+'</ol></div>'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:16px 0 6px">작업 사진</div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'+
-      [['작업 전',photoPick.before],['작업 후',photoPick.after]].map(([t,list])=>'<div style="flex:1;min-width:200px;border:1px solid #e5ebf2;border-radius:10px;overflow:hidden">'+
+      [['작업 전',photoPick.before],['작업 후',photoPick.after]].map(([t,list])=>'<div class="keep" style="flex:1;min-width:200px;border:1px solid #e5ebf2;border-radius:10px;overflow:hidden">'+
         '<div style="background:#f7fafd;padding:7px 10px;font-size:12px;font-weight:700;color:#5b6b82">'+t+(list.length?' <span style="font-weight:400;color:#8b98ab">· '+list.length+'장</span>':'')+'</div>'+
         (list.length
           ? '<div style="display:grid;grid-template-columns:repeat('+(list.length>=2?2:1)+',1fr);gap:4px;padding:4px">'+list.map(f=>
-              '<figure style="margin:0"><img data-photo="'+escapeAttr(f.id)+'" src="'+escapeAttr(f.thumb)+'" alt="'+escapeAttr(t)+'" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;background:#eef2f7">'+
+              '<figure style="margin:0"><img data-photo="'+escapeAttr(f.id)+'" src="'+escapeAttr(f.thumb)+'" alt="'+escapeAttr(t)+'" style="width:100%;aspect-ratio:4/3;object-fit:contain;border-radius:6px;display:block;background:#eef2f7">'+
               '<figcaption style="font-size:10px;color:#8b98ab;text-align:center;margin-top:2px">'+escapeHtml(typeof fmtDay==='function'&&f.when?fmtDay(f.when):'')+'</figcaption></figure>').join('')+'</div>'
           : '<div style="height:150px;display:flex;align-items:center;justify-content:center;color:#a8b4c4;font-size:12px">사진 부착 / 삽입</div>')+
         '</div>').join('')+
@@ -13551,7 +13551,11 @@ function settleDocs(name,kind){
   const root=document.getElementById('modalRoot');
   const rcb=root.querySelector('#sdReceipt');if(rcb)rcb.onclick=()=>{closeModal();receiptDialog(name);};
   root.querySelectorAll('.sdCard').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.k;const def=HJ_SETTLE_DOCS[k];const html=def.fn(name);
+    const k=b.dataset.k;const def=HJ_SETTLE_DOCS[k];
+    // 하자보증서는 입구가 어디든 같은 화면(warrantyView)으로 — 거기서만 전/후 사진 장수를 고를 수 있다.
+    // 여기서 def.fn(name) 으로 바로 만들면 사진 없는 문서가 나가고, 같은 문서가 입구에 따라 달라진다.
+    if(k==='warranty'){closeModal();warrantyView(name);return;}
+    const html=def.fn(name);
     // 미리보기 + 공유
     openModal(def.ic+' '+def.t+' — '+escapeHtml(name),
       '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:56vh"><iframe srcdoc="'+escapeAttr(html)+'" style="width:100%;height:100%;border:0"></iframe></div>',
