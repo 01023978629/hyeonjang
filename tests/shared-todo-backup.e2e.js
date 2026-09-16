@@ -2,7 +2,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require('playwright');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const {createSharedTodoMock,URL:MOCK,TOKEN}=require('./shared-todo-mock');
 const ORIGIN=process.env.HJ_SHARED_BACKUP_ORIGIN||'http://127.0.0.1:8299';
 const mutation=process.env.HJ_SHARED_BACKUP_MUTATION||'';
@@ -16,7 +18,7 @@ const uiState=(page,kind)=>page.waitForFunction(kind=>document.getElementById('s
 const row=(page,id)=>page.locator('[data-stb-restore="'+id+'"]');
 (async()=>{
   const mock=createSharedTodoMock(),errors=[],dialogs=[];
-  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||process.env.PLAYWRIGHT_EXECUTABLE_PATH||undefined});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||process.env.PLAYWRIGHT_EXECUTABLE_PATH||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
   const context=await browser.newContext({viewport:{width:360,height:780},isMobile:true,hasTouch:true,serviceWorkers:'block'});
   await context.route('**/*',async route=>{
     const url=route.request().url();if(url===MOCK)return mock.handle(route);
