@@ -2571,6 +2571,19 @@ function relayConfigComplete(result) {
   __hjRelayConfigResolve = null;
   resolve(result);
 }
+/* relayBoot() 는 설정 복원(위 __hjRelayConfigDone)이 끝난 뒤에도 대기열 전송과 서버
+   health 확인을 이어서 한다. 설정만 끝난 시점을 '부팅 끝' 으로 보면, 그 틈에 인증키를
+   넣은 쪽이 아직 살아 있는 health 확인에 얻어맞는다 — shared-todo 회귀가 병렬 부하에서
+   드물게 '예기치 않은 relay 호출' 로 터지던 원인이 정확히 이 틈이었다(느린 기계일수록
+   틈이 벌어진다). 부팅이 진짜 끝나는 지점을 따로 알린다. */
+let __hjRelayBootResolve;
+window.__hjRelayBootDone = new Promise(resolve => { __hjRelayBootResolve = resolve; });
+function relayBootComplete() {
+  if (!__hjRelayBootResolve) return;
+  const resolve = __hjRelayBootResolve;
+  __hjRelayBootResolve = null;
+  resolve();
+}
 async function relayBoot(){
   try{
     try{
@@ -2625,6 +2638,7 @@ async function relayBoot(){
       }
     }catch(e){}   // 오프라인 등은 정상 시나리오 — 조용히(상태 표시만 유지)
   }catch(e){}
+  finally{ relayBootComplete(); }   // 이른 return(relayReady 아님)에도 반드시 알린다
 }
 function relayNewerBanner(res){
   if(document.getElementById('relayNewBar'))return;
@@ -2686,7 +2700,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v308-phasefix';
+const APP_BUILD='hyeonjang-v309-modalwire';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
