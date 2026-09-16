@@ -5,7 +5,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require('playwright');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const ORIGIN='http://127.0.0.1:8299';
 const mutation=process.env.HJ_FRIENDLY_UI_MUTATION||'';
 assert(['','name-clip','current-hidden','toolbar-state'].includes(mutation));
@@ -31,7 +33,7 @@ async function rows(page){return page.locator('#psList .ps-row[data-psel]').eval
 async function sheetClosed(page){await page.waitForFunction(()=>!document.getElementById('projSheet')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet));}
 async function reachable(locator,label){assert(await locator.evaluate(e=>{const r=e.getBoundingClientRect(),h=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&!!h&&(h===e||e.contains(h));}),label);}
 (async()=>{
-  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
   let passed=0;
   try{
     for(const spec of cases){

@@ -5,7 +5,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require('playwright');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const ORIGIN='http://127.0.0.1:8299';
 const mutation=process.env.HJ_MOBILE_SCREEN_MUTATION||'';
 assert(['','work-grid','work-scroll','toast','delete-confirm'].includes(mutation));
@@ -21,7 +23,7 @@ let passed=0;
 async function settle(page){await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
 async function screenshot(page,spec,name){if(shots){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,spec.name+'-'+name+'.png')});}}
 (async()=>{
-  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
   try{
     for(const spec of cases){
       const context=await browser.newContext({viewport:{width:spec.width,height:spec.height},deviceScaleFactor:1,isMobile:true,hasTouch:true,serviceWorkers:'block'});
