@@ -135,6 +135,10 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.indexOf('□ 관리사무소') >= 0 && r.indexOf('□ 의뢰인(세대)') >= 0, '확인자 구분 선택칸 없음');
     ['소속 / 동·호수', '성명 / 직위', '서명 또는 직인'].forEach(k => assert(r.indexOf(k) >= 0, '확인자 칸 없음: ' + k));
     assert(r.indexOf('2부 작성') >= 0, '2부 작성·보관 안내 없음');
+    // 이 보증서는 관리사무소에만 가는 게 아니다 — 완료보증서로 고객에게도 간다(tests/kakao-project.e2e.js ⑤).
+    // 양식에는 없던 칸이지만 고객명과 'A/S' 라는 낱말은 남겨야 한다. v302 에서 한 번 빠뜨려 깨졌다.
+    assert(r.indexOf('의뢰인(고객)') >= 0 && r.indexOf('김고객') >= 0, '고객에게 가는 보증서인데 고객명이 없다');
+    assert(r.indexOf('무상 A/S') >= 0, "고객이 알아듣는 '무상 A/S' 낱말이 빠졌다");
     // 시공업체 정보는 앱의 COMPANY 하나에서만 온다(문서마다 따로 적으면 번호가 어긋난다)
     ['만물인테리어', '전병덕', '895-48-01132'].forEach(k => assert(r.indexOf(k) >= 0, '시공업체 정보 없음: ' + k));
   });

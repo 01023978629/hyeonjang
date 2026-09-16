@@ -13427,9 +13427,10 @@ function warrantyHTML(name){
     // 서로 다른 말을 하던 사고가 있었다(tests/settle-docs.e2e.js). 기간은 반드시 실제 값에서 온다.
     '<div style="text-align:center"><span class="warranty-badge">관리사무소 제출용 · 목적물 인도일로부터 최대 '+escapeHtml(termLabel)+' 하자보증</span></div>'+
     '<div style="font-size:13.5px;line-height:1.9;margin:16px 0">'+
-      '<p>시공업체는 아래 작업의 시공상 하자에 대하여 기재된 보증기간 동안 <b>무상 보수</b>를 이행할 것을 보증합니다.</p></div>'+
+      '<p>시공업체는 아래 작업의 시공상 하자에 대하여 기재된 보증기간 동안 <b>무상 보수(무상 A/S)</b>를 이행할 것을 보증합니다.</p></div>'+
     '<table class="items"><tbody>'+
       row('제출처',cell(submitTo,200)+' <span style="color:#5b6b82">관리사무소 귀중</span>')+
+      row('의뢰인(고객)',d.cust.name?escapeHtml(d.cust.name)+' 님':blank(200))+
       row('작업명',cell(name,200))+
       row('작업장소',cell(place,240))+
       row('작업내용 / 범위',cell(scope,300))+
