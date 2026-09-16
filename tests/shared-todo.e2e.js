@@ -5,7 +5,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require('playwright');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const {createSharedTodoMock,URL:MOCK,TOKEN}=require('./shared-todo-mock');
 const ORIGIN='http://127.0.0.1:8299';
 const mutation=process.env.HJ_SHARED_TODO_MUTATION||'';
@@ -41,7 +43,7 @@ async function mobileBounds(page){
 }
 (async()=>{
   const mock=createSharedTodoMock(),errors=[],effects=[],contexts=[];
-  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
   async function openDevice(device,width=360,configured=true,existingContext){
     const context=existingContext||await browser.newContext({viewport:{width,height:780},isMobile:true,hasTouch:true,serviceWorkers:'block',timezoneId:'Asia/Seoul'});if(!existingContext)contexts.push(context);
     if(!existingContext)await context.route('**/*',async route=>{

@@ -150,6 +150,11 @@ async function fits(page,root){
       const data=serializeData();state.notes=[];applyData(data,{revert:true});return {ok,guard,expected,restored:JSON.stringify(state.notes),snapshot:JSON.stringify(last.data.notes)};
     });
     assert.equal(result.ok,true);assert.equal(result.guard,false);assert.equal(result.restored,result.expected);assert.equal(result.snapshot,result.expected);
+    // 여기서 suggestedFilename 이 'download' 로 나오면 앱 버그가 아니라 브라우저 빌드 문제다.
+    // 일부 Chromium(예: playwright 1.56.1 동봉본)은 blob 다운로드의 **한글 파일명**을 못 받아
+    // 'download' 로 떨어뜨린다. ASCII 이름은 같은 빌드에서도 정상이고, CI(1.55.0)와 실제 폰은 문제없다.
+    // 확인법: about:blank 에서 a.download 에 ASCII / 한글 이름을 각각 주고 suggestedFilename 을 비교.
+    // 파일명은 사장님이 백업 파일을 알아보는 수단이라 ASCII 로 바꾸지 않는다 — 검사도 약하게 만들지 않는다.
     const download=page.waitForEvent('download');await page.evaluate(()=>exportData());assert.match((await download).suggestedFilename(),/^현장데이터_\d+\.json$/);
   });
   await scenario('현장 이름 변경 연동·삭제 후 기록 보존',async page=>{

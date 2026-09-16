@@ -5,7 +5,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require('playwright');
+let chromium;
+try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+catch (_) { ({ chromium } = require('playwright')); }
 const ORIGIN='http://127.0.0.1:8299';
 const mutation=process.env.HJ_TODO_NAV_MUTATION||'';
 assert(['','route','quote-shortcut'].includes(mutation));
@@ -31,7 +33,7 @@ async function openTodo(page){
   await page.waitForFunction(()=>document.activeElement?.id==='todoText');
 }
 (async()=>{
-  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||undefined});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
   let passed=0;
   try{
     for(const spec of cases){

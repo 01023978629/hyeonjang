@@ -1966,7 +1966,7 @@ function exportData(){
       }
     }
   }catch(e){}
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   clearDirty();backupMarkDone('file');toast('현장데이터 파일을 내보냈습니다 — 구글드라이브 만물인테리어▸데이터에 두세요');
 }
 /* 데이터 불러오기: 폰·다른 PC에서 파일 선택 → 복원 */
@@ -2686,7 +2686,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v304-onewarranty';
+const APP_BUILD='hyeonjang-v305-dlanchor';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3606,7 +3606,7 @@ async function sendQuote(){
   const text=cn+' 견적서'+(q.title?' - '+q.title:'');
   try{ if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:pdf.name,text}); return; } }
   catch(e){ if(String(e&&e.name)==='AbortError')return; }
-  const a=document.createElement('a');a.href=URL.createObjectURL(pdf.blob);a.download=pdf.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const a=document.createElement('a');a.href=URL.createObjectURL(pdf.blob);a.download=pdf.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast('PDF 저장됨 — 카톡/문자에 첨부해 보내세요.');
 }
 // 견적서 PDF를 구글드라이브 만물인테리어▸견적서 에 저장
@@ -22993,7 +22993,7 @@ async function baRenderCard(proj,recB,recA){
     '<div style="font-size:10.5px;color:var(--muted);margin-top:8px">카톡 프로필·블로그·지역 커뮤니티 홍보에 바로 쓰세요.</div>',
     [{label:'‹ 다시 고르기',cls:'ghost',fn:function(){baPickView(proj);}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const sv=document.getElementById('baSave');
-  if(sv)sv.onclick=function(){const a=document.createElement('a');a.href=url;a.download=fname;a.click();toast('💾 저장됨: '+fname);};
+  if(sv)sv.onclick=function(){const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();toast('💾 저장됨: '+fname);};
   const sh=document.getElementById('baShare');
   if(sh)sh.onclick=async function(){
     try{
@@ -25435,7 +25435,7 @@ async function __docExport(cv,name,asPdf,options){
   if(!blob){toast('이미지 생성 실패');return;}
   const file=new File([blob],name+'.jpg',{type:'image/jpeg'});
   if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name});return;}catch(e){if(e&&e.name==='AbortError')return;}}
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.jpg';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.jpg';document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('🖼 이미지 저장됨');
 }
 /* ═══════════ (C) 계약서·작업확인서 작성 모달 — 손가락 서명 포함 ═══════════ */
@@ -25565,7 +25565,7 @@ async function makeBeforeAfter(scopeProj){
     if(navigator.canShare&&navigator.canShare({files:[file]})){
       try{await navigator.share({files:[file],title:name});toast('공유 완료');return;}catch(e){if(e&&e.name==='AbortError')return;}
     }
-    const a=document.createElement('a');a.href=URL.createObjectURL(out);a.download=name;a.click();
+    const a=document.createElement('a');a.href=URL.createObjectURL(out);a.download=name;document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),4000);
     toast('📷 비포/애프터 저장됨 — '+name);
   }finally{imgs.forEach(o=>{try{URL.revokeObjectURL(o.u);}catch(e){}});}
@@ -27699,7 +27699,7 @@ function exportContactsCSV(){
   let csv='이름,직급,부서,상호,휴대폰,일반전화,이메일,파일\n';
   list.forEach(f=>{const c=f.contact||{};csv+=[c.name,c.title,c.dept,c.company,c.phone,c.tel,c.email,f.name].map(x=>`"${(x||'').replace(/"/g,'""')}"`).join(',')+'\n';});
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='연락처.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('연락처 CSV 저장됨');
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='연락처.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('연락처 CSV 저장됨');
 }
 
 /* ---------- 현장 PDF 묶음 ---------- */
@@ -27997,7 +27997,7 @@ async function exportProjectZIP(proj){
   root.file('_현장보고서.txt', __L.join('\n'));
   window.__zipPrev=0;
   const blob=await zip.generateAsync({type:'blob'},m=>{});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=safeName(proj)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=safeName(proj)+'.zip';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast(`“${proj}” ZIP 저장됨 — ${added}개${skipped?(' (제외 '+skipped+')'):''}`);
 }
 
