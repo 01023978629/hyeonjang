@@ -52,7 +52,11 @@ async function boot(width=390){
     URL.createObjectURL=function(blob){const url=create.call(URL,blob);window.__outBlobs.push({url,blob});return url;};
     URL.revokeObjectURL=function(url){window.__outRevoked.push(url);return revoke.call(URL,url);};
     HTMLAnchorElement.prototype.click=function(){if(this.download){window.__outDownloads.push({filename:this.download,url:this.href});return;}return anchor.apply(this,arguments);};
-    taxCalendarEnsure();coworkSchedEnsure();state.dirty=false;render();clearTimeout(__idbSaveTimer);
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;state.dirty=false;render();clearTimeout(__idbSaveTimer);
     if(!await guardedPersistCurrentState())throw new Error('fake output fixture persistence failed');await __appStateWriteQueue;
     const dirty=markDirty;markDirty=function(){window.__outDirty++;return dirty.apply(this,arguments);};
     if(mutation==='unit'){

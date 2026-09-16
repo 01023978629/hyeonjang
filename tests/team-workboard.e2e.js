@@ -46,7 +46,11 @@ async function boot(width){
     const reject=name=>()=>{throw new Error('Unexpected external '+name);};relayCall=reject('relay');window.open=reject('popup');if(navigator.share)navigator.share=reject('share');
     // Real local transaction retained. Post-commit network scheduling is observed, not executed.
     window.__teamCommitted=0;webWorkMarkDirtyAfterPersist=()=>{__teamCommitted++;state.dirty=true;};
-    taxCalendarEnsure();coworkSchedEnsure();render();clearTimeout(__idbSaveTimer);await guardedPersistCurrentState();await __appStateWriteQueue;
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;render();clearTimeout(__idbSaveTimer);await guardedPersistCurrentState();await __appStateWriteQueue;
   });
   // Explicit reload reboots existing CDN/GIS scripts (all remain blocked by routing).
   page.__teamReload=async()=>{observing=false;const bootGis=page.waitForEvent('requestfailed',{predicate:r=>r.url()==='https://accounts.google.com/gsi/client',timeout:20000});await page.reload({waitUntil:'domcontentloaded'});await bootGis;await ready(page);observing=true;};

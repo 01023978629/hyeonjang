@@ -46,7 +46,11 @@ async function boot(width=390){
     Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>window.__reportCopies.push(String(text))}});
     relayCall=reject('relay');portalAutoSync=reject('portal');getFileOf=reject('original');
     loadPhotoForExport=reject('image-before-explicit-click');geminiAsk=reject('AI-before-consent');__docExport=reject('export-before-explicit-click');
-    taxCalendarEnsure();coworkSchedEnsure();state.dirty=false;render();clearTimeout(__idbSaveTimer);
+    /* Neutralize the delayed startup seeders rather than draining them once — boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s, so calling them here and
+       clearing state.schedule below just lets the timers re-seed mid-test on a loaded
+       machine. That is what broke the v308 deploy in document-estimate-ui. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;state.dirty=false;render();clearTimeout(__idbSaveTimer);
     if(!await guardedPersistCurrentState())throw new Error('fake report fixture persistence failed');await __appStateWriteQueue;
     const originalDirty=markDirty;markDirty=function(){window.__reportDirty++;return originalDirty.apply(this,arguments);};
     if(mutation==='scope'){const original=photoReportData;photoReportData=function(name,opts){const d=original.apply(this,arguments);if(name===a&&d&&d.files){window.__reportMutation++;d.files=[...d.files,state.files.find(f=>f.id==='b1')];d.total=d.files.length;}return d;};}

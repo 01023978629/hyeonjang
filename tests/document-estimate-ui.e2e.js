@@ -23,7 +23,14 @@ async function boot(width=390,forced=false){
   await page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayConfigDone&&window.__hjOfficeOpsBootDone);
   await page.evaluate(async({a,b,x,forced,mutation})=>{
     await Promise.all([window.__hjRestoreDone,window.__hjRelayConfigDone,window.__hjOfficeOpsBootDone]);
-    taxCalendarEnsure();coworkSchedEnsure();aiOpsEnsureState().enabled=false;clearTimeout(__idbSaveTimer);await __appStateWriteQueue;
+    /* Neutralize the delayed startup seeders instead of draining them once. Boot arms
+       taxCalendarEnsure() at 4s and coworkSchedEnsure() at 4.5s; calling them here and then
+       clearing state.schedule below only means the timers re-seed later. On a loaded machine
+       boot takes longer than that, so the tax-calendar entry lands in the middle of a scenario
+       and the read-only snapshot legitimately reports that state.schedule changed — which is
+       what broke the v308 deploy. Their own regression files cover these seeders. */
+    taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;backupBootCheck=()=>{};kakaoCheckNew=()=>{};
+    aiOpsEnsureState().enabled=false;clearTimeout(__idbSaveTimer);await __appStateWriteQueue;
     const p=name=>({name,stage:1,received:12345,phases:[],cost:{material:1000,labor:2000,outsource:0},customer:{},archived:false});
     state.projects=[p(a),p(b)];state.quotes=[];state.aptOrders=[];state.schedule=[];
     state.payLog=[{id:'fake-pay',project:a,amount:12345,date:'2026-09-01'}];state.expenses=[];
@@ -57,7 +64,28 @@ async function run(name,fn,width=390,forced=false){const t=await boot(width,forc
 const snap=page=>page.evaluate(async()=>{const data=serializeData();data.savedAt='FIXED';return{
   data:JSON.stringify(data),metadata:JSON.stringify(state.files),selected:[...__sel],dirty:state.dirty,
   dirtyCalls:window.__documentDirty,stored:JSON.stringify(await idbGet('appState'))};});
-async function readonly(t,before){assert(isDeepStrictEqual(await snap(t.page),before),'query/details/layout must not change files, estimates, projects, payments, selection or saved state');assert.deepEqual(await t.page.evaluate(()=>window.__documentCalls),[]);assert.deepEqual(t.requests,[],'UI-only actions issue no network requests');assert.equal(await t.page.evaluate(()=>window.__documentXss),0);}
+/* Name the field that moved. isDeepStrictEqual collapses to a bare true/false, so a
+   read-only violation used to print "expected true" and nothing about what changed —
+   two of these are serialized JSON blobs of several KB. This keeps the same strictness
+   (every field must still match exactly) and says which one differs, and for a JSON
+   field which top-level key inside it, so one CI log is enough to diagnose. */
+function sameSnap(actual,before,message){
+  for(const key of Object.keys(before)){
+    if(isDeepStrictEqual(actual[key],before[key]))continue;
+    let detail=key;
+    if(typeof before[key]==='string'&&/^[[{]/.test(before[key])){
+      let a={},b={};try{a=JSON.parse(actual[key]);b=JSON.parse(before[key]);}catch(_){}
+      const moved=[...new Set([...Object.keys(a||{}),...Object.keys(b||{})])]
+        .filter(k=>JSON.stringify(a[k])!==JSON.stringify(b[k]));
+      if(moved.length)detail=key+'.'+moved.join(',');
+    }
+    assert.fail(message+'\n  changed: '+detail+
+      '\n  before: '+JSON.stringify(before[key]).slice(0,800)+
+      '\n  after:  '+JSON.stringify(actual[key]).slice(0,800));
+  }
+  assert.deepEqual(Object.keys(actual).sort(),Object.keys(before).sort(),message+' (snapshot shape changed)');
+}
+async function readonly(t,before){sameSnap(await snap(t.page),before,'query/details/layout must not change files, estimates, projects, payments, selection or saved state');assert.deepEqual(await t.page.evaluate(()=>window.__documentCalls),[]);assert.deepEqual(t.requests,[],'UI-only actions issue no network requests');assert.equal(await t.page.evaluate(()=>window.__documentXss),0);}
 async function view(t,tab){await t.page.evaluate(tab=>{state.tab=tab;render();},tab);await t.page.locator(tab==='docs'?'.documents-view':'.estimates-view').waitFor();}
 const rowIds=page=>page.locator('.estimates-list tbody tr[data-id]').evaluateAll(els=>els.map(e=>e.dataset.id));
 async function expectRows(t,ids){try{await t.page.waitForFunction(ids=>JSON.stringify([...document.querySelectorAll('.estimates-list tbody tr[data-id]')].map(e=>e.dataset.id))===JSON.stringify(ids),ids);}catch(e){console.error('ROW DIAGNOSTIC',JSON.stringify(await t.page.evaluate(()=>({ui:__estimateListUI,global:state.search,input:document.getElementById('estimateListSearch')?.value,ids:[...document.querySelectorAll('.estimates-list tbody tr[data-id]')].map(e=>e.dataset.id)}))));throw e;}assert.deepEqual(await rowIds(t.page),ids);}
