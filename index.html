@@ -2686,7 +2686,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v306-warrantyphotos';
+const APP_BUILD='hyeonjang-v307-warrantypick';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13441,8 +13441,14 @@ function warrantyHTML(name,opts){
   const client=ov.client||d.cust.name||'';
   // 작업 전/후 사진 — 장수만 받는다. 전은 오래된 순, 후는 최근 순으로 그 장수만큼. 있는 것보다 많이 달라면 있는 만큼만.
   const wantB=Math.max(0,num(ov.beforeN)||0),wantA=Math.max(0,num(ov.afterN)||0);
-  const pools=(wantB||wantA)?hjWarrantyPhotoPools(name):{before:[],after:[]};
-  const photoPick={before:pools.before.slice(0,wantB),after:pools.after.slice(0,wantA)};
+  // 직접 고른 사진(beforeIds/afterIds)이 있으면 그걸 쓴다 — 이 현장의 썸네일 있는 사진만, 한쪽 최대 4장.
+  // 전은 오래된 순, 후는 최근 순으로 정렬한다(장수 방식과 같은 순서라 종이가 일관된다).
+  const byId=(ids,desc)=>{if(!Array.isArray(ids)||!ids.length)return null;
+    const pool=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===name&&f.thumb&&ids.includes(f.id));
+    return pool.sort((a,b)=>desc?new Date(b.when||0)-new Date(a.when||0):new Date(a.when||0)-new Date(b.when||0)).slice(0,4);};
+  const pickedB=byId(ov.beforeIds,false),pickedA=byId(ov.afterIds,true);
+  const pools=(!pickedB&&!pickedA&&(wantB||wantA))?hjWarrantyPhotoPools(name):{before:[],after:[]};
+  const photoPick={before:pickedB||pools.before.slice(0,wantB),after:pickedA||pools.after.slice(0,wantA)};
   const blank=n=>'<span style="display:inline-block;min-width:'+(n||150)+'px;border-bottom:1px solid #c7d2e0">&nbsp;</span>';
   const cell=(v,n)=>v?escapeHtml(String(v)):blank(n);
   const row=(k,v)=>'<tr><td class="nm" style="width:130px;background:#f7fafd;vertical-align:top">'+k+'</td><td>'+v+'</td></tr>';
@@ -29150,37 +29156,66 @@ function warrantyView(pjName){
     return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="flex:1">'+escapeHtml(it.name)+'</span><b>'+it.months+'개월</b><span style="color:var(--muted);font-size:11.5px">~'+it.expiresAt+'</span></div>';
   }).join('');
   const F=function(id,label,val,ph){return '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">';};
-  // 작업 전/후 사진 장수 — 현장에 있는 만큼만 고를 수 있다. 기본은 2장(있는 게 그보다 적으면 있는 만큼).
+  // 작업 전/후 사진 — 사진을 탭해서 직접 고른다(없음 → 전 → 후 → 없음). 한쪽 최대 4장.
+  // 공정(시공 전·완료 등)이 지정된 사진은 미리 골라 두되, 공정이 없는 사진도 고를 수 있다 — 태그에 매이지 않는다.
+  const WR_MAX=4;
   const pools=hjWarrantyPhotoPools(pjName);
-  const photoSel=function(id,label,avail){
-    const def=Math.min(2,avail);
-    return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:6px 0"><span style="flex:1">'+label+' <span class="hint" style="margin:0">(현장에 '+avail+'장)</span></span>'+
-      '<select id="'+id+'" style="min-height:44px;padding:6px 10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">'+
-      [0,1,2,4].map(function(n){return '<option value="'+n+'"'+(n===def?' selected':'')+(n>avail?' disabled':'')+'>'+(n?n+'장':'넣지 않음')+'</option>';}).join('')+
-      '</select></label>';
-  };
+  const wrPhotos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===pjName&&f.thumb)
+    .sort((a,b)=>new Date(a.when||0)-new Date(b.when||0));
+  window.__wrPick={before:pools.before.slice(0,2).map(f=>f.id),after:pools.after.slice(0,2).map(f=>f.id)};
+  const photoGrid=wrPhotos.length
+    ? '<div id="wrPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;max-height:300px;overflow:auto;padding:2px">'+
+      wrPhotos.map(f=>'<div class="wrPh" data-id="'+escapeAttr(f.id)+'" role="button" tabindex="0" aria-label="'+escapeAttr(f.name||'사진')+'" style="position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;border:3px solid transparent;cursor:pointer;background:#eef2f7">'+
+        '<img src="'+escapeAttr(f.thumb)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block">'+
+        '<span class="wrTag" style="display:none;position:absolute;left:4px;top:4px;padding:2px 7px;border-radius:7px;font-size:11px;font-weight:800;color:#fff"></span>'+
+        '<span style="position:absolute;right:4px;bottom:3px;font-size:9.5px;color:#fff;text-shadow:0 0 3px #000">'+escapeHtml(typeof fmtDay==='function'&&f.when?fmtDay(f.when):'')+'</span></div>').join('')+'</div>'
+    : '<p class="hint" style="margin:4px 0">이 현장에 넣을 수 있는 사진이 없습니다(썸네일이 있는 사진만 넣을 수 있어요).</p>';
   openModal('🛡 하자보증서 — '+pjName,
     F('wrWork','공사 내용',(Array.isArray(p.phases)&&p.phases.length?p.phases.map(x=>typeof x==='string'?x:(x.title||x.name||'')).filter(Boolean).join(', '):pjName+' 공사'),'예: 욕실 리모델링 일체')+
     F('wrClient','발주처·고객',(p.customer&&p.customer.name)||'','예: 홍길동 / ○○아파트 관리사무소')+
     '<div style="font-size:12px;font-weight:800;margin:14px 0 4px">보증 기간 (법정 기준)</div>'+rows+
-    '<div style="font-size:12px;font-weight:800;margin:14px 0 4px">작업 사진 넣기</div>'+
-    photoSel('wrBefore','작업 전',pools.before.length)+photoSel('wrAfter','작업 후',pools.after.length)+
-    (pools.before.length||pools.after.length
-      ? '<p class="hint" style="margin-top:4px">전은 오래된 사진부터, 후는 최근 사진부터 고른 장수만큼 들어갑니다. 넣지 않으면 빈 칸으로 나와 인쇄 후 붙이실 수 있습니다.</p>'
-      : '<p class="hint" style="margin-top:4px">이 현장 사진에 공정(철거·시공 전·완료·준공 등)을 지정해 두면 여기서 전/후 사진을 고를 수 있습니다. 지금은 빈 칸으로 나옵니다.</p>')+
+    '<div style="display:flex;align-items:center;gap:8px;margin:14px 0 6px"><span style="font-size:12px;font-weight:800;flex:1">작업 사진 넣기</span><span id="wrPickCount" class="hint" style="margin:0"></span></div>'+
+    photoGrid+
+    (wrPhotos.length
+      ? '<p class="hint" style="margin-top:6px">사진을 탭할 때마다 <b style="color:#b45309">전</b> → <b style="color:#0a7f43">후</b> → 없음으로 바뀝니다. 공정이 지정된 사진은 미리 골라 두었습니다. 한쪽에 최대 '+WR_MAX+'장, 하나도 안 고르면 빈 칸으로 나와 인쇄 후 붙이실 수 있습니다.</p>'
+      : '')+
     '<p class="hint" style="margin-top:9px">준공일 '+p.doneAt+' 기준입니다. <b>관리사무소 제출용 「작업 하자보증서」</b> 양식으로 만들어집니다 — 제출처·작업장소·완료일·보증기간은 채워지고, 확인자와 서명란은 비워 인쇄해 받으시면 됩니다.</p>',
     [{label:'🛡 보증서 만들기',cls:'clay',fn:async function(){
         // 하자보증서는 앱에 한 벌만 둔다 — 정산 문서·완료보증서·서류 만들기가 모두 warrantyHTML() 을 쓴다.
         // 예전에는 여기만 캔버스로 따로 그려서, 같은 이름의 문서 둘이 서로 다른 말을 했다.
         const g=function(id){return (document.getElementById(id)||{}).value;};
+        const pk=window.__wrPick||{before:[],after:[]};
         const html=warrantyHTML(pjName,{work:String(g('wrWork')||'').trim(),client:String(g('wrClient')||'').trim(),
-          beforeN:num(g('wrBefore'))||0,afterN:num(g('wrAfter'))||0});
+          beforeIds:pk.before.slice(),afterIds:pk.after.slice()});
         if(!html){toast('보증서를 만들 수 없어요');return;}
         closeModal();toast('🛡 보증서 만드는 중…');
         try{await hjWarrantyShareHtml(pjName,html,safeName(pjName)+'_하자보증서_'+localDate()+'.html','하자보증서');}
         catch(e){toast('저장 실패: '+(e.message||e));}
       }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  // 격자 바인딩 — 모달은 #view 위임 밖이라 여기서 직접 건다. 탭: 없음 → 전 → 후 → 없음. 꽉 찬 쪽은 건너뛴다.
+  const wrPaint=function(){
+    const pk=window.__wrPick;
+    document.querySelectorAll('#modalRoot .wrPh').forEach(function(el){
+      const id=el.dataset.id,tag=el.querySelector('.wrTag'),bi=pk.before.indexOf(id),ai=pk.after.indexOf(id);
+      if(bi>=0){el.style.borderColor='#b45309';tag.style.background='#b45309';tag.textContent='전 '+(bi+1);tag.style.display='block';}
+      else if(ai>=0){el.style.borderColor='#0a7f43';tag.style.background='#0a7f43';tag.textContent='후 '+(ai+1);tag.style.display='block';}
+      else{el.style.borderColor='transparent';tag.style.display='none';}
+    });
+    const c=document.getElementById('wrPickCount');if(c)c.textContent='전 '+pk.before.length+'/'+WR_MAX+' · 후 '+pk.after.length+'/'+WR_MAX;
+  };
+  document.querySelectorAll('#modalRoot .wrPh').forEach(function(el){
+    const go=function(){
+      const pk=window.__wrPick,id=el.dataset.id;
+      const inB=pk.before.includes(id),inA=pk.after.includes(id);
+      pk.before=pk.before.filter(x=>x!==id);pk.after=pk.after.filter(x=>x!==id);
+      if(!inB&&!inA){ if(pk.before.length<WR_MAX)pk.before.push(id); else if(pk.after.length<WR_MAX)pk.after.push(id); else toast('전·후 각 '+WR_MAX+'장까지 넣을 수 있어요 — 다른 사진을 빼고 고르세요'); }
+      else if(inB){ if(pk.after.length<WR_MAX)pk.after.push(id); }
+      wrPaint();
+    };
+    el.onclick=go;el.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};
+  });
+  wrPaint();
   return {현장:pjName,항목:w.items.length};
 }
 /* ═══ v212-B 📦 견적 품목 세트 ═══ */
