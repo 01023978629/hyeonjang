@@ -2700,7 +2700,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v313-warrantyunit';
+const APP_BUILD='hyeonjang-v314-warrantysign';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11900,6 +11900,7 @@ function hjStoryData(name){
   (state.payLog||[]).filter(function(x){return x.project===name;}).forEach(function(x){ev.push({d:day(x.d),ic:'💰',t:'입금 '+won(x.amt||0)});});
   (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});});
   if(p.doneAt)ev.push({d:p.doneAt,ic:'🎉',t:'공사 완료'});
+  (Array.isArray(p.warrantySigs)?p.warrantySigs:[]).forEach(function(S){ev.push({d:String(S.at||'').slice(0,10),ic:'✍️',t:'하자보증서 확인자 서명 · '+(S.role==='client'?'의뢰인':'관리사무소')+' '+(S.name||'')+(S.unitLabel?' · '+S.unitLabel:'')});});
   const wl=Array.isArray(p.warrantyLog)?p.warrantyLog:[];
   if(wl.length){   // 같은 날 같은 종류·같은 꼴은 한 줄로(PDF 를 두 번 눌러도 이야기에 두 번 나오지 않게)
     const seen={};
@@ -11956,6 +11957,51 @@ function hjContractStatusLabel(L){
   if(L.serverStatus==='VOID')return ['취소됨','var(--muted)'];
   if(L.serverStatus==='VIEWED')return ['열람함 · 서명 대기','var(--gold)'];
   return ['서명 대기','var(--warn)'];
+}
+/* ⑨ 하자보증서 확인자 서명판 — 현장에서 폰을 건네 확인자가 직접 구분·소속·성명을 적고 손가락으로 서명한다.
+   서명은 p.warrantySigs[] 에 영구 보관(대표 결정 2026-09-17). 이미지는 480×135 PNG 로 줄여 넣는다(한 장 10~20KB).
+   전화번호는 받지 않는다(PII). 빈 서명판·빈 성명은 저장하지 않는다. 모달 안이라 openModal 뒤 직접 배선. */
+function warrantySigCapture(pjName,ctx,done){
+  const p=(state.projects||[]).find(function(x){return x&&x.name===pjName;});if(!p){toast('현장을 찾을 수 없어요');return;}
+  const c=ctx||{};
+  openModal('✍ 확인자 서명 — '+pjName+(c.unitLabel?' · '+c.unitLabel:''),
+    '<p class="hint" style="margin:0 0 8px">폰을 확인자에게 건네 주세요. 아래 내용을 확인자가 직접 적고 서명합니다.</p>'+
+    '<div style="display:flex;gap:10px;margin-bottom:8px;font-size:13px"><label style="flex:1;min-height:44px;display:flex;align-items:center;gap:6px"><input type="radio" name="wsRole" value="office" checked> 관리사무소</label>'+
+    '<label style="flex:1;min-height:44px;display:flex;align-items:center;gap:6px"><input type="radio" name="wsRole" value="client"> 의뢰인(세대)</label></div>'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:6px 0 3px">소속 / 동·호수</label><input id="wsOrg" maxlength="60" value="'+escapeAttr(c.unitLabel||'')+'" placeholder="예: ○○아파트 관리사무소 / 103동 1204호" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px">'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">성명 / 직위</label><input id="wsName" maxlength="40" placeholder="예: 홍길동 소장" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px"><b style="font-size:12px;flex:1">서명 (손가락으로)</b><button type="button" class="ghost tiny" id="wsClear" style="min-height:36px">지우기</button></div>'+
+    '<canvas id="wsPad" width="640" height="180" style="width:100%;height:120px;border:1.5px dashed var(--line-soft);border-radius:8px;touch-action:none;background:#fff"></canvas>'+
+    '<p class="hint" style="margin-top:8px">서명한 보증서는 이 현장에 보관되고, 서명 이미지가 보증서(PDF·워드)의 확인자 칸에 들어갑니다.</p>',
+    [{label:'✍ 서명 저장',cls:'clay',fn:function(){
+        const name=String((document.getElementById('wsName')||{}).value||'').trim(),org=String((document.getElementById('wsOrg')||{}).value||'').trim();
+        const role=((document.querySelector('input[name=wsRole]:checked')||{}).value)==='client'?'client':'office';
+        if(!name){toast('확인자 성명을 적어 주세요');return;}
+        if(!drawn){toast('서명을 해 주세요');return;}
+        // 480×135 로 줄여 저장 — 원본 640×180 은 크고, 문서에는 56px 높이로 들어간다
+        const small=document.createElement('canvas');small.width=480;small.height=135;
+        small.getContext('2d').drawImage(pad,0,0,480,135);
+        const png=small.toDataURL('image/png');
+        const d=new Date(),pad2=function(n){return String(n).padStart(2,'0');};
+        const sig={id:'ws_'+uid(),at:localDate()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes()),role:role,org:org,name:name,png:png,
+          unitId:c.unitId||undefined,unitLabel:c.unitLabel||undefined};
+        Object.keys(sig).forEach(function(k){if(sig[k]===undefined)delete sig[k];});
+        if(!Array.isArray(p.warrantySigs))p.warrantySigs=[];
+        p.warrantySigs.push(sig);markDirty();
+        toast('확인자 서명을 보관했습니다 — '+name);
+        closeModal();
+        if(typeof done==='function')done(sig);
+      }},
+     {label:'취소',cls:'ghost',fn:closeModal}],true);
+  const pad=document.getElementById('wsPad');let drawn=false;
+  const g=pad?pad.getContext('2d'):null;
+  if(g){g.lineWidth=3.5;g.lineCap='round';g.strokeStyle='#16233b';let on=false,px=0,py=0;
+    const pos=function(e){const r=pad.getBoundingClientRect();return {x:(e.clientX-r.left)*pad.width/r.width,y:(e.clientY-r.top)*pad.height/r.height};};
+    pad.onpointerdown=function(e){on=true;const q=pos(e);px=q.x;py=q.y;try{pad.setPointerCapture(e.pointerId);}catch(_){}};
+    pad.onpointermove=function(e){if(!on)return;const q=pos(e);g.beginPath();g.moveTo(px,py);g.lineTo(q.x,q.y);g.stroke();px=q.x;py=q.y;drawn=true;};
+    pad.onpointerup=pad.onpointercancel=function(){on=false;};
+  }
+  const cl=document.getElementById('wsClear');if(cl)cl.onclick=function(){if(g){g.clearRect(0,0,pad.width,pad.height);drawn=false;}};
 }
 /* 완료보증서 — 발급 사본을 현장에 보관(p.warrantyDoc)하고 카톡(파일 공유)으로 송부 */
 async function hjWarrantyShareHtml(name,html,fname,label){
@@ -13505,6 +13551,7 @@ const WR_DOC_THUMB_MAX=200000;
 // 정규식은 상수로 뺀다 — tests/office-ops-isolation 의 토크나이저가 `&&` 뒤의 정규식 리터럴을 나눗셈으로 읽어
 // 파일 끝까지 '닫히지 않은 정규식' 이 되고, 그러면 격리 검사 전체가 눈을 감는다(중복 선언 변이를 못 잡았다).
 const WR_DOC_THUMB_RE=/^data:image\/(jpe?g|png|webp|gif);base64,/i;
+const WR_SIG_PNG_RE=/^data:image\/png;base64,/;   // 확인자 서명 이미지는 앱 서명판이 만든 PNG 만
 function hjDocThumbOk(f){
   const t=f&&f.thumb;
   return typeof t==='string'&&t.length<=WR_DOC_THUMB_MAX&&WR_DOC_THUMB_RE.test(t);
@@ -13569,10 +13616,14 @@ function warrantyHTML(name,opts){
     ['접수·처리','하자는 아래 시공업체 연락처로 접수하며, 접수 후 현장을 확인하고 보수 일정을 협의하여 신속히 처리합니다.'],
     ['기타','본 보증서는 관계 법령에 따른 하자담보책임 및 권리를 제한하지 않으며, 별도 계약서에 보증 조건이 정해진 경우 그에 따릅니다.']
   ];
-  const signBox=(title,body)=>'<div class="keep" style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
+  const signBox=(title,body,foot)=>'<div class="keep" style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+title+'</div>'+
     '<div style="font-size:12.5px;line-height:2">'+body+'</div>'+
-    '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab">서명 또는 직인</div></div>';
+    '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab">'+(foot||'서명 또는 직인')+'</div></div>';
+  // ⑨ 확인자 전자서명 — 현장에서 폰을 건네 받은 손가락 서명(warrantySigCapture). 앱이 지어내는 값이 아니라
+  // 확인자가 직접 적고 그린 것이므로 이때만 칸을 채운다. png 는 앱이 만든 data:image/png 만 받는다.
+  const sig=(ov.sig&&typeof ov.sig==='object'&&WR_SIG_PNG_RE.test(String(ov.sig.png||'')))?ov.sig:null;   // 정규식은 상수 — `&&` 뒤 리터럴은 격리 검사 토크나이저가 못 읽는다
+  const sigRole=sig?(sig.role==='office'?'☑ 관리사무소　□ 의뢰인(세대)':'□ 관리사무소　☑ 의뢰인(세대)'):'□ 관리사무소　□ 의뢰인(세대)';
   // 카톡으로 보내는 완료보증서는 사진이 없는 쪽을 숨긴다(hideEmptyPhotos). 종이(관리사무소 제출)는 빈 칸을 남겨 손으로 붙이게 둔다.
   const wrSides=[['작업 전',photoPick.before],['작업 후',photoPick.after]].filter(([,l])=>!ov.hideEmptyPhotos||l.length);
   const inner=
@@ -13614,10 +13665,12 @@ function warrantyHTML(name,opts){
         '연락처 : '+escapeHtml(COMPANY.tel)+'<br>'+
         '주소 : '+escapeHtml(COMPANY.addr))+
       signBox('확인자 (관리사무소 / 의뢰인)',
-        '구분 : □ 관리사무소　□ 의뢰인(세대)<br>'+
-        '소속 / 동·호수 : '+blank(120)+'<br>'+   // 세대 보증서라도 비운다 — 확인자 칸은 현장에서 받는 칸이지 앱이 지어내는 칸이 아니다(세대는 작업장소·작업명에 있다)
-        '성명 / 직위 : '+blank(120)+'<br>'+
-        '연락처 : '+blank(120))+
+        '구분 : '+sigRole+'<br>'+
+        '소속 / 동·호수 : '+(sig&&sig.org?escapeHtml(sig.org):blank(120))+'<br>'+   // 서명 없이는 비운다 — 확인자 칸은 현장에서 받는 칸이지 앱이 지어내는 칸이 아니다
+        '성명 / 직위 : '+(sig&&sig.name?escapeHtml(sig.name):blank(120))+'<br>'+
+        '연락처 : '+blank(120),
+        sig?'<img src="'+escapeAttr(sig.png)+'" alt="확인자 서명" style="display:block;height:56px;max-width:100%;object-fit:contain">'+
+            '<div style="margin-top:4px">서명 '+escapeHtml(sig.at||'')+' · 전자서명(앱 서명판)</div>':'')+
     '</div>'+
     '<div class="note" style="margin-top:14px">※ 본 보증서는 2부 작성하여 시공업체와 확인자가 각 1부씩 보관합니다.</div>';
   return hjDocShell('작 업 하 자 보 증 서',inner,'#0e7a6b');
@@ -13763,7 +13816,8 @@ function hjDocDeliverView(name,html,base,label,backFn,opts){
       '<iframe srcdoc="'+escapeAttr(html)+'" style="width:100%;height:100%;border:0"></iframe></div>'+
     B('hjDocPdf','clay','🖨 PDF로 저장 · 인쇄','인쇄 창에서 "PDF로 저장"을 고르세요 — 관리사무소 제출은 이게 무난합니다')+
     B('hjDocWord','blue','📄 워드(.doc)로 저장','워드에서 열어 고칠 수 있습니다')+
-    B('hjDocHtml','ghost','🔗 공유 · HTML 파일','카톡·문자로 그냥 넘길 때'),
+    B('hjDocHtml','ghost','🔗 공유 · HTML 파일','카톡·문자로 그냥 넘길 때')+
+    ((opts&&typeof opts.onSign==='function')?B('hjDocSign','moss','✍ 확인자 서명 받기','현장에서 폰을 건네 관리사무소·의뢰인이 직접 서명 — 서명이 문서에 들어갑니다'):''),
     backFn?[{label:'← 뒤로',cls:'ghost',fn:backFn},{label:'닫기',cls:'ghost',fn:closeModal}]
           :[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
@@ -13774,6 +13828,7 @@ function hjDocDeliverView(name,html,base,label,backFn,opts){
     try{const ok=await hjWarrantyShareHtml(name,html,base+'.html',label);if(ok===true&&onDeliver)onDeliver('html');}
     catch(e){toast('저장 실패: '+(e.message||e));}
   });
+  on('hjDocSign',function(){opts.onSign();});
   return true;
 }
 async function settleDocShare(name,kind){
@@ -29521,11 +29576,22 @@ function warrantyView(pjName,opts){
         // 예전에는 여기서 곧장 .html 파일을 떨어뜨렸다 — 관리사무소에 낼 종이인데
         // 받아 놓고 할 수 있는 게 없었다. 이제 PDF·워드·HTML 을 고르게 한다.
         closeModal();
-        hjDocDeliverView(pjName,html,safeName(pjName+(unit?'_'+unitLabel:''))+'_하자보증서_'+localDate(),'🛡 하자보증서',
-          function(){warrantyView(pjName,{unitId:unit?unit.id:undefined});},
-          {onDeliver:function(via){   // ⑥ 실제로 PDF·워드·HTML 을 가져간 시점에만 이력
-            warrantyLogAdd(pjName,{kind:'하자보증서',via:via,work:work,client:client,before:pk.before.length,after:pk.after.length,
-              doneAt:p.doneAt||'',until:w.end||'',unitId:unit?unit.id:undefined,unitLabel:unit?unitLabel:undefined});}});
+        const base=safeName(pjName+(unit?'_'+unitLabel:''))+'_하자보증서_'+localDate();
+        const back=function(){warrantyView(pjName,{unitId:unit?unit.id:undefined});};
+        const show=function(doc,sig){
+          hjDocDeliverView(pjName,doc,base+(sig?'_서명':''),'🛡 하자보증서'+(sig?' (서명)':''),back,
+            {onDeliver:function(via){   // ⑥ 실제로 PDF·워드·HTML 을 가져간 시점에만 이력
+               warrantyLogAdd(pjName,{kind:'하자보증서',via:via,work:work,client:client,before:pk.before.length,after:pk.after.length,
+                 doneAt:p.doneAt||'',until:w.end||'',unitId:unit?unit.id:undefined,unitLabel:unit?unitLabel:undefined,
+                 signed:sig?true:undefined,signer:sig?(sig.name+(sig.org?' / '+sig.org:'')):undefined});},
+             // ⑨ 서명은 문서를 만든 뒤 현장에서 받는다 — 받으면 같은 내용에 서명만 든 문서로 다시 연다
+             onSign:sig?undefined:function(){
+               warrantySigCapture(pjName,{unitId:unit?unit.id:undefined,unitLabel:unit?unitLabel:undefined},function(s){
+                 const signed=warrantyHTML(pjName,{work:work,client:client,beforeIds:pk.before.slice(),afterIds:pk.after.slice(),unitId:unit?unit.id:undefined,sig:s});
+                 if(signed)show(signed,s);else toast('서명이 든 보증서를 만들 수 없어요');
+               });}});
+        };
+        show(html,null);
         // ⑤ 문서를 먼저 띄운 뒤에 공정을 적는다 — 안전판(IDB 쓰기)만큼 문서가 늦게 뜨지 않게
         if(tagOn)hjWarrantyTagPicked(pjName,pk).catch(function(){});
       }},
