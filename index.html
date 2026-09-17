@@ -2700,7 +2700,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v310-docexport';
+const APP_BUILD='hyeonjang-v312-aptassign';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11208,6 +11208,7 @@ function aptUnitView(projectName,unitId='',limit=80){
     ${unit?`<p style="white-space:pre-wrap">${escapeHtml(unit.note||'등록된 작업 메모가 없습니다.')}</p><button id="aptUnitEdit" class="ghost">동·호수 / 메모 수정</button>`:'<p class="hint">기존 사진과 연결 확인이 필요한 사진입니다. 현장명을 바꾸지 않고 사진을 직접 선택해 배정할 수 있습니다.</p>'}
     <button id="aptUnitUpload" class="blue">이 위치에 사진 추가</button>
     <button id="aptUnitReport" class="ghost">이 위치 사진 작업일지</button>
+    ${shown.length?`<button id="aptUnitSelectAll" type="button" class="ghost">☑ 이 목록 전체 선택 (${shown.length}장)</button>`:''}
     <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small>${escapeHtml(f._worklabel||'작업 내용 미입력')}${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
     ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
     <label for="aptUnitAssignTarget" style="display:block;margin-top:12px">선택한 사진을 배정할 위치</label>
@@ -11222,6 +11223,9 @@ function aptUnitView(projectName,unitId='',limit=80){
   if($('#aptUnitEdit'))$('#aptUnitEdit').onclick=()=>aptUnitEdit(projectName,unitId);
   $('#aptUnitUpload').onclick=()=>gdUploadPhotos({project:projectName,unitId});
   $('#aptUnitReport').onclick=()=>photoReport(projectName,{unitFilter:unitId?'unit:'+unitId:'unassigned'});
+  // 미배정 사진 수십 장을 한 세대로 옮길 때 하나씩 체크하지 않게 — 보이는 목록만(더 보기로 늘리면 그만큼) 켜고 끈다
+  const selAll=$('#aptUnitSelectAll');
+  if(selAll)selAll.onclick=()=>{const boxes=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check')];const all=boxes.length>0&&boxes.every(b=>b.checked);boxes.forEach(b=>{b.checked=!all;});selAll.textContent=(all?'☑ 이 목록 전체 선택 (':'☐ 전체 해제 (')+boxes.length+'장)';};
   $('#aptUnitSearch').oninput=e=>{const q=aptUnitLabelKey(e.target.value);document.querySelectorAll('[data-unit-label]').forEach(b=>b.hidden=!b.dataset.unitLabel.includes(q));};
   document.querySelectorAll('[data-apt-unit]').forEach(b=>b.onclick=()=>aptUnitView(projectName,b.dataset.aptUnit));
   document.querySelectorAll('[data-unit-photo]').forEach(b=>b.onclick=e=>{e.preventDefault();openLightbox(b.dataset.unitPhoto,photos.map(f=>f.id));});
@@ -13587,9 +13591,26 @@ function hjDocPrint(html){
   }catch(e){toast('인쇄 실패: '+(e.message||e));return false;}
 }
 // 워드가 여는 HTML. @page·WordSection1 로 A4 를 잡고, 워드에선 뜻이 없는 인쇄 버튼은 뺀다.
+// 워드가 여는 HTML. @page·WordSection1 로 A4 를 잡고, 워드에선 뜻이 없는 인쇄 버튼은 뺀다.
+// 워드는 CSS grid·flex 를 모르므로 사진 격자는 2열 표로 바꾸고, 사진 폭은 숫자로 못 박는다
+// (width:100% 를 그대로 두면 워드가 사진 한 장을 쪽 너비로 늘린다).
 function hjDocWordHtml(html){
-  return String(html||'')
-    .replace(/<div class="pbar">[\s\S]*?<\/div>/,'')
+  let src=String(html||'');
+  try{
+    const doc=new DOMParser().parseFromString(src,'text/html');
+    doc.querySelectorAll('.pbar').forEach(el=>el.remove());
+    doc.querySelectorAll('div[style*="display:grid"]').forEach(g=>{
+      const figs=Array.prototype.slice.call(g.children);if(!figs.length)return;
+      const t=doc.createElement('table');t.setAttribute('width','100%');t.setAttribute('cellpadding','4');t.style.borderCollapse='collapse';
+      let tr=null;
+      figs.forEach((f,i)=>{if(i%2===0){tr=doc.createElement('tr');t.appendChild(tr);}
+        const td=doc.createElement('td');td.setAttribute('width','50%');td.setAttribute('valign','top');td.appendChild(f);tr.appendChild(td);});
+      g.replaceWith(t);
+    });
+    doc.querySelectorAll('img[data-photo]').forEach(im=>{im.setAttribute('width','230');im.style.width='230px';im.style.height='auto';im.style.aspectRatio='';});
+    src='<!DOCTYPE html>'+doc.documentElement.outerHTML;
+  }catch(e){ src=src.replace(/<div class="pbar">[\s\S]*?<\/div>/,''); }   // DOMParser 가 없는 환경이면 예전 방식
+  return src
     .replace(/<html([^>]*)>/i,'<html$1 xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">')
     .replace(/<\/head>/i,
       '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->'+
@@ -13597,6 +13618,50 @@ function hjDocWordHtml(html){
       'body{background:#fff;padding:0}.doc{box-shadow:none;border-radius:0;max-width:none}</style></head>')
     .replace(/<body([^>]*)>/i,'<body$1><div class="WordSection1">')
     .replace(/<\/body>/i,'</div></body>');
+}
+/* 워드는 HTML 안의 data: 이미지(base64)를 그리지 않는다 — 빨간 X 상자만 남는다
+   (2026-09-16 대표님 워드 화면: 작업 전 4장·후 3장이 전부 X). v310 이 그 상태로 나갔다.
+   워드가 사진까지 읽는 단일 파일 형식은 MHTML(웹 아카이브)이다 — HTML 한 조각과 사진
+   조각들을 MIME multipart/related 로 묶고, <img src> 는 각 조각의 Content-Location 을
+   가리킨다. .doc 확장자로 저장해도 워드는 내용을 보고 MHTML 로 연다.
+   HTML 조각은 quoted-printable, 사진 조각은 base64 — 워드가 오래 써 온 조합이다.
+   조각 주소는 http:// 꼴의 가짜 절대주소를 쓴다. file:///C:/… 는 워드 자신이 쓰는 꼴이지만
+   Chromium 은 보안상 file: 하위 자원을 막아 사진이 안 뜬다(실험으로 확인). http:// 는 워드(IE
+   웹 아카이브를 늘 열어 왔다)와 Chromium 이 다 맞춰 준다. 주소가 조각과 정확히 같으면
+   아무도 실제로 네트워크에 나가지 않는다. */
+function hjQuotedPrintable(s){
+  const bytes=new TextEncoder().encode(String(s||''));
+  let out='',line='';
+  const flush=()=>{ // 줄 끝의 공백·탭은 QP 규칙상 부호화해야 한다(안 하면 읽는 쪽이 잘라낸다)
+    if(line&&(line.endsWith(' ')||line.endsWith('\t'))){const c=line.charCodeAt(line.length-1);line=line.slice(0,-1)+'='+c.toString(16).toUpperCase().padStart(2,'0');}
+    out+=line+'\r\n';line='';
+  };
+  const push=tok=>{ if(line.length+tok.length>75){out+=line+'=\r\n';line='';} line+=tok; };
+  for(let i=0;i<bytes.length;i++){
+    const b=bytes[i];
+    if(b===13&&bytes[i+1]===10){flush();i++;continue;}
+    if(b===10||b===13){flush();continue;}
+    if((b>=33&&b<=126&&b!==61)||b===32||b===9)push(String.fromCharCode(b));
+    else push('='+b.toString(16).toUpperCase().padStart(2,'0'));
+  }
+  if(line){if(line.endsWith(' ')||line.endsWith('\t')){const c=line.charCodeAt(line.length-1);line=line.slice(0,-1)+'='+c.toString(16).toUpperCase().padStart(2,'0');}out+=line;}
+  return out;
+}
+function hjDocWordMhtml(html){
+  const parts=[];
+  const body=hjDocWordHtml(html).replace(/src="data:(image\/[a-z0-9.+-]+);base64,([^"]+)"/gi,(m,mime,b64)=>{
+    const ext=mime.split('/')[1].replace('jpeg','jpg').replace(/[^a-z0-9]/g,'')||'bin';
+    const loc='http://hyeonjang.local/img'+(parts.length+1)+'.'+ext;
+    parts.push({loc:loc,mime:mime,b64:b64.replace(/\s/g,'')});
+    return 'src="'+loc+'"';
+  });
+  const B='----=_NextPart_hyeonjang_doc';
+  const wrap=b=>b.replace(/(.{76})/g,'$1\r\n');
+  let out='MIME-Version: 1.0\r\nContent-Type: multipart/related; type="text/html"; boundary="'+B+'"\r\n\r\n';
+  out+='--'+B+'\r\nContent-Type: text/html; charset="utf-8"\r\nContent-Transfer-Encoding: quoted-printable\r\nContent-Location: http://hyeonjang.local/doc.htm\r\n\r\n'+hjQuotedPrintable(body)+'\r\n\r\n';
+  parts.forEach(p=>{out+='--'+B+'\r\nContent-Type: '+p.mime+'\r\nContent-Transfer-Encoding: base64\r\nContent-Location: '+p.loc+'\r\n\r\n'+wrap(p.b64)+'\r\n\r\n';});
+  out+='--'+B+'--\r\n';
+  return out;
 }
 function hjDocDownload(text,fname,mime){
   const u=URL.createObjectURL(new Blob([text],{type:mime}));
@@ -13625,7 +13690,7 @@ function hjDocDeliverView(name,html,base,label,backFn){
   const root=document.getElementById('modalRoot');
   const on=function(id,fn){const el=root.querySelector('#'+id);if(el)el.onclick=fn;};
   on('hjDocPdf',function(){hjDocPrint(html);});
-  on('hjDocWord',function(){hjDocDownload(hjDocWordHtml(html),base+'.doc','application/msword');toast('워드 파일로 저장했습니다');});
+  on('hjDocWord',function(){hjDocDownload(hjDocWordMhtml(html),base+'.doc','application/msword');toast('워드 파일로 저장했습니다');});
   on('hjDocHtml',async function(){
     try{await hjWarrantyShareHtml(name,html,base+'.html',label);}
     catch(e){toast('저장 실패: '+(e.message||e));}
@@ -30203,6 +30268,18 @@ function paidExactKeys(value,keys){return !!value&&typeof value==='object'&&!Arr
 function paidUtcIso(value){if(typeof value!=='string')return false;const ms=Date.parse(value);return Number.isFinite(ms)&&new Date(ms).toISOString()===value;}
 function paidGenerationKey(value){return typeof value==='string'&&new RegExp('^'+PAID_COMMIT_GENERATION_PREFIX+'[A-Za-z0-9_-]{1,160}$').test(value);}
 function paidClone(value){return JSON.parse(JSON.stringify(value));}
+/* 키 순서에 무관한 문자열 — 유상 커밋의 '정확일치' 검사용.
+   초안(draft)을 고칠 때 사진 항목에 aptUnit 을 처음 붙이면 그 키가 맨 뒤에 덧붙는데, 복원 뒤
+   재직렬화(serializeData)는 고정된 순서로 다시 만들어 aptUnit 이 sourceModifiedAt 앞에 온다.
+   같은 자료가 다른 JSON 문자열이 되어 'paid exact round-trip conflict' 로 저장 뒤 화면 갱신이
+   막혔다(2026-09-17 대표님 화면 — 카톡으로 들어온 사진은 sourceModifiedAt 이 있어 전부 걸렸고,
+   예전 사진·테스트 픽스처는 그 키가 없어 안 걸렸다). 배열 순서는 그대로 두고 객체 키만 정렬한다. */
+function paidStableJson(value){
+  return JSON.stringify(value,function(key,v){
+    if(v&&typeof v==='object'&&!Array.isArray(v)){const o={};Object.keys(v).sort().forEach(function(k){o[k]=v[k];});return o;}
+    return v;
+  });
+}
 function paidObservedClone(value){return structuredClone(value);}
 function paidSameBytes(left,right){const a=new Uint8Array(left),b=new Uint8Array(right);if(a.byteLength!==b.byteLength)return false;for(let index=0;index<a.byteLength;index++)if(a[index]!==b[index])return false;return true;}
 function paidSameBufferMetadata(left,right,tag){
@@ -30530,7 +30607,7 @@ function paidExactHydrationPlan(data){
   shadow.files=exactFiles.concat(derivedFiles);
   if(!Number.isSafeInteger(exact._savedFileCount)||exact._savedFileCount<0||shadow.files.length!==exact._savedFileCount)throw new Error('paid exact saved file count conflict');
   const roundTrip=serializeData(shadow,exact.savedAt);validatePaidSerializedState(roundTrip);
-  if(JSON.stringify(roundTrip)!==JSON.stringify(exact))throw new Error('paid exact round-trip conflict');
+  if(paidStableJson(roundTrip)!==paidStableJson(exact))throw new Error('paid exact round-trip conflict');
   const retainedThumbs=new Set(shadow.files.map(file=>file&&file.thumb).filter(Boolean));
   const revoke=(state.files||[]).filter(file=>file&&typeof file.thumb==='string'&&file.thumb.startsWith('blob:')&&!retainedThumbs.has(file.thumb));
   return Object.freeze({exact,shadow,revoke});
@@ -30539,7 +30616,7 @@ function assertPaidLiveStateExact(data){
   const exact=paidClone(data);validatePaidSerializedState(exact);
   if(!Number.isSafeInteger(exact._savedFileCount)||exact._savedFileCount<0||(state.files||[]).length!==exact._savedFileCount)throw new Error('paid exact live file count conflict');
   const live=serializeData(state,exact.savedAt);validatePaidSerializedState(live);
-  if(JSON.stringify(live)!==JSON.stringify(exact))throw new Error('paid exact live state conflict');
+  if(paidStableJson(live)!==paidStableJson(exact))throw new Error('paid exact live state conflict');
   return true;
 }
 function applyPaidCommittedState(data){

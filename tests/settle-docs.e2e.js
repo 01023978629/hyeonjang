@@ -400,6 +400,78 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.back, '[← 뒤로] 가 없으면 문서 목록으로 못 돌아간다');
   });
 
+  // (12) v311 — 워드 파일에 사진이 실제로 들어간다.
+  //      v310 은 HTML 안에 data: 이미지(base64)를 그대로 두고 .doc 으로 내보냈다. 워드는 그걸 안 그린다 —
+  //      대표님 워드 화면에서 작업 전 4장·후 3장이 전부 빨간 X 였다. 사진을 MIME 조각으로 따로 싣는
+  //      MHTML(웹 아카이브)이어야 워드가 읽는다. 여기서는 (a) 구조가 맞는지, (b) HTML 조각을 QP 복원하면
+  //      한글이 온전한지, (c) 사진 주소가 전부 조각과 짝이 맞는지, (d) 그 파일을 Chromium 이 file:// 로
+  //      열었을 때 사진이 실제로 그려지는지까지 본다 — Chromium 은 MHTML 을 원래 읽는 브라우저라
+  //      구조가 틀리면 사진이 안 뜬다(file:/// 주소로 만들었을 때 실제로 8장 다 안 떴다).
+  await test('워드(.doc) — 사진이 MHTML 조각으로 실리고, HTML 조각에 data: 이미지가 남지 않는다', async () => {
+    const r = await page.evaluate(() => {
+      const mk = (c) => { const cv = document.createElement('canvas'); cv.width = 320; cv.height = 240; const g = cv.getContext('2d'); g.fillStyle = c; g.fillRect(0, 0, 320, 240); return cv.toDataURL('image/jpeg', 0.8); };
+      state.projects = [{ name: '한밭우성아파트', stage: 4, received: 0, doneAt: '2026-09-01', phases: ['도배'],
+        cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '관리사무소' }, archived: false }];
+      state.files = [1, 2, 3].map(i => ({ id: 'wph' + i, kind: 'photo', project: '한밭우성아파트', name: 'w' + i + '.jpg', thumb: mk(i < 3 ? '#b45309' : '#0a7f43'), when: new Date('2026-09-0' + i) }));
+      state.quotes = [];
+      const html = warrantyHTML('한밭우성아파트', { beforeIds: ['wph1', 'wph2'], afterIds: ['wph3'] });
+      const mht = hjDocWordMhtml(html);
+      const B = '------=_NextPart_hyeonjang_doc';
+      const parts = mht.split(B).filter(x => /^\r\nContent-Type:/.test(x));
+      const htmlPart = parts.find(x => /Content-Type: text\/html/.test(x)) || '';
+      const body = htmlPart.split('\r\n\r\n').slice(1).join('\r\n\r\n');
+      // quoted-printable 복원 → UTF-8
+      const qp = body.replace(/=\r\n/g, '').replace(/=([0-9A-F]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+      const bytes = new Uint8Array(qp.length); for (let i = 0; i < qp.length; i++) bytes[i] = qp.charCodeAt(i);
+      const decoded = new TextDecoder().decode(bytes);
+      const locs = [...mht.matchAll(/^Content-Location: (\S+)/gm)].map(m => m[1]);
+      const srcs = [...decoded.matchAll(/<img[^>]*src="([^"]+)"/g)].map(m => m[1]);
+      const imgParts = parts.filter(x => /Content-Type: image\//.test(x));
+      // 사진 조각의 base64 가 실제 JPEG 인지(디코딩 시 FF D8 로 시작)
+      const firstB64 = ((imgParts[0] || '').split('\r\n\r\n')[1] || '').replace(/\s/g, '');
+      const bin = atob(firstB64.slice(0, 8));
+      return { mimeHead: mht.startsWith('MIME-Version: 1.0\r\nContent-Type: multipart/related;'),
+        imgParts: imgParts.length, htmlDataLeft: (decoded.match(/src="data:/g) || []).length,
+        srcs: srcs.length, unresolved: srcs.filter(x => !locs.includes(x)).length,
+        hangul: decoded.includes('작 업 하 자 보 증 서') && decoded.includes('관리사무소'),
+        jpegMagic: bin.charCodeAt(0) === 0xFF && bin.charCodeAt(1) === 0xD8,
+        httpLoc: locs.every(l => /^http:\/\//.test(l)), pbar: /window\.print\(\)/.test(decoded), mht };
+    });
+    assert(r.mimeHead, 'MIME multipart/related 머리가 없다 — 워드가 MHTML 로 못 연다');
+    assert(r.imgParts === 3, '사진 조각이 3개여야 한다(전 2 + 후 1): ' + r.imgParts);
+    assert(r.htmlDataLeft === 0, 'HTML 조각에 data: 이미지가 남았다 — 워드에서 빨간 X 가 된다(v310 사고)');
+    assert(r.srcs === 3 && r.unresolved === 0, '모든 <img src> 가 조각 Content-Location 과 짝이 맞아야 한다: ' + JSON.stringify(r));
+    assert(r.hangul, 'QP 복원 후 한글이 깨졌다');
+    assert(r.jpegMagic, '사진 조각이 JPEG 바이트가 아니다');
+    assert(r.httpLoc, '조각 주소는 http:// 절대주소여야 한다 — file:/// 는 Chromium 이 막는다(실험으로 확인)');
+    assert(!r.pbar, '워드 파일에 인쇄 버튼이 남았다');
+    // (d) Chromium 이 file:// 로 열어 사진을 그리는가
+    const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+    const f = path.join(os.tmpdir(), 'hj-word-' + process.pid + '.mht');
+    fs.writeFileSync(f, r.mht);
+    const p2 = await ctx.newPage();
+    try {
+      await p2.goto('file://' + f);
+      await p2.waitForFunction(() => [...document.images].every(i => i.complete), null, { timeout: 8000 });
+      const imgs = await p2.evaluate(() => [...document.images].map(i => ({ w: i.naturalWidth, ok: i.complete && i.naturalWidth > 0 })));
+      assert(imgs.length === 3, 'MHTML 을 연 화면에 사진이 3장이어야 한다: ' + imgs.length);
+      assert(imgs.every(i => i.ok), 'MHTML 안의 사진이 그려지지 않았다(naturalWidth 0) — 조각 주소·인코딩이 어긋난 것: ' + JSON.stringify(imgs));
+      assert(imgs.every(i => i.w === 320), '사진 원본 크기가 보존되어야 한다(320): ' + JSON.stringify(imgs));
+    } finally { await p2.close(); try { fs.unlinkSync(f); } catch (e) {} }
+  });
+
+  await test('워드(.doc) — 사진 격자는 2열 표로, 사진 폭은 숫자로 못 박는다(워드는 grid·width:100% 를 모른다)', async () => {
+    const r = await page.evaluate(() => {
+      const html = warrantyHTML('한밭우성아파트', { beforeIds: ['wph1', 'wph2'], afterIds: ['wph3'] });
+      const w = hjDocWordHtml(html);
+      return { gridsLeft: (w.match(/display:grid/g) || []).length, tables: (w.match(/<table width="100%"/g) || []).length,
+        fixed: (w.match(/<img[^>]*data-photo[^>]*width="230"/g) || []).length, rows: (w.match(/<tr>/g) || []).length };
+    });
+    assert(r.gridsLeft === 0, '워드 파일에 CSS grid 가 남았다 — 워드가 사진을 세로로 한 줄씩 늘어놓는다');
+    assert(r.tables === 2, '전·후 격자 둘이 표 둘로 바뀌어야 한다: ' + r.tables);
+    assert(r.fixed === 3, '사진 3장 모두 width="230" 이어야 한다(안 그러면 워드가 쪽 너비로 늘린다): ' + r.fixed);
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
