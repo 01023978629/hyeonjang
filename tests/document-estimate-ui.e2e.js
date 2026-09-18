@@ -128,6 +128,31 @@ async function capture(t,name){if(!process.env.HJ_DOCUMENT_ESTIMATE_SCREENSHOT_D
     assert.equal(await t.page.locator('.estimates-view img').count(),0);assert((await t.page.locator('.estimates-view').innerText()).includes(X));
     await readonly(t,before);
   });
+  await run('상세 열림은 toggle 이벤트가 아니라 화면을 진실로 삼는다 — 이벤트보다 재렌더가 먼저 와도 안 닫힌다',async t=>{
+    // 배포를 두 번 막은 흔들림(v308·v315). 열림 기록이 비동기 toggle 이벤트로만 쌓여서, 그 이벤트가
+    // 오기 전에 목록이 다시 그려지면(검색 한 글자면 충분하다) 옛 요소가 화면에서 빠지고 핸들러의
+    // isConnected 검사에 걸려 기록이 조용히 버려졌다. 바쁜 기계(CI)에서만 그 순서가 났다.
+    // 여기서는 그 순서를 일부러 만든다 — 사람 손으로는 재현할 수 없고 기계에만 나던 경합이다.
+    const before=await snap(t.page);
+    const r=await t.page.evaluate(()=>{
+      const sel='details[data-estimate-details="fake-alpha"]';
+      const d=()=>document.querySelector(sel);
+      d().open=true;                                   // toggle 은 비동기 — 아직 기록 전
+      __estimateListUI.search='베타';render();          // 그 사이에 다시 그린다
+      __estimateListUI.search='';render();
+      return {open:!!(d()&&d().open),recorded:[...__estimateOpenDetails]};
+    });
+    assert(r.open,'toggle 이벤트보다 재렌더가 먼저 오면 열어 둔 상세가 닫혀 버린다: '+JSON.stringify(r));
+    assert(r.recorded.includes('fake-alpha'),'열림 기록이 화면과 같아야 한다: '+JSON.stringify(r.recorded));
+    // 닫은 것도 같은 규칙이어야 한다 — 화면에서 닫혀 있으면 기록도 지워진다
+    const c=await t.page.evaluate(()=>{
+      const d=()=>document.querySelector('details[data-estimate-details="fake-alpha"]');
+      d().open=false;__estimateListUI.sort='amount';render();__estimateListUI.sort='original';render();
+      return {open:!!(d()&&d().open),recorded:[...__estimateOpenDetails]};
+    });
+    assert(!c.open&&!c.recorded.includes('fake-alpha'),'닫은 상세가 다시 열리면 안 된다: '+JSON.stringify(c));
+    await readonly(t,before);
+  });
   await run('한글 조합 중 검색 DOM·초점 유지 및 조합 종료 후 적용',async t=>{
     const before=await snap(t.page);await t.page.locator('#estimateListSearch').focus();
     await t.page.evaluate(()=>{const el=document.getElementById('estimateListSearch');window.__documentImeInput=el;el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));});
