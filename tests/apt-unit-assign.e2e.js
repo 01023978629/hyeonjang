@@ -103,6 +103,49 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert(r.title.includes('21동 1203호') && r.title.includes('6장'), '저장 뒤 그 세대 화면으로 넘어가 6장이 보여야 한다: ' + r.title);
   });
 
+  await test('작업명 일괄 입력 — 고른 사진에 한 번에 들어가고, 선택·배정 칸은 그대로 남는다', async () => {
+    await seed();
+    await page.evaluate(A => aptUnitView(A, ''), A);
+    let r = await page.evaluate(() => { const b = document.getElementById('aptUnitWorkSave'), i = document.getElementById('aptUnitWork');
+      return { btn: !!b, wired: !!b && typeof b.onclick === 'function', input: !!i, list: !!document.getElementById('aptUnitWorkList') }; });
+    assert(r.btn && r.wired && r.input && r.list, '작업명 칸·버튼이 직접 배선되어야 한다(모달은 #view 위임 밖): ' + JSON.stringify(r));
+    // 아무것도 안 고르고 누르면 안내만 하고 아무것도 안 바뀐다
+    await page.evaluate(() => { document.getElementById('aptUnitWork').value = 'TEST 화장실 방수'; document.getElementById('aptUnitWorkSave').click(); });
+    r = await page.evaluate(() => ({ issue: document.getElementById('aptUnitIssue').textContent, labels: state.files.filter(f => f._worklabel).length }));
+    assert(/고르세요/.test(r.issue) && r.labels === 0, '선택 없이 저장되면 안 된다: ' + JSON.stringify(r));
+    // 전체 선택 → 배정 칸을 21동 1204호로 바꿔 두고 → 작업명 넣기
+    await page.evaluate(() => { document.getElementById('aptUnitSelectAll').click(); document.getElementById('aptUnitAssignTarget').value = 'u2'; document.getElementById('aptUnitWorkSave').click(); });
+    r = await page.evaluate(() => ({ labeled: state.files.filter(f => f._worklabel === 'TEST 화장실 방수').map(f => f.id).sort(),
+      untouched: state.files.find(f => f.id === 'kk7')._worklabel || null, links: state.files.filter(f => f._aptUnit).map(f => f.id),
+      checked: document.querySelectorAll('#modalRoot .apt-unit-photo-check:checked').length, target: document.getElementById('aptUnitAssignTarget').value,
+      shownLabel: (document.querySelector('#modalRoot .apt-unit-row small') || {}).textContent, dirty: state.dirty, issue: document.getElementById('aptUnitIssue').textContent }));
+    assert(eq(r.labeled, ['kk1', 'kk2', 'kk3', 'kk4', 'kk5', 'kk6']), '미배정 6장에 작업명: ' + JSON.stringify(r.labeled));
+    assert(r.untouched === null, '목록에 없던 kk7(다른 세대)은 건드리면 안 된다');
+    assert(eq(r.links, ['kk7']), '작업명 저장이 동·호수 연결을 바꾸면 안 된다: ' + JSON.stringify(r.links));
+    assert(r.checked === 6 && r.target === 'u2', '선택과 배정 칸이 그대로 남아야 이어서 배정할 수 있다: ' + JSON.stringify(r));
+    assert(/TEST 화장실 방수/.test(r.shownLabel || ''), "목록이 새 작업명으로 다시 그려져야 한다: " + r.shownLabel);
+    assert(r.dirty === true, '작업명을 바꿨으면 저장 대상이어야 한다');
+    // 직렬화 왕복
+    const rt = await page.evaluate(() => JSON.parse(JSON.stringify(serializeData())).files.filter(f => f.worklabel === 'TEST 화장실 방수').length);
+    assert(rt === 6, '직렬화에 작업명이 남아야 백업에 실린다: ' + rt);
+  });
+
+  await test('작업명 제안 목록은 이 현장에서 쓴 것만 · 빈 칸은 확인을 거쳐야 지운다', async () => {
+    await seed();
+    await page.evaluate(A => { state.files.find(f => f.id === 'kk1')._worklabel = 'TEST 지난 작업';
+      state.files.push({ id: 'other', name: '가상_other.jpg', kind: 'photo', ext: 'jpg', prefix: '', size: 1, project: '가상 다른현장', when: new Date('2026-09-01'), _worklabel: 'TEST 남의 현장 작업' });
+      aptUnitView(A, ''); }, A);
+    let r = await page.evaluate(() => [...document.querySelectorAll('#aptUnitWorkList option')].map(o => o.value));
+    assert(eq(r, ['TEST 지난 작업']), '제안은 이 현장에서 쓴 작업명만: ' + JSON.stringify(r));
+    // 빈 칸 + 취소 → 그대로
+    await page.evaluate(() => { window.confirm = () => false; document.getElementById('aptUnitSelectAll').click(); document.getElementById('aptUnitWork').value = '   '; document.getElementById('aptUnitWorkSave').click(); });
+    assert((await page.evaluate(() => state.files.find(f => f.id === 'kk1')._worklabel)) === 'TEST 지난 작업', '취소했는데 작업명을 지웠다');
+    // 빈 칸 + 확인 → 지운다
+    await page.evaluate(() => { window.confirm = () => true; document.getElementById('aptUnitWorkSave').click(); });
+    r = await page.evaluate(() => ({ left: state.files.filter(f => f.project === '가상 삼성아파트' && f._worklabel).length, other: state.files.find(f => f.id === 'other')._worklabel }));
+    assert(r.left === 0 && r.other === 'TEST 남의 현장 작업', '확인하면 고른 것만 지운다: ' + JSON.stringify(r));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length, failed = results.filter(r => !r.ok);

@@ -2700,7 +2700,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v314-warrantysign';
+const APP_BUILD='hyeonjang-v315-worklabel';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11193,6 +11193,14 @@ function aptUnitEdit(projectName,id=''){
   const show=()=>{const common=$('#aptUnitType').value==='common';$('#aptUnitNumbers').hidden=common;$('#aptUnitNumbers').style.display=common?'none':'';$('#aptUnitNameLabel').hidden=!common;};
   $('#aptUnitType').onchange=show;show();aptUnitModalStyle();
 }
+// 이 현장에서 실제로 쓴 작업명을 최근 순으로 — 사장님이 매번 새로 치지 않게 제안 목록에 넣는다
+function hjRecentWorkLabels(projectName,max){
+  const seen=new Set(),out=[];
+  (state.files||[]).filter(function(f){return f&&f.project===projectName&&f._worklabel;})
+    .sort(function(a,b){return new Date(b.when||0)-new Date(a.when||0);})
+    .forEach(function(f){const v=String(f._worklabel).trim();if(!v||seen.has(v))return;seen.add(v);out.push(v);});
+  return out.slice(0,max||8);
+}
 function aptUnitView(projectName,unitId='',limit=80){
   const p=aptUnitProject(projectName);if(!p){toast('프로젝트를 다시 선택하세요');return;}
   const units=aptUnitList(p),unit=units.find(u=>u.id===unitId);if(unitId&&!unit){toast('동·호수 연결을 확인해 주세요');unitId='';}
@@ -11212,6 +11220,11 @@ function aptUnitView(projectName,unitId='',limit=80){
     ${unit?'<button id="aptUnitWarranty" class="ghost" title="준공 처리된 현장에서 이 세대 이름·사진으로 하자보증서를 만듭니다">🛡 이 세대 하자보증서</button>':''}
     <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small>${escapeHtml(f._worklabel||'작업 내용 미입력')}${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
     ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
+    ${shown.length?`<label for="aptUnitWork" style="display:block;margin-top:12px">선택한 사진 작업명 (한 번에)</label>
+    <input id="aptUnitWork" maxlength="40" list="aptUnitWorkList" placeholder="예: 화장실 방수 · 도배 마감">
+    <datalist id="aptUnitWorkList">${hjRecentWorkLabels(projectName).map(v=>`<option value="${escapeAttr(v)}"></option>`).join('')}</datalist>
+    <button id="aptUnitWorkSave" type="button" class="ghost">✍ 선택한 사진에 작업명 넣기</button>
+    <p class="hint">작업명만 바꿉니다 — 동·호수 연결·원본 파일은 그대로입니다.</p>`:''}
     <label for="aptUnitAssignTarget" style="display:block;margin-top:12px">선택한 사진을 배정할 위치</label>
     <select id="aptUnitAssignTarget"><option value="">동·호수 미지정</option>${units.map(u=>`<option value="${escapeAttr(u.id)}">${escapeHtml(aptUnitLabel(u))}</option>`).join('')}</select>
     <p class="hint">선택한 사진의 동·호수 연결만 바꿉니다. 원본 파일·프로젝트명·작업명은 유지합니다.</p>
@@ -11227,6 +11240,24 @@ function aptUnitView(projectName,unitId='',limit=80){
   // 미배정 사진 수십 장을 한 세대로 옮길 때 하나씩 체크하지 않게 — 보이는 목록만(더 보기로 늘리면 그만큼) 켜고 끈다
   const selAll=$('#aptUnitSelectAll');
   if(selAll)selAll.onclick=()=>{const boxes=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check')];const all=boxes.length>0&&boxes.every(b=>b.checked);boxes.forEach(b=>{b.checked=!all;});selAll.textContent=(all?'☑ 이 목록 전체 선택 (':'☐ 전체 해제 (')+boxes.length+'장)';};
+  // 작업명 일괄 입력 — 카톡으로 받은 사진 수십 장이 전부 '작업 내용 미입력' 이던 걸 한 번에 채운다.
+  // _worklabel 은 유상 필드가 아니라 일반 경로(setWorkLabel → markDirty)로 쓴다. 배정(유상)과 한 흐름에
+  // 섞지 않는다 — 유상 커밋은 state.files 를 통째로 다시 만들어서, 같은 흐름에 끼우면 방금 쓴 값을 잃는다.
+  const workSave=$('#aptUnitWorkSave');
+  if(workSave)workSave.onclick=()=>{
+    const input=$('#aptUnitWork'),label=String((input&&input.value)||'').trim();
+    const ids=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check:checked')].map(x=>x.value);
+    const issue=document.getElementById('aptUnitIssue');if(issue)issue.textContent='';
+    if(!ids.length){if(issue)issue.textContent='작업명을 넣을 사진을 먼저 고르세요.';return;}
+    if(!label&&!confirm('고른 사진 '+ids.length+'장의 작업명을 지울까요?'))return;   // 빈 칸은 '지우기' 라 한 번 묻는다
+    const target=$('#aptUnitAssignTarget').value;
+    setWorkLabel(ids,label,{render:false,notify:false});
+    aptUnitView(projectName,unitId,limit);
+    document.querySelectorAll('#modalRoot .apt-unit-photo-check').forEach(x=>{x.checked=ids.indexOf(x.value)>=0;});
+    const t=$('#aptUnitAssignTarget');if(t)t.value=target;
+    const w=$('#aptUnitWork');if(w)w.value=label;
+    toast(label?ids.length+'장에 작업명 “'+label+'” 지정':ids.length+'장의 작업명을 지웠습니다');
+  };
   if($('#aptUnitWarranty'))$('#aptUnitWarranty').onclick=()=>warrantyView(projectName,{unitId});
   $('#aptUnitSearch').oninput=e=>{const q=aptUnitLabelKey(e.target.value);document.querySelectorAll('[data-unit-label]').forEach(b=>b.hidden=!b.dataset.unitLabel.includes(q));};
   document.querySelectorAll('[data-apt-unit]').forEach(b=>b.onclick=()=>aptUnitView(projectName,b.dataset.aptUnit));
