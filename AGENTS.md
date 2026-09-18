@@ -3,6 +3,30 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-16 테스트 5개 playwright 로딩 관용구 통일
+
+`tests/` 의 e2e 5개가 `const {chromium}=require('playwright');` 로 직접 불러
+컨테이너에 전역 playwright 만 있는 환경에서 `Cannot find module 'playwright'` 로
+앱이 뜨기도 전에 require 단계에서 죽었다(각 0.1초). 저장소 표준 관용구
+(`/opt/node22/lib/node_modules/playwright` 를 먼저 보고 실패하면 일반 해석)로 맞췄다.
+대상: `mobile-friendly-ui` · `mobile-screen-layout` · `mobile-todo-nav` ·
+`shared-todo-backup` · `shared-todo`.
+같은 5개의 `executablePath` 도 `PLAYWRIGHT_EXECUTABLE||undefined` 뿐이라
+`/opt/pw-browsers/chromium` 폴백이 빠져 있었다. 나머지 파일과 같은 식으로 맞췄다.
+검사 내용·어서션·타임아웃은 그대로다 — 파일당 require 1줄과 executablePath 1줄만 바뀐다.
+CI(`deploy-pages.yml`)는 `NODE_PATH` 로 playwright 를 주고 `PLAYWRIGHT_EXECUTABLE` 와
+`/opt/pw-browsers/chromium` 심링크를 모두 만들므로 워크플로 변경은 필요 없다.
+검증: 전 153/153 중 수정 전 147통과·6실패 → 수정 후 152통과·1실패. 5개가 FAIL→PASS 로
+바뀐 것 외에 나머지 148개 판정은 동일하다. 5개 단독 실행도 각각 exit 0 이고,
+변이 주입(name-clip·work-grid·route·confirm·revision)은 여전히 전부 검출한다.
+남은 1실패 `tests/team-workboard.e2e.js` 는 수정 전후 동일하게 실패하는 기존 문제이며
+(내려받기 파일명이 `현장데이터_N.json` 이 아니라 `download`) 이번 범위가 아니다.
+`shared-todo` 는 전체 실행에서 병렬 부하로 1회 재시도 후 통과했다 — 기존에도 기록된 양상이라
+숨기지 않고 남긴다. 단독 실행에서는 초도 통과했다.
+이 컨테이너의 clone 이 shallow 라 `office-ops-server-isolation.check.js` 가 고정 BASE
+`19657c3` 을 못 찾아 정적 단계에서 전체가 멈췄다. `git fetch --unshallow` 로 풀었다(환경 조치,
+저장소 변경 아님). 실제 자료·계정·Apps Script·제품 코드는 건드리지 않았다.
+
 ## 2026-09-13 원본·영상·백업 안전 v297 개발 후보
 
 사용자가 첫 개발 범위 1~3(삭제/백업 안전, 원본 재연결, 사진·동영상 전송/재시도)을 승인했다.
