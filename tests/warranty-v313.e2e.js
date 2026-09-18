@@ -307,6 +307,73 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert(!(await page.evaluate(() => !!document.getElementById('wrUnit'))), '동·호수 관리를 안 쓰는 현장에 세대 select 가 나오면 settle-docs 격자 검사가 깨진다');
   });
 
+  await test('⑦(b) 동·호수를 쓰는 다세대 현장의 완료보증서는 사진을 섞지 않는다', async () => {
+    await seed([
+      { id: 'm1', project: N, when: '2026-09-01', _phase: '시공 전', _aptUnit: { project: N, unitId: 'u1' } },
+      { id: 'm2', project: N, when: '2026-09-05', _phase: '완료', _aptUnit: { project: N, unitId: 'u2' } },
+    ], [{ ...baseProject, customer: { name: '관리사무소' }, aptUnits: [{ id: 'u1', type: 'unit', dong: '101', ho: '101', name: '', note: '' }, { id: 'u2', type: 'unit', dong: '101', ho: '102', name: '', note: '' }] }]);
+    const r = await page.evaluate(async n => { hjWarrantyShareHtml = async (nm, html) => { window.__sentHtml = html; return true; };
+      await warrantyIssueSend(n);
+      return { photos: (window.__sentHtml.match(/data-photo=/g) || []).length, section: window.__sentHtml.includes('작업 사진'),
+        ids: state.projects[0].warrantyDoc.photoIds, log: state.projects[0].warrantyLog[0], toast: (document.getElementById('toast') || {}).textContent, as: window.__sentHtml.includes('무상 A/S') }; }, N);
+    assert(r.photos === 0 && !r.section, '서로 다른 세대 사진이 한 장에 섞여 고객에게 나가면 안 된다: ' + JSON.stringify([r.photos, r.section]));
+    assert(eq(r.ids, { before: [], after: [] }) && r.log.before === 0 && r.log.after === 0, '기록도 0장이어야 한다: ' + JSON.stringify([r.ids, r.log]));
+    assert(/세대 하자보증서/.test(r.toast), '어디서 세대 사진을 넣는지 알려 줘야 한다: ' + r.toast);
+    assert(r.as, 'kakao ⑤ 문구는 그대로');
+  });
+
+  await test('⑧ 완료보증서를 두 번 눌러도 한 번만 나간다', async () => {
+    await seed([{ id: 'b1', project: N, when: '2026-09-01', _phase: '시공 전' }], [baseProject]);
+    const r = await page.evaluate(async n => {
+      let sends = 0, release;
+      const gate = new Promise(res => { release = res; });
+      hjWarrantyShareHtml = async () => { sends++; await gate; return true; };
+      const first = warrantyIssueSend(n);
+      // 가드가 없으면 두 번째도 gate 에 걸려 돌아오지 않는다 — 그걸 교착(테스트 멈춤)이 아니라 값으로 잡는다
+      const second = await Promise.race([warrantyIssueSend(n), new Promise(res => setTimeout(() => res({ 오류: '두 번째가 그대로 나갔다' }), 400))]);
+      release(); await first;
+      return { sends, second, log: (state.projects[0].warrantyLog || []).length };
+    }, N);
+    assert(r.sends === 1, '두 번 눌렀는데 두 번 나갔다: ' + r.sends);
+    assert(r.second && r.second['오류'] === '진행 중', '두 번째는 진행 중이라고 알려야 한다: ' + JSON.stringify(r.second));
+    assert(r.log === 1, '이력도 1건: ' + r.log);
+  });
+
+  await test('⑥(a) 인쇄·워드는 "출력", 실제로 공유된 것만 "발급" — 이 문장은 고객에게도 나간다', async () => {
+    await seed(basePhotos, [baseProject]);
+    await page.evaluate(n => { warrantyView(n); window.__wrPick = { before: ['e1'], after: [] }; }, N);
+    await clickMake(); await waitDoc();
+    await page.evaluate(() => { document.querySelector('#modalRoot #hjDocPdf').click(); const f = document.getElementById('hjDocPrintFrame'); if (f && f.contentWindow) f.contentWindow.print = () => {}; });
+    await page.waitForFunction(() => (state.projects[0].warrantyLog || []).length === 1, null, { timeout: 5000 });
+    const r = await page.evaluate(n => hjStoryData(n).filter(e => e.ic === '🛡').map(e => e.t), N);
+    assert(r.length === 1 && /출력/.test(r[0]) && !/발급/.test(r[0]), '인쇄창은 취소될 수 있으니 발급이라 쓰면 안 된다: ' + JSON.stringify(r));
+  });
+
+  await test('⑤(③) 정리 폴더 안 사진은 공정 폴더가 없어도 건너뛴다 — 재스캔 때 p.phases 가 오염된다', async () => {
+    await seed([
+      { id: 'org2', project: N, when: '2026-09-01', prefix: '_정리완료/' + N + '/현장사진/' },   // 공정 폴더 없음
+      { id: 'plain', project: N, when: '2026-09-02' },
+    ], [baseProject]);
+    await page.evaluate(n => { warrantyView(n); window.__wrPick = { before: ['org2', 'plain'], after: [] }; }, N);
+    await clickMake(); await waitDoc();
+    await page.waitForFunction(() => state.files.find(f => f.id === 'plain')._phase === '시공 전', null, { timeout: 8000 });
+    assert((await ph('org2')) === null, '정리 폴더 사진에 공정을 붙이면 재스캔 때 p.phases 로 올라간다');
+  });
+
+  await test('⑤(⑦) 안전판을 지나는 사이 사진 목록이 통째로 바뀌면 쓰지 않는다(끊긴 객체에 쓰고 성공이라 하지 않는다)', async () => {
+    await seed(basePhotos, [baseProject]);
+    await page.evaluate(n => { warrantyView(n); window.__wrPick = { before: ['e1'], after: ['e3'] }; }, N);
+    await page.evaluate(() => {   // 안전판이 끝나는 순간 state.files 를 새 객체 배열로 교체(유상 커밋·안전판 복구가 하는 일)
+      const orig = window.__origSnap;
+      hjSnapshot = async function (l, f, a) { const ok = await orig(l, f, a); state.files = state.files.map(x => ({ ...x })); return ok; };
+    });
+    await clickMake(); await waitDoc();
+    await page.waitForFunction(() => (document.getElementById('toast') || {}).textContent.includes('공정'), null, { timeout: 8000 });
+    const r = await page.evaluate(() => ({ e1: state.files.find(f => f.id === 'e1')._phase, e3: state.files.find(f => f.id === 'e3')._phase,
+      toast: document.getElementById('toast').textContent }));
+    assert(r.e1 === '시공 전' && r.e3 === '완료', '교체된 새 목록에 제대로 써야 한다(id 로 다시 찾는다): ' + JSON.stringify(r));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
