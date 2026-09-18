@@ -146,6 +146,39 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert(r.left === 0 && r.other === 'TEST 남의 현장 작업', '확인하면 고른 것만 지운다: ' + JSON.stringify(r));
   });
 
+  await test('[전체 선택] 문구가 실제 체크 상태를 따라간다 — 작업명 넣은 뒤에도, 손으로 다 켰을 때도', async () => {
+    await seed();
+    await page.evaluate(A => aptUnitView(A, ''), A);
+    const st = () => page.evaluate(() => ({ checked: document.querySelectorAll('#modalRoot .apt-unit-photo-check:checked').length,
+      txt: document.getElementById('aptUnitSelectAll').textContent }));
+    await page.evaluate(() => document.getElementById('aptUnitSelectAll').click());
+    let r = await st(); assert(r.checked === 6 && /전체 해제/.test(r.txt), '전부 켜면 문구는 해제: ' + JSON.stringify(r));
+    // v315 사고: 작업명을 넣으면 목록이 다시 그려지면서 문구만 '전체 선택' 으로 되돌아갔다.
+    // 그 문구를 믿고 누르면 전부 꺼지고, 이어 누른 [배정 저장] 이 0장으로 끝났다.
+    await page.evaluate(() => { document.getElementById('aptUnitWork').value = 'TEST 방수'; document.getElementById('aptUnitWorkSave').click(); });
+    r = await st(); assert(r.checked === 6 && /전체 해제/.test(r.txt), '작업명 넣은 뒤에도 문구가 실제와 같아야 한다: ' + JSON.stringify(r));
+    // v312 부터 있던 경로: 손으로 전부 켜도 문구는 '전체 선택' 이라, 누르면 켜지는 줄 알았는데 전부 꺼졌다
+    await page.evaluate(() => { document.getElementById('aptUnitSelectAll').click(); document.querySelectorAll('#modalRoot .apt-unit-photo-check').forEach(x => { x.checked = true; x.dispatchEvent(new Event('change', { bubbles: true })); }); });
+    r = await st(); assert(r.checked === 6 && /전체 해제/.test(r.txt), '손으로 전부 켜도 문구가 따라와야 한다: ' + JSON.stringify(r));
+    await page.evaluate(() => document.getElementById('aptUnitSelectAll').click());
+    r = await st(); assert(r.checked === 0 && /전체 선택/.test(r.txt), '그 상태에서 누르면 꺼지고 문구도 따라온다: ' + JSON.stringify(r));
+  });
+
+  await test('작업명 넣기는 목록을 다시 그리지 않는다 — 동·호수 찾기 필터·스크롤이 살아 있고 제안 목록만 늘어난다', async () => {
+    await seed();
+    await page.evaluate(A => aptUnitView(A, ''), A);
+    await page.evaluate(() => { document.getElementById('aptUnitSearch').value = '21'; document.getElementById('aptUnitSearch').dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('aptUnitSelectAll').click(); document.getElementById('aptUnitWork').value = 'TEST 새 작업'; document.getElementById('aptUnitWorkSave').click(); });
+    const r = await page.evaluate(() => ({ search: document.getElementById('aptUnitSearch').value,
+      hidden: [...document.querySelectorAll('#modalRoot [data-unit-label]')].filter(b => b.hidden).length,
+      labels: [...document.querySelectorAll('#modalRoot [data-wl]')].map(e => e.textContent),
+      opts: [...document.querySelectorAll('#aptUnitWorkList option')].map(o => o.value), input: document.getElementById('aptUnitWork').value }));
+    assert(r.search === '21', '검색어가 지워지면 안 된다: ' + r.search);
+    assert(r.labels.length === 6 && r.labels.every(t => t === 'TEST 새 작업'), '작업명 글자가 제자리에서 바뀌어야 한다: ' + JSON.stringify(r.labels));
+    assert(r.opts.includes('TEST 새 작업'), '방금 쓴 작업명이 제안 목록에 들어가야 한다: ' + JSON.stringify(r.opts));
+    assert(r.input === 'TEST 새 작업', '입력칸 값이 남아야 이어서 쓸 수 있다');
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length, failed = results.filter(r => !r.ok);

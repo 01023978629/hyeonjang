@@ -11218,7 +11218,7 @@ function aptUnitView(projectName,unitId='',limit=80){
     <button id="aptUnitReport" class="ghost">이 위치 사진 작업일지</button>
     ${shown.length?`<button id="aptUnitSelectAll" type="button" class="ghost">☑ 이 목록 전체 선택 (${shown.length}장)</button>`:''}
     ${unit?'<button id="aptUnitWarranty" class="ghost" title="준공 처리된 현장에서 이 세대 이름·사진으로 하자보증서를 만듭니다">🛡 이 세대 하자보증서</button>':''}
-    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small>${escapeHtml(f._worklabel||'작업 내용 미입력')}${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
+    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small><span data-wl="${escapeAttr(f.id)}">${escapeHtml(f._worklabel||'작업 내용 미입력')}</span>${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
     ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
     ${shown.length?`<label for="aptUnitWork" style="display:block;margin-top:12px">선택한 사진 작업명 (한 번에)</label>
     <input id="aptUnitWork" maxlength="40" list="aptUnitWorkList" placeholder="예: 화장실 방수 · 도배 마감">
@@ -11238,8 +11238,21 @@ function aptUnitView(projectName,unitId='',limit=80){
   $('#aptUnitUpload').onclick=()=>gdUploadPhotos({project:projectName,unitId});
   $('#aptUnitReport').onclick=()=>photoReport(projectName,{unitFilter:unitId?'unit:'+unitId:'unassigned'});
   // 미배정 사진 수십 장을 한 세대로 옮길 때 하나씩 체크하지 않게 — 보이는 목록만(더 보기로 늘리면 그만큼) 켜고 끈다
+  // 버튼 문구는 '지금 실제로 다 켜져 있는가' 에서만 나온다. 예전에는 자기 onclick 안에서만 문구를 고쳐서,
+  // 손으로 전부 체크하거나(v312부터) 작업명을 넣어 목록이 다시 그려지면(v315) 문구가 실제와 어긋났다.
+  // 그 상태에서 버튼을 누르면 켜는 줄 알았는데 전부 꺼져서, 이어 누른 [배정 저장]이 0장으로 끝났다.
+  const aptUnitSelectAllSync=()=>{
+    const el=document.getElementById('aptUnitSelectAll');if(!el)return;
+    const boxes=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check')];
+    const all=boxes.length>0&&boxes.every(b=>b.checked);
+    el.textContent=(all?'☐ 전체 해제 (':'☑ 이 목록 전체 선택 (')+boxes.length+'장)';
+  };
   const selAll=$('#aptUnitSelectAll');
-  if(selAll)selAll.onclick=()=>{const boxes=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check')];const all=boxes.length>0&&boxes.every(b=>b.checked);boxes.forEach(b=>{b.checked=!all;});selAll.textContent=(all?'☑ 이 목록 전체 선택 (':'☐ 전체 해제 (')+boxes.length+'장)';};
+  if(selAll)selAll.onclick=()=>{const boxes=[...document.querySelectorAll('#modalRoot .apt-unit-photo-check')];const all=boxes.length>0&&boxes.every(b=>b.checked);boxes.forEach(b=>{b.checked=!all;});aptUnitSelectAllSync();};
+  // 손으로 켜고 끄는 가장 흔한 경로도 같은 규칙을 타게 — 체크 하나만 바뀌어도 문구를 다시 잰다
+  const panel=document.getElementById('aptUnitPanel');
+  if(panel)panel.addEventListener('change',e=>{if(e.target&&e.target.classList&&e.target.classList.contains('apt-unit-photo-check'))aptUnitSelectAllSync();});
+  aptUnitSelectAllSync();
   // 작업명 일괄 입력 — 카톡으로 받은 사진 수십 장이 전부 '작업 내용 미입력' 이던 걸 한 번에 채운다.
   // _worklabel 은 유상 필드가 아니라 일반 경로(setWorkLabel → markDirty)로 쓴다. 배정(유상)과 한 흐름에
   // 섞지 않는다 — 유상 커밋은 state.files 를 통째로 다시 만들어서, 같은 흐름에 끼우면 방금 쓴 값을 잃는다.
@@ -11250,12 +11263,16 @@ function aptUnitView(projectName,unitId='',limit=80){
     const issue=document.getElementById('aptUnitIssue');if(issue)issue.textContent='';
     if(!ids.length){if(issue)issue.textContent='작업명을 넣을 사진을 먼저 고르세요.';return;}
     if(!label&&!confirm('고른 사진 '+ids.length+'장의 작업명을 지울까요?'))return;   // 빈 칸은 '지우기' 라 한 번 묻는다
-    const target=$('#aptUnitAssignTarget').value;
     setWorkLabel(ids,label,{render:false,notify:false});
-    aptUnitView(projectName,unitId,limit);
-    document.querySelectorAll('#modalRoot .apt-unit-photo-check').forEach(x=>{x.checked=ids.indexOf(x.value)>=0;});
-    const t=$('#aptUnitAssignTarget');if(t)t.value=target;
-    const w=$('#aptUnitWork');if(w)w.value=label;
+    // 목록을 통째로 다시 그리지 않고 바뀐 줄의 글자만 고친다 — 다시 그리면 사진 80장 한복판에서 스크롤이
+    // 맨 위로 튀고, 동·호수 찾기로 걸어 둔 필터와 [전체 선택] 문구가 초기화된다(그 문구 어긋남이 실제 사고였다).
+    ids.forEach(id=>{
+      const el=document.querySelector('#modalRoot [data-wl="'+(window.CSS&&CSS.escape?CSS.escape(id):String(id).replace(/["\\]/g,'\\$&'))+'"]');
+      if(el)el.textContent=label||'작업 내용 미입력';
+    });
+    // 제안 목록은 다시 그릴 때만 늘어나므로 여기서 직접 넣는다
+    const dl=document.getElementById('aptUnitWorkList');
+    if(dl&&label&&![...dl.options].some(o=>o.value===label)){const o=document.createElement('option');o.value=label;dl.insertBefore(o,dl.firstChild);}
     toast(label?ids.length+'장에 작업명 “'+label+'” 지정':ids.length+'장의 작업명을 지웠습니다');
   };
   if($('#aptUnitWarranty'))$('#aptUnitWarranty').onclick=()=>warrantyView(projectName,{unitId});
@@ -11936,8 +11953,11 @@ function hjStoryData(name){
   if(wl.length){   // 같은 날 같은 종류·같은 꼴은 한 줄로(PDF 를 두 번 눌러도 이야기에 두 번 나오지 않게)
     const seen={};
     wl.forEach(function(L){const key=String(L.at||'').slice(0,10)+'|'+(L.kind||'')+'|'+(L.via||'')+'|'+(L.unitLabel||'');if(seen[key])return;seen[key]=1;
+      // 인쇄창은 사장님이 취소해도 브라우저가 알려 주지 않는다. 이 문장은 공사 스토리로 고객에게도 나가므로
+      // 확인할 수 있는 것만 적는다 — 파일로 뽑은 건 '출력', 실제로 공유가 끝난 것만 '발급'.
       const via=L.via==='pdf'?' (PDF)':L.via==='word'?' (워드)':L.via==='html'?' (HTML)':'';
-      ev.push({d:String(L.at||'').slice(0,10),ic:'🛡',t:(L.kind||'보증서')+' 발급'+(L.unitLabel?' · '+L.unitLabel:'')+via});});
+      const verb=(L.via==='share')?' 발급':' 출력';
+      ev.push({d:String(L.at||'').slice(0,10),ic:'🛡',t:(L.kind||'보증서')+verb+(L.unitLabel?' · '+L.unitLabel:'')+via});});
   }else if(p.warrantyDoc&&p.warrantyDoc.at)ev.push({d:p.warrantyDoc.at,ic:'🛡',t:'완료보증서 발급'});
   return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);}).slice(-40);
 }
@@ -12062,10 +12082,15 @@ function warrantyLogAdd(name,entry){
   return it;
 }
 /* ⑦ 완료보증서 사진 — 공정(시공 전·완료)이 붙은 것에서 전2·후2 를 자동으로 넣고, 없는 쪽은 숨긴다(카톡 문서에 빈 '사진 부착' 칸은 어색하다). */
+let __warrantyIssueBusy=false;
 async function warrantyIssueSend(name){
+  if(__warrantyIssueBusy){toast('완료보증서를 보내는 중입니다 — 잠시만요');return {오류:'진행 중'};}   // 두 번 누르면 두 번 나간다
   const p=state.projects.find(function(x){return x.name===name;});if(!p)return;
   if(!(((p.stage||0)>=STAGES.length-1)||p.doneAt)){toast('완료 단계에서 발급할 수 있어요 — 먼저 준공 처리하세요');return {오류:'미완료'};}
-  const pools=hjWarrantyPhotoPools(name);
+  // 동·호수를 쓰는 다세대 현장은 사진을 넣지 않는다. 세대 구분 없이 뽑으면 서로 다른 집의 '작업 전/후'가
+  // 한 장에 섞여 고객에게 나간다 — 세대 사진이 든 종이는 [🛡 이 세대 하자보증서]로 따로 만든다.
+  const multi=aptUnitManaged(p)&&aptUnitList(p).length>0;
+  const pools=multi?{before:[],after:[]}:hjWarrantyPhotoPools(name);
   const photoIds={before:pools.before.slice(0,2).map(function(f){return f.id;}),after:pools.after.slice(0,2).map(function(f){return f.id;})};
   const nb=photoIds.before.length,na=photoIds.after.length;
   // 보낼 본에는 사진(전2·후2)을 넣고, 보관본(p.warrantyDoc.html)은 사진 없이 둔다 — 보관본은 projects 에 통째로
@@ -12074,10 +12099,13 @@ async function warrantyIssueSend(name){
   const html=warrantyHTML(name,{beforeIds:photoIds.before,afterIds:photoIds.after,hideEmptyPhotos:true});
   const stored=warrantyHTML(name,{hideEmptyPhotos:true});
   if(!html||!stored){toast('보증서를 만들 수 없습니다');return {오류:'생성 실패'};}
-  if(!nb&&!na)toast('전/후 사진 없이 발급합니다 — 공정(시공 전·완료)이 붙은 사진이 없어요');
+  if(!nb&&!na)toast(multi?'전/후 사진 없이 발급합니다 — 세대별 사진은 [🛡 이 세대 하자보증서]로 만드세요':'전/후 사진 없이 발급합니다 — 공정(시공 전·완료)이 붙은 사진이 없어요');
   p.warrantyDoc={at:localDate(),file:safeName(name)+'_완료보증서_'+localDate()+'.html',html:stored,photoIds:photoIds};
   markDirty();
-  const ok=await hjWarrantyShareHtml(name,html,p.warrantyDoc.file);
+  __warrantyIssueBusy=true;
+  let ok=false;
+  try{ ok=await hjWarrantyShareHtml(name,html,p.warrantyDoc.file); }
+  finally{ __warrantyIssueBusy=false; }
   if(ok){   // 이력은 실제로 나갔을 때만 — 공유창을 닫은 것까지 '발급' 으로 쌓이면 이야기에 보내지 않은 발급이 적힌다
     p.warrantyDoc.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');
     const wr=hjWarranty(p);
@@ -29527,8 +29555,13 @@ async function hjWarrantyTagPicked(pjName,pick){
     ids.forEach(function(id){
       const f=(state.files||[]).find(function(x){return x&&x.id===id&&x.kind==='photo'&&x.project===pjName;});
       if(!f||String(f._phase||'').trim())return;                          // 공정이 있으면 손대지 않는다
-      const org=organizedPrefixInfo(f.prefix);if(org&&org.phase)return;   // 폴더가 이긴다 — 건너뜀
-      targets.push({f:f,side:side});
+      // 아래에서 await 를 지나므로 객체가 아니라 id 만 들고 간다 — 그 사이 유상 커밋이나 안전판 복구가
+      // state.files 를 통째로 새로 만들면, 잡아 둔 객체는 화면과 끊긴 껍데기가 되어 쓰고도 사라진다.
+      // 정리 폴더(_정리완료/…) 안 사진은 공정 폴더가 있든 없든 건너뛴다. 공정 폴더가 있으면 다시 읽을 때
+      // 폴더 이름이 이기고, 없으면 재스캔(recoverOrganizedMetadata)이 여기서 붙인 '시공 전'·'완료' 를 현장
+      // 공정 목록(p.phases)에 올려 버린다 — 그러면 계약서 범위·카톡 카드·다음 보증서의 공사 내용에 샌다.
+      if(organizedPrefixInfo(f.prefix))return;
+      targets.push({id:id,side:side});
     });
   });
   if(!targets.length)return {n:0};                                        // 0장이면 안전판도 찍지 않는다(12칸 낭비)
@@ -29538,7 +29571,13 @@ async function hjWarrantyTagPicked(pjName,pick){
   let ok=false;try{ok=await hjSnapshot('보증서 전/후 공정 저장 전',true,true);}catch(e){ok=false;}
   if(!ok){toast('안전판을 만들지 못해 사진 공정은 저장하지 않았어요 — 보증서는 그대로예요');return {n:0,skipped:true};}
   let nb=0,na=0;
-  targets.forEach(function(t){ if(String(t.f._phase||'').trim())return; t.f._phase=nameFor(t.side); if(t.side==='before')nb++;else na++; });
+  targets.forEach(function(t){
+    const f=(state.files||[]).find(function(x){return x&&x.id===t.id&&x.kind==='photo'&&x.project===pjName;});   // await 뒤 — 다시 찾는다
+    if(!f||String(f._phase||'').trim())return;
+    if(organizedPrefixInfo(f.prefix))return;
+    f._phase=nameFor(t.side); if(t.side==='before')nb++;else na++;
+  });
+  if(!nb&&!na){toast('사진 공정은 저장하지 않았어요 — 그 사이 사진 정보가 바뀌었습니다');return {n:0,skipped:true};}
   markDirty();
   toast('사진 '+(nb+na)+'장에 공정을 붙였어요 — '+PHASE_SIDE_NAME.before+' '+nb+' · '+PHASE_SIDE_NAME.after+' '+na+' (되돌리기: 더보기 › 🛡 안전판)');
   return {n:nb+na,before:nb,after:na};

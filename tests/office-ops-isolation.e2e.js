@@ -9,6 +9,26 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+/* 이 파일의 토크나이저는 정규식 리터럴을 문맥으로 판정한다(canStartRegex). `&&` 와 `||` 는 그 판정 목록에
+   없어서, `x && /re/.test(y)` 를 만나면 '/' 를 나눗셈으로 읽고 다음 '/' 까지를 통째로 문자열처럼 삼킨다 —
+   그러면 파일 끝까지 '닫히지 않은 정규식' 이 되고, 이 파일의 격리 검사 전체가 조용히 눈을 감는다.
+   실제로 두 번(v313 hjDocThumbOk, v314 확인자 서명) 그렇게 됐고, 그때 화면에 뜬 실패 메시지는
+   'strong scan rejects duplicate declaration' 이라 정규식 이야기는 한 마디도 없었다.
+   여기서 먼저 걸러 원인을 이름으로 말한다. 검사를 느슨하게 하지 않는다 — 진단만 붙인다. */
+try {
+  bindingTokens(source);
+} catch (error) {
+  if (/unterminated regex literal/.test(String(error && error.message))) {
+    throw new Error(
+      '이 검사의 토크나이저가 index.html 을 끝까지 못 읽었다 — 십중팔구 `&&`(또는 `||`) 바로 뒤에 놓인 ' +
+      '정규식 리터럴이다. 그 자리는 나눗셈으로 읽혀 파일 끝까지 정규식으로 삼켜지고, 그러면 OfficeOps 격리 ' +
+      '검사 전체가 아무것도 못 본다(과거 두 번 이렇게 눈을 감았다).\n' +
+      '  고치는 법: 그 정규식을 최상위 상수로 빼고 이름으로 쓴다 — 예) const WR_SIG_PNG_RE=/^data:image\\/png;base64,/;  … && WR_SIG_PNG_RE.test(v)\n' +
+      '  원본 오류: ' + error.message
+    );
+  }
+  throw error;
+}
 
 function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function bindingTokens(candidate) {
