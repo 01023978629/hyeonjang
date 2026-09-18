@@ -2700,7 +2700,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v315-worklabel';
+const APP_BUILD='hyeonjang-v316-estopen';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -26427,6 +26427,15 @@ function renderEstimateFieldEdit(root){
   });
 }
 function viewEstimates(){
+  // 다시 그리기 전에 '지금 화면에서 열려 있는 상세' 를 먼저 적어 둔다.
+  // 열림 기록(__estimateOpenDetails)은 원래 toggle 이벤트로만 쌓였는데, 그 이벤트는 비동기라
+  // 이벤트가 오기 전에 목록이 다시 그려지면(검색 한 글자만 쳐도 그렇다) 옛 요소는 화면에서 빠지고
+  // 핸들러의 isConnected 검사에 걸려 조용히 버려진다 — 열어 둔 상세가 검색·정렬 뒤에 닫혀 버렸다.
+  // 이 함수는 새 HTML 을 만드는 중이라 옛 DOM 이 아직 붙어 있다. 그때 DOM 을 진실로 삼는다.
+  document.querySelectorAll('details[data-estimate-details]').forEach(el=>{
+    const id=el.dataset.estimateDetails;if(!id)return;
+    if(el.open)__estimateOpenDetails.add(id);else __estimateOpenDetails.delete(id);
+  });
   const list=state.files.filter(f=>f.kind==='estimate');
   if(!list.length){
     const m=monthlyQuoteHTML();
