@@ -3,6 +3,52 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-16~19 서류 내보내기·보증서 서명·동·호수 표시·간이영수증 v306~v318 (운영 배포됨)
+
+운영 기준선은 main `6ed2e48` = `hyeonjang-v318-sideunit` (2026-09-19 Pages run #167 성공). 전체 회귀는 **163개**
+(check 13 · unit 15 · e2e 135). v316 #165 · v317 #166 · v318 #167 이 각각 전체 회귀를 통과하고 나갔다.
+아래는 이 구간에서 생긴 **불변식과 교훈**이다. 서사가 아니라 다음 사람이 걸려 넘어질 자리를 적는다.
+
+**전자계약 서버(manmool) 계약 — 하자보증서 링크 서명(v317 · manmool PR #199)**
+- `quickSend { docKind:'warranty', title, customer:{name,phone}, body:{clauses,…} }` 로 보증서를 만든다. 보증서는 **금액 0 허용·대금 회차 없음·조항 없으면 BAD_REQUEST**.
+  서버는 보증 문구를 지어내지 않는다 — 앱이 보낸 조항이 곧 고객이 읽는 것이다.
+- `contract.signature { id }` (관리자 전용)가 서명 PNG 를 되돌려준다. 서명 전은 BAD_STATE. 완성본은 사진 때문에 **앱이** 만든다.
+- **보증 조항의 정본은 `hjWarrantyClauses(termLabel)` 한 곳**이다. 종이(`warrantyHTML`)와 링크 본문(`hjWarrantyLinkBody`)이 여기서 나온다. 두 곳에서 지으면 '받은 보증서'와 '서명한 보증서'가 갈라진다.
+- 확인자 전화번호는 서버로만 가고 `p.warrantyLinks[]` 에는 **저장하지 않는다**(검사로 고정). 서명은 `p.warrantySigs[]` 에 480×135 PNG 로 영구 보관(`via:'link'|없음`).
+- 🅱 **Apps Script 배포는 대표가 손으로** 한다. 병합만으로는 서버가 바뀌지 않는다. 배포 뒤 편집기에서 `ensureSheets_()` 한 번 — `Contracts` 시트 **끝**에 `docKind` 열이 붙는다(2026-09-19 현재 미배포·대표 대기).
+
+**현장 객체 안에 붙은 것(직렬화 최상위 키 41개 그대로)**: `p.warrantyDoc`(완료보증서 보관본, 사진은 id 만) · `p.warrantyLog[]`(실제로 PDF·워드·HTML 을 가져간 시점에만) · `p.warrantySigs[]` · `p.warrantyLinks[]`. 새 키를 최상위에 만들지 마라 — 여섯 곳을 고쳐야 하고 `serialized-keys.check.js` 가 막는다.
+
+**문서 내보내기(v310 `hjDocDeliverView`)**: PDF 는 숨은 iframe 인쇄(`hjDocPrint`, 사진 로드 대기 3초 상한), 워드는 **MHTML**(`hjDocWordMhtml` — `data:` 이미지는 워드가 빨간 X 로 그린다; 조각 주소는 `http://hyeonjang.local/…` — `file:///` 는 Chromium 이 막는다), HTML 은 공유. `opts.onDeliver(via)` 는 실제로 가져간 때만 부른다(인쇄 취소는 '발급'이 아니다). **워드에서 사진이 실제로 보이는지는 진짜 워드로 확인된 적이 없다**(Chromium 구조 검사만) — 대표 확인 대기.
+
+**모달 버튼은 직접 배선**: `#modalRoot` 는 `#view` 의 형제라 `#view` 클릭 위임이 닿지 않는다. `openModal` 뒤 `root.querySelector(...).onclick=` 으로 건다. `tests/modal-binding.check.js`(v309) 가 위임에만 기댄 죽은 모달 버튼을 잡는다. 반대로 `#view` 안의 새 `data-*` 버튼은 위임 셀렉터 목록(`e.target.closest('…')`)에 넣어야 한다 — v317 `[data-wlpull]`, `click-delegation.check.js`.
+
+**현장 목록 동·호수 배지(v318 `aptUnitBadge(p,dupeNames)`)**: PC 사이드바(`render/addProjItem`)와 폰 시트(`openProjectSheet`)가 같은 함수를 쓴다. 규칙 — 등록해 둔 `aptUnits` 만 센다(`aptNameParse` 는 제안값이라 쓰지 않는다) · 공용부는 세대가 아니다 · `aptUnits` 길이 ≠ `aptUnitList` 길이면 '확인 필요'(손상을 '0곳'으로 감추지 않는다) · 이름 중복은 '이름 중복'(그 현장은 `aptUnitProject` 가 null 이라 관리 화면이 안 열린다) · `aptUnitManaged(p)` **단독으로 '있다'고 말하지 마라**(`[]`도 true). 배지는 `.proj-item` 밖 `.stage-row` 에 둔다(활성 줄 파란 배경을 안 탄다). 렌더 루프 안에서 `aptDupeNames()`·`aptUnitPhotoGroups()` 를 부르지 마라(현장²·현장×파일).
+
+**간이영수증(v318 `payRcptHTML/payRcptDialog`, `HJ_SETTLE_DOCS.payrcpt {needsInput, openFn}`)**: 대표가 '간이세금계산서'라 불렀지만 양식은 영수증이다 — 문서에 '세금계산서'라 적지 않는다. **금액을 누계(`d.recv`)로 자동 채우지 마라**(기존 `receiptHTML` 이 그렇게 떨어진다) — 입금 기록(`state.payLog`)에서 한 건을 고르게 한다. **받은 돈을 1.1 로 나눠 부가세를 만들지 마라**. 결제방법·입금자명은 비워 손으로 쓰게 한다. `settleDocs`·`settleDocShare` 는 `needsInput` 문서를 바로 만들지 않고 `openFn` 을 연다. `[📎 서류 만들기](docHubView)` 에 '돈·정산' 묶음이 있다(예전엔 정산 문서로 가는 길이 없었다).
+
+**유상 경로 정확일치는 `paidStableJson`**(v312): `durableLocalMutation` 의 왕복 검증은 키 순서에 무관하게 비교한다. 초안에 키를 뒤에 덧붙이면 재직렬화 순서와 달라져 'paid exact round-trip conflict' 가 났다(카톡 사진의 `sourceModifiedAt` 이 전부 걸렸다).
+
+**견적 상세 열림 기록(v316)**: `viewEstimates()` 가 새 HTML 을 만들기 전에 **살아 있는 DOM** 에서 `__estimateOpenDetails` 를 맞춘다. toggle 이벤트로만 쌓으면 이벤트 전에 다시 그려질 때 조용히 잃는다 — 같은 단정이 v308·v315 배포를 막았고, v308 때 시더를 재운 것은 확률만 낮춘 것이었다.
+
+**검사 도구 함정 — 세 번 겪었다, 규칙으로 못박는다**
+- `office-ops-isolation.e2e.js` 의 토크나이저는 **`&&` 뒤 정규식 리터럴을 못 읽고 조용히 눈이 먼다**. 제품 코드에서 `&& /…/.test(` 꼴이 필요하면 정규식을 상수로 뺀다(`WR_DOC_THUMB_RE`·`WR_SIG_PNG_RE`). 그 검사 맨 앞에 원인을 이름으로 말하는 자가진단이 있다.
+- 부팅 시더(`taxCalendarEnsure`·`coworkSchedEnsure`·`backupBootCheck`·`kakaoCheckNew`)는 시나리오 한복판에 자료를 심는다. 조회 전용 스냅샷을 단정하는 검사는 부팅 뒤 이것들을 `()=>0` 등으로 재운다.
+- 릴레이 부팅의 진짜 끝은 `window.__hjRelayBootDone`(Promise). `__hjRelayConfigDone` 뒤에도 health 확인이 이어져 검사가 넣은 키를 덮었다(shared-todo 흔들림의 원인).
+- **'뭔가 틀렸다'만 말하는 단정은 고칠 수 없다.** 스냅샷 비교는 어느 키가 어떻게 바뀌었는지 이름을 말하게 하라(`sameSnap()`·`changed: data.schedule` 로 원인이 즉시 나왔다). `savedAt` 은 내려받는 순간의 시각이라 비교에서 뺀다.
+- 넘침은 `scrollWidth - clientWidth` 로 잰다. 블록 요소의 `getBoundingClientRect().width` 는 내용이 삐져나가도 부모 폭 그대로다. `#projList` 는 `overflow-y:auto` 라 문서·aside 만 보면 넘침을 삼킨다.
+- 변이가 안 잡히는 줄은 검사의 눈이 먼 것이거나 **죽은 줄**이다. 둘 중 무엇인지 확인하고, 죽은 줄이면 지운다(v318 `min-width:0`). 시드가 사고 조건을 만들지 않으면 그 검사는 통과하고도 아무것도 지키지 않는다(v318 영수증 시드 `received:0`).
+
+**컨테이너 환경의 알려진 실패**: 클라우드 세션의 Chromium 은 한글 blob 파일이름 다운로드에 `'download'` 를 준다 → `tests/team-workboard.e2e.js` 가 그 자리에서 떨어진다. **GitHub Actions 에서는 통과한다**(#165~#167). 검사를 완화하지 마라 — 컨테이너 문제다. 변경 전후 같은 실패인지 stash 로 대조해 보고에 적는다.
+
+**버전 핀은 세 곳**: `sw.js` 캐시 이름 · `index.html` `APP_BUILD` · `tests/version-sync.check.js` `TARGET_BUILD`. 셋 중 하나만 올리면 정적 검사에서 멈춘다.
+
+**스쿼시 병합 뒤 브랜치**: `claude/recent-web-project-a1foj1` 는 병합될 때마다 `origin/main` 에서 다시 시작하고(`git checkout -B … origin/main`) 트리 해시가 같은 것을 확인한 뒤 `--force-with-lease` 로 원격을 맞춘다. 스쿼시 전 옛 커밋 위에 쌓지 마라.
+
+이 구간의 이전 릴리스(제목만 — 상세는 PR): v298~v302 #137 안 눌리던 버튼 2개·🏢 아파트 관리 탭·보증서 새 양식 / v303 #139 배포 막던 회귀·[＋ 동·호수 추가] / v304 #140 하자보증서 한 벌(서류 만들기도 관리사무소 양식) / v305 #141 못 돌던 검사 5건 복구·다운로드 앵커 7곳 / v306 #142·v307 #143 보증서 전/후 사진 장수·직접 고르기 / v308 #144 전후 갤러리 '시공 전' 버그·인쇄 버튼·관리사무소 바로 등록 / v310 #145 PDF·워드 내보내기·모달 버튼 검사 / v312 #146 paidStableJson·미배정 전체 선택·워드 MHTML / v313 #147 전/후 선택→사진 공정·발급 이력·완료보증서 사진·세대별 보증서 / v315 #148 작업명 일괄 입력·[전체 선택] 문구 버그·확인자 서명판 / v316 #149 견적 상세 열림.
+
+🅱 대표 대기(2026-09-19): ① Apps Script 보증서 배포 + `ensureSheets_()` ② 워드 보증서 사진 실제 확인 ③ 세대별로 완료일이 다른 현장이 있는지(있으면 세대별 완료일 작업).
+
 ## 2026-09-13 원본·영상·백업 안전 v297 개발 후보
 
 사용자가 첫 개발 범위 1~3(삭제/백업 안전, 원본 재연결, 사진·동영상 전송/재시도)을 승인했다.
@@ -296,8 +342,8 @@ Apps Script/Pages 배포는 로컬 코드 검증과 별개이며 별도 승인·
 만물인테리어(대전, 1인 시공업체, 대표 전병덕)의 **현장 운영 앱**.
 `index.html` 단일 파일 PWA(약 28,000줄) + `sw.js`. **main 에 병합되는 순간
 GitHub Pages 로 실제 운영 배포된다** — 사장님 폰에 바로 나간다.
-실제 운영 기준선은 `hyeonjang-v272-docwrap`이다(2026-09-08 확인).
-PR #116 main `46793bc`, Pages 실행 `34185653553` 성공(126/126, 5.0분, 동시 3),
+실제 운영 기준선은 `hyeonjang-v318-sideunit`(main `6ed2e48`, 2026-09-19 Pages #167)이다 — 맨 위 v306~v318 항목 참조.
+아래 v272 기록은 당시 기준선이다: PR #116 main `46793bc`, Pages 실행 `34185653553` 성공(126/126, 5.0분, 동시 3),
 공개 파일 5개 내용/버전 일치 및 비공개 파일 3개 404를 확인했다.
 v271(PR #115)의 모바일 문서 폭 실패는 v272에서 보완되었으며 실패 이력을 보존한다.
 이번 v273 로컬 후보는 신규 모바일 연결 검사를
@@ -426,7 +472,7 @@ node tests/cost-honesty.check.js       # 요금 단정 문구 금지
 node tests/version-sync.check.js       # 화면 버전 == sw.js 캐시 버전
 node tests/serialized-keys.check.js    # 직렬화 최상위 키 목록 네 곳 일치(키를 더했으면 반드시)
 
-# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-09 기준 117개)
+# 3) 전체 회귀 — 권위 있는 집계는 tests/run-all.js 가 찍는 'N개 중 N 통과' (2026-09-19 기준 163개)
 #    종료코드로 판정한다(출력 마지막 줄만 보고 성공으로 판정하지 마라).
 #    러너의 파일당 180초 제한을 제거하지 마라 — 한 파일이 멈춰도 실패로 끝나야 한다.
 node tests/run-all.js
@@ -537,7 +583,7 @@ PII 원문 금지(전화 뒷 4자리만), 검증 없는 완료 보고 금지.
 - (2026-09-04) 운영 기준선은 main 최신 `hyeonjang-v254-suggestbar`. v249~v254: 접수함 접수번호 읽기(v249)·접수함 링크(v250)·📍 사진 배정 점검(v251)·부팅 설정 읽기 완료 신호 `__hjOfficeOpsBootDone`(v252, 검사가 `__commercialApproval` 모의값을 넣기 전에 기다려야 한다)·👉 추천 배정(v253)·추천 버튼을 상단 요약 줄로(v254, 폰 첫 화면 규칙). 아래는 2026-09-01 기록: 소스 브랜치 기준선은 `hyeonjang-v243-photofirst`였다. 232~236 이력에서 v232는 관리사무소 접수의 공개 보고 수정·철회, 명시 프로젝트 사진 소유권, revision·충돌 복구를 포함했고, v233은 관리사무소 포털 선언 사진 슬롯, 승인 전 사진 attach gate, pre-accept revision 승계, semantic outbox 차단과 admin fail-closed를 추가했다. v234는 신규 접수의 사진 슬롯 선언을 필수화하고, 오프라인 승인 뒤 `photos-pending` 복구와 완료 사진 오류의 strict FIFO·상위 revision 교체 계약을 추가했다. v235는 완료 보고 수정의 합법적인 상태 전이 체인과 승인 payload 입력 오류 차단을 추가했다. 해당 범위의 마지막 버전은 승인 오더·outbox 선저장과 단일 FIFO 발송, request 단위 projection revision 재기준화, 익명 로그인 선행 캐시 제한, canonical slug·PNG 8-byte·slash 전화 마스킹 계약을 추가했다.
 - OfficeOps·paid gate 작업은 이 소스 브랜치에만 있다. Task 6 최종 버전 마커·검토와 이후 대표의 명시적 병합·배포 승인이 모두 끝나기 전에는 운영 배포 상태로 보지 않는다. `apps-script-office-ops/conversion-promotion.json`의 `enabled`는 현재 `false`라 운영 OfficeOps 전환 승격도 꺼져 있다.
 - 로컬 v201 사진 동기화 후보는 운영 서버 v1 멱등 계약과 대표 iPhone 실기기 확인 전까지 병합하지 않는다. v219에도 포함하지 않았다.
-- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-09-09 현재 117개)다. 과거의 브라우저·정적 60개 집계는
+- 현재 전체 회귀 기준은 `tests/run-all.js`가 집계하는 파일 전부(2026-09-19 현재 163개)다. 과거의 브라우저·정적 60개 집계는
   OfficeIntake 서버·회귀 검사를 추가하기 전 기록이므로 완료 기준으로 쓰지 않는다.
 - `AI_TOOLS` 실제 배열은 170종. 맨 앞 개발자 주석도 170종으로 맞췄고,
   `tests/ai-tools-count.check.js` 가 숫자가 어긋나면 실패한다.
