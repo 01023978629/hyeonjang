@@ -756,7 +756,10 @@
     .modal{max-height:94vh}
     .modal .mbody{padding:14px}
     .modal .mfoot{padding:10px 14px;flex-wrap:wrap}
-    .modal .mfoot button{min-height:42px}
+    /* 폰에서 누르는 것은 44px — 이 저장소의 자체 규칙(mobile-friendly-ui reachable). 2px 는 줄바꿈에
+       영향이 없다(줄바꿈은 폭이 정한다). 특정 모달에만 44 를 붙이던 것을 전역으로 올린다. */
+    .modal .mfoot button{min-height:44px;min-width:44px}   /* 한 글자 버튼('둘')이 43px 로 나왔다 — 폭도 잡는다 */
+    .modal-close{width:44px;height:44px}
     .apt-commercial-form{grid-template-columns:minmax(0,1fr)}
     .apt-commercial-form fieldset{grid-template-columns:minmax(0,1fr)!important}
     .apt-commercial-form label,.apt-commercial-form label.full{grid-column:1}
@@ -892,6 +895,8 @@
   .apt-unit-row input[type=checkbox]{width:24px;height:24px;flex-shrink:0}
   .apt-unit-row span{min-width:0;flex:1}
   .apt-unit-row button{flex-shrink:0}
+  .apt-unit-row .apt-unit-thumb,.apt-unit-row .apt-unit-thumb-none{flex:0 0 56px;width:56px;height:56px;border-radius:8px;object-fit:cover;background:#eef2f7}
+  .apt-unit-row .apt-unit-thumb-none{display:flex;align-items:center;justify-content:center;font-size:20px;color:#a8b4c4}
   #photoSourcePanel .ps-search{grid-column:1/-1}
   #photoSourceSummary{font-size:13px;margin:12px 0}
   #photoSourceList{list-style:none;padding:0;margin:0}
@@ -2711,7 +2716,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v318-sideunit';
+const APP_BUILD='hyeonjang-v319-phonetap';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11213,7 +11218,9 @@ async function aptUnitUiWrite(action,done){
   buttons.forEach(b=>b.disabled=true);__modalCloseLocked=true;
   let result,error;
   try{result=await action();}catch(e){error=e;}finally{__modalCloseLocked=false;buttons.forEach(b=>b.disabled=false);}
-  if(error){const issue=document.getElementById('aptUnitIssue');if(issue)issue.textContent=error.message||'저장하지 못했습니다. 다시 시도하세요.';return;}
+  if(error){const msg=error.message||'저장하지 못했습니다. 다시 시도하세요.';const issue=document.getElementById('aptUnitIssue');
+    if(issue){issue.textContent=msg;try{issue.scrollIntoView({block:'nearest'});}catch(e){}}   // 목록이 길면 오류 줄이 화면 밖이다 — 보이는 곳까지 내린다
+    toast(msg);return;}
   done(result);
 }
 function aptUnitEdit(projectName,id=''){
@@ -11264,7 +11271,7 @@ function aptUnitView(projectName,unitId='',limit=80){
     <button id="aptUnitReport" class="ghost">이 위치 사진 작업일지</button>
     ${shown.length?`<button id="aptUnitSelectAll" type="button" class="ghost">☑ 이 목록 전체 선택 (${shown.length}장)</button>`:''}
     ${unit?'<button id="aptUnitWarranty" class="ghost" title="준공 처리된 현장에서 이 세대 이름·사진으로 하자보증서를 만듭니다">🛡 이 세대 하자보증서</button>':''}
-    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><span>${escapeHtml(f.name)}<br><small><span data-wl="${escapeAttr(f.id)}">${escapeHtml(f._worklabel||'작업 내용 미입력')}</span>${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
+    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택">${isVideoRec(f)?'<span class="apt-unit-thumb-none" aria-hidden="true">🎬</span>':(src=>src?`<img class="apt-unit-thumb" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:'<span class="apt-unit-thumb-none" aria-hidden="true">🖼</span>')(photoSrc(f,56))}<span>${escapeHtml(f.name)}<br><small><span data-wl="${escapeAttr(f.id)}">${escapeHtml(f._worklabel||'작업 내용 미입력')}</span>${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}</small></span><button type="button" class="ghost" data-unit-photo="${escapeAttr(f.id)}">보기</button></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
     ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
     ${shown.length?`<label for="aptUnitWork" style="display:block;margin-top:12px">선택한 사진 작업명 (한 번에)</label>
     <input id="aptUnitWork" maxlength="40" list="aptUnitWorkList" placeholder="예: 화장실 방수 · 도배 마감">
@@ -11276,7 +11283,11 @@ function aptUnitView(projectName,unitId='',limit=80){
     <p class="hint">선택한 사진의 동·호수 연결만 바꿉니다. 원본 파일·프로젝트명·작업명은 유지합니다.</p>
     <p id="aptUnitIssue" role="alert" style="color:var(--warn)"></p></div>`,[
     {label:'닫기',cls:'ghost',fn:closeModal},
-    {label:'선택 사진 배정 저장',cls:'clay',fn:()=>{const target=$('#aptUnitAssignTarget').value,ids=[...document.querySelectorAll('.apt-unit-photo-check:checked')].map(x=>x.value);aptUnitUiWrite(()=>aptUnitAssign(projectName,target,ids),n=>{aptUnitView(projectName,target);toast(n+'장 동·호수 배정 저장');});}}]);
+    {label:'선택 사진 배정 저장',cls:'clay',fn:()=>{const target=$('#aptUnitAssignTarget').value,ids=[...document.querySelectorAll('.apt-unit-photo-check:checked')].map(x=>x.value);
+      aptUnitUiWrite(async()=>{
+        if(target===unitId&&ids.length)throw new Error('지금 보고 있는 위치와 같습니다 — 배정할 동·호수를 고르세요.');
+        return aptUnitAssign(projectName,target,ids);
+      },n=>{aptUnitView(projectName,target);toast(n+'장 동·호수 배정 저장');});}}]);
   aptUnitModalStyle();document.querySelectorAll('#modalRoot .mfoot button')[1].id='aptUnitAssignSave';
   $('#aptUnitAssignTarget').value=unitId;
   $('#aptUnitAdd').onclick=()=>aptUnitEdit(projectName);
