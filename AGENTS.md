@@ -49,8 +49,10 @@
 
 **v319 폰 기능강화(2026-09-19, PR #152)** — 추측 대신 갤럭시 크기(360×740)로 v308~v318 화면을 전부 열어 잰 결과로 고쳤다.
 - **모달 아래 버튼·× 는 미디어쿼리 전역에서 44px**(`.modal .mfoot button{min-height:44px;min-width:44px}`, `.modal-close` 44). 그 전에는 전역 42 + 특정 모달 4곳만 44 였다 — 새 모달마다 잊는 구조였다. 특정 모달에 44 를 또 붙일 필요 없다.
-- **동·호수 관리 사진 줄에 썸네일**(`photoSrc(f,56)` · `loading=lazy decoding=async` · `alt=""`). 사진 그리드와 같은 소스 함수라 Drive 전용·HEIC 폴백을 공짜로 얻는다. `.apt-unit-row span{flex:1}` 이 모든 후손 span 에 걸리므로 자리표시는 클래스로 덮는다. 줄=선택, [보기]는 그대로 — 그림=크게 보기로 바꾸는 것·저장 후 착지 화면·select 를 버튼줄로 옮기는 것은 CTA 변경이라 **대표 확인 뒤**.
-- **같은 위치 재배정은 쓰기 전에 막는다**(미지정 화면에서 [전체 선택] → 위치 안 고르고 [저장]하면 30장 유상 커밋이 돌고 "30장 배정 저장" 토스트가 뜨던 가짜 성공). 오류 문구(`#aptUnitIssue`)는 목록 맨 아래라 `scrollIntoView` + 토스트로 보인다.
+- **동·호수 관리 사진 줄에 썸네일 = [크게 보기] 버튼**(`button.apt-unit-thumb-btn[data-unit-photo]` 안에 `img.apt-unit-thumb` — `photoSrc(f,56)` · `loading=lazy decoding=async` · `alt=""` · 버튼 `aria-label="<파일명> 크게 보기"`). 글자 [보기] 버튼은 없앴다(대표 "더 강화" 승인). 줄=선택(라벨), 그림=크게 보기(버튼) — 라벨 안 버튼은 눌러도 체크가 안 바뀐다(HTML 규격 + 핸들러 preventDefault). 사진 그리드와 같은 소스 함수라 Drive 전용·HEIC 폴백을 공짜로 얻는다. `.apt-unit-row span{flex:1}` 이 모든 후손 span 에 걸리므로 자리표시는 클래스로 덮는다.
+- **배정 위치 select 와 오류 줄(`#aptUnitIssue`)은 sticky 버튼줄(`.mfoot`) 안**(`.apt-unit-target-bar`, `flex:1 1 100%`) — `openModal` 뒤 DOM 을 직접 넣는다(`openModal` 은 btns 로만 footer 를 만든다). 본문 끝에 두면 사진이 많을 때 3화면 아래였다. `<label for>` 를 같이 옮겨야 `apartment-units controls()` 접근 이름 검사를 지난다. 버튼줄이 두 줄이라 `#aptUnitWork` 는 focus 때 `hjKeepAboveFooter`.
+- **저장 뒤 그 호수 화면으로 튀지 않고 보던 목록에 머문다**(`aptUnitView(projectName,unitId)`), 토스트가 대상을 말한다("12장 → 107동 1302호 배정 저장"). 30장을 다섯 호수로 나눌 때 저장마다 미지정으로 되돌아오던 왕복을 없앴다. `tests/apt-unit-assign.e2e.js` 의 옛 착지 단정을 이 계약으로 바꿨다.
+- **같은 위치 재배정은 쓰기 전에 막는다**(미지정 화면에서 [전체 선택] → 위치 안 고르고 [저장]하면 30장 유상 커밋이 돌고 "30장 배정 저장" 토스트가 뜨던 가짜 성공). 오류 줄이 버튼줄 안이라 늘 보이고, 편집 모달(오류 줄 없음)까지 덮으려 토스트도 띄운다.
 - 검사 함정 둘 추가: **모바일 모드는 화면 폭이 아니라 설정값**(`pref_mobile`, 부팅 때 IDB 복원)이라 부팅 직후 단정하면 경쟁한다 — `__mobileMode=true;applyMobileMode()` 로 명시적으로 켜라. **변이 결과는 FAIL 줄 수가 아니라 종료코드+마지막 줄**로 판정하라 — 검사가 시작도 못 한 것이 '0건 실패'로 읽힌다.
 - 전체 회귀 164개 중 163(team-workboard 는 컨테이너 알려진 실패).
 

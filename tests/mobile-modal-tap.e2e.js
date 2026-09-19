@@ -115,6 +115,53 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     });
     assert(!r.hasImg && r.hasPh && r.name, '썸네일 없는 줄: ' + JSON.stringify(r));
   });
+  await test('★ 썸네일이 곧 [크게 보기] 버튼 — 누르면 크게 보기가 열리고 체크는 안 바뀐다, 글자 [보기]는 없다', async () => {
+    const r = await page.evaluate(() => {
+      window.__lbCount = 0; const o = window.openLightbox; window.openLightbox = function () { window.__lbCount++; };
+      const row = document.querySelector('#modalRoot .apt-unit-row'); const btn = row.querySelector('button.apt-unit-thumb-btn'); const cb = row.querySelector('input');
+      const rect = btn.getBoundingClientRect(); const before = cb.checked;
+      btn.click();
+      const out = { w: Math.round(rect.width), h: Math.round(rect.height), label: btn.getAttribute('aria-label') || '', opened: window.__lbCount, toggled: cb.checked !== before,
+        textView: [...document.querySelectorAll('#modalRoot .apt-unit-row button')].filter(b => /^보기$/.test((b.textContent || '').trim())).length,
+        hasThumbInside: !!btn.querySelector('img.apt-unit-thumb, .apt-unit-thumb-none') };
+      window.openLightbox = o; return out;
+    });
+    assert(r.w >= 44 && r.h >= 44, '썸네일 버튼이 44px 미만: ' + JSON.stringify(r));
+    assert(/크게 보기/.test(r.label) && /카톡사진_/.test(r.label), '접근 이름에 파일명과 "크게 보기"가 있어야 한다: ' + r.label);
+    assert(r.opened === 1, '누르면 크게 보기가 열려야 한다: ' + r.opened);
+    assert(!r.toggled, '그림을 눌렀는데 체크가 바뀌었다 — 라벨 활성화가 새어 들어왔다');
+    assert(r.textView === 0, '글자 [보기] 버튼이 남아 있다(줄마다 버튼 둘)');
+    assert(r.hasThumbInside, '버튼 안에 썸네일/자리표시가 있어야 한다');
+  });
+  await test('★ 배정 위치 select 와 오류 줄은 sticky 버튼줄 안 — 목록 맨 위에서도 보인다', async () => {
+    const r = await page.evaluate(() => {
+      const modal = document.querySelector('#modalRoot .modal'); modal.scrollTop = 0;
+      const foot = document.querySelector('#modalRoot .mfoot'); const sel = document.getElementById('aptUnitAssignTarget'); const issue = document.getElementById('aptUnitIssue');
+      const inFoot = (el) => !!el && foot.contains(el);
+      const rs = sel.getBoundingClientRect(), rf = foot.getBoundingClientRect();
+      const lab = sel.labels && sel.labels.length ? sel.labels[0].textContent : '';
+      return { selInFoot: inFoot(sel), issueInFoot: inFoot(issue), visible: rs.top >= 0 && rs.bottom <= innerHeight + 1, footBottom: Math.round(rf.bottom), vh: innerHeight,
+        selW: Math.round(rs.width), footW: Math.round(rf.width), label: lab, scrollTop: modal.scrollTop, listLong: modal.scrollHeight > modal.clientHeight + 200 };
+    });
+    assert(r.listLong, '시드가 목록을 길게 만들지 못했다 — 이 검사가 헛돈다');
+    assert(r.selInFoot && r.issueInFoot, 'select·오류 줄이 버튼줄 안에 있어야 한다: ' + JSON.stringify(r));
+    assert(r.visible && r.scrollTop === 0, '목록 맨 위에서 select 가 화면에 보여야 한다(스크롤 없이): ' + JSON.stringify(r));
+    assert(r.selW >= r.footW * 0.8, 'select 가 한 줄을 통째로 써야 버튼과 섞이지 않는다: ' + JSON.stringify(r));
+    assert(/배정할 위치/.test(r.label), 'select 에 라벨이 붙어 있어야 한다(apartment-units controls 가 접근 이름을 본다): ' + r.label);
+    // PC 폭에서는 모바일 미디어쿼리의 flex-wrap 이 없다 — 이 모달 자체가 wrap 을 켜지 않으면 select 가 버튼과 한 줄에 끼어 찌그러진다
+    await page.setViewportSize({ width: 1280, height: 860 });
+    const d = await page.evaluate(() => { const sel = document.getElementById('aptUnitAssignTarget').getBoundingClientRect();
+      const btn = document.getElementById('aptUnitAssignSave').getBoundingClientRect(); return { selBottom: Math.round(sel.bottom), btnTop: Math.round(btn.top), selW: Math.round(sel.width) }; });
+    await page.setViewportSize({ width: 360, height: 740 });
+    assert(d.btnTop >= d.selBottom - 1, 'PC 폭에서 select 와 버튼이 같은 줄에 끼었다: ' + JSON.stringify(d));
+  });
+  await test('작업명 칸에 초점이 가면 두 줄짜리 버튼줄 위로 올라온다', async () => {
+    const r = await page.evaluate(() => { const w = document.getElementById('aptUnitWork'); w.focus(); w.dispatchEvent(new Event('focus'));
+      const rw = w.getBoundingClientRect(), rf = document.querySelector('#modalRoot .mfoot').getBoundingClientRect();
+      return { wBottom: Math.round(rw.bottom), footTop: Math.round(rf.top), wired: typeof w.onfocus === 'function' }; });
+    assert(r.wired, 'onfocus 가 배선되지 않았다');
+    assert(r.wBottom <= r.footTop + 1, '작업명 칸이 버튼줄 뒤에 숨는다: ' + JSON.stringify(r));
+  });
   await test('동·호수 관리 — 줄 전체가 탭 대상이고 44px 이상, 가로 넘침 없음', async () => {
     const r = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('#modalRoot .apt-unit-row')].map(x => Math.round(x.getBoundingClientRect().height));
@@ -151,9 +198,13 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   });
   await test('위치를 고르면 예전처럼 저장된다 (4-1 이 정상 경로를 막지 않는다)', async () => {
     await page.evaluate(() => { document.getElementById('aptUnitAssignTarget').value = 'a1'; document.getElementById('aptUnitAssignSave').click(); });
-    await page.waitForFunction(() => /장 동·호수 배정 저장/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 8000 });
-    const n = await page.evaluate(() => state.files.filter(f => f._aptUnit && f._aptUnit.unitId === 'a1').length);
-    assert(n === 12, '12장이 a1 에 배정돼야 한다: ' + n);
+    await page.waitForFunction(() => /배정 저장/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 8000 });
+    const r = await page.evaluate(() => ({ n: state.files.filter(f => f._aptUnit && f._aptUnit.unitId === 'a1').length,
+      toast: (document.getElementById('toast') || {}).textContent || '', title: (document.querySelector('#aptUnitPanel h3') || {}).textContent || '' }));
+    assert(r.n === 12, '12장이 a1 에 배정돼야 한다: ' + r.n);
+    // ★ 저장 뒤 그 호수 화면으로 튀지 않고 보던 미지정 목록에 머문다 — 다음 묶음을 바로 이어서 고를 수 있다
+    assert(/미지정/.test(r.title), '저장 뒤 미지정 목록에 머물러야 한다: ' + r.title);
+    assert(/12장 → 107동 1302호/.test(r.toast), '토스트가 어디로 갔는지 말해야 한다: ' + r.toast);
     await closeAll();
   });
   await test('★ 폰에서 PC 모드로 써도(모바일 모드 꺼짐) 버튼·× 는 44px — 화면 폭 규칙이지 설정 규칙이 아니다', async () => {

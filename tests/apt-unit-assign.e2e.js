@@ -100,7 +100,11 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       left: state.files.filter(f => !f._aptUnit).length, title: (document.querySelector('#aptUnitPanel h3') || {}).textContent || '' }));
     assert(!r.issue && !r.banner && !r.stale, '오류 문구/배너 없이 저장되어야 한다: ' + JSON.stringify(r));
     assert(r.left === 0, '미배정이 0장이어야 한다: ' + r.left);
-    assert(r.title.includes('21동 1203호') && r.title.includes('6장'), '저장 뒤 그 세대 화면으로 넘어가 6장이 보여야 한다: ' + r.title);
+    // v319: 저장 뒤 그 호수 화면으로 튀지 않고 보던 목록(미지정)에 머문다 — 30장을 다섯 호수로 나눌 때 저장마다
+    // 미지정으로 되돌아오던 왕복을 없앴다. 어디로 갔는지는 토스트가 말한다.
+    assert(r.title.includes('미지정') && r.title.includes('0장'), '저장 뒤에도 미지정 목록에 머물러야 한다(이제 0장): ' + r.title);
+    const toastTxt = await page.evaluate(() => (document.getElementById('toast') || {}).textContent || '');
+    assert(/6장 → 21동 1203호/.test(toastTxt), '토스트가 어디로 갔는지 말해야 한다: ' + toastTxt);
   });
 
   await test('작업명 일괄 입력 — 고른 사진에 한 번에 들어가고, 선택·배정 칸은 그대로 남는다', async () => {
