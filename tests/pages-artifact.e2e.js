@@ -13,7 +13,12 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hj-pages-artifact-'));
 const out = path.join(temp, '_site');
-const expected = ['.nojekyll', 'index.html', 'media-safety.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'terms.html'];
+// Pages 에 올라가도 되는 것의 **정확한 목록**이다(정렬된 순서로 대조한다).
+// 누가 조용히 늘리면 tests/·apps-script/·backup/ 처럼 나가면 안 되는 것이 새어 나간다.
+// 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 여기에 안 적으면 저장소에는 있는데 Pages 에
+// 안 올라가고, 그건 폰에서 설치할 때에만 드러난다. 늘릴 때는 왜 늘렸는지 여기에 적어라.
+const expected = ['.nojekyll', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+  'index.html', 'media-safety.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
   'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',

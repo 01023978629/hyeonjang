@@ -69,11 +69,18 @@
 윤곽을 따 path 로 박았다(원본 대비 IoU 0.9973) — `<text>` 로 두면 한글 글꼴이 없는 기기에서 네모가 된다.
 
 **루트에 `icon-192.png`·`icon-512.png`·`icon-maskable-512.png`·`apple-touch-icon.png` 네 장.**
-새 아이콘을 더하면 **네 곳**을 같이 고쳐야 한다 — `index.html` head·동적 manifest, `sw.js` 의 `SHELL_PATHS`,
-`scripts/stage-pages.mjs` 의 `publicFiles`, 그리고 `tests/sw-cache.check.js` 의 `EXPECTED_SHELL_PATHS`.
-마지막 것은 서비스워커가 캐시에 담아도 되는 것의 정확한 순서까지 고정하는 보안 경계다 — 늘릴 때는
-손으로 고치고 왜 늘렸는지 그 줄에 적는다. `stage-pages` 를 빠뜨리면 저장소에는 있는데 Pages 에 안 올라가고,
-그건 폰에서 설치할 때에만 드러난다.
+공개 파일을 하나 더하면 **다섯 곳**을 같이 고쳐야 한다. 세 곳은 목록을 정확히 고정하는 검사라
+빠뜨리면 그 자리에서 빨간불이 난다(실제로 둘 다 한 번씩 걸렸다).
+
+| 고칠 곳 | 안 고치면 |
+|---|---|
+| `index.html` head·동적 manifest | 아이콘이 안 걸린다 |
+| `sw.js` `SHELL_PATHS` | 비행기모드에서 아이콘이 깨진다 |
+| `scripts/stage-pages.mjs` `publicFiles` | 저장소에는 있는데 Pages 에 안 올라간다 — **폰에서 설치할 때만 드러난다** |
+| `tests/sw-cache.check.js` `EXPECTED_SHELL_PATHS` | 서비스워커가 캐시에 담아도 되는 것의 순서까지 고정하는 보안 경계 |
+| `tests/pages-artifact.e2e.js` `expected` | Pages 에 올라가도 되는 것의 정확한 목록(`tests/`·`apps-script/`·`backup/` 유출 방지) |
+
+뒤 두 줄은 **늘린 이유를 그 줄에 적어라** — 그게 그 검사의 쓸모다.
 
 **동적 manifest 안의 주소는 절대주소여야 한다.** 이 manifest 는 `blob:` URL 로 붙는데 blob 에는 경로가 없어
 상대주소를 풀 수 없다 — 브라우저에서 `new URL('icon-192.png', blobHref)` 가 `Invalid URL` 로 던지는 것을
