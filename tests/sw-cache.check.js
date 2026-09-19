@@ -9,7 +9,13 @@ const vm = require('node:vm');
 const nodeAssert = require('node:assert/strict');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./privacy.html','./terms.html'];
+// 서비스워커가 캐시에 담아도 되는 것의 **정확한 목록**이다. 순서까지 고정한다 —
+// 누가 조용히 늘리면(토큰·고객자료가 든 주소가 섞이면) 그 기기의 장기 캐시에 남는다.
+// 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 글자 없는 정적 그림이고, 비행기모드에서
+// 홈 화면 아이콘이 깨지지 않으려면 캐시에 있어야 한다. 늘릴 때는 이 줄을 손으로 고치고
+// 왜 늘렸는지 여기에 적어라 — 그게 이 검사의 쓸모다.
+const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./privacy.html','./terms.html',
+  './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png'];
 const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
 const puts = [];
@@ -122,7 +128,7 @@ function assertShellPathsSafe(paths, label) {
   assert(r.puts === 0, 'opaque 응답을 캐시한다');
 
   console.log('PASS  같은 출처·쿼리 없는 앱 셸 허용목록만 캐시');
-  console.log('PASS  SHELL_PATHS 는 정확한 6개 공개 앱 셸이며 격리 데이터 경로 변이를 거부');
+  console.log('PASS  SHELL_PATHS 는 정확한 10개 공개 앱 셸(문서 6 + 아이콘 4)이며 격리 데이터 경로 변이를 거부');
   console.log('PASS  외부·Authorization·쿼리 navigation·민감 쿼리·POST 캐시 차단');
   console.log('PASS  실패·opaque 응답 캐시 차단');
 })().catch(e => { console.error(e && e.stack || e); process.exit(1); });

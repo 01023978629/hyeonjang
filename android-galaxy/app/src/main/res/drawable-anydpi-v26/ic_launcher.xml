@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 26+ 는 이 적응형 아이콘을 쓴다. 그 아래(minSdk 24~25)는 drawable/ic_launcher.xml 로 떨어진다.
+     AndroidManifest 의 android:icon="@drawable/ic_launcher" 는 그대로 둔다 — 안드로이드가 알아서 고른다. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
