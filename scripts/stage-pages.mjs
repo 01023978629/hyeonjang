@@ -10,7 +10,9 @@ const output = path.resolve(process.cwd(), outputArg);
 if (output === root || output === path.parse(output).root) throw new Error('저장소 루트나 드라이브 루트는 출력폴더로 사용할 수 없습니다.');
 
 // Pages에서 실행·열람해도 되는 최소 앱 셸. backup/, tests/, apps-script/는 의도적으로 제외한다.
-const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-backup.js', 'privacy.html', 'sw.js', 'terms.html'];
+// 아이콘을 여기 안 넣으면 저장소에는 있는데 Pages 에 안 올라간다 — 폰에서 설치할 때만 드러난다.
+const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-backup.js', 'privacy.html', 'sw.js', 'terms.html',
+  'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 await mkdir(output, { recursive: false });
 for (const rel of publicFiles) {
   const source = path.join(root, rel);
