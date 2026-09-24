@@ -153,7 +153,28 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   const other = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .cpChk')].map(e => e.dataset.id));
   assert(JSON.stringify(other) === JSON.stringify(['p-other']) && await page.inputValue('#modalRoot .cpIn[data-k="place"]') === '유성빌라', '⑥ 현장을 바꾸면 그 현장 것: ' + other.join(','));
 
+  // ⑦ 사례 후보 — 전·후가 다 있고 안 보낸 현장만, 최근 사진 순. 보낸 현장은 빠진다. 누르면 그 현장이 열린다.
+  const cand = await page.evaluate(() => {
+    const photo = (id, proj, phase, when) => ({ id, kind: 'photo', name: id + '.jpg', project: proj, _phase: phase, when: new Date(when) });
+    state.projects.push({ name: '도안동 주택', stage: 3, archived: true, phases: [], cost: {} }, { name: '둔산동 상가', stage: 3, phases: [], cost: {} }, { name: '월평동 빌라', stage: 2, phases: [], cost: {} }, { name: '관저동 주택', stage: 2, phases: [], cost: {} });
+    state.files.push(
+      photo('d1', '도안동 주택', '시공 전', '2026-08-01'), photo('d2', '도안동 주택', '완료', '2026-08-03'),
+      photo('s1', '둔산동 상가', '철거', '2026-09-15'), photo('s2', '둔산동 상가', '마감', '2026-09-20'),
+      photo('w1', '월평동 빌라', '', '2026-09-21'), photo('g1', '관저동 주택', '시공 전', '2026-09-22'));   // 전만 있음 — 후보가 아니다
+    const c = hjCaseCandidates();
+    return { ready: c.ready.map(x => x.name), need: c.needPhase.map(x => x.name) };
+  });
+  assert(JSON.stringify(cand.ready) === JSON.stringify(['둔산동 상가', '도안동 주택']), '⑦ 전·후 다 있고 안 보낸 곳만, 최근 순(보관 현장 포함, 보낸 평화로운 제외): ' + JSON.stringify(cand));
+  assert(cand.need.includes('월평동 빌라') && cand.need.includes('관저동 주택') && cand.need.includes('유성빌라') && !cand.need.includes('평화로운아파트 107동 1302호'), '⑦ 공정 없는 현장은 따로: ' + JSON.stringify(cand));
+  await page.evaluate(() => casePackView('평화로운아파트 107동 1302호'));
+  assert(/아직 안 보낸 사례 후보 2곳 · 전\/후 표시 필요 3곳/.test(await page.evaluate(() => document.querySelector('#cpCand summary').textContent)), '⑦ 요약 줄');
+  assert(await page.evaluate(() => document.querySelector('#cpCand').open), '⑦ 후보가 있으면 펼쳐져 있다');
+  await page.click('#modalRoot .cpGo[data-name="둔산동 상가"]');
+  assert(/사례 내보내기 — 둔산동 상가/.test(await modalText()) && await page.inputValue('#modalRoot .cpIn[data-k="place"]') === '둔산동 상가', '⑦ 누르면 그 현장이 열린다');
+  const h = await page.evaluate(() => Math.round(document.querySelector('#modalRoot .cpGo').getBoundingClientRect().height));
+  assert(h >= 44, '⑦ 후보 버튼 44px: ' + h);
+
   assert(errors.length === 0, 'pageerror 0: ' + errors.join(' | '));
-  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환)');
+  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환 ⑦ 사례 후보)');
   await browser.close();
 })().catch(async (e) => { console.error('FAIL', e && e.stack || e); try { await browser.close(); } catch (_) {} process.exit(1); });
