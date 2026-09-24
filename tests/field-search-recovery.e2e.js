@@ -178,7 +178,7 @@ async function runViewport(width) {
     await seed(page);
     const projectBefore = await snapshot(page);
     let opener = await openSheet(page, mobile);
-    assert.deepEqual(await visibleProjects(page), [ACTIVE, XSS + ' 현장'], 'archived projects start collapsed');
+    assert.deepEqual(await visibleProjects(page), [XSS + ' 현장', ACTIVE], 'photo-empty projects first; archived projects start collapsed');
     assert.equal(await page.locator('#projSheet').getAttribute('role'), 'dialog');
     assert.equal(await page.locator('#projSheet').getAttribute('aria-modal'), 'true');
     assert(await page.locator('#psSearch').getAttribute('aria-label'), 'project search has an accessible name');
@@ -197,7 +197,7 @@ async function runViewport(width) {
     await page.locator('#psSearchClear').focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#psSearch').inputValue(), '');
-    assert.deepEqual(await visibleProjects(page), [ACTIVE, XSS + ' 현장'], 'clearing restores the collapsed archive preference');
+    assert.deepEqual(await visibleProjects(page), [XSS + ' 현장', ACTIVE], 'clearing restores photo-empty first order and collapsed archive preference');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'psSearch', 'clear returns focus to search');
     await page.locator('#psSearch').fill(XSS);
     assert.deepEqual(await visibleProjects(page), [XSS + ' 현장'], 'HTML-like names remain searchable text');
@@ -220,7 +220,7 @@ async function runViewport(width) {
     await page.locator('#psSearch').fill('Alpha');
     assert.deepEqual(await visibleProjects(page), [ACTIVE]);
     await page.locator('#psSearchClear').click();
-    assert.deepEqual(await visibleProjects(page), [ACTIVE, XSS + ' 현장', ARCHIVED], 'clear also restores an expanded archive preference');
+    assert.deepEqual(await visibleProjects(page), [XSS + ' 현장', ACTIVE, ARCHIVED], 'clear restores photo-empty first order and expanded archive preference');
     assert.equal(await page.evaluate(() => __showArchived), true);
     await page.locator('#psSearch').fill('Beta보관현장');
     const archivedRow = page.locator('#psList button[data-psel]:visible').filter({ hasText: ARCHIVED });

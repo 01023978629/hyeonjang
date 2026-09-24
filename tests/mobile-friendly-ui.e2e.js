@@ -76,9 +76,10 @@ async function reachable(locator,label){assert(await locator.evaluate(e=>{const 
         const baseline=await businessSnapshot(page);
         await page.evaluate(()=>openProjectSheet());await page.locator('#psSearch').waitFor();await settle(page);
         const rowNames=await rows(page);
-        assert.equal(rowNames[0],CURRENT,'current archived project must be first even while archives are collapsed');
+        assert.equal(rowNames.at(-1),CURRENT,'current archived project remains visible after active projects while archives are collapsed');
         assert.equal(rowNames.filter(x=>x===CURRENT).length,1,'current appears exactly once');
-        assert.deepEqual(rowNames.slice(1),baseline.order.filter(x=>![CURRENT,'모의 보관 나','모의 보관 가'].includes(x)).sort((a,b)=>a.localeCompare(b,'ko')),'active display order sorted without mutating source');
+        const activeOrder=baseline.order.filter(x=>![CURRENT,'모의 보관 나','모의 보관 가',A].includes(x)).sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})).concat(A);
+        assert.deepEqual(rowNames.slice(0,-1),activeOrder,'photo-empty projects first, then 가나다순 without mutating source');
         const currentRow=page.locator('#psList .ps-row[aria-pressed="true"]');
         assert.equal(await currentRow.count(),1,'one current project row');assert.equal(await currentRow.getAttribute('data-psel'),CURRENT);
         assert.equal(await label(currentRow.locator('.ps-current-tag')),'현재 현장');
@@ -100,7 +101,7 @@ async function reachable(locator,label){assert(await locator.evaluate(e=>{const 
         const headerAfter=await page.locator('#psSearch').boundingBox();assert(Math.abs(headerBefore.y-headerAfter.y)<1,'list scrolling does not move the search header');
         await reachable(page.locator('#psSearch'),spec.name+' project search remains reachable');await reachable(page.locator('#projSheetClose'),spec.name+' close remains reachable');
         await page.locator('#psArcTg').click();
-        const expanded=await rows(page);assert.deepEqual(expanded.slice(-2),['모의 보관 가','모의 보관 나'],'other archived rows sorted');assert.equal(expanded.filter(x=>x===CURRENT).length,1);
+        const expanded=await rows(page);assert.deepEqual(expanded.slice(-3),['모의 보관 가','모의 보관 나',CURRENT],'archived photo-empty rows first, then 가나다순');assert.equal(expanded.filter(x=>x===CURRENT).length,1);
         await page.locator('#psSearch').fill(A);await settle(page);
         assert.deepEqual(await rows(page),[A],'search does not inject the nonmatching current project');
         const name=page.locator('#psList .ps-name');assert.equal(await name.innerText(),A,'full long project name remains in text');
@@ -109,7 +110,7 @@ async function reachable(locator,label){assert(await locator.evaluate(e=>{const 
         await shot(page,spec,'project-long-name');
         await page.locator('#psSearch').fill(B);assert.deepEqual(await rows(page),[B],'similar names differing only at the end can be distinguished');
         await page.locator('#psSearch').fill('없는 모의 검색어');await page.locator('#psSearchEmpty').waitFor();assert.deepEqual(await rows(page),[]);
-        await page.locator('#psSearchClear').click();assert.equal((await rows(page))[0],CURRENT,'clearing search restores the current project');
+        await page.locator('#psSearchClear').click();assert.equal((await rows(page))[0],activeOrder[0],'clearing search restores photo-empty first ordering');assert((await rows(page)).includes(CURRENT),'clearing search preserves current project access');
         await page.locator('#projSheetClose').click();await sheetClosed(page);
         assert.equal(await page.evaluate(()=>state.activeProject),CURRENT,'closing project chooser cancels selection');
         assert.deepEqual(await businessSnapshot(page),baseline,'project browsing changes no saved business data or order');

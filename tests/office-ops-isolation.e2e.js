@@ -9,6 +9,9 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+// strong/dynamic 검사는 같은 소스를 연속으로 읽는다. 마지막 정확한 입력 하나의
+// 토큰만 재사용하고 모든 바인딩/변이 판정은 그대로 실행한다(느린 PC의 180초 초과 방지).
+let lastBindingScan=null;
 /* 이 파일의 토크나이저는 정규식 리터럴을 문맥으로 판정한다(canStartRegex). `&&` 와 `||` 는 그 판정 목록에
    없어서, `x && /re/.test(y)` 를 만나면 '/' 를 나눗셈으로 읽고 다음 '/' 까지를 통째로 문자열처럼 삼킨다 —
    그러면 파일 끝까지 '닫히지 않은 정규식' 이 되고, 이 파일의 격리 검사 전체가 조용히 눈을 감는다.
@@ -32,7 +35,9 @@ try {
 
 function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function bindingTokens(candidate) {
-  const input = String(candidate), scripts = [...input.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+  const input = String(candidate);
+  if(lastBindingScan&&lastBindingScan.input===input)return lastBindingScan.tokens;
+  const scripts = [...input.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   const lastScriptEnd = input.toLowerCase().lastIndexOf('</script>');
   const closingHtmlAt = input.toLowerCase().indexOf('</html>', lastScriptEnd + 9);
   const appendedTail = input.slice(closingHtmlAt >= 0 ? closingHtmlAt + 7 : lastScriptEnd + 9);
@@ -178,6 +183,7 @@ function bindingTokens(candidate) {
     if (stopAtTemplateBrace) throw new Error('malformed supplied source: unterminated template expression');
   };
   scanCode(false);
+  lastBindingScan={input,tokens:Object.freeze(tokens.map(Object.freeze))};
   return tokens;
 }
 function isClassKeywordToken(tokens, at) {
