@@ -3,6 +3,18 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-25 프로젝트 표시·사진 우선 스캔 v323 (로컬 배포 후보)
+
+- 기준 main은 `86898e0` / v322. 별도 `codex/project-photo-sort-20260925` 브랜치에서 작업한다. 운영 배포 여부는 PR/Pages 결과로 따로 확인한다.
+- PC 목록·휴대폰 현장 선택·촬영 현장 선택은 **사진 0개 먼저, 그룹 안에서는 가나다/숫자순**. `projectPhotoCounts`는 `kind=photo`만 세며 영상도 포함한다. 전체 자료 개수는 종전대로 표시한다. `state.projects` 배열·배정·현재 선택·보관 상태는 정렬로 수정하지 않는다.
+- 진행/보관 구분은 유지한다. 휴대폰의 현재 현장은 배지로 표시하고, 보관함이 접혀 있어도 현재 보관 현장에는 접근할 수 있지만 사진 0개 진행 현장 앞에 고정하지 않는다.
+- `photoFirstDirectoryEntries`는 각 폴더의 **현장사진 디렉터리만 안정 우선 분할**한다. 다른 폴더 상대 순서·백업 제외·접근 실패 기록은 유지한다. 스캔만으로 실제 파일을 이동/삭제하거나 Drive로 업로드하지 않는다.
+- 사진 우선 읽기로 raw→정리본 순서가 달라지는 경계: 같은 이름/크기 raw와 정리본은 `loadProject` 및 경로별 수기값 복원까지 양쪽을 보존한다. 그 뒤 두 실제 파일의 SHA-256, 현장/세대/Drive/원본증빙/수동분류 충돌을 확인한 경우만 정리본 경로·핸들을 대표로 쓴다. 파일 읽기 실패·100MiB 초과·세 장 이상·충돌은 그대로 보존한다. 실제 원본 파일은 건드리지 않는다.
+- `equalSizeScanPhotoPair`는 저장본 재불러오기 때 모호한 같은 크기 raw/정리본을 이름이나 같은 Drive ID만으로 다시 지우지 못하게 한다. 세션 Set만으로 보호하면 새 기기에서 무너지므로 JSON 왕복 검사를 유지한다.
+- 새 검사: `node tests/run-all.js project-scan-order mobile-friendly-ui phase-folder-matching apartment-units`, 정적 서버 8299 실행 후 `node tests/project-scan-order.mutations.js`(11개 변이). 전체 게이트는 반드시 인자 없는 `node tests/run-all.js`로 실행한다.
+- Windows 검사 보완: MediaRelay 변이 입력의 CRLF만 LF로 정규화했다. OfficeOps 격리 검사는 마지막 **정확히 동일한 소스** 토큰만 읽기 전용으로 재사용한다. 모든 바인딩 판정/기존 변이는 유지하며 시간 제한이나 기대값을 완화하지 않는다.
+- 기존 `apt-side-badge`·`field-search-recovery`의 표시 순서 기대값은 새 사진 0개 우선/사진 개수 문구에 맞췄다. `video-files`는 GPU 녹화 대신 자체 생성한 16×16 VP8 모의 파일을 사용하며, 재생기의 실제 디코딩(`readyState`, 영상 크기)도 확인한다.
+
 ## 2026-09-24 📰 사례 내보내기 v321(배포됨 #170) · 사례 후보 v322
 
 운영 기준선은 main `ca7b9e2` = `hyeonjang-v321-casepack`(Pages #170). 전체 회귀 **166개**(check 14 · unit 15 · e2e 137).

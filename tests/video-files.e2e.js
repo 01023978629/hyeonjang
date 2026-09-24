@@ -20,6 +20,9 @@ catch (_) { ({ chromium } = require('playwright')); }
 const fs = require('fs');
 const path = require('path');
 const APP = 'http://127.0.0.1:8299/index.html';
+// 독립적인 16x16 VP8/WebM 두 프레임(회색→밝은 회색), 로컬 FFmpeg로 생성한 모의 영상.
+// Headless Windows의 MediaRecorder가 빈 Blob을 내는 환경에서도 앱의 실제 영상 경로를 검사한다.
+const SAMPLE_WEBM='GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwH/////////EU2bdKtNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHLTbuMU6uEElTDZ1OsggEc7AEAAAAAAABoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmpSrXsYMPQkBNgIxMYXZmNjEuMS4xMDBXQYxMYXZmNjEuMS4xMDAWVK5rzK4BAAAAAAAAQ9eBAXPFiBdKLf5tlP0tnIEAIrWcg3VuZIiBAIaFVl9WUDiDgQEj44OEHc1lAOCUsIEQuoEQmoECVbCIVbeBAlW4gQISVMNn1nNzn2PAgGfImUWjh0VOQ09ERVJEh4xMYXZmNjEuMS4xMDBzc7FjwItjxYgXSi3+bZT9LWfIoEWjh0VOQ09ERVJEh5NMYXZjNjEuMy4xMDAgbGlidnB4H0O2dcLngQCjo4EAAIAQAgCdASoQABAAAEcIhYWIhYSIAgIADA1gAP7+yLYAo5iBAfQAsQEABRCsABgAMCgv9AAgAP74pAA=';
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const state0Id = (id) => id;
 let browser;
@@ -48,14 +51,10 @@ let browser;
   assert(cls.mov === 'mov' && cls.mp4copy === 'mp4' && cls.qt === 'mov' && cls.mkv === 'mkv' && cls.webm === 'webm', '① 동영상 확장자 인식: ' + JSON.stringify(cls));
   assert(cls.kind === 'photo' && cls.stillJpg === 'jpg' && cls.stillKind === 'photo', '① 동영상은 사진 묶음(photo)으로 분류: ' + JSON.stringify(cls));
 
-  // ② 실제 동영상(캔버스 → MediaRecorder webm) 넣기
-  const ing = await page.evaluate(async () => {
-    const cv = document.createElement('canvas'); cv.width = 320; cv.height = 180; const cx = cv.getContext('2d');
-    const stream = cv.captureStream(15); const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); const chunks = [];
-    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    let t = 0; const timer = setInterval(() => { cx.fillStyle = t % 2 ? '#c33' : '#38c'; cx.fillRect(0, 0, 320, 180); cx.fillStyle = '#fff'; cx.fillText('frame ' + t, 20, 90); t++; }, 60);
-    rec.start(100); await new Promise(r => setTimeout(r, 1300)); rec.stop(); await new Promise(r => { rec.onstop = r; }); clearInterval(timer);
-    const blob = new Blob(chunks, { type: 'video/webm' }); const file = new File([blob], 'site_clip.webm', { type: 'video/webm', lastModified: Date.now() });
+  // ② 실제 디코딩 가능한 모의 WebM 파일 넣기(로컬 녹화 장치·GPU 의존 없음)
+  const ing = await page.evaluate(async webm => {
+    const bytes=Uint8Array.from(atob(webm),c=>c.charCodeAt(0));
+    const file = new File([bytes], 'site_clip.webm', { type: 'video/webm', lastModified: Date.now() });
     window.__vidFile = file;
     state.projects = [{ name: '둔산현장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, archived: false }];
     state.files = [];
@@ -63,7 +62,7 @@ let browser;
     const img = new File([new Uint8Array([137, 80, 78, 71])], 'still.png', { type: 'image/png' });
     window.__imgFile = img;
     const t0 = performance.now(); return { size: file.size, ext: r.ext, kind: r.kind, ocr: r.ocr, thumb: r.thumb, id: r.id, cached: await idbGet('thumb-local:' + fileKey(r)) };
-  });
+  }, SAMPLE_WEBM);
   assert(ing.size > 0 && ing.ext === 'webm' && ing.kind === 'photo' && ing.ocr === 'na' && !ing.thumb && !ing.cached, '② 동영상 넣기: 사진 묶음·썸네일 없음(캐시도 없음)·OCR 없음: ' + JSON.stringify(ing));
 
   // ③ 칸 ▶ 배지 → 크게 보기 재생기
@@ -76,6 +75,7 @@ let browser;
   await page.click('#view .ph .ph-vid[data-light]');
   await page.waitForSelector('#lightbox video#lbVideo');
   await page.waitForFunction(() => { const v = document.getElementById('lbVideo'); return v && /^blob:/.test(v.currentSrc || v.src || ''); });
+  await page.waitForFunction(() => { const v = document.getElementById('lbVideo'); return v && v.readyState>=2 && v.videoWidth===16 && v.videoHeight===16; });
   const lb = await page.evaluate(() => { const v = document.getElementById('lbVideo'); return { controls: v.hasAttribute('controls'), poster: v.hasAttribute('poster'), src: (v.src || '').slice(0, 5), meta: document.querySelector('#lightbox .lb-meta').textContent }; });
   assert(lb.controls && !lb.poster && lb.src === 'blob:' && /site_clip\.webm/.test(lb.meta), '③ 크게 보기는 재생기(원본 연결·포스터 없음): ' + JSON.stringify(lb));
   const srcGuard = await page.evaluate(() => photoSrc(state.files[0], 480));   // 옛 썸네일이 있어도 다른 호출자에게 그림을 주지 않는다

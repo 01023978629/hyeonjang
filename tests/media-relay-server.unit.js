@@ -5,7 +5,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const code = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8');
-const source = fs.readFileSync(path.join(__dirname, '../apps-script/MediaRelay.gs'), 'utf8');
+// Git의 Windows CRLF 체크아웃에서도 동일한 줄 단위 변이를 검사한다.
+const source = fs.readFileSync(path.join(__dirname, '../apps-script/MediaRelay.gs'), 'utf8').replace(/\r\n/g, '\n');
 const TOKEN = 'TEST-MEDIA-APP-TOKEN', ROOT = 'TEST_APP_ROOT_000001', PHOTO = 'TEST_PHOTO_ROOT_0001', OUTSIDE = 'TEST_OUTSIDE_ROOT_001';
 const CHUNK = 1048576;
 const id = n => '00000000-0000-4000-a000-' + String(n).padStart(12, '0');

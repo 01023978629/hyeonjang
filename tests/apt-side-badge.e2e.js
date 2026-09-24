@@ -200,7 +200,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { meta: m ? m[1] : '', nameOk };
     });
     assert(r.nameOk, '현장 이름 칸에 무언가 끼어들었다 — mobile-friendly-ui 가 정확일치로 본다');
-    assert(/자료 \$\{n\}개\$\{badge\?/.test(r.meta), "배지는 '자료 N개' 뒤에만 붙어야 한다: " + r.meta);
+    assert(r.meta.includes('자료 ${n}개 · 사진 ${photoCounts.get(p.name)||0}개${badge?'), "배지는 자료·사진 개수 뒤에만 붙어야 한다: " + r.meta);
   });
 
   await test('★ 사이드바가 가로로 넘치지 않는다 (500곳짜리 긴 배지에서도)', async () => {

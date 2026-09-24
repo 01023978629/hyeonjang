@@ -308,7 +308,7 @@
      min-width:0 은 따로 적지 않는다 — overflow:hidden 이 이미 같은 일을 하고, 빼도 동작이
      달라지지 않는 것을 변이로 확인했다(검사가 못 잡는 줄은 남기지 않는다).
      text-overflow 는 자를 때 '…' 로 보이게 할 뿐이라 동작은 바뀌지 않는다. */
-  .apt-badge{margin-left:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:1.3;color:var(--muted)}
+  .apt-badge,.photo-empty-badge{margin-left:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:1.3;color:var(--muted)}
   /* '확인 필요'는 색이 아니라 굵기로 알린다 — 아파트 관리 화면도 색 없이 굵게만 쓴다. */
   .apt-badge.warn{color:var(--ink);font-weight:700}
   .newproj{display:flex;gap:6px;margin-top:12px}
@@ -974,6 +974,7 @@ body.a11y-big1 .web-office-actions,body.a11y-big2 .web-office-actions{grid-templ
     </div>
 
     <p class="eyebrow">현장(프로젝트)</p>
+    <p class="hint" style="margin:0 0 6px">사진 0개 먼저 · 가나다순</p>
     <div class="proj" id="projList"></div>
     <div class="newproj">
       <input type="text" id="newProj" placeholder="예) 망원동 카페" maxlength="40">
@@ -1229,6 +1230,10 @@ function recoverOrganizedMetadata(rec){
 
 // 같은 사진이 원본 폴더와 _정리완료에 한 벌씩 남은 과거 저장본을 정리한다.
 // 정리본의 위치·현장·공정은 그대로 두고, 원본 쪽 서버 사진 연결값만 이어 붙인다.
+function equalSizeScanPhotoPair(a,b){
+  const raw=p=>String(p||'').startsWith('현장사진/'),organized=p=>String(p||'').startsWith('_정리완료/');
+  return Number(a.size)>0&&Number(a.size)===Number(b.size)&&((raw(a.prefix)&&organized(b.prefix))||(raw(b.prefix)&&organized(a.prefix)));
+}
 function mergeOrganizedPhotoDuplicates(files){
   const src=Array.isArray(files)?files:[],byName=new Map();
   // 명시 세대 연결이 한쪽에만 있거나 다르면 합치지 않는다. 파일명은 세대 소유권 근거가 아니다.
@@ -1240,7 +1245,7 @@ function mergeOrganizedPhotoDuplicates(files){
     if(!keep.exSum&&old.exSum)keep.exSum=true;
   };
   src.forEach((f,i)=>{
-    if(!f||f.kind!=='photo'||!f.name)return;
+    if(!f||f.kind!=='photo'||!f.name||scanExactPhotoName(f.name))return;
     const k=String(f.name).trim().toLowerCase();
     if(!byName.has(k))byName.set(k,[]);
     byName.get(k).push({f,i});
@@ -1252,6 +1257,9 @@ function mergeOrganizedPhotoDuplicates(files){
     const original=group.filter(x=>!String(x.f.prefix||'').startsWith('_정리완료/'));
     if(organized.length!==1||original.length!==1)return;
     const keep=organized[0].f,old=original[0].f;
+    // 스캔이 같은 크기 원본/정리본을 둘 다 남겼다면 충돌 또는 확인 불가다.
+    // 새 기기의 저장본 복원에는 바이트 근거가 없으므로 다시 압축하지 않는다.
+    if(equalSizeScanPhotoPair(keep,old))return;
     if(!sameUnit(keep,old))return;
     if(keep.project&&old.project&&keep.project!==old.project)return;
     if(!keep.driveId&&old.driveId){keep.driveId=old.driveId;linked++;}
@@ -1262,13 +1270,14 @@ function mergeOrganizedPhotoDuplicates(files){
   // 같은 Drive ID가 두 기록에 붙은 경우도 한 장이다. 정리본, 그다음 원본 크기가 큰 기록을 남긴다.
   const byDrive=new Map();
   work.forEach((f,i)=>{
-    if(!f||f.kind!=='photo'||!f.driveId)return;
+    if(!f||f.kind!=='photo'||!f.driveId||scanExactPhotoName(f.name))return;
     if(!byDrive.has(f.driveId))byDrive.set(f.driveId,[]);
     byDrive.get(f.driveId).push({f,i});
   });
   const driveDrop=new Set();let driveDeduped=0;
   byDrive.forEach(group=>{
     if(group.length!==2||String(group[0].f.name||'').toLowerCase()!==String(group[1].f.name||'').toLowerCase())return;
+    if(equalSizeScanPhotoPair(group[0].f,group[1].f))return;
     if(!sameUnit(group[0].f,group[1].f)||group[0].f.project!==group[1].f.project)return;
     group.sort((a,b)=>Number(String(b.f.prefix||'').startsWith('_정리완료/'))-Number(String(a.f.prefix||'').startsWith('_정리완료/'))||(Number(b.f.size)||0)-(Number(a.f.size)||0));
     mergeMissing(group[0].f,group[1].f);driveDrop.add(group[1].i);driveDeduped++;
@@ -1528,7 +1537,7 @@ async function scanDir(){
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
   window.__organizedRecovered=0;
-  clearFileList();__walkSeen=new Map();__scanTick=0;toast('폴더 읽는 중…');
+  clearFileList();__walkSeen=new Map();__scanPhotoNames=new Set();__scanPhotoFiles=new Map();__scanPhotoPending=new Map();__scanTick=0;toast('현장사진부터 폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
   window.__walkDirs=new Set();window.__walkSaw=new Set();window.__walkFailed=new Set();window.__walkSkip=new Set();
@@ -1560,6 +1569,7 @@ async function scanDir(){
   // 정리 폴더·기존 작업명에서 현장/공정을 복구한다. loadProject 뒤에도 한 번 더 적용해야
   // 저장본 projects가 스캔 중 임시로 만든 공정 목록을 덮어쓰지 않는다.
   try{(state.files||[]).forEach(function(f){if(recoverOrganizedMetadata(f))window.__organizedRecovered++;});}catch(e){}
+  await settleScannedPhotoCopies(); // 경로별 저장 배정을 모두 복원한 뒤에만 동일 원본을 확인한다.
   // [v101 BUG-2/3] 자가치유: 앱 파일·보관함 항목이 색인에 남아 있으면 제거
   try{
     const _b4=(state.files||[]).length;
@@ -1831,7 +1841,7 @@ function applyData(data,opts){
   // 실제 파일이 로드돼 있으면 매칭 복원
   state.files.forEach(f=>{
     let s=byKey[fileKey(f)];
-    if(!s&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
+    if(!s&&!scanExactPhotoName(f.name)&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
     if(s){used.add(s);
       // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
       let sk=s.kind||f.kind;
@@ -1875,7 +1885,7 @@ function applyData(data,opts){
       const _walked=(typeof pruneAllowed==='function')?pruneAllowed(_pf):false;
       if(_walked&&!s.driveId&&!s._manual&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
     }
-    if(s.driveId&&state.files.some(f=>f._driveId===s.driveId))return;   // driveId 중복 방지
+    if(s.driveId&&state.files.some(f=>f._driveId===s.driveId&&!equalSizeScanPhotoPair(f,s)))return;   // 모호한 원본/정리본은 Drive ID만으로 버리지 않는다.
     if(s.key&&state.files.some(f=>f.key===s.key))return;   // key(안정 식별자) 중복 방지 — 견적 가상파일 재증식 차단
     if(state.files.some(f=>f.name===s.name&&(f.prefix||'')===(s.prefix||'')&&(f.size||0)===(s.size||0)&&(f.kind||'')===(s.kind||'')))return;  // 이름+경로+크기+종류 중복 방지
     const fext=bestExt(s.name,'');   // ext()는 'IMG.HEIC의 사본'에서 ''반환 → bestExt로 실제 확장자 인식(재분류가 실제로 먹게)
@@ -2725,7 +2735,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v322-casecand';
+const APP_BUILD='hyeonjang-v323-projectscan';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4449,6 +4459,59 @@ function loadDemo(){
   toast('데모 데이터 로드됨 — 현장 3곳 · 파일 13개');
 }
 let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기) → 중복(원본+정리본) 1회만 인입
+// 사진 우선 탐색 중 원본/정리본이 만난 이름은 경로로만 복원한다.
+// 파일명·크기만 같다는 이유로 세대나 Drive 연결을 옮기거나 원본을 숨기지 않는다.
+var __scanPhotoNames=new Set(),__scanPhotoFiles=new Map(),__scanPhotoPending=new Map();
+function scanExactPhotoName(name){return !!(__scanPhotoNames&&__scanPhotoNames.has(String(name||'').toLowerCase()));}
+async function photoFirstDirectoryEntries(dir){
+  const photos=[],rest=[];
+  for await(const entry of dir.entries()){
+    const [name,handle]=entry;
+    (handle.kind==='directory'&&String(name).normalize('NFC')==='현장사진'?photos:rest).push(entry);
+  }
+  return photos.concat(rest); // 다른 폴더끼리의 순서는 그대로 둔다. 파일 내용은 아직 읽지 않는다.
+}
+function rawOrganizedPhotoPair(a,prefix){
+  const raw=p=>String(p||'').startsWith('현장사진/');
+  const organized=p=>String(p||'').startsWith('_정리완료/');
+  return a&&isMediaExt(a.ext)&&((raw(a.prefix)&&organized(prefix))||(organized(a.prefix)&&raw(prefix)));
+}
+async function settleScannedPhotoCopies(){
+  const groups=new Map();
+  state.files.forEach(f=>{if(scanExactPhotoName(f.name)){
+    const key=f.name+'|'+f.size;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(f);
+  }});
+  for(const group of groups.values()){
+    if(group.length!==2)continue; // 세 개 이상이거나 가상 기록까지 겹치면 추정하지 않는다.
+    const [a,b]=group;if(!rawOrganizedPhotoPair(a,b.prefix))continue;
+    if(a.kind!=='photo'||b.kind!=='photo')continue; // 수동 분류한 견적/서류는 사진으로 흡수하지 않는다.
+    if(a.project&&b.project&&a.project!==b.project)continue;
+    if(JSON.stringify(a._aptUnit??null)!==JSON.stringify(b._aptUnit??null))continue;
+    if(['_driveId','_originalSha256'].some(k=>a[k]&&b[k]&&a[k]!==b[k]))continue;
+    if(a._mediaOriginal&&b._mediaOriginal&&JSON.stringify(a._mediaOriginal)!==JSON.stringify(b._mediaOriginal))continue;
+    if(['_worklabel','contact','text','est'].some(k=>a[k]&&b[k]&&JSON.stringify(a[k])!==JSON.stringify(b[k])))continue;
+    const fa=__scanPhotoFiles.get(a),fb=__scanPhotoFiles.get(b);
+    if(!fa||!fb||fa.size!==fb.size||fa.size>100*1024*1024)continue;
+    try{
+      const digest=async f=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await f.arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
+      const ha=await digest(fa),hb=await digest(fb);
+      if(ha!==hb)continue;
+      // 등록된 해시와 실제 원본이 다르면 연결이 모호하므로 두 항목을 보존한다.
+      if((a._originalSha256&&a._originalSha256!==ha)||(b._originalSha256&&b._originalSha256!==hb))continue;
+      const keep=String(a.prefix).startsWith('_정리완료/')?a:b,old=keep===a?b:a;
+      if((old._mediaOriginal&&!keep._mediaOriginal)||(old._originalSha256&&!keep._originalSha256))continue;
+      // 경로 고유 세대/원본 증빙은 복사하지 않는다. 기존 수기 작업명 등만 빈 칸에 승계한다.
+      ['project','_phase','_worklabel','contact','text','est','exSum','_driveId','_driveMimeType','_driveSize'].forEach(k=>{
+        if(!keep[k]&&old[k])keep[k]=old[k];
+      });
+      if(keep.text&&old.ocr==='done')keep.ocr='done';
+      state.files=state.files.filter(f=>f!==old);
+      revokeThumbUrl(old);
+    }catch(e){ /* 읽기/해시 실패 시 원본과 정리본 모두 유지 */ }
+  }
+  __scanPhotoFiles.clear(); // 대용량 File 참조는 스캔 완료 즉시 해제
+  __scanPhotoPending.clear();
+}
 // 스캔 제외: 앱 자신의 파일·백업·시스템 파일은 색인에 넣지 않음
 function isAppOwnFile(name,prefix){
   try{
@@ -4465,7 +4528,7 @@ function isAppOwnFile(name,prefix){
 }
 async function walk(dir,prefix){
   try{window.__walkDirs&&window.__walkDirs.add(String(prefix||'').toLowerCase());}catch(e){}
-  for await(const [name,handle] of dir.entries()){
+  for(const [name,handle] of await photoFirstDirectoryEntries(dir)){
     if(handle.kind==='directory'){
       const _sub=(prefix+name+'/').toLowerCase();
       try{window.__walkSaw&&window.__walkSaw.add(_sub);}catch(e){}
@@ -4480,11 +4543,32 @@ async function walk(dir,prefix){
       const k=(f.name||name)+'|'+(f.size||0);
       if(__walkSeen.has(k)){   // 같은 파일이 원본 폴더와 정리본 폴더에 둘 다 있으면 1번만
         const ex=__walkSeen.get(k), fk=kindFromSourceFolder(prefix);
+        if(rawOrganizedPhotoPair(ex,prefix)||scanExactPhotoName(f.name)){
+          if(!scanExactPhotoName(f.name)){
+            __scanPhotoNames.add(String(f.name).toLowerCase());
+            // 이름 폴백으로 이미 복원했을 수 있는 첫 기록도 새 객체로 정확한 경로만 복원한다.
+            const firstFile=__scanPhotoFiles.get(ex);
+            const first=await ingestFile(firstFile,ex.handle,ex.prefix);
+            state.files=state.files.filter(f=>f!==first).map(f=>f===ex?first:f);__walkSeen.set(k,first);
+            __scanPhotoFiles.delete(ex);__scanPhotoFiles.set(first,firstFile);revokeThumbUrl(ex);
+            // 먼저 만난 원본이 여러 개였다면 모두 복원한다. 정리본 하나에 임의로 합치지 않는다.
+            for(const pending of __scanPhotoPending.get(k)||[]){
+              const extra=await ingestFile(pending.file,pending.handle,pending.prefix);__scanPhotoFiles.set(extra,pending.file);
+            }
+            __scanPhotoPending.delete(k);
+          }
+          const other=await ingestFile(f,handle,prefix);__scanPhotoFiles.set(other,f);
+          continue; // loadProject까지 경로별 자료를 유지한 뒤 바이트/배정 충돌 검사
+        }
+        if(ex&&isMediaExt(ex.ext)){
+          if(!__scanPhotoPending.has(k))__scanPhotoPending.set(k,[]);
+          __scanPhotoPending.get(k).push({file:f,handle,prefix});
+        }
         if(ex&&fk&&(ex.kind==='other'||!ex.kind))ex.kind=fk;   // 폴더기반 분류가 더 명확하면 그쪽으로 보정
         continue;
       }
       const rec=await ingestFile(f,handle,prefix);
-      if(rec)__walkSeen.set(k,rec);
+      if(rec){__walkSeen.set(k,rec);if(isMediaExt(rec.ext))__scanPhotoFiles.set(rec,f);}
       // 점진 표시: 다 읽힐 때까지 기다리지 않고, 처리된 사진부터 화면에 바로 보이게(8장마다 갱신+숨돌리기)
       if((++__scanTick)%8===0){if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();await new Promise(r=>setTimeout(r,0));}
     }catch(e){}}
@@ -4530,7 +4614,7 @@ function restoreUserEdits(rec){
     let b=__editBackup.get(editKey);
     const exactUnitPath=!!b&&!__aptEditAmbiguousPaths.has(editKey);
     // [v101 BUG-5] 파일이 다른 폴더로 옮겨졌으면 이름만으로 복원(배정 풀림 방지)
-    if(!b&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
+    if(!b&&!scanExactPhotoName(rec.name)&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
     if(!b)return rec;
     if(b.project||b.kind==='estimate')rec.project=b.project||null; // 견적의 명시 해제도 복원
     if(b.kind==='estimate')rec._estimateProjectRestored=true;
@@ -5958,6 +6042,17 @@ function mobileSheetA11y(sheet,backdrop,opts){
 }
 
 /* 🏗️ 폰용 현장 선택 하단 시트 — 더보기에서 열림. 탭 한 번으로 현장 전환 */
+function projectPhotoCounts(files){
+  const counts=new Map();
+  (files||[]).forEach(f=>{if(f&&f.project&&f.kind==='photo')counts.set(f.project,(counts.get(f.project)||0)+1);});
+  return counts; // 동영상도 앱의 현장사진 분류(kind=photo)에 포함한다.
+}
+function sortProjectDisplay(projects,photoCounts){
+  return projects.slice().sort((a,b)=>{
+    const emptyA=(photoCounts.get(a.name)||0)===0,emptyB=(photoCounts.get(b.name)||0)===0;
+    return Number(emptyB)-Number(emptyA)||String(a.name).localeCompare(String(b.name),'ko',{numeric:true});
+  }); // 저장 순서·현재 선택·보관 상태를 변경하지 않는 표시용 배열
+}
 function openProjectSheet(openerOverride){
   const opener=(openerOverride&&openerOverride.nodeType===1)?openerOverride:
     (openerOverride&&openerOverride.currentTarget&&openerOverride.currentTarget.nodeType===1)?openerOverride.currentTarget:document.activeElement;
@@ -5967,15 +6062,15 @@ function openProjectSheet(openerOverride){
   const o2=document.getElementById('projSheetBd');if(o2)o2.remove();
   const bd=document.createElement('div');bd.className='more-backdrop open';bd.id='projSheetBd';
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='projSheet';
-  const byName=(a,b)=>String(a.name).localeCompare(String(b.name),'ko',{numeric:true});
-  const act=state.projects.filter(p=>!p.archived).sort(byName), arc=state.projects.filter(p=>p.archived).sort(byName);
+  const photoCounts=projectPhotoCounts(state.files);
+  const act=sortProjectDisplay(state.projects.filter(p=>!p.archived),photoCounts), arc=sortProjectDisplay(state.projects.filter(p=>p.archived),photoCounts);
   const __cntSheet={};state.files.forEach(f=>{if(f&&f.project)__cntSheet[f.project]=(__cntSheet[f.project]||0)+1;});
   const __dupeSheet=aptDupeNames();   // row() 안에서 부르면 현장마다 projects 를 다시 훑는다
   const row=(p,dim)=>{const n=__cntSheet[p.name]||0,selected=state.activeProject===p.name;
     const stage=STAGES[Number(p.stage)]||STAGES[0],badge=aptUnitBadge(p,__dupeSheet);
     return `<button type="button" class="ps-row" data-psel="${escapeAttr(p.name)}" aria-pressed="${selected?'true':'false'}">
       <span class="ps-content"><span class="ps-name">${escapeHtml(p.name)}</span>
-      <span class="ps-meta">${dim?'보관 현장 · ':''}${escapeHtml(stage)} · 자료 ${n}개${badge?' · 🏢 '+escapeHtml(badge.text):''}</span>
+      <span class="ps-meta">${dim?'보관 현장 · ':''}${escapeHtml(stage)} · 자료 ${n}개 · 사진 ${photoCounts.get(p.name)||0}개${badge?' · 🏢 '+escapeHtml(badge.text):''}</span>
       ${selected?'<span class="ps-current-tag">✓ 현재 현장</span>':''}</span><span class="ps-chevron" aria-hidden="true">›</span></button>`;};
   sh.innerHTML=`<div class="ps-heading"><h4 id="projSheetTitle">현장 선택</h4><button type="button" class="ghost" id="projSheetClose" aria-label="현장 선택 닫기">✕</button></div>
     ${state.projects.length>0?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="search" id="psSearch" aria-label="현장 이름 검색" aria-describedby="psSearchHint" placeholder="🔍 보관 현장도 함께 검색" autocomplete="off" style="flex:1;min-width:0;width:100%;min-height:44px;padding:11px;font-size:15px"><button type="button" id="psSearchClear" class="ghost" hidden style="width:auto;min-width:44px;min-height:44px;white-space:nowrap">검색 지우기</button></div><p id="psSearchHint" class="hint" style="margin:0 0 6px">띄어쓰기와 관계없이 진행·보관 현장을 함께 찾습니다.</p><div id="psResultStatus" role="status" aria-live="polite" aria-atomic="true" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>`:''}
@@ -5987,15 +6082,13 @@ function openProjectSheet(openerOverride){
     const active=act.filter(p=>!q||normalize(p.name).includes(q));
     const archived=arc.filter(p=>!q||normalize(p.name).includes(q));
     const current=!q?state.projects.find(p=>p.name===state.activeProject):null;
-    const restActive=active.filter(p=>!current||p.name!==current.name),restArchived=archived.filter(p=>!current||p.name!==current.name);
     const status=sh.querySelector('#psResultStatus');
-    if(status)status.textContent=q?'검색 결과 '+(active.length+archived.length)+'곳 · 진행 '+active.length+'곳 / 보관 '+archived.length+'곳':'진행 '+act.length+'곳 · 보관 '+arc.length+'곳'+(current?' · 현재 현장 먼저':'');
+    if(status)status.textContent=q?'검색 결과 '+(active.length+archived.length)+'곳 · 진행 '+active.length+'곳 / 보관 '+archived.length+'곳':'사진 0개 먼저 · 가나다순 · 진행 '+act.length+'곳 · 보관 '+arc.length+'곳';
     const clear=sh.querySelector('#psSearchClear');if(clear)clear.hidden=!q;
     list.innerHTML=`
-      ${current?row(current,!!current.archived):''}
       <button type="button" data-psel="" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 8px;font-weight:700;border:0;border-bottom:1px solid var(--line-soft);background:${!state.activeProject?'var(--paper-2)':'transparent'};border-radius:${!state.activeProject?'8px':'0'};color:var(--ink);font:inherit;text-align:left"><span>● 전체 보기</span><span style="color:var(--muted);font-size:12px;font-weight:400">${state.files.length}</span></button>
-      ${restActive.map(p=>row(p,false)).join('')||(!q&&!active.length?'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>':'')}
-      ${q?(archived.length?'<div style="padding:10px 8px;font-size:13px;color:var(--muted)">📦 보관 현장 검색 결과 (보관 상태 유지)</div>'+archived.map(p=>row(p,true)).join(''):''):(restArchived.length?`<button type="button" id="psArcTg" aria-expanded="${__showArchived?'true':'false'}" style="width:100%;min-height:44px;padding:13px 8px;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--muted)">${__showArchived?'▾':'▸'} 📦 ${current&&current.archived?'다른 ':''}보관 ${restArchived.length}곳</button>${__showArchived?restArchived.map(p=>row(p,true)).join(''):''}`:'')}
+      ${active.map(p=>row(p,false)).join('')||(!q&&!active.length?'<div style="padding:14px 8px;color:var(--muted);font-size:13px">진행 중 현장이 없습니다 — 더보기 ▸ ➕ 현장 추가</div>':'')}
+      ${q?(archived.length?'<div style="padding:10px 8px;font-size:13px;color:var(--muted)">📦 보관 현장 검색 결과 (보관 상태 유지)</div>'+archived.map(p=>row(p,true)).join(''):''):(archived.length?`<button type="button" id="psArcTg" aria-expanded="${__showArchived?'true':'false'}" style="width:100%;min-height:44px;padding:13px 8px;border:0;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--muted)">${__showArchived?'▾':'▸'} 📦 보관 ${archived.length}곳</button>${__showArchived?archived.map(p=>row(p,true)).join(''):(current&&current.archived?row(current,true):'')}`:'')}
       ${q&&!active.length&&!archived.length?'<div id="psSearchEmpty" style="padding:16px 8px;font-size:14px;color:var(--muted)">일치하는 현장이 없습니다. 이름 일부로 다시 검색하거나 ‘검색 지우기’를 눌러 주세요.</div>':''}`;
   };
   drawList();
@@ -6058,9 +6151,10 @@ function openCameraProjectSheet(openerOverride){
   const sh=document.createElement('div');sh.className='more-sheet open';sh.id='cameraProjectSheet';
   sh.__cameraOpener=opener;
   sh.setAttribute('role','dialog');sh.setAttribute('aria-modal','true');sh.setAttribute('aria-labelledby','cameraProjectTitle');
-  const projects=state.projects.filter(p=>!p.archived).slice().reverse();
+  const photoCounts=projectPhotoCounts(state.files);
+  const projects=sortProjectDisplay(state.projects.filter(p=>!p.archived),photoCounts);
   const rows=projects.map(p=>{
-    const n=state.files.filter(f=>f.project===p.name&&f.kind==='photo').length;
+    const n=photoCounts.get(p.name)||0;
     return `<button type="button" class="camera-project-row" data-camera-project="${escapeAttr(p.name)}" style="width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;margin-bottom:7px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper);color:var(--ink);text-align:left"><span style="font-size:18px">🏗</span><span style="flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</span><small style="color:var(--muted)">사진 ${n}</small><span aria-hidden="true">›</span></button>`;
   }).join('');
   sh.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h4 id="cameraProjectTitle" style="margin:0;flex:1">📸 촬영할 현장 선택</h4><button type="button" class="ghost" id="cameraProjectClose" aria-label="촬영 현장 선택 닫기">✕</button></div>
@@ -6155,10 +6249,11 @@ function render(){
   all.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();all.click();}};
   pl.appendChild(all);
   const __actP=state.projects.filter(p=>!p.archived), __arcP=state.projects.filter(p=>p.archived);
+  const __photoSide=projectPhotoCounts(state.files);
   const __cntSide={};state.files.forEach(f=>{if(f&&f.project)__cntSide[f.project]=(__cntSide[f.project]||0)+1;}); // 현장마다 files 를 다시 훑지 않는다(v257)
   const __dupeSide=aptDupeNames();   // 현장마다 projects 를 다시 훑지 않는다 — 루프 안에서 부르면 현장²
   const addProjItem=(p,dim)=>{
-    const n=__cntSide[p.name]||0,badge=aptUnitBadge(p,__dupeSide);
+    const n=__cntSide[p.name]||0,pn=__photoSide.get(p.name)||0,badge=aptUnitBadge(p,__dupeSide);
     const wrap=document.createElement('div');
     const el=document.createElement('div');
     el.className='proj-item'+(state.activeProject===p.name?' active':'');
@@ -6167,12 +6262,14 @@ function render(){
     // aria-label 은 줄 안의 글자를 통째로 덮는다(사진 수도 '📦'도 이미 안 읽힌다) — 배지를 DOM 에만
     // 넣으면 눈에는 보이고 음성으로는 없는 정보가 된다. 보관 토글처럼 라벨에도 같이 넣는다(🏢 는 뺀다).
     el.setAttribute('role','button');el.tabIndex=0;el.setAttribute('aria-label',p.name+' 현장 열기'+(badge?' · '+badge.text:''));
+    el.title='사진 '+pn+'개 · 전체 자료 '+n+'개';
     if(state.activeProject===p.name)el.setAttribute('aria-current','true');
     el.onclick=()=>{state.activeProject=p.name;state.tab='project';__projView=null;render();};
     el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click();}};
     wrap.appendChild(el);
     const sr=document.createElement('div');sr.className='stage-row';
     sr.innerHTML=STAGES.map((s,i)=>`<span class="stage-dot ${i<=p.stage?'on':''}" title="${s}"></span>`).join('');
+    if(!pn){const empty=document.createElement('span');empty.className='photo-empty-badge';empty.textContent='사진 0개';sr.appendChild(empty);}
     // 배지는 el(.proj-item) 이 아니라 sr 에 붙인다 — 활성 줄의 파란 배경·흰 글자를 타지 않고,
     // 현장 이름·사진 수와 폭도 다투지 않는다. textContent 라 따로 이스케이프할 것이 없다.
     // 버튼으로 만들지 않는다: 줄 전체가 role=button 이고 Enter/Space 를 가로채므로 안에 버튼을 두면
@@ -6181,7 +6278,7 @@ function render(){
       b.setAttribute('aria-hidden','true');b.title=badge.title;b.textContent='🏢 '+badge.text;sr.appendChild(b);}
     wrap.appendChild(sr);pl.appendChild(wrap);
   };
-  __actP.slice().reverse().forEach(p=>addProjItem(p,false)); // 신규 현장이 맨위
+  sortProjectDisplay(__actP,__photoSide).forEach(p=>addProjItem(p,false));
   if(__arcP.length){
     const tg=document.createElement('div');
     tg.className='proj-item';tg.style.opacity='.7';tg.style.fontSize='12px';
@@ -6190,7 +6287,7 @@ function render(){
     tg.onclick=()=>{__showArchived=!__showArchived;render();};
     tg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tg.click();}};
     pl.appendChild(tg);
-    if(__showArchived)__arcP.forEach(p=>addProjItem(p,true));
+    if(__showArchived)sortProjectDisplay(__arcP,__photoSide).forEach(p=>addProjItem(p,true));
   }
   const c=counts();
   $('#bDash').textContent=__actP.length;
