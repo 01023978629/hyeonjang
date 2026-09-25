@@ -2735,7 +2735,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v324-photosafety';
+const APP_BUILD='hyeonjang-v325-dashcase';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7548,10 +7548,19 @@ function dashboardTodoSummary(){
   const late=open.filter(n=>n.day&&n.day<today).length;
   return open.length?'미완료 '+open.length+'건 · 밀린 할일 '+late+'건':'등록된 미완료 할 일이 없습니다.';
 }
+// 첫 화면 한 줄 — 후보 수만 센다. 사진을 다시 훑지 않는다(hjCaseCandidates 는 state.files 한 번 순회).
+function dashboardCaseSummary(){
+  let c;try{c=hjCaseCandidates();}catch(e){return '';}
+  if(!c.ready.length&&!c.needPhase.length)return '📰 홈페이지 사례 후보 없음 — 사진에 시공 전·완료 공정을 붙이면 후보가 됩니다';
+  return '📰 홈페이지 사례 후보 '+c.ready.length+'곳'+(c.ready.length?' — '+c.ready.slice(0,2).map(x=>x.name).join(' · ')+(c.ready.length>2?' 외':''):'')+(c.needPhase.length?' · 전/후 표시 필요 '+c.needPhase.length+'곳':'');
+}
 function dashboardTodoHTML(){
   return '<section id="dashboardTodo" aria-labelledby="dashboardTodoTitle" style="border:1px solid var(--line-soft);border-radius:12px;padding:13px;margin-bottom:12px">'+
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
+    // 사례 후보는 첫 화면에 — 더보기 안에만 두면 "어느 현장을 아직 안 보냈나"를 폰에서 다시 못 본다(v254 폰 첫 화면 규칙).
+    '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
+    '<button type="button" id="dashboardCaseOpen" class="ghost" onclick="casePackView()" style="min-height:44px">📰 사례 내보내기</button>'+
     '<button type="button" id="dashboardSharedTodoOpen" class="blue" onclick="hjSharedTodoView()" style="min-height:44px">☁ 팀 공유 할일</button>'+
     '<button type="button" id="dashboardSearchOpen" class="ghost" onclick="hjGlobalSearch()" style="min-height:44px">🔍 현장·자료 찾기</button>'+
     '<button type="button" id="dashboardTeamOpen" class="blue" onclick="hjTeamBoard()" style="min-height:44px">팀 업무·인수인계</button></div>'+
@@ -7569,6 +7578,7 @@ function dashboardOperationsRefresh(){
   const summary=document.getElementById('dashboardTodoSummary');
   if(summary)summary.textContent=dashboardTodoSummary();
   const team=document.getElementById('dashboardTeamSummary');if(team)team.textContent=hjTeamSummary();
+  const cs=document.getElementById('dashboardCaseSummary');if(cs)cs.textContent=dashboardCaseSummary();
   document.querySelectorAll('[data-dashboard-prep]').forEach(el=>{
     const matches=(state.schedule||[]).filter(s=>String(s.id)===el.dataset.dashboardPrep);
     el.textContent=dashboardPrepLabel(matches.length===1?matches[0]:null);
