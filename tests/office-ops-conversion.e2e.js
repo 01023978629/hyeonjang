@@ -762,7 +762,8 @@ async function runVmContracts() {
   const mediaPersistenceSource=extractFunction('guardedPersistMediaFiles');
   assert.match(mediaPersistenceSource,/return\s+withAppStateWriteLock\s*\(/,'approved media writer owns the same appState lock');
   assert.equal((mediaPersistenceSource.match(/guardedAppStateWriteAtomic\s*\(/g)||[]).length,1,'approved media writer owns exactly one atomic candidate commit');
-  assert.match(mediaPersistenceSource,/guardedAppStateWriteAtomic\(data,__paidCommitPointerKey,__tabStamp,null,unchanged,removedIds,removedExpected\)/,'media writer must retain pointer, stamp, candidate and removed-ID CAS guards');
+  assert.match(mediaPersistenceSource,/guardedAppStateWriteAtomic\(data,__paidCommitPointerKey,__tabStamp,null,unchanged,removedIds,removedExpected,photoJournal\)/,'media writer must retain pointer, stamp, candidate and removed-ID CAS guards and pass the optional recovery journal to the same transaction');
+  assert.match(extractFunction('guardedAppStateWriteAtomic'),/photoRecoveryRevision\(raw\)!==photoJournal.expected/,'recovery journal must add its own revision CAS without replacing existing guards');
   assert.match(mediaPersistenceSource,/validatePaidSerializedState\(data\)/,'media candidate validation must exist');
   assert.ok(mediaPersistenceSource.indexOf('validatePaidSerializedState(data)')<mediaPersistenceSource.indexOf('guardedAppStateWriteAtomic('),'media candidate validation precedes persistence');
   assert.ok(mediaPersistenceSource.indexOf('guardedAppStateWriteAtomic(')<mediaPersistenceSource.indexOf('state.files=files'),'media changes publish only after persistence');
