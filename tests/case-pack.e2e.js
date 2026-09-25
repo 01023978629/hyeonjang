@@ -185,7 +185,39 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   await page.evaluate(() => { closeModal(true); state.files = state.files.filter(f => f.project !== '둔산동 상가'); dashboardOperationsRefresh(); });
   assert(/사례 후보 1곳 — 도안동 주택/.test(await page.evaluate(() => document.querySelector('#dashboardCaseSummary').textContent)), '⑧ 자료가 바뀌면 다시 그리지 않아도 줄이 바뀐다(dashboardOperationsRefresh)');
 
+  // ⑨ 공정 없는 사진에 그 자리에서 전/후를 붙인다 — 규칙은 보증서와 같다: 빈 공정만, 정리 폴더 사진 제외, 안전판 실패면 안 쓴다.
+  await page.evaluate(() => {
+    try { closeModal(true); } catch (e) {}
+    const photo = (id, phase, extra) => Object.assign({ id, kind: 'photo', name: id + '.jpg', project: '관저동 주택', _phase: phase, when: new Date('2026-09-22') }, extra || {});
+    state.files = state.files.filter(f => f.project !== '관저동 주택').concat([
+      photo('k-none-1', ''), photo('k-none-2', ''), photo('k-has', '타일'), photo('k-org', '', { prefix: '_정리완료/2026-09-22/철거/' })
+    ]);
+    const proj = state.projects.find(x => x.name === '관저동 주택'); proj.phases = ['시공전'];   // 현장에 이미 '시공전' 표기가 있다 → 그 표기를 써야 한다
+    window.__snapCalls = 0; window.__snapOk = true; window.__origSnap = window.hjSnapshot; window.hjSnapshot = async () => { window.__snapCalls++; return window.__snapOk; };
+    casePackView('관저동 주택');
+  });
+  const tagBtns = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .cpTag')].map(b => b.dataset.id + ':' + b.dataset.side));
+  assert(JSON.stringify(tagBtns) === JSON.stringify(['k-none-1:before', 'k-none-1:after', 'k-none-2:before', 'k-none-2:after']), '⑨ 공정 없는 사진에만 [전][후] (있는 사진·정리 폴더 사진 제외): ' + tagBtns.join(','));
+  assert(await page.evaluate(() => document.querySelector('#cpTagBar').hidden), '⑨ 표시 전엔 저장 바가 숨어 있다');
+  await page.click('#modalRoot .cpTag[data-id="k-none-1"][data-side="before"]');
+  await page.click('#modalRoot .cpTag[data-id="k-none-2"][data-side="after"]');
+  assert(await page.evaluate(() => !document.querySelector('#cpTagBar').hidden && /전·후 표시 2장/.test(document.querySelector('#cpTagCount').textContent)), '⑨ 저장 바에 장수');
+  assert(await page.evaluate(() => !document.querySelector('#modalRoot .cpChk[data-id="k-none-1"]').checked), '⑨ 라벨 안 버튼을 눌러도 체크가 바뀌지 않는다');
+  await page.evaluate(() => { window.__snapOk = false; });
+  await page.click('#cpTagSave');
+  await page.waitForFunction(() => window.__snapCalls >= 1);
+  assert(await page.evaluate(() => state.files.filter(f => f.id.startsWith('k-none')).every(f => !f._phase)) && /안전판/.test(await lastToast()), '⑨ 안전판 실패면 아무것도 쓰지 않는다: ' + await lastToast());
+  await page.evaluate(() => { window.__snapOk = true; });
+  await page.click('#cpTagSave');
+  await page.waitForFunction(() => (state.files.find(f => f.id === 'k-none-1') || {})._phase);
+  const phases = await page.evaluate(() => Object.fromEntries(state.files.filter(f => f.id.startsWith('k-')).map(f => [f.id, f._phase || ''])));
+  assert(phases['k-none-1'] === '시공전' && phases['k-none-2'] === '완료' && phases['k-has'] === '타일' && phases['k-org'] === '', '⑨ 빈 공정만 채우고 현장 표기(시공전)를 따른다: ' + JSON.stringify(phases));
+  assert(await page.evaluate(() => state.dirty === true && !state.projects.find(x => x.name === '관저동 주택').phases.includes('완료')), '⑨ dirty 만 켜고 p.phases 에는 올리지 않는다');
+  await page.waitForFunction(() => document.querySelectorAll('#modalRoot .cpTag').length === 0);
+  assert(/사례 후보 2곳/.test(await page.evaluate(() => document.querySelector('#cpCand summary').textContent)), '⑨ 저장하면 그 현장이 후보로 올라온다(전·후가 생겼다)');
+  await page.evaluate(() => { window.hjSnapshot = window.__origSnap; });
+
   assert(errors.length === 0, 'pageerror 0: ' + errors.join(' | '));
-  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환 ⑦ 사례 후보 ⑧ 첫 화면)');
+  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환 ⑦ 사례 후보 ⑧ 첫 화면 ⑨ 전/후 표시)');
   await browser.close();
 })().catch(async (e) => { console.error('FAIL', e && e.stack || e); try { await browser.close(); } catch (_) {} process.exit(1); });
