@@ -174,7 +174,18 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   const h = await page.evaluate(() => Math.round(document.querySelector('#modalRoot .cpGo').getBoundingClientRect().height));
   assert(h >= 44, '⑦ 후보 버튼 44px: ' + h);
 
+  // ⑧ 첫 화면 한 줄 — 더보기 안에만 두면 폰에서 "어느 현장을 아직 안 보냈나"를 다시 못 본다. 버튼은 사례 내보내기를 연다.
+  await page.evaluate(() => { try { closeModal(true); } catch (e) {} state.tab = 'dashboard'; state.activeProject = null; render(); });
+  const dash = await page.evaluate(() => (document.querySelector('#dashboardCaseSummary') || {}).textContent || '');
+  assert(/사례 후보 2곳 — 둔산동 상가 · 도안동 주택/.test(dash) && /전\/후 표시 필요 3곳/.test(dash), '⑧ 첫 화면 한 줄: ' + dash);
+  const dashBtn = await page.evaluate(() => { const b = document.querySelector('#dashboardCaseOpen'); return b ? Math.round(b.getBoundingClientRect().height) : 0; });
+  assert(dashBtn >= 44, '⑧ 첫 화면 버튼 44px: ' + dashBtn);
+  await page.click('#dashboardCaseOpen');
+  assert(/사례 내보내기 — /.test(await modalText()), '⑧ 버튼이 사례 내보내기를 연다');
+  await page.evaluate(() => { closeModal(true); state.files = state.files.filter(f => f.project !== '둔산동 상가'); dashboardOperationsRefresh(); });
+  assert(/사례 후보 1곳 — 도안동 주택/.test(await page.evaluate(() => document.querySelector('#dashboardCaseSummary').textContent)), '⑧ 자료가 바뀌면 다시 그리지 않아도 줄이 바뀐다(dashboardOperationsRefresh)');
+
   assert(errors.length === 0, 'pageerror 0: ' + errors.join(' | '));
-  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환 ⑦ 사례 후보)');
+  console.log('case-pack.e2e OK (① 메뉴 ② 열림·미리 채움·순서 ③ 체크 저장 ④ 개인정보·동의 차단 ⑤ ZIP·EXIF 제거·1800·이름·재료 글 ⑥ 왕복·전환 ⑦ 사례 후보 ⑧ 첫 화면)');
   await browser.close();
 })().catch(async (e) => { console.error('FAIL', e && e.stack || e); try { await browser.close(); } catch (_) {} process.exit(1); });
