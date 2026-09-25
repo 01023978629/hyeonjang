@@ -90,7 +90,9 @@ async function scenario(name, fn, width = 390) {
 }
 const historySettled = page => page.waitForFunction(() => !__mobileSheetHistoryRetire && !mobileSheetHistoryMarker());
 async function searchProject(page, query) {
-  await page.evaluate(() => hjGlobalSearch()); await page.locator('#gsInput').fill(query);
+  await page.evaluate(() => hjGlobalSearch());
+  await page.waitForFunction(() => document.activeElement?.id === 'gsInput');
+  await page.locator('#gsInput').fill(query);
   await page.locator('button.gsItem[data-search-project]').first().waitFor({ state: 'visible' });
 }
 async function mobileFits(page, selector) {
@@ -106,7 +108,11 @@ async function mobileFits(page, selector) {
     assert.match(await page.locator('#dashboardTodoSummary').innerText(), /미완료 3건 · 밀린 할일 1건/);
     assert(await page.locator('#dashboardTodo').evaluate(el => el.compareDocumentPosition(document.querySelector('.ai-dashrow')) & Node.DOCUMENT_POSITION_FOLLOWING));
     await page.evaluate(() => { state.activeProject = '가상현장02'; state.search = '이전검색'; __aptPhotoSearchQuery = '이전검색'; __projView = 2; __showDup = true; });
-    await page.locator('#dashboardSearchOpen').click(); await page.locator('#gsInput').fill('가상현장31');
+    await page.locator('#dashboardSearchOpen').click();
+    // Search is ready after its initial autofocus; a fast runner can render results
+    // at 180ms before the existing 200ms focus callback steals Enter from the button.
+    await page.waitForFunction(() => document.activeElement?.id === 'gsInput');
+    await page.locator('#gsInput').fill('가상현장31');
     const result = page.locator('button[data-search-project="가상현장31"]'); await result.waitFor(); await result.focus(); await page.keyboard.press('Enter');
     await page.waitForFunction(() => !document.getElementById('gsInput'));
     assert.deepEqual(await page.evaluate(() => [state.tab, state.activeProject, state.search, __projView, __aptPhotoSearchQuery, __showDup, [...__sel]]), ['project', '가상현장31', '', null, null, false, ['fake-selected']]);
