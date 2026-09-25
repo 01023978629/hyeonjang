@@ -7,7 +7,7 @@
      ③ 배정 현장 근처(1km 안) 사진은 건드리지 않는다
      ④ GPS 없는 사진은 판단하지 않고 개수만 센다
      ⑤ 현장 좌표가 없으면 그 현장 사진들의 가장 큰 GPS 묶음이 기준이 된다
-     ⑥ 같은 크기·촬영시각 중복은 대표 1장만 남기는 제거 버튼으로 이어진다(기존 trimDuplicates)
+     ⑥ 같은 크기·촬영시각은 의심 후보일 뿐이며 원본 검증으로 이어진다
      ⑦ 재배정은 안전판 스냅샷 뒤에만 실행되고, 스냅샷 실패면 아무것도 바꾸지 않는다
      ⑧ 재배정 뒤 project 가 바뀌고 _phase 는 비워지며 저장 표시(markDirty)가 켜진다
      ⑨ 더보기 메뉴·사진 도구에서 열 수 있다
@@ -94,7 +94,7 @@ assert(/it\('📍','사진 배정 점검'[^)]*'photoAssignmentAudit'\)/.test(sou
   });
   assert(ui.picks.length === 1 && ui.picks[0].id === 'wrong1' && ui.picks[0].to === '은행현장' && ui.picks[0].checked, '재배정 제안이 체크된 채 보인다: ' + JSON.stringify(ui.picks));
   assert(/bankfar\.jpg/.test(ui.text) && /확인 필요/.test(ui.text), '확인 필요 목록이 보인다');
-  assert(ui.dupCount === '1' && ui.buttons.some(b => /중복 1장 제거/.test(b)), '⑥ 중복 제거 버튼: ' + JSON.stringify(ui.buttons));
+  assert(ui.dupCount === '1' && ui.buttons.some(b => /중복 의심 1장 검증/.test(b)), '⑥ 중복 검증 버튼: ' + JSON.stringify(ui.buttons));
   assert(ui.buttons.some(b => /체크한 사진 재배정/.test(b)), '재배정 버튼');
 
   // ⑦ 스냅샷 실패면 아무것도 바꾸지 않는다
