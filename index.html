@@ -2735,7 +2735,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v325-dashcase';
+const APP_BUILD='hyeonjang-v326-casetag';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -21067,6 +21067,29 @@ function hjCaseCandidates(){
   const bylast=(x,y)=>y.last-x.last||x.name.localeCompare(y.name);
   return {ready:out.sort(bylast),needPhase:needPhase.sort(bylast)};
 }
+// 사례 내보내기 안에서 붙이는 전/후 공정. 규칙은 보증서(hjWarrantyTagPicked)와 같다 — 공정이 빈 사진만, 정리 폴더 사진은
+// 건너뛰고, 쓰기 전 안전판이 실패하면 아무것도 쓰지 않는다. setPhase/applyBulkPhase 는 부르지 않는다(즉시이동 모드에서
+// PC 파일이 옮겨진다). p.phases 에도 올리지 않는다.
+function hjCaseTaggable(f){return !!f&&!String(f._phase||'').trim()&&!organizedPrefixInfo(f.prefix);}
+async function hjCaseTagSave(p,tags){
+  const ids=Object.keys(tags||{});if(!ids.length){toast('전·후로 표시한 사진이 없습니다');return {n:0};}
+  if((typeof photoIntakePending==='function'&&photoIntakePending())||(typeof __tabStale!=='undefined'&&__tabStale)){
+    toast('사진 등록이 진행 중이라 공정은 저장하지 않았어요');return {n:0,skipped:true};
+  }
+  let ok=false;try{ok=await hjSnapshot('사례 전/후 공정 저장 전',true,true);}catch(e){ok=false;}
+  if(!ok){toast('안전판을 만들지 못해 사진 공정은 저장하지 않았어요');return {n:0,skipped:true};}
+  const live=(state.projects||[]).find(x=>x&&x.name===p.name)||p;
+  let nb=0,na=0;
+  ids.forEach(id=>{
+    const f=(state.files||[]).find(x=>x&&x.id===id&&x.kind==='photo'&&x.project===live.name);   // await 뒤 — 다시 찾는다
+    if(!hjCaseTaggable(f))return;
+    f._phase=hjPhaseSideName(live,tags[id]);if(tags[id]==='before')nb++;else na++;
+  });
+  if(!nb&&!na){toast('사진 공정은 저장하지 않았어요 — 그 사이 사진 정보가 바뀌었습니다');return {n:0,skipped:true};}
+  markDirty();
+  toast('사진 '+(nb+na)+'장에 공정을 붙였어요 — '+PHASE_SIDE_NAME.before+' '+nb+' · '+PHASE_SIDE_NAME.after+' '+na+' (되돌리기: 더보기 › 🛡 안전판)');
+  return {n:nb+na,before:nb,after:na};
+}
 function casePackView(projectName){
   const alive=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects.filter(x=>x&&x.name):[];
   // 끝난 현장이 곧 사례 후보다 — 보관 현장을 빼면 이 기능이 제일 필요한 때 못 쓴다.
@@ -21088,7 +21111,12 @@ function casePackView(projectName){
         '<input type="checkbox" class="cpChk" data-id="'+escapeAttr(f.id)+'"'+(sel.has(f.id)?' checked':'')+' aria-label="'+escapeAttr((f.name||'사진')+' · '+(f._phase||'공정 미지정'))+'" style="position:absolute;left:6px;top:6px;width:24px;height:24px;z-index:1">'+
         (src?'<img src="'+escapeAttr(src)+'" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:var(--line-soft);display:block">'
             :'<span aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1;border-radius:8px;background:var(--line-soft);font-size:22px">🖼</span>')+
-        '<span aria-hidden="true" style="position:absolute;right:4px;bottom:4px;font-size:11px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:1px 6px">'+hjCaseSide(f)+'</span></label>';}).join('')+'</div>'
+        (hjCaseTaggable(f)
+          ?'<span class="cpTagBtns" data-id="'+escapeAttr(f.id)+'" style="position:absolute;left:0;right:0;bottom:0;display:flex;gap:2px;padding:2px">'+
+             '<button type="button" class="cpTag" data-id="'+escapeAttr(f.id)+'" data-side="before" aria-label="'+escapeAttr((f.name||'사진')+' 시공 전으로 표시')+'" aria-pressed="false" style="flex:1;min-height:44px;font-size:12.5px;border-radius:7px;background:rgba(255,255,255,.92)">전</button>'+
+             '<button type="button" class="cpTag" data-id="'+escapeAttr(f.id)+'" data-side="after" aria-label="'+escapeAttr((f.name||'사진')+' 완료로 표시')+'" aria-pressed="false" style="flex:1;min-height:44px;font-size:12.5px;border-radius:7px;background:rgba(255,255,255,.92)">후</button></span>'
+          :'<span aria-hidden="true" style="position:absolute;right:4px;bottom:4px;font-size:11px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:1px 6px">'+hjCaseSide(f)+'</span>')+'</label>';}).join('')+'</div>'+
+      '<div id="cpTagBar" hidden style="display:flex;gap:8px;align-items:center;margin:0 0 8px;padding:8px 10px;border:1px solid var(--moss);border-radius:11px;font-size:13px"><span id="cpTagCount" style="flex:1" role="status" aria-live="polite"></span><button type="button" id="cpTagSave" class="clay" style="min-height:44px;padding:0 14px">📌 공정 저장</button></div>'
     :'<div class="empty" style="padding:12px;margin-bottom:8px"><b>이 현장에 사진이 없습니다</b>사진을 먼저 올리고 시공 전·완료 공정을 붙여 두면 순서대로 묶입니다.</div>';
   const cands=hjCaseCandidates();
   const candBtn=x=>'<button type="button" class="ghost cpGo" data-name="'+escapeAttr(x.name)+'" style="display:flex;justify-content:space-between;align-items:center;width:100%;min-height:44px;padding:6px 10px;margin-bottom:4px;text-align:left'+(x.name===p.name?';border-color:var(--moss)':'')+'">'+
@@ -21123,6 +21151,16 @@ function casePackView(projectName){
       if(w){w.textContent=pii.length?('⚠ '+pii.join('·')+' 같아 보입니다 — 공개 글에는 못 넣습니다. 지워야 만들어집니다.'):'';w.hidden=!pii.length;}};
     el.onfocus=()=>hjKeepAboveFooter(el);});
   root.querySelector('#cpConsent').onchange=e=>{hjCaseEdit(live()).consent=!!e.target.checked;markDirty();};
+  // 전/후 표시는 모아 두었다가 [📌 공정 저장] 한 번에 — 장마다 안전판을 찍으면 12칸이 금방 찬다
+  const tags={};
+  const tagBar=()=>{const n=Object.keys(tags).length,bar=root.querySelector('#cpTagBar'),c=root.querySelector('#cpTagCount');
+    if(bar)bar.hidden=!n;if(c)c.textContent=n?('전·후 표시 '+n+'장 — 저장하면 사진 공정에 붙고 순서에 들어갑니다'):'';};
+  root.querySelectorAll('.cpTag').forEach(b=>b.onclick=e=>{e.preventDefault();e.stopPropagation();   // 라벨 안 버튼 — 체크가 바뀌면 안 된다
+    const id=b.dataset.id,side=b.dataset.side;
+    if(tags[id]===side)delete tags[id];else tags[id]=side;
+    root.querySelectorAll('.cpTag[data-id="'+id+'"]').forEach(x=>{x.setAttribute('aria-pressed',tags[id]===x.dataset.side?'true':'false');x.style.background=tags[id]===x.dataset.side?'var(--moss)':'rgba(255,255,255,.92)';x.style.color=tags[id]===x.dataset.side?'#fff':'';});
+    tagBar();});
+  const save=root.querySelector('#cpTagSave');if(save)save.onclick=async()=>{const r=await hjCaseTagSave(live(),tags);if(r&&r.n)casePackView(p.name);};
 }
 /* ── 팀 업무판 (v291). 기존 notes 왕복/안전판 사용, 본문은 전용 객체에만 저장한다.
    담당자/기록자 문자열은 사용자가 적은 분류이며 인증·권한·열람 확인이 아니다.
@@ -30374,15 +30412,18 @@ function workView(pjName){
    setPhase/applyBulkPhase 는 부르지 않는다 — 즉시이동 모드에선 PC 폴더의 실제 파일이 옮겨진다. 순수 대입 + markDirty 만.
    쓰기 전 강제 안전판이 실패하면 아무것도 쓰지 않는다(문서는 이미 나갔다). p.phases 에는 등록하지 않는다 — 계약서 범위·
    카톡 카드·다음 보증서의 '공사 내용' 기본값에 '시공 전, 완료' 가 새어 나간다. */
+// 전/후 공정 이름 — 현장에 '시공전' 같은 같은 표기가 이미 있으면 그 표기를 쓴다(사진 탭 칩·PDF 묶음이 같은 공정으로 본다).
+// 보증서(hjWarrantyTagPicked)와 사례 내보내기(hjCaseTagSave)가 같은 이름을 붙여야 한다 — 두 곳에서 지으면 갈라진다.
+function hjPhaseSideName(p,side){
+  const want=PHASE_SIDE_NAME[side],key=want.replace(/\s+/g,'');
+  const own=(Array.isArray(p&&p.phases)?p.phases:[]).map(function(x){return typeof x==='string'?x:(x&&(x.title||x.name)||'');})
+    .find(function(x){return String(x).replace(/\s+/g,'')===key;});
+  return own||want;
+}
 async function hjWarrantyTagPicked(pjName,pick){
   const p=(state.projects||[]).find(function(x){return x&&x.name===pjName;});if(!p)return {n:0};
   const pk=pick||{};
-  const nameFor=function(side){   // 현장에 '시공전' 같은 같은 표기가 이미 있으면 그 표기를 쓴다 — 사진 탭 칩·PDF 묶음이 같은 공정으로 본다
-    const want=PHASE_SIDE_NAME[side],key=want.replace(/\s+/g,'');
-    const own=(Array.isArray(p.phases)?p.phases:[]).map(function(x){return typeof x==='string'?x:(x&&(x.title||x.name)||'');})
-      .find(function(x){return String(x).replace(/\s+/g,'')===key;});
-    return own||want;
-  };
+  const nameFor=function(side){return hjPhaseSideName(p,side);};
   const targets=[];
   [['before',pk.before],['after',pk.after]].forEach(function(pair){
     const side=pair[0],ids=Array.isArray(pair[1])?pair[1]:[];
