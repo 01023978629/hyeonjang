@@ -89,7 +89,7 @@ let browser;
   r = await page.evaluate(() => ({ est: projStats('나현장').est, exSum: state.files.find(f => f.id === 'ex1').exSum, hasSrc: state.quotes.some(q => '_srcFileId' in q) }));
   assert(r.est === 5500000, '① 저장 뒤 나현장 매출이 두 번 잡히지 않는다(550만): ' + r.est);
   assert(r.exSum === true && !r.hasSrc, '① 원래 파일은 집계 제외, 연결 표시는 저장되지 않는다: ' + JSON.stringify(r));
-  assert(/집계에서 뺐어요/.test(await lastToast()), '① 원래 파일을 집계에서 뺐다고 알린다: ' + await lastToast());
+  assert(/원래 견적 파일은 매출 집계에서 뺐어요/.test(await lastToast()), '① 원래 파일을 집계에서 뺐다고 알린다: ' + await lastToast());
   r = await page.evaluate(() => { applyData(JSON.parse(JSON.stringify(serializeData()))); return projStats('나현장').est; });
   assert(r === 5500000, '① 다시 불러와도 550만: ' + r);
   // 별도를 고르면 그 금액이 공급가, 총액은 그대로
@@ -112,6 +112,50 @@ let browser;
   await page.click('[data-toedit="ex2"]');
   assert(!(await modalButtons()).includes('부가세 포함 금액'), '① 나눠지지 않는 금액엔 포함 선택지가 없다');
   await page.evaluate(() => { closeModal(); state.files.find(f => f.id === 'ex2').est.amount = 3000000; });
+
+  // ① 같은 견적의 사본(엑셀 원본 + 그 출력 PDF)이 있으면 묶음 전체를 뺀다 — 금액을 고쳐 저장해도 옛 사본이 남아 두 번 세지 않는다.
+  //    (검토 재현: 누른 파일만 빼면 PDF 사본이 대표가 되어 550만 + 660만 = 1,210만.) 이름이 다른 별개 견적은 그대로 센다.
+  const seedCopies = () => page.evaluate(() => {
+    const EF = (id, name, ext, amount) => ({ id, name, ext, kind: 'estimate', project: '나현장', when: new Date('2026-09-01'), est: { amount, customer: '나현장', date: '2026-09-10' }, exSum: false });
+    state.files.push(EF('ex4', '나현장 견적.pdf', 'pdf', 5500000), EF('ex5', '나현장 욕실 추가.xlsx', 'xlsx', 1000000));
+  });
+  await seed(); await seedCopies();
+  assert(await page.evaluate(() => projStats('나현장').est) === 6500000, '① 시드: 엑셀·PDF 사본은 한 번(550만) + 별개 욕실 100만');
+  await page.evaluate(() => { state.tab = 'estimates'; render(); });
+  await page.click('[data-toedit="ex1"]');
+  await clickModal('부가세 포함 금액');
+  await page.evaluate(() => { setQuoteItem(0, 'price', 6000000); });
+  await page.click('#qmSave');
+  r = await page.evaluate(() => ({ est: projStats('나현장').est, ex: ['ex1', 'ex4', 'ex5'].map(id => !!state.files.find(f => f.id === id).exSum) }));
+  assert(r.est === 7600000, '① 금액을 고쳐 저장해도 옛 사본이 남지 않는다(660만 + 별개 100만): ' + JSON.stringify(r));
+  assert(r.ex[0] && r.ex[1] && !r.ex[2], '① 원본과 사본만 빼고 별개 견적은 둔다: ' + JSON.stringify(r));
+  assert(/2개\(같은 견적의 사본 포함\)/.test(await lastToast()), '① 뺀 파일 수를 알린다: ' + await lastToast());
+
+  // ① PDF 출력 전 자동 저장도 같은 한 곳을 지난다 — 복사본·원본 묶음 제외·안내
+  await seed(); await seedCopies();
+  await page.evaluate(() => { state.tab = 'estimates'; render(); });
+  await page.click('[data-toedit="ex1"]');
+  await clickModal('부가세 포함 금액');
+  await page.evaluate(() => { setQuoteItem(0, 'price', 6000000); });
+  await page.click('#qmPdf');
+  r = await page.evaluate(() => ({ n: state.quotes.length, est: projStats('나현장').est, ex: ['ex1', 'ex4'].map(id => !!state.files.find(f => f.id === id).exSum), same: state.quotes.includes(state.editingQuote), leak: state.quotes.some(q => '_srcFileId' in q) }));
+  assert(r.n === 2 && r.est === 7600000 && r.ex[0] && r.ex[1], '① PDF 전 자동 저장도 원본 묶음을 뺀다: ' + JSON.stringify(r));
+  assert(!r.same && !r.leak, '① PDF 전 자동 저장도 목록에 복사본(연결 표시 없음): ' + JSON.stringify(r));
+  assert(/집계에서 뺐어요/.test(await lastToast()), '① PDF 경로도 원본을 뺐다고 알린다: ' + await lastToast());
+  await page.evaluate(() => { setQuoteItem(0, 'price', 1); });
+  r = await page.evaluate(() => { const q = state.quotes.find(x => x.id === state.editingQuote.id); return { price: q.items[0].price, est: projStats('나현장').est }; });
+  assert(r.price === 6000000 && r.est === 7600000, '② PDF 뒤 고친 값은 [저장] 없이 목록에 남지 않는다: ' + JSON.stringify(r));
+  await page.click('#qmClose');
+  assert(await modalOpen(), '② PDF 뒤 고친 값이 있으면 [목록으로]가 묻는다');
+  await clickModal('저장 안 하고 나가기');
+  // 이미 집계에서 뺀 엑셀을 편집해도 남아 있던 PDF 사본을 찾아 뺀다(estimateGroups 는 뺀 파일을 건너뛰어 묶음을 못 찾는다)
+  await seed(); await seedCopies();
+  await page.evaluate(() => { state.files.find(f => f.id === 'ex1').exSum = true; quoteFromExisting('ex1'); });
+  await clickModal('부가세 포함 금액');
+  await page.evaluate(() => { setQuoteItem(0, 'price', 6000000); });
+  await page.click('#qmSave');
+  r = await page.evaluate(() => ({ est: projStats('나현장').est, ex4: !!state.files.find(f => f.id === 'ex4').exSum }));
+  assert(r.est === 7600000 && r.ex4, '① 원본이 이미 빠져 있어도 사본을 뺀다: ' + JSON.stringify(r));
 
   // ── ② AI 견적 초안은 저장 전까지 목록에 없다, [목록으로]는 묻는다 ──
   await seed();
@@ -179,6 +223,10 @@ let browser;
   assert(/편집/.test(await lastToast()), '④ 견적 편집기로 안내: ' + await lastToast());
   r = await page.evaluate(() => { const b = document.querySelector('input[data-ef="amount"][data-id="ex1"]'); b.value = '5,000,000'; b.dispatchEvent(new Event('change', { bubbles: true })); return state.files.find(f => f.id === 'ex1').est.amount; });
   assert(r === 5000000, '④ 추출 견적 금액은 예전처럼 고친다: ' + r);
+  // 일괄 배정(붙여넣기·자동 매칭)도 앱 견적 가상 파일은 건드리지 않는다 — 고쳐도 다음 불러오기에 조용히 되돌아간다
+  r = await page.evaluate(() => { const a = applyBulkAssign([{ id: 'quote_q1', project: '나현장', amount: 1 }, { name: '[견적서] 가현장', project: '나현장', amount: 2 }, { id: 'ex2', project: '다현장', amount: 3100000 }]);
+    const f = state.files.find(x => x.id === 'quote_q1'); return { a, pj: f.project, amt: f.est.amount, ex2: state.files.find(x => x.id === 'ex2').est.amount }; });
+  assert(r.a.applied === 1 && r.a.fromQuote === 2 && r.pj === '가현장' && r.amt === 11000000 && r.ex2 === 3100000, '④ 일괄 배정은 앱 견적을 건너뛰고 센다: ' + JSON.stringify(r));
 
   // ── ⑤ 되돌리기·병합 뒤 없는 견적의 파생 파일은 남지 않는다 ──
   await seed();

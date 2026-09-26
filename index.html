@@ -25492,15 +25492,20 @@ function quoteAutoMatch(){
 
 // ── 일괄 적용(공용): [{id 또는 name, project, amount?}] ──
 function applyBulkAssign(list){
-  let cnt=0,made=0;
+  let cnt=0,made=0,fromQuote=0;
   try{
     (list||[]).forEach(function(it){
       if(!it||!it.project)return;
       let f=null;
       if(it.id)f=state.files.find(function(x){return x.id===it.id;});
+      // 앱 견적의 가상 파일(_fromQuote)은 여기서 고쳐도 다음 불러오기 때 syncQuoteToProject 가 견적 값으로 되돌린다 —
+      // 조용히 되돌아가는 배정을 하지 않고 건너뛴 수를 알린다(견적 편집기에서 고친다).
+      if(f&&f._fromQuote){fromQuote++;return;}
       if(!f&&it.name){
         const q=String(it.name).replace(/\s+/g,'').toLowerCase();
-        f=state.files.find(function(x){return String(x.name).replace(/\s+/g,'').toLowerCase().indexOf(q)>=0;});
+        const hit=function(x){return String(x.name).replace(/\s+/g,'').toLowerCase().indexOf(q)>=0;};
+        f=state.files.find(function(x){return !x._fromQuote&&hit(x);});
+        if(!f&&state.files.some(function(x){return x._fromQuote&&hit(x);})){fromQuote++;return;}
       }
       if(!f)return;
       if(typeof ensureProjectExists==='function'){if(ensureProjectExists(it.project))made++;}
@@ -25510,7 +25515,7 @@ function applyBulkAssign(list){
     });
     if(cnt){markDirty();scheduleRender();}
   }catch(e){}
-  return {applied:cnt,newProjects:made};
+  return {applied:cnt,newProjects:made,fromQuote:fromQuote};
 }
 
 // ── 일괄 배정 센터 화면 ──
@@ -25539,7 +25544,7 @@ function bulkAssignCenter(){
     const sel=[];document.querySelectorAll('.baChk').forEach(function(c){if(c.checked)sel.push(matches[+c.dataset.i]);});
     if(!sel.length){toast('선택된 항목이 없어요');return;}
     const r=applyBulkAssign(sel);
-    closeModal();toast('🎯 '+r.applied+'건 배정 완료'+(r.newProjects?' · 현장 '+r.newProjects+'곳 생성':''));
+    closeModal();toast('🎯 '+r.applied+'건 배정 완료'+(r.newProjects?' · 현장 '+r.newProjects+'곳 생성':'')+(r.fromQuote?' · 앱 견적 '+r.fromQuote+'건은 견적 편집기에서 고치세요':''));
   };
   const pp=document.getElementById('baPasteApply');
   if(pp)pp.onclick=function(){
@@ -25554,7 +25559,7 @@ function bulkAssignCenter(){
     });
     if(!list.length){toast('형식을 확인해 주세요: 파일명 | 현장 | 금액');return;}
     const r=applyBulkAssign(list);
-    closeModal();toast('📋 '+r.applied+'/'+list.length+'건 적용'+(r.newProjects?' · 현장 '+r.newProjects+'곳 생성':''));
+    closeModal();toast('📋 '+r.applied+'/'+list.length+'건 적용'+(r.newProjects?' · 현장 '+r.newProjects+'곳 생성':'')+(r.fromQuote?' · 앱 견적 '+r.fromQuote+'건은 견적 편집기에서 고치세요':''));
   };
   return {자동매칭:matches.length};
 }
@@ -29262,10 +29267,27 @@ function quoteCommitEditing(q){
   const idx=state.quotes.findIndex(x=>x.id===q.id);
   if(idx>=0)state.quotes[idx]=copy;else state.quotes.push(copy);
   if(copy.project)syncQuoteToProject(copy); else state.files=state.files.filter(f=>f.id!=='quote_'+copy.id);  // 현장 연결 해제 시 유령 견적 파일 제거
-  let srcExcluded=false;
-  if(srcId){const src=state.files.find(f=>f&&f.id===srcId&&f.kind==='estimate'&&!f._fromQuote);if(src&&!src.exSum){src.exSum=true;srcExcluded=true;}}
+  let srcExcluded=0;
+  if(srcId){const src=state.files.find(f=>f&&f.id===srcId&&f.kind==='estimate'&&!f._fromQuote);if(src)srcExcluded=quoteExcludeSrcGroup(src);}
   return {copy,srcExcluded};
 }
+/* 편집기로 옮겨 간 엑셀·PDF 견적을 집계에서 뺀다 — 누른 파일 하나가 아니라 estimateGroups 가 한 견적으로 묶는 사본 전부.
+   사본(예: 엑셀 원본의 출력 PDF)을 남기면 그 사본이 새 대표가 되어 옛 금액이 새 앱 견적 금액과 함께 매출에 잡힌다.
+   금액을 고치면 '같은 현장·같은 금액' 병합에도 안 걸린다(검토 재현: 550만 + 660만 = 1,210만).
+   앱 견적 가상 파일(_fromQuote)은 묶음 후보에서 뺀다 — 방금 저장한 견적 자신이 같은 금액으로 묶여 빠지면 안 된다.
+   이미 빠져 있던 원본도 한 번 되살린 셈으로 묶음을 찾는다(estimateGroups 는 exSum 파일을 건너뛴다). 뺀 파일 수를 돌려준다. */
+function quoteExcludeSrcGroup(src){
+  const pj=src.project||'';
+  const cands=state.files.filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&(f.project||'')===pj&&(f===src||!f.exSum));
+  const was=src.exSum;src.exSum=false;
+  let grp=null;
+  try{grp=estimateGroups(cands).find(g=>g.rep===src||(g.dups||[]).includes(src));}finally{src.exSum=was;}
+  const members=grp?[grp.rep].concat(grp.dups||[]):[src];
+  let n=0;members.forEach(f=>{if(f&&!f.exSum){f.exSum=true;n++;}});
+  return n;
+}
+// 원래 견적 파일을 집계에서 뺐다는 안내 — [저장]과 PDF 출력 전 자동 저장이 같은 말을 한다
+function quoteSrcNote(n){return n?(' · 원래 견적 파일'+(n>1?' '+n+'개(같은 견적의 사본 포함)는':'은')+' 매출 집계에서 뺐어요(견적·정산에서 Σ 로 되돌릴 수 있음)'):'';}
 function saveQuoteEdit(){
   const q=state.editingQuote;if(!q)return;
   // 빈 행(품명·단가 모두 없음) 자동 정리
@@ -29278,7 +29300,7 @@ function saveQuoteEdit(){
   const r=quoteCommitEditing(q);
   markDirty();
   state.editingQuote=null;render();
-  const srcNote=r.srcExcluded?' · 원래 견적 파일은 매출 집계에서 뺐어요(견적·정산에서 Σ 로 되돌릴 수 있음)':'';
+  const srcNote=quoteSrcNote(r.srcExcluded);
   toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')))+srcNote);
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
@@ -30864,7 +30886,7 @@ function printQuote(id){
   const q=id?state.quotes.find(x=>x.id===id):state.editingQuote;
   if(!q){toast('견적서를 찾을 수 없습니다.');return;}
   // 편집 중인 견적은 인쇄 전에 자동 저장 → 인쇄·창닫기 후에도 목록에서 계속 수정 가능
-  if(!id&&state.editingQuote){quoteCommitEditing(state.editingQuote);markDirty();}   // 목록에는 복사본 — 인쇄 뒤 계속 고친 값은 [저장]해야 남는다
+  if(!id&&state.editingQuote){const r=quoteCommitEditing(state.editingQuote);markDirty();if(r.srcExcluded)toast('견적서 저장됨'+quoteSrcNote(r.srcExcluded));}   // 목록에는 복사본 — 인쇄 뒤 계속 고친 값은 [저장]해야 남는다
   const __html=`<!doctype html><html><head><meta charset="utf-8"><title>견적서_${escapeHtml(q.title||q.no)}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
