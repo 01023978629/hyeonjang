@@ -115,15 +115,20 @@
      ② 체크박스·라디오 22px(min-width/min-height 라 인라인 width:16px 도 이긴다 — min 은 width 보다 세다), 그것을 감싼 label 줄은
         44px — 네모를 못 맞혀도 줄 어디를 눌러도 된다.
         display·정렬은 :where() 로 무게 0 — 화면이 label 에 display 를 정해 두었으면 그쪽이 이긴다(인라인 label 만 inline-flex).
-     ③ 전화·문자 링크와 버튼 모양 링크(a.tiny/ghost/clay/blue)도 44×44. */
+     ③ 전화·문자 링크와 버튼 모양 링크(a.tiny/ghost/clay/blue)도 44×44. a.key-link 는 설정 키 칸 옆 '발급처 열기 ↗' — 버튼 줄에 선
+        혼자 서 있는 링크라 문장 속 링크 예외가 아니다(v330 — sweep 이 설정 탭을 다 열자 139×20 으로 드러났다). */
   body.mobile-mode input:not([type=checkbox]):not([type=radio]):not([type=range]),body.mobile-mode select,body.mobile-mode textarea{font-size:16px!important}
   body.mobile-mode.a11y-big1 input:not([type=checkbox]):not([type=radio]):not([type=range]),body.mobile-mode.a11y-big1 select,body.mobile-mode.a11y-big1 textarea{font-size:max(16px,1.06em)!important}
   body.mobile-mode.a11y-big2 input:not([type=checkbox]):not([type=radio]):not([type=range]),body.mobile-mode.a11y-big2 select,body.mobile-mode.a11y-big2 textarea{font-size:max(16px,1.12em)!important}
   body.mobile-mode input[type=checkbox],body.mobile-mode input[type=radio]{min-width:22px;min-height:22px;flex-shrink:0}
   :where(body.mobile-mode label:has(>input[type=checkbox],>input[type=radio]):not(.ph-chk)){display:inline-flex;align-items:center;gap:6px}
   body.mobile-mode label:has(>input[type=checkbox],>input[type=radio]):not(.ph-chk){min-height:44px}
-  :where(body.mobile-mode a[href^="tel:"],body.mobile-mode a[href^="sms:"],body.mobile-mode a.tiny,body.mobile-mode a.ghost,body.mobile-mode a.clay,body.mobile-mode a.blue){display:inline-flex;align-items:center;justify-content:center}
-  body.mobile-mode a[href^="tel:"],body.mobile-mode a[href^="sms:"],body.mobile-mode a.tiny,body.mobile-mode a.ghost,body.mobile-mode a.clay,body.mobile-mode a.blue{min-width:44px;min-height:44px;box-sizing:border-box}
+  :where(body.mobile-mode a[href^="tel:"],body.mobile-mode a[href^="sms:"],body.mobile-mode a.tiny,body.mobile-mode a.ghost,body.mobile-mode a.clay,body.mobile-mode a.blue,body.mobile-mode a.key-link){display:inline-flex;align-items:center;justify-content:center}
+  body.mobile-mode a[href^="tel:"],body.mobile-mode a[href^="sms:"],body.mobile-mode a.tiny,body.mobile-mode a.ghost,body.mobile-mode a.clay,body.mobile-mode a.blue,body.mobile-mode a.key-link{min-width:44px;min-height:44px;box-sizing:border-box}
+  /* ④ 접는 머리(<summary>)도 누르는 곳이다 — 44px. 목록 표시(▶)를 지키려 display 는 그대로 두고(flex 로 바꾸면 ▶ 가 사라진다)
+        위아래 여백은 :where() 로 무게 0 — 화면이 정한 padding(더보기 분류 머리 등)이 이긴다. 더보기 분류 머리는 48 을 그대로 둔다. */
+  :where(body.mobile-mode summary){box-sizing:border-box;padding-top:11px;padding-bottom:11px}
+  body.mobile-mode summary:not(.more-cat-block>summary){min-height:44px}
   /* 사진 칸 선택 네모: 그림은 30px(선택 모드와 같은 크기), 누르는 곳은 투명한 input 을 테두리 안쪽(26px)에서 사방 9px 넓혀 44px. */
   body.mobile-mode .ph-chk{width:30px;height:30px;top:6px;left:6px;border-width:2px}
   body.mobile-mode .ph-chk input[type=checkbox]{inset:-9px;width:auto;height:auto}
@@ -137,8 +142,10 @@
     :root body input[type=checkbox],:root body input[type=radio]{min-width:22px;min-height:22px;flex-shrink:0}
     :where(label:has(>input[type=checkbox],>input[type=radio]):not(.ph-chk)){display:inline-flex;align-items:center;gap:6px}
     :root body label:has(>input[type=checkbox],>input[type=radio]):not(.ph-chk){min-height:44px}
-    :where(a[href^="tel:"],a[href^="sms:"],a.tiny,a.ghost,a.clay,a.blue){display:inline-flex;align-items:center;justify-content:center}
-    :root body a[href^="tel:"],:root body a[href^="sms:"],:root body a.tiny,:root body a.ghost,:root body a.clay,:root body a.blue{min-width:44px;min-height:44px;box-sizing:border-box}
+    :where(a[href^="tel:"],a[href^="sms:"],a.tiny,a.ghost,a.clay,a.blue,a.key-link){display:inline-flex;align-items:center;justify-content:center}
+    :root body a[href^="tel:"],:root body a[href^="sms:"],:root body a.tiny,:root body a.ghost,:root body a.clay,:root body a.blue,:root body a.key-link{min-width:44px;min-height:44px;box-sizing:border-box}
+    :where(summary){box-sizing:border-box;padding-top:11px;padding-bottom:11px}
+    :root body summary:not(.more-cat-block>summary){min-height:44px}
     :root body .ph-chk{width:30px;height:30px;top:6px;left:6px;border-width:2px}
     :root body .ph-chk input[type=checkbox]{inset:-9px;width:auto;height:auto}
   }
@@ -4228,22 +4235,22 @@ function openGdriveSetup(){
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🔎 글자인식 고급 (Cloud Vision)${keyBadge(window.__visionKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">명함·견적서 글자인식을 더 정확·빠르게. ⚠️ 이 키는 <b>이 기기에만</b> 저장됩니다. 콘솔에서 키에 <b>HTTP 리퍼러 제한</b>(<code>${escapeHtml(origin)}/*</code>)을 꼭 거세요(도용 방지). 무료 한도 보호: <b>월 800건에서 자동 중단</b>(Vision 무료 1,000건 안에 머물게. 이후 무료 인식기로 대체). ⚠️ Vision 은 Gemini 와 반대로 <b>결제계정이 있어야 동작</b>합니다. 예산 <b>알림</b>은 메일만 올 뿐 지출을 멈추지 못하니, 0원을 확실히 하려면 콘솔에서 <b>할당량(Quota) 상한</b>을 거세요. 이 기기 카운터는 기기마다 따로 세므로 폰·PC 를 함께 쓰면 합계가 1,000건을 넘을 수 있습니다.</p>
       <input type="password" id="gdVision" value="" placeholder="${escapeAttr(keyHint(window.__visionKey,'Vision API 키 (AIza...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdVisionSave">키 저장</button><button class="blue tiny" id="gdVisionChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdVisionDel">지우기</button><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">구글 클라우드 콘솔 열기 ↗</a></div><div id="gdVisionOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdVisionSave">키 저장</button><button class="blue tiny" id="gdVisionChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdVisionDel">지우기</button><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="key-link" style="font-size:11.5px;color:var(--moss);margin-left:2px">구글 클라우드 콘솔 열기 ↗</a></div><div id="gdVisionOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🤖 AI 도우미 (Gemini · 무료)${keyBadge(window.__geminiKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">견적 항목 제안·회의록 요약 등. <b>aistudio.google.com</b>에서 키 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다.<br><b style="color:#c2410c">무료는 키가 속한 구글 프로젝트에 결제계정이 연결되지 않았을 때뿐입니다.</b> 연결돼 있으면 쓴 만큼 청구됩니다(한도를 넘어도 막히지 않고 계속 과금). <b>이미 연결했다면</b> console.cloud.google.com 에서 그 프로젝트의 결제를 해제하거나, 결제 없는 새 프로젝트에서 키를 다시 발급하세요. 분당 8·하루 200건 제한은 <b>횟수만</b> 막고 요금은 막지 못합니다.</p>
       <input type="password" id="gdGemini" value="" placeholder="${escapeAttr(keyHint(window.__geminiKey,'Gemini API 키 (AI Studio)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdGeminiSave">키 저장</button><button class="blue tiny" id="gdGeminiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdGeminiDel">지우기</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">AI Studio 열기 ↗</a></div><div id="gdGeminiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdGeminiSave">키 저장</button><button class="blue tiny" id="gdGeminiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdGeminiDel">지우기</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="key-link" style="font-size:11.5px;color:var(--moss);margin-left:2px">AI Studio 열기 ↗</a></div><div id="gdGeminiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">📍 사진 위치 정밀도 (카카오 · 무료)${keyBadge(window.__kakaoKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">사진 GPS를 <b>도로명+건물번호·건물명·지번</b>까지 바꿔줍니다. 지금은 무료 OpenStreetMap을 쓰는데 한국 건물 이름이 자주 비어 있습니다. <b>developers.kakao.com</b> → 애플리케이션 추가 → <b>JavaScript 키</b>를 넣으세요(REST 키 아님). ⚠️ 플랫폼 → Web → 사이트 도메인에 <b>https://01023978629.github.io</b> 를 반드시 등록해야 작동합니다. 이 키도 <b>이 기기에만</b> 저장됩니다. 무료(하루 10만 건).</p>
       <input type="password" id="gdKakao" value="" placeholder="${escapeAttr(keyHint(window.__kakaoKey,'카카오 JavaScript 키'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdKakaoSave">키 저장</button><button class="blue tiny" id="gdKakaoChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdKakaoDel">지우기</button><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">카카오 개발자 열기 ↗</a></div><div id="gdKakaoOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdKakaoSave">키 저장</button><button class="blue tiny" id="gdKakaoChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdKakaoDel">지우기</button><a href="https://developers.kakao.com/console/app" target="_blank" rel="noopener noreferrer" class="key-link" style="font-size:11.5px;color:var(--moss);margin-left:2px">카카오 개발자 열기 ↗</a></div><div id="gdKakaoOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--moss)">🧠 AI 도우미 (ChatGPT · 유료)${keyBadge(window.__openaiKey)}</summary>
       <p style="font-size:12px;color:var(--muted-2);margin:6px 0">Gemini 대신 ChatGPT를 쓰고 싶을 때. <b>platform.openai.com</b>에서 API 키(sk-...) 발급. ⚠️ 이 키도 <b>이 기기에만</b> 저장됩니다. OpenAI는 <b>유료(사용량 과금)</b>이니 소액 한도를 걸어두세요. 두 키가 다 있으면 ChatGPT를 우선 사용합니다.</p>
       <input type="password" id="gdOpenai" value="" placeholder="${escapeAttr(keyHint(window.__openaiKey,'OpenAI API 키 (sk-...)'))}" autocomplete="off" spellcheck="false" style="width:100%">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdOpenaiSave">키 저장</button><button class="blue tiny" id="gdOpenaiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdOpenaiDel">지우기</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:var(--moss);margin-left:2px">OpenAI 플랫폼 열기 ↗</a></div><div id="gdOpenaiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:6px"><button class="moss tiny" id="gdOpenaiSave">키 저장</button><button class="blue tiny" id="gdOpenaiChk" title="이 키로 1회만 시험 호출해 봅니다">🔎 확인</button><button class="ghost tiny" id="gdOpenaiDel">지우기</button><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="key-link" style="font-size:11.5px;color:var(--moss);margin-left:2px">OpenAI 플랫폼 열기 ↗</a></div><div id="gdOpenaiOut" role="status" aria-live="polite" style="font-size:11.5px;color:var(--muted-2);min-height:14px;margin-top:4px"></div>
     </details>
   </div>`;
   /* ── 네 덩어리를 탭으로 나눈다 ──────────────────────────────────
@@ -5272,8 +5279,11 @@ async function imgOCR(rec){
 /* ---------- 현장 ---------- */
 $('#btnAddProj').onclick=addProject;
 $('#newProj').addEventListener('keydown',e=>{if(e.key==='Enter')addProject();});
-function addProject(){const v=$('#newProj').value.trim();if(!v)return;
-  if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');return;}
+function addProject(){const v=$('#newProj').value.trim();
+  // v330: 검증 오류를 칸에 붙인다 — 단 칸이 화면에 보일 때만(폰 더보기의 prompt 경로는 사이드바 칸이 숨어 있어 토스트만).
+  const issue=m=>{const el=$('#newProj');if(el&&el.getClientRects().length)hjFieldIssue(el,m);};
+  if(!v){issue('현장 이름을 입력하세요');return;}
+  if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');issue('이미 있는 현장입니다.');return;}
   state.projects.push({name:v,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');}
 const STAGE_CHECK={
   2:{key:'start',title:'📋 착공 전 체크',items:[
@@ -5512,9 +5522,9 @@ function renameProject(oldName){
     {label:'저장',cls:'blue',fn:async()=>{
       if(busy)return;
       const nv=document.getElementById('renProjInput').value.trim();
-      if(!nv){toast('이름을 입력하세요.');return;}
+      if(!nv){toast('이름을 입력하세요.');hjFieldIssue(document.getElementById('renProjInput'),'이름을 입력하세요.');return;}
       if(nv===oldName){closeModal();return;}
-      if(state.projects.some(x=>x.name===nv)){toast('이미 있는 현장 이름입니다.');return;}
+      if(state.projects.some(x=>x.name===nv)){toast('이미 있는 현장 이름입니다.');hjFieldIssue(document.getElementById('renProjInput'),'이미 있는 현장 이름입니다.');return;}
       busy=true;
       // 여러 저장소를 한 번에 고치므로 안전판을 먼저 찍고, 못 찍으면 아무것도 바꾸지 않는다.
       let ok=false;try{ok=await hjSnapshot('현장명 변경 전 — '+oldName,true,true);}catch(e){ok=false;}
@@ -8158,14 +8168,14 @@ function hjCallFollowup(c){
     [
       {label:'💾 저장 + 💬 문자 보내기',cls:'clay',fn:function(){
         const t=(document.getElementById('cfNote').value||'').trim();
-        if(!t){toast('통화 내용을 먼저 적어 주세요.');return;}
+        if(!t){toast('통화 내용을 먼저 적어 주세요.');hjFieldIssue(document.getElementById('cfNote'),'통화 내용을 먼저 적어 주세요.');return;}
         hjCallSave(c,t); closeModal(); toast('통화메모 저장됨');
         const sep=/(iPhone|iPad|Mac)/i.test(navigator.userAgent)?'&':'?';
         hjGo('sms:'+c.phone+sep+'body='+encodeURIComponent(hjCallSmsBody(c,t)));
       }},
       {label:'저장만',cls:'ghost',fn:function(){
         const t=(document.getElementById('cfNote').value||'').trim();
-        if(!t){toast('통화 내용을 먼저 적어 주세요.');return;}
+        if(!t){toast('통화 내용을 먼저 적어 주세요.');hjFieldIssue(document.getElementById('cfNote'),'통화 내용을 먼저 적어 주세요.');return;}
         hjCallSave(c,t); closeModal(); toast('통화메모 저장됨');
       }},
       {label:'건너뛰기',cls:'ghost',fn:closeModal}
@@ -10621,7 +10631,7 @@ function priceBookManage(){
   root.querySelectorAll('.pbDel').forEach(b=>b.onclick=()=>{delete pb[b.dataset.k];markDirty();priceBookManage();});
   root.querySelector('#pbAdd').onclick=()=>{
     const nm=root.querySelector('#pbNewName').value.trim(), pr=won2num(root.querySelector('#pbNewPrice').value);
-    if(!nm||pr<=0){toast('품목명과 단가를 입력하세요.');return;}
+    if(!nm||pr<=0){toast('품목명과 단가를 입력하세요.');hjFieldIssue(root.querySelector(nm?'#pbNewPrice':'#pbNewName'),nm?'단가를 입력하세요.':'품목명을 입력하세요.');return;}
     pb[nm]=pr;markDirty();priceBookManage();toast('"'+nm+'" 추가됨');
   };
   return {품목수:keys.length};
@@ -16413,7 +16423,7 @@ function expenseAddDialog(ym,preset){
   openModal('➕ 지출 추가',body,[
     {label:'저장',cls:'clay',fn:()=>{
       const amt=document.getElementById('exAmt').value;
-      if(!(won2num(amt)>0)){toast('금액을 입력해 주세요.');return;}
+      if(!(won2num(amt)>0)){toast('금액을 입력해 주세요.');hjFieldIssue(document.getElementById('exAmt'),'금액을 입력해 주세요.');return;}
       const out=expenseAdd({amount:amt,category:window.__exCat||'기타',method:window.__exMethod||'현금',
         date:document.getElementById('exDate').value,project:document.getElementById('exProj').value,memo:document.getElementById('exMemo').value});
       if(out&&out.오류){toast(out.오류);return;}
@@ -16981,8 +16991,8 @@ function voiceWorkLog(preProject){
       const proj=document.getElementById('wlProj').value;
       const txt=document.getElementById('wlText').value.trim();
       const date=document.getElementById('wlDate').value||today;
-      if(!proj){toast('현장을 선택해 주세요.');return;}
-      if(!txt){toast('작업 내용을 입력하거나 말해주세요.');return;}
+      if(!proj){toast('현장을 선택해 주세요.');hjFieldIssue(document.getElementById('wlProj'),'현장을 선택해 주세요.');return;}
+      if(!txt){toast('작업 내용을 입력하거나 말해주세요.');hjFieldIssue(document.getElementById('wlText'),'작업 내용을 입력하거나 말해주세요.');return;}
       workLogSave(proj,txt,date);
       try{if(__wlRec)__wlRec.stop();}catch(e){}
       toast('작업일지를 저장했습니다');closeModal();
@@ -17383,7 +17393,7 @@ function aiQuoteDialog(){
     {label:'✨ 견적 만들기',cls:'clay',fn:async()=>{
       const desc=document.getElementById('aqDesc').value.trim();
       const proj=document.getElementById('aqProj').value;
-      if(!desc){toast('현장 설명을 입력해 주세요.');return;}
+      if(!desc){toast('현장 설명을 입력해 주세요.');hjFieldIssue(document.getElementById('aqDesc'),'현장 설명을 입력해 주세요.');return;}
       const btns=document.querySelectorAll('#modalRoot button');btns.forEach(b=>b.disabled=true);
       toast('AI가 견적을 작성 중입니다…');
       const r=await aiQuoteFromText(desc,proj);
@@ -18702,7 +18712,7 @@ function cardScanConfirm(r){
   openModal('🏷 거래처 등록',body,[
     {label:'✅ 거래처 등록',cls:'clay',fn:()=>{
       const name=document.getElementById('csvName').value.trim();
-      if(!name){toast('상호를 입력하세요');return;}
+      if(!name){toast('상호를 입력하세요');hjFieldIssue(document.getElementById('csvName'),'상호를 입력하세요');return;}
       const res=supplierAdd({name,phone:document.getElementById('csvPhone').value.trim(),item:document.getElementById('csvItem').value.trim()});
       if(res.오류){toast(res.오류);return;}
       toast('🏷 거래처로 등록했습니다: '+name);closeModal();markDirty();
@@ -19176,7 +19186,7 @@ async function negotiateDialog(qid){
   btn.onclick=async()=>{
     const target=won2num(document.getElementById('negoTarget').value);
     const c=negotiateCalc(total,target);
-    if(!c){toast('희망가를 숫자로 입력하세요');return;}
+    if(!c){toast('희망가를 숫자로 입력하세요');hjFieldIssue(document.getElementById('negoTarget'),'희망가를 숫자로 입력하세요');return;}
     const box=document.getElementById('negoResult');box.style.display='block';
     const verdict=c.loss?
       '<div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:11px;padding:12px;margin-bottom:10px"><div style="font-size:14px;font-weight:800;color:#c2410c">⛔ 이 가격은 손해 위험</div><div style="font-size:12px;margin-top:4px;line-height:1.6">할인율 '+c.discountPct+'% — 통상 원가(약 '+hjMan(c.estCost)+') 아래입니다.<br>이 가격이면 <b>공사 범위를 줄여야</b> 해요.</div></div>':
@@ -19805,7 +19815,7 @@ function selfQuoteDialog(){
   btn.onclick=()=>{
     const py=num(document.getElementById('sqPyeong').value);
     const keys=[...document.querySelectorAll('.sqWork:checked')].map(c=>c.dataset.k);
-    if(!(py>0)){toast('평형을 입력하세요');return;}
+    if(!(py>0)){toast('평형을 입력하세요');hjFieldIssue(document.getElementById('sqPyeong'),'평형을 입력하세요');return;}
     if(!keys.length){toast('공사를 하나 이상 선택하세요');return;}
     const {total,lines}=selfQuoteCalc(py,keys);
     const box=document.getElementById('sqResult');box.style.display='block';
@@ -22964,7 +22974,7 @@ function todoLocalView(projectName){
   const root=document.getElementById('modalRoot');
   const currentProject=()=>root.querySelector('#todoProj')?.value||'';
   const add=()=>{const el=root.querySelector('#todoText');const pj=(root.querySelector('#todoProj')||{}).value||'';
-    if(!el.value.trim()){toast('할 일을 한 줄 적어 주세요');return;}
+    if(!el.value.trim()){toast('할 일을 한 줄 적어 주세요');hjFieldIssue(el,'할 일을 한 줄 적어 주세요');return;}
     if(pj&&state.projects.filter(p=>p.name===pj&&!p.archived).length!==1){toast('현장이 변경되었습니다. 할 일을 복사한 뒤 창을 다시 열어 주세요.');return;}
     hjTodoAdd(el.value,pj);toast('할일에 넣었습니다');todoLocalView(pj);};
   root.querySelector('#todoShared').onclick=()=>hjSharedTodoView(currentProject());
@@ -23100,7 +23110,8 @@ function measureNote(projectName){
     if(!confirm('「'+((r&&r.room)||'이름 없는 방')+'」 실측을 지울까요?'))return;
     hjMeasureList(p).splice(i,1);markDirty();measureNote(p.name);});
   root.querySelectorAll('.mnCalc').forEach(b=>b.onclick=()=>{const r=hjMeasureList(p)[+b.dataset.i];if(!r)return;
-    const m=hjMeasureRoom(r);if(!m.floor&&!m.wall){toast('가로·세로를 먼저 넣어 주세요');return;}
+    const m=hjMeasureRoom(r);if(!m.floor&&!m.wall){toast('가로·세로를 먼저 넣어 주세요');
+      const row=b.closest('.mnRow');hjFieldIssue(row&&row.querySelector('.mnIn[data-k="'+(hjCalcNum(r.w)>0?'h':'w')+'"]'),'가로·세로를 먼저 넣어 주세요');return;}
     hjMeasureToCalc(r,p.name);});
   root.querySelectorAll('.mnIn').forEach(el=>{el.oninput=()=>{
     const i=+el.dataset.i,k=el.dataset.k,r=hjMeasureList(p)[i];if(!r)return;
@@ -23454,7 +23465,10 @@ function materialCalc(catId,preset,logId,focusK){
         project:(old&&old.project!==undefined)?old.project:((typeof state!=='undefined'&&state.activeProject)||null),   // 옛 기록을 다시 열어 고쳐도 그때 그 현장 그대로
         q:res.main?res.main.qty:0,u:res.main?res.main.unit:'',lp:hjCalcNum(v.loss),used:old&&old.used!=null?old.used:null});}
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
-  const copyText=()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
+  // v330: '먼저 값을 넣어 주세요' 는 첫 빈 숫자 칸에 붙인다(없으면 첫 칸) — 토스트만으로는 어느 칸인지 모른다.
+  const needVal=()=>{toast('먼저 값을 넣어 주세요');const ins=[...root.querySelectorAll('input.calcIn')].filter(i=>i.getClientRects().length);
+    hjFieldIssue(ins.find(i=>!(hjCalcNum(i.value)>0))||ins[0],'먼저 값을 넣어 주세요');};
+  const copyText=()=>{const t=paint(true);if(!t){needVal();return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
   root.querySelectorAll('.calcIn').forEach(i=>{i.oninput=()=>paint();i.onchange=()=>paint();});
   root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();let m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
     let keep=hjCalcNum(cur.m2Keep);   // 떠나기 전 면적 — 가로×세로로 갔다가 돌아와도 살아 있고, 왕복 반올림(10 → 10.02)도 막는다
@@ -23475,7 +23489,7 @@ function materialCalc(catId,preset,logId,focusK){
     delete p.d[cat.id];const okSave=hjCalcPrefsSave(p);
     const cur=window.__hjCalcMem[cat.id]||{};cat.fields.filter(f=>f.p).forEach(f=>{cur[f.k]=hjCalcFirst(f);});window.__hjCalcMem[cat.id]=cur;
     toast(had?(okSave?'처음값으로 — 저장한 기본값을 지웠습니다':'처음값으로 되돌렸지만 이 폰 저장소에 쓸 수 없어 기본값은 남아 있습니다'):'처음값으로');materialCalc(cat.id,null,visit);});
-  on('calcNote',()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(typeof state==='undefined'){toast('앱 데이터가 아직 없습니다');return;}
+  on('calcNote',()=>{const t=paint(true);if(!t){needVal();return;}if(typeof state==='undefined'){toast('앱 데이터가 아직 없습니다');return;}
     state.notes=state.notes||[];const pj=state.activeProject||null;state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:t,project:pj});markDirty();
     try{render();}catch(_){}   // 넣자마자 메모 목록에 보이게(안 그리면 "넣었다는데 안 보인다"가 된다)
     toast(pj?'현장 메모에 넣었습니다 · '+pj:'현장 메모에 넣었습니다 (현장 미지정)');});
@@ -23493,7 +23507,7 @@ function materialCalc(catId,preset,logId,focusK){
     const it=est?{name:est.name,spec:(m.spec?m.spec+' · ':'')+'단위 '+est.unit,qty:est.qty,unit:est.unit}:{name:m.name,spec:m.spec||'',qty:m.qty,unit:m.unit};
     if(!hjCalcCartAdd(Object.assign({id:uid(),cat:cat.id,project:(typeof state!=='undefined'&&state.activeProject)||null,t:new Date().toLocaleString('ko-KR')},it))){toast('이 폰 저장소에 쓸 수 없어 담지 못했습니다');return;}
     toast('발주 목록에 담았습니다 — '+it.name+' '+hjCalcFmt(it.qty,2)+it.unit+' (계산기 첫 화면 🧺 에서 문자 만들기)');});
-  on('calcShare',()=>{const t=paint(true);if(!t){toast('먼저 값을 넣어 주세요');return;}if(navigator.share){navigator.share({text:t,title:'🧮 '+cat.name+' 계산'}).catch(()=>{});}else copyText();});
+  on('calcShare',()=>{const t=paint(true);if(!t){needVal();return;}if(navigator.share){navigator.share({text:t,title:'🧮 '+cat.name+' 계산'}).catch(()=>{});}else copyText();});
   if(window.__hjCalcPickNote){toast(window.__hjCalcPickNote);window.__hjCalcPickNote=null;}
   paintDefStatus();paint();
   setTimeout(()=>{try{   // openModal 이 모달 상자에 초점을 주므로(같은 0ms 큐) 그 뒤에 칸으로 옮긴다
@@ -29553,7 +29567,7 @@ function saveScheduleEdit(id,isNew){
     workers:g('schWorkers').value, memo:g('schMemo').value.trim(),
     hours:+g('schHours').value||8
   };
-  if(!s.title){toast('제목을 입력하세요.');return;}
+  if(!s.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
   if(isNew)state.schedule.push(s);
   else{const i=state.schedule.findIndex(x=>x.id===id);if(i>=0)state.schedule[i]=s;}
   markDirty();closeModal();render();toast('일정 저장됨');if(isNew)hjGcalMaybeOpen(s);
@@ -29983,7 +29997,7 @@ function openContactEdit(id){
 function saveContactEdit(id,isNew){
   const g=i=>document.getElementById(i);
   const c={id,name:g('cName').value.trim(),phone:g('cPhone').value.trim(),company:g('cCompany').value.trim(),title:g('cTitle').value.trim(),memo:g('cMemo').value.trim()};
-  if(!c.name&&!c.phone){toast('이름이나 전화 중 하나는 입력하세요.');return;}
+  if(!c.name&&!c.phone){toast('이름이나 전화 중 하나는 입력하세요.');hjFieldIssue(document.getElementById('cName'),'이름이나 전화 중 하나는 입력하세요.');return;}
   if(isNew)state.contacts.push(c);
   else{const i=state.contacts.findIndex(x=>x.id===id);if(i>=0)state.contacts[i]=c;}
   markDirty();closeModal();render();toast('연락처 저장됨');
@@ -31898,7 +31912,7 @@ function tripAddView(pre){
     '<p class="hint" style="margin-top:9px">왕복 거리를 적으면 됩니다. km당 단가를 설정해 두면 유류비가 자동 계산돼요.</p>',
     [{label:'저장',cls:'clay',fn:function(){
         const km=num(document.getElementById('trKm').value);
-        if(!(km>0)){toast('주행 거리를 입력하세요');return;}
+        if(!(km>0)){toast('주행 거리를 입력하세요');hjFieldIssue(document.getElementById('trKm'),'주행 거리를 입력하세요');return;}
         tripData().push({id:uid(),date:document.getElementById('trDate').value||localDate(),
           project:document.getElementById('trPj').value,km:km,
           memo:document.getElementById('trMemo').value.trim()});
@@ -32052,7 +32066,7 @@ function workEditView(id,pjName){
   document.getElementById('wkSave').onclick=function(){
     const date=document.getElementById('wkDate').value;
     const tin=document.getElementById('wkIn').value;
-    if(!date||!tin){toast('날짜와 시작 시간을 입력하세요');return;}
+    if(!date||!tin){toast('날짜와 시작 시간을 입력하세요');hjFieldIssue(document.getElementById(date?'wkIn':'wkDate'),date?'시작 시간을 입력하세요':'날짜를 입력하세요');return;}
     w.date=date;w.in=tin;w.out=document.getElementById('wkOut').value;w.memo=document.getElementById('wkMemo').value.trim();
     markDirty();closeModal();workView(pjName);toast('⏱ 작업시간 수정됨');
   };

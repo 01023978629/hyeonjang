@@ -26,18 +26,25 @@ let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'))
 const APP='http://127.0.0.1:8299/index.html',ORIGIN=new URL(APP).origin;
 const ONLY=(process.env.HJ_SWEEP_ONLY||'').split(',').filter(Boolean);
 
-/* 화면을 띄우지 않는 메뉴 — 고칠 수 없는 예외라 이유를 적는다. 이 셋이 나중에 화면을 띄우면 검사가 떨어진다
-   (허용목록이 낡으면 알려 준다). 20개를 넘기면 보고할 것. */
+/* 화면을 띄우지 않는 메뉴 — 고칠 수 없는 예외라 이유를 적는다. 이 둘이 나중에 화면을 띄우면 검사가 떨어진다
+   (허용목록이 낡으면 알려 준다). 20개를 넘기면 보고할 것.
+   (v330) addproject(브라우저 prompt 한 줄)는 빠졌다 — PROMPT_FLOW 가 prompt 를 스텁해 끝까지 탄다(현장이 실제로 생기고
+   그 현장 화면(#view)을 같은 자로 잰다, 취소하면 아무것도 안 생긴다). */
 const NO_SCREEN={
-  addproject:'브라우저 기본 prompt 창(현장명 한 줄) — 앱이 그리는 화면이 아니다',
   opendrive:'구글 드라이브 만물 폴더를 새 창(window.open)으로 연다 — 앱 밖이다',
   restore:'PC 편집 모드·폴더 연결 전용 — 폰 모드에서는 안내 토스트만 뜬다'
 };
 /* 모달이 아닌 화면 — 탭을 바꿔 #view 에 그리거나(회계·광고) 전체 화면 시트(AI 비서)를 연다. */
 const VIEW_TAB={ledgertab:'ledger',adstab:'ads'};
 const SHEET={ai:'#aiSheet'};
-/* 더보기 밖에서 여는 모달 [이름, 여는 식] — 품목이 그려지는지는 검사 안에서 따로 확인한다 */
-const EXTRA_MODALS=[['자재 발주서','materialOrder("fake-q1")','.moChk']];
+/* 더보기 밖에서 여는 모달 [이름, 여는 식, 꼭 그려져야 할 것, 탭 선택자?] — 품목이 그려지는지는 검사 안에서 따로 확인한다.
+   네 번째 칸(탭 선택자)이 있으면 그 탭을 하나씩 눌러 탭마다 잰다 — 설정은 첫 탭만 보여 나머지 탭의 접는 머리(summary)를
+   아무도 안 쟀다(v330). 고객 페이지는 ⚙ 서버 설정 접는 머리가 12px 글자에 높이 지정이 없었다. */
+const EXTRA_MODALS=[['자재 발주서','materialOrder("fake-q1")','.moChk'],
+  ['설정 전 탭','openGdriveSetup()','summary','.setTab'],
+  ['고객 페이지','portalView("가상 가아파트 101동 1001호")','summary']];
+/* 브라우저 prompt 로 받는 메뉴 — [prompt 에 돌려줄 값, 끝난 뒤 확인하는 식(참이어야 함)] */
+const PROMPT_FLOW={addproject:['가상 새 현장 스윕','state.projects.some(p=>p.name==="가상 새 현장 스윕")&&state.activeProject==="가상 새 현장 스윕"']};
 /* 막아 둔 외부 호출 중 불려도 되는 것 */
 const ALLOW_EXTERNAL={opendrive:['window.open']};
 
@@ -140,9 +147,12 @@ async function sweep(page,errors,mobile,width=360){
   }
   /* 더보기 첫 화면이 아닌 모달 — 다른 화면의 버튼(견적 #qmOrder·재고·명령 목록)으로만 열려 위 순회가 닿지 않는다.
      📦 자재 발주서의 품목 체크(.moChk)가 label 없이 맨 input 이었던 것을 이 자리가 잡는다(v329 검토). */
-  if(!ONLY.length)for(const [name,open,must] of EXTRA_MODALS){
-    const v=await page.evaluate(async ({open,must})=>{(0,eval)(open);const until=Date.now()+5000;while(!document.querySelector('#modalRoot .modal')){if(Date.now()>until)return ['안 열린다'];await new Promise(r=>setTimeout(r,16));}
-      const r=__sweepAudit('#modalRoot');if(!document.querySelector('#modalRoot '+must))r.push('잴 것('+must+')이 안 그려졌다 — 시드를 확인');closeModal(true);return r;},{open,must});
+  if(!ONLY.length)for(const [name,open,must,tabs] of EXTRA_MODALS){
+    const v=await page.evaluate(async ({open,must,tabs})=>{(0,eval)(open);const until=Date.now()+5000;while(!document.querySelector('#modalRoot .modal')){if(Date.now()>until)return ['안 열린다'];await new Promise(r=>setTimeout(r,16));}
+      const r=__sweepAudit('#modalRoot');if(!document.querySelector('#modalRoot '+must))r.push('잴 것('+must+')이 안 그려졌다 — 시드를 확인');
+      if(tabs){const ts=[...document.querySelectorAll('#modalRoot '+tabs)];if(ts.length<2)r.push('탭('+tabs+')이 둘 이상 없다');
+        for(const t of ts){t.click();await new Promise(res=>requestAnimationFrame(()=>requestAnimationFrame(res)));for(const x of __sweepAudit('#modalRoot'))r.push('['+(t.textContent||'').trim()+' 탭] '+x);}}
+      closeModal(true);return [...new Set(r)];},{open,must,tabs});
     for(const x of v){failures.push('['+tag+'] '+name+': '+x);console.error('  ✗ ['+tag+'] '+name+': '+x);}
     await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire);
   }
@@ -186,6 +196,23 @@ async function sweep(page,errors,mobile,width=360){
     if(res.modal)scope='#modalRoot';
     else if(SHEET[action]&&res.sheet)scope=SHEET[action];
     else if(VIEW_TAB[action]&&res.tab===VIEW_TAB[action])scope='#view';
+    if(PROMPT_FLOW[action]){
+      // prompt 를 스텁해 한 번은 취소(아무것도 안 생김), 한 번은 값을 넣는다. 그다음 그려진 #view 를 같은 자로 잰다.
+      // 위에서 [더보기] 칩으로 한 번 이미 눌렀다(전역 prompt 스텁은 null = 취소) — 그때 무엇이든 생겼으면 취소가 안 먹은 것이다.
+      const pr=await page.evaluate(async ({action,val,ok})=>{const leaked=state.projects.some(p=>p.name===val);state.projects=state.projects.filter(p=>p.name!==val);
+        const n0=state.projects.length;const keep=window.prompt;let asked=0;
+        const run=async(ret)=>{window.prompt=(m)=>{asked++;return ret;};try{await Promise.resolve(moreActionHandler(action));}finally{window.prompt=keep;}};
+        await run(null);const cancelKept=state.projects.length===n0;
+        await run(val);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+        const done=!!(0,eval)(ok);const audit=__sweepAudit('#view');
+        state.projects=state.projects.filter(p=>p.name!==val);state.activeProject='가상 가아파트 101동 1001호';render();
+        return {asked,cancelKept:cancelKept&&!leaked,done,audit};},{action,val:PROMPT_FLOW[action][0],ok:PROMPT_FLOW[action][1]});
+      if(pr.asked!==2)fail('prompt 가 '+pr.asked+'번 불렸다(2 기대)');
+      if(!pr.cancelKept)fail('prompt 를 취소했는데 현장이 생겼다');
+      if(!pr.done)fail('prompt 에 넣은 값으로 끝나지 않았다');
+      for(const x of pr.audit)fail('(추가 뒤 화면) '+x);
+      opened++;continue;
+    }
     if(NO_SCREEN[action]){
       if(scope)fail('허용목록(화면 없음)에 있는데 화면이 열렸다 — 허용목록을 지우고 이 화면을 재라');
       for(const x of (await page.evaluate(s=>__sweepAudit(s),'#view')).filter(x=>x.startsWith('문서')))fail(x);
@@ -207,7 +234,7 @@ async function sweep(page,errors,mobile,width=360){
     }
   }
   if(errors.length)failures.push('['+tag+'] pageerror: '+errors.slice(0,5).join(' | '));
-  const expectOpened=(ONLY.length?ONLY:actions).filter(a=>!NO_SCREEN[a]).length;
+  const expectOpened=(ONLY.length?ONLY:actions).filter(a=>!NO_SCREEN[a]).length;   // PROMPT_FLOW 도 '연 화면'으로 센다
   if(opened!==expectOpened)failures.push('['+tag+'] 연 화면 '+opened+' ≠ 기대 '+expectOpened);
   console.log((failures.length===before?'PASS ':'FAIL ')+tag+': 화면 '+opened+'개 열어 잼(화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개)');
 }
