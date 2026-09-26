@@ -14,7 +14,7 @@
      며칠 뒤 "AI가 대답을 안 해요" 로만 드러났고 원인을 짚을 수 없었다.
 
    지키는 것
-     ① 첫 화면이 한 화면에 들어온다 (스크롤이 생기지 않는다)
+     ① 첫 화면의 핵심 조작이 굴리지 않고 보이고, 전체가 한 화면 + 1할 안이다(v329 — 44px 규칙 뒤 새 계약)
      ② 탭 다섯이 다 있고, 각각 자기 내용을 연다
      ③ 한 번에 한 패널만 보인다 (숨긴 패널은 hidden)
      ④ 좌우 화살표로 탭을 옮길 수 있다 (탭 목록의 표준 동작)
@@ -51,11 +51,17 @@ const TABS = ['save', 'ct', 'office', 'keys', 'etc'];
   const size = await page.evaluate(() => {
     openGdriveSetup();
     const m = document.querySelector('#modalRoot .modal');
-    return { scroll: m.scrollHeight, view: m.clientHeight, tabs: document.querySelectorAll('#modalRoot .setTab').length };
+    const test = document.getElementById('ryTest').getBoundingClientRect(), box = m.getBoundingClientRect();
+    return { scroll: m.scrollHeight, view: m.clientHeight, tabs: document.querySelectorAll('#modalRoot .setTab').length, testBottom: test.bottom, boxBottom: box.bottom };
   });
   assert(size.tabs === 5, '① 탭이 5개가 아님: ' + size.tabs);
-  assert(size.scroll <= size.view + 40,
-    '① 설정 첫 화면에 스크롤이 생겼다 (' + size.scroll + 'px / 화면 ' + size.view + 'px) — 나눈 의미가 없다');
+  /* v329 새 계약: 폰 폭(≤640)에서 버튼·입력칸이 전역 44px 가 되면서(모바일 규칙 한 벌) 이 첫 화면은 약 40px(버튼 한 줄)
+     굴러간다. 옛 단정(스크롤 ≤ 화면+40)은 27px 버튼 시절의 숫자였다. 나눈 이유 — '두 화면 반을 굴려야 키 칸에 닿는다' —
+     를 그대로 지킨다: 첫 화면의 핵심(서버 주소·인증키·🔌 연결 테스트)은 굴리지 않고 보이고, 전체는 한 화면 + 1할 안이다. */
+  assert(size.testBottom <= size.boxBottom,
+    '① 설정 첫 화면에서 [🔌 연결 테스트]가 굴려야 보인다 (' + Math.round(size.testBottom) + ' > ' + Math.round(size.boxBottom) + ') — 나눈 의미가 없다');
+  assert(size.scroll <= size.view * 1.1,
+    '① 설정 첫 화면이 한 화면을 1할 넘게 넘는다 (' + size.scroll + 'px / 화면 ' + size.view + 'px) — 나눈 의미가 없다');
 
   // ②③ 탭마다 자기 내용이 열리고, 한 번에 하나만 보인다
   const MARK = { save: '#ryUrl', ct: '#ctUrl', office: '#ooUrl', keys: '#gdGemini', etc: '#rvUrl' };
