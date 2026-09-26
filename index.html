@@ -5294,13 +5294,19 @@ function stageChecklistView(name,idx){
   if(!p||!def)return;
   p.checklists=p.checklists||{};
   const st=p.checklists[def.key]=p.checklists[def.key]||{};
-  const rows=def.items.map(function(it,i){
-    return '<label style="display:flex;gap:9px;align-items:center;padding:9px 2px;border-bottom:1px dashed var(--line-soft);font-size:13px">'+
+  const items=stageChecklistItems(p,idx);
+  const rows=items.map(function(it,i){
+    const go=idx===3?STAGE_CHECK_GO[it[1]]:null;
+    // 버튼은 라벨 밖에 둔다 — 줄을 누르면 체크, 버튼을 누르면 그 기능(라벨 안 버튼은 규격상 체크를 안 바꾸지만 헷갈리지 않게 떼어 둔다)
+    return '<div style="display:flex;gap:6px;align-items:center;border-bottom:1px dashed var(--line-soft)">'+
+      '<label style="flex:1;min-width:0;display:flex;gap:9px;align-items:center;padding:9px 2px;font-size:13px">'+
       '<input type="checkbox" class="clChk" data-k="'+it[1]+'" '+(st[it[1]]?'checked':'')+' style="width:19px;height:19px">'+
-      '<span style="flex:1">'+it[0]+'</span></label>';
+      '<span style="flex:1;min-width:0">'+escapeHtml(it[0])+(it[2]?'<br><span style="font-size:11.5px;color:var(--muted-2)">'+escapeHtml(it[2])+'</span>':'')+'</span></label>'+
+      (go?'<button type="button" class="ghost clGo" data-go="'+it[1]+'" style="min-height:44px;padding:0 10px;white-space:nowrap;font-size:12.5px">'+go.l+'</button>':'')+
+      '</div>';
   }).join('');
   openModal(def.title+' — '+name,
-    (idx===2?hjSiteBrief(p):'')+   // 착공 전이 바로 '당일 아침에 기억이 안 나는' 그 순간이다
+    ((idx===2||idx===3)?hjSiteBrief(p):'')+   // 착공 전이 바로 '당일 아침에 기억이 안 나는' 그 순간이다 — 준공 때는 예치금 환급·폐기물 반출 확인에 다시 본다
     rows+'<p class="hint" style="margin-top:10px">체크 상태는 저장됩니다. 급하면 건너뛰어도 돼요 — 다음에 단계 올릴 때 다시 보여드립니다.</p>',
     [{label:'✅ 확인하고 진행',cls:'clay',fn:function(){
         document.querySelectorAll('#modalRoot .clChk').forEach(function(c){st[c.dataset.k]=c.checked;});
@@ -5317,6 +5323,42 @@ function stageChecklistView(name,idx){
         markDirty();closeModal();
       }}],true);
   hjSiteBriefBind();
+  // 준공 체크 줄 옆 버튼 — 이미 있는 기능을 연다. 누르기 전에 지금까지 체크한 것을 저장한다(다른 창이 이 창을 덮는다).
+  document.querySelectorAll('#modalRoot .clGo').forEach(function(b){b.onclick=function(){
+    const g=STAGE_CHECK_GO[b.dataset.go];if(!g)return;
+    document.querySelectorAll('#modalRoot .clChk').forEach(function(c){st[c.dataset.k]=c.checked;});
+    markDirty();
+    g.fn(name);
+  };});
+}
+/* 준공 체크 줄 → 이미 있는 기능. 도어락 비번 변경 안내는 문안이 없어 버튼을 두지 않는다(문안 신설은 대표 승인).
+   이 체크 창은 setStage 가 완료일(doneAt)을 적기 '전'에만 뜬다(완료에서 내리면 doneAt 은 지워진다) — 그러니 여기서 여는 기능은
+   doneAt 없이 동작해야 한다. warrantyView 는 doneAt 이 없으면 토스트만 띄우고, reviewRequest 목록은 doneAt 없는 현장을 빼서 쓸 수 없었다.
+   · 보증 안내: 문자 센터 '준공 인사'(하자보수 기간 = hjWarrantyPeriodText, 이 현장 🛡 보증 항목) — 이 현장을 골라 둔 채로 연다.
+   · 리뷰: 현장 상세 🎉 준공 관리의 ⭐ 리뷰 요청과 같은 hjReviewSms(현장 하나, doneAt 불필요).
+   · ZIP: 이 현장 파일만 — exportSiteZip 은 앱 전체(다른 고객 사진·서류까지)를 묶는다. */
+function hjCompletionMsgFor(n){
+  msgCenterCompose('done');
+  const sel=document.getElementById('mcProj');
+  const i=(state.projects||[]).filter(function(p){return !p.archived;}).findIndex(function(p){return p.name===n;});   // msgCenterCompose 의 option 값 = 보관 아닌 현장 목록의 순번
+  if(sel&&i>=0){sel.value=String(i);if(typeof sel.onchange==='function')sel.onchange();}
+}
+const STAGE_CHECK_GO={
+  balance:{l:'💳 청구서',fn:function(n){settleDocs(n);}},
+  warranty:{l:'🛡 보증 안내',fn:function(n){hjCompletionMsgFor(n);}},
+  zip:{l:'📦 ZIP',fn:function(n){exportProjectZIP(n);}},
+  review:{l:'🗣 리뷰 요청',fn:function(n){hjReviewSms(n);}}
+};
+/* 체크 줄 목록 — 준공 때 관리실 예치금 칸(siteRules.deposit)이 적혀 있으면 환급 확인 줄을 더한다.
+   체크 상태는 다른 줄과 같은 곳(p.checklists.done.deposit)에 남는다. */
+function stageChecklistItems(p,idx){
+  const def=STAGE_CHECK[idx];if(!def)return [];
+  const items=def.items.slice();
+  if(idx===3){
+    const dep=String((hjSiteRulesSafe(hjSiteRules(p))||{}).deposit||'').trim();
+    if(dep)items.push(['관리실 예치금 환급 확인','deposit',dep]);
+  }
+  return items;
 }
 function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){
   // [v205] 착공(시공)·준공(완료) 진입 시 체크리스트 — 올릴 때만, 완료 표시 전 1회
@@ -10796,6 +10838,9 @@ function openWorkOrder(ref){
   const workPrefill=(s&&s.title)||phases.join(', ')||projName||'';
   const contacts=(state.contacts||[]).filter(c=>telHref(c.phone));   // datalist에만 노출, 이력엔 저장 안 함
   const dlOpts=contacts.map(c=>`<option value="${escapeAttr(c.phone)}">${escapeHtml((c.name||'')+(c.company?' · '+c.company:''))}</option>`).join('');
+  // 현장 부대사항(작업 시간·엘리베이터·폐기물…)을 주의사항에 미리 채운다 — 고칠 수 있다. 출입 번호로 보이는 칸은 hjSiteText 가 거른다.
+  const siteSafe=p?hjSiteRulesSafe(hjSiteRules(p)):null;
+  const cauPrefill=(p&&hjSiteFilled(siteSafe))?hjSiteText(p.name,siteSafe).split('\n').slice(1).join('\n'):'';
   const workersHint=(s&&s.workers)?`<div style="font-size:11px;color:var(--muted);margin-top:3px">이 일정 예정 인원: 👷 ${escapeHtml(String(s.workers))}명 — 실제 담당 작업자 번호를 입력하세요</div>`:'';
   const body=`
     <div class="sch-form" style="display:flex;flex-direction:column;gap:9px">
@@ -10808,7 +10853,7 @@ function openWorkOrder(ref){
       <label>주소<input type="text" id="woAddr" value="${escapeAttr(addr)}" placeholder="현장 주소(선택)"></label>
       <label>작업 내용<textarea id="woWork" placeholder="예: 방수 2차 작업">${escapeHtml(workPrefill)}</textarea></label>
       <label>자재·준비물<textarea id="woMat" placeholder="예: 방수액 2통, 롤러, 마스킹테이프"></textarea></label>
-      <label>주의사항<textarea id="woCau" placeholder="예: 오전 입주민 통행 주의, 엘리베이터 양생"></textarea></label>
+      <label>주의사항<textarea id="woCau" placeholder="예: 오전 입주민 통행 주의, 엘리베이터 양생"${cauPrefill?' rows="5"':''}>${escapeHtml(cauPrefill)}</textarea></label>
       <div style="font-size:12px;color:var(--muted);background:var(--line-soft);padding:8px 10px;border-radius:8px">문자 하단에 <b>“완료 후 현장 사진 부탁드립니다.”</b>가 자동 포함됩니다. 완료 확인은 기존 사진 업로드로 회수합니다.</div>
     </div>`;
   const collect=()=>{
@@ -21800,6 +21845,18 @@ function hjSiteBriefBind(){
   const root=document.getElementById('modalRoot');if(!root)return;
   root.querySelectorAll('.hjSiteOpen').forEach(b=>b.onclick=()=>siteRulesView(b.dataset.p));
 }
+/* 현장 상세에 한 줄 — 부대사항·추가공사·실측이 현장 객체에 있어도 더보기 안에서만 보여 있는 줄 몰랐다. 읽기만 한다(배열을 만들지 않는다). */
+function hjProjLinksLine(p){
+  if(!p)return '';
+  const nm=escapeAttr(p.name||'');
+  const nSite=hjSiteFilled(p.siteRules);
+  const nEx=Array.isArray(p.extras)?p.extras.filter(x=>x&&typeof x==='object').length:0;
+  const nMs=Array.isArray(p.measure)?p.measure.filter(x=>x&&typeof x==='object').length:0;
+  const b=(attr,label)=>'<button class="mini-btn" '+attr+'="'+nm+'" style="min-height:44px">'+label+'</button>';
+  return '<div class="cust-card" id="pjLinks" style="margin:0 0 10px">'+
+    '<div style="font-size:12.5px"><b>🏢 부대사항 '+nSite+'칸 · 🖊 추가공사 '+nEx+'건 · 📐 실측 '+nMs+'방</b></div>'+
+    '<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">'+b('data-pjsite','🏢 부대사항')+b('data-pjextra','🖊 추가공사')+b('data-pjmeasure','📐 실측')+'</div></div>';
+}
 function siteRulesView(projectName,focusSel){
   // 보관 현장도 넣는다 — '두 달 뒤 AS' 가 바로 그 상황이라 빼면 이 기능이 가장 필요한 때 못 쓴다.
   const alive=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects.filter(x=>x&&x.name):[];
@@ -25379,7 +25436,7 @@ function contractDraftText(f){
     '   - 잔금('+hjPayPct('bal')+'%): '+won(fp)+' — 준공 검수 후 7일 이내\n'+
     '   - 입금계좌: '+acc+'\n'+
     '6. 하자보수: 준공일로부터 공종별로 '+hjWarrantyPeriodText(p.warranty&&p.warranty.items)+' (통상 마모·사용자 과실 제외)\n'+
-    '7. 특약사항:\n   - \n   - \n\n'+
+    '7. 특약사항:\n'+contractDraftSiteLines(p)+'   - \n   - \n\n'+
     '위 계약을 증명하기 위해 계약서 2부를 작성하여 각 1부씩 보관한다.\n\n'+
     '20   년   월   일\n\n'+
     '발주자(갑): '+(cust||'          ')+' (인)  연락처: '+((p.customer&&p.customer.phone)||'')+'\n'+
@@ -25387,6 +25444,14 @@ function contractDraftText(f){
     '  사업자등록번호: '+COMPANY.bizno+'\n'+
     '  주소: '+COMPANY.addr+'  ·  연락처: '+COMPANY.tel+'\n\n'+
     '※ 본 초안은 참고용이며 법률 자문이 아닙니다. 필요 시 전문가 검토를 받으세요.';
+}
+/* 특약 7항에 현장 부대사항 중 작업 시간·엘리베이터·폐기물만 — 적어 둔 값 그대로(새 문구를 짓지 않는다), 없으면 빈 줄. */
+function contractDraftSiteLines(p){
+  const r=hjSiteRulesSafe(hjSiteRules(p))||{};
+  return HJ_SITE_FIELDS.filter(f=>f.k==='hours'||f.k==='elev'||f.k==='waste').map(f=>{
+    const v=String(r[f.k]||'').replace(/\s+/g,' ').trim();
+    return v?'   - '+f.l+': '+v+'\n':'';
+  }).join('');
 }
 function contractDraftView(){
   const cands=(state.files||[]).filter(function(f){return f.kind==='estimate'&&f.project&&f.est&&f.est.amount;});
@@ -29867,7 +29932,7 @@ function viewProject(){
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
-  html+=stageBar(p)+aptUnitProjectCard(p);
+  html+=stageBar(p)+aptUnitProjectCard(p)+hjProjLinksLine(p);
 
   // ⏱ 작업시간 · 🚗 운행
   {
@@ -30095,7 +30160,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure]');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -30241,6 +30306,9 @@ function setupDelegation(){
     if(d.asdel!==undefined){state.asLog=(state.asLog||[]).filter(a=>a.id!==d.asdel);markDirty();render();toast('삭제됨');return;}
     if(d.reviewreqp!==undefined){return hjReviewSms(d.reviewreqp);}
     if(d.warrantystart!==undefined){return hjWarrantyStart(d.warrantystart);}
+    if(d.pjsite!==undefined)return siteRulesView(d.pjsite);
+    if(d.pjextra!==undefined)return extraWork(d.pjextra);
+    if(d.pjmeasure!==undefined)return measureNote(d.pjmeasure);
     if(d.qdoc!==undefined)return openContractDoc(d.qdoc);
     if(d.report!==undefined)return makeProgressReport(d.report);
     if(d.ckdel!==undefined){const p2=state.projects.find(x=>x.name===state.activeProject);if(p2){p2.checklist=(p2.checklist||[]).filter(i=>i.id!==d.ckdel);markDirty();render();}return;}
