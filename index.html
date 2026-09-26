@@ -64,6 +64,7 @@
   html{font-size:var(--fs,100%)}
   /* ===== 🤖 AI 운영 비서 ===== */
   #aiSheet{position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;background:var(--paper)}
+  @media(max-width:899px){body.ai-sheet-open{overflow:hidden}}
   @media(min-width:900px){#aiSheet{left:auto;width:480px;border-left:1px solid var(--line-soft);box-shadow:-16px 0 40px -28px rgba(13,78,162,.5)}}
   #aiSheet .ai-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line-soft);background:var(--paper-2)}
   .ai-auto{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted-2);cursor:pointer;user-select:none;border:1px solid var(--line-soft);border-radius:20px;padding:4px 10px;background:var(--paper)}
@@ -1043,7 +1044,7 @@ body.a11y-big1 .web-office-actions,body.a11y-big2 .web-office-actions{grid-templ
   </main>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <div id="modalRoot"></div>
 <nav id="mobileNav" class="mobile-nav">
   <button class="mnav-btn" data-mnav="dashboard"><span class="mi">📊</span><span>대시보드</span></button>
@@ -1135,7 +1136,39 @@ const STAGES=['상담','실측','시공','완료'];
 
 const $=s=>document.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,9);
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2400);}
+/* 긴 안내는 2.4초에 다 못 읽는다 — 글자 수에 비례해 오래 띄운다(2400ms + 글자당 40ms, 상한 6초). */
+function toastMs(m){return Math.min(6000,2400+40*String(m==null?'':m).length);}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),toastMs(m));}
+/* 검증 오류를 그 칸에 붙인다 — 토스트는 몇 초 뒤 사라지고 어느 칸인지 말해 주지 않는다.
+   초점을 옮기고 aria-invalid, 칸 바로 아래 role=alert 한 줄, 입력하면 풀린다. 토스트는 부르는 쪽이 그대로 띄운다. */
+function hjFieldIssue(el,msg){
+  if(!el||!el.isConnected)return;
+  let s=el.__hjIssue;
+  if(!s||!s.isConnected){
+    s=document.createElement('span');s.className='field-issue';s.setAttribute('role','alert');
+    s.id='fi-'+(el.id||('x'+Math.random().toString(36).slice(2,8)));
+    s.style.cssText='display:block;color:var(--warn);font-size:12.5px;line-height:1.4;margin:2px 0 8px';
+    // 가로로 늘어선 줄(flex) 안의 칸이면 줄을 쪼개지 않게 그 줄 바로 아래에 둔다.
+    const par=el.parentElement,cs=par?getComputedStyle(par):null;
+    const inRow=cs&&/flex/.test(cs.display)&&!/column/.test(cs.flexDirection)&&par!==document.body;
+    (inRow?par:el).insertAdjacentElement('afterend',s);el.__hjIssue=s;
+  }
+  s.textContent=msg;
+  el.setAttribute('aria-invalid','true');
+  const ids=(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean);
+  if(!ids.includes(s.id)){ids.push(s.id);el.setAttribute('aria-describedby',ids.join(' '));}
+  if(!el.__hjIssueBound){el.__hjIssueBound=true;const clear=()=>hjFieldIssueClear(el);el.addEventListener('input',clear);el.addEventListener('change',clear);}
+  try{el.focus();}catch(e){}
+  try{if(typeof hjKeepAboveFooter==='function')hjKeepAboveFooter(s);}catch(e){}
+}
+function hjFieldIssueClear(el){
+  if(!el)return;
+  const s=el.__hjIssue;el.__hjIssue=null;
+  if(el.getAttribute('aria-invalid')==='true')el.removeAttribute('aria-invalid');
+  if(s){const ids=(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(x=>x&&x!==s.id);
+    if(ids.length)el.setAttribute('aria-describedby',ids.join(' '));else el.removeAttribute('aria-describedby');
+    if(s.isConnected)s.remove();}
+}
 function ext(n){
   const s=String(n||'').toLowerCase();
   // 1) 정상: 파일명 맨 끝 확장자
@@ -9289,13 +9322,14 @@ function aiSheetEl(){
   let el=document.getElementById('aiSheet');
   if(el)return el;
   el=document.createElement('div');el.id='aiSheet';el.style.display='none';
+  el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-labelledby','aiSheetTitle');
   el.innerHTML=
     '<div class="ai-head">'+
-      '<b style="font-size:15px">🤖 AI 운영 비서</b>'+
+      '<b style="font-size:15px" id="aiSheetTitle">🤖 AI 운영 비서</b>'+
       '<label class="ai-auto" title="켜도 안전목록 작업만 자동 실행하며, 고위험 작업은 항상 승인합니다"><input type="checkbox" id="aiAutoChk"'+(window.__aiAuto?' checked':'')+'><span>⚡자동 실행</span></label>'+
       '<span style="flex:1"></span>'+
-      '<button class="ghost tiny" id="aiNewBtn" title="대화 새로 시작">🧹</button>'+
-      '<button class="ghost tiny" id="aiCloseBtn">✕</button>'+
+      '<button class="ghost tiny" id="aiNewBtn" title="대화 새로 시작" aria-label="대화 새로 시작">🧹</button>'+
+      '<button class="ghost tiny" id="aiCloseBtn" aria-label="AI 비서 닫기" title="닫기">✕</button>'+
     '</div>'+
     '<div class="ai-msgs" id="aiMsgs"></div>'+
     '<div class="ai-chips" id="aiChips"></div>'+
@@ -9333,13 +9367,32 @@ function aiWelcome(){
 }
 function aiAgent(prefill,autosend){
   const el=aiSheetEl();
+  const wasOpen=el.style.display!=='none';
   el.style.display='flex';
+  if(!wasOpen)aiSheetOpenA11y(el);
   if(!el.querySelector('#aiMsgs').childElementCount)aiWelcomeRich();
   const inp=el.querySelector('#aiInput');
   if(prefill){inp.value=prefill;if(autosend){const v=inp.value;inp.value='';aiAgentSend(v);return;}}
   try{inp.focus();}catch(e){}
 }
-function aiHide(){const el=document.getElementById('aiSheet');if(el)el.style.display='none';}
+/* 다른 시트(mobileSheetA11y)와 같은 규칙 — 뒤 화면 스크롤 잠금, 폰 뒤로가기 = 닫기, 닫으면 연 버튼으로 초점.
+   이 시트는 지우지 않고 display 만 바꾸므로 여는 쪽·닫는 쪽을 여기서 맞춘다. */
+function aiSheetOpenA11y(el){
+  const ae=document.activeElement;
+  el.__aiOpener=(ae&&ae!==document.body&&!el.contains(ae))?ae:null;
+  document.body.classList.add('ai-sheet-open');
+  const prev=el.__aiReleaseHistory;el.__aiReleaseHistory=null;if(prev){try{prev();}catch(e){}}
+  el.__aiReleaseHistory=typeof mobileSheetHistoryOpen==='function'?mobileSheetHistoryOpen(()=>aiHide(true)):null;
+}
+function aiHide(fromHistory){
+  const el=document.getElementById('aiSheet');if(!el||el.style.display==='none')return;
+  el.style.display='none';
+  document.body.classList.remove('ai-sheet-open');
+  const rel=el.__aiReleaseHistory;el.__aiReleaseHistory=null;
+  if(fromHistory!==true&&rel){try{rel();}catch(e){}}
+  const op=el.__aiOpener;el.__aiOpener=null;
+  if(op)setTimeout(()=>mobileSheetRestoreFocus(op),0);
+}
 function aiMsg(kind,text){
   const m=document.getElementById('aiMsgs');if(!m)return;
   const d=document.createElement('div');d.className='ai-b '+kind;
@@ -11056,7 +11109,7 @@ function asManage(){
   const root=document.getElementById('modalRoot');
   root.querySelector('#asmAdd').onclick=()=>{
     const pj=root.querySelector('#asmProj').value, txt=root.querySelector('#asmText').value.trim();
-    if(!txt){toast('증상을 입력하세요.');return;}
+    if(!txt){toast('증상을 입력하세요.');hjFieldIssue(root.querySelector('#asmText'),'증상을 입력하세요.');return;}
     state.asLog=state.asLog||[];
     state.asLog.push({id:uid(),project:pj,date:localDate(),text:txt,status:'open'});
     markDirty();asManage();toast('AS 접수됨 — "'+pj+'"');
@@ -12339,9 +12392,9 @@ function aptOrderManage(filterOffice){
     const officeId=root.querySelector('#apoOff').value;
     const unit=root.querySelector('#apoUnit').value.trim(), txt=root.querySelector('#apoText').value.trim();
     const amount=num((root.querySelector('#apoAmt').value||'').replace(/[^\d]/g,''));
-    if(!unit){toast('동/호를 입력하세요 (공용부면 "지하주차장"처럼)');return;}
-    if(!txt){toast('작업 내용을 입력하세요');return;}
-    if(!Number.isInteger(amount)||amount<1){toast('유상 방문 등록 금액을 1원 이상 입력하세요');return;}
+    if(!unit){toast('동/호를 입력하세요 (공용부면 "지하주차장"처럼)');hjFieldIssue(root.querySelector('#apoUnit'),'동/호를 입력하세요 (공용부면 "지하주차장"처럼)');return;}
+    if(!txt){toast('작업 내용을 입력하세요');hjFieldIssue(root.querySelector('#apoText'),'작업 내용을 입력하세요');return;}
+    if(!Number.isInteger(amount)||amount<1){toast('유상 방문 등록 금액을 1원 이상 입력하세요');hjFieldIssue(root.querySelector('#apoAmt'),'유상 방문 등록 금액을 1원 이상 입력하세요');return;}
     const pipeType=aptPipeType((root.querySelector('#apoPipe')||{}).value);
     const base={officeId,unit,text:txt,amount,pipeType,date:localDate(),state:'visit',source:'manual-paid-diagnosis'};
     if(manualPaidOpening)return;manualPaidOpening=true;addBtn.disabled=true;
@@ -16141,7 +16194,7 @@ function supplierEditDialog(name){
   openModal(sup?'✏️ 거래처 수정':'➕ 거래처 추가',body,[
     {label:'저장',cls:'clay',fn:()=>{
       const nm=document.getElementById('supName').value.trim();
-      if(!nm){toast('거래처 이름을 입력해 주세요.');return;}
+      if(!nm){toast('거래처 이름을 입력해 주세요.');hjFieldIssue(document.getElementById('supName'),'거래처 이름을 입력해 주세요.');return;}
       supplierAdd({name:nm,category:window.__supCat||(sup?sup.category:'자재'),phone:document.getElementById('supPhone').value,items:document.getElementById('supItems').value,memo:document.getElementById('supMemo').value});
       toast(sup?'수정했습니다':'거래처를 추가했습니다');suppliers();
     }},
@@ -18826,7 +18879,7 @@ function knowhowManage(prefillProj){
   if(sb)sb.onclick=()=>{
     const text=document.getElementById('khText').value.trim();
     const proj=document.getElementById('khProj').value;
-    if(!text){toast('노하우 내용을 입력하세요');return;}
+    if(!text){toast('노하우 내용을 입력하세요');hjFieldIssue(document.getElementById('khText'),'노하우 내용을 입력하세요');return;}
     const r=knowhowSave(text,proj,[]);
     if(r.오류){toast(r.오류);return;}
     toast('📚 노하우를 저장했습니다');markDirty();knowhowManage(proj);
@@ -19609,7 +19662,9 @@ function cashFlow(){
   const totalOut=weeks.reduce((a,w)=>a+w.outflow,0);
   const fmt=d=>(d.getMonth()+1)+'/'+d.getDate();
   const anyNeg=weeks.some(w=>w.running<0);
-  const rows=weeks.map((wk,i)=>{
+  // 들어올 돈·나갈 돈이 하나도 안 잡히면 '안정적'이 아니라 '모른다'다 — 0원 네 줄을 그리지 않는다.
+  const noData=!weeks.some(w=>w.inItems.length||w.outItems.length);
+  const rows=noData?'<div class="empty" style="padding:22px 16px"><b>예측할 자료가 없습니다</b>현장에 견적과 수금 예정일을 넣거나 일정에 작업 인원을 넣으면 앞으로 4주 흐름이 여기 생깁니다.</div>':weeks.map((wk,i)=>{
     const label=i===0?'이번 주':i+'주 후';
     const netColor=wk.net>=0?'#0a7f43':'#c2410c';
     const runColor=wk.running>=0?'var(--ink)':'#c2410c';
@@ -19620,11 +19675,11 @@ function cashFlow(){
   }).join('');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">앞으로 4주 현금 흐름</div><div style="font-size:17px;font-weight:800">📊 현금 흐름 예측</div><div style="font-size:12px;opacity:.9;margin-top:2px">들어올 '+hjMan(totalIn)+' · 나갈 '+hjMan(totalOut)+'</div></div>'+
-    (anyNeg?'<div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:11px;padding:12px;margin-bottom:12px;font-size:12.5px;color:#c2410c;line-height:1.5">🚨 <b>자금 부족 주의</b> — 특정 주에 누적 잔고가 마이너스로 예상돼요. 수금을 앞당기거나 지출을 조정하세요.</div>':'<div style="background:#f0fdf4;border-radius:10px;padding:11px;margin-bottom:12px;font-size:12.5px;color:#0a7f43">✅ 4주간 자금 흐름은 안정적으로 예상됩니다.</div>')+
+    (anyNeg?'<div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:11px;padding:12px;margin-bottom:12px;font-size:12.5px;color:#c2410c;line-height:1.5">🚨 <b>자금 부족 주의</b> — 특정 주에 누적 잔고가 마이너스로 예상돼요. 수금을 앞당기거나 지출을 조정하세요.</div>':noData?'':'<div style="background:#f0fdf4;border-radius:10px;padding:11px;margin-bottom:12px;font-size:12.5px;color:#0a7f43">✅ 넣어 둔 자료로는 4주 안에 누적 잔고가 마이너스로 내려가지 않습니다.</div>')+
     rows+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 들어올 돈은 견적 대비 아직 안 들어온 금액과 수금 예정일 기준, 나갈 돈은 예정 일정의 인건비(1인 일당 15만 근사) 기준입니다. 실제와 다를 수 있어요.</div>';
   openModal('📊 현금 흐름 예측',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  return {들어올돈:totalIn,나갈돈:totalOut,자금부족주의:anyNeg};
+  return noData?{들어올돈:0,나갈돈:0,자금부족주의:false,자료:'없음'}:{들어올돈:totalIn,나갈돈:totalOut,자금부족주의:anyNeg};
 }
 
 /* ═══════════ 🧾 자동 경비 분류 — 미분류 지출을 AI/규칙으로 정리 ═══════════ */
@@ -23221,8 +23276,8 @@ function materialEditDialog(id){
   const body=f('자재 이름','matName',m&&m.name,'예: 실크 벽지, 타일 본드')+f('규격·모델(선택)','matSpec',m&&m.spec,'예: 1000×20m, 20kg')+f('단위(선택)','matUnit',m&&m.unit,'예: 롤, 통, 박스')+f('메모(선택)','matMemo',m&&m.memo,'예: 방수 공사용');
   openModal(m?'✎ 자재 정보':'+ 자재',body,[
     {label:'저장',cls:'clay',fn:()=>{
-      const name=document.getElementById('matName').value.trim();if(!name){toast('자재 이름을 입력해 주세요');return;}
-      const dup=materialsEnsure().find(x=>x.name===name&&(!m||x.id!==m.id));if(dup){toast('같은 이름의 자재가 이미 있습니다');return;}
+      const name=document.getElementById('matName').value.trim();if(!name){toast('자재 이름을 입력해 주세요');hjFieldIssue(document.getElementById('matName'),'자재 이름을 입력해 주세요');return;}
+      const dup=materialsEnsure().find(x=>x.name===name&&(!m||x.id!==m.id));if(dup){toast('같은 이름의 자재가 이미 있습니다');hjFieldIssue(document.getElementById('matName'),'같은 이름의 자재가 이미 있습니다');return;}
       const now=new Date().toISOString();
       const target=m||{id:'mat_'+uid(),entries:[],createdAt:now};
       target.name=name;target.spec=document.getElementById('matSpec').value.trim();target.unit=document.getElementById('matUnit').value.trim();target.memo=document.getElementById('matMemo').value.trim();target.updatedAt=now;
@@ -23309,7 +23364,7 @@ function inventoryAdd(){
   openModal('+ 자재 추가',body,[
     {label:'추가',cls:'clay',fn:()=>{
       const name=document.getElementById('invName').value.trim();
-      if(!name){toast('자재 이름을 입력하세요');return;}
+      if(!name){toast('자재 이름을 입력하세요');hjFieldIssue(document.getElementById('invName'),'자재 이름을 입력하세요');return;}
       inventoryEnsure().push({id:uid(),name,qty:+document.getElementById('invQty').value||0,unit:document.getElementById('invUnit').value.trim(),minQty:+document.getElementById('invMin').value||0,supplier:document.getElementById('invSup').value.trim(),updatedAt:new Date().toISOString()});
       markDirty();toast('📦 자재를 추가했어요');inventoryManage();
     }},
@@ -23499,11 +23554,17 @@ function funnelView(){
     for(let i=1;i<4;i++){if(d.stageCount[i-1]>0&&d.conv[i]<minConv){minConv=d.conv[i];minStage=i;}}
     if(minStage>0&&minConv<70)bottleneck='<div style="font-size:11.5px;color:#c2410c;background:#fef2f2;border-radius:9px;padding:10px;margin-top:10px;line-height:1.5">⚠️ <b>'+labels[minStage-1]+'→'+labels[minStage]+'</b> 전환율이 '+minConv+'%로 낮아요. 이 단계에서 이탈이 많으니 점검해 보세요.</div>';
   }
+  // 자료가 없으면 '0%'·빈 막대 대신 무엇을 하면 생기는지 말한다 — 0% 는 '계약을 못 땄다'로 읽힌다.
+  const head=d.quoteTotal
+    ?'<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">견적 → 계약 전환율</div><div style="font-size:28px;font-weight:800;margin:2px 0">'+d.quoteRate+'%</div><div style="font-size:12.5px;opacity:.95">견적 '+d.quoteTotal+'건 중 '+d.quoteWon+'건 계약</div></div>'
+    :'<div class="empty" style="padding:18px 16px;margin-bottom:14px"><b>아직 저장된 견적이 없습니다</b>견적서를 저장하고 현장에 연결하면 견적 → 계약 전환율이 여기 생깁니다.</div>';
+  const funnel=d.totalProj
+    ?bars+bottleneck
+    :'<div class="empty" style="padding:18px 16px"><b>아직 현장이 없습니다</b>현장을 등록하면 단계별 전환율이 여기 생깁니다.</div>';
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff;text-align:center"><div style="font-size:12px;opacity:.9">견적 → 계약 전환율</div><div style="font-size:28px;font-weight:800;margin:2px 0">'+d.quoteRate+'%</div><div style="font-size:12.5px;opacity:.95">견적 '+d.quoteTotal+'건 중 '+d.quoteWon+'건 계약</div></div>'+
+    head+
     '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🎯 단계별 현장 퍼널</div>'+
-    bars+
-    bottleneck+
+    funnel+
     '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 각 단계에 도달한 현장 수와 전 단계 대비 전환율입니다. 견적을 많이 냈는데 계약이 적으면 견적가·상담을, 시공 전환이 낮으면 계약 조건을 점검하세요.</div>';
   openModal('📊 전환율 퍼널',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   return {계약전환율:d.quoteRate,현장:d.totalProj};
@@ -26223,12 +26284,12 @@ function recvQuickView(pjName,back){
   openModal('💰 입금 기록 — '+pjName,body,[
     {label:'입금 저장',cls:'clay',fn:function(){
       const rawAmt=document.getElementById('rqAmt').value||'';
-      if(hjIsNegativeAmount(rawAmt)){toast('마이너스 금액은 넣을 수 없어요 — 잘못 넣었으면 아래 이력에서 고쳐주세요');return;}
+      if(hjIsNegativeAmount(rawAmt)){toast('마이너스 금액은 넣을 수 없어요 — 잘못 넣었으면 아래 이력에서 고쳐주세요');hjFieldIssue(document.getElementById('rqAmt'),'마이너스 금액은 넣을 수 없어요');return;}
       const amt=won2num(rawAmt);
       const d=document.getElementById('rqDate').value||today;
-      if(!amt||amt<=0){toast('입금액을 입력하세요');return;}
+      if(!amt||amt<=0){toast('입금액을 입력하세요');hjFieldIssue(document.getElementById('rqAmt'),'입금액을 입력하세요');return;}
       // 아직 오지 않은 돈을 받은 것으로 적으면 이번 주 수금·매출이 부풀려진다
-      if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
+      if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');hjFieldIssue(document.getElementById('rqDate'),'입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
       p.received=(p.received||0)+amt;
       state.payLog=state.payLog||[];
       state.payLog.push({d:d,project:pjName,amt:amt});

@@ -2,6 +2,7 @@
    ① 현장 선택 시트: 실제 버튼, dialog 의미, 초점·Esc·Tab·스크롤 잠금
    ② 더보기 시트: 검색 초점, 닫기·Esc·Tab·스크롤 잠금
    ③ 오프라인 안내: 60px 하단 메뉴를 가리지 않음
+   ④ AI 운영 비서 시트(display 토글): dialog 의미·✕ 이름·스크롤 잠금, 폰 뒤로가기로 닫히고 연 버튼으로 초점
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'. */
 'use strict';
 let chromium;
@@ -160,6 +161,41 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const removed = await page.evaluate(() => !document.getElementById('hjNetBar'));
     assert(out.exists && out.overlap <= 1, '오프라인 안내가 하단 메뉴를 '+out.overlap+'px 가림 (bottom '+out.bottom+')');
     assert(removed, '온라인으로 돌아오면 오프라인 안내가 사라져야 함');
+  });
+
+  await test('④ AI 비서 시트는 dialog 이고 뒤로가기로 닫히며 연 버튼으로 초점이 돌아온다', async () => {
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
+    const opener = page.locator('.ai-dashrow button[onclick="aiAgent()"]').first();
+    await opener.focus();
+    await opener.click();
+    await page.waitForFunction(() => { const el = document.getElementById('aiSheet'); return el && el.style.display !== 'none'; });
+    const open = await page.evaluate(() => {
+      const el = document.getElementById('aiSheet'), x = document.getElementById('aiCloseBtn');
+      return {
+        role: el.getAttribute('role'), modal: el.getAttribute('aria-modal'), labelled: el.getAttribute('aria-labelledby'),
+        titled: !!document.getElementById(el.getAttribute('aria-labelledby') || '-'),
+        xName: x && x.getAttribute('aria-label'),
+        locked: document.body.classList.contains('ai-sheet-open') && getComputedStyle(document.body).overflow === 'hidden',
+        marker: !!(history.state && history.state.__hjMobileSheet),
+      };
+    });
+    assert(open.role === 'dialog' && open.modal === 'true' && open.labelled === 'aiSheetTitle' && open.titled, 'AI 비서 시트의 dialog 연결이 빠짐: ' + JSON.stringify(open));
+    assert(/닫기/.test(open.xName || ''), '✕ 버튼에 접근 이름(닫기)이 있어야 함');
+    assert(open.locked, 'AI 비서가 열린 동안 뒤 화면 스크롤이 잠겨야 함');
+    assert(open.marker, 'AI 비서를 열면 뒤로가기 항목이 생겨야 함(폰 뒤로가기 = 닫기)');
+    await page.evaluate(() => history.back());
+    await page.waitForFunction(() => document.getElementById('aiSheet').style.display === 'none');
+    await page.waitForFunction(() => document.activeElement && document.activeElement.matches('.ai-dashrow button[onclick="aiAgent()"]'));
+    const after = await page.evaluate(() => ({ unlocked: !document.body.classList.contains('ai-sheet-open'), url: location.href }));
+    assert(after.unlocked && /index\.html/.test(after.url), '뒤로가기는 앱을 떠나지 않고 시트만 닫고 잠금을 풀어야 함: ' + JSON.stringify(after));
+    // ✕ 로 닫으면 뒤로가기 항목도 정리된다(다음 뒤로가기가 빈 항목에 걸리지 않게)
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
+    await opener.focus();
+    await opener.click();
+    await page.waitForFunction(() => history.state && history.state.__hjMobileSheet);
+    await page.click('#aiCloseBtn');
+    await page.waitForFunction(() => !__mobileSheetHistoryRetire && !(history.state && history.state.__hjMobileSheet));
+    await page.waitForFunction(() => document.activeElement && document.activeElement.matches('.ai-dashrow button[onclick="aiAgent()"]'));
   });
 
   await test('★ pageerror 0', async () => {
