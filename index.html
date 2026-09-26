@@ -2222,6 +2222,10 @@ function importData(){
     try{
       const data=JSON.parse(await f.text());
       if(data.app!=='현장'&&!data.files){toast('현장 데이터 파일이 아닙니다.');return;}
+      // 덮어쓰기 전 지금 상태를 🛡 안전판에 찍는다 — 못 찍으면 불러오지 않는다(복구 전 안전 스냅샷 성공 강제, v274).
+      // backupGuard 는 이틀 안에 백업했으면 건너뛰고 '백업 없이 진행'도 되므로, 날짜를 잘못 고른 파일을 되돌릴 곳은 이것뿐이다.
+      let snapped=false;try{snapped=await hjSnapshot('불러오기 전',true,true);}catch(e){snapped=false;}
+      if(snapped!==true){toast('🛡 안전 스냅샷 저장 실패 — 불러오지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return;}
       const n=applyData(data);
       // 폰에서 데이터만 불러온 경우 안내
       const onlyData=state.files.every(x=>x._virtual);
@@ -5472,6 +5476,20 @@ function hjProjectTombstoneName(name){
 function hjDueSchedTouched(s){
   return !!s&&(String(s.memo||'').trim()!==''||String(s.workers||'').trim()!==''||String(s.time||'').trim()!==''||!!s.report||!!s.labor);
 }
+// 무엇을 적어 두어 남기는지 — 삭제 확인 창이 '메모가 있어' 라고만 말하면 작업자·시간만 적은 알림에서 거짓이 된다.
+// 반환: '메모가' · '작업자·시간이' 처럼 조사까지 붙인 말(없으면 '').
+function hjDueSchedTouchedWhat(s){
+  if(!s)return '';
+  const L=[];
+  if(String(s.memo||'').trim()!=='')L.push('메모');
+  if(String(s.workers||'').trim()!=='')L.push('작업자');
+  if(String(s.time||'').trim()!=='')L.push('시간');
+  if(s.report)L.push('작업일지');
+  if(s.labor)L.push('인건비');
+  if(!L.length)return '';
+  const last=L[L.length-1],c=last.charCodeAt(last.length-1)-0xAC00;
+  return L.join('·')+((c>=0&&c<11172&&c%28)?'이':'가');
+}
 // 수금 약속일 일정의 id·제목을 from 이름에서 to 이름으로 — 선택 복원이 '(삭제됨)' 에서 되살릴 때 쓴다.
 function hjDueScheduleRelink(from,to){
   (state.schedule||[]).forEach(r=>{if(r&&r.id==='due_'+from){r.id='due_'+to;if(r.title==='💰 수금: '+from)r.title='💰 수금: '+to;}});
@@ -5547,11 +5565,17 @@ function deleteProject(name){
   const schCount=(c.schedule||0)-(dueS?1:0);
   const keptText=hjProjectRefText(c,['files','schedule']);
   const tombPreview=hjProjectTombstoneName(name);
+  // 「선택 복원」이 이 알림을 되살리는 조건(restoreSelect): 같은 이름 현장이 없을 때 새로 들어가야 하고(있으면 그 현장에 덮어쓸 뿐
+  // 알림·(삭제됨) 기록을 잇지 않는다), 메모 알림을 잇는 건 이 이름의 '(삭제됨)' 기록이 한 벌일 때뿐이다. 조건을 그대로 말한다.
+  const dueTouched=!!dueS&&hjDueSchedTouched(dueS);
+  const priorTombs=dueTouched?hjProjectTombstonesOf(name).length:0;
+  const dueRestoreText=dueTouched&&priorTombs?'같은 이름의 현장을 새로 만들기 전에 「선택 복원」하면 알림은 다시 올라오지만, 이 이름으로 지운 기록이 이미 있어 적어 둔 내용은 자동으로 잇지 않습니다 — 필요하면 일정에서 직접 옮기세요.'
+    :'같은 이름의 현장을 새로 만들기 전에 이 현장을 「선택 복원」하면 다시 '+(dueTouched?'이어집니다.':'올라옵니다.');
   const body=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 8px">현장 <b>“${escapeHtml(name)}”</b>을(를) 삭제할까요?</p>
     ${fileCount?`<p style="margin:0 0 4px">· 배정된 사진·서류 <b>${fileCount}개</b>는 <b>삭제되지 않고</b> ‘미배정’으로 돌아갑니다.</p>`:''}
     ${schCount?`<p style="margin:0 0 4px">· 연결된 일정 <b>${schCount}개</b>는 현장 연결만 해제됩니다.</p>`:''}
-    ${dueS?`<p style="margin:0 0 4px" id="delProjDue">· 수금 약속일 알림(${escapeHtml(dueS.date||'')})은 ${hjDueSchedTouched(dueS)?'적어 둔 메모가 있어 지우지 않고 ‘'+escapeHtml(tombPreview)+'’ 이름으로 남깁니다':'일정표에서 뺍니다'} — 이 현장을 「선택 복원」하면 다시 이어집니다.</p>`:''}
+    ${dueS?`<p style="margin:0 0 4px" id="delProjDue">· 수금 약속일 알림(${escapeHtml(dueS.date||'')})은 ${dueTouched?'적어 둔 '+escapeHtml(hjDueSchedTouchedWhat(dueS))+' 있어 지우지 않고 ‘'+escapeHtml(tombPreview)+'’ 이름으로 남깁니다':'일정표에서 뺍니다'} — ${dueRestoreText}</p>`:''}
     ${keptText?`<p style="margin:0 0 4px" id="delProjKept">· 연결된 기록 <b>${escapeHtml(keptText)}</b>은 <b>지우지 않고</b> ‘${escapeHtml(tombPreview)}’ 이름으로 남깁니다 — 같은 이름으로 현장을 새로 만들어도 옛 기록이 붙지 않습니다.</p>`:''}
     <p style="margin:8px 0 0;color:var(--warn)">현장 정보(고객·공정·정산)는 삭제됩니다.</p>
   </div>`;
@@ -11323,6 +11347,24 @@ function hjAsCustomerMsg(p){
   copy();return t;
 }
 let __asmOpen=new Set();   // 펼쳐 둔 AS 기록 — 화면 상태(직렬화 금지)
+/* AS 기록 삭제 — AS 관리 화면(✕)과 현장 상세 AS 카드(🗑)가 같이 쓴다.
+   v329 부터 이 기록에 방문일·처리 내용·유상 금액·보증 판정·사진이 실려 분쟁 근거가 되므로:
+   묻고 → 🛡 안전판을 찍고(못 찍으면 지우지 않는다) → 지운다. 연결된 'AS 방문' 일정(visitSchedId)이 있으면 같이 지울지 따로 묻는다
+   (예전 현장 카드는 한 번 누르면 확인도 안전판도 없이 지웠고, 방문 일정은 주인 없이 남았다). */
+async function hjAsDelete(id,after){
+  const a=(state.asLog||[]).find(x=>x&&x.id===id);if(!a){toast('AS 기록을 찾을 수 없어요');return false;}
+  if(!confirm('이 AS 기록을 삭제할까요?\n하자 대응 이력(보증 판정 근거)이 사라집니다.'))return false;
+  let ok=false;try{ok=await hjSnapshot('AS 기록 삭제 전',true,true);}catch(e){ok=false;}
+  if(ok!==true){toast('🛡 안전 스냅샷 저장 실패 — 지우지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return false;}
+  const sch=a.visitSchedId?(state.schedule||[]).find(x=>x&&x.id===a.visitSchedId):null;
+  const dropSch=!!sch&&confirm('이 AS 에 연결된 방문 일정('+(sch.date||'날짜 없음')+')도 일정표에서 지울까요?\n[취소]를 누르면 일정은 그대로 둡니다.');
+  state.asLog=(state.asLog||[]).filter(x=>x.id!==id);
+  if(dropSch)state.schedule=(state.schedule||[]).filter(x=>x!==sch);
+  markDirty();
+  try{if(typeof after==='function')after();}catch(e){}
+  toast(dropSch?'삭제됨 — 방문 일정도 지웠습니다':(sch?'삭제됨 — 방문 일정은 그대로 두었습니다':'삭제됨'));
+  return true;
+}
 function asManage(focusId){
   if(focusId&&typeof focusId==='string')__asmOpen.add(focusId);
   const prevList=document.querySelector('#modalRoot #asmList');const prevScroll=prevList?prevList.scrollTop:0;
@@ -11420,11 +11462,7 @@ function asManage(focusId){
     const a=rec(s.dataset.id);
     if(a){a.status=s.value;markDirty();asManage();toast(s.value==='done'?'✅ AS 완료 처리':'상태 변경됨');}
   });
-  root.querySelectorAll('.asmDel').forEach(b=>b.onclick=async()=>{
-    if(!confirm('이 AS 기록을 삭제할까요?\n하자 대응 이력(보증 판정 근거)이 사라집니다.'))return;   // 오조작 방지(형제 삭제와 동일)
-    try{await hjSnapshot('AS 기록 삭제 전',true);}catch(e){}   // 강제 스냅샷 → 실수 시 안전판에서 복구
-    state.asLog=(state.asLog||[]).filter(x=>x.id!==b.dataset.id);markDirty();asManage();toast('삭제됨');
-  });
+  root.querySelectorAll('.asmDel').forEach(b=>b.onclick=()=>hjAsDelete(b.dataset.id,asManage));
   root.querySelectorAll('.asmMore').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)__asmOpen.add(d.dataset.id);else __asmOpen.delete(d.dataset.id);}));
   // 글자 칸은 제자리에서 저장한다(다시 그리면 치던 칸의 초점이 날아간다) — 요약 줄·보증 판정만 바꾼다
   const refreshLine=a=>{const p=hjAsProject(a);
@@ -13277,6 +13315,10 @@ function warrantyLinkSend(pjName,ctx,done){
           toast('링크 생성 실패: '+e.message);return;
         }
         if(!Array.isArray(p.warrantyLinks))p.warrantyLinks=[];
+        // 같은 분 같은 내용으로 다시 누르면 서버는 같은 idem 이라 처음 보증서(같은 contractId)를 돌려준다 — 새 줄을 또 달면
+        // 같은 보증서가 요청 목록에 두 번 보이고 [✍️ 서명 확인]도 두 벌이 된다. 이미 있는 그 줄을 다시 보여 준다.
+        const dup=j&&j.contractId?p.warrantyLinks.find(function(L){return L&&L.contractId===j.contractId;}):null;
+        if(dup){closeModal();warrantyLinkShow(pjName,dup,j,done);return;}
         const req={id:'wl_'+uid(),at:new Date().toISOString(),contractId:j.contractId||'',contractNo:j.contractNo||'',
           role:role,org:org,name:name,unitId:c.unitId||undefined,unitLabel:c.unitLabel||undefined,
           work:String(c.work||'')||undefined,client:String(c.client||'')||undefined};
@@ -14502,11 +14544,14 @@ function importWizard(){
         '<b>② 이 기기</b>에서 아래 중 하나를 누르세요.</div>'+
         '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
         '<button class="clay" id="iwGd" style="flex:1;min-width:150px;padding:12px">☁️ 드라이브에서 불러오기</button>'+
-        '<button class="blue" id="iwJson" style="flex:1;min-width:150px;padding:12px">📄 백업(JSON) 복원</button></div>',
+        '<button class="blue" id="iwJson" style="flex:1;min-width:150px;padding:12px">📄 백업(JSON) 복원</button>'+
+        // PC 작업 폴더의 _백업 목록은 따로 — 예전엔 [📄 백업(JSON) 복원]이 이 목록을 열어 폰에서는 '모바일은 PC에서' 토스트로 끝났다
+        (isMobileNow()?'':'<button class="ghost" id="iwFolder" style="flex:1 1 100%;padding:10px">🗂 폴더 백업 목록 (PC 작업 폴더의 _백업)</button>')+'</div>',
         [{label:'← 뒤로',cls:'ghost',fn:importWizard},{label:'닫기',cls:'ghost',fn:closeModal}]);
       const r2=document.getElementById('modalRoot');
       r2.querySelector('#iwGd').onclick=()=>{closeModal();gdLoadDriveFiles(false);};
-      r2.querySelector('#iwJson').onclick=()=>{closeModal();openRestore();};
+      r2.querySelector('#iwJson').onclick=()=>{closeModal();importData();};   // 손에 든 _현장.json 을 고른다(백업 센터 [↺ 백업에서 복원]과 같은 길)
+      const fb=r2.querySelector('#iwFolder');if(fb)fb.onclick=()=>{closeModal();openRestore();};
       return;
     }
     __iwPickFile(k);
@@ -14523,7 +14568,8 @@ function __iwPickFile(target){
     // 우리 전체장부 자동 인식
     if(target==='full'||(wb.SheetNames.includes('현장')&&wb.SheetNames.includes('단가장'))){
       if(!wb.SheetNames.includes('현장')){toast('전체장부 형식이 아닙니다 — 시트 "현장"이 필요해요.');return;}
-      await hjSnapshot('이사 직전',true);
+      let snapped=false;try{snapped=await hjSnapshot('이사 직전',true,true);}catch(e){snapped=false;}
+      if(snapped!==true){toast('🛡 안전 스냅샷 저장 실패 — 옮기지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return;}   // 마법사가 '직전 상태가 남는다'고 약속한다
       const R=__iwFullImport(wb);
       markDirty();render();
       // 이 파일에 있지만 옮기지 않은 시트 — 말하지 않으면 '전부 옮겨졌다'고 믿는다
@@ -14567,7 +14613,8 @@ function __iwMapStep(target,wb,fname,sheetName){
     const m=curMap();
     const miss=T.fields.filter(f=>f.req&&m[f.k]==null);
     if(miss.length){toast('필수 항목을 지정하세요: '+miss.map(f=>f.l).join(', '));return;}
-    await hjSnapshot('이사 직전',true);
+    let snapped=false;try{snapped=await hjSnapshot('이사 직전',true,true);}catch(e){snapped=false;}
+    if(snapped!==true){toast('🛡 안전 스냅샷 저장 실패 — 옮기지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return;}
     const r=__iwCommit(target,m,rows);
     markDirty();render();
     const R={};R[T.t.replace(/^\S+\s/,'')]=r;
@@ -19185,6 +19232,10 @@ async function negotiateDialog(qid){
   const btn=document.getElementById('negoCalc');
   btn.onclick=async()=>{
     const target=won2num(document.getElementById('negoTarget').value);
+    // 견적 총액이 0원이면 희망가를 어떻게 넣어도 계산이 안 된다 — 희망가 칸 탓으로 돌리지 않고 결과 자리에 이유를 말한다
+    if(!(total>0)){const box=document.getElementById('negoResult');box.style.display='block';
+      box.innerHTML='<div class="negoZero" role="status" style="background:var(--paper-2);border-radius:11px;padding:12px;font-size:12.5px;line-height:1.6">이 견적은 총액이 <b>0원</b>이라 협상 계산을 할 수 없습니다 — 견적에 품목·단가를 먼저 넣어 주세요.</div>';
+      toast('견적 총액이 0원이라 계산할 수 없습니다 — 견적에 품목·단가를 먼저 넣어 주세요');return;}
     const c=negotiateCalc(total,target);
     if(!c){toast('희망가를 숫자로 입력하세요');hjFieldIssue(document.getElementById('negoTarget'),'희망가를 숫자로 입력하세요');return;}
     const box=document.getElementById('negoResult');box.style.display='block';
@@ -23466,8 +23517,16 @@ function materialCalc(catId,preset,logId,focusK){
         q:res.main?res.main.qty:0,u:res.main?res.main.unit:'',lp:hjCalcNum(v.loss),used:old&&old.used!=null?old.used:null});}
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
   // v330: '먼저 값을 넣어 주세요' 는 첫 빈 숫자 칸에 붙인다(없으면 첫 칸) — 토스트만으로는 어느 칸인지 모른다.
-  const needVal=()=>{toast('먼저 값을 넣어 주세요');const ins=[...root.querySelectorAll('input.calcIn')].filter(i=>i.getClientRects().length);
-    hjFieldIssue(ins.find(i=>!(hjCalcNum(i.value)>0))||ins[0],'먼저 값을 넣어 주세요');};
+  //  단, 값은 다 넣었는데 계산이 안 되는 경우(지붕 경사 90° 이상 등 — 계산기 안내가 '넣어 주세요' 가 아닌 것)는 칸 탓이 아니다:
+  //  값이 든 칸에 '먼저 값을 넣어 주세요' 를 붙이면 거짓이 되므로, 결과 상자의 안내를 그대로 말하고 결과 상자로 눈을 돌린다.
+  const needVal=()=>{const ins=[...root.querySelectorAll('input.calcIn')].filter(i=>i.getClientRects().length);
+    const empty=ins.find(i=>!(hjCalcNum(i.value)>0));const res=hjCalcRun(cat.id,read());
+    if(!empty||(res.note&&!/넣어 주세요/.test(res.note))){
+      const msg=res.note||'이 값으로는 계산할 수 없습니다 — 넣은 값을 확인해 주세요';toast(msg);
+      const out=root.querySelector('#calcOut');
+      if(out){out.innerHTML='<span class="calcOutIssue" style="color:var(--warn);font-weight:700">⚠ '+escapeHtml(msg)+'</span>';try{out.scrollIntoView({block:'nearest'});}catch(_){}}
+      return;}
+    toast('먼저 값을 넣어 주세요');hjFieldIssue(empty,'먼저 값을 넣어 주세요');};
   const copyText=()=>{const t=paint(true);if(!t){needVal();return;}if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('계산 결과를 복사했습니다'),()=>toast('복사 실패'));else toast('복사 실패');};
   root.querySelectorAll('.calcIn').forEach(i=>{i.oninput=()=>paint();i.onchange=()=>paint();});
   root.querySelectorAll('.calcSeg').forEach(b=>b.onclick=()=>{const v=read();let m=hjCalcNum(v.m2);const to=b.dataset.mode;const cur=window.__hjCalcMem[cat.id];cur.m2_mode=to;
@@ -30519,7 +30578,7 @@ function setupDelegation(){
       markDirty();render();toast(__w?('🔧 AS 접수됨 · 보증 '+(__w.dday>=0?'기간 내 (D-'+__w.dday+')':'만료됨')):'🔧 AS 접수됨');return;
     }
     if(d.asedit!==undefined)return asManage(d.asedit);   // 방문일·처리 내용·유상 금액·공종·사진은 AS 관리 화면 한 곳에서 적는다
-    if(d.asdel!==undefined){state.asLog=(state.asLog||[]).filter(a=>a.id!==d.asdel);markDirty();render();toast('삭제됨');return;}
+    if(d.asdel!==undefined){hjAsDelete(d.asdel,render);return;}   // AS 관리 화면의 ✕ 와 같은 확인·안전판(hjAsDelete)
     if(d.reviewreqp!==undefined){return hjReviewSms(d.reviewreqp);}
     if(d.warrantystart!==undefined){return hjWarrantyStart(d.warrantystart);}
     if(d.pjsite!==undefined)return siteRulesView(d.pjsite);

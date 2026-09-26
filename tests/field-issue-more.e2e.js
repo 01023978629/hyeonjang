@@ -9,6 +9,8 @@
      작업시간 수정(날짜·시작) · 명함 거래처(상호) · 고객 셀프 견적(평형) · 협상 도우미(희망가) · AI 견적(현장 설명)
    화면마다 지키는 것: 토스트는 그대로 뜬다(기존 검사 호환) · 초점이 그 칸 · aria-invalid=true · aria-describedby 로 이어진
    role=alert 안내가 칸 아래에 보인다 · 고치면(입력) 표시가 풀린다 · 거부된 입력은 자료를 바꾸지 않는다.
+   반대로 칸 탓이 아닌 경우는 칸에 붙이지 않는다(3차 묶음 검토 low): 계산기에 값을 다 넣었는데 계산이 안 되면(지붕 경사 90° 이상)
+   결과 상자에 ⚠ 안내, 협상 도우미의 견적 총액이 0원이면 희망가 칸이 아니라 결과 자리에 총액 0 안내.
    가짜 자료만 쓴다(전화 010-0000-1234). 판정은 종료코드.
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -246,6 +248,34 @@ async function boot(browser, mobile, viewport) {
     await clickId('negoCalc');
     await toastIs(/희망가를 숫자로/, '협상');
     await fieldCheck('협상 희망가', '#negoTarget', /희망가를 숫자로/, '900000');
+    await closeAll();
+  });
+
+  // 값은 다 넣었는데 계산이 안 되는 경우 — 칸 탓이 아니다(3차 묶음 검토 low). 로스 0 은 '빈 칸' 후보가 되지만 안내가 '넣어 주세요' 가 아니면 칸에 붙이지 않는다.
+  for (const loss of ['5', '0']) {
+    await test('자재 계산기 — 지붕 경사 90° (로스 ' + loss + ') 는 값이 든 칸이 아니라 결과 상자에 안내', async () => {
+      await page.evaluate((loss) => { window.__hjCalcMem = {}; window.__toasts = []; materialCalc('roof', { m2: '30', m2_mode: 'm2', deg: '90', unit: 'deg', loss }); }, loss); await modalReady();
+      await clickFoot(/결과 복사/);
+      await toastIs(/90° 이상/, '계산기 경사');
+      const r = await page.evaluate(() => ({ inv: [...document.querySelectorAll('#modalRoot .calcIn')].filter(i => i.getAttribute('aria-invalid') === 'true').map(i => i.dataset.k),
+        issues: document.querySelectorAll('#modalRoot .field-issue').length, out: (document.querySelector('#calcOut .calcOutIssue') || {}).textContent || '', toasts: window.__toasts }));   // 누른 뒤 결과 상자가 ⚠ 로 눈에 띄어야 한다(평소 회색 안내와 구분)
+      assert(r.inv.length === 0 && r.issues === 0, '값이 든 칸에 오류 표시를 붙였다 ' + JSON.stringify(r));
+      assert(/90° 이상/.test(r.out) && !r.toasts.some(t => /먼저 값을 넣어/.test(t)), '결과 상자 안내가 없거나 거짓 안내가 떴다 ' + JSON.stringify(r));
+      await closeAll();
+    });
+  }
+
+  await test('협상 도우미 — 견적 총액 0원이면 희망가 칸이 아니라 총액 0 안내', async () => {
+    await page.evaluate(() => { state.quotes.push({ id: 'fake-nego-zero', title: '가상 빈 견적', no: 'FAKE-Z', date: '2026-09-01', project: '', customer: { name: '가상 고객', phone: '010-0000-1234', addr: '' }, items: [{ cat: '욕실', name: '가상 방수', qty: 1, unit: '식', price: 0 }], memo: '' });
+      window.__toasts = []; negotiateDialog('fake-nego-zero'); }); await modalReady();
+    await page.waitForSelector('#negoCalc');
+    await page.fill('#negoTarget', '900000');
+    await clickId('negoCalc');
+    await toastIs(/총액이 0원/, '협상 0원');
+    const r = await page.evaluate(() => ({ inv: document.getElementById('negoTarget').getAttribute('aria-invalid'), zero: !!document.querySelector('#negoResult .negoZero') && document.getElementById('negoResult').style.display !== 'none',
+      toasts: window.__toasts }));
+    assert(r.inv !== 'true' && r.zero && !r.toasts.some(t => /희망가를 숫자로/.test(t)), '총액 0 인데 희망가 칸 탓을 했다 ' + JSON.stringify(r));
+    await page.evaluate(() => { state.quotes = state.quotes.filter(q => q.id !== 'fake-nego-zero'); });
     await closeAll();
   });
 
