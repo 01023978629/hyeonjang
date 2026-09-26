@@ -19,6 +19,8 @@
      ⑪ 저장 왕복을 지나도 같고 serializeData 최상위 키는 늘지 않는다, pageerror 0
      ⑫ 견적−수금으로 따로 세던 곳(월말 마감 미수·잔금 안내 문자·입금 확인 문자·현장 ZIP 보고서)도 같은 잔금,
         추가공사가 없는 현장의 문자는 옛 글자 그대로
+     ⑬ 담김 판정은 est 가 센 견적만(집계 제외·가상 파일 없음 → 청구로, 같은 견적 묶음의 엑셀 대표 → 담긴 것 그대로)
+     ⑭ 다른 현장 견적에 안 담기·고객 페이지 갱신·'50만' 금액·영수증 잔금 표기·세대별 보증서
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -244,6 +246,122 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(legacy.quoted.includes('L1'), '⑩ 이름이 같은 옛 품목은 담긴 것: ' + JSON.stringify(legacy));
   assert(legacy.quoted.length === 2 && legacy.total === 250000 && legacy.agreed.length === 1, '⑩ 이름을 고친 것은 같은 금액 하나만 담긴 것으로(둘 다 빼지 않는다): ' + JSON.stringify(legacy));
 
+  // ⑬ 담김 판정은 est 가 센 견적만 — 집계 제외(exSum)·가상 파일 없는 견적에만 담긴 추가공사는 청구로 돌아간다(검토 2026-09-26),
+  //    같은 현장·같은 금액 엑셀이 대표가 된 묶음(앱이 '같은 견적' 으로 본 것)은 담긴 것 그대로 — 다시 더하면 두 번 청구
+  const ded = await page.evaluate(() => {
+    const NM = '집계제외현장';
+    state.projects.push({ name: NM, stage: 3, doneAt: '2026-09-10', received: 0, phases: [], cost: {},
+      extras: [{ id: 'd1', date: '2026-09-01', text: '욕실 환풍기', amount: '500000', agreed: true }] });
+    const q = { id: 'qd1', no: 'Q-D', title: '제외고객', date: '2026-09-01', place: '', vatIncluded: false, accountIdx: 0, memo: '', project: NM,
+      items: [{ name: '욕실 공사', spec: '', qty: 1, price: 10500000 }, { name: '[추가] 욕실 환풍기', spec: '', qty: 1, price: 500000, extraId: 'd1' }] };
+    state.quotes.push(q); syncQuoteToProject(q);
+    const snap = () => { const s = projStats(NM); const b = hjExtrasBill(state.projects.find(p => p.name === NM));
+      return { est: s.est, extra: s.extra, due: s.due, quoted: b.quoted.length, agreed: b.agreed.length }; };
+    const r = {};
+    const vf = state.files.find(f => f.id === 'quote_qd1');
+    r.qamt = vf.est.amount;
+    r.before = snap();
+    // 리뷰어 재현 그대로 — 앱 견적은 집계 제외, 엑셀 1,100만이 매출
+    vf.exSum = true;
+    state.files.push({ id: 'xd1', name: '제외고객 최종 견적.xlsx', ext: 'xlsx', kind: 'estimate', project: NM, est: { amount: 11000000 } });
+    r.exsum = snap();
+    r.inv = invoiceHTML(NM);
+    // 집계 제외를 풀고 엑셀을 앱 견적과 같은 금액으로 — 2차 병합으로 엑셀이 대표, 앱 견적은 사본
+    vf.exSum = false; state.files.find(f => f.id === 'xd1').est.amount = vf.est.amount;
+    r.reps = dedupeEstimates(state.files.filter(f => f.project === NM && f.kind === 'estimate')).map(f => f.id);
+    r.same = snap();
+    // 엑셀을 치우고 가상 파일도 없애면(현장 연결이 끊겼던 견적) est 밖
+    state.files = state.files.filter(f => f.id !== 'xd1' && f.id !== 'quote_qd1');
+    r.novf = snap();
+    // 원래대로
+    syncQuoteToProject(q);
+    r.after = snap();
+    return r;
+  });
+  assert(ded.before.est === ded.qamt && ded.before.extra === 0 && ded.before.quoted === 1, '⑬ 앱 견적이 매출이면 담긴 것: ' + JSON.stringify(ded.before));
+  assert(ded.exsum.est === 11000000 && ded.exsum.extra === 500000 && ded.exsum.due === 11500000 && ded.exsum.quoted === 0 && ded.exsum.agreed === 1,
+    '⑬ 집계 제외 견적에만 담긴 추가공사는 청구로 돌아간다: ' + JSON.stringify(ded.exsum));
+  assert(ded.exsum && ded.inv.indexOf('[추가] 욕실 환풍기') >= 0, '⑬ 청구서에도 [추가] 행');
+  assert(JSON.stringify(ded.reps) === '["xd1"]' && ded.same.est === ded.qamt && ded.same.extra === 0 && ded.same.quoted === 1,
+    '⑬ 같은 견적으로 묶인 엑셀이 대표면 담긴 것 그대로(두 번 청구 금지): ' + JSON.stringify({ reps: ded.reps, same: ded.same }));
+  assert(ded.novf.est === 0 && ded.novf.extra === 500000 && ded.novf.quoted === 0, '⑬ 가상 파일 없는 견적은 est 밖 — 청구로: ' + JSON.stringify(ded.novf));
+  assert(ded.after.extra === 0 && ded.after.quoted === 1, '⑬ 되돌리면 다시 담긴 것: ' + JSON.stringify(ded.after));
+
+  // ⑭ 검토 지적 잔손질 — 담기 현장 확인·고객 페이지 갱신·'50만' 금액·영수증 잔금 표기·세대별 보증서
+  // (a) 다른 현장 견적에는 담지 않는다 / 현장이 빈 견적은 이 현장으로 연결한다
+  const cross = await page.evaluate(({ PJ }) => {
+    state.editingQuote = { id: 'qz', no: 'Q-Z', title: '남의견적', date: '2026-09-20', place: '', vatIncluded: true, accountIdx: 0, memo: '', project: '옛담기현장',
+      items: [{ name: '다른 공사', spec: '', qty: 1, price: 100 }] };
+    const r = {};
+    extraWork(PJ);
+    [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /견적에 담기/.test(b.textContent)).click();
+    r.n1 = state.editingQuote.items.length; r.t1 = window.__toasts[window.__toasts.length - 1];
+    try { closeModal(); } catch (_) {}
+    state.editingQuote.project = ''; state.editingQuote.items = [{ name: '', spec: '', qty: 1, price: 0 }];
+    extraWork(PJ);
+    [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /견적에 담기/.test(b.textContent)).click();
+    r.proj = state.editingQuote.project; r.n2 = state.editingQuote.items.length; r.t2 = window.__toasts[window.__toasts.length - 1];
+    try { closeModal(); } catch (_) {}
+    state.editingQuote = null; try { render(); } catch (_) {}
+    return r;
+  }, { PJ });
+  assert(cross.n1 === 1 && /「옛담기현장」 현장 견적입니다/.test(cross.t1), '⑭ 다른 현장 견적에는 안 담는다: ' + JSON.stringify(cross));
+  assert(cross.proj === PJ && cross.n2 > 1 && /현장에 연결했습니다/.test(cross.t2), '⑭ 현장 빈 견적은 이 현장으로 연결하고 알린다: ' + JSON.stringify(cross));
+  // (b) 확인받음·금액·지우기가 고객 페이지 갱신을 건다
+  const nudged = await page.evaluate(({ PJ }) => {
+    const calls = []; const o = window.portalAutoSync; window.portalAutoSync = n => calls.push(n);
+    try {
+      extraWork(PJ);
+      document.querySelector('#modalRoot .exAgree[data-i="1"]').click();
+      const a = calls.length;
+      const el = document.querySelector('#modalRoot .exIn[data-k="amount"][data-i="1"]'); el.value = '310000'; el.dispatchEvent(new Event('input'));
+      const b = calls.length;
+      el.value = '300000'; el.dispatchEvent(new Event('input'));
+      document.querySelector('#modalRoot .exAgree[data-i="1"]').click();
+      const c = calls.length;
+      document.querySelector('#modalRoot #exAdd').click();   // 빈 칸 하나 더해 그것을 지운다(자료는 제자리)
+      const dels = document.querySelectorAll('#modalRoot .exDel'); dels[dels.length - 1].click();
+      const n = state.projects.find(x => x.name === PJ).extras.length;
+      closeModal();
+      return { a, b, d: calls.length - c, n, all: calls.every(n => n === PJ) };
+    } finally { window.portalAutoSync = o; }
+  }, { PJ });
+  assert(nudged.a === 1 && nudged.b === 2 && nudged.d === 1 && nudged.n === 5 && nudged.all, '⑭ 청구에 닿는 변경은 고객 페이지 갱신을 건다: ' + JSON.stringify(nudged));
+  // (c) '50만' 같은 금액은 50원으로 읽지 않는다 — 청구에서 빼고 칸 아래에 알린다
+  // ⑨ 저장 뒤 PJ 의 추가공사는 모두 견적에 담겼다 — 견적 밖인 옛담기현장 L3(확인받음 25만)으로 본다
+  const bad = await page.evaluate(() => {
+    const NM = '옛담기현장';
+    const p = state.projects.find(x => x.name === NM); const x = p.extras[2]; const o = x.amount;
+    x.amount = '50만';
+    const b = hjExtrasBill(p); const s = projStats(NM);
+    const r = { id: x.id, total: b.total, pend: hjExtrasPendingLine(b), extra: s.extra, txt: hjExtraText(NM, [x]) };
+    extraWork(NM);
+    const w = document.querySelector('#modalRoot .exAmtBad[data-i="2"]'); r.warnShown = !!w && !w.hidden;
+    const el = document.querySelector('#modalRoot .exIn[data-k="amount"][data-i="2"]'); el.value = '500,000원'; el.dispatchEvent(new Event('input'));
+    r.warnAfter = w.hidden; r.fixed = hjExtrasBill(p).total;
+    const w2 = document.querySelector('#modalRoot .exAmtBad[data-i="0"]'); r.okHidden = !!w2 && w2.hidden;
+    closeModal(); x.amount = o;
+    return r;
+  });
+  assert(bad.id === 'L3' && bad.total === 0 && bad.extra === 0 && bad.pend === '청구에 포함되지 않은 추가공사 1건 (금액 확인 필요 1건)' && bad.txt.indexOf('금액 협의') >= 0 && bad.txt.indexOf('50원') < 0,
+    "⑭ '50만' 은 청구에 넣지 않는다: " + JSON.stringify(bad));
+  assert(bad.warnShown && bad.warnAfter && bad.fixed === 500000 && bad.okHidden, '⑭ 칸 아래 경고가 켜졌다 고치면 꺼진다: ' + JSON.stringify(bad));
+  // (d) 영수증 잔금은 추가공사가 들어 있다고 밝힌다(없으면 옛 글자 그대로)
+  const rc = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === '옛담기현장'); const withEx = receiptHTML(p.name, 1000);
+    const o = p.extras; p.extras = []; const plain = receiptHTML(p.name, 1000); p.extras = o;
+    return { withEx, plain };
+  });
+  assert(rc.withEx.indexOf('공사 잔금 (추가공사 포함)') >= 0 && rc.withEx.indexOf('(확인하신 추가공사 250,000원 포함)은 공사 완료 후 정산 예정입니다') >= 0, '⑭ 영수증 잔금 표기');
+  assert(rc.plain.indexOf('추가공사') < 0 && rc.plain.indexOf('>공사 잔금</td>') >= 0, '⑭ 추가공사 없으면 영수증 옛 글자 그대로');
+  // (e) 세대별 보증서에는 현장 전체 추가공사를 붙이지 않는다
+  await page.evaluate(({ PJ }) => { const p = state.projects.find(x => x.name === PJ);
+    p.aptUnits = [{ id: 'unit-x1', type: 'unit', dong: '101', ho: '1001', name: '', note: '' }]; warrantyView(PJ, { unitId: 'unit-x1' }); }, { PJ });
+  const unitWork = await page.inputValue('#wrWork');
+  await closeModalNow();
+  await page.evaluate(({ PJ }) => { delete state.projects.find(x => x.name === PJ).aptUnits; }, { PJ });
+  assert(unitWork === '철거, 타일', '⑭ 세대별 보증서 공사 내용에 추가공사 없음: ' + unitWork);
+
   // ⑪ 저장 왕복·최상위 키
   const round = await page.evaluate(({ PJ }) => {
     const before = Object.keys(serializeData()).length;
@@ -258,6 +376,6 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(round.due === EST2 - RECV && round.extra === 0 && round.ids.filter(Boolean).length === 4, '⑪ 왕복 뒤에도 같다: ' + JSON.stringify(round));
   assert(errors.length === 0, '⑪ pageerror: ' + errors.join(' | '));
 
-  console.log('extras-settle.e2e OK (① 정본 ② projStats ③ 청구서 ④ 거래명세서 ⑤ 같은 잔금 ⑥ 보증서 ⑦ 스토리 ⑧ 추가공사 화면 ⑨ 견적에 담기 ⑩ 옛 자료 ⑪ 왕복 ⑫ 네 곳 잔금)');
+  console.log('extras-settle.e2e OK (① 정본 ② projStats ③ 청구서 ④ 거래명세서 ⑤ 같은 잔금 ⑥ 보증서 ⑦ 스토리 ⑧ 추가공사 화면 ⑨ 견적에 담기 ⑩ 옛 자료 ⑪ 왕복 ⑫ 네 곳 잔금 ⑬ 집계 제외·묶음 ⑭ 검토 잔손질)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
