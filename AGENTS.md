@@ -3,7 +3,23 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
-## 2026-09-25 관리사무소 작업 안내 v327 (PR 후보)
+## 2026-09-26 계약·정산 정확성·데이터 안전·개인정보 v328 (PR 후보)
+
+대표 "위 내용 진행"(2026-09-26). 작업 트리 10개에서 구현 → 적대적 검토 → 고침을 거쳐 합쳤다. 기준 main `b519e35`(v327).
+- **전자계약 body(`contractSend(p,amount,terms)`)**: `vatIncluded` 는 **true/false 로 명시**, 모르면(표기 없는 엑셀·PDF·손으로 고친 금액·견적마다 다름) 확인 화면에서 사람이 고르기 전엔 서버를 부르지 않는다. 서버 `ctStandardBody_` 는 값이 없으면 '(부가세 별도)'로 찍는다. `period` 는 이 현장 일정에서(💰·상담·실측 제외), 없으면 보내지 않는다. `scope` 는 **늘 배열**(빈 문자열이면 서버가 제목을 범위 자리에 넣는다), 견적 품목 이름, 사진 전/후 공정명은 거른다. `idem` 에 내용 지문(FNV-1a) — 같은 분 안에 고쳐 보내면 옛 링크가 돌아오던 결함. 검사 `contract-body.e2e.js`(변이 27).
+- **계약 조건 정본 `HJ_PAY_RATIO={down:.5,mid:.4,bal:.1}`**(manmool Pure.gs `PAYMENT_RATIO` 와 같은 값, 대표 확정). 보증 기간 문구는 `hjWarrantyPeriodText` 한 곳 — 초안·완료 문자·완료보고서·간이 계약서가 여기서 나온다. **숫자를 새로 적지 마라.** 잔금 = 총액 − 계약금 − 중도금(서버 paymentPlan 과 같은 셈). 간이 계약서의 '보증 개월' 입력칸은 없어졌다(현장 🛡 보증 항목을 따른다). 검사 `contract-terms.e2e.js` 가 '하자보수…1년' 단독 약속 재등장을 정적으로 막는다.
+- **엑셀 이사 `__iwFullImport`**: v193 에서 ① 현장 시트 열 하나가 빠진 뒤 원가·완료일이 한 칸씩 밀려 읽혔다. 이제 **헤더 이름으로 열을 찾는다**(`HJ_IW_FULL_COLS`·`__iwCols`), 헤더를 일부만 찾으면 못 찾은 열은 읽지 않는다(옆 칸 값으로 채우는 것보다 빈칸이 낫다). '(보관)' → archived. v193~v327 사이에 내보낸 파일로 이사한 기기는 원가·완료일이 틀려 있을 수 있다. 검사 `ledger-roundtrip.e2e.js`.
+- **추가공사 정산 `hjExtrasBill(p)` → {agreed, pending, quoted, total}**: 청구 대상은 확인받음+금액 있음+저장된 견적에 안 담긴 것. `projStats` 가 이 합계를 잔금에 더한다(est 에 섞지 않는다). [➕ 견적에 담기]는 품목에 `extraId` 를 남기고, 옛 품목은 같은 이름·같은 금액이면 담긴 것으로 본다 — **애매하면 청구서에서 뺀다**(이미 나간 문서를 두 번 청구하지 않게). 청구서·명세서·정산 요약·보증서 프리필·공사 스토리·고객 페이지 잔금이 같은 값. 확인 글(`hjExtraText`) 고객 문구는 그대로. 검사 `extras-settle.e2e.js`.
+- **현장 이름 키 저장소 목록의 정본 `hjProjectRefWalk(name,visit,identity)`**: files(+_aptUnit)·schedule·notes·payLog·asLog·quotes·expenses·workLogs·trips·satisfaction·aptOrders·aiOps.queue + 이 폰 `hj_calc_log/cart`. 이름 변경은 전부 따라가고, **삭제는 기록을 지우지 않고 '(삭제됨) 이름 · 날짜' 로 옮겨** 같은 이름 재생성 때 옛 수금·AS·견적이 붙지 않게 한다. UI·AI 삭제가 같은 함수. `renameProject`·삭제는 안전판을 먼저 찍느라 async — 누르고 바로 state 를 읽는 검사는 기다려야 한다. 새 이름 키 저장소를 만들면 `hjProjectRefWalk` 에 넣어라. 검사 `project-rename.e2e.js`.
+- **사진 안정 참조 `hjFileRef(f)`('d:'+Drive ID 또는 'k:'+fileKey) · `hjFilesByRefs`**: 파일 id(uid)는 부팅·복원·스캔마다 바뀐다. `casePack.photos`·`extras[].photo`·`warrantyDoc.photoIds` 는 안정 참조를 저장하고 옛 id 도 읽어 조용히 옮긴다(뒤처진 탭은 쓰지 않음). 이름·크기 짐작은 **그 현장 사진 안에서만**. 정말 없어진 사진은 '사진을 찾을 수 없음 N장' — 자동으로 목록에서 지우지 않는다. 검사 `photo-refs.e2e.js`.
+- **파일 필드 복원 정본 `hjApplySavedFileFields(f,s,revert)`**: applyData 병합·되돌리기와 「선택 복원」(`restoreSelectFiles`, fileKey 매칭)이 같이 쓴다. `backupUserEdits` 는 저장 레코드 전 필드를 담는다. 원본/정리본 병합 때 원본 증빙은 옮기지 않고 합치지 않는다. Drive 형식·크기는 Drive ID 가 같거나 빌 때만 덮는다(백업 뒤 붙은 Drive 연결이 크기 0 이 되던 결함). `restore-parity` ⑤ 가 현장 레코드 전체를 merge·revert 로 왕복 비교한다 — applyData 의 `{...clean}` 전개를 명시 목록으로 바꾸면 빨간불. 검사 `restore-select.e2e.js`.
+- **📤 사진 묶음**: `hjCaseJpeg` 로 다시 구워(EXIF 없음, 긴 변 1800) `사진_01.jpg` 번호 이름. 굽기 실패는 원본으로 채우지 않고 뺀다. 동영상은 기본 제외, `#pbVideo` 를 골라야 원본 그대로(이름만 번호) 들어간다. 검사 `photo-bundle-privacy.e2e.js`. 대표 확인 대기: 공유 제목·본문에 현장명(동·호수 포함 가능)이 실린다.
+- **AI 출구 마스킹 `hjAiMaskOut`**: 도구 결과가 모델로 돌아가는 한 곳(aiAgentSend 의 functionResponse)에서 전화·9자리 이상 숫자열을 '···1234' 로. 날짜·쉼표 금액·'원'이 붙은 숫자·회사 번호는 그대로. 동선 조언 프롬프트 주소는 `hjAddrArea` 로 시·구·동까지. 외부 링크 `target=_blank` 는 전부 `rel="noopener noreferrer"`(`blank-rel.check.js`), `<meta name="referrer" content="strict-origin-when-cross-origin">`.
+- **고객 페이지 비밀키 → IDB `portal_key`**(메모리 `__portalKey`, 부팅 읽기 `window.__hjPortalKeyDone`). `serializeData` 의 portalCfg 는 `portalCfgSafe` 로 key 를 뺀다. applyData 는 들어온 key 를 상태에 두지 않고, 이 기기에 키가 없을 때만 한 번 IDB 로 옮긴다. 입력칸은 password, 빈 값 저장 = 안 바꿈, [지우기]+확인. 검사 `portal-key.e2e.js`.
+- 작업 트리 병렬 검사 도구: `/tmp/claude-0/hjtest.sh <트리> <포트> <검사…>` — 8299/8398 을 트리별 포트로 바꾼 임시 복사본을 돌린다. `dead-endpoint.check.js` 는 그 임시 복사본 자신을 잡으니 node 로 직접 돌린다.
+- 대표 확인 대기: ① 서명 계약서 제4조가 '공사기간은 2026-10-05 ~ 2026-10-09.' 로 끝난다(다듬으려면 manmool 서버 수정·수동 배포) ② 부가세 표기 없는 엑셀·PDF 견적은 보낼 때마다 포함/별도를 고른다 ③ 사진 묶음 제목의 현장명 ④ 묶음 사진 화질(긴 변 1800)이 외주팀에 충분한지.
+
+## 2026-09-25 관리사무소 작업 안내 v327 (배포됨 #161 · Pages #177)
 
 대표 요청 "관리사무소에 작업 가능한 작업 리스트를 보여 줄 수 있는 창". 더보기(고객·영업) 「📋 관리사무소 작업 안내」
 (`officeWorkListView`, 행동 계약 **118→119**). 담당자에게 폰으로 보여 주거나(📺 크게 보기 = 새 창 30px 글씨) 카톡으로
