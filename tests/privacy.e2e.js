@@ -160,8 +160,12 @@ const RAW_DIGITS = '01012345678';
   // 8) 가림 규칙 단위 — 날짜·금액·회사 공개번호는 그대로, 변형 번호는 가림
   await test('hjAiMaskText — 좁은 규칙(날짜·금액·회사번호 보존, 변형 번호 가림)', async () => {
     const r = await page.evaluate(() => ({
-      keep: ['2026-09-26', '12,000,000', '150000000원', '1588-1234', '제20260926', '2026-09-26T09:30:00', 'COMPANY:' + COMPANY.tel].map(t => [t, hjAiMaskText(t)]),
-      mask: ['01000001234', '010 0000 1234', '010.0000.1234', '010/0000/1234', '+82 10-0000-1234', '042-000-1234', '02-000-1234', '0420001234', '1000001234', '끝 010-0000-12'].map(t => [t, hjAiMaskText(t)]),
+      keep: ['2026-09-26', '12,000,000', '150000000원', '1588-1234', '제20260926', '2026-09-26T09:30:00', 'COMPANY:' + COMPANY.tel,
+        // 확장자가 붙은 긴 숫자열·밑줄 뒤 숫자열은 사진 파일 이름 — 가리면 다음 도구 호출에서 그 사진을 못 찾는다
+        '1727000000000.jpg', 'IMG_0212345678.jpg'].map(t => [t, hjAiMaskText(t)]),
+      mask: ['01000001234', '010 0000 1234', '010.0000.1234', '010/0000/1234', '+82 10-0000-1234', '042-000-1234', '02-000-1234', '0420001234', '1000001234', '끝 010-0000-12',
+        // 명함식 표기(앞에 영문·점이 붙음)·구분자 앞뒤 공백 — 예전 앞자리 조건 (?<![\w.]) 은 이것들을 통째로 흘렸다
+        'T.010-0000-1234', 'HP010-0000-1234', 'M.010.0000.1234', '010 - 0000 - 1234', '끝 T.010 - 0000 - 1'].map(t => [t, hjAiMaskText(t)]),
       deep: hjAiMaskOut({ a: [{ b: '010-0000-1234', n: 12000000, d: null }], when: new Date('2026-09-26T00:00:00Z') })
     }));
     for (const [a, b] of r.keep) assert(a === b, '보존해야 할 값이 바뀜: ' + a + ' → ' + b);
@@ -204,6 +208,23 @@ const RAW_DIGITS = '01012345678';
       ['', hjAddrArea('')]]);
     const want = ['대전 중구', '서울 마포구 망원동', '대전광역시 유성구 봉명동', ''];
     r.forEach(([a, b], i) => assert(b === want[i], a + ' → ' + b + ' (기대 ' + want[i] + ')'));
+  });
+
+  // 11) 가린 연락처의 역류 — 출구가 add_supplier 결과의 연락처를 '···1234' 로 돌려보내므로, 모델이 그 값을 phone 으로
+  //     되넘겨도 저장된 원문을 덮어쓰면 안 된다. 진짜 새 번호는 그대로 고쳐진다.
+  await test('add_supplier — 가린 연락처(···NNNN)는 기존 번호를 덮지 않는다', async () => {
+    const r = await page.evaluate(async () => {
+      state.suppliers = [{ name: '테스트자재상', phone: '010-0000-1234', category: '자재', memo: '', items: '' }];
+      const out = hjAiMaskOut(await aiToolRun('add_supplier', { name: '테스트자재상', memo: '메모' }));
+      await aiToolRun('add_supplier', { name: '테스트자재상', phone: out.연락처, memo: '메모2' });
+      const afterMasked = state.suppliers[0].phone;
+      await aiToolRun('add_supplier', { name: '테스트자재상', phone: '010-0000-5678' });
+      return { masked: out.연락처, afterMasked, afterReal: state.suppliers[0].phone, memo: state.suppliers[0].memo };
+    });
+    assert(r.masked === '···1234', '출구에서 연락처가 가려져야(검사 전제): ' + r.masked);
+    assert(r.afterMasked === '010-0000-1234', '가린 값이 원문을 덮어씀: ' + r.afterMasked);
+    assert(r.memo === '메모2' || r.afterReal === '010-0000-5678', '다른 칸 수정은 그대로 돼야');
+    assert(r.afterReal === '010-0000-5678', '진짜 새 번호는 고쳐져야: ' + r.afterReal);
   });
 
   const pe = errs.length;
