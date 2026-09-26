@@ -6,7 +6,7 @@
    ② 견적 종결 — 팔로업 화면 「✕ 종결」 → 사유 칩(가격·시기·다른 업체·연락 두절·기타). 견적 안 lost:{at,reason} + result:'lost'
       (견적 이력의 '종결'과 같은 개념). 종결하면 팔로업에서 빠지고, 30일 지난 견적도 종결 대상으로 보이며(예전엔 조용히 사라졌다),
       수주 분석이 사유를 세고, 유사 견적에 '종결 · 사유' 가 붙는다.
-   ③ 고객 타임라인 = 현장마다 공사 스토리(hjStoryData) — 계약·AS·보증서·추가공사가 고객 화면에도 보인다.
+   ③ 고객 타임라인 = 현장마다 공사 스토리(hjStoryEvents — 40건 상한 없이. 공사 스토리 화면만 hjStoryData 로 40건) — 계약·AS·보증서·추가공사가 고객 화면에도 보인다.
       파일철(projectHistoryData)에 계약·보증 줄.
    ④ 저장 구조 그대로 — serializeData 최상위 키 불변, pageerror 0.
 
@@ -152,6 +152,15 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return q.result === 'lost' && q.lost && !!q.lost.at && q.lost.reason === ''; }), '② 견적 이력 종결 = lost 기록');
   await page.evaluate(() => quoteMark('q5', 'lost'));
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !('lost' in q) && quoteStatus(q) !== 'lost'; }), '② 종결 풀면 lost 도 지움');
+  // 종결 뒤 수주·보냄으로 바꿔도 lost 가 남지 않는다 — quoteStatus 가 lost.at 을 보므로, 남으면 수주를 풀 때 '종결'로 되살아난다
+  await page.evaluate(() => { quoteMark('q5', 'lost'); quoteMark('q5', 'won'); });
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return q.result === 'won' && !('lost' in q); }), '② 종결→수주면 lost 지움');
+  await page.evaluate(() => quoteMark('q5', 'won'));
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !('lost' in q) && quoteStatus(q) === 'draft'; }), '② 수주 풀면 진행 중(종결로 되살아나지 않음)');
+  await page.evaluate(() => { quoteMark('q5', 'lost'); quoteMark('q5', 'sent'); });
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !('lost' in q) && quoteStatus(q) === 'sent'; }), '② 종결→보냄이면 lost 지움');
+  await page.evaluate(() => { quoteMark('q5', 'sent'); closeModal(); });
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !q.sentAt && !('lost' in q); }), '② q5 원래대로');
   // 견적 이력에서 사유 칩 — 옛 '실패' 표시(q4)에 사유를 붙인다
   await page.evaluate(() => quoteHistoryView(true));
   await page.waitForSelector('#modalRoot .qhReason[data-id="q4"]');
@@ -171,6 +180,15 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   await page.waitForSelector('#modalRoot .sqLost');
   assert(/종결 · 가격/.test(await page.evaluate(() => document.querySelector('#modalRoot .sqLost').textContent)), '② 유사 견적 종결·사유 배지');
   await page.evaluate(() => closeModal());
+  // 유사 견적 배지도 quoteStatus 하나로 — 현장 연결 없이 수주 표시한 견적은 수주, 현장이 붙었어도 종결한 견적은 종결
+  const sq = await page.evaluate(() => {
+    state.quotes.push({ id: 'q8', title: '수주표시만', date: '2026-09-01', result: 'won', items: [{ name: '도배(실크)', spec: '', qty: 1, price: 3100000 }], vatIncluded: false });
+    state.quotes.push({ id: 'q9', title: '현장붙은 종결', date: '2026-09-01', project: '빈현장', result: 'lost', lost: { at: '2026-09-02', reason: '시기' }, items: [{ name: '도배(실크)', spec: '', qty: 1, price: 3100000 }], vatIncluded: false });
+    const r = similarQuotes('q3').filter(s => s.q.id === 'q8' || s.q.id === 'q9').map(s => s.q.id + ':' + (s.won ? 'W' : '') + (s.lost ? 'L' : ''));
+    state.quotes = state.quotes.filter(q => q.id !== 'q8' && q.id !== 'q9');
+    return r.sort().join(',');
+  });
+  assert(sq === 'q8:W,q9:L', '② 유사 견적 배지 = quoteStatus: ' + sq);
 
   /* ── ③ 고객 타임라인 = 공사 스토리 ── */
   const key = await page.evaluate(() => customerKey(state.projects.find(p => p.name === '고객현장')));
@@ -186,6 +204,26 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   mt = await modalText();
   assert(/AS 접수/.test(mt) && /공사 스토리/.test(mt) && !/완공·수금·리뷰 요청이 자동으로/.test(mt), '③ 고객 화면: ' + mt.slice(0, 300));
   await page.evaluate(() => closeModal());
+  // 사진 날이 40일을 넘는 긴 현장 — 공사 스토리 화면은 최근 40건이지만, 고객 타임라인에서 계약금 입금·계약 줄이 빠지면 안 된다
+  const longTl = await page.evaluate(() => {
+    state.projects.push({ name: '긴현장', stage: 2, received: 0, phases: [], cost: {}, customer: { name: '최가상', phone: '010-0000-4321' },
+      contractLog: [{ at: '2026-01-02T09:00:00Z', contractNo: 'C-TEST-LONG', amount: 2000000, serverStatus: 'SENT' }] });
+    state.payLog.push({ project: '긴현장', d: '2026-01-03', amt: 1000000 });
+    const base = Date.parse('2026-02-01T03:00:00Z');
+    for (let i = 0; i < 45; i++) state.files.push({ id: 'lp' + i, kind: 'photo', project: '긴현장', name: 'lp' + i + '.jpg', when: base + i * 86400000 });
+    const k = customerKey(state.projects.find(p => p.name === '긴현장'));
+    const t = customerTimeline(k).map(e => e.title);
+    const capped = hjStoryData('긴현장').map(e => e.t);
+    // 파일철은 최근 40줄만 보이고 나머지는 '더 있음(more)'으로 센다 — 계약 줄이 목록에서 빠지면 그 수가 하나 준다
+    const hd = projectHistoryData('긴현장'); const hist = hd.timeline.length + hd.more;
+    state.projects = state.projects.filter(p => p.name !== '긴현장');
+    state.payLog = state.payLog.filter(x => x.project !== '긴현장');
+    state.files = state.files.filter(f => f.project !== '긴현장');
+    return { t, capped, hist };
+  });
+  assert(longTl.t.some(x => /전자계약 C-TEST-LONG/.test(x)) && longTl.t.some(x => /입금 /.test(x)) && longTl.t.filter(x => /시공 사진/.test(x)).length === 45, '③ 긴 현장도 첫 계약·입금 줄: ' + longTl.t.slice(-5).join(' | '));
+  assert(longTl.hist === 47, '③ 파일철도 긴 현장의 계약 줄을 센다(사진 45일+입금 1+계약 1): ' + longTl.hist);
+  assert(longTl.capped.length === 40 && !longTl.capped.some(x => /C-TEST-LONG/.test(x)), '③ 공사 스토리 화면은 여전히 최근 40건: ' + longTl.capped.length);
   const ph = await page.evaluate(() => projectHistoryData('고객현장').timeline.map(e => e.ic + e.t).join(' | '));
   assert(/✍️전자계약 C-TEST-1/.test(ph) && /🛡완료보증서 발급/.test(ph), '③ 파일철에 계약·보증: ' + ph);
 

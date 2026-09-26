@@ -10265,8 +10265,8 @@ function projectHistoryData(name){
   (state.asLog||[]).filter(x=>x.project===name).forEach(x=>ev.push({d:x.date||today,o:5,ic:'🔧',t:'AS '+((AS_STAT[x.status]||AS_STAT.open)[0])+': '+hjCut(x.text,22)}));
   if(p.doneAt)ev.push({d:p.doneAt,o:5,ic:'✅',t:'공사 완료'});
   if(p.dueDate)ev.push({d:p.dueDate,o:6,ic:'💰',t:'수금 약속일'});
-  // v329 파일철에 빠져 있던 계약·보증 — 공사 스토리(hjStoryData)의 같은 줄을 가져온다(문구를 두 곳에서 짓지 않게).
-  try{(hjStoryData(name)||[]).forEach(e=>{if(!e.d)return;
+  // v329 파일철에 빠져 있던 계약·보증 — 공사 스토리(hjStoryEvents — 40건으로 자르지 않은 전체)의 같은 줄을 가져온다(문구를 두 곳에서 짓지 않게).
+  try{(hjStoryEvents(name)||[]).forEach(e=>{if(!e.d)return;
     if(/^(전자계약|고객 서명 완료)/.test(e.t))ev.push({d:e.d,o:1,ic:'✍️',t:e.t});
     else if(e.ic==='🛡'||/^하자보증서 확인자 서명/.test(e.t))ev.push({d:e.d,o:6,ic:'🛡',t:e.t});});}catch(e){}
   ev.sort((a,b)=>String(b.d).localeCompare(String(a.d))||(a.o-b.o));
@@ -12643,8 +12643,11 @@ function hjProgressText(name){
   L.push('','궁금하신 점은 언제든 연락 주세요. '+COMPANY.tel+' '+COMPANY.owner);
   return L.join('\n');
 }
-/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생) */
-function hjStoryData(name){
+/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생)
+   hjStoryEvents 는 자르지 않은 전체(고객 타임라인·파일철이 읽는다 — 사진 날이 40일을 넘는 현장에서 계약금 입금·계약 줄이 빠지면 안 된다),
+   hjStoryData 는 최근 40건(공사 스토리 화면·카톡 글 길이 상한). */
+function hjStoryData(name){return hjStoryEvents(name).slice(-40);}
+function hjStoryEvents(name){
   const p=state.projects.find(function(x){return x.name===name;});if(!p)return [];
   const ev=[];
   const day=function(iso){return String(iso||'').slice(0,10);};
@@ -12679,7 +12682,7 @@ function hjStoryData(name){
       const verb=(L.via==='share')?' 발급':' 출력';
       ev.push({d:String(L.at||'').slice(0,10),ic:'🛡',t:(L.kind||'보증서')+verb+(L.unitLabel?' · '+L.unitLabel:'')+via});});
   }else if(p.warrantyDoc&&p.warrantyDoc.at)ev.push({d:p.warrantyDoc.at,ic:'🛡',t:'완료보증서 발급'});
-  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);}).slice(-40);
+  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);});
 }
 function hjStoryText(name){
   const ev=hjStoryData(name);
@@ -19913,11 +19916,6 @@ function hjQuoteClose(id,reason){
   q.lost={at:(q.lost&&q.lost.at)||localDate(),reason:r};
   markDirty();return true;
 }
-function hjQuoteReopen(id){
-  const q=(state.quotes||[]).find(x=>x.id===id);if(!q)return false;
-  if(q.result==='lost')q.result='';
-  delete q.lost;markDirty();return true;
-}
 function hjQuoteLostReason(q){return (q&&q.lost&&q.lost.reason)||'';}
 // 사유 칩 한 줄 — cls 는 누를 때 잡을 클래스(화면마다 다르게), 고른 사유는 채워 보인다
 function hjQuoteLostChips(q,cls){
@@ -20034,7 +20032,7 @@ function similarQuotes(qid){
     let score=common*10;
     if(curTotal>0&&total>0){const ratio=total/curTotal;if(ratio>0.6&&ratio<1.4)score+=8;}
     if(q.project)score+=5;  // 수주된 견적은 검증된 단가 → 가산
-    scored.push({q,score,common,total,won:!!q.project,lost:quoteStatus(q)==='lost'});
+    scored.push({q,score,common,total,won:quoteStatus(q)==='won',lost:quoteStatus(q)==='lost'});
   });
   return scored.sort((a,b)=>b.score-a.score).slice(0,5);
 }
@@ -23509,14 +23507,14 @@ function customerListData(){
   return Object.values(map).sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
 }
 // 특정 고객의 시간순 이벤트
-// v329 현장마다 공사 스토리(hjStoryData — 계약·견적·사진·입금·추가공사·AS·완료·보증서)를 그대로 쓴다.
+// v329 현장마다 공사 스토리(hjStoryEvents — 40건 상한 없이, 계약·견적·사진·입금·추가공사·AS·완료·보증서)를 그대로 쓴다.
 // 예전엔 여기서 완공·입금만 따로 모아 AS·계약·보증서가 고객 화면에 안 보였고, 공사 스토리와 다른 말을 했다.
 function customerTimeline(key){
   const events=[];
   (state.projects||[]).forEach(p=>{
     if(customerKey(p)!==key)return;
     let s;try{s=projStats(p.name);}catch(e){}
-    let story=[];try{story=hjStoryData(p.name)||[];}catch(e){}
+    let story=[];try{story=hjStoryEvents(p.name)||[];}catch(e){}
     story.forEach(e=>{
       const done=e.ic==='🎉';   // 완료 줄에는 예전처럼 견적 합계를 곁들인다
       events.push({date:e.d,ic:e.ic,title:done?p.name+' 완공':e.t,sub:done?(s?('견적 '+hjMan(s.est||0)):p.name):p.name});
