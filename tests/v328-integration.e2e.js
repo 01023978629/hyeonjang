@@ -214,7 +214,26 @@ const ID = 'office-project-abc1234';
   assert(500003 + 400002 + 600000 === plan.due, '⑧ 세 알림의 합 = 잔금(due): ' + plan.due);
   assert(/추가공사/.test(plan.memos[2]) && /추가공사 500000 포함/.test(plan.a3), '⑧ 잔금에 추가공사가 들어 있다고 적는다: ' + JSON.stringify(plan));
 
+  // ⑧b 잔금 0% — 추가공사를 0이 아닌 마지막 회차(중도금)에 더한다. 예전엔 잔금 알림이 안 만들어져 추가공사가 어디에도 없었다(v328 재검토).
+  const plan0 = await page.evaluate(() => {
+    const NM = '가상분할현장'; state.schedule = [];
+    const oMan = window.hjMan; window.hjMan = n => String(n);
+    try {
+      payPlanDialog(NM);
+      const set = (id, v) => { const r = document.getElementById(id); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); };
+      set('ppR1', 50); set('ppR2', 50); set('ppR3', 0);
+      ['ppD1', 'ppD2', 'ppD3'].forEach((id, i) => { document.getElementById(id).value = '2026-10-1' + (i + 1); });
+      const a2 = document.getElementById('ppA2').textContent, a3 = document.getElementById('ppA3').textContent;
+      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /예약 저장/.test(b.textContent)).click();
+      return { a2, a3, titles: state.schedule.map(s => s.title), memos: state.schedule.map(s => s.memo), due: projStats(NM).due };
+    } finally { window.hjMan = oMan; }
+  });
+  // 50/50/0 — 계약금 500,003(반올림) · 중도금은 나머지 500,002 + 추가공사 500,000. 합 = due(예전엔 잔금 칸에 '-1' 이 나오고 합이 1원 많았다)
+  assert(JSON.stringify(plan0.titles) === JSON.stringify(['💰 계약금 500003', '💰 중도금 1000002']), '⑧b 잔금 0% 면 나머지·추가공사는 중도금에: ' + JSON.stringify(plan0));
+  assert(500003 + 1000002 === plan0.due && plan0.a3 === '0', '⑧b 두 알림의 합 = due, 잔금 칸 0: ' + JSON.stringify(plan0));
+  assert(/추가공사/.test(plan0.memos[1]) && /추가공사 500000 포함/.test(plan0.a2) && !/추가공사/.test(plan0.a3), '⑧b 어디에 더했는지 적는다: ' + JSON.stringify(plan0));
+
   assert(errors.length === 0, 'pageerror: ' + errors.join(' | '));
-  console.log('v328-integration.e2e OK (③ 수금 알림 이름 변경 ⑤ 선택 복원 식별자 ⑥ 삭제 뒤 복원 ⑦ 추가공사 360px ⑧ 분할납)');
+  console.log('v328-integration.e2e OK (③ 수금 알림 이름 변경 ⑤ 선택 복원 식별자 ⑥ 삭제 뒤 복원 ⑦ 추가공사 360px ⑧ 분할납 ⑧b 잔금 0%)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e.message); try { await browser.close(); } catch (_) {} process.exit(1); });

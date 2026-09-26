@@ -358,6 +358,34 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(bad.id === 'L3' && bad.total === 0 && bad.extra === 0 && bad.pend === '청구에 포함되지 않은 추가공사 1건 (금액 확인 필요 1건)' && bad.txt.indexOf('금액 협의') >= 0 && bad.txt.indexOf('50원') < 0,
     "⑭ '50만' 은 청구에 넣지 않는다: " + JSON.stringify(bad));
   assert(bad.warnShown && bad.warnAfter && bad.fixed === 500000 && bad.okHidden, '⑭ 칸 아래 경고가 켜졌다 고치면 꺼진다: ' + JSON.stringify(bad));
+  // ⑨b '부가세 별도' 견적 — 담아도 안 담아도 청구서·거래명세서 금액이 같다(v328 통합 재검토: 별도 견적에 확인 금액 50만을 그대로
+  // 단가로 넣으면 청구서가 부가세 10% 를 또 얹어 담으면 3,850,000·안 담으면 3,800,000 이었다). 담긴 추가공사 품목에는 부가세를 얹지 않는다.
+  const NMV = '가상별도현장';
+  await page.evaluate(({ NMV }) => {
+    state.projects.push({ name: NMV, stage: 3, received: 0, phases: [], cost: {},
+      extras: [{ id: 'ev1', date: '2026-09-03', text: '선반', amount: '500000', days: '', photo: '', agreed: true }] });
+    const q = { id: 'qv1', no: 'Q-V', title: '별도고객', date: '2026-09-01', place: '', vatIncluded: false, accountIdx: 0, memo: '', project: NMV,
+      items: [{ name: '도배', spec: '', qty: 1, price: 3000000 }] };
+    state.quotes.push(q); syncQuoteToProject(q);
+  }, { NMV });
+  const vatOff = async () => page.evaluate(({ NMV }) => { const s = projStats(NMV); const st = statementHTML(NMV); const i = st.indexOf('class="row total"');
+    return { due: s.due, inv: invoiceHTML(NMV), stTail: st.slice(i) }; }, { NMV });
+  const vb = await vatOff();
+  await page.evaluate(() => { editQuote('qv1'); });
+  await page.evaluate(({ NMV }) => extraWork(NMV), { NMV });
+  await page.click('#modalRoot .mfoot button:has-text("견적에 담기")');
+  const vItem = await page.evaluate(() => state.editingQuote.items.find(it => it.extraId === 'ev1') || null);
+  await closeModalNow();
+  await page.evaluate(() => saveQuoteEdit());
+  const va = await vatOff();
+  assert(vItem && vItem.price === 500000, '⑨b 별도 견적에는 확인 금액 그대로 단가: ' + JSON.stringify(vItem));
+  assert(grab(vb.inv, '청구 금액') === 3800000 && grab(va.inv, '청구 금액') === 3800000,
+    '⑨b 별도 견적 — 담기 전후 청구 금액이 같다(3,000,000×1.1 + 500,000): ' + grab(vb.inv, '청구 금액') + ' → ' + grab(va.inv, '청구 금액'));
+  assert(grab(vb.stTail, '합계') === 3800000 && grab(va.stTail, '합계') === 3800000, '⑨b 거래명세서 합계도 같다: ' + grab(vb.stTail, '합계') + ' → ' + grab(va.stTail, '합계'));
+  assert(vb.due === va.due && va.due === 3500000, '⑨b 잔금(due)도 담기 전후 같다: ' + vb.due + ' → ' + va.due);
+  assert(va.inv.indexOf('부가가치세 (10%, 추가공사 500,000원 제외)') >= 0, '⑨b 부가세에서 뺀 것을 밝힌다');
+  await page.evaluate(({ NMV }) => { state.projects = state.projects.filter(p => p.name !== NMV); state.quotes = state.quotes.filter(q => q.project !== NMV);
+    state.files = state.files.filter(f => f.project !== NMV); }, { NMV });
   // (d) 영수증 잔금은 추가공사가 들어 있다고 밝힌다(없으면 옛 글자 그대로)
   const rc = await page.evaluate(() => {
     const p = state.projects.find(x => x.name === '옛담기현장'); const withEx = receiptHTML(p.name, 1000);
@@ -388,6 +416,6 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(round.due === EST2 - RECV && round.extra === 0 && round.ids.filter(Boolean).length === 4, '⑪ 왕복 뒤에도 같다: ' + JSON.stringify(round));
   assert(errors.length === 0, '⑪ pageerror: ' + errors.join(' | '));
 
-  console.log('extras-settle.e2e OK (① 정본 ② projStats ③ 청구서 ④ 거래명세서 ⑤ 같은 잔금 ⑥ 보증서 ⑦ 스토리 ⑧ 추가공사 화면 ⑨ 견적에 담기 ⑩ 옛 자료 ⑪ 왕복 ⑫ 네 곳 잔금 ⑬ 집계 제외·묶음 ⑭ 검토 잔손질)');
+  console.log('extras-settle.e2e OK (① 정본 ② projStats ③ 청구서 ④ 거래명세서 ⑤ 같은 잔금 ⑥ 보증서 ⑦ 스토리 ⑧ 추가공사 화면 ⑨ 견적에 담기(부가세 포함·별도) ⑩ 옛 자료 ⑪ 왕복 ⑫ 네 곳 잔금 ⑬ 집계 제외·묶음 ⑭ 검토 잔손질)');
   await browser.close();
 })().catch(async e => { console.error('FAIL', e && e.message || e); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });

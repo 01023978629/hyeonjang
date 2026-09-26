@@ -201,6 +201,14 @@ const pollIdb = (page, key, pred, label) => page.evaluate(async ({ key, pred, la
     assert(await page.evaluate(() => portalKeySaveInput()), '새 키 저장 실패');
     const cl = await page.evaluate(async () => ({ idb: await idbGet('portal_key_dropped'), mem: __portalKeyDropped, key: portalKeyGet() }));
     assert(!cl.idb && cl.mem === false && cl.key === KEY1, '새 키를 넣으면 지운 표시를 걷는다: ' + JSON.stringify(cl));
+    // 키 지우기(두 번째 IDB 쓰기)가 실패하면 지운 표시도 되돌린다 — 키는 남았는데 '지웠다' 표시만 남으면 뜻이 어긋난다(v328 재검토)
+    const fail = await page.evaluate(async () => {
+      const o = window.idbSet;   // 확인 창은 dialogAnswer=true 로 수락된다
+      window.idbSet = (k, v) => (k === 'portal_key' ? Promise.reject(new Error('시험 — 저장 실패')) : o(k, v));
+      let r; try { r = await portalKeyDrop(); } finally { window.idbSet = o; }
+      return { r, mem: __portalKeyDropped, idb: await idbGet('portal_key_dropped'), key: portalKeyGet(), stored: await idbGet('portal_key') };
+    });
+    assert(fail.r === false && fail.mem === false && !fail.idb && fail.key === KEY1 && fail.stored === KEY1, '키 지우기 실패 뒤 표시가 남았다: ' + JSON.stringify(fail));
     // ⑥ 을 위해 다시 지운다
     await openPortal();
     await page.click('#modalRoot #ptKeyDel');
