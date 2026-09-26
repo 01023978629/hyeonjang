@@ -7193,6 +7193,8 @@ function salesEstimateFiles(){
 }
 /* 매출로 셀 견적 한 벌 — projStats.est 와 같은 규칙(v330). 부가세 신고 준비(vatReportData)·세무 분기 엑셀(exportTaxXlsx)·
    월말 결산(collectQuotesByMonth)이 여기서만 센다.
+   ※ projStats.est 와 다른 점 하나: 현장 이름이 state.projects 에 없는 견적 파일도 센다 — 현장을 지우면 hjProjectRefWalk 가 파일을
+     '(삭제됨) 이름 · 날짜' 로 옮기는데, 이미 한 공사의 매출은 신고에서 빠지면 안 된다(대시보드에는 그 현장이 없어 안 보인다).
    예전에는 세 곳이 state.quotes 를 통째로 더했다: 팔로업에서 ✕ 종결한 견적·아직 안 보낸 작성 견적까지 매출세액에 들어가
    납부 예상이 부풀었고(세무사에게 그대로 나간다), 앱 견적과 같은 공사의 엑셀이 둘 다 잡혔다. 월말 결산은 거꾸로
    현장에 연결된 앱 견적(= 수주한 공사)을 ①에서 _fromQuote 로 빼고 ②에서 '이미 셌다'며 또 빼 — 연결 안 된 견적만 셌다.
@@ -7239,32 +7241,42 @@ function hjSalesEntries(){
    total 이 곧 '공사대금 합계' 다. '부가세 별도' 앱 견적은 est(=공급가)보다 부가세만큼 크다 — 예전에는 청구서만 부가세를 얹고
    잔금(due)·입금 확인 문자·영수증·고객 페이지는 est 로 셌다(청구 550만 / 문자 잔액 450만, 공급가만 받으면 '모두 정리' 문자). */
 function hjEstBill(name,groups){
-  const out={groups:[],items:[],supply:0,vat:0,nv:0,total:0,quote:null,quotes:[]};
+  // addVat: 매출(est)에 안 든, 청구 때 얹는 부가세 — '부가세 별도'가 분명한 묶음의 세액 합만(앱 견적 vatIncluded:false, 장부 이관 견적의 세액).
+  // projStats.bill = est + addVat, 문자·고객 페이지의 '(부가세 포함)'·'부가세 N원 포함' 도 이 값이 있을 때만 — bill−est 차이를
+  // 부가세라 부르지 않는다(검토 v330: 수량 0 품목·손으로 고친 금액이 '부가세'로 둔갑해 잔금·고객 문구가 부풀었다).
+  const out={groups:[],items:[],supply:0,vat:0,nv:0,total:0,addVat:0,vatUnknown:[],quote:null,quotes:[]};
   const qById={};(state.quotes||[]).forEach(q=>{if(q&&q.project===name)qById['quote_'+q.id]=q;});
   (groups||[]).forEach(g=>{
     const rep=g&&g.rep;if(!rep)return;
     const members=[rep].concat(g.dups||[]);
     const qs=members.map(f=>f&&f._fromQuote?qById[f.id]:null).filter(Boolean).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
     const q=qs[0]||null;
-    let items=[],supply,vat,nv=0;
+    let items=[],supply,vat,nv=0,add=0;
     if(q){
-      items=quoteRealItems(q).map(it=>{const o={name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)};
+      // 수량은 quoteCalc 와 똑같이 센다(num(qty) — 빈칸·0 은 0). 예전에는 '||1' 로 세어 '선택: 비데(미포함) 수량 0' 같은 줄이
+      // 청구에만 들어가, 견적 550만 현장의 잔금·입금 문자가 583만 '(부가세 포함)' 으로 나갔다.
+      items=quoteRealItems(q).map(it=>{const o={name:it.name,spec:it.spec||'',qty:num(it.qty),price:num(it.price)};
         // noVat: '부가세 별도' 견적에 [➕ 견적에 담기]로 들어간 추가공사(extraId) — 확인받은 금액 그대로 단가라 부가세를 또 얹지 않는다(v328)
         if(!q.vatIncluded&&it.extraId!=null&&it.extraId!=='')o.noVat=true;return o;});
-      supply=Math.round(items.reduce((a,it)=>a+it.qty*it.price,0));
+      supply=Math.round(items.reduce((a,it)=>a+it.qty*it.price,0));   // = quoteCalc(q).supply
       nv=Math.round(hjNoVatSum(items));
       vat=Math.round((supply-nv)*0.1);
+      if(!q.vatIncluded)add=vat;   // 부가세 별도 견적 — est 는 공급가뿐이라 이 세액이 청구 때 더해진다
       out.quotes.push(q);
     }else{
       const e=rep.est||{},amt=num(e.amount);
       if(!(amt>0)){supply=0;vat=0;}
       else{const s=num(e.supply);
         if(s>0&&s<amt){supply=s;vat=amt-s;}                                   // 합계 = 공급가 + 세액
-        else if(s===amt){supply=s;vat=num(e.vat)>0?num(e.vat):Math.round(s*0.1);}   // 합계가 공급가뿐(부가세 별도 견적) — 예전 청구서처럼 부가세를 얹는다
-        else{supply=Math.round(amt/1.1);vat=amt-supply;}}                     // 공급가를 모름 — 금액을 부가세 포함으로 본다(est 와 같다)
+        else if(s===amt&&rep._import&&!e._edited&&num(e.vat)>0){supply=s;vat=num(e.vat);add=vat;}   // 전체장부 이관 견적: 내보낸 '부가세(별도 견적)' 세액 — 분명한 신호
+        else{supply=Math.round(amt/1.1);vat=amt-supply;
+          if(s===amt)out.vatUnknown.push(String(e.customer||rep.name||'견적'));}}   // 그 밖에는 금액을 부가세 포함 합계로 본다(est 와 같다).
+        // 공급가 = 금액인데 신호가 없는 파일(vatUnknown)은 정산 문서 화면에 알려 사람이 확인하게 한다 — 부가세 별도 견적이면 청구가 모자란다.
+        // 예전에는 공급가 = 금액이면 '부가세 별도'로 보고 10% 를 얹었다 — 인식값의 공급가가 남은 채 금액만 손으로 고친 파일
+        // (1,100만 → '부가세 빼고 1,000만')이 다시 1,100만 '(부가세 포함)' 으로 청구·잔금·고객 페이지에 나갔다(v330 검토).
     }
-    out.groups.push({rep,quote:q,items,supply,vat,nv,total:supply+vat});
-    out.supply+=supply;out.vat+=vat;out.nv+=nv;out.total+=supply+vat;
+    out.groups.push({rep,quote:q,items,supply,vat,nv,add,total:supply+vat});
+    out.supply+=supply;out.vat+=vat;out.nv+=nv;out.addVat+=add;out.total+=supply+vat;
   });
   out.quotes.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   out.quote=out.quotes[0]||null;
@@ -7343,8 +7355,10 @@ function projStats(name){
   const extra=p?hjExtrasBill(p,files).total:0;   // est 와 같은 파일 목록을 넘긴다 — 담김 판정이 est 와 같은 묶음을 본다
   // 청구 기준 공사대금(bill) — 청구서·거래명세서의 '공사대금 합계' 와 같은 값(hjEstBill). '부가세 별도' 앱 견적만 est 보다 부가세만큼 크다.
   // 잔금(due)은 이 값에서 뺀다 — 청구서 청구 금액·입금 확인 문자·영수증·고객 페이지 남은 금액이 한 값이 된다(v330). est(매출)는 그대로.
-  const bill=hjEstBill(name,estGroups).total;
-  return {files:files.length,est,bill,billVat:bill-est,recv,extra,due:Math.max(bill+extra-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
+  // bill = est + 분명한 '부가세 별도' 세액(addVat). 청구서 합계(hjEstBill.total)에서 바로 가져오지 않는다 — 두 쪽이 품목·사본을 다르게
+  // 세는 틈이 '부가세'라는 이름으로 잔금·고객 문구에 새지 않게(v330 검토). 보통은 둘이 같다(검사 revenue-basis).
+  const billVat=hjEstBill(name,estGroups).addVat,bill=est+billVat;
+  return {files:files.length,est,bill,billVat,recv,extra,due:Math.max(bill+extra-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
     supply,costEffective,costSupply,costEtc,costTotal,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
     material:matEff,labor:labEff,outsource:outEff,matSrc,outSrc,labSrc,
     expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
@@ -15050,7 +15064,7 @@ function settleDocData(name){
   const extras=hjExtrasBill(p);
   return {p,s,cust,items,workItems,quote:q,
     est:s.est,supply:s.supply,recv:s.recv,due:s.due,   // supply=부가세 제외(품목 없을 때 부가세 이중가산 방지)
-    billSupply:bill.supply,billVat:bill.vat,billNv:bill.nv,billTotal:bill.total,   // 청구서·거래명세서의 공사대금 — projStats.bill 과 같은 값
+    billSupply:bill.supply,billVat:bill.vat,billNv:bill.nv,billTotal:bill.total,billVatUnknown:bill.vatUnknown,   // 청구서·거래명세서의 공사대금 — projStats.bill 과 같은 값
     extras,extra:extras.total,
     doneAt:p.doneAt||localDate(),warranty:w};
 }
@@ -15678,6 +15692,7 @@ function settleDocs(name,kind){
   const summary='<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+
     '견적 '+hjMan(d.est)+(num(d.s.billVat)>0?' (부가세 별도 +'+hjMan(d.s.billVat)+')':'')+(d.extra>0?' · 추가공사 '+hjMan(d.extra):'')+' · 수금 '+hjMan(d.recv)+(d.due>0?' · <b style="color:#c2410c">잔금 '+hjMan(d.due)+'</b>':' · 완납')+
     (w?' · 무상 A/S ~'+w.end+(w.dday>0?' (D-'+w.dday+')':' (만료)'):'')+
+    ((d.billVatUnknown||[]).length?'<div id="sdVatUnknown" style="margin-top:4px;color:#b45309">⚠️ 견적 파일 「'+escapeHtml(d.billVatUnknown.slice(0,2).join('」·「'))+'」'+(d.billVatUnknown.length>2?' 외 '+(d.billVatUnknown.length-2)+'건':'')+'은 공급가와 합계가 같아 부가세 포함 합계로 청구합니다 — 부가세 별도 견적이었다면 금액을 확인해 주세요</div>':'')+
     (exLine?'<div id="sdExPending" style="margin-top:4px;color:#b45309">🖊 '+escapeHtml(exLine)+' — 「추가공사 확인」에서 확인받음·금액을 적으면 청구서에 들어갑니다</div>':'')+'</div>';
   openModal('📄 정산 문서 — '+escapeHtml(name),
     summary+cards+
@@ -24297,7 +24312,10 @@ function payPlanDialog(projName){
     '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">'+r0[1]+'%</span></div><input type="range" id="ppR2" min="0" max="100" value="'+r0[1]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
     '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">'+r0[2]+'%</span></div><input type="range" id="ppR3" min="0" max="100" value="'+r0[2]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
     '<div id="ppSum" style="font-size:12px;text-align:center;padding:8px;background:var(--paper-2);border-radius:9px;margin-bottom:6px"></div>'+
-    '<div style="font-size:11px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 예약일을 정하면 그날 일정표에 뜹니다. 입금 안내 문자도 만들 수 있어요.</div>';
+    '<div style="font-size:11px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 예약일을 정하면 그날 일정표에 뜹니다. 입금 안내 문자도 만들 수 있어요.</div>'+
+    // '부가세 별도' 견적 현장: 계획은 견적(공급가)만 나누는데 잔금·청구서·입금 문자는 부가세를 더한 값이다(projStats.bill, v330).
+    // 나누는 기준을 바꿀지는 대표 결정(manmool paymentPlan 과 맞춰야 한다) — 그 전까지 차이를 화면에 밝힌다.
+    (num(s.billVat)>0?'<div id="ppVatNote" style="font-size:11px;color:#b45309;background:#fff7ed;border-radius:9px;padding:9px;line-height:1.5;margin-top:6px">⚠️ 부가세 별도 견적이라 이 계획은 공급가 '+won(total)+'만 나눕니다. 청구서·잔금에는 부가세 '+won(num(s.billVat))+'가 더 붙습니다 — 부가세를 받는 회차를 따로 정해 주세요.</div>':'');
   openModal('📅 '+projName+' 분할납',body,[
     {label:'💾 예약 저장',cls:'clay',fn:()=>{
       const parts=[['계약금','ppR1','ppD1'],['중도금','ppR2','ppD2'],['잔금','ppR3','ppD3']];
@@ -32450,7 +32468,7 @@ function mcData(ym){
     if(p.archived)return;
     const st=projStats(p.name);
     const rest=num(st.due);
-    if((st.est>0||st.extra>0)&&rest>0)due.push({name:p.name,est:st.est,extra:st.extra||0,recv:st.recv,rest:rest,stage:p.stage||0});
+    if((st.est>0||st.extra>0)&&rest>0)due.push({name:p.name,est:st.est,bill:num(st.bill)||st.est,billVat:num(st.billVat),extra:st.extra||0,recv:st.recv,rest:rest,stage:p.stage||0});   // bill: 잔금(rest)과 같은 청구 기준 — 줄의 '계약' 이 잔금과 셈이 맞게(v330)
   });
   due.sort((a,b)=>b.rest-a.rest);
   // 이 달 완료 현장
@@ -32505,7 +32523,7 @@ function monthCloseView(step,ym){
   }else if(S===2){
     const rows=D.due.length?D.due.slice(0,8).map(function(x){
       return '<div style="display:flex;gap:7px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
-        '<div style="flex:1;min-width:0"><b>'+escapeHtml(x.name)+'</b><div style="color:var(--muted);font-size:10.5px">계약 '+won(x.est)+(x.extra>0?' · 추가공사 '+won(x.extra):'')+' · 수금 '+won(x.recv)+'</div></div>'+
+        '<div style="flex:1;min-width:0"><b>'+escapeHtml(x.name)+'</b><div style="color:var(--muted);font-size:10.5px">계약 '+won(x.bill!=null?x.bill:x.est)+(x.billVat>0?'(부가세 포함)':'')+(x.extra>0?' · 추가공사 '+won(x.extra):'')+' · 수금 '+won(x.recv)+'</div></div>'+
         '<div style="font-weight:800;color:#dc2626">'+won(x.rest)+'</div>'+
         '<button class="ghost tiny mcDue" data-pj="'+escapeAttr(x.name)+'" style="padding:6px 8px;font-size:10.5px">💬 요청</button></div>';
     }).join(''):'<div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">미수금이 없습니다 👏</div>';

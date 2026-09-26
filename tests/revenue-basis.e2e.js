@@ -9,6 +9,8 @@
      ④ '부가세 별도' 견적에서 청구서(부가세 포함)와 입금 확인 문자·영수증·고객 페이지(공급가 기준)의 잔금이 부가세만큼 달랐다.
         projStats.bill(= 청구서 공사대금 합계)에서 잔금을 뺀다 — 청구 금액 = due, 문자 '계약 …(부가세 포함)'.
      ⑤ 받은 금액을 고치면 남는 정정(amt<0)을 월별 실손익·목표·기간 리포트·연말 결산이 빼서 수입이 부풀었다.
+     ⑥ (검토) bill−est 를 부가세라 불렀다 — 수량 0 줄·손으로 고친 금액이 '(부가세 포함)'·잔금 증가로 새었다. billVat 은 분명한
+        '부가세 별도' 세액(앱 견적 vatIncluded:false, 이관 견적 세액)만.
    시드는 전부 가상값(가상… 현장, 010-0000-1234).
 
    전제: tests/static-server.js(8299) 실행 중 */
@@ -154,6 +156,56 @@ let browser;
   const incl = await page.evaluate(() => receiptText(state.projects.find(x => x.name === '가상둔산'), { d: '2026-09-20', amt: 1000000 }));
   assert(incl.indexOf('· 누계 수금: 1,000,000원 / 계약 8,800,000원\n· 잔액: 7,800,000원') >= 0, '④ 포함 견적은 옛 글자 그대로: ' + incl);
 
+  // 월말 마감 2단계 줄도 잔금과 같은 계약 금액(줄 '계약' 과 문자가 다르면 셈이 안 맞는다)
+  const mcRow = await page.evaluate(() => { monthCloseView(2); const b = document.querySelector('#modalRoot .mcDue[data-pj="가상거실"]');
+    const t = b ? b.parentElement.textContent : ''; closeModal(); return t; });
+  assert(mcRow.indexOf('계약 11,000,000원(부가세 포함)') >= 0, '④ 월말 마감 줄의 계약도 청구 기준: ' + mcRow);
+
+  // 분할납 계획 — 부가세 별도 견적이면 계획(공급가)과 잔금(부가세 포함)의 차이를 밝힌다(나누는 기준은 대표 결정)
+  const pp = await page.evaluate(() => { payPlanDialog('가상거실'); const a = !!document.querySelector('#modalRoot #ppVatNote'); closeModal();
+    payPlanDialog('가상둔산'); const b = !!document.querySelector('#modalRoot #ppVatNote'); closeModal(); return { a, b }; });
+  assert(pp.a && !pp.b, '④ 분할납 계획의 부가세 별도 안내는 별도 견적 현장에만: ' + JSON.stringify(pp));
+
+  // ⑥ 청구 − 매출 차이를 '부가세'라 부르지 않는다(v330 검토)
+  //  가상수량0: 부가세 포함 견적에 '선택: 비데(미포함)' 수량 0 줄 — quoteCalc 는 0 으로 센다, 청구도 0 이어야 한다
+  //  가상고침: 인식값 1,100만(공급가 1,000만)을 손으로 1,000만('부가세 빼고')으로 고친 외부 파일 — 부가세를 되얹지 않는다
+  //  가상이관: 전체장부 엑셀로 이사한 부가세 별도 현장(_import + 세액) — 분명한 신호라 부가세를 얹는다, 금액을 고치면 안 얹는다
+  const six = await page.evaluate(() => {
+    const P = (name, received) => ({ name, stage: 3, received, phases: [], cost: {}, customer: { name: '가상고객', phone: '010-0000-1234', addr: '' }, archived: false });
+    state.projects.push(P('가상수량0', 1000000), P('가상고침', 0), P('가상이관', 0));
+    const q = { id: 'qz', no: 'Q-qz', title: '욕실', date: '2026-09-15', place: '', vatIncluded: true, accountIdx: 0, memo: '', project: '가상수량0',
+      items: [{ name: '욕실 공사', spec: '', qty: 1, price: 5000000 }, { name: '선택: 비데(미포함)', spec: '', qty: 0, price: 300000 }] };
+    state.quotes.push(q); syncQuoteToProject(q);
+    state.files.push({ id: 'xe', name: '가상고침 견적.pdf', ext: 'pdf', kind: 'estimate', project: '가상고침', when: new Date('2026-09-16'),
+      est: { amount: 10000000, supply: 10000000, vat: 1000000, customer: '가상고침', date: '2026-09-16', _edited: true } });
+    const fi = { id: 'xi', name: '이관 견적_가상이관.xlsx', kind: 'estimate', project: '가상이관', when: new Date('2026-09-17'), _import: true,
+      est: { amount: 10000000, supply: 10000000, vat: 1000000, customer: '가상이관', date: '2026-09-17' } };
+    state.files.push(fi);
+    const pick = n => { const s = projStats(n); return { est: s.est, bill: s.bill, billVat: s.billVat, due: s.due, inv: invoiceHTML(n),
+      txt: receiptText(state.projects.find(x => x.name === n), { d: '2026-09-20', amt: 1000000 }), portal: portalBuild(n).quote }; };
+    const r = { z: pick('가상수량0'), e: pick('가상고침'), i: pick('가상이관') };
+    fi.est._edited = true; r.i2 = pick('가상이관'); delete fi.est._edited;
+    return r;
+  });
+  assert(six.z.est === 5500000 && six.z.bill === 5500000 && six.z.billVat === 0 && six.z.due === 4500000 && grab(six.z.inv, '청구 금액') === 4500000,
+    '⑥ 수량 0 줄은 청구에도 0 — 잔금 450만: ' + JSON.stringify({ est: six.z.est, bill: six.z.bill, billVat: six.z.billVat, due: six.z.due, claim: grab(six.z.inv, '청구 금액') }));
+  assert(six.z.txt.indexOf('/ 계약 5,500,000원\n· 잔액: 4,500,000원') >= 0 && !/부가세/.test(six.z.portal.summary) && six.z.portal.amount === 5500000,
+    '⑥ 포함 견적 현장 문자·고객 페이지에 가짜 부가세 없음: ' + six.z.txt + ' / ' + JSON.stringify(six.z.portal));
+  assert(six.e.bill === 10000000 && six.e.billVat === 0 && six.e.due === 10000000 && grab(six.e.inv, '청구 금액') === 10000000 && six.e.txt.indexOf('(부가세 포함)') < 0,
+    '⑥ 손으로 고친 금액은 부가세 포함 합계로 본다: ' + JSON.stringify({ bill: six.e.bill, billVat: six.e.billVat, due: six.e.due, claim: grab(six.e.inv, '청구 금액') }));
+  assert(six.i.bill === 11000000 && six.i.billVat === 1000000 && six.i.due === 11000000 && grab(six.i.inv, '청구 금액') === 11000000 && six.i.txt.indexOf('계약 11,000,000원(부가세 포함)') >= 0,
+    '⑥ 이관 견적의 세액은 분명한 신호 — 부가세를 얹는다: ' + JSON.stringify({ bill: six.i.bill, billVat: six.i.billVat, due: six.i.due }));
+  const warn = await page.evaluate(() => { const r = {};
+    // 가상공급가없음: 금액만 읽힌 외부 파일 — 공급가를 모를 뿐 '공급가 = 합계' 가 아니다(확인 요청 대상 아님)
+    state.projects.push({ name: '가상공급가없음', stage: 3, received: 0, phases: [], cost: {}, customer: { name: '가상고객', phone: '010-0000-1234', addr: '' }, archived: false });
+    state.files.push({ id: 'xn', name: '가상공급가없음 견적.pdf', ext: 'pdf', kind: 'estimate', project: '가상공급가없음', when: new Date('2026-09-18'),
+      est: { amount: 3300000, customer: '가상공급가없음', date: '2026-09-18' } });
+    ['가상고침', '가상이관', '가상거실', '가상공급가없음'].forEach(n => { settleDocs(n); const el = document.querySelector('#modalRoot #sdVatUnknown');
+    r[n] = el ? el.textContent : ''; closeModal(); }); return r; });
+  assert(/가상고침/.test(warn['가상고침']) && /공급가와 합계가 같아/.test(warn['가상고침']) && !warn['가상이관'] && !warn['가상거실'] && !warn['가상공급가없음'],
+    '⑥ 신호 없는 공급가=합계 파일은 정산 문서 화면이 사람에게 확인을 청한다: ' + JSON.stringify(warn));
+  assert(six.i2.bill === 10000000 && six.i2.billVat === 0, '⑥ 이관 견적도 금액을 고치면 부가세를 안 얹는다: ' + JSON.stringify({ bill: six.i2.bill, billVat: six.i2.billVat }));
+
   // ⑤ 받은 금액 정정(amt<0)이 수입에 들어간다
   const pl = await page.evaluate(() => {
     const ym = localDate().slice(0, 7), y = ym.slice(0, 4);
@@ -172,7 +224,7 @@ let browser;
   assert(pl.top.every(x => x.amt > 0) && pl.top.find(x => x.name === '가상둔산').amt === 5000000, '⑤ 월 현장별 수입 순위도 정정 뒤 값: ' + JSON.stringify(pl.top));
 
   assert(!errors.length, 'pageerror: ' + errors.join(' | '));
-  console.log('revenue-basis.e2e OK (① 부가세·세무 엑셀 ② 두 견적 청구 ③ 월말 결산 ④ 부가세 별도 잔금 ⑤ 정정 포함)');
+  console.log('revenue-basis.e2e OK (① 부가세·세무 엑셀 ② 두 견적 청구 ③ 월말 결산 ④ 부가세 별도 잔금 ⑤ 정정 포함 ⑥ 가짜 부가세 없음)');
   await browser.close();
   process.exit(0);
 })().catch(async e => { console.log('FAIL ' + (e && e.message || e)); try { await browser.close(); } catch (_) {} process.exit(1); });
