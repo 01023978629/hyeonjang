@@ -5421,7 +5421,8 @@ function hjProjectTombstonesOf(name){
   const see=v=>{if(typeof v==='string'&&v.startsWith(head)&&HJ_TOMB_TAIL_RE.test(v.slice(head.length))&&!(state.projects||[]).some(x=>x&&x.name===v))out.add(v);};
   const arr=v=>Array.isArray(v)?v:[];
   arr(state.files).forEach(f=>f&&see(f.project));
-  ['notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','aptOrders'].forEach(k=>arr(state[k]).forEach(r=>r&&see(r.project)));
+  // 일정은 삭제 때 연결만 푼다('') — 다만 사람이 메모를 적어 둔 수금 약속일 일정은 '(삭제됨)' 이름으로 옮겨 둔다(hjDeleteProjectCore).
+  ['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','aptOrders'].forEach(k=>arr(state[k]).forEach(r=>r&&see(r.project)));
   arr(state.aiOps&&state.aiOps.queue).forEach(t=>t&&see(t.project));
   return [...out];
 }
@@ -5452,24 +5453,50 @@ function hjProjectTombstoneName(name){
   let t=base,i=2;while((state.projects||[]).some(x=>x.name===t))t=base+' ('+(i++)+')';
   return t;
 }
+/* 수금 약속일 일정('due_'+이름, '💰 수금: '+이름 — upsertDueSchedule)은 현장 객체의 dueDate 를 일정표에 비춘 거울이다.
+   현장을 지우면 dueDate 도 함께 사라지는데(현장 정보), 예전 삭제는 이 거울의 project 만 '' 로 비워 id·제목이 남았다 —
+   지운 현장의 '💰 수금: 이름' 이 일정표에 계속 떴고, 같은 이름으로 새 현장을 만들어 약속일을 저장하면 id 가 같아 걷혔다.
+   그래서 삭제 때: 거울(사람이 손댄 칸 없음)은 약속일 지우기(dueClear)와 같이 일정에서 뺀다 — 날짜는 현장의 dueDate 로
+   백업·안전판에 남아 「선택 복원」이 다시 올린다(hjDueScheduleRestore). 사람이 메모·작업자·일지·인건비를 적어 둔 것은
+   지우지 않고 '(삭제됨) 이름 · 날짜' 로 옮긴다(id·제목까지 — 같은 이름 새 현장의 약속일 저장이 걷어 가지 않게). */
+function hjDueSchedTouched(s){
+  return !!s&&(String(s.memo||'').trim()!==''||String(s.workers||'').trim()!==''||String(s.time||'').trim()!==''||!!s.report||!!s.labor);
+}
+// 수금 약속일 일정의 id·제목을 from 이름에서 to 이름으로 — 선택 복원이 '(삭제됨)' 에서 되살릴 때 쓴다.
+function hjDueScheduleRelink(from,to){
+  (state.schedule||[]).forEach(r=>{if(r&&r.id==='due_'+from){r.id='due_'+to;if(r.title==='💰 수금: '+from)r.title='💰 수금: '+to;}});
+}
+// 되살린 현장에 약속일이 있는데 일정표에 그 알림이 없으면 다시 올린다(삭제가 거울을 뺐다). 있으면 건드리지 않는다(메모 보존).
+function hjDueScheduleRestore(p){
+  if(!p||!p.dueDate)return false;
+  if((state.schedule||[]).some(r=>r&&r.id==='due_'+p.name))return false;
+  upsertDueSchedule(p);return true;
+}
 // 현장 삭제 — UI(deleteProject)와 AI(aiDeleteProject)가 같이 쓴다. 기록은 지우지 않는다(삭제 확대는 대표 승인 영역):
 // 사진·서류는 미배정, 일정은 연결 해제(예전과 같다), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 옮긴다.
+// 수금 약속일 알림만 따로 — 위 hjDueSchedTouched 설명.
 // 견적서에서 만든 파생 파일은 견적서를 따라간다(미배정으로 두면 다음 불러오기에 견적서 쪽 이름으로 되돌아간다).
 function hjDeleteProjectCore(name){
   const p=(state.projects||[]).find(x=>x.name===name);if(!p)return null;
   const identity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
-  const tomb=hjProjectTombstoneName(name),c={},kept={};
+  const tomb=hjProjectTombstoneName(name),c={},kept={},dueId='due_'+name;
+  let due=null;
   hjProjectRefWalk(name,(k,r,set)=>{
     c[k]=(c[k]||0)+1;
     if(k==='files')set(null);
+    else if(k==='schedule'&&r.id===dueId){
+      if(hjDueSchedTouched(r)){set(tomb);r.id='due_'+tomb;if(r.title==='💰 수금: '+name)r.title='💰 수금: '+tomb;kept.schedule=(kept.schedule||0)+1;due={date:r.date||'',kept:true};}
+      else{r.__hjDueDrop=1;due={date:r.date||'',kept:false};}
+    }
     else if(k==='schedule')set('');
     else{set(tomb);kept[k]=(kept[k]||0)+1;}
   },identity);
+  if(due&&!due.kept)state.schedule=state.schedule.filter(r=>!(r&&r.__hjDueDrop));
   const loc=hjProjectRefLocal(name,tomb);Object.keys(loc).forEach(k=>{if(loc[k]){c[k]=loc[k];kept[k]=loc[k];}});
   if(state.editingQuote&&state.editingQuote.project===name)state.editingQuote.project=tomb;
   state.projects=state.projects.filter(x=>x.name!==name);
   if(state.activeProject===name)state.activeProject=null;
-  return {tomb,counts:c,kept};
+  return {tomb,counts:c,kept,due};
 }
 // 현장 이름 수정 — 이름으로 연결된 모든 기록(hjRenameProjectRefs)도 함께 변경
 function renameProject(oldName){
@@ -5506,13 +5533,15 @@ function deleteProject(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return;
   const c=hjProjectRefCount(name,officeIntakeValidProjectIdentity(p.officeIntakeProjectId));
   const fileCount=c.files||0;
-  const schCount=c.schedule||0;
+  const dueS=(state.schedule||[]).find(s=>s&&s.id==='due_'+name&&s.project===name);   // 수금 약속일 알림 — 따로 말한다(hjDeleteProjectCore)
+  const schCount=(c.schedule||0)-(dueS?1:0);
   const keptText=hjProjectRefText(c,['files','schedule']);
   const tombPreview=hjProjectTombstoneName(name);
   const body=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 8px">현장 <b>“${escapeHtml(name)}”</b>을(를) 삭제할까요?</p>
     ${fileCount?`<p style="margin:0 0 4px">· 배정된 사진·서류 <b>${fileCount}개</b>는 <b>삭제되지 않고</b> ‘미배정’으로 돌아갑니다.</p>`:''}
     ${schCount?`<p style="margin:0 0 4px">· 연결된 일정 <b>${schCount}개</b>는 현장 연결만 해제됩니다.</p>`:''}
+    ${dueS?`<p style="margin:0 0 4px" id="delProjDue">· 수금 약속일 알림(${escapeHtml(dueS.date||'')})은 ${hjDueSchedTouched(dueS)?'적어 둔 메모가 있어 지우지 않고 ‘'+escapeHtml(tombPreview)+'’ 이름으로 남깁니다':'일정표에서 뺍니다'} — 이 현장을 「선택 복원」하면 다시 이어집니다.</p>`:''}
     ${keptText?`<p style="margin:0 0 4px" id="delProjKept">· 연결된 기록 <b>${escapeHtml(keptText)}</b>은 <b>지우지 않고</b> ‘${escapeHtml(tombPreview)}’ 이름으로 남깁니다 — 같은 이름으로 현장을 새로 만들어도 옛 기록이 붙지 않습니다.</p>`:''}
     <p style="margin:8px 0 0;color:var(--warn)">현장 정보(고객·공정·정산)는 삭제됩니다.</p>
   </div>`;
@@ -8568,7 +8597,7 @@ const AI_TOOLS = [
  {name:'search_all',description:'만능 검색: 사진 OCR 텍스트·파일명·일정/작업일지·현장/고객·견적 품목·연락처·AS·수금 기록을 한 번에 검색해 그룹별로 반환. "~어디 있지/찾아줘/검색"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'help',description:'사용설명서: 기능 가이드를 검색해 반환하고 설명서 화면을 엶. 사용법·기능 질문("~어떻게 해/도움말/설명서")이면 호출. topic으로 필터.',parameters:{type:'OBJECT',properties:{topic:{type:'STRING'}}}},
  {name:'project_map',description:'전체 현장 지도: 모든 현장을 단계 색 핀으로 지도에 표시. "현장 지도/어디어디 있지(위치)"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'export_ledger',description:'전체 장부 엑셀(11시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장·아파트오더·추가공사)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'export_ledger',description:'전체 장부 엑셀(12시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장·아파트오더·추가공사·현장규칙)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'brand_theme',description:'브랜드 테마 설정 화면(포인트 색·로고)을 엶. "브랜드/로고/색 바꾸기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_page',description:'고객 진행 상황을 HTML **파일**로 저장(오프라인 첨부용). "진행 페이지 파일로 저장/HTML로 만들어"면 호출. 실시간 링크는 customer_portal 사용. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
  {name:'calendar_sync',description:'구글 캘린더 자동 설정 조회/변경. enable=true/false로 켜고 끔(생략=현재 상태). 켜면 새 일정 저장 시 캘린더 추가 창이 자동으로 열림(단방향).',parameters:{type:'OBJECT',properties:{enable:{type:'BOOLEAN'}}}},
@@ -13701,7 +13730,7 @@ const HJ_HELP=[
   {k:'오더 이력',d:'[📊 오더 이력] — 기간·단지·상태로 걸러 보고, 완료 금액·미수·입금을 한눈에. 엑셀로 뽑아 청구·정산에 씁니다.'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
-  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더·추가공사까지 11시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
+  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더·추가공사·현장규칙까지 12시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
   {k:'홈화면',d:'설치된 앱 아이콘을 길게 누르면 바로가기(오늘 일정/AI 비서), 열면 한눈 보기 카드, 아이콘엔 챙길 일 뱃지.'},
   {k:'세무',d:'견적 탭 [세무 정산 엑셀]로 분기·월별 공급가/부가세 분해 시트를 뽑아 신고 준비.'},
   {k:'부가세 신고',d:'경영 대시보드 [📊 부가세] — 분기별 매출세액·매입세액 공제·납부(환급) 예상을 집계하고 신고 자료 엑셀을 뽑습니다.',say:'부가세 신고 자료 만들어줘'},
@@ -13895,11 +13924,12 @@ async function allProjectsMap(){
   return {표시:pts.length,좌표없음:missing.map(p=>p.name)};
 }
 
-/* ═══════════ 📤 전체 장부 엑셀 — 11시트 한 파일 ═══════════ */
+/* ═══════════ 📤 전체 장부 엑셀 — 12시트 한 파일 ═══════════ */
 async function exportFullXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return {오류:'모듈'};}
   const wb=XLSX.utils.book_new();
-  const add=(name,aoa)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),name);
+  let nSheets=0;   // 시트 수는 실제로 붙인 수 — 문구에 숫자를 따로 적어 두면 시트를 더할 때 어긋난다
+  const add=(name,aoa)=>{XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),name);nSheets++;};
   const counts={};
   // ① 현장
   const s1=[['현장','단계','고객','연락처','주소','견적합계','수금','자재비','인건비','외주비','마진','마진율%','완료일','무상만료']];
@@ -13929,9 +13959,13 @@ async function exportFullXlsx(){
   (state.schedule||[]).filter(s=>s.labor&&num(s.labor.amount)>0).sort((a,b)=>String(a.date).localeCompare(String(b.date)))
     .forEach(s=>s5.push([s.date,s.title,s.project||'',(s.labor.names||s.workers||''),num(s.labor.amount)]));
   add('인건비',s5);counts['인건비']=s5.length-1;
-  // ⑥ AS
-  const s6=[['접수일','현장','증상','상태']];
-  (state.asLog||[]).forEach(a=>s6.push([a.date||'',a.project,a.text||'',(AS_STAT[a.status]||AS_STAT.open)[0]]));
+  // ⑥ AS — v329 기록 칸(방문일·처리내용·유상금액·공종)까지. 없으면 이사한 기기에 증상만 남아 1년 뒤 분쟁 근거가 사라진다.
+  //    유상금액은 AS 이력 엑셀(asHistExcel)과 같은 규칙: 금액이 있으면 숫자, 금액 칸을 다뤘거나 처리 내용을 적은 건만 '무상',
+  //    옛 완료 건은 빈칸(적힌 적이 없다 — 지어내지 않는다). 사진은 기기마다 파일 id 가 달라 옮기지 못한다 — 장 수만 적는다.
+  const s6=[['접수일','현장','증상','상태','방문일','처리내용','유상금액','공종','사진(장)']];
+  (state.asLog||[]).forEach(a=>{const fee=hjAsFee(a);
+    s6.push([a.date||'',a.project,a.text||'',(AS_STAT[a.status]||AS_STAT.open)[0],a.visitAt||'',a.fix||'',fee?fee:(hjAsFreeMarked(a)?'무상':''),a.warrantyItem||'',
+      Array.isArray(a.photos)&&a.photos.length?a.photos.length:'']);});
   add('AS이력',s6);counts['AS이력']=s6.length-1;
   // ⑦ 거래처
   const supItems={};Object.keys(state.supplierMap||{}).forEach(k=>{const s=state.supplierMap[k];(supItems[s]=supItems[s]||[]).push(k);});
@@ -13962,10 +13996,17 @@ async function exportFullXlsx(){
       if(!hjExtraNorm(x.text)&&!raw)return;   // 막 추가하고 비워 둔 칸 — 청구에도 안 세는 줄이다
       s11.push([p.name,x.date||'',x.text||'',hjExtraAmtBad(x)?raw:(raw===''?'':hjExtraAmt(x)),num(x.days)||'',x.agreed?'예':'',x.agreedAt||'',st,x.note||'']);});});
   add('추가공사',s11);counts['추가공사']=s11.length-1;
+  // ⑫ 현장 규칙(부대사항 siteRules) — 관리실에서 들은 주차·엘리베이터·폐기물 규칙. 없으면 이사한 기기에서 통째로 사라졌다(v284 남은 한계).
+  //    칸마다 한 줄 + 들은 날(atMap, 없으면 옛 at). 출입번호처럼 보이는 칸은 백업과 같은 잣대(hjSiteRulesSafe)로 빼고 내보낸다.
+  const s12=[['현장','항목','내용','확인일']];
+  state.projects.forEach(p=>{const r=hjSiteRulesSafe(hjSiteRules(p))||{};
+    const am=(r.atMap&&typeof r.atMap==='object')?r.atMap:{},fb=String(r.at||'').trim();
+    HJ_SITE_FIELDS.forEach(f=>{const v=String(r[f.k]==null?'':r[f.k]).trim();if(!v)return;s12.push([p.name,f.l,v,String(am[f.k]||fb||'')]);});});
+  add('현장규칙',s12);counts['현장규칙']=s12.length-1;
   const fname=COMPANY.name+'_전체장부_'+localDate()+'.xlsx';
   XLSX.writeFile(wb,fname);
-  toast('📤 전체 장부 저장됨 — 11개 시트 ('+fname+')');
-  return {파일:fname,시트:11,행수:counts};
+  toast('📤 전체 장부 저장됨 — '+nSheets+'개 시트 ('+fname+')');
+  return {파일:fname,시트:nSheets,행수:counts};
 }
 
 /* ═══════════ 🎨 브랜드 테마 — 포인트 색·로고 (카드·리포트·견적서·앱 헤더 반영) ═══════════ */
@@ -14284,7 +14325,8 @@ const HJ_IW_FULL_COLS={
   '단가장':{item:['품목',0],price:['단가',1]},
   '거래처':{name:['거래처',0],phone:['연락처',1],items:['담당 품목',2]},
   '수금이력':{d:['일자',0],project:['현장',1],amt:['금액',2]},
-  'AS이력':{date:['접수일',0],project:['현장',1],text:['증상',2],status:['상태',3]},
+  'AS이력':{date:['접수일',0],project:['현장',1],text:['증상',2],status:['상태',3],visitAt:['방문일',4],fix:['처리내용',5],fee:['유상금액',6],warrantyItem:['공종',7],photos:['사진(장)',8]},
+  '현장규칙':{project:['현장',0],item:['항목',1],value:['내용',2],at:['확인일',3]},
   '추가공사':{project:['현장',0],date:['일자',1],text:['내용',2],amount:['금액',3],days:['공기(일)',4],agreed:['확인받음',5],agreedAt:['확인일',6],bill:['청구',7],note:['메모',8]}
 };
 function __iwCols(headers,spec){
@@ -14305,7 +14347,7 @@ function __iwAmt(v,signed){
   const n=won2num(t);
   return signed&&IW_NEG_RE.test(t)?-n:n;
 }
-/* 우리 앱 전체장부(11시트) 자동 가져오기 — 현장·연락처·단가장·거래처·수금이력·AS이력·추가공사 일곱 시트를 옮긴다.
+/* 우리 앱 전체장부(12시트) 자동 가져오기 — 현장·연락처·단가장·거래처·수금이력·AS이력·추가공사·현장규칙 여덟 시트를 옮긴다.
    결과는 시트마다 {add 추가, skip 이미 있어 건너뜀, bad 꼭 있어야 할 칸이 비어 못 읽음}. */
 function __iwFullImport(wb){
   const R={};
@@ -14353,15 +14395,26 @@ function __iwFullImport(wb){
       if(take(have,key(d,pjn,amt))){s++;return;}
       state.payLog.push({d,project:pjn,amt});a++;});R['수금이력']={add:a,skip:s,bad:b};}
   const as=rowsOf('AS이력');
-  if(as){let a=0,s=0,b=0;const c=colsOf('AS이력',as);const rev={'접수':'open','처리중':'doing','완료':'done'};state.asLog=state.asLog||[];
+  if(as){let a=0,s=0,b=0,ph=0;const c=colsOf('AS이력',as);const rev={'접수':'open','처리중':'doing','완료':'done'};state.asLog=state.asLog||[];
     // 같은 현장·같은 증상도 접수일이 다르면 다른 건이다(실리콘 들뜸 재접수) — 접수일까지 같아야 중복. 접수일이 빈 줄만 예전처럼 증상으로 본다.
     const key=(p,d,t)=>p+'|'+d+'|'+t;
     const have=bag(state.asLog,x=>key(String(x.project||''),__iwDate(x.date),String(x.text||'').trim()));
     as.rows.forEach(r=>{const pjn=String(at(c,r,'project')||'').trim(),txt=String(at(c,r,'text')||'').trim();if(!pjn||!txt){b++;return;}
       const d=__iwDate(at(c,r,'date'));
       if(d?take(have,key(pjn,d,txt)):state.asLog.some(x=>x.project===pjn&&String(x.text||'').trim()===txt)){s++;return;}
-      state.asLog.push({id:uid(),project:pjn,date:d||localDate(),text:txt,status:rev[String(at(c,r,'status')||'').trim()]||'open'});a++;});
-    R['AS이력']={add:a,skip:s,bad:b};}
+      const rec={id:uid(),project:pjn,date:d||localDate(),text:txt,status:rev[String(at(c,r,'status')||'').trim()]||'open'};
+      // v329 기록 칸 — 제목을 못 찾은 칸(옛 파일)은 읽지 않는다. 방문 일정 연결(visitSchedId)은 일정을 옮기지 않으므로 만들지 않는다.
+      const vd=__iwDate(at(c,r,'visitAt'));if(vd)rec.visitAt=vd;
+      const fx=String(at(c,r,'fix')==null?'':at(c,r,'fix')).trim();if(fx)rec.fix=fx;
+      // 유상금액: 숫자면 그 금액, '무상'(또는 0)이면 금액 칸을 다룬 무상 기록(fee ''), 빈칸이면 키를 만들지 않는다 —
+      // 빈칸을 무상으로 들이면 옛 완료 기록에 '무상' 이 지어진다(hjAsFreeMarked). 알아볼 수 없는 글자도 만들지 않는다.
+      const fv=at(c,r,'fee'),ft=String(fv==null?'':fv).trim();
+      {const n=__iwAmt(fv);if(n>0)rec.fee=n;else if(ft==='무상'||/^0+(?:원)?$/.test(ft))rec.fee='';}
+      const wi=String(at(c,r,'warrantyItem')==null?'':at(c,r,'warrantyItem')).trim();if(wi)rec.warrantyItem=wi;
+      ph+=Math.max(0,Math.round(num(at(c,r,'photos'))||0));
+      state.asLog.push(rec);a++;});
+    R['AS이력']={add:a,skip:s,bad:b};
+    if(ph)R['AS이력'].note='AS 사진 '+ph+'장 연결은 옮기지 않음(기기마다 사진 번호가 달라 이 기기에서 다시 붙여야 함)';}
   // 추가공사 — 현장 객체 안(p.extras)으로 되돌린다. 현장이 없으면(현장 시트에 없던 이름) 못 읽은 줄로 센다.
   // '견적에 담김' 줄은 옮기지 않는다: 그 금액은 이미 현장 시트의 견적 합계(이관 견적)에 들어 있고, 이관 견적에는 품목이 없어
   // 담김 표시를 이어 줄 수 없다 — 옮기면 잔금에 한 번 더 더해진다. 몇 건인지 요약에 밝힌다.
@@ -14384,6 +14437,24 @@ function __iwFullImport(wb){
       list.push(x);a++;});
     R['추가공사']={add:a,skip:s,bad:b};
     if(q)R['추가공사'].note='견적에 담긴 '+q+'건은 견적 합계에 이미 들어 있어 옮기지 않음';}
+  // 현장 규칙(부대사항) — 현장 객체 안(p.siteRules)으로. 이 기기에 이미 적힌 칸은 덮지 않는다(같으면 중복, 다르면 이 기기 값을 둔다 —
+  // 이사 파일보다 지금 기기에서 새로 들은 것일 수 있다). 출입번호처럼 보이는 값은 손으로 고친 파일이라도 들이지 않는다.
+  const sr=rowsOf('현장규칙');
+  if(sr){let a=0,s=0,b=0,k=0;const c=colsOf('현장규칙',sr);
+    const byLabel={};HJ_SITE_FIELDS.forEach(f=>{byLabel[f.l.replace(/\s+/g,'')]=f.k;byLabel[f.k]=f.k;});
+    sr.rows.forEach(r=>{const pjn=String(at(c,r,'project')||'').trim(),fk=byLabel[String(at(c,r,'item')||'').replace(/\s+/g,'')];
+      const v=String(at(c,r,'value')==null?'':at(c,r,'value')).trim();
+      const p=pjn?state.projects.find(x=>x.name===pjn):null;
+      if(!p||!fk||!v){b++;return;}
+      if(hjLooksLikeAccessCode(v)){k++;return;}
+      const cur=String(hjSiteRules(p)[fk]||'').trim();
+      if(cur){s++;return;}
+      const rr=hjSiteRulesEdit(p);rr[fk]=v;
+      const d=__iwDate(at(c,r,'at'));
+      if(d){if(!rr.atMap||typeof rr.atMap!=='object')rr.atMap={};rr.atMap[fk]=d;if(!rr.at||String(rr.at)<d)rr.at=d;}
+      a++;});
+    R['현장규칙']={add:a,skip:s,bad:b};
+    if(k)R['현장규칙'].note='출입번호로 보이는 '+k+'칸은 옮기지 않음';}
   return R;
 }
 async function __iwReadFile(file){
@@ -14396,7 +14467,7 @@ function importWizard(){
   const body=
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">어디서 가져오든 <b>가져오기 직전 상태가 🛡 스냅샷</b>으로 남아 언제든 되돌릴 수 있습니다.</div>'+
     card('device','📱','다른 기기·백업에서','드라이브 불러오기 또는 _현장.json 백업 복원')+
-    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 11시트 파일 — 현장·연락처·단가장·거래처·수금·AS·추가공사를 자동 인식해 옮김')+
+    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 12시트 파일 — 현장·연락처·단가장·거래처·수금·AS·추가공사·현장규칙을 자동 인식해 옮김')+
     card('proj','🏗','현장·고객 목록 엑셀','현장명/고객/연락처/견적액/수금액 등 — 열 매핑')+
     card('contact','📇','연락처 엑셀','이름/전화/회사 — 열 매핑')+
     card('price','📦','단가표 엑셀','품목/단가 → 견적 자동 채움에 사용');
@@ -15540,7 +15611,7 @@ function aiDeleteProject(name){
   const fileCount=r.counts.files||0;
   markDirty();render();
   const kept=hjProjectRefText(r.kept);
-  return {삭제:name,사진서류_미배정전환:fileCount,일정_연결해제:r.counts.schedule||0,기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
+  return {삭제:name,사진서류_미배정전환:fileCount,일정_연결해제:(r.counts.schedule||0)-(r.due?1:0),수금약속일_알림:r.due?(r.due.kept?'메모가 있어 “'+r.tomb+'”로 보존':'일정표에서 뺌('+r.due.date+')'):'없음',기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
 }
 function aiDeleteSchedule(keyword){
   const q=String(keyword||'').trim();
@@ -28583,10 +28654,12 @@ function restoreSelect(idx){
          // 그 이름이 하나일 때만 — 둘 이상이면 어느 삭제의 기록인지 모르므로 건드리지 않고 알린다.
          const tombs=hjProjectTombstonesOf(bp.name);
          if(tombs.length===1){const t=tombs[0];
-           hjProjectRefWalk(t,(k,r,set)=>set(bp.name),bid);hjProjectRefLocal(t,bp.name);
+           hjProjectRefWalk(t,(k,r,set)=>set(bp.name),bid);hjProjectRefLocal(t,bp.name);hjDueScheduleRelink(t,bp.name);
            if(state.editingQuote&&state.editingQuote.project===t)state.editingQuote.project=bp.name;
            relinked.push(bp.name);}
          else if(tombs.length>1)manyTombs.push(bp.name);
+         // 삭제가 일정표에서 뺀 수금 약속일 알림을 다시 올린다(현장의 dueDate 가 되살아났으므로)
+         hjDueScheduleRestore(restored);
        });
        if(!names.size){closeModal();toast(blocked.map(x=>'「'+x[0]+'」 은 지금 「'+x[1]+'」 로 이름이 바뀐 같은 현장이라 복원하지 않았습니다').join(' · ')+' — 이름을 되돌린 뒤 복원하세요.');return;}
        // 그 현장들의 파일 배정·공정·작업명·동·호수·메모 복원 (경로+이름+크기로 짝을 찾는다)
