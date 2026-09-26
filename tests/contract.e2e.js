@@ -81,7 +81,8 @@ const selfTestReply = (allOk) => ({
     const p = { name: '테스트 현장', phases: ['욕실'], customer: { name: '홍길동', phone: '010-1234-5678' } };
     window.__calls = [];
     window.fetch = async function (u) { window.__calls.push(String(u)); throw new Error('잠금 상태에서 호출되면 안 됨'); };
-    await contractSend(p, 1100000);
+    // 부가세를 확정해서 부른다 — 부가세 미확정도 요청 0 이라(contract-body.e2e.js ⑦), 안 넣으면 잠금이 아니라 그 검사에 막혀 통과한다.
+    await contractSend(p, 1100000, { vatIncluded: true, scope: [] });
     await hjWorkOrderAlimtalk('010-5555-6666', '문안', null, {});
     return { calls: window.__calls.length, ready: contractReady(), logs: (p.contractLog || []).length };
   });
@@ -153,13 +154,14 @@ const selfTestReply = (allOk) => ({
     const a = { name: 'A현장', phases: [], customer: { name: '홍길동', phone: '010-1234-5678' } };
     window.__calls = [];
     window.fetch = async function (u, opt) { window.__calls.push(JSON.parse(opt.body)); return mk(false)(u, opt); };
-    await contractSend(a, 1100000);
+    // 2026-09-26 새 계약: contractSend 는 부가세 포함/별도가 확정된 조건(terms)만 보낸다(contract-body.e2e.js). 확인 화면이 넘기는 꼴로 부른다.
+    await contractSend(a, 1100000, { vatIncluded: true, scope: [] });
     const link = (document.getElementById('ctSignLink') || {}).value || '';
     const modalText = (document.getElementById('modalRoot') || {}).textContent || '';
     closeModal();
     const b = { name: 'B현장', phases: [], customer: { name: '김고객', phone: '010-2222-3333' } };
     window.fetch = mk(true);
-    await contractSend(b, 500000);
+    await contractSend(b, 500000, { vatIncluded: false, scope: [] });
     return {
       actions: window.__calls.map(c => c.action),
       idem: window.__calls.some(c => c.action === 'quickSend' && !!c.idem),
@@ -217,7 +219,7 @@ const selfTestReply = (allOk) => ({
         notify: { sent: false, reason: 'MOCK_OFF' } }) };
     };
     state.projects = [p2];
-    await contractSend(p2, 700000);
+    await contractSend(p2, 700000, { vatIncluded: true, scope: [] });   // 부가세 확정 필요(contract-body.e2e.js)
     closeModal();
     const dump = JSON.stringify(serializeData());
     return { inSerialized: dump.indexOf('CUSTOMER-RAW-TOKEN') >= 0,

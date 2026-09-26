@@ -6933,6 +6933,128 @@ function loadCustomerFromCard(projName){
 /* ---------- 📨 전자계약 알림톡 발송 (전자계약 서버 quick-send) ----------
    서버 주소·관리자 토큰은 ☁️ 설정에서 이 기기(idb)에만 저장(__contract). 전화번호 원문은 로그에 남기지 않는다. */
 function contractMaskPhone(ph){const d=String(ph||'').replace(/[^\d]/g,'');return d.length>=4?('***-****-'+d.slice(-4)):'(번호 없음)';}
+/* 계약서 조건 — 제2조 '(부가세 포함/별도)' · 제4조 공사기간 · 제1조와 '공사 범위' 칸.
+   전자계약 서버(manmool ctStandardBody_)는 body.vatIncluded 가 true 가 아니면 '(부가세 별도)', period 가 비면
+   '별도 협의하여 정한다', scope 배열은 ' · ' 로 이어 제1조와 공사 범위 칸에 그린다. 예전에는 body 에 site 와
+   사진 공정명(p.phases)만 실어, 부가세 포함 견적(앱 견적 기본값)의 총액이 계약서에는 '(부가세 별도)' 로 찍혔다 —
+   고객이 서명한 계약서가 청구서와 다른 말을 했고, 공사 범위에는 '시공 전'·'완료' 같은 사진 분류가 섞였다.
+   출처는 계약금액 기본값(projStats.est)을 만드는 것과 같은 견적 묶음(dedupeEstimates)이다. */
+const CT_SCHED_SKIP_RE=/^\s*(💰|상담|실측)/;   // 수금·입금 예정·상담/실측 방문은 공사하는 날이 아니다
+const CT_SCHED_SPAN_RE=/(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2}) \(\d+일\)/;   // 공정표 등록이 여러 날 공정의 memo 에 남기는 끝날
+const CT_SCOPE_SKIP_RE=/^(합계|소계|총액|부가세|부가가치세|vat|할인|절사|에누리)/i;   // 품목 칸에 섞여 든 합계·세금·할인 줄
+const CT_SCOPE_SEP_RE=/[,，·\n]+/g;
+const CT_PERIOD_RE=/^(\d{4}-\d{2}-\d{2}) ~ (\d{4}-\d{2}-\d{2})$/;
+// 사진 분류일 뿐 공사가 아닌 이름(띄어쓰기 없이 비교). 전/후 이름의 정본은 PHASE_SIDE_NAME·hjPhaseSideName 이다.
+const CT_PHOTO_STATUS=['시공전','시공중','시공후','공사전','공사중','공사후','작업전','작업중','작업후','완료','완공','준공','전','중','후','before','after'];
+const CT_SCOPE_PROPOSE_MAX=15,CT_SCOPE_MAX=30;
+function contractEstSources(p){
+  const name=p&&p.name;
+  const files=dedupeEstimates((state.files||[]).filter(f=>f&&f.project===name&&f.kind==='estimate'));
+  return files.filter(f=>((f.est&&f.est.amount)||0)>0).map(f=>{
+    const e=f.est;
+    if(f._fromQuote){
+      // 앱 견적 금액은 quoteCalc 한 곳에서 나온다 — vatIncluded 가 참이면 공급가+세액, 아니면 공급가.
+      const q=estimateQuoteForFile(f);
+      if(!q)return {f,q:null,vat:null,label:'견적 「'+f.name+'」'};
+      return {f,q,vat:quoteCalc(q).total===e.amount?!!q.vatIncluded:null,label:'앱 견적 「'+(q.title||q.no||'')+'」'};
+    }
+    // 엑셀 파서(parseQuoteFromGrid)는 '(부가세 포함)' 이 적혀 있을 때만 포함으로 읽고, 아무 말이 없으면 '별도' 로 둔다.
+    // 그 '별도' 는 추정이라 믿지 않는다. 손으로 고친 금액·PDF 에서 읽은 금액도 부가세 여부를 모른다.
+    const q=f.quote||null;
+    const sheet=!!(q&&e._fromXlsx&&!e._edited&&quoteCalc(q).total===e.amount);
+    return {f,q,vat:(sheet&&q.vatIncluded===true)?true:null,label:'견적 파일 「'+f.name+'」'};
+  });
+}
+function contractVatProposal(srcs){
+  if(!srcs.length)return {vat:null,why:'none'};
+  const unknown=srcs.find(s=>s.vat===null);
+  if(unknown)return {vat:null,why:'unknown',src:unknown};
+  const inc=srcs.filter(s=>s.vat===true).length;
+  if(inc&&inc<srcs.length)return {vat:null,why:'mixed',inc:inc,exc:srcs.length-inc};
+  return {vat:inc>0,why:'known',src:srcs[0],n:srcs.length};
+}
+function contractVatNote(vp){
+  const e=(vp.src&&vp.src.f&&vp.src.f.est)||{};
+  const side=vp.vat?'부가세 포함':'부가세 별도';
+  if(vp.why==='known')return (vp.n>1?'견적 '+vp.n+'건이 모두 '+side+'이라':side+' 견적('+vp.src.label+')이라')+' 미리 골라 뒀어요. 금액을 고치면 다시 골라야 해요.';
+  if(vp.why==='mixed')return '견적마다 부가세 표기가 달라요(포함 '+vp.inc+'건 · 별도 '+vp.exc+'건) — 이 금액이 어느 쪽인지 꼭 골라 주세요.';
+  if(vp.why==='unknown')return vp.src.label+'에서 부가세 포함 여부를 알 수 없어요 — 꼭 골라 주세요.'+((e.supply>0||e.vat>0)?' (견적서에서 읽은 값: 공급가 '+hjNum(e.supply||0)+'원 · 세액 '+hjNum(e.vat||0)+'원 · 합계 '+hjNum(e.amount||0)+'원)':'');
+  return '이 현장에 견적이 없어 부가세 포함 여부를 알 수 없어요 — 꼭 골라 주세요.';
+}
+function contractPeriodProposal(p){
+  const rows=(state.schedule||[]).filter(s=>s&&s.project===p.name&&!s._taxAuto&&estimateDay(s.date)===s.date&&!CT_SCHED_SKIP_RE.test(String(s.title||'')));
+  if(!rows.length)return null;
+  let from='',to='';
+  rows.forEach(s=>{
+    const m=String(s.memo||'').match(CT_SCHED_SPAN_RE);
+    const end=(m&&estimateDay(m[2])===m[2]&&m[2]>s.date)?m[2]:s.date;
+    if(!from||s.date<from)from=s.date;
+    if(!to||end>to)to=end;
+  });
+  return {from:from,to:to,n:rows.length};
+}
+// 날짜 두 칸 → 서버가 제4조에 그대로 넣는 'YYYY-MM-DD ~ YYYY-MM-DD'. 둘 다 비면 ''(보내지 않음), 하나만·거꾸로면 false.
+function contractPeriodFromInputs(from,to){
+  const a=String(from||'').trim(),b=String(to||'').trim();
+  if(!a&&!b)return '';
+  const s=a+' ~ '+b;
+  return contractPeriodValid(s)?s:false;
+}
+function contractPeriodValid(s){
+  const m=String(s||'').match(CT_PERIOD_RE);
+  return !!(m&&estimateDay(m[1])===m[1]&&estimateDay(m[2])===m[2]&&m[1]<=m[2]);
+}
+function contractScopeClean(list){
+  const out=[],seen=new Set();
+  (Array.isArray(list)?list:[]).forEach(x=>{
+    const s=String(x==null?'':x).replace(/\s+/g,' ').trim().slice(0,60),k=s.replace(/\s+/g,'');
+    if(!s||seen.has(k))return;seen.add(k);out.push(s);
+  });
+  return out.slice(0,CT_SCOPE_MAX);
+}
+function contractScopeParse(text){return contractScopeClean(String(text||'').split(CT_SCOPE_SEP_RE));}
+function contractPhotoStatusName(p,name){
+  const key=x=>String(x||'').replace(/\s+/g,'').toLowerCase();
+  const k=key(name);
+  if(!k)return true;
+  return CT_PHOTO_STATUS.includes(k)||[PHASE_SIDE_NAME.before,PHASE_SIDE_NAME.after,hjPhaseSideName(p,'before'),hjPhaseSideName(p,'after')].some(x=>key(x)===k);
+}
+function contractScopeProposal(p,srcs){
+  const names=[];
+  (srcs||[]).forEach(s=>{
+    if(!s.q)return;
+    quoteRealItems(s.q).forEach(it=>{
+      const n=String((it&&it.name)||'').replace(CT_SCOPE_SEP_RE,' ').trim();
+      if(n&&!CT_SCOPE_SKIP_RE.test(n.replace(/\s+/g,'')))names.push(n);
+    });
+  });
+  let list=contractScopeClean(names),from='quote';
+  if(!list.length){
+    // 견적 품목이 없으면 현장 공정 — 사진 전/후 분류(시공 전·완료)는 공사가 아니라 뺀다(AGENTS v326).
+    const ph=(Array.isArray(p&&p.phases)?p.phases:[]).map(x=>typeof x==='string'?x:((x&&(x.title||x.name))||''));
+    list=contractScopeClean(ph.map(x=>String(x).replace(CT_SCOPE_SEP_RE,' ')).filter(x=>!contractPhotoStatusName(p,x)));
+    from=list.length?'phases':'none';
+  }
+  if(list.length>CT_SCOPE_PROPOSE_MAX)list=list.slice(0,CT_SCOPE_PROPOSE_MAX).concat('외 '+(list.length-CT_SCOPE_PROPOSE_MAX)+'건');
+  return {list:list,from:from};
+}
+// 고객이 서명할 문장 — 서버 ctStandardBody_ 제1·2·4조와 같은 말로 보여 준다(금액 쉼표도 formatWon 과 같다).
+function contractClausePreview(site,t){
+  const amt=hjNum(t.amount||0),vat=t.vat===true?'부가세 포함':(t.vat===false?'부가세 별도':null);
+  const scope=(t.scope&&t.scope.length)?t.scope.join(' · '):'별첨 견적서 기재 공사';
+  const per=t.period===false?null:(t.period||'별도 협의하여 정한다');
+  return '<b>고객이 서명할 계약서에 이렇게 적힙니다</b>'+
+    '<div style="margin-top:4px">제1조 … 표기 현장('+escapeHtml(site||'별첨 견적서 기재 현장')+')의 <b>'+escapeHtml(scope)+'</b>에 관하여 …</div>'+
+    '<div>제2조 총 계약금액은 금 <b>'+amt+'원('+(vat?escapeHtml(vat):'<span style="color:var(--warn)">부가세 포함/별도를 골라 주세요</span>')+')</b>으로 한다.</div>'+
+    '<div>제4조 공사기간은 <b>'+(per?escapeHtml(per):'<span style="color:var(--warn)">시작일·종료일을 둘 다 넣거나 둘 다 비워 주세요</span>')+'</b>. …</div>';
+}
+// 멱등 키에 넣을 짧은 지문(FNV-1a). 같은 분 안에 부가세·기간·범위를 고쳐 다시 보내면 다른 요청이어야 한다 —
+// 서버는 같은 idem 이면 처음 결과를 그대로 돌려주므로, 금액만 넣으면 고치기 전 계약서 링크가 돌아온다.
+function contractIdemHash(s){
+  let h=0x811c9dc5;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}
+  return h.toString(36);
+}
 function openContractSend(projName){
   const p=state.projects.find(x=>x.name===projName);
   if(!p){toast('현장을 찾을 수 없습니다');return;}
@@ -6940,29 +7062,81 @@ function openContractSend(projName){
   if(!cu.phone||!telHref(cu.phone)){toast('고객 전화번호를 먼저 입력하세요');return;}
   const st=projStats(p.name);
   const defAmt=st.est||st.recv||0;   // 견적 합계 → 없으면 수금액 → 없으면 0 (수정 가능)
+  const srcs=contractEstSources(p),vp=contractVatProposal(srcs),per=contractPeriodProposal(p),sc=contractScopeProposal(p,srcs);
+  const inStyle='width:100%;min-width:0;margin-top:4px;min-height:44px;font-size:16px';
+  const radio=(v,label)=>`<label style="flex:1 1 130px;min-height:44px;display:flex;align-items:center;gap:6px"><input type="radio" name="ctVat" value="${v}"${vp.vat===(v==='1')?' checked':''}> ${label}</label>`;
   const body=`<div style="font-size:13px;line-height:1.8">
     <div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin-bottom:10px">
       <div><b>고객</b> ${escapeHtml(cu.name||'(이름 미상)')} · ${escapeHtml(contractMaskPhone(cu.phone))}</div>
       <div><b>현장</b> ${escapeHtml(p.name)}</div>
-      ${(p.phases&&p.phases.length)?`<div><b>공정</b> ${escapeHtml(p.phases.join(', '))}</div>`:''}
     </div>
     <label style="display:block">계약금액 (원, 수정 가능)
-      <input type="text" id="ctAmt" inputmode="numeric" value="${defAmt.toLocaleString('ko-KR')}" style="width:100%;margin-top:4px;text-align:right;font-size:16px">
+      <input type="text" id="ctAmt" inputmode="numeric" value="${defAmt.toLocaleString('ko-KR')}" style="${inStyle};text-align:right">
     </label>
+    <fieldset id="ctVatBox" style="border:1px solid var(--line-soft);border-radius:10px;padding:6px 12px 8px;margin:10px 0 0;min-width:0">
+      <legend style="font-size:12.5px;font-weight:700;padding:0 4px">계약금액의 부가세</legend>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${radio('1','부가세 포함')}${radio('0','부가세 별도')}</div>
+      <p id="ctVatNote" style="margin:2px 0 0;font-size:12px;line-height:1.5;color:${vp.vat===null?'var(--warn)':'var(--muted-2)'}">${escapeHtml(contractVatNote(vp))}</p>
+    </fieldset>
+    <div style="margin-top:10px"><b style="font-size:12.5px">공사기간</b>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="ctFrom" aria-label="공사 시작일" value="${per?per.from:''}" style="${inStyle};flex:1 1 130px;width:auto">
+        <span aria-hidden="true">~</span>
+        <input type="date" id="ctTo" aria-label="공사 종료일" value="${per?per.to:''}" style="${inStyle};flex:1 1 130px;width:auto">
+      </div>
+      <p style="margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--muted-2)">${per?'이 현장 일정 '+per.n+'건에서 채웠어요(수금·상담 일정 제외)':'이 현장 공사 일정이 없어 비워 뒀어요'} — 비워 두면 계약서에 '별도 협의하여 정한다'로 적힙니다.</p>
+    </div>
+    <label style="display:block;margin-top:10px"><b style="font-size:12.5px">공사 범위</b> (쉼표로 나눔)
+      <input type="text" id="ctScope" maxlength="600" value="${escapeAttr(sc.list.join(', '))}" style="${inStyle}">
+    </label>
+    <p style="margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--muted-2)">${sc.from==='quote'?'견적 품목 이름에서 채웠어요.':(sc.from==='phases'?'견적 품목이 없어 현장 공정에서 채웠어요(사진 전/후 표시는 뺐어요).':'')} 비워 두면 '별첨 견적서 기재 공사'로 적힙니다.</p>
+    <div id="ctPreview" style="background:var(--paper-2);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;line-height:1.65;overflow-wrap:anywhere"></div>
     <p style="font-size:12px;color:var(--muted-2);margin:8px 0 0">안전 모드에서는 <b>서명 링크만 생성</b>되고 자동 발송되지 않습니다. 실제 알림톡이 켜져 있으면 보내기 전에 한 번 더 확인합니다.</p>
   </div>`;
+  const root=document.getElementById('modalRoot');
+  const q=s=>root.querySelector(s);
+  const read=()=>{
+    const r=root.querySelector('input[name=ctVat]:checked');
+    return {amount:won2num((q('#ctAmt')||{}).value),vat:r?r.value==='1':null,
+      period:contractPeriodFromInputs((q('#ctFrom')||{}).value,(q('#ctTo')||{}).value),scope:contractScopeParse((q('#ctScope')||{}).value)};
+  };
   openModal('📨 알림톡 계약서 보내기',body,[
     {label:'전자계약 준비',cls:'clay',fn:async function(){
-      const el=document.getElementById('ctAmt');
-      const amount=el?won2num(el.value):defAmt;
-      await contractSend(p,amount);
+      const t=read();
+      if(!(t.amount>0)){toast('계약금액을 넣어 주세요');return;}
+      if(t.vat===null){toast('계약금액이 부가세 포함인지 별도인지 골라 주세요 — 계약서 제2조에 그대로 적힙니다');const b=q('#ctVatBox');if(b)b.style.borderColor='var(--warn)';return;}
+      if(t.period===false){toast('공사기간은 시작일·종료일을 둘 다 넣거나 둘 다 비워 주세요(시작일이 종료일보다 늦을 수 없어요)');return;}
+      await contractSend(p,t.amount,{vatIncluded:t.vat,period:t.period,scope:t.scope});
     }},
     {label:'취소',cls:'ghost',fn:closeModal}
   ]);
+  // 모달은 #view 밖(#modalRoot)이라 클릭 위임이 닿지 않는다 — 입력은 여기서 직접 건다.
+  let vatTouched=false;
+  const draw=()=>{const pv=q('#ctPreview');if(pv)pv.innerHTML=contractClausePreview(p.name,read());};
+  root.querySelectorAll('input[name=ctVat]').forEach(r=>{r.onchange=()=>{vatTouched=true;const b=q('#ctVatBox');if(b)b.style.borderColor='';draw();};});
+  // 견적에서 미리 고른 부가세는 그 견적 금액에 대한 말이다. 금액을 고치면(할인·공급가만 적기) 더는 그 말이 아니므로
+  // 사람이 직접 고르기 전까지 비워 둔다. 사람이 고른 값은 금액을 고쳐도 그대로 둔다.
+  q('#ctAmt').oninput=()=>{
+    if(!vatTouched&&vp.vat!==null){
+      const same=won2num(q('#ctAmt').value)===defAmt;
+      root.querySelectorAll('input[name=ctVat]').forEach(r=>{r.checked=same&&(r.value==='1')===vp.vat;});
+      const n=q('#ctVatNote');
+      if(n){n.textContent=same?contractVatNote(vp):'금액을 고치셔서 견적서의 부가세 표기를 그대로 쓸 수 없어요 — 이 금액이 부가세 포함인지 별도인지 골라 주세요.';n.style.color=same?'var(--muted-2)':'var(--warn)';}
+    }
+    draw();
+  };
+  ['#ctFrom','#ctTo','#ctScope'].forEach(s=>{const el=q(s);if(el){el.oninput=draw;el.onchange=draw;}});
+  root.querySelectorAll('#ctAmt,#ctFrom,#ctTo,#ctScope').forEach(el=>{el.onfocus=()=>hjKeepAboveFooter(el);});
+  draw();
 }
-async function contractSend(p,amount){
+async function contractSend(p,amount,terms){
   if(!contractFeatureAvailable()){toast('전자계약이 잠겨 있습니다 — ☁️ 설정에서 [자가진단]을 먼저 통과시키세요');return;}
   if(!contractReady()){toast('☁️ 설정에서 전자계약 서버를 먼저 연결하세요');return;}
+  // 부가세 포함/별도는 사람이 확인한 값만 보낸다. 비우면 서버가 '(부가세 별도)' 로 찍는다 — 포함 금액이면 청구서와 어긋난다.
+  const t=terms||{};
+  if(t.vatIncluded!==true&&t.vatIncluded!==false){toast('계약금액이 부가세 포함인지 별도인지 먼저 골라 주세요');return;}
+  const period=String(t.period||'');
+  if(period&&!contractPeriodValid(period)){toast('공사기간 형식을 확인해 주세요 (예: 2026-10-01 ~ 2026-10-15)');return;}
   const cu=p.customer||{};
   amount=Math.max(0,Math.round(Number(amount)||0));   // 정수·원
   const op={name:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'전병덕',phone:(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.tel)||'010-2397-8629'};
@@ -6972,14 +7146,15 @@ async function contractSend(p,amount){
   try{health=await contractServerStatus(false);}
   catch(e){toast('서버 연결 실패: '+e.message);return;}
   if(health.live&&!confirm((cu.name||'고객')+' '+contractMaskPhone(cu.phone)+'에게 실제 알림톡으로 전자계약 링크를 발송할까요?'))return;
+  // scope 는 늘 배열로 보낸다 — 빈 문자열이면 서버가 제목('공사 도급계약서')을 공사 범위 자리에 넣는다(ctBodyFor_).
+  const body={site:p.name,scope:contractScopeClean(t.scope),vatIncluded:t.vatIncluded};
+  if(period)body.period=period;   // 없으면 보내지 않는다 → 제4조 '별도 협의하여 정한다'
+  const payload={title:'공사 도급계약서',amount:amount,body:body,operator:op,customer:{name:cu.name||'',phone:cu.phone||''}};
   // 생성·잠금·링크발급을 한 번에. 세 번 왕복하면 현장 신호가 끊겼을 때 잠기지 않은 계약이 남는다.
-  // idem 을 붙여 두면 앱이 재시도해도 계약이 두 건 생기지 않는다.
+  // idem 을 붙여 두면 앱이 재시도해도 계약이 두 건 생기지 않는다. 내용 지문을 넣어, 고쳐서 다시 보내면 새 계약이 된다.
   let j;
   try{
-    j=await contractCall('quickSend',{
-      title:'공사 도급계약서',amount:amount,body:{site:p.name,scope:(p.phases||[])},
-      operator:op,customer:{name:cu.name||'',phone:cu.phone||''}
-    },{idem:'qs:'+p.name+':'+amount+':'+Math.floor(Date.now()/60000)});
+    j=await contractCall('quickSend',payload,{idem:'qs:'+String(p.name).slice(0,80)+':'+amount+':'+contractIdemHash(JSON.stringify(payload))+':'+Math.floor(Date.now()/60000)});
   }catch(e){
     if(e.__code==='UNAUTHORIZED'){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
     toast('전송 실패: '+e.message);return;
@@ -6988,10 +7163,10 @@ async function contractSend(p,amount){
   if(nt.sent===true){
     closeModal();
     toast('📨 계약서 알림톡을 보냈습니다');
-    try{contractLogSend(p,amount,j,'SENT');}catch(e){}   // 발송 이력 메모 — projects에 저장(전화번호는 저장 안 함)
+    try{contractLogSend(p,amount,j,'SENT',body);}catch(e){}   // 발송 이력 메모 — projects에 저장(전화번호는 저장 안 함)
   }else{
     // 안 나갔다. 나갔다고 쓰지 않는다 — 링크를 사장님이 직접 보내시게 한다.
-    try{contractLogSend(p,amount,j,'LINK_CREATED');}catch(e){}
+    try{contractLogSend(p,amount,j,'LINK_CREATED',body);}catch(e){}
     contractShowSignLink(p,j);
   }
 }
@@ -7008,10 +7183,14 @@ function contractShowSignLink(p,j){
   root.querySelector('#ctLinkShare').onclick=async()=>{try{if(navigator.share){await navigator.share({title:'전자계약 서명',text});return;}}catch(e){if(e&&e.name==='AbortError')return;}try{await navigator.clipboard.writeText(text);toast('안내 문구와 링크 복사됨 — 카톡에 붙여넣으세요');}catch(e){toast('링크를 길게 눌러 복사하세요');}};
   root.querySelector('#ctLinkOpen').onclick=()=>window.open(link,'_blank','noopener');
 }
-function contractLogSend(p,amount,j,status){
+function contractLogSend(p,amount,j,status,body){
   // projects 배열은 통째로 직렬화되므로 별도 스키마 등록 불필요(dueDate·portalMsgs와 동일 패턴). PII(전화번호)는 저장하지 않음.
   if(!Array.isArray(p.contractLog))p.contractLog=[];
-  p.contractLog.push({at:new Date().toISOString(),amount:amount,contractNo:(j&&j.contractNo)||'',contractId:(j&&j.contractId)||'',status:status||'SENT'});
+  const L={at:new Date().toISOString(),amount:amount,contractNo:(j&&j.contractNo)||'',contractId:(j&&j.contractId)||'',status:status||'SENT'};
+  // 고객이 서명한 계약서가 부가세 포함인지 별도인지 — 나중에 청구서와 대조할 때 계약서를 다시 열지 않아도 되게.
+  if(body&&typeof body.vatIncluded==='boolean')L.vatIncluded=body.vatIncluded;
+  if(body&&body.period)L.period=body.period;
+  p.contractLog.push(L);
   if(p.contractLog.length>50)p.contractLog=p.contractLog.slice(-50);
   markDirty();
 }
