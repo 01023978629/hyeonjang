@@ -4144,7 +4144,7 @@ function openGdriveSetup(){
      대신 [자가진단]을 통과하기 전에는 계약 버튼이 눌리지 않는다 — 잠금은 그대로다. */
   const ctBanner=ctUnlocked
     ? `<div style="background:rgba(46,160,67,.10);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
-        <b>✅ 자가진단 통과 — 전자계약 사용 가능</b><br>확인 시각 ${escapeHtml(String(__contract.selfTestAt).slice(0,16).replace('T',' '))}</div>`
+        <b>✅ 자가진단 통과 — 전자계약 사용 가능</b><br>확인 시각 ${escapeHtml((d=>isNaN(d.getTime())?String(__contract.selfTestAt):localStamp(d))(new Date(__contract.selfTestAt)))}</div>`
     : `<div style="background:rgba(201,154,46,.12);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
         <b>🔒 전자계약 잠김 — 자가진단 전</b><br>종료된 Fly 서버 대신 Google Apps Script 계약 서버를 씁니다.
         아래에 배포 주소와 관리자 토큰을 넣고 <b>[자가진단]</b>을 통과시키면 열립니다.
@@ -6706,6 +6706,15 @@ function openCamera(){
 }
 
 let __aptPhotoSearchQuery=null; // 오더 사진 보기의 검색 범위만 기억한다. 저장 데이터에는 넣지 않는다.
+let __aptPhotoOrderId=null;      // 📸 를 누른 오더 — 배지 수와 사진 탭이 같은 묶음(aptPhotoList)을 보이게. __aptPhotoSearchQuery 가 살아 있을 때만 쓴다.
+let __aptPhotoSetCache=null;
+// 그 오더의 사진 묶음(파일 객체 Set). 파일 id 는 복원·스캔마다 바뀌므로 저장하지 않고, 파일 목록이 바뀌면 다시 센다.
+function aptPhotoSearchSet(){
+  const o=__aptPhotoOrderId&&(state.aptOrders||[]).find(x=>x&&x.id===__aptPhotoOrderId);if(!o)return null;
+  const c=__aptPhotoSetCache;
+  if(c&&c.oid===o.id&&c.files===state.files&&c.len===state.files.length)return c.set;
+  const set=new Set(aptPhotoList(o));__aptPhotoSetCache={oid:o.id,files:state.files,len:state.files.length,set};return set;
+}
 function photoWorkSearchMatch(f,query){
   if(!f||f.kind!=='photo')return false;
   const norm=v=>String(v||'').replace(/\s+/g,'').toLowerCase();
@@ -6714,6 +6723,8 @@ function photoWorkSearchMatch(f,query){
 function matchSearch(f,options){
   if(!state.search)return true;
   const q=state.search;
+  // 오더 📸 보기: 사진은 배지와 같은 판정(aptPhotoList)으로만 — 부분문자열 검색은 다른 단지·'1103동1204호' 사진을 더한다
+  if(__aptPhotoOrderId&&__aptPhotoSearchQuery===q&&f&&f.kind==='photo'){const set=aptPhotoSearchSet();if(set)return set.has(f);}
   return (f.name||'').toLowerCase().includes(q)||(f.text||'').toLowerCase().includes(q)
     ||(f.contact&&JSON.stringify(f.contact).toLowerCase().includes(q))
     ||(f.project||'').toLowerCase().includes(q)
@@ -11175,13 +11186,13 @@ function hjWarranty(p){
   if(!p.doneAt)return null;
   // 저장값이 없는 현장은 법정 기본 항목을 읽기 전용으로 파생한다.
   // p.warranty 를 쓰지 않으므로 기존 현장 데이터 마이그레이션·덮어쓰기는 일어나지 않는다.
-  const items=WARRANTY_ITEMS_DEFAULT.map(it=>({
-    name:it.name,months:it.months,expiresAt:hjAddMonths(p.doneAt,it.months)
-  }));
-  let latest=items.reduce((v,it)=>it.expiresAt>v?it.expiresAt:v,'');
-  // 구형 숫자 보증(p.warranty=개월)은 법정 기본 항목보다 길 때만 끝날을 늘린다 — 짧은 값으로 법정 기간을 줄이지 않는다.
+  // 구형 숫자 보증(p.warranty=개월, 현장 전체에 준 약속)은 각 항목을 그 값까지 올린다 — 짧은 값으로 법정 기간을 줄이지 않는다.
+  // 끝날만 늘리면 종이 보증서가 '2030년까지'라 적으면서 '(작업완료일로부터 3년)'·'방수 3년'이라 적어 제 안에서 어긋났다.
+  // 항목에 반영해야 끝날·기간 문구·링크 서명 본문이 같은 값에서 나온다.
   const legacyM=(typeof w==='number'||typeof w==='string')?num(w):0;
-  if(legacyM>0){const lx=hjAddMonths(p.doneAt,legacyM);if(lx&&lx>latest)latest=lx;}
+  const items=WARRANTY_ITEMS_DEFAULT.map(it=>{const m=Math.max(it.months,legacyM||0);
+    return {name:it.name,months:m,expiresAt:hjAddMonths(p.doneAt,m)};});
+  const latest=items.reduce((v,it)=>it.expiresAt>v?it.expiresAt:v,'');
   const end=new Date(latest+'T00:00:00');
   const dday=Math.ceil((end-hjToday0())/86400000);
   return {end:latest,dday,items,startedAt:p.doneAt,defaulted:true};
@@ -12587,6 +12598,7 @@ function viewAptMgmt(){
   }
   return html;
 }
+const APT_GENERIC_WORDS=['아파트','단지','마을','타운','맨션','오피스텔','팰리스','캐슬','빌리지'];   // 브랜드가 아닌 공동주택 일반 낱말(aptPhotoList 남의 단지 판정에서 뺀다)
 function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
 // 이 오더(동/호)에 걸리는 사진 목록. 아파트 오더는 현장 배정이 아니라 파일명으로 잡는다.
 function aptPhotoList(o){
@@ -12605,8 +12617,10 @@ function aptPhotoList(o){
     while(i>=0){const a=t.charAt(i-1),b=t.charAt(i+q.length);if(!/\d/.test(a)&&!/\d/.test(b))return true;i=t.indexOf(q,i+1);}
     return false;};
   // 단지 판정: 이 단지 이름이 들어 있거나 이 오더의 현장이면 우리 것. 단지 이름 없이 동/호만 적은 사진('105동1402호_철거.jpg')은
-  // 예전처럼 받는다(흔한 이름 규칙이다). 다만 다른 단지 이름(등록된 다른 관리사무소·아파트 낱말 APT_WORDS)이 적힌 사진은 남의 집이다.
-  const aptWordKeys=APT_WORDS.map(aptComplexKey);
+  // 예전처럼 받는다(흔한 이름 규칙이다). 다만 다른 단지 이름(등록된 다른 관리사무소·이 단지 이름에 없는 브랜드 낱말)이 적힌 사진은 남의 집이다.
+  // '아파트'·'마을'·'단지' 같은 일반 낱말은 근거로 쓰지 않는다 — '선비마을3단지' 오더의 '선비마을_315동1401호.jpg',
+  // '둔산 크로바아파트' 오더의 '크로바아파트_101동101호.jpg' 처럼 같은 단지를 줄여 적은 사진이 남의 집으로 빠졌다.
+  const aptWordKeys=APT_WORDS.filter(w=>!APT_GENERIC_WORDS.includes(w)).map(aptComplexKey).filter(k=>k&&!cks.some(c=>c.includes(k)));
   const otherKeys=(state.aptOffices||[]).filter(x=>x&&x.id!==o.officeId).map(x=>aptComplexKey(x.complex)).filter(k=>k&&!cks.includes(k));
   const ownHit=f=>(ownPj&&f.project===ownPj)||cks.some(k=>norm(f.name).includes(k)||norm(f.project).includes(k)||norm(f.text).includes(k));
   const foreign=f=>[f.name,f.project].some(v=>{const t=norm(v);return !!t&&(otherKeys.some(k=>t.includes(k))||aptWordKeys.some(k=>t.includes(k)));});
@@ -12840,7 +12854,7 @@ function aptOrderManage(filterOffice){
     const project=aptUnitOrderProject(o);
     if(aptUnitManaged(project)){const unit=aptUnitForOrder(o,project);if(unit)aptUnitView(project.name,unit.id);else toast('오더와 일치하는 동·호수를 확인해 주세요');return;}
     const q=aptPhotoQuery(o);
-    state.search=q;__aptPhotoSearchQuery=q;
+    state.search=q;__aptPhotoSearchQuery=q;__aptPhotoOrderId=o.id;__aptPhotoSetCache=null;
     const gi=document.getElementById('globalSearch'); if(gi)gi.value=q;   // 입력칸도 맞춰야 사용자가 지울 수 있다
     closeModal(); state.tab='photos'; __showDup=false;render();syncMobileNav();
     toast('📸 '+(o.unit||'')+' 사진 — 검색어를 지우면 전체가 다시 보입니다');
@@ -12880,8 +12894,9 @@ function aptSettle(officeId,ym){
   // 최근 6개월 밖이라도 아직 청구·입금이 안 끝난(완료·청구) 오더의 완료월은 목록에 넣는다. 예전에는 3월 완료·청구분을
   // 10월에 입금받으면 그 달을 고를 수 없어 [💰 입금 확인]에 닿을 길이 없었다(오더 줄의 '입금완료'는 정산서로 보낸다).
   const openYms=aptSettleOpenMonths(off.id).filter(v=>!months.includes(v));
-  if(ym&&!months.includes(ym)&&!openYms.includes(ym))openYms.push(ym);
-  const allYms=months.concat(openYms).sort().reverse();
+  // 고른 옛 달은 목록에만 더한다 — '미결' 표시는 실제 미결 달(openYms)에만(입금 확인을 마친 달에 붙지 않게)
+  const pickYms=(ym&&!months.includes(ym)&&!openYms.includes(ym))?[ym]:[];
+  const allYms=months.concat(openYms,pickYms).sort().reverse();
   const oldOpen=state.aptOrders.filter(o=>o.officeId===off.id&&(o.status==='done'||o.status==='billed')&&openYms.includes((o.doneAt||'').slice(0,7))&&(o.doneAt||'').slice(0,7)!==ym);
   const offSel='<select id="apsOff" style="flex:1;padding:8px;font-size:13px">'+offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===off.id?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('')+'</select>';
   const ymSel='<select id="apsYm" style="padding:8px;font-size:13px">'+allYms.map(v=>'<option value="'+v+'"'+(v===ym?' selected':'')+'>'+v.split('-')[0]+'년 '+(+v.split('-')[1])+'월'+(openYms.includes(v)?' · 미결':'')+'</option>').join('')+'</select>';
@@ -13392,7 +13407,9 @@ async function warrantyLinkPull(pjName,reqId,done){
   const raw=String((j&&j.signatureImage)||'');
   if(!WR_SIG_PNG_RE.test(raw)){toast('서명 이미지를 읽지 못했습니다');return;}
   const png=await hjSigShrink(raw);
-  const at=String(j.signedAt||'').slice(0,16).replace('T',' ')||(localDate()+' ');
+  // 서버 signedAt 은 UTC ISO(ctIso_ → toISOString). 잘라 쓰면 9시간 이르게, 오전 9시 전 서명은 전날로 찍힌다 — 한국 시각으로 푼다.
+  const sd=j.signedAt?new Date(j.signedAt):null;
+  const at=(sd&&!isNaN(sd.getTime()))?localStamp(sd):(String(j.signedAt||'').trim()||localStamp());
   const sig={id:'ws_'+uid(),at:at,role:req.role==='client'?'client':'office',org:req.org||'',
     name:String(j.signerName||req.name||'').trim()||req.name,png:png,via:'link',
     contractNo:req.contractNo||undefined,unitId:req.unitId||undefined,unitLabel:req.unitLabel||undefined};
@@ -15318,7 +15335,7 @@ function warrantyHTML(name,opts){
         '성명 / 직위 : '+(sig&&sig.name?escapeHtml(sig.name):blank(120))+'<br>'+
         '연락처 : '+blank(120),
         sig?'<img src="'+escapeAttr(sig.png)+'" alt="확인자 서명" style="display:block;height:56px;max-width:100%;object-fit:contain">'+
-            '<div style="margin-top:4px">서명 '+escapeHtml(sig.at||'')+' · 전자서명(앱 서명판)</div>':'')+
+            '<div style="margin-top:4px">서명 '+escapeHtml(sig.at||'')+' · '+(sig.via==='link'?'전자서명(링크 서명)':'전자서명(앱 서명판)')+'</div>':'')+
     '</div>'+
     '<div class="note" style="margin-top:14px">※ 본 보증서는 2부 작성하여 시공업체와 확인자가 각 1부씩 보관합니다.</div>';
   return hjDocShell('작 업 하 자 보 증 서',inner,'#0e7a6b');

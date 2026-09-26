@@ -7,7 +7,8 @@
    날짜 키는 localDate(d), 화면에 찍는 시각은 localStamp(d) 로 만든다.
 
    막는 꼴: toISOString() 뒤에 바로 .slice/.substr/.substring(0, 7|10|13|16|19) 또는 .split('T'),
-            그리고 ymOf(…toISOString()) — 날짜 조각을 UTC 에서 잘라 쓰는 것.
+            그리고 ymOf(…toISOString()) — 날짜 조각을 UTC 에서 잘라 쓰는 것,
+            ISO 문자열 .slice(0,16|19).replace('T',…) — 서버가 준 UTC 시각을 한국 시각인 척 찍는 것.
    서버로 보내는 타임스탬프(toISOString() 통째)는 막지 않는다 — 시점이라 UTC 가 맞다.
 
    허용 목록 — 줄의 고유한 조각으로 찾는다(줄번호는 금방 낡는다). 항목마다 이유를 적고,
@@ -37,6 +38,9 @@ const BAD = [
   /toISOString\(\)\s*\.\s*(?:slice|substr|substring)\(\s*0\s*,\s*(?:7|10|13|16|19)\s*\)/,
   /toISOString\(\)\s*\.\s*split\(\s*['"]T['"]\s*\)/,
   /\bymOf\([^;]*toISOString\(\)/,
+  // 저장·서버에서 온 ISO 문자열을 잘라 'T' 만 공백으로 바꿔 찍는 꼴 — 값이 UTC('Z')면 9시간 이르다(링크 서명 시각·자가진단 시각).
+  // 한국 시각은 localStamp(new Date(iso)) 로 푼다.
+  /\.slice\(\s*0\s*,\s*(?:16|19)\s*\)\s*\.replace\(\s*['"]T['"]/,
 ];
 
 const bad = [];
@@ -55,7 +59,7 @@ for (const f of FILES) {
 }
 if (!scanned) { console.log('FAIL local-date: 읽은 줄이 없다 — 파일 경로 확인'); process.exit(1); }
 // 자기 진단 — 정규식이 실제 꼴을 잡는지(눈이 먼 검사는 통과하고도 아무것도 안 지킨다)
-const probe = "window.__x={to:t.toISOString().slice(0,10)};p.at=new Date().toISOString().slice(0,16).replace('T',' ');ymOf(f.when.toISOString());d.toISOString().split('T')[0]";
+const probe = "window.__x={to:t.toISOString().slice(0,10)};p.at=new Date().toISOString().slice(0,16).replace('T',' ');ymOf(f.when.toISOString());d.toISOString().split('T')[0];const at=String(j.signedAt||'').slice(0,16).replace('T',' ')";
 if (!BAD.every(re => re.test(probe))) { console.log('FAIL local-date: 자기 진단 — 금지 정규식이 표본을 못 잡는다'); process.exit(1); }
 const stale = ALLOW.map((a, i) => used.has(i) ? null : a).filter(Boolean);
 if (stale.length) {

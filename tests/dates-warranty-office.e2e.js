@@ -8,7 +8,7 @@
      ⓒ 완료를 내렸다 올려도 준공일은 그대로, 바꾸는 길은 🛡 보증 수정의 준공일 칸
      ⓓ 현장 카드 [✍️ 서명 확인] → 서명이 든 보증서 화면으로 잇는다
      ⓔ 보증 시작일이 준공일과 다른 옛 자료 — 종이 보증서 기간이 만료일과 같은 기준일에서 시작한다
-     ⓕ 아파트 오더 사진은 그 단지 안에서, 동/호 경계를 지켜서만 잡는다(불변식: 그 동/호 사진만)
+     ⓕ 아파트 오더 사진은 그 단지 안에서, 동/호 경계를 지켜서만 잡는다(불변식: 그 동/호 사진만) · 📸 사진 탭도 같은 묶음
      ⓖ 월 정산서·엑셀의 부가세 표기는 오더의 승인 조건 값에서만(모르면 적지 않는다)
      ⓗ 6개월보다 오래된 미결(완료·청구) 오더도 정산서에서 골라 입금 확인에 닿는다
 
@@ -122,8 +122,10 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         const L = n => warrantyList(true).find(w => w.name === n);
         const H = n => hjWarranty(state.projects.find(p => p.name === n));
         warrantySms('가상13개월'); warrantySms('가상35개월');
+        const txt = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
         return { l11: L('가상11개월'), h11: H('가상11개월'), due: warrantyDue().map(w => w.name), sms,
-          h35end: H('가상35개월').end, g60: L('가상구형60'), g12: L('가상구형12') };
+          h35end: H('가상35개월').end, g60: L('가상구형60'), g12: L('가상구형12'),
+          p60: txt(warrantyHTML('가상구형60')), k60: hjWarrantyLinkBody('가상구형60', {}), p12: txt(warrantyHTML('가상구형12')) };
       } finally { window.hjSendSms = real; }
     });
     assert(r.l11.expiry === r.h11.end && r.l11.expiry === '2028-10-26', '보증 목록 만료일이 보증서(hjWarranty)와 다르다: ' + JSON.stringify({ list: r.l11.expiry, doc: r.h11.end }));
@@ -135,6 +137,12 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.g60.expiry === '2030-01-10', '구형 숫자 보증 60개월은 법정보다 길면 그대로: ' + r.g60.expiry);
     assert(r.g12.expiry === '2028-01-10', '구형 숫자 보증 12개월이 법정 방수 3년을 줄였다: ' + r.g12.expiry);
     assert(r.g12.months === 36 && r.g60.months === 60, '구형 숫자 보증의 개월 표시: ' + JSON.stringify([r.g12.months, r.g60.months]));
+    // 끝날만 늘리면 종이 보증서가 '~ 2030년 (작업완료일로부터 3년) 방수 3년' 으로 제 안에서 어긋난다 — 기간 문구·항목·링크 본문이 끝날과 같은 값에서
+    assert(/2025년 1월 10일 ~ 2030년 1월 10일 \(작업완료일로부터 5년\)/.test(r.p60) && /보증기간은 작업완료일로부터 5년/.test(r.p60),
+      '구형60 종이 보증서의 기간 문구가 끝날과 다르다: ' + (r.p60.match(/보증기간.{0,120}/) || [''])[0]);
+    assert(!/방수 3년/.test(r.p60) && /방수 5년/.test(r.p60), '구형60 종이 보증서의 항목 기간: ' + (r.p60.match(/방수.{0,60}/) || [''])[0]);
+    assert(/방수 5년/.test(r.k60.warranty) && /작업완료일로부터 5년/.test(r.k60.clauses[0].text), '구형60 링크 서명 본문이 종이와 다르다: ' + JSON.stringify([r.k60.warranty, r.k60.clauses[0].text]));
+    assert(/2025년 1월 10일 ~ 2028년 1월 10일 \(작업완료일로부터 3년\)/.test(r.p12) && /방수 3년/.test(r.p12), '구형12 는 법정 기본 그대로: ' + (r.p12.match(/보증기간.{0,120}/) || [''])[0]);
   });
 
   await test('ⓔ 보증 시작일이 준공일과 다른 옛 자료 — 종이 보증서 기간이 만료일과 같은 기준일에서 시작한다 · 같으면 예전 그대로', async () => {
@@ -145,14 +153,18 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
           warranty: { startedAt: '2026-03-15', items: [{ name: '방수', months: 36, expiresAt: '2029-03-15' }, { name: '마감', months: 12, expiresAt: '2027-03-15' }] } },
         { name: '가상같음', stage: 4, doneAt: '2026-03-01', received: 0, cost: { material: 0, labor: 0, outsource: 0 }, archived: false, customer: { name: '가상 고객' } }];
       const txt = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
+      const ka = hjWarrantyLinkBody('가상어긋남', {}), kb = hjWarrantyLinkBody('가상같음', {});
       return { a: txt(warrantyHTML('가상어긋남')), b: txt(warrantyHTML('가상같음')),
-        la: hjWarrantyLinkBody('가상어긋남', {}).warranty, lb: hjWarrantyLinkBody('가상같음', {}).warranty };
+        la: ka.warranty, lb: kb.warranty, ca: ka.clauses[0].text, cb: kb.clauses[0].text };
     });
     assert(/2026년 3월 15일 ~ 2029년 3월 15일/.test(r.a), '보증기간이 만료일과 같은 기준일(3/15)에서 시작해야 한다: ' + (r.a.match(/보증기간[^A]{0,90}/g) || []).join(' / '));
     assert(/보증 시작일로부터 3년/.test(r.a) && !/작업완료일로부터 3년/.test(r.a), '기준일이 다르면 \'작업완료일로부터\'라 적지 않는다: ' + (r.a.match(/보증기간[^A]{0,90}/g) || []).join(' / '));
     assert(/작업완료일\s*2026년 3월 1일/.test(r.a), '작업완료일 칸은 준공일 그대로: ' + (r.a.match(/작업완료일.{0,20}/) || [''])[0]);
     assert(/2026년 3월 1일 ~ 2029년 3월 1일 \(작업완료일로부터 3년\)/.test(r.b), '보통 현장의 보증서 문구가 바뀌었다: ' + (r.b.match(/보증기간.{0,80}/) || [''])[0]);
     assert(/2026년 3월 15일부터/.test(r.la) && /작업완료일로부터/.test(r.lb), '링크 서명 본문도 같은 기준일: ' + JSON.stringify([r.la, r.lb]));
+    // 서명하는 조항(링크)과 받는 조항(종이)이 갈라지면 안 된다 — 조항 1(보증기간)이 같은 기준일 문구
+    assert(/보증 시작일로부터 3년/.test(r.ca) && r.a.includes(r.ca), '링크 조항이 종이 보증서 조항과 다르다: ' + r.ca);
+    assert(/작업완료일로부터 3년/.test(r.cb) && r.b.includes(r.cb), '보통 현장 링크 조항: ' + r.cb);
   });
 
   await test('ⓓ 현장 카드 [✍️ 서명 확인] → 서명을 보관하고 서명이 든 보증서 화면으로 잇는다', async () => {
@@ -179,10 +191,15 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const r = await page.evaluate(() => ({ sigs: (state.projects[0].warrantySigs || []).length, signedAt: state.projects[0].warrantyLinks[0].signedAt,
       title: (document.querySelector('#modalRoot') || {}).textContent.slice(0, 200), o: window.__lastWr && window.__lastWr.o,
       hasSigImg: !!(window.__lastWr && /data:image\/png/.test(window.__lastWr.h) && /홍길동 소장/.test(window.__lastWr.h)),
+      sigAt: (state.projects[0].warrantySigs || [])[0] && state.projects[0].warrantySigs[0].at,
+      sigLine: ((window.__lastWr && window.__lastWr.h || '').match(/서명 [^<]*전자서명\([^)]*\)/) || [''])[0],
       hasBack: !!document.querySelector('#modalRoot #hjDocBack, #modalRoot [data-docback]') || /뒤로/.test((document.querySelector('#modalRoot') || {}).textContent || '') }));
     assert(r.sigs === 1 && r.signedAt, '서명이 보관되지 않았다: ' + JSON.stringify(r));
     assert(r.o && r.o.sig && r.o.work === '가상 욕실 방수 작업' && r.o.client === '가상 의뢰인', '링크를 만들 때의 작업내용·의뢰인과 서명으로 문서를 만들어야 한다: ' + JSON.stringify(r.o && { work: r.o.work, client: r.o.client, sig: !!r.o.sig }));
     assert(r.hasSigImg, '문서에 서명 그림·서명자가 없다');
+    // 서버 signedAt 은 UTC — 04:05Z 는 한국 13:05. 잘라 찍으면 9시간 이르다
+    assert(r.sigAt === '2026-09-18 13:05', '서명 시각이 한국 시각이 아니다: ' + r.sigAt);
+    assert(r.sigLine === '서명 2026-09-18 13:05 · 전자서명(링크 서명)', '문서 서명 줄(시각·방식): ' + r.sigLine);
     assert(/서명/.test(r.title), '서명 보증서 화면 제목: ' + r.title);
     await page.evaluate(() => { if (window.__realWr) window.warrantyHTML = window.__realWr; });
   });
@@ -203,10 +220,45 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         { id: 'f6', name: '103동1204호_마감.jpg', ext: 'jpg', kind: 'photo' },                   // 단지 이름 없이 동/호만 — 예전처럼 받는다
         { id: 'f7', name: 'IMG_01.jpg', ext: 'jpg', kind: 'photo', project: '금성백조아파트 103동 1204호' }];   // 다른 단지 현장에 배정된 사진
       const ids = o => aptPhotoList(state.aptOrders.find(x => x.id === o)).map(f => f.id).sort();
-      return { o1: ids('o1'), o2: ids('o2') };
+      const out = { o1: ids('o1'), o2: ids('o2') };
+      // 같은 단지를 줄여 적은 사진 — 단지 이름의 일반 낱말('마을'·'아파트')을 남의 단지 근거로 쓰면 빠진다
+      state.aptOffices.push({ id: 'of2', complex: '선비마을3단지', manager: '', phone: '' }, { id: 'of3', complex: '둔산 크로바아파트', manager: '', phone: '' }, { id: 'of4', complex: '둔산 롯데캐슬', manager: '', phone: '' });
+      state.aptOrders.push({ id: 'o3', officeId: 'of2', unit: '315동 1401호', text: '실리콘', amount: 0, date: localDate(), status: 'done', doneAt: localDate() },
+        { id: 'o4', officeId: 'of3', unit: '101동 101호', text: '실리콘', amount: 0, date: localDate(), status: 'done', doneAt: localDate() },
+        { id: 'o5', officeId: 'of4', unit: '102동 102호', text: '실리콘', amount: 0, date: localDate(), status: 'done', doneAt: localDate() });
+      state.files.push({ id: 'g1', name: '선비마을_315동1401호_전.jpg', ext: 'jpg', kind: 'photo' },
+        { id: 'g2', name: '크로바아파트_101동101호.jpg', ext: 'jpg', kind: 'photo' },
+        { id: 'g3', name: '금성백조아파트_315동1401호.jpg', ext: 'jpg', kind: 'photo' },   // 다른 브랜드 단지는 여전히 남의 집
+        { id: 'g4', name: '롯데캐슬_102동102호.jpg', ext: 'jpg', kind: 'photo' });          // 이 단지 이름에 든 브랜드는 남의 단지 근거가 아니다
+      out.o3 = ids('o3'); out.o4 = ids('o4'); out.o5 = ids('o5');
+      return out;
     });
     assert(JSON.stringify(r.o1) === JSON.stringify(['f1', 'f2', 'f6']), '103동 1204호 오더는 그 단지의 그 세대 사진만: ' + JSON.stringify(r.o1));
     assert(r.o2.length === 0, "'3동 1204호' 오더가 '103동1204호' 사진을 잡았다: " + JSON.stringify(r.o2));
+    assert(JSON.stringify(r.o3) === '["g1"]', "'선비마을3단지' 오더가 '선비마을_…' 사진을 남의 집으로 뺐다(또는 남의 단지를 잡았다): " + JSON.stringify(r.o3));
+    assert(JSON.stringify(r.o5) === '["g4"]', "'둔산 롯데캐슬' 오더가 '롯데캐슬_…' 사진을 뺐다: " + JSON.stringify(r.o5));
+    assert(JSON.stringify(r.o4) === '["g2"]', "'둔산 크로바아파트' 오더가 '크로바아파트_…' 사진을 뺐다: " + JSON.stringify(r.o4));
+  });
+
+  await test('ⓕ 오더 📸 버튼 — 사진 탭에 보이는 사진 = 배지 수 = aptPhotoList(부분문자열 검색으로 남의 단지·다른 동을 더하지 않는다)', async () => {
+    const r = await page.evaluate(() => {
+      try { closeModal(true); } catch (e) {}
+      state.activeProject = null;
+      aptOrderManage('of1');
+      const btn = document.querySelector('#modalRoot .apoPh[data-id="o1"]');
+      const badge = btn ? +btn.textContent.replace(/[^\d]/g, '') : -1;
+      btn.click();
+      const shown = state.files.filter(f => f.kind === 'photo' && matchSearch(f)).map(f => f.id).sort();
+      const list = aptPhotoList(state.aptOrders.find(x => x.id === 'o1')).map(f => f.id).sort();
+      // 검색어를 손으로 바꾸면 보통 검색으로 돌아간다(id 목록에 갇히지 않는다)
+      const gi = document.getElementById('globalSearch'); gi.value = '금성백조'; gi.dispatchEvent(new Event('input', { bubbles: true }));
+      const after = state.files.filter(f => f.kind === 'photo' && matchSearch(f)).map(f => f.id).sort();
+      gi.value = ''; gi.dispatchEvent(new Event('input', { bubbles: true }));
+      return { badge, shown, list, tab: state.tab, after };
+    });
+    assert(r.tab === 'photos', '사진 탭으로 가지 않았다: ' + r.tab);
+    assert(JSON.stringify(r.shown) === JSON.stringify(r.list) && r.badge === r.list.length, '배지·탭·aptPhotoList 가 다른 묶음: ' + JSON.stringify(r));
+    assert(r.after.includes('f3') && r.after.includes('g3'), '검색어를 바꾼 뒤에도 오더 사진 목록에 갇혔다: ' + JSON.stringify(r.after));
   });
 
   await test('ⓖ 월 정산서·엑셀의 부가세 표기는 오더의 승인 조건 값에서만', async () => {
@@ -256,8 +308,14 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       window.confirm = () => true;
       try { await [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /입금 확인/.test(b.textContent)).onclick(); }
       finally { window.settlePaidAptOrders = real; }
-      return { opts, hint, sel, ids };
+      // 입금 확인을 마친 옛 달을 다시 열면 목록에 있되 '미결' 표시는 없다
+      closeModal(true);
+      state.aptOrders.find(o => o.id === 'old1').status = 'paid';
+      aptSettle('of1', '2026-03');
+      const opts2 = [...document.querySelectorAll('#apsYm option')].map(o => o.value + '|' + o.textContent);
+      return { opts, hint, sel, ids, opts2 };
     });
+    assert(r.opts2.some(o => /^2026-03\|/.test(o)) && !r.opts2.some(o => /^2026-03\|.*미결/.test(o)), '미결이 없는 고른 달에 \'미결\' 표시: ' + JSON.stringify(r.opts2));
     assert(r.opts.some(o => /^2026-03\|.*미결/.test(o)), '6개월 밖 청구분의 달이 월 목록에 없다: ' + JSON.stringify(r.opts));
     assert(!r.opts.some(o => /^2026-01\|/.test(o)), '입금이 끝난 옛 달까지 목록에 넣었다: ' + JSON.stringify(r.opts));
     assert(r.hint, '6개월 전 미결 오더 안내가 없다');
