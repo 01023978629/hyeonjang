@@ -193,7 +193,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
         log: state.projects[0].warrantyLog, story: hjStoryData(n).filter(e => e.ic === '🛡').map(e => e.t), card: hjKakaoCard(state.projects[0]), at: w.at, sentAt: w.sentAt,
         storedPhotos, photoIds: w.photoIds, regenIds, storedLen: w.html.length };
     }, N);
-    assert(r.storedPhotos === 0 && eq(r.photoIds, { before: ['b1', 'b2'], after: ['a3', 'a2'] }), '보관본에는 사진 base64 대신 id 만(안전판·릴레이 부풀림 방지): ' + JSON.stringify([r.storedPhotos, r.photoIds]));
+    // 새 계약(photo-refs): 보관본에는 파일 id 가 아니라 안정 참조('k:'+fileKey) — id 는 폰·복원 뒤 새로 붙어 보관본이 사진 없이 나갔다
+    assert(r.storedPhotos === 0 && eq(r.photoIds, { before: ['k:가상_b1.png|10', 'k:가상_b2.png|10'], after: ['k:가상_a3.png|10', 'k:가상_a2.png|10'] }), '보관본에는 사진 base64 대신 참조만(안전판·릴레이 부풀림 방지): ' + JSON.stringify([r.storedPhotos, r.photoIds]));
     assert(eq(r.regenIds, ['b1', 'b2', 'a3', 'a2']), '보관본 보기는 id 로 같은 사진을 다시 합성해야 한다: ' + JSON.stringify(r.regenIds));
     assert(r.storedLen < 60000, '보관본이 사진 없이도 6만 자를 넘는다: ' + r.storedLen);
     assert(r.ids.length === 4, '사진 4장(전2·후2): ' + JSON.stringify(r.ids));
