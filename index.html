@@ -2114,6 +2114,10 @@ function applyData(data,opts){
     restored++;
   });
   // 견적서 가상항목은 저장하지 않고(직렬화 제외) 견적 데이터에서 재생성 → 동명 견적 PDF의 부팅마다 증식 방지
+  // v330 원래 견적이 없어졌거나 현장 연결이 풀린 가상항목은 뺀다 — 되돌리기·서버 병합 뒤 없는 견적이 매출·미수에
+  // 계속 잡혔다(deleteQuote·saveQuoteEdit 는 같은 경우 이 파일을 지운다, estimateDerivedQuotesConsistent 와 같은 기준).
+  {const liveQ=new Set((state.quotes||[]).filter(q=>q&&q.project).map(q=>'quote_'+q.id));
+   if(state.files.some(f=>f&&f._fromQuote&&!liveQ.has(f.id)))state.files=state.files.filter(f=>!(f&&f._fromQuote&&!liveQ.has(f.id)));}
   state.quotes.forEach(q=>{ if(q&&q.project){ try{syncQuoteToProject(q);}catch(e){} } });
   try{ fixXlsxEstVat(); }catch(e){}
   return restored;
@@ -8905,10 +8909,11 @@ async function aiToolRun(name,a){
       const its=Array.isArray(a.items)?a.items.slice(0,20):[];
       q.items=its.map(it=>({name:cut(it.name,40),spec:cut(it.spec,30),qty:num(it.qty)||1,price:Math.max(0,Math.round(num(it.price)))}));
       if(!q.items.length)q.items=[{name:'',spec:'',qty:1,price:0}];
-      state.quotes=state.quotes||[];state.quotes.push(q);
+      // v330 초안은 편집기에만 둔다 — [저장]해야 목록에 들어가고 현장 매출에 반영된다(saveQuoteEdit).
+      // 예전에는 저장 목록과 같은 객체라 [목록으로]로 버려도 남았고, 다음 부팅에 현장 매출·수주로 잡혔다.
       state.editingQuote=q;state.tab='quotemaker';
-      markDirty();render();aiHide();
-      return {결과:'견적 초안 생성 — 견적 작성 화면을 열었습니다(비서 창은 닫음)',번호:q.no,제목:q.title,합계원:quoteCalc(q).total,항목수:q.items.length,안내:'단가는 초안이니 화면에서 꼭 확인·수정하세요.'};
+      render();aiHide();
+      return {결과:'견적 초안 생성 — 견적 작성 화면을 열었습니다(비서 창은 닫음). 아직 저장 전입니다 — 화면에서 [저장]을 눌러야 남습니다',번호:q.no,제목:q.title,합계원:quoteCalc(q).total,항목수:q.items.length,안내:'단가는 초안이니 화면에서 꼭 확인·수정하세요.'};
     }
     case 'auto_organize_photos':{
       return await aiAutoOrganize({auto:true,from:'agent'});
@@ -17374,10 +17379,10 @@ async function aiQuoteFromText(desc,project){
   q.title=hjCut(d,40);q.vatIncluded=true;
   if(project){const ms=projectResolve(project);if(ms.length===1)q.project=ms[0];}
   q.items=items.slice(0,12).map(it=>({name:hjCut(String(it.name||''),40),spec:hjCut(String(it.spec||''),30),qty:num(it.qty)||1,price:num(it.price)||priceHint(String(it.name||''))}));
-  state.quotes=state.quotes||[];state.quotes.unshift(q);
-  state.editingQuote=q;markDirty();render();
+  // v330 초안은 편집기에만 둔다(저장 전) — create_quote_draft 와 같은 이유.
+  state.editingQuote=q;state.tab='quotemaker';render();
   const calc=quoteCalc(q);
-  return {생성:'견적 초안',항목수:q.items.length,합계원:calc.total,현장:q.project||'(미지정)',안내:'견적 탭에서 확인·수정할 수 있습니다.'};
+  return {생성:'견적 초안(저장 전)',항목수:q.items.length,합계원:calc.total,현장:q.project||'(미지정)',안내:'견적 작성 화면에서 확인·수정한 뒤 [저장]해야 남습니다.'};
 }
 function aiQuoteDialog(){
   const projs=state.projects.filter(p=>!p.archived);
@@ -17400,8 +17405,7 @@ function aiQuoteDialog(){
       closeModal();
       if(r.오류){toast(r.오류);return;}
       toast('✅ 견적 초안 '+r.항목수+'개 항목 · '+hjMan(r.합계원));
-      state.tab='estimates';render();
-      setTimeout(()=>{try{if(state.editingQuote)editQuote(state.editingQuote.id);}catch(e){}},200);
+      state.tab='quotemaker';render();   // 저장 전 초안이 열린 편집기로 — [저장]해야 남는다
     }},
     {label:'취소',cls:'ghost',fn:closeModal}]);
   setTimeout(()=>{const t=document.getElementById('aqDesc');if(t)t.focus();},200);
@@ -19766,9 +19770,9 @@ function photoQuoteResult(r){
       if(floorA>0)q.items.push({name:'장판',spec:'',qty:floorA,price:jangpan});
       (Array.isArray(r.suggestions)?r.suggestions:[]).forEach(s=>{if(!/도배|장판/.test(s))q.items.push({name:s,spec:'',qty:1,price:0});});
       if(!q.items.length)q.items.push({name:'',spec:'',qty:1,price:0});
-      state.quotes=state.quotes||[];state.quotes.push(q);state.editingQuote=q;
-      markDirty();toast('📋 견적서 초안을 만들었어요 — 견적 화면에서 확인하세요');closeModal();
-      if(typeof editQuote==='function')editQuote(q.id);
+      // v330 초안은 편집기에만 둔다 — 버린 초안이 견적 목록·세무 집계(exportTaxXlsx 는 모든 견적을 센다)에 남지 않게. [저장]해야 남는다.
+      state.editingQuote=q;state.tab='quotemaker';
+      toast('📋 견적서 초안을 만들었어요 — 견적 작성 화면에서 확인하고 [저장]하세요');closeModal();render();
     }catch(e){toast('견적 생성 실패');}
   };
 }
@@ -29007,10 +29011,10 @@ function viewEstimates(){
   html+=`<table class="estimate-table estimates-list"><colgroup><col class="est-col-file"><col class="est-col-project"><col class="est-col-amount"><col class="est-col-actions"></colgroup><thead><tr><th scope="col">견적 파일 · 작업 내용</th><th scope="col">프로젝트 · 날짜</th><th scope="col" class="amt">견적 금액 (원)</th><th scope="col">관리 · 상세 입력</th></tr></thead><tbody>`;
   visible.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
     html+=`<tr data-id="${f.id}">
-      <td class="est-file"><div class="est-name">${escapeHtml(f.name)}</div><div class="est-content">${escapeHtml(estimateContentSummary(f)||'작업 내용 미입력')}</div><div class="est-badges">${e._edited?'<span>✎ 수정됨</span>':''}${__gb[f.id]?`<span>${String(__gb[f.id]).startsWith('rep')?'사본 '+String(__gb[f.id]).split(':')[1]+'건 중 대표':'사본 · 중복 집계 제외'}</span>`:''}${f.exSum?'<span class="excluded">집계 제외</span>':''}</div></td>
+      <td class="est-file"><div class="est-name">${escapeHtml(f.name)}</div><div class="est-content">${escapeHtml(estimateContentSummary(f)||'작업 내용 미입력')}</div><div class="est-badges">${e._edited&&!f._fromQuote?'<span>✎ 수정됨</span>':''}${__gb[f.id]?`<span>${String(__gb[f.id]).startsWith('rep')?'사본 '+String(__gb[f.id]).split(':')[1]+'건 중 대표':'사본 · 중복 집계 제외'}</span>`:''}${f.exSum?'<span class="excluded">집계 제외</span>':''}</div></td>
       <td class="est-project">${estimateInfoButton('file',f.id,f.project)}<div class="est-date">${escapeHtml(estimateListDate(f))}</div></td>
-      <td class="est-amount amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(f.name)} 견적 금액 (원)" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}"></td>
-      <td class="est-manage"><div class="est-actions">${previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button></div></details></td>
+      <td class="est-amount amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(f.name)} 견적 금액 (원)" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}"${f._fromQuote?qeRoAttr():''}>${f._fromQuote?'<small class="est-fromquote-note" style="display:block;font-size:11px;color:var(--muted);font-weight:400">앱 견적 · ✍ 편집에서 수정</small>':''}</td>
+      <td class="est-manage"><div class="est-actions">${previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"${f._fromQuote?qeRoAttr():''}></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"${f._fromQuote?qeRoAttr():''}></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"${f._fromQuote?qeRoAttr():''}></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button></div></details></td>
     </tr>`;});
   html+=`</tbody></table>`;
   if(!visible.length)html+=`<div class="empty" role="status"><b>검색 결과가 없습니다</b>검색어·표시 대상을 바꾸거나 ‘전체 보기’를 눌러주세요. 저장된 견적서는 그대로 있습니다.</div>`;
@@ -29184,20 +29188,84 @@ function viewQuoteMaker(){
 }
 function editQuote(id){const q=state.quotes.find(x=>x.id===id);if(q){state.editingQuote=JSON.parse(JSON.stringify(q));render();}}
 function startNewQuote(){state.editingQuote=newQuote();render();}
-// 기존(추출된) 견적서를 편집기 초안으로 변환
+/* 견적·정산 목록의 [✍ 편집] (v330).
+   ① 앱에서 만든 견적(가상 파일 quote_<id>)은 새 사본이 아니라 그 견적을 연다(editQuote). 예전에는 부가세 포함 총액을
+      단가로 넣고 부가세 포함으로 다시 계산해 10%가 한 번 더 붙었고, 저장하면 같은 현장에 견적이 하나 더 생겨 매출이 두 번 잡혔다.
+   ② 엑셀·PDF 에서 읽은 견적은 금액에 부가세가 들어 있는지 앱이 모른다(v328 규칙: 모르면 사람이 고른다).
+      어느 쪽을 골라도 편집기 총액은 원래 금액 그대로다 — 포함이면 공급가를 역산(딱 떨어질 때만), 별도면 그 금액이 곧 공급가.
+      저장하면 원래 파일은 매출 집계에서 빼(exSum, 견적·정산의 Σ 로 되돌릴 수 있다) 같은 견적을 두 번 세지 않는다. */
+function qeRoAttr(){return ' readonly aria-readonly="true" title="앱에서 만든 견적 — ✍ 편집(견적 편집기)에서 고칩니다"';}   // 함수 선언 — 부팅 중 이른 render 에서도 쓸 수 있게(const 는 TDZ)
+function quoteSupplyForTotal(total){
+  const t=Math.round(+total||0);if(!(t>0))return null;
+  const base=Math.floor(t/1.1);
+  for(let p=Math.max(0,base-3);p<=base+3;p++){if(p+Math.round(p*0.1)===t)return p;}
+  return null;   // 부가세 10% 로 딱 나눠지지 않는 금액 — 공급가를 지어내지 않는다
+}
 function quoteFromExisting(fileId){
   const f=state.files.find(x=>x.id===fileId);if(!f){toast('견적서를 찾을 수 없습니다.');return;}
+  if(f._fromQuote){
+    const oq=estimateQuoteForFile(f);
+    if(!oq){toast('이 견적의 원래 견적서를 찾을 수 없습니다 — 견적 작성 탭 목록에서 여세요.');return;}
+    state.tab='quotemaker';editQuote(oq.id);
+    toast('앱에서 만든 견적을 그대로 열었습니다 — 고치고 [저장]하세요.');
+    return;
+  }
   const e=f.est||{};
-  const q=newQuote(false);
-  q.title=e.customer||f.name.replace(/\.[^.]+$/,'');
-  q.date=estimateDay(e.date);
-  q.project=f.project||null;
-  // 추출은 항목 단위가 아니므로 총액을 단일 품목으로 시작 (사용자가 쪼개 편집)
-  q.vatIncluded=true;
-  q.items=[{name:q.title||'견적 금액',spec:'',qty:1,price:e.amount||0}];
-  state.editingQuote=q;state.tab='quotemaker';render();
-  toast('견적서를 편집기로 불러왔습니다. 품목을 나눠 편집하세요.');
-}function closeQuoteEdit(){state.editingQuote=null;render();}
+  const amount=Math.max(0,Math.round(num(e.amount)));
+  const open=(vatIncluded,price)=>{
+    const q=newQuote(false);
+    q.title=e.customer||f.name.replace(/\.[^.]+$/,'');
+    q.date=estimateDay(e.date);
+    q.project=f.project||null;
+    // 추출은 항목 단위가 아니므로 총액을 단일 품목으로 시작 (사용자가 쪼개 편집)
+    q.vatIncluded=vatIncluded;
+    q.items=[{name:q.title||'견적 금액',spec:'',qty:1,price:price}];
+    q._srcFileId=f.id;   // 저장할 때만 쓰는 연결 — quoteCommitEditing 이 원본 파일을 집계에서 빼고 지운다
+    state.editingQuote=q;state.tab='quotemaker';render();
+    toast('견적서를 편집기로 불러왔습니다 · 총액 '+hjNum(quoteCalc(q).total)+'원 ('+(vatIncluded?'부가세 포함':'부가세 별도')+'). 품목을 나눠 편집하세요.');
+  };
+  if(!amount){open(true,0);return;}
+  const sup=Math.round(num(e.supply)),vat=Math.round(num(e.vat));
+  // 공급가·세액이 읽혀 있고 합이 금액과 맞으면 부가세 포함이 확실하다 — 묻지 않는다
+  if(sup>0&&vat>0&&sup+vat===amount&&Math.round(sup*0.1)===vat){open(true,sup);return;}
+  const incl=quoteSupplyForTotal(amount);
+  openModal('부가세 확인',`<p style="font-size:13px;line-height:1.6">‘${escapeHtml(f.name)}’ 금액 <b>${hjNum(amount)}원</b>에 부가세가 들어 있나요?<br>파일에 표기가 없어 앱이 알 수 없습니다. 어느 쪽을 골라도 편집기 총액은 <b>${hjNum(amount)}원</b> 그대로입니다.</p>`+
+    (incl==null?`<p class="hint" style="font-size:12px">이 금액은 부가세 10%로 딱 나눠지지 않아 ‘부가세 포함’으로는 공급가를 정할 수 없습니다. ‘부가세 별도’로 불러온 뒤 편집기에서 고치세요.</p>`:''),
+    [{label:'취소',cls:'ghost',fn:closeModal},
+     {label:'부가세 별도(이 금액이 공급가)',cls:'ghost',fn:()=>{closeModal();open(false,amount);}},
+     ...(incl==null?[]:[{label:'부가세 포함 금액',cls:'blue',fn:()=>{closeModal();open(true,incl);}}])]);
+}
+// 저장 안 한 변경이 있는가 — 저장된 견적이 없으면 무언가 적었을 때만(빈 새 견적서는 묻지 않는다)
+function quoteEditDirty(){
+  const q=state.editingQuote;if(!q)return false;
+  const strip=o=>{const c=JSON.parse(JSON.stringify(o||{}));delete c._srcFileId;return c;};
+  const saved=(state.quotes||[]).find(x=>x&&x.id===q.id);
+  if(!saved)return !!(String(q.title||'').trim()||(q.items||[]).some(it=>String(it&&it.name||'').trim()||num(it&&it.price)));
+  return paidStableJson(strip(q))!==paidStableJson(strip(saved));
+}
+// [목록으로] — 저장 안 한 변경이 있으면 묻는다. 예전에는 그냥 버렸고, AI 초안은 저장 목록과 같은 객체라 버려도 남았다.
+function closeQuoteEdit(force){
+  if(!force&&quoteEditDirty()){
+    openModal('저장하지 않은 견적',`<p style="font-size:13px;line-height:1.6">‘${escapeHtml(state.editingQuote.title||state.editingQuote.no||'견적서')}’에 저장하지 않은 내용이 있습니다.<br>저장하지 않고 나가면 이번에 고친 내용은 남지 않습니다.</p>`,
+      [{label:'계속 편집',cls:'ghost',fn:closeModal},
+       {label:'저장 안 하고 나가기',cls:'warn',fn:()=>{closeModal();closeQuoteEdit(true);}},
+       {label:'저장하고 나가기',cls:'blue',fn:()=>{closeModal();saveQuoteEdit();}}]);
+    return;
+  }
+  state.editingQuote=null;render();
+}
+/* 편집 중인 견적을 목록에 넣는 한 곳 — [저장]과 PDF 출력 전 자동 저장이 같이 쓴다.
+   목록에는 깊은 복사본을 넣는다. 같은 객체를 두면 저장 뒤 계속 고친 값이 [저장] 없이 목록에 남는다(AI 초안이 그랬다). */
+function quoteCommitEditing(q){
+  const srcId=q._srcFileId;delete q._srcFileId;
+  const copy=JSON.parse(JSON.stringify(q));
+  const idx=state.quotes.findIndex(x=>x.id===q.id);
+  if(idx>=0)state.quotes[idx]=copy;else state.quotes.push(copy);
+  if(copy.project)syncQuoteToProject(copy); else state.files=state.files.filter(f=>f.id!=='quote_'+copy.id);  // 현장 연결 해제 시 유령 견적 파일 제거
+  let srcExcluded=false;
+  if(srcId){const src=state.files.find(f=>f&&f.id===srcId&&f.kind==='estimate'&&!f._fromQuote);if(src&&!src.exSum){src.exSum=true;srcExcluded=true;}}
+  return {copy,srcExcluded};
+}
 function saveQuoteEdit(){
   const q=state.editingQuote;if(!q)return;
   // 빈 행(품명·단가 모두 없음) 자동 정리
@@ -29207,12 +29275,11 @@ function saveQuoteEdit(){
   state.priceBook=state.priceBook||{};
   q.items.forEach(it=>{const nm=String(it.name||'').trim();const pr=num(it.price);if(nm&&pr>0)state.priceBook[nm]=pr;});
   const legalGuide=quoteRegistrationGuide(q);
-  const idx=state.quotes.findIndex(x=>x.id===q.id);
-  if(idx>=0)state.quotes[idx]=q;else state.quotes.push(q);
-  if(q.project)syncQuoteToProject(q); else state.files=state.files.filter(f=>f.id!=='quote_'+q.id);  // 현장 연결 해제 시 유령 견적 파일 제거
+  const r=quoteCommitEditing(q);
   markDirty();
   state.editingQuote=null;render();
-  toast(legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')));
+  const srcNote=r.srcExcluded?' · 원래 견적 파일은 매출 집계에서 뺐어요(견적·정산에서 Σ 로 되돌릴 수 있음)':'';
+  toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')))+srcNote);
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
   openModal('견적서 삭제',`<p style="font-size:13px">‘${escapeHtml(q.title||q.no)}’ 견적서를 삭제할까요?</p>`,
@@ -30614,7 +30681,10 @@ function setupDelegation(){
     if(t.matches('select[data-phase]'))return setPhase(d.phase,t.value);
     if(t.matches('input[data-sel]')){e.stopPropagation();return toggleSel(d.sel);}
     if(t.matches('input[data-ef]')){
-      const f=state.files.find(x=>x.id===d.id);if(!f)return;f.est=f.est||{};
+      const f=state.files.find(x=>x.id===d.id);if(!f)return;
+      // v330 앱 견적(가상 파일)의 금액·고객·날짜는 견적에서 다시 만들어진다 — 여기서 고치면 다시 불러올 때 조용히 되돌아갔다
+      if(f._fromQuote){render();toast('앱에서 만든 견적은 ✍ 편집(견적 편집기)에서 고치세요 — 여기서 고친 값은 남지 않습니다');return;}
+      f.est=f.est||{};
       if(d.ef==='amount')f.est.amount=+t.value.replace(/[^\d]/g,'')||0;else f.est[d.ef]=t.value;
       f.est._edited=true;markDirty();renderEstimateFieldEdit(t.closest('.estimates-view'));return;}
     if(t.matches('input[data-recv]'))return setReceived(d.recv,t.value);
@@ -30794,7 +30864,7 @@ function printQuote(id){
   const q=id?state.quotes.find(x=>x.id===id):state.editingQuote;
   if(!q){toast('견적서를 찾을 수 없습니다.');return;}
   // 편집 중인 견적은 인쇄 전에 자동 저장 → 인쇄·창닫기 후에도 목록에서 계속 수정 가능
-  if(!id&&state.editingQuote){const eq=state.editingQuote;const ix=state.quotes.findIndex(x=>x.id===eq.id);if(ix>=0)state.quotes[ix]=eq;else state.quotes.push(eq);if(eq.project)syncQuoteToProject(eq);else state.files=state.files.filter(f=>f.id!=='quote_'+eq.id);markDirty();}
+  if(!id&&state.editingQuote){quoteCommitEditing(state.editingQuote);markDirty();}   // 목록에는 복사본 — 인쇄 뒤 계속 고친 값은 [저장]해야 남는다
   const __html=`<!doctype html><html><head><meta charset="utf-8"><title>견적서_${escapeHtml(q.title||q.no)}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -32504,8 +32574,10 @@ function quoteHistFilter(){
 function quoteMark(id,res){
   const q=(state.quotes||[]).find(x=>x.id===id);
   if(!q)return;
+  // v330 [📤 보냄]은 보낸 날짜만 켜고 끈다 — 종결·수주 표시와 종결 사유는 그대로 둔다.
+  // 예전에는 result 를 비워 종결 사유가 지워지고 견적이 팔로업·30일 지난 목록으로 돌아왔다(보낸 날짜를 뒤늦게 남기는 흔한 동작).
+  if(res==='sent'){q.sentAt=q.sentAt?'':localDate();markDirty();quoteHistoryView();toast(q.sentAt?'보낸 날짜를 남겼어요':'보냄 표시를 풀었어요');return;}
   q.result=(q.result===res)?'':res;
-  if(res==='sent'){q.sentAt=q.sentAt?'':localDate();q.result='';}
   // v329 '실패' 와 팔로업 「종결」 은 한 개념이다 — result==='lost' 이면 lost:{at,reason} 이 같이 있고, 풀리면 같이 지운다.
   if(q.result==='lost'){if(!q.lost||!q.lost.at)q.lost={at:localDate(),reason:''};}
   else if(q.lost)delete q.lost;

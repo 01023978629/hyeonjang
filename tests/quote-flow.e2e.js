@@ -157,9 +157,11 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return q.result === 'won' && !('lost' in q); }), '② 종결→수주면 lost 지움');
   await page.evaluate(() => quoteMark('q5', 'won'));
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !('lost' in q) && quoteStatus(q) === 'draft'; }), '② 수주 풀면 진행 중(종결로 되살아나지 않음)');
+  // v330 새 계약: [📤 보냄]은 보낸 날짜만 켜고 끈다 — 종결과 사유는 남는다(예전 '종결→보냄이면 lost 지움'은
+  // 보낸 날짜를 뒤늦게 남기려던 종결 견적의 사유를 지우고 팔로업으로 되돌리던 결함이었다. quote-edit-safety ③).
   await page.evaluate(() => { quoteMark('q5', 'lost'); quoteMark('q5', 'sent'); });
-  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !('lost' in q) && quoteStatus(q) === 'sent'; }), '② 종결→보냄이면 lost 지움');
-  await page.evaluate(() => { quoteMark('q5', 'sent'); closeModal(); });
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return q.result === 'lost' && q.lost && !!q.lost.at && !!q.sentAt && quoteStatus(q) === 'lost'; }), '② 종결 뒤 보냄은 종결을 지우지 않는다');
+  await page.evaluate(() => { quoteMark('q5', 'sent'); quoteMark('q5', 'lost'); closeModal(); });
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return !q.result && !q.sentAt && !('lost' in q); }), '② q5 원래대로');
   // 견적 이력에서 사유 칩 — 옛 '실패' 표시(q4)에 사유를 붙인다
   await page.evaluate(() => quoteHistoryView(true));
