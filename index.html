@@ -1113,6 +1113,13 @@ const COMPANY={
     {label:'농협 356-1665-7211-53 전병덕(만물인테리어)', bank:'농협', no:'356-1665-7211-53', holder:'전병덕(만물인테리어)'}
   ]
 };
+/* 계약 대금 지급 비율(계약금·중도금·잔금)의 앱 쪽 정본. 서버 정본은 manmool apps-script-contract/Pure.gs 의
+   PAYMENT_RATIO 이고, 값의 출처는 대표(전병덕)가 확정한 조건 '지급 50/40/10'(ContractService.gs 표준 계약 본문 주석)이다.
+   계약서 초안·간이 계약서·분할납 계획의 기본값과 도움말이 모두 여기서 나온다 — 예전에는 앱만 30/40/30 이라
+   고객이 받은 초안과 전자계약이 서로 다른 돈을 말했다(2026-09-26 대표 승인으로 정리). 바꾸려면 서버와 함께 바꿔라.
+   잔금은 비율로 곱하지 않고 '총액 − 계약금 − 중도금' 으로 둔다(서버 paymentPlan 과 같게 — 합이 총액과 1원도 안 어긋난다). */
+const HJ_PAY_RATIO=Object.freeze({down:0.5,mid:0.4,bal:0.1});
+function hjPayPct(k){return Math.round((HJ_PAY_RATIO[k]||0)*100);}
 
 const KIND={
   estimate:{label:'견적서',folder:'견적서',badge:'clay'},
@@ -7956,7 +7963,7 @@ const AI_TOOLS = [
  {name:'schedule_notify',description:'일정 알림 문자: 지정 날짜(기본 내일)의 일정별 작업자용·고객용 안내 문안을 만들고 화면을 엶. date는 YYYY-MM-DD.',parameters:{type:'OBJECT',properties:{date:{type:'STRING'}}}},
  {name:'backup_status',description:'안전판(이 기기 스냅샷) 이력을 반환하고 관리 화면을 엶. "백업/스냅샷/되돌리기/복구" 관련이면 호출. 실제 복구는 사용자가 화면에서 직접 실행.',parameters:{type:'OBJECT',properties:{}}},
  {name:'profit_analysis',description:'수익 분석: 현장 유형별 마진율·품목별 평균 단가·단가 전략 제안을 반환하고 화면을 엶. "마진/수익/어디가 남나/단가 전략" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'as_manage',description:'AS(하자보수) 전역 현황: 미처리 목록·전체 이력·무상 A/S(완료+1년) 만료 임박을 반환하고 관리 화면을 엶. "AS/하자/무상기간" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'as_manage',description:'AS(하자보수) 전역 현황: 미처리 목록·전체 이력·무상 A/S(완료일부터 공종별 보증기간) 만료 임박을 반환하고 관리 화면을 엶. "AS/하자/무상기간" 관련이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'as_add',description:'[변경] AS 접수 등록. project는 정확한 현장명, issue는 증상.',parameters:{type:'OBJECT',properties:{project:{type:'STRING'},issue:{type:'STRING'},date:{type:'STRING',description:'YYYY-MM-DD, 생략=오늘'}},required:['project','issue']}},
  {name:'apt_orders',description:'아파트(관리사무소) 오더 조회 — 단지·상태별 목록. "아파트 오더 보여줘/관리사무소 일감"이면 호출.',parameters:{type:'OBJECT',properties:{complex:{type:'STRING',description:'단지 이름(부분 일치)'},status:{type:'STRING',description:'recv|visit|work|done|billed|paid'}}}},
  {name:'apt_order_add',description:'[변경] 아파트 관리사무소 오더 접수. complex는 등록된 단지 이름(부분 일치 가능), unit은 동/호(예: 103동 1204호, 지하주차장), work는 작업 내용, amount는 원 단위 금액(모르면 생략=미정).',parameters:{type:'OBJECT',properties:{complex:{type:'STRING'},unit:{type:'STRING'},work:{type:'STRING'},amount:{type:'INTEGER'}},required:['complex','unit','work']}},
@@ -8001,7 +8008,7 @@ const AI_TOOLS = [
  {name:'voice_input',description:'말로 기록(음성 입력) 안내를 연다 — 음성으로 지출·일정·질문을 지시. "말로/음성으로/받아써/음성 입력"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'msg_center',description:'상황별 문자 센터를 연다(착공 안내/준공 인사/AS 답변/리뷰 부탁/감사 인사 — 현장·고객 자동 채움). "착공 문자/준공 문자/고객 문자/인사 문자/문자 보내줘"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'tax_calendar',description:'세금 캘린더를 연다(부가세 1·4·7·10월, 종합소득세 5월 신고 일정 자동 등록·D-day). "세금 일정/부가세 언제/종소세/신고 기한"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'quote_contract',description:'현장에 배정된 견적으로 공사 계약서 초안을 만든다(계약금액·계약금30/중도금40/잔금30·하자보수·계좌 자동 채움, 복사용). "계약서 만들어줘/계약서 초안/수주 확정"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'quote_contract',description:'현장에 배정된 견적으로 공사 계약서 초안을 만든다(계약금액·계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+'·공종별 하자보수·계좌 자동 채움, 복사용). "계약서 만들어줘/계약서 초안/수주 확정"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'bulk_assign',description:'견적 일괄 배정 센터를 연다(파일명에서 현장 자동 매칭 배정 + 목록 붙여넣기 일괄 적용·복구). "일괄 배정/자동 배정/견적 정리/배정 복구"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'backup_center',description:'데이터 백업 센터를 연다(마지막 백업 시점·클라우드 연결 상태·지금 백업·드라이브 연결·복원). "백업/백업하기/데이터 안전/드라이브 백업/자료 지키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'cowork_tasks',description:'PC의 Claude Cowork에게 시킬 명령서를 보관·복사·수정하는 Cowork 작업 지휘부를 연다(카드내역 정리·세금계산서 대조·사진 담당자 전송·월간 종합). "코워크/cowork/명령서/작업 지휘부/홈택스 정리/카드 정리 시키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -10485,7 +10492,7 @@ function hjBootExtras(){
   }catch(e){}
 }
 
-/* ═══════════ 🔧 AS 전역 관리 — 접수·처리 대시 + 무상기간(완료+1년) 알림 ═══════════ */
+/* ═══════════ 🔧 AS 전역 관리 — 접수·처리 대시 + 무상기간(완료+공종별 보증기간) 알림 ═══════════ */
 const AS_STAT={open:['접수','var(--warn)'],doing:['처리중','#b45309'],done:['완료','#0a7f43']};
 function hjWarranty(p){
   // 새 항목별 보증(project.warranty={startedAt,items:[{name,months,expiresAt}]})이 있으면 그걸 우선 — 만료일은 가장 늦은 항목 기준(현장 전체 보증 종료)
@@ -10633,7 +10640,7 @@ function asManage(){
     const c=x.w.dday<0?'var(--muted)':(x.w.dday<=30?'#c2410c':'#0a7f43');
     const t=x.w.dday<0?'만료('+x.w.end+')':(x.w.dday===0?'오늘 만료!':'D-'+x.w.dday+' ('+x.w.end+'까지)');
     return '<div style="display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span>'+escapeHtml(x.name)+' <span style="color:var(--muted);font-size:11px">완료 '+escapeHtml(x.w&&state.projects.find(p=>p.name===x.name).doneAt||'')+'</span></span><b style="color:'+c+'">'+t+'</b></div>';
-  }).join(''):'<div style="font-size:12.5px;color:var(--muted);padding:6px 2px">완료일이 입력된 현장이 없습니다 — 현장을 완료 처리하면 무상 1년이 자동 계산됩니다.</div>';
+  }).join(''):'<div style="font-size:12.5px;color:var(--muted);padding:6px 2px">완료일이 입력된 현장이 없습니다 — 현장을 완료 처리하면 공종별 무상 기간이 자동 계산됩니다.</div>';
   openModal('🔧 AS·하자보수 관리',head+addRow+
     '<div style="max-height:34vh;overflow:auto">'+rows+'</div>'+
     '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">🛡 무상 A/S 기간 (법정 기준 · 방수 3년·설비 2년·마감 1년)</div>'+
@@ -12874,7 +12881,7 @@ const HJ_HELP=[
   {k:'일정 알림',d:'[🔔 알림 문자] — 내일 일정별 작업자용·고객용 안내 문안 자동.',say:'내일 일정 안내 문자 뽑아줘'},
   {k:'오늘 자동 점검',d:'앱을 열면 오늘 일정·일지 미작성·미배정 사진·AS를 훑어 카드로 알려줍니다.',say:'오늘 뭐 챙겨야 해?'},
   {k:'아침 브리핑',d:'하루 한 번 앱을 처음 열면 🌅 브리핑이 자동으로 떠서 오늘 일정·챙길 일을 실행 버튼과 함께 보여줍니다. 대시보드 [🌅 브리핑]으로 다시 열 수 있어요.',say:'오늘 브리핑 보여줘'},
-  {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료+1년) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
+  {k:'AS 관리',d:'더보기 [🔧 AS 관리] — 접수/처리 이력 + 무상 A/S(완료일부터 공종별 보증기간) D-day.',say:'성수동 문 처짐 AS 접수해줘'},
   {k:'아파트 오더',d:'더보기 [🏢 아파트 오더] — 관리사무소에서 받는 세대·공용부 보수 일감. 단지 등록 → 동/호·작업 접수 → 접수·방문·진행·완료·청구·입금 흐름 → 월말 정산서 한 장으로 청구, 입금 확인 시 수금 장부에 자동 기록.',say:'신흥마을 103동 1204호 실리콘 8만원 오더 접수해줘'},
   {k:'현장 지도',d:'더보기 [🗺 현장 지도] — 모든 현장을 단계 색 핀으로 한눈에.',say:'현장 지도 보여줘'}]},
  {t:'⚡ 빠르게 찾기',items:[
@@ -12969,7 +12976,7 @@ const HJ_HELP=[
   {k:'문자 센터',d:'더보기 [💬 문자 센터] — 착공 안내·준공 인사·AS 답변·리뷰 부탁·감사 인사 5가지 상황 문자가 현장·고객 이름이 채워진 채 준비돼요. 수정해서 바로 보내거나 복사하세요.',say:'준공 문자 보내줘'},
   {k:'연간 결산',d:'더보기 [📊 연간 결산] — 연 매출·지출·순이익·성장률·베스트 현장에 AI 총평까지 한 장으로. 5월 종합소득세 준비와 연말 회고에 쓰세요.',say:'올해 결산 보여줘'},
   {k:'세금 캘린더',d:'더보기 [📅 세금 캘린더] — 부가세(1·4·7·10월 25일)와 종합소득세(5월 31일) 신고 일정을 일정 탭에 자동 등록해요. D-day로 남은 날짜를 보여주고, Cowork 세금 정리 명령서로 바로 갈 수 있어요.',say:'세금 일정 알려줘'},
-  {k:'계약서 초안',d:'더보기 [📝 계약서 초안] — 현장에 배정된 견적을 고르면 계약금액·지급조건(계약금30/중도금40/잔금30)·계좌·하자보수가 채워진 공사 계약서 초안이 만들어져요. 복사해서 공사기간·특약만 채우면 됩니다.',say:'계약서 초안 만들어줘'},
+  {k:'계약서 초안',d:'더보기 [📝 계약서 초안] — 현장에 배정된 견적을 고르면 계약금액·지급조건(계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+')·계좌·공종별 하자보수가 채워진 공사 계약서 초안이 만들어져요. 복사해서 공사기간·특약만 채우면 됩니다.',say:'계약서 초안 만들어줘'},
   {k:'견적 일괄 배정',d:'더보기 [🎯 견적 일괄 배정] — 파일명에 현장 이름이 들어 있으면 자동으로 찾아 한 번에 배정합니다(폴더 스캔 후 자동 제안). 또 \'파일명 | 현장 | 금액\' 형식의 목록을 붙여넣어 일괄 적용할 수 있어요(복구·Cowork 정리분 반영용). 배정한 현장이 없으면 자동 생성됩니다.',say:'견적 일괄 배정 열어줘'},
   {k:'백업 센터',d:'더보기 [💾 백업 센터] — 마지막 백업 시점과 클라우드 연결 상태를 보고, 한 번에 백업하거나 구글 드라이브를 연결합니다. 일주일 이상 백업 안 하면 홈에 알림이 뜨고, 드라이브를 연결하면 자료 저장 시 자동으로 클라우드에 백업돼 폰이 고장나도 안전해요.',say:'백업 센터 열어줘'},
   {k:'Cowork 작업 지휘부',d:'더보기 [🖥 Cowork 지휘부] — PC의 Claude Cowork에게 시킬 명령서를 보관합니다. 카드내역 정리·세금계산서 대조·사진 담당자별 전송·월간 종합 4개 기본 명령이 있고, 복사해서 Cowork에 붙여넣으면 됩니다. 작업을 수정하거나 새로 추가할 수 있어요.',say:'Cowork 작업 지휘부 열어줘'},
@@ -19149,7 +19156,7 @@ const CONTRACT_CHECKLIST=[
   {key:'extra',label:'추가 공사 별도 정산',keywords:['추가','변경','별도 정산','협의'],risk:'high',advice:'추가·변경 공사는 반드시 사전 협의 후 별도 정산한다고 넣으세요.'},
   {key:'delay',label:'공기 지연 면책',keywords:['지연','천재지변','공기','기간','책임'],risk:'mid',advice:'천재지변·고객 사정으로 인한 지연은 시공자 책임이 아님을 명시하세요.'},
   {key:'material',label:'자재 대체 조항',keywords:['자재','품절','대체','동급'],risk:'mid',advice:'자재 품절 시 동급 이상으로 대체 가능하다고 넣으면 안전합니다.'},
-  {key:'warranty',label:'하자보수 기간',keywords:['하자','보수','보증','a/s','as'],risk:'mid',advice:'하자보수 기간(예: 1년)과 범위를 명시하세요.'},
+  {key:'warranty',label:'하자보수 기간',keywords:['하자','보수','보증','a/s','as'],risk:'mid',advice:'하자보수 기간(공종별: '+hjWarrantyPeriodText()+')과 범위를 명시하세요.'},
   {key:'cancel',label:'계약 해지 조건',keywords:['해지','해제','위약','취소'],risk:'low',advice:'중도 해지 시 기성고 정산 방식을 넣으면 분쟁이 줄어요.'}
 ];
 function contractReview(qid){
@@ -22774,13 +22781,14 @@ function payPlanDialog(projName){
   let s;try{s=projStats(p.name);}catch(e){s={est:0};}
   const total=s.est||0;
   const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
-  // 기본 3분할(계약금 30·중도금 40·잔금 30)
+  // 기본 3분할은 계약서·전자계약과 같은 정본 비율(HJ_PAY_RATIO). 슬라이더로 현장마다 바꿀 수 있다.
+  const r0=[hjPayPct('down'),hjPayPct('mid'),hjPayPct('bal')];
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">'+escapeHtml(projName)+'</div><div style="font-size:17px;font-weight:800">📅 분할납 계획</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 견적 '+hjMan(total)+'</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">비율을 정하면 각 대금의 예상 금액과 예약 알림을 만들어요.</div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">30%</span></div><input type="range" id="ppR1" min="0" max="100" value="30" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">40%</span></div><input type="range" id="ppR2" min="0" max="100" value="40" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">30%</span></div><input type="range" id="ppR3" min="0" max="100" value="30" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">'+r0[0]+'%</span></div><input type="range" id="ppR1" min="0" max="100" value="'+r0[0]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">'+r0[1]+'%</span></div><input type="range" id="ppR2" min="0" max="100" value="'+r0[1]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">'+r0[2]+'%</span></div><input type="range" id="ppR3" min="0" max="100" value="'+r0[2]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
     '<div id="ppSum" style="font-size:12px;text-align:center;padding:8px;background:var(--paper-2);border-radius:9px;margin-bottom:6px"></div>'+
     '<div style="font-size:11px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 예약일을 정하면 그날 일정표에 뜹니다. 입금 안내 문자도 만들 수 있어요.</div>';
   openModal('📅 '+projName+' 분할납',body,[
@@ -24190,25 +24198,26 @@ function contractDraftText(f){
   const p=(state.projects||[]).find(function(x){return x.name===f.project;})||{};
   const cust=(p.customer&&p.customer.name)||e.customer||'';
   const acc=(COMPANY.accounts&&COMPANY.accounts[0])?COMPANY.accounts[0].label:'';
-  const dp=Math.round(amt*0.3),mp=Math.round(amt*0.4),fp=amt-dp-mp;
+  // 지급 비율은 전자계약 서버와 같은 정본(HJ_PAY_RATIO) — 잔금은 나머지로 둬 셋의 합이 계약금액과 정확히 같다.
+  const dp=Math.round(amt*HJ_PAY_RATIO.down),mp=Math.round(amt*HJ_PAY_RATIO.mid),fp=amt-dp-mp;
   // 부가세 포함/별도 판정: 계약금액(amt)이 공급가+세액에 가까우면 '포함', 공급가에 가까우면 '별도'.
   // (quoteCalc 는 vatIncluded 여부와 무관하게 est.vat 를 항상 계산 → est.vat 존재만으로 '별도'로 찍던 버그.
   //  '별도'로 오표기되면 고객이 이미 포함된 부가세를 다시 얹어야 하는 것으로 오해한다.)
   const sup=e.supply||0,ev=e.vat||0;
   const vatLabel=(ev>0&&sup>0&&Math.abs(amt-sup)<Math.abs(amt-(sup+ev)))
-    ? '별도 '+won(ev)+'원 · 총 '+won(amt+ev)+'원'   // amt가 공급가에 더 가까움 = 부가세 별도
+    ? '별도 '+won(ev)+' · 총 '+won(amt+ev)   // amt가 공급가에 더 가까움 = 부가세 별도 (won() 이 이미 '원'을 붙인다 — 예전엔 '원원')
     : '포함';                                        // amt가 이미 부가세 포함(또는 공급가 정보 없음 → 고객 과다청구 방지 위해 포함으로 간주)
   return '공 사 도 급 계 약 서\n\n'+
     '1. 공사명: '+(f.project||'')+' 인테리어 공사\n'+
     '2. 공사장소: '+((p.customer&&p.customer.addr)||'(현장 주소 기입)')+'\n'+
-    '3. 계약금액: 일금 '+won(amt)+'원정 (부가가치세 '+vatLabel+')\n'+
+    '3. 계약금액: 일금 '+won(amt)+'정 (부가가치세 '+vatLabel+')\n'+
     '4. 공사기간: 착공 20   년   월   일 ~ 준공 20   년   월   일\n'+
     '5. 대금 지급\n'+
-    '   - 계약금(30%): '+won(dp)+'원 — 계약 시\n'+
-    '   - 중도금(40%): '+won(mp)+'원 — 공정 50% 시\n'+
-    '   - 잔금(30%): '+won(fp)+'원 — 준공 검수 후 7일 이내\n'+
+    '   - 계약금('+hjPayPct('down')+'%): '+won(dp)+' — 계약 시\n'+
+    '   - 중도금('+hjPayPct('mid')+'%): '+won(mp)+' — 공정 50% 시\n'+
+    '   - 잔금('+hjPayPct('bal')+'%): '+won(fp)+' — 준공 검수 후 7일 이내\n'+
     '   - 입금계좌: '+acc+'\n'+
-    '6. 하자보수: 준공일로부터 1년 (통상 마모·사용자 과실 제외)\n'+
+    '6. 하자보수: 준공일로부터 공종별로 '+hjWarrantyPeriodText(p.warranty&&p.warranty.items)+' (통상 마모·사용자 과실 제외)\n'+
     '7. 특약사항:\n   - \n   - \n\n'+
     '위 계약을 증명하기 위해 계약서 2부를 작성하여 각 1부씩 보관한다.\n\n'+
     '20   년   월   일\n\n'+
@@ -24376,7 +24385,7 @@ function msgTemplate(kind,p,extra){
   const sign='\n'+COMPANY.name+' '+COMPANY.owner+' 드림 ('+COMPANY.tel+')';
   const T={
     start:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사를 '+(extra.date||'예정일')+'에 착공합니다.\n작업 시간은 오전 9시~오후 6시이며, 소음·자재 반입이 있을 수 있어 미리 양해 말씀드립니다.\n진행 중 궁금하신 점은 언제든 연락 주세요.'+sign,
-    done:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사가 마무리되었습니다. 믿고 맡겨주셔서 진심으로 감사합니다.\n사용하시다 불편한 점이 있으면 바로 연락 주세요 — 하자보수는 준공일로부터 1년간 책임지고 처리해 드립니다.'+sign,
+    done:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사가 마무리되었습니다. 믿고 맡겨주셔서 진심으로 감사합니다.\n사용하시다 불편한 점이 있으면 바로 연락 주세요 — 하자보수는 준공일로부터 공종별로 '+hjWarrantyPeriodText(p&&p.warranty&&p.warranty.items)+' 동안 책임지고 처리해 드립니다.'+sign,
     as:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' A/S 요청 잘 접수했습니다. 불편을 드려 죄송합니다.\n빠른 시일 내 방문 일정을 잡아 연락드리겠습니다. 편하신 시간대를 알려주시면 맞춰 방문하겠습니다.'+sign,
     recvok:(function(){
       const mine=(state.payLog||[]).filter(function(x){return x.project===(p&&p.name);});
@@ -26711,7 +26720,10 @@ function contractDefaults(qid){
   return {q, kind:'contract', title:q.title||q.project||'인테리어 공사',
     custName:cust.name||'', custTel:cust.phone||'', addr:cust.addr||'',
     total:c.total, vat:q.vatIncluded?'포함':'별도',
-    p1:30,p2:40, warranty:12, from:'', to:'', memo:''};
+    // 지급 비율 기본값은 정본(HJ_PAY_RATIO — 전자계약 서버와 같은 값), 화면에서 바꿀 수 있다.
+    // 보증 기간은 한 숫자(옛 기본값 한 해)가 아니라 공종별 기간 글 — 현장 🛡 보증 항목, 없으면 법정 기본(WARRANTY_ITEMS_DEFAULT).
+    // 한 숫자로는 공종마다 다른 법정 기간을 동시에 말할 수 없어 보증서·전자계약과 늘 어긋났다.
+    p1:hjPayPct('down'),p2:hjPayPct('mid'), warranty:hjWarrantyPeriodText(proj.warranty&&proj.warranty.items), from:'', to:'', memo:''};
 }
 function drawDocCanvas(d,sigCv){
   const W=1240,H=1754,cv=document.createElement('canvas');cv.width=W;cv.height=H;
@@ -26740,7 +26752,9 @@ function drawDocCanvas(d,sigCv){
     T('① 계약금('+d.p1+'%): ₩'+a1.toLocaleString('ko-KR')+'  — 계약 시',20);y+=32;
     T('② 중도금('+d.p2+'%): ₩'+a2.toLocaleString('ko-KR')+'  — 공정 중간',20);y+=32;
     T('③ 잔    금('+(100-d.p1-d.p2)+'%): ₩'+a3.toLocaleString('ko-KR')+'  — 완료 확인 후',20);y+=44;
-    T('하자보수: 을은 공사 완료일로부터 '+d.warranty+'개월간 시공 하자를 무상 보수한다.',20);y+=44;
+    // 공종별 기간은 한 줄에 안 들어가므로 접어 쓴다(한 줄이면 예전과 같은 간격 44).
+    ctx.font='400 20px "Noto Sans KR","Apple SD Gothic Neo",sans-serif';ctx.textAlign='left';ctx.fillStyle='#1a2430';
+    y=__docWrap(ctx,'하자보수: 을은 공사 완료일로부터 공종별로 '+String(d.warranty||hjWarrantyPeriodText())+' 동안 시공 하자를 무상 보수한다.',M,y,W-M*2,32)+12;
   }else{
     ctx.font='400 21px "Noto Sans KR",sans-serif';ctx.textAlign='left';ctx.fillStyle='#1a2430';
     y=__docWrap(ctx,'상기 공사가 계약(견적) 내용대로 완료되었음을 확인하며, 이 확인서로써 잔금 청구에 동의합니다.',M,y,W-M*2,34);y+=14;
@@ -26797,12 +26811,13 @@ function openContractDoc(qid){
       <label style="flex:1"><input type="radio" name="dockind" value="contract" checked> 간이 계약서</label>
       <label style="flex:1"><input type="radio" name="dockind" value="confirm"> 작업완료 확인서</label>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;font-size:13px">
       <input id="dcName" placeholder="고객 성명" value="${escapeAttr(d.custName)}">
       <input id="dcTel" placeholder="고객 연락처" value="${escapeAttr(d.custTel)}">
       <input id="dcAddr" placeholder="공사장소(주소)" value="${escapeAttr(d.addr)}" style="grid-column:1/3">
       <input id="dcFrom" type="date" title="공사 시작"><input id="dcTo" type="date" title="공사 종료">
-      <span id="dcPayRow" style="grid-column:1/3;display:flex;gap:6px;align-items:center">계약금 <input id="dcP1" type="number" value="30" style="width:64px">% · 중도금 <input id="dcP2" type="number" value="40" style="width:64px">% · 잔금 자동 · 하자 <input id="dcWar" type="number" value="12" style="width:64px">개월</span>
+      <span id="dcPayRow" style="grid-column:1/3;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><span style="white-space:nowrap">계약금 <input id="dcP1" type="number" value="${d.p1}" style="width:64px">%</span><span style="white-space:nowrap">· 중도금 <input id="dcP2" type="number" value="${d.p2}" style="width:64px">%</span><span style="white-space:nowrap">· 잔금 자동</span></span>
+      <span id="dcWarRow" style="grid-column:1/3;font-size:12px;color:var(--muted);line-height:1.5">🛡 하자보수: 공종별로 ${escapeHtml(d.warranty)} — 계약서에 이대로 들어갑니다</span>
       <textarea id="dcMemo" placeholder="특약·비고 (선택)" style="grid-column:1/3;min-height:56px"></textarea>
     </div>
     <div style="margin-top:10px"><b style="font-size:13px">고객 서명(손가락으로)</b> <button class="ghost tiny" id="sigClear" style="margin-left:6px">지우기</button>
@@ -26826,7 +26841,7 @@ function openContractDoc(qid){
   const sc=document.getElementById('sigClear');
   if(sc)sc.onclick=()=>{if(pctx){pctx.clearRect(0,0,pad.width,pad.height);sigDrawn=false;}};
   const collect=()=>{const g=i=>document.getElementById(i);const kind=(document.querySelector('input[name=dockind]:checked')||{}).value||'contract';
-    return Object.assign({},d,{kind,custName:g('dcName').value.trim(),custTel:g('dcTel').value.trim(),addr:g('dcAddr').value.trim(),from:g('dcFrom').value,to:g('dcTo').value,p1:+g('dcP1').value||30,p2:+g('dcP2').value||40,warranty:+g('dcWar').value||12,memo:g('dcMemo').value.trim()});};
+    return Object.assign({},d,{kind,custName:g('dcName').value.trim(),custTel:g('dcTel').value.trim(),addr:g('dcAddr').value.trim(),from:g('dcFrom').value,to:g('dcTo').value,p1:+g('dcP1').value||d.p1,p2:+g('dcP2').value||d.p2,memo:g('dcMemo').value.trim()});};
   const run=async(asPdf)=>{const data=collect();
     if(data.p1+data.p2>100){toast('계약금+중도금이 100%를 넘습니다');return;}
     const cvv=drawDocCanvas(data,sigDrawn?pad:null);
@@ -26834,8 +26849,8 @@ function openContractDoc(qid){
     await __docExport(cvv,nm,asPdf);};
   const bi=document.getElementById('dcImg');if(bi)bi.onclick=()=>run(false);
   const bp=document.getElementById('dcPdf');if(bp)bp.onclick=()=>run(true);
-  // 작업확인서 선택 시 대금 행 숨김
-  document.querySelectorAll('input[name=dockind]').forEach(r=>r.onchange=()=>{const row=document.getElementById('dcPayRow');if(row)row.style.display=(r.value==='confirm'&&r.checked)?'none':'flex';});
+  // 작업확인서 선택 시 대금·하자 행 숨김(작업확인서에는 둘 다 안 찍힌다)
+  document.querySelectorAll('input[name=dockind]').forEach(r=>r.onchange=()=>{const off=(r.value==='confirm'&&r.checked);const row=document.getElementById('dcPayRow');if(row)row.style.display=off?'none':'flex';const wr=document.getElementById('dcWarRow');if(wr)wr.style.display=off?'none':'';});
 }
 /* ═══════════ (B) 고객 진행 리포트 — 카톡용 이미지 1장 ═══════════ */
 async function makeProgressReport(projName){
@@ -30134,7 +30149,9 @@ async function buildAptReportPDF(o){
     T(COMPANY.name+'  대표 '+COMPANY.owner+'   (서명)  ______________',260,y,'28px sans-serif','#111');y+=110;
     T('확인 (관리사무소)',70,y,'bold 28px sans-serif','#0b4ea2');
     T('직책: __________   성명: __________   (서명)  ______________',260,y,'28px sans-serif','#111');y+=140;
-    T('· 하자보수: 준공일로부터 1년간 책임 보수 (공종별 상세는 계약서 기준)',70,y,'25px sans-serif','#555');y+=44;
+    // 보증 기간은 정본(현장 🛡 보증 항목, 없으면 법정 기본)에서 — 예전의 '한 해' 단독 약속은 보증서(방수 3년)와 어긋났다
+    const wpj=(state.projects||[]).find(function(q){return q&&q.name===o.site;});
+    y=T('· 하자보수: 준공일로부터 공종별로 '+hjWarrantyPeriodText(wpj&&wpj.warranty&&wpj.warranty.items)+' 책임 보수 (세부는 계약서 기준)',70,y,'25px sans-serif','#555',CW-140)+8;
     T('· 문의: '+COMPANY.owner+' '+COMPANY.tel,70,y,'25px sans-serif','#555');
   }));
 
