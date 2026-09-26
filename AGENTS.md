@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-26 폰 규칙 한 벌·실무 빈 고리 v329 (PR 후보, v328 위)
+
+v328 과 같은 PR(#162)에 얹었다. 작업 트리 6개에서 구현 → 적대적 검토 → 고침.
+- **폰 전역 규칙(body.mobile-mode 와 `@media(max-width:640px)` 양쪽)**: 입력 16px(`!important` — 인라인 113곳을 이긴다, 큰 글씨 모드는 `max(16px,…)`), 체크박스·라디오 22px + 감싼 label 44, `tel:`·`sms:`·버튼형 링크 44, 버튼 44. **새 화면에 16px·44px 을 또 덧대지 마라** — 패널별 덧댐은 죽은 줄이라 지웠다. 인라인 `min-height` 44 미만 버튼은 `tap-inline.check.js` 가 막는다. `--muted` #587391(흰 바탕 4.9:1), `.footnote` = var(--muted) — 대표 승인 2026-09-26.
+- **`tests/mobile-more-sweep.e2e.js`**: 더보기 119화면을 대상 함수 스텁 없이 실제로 연다 — 360 폰 모드·360 PC 모드(@media 만)·768 폰 모드(body 규칙만) 세 번. 넘침·44·16·체크박스 22·Esc 초점 복귀·대비. 허용목록 3(addproject 브라우저 prompt·opendrive 새 창·restore PC 전용). 새 더보기 기능은 여기서 자동으로 검사된다.
+- **AI 비서 시트**: role=dialog·폰 뒤로가기 = 닫기(`mobileSheetHistoryOpen`)·스크롤 잠금(`body.ai-sheet-open` — `modal-open` 을 쓰면 위에서 모달이 닫힐 때 풀린다)·연 버튼으로 초점(`aiSheetOpenA11y`/`aiHide(fromHistory)`).
+- **검증 오류는 칸에 `hjFieldIssue(el,msg)`**(aria-invalid·칸 아래 role=alert·입력하면 풀림, 토스트는 그대로). AS·아파트 오더·거래처·자재·수금·노하우 7화면만 붙였다 — 나머지 검증 토스트 약 50곳은 아직. `#toast` role=status, 표시 시간 2.4초+글자당 40ms(상한 6초). 자료 없는 통계(funnelView·cashFlow)는 숫자 대신 .empty — '안정적' 단정 금지.
+- **대시보드 표 카드화**: `dash-cards` 클래스 + `hjDashCardLabels`(헤더 → `data-label`), 폰이면 `wrapWideTables` 가 `.tbl-scroll` 로 감싸지 않는다(`hjDashCardsPhone` = CSS 와 같은 두 조건). 아파트 오더 줄 `.apo-head/.apo-tools` 는 폰에서 줄바꿈.
+- **AS 기록(asLog 레코드 안)**: visitAt(넣으면 일정 등록을 묻고 `visitSchedId` 로 기억 — 다시 바꾸면 옮긴다)·fix·fee(비우면 무상, **옛 완료 기록에 '무상'을 지어내지 않는다**)·warrantyItem(**접수일 기준** 보증 안/밖)·photos(안정 참조). 'AS 방문' 일정은 공사 기간 계산에서 뺀다. 접수·보증 목록에 보관 현장 포함(`warrantyList(withArchived)`, 알림 `warrantyDue` 는 여전히 뺌). 고객 안내 문자는 기존 `msgTemplate('as')` 복사·공유뿐.
+- **준공 체크 → 기능**: `STAGE_CHECK_GO`·`stageChecklistItems(p,idx)`. 예치금(siteRules.deposit)이 있으면 '관리실 예치금 환급 확인' 행. 작업지시 주의사항은 `hjSiteText`(출입번호 걸러짐)로 미리 채운다. 계약 초안 7항에 작업시간·엘리베이터·폐기물 칸 값(새 문구 없음). 도어락 안내는 문안이 없어 버튼 없음(문안 신설은 대표 승인).
+- **견적 흐름**: 「📐 실측에서 가져오기」(`#qmMeasure`, 단가 0 — 금액을 짓지 않는다, `measureRef` 로 중복 방지). 미수주 **종결 = 옛 '실패'(result:'lost') 한 개념** + `lost:{at,reason}`(`HJ_QUOTE_LOST_REASONS` 5개), 수주 분석은 `quoteStatus` 한 곳으로 센다(수주 = 현장 연결 또는 수주 표시 — 결산 수주율이 오를 수 있다). 30일 지난 진행 견적은 `quoteStaleData`(365일까지). `customerTimeline` = `hjStoryData`(고객 화면에 계약·AS·보증·추가공사도 보인다).
+- **v328 통합 후속(같은 PR)**: 청구서·명세서 품목과 `hjExtrasBill` 이 같은 '집계된 견적'(`hjCountedEstIds`)을 본다. 견적에 담는 추가공사는 부가세 포함/별도 둘 다 청구 합계가 확인 금액만큼만 오르게 단가를 역산한다. 이름 변경은 `due_` 수금 일정 id·제목까지. 전체장부 엑셀 **11시트**(추가공사 시트 — '견적에 담김' 행은 들이지 않는다). 선택 복원은 같은 `officeIntakeProjectId` 쌍둥이를 만들지 않고, '(삭제됨)' 기록이 하나뿐이면 다시 잇는다(`hjProjectTombstonesOf`). 지운 portal_key 는 IDB `portal_key_dropped` 로 되살아나지 않는다. 검사 `v328-integration.e2e.js`.
+- 대표 확인 대기(v329): ① 폰 폭에서 입력·버튼이 커져 긴 화면이 조금 더 길어짐, 보조 글자 색 ② 준공 체크의 보증서·리뷰 버튼은 완료일이 생긴 뒤에야 동작 ③ 견적 '실패' → '종결' 표기(엑셀 상태 열 포함) ④ 공사 스토리(고객 카톡)에 'AS 처리 — 처리 내용 30자' 줄 ⑤ 통계 빈 화면 문구·토스트 최대 6초 ⑥ 부가세 모를 때 종이 계약 초안 문구 ⑦ '견적에 담김' 추가공사는 엑셀 이사 때 기록이 안 옮겨짐.
+- 남은 것(다음 묶음): 지운 현장의 `due_` 수금 일정이 제목째 남는다(hjDeleteProjectCore) · 전체장부 엑셀에 AS 새 열 없음 · 사례 zip summary 32px.
+
 ## 2026-09-26 계약·정산 정확성·데이터 안전·개인정보 v328 (PR 후보)
 
 대표 "위 내용 진행"(2026-09-26). 작업 트리 10개에서 구현 → 적대적 검토 → 고침을 거쳐 합쳤다. 기준 main `b519e35`(v327).
@@ -673,7 +688,7 @@ node scripts/verify-office-ops-branch-scope.mjs
 - AI: `geminiCall()`(서버 중계 우선), `aiFC()`(도구 호출), `AI_TOOLS`/`aiToolRun()`
 - 아파트 오더: `aptOrderManage()`, `aptSettle()`, `aptStats()`, `aptPhotoCount()`
 - 주간·운영 보고: `weekBriefData/Text()`, `opsReportData/Text()`
-- 전체 장부 엑셀: `exportFullXlsx()` (10시트)
+- 전체 장부 엑셀: `exportFullXlsx()` (11시트 — v328 추가공사)
 - `apps-script-commercial/`: separate Apps Script project인 source-only 프로젝트.
   자체 Script Properties와 수동 deployment가 필요하고 `APP_TOKEN`을 공유하지 않으며,
   Pages merge로 배포되지 않는다.
