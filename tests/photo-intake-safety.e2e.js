@@ -288,6 +288,14 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     __reset(); state.files = [rec('z2', 'IMG_9.jpg', 100000, 'A현장')];
     await relayLoadDriveFiles(true);
     out.smallFiles = dView();
+    // (바) 기록 연결 대기 중인 기록은 이름 맞추기에서 빠진다 — 이름만 같은 다른 서버 사진(아이폰 image.jpg)이 그 기록을 가져가지 않는다.
+    //     비우기가 도는 중이라 연결 대기 항목은 'keep'(그쪽이 처리) — 이 기록의 참조가 pendingRefs 에 올라가야 한다.
+    __reset(); state.files = [rec('pp1', 'image.jpg', 900, 'A현장')];
+    await idbSet('relay_queue', [{ id: 'q-p', action: 'link', ref: 'k:' + fileKey(state.files[0]), project: 'A현장', fileId: 'DRV_PEND', mimeType: 'image/jpeg', size: 480, createdAt: Date.now(), linkAt: Date.now(), retryCount: 0 }]);
+    window.cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRV_OTHER', name: 'image.jpg', mimeType: 'image/jpeg', size: 500 }] });
+    __relayFlushing = true;
+    try { await relayLoadDriveFiles(true); } finally { __relayFlushing = false; }
+    out.pendFiles = dView();
     window.relayCall = origCall; window.relayReady = origReady; window.cloudApiListFiles = origList;
     await idbSet('relay_queue', []);
     return out;
@@ -305,6 +313,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   ok('③-2 모호한 연결 — 풀릴 때까지 기다린다');
   assert(r3b.oldQ.length === 0 && r3b.oldFiles.some(x => x.d === 'DRV_OLD_LINK' && x.p === null && x.v), '③-2 놓아줄 때가 지난 연결 대기는 지우고 미배정으로 들인다: ' + JSON.stringify([r3b.oldQ, r3b.oldFiles]));
   ok('③-2 오래된 연결 대기는 놓아준다');
+  assert(r3b.pendFiles.some(x => x.id === 'pp1' && x.d === null) && r3b.pendFiles.some(x => x.d === 'DRV_OTHER' && x.p === null && x.v),
+    '③-2 연결 대기 중인 기록을 이름만 같은 다른 서버 사진이 가져갔다: ' + JSON.stringify(r3b.pendFiles));
+  ok('③-2 연결 대기 기록은 이름 맞추기에서 빠진다');
   assert(r3b.bigFiles.find(x => x.id === 'z1').d === null && r3b.bigFiles.some(x => x.d === 'DRV_BIG' && x.p === null), '① 서버 사본이 원본보다 크면 잇지 않는다: ' + JSON.stringify(r3b.bigFiles));
   assert(r3b.smallFiles.length === 1 && r3b.smallFiles[0].d === 'DRV_BIG', '① 서버 사본이 작으면 잇는다(대조): ' + JSON.stringify(r3b.smallFiles));
   ok('① 압축본이 원본보다 크면 잇지 않는다');

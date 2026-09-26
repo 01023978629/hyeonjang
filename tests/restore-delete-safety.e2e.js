@@ -321,6 +321,36 @@ const N = '가상안전현장';
       '근거 없는 (삭제됨) 기록을 이었거나 조용히 두었다 ' + JSON.stringify(r));
   });
 
+  // v331 후속: 같은 이름 새 현장에 이미 수금 약속일 알림이 있으면 옛 메모 알림은 옮기지 않는다 — 그 사실을 토스트가 말해야 한다
+  await test('⑥ 같은 이름 새 현장에 약속일 알림이 이미 있으면 옛 메모 알림은 「(삭제됨)」 에 남기고 그렇다고 알린다', async () => {
+    await seedDue({ memo: '가상 메모' });
+    await dueLine(); await clickDelete();
+    await page.evaluate(N => { const p = { name: N, stage: 0, received: 0, phases: [], cost: {}, dueDate: '2026-11-01' }; state.projects.push(p); upsertDueSchedule(p); }, N);
+    await clickRestore();
+    const r = await page.evaluate(N => ({ pay: state.payLog.map(x => x.project), tomb: state.schedule.filter(s => /^due_\(삭제됨\)/.test(s.id)).map(s => s.memo),
+      toast: window.__toasts.join(' ') }), N);
+    assert(JSON.stringify(r.pay) === JSON.stringify([N]) && JSON.stringify(r.tomb) === JSON.stringify(['가상 메모']), '잇기·남기기가 계약과 다르다 ' + JSON.stringify(r));
+    assert(/옛 수금 약속일 메모는 「\(삭제됨\) 가상안전현장/.test(r.toast), '(삭제됨) 쪽에 남긴 메모 알림을 말하지 않았다 ' + r.toast);
+  });
+
+  // v331 후속(검토 medium): 같은 이름 현장이 이미 있을 때 백업의 관리사무소 식별자를 지금 다른 현장이 쓰고 있으면, 그 식별자로
+  // 걸어 그 현장의 아파트 오더를 끌어오면 안 된다('(삭제됨)' 이름의 기록만 잇는다)
+  await test('⑥ 같은 이름 현장 복원 — 백업 식별자를 지금 쓰는 다른 현장의 아파트 오더는 끌어오지 않는다', async () => {
+    const ID = 'office-project-fake001';
+    await seedDue({});
+    await page.evaluate(ID => { window.__backups[0].data.projects[0].officeIntakeProjectId = ID; }, ID);
+    await dueLine(); await clickDelete();
+    await page.evaluate(({ N, ID }) => {
+      state.projects.push({ name: N, stage: 0, received: 0, phases: [], cost: {} });
+      state.projects.push({ name: '가상다른현장', stage: 1, received: 0, phases: [], cost: {}, officeIntakeProjectId: ID });
+      state.aptOrders = [{ id: 'ord-fake-1', project: '가상다른현장', projectIdentity: ID, unit: '101동 101호', status: '접수' }];
+    }, { N, ID });
+    await clickRestore();
+    const r = await page.evaluate(N => ({ ord: state.aptOrders.map(o => o.project), pay: state.payLog.map(x => x.project), toast: window.__toasts.join(' ') }), N);
+    assert(JSON.stringify(r.pay) === JSON.stringify([N]) && /다시 이었습니다/.test(r.toast), '근거 있는 (삭제됨) 기록을 잇지 않았다 ' + JSON.stringify(r));
+    assert(JSON.stringify(r.ord) === JSON.stringify(['가상다른현장']), '다른 현장의 아파트 오더가 복원 현장으로 끌려왔다 ' + JSON.stringify(r));
+  });
+
   await test('⑥ 이 이름으로 지운 기록이 이미 있으면 "알림은 다시, 적어 둔 내용은 자동으로 잇지 않습니다" — 실제 복원과 같다', async () => {
     await seedDue({ memo: '가상 메모' }, true);
     const t = await dueLine();

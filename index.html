@@ -29140,13 +29140,14 @@ function restoreSelect(idx){
        const picked=[...document.querySelectorAll('input[data-bkp]:checked')].map(c=>+c.dataset.bkp);
        if(!picked.length){toast('현장을 선택하세요.');return;}
        await makeCheckpoint('선택복원 전 자동백업');
-       const names=new Set(),blocked=[],relinked=[],manyTombs=[],existTombs=[];
+       const names=new Set(),blocked=[],relinked=[],manyTombs=[],existTombs=[],dueLeft=[];
        // '(삭제됨)' 이름 t 의 기록을 이름 name 으로 다시 잇는다. 같은 이름 현장에 이미 수금 약속일 알림이 있으면 옛 알림은
        // 옮기지 않고 '(삭제됨)' 이름 그대로 둔다(같은 id 알림이 둘이 되면 다음 약속일 저장이 메모 적힌 쪽까지 걷는다).
        const relink=(t,name,bid)=>{
          const dueTaken=(state.schedule||[]).some(r=>r&&r.id==='due_'+name);
          hjProjectRefWalk(t,(k,r,set)=>{if(dueTaken&&k==='schedule'&&r.id==='due_'+t)return;set(name);},bid);hjProjectRefLocal(t,name);
          if(!dueTaken)hjDueScheduleRelink(t,name);
+         else if((state.schedule||[]).some(r=>r&&r.id==='due_'+t))dueLeft.push(t);   // 말없이 두지 않는다 — 어디 남았는지 알린다
          if(state.editingQuote&&state.editingQuote.project===t)state.editingQuote.project=name;
          relinked.push(name);
        };
@@ -29176,7 +29177,11 @@ function restoreSelect(idx){
            /* v331 같은 이름 현장이 이미 있으면(지운 뒤 같은 이름으로 새로 만든 경우) 예전에는 덮어쓰기만 하고 '(삭제됨)' 기록을
               잇지 않았다 — 되돌린 수금 합계와 수금 기록이 따로 놀았다. 이 백업의 기록과 같은 기록이 든 '(삭제됨)' 묶음이 딱 하나일
               때만 잇는다(그 묶음이 이 백업의 현장이라는 근거). 근거가 없으면 더 옛날에 지운 다른 현장일 수 있어 잇지 않고 알린다. */
-           if(proven.length===1)relink(proven[0],bp.name,bid);
+           /* 백업의 식별자(bid)로 걸으면 hjProjectRefWalk 가 이름과 무관하게 그 식별자의 아파트 오더를 옮긴다. 지금 다른 현장이
+              그 식별자를 쓰고 있으면(관리사무소 접수로 다른 이름에 다시 생긴 현장) 그 현장 오더까지 끌려온다 — 그때는 식별자 없이
+              '(삭제됨)' 이름으로만 잇는다. 지금 이 현장(exist)이 쓰는 식별자거나 아무도 안 쓰면 그대로 쓴다. */
+           const bidOther=bid&&state.projects.some(x=>x&&x!==exist&&officeIntakeValidProjectIdentity(x.officeIntakeProjectId)===bid);
+           if(proven.length===1)relink(proven[0],bp.name,bidOther?undefined:bid);
            else if(proven.length>1)manyTombs.push(bp.name);
            else if(tombs.length)existTombs.push(bp.name);
            hjDueScheduleRestore(exist);
@@ -29197,6 +29202,7 @@ function restoreSelect(idx){
        state.tab='dashboard';markDirty();closeModal();render();
        toast(names.size+'개 현장을 복원했습니다'+(nFiles?' · 파일 '+nFiles+'개 되돌림':'')+'.'+
          (relinked.length?' 지울 때 「(삭제됨)」 으로 옮겨 둔 수금·견적·AS 기록을 다시 이었습니다('+relinked.join(', ')+').':'')+
+         (dueLeft.length?' 같은 이름 현장에 수금 약속일 알림이 이미 있어, 옛 수금 약속일 메모는 「'+dueLeft.join(', ')+'」 일정에 남겨 두었습니다.':'')+
          (manyTombs.length?' 「(삭제됨) '+manyTombs.join(', ')+' …」 기록이 여러 벌이라 자동으로 잇지 않았습니다.':'')+
          (existTombs.length?' 「'+existTombs.join(', ')+'」 은 같은 이름 현장이 이미 있어, 이 백업과 같은 기록이 확인된 「(삭제됨)」 기록만 잇습니다 — 확인되지 않아 「(삭제됨) '+existTombs.join(', ')+' …」 수금·견적·AS 기록은 그대로 두었습니다.':'')+
          (blocked.length?' '+blocked.map(x=>'「'+x[0]+'」 은 지금 「'+x[1]+'」 로 이름이 바뀐 같은 현장이라 건너뜀').join(' · ')+'.':''));
