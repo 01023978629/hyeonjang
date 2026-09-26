@@ -194,14 +194,31 @@ let browser;
     restoreUserEdits(fresh);
     state.files = [fresh];
     const after = serializeData().files[0];
-    return { before, after };
+    // ⑥' 분류가 other·현장 없음 — 손댄 흔적이 이 한 필드뿐인 파일도 백업에 담겨 재스캔에서 살아난다
+    //     (kind!=='other' 이 이미 참인 위 시드로는 touched 조건의 새 항목을 지키지 못한다 — 필드마다 따로 본다)
+    const only = { ledger: { type: 'card', rows: 1 }, quote: { items: [{ name: '가상 품목', qty: 1, price: 1000 }] },
+      address: '대전 가상구 · 손으로 적은 건물', _gdFolder: '기타', exSum: true };
+    const lone = {};
+    for (const [k, v] of Object.entries(only)) {
+      const name = '기타_' + k.replace('_', '') + '.pdf';
+      const base = { id: 'o-' + k, name, handle: null, prefix: '기타/', ext: 'pdf', size: 111, kind: 'other', project: null, when: null,
+        lat: null, lng: null, place: null, address: null, thumb: null, text: '', ocr: 'na', est: null, contact: null,
+        _driveMimeType: null, _driveSize: 0, _file: null };
+      state.files = [{ ...structuredClone(base), [k]: structuredClone(v) }];
+      backupUserEdits();
+      const fresh2 = { ...structuredClone(base), id: 'o2-' + k, ocr: 'pending' };
+      restoreUserEdits(fresh2);
+      lone[k] = JSON.stringify(fresh2[k] === undefined ? null : fresh2[k]) === JSON.stringify(v) ? 'ok' : 'lost: ' + JSON.stringify(fresh2[k]);
+    }
+    return { before, after, lone };
   });
   for (const k of Object.keys(r6.before)) {
     const bv = JSON.stringify(r6.before[k] === undefined ? null : r6.before[k]);
     const av = JSON.stringify(r6.after[k] === undefined ? null : r6.after[k]);
     assert(bv === av, `⑥ 재스캔 뒤 "${k}" 가 사라지거나 바뀌었다(backupUserEdits/restoreUserEdits 에 없다): 저장 ${bv} → 재스캔 후 ${av}`);
   }
-  console.log('PASS  ⑥ 재스캔 편집 백업 — 저장 레코드 전 필드가 새로 읽은 레코드에 되살아난다');
+  for (const [k, v] of Object.entries(r6.lone)) assert(v === 'ok', `⑥' kind other·현장 없음 파일의 "${k}" 가 재스캔에서 사라졌다(backupUserEdits touched 조건): ${v}`);
+  console.log('PASS  ⑥ 재스캔 편집 백업 — 저장 레코드 전 필드가 새로 읽은 레코드에 되살아난다(other 분류·필드 하나만 손댄 파일 포함)');
 
   // ⑦ 원본/정리본 병합의 원본 증빙
   const r7 = await page.evaluate(() => {
@@ -228,7 +245,16 @@ let browser;
       rec('dup.jpg', '현장사진/_확인필요/', 900, { driveId: 'drive-dup' }),
       // F: 같은 Drive ID 두 기록 — 지워질 쪽에만 Drive 형식·크기 → 남는 쪽에 채운다
       rec('dm.jpg', '현장사진/', 100, { driveId: 'drive-dm', driveMimeType: 'image/jpeg', driveSize: 777 }),
-      rec('dm.jpg', '현장사진/_확인필요/', 900, { driveId: 'drive-dm' })
+      rec('dm.jpg', '현장사진/_확인필요/', 900, { driveId: 'drive-dm' }),
+      // G: 원본에만 해시(서버 원본 기록 없음) → 합치면 해시가 사라진다 → 둘 다 남긴다
+      rec('hs.jpg', '현장사진/', 100, { sourceSha256: sha }),
+      rec('hs.jpg', org(), 90, {}),
+      // H: 같은 서버 원본 기록인데 해시만 다르다 → 같은 바이트라는 근거가 없다 → 둘 다 남긴다
+      rec('hd.jpg', '현장사진/', 100, { sourceSha256: sha, mediaOriginal: { fileId: 'TEST_ORIGINAL_HD', sha256: sha, size: 100 } }),
+      rec('hd.jpg', org(), 90, { sourceSha256: orgSha, mediaOriginal: { fileId: 'TEST_ORIGINAL_HD', sha256: sha, size: 100 } }),
+      // I: 같은 Drive ID 두 기록 — 지워질 쪽(작은 쪽)에만 해시 → 둘 다 남긴다
+      rec('ds.jpg', '현장사진/', 100, { driveId: 'drive-ds', sourceSha256: sha }),
+      rec('ds.jpg', '현장사진/_확인필요/', 900, { driveId: 'drive-ds' })
     ];
     const compact = mergeOrganizedPhotoDuplicates(JSON.parse(JSON.stringify(files)));
     const pick = (list, name, prefixStart) => list.filter(f => f.name === name && (!prefixStart || String(f.prefix).startsWith(prefixStart)));
@@ -248,6 +274,9 @@ let browser;
       ok: pick(c, 'ok.jpg').map(f => ({ prefix: f.prefix, driveId: f.driveId, sha: f.sourceSha256 })),
       dup: pick(c, 'dup.jpg').map(f => f.prefix + '|' + ((f.mediaOriginal || {}).fileId || '')),
       dm: pick(c, 'dm.jpg').map(f => ({ prefix: f.prefix, mime: f.driveMimeType, size: f.driveSize })),
+      hs: pick(c, 'hs.jpg').map(f => f.prefix + '|' + (f.sourceSha256 || '')),
+      hd: pick(c, 'hd.jpg').map(f => f.prefix + '|' + (f.sourceSha256 || '')),
+      ds: pick(c, 'ds.jpg').map(f => f.prefix + '|' + (f.sourceSha256 || '')),
       liveRaw: liveRaw ? { sha: liveRaw._originalSha256, orig: (liveRaw._mediaOriginal || {}).fileId, driveId: liveRaw._driveId } : null,
       liveMv: liveMv.map(f => ({ prefix: f.prefix, driveId: f._driveId, mime: f._driveMimeType, size: f._driveSize, mod: f.sourceModifiedAt }))
     };
@@ -270,7 +299,13 @@ let browser;
     '⑦ 같은 Drive ID 정리에서 지워질 쪽의 서버 원본 기록이 사라졌다: ' + JSON.stringify(r7.dup));
   assert(r7.dm.length === 1 && r7.dm[0].prefix === '현장사진/_확인필요/' && r7.dm[0].mime === 'image/jpeg' && r7.dm[0].size === 777,
     '⑦ 같은 Drive ID 정리에서 Drive 형식·크기를 채우지 않았다: ' + JSON.stringify(r7.dm));
-  assert(r7.counts.merged === 2 && r7.counts.linked === 2 && r7.counts.driveDeduped === 1 && r7.counts.total === 9, '⑦ 병합 집계가 예상과 다르다: ' + j7);
+  assert(r7.hs.length === 2 && r7.hs.includes('현장사진/|' + 'b'.repeat(64)),
+    '⑦ 원본에만 있던 해시(서버 원본 기록 없이)가 병합으로 사라졌다: ' + JSON.stringify(r7.hs));
+  assert(r7.hd.length === 2 && r7.hd.includes('현장사진/|' + 'b'.repeat(64)) && r7.hd.some(x => x.endsWith('|' + 'c'.repeat(64))),
+    '⑦ 해시가 다른 두 기록을 서버 원본 기록이 같다는 이유로 합쳤다: ' + JSON.stringify(r7.hd));
+  assert(r7.ds.length === 2 && r7.ds.includes('현장사진/|' + 'b'.repeat(64)),
+    '⑦ 같은 Drive ID 정리에서 지워질 쪽의 해시가 사라졌다: ' + JSON.stringify(r7.ds));
+  assert(r7.counts.merged === 2 && r7.counts.linked === 2 && r7.counts.driveDeduped === 1 && r7.counts.total === 15, '⑦ 병합 집계가 예상과 다르다: ' + j7);
   console.log('PASS  ⑦ 원본/정리본 병합 — 원본 증빙·다른 Drive 연결은 합치지 않고, Drive 형식·크기·출처 시각은 함께 넘긴다');
 
   assert(errors.length === 0, '④ pageerror: ' + errors.join(' | '));

@@ -1796,8 +1796,12 @@ let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(sav
    applyData(부팅·서버·드라이브 병합과 안전판·백업 '되돌리기')와 「선택 복원」이 이 한 곳을 쓴다 — 두 곳에서
    따로 적으면 한쪽에만 새 필드가 들어간다. 실제로 선택 복원은 project·공정·kind·est 넷만 되돌려 작업명·
    동·호수·메모·집계 제외·장부가 지금 값 그대로 남았는데, 화면은 '통째로 덮어쓰입니다'라고 말했다.
-   revert=true: 스냅샷 값 그대로(스냅샷에 없으면 지운다). false: 부분 자료가 로컬을 지우지 않게 빈 칸만 채우는 병합. */
-function hjApplySavedFileFields(f,s,revert){
+   revert=true: 스냅샷 값 그대로(스냅샷에 없으면 지운다). false: 부분 자료가 로컬을 지우지 않게 빈 칸만 채우는 병합.
+   keepSource=true(「선택 복원」): 원본 출처 사실(원본 해시·서버 원본 기록·파일 수정 시각)은 Drive 연결처럼 지금 값을
+   지키고 비어 있을 때만 채운다. 백업 뒤 서버에 원본을 올렸으면 그 fileId 가 서버 원본을 가리키는 유일한 기록이라
+   ([서버 원본 불러와 재생]·삭제 보호가 읽는다) 백업에 없다고 지우면 앱이 그 원본을 잊는다. 안전판·전체 되돌리기는
+   예전 규칙(스냅샷 그대로) 그대로다. */
+function hjApplySavedFileFields(f,s,revert,keepSource){
   const has=k=>Object.prototype.hasOwnProperty.call(s,k);
   // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
   let sk=s.kind||f.kind;
@@ -1805,7 +1809,8 @@ function hjApplySavedFileFields(f,s,revert){
   f.kind=sk;f.project=s.project||null;
   if(has('aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
   else if(revert)delete f._aptUnit;
-  if(has('sourceModifiedAt'))f.sourceModifiedAt=s.sourceModifiedAt;
+  if(keepSource){if(has('sourceModifiedAt')&&!f.sourceModifiedAt)f.sourceModifiedAt=s.sourceModifiedAt;}
+  else if(has('sourceModifiedAt'))f.sourceModifiedAt=s.sourceModifiedAt;
   else if(revert)delete f.sourceModifiedAt;
   if(revert){
     // 복구: 스냅샷 값 그대로 — 병합(s.x||f.x)이면 스냅샷 이후 붙인 est·메모·
@@ -1822,6 +1827,12 @@ function hjApplySavedFileFields(f,s,revert){
   // (officeCompletionPhotoSafe)처럼 형식·크기를 확인하는 곳에서 그 사진이 빠진다.
   if(!f._driveId||f._driveId===s.driveId){if(s.driveMimeType)f._driveMimeType=s.driveMimeType;if(has('driveSize'))f._driveSize=Number(s.driveSize)||0;}
   if(f._driveId)f._relayLink='relay:'+f._driveId;
+  if(keepSource){
+    // 지금 값이 있으면 그대로(검증 상태도 그 값에 대한 것이라 남긴다), 없을 때만 백업 값을 채우고 검증은 다시 하게 한다
+    if(/^[a-f0-9]{64}$/.test(s.sourceSha256||'')&&!f._originalSha256){f._originalSha256=s.sourceSha256;delete f._sourceVerification;}
+    if(s.mediaOriginal&&typeof s.mediaOriginal==='object'&&!f._mediaOriginal)f._mediaOriginal=structuredClone(s.mediaOriginal);
+    return f;
+  }
   if(/^[a-f0-9]{64}$/.test(s.sourceSha256||''))f._originalSha256=s.sourceSha256;
   else if(revert)delete f._originalSha256;
   if(s.mediaOriginal&&typeof s.mediaOriginal==='object')f._mediaOriginal=structuredClone(s.mediaOriginal);
@@ -27091,7 +27102,8 @@ async function restoreFull(idx){
      }}], false);
 }
 /* 「선택 복원」의 파일 쪽 — 백업에서 고른 현장(names)에 배정돼 있던 레코드를, 지금 목록의 같은 파일에
-   백업 시점 값 그대로 되돌린다(hjApplySavedFileFields revert — 안전판·전체 되돌리기와 같은 함수).
+   백업 시점 값 그대로 되돌린다(hjApplySavedFileFields revert — 안전판·전체 되돌리기와 같은 함수). 원본 출처 사실(해시·서버
+   원본 기록·수정 시각)은 keepSource 로 지금 값을 지킨다 — Drive 연결과 같은 물리적 사실이다.
    짝은 fileKey(경로+이름+크기)로 찾는다. 예전처럼 이름만으로 첫 파일을 고르면 같은 이름의 원본(현장사진/)과
    정리본(_정리완료/) 중 엉뚱한 쪽에 백업 값을 덮고, 맞는 쪽은 그대로 남았다.
    경로가 바뀐 파일(정리·이동)은 이름으로 찾되 백업과 지금 목록 양쪽에 그 이름이 하나뿐일 때만 — 둘 이상이면
@@ -27109,7 +27121,7 @@ function restoreSelectFiles(bFiles,names){
     let s=exact&&exact.length===1?exact[0]:null;
     if(!exact&&!scanExactPhotoName(f.name)&&(byName.get(f.name)||[]).length===1&&liveNames.get(f.name)===1)s=byName.get(f.name)[0];
     if(!s||!names.has(s.project))return;
-    hjApplySavedFileFields(f,structuredClone(s),true);n++;
+    hjApplySavedFileFields(f,structuredClone(s),true,true);n++;
   });
   return n;
 }
@@ -27119,7 +27131,7 @@ function restoreSelect(idx){
   if(!projs.length){toast('이 백업에 현장이 없습니다.');return;}
   const rows=projs.map((p,i)=>`<label class="bk-pick"><input type="checkbox" data-bkp="${i}" checked><span>${escapeHtml(p.name)} <small>(단계 ${STAGES[p.stage||0]}, 수금 ${won(p.received||0)})</small></span></label>`).join('');
   openModal('복원할 현장 선택',
-    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">${parseStamp(b.name)} 백업에서 가져올 현장을 고르세요. 선택한 현장의 정보가 백업 시점으로 <b>통째로</b> 덮어쓰입니다 — 배정·공정·작업명·동·호수·메모·수금·지출뿐 아니라 고객·부대사항·추가공사·실측도 함께 되돌아갑니다(보관 여부는 그대로 둡니다). 백업에 아예 없던 항목과 백업 뒤에 새로 들어온 파일은 지우지 않고 그대로 둡니다.</p>${rows}`,
+    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">${parseStamp(b.name)} 백업에서 가져올 현장을 고르세요. 선택한 현장의 정보가 백업 시점으로 <b>통째로</b> 덮어쓰입니다 — 배정·공정·작업명·동·호수·메모·수금·지출뿐 아니라 고객·부대사항·추가공사·실측도 함께 되돌아갑니다(보관 여부는 그대로 둡니다). 백업에 아예 없던 항목과 백업 뒤에 새로 들어온 파일은 지우지 않고 그대로 둡니다. 사진의 Drive 연결·서버에 올린 원본 기록은 지금 것을 그대로 둡니다.</p>${rows}`,
     [{label:'취소',cls:'ghost',fn:()=>openRestore()},
      {label:'선택 복원',cls:'clay',fn:async()=>{
        const picked=[...document.querySelectorAll('input[data-bkp]:checked')].map(c=>+c.dataset.bkp);

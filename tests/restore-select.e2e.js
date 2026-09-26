@@ -10,6 +10,8 @@
    실제 UI(선택 복원 창 → [선택 복원])를 눌러 검사한다:
      ① 고른 현장의 파일은 저장 레코드의 모든 필드가 백업 시점 값 그대로다(필드를 나열하지 않는다 — 새로 저장하는
         필드가 생기면 여기서 걸린다). Drive 신원은 물리적 사실이라 지금 값을 지킨다
+     ①' 원본 출처 사실(sourceSha256·mediaOriginal·sourceModifiedAt)도 Drive 처럼 지금 값을 지킨다 — 백업 뒤 서버에 원본을
+        올린 사진을 복원해도 서버 원본 기록(mediaOriginal.fileId)을 잊지 않는다. 지금 비어 있으면 백업 값으로 채운다
      ② 동명 원본/정리본 쌍은 각자 자기 백업 레코드로 돌아간다 — 서로 바뀌거나 한쪽만 덮이지 않는다
         백업 뒤에 생긴 정리본(백업에 없는 경로)은 이름이 같아도 건드리지 않는다
      ③ 경로가 바뀐 파일(정리·이동)은 백업과 지금 양쪽에 그 이름이 하나뿐일 때만 이름으로 찾아 되돌린다
@@ -69,6 +71,8 @@ let browser;
       base('moved', '이동전.jpg', '현장사진/', 200, { _worklabel: '옮기기 전 작업명', _phase: '철거' }),
       // ② 백업 때는 원본만 있었고, 뒤에 같은 이름의 정리본이 생겼다
       base('only', '뒤에정리.jpg', '현장사진/', 300, { _worklabel: '백업 원본 작업명' }),
+      // ①' 백업 때는 원본 증빙이 없었고, 백업 뒤 서버에 원본을 올렸다
+      base('upl', '올린영상.mp4', '현장사진/', 700, { kind: 'photo', _worklabel: '백업 영상 작업명' }),
       // ④ 고르지 않은 현장의 사진
       base('other', '남의사진.jpg', '현장사진/', 400, { project: OTHER, _worklabel: '다른현장 백업 값' })
     ];
@@ -97,8 +101,15 @@ let browser;
     Object.assign(f('org'), { _worklabel: '지금 정리본', text: '', _aptUnit: { project: SEL, unitId: 'u1' } });
     Object.assign(f('est'), { exSum: true, est: { amount: 9900000, supply: 9000000, vat: 900000, _edited: true }, ledger: null,
       quote: { items: [{ name: '지금 품목', qty: 2, price: 1 }] }, _worklabel: '지금 견적', _driveId: 'drive-est-after', _driveMimeType: 'application/vnd.ms-excel', _driveSize: 500,
-      // 백업에는 없던 동·호수·출처 시각 — 되돌리면 없어져야 한다(백업 시점에 없던 값)
+      // 백업에는 없던 동·호수 — 되돌리면 없어져야 한다(백업 시점에 없던 값).
+      // 출처 시각은 파일의 물리적 사실이라 지금 값을 지킨다(①' — 새 계약: 선택 복원이 출처 사실을 지우지 않는다)
       _aptUnit: { project: SEL, unitId: 'u2' }, sourceModifiedAt: '2026-09-22T00:00:00.000Z' });
+    // ①' 백업 뒤 서버에 원본을 올린 영상 — 지금만 증빙이 있다
+    Object.assign(f('upl'), { _worklabel: '지금 영상 작업명', _originalSha256: 'e'.repeat(64),
+      _mediaOriginal: { fileId: 'TEST_ORIGINAL_AFTER_BACKUP', sha256: 'e'.repeat(64), size: 700 },
+      sourceModifiedAt: '2026-09-23T00:00:00.000Z', _sourceVerification: { state: 'verified', sha256: 'e'.repeat(64) } });
+    // ①' 지금 증빙이 비어 있는 원본 — 백업 값으로 채운다
+    delete f('raw')._originalSha256; delete f('raw')._mediaOriginal;
     Object.assign(f('moved'), { prefix: '_정리완료/선택현장/현장사진/', _worklabel: '옮긴 뒤 작업명', _phase: null });
     Object.assign(f('only'), { _worklabel: '지금 원본2' });
     Object.assign(f('other'), { _worklabel: '다른현장 지금 값' });
@@ -148,8 +159,10 @@ let browser;
       pairs: [
         ['raw', pick(backup.files, '현장사진/', '동명.jpg'), pick(saved.files, '현장사진/', '동명.jpg')],
         ['org', pick(backup.files, '_정리완료/선택현장/현장사진/', '동명.jpg'), pick(saved.files, '_정리완료/선택현장/현장사진/', '동명.jpg')],
-        ['est', pick(backup.files, '견적서/선택현장/', '견적.xlsx'), pick(saved.files, '견적서/선택현장/', '견적.xlsx')]
+        ['est', pick(backup.files, '견적서/선택현장/', '견적.xlsx'), pick(saved.files, '견적서/선택현장/', '견적.xlsx')],
+        ['upl', pick(backup.files, '현장사진/', '올린영상.mp4'), pick(saved.files, '현장사진/', '올린영상.mp4')]
       ],
+      uplVerify: (state.files.find(f => f.name === '올린영상.mp4') || {})._sourceVerification || null,
       moved: pick(saved.files, '_정리완료/선택현장/현장사진/', '이동전.jpg'),
       only: pick(saved.files, '현장사진/', '뒤에정리.jpg'),
       orgAfter: pick(saved.files, '_정리완료/선택현장/현장사진/', '뒤에정리.jpg'),
@@ -164,7 +177,8 @@ let browser;
   });
 
   // ① 모든 저장 필드가 백업 값 그대로 — Drive 신원(driveId·형식·크기)은 물리적 사실이라 지금 값을 지킨다(안전판 되돌리기와 같은 규칙)
-  const DRIVE = new Set(['driveId', 'driveMimeType', 'driveSize']);
+  // 원본 출처 사실(SOURCE)도 같은 규칙 — 아래 ①' 에서 따로 본다
+  const DRIVE = new Set(['driveId', 'driveMimeType', 'driveSize', 'sourceSha256', 'mediaOriginal', 'sourceModifiedAt']);
   for (const [label, before, after] of r.pairs) {
     assert(before && after, `① ${label} 레코드를 못 찾았다: ` + JSON.stringify({ before: !!before, after: !!after }));
     // 백업에 없던 키가 복원 뒤에 남아 있는 것도 잡도록 양쪽 키를 합쳐 본다
@@ -177,7 +191,19 @@ let browser;
   }
   const est = r.pairs.find(p => p[0] === 'est')[2];
   assert(est.driveId === 'drive-est-after' && est.driveSize === 500, '① 백업 뒤 붙은 Drive 연결은 물리적 사실이라 지킨다: ' + JSON.stringify(est));
-  console.log('PASS  ① 고른 현장 파일의 저장 필드 전부(작업명·동·호수·메모·집계 제외·장부·견적 품목·원본 증빙)가 백업 값으로');
+  console.log('PASS  ① 고른 현장 파일의 저장 필드 전부(작업명·동·호수·메모·집계 제외·장부·견적 품목)가 백업 값으로');
+
+  const upl = r.pairs.find(p => p[0] === 'upl')[2];
+  assert(upl.worklabel === '백업 영상 작업명', "①' 영상의 작업명은 백업 값으로: " + JSON.stringify(upl));
+  assert(upl.mediaOriginal && upl.mediaOriginal.fileId === 'TEST_ORIGINAL_AFTER_BACKUP', "①' 백업 뒤 서버에 올린 원본 기록(mediaOriginal)을 지웠다: " + JSON.stringify(upl));
+  assert(upl.sourceSha256 === 'e'.repeat(64), "①' 백업 뒤 붙은 원본 해시를 지웠다: " + JSON.stringify(upl));
+  assert(upl.sourceModifiedAt === '2026-09-23T00:00:00.000Z', "①' 파일 수정 시각을 지웠다: " + JSON.stringify(upl));
+  assert(r.uplVerify && r.uplVerify.state === 'verified', "①' 지킨 증빙의 검증 상태까지 지웠다: " + JSON.stringify(r.uplVerify));
+  assert(est.sourceModifiedAt === '2026-09-22T00:00:00.000Z', "①' 견적 파일의 수정 시각을 지웠다: " + JSON.stringify(est));
+  const [, rawB, rawA] = r.pairs.find(p => p[0] === 'raw');
+  assert(rawA.sourceSha256 === rawB.sourceSha256 && JSON.stringify(rawA.mediaOriginal) === JSON.stringify(rawB.mediaOriginal) && rawB.mediaOriginal,
+    "①' 지금 비어 있는 원본 증빙은 백업 값으로 채운다: " + JSON.stringify({ b: rawB.mediaOriginal, a: rawA.mediaOriginal }));
+  console.log("PASS  ①' 원본 해시·서버 원본 기록·수정 시각은 지금 값을 지키고, 비어 있으면 백업 값으로 채운다");
 
   // ② 동명 쌍은 각자 제자리로(위 ① 에서 raw·org 가 각자 백업 레코드와 일치) + 백업에 없던 정리본은 그대로
   assert(r.only && r.only.worklabel === '백업 원본 작업명', '② 백업에 있던 원본은 되돌린다: ' + JSON.stringify(r.only));
@@ -203,12 +229,12 @@ let browser;
 
   // ⑥ 백업 자료 분리·토스트
   assert(r.backupUntouched, '⑥ 복원한 값이 창에 붙잡힌 백업 자료와 같은 객체다 — 복원 뒤 편집이 백업을 고쳤다');
-  assert(/파일 5개 되돌림/.test(r.toast || ''), '⑥ 토스트가 되돌린 파일 수(5)를 말한다: ' + r.toast);
+  assert(/파일 6개 되돌림/.test(r.toast || ''), '⑥ 토스트가 되돌린 파일 수(6)를 말한다: ' + r.toast);
   console.log('PASS  ⑥ 백업 자료와 객체를 나누지 않는다 · 토스트가 파일 수를 말한다');
 
   assert(errors.length === 0, '⑦ pageerror: ' + errors.join(' | '));
   console.log('PASS  ⑦ pageerror 0');
-  console.log('\n전부 통과 (7건)');
+  console.log('\n전부 통과 (8건)');
   await browser.close();
 })().catch(async e => {
   console.error('FAIL', e && e.stack || e);
