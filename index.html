@@ -13594,10 +13594,10 @@ function __iwDate(v){
 /* 대상별 커밋 — 중복은 스킵, 추가 건수 반환 */
 function __iwCommit(target,map,rows){
   const get=(r,k)=>map[k]!=null?r[map[k]]:'';
-  let add=0,skip=0;
+  let add=0,skip=0,bad=0; // bad = 꼭 있어야 할 칸(이름·단가)이 비어 못 읽은 줄 — 예전엔 아무 데도 안 세어 조용히 사라졌다
   if(target==='proj'){
     rows.forEach(r=>{
-      const name=String(get(r,'name')||'').trim();if(!name)return;
+      const name=String(get(r,'name')||'').trim();if(!name){bad++;return;}
       if(state.projects.some(p=>p.name===name)){skip++;return;}
       const p={name,stage:__iwStageIdx(get(r,'stage')),received:won2num(get(r,'recv'))||0,phases:[],cost:{material:0,labor:0,outsource:0},
         customer:{name:String(get(r,'cust')||'').trim(),phone:String(get(r,'phone')||'').trim(),addr:String(get(r,'addr')||'').trim()}};
@@ -13609,7 +13609,7 @@ function __iwCommit(target,map,rows){
     });
   }else if(target==='contact'){
     rows.forEach(r=>{
-      const name=String(get(r,'name')||'').trim();if(!name)return;
+      const name=String(get(r,'name')||'').trim();if(!name){bad++;return;}
       const phone=String(get(r,'phone')||'').trim();
       state.contacts=state.contacts||[];
       if(state.contacts.some(c=>c.name===name&&(!phone||telHref(c.phone)===telHref(phone)))){skip++;return;}
@@ -13618,54 +13618,105 @@ function __iwCommit(target,map,rows){
   }else if(target==='price'){
     state.priceBook=state.priceBook||{};
     rows.forEach(r=>{
-      const k=String(get(r,'item')||'').trim(),v=won2num(get(r,'price'));
-      if(!k||v<=0)return;
+      const k=String(get(r,'item')||'').trim(),v=__iwAmt(get(r,'price'));
+      if(!k||v<=0){bad++;return;}
       if(state.priceBook[k]===v){skip++;return;}
       state.priceBook[k]=v;add++;
     });
   }
-  return {add,skip};
+  return {add,skip,bad};
 }
-/* 우리 앱 전체장부(9시트) 자동 가져오기 */
+/* 우리 앱 전체장부 시트의 열 — 제목(머리 행)으로 찾는다. [제목, 지금 내보내기에서의 자리].
+   v193(2026-08-14)에서 ① 현장 시트의 '수금' 뒤 칸 하나를 빼며 뒤 칸이 한 칸씩 당겨졌는데, 가져오기는 옛 자리(8·9·10·13)를
+   그대로 읽었다 — 자재비 자리에 인건비, 인건비 자리에 외주비, 외주비 자리에 마진, 완료일 자리에 무상만료(미래 날짜)가 조용히
+   들어갔다. 그래서 자리 번호를 믿지 않고 제목으로 찾는다(옛 파일·새 파일 둘 다 맞게). 머리 행에서 아는 제목을 하나도 못
+   찾으면(제목을 바꾼 파일) 지금 내보내기의 자리로 읽는다. 제목을 일부만 찾으면 못 찾은 칸은 읽지 않는다 — 자리를 짐작해
+   딴 칸 값을 넣는 것(틀린 값)이 빈 값보다 나쁘다. exportFullXlsx 의 머리 행을 고치면 여기도 같이 고친다
+   (tests/ledger-roundtrip.e2e.js 가 내보내기→가져오기 왕복으로 지킨다). */
+const HJ_IW_FULL_COLS={
+  '현장':{name:['현장',0],stage:['단계',1],cust:['고객',2],phone:['연락처',3],addr:['주소',4],est:['견적합계',5],recv:['수금',6],
+    material:['자재비',7],labor:['인건비',8],outsource:['외주비',9],done:['완료일',12]},
+  '연락처':{name:['이름',0],phone:['전화',1],company:['회사',2],memo:['메모',3]},
+  '단가장':{item:['품목',0],price:['단가',1]},
+  '거래처':{name:['거래처',0],phone:['연락처',1],items:['담당 품목',2]},
+  '수금이력':{d:['일자',0],project:['현장',1],amt:['금액',2]},
+  'AS이력':{date:['접수일',0],project:['현장',1],text:['증상',2],status:['상태',3]}
+};
+function __iwCols(headers,spec){
+  const norm=v=>String(v==null?'':v).replace(/\s+/g,'');
+  const H=(headers||[]).map(norm);
+  const found={};
+  Object.keys(spec).forEach(k=>{const i=H.indexOf(norm(spec[k][0]));if(i>=0)found[k]=i;});
+  if(Object.keys(found).length)return found;
+  const fb={};Object.keys(spec).forEach(k=>{fb[k]=spec[k][1];});
+  return fb;
+}
+/* 금액 칸 — 숫자 칸은 그대로(소수점이 있어도 반올림), 글자 칸은 숫자만. signed 면 앞의 '-' 를 살린다
+   (수금 이력의 정정 기록은 음수다 — won2num 은 부호를 버려 -50만이 +50만으로 들어왔다). */
+const IW_NEG_RE=/^[-−]/; // 상수로 둔다 — office-ops-isolation 토크나이저는 '&&' 뒤 정규식 리터럴을 못 읽는다(AGENTS.md)
+function __iwAmt(v,signed){
+  if(typeof v==='number')return isFinite(v)?(signed?Math.round(v):Math.max(0,Math.round(v))):0;
+  const t=String(v==null?'':v).trim();
+  const n=won2num(t);
+  return signed&&IW_NEG_RE.test(t)?-n:n;
+}
+/* 우리 앱 전체장부(10시트) 자동 가져오기 — 현장·연락처·단가장·거래처·수금이력·AS이력 여섯 시트를 옮긴다.
+   결과는 시트마다 {add 추가, skip 이미 있어 건너뜀, bad 꼭 있어야 할 칸이 비어 못 읽음}. */
 function __iwFullImport(wb){
   const R={};
   const rowsOf=n=>wb.SheetNames.includes(n)?__iwSheetRows(wb,n):null;
-  // 현장 (+비용·완료일·무상은 재계산)
+  const colsOf=(n,sh)=>__iwCols(sh.headers,HJ_IW_FULL_COLS[n]);
+  const at=(c,r,k)=>c[k]!=null?r[c[k]]:'';
+  // 여러 벌 세기 — 같은 날 같은 금액 두 번 입금은 두 건이다. '하나라도 있으면 건너뜀'이면 빈 기기로 옮길 때 한 건이 사라진다.
+  // 이미 있는 것과 짝을 지어 남는 만큼만 더한다(같은 파일을 두 번 가져와도 두 배가 되지 않는다).
+  const bag=(list,keyOf)=>{const m=new Map();list.forEach(x=>{const k=keyOf(x);m.set(k,(m.get(k)||0)+1);});return m;};
+  const take=(m,k)=>{const n=m.get(k)||0;if(n>0){m.set(k,n-1);return true;}return false;};
+  // 현장 (+비용·완료일은 그대로, 무상만료는 완료일에서 다시 계산)
   const pj=rowsOf('현장');
-  if(pj){let a=0,s=0;pj.rows.forEach(r=>{
-    const name=String(r[0]||'').trim();if(!name)return;
+  if(pj){let a=0,s=0,b=0;const c=colsOf('현장',pj);
+    pj.rows.forEach(r=>{
+    const name=String(at(c,r,'name')||'').trim();if(!name){b++;return;}
     if(state.projects.some(p=>p.name===name)){s++;return;}
-    const p={name,stage:Math.max(0,STAGES.indexOf(String(r[1]||'').replace('(보관)',''))),received:won2num(r[6]),phases:[],
-      cost:{material:won2num(r[8]),labor:won2num(r[9]),outsource:won2num(r[10])},
-      customer:{name:String(r[2]||'').trim(),phone:String(r[3]||'').trim(),addr:String(r[4]||'').trim()}};
-    if(p.stage<0)p.stage=0;
-    const done=__iwDate(r[13]);if(done)p.doneAt=done;
-    const est=won2num(r[5]);
+    const stTxt=String(at(c,r,'stage')||'').trim();
+    const bare=stTxt.replace('(보관)','').trim();
+    let stage=STAGES.indexOf(bare);if(stage<0)stage=__iwStageIdx(bare);
+    const p={name,stage,received:__iwAmt(at(c,r,'recv')),phases:[],
+      cost:{material:__iwAmt(at(c,r,'material')),labor:__iwAmt(at(c,r,'labor')),outsource:__iwAmt(at(c,r,'outsource'))},
+      customer:{name:String(at(c,r,'cust')||'').trim(),phone:String(at(c,r,'phone')||'').trim(),addr:String(at(c,r,'addr')||'').trim()}};
+    if(stTxt.indexOf('(보관)')>=0)p.archived=true; // 내보낼 때 붙인 표시 — 벗기기만 하면 끝난 현장이 전부 진행 목록으로 돌아온다
+    const done=__iwDate(at(c,r,'done'));if(done)p.doneAt=done;
+    const est=__iwAmt(at(c,r,'est'));
     state.projects.push(p);
     if(est>0)state.files.push({id:uid(),name:'이관 견적_'+name+'.xlsx',kind:'estimate',project:name,est:{amount:est,customer:name,date:done||localDate()},when:new Date(),_import:true});
-    a++;});R['현장']={add:a,skip:s};}
+    a++;});R['현장']={add:a,skip:s,bad:b};}
   const ct=rowsOf('연락처');
-  if(ct)R['연락처']=__iwCommit('contact',{name:0,phone:1,company:2,memo:3},ct.rows);
+  if(ct)R['연락처']=__iwCommit('contact',colsOf('연락처',ct),ct.rows);
   const pb=rowsOf('단가장');
-  if(pb)R['단가장']=__iwCommit('price',{item:0,price:1},pb.rows);
+  if(pb)R['단가장']=__iwCommit('price',colsOf('단가장',pb),pb.rows);
   const sp=rowsOf('거래처');
-  if(sp){let a=0;state.suppliers=state.suppliers||[];state.supplierMap=state.supplierMap||{};
-    sp.rows.forEach(r=>{const n=String(r[0]||'').trim();if(!n)return;
-      if(!state.suppliers.some(x=>x.name===n)){state.suppliers.push({name:n,phone:String(r[1]||'').trim()});a++;}
-      String(r[2]||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(it=>{state.supplierMap[it]=n;});});
-    R['거래처']={add:a,skip:sp.rows.length-a};}
+  if(sp){let a=0,s=0,b=0;const c=colsOf('거래처',sp);state.suppliers=state.suppliers||[];state.supplierMap=state.supplierMap||{};
+    sp.rows.forEach(r=>{const n=String(at(c,r,'name')||'').trim();if(!n){b++;return;}
+      if(!state.suppliers.some(x=>x.name===n)){state.suppliers.push({name:n,phone:String(at(c,r,'phone')||'').trim()});a++;}else s++;
+      String(at(c,r,'items')||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(it=>{state.supplierMap[it]=n;});});
+    R['거래처']={add:a,skip:s,bad:b};}
   const pay=rowsOf('수금이력');
-  if(pay){let a=0,s=0;state.payLog=state.payLog||[];
-    pay.rows.forEach(r=>{const d=__iwDate(r[0]),pjn=String(r[1]||'').trim(),amt=won2num(r[2]);
-      if(!d||!pjn||!amt)return;
-      if(state.payLog.some(x=>x.d===d&&x.project===pjn&&x.amt===amt)){s++;return;}
-      state.payLog.push({d,project:pjn,amt});a++;});R['수금이력']={add:a,skip:s};}
+  if(pay){let a=0,s=0,b=0;const c=colsOf('수금이력',pay);state.payLog=state.payLog||[];
+    const key=(d,p,m)=>d+'|'+p+'|'+m;
+    const have=bag(state.payLog,x=>key(__iwDate(x.d),String(x.project||''),Math.round(num(x.amt))));
+    pay.rows.forEach(r=>{const d=__iwDate(at(c,r,'d')),pjn=String(at(c,r,'project')||'').trim(),amt=__iwAmt(at(c,r,'amt'),true);
+      if(!d||!pjn||!amt){b++;return;}
+      if(take(have,key(d,pjn,amt))){s++;return;}
+      state.payLog.push({d,project:pjn,amt});a++;});R['수금이력']={add:a,skip:s,bad:b};}
   const as=rowsOf('AS이력');
-  if(as){let a=0;const rev={'접수':'open','처리중':'doing','완료':'done'};state.asLog=state.asLog||[];
-    as.rows.forEach(r=>{const pjn=String(r[1]||'').trim(),txt=String(r[2]||'').trim();if(!pjn||!txt)return;
-      if(state.asLog.some(x=>x.project===pjn&&x.text===txt)){return;}
-      state.asLog.push({id:uid(),project:pjn,date:__iwDate(r[0])||localDate(),text:txt,status:rev[String(r[3]||'').trim()]||'open'});a++;});
-    R['AS이력']={add:a,skip:as.rows.length-a};}
+  if(as){let a=0,s=0,b=0;const c=colsOf('AS이력',as);const rev={'접수':'open','처리중':'doing','완료':'done'};state.asLog=state.asLog||[];
+    // 같은 현장·같은 증상도 접수일이 다르면 다른 건이다(실리콘 들뜸 재접수) — 접수일까지 같아야 중복. 접수일이 빈 줄만 예전처럼 증상으로 본다.
+    const key=(p,d,t)=>p+'|'+d+'|'+t;
+    const have=bag(state.asLog,x=>key(String(x.project||''),__iwDate(x.date),String(x.text||'').trim()));
+    as.rows.forEach(r=>{const pjn=String(at(c,r,'project')||'').trim(),txt=String(at(c,r,'text')||'').trim();if(!pjn||!txt){b++;return;}
+      const d=__iwDate(at(c,r,'date'));
+      if(d?take(have,key(pjn,d,txt)):state.asLog.some(x=>x.project===pjn&&String(x.text||'').trim()===txt)){s++;return;}
+      state.asLog.push({id:uid(),project:pjn,date:d||localDate(),text:txt,status:rev[String(at(c,r,'status')||'').trim()]||'open'});a++;});
+    R['AS이력']={add:a,skip:s,bad:b};}
   return R;
 }
 async function __iwReadFile(file){
@@ -13678,7 +13729,7 @@ function importWizard(){
   const body=
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">어디서 가져오든 <b>가져오기 직전 상태가 🛡 스냅샷</b>으로 남아 언제든 되돌릴 수 있습니다.</div>'+
     card('device','📱','다른 기기·백업에서','드라이브 불러오기 또는 _현장.json 백업 복원')+
-    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 9시트 파일 — 자동 인식·일괄 이사')+
+    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 10시트 파일 — 현장·연락처·단가장·거래처·수금·AS를 자동 인식해 옮김')+
     card('proj','🏗','현장·고객 목록 엑셀','현장명/고객/연락처/견적액/수금액 등 — 열 매핑')+
     card('contact','📇','연락처 엑셀','이름/전화/회사 — 열 매핑')+
     card('price','📦','단가표 엑셀','품목/단가 → 견적 자동 채움에 사용');
@@ -13717,7 +13768,9 @@ function __iwPickFile(target){
       await hjSnapshot('이사 직전',true);
       const R=__iwFullImport(wb);
       markDirty();render();
-      __iwSummary('📤 전체장부 이사 완료',R);
+      // 이 파일에 있지만 옮기지 않은 시트 — 말하지 않으면 '전부 옮겨졌다'고 믿는다
+      const left=wb.SheetNames.filter(n=>!R[n]);
+      __iwSummary('📤 전체장부 이사 완료',R,left.length?'이 파일의 <b>'+left.map(escapeHtml).join('·')+'</b> 시트는 옮기지 않았어요(현장별 견적 합계·원가는 현장 시트로 옮겼어요). 견적서·일정·아파트 오더까지 그대로 옮기려면 이사 마법사의 <b>📱 다른 기기·백업에서</b>(드라이브·JSON)를 쓰세요.':'');
       return;
     }
     __iwMapStep(target,wb,f.name,wb.SheetNames[0]);
@@ -13763,10 +13816,14 @@ function __iwMapStep(target,wb,fname,sheetName){
     __iwSummary('📥 이사 완료',R);
   };
 }
-function __iwSummary(title,R){
-  const lines=Object.keys(R).map(k=>'· '+k+': <b style="color:#0a7f43">추가 '+R[k].add+'</b>'+(R[k].skip?' · 중복 건너뜀 '+R[k].skip:''));
+function __iwSummary(title,R,note){
+  const lines=Object.keys(R).map(k=>'· '+k+': <b style="color:#0a7f43">추가 '+R[k].add+'</b>'+(R[k].skip?' · 중복 건너뜀 '+R[k].skip:'')+
+    (R[k].bad?' · <b class="iwBad" style="color:var(--warn)">읽을 수 없어 건너뜀 '+R[k].bad+'</b>':''));
+  const anyBad=Object.keys(R).some(k=>R[k].bad);
   openModal(title,
     '<div style="font-size:13.5px;line-height:1.9">'+lines.join('<br>')+'</div>'+
+    (anyBad?'<div style="font-size:12px;color:var(--muted);margin-top:8px">‘읽을 수 없어 건너뜀’은 이름·날짜·금액처럼 꼭 있어야 할 칸이 비었거나 0인 줄이에요 — 엑셀에서 채운 뒤 다시 가져오면 그 줄만 들어옵니다(이미 들어온 줄은 중복으로 건너뜀).</div>':'')+
+    (note?'<div class="iwNote" style="font-size:12px;color:var(--muted);margin-top:8px">'+note+'</div>':'')+
     '<div style="font-size:12px;color:var(--muted);margin-top:8px">잘못 가져왔다면 지금 상태 그대로 되돌릴 수 있어요.</div>',
     [{label:'🛡 방금 이사 되돌리기',cls:'ghost',fn:()=>backupHistory()},
      {label:'✅ 확인',cls:'clay',fn:()=>{closeModal();state.tab='dashboard';render();}}]);
