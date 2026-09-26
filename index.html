@@ -26509,6 +26509,9 @@ function showBundleSender(bundles,label,size,info){
     const root=document.getElementById('modalRoot');
     root.querySelectorAll('[data-pbsend]').forEach(el=>el.onclick=async()=>{
       const idx=+el.dataset.pbsend; const bundle=bundles[idx];
+      // 굽는 동안(30장이면 수 초) 사용자가 이 창을 닫았거나 다른 창을 열었으면 다시 그리지 않는다 — 그 화면을 덮어 버린다.
+      // el 은 이 draw 가 만든 행 버튼이라 창이 닫히거나 바뀌면 DOM 에서 떨어진다(busy 가 겹친 draw 를 막는다).
+      const redraw=()=>{if(el.isConnected){draw();return true;}return false;};
       if(busy){toast('앞 묶음 사진을 준비하는 중입니다 — 끝나면 다시 누르세요');return;}
       let got=prepared.get(idx);const fresh=!got;
       try{
@@ -26519,19 +26522,19 @@ function showBundleSender(bundles,label,size,info){
             const sp=el.querySelector('span');
             got=await filesForBundle(bundle.items,{start:bundle.start,count:bundle.count,video:!!info.video,onProgress:(i,n)=>{if(sp&&sp.isConnected)sp.textContent='⏳ 다시 저장 중 '+i+'/'+n;}});
           }finally{busy=false;}
-          if(!got.files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.'+(got.failed?' ('+got.failed+'장 다시 저장 실패 — 원본은 보내지 않습니다)':''));draw();return;}
-          if(!(navigator.canShare&&navigator.canShare({files:got.files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); draw(); return; }
+          if(!got.files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.'+(got.failed?' ('+got.failed+'장 다시 저장 실패 — 원본은 보내지 않습니다)':''));redraw();return;}
+          if(!(navigator.canShare&&navigator.canShare({files:got.files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); redraw(); return; }
           prepared.set(idx,got);
           if(got.failed)toast('사진 '+got.failed+'장은 다시 저장하지 못해 뺐습니다 — 원본은 보내지 않습니다');
         }
         await navigator.share({files:got.files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
         prepared.delete(idx);sentInfo.set(idx,{sent:got.files.length,failed:got.failed});
-        __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
+        __pbSent.add(idx); redraw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
       }catch(e){
         const nm=String(e&&e.name);
-        if(nm==='NotAllowedError'&&fresh&&prepared.has(idx)){toast('사진 '+got.files.length+'장 준비됐습니다 — 같은 묶음을 한 번 더 누르면 공유창이 열립니다');draw();return;}
+        if(nm==='NotAllowedError'&&fresh&&prepared.has(idx)){if(redraw())toast('사진 '+got.files.length+'장 준비됐습니다 — 같은 묶음을 한 번 더 누르면 공유창이 열립니다');else toast('공유창을 열지 못했습니다 — 발송 창을 다시 열어 보내세요');return;}
         if(nm!=='AbortError')toast('보내기 실패: '+(e.message||e));
-        draw();
+        redraw();
       }
     });
   };

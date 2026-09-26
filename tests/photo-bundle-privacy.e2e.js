@@ -11,6 +11,7 @@
      (바) 굽는 사이 '사용자 활성'이 끝나 공유창이 거절(NotAllowedError)되면 구운 것을 버리지 않고,
           한 번 더 누르면 다시 굽지 않고 바로 공유창을 연다
      (사) filesForBundle 계약 — 동영상 허용 없이는 동영상을 싣지 않는다, 번호는 앞 묶음 다음부터 이어진다
+     (아) 굽는 사이 이 창을 닫고 다른 창을 열었으면 굽기가 끝나도 발송 창을 다시 띄우지 않는다
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -191,7 +192,32 @@ const LEAK_RE = /테스트고객|1302|107동|평화아파트|완료|시공전|�
   const s4 = await inspect(3);
   assert(s4.files.length === 1 && s4.files[0].name === '사진_01.jpg' && !s4.files[0].exif && s4.files[0].w === 900 && s4.files[0].h === 1800 && !s4.files.some(f => f.video), '(마) 직접 고른 사진도 다시 굽고 번호 이름, 동영상 없음: ' + JSON.stringify(s4.files));
 
+  // ── (아) 굽는 사이 사용자가 이 창을 닫고 다른 창을 열었으면, 굽기가 끝나도 발송 창이 다시 튀어나와 그 창을 덮지 않는다
+  //      (성공·실패 두 경로 모두 — 옛 코드는 실패 경로마다 무조건 draw() 로 openModal 을 다시 불렀다)
+  for (const mode of ['ok', 'deny-once', 'err', 'nobake']) {
+    await page.evaluate((mode) => {
+      closeModal(true); window.__toasts = []; window.__shareMode = mode === 'ok' ? '' : mode;
+      const o = window.__origBake;
+      const gate = new Promise(r => { window.__releaseBake = r; });
+      window.hjCaseJpeg = async (f) => { await gate; return mode === 'nobake' ? null : o(f); };
+      // err: 공유창이 활성 탓이 아닌 오류로 실패(catch 끝 경로) / nobake: 한 장도 못 구움(빈 묶음 경로)
+      if (mode === 'err') { const sh = navigator.share; navigator.share = async () => { navigator.share = sh; throw new TypeError('share broke'); }; }
+      moreActionHandler('photobundle');
+    }, mode);
+    const before = await page.evaluate(() => window.__shares.length);
+    await page.click('#pbSms');
+    await page.click('#modalRoot [data-pbsend="0"]');
+    await page.evaluate(() => { closeModal(true); openModal('다른 창', '<p id="otherModal">다른 화면</p>', [{ label: '닫기', cls: 'ghost', fn: closeModal }]); window.__releaseBake(); });
+    if (mode === 'ok') await page.waitForFunction((n) => window.__shares.length === n + 1, before);
+    else if (mode === 'deny-once') await page.waitForFunction(() => window.__toasts.some(t => /공유창을 열지 못했습니다 — 발송 창을 다시 열어 보내세요/.test(t)));
+    else if (mode === 'err') await page.waitForFunction(() => window.__toasts.some(t => /^보내기 실패: share broke/.test(t)));
+    else await page.waitForFunction(() => window.__toasts.some(t => /보낼 수 있는 사진 파일을 준비하지 못했습니다/.test(t)));
+    assert(await page.evaluate(() => !!document.querySelector('#modalRoot #otherModal') && !document.querySelector('#modalRoot [data-pbsend]')), '(아) ' + mode + ': 굽기 뒤에 발송 창이 다른 창을 덮지 않는다');
+    if (mode === 'deny-once') assert(await page.evaluate(() => !window.__toasts.some(t => /한 번 더 누르면/.test(t))), '(아) 창이 없는데 \'한 번 더 누르라\' 고 하지 않는다');
+  }
+  await page.evaluate(() => { window.hjCaseJpeg = window.__origBake; closeModal(true); });
+
   assert(errors.length === 0, 'pageerror 0: ' + errors.join(' | '));
-  console.log('photo-bundle-privacy.e2e OK ((가) EXIF 제거 (나) 번호 이름 (다) 동영상 기본 제외·선택 포함 (라) 굽기 실패 비유출 (마) 직접 선택 (바) 활성 만료 재시도 (사) filesForBundle 계약)');
+  console.log('photo-bundle-privacy.e2e OK ((가) EXIF 제거 (나) 번호 이름 (다) 동영상 기본 제외·선택 포함 (라) 굽기 실패 비유출 (마) 직접 선택 (바) 활성 만료 재시도 (사) filesForBundle 계약 (아) 닫힌 창 다시 안 띄움)');
   await browser.close();
 })().catch(async (e) => { console.error('FAIL', e && e.stack || e); try { await browser.close(); } catch (_) {} process.exit(1); });
