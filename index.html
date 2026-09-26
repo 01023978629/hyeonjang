@@ -10473,6 +10473,10 @@ function projectHistoryData(name){
   (state.asLog||[]).filter(x=>x.project===name).forEach(x=>ev.push({d:x.date||today,o:5,ic:'🔧',t:'AS '+((AS_STAT[x.status]||AS_STAT.open)[0])+': '+hjCut(x.text,22)+(String(x.fix||'').trim()?' → 처리: '+hjCut(String(x.fix).trim(),30):'')}));
   if(p.doneAt)ev.push({d:p.doneAt,o:5,ic:'✅',t:'공사 완료'});
   if(p.dueDate)ev.push({d:p.dueDate,o:6,ic:'💰',t:'수금 약속일'});
+  // v329 파일철에 빠져 있던 계약·보증 — 공사 스토리(hjStoryEvents — 40건으로 자르지 않은 전체)의 같은 줄을 가져온다(문구를 두 곳에서 짓지 않게).
+  try{(hjStoryEvents(name)||[]).forEach(e=>{if(!e.d)return;
+    if(/^(전자계약|고객 서명 완료)/.test(e.t))ev.push({d:e.d,o:1,ic:'✍️',t:e.t});
+    else if(e.ic==='🛡'||/^하자보증서 확인자 서명/.test(e.t))ev.push({d:e.d,o:6,ic:'🛡',t:e.t});});}catch(e){}
   ev.sort((a,b)=>String(b.d).localeCompare(String(a.d))||(a.o-b.o));
   const more=Math.max(0,ev.length-40);
   const lastReport=[...sched].reverse().find(sc=>sc.report&&sc.report.done);
@@ -12998,8 +13002,11 @@ function hjProgressText(name){
   L.push('','궁금하신 점은 언제든 연락 주세요. '+COMPANY.tel+' '+COMPANY.owner);
   return L.join('\n');
 }
-/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생) */
-function hjStoryData(name){
+/* 공사 스토리 — 계약·시공·입금·완료·보증을 한 타임라인으로(읽기전용 파생)
+   hjStoryEvents 는 자르지 않은 전체(고객 타임라인·파일철이 읽는다 — 사진 날이 40일을 넘는 현장에서 계약금 입금·계약 줄이 빠지면 안 된다),
+   hjStoryData 는 최근 40건(공사 스토리 화면·카톡 글 길이 상한). */
+function hjStoryData(name){return hjStoryEvents(name).slice(-40);}
+function hjStoryEvents(name){
   const p=state.projects.find(function(x){return x.name===name;});if(!p)return [];
   const ev=[];
   const day=function(iso){return String(iso||'').slice(0,10);};
@@ -13036,7 +13043,7 @@ function hjStoryData(name){
       const verb=(L.via==='share')?' 발급':' 출력';
       ev.push({d:String(L.at||'').slice(0,10),ic:'🛡',t:(L.kind||'보증서')+verb+(L.unitLabel?' · '+L.unitLabel:'')+via});});
   }else if(p.warrantyDoc&&p.warrantyDoc.at)ev.push({d:p.warrantyDoc.at,ic:'🛡',t:'완료보증서 발급'});
-  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);}).slice(-40);
+  return ev.filter(function(e){return e.d;}).sort(function(a,b){return a.d.localeCompare(b.d);});
 }
 function hjStoryText(name){
   const ev=hjStoryData(name);
@@ -18887,9 +18894,12 @@ function convTodoResult(todos,projName,ai){
 /* ═══════════ 📈 수주 성공 패턴 AI 코치 ═══════════ */
 function winRateData(){
   const quotes=state.quotes||[];
-  // 수주 = project가 연결된 견적, 미수주 = project 없는 견적
-  const won=quotes.filter(q=>q.project);
-  const pending=quotes.filter(q=>!q.project);
+  // 수주 = 현장이 연결됐거나 수주로 표시한 견적, 종결 = 사유와 함께 닫은 견적(견적 이력 '종결'과 같다), 나머지는 진행 중.
+  // 판정은 quoteStatus 한 곳 — 예전엔 여기만 project 로 따로 세서 견적 이력의 수주율과 달랐다.
+  const won=quotes.filter(q=>quoteStatus(q)==='won');
+  const lost=quotes.filter(q=>quoteStatus(q)==='lost');
+  const pending=quotes.filter(q=>{const st=quoteStatus(q);return st!=='won'&&st!=='lost';});
+  const lostReasons={};lost.forEach(q=>{const r=hjQuoteLostReason(q)||'사유 미기록';lostReasons[r]=(lostReasons[r]||0)+1;});
   const total=quotes.length;
   const rate=total?Math.round(won.length/total*100):0;
   // 수주 견적 평균 금액
@@ -18902,10 +18912,10 @@ function winRateData(){
   const bandStats=bands.map(bd=>{
     const min=bands.indexOf(bd)===0?0:bands[bands.indexOf(bd)-1].max;
     const inBand=quotes.filter(q=>{const t=quoteCalc(q).total;return t>=min&&t<bd.max;});
-    const wonInBand=inBand.filter(q=>q.project);
+    const wonInBand=inBand.filter(q=>quoteStatus(q)==='won');
     return {label:bd.label,total:inBand.length,won:wonInBand.length,rate:inBand.length?Math.round(wonInBand.length/inBand.length*100):0};
   });
-  return {total,won:won.length,pending:pending.length,rate,avgWon,avgPend,bandStats};
+  return {total,won:won.length,lost:lost.length,pending:pending.length,rate,avgWon,avgPend,bandStats,lostReasons};
 }
 async function winRateCoach(){
   const d=winRateData();const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
@@ -18920,21 +18930,25 @@ async function winRateCoach(){
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">수주 성공률</div><div style="font-size:30px;font-weight:800;margin-top:2px">'+d.rate+'%</div><div style="font-size:12px;opacity:.9">견적 '+d.total+'건 중 '+d.won+'건 수주</div></div>'+
     '<div style="display:flex;gap:7px;margin-bottom:12px">'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">수주 평균</div><div style="font-size:15px;font-weight:800;color:#0a7f43">'+hjMan(d.avgWon)+'</div></div>'+
-      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">미수주 평균</div><div style="font-size:15px;font-weight:800;color:var(--muted)">'+hjMan(d.avgPend)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">진행 중 평균</div><div style="font-size:15px;font-weight:800;color:var(--muted)">'+hjMan(d.avgPend)+'</div></div>'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10px;color:var(--muted)">진행 중</div><div style="font-size:15px;font-weight:800">'+d.pending+'건</div></div>'+
     '</div>'+
     '<div style="font-size:12px;font-weight:700;margin-bottom:6px">💰 금액대별 수주율</div>'+
     (bandRows||'<div style="font-size:12px;color:var(--muted);padding:10px">데이터가 부족합니다.</div>')+
+    '<div id="wrLost" style="font-size:12px;font-weight:700;margin:12px 0 6px">✕ 종결 사유 '+d.lost+'건</div>'+
+    (d.lost?Object.keys(d.lostReasons).sort((a,b)=>d.lostReasons[b]-d.lostReasons[a]).map(r=>'<div class="wrReason" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border:1px solid var(--line-soft);border-radius:9px;margin-bottom:5px"><span style="flex:1;font-size:12.5px">'+escapeHtml(r)+'</span><b style="font-size:13px">'+d.lostReasons[r]+'건</b><span style="font-size:11px;color:var(--muted);min-width:38px;text-align:right">'+Math.round(d.lostReasons[r]/d.lost*100)+'%</span></div>').join('')
+      :'<div style="font-size:12px;color:var(--muted);padding:6px 2px">아직 종결한 견적이 없어요 — ⏰ 견적 팔로업에서 「✕ 종결」로 사유를 남기면 여기 쌓입니다.</div>')+
     (hasKey?'<button class="clay" id="wrAI" style="width:100%;padding:12px;margin-top:12px">🤖 AI 영업 코칭</button>':'')+
     '<div id="wrAiBox" style="display:none;white-space:pre-wrap;font-size:13px;line-height:1.7;background:var(--paper-2);border-radius:10px;padding:12px;margin-top:10px"></div>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 "수주"는 견적이 현장으로 전환된 것으로 집계합니다. 견적을 만들면 자동으로 분석돼요.</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:#fffbeb;border-radius:10px;padding:10px;line-height:1.5">💡 "수주"는 견적이 현장으로 전환됐거나 수주로 표시한 것, "종결"은 사유와 함께 닫은 견적입니다. 나머지는 진행 중으로 봐요.</div>';
   openModal('📈 수주 성공 분석',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const aiBtn=document.getElementById('wrAI');
   if(aiBtn)aiBtn.onclick=async()=>{
     aiBtn.disabled=true;aiBtn.textContent='분석 중…';
     try{
       const bandTxt=d.bandStats.filter(b=>b.total>0).map(b=>b.label+' '+b.rate+'%('+b.won+'/'+b.total+')').join(', ');
-      const prompt='1인 인테리어 사장님의 수주 데이터다. 전체 수주율 '+d.rate+'%, 수주 견적 평균 '+Math.round(d.avgWon/10000)+'만원, 미수주 평균 '+Math.round(d.avgPend/10000)+'만원. 금액대별 수주율: '+bandTxt+'. 이 패턴을 분석해 수주율을 높일 실질적 영업 조언을 해줘. 존댓말 4~5줄, 숫자 근거 포함.';
+      const lostTxt=d.lost?(' 종결 '+d.lost+'건 사유: '+Object.keys(d.lostReasons).map(r=>r+' '+d.lostReasons[r]+'건').join(', ')+'.'):'';
+      const prompt='1인 인테리어 사장님의 수주 데이터다. 전체 수주율 '+d.rate+'%, 수주 견적 평균 '+Math.round(d.avgWon/10000)+'만원, 진행 중 견적 평균 '+Math.round(d.avgPend/10000)+'만원. 금액대별 수주율: '+bandTxt+'.'+lostTxt+' 이 패턴을 분석해 수주율을 높일 실질적 영업 조언을 해줘. 존댓말 4~5줄, 숫자 근거 포함.';
       const txt=await aiAsk(prompt);
       const box=document.getElementById('wrAiBox');box.style.display='block';box.textContent='🤖 '+(txt||'코칭을 생성하지 못했습니다.');
       aiBtn.textContent='✅ 완료';
@@ -20303,11 +20317,29 @@ function aiOperateMode(){
 }
 /* ═══════════ ⏰ 견적 골든타임 팔로업 — 보낸 견적 무소식 감지 ═══════════ */
 // 미수주 견적(project 미연결) 중 작성 3~30일 지난 것 = 팔로업 골든타임
+/* v329 견적 종결 — 미수주 견적을 사유와 함께 닫는다. 견적 객체 안 lost:{at,reason} + result:'lost'(견적 이력의 '종결'과 같은 것).
+   종결하면 팔로업에서 빠지고, 수주 분석이 사유를 센다. 직렬화 최상위 키는 그대로(quotes 레코드 안 필드). */
+const HJ_QUOTE_LOST_REASONS=['가격','시기','다른 업체','연락 두절','기타'];
+function hjQuoteClose(id,reason){
+  const q=(state.quotes||[]).find(x=>x.id===id);if(!q)return false;
+  const r=HJ_QUOTE_LOST_REASONS.includes(reason)?reason:'기타';
+  q.result='lost';
+  q.lost={at:(q.lost&&q.lost.at)||localDate(),reason:r};
+  markDirty();return true;
+}
+function hjQuoteLostReason(q){return (q&&q.lost&&q.lost.reason)||'';}
+// 사유 칩 한 줄 — cls 는 누를 때 잡을 클래스(화면마다 다르게), 고른 사유는 채워 보인다
+function hjQuoteLostChips(q,cls){
+  const cur=hjQuoteLostReason(q);
+  return '<div role="group" aria-label="'+escapeAttr((q.title||'견적')+' 종결 사유')+'" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center"><span style="font-size:11px;color:var(--muted)">사유</span>'+
+    HJ_QUOTE_LOST_REASONS.map(r=>'<button type="button" class="'+(cur===r?'clay':'ghost')+' tiny '+cls+'" data-id="'+escapeAttr(q.id)+'" data-r="'+escapeAttr(r)+'" aria-pressed="'+(cur===r)+'" style="min-height:44px;padding:0 11px">'+escapeHtml(r)+'</button>').join('')+'</div>';
+}
+function hjQuoteOpenForFollow(q){const st=quoteStatus(q);return st!=='won'&&st!=='lost';}   // 수주(현장 연결·수주 표시)·종결은 팔로업 대상이 아니다
 function quoteFollowupData(){
   const today=new Date();today.setHours(0,0,0,0);
   const out=[];
   (state.quotes||[]).forEach(q=>{
-    if(q.project)return;  // 수주됨 → 제외
+    if(!hjQuoteOpenForFollow(q))return;  // 수주·종결 → 제외
     if(!q.date)return;
     const d=new Date(q.date+'T00:00:00');if(isNaN(d.getTime()))return;
     const days=Math.round((today-d)/(1000*60*60*24));
@@ -20317,11 +20349,45 @@ function quoteFollowupData(){
   });
   return out.sort((a,b)=>a.days-b.days);
 }
+// 30일이 지나도 수주·종결 어느 쪽도 아닌 견적 — 예전엔 목록에서 조용히 사라졌다. 종결할 수 있게 따로 모은다(1년까지).
+function quoteStaleData(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const out=[];
+  (state.quotes||[]).forEach(q=>{
+    if(!hjQuoteOpenForFollow(q)||!q.date)return;
+    const d=new Date(q.date+'T00:00:00');if(isNaN(d.getTime()))return;
+    const days=Math.round((today-d)/(1000*60*60*24));
+    if(days>30&&days<=365)out.push({id:q.id,title:q.title||'견적',date:q.date,days,total:quoteCalc(q).total,place:q.place||''});
+  });
+  return out.sort((a,b)=>a.days-b.days);
+}
 function quoteFollowupSmsText(q){
   return '안녕하세요, '+COMPANY.name+'입니다. 지난번 보내드린 "'+(q.title||'견적')+'" 견적 검토는 어떠셨을까요? 궁금하신 점이나 조정이 필요하시면 편하게 말씀해 주세요. 좋은 조건으로 도와드리겠습니다. '+COMPANY.tel;
 }
 async function quoteFollowup(){
-  const rows=quoteFollowupData();const [c1,c2]=hjBrandGrad('#e8912d','#c2410c');
+  const rows=quoteFollowupData();const stale=quoteStaleData();const [c1,c2]=hjBrandGrad('#e8912d','#c2410c');
+  // 종결 칩 — 누르면 그 줄이 닫히고 목록을 다시 그린다. 「종결」 버튼이 칩 줄을 연다(잘못 누름 한 번으로 닫히지 않게).
+  const closeBox=q=>'<button type="button" class="qfClose ghost tiny" data-q="'+escapeAttr(q.id)+'" aria-expanded="false" style="min-height:44px;padding:0 12px">✕ 종결</button>'+
+    '<div class="qfReasons" data-q="'+escapeAttr(q.id)+'" hidden>'+hjQuoteLostChips({id:q.id,title:q.title},'qfReason')+'</div>';
+  const staleHtml=stale.length?'<div style="margin-top:12px;font-size:12.5px;font-weight:700">🗂 30일 지난 견적 '+stale.length+'건 — 연락이 끝났으면 사유를 골라 종결하세요</div>'+
+    stale.slice(0,20).map(q=>'<div style="padding:10px 12px;border:1px solid var(--line-soft);border-radius:11px;margin-top:7px">'+
+      '<div style="display:flex;gap:8px;align-items:center"><b style="font-size:13px;flex:1">'+escapeHtml(q.title)+'</b><span style="font-size:11px;color:var(--muted)">'+q.days+'일 경과</span></div>'+
+      '<div style="font-size:11.5px;color:var(--muted);margin:3px 0 6px">'+q.date+' 작성 · '+hjMan(q.total)+(q.place?' · '+escapeHtml(q.place):'')+'</div>'+closeBox(q)+'</div>').join('')+
+    (stale.length>20?'<div style="font-size:11px;color:var(--muted);margin-top:6px">… 외 '+(stale.length-20)+'건 — 📄 견적 이력에서도 종결할 수 있어요</div>':''):'';
+  const wire=()=>{
+    document.querySelectorAll('#modalRoot .qfClose').forEach(b=>b.onclick=()=>{
+      const box=document.querySelector('#modalRoot .qfReasons[data-q="'+CSS.escape(b.dataset.q)+'"]');if(!box)return;
+      box.hidden=!box.hidden;b.setAttribute('aria-expanded',String(!box.hidden));});
+    document.querySelectorAll('#modalRoot .qfReason').forEach(b=>b.onclick=()=>{
+      const q=(state.quotes||[]).find(x=>x.id===b.dataset.id);
+      if(!hjQuoteClose(b.dataset.id,b.dataset.r)){toast('견적을 찾을 수 없어요');return;}
+      toast('「'+((q&&q.title)||'견적')+'」 종결 — 사유: '+b.dataset.r);quoteFollowup();});
+  };
+  if(!rows.length&&stale.length){
+    openModal('⏰ 견적 팔로업','<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">보낸 지 3~30일 된 팔로업 대상은 없어요.</div>'+staleHtml,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    wire();
+    return {팔로업:0,종결대상:stale.length};
+  }
   if(!rows.length){
     openModal('⏰ 견적 팔로업','<div style="text-align:center;padding:30px"><div style="font-size:40px">👍</div><div style="margin-top:10px;font-size:14px">팔로업할 견적이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">보낸 지 3일이 지나도 수주 안 된 견적이 생기면<br>여기서 알려드립니다. 지금은 다 챙기고 계세요!</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     return {팔로업:0};
@@ -20331,21 +20397,23 @@ async function quoteFollowup(){
     return '<div style="padding:12px;border:1px solid '+(hot?'#fcd34d':'var(--line-soft)')+';border-radius:11px;margin-bottom:8px;background:'+(hot?'#fffbeb':'var(--paper)')+'">'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(q.title)+'</b><span style="font-size:11px;font-weight:700;color:'+(hot?'#b45309':'var(--muted)')+'">'+q.days+'일 경과'+(hot?' 🔥':'')+'</span></div>'+
       '<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px">'+q.date+' 작성 · '+hjMan(q.total)+(q.place?' · '+escapeHtml(q.place):'')+'</div>'+
-      '<button class="qfSms clay tiny" data-q="'+escapeAttr(q.id)+'" style="padding:7px 12px">📩 팔로업 문자 보내기</button>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="qfSms clay tiny" data-q="'+escapeAttr(q.id)+'" style="padding:7px 12px">📩 팔로업 문자 보내기</button>'+closeBox(q)+'</div>'+
     '</div>';
   }).join('');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">지금이 골든타임</div><div style="font-size:17px;font-weight:800">⏰ 팔로업 대기 '+rows.length+'건</div><div style="font-size:12px;opacity:.95;margin-top:2px">보낸 지 3~7일이 연락 최적기예요</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">답 없는 견적, 가만히 두면 잊혀집니다. 부담 없는 안부로 다시 떠올리게 하세요.</div>'+
     items+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 견적이 <b>현장에 연결되면(수주)</b> 자동으로 이 목록에서 빠집니다. 30일 지난 견적은 정리 대상으로 봐요.</div>';
+    staleHtml+
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 견적이 <b>현장에 연결되면(수주)</b> 자동으로 이 목록에서 빠집니다. 안 하기로 한 견적은 <b>✕ 종결</b>로 사유와 함께 닫으면 수주 분석에 쌓여요.</div>';
   openModal('⏰ 견적 골든타임',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  wire();
   document.querySelectorAll('.qfSms').forEach(b=>b.onclick=()=>{
     const q=(state.quotes||[]).find(x=>x.id===b.dataset.q);if(!q)return;
     hjSendSms('',quoteFollowupSmsText(q));
     toast('📩 팔로업 문자를 준비했어요 — 받는 분 번호를 확인하세요');
   });
-  return {팔로업:rows.length,최신:rows[0]&&rows[0].title};
+  return {팔로업:rows.length,최신:rows[0]&&rows[0].title,종결대상:stale.length};
 }
 
 /* ═══════════ 🔍 유사 현장 견적 참고 — 과거 견적으로 단가 참고 ═══════════ */
@@ -20375,7 +20443,7 @@ function similarQuotes(qid){
     let score=common*10;
     if(curTotal>0&&total>0){const ratio=total/curTotal;if(ratio>0.6&&ratio<1.4)score+=8;}
     if(q.project)score+=5;  // 수주된 견적은 검증된 단가 → 가산
-    scored.push({q,score,common,total,won:!!q.project});
+    scored.push({q,score,common,total,won:quoteStatus(q)==='won',lost:quoteStatus(q)==='lost'});
   });
   return scored.sort((a,b)=>b.score-a.score).slice(0,5);
 }
@@ -20402,14 +20470,14 @@ function similarQuoteDialog(qid){
     const diff=curTotal>0?Math.round((s.total-curTotal)/curTotal*100):0;
     const commonWorks=[...quoteWorkSet(cur)].filter(k=>quoteWorkSet(q).has(k)).slice(0,5).join('·');
     return '<div style="padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:8px">'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13px;flex:1">'+escapeHtml(q.title||q.project||'견적')+'</b>'+(s.won?'<span style="font-size:10px;background:#dcfce7;color:#0a7f43;padding:2px 7px;border-radius:9px;font-weight:700">수주됨</span>':'')+'</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13px;flex:1">'+escapeHtml(q.title||q.project||'견적')+'</b>'+(s.won?'<span style="font-size:10px;background:#dcfce7;color:#0a7f43;padding:2px 7px;border-radius:9px;font-weight:700">수주됨</span>':s.lost?'<span class="sqLost" style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 7px;border-radius:9px;font-weight:700">종결'+(hjQuoteLostReason(q)?' · '+escapeHtml(hjQuoteLostReason(q)):'')+'</span>':'')+'</div>'+
       '<div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">'+(q.date||'')+' · 공통 공정: '+escapeHtml(commonWorks||'-')+'</div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px">총액</span><b style="font-size:14px">'+hjNum(s.total)+'원 <span style="font-size:11px;color:'+(diff>0?'#c2410c':diff<0?'#0a7f43':'var(--muted)')+'">('+(diff>0?'+':'')+diff+'%)</span></b></div>'+
     '</div>';
   }).join('');
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">기준: '+escapeHtml(cur.title||'현재 견적')+' · '+hjMan(curTotal)+'</div><div style="font-size:17px;font-weight:800">🔍 비슷한 견적 '+sims.length+'건</div></div>'+
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">공정 구성이 비슷한 과거 견적이에요. <b>수주됨</b> 표시는 실제 계약까지 간 검증된 단가입니다.</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">공정 구성이 비슷한 과거 견적이에요. <b>수주됨</b> 표시는 실제 계약까지 간 검증된 단가, <b>종결</b>은 계약하지 않은 견적(사유가 「가격」이면 그 단가로는 안 됐다는 뜻)입니다.</div>'+
     items+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 (%)는 현재 견적 대비 차이입니다. 과거보다 너무 높거나 낮으면 단가를 재점검하세요.</div>';
   openModal('🔍 유사 견적 참고',body,[{label:'‹ 목록',cls:'ghost',fn:()=>similarQuoteDialog()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -22857,6 +22925,57 @@ function hjMeasureToCalc(r,name){
   window.__hjMeasurePick={room:r.room||'방',project:name||'',m2:m.floor,peri:m.peri,hgt:m.hgt,w:m.w,h:m.h,open:m.open};
   materialCalc();
 }
+/* v329 📐 실측 → 견적 품목. 견적 작성 툴바에서 그 견적 현장의 방별 바닥·벽 ㎡ 를 고르면 품목으로 넣는다.
+   spec '안방 바닥 12.5㎡' · qty 면적 · 단가는 비운다(0) — 금액을 지어내지 않는다. 품명은 적어 주면 그것, 비우면 '바닥'·'벽'.
+   품목에 measureRef(방 id:floor|wall)를 남겨 두 번 눌러도 같은 방·같은 면이 두 줄이 되지 않게 한다. */
+function hjQuoteMeasureRooms(q){
+  if(!q||!q.project)return [];
+  const p=(state.projects||[]).find(x=>x.name===q.project);if(!p||!Array.isArray(p.measure))return [];
+  // key: 방 id(옛 자료에 id 가 없으면 순번) — 품목의 measureRef 가 이 값을 가리킨다
+  return p.measure.map((r,i)=>({r,key:String(r&&r.id||('#'+i)),m:hjMeasureRoom(r||{})})).filter(o=>o.m.floor>0||o.m.wall>0);
+}
+// 버튼 전역 display 규칙이 [hidden] 을 이기므로 인라인 display 도 같이 끈다
+function hjQuoteMeasureSync(){const b=document.getElementById('qmMeasure');if(!b)return;const on=!!hjQuoteMeasureRooms(state.editingQuote).length;b.hidden=!on;b.style.display=on?'':'none';}
+function hjMeasureQty(n){return Math.round(n*100)/100;}
+function quoteFromMeasure(){
+  const q=state.editingQuote;if(!q){toast('견적 작성 화면에서 쓰는 기능입니다');return;}
+  const rooms=hjQuoteMeasureRooms(q);
+  if(!rooms.length){toast(q.project?'「'+q.project+'」 현장에 적은 실측이 없습니다 — 더보기 → 📐 실측 노트':'견적에 연결 현장을 먼저 고르세요');return;}
+  const have=new Set((q.items||[]).map(it=>it&&it.measureRef).filter(Boolean));
+  const chk=(o,side)=>{const a=side==='floor'?o.m.floor:o.m.wall;if(!(a>0))return '';
+    const ref=o.key+':'+side,dup=have.has(ref);
+    return '<label style="display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px'+(dup?';color:var(--muted)':'')+'"><input type="checkbox" class="qmmPick" data-ref="'+escapeAttr(ref)+'"'+(dup?' disabled':'')+' style="width:22px;height:22px">'+
+      (side==='floor'?'바닥 ':'벽 ')+hjCalcFmt(a,2)+'㎡'+(dup?' <span style="font-size:11px">(이미 담김)</span>':'')+'</label>';};
+  const list=rooms.map(o=>'<div style="border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;margin-bottom:7px"><b style="font-size:13.5px">'+escapeHtml(o.r.room||'이름 없는 방')+'</b>'+
+    '<div style="display:flex;gap:14px;flex-wrap:wrap">'+chk(o,'floor')+chk(o,'wall')+'</div></div>').join('');
+  const body='<div style="font-size:12px;color:var(--muted-2);margin-bottom:8px;line-height:1.55">「'+escapeHtml(q.project)+'」 실측 노트의 면적을 품목으로 넣습니다. 수량 = 면적(㎡), 규격 = 방 이름·면. <b>단가는 비워 둡니다</b> — 표에서 직접 넣으세요. 벽은 창·문을 뺀 면적입니다.</div>'+
+    '<label style="display:block;font-size:12px;color:var(--muted-2);margin-bottom:8px">품명 (선택 — 비우면 바닥·벽)<input id="qmmName" list="qmItemNames" autocomplete="off" placeholder="예: 도배(실크), 장판" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box;margin-top:3px"></label>'+
+    '<div style="max-height:min(50dvh,420px);overflow:auto">'+list+'</div>'+
+    '<div id="qmmStatus" role="status" aria-live="polite" style="font-size:12.5px;color:var(--warn);min-height:18px;margin-top:4px"></div>';
+  openModal('📐 실측에서 품목 가져오기',body,[{label:'품목으로 넣기',cls:'clay',fn:()=>{
+      const root=document.getElementById('modalRoot');
+      const q2=state.editingQuote;if(!q2||q2!==q){toast('견적 화면이 바뀌었습니다 — 다시 열어 주세요');closeModal();return;}
+      const picked=[...root.querySelectorAll('.qmmPick:checked')].map(c=>c.dataset.ref);
+      if(!picked.length){const st=root.querySelector('#qmmStatus');if(st)st.textContent='넣을 면을 하나 이상 고르세요';return;}
+      const nm=String((root.querySelector('#qmmName')||{}).value||'').trim();
+      const now=hjQuoteMeasureRooms(q);   // 고르는 사이 실측이 바뀌었을 수 있다 — 지금 값으로 넣는다
+      q.items=Array.isArray(q.items)?q.items:[];
+      const has=new Set(q.items.map(it=>it&&it.measureRef).filter(Boolean));
+      let added=0;
+      picked.forEach(ref=>{
+        if(has.has(ref))return;
+        const cut=ref.lastIndexOf(':'),rid=ref.slice(0,cut),side=ref.slice(cut+1);
+        const o=now.find(x=>x.key===rid);if(!o)return;
+        const a=side==='floor'?o.m.floor:o.m.wall;if(!(a>0))return;
+        const item={name:nm||(side==='floor'?'바닥':'벽'),spec:(o.r.room||'이름 없는 방')+' '+(side==='floor'?'바닥':'벽')+' '+hjCalcFmt(a,2)+'㎡',qty:hjMeasureQty(a),price:0,measureRef:ref};
+        const last=q.items[q.items.length-1];
+        if(last&&!String(last.name||'').trim()&&!num(last.price))q.items[q.items.length-1]=item;else q.items.push(item);
+        has.add(ref);added++;});
+      if(!added){toast('넣을 수 있는 면이 없습니다 — 실측이 바뀌었는지 확인하세요');return;}
+      markDirty();closeModal();try{render();}catch(_){}
+      toast('실측 '+added+'줄을 품목으로 넣었습니다 — 단가를 넣어 주세요');}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
 function measureNote(projectName){
   const projects=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects:[];
   if(!projects.length){openModal('📐 실측 노트','<div class="empty" style="padding:18px"><b>현장이 없습니다</b>먼저 현장을 추가한 뒤 실측을 적어 주세요.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);return;}
@@ -23840,21 +23959,20 @@ function customerListData(){
   return Object.values(map).sort((a,b)=>(b.lastAt||0)-(a.lastAt||0));
 }
 // 특정 고객의 시간순 이벤트
+// v329 현장마다 공사 스토리(hjStoryEvents — 40건 상한 없이, 계약·견적·사진·입금·추가공사·AS·완료·보증서)를 그대로 쓴다.
+// 예전엔 여기서 완공·입금만 따로 모아 AS·계약·보증서가 고객 화면에 안 보였고, 공사 스토리와 다른 말을 했다.
 function customerTimeline(key){
   const events=[];
   (state.projects||[]).forEach(p=>{
     if(customerKey(p)!==key)return;
-    // 현장 생성(첫 파일/일정 기준 or doneAt)
     let s;try{s=projStats(p.name);}catch(e){}
-    // 완공
-    if(p.doneAt)events.push({date:p.doneAt,ic:'✅',title:p.name+' 완공',sub:s?('견적 '+hjMan(s.est||0)):''});
-    // 현장 진행
+    let story=[];try{story=hjStoryEvents(p.name)||[];}catch(e){}
+    story.forEach(e=>{
+      const done=e.ic==='🎉';   // 완료 줄에는 예전처럼 견적 합계를 곁들인다
+      events.push({date:e.d,ic:e.ic,title:done?p.name+' 완공':e.t,sub:done?(s?('견적 '+hjMan(s.est||0)):p.name):p.name});
+    });
+    // 현장 진행(아직 완료 전)
     if(!p.doneAt)events.push({date:localDate(),ic:'🏗',title:p.name+' 진행 중',sub:STAGES[p.stage]||''});
-  });
-  // 수금 이력
-  (state.payLog||[]).forEach(x=>{
-    const pj=(state.projects||[]).find(p=>p.name===x.project);
-    if(pj&&customerKey(pj)===key)events.push({date:x.d,ic:'💵',title:hjMan(x.amt)+' 입금',sub:x.project});
   });
   // 리뷰 요청(노트)
   (state.notes||[]).forEach(nt=>{
@@ -23905,7 +24023,7 @@ function crmDialog(key){
     (m.phone?'<div style="display:flex;gap:7px;margin-bottom:14px"><a href="tel:'+escapeAttr(m.phone)+'" class="clay" style="flex:1;padding:11px;text-align:center;text-decoration:none;font-size:13px;border-radius:10px">📞 전화</a><button class="moss" id="crmSms" style="flex:1;padding:11px;font-size:13px">💬 문자</button></div>':'')+
     // 타임라인
     '<div style="font-size:12.5px;font-weight:700;margin-bottom:6px">📜 거래 타임라인</div>'+timeline+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 완공·수금·리뷰 요청이 자동으로 여기 기록돼요. 단골 관리에 활용하세요.</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 현장마다 공사 스토리(계약·견적·사진·입금·추가공사·AS·완공·보증서)와 리뷰 요청이 날짜순으로 모여요. 단골 관리에 활용하세요.</div>';
   openModal('👥 '+m.name,body,[{label:'‹ 목록',cls:'ghost',fn:()=>crmDialog()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const smsBtn=document.getElementById('crmSms');
   if(smsBtn)smsBtn.onclick=()=>{hjSendSms(m.phone,(m.name||'고객')+'님, '+COMPANY.name+'입니다. 안녕하세요! 궁금하신 점이나 필요하신 게 있으면 편히 연락 주세요. '+COMPANY.tel);toast('💬 문자를 준비했어요');};
@@ -28943,7 +29061,7 @@ function viewQuoteMaker(){
         <label>연결 현장<select id="qmProj">${projOpts}</select></label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
       </div>
-      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
+      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
       <datalist id="qmItemNames">${(()=>{const base=['철거','화장실','방수','타일,기구','주방,베란다타일','몰딩','씽크대','붙박이장문','장판','도배(실크)','식대,부자재','폐기물','인건비','목공','시트지','중문','신발장','키큰장','샷시','마감재','실리콘','경비','장비대','스텐 물받이','용마루','NEGO'];const pb=state.priceBook||{};const mats={};(state.materials||[]).forEach(m=>{const b=matBest(m);if(m.name&&b&&!pb[m.name])mats[m.name]='공급가 '+matSupplyPrice(b.price).toLocaleString('ko-KR')+'원 (🛒)';});const names=[...new Set([...Object.keys(pb),...Object.keys(mats),...base])];return names.map(n=>`<option value="${escapeAttr(n)}"${pb[n]?` label="${Number(pb[n]).toLocaleString('ko-KR')}원"`:(mats[n]?` label="${escapeAttr(mats[n])}"`:'')}></option>`).join('');})()}</datalist>
       <div class="qm-table-wrap"><table class="qm-table">
@@ -30160,7 +30278,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure]');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -30284,6 +30402,7 @@ function setupDelegation(){
     if(t.id==='qmMat')return quoteAddFromMaterials();
     if(t.id==='qmSet')return qsetView();
     if(t.id==='qmCalc')return materialCalc();
+    if(t.id==='qmMeasure')return quoteFromMeasure();
     if(t.id==='qmOrder')return materialOrder(state.editingQuote&&state.editingQuote.id);
     if(t.id==='qmImport')return importQuoteXlsx();
     if(t.id==='qmXlsx')return exportQuoteXlsx();
@@ -30412,7 +30531,7 @@ function setupDelegation(){
     if(t.id==='qmMemo')return setQuoteField('memo',t.value);
     if(t.id==='qmVat'){setQuoteField('vatIncluded',t.value);return render();}
     if(t.id==='qmAcct'){setQuoteField('accountIdx',t.value);return render();}
-    if(t.id==='qmProj'){setQuoteField('project',t.value);return;}
+    if(t.id==='qmProj'){setQuoteField('project',t.value);hjQuoteMeasureSync();return;}
     // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
     if(t.matches('select[data-asstat]')){const a=(state.asLog||[]).find(x=>x.id===d.asstat);if(a){a.status=t.value;markDirty();render();toast(t.value==='done'?'✅ AS 완료 처리':'상태 변경됨');}return;}
     if(t.matches('input[data-ck]')){const p2=state.projects.find(x=>x.name===state.activeProject);const it=p2&&(p2.checklist||[]).find(i=>i.id===t.dataset.ck);if(it){it.done=t.checked;markDirty();render();}return;}
@@ -32264,10 +32383,11 @@ function monthCloseView(step,ym){
 }
 
 /* ═══ v210 📄 견적 이력 — 승·패 추적(같은 스타일) ═══ */
-const QT_STL={draft:['작성',' #f8fafc','#475569'],sent:['보냄','#eff6ff','#1d4ed8'],won:['수주','#f0fdf4','#15803d'],lost:['실패','#fef2f2','#dc2626']};
+const QT_STL={draft:['작성',' #f8fafc','#475569'],sent:['보냄','#eff6ff','#1d4ed8'],won:['수주','#f0fdf4','#15803d'],lost:['종결','#fef2f2','#dc2626']};   // v329 '실패'=팔로업 「종결」 — 한 낱말로
 function quoteStatus(q){
   if(q&&q.result)return q.result;              // won | lost (수동)
   if(q&&q.project)return 'won';                 // 현장 연결 = 수주로 간주
+  if(q&&q.lost&&q.lost.at)return 'lost';        // v329 종결 기록만 남은 옛·손본 자료 — 종결은 result 와 lost 를 같이 쓴다(hjQuoteClose)
   if(q&&q.sentAt)return 'sent';
   return 'draft';
 }
@@ -32289,8 +32409,11 @@ function quoteMark(id,res){
   if(!q)return;
   q.result=(q.result===res)?'':res;
   if(res==='sent'){q.sentAt=q.sentAt?'':localDate();q.result='';}
+  // v329 '실패' 와 팔로업 「종결」 은 한 개념이다 — result==='lost' 이면 lost:{at,reason} 이 같이 있고, 풀리면 같이 지운다.
+  if(q.result==='lost'){if(!q.lost||!q.lost.at)q.lost={at:localDate(),reason:''};}
+  else if(q.lost)delete q.lost;
   markDirty();quoteHistoryView();
-  toast(res==='won'?'🎉 수주로 표시했어요':res==='lost'?'실패로 표시했어요':'보냄 표시를 바꿨어요');
+  toast(res==='won'?'🎉 수주로 표시했어요':res==='lost'?(q.result==='lost'?'종결로 표시했어요 — 아래에서 사유를 고르면 수주 분석에 쌓여요':'종결 표시를 풀었어요'):'보냄 표시를 바꿨어요');
 }
 function quoteHistoryView(reset){
   if(reset||!window.__qtHist){
@@ -32343,9 +32466,9 @@ function quoteHistoryView(reset){
         '<div style="display:flex;gap:5px;margin-top:7px">'+
           '<button class="ghost tiny qhSent" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">'+(q.sentAt?'✓ 보냄':'📤 보냄')+'</button>'+
           '<button class="'+(st==='won'?'moss':'ghost')+' tiny qhWon" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">🎉 수주</button>'+
-          '<button class="'+(st==='lost'?'clay':'ghost')+' tiny qhLost" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">✕ 실패</button>'+
+          '<button class="'+(st==='lost'?'clay':'ghost')+' tiny qhLost" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">✕ 종결</button>'+
           '<button class="ghost tiny qhEdit" data-id="'+q.id+'" style="flex:.7;padding:6px;font-size:10.5px">✎</button>'+
-        '</div></div>';
+        '</div>'+(st==='lost'&&q.result==='lost'?hjQuoteLostChips(q,'qhReason'):'')+'</div>';
       }).join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 견적이 없어요</div>')+
     '</div>'+
     '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
@@ -32364,6 +32487,7 @@ function quoteHistoryView(reset){
   document.querySelectorAll('#modalRoot .qhWon').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'won');};});
   document.querySelectorAll('#modalRoot .qhLost').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'lost');};});
   document.querySelectorAll('#modalRoot .qhSent').forEach(b=>{b.onclick=function(){rd();quoteMark(b.dataset.id,'sent');};});
+  document.querySelectorAll('#modalRoot .qhReason').forEach(b=>{b.onclick=function(){rd();hjQuoteClose(b.dataset.id,b.dataset.r);quoteHistoryView();};});
   document.querySelectorAll('#modalRoot .qhEdit').forEach(b=>{b.onclick=function(){
     const q=(state.quotes||[]).find(x=>x.id===b.dataset.id);
     if(!q)return;
