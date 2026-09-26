@@ -16,6 +16,10 @@
      ⑥ 카드 문구의 시트 수 = 실제로 내보내는 시트 수, pageerror 0
      ⑦ (v328) 추가공사 시트 — 확인받은 추가공사가 잔금(due)에 더해지므로 이사 뒤 extra·due 가 같다. 확인 전·'50만' 같은
         금액 확인 필요 건도 그대로, 견적에 담긴 건은 견적 합계에 이미 있어 옮기지 않고 요약에 밝힌다. 두 번 가져와도 두 벌이 안 된다
+     ⑧ (v330) AS 기록 칸(v329: 방문일·처리내용·유상금액·공종)도 왕복 — 유상 금액·'무상'(금액 칸을 다룸)·빈칸(옛 완료 건 —
+        무상을 지어내지 않는다)이 그대로 돌아오고, 사진은 옮기지 않되 몇 장인지 요약에 밝힌다. 옛 4칸 파일은 새 칸을 짓지 않는다
+     ⑨ (v330) 현장 규칙(부대사항 siteRules) 시트 — 칸 내용과 칸별 확인일(atMap)이 돌아오고, 출입번호로 보이는 칸은 내보내지도
+        들이지도 않는다. 이 기기에 이미 적힌 칸은 덮지 않는다
 
    XLSX 는 CDN 라이브러리라 검사에서는 스텁이다(apt-integrate 와 같은 방식). writeFile 이 workbook 을 JSON 글자로
    굳혀 두고(숫자는 숫자, 글자는 글자 — 엑셀 파일 왕복과 같은 성질), read 가 그 글자를 다시 푼다. 가져오기는 실제
@@ -98,7 +102,11 @@ function diffSnap(before, after) {
         suppliers: (state.suppliers || []).map(s => s.name + '|' + (s.phone || '')).sort(),
         supplierMap: Object.entries(state.supplierMap || {}).map(e => e.join('|')).sort(),
         payLog: (state.payLog || []).map(x => [x.d, x.project, x.amt].join('|')).sort(),
-        asLog: (state.asLog || []).map(a => [a.project, a.date, a.text, a.status].join('|')).sort()
+        // ⑧ v329 AS 기록 칸 — fee 는 키가 있는지('' = 무상 표시)까지 비교한다(빈칸을 무상으로 들이면 지어낸 사실이다)
+        asLog: (state.asLog || []).map(a => [a.project, a.date, a.text, a.status, a.visitAt || '', a.fix || '', 'fee' in a ? JSON.stringify(a.fee) : '-', a.warrantyItem || ''].join('|')).sort(),
+        // ⑨ 현장 규칙 — 칸 값과 칸별 확인일(atMap). 출입번호가 섞인 칸은 비교에서 뺀다(내보내지 않는 것이 약속이다 — 따로 단정)
+        siteRules: state.projects.map(p => { const r = hjSiteRulesSafe(hjSiteRules(p)) || {}, am = r.atMap || {};
+          return p.name + '=' + HJ_SITE_FIELDS.filter(f => String(r[f.k] || '').trim()).map(f => f.k + ':' + r[f.k] + '@' + (am[f.k] || r.at || '')).join(','); }).sort()
       };
     };
     window.__wipe = () => {
@@ -142,6 +150,12 @@ function diffSnap(before, after) {
       { id: 'a2', project: A, date: '2026-06-01', text: '욕실 실리콘 들뜸', status: 'open' },   // 같은 증상 재접수
       { id: 'a3', project: B, date: '2026-01-05', text: '도배 이음새 벌어짐', status: 'doing' }
     ];
+    // ⑧ v329 기록 칸 — a1 유상(사진 2장), a2 무상(금액 칸을 비워 다룸), a3 는 옛 기록(새 칸 없음 — 무상이 지어지면 안 된다)
+    Object.assign(state.asLog[0], { visitAt: '2026-04-03', fix: '실리콘 재시공', fee: 50000, warrantyItem: '욕실 방수', photos: ['k:가상1|1', 'k:가상2|2'] });
+    Object.assign(state.asLog[1], { visitAt: '2026-06-02', fix: '', fee: '' });
+    // ⑨ 현장 규칙 — 칸별 확인일이 다르고(atMap), 한 칸은 출입번호(옛 버전에서 섞여 들어온 값 — 내보내면 안 된다)
+    state.projects[0].siteRules = { park: '지하 2층 가상구역', waste: '만물 자가 반출', etc: '공동현관 1234', at: '2026-05-01', atMap: { park: '2026-03-01', waste: '2026-05-01' } };
+    state.projects[1].siteRules = { elev: '사용 전날 예약', at: '2025-10-10' };   // atMap 없는 옛 기록 — at 이 그 칸의 확인일
     state.aptOrders = []; state.quotes = [];
     // ⑦ 추가공사 — 확인받음(청구에 더함)·확인 전·금액 확인 필요('50만')·견적에 담김(C 의 앱 견적 품목 extraId)
     state.projects[0].extras = [
@@ -171,7 +185,16 @@ function diffSnap(before, after) {
     return { ret: r, sheets: wb.SheetNames, head: wb.Sheets['현장'].__aoa[0] };
   });
   // v328: ⑪ 추가공사 시트가 붙어 11 (v328 통합 검토 — 없으면 이사한 기기의 잔금이 추가공사만큼 준다)
-  assert(exp.sheets.length === 11 && exp.sheets[10] === '추가공사' && exp.ret && exp.ret.시트 === exp.sheets.length, '내보내기 시트 수: ' + JSON.stringify(exp.sheets) + ' / ' + JSON.stringify(exp.ret));
+  // v330: ⑫ 현장규칙 시트가 붙어 12 (부대사항이 이사 경로에 없던 v284 남은 한계)
+  assert(exp.sheets.length === 12 && exp.sheets[10] === '추가공사' && exp.sheets[11] === '현장규칙' && exp.ret && exp.ret.시트 === exp.sheets.length, '내보내기 시트 수: ' + JSON.stringify(exp.sheets) + ' / ' + JSON.stringify(exp.ret));
+  // ⑨ 출입번호 칸은 파일에 아예 없다 — 가져올 때 거르는 것만으로는 세무사·외주팀에게 나간 파일에서 샌다
+  const srSheet = await page.evaluate(() => JSON.parse(window.__xlWritten.json).Sheets['현장규칙'].__aoa);
+  assert(!/1234/.test(JSON.stringify(srSheet)) && srSheet.length === 4, '⑨ 현장규칙 시트에 출입번호가 없고 세 칸만: ' + JSON.stringify(srSheet));
+  // ⑧ AS 시트 — 유상 50000, 무상 표시, 옛 기록은 빈칸(지어내지 않는다), 사진은 장 수만
+  const asSheet = await page.evaluate(() => JSON.parse(window.__xlWritten.json).Sheets['AS이력'].__aoa);
+  const asRow = t => asSheet.find(r => r[0] === t) || [];
+  assert(asRow('2026-04-01')[6] === 50000 && asRow('2026-06-01')[6] === '무상' && asRow('2026-01-05')[6] === '' && asRow('2026-04-01')[8] === 2,
+    '⑧ AS 시트 유상금액·사진 칸: ' + JSON.stringify(asSheet));
 
   // 화면 길로 가져오기 — 이사 마법사 → '우리 앱 전체장부 엑셀' 카드 → 파일 고르기
   const importViaWizard = async () => {
@@ -209,11 +232,15 @@ function diffSnap(before, after) {
   assert(!/읽을 수 없어/.test(sum1), '⑤ 못 읽은 줄이 없는데 경고가 뜬다: ' + sum1);
   // ⑦ 추가공사 — 세 건 옮기고(빈 칸은 안 내보냄), 견적에 담긴 C 의 한 건은 견적 합계에 이미 있어 옮기지 않았다고 밝힌다
   assert(/추가공사: 추가 3/.test(sum1) && /견적에 담긴 1건은 견적 합계에 이미 들어 있어 옮기지 않음/.test(sum1), '⑦ 추가공사 요약: ' + sum1);
+  assert(/AS 사진 2장 연결은 옮기지 않음/.test(sum1), '⑧ AS 사진은 옮기지 않았다고 밝힌다: ' + sum1);
+  assert(/현장규칙: 추가 3/.test(sum1), '⑨ 현장규칙 요약: ' + sum1);
+  const vs = await page.evaluate(() => (state.asLog || []).map(a => !!a.visitSchedId || Array.isArray(a.photos)));
+  assert(vs.every(x => !x), '⑧ 옮기지 않은 일정·사진 연결을 지어내지 않는다: ' + JSON.stringify(vs));
   // ⑤ 옮기지 않은 시트를 밝힌다
-  const left = exp.sheets.filter(n => !['현장', '연락처', '단가장', '거래처', '수금이력', 'AS이력', '추가공사'].includes(n));
+  const left = exp.sheets.filter(n => !['현장', '연락처', '단가장', '거래처', '수금이력', 'AS이력', '추가공사', '현장규칙'].includes(n));
   const note = await page.evaluate(() => (document.querySelector('#modalRoot .iwNote') || {}).textContent || '');
   assert(left.length === 4 && left.every(n => note.indexOf(n) >= 0) && note.indexOf('현장 시트') >= 0, '⑤ 옮기지 않은 시트(' + left.join('·') + ')를 밝힌다: ' + note);
-  assert(['수금이력', 'AS이력', '연락처', '단가장', '거래처', '추가공사'].every(n => note.indexOf(n) < 0), '⑤ 옮긴 시트를 안 옮겼다고 하지 않는다: ' + note);
+  assert(['수금이력', 'AS이력', '연락처', '단가장', '거래처', '추가공사', '현장규칙'].every(n => note.indexOf(n) < 0), '⑤ 옮긴 시트를 안 옮겼다고 하지 않는다: ' + note);
 
   // ③ 같은 파일을 한 번 더 — 아무것도 늘지 않는다
   const nFiles = raw.files;
@@ -223,6 +250,7 @@ function diffSnap(before, after) {
   assert(d2.length === 0, '③ 두 번째 가져오기에서 값이 늘거나 바뀌었다:\n  ' + d2.join('\n  '));
   assert(await page.evaluate(() => state.files.filter(f => f.kind === 'estimate').length) === nFiles, '③ 이관 견적 파일이 늘었다');
   assert(/추가공사: 추가 0 · 중복 건너뜀 3/.test(sum2), '③⑦ 추가공사도 두 번 가져와 두 벌이 되지 않는다: ' + sum2);
+  assert(/현장규칙: 추가 0 · 중복 건너뜀 3/.test(sum2), '③⑨ 현장규칙도 두 번 가져와 늘지 않는다: ' + sum2);
   assert(/현장: 추가 0 · 중복 건너뜀 3/.test(sum2) && /수금이력: 추가 0 · 중복 건너뜀 5/.test(sum2) && /AS이력: 추가 0 · 중복 건너뜀 3/.test(sum2)
     && /연락처: 추가 0 · 중복 건너뜀 2/.test(sum2) && /거래처: 추가 0 · 중복 건너뜀 1/.test(sum2), '③ 요약에 중복 건너뜀: ' + sum2);
 
@@ -261,7 +289,19 @@ function diffSnap(before, after) {
     const gwb = book({ 'AS이력': [['접수일', '현장', '증상', '상태'], ['', A, '가상 날짜 없는 접수', '접수']] });
     const g1 = __iwFullImport(gwb)['AS이력'], g2 = __iwFullImport(gwb)['AS이력'];
     const g = { g1, g2, n: state.asLog.length };
-    return { a, b, c, d, e, f, g };
+    // h. v328 이전(AS 네 칸) 파일 — 새 칸을 짓지 않는다(무상 표시 포함). 손으로 고친 파일의 '0원'·알 수 없는 글자
+    window.__wipe();
+    __iwFullImport(book({ 'AS이력': [['접수일', '현장', '증상', '상태'], ['2026-04-01', A, '가상 옛 접수', '완료']] }));
+    const h = { old: JSON.parse(JSON.stringify(state.asLog.map(({ id, ...x }) => x))) };
+    window.__wipe();
+    __iwFullImport(book({ 'AS이력': [['상태', '현장', '공종', '증상', '유상금액', '접수일'], ['완료', A, '가상 공종', '가상 0원 표기', '0원', '2026-04-02'], ['완료', A, '', '가상 확인필요', '확인 필요', '2026-04-03']] }));
+    h.edited = state.asLog.map(x => [x.text, 'fee' in x ? JSON.stringify(x.fee) : '-', x.warrantyItem || '']);
+    // i. 현장규칙 — 이 기기에 이미 적힌 칸은 덮지 않고, 손으로 넣은 출입번호는 들이지 않는다
+    window.__wipe();
+    state.projects = [{ name: A, stage: 1, received: 0, phases: [], cost: {}, siteRules: { park: '이 기기 값', at: '2026-09-01', atMap: { park: '2026-09-01' } } }];
+    const iR = __iwFullImport(book({ '현장규칙': [['현장', '항목', '내용', '확인일'], [A, '주차', '옛 파일 값', '2026-01-01'], [A, '그 밖에 알아둘 것', '비번 5678', '2026-01-01'], [A, '엘리베이터·보양', '보양 필수', '2026-02-02'], ['없는 현장', '주차', 'x', '']] }))['현장규칙'];
+    const i = { R: iR, rules: JSON.parse(JSON.stringify(state.projects[0].siteRules)) };
+    return { a, b, c, d, e, f, g, h, i };
   }, { A });
   const okCost = x => x.cost && x.cost.material === 100 && x.cost.labor === 200 && x.cost.outsource === 300 && x.doneAt === '2026-03-15';
   assert(okCost(layouts.a) && layouts.a.archived && layouts.a.stage === 3 && layouts.a.received === 6500000 && layouts.a.est === 9000000, '④a v193 이전 파일: ' + JSON.stringify(layouts.a));
@@ -273,6 +313,12 @@ function diffSnap(before, after) {
   assert(JSON.stringify(layouts.f.as) === JSON.stringify([B + '|2026-01-05|도배 이음새 벌어짐', A + '|2026-04-01|욕실 실리콘 들뜸', A + '|2026-06-01|욕실 실리콘 들뜸'].sort())
     && layouts.f.R.add === 2 && layouts.f.R.skip === 1, '④f 같은 증상 다른 접수일은 다른 건: ' + JSON.stringify(layouts.f));
   assert(layouts.g.n === 1 && layouts.g.g1.add === 1 && layouts.g.g2.skip === 1, '④g 접수일 없는 AS 를 두 번 가져와도 한 건: ' + JSON.stringify(layouts.g));
+  assert(JSON.stringify(layouts.h.old) === JSON.stringify([{ project: A, date: '2026-04-01', text: '가상 옛 접수', status: 'done' }]), '⑧h 옛 네 칸 파일은 새 칸을 짓지 않는다: ' + JSON.stringify(layouts.h.old));
+  assert(JSON.stringify(layouts.h.edited) === JSON.stringify([['가상 0원 표기', '""', '가상 공종'], ['가상 확인필요', '-', '']]), '⑧h 제목으로 찾고, 0원은 무상·알 수 없는 글자는 짓지 않는다: ' + JSON.stringify(layouts.h.edited));
+  const ir = layouts.i.rules;
+  assert(ir.park === '이 기기 값' && ir.atMap.park === '2026-09-01' && !ir.etc && ir.elev === '보양 필수' && ir.atMap.elev === '2026-02-02' && ir.at === '2026-09-01'
+    && layouts.i.R.add === 1 && layouts.i.R.skip === 1 && layouts.i.R.bad === 1 && /출입번호로 보이는 1칸/.test(layouts.i.R.note || ''),
+    '⑨i 있는 칸은 덮지 않고 출입번호는 안 들인다: ' + JSON.stringify(layouts.i));
 
   // ⑤ 꼭 있어야 할 칸이 빈 줄 — 요약에 보인다
   await page.evaluate(({ A }) => {
@@ -300,5 +346,7 @@ function diffSnap(before, after) {
   console.log('PASS  ⑤ 못 읽은 줄 수·옮기지 않은 시트를 요약에 밝힘');
   console.log('PASS  ⑥ 카드 시트 수 = 실제 시트 수 · pageerror 0');
   console.log('PASS  ⑦ 추가공사 — 이사 뒤 extra·due 그대로, 견적에 담긴 것은 다시 안 더함');
+  console.log('PASS  ⑧ AS 기록 칸(방문일·처리·유상/무상·공종) 왕복 — 옛 파일·빈칸에 무상을 짓지 않음, 사진은 장 수만 안내');
+  console.log('PASS  ⑨ 현장 규칙 시트 — 칸별 확인일 왕복, 출입번호는 안 내보내고 안 들임, 있는 칸은 안 덮음');
   await browser.close();
 })().catch(async e => { console.error('FAIL ', e.message); try { await browser.close(); } catch (_) {} process.exit(1); });
