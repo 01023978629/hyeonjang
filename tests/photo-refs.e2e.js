@@ -11,7 +11,8 @@
         현장 이름을 바꿔도 끊기지 않는다
      ④ 정말 없어진 사진은 조용히 빈 값이 아니라 '사진을 찾을 수 없음 N장' 으로 알린다 — 저절로 지우지 않고, [목록에서 빼기]로만 뺀다,
         보증서 보관본은 '같은 사본' 이라 말하지 않고 다시 보내기 전에 묻는다
-     ⑤ 참조 풀이 규칙: 정리 폴더로 옮겨진 사진(이름·크기 같음)·v323 원본→정리본 합침은 따라가고, 모호하면 고르지 않는다,
+     ⑤ 참조 풀이 규칙: 정리 폴더로 옮겨진 사진·v323 원본→정리본 합침은 이름·크기가 같은 그 현장 사진이 하나일 때만 따라가고,
+        모호하거나 크기가 다르거나 딴 현장 사진이면 고르지 않는다('찾을 수 없음'),
         Drive 에 올라가면 'd:' 로 고쳐 적고, 같은 Drive ID 가 두 기록에 붙으면 'k:' 로 가리킨다
      ⑥ pageerror 0
 
@@ -263,9 +264,22 @@ let browser;
     // 정리 폴더로 옮겨짐(이름·크기 같음) — 따라가고 새 경로로 고쳐 적는다
     state.files = [f('z1', 'a.jpg', '_정리완료/X/시공전/', 500)];
     let r = hjFilesByRefs(['k:현장사진/X/a.jpg|500']); out.moved = [r.files.map(x => x.id), r.healed, r.changed];
-    // v323 원본→정리본 합침(크기가 다른 정리본 하나뿐) — 따라간다
+    // 크기가 다른 같은 이름 정리본 하나뿐 — 다른 사진이다(v323 은 같은 이름·같은 크기 쌍만 합친다).
+    // 2026-09-26 새 계약: 예전엔 이름만 보고 따라갔는데, IMG_0001 같은 폰 이름은 현장마다 겹쳐 A 현장의 잃은 사진이 B 현장 사진으로 고쳐 적혔다.
     state.files = [f('z2', 'b.jpg', '_정리완료/X/완료/', 480)];
-    r = hjFilesByRefs(['k:현장사진/X/b.jpg|500']); out.merged = r.files.map(x => x.id);
+    r = hjFilesByRefs(['k:현장사진/X/b.jpg|500']); out.merged = [r.files.length, r.missing.length, r.changed];
+    // A 현장의 잃은 사진 + B 현장의 같은 이름(크기 다름) 정리본 → 못 찾음. 같은 크기라도 pool 을 A 현장으로 좁히면 못 찾음.
+    state.files = [f('zb', 'IMG_0001.jpg', '_정리완료/B현장/완료/', 900, { project: 'B현장' })];
+    r = hjFilesByRefs(['k:현장사진/A현장/IMG_0001.jpg|500']); out.cross = [r.files.length, r.missing.length, r.healed];
+    state.files = [f('zc', 'IMG_0002.jpg', '_정리완료/B현장/완료/', 500, { project: 'B현장' })];
+    r = hjFilesByRefs(['k:현장사진/A현장/IMG_0002.jpg|500'], state.files.filter(x => x.project === 'A현장')); out.crossPool = [r.files.length, r.missing.length];
+    // 화면 쪽 — 보증서 보관본·추가공사가 딴 현장 사진으로 풀지 않는다(보증서는 '미리보기 못 불러옴' 이 아니라 '찾을 수 없음')
+    const pA = { name: 'A현장', warrantyDoc: { at: '2026-09-01', html: '<p>x</p>', photoIds: { before: ['k:현장사진/A현장/IMG_0002.jpg|500'], after: [] } } };
+    const wd = hjWarrantyDocPhotos(pA); out.wd = [wd.missing, wd.noThumb, wd.changed];
+    const pE = { name: 'A현장', extras: [{ id: 'ex-a', date: '2026-09-01', text: '선반', photo: 'k:현장사진/A현장/IMG_0002.jpg|500' }] };
+    state.projects.push(pE); extraWork('A현장');
+    out.ex = [pE.extras[0].photo, !!document.querySelector('#modalRoot .exMiss')];
+    closeModal(true); state.projects.splice(state.projects.indexOf(pE), 1);
     // 모호 — 같은 이름·크기 둘 / 정리본 둘이면 고르지 않는다
     state.files = [f('z3', 'c.jpg', '_정리완료/X/시공전/', 500), f('z4', 'c.jpg', '_정리완료/Y/시공전/', 500)];
     r = hjFilesByRefs(['k:현장사진/X/c.jpg|500']); out.ambSame = [r.files.length, r.missing.length];
@@ -287,7 +301,11 @@ let browser;
     return out;
   });
   assert(JSON.stringify(rules.moved) === JSON.stringify([['z1'], ['k:_정리완료/X/시공전/a.jpg|500'], true]), '⑤ 정리 폴더로 옮겨진 사진을 따라가고 새 경로로 고쳐 적는다: ' + JSON.stringify(rules.moved));
-  assert(JSON.stringify(rules.merged) === JSON.stringify(['z2']), '⑤ v323 원본→정리본 합침을 따라간다: ' + JSON.stringify(rules.merged));
+  assert(JSON.stringify(rules.merged) === JSON.stringify([0, 1, false]), '⑤ 크기가 다른 같은 이름 정리본은 따라가지 않는다: ' + JSON.stringify(rules.merged));
+  assert(JSON.stringify(rules.cross) === JSON.stringify([0, 1, ['k:현장사진/A현장/IMG_0001.jpg|500']]), '⑤ A 현장 잃은 사진을 B 현장 같은 이름 사진으로 고쳐 적지 않는다: ' + JSON.stringify(rules.cross));
+  assert(JSON.stringify(rules.crossPool) === JSON.stringify([0, 1]), '⑤ pool 밖(딴 현장) 사진은 같은 이름·크기여도 고르지 않는다: ' + JSON.stringify(rules.crossPool));
+  assert(JSON.stringify(rules.ex) === JSON.stringify(['k:현장사진/A현장/IMG_0002.jpg|500', true]), "⑤ 추가공사는 딴 현장 같은 이름 사진으로 고쳐 적지 않고 '사진을 찾을 수 없음' 을 띄운다: " + JSON.stringify(rules.ex));
+  assert(JSON.stringify(rules.wd) === JSON.stringify([1, 0, false]), "⑤ 보증서 보관본은 딴 현장 같은 이름 사진을 '찾을 수 없음' 으로 센다: " + JSON.stringify(rules.wd));
   assert(JSON.stringify(rules.ambSame) === JSON.stringify([0, 1]) && JSON.stringify(rules.ambOrg) === JSON.stringify([0, 1]) && rules.diff === 1 && rules.noSize === 1, '⑤ 모호하면 고르지 않는다: ' + JSON.stringify(rules));
   assert(JSON.stringify(rules.up) === JSON.stringify([1, ['d:DRIVE-FAKE-G']]), "⑤ Drive 에 올라가면 'd:' 로(옛 id 와 겹치면 한 번만): " + JSON.stringify(rules.up));
   assert(JSON.stringify(rules.dup) === JSON.stringify(['k:현장사진/X/h.jpg|700', 'k:_정리완료/X/완료/h.jpg|700']), "⑤ 같은 Drive ID 두 기록은 'k:' 로: " + JSON.stringify(rules.dup));

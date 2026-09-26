@@ -12579,7 +12579,8 @@ async function warrantyIssueSend(name){
 function hjWarrantyDocPhotos(p){
   const w=p&&p.warrantyDoc,ids=w&&w.photoIds&&typeof w.photoIds==='object'&&!Array.isArray(w.photoIds)?w.photoIds:null;
   const side=k=>Array.isArray(ids&&ids[k])?ids[k]:[];
-  const rb=hjFilesByRefs(side('before')),ra=hjFilesByRefs(side('after'));
+  const pool=p?hjCasePhotos(p):[];   // 이 현장 사진 안에서만 푼다 — 딴 현장의 같은 이름 사진을 '찾았다' 며 고쳐 적지 않게(못 찾으면 missing)
+  const rb=hjFilesByRefs(side('before'),pool),ra=hjFilesByRefs(side('after'),pool);
   const ok=f=>f.kind==='photo'&&!isVideoRec(f)&&f.project===p.name&&hjDocThumbOk(f);
   const b=rb.files.filter(ok),a=ra.files.filter(ok);
   const found=rb.files.length+ra.files.length,missing=rb.missing.length+ra.missing.length,want=found+missing;
@@ -20995,26 +20996,32 @@ function hjFileRef(f){
 /* refs(참조·옛 id 섞여도 됨)를 pool(기본 state.files) 안에서 푼다.
    → {files(참조 순서, 중복 없음), missing(못 찾은 참조), pairs[{ref,file}], healed(찾은 것은 지금 형식으로 고친 목록 — 못 찾은 것은
    그대로 둔다: 동기화 전이라 아직 안 보이는 사진일 수 있다), kept(찾은 것만, 지금 형식), changed(healed 가 원래와 다른가)}.
-   'k:' 가 안 맞으면 한 번 더 본다 — PC 에서 정리 폴더로 옮겨져 경로만 바뀐 사진(이름·크기가 같은 사진이 딱 하나), 또는
-   v323 이 원본을 정리본으로 합친 뒤(원본 경로를 가리켰고 같은 이름 사진이 정리본 하나뿐). 둘 이상이면 고르지 않는다(모호). */
-function hjFilesByRefs(refs,pool){
+   'k:' 가 안 맞으면 한 번 더 본다 — PC 에서 정리 폴더로 옮겨져 경로만 바뀐 사진, 또는 v323 이 원본을 정리본으로 합친 뒤
+   (v323 은 같은 이름·같은 크기 쌍만 합친다). 둘 다 **이름과 크기가 같은 사진이 pool 안에 딱 하나**일 때만 따라간다 — 둘 이상이면
+   고르지 않고(모호), 크기를 모르거나 다르면 다른 사진이다(IMG_0001·KakaoTalk_… 같은 폰 이름은 현장마다 겹친다 — 이름만으로 고르면
+   A 현장의 잃은 사진이 B 현장 사진으로 조용히 바뀌어 고쳐 적힌다). 그래서 부르는 쪽은 pool(또는 짐작만 좁히는 guessPool)을
+   그 현장 사진으로 넘긴다.
+   알려진 한계: 정리하면서 이름이 바뀐 사진(대상 폴더에 같은 이름이 있어 '_'+시각을 붙이거나 safeName 이 글자를 바꾼 경우 —
+   setPhase 즉시 이동·일괄 정리)은 따라가지 못하고 '사진을 찾을 수 없음' 으로 알린다(조용히 틀리지는 않는다). Drive 에
+   올라간 사진('d:')은 이름이 바뀌어도 따라간다. */
+function hjFilesByRefs(refs,pool,guessPool){
   const L=(Array.isArray(pool)?pool:(state.files||[])).filter(f=>f&&typeof f==='object');
+  // 정확히 맞는 참조('d:'·'k:'·옛 id)는 pool 에서, 이름·크기로 짐작하는 따라가기는 guessPool(기본 = pool)에서만 —
+  // 추가공사처럼 다른 현장으로 옮긴 사진도 연결된 채 보여야 하는 곳은 pool 을 넓게 두고 짐작만 그 현장 안으로 좁힌다.
+  const G=Array.isArray(guessPool)?guessPool.filter(f=>f&&typeof f==='object'):L;
   const byD=new Map(),byK=new Map(),byId=new Map(),byName=new Map();
   const put=(m,k,f)=>{if(k&&!m.has(k))m.set(k,f);};
-  L.forEach(f=>{
-    put(byD,String(f._driveId||'').trim(),f);put(byK,fileKey(f),f);if(f.id!=null)put(byId,String(f.id),f);
+  L.forEach(f=>{put(byD,String(f._driveId||'').trim(),f);put(byK,fileKey(f),f);if(f.id!=null)put(byId,String(f.id),f);});
+  G.forEach(f=>{
     const n=f.kind==='photo'?String(f.name||'').toLowerCase():'';
     if(n){if(!byName.has(n))byName.set(n,[]);byName.get(n).push(f);}
   });
-  const organized=pre=>String(pre||'').startsWith('_정리완료/');
   const moved=k=>{
     const bar=k.lastIndexOf('|');if(bar<0)return null;
     const path=k.slice(0,bar),size=Number(k.slice(bar+1))||0,sl=path.lastIndexOf('/');
-    const prefix=path.slice(0,sl+1),cands=byName.get(path.slice(sl+1).toLowerCase())||[];
+    const cands=byName.get(path.slice(sl+1).toLowerCase())||[];
     const same=size>0?cands.filter(f=>(Number(f.size)||0)===size):[];
-    if(same.length===1)return same[0];
-    if(!organized(prefix)&&cands.length===1&&organized(cands[0].prefix))return cands[0];
-    return null;
+    return same.length===1?same[0]:null;
   };
   const find=r=>{
     if(r.startsWith('d:'))return byD.get(r.slice(2))||null;
@@ -21062,7 +21069,7 @@ function extraWork(projectName){
   const opts=projects.map(x=>'<option value="'+escapeAttr(x.name)+'"'+(x.name===p.name?' selected':'')+'>'+escapeHtml(x.name)+((x.extras||[]).length?' (추가 '+x.extras.length+')':'')+'</option>').join('');
   const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===p.name).slice(-40).reverse();
   // 사진 연결은 안정 참조(hjFileRef)로 — 파일 id 는 폰·복원·기기 이동 뒤 새로 붙는다. 옛 id 로 찾았으면 지금 형식으로 고쳐 적는다.
-  const refRes=hjFilesByRefs(list.map(x=>x&&x.photo));
+  const refRes=hjFilesByRefs(list.map(x=>x&&x.photo),null,(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===p.name));   // 이름·크기 짐작은 이 현장 사진 안에서만 — 딴 현장의 같은 이름 사진으로 바꿔 적지 않게
   const phOf=new Map(refRes.pairs.map(q=>[q.ref,q.file]));
   let healed=false;
   if(hjRefHealOk())list.forEach(x=>{const r=String(x&&x.photo||'').trim(),f=r?phOf.get(r):null;if(!f)return;const now=hjFileRef(f);if(now&&now!==x.photo){x.photo=now;phOf.set(now,f);healed=true;}});
