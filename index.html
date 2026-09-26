@@ -1254,6 +1254,8 @@ function ext(n){
 function fmtSize(b){if(!b)return'';const u=['B','KB','MB','GB'];let i=0;while(b>=1024&&i<3){b/=1024;i++;}return b.toFixed(b<10&&i>0?1:0)+u[i];}
 function pad(n){return String(n).padStart(2,'0');}
 function localDate(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}   // 로컬(KST) 날짜키 — toISOString(UTC)은 새벽에 하루 어긋남
+// 화면에 찍는 'YYYY-MM-DD HH:MM' — toISOString().slice(0,16) 은 UTC 라 한국 시각보다 9시간 이르다(오전 9시 전이면 날짜도 어제). tests/local-date.check.js
+function localStamp(d){d=d||new Date();return localDate(d)+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
 function localMonth(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function fmtDate(d){if(!d)return'날짜 없음';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function fmtDay(d){if(!d)return'촬영일 미상';return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}`;}
@@ -4215,7 +4217,7 @@ function openGdriveSetup(){
      대신 [자가진단]을 통과하기 전에는 계약 버튼이 눌리지 않는다 — 잠금은 그대로다. */
   const ctBanner=ctUnlocked
     ? `<div style="background:rgba(46,160,67,.10);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
-        <b>✅ 자가진단 통과 — 전자계약 사용 가능</b><br>확인 시각 ${escapeHtml(String(__contract.selfTestAt).slice(0,16).replace('T',' '))}</div>`
+        <b>✅ 자가진단 통과 — 전자계약 사용 가능</b><br>확인 시각 ${escapeHtml((d=>isNaN(d.getTime())?String(__contract.selfTestAt):localStamp(d))(new Date(__contract.selfTestAt)))}</div>`
     : `<div style="background:rgba(201,154,46,.12);border-radius:9px;padding:9px 10px;margin-bottom:9px;font-size:12.5px">
         <b>🔒 전자계약 잠김 — 자가진단 전</b><br>종료된 Fly 서버 대신 Google Apps Script 계약 서버를 씁니다.
         아래에 배포 주소와 관리자 토큰을 넣고 <b>[자가진단]</b>을 통과시키면 열립니다.
@@ -4731,7 +4733,7 @@ function loadDemo(){
     {id:uid(),date:'2025-03-10',time:'09:00',title:'철거 작업',project:'망원동 카페',workers:'3',memo:'기존 마감재 철거',hours:8,
       report:{done:'바닥·벽 철거 완료, 폐기물 반출',actualWorkers:'3',material:'마대 20장',issue:'배관 노후 확인 — 교체 검토',progress:'완료',weather:'맑음',filledAt:new Date().toISOString()}},
     {id:uid(),date:'2025-03-12',time:'09:00',title:'방수 1차',project:'망원동 카페',workers:'2',memo:'화장실·베란다',hours:6,report:null},
-    {id:uid(),date:new Date().toISOString().slice(0,10),time:'10:00',title:'현장 실측',project:'성수동 사무실',workers:'1',memo:'견적용 실측',hours:2,report:null},
+    {id:uid(),date:localDate(),time:'10:00',title:'현장 실측',project:'성수동 사무실',workers:'1',memo:'견적용 실측',hours:2,report:null},
   ];
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
@@ -5452,9 +5454,17 @@ function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){
   window.__clPass=0;
   p.stage=idx;
   try{portalAutoSync(name);}catch(e){}
-  // 완료(마지막 단계)로 바뀌는 순간의 날짜 기록 — 보증·AS 기산일. 완료 해제하면 지움.
-  if(idx===STAGES.length-1){if(!p.doneAt)p.doneAt=new Date().toISOString().slice(0,10);}else{p.doneAt=null;}
-  markDirty();render();}}
+  // 완료(마지막 단계)로 바뀌는 순간의 날짜 기록 — 보증·AS 기산일. 한국 날짜(localDate) — toISOString 은 오전 9시 전이면 어제다.
+  // 완료를 내리면 준공일을 지우지 않고 doneAtPrev 로 옮겨 둔다. 잘못 누른 점·추가공사로 한 번 내렸다 올렸다고 준공일이
+  // 오늘로 바뀌면 보증 기산일·보증서 작업완료일·AS 보증 안/밖 판정이 조용히 바뀐다. 준공일을 바꾸는 길은 🛡 보증 시작/수정의 '준공일' 칸이다.
+  let restored='';
+  if(idx===STAGES.length-1){
+    if(!p.doneAt){if(p.doneAtPrev){p.doneAt=p.doneAtPrev;restored=p.doneAt;}else p.doneAt=localDate();}
+    delete p.doneAtPrev;
+  }else if(p.doneAt){p.doneAtPrev=p.doneAt;p.doneAt=null;}
+  markDirty();render();
+  if(restored)try{toast('준공일 '+restored+' 그대로 — 바꾸려면 🛡 보증 수정의 준공일 칸');}catch(e){}
+}}
 /* [v328] 현장 이름으로 이어진 기록 — 이름 변경·삭제가 같은 목록을 본다.
    이 앱의 기록은 현장을 id 가 아니라 '이름'으로 가리킨다. 예전 renameProject 는 사진·일정·팀 업무·(식별자 있는) 관리사무소 오더만
    바꾸고 수금·AS·견적·지출·작업시간·운행·만족도·메모·할일은 옛 이름에 남겨 두었다 — 견적은 다음 불러오기 때 syncQuoteToProject 가
@@ -6770,6 +6780,15 @@ function openCamera(){
 }
 
 let __aptPhotoSearchQuery=null; // 오더 사진 보기의 검색 범위만 기억한다. 저장 데이터에는 넣지 않는다.
+let __aptPhotoOrderId=null;      // 📸 를 누른 오더 — 배지 수와 사진 탭이 같은 묶음(aptPhotoList)을 보이게. __aptPhotoSearchQuery 가 살아 있을 때만 쓴다.
+let __aptPhotoSetCache=null;
+// 그 오더의 사진 묶음(파일 객체 Set). 파일 id 는 복원·스캔마다 바뀌므로 저장하지 않고, 파일 목록이 바뀌면 다시 센다.
+function aptPhotoSearchSet(){
+  const o=__aptPhotoOrderId&&(state.aptOrders||[]).find(x=>x&&x.id===__aptPhotoOrderId);if(!o)return null;
+  const c=__aptPhotoSetCache;
+  if(c&&c.oid===o.id&&c.files===state.files&&c.len===state.files.length)return c.set;
+  const set=new Set(aptPhotoList(o));__aptPhotoSetCache={oid:o.id,files:state.files,len:state.files.length,set};return set;
+}
 function photoWorkSearchMatch(f,query){
   if(!f||f.kind!=='photo')return false;
   const norm=v=>String(v||'').replace(/\s+/g,'').toLowerCase();
@@ -6778,6 +6797,8 @@ function photoWorkSearchMatch(f,query){
 function matchSearch(f,options){
   if(!state.search)return true;
   const q=state.search;
+  // 오더 📸 보기: 사진은 배지와 같은 판정(aptPhotoList)으로만 — 부분문자열 검색은 다른 단지·'1103동1204호' 사진을 더한다
+  if(__aptPhotoOrderId&&__aptPhotoSearchQuery===q&&f&&f.kind==='photo'){const set=aptPhotoSearchSet();if(set)return set.has(f);}
   return (f.name||'').toLowerCase().includes(q)||(f.text||'').toLowerCase().includes(q)
     ||(f.contact&&JSON.stringify(f.contact).toLowerCase().includes(q))
     ||(f.project||'').toLowerCase().includes(q)
@@ -11335,9 +11356,12 @@ function hjWarranty(p){
   if(!p.doneAt)return null;
   // 저장값이 없는 현장은 법정 기본 항목을 읽기 전용으로 파생한다.
   // p.warranty 를 쓰지 않으므로 기존 현장 데이터 마이그레이션·덮어쓰기는 일어나지 않는다.
-  const items=WARRANTY_ITEMS_DEFAULT.map(it=>({
-    name:it.name,months:it.months,expiresAt:hjAddMonths(p.doneAt,it.months)
-  }));
+  // 구형 숫자 보증(p.warranty=개월, 현장 전체에 준 약속)은 각 항목을 그 값까지 올린다 — 짧은 값으로 법정 기간을 줄이지 않는다.
+  // 끝날만 늘리면 종이 보증서가 '2030년까지'라 적으면서 '(작업완료일로부터 3년)'·'방수 3년'이라 적어 제 안에서 어긋났다.
+  // 항목에 반영해야 끝날·기간 문구·링크 서명 본문이 같은 값에서 나온다.
+  const legacyM=(typeof w==='number'||typeof w==='string')?num(w):0;
+  const items=WARRANTY_ITEMS_DEFAULT.map(it=>{const m=Math.max(it.months,legacyM||0);
+    return {name:it.name,months:m,expiresAt:hjAddMonths(p.doneAt,m)};});
   const latest=items.reduce((v,it)=>it.expiresAt>v?it.expiresAt:v,'');
   const end=new Date(latest+'T00:00:00');
   const dday=Math.ceil((end-hjToday0())/86400000);
@@ -12744,6 +12768,7 @@ function viewAptMgmt(){
   }
   return html;
 }
+const APT_GENERIC_WORDS=['아파트','단지','마을','타운','맨션','오피스텔','팰리스','캐슬','빌리지'];   // 브랜드가 아닌 공동주택 일반 낱말(aptPhotoList 남의 단지 판정에서 뺀다)
 function aptPhotoQuery(o){return String(o.unit||'').replace(/\s+/g,'').toLowerCase();}
 // 이 오더(동/호)에 걸리는 사진 목록. 아파트 오더는 현장 배정이 아니라 파일명으로 잡는다.
 function aptPhotoList(o){
@@ -12751,10 +12776,27 @@ function aptPhotoList(o){
   if(o&&(o.source==='office-intake'||o.projectIdentity)&&!p)return [];
   if(aptUnitManaged(p)){const u=aptUnitForOrder(o,p);return u?aptUnitPhotos(p,u.id):[];}
   const q=aptPhotoQuery(o); if(!q)return [];
-  const prev=state.search; state.search=q;
-  // 사진 작업명 검색을 동/호 연결 근거로 확대하지 않는다. 기존 오더 연결 기준을 유지한다.
-  let list=[]; try{ list=state.files.filter(f=>f.kind==='photo'&&!f._aptUnit&&!state.projects.some(p=>p.name===f.project&&aptUnitManaged(p))&&matchSearch(f,{photoTags:false})); } finally{ state.search=prev; }
-  return list;
+  // 이 오더의 단지 안에서만, 동/호는 경계를 두고 맞춘다. 예전에는 동/호 부분문자열로 전체 사진을 긁어
+  // 다른 단지의 같은 '103동1204호' 사진과 '3동 1204호' 오더가 '103동1204호' 사진을 잡았다 — 전/후 카드·후기 재료는
+  // 관리사무소·고객에게 나가는 자료다(불변식: 그 동/호 사진만). 사진 작업명(_worklabel)은 근거로 넓히지 않는다.
+  const ck=aptComplexKey(aptOfficeName(o.officeId)).replace(/[()]/g,'');
+  const cks=ck&&ck!=='삭제된단지'?[ck,ck.replace(/아파트$/,'')].filter(k=>k.length>=2):[];
+  const ownPj=o.project?String(o.project):'';
+  const norm=v=>String(v||'').replace(/\s+/g,'').toLowerCase();
+  const unitHit=v=>{const t=norm(v);let i=t.indexOf(q);
+    while(i>=0){const a=t.charAt(i-1),b=t.charAt(i+q.length);if(!/\d/.test(a)&&!/\d/.test(b))return true;i=t.indexOf(q,i+1);}
+    return false;};
+  // 단지 판정: 이 단지 이름이 들어 있거나 이 오더의 현장이면 우리 것. 단지 이름 없이 동/호만 적은 사진('105동1402호_철거.jpg')은
+  // 예전처럼 받는다(흔한 이름 규칙이다). 다만 다른 단지 이름(등록된 다른 관리사무소·이 단지 이름에 없는 브랜드 낱말)이 적힌 사진은 남의 집이다.
+  // '아파트'·'마을'·'단지' 같은 일반 낱말은 근거로 쓰지 않는다 — '선비마을3단지' 오더의 '선비마을_315동1401호.jpg',
+  // '둔산 크로바아파트' 오더의 '크로바아파트_101동101호.jpg' 처럼 같은 단지를 줄여 적은 사진이 남의 집으로 빠졌다.
+  const aptWordKeys=APT_WORDS.filter(w=>!APT_GENERIC_WORDS.includes(w)).map(aptComplexKey).filter(k=>k&&!cks.some(c=>c.includes(k)));
+  const otherKeys=(state.aptOffices||[]).filter(x=>x&&x.id!==o.officeId).map(x=>aptComplexKey(x.complex)).filter(k=>k&&!cks.includes(k));
+  const ownHit=f=>(ownPj&&f.project===ownPj)||cks.some(k=>norm(f.name).includes(k)||norm(f.project).includes(k)||norm(f.text).includes(k));
+  const foreign=f=>[f.name,f.project].some(v=>{const t=norm(v);return !!t&&(otherKeys.some(k=>t.includes(k))||aptWordKeys.some(k=>t.includes(k)));});
+  const inComplex=f=>ownHit(f)||!foreign(f);
+  return state.files.filter(f=>f&&f.kind==='photo'&&!f._aptUnit&&!state.projects.some(p=>p.name===f.project&&aptUnitManaged(p))
+    &&inComplex(f)&&(unitHit(f.name)||unitHit(f.text)||unitHit(f.project)));
 }
 function aptPhotoCount(o){return aptPhotoList(o).length;}
 function aptOrderCompleted(o){return !!o&&['done','billed','paid'].includes(o.status);}
@@ -12982,7 +13024,7 @@ function aptOrderManage(filterOffice){
     const project=aptUnitOrderProject(o);
     if(aptUnitManaged(project)){const unit=aptUnitForOrder(o,project);if(unit)aptUnitView(project.name,unit.id);else toast('오더와 일치하는 동·호수를 확인해 주세요');return;}
     const q=aptPhotoQuery(o);
-    state.search=q;__aptPhotoSearchQuery=q;
+    state.search=q;__aptPhotoSearchQuery=q;__aptPhotoOrderId=o.id;__aptPhotoSetCache=null;
     const gi=document.getElementById('globalSearch'); if(gi)gi.value=q;   // 입력칸도 맞춰야 사용자가 지울 수 있다
     closeModal(); state.tab='photos'; __showDup=false;render();syncMobileNav();
     toast('📸 '+(o.unit||'')+' 사진 — 검색어를 지우면 전체가 다시 보입니다');
@@ -13010,18 +13052,27 @@ function aptSettle(officeId,ym){
   const noAmt=billable.filter(o=>!num(o.amount));
   const sum=billable.reduce((s,o)=>s+num(o.amount),0);
   const [y,m]=ym.split('-');
-  const lines=billable.map((o,i)=>(i+1)+'. '+o.unit+' — '+o.text+' — '+(num(o.amount)?won(num(o.amount)):'금액 미정')+' (완료 '+(o.doneAt||'')+')');
+  const vat=aptSettleVat(billable);
+  const lines=billable.map((o,i)=>(i+1)+'. '+o.unit+' — '+o.text+' — '+(num(o.amount)?won(num(o.amount)):'금액 미정')+(vat.mixed&&vat.of(o)?' ['+vat.of(o)+']':'')+' (완료 '+(o.doneAt||'')+')');
   const text=['[만물인테리어] '+off.complex+' '+y+'년 '+(+m)+'월 보수 정산서',
     (off.manager?off.manager+' 님':'관리사무소 담당자님'),'',
     ...(lines.length?lines:['(이 달 완료된 작업이 없습니다)']),'',
-    '합계: '+won(sum)+' (부가세 별도)','',
+    '합계: '+won(sum)+vat.sumNote,'',
     '만물인테리어 · 대표 전병덕 · 010-2397-8629','사업자 895-48-01132'].join('\n');
   // 1일로 맞추고 빼야 한다 — 31일에 setMonth(-1) 하면 2월이 건너뛰어 같은 달이 두 번 나온다
   const months=[];{const n=new Date();n.setDate(1);for(let i=0;i<6;i++){months.push(localDate(n).slice(0,7));n.setMonth(n.getMonth()-1);}}
+  // 최근 6개월 밖이라도 아직 청구·입금이 안 끝난(완료·청구) 오더의 완료월은 목록에 넣는다. 예전에는 3월 완료·청구분을
+  // 10월에 입금받으면 그 달을 고를 수 없어 [💰 입금 확인]에 닿을 길이 없었다(오더 줄의 '입금완료'는 정산서로 보낸다).
+  const openYms=aptSettleOpenMonths(off.id).filter(v=>!months.includes(v));
+  // 고른 옛 달은 목록에만 더한다 — '미결' 표시는 실제 미결 달(openYms)에만(입금 확인을 마친 달에 붙지 않게)
+  const pickYms=(ym&&!months.includes(ym)&&!openYms.includes(ym))?[ym]:[];
+  const allYms=months.concat(openYms,pickYms).sort().reverse();
+  const oldOpen=state.aptOrders.filter(o=>o.officeId===off.id&&(o.status==='done'||o.status==='billed')&&openYms.includes((o.doneAt||'').slice(0,7))&&(o.doneAt||'').slice(0,7)!==ym);
   const offSel='<select id="apsOff" style="flex:1;padding:8px;font-size:13px">'+offices.map(o=>'<option value="'+escapeAttr(o.id)+'"'+(o.id===off.id?' selected':'')+'>'+escapeHtml(o.complex)+'</option>').join('')+'</select>';
-  const ymSel='<select id="apsYm" style="padding:8px;font-size:13px">'+months.map(v=>'<option value="'+v+'"'+(v===ym?' selected':'')+'>'+v.split('-')[0]+'년 '+(+v.split('-')[1])+'월</option>').join('')+'</select>';
+  const ymSel='<select id="apsYm" style="padding:8px;font-size:13px">'+allYms.map(v=>'<option value="'+v+'"'+(v===ym?' selected':'')+'>'+v.split('-')[0]+'년 '+(+v.split('-')[1])+'월'+(openYms.includes(v)?' · 미결':'')+'</option>').join('')+'</select>';
   openModal('📄 월 정산서 — '+escapeHtml(off.complex),
     '<div style="display:flex;gap:6px;margin-bottom:10px">'+offSel+ymSel+'</div>'+
+    (oldOpen.length?'<div id="apsOldOpen" style="font-size:12.5px;color:#b45309;margin-bottom:8px">⏳ 6개월 전 완료분 중 청구·입금이 안 끝난 오더 '+oldOpen.length+'건 — 월 목록의 「미결」 달을 고르세요</div>':'')+
     (noAmt.length?'<div style="font-size:12.5px;color:#c2410c;margin-bottom:8px">⚠️ 금액 미정 '+noAmt.length+'건 — 목록에서 금액을 채우고 다시 여세요. 미정인 채 보내면 합계가 틀립니다.</div>':'')+
     '<textarea id="apsText" style="width:100%;min-height:220px;padding:10px;font-size:12.5px;line-height:1.6" readonly>'+escapeHtml(text)+'</textarea>'+
     '<div style="font-size:12px;color:var(--muted);margin-top:6px">완료 '+billable.length+'건 · 합계 '+won(sum)+(list.length-billable.length?' · 입금완료 '+(list.length-billable.length)+'건 제외':'')+'</div>',
@@ -13045,6 +13096,25 @@ function aptSettle(officeId,ym){
   root.querySelector('#apsYm').onchange=e=>aptSettle(off.id,e.target.value);
   return {건수:billable.length,합계:sum};
 }
+/* 정산 오더의 부가세 조건 — 승인 조건(commercialTerms.vatMode: included/excluded)에서만 읽는다. 예전에는 늘 '(부가세 별도)' 라
+   적어 포함 조건으로 승인받은 110,000원이 관리사무소에서 121,000원 청구로 읽혔다. 모르는 오더(손으로 넣은 오더)는 지어내지
+   않는다 — 전부 같으면 합계 옆에 한 번, 섞였으면 줄마다 적고 합계를 나눠 적는다, 전부 모르면 적지 않는다(v328 vatIncluded 와 같은 원칙). */
+function aptSettleVat(list){
+  const of=o=>{const v=o&&o.commercialTerms&&o.commercialTerms.vatMode;return v==='included'?'부가세 포함':v==='excluded'?'부가세 별도':'';};
+  const arr=Array.isArray(list)?list:[];
+  const kinds=new Set(arr.map(of));
+  const sums={};arr.forEach(o=>{const k=of(o)||'부가세 표기 없음';sums[k]=(sums[k]||0)+num(o.amount);});
+  const one=kinds.size===1?[...kinds][0]:'';
+  const mixed=kinds.size>1;
+  const sumNote=one?' ('+one+')':mixed?' ('+['부가세 포함','부가세 별도','부가세 표기 없음'].filter(k=>k in sums).map(k=>k.replace('부가세 ','')+' '+won(sums[k])).join(' · ')+')':'';
+  return {of,mixed,one,sums,sumNote};
+}
+// 이 단지에서 아직 끝나지 않은(완료·청구) 오더의 완료월 — 최근 6개월 밖 미결분을 정산서 월 목록에 넣는다
+function aptSettleOpenMonths(officeId){
+  const s=new Set();
+  (state.aptOrders||[]).forEach(o=>{if(o&&o.officeId===officeId&&(o.status==='done'||o.status==='billed')){const v=String(o.doneAt||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(v))s.add(v);}});
+  return [...s];
+}
 /* 정산서 엑셀 — 관리사무소는 회계 처리 때문에 문자보다 표를 원할 때가 많다.
    화면의 정산 내용과 같은 자료(billable)를 그대로 내려받는다 — 따로 계산하면 언젠가 어긋난다. */
 async function aptSettleXlsx(off,ym,billable,sum){
@@ -13054,11 +13124,12 @@ async function aptSettleXlsx(off,ym,billable,sum){
     [COMPANY.name+' — '+off.complex+' '+y+'년 '+(+m)+'월 보수 정산서'],
     ['발행일',localDate(),'담당',off.manager||'관리사무소'],
     [],
-    ['번호','동/호','작업 내용','완료일','금액(원)','상태'],
+    ['번호','동/호','작업 내용','완료일','금액(원)','상태','부가세'],
   ];
-  billable.forEach((o,i)=>aoa.push([i+1,o.unit||'',o.text||'',o.doneAt||'',num(o.amount)||'미정',(APT_STAT[o.status]||[''])[0]]));
+  const vat=aptSettleVat(billable);   // 정산서 문안과 같은 규칙 — 모르면 빈칸
+  billable.forEach((o,i)=>aoa.push([i+1,o.unit||'',o.text||'',o.doneAt||'',num(o.amount)||'미정',(APT_STAT[o.status]||[''])[0],vat.of(o).replace('부가세 ','')]));
   aoa.push([]);
-  aoa.push(['','','','합계',sum,'부가세 별도']);
+  aoa.push(['','','','합계',sum,vat.sumNote.replace(/^ \(|\)$/g,'')]);
   aoa.push([]);
   aoa.push([COMPANY.name+' · 대표 전병덕 · 010-2397-8629 · 사업자 895-48-01132']);
   const wb=XLSX.utils.book_new();
@@ -13147,9 +13218,13 @@ function hjWarrantyStart(name){
       if(!items.length){toast('보증 항목을 최소 1개 입력하세요');return;}
       try{hjSnapshot('보증 시작 전');}catch(e){}   // 안전판(원본 불변·파생본 저장)
       p.warranty={startedAt:start,items:items};
-      if(!p.doneAt)p.doneAt=start;               // 인도일 없으면 보증 시작일로(하자보증서·만료추적 일관)
+      // 이 칸의 이름이 '준공일(보증 시작)' 이다 — 준공일도 같은 날로 맞춘다. 예전에는 준공일이 있으면 그대로 두어
+      // 보증서가 '작업완료일 3월 1일 / 보증기간 3월 1일 ~ 2029년 3월 15일 (작업완료일로부터 3년)' 처럼 제 안에서 어긋났다.
+      // 준공일을 명시적으로 바꾸는 길이 여기다(완료 단계를 내렸다 올려도 준공일은 그대로 — setStage).
+      const moved=!!(p.doneAt&&p.doneAt!==start);
+      p.doneAt=start;delete p.doneAtPrev;
       markDirty();closeModal();render();
-      toast('🛡 보증 시작 — '+items.length+'개 항목 등록됨');
+      toast('🛡 보증 시작 — '+items.length+'개 항목 등록됨'+(moved?' · 준공일 '+start+'(으)로 맞춤':''));
     }},
     {label:'닫기',cls:'ghost',fn:closeModal}
   ],true);
@@ -13236,7 +13311,7 @@ function hjStoryEvents(name){
   est.slice(0,3).forEach(function(f){const d=(typeof hjNormDate==='function'?hjNormDate(f.est.date||''):String(f.est.date||'')).slice(0,10);if(d)ev.push({d:d,ic:'🧾',t:'견적 '+won(f.est.amount||0)});});
   const byDate={};
   state.files.filter(function(f){return f.kind==='photo'&&f.project===name&&f.when;}).forEach(function(f){
-    const d=day(new Date(f.when).toISOString());byDate[d]=(byDate[d]||0)+1;});
+    const w0=new Date(f.when);if(isNaN(w0.getTime()))return;const d=localDate(w0);byDate[d]=(byDate[d]||0)+1;});
   Object.keys(byDate).forEach(function(d){ev.push({d:d,ic:'📷',t:'시공 사진 '+byDate[d]+'장'});});
   (state.payLog||[]).filter(function(x){return x.project===name;}).forEach(function(x){ev.push({d:day(x.d),ic:'💰',t:'입금 '+won(x.amt||0)});});
   (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});
@@ -13370,15 +13445,17 @@ function hjWarrantyLinkBody(pjName,ov){
   const witems=(w&&Array.isArray(w.items)&&w.items.length)?w.items:WARRANTY_ITEMS_DEFAULT;
   const maxM=Math.max.apply(null,witems.map(function(it){return num(it.months)||12;}));
   const termLabel=hjWarrantyMonthLabel(maxM);
+  const moved=!!(w&&w.startedAt&&w.startedAt!==d.doneAt);
   return {
     site:(d.cust.addr||pjName)+(o.unitLabel?' '+o.unitLabel:''),
     scope:String(o.work||''),
     doneAt:hjDocDate(d.doneAt),
-    warranty:hjWarrantyPeriodText(witems)+' (작업완료일로부터)',
+    // 기준일이 준공일과 다르면(옛 자료) 그 날짜를 적는다 — 종이 보증서(warrantyHTML)와 같은 기준
+    warranty:hjWarrantyPeriodText(witems)+(moved?' ('+hjDocDate(w.startedAt)+'부터)':' (작업완료일로부터)'),
     customerName:String(o.client||''),
     operator:{co:COMPANY.name,rep:COMPANY.owner,bizNo:COMPANY.bizno,tel:COMPANY.tel},
     note:'본 보증서는 2부 작성하여 시공업체와 확인자가 각 1부씩 보관합니다. 법률 자문이 아닙니다.',
-    clauses:hjWarrantyClauses(termLabel).map(function(c,i){return {no:i+1,title:c[0],text:c[1]};})
+    clauses:hjWarrantyClauses(termLabel,moved?'보증 시작일로부터':'').map(function(c,i){return {no:i+1,title:c[0],text:c[1]};})
   };
 }
 /* 서명 그림을 480×135 안에 맞춰 줄인다 — 비율은 그대로 두고 남는 자리는 비워 둔다.
@@ -13500,7 +13577,9 @@ async function warrantyLinkPull(pjName,reqId,done){
   const raw=String((j&&j.signatureImage)||'');
   if(!WR_SIG_PNG_RE.test(raw)){toast('서명 이미지를 읽지 못했습니다');return;}
   const png=await hjSigShrink(raw);
-  const at=String(j.signedAt||'').slice(0,16).replace('T',' ')||(localDate()+' ');
+  // 서버 signedAt 은 UTC ISO(ctIso_ → toISOString). 잘라 쓰면 9시간 이르게, 오전 9시 전 서명은 전날로 찍힌다 — 한국 시각으로 푼다.
+  const sd=j.signedAt?new Date(j.signedAt):null;
+  const at=(sd&&!isNaN(sd.getTime()))?localStamp(sd):(String(j.signedAt||'').trim()||localStamp());
   const sig={id:'ws_'+uid(),at:at,role:req.role==='client'?'client':'office',org:req.org||'',
     name:String(j.signerName||req.name||'').trim()||req.name,png:png,via:'link',
     contractNo:req.contractNo||undefined,unitId:req.unitId||undefined,unitLabel:req.unitLabel||undefined};
@@ -13513,6 +13592,26 @@ async function warrantyLinkPull(pjName,reqId,done){
   toast('확인자 서명을 가져왔습니다 — '+sig.name);
   closeModal();
   if(typeof done==='function')done(sig);
+}
+/* 현장 카드 [✍️ 서명 확인] 으로 링크 서명을 가져온 뒤 — 서명이 든 하자보증서로 바로 잇는다.
+   예전에는 done 없이 불러 '서명을 가져왔습니다' 토스트만 뜨고 끝났다. 링크 창을 닫은 뒤라 문서 화면이 없고,
+   보증서 화면에는 보관된 서명을 붙이는 칸도 없어 고객이 링크로 한 서명을 PDF·워드에 넣을 길이 없었다.
+   링크를 만들 때 적어 둔 작업내용·의뢰인·세대(req.work·client·unitId)로 같은 문서를 다시 만든다. 사진은 그때 고른 것을
+   저장하지 않으므로 보증서 화면 기본값(전·후 각 2장)으로 채운다 — 바꾸려면 [‹ 뒤로] 보증서 화면에서 다시 만든다. */
+function warrantyLinkSignedOpen(pjName,reqId,sig){
+  const p=(state.projects||[]).find(function(x){return x&&x.name===pjName;});if(!p||!sig)return false;
+  const req=warrantyLinkList(p).find(function(L){return L&&L.id===reqId;})||{};
+  const unitId=req.unitId||undefined;
+  const html=warrantyHTML(pjName,{work:req.work,client:req.client,unitId:unitId,beforeN:2,afterN:2,sig:sig});
+  if(!html){toast('서명은 보관했지만 보증서를 만들 수 없어요 — 🛡 하자보증서 화면에서 다시 만들어 주세요');return false;}
+  const w=hjWarranty(p)||{};
+  const base=safeName(pjName+(req.unitLabel?'_'+req.unitLabel:''))+'_하자보증서_'+localDate()+'_서명';
+  hjDocDeliverView(pjName,html,base,'🛡 하자보증서 (서명)',function(){warrantyView(pjName,{unitId:unitId,work:req.work,client:req.client});},
+    {onDeliver:function(via){
+      warrantyLogAdd(pjName,{kind:'하자보증서',via:via,work:req.work||'',client:req.client||'',
+        doneAt:p.doneAt||'',until:w.end||'',unitId:unitId,unitLabel:req.unitLabel||undefined,
+        signed:true,signer:sig.name+(sig.org?' / '+sig.org:'')});}});
+  return true;
 }
 /* 완료보증서 — 발급 사본을 현장에 보관(p.warrantyDoc)하고 카톡(파일 공유)으로 송부 */
 async function hjWarrantyShareHtml(name,html,fname,label){
@@ -13569,7 +13668,7 @@ async function warrantyIssueSend(name){
   try{ ok=await hjWarrantyShareHtml(name,html,p.warrantyDoc.file); }
   finally{ __warrantyIssueBusy=false; }
   if(ok){   // 이력은 실제로 나갔을 때만 — 공유창을 닫은 것까지 '발급' 으로 쌓이면 이야기에 보내지 않은 발급이 적힌다
-    p.warrantyDoc.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');
+    p.warrantyDoc.sentAt=localStamp();
     const wr=hjWarranty(p);
     warrantyLogAdd(name,{kind:'완료보증서',via:'share',before:nb,after:na,file:p.warrantyDoc.file,sentAt:p.warrantyDoc.sentAt,doneAt:p.doneAt||'',until:wr?wr.end:''});
     markDirty();
@@ -13618,7 +13717,7 @@ function warrantyDocView(name){
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:52vh"><iframe srcdoc="'+escapeAttr(docHtml)+'" style="width:100%;height:100%;border:0"></iframe></div>',
     [{label:'📤 다시 보내기(보관본)',cls:'clay',fn:async function(){
         if(short>0&&!confirm('보낼 때 넣은 사진 '+short+'장이 빠진 채로 보냅니다. 그래도 보낼까요?\n(같은 사진을 넣으려면 취소 뒤 [♻️ 새로 발급])'))return;
-        const ok=await hjWarrantyShareHtml(name,docHtml,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}}},
+        const ok=await hjWarrantyShareHtml(name,docHtml,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=localStamp();markDirty();}}},
      {label:'♻️ 새로 발급',cls:'ghost',fn:function(){closeModal();warrantyIssueSend(name);}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
 }
@@ -15315,9 +15414,10 @@ function hjWarrantyPhotoPools(name,unitId){
    그대로 보여주고 서명만 받는다. 그래서 두 곳이 갈라지면 고객이 '받은 보증서'와 '서명한 보증서'가
    달라지고, 그 어긋남은 분쟁이 났을 때에만 드러난다. 문구를 고칠 일이 있으면 여기 한 곳만 고친다.
    ※ 반환값은 **이스케이프하지 않은 원문**이다. HTML 로 쓸 때는 부르는 쪽이 escapeHtml 한다. */
-function hjWarrantyClauses(termLabel){
+// fromLabel — 보증 시작일이 준공일과 다른 옛 자료만 '보증 시작일로부터'(warrantyHTML·hjWarrantyLinkBody 가 같은 값을 넘긴다)
+function hjWarrantyClauses(termLabel,fromLabel){
   return [
-    ['보증기간','보증기간은 작업완료일로부터 '+String(termLabel||'')+'이며, 시작일과 종료일은 위 표에 기재합니다.'],
+    ['보증기간','보증기간은 '+String(fromLabel||'작업완료일로부터')+' '+String(termLabel||'')+'이며, 시작일과 종료일은 위 표에 기재합니다.'],
     ['보증범위','보증기간 내 시공상 원인으로 발생한 하자는 시공업체가 무상으로 보수하며, 본 작업의 시공상 원인으로 공용부 또는 인접 세대에 발생한 하자를 포함합니다.'],
     ['보증제외','사용자의 과실·부주의로 인한 손상, 통상적인 마모·변색·오염, 천재지변, 제3자 또는 타 업체의 시공·변경으로 인한 하자, 작업 범위 외 기존 설비·배관의 노후로 인한 문제, 기구·제품 자체의 불량(제조사 보증 적용)은 보증에서 제외합니다.'],
     ['접수·처리','하자는 아래 시공업체 연락처로 접수하며, 접수 후 현장을 확인하고 보수 일정을 협의하여 신속히 처리합니다.'],
@@ -15335,6 +15435,11 @@ function warrantyHTML(name,opts){
   const unitLabel=unit?aptUnitLabel(unit):'';
   const w=d.warranty;
   const startStr=hjDocDate(d.doneAt);
+  // 보증기간의 시작은 만료일을 낸 기준일(hjWarranty startedAt)과 같아야 한다 — 준공일과 보증 시작일이 다른 옛 자료에서
+  // '3월 1일 ~ 2029년 3월 15일 (작업완료일로부터 3년)' 처럼 문서가 제 안에서 어긋났다. 같으면 예전과 똑같이 찍힌다.
+  const wStart=(w&&w.startedAt)||d.doneAt;
+  const periodStartStr=hjDocDate(wStart);
+  const fromLabel=(wStart===d.doneAt)?'작업완료일로부터':'보증 시작일로부터';
   const endStr=w?hjDocDate(w.end):'';
   const witems=(w&&Array.isArray(w.items)&&w.items.length)?w.items:WARRANTY_ITEMS_DEFAULT;
   const maxM=Math.max.apply(null,witems.map(it=>num(it.months)||12));
@@ -15365,7 +15470,7 @@ function warrantyHTML(name,opts){
   const blank=n=>'<span style="display:inline-block;min-width:'+(n||150)+'px;border-bottom:1px solid #c7d2e0">&nbsp;</span>';
   const cell=(v,n)=>v?escapeHtml(String(v)):blank(n);
   const row=(k,v)=>'<tr><td class="nm" style="width:130px;background:#f7fafd;vertical-align:top">'+k+'</td><td>'+v+'</td></tr>';
-  const CLAUSES=hjWarrantyClauses(termLabel).map(function(c){return [escapeHtml(c[0]),escapeHtml(c[1])];});
+  const CLAUSES=hjWarrantyClauses(termLabel,fromLabel).map(function(c){return [escapeHtml(c[0]),escapeHtml(c[1])];});
   const signBox=(title,body,foot)=>'<div class="keep" style="flex:1;min-width:230px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px">'+
     '<div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+title+'</div>'+
     '<div style="font-size:12.5px;line-height:2">'+body+'</div>'+
@@ -15389,7 +15494,7 @@ function warrantyHTML(name,opts){
       row('작업장소',cell(place,240))+
       row('작업내용 / 범위',cell(scope,300))+
       row('작업완료일',cell(startStr,140))+
-      row('보증기간','<b>'+cell(startStr,110)+' ~ '+cell(endStr,110)+'</b> <span style="color:#5b6b82">(작업완료일로부터 '+escapeHtml(termLabel)+')</span>'+
+      row('보증기간','<b>'+cell(periodStartStr,110)+' ~ '+cell(endStr,110)+'</b> <span style="color:#5b6b82">('+fromLabel+' '+escapeHtml(termLabel)+')</span>'+
         (witems.length>1?'<div style="font-size:12px;color:#5b6b82;margin-top:4px">'+escapeHtml(hjWarrantyPeriodText(witems))+'</div>':''))+
     '</tbody></table>'+
     '<div class="note" style="text-align:left"><b style="display:block;margin-bottom:6px">보증 및 보수 안내</b>'+
@@ -15420,7 +15525,7 @@ function warrantyHTML(name,opts){
         '성명 / 직위 : '+(sig&&sig.name?escapeHtml(sig.name):blank(120))+'<br>'+
         '연락처 : '+blank(120),
         sig?'<img src="'+escapeAttr(sig.png)+'" alt="확인자 서명" style="display:block;height:56px;max-width:100%;object-fit:contain">'+
-            '<div style="margin-top:4px">서명 '+escapeHtml(sig.at||'')+' · 전자서명(앱 서명판)</div>':'')+
+            '<div style="margin-top:4px">서명 '+escapeHtml(sig.at||'')+' · '+(sig.via==='link'?'전자서명(링크 서명)':'전자서명(앱 서명판)')+'</div>':'')+
     '</div>'+
     '<div class="note" style="margin-top:14px">※ 본 보증서는 2부 작성하여 시공업체와 확인자가 각 1부씩 보관합니다.</div>';
   return hjDocShell('작 업 하 자 보 증 서',inner,'#0e7a6b');
@@ -19417,13 +19522,15 @@ async function negotiateDialog(qid){
 const WARRANTY_DEFAULT_MONTHS=12;
 // 만물 표준 하자보증(수정 가능): 방수 3년 · 급배수·배관 설비 2년 · 마감 1년 · 전기 1년
 function hjAddMonths(dateStr,months){const d=new Date(String(dateStr)+'T00:00:00');if(isNaN(d.getTime()))return '';d.setMonth(d.getMonth()+(num(months)||0));return localDate(d);}
-// 현장의 유효 보증 개월: 항목형이면 가장 긴 항목, 숫자형(구형)이면 그 값, 없으면 기본 12
+// 현장의 유효 보증 개월: 보증서와 같은 항목(hjWarranty items) 중 가장 긴 것. 예전에는 🛡 보증 시작을 안 누른
+// 현장(가장 흔한 경우)을 12개월로 세어, 보증서는 방수 3년이라 적는데 알림·점검 문자는 1년 만에 '보증 만료'라 했다.
 function hjWarrantyMonths(p){
   const w=p&&p.warranty;
   if(w&&typeof w==='object'&&Array.isArray(w.items)&&w.items.length){
     return Math.max.apply(null,w.items.map(it=>num(it&&it.months)||0))||WARRANTY_DEFAULT_MONTHS;
   }
-  return num(w)||WARRANTY_DEFAULT_MONTHS;
+  const legacyM=(typeof w==='number'||typeof w==='string')?num(w):0;
+  return Math.max(legacyM,...WARRANTY_ITEMS_DEFAULT.map(it=>it.months));
 }
 // 완공 현장의 보증 만료일 계산
 // withArchived — 보증 관리 화면·점검 안내는 보관 현장도 본다(끝난 현장이 곧 보관 현장이다). 알림(warrantyDue)은 예전대로
@@ -19436,14 +19543,12 @@ function warrantyList(withArchived){
     const done=p.doneAt||((p.stage>=3)?null:null);
     // 완공일: doneAt 우선, 없으면 완료 단계면 최근 일정/오늘 근사(정확치 않으니 doneAt 있는 것만 신뢰)
     if(!p.doneAt)return;
-    const months=hjWarrantyMonths(p);   // 항목형(방수 3년·설비 2년 등)·숫자형·기본값 모두 지원
-    const wo=p.warranty;
-    const startStr=(wo&&typeof wo==='object'&&wo.startedAt)?wo.startedAt:p.doneAt;
-    const start=new Date(startStr+'T00:00:00');
-    if(isNaN(start.getTime()))return;
-    const expiry=new Date(start);expiry.setMonth(expiry.getMonth()+months);
-    const daysLeft=Math.round((expiry-today)/(1000*60*60*24));
-    out.push({name:p.name,archived:!!p.archived,customer:p.customer||{},doneAt:p.doneAt,months,expiry:expiry.getFullYear()+'-'+pad2(expiry.getMonth()+1)+'-'+pad2(expiry.getDate()),daysLeft});
+    // 만료일은 보증서·파수꾼과 같은 한 곳(hjWarranty — 항목별 기간 중 가장 늦은 끝날)에서 받는다.
+    let hw=null;try{hw=hjWarranty(p);}catch(e){}
+    if(!hw||!hw.end||isNaN(new Date(hw.end+'T00:00:00').getTime()))return;
+    const months=hjWarrantyMonths(p);
+    const daysLeft=Math.round((new Date(hw.end+'T00:00:00')-today)/(1000*60*60*24));
+    out.push({name:p.name,archived:!!p.archived,customer:p.customer||{},doneAt:p.doneAt,months,items:hw.items,expiry:hw.end,daysLeft});
   });
   return out.sort((a,b)=>a.daysLeft-b.daysLeft);
 }
@@ -19461,7 +19566,7 @@ function warrantyManage(){
     const expired=w.daysLeft<0;const soon=w.daysLeft>=0&&w.daysLeft<=60;
     const badge=expired?'<span style="font-size:10px;background:#fee2e2;color:#c2410c;padding:2px 7px;border-radius:10px;font-weight:700">만료됨</span>':soon?'<span style="font-size:10px;background:#fef9c3;color:#b45309;padding:2px 7px;border-radius:10px;font-weight:700">D-'+w.daysLeft+'</span>':'<span style="font-size:10px;background:#dcfce7;color:#0a7f43;padding:2px 7px;border-radius:10px;font-weight:700">'+Math.round(w.daysLeft/30)+'개월 남음</span>';
     return '<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid '+(expired?'#fca5a5':soon?'#fcd34d':'var(--line-soft)')+';border-radius:11px;margin-bottom:7px;background:'+(expired?'#fff5f5':soon?'#fffbeb':'var(--paper)')+'">'+
-      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(w.name)+'</b> '+(w.archived?'<span class="wtArc" style="font-size:10px;background:var(--paper-2);border:1px solid var(--line-soft);color:var(--muted);padding:2px 7px;border-radius:10px;font-weight:700">보관</span> ':'')+badge+'<br><span style="font-size:11px;color:var(--muted)">완공 '+w.doneAt+' · 보증 '+w.months+'개월 · 만료 '+w.expiry+'</span></span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(w.name)+'</b> '+(w.archived?'<span class="wtArc" style="font-size:10px;background:var(--paper-2);border:1px solid var(--line-soft);color:var(--muted);padding:2px 7px;border-radius:10px;font-weight:700">보관</span> ':'')+badge+'<br><span style="font-size:11px;color:var(--muted)">완공 '+w.doneAt+' · 보증 '+escapeHtml(hjWarrantyPeriodText(w.items))+' · 만료 '+w.expiry+'</span></span>'+
       (soon||expired?'<button class="wtSms clay tiny" data-n="'+escapeAttr(w.name)+'" style="padding:7px 10px;white-space:nowrap">📩 점검 안내</button>':'')+
     '</div>';
   }).join('');
@@ -27444,7 +27549,7 @@ async function portalPush(pjName){
     if(!r.ok)throw new Error('서버 응답 '+r.status);
     const j=await r.json();
     p.portalToken=j.token;p.portalUrl=j.url;
-    p.portalSyncAt=new Date().toISOString().slice(0,16).replace('T',' ');
+    p.portalSyncAt=localStamp();
     try{p.portalSig=portalSig(pjName);}catch(e){}
     markDirty();
     return j;
@@ -27998,7 +28103,7 @@ function kakaoLeadApply(L,opts){
   }
   if(opts.schedule){
     const d=new Date();d.setDate(d.getDate()+1);
-    const dt=d.toISOString().slice(0,10);
+    const dt=localDate(d);   // 내일(한국 날짜) — toISOString 은 오전 9시 전이면 오늘이 된다
     state.schedule=state.schedule||[];
     state.schedule.push(Object.assign(newSchedule(),{title:'상담·실측: '+pjName,date:dt,time:'10:00',project:pjName,memo:'[카카오 문의] '+(L.work||'')+' / '+(L.phone||'')}));
     res.일정=dt;
@@ -30044,7 +30149,7 @@ function escapeICS(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\
 function nextDayYmd(dateStr){const [y,m,d]=dateStr.split('-').map(Number);const dt=new Date(y,m-1,d+1);return dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate());}
 function buildICS(items){
   let lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//만물인테리어//현장//KO','CALSCALE:GREGORIAN'];
-  const stamp=icsDateTime(new Date().toISOString().slice(0,10),new Date().toTimeString().slice(0,5),0);
+  const stamp=icsDateTime(localDate(),new Date().toTimeString().slice(0,5),0);
   items.forEach(s=>{
     const start=icsDateTime(s.date,s.time,0);
     const end=icsDateTime(s.date,s.time,s.hours||8);
@@ -30791,7 +30896,7 @@ function setupDelegation(){
     if(d.kkwarr!==undefined)return warrantyIssueSend(d.kkwarr);
     if(d.kkwarrview!==undefined)return warrantyDocView(d.kkwarrview);
     // ⑩ 링크로 보낸 보증서 서명을 가져온다. 현장·요청 id 를 한 칸에 담는다(project|reqId)
-    if(d.wlpull!==undefined){const ix=String(d.wlpull).indexOf('|');return warrantyLinkPull(String(d.wlpull).slice(0,ix),String(d.wlpull).slice(ix+1));}
+    if(d.wlpull!==undefined){const ix=String(d.wlpull).indexOf('|');const wpj=String(d.wlpull).slice(0,ix),wid=String(d.wlpull).slice(ix+1);return warrantyLinkPull(wpj,wid,function(sig){warrantyLinkSignedOpen(wpj,wid,sig);});}
     if(d.ctrefresh!==undefined)return contractStatusRefresh(d.ctrefresh);
     if(d.workorder!==undefined)return openWorkOrder({schId:d.workorder});
     if(d.workorderp!==undefined)return openWorkOrder({proj:d.workorderp});
@@ -32162,7 +32267,7 @@ function aptReportView(pjName){
           note:document.getElementById('rpNote').value.trim(),
           showAmt:document.getElementById('rpAmt').checked,
           amt:st.est,vat:false,
-          date:new Date().toISOString().slice(0,10),
+          date:localDate(),
           photos:ph};
         if(!o.works.length)o.works=[o.title];
         closeModal();toast('📄 보고서 만드는 중…');
@@ -32278,7 +32383,7 @@ function tripAddView(pre){
 function tripView(reset){
   if(reset||!window.__trip){
     const t=new Date(),f=new Date();f.setMonth(f.getMonth()-1);
-    window.__trip={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),pj:'',page:1};
+    window.__trip={from:localDate(f),to:localDate(t),pj:'',page:1};
   }
   const F=window.__trip;
   const list=tripFilter();
@@ -32871,7 +32976,7 @@ function quoteMark(id,res){
 function quoteHistoryView(reset){
   if(reset||!window.__qtHist){
     const t=new Date(),f=new Date();f.setMonth(f.getMonth()-6);
-    window.__qtHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),st:'',q:'',page:1};
+    window.__qtHist={from:localDate(f),to:localDate(t),st:'',q:'',page:1};
   }
   const F=window.__qtHist;
   const list=quoteHistFilter();
@@ -32973,7 +33078,7 @@ function payHistFilter(){
 function payHistoryView(reset){
   if(reset||!window.__payHist){
     const t=new Date(),f=new Date();f.setMonth(f.getMonth()-3);
-    window.__payHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),pj:'',q:'',page:1};
+    window.__payHist={from:localDate(f),to:localDate(t),pj:'',q:'',page:1};
   }
   const F=window.__payHist;
   const list=payHistFilter();
@@ -33061,7 +33166,7 @@ function asHistFilter(){
 function asHistoryView(reset){
   if(reset||!window.__asHist){
     const t=new Date(),f=new Date();f.setMonth(f.getMonth()-6);
-    window.__asHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),st:'',q:'',page:1};
+    window.__asHist={from:localDate(f),to:localDate(t),st:'',q:'',page:1};
   }
   const F=window.__asHist;
   const list=asHistFilter();
@@ -33155,7 +33260,7 @@ function aptHistoryView(reset){
   aptData();
   if(reset||!window.__aptHist){
     const t=new Date(),f=new Date();f.setMonth(f.getMonth()-1);
-    window.__aptHist={from:f.toISOString().slice(0,10),to:t.toISOString().slice(0,10),office:'',st:'',q:'',page:1};
+    window.__aptHist={from:localDate(f),to:localDate(t),office:'',st:'',q:'',page:1};
   }
   const F=window.__aptHist;
   const list=aptHistFilter();
