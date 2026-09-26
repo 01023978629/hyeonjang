@@ -1322,6 +1322,15 @@ function recoverOrganizedMetadata(rec){
   let names=valid();
   const mapped=__projectByOrganizedFolder.get(info.folder);
   const target=(mapped&&names.has(mapped))?mapped:info.folder;
+  /* v330 같은 경로가 '미배정'으로 저장돼 있던 사진(_orgNullKnown — applyData·restoreUserEdits 가 이번 세션에 붙인다)은
+     폴더 이름으로 현장을 만들거나 배정하지 않는다. 현장을 지우면(hjDeleteProjectCore) 그 사진은 미배정이 되는데, 정리
+     폴더 이름은 그대로라 다음 PC 스캔이 지운 현장을 빈 현장으로 되살리고 사진을 다시 붙였다 — 삭제 확인 창의 '미배정으로
+     돌아갑니다'·'같은 이름으로 새로 만들어도 옛 기록이 붙지 않습니다'가 거짓이 된다. 처음 보는 사진(저장 기록 없음)은 예전처럼 복구한다.
+     건너뛴 것은 세어 두고 스캔 끝에 알린다(window.__organizedSkipped). */
+  if(!rec.project&&rec._orgNullKnown){
+    try{const m=window.__organizedSkipped instanceof Map?window.__organizedSkipped:(window.__organizedSkipped=new Map());if(!m.has(info.folder))m.set(info.folder,new Set());m.get(info.folder).add(fileKey(rec));}catch(e){}   // 스캔 중·스캔 뒤 두 번 불려도 한 장은 한 번
+    return false;
+  }
   if(!rec.project||!names.has(rec.project)){
     if(target.length>=2&&!names.has(target)){try{ensureProjectExists(target);}catch(e){}names=valid();}
     if(names.has(target)&&rec.project!==target){rec.project=target;changed=true;}
@@ -1662,7 +1671,7 @@ async function scanDir(){
   if(!state.dirHandle)return;
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
-  window.__organizedRecovered=0;
+  window.__organizedRecovered=0;window.__organizedSkipped=new Map();
   clearFileList();__walkSeen=new Map();__scanPhotoNames=new Set();__scanPhotoFiles=new Map();__scanPhotoPending=new Map();__scanTick=0;toast('현장사진부터 폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
@@ -1709,9 +1718,11 @@ async function scanDir(){
   // [v101 BUG-4] ★ 최종본이 있는 달의 다른 안은 자동으로 집계 제외(견적 탭에서 되돌릴 수 있음)
   try{const _fc=estFinalCandidates();if(_fc.length){_fc.forEach(function(f){f.exSum=true;});markDirty();toast('⭐ 최종본(★) 기준 '+_fc.length+'건을 매출 집계에서 제외했어요 — 견적 탭에서 되돌릴 수 있어요');}}catch(e){}
   const _org=window.__organizedRecovered||0;if(_org)markDirty();
+  // v330 미배정으로 저장된 정리 폴더 사진(지운 현장일 수 있다)은 현장을 되살리지 않았다고 알린다 — 사진 탭에서 직접 배정한다.
+  let _orgSkip='';try{const m=window.__organizedSkipped;if(m instanceof Map&&m.size){const n=[...m.values()].reduce((a,b)=>a+b.size,0),f=[...m.keys()];_orgSkip=' · 정리 폴더 사진 '+n+'장은 미배정 그대로('+f.slice(0,2).join(', ')+(f.length>2?' 외':'')+' — 지운 현장은 되살리지 않음)';}}catch(e){}
   $('#mountHint').textContent=state.files.length+'개 파일 인식됨.'+(directOrganizedRoot()?' · _정리완료 사진 연결 모드':'');
   if(directOrganizedRoot())$('#btnSave').disabled=true;
-  $('#btnOcrAll').disabled=false;render();toast(state.files.length+'개 파일 분류 완료'+(_kept?' · 기존 배정 '+_kept+'건 유지':'')+(_org?' · 현장·공정 '+_org+'건 복구':''));setTimeout(()=>aiAutoOrgOffer('scan'),600);setTimeout(()=>{try{quoteAutoAssignOffer();}catch(e){}},1400);
+  $('#btnOcrAll').disabled=false;render();toast(state.files.length+'개 파일 분류 완료'+(_kept?' · 기존 배정 '+_kept+'건 유지':'')+(_org?' · 현장·공정 '+_org+'건 복구':'')+_orgSkip);setTimeout(()=>aiAutoOrgOffer('scan'),600);setTimeout(()=>{try{quoteAutoAssignOffer();}catch(e){}},1400);
 }
 
 /* ---------- 프로젝트 저장/복원 ---------- */
@@ -2063,9 +2074,21 @@ function applyData(data,opts){
   // 실제 파일이 로드돼 있으면 매칭 복원
   state.files.forEach(f=>{
     let s=byKey[fileKey(f)];
-    if(!s&&!scanExactPhotoName(f.name)&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
+    const exact=!!s;
+    /* 이름 폴백은 PC 에서 폴더만 옮겨진 같은 사진(경로가 바뀌어 key 가 안 맞음)을 잇는 길이다. v330: 아이폰 카메라 사진은 늘
+       image.jpg 라 새로 찍은 B현장 사진이 이름 하나로 A현장 저장 기록(공정·작업명·Drive ID)을 뒤집어쓰고, 되돌리기에서도
+       지워지지 않고 A현장 사진으로 남았다. 그래서 — 이미 다른 로컬 기록에 쓰인 저장 기록은 건너뛰고, 크기가 다르면 다른
+       사진이고(되돌리기는 크기를 알고 같을 때만), 이미 다른 현장이 적힌 로컬 기록은 폴백으로 현장을 바꾸지 않는다. */
+    if(!s&&!scanExactPhotoName(f.name)&&byName[f.name]&&byName[f.name].length===1){
+      const c=byName[f.name][0],cs=Number(c.size)||0,fs=Number(f.size)||0;
+      const sizeOk=__revert?(cs>0&&cs===fs):(!cs||!fs||cs===fs);
+      const projOk=!f.project||!c.project||f.project===c.project;
+      if(!used.has(c)&&sizeOk&&projOk)s=c;
+    }
     if(s){used.add(s);
       hjApplySavedFileFields(f,s,__revert);
+      // 같은 경로에 '미배정'으로 저장돼 있던 기록 — 정리 폴더 이름으로 현장을 되살리지 않는다(recoverOrganizedMetadata, v330)
+      if(exact&&!s.project)f._orgNullKnown=true;
       __kept.add(f);restored++;}
   });
   // 복구 모드: 스냅샷에 없는 항목은 지운다 — "그 시점"에 없던 기록이 남으면
@@ -2409,14 +2432,37 @@ async function relayQueueGet(){try{return await relayQueueReadStrict();}catch(e)
 async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){try{console.warn('relay_queue 저장 실패');}catch(_){}relaySetStatus('qfail');return false;}   // 저장 실패를 호출자에게도 전달
   __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;return true;}
 async function relayUpdateQueueBadge(){const q=await relayQueueGet();const qn=document.getElementById('ryQn');if(q===null){if(qn)qn.textContent='확인 불가';return null;}__relayQn=q.length;if(qn)qn.textContent=__relayQn;if(__relayQn&&(__relayState==='offline'||__relayState==='netfail'))relaySetStatus(__relayState);return __relayQn;}
-async function relayQueuePush(action,payload){
+async function relayQueuePush(action,payload,meta){
   let q;try{q=await relayQueueReadStrict();}catch(e){relaySetStatus('qfail');toast('대기열 읽기 실패 — 기존 기록을 변경하지 않았습니다');return false;}
   if(action==='save')q=q.filter(function(it){return it.action!=='save';});   // 옛 save는 교체(항상 최신 1건)
   // upload는 압축본(base64)을 보관하므로 무제한 성장 금지 — 최대 15건
   if(action==='upload'&&q.filter(function(it){return it.action==='upload';}).length>=15){toast('업로드 대기열이 가득 찼습니다 — 온라인 상태에서 [📮 다시 보내기] 후 다시 시도하세요');return false;}
   // save의 payload는 null — 전송 시점에 최신 serializeData()로 재구성(오래된 본문 전송 방지)
-  q.push({id:'q'+Date.now()+'_'+Math.floor(Math.random()*100000),action:action,payload:action==='save'?null:payload,createdAt:Date.now(),retryCount:0,deviceId:__relay.device,baseRevision:__relay.rev||0});
+  const item={id:'q'+Date.now()+'_'+Math.floor(Math.random()*100000),action:action,payload:action==='save'?null:payload,createdAt:Date.now(),retryCount:0,deviceId:__relay.device,baseRevision:__relay.rev||0};
+  // v330 업로드 대기 항목은 어느 기록의 사진인지 안정 참조('k:'+fileKey — hjFileRef)로 기억한다. payload 는 서버로 가므로 밖에 둔다.
+  if(action==='upload'&&meta&&typeof meta.ref==='string'&&meta.ref){item.ref=meta.ref;if(meta.project)item.project=String(meta.project);}
+  q.push(item);
   return await relayQueueSet(q);
+}
+/* v330 대기열 업로드가 성공하면 돌려받은 Drive ID 를 그 기록에 붙인다. 예전에는 fileId 를 버려 기록은 끝내 빈 칸으로 남고,
+   다음 서버 목록 합치기(relayLoadDriveFiles)가 같은 사진을 미배정 가상 사진으로 따로 만들었다 — 동·호수를 지정한 사진은
+   합치기 후보에서도 빠져 늘 둘로 갈라졌다. 참조로 Drive ID 없는 기록이 딱 하나 찾아질 때만 붙인다(둘이면 적어 둔 현장으로 가른다 —
+   현장 이름을 바꿔도 경로 참조는 그대로라 끊기지 않는다).
+   못 찾거나 모호하면 붙이지 않는다(목록 합치기는 대기열 참조가 없어진 뒤 이름 규칙으로만 다시 본다). */
+function relayQueueLinkUpload(it,res){
+  if(!it||typeof it.ref!=='string'||!it.ref.startsWith('k:')||!res||!res.fileId)return false;
+  if(typeof __tabStale!=='undefined'&&__tabStale)return false;   // 뒤처진 탭은 쓰지 않는다
+  const id=String(res.fileId);
+  if((state.files||[]).some(f=>f&&f._driveId===id))return false;
+  const key=it.ref.slice(2);
+  let hit=(state.files||[]).filter(f=>f&&!f._driveId&&fileKey(f)===key);
+  if(hit.length>1&&it.project!==undefined)hit=hit.filter(f=>(f.project||null)===(it.project||null));   // 같은 경로·이름·크기가 둘이면 적어 둔 현장으로 가른다
+  if(hit.length!==1)return false;
+  const f=hit[0],pl=it.payload||{},b64=String(pl.dataB64||'');
+  f._driveId=id;f._driveMimeType=String(res.mimeType||pl.mimeType||'');
+  f._driveSize=Number(res.size)||Math.max(0,Math.floor(b64.length*3/4)-(b64.endsWith('==')?2:b64.endsWith('=')?1:0));
+  f._relayLink='relay:'+id;
+  return true;
 }
 async function cloudFlushQueue(manual){
   if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
@@ -2424,7 +2470,7 @@ async function cloudFlushQueue(manual){
   try{
     const q=await relayQueueReadStrict();
     if(!q.length){await relayUpdateQueueBadge();return;}
-    const doneIds={},retryUpd={};let sent=0,savedOk=false;
+    const doneIds={},retryUpd={};let sent=0,savedOk=false,linkedUp=0;
     for(let i=0;i<q.length;i++){
       const it=q[i];
       if(!manual&&(it.retryCount||0)>=5)continue;   // 5회 이상 실패 → 자동 재시도 중단(설정의 '다시 보내기'로만)
@@ -2432,7 +2478,7 @@ async function cloudFlushQueue(manual){
         let res;
         if(it.action==='save')res=await relayCall('save',{data:serializeData(),baseRevision:__relay.rev||0});   // ts·데이터·rev 전부 전송 시점 기준(서버 ±10분 검사)
         else res=await relayCall(it.action,it.payload);
-        if(res&&res.ok){sent++;doneIds[it.id]=1;if(it.action==='save'){savedOk=true;__relay.rev=(typeof res.revision==='number')?res.revision:__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거 대상
+        if(res&&res.ok){sent++;doneIds[it.id]=1;if(it.action==='upload'){try{if(relayQueueLinkUpload(it,res))linkedUp++;}catch(e){}}if(it.action==='save'){savedOk=true;__relay.rev=(typeof res.revision==='number')?res.revision:__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거 대상
         if(res&&res.error==='conflict'&&it.action==='save'){doneIds[it.id]=1;relaySetStatus('conflict');relayConflictModal(res);continue;}   // 충돌은 모달로 해결(자동 덮어쓰기 금지)
         if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);retryUpd[it.id]=(it.retryCount||0)+1;continue;}
         retryUpd[it.id]=(it.retryCount||0)+1;
@@ -2442,6 +2488,7 @@ async function cloudFlushQueue(manual){
     const q2=await relayQueueReadStrict();
     const keep=q2.filter(function(it){return !doneIds[it.id];});
     keep.forEach(function(it){if(retryUpd[it.id]!=null)it.retryCount=retryUpd[it.id];});
+    if(linkedUp){markDirty();try{await guardedPersistCurrentState();}catch(e){}try{if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();}catch(e){}}   // 붙인 Drive ID 저장
     if(await relayQueueSet(keep)!==true){if(manual)toast('전송 결과의 대기열 저장 실패 — 전송 완료로 확인할 수 없습니다');return;}
     if(savedOk){relayDailyBackup();try{await officeIntakeFlush();}catch(e){}}   // 큐 경유 저장 성공에도 하루 1회 백업
     if(!keep.length){if(sent)relaySetStatus('saved');}
@@ -2643,7 +2690,7 @@ async function relayUploadFiles(files,kind,targets,report){
       if(r&&r.ok&&r.fileId){ok++;if(targets&&targets[i]){targets[i]._driveId=r.fileId;targets[i]._driveMimeType=String(r.mimeType||payload.mimeType||'');targets[i]._driveSize=Number(r.size)||Math.max(0,Math.floor(String(payload.dataB64||'').length*3/4)-(String(payload.dataB64||'').endsWith('==')?2:String(payload.dataB64||'').endsWith('=')?1:0));injected++;}}
       else if(r&&(r.error==='unauthorized'||r.error==='not-configured')){relayAuthFail(r);failed+=files.length-i;failedFiles.push(...files.slice(i).map(x=>x.name||'파일'));break;}
       else{failed++;failedFiles.push(f.name||'파일');toast((f.name||'파일')+' 업로드 실패: '+((r&&r.message)||(r&&r.error)||'서버 오류'));}
-    }catch(e){let stored=false;try{stored=!!(await relayQueuePush('upload',payload));}catch(e2){}if(stored){queued++;queuedFiles.push(f.name||'파일');}else{failed++;failedFiles.push(f.name||'파일');}}   // 실제 대기열 저장 성공만 전송 대기로 집계
+    }catch(e){let stored=false;const t=targets&&targets[i];try{stored=!!(await relayQueuePush('upload',payload,t?{ref:'k:'+fileKey(t),project:t.project||null}:null));}catch(e2){}if(stored){queued++;queuedFiles.push(f.name||'파일');}else{failed++;failedFiles.push(f.name||'파일');}}   // 실제 대기열 저장 성공만 전송 대기로 집계
   }
   if(injected)markDirty();   // _driveId 주입분 저장(레거시 카메라 경로와 동일)
   await relayUpdateQueueBadge();
@@ -2662,26 +2709,50 @@ async function relayLoadDriveFiles(silent){
       if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);return 0;}
       if(!(res&&res.ok&&Array.isArray(res.files))){if(!silent)toast('서버 사진 목록을 불러오지 못했습니다');return 0;}
       let added=0,linked=0;
-      const unlinked=state.files.filter(x=>x&&!x._driveId&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&x.name&&IMG.includes(bestExt(x.name,x.ext||'')));
+      /* v330 이름만으로 잇지 않는다 — 아이폰 카메라는 파일 이름이 늘 image.jpg 라 현장마다 겹친다. 예전에는 Drive ID 없는
+         B현장 기록(업로드 실패·전송 대기)이 이름만 같은 A현장 Drive 사진을 가져가고, 그 A현장 기록(공정·작업명)은 '중복'으로
+         지워졌다. 서버 사본은 압축본이라 크기로는 거의 못 가른다. 그래서:
+         · 전송 대기열에 기록 참조가 있는 사진은 여기서 잇지 않는다 — 올라가면 cloudFlushQueue 가 그 기록에 직접 붙인다.
+         · 크기가 맞는 후보가 딱 하나면 그것, 둘 이상이면 고르지 않는다.
+         · 크기로 못 가르면 서버에도 앱에도 그 이름이 딱 하나이고, 이 기기에 원본이 없는(=예전에 올리고 ID 만 잃은) 기록일 때만.
+         못 이은 서버 사진은 아래에서 미배정 가상 사진으로 들어간다 — 틀린 현장에 붙는 것보다 낫다. */
+      const pendingRefs=new Set();
+      try{const q=await relayQueueGet();(q||[]).forEach(it=>{if(it&&it.action==='upload'&&typeof it.ref==='string')pendingRefs.add(it.ref);});}catch(e){}
+      const unlinked=state.files.filter(x=>x&&!x._driveId&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&x.name&&IMG.includes(bestExt(x.name,x.ext||''))&&!pendingRefs.has('k:'+fileKey(x)));
       const usedRec=new Set();
+      const serverNames=new Map();
+      res.files.forEach(f=>{if(f&&f.id&&f.name){const k=baseName(f.name);serverNames.set(k,(serverNames.get(k)||0)+1);}});
       const takeRecord=(sf)=>{
         let pool=unlinked.filter(x=>!usedRec.has(x)&&x.name===sf.name);
         if(!pool.length){const k=baseName(sf.name);pool=unlinked.filter(x=>!usedRec.has(x)&&baseName(x.name)===k);}
         if(!pool.length)return null;
         const sz=+sf.size||0;
-        if(sz){const sized=pool.filter(x=>x.size&&Math.abs(+x.size-sz)<=Math.max(4,Math.round(sz*.01)));if(sized.length)pool=sized;}
-        const hit=pool[0];usedRec.add(hit);return hit;
+        let hit=null;
+        const sized=sz?pool.filter(x=>x.size&&Math.abs(+x.size-sz)<=Math.max(4,Math.round(sz*.01))):[];
+        if(sized.length===1)hit=sized[0];
+        else if(sized.length>1)return null;   // 모호 — 고르지 않는다
+        else{
+          if(pool.length!==1||(serverNames.get(baseName(sf.name))||0)!==1)return null;
+          const x=pool[0];
+          if(x._file||x.handle)return null;   // 이 기기에 원본이 있는 사진 = 다른 사진일 수 있다(크기가 맞아야 잇는다)
+          if(sz&&+x.size>0&&sz>(+x.size)*1.1+4096)return null;   // 압축본이 원본보다 클 수 없다
+          hit=x;
+        }
+        usedRec.add(hit);return hit;
       };
       for(const f of res.files){
         if(!f||!f.id||__removedIds.has(f.id))continue;
         const fe=bestExt(f.name,f.mimeType||'');
         if(!IMG.includes(fe))continue;
         const existing=state.files.find(x=>x._driveId===f.id);
-        const same=takeRecord(f);
         if(existing){
           existing._driveMimeType=String(f.mimeType||'');existing._driveSize=Number(f.size)||0;
           // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
-          if(same&&existing!==same&&existing._virtual&&!existing._aptUnit&&!aptUnitManaged(aptUnitProject(existing.project))&&baseName(existing.name)===baseName(same.name)){
+          // v330: 합쳐 지워도 되는 것은 손댄 것 없는 미배정 복구 항목뿐이다 — 현장·공정·작업명이 적힌 기록(applyData 는 저장본을
+          // 전부 _virtual 로 불러온다)은 다른 현장의 같은 이름 기록에 Drive 사진을 넘기고 사라지면 안 된다.
+          const bare=existing._virtual&&!existing.project&&!existing._phase&&!existing._worklabel&&!existing._aptUnit&&!aptUnitManaged(aptUnitProject(existing.project));
+          const same=bare?takeRecord(f):null;
+          if(same&&existing!==same&&baseName(existing.name)===baseName(same.name)){
             same._driveId=f.id;same._driveMimeType=String(f.mimeType||existing._driveMimeType||'');same._driveSize=Number(f.size)||Number(existing._driveSize)||0;same.size=same.size||existing.size||(+f.size||0);
             if(!same.kind||same.kind==='other')same.kind='photo';
             if(!same.when&&existing.when)same.when=existing.when;
@@ -2689,6 +2760,7 @@ async function relayLoadDriveFiles(silent){
           }
           continue;
         }
+        const same=takeRecord(f);
         if(same){
           same._driveId=f.id;same._driveMimeType=String(f.mimeType||'');same._driveSize=Number(f.size)||0;same.size=same.size||(+f.size||0);
           if(!same.kind||same.kind==='other')same.kind='photo';
@@ -3538,7 +3610,7 @@ function openPhotoIntake(files,context){
       approved.unitId=document.getElementById('photoIntakeUnit').value;
       const unit=aptUnitList(aptUnitProject(approved.project)).find(u=>u.id===approved.unitId);
       if(approved.unitId&&!unit){issue.textContent='동·호수가 변경되었습니다. 다시 선택해 주세요.';return;}
-      approved.unitLabel=unit?aptUnitLabel(unit):'';
+      approved.unitLabel=unit?aptUnitLabel(unit):'';approved.source=context.source||'';
       __photoIntakeBusy=true;
       runPhotoIntake(picked,approved);
     }}]);
@@ -3555,7 +3627,7 @@ function openPhotoIntake(files,context){
   projectSelect.onchange=()=>refreshUnits(false);refreshUnits(true);
 }
 async function runPhotoIntake(files,approved){
-  const pairs=[],readFailed=[];
+  const pairs=[],readFailed=[],videos=[];
   const report={ok:0,queued:0,failed:0,failedFiles:[],queuedFiles:[]};
   let error='',metadataSaved=false,cloudAttempted=false;
   openModal('사진 추가 중',`<p id="photoIntakeProgress" role="status" aria-live="polite">추가 전 안전 스냅샷을 확인합니다.</p><p class="hint">처리가 끝날 때까지 앱을 닫거나 새로고침하지 마세요.</p>`,[]);
@@ -3569,8 +3641,12 @@ async function runPhotoIntake(files,approved){
     for(let i=0;i<files.length;i++){
       const file=files[i];progress('앱 목록에 추가 중 '+(i+1)+' / '+files.length);
       try{
-        if(!IMG.includes(bestExt(file.name,file.type)))throw new Error('지원하지 않는 사진 형식');
+        // v330 📷 촬영 입력은 동영상도 받는다(accept image/*,video/*, v275) — 예전에는 여기서 '지원하지 않는 사진 형식'으로
+        // 버려져 '읽기 실패'로 셌다. 동영상도 앱 목록에 넣고(서버 중계는 사진 전용 — relayUploadFiles 가 거른다) 결과 화면에서 따로 알린다.
+        const fe=bestExt(file.name,file.type),isVid=isVideoExt(fe);
+        if(!IMG.includes(fe)&&!isVid)throw new Error('지원하지 않는 사진 형식');
         const rec=await ingestFile(file,null,'',{restoreEdits:false});
+        if(isVid)videos.push(file.name||'동영상');
         // 재스캔이 아닌 명시적인 새 사진 추가: 파일명 추정보다 승인한 현장·작업명이 우선이다.
         rec.kind='photo';rec.project=approved.project;rec._worklabel=approved.workLabel||null;
         if(approved.unitId)rec._aptUnit={project:approved.project,unitId:approved.unitId};
@@ -3590,6 +3666,7 @@ async function runPhotoIntake(files,approved){
         cloudAttempted=true;
         for(let i=0;i<pairs.length;i++){
           const {file,rec}=pairs[i];progress('드라이브에 백업 중 '+(i+1)+' / '+pairs.length);
+          if(isVideoRec(rec))continue;   // 사진 백업 경로는 사진만 — 동영상 원본은 🎬 원본 관리(최대 100MB)
           try{
             const id=await gdUploadBlob(file,file.name,file.type||'image/jpeg','현장사진');
             if(!id)throw new Error('업로드 확인 없음');
@@ -3605,15 +3682,16 @@ async function runPhotoIntake(files,approved){
     __photoIntakeBusy=false;__modalCloseLocked=false;
     const names=(label,items)=>items.length?`<details><summary style="min-height:44px;cursor:pointer">${label} ${items.length}장 보기</summary><ul style="padding-left:20px;max-height:160px;overflow:auto">${items.map(n=>`<li>${escapeHtml(n)}</li>`).join('')}</ul></details>`:'';
     openModal('사진 추가 결과',`<div id="photoIntakeResult" role="status" style="overflow-wrap:anywhere">
-      <p><b>앱 목록 추가 ${pairs.length}장</b> / 선택 ${files.length}장${readFailed.length?' · 읽기 실패 '+readFailed.length+'장':''}</p>
+      <p><b>앱 목록 추가 ${pairs.length}장</b> / 선택 ${files.length}장${videos.length?' (동영상 '+videos.length+'개 포함)':''}${readFailed.length?' · 읽기 실패 '+readFailed.length+'장':''}</p>
       <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.unitLabel?'<br>동·호수: '+escapeHtml(approved.unitLabel):''}${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
       <p>서버·드라이브 백업 확인 ${report.ok}장 · 전송 대기 ${report.queued}장 · 백업 실패 ${report.failed}장</p>
       ${error?`<p role="alert" style="color:var(--warn)">${escapeHtml(error)}</p>`:''}
       ${!cloudAttempted&&pairs.length?'<p>서버·드라이브 백업은 실행하지 않았습니다.</p>':''}
       ${names('읽지 못한 사진',readFailed)}${names('백업 실패 사진',report.failedFiles)}${names('전송 대기 사진',report.queuedFiles)}
       <p class="hint">${metadataSaved?'현장·작업명 등 앱 기록은 저장되었습니다. ':''}앱 기록 저장은 원본 사진 백업과 다릅니다. 원본은 휴대폰에 유지해 주세요.</p>
-      ${(report.queued||report.failed||report.ok<pairs.length)?'<p class="hint">백업 확인 전 앱을 닫거나 새로고침하지 마세요. [연결·대기열 확인]에서 서버 설정과 전송 대기를 확인할 수 있습니다. 이미 추가된 사진을 다시 선택하면 중복될 수 있습니다.</p>':''}
-      ${readFailed.length?'<p class="hint">읽기 실패한 사진만 다시 선택해 추가하세요.</p>':''}</div>`,[{label:'사진 목록 보기',cls:'clay',fn:closeModal},{label:'사진 보관 상태',cls:'ghost',fn:photoSourceView},...(pairs.length&&report.ok<pairs.length?[{label:'연결·대기열 확인',cls:'ghost',fn:()=>openGdriveSetup()}]:[])]);
+      ${(report.queued||report.failed||report.ok<pairs.length-videos.length)?'<p class="hint">백업 확인 전 앱을 닫거나 새로고침하지 마세요. [연결·대기열 확인]에서 서버 설정과 전송 대기를 확인할 수 있습니다. 이미 추가된 사진을 다시 선택하면 중복될 수 있습니다.</p>':''}
+      ${videos.length?`<p id="photoIntakeVideo">🎬 동영상 ${videos.length}개는 앱 목록에만 추가했습니다 — 사진 백업(서버·드라이브)은 사진만 올립니다. 원본은 [🎬 원본 관리]에서 전송하세요(파일 하나당 최대 100MB, 회사 서버 연결 필요).${approved.source==='camera'?' 기종에 따라 촬영한 동영상이 사진첩에 남지 않을 수 있으니, 원본 전송 전에는 앱을 닫거나 새로고침하지 마세요.':''}</p>`:''}
+      ${readFailed.length?'<p class="hint">읽기 실패한 사진만 다시 선택해 추가하세요.</p>':''}</div>`,[{label:'사진 목록 보기',cls:'clay',fn:closeModal},{label:'사진 보관 상태',cls:'ghost',fn:photoSourceView},...(videos.length&&window.HJMedia&&typeof window.HJMedia.view==='function'?[{label:'🎬 원본 관리',cls:'ghost',fn:()=>window.HJMedia.view()}]:[]),...(pairs.length-videos.length>0&&report.ok<pairs.length-videos.length?[{label:'연결·대기열 확인',cls:'ghost',fn:()=>openGdriveSetup()}]:[])]);
   }
 }
 // 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
@@ -4824,6 +4902,7 @@ function restoreUserEdits(rec){
     // [v101 BUG-5] 파일이 다른 폴더로 옮겨졌으면 이름만으로 복원(배정 풀림 방지)
     if(!b&&!scanExactPhotoName(rec.name)&&window.__editByName)b=window.__editByName.get(String(rec.name||'').toLowerCase());
     if(!b)return rec;
+    if(exactUnitPath&&!b.project)rec._orgNullKnown=true;   // 같은 경로가 미배정이었다 — recoverOrganizedMetadata 가 폴더로 현장을 되살리지 않는다(v330)
     if(b.project||b.kind==='estimate')rec.project=b.project||null; // 견적의 명시 해제도 복원
     if(b.kind==='estimate')rec._estimateProjectRestored=true;
     if(b.est)rec.est=b.est;                      // 수기 금액 복원
