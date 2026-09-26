@@ -7140,7 +7140,7 @@ function contractMaskPhone(ph){const d=String(ph||'').replace(/[^\d]/g,'');retur
    사진 공정명(p.phases)만 실어, 부가세 포함 견적(앱 견적 기본값)의 총액이 계약서에는 '(부가세 별도)' 로 찍혔다 —
    고객이 서명한 계약서가 청구서와 다른 말을 했고, 공사 범위에는 '시공 전'·'완료' 같은 사진 분류가 섞였다.
    출처는 계약금액 기본값(projStats.est)을 만드는 것과 같은 견적 묶음(dedupeEstimates)이다. */
-const CT_SCHED_SKIP_RE=/^\s*(💰|상담|실측)/;   // 수금·입금 예정·상담/실측 방문은 공사하는 날이 아니다
+const CT_SCHED_SKIP_RE=/^\s*(💰|상담|실측|🔧\s*AS\s*방문)/;   // 수금·입금 예정·상담/실측 방문·AS 방문(asManage)은 공사하는 날이 아니다
 const CT_SCHED_SPAN_RE=/(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2}) \(\d+일\)/;   // 공정표 등록이 여러 날 공정의 memo 에 남기는 끝날
 const CT_SCOPE_SKIP_RE=/^(합계|소계|총액|부가세|부가가치세|vat|할인|절사|에누리)/i;   // 품목 칸에 섞여 든 합계·세금·할인 줄
 const CT_SCOPE_SEP_RE=/[,，·\n]+/g;
@@ -11042,13 +11042,19 @@ function hjAsWarrantyVerdict(a,p){
   const inside=base<=it.expiresAt;
   return {name,inside,expiresAt:it.expiresAt,text:'보증 기간 '+(inside?'안':'밖')+' (만료 '+it.expiresAt+')'};
 }
+// '무상' 은 사람이 금액 칸을 한 번이라도 다뤘거나(fee 키 — 비운 '' 포함) 처리 내용을 적은 건에만 쓴다.
+// 완료(status done)만으로는 쓰지 않는다 — 이 기록 칸이 생기기 전에 끝낸 AS 는 돈을 받았는지 적힌 적이 없고,
+// 그걸 '무상' 으로 내보내면 1년 뒤 분쟁 자료(엑셀)에 지어낸 사실이 실린다. 모르면 빈칸.
+function hjAsFreeMarked(a){return !!a&&typeof a==='object'&&(Object.prototype.hasOwnProperty.call(a,'fee')||String(a.fix||'').trim()!=='');}
+// AS 방문 일정 — 공사하는 날이 아니다(홍보 원고의 공사 기간·계약서 기간 계산에서 뺀다). 표식 asId, 옛 일정·표식 잃은 일정은 제목으로.
+function hjIsAsVisitSched(s){return !!s&&(!!s.asId||/^\s*🔧\s*AS\s*방문/.test(String(s.title||'')));}
 // 한 줄 요약 — AS 관리·현장 카드가 같이 쓴다. 옛 레코드는 빈 문자열.
 function hjAsSummary(a,p){
   const L=[];
   if(a&&a.visitAt)L.push('방문 '+a.visitAt);
   if(a&&String(a.fix||'').trim())L.push('처리: '+hjCut(String(a.fix).trim(),40));
   const fee=hjAsFee(a);
-  if(fee)L.push('유상 '+won(fee));else if(a&&(String(a.fix||'').trim()||a.status==='done'))L.push('무상');
+  if(fee)L.push('유상 '+won(fee));else if(hjAsFreeMarked(a))L.push('무상');
   const v=hjAsWarrantyVerdict(a,p);if(v)L.push(v.name+' · '+v.text);
   return L.join(' · ');
 }
@@ -11092,7 +11098,9 @@ function asManage(focusId){
     const linked=rr.pairs.filter(q=>q.file);
     const chips=linked.map(q=>'<span style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line-soft);border-radius:999px;padding:0 0 0 10px;font-size:12.5px;margin:0 5px 5px 0">📷 '+escapeHtml(hjCut(q.file.name||'사진',24))+
       '<button type="button" class="ghost asmPhDel" data-id="'+escapeAttr(a.id)+'" data-ref="'+escapeAttr(hjFileRef(q.file)||q.ref)+'" data-old="'+escapeAttr(q.ref)+'" aria-label="'+escapeAttr((q.file.name||'사진')+' 연결 빼기')+'" style="min-height:44px;min-width:44px;border:0">✕</button></span>').join('');
-    const miss=rr.missing.length?'<div class="asmMiss" style="font-size:12px;color:#a33;margin-bottom:4px">⚠ 사진을 찾을 수 없음 '+rr.missing.length+'장 — 이 기기에 그 사진이 없습니다.</div>':'';
+    // 자동으로 지우지 않는다(동기화 전일 수 있다) — 정말 없어진 사진이면 사람이 확인하고 뺀다
+    const miss=rr.missing.length?'<div class="asmMiss" style="font-size:12px;color:#a33;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="flex:1;min-width:150px">⚠ 사진을 찾을 수 없음 '+rr.missing.length+'장 — 이 기기에 그 사진이 없습니다.</span>'+
+      '<button type="button" class="ghost tiny asmMissDel" data-id="'+escapeAttr(a.id)+'" style="min-height:44px;padding:6px 10px">찾을 수 없는 사진 연결 빼기</button></div>':'';
     const inSet=new Set(linked.map(q=>q.file));
     const addable=pool.filter(f=>!inSet.has(f)).slice(-40).reverse();
     let w=null;try{w=p?hjWarranty(p):null;}catch(e){}
@@ -11184,7 +11192,7 @@ function asManage(focusId){
       if(v&&sch){if(sch.date!==v){sch.date=v;toast('📅 일정의 AS 방문도 '+v+' 로 옮겼습니다');}}
       else if(v){
         if(confirm('방문일 '+v+' 을(를) 일정에도 올릴까요?\n'+a.project+' — '+hjCut(a.text||'',30))){
-          const s=Object.assign(newSchedule(),{date:v,time:'',title:'🔧 AS 방문: '+hjCut(a.text||'',30),project:a.project,hours:0,memo:'AS 접수 '+(a.date||'')+' — '+(a.text||'')});
+          const s=Object.assign(newSchedule(),{date:v,time:'',title:'🔧 AS 방문: '+hjCut(a.text||'',30),project:a.project,hours:0,asId:a.id,memo:'AS 접수 '+(a.date||'')+' — '+(a.text||'')});
           state.schedule=state.schedule||[];state.schedule.push(s);a.visitSchedId=s.id;toast('📅 일정에 AS 방문을 올렸습니다');
         }
       }else if(sch)toast('방문일을 지웠습니다 — 일정은 그대로 두었습니다. 필요하면 일정에서 지우세요');
@@ -11199,6 +11207,15 @@ function asManage(focusId){
     a.photos=(Array.isArray(a.photos)?a.photos:[]).filter(x=>!drop.has(String(x)));
     if(!a.photos.length)delete a.photos;
     markDirty();asManage();});
+  // 찾을 수 없는 사진 — 누른 순간 다시 풀어 본다(그 사이 동기화로 돌아왔으면 빼지 않는다). 확인 뒤에만.
+  root.querySelectorAll('.asmMissDel').forEach(b=>b.onclick=()=>{const a=rec(b.dataset.id);if(!a)return;
+    const refs=Array.isArray(a.photos)?a.photos:[];
+    const gone=new Set(hjFilesByRefs(refs,null,hjAsPhotoPool(a.project)).missing);
+    if(!gone.size){asManage();return;}
+    if(!confirm('찾을 수 없는 사진 '+gone.size+'장의 연결을 이 AS 기록에서 뺄까요?\n사진 파일은 건드리지 않습니다. 다른 기기에 아직 동기화 전인 사진이면 빼지 마세요.'))return;
+    a.photos=refs.filter(x=>!gone.has(String(x==null?'':x).trim()));
+    if(!a.photos.length)delete a.photos;
+    markDirty();asManage();toast('찾을 수 없는 사진 '+gone.size+'장 연결을 뺐습니다');});
   root.querySelectorAll('.asmMsg').forEach(b=>b.onclick=()=>{const a=rec(b.dataset.id);if(!a)return;
     hjAsCustomerMsg(hjAsProject(a)||{name:a.project});});
   return {미처리:open.length,전체:log.length,무상임박:soon.length};
@@ -25860,7 +25877,8 @@ function adProjFacts(projName){
     ||adScrubWorks(pick(/희망공사:\s*([^\n]+)/,note)||pick(/공사:\s*([^\n]+)/,note)||'');
   let period='';
   try{
-    const ds=(state.schedule||[]).filter(function(s){return s&&s.project===projName&&s.date;})
+    // AS 방문 일정은 뺀다 — 완료 1년 뒤 AS 가 '약 50주' 공사 기간으로 원고에 실리면 안 된다
+    const ds=(state.schedule||[]).filter(function(s){return s&&s.project===projName&&s.date&&!hjIsAsVisitSched(s);})
       .map(function(s){return String(s.date);}).sort();
     if(ds.length>=2){
       const d0=new Date(ds[0]),d1=new Date(ds[ds.length-1]);
@@ -32164,11 +32182,11 @@ async function asHistExcel(){
   const list=asHistFilter();
   if(!list.length){toast('내보낼 AS가 없어요');return;}
   // 방문일·처리내용·유상금액·공종·보증 판정까지 — 1년 뒤 분쟁에서 "그때 무엇을 어떻게, 무상/유상으로" 가 이 표에 남아야 한다.
-  // 유상금액: 금액이 있으면 숫자, 비었으면 처리 내용이 있거나 완료된 건만 '무상'(아직 처리 전인 건은 빈칸 — 정해진 게 없다).
+  // 유상금액: 금액이 있으면 숫자, 비었으면 금액 칸을 다뤘거나 처리 내용을 적은 건만 '무상'(hjAsFreeMarked). 옛 완료 건은 빈칸 — 적힌 적이 없다.
   const aoa=[['일자','상태','현장','증상/내용','방문일','처리내용','유상금액','공종','보증 판정']];
   list.forEach(x=>{const p=hjAsProject(x),fee=hjAsFee(x),v=hjAsWarrantyVerdict(x,p);
     aoa.push([x.date||'',(AS_STL[x.status]||AS_STL.open)[0],x.project||'',x.text||'',x.visitAt||'',x.fix||'',
-      fee?fee:((String(x.fix||'').trim()||x.status==='done')?'무상':''),x.warrantyItem||'',v?v.text:'']);});
+      fee?fee:(hjAsFreeMarked(x)?'무상':''),x.warrantyItem||'',v?v.text:'']);});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'AS이력');
   XLSX.writeFile(wb,COMPANY.name+'_AS이력_'+localDate()+'.xlsx');

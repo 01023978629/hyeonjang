@@ -136,6 +136,18 @@ const DIR = '가상/현장사진/';
   await page.fill(sel('visitAt', 'as-new'), '2026-10-02');
   await page.waitForFunction(() => state.schedule[0].date === '2026-10-02');
   assert(await page.evaluate(() => state.schedule.length) === 1, '④ 다시 바꾸면 그 일정을 옮긴다(두 건이 되지 않는다)');
+  assert(sch[0].asId === 'as-new', '④ AS 방문 일정에 표식 asId: ' + JSON.stringify(sch[0]));
+  // AS 방문은 공사하는 날이 아니다 — 홍보 원고 공사 기간·계약서 기간 계산에서 빠진다(완료 1년 뒤 AS 가 '약 50주' 로 실리던 자리)
+  const per = await page.evaluate((n) => {
+    const t = [Object.assign(newSchedule(), { date: '2026-09-01', title: '가상 철거', project: n }), Object.assign(newSchedule(), { date: '2026-09-08', title: '가상 도배', project: n })];
+    state.schedule.push(...t);
+    const withAs = adProjFacts(n).period;
+    const asCopy = Object.assign({}, state.schedule[0]); delete asCopy.asId;   // 표식을 잃어도 제목으로
+    const byTitle = hjIsAsVisitSched(asCopy), skipRe = CT_SCHED_SKIP_RE.test(state.schedule[0].title);
+    state.schedule = state.schedule.filter(x => !t.includes(x));
+    return { withAs, byTitle, skipRe, len: state.schedule.length };
+  }, LIVE);
+  assert(per.withAs === '약 1주' && per.byTitle && per.skipRe && per.len === 1, '④ AS 방문은 공사 기간에서 빠진다: ' + JSON.stringify(per));
   dialogAnswer = false;
   await page.click('#modalRoot .asmMore[data-id="as-3"] summary');   // 펼친 상태는 다시 그려도 유지된다(as-new 도 열린 채)
   await page.fill(sel('visitAt', 'as-3'), '2026-10-05');
@@ -163,6 +175,15 @@ const DIR = '가상/현장사진/';
   await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').photos = ['n-f2', 'k:가상/없는사진.jpg|9']; asManage(); });
   const miss = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .asmRec')].find(x => x.dataset.id === 'as-3').textContent);
   assert(/사진을 찾을 수 없음 1장/.test(miss) && JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:' + DIR + '가상_보수후.jpg|2222', 'k:가상/없는사진.jpg|9']), '⑤ 없어진 사진은 알리고 목록에서 지우지 않는다: ' + JSON.stringify((await rec('as-3')).photos));
+  // 사람이 확인하고서만 뺀다 — 거절하면 그대로, 승낙하면 찾을 수 없는 것만 빠지고 찾은 사진은 남는다
+  await page.evaluate(() => { const r = [...document.querySelectorAll('#modalRoot .asmRec')].find(x => x.dataset.id === 'as-3'); r.querySelector('details').open = true; });
+  dialogs.length = 0; dialogAnswer = false;
+  await page.click('#modalRoot .asmRec[data-id="as-3"] .asmMissDel');
+  assert(dialogs.some(m => /연결을 이 AS 기록에서 뺄까요/.test(m)) && (await rec('as-3')).photos.length === 2, '⑤ 연결 빼기는 묻고, 거절하면 그대로: ' + JSON.stringify(await rec('as-3')));
+  dialogAnswer = true;
+  await page.click('#modalRoot .asmRec[data-id="as-3"] .asmMissDel');
+  assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:' + DIR + '가상_보수후.jpg|2222']), '⑤ 승낙 → 찾을 수 없는 사진만 뺀다: ' + JSON.stringify((await rec('as-3')).photos));
+  assert(!(await page.evaluate(() => document.querySelector('#modalRoot .asmRec[data-id="as-3"] .asmMissDel'))), '⑤ 다 빼면 경고·버튼이 사라진다');
   // 이름·크기 짐작은 그 현장 사진 안에서만 — 딴 현장의 같은 이름·크기 사진으로 바꿔 적지 않는다
   await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').photos = ['k:옮긴폴더/가상_남의사진.jpg|3333']; asManage(); });
   assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:옮긴폴더/가상_남의사진.jpg|3333']), '⑤ 딴 현장 사진으로 짐작하지 않는다: ' + JSON.stringify((await rec('as-3')).photos));
@@ -185,7 +206,11 @@ const DIR = '가상/현장사진/';
   assert((await page.evaluate(() => window.__sms)).length === 0, '⑥ 발송 함수는 부르지 않는다');
 
   // ⑦ 엑셀·공사 스토리·파일철
-  await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').status = 'done'; state.asLog.find(x => x.id === 'as-new').fee = 120000; });
+  // as-3 = 새 필드 없는 옛 모양 그대로 완료(방문일만 있음) — 돈 받은 여부가 적힌 적 없다. 베란다 = 금액 칸을 비워 둔(fee '') 완료 건
+  await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').status = 'done'; state.asLog.find(x => x.id === 'as-new').fee = 120000;
+    const b = state.asLog.find(x => x.text === '베란다 창 실리콘'); b.status = 'done'; b.fee = ''; });
+  const oldDone = await page.evaluate((n) => [hjAsSummary({ id: 'x', project: n, date: '2026-08-01', text: '가상 옛 완료', status: 'done' }, state.projects.find(p => p.name === n)), hjAsSummary(state.asLog.find(x => x.id === 'as-3'))], ARC);
+  assert(oldDone[0] === '' && !/무상/.test(oldDone[1]), '⑦ 옛 완료 레코드 요약에 지어낸 무상 없음: ' + JSON.stringify(oldDone));
   const xl = await page.evaluate(async () => {
     ensureXLSX = async () => {};
     window.XLSX = { utils: { book_new: () => ({ s: [] }), aoa_to_sheet: rows => JSON.parse(JSON.stringify(rows)), book_append_sheet: (wb, sh) => wb.s.push(sh) }, writeFile: (wb) => { window.__xl = wb.s[0]; } };
@@ -195,7 +220,9 @@ const DIR = '가상/현장사진/';
   assert(JSON.stringify(xl[0]) === JSON.stringify(['일자', '상태', '현장', '증상/내용', '방문일', '처리내용', '유상금액', '공종', '보증 판정']), '⑦ 엑셀 머리줄: ' + JSON.stringify(xl[0]));
   const xr = id => xl.find(row => row[3] === id);
   assert(JSON.stringify(xr('안방 천장 물자국').slice(4)) === JSON.stringify(['2026-10-02', '욕실 방수층 보수', 120000, '마감(도배·바닥·타일)', '보증 기간 밖 (만료 2026-03-01)']), '⑦ 새 필드 열: ' + JSON.stringify(xr('안방 천장 물자국')));
-  assert(xr('현관 몰딩 벌어짐')[6] === '무상', '⑦ 금액 없이 완료된 건은 무상: ' + JSON.stringify(xr('현관 몰딩 벌어짐')));
+  // 새 계약: 완료(done)만으로는 '무상' 을 쓰지 않는다 — 옛 모양 완료 건은 빈칸(기록 없음), 금액 칸을 비워 둔 건만 무상
+  assert(xr('현관 몰딩 벌어짐')[6] === '', '⑦ 옛 모양 완료 건은 유상금액 빈칸(지어낸 무상 없음): ' + JSON.stringify(xr('현관 몰딩 벌어짐')));
+  assert(xr('베란다 창 실리콘')[6] === '무상', '⑦ 금액 칸을 비워 둔 완료 건은 무상: ' + JSON.stringify(xr('베란다 창 실리콘')));
   assert(JSON.stringify(xr('욕실 줄눈 들뜸').slice(4)) === JSON.stringify(['', '', '', '', '']), '⑦ 옛 미처리 레코드는 빈칸(지어낸 무상 없음): ' + JSON.stringify(xr('욕실 줄눈 들뜸')));
   const story = await page.evaluate((n) => hjStoryData(n).map(e => e.d + ' ' + e.t), LIVE);
   assert(story.includes('2026-10-02 AS 처리 — 욕실 방수층 보수') && !story.some(t => /120,000|유상/.test(t)), '⑦ 공사 스토리에 처리 줄(방문일), 금액은 싣지 않는다: ' + JSON.stringify(story));
