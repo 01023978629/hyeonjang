@@ -26328,24 +26328,41 @@ async function kakaoOpenInbox(){
 }
 
 /* ----- 사진 묶음 발송 (카톡 30장씩 / 문자 10장씩) ----- */
+// 공유창(카톡·문자)에는 원본 바이트도 원본 파일명도 싣지 않는다. 원본 JPEG 의 EXIF 에는 촬영 GPS(고객 집 좌표)·기기 정보가,
+// 파일명에는 '김철수 1302호 완료' 같은 고객 정보가 들어 있다 — 한 번 카톡으로 넘어가면 되돌릴 수 없다.
+// 사진은 사례 내보내기와 같은 hjCaseJpeg(canvas 재인코딩 — EXIF 없음, 긴 변 HJ_CASE_MAX_EDGE)로 다시 굽고 이름은 '사진_01.jpg' 처럼 번호만.
+// 굽지 못한 사진은 원본으로 대신 보내지 않고 빼고 몇 장 뺐는지 말한다. 동영상은 다시 구울 수 없어 기본은 빼고,
+// 「동영상도 넣기」를 고를 때만 원본 그대로(이름만 '영상_03.mp4') 넣는다.
+// photoShareFile 은 원본을 얻는 함수라 그대로 둔다 — loadPhotoForExport(PDF·사례·작업일지가 그림을 디코딩)가 원본이 필요하다.
+function photoBundleIsVideo(x){
+  if(!x)return false;
+  if(x instanceof File)return String(x.type||'').indexOf('video/')===0||isVideoExt(bestExt(x.name,x.type));
+  return isVideoRec(x);
+}
+function photoBundleSplit(list){const photos=[],videos=[];(list||[]).forEach(x=>(photoBundleIsVideo(x)?videos:photos).push(x));return {photos,videos};}
+function photoBundleVideoNote(n){return n?'동영상 '+n+'개는 원본 그대로라(위치 정보가 들어 있을 수 있음) 뺐습니다.':'';}
+function photoBundleCountLabel(items){const s=photoBundleSplit(items);return s.photos.length+'장'+(s.videos.length?' · 동영상 '+s.videos.length+'개':'');}
 function sendPhotoBundles(){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
   if(!photos.length){toast('보낼 사진이 없습니다. 먼저 사진을 불러오세요.');return;}
   const groups=photoBundleGroups(photos);
-  const opts=groups.map(g=>`<option value="${escapeAttr(g.key)}"${state.activeProject===g.key?' selected':''}>${escapeHtml(g.label)} (${g.items.length}장)</option>`).join('');
+  const vids=photoBundleSplit(photos).videos.length;
+  const opts=groups.map(g=>`<option value="${escapeAttr(g.key)}"${state.activeProject===g.key?' selected':''}>${escapeHtml(g.label)} (${photoBundleCountLabel(g.items)})</option>`).join('');
   openModal('📤 사진 묶음 발송',
-    '<p style="font-size:13px;line-height:1.6">앱에 불러온 사진을 <b>현장별</b>로 묶어 보냅니다.<br>카톡은 30장씩, 문자는 10장씩 나누어 공유창을 엽니다.<br>초과하면 같은 현장 안에서 <b>묶음 1/2, 2/2</b>처럼 자동으로 나뉩니다.</p>'+
+    '<p style="font-size:13px;line-height:1.6">앱에 불러온 사진을 <b>현장별</b>로 묶어 보냅니다.<br>카톡은 30장씩, 문자는 10장씩 나누어 공유창을 엽니다.<br>초과하면 같은 현장 안에서 <b>묶음 1/2, 2/2</b>처럼 자동으로 나뉩니다.<br>사진은 촬영 위치 정보(EXIF)를 빼고 다시 저장해 <b>사진_01.jpg</b>처럼 번호 이름으로 보냅니다 — 원본 파일 이름은 보내지 않습니다.</p>'+
     '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);margin-top:10px">보낼 현장<select id="pbProject" style="font-size:14px;padding:9px">'+
-    '<option value="__all__">전체 현장별로 보내기 ('+photos.length+'장)</option>'+opts+
+    '<option value="__all__">전체 현장별로 보내기 ('+photoBundleCountLabel(photos)+')</option>'+opts+
     '</select></label>'+
+    (vids?'<label style="display:flex;gap:8px;align-items:flex-start;min-height:44px;font-size:13px;line-height:1.5;margin-top:10px"><input type="checkbox" id="pbVideo" style="width:24px;height:24px;flex:none;margin:0"><span>동영상도 넣기 — 동영상은 다시 저장할 수 없어 <b>원본 그대로</b> 갑니다(촬영 위치 정보가 들어 있을 수 있음)</span></label>':'')+
     '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">'+
     '<button class="clay" id="pbKakao" style="padding:13px;font-size:15px">💬 카톡으로 — 30장씩 묶음</button>'+
     '<button class="blue" id="pbSms" style="padding:13px;font-size:15px">✉️ 문자로 — 10장씩 묶음</button>'+
     '<button class="ghost" id="pbPick" style="padding:10px;font-size:13px">사진 직접 선택해서 보내기</button>'+
     '</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);
   const root=document.getElementById('modalRoot');
-  root.querySelector('#pbKakao').onclick=()=>bundleProjectPhotos(30,'카톡',root.querySelector('#pbProject').value);
-  root.querySelector('#pbSms').onclick=()=>bundleProjectPhotos(10,'문자',root.querySelector('#pbProject').value);
+  const withVideo=()=>{const c=root.querySelector('#pbVideo');return !!(c&&c.checked);};
+  root.querySelector('#pbKakao').onclick=()=>bundleProjectPhotos(30,'카톡',root.querySelector('#pbProject').value,withVideo());
+  root.querySelector('#pbSms').onclick=()=>bundleProjectPhotos(10,'문자',root.querySelector('#pbProject').value,withVideo());
   root.querySelector('#pbPick').onclick=()=>pickAndBundle(30,'사진 선택');
 }
 function photoBundleGroups(photos){
@@ -26360,26 +26377,31 @@ function photoBundleGroups(photos){
     return a.label.localeCompare(b.label,'ko');
   });
 }
-function bundleProjectPhotos(size,label,projectKey){
+function bundleProjectPhotos(size,label,projectKey,withVideo){
   const photos=state.files.filter(f=>f.kind==='photo'&&matchSearch(f));
-  const groups=(projectKey==='__all__')?photoBundleGroups(photos):photoBundleGroups(photos).filter(g=>g.key===projectKey);
-  if(!groups.length){toast('선택한 현장에 보낼 사진이 없습니다.');return;}
+  let groups=(projectKey==='__all__')?photoBundleGroups(photos):photoBundleGroups(photos).filter(g=>g.key===projectKey);
+  let skippedVideo=0;
+  // 동영상은 고르지 않았으면 묶음을 나누기 전에 뺀다 — 묶음 장수·번호가 실제로 보내는 것과 맞아야 한다
+  if(!withVideo)groups=groups.map(g=>{const sp=photoBundleSplit(g.items);skippedVideo+=sp.videos.length;return Object.assign({},g,{items:sp.photos});}).filter(g=>g.items.length);
+  if(!groups.length){toast('선택한 현장에 보낼 사진이 없습니다.'+(skippedVideo?' '+photoBundleVideoNote(skippedVideo)+' 넣으려면 「동영상도 넣기」를 고르세요.':''));return;}
   const bundles=[];
   groups.forEach(g=>{
     const ordered=[...g.items].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0)||String(a.name).localeCompare(String(b.name),'ko'));
     for(let i=0;i<ordered.length;i+=size){
       const items=ordered.slice(i,i+size);
-      bundles.push({project:g.label,items,work:bundleWorkSummary(items),part:Math.floor(i/size)+1,total:Math.ceil(ordered.length/size)});
+      bundles.push({project:g.label,items,work:bundleWorkSummary(items),part:Math.floor(i/size)+1,total:Math.ceil(ordered.length/size),start:i,count:ordered.length});
     }
   });
-  showBundleSender(bundles,label,size);
+  showBundleSender(bundles,label,size,{video:!!withVideo,skippedVideo});
 }
 function pickAndBundle(size,label){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=()=>{
-    const files=[...inp.files]; if(!files.length)return;
-    const chunks=[]; for(let i=0;i<files.length;i+=size){const items=files.slice(i,i+size);chunks.push({project:'직접 선택',items,work:'작업 미지정',part:Math.floor(i/size)+1,total:Math.ceil(files.length/size)});}
-    showBundleSender(chunks,label,size);
+    const picked=[...inp.files]; if(!picked.length)return;
+    const sp=photoBundleSplit(picked),files=sp.photos;   // 사진만 받는 창이지만 기기에 따라 동영상이 섞여 들어온다 — 동영상은 다시 구울 수 없다
+    if(!files.length){toast(photoBundleVideoNote(sp.videos.length)||'보낼 사진이 없습니다.');return;}
+    const chunks=[]; for(let i=0;i<files.length;i+=size){const items=files.slice(i,i+size);chunks.push({project:'직접 선택',items,work:'작업 미지정',part:Math.floor(i/size)+1,total:Math.ceil(files.length/size),start:i,count:files.length});}
+    showBundleSender(chunks,label,size,{video:false,skippedVideo:sp.videos.length});
   };
   inp.click();
 }
@@ -26434,40 +26456,83 @@ async function photoShareFile(f){
   }
   return null;
 }
-async function filesForBundle(items){
-  const out=[];
-  for(const item of items){
-    const file=await photoShareFile(item);
-    if(file)out.push(file);
+// 공유용 이름 — 번호만. 원본 이름(고객·호수)·현장명은 싣지 않는다. 자릿수는 그 현장 전체 장수에 맞춘다(묶음 2/2 도 같은 폭).
+const PB_VIDEO_TYPE={mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm','3gp':'video/3gpp','3gpp':'video/3gpp',mkv:'video/x-matroska',avi:'video/x-msvideo'};
+function photoBundleShareName(n,count,videoExt){const w=Math.max(2,String(Math.max(n,count||0)).length);return (videoExt?'영상_':'사진_')+String(n).padStart(w,'0')+'.'+(videoExt||'jpg');}
+// 묶음 하나를 공유용 File 로. opts: {start 앞 묶음까지 장수, count 현장 전체 장수, video 동영상 원본 허용, onProgress(i,n)}
+// 돌려주는 값 {files, failed} — failed 는 다시 굽지 못해(또는 허용 안 된 동영상이라) 뺀 수. 어떤 경우에도 원본 사진 바이트로 대신 채우지 않는다.
+async function filesForBundle(items,opts){
+  opts=opts||{};
+  const out=[];let failed=0;
+  const start=Math.max(0,+opts.start||0),count=+opts.count||(start+(items||[]).length);
+  for(let i=0;i<(items||[]).length;i++){
+    const item=items[i],n=start+i+1;
+    if(typeof opts.onProgress==='function'){try{opts.onProgress(i+1,items.length);}catch(e){}}
+    if(photoBundleIsVideo(item)){
+      if(!opts.video){failed++;continue;}   // 고르지 않은 동영상은 원본 그대로 싣지 않는다
+      let file=null;try{file=await photoShareFile(item);}catch(e){}
+      if(!file){failed++;continue;}
+      const e0=String((item instanceof File?'':item.ext)||bestExt(file.name,file.type)||'').toLowerCase();
+      const ext=isVideoExt(e0)?e0:'mp4';
+      const type=String(file.type||'').indexOf('video/')===0?file.type:(PB_VIDEO_TYPE[ext]||'video/mp4');
+      out.push(new File([file],photoBundleShareName(n,count,ext),{type}));   // 바이트는 원본(사용자가 고른 경우만) — 이름만 번호
+      continue;
+    }
+    let j=null;try{j=await hjCaseJpeg(item);}catch(e){}
+    if(!j||!j.bytes||!j.bytes.length){failed++;continue;}   // 굽기 실패 — 원본으로 몰래 보내지 않는다
+    out.push(new File([j.bytes],photoBundleShareName(n,count,''),{type:'image/jpeg'}));
   }
-  return out;
+  return {files:out,failed};
 }
-function showBundleSender(bundles,label,size){
+function showBundleSender(bundles,label,size,info){
+  info=info||{};
   __pbSent=new Set();
+  // prepared: 다시 구워 둔 묶음. 30장을 굽는 사이 버튼을 누른 '사용자 활성'이 끝나면 공유창이 NotAllowedError 로 거절된다 —
+  // 구운 것은 버리지 않고, 한 번 더 누르면 굽기 없이 바로 공유창을 연다. sentInfo: 보낸 묶음의 실제 장수·뺀 장수(화면에 남긴다).
+  const prepared=new Map(),sentInfo=new Map();let busy=false;
   const total=bundles.reduce((a,c)=>a+c.items.length,0);
+  const vNote=photoBundleVideoNote(+info.skippedVideo||0);
+  const vIn=info.video?bundles.reduce((a,c)=>a+photoBundleSplit(c.items).videos.length,0):0;
   const draw=()=>{
     const isK=label==='카톡', isS=label==='문자';
     const via=isK?'카톡으로':(isS?'문자로':'');           // 직접 선택 등은 발송수단 미정 → 제목에 군더더기 안 붙임
     const target=isK?'카톡':(isS?'문자':'카톡/문자');
     const rows=bundles.map((c,idx)=>{
-      const done=__pbSent.has(idx);
+      const done=__pbSent.has(idx),ready=!done&&prepared.has(idx),si=sentInfo.get(idx),miss=si?si.failed:(ready?prepared.get(idx).failed:0);
       const work=c.work||bundleWorkSummary(c.items);
-      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':'▶ ')+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+c.items.length+'장)<span style="display:block;font-size:12px;opacity:.82;margin-top:3px">작업: '+escapeHtml(work)+'</span></button>';
+      return '<button class="'+(done?'ghost':'clay')+'" data-pbsend="'+idx+'" style="display:block;width:100%;padding:12px;margin:5px 0;text-align:left"'+(done?' disabled':'')+'>'+(done?'✅ ':(ready?'📤 ':'▶ '))+escapeHtml(c.project)+' · 묶음 '+c.part+'/'+c.total+' ('+(si?si.sent+'장 보냄':c.items.length+'장')+')<span style="display:block;font-size:12px;opacity:.82;margin-top:3px">작업: '+escapeHtml(work)+(miss?' · 빠진 사진 '+miss+'장(다시 저장 실패 — 원본은 보내지 않음)':'')+(ready?' · 준비됨 — 누르면 공유창이 열립니다':'')+'</span></button>';
     }).join('');
     openModal('📤 '+(via?via+' ':'')+'묶음 발송',
-      '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+bundles.length+'묶음</b> (묶음당 최대 '+size+'장).<br>'+size+'장을 넘으면 자동으로 다음 묶음으로 나뉩니다.<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+target+'</b> 선택 후 보내세요.</p>'+rows,
+      '<p style="font-size:13px;line-height:1.6">총 <b>'+total+'장</b> → <b>'+bundles.length+'묶음</b> (묶음당 최대 '+size+'장).<br>'+size+'장을 넘으면 자동으로 다음 묶음으로 나뉩니다.<br>아래 묶음을 <b>하나씩 눌러</b> 공유창에서 <b>'+target+'</b> 선택 후 보내세요.<br>사진은 촬영 위치 정보를 빼고 번호 이름(사진_01.jpg…)으로 다시 저장해 보냅니다.'+(vIn?'<br>동영상 '+vIn+'개는 원본 그대로 갑니다(촬영 위치 정보가 들어 있을 수 있음).':'')+'</p>'+
+      (vNote?'<p id="pbVideoNote" style="font-size:12.5px;line-height:1.5;color:var(--muted);margin:4px 0 6px">🎬 '+escapeHtml(vNote)+'</p>':'')+rows,
       [{label:'닫기',cls:'ghost',fn:closeModal}]);
     const root=document.getElementById('modalRoot');
     root.querySelectorAll('[data-pbsend]').forEach(el=>el.onclick=async()=>{
       const idx=+el.dataset.pbsend; const bundle=bundles[idx];
+      if(busy){toast('앞 묶음 사진을 준비하는 중입니다 — 끝나면 다시 누르세요');return;}
+      let got=prepared.get(idx);const fresh=!got;
       try{
-        toast('사진 준비 중... '+bundle.project+' '+bundle.items.length+'장');
-        const files=await filesForBundle(bundle.items);
-        if(!files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.');return;}
-        if(!(navigator.canShare&&navigator.canShare({files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); return; }
-        await navigator.share({files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
+        if(!got){
+          busy=true;
+          try{
+            toast('사진 준비 중... '+bundle.project+' '+bundle.items.length+'장 (위치 정보 빼는 중)');
+            const sp=el.querySelector('span');
+            got=await filesForBundle(bundle.items,{start:bundle.start,count:bundle.count,video:!!info.video,onProgress:(i,n)=>{if(sp&&sp.isConnected)sp.textContent='⏳ 다시 저장 중 '+i+'/'+n;}});
+          }finally{busy=false;}
+          if(!got.files.length){toast('보낼 수 있는 사진 파일을 준비하지 못했습니다.'+(got.failed?' ('+got.failed+'장 다시 저장 실패 — 원본은 보내지 않습니다)':''));draw();return;}
+          if(!(navigator.canShare&&navigator.canShare({files:got.files}))){ toast('이 기기는 이 사진 묶음 공유를 지원하지 않습니다. 장수를 줄이거나 폰에서 다시 시도하세요.'); draw(); return; }
+          prepared.set(idx,got);
+          if(got.failed)toast('사진 '+got.failed+'장은 다시 저장하지 못해 뺐습니다 — 원본은 보내지 않습니다');
+        }
+        await navigator.share({files:got.files,title:bundleShareTitle(bundle),text:bundleShareText(bundle)});
+        prepared.delete(idx);sentInfo.set(idx,{sent:got.files.length,failed:got.failed});
         __pbSent.add(idx); draw();   // 순서와 무관하게 보낸 묶음 표시(중복발송 방지)
-      }catch(e){ if(String(e&&e.name)!=='AbortError')toast('보내기 실패: '+(e.message||e)); }
+      }catch(e){
+        const nm=String(e&&e.name);
+        if(nm==='NotAllowedError'&&fresh&&prepared.has(idx)){toast('사진 '+got.files.length+'장 준비됐습니다 — 같은 묶음을 한 번 더 누르면 공유창이 열립니다');draw();return;}
+        if(nm!=='AbortError')toast('보내기 실패: '+(e.message||e));
+        draw();
+      }
     });
   };
   draw();
