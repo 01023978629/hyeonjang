@@ -1238,8 +1238,28 @@ function mergeOrganizedPhotoDuplicates(files){
   const src=Array.isArray(files)?files:[],byName=new Map();
   // 명시 세대 연결이 한쪽에만 있거나 다르면 합치지 않는다. 파일명은 세대 소유권 근거가 아니다.
   const sameUnit=(a,b)=>JSON.stringify(a.aptUnit??null)===JSON.stringify(b.aptUnit??null);
+  // 원본 증빙(sourceSha256·mediaOriginal)은 그 경로의 실제 바이트에 묶인 값이라 다른 레코드로 옮겨 붙이지 않는다 —
+  // 정리본에 원본의 해시를 붙이면 다시 연결할 때 '등록된 원본 증빙과 불일치'로 막히고, 서버에 올린 원본을
+  // 가리키는 유일한 기록(mediaOriginal.fileId)을 지우면 앱이 그 원본을 잊는다. 그래서 지워질 쪽에만 증빙이 있거나
+  // 두 증빙이 다르면 합치지 않고 둘 다 남긴다(스캔 때 settleScannedPhotoCopies 와 같은 규칙).
+  const proofKept=(keep,old)=>{
+    const sha=f=>/^[a-f0-9]{64}$/.test(f.sourceSha256||'')?f.sourceSha256:'';
+    const orig=f=>f.mediaOriginal&&typeof f.mediaOriginal==='object'?JSON.stringify(f.mediaOriginal):'';
+    return (!sha(old)||sha(old)===sha(keep))&&(!orig(old)||orig(old)===orig(keep));
+  };
+  // Drive 연결값(ID·형식·크기)은 한 묶음이다. ID 만 옮기면 형식·크기가 빈 채로 남아 관리사무소 완료 사진
+  // (officeCompletionPhotoSafe)처럼 형식·크기를 확인하는 곳에서 그 사진이 빠진다.
+  const takeDrive=(keep,old)=>{
+    if(!old.driveId||(keep.driveId&&keep.driveId!==old.driveId))return false;
+    const linked=!keep.driveId;
+    if(linked)keep.driveId=old.driveId;
+    if(old.driveMimeType&&(linked||!keep.driveMimeType))keep.driveMimeType=old.driveMimeType;
+    if(Number(old.driveSize)>0&&(linked||!(Number(keep.driveSize)>0)))keep.driveSize=old.driveSize;
+    return linked;
+  };
   const mergeMissing=(keep,old)=>{
-    ['text','ocr','est','ledger','quote','contact','address','gdFolder','lat','lng','when','project','phase','worklabel'].forEach(k=>{
+    // sourceModifiedAt 은 촬영 시각(when)처럼 같은 사진의 출처 사실이다 — 비어 있을 때만 채운다.
+    ['text','ocr','est','ledger','quote','contact','address','gdFolder','lat','lng','when','project','phase','worklabel','sourceModifiedAt'].forEach(k=>{
       if((keep[k]===undefined||keep[k]===null||keep[k]==='')&&old[k]!==undefined&&old[k]!==null&&old[k]!=='')keep[k]=old[k];
     });
     if(!keep.exSum&&old.exSum)keep.exSum=true;
@@ -1262,7 +1282,10 @@ function mergeOrganizedPhotoDuplicates(files){
     if(equalSizeScanPhotoPair(keep,old))return;
     if(!sameUnit(keep,old))return;
     if(keep.project&&old.project&&keep.project!==old.project)return;
-    if(!keep.driveId&&old.driveId){keep.driveId=old.driveId;linked++;}
+    // 서로 다른 Drive 사진이 붙어 있으면 같은 사진이라는 근거가 없다(다른 폰의 IMG_0001.jpg 등) — 원본 쪽 연결을 버리지 않는다.
+    if(keep.driveId&&old.driveId&&keep.driveId!==old.driveId)return;
+    if(!proofKept(keep,old))return;
+    if(takeDrive(keep,old))linked++;
     mergeMissing(keep,old);
     drop.add(original[0].i);merged++;
   });
@@ -1280,7 +1303,8 @@ function mergeOrganizedPhotoDuplicates(files){
     if(equalSizeScanPhotoPair(group[0].f,group[1].f))return;
     if(!sameUnit(group[0].f,group[1].f)||group[0].f.project!==group[1].f.project)return;
     group.sort((a,b)=>Number(String(b.f.prefix||'').startsWith('_정리완료/'))-Number(String(a.f.prefix||'').startsWith('_정리완료/'))||(Number(b.f.size)||0)-(Number(a.f.size)||0));
-    mergeMissing(group[0].f,group[1].f);driveDrop.add(group[1].i);driveDeduped++;
+    if(!proofKept(group[0].f,group[1].f))return;
+    takeDrive(group[0].f,group[1].f);mergeMissing(group[0].f,group[1].f);driveDrop.add(group[1].i);driveDeduped++;
   });
   work=work.filter((_,i)=>!driveDrop.has(i));
   return {files:work,merged,linked,driveDeduped};
@@ -1768,6 +1792,43 @@ function serializeData(source,savedAt){
   };
 }
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
+/* 저장 레코드(serializeData 의 files 한 줄) s → 지금 목록의 파일 객체 f.
+   applyData(부팅·서버·드라이브 병합과 안전판·백업 '되돌리기')와 「선택 복원」이 이 한 곳을 쓴다 — 두 곳에서
+   따로 적으면 한쪽에만 새 필드가 들어간다. 실제로 선택 복원은 project·공정·kind·est 넷만 되돌려 작업명·
+   동·호수·메모·집계 제외·장부가 지금 값 그대로 남았는데, 화면은 '통째로 덮어쓰입니다'라고 말했다.
+   revert=true: 스냅샷 값 그대로(스냅샷에 없으면 지운다). false: 부분 자료가 로컬을 지우지 않게 빈 칸만 채우는 병합. */
+function hjApplySavedFileFields(f,s,revert){
+  const has=k=>Object.prototype.hasOwnProperty.call(s,k);
+  // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
+  let sk=s.kind||f.kind;
+  if((sk==='other'||!sk)&&isMediaExt(f.ext))sk='photo';
+  f.kind=sk;f.project=s.project||null;
+  if(has('aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
+  else if(revert)delete f._aptUnit;
+  if(has('sourceModifiedAt'))f.sourceModifiedAt=s.sourceModifiedAt;
+  else if(revert)delete f.sourceModifiedAt;
+  if(revert){
+    // 복구: 스냅샷 값 그대로 — 병합(s.x||f.x)이면 스냅샷 이후 붙인 est·메모·
+    // 집계 제외가 안 지워져 "되돌렸다"가 거짓말이 된다. 드라이브 신원 필드는
+    // 물리적 사실이라 아래 공통 병합을 그대로 쓴다.
+    f.text=s.text||'';f.ocr=s.ocr||'na';f.est=s.est||null;f.exSum=!!s.exSum;f.ledger=s.ledger||null;f.quote=s.quote||null;f.contact=s.contact||null;f.address=s.address||null;f._phase=s.phase||null;f._worklabel=s.worklabel||null;f._gdFolder=s.gdFolder||null;
+  }else{
+    f.text=s.text||f.text;
+    f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;if(s.exSum)f.exSum=true;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;
+  }
+  if(s.driveId&&!f._driveId)f._driveId=s.driveId;
+  // Drive 연결값(ID·형식·크기)은 한 묶음이다 — 지금 파일에 저장본과 다른(또는 저장본 뒤에 붙은) Drive 사진이 있으면
+  // 저장본의 형식·크기로 덮지 않는다. ID 는 지금 것으로 남고 크기만 0 이 되면 관리사무소 완료 사진
+  // (officeCompletionPhotoSafe)처럼 형식·크기를 확인하는 곳에서 그 사진이 빠진다.
+  if(!f._driveId||f._driveId===s.driveId){if(s.driveMimeType)f._driveMimeType=s.driveMimeType;if(has('driveSize'))f._driveSize=Number(s.driveSize)||0;}
+  if(f._driveId)f._relayLink='relay:'+f._driveId;
+  if(/^[a-f0-9]{64}$/.test(s.sourceSha256||''))f._originalSha256=s.sourceSha256;
+  else if(revert)delete f._originalSha256;
+  if(s.mediaOriginal&&typeof s.mediaOriginal==='object')f._mediaOriginal=structuredClone(s.mediaOriginal);
+  else if(revert)delete f._mediaOriginal;
+  if(revert)delete f._sourceVerification;
+  return f;
+}
 function applyData(data,opts){
   /* 두 가지 쓰임: ① 부팅·서버·드라이브 병합(기본) — 부분 자료가 로컬을 지우지
      않도록 현재 값을 우선하는 병합. ② 복구(opts.revert) — 안전판·백업·드라이브
@@ -1843,29 +1904,7 @@ function applyData(data,opts){
     let s=byKey[fileKey(f)];
     if(!s&&!scanExactPhotoName(f.name)&&byName[f.name]&&byName[f.name].length===1)s=byName[f.name][0];
     if(s){used.add(s);
-      // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
-      let sk=s.kind||f.kind;
-      if((sk==='other'||!sk)&&isMediaExt(f.ext))sk='photo';
-      f.kind=sk;f.project=s.project||null;
-      if(Object.prototype.hasOwnProperty.call(s,'aptUnit'))f._aptUnit=structuredClone(s.aptUnit);
-      else if(__revert)delete f._aptUnit;
-      if(Object.prototype.hasOwnProperty.call(s,'sourceModifiedAt'))f.sourceModifiedAt=s.sourceModifiedAt;
-      else if(__revert)delete f.sourceModifiedAt;
-      if(__revert){
-        // 복구: 스냅샷 값 그대로 — 병합(s.x||f.x)이면 스냅샷 이후 붙인 est·메모·
-        // 집계 제외가 안 지워져 "되돌렸다"가 거짓말이 된다. 드라이브 신원 필드는
-        // 물리적 사실이라 아래 공통 병합을 그대로 쓴다.
-        f.text=s.text||'';f.ocr=s.ocr||'na';f.est=s.est||null;f.exSum=!!s.exSum;f.ledger=s.ledger||null;f.quote=s.quote||null;f.contact=s.contact||null;f.address=s.address||null;f._phase=s.phase||null;f._worklabel=s.worklabel||null;f._gdFolder=s.gdFolder||null;
-      }else{
-        f.text=s.text||f.text;
-        f.ocr=s.ocr||f.ocr;f.est=s.est||f.est;if(s.exSum)f.exSum=true;f.ledger=s.ledger||f.ledger||null;f.quote=s.quote||f.quote;f.contact=s.contact||f.contact;f.address=s.address||f.address;if(s.phase)f._phase=s.phase;if(s.worklabel)f._worklabel=s.worklabel;if(s.gdFolder)f._gdFolder=s.gdFolder;
-      }
-      if(s.driveId&&!f._driveId)f._driveId=s.driveId;if(s.driveMimeType)f._driveMimeType=s.driveMimeType;if(Object.prototype.hasOwnProperty.call(s,'driveSize'))f._driveSize=Number(s.driveSize)||0;if(f._driveId)f._relayLink='relay:'+f._driveId;
-      if(/^[a-f0-9]{64}$/.test(s.sourceSha256||''))f._originalSha256=s.sourceSha256;
-      else if(__revert)delete f._originalSha256;
-      if(s.mediaOriginal&&typeof s.mediaOriginal==='object')f._mediaOriginal=structuredClone(s.mediaOriginal);
-      else if(__revert)delete f._mediaOriginal;
-      if(__revert)delete f._sourceVerification;
+      hjApplySavedFileFields(f,s,__revert);
       __kept.add(f);restored++;}
   });
   // 복구 모드: 스냅샷에 없는 항목은 지운다 — "그 시점"에 없던 기록이 남으면
@@ -4589,11 +4628,15 @@ function backupUserEdits(){
     (state.files||[]).forEach(function(f){
       if(!f)return;
       // 사용자가 손댄 흔적이 있는 것만 백업(자동 분류만 된 건 새로 계산해도 무방)
-      const touched=f.project||f.est||f.kind!=='other'||f._worklabel||f.contact||f._phase;
+      const touched=f.project||f.est||f.kind!=='other'||f._worklabel||f.contact||f._phase||f.ledger||f.quote||f.address||f._gdFolder||f.exSum;
       if(!touched)return;
+      // 저장(serializeData)하는 파일 필드 중 파일에서 다시 뽑을 수 없는 것은 전부 여기 있어야 한다 — 빠진 것은
+      // 재스캔 한 번에 조용히 사라진다(장부·견적 품목·손으로 적은 건물명·드라이브 폴더 이동 기록이 빠져 있었다).
+      // tests/restore-parity.e2e.js ⑥ 이 저장 레코드 전 필드를 왕복시켜 지킨다.
       const _rec={
         project:f.project||null,est:f.est||null,kind:f.kind||null,phase:f._phase||null,
         contact:f.contact||null,_worklabel:f._worklabel||null,driveId:f._driveId||null,driveMimeType:f._driveMimeType||null,driveSize:Number(f._driveSize)||0,text:f.text||'',ocr:f.ocr||null,
+        ledger:f.ledger||null,quote:f.quote||null,address:f.address||null,gdFolder:f._gdFolder||null,
         sourceSha256:f._originalSha256||null,mediaOriginal:f._mediaOriginal?structuredClone(f._mediaOriginal):null,
         exSum:f.exSum||false
         ,...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{})
@@ -4632,6 +4675,10 @@ function restoreUserEdits(rec){
     if(exactUnitPath&&b.mediaOriginal)rec._mediaOriginal=structuredClone(b.mediaOriginal);
     if(b.text&&!rec.text)rec.text=b.text;        // OCR 결과 재활용(재OCR 방지)
     if(b.ocr==='done'&&b.text)rec.ocr='done';
+    if(b.quote&&!rec.quote)rec.quote=b.quote;    // 견적 품목 — 위에서 글자를 되살려 다시 읽지 않으므로(ocr done) 여기서 안 살리면 est 만 남는다
+    if(b.ledger&&!rec.ledger)rec.ledger=b.ledger;  // 카드·세금계산서 내역 읽은 결과 — [다시 읽기]를 눌러야만 생긴다
+    if(b.address&&!rec.address)rec.address=b.address;  // 손으로 적은 건물명·주소 조회 결과 — 자동 복구 경로가 없다
+    if(b.gdFolder&&!rec._gdFolder)rec._gdFolder=b.gdFolder;  // 드라이브 폴더 이동 기록 — 없으면 다음 실행 때 같은 이동을 다시 시도한다
   }catch(e){}
   return rec;
 }
@@ -27043,37 +27090,56 @@ async function restoreFull(idx){
        toast('전체 작업 상태를 '+parseStamp(b.name)+' 시점으로 되돌렸습니다.');
      }}], false);
 }
+/* 「선택 복원」의 파일 쪽 — 백업에서 고른 현장(names)에 배정돼 있던 레코드를, 지금 목록의 같은 파일에
+   백업 시점 값 그대로 되돌린다(hjApplySavedFileFields revert — 안전판·전체 되돌리기와 같은 함수).
+   짝은 fileKey(경로+이름+크기)로 찾는다. 예전처럼 이름만으로 첫 파일을 고르면 같은 이름의 원본(현장사진/)과
+   정리본(_정리완료/) 중 엉뚱한 쪽에 백업 값을 덮고, 맞는 쪽은 그대로 남았다.
+   경로가 바뀐 파일(정리·이동)은 이름으로 찾되 백업과 지금 목록 양쪽에 그 이름이 하나뿐일 때만 — 둘 이상이면
+   어느 것인지 모르므로 건드리지 않는다. 백업 뒤 새로 들어온 파일·다른 현장 파일은 그대로 둔다.
+   백업 레코드는 복사해서 쓴다 — 창에 붙잡힌 백업 자료(window.__backups)와 객체를 나눠 쓰면 이후 편집이 그 백업을 고친다. */
+function restoreSelectFiles(bFiles,names){
+  const src=(Array.isArray(bFiles)?bFiles:[]).filter(s=>s&&typeof s==='object'&&s.name);
+  const byKey=new Map(),byName=new Map(),liveNames=new Map();
+  src.forEach(s=>{const k=fileKey(s);byKey.set(k,(byKey.get(k)||[]).concat([s]));byName.set(s.name,(byName.get(s.name)||[]).concat([s]));});
+  const live=(state.files||[]).filter(f=>f&&!f._fromQuote);
+  live.forEach(f=>liveNames.set(f.name,(liveNames.get(f.name)||0)+1));
+  let n=0;
+  live.forEach(f=>{
+    const exact=byKey.get(fileKey(f));
+    let s=exact&&exact.length===1?exact[0]:null;
+    if(!exact&&!scanExactPhotoName(f.name)&&(byName.get(f.name)||[]).length===1&&liveNames.get(f.name)===1)s=byName.get(f.name)[0];
+    if(!s||!names.has(s.project))return;
+    hjApplySavedFileFields(f,structuredClone(s),true);n++;
+  });
+  return n;
+}
 function restoreSelect(idx){
   const b=window.__backups[idx];if(!b)return;
   const projs=(b.data.projects||[]);
   if(!projs.length){toast('이 백업에 현장이 없습니다.');return;}
   const rows=projs.map((p,i)=>`<label class="bk-pick"><input type="checkbox" data-bkp="${i}" checked><span>${escapeHtml(p.name)} <small>(단계 ${STAGES[p.stage||0]}, 수금 ${won(p.received||0)})</small></span></label>`).join('');
   openModal('복원할 현장 선택',
-    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">${parseStamp(b.name)} 백업에서 가져올 현장을 고르세요. 선택한 현장의 정보가 백업 시점으로 <b>통째로</b> 덮어쓰입니다 — 배정·공정·수금·지출뿐 아니라 고객·부대사항·추가공사·실측도 함께 되돌아갑니다(보관 여부는 그대로 둡니다).</p>${rows}`,
+    `<p style="font-size:12.5px;color:var(--muted-2);margin:0 0 10px">${parseStamp(b.name)} 백업에서 가져올 현장을 고르세요. 선택한 현장의 정보가 백업 시점으로 <b>통째로</b> 덮어쓰입니다 — 배정·공정·작업명·동·호수·메모·수금·지출뿐 아니라 고객·부대사항·추가공사·실측도 함께 되돌아갑니다(보관 여부는 그대로 둡니다). 백업에 아예 없던 항목과 백업 뒤에 새로 들어온 파일은 지우지 않고 그대로 둡니다.</p>${rows}`,
     [{label:'취소',cls:'ghost',fn:()=>openRestore()},
      {label:'선택 복원',cls:'clay',fn:async()=>{
        const picked=[...document.querySelectorAll('input[data-bkp]:checked')].map(c=>+c.dataset.bkp);
        if(!picked.length){toast('현장을 선택하세요.');return;}
        await makeCheckpoint('선택복원 전 자동백업');
-       const bFiles=b.data.files||[];
+       const names=new Set();
        picked.forEach(pi=>{
-         const bp=projs[pi];
+         const bp=structuredClone(projs[pi]);names.add(bp.name);
          // 현장 정보 덮어쓰기/추가
          const exist=state.projects.find(x=>x.name===bp.name);
-         // 5개 필드만 담으면 고객·부대사항·추가공사·실측이 조용히 사라진다 — 화면이 약속한 '현장 정보 덮어쓰기'대로 전부 되살린다
          // 5개 필드만 담으면 고객·부대사항·추가공사·실측이 조용히 사라진다 — 화면이 약속한 대로 전부 되살리되,
          // 보관 여부는 지금 운영 상태라 백업 시점으로 되돌리지 않는다
          const restored={...projectBackupSafe(bp),name:bp.name,stage:bp.stage||0,received:bp.received||0,phases:bp.phases||[],cost:bp.cost||{material:0,labor:0,outsource:0}};
          delete restored.archived;
          if(exist)Object.assign(exist,restored);else state.projects.push(restored);
-         // 그 현장의 파일 배정·공정 복원 (현재 로드된 파일과 이름 매칭)
-         bFiles.filter(s=>s.project===bp.name).forEach(s=>{
-           const f=state.files.find(x=>x.name===s.name);
-           if(f){f.project=s.project;if(s.phase)f._phase=s.phase;if(s.kind)f.kind=s.kind;if(s.est)f.est=s.est;}
-         });
        });
+       // 그 현장들의 파일 배정·공정·작업명·동·호수·메모 복원 (경로+이름+크기로 짝을 찾는다)
+       const nFiles=restoreSelectFiles(b.data.files,names);
        state.tab='dashboard';markDirty();closeModal();render();
-       toast(picked.length+'개 현장을 복원했습니다.');
+       toast(picked.length+'개 현장을 복원했습니다'+(nFiles?' · 파일 '+nFiles+'개 되돌림':'')+'.');
      }}], false);
 }
 function bulkMove(){
