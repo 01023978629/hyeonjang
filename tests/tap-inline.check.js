@@ -1,4 +1,4 @@
-/* tap-inline.check.js — 인라인 min-height 가 44 미만인 버튼 금지 (v329)
+/* tap-inline.check.js — 인라인 min-height 가 44 미만인 버튼·접는 머리(summary) 금지 (v329, summary 는 v330)
 
    폰에서 누르는 것은 44px — 이 저장소의 자체 규칙이다(body.mobile-mode button, ≤640px @media).
    그런데 인라인 style 은 전역 규칙보다 무겁다. 버튼에 style="min-height:34px" 를 적어 두면
@@ -9,6 +9,8 @@
 
    판정: <button … > 태그(자바스크립트 문자열 이어붙이기로 쪼개져 있어도 다음 '>' 까지) 안에
    min-height:Npx 가 있고 N<44 이면 위반. 위반 줄을 출력하고 종료코드 1.
+   (v330) <summary …> 도 같은 자로 잰다 — 접는 머리도 누르는 곳이고(전역 규칙 summary 44px), v329 까지 📰 사례 후보 머리가
+   인라인 min-height:32px 로 전역 규칙 밖에 있었다.
    고치는 법: 인라인 min-height 를 지운다(전역 규칙이 폰에서 44 를 준다). PC 에서도 꼭 높이가
    필요하면 44 이상으로 적는다. 브라우저 없이 도는 정적 검사다. */
 'use strict';
@@ -19,7 +21,7 @@ const FILES = ['index.html', 'media-safety.js', 'shared-todo-backup.js'].filter(
 
 function scan(src) {
   const bad = [];
-  const re = /<button\b/gi;
+  const re = /<(button|summary)\b/gi;
   let m;
   while ((m = re.exec(src))) {
     const end = src.indexOf('>', m.index);
@@ -28,23 +30,23 @@ function scan(src) {
     const mh = /min-height\s*:\s*(\d+(?:\.\d+)?)px/i.exec(tag);
     if (mh && Number(mh[1]) < 44) {
       const line = src.slice(0, m.index).split('\n').length;
-      bad.push({ line, px: Number(mh[1]), tag: tag.replace(/\s+/g, ' ').slice(0, 160) });
+      bad.push({ line, px: Number(mh[1]), el: m[1].toLowerCase(), tag: tag.replace(/\s+/g, ' ').slice(0, 160) });
     }
   }
   return bad;
 }
 
 // 자가진단: 검사가 눈이 멀지 않았는지 — 쪼개진 태그·작은따옴표 문자열 안에서도 잡는다.
-const probe = scan(`x='<button class="setTab" id="setTab-'+t.id+'"'+' style="flex:none;'+'min-height:40px">';y='<button style="min-height:44px">';z='<button style="min-height:48px">'`);
-if (probe.length !== 1 || probe[0].px !== 40) { console.error('FAIL tap-inline 자가진단: 쪼개진 <button 태그의 min-height:40px 를 못 읽는다', probe); process.exit(1); }
+const probe = scan(`x='<button class="setTab" id="setTab-'+t.id+'"'+' style="flex:none;'+'min-height:40px">';y='<button style="min-height:44px">';z='<button style="min-height:48px">';s='<summary style="'+'min-height:32px;cursor:pointer">';u='<summary style="min-height:44px">';d='<details style="min-height:10px">'`);
+if (probe.length !== 2 || probe[0].px !== 40 || probe[1].px !== 32 || probe[1].el !== 'summary') { console.error('FAIL tap-inline 자가진단: 쪼개진 <button·<summary 태그의 min-height 를 못 읽는다', probe); process.exit(1); }
 
 let total = 0;
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
   for (const b of scan(src)) {
     total++;
-    console.error(`FAIL ${f}:${b.line} 버튼 인라인 min-height:${b.px}px (<44) — 전역 44 규칙을 이긴다: ${b.tag}`);
+    console.error(`FAIL ${f}:${b.line} ${b.el === 'summary' ? '접는 머리(summary)' : '버튼'} 인라인 min-height:${b.px}px (<44) — 전역 44 규칙을 이긴다: ${b.tag}`);
   }
 }
 if (total) { console.error(`tap-inline: 위반 ${total}곳`); process.exit(1); }
-console.log(`== tap-inline: ${FILES.join(', ')} — 인라인 min-height<44 버튼 0곳 ==`);
+console.log(`== tap-inline: ${FILES.join(', ')} — 인라인 min-height<44 버튼·summary 0곳 ==`);
