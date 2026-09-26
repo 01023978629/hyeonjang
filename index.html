@@ -13006,13 +13006,21 @@ function hjProgressText(name){
    hjStoryEvents 는 자르지 않은 전체(고객 타임라인·파일철이 읽는다 — 사진 날이 40일을 넘는 현장에서 계약금 입금·계약 줄이 빠지면 안 된다),
    hjStoryData 는 최근 40건(공사 스토리 화면·카톡 글 길이 상한). */
 function hjStoryData(name){return hjStoryEvents(name).slice(-40);}
+/* 계약 기록(contractLog)에 남은 부가세·공사기간 — 고객이 서명한 계약서의 값 그대로. 기록에 없으면 빈 문자열(지어내지 않는다:
+   옛 기록은 vatIncluded 가 없고, 서버는 그때 '(부가세 별도)' 로 찍었지만 앱이 그걸 안다고 말하지 않는다). */
+function hjContractLogTerms(L){
+  const x=L||{};
+  return {vat:x.vatIncluded===true?'(부가세 포함)':(x.vatIncluded===false?'(부가세 별도)':''),
+    period:(typeof x.period==='string'&&x.period.trim())?x.period.trim():''};
+}
 function hjStoryEvents(name){
   const p=state.projects.find(function(x){return x.name===name;});if(!p)return [];
   const ev=[];
   const day=function(iso){return String(iso||'').slice(0,10);};
   (p.contractLog||[]).forEach(function(L){
     const done=L.serverStatus==='COMPLETED';
-    ev.push({d:day(L.at),ic:'✍️',t:'전자계약 '+(L.contractNo||'')+' '+(L.amount?won(L.amount):'')+(done?' — 서명 완료':' 발송')});
+    const tm=hjContractLogTerms(L);   // 계약 줄에 한 번만 — 서명 완료 줄에는 다시 적지 않는다
+    ev.push({d:day(L.at),ic:'✍️',t:'전자계약 '+(L.contractNo||'')+' '+(L.amount?won(L.amount):'')+(L.amount&&tm.vat?' '+tm.vat:'')+(done?' — 서명 완료':' 발송')+(tm.period?' · 공사기간 '+tm.period:'')});
     if(done&&L.completedAt)ev.push({d:day(L.completedAt),ic:'✅',t:'고객 서명 완료 '+(L.contractNo||'')});
   });
   const est=state.files.filter(function(f){return f.kind==='estimate'&&f.project===name&&f.est;});
@@ -13214,14 +13222,14 @@ function warrantyLinkSend(pjName,ctx,done){
         if(!/^01[016789]\d{7,8}$/.test(phone.replace(/\D/g,''))){toast('휴대폰 번호를 확인해 주세요');return;}
         const title=pjName+(c.unitLabel?' '+c.unitLabel:'')+' 하자보증서';
         const sendBody=Object.assign({},body,{customerName:name});
+        const payload={docKind:'warranty',title:title,operatorName:COMPANY.name,customer:{name:name,phone:phone},body:sendBody};
         let j;
         try{
-          j=await contractCall('quickSend',{
-            docKind:'warranty',title:title,
-            operatorName:COMPANY.name,
-            customer:{name:name,phone:phone},
-            body:sendBody
-          },{idem:'wr:'+pjName+':'+(c.unitId||'')+':'+Math.floor(Date.now()/60000)});
+          // idem 에 보낼 내용 전체(확인자 이름·휴대폰·조항)의 지문을 넣는다 — 서버는 같은 idem 이면 처음 결과를 그대로 돌려주므로,
+          // 같은 분 안에 번호를 잘못 넣었다 고쳐 다시 만들면 틀린 번호로 만든 링크가 돌아왔다(contractSend 와 같은 방식).
+          // 전화번호 원문은 idem 에 넣지 않는다 — 지문만(이 앱의 어떤 저장소에도 확인자 번호를 남기지 않는다).
+          j=await contractCall('quickSend',payload,
+            {idem:'wr:'+pjName+':'+(c.unitId||'')+':'+contractIdemHash(JSON.stringify(payload))+':'+Math.floor(Date.now()/60000)});
         }catch(e){
           if(e.__code==='UNAUTHORIZED'){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
           // 서버가 아직 보증서를 모르는 배포일 수 있다. 그럴 때 무슨 일인지 알려 준다.
@@ -13409,11 +13417,13 @@ function hjKakaoCard(p){
   const done=((p.stage||0)>=STAGES.length-1)||!!p.doneAt;
   const logs=(p.contractLog||[]).slice(-3).reverse();
   const sigRows=logs.length?logs.map(function(L){
-    const s=hjContractStatusLabel(L);
-    return '<div style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
+    const s=hjContractStatusLabel(L),tm=hjContractLogTerms(L);
+    // 부가세·공사기간은 계약 기록 값 그대로(없으면 안 적는다). 기간은 줄임표에 잘리지 않게 아랫줄에.
+    return '<div data-ctrow="1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12px">'+
       '<span style="color:var(--muted);white-space:nowrap">'+escapeHtml(String(L.at||'').slice(5,10))+'</span>'+
-      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(L.contractNo||'계약')+' · '+won(L.amount||0)+'</span>'+
-      '<b style="color:'+s[1]+';white-space:nowrap;font-size:11.5px">'+s[0]+'</b></div>';
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(L.contractNo||'계약')+' · '+won(L.amount||0)+(tm.vat?' '+tm.vat:'')+'</span>'+
+      '<b style="color:'+s[1]+';white-space:nowrap;font-size:11.5px">'+s[0]+'</b>'+
+      (tm.period?'<span style="flex:1 1 100%;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere">공사기간 '+escapeHtml(tm.period)+'</span>':'')+'</div>';
   }).join(''):'<div style="font-size:12px;color:var(--muted);padding:6px 2px">아직 보낸 전자계약이 없어요 — 위의 [📨 알림톡 계약서]로 보내면 여기에 서명 내역이 쌓입니다.</div>';
   const w=p.warrantyDoc;
   const warrLine=w&&w.at
