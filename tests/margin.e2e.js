@@ -279,7 +279,13 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     await page.evaluate(() => { state.tab = 'dashboard'; render(); });
     await page.waitForTimeout(200);
     const has = await page.evaluate(() => {
-      const t = document.body.innerText;
+      // [v329] 폭 390 에서는 대시보드 표가 카드로 쌓여 머리줄(thead)이 숨고, 열 이름은 칸마다 td::before(data-label)로
+      // 보인다(tests/dash-cards.e2e.js). innerText 는 ::before 글자를 세지 않으므로 화면에 실제로 그려진 칸 이름표를 더해 본다.
+      const labels = [...document.querySelectorAll('#view table.dash-cards td')]
+        .filter(td => getComputedStyle(td).display !== 'none')
+        .map(td => { const c = getComputedStyle(td, '::before').content; return /^".*"$/.test(c) ? c.slice(1, -1) : ''; })
+        .join('\n');
+      const t = document.body.innerText + '\n' + labels;
       return { header: t.includes('기타경비'), note: t.includes('순마진 제외'), val: t.includes('450,000') };
     });
     assert(has.header, '기타경비 헤더 노출');
