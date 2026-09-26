@@ -72,7 +72,8 @@ assert(/else if\(a==='extrawork'\)\{return extraWork\(\);\}/.test(source), '① 
   assert((await extras())[0].agreed === false, '③ 되돌리기');
   await page.click('#modalRoot .exAgree[data-i="0"]');
   await page.selectOption('#modalRoot .exIn[data-k="photo"][data-i="0"]', 'f1');
-  assert((await extras())[0].photo === 'f1' && /📷 사진 있음/.test(await modalText()), '③ 사진 연결');
+  // 새 계약(photo-refs): 선택지 값은 이 화면의 파일 id 지만 현장에는 안정 참조('k:'+fileKey)로 적힌다 — id 는 폰·복원 뒤 새로 붙는다
+  assert((await extras())[0].photo === 'k:거실 벽면.jpg|0' && /📷 사진 있음/.test(await modalText()), '③ 사진 연결: ' + (await extras())[0].photo);
 
   // ④ 현장에 저장·왕복
   list = await extras();

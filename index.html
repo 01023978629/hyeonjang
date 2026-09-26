@@ -12830,12 +12830,14 @@ async function warrantyIssueSend(name){
   // 한 장에 섞여 고객에게 나간다 — 세대 사진이 든 종이는 [🛡 이 세대 하자보증서]로 따로 만든다.
   const multi=aptUnitManaged(p)&&aptUnitList(p).length>0;
   const pools=multi?{before:[],after:[]}:hjWarrantyPhotoPools(name);
-  const photoIds={before:pools.before.slice(0,2).map(function(f){return f.id;}),after:pools.after.slice(0,2).map(function(f){return f.id;})};
+  const picked={before:pools.before.slice(0,2),after:pools.after.slice(0,2)};
+  // 보관본에 남길 것은 파일 id 가 아니라 안정 참조(hjFileRef) — id 는 폰·복원·기기 이동 뒤 새로 붙어 보관본이 사진 없이 나갔다
+  const photoIds={before:picked.before.map(function(f){return hjFileRef(f);}),after:picked.after.map(function(f){return hjFileRef(f);})};
   const nb=photoIds.before.length,na=photoIds.after.length;
   // 보낼 본에는 사진(전2·후2)을 넣고, 보관본(p.warrantyDoc.html)은 사진 없이 둔다 — 보관본은 projects 에 통째로
   // 직렬화되어 안전판 12칸·릴레이(10MB 상한)·드라이브 백업에 그대로 실리는데, 썸네일 4장이면 현장마다 25만 자다.
-  // 대신 사진 id 를 남겨 보관본을 볼 때·다시 보낼 때 같은 사진으로 다시 만든다(hjWarrantyDocHtml).
-  const html=warrantyHTML(name,{beforeIds:photoIds.before,afterIds:photoIds.after,hideEmptyPhotos:true});
+  // 대신 사진 참조를 남겨 보관본을 볼 때·다시 보낼 때 같은 사진으로 다시 만든다(hjWarrantyDocHtml).
+  const html=warrantyHTML(name,{beforeIds:picked.before.map(function(f){return f.id;}),afterIds:picked.after.map(function(f){return f.id;}),hideEmptyPhotos:true});
   const stored=warrantyHTML(name,{hideEmptyPhotos:true});
   if(!html||!stored){toast('보증서를 만들 수 없습니다');return {오류:'생성 실패'};}
   if(!nb&&!na)toast(multi?'전/후 사진 없이 발급합니다 — 세대별 사진은 [🛡 이 세대 하자보증서]로 만드세요':'전/후 사진 없이 발급합니다 — 공정(시공 전·완료)이 붙은 사진이 없어요');
@@ -12854,13 +12856,27 @@ async function warrantyIssueSend(name){
   render();
   return {발급:p.warrantyDoc.at,송부:!!ok};
 }
-// 보관본을 화면에 띄우거나 다시 보낼 때의 HTML — 사진 id 가 남아 있고 그 사진이 아직 있으면 사진까지 다시 합성,
+// 보관본이 가리키는 전/후 사진을 푼다 — 안정 참조와 옛 id(v327 이전, 그 세션에서만 산다) 둘 다 받는다.
+// want = 보낼 때 넣은 장수, used = 지금 문서에 다시 넣을 수 있는 장수(이 현장 사진·문서용 썸네일 있음 — warrantyHTML 과 같은 조건),
+// missing = 이 기기에서 찾을 수 없는 장수, noThumb = 찾았지만 문서에 넣을 썸네일을 아직 못 불러온 장수.
+function hjWarrantyDocPhotos(p){
+  const w=p&&p.warrantyDoc,ids=w&&w.photoIds&&typeof w.photoIds==='object'&&!Array.isArray(w.photoIds)?w.photoIds:null;
+  const side=k=>Array.isArray(ids&&ids[k])?ids[k]:[];
+  const pool=p?hjCasePhotos(p):[];   // 이 현장 사진 안에서만 푼다 — 딴 현장의 같은 이름 사진을 '찾았다' 며 고쳐 적지 않게(못 찾으면 missing)
+  const rb=hjFilesByRefs(side('before'),pool),ra=hjFilesByRefs(side('after'),pool);
+  const ok=f=>f.kind==='photo'&&!isVideoRec(f)&&f.project===p.name&&hjDocThumbOk(f);
+  const b=rb.files.filter(ok),a=ra.files.filter(ok);
+  const found=rb.files.length+ra.files.length,missing=rb.missing.length+ra.missing.length,want=found+missing;
+  return {has:!!ids&&want>0,before:b,after:a,want,used:b.length+a.length,missing,noThumb:found-b.length-a.length,
+    changed:rb.changed||ra.changed,healed:{before:rb.healed,after:ra.healed}};
+}
+// 보관본을 화면에 띄우거나 다시 보낼 때의 HTML — 사진 참조가 남아 있으면 찾은 사진으로 다시 합성,
 // 아니면 보관된(사진 없는) 본 그대로. 보관본에 사진 base64 를 넣지 않는 대신 이렇게 되살린다.
-function hjWarrantyDocHtml(p){
+function hjWarrantyDocHtml(p,got){
   const w=p&&p.warrantyDoc;if(!w)return '';
-  const ids=w.photoIds&&typeof w.photoIds==='object'?w.photoIds:null;
-  if(ids&&((ids.before||[]).length||(ids.after||[]).length)){
-    const h=warrantyHTML(p.name,{beforeIds:ids.before||[],afterIds:ids.after||[],hideEmptyPhotos:true});
+  const ph=got||hjWarrantyDocPhotos(p);
+  if(ph.has){
+    const h=warrantyHTML(p.name,{beforeIds:ph.before.map(f=>f.id),afterIds:ph.after.map(f=>f.id),hideEmptyPhotos:true});
     if(h)return h;
   }
   return w.html||'';
@@ -12868,11 +12884,20 @@ function hjWarrantyDocHtml(p){
 function warrantyDocView(name){
   const p=state.projects.find(function(x){return x.name===name;});
   if(!p||!p.warrantyDoc||!p.warrantyDoc.html){toast('보관된 보증서가 없습니다 — [🧾 완료보증서 보내기]로 발급하세요');return;}
-  const w=p.warrantyDoc,docHtml=hjWarrantyDocHtml(p);
+  const w=p.warrantyDoc,ph=hjWarrantyDocPhotos(p);
+  // 옛 id 로 적힌 사진을 찾았으면 지금 형식(안정 참조)으로 고쳐 적는다 — 다음 부팅·기기 이동 뒤에도 같은 사진을 가리키게
+  if(ph.changed&&hjRefHealOk()){w.photoIds=ph.healed;markDirty();}
+  const docHtml=hjWarrantyDocHtml(p,ph),short=ph.want-ph.used;
+  // 사진이 빠졌는데 '같은 사본' 이라고 말하면 안 된다 — 고객이 받은 것과 다른 문서가 다시 나간다
+  const same=short<=0?' — 고객에게 보낸 것과 같은 사본입니다.'
+    :' — <b style="color:#a33">⚠ 보낼 때 넣은 사진 '+ph.want+'장 중 '+ph.used+'장만 들어 있어 보낸 것과 같은 사본이 아닙니다'+
+      ' ('+[ph.missing?'사진을 찾을 수 없음 '+ph.missing+'장':'',ph.noThumb?'미리보기를 아직 못 불러온 사진 '+ph.noThumb+'장':''].filter(Boolean).join(' · ')+').</b> 같은 사진을 넣으려면 [♻️ 새로 발급] 하세요.';
   openModal('🛡 완료보증서 보관본 — '+escapeHtml(name),
-    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px">발급 '+escapeHtml(w.at||'')+(w.sentAt?' · 마지막 송부 '+escapeHtml(w.sentAt):' · 아직 송부 전')+' — 고객에게 보낸 것과 같은 사본입니다.</div>'+
+    '<div id="wdSame" style="font-size:11.5px;color:var(--muted);margin-bottom:6px">발급 '+escapeHtml(w.at||'')+(w.sentAt?' · 마지막 송부 '+escapeHtml(w.sentAt):' · 아직 송부 전')+same+'</div>'+
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;height:52vh"><iframe srcdoc="'+escapeAttr(docHtml)+'" style="width:100%;height:100%;border:0"></iframe></div>',
-    [{label:'📤 다시 보내기(보관본)',cls:'clay',fn:async function(){const ok=await hjWarrantyShareHtml(name,docHtml,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}}},
+    [{label:'📤 다시 보내기(보관본)',cls:'clay',fn:async function(){
+        if(short>0&&!confirm('보낼 때 넣은 사진 '+short+'장이 빠진 채로 보냅니다. 그래도 보낼까요?\n(같은 사진을 넣으려면 취소 뒤 [♻️ 새로 발급])'))return;
+        const ok=await hjWarrantyShareHtml(name,docHtml,w.file||safeName(name)+'_완료보증서.html');if(ok){w.sentAt=new Date().toISOString().slice(0,16).replace('T',' ');markDirty();}}},
      {label:'♻️ 새로 발급',cls:'ghost',fn:function(){closeModal();warrantyIssueSend(name);}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
 }
@@ -21318,10 +21343,74 @@ function siteRulesView(projectName,focusSel){
     if(cnt&&cnt.textContent!==txt)cnt.textContent=txt;   // 값이 달라졌을 때만 읽어 준다(글자마다 다시 읽지 않게)
     if(box)box.style.borderColor=n?'var(--moss)':'var(--line-soft)';});
 }
+/* ── 사진 참조 — 현장 안에 사진을 가리켜 둘 때 쓰는 안정 참조 ─────────────────────────────
+   파일 레코드 id(uid)는 부팅·복원·스캔마다 새로 붙는다 — serializeData 의 파일 레코드에는 id 가 없다.
+   그래서 p.extras[].photo · p.casePack.photos · p.warrantyDoc.photoIds 에 id 를 적어 두면 폰(전부 가상 레코드)·
+   안전판 복원·기기 이동 뒤에 가리키던 사진을 잃었다(사례 선택이 비고, 추가공사가 '사진 없음', 보증서 보관본이 사진 없이 나갔다).
+   대신 이 참조를 적는다 — 썸네일 캐시(hydrateThumbs 의 'thumb:'·'thumb-local:')와 같은 신원이다:
+     'd:'+Drive ID   서버(Drive)에 올라간 사진. 정리 폴더로 옮겨도·원본/정리본을 합쳐도(v323 keep.driveId) 따라간다.
+     'k:'+fileKey(f) 아직 안 올라간 사진. 경로+이름|크기 — 직렬화의 key 와 같은 값이라 복원·기기 이동 뒤에도 같다.
+   현장 이름을 바꿔도 경로(prefix)는 그대로라 끊기지 않는다. 읽을 때는 옛 id(v327 이전 자료)도 받는다 —
+   그 세션에서만 살아 있는 값이라, 찾았으면 부르는 쪽이 새 형식으로 고쳐 적는다(hjFilesByRefs 의 healed). */
+function hjFileRef(f){
+  if(!f)return '';
+  const d=String(f._driveId||'').trim();
+  // 같은 Drive ID 가 두 기록에 붙은 모호한 원본/정리본(v323 equalSizeScanPhotoPair)은 'd:' 로 어느 쪽인지 못 가른다 — 경로로 가리킨다
+  if(d&&!(state.files||[]).some(x=>x&&x!==f&&String(x._driveId||'').trim()===d))return 'd:'+d;
+  return 'k:'+fileKey(f);
+}
+/* refs(참조·옛 id 섞여도 됨)를 pool(기본 state.files) 안에서 푼다.
+   → {files(참조 순서, 중복 없음), missing(못 찾은 참조), pairs[{ref,file}], healed(찾은 것은 지금 형식으로 고친 목록 — 못 찾은 것은
+   그대로 둔다: 동기화 전이라 아직 안 보이는 사진일 수 있다), kept(찾은 것만, 지금 형식), changed(healed 가 원래와 다른가)}.
+   'k:' 가 안 맞으면 한 번 더 본다 — PC 에서 정리 폴더로 옮겨져 경로만 바뀐 사진, 또는 v323 이 원본을 정리본으로 합친 뒤
+   (v323 은 같은 이름·같은 크기 쌍만 합친다). 둘 다 **이름과 크기가 같은 사진이 pool 안에 딱 하나**일 때만 따라간다 — 둘 이상이면
+   고르지 않고(모호), 크기를 모르거나 다르면 다른 사진이다(IMG_0001·KakaoTalk_… 같은 폰 이름은 현장마다 겹친다 — 이름만으로 고르면
+   A 현장의 잃은 사진이 B 현장 사진으로 조용히 바뀌어 고쳐 적힌다). 그래서 부르는 쪽은 pool(또는 짐작만 좁히는 guessPool)을
+   그 현장 사진으로 넘긴다.
+   알려진 한계: 정리하면서 이름이 바뀐 사진(대상 폴더에 같은 이름이 있어 '_'+시각을 붙이거나 safeName 이 글자를 바꾼 경우 —
+   setPhase 즉시 이동·일괄 정리)은 따라가지 못하고 '사진을 찾을 수 없음' 으로 알린다(조용히 틀리지는 않는다). Drive 에
+   올라간 사진('d:')은 이름이 바뀌어도 따라간다. */
+function hjFilesByRefs(refs,pool,guessPool){
+  const L=(Array.isArray(pool)?pool:(state.files||[])).filter(f=>f&&typeof f==='object');
+  // 정확히 맞는 참조('d:'·'k:'·옛 id)는 pool 에서, 이름·크기로 짐작하는 따라가기는 guessPool(기본 = pool)에서만 —
+  // 추가공사처럼 다른 현장으로 옮긴 사진도 연결된 채 보여야 하는 곳은 pool 을 넓게 두고 짐작만 그 현장 안으로 좁힌다.
+  const G=Array.isArray(guessPool)?guessPool.filter(f=>f&&typeof f==='object'):L;
+  const byD=new Map(),byK=new Map(),byId=new Map(),byName=new Map();
+  const put=(m,k,f)=>{if(k&&!m.has(k))m.set(k,f);};
+  L.forEach(f=>{put(byD,String(f._driveId||'').trim(),f);put(byK,fileKey(f),f);if(f.id!=null)put(byId,String(f.id),f);});
+  G.forEach(f=>{
+    const n=f.kind==='photo'?String(f.name||'').toLowerCase():'';
+    if(n){if(!byName.has(n))byName.set(n,[]);byName.get(n).push(f);}
+  });
+  const moved=k=>{
+    const bar=k.lastIndexOf('|');if(bar<0)return null;
+    const path=k.slice(0,bar),size=Number(k.slice(bar+1))||0,sl=path.lastIndexOf('/');
+    const cands=byName.get(path.slice(sl+1).toLowerCase())||[];
+    const same=size>0?cands.filter(f=>(Number(f.size)||0)===size):[];
+    return same.length===1?same[0]:null;
+  };
+  const find=r=>{
+    if(r.startsWith('d:'))return byD.get(r.slice(2))||null;
+    if(r.startsWith('k:'))return byK.get(r.slice(2))||moved(r.slice(2));
+    return byId.get(r)||null;   // 옛 자료 — 그 세션의 id
+  };
+  const pairs=[],files=[],missing=[],healed=[],kept=[],seen=new Set();
+  (Array.isArray(refs)?refs:[]).forEach(v=>{
+    const r=String(v==null?'':v).trim();if(!r)return;
+    const f=find(r);pairs.push({ref:r,file:f});
+    if(!f){missing.push(r);healed.push(r);return;}
+    if(seen.has(f))return;seen.add(f);files.push(f);
+    const now=hjFileRef(f)||r;healed.push(now);kept.push(now);
+  });
+  const orig=(Array.isArray(refs)?refs:[]).map(v=>String(v==null?'':v));
+  return {files,missing,pairs,healed,kept,changed:JSON.stringify(healed)!==JSON.stringify(orig)};
+}
+// 조용한 이전을 적어도 되는가 — 뒤처진 탭(__tabStale)이면 이 탭의 옛 자료로 덮지 않게 화면에만 풀고 적지 않는다.
+function hjRefHealOk(){return !(typeof __tabStale!=='undefined'&&__tabStale);}
 /* ── 🖊 추가공사 확인 (v283) — 대표 요청(9/12): 공사 중 "이것도 해주세요" 를 말로 받아 놓고
    정산 때 "그건 원래 포함 아니었어요?" 로 되돌아와 못 받는 일을 막는다.
    현장(state.projects) 객체에 extras 배열로 붙는다 — 앱 저장 키를 늘리지 않는다(projects 는 이미 저장 대상).
-   한 건 = {id, date, text, amount, days, photo(파일 id), agreed(고객이 확인했다고 대표가 표시), note}.
+   한 건 = {id, date, text, amount, days, photo(사진 참조 hjFileRef — 옛 자료는 파일 id), agreed(고객이 확인했다고 대표가 표시), note}.
    고객에게 자동으로 보내지 않는다. 글로 만들어 대표가 직접 보내거나 보여 준다. */
 function hjExtraList(p){if(!p)return [];if(!Array.isArray(p.extras))p.extras=[];return p.extras;}
 function hjExtraSum(list){return (list||[]).reduce((a,x)=>{a.amount+=hjExtraAmt(x);a.days+=Math.max(0,num(x.days));return a;},{amount:0,days:0});}
@@ -21431,11 +21520,19 @@ function extraWork(projectName){
   const opts=projects.map(x=>'<option value="'+escapeAttr(x.name)+'"'+(x.name===p.name?' selected':'')+'>'+escapeHtml(x.name)+((x.extras||[]).length?' (추가 '+x.extras.length+')':'')+'</option>').join('');
   const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===p.name).slice(-40).reverse();
   const quotedSet=new Set(hjExtrasBill(p).quoted);   // 저장된 견적에 이미 담긴 것 — 청구서에 따로 더하지 않는다
+  // 사진 연결은 안정 참조(hjFileRef)로 — 파일 id 는 폰·복원·기기 이동 뒤 새로 붙는다. 옛 id 로 찾았으면 지금 형식으로 고쳐 적는다.
+  const refRes=hjFilesByRefs(list.map(x=>x&&x.photo),null,(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===p.name));   // 이름·크기 짐작은 이 현장 사진 안에서만 — 딴 현장의 같은 이름 사진으로 바꿔 적지 않게
+  const phOf=new Map(refRes.pairs.map(q=>[q.ref,q.file]));
+  let healed=false;
+  if(hjRefHealOk())list.forEach(x=>{const r=String(x&&x.photo||'').trim(),f=r?phOf.get(r):null;if(!f)return;const now=hjFileRef(f);if(now&&now!==x.photo){x.photo=now;phOf.set(now,f);healed=true;}});
+  if(healed)markDirty();
+  const lost=list.filter(x=>String(x&&x.photo||'').trim()&&!phOf.get(String(x.photo).trim())).length;   // 가리키던 사진이 이 기기에 없다 — 조용히 '사진 없음' 으로 보이면 안 된다
   const rows=list.map((x,i)=>{
-    const ph=photos.find(f=>f.id===x.photo)||((state.files||[]).find(f=>f.id===x.photo));
+    const pr=String(x.photo||'').trim(),ph=pr?phOf.get(pr)||null:null,miss=!!pr&&!ph;
+    const opts=ph&&!photos.includes(ph)?[ph].concat(photos):photos;   // 최근 40장 밖의 사진이 연결돼 있어도 선택이 '사진 없음' 으로 보이지 않게
     return '<div class="exRow" data-i="'+i+'" style="border:1px solid '+(x.agreed?'var(--moss)':'var(--line-soft)')+';border-radius:11px;padding:9px;margin-bottom:8px">'+
       '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-        '<span style="font-size:11.5px;color:var(--muted-2);flex:1">'+escapeHtml(x.date||'')+(ph?' · 📷 사진 있음':'')+(quotedSet.has(x)?' · 📄 견적에 담김':'')+'</span>'+
+        '<span style="font-size:11.5px;color:var(--muted-2);flex:1">'+escapeHtml(x.date||'')+(ph?' · 📷 사진 있음':'')+(miss?' · <b class="exMiss" style="color:#a33">⚠ 사진을 찾을 수 없음</b>':'')+(quotedSet.has(x)?' · 📄 견적에 담김':'')+'</span>'+
         '<button type="button" class="ghost exAgree" data-i="'+i+'" aria-pressed="'+(x.agreed?'true':'false')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px'+(x.agreed?';border-color:var(--moss);color:var(--moss)':'')+'">'+(x.agreed?'✅ 확인받음':'확인받음?')+'</button>'+
         '<button type="button" class="ghost exDel" data-i="'+i+'" aria-label="'+escapeAttr((x.text||'추가공사')+' 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>'+
       '<input class="exIn" data-k="text" data-i="'+i+'" placeholder="무슨 작업인가 (예: 거실 선반 설치)" aria-label="추가 작업 내용" value="'+escapeAttr(x.text||'')+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box;margin-bottom:6px">'+
@@ -21443,8 +21540,9 @@ function extraWork(projectName){
         '<label style="font-size:11.5px;color:var(--muted-2)">금액 원<input class="exIn" data-k="amount" data-i="'+i+'" inputmode="numeric" placeholder="협의면 비움" aria-label="추가 금액" value="'+escapeAttr(x.amount==null?'':String(x.amount))+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box"></label>'+
         '<label style="font-size:11.5px;color:var(--muted-2)">공기 +일<input class="exIn" data-k="days" data-i="'+i+'" inputmode="numeric" placeholder="0" aria-label="늘어난 공사 일수" value="'+escapeAttr(x.days==null?'':String(x.days))+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box"></label></div>'+
       '<div class="exAmtBad" data-i="'+i+'" role="alert" style="font-size:12px;color:#b91c1c;margin-top:4px"'+(hjExtraAmtBad(x)?'':' hidden')+'>금액은 숫자로만 적어 주세요(예: 500000). 지금 값은 청구서·잔금에 넣지 않습니다.</div>'+
-      (photos.length?'<label style="display:block;font-size:11.5px;color:var(--muted-2);margin-top:6px">사진 연결(선택)<select class="exIn" data-k="photo" data-i="'+i+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box"><option value="">사진 없음</option>'+
-        photos.map(f=>'<option value="'+escapeAttr(f.id)+'"'+(x.photo===f.id?' selected':'')+'>'+escapeHtml((f.name||'사진').slice(0,40))+'</option>').join('')+'</select></label>':'')+
+      (opts.length||miss?'<label style="display:block;font-size:11.5px;color:var(--muted-2);margin-top:6px">사진 연결(선택)<select class="exIn" data-k="photo" data-i="'+i+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box"><option value="">사진 없음</option>'+
+        (miss?'<option value="" selected disabled>⚠ 찾을 수 없는 사진</option>':'')+
+        opts.map(f=>'<option value="'+escapeAttr(f.id)+'"'+(ph===f?' selected':'')+'>'+escapeHtml((f.name||'사진').slice(0,40))+'</option>').join('')+'</select></label>':'')+
     '</div>';}).join('');
   // 맨 아래 줄이 정산과 잇는 자리다 — 여기 보이는 금액이 청구서·잔금에 그대로 더해진다(hjExtrasBill 한 곳).
   const sumHtml=()=>{const l=hjExtraList(p),sm=hjExtraSum(l),bill=hjExtrasBill(p);
@@ -21454,7 +21552,8 @@ function extraWork(projectName){
       '<div class="exBill" style="display:flex;justify-content:space-between;border-top:1px dashed var(--line-soft);margin-top:4px;padding-top:4px"><span>청구서·잔금에 더해짐</span><b>'+won(bill.total)+'</b></div>'+
       ((bill.quoted.length||bill.pending.length)?'<div style="font-size:12px;color:var(--muted-2);line-height:1.5">'+
         [bill.quoted.length?'견적에 담긴 '+bill.quoted.length+'건은 견적 금액에 이미 들어 있습니다':'',
-         bill.pending.length?hjExtrasPendingLine(bill)+' — 확인받음과 금액이 있어야 청구서에 들어갑니다':''].filter(Boolean).join('<br>')+'</div>':'');};
+         bill.pending.length?hjExtrasPendingLine(bill)+' — 확인받음과 금액이 있어야 청구서에 들어갑니다':''].filter(Boolean).join('<br>')+'</div>':'')+
+      (lost?'<div id="exLost" style="color:#a33;font-size:12.5px">⚠ 사진을 찾을 수 없음 '+lost+'장 — 이 기기에 그 사진이 없습니다. 다시 연결하거나 「사진 없음」으로 두세요.</div>':'');};
   const body='<div id="exTop" style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 8px;padding:4px 0 6px">'+
       '<select id="exProj" aria-label="현장 고르기" style="width:100%;padding:9px;font-size:16px;min-height:44px;margin-bottom:6px">'+opts+'</select>'+
       '<div id="exSum" role="status" aria-live="polite" style="padding:10px 12px;border:1px solid var(--line-soft);border-radius:11px;font-size:13.5px;line-height:1.7">'+
@@ -21506,10 +21605,13 @@ function extraWork(projectName){
     markDirty();portalNudge();extraWork(p.name);});
   root.querySelectorAll('.exIn').forEach(el=>{const ev=el.tagName==='SELECT'?'onchange':'oninput';
     el[ev]=()=>{const x=hjExtraList(p)[+el.dataset.i];if(!x)return;
+      if(el.dataset.k==='photo'){   // 선택지 값은 이 화면의 파일 id — 적을 때는 안정 참조로 바꾼다
+        const f=el.value?(state.files||[]).find(y=>y&&y.id===el.value):null;
+        x.photo=f?hjFileRef(f):'';markDirty();
+        return extraWork(p.name);}   // 사진을 고르면 📷 표시가 바로 보이게 다시 그린다
       x[el.dataset.k]=el.value;markDirty();
       if(el.dataset.k==='amount'||el.dataset.k==='text')portalNudge();
       if(el.dataset.k==='amount'){const w=root.querySelector('.exAmtBad[data-i="'+el.dataset.i+'"]');if(w)w.hidden=!hjExtraAmtBad(x);}
-      if(el.dataset.k==='photo')return extraWork(p.name);   // 사진을 고르면 📷 표시가 바로 보이게 다시 그린다
       const box=root.querySelector('#exSum');
       if(box)box.innerHTML=sumHtml();};});
 }
@@ -21521,7 +21623,8 @@ function extraWork(projectName){
      좌표가 새어 나간다. 긴 변 1800px · JPEG 0.86 — 홈페이지 사례 사진 규격(assets/cases)과 같다.
    · 6항목에 동·호수·전화번호·출입 번호가 있으면 만들지 않는다. 적은 글은 지우지 않고 칸 아래에 알린다.
    · 규칙을 이보다 넓히지 마라 — '보양비 30000원'·'107동 앞' 같은 현장 메모까지 막힌다(v284·v286 교훈).
-   · 값은 현장 객체 p.casePack 에 붙는다({place…duration, photos:[id], consent, sentAt}).
+   · 값은 현장 객체 p.casePack 에 붙는다({place…duration, photos:[사진 참조 hjFileRef], consent, sentAt}).
+     photos 는 파일 id 가 아니라 안정 참조다 — id 는 폰·복원·기기 이동 뒤 새로 붙어 고른 사진이 비었다(옛 id 도 읽는다).
      serializeData 최상위 키는 그대로다. 파일 이름은 번호+전/중/후만 쓴다 — 원본 파일명에 이름·호수가
      섞여 있을 수 있다. */
 const HJ_CASE_FIELDS=[
@@ -21552,7 +21655,13 @@ function hjCasePii(text){
 function hjCasePhotos(p){return (state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===p.name);}
 function hjCaseSide(f){const s=hjPhaseSideOf(f);return s==='before'?'전':s==='after'?'후':'중';}
 function hjCaseSort(a,b){const o={'전':0,'중':1,'후':2};const d=o[hjCaseSide(a)]-o[hjCaseSide(b)];if(d)return d;return String(a.when||'').localeCompare(String(b.when||''));}
-function hjCaseSelected(p){const ids=new Set(hjCaseData(p).photos||[]);return hjCasePhotos(p).filter(f=>ids.has(f.id)).sort(hjCaseSort);}
+// 고른 사진 — 이 현장 사진 안에서 참조를 푼다. 못 찾은 것(missing)은 버리지 않고 개수로 알린다(동기화 전이라 아직 없는 사진일 수 있다).
+function hjCaseRefs(p){return hjFilesByRefs(hjCaseData(p).photos,hjCasePhotos(p));}
+function hjCaseSelected(p){return hjCaseRefs(p).files.sort(hjCaseSort);}
+function hjCaseMissing(p){return hjCaseRefs(p).missing.length;}
+// 옛 id 로 적힌 선택을 지금 형식으로 고쳐 적는다(찾은 것만). 화면을 열 때 한 번 — 뒤처진 탭이면 적지 않는다.
+function hjCaseRefsHeal(p){const d=hjCaseData(p);if(!Array.isArray(d.photos)||!d.photos.length||!hjRefHealOk())return false;
+  const r=hjCaseRefs(p);if(!r.changed)return false;hjCaseEdit(p).photos=r.healed;markDirty();return true;}
 function hjCaseFileName(f,i){return pad(i+1)+'-'+hjCaseSide(f)+'.jpg';}
 function hjCaseCount(p){const ph=hjCaseSelected(p);const n=s=>ph.filter(f=>hjCaseSide(f)===s).length;return {total:ph.length,before:n('전'),mid:n('중'),after:n('후')};}
 function hjCaseText(p){
@@ -21571,7 +21680,7 @@ function hjCaseBlock(p){
   if(missing.length)return '비어 있는 칸: '+missing.join(', ');
   const pii=hjCasePii(HJ_CASE_FIELDS.map(f=>hjCaseVal(p,d,f[0])).join('\n'));
   if(pii.length)return '공개 글에 넣으면 안 되는 것이 있습니다: '+pii.join('·')+' — 지우고 다시 만드세요';
-  if(!hjCaseSelected(p).length)return '사진을 한 장 이상 고르세요';
+  if(!hjCaseSelected(p).length){const m=hjCaseMissing(p);return m?'고른 사진을 이 기기에서 찾을 수 없습니다(사진을 찾을 수 없음 '+m+'장) — 사진을 다시 고르세요':'사진을 한 장 이상 고르세요';}
   if(!d.consent)return '「고객이 사진 공개에 동의했습니다」를 확인해 주세요';
   return '';
 }
@@ -21607,7 +21716,8 @@ async function hjCaseZip(p){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
   const live=(state.projects||[]).find(x=>x&&x.name===p.name)||p;   // 서버 자료를 불러오면 현장 객체가 통째로 바뀐다 — 다시 찾는다
   hjCaseEdit(live).sentAt=localDate();markDirty();
-  toast('사례 묶음 '+ok+'장'+(failed?' (실패 '+failed+'장)':'')+' — 촬영 위치 정보는 뺐습니다');
+  const lost=hjCaseMissing(live);
+  toast('사례 묶음 '+ok+'장'+(failed?' (실패 '+failed+'장)':'')+(lost?' · 사진을 찾을 수 없음 '+lost+'장 빠짐':'')+' — 촬영 위치 정보는 뺐습니다');
   return true;
 }
 // 사례 후보 — 전·후 사진이 둘 다 있는데 아직 zip 을 안 만든 현장. "어느 현장이 사례로 안 올라갔나"를
@@ -21659,15 +21769,17 @@ function casePackView(projectName){
   let p=projects.find(x=>x.name===name);
   if(!p){p=projects[0];toast('「'+name+'」를 찾지 못해 '+p.name+'을(를) 열었습니다');}
   const live=()=>(state.projects||[]).find(x=>x&&x.name===p.name)||p;
-  const d=hjCaseData(p),photos=hjCasePhotos(p).sort(hjCaseSort),sel=new Set(d.photos||[]);
+  hjCaseRefsHeal(p);
+  const d=hjCaseData(p),photos=hjCasePhotos(p).sort(hjCaseSort),sel=new Set(hjCaseRefs(p).files);   // 체크 표시는 참조를 푼 파일로 — 칸의 data-id 는 이 화면의 파일 id
   const countText=()=>{const c=hjCaseCount(live());return c.total?('고른 사진 '+c.total+'장 (시공 전 '+c.before+' · 작업 중 '+c.mid+' · 완료 '+c.after+')'):'고른 사진이 없습니다';};
+  const lostText=()=>{const m=hjCaseMissing(live());return m?'⚠ 사진을 찾을 수 없음 '+m+'장 — 고른 사진이 이 기기에 없습니다(지워졌거나 아직 동기화 전)':'';};
   const opts=projects.map(x=>'<option value="'+escapeAttr(x.name)+'"'+(x.name===p.name?' selected':'')+'>'+escapeHtml(x.name)+(x.archived?' 「보관」':'')+(hjCaseData(x).sentAt?' ✓ '+escapeHtml(hjCaseData(x).sentAt):'')+'</option>').join('');
   const fields=HJ_CASE_FIELDS.map(f=>'<label style="display:block;font-size:12px;color:var(--muted-2);margin-bottom:8px">'+escapeHtml(f[1])+
       '<input class="cpIn" data-k="'+f[0]+'" placeholder="'+escapeAttr(f[2])+'" aria-label="'+escapeAttr(f[1])+'" value="'+escapeAttr(hjCaseVal(p,d,f[0]))+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box;margin-top:3px">'+
       '<span class="cpWarn" data-k="'+f[0]+'" role="alert" hidden style="margin-top:4px;font-size:11.5px;color:#a33"></span></label>').join('');
   const grid=photos.length?'<div class="cpGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">'+photos.map(f=>{const src=photoSrc(f,160);
       return '<label class="cpPhoto" style="position:relative;display:block;min-height:44px;cursor:pointer">'+
-        '<input type="checkbox" class="cpChk" data-id="'+escapeAttr(f.id)+'"'+(sel.has(f.id)?' checked':'')+' aria-label="'+escapeAttr((f.name||'사진')+' · '+(f._phase||'공정 미지정'))+'" style="position:absolute;left:6px;top:6px;width:24px;height:24px;z-index:1">'+
+        '<input type="checkbox" class="cpChk" data-id="'+escapeAttr(f.id)+'"'+(sel.has(f)?' checked':'')+' aria-label="'+escapeAttr((f.name||'사진')+' · '+(f._phase||'공정 미지정'))+'" style="position:absolute;left:6px;top:6px;width:24px;height:24px;z-index:1">'+
         (src?'<img src="'+escapeAttr(src)+'" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:var(--line-soft);display:block">'
             :'<span aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1;border-radius:8px;background:var(--line-soft);font-size:22px">🖼</span>')+
         (hjCaseTaggable(f)
@@ -21688,6 +21800,8 @@ function casePackView(projectName){
   const body=candBox+'<div style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 8px;padding:4px 0 6px">'+
       '<select id="cpProj" aria-label="현장 고르기" style="width:100%;padding:9px;font-size:16px;min-height:44px;margin-bottom:6px">'+opts+'</select>'+
       '<div style="padding:10px 12px;border:1px solid var(--line-soft);border-radius:11px;font-size:13px"><b id="cpCount" role="status" aria-live="polite">'+escapeHtml(countText())+'</b>'+
+        '<div id="cpLost"'+(lostText()?'':' hidden')+' style="margin-top:6px;color:#a33;font-size:12.5px"><div style="display:flex;gap:8px;align-items:center"><span id="cpLostText" style="flex:1">'+escapeHtml(lostText())+'</span>'+
+          '<button type="button" id="cpLostClear" class="ghost" style="min-height:44px;padding:0 10px;font-size:12.5px">목록에서 빼기</button></div></div>'+   // 바깥 칸에 인라인 display 를 주면 [hidden] 이 진다
         '<br><span style="font-size:11.5px;color:var(--muted-2)">홈페이지 사례 글 재료입니다. 사진은 촬영 위치 정보를 빼고 다시 구워 담습니다.</span></div></div>'+
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:4px 0 6px">사진 고르기 (전 → 중 → 후 순서로 담깁니다)</div>'+grid+
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:10px 0 6px">6항목</div>'+fields+
@@ -21702,9 +21816,16 @@ function casePackView(projectName){
   const root=document.getElementById('modalRoot');
   root.querySelector('#cpProj').onchange=e=>casePackView(e.target.value);
   root.querySelectorAll('.cpGo').forEach(b=>b.onclick=()=>casePackView(b.dataset.name));
-  const refresh=()=>{const c=root.querySelector('#cpCount');if(c)c.textContent=countText();};
-  root.querySelectorAll('.cpChk').forEach(el=>el.onchange=()=>{const cp=hjCaseEdit(live());const ids=(cp.photos||[]).filter(id=>id!==el.dataset.id);
-    if(el.checked)ids.push(el.dataset.id);cp.photos=ids;markDirty();refresh();});
+  const refresh=()=>{const c=root.querySelector('#cpCount');if(c)c.textContent=countText();
+    const lt=lostText(),lb=root.querySelector('#cpLost'),ls=root.querySelector('#cpLostText');if(ls)ls.textContent=lt;if(lb)lb.hidden=!lt;};
+  // 체크하면 안정 참조로 적는다. 같은 사진을 옛 id·옛 경로로 가리키던 것도 함께 뺀다(한 장이 두 번 들어가지 않게).
+  root.querySelectorAll('.cpChk').forEach(el=>el.onchange=()=>{const f=(state.files||[]).find(x=>x&&x.id===el.dataset.id);if(!f)return;
+    const cp=hjCaseEdit(live()),ref=hjFileRef(f),res=hjFilesByRefs(cp.photos);
+    const refs=res.pairs.filter(q=>q.ref!==ref&&q.file!==f).map(q=>q.ref);
+    if(el.checked)refs.push(ref);cp.photos=refs;markDirty();refresh();});
+  // 못 찾은 사진은 저절로 지우지 않는다(동기화 전일 수 있다) — 대표가 이 버튼을 눌렀을 때만 뺀다
+  const lostClear=root.querySelector('#cpLostClear');if(lostClear)lostClear.onclick=()=>{const cp=hjCaseEdit(live()),r=hjCaseRefs(live());
+    if(!r.missing.length)return;cp.photos=r.kept;markDirty();refresh();toast('찾을 수 없는 사진 '+r.missing.length+'장을 목록에서 뺐습니다');};
   root.querySelectorAll('.cpIn').forEach(el=>{el.oninput=()=>{const cp=hjCaseEdit(live());cp[el.dataset.k]=el.value;markDirty();
       const w=root.querySelector('.cpWarn[data-k="'+el.dataset.k+'"]'),pii=hjCasePii(el.value);
       if(w){w.textContent=pii.length?('⚠ '+pii.join('·')+' 같아 보입니다 — 공개 글에는 못 넣습니다. 지워야 만들어집니다.'):'';w.hidden=!pii.length;}};

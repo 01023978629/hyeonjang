@@ -85,10 +85,12 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   // ③ 체크는 현장 객체에 남는다
   for (const id of ['p-before', 'p-mid', 'p-after']) await page.check('#modalRoot .cpChk[data-id="' + id + '"]');
   const stored = await page.evaluate(() => (state.projects[0].casePack || {}).photos);
-  assert(JSON.stringify(stored) === JSON.stringify(['p-before', 'p-mid', 'p-after']) && await page.evaluate(() => state.dirty === true), '③ p.casePack.photos + dirty: ' + JSON.stringify(stored));
+  // 새 계약(photo-refs): 칸의 data-id 는 이 화면의 파일 id, 현장에는 안정 참조('k:'+fileKey)로 적힌다 — id 는 폰·복원 뒤 새로 붙어 선택이 비었다
+  const REF = { 'p-before': 'k:거실 벽면.jpg|0', 'p-mid': 'k:배관 교체 중.jpg|0', 'p-after': 'k:김철수 1302호 완료.jpg|0' };
+  assert(JSON.stringify(stored) === JSON.stringify([REF['p-before'], REF['p-mid'], REF['p-after']]) && await page.evaluate(() => state.dirty === true), '③ p.casePack.photos + dirty: ' + JSON.stringify(stored));
   assert(/고른 사진 3장 \(시공 전 1 · 작업 중 1 · 완료 1\)/.test(await page.evaluate(() => document.querySelector('#cpCount').textContent)), '③ 개수 글이 바로 바뀐다');
   await page.uncheck('#modalRoot .cpChk[data-id="p-mid"]');
-  assert(JSON.stringify(await page.evaluate(() => state.projects[0].casePack.photos)) === JSON.stringify(['p-before', 'p-after']), '③ 체크 해제도 남는다');
+  assert(JSON.stringify(await page.evaluate(() => state.projects[0].casePack.photos)) === JSON.stringify([REF['p-before'], REF['p-after']]), '③ 체크 해제도 남는다');
   await page.check('#modalRoot .cpChk[data-id="p-mid"]');
 
   // ④ 개인정보·동의·빈 칸 차단
@@ -145,7 +147,7 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   const keys = await page.evaluate(() => Object.keys(serializeData()));
   assert(!keys.some(k => /case/i.test(k)), '⑥ serializeData 최상위 키는 그대로: ' + keys.join(','));
   const back = await page.evaluate(() => { const snap = JSON.parse(JSON.stringify(serializeData())); applyData(snap); const p = state.projects.find(x => x.name === '평화로운아파트 107동 1302호'); return p && p.casePack; });
-  assert(back && back.consent === true && back.cause === '계량기함 뒤 매립 배관 이음부 — 세대 전유' && JSON.stringify([...back.photos].sort()) === JSON.stringify(['p-after', 'p-before', 'p-mid']) && back.sentAt, '⑥ 왕복 뒤에도 남는다: ' + JSON.stringify(back));
+  assert(back && back.consent === true && back.cause === '계량기함 뒤 매립 배관 이음부 — 세대 전유' && JSON.stringify([...back.photos].sort()) === JSON.stringify([REF['p-after'], REF['p-before'], REF['p-mid']].sort()) && back.sentAt, '⑥ 왕복 뒤에도 남는다: ' + JSON.stringify(back));   // 새 id 뒤의 왕복은 tests/photo-refs.e2e.js ③
   await page.evaluate(() => casePackView('평화로운아파트 107동 1302호'));
   assert(/✓ \d{4}-\d{2}-\d{2}/.test(await page.evaluate(() => document.querySelector('#cpProj option:checked').textContent)), '⑥ 현장 목록에 보낸 표시');
   // 현장 전환 — 딴 현장 사진만 보인다
