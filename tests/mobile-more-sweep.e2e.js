@@ -6,7 +6,7 @@
 
    화면마다 지키는 것
      ① 문서 가로 넘침 0, 모달(#modalRoot .modal) scrollWidth-clientWidth ≤ 1
-     ② 보이는 button / a[href] / [role=button] / [onclick] 은 44×44 이상
+     ② 보이는 button / a[href] / [role=button] / [onclick] / summary(접는 머리) 은 44×44 이상
      ③ 체크박스·라디오는 보이는 네모가 22px 이상이고, 그 자체가 44 이거나 감싼 label 이 44×44 이상
      ④ 보이는 입력칸(input·select·textarea — 체크박스·라디오·range 제외) 글자 16px 이상
      ⑤ Esc 로 닫히고 초점이 연 자리(폰 모드는 하단 [더보기], PC 모드는 검사가 만든 여는 버튼)로 돌아온다
@@ -36,6 +36,8 @@ const NO_SCREEN={
 /* 모달이 아닌 화면 — 탭을 바꿔 #view 에 그리거나(회계·광고) 전체 화면 시트(AI 비서)를 연다. */
 const VIEW_TAB={ledgertab:'ledger',adstab:'ads'};
 const SHEET={ai:'#aiSheet'};
+/* 더보기 밖에서 여는 모달 [이름, 여는 식] — 품목이 그려지는지는 검사 안에서 따로 확인한다 */
+const EXTRA_MODALS=[['자재 발주서','materialOrder("fake-q1")','.moChk']];
 /* 막아 둔 외부 호출 중 불려도 되는 것 */
 const ALLOW_EXTERNAL={opendrive:['window.open']};
 
@@ -49,7 +51,7 @@ function auditInPage(scopeSel){
   const modal=document.querySelector('#modalRoot .modal');
   if(modal){const o=modal.scrollWidth-modal.clientWidth;if(o>1){const mr=modal.getBoundingClientRect();const w=[...modal.querySelectorAll('*')].map(e=>[e.getBoundingClientRect().right-mr.right,e]).sort((a,b)=>b[0]-a[0])[0];out.push('모달 가로 넘침 '+o+'px (가장 삐져나간 것: '+(w?nm(w[1]):'?')+')');}}
   const vis=el=>{if(!el.getClientRects().length)return false;const cs=getComputedStyle(el);return cs.visibility!=='hidden'&&cs.display!=='none';};
-  for(const el of scope.querySelectorAll('button,a[href],[role=button],[onclick]')){
+  for(const el of scope.querySelectorAll('button,a[href],[role=button],[onclick],summary')){
     if(el.matches('input,select,textarea,label'))continue;if(!vis(el))continue;
     const r=el.getBoundingClientRect();if(r.width<43.5||r.height<43.5)out.push('누르는 곳 '+Math.round(r.width)+'×'+Math.round(r.height)+' '+nm(el));
   }
@@ -135,6 +137,14 @@ async function sweep(page,errors,mobile,width=360){
     const got=await page.evaluate(tab=>{state.tab=tab;render();return state.tab;},tab);
     if(got!==tab){failures.push('['+tag+'] 탭 '+tab+': 안 열린다');continue;}
     for(const x of await page.evaluate(s=>__sweepAudit(s),'#view')){failures.push('['+tag+'] 탭 '+tab+': '+x);console.error('  ✗ ['+tag+'] 탭 '+tab+': '+x);}
+  }
+  /* 더보기 첫 화면이 아닌 모달 — 다른 화면의 버튼(견적 #qmOrder·재고·명령 목록)으로만 열려 위 순회가 닿지 않는다.
+     📦 자재 발주서의 품목 체크(.moChk)가 label 없이 맨 input 이었던 것을 이 자리가 잡는다(v329 검토). */
+  if(!ONLY.length)for(const [name,open,must] of EXTRA_MODALS){
+    const v=await page.evaluate(async ({open,must})=>{(0,eval)(open);const until=Date.now()+5000;while(!document.querySelector('#modalRoot .modal')){if(Date.now()>until)return ['안 열린다'];await new Promise(r=>setTimeout(r,16));}
+      const r=__sweepAudit('#modalRoot');if(!document.querySelector('#modalRoot '+must))r.push('잴 것('+must+')이 안 그려졌다 — 시드를 확인');closeModal(true);return r;},{open,must});
+    for(const x of v){failures.push('['+tag+'] '+name+': '+x);console.error('  ✗ ['+tag+'] '+name+': '+x);}
+    await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire);
   }
   for(const action of actions){
     if(ONLY.length&&!ONLY.includes(action))continue;

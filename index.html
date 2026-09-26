@@ -13131,8 +13131,9 @@ function materialOrder(quoteId){
   const rows=items.map((it,i)=>{
     const sup=hjSupplierOf(it.name);
     return '<div style="display:flex;gap:5px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line-soft)">'+
-      '<input type="checkbox" class="moChk" data-i="'+i+'" checked>'+
-      '<span style="flex:2;font-size:13px;min-width:0"><b>'+escapeHtml(it.name||'')+'</b>'+(it.spec?' <span style="color:var(--muted);font-size:11.5px">'+escapeHtml(it.spec)+'</span>':'')+'</span>'+
+      /* 체크박스와 품목 이름을 한 label 로 — 폰 전역 규칙(label 줄 44px)이 누르는 곳을 품목 이름까지 넓힌다. 맨 input 이면 22px 네모만 눌렸다(v329). */
+      '<label style="display:flex;flex:2;align-items:center;gap:5px;min-width:0;cursor:pointer"><input type="checkbox" class="moChk" data-i="'+i+'" checked>'+
+      '<span style="flex:1;font-size:13px;min-width:0"><b>'+escapeHtml(it.name||'')+'</b>'+(it.spec?' <span style="color:var(--muted);font-size:11.5px">'+escapeHtml(it.spec)+'</span>':'')+'</span></label>'+
       '<input class="moQty" data-i="'+i+'" value="'+escapeAttr(String(num(it.qty)||1))+'" inputmode="numeric" style="width:52px;text-align:center;padding:7px;font-size:13px">'+
       '<input class="moSup" data-i="'+i+'" list="moSupList" placeholder="거래처" value="'+escapeAttr(sup)+'" style="width:96px;padding:7px;font-size:12.5px">'+
     '</div>';
@@ -21982,7 +21983,7 @@ function casePackView(projectName){
   const candBtn=x=>'<button type="button" class="ghost cpGo" data-name="'+escapeAttr(x.name)+'" style="display:flex;justify-content:space-between;align-items:center;width:100%;min-height:44px;padding:6px 10px;margin-bottom:4px;text-align:left'+(x.name===p.name?';border-color:var(--moss)':'')+'">'+
       '<span style="flex:1;min-width:0;overflow-wrap:anywhere">'+escapeHtml(x.name)+(x.archived?' 「보관」':'')+'</span><span style="font-size:11.5px;color:var(--muted-2);white-space:nowrap;margin-left:6px">전 '+x.before+' · 후 '+x.after+'</span></button>';
   const candBox='<details id="cpCand"'+(cands.ready.length?' open':'')+' style="margin-bottom:8px;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px">'+
-      '<summary style="min-height:32px;cursor:pointer;font-size:13px;font-weight:700">📋 아직 안 보낸 사례 후보 '+cands.ready.length+'곳'+(cands.needPhase.length?' · 전/후 표시 필요 '+cands.needPhase.length+'곳':'')+'</summary>'+
+      '<summary style="min-height:44px;cursor:pointer;font-size:13px;font-weight:700">📋 아직 안 보낸 사례 후보 '+cands.ready.length+'곳'+(cands.needPhase.length?' · 전/후 표시 필요 '+cands.needPhase.length+'곳':'')+'</summary>'+
       (cands.ready.length?'<div style="margin-top:6px">'+cands.ready.map(candBtn).join('')+'</div>':'<div style="font-size:12px;color:var(--muted-2);margin-top:6px">전·후 사진이 다 있는데 아직 안 보낸 현장이 없습니다.</div>')+
       (cands.needPhase.length?'<div style="font-size:11.5px;color:var(--muted-2);margin:8px 0 4px">사진은 있는데 시공 전·완료 공정이 안 붙은 현장 — 사진 화면에서 공정을 붙이면 후보가 됩니다</div>'+cands.needPhase.map(candBtn).join(''):'')+
     '</details>';
