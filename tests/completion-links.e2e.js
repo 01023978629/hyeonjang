@@ -2,7 +2,8 @@
 
    2026-09-26: 준공 체크(잔금 청구·보증 안내·사진 ZIP·리뷰 부탁)는 체크박스뿐이었고, 현장 부대사항(siteRules)은
    작업지시·계약서 초안·현장 상세 어디에도 흐르지 않았다.
-     ① 준공 체크 줄 옆 버튼이 이미 있는 기능을 연다(settleDocs·warrantyView·exportSiteZip·reviewRequest) —
+     ① 준공 체크 줄 옆 버튼이 이미 있는 기능을 연다(settleDocs·문자 센터 준공 인사·exportProjectZIP(이 현장)·hjReviewSms) —
+        체크 창은 완료일(doneAt) 없이 뜨므로 그 상태로 실제 함수를 돌린다,
         도어락 안내 줄에는 버튼이 없다(문안 신설은 대표 승인), 누르기 전 체크 상태를 저장한다
      ② 예치금 칸이 적혀 있으면 '관리실 예치금 환급 확인' 줄이 붙고, 체크가 저장·백업 왕복에서 살아남는다 —
         예치금이 없으면 줄이 없다, 착공 전 체크(idx 2)에는 붙지 않는다, 준공 체크에도 현장 규칙 한 줄이 보인다
@@ -67,28 +68,44 @@ const PLAIN = '규칙없는가짜현장';
   const modalText = () => page.evaluate(() => (document.querySelector('#modalRoot') || {}).textContent || '');
 
   // ── ① 준공 체크 줄 → 기능 ──
+  // 체크 창은 setStage 가 완료일(doneAt)을 적기 전에만 뜬다 — 그 상태 그대로(doneAt 없음) 진짜 경로(setStage)로 연다.
+  // 보증 안내·리뷰는 스텁 없이 실제 함수를 돌린다(스텁이면 'doneAt 없으면 안 열린다'를 못 본다).
   await seed();
-  await page.evaluate(() => {
+  await page.evaluate(nm => {
+    state.projects.reverse();                        // 이 현장이 첫 줄이 아니게 — 문자 센터가 딴 현장을 기본으로 고르면 드러난다
     window.__calls = [];
     window.settleDocs = (...a) => { __calls.push(['settleDocs', ...a]); };
-    window.warrantyView = (...a) => { __calls.push(['warrantyView', ...a]); };
-    window.exportSiteZip = (...a) => { __calls.push(['exportSiteZip']); };
-    window.reviewRequest = (...a) => { __calls.push(['reviewRequest']); };
-  });
-  await page.evaluate(nm => stageChecklistView(nm, 3), NAME);
+    window.exportProjectZIP = (...a) => { __calls.push(['exportProjectZIP', ...a]); };
+    window.exportSiteZip = (...a) => { __calls.push(['exportSiteZip', ...a]); };   // 앱 전체 ZIP — 불리면 안 된다
+    setStage(nm, 3);
+  }, NAME);
+  const st0 = await page.evaluate(nm => { const p = state.projects.find(x => x.name === nm); return { stage: p.stage, doneAt: p.doneAt || null, modal: !!document.querySelector('#modalRoot .clChk') }; }, NAME);
+  assert(st0.modal && st0.stage === 2 && st0.doneAt === null, '① 체크 창은 완료일 없이 뜬다: ' + JSON.stringify(st0));
   const go = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .clGo')].map(b => ({ k: b.dataset.go, l: b.textContent, h: b.getBoundingClientRect().height })));
   assert(JSON.stringify(go.map(x => x.k)) === JSON.stringify(['balance', 'warranty', 'zip', 'review']), '① 버튼 네 개(도어락·예치금 줄 제외): ' + JSON.stringify(go));
   assert(go.every(x => x.h >= 44), '① 버튼은 44px: ' + JSON.stringify(go.map(x => x.h)));
   // 누르기 전에 체크한 것이 저장돼야 한다(다른 창이 이 창을 덮는다)
   await page.click('#modalRoot .clChk[data-k="pwchange"]');
-  for (const k of ['balance', 'warranty', 'zip', 'review']) await page.click('#modalRoot .clGo[data-go="' + k + '"]');
+  for (const k of ['balance', 'zip']) await page.click('#modalRoot .clGo[data-go="' + k + '"]');
   const calls = await page.evaluate(() => __calls);
-  assert(JSON.stringify(calls) === JSON.stringify([['settleDocs', NAME], ['warrantyView', NAME], ['exportSiteZip'], ['reviewRequest']]), '① 각 버튼이 그 기능을 연다: ' + JSON.stringify(calls));
+  assert(JSON.stringify(calls) === JSON.stringify([['settleDocs', NAME], ['exportProjectZIP', NAME]]), '① 청구서·이 현장 ZIP(앱 전체 ZIP 아님): ' + JSON.stringify(calls));
   const saved1 = await page.evaluate(nm => { const p = state.projects.find(x => x.name === nm); return p.checklists && p.checklists.done; }, NAME);
   assert(saved1 && saved1.pwchange === true && !saved1._ok, '① 버튼을 누르기 전 체크가 저장됐다(완료 표시는 아니다): ' + JSON.stringify(saved1));
   // 줄의 버튼을 눌러도 그 줄 체크는 바뀌지 않는다(버튼은 라벨 밖)
   const balChk = await page.evaluate(() => document.querySelector('#modalRoot .clChk[data-k="balance"]').checked);
   assert(balChk === false, '① 버튼은 체크를 바꾸지 않는다');
+  // 🛡 보증 안내 — 완료일 없이도 이 현장 '준공 인사'(하자보수 기간 문구) 문자가 열린다
+  await page.click('#modalRoot .clGo[data-go="warranty"]');
+  const wr = await page.evaluate(() => ({ body: (document.querySelector('#mcBody') || {}).value || '', toast: (document.querySelector('#toast') || {}).textContent || '' }));
+  assert(wr.body.includes(NAME + ' 공사가 마무리되었습니다') && /하자보수는 준공일로부터/.test(wr.body), '① 보증 안내가 이 현장 준공 인사 문자를 연다: ' + JSON.stringify(wr));
+  assert(!/준공\(완료\) 처리 후/.test(wr.toast), '① 완료 처리 후에만 된다는 막다른 안내가 아니다: ' + wr.toast);
+  // 🗣 리뷰 요청 — 다시 단계를 올리면 체크 창이 또 뜬다(완료 표시 전). 연락처 없는 경로로 문안이 복사된다.
+  await page.evaluate(nm => { closeModal(); const p = state.projects.find(x => x.name === nm); p.customer.phone = ''; window.__copied = undefined; setStage(nm, 3); }, NAME);
+  await page.click('#modalRoot .clGo[data-go="review"]');
+  await page.waitForFunction(() => typeof window.__copied === 'string');
+  const rv = await page.evaluate(nm => ({ t: window.__copied, at: !!state.projects.find(x => x.name === nm).reviewRequestedAt, doneAt: state.projects.find(x => x.name === nm).doneAt || null }), NAME);
+  assert(rv.t.includes(NAME) && /리뷰/.test(rv.t) && rv.at && rv.doneAt === null, '① 리뷰 요청이 완료일 없이 이 현장 문안을 만든다: ' + JSON.stringify(rv));
+  await page.evaluate(nm => { state.projects.find(x => x.name === nm).customer.phone = '010-0000-1234'; closeModal(); stageChecklistView(nm, 3); }, NAME);
 
   // ── ② 예치금 줄 ──
   const dep = await page.evaluate(() => {
@@ -113,7 +130,12 @@ const PLAIN = '규칙없는가짜현장';
   // 예치금이 없는 현장 · 착공 전 체크에는 없다
   const noDep = await page.evaluate(([nm, plain]) => {
     stageChecklistView(plain, 3);
-    const a = !!document.querySelector('#modalRoot .clChk[data-k="deposit"]');
+    const a0 = !!document.querySelector('#modalRoot .clChk[data-k="deposit"]');
+    // 예치금 칸에 출입 번호가 섞인 옛 자료 — 그 칸은 없는 것으로 본다(체크 창에 번호를 띄우지 않는다)
+    state.projects.find(x => x.name === plain).siteRules = { deposit: '현관 1234' };
+    stageChecklistView(plain, 3);
+    const a = a0 || !!document.querySelector('#modalRoot .clChk[data-k="deposit"]') || /1234/.test(document.querySelector('#modalRoot').textContent);
+    delete state.projects.find(x => x.name === plain).siteRules;
     stageChecklistView(nm, 2);
     const b = !!document.querySelector('#modalRoot .clChk[data-k="deposit"]');
     const g = document.querySelectorAll('#modalRoot .clGo').length;

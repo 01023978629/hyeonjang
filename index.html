@@ -5232,12 +5232,22 @@ function stageChecklistView(name,idx){
   };});
 }
 /* 준공 체크 줄 → 이미 있는 기능. 도어락 비번 변경 안내는 문안이 없어 버튼을 두지 않는다(문안 신설은 대표 승인).
-   보증서·리뷰 요청은 완료일(doneAt)이 있어야 열린다 — 준공 전이면 그 화면이 스스로 안내한다. */
+   이 체크 창은 setStage 가 완료일(doneAt)을 적기 '전'에만 뜬다(완료에서 내리면 doneAt 은 지워진다) — 그러니 여기서 여는 기능은
+   doneAt 없이 동작해야 한다. warrantyView 는 doneAt 이 없으면 토스트만 띄우고, reviewRequest 목록은 doneAt 없는 현장을 빼서 쓸 수 없었다.
+   · 보증 안내: 문자 센터 '준공 인사'(하자보수 기간 = hjWarrantyPeriodText, 이 현장 🛡 보증 항목) — 이 현장을 골라 둔 채로 연다.
+   · 리뷰: 현장 상세 🎉 준공 관리의 ⭐ 리뷰 요청과 같은 hjReviewSms(현장 하나, doneAt 불필요).
+   · ZIP: 이 현장 파일만 — exportSiteZip 은 앱 전체(다른 고객 사진·서류까지)를 묶는다. */
+function hjCompletionMsgFor(n){
+  msgCenterCompose('done');
+  const sel=document.getElementById('mcProj');
+  const i=(state.projects||[]).filter(function(p){return !p.archived;}).findIndex(function(p){return p.name===n;});   // msgCenterCompose 의 option 값 = 보관 아닌 현장 목록의 순번
+  if(sel&&i>=0){sel.value=String(i);if(typeof sel.onchange==='function')sel.onchange();}
+}
 const STAGE_CHECK_GO={
   balance:{l:'💳 청구서',fn:function(n){settleDocs(n);}},
-  warranty:{l:'🛡 보증서',fn:function(n){warrantyView(n);}},
-  zip:{l:'📦 ZIP',fn:function(){exportSiteZip();}},
-  review:{l:'🗣 리뷰 요청',fn:function(){reviewRequest();}}
+  warranty:{l:'🛡 보증 안내',fn:function(n){hjCompletionMsgFor(n);}},
+  zip:{l:'📦 ZIP',fn:function(n){exportProjectZIP(n);}},
+  review:{l:'🗣 리뷰 요청',fn:function(n){hjReviewSms(n);}}
 };
 /* 체크 줄 목록 — 준공 때 관리실 예치금 칸(siteRules.deposit)이 적혀 있으면 환급 확인 줄을 더한다.
    체크 상태는 다른 줄과 같은 곳(p.checklists.done.deposit)에 남는다. */
