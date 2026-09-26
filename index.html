@@ -926,6 +926,34 @@
 @media(max-width:600px){.web-office-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.web-office-panel{padding:12px}}
 body.a11y-big1 .web-office-panel p,body.a11y-big1 .web-office-stats dt{font-size:15px}body.a11y-big2 .web-office-panel p,body.a11y-big2 .web-office-stats dt{font-size:17px}
 body.a11y-big1 .web-office-actions,body.a11y-big2 .web-office-actions{grid-template-columns:1fr}
+/* v329 대시보드 카드 — 폰(모바일 모드 설정 또는 폭 640px 이하)에서 대시보드 표·월별 견적 표를 줄마다 카드로 쌓는다.
+   칸 이름은 hjDashCardLabels 가 붙인 data-label. PC 폭은 종전 표 그대로. 아파트 오더 줄 도구 묶음은 둘째 줄로 내린다. */
+body.mobile-mode table.dash-cards,body.mobile-mode table.dash-cards tbody,body.mobile-mode table.dash-cards tfoot{display:block;width:100%;min-width:0;border:0;overflow:visible;background:transparent}
+body.mobile-mode table.dash-cards thead{display:none}
+body.mobile-mode table.dash-cards tr{display:block;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper);margin-bottom:10px;padding:6px 12px}
+body.mobile-mode table.dash-cards td{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;border:0;padding:7px 0;text-align:right;min-width:0;overflow-wrap:anywhere}
+body.mobile-mode table.dash-cards td::before{content:attr(data-label);font-size:12px;font-weight:600;color:var(--muted);text-align:left;flex:0 1 auto;max-width:48%}
+body.mobile-mode table.dash-cards td:first-child{justify-content:flex-start;text-align:left;font-size:15px;border-bottom:1px solid var(--line-soft);padding-bottom:8px}
+body.mobile-mode table.dash-cards td:first-child::before{content:none}
+body.mobile-mode table.dash-cards td:empty{display:none}
+body.mobile-mode table.dash-cards td input{flex:1 1 140px;max-width:100%;width:auto!important;min-width:0;min-height:44px;font-size:16px;padding:8px 10px;box-sizing:border-box}
+body.mobile-mode .apo-head{flex-wrap:wrap}
+body.mobile-mode .apo-tools{flex-wrap:wrap;white-space:normal!important}
+body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:44px}
+@media(max-width:640px){
+  table.dash-cards,table.dash-cards tbody,table.dash-cards tfoot{display:block;width:100%;min-width:0;border:0;overflow:visible;background:transparent}
+  table.dash-cards thead{display:none}
+  table.dash-cards tr{display:block;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper);margin-bottom:10px;padding:6px 12px}
+  table.dash-cards td{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;border:0;padding:7px 0;text-align:right;min-width:0;overflow-wrap:anywhere}
+  table.dash-cards td::before{content:attr(data-label);font-size:12px;font-weight:600;color:var(--muted);text-align:left;flex:0 1 auto;max-width:48%}
+  table.dash-cards td:first-child{justify-content:flex-start;text-align:left;font-size:15px;border-bottom:1px solid var(--line-soft);padding-bottom:8px}
+  table.dash-cards td:first-child::before{content:none}
+  table.dash-cards td:empty{display:none}
+  table.dash-cards td input{flex:1 1 140px;max-width:100%;width:auto!important;min-width:0;min-height:44px;font-size:16px;padding:8px 10px;box-sizing:border-box}
+  .apo-head{flex-wrap:wrap}
+  .apo-tools{flex-wrap:wrap;white-space:normal!important}
+  .apo-tools select.apoStat{font-size:16px!important;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -6854,10 +6882,33 @@ function startWrapObserver(){
   });
   __wrapObs.observe(v,{childList:true,subtree:true});
 }
+/* [v329] 폰에서는 대시보드 표(.dash-cards)를 옆으로 밀지 않고 줄마다 카드로 쌓는다(견적 목록·.qm-table 과 같은 방식).
+   카드 안에서는 머리줄(thead)이 숨으므로 칸마다 그 열 이름을 data-label 로 붙여 td::before 로 보여 준다.
+   PC 폭에서는 종전처럼 .tbl-scroll 로 감싼다 — 판정은 CSS 와 같은 두 조건(모바일 모드 설정 · 폭 640px 이하). */
+function hjDashCardsPhone(){
+  try{return document.body.classList.contains('mobile-mode')||(!!window.matchMedia&&window.matchMedia('(max-width:640px)').matches);}catch(e){return false;}
+}
+function hjDashCardLabels(root){
+  if(!root)return 0;
+  let n=0;
+  root.querySelectorAll('table.dash-cards').forEach(function(t){
+    const heads=[...t.querySelectorAll('thead th')].map(function(th){return th.textContent.replace(/\s+/g,' ').trim();});
+    t.querySelectorAll('tbody tr,tfoot tr').forEach(function(tr){
+      [...tr.children].forEach(function(td,i){
+        if(td.hasAttribute('data-label')||!heads[i])return;
+        td.setAttribute('data-label',heads[i]);n++;
+      });
+    });
+  });
+  return n;
+}
 function wrapWideTables(root){
   if(!root)return 0;
   let n=0;
+  hjDashCardLabels(root);
+  const phone=hjDashCardsPhone();
   root.querySelectorAll('table.estimate-table').forEach(function(t){
+    if(phone&&t.classList.contains('dash-cards'))return;   // 폰: 카드로 쌓으니 밀어 볼 틀이 필요 없다
     const par=t.parentElement;
     if(par&&par.classList&&par.classList.contains('tbl-scroll'))return;
     const w=document.createElement('div');
@@ -7514,7 +7565,7 @@ function viewDashboard(){
   html+=`</div>`;
   // 현장별 표
   html+=`<div class="dash-sec">현장별 현황 <span style="font-size:11px;color:var(--muted);font-weight:400">· 수금액을 입력하면 바로 저장됩니다</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table dash-cards"><thead><tr><th>현장</th><th>단계</th><th>파일</th><th class="amt">견적(매출)</th><th class="amt">수금액</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     html+=`<tr>
       <td><b style="color:var(--blueprint);cursor:pointer" data-open="${escapeAttr(s.name)}">${escapeHtml(s.name)}</b></td>
@@ -7534,7 +7585,7 @@ function viewDashboard(){
   html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>순마진</b> = 공급가(부가세 제외) 매출 − 원가. 자재·외주는 부가세 포함 지출로 보고 공급가(÷1.1)로 환산, 인건비는 면세로 그대로 차감합니다. 장비·유류·식대 등 기타경비는 순마진에서 빠지며 별도 표기합니다. (완전한 회계 순이익이 아니라 재료·인건·외주 기준 마진입니다.)</div>`;
   html+=`<div class="toolbar" style="margin:0 0 8px"><button class="blue tiny" id="btnLoadCostLedger" title="현장에 태깅된 지출장부를 원가로 제안(0인 항목만, 확인 후 반영)">📒 장부에서 원가 불러오기</button></div>`;
   const fieldBadge=src=>src==='장부'?`<br><span title="장부(태깅 지출)에서 집계" style="display:inline-block;font-size:9px;font-weight:700;color:#2563eb;border:1px solid #2563eb55;border-radius:5px;padding:0 4px;margin-top:2px">📒 장부</span>`:'';
-  html+=`<table class="estimate-table"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진<br><span style="font-size:9px;font-weight:400">(부가세 포함 기준)</span></th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th class="amt">기타경비<br><span style="font-size:9px;font-weight:400">(순마진 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table dash-cards"><thead><tr><th>현장</th><th class="amt">견적(매출)</th><th class="amt">자재비</th><th class="amt">인건비</th><th class="amt">외주비</th><th class="amt">지출 합계</th><th class="amt">마진<br><span style="font-size:9px;font-weight:400">(부가세 포함 기준)</span></th><th class="amt">순마진<br><span style="font-size:9px;font-weight:400">(부가세 제외)</span></th><th class="amt">기타경비<br><span style="font-size:9px;font-weight:400">(순마진 제외)</span></th><th>원가출처</th></tr></thead><tbody>`;
   stats.forEach(s=>{
     // 입력칸엔 '유효값'(수기>0 우선, 아니면 장부)을 표시 — 지출합계/마진과 같은 원가 베이스. 장부 출처엔 배지.
     html+=`<tr>
@@ -8022,7 +8073,7 @@ function dashboardEstimateDetailsHTML(){
   const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
   if(!estFiles.length)return '';
   let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
-  html+=`<table class="estimate-table"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
+  html+=`<table class="estimate-table dash-cards"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
   let ts=0,tv=0,ta=0;
   const __egs=estimateGroups(estFiles);__egs.forEach(g=>{const f=g.rep;const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
     html+=`<tr><td>${escapeHtml(e.customer||f.name)}${g.dups.length?' <span style="font-size:10px;background:#e0e7ff;color:#4338ca;padding:1px 6px;border-radius:8px;white-space:nowrap">📎 사본 '+g.dups.length+'</span>':''}</td><td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td><td>${previewButtonHtml(f,'보기')}</td></tr>`;
@@ -12258,12 +12309,12 @@ function aptOrderManage(filterOffice){
     const amountGuide=aptOrderAmountGuide(o.amount);
     const pipeType=aptPipeType(o.pipeType), pipeGuide=aptPipeTypeGuide(pipeType);
     return '<div data-apt-order-row="'+escapeAttr(o.id)+'" tabindex="-1" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
-      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
+      '<div class="apo-head" style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
         '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(aptOfficeName(o.officeId))+' · <button class="apoUnit" data-id="'+escapeAttr(o.id)+'" title="동/호 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;font-weight:inherit;text-decoration:underline dotted">'+escapeHtml(o.unit||'')+'</button></b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(o.date||'')+'</span>'+
         '<div style="font-size:12.5px;margin-top:2px"><button class="apoText" data-id="'+escapeAttr(o.id)+'" title="작업 내용 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-align:left;text-decoration:underline dotted">'+escapeHtml(o.text||'')+'</button> — <button class="apoAmt" data-id="'+escapeAttr(o.id)+'" title="금액 고치기" style="border:0;background:none;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted;color:'+(num(o.amount)?'inherit':'var(--warn,#c2410c)')+'">'+(num(o.amount)?'<b>'+won(num(o.amount))+'</b>':'금액 미정 ✏️')+'</button> · <select class="apoPipe" data-id="'+escapeAttr(o.id)+'" aria-label="배관 종류" style="padding:3px 5px;font-size:11.5px">'+APT_PIPE_TYPES.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===pipeType?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select></div>'+
         (amountGuide?'<div data-apt-order-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(amountGuide)+'</div>':'')+'</div>'+
         (pipeGuide?'<div data-apt-pipe-guide="'+escapeAttr(o.id)+'" style="margin-top:6px;color:#9a3412;font-size:11.5px;line-height:1.45">⚠️ '+escapeHtml(pipeGuide)+'</div>':'')+officeIntakeCompletionControls(o)+
-        '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
+        '<div class="apo-tools" style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
           (function(){const pn=aptPhotoCount(o);return pn?'<button class="ghost tiny apoPh" data-id="'+escapeAttr(o.id)+'" title="이 동/호 사진 보기" style="padding:6px 8px">📸 '+pn+'</button>'+
             // 전/후 카드는 원래 "현장에 배정된 사진"만 대상이라 아파트 오더는 아예 못 만들었다
             (pn>=2?'<button class="ghost tiny apoBA" data-id="'+escapeAttr(o.id)+'" title="시공 전/후 비교 카드" style="padding:6px 8px">🖼</button>':''):'';})()+
@@ -28299,7 +28350,7 @@ function monthlyQuoteHTML(){
   const grand=yms.reduce((a,ym)=>a+map[ym].total,0);
   const grandCnt=yms.reduce((a,ym)=>a+map[ym].count,0);
   let html=`<div style="margin-top:26px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📅 월별 견적 현황 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 외부 견적서 + 앱 작성 견적 합산</span></div>`;
-  html+=`<table class="month-table"><thead><tr><th>월</th><th class="c">건수</th><th class="amt">견적 합계</th><th>비고</th></tr></thead><tbody>`;
+  html+=`<table class="month-table dash-cards"><thead><tr><th>월</th><th class="c">건수</th><th class="amt">견적 합계</th><th>비고</th></tr></thead><tbody>`;
   yms.forEach(ym=>{
     const m=map[ym];
     const [y,mm]=ym.split('-');

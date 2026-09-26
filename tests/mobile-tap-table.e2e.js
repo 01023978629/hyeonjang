@@ -61,8 +61,25 @@ async function test(name, fn) { try { await fn(); console.log('  ✓ ' + name); 
     assert(r === 0, '버튼 겹침 ' + r + '건');
   });
 
-  await test('폰: 넓은 표에는 밀어보라는 안내가 뜬다', async () => {
-    const r = await mobile.evaluate(async () => {
+  // [v329] 폰(모바일 모드·폭 640 이하)의 대시보드 표는 이제 카드로 쌓여 밀 표가 없다(tests/dash-cards.e2e.js 가 지킨다).
+  // '밀 수 있다는 신호' 계약은 여전히 PC 레이아웃의 좁은 창(768px — 표 min-width 640 이 본문보다 넓다)에 남아 있으므로
+  // 검사 대상을 그 화면으로 옮긴다(완화가 아니라 대상 이동 — 단정은 그대로).
+  const narrow = await browser.newPage({ viewport: { width: 768, height: 900 } });
+  narrow.on('pageerror', e => pageerrors.push('n:' + String(e.message).slice(0, 100)));
+  await narrow.goto('http://127.0.0.1:8299/index.html', { waitUntil: 'domcontentloaded' });
+  await narrow.waitForFunction(() => !!window.__hjRestoreDone && !!window.__hjRelayBootDone);
+  await narrow.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayBootDone]));
+  // 설정 복원(폭 820 이하면 모바일 모드로 켠다)이 끝나면 푸터 #buildTag 가 채워진다 — 그 뒤에 꺼야 부팅이 다시 켜지 않는다
+  await narrow.waitForFunction(() => /^build /.test((document.getElementById('buildTag') || {}).textContent || ''));
+  await narrow.evaluate(() => {
+    localStorage.setItem('hj_onboard_done', '1');
+    try { loadDemo(); } catch (e) {}
+    __mobileMode = false; applyMobileMode();
+  });
+
+  await test('좁은 PC 창: 넓은 표에는 밀어보라는 안내가 뜬다', async () => {
+    assert(await narrow.evaluate(() => !document.body.classList.contains('mobile-mode')), '시나리오 전제(모바일 모드 꺼짐)가 성립하지 않음');
+    const r = await narrow.evaluate(async () => {
       state.tab = 'dashboard'; state.activeProject = null; render();
       await new Promise(x => setTimeout(x, 350));
       const v = document.getElementById('view');
@@ -76,8 +93,8 @@ async function test(name, fn) { try { await fn(); console.log('  ✓ ' + name); 
     assert(/오른쪽/.test(r.text), '안내 문구가 무엇을 보라는지 말하지 않음: ' + r.text);
   });
 
-  await test('폰: 한 번 밀면 안내가 사라진다', async () => {
-    const r = await mobile.evaluate(async () => {
+  await test('좁은 PC 창: 한 번 밀면 안내가 사라진다', async () => {
+    const r = await narrow.evaluate(async () => {
       const w = [...document.querySelectorAll('#view .tbl-scroll')]
         .find(x => { const t = x.querySelector('table'); return t && t.scrollWidth > x.clientWidth + 4; });
       if (!w) return { skip: true };
