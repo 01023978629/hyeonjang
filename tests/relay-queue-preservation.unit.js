@@ -94,7 +94,7 @@ function fixture(options = {}, text = source) {
   });
   vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
   for (const name of ['relayStatText', 'relaySetStatus', 'relayAuthFail', 'relayQueueReadStrict',
-    'relayQueueGet', 'relayQueueSet', 'relayUpdateQueueBadge', 'relayQueuePush',
+    'relayQueueGet', 'relayQueueSendCount', 'relayQueueSet', 'relayUpdateQueueBadge', 'relayQueuePush',   // v331 전송 대기 건수는 '기록 연결 대기'를 빼고 센다
     'cloudFlushQueue', 'cloudApiSave', 'relaySaveNow']) {
     vm.runInContext(fn(text, name), sandbox, { filename: 'index.html:' + name, timeout: 1000 });
   }

@@ -3,6 +3,7 @@
    ① 데이터 이사 마법사 [📄 백업(JSON) 복원] 은 JSON 파일을 고르게 한다(importData). 예전엔 PC 폴더의 _백업 목록(openRestore)을
       열어 폰에서는 '모바일은 PC에서' 토스트만 뜨고 마법사가 닫혔다(막다른 길). PC 폴더 목록은 PC 에서만 [🗂 폴더 백업 목록] 으로.
    ② JSON 불러오기(importData)는 덮어쓰기 전에 🛡 안전판('불러오기 전')을 찍고, 못 찍으면 불러오지 않는다(v274 규칙).
+      빈 새 기기에서도 불러오기가 된다(안전판을 allowEmpty 로 찍는다 — v331).
    ③ 현장 상세 AS 카드 🗑(data-asdel)는 AS 관리 화면 ✕ 와 같은 길(hjAsDelete): 확인 → 안전판(실패하면 멈춤) → 삭제.
       연결된 AS 방문 일정(visitSchedId)은 따로 묻는다(취소하면 남긴다).
    ④ 하자보증서 링크(warrantyLinkSend)를 같은 분·같은 내용으로 다시 만들면 서버가 같은 contractId 를 돌려준다 —
@@ -11,6 +12,8 @@
       (예전엔 작업자·시간만 적어도 '적어 둔 메모가 있어').
    ⑥ '「선택 복원」하면 다시 이어집니다' 는 조건을 밝힌다 — 같은 이름 현장을 새로 만들기 전에만, 그리고 이 이름으로 지운
       기록이 이미 있으면 '자동으로 잇지 않습니다'. 실제 선택 복원 동작과 맞는지도 확인한다.
+      v331: 같은 이름 현장이 이미 있어도 이 백업과 같은 기록이 든 '(삭제됨)' 한 벌이면 잇고 수금 알림도 되살린다, 근거가 없으면
+      잇지 않고 조건을 밝힌 토스트.
    가짜 자료만 쓴다(전화 010-0000-1234, 토큰 SUPER-SECRET-ADMIN-TOKEN). 판정은 종료코드.
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -98,6 +101,20 @@ const N = '가상안전현장';
     const r = await page.evaluate(() => ({ names: state.projects.map(p => p.name), done: window.__toasts.some(t => /불러오기 완료/.test(t)) }));
     assert(JSON.stringify(r.names) === JSON.stringify([N]) && !r.done, '안전판 실패인데 불러왔다 ' + JSON.stringify(r));
     await page.evaluate(() => { hjSnapshot = window.__nativeSnapshot; });
+  });
+
+  await test('② 빈 새 기기에서도 불러오기가 된다(안전판은 빈 상태로라도 찍는다 — allowEmpty)', async () => {
+    // 빈 기기(현장·파일·견적·메모 0)는 hjSnapshot 이 allowEmpty 없이는 '지킬 것 없음'으로 false 를 돌려준다 —
+    // 그 인자가 빠지면 새 폰으로 이사할 때 JSON 불러오기가 '안전 스냅샷 저장 실패' 로 영영 막힌다.
+    await seedBase();
+    await page.evaluate(() => { state.projects = []; state.files = []; state.quotes = []; state.notes = []; state.activeProject = null; window.__toasts = []; render(); });
+    const before = (await snapLabels()).filter(x => x.label === '불러오기 전').length;
+    await pickJsonVia(() => page.evaluate(() => importData()));
+    await page.waitForFunction(() => window.__toasts.some(t => /불러오기 완료|안전 스냅샷 저장 실패/.test(t)));
+    const r = await page.evaluate(() => ({ names: state.projects.map(p => p.name), toasts: window.__toasts.slice() }));
+    assert(r.names.includes('가상백업현장') && !r.toasts.some(t => /안전 스냅샷 저장 실패/.test(t)), '빈 기기에서 불러오기가 막혔다 ' + JSON.stringify(r));
+    const after = (await snapLabels()).filter(x => x.label === '불러오기 전');
+    assert(after.length === before + 1 && after[after.length - 1].names.length === 0, '빈 기기 안전판(현장 0개)이 찍히지 않았다 ' + JSON.stringify(after));
   });
 
   await test('② 엑셀 이사도 「이사 직전」 안전판을 못 찍으면 옮기지 않는다(전체장부·열 매핑 두 길)', async () => {
@@ -277,13 +294,31 @@ const N = '가상안전현장';
     assert(JSON.stringify(due) === JSON.stringify(['2026-10-01']), '조건을 지켰는데 알림이 안 돌아왔다 ' + JSON.stringify(due));
   });
 
-  await test('⑥ 같은 이름 새 현장이 먼저 생기면 복원이 알림을 되살리지 않는다(그래서 조건을 말한다)', async () => {
+  // v331 새 계약: 같은 이름 새 현장이 먼저 생겨도, 이 백업의 기록과 같은 기록(여기선 수금 30만 원)이 든 '(삭제됨)' 묶음이 딱 하나면
+  // 잇고 수금 알림도 되살린다(예전엔 덮어쓰기만 하고 둘 다 버려 두었다). 확인 창의 '새로 만들기 전에 … 다시 올라옵니다' 는
+  // 충분조건이라 여전히 참이다. 근거가 없으면 잇지 않고 조건을 밝혀 알린다 — 아래 검사.
+  await test('⑥ 같은 이름 새 현장이 먼저 생겨도 이 백업의 기록이 든 「(삭제됨)」 한 벌이면 다시 잇고 알림도 되살린다', async () => {
     await seedDue({});
     await dueLine(); await clickDelete();
     await page.evaluate(N => { state.projects.push({ name: N, stage: 0, received: 0, phases: [], cost: {} }); }, N);
     await clickRestore();
-    const due = await page.evaluate(N => state.schedule.filter(s => s.id === 'due_' + N).length, N);
-    assert(due === 0, '전제가 바뀌었다 — 같은 이름 현장이 있어도 알림이 돌아온다면 확인 창 문구를 다시 보라 ' + due);
+    const r = await page.evaluate(N => ({ due: state.schedule.filter(s => s.id === 'due_' + N).map(s => s.date), pay: state.payLog.map(x => x.project), toast: window.__toasts.join(' ') }), N);
+    assert(JSON.stringify(r.due) === JSON.stringify(['2026-10-01']) && JSON.stringify(r.pay) === JSON.stringify([N]) && /다시 이었습니다/.test(r.toast),
+      '같은 이름 현장이 있을 때 근거 있는 (삭제됨) 기록·수금 알림을 잇지 않았다 ' + JSON.stringify(r));
+  });
+
+  await test('⑥ 같은 이름 새 현장 + 이 백업과 같은 기록이 없는 「(삭제됨)」 — 잇지 않고 조건을 밝혀 알린다', async () => {
+    await seedDue({});
+    await dueLine(); await clickDelete();
+    // 더 옛날에 지운 다른 현장 기록인 것처럼 — 백업(수금 30만 원 9/20)과 같은 기록이 없다
+    await page.evaluate(N => {
+      state.projects.push({ name: N, stage: 0, received: 0, phases: [], cost: {} });
+      state.payLog.forEach(x => { if (x.project.startsWith('(삭제됨) ' + N)) { x.amt = 7000; x.d = '2025-01-02'; } });
+    }, N);
+    await clickRestore();
+    const r = await page.evaluate(N => ({ pay: state.payLog.map(x => x.project), toast: window.__toasts.join(' ') }), N);
+    assert(r.pay.length === 1 && r.pay[0].startsWith('(삭제됨) ' + N) && /같은 이름 현장이 이미 있어/.test(r.toast) && /확인되지 않아/.test(r.toast),
+      '근거 없는 (삭제됨) 기록을 이었거나 조용히 두었다 ' + JSON.stringify(r));
   });
 
   await test('⑥ 이 이름으로 지운 기록이 이미 있으면 "알림은 다시, 적어 둔 내용은 자동으로 잇지 않습니다" — 실제 복원과 같다', async () => {

@@ -2436,8 +2436,10 @@ async function relayQueueReadStrict(){
 }
 async function relayQueueGet(){try{return await relayQueueReadStrict();}catch(e){relaySetStatus('qfail');return null;}}
 async function relayQueueSet(q){try{await idbSet('relay_queue',q);}catch(e){try{console.warn('relay_queue 저장 실패');}catch(_){}relaySetStatus('qfail');return false;}   // 저장 실패를 호출자에게도 전달
-  __relayQn=q.length;const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;return true;}
-async function relayUpdateQueueBadge(){const q=await relayQueueGet();const qn=document.getElementById('ryQn');if(q===null){if(qn)qn.textContent='확인 불가';return null;}__relayQn=q.length;if(qn)qn.textContent=__relayQn;if(__relayQn&&(__relayState==='offline'||__relayState==='netfail'))relaySetStatus(__relayState);return __relayQn;}
+  __relayQn=relayQueueSendCount(q);const qn=document.getElementById('ryQn');if(qn)qn.textContent=__relayQn;return true;}
+/* v331 '기록 연결 대기'(action 'link') 항목은 서버로 보낼 것이 아니다 — 전송 대기 건수에 세지 않는다. */
+function relayQueueSendCount(q){return (q||[]).filter(it=>it&&it.action!=='link').length;}
+async function relayUpdateQueueBadge(){const q=await relayQueueGet();const qn=document.getElementById('ryQn');if(q===null){if(qn)qn.textContent='확인 불가';return null;}__relayQn=relayQueueSendCount(q);if(qn)qn.textContent=__relayQn;if(__relayQn&&(__relayState==='offline'||__relayState==='netfail'))relaySetStatus(__relayState);return __relayQn;}
 async function relayQueuePush(action,payload,meta){
   let q;try{q=await relayQueueReadStrict();}catch(e){relaySetStatus('qfail');toast('대기열 읽기 실패 — 기존 기록을 변경하지 않았습니다');return false;}
   if(action==='save')q=q.filter(function(it){return it.action!=='save';});   // 옛 save는 교체(항상 최신 1건)
@@ -2456,6 +2458,7 @@ async function relayQueuePush(action,payload,meta){
    현장 이름을 바꿔도 경로 참조는 그대로라 끊기지 않는다).
    못 찾거나 모호하면 붙이지 않는다(목록 합치기는 대기열 참조가 없어진 뒤 이름 규칙으로만 다시 본다). */
 function relayQueueLinkUpload(it,res){
+  if(it&&it.action==='link')res={fileId:it.fileId,mimeType:it.mimeType,size:it.size};   // v331 기록 연결 대기 항목은 받아 둔 값으로
   if(!it||typeof it.ref!=='string'||!it.ref.startsWith('k:')||!res||!res.fileId)return false;
   if(typeof __tabStale!=='undefined'&&__tabStale)return false;   // 뒤처진 탭은 쓰지 않는다
   const id=String(res.fileId);
@@ -2470,21 +2473,47 @@ function relayQueueLinkUpload(it,res){
   f._relayLink='relay:'+id;
   return true;
 }
+/* v331 업로드는 성공했는데 기록에 못 붙였을 때(뒤처진 탭·기록이 아직 안 불러와짐·같은 기록이 둘) 예전에는 항목째 지워
+   돌려받은 Drive ID 를 영영 잃었다 — 다음 서버 목록 합치기가 그 사진을 미배정 사본으로 따로 만들었다. 이제 업로드 항목을
+   '기록 연결 대기'(action 'link', 원본 바이트 없이 ref·project·fileId 만)로 바꿔 대기열에 남긴다. 서버로는 보내지 않는다.
+   다음 대기열 비우기·서버 목록 합치기가 같은 규칙(relayQueueLinkUpload — 참조로 딱 하나일 때만)으로 다시 붙인다.
+   이미 그 Drive ID 를 가진 기록이 있으면 끝, RELAY_LINK_KEEP_MS(14일)가 지나거나 50건을 넘으면 오래된 것부터 놓아준다(그 뒤엔 서버 목록 합치기가 미배정으로 들인다). */
+const RELAY_LINK_KEEP_MS=14*24*3600*1000;
+function relayLinkItemFrom(it,res){
+  if(!it||it.action!=='upload'||typeof it.ref!=='string'||!it.ref.startsWith('k:')||!res||!res.fileId)return null;
+  const id=String(res.fileId);
+  if((state.files||[]).some(f=>f&&f._driveId===id))return null;   // 이미 붙은 사진 — 남길 것 없다
+  const pl=it.payload||{},b64=String(pl.dataB64||'');
+  const size=Number(res.size)||Math.max(0,Math.floor(b64.length*3/4)-(b64.endsWith('==')?2:b64.endsWith('=')?1:0));
+  const o={id:it.id,action:'link',ref:it.ref,fileId:id,mimeType:String(res.mimeType||pl.mimeType||''),size:size,createdAt:it.createdAt||Date.now(),linkAt:Date.now(),retryCount:0};
+  if(it.project!==undefined)o.project=it.project;
+  return o;
+}
+/* 기록 연결 대기 항목 하나를 다시 본다 → 'linked'(붙였다) · 'done'(이미 붙어 있거나 오래돼 놓아준다) · 'keep' */
+function relayLinkItemRetry(it){
+  if(!it||it.action!=='link'||!it.fileId)return 'done';
+  if(relayQueueLinkUpload(it,null))return 'linked';
+  if(typeof __tabStale!=='undefined'&&__tabStale)return 'keep';   // 뒤처진 탭은 판정도 미룬다
+  if((state.files||[]).some(f=>f&&f._driveId===String(it.fileId)))return 'done';
+  if(Date.now()-(+it.linkAt||+it.createdAt||0)>RELAY_LINK_KEEP_MS)return 'done';
+  return 'keep';
+}
 async function cloudFlushQueue(manual){
   if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
   __relayFlushing=true;
   try{
     const q=await relayQueueReadStrict();
     if(!q.length){await relayUpdateQueueBadge();return;}
-    const doneIds={},retryUpd={};let sent=0,savedOk=false,linkedUp=0;
+    const doneIds={},retryUpd={},toLink={};let sent=0,savedOk=false,linkedUp=0;
     for(let i=0;i<q.length;i++){
       const it=q[i];
+      if(it.action==='link'){const r=relayLinkItemRetry(it);if(r==='linked'){linkedUp++;doneIds[it.id]=1;}else if(r==='done')doneIds[it.id]=1;continue;}   // v331 서버로 보내지 않는다
       if(!manual&&(it.retryCount||0)>=5)continue;   // 5회 이상 실패 → 자동 재시도 중단(설정의 '다시 보내기'로만)
       try{
         let res;
         if(it.action==='save')res=await relayCall('save',{data:serializeData(),baseRevision:__relay.rev||0});   // ts·데이터·rev 전부 전송 시점 기준(서버 ±10분 검사)
         else res=await relayCall(it.action,it.payload);
-        if(res&&res.ok){sent++;doneIds[it.id]=1;if(it.action==='upload'){try{if(relayQueueLinkUpload(it,res))linkedUp++;}catch(e){}}if(it.action==='save'){savedOk=true;__relay.rev=(typeof res.revision==='number')?res.revision:__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거 대상
+        if(res&&res.ok){sent++;doneIds[it.id]=1;if(it.action==='upload'){try{if(relayQueueLinkUpload(it,res))linkedUp++;else{const li=relayLinkItemFrom(it,res);if(li){toLink[it.id]=li;delete doneIds[it.id];}}}catch(e){}}if(it.action==='save'){savedOk=true;__relay.rev=(typeof res.revision==='number')?res.revision:__relay.rev;__relay.syncAt=res.savedAt||new Date().toISOString();try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}}continue;}   // 성공 → 큐에서 제거 대상
         if(res&&res.error==='conflict'&&it.action==='save'){doneIds[it.id]=1;relaySetStatus('conflict');relayConflictModal(res);continue;}   // 충돌은 모달로 해결(자동 덮어쓰기 금지)
         if(res&&(res.error==='unauthorized'||res.error==='not-configured')){relayAuthFail(res);retryUpd[it.id]=(it.retryCount||0)+1;continue;}
         retryUpd[it.id]=(it.retryCount||0)+1;
@@ -2492,12 +2521,13 @@ async function cloudFlushQueue(manual){
     }
     // ★flush 도중 새로 push된 항목 유실 방지: 통째 덮어쓰지 않고 큐를 '다시 읽어' 성공 id만 제거 + retryCount는 id 기준 갱신
     const q2=await relayQueueReadStrict();
-    const keep=q2.filter(function(it){return !doneIds[it.id];});
+    let keep=q2.filter(function(it){return !doneIds[it.id];}).map(function(it){return toLink[it.id]||it;});   // v331 연결 못 한 성공 업로드 → 기록 연결 대기
     keep.forEach(function(it){if(retryUpd[it.id]!=null)it.retryCount=retryUpd[it.id];});
+    {const LINK_MAX=50,links=keep.filter(it=>it.action==='link');if(links.length>LINK_MAX){const drop=new Set(links.sort((a,b)=>(+a.linkAt||0)-(+b.linkAt||0)).slice(0,links.length-LINK_MAX).map(it=>it.id));keep=keep.filter(it=>!drop.has(it.id));}}   // 연결 대기는 작지만 끝없이 쌓이지 않게 — 오래된 것부터 놓아준다
     if(linkedUp){markDirty();try{await guardedPersistCurrentState();}catch(e){}try{if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();}catch(e){}}   // 붙인 Drive ID 저장
     if(await relayQueueSet(keep)!==true){if(manual)toast('전송 결과의 대기열 저장 실패 — 전송 완료로 확인할 수 없습니다');return;}
     if(savedOk){relayDailyBackup();try{await officeIntakeFlush();}catch(e){}}   // 큐 경유 저장 성공에도 하루 1회 백업
-    if(!keep.length){if(sent)relaySetStatus('saved');}
+    if(!relayQueueSendCount(keep)){if(sent)relaySetStatus('saved');}
     else if(__relayState!=='auth'&&__relayState!=='conflict')relaySetStatus(navigator.onLine===false?'offline':'netfail');
   }catch(e){relaySetStatus('qfail');if(manual)toast('대기열 읽기 실패 — 전송 상태를 확인하지 못했습니다. 기존 기록은 유지합니다');}
   finally{__relayFlushing=false;}
@@ -2722,8 +2752,22 @@ async function relayLoadDriveFiles(silent){
          · 크기가 맞는 후보가 딱 하나면 그것, 둘 이상이면 고르지 않는다.
          · 크기로 못 가르면 서버에도 앱에도 그 이름이 딱 하나이고, 이 기기에 원본이 없는(=예전에 올리고 ID 만 잃은) 기록일 때만.
          못 이은 서버 사진은 아래에서 미배정 가상 사진으로 들어간다 — 틀린 현장에 붙는 것보다 낫다. */
-      const pendingRefs=new Set();
-      try{const q=await relayQueueGet();(q||[]).forEach(it=>{if(it&&it.action==='upload'&&typeof it.ref==='string')pendingRefs.add(it.ref);});}catch(e){}
+      const pendingRefs=new Set(),heldIds=new Set();let linkedQ=0;
+      try{
+        const q=await relayQueueGet();
+        // v331 기록 연결 대기 항목(업로드는 끝났는데 기록에 못 붙인 것)을 먼저 붙인다. 아직 못 붙이는 것은 그 Drive 사진을
+        // 미배정 사본으로 들이지 않는다(붙일 기록이 돌아오면 붙는다 — 놓아줄 때까지).
+        const doneLink=new Set();
+        (q||[]).forEach(it=>{
+          if(!it||it.action!=='link')return;
+          const r=__relayFlushing?'keep':relayLinkItemRetry(it);   // 비우기가 도는 중이면 그쪽이 처리한다
+          if(r==='linked'){linkedQ++;doneLink.add(it.id);}
+          else if(r==='done')doneLink.add(it.id);
+          else{heldIds.add(String(it.fileId));if(typeof it.ref==='string')pendingRefs.add(it.ref);}
+        });
+        if(doneLink.size){const q2=await relayQueueReadStrict();await relayQueueSet(q2.filter(it=>!doneLink.has(it&&it.id)));}
+        (q||[]).forEach(it=>{if(it&&it.action==='upload'&&typeof it.ref==='string')pendingRefs.add(it.ref);});
+      }catch(e){}
       const unlinked=state.files.filter(x=>x&&!x._driveId&&!x._aptUnit&&!aptUnitManaged(aptUnitProject(x.project))&&x.name&&IMG.includes(bestExt(x.name,x.ext||''))&&!pendingRefs.has('k:'+fileKey(x)));
       const usedRec=new Set();
       const serverNames=new Map();
@@ -2751,6 +2795,7 @@ async function relayLoadDriveFiles(silent){
         const fe=bestExt(f.name,f.mimeType||'');
         if(!IMG.includes(fe))continue;
         const existing=state.files.find(x=>x._driveId===f.id);
+        if(!existing&&heldIds.has(String(f.id)))continue;   // v331 기록 연결 대기 중인 사진 — 사본을 만들지 않는다
         if(existing){
           existing._driveMimeType=String(f.mimeType||'');existing._driveSize=Number(f.size)||0;
           // v106.1이 만든 미배정 복구 항목은 같은 이름의 기존 기록으로 합쳐 중복을 없앤다.
@@ -2781,6 +2826,7 @@ async function relayLoadDriveFiles(silent){
           thumb:null,text:'',ocr:'na',est:null,contact:null,_file:null,_virtual:true,_driveId:f.id,_driveMimeType:String(f.mimeType||''),_driveSize:Number(f.size)||0});
         added++;
       }
+      linked+=linkedQ;
       if(added||linked){
         if(typeof __photoCache!=='undefined')__photoCache.key=null;
         if(silent){try{await guardedPersistCurrentState();}catch(e){}}
@@ -5523,6 +5569,21 @@ function hjProjectTombstonesOf(name){
   ['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','aptOrders'].forEach(k=>arr(state[k]).forEach(r=>r&&see(r.project)));
   arr(state.aiOps&&state.aiOps.queue).forEach(t=>t&&see(t.project));
   return [...out];
+}
+/* v331 '(삭제됨)' 이름 t 에 옮겨 둔 기록 중 백업 자료 bdata 의 현장 name 기록과 같은 것의 수 — 선택 복원이 같은 이름 현장이
+   이미 있을 때(지운 뒤 같은 이름으로 새로 만든 경우), 또는 '(삭제됨)' 기록이 여러 벌일 때 어느 삭제의 기록인지 가르는 근거다.
+   id 가 있는 기록은 id 로, id 없는 수금 기록은 날짜·금액으로 맞춘다. 파일은 경로+이름+크기(fileKey). */
+function hjTombBackupEvidence(t,bdata,name){
+  const arr=v=>Array.isArray(v)?v:[];
+  const sig=(k,r)=>k==='files'?'f:'+fileKey(r):(r.id!=null&&r.id!=='')?k+':id:'+r.id:k==='payLog'?k+':'+(r.d||'')+'|'+(r.amt??''):'';
+  const keys=['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','aptOrders'];
+  const have=new Set();
+  keys.forEach(k=>arr(bdata&&bdata[k]).forEach(r=>{if(r&&typeof r==='object'&&r.project===name){const x=sig(k,r);if(x)have.add(x);}}));
+  arr(bdata&&bdata.files).forEach(f=>{if(f&&f.project===name&&f.name)have.add(sig('files',f));});
+  let n=0;
+  keys.forEach(k=>arr(state[k]).forEach(r=>{if(r&&typeof r==='object'&&r.project===t){const x=sig(k,r);if(x&&have.has(x))n++;}}));
+  arr(state.files).forEach(f=>{if(f&&f.project===t&&f.name&&have.has(sig('files',f)))n++;});
+  return n;
 }
 // 이름 변경 — 모든 저장소의 현장 이름을 옮긴다. 현장 객체 이름·활성 현장·작성 중 견적도 같이.
 function hjRenameProjectRefs(oldName,newName){
@@ -9264,8 +9325,12 @@ async function aiToolRun(name,a){
       if(cand.length>1)return {여러건:cand.map(s=>({시간:s.time||'',제목:s.title,현장:s.project||''})),안내:'여러 일정이 있습니다 — title_keyword로 특정하세요.'};
       const s=cand[0];s.labor=s.labor||{};s.labor.amount=amt;if(a.names)s.labor.names=String(a.names);
       markDirty();
-      const pjSum=s.project?laborLedgerData(dt.slice(0,7)).byPj[s.project]||amt:amt;
-      return {결과:'일당 기록됨',날짜:dt,일정:s.title,현장:s.project||'',금액원:amt,작업자:s.labor.names||'',이달현장합계원:pjSum,메모:'현장 지출 반영은 인건비 장부 화면의 [지출 반영] 버튼으로'};
+      // v331 인건비 장부 [지출 반영]은 v330 부터 그 현장 전체 기간 일당 합계를 넣는다 — 여기 보고하는 합계도 같은 값(laborProjectTotal).
+      // 예전 '이달현장합계'는 반영될 값과 달라, 여러 달 걸친 현장이면 AI 가 틀린 인건비를 말했다.
+      const out={결과:'일당 기록됨',날짜:dt,일정:s.title,현장:s.project||'',금액원:amt,작업자:s.labor.names||''};
+      if(s.project)out.현장전체일당합계원=laborProjectTotal(s.project).total;
+      out.메모=s.project?'현장 지출 반영은 인건비 장부 화면의 [지출 반영] 버튼으로 — 이 현장 전체 기간 일당 합계(현장전체일당합계원)가 인건비 지출로 들어갑니다':'현장이 없는 일정이라 현장 지출에는 반영되지 않습니다';
+      return out;
     }
     case 'search_all':{
       return universalSearch(a.query);
@@ -9641,7 +9706,7 @@ function aiResultBrief(name,out){
   if(name==='as_done')return out.여러건?' — '+out.여러건.length+'건 일치':' — 남은 '+(out.남은미처리||0)+'건';
   if(name==='material_order')return out.품목?' — '+out.품목.length+'종':'';
   if(name==='labor_ledger')return ' — '+won(out.합계원||0);
-  if(name==='set_labor')return out.여러건?' — '+out.여러건.length+'건 일치':' — '+won(out.금액원||0);
+  if(name==='set_labor')return out.여러건?' — '+out.여러건.length+'건 일치':' — '+won(out.금액원||0)+(out.현장전체일당합계원!=null?' · 현장 전체 기간 '+won(out.현장전체일당합계원):'');
   if(name==='search_all')return ' — '+(out.총건수||0)+'건';
   if(name==='help')return ' — '+(out.일치||0)+'항목';
   if(name==='project_map')return ' — 표시 '+(out.표시||0)+'곳';
@@ -29075,7 +29140,16 @@ function restoreSelect(idx){
        const picked=[...document.querySelectorAll('input[data-bkp]:checked')].map(c=>+c.dataset.bkp);
        if(!picked.length){toast('현장을 선택하세요.');return;}
        await makeCheckpoint('선택복원 전 자동백업');
-       const names=new Set(),blocked=[],relinked=[],manyTombs=[];
+       const names=new Set(),blocked=[],relinked=[],manyTombs=[],existTombs=[];
+       // '(삭제됨)' 이름 t 의 기록을 이름 name 으로 다시 잇는다. 같은 이름 현장에 이미 수금 약속일 알림이 있으면 옛 알림은
+       // 옮기지 않고 '(삭제됨)' 이름 그대로 둔다(같은 id 알림이 둘이 되면 다음 약속일 저장이 메모 적힌 쪽까지 걷는다).
+       const relink=(t,name,bid)=>{
+         const dueTaken=(state.schedule||[]).some(r=>r&&r.id==='due_'+name);
+         hjProjectRefWalk(t,(k,r,set)=>{if(dueTaken&&k==='schedule'&&r.id==='due_'+t)return;set(name);},bid);hjProjectRefLocal(t,name);
+         if(!dueTaken)hjDueScheduleRelink(t,name);
+         if(state.editingQuote&&state.editingQuote.project===t)state.editingQuote.project=name;
+         relinked.push(name);
+       };
        picked.forEach(pi=>{
          const bp=structuredClone(projs[pi]);
          // 현장 정보 덮어쓰기/추가
@@ -29095,15 +29169,24 @@ function restoreSelect(idx){
            if(twin){blocked.push([bp.name,twin.name]);return;}
          }
          names.add(bp.name);
-         if(exist){Object.assign(exist,restored);return;}
+         const tombs=hjProjectTombstonesOf(bp.name);
+         const proven=tombs.filter(t=>hjTombBackupEvidence(t,b.data,bp.name)>0);
+         if(exist){
+           Object.assign(exist,restored);
+           /* v331 같은 이름 현장이 이미 있으면(지운 뒤 같은 이름으로 새로 만든 경우) 예전에는 덮어쓰기만 하고 '(삭제됨)' 기록을
+              잇지 않았다 — 되돌린 수금 합계와 수금 기록이 따로 놀았다. 이 백업의 기록과 같은 기록이 든 '(삭제됨)' 묶음이 딱 하나일
+              때만 잇는다(그 묶음이 이 백업의 현장이라는 근거). 근거가 없으면 더 옛날에 지운 다른 현장일 수 있어 잇지 않고 알린다. */
+           if(proven.length===1)relink(proven[0],bp.name,bid);
+           else if(proven.length>1)manyTombs.push(bp.name);
+           else if(tombs.length)existTombs.push(bp.name);
+           hjDueScheduleRestore(exist);
+           return;
+         }
          state.projects.push(restored);
          // 지운 현장을 되살리면 삭제 때 '(삭제됨) 이름 · 날짜' 로 옮겨 둔 수금·AS·견적·지출도 다시 잇는다(hjDeleteProjectCore).
-         // 그 이름이 하나일 때만 — 둘 이상이면 어느 삭제의 기록인지 모르므로 건드리지 않고 알린다.
-         const tombs=hjProjectTombstonesOf(bp.name);
-         if(tombs.length===1){const t=tombs[0];
-           hjProjectRefWalk(t,(k,r,set)=>set(bp.name),bid);hjProjectRefLocal(t,bp.name);hjDueScheduleRelink(t,bp.name);
-           if(state.editingQuote&&state.editingQuote.project===t)state.editingQuote.project=bp.name;
-           relinked.push(bp.name);}
+         // 그 이름이 하나일 때만 — 둘 이상이면 어느 삭제의 기록인지 모르므로 건드리지 않고 알린다(삭제 확인 창 deleteProject 가
+         // 이 조건을 그대로 말한다 — 바꾸면 그 문구도).
+         if(tombs.length===1)relink(tombs[0],bp.name,bid);
          else if(tombs.length>1)manyTombs.push(bp.name);
          // 삭제가 일정표에서 뺀 수금 약속일 알림을 다시 올린다(현장의 dueDate 가 되살아났으므로)
          hjDueScheduleRestore(restored);
@@ -29115,6 +29198,7 @@ function restoreSelect(idx){
        toast(names.size+'개 현장을 복원했습니다'+(nFiles?' · 파일 '+nFiles+'개 되돌림':'')+'.'+
          (relinked.length?' 지울 때 「(삭제됨)」 으로 옮겨 둔 수금·견적·AS 기록을 다시 이었습니다('+relinked.join(', ')+').':'')+
          (manyTombs.length?' 「(삭제됨) '+manyTombs.join(', ')+' …」 기록이 여러 벌이라 자동으로 잇지 않았습니다.':'')+
+         (existTombs.length?' 「'+existTombs.join(', ')+'」 은 같은 이름 현장이 이미 있어, 이 백업과 같은 기록이 확인된 「(삭제됨)」 기록만 잇습니다 — 확인되지 않아 「(삭제됨) '+existTombs.join(', ')+' …」 수금·견적·AS 기록은 그대로 두었습니다.':'')+
          (blocked.length?' '+blocked.map(x=>'「'+x[0]+'」 은 지금 「'+x[1]+'」 로 이름이 바뀐 같은 현장이라 건너뜀').join(' · ')+'.':''));
      }}], false);
 }
@@ -30082,10 +30166,14 @@ function saveScheduleEdit(id,isNew){
   if(!f.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T00:00:00'))){toast('날짜를 고르세요.');hjFieldIssue(document.getElementById('schDate'),'날짜를 고르세요.');return;}
   if(!Number.isFinite(hours)||hours<0||hours>24){toast('작업 시간은 0~24 사이로 적어 주세요.');hjFieldIssue(document.getElementById('schHours'),'작업 시간은 0~24 사이로 적어 주세요.');return;}
-  let s;
+  let s,asMoved=0;
+  const prevDate=old?old.date:null;
   if(isNew){s=Object.assign({id},f,{report:null});state.schedule.push(s);}
   else{s=Object.assign(old,f);}
-  markDirty();closeModal();render();toast('일정 저장됨');if(isNew)hjGcalMaybeOpen(s);
+  /* v331 AS 에서 올린 방문 일정(AS 기록의 visitSchedId)의 날짜를 여기서 바꾸면 AS 방문일(visitAt)도 따라간다.
+     반대 방향(AS 화면 → 일정)은 asManage 가 이미 옮긴다. 날짜를 바꾼 때만 — 다른 칸만 고친 저장은 AS 를 건드리지 않는다. */
+  if(!isNew&&prevDate!==date)(state.asLog||[]).forEach(a=>{if(a&&a.visitSchedId===s.id&&a.visitAt!==date){a.visitAt=date;asMoved++;}});
+  markDirty();closeModal();render();toast('일정 저장됨'+(asMoved?' · AS 방문일도 '+date+' 로 맞췄습니다':''));if(isNew)hjGcalMaybeOpen(s);
 }
 // 일일 작업 보고서 작성
 async function exportReport(id, asPdf){

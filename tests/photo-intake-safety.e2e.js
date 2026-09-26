@@ -10,6 +10,9 @@
         되돌리기는 스냅샷에 없던 새 사진을 지운다. 폴더만 옮겨진 같은 크기 사진은 예전처럼 이어진다.
      ③ 전송 대기로 넣은 사진: 대기열 항목이 기록 참조('k:'+fileKey)를 기억하고, 나중에 업로드가 성공하면 그 기록에
         Drive ID 가 붙는다(새로고침으로 기록 객체가 바뀌어도). 동·호수 지정 사진이 빈 기록 + 미배정 사본으로 갈라지지 않는다.
+        ③-2(v331) 업로드는 성공했는데 기록에 못 붙인 때(뒤처진 탭·기록이 아직 없음·같은 기록이 둘) Drive ID 를 버리지 않고
+        '기록 연결 대기'(action 'link')로 남겨 다음 비우기·서버 목록 합치기가 붙인다. 뒤처진 탭은 Drive ID 를 쓰지 않는다.
+        서버 사본이 원본보다 크면 잇지 않는다(①의 가드).
      ④ 📷 촬영으로 찍은 동영상: '읽기 실패'로 버려지지 않고 앱 목록에 들어가며, 결과 화면이 동영상을 따로 알리고
         [🎬 원본 관리]로 가는 길을 준다. 서버 중계로는 보내지 않는다.
      ⑤ _정리완료/<현장>/ 사진이 있는 현장을 지운 뒤 PC 스캔(scanDir)이 그 현장을 되살리거나 사진을 다시 붙이지 않고,
@@ -224,6 +227,87 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
   assert(r3.persisted, '③ 붙인 Drive ID 가 이 기기 저장본에도 남는다');
   assert(r3.twinLinked === true && JSON.stringify(r3.twinView) === JSON.stringify([['A현장', null], ['B현장', 'DRV_TWIN']]), '③ 같은 경로 기록 둘은 적어 둔 현장으로 가른다: ' + JSON.stringify(r3));
   ok('③ 전송 대기 사진 — 성공 때 기록에 Drive ID, 갈라지지 않음');
+
+  // ─── ③-2 (v331) 업로드는 성공했는데 기록에 못 붙인 때 — Drive ID 를 잃지 않고 '기록 연결 대기'로 남겨 나중에 붙인다 ───
+  const r3b = await page.evaluate(async () => {
+    const out = {};
+    const origCall = window.relayCall, origReady = window.relayReady, origList = window.cloudApiListFiles;
+    window.relayReady = () => true;
+    const up = (id, name, size, project) => ({ id, action: 'upload', payload: { name, mimeType: 'image/jpeg', dataB64: 'QUJD' }, ref: 'k:' + name + '|' + size, project, createdAt: Date.now(), retryCount: 0 });
+    const rec = (id, name, size, project) => ({ id, name, prefix: '', ext: 'jpg', kind: 'photo', project, size, _virtual: true });
+    const qView = async () => ((await idbGet('relay_queue')) || []).map(it => ({ a: it.action, f: it.fileId || null, ref: it.ref, p: it.project, pl: !!it.payload }));
+    const dView = () => state.files.map(f => ({ id: f.id, d: f._driveId || null, p: f.project || null, v: !!f._virtual }));
+    let fid = '';
+    window.relayCall = async (action) => action === 'upload' ? { ok: true, fileId: fid, mimeType: 'image/jpeg', size: 480 } : { ok: false, error: 'x' };
+    // (가) 뒤처진 탭 — 업로드는 성공, 이 탭은 기록에 쓰지 않는다. 항목은 '기록 연결 대기'로 남고 전송 대기 건수에는 안 센다.
+    __reset(); fid = 'DRV_STALE';
+    state.files = [rec('s1', 'stale.jpg', 600, 'A현장')];
+    await idbSet('relay_queue', [up('q-s', 'stale.jpg', 600, 'A현장')]);
+    __tabStale = true;
+    await cloudFlushQueue(true);
+    out.staleFiles = dView(); out.staleQ = await qView(); out.staleQn = __relayQn;
+    __tabStale = false;
+    await cloudFlushQueue(false);   // 새 탭(뒤처지지 않은) 비우기가 붙인다 — 서버로 다시 보내지 않는다
+    out.freshFiles = dView(); out.freshQ = await qView();
+    // (나) 비우기 때 기록이 아직 없다(부팅 순서) — 남겨 두었다가 기록이 돌아오면 서버 목록 합치기가 붙인다. 미배정 사본을 만들지 않는다.
+    __reset(); fid = 'DRV_LATE';
+    state.files = [];
+    await idbSet('relay_queue', [up('q-l', 'late.jpg', 700, 'A현장')]);
+    await cloudFlushQueue(true);
+    out.lateQ = await qView();
+    state.files = [rec('l1', 'late.jpg', 700, 'A현장')];
+    window.cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRV_LATE', name: 'late.jpg', mimeType: 'image/jpeg', size: 480 }] });
+    await relayLoadDriveFiles(true);
+    out.lateFiles = dView(); out.lateQ2 = await qView();
+    // (다) 같은 경로·이름·크기·현장 기록이 둘(모호) — 고르지 않고 남긴다. 서버 목록에 있어도 사본을 만들지 않는다. 하나가 정리되면 붙는다.
+    __reset(); fid = 'DRV_TWIN2';
+    state.files = [rec('w1', 'twin.jpg', 800, 'A현장'), rec('w2', 'twin.jpg', 800, 'A현장')];
+    await idbSet('relay_queue', [up('q-w', 'twin.jpg', 800, 'A현장')]);
+    await cloudFlushQueue(true);
+    window.cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRV_TWIN2', name: 'twin.jpg', mimeType: 'image/jpeg', size: 480 }] });
+    await relayLoadDriveFiles(true);
+    out.twinFiles = dView(); out.twinQ = await qView();
+    state.files = state.files.filter(f => f.id !== 'w2');
+    await cloudFlushQueue(false);
+    out.twinFiles2 = dView(); out.twinQ2 = await qView();
+    // (라) 오래된 연결 대기(놓아줄 때가 지난 것) — 비우기가 놓아주고, 서버 목록 합치기가 예전처럼 미배정으로 들인다
+    __reset();
+    await idbSet('relay_queue', [{ id: 'q-o', action: 'link', ref: 'k:gone.jpg|5', project: 'A현장', fileId: 'DRV_OLD_LINK', mimeType: 'image/jpeg', size: 480, createdAt: 1, linkAt: 1, retryCount: 0 }]);
+    await cloudFlushQueue(false);
+    out.oldQ = await qView();
+    window.cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRV_OLD_LINK', name: 'gone.jpg', mimeType: 'image/jpeg', size: 480 }] });
+    await relayLoadDriveFiles(true);
+    out.oldFiles = dView();
+    // (마) 서버 사본이 원본보다 크면(압축본이 원본보다 클 수 없다) 이름이 하나뿐이어도 잇지 않는다
+    __reset(); await idbSet('relay_queue', []);
+    state.files = [rec('z1', 'IMG_9.jpg', 1000, 'A현장')];
+    window.cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRV_BIG', name: 'IMG_9.jpg', mimeType: 'image/jpeg', size: 90000 }] });
+    await relayLoadDriveFiles(true);
+    out.bigFiles = dView();
+    // 같은 상황에서 서버 사본이 작으면 잇는다(검사가 눈멀지 않았는지)
+    __reset(); state.files = [rec('z2', 'IMG_9.jpg', 100000, 'A현장')];
+    await relayLoadDriveFiles(true);
+    out.smallFiles = dView();
+    window.relayCall = origCall; window.relayReady = origReady; window.cloudApiListFiles = origList;
+    await idbSet('relay_queue', []);
+    return out;
+  });
+  assert(r3b.staleFiles.length === 1 && r3b.staleFiles[0].d === null, '③-2 뒤처진 탭은 기록에 Drive ID 를 쓰지 않는다: ' + JSON.stringify(r3b.staleFiles));
+  assert(r3b.staleQ.length === 1 && r3b.staleQ[0].a === 'link' && r3b.staleQ[0].f === 'DRV_STALE' && r3b.staleQ[0].ref === 'k:stale.jpg|600' && r3b.staleQ[0].p === 'A현장' && !r3b.staleQ[0].pl && r3b.staleQn === 0,
+    '③-2 성공한 업로드의 Drive ID·참조·현장을 기록 연결 대기로 남긴다(원본 바이트 없이, 전송 대기 0건): ' + JSON.stringify(r3b));
+  assert(r3b.freshFiles[0].d === 'DRV_STALE' && r3b.freshQ.length === 0, '③-2 새 탭 비우기가 그 기록에 붙이고 항목을 지운다: ' + JSON.stringify([r3b.freshFiles, r3b.freshQ]));
+  ok('③-2 뒤처진 탭 — Drive ID 를 쓰지 않고 남겨 두었다가 붙인다');
+  assert(r3b.lateQ.length === 1 && r3b.lateQ[0].a === 'link' && r3b.lateQ[0].f === 'DRV_LATE', '③-2 기록이 없을 때도 Drive ID 를 잃지 않는다: ' + JSON.stringify(r3b.lateQ));
+  assert(r3b.lateFiles.length === 1 && r3b.lateFiles[0].id === 'l1' && r3b.lateFiles[0].d === 'DRV_LATE' && r3b.lateQ2.length === 0, '③-2 기록이 돌아오면 서버 목록 합치기가 그 기록에 붙인다(미배정 사본 없음): ' + JSON.stringify([r3b.lateFiles, r3b.lateQ2]));
+  ok('③-2 기록이 아직 없던 업로드 — 나중에 그 기록에 붙는다');
+  assert(r3b.twinFiles.length === 2 && r3b.twinFiles.every(x => x.d === null) && r3b.twinQ.length === 1 && r3b.twinQ[0].a === 'link', '③-2 모호하면 고르지 않고 사본도 만들지 않는다: ' + JSON.stringify([r3b.twinFiles, r3b.twinQ]));
+  assert(r3b.twinFiles2.length === 1 && r3b.twinFiles2[0].d === 'DRV_TWIN2' && r3b.twinQ2.length === 0, '③-2 모호함이 풀리면 붙인다: ' + JSON.stringify([r3b.twinFiles2, r3b.twinQ2]));
+  ok('③-2 모호한 연결 — 풀릴 때까지 기다린다');
+  assert(r3b.oldQ.length === 0 && r3b.oldFiles.some(x => x.d === 'DRV_OLD_LINK' && x.p === null && x.v), '③-2 놓아줄 때가 지난 연결 대기는 지우고 미배정으로 들인다: ' + JSON.stringify([r3b.oldQ, r3b.oldFiles]));
+  ok('③-2 오래된 연결 대기는 놓아준다');
+  assert(r3b.bigFiles.find(x => x.id === 'z1').d === null && r3b.bigFiles.some(x => x.d === 'DRV_BIG' && x.p === null), '① 서버 사본이 원본보다 크면 잇지 않는다: ' + JSON.stringify(r3b.bigFiles));
+  assert(r3b.smallFiles.length === 1 && r3b.smallFiles[0].d === 'DRV_BIG', '① 서버 사본이 작으면 잇는다(대조): ' + JSON.stringify(r3b.smallFiles));
+  ok('① 압축본이 원본보다 크면 잇지 않는다');
 
   // ─── ④ 📷 촬영으로 찍은 동영상 ───
   await page.evaluate(() => {

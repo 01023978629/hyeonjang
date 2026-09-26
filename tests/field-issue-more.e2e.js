@@ -53,6 +53,10 @@ async function boot(browser, mobile, viewport) {
     window.open = () => null;
     __mobileMode = mobile; applyMobileMode(); render();
     window.__toasts = []; const o = window.toast; window.toast = (m) => { window.__toasts.push(String(m)); return o(m); };
+    // openModal 은 창을 연 뒤 setTimeout(0) 으로 창(.modal)에 초점을 준다. 부하가 걸리면 그 타이머가 검사의 [저장] 클릭 뒤에 떨어져
+    // hjFieldIssue 가 옮긴 초점을 창으로 빼앗았다('초점이 그 칸으로 가지 않았다' — v330 병렬 재시도, 타이머를 8ms 늦춰 재현).
+    // 창이 첫 초점을 받았다는 표식을 남겨 modalReady 가 그것을 기다리게 한다.
+    document.addEventListener('focusin', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('modal')) t.__hjFirstFocus = true; }, true);
   }, { mobile, P1, P2 });
   return { ctx, page, errs };
 }
@@ -61,7 +65,7 @@ async function boot(browser, mobile, viewport) {
   const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
   let { ctx, page, errs } = await boot(browser, true, { width: 390, height: 844 });
   const lastToast = () => page.evaluate(() => window.__toasts[window.__toasts.length - 1] || '');
-  const modalReady = () => page.waitForFunction(() => document.querySelector('#modalRoot .modal') && !window.__mobileSheetHistoryRetire);
+  const modalReady = () => page.waitForFunction(() => { const m = document.querySelector('#modalRoot .modal'); return m && m.__hjFirstFocus && !window.__mobileSheetHistoryRetire; });
   const closeAll = async () => { await page.evaluate(() => { try { closeModal(true); } catch (e) {} }); await page.waitForFunction(() => !document.querySelector('#modalRoot .modal') && !window.__mobileSheetHistoryRetire); };
 
   // 칸 검사 — ui-feedback ③ 과 같은 자: 초점·aria-invalid·describedby 로 이어진 role=alert(칸 아래)·입력하면 풀림
