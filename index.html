@@ -10262,7 +10262,7 @@ function projectHistoryData(name){
     const tops=Object.keys(pc).sort((a,b)=>pc[b]-pc[a]).slice(0,2).join('·');
     ev.push({d,o:4,ic:'📷',t:'사진 '+g.length+'장'+(tops?' ('+tops+')':'')});
   });
-  (state.asLog||[]).filter(x=>x.project===name).forEach(x=>ev.push({d:x.date||today,o:5,ic:'🔧',t:'AS '+((AS_STAT[x.status]||AS_STAT.open)[0])+': '+hjCut(x.text,22)}));
+  (state.asLog||[]).filter(x=>x.project===name).forEach(x=>ev.push({d:x.date||today,o:5,ic:'🔧',t:'AS '+((AS_STAT[x.status]||AS_STAT.open)[0])+': '+hjCut(x.text,22)+(String(x.fix||'').trim()?' → 처리: '+hjCut(String(x.fix).trim(),30):'')}));
   if(p.doneAt)ev.push({d:p.doneAt,o:5,ic:'✅',t:'공사 완료'});
   if(p.dueDate)ev.push({d:p.dueDate,o:6,ic:'💰',t:'수금 약속일'});
   ev.sort((a,b)=>String(b.d).localeCompare(String(a.d))||(a.o-b.o));
@@ -11021,39 +11021,132 @@ function hjWatchCardHTML(){
   h+='</div>';
   return h;
 }
-function asManage(){
+/* ── 🔧 AS 기록 한 건 — 1년 뒤 "그때 고친 거 아니에요?" 분쟁에서 근거가 되게 ──
+   예전 레코드는 {id,project,date,text,status} 뿐이라 상태를 '완료' 로 바꿔도 무엇을 어떻게 고쳤는지, 돈을 받았는지,
+   어느 공종 보증으로 봤는지가 남지 않았다. 레코드 안에 필드를 더한다(state.asLog 는 이미 저장 대상 — 최상위 키 그대로):
+     visitAt  방문일(YYYY-MM-DD). 넣으면 일정에도 올릴지 묻고, 올린 일정 id 를 visitSchedId 에 적는다(다시 바꾸면 그 일정을 옮긴다).
+     fix      처리 내용(무엇을 어떻게 고쳤나).
+     fee      유상 금액(원). 비우면 무상 — 0 도 무상.
+     warrantyItem  그 현장 보증 항목 이름(hjWarranty(p).items). 고르면 접수일 기준 '보증 기간 안/밖 (만료 YYYY-MM-DD)'.
+     photos   사진 참조 배열 — 파일 id 가 아니라 안정 참조(hjFileRef). id 는 부팅·복원·기기 이동 뒤 새로 붙는다.
+   옛 레코드(새 필드 없음)도 그대로 보인다 — 빈 칸일 뿐이다. */
+function hjAsFee(a){const v=a&&a.fee;if(v==null||v==='')return 0;const n=Math.round(Number(String(v).replace(/[^\d]/g,''))||0);return n>0?n:0;}
+function hjAsProject(a){return (state.projects||[]).find(p=>p&&a&&p.name===a.project)||null;}
+// 보증 판정의 기준일은 접수일(a.date) — 하자가 보증 기간 안에 드러났는지가 쟁점이다. 방문이 만료 뒤라도 접수가 안이면 안이다.
+function hjAsWarrantyVerdict(a,p){
+  const name=String(a&&a.warrantyItem||'').trim();if(!name)return null;
+  let w=null;try{w=p?hjWarranty(p):null;}catch(e){}
+  const it=w&&(w.items||[]).find(x=>x&&x.name===name);
+  if(!it||!it.expiresAt)return {name,unknown:true,text:'이 현장 보증 항목에 없음 — 현장 🛡 보증을 확인하세요'};
+  const base=String(a.date||localDate()).slice(0,10);
+  const inside=base<=it.expiresAt;
+  return {name,inside,expiresAt:it.expiresAt,text:'보증 기간 '+(inside?'안':'밖')+' (만료 '+it.expiresAt+')'};
+}
+// 한 줄 요약 — AS 관리·현장 카드가 같이 쓴다. 옛 레코드는 빈 문자열.
+function hjAsSummary(a,p){
+  const L=[];
+  if(a&&a.visitAt)L.push('방문 '+a.visitAt);
+  if(a&&String(a.fix||'').trim())L.push('처리: '+hjCut(String(a.fix).trim(),40));
+  const fee=hjAsFee(a);
+  if(fee)L.push('유상 '+won(fee));else if(a&&(String(a.fix||'').trim()||a.status==='done'))L.push('무상');
+  const v=hjAsWarrantyVerdict(a,p);if(v)L.push(v.name+' · '+v.text);
+  return L.join(' · ');
+}
+function hjAsPhotoPool(name){return (state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===name);}
+// 고객 안내 문자 — 문자 센터의 'AS 접수 답변' 문안(msgTemplate.as) 그대로. 자동 발송 없음 — 공유 창 또는 복사.
+function hjAsCustomerMsg(p){
+  const t=msgTemplate('as',p);
+  const copy=()=>hjSiteCopy(t,'📋 고객 안내 문자를 복사했습니다 — 문자·카톡에 붙여 넣으세요');
+  try{
+    if(navigator.share){navigator.share({text:t}).catch(e=>{if(e&&e.name==='AbortError')return;copy();});return t;}
+  }catch(e){}
+  copy();return t;
+}
+let __asmOpen=new Set();   // 펼쳐 둔 AS 기록 — 화면 상태(직렬화 금지)
+function asManage(focusId){
+  if(focusId&&typeof focusId==='string')__asmOpen.add(focusId);
+  const prevList=document.querySelector('#modalRoot #asmList');const prevScroll=prevList?prevList.scrollTop:0;
   const log=(state.asLog||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const open=log.filter(a=>a.status!=='done');
-  const warr=state.projects.filter(p=>!p.archived&&p.doneAt).map(p=>({name:p.name,w:hjWarranty(p)}))
+  // 보관 현장도 넣는다 — 공사가 끝나 보관한 현장이 곧 AS 가 들어오는 현장이다(siteRulesView 와 같은 교훈)
+  const warr=state.projects.filter(p=>p.doneAt).map(p=>({name:p.name,archived:!!p.archived,doneAt:p.doneAt,w:hjWarranty(p)}))
     .filter(x=>x.w).sort((a,b)=>a.w.dday-b.w.dday);
   const soon=warr.filter(x=>x.w.dday>=0&&x.w.dday<=30);
+  const arcTag='<span class="asmArc" style="font-size:10.5px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:8px;padding:1px 6px;color:var(--muted);font-weight:700">보관</span>';
   const tile=(l,v,c)=>'<div style="flex:1;min-width:88px;background:var(--paper-2);border-radius:9px;padding:8px 9px"><div style="font-size:10.5px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+c+'">'+v+'</div></div>';
   const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+tile('미처리 AS',open.length+'건',open.length?'var(--warn)':'#0a7f43')+tile('전체 이력',log.length+'건','var(--muted)')+tile('무상 만료 임박',soon.length+'곳',soon.length?'#c2410c':'#0a7f43')+'</div>';
-  const projOpts=state.projects.filter(p=>!p.archived).map(p=>'<option value="'+escapeAttr(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');
-  const addRow='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><select id="asmProj" style="flex:1;min-width:110px;padding:9px;font-size:13px">'+projOpts+'</select><input id="asmText" placeholder="증상 (예: 안방 문 처짐)" style="flex:2;min-width:150px;padding:9px;font-size:13px"><button class="clay tiny" id="asmAdd" style="padding:9px 14px">+ 접수</button></div>';
+  const live=state.projects.filter(p=>!p.archived),arch=state.projects.filter(p=>p.archived);
+  const cur=(state.projects.find(p=>p.name===state.activeProject)||live[0]||arch[0]||{}).name;
+  const projOpts=live.concat(arch).map(p=>'<option value="'+escapeAttr(p.name)+'"'+(p.name===cur?' selected':'')+'>'+escapeHtml(p.name)+(p.archived?' (보관)':'')+'</option>').join('');
+  const fld='width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box';
+  const addRow='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><select id="asmProj" aria-label="AS 접수 현장" style="flex:1;min-width:110px;padding:9px;font-size:16px;min-height:44px">'+projOpts+'</select><input id="asmText" aria-label="AS 증상" placeholder="증상 (예: 안방 문 처짐)" style="flex:2;min-width:150px;padding:9px;font-size:16px;min-height:44px"><button class="clay tiny" id="asmAdd" style="padding:9px 14px;min-height:44px">+ 접수</button></div>';
+  let healed=false;
   const rows=log.length?log.map(a=>{
     const st=AS_STAT[a.status]||AS_STAT.open;
-    return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
+    const p=hjAsProject(a);
+    // 사진 — 안정 참조로 푼다. 이름·크기 짐작은 이 현장 사진 안에서만. 옛 id 로 찾았으면 지금 형식으로 고쳐 적는다(뒤처진 탭은 안 적음).
+    const pool=hjAsPhotoPool(a.project);
+    const refs=Array.isArray(a.photos)?a.photos:[];
+    const rr=hjFilesByRefs(refs,null,pool);
+    if(rr.changed&&refs.length&&hjRefHealOk()){a.photos=rr.healed;healed=true;}
+    const linked=rr.pairs.filter(q=>q.file);
+    const chips=linked.map(q=>'<span style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line-soft);border-radius:999px;padding:0 0 0 10px;font-size:12.5px;margin:0 5px 5px 0">📷 '+escapeHtml(hjCut(q.file.name||'사진',24))+
+      '<button type="button" class="ghost asmPhDel" data-id="'+escapeAttr(a.id)+'" data-ref="'+escapeAttr(hjFileRef(q.file)||q.ref)+'" data-old="'+escapeAttr(q.ref)+'" aria-label="'+escapeAttr((q.file.name||'사진')+' 연결 빼기')+'" style="min-height:44px;min-width:44px;border:0">✕</button></span>').join('');
+    const miss=rr.missing.length?'<div class="asmMiss" style="font-size:12px;color:#a33;margin-bottom:4px">⚠ 사진을 찾을 수 없음 '+rr.missing.length+'장 — 이 기기에 그 사진이 없습니다.</div>':'';
+    const inSet=new Set(linked.map(q=>q.file));
+    const addable=pool.filter(f=>!inSet.has(f)).slice(-40).reverse();
+    let w=null;try{w=p?hjWarranty(p):null;}catch(e){}
+    const wi=(w&&w.items||[]).filter(it=>it&&it.name);
+    const curItem=String(a.warrantyItem||'');
+    const wOpts='<option value="">(고르지 않음)</option>'+wi.map(it=>'<option value="'+escapeAttr(it.name)+'"'+(it.name===curItem?' selected':'')+'>'+escapeHtml(it.name)+(it.expiresAt?' — '+escapeHtml(it.expiresAt)+'까지':'')+'</option>').join('')+
+      (curItem&&!wi.some(it=>it.name===curItem)?'<option value="'+escapeAttr(curItem)+'" selected>'+escapeHtml(curItem)+' (보증 항목에 없음)</option>':'');
+    const v=hjAsWarrantyVerdict(a,p);
+    const vHtml=v?'<b style="color:'+(v.unknown?'var(--muted)':(v.inside?'#0a7f43':'#c2410c'))+'">'+escapeHtml(v.text)+'</b>':(wi.length?'':'<span style="color:var(--muted)">보증 정보 없음 — 현장 완료일·🛡 보증을 넣으면 고를 수 있습니다</span>');
+    const sum=hjAsSummary(a,p);
+    const isOpen=__asmOpen.has(a.id);
+    return '<div class="asmRec" data-id="'+escapeAttr(a.id)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px;margin-bottom:7px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">'+
-        '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(a.project)+'</b> <span style="font-size:11px;color:var(--muted)">'+escapeHtml(a.date||'')+'</span>'+
-        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(a.text||'')+'</div></div>'+
+        '<div style="min-width:0"><b style="font-size:13.5px">'+escapeHtml(a.project)+'</b>'+(p&&p.archived?' '+arcTag:'')+' <span style="font-size:11px;color:var(--muted)">'+escapeHtml(a.date||'')+'</span>'+
+        '<div style="font-size:12.5px;margin-top:2px">'+escapeHtml(a.text||'')+'</div>'+
+        '<div class="asmSum" data-id="'+escapeAttr(a.id)+'" style="font-size:11.5px;color:var(--muted);margin-top:2px">'+escapeHtml(sum)+'</div></div>'+
         '<div style="display:flex;gap:5px;align-items:center;white-space:nowrap">'+
-          '<select class="asmStat" data-id="'+escapeAttr(a.id)+'" style="padding:6px;font-size:12px;color:'+st[1]+'">'+Object.keys(AS_STAT).map(k=>'<option value="'+k+'"'+(k===a.status?' selected':'')+'>'+AS_STAT[k][0]+'</option>').join('')+'</select>'+
-          '<button class="ghost tiny asmDel" data-id="'+escapeAttr(a.id)+'" style="padding:6px 8px">✕</button>'+
-        '</div></div></div>';
+          '<select class="asmStat" data-id="'+escapeAttr(a.id)+'" aria-label="AS 상태" style="padding:6px;font-size:16px;min-height:44px;color:'+st[1]+'">'+Object.keys(AS_STAT).map(k=>'<option value="'+k+'"'+(k===a.status?' selected':'')+'>'+AS_STAT[k][0]+'</option>').join('')+'</select>'+
+          '<button class="ghost tiny asmDel" data-id="'+escapeAttr(a.id)+'" aria-label="이 AS 기록 삭제" style="padding:6px 8px;min-height:44px;min-width:44px">✕</button>'+
+        '</div></div>'+
+      '<details class="asmMore" data-id="'+escapeAttr(a.id)+'"'+(isOpen?' open':'')+' style="margin-top:6px">'+
+        '<summary style="min-height:44px;display:flex;align-items:center;font-size:13px;cursor:pointer">✏️ 방문·처리 내용·보증·사진</summary>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">'+
+          '<label style="font-size:11.5px;color:var(--muted-2)">방문일<input type="date" class="asmF" data-k="visitAt" data-id="'+escapeAttr(a.id)+'" value="'+escapeAttr(a.visitAt||'')+'" style="'+fld+'"></label>'+
+          '<label style="font-size:11.5px;color:var(--muted-2)">유상 금액 원<input class="asmF" data-k="fee" data-id="'+escapeAttr(a.id)+'" inputmode="numeric" placeholder="비우면 무상" value="'+escapeAttr(a.fee==null?'':String(a.fee))+'" style="'+fld+'"></label></div>'+
+        '<label style="display:block;font-size:11.5px;color:var(--muted-2);margin-top:6px">처리 내용 (무엇을 어떻게 고쳤나)<textarea class="asmF" data-k="fix" data-id="'+escapeAttr(a.id)+'" rows="2" placeholder="예: 욕실 벽 타일 3장 교체, 줄눈 재시공" style="'+fld+';resize:vertical">'+escapeHtml(a.fix||'')+'</textarea></label>'+
+        '<label style="display:block;font-size:11.5px;color:var(--muted-2);margin-top:6px">공종 (이 현장 보증 항목)<select class="asmF" data-k="warrantyItem" data-id="'+escapeAttr(a.id)+'" style="'+fld+'">'+wOpts+'</select></label>'+
+        '<div class="asmVerdict" data-id="'+escapeAttr(a.id)+'" style="font-size:12.5px;margin:4px 0 6px">'+vHtml+(v&&!v.unknown?' <span style="color:var(--muted);font-size:11.5px">접수일 기준</span>':'')+'</div>'+
+        '<div style="font-size:11.5px;color:var(--muted-2);margin-bottom:4px">사진 연결</div>'+miss+
+        (chips?'<div>'+chips+'</div>':'')+
+        (addable.length?'<select class="asmPhAdd" data-id="'+escapeAttr(a.id)+'" aria-label="연결할 사진 고르기" style="'+fld+'"><option value="">+ 사진 연결…</option>'+addable.map(f=>'<option value="'+escapeAttr(f.id)+'">'+escapeHtml((f.name||'사진').slice(0,40))+'</option>').join('')+'</select>':
+          (linked.length?'':'<div style="font-size:12px;color:var(--muted)">이 현장에 사진이 없습니다.</div>'))+
+        '<button type="button" class="ghost asmMsg" data-id="'+escapeAttr(a.id)+'" style="width:100%;margin-top:8px;min-height:44px">💬 고객 안내 문자 (복사·공유)</button>'+
+      '</details></div>';
   }).join(''):'<div class="empty" style="padding:14px"><b>AS 접수 이력이 없습니다</b>시공 후 걸려오는 하자 연락을 여기 남기세요.</div>';
+  if(healed)markDirty();
   const warrRows=warr.length?warr.slice(0,12).map(x=>{
     const c=x.w.dday<0?'var(--muted)':(x.w.dday<=30?'#c2410c':'#0a7f43');
     const t=x.w.dday<0?'만료('+x.w.end+')':(x.w.dday===0?'오늘 만료!':'D-'+x.w.dday+' ('+x.w.end+'까지)');
-    return '<div style="display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span>'+escapeHtml(x.name)+' <span style="color:var(--muted);font-size:11px">완료 '+escapeHtml(x.w&&state.projects.find(p=>p.name===x.name).doneAt||'')+'</span></span><b style="color:'+c+'">'+t+'</b></div>';
+    return '<div class="asmWarr" style="display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span>'+escapeHtml(x.name)+(x.archived?' '+arcTag:'')+' <span style="color:var(--muted);font-size:11px">완료 '+escapeHtml(x.doneAt||'')+'</span></span><b style="color:'+c+'">'+t+'</b></div>';
   }).join(''):'<div style="font-size:12.5px;color:var(--muted);padding:6px 2px">완료일이 입력된 현장이 없습니다 — 현장을 완료 처리하면 공종별 무상 기간이 자동 계산됩니다.</div>';
   openModal('🔧 AS·하자보수 관리',head+addRow+
-    '<div style="max-height:34vh;overflow:auto">'+rows+'</div>'+
+    '<div id="asmList" style="max-height:34vh;overflow:auto">'+rows+'</div>'+
     '<div style="font-weight:700;font-size:13px;margin:12px 0 4px">🛡 무상 A/S 기간 (법정 기준 · 방수 3년·설비 2년·마감 1년)</div>'+
     '<div style="max-height:22vh;overflow:auto">'+warrRows+'</div>',
     [{label:'📊 AS 이력 (필터·엑셀)',cls:'blue',fn:function(){asHistoryView(true);}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
+  const lst=root.querySelector('#asmList');
+  if(lst){
+    if(focusId&&typeof focusId==='string'){const el=Array.from(lst.querySelectorAll('.asmRec')).find(x=>x.dataset.id===focusId);if(el)lst.scrollTop=Math.max(0,el.offsetTop-lst.offsetTop);}
+    else lst.scrollTop=prevScroll;
+  }
+  const rec=id=>(state.asLog||[]).find(x=>x.id===id);
   root.querySelector('#asmAdd').onclick=()=>{
     const pj=root.querySelector('#asmProj').value, txt=root.querySelector('#asmText').value.trim();
     if(!txt){toast('증상을 입력하세요.');return;}
@@ -11062,7 +11155,7 @@ function asManage(){
     markDirty();asManage();toast('AS 접수됨 — "'+pj+'"');
   };
   root.querySelectorAll('.asmStat').forEach(s=>s.onchange=()=>{
-    const a=(state.asLog||[]).find(x=>x.id===s.dataset.id);
+    const a=rec(s.dataset.id);
     if(a){a.status=s.value;markDirty();asManage();toast(s.value==='done'?'✅ AS 완료 처리':'상태 변경됨');}
   });
   root.querySelectorAll('.asmDel').forEach(b=>b.onclick=async()=>{
@@ -11070,6 +11163,44 @@ function asManage(){
     try{await hjSnapshot('AS 기록 삭제 전',true);}catch(e){}   // 강제 스냅샷 → 실수 시 안전판에서 복구
     state.asLog=(state.asLog||[]).filter(x=>x.id!==b.dataset.id);markDirty();asManage();toast('삭제됨');
   });
+  root.querySelectorAll('.asmMore').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)__asmOpen.add(d.dataset.id);else __asmOpen.delete(d.dataset.id);}));
+  // 글자 칸은 제자리에서 저장한다(다시 그리면 치던 칸의 초점이 날아간다) — 요약 줄·보증 판정만 바꾼다
+  const refreshLine=a=>{const p=hjAsProject(a);
+    const s=Array.from(root.querySelectorAll('.asmSum')).find(x=>x.dataset.id===a.id);if(s)s.textContent=hjAsSummary(a,p);};
+  root.querySelectorAll('.asmF').forEach(el=>{
+    const k=el.dataset.k;
+    if(k==='fix'||k==='fee')el.oninput=()=>{const a=rec(el.dataset.id);if(!a)return;
+      if(k==='fee'){const dg=String(el.value||'').replace(/[^\d]/g,'');a.fee=dg?Number(dg):'';}
+      else a.fix=el.value;
+      markDirty();refreshLine(a);};
+    else if(k==='warrantyItem')el.onchange=()=>{const a=rec(el.dataset.id);if(!a)return;
+      if(el.value)a.warrantyItem=el.value;else delete a.warrantyItem;
+      markDirty();asManage();};
+    else if(k==='visitAt')el.onchange=()=>{const a=rec(el.dataset.id);if(!a)return;
+      const v=String(el.value||'').slice(0,10);
+      if(v)a.visitAt=v;else delete a.visitAt;
+      markDirty();
+      const sch=a.visitSchedId?(state.schedule||[]).find(x=>x&&x.id===a.visitSchedId):null;
+      if(v&&sch){if(sch.date!==v){sch.date=v;toast('📅 일정의 AS 방문도 '+v+' 로 옮겼습니다');}}
+      else if(v){
+        if(confirm('방문일 '+v+' 을(를) 일정에도 올릴까요?\n'+a.project+' — '+hjCut(a.text||'',30))){
+          const s=Object.assign(newSchedule(),{date:v,time:'',title:'🔧 AS 방문: '+hjCut(a.text||'',30),project:a.project,hours:0,memo:'AS 접수 '+(a.date||'')+' — '+(a.text||'')});
+          state.schedule=state.schedule||[];state.schedule.push(s);a.visitSchedId=s.id;toast('📅 일정에 AS 방문을 올렸습니다');
+        }
+      }else if(sch)toast('방문일을 지웠습니다 — 일정은 그대로 두었습니다. 필요하면 일정에서 지우세요');
+      asManage();};
+  });
+  root.querySelectorAll('.asmPhAdd').forEach(el=>el.onchange=()=>{const a=rec(el.dataset.id);if(!a||!el.value)return;
+    const f=(state.files||[]).find(y=>y&&y.id===el.value);if(!f)return;
+    const r=hjFileRef(f);a.photos=(Array.isArray(a.photos)?a.photos:[]).filter(x=>x!==r).concat([r]);
+    markDirty();asManage();});
+  root.querySelectorAll('.asmPhDel').forEach(b=>b.onclick=()=>{const a=rec(b.dataset.id);if(!a)return;
+    const drop=new Set([b.dataset.ref,b.dataset.old]);
+    a.photos=(Array.isArray(a.photos)?a.photos:[]).filter(x=>!drop.has(String(x)));
+    if(!a.photos.length)delete a.photos;
+    markDirty();asManage();});
+  root.querySelectorAll('.asmMsg').forEach(b=>b.onclick=()=>{const a=rec(b.dataset.id);if(!a)return;
+    hjAsCustomerMsg(hjAsProject(a)||{name:a.project});});
   return {미처리:open.length,전체:log.length,무상임박:soon.length};
 }
 
@@ -12656,7 +12787,9 @@ function hjStoryData(name){
     const d=day(new Date(f.when).toISOString());byDate[d]=(byDate[d]||0)+1;});
   Object.keys(byDate).forEach(function(d){ev.push({d:d,ic:'📷',t:'시공 사진 '+byDate[d]+'장'});});
   (state.payLog||[]).filter(function(x){return x.project===name;}).forEach(function(x){ev.push({d:day(x.d),ic:'💰',t:'입금 '+won(x.amt||0)});});
-  (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});});
+  (state.asLog||[]).filter(function(a){return a.project===name;}).forEach(function(a){ev.push({d:day(a.date),ic:'🔧',t:'AS 접수 — '+(a.text||'').slice(0,30)});
+    // 처리 내용이 있으면 그날(방문일, 없으면 접수일) 처리 줄 — 고객에게 나가는 글이라 금액(유상)은 싣지 않는다
+    if(String(a.fix||'').trim())ev.push({d:day(a.visitAt||a.date),ic:'🛠',t:'AS 처리 — '+String(a.fix).trim().slice(0,30)});});
   // 추가공사 — 고객이 확인한 것만 적는다(이 글은 카톡으로 고객에게 나간다). 확인 전인 것은 「📋 확인 글」이 따로 묻는다.
   // 날짜는 확인받은 날(agreedAt), 옛 자료는 적은 날. 금액이 비었으면 '금액 협의' — hjExtraText 와 같은 말.
   (Array.isArray(p.extras)?p.extras:[]).forEach(function(x){
@@ -18712,11 +18845,13 @@ function hjWarrantyMonths(p){
   return num(w)||WARRANTY_DEFAULT_MONTHS;
 }
 // 완공 현장의 보증 만료일 계산
-function warrantyList(){
+// withArchived — 보증 관리 화면·점검 안내는 보관 현장도 본다(끝난 현장이 곧 보관 현장이다). 알림(warrantyDue)은 예전대로
+// 보관 현장을 빼고 센다 — 파수꾼(hjWatchScan)·apps-script Watchdog 과 같은 모집단이어야 두 화면이 같은 수를 말한다.
+function warrantyList(withArchived){
   const today=new Date();today.setHours(0,0,0,0);
   const out=[];
   (state.projects||[]).forEach(p=>{
-    if(p.archived)return;
+    if(p.archived&&!withArchived)return;
     const done=p.doneAt||((p.stage>=3)?null:null);
     // 완공일: doneAt 우선, 없으면 완료 단계면 최근 일정/오늘 근사(정확치 않으니 doneAt 있는 것만 신뢰)
     if(!p.doneAt)return;
@@ -18727,7 +18862,7 @@ function warrantyList(){
     if(isNaN(start.getTime()))return;
     const expiry=new Date(start);expiry.setMonth(expiry.getMonth()+months);
     const daysLeft=Math.round((expiry-today)/(1000*60*60*24));
-    out.push({name:p.name,customer:p.customer||{},doneAt:p.doneAt,months,expiry:expiry.getFullYear()+'-'+pad2(expiry.getMonth()+1)+'-'+pad2(expiry.getDate()),daysLeft});
+    out.push({name:p.name,archived:!!p.archived,customer:p.customer||{},doneAt:p.doneAt,months,expiry:expiry.getFullYear()+'-'+pad2(expiry.getMonth()+1)+'-'+pad2(expiry.getDate()),daysLeft});
   });
   return out.sort((a,b)=>a.daysLeft-b.daysLeft);
 }
@@ -18736,7 +18871,7 @@ function warrantyDue(){
   return warrantyList().filter(w=>w.daysLeft<=60);
 }
 function warrantyManage(){
-  const all=warrantyList();const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
+  const all=warrantyList(true);const [c1,c2]=hjBrandGrad('#0b4ea2','#1d6fd8');
   if(!all.length){
     openModal('🛡 AS 보증 관리','<div style="text-align:center;padding:30px"><div style="font-size:40px">🛡</div><div style="margin-top:10px;font-size:14px">보증 추적할 완공 현장이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px">현장을 완료 처리하면(완공일 기록) 보증 만료를 자동으로 추적합니다.</div></div>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     return {완공현장:0};
@@ -18745,7 +18880,7 @@ function warrantyManage(){
     const expired=w.daysLeft<0;const soon=w.daysLeft>=0&&w.daysLeft<=60;
     const badge=expired?'<span style="font-size:10px;background:#fee2e2;color:#c2410c;padding:2px 7px;border-radius:10px;font-weight:700">만료됨</span>':soon?'<span style="font-size:10px;background:#fef9c3;color:#b45309;padding:2px 7px;border-radius:10px;font-weight:700">D-'+w.daysLeft+'</span>':'<span style="font-size:10px;background:#dcfce7;color:#0a7f43;padding:2px 7px;border-radius:10px;font-weight:700">'+Math.round(w.daysLeft/30)+'개월 남음</span>';
     return '<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid '+(expired?'#fca5a5':soon?'#fcd34d':'var(--line-soft)')+';border-radius:11px;margin-bottom:7px;background:'+(expired?'#fff5f5':soon?'#fffbeb':'var(--paper)')+'">'+
-      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(w.name)+'</b> '+badge+'<br><span style="font-size:11px;color:var(--muted)">완공 '+w.doneAt+' · 보증 '+w.months+'개월 · 만료 '+w.expiry+'</span></span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(w.name)+'</b> '+(w.archived?'<span class="wtArc" style="font-size:10px;background:var(--paper-2);border:1px solid var(--line-soft);color:var(--muted);padding:2px 7px;border-radius:10px;font-weight:700">보관</span> ':'')+badge+'<br><span style="font-size:11px;color:var(--muted)">완공 '+w.doneAt+' · 보증 '+w.months+'개월 · 만료 '+w.expiry+'</span></span>'+
       (soon||expired?'<button class="wtSms clay tiny" data-n="'+escapeAttr(w.name)+'" style="padding:7px 10px;white-space:nowrap">📩 점검 안내</button>':'')+
     '</div>';
   }).join('');
@@ -18759,7 +18894,7 @@ function warrantyManage(){
   return {완공현장:all.length,임박:dueCount};
 }
 function warrantySms(projName){
-  const w=warrantyList().find(x=>x.name===projName);
+  const w=warrantyList(true).find(x=>x.name===projName);
   if(!w){toast('현장을 찾을 수 없습니다');return;}
   const cust=w.customer||{};
   if(!cust.phone){toast('고객 연락처가 없어요. 현장에 고객 정보를 등록하세요.');return;}
@@ -29463,7 +29598,7 @@ function viewProject(){
     const asItems=(state.asLog||[]).filter(a=>a.project===p.name).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     if((p.stage===STAGES.length-1)||asItems.length){
       const STAT={open:['접수','var(--warn)'],doing:['처리중','var(--gold)'],done:['완료','var(--ok)']};
-      const rows=asItems.map(a=>{const st=STAT[a.status]||STAT.open;return `<div style="display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:8px;padding:8px;margin:6px 0"><span style="font-size:11px;font-weight:700;color:${st[1]};white-space:nowrap;padding-top:2px">●${st[0]}</span><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--muted)">${escapeHtml(a.date||'')}</div><div style="font-size:13px;white-space:pre-wrap">${escapeHtml(a.text||'')}</div></div><select data-asstat="${a.id}" style="font-size:11px;padding:2px 4px">${Object.entries(STAT).map(([k,v])=>`<option value="${k}"${a.status===k?' selected':''}>${v[0]}</option>`).join('')}</select><button class="mini-btn" data-asdel="${a.id}" title="삭제">🗑</button></div>`;}).join('');
+      const rows=asItems.map(a=>{const st=STAT[a.status]||STAT.open;return `<div style="display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:8px;padding:8px;margin:6px 0"><span style="font-size:11px;font-weight:700;color:${st[1]};white-space:nowrap;padding-top:2px">●${st[0]}</span><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--muted)">${escapeHtml(a.date||'')}</div><div style="font-size:13px;white-space:pre-wrap">${escapeHtml(a.text||'')}</div>${(()=>{const sm=hjAsSummary(a,p);return sm?`<div class="asCardSum" style="font-size:11.5px;color:var(--muted);margin-top:2px">${escapeHtml(sm)}</div>`:'';})()}</div><button class="mini-btn" data-asedit="${escapeAttr(a.id)}" title="방문일·처리 내용·유상 금액·공종·사진" aria-label="이 AS 기록 자세히 적기">✏️</button><select data-asstat="${a.id}" style="font-size:11px;padding:2px 4px">${Object.entries(STAT).map(([k,v])=>`<option value="${k}"${a.status===k?' selected':''}>${v[0]}</option>`).join('')}</select><button class="mini-btn" data-asdel="${a.id}" title="삭제">🗑</button></div>`;}).join('');
       html+=`<div class="cust-card" style="margin-top:10px"><div class="cust-h">🔧 AS·하자보수 기록 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">시공 후 접수된 건을 남겨두세요</span></div><div style="display:flex;gap:6px;margin-top:6px"><input type="text" id="asNew" placeholder="예: 안방 문틀 실리콘 재시공 요청" style="flex:1"><button class="clay tiny" id="asAdd" data-proj="${escapeAttr(p.name)}">+ 접수</button></div>${rows||'<div style="font-size:12px;color:var(--muted);margin-top:8px">아직 AS 접수 내역이 없습니다.</div>'}</div>`;
     }
   }
@@ -29646,7 +29781,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -29783,11 +29918,12 @@ function setupDelegation(){
       const inp=$('#asNew');const txt=(inp&&inp.value||'').trim();
       if(!txt){toast('AS 내용을 입력하세요.');return;}
       state.asLog=state.asLog||[];
-      state.asLog.push({id:uid(),project:t.dataset.proj,date:new Date().toISOString().slice(0,10),text:txt,status:'open'});
+      state.asLog.push({id:uid(),project:t.dataset.proj,date:localDate(),text:txt,status:'open'});   // 접수일은 이 기기 날짜 — UTC(toISOString)면 아침 9시 전 접수가 전날로 적혀 보증 판정 기준일이 어긋난다
       // 보증기간 내/외 힌트(과설계 금지 — 토스트로만)
       const __asp=state.projects.find(x=>x.name===t.dataset.proj);const __w=__asp?hjWarranty(__asp):null;
       markDirty();render();toast(__w?('🔧 AS 접수됨 · 보증 '+(__w.dday>=0?'기간 내 (D-'+__w.dday+')':'만료됨')):'🔧 AS 접수됨');return;
     }
+    if(d.asedit!==undefined)return asManage(d.asedit);   // 방문일·처리 내용·유상 금액·공종·사진은 AS 관리 화면 한 곳에서 적는다
     if(d.asdel!==undefined){state.asLog=(state.asLog||[]).filter(a=>a.id!==d.asdel);markDirty();render();toast('삭제됨');return;}
     if(d.reviewreqp!==undefined){return hjReviewSms(d.reviewreqp);}
     if(d.warrantystart!==undefined){return hjWarrantyStart(d.warrantystart);}
@@ -32003,7 +32139,7 @@ function asHistoryView(reset){
         '<div style="color:var(--muted)">'+String(x.date||'').slice(5)+'</div>'+
         '<div>'+asStBadge(x.status)+'</div>'+
         '<div style="min-width:0"><b>'+escapeHtml(x.project||'')+'</b><div style="color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(x.text||'')+'</div></div>'+
-        '<button class="ghost tiny ashMg" style="padding:6px 7px">⋯</button>'+
+        '<button class="ghost tiny ashMg" data-id="'+escapeAttr(x.id||'')+'" aria-label="이 AS 기록 열기" style="padding:6px 7px">⋯</button>'+
       '</div>').join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 AS가 없어요</div>')+
     '</div>'+
     '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
@@ -32020,15 +32156,19 @@ function asHistoryView(reset){
   document.getElementById('ashGo').onclick=function(){rd();F.page=1;asHistoryView();};
   document.getElementById('ashQ').onkeydown=function(e){if(e.key==='Enter'){rd();F.page=1;asHistoryView();}};
   document.querySelectorAll('#modalRoot .ashPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;asHistoryView();};});
-  document.querySelectorAll('#modalRoot .ashMg').forEach(b=>{b.onclick=function(){asManage();};});
+  document.querySelectorAll('#modalRoot .ashMg').forEach(b=>{b.onclick=function(){asManage(b.dataset.id||undefined);};});   // 그 기록을 펼쳐 연다
   return {건수:list.length,진행:openN};
 }
 async function asHistExcel(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
   const list=asHistFilter();
   if(!list.length){toast('내보낼 AS가 없어요');return;}
-  const aoa=[['일자','상태','현장','증상/내용']];
-  list.forEach(x=>aoa.push([x.date||'',(AS_STL[x.status]||AS_STL.open)[0],x.project||'',x.text||'']));
+  // 방문일·처리내용·유상금액·공종·보증 판정까지 — 1년 뒤 분쟁에서 "그때 무엇을 어떻게, 무상/유상으로" 가 이 표에 남아야 한다.
+  // 유상금액: 금액이 있으면 숫자, 비었으면 처리 내용이 있거나 완료된 건만 '무상'(아직 처리 전인 건은 빈칸 — 정해진 게 없다).
+  const aoa=[['일자','상태','현장','증상/내용','방문일','처리내용','유상금액','공종','보증 판정']];
+  list.forEach(x=>{const p=hjAsProject(x),fee=hjAsFee(x),v=hjAsWarrantyVerdict(x,p);
+    aoa.push([x.date||'',(AS_STL[x.status]||AS_STL.open)[0],x.project||'',x.text||'',x.visitAt||'',x.fix||'',
+      fee?fee:((String(x.fix||'').trim()||x.status==='done')?'무상':''),x.warrantyItem||'',v?v.text:'']);});
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'AS이력');
   XLSX.writeFile(wb,COMPANY.name+'_AS이력_'+localDate()+'.xlsx');
