@@ -1,4 +1,4 @@
-/* v269: fake local state only. Every menu endpoint is stubbed before the 118-action dispatch sweep.
+/* v269: fake local state only. Every menu endpoint is stubbed before the 119-action dispatch sweep.
    HJ_MOBILE_MORE_MUTATION=dispatch|favorite intentionally breaks one tested guarantee in-page. */
 'use strict';
 const assert=require('node:assert/strict');
@@ -11,7 +11,7 @@ const MUTATION=process.env.HJ_MOBILE_MORE_MUTATION||'';
 assert(['','dispatch','favorite'].includes(MUTATION));
 // Independent expected contract, not parsed from moreActionHandler or generated from MORE_CATS.
 const TARGETS={
-  webbridge:['webWorkCenterOpen'],officeops:['officeOpsView'],biz:['shareBizCard'],gdrive:['openGdriveSetup'],opendrive:['openDrive'],
+  webbridge:['webWorkCenterOpen'],officeops:['officeOpsView'],officework:['officeWorkListView'],biz:['shareBizCard'],gdrive:['openGdriveSetup'],opendrive:['openDrive'],
   photobundle:['sendPhotoBundles'],sheet:['exportToSheet'],voice:['voiceMemo'],ai:['aiHelper'],addproject:['addProject'],restore:['openRestore'],
   backups:['backupHistory'],asmanage:['asManage'],aptorders:['aptOrderManage'],pjmap:['allProjectsMap'],fullxlsx:['exportFullXlsx'],activebrief:['aiActiveBrief'],
   opsreport:['opsReport','week'],aiprovider:['aiProviderManage'],llama:['llamaSetup'],autopilot:['aiAutoOperateView'],cowork:['coworkTasksManage'],
@@ -32,7 +32,7 @@ const TARGETS={
   goal:['goalManage'],schedbrief:['scheduleBrief'],aiquote:['aiQuoteDialog'],photodefect:['photoDefectDialog'],worklog:['voiceWorkLog'],analysis:['bizAnalysis'],
   budget:['budgetManage'],weekbrief:['weekBrief'],undo:['fakeUndo'],diag:['runDiagnostics']
 };
-assert.equal(Object.keys(TARGETS).length,118,'expected action contract contains all 118 registered actions');
+assert.equal(Object.keys(TARGETS).length,119,'expected action contract contains all 119 registered actions');
 let browser,passed=0;
 async function boot(width=390,forced=false){
   const context=await browser.newContext({viewport:{width,height:844},isMobile:width<600,hasTouch:width<600,serviceWorkers:'block',timezoneId:'Asia/Seoul'});
@@ -90,11 +90,11 @@ async function search(t,text,expected){await t.page.locator('#moreSearch').fill(
 async function targets44(t){const bad=await t.page.locator('#moreSheet button:visible,#moreSheet input:visible,#moreSheet summary:visible').evaluateAll(els=>els.map(e=>({tag:e.tagName,id:e.id||e.dataset.moreaction||e.dataset.more||e.textContent.trim().slice(0,30),w:e.getBoundingClientRect().width,h:e.getBoundingClientRect().height,name:!!(e.getAttribute('aria-label')||e.labels?.length||e.textContent.trim())})).filter(e=>e.w<43.5||e.h<43.5||!e.name));assert.deepEqual(bad,[],'visible menu controls have names and 44px targets');}
 async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)return;await t.page.waitForFunction(()=>{const el=document.getElementById('toast');return !el||!el.classList.contains('show')&&Number(getComputedStyle(el).opacity)<0.01;});await t.page.screenshot({path:path.join(process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR,name+'-'+t.width+(t.forced?'-forced':'')+'.png')});}
 (async()=>{browser=await chromium.launch({headless:true});
-  await run('118개 메뉴의 실제 클릭→dispatch→함수·인자 일치',async t=>{
+  await run('119개 메뉴의 실제 클릭→dispatch→함수·인자 일치',async t=>{
     const before=await snap(t.page);
     const records=await t.page.evaluate(async targets=>{
       const actions=MORE_CATS.flatMap(c=>c.items.map(i=>i[0]));
-      if(new Set(actions).size!==118||JSON.stringify([...actions].sort())!==JSON.stringify(Object.keys(targets).sort()))throw new Error('catalog differs from independent 118-action contract');
+      if(new Set(actions).size!==119||JSON.stringify([...actions].sort())!==JSON.stringify(Object.keys(targets).sort()))throw new Error('catalog differs from independent 119-action contract');
       const saved={},calls=[];for(const fn of new Set(Object.values(targets).map(t=>t[0]))){if(fn==='fakeUndo')continue;if(typeof window[fn]!=='function')throw new Error('missing target '+fn);saved[fn]=window[fn];window[fn]=(...args)=>{calls.push({fn,args});};}
       const nativePrompt=window.prompt;window.prompt=()=>'가상 신규 현장';state.lastMove={fake:true};
       const undo=document.createElement('button');undo.id='btnUndo';undo.onclick=()=>calls.push({fn:'fakeUndo',args:[]});document.getElementById('btnUndo').replaceWith(undo);
@@ -111,7 +111,7 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)ret
       }}finally{moreDispatch=nativeDispatch;window.prompt=nativePrompt;for(const fn of Object.keys(saved))window[fn]=saved[fn];state.lastMove=null;}
       await wait(()=>!window.__mobileSheetHistoryRetire);return out;
     },TARGETS);
-    assert.equal(records.length,118);for(const r of records){const [fn,...args]=TARGETS[r.action];assert.deepEqual(r.hits,[{fn,args}],'exact endpoint for '+r.action);assert.equal(r.result,true,'registered successful dispatch '+r.action);assert(r.enabled&&r.width>=43.5&&r.height>=43.5,'enabled 44px menu chip '+r.action);if(r.action==='ledgertab')assert.equal(r.tab,'ledger');if(r.action==='adstab')assert.equal(r.tab,'ads');if(['ledgertab','adstab'].includes(r.action))assert.equal(r.project,null);if(r.action==='addproject')assert.equal(r.newProject,'가상 신규 현장');}
+    assert.equal(records.length,119);for(const r of records){const [fn,...args]=TARGETS[r.action];assert.deepEqual(r.hits,[{fn,args}],'exact endpoint for '+r.action);assert.equal(r.result,true,'registered successful dispatch '+r.action);assert(r.enabled&&r.width>=43.5&&r.height>=43.5,'enabled 44px menu chip '+r.action);if(r.action==='ledgertab')assert.equal(r.tab,'ledger');if(r.action==='adstab')assert.equal(r.tab,'ads');if(['ledgertab','adstab'].includes(r.action))assert.equal(r.project,null);if(r.action==='addproject')assert.equal(r.newProject,'가상 신규 현장');}
     await readonly(t,before);
   });
   await run('잘못된 최근사용·즐겨찾기 저장값을 안전하게 읽고 제한',async t=>{
@@ -235,5 +235,5 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)ret
     await openMore(t);await t.page.evaluate(()=>history.back());await t.page.waitForFunction(()=>!document.getElementById('moreSheet')&&!window.__mobileSheetHistoryRetire);
     assert.equal(await t.page.evaluate(()=>history.state.fakeMenu),'top');assert(Math.abs(await t.page.evaluate(()=>window.scrollY)-scroll)<6);await readonly(t,before);
   },width,forced);
-  console.log('== mobile-more-tools: '+passed+' passed; 118 action clicks checked; pageerrors=0 ==');await browser.close();
+  console.log('== mobile-more-tools: '+passed+' passed; 119 action clicks checked; pageerrors=0 ==');await browser.close();
 })().catch(async e=>{console.error('FAIL mobile-more-tools',e);if(browser)await browser.close();process.exitCode=1;});
