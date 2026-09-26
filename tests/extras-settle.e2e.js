@@ -218,7 +218,9 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   const plain = await page.evaluate(() => { const p = state.projects.find(x => x.name === '옛담기현장'); const o = p.extras; p.extras = [];
     p.received = 1000000; const s = projStats(p.name);
     const t = receiptText(p, { d: '2026-08-06', amt: 1000000 }); p.received = 0; p.extras = o;
-    return { t, want: '· 누계 수금: ' + won(1000000) + ' / 계약 ' + won(s.est) + '\n· 잔액: ' + won(s.est - 1000000) }; });
+    // v330 새 계약: 계약 금액은 잔금과 같은 청구 기준(projStats.bill) — 이 현장 견적은 '부가세 별도'라 부가세를 더하고 '(부가세 포함)' 을 밝힌다.
+    //   예전 기대('계약 ' + est)는 청구서(부가세 포함)와 문자(공급가)가 부가세만큼 다른 잔액을 말하던 결함 그대로였다.
+    return { t, want: '· 누계 수금: ' + won(1000000) + ' / 계약 ' + won(s.bill) + (s.billVat > 0 ? '(부가세 포함)' : '') + '\n· 잔액: ' + won(s.bill - 1000000) }; });
   assert(plain.t.indexOf(plain.want) >= 0, '⑫ 추가공사 없으면 옛 문구 그대로: ' + plain.t + ' / 기대 ' + plain.want);
 
   // ⑨ 견적에 담기
@@ -382,7 +384,9 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(grab(vb.inv, '청구 금액') === 3800000 && grab(va.inv, '청구 금액') === 3800000,
     '⑨b 별도 견적 — 담기 전후 청구 금액이 같다(3,000,000×1.1 + 500,000): ' + grab(vb.inv, '청구 금액') + ' → ' + grab(va.inv, '청구 금액'));
   assert(grab(vb.stTail, '합계') === 3800000 && grab(va.stTail, '합계') === 3800000, '⑨b 거래명세서 합계도 같다: ' + grab(vb.stTail, '합계') + ' → ' + grab(va.stTail, '합계'));
-  assert(vb.due === va.due && va.due === 3500000, '⑨b 잔금(due)도 담기 전후 같다: ' + vb.due + ' → ' + va.due);
+  // v330 새 계약: 잔금(due)은 청구서와 같은 청구 기준 — 별도 견적은 부가세를 더한 3,300,000 + 추가 500,000 = 청구 금액 3,800,000.
+  //   예전 기대 3,500,000(공급가 기준)은 청구서 3,800,000 과 입금 확인 문자·고객 페이지 잔액이 30만 다르던 결함 그대로였다.
+  assert(vb.due === va.due && va.due === 3800000 && va.due === grab(va.inv, '청구 금액'), '⑨b 잔금(due)도 담기 전후 같고 청구 금액과 같다: ' + vb.due + ' → ' + va.due);
   assert(va.inv.indexOf('부가가치세 (10%, 추가공사 500,000원 제외)') >= 0, '⑨b 부가세에서 뺀 것을 밝힌다');
   await page.evaluate(({ NMV }) => { state.projects = state.projects.filter(p => p.name !== NMV); state.quotes = state.quotes.filter(q => q.project !== NMV);
     state.files = state.files.filter(f => f.project !== NMV); }, { NMV });
