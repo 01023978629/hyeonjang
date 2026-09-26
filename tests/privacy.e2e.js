@@ -115,6 +115,97 @@ const RAW_DIGITS = '01012345678';
     assert(summary.indexOf('010/1234/5678') < 0, 'slash-separated mobile number leaked from the public completion summary: ' + summary);
   });
 
+  // 7) 외부 AI 출구 — 채팅(aiAgentSend)이 도구 결과를 모델로 돌려보내는 functionResponse 에 전화 원문이 없어야 한다.
+  //    list_notes(통화메모 원문)·search_all(연락처 c.phone 원문)·list_schedule(메모)은 도구 자체가 가리지 않는다 —
+  //    그래서 도구 반환값에는 원문이 있고(시드가 실제로 새는 조건을 만든다는 증명) 출구에서만 가려져야 한다.
+  const LEAK = '010-0000-1234';
+  const leakForms = ['0000-1234', '00001234', '0000 1234', '0000.1234', '010-0000-1'];   // 마지막은 cut(60) 으로 끝이 잘린 번호
+  await test('AI 출구 — list_notes·search_all·list_schedule 결과의 전화 가림(뒷4자리 유지, 날짜·금액 보존)', async () => {
+    const r = await page.evaluate(async (leak) => {
+      state.notes = [{ id: 'n_ai1', date: '2026-09-26', day: '2026-09-26', text: '📞 통화메모 · 홍길동 ' + leak + ' · 2026-09-26 견적 12,000,000원 · 150000000원', project: '' }];
+      state.contacts = [{ name: '홍길동', phone: leak, company: '자재상', memo: '' }];
+      state.schedule = [{ id: 's_ai1', date: '2026-09-26', time: '09:30', title: '홍길동 실측', project: '', memo: '도착 전 010 0000 1234 연락 · 둘째 01000001234 · 셋째 010.0000.1234' },
+        { id: 's_ai2', date: '2026-09-27', time: '', title: '홍길동 잘림', project: '', memo: 'x'.repeat(49) + ' ' + leak }];
+      // 도구 반환값 자체는 원문 — 출구가 가리지 않으면 그대로 나간다
+      const rawNotes = JSON.stringify(await aiToolRun('list_notes', {}));
+      const rawSearch = JSON.stringify(await aiToolRun('search_all', { query: '홍길동' }));
+      const rawSched = JSON.stringify(await aiToolRun('list_schedule', {}));
+      const keep = { aiKeyReady: window.aiKeyReady, aiFC: window.aiFC };
+      let round = 0;
+      window.aiKeyReady = () => true;
+      window.aiFC = async () => (round++ === 0 ? [
+        { functionCall: { name: 'list_notes', args: {} } },
+        { functionCall: { name: 'search_all', args: { query: '홍길동' } } },
+        { functionCall: { name: 'list_schedule', args: {} } }] : [{ text: '확인했습니다' }]);
+      window.__aiHist = [];
+      try { await aiAgentSend('홍길동 연락처 정리해줘'); }
+      finally { window.aiKeyReady = keep.aiKeyReady; window.aiFC = keep.aiFC; }
+      const resp = (window.__aiHist || []).filter(h => h.role === 'user' && (h.parts || []).some(p => p.functionResponse));
+      return { rawNotes, rawSearch, rawSched, resp: JSON.stringify(resp), n: resp.length ? resp[0].parts.length : 0,
+        openai: JSON.stringify(aiHistToOpenAI(window.__aiHist)) };
+    }, LEAK);
+    assert(r.rawNotes.indexOf(LEAK) >= 0 && r.rawSearch.indexOf(LEAK) >= 0 && r.rawSched.indexOf('010 0000 1234') >= 0, '시드가 새는 조건을 만들지 못함(검사 무효): ' + r.rawSearch.slice(0, 200));
+    assert(r.n === 3, '도구 결과 3건이 모델로 돌아가야: ' + r.n);
+    for (const [label, out] of [['Gemini functionResponse', r.resp], ['OpenAI tool 메시지', r.openai]]) {
+      for (const f of leakForms) assert(out.indexOf(f) < 0, label + ' 에 전화 가운데 자리(' + f + ') 노출: ' + out.slice(0, 600));
+      assert(out.indexOf('01000001234') < 0, label + ' 숫자형 원문 노출');
+      assert(out.indexOf('···1234') >= 0, label + ' 뒷4자리 식별자는 남아야');
+      assert(out.indexOf('2026-09-26') >= 0 && out.indexOf('12,000,000원') >= 0 && out.indexOf('150000000원') >= 0, label + ' 날짜·금액이 망가짐: ' + out.slice(0, 600));
+      // 시간은 일정(list_schedule) 결과에만 있다 — aiHistToOpenAI 는 한 턴의 첫 functionResponse 만 옮기므로(별개 결함) Gemini 쪽에서만 본다
+      if (label.startsWith('Gemini')) assert(out.indexOf('09:30') >= 0, label + ' 시간이 망가짐');
+      assert(out.indexOf('홍길동') >= 0, label + ' 이름은 가리는 대상이 아님(과잉 가림)');
+    }
+  });
+
+  // 8) 가림 규칙 단위 — 날짜·금액·회사 공개번호는 그대로, 변형 번호는 가림
+  await test('hjAiMaskText — 좁은 규칙(날짜·금액·회사번호 보존, 변형 번호 가림)', async () => {
+    const r = await page.evaluate(() => ({
+      keep: ['2026-09-26', '12,000,000', '150000000원', '1588-1234', '제20260926', '2026-09-26T09:30:00', 'COMPANY:' + COMPANY.tel].map(t => [t, hjAiMaskText(t)]),
+      mask: ['01000001234', '010 0000 1234', '010.0000.1234', '010/0000/1234', '+82 10-0000-1234', '042-000-1234', '02-000-1234', '0420001234', '1000001234', '끝 010-0000-12'].map(t => [t, hjAiMaskText(t)]),
+      deep: hjAiMaskOut({ a: [{ b: '010-0000-1234', n: 12000000, d: null }], when: new Date('2026-09-26T00:00:00Z') })
+    }));
+    for (const [a, b] of r.keep) assert(a === b, '보존해야 할 값이 바뀜: ' + a + ' → ' + b);
+    for (const [a, b] of r.mask) assert(!/0000/.test(b) && !/000-/.test(b), '가려야 할 값이 남음: ' + a + ' → ' + b);
+    assert(r.deep.a[0].b === '···1234' && r.deep.a[0].n === 12000000 && r.deep.a[0].d === null, '깊이 순회 가림/숫자 보존 실패: ' + JSON.stringify(r.deep));
+    assert(r.deep.when === '2026-09-26T00:00:00.000Z', 'Date 는 JSON 모양 그대로 나가야: ' + JSON.stringify(r.deep));
+  });
+
+  // 9) 동선 조언 — 외부 AI 프롬프트에 도로명·번지·동호수·전화가 없고 시·구·동만 있다
+  await test('일정 브리핑 AI 동선 조언 — 주소는 시·구·동까지만', async () => {
+    const prompt = await page.evaluate(async (leak) => {
+      const today = localDate();
+      state.projects = [{ name: '둔산 테스트현장', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, archived: false,
+        customer: { name: '김고객', phone: leak, addr: '대전 서구 둔산동 테스트로 123 101동 1502호' } }];
+      state.schedule = [{ id: 's_rt1', date: today, time: '10:00', title: '철거 ' + leak, project: '둔산 테스트현장', memo: '' }];
+      const keep = { k: window.__geminiKey, ask: window.geminiAsk };
+      window.__geminiKey = 'AIzaTEST-FAKE-KEY';
+      window.__capPrompt = null;
+      window.geminiAsk = async (p) => { window.__capPrompt = p; return '조언'; };
+      try {
+        scheduleBrief();
+        const b = document.getElementById('sbAI');
+        if (!b) throw new Error('AI 동선 조언 버튼 없음');
+        b.click();
+        for (let i = 0; i < 100 && window.__capPrompt == null; i++) await new Promise(r => setTimeout(r, 20));
+      } finally { window.__geminiKey = keep.k; window.geminiAsk = keep.ask; try { closeModal(); } catch (e) {} }
+      return window.__capPrompt;
+    }, LEAK);
+    assert(typeof prompt === 'string', '프롬프트를 잡지 못함');
+    assert(prompt.indexOf('대전 서구 둔산동') >= 0, '시·구·동은 남아야(동선 판단용): ' + prompt);
+    for (const f of ['테스트로', '로 123', '101동', '1502호', '0000-1234']) assert(prompt.indexOf(f) < 0, '프롬프트에 ' + f + ' 노출: ' + prompt);
+  });
+
+  // 10) 주소 줄임 단위 — 도로명에서 멈추고, 동 단위까지만
+  await test('hjAddrArea — 시·구·동까지만', async () => {
+    const r = await page.evaluate(() => [
+      ['대전 중구 돌다리로 19번길 9 1층', hjAddrArea('대전 중구 돌다리로 19번길 9 1층')],
+      ['서울 마포구 망원동 123-4', hjAddrArea('서울 마포구 망원동 123-4')],
+      ['대전광역시 유성구 봉명동 테스트아파트 101동 1502호', hjAddrArea('대전광역시 유성구 봉명동 테스트아파트 101동 1502호')],
+      ['', hjAddrArea('')]]);
+    const want = ['대전 중구', '서울 마포구 망원동', '대전광역시 유성구 봉명동', ''];
+    r.forEach(([a, b], i) => assert(b === want[i], a + ' → ' + b + ' (기대 ' + want[i] + ')'));
+  });
+
   const pe = errs.length;
   console.log('\npageerrors:', pe, pe ? errs.slice(0, 4) : '');
   const passed = results.filter(r => r.ok).length;
