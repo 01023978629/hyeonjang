@@ -1736,14 +1736,20 @@ function portalKeyTake(cfg){
    이 기기에 키가 없을 때만 — 새 폰에서 옛 백업을 불러오면 서버 연결이 끊기지 않게 하는 것이고,
    키는 이미 그 파일 안에 있으므로 옮겨 담아도 새로 새는 곳은 없다(다음 백업부터는 빠진다).
    이 기기에 키가 있으면 옛 백업의 키로 덮지 않는다(방금 바꾼 키가 옛 키로 되돌아가면 안 된다).
-   부팅 IDB 읽기가 끝난 뒤에 판단한다 — 먼저 판단하면 있는 키를 '없다'로 보고 덮는다. */
+   부팅 IDB 읽기가 끝난 뒤에 판단한다 — 먼저 판단하면 있는 키를 '없다'로 보고 덮는다.
+   IDB 쓰기가 실패하면 거절(reject)한다 — 성공으로 치면 부팅 이전이 키를 뺀 저장본을 다시 써서
+   다음 새로고침 뒤 키가 어디에도 없게 된다(조용히 서버 연결이 끊긴다). 이 세션 동안은 메모리 키로 쓰고,
+   다시 넣어 달라고 알린다(portalKeyAdoptFailed). */
 function portalKeyAdopt(k){
   if(!k)return Promise.resolve(false);
   return portalKeyReady().then(function(){
     if(portalKeyGet())return false;
     __portalKey=k;
-    return idbSet('portal_key',k).then(function(){return true;},function(){return true;});
+    return idbSet('portal_key',k).then(function(){return true;});
   });
+}
+function portalKeyAdoptFailed(){
+  try{toast('⚠ 고객 페이지 비밀키를 이 기기에 저장하지 못했어요 — 고객 페이지 설정에서 비밀키를 다시 넣어 주세요');}catch(e){}
 }
 /* 직렬화용 — key 를 뺀 사본. 최상위 키 portalCfg 자체는 그대로 둔다(키 목록 41개 불변). */
 function portalCfgSafe(cfg){
@@ -1859,7 +1865,7 @@ function applyData(data,opts){
   state.adPosts=Array.isArray(data.adPosts)?data.adPosts:(state.adPosts||[]);
   state.portalCfg=(data.portalCfg&&typeof data.portalCfg==='object')?data.portalCfg:(state.portalCfg||{});
   // 들어온 자료(옛 백업)에 비밀키가 있으면 상태에 두지 않고 떼어 낸다 — 이 기기에 키가 없을 때만 IDB 로 옮긴다(portalKeyAdopt).
-  try{portalKeyAdopt(portalKeyTake(state.portalCfg)).catch(function(){});}catch(e){}
+  try{portalKeyAdopt(portalKeyTake(state.portalCfg)).catch(portalKeyAdoptFailed);}catch(e){}
   state._savedFileCount=+data._savedFileCount||(Array.isArray(data.files)?data.files.length:0)||state._savedFileCount||0;
   state.kakaoLastAt=data.kakaoLastAt||state.kakaoLastAt||'';
   state._cwSchedInit=data._cwSchedInit||state._cwSchedInit||false;
@@ -31971,7 +31977,7 @@ window.__hjRestoreDone = (async () => {
        유상 generation 은 재직렬화와 바이트 단위로 대조하므로(paidExactHydrationPlan), serializeData 가 key 를
        빼는 지금 그대로 두면 'paid exact round-trip conflict' 로 복원이 멈춘다. 떼어 낸 키는 IDB 로 옮기고,
        저장본은 복원 뒤 한 번 다시 써서 키를 지운다(아래 persistLocal). */
-    try{const oldKey=resolved&&resolved.data&&typeof resolved.data==='object'?portalKeyTake(resolved.data.portalCfg):'';if(oldKey){portalKeyMoved=true;await portalKeyAdopt(oldKey);}}catch(_){}
+    try{const oldKey=resolved&&resolved.data&&typeof resolved.data==='object'?portalKeyTake(resolved.data.portalCfg):'';if(oldKey){try{await portalKeyAdopt(oldKey);portalKeyMoved=true;}catch(_){portalKeyAdoptFailed();}}}catch(_){}
     __paidCommitPointerKey = resolved.pointer || null;
     __paidCommitRecoveryMalformedPointer = resolved.recoveryMalformedPointer === true;
     __paidCommitRecoverySnapshot = resolved.recoverySnapshot || null;
@@ -31999,6 +32005,7 @@ window.__hjRestoreDone = (async () => {
     if(restoredPaidState){try{applyPaidCommittedState(restoredPaidState);}catch(error){try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}return {ok:false,restoredAt:new Date().toISOString(),errorCode:'paid-restore-exact-failed'};}}
     try { hydrateThumbs(); } catch (_) {}
     // 키를 떼어 낸 저장본을 이 기기에 다시 쓴다 — 안 쓰면 IDB appState 에 옛 키가 계속 남는다.
+    // 키가 IDB 에 들어갔을 때만(또는 이 기기에 이미 키가 있을 때만) — 옮겨 담기가 실패했으면 여기서 지우지 않는다.
     if (portalKeyMoved) { try { persistLocal(); } catch (_) {} }
   }
   try {

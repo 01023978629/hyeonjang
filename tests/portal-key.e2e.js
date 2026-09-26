@@ -18,6 +18,9 @@
      ⑧ 부팅 이전(보통 저장본): 이 기기 appState 에 key 가 남아 있으면 IDB 로 옮기고 상태에서 지우고 저장본을 다시 쓴다.
      ⑨ 부팅 이전(유상 generation): key 가 든 generation 도 복원이 멈추지 않는다(바이트 대조 round-trip) —
         키는 IDB 로, generation 은 key 없이 다시 쓰인다.
+     ⑩ 부팅 경합: portal_key IDB 읽기가 늦게 끝나도 복원의 옛 키 이전과 kakaoFetch2 가 그 읽기를 기다린다
+        (이 기기 키를 저장본의 옛 키로 덮지 않고, 빈 키로 판단하지 않는다).
+     ⑪ 옮겨 담기 IDB 쓰기 실패: 성공으로 치지 않고 다시 넣으라고 알린다(부팅·가져오기 두 경로).
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
@@ -280,7 +283,109 @@ const pollIdb = (page, key, pred, label) => page.evaluate(async ({ key, pred, la
     await ctx.close();
   });
 
+  /* ── D. 부팅 경합 — IDB 키 읽기가 늦게 끝나는 기기 ─────────────────────
+     이 기기 IDB 에는 KEY6(지금 키), 저장본(appState)에는 옛 버전이 남긴 KEY7 이 있다.
+     portal_key 읽기를 붙잡아 두면(아래 initScript) 복원의 옛 키 이전 판단과 kakaoFetch2 가
+     그 읽기가 끝나기를 기다려야 한다 — 안 기다리면 '이 기기엔 키가 없다'로 보고 KEY7 로 덮고,
+     접수 가져오기는 빈 키로 판단한다. portalKeyReady() 를 no-op 으로 바꾸면 여기서 떨어진다. */
+  const HOLD_PORTAL_KEY = () => {
+    let armed = false;
+    try { armed = sessionStorage.getItem('hj_test_hold_portal_key') === '1'; } catch (e) {}
+    if (!armed) return;
+    try { sessionStorage.removeItem('hj_test_hold_portal_key'); } catch (e) {}
+    const orig = IDBObjectStore.prototype.get;
+    let held = false;
+    IDBObjectStore.prototype.get = function (key) {
+      const req = orig.apply(this, arguments);
+      if (key !== 'portal_key' || held) return req;
+      held = true;
+      let h = null;   // 앱이 거는 onsuccess 를 가로채 두었다가 풀어 줄 때 부른다
+      Object.defineProperty(req, 'onsuccess', { configurable: true, get() { return h; }, set(v) { h = v; } });
+      const gate = new Promise(r => { window.__hjTestReleasePortalKey = r; });
+      req.addEventListener('success', ev => { gate.then(() => { if (h) h.call(req, ev); }); });
+      return req;
+    };
+  };
+  const seedLegacyAppState = (pg, cfg, idbKey) => pg.evaluate(async ({ cfg, idbKey }) => {
+    state.projects.push({ name: '경합현장', stage: 1 });
+    clearTimeout(__idbSaveTimer);
+    if (!(await guardedPersistCurrentState())) throw new Error('fixture persist failed');
+    await __appStateWriteQueue;
+    __tabStale = true;
+    const data = await idbGet('appState');
+    data.portalCfg = cfg;
+    await new Promise((res, rej) => { const o = indexedDB.open('hyeonjang-db', 1); o.onsuccess = () => { const tx = o.result.transaction('kv', 'readwrite'); const kv = tx.objectStore('kv'); kv.put(data, 'appState'); if (idbKey) kv.put(idbKey, 'portal_key'); else kv.delete('portal_key'); tx.oncomplete = () => { o.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; o.onerror = () => rej(o.error); });
+  }, { cfg, idbKey });
+  const KEY6 = 'PORTAL-KEY-DEVICE-NOW-0006';
+  const KEY7 = 'PORTAL-KEY-LEGACY-STALE-0007';
+  await step('⑩ 부팅 경합: IDB 읽기 전엔 옛 키로 덮지 않고, 접수 가져오기도 읽기를 기다려 이 기기 키로 보낸다', async () => {
+    const reqD = [];
+    const { page: pd, ctx } = await newPage(reqD);
+    await pd.addInitScript(HOLD_PORTAL_KEY);
+    await boot(pd);
+    await seedLegacyAppState(pd, { base: BASE, key: KEY7 }, KEY6);
+    await pd.evaluate(() => sessionStorage.setItem('hj_test_hold_portal_key', '1'));
+    reqD.length = 0;
+    await pd.reload({ waitUntil: 'domcontentloaded' });
+    await pd.waitForFunction(() => typeof window.__hjTestReleasePortalKey === 'function' && typeof window.kakaoFetch2 === 'function' && !!window.__hjRestoreDone);
+    // 읽기가 붙잡힌 동안 접수 가져오기를 시작한다(주소는 이미 있다고 두고 — 키만 본다)
+    await pd.evaluate((BASE) => { if (!state.portalCfg || !state.portalCfg.base) state.portalCfg = { base: BASE }; window.__hjTestEarly = kakaoFetch2(); }, BASE);
+    await pd.waitForTimeout(400);   // 부정 증명 — 읽기가 끝나기 전에는 서버로 가지도, IDB 를 덮지도 않아야 한다
+    const before = await pd.evaluate(() => new Promise(res => { const o = indexedDB.open('hyeonjang-db', 1); o.onsuccess = () => { const g = o.result.transaction('kv', 'readonly').objectStore('kv').get('portal_key'); g.onsuccess = () => { o.result.close(); res(g.result); }; }; }));
+    assert(!reqD.some(x => x.url.includes('/leads')), 'IDB 키 읽기가 끝나기 전에 /leads 로 보냈다: ' + reqD.map(x => x.url).join(' | '));
+    assert(before === KEY6, 'IDB 키 읽기가 끝나기 전에 이 기기 키를 덮었다: ' + before);
+    await pd.evaluate(() => window.__hjTestReleasePortalKey());
+    const r = await pd.evaluate(async () => { const res = await window.__hjRestoreDone; await window.__hjTestEarly; return res; });
+    assert(r && r.ok === true, '복원 실패: ' + JSON.stringify(r));
+    const leads = reqD.filter(x => x.url.includes('/leads'));
+    assert(leads.length >= 1 && leads.every(x => x.url.includes('key=' + encodeURIComponent(KEY6))), '읽기를 기다린 /leads 요청 키: ' + leads.map(x => x.url).join(' | '));
+    const st = await pd.evaluate(async () => ({ idb: await idbGet('portal_key'), mem: portalKeyGet(), cfg: state.portalCfg }));
+    assert(st.idb === KEY6 && st.mem === KEY6 && !('key' in (st.cfg || {})), '부팅 경합 뒤 키: ' + JSON.stringify(st));
+    await pollIdb(pd, 'appState', `v=>!!v&&!JSON.stringify(v).includes(${JSON.stringify(KEY7)})`, '이 기기에 키가 있어도 저장본의 옛 키는 지워야 한다');
+    assert(!pd.__errors.length, 'pageerror: ' + pd.__errors.join(' | '));
+    await ctx.close();
+  });
+
+  /* ── E. 옮겨 담기 실패 — IDB 쓰기가 실패하면 성공으로 치지 않고 알린다 ────────── */
+  const FAIL_PORTAL_KEY_PUT = () => {
+    let armed = false;
+    try { armed = sessionStorage.getItem('hj_test_fail_portal_key') === '1'; } catch (e) {}
+    window.__hjTestToasts = [];
+    const watch = new MutationObserver(ms => ms.forEach(m => {
+      const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (el && el.id === 'toast' && el.textContent) window.__hjTestToasts.push(el.textContent);
+    }));
+    watch.observe(document, { subtree: true, childList: true, characterData: true });
+    if (!armed) return;
+    try { sessionStorage.removeItem('hj_test_fail_portal_key'); } catch (e) {}
+    const orig = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (val, key) {
+      if (key === 'portal_key') throw new DOMException('시험: 저장공간 가득', 'QuotaExceededError');
+      return orig.apply(this, arguments);
+    };
+  };
+  const KEY8 = 'PORTAL-KEY-LEGACY-NOSPACE-0008';
+  await step('⑪ 옮겨 담기 IDB 쓰기 실패 — 성공으로 치지 않고 다시 넣으라고 알린다(이 세션은 메모리 키로)', async () => {
+    const reqE = [];
+    const { page: pe, ctx } = await newPage(reqE);
+    await pe.addInitScript(FAIL_PORTAL_KEY_PUT);
+    await boot(pe);
+    await seedLegacyAppState(pe, { base: BASE, key: KEY8 }, null);
+    await pe.evaluate(() => sessionStorage.setItem('hj_test_fail_portal_key', '1'));
+    const r = await boot(pe, true);
+    assert(r && r.ok === true, '복원 실패: ' + JSON.stringify(r));
+    await pe.waitForFunction(() => (window.__hjTestToasts || []).some(t => t.includes('비밀키') && t.includes('다시 넣어')));
+    const st = await pe.evaluate(async () => ({ idb: await idbGet('portal_key'), mem: portalKeyGet(), cfg: state.portalCfg }));
+    assert(!st.idb && st.mem === KEY8 && !('key' in (st.cfg || {})), '쓰기 실패 뒤 상태: ' + JSON.stringify(st));
+    // applyData(옛 백업 가져오기) 경로도 같다
+    await pe.evaluate(() => { __portalKey = null; window.__hjTestToasts.length = 0; IDBObjectStore.prototype.put = (function (orig) { return function (val, key) { if (key === 'portal_key') throw new DOMException('시험', 'QuotaExceededError'); return orig.apply(this, arguments); }; })(IDBObjectStore.prototype.put); });
+    await pe.evaluate(({ BASE, KEY8 }) => { const d = serializeData(); d.portalCfg = { base: BASE, key: KEY8 }; applyData(d); }, { BASE, KEY8 });
+    await pe.waitForFunction(() => (window.__hjTestToasts || []).some(t => t.includes('비밀키') && t.includes('다시 넣어')));
+    assert(!pe.__errors.length, 'pageerror: ' + pe.__errors.join(' | '));
+    await ctx.close();
+  });
+
   await browser.close();
   if (failed) { console.log('\n' + failed + '건 실패'); process.exit(1); }
-  console.log('\n전부 통과 (9건)');
+  console.log('\n전부 통과 (11건)');
 })().catch(async e => { console.log('FAIL  ' + String((e && e.stack) || e)); try { if (browser) await browser.close(); } catch (_) {} process.exit(1); });
