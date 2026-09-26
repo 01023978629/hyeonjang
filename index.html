@@ -13613,6 +13613,17 @@ function laborLedgerData(ym){
   });
   return {ym,rows,total,byPj,byWk,months:laborMonths()};
 }
+/* 한 현장의 일당 기록 전체(달 구분 없이) — [지출 반영]은 현장 인건비 한 칸(p.cost.labor)을 덮어쓰므로 그 달 합계를 넣으면
+   8/25~9/5 처럼 두 달에 걸친 현장은 마지막에 누른 달 치만 남았다(마진이 부풀었다). 반영은 늘 이 합계로 한다(v330). */
+function laborProjectTotal(name){
+  const byMonth={};let total=0;
+  (state.schedule||[]).forEach(s=>{
+    if(!s||s.project!==name||/^💰/.test(s.title||''))return;
+    const amt=num(s.labor&&s.labor.amount);if(amt<=0)return;
+    total+=amt;const ym=String(s.date||'').slice(0,7)||'날짜 없음';byMonth[ym]=(byMonth[ym]||0)+amt;
+  });
+  return {total,byMonth};
+}
 function applyLaborToProject(name,sum){
   const p=state.projects.find(x=>x.name===name);if(!p)return false;
   p.cost=p.cost||{material:0,labor:0,outsource:0};
@@ -13631,7 +13642,7 @@ function laborLedger(ym){
       '</div></div>';
   }).join(''):'<div class="empty" style="padding:14px"><b>이 달 일정이 없습니다</b>일정표에 작업을 등록하면 여기서 일당을 기록합니다.</div>';
   const pjRows=Object.keys(d.byPj).map(k=>
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 0;font-size:12.5px"><span>'+escapeHtml(k)+'</span><span><b>'+won(d.byPj[k])+'</b> <button class="blue tiny llApply" data-pj="'+escapeAttr(k)+'" data-sum="'+d.byPj[k]+'" style="padding:5px 9px;margin-left:4px">지출 반영</button></span></div>').join('')||'<div style="font-size:12px;color:var(--muted)">기록된 일당이 없습니다.</div>';
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 0;font-size:12.5px"><span>'+escapeHtml(k)+(function(){const t=laborProjectTotal(k).total;return t!==d.byPj[k]?'<br><span class="llAll" style="font-size:11px;color:var(--muted)">전체 기간 '+won(t)+' 로 반영</span>':'';})()+'</span><span><b>'+won(d.byPj[k])+'</b> <button class="blue tiny llApply" data-pj="'+escapeAttr(k)+'" style="padding:5px 9px;margin-left:4px">지출 반영</button></span></div>').join('')||'<div style="font-size:12px;color:var(--muted)">기록된 일당이 없습니다.</div>';
   const wkKeys=Object.keys(d.byWk).sort((a,b)=>d.byWk[b]-d.byWk[a]);
   const wkRows=wkKeys.length?wkKeys.map(k=>'<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>👷 '+escapeHtml(k)+'</span><b>≈ '+won(Math.round(d.byWk[k]))+'</b></div>').join('')+'<div style="font-size:10.5px;color:var(--muted)">≈ 여러 명이 함께한 날은 균등 분할 추정</div>':'';
   openModal('👷 인건비 장부',
@@ -13645,9 +13656,12 @@ function laborLedger(ym){
   root.querySelectorAll('.llNames').forEach(i=>i.onchange=()=>save(i.dataset.id,'names',i.value.trim()));
   root.querySelectorAll('.llAmt').forEach(i=>i.onchange=()=>{save(i.dataset.id,'amount',i.value);laborLedger(d.ym);});
   root.querySelectorAll('.llApply').forEach(b=>b.onclick=()=>{
-    const pj=b.dataset.pj,sum=+b.dataset.sum;
+    const pj=b.dataset.pj;
+    const lt=laborProjectTotal(pj),sum=lt.total;
     const p=state.projects.find(x=>x.name===pj);const cur=p?num((p.cost||{}).labor):0;
-    openModal('지출 반영','<div style="font-size:13.5px;line-height:1.7">「'+escapeHtml(pj)+'」 인건비 지출을 <b>'+won(sum)+'</b>('+d.ym+' 장부 합계)으로 설정할까요?<br><span style="color:var(--muted);font-size:12px">현재 입력값 '+won(cur)+'을 덮어씁니다. 마진 계산에 바로 반영돼요.</span></div>',
+    const mons=Object.keys(lt.byMonth).sort();
+    const monLine=mons.map(m=>escapeHtml(m)+' '+won(lt.byMonth[m])).join(' + ');
+    openModal('지출 반영','<div style="font-size:13.5px;line-height:1.7">「'+escapeHtml(pj)+'」 인건비 지출을 <b>'+won(sum)+'</b>(이 현장 전체 기간 일당 합계)으로 설정할까요?<br><span id="llMonths" style="font-size:12.5px">'+monLine+'</span><br><span style="color:var(--muted);font-size:12px">현재 입력값 '+won(cur)+'을 덮어씁니다. 마진 계산에 바로 반영돼요.</span></div>',
       [{label:'✅ 반영',cls:'clay',fn:()=>{applyLaborToProject(pj,sum);render();toast('"'+pj+'" 인건비 '+won(sum)+' 반영됨');laborLedger(d.ym);}},
        {label:'취소',cls:'ghost',fn:()=>laborLedger(d.ym)}]);
   });
@@ -17189,14 +17203,20 @@ const HJ_PREP_SETS=[
 function hjPrepSets(){let mine=null;try{mine=JSON.parse(localStorage.getItem('hj_prep_sets')||'null');}catch(_){mine=null;}
   return (mine&&typeof mine==='object')?mine:{};}
 function hjPrepSetsSave(o){try{localStorage.setItem('hj_prep_sets',JSON.stringify(o));return true;}catch(_){return false;}}
-/* 이 일정에 맞는 준비물 — 내 목록이 있으면 그것, 없으면 작업 종류 기본값. 겹치면 한 번만. */
+/* 이 일정에 맞는 준비물 — 내 목록이 있으면 그것, 없으면 작업 종류 기본값. 겹치면 한 번만.
+   어느 종류에도 안 걸리는 일정은 내가 넣어 둔 '기타' 목록을 쓴다(v330) — 예전에는 [➕] 가 '기타 목록에 넣었습니다' 라고
+   해 놓고 아무 데서도 읽지 않아 넣은 것이 다시 나오지 않았다. 세금·입금(💰) 일정은 준비물이 없는 일이라 기타도 붙이지 않는다. */
+function hjPrepOtherOk(sch){return !(sch&&(sch._taxAuto||/^💰/.test(String(sch.title||''))));}
 function hjPrepFor(sch,project){
   const t=String((sch&&sch.title)||'')+' '+String((sch&&sch.memo)||'')+' '+String((project&&typeof STAGES!=='undefined'&&STAGES[project.stage||0])||'');
   const mine=hjPrepSets();const out=[];const seen=new Set();const kinds=[];
-  HJ_PREP_SETS.forEach(g=>{if(!g.re.test(t))return;kinds.push(g.k);
-    (mine[g.k]||g.items).forEach(x=>{const v=String(x||'').trim();if(v&&!seen.has(v)){seen.add(v);out.push(v);}});});
+  const put=list=>(list||[]).forEach(x=>{const v=String(x||'').trim();if(v&&!seen.has(v)){seen.add(v);out.push(v);}});
+  HJ_PREP_SETS.forEach(g=>{if(!g.re.test(t))return;kinds.push(g.k);put(mine[g.k]||g.items);});
+  if(!kinds.length&&hjPrepOtherOk(sch)&&Array.isArray(mine['기타'])&&mine['기타'].length){kinds.push('기타');put(mine['기타']);}
   return {kinds,items:out};
 }
+/* 이 종류의 지금 목록(내 목록 또는 기본값). '기타' 는 기본값이 없다. */
+function hjPrepKindList(mine,k){return mine[k]||(HJ_PREP_SETS.find(g=>g.k===k)||{items:[]}).items;}
 function hjPrepState(sch){return (sch&&sch.prep&&typeof sch.prep==='object')?sch.prep:{};}
 function prepCheck(schId){
   dashboardOperationsRefresh();
@@ -17226,7 +17246,7 @@ function prepCheck(schId){
       '<div style="padding:10px 12px;border:1px solid '+(left?'var(--clay)':'var(--moss)')+';border-radius:11px;font-size:13.5px">'+
         '<b style="font-size:15px">'+(items.length?(left?'아직 '+left+'개 안 실었습니다':'다 실었습니다 ✅'):'준비물 목록이 비었습니다')+'</b>'+
         '<br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml((sch.time?sch.time+' ':'')+(sch.title||'일정'))+(sch.project?' · '+escapeHtml(sch.project):'')+(kinds.length?' · '+escapeHtml(kinds.join('·'))+' 기준':'')+'</span></div></div>'+
-    (rows||'<div class="empty" style="padding:14px"><b>이 일정에 맞는 준비물이 없습니다</b>아래에서 직접 넣으면 다음부터 같은 작업에 그대로 나옵니다.</div>')+
+    (rows||'<div class="empty" style="padding:14px"><b>이 일정에 맞는 준비물이 없습니다</b>'+(kinds.length?'아래에서 직접 넣으면 다음부터 같은 작업에 그대로 나옵니다.':(hjPrepOtherOk(sch)?'작업 종류가 안 잡히는 일정입니다. 아래에서 넣으면 \'기타\' 목록에 저장돼, 종류가 안 잡히는 다른 일정에도 같이 나옵니다.':'세금·입금 일정에는 준비물 목록을 두지 않습니다.'))+'</div>')+
     '<div style="display:flex;gap:6px;margin-top:8px"><input id="prepNew" placeholder="빠진 것 추가 (예: 실리콘 건)" aria-label="준비물 추가" enterkeyhint="done" style="flex:1;min-width:0;padding:10px;font-size:16px;min-height:46px"><button type="button" class="clay" id="prepAdd" style="min-height:46px;padding:0 16px">➕</button></div>'+
     '<div style="font-size:12px;color:var(--muted-2);margin-top:8px;line-height:1.55">체크는 이 일정에 남고, 목록을 고치면 이 폰에 저장돼 다음 같은 작업에도 그대로 나옵니다. 재고는 건드리지 않습니다(싣는 때와 쓰는 때가 다릅니다).</div>';
   openModal('🧰 출발 전 챙김',body,
@@ -17241,17 +17261,22 @@ function prepCheck(schId){
   root.querySelectorAll('.prepChk').forEach(c=>c.onchange=()=>{if(!stillCurrent())return;const st=Object.assign({},hjPrepState(sch));
     if(c.checked)st[c.dataset.x]=true;else delete st[c.dataset.x];
     sch.prep=st;markDirty();prepCheck(schId);});
+  // ✕ 는 그 항목이 들어 있는 모든 종류에서 뺀다 — 예전에는 첫 종류(kinds[0])만 고쳐 '욕실 타일 방수'(타일+누수)에서
+  // 방수제를 빼도 누수 목록에서 그대로 나왔고, 건드리지도 않은 타일 기본 목록의 사본이 이 폰에 굳었다. 바뀐 종류만 저장한다.
   root.querySelectorAll('.prepDel').forEach(b=>b.onclick=()=>{const x=b.dataset.x;
-    const mine=hjPrepSets();const key=kinds[0];
-    if(!key){toast('이 일정에는 작업 종류가 없어 목록을 고칠 수 없습니다');return;}
-    mine[key]=(mine[key]||(HJ_PREP_SETS.find(g=>g.k===key)||{items:[]}).items).filter(v=>v!==x);
+    if(!kinds.length){toast('이 일정에는 작업 종류가 없어 목록을 고칠 수 없습니다');return;}
+    const mine=hjPrepSets();const hit=[];
+    kinds.forEach(k=>{const cur=hjPrepKindList(mine,k);if(!cur.includes(x))return;mine[k]=cur.filter(v=>v!==x);hit.push(k);});
+    if(!hit.length){toast('목록에서 찾지 못했습니다 — 다시 열어 주세요');prepCheck(schId);return;}
     if(!hjPrepSetsSave(mine)){toast('이 폰 저장소에 쓸 수 없어 고치지 못했습니다');return;}
-    toast(x+' 을(를) '+key+' 목록에서 뺐습니다');prepCheck(schId);});
+    toast(x+' 을(를) '+hit.join('·')+' 목록에서 뺐습니다');prepCheck(schId);});
   const add=()=>{const el=root.querySelector('#prepNew');const v=el.value.trim();if(!v){toast('추가할 준비물을 적어 주세요');return;}
+    if(!kinds.length&&!hjPrepOtherOk(sch)){toast('세금·입금 일정에는 준비물 목록을 두지 않습니다');return;}
+    if(items.includes(v)){toast('이미 목록에 있습니다');return;}
+    // 종류가 안 잡힌 일정은 '기타' 목록 — hjPrepFor 가 종류 없는 일정에서 이 목록을 읽는다(넣은 것이 바로 다시 보인다).
     const key=kinds[0]||'기타';const mine=hjPrepSets();
-    const base=mine[key]||(HJ_PREP_SETS.find(g=>g.k===key)||{items:[]}).items;
-    if(base.includes(v)){toast('이미 목록에 있습니다');return;}
-    mine[key]=base.concat([v]);
+    const base=hjPrepKindList(mine,key);
+    mine[key]=base.includes(v)?base:base.concat([v]);
     if(!hjPrepSetsSave(mine)){toast('이 폰 저장소에 쓸 수 없어 저장하지 못했습니다');return;}
     toast(key+' 목록에 넣었습니다');prepCheck(schId);};
   root.querySelector('#prepAdd').onclick=add;
@@ -24182,6 +24207,18 @@ function funnelView(){
 
 /* ═══════════ 📅 정기 입금·분할납 알림 ═══════════
    계약금·중도금·잔금을 나눠 예약 → 💰 일정으로 등록 */
+const HJ_PAY_PLAN_KEYS=['down','mid','bal'],HJ_PAY_PLAN_LABELS=['계약금','중도금','잔금'];
+/* 이 일정이 그 현장의 분할납 i 회차 예약인가 — 새 예약은 payPlan 표식, v329 까지의 예약은 제목·메모 모양으로 알아본다. */
+function hjPayPlanIs(x,projName,i){
+  if(!x||x.project!==projName)return false;
+  if(x.payPlan)return x.payPlan===HJ_PAY_PLAN_KEYS[i];
+  const lb=HJ_PAY_PLAN_LABELS[i];
+  return String(x.title||'').startsWith('💰 '+lb+' ')&&String(x.memo||'').startsWith(projName+' '+lb+'(')&&/입금 예정$/.test(String(x.memo||''));
+}
+function hjPayPlanPctOf(x){
+  if(x&&Number.isFinite(+x.payPct)&&x.payPct!=='')return +x.payPct;
+  const m=String((x&&x.memo)||'').match(/(?:계약금|중도금|잔금)\((\d{1,3})%/);return m?+m[1]:null;
+}
 function payPlanDialog(projName){
   const projs=(state.projects||[]).filter(p=>!p.archived);
   if(!projName){
@@ -24210,33 +24247,53 @@ function payPlanDialog(projName){
   const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
   // 기본 3분할은 계약서·전자계약과 같은 정본 비율(HJ_PAY_RATIO). 슬라이더로 현장마다 바꿀 수 있다.
   const r0=[hjPayPct('down'),hjPayPct('mid'),hjPayPct('bal')];
+  // 이미 예약한 회차(v330) — 다시 저장하면 옛 💰 일정을 걷지 않고 push 만 해서 금액이 다른 계약금·잔금 알림이 두 벌 남았다.
+  // 앞으로 올 회차는 갈아 끼우고(날짜·비율을 미리 채운다), 날짜가 지난 회차는 받았든 밀렸든 기록이라 건드리지 않는다.
+  const today=localDate();
+  const old=[0,1,2].map(i=>(state.schedule||[]).filter(x=>hjPayPlanIs(x,projName,i)));
+  const oldLive=old.map(l=>l.filter(x=>String(x.date||'')>=today)),oldPast=old.map(l=>l.filter(x=>String(x.date||'')<today));
+  { const pc=old.map(l=>{const x=l[l.length-1];return x?hjPayPlanPctOf(x):null;});
+    if(pc.some(v=>v!=null)){const f=pc.map(v=>v==null?0:v);if(f[0]+f[1]+f[2]===100)f.forEach((v,i)=>{r0[i]=v;});} }
+  const ppDate=i=>{const l=oldLive[i];return l.length?escapeAttr(l[l.length-1].date):'';};
+  const ppOldLine=(()=>{const rows=[];['계약금','중도금','잔금'].forEach((lb,i)=>{
+      oldLive[i].forEach(x=>rows.push(escapeHtml(x.date+' '+x.title)+' <span style="color:var(--muted)">— 저장하면 새 값으로 바뀜</span>'));
+      oldPast[i].forEach(x=>rows.push(escapeHtml(x.date+' '+x.title)+' <span style="color:var(--muted)">— 지난 회차, 그대로 둠</span>'));});
+    return rows.length?'<div id="ppOld" style="font-size:12px;background:var(--paper-2);border-radius:9px;padding:9px;margin-bottom:10px;line-height:1.6"><b>이미 예약한 회차</b><br>'+rows.join('<br>')+'</div>':'';})();
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">'+escapeHtml(projName)+'</div><div style="font-size:17px;font-weight:800">📅 분할납 계획</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 견적 '+hjMan(total)+(extra?' · 확인받은 추가공사 '+hjMan(extra)+'(잔금에 더함 — 잔금 0%면 마지막 회차에)':'')+'</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">비율을 정하면 각 대금의 예상 금액과 예약 알림을 만들어요.</div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">'+r0[0]+'%</span></div><input type="range" id="ppR1" min="0" max="100" value="'+r0[0]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">'+r0[1]+'%</span></div><input type="range" id="ppR2" min="0" max="100" value="'+r0[1]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
-    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">'+r0[2]+'%</span></div><input type="range" id="ppR3" min="0" max="100" value="'+r0[2]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    ppOldLine+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">'+r0[0]+'%</span></div><input type="range" id="ppR1" min="0" max="100" value="'+r0[0]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" value="'+ppDate(0)+'" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">'+r0[1]+'%</span></div><input type="range" id="ppR2" min="0" max="100" value="'+r0[1]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" value="'+ppDate(1)+'" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
+    '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 잔금</span><span id="ppP3">'+r0[2]+'%</span></div><input type="range" id="ppR3" min="0" max="100" value="'+r0[2]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA3"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD3" value="'+ppDate(2)+'" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
     '<div id="ppSum" style="font-size:12px;text-align:center;padding:8px;background:var(--paper-2);border-radius:9px;margin-bottom:6px"></div>'+
     '<div style="font-size:11px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 예약일을 정하면 그날 일정표에 뜹니다. 입금 안내 문자도 만들 수 있어요.</div>';
+  const ppSumOk=()=>{
+    const r=['ppR1','ppR2','ppR3'].map(id=>+document.getElementById(id).value||0),sum=r[0]+r[1]+r[2];
+    if(sum===100)return true;
+    const msg='비율 합계가 '+sum+'% 입니다 — 100%가 되도록 맞춰 주세요.';
+    toast(msg);hjFieldIssue(document.getElementById('ppR1'),msg);return false;
+  };
   openModal('📅 '+projName+' 분할납',body,[
     {label:'💾 예약 저장',cls:'clay',fn:()=>{
       const parts=[['계약금','ppR1','ppD1'],['중도금','ppR2','ppD2'],['잔금','ppR3','ppD3']];
       const rs=parts.map(([,rid])=>+document.getElementById(rid).value||0),amts=ppAmts(rs[0],rs[1],rs[2]),xk=ppExtraAt(rs[0],rs[1],rs[2]);
-      let saved=0;
-      parts.forEach(([label,rid,did],i)=>{
-        const pct=rs[i];
-        const date=document.getElementById(did).value;
-        if(pct>0&&date){
-          const amt=amts[i];
-          state.schedule=state.schedule||[];
-          state.schedule.push({id:uid(),date,time:'',title:'💰 '+label+' '+hjMan(amt),project:projName,workers:'',hours:0,memo:projName+' '+label+'('+pct+'%'+(i===xk&&extra?' + 추가공사 '+hjMan(extra):'')+') 입금 예정',report:null});
-          saved++;
-        }
+      // 비율 합이 100% 가 아니면 알림 합이 견적과 달라진다(60/40/10 이면 110%) — 저장하지 않는다.
+      if(!ppSumOk())return;
+      const todo=parts.map(([label,rid,did],i)=>({label,i,pct:rs[i],date:document.getElementById(did).value})).filter(x=>x.pct>0&&x.date);
+      if(!todo.length){toast('비율과 예약일을 입력하세요');return;}
+      state.schedule=state.schedule||[];
+      // 같은 회차의 앞으로 올 예약만 걷는다 — 지난 회차(받았거나 밀린 기록)는 그대로 둔다.
+      const drop=new Set();todo.forEach(x=>oldLive[x.i].forEach(o=>drop.add(o)));
+      if(drop.size)state.schedule=state.schedule.filter(o=>!drop.has(o));
+      todo.forEach(({label,i,pct,date})=>{
+        const amt=amts[i];
+        state.schedule.push({id:uid(),date,time:'',title:'💰 '+label+' '+hjMan(amt),project:projName,workers:'',hours:0,memo:projName+' '+label+'('+pct+'%'+(i===xk&&extra?' + 추가공사 '+hjMan(extra):'')+') 입금 예정',report:null,payPlan:HJ_PAY_PLAN_KEYS[i],payPct:pct});
       });
-      if(saved){markDirty();toast('📅 분할납 '+saved+'건 예약 완료 — 일정·알림에 표시됩니다');closeModal();}
-      else toast('비율과 예약일을 입력하세요');
+      markDirty();toast('📅 분할납 '+todo.length+'건 예약 '+(drop.size?'(기존 '+drop.size+'건 바꿈) ':'')+'완료 — 일정·알림에 표시됩니다');closeModal();
     }},
     {label:'입금안내 문자',cls:'moss',fn:()=>{
+      if(!ppSumOk())return;   // 합이 100% 가 아닌 계획의 계약금을 고객에게 안내하지 않는다
       const cust=p.customer||{};
       const p1=+document.getElementById('ppR1').value||0;
       // 계약금만 남은 계획이면 추가공사도 계약금에 붙는다 — 예약 알림과 같은 금액을 쓴다(ppAmts)
@@ -25573,29 +25630,42 @@ function quoteAutoAssignOffer(){
    📅 세금 캘린더 자동 등록 · 📝 견적→계약서 초안
 ═══════════════════════════════════════════════════════════════ */
 
+/* 세금 일정은 한 번만 넣는다(v330) — 예전에는 '_taxAuto·같은 날짜·같은 제목' 이 없으면 부팅마다 다시 넣어,
+   대표가 지운 일정이 되살아나고 메모를 고친 일정(수정 때 _taxAuto 가 떨어졌다) 옆에 같은 일정이 하나 더 생겼다.
+   식별은 제목이 아니라 안정 id('tax_'+날짜+'_'+종류). 넣은 적이 있다는 기록은 calendarImports 에 'tax:'+id 로 남긴다 —
+   기본 달력 묶음(ensureBuiltInCalendarImports)과 같은 '한 번 넣은 것' 목록이라 최상위 저장 키가 늘지 않는다.
+   이 기록이 있으면 지웠든 고쳤든 다시 넣지 않는다. */
 function taxCalendarItems(){
   const items=[];const now=new Date();const thisY=now.getFullYear();
   [thisY,thisY+1].forEach(function(y){
-    items.push({date:y+'-01-25',title:'부가세 확정신고·납부(2기)',ic:'🧾'});
-    items.push({date:y+'-04-25',title:'부가세 예정고지 납부',ic:'🧾'});
-    items.push({date:y+'-05-31',title:'종합소득세 신고·납부',ic:'📮'});
-    items.push({date:y+'-07-25',title:'부가세 확정신고·납부(1기)',ic:'🧾'});
-    items.push({date:y+'-10-25',title:'부가세 예정고지 납부',ic:'🧾'});
+    items.push({date:y+'-01-25',k:'vat2',title:'부가세 확정신고·납부(2기)',ic:'🧾'});
+    items.push({date:y+'-04-25',k:'vatpre',title:'부가세 예정고지 납부',ic:'🧾'});
+    items.push({date:y+'-05-31',k:'income',title:'종합소득세 신고·납부',ic:'📮'});
+    items.push({date:y+'-07-25',k:'vat1',title:'부가세 확정신고·납부(1기)',ic:'🧾'});
+    items.push({date:y+'-10-25',k:'vatpre',title:'부가세 예정고지 납부',ic:'🧾'});
   });
   const today=localDate(new Date());
   return items.filter(function(it){return it.date>=today;}).sort(function(a,b){return a.date<b.date?-1:1;});
 }
+function taxCalendarId(it){return 'tax_'+it.date+'_'+it.k;}
 function taxCalendarEnsure(){
-  let added=0;
+  let added=0,marked=false;
   try{
     state.schedule=state.schedule||[];
+    state.calendarImports=Array.isArray(state.calendarImports)?state.calendarImports:[];
     taxCalendarItems().forEach(function(it){
-      if(state.schedule.some(function(s){return s._taxAuto&&s.date===it.date&&s.title===it.title;}))return;
-      const s=Object.assign(newSchedule(),{title:it.title,date:it.date,time:'09:00',project:'',workers:'',memo:'세금 캘린더 자동 등록 — 홈택스에서 신고·납부하세요'});
-      s._taxAuto=true;
-      state.schedule.push(s);added++;
+      const id=taxCalendarId(it),mark='tax:'+id;
+      if(state.calendarImports.includes(mark))return;   // 한 번 넣은 적 있다 — 지웠으면 지운 대로 둔다
+      // 이 기록이 생기기 전(v329 까지)에 넣은 일정·수정으로 표식이 떨어진 일정도 같은 일정으로 본다(날짜+제목).
+      const exists=state.schedule.some(function(s){return s&&(s.id===id||(s.date===it.date&&s.title===it.title));});
+      if(!exists){
+        const s=Object.assign(newSchedule(),{id:id,title:it.title,date:it.date,time:'09:00',project:'',workers:'',memo:'세금 캘린더 자동 등록 — 홈택스에서 신고·납부하세요'});
+        s._taxAuto=true;
+        state.schedule.push(s);added++;
+      }
+      state.calendarImports.push(mark);marked=true;
     });
-    if(added)markDirty();
+    if(added||marked)markDirty();
   }catch(e){}
   return added;
 }
@@ -29548,7 +29618,7 @@ function openScheduleEdit(id){
       <label>시작 시간<input type="time" id="schTime" value="${escapeAttr(s.time)}"></label>
     </div>
     <div class="sch-row2">
-      <label>작업 시간(시간)<input type="number" id="schHours" value="${s.hours||8}" min="1" max="24"></label>
+      <label>작업 시간(시간)<input type="number" id="schHours" value="${escapeAttr(String(s.hours??8))}" min="0" max="24" step="0.5"></label>
       <label>인부 수(명)<input type="number" id="schWorkers" value="${escapeAttr(String(s.workers||''))}" min="0" placeholder="예: 3"></label>
     </div>
     <label>현장<select id="schProj">${projOpts}</select></label>
@@ -29559,17 +29629,29 @@ function openScheduleEdit(id){
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
 }
+/* 일정 수정은 기존 레코드에 폼 칸만 덮는다 — 새 객체로 갈아 끼우면 같은 레코드에 붙은 작업 보고(report)·일당(labor)·
+   준비물 체크(prep)·.ics 식별자(icsUid)·세금 자동 표식(_taxAuto)·분할납 표식(payPlan) 이 지워졌다(인건비 장부 합계가 0 이 됐다).
+   시간은 0 도 값이다(AS 방문·분할납·종일 .ics 일정) — 빈 칸일 때만 기존 값(새 일정은 8)을 쓴다.
+   날짜가 비면 일정표 머리가 'NaN.NaN.NaN' 이 되고 달력에서 사라져 막는다. */
 function saveScheduleEdit(id,isNew){
   const g=i=>document.getElementById(i);
-  const s={
-    id, date:g('schDate').value, time:g('schTime').value,
+  const old=isNew?null:(state.schedule||[]).find(x=>x&&x.id===id);
+  if(!isNew&&!old){toast('일정을 찾을 수 없습니다 — 다른 곳에서 지워졌을 수 있어요.');closeModal();render();return;}
+  const date=String(g('schDate').value||'').trim();
+  const hRaw=String(g('schHours').value||'').trim(),hNum=Number(hRaw);
+  const hours=hRaw===''?(old?(old.hours??8):8):hNum;
+  const f={
+    date, time:g('schTime').value,
     title:g('schTitle').value.trim(), project:g('schProj').value,
     workers:g('schWorkers').value, memo:g('schMemo').value.trim(),
-    hours:+g('schHours').value||8
+    hours
   };
-  if(!s.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
-  if(isNew)state.schedule.push(s);
-  else{const i=state.schedule.findIndex(x=>x.id===id);if(i>=0)state.schedule[i]=s;}
+  if(!f.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T00:00:00'))){toast('날짜를 고르세요.');hjFieldIssue(document.getElementById('schDate'),'날짜를 고르세요.');return;}
+  if(!Number.isFinite(hours)||hours<0||hours>24){toast('작업 시간은 0~24 사이로 적어 주세요.');hjFieldIssue(document.getElementById('schHours'),'작업 시간은 0~24 사이로 적어 주세요.');return;}
+  let s;
+  if(isNew){s=Object.assign({id},f,{report:null});state.schedule.push(s);}
+  else{s=Object.assign(old,f);}
   markDirty();closeModal();render();toast('일정 저장됨');if(isNew)hjGcalMaybeOpen(s);
 }
 // 일일 작업 보고서 작성

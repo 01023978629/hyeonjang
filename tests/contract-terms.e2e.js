@@ -179,6 +179,11 @@ assert(!hits.length, '① index.html 에 옛 계약 조건이 남아 있다:\n  
   await page.evaluate(() => { const r = document.getElementById('ppR1'); r.value = '30'; r.dispatchEvent(new Event('input', { bubbles: true })); ['ppD1', 'ppD2', 'ppD3'].forEach((id, i) => { document.getElementById(id).value = '2026-10-1' + (i + 1); }); });
   const pp2 = await page.evaluate(() => ({ p1: document.getElementById('ppP1').textContent, sum: document.getElementById('ppSum').textContent }));
   assert(pp2.p1 === '30%' && /80%/.test(pp2.sum), '④ 슬라이더로 비율을 바꿀 수 있다(표시·합계가 따라온다): ' + JSON.stringify(pp2));
+  // v330 새 계약: 합계가 100% 가 아니면(여기 80%) 저장하지 않는다 — 알림 합이 견적과 달라진다. 중도금을 60 으로 맞춘 뒤 저장한다.
+  await page.click('#modalRoot button:has-text("예약 저장")');
+  const blocked = await page.evaluate(() => (state.schedule || []).filter(s => s.project === '계약현장').length);
+  assert(blocked === 0, '④ 합계 80% 면 예약하지 않는다: ' + blocked);
+  await page.evaluate(() => { const r = document.getElementById('ppR2'); r.value = '60'; r.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.click('#modalRoot button:has-text("예약 저장")');
   const memos2 = await page.evaluate(() => (state.schedule || []).filter(s => s.project === '계약현장').map(s => s.memo));
   assert(memos2[0] === '계약현장 계약금(30%) 입금 예정', '④ 바꾼 비율로 예약된다: ' + memos2.join('|'));
