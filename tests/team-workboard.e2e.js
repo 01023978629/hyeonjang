@@ -166,6 +166,8 @@ async function fits(page,root){
   });
   await scenario('현장 이름 변경 연동·삭제 후 기록 보존',async page=>{
     await page.evaluate(()=>renameProject('가상현장01'));await page.locator('#renProjInput').fill('가상새현장');await page.getByRole('button',{name:'저장',exact:true}).click();
+    // v328: 이름 변경은 안전판(hjSnapshot)을 먼저 찍고 적용하므로 비동기다 — 적용 끝(모달 닫힘·현장명 변경)을 기다린 뒤 본다.
+    await page.waitForFunction(()=>state.projects.some(p=>p.name==='가상새현장')&&!document.querySelector('#renProjInput'));
     assert(await page.evaluate(()=>hjTeamList().every(n=>n.project==='가상새현장')));
     await page.evaluate(()=>{state.projects=state.projects.filter(p=>p.name!=='가상새현장');hjTeamBoard();});
     assert.match(await page.locator('#teamCards').innerText(),/연결 확인 필요/);assert.equal(await page.locator('[data-team-project]').count(),0);
