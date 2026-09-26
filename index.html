@@ -5126,55 +5126,142 @@ function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){
   // 완료(마지막 단계)로 바뀌는 순간의 날짜 기록 — 보증·AS 기산일. 완료 해제하면 지움.
   if(idx===STAGES.length-1){if(!p.doneAt)p.doneAt=new Date().toISOString().slice(0,10);}else{p.doneAt=null;}
   markDirty();render();}}
-// 현장 이름 수정 — 연결된 파일·일정·활성현장도 함께 변경
+/* [v328] 현장 이름으로 이어진 기록 — 이름 변경·삭제가 같은 목록을 본다.
+   이 앱의 기록은 현장을 id 가 아니라 '이름'으로 가리킨다. 예전 renameProject 는 사진·일정·팀 업무·(식별자 있는) 관리사무소 오더만
+   바꾸고 수금·AS·견적·지출·작업시간·운행·만족도·메모·할일은 옛 이름에 남겨 두었다 — 견적은 다음 불러오기 때 syncQuoteToProject 가
+   파생 견적 파일을 옛 이름으로 되돌려 매출에서 빠졌다. 삭제는 그 기록을 고아로 남겨 같은 이름으로 새 현장을 만들면 옛 수금·AS·견적·
+   지출이 새 현장에 붙었다. 두 동작이 이 한 목록(hjProjectRefWalk)을 보게 해 새 저장소를 한 곳에만 더하면 되게 한다.
+   한계: ☁ 팀 공유 할일은 회사 서버에 있어 여기서 바꾸지 않는다(확인 창에 적는다). */
+const HJ_PROJECT_REF_LABELS={files:'사진·서류',schedule:'일정',notes:'메모·할일·회의록',payLog:'수금 기록',asLog:'AS 기록',quotes:'견적서',
+  expenses:'지출',workLogs:'작업시간',trips:'운행 기록',satisfaction:'만족도',aptOrders:'관리사무소 오더',aiOps:'AI 할 일',calcLog:'자재 계산 기록(이 폰)',calcCart:'발주 목록(이 폰)'};
+// 이름 name 에 걸린 기록마다 visit(store, rec, set) 을 부른다. set(v) 가 그 기록의 현장 이름을 바꾼다.
+// identity 가 있으면 관리사무소 오더는 식별자로 찾는다(이름이 같아도 식별자가 다른 오더는 남의 것이다).
+function hjProjectRefWalk(name,visit,identity){
+  const arr=v=>Array.isArray(v)?v:[];
+  // 견적서에서 만든 파생 파일(_fromQuote)은 따로 센다 — 견적서와 한 몸이라 '사진·서류' 건수에 넣으면 두 번 센다.
+  arr(state.files).forEach(f=>{if(f&&f.project===name)visit(f._fromQuote?'quoteFiles':'files',f,v=>{f.project=v;if(f._aptUnit&&f._aptUnit.project===name)f._aptUnit={...f._aptUnit,project:v};});});
+  ['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction'].forEach(k=>{
+    arr(state[k]).forEach(r=>{if(r&&typeof r==='object'&&r.project===name)visit(k,r,v=>{r.project=v;});});
+  });
+  arr(state.aptOrders).forEach(o=>{
+    if(!o||typeof o!=='object')return;
+    const oid=officeIntakeValidProjectIdentity(o.projectIdentity);
+    if((identity&&oid===identity)||(!oid&&o.project===name))visit('aptOrders',o,v=>{o.project=v;});
+  });
+  arr(state.aiOps&&state.aiOps.queue).forEach(t=>{if(t&&typeof t==='object'&&t.project===name)visit('aiOps',t,v=>{t.project=v;});});
+}
+// 이 폰 localStorage 의 자재 계산 기록·발주 목록(v277·v278) — 백업에 안 실리지만 현장별로 묶여 보인다.
+function hjProjectRefLocal(name,to){
+  const out={calcLog:0,calcCart:0};
+  [['calcLog',hjCalcLogRead,hjCalcLogWrite],['calcCart',hjCalcCartRead,hjCalcCartWrite]].forEach(([k,read,write])=>{
+    try{const l=read();l.forEach(e=>{if(e.project===name){out[k]++;if(to!==undefined)e.project=to;}});if(to!==undefined&&out[k])write(l);}catch(_){}
+  });
+  return out;
+}
+function hjProjectRefCount(name,identity){
+  const c={};hjProjectRefWalk(name,k=>{c[k]=(c[k]||0)+1;},identity);
+  const loc=hjProjectRefLocal(name);Object.keys(loc).forEach(k=>{if(loc[k])c[k]=loc[k];});
+  return c;
+}
+function hjProjectRefText(c,skip){
+  return Object.keys(HJ_PROJECT_REF_LABELS).filter(k=>c[k]&&!(skip||[]).includes(k)).map(k=>HJ_PROJECT_REF_LABELS[k]+' '+c[k]+'건').join(' · ');
+}
+// 이름 변경 — 모든 저장소의 현장 이름을 옮긴다. 현장 객체 이름·활성 현장·작성 중 견적도 같이.
+function hjRenameProjectRefs(oldName,newName){
+  const p=(state.projects||[]).find(x=>x.name===oldName);
+  const identity=p?officeIntakeValidProjectIdentity(p.officeIntakeProjectId):'';
+  const c={};
+  hjProjectRefWalk(oldName,(k,r,set)=>{c[k]=(c[k]||0)+1;set(newName);},identity);
+  const loc=hjProjectRefLocal(oldName,newName);Object.keys(loc).forEach(k=>{if(loc[k])c[k]=loc[k];});
+  if(p)p.name=newName;
+  if(state.editingQuote&&state.editingQuote.project===oldName)state.editingQuote.project=newName;
+  if(state.activeProject===oldName)state.activeProject=newName;
+  return c;
+}
+// 삭제된 현장의 기록이 옮겨 갈 표시 이름 — 기록은 남기되 같은 이름의 새 현장에는 붙지 않는다.
+function hjProjectTombstoneName(name){
+  const base='(삭제됨) '+name+' · '+localDate();
+  let t=base,i=2;while((state.projects||[]).some(x=>x.name===t))t=base+' ('+(i++)+')';
+  return t;
+}
+// 현장 삭제 — UI(deleteProject)와 AI(aiDeleteProject)가 같이 쓴다. 기록은 지우지 않는다(삭제 확대는 대표 승인 영역):
+// 사진·서류는 미배정, 일정은 연결 해제(예전과 같다), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 옮긴다.
+// 견적서에서 만든 파생 파일은 견적서를 따라간다(미배정으로 두면 다음 불러오기에 견적서 쪽 이름으로 되돌아간다).
+function hjDeleteProjectCore(name){
+  const p=(state.projects||[]).find(x=>x.name===name);if(!p)return null;
+  const identity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
+  const tomb=hjProjectTombstoneName(name),c={},kept={};
+  hjProjectRefWalk(name,(k,r,set)=>{
+    c[k]=(c[k]||0)+1;
+    if(k==='files')set(null);
+    else if(k==='schedule')set('');
+    else{set(tomb);kept[k]=(kept[k]||0)+1;}
+  },identity);
+  const loc=hjProjectRefLocal(name,tomb);Object.keys(loc).forEach(k=>{if(loc[k]){c[k]=loc[k];kept[k]=loc[k];}});
+  if(state.editingQuote&&state.editingQuote.project===name)state.editingQuote.project=tomb;
+  state.projects=state.projects.filter(x=>x.name!==name);
+  if(state.activeProject===name)state.activeProject=null;
+  return {tomb,counts:c,kept};
+}
+// 현장 이름 수정 — 이름으로 연결된 모든 기록(hjRenameProjectRefs)도 함께 변경
 function renameProject(oldName){
   const p=state.projects.find(x=>x.name===oldName);if(!p)return;
+  const refs=hjProjectRefText(hjProjectRefCount(oldName,officeIntakeValidProjectIdentity(p.officeIntakeProjectId)));
+  const shared=(typeof relayReady==='function'&&relayReady())?'<p class="hint" style="margin:4px 0 0">☁ 팀 공유 할일(회사 서버)에 적힌 현장명은 바뀌지 않습니다.</p>':'';
   const body=`<div class="sch-form">
     <label>현장 이름<input type="text" id="renProjInput" value="${escapeAttr(oldName)}" placeholder="현장명"></label>
-    <p class="hint" style="margin:0">이 현장에 배정된 사진·서류·일정의 현장명도 함께 바뀝니다.</p>
+    <p class="hint" id="renProjRefs" style="margin:0">${refs?'함께 바뀌는 기록: '+escapeHtml(refs):'이 현장에 연결된 기록이 아직 없습니다.'}</p>${shared}
   </div>`;
+  let busy=false;
   openModal('현장명 수정', body, [
-    {label:'저장',cls:'blue',fn:()=>{
+    {label:'저장',cls:'blue',fn:async()=>{
+      if(busy)return;
       const nv=document.getElementById('renProjInput').value.trim();
       if(!nv){toast('이름을 입력하세요.');return;}
       if(nv===oldName){closeModal();return;}
       if(state.projects.some(x=>x.name===nv)){toast('이미 있는 현장 이름입니다.');return;}
-      const projectIdentity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
-      p.name=nv;
-      // 연결된 모든 항목의 현장명 변경
-      state.files.forEach(f=>{if(f.project===oldName){f.project=nv;if(f._aptUnit&&f._aptUnit.project===oldName)f._aptUnit={...f._aptUnit,project:nv};}});
-      if(projectIdentity)(state.aptOrders||[]).forEach(function(order){if(order&&officeIntakeValidProjectIdentity(order.projectIdentity)===projectIdentity)order.project=nv;});
-      (state.schedule||[]).forEach(s=>{if(s.project===oldName)s.project=nv;});
-      (state.notes||[]).forEach(n=>{if(hjIsTeamTask(n)&&n.project===oldName)n.project=nv;});
-      if(state.activeProject===oldName)state.activeProject=nv;
-      markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”');
+      busy=true;
+      // 여러 저장소를 한 번에 고치므로 안전판을 먼저 찍고, 못 찍으면 아무것도 바꾸지 않는다.
+      let ok=false;try{ok=await hjSnapshot('현장명 변경 전 — '+oldName,true,true);}catch(e){ok=false;}
+      if(!ok){busy=false;toast('안전판을 저장하지 못해 이름을 바꾸지 않았습니다. 저장 공간을 확인하세요.');return;}
+      // 안전판을 찍는 사이 서버 자료로 현장 목록이 바뀌었을 수 있다 — 이름으로 다시 확인한다.
+      if(!state.projects.some(x=>x.name===oldName)||state.projects.some(x=>x.name===nv)){busy=false;closeModal();toast('그사이 현장 목록이 바뀌어 이름을 바꾸지 않았습니다.');return;}
+      const c=hjRenameProjectRefs(oldName,nv);
+      const n=Object.keys(HJ_PROJECT_REF_LABELS).reduce((a,k)=>a+(c[k]||0),0);
+      markDirty();closeModal();render();toast('현장명 변경: “'+oldName+'” → “'+nv+'”'+(n?' · 기록 '+n+'건 함께 변경':''));
     }},
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
 }
-// 현장 삭제 — 배정된 파일은 미배정으로 되돌림(파일 자체는 안 지움)
+// 현장 삭제 — 배정된 파일은 미배정으로 되돌림(파일 자체는 안 지움), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 남김
 function deleteProject(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return;
-  const fileCount=state.files.filter(f=>f.project===name).length;
-  const schCount=(state.schedule||[]).filter(s=>s.project===name).length;
+  const c=hjProjectRefCount(name,officeIntakeValidProjectIdentity(p.officeIntakeProjectId));
+  const fileCount=c.files||0;
+  const schCount=c.schedule||0;
+  const keptText=hjProjectRefText(c,['files','schedule']);
+  const tombPreview=hjProjectTombstoneName(name);
   const body=`<div style="font-size:13px;line-height:1.7">
     <p style="margin:0 0 8px">현장 <b>“${escapeHtml(name)}”</b>을(를) 삭제할까요?</p>
     ${fileCount?`<p style="margin:0 0 4px">· 배정된 사진·서류 <b>${fileCount}개</b>는 <b>삭제되지 않고</b> ‘미배정’으로 돌아갑니다.</p>`:''}
     ${schCount?`<p style="margin:0 0 4px">· 연결된 일정 <b>${schCount}개</b>는 현장 연결만 해제됩니다.</p>`:''}
+    ${keptText?`<p style="margin:0 0 4px" id="delProjKept">· 연결된 기록 <b>${escapeHtml(keptText)}</b>은 <b>지우지 않고</b> ‘${escapeHtml(tombPreview)}’ 이름으로 남깁니다 — 같은 이름으로 현장을 새로 만들어도 옛 기록이 붙지 않습니다.</p>`:''}
     <p style="margin:8px 0 0;color:var(--warn)">현장 정보(고객·공정·정산)는 삭제됩니다.</p>
   </div>`;
+  let busy=false;
   openModal('현장 삭제', body, [
     {label:'취소',cls:'ghost',fn:closeModal},
-    {label:'삭제',cls:'warn',fn:()=>{
-      // 파일은 미배정으로(삭제 안 함)
-      state.files.forEach(f=>{if(f.project===name)f.project=null;});
-      (state.schedule||[]).forEach(s=>{if(s.project===name)s.project='';});
-      state.projects=state.projects.filter(x=>x.name!==name);
-      if(state.activeProject===name)state.activeProject=null;
-      markDirty();closeModal();render();toast('현장 “'+name+'” 삭제됨 (파일은 미배정으로 보존)');
+    {label:'삭제',cls:'warn',fn:async()=>{
+      if(busy)return;busy=true;
+      let ok=false;try{ok=await hjSnapshot('현장 삭제 전 — '+name,true,true);}catch(e){ok=false;}
+      if(!ok){busy=false;toast('안전판을 저장하지 못해 삭제하지 않았습니다. 저장 공간을 확인하세요.');return;}
+      const r=hjDeleteProjectCore(name);
+      if(!r){busy=false;closeModal();toast('그사이 현장이 없어져 삭제하지 않았습니다.');return;}
+      markDirty();closeModal();render();toast('현장 “'+name+'” 삭제됨 (파일은 미배정으로 보존'+(Object.keys(r.kept).length?', 기록은 “'+r.tomb+'”로 보존':'')+')');
     }}
   ]);
 }
+
 
 function assignKind(id,k){const f=state.files.find(x=>x.id===id);if(f){f.kind=k;if(k==='estimate'&&!f.est)f.est=parseEstimate(f.text,f.name);if(k==='card'&&!f.contact)f.contact=parseCard(f.text);markDirty();render();
   // 분류가 문서류면 드라이브에서 해당 폴더로 자동 이동(권한 밖이면 조용히 스킵)
@@ -8274,7 +8361,7 @@ const AI_TOOLS = [
  {name:'photo_report',description:'현장 사진을 날짜별·공정별로 자동 정리해 작업 일지를 만든다. Gemini 키가 있으면 AI가 작업 내용을 요약. query=현장/고객명(생략 시 사진 있는 현장 목록). "사진 정리해서 일지/작업 일지/사진 보고서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
  {name:'vat_report',description:'부가세 신고 준비: 분기(과세기간)별 매출세액·매입세액 공제·납부(환급) 예상세액을 집계해 화면을 엶. period 지정 가능(생략 시 최근). "부가세/세금신고/매출매입 정리/신고 자료"면 호출.',parameters:{type:'OBJECT',properties:{period:{type:'STRING',description:'예: 2026-1'}}}},
  {name:'batch_receive',description:'[변경] 여러 입금을 한 번에 기록하고 영수증까지 자동 발송한다. payments=[{query:현장/고객명, amount:금액}], receipt=true면 영수증 발송, sms=true면 현금영수증 안내 문자도. "오늘 들어온 돈 정리/여러 건 입금"이면 호출.',parameters:{type:'OBJECT',properties:{payments:{type:'ARRAY',items:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'}}}},receipt:{type:'BOOLEAN'},sms:{type:'BOOLEAN'}},required:['payments']}},
- {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
+ {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동, 일정은 연결 해제, 수금·AS·견적 등 연결 기록은 지우지 않고 \'(삭제됨) 이름 · 날짜\' 로 남긴다. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'delete_schedule',description:'[변경] 일정을 삭제한다. 삭제 전 자동 백업됨. keyword=일정 제목/현장/날짜. "○○ 일정 취소/삭제"면 호출. 여러 건이면 되물어 확정.',parameters:{type:'OBJECT',properties:{keyword:{type:'STRING'}},required:['keyword']}},
  {name:'add_note',description:'[변경] 메모·할 일을 기록한다. text=내용(들은 내용 전체), project=관련 현장(선택). 문장이 "~메모해줘/적어둬/기억해/잊지마"로 끝나면 내용이 무엇이든(자재 주문 포함) 이 도구를 쓴다. 실제 발주서 작성은 material_order.',parameters:{type:'OBJECT',properties:{text:{type:'STRING'},project:{type:'STRING'}},required:['text']}},
  {name:'list_notes',description:'기록한 메모·할 일을 조회한다. query로 거를 수 있음. "메모 뭐 있지/적어둔 거"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
@@ -14872,15 +14959,13 @@ function settleDocs(name,kind){
 /* ═══════════ 🗑 AI 삭제(스냅샷 안전) · 📝 메모 기록 헬퍼 ═══════════ */
 // AI용 현장 삭제 — 스냅샷 후 실제 제거(확인은 AI 승인카드가 담당)
 function aiDeleteProject(name){
-  const p=state.projects.find(x=>x.name===name);
-  if(!p)return {오류:'현장을 찾을 수 없습니다: '+name};
-  const fileCount=state.files.filter(f=>f.project===name).length;
-  const schCount=(state.schedule||[]).filter(s=>s.project===name).length;
-  // 사진·서류는 미배정으로 되돌림(삭제하지 않음)
-  state.files.forEach(f=>{if(f.project===name)f.project=null;});
-  state.projects=state.projects.filter(x=>x.name!==name);
+  if(!state.projects.find(x=>x.name===name))return {오류:'현장을 찾을 수 없습니다: '+name};
+  // UI 삭제와 같은 함수 — 사진·서류는 미배정, 일정은 연결 해제, 수금·AS·견적 등은 '(삭제됨) 이름 · 날짜' 로 보존
+  const r=hjDeleteProjectCore(name);
+  const fileCount=r.counts.files||0;
   markDirty();render();
-  return {삭제:name,사진서류_미배정전환:fileCount,관련일정_유지:schCount,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
+  const kept=hjProjectRefText(r.kept);
+  return {삭제:name,사진서류_미배정전환:fileCount,일정_연결해제:r.counts.schedule||0,기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
 }
 function aiDeleteSchedule(keyword){
   const q=String(keyword||'').trim();
