@@ -169,7 +169,8 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
 
   // ⑧ 추가공사 화면
   await page.evaluate(({ PJ }) => extraWork(PJ), { PJ });
-  const sumOf = () => page.evaluate(() => ((document.querySelector('#exSum') || {}).textContent || '').replace(/\s/g, ''));
+  // v328: 위에 붙는 요약(#exSum)은 숫자만, 설명(견적에 담긴·청구 전)은 그 아래 #exNote 로 옮겼다(360px 키보드 가림) — 둘을 이어 읽는다
+  const sumOf = () => page.evaluate(() => [...document.querySelectorAll('#exSum, #exNote')].map(e => e.textContent).join('').replace(/\s/g, ''));
   let sum = await sumOf();
   assert(/청구서·잔금에더해짐500,000원/.test(sum) && /견적에담긴1건은견적금액에이미들어있습니다/.test(sum), '⑧ 청구 합계 줄: ' + sum);
   assert(/📄 견적에 담김/.test(await page.textContent('#modalRoot .exRow[data-i="2"]')) && !/견적에 담김/.test(await page.textContent('#modalRoot .exRow[data-i="0"]')), '⑧ 견적에 담긴 줄에만 표시');
@@ -226,7 +227,8 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   await page.click('#modalRoot .mfoot button:has-text("견적에 담기")');
   const eq = await page.evaluate(() => state.editingQuote.items.map(it => ({ name: it.name, price: it.price, extraId: it.extraId })));
   assert(eq.filter(it => it.name === '[추가] 현관 중문 교체').length === 1, '⑨ 이미 담긴 것은 다시 안 넣는다: ' + JSON.stringify(eq));
-  assert(eq.some(it => it.name === '[추가] 거실 선반 설치' && it.extraId === 'ex-agreed' && it.price === 500000)
+  // v328 새 계약: qx1 은 부가세 포함 견적 — 단가는 공급가(454,545)로 넣어 견적 합계가 확인 금액(50만)만큼만 는다(아래 EST2)
+  assert(eq.some(it => it.name === '[추가] 거실 선반 설치' && it.extraId === 'ex-agreed' && it.price === 454545)
     && eq.some(it => it.extraId === 'ex-pending') && eq.some(it => it.extraId === 'ex-nego') && eq.length === 5, '⑨ 품목에 extraId: ' + JSON.stringify(eq));
   assert(/3건을 담았습니다/.test(await lastToast()) && /이미 담긴 1건은 건너뜀/.test(await lastToast()), '⑨ 토스트: ' + await lastToast());
   assert(await page.evaluate(({ PJ }) => projStats(PJ).due, { PJ }) === DUE, '⑨ 저장 전(작성 중)에는 청구 금액이 그대로');
@@ -236,7 +238,9 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   await closeModalNow();
   await page.evaluate(() => saveQuoteEdit());
   const moved = await page.evaluate(({ PJ }) => { const s = projStats(PJ); const b = hjExtrasBill(state.projects.find(p => p.name === PJ)); return { est: s.est, extra: s.extra, due: s.due, quoted: b.quoted.length, inv: invoiceHTML(PJ) }; }, { PJ });
-  const EST2 = Math.round((10000000 + 200000 + 500000 + 300000) * 1.1);
+  // 예전 기대값 (1,000만+20만+50만+30만)×1.1 은 확인받은 50만·30만에 부가세를 얹은 금액이었다 — 같은 추가공사가 담으면 55만,
+  // 안 담으면 50만으로 청구됐다(v328 통합 검토). 이제 담아도 확인 금액 그대로: 견적 11,220,000 + 50만 + 30만.
+  const EST2 = EST + 500000 + 300000;
   assert(moved.est === EST2 && moved.extra === 0 && moved.due === EST2 - RECV && moved.quoted === 4, '⑨ 저장하면 견적으로 옮겨 가 따로 더하지 않는다: ' + JSON.stringify({ est: moved.est, extra: moved.extra, due: moved.due, quoted: moved.quoted }));
   assert(moved.inv.indexOf('[추가] 거실 선반 설치') < 0 && grab(moved.inv, '청구 금액') === EST2 - RECV, '⑨ 청구서에도 두 번 나오지 않는다');
 
@@ -266,6 +270,8 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
     state.files.push({ id: 'xd1', name: '제외고객 최종 견적.xlsx', ext: 'xlsx', kind: 'estimate', project: NM, est: { amount: 11000000 } });
     r.exsum = snap();
     r.inv = invoiceHTML(NM);
+    r.st = statementHTML(NM);
+    r.items = settleDocData(NM).items.map(i => i.name);
     // 집계 제외를 풀고 엑셀을 앱 견적과 같은 금액으로 — 2차 병합으로 엑셀이 대표, 앱 견적은 사본
     vf.exSum = false; state.files.find(f => f.id === 'xd1').est.amount = vf.est.amount;
     r.reps = dedupeEstimates(state.files.filter(f => f.project === NM && f.kind === 'estimate')).map(f => f.id);
@@ -282,6 +288,12 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
   assert(ded.exsum.est === 11000000 && ded.exsum.extra === 500000 && ded.exsum.due === 11500000 && ded.exsum.quoted === 0 && ded.exsum.agreed === 1,
     '⑬ 집계 제외 견적에만 담긴 추가공사는 청구로 돌아간다: ' + JSON.stringify(ded.exsum));
   assert(ded.exsum && ded.inv.indexOf('[추가] 욕실 환풍기') >= 0, '⑬ 청구서에도 [추가] 행');
+  // v328 통합 검토(high): 품목을 '가장 최근 견적'(여기서는 집계 제외 견적)에서 가져오면 '[추가] 욕실 환풍기' 가 품목표에도,
+  // 추가공사 행에도 실려 같은 50만이 두 번 적혔다. 품목은 est 가 센 견적에서만 — 두 문서 모두 한 번, 청구 금액 = due
+  const cnt = (h, t) => h.split(t).length - 1;
+  assert(ded.items.length === 0 && cnt(ded.st, '[추가] 욕실 환풍기') === 1 && cnt(ded.inv, '[추가] 욕실 환풍기') === 1,
+    '⑬ 집계 제외 견적의 품목은 문서 품목표에 안 실린다(두 번 청구 금지): ' + JSON.stringify({ items: ded.items, st: cnt(ded.st, '[추가] 욕실 환풍기'), inv: cnt(ded.inv, '[추가] 욕실 환풍기') }));
+  assert(grab(ded.inv, '청구 금액') === ded.exsum.due, '⑬ 청구 금액 = due: ' + grab(ded.inv, '청구 금액') + ' / ' + ded.exsum.due);
   assert(JSON.stringify(ded.reps) === '["xd1"]' && ded.same.est === ded.qamt && ded.same.extra === 0 && ded.same.quoted === 1,
     '⑬ 같은 견적으로 묶인 엑셀이 대표면 담긴 것 그대로(두 번 청구 금지): ' + JSON.stringify({ reps: ded.reps, same: ded.same }));
   assert(ded.novf.est === 0 && ded.novf.extra === 500000 && ded.novf.quoted === 0, '⑬ 가상 파일 없는 견적은 est 밖 — 청구로: ' + JSON.stringify(ded.novf));

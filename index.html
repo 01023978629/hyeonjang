@@ -1772,10 +1772,14 @@ function portalKeyTake(cfg){
    IDB 쓰기가 실패하면 거절(reject)한다 — 성공으로 치면 부팅 이전이 키를 뺀 저장본을 다시 써서
    다음 새로고침 뒤 키가 어디에도 없게 된다(조용히 서버 연결이 끊긴다). 이 세션 동안은 메모리 키로 쓰고,
    다시 넣어 달라고 알린다(portalKeyAdoptFailed). */
+// [지우기]로 일부러 지운 기기는 '처음부터 없는' 기기와 다르다 — 옛 자료(키가 실린 v327 이전 백업·드라이브 파일)를 한 번
+// 받기만 해도 옮겨 담아 지운 키(유출이 의심돼 지웠을 수 있다)가 되살아났다(v328 통합 검토). 지울 때 IDB 'portal_key_dropped'
+// 에 시각을 남기고, 그 표시가 있으면 옮겨 담지 않는다. 사용자가 새 키를 넣으면(portalKeySaveInput) 표시를 지운다.
+let __portalKeyDropped=false;
 function portalKeyAdopt(k){
   if(!k)return Promise.resolve(false);
   return portalKeyReady().then(function(){
-    if(portalKeyGet())return false;
+    if(portalKeyGet()||__portalKeyDropped)return false;
     __portalKey=k;
     return idbSet('portal_key',k).then(function(){return true;});
   });
@@ -5246,10 +5250,13 @@ function hjProjectRefWalk(name,visit,identity){
   ['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction'].forEach(k=>{
     arr(state[k]).forEach(r=>{if(r&&typeof r==='object'&&r.project===name)visit(k,r,v=>{r.project=v;});});
   });
+  // 식별자 길은 그 식별자를 가진 현장이 정확히 하나일 때만 쓴다 — 둘 이상이면(옛 백업 복원 등으로 겹친 경우) 이름을 보지 않는
+  // 식별자 길이 남의 현장 오더까지 옮긴다. 그때는 이름으로만 찾는다.
+  const idOk=!!identity&&arr(state.projects).filter(x=>x&&officeIntakeValidProjectIdentity(x.officeIntakeProjectId)===identity).length<=1;
   arr(state.aptOrders).forEach(o=>{
     if(!o||typeof o!=='object')return;
     const oid=officeIntakeValidProjectIdentity(o.projectIdentity);
-    if((identity&&oid===identity)||(!oid&&o.project===name))visit('aptOrders',o,v=>{o.project=v;});
+    if((idOk&&oid===identity)||((!oid||!idOk)&&o.project===name))visit('aptOrders',o,v=>{o.project=v;});
   });
   arr(state.aiOps&&state.aiOps.queue).forEach(t=>{if(t&&typeof t==='object'&&t.project===name)visit('aiOps',t,v=>{t.project=v;});});
 }
@@ -5269,6 +5276,17 @@ function hjProjectRefCount(name,identity){
 function hjProjectRefText(c,skip){
   return Object.keys(HJ_PROJECT_REF_LABELS).filter(k=>c[k]&&!(skip||[]).includes(k)).map(k=>HJ_PROJECT_REF_LABELS[k]+' '+c[k]+'건').join(' · ');
 }
+// 지운 현장 name 의 기록이 옮겨 가 있는 '(삭제됨) name · 날짜[ (n)]' 이름들(hjProjectTombstoneName) — 선택 복원이 되살릴 때 다시 잇는다.
+const HJ_TOMB_TAIL_RE=/^\d{4}-\d{2}-\d{2}(?: \(\d+\))?$/;
+function hjProjectTombstonesOf(name){
+  const head='(삭제됨) '+name+' · ',out=new Set();
+  const see=v=>{if(typeof v==='string'&&v.startsWith(head)&&HJ_TOMB_TAIL_RE.test(v.slice(head.length))&&!(state.projects||[]).some(x=>x&&x.name===v))out.add(v);};
+  const arr=v=>Array.isArray(v)?v:[];
+  arr(state.files).forEach(f=>f&&see(f.project));
+  ['notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','aptOrders'].forEach(k=>arr(state[k]).forEach(r=>r&&see(r.project)));
+  arr(state.aiOps&&state.aiOps.queue).forEach(t=>t&&see(t.project));
+  return [...out];
+}
 // 이름 변경 — 모든 저장소의 현장 이름을 옮긴다. 현장 객체 이름·활성 현장·작성 중 견적도 같이.
 function hjRenameProjectRefs(oldName,newName){
   const p=(state.projects||[]).find(x=>x.name===oldName);
@@ -5276,6 +5294,15 @@ function hjRenameProjectRefs(oldName,newName){
   const c={};
   hjProjectRefWalk(oldName,(k,r,set)=>{c[k]=(c[k]||0)+1;set(newName);},identity);
   const loc=hjProjectRefLocal(oldName,newName);Object.keys(loc).forEach(k=>{if(loc[k])c[k]=loc[k];});
+  // 수금 약속일 일정은 id 와 제목에도 현장 이름이 들어 있다('due_'+이름, '💰 수금: '+이름 — upsertDueSchedule).
+  // project 만 바꾸면 다음 약속일 저장·지우기가 'due_'+새이름 을 찾아 옛 알림을 못 지워 수금 알림이 두 개가 된다.
+  if(Array.isArray(state.schedule)){
+    const oldId='due_'+oldName,newId='due_'+newName;
+    if(state.schedule.some(r=>r&&r.id===oldId)){
+      state.schedule=state.schedule.filter(r=>!(r&&r.id===newId));   // 같은 이름으로 지웠던 현장의 떠돌이 알림과 겹치지 않게
+      state.schedule.forEach(r=>{if(r&&r.id===oldId){r.id=newId;if(r.title==='💰 수금: '+oldName)r.title='💰 수금: '+newName;}});
+    }
+  }
   if(p)p.name=newName;
   if(state.editingQuote&&state.editingQuote.project===oldName)state.editingQuote.project=newName;
   if(state.activeProject===oldName)state.activeProject=newName;
@@ -8380,7 +8407,7 @@ const AI_TOOLS = [
  {name:'search_all',description:'만능 검색: 사진 OCR 텍스트·파일명·일정/작업일지·현장/고객·견적 품목·연락처·AS·수금 기록을 한 번에 검색해 그룹별로 반환. "~어디 있지/찾아줘/검색"이면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'help',description:'사용설명서: 기능 가이드를 검색해 반환하고 설명서 화면을 엶. 사용법·기능 질문("~어떻게 해/도움말/설명서")이면 호출. topic으로 필터.',parameters:{type:'OBJECT',properties:{topic:{type:'STRING'}}}},
  {name:'project_map',description:'전체 현장 지도: 모든 현장을 단계 색 핀으로 지도에 표시. "현장 지도/어디어디 있지(위치)"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'export_ledger',description:'전체 장부 엑셀(10시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장·아파트오더)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'export_ledger',description:'전체 장부 엑셀(11시트: 현장·앱견적·외부견적·수금·인건비·AS·거래처·연락처·단가장·아파트오더·추가공사)을 즉시 다운로드. "전체 장부/엑셀로 뽑아줘/데이터 내보내기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'brand_theme',description:'브랜드 테마 설정 화면(포인트 색·로고)을 엶. "브랜드/로고/색 바꾸기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'customer_page',description:'고객 진행 상황을 HTML **파일**로 저장(오프라인 첨부용). "진행 페이지 파일로 저장/HTML로 만들어"면 호출. 실시간 링크는 customer_portal 사용. query=현장/고객명.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'},photos:{type:'NUMBER',description:'포함 사진 수 0·3·6'}},required:['query']}},
  {name:'calendar_sync',description:'구글 캘린더 자동 설정 조회/변경. enable=true/false로 켜고 끔(생략=현재 상태). 켜면 새 일정 저장 시 캘린더 추가 창이 자동으로 열림(단방향).',parameters:{type:'OBJECT',properties:{enable:{type:'BOOLEAN'}}}},
@@ -13332,7 +13359,7 @@ const HJ_HELP=[
   {k:'오더 이력',d:'[📊 오더 이력] — 기간·단지·상태로 걸러 보고, 완료 금액·미수·입금을 한눈에. 엑셀로 뽑아 청구·정산에 씁니다.'}]},
  {t:'🛡 안전·기타',items:[
   {k:'안전판',d:'이 기기 안 스냅샷 12개 자동 보관(작업 중·저장·AI 작업 전). 복구해도 "복구 직전"이 남아 또 되돌릴 수 있습니다.'},
-  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더까지 10시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
+  {k:'전체 장부 엑셀',d:'더보기 [📤 전체 장부 엑셀] — 현장·견적·수금·인건비·AS·거래처·단가장·아파트오더·추가공사까지 11시트 한 파일.',say:'전체 장부 엑셀로 뽑아줘'},
   {k:'홈화면',d:'설치된 앱 아이콘을 길게 누르면 바로가기(오늘 일정/AI 비서), 열면 한눈 보기 카드, 아이콘엔 챙길 일 뱃지.'},
   {k:'세무',d:'견적 탭 [세무 정산 엑셀]로 분기·월별 공급가/부가세 분해 시트를 뽑아 신고 준비.'},
   {k:'부가세 신고',d:'경영 대시보드 [📊 부가세] — 분기별 매출세액·매입세액 공제·납부(환급) 예상을 집계하고 신고 자료 엑셀을 뽑습니다.',say:'부가세 신고 자료 만들어줘'},
@@ -13526,7 +13553,7 @@ async function allProjectsMap(){
   return {표시:pts.length,좌표없음:missing.map(p=>p.name)};
 }
 
-/* ═══════════ 📤 전체 장부 엑셀 — 10시트 한 파일 ═══════════ */
+/* ═══════════ 📤 전체 장부 엑셀 — 11시트 한 파일 ═══════════ */
 async function exportFullXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return {오류:'모듈'};}
   const wb=XLSX.utils.book_new();
@@ -13583,10 +13610,20 @@ async function exportFullXlsx(){
   (state.aptOrders||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))
     .forEach(o=>s10.push([o.date||'',aptOfficeName(o.officeId),o.unit||'',o.text||'',num(o.amount),(APT_STAT[o.status]||APT_STAT.recv)[0],o.doneAt||'']));
   add('아파트오더',s10);counts['아파트오더']=s10.length-1;
+  // ⑪ 추가공사 — 확인받은 추가공사는 잔금(due)에 더해진다(hjExtrasBill). 이 시트가 없으면 이사한 기기에서 모든 현장 잔금이
+  //    그만큼 조용히 줄었다(v328 통합 검토). '청구' 칸은 이 파일을 만든 때의 판정 — 가져오기가 '견적에 담김' 을 다시 더하지 않게 쓴다.
+  const s11=[['현장','일자','내용','금액','공기(일)','확인받음','확인일','청구','메모']];
+  state.projects.forEach(p=>{const l=Array.isArray(p.extras)?p.extras.filter(x=>x&&typeof x==='object'):[];if(!l.length)return;
+    const bill=hjExtrasBill(p);
+    l.forEach(x=>{const st=bill.quoted.includes(x)?'견적에 담김':bill.agreed.includes(x)?'청구에 더함':bill.pending.includes(x)?'청구 전':'';
+      const raw=x.amount==null?'':String(x.amount).trim();
+      if(!hjExtraNorm(x.text)&&!raw)return;   // 막 추가하고 비워 둔 칸 — 청구에도 안 세는 줄이다
+      s11.push([p.name,x.date||'',x.text||'',hjExtraAmtBad(x)?raw:(raw===''?'':hjExtraAmt(x)),num(x.days)||'',x.agreed?'예':'',x.agreedAt||'',st,x.note||'']);});});
+  add('추가공사',s11);counts['추가공사']=s11.length-1;
   const fname=COMPANY.name+'_전체장부_'+localDate()+'.xlsx';
   XLSX.writeFile(wb,fname);
-  toast('📤 전체 장부 저장됨 — 10개 시트 ('+fname+')');
-  return {파일:fname,시트:10,행수:counts};
+  toast('📤 전체 장부 저장됨 — 11개 시트 ('+fname+')');
+  return {파일:fname,시트:11,행수:counts};
 }
 
 /* ═══════════ 🎨 브랜드 테마 — 포인트 색·로고 (카드·리포트·견적서·앱 헤더 반영) ═══════════ */
@@ -13905,7 +13942,8 @@ const HJ_IW_FULL_COLS={
   '단가장':{item:['품목',0],price:['단가',1]},
   '거래처':{name:['거래처',0],phone:['연락처',1],items:['담당 품목',2]},
   '수금이력':{d:['일자',0],project:['현장',1],amt:['금액',2]},
-  'AS이력':{date:['접수일',0],project:['현장',1],text:['증상',2],status:['상태',3]}
+  'AS이력':{date:['접수일',0],project:['현장',1],text:['증상',2],status:['상태',3]},
+  '추가공사':{project:['현장',0],date:['일자',1],text:['내용',2],amount:['금액',3],days:['공기(일)',4],agreed:['확인받음',5],agreedAt:['확인일',6],bill:['청구',7],note:['메모',8]}
 };
 function __iwCols(headers,spec){
   const norm=v=>String(v==null?'':v).replace(/\s+/g,'');
@@ -13925,7 +13963,7 @@ function __iwAmt(v,signed){
   const n=won2num(t);
   return signed&&IW_NEG_RE.test(t)?-n:n;
 }
-/* 우리 앱 전체장부(10시트) 자동 가져오기 — 현장·연락처·단가장·거래처·수금이력·AS이력 여섯 시트를 옮긴다.
+/* 우리 앱 전체장부(11시트) 자동 가져오기 — 현장·연락처·단가장·거래처·수금이력·AS이력·추가공사 일곱 시트를 옮긴다.
    결과는 시트마다 {add 추가, skip 이미 있어 건너뜀, bad 꼭 있어야 할 칸이 비어 못 읽음}. */
 function __iwFullImport(wb){
   const R={};
@@ -13982,6 +14020,28 @@ function __iwFullImport(wb){
       if(d?take(have,key(pjn,d,txt)):state.asLog.some(x=>x.project===pjn&&String(x.text||'').trim()===txt)){s++;return;}
       state.asLog.push({id:uid(),project:pjn,date:d||localDate(),text:txt,status:rev[String(at(c,r,'status')||'').trim()]||'open'});a++;});
     R['AS이력']={add:a,skip:s,bad:b};}
+  // 추가공사 — 현장 객체 안(p.extras)으로 되돌린다. 현장이 없으면(현장 시트에 없던 이름) 못 읽은 줄로 센다.
+  // '견적에 담김' 줄은 옮기지 않는다: 그 금액은 이미 현장 시트의 견적 합계(이관 견적)에 들어 있고, 이관 견적에는 품목이 없어
+  // 담김 표시를 이어 줄 수 없다 — 옮기면 잔금에 한 번 더 더해진다. 몇 건인지 요약에 밝힌다.
+  const ex=rowsOf('추가공사');
+  if(ex){let a=0,s=0,b=0,q=0;const c=colsOf('추가공사',ex);
+    const amtKey=v=>{const t=String(v==null?'':v).trim();return HJ_EXTRA_AMT_RE.test(t)?String(Math.round(num(t))):t;};
+    const key=(d,t,m)=>d+'|'+hjExtraNorm(t)+'|'+amtKey(m);
+    ex.rows.forEach(r=>{const pjn=String(at(c,r,'project')||'').trim(),txt=String(at(c,r,'text')||'').trim();
+      const p=pjn?state.projects.find(x=>x.name===pjn):null;
+      const rawAmt=at(c,r,'amount');const amount=rawAmt==null?'':(typeof rawAmt==='number'?String(Math.round(rawAmt)):String(rawAmt).trim());
+      if(!p||(!txt&&!amount)){b++;return;}
+      if(String(at(c,r,'bill')||'').trim()==='견적에 담김'){q++;return;}
+      const d=__iwDate(at(c,r,'date'))||'';
+      const list=hjExtraList(p);
+      if(list.some(x=>x&&key(String(x.date||''),x.text,x.amount)===key(d,txt,amount))){s++;return;}   // 같은 파일을 두 번 가져와도 두 벌이 되지 않게
+      const dn=num(at(c,r,'days'));
+      const x={id:uid(),date:d,text:txt,amount,days:dn>0?String(dn):'',photo:'',agreed:String(at(c,r,'agreed')||'').trim()==='예'};
+      const ad=__iwDate(at(c,r,'agreedAt'));if(x.agreed&&ad)x.agreedAt=ad;
+      const nt=String(at(c,r,'note')||'').trim();if(nt)x.note=nt;
+      list.push(x);a++;});
+    R['추가공사']={add:a,skip:s,bad:b};
+    if(q)R['추가공사'].note='견적에 담긴 '+q+'건은 견적 합계에 이미 들어 있어 옮기지 않음';}
   return R;
 }
 async function __iwReadFile(file){
@@ -13994,7 +14054,7 @@ function importWizard(){
   const body=
     '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">어디서 가져오든 <b>가져오기 직전 상태가 🛡 스냅샷</b>으로 남아 언제든 되돌릴 수 있습니다.</div>'+
     card('device','📱','다른 기기·백업에서','드라이브 불러오기 또는 _현장.json 백업 복원')+
-    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 10시트 파일 — 현장·연락처·단가장·거래처·수금·AS를 자동 인식해 옮김')+
+    card('full','📤','우리 앱 전체장부 엑셀','이 앱에서 내보낸 11시트 파일 — 현장·연락처·단가장·거래처·수금·AS·추가공사를 자동 인식해 옮김')+
     card('proj','🏗','현장·고객 목록 엑셀','현장명/고객/연락처/견적액/수금액 등 — 열 매핑')+
     card('contact','📇','연락처 엑셀','이름/전화/회사 — 열 매핑')+
     card('price','📦','단가표 엑셀','품목/단가 → 견적 자동 채움에 사용');
@@ -14083,7 +14143,7 @@ function __iwMapStep(target,wb,fname,sheetName){
 }
 function __iwSummary(title,R,note){
   const lines=Object.keys(R).map(k=>'· '+k+': <b style="color:#0a7f43">추가 '+R[k].add+'</b>'+(R[k].skip?' · 중복 건너뜀 '+R[k].skip:'')+
-    (R[k].bad?' · <b class="iwBad" style="color:var(--warn)">읽을 수 없어 건너뜀 '+R[k].bad+'</b>':''));
+    (R[k].bad?' · <b class="iwBad" style="color:var(--warn)">읽을 수 없어 건너뜀 '+R[k].bad+'</b>':'')+(R[k].note?' · '+escapeHtml(R[k].note):''));
   const anyBad=Object.keys(R).some(k=>R[k].bad);
   openModal(title,
     '<div style="font-size:13.5px;line-height:1.9">'+lines.join('<br>')+'</div>'+
@@ -14465,13 +14525,18 @@ function settleDocData(name){
   const s=projStats(name);
   const cust=p.customer||{};
   // 견적 품목: 앱 견적 우선, 없으면 견적 파일
-  let items=[];
-  const q=(state.quotes||[]).filter(x=>x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
-  if(q&&quoteRealItems){items=quoteRealItems(q).map(it=>({name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)}));}
+  // 품목은 매출(est)에 실제로 들어간 앱 견적에서만 가져온다(hjCountedEstIds — hjExtrasBill 과 같은 목록).
+  // 가장 최근 견적이 집계 제외·가상 파일 없는 견적이면 그 품목은 est 밖이라, 거기 담긴 '[추가] …' 가 추가공사 행에 또 실려 두 번 청구됐다.
+  // 하자보증서 '공사 내용' 은 금액이 아니라 한 일이라 가장 최근 견적의 품목 이름을 그대로 쓴다(workItems) — 돈 문서만 counted 로 좁힌다.
+  const toItems=q=>(q&&quoteRealItems)?quoteRealItems(q).map(it=>({name:it.name,spec:it.spec||'',qty:num(it.qty)||1,price:num(it.price)})):[];
+  const counted=hjCountedEstIds(name);
+  const mine=(state.quotes||[]).filter(x=>x&&x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const q=mine.find(x=>counted.has('quote_'+x.id));
+  const items=toItems(q),workItems=q?items:toItems(mine[0]);
   const w=hjWarranty(p);
   // 추가공사 — 확인받고 금액 있고 견적에 안 담긴 것만 청구(extras.total = s.extra). 견적에 담긴 것은 items 에 이미 있다.
   const extras=hjExtrasBill(p);
-  return {p,s,cust,items,quote:q,
+  return {p,s,cust,items,workItems,quote:q,
     est:s.est,supply:s.supply,recv:s.recv,due:s.due,   // supply=부가세 제외(품목 없을 때 부가세 이중가산 방지)
     extras,extra:extras.total,
     doneAt:p.doneAt||localDate(),warranty:w};
@@ -14654,7 +14719,7 @@ function warrantyHTML(name,opts){
   const sameAsName=!!(unit&&((parsed&&aptUnitKeyOf(parsed.dong,parsed.ho)===aptUnitLabelKey(unitLabel))||(d.cust.addr&&aptUnitLabelKey(d.cust.addr).includes(aptUnitLabelKey(unitLabel)))));
   const place=(d.cust.addr||name)+(unit&&!sameAsName?' '+unitLabel:'');
   const workName=name+(unit&&!sameAsName?' '+unitLabel:'');
-  const scope=ov.work?escapeHtml(String(ov.work)):(d.items.length?d.items.map(it=>escapeHtml(it.name)).join(' · '):'');
+  const scope=ov.work?escapeHtml(String(ov.work)):(d.workItems.length?d.workItems.map(it=>escapeHtml(it.name)).join(' · '):'');
   const client=ov.client||d.cust.name||'';
   // 작업 전/후 사진 — 장수만 받는다. 전은 오래된 순, 후는 최근 순으로 그 장수만큼. 있는 것보다 많이 달라면 있는 만큼만.
   const wantB=Math.max(0,num(ov.beforeN)||0),wantA=Math.max(0,num(ov.afterN)||0);
@@ -21598,6 +21663,16 @@ function hjExtraNorm(s){return String(s==null?'':s).replace(/\s+/g,' ').trim();}
 const HJ_EXTRA_AMT_RE=/^[₩\s]*\d[\d,\s]*(?:원)?\s*$/;
 function hjExtraAmtBad(x){const v=String((x&&x.amount)==null?'':x.amount).trim();return v!==''&&!HJ_EXTRA_AMT_RE.test(v);}
 function hjExtraAmt(x){if(hjExtraAmtBad(x))return 0;return Math.max(0,Math.round(num(x&&x.amount)));}
+// est(projStats)가 실제로 센 견적 파일 id — estimateGroups 묶음의 대표와 사본. 집계 제외(exSum)·가상 파일 없는 견적은 없다.
+// hjExtrasBill 의 '견적에 담김' 판정과 settleDocData 의 청구서·거래명세서 품목 출처가 이 한 목록을 본다 —
+// 두 곳이 갈라지면 집계 제외 견적의 '[추가] …' 품목이 품목표에도, 추가공사 행에도 실려 같은 돈이 두 번 청구된다(v328 통합 검토).
+function hjCountedEstIds(name,pjFiles){
+  const out=new Set();
+  const src=Array.isArray(pjFiles)?pjFiles:((typeof state!=='undefined'&&state.files)||[]);
+  estimateGroups(src.filter(f=>f&&f.project===name&&f.kind==='estimate'))
+    .forEach(g=>{out.add(g.rep&&g.rep.id);(g.dups||[]).forEach(f=>out.add(f&&f.id));});
+  return out;
+}
 function hjExtrasBill(p,pjFiles){
   const out={agreed:[],pending:[],quoted:[],total:0};
   const list=(p&&Array.isArray(p.extras))?p.extras.filter(x=>x&&typeof x==='object'):[];
@@ -21606,12 +21681,7 @@ function hjExtrasBill(p,pjFiles){
   const claimed=new Set();
   const quotes=(typeof state!=='undefined'&&Array.isArray(state.quotes))?state.quotes:[];
   let counted=null;   // est 묶음 안의 견적 파일 id — 이 현장 견적이 있을 때만 만든다(projStats 는 자주 불린다)
-  const isCounted=q=>{
-    if(!counted){counted=new Set();
-      const src=Array.isArray(pjFiles)?pjFiles:((typeof state!=='undefined'&&state.files)||[]);
-      estimateGroups(src.filter(f=>f&&f.project===p.name&&f.kind==='estimate'))
-        .forEach(g=>{counted.add(g.rep&&g.rep.id);(g.dups||[]).forEach(f=>counted.add(f&&f.id));});}
-    return counted.has('quote_'+q.id);};
+  const isCounted=q=>{if(!counted)counted=hjCountedEstIds(p.name,pjFiles);return counted.has('quote_'+q.id);};
   quotes.forEach(q=>{
     if(!q||!p||q.project!==p.name||!Array.isArray(q.items))return;
     if(!isCounted(q))return;   // est 밖 견적(집계 제외·가상 파일 없음)에 담긴 것은 담긴 것이 아니다 — 청구로 돌아간다
@@ -21683,8 +21753,11 @@ function extraWork(projectName){
     const pr=String(x.photo||'').trim(),ph=pr?phOf.get(pr)||null:null,miss=!!pr&&!ph;
     const opts=ph&&!photos.includes(ph)?[ph].concat(photos):photos;   // 최근 40장 밖의 사진이 연결돼 있어도 선택이 '사진 없음' 으로 보이지 않게
     return '<div class="exRow" data-i="'+i+'" style="border:1px solid '+(x.agreed?'var(--moss)':'var(--line-soft)')+';border-radius:11px;padding:9px;margin-bottom:8px">'+
-      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-        '<span style="font-size:11.5px;color:var(--muted-2);flex:1">'+escapeHtml(x.date||'')+(ph?' · 📷 사진 있음':'')+(miss?' · <b class="exMiss" style="color:#a33">⚠ 사진을 찾을 수 없음</b>':'')+(quotedSet.has(x)?' · 📄 견적에 담김':'')+'</span>'+
+      // 표시(사진 없음·견적에 담김)는 버튼 아래 한 줄로 — 360px 에서 날짜 칸이 142px 라 셋이 들어가면 세 줄로 쪼개졌다
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">'+
+        '<span style="font-size:11.5px;color:var(--muted-2);flex:1">'+escapeHtml(x.date||'')+(ph?' · 📷 사진 있음':'')+'</span>'+
+        ((miss||quotedSet.has(x))?'<span class="exMarks" style="order:3;flex-basis:100%;font-size:11.5px;color:var(--muted-2)">'+
+          [miss?'<b class="exMiss" style="color:#a33;white-space:nowrap">⚠ 사진을 찾을 수 없음</b>':'',quotedSet.has(x)?'<span style="white-space:nowrap">📄 견적에 담김</span>':''].filter(Boolean).join(' · ')+'</span>':'')+
         '<button type="button" class="ghost exAgree" data-i="'+i+'" aria-pressed="'+(x.agreed?'true':'false')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px'+(x.agreed?';border-color:var(--moss);color:var(--moss)':'')+'">'+(x.agreed?'✅ 확인받음':'확인받음?')+'</button>'+
         '<button type="button" class="ghost exDel" data-i="'+i+'" aria-label="'+escapeAttr((x.text||'추가공사')+' 지우기')+'" style="min-height:44px;min-width:44px">✕</button></div>'+
       '<input class="exIn" data-k="text" data-i="'+i+'" placeholder="무슨 작업인가 (예: 거실 선반 설치)" aria-label="추가 작업 내용" value="'+escapeAttr(x.text||'')+'" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box;margin-bottom:6px">'+
@@ -21697,19 +21770,22 @@ function extraWork(projectName){
         opts.map(f=>'<option value="'+escapeAttr(f.id)+'"'+(ph===f?' selected':'')+'>'+escapeHtml((f.name||'사진').slice(0,40))+'</option>').join('')+'</select></label>':'')+
     '</div>';}).join('');
   // 맨 아래 줄이 정산과 잇는 자리다 — 여기 보이는 금액이 청구서·잔금에 그대로 더해진다(hjExtrasBill 한 곳).
+  // 위에 붙어 있는(sticky) 요약은 숫자 세 줄만 — 설명·경고까지 붙이면 360px 폰에서 330px 가 되어 키보드가 올라온 뒤
+  // 치고 있는 금액 칸을 덮었다(v328 통합 검토). 설명·경고(#exNote)는 그 바로 아래, 스크롤과 함께 움직이는 자리에 둔다(내용은 같다).
   const sumHtml=()=>{const l=hjExtraList(p),sm=hjExtraSum(l),bill=hjExtrasBill(p);
-    return '<div style="display:flex;justify-content:space-between"><span style="font-weight:700">추가공사 합계</span><b style="color:#0a7f43;font-size:20px">'+won(sm.amount)+'</b></div>'+
-      '<div style="display:flex;justify-content:space-between"><span>건수 · 늘어난 공기</span><b>'+l.length+'건'+(sm.days?' · +'+sm.days+'일':'')+'</b></div>'+
-      '<div style="display:flex;justify-content:space-between"><span>확인받음</span><b>'+l.filter(y=>y.agreed).length+'건</b></div>'+
-      '<div class="exBill" style="display:flex;justify-content:space-between;border-top:1px dashed var(--line-soft);margin-top:4px;padding-top:4px"><span>청구서·잔금에 더해짐</span><b>'+won(bill.total)+'</b></div>'+
-      ((bill.quoted.length||bill.pending.length)?'<div style="font-size:12px;color:var(--muted-2);line-height:1.5">'+
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-weight:700">추가공사 합계</span><b style="color:#0a7f43;font-size:18px">'+won(sm.amount)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px"><span style="white-space:nowrap">건수</span><b style="text-align:right">'+l.length+'건'+(sm.days?' · +'+sm.days+'일':'')+' · 확인받음 '+l.filter(y=>y.agreed).length+'건</b></div>'+
+      '<div class="exBill" style="display:flex;justify-content:space-between;border-top:1px dashed var(--line-soft);margin-top:2px;padding-top:2px"><span>청구서·잔금에 더해짐</span><b>'+won(bill.total)+'</b></div>';};
+  const noteHtml=()=>{const bill=hjExtrasBill(p);
+    return ((bill.quoted.length||bill.pending.length)?'<div style="font-size:12px;color:var(--muted-2);line-height:1.5">'+
         [bill.quoted.length?'견적에 담긴 '+bill.quoted.length+'건은 견적 금액에 이미 들어 있습니다':'',
          bill.pending.length?hjExtrasPendingLine(bill)+' — 확인받음과 금액이 있어야 청구서에 들어갑니다':''].filter(Boolean).join('<br>')+'</div>':'')+
       (lost?'<div id="exLost" style="color:#a33;font-size:12.5px">⚠ 사진을 찾을 수 없음 '+lost+'장 — 이 기기에 그 사진이 없습니다. 다시 연결하거나 「사진 없음」으로 두세요.</div>':'');};
-  const body='<div id="exTop" style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 8px;padding:4px 0 6px">'+
-      '<select id="exProj" aria-label="현장 고르기" style="width:100%;padding:9px;font-size:16px;min-height:44px;margin-bottom:6px">'+opts+'</select>'+
-      '<div id="exSum" role="status" aria-live="polite" style="padding:10px 12px;border:1px solid var(--line-soft);border-radius:11px;font-size:13.5px;line-height:1.7">'+
+  const body='<div id="exTop" style="position:sticky;top:0;z-index:2;background:var(--paper);margin:-4px 0 6px;padding:4px 0 4px">'+
+      '<select id="exProj" aria-label="현장 고르기" style="width:100%;padding:9px;font-size:16px;min-height:44px;margin-bottom:4px">'+opts+'</select>'+
+      '<div id="exSum" role="status" aria-live="polite" style="padding:6px 12px;border:1px solid var(--line-soft);border-radius:11px;font-size:13px;line-height:1.55">'+
         sumHtml()+'</div></div>'+
+    '<div id="exNote" style="margin:0 0 8px">'+noteHtml()+'</div>'+
     (rows||'<div class="empty" style="padding:14px"><b>적어 둔 추가공사가 없습니다</b>현장에서 "이것도 해주세요" 를 들으면 그 자리에서 한 줄 남기세요.</div>')+
     '<button type="button" class="clay" id="exAdd" style="width:100%;margin-top:6px;padding:11px;min-height:48px">+ 추가공사 적기</button>'+
     '<div style="font-size:12px;color:var(--muted-2);margin-top:8px;line-height:1.55">고객에게 자동으로 보내지 않습니다. 「📋 확인 글」로 만들어 대표님이 직접 보내거나 보여 주세요. 금액을 비우면 「금액 협의」로 적힙니다.</div>';
@@ -21730,17 +21806,30 @@ function extraWork(projectName){
         // 이 견적에 이미 있는 것(같은 extraId, 또는 표 없는 옛 품목과 같은 이름)은 다시 넣지 않는다 — 두 번 누르면 두 배가 됐다.
         const hasId=new Set(q.items.map(it=>it&&it.extraId).filter(v=>v!=null&&v!=='').map(String));
         const hasName=new Set(q.items.filter(it=>it&&(it.extraId==null||it.extraId==='')).map(it=>hjExtraNorm(it.name)));
-        let added=0,skipped=0;
+        let added=0,skipped=0,netted=0;
+        // 확인받은 금액이 곧 고객이 들은 금액이다(hjExtraText·hjExtrasBill — 부가세를 얹지 않는다). 견적 단가는 공급가라
+        // '부가세 포함' 견적에 그 금액을 단가로 넣으면 quoteCalc 가 10% 를 얹어 같은 추가공사가 견적에 담으면 55만,
+        // 안 담으면 50만으로 청구됐다(v328 통합 검토). 부가세 포함 견적이면 견적 합계가 확인 금액만큼만 늘도록 공급가를 되짚는다
+        // (반올림 탓에 딱 맞출 수 없을 때만 1원 차이 — 가장 가까운 값).
+        const qTotal=()=>quoteCalc({items:q.items,vatIncluded:!!q.vatIncluded}).total;
         l.forEach(x=>{
           if((x.id!=null&&hasId.has(String(x.id)))||hasName.has(hjExtraNorm('[추가] '+x.text))){skipped++;return;}
-          const item={name:'[추가] '+String(x.text||'').trim(),spec:(x.days?'공기 +'+num(x.days)+'일':''),qty:1,price:hjExtraAmt(x)};
+          const amt=hjExtraAmt(x);
+          const item={name:'[추가] '+String(x.text||'').trim(),spec:(x.days?'공기 +'+num(x.days)+'일':''),qty:1,price:amt};
           if(x.id!=null&&x.id!=='')item.extraId=String(x.id);
           const last=q.items[q.items.length-1];
-          if(last&&!String(last.name||'').trim()&&!num(last.price)){q.items[q.items.length-1]=item;}else{q.items.push(item);}
+          const at=(last&&!String(last.name||'').trim()&&!num(last.price))?q.items.length-1:q.items.length;
+          const t0=qTotal();
+          q.items[at]=item;
+          if(q.vatIncluded&&amt>0){
+            const base=Math.round(amt/1.1);let best=base,bd=Infinity;
+            [base-1,base,base+1].forEach(v=>{if(v<0)return;item.price=v;const d=Math.abs(qTotal()-t0-amt);if(d<bd){bd=d;best=v;}});
+            item.price=best;netted++;
+          }
           added++;});
         if(!added){toast('이미 이 견적에 담긴 추가공사입니다');return;}
         if(linked)q.project=p.name;
-        markDirty();toast('견적에 추가공사 '+added+'건을 담았습니다'+(skipped?' · 이미 담긴 '+skipped+'건은 건너뜀':'')+(linked?' · 이 견적을 「'+p.name+'」 현장에 연결했습니다':''));closeModal();try{render();}catch(_){}}},
+        markDirty();toast('견적에 추가공사 '+added+'건을 담았습니다'+(skipped?' · 이미 담긴 '+skipped+'건은 건너뜀':'')+(netted?' · 부가세 포함 견적이라 단가는 공급가로 넣어 확인받은 금액 그대로 청구됩니다':'')+(linked?' · 이 견적을 「'+p.name+'」 현장에 연결했습니다':''));closeModal();try{render();}catch(_){}}},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   // 고객 페이지의 남은 금액·공사 비용이 확인받은 추가공사를 따라간다 — 청구에 닿는 것을 바꾸면 고객 페이지도 갱신을 건다
@@ -21765,7 +21854,9 @@ function extraWork(projectName){
       if(el.dataset.k==='amount'||el.dataset.k==='text')portalNudge();
       if(el.dataset.k==='amount'){const w=root.querySelector('.exAmtBad[data-i="'+el.dataset.i+'"]');if(w)w.hidden=!hjExtraAmtBad(x);}
       const box=root.querySelector('#exSum');
-      if(box)box.innerHTML=sumHtml();};});
+      if(box)box.innerHTML=sumHtml();
+      const nb=root.querySelector('#exNote');
+      if(nb)nb.innerHTML=noteHtml();};});
 }
 /* ── 📰 사례 내보내기 (v321) ────────────────────────────────────────────────
    현장 사진을 홈페이지 사례로 넘길 길이 앱에 없었다. 사진은 폰과 Drive 에만 있고, 홈페이지 쪽은
@@ -23526,11 +23617,18 @@ function payPlanDialog(projName){
   const p=projs.find(x=>x.name===projName);if(!p){toast('현장을 찾을 수 없어요');return {오류:'현장 없음'};}
   let s;try{s=projStats(p.name);}catch(e){s={est:0};}
   const total=s.est||0;
+  // 확인받은 추가공사(hjExtrasBill)는 잔금에 더한다 — 잔금 안내 문자·월말 마감·고객 페이지가 모두 due(견적+추가공사) 기준이라,
+  // 견적만 나누면 잔금 알림과 문자 금액이 달랐다(v328 통합 검토).
+  const extra=Math.max(0,num(s.extra)||0);
+  // 계약금·중도금은 반올림, 잔금은 나머지 — 비율 합이 100% 일 때 셋의 합이 견적 금액과 정확히 같다(contractDraftText·서버 paymentPlan 과 같은 규칙).
+  const ppAmts=(r1,r2,r3)=>{const a1=Math.round(total*r1/100),a2=Math.round(total*r2/100);
+    const a3=(r1+r2+r3===100)?total-a1-a2:Math.round(total*r3/100);
+    return [a1,a2,a3+(r3>0?extra:0)];};
   const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
   // 기본 3분할은 계약서·전자계약과 같은 정본 비율(HJ_PAY_RATIO). 슬라이더로 현장마다 바꿀 수 있다.
   const r0=[hjPayPct('down'),hjPayPct('mid'),hjPayPct('bal')];
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">'+escapeHtml(projName)+'</div><div style="font-size:17px;font-weight:800">📅 분할납 계획</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 견적 '+hjMan(total)+'</div></div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">'+escapeHtml(projName)+'</div><div style="font-size:17px;font-weight:800">📅 분할납 계획</div><div style="font-size:12px;opacity:.95;margin-top:2px">총 견적 '+hjMan(total)+(extra?' · 확인받은 추가공사 '+hjMan(extra)+'(잔금에 더함)':'')+'</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">비율을 정하면 각 대금의 예상 금액과 예약 알림을 만들어요.</div>'+
     '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 계약금</span><span id="ppP1">'+r0[0]+'%</span></div><input type="range" id="ppR1" min="0" max="100" value="'+r0[0]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA1"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD1" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
     '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>💰 중도금</span><span id="ppP2">'+r0[1]+'%</span></div><input type="range" id="ppR2" min="0" max="100" value="'+r0[1]+'" style="width:100%"><div style="font-size:11px;color:var(--muted);text-align:right" id="ppA2"></div><label style="font-size:11px;color:var(--muted)">예약일</label><input type="date" id="ppD2" style="width:100%;padding:8px;font-size:13px;margin-top:2px"></div>'+
@@ -23540,14 +23638,15 @@ function payPlanDialog(projName){
   openModal('📅 '+projName+' 분할납',body,[
     {label:'💾 예약 저장',cls:'clay',fn:()=>{
       const parts=[['계약금','ppR1','ppD1'],['중도금','ppR2','ppD2'],['잔금','ppR3','ppD3']];
+      const rs=parts.map(([,rid])=>+document.getElementById(rid).value||0),amts=ppAmts(rs[0],rs[1],rs[2]);
       let saved=0;
-      parts.forEach(([label,rid,did])=>{
-        const pct=+document.getElementById(rid).value||0;
+      parts.forEach(([label,rid,did],i)=>{
+        const pct=rs[i];
         const date=document.getElementById(did).value;
         if(pct>0&&date){
-          const amt=Math.round(total*pct/100);
+          const amt=amts[i];
           state.schedule=state.schedule||[];
-          state.schedule.push({id:uid(),date,time:'',title:'💰 '+label+' '+hjMan(amt),project:projName,workers:'',hours:0,memo:projName+' '+label+'('+pct+'%) 입금 예정',report:null});
+          state.schedule.push({id:uid(),date,time:'',title:'💰 '+label+' '+hjMan(amt),project:projName,workers:'',hours:0,memo:projName+' '+label+'('+pct+'%'+(i===2&&extra?' + 추가공사 '+hjMan(extra):'')+') 입금 예정',report:null});
           saved++;
         }
       });
@@ -23567,9 +23666,10 @@ function payPlanDialog(projName){
   const upd=()=>{
     const r1=+document.getElementById('ppR1').value,r2=+document.getElementById('ppR2').value,r3=+document.getElementById('ppR3').value;
     document.getElementById('ppP1').textContent=r1+'%';document.getElementById('ppP2').textContent=r2+'%';document.getElementById('ppP3').textContent=r3+'%';
-    document.getElementById('ppA1').textContent=hjMan(Math.round(total*r1/100));
-    document.getElementById('ppA2').textContent=hjMan(Math.round(total*r2/100));
-    document.getElementById('ppA3').textContent=hjMan(Math.round(total*r3/100));
+    const am=ppAmts(r1,r2,r3);
+    document.getElementById('ppA1').textContent=hjMan(am[0]);
+    document.getElementById('ppA2').textContent=hjMan(am[1]);
+    document.getElementById('ppA3').textContent=hjMan(am[2])+(extra&&r3>0?' (추가공사 '+hjMan(extra)+' 포함)':'');
     const sum=r1+r2+r3;
     const sumEl=document.getElementById('ppSum');
     sumEl.innerHTML='합계 <b style="color:'+(sum===100?'#0a7f43':'#c2410c')+'">'+sum+'%</b>'+(sum!==100?' (100%가 되도록 맞춰주세요)':' ✓');
@@ -26517,13 +26617,15 @@ function portalView(pjName){
     '<div style="font-size:12px;font-weight:800;margin:2px 0 5px">🎨 고객 선택 요청'+(p.portalAsk&&p.portalAsk.choice?' — <span style="color:var(--ok)">선택됨: '+escapeHtml(p.portalAsk.choice)+' ✅</span>':'')+'</div>'+
     '<input id="ptAskQ" placeholder="질문 (예: 욕실 벽타일 어떤 걸로 할까요?)" value="'+escapeAttr(p.portalAsk&&p.portalAsk.q||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:6px">'+
     '<input id="ptAskO" placeholder="선택지 (쉼표로: A. 밝은 그레이, B. 베이지 톤)" value="'+escapeAttr(p.portalAsk&&(p.portalAsk.opts||[]).join(', ')||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:10px">'+
-    '<details'+(cfg.base?'':' open')+' style="margin-bottom:10px"><summary style="font-size:12px;font-weight:800;cursor:pointer">⚙️ 서버 설정 (최초 1회)</summary>'+
+    '<details'+(cfg.base&&portalKeyGet()?'':' open')+' style="margin-bottom:10px"><summary style="font-size:12px;font-weight:800;cursor:pointer">⚙️ 서버 설정 (최초 1회)</summary>'+
       '<input id="ptBase" placeholder="https://manmul-kakao.____.workers.dev" value="'+escapeAttr(cfg.base||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px;margin:8px 0 6px">'+
       '<input type="password" id="ptKey" autocomplete="off" spellcheck="false" aria-label="고객 페이지 서버 비밀키" placeholder="'+escapeAttr(portalKeyHint())+'" value="" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px">'+
       '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);line-height:1.6">'+
         '<span style="flex:1">🔒 비밀키는 이 기기에만 저장돼요 — 백업·내보내기 파일에는 들어가지 않습니다. 칸을 비워 두면 저장된 키를 그대로 씁니다.</span>'+
         '<button type="button" class="ghost tiny" id="ptKeyDel"'+(portalKeyGet()?'':' hidden')+' style="min-height:44px">지우기</button>'+
       '</div>'+
+      // 서버 주소는 있는데 이 기기에 키가 없다 — 지웠거나, 아직 옛 버전인 다른 기기가 동기화하며 키를 뺀 경우다(v328 부터 키는 백업에 안 실린다).
+      (cfg.base&&!portalKeyGet()?'<div id="ptKeyMissing" role="status" style="margin-top:6px;font-size:11.5px;color:#b45309;line-height:1.6">⚠ 이 기기에 비밀키가 없어 고객 페이지 갱신·접수 가져오기가 멈춰 있어요. 위 칸에 비밀키를 다시 넣어 주세요. (다른 기기가 옛 버전이면 모두 새로고침해 최신으로 맞춘 뒤 동기화하세요.)</div>':'')+
     '</details>'+
     '<div style="font-size:11px;color:var(--muted);line-height:1.7">🔗 만들면 <b>진행 단계·비용·[승인] 버튼·사진 6장</b>이 담긴 고객 전용 페이지가 생겨요. 단계가 바뀌면 다시 [갱신]을 눌러 최신으로 유지하세요. 고객이 승인하면 카카오 접수함(/leads)에 도착 — [📥 가져오기]로 앱에 반영됩니다.</div>';
   openModal('🔗 고객 페이지 — '+pjName,body,[
@@ -26568,6 +26670,7 @@ async function portalKeySaveInput(){
   if(!v)return true;
   try{await idbSet('portal_key',v);}catch(e){toast('비밀키 저장 실패 — 브라우저 저장공간을 확인하세요');return false;}
   __portalKey=v;
+  if(__portalKeyDropped){__portalKeyDropped=false;try{await idbSet('portal_key_dropped','');}catch(e){}}
   if(el){el.value='';el.placeholder=portalKeyHint();}
   const del=document.getElementById('ptKeyDel');if(del)del.hidden=false;
   return true;
@@ -26576,6 +26679,9 @@ async function portalKeySaveInput(){
 async function portalKeyDrop(){
   if(!portalKeyGet()){toast('저장된 비밀키가 없어요');return false;}
   if(!confirm('고객 페이지·카카오 접수 서버 비밀키를 이 기기에서 지울까요? 고객 페이지 갱신과 접수 가져오기가 멈춥니다.'))return false;
+  // 표시를 먼저 남긴다 — 키만 지워지고 표시가 없으면 다음 옛 자료 적용이 키를 되살린다
+  try{await idbSet('portal_key_dropped',new Date().toISOString());}catch(e){toast('지우기 실패 — 브라우저 저장공간을 확인하세요');return false;}
+  __portalKeyDropped=true;
   try{await idbSet('portal_key','');}catch(e){toast('지우기 실패 — 브라우저 저장공간을 확인하세요');return false;}
   __portalKey=null;
   const el=document.getElementById('ptKey');if(el){el.value='';el.placeholder=portalKeyHint();}
@@ -27555,7 +27661,8 @@ const MAT_PRESET={
 function upsertDueSchedule(p){
   state.schedule=state.schedule||[];
   const id='due_'+p.name;
-  state.schedule=state.schedule.filter(s=>s.id!==id);
+  // 이 현장의 수금 알림은 하나다 — 이름이 바뀌기 전에 만든 'due_옛이름' 알림(project 는 이미 새 이름)도 같이 걷는다.
+  state.schedule=state.schedule.filter(s=>!(s&&(s.id===id||(s.project===p.name&&typeof s.id==='string'&&s.id.startsWith('due_')&&String(s.title||'').startsWith('💰 수금: ')))));
   if(p.dueDate){
     state.schedule.push({id,date:p.dueDate,time:'',title:'💰 수금: '+p.name,project:p.name,workers:'',memo:'',hours:0});
   }
@@ -27949,21 +28056,45 @@ function restoreSelect(idx){
        const picked=[...document.querySelectorAll('input[data-bkp]:checked')].map(c=>+c.dataset.bkp);
        if(!picked.length){toast('현장을 선택하세요.');return;}
        await makeCheckpoint('선택복원 전 자동백업');
-       const names=new Set();
+       const names=new Set(),blocked=[],relinked=[],manyTombs=[];
        picked.forEach(pi=>{
-         const bp=structuredClone(projs[pi]);names.add(bp.name);
+         const bp=structuredClone(projs[pi]);
          // 현장 정보 덮어쓰기/추가
          const exist=state.projects.find(x=>x.name===bp.name);
          // 5개 필드만 담으면 고객·부대사항·추가공사·실측이 조용히 사라진다 — 화면이 약속한 대로 전부 되살리되,
          // 보관 여부는 지금 운영 상태라 백업 시점으로 되돌리지 않는다
          const restored={...projectBackupSafe(bp),name:bp.name,stage:bp.stage||0,received:bp.received||0,phases:bp.phases||[],cost:bp.cost||{material:0,labor:0,outsource:0}};
          delete restored.archived;
-         if(exist)Object.assign(exist,restored);else state.projects.push(restored);
+         // 관리사무소 현장 식별자도 운영 사실이다 — 되돌리지 않고 지금 값을 지킨다. 백업의 식별자를 지금 다른 현장이 쓰고 있으면
+         // 그 현장은 이름만 바뀐 같은 현장이다: 새로 만들면 식별자가 같은 현장이 둘 생기고 기록이 두 이름으로 갈라진다(v328 통합 검토).
+         const bid=officeIntakeValidProjectIdentity(restored.officeIntakeProjectId);
+         if(exist){
+           if(Object.prototype.hasOwnProperty.call(exist,'officeIntakeProjectId'))restored.officeIntakeProjectId=exist.officeIntakeProjectId;
+           else delete restored.officeIntakeProjectId;
+         }else if(bid){
+           const twin=state.projects.find(x=>x&&officeIntakeValidProjectIdentity(x.officeIntakeProjectId)===bid);
+           if(twin){blocked.push([bp.name,twin.name]);return;}
+         }
+         names.add(bp.name);
+         if(exist){Object.assign(exist,restored);return;}
+         state.projects.push(restored);
+         // 지운 현장을 되살리면 삭제 때 '(삭제됨) 이름 · 날짜' 로 옮겨 둔 수금·AS·견적·지출도 다시 잇는다(hjDeleteProjectCore).
+         // 그 이름이 하나일 때만 — 둘 이상이면 어느 삭제의 기록인지 모르므로 건드리지 않고 알린다.
+         const tombs=hjProjectTombstonesOf(bp.name);
+         if(tombs.length===1){const t=tombs[0];
+           hjProjectRefWalk(t,(k,r,set)=>set(bp.name),bid);hjProjectRefLocal(t,bp.name);
+           if(state.editingQuote&&state.editingQuote.project===t)state.editingQuote.project=bp.name;
+           relinked.push(bp.name);}
+         else if(tombs.length>1)manyTombs.push(bp.name);
        });
+       if(!names.size){closeModal();toast(blocked.map(x=>'「'+x[0]+'」 은 지금 「'+x[1]+'」 로 이름이 바뀐 같은 현장이라 복원하지 않았습니다').join(' · ')+' — 이름을 되돌린 뒤 복원하세요.');return;}
        // 그 현장들의 파일 배정·공정·작업명·동·호수·메모 복원 (경로+이름+크기로 짝을 찾는다)
        const nFiles=restoreSelectFiles(b.data.files,names);
        state.tab='dashboard';markDirty();closeModal();render();
-       toast(picked.length+'개 현장을 복원했습니다'+(nFiles?' · 파일 '+nFiles+'개 되돌림':'')+'.');
+       toast(names.size+'개 현장을 복원했습니다'+(nFiles?' · 파일 '+nFiles+'개 되돌림':'')+'.'+
+         (relinked.length?' 지울 때 「(삭제됨)」 으로 옮겨 둔 수금·견적·AS 기록을 다시 이었습니다('+relinked.join(', ')+').':'')+
+         (manyTombs.length?' 「(삭제됨) '+manyTombs.join(', ')+' …」 기록이 여러 벌이라 자동으로 잇지 않았습니다.':'')+
+         (blocked.length?' '+blocked.map(x=>'「'+x[0]+'」 은 지금 「'+x[1]+'」 로 이름이 바뀐 같은 현장이라 건너뜀').join(' · ')+'.':''));
      }}], false);
 }
 function bulkMove(){
@@ -32782,7 +32913,8 @@ function paidCommitRecoveryBanner(){
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
 // 완료 시점을 promise로 노출(__hjRestoreDone) — 리드 인입 등이 복원 완료 후 실행되도록 (부팅 경합 방지)
 // 고객 페이지 비밀키는 IDB 에만 있다 — 저장본 복원보다 먼저 읽기 시작한다(복원 중 옛 키 이전 판단이 이 값을 본다).
-window.__hjPortalKeyDone=(async()=>{try{const k=await idbGet('portal_key');if(typeof k==='string'&&k.trim()&&!portalKeyGet())__portalKey=k.trim();}catch(e){}})();
+window.__hjPortalKeyDone=(async()=>{try{const k=await idbGet('portal_key');if(typeof k==='string'&&k.trim()&&!portalKeyGet())__portalKey=k.trim();}catch(e){}
+  try{const d=await idbGet('portal_key_dropped');if(typeof d==='string'&&d)__portalKeyDropped=true;}catch(e){}})();
 window.__hjRestoreDone = (async () => {
   let restoredSavedState = false,restoredPaidState=null,portalKeyMoved=false;
   try {

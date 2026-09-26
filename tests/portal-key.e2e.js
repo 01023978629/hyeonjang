@@ -180,7 +180,36 @@ const pollIdb = (page, key, pred, label) => page.evaluate(async ({ key, pred, la
     assert(r === null && !reqA.length, '키가 없는데 서버로 보냈다');
   });
 
+  await step('⑤b [지우기]로 지운 기기 — 옛 백업을 받아도 지운 키가 되살아나지 않고, 비밀키가 없다고 알린다', async () => {
+    // v328 통합 검토: portalKeyAdopt 는 '키 없음' 만 봐서 일부러 지운 키가 옛 자료(키가 실린 v327 이전 백업) 한 번에 되살아났다
+    const flag = await page.evaluate(async () => ({ idb: await idbGet('portal_key_dropped'), mem: __portalKeyDropped }));
+    assert(typeof flag.idb === 'string' && flag.idb && flag.mem === true, '지운 표시가 IDB·메모리에 남아야 한다: ' + JSON.stringify(flag));
+    await page.evaluate(({ BASE, KEY2 }) => { const d = serializeData(); d.portalCfg = { base: BASE, key: KEY2 }; applyData(d); }, { BASE, KEY2 });
+    await page.waitForTimeout(400);   // 부정 증명 — 옮겨 담지 않아야 한다
+    const st = await page.evaluate(async () => ({ idb: await idbGet('portal_key'), mem: portalKeyGet(), cfg: state.portalCfg }));
+    assert(!st.idb && st.mem === '' && !('key' in st.cfg), '지운 키가 옛 백업으로 되살아났다: ' + JSON.stringify(st));
+    await openPortal();
+    assert(await page.isVisible('#modalRoot #ptKeyMissing'), '주소는 있는데 키가 없다는 안내가 안 보인다');
+    // 새로고침 뒤에도 지운 표시를 읽는다(부팅 IDB 읽기) — 안 읽으면 다음 드라이브 통합이 키를 되살린다
+    await page.evaluate(async () => { clearTimeout(__idbSaveTimer); await guardedPersistCurrentState(); });
+    await boot(page, true);
+    const rb = await page.evaluate(() => ({ dropped: __portalKeyDropped, mem: portalKeyGet() }));
+    assert(rb.dropped === true && rb.mem === '', '새로고침 뒤 지운 표시: ' + JSON.stringify(rb));
+    // 사용자가 새 키를 넣으면 표시를 걷는다(그 뒤는 보통 기기와 같다)
+    await openPortal();
+    await page.fill('#modalRoot #ptKey', KEY1);
+    assert(await page.evaluate(() => portalKeySaveInput()), '새 키 저장 실패');
+    const cl = await page.evaluate(async () => ({ idb: await idbGet('portal_key_dropped'), mem: __portalKeyDropped, key: portalKeyGet() }));
+    assert(!cl.idb && cl.mem === false && cl.key === KEY1, '새 키를 넣으면 지운 표시를 걷는다: ' + JSON.stringify(cl));
+    // ⑥ 을 위해 다시 지운다
+    await openPortal();
+    await page.click('#modalRoot #ptKeyDel');
+    await pollIdb(page, 'portal_key', 'v=>!v', '다시 지우기 실패');
+  });
+
   await step('⑥ 옛 백업(key 포함) — 상태엔 안 넣고, 키 없는 기기에만 옮긴다', async () => {
+    // 지운 적 없는 기기(새 폰)를 흉내 낸다 — 지운 표시를 걷는다
+    await page.evaluate(async () => { await idbSet('portal_key_dropped', ''); __portalKeyDropped = false; });
     await page.evaluate(({ BASE, KEY2 }) => {
       const d = serializeData(); d.portalCfg = { base: BASE, key: KEY2 };
       applyData(d);

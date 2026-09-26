@@ -225,7 +225,8 @@ let browser;
     const r = hjCaseBlock(p); p.casePack = keep; return r; });
   assert(/사진을 찾을 수 없음 2장/.test(blocked), '④ 사례 — 고른 사진이 모두 없으면 그 이유를 말한다: ' + blocked);
   await page.evaluate(n => { closeModal(true); const n0 = window.__mdN; extraWork(n); window.__wrote = window.__mdN - n0; }, P);
-  lost = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#modalRoot .exRow')].map(r => !!r.querySelector('.exMiss')), sum: document.querySelector('#exSum').textContent,
+  // v328: 경고는 위에 붙는 요약(#exSum) 바로 아래 #exNote 로 옮겼다(360px 키보드 가림 — v328 통합 검토). 내용은 같다
+  lost = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#modalRoot .exRow')].map(r => !!r.querySelector('.exMiss')), sum: document.querySelector('#exNote').textContent,
     sel: (document.querySelector('#modalRoot .exIn[data-k="photo"][data-i="1"]').selectedOptions[0] || {}).textContent, photo: state.projects[0].extras[1].photo, dirty: window.__wrote > 0 }));
   assert(JSON.stringify(lost.rows) === JSON.stringify([false, true]) && /사진을 찾을 수 없음 1장/.test(lost.sum) && /찾을 수 없는 사진/.test(lost.sel), '④ 추가공사 — 줄과 합계에 알린다: ' + JSON.stringify(lost));
   assert(lost.photo === 'k:' + DIR + '중_배관.jpg|3001' && lost.dirty === false, '④ 추가공사 — 연결값은 그대로 둔다: ' + JSON.stringify(lost));
@@ -241,7 +242,7 @@ let browser;
   }, P);
   assert(empty.sel === '⚠ 찾을 수 없는 사진' && empty.miss, '④ 사진 없는 현장에서도 찾을 수 없는 연결을 보이고 풀 수 있다: ' + JSON.stringify(empty));
   await page.fill('#modalRoot .exIn[data-k="amount"][data-i="0"]', '50000');
-  assert(/사진을 찾을 수 없음 1장/.test(await page.evaluate(() => document.querySelector('#exSum').textContent)), '④ 추가공사 — 금액을 고쳐 합계를 다시 그려도 경고가 남는다');
+  assert(/사진을 찾을 수 없음 1장/.test(await page.evaluate(() => document.querySelector('#exNote').textContent)), '④ 추가공사 — 금액을 고쳐 합계를 다시 그려도 경고가 남는다');
   await page.evaluate(n => { closeModal(true); state.files.find(f => f.name === '후_거실.jpg').thumb = null; warrantyDocView(n); }, P);
   const wd = await page.evaluate(() => ({ same: document.querySelector('#wdSame').textContent, frame: (document.querySelector('#modalRoot iframe').getAttribute('srcdoc').match(/data-photo="/g) || []).length }));
   assert(!/같은 사본입니다/.test(wd.same) && /사진 4장 중 2장만/.test(wd.same) && /사진을 찾을 수 없음 1장/.test(wd.same) && /미리보기를 아직 못 불러온 사진 1장/.test(wd.same) && wd.frame === 2,

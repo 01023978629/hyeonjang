@@ -14,6 +14,8 @@
         AS 는 접수일까지 같아야 중복이다(재접수만 먼저 적어 둔 기기에서 첫 접수가 빠지지 않는다)
      ⑤ 꼭 있어야 할 칸이 빈 줄은 요약에 '읽을 수 없어 건너뜀 N' 으로 보이고, 옮기지 않은 시트 이름을 밝힌다
      ⑥ 카드 문구의 시트 수 = 실제로 내보내는 시트 수, pageerror 0
+     ⑦ (v328) 추가공사 시트 — 확인받은 추가공사가 잔금(due)에 더해지므로 이사 뒤 extra·due 가 같다. 확인 전·'50만' 같은
+        금액 확인 필요 건도 그대로, 견적에 담긴 건은 견적 합계에 이미 있어 옮기지 않고 요약에 밝힌다. 두 번 가져와도 두 벌이 안 된다
 
    XLSX 는 CDN 라이브러리라 검사에서는 스텁이다(apt-integrate 와 같은 방식). writeFile 이 workbook 을 JSON 글자로
    굳혀 두고(숫자는 숫자, 글자는 글자 — 엑셀 파일 왕복과 같은 성질), read 가 그 글자를 다시 푼다. 가져오기는 실제
@@ -85,7 +87,11 @@ function diffSnap(before, after) {
           const s = projStats(p.name), w = hjWarranty(p), c = p.customer || {};
           return { name: p.name, stage: p.stage || 0, archived: !!p.archived, doneAt: p.doneAt || '', received: p.received || 0,
             cust: [c.name || '', c.phone || '', c.addr || ''], material: s.material, labor: s.labor, outsource: s.outsource,
-            est: s.est, recv: s.recv, marginEff: s.marginEff, warrantyEnd: w ? w.end : '' };
+            est: s.est, recv: s.recv, marginEff: s.marginEff, warrantyEnd: w ? w.end : '',
+            // v328: 확인받은 추가공사는 잔금(due)에 더해진다 — 이사에서 빠지면 잔금이 조용히 준다(⑦)
+            extra: s.extra, due: s.due,
+            // 견적에 담긴 것은 견적 합계(이관 견적)로 옮겨 가므로 목록 비교에서 뺀다 — 금액은 est·due 로 비교된다
+            extras: (Array.isArray(p.extras) ? p.extras : []).filter(x => !hjExtrasBill(p).quoted.includes(x) && (String(x.text || '').trim() || String(x.amount || '').trim())).map(x => [x.date || '', x.text || '', String(x.amount == null ? '' : x.amount), !!x.agreed, x.agreedAt || '', String(x.days || '')].join('|')).sort() };
         }),
         contacts: (state.contacts || []).map(c => [c.name, c.phone, c.company, c.memo].join('|')).sort(),
         priceBook: Object.entries(state.priceBook || {}).map(e => e.join('|')).sort(),
@@ -97,7 +103,7 @@ function diffSnap(before, after) {
     };
     window.__wipe = () => {
       state.projects = []; state.files = []; state.expenses = []; state.contacts = []; state.priceBook = {};
-      state.suppliers = []; state.supplierMap = {}; state.payLog = []; state.asLog = []; state.activeProject = null;
+      state.suppliers = []; state.supplierMap = {}; state.payLog = []; state.asLog = []; state.activeProject = null; state.quotes = [];
     };
   });
   const modalText = () => page.evaluate(() => (document.querySelector('#modalRoot') || {}).textContent || '');
@@ -137,6 +143,17 @@ function diffSnap(before, after) {
       { id: 'a3', project: B, date: '2026-01-05', text: '도배 이음새 벌어짐', status: 'doing' }
     ];
     state.aptOrders = []; state.quotes = [];
+    // ⑦ 추가공사 — 확인받음(청구에 더함)·확인 전·금액 확인 필요('50만')·견적에 담김(C 의 앱 견적 품목 extraId)
+    state.projects[0].extras = [
+      { id: 'xa1', date: '2026-03-01', text: '거실 선반 설치', amount: '500000', days: '1', photo: '', agreed: true, agreedAt: '2026-03-02' },
+      { id: 'xa2', date: '2026-03-05', text: '현관 중문', amount: '300000', days: '', photo: '', agreed: false },
+      { id: 'xa3', date: '2026-03-06', text: '콘센트 추가', amount: '50만', days: '', photo: '', agreed: true, agreedAt: '2026-03-06' },
+      { id: 'xa4', date: '2026-03-07', text: '', amount: '', days: '', photo: '', agreed: false }   // 막 추가한 빈 칸 — 옮기지 않는다
+    ];
+    state.projects[2].extras = [{ id: 'xc1', date: '2026-05-02', text: '문틀 교체', amount: '200000', days: '', photo: '', agreed: true, agreedAt: '2026-05-02' }];
+    const qc = { id: 'qc1', no: 'Q-C', title: '가상실측', date: '2026-05-01', place: '', vatIncluded: false, accountIdx: 0, memo: '', project: C,
+      items: [{ name: '도배', spec: '', qty: 1, price: 1000000 }, { name: '[추가] 문틀 교체', spec: '', qty: 1, price: 200000, extraId: 'xc1' }] };
+    state.quotes.push(qc); syncQuoteToProject(qc);
   }, { A, B, C });
 
   const before = await page.evaluate(() => window.__snap());
@@ -144,6 +161,7 @@ function diffSnap(before, after) {
   const pA = before.projects.find(p => p.name === A), pC = before.projects.find(p => p.name === C);
   assert(pA.material === 100 && pA.labor === 200 && pA.outsource === 300 && pA.warrantyEnd > '2027', '시드: A 원가 셋이 다르고 무상만료가 미래다: ' + JSON.stringify(pA));
   assert(pC.material === 4000, '시드: C 자재비는 지출 장부에서 온다: ' + JSON.stringify(pC));
+  assert(pA.extra === 500000 && pA.due === pA.est + 500000 - pA.recv && pC.est === 1200000 && pC.extra === 0, '시드: A 는 추가공사 50만이 잔금에, C 는 견적에 담김: ' + JSON.stringify({ pA, pC }));
 
   // 내보내기
   const exp = await page.evaluate(async () => {
@@ -152,7 +170,8 @@ function diffSnap(before, after) {
     const wb = JSON.parse(window.__xlWritten.json);
     return { ret: r, sheets: wb.SheetNames, head: wb.Sheets['현장'].__aoa[0] };
   });
-  assert(exp.sheets.length === 10 && exp.ret && exp.ret.시트 === exp.sheets.length, '내보내기 시트 수: ' + JSON.stringify(exp.sheets) + ' / ' + JSON.stringify(exp.ret));
+  // v328: ⑪ 추가공사 시트가 붙어 11 (v328 통합 검토 — 없으면 이사한 기기의 잔금이 추가공사만큼 준다)
+  assert(exp.sheets.length === 11 && exp.sheets[10] === '추가공사' && exp.ret && exp.ret.시트 === exp.sheets.length, '내보내기 시트 수: ' + JSON.stringify(exp.sheets) + ' / ' + JSON.stringify(exp.ret));
 
   // 화면 길로 가져오기 — 이사 마법사 → '우리 앱 전체장부 엑셀' 카드 → 파일 고르기
   const importViaWizard = async () => {
@@ -188,11 +207,13 @@ function diffSnap(before, after) {
   assert(/현장: 추가 3/.test(sum1) && /수금이력: 추가 5/.test(sum1) && /AS이력: 추가 3/.test(sum1) && /연락처: 추가 2/.test(sum1) && /단가장: 추가 2/.test(sum1) && /거래처: 추가 1/.test(sum1),
     '② 요약 건수: ' + sum1);
   assert(!/읽을 수 없어/.test(sum1), '⑤ 못 읽은 줄이 없는데 경고가 뜬다: ' + sum1);
+  // ⑦ 추가공사 — 세 건 옮기고(빈 칸은 안 내보냄), 견적에 담긴 C 의 한 건은 견적 합계에 이미 있어 옮기지 않았다고 밝힌다
+  assert(/추가공사: 추가 3/.test(sum1) && /견적에 담긴 1건은 견적 합계에 이미 들어 있어 옮기지 않음/.test(sum1), '⑦ 추가공사 요약: ' + sum1);
   // ⑤ 옮기지 않은 시트를 밝힌다
-  const left = exp.sheets.filter(n => !['현장', '연락처', '단가장', '거래처', '수금이력', 'AS이력'].includes(n));
+  const left = exp.sheets.filter(n => !['현장', '연락처', '단가장', '거래처', '수금이력', 'AS이력', '추가공사'].includes(n));
   const note = await page.evaluate(() => (document.querySelector('#modalRoot .iwNote') || {}).textContent || '');
   assert(left.length === 4 && left.every(n => note.indexOf(n) >= 0) && note.indexOf('현장 시트') >= 0, '⑤ 옮기지 않은 시트(' + left.join('·') + ')를 밝힌다: ' + note);
-  assert(['수금이력', 'AS이력', '연락처', '단가장', '거래처'].every(n => note.indexOf(n) < 0), '⑤ 옮긴 시트를 안 옮겼다고 하지 않는다: ' + note);
+  assert(['수금이력', 'AS이력', '연락처', '단가장', '거래처', '추가공사'].every(n => note.indexOf(n) < 0), '⑤ 옮긴 시트를 안 옮겼다고 하지 않는다: ' + note);
 
   // ③ 같은 파일을 한 번 더 — 아무것도 늘지 않는다
   const nFiles = raw.files;
@@ -201,6 +222,7 @@ function diffSnap(before, after) {
   const d2 = diffSnap(before, again);
   assert(d2.length === 0, '③ 두 번째 가져오기에서 값이 늘거나 바뀌었다:\n  ' + d2.join('\n  '));
   assert(await page.evaluate(() => state.files.filter(f => f.kind === 'estimate').length) === nFiles, '③ 이관 견적 파일이 늘었다');
+  assert(/추가공사: 추가 0 · 중복 건너뜀 3/.test(sum2), '③⑦ 추가공사도 두 번 가져와 두 벌이 되지 않는다: ' + sum2);
   assert(/현장: 추가 0 · 중복 건너뜀 3/.test(sum2) && /수금이력: 추가 0 · 중복 건너뜀 5/.test(sum2) && /AS이력: 추가 0 · 중복 건너뜀 3/.test(sum2)
     && /연락처: 추가 0 · 중복 건너뜀 2/.test(sum2) && /거래처: 추가 0 · 중복 건너뜀 1/.test(sum2), '③ 요약에 중복 건너뜀: ' + sum2);
 
@@ -277,5 +299,6 @@ function diffSnap(before, after) {
   console.log('PASS  ④ 열은 제목으로 — v193 이전·뒤섞은·제목 바꾼·일부 제목·글자 음수');
   console.log('PASS  ⑤ 못 읽은 줄 수·옮기지 않은 시트를 요약에 밝힘');
   console.log('PASS  ⑥ 카드 시트 수 = 실제 시트 수 · pageerror 0');
+  console.log('PASS  ⑦ 추가공사 — 이사 뒤 extra·due 그대로, 견적에 담긴 것은 다시 안 더함');
   await browser.close();
 })().catch(async e => { console.error('FAIL ', e.message); try { await browser.close(); } catch (_) {} process.exit(1); });
