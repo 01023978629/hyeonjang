@@ -211,6 +211,17 @@ let browser;
     R.prefillR = ['ppR1', 'ppR2', 'ppR3'].map(id => document.getElementById(id).value);
     save();
     R.third = mine();
+    // ⑤ 중도금을 0% 로 내려 다시 저장 → 중도금의 옛 예약이 옛 금액으로 남지 않는다(합계가 견적을 넘지 않는다)
+    payPlanDialog(NM);
+    setR('ppR1', 60); setR('ppR2', 0); setR('ppR3', 40);
+    save();
+    R.zeroMid = mine();
+    // ⑤ 예약일을 비운 회차도 옛 예약을 걷는다(#ppOld 가 '비우면 지움' 이라 약속한다)
+    payPlanDialog(NM);
+    R.oldLine2 = (document.getElementById('ppOld') || {}).textContent || '';
+    document.getElementById('ppD3').value = '';
+    save();
+    R.noDateBal = mine();
     closeModal();
     return R;
   });
@@ -223,6 +234,9 @@ let browser;
   assert(plan.second.some(x => x.id === 'old-past') && plan.third.some(x => x.id === 'old-past'), '⑤ 지난 회차는 건드리지 않는다');
   assert(plan.prefillR.join('/') === '30/60/10' && fut(plan.third).length === 3, '⑤ 비율도 이어받고, 또 저장해도 한 벌: ' + JSON.stringify(plan));
   assert(fut(plan.third).every(x => ['down', 'mid', 'bal'].includes(x.payPlan)), '⑤ 회차 표식이 붙는다');
+  assert(fut(plan.zeroMid).map(x => x.title).join('|') === '💰 계약금 6000000|💰 잔금 4000000', '⑤ 0% 로 내린 회차의 옛 예약은 남지 않는다(합계 = 견적): ' + JSON.stringify(plan.zeroMid));
+  assert(plan.zeroMid.some(x => x.id === 'old-past'), '⑤ 0% 로 바꿔도 지난 회차는 그대로');
+  assert(/비우면 지움/.test(plan.oldLine2) && fut(plan.noDateBal).map(x => x.title).join('|') === '💰 계약금 6000000', '⑤ 예약일을 비운 회차의 옛 예약도 걷는다: ' + JSON.stringify(plan));
 
   // ── ⑧ 인건비 장부 — 두 달에 걸친 현장 ──
   const lab = await page.evaluate(async () => {

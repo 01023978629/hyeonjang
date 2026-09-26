@@ -24256,7 +24256,7 @@ function payPlanDialog(projName){
     if(pc.some(v=>v!=null)){const f=pc.map(v=>v==null?0:v);if(f[0]+f[1]+f[2]===100)f.forEach((v,i)=>{r0[i]=v;});} }
   const ppDate=i=>{const l=oldLive[i];return l.length?escapeAttr(l[l.length-1].date):'';};
   const ppOldLine=(()=>{const rows=[];['계약금','중도금','잔금'].forEach((lb,i)=>{
-      oldLive[i].forEach(x=>rows.push(escapeHtml(x.date+' '+x.title)+' <span style="color:var(--muted)">— 저장하면 새 값으로 바뀜</span>'));
+      oldLive[i].forEach(x=>rows.push(escapeHtml(x.date+' '+x.title)+' <span style="color:var(--muted)">— 저장하면 새 값으로 바뀜(0%·예약일을 비우면 지움)</span>'));
       oldPast[i].forEach(x=>rows.push(escapeHtml(x.date+' '+x.title)+' <span style="color:var(--muted)">— 지난 회차, 그대로 둠</span>'));});
     return rows.length?'<div id="ppOld" style="font-size:12px;background:var(--paper-2);border-radius:9px;padding:9px;margin-bottom:10px;line-height:1.6"><b>이미 예약한 회차</b><br>'+rows.join('<br>')+'</div>':'';})();
   const body=
@@ -24283,8 +24283,10 @@ function payPlanDialog(projName){
       const todo=parts.map(([label,rid,did],i)=>({label,i,pct:rs[i],date:document.getElementById(did).value})).filter(x=>x.pct>0&&x.date);
       if(!todo.length){toast('비율과 예약일을 입력하세요');return;}
       state.schedule=state.schedule||[];
-      // 같은 회차의 앞으로 올 예약만 걷는다 — 지난 회차(받았거나 밀린 기록)는 그대로 둔다.
-      const drop=new Set();todo.forEach(x=>oldLive[x.i].forEach(o=>drop.add(o)));
+      // 앞으로 올 예약은 세 회차 모두 걷는다 — 이번 저장이 곧 앞으로의 계획이다. 0% 로 내리거나 예약일을 비운 회차의 옛 예약을
+      // 남기면 옛 금액 알림이 새 계획 위에 얹혀 합계가 견적보다 커졌다(50/40/10 → 60/0/40 이면 1,400만원, v330 재검토).
+      // 지난 회차(받았거나 밀린 기록)는 그대로 둔다.
+      const drop=new Set();oldLive.forEach(l=>l.forEach(o=>drop.add(o)));
       if(drop.size)state.schedule=state.schedule.filter(o=>!drop.has(o));
       todo.forEach(({label,i,pct,date})=>{
         const amt=amts[i];
