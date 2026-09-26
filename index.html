@@ -1715,6 +1715,42 @@ function officeIntakeSnapshot(value){
     cursor:String(source.cursor||''),lastSyncAt:String(source.lastSyncAt||''),lastError:String(source.lastError||'')
   };
 }
+/* 고객 페이지·카카오 접수 서버 비밀키(ADMIN_KEY·토큰) — 이 기기 IndexedDB('portal_key')에만 산다.
+   다른 키(contract_token·kakao_key·relay_token·office_ops_token)는 다 그렇게 했는데 이 키만
+   state.portalCfg.key 로 들어가 드라이브·서버 백업·안전판·[내보내기] 공유 파일에까지 실렸다.
+   이 키 하나면 /leads 로 고객 이름·전화·주소가 든 접수함을 통째로 읽을 수 있다.
+   · 서버 주소(portalCfg.base)는 비밀이 아니라 그대로 백업한다(새 기기에서 주소를 다시 칠 필요가 없게).
+   · 키는 메모리(__portalKey)로만 읽는다 — 부팅 때 IDB 읽기가 끝나기 전 쓰는 곳은
+     portalKeyReady() 를 기다린다(kakaoCheckNew 등). */
+let __portalKey=null;
+function portalKeyReady(){return Promise.resolve(window.__hjPortalKeyDone).catch(function(){});}
+function portalKeyGet(){return typeof __portalKey==='string'?__portalKey:'';}
+/* 설정 객체에서 키를 떼어 낸다(제자리) — 떼어 낸 키를 돌려준다. */
+function portalKeyTake(cfg){
+  if(!cfg||typeof cfg!=='object'||Array.isArray(cfg)||!Object.prototype.hasOwnProperty.call(cfg,'key'))return '';
+  const k=typeof cfg.key==='string'?cfg.key.trim():'';
+  delete cfg.key;
+  return k;
+}
+/* 옛 자료(키가 실린 백업·이 기기 저장본)에서 떼어 낸 키를 1회 옮겨 담는다.
+   이 기기에 키가 없을 때만 — 새 폰에서 옛 백업을 불러오면 서버 연결이 끊기지 않게 하는 것이고,
+   키는 이미 그 파일 안에 있으므로 옮겨 담아도 새로 새는 곳은 없다(다음 백업부터는 빠진다).
+   이 기기에 키가 있으면 옛 백업의 키로 덮지 않는다(방금 바꾼 키가 옛 키로 되돌아가면 안 된다).
+   부팅 IDB 읽기가 끝난 뒤에 판단한다 — 먼저 판단하면 있는 키를 '없다'로 보고 덮는다. */
+function portalKeyAdopt(k){
+  if(!k)return Promise.resolve(false);
+  return portalKeyReady().then(function(){
+    if(portalKeyGet())return false;
+    __portalKey=k;
+    return idbSet('portal_key',k).then(function(){return true;},function(){return true;});
+  });
+}
+/* 직렬화용 — key 를 뺀 사본. 최상위 키 portalCfg 자체는 그대로 둔다(키 목록 41개 불변). */
+function portalCfgSafe(cfg){
+  if(!cfg||typeof cfg!=='object'||Array.isArray(cfg)||!Object.prototype.hasOwnProperty.call(cfg,'key'))return cfg;
+  const out={};Object.keys(cfg).forEach(function(k){if(k!=='key')out[k]=cfg[k];});
+  return out;
+}
 function serializeData(source,savedAt){
   const supplied=arguments.length>0,current=supplied?source:state;
   if(!current||typeof current!=='object')throw new Error('invalid serialized state source');
@@ -1739,7 +1775,7 @@ function serializeData(source,savedAt){
     claudeDone:(supplied?current.claudeDone:(current.claudeDone||[])).slice(-500),   // 처리한 클로드 요청 id — 기기끼리 공유해야 두 번 적용되지 않는다
     satisfaction:supplied?current.satisfaction:(current.satisfaction||[]),
     adPosts:supplied?current.adPosts:(current.adPosts||[]),
-    portalCfg:supplied?current.portalCfg:(current.portalCfg||{}),
+    portalCfg:portalCfgSafe(supplied?current.portalCfg:(current.portalCfg||{})),   // 비밀키(key)는 싣지 않는다 — 이 기기 IDB 'portal_key' 에만
     _savedFileCount:supplied?current._savedFileCount:(current.files||[]).length,
     kakaoLastAt:supplied?current.kakaoLastAt:(current.kakaoLastAt||''),
     coworkTasks:supplied?current.coworkTasks:(current.coworkTasks||null),
@@ -1822,6 +1858,8 @@ function applyData(data,opts){
   state.coworkSched=Array.isArray(data.coworkSched)?data.coworkSched:(state.coworkSched||[]);
   state.adPosts=Array.isArray(data.adPosts)?data.adPosts:(state.adPosts||[]);
   state.portalCfg=(data.portalCfg&&typeof data.portalCfg==='object')?data.portalCfg:(state.portalCfg||{});
+  // 들어온 자료(옛 백업)에 비밀키가 있으면 상태에 두지 않고 떼어 낸다 — 이 기기에 키가 없을 때만 IDB 로 옮긴다(portalKeyAdopt).
+  try{portalKeyAdopt(portalKeyTake(state.portalCfg)).catch(function(){});}catch(e){}
   state._savedFileCount=+data._savedFileCount||(Array.isArray(data.files)?data.files.length:0)||state._savedFileCount||0;
   state.kakaoLastAt=data.kakaoLastAt||state.kakaoLastAt||'';
   state._cwSchedInit=data._cwSchedInit||state._cwSchedInit||false;
@@ -25720,15 +25758,16 @@ function portalBuild(pjName){
     payment:pay,approval:(p.portalApproval&&p.portalApproval.at)?{approvedAt:p.portalApproval.at,name:p.portalApproval.name||''}:{},photos:photos};
 }
 async function portalPush(pjName){
-  const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key){toast('먼저 서버 주소와 비밀키를 저장하세요');return null;}
+  await portalKeyReady();
+  const cfg=state.portalCfg||{},key=portalKeyGet();
+  if(!cfg.base||!key){toast('먼저 서버 주소와 비밀키를 저장하세요');return null;}
   const p=state.projects.find(function(x){return x.name===pjName;});
   const data=portalBuild(pjName);
   if(!data){toast('현장 데이터를 만들 수 없어요');return null;}
   try{
     const r=await fetch(String(cfg.base).replace(/\/$/,'')+'/portal/save',{
       method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({key:cfg.key,token:p.portalToken||undefined,data:data})});
+      body:JSON.stringify({key:key,token:p.portalToken||undefined,data:data})});
     if(!r.ok)throw new Error('서버 응답 '+r.status);
     const j=await r.json();
     p.portalToken=j.token;p.portalUrl=j.url;
@@ -25760,12 +25799,17 @@ function portalView(pjName){
     '<input id="ptAskO" placeholder="선택지 (쉼표로: A. 밝은 그레이, B. 베이지 톤)" value="'+escapeAttr(p.portalAsk&&(p.portalAsk.opts||[]).join(', ')||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12.5px;margin-bottom:10px">'+
     '<details'+(cfg.base?'':' open')+' style="margin-bottom:10px"><summary style="font-size:12px;font-weight:800;cursor:pointer">⚙️ 서버 설정 (최초 1회)</summary>'+
       '<input id="ptBase" placeholder="https://manmul-kakao.____.workers.dev" value="'+escapeAttr(cfg.base||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px;margin:8px 0 6px">'+
-      '<input id="ptKey" placeholder="비밀키 (ADMIN_KEY)" value="'+escapeAttr(cfg.key||'')+'" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px">'+
+      '<input type="password" id="ptKey" autocomplete="off" spellcheck="false" aria-label="고객 페이지 서버 비밀키" placeholder="'+escapeAttr(portalKeyHint())+'" value="" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line-soft);font-size:12px">'+
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:11px;color:var(--muted);line-height:1.6">'+
+        '<span style="flex:1">🔒 비밀키는 이 기기에만 저장돼요 — 백업·내보내기 파일에는 들어가지 않습니다. 칸을 비워 두면 저장된 키를 그대로 씁니다.</span>'+
+        '<button type="button" class="ghost tiny" id="ptKeyDel"'+(portalKeyGet()?'':' hidden')+' style="min-height:44px">지우기</button>'+
+      '</div>'+
     '</details>'+
     '<div style="font-size:11px;color:var(--muted);line-height:1.7">🔗 만들면 <b>진행 단계·비용·[승인] 버튼·사진 6장</b>이 담긴 고객 전용 페이지가 생겨요. 단계가 바뀌면 다시 [갱신]을 눌러 최신으로 유지하세요. 고객이 승인하면 카카오 접수함(/leads)에 도착 — [📥 가져오기]로 앱에 반영됩니다.</div>';
   openModal('🔗 고객 페이지 — '+pjName,body,[
     {label:'👀 미리보기',cls:'ghost',fn:function(){
-      state.portalCfg={base:(document.getElementById('ptBase')||{}).value||cfg.base||'',key:(document.getElementById('ptKey')||{}).value||cfg.key||''};
+      state.portalCfg={base:(document.getElementById('ptBase')||{}).value||cfg.base||''};
+      portalKeySaveInput().catch(function(){});   // 빈 칸 = 안 바꿈
       p.portalAcc=document.getElementById('ptAcc').value;
       p.portalNotice=document.getElementById('ptNotice').value.trim();
       {const q=document.getElementById('ptAskQ').value.trim();const o=document.getElementById('ptAskO').value.split(',').map(function(x){return x.trim();}).filter(Boolean);
@@ -25773,7 +25817,8 @@ function portalView(pjName){
       markDirty();portalPreview(pjName);
     }},
     {label:p.portalUrl?'🔄 갱신':'🔗 만들기',cls:'clay',fn:async function(){
-      state.portalCfg={base:document.getElementById('ptBase').value.trim(),key:document.getElementById('ptKey').value.trim()};
+      state.portalCfg={base:document.getElementById('ptBase').value.trim()};
+      if(!(await portalKeySaveInput()))return;   // 빈 칸 = 안 바꿈. 저장 실패면 옛 키로 보내지 않고 멈춘다
       p.portalAcc=document.getElementById('ptAcc').value;
       p.portalNotice=document.getElementById('ptNotice').value.trim();
       {const q=document.getElementById('ptAskQ').value.trim();const o=document.getElementById('ptAskO').value.split(',').map(function(x){return x.trim();}).filter(Boolean);
@@ -25790,7 +25835,33 @@ function portalView(pjName){
       coworkCopy(p.portalUrl,'고객 페이지 링크');
     }},
     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  // 모달 안 버튼은 #view 위임이 닿지 않는다 — 직접 건다.
+  {const del=document.querySelector('#modalRoot #ptKeyDel');if(del)del.onclick=function(){portalKeyDrop();};}
   return {현장:pjName,링크:p.portalUrl||null};
+}
+function portalKeyHint(){const k=portalKeyGet();return k?('저장됨 · 끝 4자리 ****'+k.slice(-4)):'비밀키 (ADMIN_KEY)';}
+/* 입력칸 → IDB. 빈 칸은 '안 바꿈'이다(절대 '지움'이 아니다 — key-persist 규칙).
+   저장에 실패하면 false — 부른 쪽은 멈춘다(메모리만 바뀌고 새로고침하면 옛 키로 돌아가는 반쪽 저장을 막는다). */
+async function portalKeySaveInput(){
+  const el=document.getElementById('ptKey');
+  const v=(el&&el.value||'').trim();
+  if(!v)return true;
+  try{await idbSet('portal_key',v);}catch(e){toast('비밀키 저장 실패 — 브라우저 저장공간을 확인하세요');return false;}
+  __portalKey=v;
+  if(el){el.value='';el.placeholder=portalKeyHint();}
+  const del=document.getElementById('ptKeyDel');if(del)del.hidden=false;
+  return true;
+}
+/* [지우기] — 확인을 거쳐야만 지운다. */
+async function portalKeyDrop(){
+  if(!portalKeyGet()){toast('저장된 비밀키가 없어요');return false;}
+  if(!confirm('고객 페이지·카카오 접수 서버 비밀키를 이 기기에서 지울까요? 고객 페이지 갱신과 접수 가져오기가 멈춥니다.'))return false;
+  try{await idbSet('portal_key','');}catch(e){toast('지우기 실패 — 브라우저 저장공간을 확인하세요');return false;}
+  __portalKey=null;
+  const el=document.getElementById('ptKey');if(el){el.value='';el.placeholder=portalKeyHint();}
+  const del=document.getElementById('ptKeyDel');if(del)del.hidden=true;
+  toast('비밀키를 지웠어요');
+  return true;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -25880,10 +25951,11 @@ function portalPreview(pjName){
    v97 🔄 카카오 접수 자동 불러오기 + AI 도구 연결
 ═══════════════════════════════════════════════════════════════ */
 async function kakaoFetchLeads(){
-  const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key)return {오류:'서버 주소·비밀키가 없어요 (고객 페이지 설정에서 저장하세요)'};
+  await portalKeyReady();
+  const cfg=state.portalCfg||{},key=portalKeyGet();
+  if(!cfg.base||!key)return {오류:'서버 주소·비밀키가 없어요 (고객 페이지 설정에서 저장하세요)'};
   try{
-    const r=await fetch(String(cfg.base).replace(/\/$/,'')+'/leads?key='+encodeURIComponent(cfg.key));
+    const r=await fetch(String(cfg.base).replace(/\/$/,'')+'/leads?key='+encodeURIComponent(key));
     if(!r.ok)return {오류:'서버 응답 '+r.status+(r.status===403?' — 비밀키가 다릅니다':'')};
     return {본문:await r.text()};
   }catch(e){return {오류:'연결 실패: '+(e.message||e)};}
@@ -25902,8 +25974,9 @@ async function kakaoAutoImport(){
   return r;
 }
 async function kakaoCheckNew(){
+  await portalKeyReady();
   const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key)return 0;
+  if(!cfg.base||!portalKeyGet())return 0;
   const f=(typeof kakaoFetch2==='function')?await kakaoFetch2():await kakaoFetchLeads();
   if(f.오류)return 0;
   window.__kakaoRaw=f.본문;
@@ -25941,7 +26014,7 @@ function portalAutoSync(pjName,delay){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p||!p.portalUrl)return;
   const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key)return;
+  if(!cfg.base||!portalKeyGet())return;   // 부팅 IDB 읽기 전이면 조용히 건너뛴다(자동 갱신이라 다음 변경 때 다시 온다)
   if(portalSig(pjName)===(p.portalSig||''))return;   // 바뀐 게 없으면 조용히 패스
   clearTimeout(__ptTimers[pjName]);
   __ptTimers[pjName]=setTimeout(async function(){
@@ -26184,12 +26257,13 @@ function kakaoNormalize(raw){
   return kakaoParseLeads(String(raw||'')).map(function(L){return Object.assign({leadId:'',workType:L.workType||L.work||''},L,{workType:L.workType||L.work||''});});
 }
 async function kakaoFetch2(){
-  const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key)return {오류:'서버 주소·토큰을 먼저 저장하세요'};
+  await portalKeyReady();
+  const cfg=state.portalCfg||{},key=portalKeyGet();
+  if(!cfg.base||!key)return {오류:'서버 주소·토큰을 먼저 저장하세요'};
   const base=String(cfg.base).replace(/\/$/,'');
   const isGas=/script\.google\.com/.test(base);
-  const url=isGas?(base+'?token='+encodeURIComponent(cfg.key))
-                 :(base+'/leads?key='+encodeURIComponent(cfg.key));
+  const url=isGas?(base+'?token='+encodeURIComponent(key))
+                 :(base+'/leads?key='+encodeURIComponent(key));
   try{
     const r=await fetch(url);
     if(!r.ok)return {오류:'서버 응답 '+r.status+(r.status===403?' — 토큰이 다릅니다':'')};
@@ -26200,21 +26274,23 @@ async function kakaoFetch2(){
   }catch(e){return {오류:'연결 실패: '+(e.message||e)};}
 }
 async function kakaoPing(){
+  await portalKeyReady();
   const cfg=state.portalCfg||{};
-  if(!cfg.base||!cfg.key)return {오류:'주소·토큰을 입력하세요'};
+  if(!cfg.base||!portalKeyGet())return {오류:'주소·토큰을 입력하세요'};
   const f=await kakaoFetch2();
   if(f.오류)return f;
   const leads=kakaoNormalize(f.본문);
   return {성공:true,건수:leads.length,서버:f.gas?'Apps Script':'Workers'};
 }
 async function kakaoMarkDone(ids){
-  const cfg=state.portalCfg||{};
+  await portalKeyReady();
+  const cfg=state.portalCfg||{},key=portalKeyGet();
   const base=String(cfg.base||'').replace(/\/$/,'');
   if(!/script\.google\.com/.test(base))return {건너뜀:'Workers는 앱이 시각으로 중복을 막습니다'};
   const list=(ids||[]).filter(Boolean);
   if(!list.length)return {표시:0};
   try{
-    const r=await fetch(base+'?token='+encodeURIComponent(cfg.key)+'&action=done&leadId='+encodeURIComponent(list.join(',')));
+    const r=await fetch(base+'?token='+encodeURIComponent(key)+'&action=done&leadId='+encodeURIComponent(list.join(',')));
     const j=await r.json();
     return {표시:(j&&j.marked)||0};
   }catch(e){return {오류:e.message};}
@@ -31885,10 +31961,17 @@ function paidCommitRecoveryBanner(){
 (async()=>{ try{ const a=await idbGet('removed_ids'); if(Array.isArray(a))a.forEach(x=>__removedIds.add(x)); }catch(e){} })();
 // 로컬 자동복원: 이 기기(IndexedDB)에 저장해 둔 작업을 되살림 — 폰·PC 새로고침해도 유지
 // 완료 시점을 promise로 노출(__hjRestoreDone) — 리드 인입 등이 복원 완료 후 실행되도록 (부팅 경합 방지)
+// 고객 페이지 비밀키는 IDB 에만 있다 — 저장본 복원보다 먼저 읽기 시작한다(복원 중 옛 키 이전 판단이 이 값을 본다).
+window.__hjPortalKeyDone=(async()=>{try{const k=await idbGet('portal_key');if(typeof k==='string'&&k.trim()&&!portalKeyGet())__portalKey=k.trim();}catch(e){}})();
 window.__hjRestoreDone = (async () => {
-  let restoredSavedState = false,restoredPaidState=null;
+  let restoredSavedState = false,restoredPaidState=null,portalKeyMoved=false;
   try {
     const resolved = await resolvePaidCommitState();
+    /* 옛 저장본(v327 까지)은 portalCfg.key 를 품고 있다. 복원 전에 떼어 내야 한다 —
+       유상 generation 은 재직렬화와 바이트 단위로 대조하므로(paidExactHydrationPlan), serializeData 가 key 를
+       빼는 지금 그대로 두면 'paid exact round-trip conflict' 로 복원이 멈춘다. 떼어 낸 키는 IDB 로 옮기고,
+       저장본은 복원 뒤 한 번 다시 써서 키를 지운다(아래 persistLocal). */
+    try{const oldKey=resolved&&resolved.data&&typeof resolved.data==='object'?portalKeyTake(resolved.data.portalCfg):'';if(oldKey){portalKeyMoved=true;await portalKeyAdopt(oldKey);}}catch(_){}
     __paidCommitPointerKey = resolved.pointer || null;
     __paidCommitRecoveryMalformedPointer = resolved.recoveryMalformedPointer === true;
     __paidCommitRecoverySnapshot = resolved.recoverySnapshot || null;
@@ -31915,6 +31998,8 @@ window.__hjRestoreDone = (async () => {
     // generation 바이트를 다시 확정하고, 실패 시 이후 저장을 차단한다.
     if(restoredPaidState){try{applyPaidCommittedState(restoredPaidState);}catch(error){try{__tabStale=true;paidCommitRecoveryBanner();multiTabStaleWarn();}catch(_){}return {ok:false,restoredAt:new Date().toISOString(),errorCode:'paid-restore-exact-failed'};}}
     try { hydrateThumbs(); } catch (_) {}
+    // 키를 떼어 낸 저장본을 이 기기에 다시 쓴다 — 안 쓰면 IDB appState 에 옛 키가 계속 남는다.
+    if (portalKeyMoved) { try { persistLocal(); } catch (_) {} }
   }
   try {
     if (typeof gdBootSync === 'function') gdBootSync();
