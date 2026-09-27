@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-27 프로젝트 사진·보험 제출 준비 v330 (로컬 구현·미배포)
+
+- 사용자 목적: 10명 기술자의 업무 배정/진행 → 프로젝트 사진 수집 → 보험 제출 준비. `team.html`의 기술자 일정 / 프로젝트 사진 / 보험 제출 준비를 추가했다. 실제 계정·Drive·보험사 제출·배포는 미진행이다. 상세 `TEAM-PROJECT-CLAIMS-v330.md`.
+- 서버 health `company-team-v3`, 신규 `TeamProjects.gs`, `TeamEvidence.gs`. 원본 JPG/PNG/WebP 12MiB, 대표 문서 PDF. 회사 JSON 및 첨부 폴더/파일의 비공개·부모 검증을 유지한다. 원본 UUID별 영속 의도+원본 재사용, revision 변경 때도 evidence UUID를 버리지 않는다.
+- 10건 배정은 한 snapshot에 원자 저장, 기술자 교차팀 시간 중복 차단. 새 projectId 명시 연결, 사진이 있는 업무 재귀속 차단. 기존 자유문자 프로젝트 이름으로 자동 이관하지 않는다.
+- 보험은 owner만 관리. 자료 검토 및 수동 제출 기록은 서버 fingerprint/snapshot + 클라이언트 expectedFingerprint에 묶인다. 다운로드가 제출을 기록해서는 안 된다. 과거 제출 기록은 현재/이전 자료 기준을 표시한다. 실제 보험사 API는 없다.
+- 신규 `team-projects.js`, `team-packet.js`는 Pages 허용목록에만 추가하고 SW 캐시에서는 제외한다. 세션/사진/금융 데이터 localStorage 금지. 신규 unit/e2e 및 변이 뒤 최종 필터 없는 `node tests/run-all.js`가 필수다.
+
 ## 2026-09-27 직원 작업실 v329 (로컬 구현·미배포)
 
 - 사용자 정정: 조직도 자체가 아니라 소속·역할에 따라 각자 일하는 페이지가 핵심. `team.html`의 내 업무 / 팀별 작업실 / 검수·승인 / 운영 관리가 주 동선, 직원·팀 설정과 변경 이력은 대표 보조 메뉴다. 상세 `TEAM-WORKSPACES-v329.md`.

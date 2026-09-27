@@ -4,21 +4,21 @@ const base=path.join(__dirname,'..','apps-script-team-ops');
 let pure=fs.readFileSync(path.join(base,'TeamPure.gs'),'utf8');
 if(process.env.HJ_TEAM_MUTATION==='scope')pure=pure.replace("return m.role==='owner' || (m.role==='lead' ? m.teamIds.indexOf(t.teamId)>=0 : t.assigneeId===m.id);","return true;");
 if(process.env.HJ_TEAM_MUTATION==='history-reset')pure=pure.replace('task.history=old&&old.history?old.history.slice():[];', 'task.history=[];');
-if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'status','handoff','sourceRef']);", "'status','handoff','sourceRef','history']);");
+if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'projectId','workDate','startTime','endTime']);", "'projectId','workDate','startTime','endTime','history']);");
 if(process.env.HJ_TEAM_MUTATION==='revision')pure=pure.replace('payload.revision!==s.revision','false');
 if(process.env.HJ_TEAM_MUTATION==='auth')pure=pure.replace("if (hits.length!==1) teamError_('forbidden'); return hits[0];","return hits[0] || s.members[0];");
 const props=new Map(),files=new Map(),cache=new Map();let identity={userId:'owner-user',officeId:'company-office'},clock=0,failWrite=false,authDown=false,authCalls=0,failCreate=false,corruptRead=false,lockHeld=false,active=true,expiry;
 const folder='test-company-folder';
-function file(id,text){return {getId:()=>id,getBlob:()=>({getDataAsString:()=>corruptRead?text+'CORRUPT':text}),getParents:()=>{let read=false;return {hasNext:()=>!read,next:()=>{read=true;return {getId:()=>folder};}};}};}
+function file(id,text){return {getId:()=>id,getSharingAccess:()=>'PRIVATE',getEditors:()=>[],getViewers:()=>[],getBlob:()=>({getDataAsString:()=>corruptRead?text+'CORRUPT':text}),getParents:()=>{let read=false;return {hasNext:()=>!read,next:()=>{read=true;return {getId:()=>folder};}};}};}
 const context={console,Date,Set,Number,JSON,Error,
  PropertiesService:{getScriptProperties:()=>({getProperty:k=>props.has(k)?props.get(k):null,setProperty(k,v){if(failWrite===true)throw Error('mock-write');props.set(k,v);if(failWrite==='after')throw Error('mock-response-lost');},deleteProperty:k=>props.delete(k)})},
  CacheService:{getScriptCache:()=>({get:k=>cache.get(k)||null,put:(k,v)=>cache.set(k,v)})},
  LockService:{getScriptLock:()=>({tryLock(){assert(!lockHeld);lockHeld=true;return true;},waitLock(){assert(!lockHeld);lockHeld=true;},releaseLock(){lockHeld=false;}})},
- DriveApp:{getFileById:id=>{if(!files.has(id))throw Error('missing');return file(id,files.get(id));},getFolderById:id=>{assert.equal(id,folder);return {createFile(name,text){if(failCreate)throw Error('mock-create');const id='file-'+(++clock);files.set(id,text);return file(id,text);}};}},
+ DriveApp:{Access:{PRIVATE:'PRIVATE'},getFileById:id=>{if(!files.has(id))throw Error('missing');return file(id,files.get(id));},getFolderById:id=>{assert.equal(id,folder);return {getSharingAccess:()=>'PRIVATE',getEditors:()=>[],getViewers:()=>[],createFile(name,text){if(failCreate)throw Error('mock-create');const id='file-'+(++clock);files.set(id,text);return file(id,text);}};}},
  Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(algo,text)=>[...crypto.createHash('sha256').update(text).digest()],base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
  UrlFetchApp:{fetch(url,opts){assert.equal(lockHeld,false,'network must not hold the data lock');authCalls++;assert.equal(url,props.get('COMPANY_PORTAL_URL'));assert.equal(JSON.parse(opts.payload).action,'portalMe');if(authDown)throw Error('offline');return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({ok:true,user:{id:identity.userId,active,role:'resident',email:'TEST_ONLY@example.invalid'},office:{id:identity.officeId,active:true},expiresAt:expiry===undefined?Date.now()+60000:expiry})};}}
 };
-vm.createContext(context);vm.runInContext(pure,context);vm.runInContext(fs.readFileSync(path.join(base,'Code.gs'),'utf8'),context);
+vm.createContext(context);vm.runInContext(pure,context);['TeamProjects.gs','TeamEvidence.gs','Code.gs'].forEach(name=>vm.runInContext(fs.readFileSync(path.join(base,name),'utf8'),context));
 props.set('COMPANY_ENABLED','1');props.set('COMPANY_FOLDER_ID',folder);props.set('COMPANY_OFFICE_ID','company-office');props.set('COMPANY_PORTAL_URL','https://script.google.com/macros/s/TEST_COMPANY_AUTH/exec');props.set('COMPANY_OWNER_USER_ID','owner-user');props.set('COMPANY_OWNER_NAME','TEST_OWNER');
 context.companyBootstrapFromProperties_();assert.throws(()=>context.companyBootstrapFromProperties_(),/already-configured/);assert.equal(props.has('COMPANY_OWNER_USER_ID'),false);
 const session='TEST_ONLY_SESSION_'.padEnd(80,'x');const call=(action,payload)=>context.companyDispatch_({action,payload,sessionToken:session});
@@ -54,7 +54,7 @@ data=call('list').data;const oldHead=props.get('COMPANY_HEAD');failWrite=true;as
 cache.clear();
 failCreate=true;assert.throws(()=>save('teamSave',{name:'CREATE_FAILURE',active:true}),/mock-create/);failCreate=false;assert.equal(props.get('COMPANY_HEAD'),oldHead);
 const originalCreate=context.DriveApp.getFolderById;
-context.DriveApp.getFolderById=id=>{const f=originalCreate(id);return {createFile(...args){const created=f.createFile(...args);corruptRead=true;return created;}};};
+context.DriveApp.getFolderById=id=>{const f=originalCreate(id);return {...f,createFile(...args){const created=f.createFile(...args);corruptRead=true;return created;}};};
 assert.throws(()=>save('teamSave',{name:'VERIFY_FAILURE',active:true}),/storage-failed/);corruptRead=false;context.DriveApp.getFolderById=originalCreate;assert.equal(props.get('COMPANY_HEAD'),oldHead);
 const retry={requestId:crypto.randomUUID(),revision:data.revision,entity:{name:'RESPONSE_LOST',active:true}};
 failWrite='after';assert.throws(()=>call('teamSave',retry),/mock-response-lost/);failWrite=false;

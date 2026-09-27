@@ -20,10 +20,11 @@ function teamPresent_(s, identity) {
     var out={id:u.id,name:u.name,teamIds:u.teamIds.filter(function(id){return teams.some(function(t){return t.id===id;});}),role:u.role,active:u.active};
     if(m.role==='owner'){out.userId=u.userId;out.officeId=u.officeId;}return out;
   });
-  return {revision:s.revision,me:{id:m.id,name:m.name,role:m.role,teamIds:m.teamIds},teams:teams,members:members,tasks:tasks,
+  var result={revision:s.revision,me:{id:m.id,name:m.name,role:m.role,teamIds:m.teamIds},teams:teams,members:members,tasks:tasks,
     audit:m.role==='owner'?s.audit.slice(-100).reverse():[]};
+  return teamProjectsPresent_(s,m,result);
 }
-function teamApply_(store, identity, action, payload, now, newId, digest) {
+function teamApply_(store, identity, action, payload, now, newId, digest, attachment) {
   var s=teamClone_(store),actor=teamMember_(s,identity);
   teamKeys_(payload,['requestId','revision','entity']);
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.requestId||''))teamError_('invalid-input');
@@ -54,13 +55,14 @@ function teamApply_(store, identity, action, payload, now, newId, digest) {
     s.members=old?s.members.map(function(m){return m===old?member:m;}):s.members.concat([member]);
     if(!s.members.some(function(m){return m.active&&m.role==='owner';}))teamError_('last-owner');
   } else if(action==='taskSave') {
-    teamKeys_(e,['id','title','project','teamId','assigneeId','due','status','handoff','sourceRef']);
+    teamKeys_(e,['id','title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime']);
     old=s.tasks.find(function(t){return t.id===e.id;});if(e.id&&!old)teamError_('not-found');
     if(old&&!teamCanSee_(actor,old))teamError_('forbidden');
     var assign=teamCanAssign_(actor,e.teamId)&&(!old||teamCanAssign_(actor,old.teamId));
     if(!s.teams.some(function(t){return t.id===e.teamId&&t.active;}))teamError_('invalid-team');
     if(!s.members.some(function(m){return m.id===e.assigneeId&&m.active&&m.teamIds.indexOf(e.teamId)>=0;}))teamError_('invalid-assignee');
-    if(!assign&&(!old||old.assigneeId!==actor.id||['title','project','teamId','assigneeId','due','sourceRef'].some(function(k){return (e[k]||'')!==(old[k]||'');})))teamError_('forbidden');
+    if(!assign&&(!old||old.assigneeId!==actor.id||['title','project','teamId','assigneeId','due','sourceRef','projectId','workDate','startTime','endTime'].some(function(k){return (e[k]||'')!==(old[k]||'');})))teamError_('forbidden');
+    if(!assign&&old&&old.status==='done'&&['status','handoff'].some(function(k){return (e[k]||'')!==(old[k]||'');}))teamError_('forbidden');
     var transitions={todo:['doing','blocked','review'],doing:['blocked','review'],blocked:['doing','review'],review:['doing','done'],done:['doing']};
     if(!Object.prototype.hasOwnProperty.call(transitions,e.status))teamError_('invalid-input');
     if(!old&&e.status!=='todo')teamError_('invalid-transition');
@@ -71,9 +73,10 @@ function teamApply_(store, identity, action, payload, now, newId, digest) {
     if(old&&old.status==='review'&&e.status==='doing'&&(!handoff.trim()||handoff===old.handoff))teamError_('review-note-required');
     targetId=old?old.id:newId;entityKind='task';
     var task={id:targetId,title:teamText_(e.title,160),project:teamText_(e.project,160),teamId:e.teamId,assigneeId:e.assigneeId,due:e.due?teamDate_(e.due):'',status:e.status,handoff:handoff,sourceRef:e.sourceRef?teamText_(e.sourceRef,150):'',updatedAt:now,updatedBy:actor.id};
+    teamTaskProject_(s,actor,e,task,old);
     if(task.sourceRef&&s.tasks.some(function(t){return t.id!==targetId&&t.sourceRef===task.sourceRef;}))teamError_('duplicate-source');
     // Only the server appends reports; client-supplied history is rejected by teamKeys_.
-    var changed=!old||['title','project','teamId','assigneeId','due','status','handoff','sourceRef'].some(function(k){return (old[k]||'')!==(task[k]||'');});
+    var changed=!old||['title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime'].some(function(k){return (old[k]||'')!==(task[k]||'');});
     if(changed){
       task.history=old&&old.history?old.history.slice():[];
       if(old&&!old.history)task.history.push({at:old.updatedAt,actorId:old.updatedBy,status:old.status,handoff:old.handoff,teamId:old.teamId,assigneeId:old.assigneeId,revision:0,baseline:true});
@@ -81,7 +84,10 @@ function teamApply_(store, identity, action, payload, now, newId, digest) {
       task.history.push({at:now,actorId:actor.id,status:task.status,handoff:task.handoff,teamId:task.teamId,assigneeId:task.assigneeId,revision:s.revision+1,baseline:false});
     }else task=old; // A no-op must not replace the original report timestamp or legacy baseline.
     s.tasks=old?s.tasks.map(function(t){return t===old?task:t;}):s.tasks.concat([task]);
-  } else teamError_('invalid-action');
+  } else {
+    var extra=teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachment,payload);
+    targetId=extra.id;entityKind=extra.kind;
+  }
   if(s.teams.length>50||s.members.length>100||s.tasks.length>2000||s.requests.length>=10000)teamError_('capacity');
   s.revision++;s.audit.push({at:now,actorId:actor.id,action:action,targetId:targetId,kind:entityKind,revision:s.revision});
   s.requests.push({id:payload.requestId,hash:hash});return {store:s,replayed:false};

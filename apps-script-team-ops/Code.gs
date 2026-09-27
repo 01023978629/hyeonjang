@@ -27,26 +27,32 @@ function companyRateGate_(token){
   }finally{lock.releaseLock();}
 }
 function companyLoad_(c){
+  companyPrivate_(DriveApp.getFolderById(c.folder));
   var raw=companyProps_().getProperty('COMPANY_HEAD');if(!raw)teamError_('not-configured');
-  var h,s,file;try{h=JSON.parse(raw);file=DriveApp.getFileById(h.fileId);var parents=file.getParents(),inside=false;while(parents.hasNext())if(parents.next().getId()===c.folder)inside=true;if(!inside)teamError_('corrupt');var text=file.getBlob().getDataAsString('UTF-8');if(companyDigest_(text)!==h.hash)teamError_('corrupt');s=JSON.parse(text);}catch(_){teamError_('corrupt');}
+  var h,s,file;try{h=JSON.parse(raw);file=DriveApp.getFileById(h.fileId);}catch(_){teamError_('corrupt');}
+  companyInside_(file,c.folder);
+  try{var text=file.getBlob().getDataAsString('UTF-8');if(companyDigest_(text)!==h.hash)teamError_('corrupt');s=JSON.parse(text);}catch(_){teamError_('corrupt');}
   if(s.schema!==1||s.revision!==h.revision||!['teams','members','tasks','audit','requests'].every(function(k){return Array.isArray(s[k]);})||companyProps_().getProperty('COMPANY_HEAD')!==raw)teamError_('conflict');
   if(!s.authority||s.authority.portalUrl!==c.url||s.authority.officeId!==c.office)teamError_('configuration-mismatch');
   return {state:s,head:raw};
 }
 function companyCommit_(c,s,expected){
   var p=companyProps_();if(p.getProperty('COMPANY_HEAD')!==expected)teamError_('conflict');
+  var folder=DriveApp.getFolderById(c.folder);companyPrivate_(folder);
   var text=JSON.stringify(s);if(text.length>4000000)teamError_('capacity');
   // Immutable revisions preserve previous states; only the small head pointer changes.
-  var file=DriveApp.getFolderById(c.folder).createFile('company-r'+s.revision+'-'+Utilities.getUuid()+'.json',text,'application/json');
+  var file=folder.createFile('company-r'+s.revision+'-'+Utilities.getUuid()+'.json',text,'application/json');
+  companyInside_(file,c.folder);
   if(file.getBlob().getDataAsString('UTF-8')!==text)teamError_('storage-failed');
+  companyPrivate_(folder);
   if(p.getProperty('COMPANY_HEAD')!==expected)teamError_('conflict');
   var head=JSON.stringify({fileId:file.getId(),revision:s.revision,hash:companyDigest_(text)});p.setProperty('COMPANY_HEAD',head);
   if(p.getProperty('COMPANY_HEAD')!==head)teamError_('storage-failed');
 }
 function companyDispatch_(req){
   teamKeys_(req,['action','sessionToken','payload']);var c=companyConfig_();
-  if(req.action==='health')return {service:'company-team-v2',portalUrl:c.url};
-  if(['identity','list','teamSave','memberSave','taskSave'].indexOf(req.action)<0)teamError_('invalid-action');
+  if(req.action==='health')return {service:'company-team-v3',portalUrl:c.url};
+  if(['identity','list','teamSave','memberSave','taskSave','taskBatch','projectSave','evidenceUpload','evidenceRead','claimSave','claimReview','claimSubmitRecord','claimBundle'].indexOf(req.action)<0)teamError_('invalid-action');
   companyRateGate_(req.sessionToken);
   var identity=companyIdentity_(req.sessionToken,c); // No slow identity network call while holding the data lock.
   if(req.action==='identity')return {identity:{userId:identity.userId,officeId:identity.officeId}};
@@ -56,15 +62,19 @@ function companyDispatch_(req){
     if(identity.expiresAt<=Date.now())teamError_('session-expired');
     var loaded=companyLoad_(c);teamMember_(loaded.state,identity);
     if(req.action==='list')return {data:teamPresent_(loaded.state,identity)};
-    var result=teamApply_(loaded.state,identity,req.action,req.payload,new Date().toISOString(),Utilities.getUuid(),companyDigest_);
+    if(req.action==='evidenceRead'){var evidenceFile=companyEvidenceRead_(c,loaded.state,identity,req.payload);if(identity.expiresAt<=Date.now())teamError_('session-expired');return {file:evidenceFile};}
+    if(req.action==='claimBundle'){teamKeys_(req.payload,['claimId']);return {bundle:teamClaimBundle_(loaded.state,teamMember_(loaded.state,identity),teamId_(req.payload.claimId),companyDigest_)};}
+    var now=new Date().toISOString(),id=Utilities.getUuid();
+    var result=req.action==='evidenceUpload'?companyEvidenceUpload_(c,loaded,identity,req.payload,now,id):teamApply_(loaded.state,identity,req.action,req.payload,now,id,companyDigest_);
+    if(identity.expiresAt<=Date.now())teamError_('session-expired');
     if(!result.replayed)companyCommit_(c,result.store,loaded.head);
     return {data:teamPresent_(result.store,identity),replayed:result.replayed};
   }finally{lock.releaseLock();}
 }
 function doGet(){return companyJson_({ok:false,error:'bad-request'});}
 function doPost(e){
-  try{var raw=e&&e.postData&&e.postData.contents;if(typeof raw!=='string'||raw.length>64000)teamError_('invalid-input');var r=companyDispatch_(JSON.parse(raw));r.ok=true;return companyJson_(r);}
-  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','review-note-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
+  try{var raw=e&&e.postData&&e.postData.contents;if(typeof raw!=='string'||raw.length>18*1024*1024)teamError_('invalid-input');var req=JSON.parse(raw);if(req.action!=='evidenceUpload'&&raw.length>64000)teamError_('invalid-input');var r=companyDispatch_(req);r.ok=true;return companyJson_(r);}
+  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','review-note-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt','invalid-project','invalid-schedule','schedule-conflict','project-in-use','evidence-bound','invalid-file','hash-mismatch','private-storage-required','storage-ambiguous','evidence-missing','project-immutable','claim-incomplete','review-stale'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
 }
 function companyJson_(v){return ContentService.createTextOutput(JSON.stringify(v)).setMimeType(ContentService.MimeType.JSON);}
 // Editor-owner only. Not in the HTTP action allowlist. No password is generated here.

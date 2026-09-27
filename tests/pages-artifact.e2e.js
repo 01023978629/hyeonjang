@@ -18,7 +18,7 @@ const out = path.join(temp, '_site');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 여기에 안 적으면 저장소에는 있는데 Pages 에
 // 안 올라가고, 그건 폰에서 설치할 때에만 드러난다. 늘릴 때는 왜 늘렸는지 여기에 적어라.
 const expected = ['.nojekyll', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
-  'index.html', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-ui.js', 'team.html', 'terms.html'];
+  'index.html', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
   'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',

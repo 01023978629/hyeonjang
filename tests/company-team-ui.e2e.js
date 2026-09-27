@@ -6,7 +6,8 @@ const ROOT = path.join(__dirname, '..'), ORIGIN = 'http://127.0.0.1:8299';
 const API = 'https://script.google.com/macros/s/AKfyTEST_COMPANY/exec', PORTAL = 'https://script.google.com/macros/s/AKfyTEST_PORTAL/exec';
 const TOKEN = 'TEST_SESSION_NOT_A_REAL_CREDENTIAL_'.padEnd(80, 'X');
 const MUTANT = process.env.HJ_TEAM_UI_MUTATION || '';
-const engine = vm.createContext({ console }); vm.runInContext(fs.readFileSync(path.join(ROOT, 'apps-script-team-ops/TeamPure.gs'), 'utf8'), engine);
+const engine = vm.createContext({ console, companyDigest_: x => crypto.createHash('sha256').update(x).digest('hex') });
+for (const file of ['TeamPure.gs', 'TeamProjects.gs', 'TeamEvidence.gs']) vm.runInContext(fs.readFileSync(path.join(ROOT, 'apps-script-team-ops', file), 'utf8'), engine);
 const clone = x => JSON.parse(JSON.stringify(x));
 const digest = x => crypto.createHash('sha256').update(x).digest('hex');
 function seed() {
@@ -28,6 +29,7 @@ async function harness(options = {}) {
   const context = await browser.newContext({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' });
   const page = await context.newPage(); page.setDefaultTimeout(6500);
   const h = { page, context, store: seed(), role: options.role || 'owner', calls: [], errors: [], writes: [], failNext: '', holdList: null, malformed: false, outOfScope: false };
+  if (options.store) h.store = clone(options.store); h.files = {};
   if (options.shared) Object.defineProperty(h, 'store', { get: () => options.shared.store, set: v => { options.shared.store = v; } });
   page.on('pageerror', e => h.errors.push(String(e)));
   const identity = () => ({ userId: h.store.members.find(m => m.id === h.role)?.userId || 'TEST_UNLINKED_USER', officeId: 'TEST_OFFICE' });
@@ -35,13 +37,14 @@ async function harness(options = {}) {
     const request = route.request(), url = request.url();
     if (url.startsWith(ORIGIN + '/')) {
       const name = new URL(url).pathname.slice(1);
-      if (['team.html', 'team-ui.js', 'team-config.js'].includes(name)) {
+      if (['team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js'].includes(name)) {
         let content = name === 'team-config.js' ? 'window.HJ_TEAM_CONFIG={apiUrl:' + JSON.stringify(options.unconfigured ? '' : API) + '};' : fs.readFileSync(path.join(ROOT, name), 'utf8');
         if (name === 'team-ui.js' && MUTANT === 'allow-role-leak') content = content.replace("if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' ? d.me.teamIds.includes(t.teamId) : t.assigneeId === d.me.id))) return false;", '/* mutation: ignore projection */');
         if (name === 'team-ui.js' && MUTANT === 'team-filter') content = content.replace('if (team) return d.tasks.filter(t => t.teamId === team.id);', 'if (team) return d.tasks;');
         if (name === 'team-ui.js' && MUTANT === 'action-autosave') content = content.replace("editorNotice('아직 반영되지 않았습니다.", "save({preventDefault(){}}); editorNotice('아직 반영되지 않았습니다.");
         if (name === 'team-ui.js' && MUTANT === 'persist-session') content = content.replace('state.token = r.sessionToken;', 'state.token = r.sessionToken; localStorage.setItem("MUTANT_SESSION", r.sessionToken);');
         if (name === 'team-ui.js' && MUTANT === 'retry-new-id') content = content.replace('const r = await api(edit.pending.action, edit.pending.payload);', 'edit.pending.payload.requestId = crypto.randomUUID(); const r = await api(edit.pending.action, edit.pending.payload);');
+        if (options.mutate) content = options.mutate(name, content);
         return route.fulfill({ status: 200, contentType: name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8', body: content });
       }
       return route.fulfill({ status: 404, body: '' });
@@ -53,7 +56,7 @@ async function harness(options = {}) {
       if (url === PORTAL) {
         if (body.action === 'portalLogin') { assert.equal(body.payload.loginCode, 'TEST_PASSWORD'); result = { sessionToken: TOKEN, expiresAt: Date.now() + 3600000 }; }
         else { assert.equal(body.action, 'portalLogout'); result = {}; }
-      } else if (body.action === 'health') result = { service: options.oldServer ? 'company-team-v1' : 'company-team-v2', portalUrl: PORTAL };
+      } else if (body.action === 'health') result = { service: options.oldServer ? 'company-team-v2' : 'company-team-v3', portalUrl: PORTAL };
       else {
         assert.equal(body.sessionToken, TOKEN);
         if (body.action === 'identity') result = { identity: identity() };
@@ -63,12 +66,23 @@ async function harness(options = {}) {
           result = { data: clone(engine.teamPresent_(h.store, identity())) };
           if (h.malformed) result.data.me.role = 'made-up';
           if (h.outOfScope) result.data.tasks = clone(h.store.tasks);
+        } else if (body.action === 'evidenceRead') {
+          const e = h.store.evidence.find(e => e.id === body.payload.evidenceId);
+          if (!e || !engine.teamEvidenceVisible_(h.store, engine.teamMember_(h.store, identity()), e)) throw new Error('forbidden');
+          if (h.holdEvidence) { const hold = h.holdEvidence; h.holdEvidence = null; await hold.promise; }
+          result = { file: { mime: e.mime, name: e.name, size: e.size, sha256: e.sha256, base64: h.files[e.id] } };
+        } else if (body.action === 'claimBundle') {
+          if (h.bundleChange) { h.store.tasks[0].handoff = '모의 변경'; h.bundleChange = false; }
+          result = { bundle: clone(engine.teamClaimBundle_(h.store, engine.teamMember_(h.store, identity()), body.payload.claimId, digest)) };
         } else {
           h.writes.push(clone(body));
           if (h.failNext === 'conflict') { h.failNext = ''; h.store.revision++; throw new Error('conflict'); }
           if (h.failNext === 'unknown') { h.failNext = ''; throw new Error('unknown-secret-detail'); }
           if (h.failNext === 'session-expired') { h.failNext = ''; throw new Error('session-expired'); }
-          const out = engine.teamApply_(h.store, identity(), body.action, body.payload, '2026-09-27T01:00:00Z', crypto.randomUUID(), digest);
+          const payload = clone(body.payload); let attachment;
+          if (body.action === 'evidenceUpload') { h.files[payload.entity.id] = payload.base64; delete payload.base64; attachment = { fileId: 'MOCK_PRIVATE_FILE', binding: digest(JSON.stringify([h.role, payload.entity])) }; }
+          if (h.failNext === 'network-before-write') { h.failNext = ''; return route.abort('failed'); }
+          const out = engine.teamApply_(h.store, identity(), body.action, payload, new Date().toISOString(), crypto.randomUUID(), digest, attachment);
           h.store = clone(out.store); result = { data: clone(engine.teamPresent_(h.store, identity())), replayed: out.replayed };
           if (h.failNext === 'network-after-write') { h.failNext = ''; return route.abort('failed'); }
         }
@@ -217,11 +231,12 @@ async function run() {
   }
   await browser.close(); console.log('company-team-ui: ' + count + '/' + count + ' PASS');
 }
-if (process.argv.includes('--mutations')) {
+module.exports = { harness, seed, engine, clone, digest, setBrowser: value => { browser = value; } };
+if (require.main === module && process.argv.includes('--mutations')) {
   const { spawnSync } = require('child_process'); let caught = 0;
   for (const name of ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave']) {
     const result = spawnSync(process.execPath, [__filename], { env: { ...process.env, HJ_TEAM_UI_MUTATION: name }, timeout: 120000, encoding: 'utf8' });
     assert(!result.error, name + ': runner error ' + result.error); assert.notEqual(result.status, 0, name + ' survived'); assert((result.stdout + result.stderr).includes('FAIL company-team-ui:'), name + ': did not reach assertions'); console.log('DETECTED ' + name); caught++;
   }
   console.log('company-team-ui mutations: ' + caught + '/5 detected');
-} else run().catch(async e => { console.error('FAIL company-team-ui:', e.stack); if (browser) await browser.close().catch(() => {}); process.exitCode = 1; });
+} else if (require.main === module) run().catch(async e => { console.error('FAIL company-team-ui:', e.stack); if (browser) await browser.close().catch(() => {}); process.exitCode = 1; });

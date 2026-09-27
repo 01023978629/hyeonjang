@@ -15,6 +15,8 @@
     .workspace-nav{position:sticky;top:0;z-index:2;background:var(--bg);padding:8px 0}.workspace-nav [aria-current=page]{background:var(--blue);color:#fff}.work-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:12px 0}.work-summary button{display:flex;flex-direction:column;align-items:flex-start;padding:14px}.work-summary strong{font-size:24px}.workload{margin:12px 0}.task-actions{margin-top:12px}.task-actions button{flex:1}.history{padding-left:22px}.history li{border-left:3px solid var(--line);padding:8px 12px;margin:8px 0}.history p{margin:4px 0}.page-context{border-left:4px solid var(--blue);padding:10px 14px;background:#e8f0fc}.team-switch{margin:14px 0}.filters{margin-top:16px}.filters .field{margin:0}.workspace-nav button{font-size:15px}.dialog-foot #editorMessage{flex-basis:100%;margin:0;max-height:110px;overflow:auto}
   </style>
   <script defer src="team-config.js"></script>
+  <script defer src="team-packet.js"></script>
+  <script defer src="team-projects.js"></script>
   <script defer src="team-ui.js"></script>
 </head>
 <body>
@@ -40,7 +42,10 @@
     <details><summary>회사 권한 연결용 내 식별정보</summary><p class="muted">계정이 처음이라 팀이 안 보이면 아래 두 값을 회사 관리자에게 전달하세요. 비밀번호는 전달하지 마세요.</p><code id="identity" class="identity-value"></code><button id="copyIdentity" type="button">식별정보 복사</button></details>
   </section>
   <div id="workspace" hidden>
-    <nav class="tabs workspace-nav" aria-label="업무 페이지"><button id="tabTasks" type="button">내 업무</button><button id="tabTeams" type="button">팀별 작업실</button><button id="tabReview" type="button" hidden>검수·승인</button><button id="tabOperations" type="button" hidden>운영 관리</button><button id="tabOrg" type="button" hidden>직원·팀 설정</button><button id="tabAudit" type="button" hidden>변경 이력</button></nav>
+    <nav class="tabs workspace-nav" aria-label="업무 페이지"><button id="tabTasks" type="button">내 업무</button><button id="tabPlanner" type="button">기술자 일정</button><button id="tabProjects" type="button">프로젝트 사진</button><button id="tabTeams" type="button">팀별 작업실</button><button id="tabReview" type="button" hidden>검수·승인</button><button id="tabClaims" type="button" hidden>보험 제출 준비</button><button id="tabOperations" type="button" hidden>운영 관리</button><button id="tabOrg" type="button" hidden>직원·팀 설정</button><button id="tabAudit" type="button" hidden>변경 이력</button></nav>
+    <section id="plannerPanel" hidden aria-label="기술자별 일정과 배정"></section>
+    <section id="projectsPanel" hidden aria-label="프로젝트 사진과 증빙"></section>
+    <section id="claimsPanel" hidden aria-label="보험 제출 준비"></section>
     <section id="teamsPanel" hidden aria-labelledby="teamsHeading"><h2 id="teamsHeading">팀별 작업실</h2><p class="muted">팀을 선택하면 현장별 진행 상황과 담당 업무를 관리할 수 있습니다. 직원에게는 본인에게 배정된 업무만 표시됩니다.</p><div id="teamDirectory" class="grid"></div></section>
     <section id="teamContext" hidden aria-label="선택한 팀의 운영 현황"><button id="backTeams" class="team-switch" type="button">다른 팀 선택</button><p id="teamScope" class="page-context"></p><div id="teamSummary" class="work-summary"></div><details><summary>현장별 진행 현황</summary><div id="projectSummary" class="grid"></div></details><details><summary>담당자별 미완료 업무</summary><div id="memberWorkload" class="row workload"></div></details></section>
     <section id="operationsPanel" hidden aria-labelledby="operationsHeading"><h2 id="operationsHeading">운영 관리</h2><p class="muted">권한 내 팀의 업무 배정·지연·막힘·검수 대기를 확인합니다. 수금·회계·자재 발주 승인과는 별도입니다.</p><div id="operationsList" class="grid"></div></section>
@@ -60,7 +65,7 @@
     <section id="orgPanel" aria-labelledby="orgHeading" hidden><div class="row between"><h2 id="orgHeading">직원·팀 설정</h2><div id="orgActions" class="row" hidden><button id="newTeam" type="button">팀 추가</button><button id="newMember" type="button" class="primary">직원 권한 연결</button></div></div><p class="muted">소속 팀과 회사 권한을 지정하면 접근할 작업실과 처리할 업무가 결정됩니다. 계정 생성이 아닌 기존 포털 계정 연결입니다.</p><ul id="orgList" class="org"></ul></section>
     <section id="auditPanel" aria-labelledby="auditHeading" hidden><h2 id="auditHeading">수정 이력 · 최근 100건</h2><p class="muted">서버에 저장된 변경 주체·대상·시각입니다. 과거 자료를 덮어쓰는 복원 기능은 제공하지 않습니다.</p><ol id="auditList" class="audit"></ol></section>
   </div>
-  <p class="footnote">이 페이지는 직원 전용 서버 자료만 읽습니다. 기존 현장 앱의 사진·견적·로컬 저장소·회사 공용 키는 읽거나 변경하지 않습니다. 기기를 바꾸거나 동료가 수정한 뒤에는 ‘최신 자료 확인’을 눌러 주세요.</p>
+  <p class="footnote">직원 전용 서버에 등록한 업무·사진·증빙만 다룹니다. 기존 현장 앱의 사진·견적을 자동 이관하지 않습니다. 동료의 변경은 ‘최신 자료 확인’을 눌러 확인하세요. 보험 제출 준비 자료 다운로드와 실제 보험사 제출은 별개입니다.</p>
 </main>
 <dialog id="editor" aria-labelledby="editorTitle"><form id="editorForm"><div class="dialog-head row between"><h2 id="editorTitle"></h2><button id="editorClose" type="button" aria-label="편집 창 닫기">닫기</button></div><div class="dialog-body"><div id="editorFields"></div><pre id="conflictLatest" class="notice" hidden></pre></div><div class="dialog-foot"><p id="editorMessage" class="notice" role="status" hidden></p><button id="compare" type="button" hidden>최신 내용 비교</button><button id="rebase" type="button" hidden>이 초안으로 다시 검토</button><button id="save" type="submit" class="primary">저장</button></div></form></dialog>
 </body>

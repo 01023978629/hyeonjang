@@ -19,6 +19,7 @@
     'request-conflict': '같은 요청 번호의 내용이 다릅니다. 최신 내용을 비교한 뒤 새 요청으로 검토해 주세요.',
     'invalid-input': '입력 형식과 필수 항목을 확인해 주세요.', 'invalid-team': '현재 사용 가능한 팀을 선택해 주세요.',
     'invalid-assignee': '선택한 팀의 활성 직원을 담당자로 지정해 주세요.', 'invalid-transition': '현재 단계에서 선택할 수 없는 상태입니다.',
+    'invalid-project': '프로젝트의 담당 팀과 운영 상태를 확인하세요.', 'invalid-schedule': '작업일과 시작·종료 시간을 함께 입력하세요.', 'schedule-conflict': '같은 기술자의 일정이 겹칩니다. 시간 또는 담당자를 조정하세요.', 'evidence-bound': '사진이 있는 업무의 프로젝트는 변경할 수 없습니다.',
     'handoff-required': '막힘·검수 요청에는 이유 또는 인수인계 내용을 적어 주세요.',
     'review-note-required': '보완 요청 사유를 새로 적어 주세요. 이전 보고는 처리 이력에 남습니다.',
     duplicate: '같은 이름 또는 계정이 이미 등록되어 있습니다.', 'duplicate-source': '이 기존 업무는 이미 공유 업무로 등록되었습니다. 최신 자료를 확인해 주세요.',
@@ -57,7 +58,7 @@
     if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' ? d.me.teamIds.includes(t.teamId) : t.assigneeId === d.me.id))) return false;
     if (!d.tasks.every(t => t.history === undefined || Array.isArray(t.history) && t.history.length <= 100 && t.history.every(h => h && str(h.at, 40, false) && id(h.actorId) && Object.hasOwn(statuses, h.status) && str(h.handoff) && id(h.teamId) && id(h.assigneeId) && Number.isSafeInteger(h.revision) && h.revision >= 0 && typeof h.baseline === 'boolean'))) return false;
     if (d.me.role !== 'owner' && d.audit.length) return false;
-    return d.audit.every(a => a && str(a.at, 40) && id(a.actorId) && ['teamSave', 'memberSave', 'taskSave'].includes(a.action) && id(a.targetId) && str(a.kind, 20) && Number.isSafeInteger(a.revision));
+    return projectUI.valid(d) && d.audit.every(a => a && str(a.at, 40) && id(a.actorId) && ['teamSave', 'memberSave', 'taskSave', 'projectSave', 'taskBatch', 'evidenceUpload', 'claimSave', 'claimReview', 'claimSubmitRecord'].includes(a.action) && id(a.targetId) && str(a.kind, 20) && Number.isSafeInteger(a.revision));
   }
   async function request(url, body, epoch = state.epoch) {
     if (!endpointPattern.test(url)) fail('not-configured');
@@ -76,6 +77,7 @@
   }
   const api = (action, payload) => request(apiUrl, { action, sessionToken: state.token, ...(payload ? { payload } : {}) });
   function clearWorkspace() {
+    projectUI.reset();
     state.data = null; state.imports = []; state.editor = null; $('workspace').hidden = true;
     if ($('editor').open) $('editor').close();
     ['taskList', 'orgList', 'auditList', 'importList', 'editorFields', 'conflictLatest', 'teamDirectory', 'teamSummary', 'projectSummary', 'memberWorkload', 'operationsList'].forEach(k => $(k).replaceChildren());
@@ -131,15 +133,15 @@
   function assignableTeams() { return state.data.teams.filter(t => t.active && canAssign(t.id)); }
   function memberName(idValue) { return state.data.members.find(m => m.id === idValue)?.name || '현재 권한 밖 직원'; }
   function teamName(idValue) { return state.data.teams.find(t => t.id === idValue)?.name || '현재 권한 밖 팀'; }
-  const pages = { mine: ['내 업무', '내게 배정된 일을 시작하고 작업 내용을 보고합니다.'], teams: ['팀별 작업실', '팀의 현장·담당자별 업무를 관리합니다.'], review: ['검수·승인', '완료 보고를 확인한 뒤 승인하거나 보완을 요청합니다.'], operations: ['운영 관리', '팀별 업무량과 지연·막힘을 확인하고 담당 업무를 조정합니다.'], settings: ['직원·팀 설정', '소속 팀과 권한을 지정해 각자의 작업 공간을 연결합니다.'], audit: ['변경 이력', '서버가 기록한 변경 주체와 시각을 확인합니다.'] };
-  const navPages = { Tasks: 'mine', Teams: 'teams', Review: 'review', Operations: 'operations', Org: 'settings', Audit: 'audit' };
+  const pages = { mine: ['내 업무', '내게 배정된 일을 시작하고 작업 내용을 보고합니다.'], planner: ['기술자 일정', '기술자별 현장·시간·진행 상태를 확인하고 최대 10건을 함께 배정합니다.'], projects: ['프로젝트 사진', '업무에 연결한 원본 사진을 프로젝트별로 모읍니다.'], claims: ['보험 제출 준비', '대표가 원본 증빙과 보수 내역을 검토하고 제출 자료를 준비합니다.'], teams: ['팀별 작업실', '팀의 현장·담당자별 업무를 관리합니다.'], review: ['검수·승인', '완료 보고를 확인한 뒤 승인하거나 보완을 요청합니다.'], operations: ['운영 관리', '팀별 업무량과 지연·막힘을 확인하고 담당 업무를 조정합니다.'], settings: ['직원·팀 설정', '소속 팀과 권한을 지정해 각자의 작업 공간을 연결합니다.'], audit: ['변경 이력', '서버가 기록한 변경 주체와 시각을 확인합니다.'] };
+  const navPages = { Tasks: 'mine', Planner: 'planner', Projects: 'projects', Teams: 'teams', Review: 'review', Claims: 'claims', Operations: 'operations', Org: 'settings', Audit: 'audit' };
   const filterIds = ['projectFilter', 'assigneeFilter', 'statusFilter', 'dueFilter', 'search'];
   function currentTeam() { return state.page.startsWith('team/') ? state.data?.teams.find(t => t.id === state.page.slice(5)) : null; }
   function pageAllowed(page) {
     const me = state.data?.me; if (!me) return false;
     if (page.startsWith('team/')) return /^[A-Za-z0-9_-]{1,100}$/.test(page.slice(5)) && state.data.teams.some(t => t.id === page.slice(5));
     if (!Object.hasOwn(pages, page)) return false;
-    if (['settings', 'audit'].includes(page)) return me.role === 'owner';
+    if (['settings', 'audit', 'claims'].includes(page)) return me.role === 'owner';
     if (['review', 'operations'].includes(page)) return ['owner', 'lead'].includes(me.role);
     return true;
   }
@@ -147,7 +149,7 @@
   function rememberFilters() { if (state.page) state.filters[state.page] = Object.fromEntries(filterIds.map(k => [k, $(k).value])); }
   function go(page, push = true) {
     if (!state.data) return;
-    if (state.editor) { history.replaceState(null, '', '#' + state.page); editorNotice('작성 중인 업무를 먼저 저장하거나 닫아 주세요. 작성 내용은 유지됩니다.', false); return; }
+    if (state.editor || projectUI.hasDraft()) { history.replaceState(null, '', '#' + state.page); notice('작성 중인 창을 먼저 저장하거나 닫아 주세요.'); editorNotice('작성 중인 업무를 먼저 저장하거나 닫아 주세요. 작성 내용은 유지됩니다.', false); return; }
     rememberFilters();
     if (!pageAllowed(page)) { page = 'mine'; notice('이 페이지의 접근 권한이 없어 내 업무로 이동했습니다.', true); }
     state.page = page;
@@ -204,7 +206,7 @@
   function renderPage() {
     const d = state.data, team = currentTeam(), page = state.page, owner = d.me.role === 'owner', manager = ['owner', 'lead'].includes(d.me.role);
     const title = team ? team.name + ' 작업실' : pages[page][0]; $('pageTitle').textContent = title; document.title = title + ' · 현장'; $('pageIntro').textContent = team ? '현장별로 일을 배정하고, 담당자가 보고하고, 팀장이 마무리를 확인합니다.' : pages[page][1];
-    Object.entries(navPages).forEach(([key, value]) => { const el = $('tab' + key); el.hidden = ['settings', 'audit'].includes(value) ? !owner : ['review', 'operations'].includes(value) ? !manager : false; if (value === page || team && value === 'teams') el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current'); });
+    Object.entries(navPages).forEach(([key, value]) => { const el = $('tab' + key); el.hidden = ['settings', 'audit', 'claims'].includes(value) ? !owner : ['review', 'operations'].includes(value) ? !manager : false; if (value === page || team && value === 'teams') el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current'); });
     $('teamsPanel').hidden = page !== 'teams'; $('teamContext').hidden = !team; $('operationsPanel').hidden = page !== 'operations'; $('orgPanel').hidden = page !== 'settings'; $('auditPanel').hidden = page !== 'audit';
     $('tasksPanel').hidden = !team && !['mine', 'review'].includes(page); $('orgActions').hidden = !owner;
     $('taskHeading').textContent = team ? '현장별 담당 업무' : title;
@@ -215,7 +217,7 @@
     fillSelect('assigneeFilter', assignees.map(m => [m.id, m.name]), '모든 담당자');
     ['statusFilter', 'dueFilter', 'search'].forEach(k => { if (state.filters[page]?.[k] !== undefined) $(k).value = state.filters[page][k]; });
     $('statusFilter').disabled = page === 'review'; if (page === 'review') $('statusFilter').value = 'review';
-    renderTeamSpaces(); renderTasks(); if (owner) { renderOrg(); renderAudit(); } else { $('orgList').replaceChildren(); $('auditList').replaceChildren(); } renderImports();
+    renderTeamSpaces(); renderTasks(); if (owner) { renderOrg(); renderAudit(); } else { $('orgList').replaceChildren(); $('auditList').replaceChildren(); } renderImports(); projectUI.render(page);
   }
   function render() {
     const d = state.data; if (!d) return;
@@ -235,6 +237,7 @@
       top.append(node('span', statuses[t.status], 'badge ' + t.status), node('span', t.due ? '기한 ' + t.due : '기한 미지정', 'meta'));
       card.append(top, node('p', t.project, 'meta'), node('h3', t.title), node('p', teamName(t.teamId) + ' · ' + memberName(t.assigneeId), 'meta'));
       if (t.handoff) card.append(node('p', t.handoff, 'pre'));
+      if (t.workDate) card.append(node('p', '작업일 ' + t.workDate + ' ' + (t.startTime || '') + (t.endTime ? '–' + t.endTime : ''), 'meta'));
       const actions = node('div', undefined, 'row task-actions');
       if (t.status === 'todo' || t.status === 'blocked') actions.append(button('작업 시작', () => openTaskAction(t, 'doing', '작업 시작'), 'primary'));
       if (t.status === 'doing') actions.append(button('검수 요청', () => openTaskAction(t, 'review', '검수 요청'), 'primary'));
@@ -265,7 +268,7 @@
     }); if (!groups.length) $('orgList').append(node('li', '현재 권한으로 볼 수 있는 팀이 없습니다.'));
   }
   function renderAudit() {
-    $('auditList').replaceChildren(); const labels = { teamSave: '팀 변경', memberSave: '직원 권한 변경', taskSave: '업무 변경' };
+    $('auditList').replaceChildren(); const labels = { teamSave: '팀 변경', memberSave: '직원 권한 변경', taskSave: '업무 변경', projectSave: '프로젝트 변경', taskBatch: '업무 일괄 배정', evidenceUpload: '원본 증빙 등록', claimSave: '보험 준비 변경', claimReview: '자료 검토 기록', claimSubmitRecord: '직접 제출 사실 수동 기록' };
     state.data.audit.forEach(a => $('auditList').append(node('li', a.at + ' · ' + memberName(a.actorId) + ' · ' + labels[a.action] + ' · 대상 ' + a.targetId + ' · 버전 ' + a.revision)));
     if (!state.data.audit.length) $('auditList').append(node('li', '표시할 변경 이력이 없습니다.'));
   }
@@ -282,7 +285,7 @@
   }
   function returnFocus(taskId) { const target = taskId && $('taskList').querySelector('[data-task-id="' + CSS.escape(taskId) + '"] button'); (target && !$('tasksPanel').hidden ? target : $('pageTitle')).focus(); }
   function openEditor(kind, old = {}, imported = null) {
-    if (!state.data || state.editor || (kind !== 'task' && state.data.me.role !== 'owner')) return;
+    if (!state.data || state.editor || projectUI.hasDraft() || (kind !== 'task' && state.data.me.role !== 'owner')) return;
     if (kind === 'task' && !old.id && !assignableTeams().length) return;
     state.editor = { kind, old: JSON.parse(JSON.stringify(old)), revision: state.data.revision, pending: null, busy: false, conflict: false, imported };
     const form = $('editorFields'); form.replaceChildren(); editorNotice(''); $('conflictLatest').hidden = true; $('compare').hidden = true; $('rebase').hidden = true; $('save').hidden = false; $('save').disabled = false; $('save').textContent = '저장';
@@ -303,13 +306,18 @@
     } else {
       const source = imported || old, canEdit = !old.id || canAssign(old.teamId), contextTeam = currentTeam();
       field(form, 'title', '할 일', 'text', source.title || '', { max: 160, required: true, disabled: !canEdit });
-      field(form, 'project', '현장명', 'text', source.project || (!old.id && !imported ? $('projectFilter').value : '') || '', { max: 160, required: true, disabled: !canEdit, help: '기존 현장과 같은 이름으로 입력하세요. 사진·견적 자료를 자동 공유하지 않습니다.' });
+      field(form, 'project', '현장명', 'text', source.project || (!old.id && !imported ? $('projectFilter').value : '') || '', { max: 160, required: true, disabled: !canEdit, help: '사진을 모으려면 아래에서 등록 프로젝트를 연결하세요. 이름만 같은 기존 자료는 자동 공유하지 않습니다.' });
+      const linkedProject = field(form, 'projectId', '사진함에 연결할 프로젝트', 'select', source.projectId || '', { disabled: !canEdit, options: [['', '연결 안 함 · 기존 현장명 유지'], ...(state.data.projects || []).map(p => [p.id, p.name])] });
+      linkedProject.onchange = () => { const p = state.data.projects?.find(p => p.id === linkedProject.value); if (p) $('edit-project').value = p.name; };
       const available = canEdit ? assignableTeams() : state.data.teams.filter(t => t.id === old.teamId);
       const teams = field(form, 'teamId', '담당 팀', 'select', old.teamId || contextTeam?.id || available[0]?.id || '', { required: true, disabled: !canEdit, options: available.map(t => [t.id, t.name]) });
       const assignee = field(form, 'assigneeId', '담당자', 'select', '', { required: true, disabled: !canEdit });
       const setAssignees = (preferred) => { assignee.replaceChildren(new Option('담당자를 선택하세요', '')); state.data.members.filter(m => m.active && m.teamIds.includes(teams.value)).forEach(m => assignee.add(new Option(m.name + ' · ' + roles[m.role], m.id))); if ([...assignee.options].some(o => o.value === preferred)) assignee.value = preferred; };
       setAssignees(old.assigneeId || ''); teams.onchange = () => setAssignees('');
       field(form, 'due', '작업 기한', 'date', source.due || '', { disabled: !canEdit });
+      field(form, 'workDate', '예정 작업일', 'date', source.workDate || '', { disabled: !canEdit });
+      field(form, 'startTime', '작업 시작 시간', 'time', source.startTime || '', { disabled: !canEdit });
+      field(form, 'endTime', '작업 종료 시간', 'time', source.endTime || '', { disabled: !canEdit });
       const states = old.id ? [old.status, ...transitions[old.status].filter(s => canEdit || s !== 'done' && old.status !== 'done')] : ['todo'];
       field(form, 'status', '진행 상태', 'select', old.status || 'todo', { options: states.map(s => [s, statuses[s]]) });
       field(form, 'handoff', '작업 내용·막힌 이유·인수인계', 'textarea', source.handoff || '', { max: 2000, help: '변경 전 보고는 처리 이력에 남고, 재배정한 새 담당자도 이전 보고를 볼 수 있습니다. 고객 연락처·출입 비밀번호는 적지 마세요.' });
@@ -323,7 +331,7 @@
     const e = state.editor, value = k => $('edit-' + k).value, old = e.old;
     if (e.kind === 'team') return { id: old.id || '', name: value('name').trim(), active: value('active') === 'true' };
     if (e.kind === 'member') return { id: old.id || '', name: value('name').trim(), userId: value('userId').trim(), officeId: value('officeId'), role: value('role'), active: value('active') === 'true', teamIds: [...$('editorFields').querySelectorAll('input[name=teamIds]:checked')].map(i => i.value) };
-    return { id: old.id || '', title: value('title').trim(), project: value('project').trim(), teamId: value('teamId'), assigneeId: value('assigneeId'), due: value('due'), status: value('status'), handoff: value('handoff'), sourceRef: e.imported?.sourceRef || old.sourceRef || '' };
+    return { id: old.id || '', title: value('title').trim(), project: value('project').trim(), projectId: value('projectId'), workDate: value('workDate'), startTime: value('startTime'), endTime: value('endTime'), teamId: value('teamId'), assigneeId: value('assigneeId'), due: value('due'), status: value('status'), handoff: value('handoff'), sourceRef: e.imported?.sourceRef || old.sourceRef || '' };
   }
   function freezeFields(freeze) {
     [...$('editorFields').querySelectorAll('input,select,textarea')].forEach(n => { if (freeze) { if (!n.disabled) n.dataset.temporarilyDisabled = '1'; n.disabled = true; } else if (n.dataset.temporarilyDisabled) { n.disabled = false; delete n.dataset.temporarilyDisabled; } });
@@ -384,6 +392,7 @@
     $('importList').replaceChildren(); if (!state.data) return;
     state.imports.forEach(t => { const row = node('div', undefined, 'row between'), exists = state.data.tasks.some(x => x.sourceRef === t.sourceRef); row.append(node('p', t.project + ' · ' + t.title)); const b = button(exists ? '이미 등록됨' : '배정 초안 열기', () => openEditor('task', {}, t)); b.disabled = exists; row.append(b); $('importList').append(row); });
   }
+  const projectUI = window.HJTeamProjects.create({ node, button, data: () => state.data, epoch: () => state.epoch, api, accept: acceptData, notice, message, onError: handleReadError, hasTaskDraft: () => !!state.editor, openTask: t => openEditor('task', t), statuses });
   $('loginForm').addEventListener('submit', login); $('logout').onclick = logout; $('refresh').onclick = read;
   $('copyIdentity').onclick = async () => { try { await navigator.clipboard.writeText($('identity').textContent); notice('계정 연결용 식별정보를 복사했습니다. 비밀번호는 포함되지 않습니다.'); } catch (_) { notice('복사 권한이 없습니다. 펼친 식별정보를 직접 선택해 복사해 주세요.', true); } };
   Object.entries(navPages).forEach(([key, page]) => $('tab' + key).onclick = () => go(page));
@@ -397,10 +406,10 @@
   $('importButton').onclick = () => { $('importPanel').hidden = false; $('importFile').focus(); }; $('importFile').onchange = importDrafts;
   window.addEventListener('pagehide', () => { endSession('화면을 떠나 로그아웃되었습니다. 다시 로그인해 주세요.'); });
   window.addEventListener('pageshow', e => { if (e.persisted) endSession('다시 로그인해 주세요.'); });
-  window.addEventListener('beforeunload', e => { if (state.editor) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', e => { if (state.editor || projectUI.hasDraft()) { e.preventDefault(); e.returnValue = ''; } });
   (async () => {
     if (!endpointPattern.test(apiUrl)) { notice(errors['not-configured'], true); return; }
-    try { const health = await request(apiUrl, { action: 'health' }); if (health.service !== 'company-team-v2' || !endpointPattern.test(health.portalUrl)) fail('bad-response'); state.portalUrl = health.portalUrl; loginEnabled(true); notice('개인 계정으로 로그인해 회사에서 허용한 업무를 확인하세요.'); }
+    try { const health = await request(apiUrl, { action: 'health' }); if (health.service !== 'company-team-v3' || !endpointPattern.test(health.portalUrl)) fail('bad-response'); state.portalUrl = health.portalUrl; loginEnabled(true); notice('개인 계정으로 로그인해 회사에서 허용한 업무를 확인하세요.'); }
     catch (e) { if (codeOf(e) !== 'stale') notice(message(e), true); }
   })();
 })();
