@@ -5710,7 +5710,7 @@ function renameProject(oldName){
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
 }
-// 현장 삭제 — 배정된 파일은 미배정으로 되돌림(파일 자체는 안 지움), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 남김
+// 현장 삭제 — 배정된 사진·서류는 미배정으로 되돌림(파일 자체는 안 지움), 견적서 파일과 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 남김
 function deleteProject(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return;
   const c=hjProjectRefCount(name,officeIntakeValidProjectIdentity(p.officeIntakeProjectId));
@@ -5745,7 +5745,9 @@ function deleteProject(name){
       if(!ok){busy=false;toast('안전판을 저장하지 못해 삭제하지 않았습니다. 저장 공간을 확인하세요.');return;}
       const r=hjDeleteProjectCore(name);
       if(!r){busy=false;closeModal();toast('그사이 현장이 없어져 삭제하지 않았습니다.');return;}
-      markDirty();closeModal();render();toast('현장 “'+name+'” 삭제됨 (파일은 미배정으로 보존'+(Object.keys(r.kept).length?', 기록은 “'+r.tomb+'”로 보존':'')+')');
+      markDirty();closeModal();render();// 견적서 파일은 미배정이 아니라 '(삭제됨)' 이름으로 간다(hjDeleteProjectCore v331) — 확인 창과 같은 말을 한다
+      const keptWhat=[r.kept.estFiles?'견적서 파일':'',Object.keys(r.kept).some(k=>k!=='estFiles')?'기록':''].filter(Boolean).join('·');
+      toast('현장 “'+name+'” 삭제됨 (사진·서류는 미배정으로 보존'+(keptWhat?', '+keptWhat+'은 “'+r.tomb+'”로 보존':'')+')');
     }}
   ]);
 }
@@ -9022,7 +9024,7 @@ const AI_TOOLS = [
  {name:'photo_report',description:'현장 사진을 날짜별·공정별로 자동 정리해 작업 일지를 만든다. Gemini 키가 있으면 AI가 작업 내용을 요약. query=현장/고객명(생략 시 사진 있는 현장 목록). "사진 정리해서 일지/작업 일지/사진 보고서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
  {name:'vat_report',description:'부가세 신고 준비: 분기(과세기간)별 매출세액·매입세액 공제·납부(환급) 예상세액을 집계해 화면을 엶. period 지정 가능(생략 시 최근). "부가세/세금신고/매출매입 정리/신고 자료"면 호출.',parameters:{type:'OBJECT',properties:{period:{type:'STRING',description:'예: 2026-1'}}}},
  {name:'batch_receive',description:'[변경] 여러 입금을 한 번에 기록하고 영수증까지 자동 발송한다. payments=[{query:현장/고객명, amount:금액}], receipt=true면 영수증 발송, sms=true면 현금영수증 안내 문자도. "오늘 들어온 돈 정리/여러 건 입금"이면 호출.',parameters:{type:'OBJECT',properties:{payments:{type:'ARRAY',items:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'}}}},receipt:{type:'BOOLEAN'},sms:{type:'BOOLEAN'}},required:['payments']}},
- {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동, 일정은 연결 해제, 수금·AS·견적 등 연결 기록은 지우지 않고 \'(삭제됨) 이름 · 날짜\' 로 남긴다. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
+ {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동(견적서 파일은 매출 기록이라 \'(삭제됨) 이름 · 날짜\' 로 옮김), 일정은 연결 해제, 수금·AS·견적 등 연결 기록은 지우지 않고 \'(삭제됨) 이름 · 날짜\' 로 남긴다. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'delete_schedule',description:'[변경] 일정을 삭제한다. 삭제 전 자동 백업됨. keyword=일정 제목/현장/날짜. "○○ 일정 취소/삭제"면 호출. 여러 건이면 되물어 확정.',parameters:{type:'OBJECT',properties:{keyword:{type:'STRING'}},required:['keyword']}},
  {name:'add_note',description:'[변경] 메모·할 일을 기록한다. text=내용(들은 내용 전체), project=관련 현장(선택). 문장이 "~메모해줘/적어둬/기억해/잊지마"로 끝나면 내용이 무엇이든(자재 주문 포함) 이 도구를 쓴다. 실제 발주서 작성은 material_order.',parameters:{type:'OBJECT',properties:{text:{type:'STRING'},project:{type:'STRING'}},required:['text']}},
  {name:'list_notes',description:'기록한 메모·할 일을 조회한다. query로 거를 수 있음. "메모 뭐 있지/적어둔 거"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
@@ -9743,7 +9745,7 @@ function aiResultBrief(name,out){
   if(name==='morning_brief')return ' — 할일 '+(out.챙길일||0)+'가지';
   if(name==='revenue_trend')return out.추세퍼센트!=null?' — 추세 '+(out.추세퍼센트>=0?'+':'')+out.추세퍼센트+'%':'';
   if(name==='send_settle_doc')return out.파일?' — '+(out.완료||'')+' '+out.문서:'';
-  if(name==='delete_project')return out.삭제?' — '+out.삭제+' 삭제(사진 '+out.사진서류_미배정전환+'개 보존)':'';
+  if(name==='delete_project')return out.삭제?' — '+out.삭제+' 삭제(사진·서류 '+out.사진서류_미배정전환+'개 미배정'+(out.견적서파일_보존?', 견적서 '+out.견적서파일_보존+'개 “'+out.보존_이름+'”':'')+')':'';
   if(name==='delete_schedule')return out.삭제한일정?' — 삭제됨':'';
   if(name==='add_note')return out.기록?' — 기록됨':'';
   if(name==='list_notes')return ' — '+(out.개수||0)+'개';
@@ -16061,12 +16063,12 @@ function settleDocs(name,kind){
 // AI용 현장 삭제 — 스냅샷 후 실제 제거(확인은 AI 승인카드가 담당)
 function aiDeleteProject(name){
   if(!state.projects.find(x=>x.name===name))return {오류:'현장을 찾을 수 없습니다: '+name};
-  // UI 삭제와 같은 함수 — 사진·서류는 미배정, 일정은 연결 해제, 수금·AS·견적 등은 '(삭제됨) 이름 · 날짜' 로 보존
+  // UI 삭제와 같은 함수 — 사진·서류는 미배정, 일정은 연결 해제, 견적서 파일·수금·AS·견적 등은 '(삭제됨) 이름 · 날짜' 로 보존
   const r=hjDeleteProjectCore(name);
   const fileCount=r.counts.files||0;
   markDirty();render();
   const kept=hjProjectRefText(r.kept);
-  return {삭제:name,사진서류_미배정전환:fileCount,일정_연결해제:(r.counts.schedule||0)-(r.due?1:0),수금약속일_알림:r.due?(r.due.kept?'메모가 있어 “'+r.tomb+'”로 보존':'일정표에서 뺌('+r.due.date+')'):'없음',기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
+  return {삭제:name,사진서류_미배정전환:fileCount,견적서파일_보존:r.counts.estFiles||0,일정_연결해제:(r.counts.schedule||0)-(r.due?1:0),수금약속일_알림:r.due?(r.due.kept?'메모가 있어 “'+r.tomb+'”로 보존':'일정표에서 뺌('+r.due.date+')'):'없음',기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. '+(r.counts.estFiles?'견적서 파일과 ':'')+'수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
 }
 function aiDeleteSchedule(keyword){
   const q=String(keyword||'').trim();
@@ -16693,7 +16695,7 @@ function weekBriefData(){
   const lastRecv=lastPays.reduce((a,x)=>a+x.amt,0);
   const lastQuotes=(state.quotes||[]).filter(q=>q.date>=last.from&&q.date<=last.to);
   const lastQuoteSum=lastQuotes.reduce((a,q)=>a+quoteCalc(q).total,0);
-  const lastDone=state.projects.filter(p=>p&&!p.archived&&p.doneAt&&p.doneAt>=last.from&&p.doneAt<=last.to);   // v331 보관 현장도 — 기간에 끝낸 공사는 보관해도 실적이다
+  const lastDone=state.projects.filter(p=>p&&p.doneAt&&p.doneAt>=last.from&&p.doneAt<=last.to);   // v331 보관 현장도 — 기간에 끝낸 공사는 보관해도 실적이다
   const lastPhotos=state.files.filter(f=>{if(f.kind!=='photo')return false;const d=aiYmdOf(f.when);return d&&d>=last.from&&d<=last.to;}).length;
   const lastSched=(state.schedule||[]).filter(s=>s.date>=last.from&&s.date<=last.to&&!/^💰/.test(s.title||''));
   // 이번주(0)
@@ -25932,13 +25934,26 @@ function estimateGroups(estFiles){
     // v331 ✍ 편집으로 엑셀·PDF 견적을 옮겨 온 앱 견적(가상 파일 _editedFrom)은 이 병합에 끼지 않는다. 그 원본의 사본 묶음은 저장 때
     // exSum 으로 빠졌으니 남은 같은 금액 견적은 다른 공사다 — 예전에는 '[견적서] 제목.pdf' 가 글자 없는 이름이라 같은 현장·같은 금액의
     // 다른 엑셀('주방 견적.xlsx' 550만)과 사본으로 묶여, 욕실을 편집·저장하자 주방 550만이 매출·청구·잔금에서 사라졌다.
-    const editedSolo=function(g){return [g.rep].concat(g.dups||[]).some(function(f){return f&&f._fromQuote&&f._editedFrom;});};
+    //   단 그 원본 자신(Σ 로 집계에 되돌린 경우 — 저장 안내가 그 길을 알려 준다)과는 묶는다. 안 묶으면 원본 엑셀과 앱 견적이 두 번 잡힌다.
+    //   원본 = _editedFrom 과 id 가 같거나, 원본과 1차 이름 키가 같은 파일(같은 이름의 PDF 출력본). 원본을 지운 경우엔 짝이 없다.
+    //   대표(rep)만 본다: 가상 파일 이름 '[견적서] …' 은 정규화하면 '[' 만 남아 1차에서 늘 혼자('id:' 키)라 dups 에 들어올 수 없고,
+    //   원본과 묶이면 아래에서 원본이 대표가 된다 — 그 뒤 그 묶음은 원본 기준의 보통 규칙을 따른다.
+    const byId={};(estFiles||[]).forEach(function(f){if(f&&f.id!=null)byId[f.id]=f;});
+    const key1=function(f){const k=norm(f.name);return k&&k.length>=2?k:'id:'+f.id;};
+    const editedOf=function(g){const r=g.rep;return r&&r._fromQuote&&r._editedFrom?r._editedFrom:null;};
+    const isSrcOf=function(g,srcId){const src=byId[srcId];
+      return [g.rep].concat(g.dups||[]).some(function(m){return m&&!m._fromQuote&&(m.id===srcId||(!!src&&key1(m)===key1(src)));});};
+    const pairOK=function(c,g){const ec=editedOf(c),eg=editedOf(g);
+      if(!ec&&!eg)return true;
+      if(ec&&eg)return false;                          // 편집한 앱 견적 둘은 서로 다른 견적
+      return ec?isSrcOf(g,ec):isSrcOf(c,eg);};
     arr.forEach(function(g){
       const pj=g.rep.project||'',amt=g.amt||0;
-      if(pj&&amt>0&&!editedSolo(g)){
+      if(pj&&amt>0){
         const cands=byPA[pj+'|'+amt]||[];
         // 같은 현장·같은 금액인 앞선 그룹 중에서 '사본'을 찾는다
         const t=cands.filter(function(c){
+          if(!pairOK(c,g))return false;
           const dA=digitsOf(c.rep),dB=digitsOf(g.rep);
           if(dA&&dB&&dA!==dB)return false;               // 호수 등 숫자가 서로 다르면 다른 견적(101동 vs 202동)
           if(isX(c.rep)!==isX(g.rep))return true;        // 엑셀 ↔ PDF = 원본과 그 출력본 → 사본
@@ -25949,7 +25964,7 @@ function estimateGroups(estFiles){
           return !lA||!lB||lA===lB;
         })[0];
         if(t){
-          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본)
+          if((isX(g.rep)&&!isX(t.rep))||editedOf(t)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본) · 편집 앱 견적보다 그 원본
           else t.dups.push(g.rep);
           t.dups=t.dups.concat(g.dups);
           return;

@@ -202,6 +202,33 @@ let browser;
     return t;
   }, { P });
   assert(/사진·서류 1개/.test(r6b) && /견적서 파일 1건/.test(r6b), '⑥ 삭제 확인 창 문구: ' + r6b.slice(0, 400));
+  // 삭제 뒤 토스트·AI 결과·AI 도구 설명도 견적서 파일을 '미배정' 이라 하지 않는다(확인 창과 같은 말)
+  const r6c = await page.evaluate(async ({ P }) => {
+    P = eval(P);
+    state.projects = [P('가상토스트'), P('가상AI')];
+    state.files = [
+      { id: 't1', name: '가상토스트 견적.xlsx', ext: 'xlsx', kind: 'estimate', project: '가상토스트', est: { amount: 1000000, date: '2025-09-01' } },
+      { id: 't2', name: '가상.jpg', ext: 'jpg', kind: 'photo', project: '가상토스트' },
+      { id: 'a1', name: '가상AI 견적.xlsx', ext: 'xlsx', kind: 'estimate', project: '가상AI', est: { amount: 1000000, date: '2025-09-01' } },
+      { id: 'a2', name: '가상2.jpg', ext: 'jpg', kind: 'photo', project: '가상AI' }
+    ];
+    const oldT = toast, oldS = hjSnapshot; const toasts = [];
+    toast = m => toasts.push(String(m)); hjSnapshot = async () => true;
+    try {
+      deleteProject('가상토스트');
+      const btn = [...document.querySelectorAll('#modalRoot button')].find(b => b.textContent.trim() === '삭제');
+      btn.click();
+      for (let i = 0; i < 100 && !toasts.some(t => /삭제됨/.test(t)); i++) await new Promise(r => setTimeout(r, 20));
+    } finally { toast = oldT; hjSnapshot = oldS; }
+    const ai = aiDeleteProject('가상AI');
+    const desc = AI_TOOLS.find(t => t.name === 'delete_project').description;
+    return { toast: toasts.find(t => /삭제됨/.test(t)) || '', ai, brief: aiResultBrief('delete_project', ai), desc };
+  }, { P });
+  assert(/사진·서류는 미배정으로 보존/.test(r6c.toast) && /견적서 파일/.test(r6c.toast) && /\(삭제됨\) 가상토스트/.test(r6c.toast) && !/\(파일은 미배정/.test(r6c.toast),
+    '⑥ 삭제 토스트가 견적서 파일을 미배정이라 한다: ' + r6c.toast);
+  assert(r6c.ai.사진서류_미배정전환 === 1 && r6c.ai.견적서파일_보존 === 1 && /견적서 파일과 수금/.test(r6c.ai.안내), '⑥ AI 삭제 결과: ' + JSON.stringify(r6c.ai));
+  assert(/견적서 1개/.test(r6c.brief) && /사진·서류 1개 미배정/.test(r6c.brief), '⑥ AI 결과 한 줄: ' + r6c.brief);
+  assert(/견적서 파일은[^,]*\(삭제됨\)/.test(r6c.desc), '⑥ AI 도구 설명: ' + r6c.desc);
 
   // ── ⑦ 같은 금액 견적 하나를 ✍ 편집·저장해도 다른 견적이 남는다 ─────────
   await reset();
@@ -232,6 +259,34 @@ let browser;
     return projStats('가상사본').est;
   }, { P, Q });
   assert(r7b === 1100000, '⑦ 편집 표식 없는 앱 견적 + 엑셀 사본은 한 번: ' + r7b);
+  // 편집·저장 뒤 원본을 Σ 로 집계에 되돌리면(저장 안내가 알려 주는 길) 원본과 그 앱 견적은 한 벌이다 — 두 번 세면 1,650만
+  await reset();
+  const r7c = await page.evaluate(({ P }) => {
+    P = eval(P);
+    state.projects = [P('가상집')];
+    const E = (id, name, ext, amount) => ({ id, name, ext, kind: 'estimate', project: '가상집', est: { amount, supply: amount / 1.1, vat: amount - amount / 1.1, date: '2026-09-01' }, when: new Date('2026-09-01T09:00:00') });
+    const run = (srcExt, vfFirst, extra, twin, restoreId) => {
+      // 원본이 PDF 거나 PDF 출력본을 둘 때 같은 금액 주방 엑셀은 v330 규칙(엑셀↔PDF 같은 현장·같은 금액 = 사본)으로 원본과 묶이므로 뺀다 — 여기서 볼 것은 편집 표식뿐
+      state.files = [E('f1', '욕실 견적.' + srcExt, srcExt, 5500000)].concat(srcExt === 'pdf' || twin ? [] : [E('f2', '주방 견적.xlsx', 'xlsx', 5500000)]).concat(twin ? [twin] : []);
+      state.quotes = []; state.editingQuote = null;
+      quoteFromExisting('f1'); saveQuoteEdit();
+      const src = state.files.find(f => f.id === 'f1'); const excluded = src.exSum === true;
+      (restoreId ? state.files.find(f => f.id === restoreId) : src).exSum = false;   // Σ 되돌리기
+      if (vfFirst) { const i = state.files.findIndex(f => f._fromQuote); state.files.unshift(state.files.splice(i, 1)[0]); }
+      (extra || []).forEach(f => state.files.push(f));
+      return { excluded, est: projStats('가상집').est, vat: vatReportData('2026-09', '2026-09').salesTotal };
+    };
+    return {
+      xlsx: run('xlsx', false),
+      // 원본이 PDF 이고 앱 견적 가상 파일이 앞에 있으면: 원본과 묶인 뒤 대표가 원본이어야 원본의 엑셀 출력본(이름 다름)도 사본으로 붙는다
+      pdfFirst: run('pdf', true, [E('f3', '욕실 최종.xlsx', 'xlsx', 5500000)]),
+      // 원본 엑셀과 같은 이름의 PDF 출력본이 같이 빠졌다가, Σ 로 PDF 만 되돌린 경우 — 그 PDF 도 원본 쪽이다(1차 이름 키가 같다)
+      twin: run('xlsx', false, [], E('f1p', '욕실 견적.pdf', 'pdf', 5500000), 'f1p')
+    };
+  }, { P });
+  assert(r7c.xlsx.excluded && r7c.xlsx.est === 11000000 && r7c.xlsx.vat === 11000000, '⑦ Σ 로 되돌린 원본 + 그 앱 견적은 한 번(1,100만): ' + JSON.stringify(r7c));
+  assert(r7c.twin.excluded && r7c.twin.est === 5500000 && r7c.twin.vat === 5500000, '⑦ Σ 로 되돌린 원본의 같은 이름 PDF + 앱 견적은 한 번(550만, 따로 세면 1,100만): ' + JSON.stringify(r7c));
+  assert(r7c.pdfFirst.excluded && r7c.pdfFirst.est === 5500000 && r7c.pdfFirst.vat === 5500000, '⑦ PDF 원본·앱 견적이 앞: 묶음 대표가 원본이어야 원본의 엑셀 출력본도 사본(550만, 따로 세면 1,100만): ' + JSON.stringify(r7c));
 
   assert(errors.length === 0, '페이지 오류: ' + errors.join(' | '));
   console.log('dash-reports: 7/7 통과');
