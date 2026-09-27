@@ -466,11 +466,12 @@ assert(/localStorage\.getItem\('hj_calc_prefs'\)/.test(source) && /localStorage\
   await page.click('#modalRoot .mfoot button:has-text("결과 복사")');
   await page.waitForFunction(() => /예상 자재비/.test(window.__copied || ''));
   assert(/💰 예상 자재비 참고 ≈ 61,000원/.test(await page.evaluate(() => window.__copied)), '⑫ 복사 글에도 예상 자재비');
-  await page.evaluate(() => { state.materials = [{ id: 'm_t3', name: '타일', unit: '박스', entries: [{ supplier: '시험', price: 22000 }] }]; });
+  // v331 새 계약: 타일 단가는 규격(300×600)이 읽히는 자재에만 붙는다 — 규격 없는 '타일' 단가는 600×1200 값일 수도 있다(calc-safety.e2e.js ⑤)
+  await page.evaluate(() => { state.materials = [{ id: 'm_t3', name: '타일', spec: '300×600', unit: '박스', entries: [{ supplier: '시험', price: 22000 }] }]; });
   await page.fill('#modalRoot .calcIn[data-k="box"]', '10');
   await waitOut(/20,000원\/박스 × 7박스/);   // 장 단위 자재가 없으면 박스로
   // 장 단위 자재가 없고 박스 단가만 있을 때: 박스 단가는 박스 수량과 함께 들어가야 한다(장 수량에 곱하면 8배 넘게 부푼다)
-  await page.evaluate(() => { state.materials = [{ id: 'm_b1', name: '타일', unit: '박스', entries: [{ supplier: '비싼곳', price: 33000 }] }, { id: 'm_b2', name: '포세린 타일', unit: '박스', entries: [{ supplier: '싼곳', price: 22000 }] }]; state.editingQuote = newQuote(false); });
+  await page.evaluate(() => { state.materials = [{ id: 'm_b1', name: '타일', spec: '300×600', unit: '박스', entries: [{ supplier: '비싼곳', price: 33000 }] }, { id: 'm_b2', name: '포세린 타일', spec: '300*600', unit: '박스', entries: [{ supplier: '싼곳', price: 22000 }] }]; state.editingQuote = newQuote(false); });   // v331: 규격을 적은 자재끼리(표기 × · * 둘 다 읽는다)
   await page.evaluate(() => materialCalc('tile'));
   await page.fill('#modalRoot .calcIn[data-k="box"]', '10');
   await waitOut(/7 박스/);
