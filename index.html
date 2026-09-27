@@ -23437,8 +23437,8 @@ function hjMeasureText(name,list){
 /* 방 하나를 계산기로 넘긴다. 계산기는 이 값을 받아 면적·둘레·천장고를 채운다(한 번만). */
 function hjMeasureToCalc(r,name){
   const m=hjMeasureRoom(r);
-  window.__hjMeasurePick={room:r.room||'방',roomKey:String(r.id||r.room||'방'),project:name||'',m2:m.floor,peri:m.peri,hgt:m.hgt,w:m.w,h:m.h,open:m.open};
-  materialCalc();
+  // 전역에 두면 종류를 고르지 않고 닫은 뒤 다른 현장에서 연 계산기가 이 방 값·현장을 집어 갔다 — 종류 고르기 화면에 직접 넘긴다
+  materialCalc(undefined,null,null,undefined,{pick:{room:r.room||'방',roomKey:String(r.id||r.room||'방'),project:name||'',m2:m.floor,peri:m.peri,hgt:m.hgt,w:m.w,h:m.h,open:m.open}});
 }
 /* v329 📐 실측 → 견적 품목. 견적 작성 툴바에서 그 견적 현장의 방별 바닥·벽 ㎡ 를 고르면 품목으로 넣는다.
    spec '안방 바닥 12.5㎡' · qty 면적 · 단가는 비운다(0) — 금액을 지어내지 않는다. 품명은 적어 주면 그것, 비우면 '바닥'·'벽'.
@@ -23778,6 +23778,8 @@ function hjCalcLogFlush(){clearTimeout(window.__hjCalcLogT);const p=window.__hjC
 /* 화면을 떠나는 순간 칸에서 손이 떨어지며 오는 change 가 한 번 더 기록을 예약한다 —
    그대로 두면 작업기록에서 지운 건이 잠시 뒤 되살아난다. 새 화면을 그린 뒤 예약을 버린다. */
 function hjCalcLogDrop(){clearTimeout(window.__hjCalcLogT);window.__hjCalcLogPending=null;}
+/* 기록의 계산 입력 지문 — 계산에 쓰이는 칸만(면적은 ㎡ 로 환산된 값, 숫자는 계산이 읽는 값). 면적 모드·평 표기는 빼서 같은 계산이면 같다 */
+function hjCalcLogFp(cat,v){v=v&&typeof v==='object'?v:{};return cat.fields.map(f=>f.k+'='+(f.t==='sel'?String(v[f.k]==null?'':v[f.k]):String(hjCalcNum(v[f.k])))).join('|');}
 /* 🧺 발주 담기 — 계산 결과를 이 폰의 장바구니(hj_calc_cart)에 모았다가 거래처별 발주 문자로 넘긴다.
    앱 저장 구조는 건드리지 않는다. 보내기는 대표가 문자 앱에서 직접 누른다(자동 발송 없음). */
 function hjCalcCartRead(){try{const l=JSON.parse(localStorage.getItem('hj_calc_cart')||'[]');return Array.isArray(l)?l.filter(x=>x&&x.id&&x.name):[];}catch(_){return [];}}
@@ -23788,14 +23790,23 @@ function hjCalcCartAdd(item){const l=hjCalcCartRead();l.unshift(item);return hjC
    단위가 없고 둘 다 12 이하인 '3×6'·'4×8' 은 자(303mm) 로 본다(석고·합판을 그렇게 부른다). '12자' 도 길이로 읽는다. */
 function hjCalcDims(t){
   const s=String(t||'');const out={wh:null,len:null};
-  const PAIR=/(\d+(?:\.\d+)?)\s*[×xX*＊]\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|자)?/i;
-  const m=s.match(PAIR);
-  if(m){let a=+m[1],b=+m[2];const u=String(m[3]||'').toLowerCase();
-    const k=u==='mm'?1:u==='cm'?10:u==='m'?1000:u==='자'?303:(a<=12&&b<=12?303:1);
+  // 세 수(두께×가로×세로 '9.5*900*1800', 각재 단면×길이 '30*30*3600')도 읽는다 — 앞 두 수만 읽으면 석고·합판 대부분이 규격 불명이 됐다
+  const PAIR=/(\d+(?:\.\d+)?)\s*[×xX*＊]\s*(\d+(?:\.\d+)?)(?:\s*[×xX*＊]\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m|자)?/i;
+  const m=s.match(PAIR);let tripleLen=null;
+  if(m){let a=+m[1],b=+m[2];const c=m[3]!=null?+m[3]:null;const u=String(m[4]||'').toLowerCase();
+    let kWh=null;
+    if(c!=null){
+      if((u==='m'||u==='자')&&a>25&&b>25){tripleLen=c*(u==='자'?0.303:1);kWh=1;}   // '30*30*3.6m' — 단면은 mm, 단위는 길이에만 붙은 것
+      else if(a<=25){a=b;b=c;}   // 앞이 두께(9.5T·12T) — 판 크기는 뒤 둘
+      else if(c<=25){}      // 뒤가 두께(600×600×10) — 판 크기는 앞 둘
+      else{const k0=u==='mm'||!u?1:u==='cm'?10:u==='m'?1000:0;if(k0)tripleLen=c*k0/1000;}   // 각재 단면×길이(mm) — 길이는 m 로
+    }
+    const k=kWh||(u==='mm'?1:u==='cm'?10:u==='m'?1000:u==='자'?303:(a<=12&&b<=12?303:1));
     a*=k;b*=k;if(a>0&&b>0)out.wh=[Math.min(a,b),Math.max(a,b)];}
   const rest=s.replace(new RegExp(PAIR.source,'gi'),' ');
   const l=rest.match(/(\d+(?:\.\d+)?)\s*(m|자)(?![a-z²㎡])/i);
   if(l){const v=+l[1]*(l[2]==='자'?0.303:1);if(v>0)out.len=v;}
+  else if(tripleLen>0)out.len=tripleLen;
   return out;}
 /* 계산한 규격(want)과 자재 글의 규격이 맞는가 — 2% 안이면 같은 것(3×6 자 = 909×1818 ≈ 900×1800). 자재 글에서 규격을 못 읽으면 맞지 않는 것으로 본다(모르면 값을 붙이지 않는다) */
 function hjCalcDimOk(want,text){
@@ -23854,13 +23865,14 @@ function materialCalc(catId,preset,logId,focusK,opt){
     openModal('🧮 자재 계산기','<div style="font-size:12px;color:var(--muted-2);margin-bottom:10px">면적·규격을 넣으면 소요량을 바로 냅니다. 결과는 참고값 — 로스율·규격은 현장에 맞게 바꾸고, 자주 쓰는 규격은 ⭐ 기본값으로 저장하세요.</div>'+recentHtml+'<div id="calcGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+grid+'</div>',
       [{label:'🧺 발주 목록'+(cartN?' '+cartN:''),cls:cartN?'clay':'ghost',fn:()=>materialCalcCart()},{label:'⚙ 기본값',cls:'ghost',fn:()=>materialCalcSettings()},{label:'🕘 작업기록'+(logN?' '+logN:''),cls:'ghost',fn:()=>materialCalcLog()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
     hjCalcHook();
-    document.getElementById('modalRoot').querySelectorAll('.calcCat,.calcRecent').forEach(b=>b.onclick=()=>materialCalc(b.dataset.id));
+    const pick0=opt.pick||null;   // 📐 실측 방 — 이 화면에서 종류를 고를 때만 넘긴다(닫거나 다른 데로 가면 사라진다)
+    document.getElementById('modalRoot').querySelectorAll('.calcCat,.calcRecent').forEach(b=>b.onclick=()=>materialCalc(b.dataset.id,null,null,undefined,pick0?{pick:pick0}:undefined));
     hjCalcLogDrop();
     return;
   }
   const actPj=()=>(typeof state!=='undefined'&&state.activeProject)||null;
   const oldLog=logId?hjCalcLogRead().find(x=>x.id===logId):null;
-  const pick=window.__hjMeasurePick;   // 📐 실측 노트에서 방 하나를 들고 온 경우 — 면적·둘레·천장고를 채우고 한 번 쓰면 비운다
+  const pick=opt.pick||null;   // 📐 실측 노트에서 방 하나를 들고 온 경우 — 면적·둘레·천장고를 채운다(종류 고르기 화면이 opt 로 넘긴 것만)
   /* 이 계산이 속한 현장 — 실측 노트에서 고른 현장, 옛 기록의 현장, 다시 그릴 때 넘겨받은 현장 순. 셋 다 없으면 누를 때의 활성 현장.
      실측 노트는 활성 현장을 바꾸지 않으므로 여기서 기억하지 않으면 B현장 방을 계산해도 기록·발주·메모가 A현장에 붙었다. */
   let fixedPj=opt.project!==undefined?opt.project:(oldLog&&oldLog.project!==undefined)?oldLog.project:undefined;
@@ -23876,14 +23888,17 @@ function materialCalc(catId,preset,logId,focusK,opt){
     if(cat.fields.some(f=>f.k==='hgt')&&pick.hgt)cur.hgt=String(Math.round(pick.hgt*100)/100);
     if(cat.fields.some(f=>f.k==='open')&&pick.open)cur.open=String(Math.round(pick.open*100)/100);
     if(cat.fields.some(f=>f.k==='aw')){cur.aw=String(pick.w||'');cur.ah=String(pick.h||'');}
-    window.__hjCalcMem[cat.id]=cur;window.__hjCalcMemPj[cat.id]=pjNow();window.__hjMeasurePick=null;window.__hjCalcPickNote='📐 '+pick.room+' 실측값을 넣었습니다'+(pick.project?' ('+pick.project+')':'');
+    window.__hjCalcMem[cat.id]=cur;window.__hjCalcMemPj[cat.id]=pjNow();window.__hjCalcPickNote='📐 '+pick.room+' 실측값을 넣었습니다'+(pick.project?' ('+pick.project+')':'');
     room=pick.roomKey||pick.room||null;}
   const mem=window.__hjCalcMem[cat.id]||{};
   /* 같은 방을 🧮 로 두 번 들고 와도 한 건 — 그 현장·그 방·그 계산의 기록을 덮어쓴다 */
   const sameRoom=(!logId&&pick&&room)?hjCalcLogRead().find(x=>x.cat===cat.id&&x.room===room&&String(x.project||'')===String(pjNow()||'')):null;
   const visit=logId||(sameRoom&&sameRoom.id)||uid();
   const logOnOpen=!!(pick||opt.log);
-  const again=o=>Object.assign({project:fixedPj,room},o||{});   // 같은 화면을 다시 그릴 때 현장·방을 이어받는다
+  /* 이 화면이 새로 만든 기록인가(작업기록에서 다시 연 것·같은 방 기록을 덮어쓰는 것이 아니라) — 새 기록이면 이미 같은 값의 기록이
+     있을 때 한 건 더 남기지 않는다. 다시 열어 같은 칩을 누르거나 같은 면적을 다시 쳐도(↺ 처음값으로도) 「🧺 이 현장 담기」가 두 배가 됐다 */
+  const ownVisit=opt.own!==undefined?!!opt.own:!(oldLog||sameRoom);
+  const again=o=>Object.assign({project:fixedPj,room,own:ownVisit},o||{});   // 같은 화면을 다시 그릴 때 현장·방·새 기록 여부를 이어받는다
   prefs.ui.recent=[cat.id].concat((Array.isArray(prefs.ui.recent)?prefs.ui.recent:[]).filter(x=>x!==cat.id)).slice(0,4);hjCalcPrefsSave(prefs);
   const valOf=f=>mem[f.k]!=null?mem[f.k]:hjCalcDefault(cat,f,prefs);
   const numIn=(k,val,ph,aria)=>'<input class="calcIn" data-k="'+k+'" type="number" inputmode="decimal" step="any" min="0"'+(ph?' placeholder="'+escapeAttr(ph)+'"':'')+(aria?' aria-label="'+escapeAttr(aria)+'"':'')+' value="'+escapeAttr(String(val==null?'':val))+'" style="'+HJ_CALC_IN+'">';
@@ -23942,7 +23957,12 @@ function materialCalc(catId,preset,logId,focusK,opt){
       if(mm&&mm.pure>0)ent.pq=mm.pure;   // 로스 없이 든 양 — 폭 재단 도배·올림 발주 레미콘은 q/(1+로스) 로 되짚으면 틀린다
       if(mm&&mm.strip)ent.strip=1;
       if(room||(old&&old.room))ent.room=room||old.room;
-      hjCalcLogPutSoon(ent);}
+      const fp=ownVisit?hjCalcLogFp(cat,ent.v):null;
+      const twin=ownVisit?hjCalcLogRead().find(x=>x.id!==visit&&x.cat===cat.id&&String(x.project||'')===String(ent.project||'')&&String(x.room||'')===String(ent.room||'')&&hjCalcLogFp(cat,x.v)===fp):null;
+      if(twin){   // 같은 현장·같은 값의 기록이 이미 있다 — 이 화면이 앞서 남긴(또는 남기려던) 한 건도 거둔다. 옛 기록은 건드리지 않는다(실제 쓴 양이 붙어 있을 수 있다)
+        if(window.__hjCalcLogPending&&window.__hjCalcLogPending.id===visit)hjCalcLogDrop();
+        if(old)hjCalcLogWrite(hjCalcLogRead().filter(x=>x.id!==visit));}
+      else hjCalcLogPutSoon(ent);}
     return hjCalcText(cat,v,res,est?'💰 '+hjCalcEstText(est):'');};
   // v330: '먼저 값을 넣어 주세요' 는 첫 빈 숫자 칸에 붙인다(없으면 첫 칸) — 토스트만으로는 어느 칸인지 모른다.
   //  단, 값은 다 넣었는데 계산이 안 되는 경우(지붕 경사 90° 이상 등 — 계산기 안내가 '넣어 주세요' 가 아닌 것)는 칸 탓이 아니다:

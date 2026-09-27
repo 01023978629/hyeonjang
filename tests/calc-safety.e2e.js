@@ -10,6 +10,10 @@
      ⑤ 예상 자재비·견적 단가·발주 금액은 규격(판 크기·각재 길이)이 맞는 자재 값만 — 규격을 모르면 값을 붙이지 않는다
      ⑥ 폭 재단 도배(로스를 곱하지 않는 계산)와 올림 발주 레미콘의 '내 로스'는 실제 계산에 맞게 되짚고,
         폭 재단 기록으로 면적법 로스 ⭐ 기본값을 제안하지 않는다
+     ①-2 다시 열어 같은 칩·같은 면적을 다시 넣어도(한 글자씩 쳐도) 같은 값의 기록은 한 건, 값이 다르면 새 기록
+     ①-3 ↺ 처음값으로는 그 값으로 기록하고, 같은 값이면 늘리지 않는다
+     ①-4 실측 노트 🧮 만 누르고 닫으면 그 방 값·현장이 나중에 연 계산기로 새지 않는다
+     ⑤-2 세 수 규격(9.5*900*1800·30*30*3600)도 판 크기·길이로 읽는다
      ⑦ pageerror 0
 
    전제: tests/static-server.js(8299) 실행 중 */
@@ -70,6 +74,87 @@ let browser;
   let cart = await page.evaluate(() => hjCalcCartRead());
   assert(cart.length === 1 && cart[0].qty === 61 && cart[0].project === 'A현장', '① 이 현장 담기 물량이 두 배가 되지 않는다: ' + JSON.stringify(cart));
   await page.evaluate(() => { localStorage.setItem('hj_calc_cart', '[]'); closeModal(); });
+  // ①-2 다시 열어 이미 눌린 칩을 또 누르거나 같은 면적을 다시 쳐도(한 글자씩) 같은 값의 기록은 한 건
+  await page.evaluate(() => materialCalc('tile'));
+  await waitOut(/61 장/);
+  await page.click('#modalRoot .calcChip[aria-pressed="true"]');
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '');
+  await page.focus('#modalRoot .calcIn[data-k="m2"]');
+  await page.keyboard.type('10');
+  await waitOut(/61 장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 1 && L[0].q === 61, '①-2 같은 값을 다시 넣어도 기록은 한 건(치는 도중의 1㎡ 기록도 남지 않는다): ' + JSON.stringify(L.map(e => [e.project, e.q])));
+  await page.evaluate(() => { materialCalcLog(); document.querySelector('#modalRoot .calcLogBom[data-p="A현장"]').click(); });
+  cart = await page.evaluate(() => hjCalcCartRead());
+  assert(cart.length === 1 && cart[0].qty === 61, '①-2 이 현장 담기 물량 그대로: ' + JSON.stringify(cart));
+  await page.evaluate(() => { localStorage.setItem('hj_calc_cart', '[]'); closeModal(); });
+  // 치는 도중 값(12㎡)이 이미 기록에 쓰인 뒤 같은 값(10㎡)으로 돌아와도, 면적 칸을 다시 그린 뒤여도 — 이 화면이 남긴 12㎡ 기록은 거둔다
+  await page.evaluate(() => materialCalc('tile'));
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '12');
+  await waitOut(/73 장/);
+  await page.evaluate(() => hjCalcLogFlush());
+  await page.click('#modalRoot .calcSeg[data-mode="m2"]');
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '10');
+  await waitOut(/61 장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 1 && L[0].q === 61, '①-2 먼저 쓰인 12㎡ 기록도 거두어 한 건: ' + JSON.stringify(L.map(e => [e.project, e.q])));
+  // 다른 현장의 같은 값은 다른 기록이다
+  await page.evaluate(() => { state.activeProject = 'B현장'; materialCalc('tile'); });
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '10');
+  await waitOut(/61 장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 2 && L[0].project === 'B현장', '①-2 B현장의 같은 10㎡ 는 새 기록: ' + JSON.stringify(L.map(e => [e.project, e.q])));
+  await page.evaluate(() => { localStorage.setItem('hj_calc_log', JSON.stringify(hjCalcLogRead().filter(e => e.project !== 'B현장'))); state.activeProject = 'A현장'; window.__hjCalcMemPj.tile = 'A현장'; });
+  // 값이 달라지면 새 기록 — 같은 값 거르기가 다른 계산까지 삼키지 않는다
+  await page.evaluate(() => materialCalc('tile'));
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '20');
+  await waitOut(/장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 2 && L[0].q !== 61, '①-2 다른 면적은 새 기록: ' + JSON.stringify(L.map(e => [e.project, e.q])));
+  // ①-3 ↺ 처음값으로 — 그 값으로 기록을 남기고, 같은 값이면 늘리지 않는다
+  await page.evaluate(() => { localStorage.setItem('hj_calc_log', '[]'); window.__hjCalcMem.tile.m2 = '10'; window.__hjCalcMem.tile.loss = '20'; materialCalc('tile'); });
+  await waitOut(/장/);
+  await closeCalc();
+  assert((await logs()).length === 0, '①-3 로스 20% 로 열어 보기만 해서는 기록 없음');
+  await page.evaluate(() => materialCalc('tile'));
+  await page.click('#calcResetDef');
+  await waitOut(/61 장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 1 && L[0].q === 61 && L[0].lp === 10, '①-3 ↺ 뒤 기록은 처음값(로스 10%)으로 한 건: ' + JSON.stringify(L.map(e => [e.q, e.lp])));
+  await page.evaluate(() => materialCalc('tile'));
+  await page.click('#calcResetDef');
+  await waitOut(/61 장/);
+  await closeCalc();
+  L = await logs();
+  assert(L.length === 1, '①-3 ↺ 를 다시 눌러도 같은 값이면 늘지 않는다: ' + JSON.stringify(L.map(e => [e.q, e.lp])));
+  // ①-4 실측 노트에서 🧮 만 누르고 종류를 고르지 않은 채 닫으면, 나중에 연 계산기가 그 방 값·현장을 집어 가지 않는다
+  await page.evaluate(() => { localStorage.setItem('hj_calc_log', '[]'); window.__hjCalcMem = {}; window.__hjCalcMemPj = {}; measureNote('B현장'); });
+  await page.click('#modalRoot .mnCalc');
+  await page.waitForSelector('#modalRoot .calcCat');
+  await closeCalc();
+  await page.evaluate(() => { state.activeProject = 'A현장'; materialCalc('tile'); });
+  assert((await page.inputValue('#modalRoot .calcIn[data-k="m2"]')) === '', '①-4 남은 실측 방 값(12㎡)으로 시작하지 않는다');
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '10');
+  await waitOut(/61 장/);
+  await page.click('#calcCart');
+  await closeCalc();
+  L = await logs();
+  cart = await page.evaluate(() => hjCalcCartRead());
+  assert(L.length === 1 && L[0].project === 'A현장' && !L[0].room && cart.length === 1 && cart[0].project === 'A현장', '①-4 기록·발주는 A현장: ' + JSON.stringify([L.map(e => [e.project, e.room]), cart.map(c => c.project)]));
+  await page.evaluate(() => { materialCalc(); document.querySelector('#modalRoot .calcCat[data-id="paper"]').click(); });
+  assert((await page.inputValue('#modalRoot .calcIn[data-k="peri"]')) === '', '①-4 종류 고르기 화면을 새로 열어도 실측 방 값이 없다');
+  await closeCalc();
+  // ②를 위해 ① 끝 상태(A현장 10㎡ 기록 한 건·세션 기억)로 되돌린다
+  await page.evaluate(() => { localStorage.setItem('hj_calc_cart', '[]'); localStorage.setItem('hj_calc_log', '[]'); window.__hjCalcMem = {}; window.__hjCalcMemPj = {}; });
+  await page.evaluate(() => materialCalc('tile'));
+  await page.fill('#modalRoot .calcIn[data-k="m2"]', '10');
+  await waitOut(/61 장/);
+  await closeCalc();
 
   // ② 다른 현장에서는 이전 현장 면적으로 시작하지 않고, 보기만 해서는 기록이 없다
   await page.evaluate(() => { state.activeProject = 'B현장'; materialCalc('tile'); });
@@ -178,6 +263,12 @@ let browser;
     out.cartManual = hjCartUnitPrice({ name: '타일', qty: 1, unit: '장' });   // 계산기가 아닌 줄은 예전 그대로(이름·단위)
     state.materials = [mat('c3', '각재', '2.4m', '본', 2200)];
     out.cartStick = hjCartUnitPrice({ cat: 'wood', name: '각재', spec: '3.6m · 단위 본', qty: 10, unit: '본' });
+    // 세 수 표기(두께×가로×세로·단면×길이)도 규격으로 읽는다
+    out.dims = ['석고보드 9.5*900*1800', '합판 12*1220*2440', '각재 30*30*3600', '각재 30*30*3.6m', '타일 600×600×10'].map(t => hjCalcDims(t));
+    state.materials = [mat('g3', '석고보드', '9.5*900*1800', '장', 3300)];
+    out.gyp3 = hjCalcEstimate(hjCalcRun('gypsum', { m2: 10, sheet: '1.62', layers: 1, sides: '1', loss: 10 }).main);
+    state.materials = [mat('w3', '각재', '30*30*3600', '본', 3300)];
+    out.stick3 = hjCalcEstimate(hjCalcRun('wood', { len: 36, stick: 3.6, loss: 0 }).main);
     return out;
   });
   assert(est.tile && est.tile.name === '포세린 타일 300×600' && est.tile.price === 3000 && est.tile.others === 0, '⑤ 300×600 타일은 300×600 단가: ' + JSON.stringify(est.tile));
@@ -185,6 +276,8 @@ let browser;
   assert(est.gyp18 && est.gyp18.price === 3000 && est.gyp24 && est.gyp24.price === 6000, '⑤ 석고보드 3×6(자) = 900×1800, 1200×2400 은 따로: ' + JSON.stringify([est.gyp18, est.gyp24]));
   assert(est.stick && est.stick.price === 3000, '⑤ 각재 3.6m 는 12자 값(2.4m 값이 싸도): ' + JSON.stringify(est.stick));
   assert(est.ply && est.ply.price === 20000 && est.plySmall === null, '⑤ 합판 4×8 = 1220×2440, 910×1820 에는 붙이지 않는다: ' + JSON.stringify([est.ply, est.plySmall]));
+  assert(JSON.stringify(est.dims) === JSON.stringify([{ wh: [900, 1800], len: null }, { wh: [1220, 2440], len: null }, { wh: [30, 30], len: 3.6 }, { wh: [30, 30], len: 3.6 }, { wh: [600, 600], len: null }]), '⑤ 세 수 규격 읽기: ' + JSON.stringify(est.dims));
+  assert(est.gyp3 && est.gyp3.price === 3000 && est.stick3 && est.stick3.price === 3000, '⑤ 두께×가로×세로 석고·단면×길이 각재에도 값이 붙는다: ' + JSON.stringify([est.gyp3, est.stick3]));
   assert(est.cartOther === 0 && est.cartSame === 1000 && est.cartManual === 1000 && est.cartStick === 0, '⑤ 발주 줄 금액도 규격대로: ' + JSON.stringify(est));
   // 견적에 담기도 규격이 맞는 단가로
   await page.evaluate(() => {
