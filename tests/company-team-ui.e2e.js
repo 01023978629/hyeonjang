@@ -28,6 +28,7 @@ async function harness(options = {}) {
   const context = await browser.newContext({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' });
   const page = await context.newPage(); page.setDefaultTimeout(6500);
   const h = { page, context, store: seed(), role: options.role || 'owner', calls: [], errors: [], writes: [], failNext: '', holdList: null, malformed: false, outOfScope: false };
+  if (options.shared) Object.defineProperty(h, 'store', { get: () => options.shared.store, set: v => { options.shared.store = v; } });
   page.on('pageerror', e => h.errors.push(String(e)));
   const identity = () => ({ userId: h.store.members.find(m => m.id === h.role)?.userId || 'TEST_UNLINKED_USER', officeId: 'TEST_OFFICE' });
   await page.route('**/*', async route => {
@@ -36,7 +37,9 @@ async function harness(options = {}) {
       const name = new URL(url).pathname.slice(1);
       if (['team.html', 'team-ui.js', 'team-config.js'].includes(name)) {
         let content = name === 'team-config.js' ? 'window.HJ_TEAM_CONFIG={apiUrl:' + JSON.stringify(options.unconfigured ? '' : API) + '};' : fs.readFileSync(path.join(ROOT, name), 'utf8');
-        if (name === 'team-ui.js' && MUTANT === 'allow-role-leak') content = content.replace("if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' && d.me.teamIds.includes(t.teamId)) || t.assigneeId === d.me.id)) return false;", '/* mutation: ignore projection */');
+        if (name === 'team-ui.js' && MUTANT === 'allow-role-leak') content = content.replace("if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' ? d.me.teamIds.includes(t.teamId) : t.assigneeId === d.me.id))) return false;", '/* mutation: ignore projection */');
+        if (name === 'team-ui.js' && MUTANT === 'team-filter') content = content.replace('if (team) return d.tasks.filter(t => t.teamId === team.id);', 'if (team) return d.tasks;');
+        if (name === 'team-ui.js' && MUTANT === 'action-autosave') content = content.replace("editorNotice('아직 반영되지 않았습니다.", "save({preventDefault(){}}); editorNotice('아직 반영되지 않았습니다.");
         if (name === 'team-ui.js' && MUTANT === 'persist-session') content = content.replace('state.token = r.sessionToken;', 'state.token = r.sessionToken; localStorage.setItem("MUTANT_SESSION", r.sessionToken);');
         if (name === 'team-ui.js' && MUTANT === 'retry-new-id') content = content.replace('const r = await api(edit.pending.action, edit.pending.payload);', 'edit.pending.payload.requestId = crypto.randomUUID(); const r = await api(edit.pending.action, edit.pending.payload);');
         return route.fulfill({ status: 200, contentType: name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8', body: content });
@@ -50,7 +53,7 @@ async function harness(options = {}) {
       if (url === PORTAL) {
         if (body.action === 'portalLogin') { assert.equal(body.payload.loginCode, 'TEST_PASSWORD'); result = { sessionToken: TOKEN, expiresAt: Date.now() + 3600000 }; }
         else { assert.equal(body.action, 'portalLogout'); result = {}; }
-      } else if (body.action === 'health') result = { service: 'company-team-v1', portalUrl: PORTAL };
+      } else if (body.action === 'health') result = { service: options.oldServer ? 'company-team-v1' : 'company-team-v2', portalUrl: PORTAL };
       else {
         assert.equal(body.sessionToken, TOKEN);
         if (body.action === 'identity') result = { identity: identity() };
@@ -74,7 +77,7 @@ async function harness(options = {}) {
     } catch (e) { result = { ok: false, error: e.message }; }
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(result) }).catch(() => {});
   });
-  await page.goto(ORIGIN + '/team.html');
+  await page.goto(ORIGIN + '/team.html' + (options.hash || ''));
   h.login = async () => {
     await page.waitForFunction(() => !document.getElementById('loginButton').disabled);
     await page.fill('#officeCode', 'test-office'); await page.fill('#email', 'staff@example.invalid'); await page.fill('#loginCode', 'TEST_PASSWORD'); await page.click('#loginButton');
@@ -87,6 +90,7 @@ async function harness(options = {}) {
 async function newTask(h, title = '새 모의 업무') {
   await h.page.click('#newTask'); await h.page.fill('#edit-title', title); await h.page.fill('#edit-project', '모의 현장 C'); await h.page.selectOption('#edit-teamId', 't1'); await h.page.selectOption('#edit-assigneeId', 'member');
 }
+async function openFilters(h) { if (!await h.page.locator('#taskFilters').evaluate(el => el.open)) await h.page.locator('#taskFilters > summary').click(); }
 async function run() {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) });
   await test('not configured: login locked and zero credential/API requests', async () => {
@@ -94,6 +98,10 @@ async function run() {
   });
   await test('dark header return link remains readable',async()=>{
     const h=await harness({unconfigured:true});assert.equal(await h.page.locator('header a').evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)');await h.close();
+  });
+  await test('old server without report contract cannot accept credentials', async () => {
+    const h = await harness({ oldServer: true }); await h.page.waitForFunction(() => document.getElementById('connection').textContent.includes('응답'));
+    assert(await h.page.isDisabled('#loginButton')); assert.deepEqual(h.calls.map(c => c.action), ['health']); await h.close();
   });
   await test('memory-only login and 360px accessible organization/member/team flows', async () => {
     const h = await harness(); await h.login(); assert.equal(await h.page.inputValue('#loginCode'), '');
@@ -108,7 +116,7 @@ async function run() {
   await test('owner assignment saves exact API schema; user text never becomes HTML', async () => {
     const h = await harness(); await h.login(); await newTask(h, '<img src=x onerror=alert(1)>'); await h.page.click('#save'); await h.page.waitForFunction(() => !document.getElementById('editor').open);
     const task = h.store.tasks.at(-1); assert.equal(task.status, 'todo'); assert.equal(task.assigneeId, 'member'); assert.equal(task.project, '모의 현장 C');
-    await h.page.selectOption('#scopeFilter', 'visible'); assert((await h.page.textContent('#taskList')).includes('<img')); assert.equal(await h.page.locator('#taskList img').count(), 0); await h.close();
+    await h.page.click('#tabTeams'); await h.page.locator('[data-team-id=t1] button').click(); assert((await h.page.textContent('#taskList')).includes('<img')); assert.equal(await h.page.locator('#taskList img').count(), 0); await h.close();
   });
   await test('member sees own assignments only; no organization administration or completion approval', async () => {
     const h = await harness({ role: 'member' }); await h.login(); assert(await h.page.isHidden('#newTask')); assert(await h.page.isHidden('#orgActions')); assert(await h.page.isHidden('#tabAudit'));
@@ -161,13 +169,59 @@ async function run() {
     const h = await harness(); await h.login(); await newTask(h, '세션 만료 초안 모의'); h.failNext = 'session-expired'; await h.page.click('#save'); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
     assert.equal(await h.page.locator('#editorFields input').count(), 0); assert.equal(await h.page.textContent('#identity'), ''); assert(await h.page.isHidden('#workspace')); await h.close();
   });
+  await test('team workspace is scoped, project assignment is contextual, route contains no project or text', async () => {
+    const h = await harness(); await h.login(); await h.page.click('#tabTeams'); await h.page.locator('[data-team-id=t1] button').click();
+    assert.equal(await h.page.textContent('#pageTitle'), '누수·배관팀 작업실'); assert.equal(await h.page.getAttribute('#tabTeams', 'aria-current'), 'page');
+    assert((await h.page.textContent('#taskList')).includes('배관 보수')); assert(!(await h.page.textContent('#taskList')).includes('마감 모의'));
+    await openFilters(h); await h.page.selectOption('#projectFilter', '모의 현장 A'); await h.page.fill('#search', '배관'); await h.page.click('#newTask');
+    assert.equal(await h.page.inputValue('#edit-teamId'), 't1'); assert.equal(await h.page.inputValue('#edit-project'), '모의 현장 A'); assert.equal(h.writes.length, 0);
+    await h.page.click('#editorClose'); assert(h.page.url().endsWith('#team/t1')); assert(!h.page.url().includes(encodeURIComponent('모의')));
+    await h.page.click('#tabTasks'); await h.page.goBack(); await h.page.waitForFunction(() => document.getElementById('pageTitle').textContent.includes('누수'));
+    assert.equal(await h.page.evaluate(() => document.activeElement.id), 'pageTitle');
+    await h.page.locator('.skip').focus(); await h.page.keyboard.press('Enter'); assert(h.page.url().endsWith('#team/t1')); assert.equal(await h.page.evaluate(() => document.activeElement.id), 'pageTitle');
+    assert.equal(await h.page.inputValue('#search'), '배관'); assert.equal(await h.page.inputValue('#projectFilter'), '모의 현장 A');
+    await h.page.fill('#search', '없는 업무'); assert.equal(await h.page.locator('#taskList article').count(), 0); await h.page.click('#resetFilters'); assert.equal(await h.page.locator('#taskList article').count(), 1);
+    assert(await h.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)); await h.close();
+  });
+  await test('unauthorized routes and changed team membership fall back; in-progress draft cannot navigate away', async () => {
+    const member = await harness({ role: 'member', hash: '#settings' }); await member.login(); assert(member.page.url().endsWith('#mine')); assert(await member.page.isHidden('#tabOrg'));
+    await member.page.evaluate(() => location.hash = '#team/t2'); await member.page.waitForFunction(() => location.hash === '#mine'); assert(!(await member.page.textContent('#taskList')).includes('마감 모의'));
+    await member.page.getByRole('button', { name: '업무 확인·수정' }).click(); await member.page.fill('#edit-handoff', '보존할 작업 메모'); await member.page.evaluate(() => location.hash = '#teams');
+    await member.page.waitForFunction(() => location.hash === '#mine'); assert.equal(await member.page.inputValue('#edit-handoff'), '보존할 작업 메모'); assert.equal(member.writes.length, 0); await member.page.click('#editorClose'); await member.close();
+    const lead = await harness({ role: 'lead', hash: '#team/t1' }); await lead.login(); lead.store.members.find(m => m.id === 'lead').teamIds = [];
+    await lead.page.click('#refresh'); await lead.page.waitForFunction(() => location.hash === '#mine'); assert.equal(await lead.page.locator('#taskList article').count(), 0); assert.equal(await lead.page.locator('#teamDirectory article').count(), 0); await lead.close();
+  });
+  await test('operations page finds overdue/blocked work and opens an exact team filter', async () => {
+    const h = await harness(); h.store.tasks[0].due = '2000-01-01'; h.store.tasks[0].status = 'blocked'; h.store.tasks[0].handoff = '모의 자재 확인'; await h.login();
+    await h.page.click('#tabOperations'); const ops = h.page.locator('#operationsList article').filter({ hasText: '누수·배관팀' }); await ops.getByRole('button', { name: '기한 지남 1건' }).click();
+    assert.equal(await h.page.inputValue('#dueFilter'), 'late'); assert.equal(await h.page.locator('#taskList article').count(), 1); assert(h.page.url().endsWith('#team/t1')); await h.close();
+  });
+  await test('two isolated staff views complete start/report/rework/approval with immutable report history', async () => {
+    const shared = { store: seed() }, worker = await harness({ role: 'member', shared }), lead = await harness({ role: 'lead', shared }); await worker.login(); await lead.login();
+    await worker.page.getByRole('button', { name: '작업 시작', exact: true }).click(); assert.equal(worker.writes.length, 0); assert.equal(await worker.page.inputValue('#edit-status'), 'doing');
+    await worker.page.fill('#edit-handoff', '연결부 점검 시작'); await worker.page.click('#save'); await worker.page.waitForFunction(() => !document.getElementById('editor').open);
+    await worker.page.getByRole('button', { name: '검수 요청', exact: true }).click(); assert.equal(worker.writes.length, 1); await worker.page.fill('#edit-handoff', '보수 후 확인 요청'); await worker.page.click('#save'); await worker.page.waitForFunction(() => !document.getElementById('editor').open);
+    await lead.page.click('#refresh'); await lead.page.click('#tabReview'); assert.equal(await lead.page.locator('#taskList article').count(), 1);
+    await lead.page.getByRole('button', { name: '보완 요청', exact: true }).click(); assert.equal(lead.writes.length, 0); assert.equal(await lead.page.inputValue('#edit-handoff'), ''); await lead.page.fill('#edit-handoff', '연결부 재확인 필요'); await lead.page.click('#save'); await lead.page.waitForFunction(() => !document.getElementById('editor').open); assert.equal(await lead.page.locator('#taskList article').count(), 0);
+    await worker.page.click('#refresh'); await worker.page.getByRole('button', { name: '검수 요청', exact: true }).click(); await worker.page.fill('#edit-handoff', '연결부 재확인 완료'); await worker.page.click('#save'); await worker.page.waitForFunction(() => !document.getElementById('editor').open);
+    await lead.page.click('#refresh'); await lead.page.getByRole('button', { name: '완료 승인', exact: true }).click(); assert.equal(lead.writes.length, 1); await lead.page.click('#save'); await lead.page.waitForFunction(() => !document.getElementById('editor').open); assert.equal(shared.store.tasks[0].status, 'done');
+    assert.deepEqual(shared.store.tasks[0].history.map(e => e.status), ['todo', 'doing', 'review', 'doing', 'review', 'done']); assert.equal(shared.store.tasks[0].history[0].baseline, true); assert.equal(shared.store.tasks[0].history[0].at, '2026-09-27T00:00:00Z');
+    await worker.page.click('#refresh'); await openFilters(worker); await worker.page.selectOption('#statusFilter', 'done'); await worker.page.getByRole('button', { name: '완료 내용 보기' }).click(); assert(await worker.page.isHidden('#save')); assert(await worker.page.isDisabled('#edit-handoff')); await worker.page.click('#editorClose');
+    await worker.page.getByText('작업 보고·처리 이력', { exact: true }).click(); assert((await worker.page.textContent('#taskList .history')).includes('연결부 재확인 필요')); assert.equal(await worker.page.locator('#taskList .history li').count(), 6);
+    await worker.close(); await lead.close();
+  });
+  if (process.env.HJ_TEAM_PREVIEW) {
+    const h = await harness(); await h.login(); await h.page.click('#tabTeams'); await h.page.locator('[data-team-id=t1] button').click();
+    await h.page.evaluate(() => { const p=document.createElement('p');p.textContent='개발 미리보기 · 가상 직원/업무 자료입니다. 실제 서버는 아직 연결하지 않았습니다.';p.className='notice';document.getElementById('main').prepend(p); });
+    await h.page.screenshot({ path: process.env.HJ_TEAM_PREVIEW, fullPage: true }); await h.close();
+  }
   await browser.close(); console.log('company-team-ui: ' + count + '/' + count + ' PASS');
 }
 if (process.argv.includes('--mutations')) {
   const { spawnSync } = require('child_process'); let caught = 0;
-  for (const name of ['allow-role-leak', 'persist-session', 'retry-new-id']) {
+  for (const name of ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave']) {
     const result = spawnSync(process.execPath, [__filename], { env: { ...process.env, HJ_TEAM_UI_MUTATION: name }, timeout: 120000, encoding: 'utf8' });
     assert(!result.error, name + ': runner error ' + result.error); assert.notEqual(result.status, 0, name + ' survived'); assert((result.stdout + result.stderr).includes('FAIL company-team-ui:'), name + ': did not reach assertions'); console.log('DETECTED ' + name); caught++;
   }
-  console.log('company-team-ui mutations: ' + caught + '/3 detected');
+  console.log('company-team-ui mutations: ' + caught + '/5 detected');
 } else run().catch(async e => { console.error('FAIL company-team-ui:', e.stack); if (browser) await browser.close().catch(() => {}); process.exitCode = 1; });

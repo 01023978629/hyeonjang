@@ -2,7 +2,9 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const base=path.join(__dirname,'..','apps-script-team-ops');
 let pure=fs.readFileSync(path.join(base,'TeamPure.gs'),'utf8');
-if(process.env.HJ_TEAM_MUTATION==='scope')pure=pure.replace("return m.role==='owner' || (m.role==='lead' && m.teamIds.indexOf(t.teamId)>=0) || t.assigneeId===m.id;","return true;");
+if(process.env.HJ_TEAM_MUTATION==='scope')pure=pure.replace("return m.role==='owner' || (m.role==='lead' ? m.teamIds.indexOf(t.teamId)>=0 : t.assigneeId===m.id);","return true;");
+if(process.env.HJ_TEAM_MUTATION==='history-reset')pure=pure.replace('task.history=old&&old.history?old.history.slice():[];', 'task.history=[];');
+if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'status','handoff','sourceRef']);", "'status','handoff','sourceRef','history']);");
 if(process.env.HJ_TEAM_MUTATION==='revision')pure=pure.replace('payload.revision!==s.revision','false');
 if(process.env.HJ_TEAM_MUTATION==='auth')pure=pure.replace("if (hits.length!==1) teamError_('forbidden'); return hits[0];","return hits[0] || s.members[0];");
 const props=new Map(),files=new Map(),cache=new Map();let identity={userId:'owner-user',officeId:'company-office'},clock=0,failWrite=false,authDown=false,authCalls=0,failCreate=false,corruptRead=false,lockHeld=false,active=true,expiry;
@@ -64,4 +66,18 @@ cache.clear();const beforeAuth=authCalls;for(let i=0;i<60;i++)context.companyRat
 assert(authCalls>20,'every request validates current identity');
 assert(!JSON.stringify([...files.values()]).includes(session),'session never persisted');assert(!JSON.stringify([...files.values()]).includes('@example.invalid'),'portal email never persisted');
 assert(data.audit.every(a=>!('text' in a)&&!('email' in a)),'audit metadata only');
-console.log('PASS company-team: authorization, organization, assignment, review, revision, replay, identity canonicalization, issuer binding, bounded rate gate, immutable storage failures, redaction');
+const clone=x=>JSON.parse(JSON.stringify(x)),digest=x=>crypto.createHash('sha256').update(x).digest('hex');
+let isolated={schema:1,revision:0,requests:[],audit:[],teams:[{id:'a',name:'TEST_A',active:true},{id:'b',name:'TEST_B',active:true}],members:[{id:'o',userId:'o',officeId:'office',role:'owner',name:'TEST_OWNER',teamIds:['a','b'],active:true},{id:'m',userId:'m',officeId:'office',role:'member',name:'TEST_MEMBER',teamIds:['a'],active:true},{id:'l',userId:'l',officeId:'office',role:'lead',name:'TEST_LEAD',teamIds:['b'],active:true},{id:'dual',userId:'dual',officeId:'office',role:'member',name:'TEST_DUAL',teamIds:['a','b'],active:true}],tasks:[{id:'work',title:'TEST_WORK',project:'TEST_SITE',teamId:'a',assigneeId:'m',due:'',status:'todo',handoff:'ORIGINAL_REPORT',sourceRef:'',updatedAt:'2026-09-01T00:00:00Z',updatedBy:'o'},{id:'closed',title:'TEST_CLOSED',project:'TEST_SITE',teamId:'a',assigneeId:'l',due:'',status:'done',handoff:'',sourceRef:'',updatedAt:'2026-09-01T00:00:00Z',updatedBy:'o'}]};
+const ownerIdentity={userId:'o',officeId:'office'},memberIdentity={userId:'m',officeId:'office'};
+const projectLead=clone(context.teamPresent_(isolated,{userId:'l',officeId:'office'}));assert.equal(projectLead.tasks.length,0,'lead cannot retain other-team completed assignment access');assert.deepEqual(projectLead.members.find(m=>m.id==='dual').teamIds,['b'],'peer teamIds are intersected with authorized teams');
+function applyReport(entity,who=ownerIdentity,requestId=crypto.randomUUID()){const payload={requestId,revision:isolated.revision,entity};const result=context.teamApply_(isolated,who,'taskSave',payload,'2026-09-27T03:00:00Z',crypto.randomUUID(),digest);isolated=clone(result.store);return payload;}
+applyReport(fields(isolated.tasks[0]));assert.equal(isolated.tasks[0].history,undefined);assert.equal(isolated.tasks[0].updatedAt,'2026-09-01T00:00:00Z','no-op preserves legacy timestamp');
+const report=applyReport({...fields(isolated.tasks[0]),status:'doing',handoff:'FIRST_REPORT'},memberIdentity);assert.equal(isolated.tasks[0].history.length,2);assert.equal(isolated.tasks[0].history[0].handoff,'ORIGINAL_REPORT');assert.equal(isolated.tasks[0].history[0].at,'2026-09-01T00:00:00Z');assert.equal(isolated.tasks[0].history[1].actorId,'m');
+const retryHistory=context.teamApply_(isolated,memberIdentity,'taskSave',report,'2099-01-01T00:00:00Z','UNUSED',digest);assert.equal(retryHistory.replayed,true);assert.deepEqual(clone(retryHistory.store),isolated,'retry appends no report');
+assert.throws(()=>applyReport({...fields(isolated.tasks[0]),history:[]}),/invalid-input/,'caller cannot forge or erase history');
+applyReport({...fields(isolated.tasks[0]),status:'review',handoff:'REVIEW_REPORT'},memberIdentity);assert.equal(isolated.tasks[0].history.length,3);assert.equal(isolated.tasks[0].history[1].handoff,'FIRST_REPORT');
+assert.throws(()=>applyReport({...fields(isolated.tasks[0]),status:'doing'}),/review-note-required/);
+applyReport({...fields(isolated.tasks[0]),status:'doing',handoff:'REWORK_REASON'});assert.equal(isolated.tasks[0].history.at(-1).actorId,'o');
+isolated.tasks[0].history=Array.from({length:100},(_,i)=>({...isolated.tasks[0].history[0],revision:i}));applyReport(fields(isolated.tasks[0]));assert.equal(isolated.tasks[0].history.length,100,'no-op at history limit still succeeds');const fullBefore=JSON.stringify(isolated);
+assert.throws(()=>applyReport({...fields(isolated.tasks[0]),handoff:'OVER_LIMIT'}),/capacity/);assert.equal(JSON.stringify(isolated),fullBefore,'capacity failure preserves all history');
+console.log('PASS company-team: authorization, immutable reports, legacy no-op baseline, history replay/capacity, scoped peer membership, review note, revision, issuer binding, storage failures, redaction');

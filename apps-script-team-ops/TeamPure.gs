@@ -10,14 +10,14 @@ function teamMember_(s, identity) {
   var hits=s.members.filter(function(m){return m.userId===identity.userId && m.officeId===identity.officeId && m.active===true;});
   if (hits.length!==1) teamError_('forbidden'); return hits[0];
 }
-function teamCanSee_(m,t) { return m.role==='owner' || (m.role==='lead' && m.teamIds.indexOf(t.teamId)>=0) || t.assigneeId===m.id; }
+function teamCanSee_(m,t) { return m.role==='owner' || (m.role==='lead' ? m.teamIds.indexOf(t.teamId)>=0 : t.assigneeId===m.id); }
 function teamCanAssign_(m,teamId) { return m.role==='owner' || (m.role==='lead' && m.teamIds.indexOf(teamId)>=0); }
 function teamPresent_(s, identity) {
   var m=teamMember_(s,identity),tasks=s.tasks.filter(function(t){return teamCanSee_(m,t);});
   var teams=s.teams.filter(function(t){return m.role==='owner'||m.teamIds.indexOf(t.id)>=0;});
   var ids=tasks.map(function(t){return t.assigneeId;});ids.push(m.id);
   var members=s.members.filter(function(u){return m.role==='owner'||(m.role==='lead'&&u.teamIds.some(function(id){return m.teamIds.indexOf(id)>=0;}))||ids.indexOf(u.id)>=0;}).map(function(u){
-    var out={id:u.id,name:u.name,teamIds:u.teamIds,role:u.role,active:u.active};
+    var out={id:u.id,name:u.name,teamIds:u.teamIds.filter(function(id){return teams.some(function(t){return t.id===id;});}),role:u.role,active:u.active};
     if(m.role==='owner'){out.userId=u.userId;out.officeId=u.officeId;}return out;
   });
   return {revision:s.revision,me:{id:m.id,name:m.name,role:m.role,teamIds:m.teamIds},teams:teams,members:members,tasks:tasks,
@@ -68,9 +68,18 @@ function teamApply_(store, identity, action, payload, now, newId, digest) {
     if((e.status==='done'||old&&old.status==='done'&&e.status!=='done')&&!assign)teamError_('forbidden');
     var handoff=typeof e.handoff==='string'?e.handoff:'';if(handoff.length>2000||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(handoff))teamError_('invalid-input');
     if(['blocked','review'].indexOf(e.status)>=0&&!handoff.trim())teamError_('handoff-required');
+    if(old&&old.status==='review'&&e.status==='doing'&&(!handoff.trim()||handoff===old.handoff))teamError_('review-note-required');
     targetId=old?old.id:newId;entityKind='task';
     var task={id:targetId,title:teamText_(e.title,160),project:teamText_(e.project,160),teamId:e.teamId,assigneeId:e.assigneeId,due:e.due?teamDate_(e.due):'',status:e.status,handoff:handoff,sourceRef:e.sourceRef?teamText_(e.sourceRef,150):'',updatedAt:now,updatedBy:actor.id};
     if(task.sourceRef&&s.tasks.some(function(t){return t.id!==targetId&&t.sourceRef===task.sourceRef;}))teamError_('duplicate-source');
+    // Only the server appends reports; client-supplied history is rejected by teamKeys_.
+    var changed=!old||['title','project','teamId','assigneeId','due','status','handoff','sourceRef'].some(function(k){return (old[k]||'')!==(task[k]||'');});
+    if(changed){
+      task.history=old&&old.history?old.history.slice():[];
+      if(old&&!old.history)task.history.push({at:old.updatedAt,actorId:old.updatedBy,status:old.status,handoff:old.handoff,teamId:old.teamId,assigneeId:old.assigneeId,revision:0,baseline:true});
+      if(task.history.length>=100)teamError_('capacity');
+      task.history.push({at:now,actorId:actor.id,status:task.status,handoff:task.handoff,teamId:task.teamId,assigneeId:task.assigneeId,revision:s.revision+1,baseline:false});
+    }else task=old; // A no-op must not replace the original report timestamp or legacy baseline.
     s.tasks=old?s.tasks.map(function(t){return t===old?task:t;}):s.tasks.concat([task]);
   } else teamError_('invalid-action');
   if(s.teams.length>50||s.members.length>100||s.tasks.length>2000||s.requests.length>=10000)teamError_('capacity');

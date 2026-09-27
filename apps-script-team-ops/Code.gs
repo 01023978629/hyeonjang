@@ -45,7 +45,7 @@ function companyCommit_(c,s,expected){
 }
 function companyDispatch_(req){
   teamKeys_(req,['action','sessionToken','payload']);var c=companyConfig_();
-  if(req.action==='health')return {service:'company-team-v1',portalUrl:c.url};
+  if(req.action==='health')return {service:'company-team-v2',portalUrl:c.url};
   if(['identity','list','teamSave','memberSave','taskSave'].indexOf(req.action)<0)teamError_('invalid-action');
   companyRateGate_(req.sessionToken);
   var identity=companyIdentity_(req.sessionToken,c); // No slow identity network call while holding the data lock.
@@ -64,7 +64,7 @@ function companyDispatch_(req){
 function doGet(){return companyJson_({ok:false,error:'bad-request'});}
 function doPost(e){
   try{var raw=e&&e.postData&&e.postData.contents;if(typeof raw!=='string'||raw.length>64000)teamError_('invalid-input');var r=companyDispatch_(JSON.parse(raw));r.ok=true;return companyJson_(r);}
-  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
+  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','review-note-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
 }
 function companyJson_(v){return ContentService.createTextOutput(JSON.stringify(v)).setMimeType(ContentService.MimeType.JSON);}
 // Editor-owner only. Not in the HTTP action allowlist. No password is generated here.

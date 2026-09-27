@@ -1,4 +1,8 @@
-# 회사 팀 업무 서버 — v328 로컬 구현
+# 회사 팀 업무 서버 — v329 로컬 구현
+
+v329는 `health.service = company-team-v2` 계약이다. 직원 UI와 서버를 함께 검토·배포해야 하며 v1 서버에는 새 UI 로그인이 잠긴다(보고 이력을 저장하지 않는 서버로 연결 방지). 현재는 운영 미설정·미배포다.
+
+`task.history`는 서버가 실제 변경에만 추가하는 업무 보고 기록이다. 작성자·시각·revision은 서버에서 부여하며 클라이언트 history 제출은 거부한다. 업무당 100건, 저장본 전체 4M 문자 제한에 도달하면 기존 자료를 보존하고 중단한다. 동일 내용 저장·동일 requestId 재시도는 보고를 중복 추가하지 않는다. legacy 첫 변경은 마지막 보고 baseline만 보존한다. 재배정받은 직원도 과거 보고를 볼 수 있으므로 연락처·출입 암호를 적지 않도록 안내한다. 상세 화면/운영 경계는 `../TEAM-WORKSPACES-v329.md`.
 
 이 디렉터리는 **별도 Apps Script 프로젝트**용입니다. 기존 사진 릴레이 또는 관리사무소 포털에 `doPost`를 덮어쓰지 마세요. Pages 산출물에서 제외됩니다. 실제 서버 배포·속성 설정·직원 연결은 아직 하지 않았습니다.
 
@@ -65,4 +69,4 @@
 
 ## 검사
 
-`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id`. 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.
+`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth|history-reset|history-client`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id|team-filter|action-autosave` (`node tests/company-team-ui.e2e.js --mutations`로 화면 5종 일괄 검사). 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.
