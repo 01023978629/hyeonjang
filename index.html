@@ -19209,6 +19209,12 @@ function beforeAfterPairs(projName){
     // 초기/완료가 다 있으면 짝 가능
     canPair:before.length>0&&after.length>0};
 }
+// 전/후 칸의 그림 — f.thumb 는 data:/blob: URL 문자열이지 HTML 이 아니다. 예전에는 그대로 이어 붙여 칸에 'data:image/jpeg;base64,…'
+// 글자가 찍히고 그림은 한 장도 안 나왔다(갤러리와 공유용 '시공 사례' 페이지 둘 다). 사진 그리드와 같은 photoSrc 로 URL 을 얻어 <img> 로 감싼다.
+function beforeAfterImg(f,alt,empty){
+  const src=photoSrc(f,600);
+  return src?'<img src="'+escapeAttr(src)+'" alt="'+escapeAttr(alt)+'" style="width:100%;height:100%;object-fit:cover;display:block">':empty;
+}
 function beforeAfterGallery(projName){
   const projs=state.projects.filter(p=>!p.archived);
   if(!projName){
@@ -19233,9 +19239,9 @@ function beforeAfterGallery(projName){
     for(let i=0;i<pairs;i++){
       const bf=ba.before[i],af=ba.after[i];
       cards+='<div style="margin-bottom:14px"><div style="display:flex;gap:6px">'+
-        '<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:3px">BEFORE</div><div style="aspect-ratio:1;background:var(--paper-2);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center">'+(bf.thumb||'<span style="font-size:30px">📷</span>')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+escapeHtml(bf._phase||'시공전')+'</div></div>'+
+        '<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:3px">BEFORE</div><div style="aspect-ratio:1;background:var(--paper-2);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center">'+beforeAfterImg(bf,'시공 전 사진','<span style="font-size:30px">📷</span>')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+escapeHtml(bf._phase||'시공전')+'</div></div>'+
         '<div style="display:flex;align-items:center;font-size:20px;color:var(--clay)">→</div>'+
-        '<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;color:#0a7f43;margin-bottom:3px">AFTER</div><div style="aspect-ratio:1;background:var(--paper-2);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center">'+(af.thumb||'<span style="font-size:30px">✨</span>')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+escapeHtml(af._phase||'완료')+'</div></div>'+
+        '<div style="flex:1;text-align:center"><div style="font-size:11px;font-weight:700;color:#0a7f43;margin-bottom:3px">AFTER</div><div style="aspect-ratio:1;background:var(--paper-2);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center">'+beforeAfterImg(af,'시공 후 사진','<span style="font-size:30px">✨</span>')+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px">'+escapeHtml(af._phase||'완료')+'</div></div>'+
       '</div></div>';
     }
     content=cards+'<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:11px;line-height:1.5">💡 이 전후 비교를 카톡·블로그에 올리면 훌륭한 홍보가 됩니다. 아래 버튼으로 공유용 이미지 페이지를 만들 수 있어요.</div>';
@@ -19255,7 +19261,7 @@ function beforeAfterShare(projName,ba){
   let rows='';
   for(let i=0;i<pairs;i++){
     const bf=ba.before[i],af=ba.after[i];
-    rows+='<div style="display:flex;gap:10px;margin-bottom:16px"><div style="flex:1;text-align:center"><div style="font-weight:700;color:#c2410c;margin-bottom:4px">BEFORE</div><div style="border-radius:12px;overflow:hidden;background:#f0f0f0;aspect-ratio:1;display:flex;align-items:center;justify-content:center">'+(bf.thumb||'📷')+'</div></div><div style="flex:1;text-align:center"><div style="font-weight:700;color:#0a7f43;margin-bottom:4px">AFTER</div><div style="border-radius:12px;overflow:hidden;background:#f0f0f0;aspect-ratio:1;display:flex;align-items:center;justify-content:center">'+(af.thumb||'✨')+'</div></div></div>';
+    rows+='<div style="display:flex;gap:10px;margin-bottom:16px"><div style="flex:1;text-align:center"><div style="font-weight:700;color:#c2410c;margin-bottom:4px">BEFORE</div><div style="border-radius:12px;overflow:hidden;background:#f0f0f0;aspect-ratio:1;display:flex;align-items:center;justify-content:center">'+beforeAfterImg(bf,'시공 전','📷')+'</div></div><div style="flex:1;text-align:center"><div style="font-weight:700;color:#0a7f43;margin-bottom:4px">AFTER</div><div style="border-radius:12px;overflow:hidden;background:#f0f0f0;aspect-ratio:1;display:flex;align-items:center;justify-content:center">'+beforeAfterImg(af,'시공 후','✨')+'</div></div></div>';
   }
   const inner='<div style="text-align:center;margin-bottom:20px"><h1 style="font-size:22px;margin:0">'+escapeHtml(projName)+' 시공 사례</h1><p style="color:#888;margin:6px 0 0">'+COMPANY.name+' · '+COMPANY.tel+'</p></div>'+rows+'<div style="text-align:center;color:#888;font-size:13px;margin-top:20px">시공 문의 '+COMPANY.tel+'</div>';
   const html=hjDocShell(projName+' 시공 사례',inner,'#0b4ea2');
@@ -22825,15 +22831,29 @@ const HJ_CASE_MAX_EDGE=1800;
 function hjCaseData(p){return p&&p.casePack&&typeof p.casePack==='object'&&!Array.isArray(p.casePack)?p.casePack:{};}
 function hjCaseEdit(p){if(!p.casePack||typeof p.casePack!=='object'||Array.isArray(p.casePack))p.casePack={};return p.casePack;}
 // 현장 이름에서 단지만 — '평화로운아파트 107동 1302호' → '평화로운아파트'. 동·호수는 공개 글에 못 들어간다.
+// 미리 채우는 값은 앱이 지은 것이라 사람이 적은 글보다 엄격하게 자른다 — 세대 번호 꼴('107-1302', '107동 1302', '1302호 욕실',
+// '107동 …')이 처음 나오는 자리부터 뒤를 버린다. 자르고도 남는 게 없거나 hjCasePii 에 걸리면 비워 두어 사람이 적게 한다.
+// '2-1단지'(단지 번호)·'월평1동'(행정동)은 자르지 않는다.
+const HJ_CASE_UNIT_CUT=/(?:^|[\s,(])(?:\d{1,4}\s*-\s*\d{1,5}(?![\d가-힣])|\d{1,4}\s*동|\d{1,5}\s*호(?!선))/;
 function hjCasePlaceOf(name){
   const a=aptNameParse(name);if(a)return a.complex;
-  return String(name||'').replace(/\s*\d{1,6}\s*동(?:\s*\d{1,6}\s*호)?\s*$/,'').replace(/\s*\d{1,6}\s*호\s*$/,'').trim();
+  const s=String(name||''),m=s.match(HJ_CASE_UNIT_CUT);
+  const out=(m?s.slice(0,m.index):s).replace(/[\s,(·\-]+$/,'').trim();
+  return (out&&!hjCasePii(out).length)?out:'';
 }
 function hjCaseVal(p,d,k){const v=String(d[k]==null?'':d[k]).trim();return (k==='place'&&!v)?hjCasePlaceOf(p.name):v;}
 // 공개 글에 들어가면 안 되는 것 셋. 이름은 사람이 봐야 하고, 주소 낱말은 사례에 원래 들어간다(동네·단지).
+// 동·호수 꼴은 넷: '107동 1302호' · '107동 1302'(호 없이, 뒤에 원·mm 같은 단위가 붙으면 아님) · '아파트 107-1302' ·
+// 세 자리 이상 '1302호'. '107동 앞'·'보양비 30000원'·'타일 300-600'·'3호선' 은 걸리지 않는다(검사로 고정).
+const HJ_CASE_UNIT_RES=[
+  /\d{1,4}\s*동\s*\d{1,4}\s*호/,
+  /\d{1,4}\s*동\s*\d{3,4}(?![\d,.]|\s*(?:원|만|천|mm|cm|m(?![가-힣])|㎡|평|kg|개|장|명|대|년|월|일|시간|분|%|세대))/,
+  /(?:아파트|APT|apt|빌라|맨션|타운|단지)\s*\d{1,4}\s*-\s*\d{3,4}(?!\d)/,   // '107-1302호' 는 아래 호 꼴이 잡는다
+  /\d{3,4}\s*호/
+];
 function hjCasePii(text){
   const t=String(text||'');const out=[];
-  if(/\d{1,4}\s*동\s*\d{1,4}\s*호/.test(t))out.push('동·호수');
+  if(HJ_CASE_UNIT_RES.some(re=>re.test(t)))out.push('동·호수');
   if(/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/.test(t))out.push('전화번호');
   if(hjLooksLikeAccessCode(t))out.push('출입 번호');
   return out;
@@ -22871,8 +22891,10 @@ function hjCaseBlock(p){
   return '';
 }
 // 사진 한 장을 EXIF 없는 JPEG 바이트로. 원본 → HEIC 변환 → Image 디코드는 loadPhotoForExport 가 이미 한다.
+// 원본을 못 읽어 480px 미리보기만 얻었으면(got.low) 굽지 않고 {low:true} — 부르는 쪽이 빼고 몇 장인지 알린다(굽기 실패와 같은 규칙).
 async function hjCaseJpeg(f){
   const got=await loadPhotoForExport(f);if(!got||!got.img)return null;
+  if(got.low){try{URL.revokeObjectURL(got.url);}catch(e){}return {low:true};}
   try{
     const img=got.img;const ow=img.naturalWidth||img.width,oh=img.naturalHeight||img.height;if(!ow||!oh)return null;
     const s=Math.min(1,HJ_CASE_MAX_EDGE/Math.max(ow,oh)),w=Math.max(1,Math.round(ow*s)),h=Math.max(1,Math.round(oh*s));
@@ -22885,15 +22907,16 @@ async function hjCaseJpeg(f){
 async function hjCaseZip(p){
   const why=hjCaseBlock(p);if(why){toast(why);return false;}
   try{await ensureJSZip();}catch(e){toast('압축 모듈 로드 실패(인터넷 확인).');return false;}
-  const d=hjCaseData(p),ph=hjCaseSelected(p),zip=new JSZip();let ok=0,failed=0;
+  const d=hjCaseData(p),ph=hjCaseSelected(p),zip=new JSZip();let ok=0,failed=0,low=0;
   zipProg(true,'사진 다시 굽는 중…');
   for(let i=0;i<ph.length;i++){
     zipProg(true,'('+(i+1)+'/'+ph.length+') '+(ph[i].name||''));
     let j=null;try{j=await hjCaseJpeg(ph[i]);}catch(e){}
-    if(!j){failed++;continue;}
+    if(j&&j.low){low++;continue;}   // 원본 없이 미리보기(480px)만 — 사례 규격(긴 변 1800)에 못 미쳐 담지 않는다
+    if(!j||!j.bytes){failed++;continue;}
     zip.file(hjCaseFileName(ph[i],i),j.bytes);ok++;
   }
-  if(!ok){zipProg(false);toast('사진 원본을 읽지 못했습니다 — 서버 연결(☁️) 후 다시 시도하세요');return false;}
+  if(!ok){zipProg(false);toast('사진 원본을 읽지 못했습니다'+(low?'(미리보기만 있음 '+low+'장)':'')+' — 서버 연결(☁️) 후 다시 시도하세요');return false;}
   zip.file('사례재료.txt',hjCaseText(p));
   let blob=null;try{blob=await zip.generateAsync({type:'blob'});}catch(e){}
   zipProg(false);
@@ -22903,7 +22926,7 @@ async function hjCaseZip(p){
   const live=(state.projects||[]).find(x=>x&&x.name===p.name)||p;   // 서버 자료를 불러오면 현장 객체가 통째로 바뀐다 — 다시 찾는다
   hjCaseEdit(live).sentAt=localDate();markDirty();
   const lost=hjCaseMissing(live);
-  toast('사례 묶음 '+ok+'장'+(failed?' (실패 '+failed+'장)':'')+(lost?' · 사진을 찾을 수 없음 '+lost+'장 빠짐':'')+' — 촬영 위치 정보는 뺐습니다');
+  toast('사례 묶음 '+ok+'장'+(failed?' (실패 '+failed+'장)':'')+(low?' · 원본을 못 읽어 뺀 사진 '+low+'장':'')+(lost?' · 사진을 찾을 수 없음 '+lost+'장 빠짐':'')+' — 촬영 위치 정보는 뺐습니다');
   return true;
 }
 // 사례 후보 — 전·후 사진이 둘 다 있는데 아직 zip 을 안 만든 현장. "어느 현장이 사례로 안 올라갔나"를
@@ -26901,15 +26924,19 @@ function adProjFacts(projName){
   const gu=pick(/([가-힣]{1,6}[구군])(?![가-힣])/,src);
   const pyeong=pick(/(\d{1,3})\s*평/,src)||pick(/(\d{1,3})\s*평/,pick(/평수:\s*([^\n]+)/,note));
   // 구조적 phases(사장이 앱에서 입력)는 신뢰. 자유입력 리드노트 fallback만 공정 화이트리스트로 스크럽(PII 차단).
-  const works=(p.phases&&p.phases.length?p.phases.join(', '):'')
+  // 단 사진 분류명(시공전·완료 — 공정 폴더·_phase 에서 p.phases 로 올라온다)은 공사가 아니다. 계약 범위(contractScopeProposal)와
+  // 같은 거름(contractPhotoStatusName)으로 뺀다 — 안 빼면 제목이 '대전 인테리어 후기 — 시공전·완료' 가 된다.
+  const ph=(Array.isArray(p.phases)?p.phases:[]).map(function(x){return String(typeof x==='string'?x:((x&&(x.title||x.name))||'')).trim();})
+    .filter(function(x){return x&&!contractPhotoStatusName(p,x);});
+  const works=ph.join(', ')
     ||adScrubWorks(pick(/희망공사:\s*([^\n]+)/,note)||pick(/공사:\s*([^\n]+)/,note)||'');
   let period='';
   try{
-    // AS 방문 일정은 뺀다 — 완료 1년 뒤 AS 가 '약 50주' 공사 기간으로 원고에 실리면 안 된다
-    const ds=(state.schedule||[]).filter(function(s){return s&&s.project===projName&&s.date&&!hjIsAsVisitSched(s);})
-      .map(function(s){return String(s.date);}).sort();
-    if(ds.length>=2){
-      const d0=new Date(ds[0]),d1=new Date(ds[ds.length-1]);
+    // 공사하는 날만 센다 — 계약서 공사기간(contractPeriodProposal)과 같은 한 곳. 💰 수금(upsertDueSchedule 가 자동으로 만든다)·
+    // 상담·실측·AS 방문·세금 자동 일정을 넣고 세면 3일 공사가 '약 22주' 로 공개 글에 실렸다. 여러 날 공정은 memo 의 끝날까지.
+    const pp=contractPeriodProposal({name:projName});
+    if(pp&&pp.from&&pp.to){
+      const d0=new Date(pp.from),d1=new Date(pp.to);
       if(!isNaN(d0)&&!isNaN(d1)&&d1>d0)period='약 '+Math.max(1,Math.round((d1-d0)/6048e5))+'주';
     }
   }catch(e){}
@@ -28434,10 +28461,14 @@ async function photoShareFile(f){
     try{ const ro=await getRoToken(false); const got=await makeFile(ro); if(got)return got; }catch(e){}
     try{ const ro=await getRoToken(true); const got=await makeFile(ro); if(got)return got; }catch(e){}
   }
+  // 마지막 폴백 — 480px 미리보기(makeThumbDataUrl). 원본이 아니라는 표시(_hjLowRes)를 달아 돌려준다:
+  // 사례 ZIP·📤 사진 묶음(hjCaseJpeg)은 이 표시를 보고 빼고 센다. 표시 없이 원본처럼 넘기면 흐린 480px 가 '사례 사진'으로 조용히 나갔다.
   if(f.thumb){
     try{
-      if(String(f.thumb).startsWith('data:'))return dataURLtoFile(f.thumb,f.name||'photo.jpg');
-      const r=await fetch(f.thumb); if(r.ok){const b=await r.blob();return new File([b],f.name||'photo.jpg',{type:b.type||'image/jpeg'});}
+      let t=null;
+      if(String(f.thumb).startsWith('data:'))t=dataURLtoFile(f.thumb,f.name||'photo.jpg');
+      else{const r=await fetch(f.thumb); if(r.ok){const b=await r.blob();t=new File([b],f.name||'photo.jpg',{type:b.type||'image/jpeg'});}}
+      if(t){try{t._hjLowRes=true;}catch(e){}return t;}
     }catch(e){}
   }
   return null;
@@ -28457,7 +28488,7 @@ async function filesForBundle(items,opts){
     if(photoBundleIsVideo(item)){
       if(!opts.video){failed++;continue;}   // 고르지 않은 동영상은 원본 그대로 싣지 않는다
       let file=null;try{file=await photoShareFile(item);}catch(e){}
-      if(!file){failed++;continue;}
+      if(!file||file._hjLowRes){failed++;continue;}   // 동영상 자리에 미리보기 그림을 싣지 않는다
       const e0=String((item instanceof File?'':item.ext)||bestExt(file.name,file.type)||'').toLowerCase();
       const ext=isVideoExt(e0)?e0:'mp4';
       const type=String(file.type||'').indexOf('video/')===0?file.type:(PB_VIDEO_TYPE[ext]||'video/mp4');
@@ -28465,7 +28496,7 @@ async function filesForBundle(items,opts){
       continue;
     }
     let j=null;try{j=await hjCaseJpeg(item);}catch(e){}
-    if(!j||!j.bytes||!j.bytes.length){failed++;continue;}   // 굽기 실패 — 원본으로 몰래 보내지 않는다
+    if(!j||!j.bytes||!j.bytes.length){failed++;continue;}   // 굽기 실패·원본 없이 미리보기(480px)뿐 — 원본·미리보기로 몰래 채우지 않는다
     out.push(new File([j.bytes],photoBundleShareName(n,count,''),{type:'image/jpeg'}));
   }
   return {files:out,failed};
@@ -31351,7 +31382,7 @@ async function loadPhotoForExport(f){
     }catch(err){return null;}
   }
   const url=URL.createObjectURL(blob);
-  try{return {img:await loadImg(url),url};}
+  try{return {img:await loadImg(url),url,low:!!file._hjLowRes};}   // low: 원본을 못 얻어 미리보기로 대신함(photoShareFile)
   catch(err){try{URL.revokeObjectURL(url);}catch(e){} return null;}
 }
 
