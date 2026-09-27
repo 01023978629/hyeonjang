@@ -1318,6 +1318,8 @@ function rebuildOrganizedProjectAliases(){
 function recoverOrganizedMetadata(rec){
   if(!rec)return false;
   if(rec.kind==='estimate'&&rec._estimateProjectRestored)return false;
+  // 지운 현장의 견적서 파일('(삭제됨) 이름 · 날짜' — hjDeleteProjectCore v331)을 정리 폴더 이름으로 되돌려 지운 현장을 되살리지 않는다
+  if(rec.kind==='estimate'&&String(rec.project||'').startsWith('(삭제됨) '))return false;
   const info=organizedPrefixInfo(rec.prefix);if(!info)return false;
   let changed=false;
   const valid=()=>new Set((state.projects||[]).map(p=>p.name));
@@ -5609,7 +5611,7 @@ function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(p){
    파생 견적 파일을 옛 이름으로 되돌려 매출에서 빠졌다. 삭제는 그 기록을 고아로 남겨 같은 이름으로 새 현장을 만들면 옛 수금·AS·견적·
    지출이 새 현장에 붙었다. 두 동작이 이 한 목록(hjProjectRefWalk)을 보게 해 새 저장소를 한 곳에만 더하면 되게 한다.
    한계: ☁ 팀 공유 할일은 회사 서버에 있어 여기서 바꾸지 않는다(확인 창에 적는다). */
-const HJ_PROJECT_REF_LABELS={files:'사진·서류',schedule:'일정',notes:'메모·할일·회의록',payLog:'수금 기록',asLog:'AS 기록',quotes:'견적서',
+const HJ_PROJECT_REF_LABELS={files:'사진·서류',estFiles:'견적서 파일',schedule:'일정',notes:'메모·할일·회의록',payLog:'수금 기록',asLog:'AS 기록',quotes:'견적서',
   expenses:'지출',workLogs:'작업시간',trips:'운행 기록',satisfaction:'만족도',aptOrders:'관리사무소 오더',aiOps:'AI 할 일',calcLog:'자재 계산 기록(이 폰)',calcCart:'발주 목록(이 폰)'};
 // 이름 name 에 걸린 기록마다 visit(store, rec, set) 을 부른다. set(v) 가 그 기록의 현장 이름을 바꾼다.
 // identity 가 있으면 관리사무소 오더는 식별자로 찾는다(이름이 같아도 식별자가 다른 오더는 남의 것이다).
@@ -5737,12 +5739,19 @@ function hjDueScheduleRestore(p){
 // 사진·서류는 미배정, 일정은 연결 해제(예전과 같다), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 옮긴다.
 // 수금 약속일 알림만 따로 — 위 hjDueSchedTouched 설명.
 // 견적서에서 만든 파생 파일은 견적서를 따라간다(미배정으로 두면 다음 불러오기에 견적서 쪽 이름으로 되돌아간다).
+/* v331 견적서 파일(kind estimate — 엑셀·PDF)도 사진처럼 미배정으로 풀지 않고 '(삭제됨)' 이름으로 옮긴다(counts·kept 의 estFiles).
+   매출 한 벌(hjSalesEntries)은 사본 판정을 현장 안에서만 한다. 예전에는 삭제가 앱 견적의 가상 파일은 '(삭제됨)' 으로, 그 엑셀 사본은
+   미배정으로 갈라 놓아 같은 공사가 부가세 신고·월말 결산·세무 엑셀에 두 번 잡혔고(1,100만 → 2,200만), 이름만 다른 사본 쌍은
+   현장이 없어 2차 병합(같은 현장·같은 금액)을 못 타 두 번, 거꾸로 서로 다른 지운 현장의 같은 이름 견적('도배 견적.xlsx')은 미배정끼리
+   이름으로 합쳐져 한쪽이 빠졌다. 삭제는 매출 기록을 지우지 않는다(v328) — 지운 현장의 견적은 계속 매출이되 원래 현장 단위로
+   한 번씩 센다. 미배정이면 견적 자동 배정(quoteAutoMatch)이 같은 이름으로 새로 만든 현장에 옛 견적을 붙이기도 했다. */
 function hjDeleteProjectCore(name){
   const p=(state.projects||[]).find(x=>x.name===name);if(!p)return null;
   const identity=officeIntakeValidProjectIdentity(p.officeIntakeProjectId);
   const tomb=hjProjectTombstoneName(name),c={},kept={},dueId='due_'+name;
   let due=null;
   hjProjectRefWalk(name,(k,r,set)=>{
+    if(k==='files'&&r.kind==='estimate'){c.estFiles=(c.estFiles||0)+1;set(tomb);kept.estFiles=(kept.estFiles||0)+1;return;}
     c[k]=(c[k]||0)+1;
     if(k==='files')set(null);
     else if(k==='schedule'&&r.id===dueId){
@@ -5789,10 +5798,13 @@ function renameProject(oldName){
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
 }
-// 현장 삭제 — 배정된 파일은 미배정으로 되돌림(파일 자체는 안 지움), 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 남김
+// 현장 삭제 — 배정된 사진·서류는 미배정으로 되돌림(파일 자체는 안 지움), 견적서 파일과 나머지 기록은 '(삭제됨) 이름 · 날짜' 로 남김
 function deleteProject(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return;
   const c=hjProjectRefCount(name,officeIntakeValidProjectIdentity(p.officeIntakeProjectId));
+  // 견적서 파일은 미배정으로 풀지 않고 '(삭제됨)' 이름으로 남긴다(hjDeleteProjectCore v331) — 확인 창도 따로 센다.
+  const estN=(state.files||[]).filter(f=>f&&f.project===name&&!f._fromQuote&&f.kind==='estimate').length;
+  if(estN){c.files=Math.max(0,(c.files||0)-estN);c.estFiles=estN;}
   const fileCount=c.files||0;
   const dueS=(state.schedule||[]).find(s=>s&&s.id==='due_'+name&&s.project===name);   // 수금 약속일 알림 — 따로 말한다(hjDeleteProjectCore)
   const schCount=(c.schedule||0)-(dueS?1:0);
@@ -5821,7 +5833,9 @@ function deleteProject(name){
       if(!ok){busy=false;toast('안전판을 저장하지 못해 삭제하지 않았습니다. 저장 공간을 확인하세요.');return;}
       const r=hjDeleteProjectCore(name);
       if(!r){busy=false;closeModal();toast('그사이 현장이 없어져 삭제하지 않았습니다.');return;}
-      markDirty();closeModal();render();toast('현장 “'+name+'” 삭제됨 (파일은 미배정으로 보존'+(Object.keys(r.kept).length?', 기록은 “'+r.tomb+'”로 보존':'')+')');
+      markDirty();closeModal();render();// 견적서 파일은 미배정이 아니라 '(삭제됨)' 이름으로 간다(hjDeleteProjectCore v331) — 확인 창과 같은 말을 한다
+      const keptWhat=[r.kept.estFiles?'견적서 파일':'',Object.keys(r.kept).some(k=>k!=='estFiles')?'기록':''].filter(Boolean).join('·');
+      toast('현장 “'+name+'” 삭제됨 (사진·서류는 미배정으로 보존'+(keptWhat?', '+keptWhat+'은 “'+r.tomb+'”로 보존':'')+')');
     }}
   ]);
 }
@@ -8260,6 +8274,13 @@ function hjDailyBrief(){
 const BOARD_ACTIONS=new Set(['lossAlert','budgetAlert','warrantyManage','staleProjects','reviewRequest','asManage']);
 // 보드 2차 'urgent' 심각도 임계 — 형제 로직 밴드 미러(보증 high · 방치 severe · AS 접수 14일). 단일 출처.
 const BOARD_URGENT={warrantyDays:14,staleDays:30,asDays:14};
+// v331 끝난 보증은 만료 뒤 이 날수까지만 보드에 '관찰'로 남긴다(점검 안내를 보낼 때). 예전에는 warrantyDue 의 만료 현장을
+// 하한 없이 '긴급'으로 올리고 만료 뒤 날수를 가중치에 더해(D+990 → 1050점) 3년 전에 끝난 현장이 첫 화면 상위 3곳을 차지했다.
+const BOARD_WARRANTY_EXPIRED_DAYS=30;
+function boardWarrantyRows(){
+  // 만료일은 hjWarranty(p).end 한 곳(warrantyList 가 그 값으로 daysLeft 를 센다) — 알림(warrantyDue)과 같은 모집단에서 창만 좁힌다.
+  return warrantyDue().filter(w=>w&&w.daysLeft>=-BOARD_WARRANTY_EXPIRED_DAYS);
+}
 function projHealthBoard(){
   const generatedAt=new Date().toISOString();
   const rows=[];
@@ -8269,7 +8290,7 @@ function projHealthBoard(){
   const idx={loss:{},budget:{},due:{},warranty:{},stale:{},review:{},as:{}};
   safe(typeof lossAlertData==='function'&&lossAlertData).forEach(r=>{if(r&&r.name)idx.loss[r.name]=r;});
   safe(typeof budgetAlertData==='function'&&budgetAlertData).forEach(r=>{if(r&&r.name)idx.budget[r.name]=r;});
-  safe(typeof warrantyDue==='function'&&warrantyDue).forEach(r=>{if(r&&r.name)idx.warranty[r.name]=r;});   // warrantyList의 daysLeft<=60 파생(임박·만료)
+  safe(boardWarrantyRows).forEach(r=>{if(r&&r.name)idx.warranty[r.name]=r;});   // warrantyDue(daysLeft<=60) 중 만료 30일 안쪽까지(임박·막 끝남)
   safe(typeof staleProjectData==='function'&&staleProjectData).forEach(r=>{if(r&&r.name)idx.stale[r.name]=r;});
   safe(typeof reviewRequestData==='function'&&reviewRequestData).forEach(r=>{if(r&&r.name&&!r.requested&&r.customer&&r.customer.phone)idx.review[r.name]=r;});
   safe(typeof asOpenData==='function'&&asOpenData).forEach(r=>{if(r&&r.name)idx.as[r.name]=r;});           // asOpenData(status!=='done') 파생 — 미처리 AS 접수 후 aging
@@ -8292,11 +8313,12 @@ function projHealthBoard(){
       if(B.over)reasons.push({axis:'budget',label:'예산초과 '+B.pct+'%',weight:88,openAction:'budgetAlert',urgent:true});
       else reasons.push({axis:'budget',label:'예산임박 '+B.pct+'%',weight:60,openAction:'budgetAlert',urgent:false});
     }
-    // 🛡 보증 — warrantyDue(daysLeft<=60) 결과 재사용
+    // 🛡 보증 — boardWarrantyRows(임박 60일 ~ 만료 30일) 결과 재사용. 긴급은 아직 안 끝난 14일 안쪽만 — 이미 끝난 보증은 서두를 일이 없다(관찰).
     const W=idx.warranty[name];
     if(W){
-      const urgent=W.daysLeft<=BOARD_URGENT.warrantyDays;
-      reasons.push({axis:'warranty',label:W.daysLeft<0?('보증만료 D+'+(-W.daysLeft)):('보증 D-'+W.daysLeft),weight:60-Math.min(W.daysLeft,40),openAction:'warrantyManage',urgent:urgent});
+      const expired=W.daysLeft<0;
+      const urgent=!expired&&W.daysLeft<=BOARD_URGENT.warrantyDays;
+      reasons.push({axis:'warranty',label:expired?('보증만료 D+'+(-W.daysLeft)):('보증 D-'+W.daysLeft),weight:expired?20:60-Math.min(W.daysLeft,40),openAction:'warrantyManage',urgent:urgent});
     }
     // 💤 방치 — staleProjectData(14일+/무기록) 결과 재사용
     const S=idx.stale[name];
@@ -8624,7 +8646,11 @@ function dashboardEstimateDetailsHTML(){
   let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
   html+=`<table class="estimate-table dash-cards"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
   let ts=0,tv=0,ta=0;
-  const __egs=estimateGroups(estFiles);__egs.forEach(g=>{const f=g.rep;const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
+  // v331 사본 판정은 현장 안에서만(hjSalesEntries·projStats 와 같다) — 예전에는 전 현장 파일을 한 번에 묶어, 다른 현장의 같은 이름
+  // 견적('욕실 견적.xlsx')이 '사본'으로 합쳐져 한 줄이 숨고 합계가 줄었다(500만 + 700만 → 700만). 미배정은 미배정끼리.
+  const __byPj=new Map();estFiles.forEach(f=>{const k=f.project||'';if(!__byPj.has(k))__byPj.set(k,[]);__byPj.get(k).push(f);});
+  const __egs=[];__byPj.forEach(list=>{__egs.push.apply(__egs,estimateGroups(list));});
+  __egs.forEach(g=>{const f=g.rep;const e=f.est; const supply=e.supply||((e.amount||0)-(e.vat||0)); const vat=e.vat||0; const amt=e.amount||supply+vat; ts+=supply;tv+=vat;ta+=amt;
     html+=`<tr><td>${escapeHtml(e.customer||f.name)}${g.dups.length?' <span style="font-size:10px;background:#e0e7ff;color:#4338ca;padding:1px 6px;border-radius:8px;white-space:nowrap">📎 사본 '+g.dups.length+'</span>':''}</td><td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td><td>${previewButtonHtml(f,'보기')}</td></tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td><td></td></tr>`;
@@ -9086,7 +9112,7 @@ const AI_TOOLS = [
  {name:'photo_report',description:'현장 사진을 날짜별·공정별로 자동 정리해 작업 일지를 만든다. Gemini 키가 있으면 AI가 작업 내용을 요약. query=현장/고객명(생략 시 사진 있는 현장 목록). "사진 정리해서 일지/작업 일지/사진 보고서"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
  {name:'vat_report',description:'부가세 신고 준비: 분기(과세기간)별 매출세액·매입세액 공제·납부(환급) 예상세액을 집계해 화면을 엶. period 지정 가능(생략 시 최근). "부가세/세금신고/매출매입 정리/신고 자료"면 호출.',parameters:{type:'OBJECT',properties:{period:{type:'STRING',description:'예: 2026-1'}}}},
  {name:'batch_receive',description:'[변경] 여러 입금을 한 번에 기록하고 영수증까지 자동 발송한다. payments=[{query:현장/고객명, amount:금액}], receipt=true면 영수증 발송, sms=true면 현금영수증 안내 문자도. "오늘 들어온 돈 정리/여러 건 입금"이면 호출.',parameters:{type:'OBJECT',properties:{payments:{type:'ARRAY',items:{type:'OBJECT',properties:{query:{type:'STRING'},amount:{type:'NUMBER'}}}},receipt:{type:'BOOLEAN'},sms:{type:'BOOLEAN'}},required:['payments']}},
- {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동, 일정은 연결 해제, 수금·AS·견적 등 연결 기록은 지우지 않고 \'(삭제됨) 이름 · 날짜\' 로 남긴다. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
+ {name:'delete_project',description:'[변경] 현장을 삭제한다. 배정된 사진·서류는 삭제되지 않고 미배정으로 이동(견적서 파일은 매출 기록이라 \'(삭제됨) 이름 · 날짜\' 로 옮김), 일정은 연결 해제, 수금·AS·견적 등 연결 기록은 지우지 않고 \'(삭제됨) 이름 · 날짜\' 로 남긴다. 삭제 전 자동 백업됨. query=현장/고객명. "○○ 현장 지워/삭제"면 호출. 반드시 정확한 현장을 확인할 것.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}},required:['query']}},
  {name:'delete_schedule',description:'[변경] 일정을 삭제한다. 삭제 전 자동 백업됨. keyword=일정 제목/현장/날짜. "○○ 일정 취소/삭제"면 호출. 여러 건이면 되물어 확정.',parameters:{type:'OBJECT',properties:{keyword:{type:'STRING'}},required:['keyword']}},
  {name:'add_note',description:'[변경] 메모·할 일을 기록한다. text=내용(들은 내용 전체), project=관련 현장(선택). 문장이 "~메모해줘/적어둬/기억해/잊지마"로 끝나면 내용이 무엇이든(자재 주문 포함) 이 도구를 쓴다. 실제 발주서 작성은 material_order.',parameters:{type:'OBJECT',properties:{text:{type:'STRING'},project:{type:'STRING'}},required:['text']}},
  {name:'list_notes',description:'기록한 메모·할 일을 조회한다. query로 거를 수 있음. "메모 뭐 있지/적어둔 거"면 호출.',parameters:{type:'OBJECT',properties:{query:{type:'STRING'}}}},
@@ -9807,7 +9833,7 @@ function aiResultBrief(name,out){
   if(name==='morning_brief')return ' — 할일 '+(out.챙길일||0)+'가지';
   if(name==='revenue_trend')return out.추세퍼센트!=null?' — 추세 '+(out.추세퍼센트>=0?'+':'')+out.추세퍼센트+'%':'';
   if(name==='send_settle_doc')return out.파일?' — '+(out.완료||'')+' '+out.문서:'';
-  if(name==='delete_project')return out.삭제?' — '+out.삭제+' 삭제(사진 '+out.사진서류_미배정전환+'개 보존)':'';
+  if(name==='delete_project')return out.삭제?' — '+out.삭제+' 삭제(사진·서류 '+out.사진서류_미배정전환+'개 미배정'+(out.견적서파일_보존?', 견적서 '+out.견적서파일_보존+'개 “'+out.보존_이름+'”':'')+')':'';
   if(name==='delete_schedule')return out.삭제한일정?' — 삭제됨':'';
   if(name==='add_note')return out.기록?' — 기록됨':'';
   if(name==='list_notes')return ' — '+(out.개수||0)+'개';
@@ -10947,7 +10973,8 @@ function dailyCheckData(){
   if(noRep)items.push({ic:'📋',t:'최근 작업일지 미작성 '+noRep+'건',act:"state.tab='schedule';render()",w:3});
   const un=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
   if(un)items.push({ic:'🧹',t:'미배정 사진 '+un+'장 — AI 자동 정리 가능',act:"aiAutoOrganize({auto:false,from:'daily'})",w:4});
-  const unq=(state.quotes||[]).filter(q=>!q.project&&quoteCalc(q).total>0).length;
+  // v331 작성·보냄 견적만 — 종결(lost)은 연결될 일이 없어 매일 조르기만 했고, 수주 표시(won)는 연결 없이도 이미 매출이다(hjSalesEntries).
+  const unq=(state.quotes||[]).filter(q=>q&&!q.project&&hjQuoteOpenForFollow(q)&&quoteCalc(q).total>0).length;
   if(unq)items.push({ic:'🧾',t:'현장 미연결 견적 '+unq+'건 — 연결하면 매출 반영',act:"state.tab='estimates';render()",w:5});
   items.sort((a,b)=>a.w-b.w);
   return items.slice(0,5);
@@ -15183,7 +15210,8 @@ function bizDashData(){
   // 이번 달 수금(payLog 기준)
   let monthRecv=0;(state.payLog||[]).forEach(x=>{if(String(x.d||'').slice(0,7)===ym)monthRecv+=num(x.amt);});
   // 이번 달 완료 현장
-  const doneThisMonth=acts.filter(p=>p.doneAt&&String(p.doneAt).slice(0,7)===ym);
+  // v331 기간 실적은 보관 여부와 무관하다 — 끝낸 현장을 📦 보관하는 것이 정상 흐름이라, 보관을 빼면 이번 달 끝낸 공사가 조용히 빠졌다.
+  const doneThisMonth=(state.projects||[]).filter(p=>p&&p.doneAt&&String(p.doneAt).slice(0,7)===ym);
   // 진행 중 현장(시공 단계)
   const inProgress=acts.filter(p=>(p.stage||0)===2);
   // 단계 분포
@@ -15198,8 +15226,9 @@ function bizDashData(){
   // 챙길 일
   const checks=(typeof dailyCheckData==='function')?dailyCheckData():[];
   // 이번 달 신규 견적/매출 추정
-  let monthEst=0;(state.quotes||[]).forEach(q=>{if(String(q.date||'').slice(0,7)===ym)monthEst+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est&&hjNormDate(f.est.date).slice(0,7)===ym)monthEst+=num(f.est.amount);});   // 점 형식(2026.05.10) 저장본도 이번 달로 잡히게
+  // v331 매출 한 벌(hjSalesEntries)로 센다 — 예전에는 state.quotes 합계에 state.files 견적 파일(앱 견적의 가상 파일 quote_… 포함)을
+  // 또 더해 현장에 연결한 앱 견적이 두 번(110만 → 220만), 종결·집계 제외·엑셀/PDF 사본도 다 잡혔다. ymOf 는 점 형식(2026.05.10)도 읽는다.
+  let monthEst=0;hjSalesEntries().forEach(r=>{if(r.ym===ym)monthEst+=num(r.amount);});
   // 미처리 AS
   const asOpen=(typeof asOpenList==='function')?asOpenList().length:0;
   // 웹(홈페이지) 유입 현장 — manmool 공개 사이트에서 넘어온 상담 리드
@@ -15370,13 +15399,13 @@ function revenueTrendData(months){
   const keys=[];
   for(let i=months-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);keys.push(d.getFullYear()+'-'+pad2(d.getMonth()+1));}
   const est={},recv={},done={};keys.forEach(k=>{est[k]=0;recv[k]=0;done[k]=0;});
-  // 매출(견적): 앱 견적 + 외부 견적 파일
-  (state.quotes||[]).forEach(q=>{const k=String(q.date||'').slice(0,7);if(k in est)est[k]+=quoteCalc(q).total;});
-  (state.files||[]).forEach(f=>{if(f.kind==='estimate'&&f.est){const k=hjNormDate(f.est.date).slice(0,7);if(k in est)est[k]+=num(f.est.amount);}});   // 점 형식 저장본도 추이에 잡히게
+  // 매출(견적): 매출 한 벌(hjSalesEntries — 부가세 신고·월말 결산과 같은 값). v331 예전에는 앱 견적 합계에 견적 파일(앱 견적의 가상 파일 포함)을
+  // 또 더해 현장에 연결한 앱 견적이 두 번, 종결·집계 제외·사본도 다 잡혔다.
+  hjSalesEntries().forEach(r=>{const k=r.ym;if(k&&(k in est))est[k]+=num(r.amount);});
   // 수금(payLog)
   (state.payLog||[]).forEach(x=>{const k=String(x.d||'').slice(0,7);if(k in recv)recv[k]+=num(x.amt);});
-  // 완료 현장 수
-  state.projects.filter(p=>!p.archived&&p.doneAt).forEach(p=>{const k=String(p.doneAt).slice(0,7);if(k in done)done[k]++;});
+  // 완료 현장 수 — 보관 현장도 센다(v331: 끝낸 현장을 보관하면 지난달 완료가 0 으로 줄었다)
+  (state.projects||[]).filter(p=>p&&p.doneAt).forEach(p=>{const k=String(p.doneAt).slice(0,7);if(k in done)done[k]++;});
   const rows=keys.map(k=>({ym:k,mm:+k.split('-')[1],est:est[k],recv:recv[k],done:done[k]}));
   const totalEst=rows.reduce((a,r)=>a+r.est,0),totalRecv=rows.reduce((a,r)=>a+r.recv,0);
   // 추세: 최근 3개월 vs 이전 3개월 수금
@@ -16125,12 +16154,12 @@ function settleDocs(name,kind){
 // AI용 현장 삭제 — 스냅샷 후 실제 제거(확인은 AI 승인카드가 담당)
 function aiDeleteProject(name){
   if(!state.projects.find(x=>x.name===name))return {오류:'현장을 찾을 수 없습니다: '+name};
-  // UI 삭제와 같은 함수 — 사진·서류는 미배정, 일정은 연결 해제, 수금·AS·견적 등은 '(삭제됨) 이름 · 날짜' 로 보존
+  // UI 삭제와 같은 함수 — 사진·서류는 미배정, 일정은 연결 해제, 견적서 파일·수금·AS·견적 등은 '(삭제됨) 이름 · 날짜' 로 보존
   const r=hjDeleteProjectCore(name);
   const fileCount=r.counts.files||0;
   markDirty();render();
   const kept=hjProjectRefText(r.kept);
-  return {삭제:name,사진서류_미배정전환:fileCount,일정_연결해제:(r.counts.schedule||0)-(r.due?1:0),수금약속일_알림:r.due?(r.due.kept?'메모가 있어 “'+r.tomb+'”로 보존':'일정표에서 뺌('+r.due.date+')'):'없음',기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. 수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
+  return {삭제:name,사진서류_미배정전환:fileCount,견적서파일_보존:r.counts.estFiles||0,일정_연결해제:(r.counts.schedule||0)-(r.due?1:0),수금약속일_알림:r.due?(r.due.kept?'메모가 있어 “'+r.tomb+'”로 보존':'일정표에서 뺌('+r.due.date+')'):'없음',기록_보존:kept||'없음',보존_이름:r.tomb,안내:'사진·서류는 삭제되지 않고 미배정으로 이동했습니다. '+(r.counts.estFiles?'견적서 파일과 ':'')+'수금·AS·견적 등 연결 기록은 “'+r.tomb+'” 이름으로 남겼습니다. 되돌리려면 🛡 안전판에서 복구하세요.'};
 }
 function aiDeleteSchedule(keyword){
   const q=String(keyword||'').trim();
@@ -16757,7 +16786,7 @@ function weekBriefData(){
   const lastRecv=lastPays.reduce((a,x)=>a+x.amt,0);
   const lastQuotes=(state.quotes||[]).filter(q=>q.date>=last.from&&q.date<=last.to);
   const lastQuoteSum=lastQuotes.reduce((a,q)=>a+quoteCalc(q).total,0);
-  const lastDone=state.projects.filter(p=>!p.archived&&p.doneAt&&p.doneAt>=last.from&&p.doneAt<=last.to);
+  const lastDone=state.projects.filter(p=>p&&p.doneAt&&p.doneAt>=last.from&&p.doneAt<=last.to);   // v331 보관 현장도 — 기간에 끝낸 공사는 보관해도 실적이다
   const lastPhotos=state.files.filter(f=>{if(f.kind!=='photo')return false;const d=aiYmdOf(f.when);return d&&d>=last.from&&d<=last.to;}).length;
   const lastSched=(state.schedule||[]).filter(s=>s.date>=last.from&&s.date<=last.to&&!/^💰/.test(s.title||''));
   // 이번주(0)
@@ -18208,7 +18237,7 @@ function opsReportData(period){
   const exps=(state.expenses||[]).filter(e=>String(e.date||'')>=from&&String(e.date||'')<=to);
   const spend=exps.reduce((a,e)=>a+num(e.amount),0);
   // 완료 현장
-  const done=state.projects.filter(p=>!p.archived&&p.doneAt&&p.doneAt>=from&&p.doneAt<=to);
+  const done=state.projects.filter(p=>p&&p.doneAt&&p.doneAt>=from&&p.doneAt<=to);   // v331 보관 현장도 — 기간에 끝낸 공사는 보관해도 실적이다
   // 새 견적
   const quotes=(state.quotes||[]).filter(q=>q.date>=from&&q.date<=to);
   const quoteSum=quotes.reduce((a,q)=>a+quoteCalc(q).total,0);
@@ -26026,12 +26055,29 @@ function estimateGroups(estFiles){
     const lettersOf=function(f){return norm(f.name).replace(/[^가-힣a-z]/g,'');};
     const digitsOf=function(f){return (norm(f.name).match(/\d/g)||[]).join('');};
     const byPA={},out=[];
+    // v331 ✍ 편집으로 엑셀·PDF 견적을 옮겨 온 앱 견적(가상 파일 _editedFrom)은 이 병합에 끼지 않는다. 그 원본의 사본 묶음은 저장 때
+    // exSum 으로 빠졌으니 남은 같은 금액 견적은 다른 공사다 — 예전에는 '[견적서] 제목.pdf' 가 글자 없는 이름이라 같은 현장·같은 금액의
+    // 다른 엑셀('주방 견적.xlsx' 550만)과 사본으로 묶여, 욕실을 편집·저장하자 주방 550만이 매출·청구·잔금에서 사라졌다.
+    //   단 그 원본 자신(Σ 로 집계에 되돌린 경우 — 저장 안내가 그 길을 알려 준다)과는 묶는다. 안 묶으면 원본 엑셀과 앱 견적이 두 번 잡힌다.
+    //   원본 = _editedFrom 과 id 가 같거나, 원본과 1차 이름 키가 같은 파일(같은 이름의 PDF 출력본). 원본을 지운 경우엔 짝이 없다.
+    //   대표(rep)만 본다: 가상 파일 이름 '[견적서] …' 은 정규화하면 '[' 만 남아 1차에서 늘 혼자('id:' 키)라 dups 에 들어올 수 없고,
+    //   원본과 묶이면 아래에서 원본이 대표가 된다 — 그 뒤 그 묶음은 원본 기준의 보통 규칙을 따른다.
+    const byId={};(estFiles||[]).forEach(function(f){if(f&&f.id!=null)byId[f.id]=f;});
+    const key1=function(f){const k=norm(f.name);return k&&k.length>=2?k:'id:'+f.id;};
+    const editedOf=function(g){const r=g.rep;return r&&r._fromQuote&&r._editedFrom?r._editedFrom:null;};
+    const isSrcOf=function(g,srcId){const src=byId[srcId];
+      return [g.rep].concat(g.dups||[]).some(function(m){return m&&!m._fromQuote&&(m.id===srcId||(!!src&&key1(m)===key1(src)));});};
+    const pairOK=function(c,g){const ec=editedOf(c),eg=editedOf(g);
+      if(!ec&&!eg)return true;
+      if(ec&&eg)return false;                          // 편집한 앱 견적 둘은 서로 다른 견적
+      return ec?isSrcOf(g,ec):isSrcOf(c,eg);};
     arr.forEach(function(g){
       const pj=g.rep.project||'',amt=g.amt||0;
       if(pj&&amt>0){
         const cands=byPA[pj+'|'+amt]||[];
         // 같은 현장·같은 금액인 앞선 그룹 중에서 '사본'을 찾는다
         const t=cands.filter(function(c){
+          if(!pairOK(c,g))return false;
           const dA=digitsOf(c.rep),dB=digitsOf(g.rep);
           if(dA&&dB&&dA!==dB)return false;               // 호수 등 숫자가 서로 다르면 다른 견적(101동 vs 202동)
           if(isX(c.rep)!==isX(g.rep))return true;        // 엑셀 ↔ PDF = 원본과 그 출력본 → 사본
@@ -26042,7 +26088,7 @@ function estimateGroups(estFiles){
           return !lA||!lB||lA===lB;
         })[0];
         if(t){
-          if(isX(g.rep)&&!isX(t.rep)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본)
+          if((isX(g.rep)&&!isX(t.rep))||editedOf(t)){t.dups.push(t.rep);t.rep=g.rep;}   // 대표는 언제나 엑셀(원본) · 편집 앱 견적보다 그 원본
           else t.dups.push(g.rep);
           t.dups=t.dups.concat(g.dups);
           return;
@@ -29900,6 +29946,9 @@ function closeQuoteEdit(force){
    목록에는 깊은 복사본을 넣는다. 같은 객체를 두면 저장 뒤 계속 고친 값이 [저장] 없이 목록에 남는다(AI 초안이 그랬다). */
 function quoteCommitEditing(q){
   const srcId=q._srcFileId;delete q._srcFileId;
+  // v331 엑셀·PDF 를 ✍ 편집해 만든 견적이라는 표식(견적 레코드 안) — 가상 파일(_editedFrom)이 estimateGroups 2차 병합(같은 현장·같은 금액)에
+  // 끼지 않게 한다. 원본 사본 묶음은 아래 quoteExcludeSrcGroup 이 exSum 으로 이미 뺐다 — 남은 같은 금액 견적은 다른 공사다.
+  if(srcId)q.fromFileId=srcId;
   const copy=JSON.parse(JSON.stringify(q));
   const idx=state.quotes.findIndex(x=>x.id===q.id);
   if(idx>=0)state.quotes[idx]=copy;else state.quotes.push(copy);
@@ -29951,6 +30000,7 @@ function syncQuoteToProject(q){
   if(!f){f={id:vid,name:'[견적서] '+(q.title||q.no)+'.pdf',ext:'pdf',kind:'estimate',_virtual:true,_fromQuote:true};state.files.push(f);}
   f.project=q.project;
   f.est={amount:c.total,supply:c.supply,vat:c.vat,customer:q.title||'',date:q.date,bizno:COMPANY.bizno,_edited:true};
+  if(q.fromFileId)f._editedFrom=q.fromFileId;else delete f._editedFrom;   // estimateGroups 2차 병합에서 빠진다(quoteCommitEditing v331)
 }
 function setQuoteField(field,val){const q=state.editingQuote;if(!q)return;
   if(field==='vatIncluded')q.vatIncluded=(val==='1');
@@ -31772,8 +31822,10 @@ async function organizeAllProjects(){
   if(!state.dirHandle){toast('먼저 왼쪽 “📁 로컬 폴더 연결”로 작업 폴더를 여세요. (전체 정리는 PC에서 동작)');return;}
   if(!requireEditMode('전체 정리(이동)'))return;
   // 이동 대상: 현장 배정됨 + 로컬 파일(handle) + 아직 _정리완료 아님. (미배정·드라이브전용분 제외)
-  const movable=state.files.filter(f=>f.project&&f.handle&&!(f.prefix||'').startsWith('_정리완료/'));
-  const driveOnly=state.files.filter(f=>f.project&&!f.handle&&!(f.prefix||'').startsWith('_정리완료/')).length;
+  // 지운 현장의 견적서 파일('(삭제됨) 이름 · 날짜' — hjDeleteProjectCore v331)은 옮기지 않는다 — 그 이름의 폴더를 만들 일이 아니다.
+  const live=f=>f.project&&!String(f.project).startsWith('(삭제됨) ');
+  const movable=state.files.filter(f=>live(f)&&f.handle&&!(f.prefix||'').startsWith('_정리완료/'));
+  const driveOnly=state.files.filter(f=>live(f)&&!f.handle&&!(f.prefix||'').startsWith('_정리완료/')).length;
   const unassigned=state.files.filter(f=>!f.project&&f.kind==='photo').length;
   if(!movable.length){
     toast(driveOnly?('이동 가능한 로컬 파일이 없습니다 — 드라이브 사진은 드라이브에서 정리하세요('+driveOnly+'개).'):'정리할(현장 배정된) 파일이 없습니다. 먼저 사진을 현장에 배정하세요.');

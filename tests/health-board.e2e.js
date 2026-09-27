@@ -104,7 +104,8 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
         src: {
           margin: names(lossAlertData()),
           budget: names(budgetAlertData()),
-          warranty: names(warrantyDue()),
+          // v331 새 계약: 보드는 warrantyDue 중 만료 30일 안쪽까지만(3년 전에 끝난 보증이 긴급 1위로 남던 결함 — dash-reports ②)
+          warranty: names(warrantyDue().filter(w => w.daysLeft >= -30)),
           stale: names(staleProjectData()),
           review: names(reviewRequestData().filter(x => !x.requested && x.customer && x.customer.phone))
         }
