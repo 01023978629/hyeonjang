@@ -2,7 +2,7 @@
    No startup network calls, automatic uploads, public Drive sharing, or original deletion. */
 (function () {
   'use strict';
-  const VERSION='media-relay-v1', QUEUE='hj_media_jobs_v1', MAX=100*1024*1024;
+  const VERSION='media-relay-v1', QUEUE='hj_media_jobs_v1', RECEIPTS=QUEUE+'_completed', MAX=100*1024*1024;
   const mimeByExt={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',heic:'image/heic',heif:'image/heif',avif:'image/avif',mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm',avi:'video/x-msvideo',mkv:'video/x-matroska','3gp':'video/3gpp','3gpp':'video/3gpp','3g2':'video/3gpp2'};
   let busy=false, serial=Promise.resolve();const checkedConnections=new WeakMap();
   const errors={
@@ -12,7 +12,7 @@
     'ambiguous-record':'같은 이름·크기의 기록이 여러 개입니다. 어느 기록인지 먼저 정리해 주세요.', 'storage-failed':'안전한 저장을 완료하지 못했습니다. 전송 완료로 처리하지 않습니다.',
     'invalid-response':'서버 확인 결과가 예상과 다릅니다. 원본 전송 완료로 처리하지 않습니다.', 'busy':'진행 중인 원본 작업을 먼저 마쳐 주세요.',
     'file-too-large':'파일 하나당 최대 100MB입니다.', 'unsupported-type':'지원하지 않는 사진·동영상 형식입니다.', 'backup-failed':'안전 백업에 실패해 추가를 중단했습니다.',
-    'journal-full':'전송 기록 보관 한도입니다. 서버 기록 보관을 확장한 뒤 다시 시도해 주세요.', 'unconfirmed':'서버 응답 시간이 초과되었습니다. 같은 원본의 전송·재시도로 처리 결과를 확인하세요.',
+    'journal-full':'전송 기록 보관 한도입니다. 서버 기록 보관을 확장한 뒤 다시 시도해 주세요.', 'journal-archive-unavailable':'서버 전송 보관함을 확인할 수 없습니다. 기록을 새로 만들지 않았습니다. 관리자에게 알려 주세요.', 'unconfirmed':'서버 응답 시간이 초과되었습니다. 같은 원본의 전송·재시도로 처리 결과를 확인하세요.',
     'drive-rate-limited':'Drive 요청이 일시적으로 제한됐습니다. 잠시 뒤 같은 파일로 다시 시도하세요. 전송 기록은 보존했습니다.',
     'drive-quota-exceeded':'Drive 저장 용량 또는 사용 한도를 확인해 주세요. 원본과 전송 기록은 보존했습니다.',
     'drive-forbidden':'서버의 Drive 접근 권한이나 조직 정책을 관리자가 확인해야 합니다. 자동으로 권한을 변경하지 않았습니다.',
@@ -85,17 +85,60 @@
     checkedConnections.set(rec,c);
     return {ok:true,status:rec._sourceVerification.status,file};
   });}
-  async function jobs(){const rows=await idbGetStrict(QUEUE);if(rows==null)return [];if(!Array.isArray(rows)||rows.length>512||rows.some(j=>!j||!/^[a-f0-9-]{36}$/.test(j.uploadId||'')||typeof j.key!=='string'||!/^[a-f0-9]{64}$/.test(j.sha256||'')||!/^[a-f0-9]{64}$/.test(j.connectionFingerprint||'')||!Number.isSafeInteger(j.size)||!Number.isSafeInteger(j.offset)||j.offset<0||j.offset>j.size))fail('storage-failed');return rows;}
+  function validJobs(rows){if(rows==null)return [];if(!Array.isArray(rows)||rows.length>512||rows.some(j=>!j||!/^[a-f0-9-]{36}$/.test(j.uploadId||'')||typeof j.key!=='string'||!/^[a-f0-9]{64}$/.test(j.sha256||'')||!/^[a-f0-9]{64}$/.test(j.connectionFingerprint||'')||!Number.isSafeInteger(j.size)||!Number.isSafeInteger(j.offset)||j.offset<0||j.offset>j.size))fail('storage-failed');return rows;}
+  async function jobs(){return validJobs(await idbGetStrict(QUEUE));}
   async function queueWrite(mutator){
     const run=async()=>{const rows=await jobs(),next=mutator(rows);if(next.length>512)fail('storage-failed');await idbSet(QUEUE,next);return next;};
     const invoke=()=>navigator.locks?navigator.locks.request('hj-media-jobs-v1',run):run();
     const pending=serial.then(invoke,invoke);serial=pending.catch(()=>{});return pending;
   }
   async function saveJob(job){await queueWrite(rows=>{const index=rows.findIndex(j=>j.uploadId===job.uploadId);if(index<0)fail('storage-failed');return rows.map((j,i)=>i===index?{...job}:j);});}
+  const receiptKey=(fp,key,sha)=>json([fp,key,sha]);
+  function validReceipts(value){
+    if(value==null)return {};
+    if(typeof value!=='object'||Array.isArray(value))fail('storage-failed');
+    Object.entries(value).forEach(([key,j])=>{validJobs([j]);if(j.state!=='complete'||!j.file||key!==receiptKey(j.connectionFingerprint,j.key,j.sha256))fail('storage-failed');});
+    return value;
+  }
+  // Compact only acknowledged receipts still present in durable appState AND the live
+  // record. Retries without a local record, failed commits and pending jobs stay intact.
+  async function compactCompleted(){
+    const matches=(meta,j)=>meta&&j.file&&meta.fileId===j.file.fileId&&meta.sha256===j.sha256&&meta.size===j.size&&meta.mimeType===j.mimeType&&meta.connectionFingerprint===j.connectionFingerprint;
+    const run=()=>new Promise((resolve,reject)=>{
+      const open=indexedDB.open('hyeonjang-db',1);let db,tx;
+      open.onerror=()=>reject(new Error('storage-failed'));
+      open.onsuccess=()=>{try{
+        db=open.result;tx=db.transaction('kv','readwrite');const store=tx.objectStore('kv');
+        let saved,rows,receipts,loaded=0;
+        const apply=()=>{if(++loaded!==3)return;try{
+          if(__tabStale)fail('record-changed');
+          receipts=validReceipts(receipts);
+          const durable=Array.isArray(saved&&saved.files)?saved.files:[];
+          const next=validJobs(rows).filter(j=>{
+            if(j.state!=='complete'||!j.file)return true;
+            const live=state.files.filter(f=>f.kind==='photo'&&fileKey(f)===j.key&&matches(f._mediaOriginal,j));
+            const disk=durable.filter(f=>f.kind==='photo'&&f.key===j.key&&matches(f.mediaOriginal,j));
+            if(live.length!==1||disk.length!==1)return true;
+            const key=receiptKey(j.connectionFingerprint,j.key,j.sha256),old=receipts[key];
+            if(old&&(old.uploadId!==j.uploadId||old.file.fileId!==j.file.fileId))fail('storage-failed');
+            receipts[key]=j;return false;
+          });
+          if(next.length!==(rows||[]).length){store.put(receipts,RECEIPTS);store.put(next,QUEUE);}
+        }catch(_){tx.abort();}};
+        const a=store.get('appState'),q=store.get(QUEUE),r=store.get(RECEIPTS);a.onsuccess=()=>{saved=a.result;apply();};q.onsuccess=()=>{rows=q.result;apply();};r.onsuccess=()=>{receipts=r.result;apply();};
+        tx.oncomplete=()=>{db.close();resolve();};tx.onabort=tx.onerror=()=>{db.close();reject(new Error('storage-failed'));};
+      }catch(_){if(db)db.close();reject(new Error('storage-failed'));}};
+    });
+    const invoke=()=>navigator.locks?navigator.locks.request('hj-media-jobs-v1',run):run();
+    const pending=serial.then(invoke,invoke);serial=pending.catch(()=>{});return pending;
+  }
   async function chooseJob(rec,file,sha256,c){
     const fp=await fingerprint(c),key=fileKey(rec);let chosen;
+    await compactCompleted();
+    const receipt=validReceipts(await idbGetStrict(RECEIPTS))[receiptKey(fp,key,sha256)];
     await queueWrite(rows=>{const hits=rows.filter(j=>j.connectionFingerprint===fp&&j.key===key&&j.sha256===sha256);if(hits.length>1)fail('storage-failed');
       if(hits.length){chosen=hits[0];return rows;}
+      if(receipt){chosen={...receipt};return [...rows,chosen];}
       chosen={uploadId:crypto.randomUUID(),recordId:rec.id,key,name:file.name,size:file.size,mimeType:mime(file),sha256,connectionFingerprint:fp,state:'pending',offset:0,updatedAt:new Date().toISOString()};return [...rows,chosen];});
     return {...chosen};
   }
@@ -109,6 +152,15 @@
     validateLocal(rec,file);if(file.size>cap.maxFileBytes)fail('file-too-large');if(!cap.mimeTypes.includes(mime(file)))fail('unsupported-type');
     const sha256=await fileHash(file);if(rec._originalSha256&&rec._originalSha256!==sha256)fail('file-mismatch');
     if(!current())fail('record-changed');if(!sameConnection(c))fail('connection-changed');
+    // A compacted successful upload already has a durable original receipt. Never
+    // create a fresh upload ID when that receipt exists: verify it, or fail closed.
+    const previous=rec._mediaOriginal;
+    if(previous&&previous.connectionFingerprint===await fingerprint(c)&&previous.sha256===sha256&&previous.size===file.size&&previous.mimeType===mime(file)){
+      const remote=verifiedFile((await call(c,'mediaInspect',{fileId:previous.fileId})).file,previous);
+      if(remote.fileId!==previous.fileId)fail('invalid-response');
+      if(!current()||!sameConnection(c))fail('record-changed');
+      await compactCompleted();return {ok:true,file:remote,record:rec,reused:true};
+    }
     const job=await chooseJob(rec,file,sha256,c);
     const work=async()=>{
       if(!current())fail('record-changed');
@@ -157,10 +209,49 @@
     return (rec._driveId?'서버 연결 기록만 있음':'목록·미리보기만 있음')+' · 원본 재연결 필요';
   }
   const styles='<style>.media-manager{font-size:15px;overflow-wrap:anywhere}.media-manager p{font-size:13px;line-height:1.65}.media-manager input,.media-manager select{width:100%;box-sizing:border-box;min-height:44px;font:inherit;margin:6px 0 12px;padding:8px}.media-manager button{min-height:44px;white-space:normal}.media-manager .media-actions{display:flex;gap:8px;flex-wrap:wrap}.media-manager article{border:1px solid var(--line);padding:12px;border-radius:12px;margin:10px 0}.media-manager small{display:block;margin:6px 0;line-height:1.5}.media-manager .media-status{padding:10px;background:var(--paper);border:1px solid var(--line);border-radius:8px}</style>';
+  function auditView(){
+    if(busy||photoIntakePending()||__modalCloseLocked){toast(message('busy'));return false;}
+    const projects=[...new Set(state.files.filter(f=>f.kind==='photo').map(f=>f.project||''))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
+    openModal('현장별 원본 일괄 점검',styles+'<section id="mediaAudit" class="media-manager"><p>선택 현장의 사진·동영상에서 서버 원본 상태를 읽기 전용으로 점검합니다. 업로드·배정·삭제는 하지 않습니다. 한 번에 100개이며 결과는 이번 창에서 확인한 상태입니다.</p><label>점검 현장<select id="mediaAuditProject">'+projects.map(p=>'<option value="'+escapeAttr(p)+'">'+escapeHtml(p||'미배정')+'</option>').join('')+'</select></label><div class="media-actions"><button id="mediaAuditRun" class="blue">선택 현장 점검</button><button id="mediaAuditCancel" class="ghost" disabled>중단</button></div><p id="mediaAuditStatus" role="status" aria-live="polite">아직 점검하지 않았습니다.</p><div id="mediaAuditRows"></div></section>',[{label:'원본 관리로',cls:'ghost',fn:view},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    const root=document.getElementById('mediaAudit'),select=root.querySelector('#mediaAuditProject'),button=root.querySelector('#mediaAuditRun'),cancel=root.querySelector('#mediaAuditCancel'),notice=root.querySelector('#mediaAuditStatus'),list=root.querySelector('#mediaAuditRows');
+    if(projects.includes(state.activeProject))select.value=state.activeProject;
+    let running=false,stopped=false;
+    cancel.onclick=()=>{stopped=true;notice.textContent='중단 요청됨 · 진행 중 확인까지만 마칩니다.';};
+    select.onchange=()=>{list.replaceChildren();notice.textContent='현장이 바뀌었습니다. 다시 점검하세요.';};
+    button.onclick=async()=>{
+      if(running||busy)return;
+      running=true;stopped=false;button.disabled=true;select.disabled=true;cancel.disabled=false;list.replaceChildren();
+      const project=select.value,rows=state.files.filter(f=>f.kind==='photo'&&(f.project||'')===project),targets=rows.slice(0,100).map(rec=>({rec,current:guard(rec)}));
+      const c={url:__relay.url,token:__relay.token,device:__relay.device};let count=0,invalid=false;const outcomes=[];
+      const paint=()=>{if(!root.isConnected)return;list.innerHTML=outcomes.map(o=>'<article><b>'+escapeHtml(o.name)+'</b><small>'+escapeHtml(o.text)+'</small></article>').join('');};
+      try{
+        for(const target of targets){
+          if(stopped||!root.isConnected)break;
+          if(!sameConnection(c)||!target.current()){invalid=true;break;}
+          const rec=target.rec;let text;
+          if(rec._mediaOriginal?.fileId||rec._driveId){
+            // Clear old success before a new attempt; a failure must not inherit it.
+            delete rec._sourceVerification;checkedConnections.delete(rec);
+            const r=await verify(rec.id);
+            text=r.ok?(r.status==='original-verified'?'서버 원본 동일성 확인':'서버 존재 · 원본 동일성 미확인'):'확인 실패 · '+message(r.error);
+          }else text=rec.handle||rec._file?'기기 원본 연결 · 서버 미확인':'목록만 있음 · 원본 재연결 필요';
+          if(!root.isConnected)break;
+          if(!sameConnection(c)||!target.current()){invalid=true;break;}
+          outcomes.push({name:rec.name,text});count++;paint();notice.textContent=count+'/'+targets.length+'개 점검';
+        }
+        if(root.isConnected){
+          // Earlier successes become stale if a record/connection changed mid-run.
+          if(invalid||!sameConnection(c)||targets.some(t=>!t.current())){list.replaceChildren();notice.textContent='자료 또는 서버 연결 변경 · 이번 결과는 무효입니다. 다시 점검하세요.';}
+          else notice.textContent=(stopped?'중단됨 · ':'점검 완료 · ')+count+'/'+rows.length+'개'+(rows.length>100?' · 100개 제한, 나머지는 원본 관리에서 확인하세요.':'')+' · 원본 전송은 하지 않았습니다.';
+        }
+      }finally{running=false;if(root.isConnected){button.disabled=false;select.disabled=false;cancel.disabled=true;}}
+    };return true;
+  }
   function view(){
     if(busy||photoIntakePending()||__modalCloseLocked){toast(message('busy'));return false;}
     openModal('사진·동영상 원본 관리',styles+'<section id="mediaManager" class="media-manager"><p>목록 등록·기기 연결·서버 원본 보관은 다릅니다. 기존 기록에서 원본만 다시 연결하면 현장·작업명·날짜를 유지합니다. PC·폰 원본은 삭제하지 않습니다.</p><div class="media-actions"><button type="button" id="mediaAdd" class="blue">사진·영상 원본 추가</button><button type="button" id="mediaHealth" class="ghost">서버 기능 확인</button></div><p id="mediaStatus" class="media-status" role="status" aria-live="polite">전송하지 않았습니다. 같은 회사 서버를 쓰는 직원에게 원본을 공유할 수 있습니다.</p><label>현장·파일 검색<input id="mediaSearch" type="search" placeholder="현장명, 작업명, 파일명"></label><div id="mediaRows"></div><button type="button" id="mediaMore" class="ghost">더 보기</button><p>전송 실패는 해당 파일의 [원본 전송·재시도]를 누르세요. 같은 전송번호로 이어 올리며 완료 파일은 다시 생성하지 않습니다. 새로고침하면 대기 기록은 남고 원본은 다시 선택해야 할 수 있습니다. 1개 최대 100MB, 한 번에 20개입니다.</p></section>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     const root=document.getElementById('mediaManager'),notice=root.querySelector('#mediaStatus');let limit=30;
+    const audit=document.createElement('button');audit.type='button';audit.id='mediaAuditOpen';audit.className='ghost';audit.textContent='현장별 원본 일괄 점검';audit.onclick=auditView;root.querySelector('.media-actions').appendChild(audit);
     const say=text=>{if(root.isConnected)notice.textContent=text;};
     async function run(fn,success){
       if(busy)return;say('확인 중입니다…');const previous=__modalCloseLocked;__modalCloseLocked=true;
@@ -232,7 +323,7 @@
     const url=URL.createObjectURL(r.blob);if(window.__lbUrl)URL.revokeObjectURL(window.__lbUrl);window.__lbUrl=url;video.hidden=false;video.src=url;
     document.getElementById('lbVideoNone')?.remove();
   }
-  window.HJMedia={get busy(){return busy;},reconnect,verify,upload,retry:upload,readOriginal,view,pick,intake,playRemote,queueKey:QUEUE,
+  window.HJMedia={get busy(){return busy;},reconnect,verify,upload,retry:upload,readOriginal,view,auditView,pick,intake,playRemote,queueKey:QUEUE,
     health:()=>exclusive(async()=>({ok:true,...await capability(connection())}))};
   window.hjMediaView=view;
   window.addEventListener('beforeunload',e=>{if(busy){e.preventDefault();e.returnValue='';}});

@@ -14,7 +14,8 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 글자 없는 정적 그림이고, 비행기모드에서
 // 홈 화면 아이콘이 깨지지 않으려면 캐시에 있어야 한다. 늘릴 때는 이 줄을 손으로 고치고
 // 왜 늘렸는지 여기에 적어라 — 그게 이 검사의 쓸모다.
-const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./privacy.html','./terms.html',
+// Representative-only operations shell has no credentials. Staff pages are deliberately not cached.
+const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./operations-review.js','./privacy.html','./terms.html',
   './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png'];
 const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
@@ -96,6 +97,7 @@ function assertShellPathsSafe(paths, label) {
     'https://example.test/hyeonjang/index.html',
     'https://example.test/hyeonjang/media-safety.js',
     'https://example.test/hyeonjang/shared-todo-backup.js',
+    'https://example.test/hyeonjang/operations-review.js',
     'https://example.test/hyeonjang/privacy.html',
     'https://example.test/hyeonjang/terms.html'
   ]) {
@@ -112,6 +114,9 @@ function assertShellPathsSafe(paths, label) {
     ['hjreq 민감 쿼리', request('https://example.test/hyeonjang/index.html?hjreq=TEST_ONLY', { mode: 'navigate', destination: 'document' })],
     ['lead 민감 쿼리', request('https://example.test/hyeonjang/index.html?lead=TEST_ONLY', { mode: 'navigate', destination: 'document' })],
     ['알 수 없는 HTML', request('https://example.test/hyeonjang/unknown.html', { mode: 'navigate', destination: 'document' })],
+    ['직원 로그인 HTML', request('https://example.test/hyeonjang/team.html', { mode: 'navigate', destination: 'document' })],
+    ['직원 API 설정', request('https://example.test/hyeonjang/team-config.js')],
+    ['직원 화면 스크립트', request('https://example.test/hyeonjang/team-ui.js')],
     ['공개 백업 HTML', request('https://example.test/hyeonjang/backup/index_v104_original.html', { mode: 'navigate', destination: 'document' })],
     ['테스트 스크립트', request('https://example.test/hyeonjang/tests/x.js')],
     ['Apps Script 소스', request('https://example.test/hyeonjang/apps-script/Code.gs')],
@@ -128,7 +133,7 @@ function assertShellPathsSafe(paths, label) {
   assert(r.puts === 0, 'opaque 응답을 캐시한다');
 
   console.log('PASS  같은 출처·쿼리 없는 앱 셸 허용목록만 캐시');
-  console.log('PASS  SHELL_PATHS 는 정확한 10개 공개 앱 셸(문서 6 + 아이콘 4)이며 격리 데이터 경로 변이를 거부');
+  console.log('PASS  SHELL_PATHS 는 정확한 11개 공개 앱 셸이며 직원 페이지와 격리 데이터 경로 변이를 거부');
   console.log('PASS  외부·Authorization·쿼리 navigation·민감 쿼리·POST 캐시 차단');
   console.log('PASS  실패·opaque 응답 캐시 차단');
 })().catch(e => { console.error(e && e.stack || e); process.exit(1); });

@@ -9,7 +9,8 @@ const APP = process.env.HJ_TEST_APP || 'http://127.0.0.1:8299/index.html', ORIGI
 const MUTATION = process.env.HJ_MEDIA_INTAKE_MUTATION || '';
 const mutations = {
   snapshot: ["if(await hjSnapshot('사진·영상 원본 추가 전',true,true)!==true)", 'if(false)'],
-  digest: ["if(await fileHash(blob)!==file.sha256)", 'if(false)']
+  digest: ["if(await fileHash(blob)!==file.sha256)", 'if(false)'],
+  receipt: ['store.put(receipts,RECEIPTS)', 'store.put({},RECEIPTS)']
 };
 let modified;
 if (MUTATION) {
@@ -100,7 +101,7 @@ async function pick(page, files = [FILE]) {
 async function confirm(page) {
   await page.locator('#mediaConfirm').click(); await page.waitForFunction(() => !HJMedia.busy && !!document.getElementById('mediaIntakeStatus')?.textContent);
 }
-async function facts(page) { return page.evaluate(async () => ({ count: state.files.length, creates: __intake.creates, calls: __intake.calls, snapshots: __intake.snapshots, records: state.files.map(f => ({ id: f.id, name: f.name, project: f.project, work: f._worklabel, sha: f._originalSha256, remote: f._mediaOriginal })), jobs: await idbGetStrict(HJMedia.queueKey), appState: await idbGetStrict('appState') })); }
+async function facts(page) { return page.evaluate(async () => ({ count: state.files.length, creates: __intake.creates, calls: __intake.calls, snapshots: __intake.snapshots, records: state.files.map(f => ({ id: f.id, name: f.name, project: f.project, work: f._worklabel, sha: f._originalSha256, remote: f._mediaOriginal })), jobs: await idbGetStrict(HJMedia.queueKey), completed: await idbGetStrict(HJMedia.queueKey+'_completed'), appState: await idbGetStrict('appState') })); }
 async function screenshot(page, name) { if (process.env.HJ_MEDIA_INTAKE_SCREENSHOTS) await page.screenshot({ path: path.join(process.env.HJ_MEDIA_INTAKE_SCREENSHOTS, name + '.png'), fullPage: true }); }
 
 (async () => {
@@ -134,7 +135,14 @@ async function screenshot(page, name) { if (process.env.HJ_MEDIA_INTAKE_SCREENSH
   await scenario('repeat selection preserves existing project work and upload ID', async page => {
     await pick(page); await confirm(page); const first = await facts(page);
     await page.locator('#mediaConfirm').click(); await pick(page); await page.locator('#mediaWork').fill('TEST_MUST_NOT_OVERWRITE'); await confirm(page);
-    const after = await facts(page); assert.equal(after.count, 1); assert.equal(after.creates, 1); assert.equal(after.records[0].id, first.records[0].id); assert.equal(after.records[0].work, 'TEST_NEW_WORK'); assert.equal(after.jobs[0].uploadId, first.jobs[0].uploadId);
+    const after = await facts(page); assert.equal(after.count, 1); assert.equal(after.creates, 1); assert.equal(after.records[0].id, first.records[0].id); assert.equal(after.records[0].work, 'TEST_NEW_WORK');
+    // v328 moves only durable, fully acknowledged receipts to a separate IDB
+    // store. Prove preservation rather than assuming the old queue location.
+    assert.deepEqual(after.jobs,[]);assert.equal(Object.keys(after.completed).length,1);
+    const firstJob=first.jobs[0],key=JSON.stringify([firstJob.connectionFingerprint,firstJob.key,firstJob.sha256]);
+    assert.deepEqual(after.completed[key],firstJob,'the entire original upload ID/file/hash/size/fingerprint receipt must survive');
+    assert.deepEqual(after.records,first.records,'project, work, identity and original metadata remain unchanged');
+    assert.deepEqual(after.calls.slice(first.calls.length),['mediaHealth','mediaHealth','mediaInspect'],'repeat selection verifies an existing original without starting/sending another upload');
   });
   await scenario('equal name and size but different bytes cannot disappear silently', async page => {
     const other = { ...FILE, buffer: Buffer.from(FILE.buffer) }; other.buffer[0] ^= 1;
