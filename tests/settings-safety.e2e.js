@@ -8,6 +8,9 @@
       ③ 데모 중: 파일을 받지 않고(데모가 풀리지 않는다), 안전판·유상 저장·서버 대기열·백업 파일이 돌지 않는다
       ④ 데모 표시 띠 + [데모 끝내기] → 내 자료가 그대로 돌아온다(데모 중 사진을 올리려 했어도)
       ⑤ 빈 기기의 첫 안내(loadDemoPrompt)는 묻지 않고 열리고, 없는 기능('설정에서 지우고')을 약속하지 않는다
+      ⑩ 폴더를 연결한 PC 에서 데모 중 [🔄 재스캔]·[폴더 연결]·파일 고르기는 입구에서 멈춘다 — 예전에는 파일을 하나도
+         못 읽은 채 _현장.json 을 불러와 데모를 풀고, 폴더에 없는 것으로 보인 저장 색인(현장·공정)을 지워 이 기기에 저장했다.
+         읽는 도중 데모에 들어가도 반쪽 결과로 색인을 정리·복원하지 않는다. 폴더를 연결한 기기는 끝낼 때 다시 연결한다고 말한다.
    B. AI 두뇌 선택
       예전: 🦙 Llama 를 골라 저장해도 새로고침하면 선택이 사라지고, OpenAI 키가 있으면 쓴 만큼 과금되는 ChatGPT 로 불렸다.
       ⑥ 'llama' 선택이 새로고침 뒤에도 남고 Llama 로 불린다(ChatGPT 요청 0)
@@ -195,6 +198,94 @@ async function boot(page) {
     await ctx.close();
   }
 
+  /* ───────── A⑩. 폴더 연결 PC 의 데모 중 재스캔 ───────── */
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, serviceWorkers: 'block' });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(9000);
+    page.on('pageerror', e => errors.push(String(e)));
+    await page.route('https://**/*', r => r.abort());
+    await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
+    await boot(page);
+    // 가짜 폴더: 사진 a.jpg + _현장.json(그 사진이 '실제현장 TEST' 에 배정된 저장본). 읽힌 이름·열린 파일을 센다.
+    const seed = await page.evaluate(async () => {
+      clearTimeout(__idbSaveTimer); __idbSaveTimer = null; state._demo = false; __tabStale = false;
+      window.__fs = { entries: 0, json: 0, midDemo: false };
+      const jpg = () => new File([new Uint8Array([255, 216, 255, 224, 1, 2, 3, 4])], 'a.jpg', { type: 'image/jpeg', lastModified: 1767225600000 });
+      const photo = { kind: 'file', name: 'a.jpg', getFile: async () => jpg() };
+      window.__fakeDir = {
+        kind: 'directory', name: '만물 TEST',
+        entries: async function* () { window.__fs.entries++; if (window.__fs.midDemo) state._demo = true; yield ['a.jpg', photo]; },
+        getFileHandle: async (n) => { if (n !== '_현장.json') throw new DOMException('nf', 'NotFoundError'); window.__fs.json++; return { getFile: async () => new File([JSON.stringify(window.__saved)], '_현장.json') }; },
+        getDirectoryHandle: async () => { throw new DOMException('nf', 'NotFoundError'); },
+        queryPermission: async () => 'granted', requestPermission: async () => 'granted'
+      };
+      state.projects = [{ name: '실제현장 TEST', stage: 2, received: 0, phases: ['타일'], cost: { material: 0, labor: 0, outsource: 0 } }];
+      state.files = [];
+      const f = await ingestFile(jpg(), photo, '');
+      f.project = '실제현장 TEST'; f._phase = '타일';
+      state.dirty = false; state.dirHandle = window.__fakeDir;
+      window.__saved = JSON.parse(JSON.stringify(serializeData()));
+      window.__saved.savedAt = new Date().toISOString();
+      const ok = await guardedPersistCurrentState();
+      window.__toasts = []; const o = window.toast; window.toast = (m) => { window.__toasts.push(String(m)); return o(m); };
+      return { ok, files: state.files.map(x => x.name + ':' + x.project).join('|') };
+    });
+    assert(seed.ok === true && seed.files === 'a.jpg:실제현장 TEST', 'A⑩ 시드 실패: ' + JSON.stringify(seed));
+    // 폴더를 연결한 기기에서는 확인 글이 '폴더는 다시 연결해야 한다'고 말한다
+    const dlg = [];
+    page.once('dialog', d => { dlg.push(d.message()); d.accept(); });
+    await page.click('#btnDemo');
+    await page.waitForFunction(() => state._demo === true && state.projects.length === 3);
+    assert(/폴더/.test(dlg[0] || '') && /다시 연결/.test(dlg[0] || ''), 'A⑩ 폴더를 연결한 기기는 끝낼 때 다시 연결해야 한다고 묻는 글에 적는다: ' + dlg[0]);
+    const barTxt = await page.evaluate(() => (document.getElementById('hjDemoBar') || {}).textContent || '');
+    assert(/폴더는 다시 연결/.test(barTxt), 'A⑩ 데모 띠도 폴더 재연결을 말한다: ' + barTxt);
+    // 데모 중 [🔄 재스캔]·[폴더 연결]·파일 고르기
+    const r = await page.evaluate(async () => {
+      let pick = 0; const oPick = window.showDirectoryPicker; window.showDirectoryPicker = async () => { pick++; return window.__fakeDir; };
+      const oCE = document.createElement.bind(document); let inputs = 0;
+      document.createElement = (t, ...a) => { const el = oCE(t, ...a); if (String(t).toLowerCase() === 'input') { inputs++; el.click = () => {}; } return el; };
+      try {
+        await scanDir();
+        document.getElementById('btnScan').disabled = false; document.getElementById('btnScan').click();
+        await document.getElementById('btnMount').onclick();
+        pickFilesFallback();
+        await new Promise(res => setTimeout(res, 50));
+      } finally { window.showDirectoryPicker = oPick; document.createElement = oCE; }
+      const st = await idbGet('appState');
+      return { demo: !!state._demo, names: state.projects.map(p => p.name).join('|'), entries: window.__fs.entries, json: window.__fs.json, pick, inputs,
+        saved: ((st && st.files) || []).map(x => x.name + ':' + x.project).join('|'), toast: window.__toasts.filter(t => /폴더를 읽지 않/.test(t)).length };
+    });
+    assert(r.entries === 0 && r.json === 0, 'A⑩ 데모 중 재스캔은 폴더를 읽지 않는다: ' + JSON.stringify(r));
+    assert(r.demo && /망원동/.test(r.names), 'A⑩ 재스캔이 데모를 풀지 않는다: ' + JSON.stringify(r));
+    assert(r.pick === 0, 'A⑩ 데모 중 [폴더 연결]은 폴더 고르기를 열지 않는다: ' + JSON.stringify(r));
+    assert(r.inputs === 0, 'A⑩ 데모 중 파일 고르기를 열지 않는다: ' + JSON.stringify(r));
+    assert(r.toast >= 1, 'A⑩ 왜 멈췄는지 말한다: ' + JSON.stringify(r));
+    assert(r.saved === 'a.jpg:실제현장 TEST', 'A⑩ 이 기기에 저장된 사진 색인이 그대로다: ' + JSON.stringify(r));
+    // [데모 끝내기] → 새로 열린 뒤에도 사진 배정이 남아 있다
+    await Promise.all([page.waitForEvent('load'), page.click('#hjDemoExit')]);
+    await boot(page);
+    const back = await page.evaluate(() => ({ files: state.files.map(x => x.name + ':' + x.project + ':' + (x._phase || '')).join('|'), demo: !!state._demo }));
+    assert(back.files === 'a.jpg:실제현장 TEST:타일' && !back.demo, 'A⑩ 데모를 끝내면 사진 색인(현장·공정)이 그대로다: ' + JSON.stringify(back));
+    // 읽는 도중 데모에 들어간 경우 — 반쪽 결과로 _현장.json 을 불러와 색인을 정리하지 않는다
+    // 새로 열린 페이지에는 가짜 폴더가 없다 — 다시 만든다
+    const mid2 = await page.evaluate(async () => {
+      window.__fs = { entries: 0, json: 0, midDemo: true };
+      window.__toasts = []; const o = window.toast; window.toast = (m) => { window.__toasts.push(String(m)); return o(m); };
+      const photo = { kind: 'file', name: 'a.jpg', getFile: async () => new File([new Uint8Array([255, 216, 255, 224, 1, 2, 3, 4])], 'a.jpg', { type: 'image/jpeg' }) };
+      state.dirHandle = {
+        kind: 'directory', name: '만물 TEST',
+        entries: async function* () { window.__fs.entries++; state._demo = true; yield ['a.jpg', photo]; },
+        getFileHandle: async (n) => { window.__fs.json++; throw new DOMException('nf', 'NotFoundError'); },
+        getDirectoryHandle: async () => { throw new DOMException('nf', 'NotFoundError'); }
+      };
+      await scanDir();
+      return { entries: window.__fs.entries, json: window.__fs.json, demo: !!state._demo, stop: window.__toasts.some(t => /폴더 읽기를 멈췄/.test(t)) };
+    });
+    assert(mid2.entries === 1 && mid2.json === 0 && mid2.demo && mid2.stop, 'A⑩ 읽는 도중 데모에 들어가면 저장본을 불러오지 않고 멈춘다: ' + JSON.stringify(mid2));
+    await ctx.close();
+  }
+
   /* ───────── B. AI 두뇌 ───────── */
   {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, serviceWorkers: 'block' });
@@ -245,10 +336,14 @@ async function boot(page) {
     await page.evaluate(async () => { await llamaConfigSave(null); });
     const r7b = await ask();
     assert(r7b === 'ERR:NO_LLAMA_CONFIG' && hits.openai === 0, '⑦ Llama 설정이 없어도 ChatGPT 로 가지 않고, 무엇이 없는지 말한다: ' + r7b);
+    const f7b = await page.evaluate(async () => { try { await aiFC([{ role: 'user', parts: [{ text: 'hi' }] }]); return 'ok'; } catch (e) { return 'ERR:' + (e.message || e); } });
+    assert(f7b === 'ERR:NO_LLAMA_CONFIG' && hits.openai === 0, '⑦ aiFC 도 Gemini 키가 아니라 Llama 설정이 없다고 말한다: ' + f7b);
+    assert((await page.evaluate(() => aiKeyReady())) === false, '⑦ 고른 두뇌(Llama)가 준비 안 됐으면 OpenAI 키가 있어도 준비됨으로 보이지 않는다');
     const nm7 = await page.evaluate(() => aiProviderName());
     assert(!/ChatGPT/.test(nm7) && /Llama/.test(nm7), '⑦ 이름표도 ChatGPT 라고 하지 않고 Llama 설정을 가리킨다: ' + nm7);
     // ⑦ Gemini 를 골라 두었는데 Gemini 키가 없다 → ChatGPT 로 가지 않는다
     await page.evaluate(() => aiProviderSet('gemini'));
+    assert((await page.evaluate(() => aiKeyReady())) === false, '⑦ Gemini 선택·Gemini 키 없음 → OpenAI 키만으로 준비됨이라 하지 않는다');
     const r7c = await ask();
     assert(/^ERR:/.test(r7c) && hits.openai === 0, '⑦ Gemini 선택 → ChatGPT 로 가지 않는다: ' + r7c);
     const f7c = await page.evaluate(async () => { try { await aiFC([{ role: 'user', parts: [{ text: 'hi' }] }]); return 'ok'; } catch (e) { return 'ERR:' + (e.message || e); } });
@@ -267,6 +362,7 @@ async function boot(page) {
       assert((await page.evaluate(() => window.__aiProvider)) === v, '⑥ ' + v + ' 선택도 새로고침 뒤에 남는다');
     }
     // ⑨ ChatGPT 를 고른 사람은 ChatGPT
+    assert((await page.evaluate(() => aiKeyReady())) === true, '⑨ ChatGPT 를 고른 사람은 OpenAI 키로 준비됨');
     const r9 = await ask();
     assert(r9 === 'openai-said' && hits.openai === 1, '⑨ ChatGPT 선택은 ChatGPT: ' + r9 + ' ' + JSON.stringify(hits));
     // ⑨ 아무것도 고르지 않은 사람(예전 기본 순서): Gemini 가 없으면 ChatGPT
