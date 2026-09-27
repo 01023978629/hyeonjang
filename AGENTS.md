@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-27 팀별 운영 v328 (로컬 구현·미배포)
+
+- `team.html` + `team-ui.js` + 빈 `team-config.js`: 별도 직원 업무 화면. `apps-script-team-ops/`는 별도 서버이며 기존 릴레이/관리사무소 포털에 합치지 않는다. 실제 설치·회사 신원·구성원 연결은 미진행. `TEAM-OPERATIONS-v328.md`와 서버 README를 읽고 운영 경계를 유지한다.
+- 기본 팀은 대표·관리 / 누수·배관팀 / 인테리어팀 / 관리사무소 대응팀(사용자 확인). 회사 owner/lead/member/external 권한은 포털 역할과 분리. 고객 아파트 포털을 회사 신원 단지로 사용하지 않는다. 과거 APP_TOKEN 접근은 별도 승인된 전환 없이는 차단됐다고 주장하지 않는다.
+- 기존 업무는 JSON 초안으로 개별 검토 이관. 자동 삭제/양방향 동기화/실계정 생성 없음. 회사 서버의 immutable snapshots + revision + requestId를 보존하며 public stage에 서버 소스/데이터를 넣지 않는다. 직원 페이지는 SW 캐시에서 제외한다.
+- `operations-review.js`: 세대 `lifecycle`, 프로젝트 `costReview`만 중첩 저장. 날짜/원가 CAS·스냅샷 실패 중단. 보증서 HTML·서명 링크·직접 서명·발급 기록은 같은 날짜/기간 snapshot을 따른다. 기존 서명에 snapshot이 없으면 종전 방식이다.
+- `media-safety.js` 현장별 100건 원본 일괄 점검 + 완료 영수증 IDB 원자 보관. 서버 `MediaRelay.gs` archive는 기본 OFF, 회사 전용 폴더로 명시 설정한 경우만 사용. 영수증과 과거 snapshot을 지워 중복 전송 방어를 약화하지 않는다.
+- 신규 검사: `company-team.unit`, `company-team-ui.e2e`, `operations-review.e2e`, `media-batch-audit.e2e`, `media-journal-archive.unit`. 관련 환경 변수의 변이는 각 파일에서 확인한다. 배포 게이트는 여전히 필터 없는 `node tests/run-all.js` 전체 재실행이다.
+
 ## 2026-09-25 관리사무소 작업 안내 v327 (PR 후보)
 
 대표 요청 "관리사무소에 작업 가능한 작업 리스트를 보여 줄 수 있는 창". 더보기(고객·영업) 「📋 관리사무소 작업 안내」
