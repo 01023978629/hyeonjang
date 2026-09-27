@@ -1650,7 +1650,16 @@ function setMountedDirectory(dir){
   $('#mountHint').textContent=direct?'정리완료 사진을 연결하는 중… 상위 저장자료는 그대로 유지합니다.':'연결됨. 스캔 중…';
   $('#btnScan').disabled=false;$('#btnSave').disabled=direct;
 }
+/* v331 데모 중에는 폴더 연결·재스캔·파일 고르기를 입구에서 막는다. ingestFile 이 데모 중 파일을 받지 않으므로
+   그대로 스캔하면 읽은 파일이 0개인 채 loadProject→applyData 가 데모를 풀고, 폴더에 없는 것으로 보인 저장 색인
+   (현장·공정·작업명)을 정리해 이 기기에 files=[] 로 저장했다(색인 20개 이하 기기는 안전장치 밖). */
+function hjDemoFolderBlocked(){
+  if(!state._demo)return false;
+  toast('🧪 데모 중에는 폴더를 읽지 않습니다 — 위 [데모 끝내기] 뒤 다시 누르세요');
+  return true;
+}
 $('#btnMount').onclick=async()=>{
+  if(hjDemoFolderBlocked())return;
   if(!FS_OK){pickFilesFallback();return;}
   try{
     const dir=await window.showDirectoryPicker({mode:'readwrite'});
@@ -1660,6 +1669,7 @@ $('#btnMount').onclick=async()=>{
 };
 $('#btnScan').onclick=()=>scanDir();
 function pickFilesFallback(){
+  if(hjDemoFolderBlocked())return;
   const inp=document.createElement('input');inp.type='file';inp.multiple=true;
   inp.onchange=async()=>{const arr=[...inp.files];clearFileList();for(const f of arr)await ingestFile(f);
     $('#mountName').textContent='📄 '+arr.length+'개 파일';
@@ -1671,6 +1681,7 @@ let __scanTick=0;
 let __showArchived=false;   // 보관 현장 펼침 상태   // 스캔 점진 표시 카운터
 async function scanDir(){
   if(!state.dirHandle)return;
+  if(hjDemoFolderBlocked())return;
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
   window.__organizedRecovered=0;window.__organizedSkipped=new Map();
@@ -1679,6 +1690,8 @@ async function scanDir(){
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
   window.__walkDirs=new Set();window.__walkSaw=new Set();window.__walkFailed=new Set();window.__walkSkip=new Set();
   await walk(state.dirHandle,scanRootPrefix());
+  // 읽는 도중 데모에 들어갔으면 나머지 파일은 받지 않았다 — 반쪽 결과로 색인을 정리·복원하지 않는다([데모 끝내기]가 이 기기 저장본을 다시 연다)
+  if(state._demo){toast('🧪 데모에 들어가 폴더 읽기를 멈췄습니다 — [데모 끝내기] 뒤 다시 읽어 주세요');return;}
   if(_carry.length){
     _carry.forEach(f=>{
       if(f._driveId&&state.files.some(x=>x._driveId===f._driveId))return;
@@ -2022,6 +2035,7 @@ function applyData(data,opts){
   if(!data.files)return 0;
   __lastData=data; if(data.savedAt)__dataAt=data.savedAt;
   state._demo=false; // 실제 자료 적용 → 데모 모드 해제(이후 자동저장 활성)
+  try{hjDemoBarSync();}catch(e){}
   state.learn=(data.learn&&typeof data.learn==='object')?data.learn:{estimateByBiz:{}};
   // 누락 키 보존: data.x 가 undefined(구 스키마·부분 자료)면 기존 state 유지.
   // 빈 배열 []는 truthy라 '명시적 비움'은 그대로 적용되고, 키 자체가 없을 때만 보존된다.
@@ -2182,6 +2196,7 @@ function fixXlsxEstVat(){
 }
 let __saving=false,__saveQueued=null;
 async function saveProject(silent){
+  if(state._demo){if(!silent)toast('🧪 데모 중에는 저장하지 않습니다 — 위 [데모 끝내기]를 누르면 내 자료로 돌아갑니다');return;}
   if(!state.dirHandle||!FS_OK){if(!silent)toast('폴더 연결 시 폴더에 저장됩니다. 폰에서는 ‘데이터 내보내기’를 쓰세요.');return;}
   if(directOrganizedRoot()){if(!silent)toast('_정리완료는 사진 연결 전용입니다. 저장자료는 상위 만물 폴더의 _현장.json을 그대로 사용합니다.');return;}
   if(__saving){__saveQueued=silent;return;}
@@ -2214,6 +2229,7 @@ async function loadProject(){
 }
 /* 데이터 내보내기: 어디서나(폰 포함) 다운로드되는 파일 1개 */
 function exportData(){
+  if(state._demo){toast('🧪 데모 자료는 내보내지 않습니다 — [데모 끝내기] 뒤 내 자료를 내보내세요');return;}   // 데모 파일을 나중에 불러오면 실제 자료를 덮는다
   if(!state.projects.length && !state.files.length && !(state.quotes||[]).length && !(state.notes||[]).length){toast('내보낼 데이터가 없습니다.');return;}
   const data=serializeData();
   const stamp=localDate().replace(/-/g,'');
@@ -2499,6 +2515,7 @@ function relayLinkItemRetry(it){
   return 'keep';
 }
 async function cloudFlushQueue(manual){
+  if(state._demo)return;   // 대기열의 save 는 보내는 순간의 serializeData() 로 채워진다 — 데모 중에 보내면 데모가 서버에 올라간다
   if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
   __relayFlushing=true;
   try{
@@ -3419,6 +3436,7 @@ async function gdFindFile(retried){
   return id;
 }
 async function gdSave(silent,retried){
+  if(state._demo)return false;
   if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
   try{
     if(!__gdToken)await gdGetToken(false);
@@ -3477,6 +3495,7 @@ async function gdLoad(silent,retried,force){
 }
 /* ----- 날짜별 백업 + 복원 (만물인테리어 폴더 안, 데이터 안전) ----- */
 async function gdBackup(){
+  if(state._demo)return;
   try{
     if(!__gdToken||!__gdFolderId)return;
     const today=localDate();
@@ -4746,8 +4765,73 @@ function showHelp(){
   openModal('현장 사용법', body, [{label:'닫기',cls:'blue',fn:closeModal}]);
 }
 
-/* ---------- 데모 데이터 (테스트용) ---------- */
-function loadDemo(){
+/* ---------- 데모 데이터 (테스트용) ----------
+   v331: 사이드바 버튼이 묻지도 않고 실제 현장·파일을 데모로 바꿨고, 그 화면에서 사진 한 장을 올리면(ingestFile 이 데모를 풀었다)
+   가상 현장이 이 기기·서버 자료를 덮었다. 이제 ① 실제 자료가 있으면 묻고 ② 지금 자료를 이 기기에 저장·안전판을 찍고(실패하면 멈춤)
+   ③ 데모 중에는 어디에도 쓰지 않으며(persistLocal·relaySaveNow·cloudAutoSave 에 더해 saveProject·hjSnapshot·ingestFile·
+   durableLocalMutation·cloudFlushQueue·gdSave·gdBackup·makeCheckpoint·exportData 가 _demo 를 본다)
+   ④ 위 띠의 [데모 끝내기]가 새로고침으로 이 기기에 남은 내 자료를 다시 연다(데모 중에는 아무것도 안 썼으므로 그대로다). */
+function hjDemoRealCount(){
+  const n=k=>Array.isArray(state[k])?state[k].length:0;
+  // 세금 캘린더(_taxAuto)·앱에 들어 있는 일정(BUILTIN_CALENDAR_IMPORTS)은 부팅 때 저절로 생기는 것이라 '내 자료'로 세지 않는다
+  const builtin=new Set();try{BUILTIN_CALENDAR_IMPORTS.forEach(b=>(b.events||[]).forEach(e=>builtin.add(e.id)));}catch(e){}
+  const sched=(state.schedule||[]).filter(x=>x&&!x._taxAuto&&!builtin.has(x.id)).length;
+  return {projects:n('projects'),files:n('files'),other:n('quotes')+n('payLog')+n('expenses')+n('asLog')+n('notes')+sched};
+}
+function hjDemoBarSync(){try{
+  const on=!!state._demo,sb=document.getElementById('btnDemo');
+  if(sb)sb.textContent=on?'🚪 데모 끝내기 — 내 자료로 돌아가기':'🧪 데모 데이터로 둘러보기';
+  let b=document.getElementById('hjDemoBar');
+  if(!on){if(b)b.remove();return;}
+  if(b)return;
+  b=document.createElement('div');b.id='hjDemoBar';b.setAttribute('role','status');
+  b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:60;background:#5b21b6;color:#fff;font-size:13px;font-weight:600;line-height:1.4;padding:4px 10px;display:flex;align-items:center;gap:10px;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+  const t=document.createElement('span');t.style.cssText='flex:1 1 auto;min-width:0;overflow-wrap:anywhere';
+  t.textContent='🧪 데모 보는 중 — 가상 자료입니다. 여기서 바꾼 것은 저장되지 않습니다.'+(state.dirHandle?' 끝내면 새로 열리므로 폴더는 다시 연결해야 합니다.':'');
+  const x=document.createElement('button');x.type='button';x.id='hjDemoExit';x.textContent='데모 끝내기';
+  x.style.cssText='flex:0 0 auto;min-height:44px;min-width:44px;padding:6px 14px;border-radius:10px;border:0;background:#fff;color:#5b21b6;font-weight:700;font-size:14px;cursor:pointer';
+  x.onclick=hjDemoExit;
+  b.append(t,x);document.body.appendChild(b);
+}catch(e){}}
+function hjDemoExit(){
+  if(!state._demo){hjDemoBarSync();return false;}
+  toast('내 자료로 돌아갑니다…');
+  // 데모 중에는 이 기기·서버에 아무것도 쓰지 않았다 — 새로고침하면 이 기기에 저장된 내 자료가 그대로 열린다.
+  // (_demo 는 끝까지 true 로 둔다 — pagehide 저장 가드가 데모를 쓰지 않게)
+  // 데모의 '저장 안 한 변경'은 버리는 것이 맞다 — 남겨 두면 브라우저가 '사이트를 나가시겠습니까?'로 막는다
+  state.dirty=false;
+  try{location.reload();}catch(e){}
+  return true;
+}
+let __demoEntering=false;
+async function loadDemo(){
+  if(state._demo){hjDemoBarSync();return true;}
+  if(__demoEntering)return false;
+  const c=hjDemoRealCount();
+  if(c.projects||c.files||c.other){
+    const what=[c.projects?'현장 '+c.projects+'곳':'',c.files?'파일 '+c.files+'개':'',c.other?'견적·수금·메모 등 '+c.other+'건':''].filter(Boolean).join(' · ');
+    if(!confirm('이 기기에 실제 자료('+what+')가 있습니다.\n\n데모는 화면만 가상 현장 3곳으로 바꿉니다. 데모 중에는 이 기기·폴더·서버 어디에도 저장하지 않고, 사진·파일도 받지 않습니다.\n화면 위 [데모 끝내기]를 누르면 내 자료로 돌아옵니다.'+(state.dirHandle?'\n(앱이 새로 열리므로 연결한 폴더는 [다시 열기]로 다시 연결해야 합니다.)':'')+'\n\n데모를 볼까요?'))return false;
+    if(state.dirty&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){toast('폴더에 저장 안 한 변경이 있습니다 — 💾 저장한 뒤 다시 누르세요');return false;}
+    if(__tabStale){toast('다른 탭이 더 최근에 저장했습니다 — 새로고침한 뒤 다시 누르세요');return false;}
+    __demoEntering=true;
+    try{
+      // 지금 자료를 이 기기에 먼저 저장한다 — [데모 끝내기]는 이 기기에 저장된 자료로 돌아가기 때문이다.
+      clearTimeout(__idbSaveTimer);
+      let saved=false;try{saved=await guardedPersistCurrentState();}catch(e){saved=false;}
+      if(saved!==true){toast('지금 자료를 이 기기에 저장하지 못해 데모를 열지 않았습니다 — 저장 공간을 확인하세요');return false;}
+      let snap=false;try{snap=await hjSnapshot('데모 보기 전',true,true);}catch(e){snap=false;}
+      if(snap!==true){toast('🛡 안전 스냅샷 저장 실패 — 데모를 열지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return false;}
+      // 서버로 가는 중이던 자동 저장(3초 예약)을 먼저 끝낸다 — 데모 중에는 서버 저장이 멈춘다.
+      if(typeof relayReady==='function'&&relayReady()){
+        if(__relaySaving){toast('서버에 저장하는 중입니다 — 잠시 뒤 다시 누르세요');return false;}
+        clearTimeout(__gdAutoTimer);
+        try{await relaySaveNow();}catch(e){}
+        if(__relayState==='conflict'||__relayState==='auth'){toast('서버 저장을 먼저 확인하세요 — 데모를 열지 않았습니다');return false;}
+      }
+    }finally{__demoEntering=false;}
+    if(state._demo)return true;
+  }
+  state._demo=true;   // 이 줄부터는 어떤 저장도 돌지 않는다 — 아래 clearFileList·교체보다 먼저 둔다
   clearFileList();
   state.projects=[
     {name:'망원동 카페',stage:2,received:8000000,phases:['철거','방수 1차','방수 2차','목공','타일'],cost:{material:4200000,labor:3000000,outsource:1200000},customer:{name:'김민수',phone:'010-2345-6789',addr:'서울 마포구 망원동'}},
@@ -4787,10 +4871,12 @@ function loadDemo(){
   ];
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
-  $('#mountHint').textContent='테스트용 가상 현장 3곳이 로드됐습니다. 각 탭을 눌러 확인하세요. 실제 사용 시에는 폴더를 연결하세요.';
+  $('#mountHint').textContent='테스트용 가상 현장 3곳입니다. 각 탭을 눌러 확인하세요. 데모 중에는 아무것도 저장되지 않습니다 — 끝내려면 위 [데모 끝내기].';
   $('#btnOcrAll').disabled=true;
+  hjDemoBarSync();
   render();
   toast('데모 데이터 로드됨 — 현장 3곳 · 파일 13개');
+  return true;
 }
 let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기) → 중복(원본+정리본) 1회만 인입
 // 사진 우선 탐색 중 원본/정리본이 만난 이름은 경로로만 복원한다.
@@ -4979,7 +5065,9 @@ function restoreUserEdits(rec){
   return rec;
 }
 async function ingestFile(file,handle=null,prefix='',options=null){
-  state._demo=false; // 실제 파일 추가 → 데모 모드 해제
+  /* 예전에는 여기서 데모를 조용히 풀었다 — 데모 화면에 사진 한 장을 올리면 가상 현장이 이 기기·서버 자료를 덮었다(v331).
+     데모 중에는 파일을 받지 않는다. 내 자료로 돌아가려면 [데모 끝내기]. */
+  if(state._demo){toast('🧪 데모 중에는 파일을 추가하지 않습니다 — 위 [데모 끝내기]를 누른 뒤 다시 올려 주세요');throw new Error('demo mode — file not added');}
   const e=bestExt(file.name,file.type),isImg=IMG.includes(e),isVid=isVideoExt(e);
   const rec={id:uid(),name:file.name,handle,prefix,ext:e,size:file.size,kind:'other',
     project:null,when:file.lastModified?new Date(file.lastModified):null,
@@ -5272,7 +5360,7 @@ $('#btnImport').onclick=importData;
 {const _gc=$('#btnGdConnect');if(_gc)_gc.onclick=gdConnectFolder;}
 {const _gp2=$('#btnGdPick2');if(_gp2)_gp2.onclick=gdPickFiles;}
 $('#btnZipPhotos').onclick=importPhotoZip;
-$('#btnDemo').onclick=loadDemo;
+$('#btnDemo').onclick=()=>{if(state._demo)hjDemoExit();else loadDemo();};
 $('#btnBizCard').onclick=shareBizCard;
 $('#btnHelp').onclick=showHelp;
 $('#btnInstall').onclick=installApp;
@@ -9758,6 +9846,7 @@ function aiResultBrief(name,out){
 async function aiFC(contents){
   // 제공자 분기: OpenAI/Llama 선택 시 해당 함수 호출(스스로 도구 실행)
   const prov=window.__aiProvider;
+  if(prov==='llama'&&!llamaReady()){try{await llamaConfigLoad();}catch(e){}}
   // 기기에 키가 없어도 서버 중계가 준비돼 있으면 Gemini 를 쓸 수 있다.
   // 예전에는 window.__geminiKey 만 봐서, 서버에 키를 넣어 둬도 이 경로가 안 열렸다.
   const gemOk=!!window.__geminiKey||(await aiRelayProbe(false)).gemini;
@@ -9765,8 +9854,9 @@ async function aiFC(contents){
   if(prov==='llama'&&llamaReady()){try{return await aiFC_openaiCompat(contents,'llama');}catch(e){if(!gemOk)throw e;/* Gemini 폴백 */}}
   // 기본: Gemini (키도 중계도 없고 다른 제공자가 있으면 그쪽)
   if(!gemOk){
-    if(window.__openaiKey)return await aiFC_openaiCompat(contents,'openai');
+    if(hjAiOpenaiAllowed())return await aiFC_openaiCompat(contents,'openai');   // Gemini·Llama 를 골라 둔 사람은 ChatGPT 로 몰래 넘기지 않는다
     if(llamaReady())return await aiFC_openaiCompat(contents,'llama');
+    if(prov==='llama')throw new Error('NO_LLAMA_CONFIG');   // 🦙 를 골랐는데 설정이 없다 — 'Gemini 키를 넣으라'고 엉뚱한 두뇌를 가리키지 않는다(aiAsk 와 같은 말)
     throw new Error('NO_GEMINI_KEY');
   }
   const res=await quotaReserve('gemini');if(!res.ok)throw new Error(res.msg);
@@ -11211,6 +11301,7 @@ function openWorkOrder(ref){
 let __snapLastAt=0,__snapLastLabel='',__snapshotRestoreBusy=false;
 function hjSnapRoutine(label){const l=String(label||'').trim();return l===''||l==='작업 중'||l==='자동'||l==='자동 저장';}
 async function hjSnapshot(label,force,allowEmpty){
+  if(state._demo)return false;   // 데모 화면은 안전판이 아니다 — 찍으면 실제 자료 안전판이 밀려난다. 안전판이 필요한 쓰기는 이 false 로 멈춘다
   try{
     const now=Date.now();
     if(!force&&now-__snapLastAt<180000)return false;          // 3분 스로틀(강제 제외)
@@ -15061,8 +15152,8 @@ function hjSetupChecklist(){
 function loadDemoPrompt(){
   if((state.projects||[]).length){closeModal();return;}
   openModal('🧪 예시로 둘러볼까요?',
-    '<div style="font-size:13.5px;line-height:1.7">비어 있는 화면이 막막하다면, <b>가상의 현장·사진·견적 예시</b>를 넣어 기능을 구경할 수 있어요.<br><span style="color:var(--muted);font-size:12px">언제든 설정에서 지우고 내 자료로 시작하면 됩니다.</span></div>',
-    [{label:'예시 넣기',cls:'clay',fn:()=>{try{loadDemo();}catch(e){}closeModal();render();toast('예시 데이터를 넣었어요 — 마음껏 눌러보세요');}},
+    '<div style="font-size:13.5px;line-height:1.7">비어 있는 화면이 막막하다면, <b>가상의 현장·사진·견적 예시</b>를 넣어 기능을 구경할 수 있어요.<br><span style="color:var(--muted);font-size:12px">예시를 보는 동안에는 아무것도 저장되지 않아요. 화면 위 [데모 끝내기]를 누르면 빈 화면으로 돌아가 내 자료로 시작하면 됩니다.</span></div>',
+    [{label:'예시 넣기',cls:'clay',fn:()=>{closeModal();Promise.resolve().then(loadDemo).then(ok=>{if(ok){render();toast('예시 데이터를 넣었어요 — 마음껏 눌러보세요');}}).catch(()=>{});}},
      {label:'빈 화면으로',cls:'ghost',fn:closeModal}]);
 }
 
@@ -17971,10 +18062,11 @@ async function openaiAsk(prompt){
 }
 // 통합 AI 래퍼: Gemini 우선(대개 더 쌈 — 결제 미연결이면 0원). OpenAI는 Gemini가 없거나 사용자가 명시 선택('openai') 시만.
 async function aiAsk(prompt){
-  // Llama/커스텀 명시 선택
+  // Llama/커스텀 명시 선택 — 설정(IDB)이 아직 안 올라왔으면 먼저 읽는다(부팅 직후 호출이 기본 순서로 새지 않게)
+  if(window.__aiProvider==='llama'&&!llamaReady()){try{await llamaConfigLoad();}catch(e){}}
   if(window.__aiProvider==='llama'&&llamaReady()){
     try{return await llamaAsk(prompt);}
-    catch(e){if(window.__geminiKey){try{return await geminiAsk(prompt);}catch(e2){throw e;}}if(window.__openaiKey){try{return await openaiAsk(prompt);}catch(e2){throw e;}}throw e;}
+    catch(e){if(window.__geminiKey){try{return await geminiAsk(prompt);}catch(e2){throw e;}}throw e;}   // 유료 ChatGPT 로는 넘기지 않는다
   }
   const forceOpenAI=window.__aiProvider==='openai'&&!!window.__openaiKey;
   if(forceOpenAI){
@@ -17984,23 +18076,26 @@ async function aiAsk(prompt){
   // 기본: Gemini 우선
   if(window.__geminiKey){
     try{return await geminiAsk(prompt);}
-    catch(e){if(window.__openaiKey){try{return await openaiAsk(prompt);}catch(e2){throw e;}}throw e;}
+    catch(e){if(hjAiOpenaiAllowed()){try{return await openaiAsk(prompt);}catch(e2){throw e;}}throw e;}
   }
-  if(window.__openaiKey)return await openaiAsk(prompt);
+  if(hjAiOpenaiAllowed())return await openaiAsk(prompt);
   if(llamaReady())return await llamaAsk(prompt);
+  if(window.__aiProvider==='llama')throw new Error('NO_LLAMA_CONFIG');
   throw new Error('NO_AI_KEY');
 }
 function aiKeyReady(){
   // 서버 중계가 준비됐으면 기기에 키가 없어도 AI 를 쓸 수 있다.
   // 이 함수는 화면을 그리는 중에 불리므로 물어보러 가지 않고, 마지막에 확인해 둔 값을 본다.
-  return !!window.__geminiKey||!!window.__openaiKey||llamaReady()||!!(__aiRelay&&__aiRelay.gemini);
+  // OpenAI 키는 ChatGPT 로 갈 수 있을 때만 '준비됨'이다 — Gemini·Llama 를 골라 두었으면 aiAsk·aiFC 가 ChatGPT 로 넘기지 않는다
+  return !!window.__geminiKey||hjAiOpenaiAllowed()||llamaReady()||!!(__aiRelay&&__aiRelay.gemini);
 }
 function aiProviderName(){
   if(window.__aiProvider==='llama'&&llamaReady())return 'Llama('+(window.__llamaConfig.model||'')+')';
   if(window.__aiProvider==='openai'&&window.__openaiKey)return 'ChatGPT';
   if(window.__geminiKey)return 'Gemini(무료)';
-  if(window.__openaiKey)return 'ChatGPT';
+  if(hjAiOpenaiAllowed())return 'ChatGPT';
   if(llamaReady())return 'Llama';
+  if(window.__aiProvider==='llama')return 'Llama(설정 확인 필요)';
   return '없음';
 }
 
@@ -18609,11 +18704,17 @@ function aiVoiceToggle(){
 }
 
 /* ═══════════ 🔑 AI 제공자 선택 — Gemini(무료) / ChatGPT ═══════════ */
+/* 불러오기와 저장이 같은 목록을 쓴다 — v331 전에는 저장은 'llama' 를 받고 불러오기는 버려서, 🦙 를 골라도 새로고침하면
+   선택이 풀리고 OpenAI 키가 있으면 쓴 만큼 과금되는 ChatGPT 로 불렸다. */
+const HJ_AI_PROVIDERS=['gemini','openai','llama'];
 function aiProviderLoad(){
-  try{const v=localStorage.getItem('hj_ai_provider');if(v==='openai'||v==='gemini')window.__aiProvider=v;}catch(e){}
+  try{const v=localStorage.getItem('hj_ai_provider');if(HJ_AI_PROVIDERS.includes(v))window.__aiProvider=v;}catch(e){}
 }
+// OpenAI(쓴 만큼 과금)로 가도 되는가 — 사용자가 ChatGPT 를 골랐거나, 아직 아무것도 고르지 않았을 때(예전 기본 순서)만.
+// Gemini·Llama 를 골라 둔 사람을 그 두뇌가 실패·미준비라는 이유로 몰래 ChatGPT 로 넘기지 않는다.
+function hjAiOpenaiAllowed(){const p=window.__aiProvider;return !!window.__openaiKey&&(p==='openai'||!HJ_AI_PROVIDERS.includes(p));}
 function aiProviderSet(v){
-  window.__aiProvider=(v==='openai')?'openai':(v==='llama')?'llama':'gemini';
+  window.__aiProvider=HJ_AI_PROVIDERS.includes(v)?v:'gemini';
   try{localStorage.setItem('hj_ai_provider',window.__aiProvider);}catch(e){}
   return window.__aiProvider;
 }
@@ -29076,6 +29177,7 @@ async function applyBulkPhase(scopeProj,phase){
 // 일괄 이동: 대상 선택 후 순차 이동
 // 일괄 작업 직전 체크포인트(백업 파일 저장)
 async function makeCheckpoint(label){
+  if(state._demo)return;
   if(!state.dirHandle||!FS_OK)return;
   try{
     const data=serializeData();data.checkpoint=label;
@@ -34441,6 +34543,7 @@ function aptCommercialGlobalFailure(error){
 }
 async function durableLocalMutation({snapshotLabel,mutateDraft,beforeCommit,onCommitted,manualCreateIntent}){
   if(typeof mutateDraft!=='function')throw new Error('invalid durable mutation');
+  if(state._demo)throw new Error('demo mode — not saved');
   return withAppStateWriteLock(async()=>{
     if(typeof __tabStale!=='undefined'&&__tabStale)throw new Error('stale appState conflict');
     const expectedPointer=__paidCommitPointerKey,expectedStamp=typeof __tabStamp==='undefined'?null:__tabStamp;
@@ -35838,6 +35941,7 @@ async function tryRestoreDir(){
     const bar=$('#restoreBar');
     if(bar){bar.style.display='flex';bar.querySelector('.rb-name').textContent='📁 '+handle.name;
       bar.querySelector('#rbOpen').onclick=async()=>{
+        if(hjDemoFolderBlocked())return;
         let p=perm;
         if(p!=='granted')p=await handle.requestPermission({mode:'readwrite'});
         if(p!=='granted'){toast('폴더 권한이 필요합니다.');return;}
