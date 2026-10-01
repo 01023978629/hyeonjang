@@ -87,7 +87,8 @@
     state.data = null; state.imports = []; state.editor = null; $('workspace').hidden = true;
     if ($('editor').open) $('editor').close();
     ['taskList', 'orgList', 'auditList', 'importList', 'editorFields', 'conflictLatest', 'teamDirectory', 'teamSummary', 'projectSummary', 'memberWorkload', 'operationsList', 'accessResult'].forEach(k => $(k).replaceChildren());
-    state.access = null; $('accessStatus').textContent = ''; $('handoffBox').hidden = true;
+    // A check still in flight when the session ends skips its finally (epoch moved), so the buttons are freed here.
+    state.access = null; state.handoffLost = false; state.checking = false; $('selfCheck').disabled = false; $('ownerCheck').disabled = false; $('accessStatus').textContent = ''; $('handoffBox').hidden = true;
     $('importFile').value = ''; $('importNotice').textContent = ''; $('importPanel').hidden = true;
     state.page = ''; state.filters = {}; resetFilters();
     $('projectFilter').replaceChildren(new Option('모든 현장', '')); $('assigneeFilter').replaceChildren(new Option('모든 담당자', ''));
@@ -407,16 +408,28 @@
     try {
       const v = JSON.parse(raw); if (!v || !Number.isFinite(v.at) || Date.now() - v.at > HANDOFF_TTL || v.at > Date.now() + 60000) fail('invalid-input');
       const tasks = draftsFrom(v); if (!tasks.length) fail('invalid-input'); return { at: v.at, tasks };
-    } catch (_) { dropHandoff(); return null; }
+    } catch (_) {
+      dropHandoff();
+      // Expired hand-offs go quietly; a malformed one must not vanish while the owner believes it was sent.
+      let expired = false; try { const v = JSON.parse(raw); expired = !!v && Number.isFinite(v.at) && Date.now() - v.at > HANDOFF_TTL; } catch (_) { /* not JSON: malformed */ }
+      if (!expired) state.handoffLost = true;
+      return null;
+    }
   }
+  /* The hand-off sits in this browser's storage and carries site names (possibly 동·호수) of every team,
+   * so only the owner — whose device the field app is — sees or consumes it; a lead on a shared browser does not. */
+  function handoffAllowed() { return !!state.data && state.data.me.role === 'owner' && assignableTeams().length > 0; }
   function dropHandoff() { try { localStorage.removeItem(HANDOFF_KEY); } catch (_) { /* private mode: nothing was stored */ } }
   function renderHandoff() {
-    const box = $('handoffBox'), h = state.data && assignableTeams().length ? readHandoff() : null;
-    box.hidden = !h || $('tasksPanel').hidden; if (!h) return;
+    const box = $('handoffBox'), h = handoffAllowed() ? readHandoff() : null; if (h) state.handoffLost = false;
+    const lost = !h && state.handoffLost && handoffAllowed(); box.hidden = (!h && !lost) || $('tasksPanel').hidden;
+    $('handoffLoad').hidden = !h; $('handoffDrop').hidden = !h; box.classList.toggle('error', lost);
+    if (lost) { $('handoffText').textContent = '현장 앱에서 보낸 업무 초안을 읽지 못해 버렸습니다. 서버와 현장 앱의 원래 업무는 바뀌지 않았습니다. 현장 앱에서 다시 보내거나 「JSON 파일로 내려받기」를 쓰세요.'; return; }
+    if (!h) return;
     $('handoffText').textContent = '현장 앱에서 보낸 업무 초안 ' + h.tasks.length + '건이 있습니다(' + new Date(h.at).toLocaleString('ko-KR') + '). 불러오면 이 화면에만 표시되고, 한 건씩 팀·담당자를 정해 저장해야 서버에 올라갑니다.';
   }
   function loadHandoff() {
-    const h = state.data && assignableTeams().length ? readHandoff() : null; if (!h) { renderHandoff(); return; }
+    const h = handoffAllowed() ? readHandoff() : null; if (!h) { renderHandoff(); return; }
     state.imports = h.tasks; dropHandoff(); $('importPanel').hidden = false;
     $('importNotice').textContent = h.tasks.length + '건을 이 화면에만 불러왔습니다. 아직 서버에 저장하지 않았습니다. 「배정 초안 열기」로 한 건씩 저장하세요.';
     renderImports(); renderHandoff(); $('importPanel').scrollIntoView({ block: 'start' });

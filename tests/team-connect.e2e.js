@@ -16,6 +16,11 @@ function engineFrom(pureMutate) {
 }
 const engine = engineFrom(), drifted = engineFrom(src => src.replace("function teamCanSee_(m,t) { return m.role==='owner' || (m.role==='lead' ? m.teamIds.indexOf(t.teamId)>=0 : t.assigneeId===m.id); }", "function teamCanSee_(m,t) { return m.role!=='member' || t.assigneeId===m.id; }"));
 assert.equal(drifted.teamCanSee_({ role: 'lead', teamIds: [], id: 'x' }, { teamId: 'y' }), true, 'drifted server engine prepared');
+// 두 번째 어긋난 서버: 업무 범위는 맞지만 남의 팀·동료 식별정보·변경 이력을 흘린다(teamPresent_ 만 바뀜).
+const leakSwap = (src, a, b) => { assert(src.includes(a), 'leak anchor missing: ' + a); return src.replace(a, b); };
+const leaky = engineFrom(src => [["var teams=s.teams.filter(function(t){return m.role==='owner'||m.teamIds.indexOf(t.id)>=0;});", 'var teams=s.teams.slice();'],
+  ["if(m.role==='owner'){out.userId=u.userId;out.officeId=u.officeId;}", 'out.userId=u.userId;out.officeId=u.officeId;'],
+  ["audit:m.role==='owner'?s.audit.slice(-100).reverse():[]", 'audit:s.audit.slice(-100).reverse()']].reduce((x, [a, b]) => leakSwap(x, a, b), src));
 const clone = x => JSON.parse(JSON.stringify(x));
 function seed() {
   return { schema: 1, revision: 3, requests: [], audit: [{ at: '2026-09-27T00:00:00Z', actorId: 'owner', action: 'teamSave', targetId: 't1', kind: 'team', revision: 1 }],
@@ -43,14 +48,20 @@ function mutateUi(name, content) {
   if (MUTANT === 'handoff-autosave') return swap("state.imports = h.tasks; dropHandoff();", "state.imports = h.tasks; dropHandoff(); api('taskSave', { requestId: crypto.randomUUID(), revision: state.data.revision, entity: { id: '', title: h.tasks[0].title, project: h.tasks[0].project, teamId: state.data.teams[0].id, assigneeId: state.data.me.id, due: '', status: 'todo', handoff: '', sourceRef: h.tasks[0].sourceRef } }).catch(() => {});");
   if (MUTANT === 'handoff-keep') return swap('state.imports = h.tasks; dropHandoff();', 'state.imports = h.tasks;');
   if (MUTANT === 'handoff-stale') return swap('Date.now() - v.at > HANDOFF_TTL ||', '');
-  if (MUTANT === 'handoff-member') return swap("const box = $('handoffBox'), h = state.data && assignableTeams().length ? readHandoff() : null;", "const box = $('handoffBox'), h = state.data ? readHandoff() : null;");
+  if (MUTANT === 'handoff-member') return swap("function handoffAllowed() { return !!state.data && state.data.me.role === 'owner' && assignableTeams().length > 0; }", "function handoffAllowed() { return !!state.data; }");
+  if (MUTANT === 'handoff-lead') return swap("state.data.me.role === 'owner' && assignableTeams()", "assignableTeams()");
+  if (MUTANT === 'handoff-malformed-silent') return swap('if (!expired) state.handoffLost = true;', 'if (false) state.handoffLost = true;');
+  if (MUTANT === 'checking-stuck') return swap("state.checking = false; $('selfCheck').disabled = false; $('ownerCheck').disabled = false; $('accessStatus')", "$('accessStatus')");
+  if (MUTANT === 'self-foreign-teams') return swap("rows.push([foreignTeams.length ? 'bad' : 'ok'", "rows.push([false ? 'bad' : 'ok'");
+  if (MUTANT === 'self-peer-ids') return swap("rows.push([ids.length ? 'bad' : 'ok'", "rows.push([false ? 'bad' : 'ok'");
+  if (MUTANT === 'self-audit') return swap("rows.push([Array.isArray(raw.audit) && raw.audit.length ? 'bad' : 'ok'", "rows.push([false ? 'bad' : 'ok'");
   return content;
 }
 let browser, count = 0;
 async function test(name, fn) { await fn(); count++; console.log('PASS ' + name); }
 async function harness(options = {}) {
   const context = await browser.newContext({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' });
-  const h = { context, store: clone(options.store || seed()), role: options.role || 'owner', calls: [], writes: [], errors: [], diagOpen: !!options.diagOpen, oldServer: !!options.oldServer, drift: !!options.drift, opened: [] };
+  const h = { context, store: clone(options.store || seed()), role: options.role || 'owner', calls: [], writes: [], errors: [], diagOpen: !!options.diagOpen, oldServer: !!options.oldServer, drift: !!options.drift, opened: [], hangDiagnose: !!options.hangDiagnose };
   if (options.shared) Object.defineProperty(h, 'store', { get: () => options.shared.store, set: v => { options.shared.store = v; } });
   const identity = () => ({ userId: h.store.members.find(m => m.id === h.role)?.userId || 'TEST_UNLINKED', officeId: 'TEST_OFFICE' });
   if (options.init) await context.addInitScript(options.init);
@@ -64,6 +75,12 @@ async function harness(options = {}) {
         content = mutateUi(name, content);
         return route.fulfill({ status: 200, contentType: name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8', body: content });
       }
+      if (name === 'operations-review.js' && ['index-standalone-blank', 'index-filter-ctrl'].includes(MUTANT)) {
+        let text = fs.readFileSync(path.join(ROOT, name), 'utf8'); const a = MUTANT === 'index-standalone-blank' ? "if(hjTeamPortalSameWindow()){location.assign('./team.html#mine');return;}" : '!/[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]/.test(v),seen=new Set();';
+        assert(text.includes(a), 'mutation anchor missing: ' + MUTANT);
+        text = text.replace(a, MUTANT === 'index-standalone-blank' ? '' : 'true,seen=new Set();');
+        return route.fulfill({ contentType: 'text/javascript', body: text });
+      }
       if (name === 'operations-review.js' && MUTANT === 'index-autosend') {
         let text = fs.readFileSync(path.join(ROOT, name), 'utf8'); assert(text.includes('hjCompanyHandoffPending();\n  if(!confirm('));
         text = text.replace('hjCompanyHandoffPending();\n  if(!confirm(', 'hjCompanyHandoffPending();\n  if(false&&!confirm(');
@@ -76,13 +93,14 @@ async function harness(options = {}) {
     const body = JSON.parse(request.postData() || '{}'); h.calls.push({ url, action: body.action });
     let result;
     try {
+      if (url === API && body.action === 'companyDiagnose' && h.hangDiagnose) { h.hangDiagnose = false; await new Promise(r => { h.releaseDiagnose = r; }); }
       if (url === OTHER) result = { service: 'photo-relay', portalUrl: PORTAL };
       else if (url === BARE) throw new Error('not-configured');
       else if (url === PORTAL) result = body.action === 'portalLogin' ? { sessionToken: TOKEN, expiresAt: Date.now() + 3600000 } : {};
       else if (body.action === 'health') result = { service: 'company-team-v3', portalUrl: PORTAL };
       else {
         assert.equal(body.sessionToken, TOKEN);
-        const eng = h.drift ? drifted : engine;
+        const eng = h.drift ? drifted : h.leakNow ? leaky : engine;
         if (body.action === 'identity') result = { identity: identity() };
         else if (body.action === 'list') result = { data: clone(eng.teamPresent_(h.store, identity())) };
         else if (body.action === 'companyDiagnose') {
@@ -265,12 +283,74 @@ async function run() {
     assert.notEqual(await mp.evaluate(() => localStorage.getItem('hj_company_drafts_handoff')), null, '대표가 볼 초안을 지우지 않는다'); await m.close();
     const old = await harness({ config: API, init: `localStorage.setItem('hj_company_drafts_handoff', ${JSON.stringify(JSON.stringify({ ...drafts, at: Date.now() - 25 * 3600000 }))})` });
     const op = await old.team(); await old.login(op); assert(await op.isHidden('#handoffBox'), '하루 지난 초안은 안 보인다');
-    assert.equal(await op.evaluate(() => localStorage.getItem('hj_company_drafts_handoff')), null, '하루 지난 초안은 지운다'); await old.close();
+    assert.equal(await op.evaluate(() => localStorage.getItem('hj_company_drafts_handoff')), null, '하루 지난 초안은 지운다');
+    assert(await op.isHidden('#handoffBox'), '하루 지난 초안은 조용히 버린다'); await old.close();
+    // 팀장: 배정 권한은 있지만 모든 팀 현장명이 든 전달함은 대표 계정에만 — 보이지도 지워지지도 않는다
+    const l = await harness({ config: API, role: 'lead', init: `localStorage.setItem('hj_company_drafts_handoff', ${JSON.stringify(JSON.stringify({ ...drafts, at: Date.now() }))})` });
+    const lp = await l.team(); await l.login(lp); assert(await lp.isHidden('#handoffBox'), '팀장에게는 안 보인다');
+    assert.notEqual(await lp.evaluate(() => localStorage.getItem('hj_company_drafts_handoff')), null, '팀장 로그인이 대표 초안을 지우지 않는다'); await l.close();
+    // 형식이 틀린 묶음(제목에 제어문자)은 버리되 대표에게 버렸다고 말한다
+    const bad = { format: 'company-task-drafts-v1', tasks: [{ title: '모의\u0007초안', project: '모의 현장 A', due: '', handoff: '', sourceRef: 'legacy-team:x2' }], at: Date.now() };
+    const b = await harness({ config: API, init: `localStorage.setItem('hj_company_drafts_handoff', ${JSON.stringify(JSON.stringify(bad))})` });
+    const bp = await b.team(); await b.login(bp);
+    assert.equal(await bp.evaluate(() => localStorage.getItem('hj_company_drafts_handoff')), null);
+    assert(await bp.isVisible('#handoffBox') && (await bp.textContent('#handoffText')).includes('읽지 못해 버렸습니다'), '버린 사실을 알린다');
+    assert(await bp.isHidden('#handoffLoad'), '불러올 것이 없으면 불러오기 버튼도 없다'); await b.close();
+  });
+
+  await test('어긋난 서버가 남의 팀·동료 식별정보·변경 이력을 흘리면 내 권한 확인이 줄마다 ✗', async () => {
+    for (const role of ['lead', 'member']) {
+      // 로그인 읽기는 정상, 점검 때만 흘린다 — 변경 이력이 섞이면 화면 검증이 자료를 닫지만 ✗ 줄은 알림에 남아야 한다
+      const h = await harness({ config: API, role }), page = await h.team(); await h.login(page); h.leakNow = true; await selfCheck(page);
+      const text = (await rowsOf(page, '#accessResult')).filter(([k]) => k === 'bad').map(([, t]) => t).join('\n') + '\n' + await page.textContent('#connection');
+      for (const want of ['소속이 아닌 팀', '계정 식별정보를 받았다', '변경 이력']) assert(text.includes(want), role + ' ✗ 줄 없음: ' + want + ' / ' + text);
+      assert.deepEqual(h.writes, []); await h.close();
+    }
+  });
+
+  await test('점검 중 로그아웃해도 다시 로그인하면 [내 권한 확인]·[전 직원 권한 점검]이 살아 있다', async () => {
+    const h = await harness({ config: API, hangDiagnose: true }), page = await h.team(); await h.login(page);
+    await page.click('#tabAccess'); await page.click('#selfCheck');
+    await page.waitForFunction(() => document.getElementById('accessStatus').textContent.includes('확인하고 있습니다'));
+    for (let i = 0; i < 100 && !h.releaseDiagnose; i++) await new Promise(r => setTimeout(r, 50)); assert(h.releaseDiagnose, '점검 요청이 서버에 걸려 있다');
+    await page.click('#logout'); await page.waitForFunction(() => !document.getElementById('loginPanel').hidden); h.releaseDiagnose();
+    await h.login(page); await page.click('#tabAccess');
+    assert(!(await page.isDisabled('#selfCheck')) && !(await page.isDisabled('#ownerCheck')), '두 버튼이 풀려 있다');
+    await selfCheck(page); assert((await page.textContent('#accessStatus')).includes('확인했습니다')); await h.close();
+  });
+
+  await test('설치 앱(홈 화면)으로 떠 있으면 새 창 대신 같은 화면에서 직원 작업실로 — 저장소가 갈리지 않게', async () => {
+    const h = await harness({ config: API, init: () => {
+      const orig = window.matchMedia.bind(window);
+      window.matchMedia = q => /display-mode:\s*standalone/.test(q) ? { matches: true, media: q, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false; } } : orig(q);
+      if (location.pathname.endsWith('/index.html')) { try { localStorage.setItem('hj_team_api_url', 'https://script.google.com/macros/s/AKfyTEST_CONNECT_COMPANY/exec'); } catch (_) {} }
+    } });
+    const app = await h.context.newPage(); app.setDefaultTimeout(15000); app.on('pageerror', e => h.errors.push(String(e)));
+    const dialogs = []; app.on('dialog', d => { dialogs.push(d.message()); return d.accept(); });
+    await app.goto(APP, { waitUntil: 'domcontentloaded' });
+    await app.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone && typeof hjCompanyLegacySend === 'function');
+    await app.evaluate(async () => {
+      await Promise.all([__hjRestoreDone, __hjRelayConfigDone, __hjOfficeOpsBootDone, window.__hjRelayBootDone]);
+      taxCalendarEnsure = () => 0; coworkSchedEnsure = () => 0; backupBootCheck = () => 0; kakaoCheckNew = () => 0;
+      clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+      const team = (id, title, handoff) => ({ id, text: '[팀 업무]', todo: true, done: false, project: '모의 현장 A', teamTask: { schema: 1, title, assignee: '', status: 'todo', due: '', handoff, recorder: '', updatedAt: '2026-09-27T00:00:00Z' } });
+      // n2 의 인계 글에는 직원 작업실이 거절하는 제어문자 — 현장 앱이 미리 빼야 묶음 전체가 버려지지 않는다
+      state.notes = [team('n1', '모의 배관 점검', '줄바꿈\n허용'), team('n2', '모의 제어문자', '모의\u0007벨')];
+      window.__opened = []; window.open = (...a) => { __opened.push(a); return null; };
+      hjTeamBoard();
+    });
+    assert.equal(await app.getAttribute('#teamPortalOpen', 'target'), null, '설치 앱에서는 링크도 새 창이 아니다');
+    await app.click('#teamDraftSend'); await app.waitForURL(/\/team\.html#mine$/);
+    assert(dialogs.some(d => d.includes('1건을 직원 작업실로') && d.includes('1건은 빼고')), JSON.stringify(dialogs));
+    await h.login(app); assert(await app.isVisible('#handoffBox'), '같은 화면으로 옮긴 직원 작업실에 초안이 보인다');
+    assert((await app.textContent('#handoffText')).includes('1건')); assert.deepEqual(h.writes, []);
+    await h.close();
   });
 
   await browser.close(); console.log('team-connect: ' + count + '/' + count + ' PASS');
 }
-const MUTATIONS = ['save-unchecked', 'device-overrides-config', 'expect-from-server', 'self-probe-skip', 'owner-button-all', 'handoff-autosave', 'handoff-keep', 'handoff-stale', 'handoff-member', 'index-autosend'];
+const MUTATIONS = ['save-unchecked', 'device-overrides-config', 'expect-from-server', 'self-probe-skip', 'owner-button-all', 'handoff-autosave', 'handoff-keep', 'handoff-stale', 'handoff-member', 'index-autosend',
+  'handoff-lead', 'handoff-malformed-silent', 'checking-stuck', 'self-foreign-teams', 'self-peer-ids', 'self-audit', 'index-standalone-blank', 'index-filter-ctrl'];
 if (require.main === module && process.argv.includes('--mutations')) {
   const { spawnSync } = require('child_process'); let caught = 0;
   for (const name of MUTATIONS) {
