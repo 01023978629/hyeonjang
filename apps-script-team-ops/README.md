@@ -48,9 +48,17 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 3. 프로젝트 소유자가 편집기에서 `companyBootstrapFromProperties_()`를 한 번 실행합니다. 기존 `COMPANY_HEAD`가 있으면 중단하며 덮어쓰지 않습니다. 임시 대표 속성 두 개는 성공 후 제거됩니다. 비밀번호를 생성하지 않습니다.
 4. 배포자 권한으로 실행되는 웹 앱을 배포합니다. 클라이언트가 호출 가능한 접근 범위라도 모든 실제 자료 요청은 서버에서 인증·구성원 권한을 재확인합니다. 도메인 정책에 따라 허용되지 않으면 이를 우회하지 마세요.
-5. `team-config.js`의 `apiUrl`에 **이 새 회사 서버**의 `/exec` URL만 지정합니다. `APP_TOKEN`·비밀번호·세션 토큰은 절대 넣지 않습니다. 현재 기본값은 비어 있어 로그인 버튼이 잠겨 있습니다.
+5. 직원 작업실 로그인 칸 아래 「서버 연결 설정」에 **이 새 회사 서버**의 `/exec` URL 을 넣고 [연결 확인 후 저장]합니다(v333 — health 가 `company-team-v3` 일 때만 이 기기에 저장, 비밀값 아님). 모든 기기에 고정하려면 `team-config.js`의 `apiUrl`에 같은 URL 을 넣어 배포하며, 그러면 고정 주소가 기기 입력보다 우선합니다. `APP_TOKEN`·비밀번호·세션 토큰은 절대 넣지 않습니다.
 6. 직원들이 로그인 후 표시되는 식별정보를 회사 관리자에게 전달하면 관리자가 ‘직원 권한 연결’에서 등록합니다.
-7. 2기기와 역할별 실제 검사를 통과한 뒤 Pages와 운영 활성화를 각각 확인합니다.
+7. 대표 계정으로 「권한 점검 → 전 직원 권한 점검」을 누르고, 팀장·직원·외주 계정으로 각각 「내 권한 확인」을 눌러 모두 ✓ 인지 봅니다. 그 뒤 2기기 실제 검사를 통과하면 Pages와 운영 활성화를 각각 확인합니다. 클릭 단위 순서와 점검 결과 읽는 법은 `../docs/team-ops-setup.md`.
+
+## 권한 점검 `companyDiagnose` (v333)
+
+대표(owner)만 호출할 수 있는 **읽기 전용** 액션입니다(다른 역할은 `forbidden`, payload 는 비우거나 `{}`). 저장본·HEAD 를 바꾸지 않습니다.
+돌려주는 것: 스크립트 속성의 **있음/없음 불리언**(값은 돌려주지 않음, `COMPANY_OWNER_*` 는 부트스트랩 뒤 `false` 여야 정상), 자료 버전, 팀·업무 수,
+구성원마다 실제 게이트(`teamMember_`·`teamPresent_`·`teamCanAssign_`)를 돌린 결과 — 접근 가능 여부, 보이는 업무 수와 업무 ID 목록의 SHA-256 지문,
+보이는 팀·배정 가능 팀 ID, 동료 식별정보·감사 이력 노출 여부, 연결 단지 일치 여부. 포털 userId·officeId·폴더 ID·URL 은 돌려주지 않습니다.
+화면은 이 결과를 화면 쪽에 따로 적은 역할 규칙(대표 전체 / 팀장 자기 팀 / 직원·외주 자기 배정)과 맞춰 ✓·✗ 로 보여 줍니다. 옛 서버는 `invalid-action` 이며 화면은 재배포를 안내합니다. 서비스 이름(`company-team-v3`)은 그대로라 옛 서버에서도 로그인은 됩니다.
 
 ## 보존·충돌·용량
 
@@ -69,4 +77,4 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 ## 검사
 
-`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth|history-reset|history-client`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id|team-filter|action-autosave` (`node tests/company-team-ui.e2e.js --mutations`로 화면 5종 일괄 검사). 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.
+`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth|history-reset|history-client|diagnose-open|diagnose-leak|diagnose-fake|diagnose-write`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id|team-filter|action-autosave` (`node tests/company-team-ui.e2e.js --mutations`로 화면 5종 일괄 검사). 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.

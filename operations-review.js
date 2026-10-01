@@ -71,5 +71,29 @@ function hjCompanyDrafts(tasks){
   if(!confirm('현장명·업무 내용 '+tasks.length+'건을 이 PC/폰에 JSON 초안으로 내려받습니다.\n직원 포털에서 내용을 검토하고 팀·담당자를 지정한 뒤 개별 등록하세요. 기존 업무는 변경하지 않습니다.'))return;
   const url=URL.createObjectURL(new Blob([JSON.stringify({format:'company-task-drafts-v1',tasks},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='company-task-drafts.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
 }
-function hjCompanyLegacyExport(){hjCompanyDrafts(hjTeamList().filter(n=>hjTeamData(n).status!=='done').map(n=>{const t=hjTeamData(n);return {title:t.title,project:n.project||'공통 업무',due:t.due||'',handoff:t.handoff||'',sourceRef:'legacy-team:'+n.id};}));}
+/* v333 직원 작업실 연결: 서버 주소는 직원 작업실(team.html)의 「서버 연결 설정」이 이 기기에 저장한 공개 주소뿐이다(비밀값 아님).
+   초안은 같은 출처의 한 번짜리 전달함(hj_company_drafts_handoff)에 두고, 직원 작업실에 대표·팀장으로 로그인해
+   한 건씩 팀·담당자를 정해 저장해야 서버에 올라간다. 자동 등록·양방향 동기화는 하지 않는다. */
+const HJ_TEAM_API_KEY='hj_team_api_url',HJ_COMPANY_HANDOFF_KEY='hj_company_drafts_handoff',HJ_COMPANY_HANDOFF_TTL=24*3600000;
+function hjTeamServerUrl(){try{const v=localStorage.getItem(HJ_TEAM_API_KEY)||'';return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(v)?v:'';}catch(_){return '';}}
+function hjCompanyHandoffPending(){try{const v=JSON.parse(localStorage.getItem(HJ_COMPANY_HANDOFF_KEY)||'null');return v&&Number.isFinite(v.at)&&Date.now()-v.at<HJ_COMPANY_HANDOFF_TTL&&Array.isArray(v.tasks)?v.tasks.length:0;}catch(_){return 0;}}
+function hjCompanyDraftsSend(tasks){
+  if(!hjTeamServerUrl())return toast('직원 작업실 서버 주소가 이 기기에 없습니다. 직원 작업실의 「서버 연결 설정」에서 먼저 연결하세요.');
+  if(!tasks.length)return toast('보낼 미완료 업무가 없습니다.');
+  if(tasks.length>100)return toast('100건 이내로 현장을 좁혀 주세요. 원본 업무는 변경하지 않았습니다.');
+  // 직원 작업실은 한 건이라도 형식이 틀리면 묶음 전체를 거절한다 — 넘기기 전에 걸러 몇 건을 뺐는지 말한다.
+  const plain=(v,max,empty)=>typeof v==='string'&&v.length<=max&&(empty||!!v.trim())&&!/[\x00-\x1f]/.test(v);
+  const ok=tasks.filter(t=>plain(t.title,160)&&plain(t.project,160)&&plain(t.sourceRef,150)&&typeof t.handoff==='string'&&t.handoff.length<=2000&&(!t.due||/^\d{4}-\d{2}-\d{2}$/.test(t.due))),skipped=tasks.length-ok.length;
+  if(!ok.length)return toast('보낼 수 있는 업무가 없습니다. 제목·현장명이 비었거나 너무 긴지 확인하세요.');
+  tasks=ok;
+  const waiting=hjCompanyHandoffPending();
+  if(!confirm('현장명·업무 내용 '+tasks.length+'건을 직원 작업실로 넘깁니다.'+(skipped?'\n제목·현장명이 비었거나 너무 긴 '+skipped+'건은 빼고 넘깁니다(현장 앱에서 고친 뒤 다시 보내세요).':'')+(waiting?'\n아직 열지 않은 이전 초안 '+waiting+'건은 이번 초안으로 바뀝니다.':'')+'\n\n직원 작업실에 대표·팀장 계정으로 로그인하면 「현장 앱에서 보낸 업무 초안」이 뜹니다. 한 건씩 팀·담당자를 정해 저장해야 서버에 올라갑니다(자동 등록 없음).\n이 기기의 기존 업무는 바꾸지 않습니다. 넘긴 초안은 이 브라우저에 하루 동안만 남습니다.'))return;
+  try{localStorage.setItem(HJ_COMPANY_HANDOFF_KEY,JSON.stringify({format:'company-task-drafts-v1',tasks,at:Date.now()}));}
+  catch(_){return toast('이 브라우저에 초안을 넘기지 못했습니다. 「JSON 파일로 내려받기」를 쓰세요.');}
+  try{window.open('./team.html','_blank','noopener');}catch(_){/* 팝업 차단: 아래 안내대로 링크를 누르면 된다 */}
+  toast('초안 '+tasks.length+'건을 넘겼습니다. 직원 작업실에 로그인하면 보입니다. 새 창이 안 열렸으면 「직원 작업실에서 열기」를 누르세요.');
+}
+function hjCompanyLegacyTasks(){return hjTeamList().filter(n=>hjTeamData(n).status!=='done').map(n=>{const t=hjTeamData(n);return {title:t.title,project:n.project||'공통 업무',due:t.due||'',handoff:t.handoff||'',sourceRef:'legacy-team:'+n.id};});}
+function hjCompanyLegacySend(){hjCompanyDraftsSend(hjCompanyLegacyTasks());}
+function hjCompanyLegacyExport(){hjCompanyDrafts(hjCompanyLegacyTasks());}
 function hjCompanySharedExport(){const s=__hjSharedTodo;if(!hjSharedTodoCurrent(s)||!s.ready||s.busy||s.pending)return toast('공유 할일의 최신 조회·저장 결과를 먼저 확인하세요.');const project=s.root.querySelector('#stFilter').value;hjCompanyDrafts(s.tasks.filter(t=>!t.done&&(!project||t.project===project)).map(t=>({title:t.text.slice(0,160),project:t.project,due:'',handoff:t.text.length>160?t.text:'',sourceRef:'shared-todo:'+t.id})));}

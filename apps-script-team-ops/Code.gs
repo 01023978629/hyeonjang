@@ -52,7 +52,7 @@ function companyCommit_(c,s,expected){
 function companyDispatch_(req){
   teamKeys_(req,['action','sessionToken','payload']);var c=companyConfig_();
   if(req.action==='health')return {service:'company-team-v3',portalUrl:c.url};
-  if(['identity','list','teamSave','memberSave','taskSave','taskBatch','projectSave','evidenceUpload','evidenceRead','claimSave','claimReview','claimSubmitRecord','claimBundle'].indexOf(req.action)<0)teamError_('invalid-action');
+  if(['identity','list','teamSave','memberSave','taskSave','taskBatch','projectSave','evidenceUpload','evidenceRead','claimSave','claimReview','claimSubmitRecord','claimBundle','companyDiagnose'].indexOf(req.action)<0)teamError_('invalid-action');
   companyRateGate_(req.sessionToken);
   var identity=companyIdentity_(req.sessionToken,c); // No slow identity network call while holding the data lock.
   if(req.action==='identity')return {identity:{userId:identity.userId,officeId:identity.officeId}};
@@ -62,6 +62,7 @@ function companyDispatch_(req){
     if(identity.expiresAt<=Date.now())teamError_('session-expired');
     var loaded=companyLoad_(c);teamMember_(loaded.state,identity);
     if(req.action==='list')return {data:teamPresent_(loaded.state,identity)};
+    if(req.action==='companyDiagnose'){if(teamMember_(loaded.state,identity).role!=='owner')teamError_('forbidden');if(req.payload!==undefined)teamKeys_(req.payload,[]);return {diagnosis:companyDiagnose_(c,loaded.state)};}
     if(req.action==='evidenceRead'){var evidenceFile=companyEvidenceRead_(c,loaded.state,identity,req.payload);if(identity.expiresAt<=Date.now())teamError_('session-expired');return {file:evidenceFile};}
     if(req.action==='claimBundle'){teamKeys_(req.payload,['claimId']);return {bundle:teamClaimBundle_(loaded.state,teamMember_(loaded.state,identity),teamId_(req.payload.claimId),companyDigest_)};}
     var now=new Date().toISOString(),id=Utilities.getUuid();
@@ -70,6 +71,15 @@ function companyDispatch_(req){
     if(!result.replayed)companyCommit_(c,result.store,loaded.head);
     return {data:teamPresent_(result.store,identity),replayed:result.replayed};
   }finally{lock.releaseLock();}
+}
+// Read-only. Property values are reduced to presence booleans; nothing here is written.
+function companyDiagnose_(c,s){
+  var p=companyProps_(),has=function(k){var v=p.getProperty(k);return typeof v==='string'&&v.length>0;};
+  var d=teamDiagnose_(s,c.office,companyDigest_);
+  d.service='company-team-v3';d.authorityBound=true; // companyLoad_ already refused a different portal/office.
+  d.properties={COMPANY_ENABLED:p.getProperty('COMPANY_ENABLED')==='1',COMPANY_PORTAL_URL:has('COMPANY_PORTAL_URL'),COMPANY_FOLDER_ID:has('COMPANY_FOLDER_ID'),COMPANY_OFFICE_ID:has('COMPANY_OFFICE_ID'),COMPANY_HEAD:has('COMPANY_HEAD'),
+    COMPANY_OWNER_USER_ID:has('COMPANY_OWNER_USER_ID'),COMPANY_OWNER_NAME:has('COMPANY_OWNER_NAME')}; // The last two must be gone after bootstrap.
+  return d;
 }
 function doGet(){return companyJson_({ok:false,error:'bad-request'});}
 function doPost(e){
