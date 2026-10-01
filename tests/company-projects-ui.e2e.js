@@ -13,10 +13,12 @@ function seedTen() {
 }
 function task(id = 'work1', assigneeId = 'tech1', projectId = 'p1') { return { id, title: '모의 배관 보수', project: '모의 아파트 A', projectId, teamId: assigneeId === 'tech6' ? 't2' : 't1', assigneeId, due: DATE, workDate: DATE, startTime: '09:00', endTime: '12:00', status: 'doing', handoff: '모의 작업 보고', sourceRef: '', updatedAt: DATE + 'T00:00:00Z', updatedBy: 'owner' }; }
 function mutate(name, content) {
-  if (name !== 'team-projects.js' || !MUTANT) return content;
+  // v333: uploads moved into team-upload.js (persistent queue), so the retry-id mutation targets that file.
+  const file = MUTANT === 'retry-new-id' ? 'team-upload.js' : 'team-projects.js';
+  if (name !== file || !MUTANT) return content;
   const mutations = {
     'batch-auto-save': ["addRow();\n  }", "addRow(); ctx.api('taskBatch',{requestId:crypto.randomUUID(),revision:data().revision,entity:{tasks:[]}});\n  }"],
-    'retry-new-id': ['const r = await ctx.api(e.pending.action, e.pending.payload);', 'e.pending.payload.requestId=crypto.randomUUID(); const r = await ctx.api(e.pending.action, e.pending.payload);'],
+    'retry-new-id': ["const r = await ctx.api('evidenceUpload', payload);", "payload.requestId = crypto.randomUUID(); const r = await ctx.api('evidenceUpload', payload);"],
     'claim-auto-submit': ["download(zip, '보험-제출준비.zip');", "ctx.api('claimSubmitRecord',{requestId:crypto.randomUUID(),revision:data().revision,entity:{id:c.id,submittedDate:localDay(),channel:'MUTANT',referenceNo:'MUTANT'}}); download(zip, '보험-제출준비.zip');"],
     'claim-no-recheck': ["if (!latest.reviewCurrent || latest.fingerprint !== bundle.fingerprint)", 'if (false)'],
     'ignore-hash': ['bytes.length !== e.size || await sha(bytes) !== e.sha256', 'false'],
@@ -35,13 +37,15 @@ async function make(options = {}) { return harness({ store: seedTen(), mutate, .
 async function test(label, fn) { await fn(); count++; console.log('PASS ' + label); }
 async function settle(h) { await h.page.waitForFunction(() => !document.getElementById('projectEditor').open); }
 async function selectProject(h) { await h.page.click('#tabProjects'); await h.page.selectOption('#xp-projectSelect', 'p1'); }
-async function upload(h) {
-  await selectProject(h); await h.page.getByRole('button', { name: '작업 사진 올리기', exact: true }).click();
+// v333: [저장] queues the original and closes the dialog; the queue uploads in the background. Wait for the card, not a timer.
+async function drained(h, n) { await h.page.waitForFunction(n => document.querySelectorAll('#projectEvidence article').length >= n && !document.querySelector('#uploadQueue [data-queue-key]'), n); }
+async function upload(h, buffer = PNG) {
+  await selectProject(h); await h.page.getByRole('button', { name: '작업 사진·동영상 올리기', exact: true }).click();
   await h.page.selectOption('#xp-task', 'work1'); await h.page.selectOption('#xp-phase', 'after'); await h.page.fill('#xp-caption', '모의 마무리 원본');
-  await h.page.locator('#xp-files').setInputFiles({ name: 'PRIVATE_TEST_NAME.png', mimeType: 'image/png', buffer: PNG });
+  await h.page.locator('#xp-files').setInputFiles({ name: 'PRIVATE_TEST_NAME.png', mimeType: 'image/png', buffer });
 }
 async function claimReady(h) {
-  await upload(h); await h.page.click('#projectSave'); await settle(h);
+  await upload(h); await h.page.click('#projectSave'); await settle(h); await drained(h, 1);
   await h.page.click('#tabClaims'); await h.page.getByRole('button', { name: '청구 준비 건 만들기' }).click();
   await h.page.selectOption('#xp-projectId', 'p1'); await h.page.selectOption('#xp-mode', 'customer-support'); await h.page.fill('#xp-insurerName', '모의 보험사'); await h.page.fill('#xp-accidentDate', DATE);
   for (const key of ['incident', 'cause', 'repair']) await h.page.fill('#xp-' + key, '모의로 확인한 ' + key);
@@ -70,11 +74,12 @@ async function run() {
     const member = await make({ role: 'tech1', shared }); await member.login(); await member.page.getByRole('button', { name: '업무 확인·수정', exact: true }).click(); assert(await member.page.isDisabled('#edit-projectId')); await member.page.fill('#edit-handoff', '새 모의 작업 보고'); await member.page.click('#save'); await member.page.waitForFunction(() => !document.getElementById('editor').open);
     assert.equal(shared.store.tasks[0].projectId, 'p1'); assert.equal(shared.store.tasks[0].startTime, '09:00'); assert.equal(shared.store.tasks[0].handoff, '새 모의 작업 보고'); await member.close();
   });
-  await test('upload response loss retry is exact and produces one evidence record', async () => {
+  await test('upload response loss: queue retries automatically with the exact same request, one evidence record', async () => {
     const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s, role: 'tech1' }); await h.login(); await upload(h); h.failNext = 'network-after-write';
-    await h.page.click('#projectSave'); await h.page.waitForFunction(() => document.getElementById('projectSave').textContent.includes('재확인'));
-    const first = clone(h.writes[0]); assert.equal(h.store.evidence.length, 1); assert(await h.page.isDisabled('#xp-caption'));
-    await h.page.click('#projectSave'); await settle(h); assert.deepEqual(h.writes[1], first); assert.equal(h.store.evidence.length, 1); assert.equal(h.store.evidence[0].sha256, digest(PNG)); assert.equal(h.files[h.store.evidence[0].id], PNG.toString('base64'));
+    await h.page.click('#projectSave'); await settle(h);
+    await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=waiting]')); // lost response: waiting with backoff, not 'done'
+    const first = clone(h.writes[0]); assert.equal(h.store.evidence.length, 1);
+    await drained(h, 1); assert.deepEqual(h.writes[1], first); assert.equal(h.store.evidence.length, 1); assert.equal(h.store.evidence[0].sha256, digest(PNG)); assert.equal(h.files[h.store.evidence[0].id], PNG.toString('base64'));
     assert.equal(await h.page.locator('#projectEvidence article').count(), 1); await h.close();
   });
   await test('employee cannot view peer photos, insurance documents or claims, including hash navigation', async () => {
@@ -82,17 +87,19 @@ async function run() {
     const h = await make({ store: s, role: 'tech1', hash: '#claims' }); await h.login(); assert.equal(await h.page.locator('#tabClaims').isVisible(), false); assert.equal(new URL(h.page.url()).hash, '#mine'); await selectProject(h);
     assert.equal(await h.page.locator('#projectEvidence article').count(), 0); assert(!(await h.page.textContent('body')).includes('모의 금융 서류')); await h.close();
   });
-  await test('upload revision rebase preserves original UUID and bytes, validation edit uses new caption', async () => {
+  await test('upload revision conflict is rebased (same original UUID and bytes, new request); invalid input stops for a person', async () => {
     const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s }); await h.login(); await upload(h); h.failNext = 'network-before-write';
-    await h.page.click('#projectSave'); await h.page.waitForFunction(() => document.getElementById('projectSave').textContent.includes('재확인'));
-    const original = clone(h.writes[0]); h.store.revision++; await h.page.click('#projectSave');
-    await h.page.getByRole('button', { name: '최신 내용 확인', exact: true }).click(); await h.page.getByRole('button', { name: '비교한 초안 다시 검토' }).click(); await h.page.click('#projectSave'); await settle(h);
+    await h.page.click('#projectSave'); await settle(h); await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=waiting]'));
+    const original = clone(h.writes[0]); h.store.revision++; await h.page.getByRole('button', { name: '다시 올리기', exact: true }).click(); await drained(h, 1);
     assert.equal(h.writes.at(-1).payload.entity.id, original.payload.entity.id); assert.equal(h.writes.at(-1).payload.base64, original.payload.base64); assert.notEqual(h.writes.at(-1).payload.requestId, original.payload.requestId); assert.equal(Object.keys(h.files).length, 1);
-    await upload(h); await h.page.locator('#xp-caption').evaluate(el => { el.value = 'x'.repeat(1001); }); await h.page.click('#projectSave'); await h.page.waitForFunction(() => document.getElementById('projectSave').textContent.includes('입력 수정'));
-    await h.page.fill('#xp-caption', '수정된 모의 설명'); await h.page.click('#projectSave'); await settle(h); assert.equal(h.store.evidence.at(-1).caption, '수정된 모의 설명'); await h.close();
+    const second = Buffer.concat([PNG, Buffer.from('second original')]); // a different original: the queue skips an exact re-upload of the same file for the same task
+    await upload(h, second); await h.page.locator('#xp-caption').evaluate(el => { el.value = 'x'.repeat(1001); }); await h.page.click('#projectSave'); await settle(h);
+    await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=failed]')); assert.equal(h.store.evidence.length, 1, 'invalid input is not retried into the server');
+    h.page.once('dialog', d => d.accept()); await h.page.locator('#uploadQueue').getByRole('button', { name: '취소', exact: true }).click(); await h.page.waitForFunction(() => !document.querySelector('#uploadQueue [data-queue-key]'));
+    await upload(h, second); await h.page.fill('#xp-caption', '수정된 모의 설명'); await h.page.click('#projectSave'); await settle(h); await drained(h, 2); assert.equal(h.store.evidence.at(-1).caption, '수정된 모의 설명'); await h.close();
   });
   await test('hash-mismatched original is never displayed and logout clears delayed evidence', async () => {
-    const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s }); await h.login(); await upload(h); await h.page.click('#projectSave'); await settle(h);
+    const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s }); await h.login(); await upload(h); await h.page.click('#projectSave'); await settle(h); await drained(h, 1);
     const e = h.store.evidence[0]; h.files[e.id] = Buffer.alloc(PNG.length).toString('base64'); await h.page.getByRole('button', { name: '원본 사진 보기' }).click(); await h.page.waitForFunction(() => document.getElementById('projectEvidence').textContent.includes('확인하지 못했습니다'));
     assert.equal(await h.page.locator('#projectEvidence img').count(), 0);
     h.files[e.id] = PNG.toString('base64'); let release; h.holdEvidence = { promise: new Promise(r => { release = r; }) }; await h.page.getByRole('button', { name: '원본 사진 보기' }).click(); await h.page.waitForFunction(() => document.getElementById('projectEvidence').textContent.includes('확인 중'));

@@ -12,7 +12,7 @@ function teamEvidenceVisible_(s,m,e){
   if(e.kind==='document')return m.role==='owner';
   var t=s.tasks.find(function(t){return t.id===e.taskId&&t.projectId===e.projectId;});return !!t&&teamCanSee_(m,t);
 }
-function teamEvidencePublic_(e){var out={};['id','projectId','taskId','kind','phase','caption','capturedDate','name','mime','size','sha256','uploaderId','uploadedAt'].forEach(function(k){out[k]=e[k];});return out;}
+function teamEvidencePublic_(e){var out={};['id','projectId','taskId','kind','phase','caption','capturedDate','name','mime','size','sha256','uploaderId','uploadedAt'].forEach(function(k){out[k]=e[k];});if(e.kind==='video')out.duration=e.duration===undefined?'':e.duration;return out;}
 function teamProjectsPresent_(s,m,result){
   result.projects=teamList_(s,'projects').filter(function(p){return teamProjectVisible_(s,m,p);}).map(function(p){var v=teamClone_(p);if(m.role!=='owner')v.teamIds=v.teamIds.filter(function(id){return m.teamIds.indexOf(id)>=0;});return v;});
   result.evidence=teamList_(s,'evidence').filter(function(e){return teamEvidenceVisible_(s,m,e);}).map(teamEvidencePublic_);
