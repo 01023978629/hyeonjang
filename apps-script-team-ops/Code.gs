@@ -52,7 +52,7 @@ function companyCommit_(c,s,expected){
 function companyDispatch_(req){
   teamKeys_(req,['action','sessionToken','payload']);var c=companyConfig_();
   if(req.action==='health')return {service:'company-team-v3',portalUrl:c.url};
-  if(['identity','list','teamSave','memberSave','taskSave','taskBatch','projectSave','evidenceUpload','evidenceRead','claimSave','claimReview','claimSubmitRecord','claimBundle'].indexOf(req.action)<0)teamError_('invalid-action');
+  if(['identity','list','teamSave','memberSave','taskSave','taskBatch','projectSave','evidenceUpload','evidenceRead','claimSave','claimReview','claimSubmitRecord','claimBundle','evidenceMediaBegin','evidenceMediaChunk','evidenceReadChunk'].indexOf(req.action)<0)teamError_('invalid-action');
   companyRateGate_(req.sessionToken);
   var identity=companyIdentity_(req.sessionToken,c); // No slow identity network call while holding the data lock.
   if(req.action==='identity')return {identity:{userId:identity.userId,officeId:identity.officeId}};
@@ -63,6 +63,9 @@ function companyDispatch_(req){
     var loaded=companyLoad_(c);teamMember_(loaded.state,identity);
     if(req.action==='list')return {data:teamPresent_(loaded.state,identity)};
     if(req.action==='evidenceRead'){var evidenceFile=companyEvidenceRead_(c,loaded.state,identity,req.payload);if(identity.expiresAt<=Date.now())teamError_('session-expired');return {file:evidenceFile};}
+    if(req.action==='evidenceReadChunk'){var part=teamMediaReadChunk_(c,loaded.state,identity,req.payload);if(identity.expiresAt<=Date.now())teamError_('session-expired');return {chunk:part};}
+    // Upload progress lives in the server journal, not in a company snapshot: 100 chunks must not create 100 revisions.
+    if(req.action==='evidenceMediaBegin'||req.action==='evidenceMediaChunk'){var up=req.action==='evidenceMediaBegin'?teamMediaBegin_(c,loaded,identity,req.payload):teamMediaChunk_(c,loaded,identity,req.payload);if(identity.expiresAt<=Date.now())teamError_('session-expired');return {upload:up};}
     if(req.action==='claimBundle'){teamKeys_(req.payload,['claimId']);return {bundle:teamClaimBundle_(loaded.state,teamMember_(loaded.state,identity),teamId_(req.payload.claimId),companyDigest_)};}
     var now=new Date().toISOString(),id=Utilities.getUuid();
     var result=req.action==='evidenceUpload'?companyEvidenceUpload_(c,loaded,identity,req.payload,now,id):teamApply_(loaded.state,identity,req.action,req.payload,now,id,companyDigest_);
@@ -73,8 +76,8 @@ function companyDispatch_(req){
 }
 function doGet(){return companyJson_({ok:false,error:'bad-request'});}
 function doPost(e){
-  try{var raw=e&&e.postData&&e.postData.contents;if(typeof raw!=='string'||raw.length>18*1024*1024)teamError_('invalid-input');var req=JSON.parse(raw);if(req.action!=='evidenceUpload'&&raw.length>64000)teamError_('invalid-input');var r=companyDispatch_(req);r.ok=true;return companyJson_(r);}
-  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','review-note-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt','invalid-project','invalid-schedule','schedule-conflict','project-in-use','evidence-bound','invalid-file','hash-mismatch','private-storage-required','storage-ambiguous','evidence-missing','project-immutable','claim-incomplete','review-stale'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
+  try{var raw=e&&e.postData&&e.postData.contents;if(typeof raw!=='string'||raw.length>18*1024*1024)teamError_('invalid-input');var req=JSON.parse(raw);if(raw.length>(req.action==='evidenceUpload'?18*1024*1024:req.action==='evidenceMediaChunk'?1500000:64000))teamError_('invalid-input');var r=companyDispatch_(req);r.ok=true;return companyJson_(r);}
+  catch(e){var codes=['not-configured','configuration-mismatch','session-expired','auth-unavailable','rate-limited','forbidden','conflict','request-conflict','invalid-input','invalid-action','invalid-team','invalid-assignee','invalid-transition','handoff-required','review-note-required','not-found','duplicate','duplicate-source','team-in-use','self-lockout','last-owner','identity-immutable','reassign-open-tasks','capacity','busy','storage-failed','corrupt','invalid-project','invalid-schedule','schedule-conflict','project-in-use','evidence-bound','invalid-file','hash-mismatch','private-storage-required','storage-ambiguous','evidence-missing','project-immutable','claim-incomplete','review-stale','upload-not-found','upload-incomplete'];return companyJson_({ok:false,error:codes.indexOf(e.message)>=0?e.message:'server-error'});}
 }
 function companyJson_(v){return ContentService.createTextOutput(JSON.stringify(v)).setMimeType(ContentService.MimeType.JSON);}
 // Editor-owner only. Not in the HTTP action allowlist. No password is generated here.

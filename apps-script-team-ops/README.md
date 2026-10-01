@@ -34,7 +34,7 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 ## 승인 후 서버 설치 절차
 
-1. 새 Apps Script 프로젝트에 `Code.gs`, `TeamPure.gs`, `TeamProjects.gs`, `TeamEvidence.gs`, `appsscript.json`을 설치합니다. 배포자 전용 비공개 Drive 폴더를 마련합니다. 공개 공유뿐 아니라 다른 편집자·뷰어가 있는 폴더도 사용하지 않습니다. 공유 상태이면 코드가 접근을 중단하며 공유 해제를 자동 실행하지 않습니다.
+1. 새 Apps Script 프로젝트에 `Code.gs`, `TeamPure.gs`, `TeamProjects.gs`, `TeamEvidence.gs`, `TeamMedia.gs`(v333), `appsscript.json`을 설치합니다. 배포자 전용 비공개 Drive 폴더를 마련합니다. 공개 공유뿐 아니라 다른 편집자·뷰어가 있는 폴더도 사용하지 않습니다. 공유 상태이면 코드가 접근을 중단하며 공유 해제를 자동 실행하지 않습니다.
 2. Script Properties를 아래와 같이 설정합니다. 실제 값은 Git/보고서/콘솔에 기록하지 않습니다.
 
    | 속성 | 값 |
@@ -51,6 +51,15 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 5. `team-config.js`의 `apiUrl`에 **이 새 회사 서버**의 `/exec` URL만 지정합니다. `APP_TOKEN`·비밀번호·세션 토큰은 절대 넣지 않습니다. 현재 기본값은 비어 있어 로그인 버튼이 잠겨 있습니다.
 6. 직원들이 로그인 후 표시되는 식별정보를 회사 관리자에게 전달하면 관리자가 ‘직원 권한 연결’에서 등록합니다.
 7. 2기기와 역할별 실제 검사를 통과한 뒤 Pages와 운영 활성화를 각각 확인합니다.
+
+## v333 사진·동영상 올리기(HEIC·동영상·실패 후 재시도)
+
+- HEIC/HEIF 사진은 **원본 그대로**(12MiB 이하) 저장한다. 서버는 `ftyp`+HEIF 브랜드로 형식을 확인하고, JPEG 변환은 직원 화면의 미리보기에서만 한다. 원본 보존 계약(편집·압축·변환 없음)과 보험 증빙 원본 요구 때문이다.
+- 동영상(MP4·MOV·WebM, 최대 100MB, `TEAM_VIDEO_MAX`)은 `evidenceMediaBegin` → `evidenceMediaChunk`(1MiB, 256KiB 정렬) → `evidenceUpload{uploadId}` 순서다. Drive 파일 ID를 먼저 받아 Script Properties `TEAM_MEDIA_JOB_<uploadId>`에 적은 뒤 바이트를 보낸다 — 응답이 끊겨 다시 보내도 원본은 하나다. 진행 위치는 서버(Drive)가 정본이고, 다시 보낸 청크는 붙이지 않는다. 청크마다 권한을 다시 확인한다. 완성 확인은 Drive의 SHA-256(`sha256Checksum`)·크기·형식·부모 폴더로 한다(100MB를 Apps Script 메모리에 올리지 않는다). 재생·보험 묶음은 `evidenceReadChunk`(1MiB)로 읽고 화면이 전체 SHA-256을 다시 맞춘다.
+- 업로드 진행은 회사 스냅샷을 만들지 않는다(청크 100개가 revision 100개가 되지 않게). 작업 기록은 진행 중 최대 100건, 증빙이 확정됐거나 7일(Drive 이어 올리기 세션 수명)이 지난 것만 지운다. Drive 원본은 자동 삭제하지 않는다.
+- 동영상은 보험 묶음 50MiB 상한 계산에 그대로 들어간다. 큰 동영상은 묶음에서 빼고 [원본 동영상 받기]로 따로 전달한다.
+- `script.external_request` 와 `drive` 범위는 이미 매니페스트에 있다. 배포 후 재승인 화면이 나오면 대표가 승인한다.
+- 구서버(이 파일이 없는 v3)에 새 화면이 붙으면 동영상은 `invalid-action`, HEIC는 `invalid-file` 로 대기열에 '실패'로 남는다 — 서버를 갱신한 뒤 [다시 올리기]를 누르면 된다.
 
 ## 보존·충돌·용량
 
