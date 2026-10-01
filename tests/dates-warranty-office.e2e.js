@@ -4,7 +4,7 @@
    toISOString().slice(0,10) 으로 '오늘'을 잡는 곳은 전부 하루 어긋난다(tests/local-date.check.js 가 새로 생기는 것을 막는다).
 
      ⓐ 견적·수금·AS·오더·운행 이력 기본 기간의 끝 = 한국 날짜 오늘, 오늘 쓴 견적이 목록에 든다 · 준공일·카카오 '내일' 일정도 한국 날짜
-     ⓑ 보증 시작을 안 누른 완료 현장의 보증 만료 = 보증서와 같은 항목별 기간(방수 3년) — 12개월로 세어 '보증 만료'를 알리지 않는다
+     ⓑ 보증 시작을 안 누른 완료 현장의 보증 만료 = 보증서와 같은 항목별 기간(방수 3년) — 알림·점검 문자는 항목별(대표 결정 2026-10-01), 전체 종료는 3년
      ⓒ 완료를 내렸다 올려도 준공일은 그대로, 바꾸는 길은 🛡 보증 수정의 준공일 칸
      ⓓ 현장 카드 [✍️ 서명 확인] → 서명이 든 보증서 화면으로 잇는다
      ⓔ 보증 시작일이 준공일과 다른 옛 자료 — 종이 보증서 기간이 만료일과 같은 기준일에서 시작한다
@@ -111,7 +111,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r2.doneAt === '2025-03-15' && r2.started === '2025-03-15', '보증 수정의 준공일 칸이 준공일과 보증 시작을 같이 맞춰야 한다: ' + JSON.stringify(r2));
   });
 
-  await test('ⓑ 보증 시작을 안 누른 완료 현장 — 만료일·개월은 보증서와 같은 항목별 기간 · 점검 문자가 \'보증 만료\'를 1년에 말하지 않는다', async () => {
+  await test('ⓑ 보증 시작을 안 누른 완료 현장 — 만료일·개월은 보증서와 같은 항목별 기간 · 알림·점검 문자는 항목별(마감 1년·설비 2년·방수 3년), 전체 보증 종료는 3년', async () => {
     await clean();
     const r = await page.evaluate(() => {
       const mk = (name, doneAt, extra) => Object.assign({ name, stage: STAGES.length - 1, doneAt, received: 0, cost: { material: 0, labor: 0, outsource: 0 }, archived: false, customer: { name: '가상 고객', phone: '010-0000-1234' } }, extra || {});
@@ -123,17 +123,22 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         const H = n => hjWarranty(state.projects.find(p => p.name === n));
         warrantySms('가상13개월'); warrantySms('가상35개월');
         const txt = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.replace(/\s+/g, ' '); };
-        return { l11: L('가상11개월'), h11: H('가상11개월'), due: warrantyDue().map(w => w.name), sms,
+        return { l11: L('가상11개월'), h11: H('가상11개월'), due: warrantyDue().map(w => w.name), dueItems: Object.fromEntries(warrantyDue().map(w => [w.name, w.item.label + ':' + w.item.term + ':' + w.daysLeft])), sms,
           h35end: H('가상35개월').end, g60: L('가상구형60'), g12: L('가상구형12'),
           p60: txt(warrantyHTML('가상구형60')), k60: hjWarrantyLinkBody('가상구형60', {}), p12: txt(warrantyHTML('가상구형12')) };
       } finally { window.hjSendSms = real; }
     });
     assert(r.l11.expiry === r.h11.end && r.l11.expiry === '2028-10-26', '보증 목록 만료일이 보증서(hjWarranty)와 다르다: ' + JSON.stringify({ list: r.l11.expiry, doc: r.h11.end }));
     assert(r.l11.months === 36, '보증 개월이 방수 36개월이 아니다: ' + r.l11.months);
-    assert(!r.due.includes('가상11개월') && !r.due.includes('가상13개월'), '방수 보증이 남은 현장이 만료 임박 알림에 떴다: ' + JSON.stringify(r.due));
-    assert(r.due.includes('가상35개월'), '만료 두 달 전 현장은 알림에 떠야 한다: ' + JSON.stringify(r.due));
-    assert(!/보증 기간이 지났지만/.test(r.sms[0]), '13개월 현장(방수 3년 보증 중)에 \'보증 기간이 지났지만\' 문자: ' + r.sms[0]);
-    assert(r.sms[1].includes('보증 만료(' + r.h35end + ')를 앞두고'), '점검 문자의 만료일이 보증서 끝날과 다르다: ' + r.sms[1]);
+    // 대표 결정 2026-10-01(새 계약, 완화 아님): 알림은 항목별 법정 기간대로 — 11개월 현장은 '마감·전기 1년' 만료 임박(D-30), 13개월 현장은
+    // '마감·전기 1년' 만료 지남(D+31)으로 알림에 들고, 전체 보증 종료(expiry)는 여전히 방수 3년 끝날이다. v330 은 두 현장을 알림에서 뺐다.
+    assert(r.due.includes('가상11개월') && r.dueItems['가상11개월'] === '마감·전기:1년:30', '11개월 현장은 마감·전기 1년 만료 임박으로 알려야 한다: ' + JSON.stringify(r.dueItems));
+    assert(r.due.includes('가상13개월') && r.dueItems['가상13개월'] === '마감·전기:1년:-31', '13개월 현장은 마감·전기 1년이 지난 것으로 알려야 한다: ' + JSON.stringify(r.dueItems));
+    assert(r.due.includes('가상35개월') && r.dueItems['가상35개월'] === '방수:3년:30', '만료 두 달 전 현장은 방수 3년 임박으로 떠야 한다: ' + JSON.stringify(r.dueItems));
+    // 13개월 현장의 점검 문자: 마감·전기 1년이 지났다고 항목을 짚되, 전체 보증이 끝난 것처럼('? 보증 기간이 지났지만') 말하지 않고 남은 항목을 밝힌다
+    assert(r.sms[0].includes('마감(도배·바닥·타일)·전기 보증 기간(1년)이 지났지만') && !/\? 보증 기간이 지났지만/.test(r.sms[0]), '13개월 현장 점검 문자가 어느 항목이 끝났는지 말하지 않는다: ' + r.sms[0]);
+    assert(r.sms[0].includes('급배수·배관 설비·방수 보증은 그대로 이어집니다.'), '13개월 현장 점검 문자가 이어지는 보증을 밝히지 않는다: ' + r.sms[0]);
+    assert(r.sms[1].includes('방수 보증 만료(' + r.h35end + ')를 앞두고') && !/이어집니다/.test(r.sms[1]), '35개월 점검 문자의 항목·만료일이 보증서 끝날과 다르다: ' + r.sms[1]);
     assert(r.g60.expiry === '2030-01-10', '구형 숫자 보증 60개월은 법정보다 길면 그대로: ' + r.g60.expiry);
     assert(r.g12.expiry === '2028-01-10', '구형 숫자 보증 12개월이 법정 방수 3년을 줄였다: ' + r.g12.expiry);
     assert(r.g12.months === 36 && r.g60.months === 60, '구형 숫자 보증의 개월 표시: ' + JSON.stringify([r.g12.months, r.g60.months]));

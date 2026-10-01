@@ -9,11 +9,14 @@
   const transitions = { todo: ['doing', 'blocked', 'review'], doing: ['blocked', 'review'], blocked: ['doing', 'review'], review: ['doing', 'done'], done: ['doing'] };
   const endpointPattern = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
   const API_KEY = 'hj_team_api_url', HANDOFF_KEY = 'hj_company_drafts_handoff', HANDOFF_TTL = 24 * 3600000;
+  // 대표 결정 2026-10-01: 20 minutes without a touch, key, wheel/touch scroll or request logs the device out (shared phones). One timer serves
+  // both the server expiry and the idle deadline; a warning line appears one minute before and any activity extends.
+  const IDLE_MS = 20 * 60000, IDLE_WARN_MS = 60000, IDLE_MESSAGE = '20분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.';
   const configUrl = typeof window.HJ_TEAM_CONFIG?.apiUrl === 'string' ? window.HJ_TEAM_CONFIG.apiUrl.trim() : '';
   const configFixed = endpointPattern.test(configUrl); // A deployed team-config.js always wins over a typed address.
   function deviceUrl() { try { const v = localStorage.getItem(API_KEY) || ''; return endpointPattern.test(v) ? v : ''; } catch (_) { return ''; } }
   let apiUrl = configFixed ? configUrl : deviceUrl();
-  const state = { epoch: 0, token: '', portalUrl: '', identity: null, data: null, editor: null, imports: [], expiry: 0, timer: 0, reading: false, page: '', filters: {}, access: null, checking: false };
+  const state = { epoch: 0, token: '', portalUrl: '', identity: null, data: null, editor: null, imports: [], expiry: 0, timer: 0, idleAt: 0, idleWarned: false, reading: false, page: '', filters: {}, access: null, checking: false };
   const activeRequests = new Set();
   const errors = {
     'not-configured': '팀 업무 서버가 아직 설정되지 않았습니다. 대표가 별도 서버를 설정한 뒤 사용할 수 있습니다.',
@@ -68,6 +71,7 @@
   }
   async function request(url, body, epoch = state.epoch) {
     if (!endpointPattern.test(url)) fail('not-configured');
+    touchSession(); // a request is activity too
     const controller = new AbortController(); activeRequests.add(controller);
     const timer = setTimeout(() => controller.abort(), 25000);
     try {
@@ -96,17 +100,37 @@
     $('taskStats').textContent = ''; $('lastRead').textContent = ''; editorNotice('');
   }
   function endSession(text) {
-    state.epoch++; activeRequests.forEach(c => c.abort()); activeRequests.clear(); clearTimeout(state.timer);
-    state.token = ''; state.identity = null; state.expiry = 0; state.reading = false; clearWorkspace();
+    state.epoch++; activeRequests.forEach(c => c.abort()); activeRequests.clear(); clearTimeout(state.timer); state.timer = 0;
+    state.token = ''; state.identity = null; state.expiry = 0; state.idleAt = 0; showIdleWarning(false); state.reading = false; clearWorkspace();
     history.replaceState(null, '', '#mine');
     $('identity').textContent = ''; $('who').textContent = ''; $('sessionPanel').hidden = true; $('loginPanel').hidden = false; $('loginForm').reset();
     $('refresh').disabled = false; loginEnabled(!!state.portalUrl); notice(text);
   }
   function loginEnabled(yes) { [...$('loginForm').elements].forEach(el => { el.disabled = !yes; }); }
-  async function logout() {
+  /* Session clock: the server expiry and the idle deadline share state.timer (never two timers). */
+  function showIdleWarning(on) { state.idleWarned = !!on; const el = $('idleNotice'); if (!el) return; el.hidden = !on; if (on) $('idleText').textContent = '1분 뒤 자동 로그아웃됩니다 — 20분 동안 쓰지 않았습니다. 계속 쓰려면 누르세요.'; }
+  function armSessionTimer() {
+    clearTimeout(state.timer); state.timer = 0; if (!state.token) return;
+    const idleEnd = state.idleAt + IDLE_MS, next = Math.min(state.expiry, state.idleWarned ? idleEnd : idleEnd - IDLE_WARN_MS);
+    state.timer = setTimeout(sessionTick, Math.min(2147483647, Math.max(0, next - Date.now())));
+  }
+  function sessionTick() {
+    if (!state.token) return; const now = Date.now();
+    if (now >= state.expiry) { endSession(errors['session-expired']); return; }
+    if (now >= state.idleAt + IDLE_MS) { logout(IDLE_MESSAGE); return; }
+    if (now >= state.idleAt + IDLE_MS - IDLE_WARN_MS) showIdleWarning(true);
+    armSessionTimer();
+  }
+  function touchSession() {
+    if (!state.token) return; const now = Date.now();
+    if (!state.idleWarned && now - state.idleAt < 1000) return; // scroll events arrive in bursts
+    state.idleAt = now; if (state.idleWarned) showIdleWarning(false); armSessionTimer();
+  }
+  async function logout(text) {
     const token = state.token, url = state.portalUrl;
-    endSession('이 기기에서 로그아웃했습니다.');
-    if (token && url) { try { await request(url, { action: 'portalLogout', sessionToken: token }); } catch (e) { if (codeOf(e) !== 'stale') notice('이 기기에서는 로그아웃했습니다. 서버 세션 종료는 확인하지 못했습니다.', true); } }
+    endSession(typeof text === 'string' && text ? text : '이 기기에서 로그아웃했습니다.');
+    // The idle message must survive a failed server logout (offline phone): append, do not replace.
+    if (token && url) { try { await request(url, { action: 'portalLogout', sessionToken: token }); } catch (e) { if (codeOf(e) !== 'stale') notice((typeof text === 'string' && text ? text + ' ' : '이 기기에서는 로그아웃했습니다. ') + '서버 세션 종료는 확인하지 못했습니다.', true); } }
   }
   function handleReadError(e) {
     if (codeOf(e) === 'stale') return;
@@ -131,7 +155,7 @@
       const r = await request(state.portalUrl, { action: 'portalLogin', payload }, epoch);
       if (typeof r.sessionToken !== 'string' || !/^[A-Za-z0-9_-]{64,256}$/.test(r.sessionToken) || !Number.isFinite(r.expiresAt) || r.expiresAt <= Date.now()) fail('bad-response');
       state.token = r.sessionToken; state.expiry = r.expiresAt; $('loginForm').reset();
-      state.timer = setTimeout(() => endSession(errors['session-expired']), Math.min(2147483647, state.expiry - Date.now()));
+      state.idleAt = Date.now(); state.idleWarned = false; armSessionTimer();
       const me = await api('identity'); if (!identityValid(me.identity)) fail('bad-response');
       state.identity = { userId: me.identity.userId, officeId: me.identity.officeId };
       $('identity').textContent = 'userId: ' + state.identity.userId + '\nofficeId: ' + state.identity.officeId;
@@ -588,7 +612,11 @@
     connectNotice('저장한 주소를 지웠습니다.'); notice(errors['not-configured'], true);
   }
   const projectUI = window.HJTeamProjects.create({ node, button, data: () => state.data, epoch: () => state.epoch, api, accept: acceptData, notice, message, onError: handleReadError, hasTaskDraft: () => !!state.editor, openTask: t => openEditor('task', t), statuses });
-  $('loginForm').addEventListener('submit', login); $('logout').onclick = logout; $('refresh').onclick = read;
+  $('loginForm').addEventListener('submit', login); $('logout').onclick = () => logout(); $('refresh').onclick = read;
+  // User input only — not the 'scroll' event, which programmatic scrollIntoView/focus restores also fire and would extend a session nobody is using.
+  // A press that starts on the banner itself is left to the button's click (hiding the banner on pointerdown would swallow that click).
+  const activity = ev => { if (ev && ev.type === 'pointerdown' && ev.target && ev.target.closest && ev.target.closest('#idleNotice')) return; touchSession(); };
+  $('idleExtend').onclick = () => touchSession(); ['pointerdown', 'keydown', 'touchstart', 'touchmove', 'wheel'].forEach(ev => window.addEventListener(ev, activity, { passive: true, capture: true }));
   $('copyIdentity').onclick = async () => { try { await navigator.clipboard.writeText($('identity').textContent); notice('계정 연결용 식별정보를 복사했습니다. 비밀번호는 포함되지 않습니다.'); } catch (_) { notice('복사 권한이 없습니다. 펼친 식별정보를 직접 선택해 복사해 주세요.', true); } };
   Object.entries(navPages).forEach(([key, page]) => $('tab' + key).onclick = () => go(page));
   filterIds.forEach(k => $(k)[k === 'search' ? 'oninput' : 'onchange'] = () => { rememberFilters(); renderTasks(); });

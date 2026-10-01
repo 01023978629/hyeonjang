@@ -5,6 +5,12 @@ let chromium; try { ({ chromium } = require('/opt/node22/lib/node_modules/playwr
 const { harness, seed, digest, setBrowser } = require('./company-team-ui.e2e.js');
 const MUTANT = process.env.HJ_UPLOAD_MUTATION || '';
 const DATE = '2026-09-27', MiB = 1048576, CDN = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+// The fake converter the CDN route serves. 대표 결정 2026-10-01: the loader carries a subresource-integrity hash, so the served
+// team-projects.js gets the fake's own sha384 (the browser still verifies it); the shipped constant is asserted separately below.
+const FAKE_HEIC2ANY = 'window.heic2any=async({blob,toType})=>{if(toType!=="image/jpeg")throw Error("type");return new Blob([Uint8Array.from(atob(' + JSON.stringify(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF0sAAAAASUVORK5CYII=', 'base64').toString('base64')) + '),c=>c.charCodeAt(0))],{type:"image/png"});};';
+const FAKE_SRI = 'sha384-' + crypto.createHash('sha384').update(FAKE_HEIC2ANY).digest('base64');
+const REAL_SRI = 'sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL';
+const IDLE_MS = 20 * 60000;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF0sAAAAASUVORK5CYII=', 'base64');
 const HEIC = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic'), Buffer.from('mif1heicTEST_ONLY_NOT_A_REAL_IMAGE')]);
 const VIDEO = (() => { const b = Buffer.alloc(2 * MiB + 300 * 1024); for (let i = 0; i < b.length; i++) b[i] = (i * 13 + 5) & 255; b.write('ftypisom', 4, 'latin1'); return b; })();
@@ -19,10 +25,16 @@ const MUTATIONS = {
   'no-committed-check': ['if (committed(item)) return true;', 'if (c === "duplicate") throw err;'],
   'offline-polling': ["const next = online ? mine()", "const next = true ? mine()"],
   'failed-says-auto-retry': ["state === 'failed' && (i.detail || RETRY.includes(i.error) || i.error === 'upload-not-found')", "state === 'failed' && i.detail"],
-  'heic-no-preview': ['const out = await (await loadHeic2any())', 'throw new Error("mutation"); const out = await (await loadHeic2any())']
+  'heic-no-preview': ['const out = await (await loadHeic2any())', 'throw new Error("mutation"); const out = await (await loadHeic2any())'],
+  // 대표 결정 2026-10-01: SRI on the converter script, and a blocked script must be said out loud.
+  'heic-no-integrity': ['sc.integrity = HEIC2ANY_INTEGRITY; ', ''],
+  'heic-fail-silent': ['if (loadFail) {', 'if (false) {'],
+  // 대표 결정 2026-10-01: idle logout must not touch the stored originals.
+  'idle-clears-queue': ['[...items.values()].forEach(i => { i.cancelled = i.cancelled || i.volatile; }); items.clear(); changed();', '[...items.values()].forEach(i => { i.cancelled = true; }); items.forEach(i => { try { idbDel(i.key); } catch (_) {} }); items.clear(); changed();']
 };
 let hit = false;
 function mutate(name, content) {
+  if (name === 'team-projects.js') { assert(content.includes(REAL_SRI), 'shipped team-projects.js carries the heic2any sha384'); content = content.replace(REAL_SRI, FAKE_SRI); }
   if (!MUTANT) return content;
   const [from, to] = MUTATIONS[MUTANT] || []; assert(from, 'unknown mutation ' + MUTANT);
   if (!content.includes(from)) return content; hit = true; return content.replace(from, to);
@@ -56,7 +68,7 @@ async function run() {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || (process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined) }); setBrowser(browser);
   await test('HEIC with an empty browser type is kept as the HEIC original; preview converts on this device only', async () => {
     const h = await make(); let cdn = 0;
-    await h.page.route(CDN, route => { cdn++; return route.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.heic2any=async({blob,toType})=>{if(toType!=="image/jpeg")throw Error("type");return new Blob([Uint8Array.from(atob(' + JSON.stringify(PNG.toString('base64')) + '),c=>c.charCodeAt(0))],{type:"image/png"});};' }); });
+    await h.page.route(CDN, route => { cdn++; return route.fulfill({ status: 200, contentType: 'application/javascript', body: FAKE_HEIC2ANY }); });
     await choose(h, { name: 'IMG_0001.HEIC', mimeType: '', buffer: HEIC }); await drained(h, 1);
     const e = h.store.evidence[0]; assert.deepEqual([e.mime, e.kind, e.size, e.sha256], ['image/heic', 'photo', HEIC.length, digest(HEIC)]); assert.equal(h.files[e.id], HEIC.toString('base64'), 'uploaded bytes are the untouched original');
     assert((await h.page.textContent('#projectEvidence')).includes('HEIC 원본'));
@@ -159,6 +171,29 @@ async function run() {
     await h.page.waitForFunction(() => document.getElementById('connection').textContent.includes('보관하지 못했습니다'));
     assert((await h.page.textContent('#uploadQueue')).includes('이 기기에 원본을 보관하지 못했습니다')); assert.equal(await idbCount(h.page), 0);
     await drained(h, 1); await h.close();
+  });
+  await test('HEIC converter script carries integrity+crossorigin; a tampered script is refused and the staff member is told to use JPEG', async () => {
+    const fs = require('fs'), path = require('path'), root = path.join(__dirname, '..');
+    for (const f of ['team-projects.js', 'index.html']) assert(fs.readFileSync(path.join(root, f), 'utf8').includes(REAL_SRI), f + ' carries the same heic2any sha384');
+    const h = await make(); let served = 0;
+    await h.page.route(CDN, route => { served++; return route.fulfill({ status: 200, contentType: 'application/javascript', body: FAKE_HEIC2ANY + '\n// tampered' }); });
+    await h.page.evaluate(() => { window.__scripts = []; const o = document.head.append.bind(document.head); document.head.append = (...a) => { a.forEach(x => { if (x && x.tagName === 'SCRIPT') window.__scripts.push({ src: x.src, integrity: x.integrity, cross: x.crossOrigin }); }); return o(...a); }; });
+    await choose(h, { name: 'IMG_0002.HEIC', mimeType: '', buffer: HEIC }); await drained(h, 1);
+    await h.page.getByRole('button', { name: '원본 사진 보기' }).click();
+    await h.page.waitForFunction(() => /무결성 확인 실패/.test(document.getElementById('projectEvidence').textContent));
+    const text = await h.page.textContent('#projectEvidence'); assert(text.includes('HEIC 변환 도구를 불러오지 못했습니다(무결성 확인 실패) — JPEG 로 바꿔 올려 주세요'), text); assert(text.includes('원본은 서버에 그대로'), text);
+    assert.equal(served, 1); assert.deepEqual(await h.page.evaluate(() => window.__scripts), [{ src: CDN, integrity: FAKE_SRI, cross: 'anonymous' }], 'script element declares integrity and crossorigin');
+    assert.equal(h.store.evidence.length, 1, 'the original HEIC stays on the server untouched'); await h.page.getByRole('button', { name: '원본 HEIC 받기' }).waitFor(); await h.close();
+  });
+  await test('idle auto-logout after 20 minutes keeps the queued originals on this device; the same staff member resumes after logging in again', async () => {
+    const h = await harness({ store: store(), role: 'tech1', mutate }); await h.page.clock.install(); await h.login(); await openProject(h);
+    await h.context.setOffline(true); await choose(h, { name: 'idle.png', mimeType: 'image/png', buffer: PNG });
+    await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=queued]')); assert.equal(await idbCount(h.page), 1);
+    await h.page.clock.fastForward(IDLE_MS + 1000); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
+    const notice = await h.page.textContent('#connection'); assert(notice.includes('20분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.'), notice);
+    assert.equal(await rows(h).count(), 0, 'the logged-out screen shows no queue'); assert.equal(await idbCount(h.page), 1, 'the stored original waits for the same staff member');
+    assert.equal(h.store.evidence.length, 0); await h.context.setOffline(false); await h.login(); await openProject(h); await drained(h, 1);
+    assert.deepEqual(h.store.evidence.map(e => e.uploaderId + ':' + e.name), ['tech1:idle.png']); assert.equal(await idbCount(h.page), 0); await h.close();
   });
   await test('unsupported formats are refused before anything is queued; picker offers HEIC and video', async () => {
     const h = await make();

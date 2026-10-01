@@ -35,11 +35,13 @@ function teamClaimSource_(s,c){
   var ids=selected.map(function(e){return e.taskId;});
   return {claim:{id:c.id,projectId:c.projectId,mode:c.mode,insurerName:c.insurerName,referenceNo:c.referenceNo,accidentDate:c.accidentDate,incident:c.incident,cause:c.cause,repair:c.repair,items:c.items,selectedEvidenceIds:c.selectedEvidenceIds,insurerConfirmed:c.insurerConfirmed,consentConfirmed:c.consentConfirmed},project:teamClone_(p),tasks:s.tasks.filter(function(t){return t.projectId===p.id&&ids.indexOf(t.id)>=0;}).map(teamClone_),evidence:selected};
 }
-// Stage readiness is a WARNING, never a gate: required insurer documents are not decided yet (owner decision pending).
-// claimReview still blocks only on claim-incomplete. Same rule is mirrored in team-projects.js readiness().
+// 대표 결정 2026-10-01: stage readiness is 선택 사항 (optional) — a WARNING, never a gate. Neither claimReview nor claimSubmitRecord
+// may raise claim-incomplete because a stage photo or the PDF is missing; claim-incomplete stays for the claim's own fields.
+// The note travels in the response so the screen and the server say the same words. Mirrored in team-projects.js readiness().
 var TEAM_CLAIM_STAGES=['before','cause','after'];
+var TEAM_CLAIM_STAGE_NOTE='선택 사항 — 없어도 제출 준비·기록을 막지 않습니다';
 function teamClaimReadiness_(evidence){
-  var out={photos:{before:0,cause:0,after:0},documents:0,warnings:[]};
+  var out={photos:{before:0,cause:0,after:0},documents:0,warnings:[],optional:true,note:TEAM_CLAIM_STAGE_NOTE};
   (evidence||[]).forEach(function(e){if(e&&e.kind==='photo'&&TEAM_CLAIM_STAGES.indexOf(e.phase)>=0)out.photos[e.phase]++;else if(e&&e.kind==='document'&&e.mime==='application/pdf')out.documents++;});
   TEAM_CLAIM_STAGES.forEach(function(k){if(!out.photos[k])out.warnings.push('missing-'+k);});if(!out.documents)out.warnings.push('missing-document');
   return out;

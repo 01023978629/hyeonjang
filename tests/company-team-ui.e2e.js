@@ -44,6 +44,10 @@ async function harness(options = {}) {
         if (name === 'team-ui.js' && MUTANT === 'action-autosave') content = content.replace("editorNotice('아직 반영되지 않았습니다.", "save({preventDefault(){}}); editorNotice('아직 반영되지 않았습니다.");
         if (name === 'team-ui.js' && MUTANT === 'persist-session') content = content.replace('state.token = r.sessionToken;', 'state.token = r.sessionToken; localStorage.setItem("MUTANT_SESSION", r.sessionToken);');
         if (name === 'team-ui.js' && MUTANT === 'retry-new-id') content = content.replace('const r = await api(edit.pending.action, edit.pending.payload);', 'edit.pending.payload.requestId = crypto.randomUUID(); const r = await api(edit.pending.action, edit.pending.payload);');
+        // 대표 결정 2026-10-01: 20-minute idle logout and its one-minute warning.
+        if (name === 'team-ui.js' && MUTANT === 'idle-no-logout') content = content.replace('if (now >= state.idleAt + IDLE_MS) { logout(IDLE_MESSAGE); return; }', '');
+        if (name === 'team-ui.js' && MUTANT === 'idle-no-warning') content = content.replace('if (now >= state.idleAt + IDLE_MS - IDLE_WARN_MS) showIdleWarning(true);', '');
+        if (name === 'team-ui.js' && MUTANT === 'idle-no-extend') content = content.replace("$('idleExtend').onclick = () => touchSession(); ['pointerdown', 'keydown', 'touchstart', 'touchmove', 'wheel'].forEach(ev => window.addEventListener(ev, activity, { passive: true, capture: true }));", '');
         if (options.mutate) content = options.mutate(name, content);
         return route.fulfill({ status: 200, contentType: name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8', body: content });
       }
@@ -213,6 +217,23 @@ async function run() {
     await h.page.click('#logout'); release(); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
     assert.equal(await h.page.textContent('#identity'), ''); assert.equal(await h.page.textContent('#orgList'), ''); assert.equal(await h.page.textContent('#taskList'), ''); assert(await h.page.isHidden('#workspace')); assert.equal(await h.page.evaluate(() => localStorage.length + sessionStorage.length), 0); await h.close();
   });
+  await test('20 minutes without touch, key, scroll or request logs out with a one-minute warning that any activity extends', async () => {
+    // 대표 결정 2026-10-01. Fake clock: time still flows, fastForward jumps it.
+    const h = await harness(); await h.page.clock.install({ time: new Date('2026-10-01T09:00:00+09:00') }); await h.login();
+    const M = 60000, logouts = () => h.calls.filter(c => c.action === 'portalLogout').length, before = logouts();
+    await h.page.clock.fastForward(18 * M); assert(await h.page.isHidden('#idleNotice'), 'no warning at 18 minutes'); assert(await h.page.isHidden('#loginPanel'));
+    await h.page.clock.fastForward(90 * 1000); await h.page.waitForFunction(() => !document.getElementById('idleNotice').hidden);
+    assert((await h.page.textContent('#idleText')).includes('1분 뒤 자동 로그아웃됩니다'), await h.page.textContent('#idleText')); assert.equal(await h.page.getAttribute('#idleNotice', 'role'), 'alert');
+    await h.page.click('#idleExtend'); await h.page.waitForFunction(() => document.getElementById('idleNotice').hidden);
+    await h.page.clock.fastForward(18 * M); assert(await h.page.isHidden('#loginPanel'), 'extending restarted the 20 minutes'); assert(await h.page.isHidden('#idleNotice'));
+    await h.page.keyboard.press('Shift'); await h.page.clock.fastForward(19 * M + 30 * 1000); assert(await h.page.isHidden('#loginPanel'), 'a key press is activity');
+    await h.page.waitForFunction(() => !document.getElementById('idleNotice').hidden); await h.page.mouse.move(5, 5); await h.page.mouse.wheel(0, 10); await h.page.waitForFunction(() => document.getElementById('idleNotice').hidden, null, { timeout: 2000 }).catch(() => {});
+    const scrolled = await h.page.isHidden('#idleNotice'); assert(scrolled, 'a scroll is activity');
+    await h.page.clock.fastForward(20 * M + 1000); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
+    assert((await h.page.textContent('#connection')).includes('20분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.'), await h.page.textContent('#connection'));
+    assert.equal(logouts(), before + 1, 'the server session is ended the same way as the logout button'); assert(await h.page.isHidden('#workspace')); assert.equal(await h.page.textContent('#identity'), '');
+    assert.equal(await h.page.evaluate(() => localStorage.length + sessionStorage.length), 0); assert(await h.page.isHidden('#idleNotice')); await h.close();
+  });
   await test('expired session clears even an unsaved editor', async () => {
     const h = await harness(); await h.login(); await newTask(h, '세션 만료 초안 모의'); h.failNext = 'session-expired'; await h.page.click('#save'); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
     assert.equal(await h.page.locator('#editorFields input').count(), 0); assert.equal(await h.page.textContent('#identity'), ''); assert(await h.page.isHidden('#workspace')); await h.close();
@@ -268,9 +289,10 @@ async function run() {
 module.exports = { harness, seed, engine, clone, digest, setBrowser: value => { browser = value; } };
 if (require.main === module && process.argv.includes('--mutations')) {
   const { spawnSync } = require('child_process'); let caught = 0;
-  for (const name of ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave']) {
+  const names = ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave', 'idle-no-logout', 'idle-no-warning', 'idle-no-extend'];
+  for (const name of names) {
     const result = spawnSync(process.execPath, [__filename], { env: { ...process.env, HJ_TEAM_UI_MUTATION: name }, timeout: 120000, encoding: 'utf8' });
     assert(!result.error, name + ': runner error ' + result.error); assert.notEqual(result.status, 0, name + ' survived'); assert((result.stdout + result.stderr).includes('FAIL company-team-ui:'), name + ': did not reach assertions'); console.log('DETECTED ' + name); caught++;
   }
-  console.log('company-team-ui mutations: ' + caught + '/5 detected');
+  console.log('company-team-ui mutations: ' + caught + '/' + names.length + ' detected');
 } else if (require.main === module) run().catch(async e => { console.error('FAIL company-team-ui:', e.stack); if (browser) await browser.close().catch(() => {}); process.exitCode = 1; });

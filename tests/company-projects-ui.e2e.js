@@ -118,7 +118,7 @@ async function run() {
     const card = h.page.locator('#claimList article').first();
     const warn = await card.locator('[data-claim-warnings]').getAttribute('data-claim-warnings');
     assert.equal(warn, 'missing-before missing-cause missing-document', 'only an after photo was selected: before/cause/PDF are warned, review still allowed');
-    assert((await card.locator('[data-claim-warnings]').textContent()).includes('검토는 막지 않습니다'));
+    assert((await card.locator('[data-claim-warnings]').textContent()).includes('선택 사항 — 없어도 제출 준비·기록을 막지 않습니다'), '대표 결정 2026-10-01: 단계 경고는 선택 사항이라고 말해야 한다');
     assert.equal(await card.locator('[data-claim-prep]').getAttribute('data-claim-prep'), 'ready'); assert((await card.locator('[data-claim-prep]').textContent()).includes('제출 준비 완료(검토 고정)'));
     assert.equal(await card.locator('[data-claim-submission]').getAttribute('data-claim-submission'), 'none');
     assert.equal(await card.locator('[data-zip-note]').textContent(), '다운로드는 제출 기록이 아닙니다'); assert(await card.locator('[data-zip-note]').isVisible());
