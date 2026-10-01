@@ -7,6 +7,12 @@ if(process.env.HJ_TEAM_MUTATION==='history-reset')pure=pure.replace('task.histor
 if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'projectId','workDate','startTime','endTime']);", "'projectId','workDate','startTime','endTime','history']);");
 if(process.env.HJ_TEAM_MUTATION==='revision')pure=pure.replace('payload.revision!==s.revision','false');
 if(process.env.HJ_TEAM_MUTATION==='auth')pure=pure.replace("if (hits.length!==1) teamError_('forbidden'); return hits[0];","return hits[0] || s.members[0];");
+let code=fs.readFileSync(path.join(base,'Code.gs'),'utf8');
+// v333 진단 액션 변이: 대표 확인을 빼거나, 속성 값을 그대로 내보내거나, 실제 게이트 대신 모두 'ok' 로 꾸미면 검사가 떨어져야 한다.
+if(process.env.HJ_TEAM_MUTATION==='diagnose-open')code=code.replace("if(teamMember_(loaded.state,identity).role!=='owner')teamError_('forbidden');","");
+if(process.env.HJ_TEAM_MUTATION==='diagnose-leak')code=code.replace("COMPANY_FOLDER_ID:has('COMPANY_FOLDER_ID')","COMPANY_FOLDER_ID:p.getProperty('COMPANY_FOLDER_ID')");
+if(process.env.HJ_TEAM_MUTATION==='diagnose-fake')pure=pure.replace("var v=teamPresent_(s,{userId:m.userId,officeId:m.officeId}),tasks=sortedIds(v.tasks);","var v={tasks:s.tasks,teams:s.teams,members:[],audit:[]},tasks=sortedIds(v.tasks);");
+if(process.env.HJ_TEAM_MUTATION==='diagnose-write')code=code.replace("return {diagnosis:companyDiagnose_(c,loaded.state)};}","var dd=companyDiagnose_(c,loaded.state);companyCommit_(c,loaded.state,loaded.head);return {diagnosis:dd};}");
 const props=new Map(),files=new Map(),cache=new Map();let identity={userId:'owner-user',officeId:'company-office'},clock=0,failWrite=false,authDown=false,authCalls=0,failCreate=false,corruptRead=false,lockHeld=false,active=true,expiry;
 const folder='test-company-folder';
 function file(id,text){return {getId:()=>id,getSharingAccess:()=>'PRIVATE',getEditors:()=>[],getViewers:()=>[],getBlob:()=>({getDataAsString:()=>corruptRead?text+'CORRUPT':text}),getParents:()=>{let read=false;return {hasNext:()=>!read,next:()=>{read=true;return {getId:()=>folder};}};}};}
@@ -18,7 +24,7 @@ const context={console,Date,Set,Number,JSON,Error,
  Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(algo,text)=>[...crypto.createHash('sha256').update(text).digest()],base64EncodeWebSafe:b=>Buffer.from(b).toString('base64url')},
  UrlFetchApp:{fetch(url,opts){assert.equal(lockHeld,false,'network must not hold the data lock');authCalls++;assert.equal(url,props.get('COMPANY_PORTAL_URL'));assert.equal(JSON.parse(opts.payload).action,'portalMe');if(authDown)throw Error('offline');return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({ok:true,user:{id:identity.userId,active,role:'resident',email:'TEST_ONLY@example.invalid'},office:{id:identity.officeId,active:true},expiresAt:expiry===undefined?Date.now()+60000:expiry})};}}
 };
-vm.createContext(context);vm.runInContext(pure,context);['TeamProjects.gs','TeamEvidence.gs','Code.gs'].forEach(name=>vm.runInContext(fs.readFileSync(path.join(base,name),'utf8'),context));
+vm.createContext(context);vm.runInContext(pure,context);['TeamProjects.gs','TeamEvidence.gs'].forEach(name=>vm.runInContext(fs.readFileSync(path.join(base,name),'utf8'),context));vm.runInContext(code,context);
 props.set('COMPANY_ENABLED','1');props.set('COMPANY_FOLDER_ID',folder);props.set('COMPANY_OFFICE_ID','company-office');props.set('COMPANY_PORTAL_URL','https://script.google.com/macros/s/TEST_COMPANY_AUTH/exec');props.set('COMPANY_OWNER_USER_ID','owner-user');props.set('COMPANY_OWNER_NAME','TEST_OWNER');
 context.companyBootstrapFromProperties_();assert.throws(()=>context.companyBootstrapFromProperties_(),/already-configured/);assert.equal(props.has('COMPANY_OWNER_USER_ID'),false);
 const session='TEST_ONLY_SESSION_'.padEnd(80,'x');const call=(action,payload)=>context.companyDispatch_({action,payload,sessionToken:session});
@@ -80,4 +86,34 @@ assert.throws(()=>applyReport({...fields(isolated.tasks[0]),status:'doing'}),/re
 applyReport({...fields(isolated.tasks[0]),status:'doing',handoff:'REWORK_REASON'});assert.equal(isolated.tasks[0].history.at(-1).actorId,'o');
 isolated.tasks[0].history=Array.from({length:100},(_,i)=>({...isolated.tasks[0].history[0],revision:i}));applyReport(fields(isolated.tasks[0]));assert.equal(isolated.tasks[0].history.length,100,'no-op at history limit still succeeds');const fullBefore=JSON.stringify(isolated);
 assert.throws(()=>applyReport({...fields(isolated.tasks[0]),handoff:'OVER_LIMIT'}),/capacity/);assert.equal(JSON.stringify(isolated),fullBefore,'capacity failure preserves all history');
-console.log('PASS company-team: authorization, immutable reports, legacy no-op baseline, history replay/capacity, scoped peer membership, review note, revision, issuer binding, storage failures, redaction');
+// v333 권한 점검(companyDiagnose): 대표만, 읽기 전용, 속성은 있음/없음만, 구성원마다 실제 게이트 결과.
+identity={userId:'owner-user',officeId:'company-office'};cache.clear();
+data=call('list').data;
+save('memberSave',{name:'TEST_C',userId:'user-c',officeId:'company-office',teamIds:[teamA],role:'external',active:true});
+const ext=data.members.find(m=>m.userId==='user-c').id;
+save('taskSave',{title:'TEST_DIAG_A',project:'TEST_DIAG',teamId:teamA,assigneeId:ext,due:'',status:'todo',handoff:'',sourceRef:''});
+save('taskSave',{title:'TEST_DIAG_B',project:'TEST_DIAG',teamId:teamB,assigneeId:memberB,due:'',status:'todo',handoff:'',sourceRef:''});
+const headBefore=props.get('COMPANY_HEAD'),filesBefore=files.size;
+const diag=JSON.parse(JSON.stringify(call('companyDiagnose').diagnosis));
+assert.equal(props.get('COMPANY_HEAD'),headBefore,'diagnose must not commit');assert.equal(files.size,filesBefore,'diagnose must not write a snapshot');
+assert.equal(diag.revision,data.revision);assert.equal(diag.service,'company-team-v3');assert.equal(diag.authorityBound,true);
+assert.deepEqual(diag.properties,{COMPANY_ENABLED:true,COMPANY_PORTAL_URL:true,COMPANY_FOLDER_ID:true,COMPANY_OFFICE_ID:true,COMPANY_HEAD:true,COMPANY_OWNER_USER_ID:false,COMPANY_OWNER_NAME:false});
+const diagText=JSON.stringify(diag);
+for(const secret of [folder,'company-office',props.get('COMPANY_PORTAL_URL'),'owner-user','user-b','user-c',JSON.parse(headBefore).fileId,session])assert(!diagText.includes(secret),'diagnosis leaks a raw value: '+secret);
+const dm=Object.fromEntries(diag.members.map(m=>[m.id,m])),hash=a=>crypto.createHash('sha256').update(JSON.stringify(a.slice().sort())).digest('base64url');
+const all=data.tasks.map(t=>t.id);
+const ownerRow=diag.members.find(m=>m.role==='owner');assert.equal(ownerRow.access,'ok');assert.equal(ownerRow.visibleTasks,all.length);assert.equal(ownerRow.visibleTaskDigest,hash(all));assert.equal(ownerRow.seesIdentities,true);assert.equal(ownerRow.seesAudit,true);assert.deepEqual(ownerRow.assignableTeamIds,data.teams.map(t=>t.id).sort());
+const leadRow=dm[memberB],leadSees=data.tasks.filter(t=>t.teamId===teamB).map(t=>t.id);assert.equal(leadRow.access,'ok');assert.equal(leadRow.visibleTaskDigest,hash(leadSees),'lead sees own team only');assert.deepEqual(leadRow.visibleTeamIds,[teamB]);assert.deepEqual(leadRow.assignableTeamIds,[teamB]);assert.equal(leadRow.seesIdentities,false);assert.equal(leadRow.seesAudit,false);
+const extRow=dm[ext];assert.equal(extRow.access,'ok');assert.equal(extRow.visibleTasks,1);assert.equal(extRow.visibleTaskDigest,hash(data.tasks.filter(t=>t.assigneeId===ext).map(t=>t.id)));assert.deepEqual(extRow.assignableTeamIds,[]);assert.equal(extRow.seesIdentities,false);
+assert.equal(dm[memberA].active,false);assert.equal(dm[memberA].access,'forbidden','inactive member is blocked by the real gate');
+assert(diag.members.every(m=>m.linked===true&&m.duplicate===false));assert(diag.members.every(m=>!('userId' in m)&&!('officeId' in m)));
+assert.equal(diag.tasks.total,data.tasks.length);
+assert.throws(()=>context.companyDispatch_({action:'companyDiagnose',sessionToken:session,payload:{peek:true}}),/invalid-input/);
+identity={userId:'user-b',officeId:'company-office'};assert.throws(()=>call('companyDiagnose'),/forbidden/,'lead cannot run the owner diagnosis');
+identity={userId:'user-c',officeId:'company-office'};assert.throws(()=>call('companyDiagnose'),/forbidden/,'external cannot run the owner diagnosis');
+identity={userId:'unknown-user',officeId:'company-office'};assert.throws(()=>call('companyDiagnose'),/forbidden/);
+identity={userId:'owner-user',officeId:'company-office'};
+props.set('COMPANY_OWNER_NAME','LEFTOVER');assert.equal(call('companyDiagnose').diagnosis.properties.COMPANY_OWNER_NAME,true,'leftover bootstrap property is reported');props.delete('COMPANY_OWNER_NAME');
+props.delete('COMPANY_ENABLED');assert.throws(()=>call('companyDiagnose'),/not-configured/);props.set('COMPANY_ENABLED','1');
+assert.equal(props.get('COMPANY_HEAD'),headBefore);assert.equal(lockHeld,false);
+console.log('PASS company-team: authorization, immutable reports, legacy no-op baseline, history replay/capacity, scoped peer membership, review note, revision, issuer binding, storage failures, redaction, owner-only read-only diagnosis');

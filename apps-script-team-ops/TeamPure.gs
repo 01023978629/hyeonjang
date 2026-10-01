@@ -24,6 +24,27 @@ function teamPresent_(s, identity) {
     audit:m.role==='owner'?s.audit.slice(-100).reverse():[]};
   return teamProjectsPresent_(s,m,result);
 }
+/* Owner-only read-only diagnosis. It runs every linked member through the real gates
+ * (teamMember_/teamPresent_/teamCanAssign_) so the owner can compare the result with the
+ * role rules on screen. Raw portal identifiers, folder/office ids and URLs are never returned. */
+function teamDiagnose_(s, office, digest) {
+  var sortedIds=function(a){return a.map(function(x){return x.id;}).sort();};
+  var members=s.members.map(function(m){
+    var out={id:m.id,name:m.name,role:m.role,active:m.active===true,teamIds:m.teamIds.slice(),
+      linked:typeof m.userId==='string'&&!!m.userId&&m.officeId===office,
+      duplicate:s.members.filter(function(x){return x.active===true&&x.userId===m.userId&&x.officeId===m.officeId;}).length>1};
+    try{
+      var v=teamPresent_(s,{userId:m.userId,officeId:m.officeId}),tasks=sortedIds(v.tasks);
+      out.access='ok';out.visibleTasks=tasks.length;out.visibleTaskDigest=digest(JSON.stringify(tasks));out.visibleTeamIds=sortedIds(v.teams);
+      out.seesIdentities=v.members.some(function(u){return Object.prototype.hasOwnProperty.call(u,'userId');});
+      out.seesAudit=s.audit.length?v.audit.length>0:null;
+    }catch(e){out.access=String(e&&e.message||'server-error');}
+    out.assignableTeamIds=s.teams.filter(function(t){return teamCanAssign_(m,t.id);}).map(function(t){return t.id;}).sort();
+    return out;
+  });
+  return {revision:s.revision,teams:{active:s.teams.filter(function(t){return t.active;}).length,inactive:s.teams.filter(function(t){return !t.active;}).length},
+    tasks:{total:s.tasks.length,open:s.tasks.filter(function(t){return t.status!=='done';}).length},members:members};
+}
 function teamApply_(store, identity, action, payload, now, newId, digest, attachment) {
   var s=teamClone_(store),actor=teamMember_(s,identity);
   teamKeys_(payload,['requestId','revision','entity']);
