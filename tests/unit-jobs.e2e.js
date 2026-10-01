@@ -277,6 +277,104 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert(r.modal <= 1 && r.doc <= 1, '넘침: ' + JSON.stringify(r));
   });
 
+  await test('⑩ 작업건 화면의 [이 위치에 사진 추가](실제 파일 선택) — 아직 안 적힌 오더 작업건은 그때 세대에 적혀 오더가 정리돼도 사진의 작업건이 남는다', async () => {
+    await page.setViewportSize({ width: 390, height: 780 });
+    // 21동 1204호에 새 관리사무소 오더 — 아직 세대에 적히지 않은(virtual) 작업건
+    await page.evaluate(async A => {
+      state.aptOrders.push({ id: 'ord2xyz', officeId: 'of1', unit: '21동 1204호', text: 'TEST 베란다 누수', amount: 0, pipeType: '미확정', date: '2026-09-25', status: 'recv', doneAt: '', project: A });
+      clearTimeout(__idbSaveTimer); if (!await guardedPersistCurrentState()) throw new Error('persist'); await __appStateWriteQueue;
+      aptUnitView(A, 'u2', 80, 'ojob_ord2xyz');
+    }, A);
+    const pre = await page.evaluate(() => ({ jobs: state.projects[0].aptUnits[1].jobs, h3: document.querySelector('#aptUnitPanel h3').textContent }));
+    assert(pre.jobs === undefined && /관리사무소 접수/.test(pre.h3), '오더 작업건 화면이 열리고 아직 세대엔 안 적혔다: ' + JSON.stringify(pre));
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#aptUnitUpload')]);
+    await chooser.setFiles([{ name: 'TEST_unitjob_intake.png', mimeType: 'image/png', buffer: Buffer.from(PNG, 'base64') }]);
+    await page.waitForSelector('#photoIntakeConfirm');
+    const sel = await page.evaluate(() => ({ unit: document.getElementById('photoIntakeUnit').value }));
+    assert(sel.unit === 'u2', '세대가 미리 골라져 있다: ' + JSON.stringify(sel));
+    await page.click('#photoIntakeConfirm');
+    await page.waitForSelector('#photoIntakeResult', { timeout: 15000 });
+    const r = await page.evaluate(async () => {
+      await __appStateWriteQueue;
+      const f = state.files.find(x => x.name === 'TEST_unitjob_intake.png'), stored = await idbGet('appState');
+      return { link: f && f._aptUnit, jobs: (state.projects[0].aptUnits[1].jobs || []).map(j => [j.id, j.source, j.orderId]), ord: state.aptOrders.find(o => o.id === 'ord2xyz').unitId,
+        idbJobs: ((stored.projects[0].aptUnits[1] || {}).jobs || []).map(j => j.id), result: document.getElementById('photoIntakeResult').textContent };
+    });
+    assert(r.link && r.link.unitId === 'u2' && r.link.jobId === 'ojob_ord2xyz', '사진이 그 작업건에 붙는다: ' + JSON.stringify(r.link));
+    assert(eq(r.jobs, [['ojob_ord2xyz', 'office', 'ord2xyz']]) && r.ord === 'u2' && eq(r.idbJobs, ['ojob_ord2xyz']), '사진을 붙일 때 작업건이 세대에 적히고 오더에 unitId(저장본까지): ' + JSON.stringify(r));
+    assert(/작업건: 관리사무소 접수/.test(r.result), '결과 화면이 작업건을 말한다: ' + r.result.slice(0, 300));
+    // 관리사무소 접수 충돌 정리 등으로 오더가 빠져도 사진의 작업건은 남는다
+    const after = await page.evaluate(A => {
+      state.aptOrders = state.aptOrders.filter(o => o.id !== 'ord2xyz');
+      const p = state.projects[0], u = p.aptUnits[1];
+      return { jobs: hjUnitJobsOf(p, u).map(j => j.id), photos: hjUnitJobRecords(p, 'u2', 'ojob_ord2xyz').photos.map(f => f.name), none: hjUnitJobRecords(p, 'u2', HJ_UNIT_JOB_NONE).photos.map(f => f.name) };
+    }, A);
+    assert(eq(after.jobs, ['ojob_ord2xyz']) && eq(after.photos, ['TEST_unitjob_intake.png']) && !after.none.includes('TEST_unitjob_intake.png'), '오더가 빠진 뒤에도: ' + JSON.stringify(after));
+    await page.evaluate(() => closeModal(true));
+  });
+
+  await test('⑪ 편집기에 열린 견적을 작업건에 이어도, 편집기 [저장]이 연결을 지우지 않는다', async () => {
+    const r = await page.evaluate(async A => {
+      const p = state.projects[0], dj = p.aptUnits[0].jobs.find(j => j.source === 'direct').id;
+      editQuote('q3');                                   // 편집기 = 깊은 복사본
+      await hjUnitJobLink(A, 'u1', dj, { quotes: { q3: true } });
+      const mid = JSON.stringify(state.editingQuote.unitRef || null), dirty = quoteEditDirty();
+      quoteCommitEditing(state.editingQuote);
+      const linked = JSON.stringify(state.quotes.find(q => q.id === 'q3').unitRef || null);
+      editQuote('q3');
+      await hjUnitJobLink(A, 'u1', dj, { quotes: { q3: false } });
+      quoteCommitEditing(state.editingQuote);
+      const unlinked = JSON.stringify(state.quotes.find(q => q.id === 'q3').unitRef || null);
+      // 편집기가 열린 채 작업건을 지워도 저장이 지운 작업건 id 를 되살리지 않는다(선택 복원으로 그 작업건이 돌아오면 다시 붙어 버린다)
+      const tmp = await hjUnitJobAdd(A, 'u1', 'TEST 임시 작업건');
+      await hjUnitJobLink(A, 'u1', tmp, { quotes: { q3: true } });
+      editQuote('q3');
+      await hjUnitJobRemove(A, 'u1', tmp);
+      quoteCommitEditing(state.editingQuote);
+      const removed = JSON.stringify(state.quotes.find(q => q.id === 'q3').unitRef || null);
+      state.quotes.find(q => q.id === 'q3').unitRef = undefined; delete state.quotes.find(q => q.id === 'q3').unitRef;
+      state.editingQuote = null;
+      return { dj, mid, dirty, linked, unlinked, removed };
+    }, A);
+    assert(r.linked === JSON.stringify({ unitId: 'u1', jobId: r.dj }) && r.mid === r.linked, '편집기 저장 뒤에도 연결 유지: ' + JSON.stringify(r));
+    assert(!r.dirty, '연결만 바뀐 편집기는 고친 것이 없다(목록으로 갈 때 묻지 않는다)');
+    assert(r.unlinked === JSON.stringify({ unitId: 'u1' }), '푼 연결도 편집기 저장이 되살리지 않는다: ' + r.unlinked);
+    assert(r.removed === JSON.stringify({ unitId: 'u1' }), '지운 작업건 id 도 편집기 저장이 되살리지 않는다: ' + r.removed);
+  });
+
+  await test('⑫ 큰 단지(세대 300·오더 150·작업건 사진 300장)에서도 세대·작업건 화면이 바로 열린다', async () => {
+    const r = await page.evaluate(() => {
+      const B = '가상 큰단지', units = [], orders = [], files = [];
+      for (let i = 0; i < 300; i++) units.push({ id: 'bu' + i, type: 'unit', dong: String(100 + (i % 10)), ho: String(101 + i), name: '', note: '' });
+      for (let i = 0; i < 150; i++) { const u = units[i < 5 ? 0 : i]; orders.push({ id: 'bord' + i, officeId: 'ofB', unit: u.dong + '동 ' + u.ho + '호', text: 'TEST', amount: 0, pipeType: '미확정', date: '2026-09-20', status: 'recv', doneAt: '', project: B }); }
+      for (let i = 0; i < 300; i++) files.push({ id: 'bp' + i, name: 'TEST_big_' + i + '.jpg', kind: 'photo', ext: 'jpg', size: 1, project: B, when: new Date('2026-09-20T00:00:00Z'), thumb: null, _aptUnit: { project: B, unitId: 'bu0', jobId: 'ojob_bord' + (i % 5) } });
+      const keep = { projects: state.projects, files: state.files, aptOrders: state.aptOrders, aptOffices: state.aptOffices };
+      state.projects = keep.projects.concat([{ name: B, stage: 2, received: 0, archived: false, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {}, aptUnits: units }]);
+      state.files = keep.files.concat(files); state.aptOrders = keep.aptOrders.concat(orders); state.aptOffices = keep.aptOffices.concat([{ id: 'ofB', complex: B }]);
+      try {
+        // 걸린 시간은 기계마다 흔들리므로 호출 횟수로도 본다 — 사진·오더마다 작업건 목록이나 세대 목록을 다시 만들면 수백 번이 된다.
+        const calls = { jobsOf: 0, unitList: 0 }, oJ = window.hjUnitJobsOf, oL = window.aptUnitList;
+        window.hjUnitJobsOf = function () { calls.jobsOf++; return oJ.apply(this, arguments); };
+        window.aptUnitList = function () { calls.unitList++; return oL.apply(this, arguments); };
+        let t = performance.now(), unitMs, unitCalls, head, jobBtns;
+        try {
+          aptUnitView(B, 'bu0'); unitMs = performance.now() - t; unitCalls = { ...calls };
+          head = document.querySelector('#aptUnitPanel h3').textContent; jobBtns = document.querySelectorAll('#modalRoot [data-unit-job]').length;
+          calls.jobsOf = 0; calls.unitList = 0; t = performance.now(); aptUnitView(B, 'bu0', 80, 'ojob_bord1');
+        } finally { window.hjUnitJobsOf = oJ; window.aptUnitList = oL; }
+        const jobMs = performance.now() - t, jobCalls = { ...calls };
+        const jobHead = document.querySelector('#aptUnitPanel h3').textContent;
+        closeModal(true);
+        return { unitMs: Math.round(unitMs), jobMs: Math.round(jobMs), head, jobBtns, jobHead, unitCalls, jobCalls };
+      } finally { Object.assign(state, keep); }
+    });
+    assert(/사진 300장/.test(r.head) && r.jobBtns === 7 && /사진 60장/.test(r.jobHead), '화면 내용(전체·미지정·오더 작업건 5): ' + JSON.stringify(r));
+    // 고치기 전 데스크톱에서 세대 화면 34.8초·작업건 화면 76.3초. 폰은 몇 배 느리므로 넉넉히 잡아도 2초 안이어야 한다.
+    assert(r.unitMs < 2000 && r.jobMs < 2000, '열리는 데 걸린 시간(ms): ' + JSON.stringify(r));
+    console.log('      세대 화면 ' + r.unitMs + 'ms · 작업건 화면 ' + r.jobMs + 'ms · 호출 ' + JSON.stringify([r.unitCalls, r.jobCalls]));
+    assert([r.unitCalls, r.jobCalls].every(c => c.jobsOf <= 10 && c.unitList <= 10), '한 번 그리는 데 작업건·세대 목록을 몇 번 만드는가: ' + JSON.stringify([r.unitCalls, r.jobCalls]));
+  });
+
   if (errs.length) { fails++; console.log('FAIL  페이지 오류: ' + errs.join(' | ').slice(0, 600)); }
   await browser.close();
   console.log(fails ? '\n실패 ' + fails + '건' : '\n전부 통과');

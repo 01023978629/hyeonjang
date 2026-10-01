@@ -3686,7 +3686,8 @@ function openPhotoIntake(files,context){
       if(approved.unitId&&!unit){issue.textContent='동·호수가 변경되었습니다. 다시 선택해 주세요.';return;}
       approved.unitLabel=unit?aptUnitLabel(unit):'';approved.source=context.source||'';
       // v333 작업건 화면에서 연 사진 추가는 같은 세대를 그대로 둔 때만 그 작업건에 붙인다(세대를 바꾸면 작업건 미지정).
-      approved.jobId=unit&&approved.unitId===context.unitId&&context.jobId&&hjUnitJobFind(aptUnitProject(approved.project),approved.unitId,context.jobId)?context.jobId:'';
+      const job=unit&&approved.unitId===context.unitId&&context.jobId?hjUnitJobFind(aptUnitProject(approved.project),approved.unitId,context.jobId):null;
+      approved.jobId=job?job.id:'';approved.jobTitle=job?job.title:'';
       __photoIntakeBusy=true;
       runPhotoIntake(picked,approved);
     }}]);
@@ -3705,7 +3706,7 @@ function openPhotoIntake(files,context){
 async function runPhotoIntake(files,approved){
   const pairs=[],readFailed=[],videos=[];
   const report={ok:0,queued:0,failed:0,failedFiles:[],queuedFiles:[]};
-  let error='',metadataSaved=false,cloudAttempted=false;
+  let error='',metadataSaved=false,cloudAttempted=false,jobNote='';
   openModal('사진 추가 중',`<p id="photoIntakeProgress" role="status" aria-live="polite">추가 전 안전 스냅샷을 확인합니다.</p><p class="hint">처리가 끝날 때까지 앱을 닫거나 새로고침하지 마세요.</p>`,[]);
   __modalCloseLocked=true;
   const close=document.querySelector('#modalRoot .modal-close');if(close)close.disabled=true;
@@ -3728,6 +3729,13 @@ async function runPhotoIntake(files,approved){
         if(approved.unitId)rec._aptUnit={project:approved.project,unitId:approved.unitId,...(approved.jobId?{jobId:approved.jobId}:{})};
         pairs.push({file,rec});
       }catch(e){readFailed.push(file.name||'사진');}
+    }
+    if(pairs.length&&approved.jobId){
+      // v333 작업건 화면에서 연 사진 추가: 아직 세대에 적지 않은 관리사무소 오더 작업건이면 지금 적는다(오더에 unitId 도).
+      // 안 적으면 사진의 jobId 는 오더가 살아 있고 라벨이 맞는 동안만 통한다 — 오더가 정리되거나 동·호수 글자가 바뀌면 조용히 '작업건 미지정'이 된다.
+      // '사진 추가 전' 안전판 뒤이고 아래 같은 저장으로 사진과 함께 남는다. 작업건이 그사이 바뀌었으면 사진은 세대에만 붙인다.
+      try{hjUnitJobEnsureDraft(state,approved.project,approved.unitId,approved.jobId);}
+      catch(e){pairs.forEach(({rec})=>{if(rec._aptUnit)delete rec._aptUnit.jobId;});jobNote='작업건이 그사이 바뀌어 사진은 동·호수에만 연결했습니다(작업건 미지정). 동·호수 관리에서 작업건을 다시 고르세요.';approved.jobTitle='';}
     }
     if(pairs.length){
       markDirty();
@@ -3759,9 +3767,10 @@ async function runPhotoIntake(files,approved){
     const names=(label,items)=>items.length?`<details><summary style="min-height:44px;cursor:pointer">${label} ${items.length}장 보기</summary><ul style="padding-left:20px;max-height:160px;overflow:auto">${items.map(n=>`<li>${escapeHtml(n)}</li>`).join('')}</ul></details>`:'';
     openModal('사진 추가 결과',`<div id="photoIntakeResult" role="status" style="overflow-wrap:anywhere">
       <p><b>앱 목록 추가 ${pairs.length}장</b> / 선택 ${files.length}장${videos.length?' (동영상 '+videos.length+'개 포함)':''}${readFailed.length?' · 읽기 실패 '+readFailed.length+'장':''}</p>
-      <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.unitLabel?'<br>동·호수: '+escapeHtml(approved.unitLabel):''}${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
+      <p>현장: <b>${escapeHtml(approved.project||'미배정')}</b>${approved.unitLabel?'<br>동·호수: '+escapeHtml(approved.unitLabel):''}${approved.jobTitle?'<br>작업건: '+escapeHtml(approved.jobTitle):''}${approved.workLabel?'<br>작업 내용: '+escapeHtml(approved.workLabel):''}</p>
       <p>서버·드라이브 백업 확인 ${report.ok}장 · 전송 대기 ${report.queued}장 · 백업 실패 ${report.failed}장</p>
       ${error?`<p role="alert" style="color:var(--warn)">${escapeHtml(error)}</p>`:''}
+      ${jobNote?`<p id="photoIntakeJobNote" role="alert" style="color:var(--warn)">${escapeHtml(jobNote)}</p>`:''}
       ${!cloudAttempted&&pairs.length?'<p>서버·드라이브 백업은 실행하지 않았습니다.</p>':''}
       ${names('읽지 못한 사진',readFailed)}${names('백업 실패 사진',report.failedFiles)}${names('전송 대기 사진',report.queuedFiles)}
       <p class="hint">${metadataSaved?'현장·작업명 등 앱 기록은 저장되었습니다. ':''}앱 기록 저장은 원본 사진 백업과 다릅니다. 원본은 휴대폰에 유지해 주세요.</p>
@@ -12713,22 +12722,25 @@ function hjUnitJobTitle(raw){
 function hjUnitJobOrderJobId(orderId){return 'ojob_'+orderId;}
 function hjUnitJobOrderTitle(o){return ('관리사무소 접수'+(o.receiptNo?' '+String(o.receiptNo).slice(0,20):'')+(isRealIsoDate(o.date)?' · '+o.date:'')).slice(0,60);}
 // 이 세대에 걸리는 오더 — 세대 판정은 예전 라벨 매칭 그대로(aptUnitForOrder). 오더 id 가 작업건 id 에 들어가므로 형식을 본다.
-function hjUnitJobOrders(p,u){
-  if(!p||!u)return [];
-  return (state.aptOrders||[]).filter(o=>o&&typeof o.id==='string'&&HJ_UNIT_JOB_ID_RE.test(o.id)&&o.id.length<=110&&aptUnitOrderProject(o)===p&&aptUnitForOrder(o,p)?.id===u.id);
+// units 는 aptUnitList(p) — 오더마다 aptUnitForOrder 로 세대 목록을 다시 만들지 않게 한 번 받는다(세대 300·오더 150 이면 수만 번 정규화였다).
+// aptUnitList 는 라벨이 겹치는 세대를 빼므로 '라벨이 같고 u 가 목록에 있다' = aptUnitForOrder(o,p)?.id===u.id 와 같은 판정이다.
+function hjUnitJobOrders(p,u,units=aptUnitList(p)){
+  if(!p||!u||!units.some(x=>x.id===u.id))return [];
+  const key=aptUnitLabelKey(aptUnitLabel(u));
+  return (state.aptOrders||[]).filter(o=>o&&typeof o.id==='string'&&HJ_UNIT_JOB_ID_RE.test(o.id)&&o.id.length<=110&&aptUnitLabelKey(o.unit)===key&&aptUnitOrderProject(o)===p);
 }
 function hjUnitJobFromOrder(o){
   const done=aptOrderCompleted(o);
   return {id:hjUnitJobOrderJobId(o.id),title:hjUnitJobOrderTitle(o),source:'office',orderId:o.id,requestId:String(o.sourceRequestId||''),createdAt:isRealIsoDate(o.date)?o.date:localDate(),status:done?'done':'open',...(done&&isRealIsoDate(o.doneAt)?{doneAt:o.doneAt}:{})};
 }
 // 저장된 작업건 + 아직 적지 않은 관리사무소 오더 작업건(virtual). 다른 세대에 이미 적힌 오더는 다시 만들지 않는다.
-function hjUnitJobsOf(p,u){
+function hjUnitJobsOf(p,u,units=aptUnitList(p)){
   if(!p||!u)return [];
   // 오더가 살아 있는 관리사무소 작업건의 진행 상태는 오더를 따른다(오더 화면에서 바꾼다 — 두 곳에서 따로 적으면 어긋난다).
   const orders=new Map((state.aptOrders||[]).filter(o=>o&&typeof o.id==='string').map(o=>[o.id,o]));
   const stored=hjUnitJobsStored(u).map(j=>{const o=j.source==='office'&&orders.get(j.orderId);if(!o)return j;const f=hjUnitJobFromOrder(o),{doneAt:_d,...rest}=j;return {...rest,status:f.status,...(f.doneAt?{doneAt:f.doneAt}:{})};}),taken=new Set();
-  aptUnitList(p).forEach(x=>hjUnitJobsStored(x).forEach(j=>{if(j.orderId)taken.add(j.orderId);}));
-  return stored.concat(hjUnitJobOrders(p,u).filter(o=>!taken.has(o.id)&&!stored.some(j=>j.id===hjUnitJobOrderJobId(o.id))).map(o=>({...hjUnitJobFromOrder(o),virtual:true})));
+  units.forEach(x=>hjUnitJobsStored(x).forEach(j=>{if(j.orderId)taken.add(j.orderId);}));
+  return stored.concat(hjUnitJobOrders(p,u,units).filter(o=>!taken.has(o.id)&&!stored.some(j=>j.id===hjUnitJobOrderJobId(o.id))).map(o=>({...hjUnitJobFromOrder(o),virtual:true})));
 }
 function hjUnitJobFind(p,unitId,jobId){const u=aptUnitList(p).find(x=>x.id===unitId);return u&&jobId?hjUnitJobsOf(p,u).find(j=>j.id===jobId)||null:null;}
 // 초안(draft) 안에서 작업건을 확보한다 — virtual 오더 작업건이면 이때 세대에 적고 오더에 unitId 를 남긴다.
@@ -12750,21 +12762,30 @@ function hjUnitJobEnsureDraft(draft,projectName,unitId,jobId){
   if(o.source!=='officeops-preventive-inspection')o.unitId=u.id;
   return job;
 }
-function hjUnitJobOfPhoto(f,p,u){const j=f&&f._aptUnit&&f._aptUnit.jobId;return j&&hjUnitJobsOf(p,u).some(x=>x.id===j)?j:'';}
+/* 한 화면을 그리는 동안 쓰는 작업건 묶음 — 사진·견적·AS 마다 hjUnitJobsOf 를 다시 돌리면 사진×오더×세대가 되어
+   큰 단지(세대 300·오더 150·사진 300)에서 세대 화면이 수십 초 멈췄다. 한 번의 동기 그리기 안에서만 쓰고 넘긴다(저장하지 않는다 —
+   쓰기 뒤에는 화면을 새로 그리며 새로 만든다). */
+function hjUnitJobCtx(p){
+  const units=aptUnitList(p),jobsBy=new Map(),idsBy=new Map();
+  const jobs=u=>{if(!jobsBy.has(u.id))jobsBy.set(u.id,hjUnitJobsOf(p,u,units));return jobsBy.get(u.id);};
+  const ids=u=>{if(!idsBy.has(u.id))idsBy.set(u.id,new Set(jobs(u).map(j=>j.id)));return idsBy.get(u.id);};
+  return {units,jobs,ids};
+}
+function hjUnitJobOfPhoto(f,p,u,ctx){const j=f&&f._aptUnit&&f._aptUnit.jobId;if(!j)return '';return (ctx?ctx.ids(u).has(j):hjUnitJobsOf(p,u).some(x=>x.id===j))?j:'';}
 // 견적·AS 의 세대 연결. 현장이 다르면(견적 현장을 옮긴 경우) 연결로 보지 않는다.
-function hjUnitRefOf(rec,p){
+function hjUnitRefOf(rec,p,ctx){
   const r=rec&&rec.unitRef;if(!p||!r||typeof r!=='object'||rec.project!==p.name)return null;
-  const u=aptUnitList(p).find(x=>x.id===r.unitId);if(!u)return null;
-  const jobId=typeof r.jobId==='string'&&hjUnitJobsOf(p,u).some(j=>j.id===r.jobId)?r.jobId:'';
+  const u=(ctx?ctx.units:aptUnitList(p)).find(x=>x.id===r.unitId);if(!u)return null;
+  const jobId=typeof r.jobId==='string'&&(ctx?ctx.ids(u).has(r.jobId):hjUnitJobsOf(p,u).some(j=>j.id===r.jobId))?r.jobId:'';
   return {unit:u,jobId};
 }
-function hjUnitJobRecords(p,unitId,jobId){
-  const u=aptUnitList(p).find(x=>x.id===unitId);if(!u)return {quotes:[],as:[],history:[],photos:[]};
-  const want=jobId===HJ_UNIT_JOB_NONE?'':jobId,hit=r=>{const ref=hjUnitRefOf(r,p);return !!ref&&ref.unit.id===unitId&&ref.jobId===want;};
-  const jobIds=new Set(hjUnitJobsOf(p,u).map(j=>j.id));
+function hjUnitJobRecords(p,unitId,jobId,ctx=hjUnitJobCtx(p)){
+  const u=ctx.units.find(x=>x.id===unitId);if(!u)return {quotes:[],as:[],history:[],photos:[]};
+  const want=jobId===HJ_UNIT_JOB_NONE?'':jobId,hit=r=>{const ref=hjUnitRefOf(r,p,ctx);return !!ref&&ref.unit.id===unitId&&ref.jobId===want;};
+  const jobIds=ctx.ids(u);
   return {quotes:(state.quotes||[]).filter(hit),as:(state.asLog||[]).filter(hit),
     history:((u.lifecycle&&Array.isArray(u.lifecycle.history))?u.lifecycle.history:[]).filter(h=>h&&((h.jobId&&jobIds.has(h.jobId))?h.jobId:'')===want),
-    photos:aptUnitPhotos(p,unitId).filter(f=>hjUnitJobOfPhoto(f,p,u)===want)};
+    photos:(aptUnitPhotoGroups(p,ctx.units).get(unitId)||[]).filter(f=>hjUnitJobOfPhoto(f,p,u,ctx)===want)};
 }
 async function hjUnitJobAdd(projectName,unitId,title){
   const t=hjUnitJobTitle(title),p=aptUnitProject(projectName),u=p&&aptUnitList(p).find(x=>x.id===unitId);
@@ -12802,7 +12823,13 @@ async function hjUnitJobRemove(projectName,unitId,jobId){
     [['quotes','quotes'],['asLog','as']].forEach(([k,n])=>(draft[k]||[]).forEach(r=>{const ref=r&&r.unitRef;if(r.project===projectName&&ref&&ref.unitId===unitId&&ref.jobId===jobId){r.unitRef={unitId};out[n]++;}}));
     const h=du.lifecycle&&Array.isArray(du.lifecycle.history)?du.lifecycle.history:[];h.forEach(x=>{if(x&&x.jobId===jobId){delete x.jobId;out.history++;}});
     return out;
-  }});
+  }}).then(out=>{hjUnitJobSyncEditingQuote();return out;});
+}
+// 편집기에 열려 있는 견적(state.editingQuote — 깊은 복사본)에 바뀐 unitRef 를 따라 적는다.
+// 안 하면 편집기에서 [저장]할 때 quoteCommitEditing 이 옛 복사본으로 덮어 방금 이은(또는 푼) 작업건 연결이 조용히 사라진다.
+function hjUnitJobSyncEditingQuote(){
+  const e=state.editingQuote,q=e&&(state.quotes||[]).find(x=>x&&x.id===e.id);if(!q)return;
+  if(q.unitRef)e.unitRef=JSON.parse(JSON.stringify(q.unitRef));else delete e.unitRef;
 }
 // 견적·AS 를 작업건에 잇거나 푼다. picks={quotes:{id:true|false},as:{id:true|false}} — 바뀐 것만 넘긴다.
 // 풀면 세대 연결은 남기고 작업건만 뺀다(그 세대의 '작업건 미지정'). 고르는 동안 다른 곳에서 바뀌었으면 쓰지 않는다.
@@ -12823,15 +12850,16 @@ async function hjUnitJobLink(projectName,unitId,jobId,picks){
       else if(rs[0].unitRef&&rs[0].unitRef.unitId===unitId&&rs[0].unitRef.jobId===jobId)rs[0].unitRef={unitId};
     });
     return plan.length;
-  }});
+  }}).then(n=>{hjUnitJobSyncEditingQuote();return n;});
 }
 function hjUnitJobOrderLive(job){return !!job&&job.source==='office'&&(state.aptOrders||[]).some(o=>o&&o.id===job.orderId);}
 function hjUnitJobStatusText(j){return j.status==='done'?'완료'+(j.doneAt?' '+j.doneAt:''):'진행 중';}
 function hjUnitJobLinkView(projectName,unitId,jobId){
   const p=aptUnitProject(projectName),u=p&&aptUnitList(p).find(x=>x.id===unitId),job=hjUnitJobFind(p,unitId,jobId);
   if(!job){toast('작업건을 다시 선택하세요.');return;}
-  const where=r=>{const ref=hjUnitRefOf(r,p);if(!ref)return '세대 미지정';const j=ref.jobId&&hjUnitJobsOf(p,ref.unit).find(x=>x.id===ref.jobId);return aptUnitLabel(ref.unit)+' · '+(j?j.title:'작업건 미지정');};
-  const mine=r=>{const ref=hjUnitRefOf(r,p);return !!ref&&ref.unit.id===unitId&&ref.jobId===jobId;};
+  const ctx=hjUnitJobCtx(p);
+  const where=r=>{const ref=hjUnitRefOf(r,p,ctx);if(!ref)return '세대 미지정';const j=ref.jobId&&ctx.jobs(ref.unit).find(x=>x.id===ref.jobId);return aptUnitLabel(ref.unit)+' · '+(j?j.title:'작업건 미지정');};
+  const mine=r=>{const ref=hjUnitRefOf(r,p,ctx);return !!ref&&ref.unit.id===unitId&&ref.jobId===jobId;};
   const qs=(state.quotes||[]).filter(q=>q&&q.project===projectName),as=(state.asLog||[]).filter(a=>a&&a.project===projectName);
   const row=(kind,r,text)=>`<label class="apt-unit-row"><input type="checkbox" class="unit-job-pick" data-kind="${kind}" value="${escapeAttr(r.id)}"${mine(r)?' checked':''}><span>${escapeHtml(text)}<br><small>지금: ${escapeHtml(where(r))}</small></span></label>`;
   openModal('작업건에 견적·AS 연결',`<div class="apt-unit-panel" id="unitJobLink"><p><b>${escapeHtml(aptUnitLabel(u))}</b> · ${escapeHtml(job.title)}</p>
@@ -12858,9 +12886,9 @@ function hjUnitJobAddView(projectName,unitId){
   aptUnitModalStyle();const bs=document.querySelectorAll('#modalRoot .mfoot button');bs[0].id='unitJobAddCancel';bs[1].id='unitJobAddSave';
 }
 // 세대 화면의 작업건 줄과 고른 작업건 상세(견적·AS·이력). 사진 목록은 aptUnitView 가 같은 작업건으로 거른다.
-function hjUnitJobSectionHtml(p,unit,jobId){
-  const jobs=hjUnitJobsOf(p,unit),groups=new Map([['',0]]);jobs.forEach(j=>groups.set(j.id,0));
-  aptUnitPhotos(p,unit.id).forEach(f=>{const j=hjUnitJobOfPhoto(f,p,unit);groups.set(j,(groups.get(j)||0)+1);});
+function hjUnitJobSectionHtml(p,unit,jobId,ctx=hjUnitJobCtx(p),unitPhotos){
+  const jobs=ctx.jobs(unit),groups=new Map([['',0]]);jobs.forEach(j=>groups.set(j.id,0));
+  (unitPhotos||aptUnitPhotoGroups(p,ctx.units).get(unit.id)||[]).forEach(f=>{const j=hjUnitJobOfPhoto(f,p,unit,ctx);groups.set(j,(groups.get(j)||0)+1);});
   const all=[...groups.values()].reduce((a,b)=>a+b,0),job=jobId&&jobId!==HJ_UNIT_JOB_NONE?jobs.find(j=>j.id===jobId):null;
   const btn=(id,label,sub,on)=>`<button type="button" data-unit-job="${escapeAttr(id)}" class="${on?'blue':'ghost'}">${escapeHtml(label)}<br><small>${escapeHtml(sub)}</small></button>`;
   let html=`<div id="aptUnitJobs"><h4>작업건 ${jobs.length}건</h4>${hjUnitJobsBroken(unit)?'<p role="alert">작업건 정보 확인 필요 — 잘못된 항목은 쓰지 않습니다.</p>':''}<div class="apt-unit-grid">`
@@ -12868,7 +12896,7 @@ function hjUnitJobSectionHtml(p,unit,jobId){
     +jobs.map(j=>btn(j.id,j.title,(j.source==='office'?'관리사무소':'직접')+' · '+hjUnitJobStatusText(j)+' · '+groups.get(j.id)+'장',j.id===jobId)).join('')
     +`</div><button type="button" id="aptUnitJobAdd" class="ghost">＋ 작업건</button>`;
   if(jobId){
-    const rec=hjUnitJobRecords(p,unit.id,jobId),order=job&&job.orderId&&(state.aptOrders||[]).find(o=>o&&o.id===job.orderId);
+    const rec=hjUnitJobRecords(p,unit.id,jobId,ctx),order=job&&job.orderId&&(state.aptOrders||[]).find(o=>o&&o.id===job.orderId);
     const list=(rows,fn,empty)=>rows.length?'<ul>'+rows.map(r=>'<li>'+escapeHtml(fn(r))+'</li>').join('')+'</ul>':'<p class="hint">'+empty+'</p>';
     html+=`<section id="aptUnitJobPanel"><p><b>${escapeHtml(job?job.title:'작업건 미지정')}</b>${job?' · '+(job.source==='office'?'관리사무소 접수':'직접 접수')+' · '+escapeHtml(hjUnitJobStatusText(job))+(job.createdAt?' · 시작 '+escapeHtml(job.createdAt):''):' — 어느 작업건인지 아직 고르지 않은 기록입니다'}</p>
       ${job&&job.source==='office'?(order?'<p class="hint">오더: '+escapeHtml(String(order.text||'').slice(0,80)||'작업 내용 미입력')+' · 오더 상태는 아파트 오더 화면에서 바꿉니다.</p>':'<p class="hint">연결된 오더를 찾을 수 없습니다(삭제됨).</p>'):''}
@@ -12937,9 +12965,9 @@ function aptUnitView(projectName,unitId='',limit=80,jobId=''){
   const p=aptUnitProject(projectName);if(!p){toast('프로젝트를 다시 선택하세요');return;}
   const units=aptUnitList(p),unit=units.find(u=>u.id===unitId);if(unitId&&!unit){toast('동·호수 연결을 확인해 주세요');unitId='';}
   // v333 작업건 거르기: '' = 이 세대 전체, HJ_UNIT_JOB_NONE = 작업건 미지정, 그 밖 = 그 작업건만
-  const unitJobs=unit?hjUnitJobsOf(p,unit):[];
+  const jctx=hjUnitJobCtx(p),unitJobs=unit?jctx.jobs(unit):[];
   if(!unit||(jobId&&jobId!==HJ_UNIT_JOB_NONE&&!unitJobs.some(j=>j.id===jobId)))jobId='';
-  const viewJob=unitJobs.find(j=>j.id===jobId)||null,jobOf=f=>unit?hjUnitJobOfPhoto(f,p,unit):'';
+  const viewJob=unitJobs.find(j=>j.id===jobId)||null,jobOf=f=>unit?hjUnitJobOfPhoto(f,p,unit,jctx):'';
   const groups=aptUnitPhotoGroups(p,units),photos=(groups.get(unitId)||[]).filter(f=>!jobId||jobOf(f)===(jobId===HJ_UNIT_JOB_NONE?'':jobId)).sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)),shown=photos.slice(0,limit);
   const broken=aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||p.aptUnits.length!==units.length);
   openModal('동·호수 관리',`<div class="apt-unit-panel" id="aptUnitPanel">
@@ -12949,12 +12977,12 @@ function aptUnitView(projectName,unitId='',limit=80,jobId=''){
     <label for="aptUnitSearch" style="display:block;margin-top:12px">동·호수 찾기</label><input id="aptUnitSearch" type="search" placeholder="예: 101동, 501호, 지하주차장">
     <div class="apt-unit-grid" id="aptUnitList"><button data-apt-unit="" class="${unitId?'ghost':'blue'}">미지정 · ${groups.get('').length}장</button>${units.map(u=>`<button data-apt-unit="${escapeAttr(u.id)}" data-unit-label="${escapeAttr(aptUnitLabelKey(aptUnitLabel(u)))}" class="${u.id===unitId?'blue':'ghost'}">${escapeHtml(aptUnitLabel(u))}<br><small>${groups.get(u.id).length}장</small></button>`).join('')}</div>
     <h3>${escapeHtml((unit?aptUnitLabel(unit):'동·호수 미지정')+(jobId?' · '+(viewJob?viewJob.title:'작업건 미지정'):''))} · 사진 ${photos.length}장</h3>
-    ${unit?`<p style="white-space:pre-wrap">${escapeHtml(unit.note||'등록된 작업 메모가 없습니다.')}</p><button id="aptUnitEdit" class="ghost">동·호수 / 메모 수정</button>${hjUnitJobSectionHtml(p,unit,jobId)}`:'<p class="hint">기존 사진과 연결 확인이 필요한 사진입니다. 현장명을 바꾸지 않고 사진을 직접 선택해 배정할 수 있습니다.</p>'}
+    ${unit?`<p style="white-space:pre-wrap">${escapeHtml(unit.note||'등록된 작업 메모가 없습니다.')}</p><button id="aptUnitEdit" class="ghost">동·호수 / 메모 수정</button>${hjUnitJobSectionHtml(p,unit,jobId,jctx,groups.get(unitId)||[])}`:'<p class="hint">기존 사진과 연결 확인이 필요한 사진입니다. 현장명을 바꾸지 않고 사진을 직접 선택해 배정할 수 있습니다.</p>'}
     <button id="aptUnitUpload" class="blue">이 위치에 사진 추가</button>
     <button id="aptUnitReport" class="ghost">이 위치 사진 작업일지</button>
     ${shown.length?`<button id="aptUnitSelectAll" type="button" class="ghost">☑ 이 목록 전체 선택 (${shown.length}장)</button>`:''}
     ${unit?'<button id="aptUnitLifecycle" class="ghost">완료일·보수 이력</button><button id="aptUnitWarranty" class="ghost" title="세대 완료일을 우선 사용합니다. 미입력 시 현장 준공일 기준을 표시합니다">🛡 이 세대 하자보증서</button>':''}
-    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><button type="button" class="apt-unit-thumb-btn" data-unit-photo="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 크게 보기">${isVideoRec(f)?'<span class="apt-unit-thumb-none" aria-hidden="true">🎬</span>':(src=>src?`<img class="apt-unit-thumb" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:'<span class="apt-unit-thumb-none" aria-hidden="true">🖼</span>')(photoSrc(f,56))}</button><span>${escapeHtml(f.name)}<br><small><span data-wl="${escapeAttr(f.id)}">${escapeHtml(f._worklabel||'작업 내용 미입력')}</span>${f._aptUnit&&!aptUnitForPhoto(f,p)?' · 연결 확인 필요':''}${unit&&!jobId?' · '+escapeHtml((unitJobs.find(j=>j.id===jobOf(f))||{title:'작업건 미지정'}).title):''}</small></span></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
+    <div>${shown.map(f=>`<label class="apt-unit-row"><input class="apt-unit-photo-check" type="checkbox" value="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 선택"><button type="button" class="apt-unit-thumb-btn" data-unit-photo="${escapeAttr(f.id)}" aria-label="${escapeAttr(f.name)} 크게 보기">${isVideoRec(f)?'<span class="apt-unit-thumb-none" aria-hidden="true">🎬</span>':(src=>src?`<img class="apt-unit-thumb" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:'<span class="apt-unit-thumb-none" aria-hidden="true">🖼</span>')(photoSrc(f,56))}</button><span>${escapeHtml(f.name)}<br><small><span data-wl="${escapeAttr(f.id)}">${escapeHtml(f._worklabel||'작업 내용 미입력')}</span>${f._aptUnit&&!aptUnitForPhoto(f,p,units)?' · 연결 확인 필요':''}${unit&&!jobId?' · '+escapeHtml((unitJobs.find(j=>j.id===jobOf(f))||{title:'작업건 미지정'}).title):''}</small></span></label>`).join('')||'<p class="hint">사진이 없습니다. 사진 추가 또는 미지정 사진 배정을 이용하세요.</p>'}</div>
     ${photos.length>shown.length?`<button id="aptUnitMore" class="ghost">사진 더 보기 (${shown.length}/${photos.length})</button>`:''}
     ${shown.length?`<label for="aptUnitWork" style="display:block;margin-top:12px">선택한 사진 작업명 (한 번에)</label>
     <input id="aptUnitWork" maxlength="40" list="aptUnitWorkList" placeholder="예: 화장실 방수 · 도배 마감">
@@ -12966,7 +12994,7 @@ function aptUnitView(projectName,unitId='',limit=80,jobId=''){
     {label:'선택 사진 배정 저장',cls:'clay',fn:()=>{const target=$('#aptUnitAssignTarget').value,targetJob=target&&$('#aptUnitAssignJob')?$('#aptUnitAssignJob').value:'',ids=[...document.querySelectorAll('.apt-unit-photo-check:checked')].map(x=>x.value);
       aptUnitUiWrite(async()=>{
         // 고른 사진이 전부 이미 그 위치·그 작업건이면 쓰지 않는다(같은 위치 재배정의 가짜 성공 — v319). 같은 세대 안에서 작업건만 바꾸는 것은 배정이다.
-        const same=ids.length&&ids.every(id=>{const f=photos.find(x=>x.id===id);return f&&(f._aptUnit&&aptUnitForPhoto(f,p)?f._aptUnit.unitId:'')===target&&(target?(f._aptUnit.jobId||''):'')===targetJob;});
+        const same=ids.length&&ids.every(id=>{const f=photos.find(x=>x.id===id);return f&&(f._aptUnit&&aptUnitForPhoto(f,p,units)?f._aptUnit.unitId:'')===target&&(target?(f._aptUnit.jobId||''):'')===targetJob;});
         if(same)throw new Error('지금 보고 있는 위치와 같습니다 — 배정할 동·호수를 고르세요.');
         return aptUnitAssign(projectName,target,ids,targetJob);
       },n=>{const t=units.find(u=>u.id===target),tj=t&&targetJob?hjUnitJobsOf(p,t).find(j=>j.id===targetJob):null;aptUnitView(projectName,unitId,80,jobId);toast(n+'장 → '+(t?aptUnitLabel(t):'동·호수 미지정')+(tj?' · '+tj.title:'')+' 배정 저장');});}}]);
