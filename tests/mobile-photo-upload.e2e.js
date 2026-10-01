@@ -307,7 +307,8 @@ async function assertTouchModal(page) {
         project: b, when: new Date('2026-08-01T09:00:00'), size: 200, thumb: 'data:image/png;base64,' + png,
         _driveId: 'fake-previous-drive-id', _driveMimeType: 'image/png', _driveSize: 200,
         _phase: '이전 공정', _worklabel: '이전 작업', text: '이전 OCR 원문', ocr: 'done', _virtual: true };
-      state.files.push(old); backupUserEdits(); __photoCache.key = null; render();
+      state.files.push(old); serializeData();   // v333 옛 기록에는 첫 저장 때 고유 ID(fid)가 한 번 붙는다 — 붙은 뒤를 기준으로 '그대로인가'를 본다
+      backupUserEdits(); __photoCache.key = null; render();
       window.__previousPhoto = old; window.__previousPhotoJson = JSON.stringify(old);
     }, { b: B, png: PNG.toString('base64') });
     await gallery(page, [pick('same-name.png')]); await approve(page); await result(page);

@@ -145,6 +145,9 @@ async function pollMock(pred, ms, label) {
 
   await test('4. 충돌 → 모달 3택 → ② 내 기기 데이터로 덮어쓰기 → 재저장 성공', async () => {
     await fetch(MOCK + '/__bump');   // 다른 기기가 저장(서버 rev 3)
+    // v333 새 계약: base(마지막으로 맞춘 자료)가 있으면 바뀐 항목만 비교한다(sync-merge.e2e.js). 이 검사는 base 가 없는
+    // 기기(첫 연결·옛 버전)의 예전 3택 화면을 지킨다 — base 를 지워 그 상황을 만든다.
+    await page.evaluate(async () => { await idbDel('relay_base'); });
     await page.evaluate(() => { state.projects[0].received = 2000; markDirty(); });
     await page.waitForSelector('#ryConflictBox', { timeout: 12000 });
     const n = await page.$$eval('#modalRoot .mfoot button', b => b.length);
@@ -481,6 +484,7 @@ async function pollMock(pred, ms, label) {
 
   await test('19.(C+A) 충돌 ③ — 내 자료 스냅샷 성공 확인 후 서버 자료 적용', async () => {
     // 서버 rev6(모바일 테스트의 bump) vs PC rev5 → 충돌
+    await page.evaluate(async () => { await idbDel('relay_base'); });   // v333: base 없는 기기의 예전 3택 화면(4번과 같은 이유)
     await page.evaluate(() => { state.projects[0].received = 7777; markDirty(); });
     await page.waitForSelector('#ryConflictBox', { timeout: 12000 });
     const label3 = await page.$eval('#modalRoot .mfoot button:nth-child(3)', b => b.textContent);

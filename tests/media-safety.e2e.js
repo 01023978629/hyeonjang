@@ -110,6 +110,7 @@ async function seedDeletion(page, mode) {
   await page.evaluate(mode => {
     const t = window.__mediaTest;
     state.files[0]._driveId = 'TEST_REMOTE_SELECTED';
+    serializeData();   // v333 옛 기록에는 첫 저장 때 고유 ID(fid)가 한 번 붙는다(새 계약) — 붙은 뒤의 상태를 기준으로 '그대로인가'를 본다
     t.before = t.capture(); t.refs = state.files.slice();
     if (mode === 'persist-fail') {
       const nativePut = IDBObjectStore.prototype.put;

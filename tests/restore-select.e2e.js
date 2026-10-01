@@ -178,7 +178,8 @@ let browser;
 
   // ① 모든 저장 필드가 백업 값 그대로 — Drive 신원(driveId·형식·크기)은 물리적 사실이라 지금 값을 지킨다(안전판 되돌리기와 같은 규칙)
   // 원본 출처 사실(SOURCE)도 같은 규칙 — 아래 ①' 에서 따로 본다
-  const DRIVE = new Set(['driveId', 'driveMimeType', 'driveSize', 'sourceSha256', 'mediaOriginal', 'sourceModifiedAt']);
+  // v333 fid(파일 기록의 고유 ID)도 같은 규칙 — 지금 기록의 신원이라 되돌리지 않는다(사례·보증서·AS 참조가 'f:'+fid 로 가리킨다, photo-fid.e2e.js)
+  const DRIVE = new Set(['driveId', 'driveMimeType', 'driveSize', 'sourceSha256', 'mediaOriginal', 'sourceModifiedAt', 'fid']);
   for (const [label, before, after] of r.pairs) {
     assert(before && after, `① ${label} 레코드를 못 찾았다: ` + JSON.stringify({ before: !!before, after: !!after }));
     // 백업에 없던 키가 복원 뒤에 남아 있는 것도 잡도록 양쪽 키를 합쳐 본다

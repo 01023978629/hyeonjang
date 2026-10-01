@@ -80,6 +80,7 @@ function fixture(options = {}, text = source) {
     relayDailyBackup: () => { backupCalls++; },
     officeIntakeFlush: async () => { officeCalls++; },
     relayConflictModal: () => {},
+    relayBaseRemember: async () => true,   // v333 cloudApiSave 가 저장 성공 때 base 를 남긴다(sync-merge.e2e.js 가 검사) — 여기서는 대기열만 본다
     saveRy: async () => {},
     confirm: () => {
       confirmations++;
