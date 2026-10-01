@@ -6668,7 +6668,8 @@ document.querySelectorAll('.mnav-btn').forEach(b=>b.onclick=()=>{
   const tgt=b.dataset.mnav;
   if(tgt==='__camera')return openCamera();
   if(tgt==='__more')return openMoreSheet();
-  if(tgt==='__todo'){mobileSheetRestoreFocus(b);return todoView();}
+  // v333 하단 [오늘 할일]은 '내 업무' 한 화면 — 기존 할일 화면들은 그 안의 링크로 산다(todoView 는 더보기 '오늘 할일' 그대로)
+  if(tgt==='__todo'){mobileSheetRestoreFocus(b);return myWorkView();}
   mobileNavOpenTab(tgt);
 });
 /* 휴대폰 뒤로가기는 앱을 벗어나기 전에 현재 하단 시트 하나만 닫는다.
@@ -17652,10 +17653,12 @@ function voiceWorkLog(preProject){
   }
   return {열림:'음성 현장일지'};
 }
-function workLogSave(project,text,date){
+function workLogSave(project,text,date,schId){
   date=date||localDate();
+  // v333 내 업무 [✅ 완료 보고]는 고른 그 일정(schId)에 — 같은 날 같은 현장 일정이 둘이면 첫 일정에 붙던 것을 막는다
+  if(schId!==undefined){const m=(state.schedule||[]).filter(s=>String(s.id)===String(schId));if(m.length!==1)return {오류:'일정을 찾을 수 없습니다.'};}
   // 해당 날짜의 일정이 있으면 그 report에, 없으면 새 일정(일지 전용)으로
-  let sch=(state.schedule||[]).find(s=>s.project===project&&s.date===date&&!/^💰/.test(s.title||''));
+  let sch=schId!==undefined?(state.schedule||[]).find(s=>String(s.id)===String(schId)):(state.schedule||[]).find(s=>s.project===project&&s.date===date&&!/^💰/.test(s.title||''));
   if(sch){
     sch.report=sch.report||{};
     sch.report.done=(sch.report.done?sch.report.done+'\n':'')+text;
@@ -23676,6 +23679,203 @@ function todoLocalView(projectName){
     if(!confirm('「'+n.text+'」 를 지울까요?'))return;
     state.notes=state.notes.filter(x=>x!==n);markDirty();todoLocalView(currentProject());});
   const first=root.querySelector('#todoText');if(first)setTimeout(()=>{try{first.focus();}catch(_){}},0);
+}
+/* ── 📋 내 업무 (v333) — 대표 요청 ③: 흩어진 할일을 한 화면에서. 하단 [오늘 할일](__todo)이 이 화면을 연다.
+   저장 구조는 그대로다 — 일정은 state.schedule 레코드 안 필드(startedAt·report), 할일은 각자 원래 자리
+   (이 기기 할일 = notes todo:true, 팀 업무판 = notes teamTask, 팀 공유 = 서버 sharedTodoList 읽기만).
+   기존 화면(todoLocalView·hjSharedTodoView·hjTeamBoard·team.html)은 아래 링크로 그대로 산다.
+   완료 보고는 그 일정의 작업일지(workLogSave)에만 남는다 — 현장 단계(setStage)는 사람이 바꾼다. */
+let __hjMyWork={seq:0,shared:null,sharedState:'',sharedAt:'',team:''};
+const HJ_MYWORK_SRC=Object.freeze({local:'이 기기 할일',team:'팀 업무판',shared:'팀 공유'});
+function hjMyWorkDone(s){return !!(s&&s.report&&s.report.progress==='완료');}
+function hjMyWorkSchedules(date){
+  return (state.schedule||[]).filter(s=>s&&s.date===date&&hjPrepOtherOk(s))
+    .slice().sort((a,b)=>String(a.time||'99:99').localeCompare(String(b.time||'99:99'))||String(a.id).localeCompare(String(b.id)));
+}
+// 세 출처를 한 목록으로 — 같은 현장·같은 글은 한 줄(☁ 로 공유한 이 기기 할일이 서버에도 있으면 두 번 보이던 것)
+function hjMyWorkTodos(shared){
+  const today=localDate(),rows=[],byKey=new Map();
+  const key=(p,t)=>String(p||'')+'\u0000'+String(t||'').trim().replace(/\s+/g,' ');
+  const put=r=>{const k=key(r.project,r.text),prev=byKey.get(k);
+    if(prev){if(!prev.srcs.includes(r.src))prev.srcs.push(r.src);if(r.src==='local'&&!prev.localId)prev.localId=r.id;if(r.src==='team'&&!prev.teamId)prev.teamId=r.id;prev.late=prev.late||r.late;return;}
+    r.srcs=[r.src];if(r.src==='local')r.localId=r.id;if(r.src==='team')r.teamId=r.id;byKey.set(k,r);rows.push(r);};
+  hjTodoList().filter(n=>!n.done&&String(n.day||today)<=today).forEach(n=>put({src:'local',id:String(n.id),text:String(n.text||''),project:String(n.project||''),late:String(n.day||today)<today}));
+  hjTeamList().forEach(n=>{const t=hjTeamData(n);if(t.status==='done'||hjTeamData(n).schema!==1)return;if(hjTeamDate(t.due)&&t.due>today)return;
+    put({src:'team',id:String(n.id),text:String(t.title||'업무 정보 확인 필요'),project:String(n.project||''),late:hjTeamDate(t.due)&&t.due<today,due:t.due||'',assignee:t.assignee||'',status:t.status||''});});
+  (Array.isArray(shared)?shared:[]).filter(t=>!t.done).forEach(t=>put({src:'shared',id:t.id,text:t.text,project:t.project,late:false}));
+  return rows.map((r,i)=>({r,i})).sort((a,b)=>Number(b.r.late)-Number(a.r.late)||a.i-b.i).map(x=>x.r);
+}
+// 팀 공유 할일 읽기 — 기존 서버 계약(sharedTodoList) 그대로, 쓰기는 공유 화면에서만
+async function hjMyWorkSharedLoad(){
+  const seq=++__hjMyWork.seq;
+  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(__relay.url||''))){__hjMyWork.shared=null;__hjMyWork.sharedState='off';return;}
+  const conn=JSON.stringify([__relay.url,__relay.token,__relay.device]);
+  __hjMyWork.sharedState='loading';
+  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
+  try{
+    const r=await fetch(__relay.url,{method:'POST',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:__relay.token,action:'sharedTodoList',deviceId:__relay.device,ts:Date.now(),payload:{}}),signal:abort.signal});
+    if(!r.ok)throw new Error('network');
+    const j=await r.json();
+    if(seq!==__hjMyWork.seq||conn!==JSON.stringify([__relay.url,__relay.token,__relay.device]))return;
+    if(!(j&&j.ok)||j.version!==HJ_SHARED_TODO_VERSION||!Array.isArray(j.tasks)||j.tasks.length>5000||j.tasks.some(t=>!hjSharedTodoValidTask(t,false)))throw new Error('invalid');
+    __hjMyWork.shared=j.tasks;__hjMyWork.sharedState='ready';__hjMyWork.sharedAt=localStamp();
+  }catch(e){if(seq===__hjMyWork.seq){__hjMyWork.sharedState='error';}}
+  finally{clearTimeout(timer);}
+}
+// 직원 작업실(team.html) — 로그인 세션이 그 창 메모리에만 있어 여기서는 숫자를 읽을 수 없다. 설정 여부만 보고 링크를 둔다.
+async function hjMyWorkTeamCheck(){
+  try{const r=await fetch('./team-config.js',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('http');
+    const m=/apiUrl\s*:\s*['"]([^'"]*)['"]/.exec(await r.text());__hjMyWork.team=m&&/^https:\/\//.test(m[1])?'on':'off';}
+  catch(e){__hjMyWork.team='error';}
+}
+function hjMyWorkTeamHTML(){
+  const st=__hjMyWork.team;
+  const link='<a id="mwTeamOpen" class="btn ghost" href="./team.html#mine" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px">직원 작업실 · 내 업무 열기</a>';
+  if(st==='on')return '<p>직원 작업실 서버가 연결되어 있습니다. 배정·검수 업무는 로그인한 직원 작업실에서 보고·처리합니다(이 화면은 열기만 합니다 — 건수는 로그인 뒤 그 화면에 보입니다).</p>'+link;
+  if(st==='off')return '<p class="hint">직원 작업실 서버는 아직 설정 전입니다. 대표가 설정하면 여기서 바로 열 수 있습니다.</p>';
+  if(st==='error')return '<p class="hint">직원 작업실 설정을 확인하지 못했습니다(인터넷 연결 확인).</p>'+link;
+  return '<p class="hint">직원 작업실 연결을 확인하는 중…</p>';
+}
+function hjMyWorkTodoBoxHTML(todos){
+  todos=todos||hjMyWorkTodos(__hjMyWork.sharedState==='ready'?__hjMyWork.shared:null);
+  const todoRow=r=>{
+    const badges=r.srcs.map(x=>'<span class="mwBadge">'+escapeHtml(HJ_MYWORK_SRC[x]||x)+'</span>').join('');
+    const meta=[r.project?'📍'+r.project:'현장 없음',r.late?'밀림':'',r.teamId&&r.assignee?'담당 '+r.assignee:'',r.teamId&&r.due?'기한 '+r.due:''].filter(Boolean).join(' · ');
+    const chk=r.localId?'<label class="mwChk"><input type="checkbox" data-mw-local="'+escapeAttr(r.localId)+'" aria-label="'+escapeAttr(r.text+' 끝냈음')+'"></label>':'';
+    const acts=(r.teamId?'<button type="button" class="ghost" data-mw-teamdone="'+escapeAttr(r.teamId)+'" aria-label="'+escapeAttr(r.text+' 팀 업무 완료 처리')+'">✔ 완료 처리</button>':'')+
+      (r.srcs.includes('shared')&&!r.localId&&!r.teamId?'<button type="button" class="ghost" data-mw-sharedopen="'+escapeAttr(r.project)+'" aria-label="'+escapeAttr(r.text+' 팀 공유 화면에서 처리')+'">☁ 공유 화면에서 체크</button>':'')+
+      (r.project&&(state.projects||[]).some(p=>p.name===r.project)?'<button type="button" class="ghost" data-mw-todophoto="'+escapeAttr(r.project)+'" data-mw-label="'+escapeAttr(r.text.slice(0,80))+'" aria-label="'+escapeAttr(r.text+' 사진 등록')+'">📷 사진 등록</button>':'');
+    return '<article class="mwCard mwTodo" data-mw-todo="'+escapeAttr(r.srcs[0]+':'+r.id)+'">'+chk+'<div class="mwBody"><div>'+badges+'</div><div class="mwTitle">'+escapeHtml(r.text)+'</div><div class="mwMeta">'+escapeHtml(meta)+'</div>'+
+      (r.srcs.includes('shared')&&(r.localId||r.teamId)?'<div class="mwMeta">팀 공유 목록의 체크는 공유 화면에서 합니다.</div>':'')+
+      (acts?'<div class="mwActions" style="margin-top:6px">'+acts+'</div>':'')+(r.teamId?'<div class="mwRecRow" data-mw-recrow="'+escapeAttr(r.teamId)+'" hidden><input data-mw-rec="'+escapeAttr(r.teamId)+'" maxlength="40" autocomplete="off" placeholder="기록자 이름 (필수)" aria-label="'+escapeAttr(r.text+' 기록자 이름')+'"><button type="button" class="blue" data-mw-teamsave="'+escapeAttr(r.teamId)+'">완료로 저장</button></div>':'')+'</div></article>';
+  };
+  const sharedLine=__hjMyWork.sharedState==='loading'?'팀 공유 할일을 확인하는 중…':__hjMyWork.sharedState==='ready'?'팀 공유 할일 확인 '+__hjMyWork.sharedAt.slice(11):__hjMyWork.sharedState==='error'?'팀 공유 할일을 확인하지 못했습니다 — 공유 화면에서 다시 확인하세요.':'';
+  return '<h4>✅ 밀린·오늘 할일 '+todos.length+'</h4>'+(sharedLine?'<p class="mwMeta" id="mwSharedState" role="status">'+escapeHtml(sharedLine)+'</p>':'')+
+    (todos.length?todos.map(todoRow).join(''):'<p class="hint" style="margin:0">남은 할일이 없습니다.</p>');
+}
+function myWorkView(opts){
+  if(__modalCloseLocked)return;
+  opts=opts||{};
+  if(opts.refresh!==false){
+    __hjMyWork.sharedState=relayReady()?'loading':'off';__hjMyWork.team='';
+    // 다 읽은 뒤 할일 묶음·직원 작업실 줄만 제자리에서 바꾼다 — 창을 다시 열면 적던 기록자 이름·초점이 날아간다
+    Promise.all([hjMyWorkSharedLoad(),hjMyWorkTeamCheck()]).then(()=>{const root=document.getElementById('myWork');if(!root||!root.isConnected)return;
+      const team=root.querySelector('#mwTeam');if(team)team.innerHTML=hjMyWorkTeamHTML();
+      const box=root.querySelector('#mwTodoBox'),busy=box&&([...box.querySelectorAll('[data-mw-recrow]')].some(r=>!r.hidden)||box.contains(document.activeElement));
+      if(box&&!busy){box.innerHTML=hjMyWorkTodoBoxHTML();hjMyWorkBind(root);}});
+  }
+  const today=localDate(),tmr=new Date();tmr.setDate(tmr.getDate()+1);const tomorrow=localDate(tmr);
+  const sch=hjMyWorkSchedules(today),todos=hjMyWorkTodos(__hjMyWork.sharedState==='ready'?__hjMyWork.shared:null);
+  const css='<style>#myWork{font-size:16px;overflow-wrap:anywhere;min-width:0}#myWork h4{font-size:15px;margin:14px 0 6px}#myWork .mwCard{border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin:8px 0;min-width:0}'+
+    '#myWork .mwCard.mwDone{opacity:.75;border-color:var(--moss)}#myWork .mwMeta{font-size:13px;color:var(--muted)}#myWork .mwTitle{font-size:16px;font-weight:700;margin:3px 0}#myWork .mwState{font-size:13.5px;margin:3px 0 6px}'+
+    '#myWork .mwActions{display:flex;flex-wrap:wrap;gap:6px}#myWork .mwActions button{white-space:normal;flex:1 1 auto}#myWork .mwBadge{display:inline-block;font-size:12px;border:1px solid var(--line-soft);border-radius:8px;padding:1px 6px;margin:0 4px 2px 0;color:var(--blueprint)}'+
+    '#myWork .mwTodo{display:flex;gap:8px;align-items:flex-start}#myWork .mwTodo .mwBody{flex:1;min-width:0}#myWork .mwChk{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:none}#myWork .mwChk input{width:22px;height:22px;margin:0}'+
+    '#myWork .mwLinks{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}#myWork .mwRecRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}#myWork .mwRecRow input{flex:1 1 160px;min-width:0;min-height:44px;font-size:16px;padding:8px}</style>';
+  const schCard=s=>{
+    const done=hjMyWorkDone(s),started=String(s.startedAt||''),id=escapeAttr(String(s.id)),t=s.title||'작업';
+    const state_=done?'✅ 완료 보고됨'+(s.report.filledAt?' · '+escapeHtml(localStamp(new Date(s.report.filledAt)).slice(11)):''):started?'▶ 진행 중 · '+escapeHtml(started.slice(11,16))+' 부터':'대기 · 아직 시작 전';
+    const prep=hjPrepOtherOk(s)?'<button type="button" class="ghost" data-mw-prep="'+id+'" aria-label="'+escapeAttr(t+' 출발 전 챙김')+'">🧰 '+escapeHtml(dashboardPrepLabel(s))+'</button>':'';
+    return '<article class="mwCard'+(done?' mwDone':'')+'" data-mw-sch="'+id+'"><div class="mwMeta">'+escapeHtml((s.time||'시간 미정'))+(s.project?' · 📍'+escapeHtml(s.project):' · 현장 없음')+'</div>'+
+      '<div class="mwTitle">'+escapeHtml(t)+'</div><div class="mwState" data-mw-state="'+id+'">'+state_+'</div><div class="mwActions">'+
+      (done||started?'':'<button type="button" class="blue" data-mw-start="'+id+'" aria-label="'+escapeAttr(t+' 작업 시작')+'">▶ 작업 시작</button>')+
+      (s.project?'<button type="button" class="ghost" data-mw-photo="'+id+'" aria-label="'+escapeAttr(t+' 사진 등록')+'">📷 사진 등록</button>':'')+
+      (done?'<button type="button" class="ghost" data-mw-report="'+id+'" aria-label="'+escapeAttr(t+' 보고 보기')+'">📋 보고 보기</button>':'<button type="button" class="clay" data-mw-done="'+id+'" aria-label="'+escapeAttr(t+' 완료 보고')+'">✅ 완료 보고</button>')+
+      prep+'</div></article>';
+  };
+  const empty=!sch.length&&!todos.length;
+  const ahead=empty?hjMyWorkSchedules(tomorrow):[];
+  const body=css+'<section id="myWork" aria-label="내 업무"><p class="mwMeta" style="margin:0 0 4px">'+escapeHtml(today)+' 기준 · 작업 시작·사진·완료 보고를 여기서 합니다. 현장 단계는 바꾸지 않습니다.</p>'+
+    '<h4>📅 오늘 일정 '+sch.length+'</h4>'+(sch.length?sch.map(schCard).join(''):'<p class="hint" style="margin:0">오늘 잡힌 일정이 없습니다.</p>')+
+    '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
+    (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
+    '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button></div>'+
+    '<h4>🏢 직원 작업실</h4><div id="mwTeam">'+hjMyWorkTeamHTML()+'</div></section>';
+  openModal('📋 내 업무'+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length?' ('+(sch.filter(s=>!hjMyWorkDone(s)).length+todos.length)+')':''),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('myWork');
+  hjMyWorkBind(root);
+  return root;
+}
+function hjMyWorkBind(root){
+  const one=id=>{const m=(state.schedule||[]).filter(s=>String(s.id)===String(id));return m.length===1?m[0]:null;};
+  root.querySelectorAll('[data-mw-start]').forEach(b=>b.onclick=()=>{const s=one(b.dataset.mwStart);if(!s){toast('일정이 바뀌었습니다 — 다시 열어 주세요');return myWorkView({refresh:false});}
+    if(!s.startedAt){s.startedAt=localStamp();markDirty();dashboardOperationsRefresh();toast('작업 시작 '+s.startedAt.slice(11)+' 기록');}myWorkView({refresh:false});});
+  root.querySelectorAll('[data-mw-photo]').forEach(b=>b.onclick=()=>{const s=one(b.dataset.mwPhoto);if(!s||!s.project){toast('일정이 바뀌었습니다 — 다시 열어 주세요');return;}hjMyWorkPhoto(s.project,s.title||'');});
+  root.querySelectorAll('[data-mw-todophoto]').forEach(b=>b.onclick=()=>hjMyWorkPhoto(b.dataset.mwTodophoto,b.dataset.mwLabel||''));
+  root.querySelectorAll('[data-mw-done]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.mwDone));
+  root.querySelectorAll('[data-mw-report]').forEach(b=>b.onclick=()=>openReportEdit(b.dataset.mwReport));
+  root.querySelectorAll('[data-mw-prep]').forEach(b=>b.onclick=()=>prepCheck(b.dataset.mwPrep));
+  root.querySelectorAll('[data-mw-local]').forEach(c=>c.onchange=()=>{const n=hjTodoList().find(x=>String(x.id)===c.dataset.mwLocal);if(!n){toast('할일이 바뀌었습니다');return myWorkView({refresh:false});}
+    n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();dashboardOperationsRefresh();toast('끝낸 일로 옮겼습니다');myWorkView({refresh:false});});
+  root.querySelectorAll('[data-mw-teamdone]').forEach(b=>b.onclick=()=>{const row=root.querySelector('[data-mw-recrow="'+CSS.escape(b.dataset.mwTeamdone)+'"]');if(!row)return;row.hidden=!row.hidden;if(!row.hidden){const i=row.querySelector('input');i.focus();hjKeepAboveFooter(i);}});
+  root.querySelectorAll('[data-mw-teamsave]').forEach(b=>b.onclick=async()=>{const id=b.dataset.mwTeamsave,inp=root.querySelector('[data-mw-rec="'+CSS.escape(id)+'"]');
+    if(!inp.value.trim()){hjFieldIssue(inp,'이번에 기록하는 사람 이름을 적어 주세요');toast('기록자 이름을 적어 주세요');return;}
+    b.disabled=true;const r=await hjMyWorkTeamDone(id,inp.value);b.disabled=false;
+    if(!r.ok){toast(r.msg);if(inp.isConnected)hjFieldIssue(inp,r.msg);return;}
+    toast('팀 업무를 완료로 이 기기에 저장했습니다');if(root.isConnected)myWorkView({refresh:false});});
+  root.querySelectorAll('[data-mw-sharedopen]').forEach(b=>b.onclick=()=>hjSharedTodoView(b.dataset.mwSharedopen));
+  root.querySelector('#mwLocal').onclick=()=>todoLocalView();
+  const sh=root.querySelector('#mwShared');if(sh)sh.onclick=()=>hjSharedTodoView();
+  root.querySelector('#mwBoard').onclick=()=>hjTeamBoard();
+}
+// 그 현장(·작업 이름)으로 미리 고른 사진 추가 — 갤러리에서 고르면 기존 사진 추가 확인 창(openPhotoIntake)이 그대로 연다
+function hjMyWorkPhoto(project,label){
+  if(photoIntakeUpdateGuard())return;
+  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('열려 있는 사진 추가를 먼저 마쳐 주세요');return;}
+  if(!(state.projects||[]).some(p=>p.name===project)){toast('현장이 바뀌었습니다 — 다시 열어 주세요');return;}
+  let inp=document.getElementById('myWorkPhotoInput');
+  if(!inp){inp=document.createElement('input');inp.id='myWorkPhotoInput';inp.type='file';inp.accept='image/*,video/*';inp.multiple=true;inp.hidden=true;document.body.appendChild(inp);}
+  inp.value='';
+  inp.onchange=()=>{const files=[...inp.files];inp.value='';if(!files.length)return;
+    openPhotoIntake(files,{project,source:'gallery'});
+    const w=document.getElementById('photoIntakeWork');if(w&&!w.value&&label)w.value=String(label).slice(0,80);};
+  inp.click();
+}
+// ✅ 완료 보고 — 그 일정의 작업일지(workLogSave)로 남기고 진행률 '완료'. 사진이 0장이면 한 번 묻는다.
+function myWorkReport(schId){
+  const m=(state.schedule||[]).filter(s=>String(s.id)===String(schId)),s=m.length===1?m[0]:null;
+  if(!s){toast('일정을 찾지 못했습니다');return myWorkView({refresh:false});}
+  const photos=reportPhotos(s).length,prev=s.report&&s.report.done?String(s.report.done):'';
+  const body='<div id="myWorkReport" style="font-size:16px;overflow-wrap:anywhere;min-width:0"><p class="mwMeta" style="font-size:13px;color:var(--muted);margin:0 0 6px">'+escapeHtml(s.date+(s.time?' '+s.time:'')+' · '+(s.title||'작업')+(s.project?' · '+s.project:''))+'</p>'+
+    '<p id="mwPhotoCount" style="margin:4px 0 8px">'+(s.project?'📷 오늘 이 현장 사진 <b>'+photos+'장</b>'+(photos?'':' — 사진을 먼저 올리면 보고서에 같이 붙습니다'):'현장이 없는 일정이라 사진이 붙지 않습니다')+'</p>'+
+    (s.project?'<button type="button" class="ghost" id="mwReportPhoto" style="margin-bottom:8px">📷 사진 먼저 등록</button>':'')+
+    (prev?'<p style="font-size:13px;margin:4px 0">이미 적힌 작업 내용:<br><span style="white-space:pre-wrap">'+escapeHtml(prev)+'</span></p>':'')+
+    '<label for="mwDoneText" style="font-size:14px;font-weight:700">오늘 한 작업 (필수)</label><textarea id="mwDoneText" rows="4" maxlength="2000" placeholder="예: 욕실 방수 2차 완료, 내일 타일" style="display:block;width:100%;box-sizing:border-box;font-size:16px;padding:10px;margin:6px 0"></textarea>'+
+    '<p class="hint" style="font-size:12.5px">작업일지에 남고 이 일정이 완료로 표시됩니다. 현장 단계(완료·준공)는 자동으로 바꾸지 않습니다. 고객에게 보내지 않습니다.</p></div>';
+  openModal('✅ 완료 보고',body,[{label:'← 내 업무',cls:'ghost',fn:()=>myWorkView({refresh:false})},{label:'완료 보고 저장',cls:'clay',fn:()=>{
+    const ta=document.getElementById('mwDoneText'),text=ta.value.trim();
+    if(!text){toast('오늘 한 작업을 적어 주세요');hjFieldIssue(ta,'오늘 한 작업을 적어 주세요');return;}
+    const live=(state.schedule||[]).filter(x=>String(x.id)===String(schId));
+    if(live.length!==1||live[0]!==s){toast('일정이 바뀌었습니다 — 내용을 복사해 두고 다시 열어 주세요');return;}
+    if(!reportPhotos(s).length&&!confirm('사진 없이 완료할까요?\n사진이 없으면 작업일지·고객 보고에 사진이 붙지 않습니다.'))return;
+    const r=workLogSave(s.project,text,s.date,s.id);
+    if(!r||r.오류){toast('작업일지를 저장하지 못했습니다');return;}
+    s.report.progress='완료';s.report.filledAt=new Date().toISOString();markDirty();dashboardOperationsRefresh();
+    toast('완료 보고를 작업일지에 저장했습니다');myWorkView({refresh:false});}}],true);
+  const pb=document.getElementById('mwReportPhoto');if(pb)pb.onclick=()=>hjMyWorkPhoto(s.project,s.title||'');
+  const ta=document.getElementById('mwDoneText');if(ta){ta.onfocus=()=>hjKeepAboveFooter(ta);setTimeout(()=>{try{ta.focus();}catch(_){}},0);}
+}
+// 팀 업무판 업무를 그 자리에서 완료 — hjTeamEdit 저장과 같은 안전판·원자 저장(기록자 이름 필수, 지어내지 않는다)
+async function hjMyWorkTeamDone(id,recorder){
+  if(__hjTeamBusy)return {ok:false,msg:'다른 팀 업무 저장이 진행 중입니다'};
+  recorder=String(recorder||'').trim();
+  if(!recorder||recorder.length>40)return {ok:false,msg:'기록자 이름(40자 이내)을 적어 주세요'};
+  const matches=hjTeamList().filter(n=>String(n.id)===String(id)),original=matches[0];
+  if(matches.length!==1||hjTeamData(original).schema!==1)return {ok:false,msg:'업무가 변경되었거나 지원하지 않는 형식입니다. 팀 업무판에서 확인하세요'};
+  const t=hjTeamData(original);if(t.status==='done')return {ok:false,msg:'이미 완료된 업무입니다'};
+  const originalText=JSON.stringify(original),priorNotes=state.notes,priorText=JSON.stringify(priorNotes);
+  const current=()=>!__tabStale&&state.notes===priorNotes&&JSON.stringify(priorNotes)===priorText&&priorNotes.includes(original)&&JSON.stringify(original)===originalText;
+  __hjTeamBusy=true;
+  try{
+    if(!(await hjSnapshot('팀 업무 완료 전',true,true)))return {ok:false,msg:'안전판을 저장하지 못해 바꾸지 않았습니다'};
+    if(!current())return {ok:false,msg:'업무가 그 사이 바뀌었습니다. 다시 열어 확인해 주세요'};
+    const draft={...t,status:'done',recorder,updatedAt:new Date().toISOString(),revision:(Number(t.revision)||0)+1};
+    const note={...original,date:new Date().toLocaleString('ko-KR'),day:localDate(),done:true,teamTask:draft};
+    const saved=await hjTeamPersistNotes(priorNotes.map(n=>n===original?note:n),current);
+    if(!saved.saved)return {ok:false,msg:'이 기기 저장에 실패해 바꾸지 않았습니다'};
+    if(!saved.published)return {ok:false,msg:'저장 직후 다른 변경을 감지해 화면을 덮어쓰지 않았습니다. 저장 상태를 확인해 주세요'};
+    webWorkMarkDirtyAfterPersist();dashboardOperationsRefresh();return {ok:true};
+  }catch(e){return {ok:false,msg:'저장 중 오류 또는 자료 변경으로 중단했습니다'};}
+  finally{__hjTeamBusy=false;}
 }
 /* ── 📐 실측 노트 (v279) — 대표 요청(9/12): 실측 때 방마다 한 번 넣어 두면 계산기·견적이 그 값을 가져다 쓴다.
    현장(state.projects) 객체에 measure 배열로 붙는다 — 앱 저장 키를 늘리지 않는다(projects 는 이미 저장 대상).
