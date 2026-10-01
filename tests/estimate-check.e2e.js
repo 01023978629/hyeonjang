@@ -73,18 +73,25 @@ async function test(name, fn) {
     const r2 = await codes('견적서 내용 없음', null);
     assert.ok(r2.codes.includes('noamount'), JSON.stringify(r2.codes));
   });
-  await test('① 전화·사업자번호·날짜를 금액으로 읽은 꼴, 범위 밖', async () => {
-    let r = await codes('', { amount: 1000000000 + 12345678 });   // 010-1234-5678 의 앞 0 이 빠진 꼴
+  await test('① 전화·사업자번호·날짜를 금액으로 읽은 꼴(본문에 그 번호가 있을 때만), 범위 밖', async () => {
+    let r = await codes('대표 010-1234-5678', { amount: 1000000000 + 12345678 });   // 010-1234-5678 의 앞 0 이 빠진 꼴
     assert.ok(r.codes.includes('misread') && r.codes.includes('range'), JSON.stringify(r.codes));
-    assert.ok(r.msgs.some(m => /휴대폰 번호\(…5678\)/.test(m)), JSON.stringify(r.msgs));
+    assert.ok(r.msgs.some(m => /전화번호\(…5678\)/.test(m)), JSON.stringify(r.msgs));
     r = await codes('TEL 042-000-1234\n합계 420001234', { amount: 420001234, amountFrom: 'sum' });
     assert.deepEqual(r.codes, ['misread']); assert.ok(/전화번호\(…1234\)/.test(r.msgs[0]), r.msgs[0]);
-    r = await codes('', { amount: 20260316 });
+    r = await codes('견적일 2026.03.16', { amount: 20260316 });
     assert.deepEqual(r.codes, ['misread']); assert.ok(/날짜\(2026-03-16\)/.test(r.msgs[0]), r.msgs[0]);
     r = await codes('', { amount: 1230000000, bizno: '123-00-00000' });   // 가짜 사업자번호의 숫자 = 금액
     assert.ok(r.codes.includes('misread'), JSON.stringify(r.codes));
     r = await codes('', { amount: 5000 });
     assert.deepEqual(r.codes, ['range']);
+  });
+  await test('① 숫자 모양만으로는 오인이라 하지 않는다 — 1억·1.1억·1.8억·20,250,520원(검토 v333)', async () => {
+    for (const e of [{ amount: 110000000, supply: 100000000, vat: 10000000 }, { amount: 100000000, supply: 90909091, vat: 9090909 },
+      { amount: 180000000, supply: 0, vat: 0 }, { amount: 20250520 }]) {
+      const r = await codes('공급가액 ' + e.supply + '\n합계 ' + e.amount + '\n견적일 2025-06-01', Object.assign({ amountFrom: 'sum' }, e));
+      assert.deepEqual(r.codes, [], JSON.stringify([e, r.msgs]));
+    }
   });
 
   // ---------- 화면 시드 ----------
@@ -98,9 +105,13 @@ async function test(name, fn) {
       est: parseEstimate(text, name), when: new Date('2026-09-01T00:00:00') }, extra || {});
     state.files = [
       mk('bad-sum', '가상 합계틀림 견적.pdf', t1),
-      mk('bad-max', '가상 폴백 견적.pdf', t2),
+      mk('bad-max', '가상 폴백 견적.png', t2, { ext: 'png' }),
       mk('good', '가상 정상 견적.pdf', '공급가액 2,000,000\n부가세 200,000\n합계 2,200,000'),
       mk('excl', '가상 제외 견적.pdf', t1, { exSum: true }),
+      // 같은 견적의 엑셀(대표, 맞음) + PDF 사본(인식 틀림) — 사본은 매출에 안 들어가므로 '합계에 그대로'라고 세지 않는다
+      { id: 'copy-x', name: '가상 욕실 견적.xlsx', ext: 'xlsx', kind: 'estimate', prefix: '가상/', project: P, when: new Date('2026-09-02T00:00:00'),
+        est: { amount: 3300000, supply: 3000000, vat: 300000, amountFrom: 'sum' } },
+      mk('copy-pdf', '가상 욕실 견적서.pdf', t1),
       // 앱 견적(가상 파일): 값이 어긋나 보여도 검사하지 않고 칸은 읽기 전용
       { id: 'quote_q1', name: '가상 앱 견적.pdf', ext: 'pdf', kind: 'estimate', project: P, _fromQuote: true, _virtual: true,
         est: { amount: 999, supply: 5, vat: 7, customer: '가상', date: '2026-09-01' } },
@@ -122,8 +133,11 @@ async function test(name, fn) {
       quoteBadge: !!document.querySelector('tr[data-id="quote_q1"] .est-check-warn'),
     }));
     assert.ok(/원본 확인 필요\s*2건/.test(r.head), r.head);
-    assert.ok(/매출·청구 합계에는 그대로/.test(r.head), r.head);
-    assert.deepEqual(r.flagged.sort(), ['bad-max', 'bad-sum', 'excl'].sort());   // 집계 제외도 행 배지는 단다(세는 건 2건)
+    assert.ok(/매출·청구 합계에 그대로/.test(r.head), r.head);
+    assert.ok(/합계 밖 1건/.test(r.head), r.head);   // 사본(copy-pdf)은 따로 센다
+    assert.deepEqual(r.flagged.sort(), ['bad-max', 'bad-sum', 'copy-pdf', 'excl'].sort());   // 집계 제외·사본도 행 배지는 단다(매출 반영으로 세는 건 2건)
+    const sp = await page.evaluate(() => { const x = hjEstNeedsCheckSplit(); return { s: x.sales.map(f => f.id).sort(), o: x.other.map(f => f.id) }; });
+    assert.deepEqual(sp, { s: ['bad-max', 'bad-sum'], o: ['copy-pdf'] });
     assert.ok(/원본 확인 필요/.test(r.badge));
     assert.ok(/100,000원 차이/.test(r.issue), r.issue);
     assert.ok(/가장 큰 숫자/.test(r.issueMax), r.issueMax);
@@ -147,24 +161,50 @@ async function test(name, fn) {
 
   await test('② 확인 필요만 보기 필터', async () => {
     await page.selectOption('#estimateListStatus', 'needcheck');
-    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 4);
     const ids = await page.evaluate(() => [...document.querySelectorAll('.estimates-list tbody tr[data-id]')].map(e => e.dataset.id).sort());
-    assert.deepEqual(ids, ['bad-max', 'bad-sum', 'excl']);
+    assert.deepEqual(ids, ['bad-max', 'bad-sum', 'copy-pdf', 'excl']);
     await page.selectOption('#estimateListStatus', 'all');
-    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 5);
+    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 7);
   });
 
   await test('③ 첫 화면 한 줄과 바로가기', async () => {
     await page.evaluate(() => { state.tab = 'dashboard'; render(); });
     const line = page.locator('#dashboardEstCheck');
     await line.waitFor();
-    assert.ok(/원본 확인 필요\s*2건/.test(await line.textContent()));
+    const lt = await line.textContent();
+    assert.ok(/원본 확인 필요\s*2건/.test(lt) && /합계 밖 1건/.test(lt), lt);
     const h = await page.locator('#dashboardEstCheckGo').evaluate(el => el.getBoundingClientRect().height);
     assert.ok(h >= 44, '버튼 높이 ' + h);
     await page.click('#dashboardEstCheckGo');
     await page.waitForFunction(() => state.tab === 'estimates' && __estimateListUI.status === 'needcheck');
-    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('.estimates-list tbody tr[data-id]').length === 4);
     await page.evaluate(() => { __estimateListUI.status = 'all'; render(); });
+  });
+
+  await test('② 사본만 남으면 \'합계에는 들어가지 않는다\'고 말한다', async () => {
+    const r = await page.evaluate(() => {
+      const keep = state.files; state.files = keep.filter(f => !['bad-sum', 'bad-max'].includes(f.id));
+      const head = (render(), document.getElementById('estCheckHead')?.textContent || '');
+      const dash = dashboardEstCheckHTML();
+      state.files = keep; render(); return { head, dash };
+    });
+    assert.ok(/1건\s*— 사본 등이라 매출·청구 합계에는 들어가지 않습니다/.test(r.head), r.head);
+    assert.ok(!/그대로 들어가/.test(r.head) && !/그대로 들어가/.test(r.dash), r.dash);
+    // 이 뒤 시나리오는 사본 없이 — 0건 머리 줄 사라짐을 본다
+    await page.evaluate(() => { state.files = state.files.filter(f => !['copy-x', 'copy-pdf'].includes(f.id)); render(); });
+  });
+
+  await test('② 원본을 볼 수 없는 견적(드라이브 ID 없는 가상 파일)은 [원본 보기 · 확정] 대신 안내', async () => {
+    const r = await page.evaluate(() => {
+      state.files.push({ id: 'virt', name: '가상 원본없음 견적.pdf', ext: 'pdf', kind: 'estimate', project: '가상 현장', _virtual: true, text: '',
+        est: { amount: 3000000, supply: 1000000, vat: 100000, date: '2026-09-01' } });
+      render();
+      const out = { btn: !!document.querySelector('tr[data-id="virt"] [data-estcheck]'), note: document.querySelector('tr[data-id="virt"] .est-noorig')?.textContent || '',
+        badBtn: !!document.querySelector('tr[data-id="bad-sum"] [data-estcheck]') };
+      state.files = state.files.filter(f => f.id !== 'virt'); render(); return out;
+    });
+    assert.equal(r.btn, false); assert.ok(/원본 파일 없음/.test(r.note), r.note); assert.equal(r.badBtn, true);
   });
 
   await test('② 목록에서 합계를 고치면 확인 필요가 풀린다(✎ 수정됨)', async () => {
@@ -177,9 +217,33 @@ async function test(name, fn) {
     assert.ok(/1건/.test(r.head), r.head);
   });
 
+  // 원본 그림: 1×1 PNG 를 원본 파일로 돌려준다(가짜 — 실제 파일 없음)
+  await page.evaluate(() => {
+    const b = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), c => c.charCodeAt(0));
+    window.__pvOrigGet = getFileOf;
+    getFileOf = async f => (f && f.id === 'bad-max') ? new File([b], 'x.png', { type: 'image/png' }) : null;
+  });
+
+  await test('④ 원본을 못 띄우면 [원본 없이 확정…] — 묻고, 취소하면 확정 안 함(검토 v333)', async () => {
+    await page.evaluate(() => previewEstimate('bad-sum'));   // 원본(가짜 파일) 없음 — getFileOf 가 null
+    await page.locator('#modalRoot .modal').waitFor();
+    const btn = page.locator('#modalRoot .pv-est-confirm');
+    await page.waitForFunction(() => /원본 없이 확정/.test(document.querySelector('#modalRoot .pv-est-confirm')?.textContent || ''));
+    assert.ok(/원본 파일을 찾을 수 없습니다/.test(await page.locator('#pvCanvas').textContent()));
+    let asked = '';
+    page.once('dialog', d => { asked = d.message(); d.dismiss(); });
+    await btn.click();
+    assert.ok(/원본 없이 확정할까요/.test(asked), asked);
+    assert.equal(await page.evaluate(() => !!state.files.find(f => f.id === 'bad-sum').est.verifiedAt), false);
+    assert.ok(await page.locator('#modalRoot .modal').count() === 1, '취소하면 창은 그대로');
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
+  });
+
   await test('④ 원본 보기 모달 → 고치고 확정 → verifiedAt/By, 배지 ✓', async () => {
     await page.click('tr[data-id="bad-max"] [data-estcheck]');
     await page.locator('#modalRoot .modal').waitFor();
+    await page.waitForFunction(() => (document.querySelector('#modalRoot .pv-est-confirm')?.textContent || '') === '✓ 원본과 맞음 — 확정');
+    assert.ok(await page.locator('#pvCanvas img.pv-img').count() === 1);
     const warn = await page.locator('#pvEstCheck').textContent();
     assert.ok(/원본 확인 필요/.test(warn) && /가장 큰 숫자/.test(warn), warn);
     // 공급가 칸을 고쳐도 change 가 안 난 채(키보드 '완료'·자동완성 등) 확정 버튼이 반영한다 — 값만 넣고 이벤트는 쏘지 않는다
@@ -210,6 +274,25 @@ async function test(name, fn) {
     // 다른 경로(AI 등)로 금액만 바뀌어도 서명(verifiedSig)이 어긋나 확정으로 보지 않는다
     const v = await page.evaluate(() => { const e = { amount: 1100000, supply: 1000000, vat: 100000, amountFrom: 'max' }; hjEstVerify(e, '가상'); const a = hjEstCheck(e).verified; e.amount = 1200000; return [a, hjEstCheck(e).verified]; });
     assert.deepEqual(v, [true, false]);
+    // 사람이 금액을 적으면 '가장 큰 숫자로 잡았다'는 이유는 사라진다(amountFrom='hand')
+    const amt = page.locator('input[data-ef="amount"][data-id="bad-max"]');
+    await amt.fill('3,500,000'); await amt.dispatchEvent('change');
+    await page.waitForFunction(() => state.files.find(f => f.id === 'bad-max').est.amountFrom === 'hand');
+    const c = await page.evaluate(() => hjEstFileCheck(state.files.find(f => f.id === 'bad-max')).issues.map(x => x.code));
+    assert.ok(!c.includes('fallback'), JSON.stringify(c));
+  });
+
+  await test('④ 모달에서 친 값은 Esc 로 닫아도 반영되고 목록이 다시 그려진다', async () => {
+    await page.evaluate(() => { state.files.find(f => f.id === 'bad-max').est.amountFrom = 'max'; previewEstimate('bad-max'); });
+    await page.locator('#pvEst_vat').waitFor();
+    // input 이벤트만 — 칸에 초점이 없어 닫힐 때 change(blur) 도 안 난다(Safari 처럼). 닫힘 훅만이 반영할 수 있다
+    await page.evaluate(() => { for (const [id, v] of [['pvEst_vat', '318,182'], ['pvEst_amount', '3,500,001']]) { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input')); } document.querySelector('#modalRoot .modal').focus(); });
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
+    const r = await page.evaluate(() => state.files.find(f => f.id === 'bad-max').est);
+    assert.equal(r.vat, 318182); assert.equal(r.amount, 3500001);
+    assert.equal(r.amountFrom, 'hand', '모달에서 적은 금액도 사람이 적은 값');
+    await page.waitForFunction(() => document.querySelector('input[data-ef="vat"][data-id="bad-max"]')?.value === '318,182');
+    await page.evaluate(() => { const e = state.files.find(f => f.id === 'bad-max').est; e.amount = 3500000; render(); });
   });
 
   await test('④ 모달에서 확정된 값을 고쳐도 확정 해제', async () => {
