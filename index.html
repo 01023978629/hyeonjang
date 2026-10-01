@@ -1846,6 +1846,20 @@ function hjFidHash(str){
 function hjLegacyFid(base,n){return 'lg-'+hjFidHash(String(base)+'#'+(n|0));}
 /* list(저장 레코드 saved=true 또는 지금 목록) 안의 fid 를 채우고 겹침을 푼다 → 정해진 값을 새로 붙인 레코드 Set.
    순서가 같으면 결과가 같다(서버 자료를 읽는 기기마다 같은 값). _fromQuote(견적 파생 가상 파일)는 저장하지 않으므로 건너뛴다. */
+/* src(serializeData 모양 또는 state) 안의 'f:'+fid 참조 모음 — 파일 목록 자체(files)는 빼고 본다. 참조가 어디에 있든(현장 casePack·
+   extras·warrantyDoc, AS photos …) 같은 모양의 글자라 키 목록을 따로 두지 않는다(새 참조 저장소가 생겨도 빠지지 않게). */
+function hjFidRefSet(src){
+  const out=new Set();
+  if(!src||typeof src!=='object')return out;
+  const re=/"f:([^"\\]{1,80})"/g;
+  Object.keys(src).forEach(k=>{
+    if(k==='files')return;
+    let t='';try{t=JSON.stringify(src[k])||'';}catch(e){return;}
+    if(t.indexOf('"f:')<0)return;
+    let m;re.lastIndex=0;while((m=re.exec(t)))out.add(m[1]);
+  });
+  return out;
+}
 function hjAssignFids(list,saved){
   const seen=new Set(),occ=new Map(),out=new Set();
   (Array.isArray(list)?list:[]).forEach(r=>{
@@ -2137,8 +2151,14 @@ function applyData(data,opts){
   state.files.forEach(f=>{if(f&&hjFidOk(f.fid))liveFids.set(f.fid,(liveFids.get(f.fid)||0)+1);});
   const sameTime=(f,s)=>!f.sourceModifiedAt||!s.sourceModifiedAt||f.sourceModifiedAt===s.sourceModifiedAt;
   const idOk=(f,s)=>__fidLegacy.has(s)||!hjFidOk(f.fid)||f.fid===s.fid||!!f.handle||(!!f._driveId&&f._driveId===s.driveId);
+  /* 옛 기기(v332 이하)가 저장한 자료는 fid 를 빼고 쓰지만 현장 안 'f:UUID' 참조 글자는 그대로 싣는다. 그 저장 기록에 붙인 정해지는
+     값(__fidLegacy)으로 이 기기의 fid 를 덮으면 사례·추가공사·보증서·AS 의 사진 참조가 전부 '찾을 수 없음'이 된다. 그래서 저장 기록의
+     fid 가 정해지는 값이고 이 기기 fid 를 어딘가에서 참조하고 있으면 이 기기 것을 지킨다. 참조가 없으면 정해지는 값을 받아 같은 옛 자료를
+     읽는 기기끼리 같은 fid 가 되게 한다(서버 병합 짝 찾기가 기기마다 갈라지지 않게). */
+  let __refFids=null;const refFids=()=>__refFids||(__refFids=hjFidRefSet(data));
   const takeFid=(f,s)=>{
     if(f.fid===s.fid||liveFids.get(s.fid))return;   // 이미 다른 기록이 쓰는 fid 는 옮기지 않는다
+    if(__fidLegacy.has(s)&&hjFidOk(f.fid)&&refFids().has(f.fid))return;   // fid 없던 저장 기록이 참조 중인 이 기기 fid 를 덮지 않는다
     if(hjFidOk(f.fid)){const n=(liveFids.get(f.fid)||1)-1;if(n>0)liveFids.set(f.fid,n);else liveFids.delete(f.fid);}
     f.fid=s.fid;liveFids.set(s.fid,1);
   };
@@ -2798,11 +2818,31 @@ function hjSyncDiff(sv,mv){
   if(keys.length>3)out.push({field:'그 밖 '+(keys.length-3)+'칸',server:'',mine:''});
   return out;
 }
+/* 옛 기기(v332 이하)가 저장한 서버본·base 에는 파일 fid 가 없다. 그대로 정해지는 값을 붙이면 이 기기(UUID)와 짝이 안 맞아 같은 사진이
+   '다른 기기가 지움' + '다른 기기가 만듦' 으로 갈리고, [내 것]을 고르면 같은 사진이 두 기록이 된다. 그래서 fid 없는 기록은 먼저 다른
+   쪽(donors)의 같은 경로(key) 기록에서 fid 를 빌린다 — Drive ID 가 같은 것 먼저, 그다음 한쪽에만 Drive ID 가 있는 것. 한 fid 는 한 번만. */
+function hjSyncFillFids(list,donors){
+  if(!Array.isArray(list))return;
+  const need=list.filter(r=>r&&typeof r==='object'&&!r._fromQuote&&!hjFidOk(r.fid));
+  if(!need.length)return;
+  const taken=new Set(list.filter(r=>r&&hjFidOk(r.fid)).map(r=>r.fid));
+  const pool=[];
+  (donors||[]).forEach(d=>(Array.isArray(d)?d:[]).forEach(r=>{if(r&&typeof r==='object'&&hjFidOk(r.fid)&&!String(r.fid).startsWith('lg-'))pool.push(r);}));
+  const kOf=r=>String(r.key||fileKey(r)),dOf=r=>String(r.driveId||'');
+  [(a,b)=>dOf(a)===dOf(b),(a,b)=>!dOf(a)||!dOf(b)].forEach(ok=>{
+    need.forEach(r=>{
+      if(hjFidOk(r.fid))return;
+      const d=pool.find(x=>!taken.has(x.fid)&&kOf(x)===kOf(r)&&ok(x,r));
+      if(d){r.fid=d.fid;taken.add(d.fid);}
+    });
+  });
+}
 /* 3-way 비교 — 순수 함수(검사용으로도 쓴다). base·mine·server 는 serializeData 모양.
    → {slots:Map(키 → [{id,val}|{id,conflict:i}] 결과 순서), conflicts:[{coll,key,id,label,base,server,mine,diff,kind}],
       auto:{serverChanged,mineChanged,serverDeleted,mineDeleted,serverAdded,mineAdded}(각 [label]), serverTouched, mineTouched} */
 function hjSyncMerge3(base,mine,server){
   base=base||{};mine=mine||{};server=server||{};
+  hjSyncFillFids(base.files,[mine.files,server.files]);hjSyncFillFids(server.files,[mine.files,base.files]);hjSyncFillFids(mine.files,[server.files,base.files]);
   const keys=[];[server,mine,base].forEach(o=>Object.keys(o).forEach(k=>{if(!HJ_SYNC_SKIP.has(k)&&!keys.includes(k))keys.push(k);}));
   const auto={serverChanged:[],mineChanged:[],serverDeleted:[],mineDeleted:[],serverAdded:[],mineAdded:[]};
   const conflicts=[],slots=new Map();let serverTouched=false,mineTouched=false;
@@ -3100,6 +3140,7 @@ async function relayLoadDriveFiles(silent){
         }
         usedRec.add(hit);return hit;
       };
+      let __dfRefs=null;
       for(const f of res.files){
         if(!f||!f.id||__removedIds.has(f.id))continue;
         const fe=bestExt(f.name,f.mimeType||'');
@@ -3117,6 +3158,11 @@ async function relayLoadDriveFiles(silent){
             same._driveId=f.id;same._driveMimeType=String(f.mimeType||existing._driveMimeType||'');same._driveSize=Number(f.size)||Number(existing._driveSize)||0;same.size=same.size||existing.size||(+f.size||0);
             if(!same.kind||same.kind==='other')same.kind='photo';
             if(!same.when&&existing.when)same.when=existing.when;
+            // v333 지워지는 쪽 fid 를 가리키는 'f:' 참조가 있고 남는 쪽 fid 는 아무도 안 가리키면 그 fid 를 물려준다(참조가 끊기지 않게)
+            if(hjFidOk(existing.fid)&&existing.fid!==same.fid){
+              if(!__dfRefs)__dfRefs=hjFidRefSet(state);
+              if(__dfRefs.has(existing.fid)&&!(hjFidOk(same.fid)&&__dfRefs.has(same.fid)))same.fid=existing.fid;
+            }
             revokeThumbUrl(existing);state.files.splice(state.files.indexOf(existing),1);linked++;
           }
           continue;

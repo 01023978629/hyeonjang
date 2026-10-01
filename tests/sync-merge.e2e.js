@@ -9,9 +9,10 @@
      ③ 🛡 안전판이 실패하면 아무것도 바꾸지 않고 멈춘다
      ④ 고른 대로 합친 자료가 새 revision 으로 저장되고 이 기기 상태도 같다(사진은 fid 단위)
      ⑤ 다른 기기가 같은 자료를 다시 저장했을 뿐이면(서버 쪽 변경 없음) 묻지 않고 내 것으로 이어 저장한다
-     ⑥ base 가 없으면(첫 연결·옛 기기) 예전 3지선다 화면, 그 화면은 '전체로 고르기' 로도 열린다
+     ⑥ base 가 없으면(첫 연결·옛 기기·다른 revision·다른 서버 주소) 예전 3지선다 화면, 그 화면은 '전체로 고르기' 로도 열린다
      ⑦ 고르는 사이 이 기기 자료가 바뀌면 다시 비교한다
      ⑧ 360px — 넘침 없음, 고르는 버튼 44px · pageerror 0
+     ⑨ 옛 기기(fid 없음)의 서버본·base — 같은 경로 기록의 fid 를 빌려 같은 사진끼리 비교(지움+만듦으로 갈리지 않는다)
    전제: tests/static-server.js(8299) + tests/mock-relay.js(8398) 실행 중 */
 'use strict';
 let chromium;
@@ -201,7 +202,16 @@ async function otherDeviceSave(mutate) {
   await page.waitForSelector('#ryMergeBox');
   await page.click('#modalRoot .mfoot button:has-text("전체로 고르기")');
   await page.waitForSelector('#ryConflictBox');
-  console.log('PASS  ⑥ 쓸 base 없음 → 예전 3지선다 · [전체로 고르기] 탈출구');
+  // 다른 서버 주소에서 남긴 base 는 revision 이 같아도 쓰지 않는다(서버를 바꾼 기기가 남의 자료를 base 로 합치지 않게)
+  await page.evaluate(() => closeModal(true));
+  await page.evaluate(async () => { const s = await relayCall('load'); await relayBaseRemember(s.revision, s.data); __relay.rev = s.revision;
+    const b = await idbGet('relay_base'); b.srv = hjFidHash('https://other-relay.invalid/exec'); await idbSet('relay_base', b);
+    state.schedule.find(x => x.id === 's2').title = '타일(내 것5)'; });
+  await otherDeviceSave(d => { d.schedule.find(s => s.id === 's2').title = '타일(서버5)'; });
+  await page.evaluate(() => relaySaveNow(true));
+  await page.waitForSelector('#ryConflictBox');
+  assert(!(await page.$('#ryMergeBox')), '⑥ 다른 서버 주소의 base 는 쓰지 않는다 — 예전 3지선다');
+  console.log('PASS  ⑥ 쓸 base 없음(revision·서버 주소) → 예전 3지선다 · [전체로 고르기] 탈출구');
 
   // ── 불러오기도 base 를 남긴다 ─────────────────────────────────────────────────────
   await page.evaluate(() => closeModal(true));
@@ -221,6 +231,30 @@ async function otherDeviceSave(mutate) {
   });
   assert(pure.conflicts === 0 && pure.sched === 'a2,b1,c1' && pure.goals === 2 && pure.auto === 2, '순수 — 양쪽이 같게 바꾼 것은 충돌이 아니고, 배열 아닌 키도 비교한다: ' + JSON.stringify(pure));
   console.log('PASS  비교 규칙 — 같게 바꾼 것은 충돌 아님 · 설정 키도 비교');
+
+  // ── ⑨ 옛 기기(fid 없음)가 저장한 서버본·base ─────────────────────────────────────
+  // 정해지는 값을 그대로 붙이면 이 기기(UUID)와 짝이 안 맞아 같은 사진이 '다른 기기가 지움' + '다른 기기가 만듦' 으로 갈리고,
+  // [내 것]을 고르면 같은 사진이 두 기록이 된다. 같은 경로 기록에서 fid 를 빌려 같은 사진으로 비교해야 한다.
+  const nine = await page.evaluate(() => {
+    const F = (fid, project, extra) => Object.assign({ key: 'a.jpg|100', name: 'a.jpg', prefix: '', kind: 'photo', size: 100, project }, fid ? { fid } : {}, extra || {});
+    const base = { files: [F('11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'A'), F('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'A', { driveId: 'DRIVE-FAKE-2' })], schedule: [] };
+    const mine = { files: [F('11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'B'), F('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'A', { driveId: 'DRIVE-FAKE-2' })], schedule: [] };
+    const server = { files: [F(null, 'A', { driveId: 'DRIVE-FAKE-2', worklabel: '서버 작업명' }), F(null, 'A')], schedule: [{ id: 'x', title: 'x' }] };
+    const p = hjSyncMerge3(base, mine, server);
+    const out = p.conflicts.length ? { files: [] } : hjSyncResolve(p, server, []);   // 충돌이 남으면 아래 단정이 이름으로 말한다
+    // base 도 옛 기기 것(fid 없음)
+    const base2 = { files: [F(null, 'A')] }, mine2 = { files: [F('33333333-cccc-4ccc-8ccc-cccccccccccc', 'B')] }, server2 = { files: [F(null, 'A', { worklabel: '서버' })] };
+    const p2 = hjSyncMerge3(base2, mine2, server2);
+    const out2 = p2.conflicts.length ? null : hjSyncResolve(p2, server2, []);
+    return { conflicts: p.conflicts.map(c => c.kind), auto: p.auto, files: out.files.map(f => f.fid + ':' + f.project + ':' + (f.worklabel || '')),
+      c2: p2.conflicts.map(c => c.kind), files2: out2 && out2.files.map(f => f.fid + ':' + f.project + ':' + (f.worklabel || '')) };
+  });
+  assert(nine.conflicts.length === 0 && nine.auto.serverDeleted.length === 0 && nine.auto.mineDeleted.length === 0 && JSON.stringify(nine.auto.serverAdded) === JSON.stringify(['일정 · x']),
+    '⑨ fid 없는 서버본 — 같은 사진을 지움·만듦으로 가르지 않는다: ' + JSON.stringify(nine));
+  assert(JSON.stringify(nine.files) === JSON.stringify(['22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb:A:서버 작업명', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa:B:']),
+    '⑨ 합친 사진은 두 장 그대로·제 fid(Drive ID 가 같은 것끼리 먼저)·이 기기 현장 변경 유지: ' + JSON.stringify(nine.files));
+  assert(nine.c2.length === 1 && nine.c2[0] === 'bothChanged', '⑨ base 도 fid 없을 때 — 같은 사진의 양쪽 변경 한 건(지움+만듦 아님): ' + JSON.stringify(nine));
+  console.log('PASS  ⑨ 옛 기기(fid 없음) 서버본·base — 같은 경로 기록의 fid 로 같은 사진끼리 비교');
 
   assert(errors.length === 0, '⑧ pageerror: ' + errors.join(' | '));
   console.log('sync-merge.e2e OK');

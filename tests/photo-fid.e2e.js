@@ -13,6 +13,8 @@
      ⑥ 서버 사진 목록 합치기: 전송 대기 중인('f:' 참조) 사진에는 이름·크기가 같은 서버 사진을 붙이지 않는다
      ⑦ 선택 복원: 같은 경로 두 기록이 백업의 제 기록(fid)으로 되돌아가고 fid 는 바뀌지 않는다
      ⑧ 최상위 키 41개 그대로 · pageerror 0
+     ⑨ 옛 기기(fid 없는 저장) 한 번 뒤에도 참조 중인 사진은 제 fid — 'f:' 참조가 끊기지 않는다, 참조 없는 사진은 정해지는 값
+     ⑩ 서버 사진 목록 합치기에서 지워지는 빈 기록의 fid 를 가리키던 참조는 남는 기록이 이어받는다
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
 let chromium;
@@ -113,11 +115,21 @@ let browser;
     const bootFresh = boot.fid;
     applyData({ version: 2, app: '현장', savedAt: '2026-09-06T00:00:00.000Z', projects: state.projects, quotes: [],
       files: [{ key: '현장사진/A현장/scan.jpg|300', fid: fid0, name: 'scan.jpg', prefix: '현장사진/A현장/', kind: 'photo', project: 'A현장', size: 300, worklabel: '저장된 작업명', sourceModifiedAt: new Date(T).toISOString() }] });
-    return { fid0, again: again.fid, fidU, againU: againU.fid, replaced: replaced.fid, bootFresh, boot: boot.fid, bootLabel: boot._worklabel, n: state.files.length };
+    const out = { fid0, again: again.fid, fidU, againU: againU.fid, replaced: replaced.fid, bootFresh, boot: boot.fid, bootLabel: boot._worklabel, n: state.files.length };
+    // 같은 경로·같은 크기인데 수정 시각이 다른 저장 기록 — 값(작업명)은 옛 규칙대로 덮되 fid 는 이어받지 않는다(같은 실제 파일이라는 확인이 없다)
+    state.files = [];
+    const boot2 = await ingestFile(mk(T + 2 * 86400000), H('scan.jpg'), '현장사진/A현장/', { restoreEdits: false });
+    const boot2Fresh = boot2.fid;
+    applyData({ version: 2, app: '현장', savedAt: '2026-09-06T00:00:00.000Z', projects: state.projects, quotes: [],
+      files: [{ key: '현장사진/A현장/scan.jpg|300', fid: fid0, name: 'scan.jpg', prefix: '현장사진/A현장/', kind: 'photo', project: 'A현장', size: 300, worklabel: '저장된 작업명', sourceModifiedAt: new Date(T).toISOString() }] });
+    out.timeFresh = boot2Fresh; out.time = boot2.fid; out.timeLabel = boot2._worklabel;
+    return out;
   });
   assert(three.again === three.fid0 && three.againU === three.fidU, '③ 재스캔 — 같은 실제 파일은 같은 fid(손대지 않은 사진 포함): ' + JSON.stringify(three));
   assert(three.replaced !== three.fid0, '③ 수정 시각이 다른 같은 경로 파일은 fid 를 이어받지 않는다: ' + JSON.stringify(three));
   assert(three.bootFresh !== three.fid0 && three.boot === three.fid0 && three.bootLabel === '저장된 작업명' && three.n === 1, '③ PC 부팅 — 저장본의 fid 를 이어받는다: ' + JSON.stringify(three));
+  assert(three.time === three.timeFresh && three.time !== three.fid0 && three.timeLabel === '저장된 작업명',
+    '③ PC 부팅 — 같은 경로·크기여도 수정 시각이 다른 저장 기록의 fid 는 이어받지 않는다(값은 덮는다): ' + JSON.stringify(three));
   console.log('PASS  ③ 재스캔·PC 부팅 — 같은 실제 파일만 같은 fid');
 
   // ── ④ 서버 병합 ─────────────────────────────────────────────────────────────────────
@@ -198,6 +210,54 @@ let browser;
   assert(seven.n === 2 && JSON.stringify(seven.list) === JSON.stringify([['sel-fid-00001', '백업1'], ['sel-fid-00002', '백업2']]),
     '⑦ 선택 복원 — 같은 경로 두 기록이 제 백업(fid)으로, fid 는 그대로: ' + JSON.stringify(seven));
   console.log('PASS  ⑦ 선택 복원 — fid 로 제 짝');
+
+  // ── ⑨ 옛 기기(v332 이하)의 저장 한 번 ─────────────────────────────────────────────
+  // 옛 serializeData 는 fid 를 빼지만 현장·AS 안의 'f:UUID' 참조 글자는 그대로 싣는다. PC·폰이 며칠씩 다른 버전으로 도는 것이 보통이라
+  // 그 저장 한 번이 새 기기의 fid 를 정해지는 값으로 덮으면 사례·추가공사·보증서·AS 사진이 전부 '찾을 수 없음'이 된다.
+  const nine = await page.evaluate(async () => {
+    state.files = []; state.asLog = [];
+    const mk = (b, nm) => new File([new Uint8Array(120).fill(b)], nm, { type: 'image/jpeg', lastModified: Date.UTC(2026, 8, 3) });
+    const r1 = await ingestFile(mk(3, 'ref.jpg'), null, '', { restoreEdits: false });
+    const r2 = await ingestFile(mk(4, 'ref-as.jpg'), null, '', { restoreEdits: false });
+    const r3 = await ingestFile(mk(5, 'plain.jpg'), null, '', { restoreEdits: false });
+    [r1, r2, r3].forEach(r => { r.kind = 'photo'; r.project = 'A현장'; });
+    state.projects[0].casePack = { photos: [hjFileRef(r1)] };
+    state.asLog = [{ id: 'as-fid-1', project: 'A현장', date: '2026-09-20', text: '가상 AS', photos: [hjFileRef(r2)] }];
+    const snap = JSON.parse(JSON.stringify(serializeData()));
+    applyData(snap);                                    // 새 기기끼리 한 바퀴 — 그대로
+    const before = state.files.map(f => f.fid);
+    const old = JSON.parse(JSON.stringify(snap));
+    old.files.forEach(f => { delete f.fid; });          // 옛 기기 저장: fid 만 빠지고 참조 글자는 남는다
+    applyData(old);
+    const after = state.files.map(f => f.fid);
+    const res = hjFilesByRefs(state.projects[0].casePack.photos.concat(state.asLog[0].photos));
+    // 참조 없는 사진은 정해지는 값을 받는다 — 같은 옛 자료를 읽는 다른 기기와 같은 fid(서버 병합 짝이 기기마다 갈라지지 않게)
+    const det = JSON.parse(JSON.stringify(old.files)); hjAssignFids(det, true);
+    return { before, after, found: res.files.map(f => f.name), missing: res.missing, det: det.map(f => f.fid), n: state.files.length };
+  });
+  assert(nine.n === 3 && nine.after[0] === nine.before[0] && nine.after[1] === nine.before[1], '⑨ 옛 기기 저장 뒤에도 참조 중인 사진은 제 fid 그대로: ' + JSON.stringify(nine));
+  assert(nine.missing.length === 0 && JSON.stringify(nine.found) === JSON.stringify(['ref.jpg', 'ref-as.jpg']), "⑨ 사례·AS 의 'f:' 참조가 끊기지 않는다: " + JSON.stringify(nine));
+  assert(nine.after[2] === nine.det[2] && /^lg-/.test(nine.after[2]), '⑨ 참조 없는 사진은 옛 자료에서 정해지는 값(기기마다 같다): ' + JSON.stringify(nine));
+  console.log("PASS  ⑨ 옛 기기 저장 한 번 — 'f:' 참조가 끊기지 않는다");
+
+  // ── ⑩ 서버 사진 목록 — 빈 미배정 복구 기록을 합칠 때 그 fid 를 가리키던 참조를 물려준다 ──────────────
+  const ten = await page.evaluate(async () => {
+    state.asLog = [];
+    state.files = [
+      { id: uid(), fid: 'bare-fid-00001', name: 'IMG_0009.jpg', prefix: '현장사진/', size: 500, kind: 'photo', project: null, ext: 'jpg', _driveId: 'DRIVE-FAKE-BARE', _virtual: true },
+      { id: uid(), fid: 'keep-fid-00002', name: 'IMG_0009.jpg', prefix: '', size: 500, kind: 'photo', project: 'A현장', ext: 'jpg', _driveId: null }];
+    state.projects[1].casePack = { photos: ['f:bare-fid-00001'] };
+    await idbSet('relay_queue', []);
+    const orig = cloudApiListFiles;
+    cloudApiListFiles = async () => ({ ok: true, files: [{ id: 'DRIVE-FAKE-BARE', name: 'IMG_0009.jpg', size: 500, mimeType: 'image/jpeg' }] });
+    try { await relayLoadDriveFiles(true); } finally { cloudApiListFiles = orig; }
+    const res = hjFilesByRefs(['f:bare-fid-00001']);
+    delete state.projects[1].casePack;
+    return { list: state.files.map(f => [f.fid, f._driveId, f.project]), found: res.files.length };
+  });
+  assert(JSON.stringify(ten.list) === JSON.stringify([['bare-fid-00001', 'DRIVE-FAKE-BARE', 'A현장']]) && ten.found === 1,
+    "⑩ 합쳐 지운 기록의 fid 를 가리키던 참조는 남는 기록이 이어받는다: " + JSON.stringify(ten));
+  console.log('PASS  ⑩ 서버 사진 목록 합치기 — 지운 기록의 참조를 남는 기록이 이어받는다');
 
   const keys = await page.evaluate(() => Object.keys(serializeData()).length);
   assert(keys === 41, '⑧ serializeData 최상위 키 41개 그대로: ' + keys);
