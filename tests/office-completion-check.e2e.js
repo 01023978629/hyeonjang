@@ -7,6 +7,9 @@
    ⑥ 서버가 ok:true 로 답한 때에만 ✅ 관리사무소 접수 확인 hh:mm · 접수번호 기록, 다시 고치면 다시 전송 대기
    ⑦ 공개 금액 0원·사라진 공개 사진은 점검표에 서버 문구로 뜬다
    ⑧ 기록은 오더 안 필드(officeReport) — 직렬화 최상위 키를 늘리지 않고 저장 왕복에 남는다
+   ⑨ 고치면 그 자리에서(목록 다시 그리기 없이) ✅ 가 꺼지고 점검표도 바뀐다 · 전송 확인 뒤에도 제자리 갱신
+   ⑩ 대기열이 비어도 queuedRevision > sentRevision 이면 접수 확인이 아니다 · 대기열에서 빠진 실패는 기록으로 남아 보인다
+   ⑪ 이 버전 전에 완료한 오더(officeReport 없음)는 '확인 전'이 아니라 '기록 없음'
    모든 자료는 가짜다. relayCall 은 페이지 안에서 바꿔 끼워 실제 서버를 부르지 않는다. */
 'use strict';
 let chromium;
@@ -100,7 +103,7 @@ let browser;
   assert(box.length === 1 && box[0].action === 'officeSetStatus' && box[0].payload.status === 'completed' && a.officeReport.queuedRevision === box[0].payload.projectionRevision, '③ 완료 보고가 대기열에 한 번 들어가지 않음');
   await page.waitForFunction(() => !!document.querySelector('#modalRoot [data-office-report="ocA"]'));
   let badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocA"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on + '|' + el.textContent])));
-  assert(badges.prepared.startsWith('1|📝 준비됨') && badges.queued.startsWith('1|⏳ 전송 대기') && badges.sent === '0|✅ 관리사무소 접수 확인 전', '③ 세 단계 배지가 틀림: ' + JSON.stringify(badges));
+  assert(badges.prepared.startsWith('1|📝 준비됨') && badges.queued.startsWith('1|⏳ 전송 대기') && badges.sent === '0|○ 관리사무소 접수 확인 전', '③ 세 단계 배지가 틀림: ' + JSON.stringify(badges));
   assert(!(await page.evaluate(() => document.querySelector('#modalRoot [data-office-report="ocA"]').textContent)).includes('보냄'), '③ 서버 확인 없이 \'보냄\' 표기');
 
   // ④ 서버가 사진을 막음 → 빨간 줄, 서버 운영 오류와 같은 문구, sentAt 없음
@@ -145,7 +148,7 @@ let browser;
   badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocB"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on + '|' + el.textContent])));
   assert(/^1\|✅ 관리사무소 접수 확인 \d{2}:\d{2}$/.test(badges.sent) && badges.queued.startsWith('0|'), '⑥ 접수 확인 배지가 hh:mm 으로 켜지지 않음: ' + JSON.stringify(badges));
   // 공개 메모를 고치면 새 revision → 다시 전송 대기, 접수 확인 배지는 꺼진다
-  await page.evaluate(() => { const ta = document.querySelector('#modalRoot .apoCompletionSummary[data-id="ocB"]'); ta.value = '주방 배관 교체 완료 — 누수 없음'; ta.onchange(); aptOrderManage('of1'); });
+  await page.evaluate(() => { const ta = document.querySelector('#modalRoot .apoCompletionSummary[data-id="ocB"]'); ta.value = '주방 배관 교체 완료 — 누수 없음'; ta.onchange(); aptOrderManage('of1'); }); // 다시 그린 뒤의 판정(⑨ 는 다시 그리지 않고 본다)
   badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocB"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on])));
   assert(badges.queued === '1' && badges.sent === '0', '⑥ 고친 보고가 다시 전송 대기로 보이지 않음: ' + JSON.stringify(badges));
   // 서버 정정 체인(completed→billed→paid 재구성)처럼 기록(queuedRevision)을 거치지 않고 대기열에 생긴 항목도 '전송 대기'다 — 접수 확인으로 보이면 안 된다
@@ -165,6 +168,51 @@ let browser;
   assert(amt && !amt.ok, '⑦ 공개 금액 0원이 점검에 걸리지 않음');
   assert(pub && !pub.ok && pub.detail.startsWith('완료 사진 선택 또는 manifest 수정 필요'), '⑦ 사라진 공개 사진이 서버 문구로 걸리지 않음: ' + JSON.stringify(pub));
 
+  // ⑨ 제자리 갱신: (접수 확인 상태로 그린 화면에서) 메모 고침 — 다시 그리지 않음 → 배지 sent 0·queued 1, 점검표도 바로 바뀜,
+  //    그 뒤 서버 확인(flush)도 다시 그리지 않고 ✅ 로 바뀐다
+  await page.evaluate(() => aptOrderManage('of1'));
+  badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocB"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on])));
+  assert(badges.sent === '1' && badges.queued === '0' && (await outbox()).length === 0, '⑨ 시작 조건(접수 확인됨)이 아님: ' + JSON.stringify(badges));
+  const inPlace = await page.evaluate(() => {
+    const ta = document.querySelector('#modalRoot .apoCompletionSummary[data-id="ocB"]'); ta.focus(); ta.value = '주방 배관 교체 완료 — 누수 없음, 마감 확인'; ta.onchange();
+    const st = Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocB"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on]));
+    const amt = document.querySelector('#modalRoot .apoPublicAmount[data-id="ocB"]'); amt.value = '0'; amt.onchange();
+    const amountOk = document.querySelector('#modalRoot [data-office-checklist="ocB"] [data-check-key="amount"]').dataset.ok;
+    amt.value = ''; amt.onchange();
+    const amountBack = document.querySelector('#modalRoot [data-office-checklist="ocB"] [data-check-key="amount"]') ? 'still' : 'gone'; // 비우면 비공개 — 점검 항목 자체가 없다
+    return { st, amountOk, amountBack, sameTa: document.querySelector('#modalRoot .apoCompletionSummary[data-id="ocB"]') === ta };
+  });
+  assert(inPlace.st.sent === '0' && inPlace.st.queued === '1', '⑨ 고쳤는데 다시 그리기 전까지 ✅ 접수 확인이 남음: ' + JSON.stringify(inPlace.st));
+  assert(inPlace.amountOk === '0' && inPlace.amountBack === 'gone', '⑨ 공개 금액을 고쳐도 점검표가 제자리에서 바뀌지 않음: ' + JSON.stringify(inPlace));
+  assert(inPlace.sameTa, '⑨ 제자리 갱신이 입력칸까지 갈아 끼움(초점 잃음)');
+  await page.evaluate(() => { window.__relayNext = [1, 2, 3, 4].map(() => p => ({ ok: true, requestId: p.requestId, receiptNo: 'TEST-RECEIPT-B4', status: p.status, projectionRevision: p.projectionRevision })); return officeIntakeFlush(); });
+  badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#modalRoot [data-office-report="ocB"] [data-office-report-stage]')].map(el => [el.dataset.officeReportStage, el.dataset.on])));
+  assert(badges.sent === '1' && badges.queued === '0' && (await outbox()).length === 0, '⑨ 서버 확인 뒤 배지가 제자리에서 갱신되지 않음: ' + JSON.stringify(badges));
+
+  // ⑩ revision 가드 · 대기열에서 빠진 실패 기록
+  const guard = await page.evaluate(() => {
+    const o = state.aptOrders.find(x => x.id === 'ocB'), keep = JSON.parse(JSON.stringify(o.officeReport));
+    const d = officeIntakeData(); d.outbox = d.outbox.filter(i => i.payload.requestId !== 'req-ocB');
+    o.officeReport = Object.assign({}, keep, { sentAt: new Date().toISOString(), sentRevision: 3, queuedRevision: 4 });
+    const v1 = officeReportView(o);
+    o.officeReport = Object.assign({}, keep, { sentAt: '', sentRevision: 0, queuedRevision: 4, failedAt: new Date().toISOString(), failCode: 'network' });
+    delete o.officeReport.sentAt;
+    const v2 = officeReportView(o);
+    o.officeReport = keep;
+    return { sent1: v1.sent, fail2: v2.fail, sent2: v2.sent };
+  });
+  assert(guard.sent1 === false, '⑩ 새 revision 이 서버 확인 없이 대기열에서 빠졌는데 접수 확인으로 봄');
+  assert(guard.sent2 === false && /마지막 전송 실패/.test(guard.fail2) && guard.fail2.includes('[network]'), '⑩ 대기열에서 빠진 실패가 화면에서 사라짐: ' + JSON.stringify(guard));
+
+  // ⑪ 이 버전 전에 완료한 오더
+  const legacy = await page.evaluate(() => {
+    state.aptOrders.push({ id: 'ocOld', officeId: 'of1', unit: '103동 303호', text: '옛 보수', amount: 1, pipeType: '기타/미지정', date: localDate(), status: 'billed', doneAt: localDate(), source: 'office-intake', sourceRequestId: 'req-old', receiptNo: 'R-OLD', officeProjectionRevision: 2 });
+    const html = officeReportBadgesHtml(state.aptOrders.find(x => x.id === 'ocOld'));
+    state.aptOrders = state.aptOrders.filter(x => x.id !== 'ocOld');
+    return html;
+  });
+  assert(legacy.includes('기록 없음') && !legacy.includes('✅') && !legacy.includes('접수 확인 전'), '⑪ 옛 완료 오더를 \'접수 확인 전\'·✅ 로 표시: ' + legacy);
+
   // ⑧ 직렬화 왕복
   const round = await page.evaluate(() => {
     const ser = JSON.parse(JSON.stringify(serializeData()));
@@ -174,6 +222,6 @@ let browser;
   assert(round.report && !round.top, '⑧ 기록이 오더 안에 저장되지 않거나 최상위 키가 생김: ' + JSON.stringify(round));
 
   assert(errors.length === 0, '페이지 오류: ' + errors.join(' | '));
-  console.log('PASS office-completion-check ①~⑧');
+  console.log('PASS office-completion-check ①~⑪');
   await browser.close();
 })().catch(async e => { console.error('FAIL office-completion-check:', e && e.stack || e); if (browser) await browser.close().catch(() => {}); process.exit(1); });

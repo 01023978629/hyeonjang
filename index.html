@@ -12178,7 +12178,7 @@ async function officeIntakeFlush(){
       }
     }
     if(!failed&&d.lastError){d.lastError='';changed=true;}
-    if(changed)officeIntakeMarkDirty();
+    if(changed){officeIntakeMarkDirty();try{officeReportRefreshAllDom();}catch(_){}}
     return sent;
   }finally{__officeIntakeFlushing=false;}
 }
@@ -12373,16 +12373,21 @@ function officeReportView(o){
   const blocked=pend.find(function(item){return item.blocked===true;}),errored=pend.find(function(item){return (Number(item.attempts)||0)>0&&item.lastError;});
   if(blocked)fail='⛔ 관리사무소 서버가 막음 — '+(blocked.blockedCode==='invalid-completion-photos'?OFFICE_COMPLETION_PHOTO_BLOCK_LABEL:'확인 필요')+' ['+String(blocked.blockedCode||'blocked')+']';
   else if(errored)fail='⚠️ 전송 실패 — '+String(errored.lastError)+' · [다시 동기화]로 다시 보냅니다';
-  return {prepared:!!(r.preparedAt||r.queuedAt||r.sentAt||pend.length),queued:pend.length>0,sent:sent,sentAt:sent?r.sentAt:'',receiptNo:sent&&r.serverReceipt?r.serverReceipt.receiptNo:'',fail:fail,
+  // 대기열에서 빠졌는데(정정 교체·다른 기기) 서버 확인이 없으면 마지막 실패 기록을 계속 보여 준다 — 실패를 조용히 지우지 않는다.
+  else if(!sent&&r.failedAt)fail='⚠️ 마지막 전송 실패 '+officeReportClock(r.failedAt)+' ['+String(r.failCode||'sync-error')+'] — 관리사무소 서버 접수 확인 없음';
+  // 이 버전 전에 완료한 오더는 기록 자체가 없다 — '확인 전'이라 단정하지 않고 기록이 없다고 말한다.
+  const legacy=!pend.length&&!(o.officeReport&&typeof o.officeReport==='object'&&Object.keys(o.officeReport).length);
+  return {legacy:legacy,prepared:!!(r.preparedAt||r.queuedAt||r.sentAt||pend.length),queued:pend.length>0,sent:sent,sentAt:sent?r.sentAt:'',receiptNo:sent&&r.serverReceipt?r.serverReceipt.receiptNo:'',fail:fail,
     unconfirmed:!pend.length&&!sent,forced:!!(r.checklist&&r.checklist.forced),missing:r.checklist&&Array.isArray(r.checklist.missing)?r.checklist.missing:[]};
 }
 function officeReportBadgesHtml(o){
   const v=officeReportView(o);if(!v)return '';
+  if(v.legacy)return '<div data-office-report="'+escapeAttr(o.id)+'" data-office-report-legacy="1" style="margin-top:6px;font-size:11px;color:var(--muted)">관리사무소 보고 기록 없음 (이 버전 전 완료) — 서버 접수 확인 여부를 이 폰이 모릅니다</div>';
   const badge=function(stage,on,text){return '<span data-office-report-stage="'+stage+'" data-on="'+(on?'1':'0')+'" style="font-size:11px;border-radius:20px;padding:2px 8px;border:1px solid '+(on?'#0a7f43':'var(--line-soft)')+';color:'+(on?'#0a7f43':'var(--muted)')+';font-weight:'+(on?'700':'400')+'">'+text+'</span>';};
   return '<div data-office-report="'+escapeAttr(o.id)+'" style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">'+
     badge('prepared',v.prepared,'📝 준비됨'+(v.forced?' (빠진 항목 있음)':''))+
     badge('queued',v.queued,'⏳ 전송 대기')+
-    badge('sent',v.sent,v.sent?'✅ 관리사무소 접수 확인 '+escapeHtml(officeReportClock(v.sentAt)):'✅ 관리사무소 접수 확인 전')+
+    badge('sent',v.sent,v.sent?'✅ 관리사무소 접수 확인 '+escapeHtml(officeReportClock(v.sentAt)):'○ 관리사무소 접수 확인 전')+
     (v.fail?'<div data-office-report-fail style="flex-basis:100%;font-size:11.5px;color:#b91c1c;font-weight:700">'+escapeHtml(v.fail)+'</div>':'')+
     (v.unconfirmed&&v.prepared?'<div style="flex-basis:100%;font-size:11px;color:var(--muted)">이 폰에 관리사무소 서버의 접수 확인 기록이 없습니다 — 보냈다고 보지 마세요</div>':'')+
     '</div>';
@@ -12391,6 +12396,19 @@ function officeCompletionChecklistHtml(o){
   const chk=officeCompletionChecklist(o);
   return '<div data-office-checklist="'+escapeAttr(o.id)+'" style="font-size:11.5px;line-height:1.5;border:1px solid '+(chk.ok?'var(--line-soft)':'#fdba74')+';border-radius:8px;padding:6px 8px"><b>보내기 전 점검</b>'+
     chk.items.map(function(x){return '<div data-check-key="'+x.key+'" data-ok="'+(x.ok?'1':'0')+'" style="color:'+(x.ok?'inherit':'#b91c1c')+'">'+(x.ok?'✓ ':'✗ ')+escapeHtml(x.label)+' — '+escapeHtml(x.detail)+'</div>';}).join('')+'</div>';
+}
+// 오더 줄의 배지·점검표만 제자리에서 바꾼다 — 목록 전체를 다시 그리면 치던 칸의 초점이 날아간다.
+// 고친 뒤·전송 확인/실패 뒤에 부른다(다음 전체 그리기까지 옛 ✅ 가 남아 '보냈다'로 읽히던 것).
+function officeReportRefreshDom(o){
+  if(!o||typeof document==='undefined')return;
+  const key=CSS.escape(String(o.id));
+  document.querySelectorAll('[data-office-report="'+key+'"]').forEach(function(el){const html=officeReportBadgesHtml(o);if(html)el.outerHTML=html;else el.remove();});
+  document.querySelectorAll('[data-office-checklist="'+key+'"]').forEach(function(el){el.outerHTML=officeCompletionChecklistHtml(o);});
+}
+function officeReportRefreshAllDom(){
+  if(typeof document==='undefined')return;
+  const ids=new Set();document.querySelectorAll('[data-office-report],[data-office-checklist]').forEach(function(el){ids.add(el.dataset.officeReport||el.dataset.officeChecklist);});
+  ids.forEach(function(id){const o=(state.aptOrders||[]).find(function(x){return x&&x.id===id;});if(o)officeReportRefreshDom(o);});
 }
 function officeCompletionCheckDialog(o,chk,onSend,onCancel){
   const body='<div style="font-size:13px;line-height:1.6"><div style="margin-bottom:8px"><b>'+escapeHtml(aptOfficeName(o.officeId)+' · '+(o.unit||''))+'</b> 완료 보고에 빠진 것이 '+chk.missing.length+'개 있습니다.</div>'+
@@ -13409,9 +13427,9 @@ function aptOrderManage(filterOffice){
     const pipeType=aptPipeType(s.value);s.value=aptPipeType(o.pipeType);
     try{await updateAptCommercialFields(o.id,{unit:o.unit,text:o.text,amount:Number(o.amount)||0,pipeType});aptOrderManage(filterOffice||o.officeId);const guide=aptPipeTypeGuide(pipeType),scope='작업 범위가 달라졌다면 승인 범위를 수정하세요';toast(guide?('⚠️ '+guide+' · '+scope):('배관 종류 저장됨 — '+pipeType+' · '+scope));}catch(error){toast('배관 종류 수정 실패: '+(error.message||error));}
   });
-  root.querySelectorAll('.apoPublicAmount').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const raw=String(input.value||'').replace(/[\s,]/g,'');if(!raw){o.publicAmount=null;officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();return;}if(!/^\d+$/.test(raw)){input.value=o.publicAmount==null?'':String(o.publicAmount);toast('공개 금액은 0 이상의 숫자만 입력하세요');return;}o.publicAmount=num(raw);officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();};});
-  root.querySelectorAll('.apoCompletionSummary').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;o.completionSummary=String(input.value||'').slice(0,800);officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();};});
-  root.querySelectorAll('.apoPublicPhoto').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const selected=[];root.querySelectorAll('.apoPublicPhoto[data-id="'+CSS.escape(o.id)+'"]:checked').forEach(function(box){selected.push(box.value);});o.publicPhotoIds=selected;officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();};});
+  root.querySelectorAll('.apoPublicAmount').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const raw=String(input.value||'').replace(/[\s,]/g,'');if(!raw){o.publicAmount=null;officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();officeReportRefreshDom(o);return;}if(!/^\d+$/.test(raw)){input.value=o.publicAmount==null?'':String(o.publicAmount);toast('공개 금액은 0 이상의 숫자만 입력하세요');return;}o.publicAmount=num(raw);officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();officeReportRefreshDom(o);};});
+  root.querySelectorAll('.apoCompletionSummary').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;o.completionSummary=String(input.value||'').slice(0,800);officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();officeReportRefreshDom(o);};});
+  root.querySelectorAll('.apoPublicPhoto').forEach(function(input){input.onchange=function(){const o=state.aptOrders.find(function(item){return item.id===input.dataset.id;});if(!o)return;const selected=[];root.querySelectorAll('.apoPublicPhoto[data-id="'+CSS.escape(o.id)+'"]:checked').forEach(function(box){selected.push(box.value);});o.publicPhotoIds=selected;officeIntakeQueueOrderStatus(o);officeIntakeMarkDirty();officeReportRefreshDom(o);};});
   root.querySelectorAll('.apoStat').forEach(s=>s.onchange=async()=>{
     const o=state.aptOrders.find(x=>x.id===s.dataset.id);if(!o)return;
     const target=s.value,current=o.status;s.value=current;
