@@ -1576,8 +1576,10 @@ function parseEstimate(text,fname){
   }
   // [v101] 라벨 우선순위 적용: 총액 있으면 총액, 없으면 합계, 없으면 견적금액
   amount=__tier[3]||__tier[2]||__tier[1]||0;
+  // amountFrom: 금액을 어디서 잡았는지 — hjEstCheck 가 '본문 최대 숫자'·'파일 이름' 폴백을 원본 확인 대상으로 본다
+  let amountFrom=__tier[3]?'total':(__tier[2]?'sum':(__tier[1]?'quote':''));
   // 2) 합계가 없고 공급가액+부가세가 있으면 합산
-  if(!amount && supply){ amount = supply + vat; }
+  if(!amount && supply){ amount = supply + vat; amountFrom='supplyvat'; }
   // 3) 폴백: 가장 큰 금액
   if(!amount){
     const cleaned=t.split(/\n/).filter(function(ln){
@@ -1588,7 +1590,7 @@ function parseEstimate(text,fname){
       return true;
     }).join('\n');
     const cand=amtCandidates(cleaned);
-    if(cand.length)amount=Math.max.apply(null,cand);
+    if(cand.length){amount=Math.max.apply(null,cand);amountFrom='max';}
   }
   // 고객/현장명
   let customer='';
@@ -1605,8 +1607,78 @@ function parseEstimate(text,fname){
   let bizno='';
   const bn=t.match(/\b(\d{3})[-\s]?(\d{2})[-\s]?(\d{5})\b/);
   if(bn)bizno=`${bn[1]}-${bn[2]}-${bn[3]}`;
-  if((!amount||amount<10000)&&fname){try{const base=String(fname).replace(/\.[a-z0-9]+$/i,'');const fm=base.match(/([\d,]{5,})\s*$/)||base.match(/([\d,]{6,})/);if(fm){const fn2=won2num(fm[1]);if(fn2>=10000){amount=fn2;}}}catch(e){}}
-  return {amount,supply,vat,customer,date,bizno};
+  if((!amount||amount<10000)&&fname){try{const base=String(fname).replace(/\.[a-z0-9]+$/i,'');const fm=base.match(/([\d,]{5,})\s*$/)||base.match(/([\d,]{6,})/);if(fm){const fn2=won2num(fm[1]);if(fn2>=10000){amount=fn2;amountFrom='fname';}}}catch(e){}}
+  return {amount,supply,vat,customer,date,bizno,amountFrom};
+}
+
+/* ---------- 견적 인식값 검증 (v333) ----------
+   글자 읽기(PDF·사진 OCR·엑셀)로 뽑은 공급가·부가세·합계가 서로 맞지 않거나, 합계를 '본문에서 가장 큰 숫자'로
+   짐작했거나, 전화·사업자번호·날짜를 금액으로 읽은 꼴이면 '⚠ 원본 확인 필요' 로 띄운다.
+   · 돈 계산 규칙은 바꾸지 않는다 — 확인 전이어도 합계는 hjSalesEntries/hjEstBill 이 늘 하던 대로 센다(표시만 한다).
+   · 확정은 est 레코드 안 verifiedAt(localStamp)·verifiedBy·verifiedSig(확정 때의 합계|공급가|부가세) — 최상위 키 불변.
+     값이 어디서든 바뀌면 verifiedSig 가 어긋나 확정이 저절로 풀린다(화면 수정은 명시적으로도 지운다).
+   · 앱에서 만든 견적(_fromQuote)은 quoteCalc 한 곳에서 나온 값이라 검사하지 않는다. */
+const HJ_EST_MIN=10000,HJ_EST_MAX=1000000000,HJ_EST_SUM_TOL=10;
+function hjEstLocked(e){return !!(e&&(e._edited||e.verifiedAt));}   // 다시 읽기(재OCR·미리보기 재해석·자동 보정)가 덮지 않을 값
+function hjEstSig(e){e=e||{};return [e.amount,e.supply,e.vat].map(v=>Math.round(+v||0)).join('|');}
+function hjEstVerified(e){return !!(e&&e.verifiedAt&&e.verifiedSig===hjEstSig(e));}
+function hjEstUnverify(e){if(!e)return false;const had=!!e.verifiedAt;delete e.verifiedAt;delete e.verifiedBy;delete e.verifiedSig;return had;}
+function hjEstVerify(e,who){if(!e)return;e.verifiedAt=localStamp();e.verifiedBy=who||'이 기기';e.verifiedSig=hjEstSig(e);}
+function hjEstCheck(est,text){
+  const e=est||{},issues=[],R=v=>Math.round(+v||0),W=v=>R(v).toLocaleString('ko-KR')+'원';
+  const amount=R(e.amount),supply=R(e.supply),vat=R(e.vat),add=(code,msg)=>issues.push({code,msg});
+  if(!amount)add('noamount','금액을 읽지 못했습니다 — 원본에서 합계를 확인해 적어 주세요');
+  else if(amount<HJ_EST_MIN||amount>HJ_EST_MAX)add('range','금액 '+W(amount)+'이 보통 견적 범위(1만~10억 원) 밖입니다');
+  if(amount&&supply&&vat&&Math.abs(supply+vat-amount)>HJ_EST_SUM_TOL)
+    add('sum','공급가 '+W(supply)+' + 부가세 '+W(vat)+' = '+W(supply+vat)+'인데 합계는 '+W(amount)+' — '+W(Math.abs(supply+vat-amount))+' 차이');
+  if(amount&&supply&&!vat&&supply>amount+HJ_EST_SUM_TOL)add('supplyover','공급가 '+W(supply)+'이 합계 '+W(amount)+'보다 큽니다');
+  const vatNear=(v,base)=>Math.abs(v-base*0.1)<=Math.max(HJ_EST_SUM_TOL,base*0.1*0.02);   // 10% 에서 2%(또는 10원) 안이면 반올림 차이로 본다
+  if(supply&&vat){
+    if(!vatNear(vat,supply))add('vat10','부가세 '+W(vat)+'가 공급가의 10%('+W(supply*0.1)+')와 다릅니다 — 공급가의 '+(Math.round(vat/supply*1000)/10)+'%');
+  }else if(vat&&amount){
+    // 공급가를 못 읽었으면: 합계가 부가세 포함(합계−부가세의 10%)이든 별도(합계의 10%)든 하나는 맞아야 한다
+    if(!vatNear(vat,amount-vat)&&!vatNear(vat,amount))add('vat10','부가세 '+W(vat)+'가 합계 '+W(amount)+'에 맞는 10%가 아닙니다');
+  }
+  if(e.amountFrom==='max')add('fallback','합계·총액 줄을 찾지 못해 본문에서 가장 큰 숫자를 금액으로 잡았습니다');
+  else if(e.amountFrom==='fname')add('fname','본문에서 금액을 못 찾아 파일 이름의 숫자를 금액으로 잡았습니다');
+  if(amount){
+    const s=String(amount),digits=x=>String(x||'').replace(/\D/g,'').replace(/^0+/,'');
+    let mis='';
+    if(e.bizno&&digits(e.bizno)===s)mis='사업자번호('+e.bizno+')';
+    else if(/^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(s))mis='날짜('+s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6)+')';
+    else if(/^1[016789]\d{7,8}$/.test(s))mis='휴대폰 번호(…'+s.slice(-4)+')';
+    if(!mis&&text){
+      const t=String(text);
+      const ph=(t.match(/0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/g)||[]).find(x=>digits(x)===s);
+      const bn=!ph&&(t.match(/\d{3}[-\s]?\d{2}[-\s]?\d{5}/g)||[]).find(x=>digits(x)===s);
+      if(ph)mis='전화번호(…'+String(ph).replace(/\D/g,'').slice(-4)+')';else if(bn)mis='사업자번호('+bn+')';
+    }
+    if(mis)add('misread',mis+'를 금액으로 읽은 것 같습니다');
+  }
+  const verified=hjEstVerified(e);
+  return {ok:!issues.length,issues,verified,needsCheck:issues.length>0&&!verified};
+}
+function hjEstFileCheck(f){
+  if(!f||f.kind!=='estimate'||f._fromQuote)return {ok:true,issues:[],verified:false,needsCheck:false};
+  return hjEstCheck(f.est,f.text);
+}
+// 확인 필요 견적 — 집계 제외(exSum)는 매출·청구에 안 들어가므로 세지 않는다
+function hjEstNeedsCheckList(){return (state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f.exSum&&hjEstFileCheck(f).needsCheck);}
+function hjEstCheckGo(){
+  try{closeModal();}catch(e){}
+  __estimateListUI.status='needcheck';state.tab='estimates';render();
+}
+// 첫 화면 한 줄 — 없으면 아무것도 그리지 않는다
+function dashboardEstCheckHTML(){
+  let n=0;try{n=hjEstNeedsCheckList().length;}catch(e){return '';}
+  if(!n)return '';
+  return '<div id="dashboardEstCheck" class="hint" role="status" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;margin:0 0 12px">'+
+    '<span>⚠ 견적 원본 확인 필요 <b>'+n+'건</b> — 확정 전이어도 매출·청구 합계에 그대로 들어가 있습니다</span>'+
+    '<button type="button" id="dashboardEstCheckGo" class="ghost tiny" onclick="hjEstCheckGo()" style="min-height:44px">확인하러 가기</button></div>';
+}
+function hjEstIssuesHTML(chk){
+  if(!chk||!chk.issues.length)return '';
+  return '<ul class="est-issues" style="margin:4px 0 0;padding-left:18px;font-size:12px;color:#9a3412">'+chk.issues.map(x=>'<li data-issue="'+escapeAttr(x.code)+'">'+escapeHtml(x.msg)+'</li>').join('')+'</ul>';
 }
 
 /* ---------- 명함 정보 추출 (강화) ---------- */
@@ -2174,7 +2246,7 @@ function fixXlsxEstVat(){
   (state.files||[]).forEach(f=>{
     if(!f||f.kind!=='estimate')return;
     const e=f.est;
-    if(!e||e._edited||!e._fromXlsx)return;
+    if(!e||hjEstLocked(e)||!e._fromXlsx)return;   // 확정한 값(verifiedAt)도 사람이 원본과 맞춘 값이다
     const q=f.quote;
     if(!q||!quoteRealItems(q).length)return;
     // ① 흡수된 합계 행(품명 없이 금액만) 제거
@@ -5390,11 +5462,12 @@ async function runBatchOCR(){
     f.ocr='done';
     // 견적서 폴더에서 강제 지정된 것(kind=estimate)은 유지, 아니면 내용으로 분류
     if(f.kind!=='estimate') f.kind=classify(f);
-    if(f.kind==='estimate'&&!(f.est&&f.est._edited)){
+    // 사람이 고친 값(_edited)·원본과 대조해 확정한 값(verifiedAt)은 다시 읽어도 덮지 않는다
+    if(f.kind==='estimate'&&!hjEstLocked(f.est)){
       // 엑셀이면 그리드에서 뽑은 견적, PDF면 텍스트 파싱
       if(xlsxQuote&&quoteRealItems(xlsxQuote).length){ f.quote=xlsxQuote; f.est=applyLearning(quoteToEst(xlsxQuote),f);
         // 그리드에서 총액을 못 뽑았으면(만물 양식 병합셀 등) 텍스트+파일명 폴백으로 금액 보충
-        if(!f.est||!f.est.amount){const fb=parseEstimate(f.text,f.name);if(fb&&fb.amount){f.est=Object.assign({},f.est||{},{amount:fb.amount});if(!f.est.supply&&fb.supply)f.est.supply=fb.supply;if(!f.est.vat&&fb.vat)f.est.vat=fb.vat;}}
+        if(!f.est||!f.est.amount){const fb=parseEstimate(f.text,f.name);if(fb&&fb.amount){f.est=Object.assign({},f.est||{},{amount:fb.amount,amountFrom:fb.amountFrom||''});if(!f.est.supply&&fb.supply)f.est.supply=fb.supply;if(!f.est.vat&&fb.vat)f.est.vat=fb.vat;}}
       }
       else f.est=applyLearning(parseEstimate(f.text,f.name),f);
     }
@@ -8088,7 +8161,7 @@ function viewDashboard(){
   if(!state.projects.length){
     const estHtml=dashboardEstimateDetailsHTML();
     const monthHtml=monthlyQuoteHTML();
-    return dashboardTodoHTML()+dashboardTodayHTML()+`<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
+    return dashboardTodoHTML()+dashboardEstCheckHTML()+dashboardTodayHTML()+`<div class="empty"><b>아직 현장이 없습니다</b>폰에서 쓰신다면 아래 버튼으로 <b>드라이브의 현장·견적·사진을 한 번에</b> 불러오세요. 컴퓨터라면 왼쪽 아래에서 현장을 추가할 수 있습니다.
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button>
         <button class="moss" id="gdPickFolder" style="font-size:15px;padding:12px 20px">📁 폴더 한번에 선택(자동)</button>
@@ -8108,7 +8181,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML();
+  let html=dashboardTodoHTML()+dashboardEstCheckHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML();
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -27668,7 +27741,7 @@ function estimateNameAmount(){
       const m=base.match(/(\d{1,3}(?:,\d{3})+)\s*$/);
       if(m){
         const v=won2num(m[1]);
-        if(v>=10000&&v<=1000000000){f.est=Object.assign({},f.est||{},{amount:v});n++;}
+        if(v>=10000&&v<=1000000000){f.est=Object.assign({},f.est||{},{amount:v,amountFrom:'fname'});n++;}
       }
     }catch(e){}
   });
@@ -29867,7 +29940,7 @@ function estimateListDate(f){
 }
 function estimateListRows(list){
   const query=__estimateListUI.search.trim().toLocaleLowerCase('ko-KR');
-  const rows=list.filter(f=>matchSearch(f)&&(!query||[f.name,f.project,f.est?.customer,f.est?.date,estimateContentSummary(f)].join(' ').toLocaleLowerCase('ko-KR').includes(query))&&(__estimateListUI.status!=='unassigned'||!f.project)&&(__estimateListUI.status!=='excluded'||f.exSum));
+  const rows=list.filter(f=>matchSearch(f)&&(!query||[f.name,f.project,f.est?.customer,f.est?.date,estimateContentSummary(f)].join(' ').toLocaleLowerCase('ko-KR').includes(query))&&(__estimateListUI.status!=='unassigned'||!f.project)&&(__estimateListUI.status!=='excluded'||f.exSum)&&(__estimateListUI.status!=='needcheck'||hjEstFileCheck(f).needsCheck));
   if(__estimateListUI.sort==='date')rows.sort((a,b)=>estimateDay(estimateQuoteForFile(b)?.date||b.est?.date).localeCompare(estimateDay(estimateQuoteForFile(a)?.date||a.est?.date)));
   if(__estimateListUI.sort==='amount')rows.sort((a,b)=>(Number(b.est?.amount)||0)-(Number(a.est?.amount)||0));
   return rows;
@@ -29924,17 +29997,19 @@ function viewEstimates(){
   const byProj={};estimateGroups(list).map(g=>g.rep).forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
   const total=Object.values(byProj).reduce((a,b)=>a+b,0),visible=estimateListRows(list);
   let html=`<section class="estimates-view"><div class="estimate-overview"><div><span>전체 견적 파일</span><b>${list.length}건</b></div><div><span>프로젝트 미지정</span><b>${list.filter(f=>!f.project).length}건</b></div><div><span>전체 견적 합계 · 기존 집계 기준</span><b>${won(total)}</b></div></div><div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
+  // v333 원본 확인 필요 — 합계는 그대로 집계한다는 사실을 같이 말한다(돈 계산은 바꾸지 않는다)
+  try{const __nc=hjEstNeedsCheckList().length;if(__nc)html+=`<div id="estCheckHead" class="hint" role="status" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⚠ 원본 확인 필요 <b>${__nc}건</b> — 공급가·부가세·합계가 맞지 않거나 금액을 짐작으로 읽었습니다. 확정 전이어도 매출·청구 합계에는 그대로 들어가 있습니다. ${__estimateListUI.status==='needcheck'?'':'<button class="moss tiny" id="estCheckOnly" onclick="hjEstCheckGo()" style="margin-left:6px">확인 필요만 보기</button>'}</div>`;}catch(e){}
   try{const _fc=estFinalCandidates();if(_fc.length){html+=`<div class="hint" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⭐ 최종본(★)이 있는 달의 다른 안 <b>${_fc.length}건</b>이 매출에 같이 잡히고 있어요. <button class="moss tiny" data-finalize="1" style="padding:5px 10px;margin-left:6px">한 번에 집계 제외</button></div>`;}}catch(e){}
-  html+=`<p class="list-intro">금액은 바로 수정하고, 고객명·견적일·사업자번호는 ‘상세 입력’에서 확인하세요. 자동으로 읽은 값은 원본과 대조해 주세요.</p><div class="estimate-list-tools"><label class="estimate-search" for="estimateListSearch">견적 검색<input id="estimateListSearch" type="search" placeholder="파일명 · 프로젝트 · 고객명" value="${escapeAttr(__estimateListUI.search)}"></label><label for="estimateListStatus">표시 대상<select id="estimateListStatus">${[['all','전체 견적'],['unassigned','프로젝트 미지정'],['excluded','집계 제외']].map(([v,t])=>`<option value="${v}"${__estimateListUI.status===v?' selected':''}>${t}</option>`).join('')}</select></label><label for="estimateListSort">정렬<select id="estimateListSort">${[['original','기존 순서'],['date','견적일 최신순'],['amount','금액 높은순']].map(([v,t])=>`<option value="${v}"${__estimateListUI.sort===v?' selected':''}>${t}</option>`).join('')}</select></label><button class="ghost" id="estimateListReset">전체 보기</button></div><p class="list-intro" id="estimateListCount" role="status" aria-live="polite">전체 ${list.length}건 중 ${visible.length}건 표시${state.search?' · 상단 통합 검색 적용 중':''}</p><p class="estimate-footnote">검색·필터는 목록에만 적용됩니다. 아래 합계와 엑셀 내보내기는 전체 견적의 기존 집계 기준을 유지합니다.</p>`;
+  html+=`<p class="list-intro">금액은 바로 수정하고, 고객명·견적일·사업자번호·공급가·부가세는 ‘상세 입력’에서 확인하세요. 자동으로 읽은 값은 원본과 대조해 주세요.</p><div class="estimate-list-tools"><label class="estimate-search" for="estimateListSearch">견적 검색<input id="estimateListSearch" type="search" placeholder="파일명 · 프로젝트 · 고객명" value="${escapeAttr(__estimateListUI.search)}"></label><label for="estimateListStatus">표시 대상<select id="estimateListStatus">${[['all','전체 견적'],['needcheck','원본 확인 필요'],['unassigned','프로젝트 미지정'],['excluded','집계 제외']].map(([v,t])=>`<option value="${v}"${__estimateListUI.status===v?' selected':''}>${t}</option>`).join('')}</select></label><label for="estimateListSort">정렬<select id="estimateListSort">${[['original','기존 순서'],['date','견적일 최신순'],['amount','금액 높은순']].map(([v,t])=>`<option value="${v}"${__estimateListUI.sort===v?' selected':''}>${t}</option>`).join('')}</select></label><button class="ghost" id="estimateListReset">전체 보기</button></div><p class="list-intro" id="estimateListCount" role="status" aria-live="polite">전체 ${list.length}건 중 ${visible.length}건 표시${state.search?' · 상단 통합 검색 적용 중':''}</p><p class="estimate-footnote">검색·필터는 목록에만 적용됩니다. 아래 합계와 엑셀 내보내기는 전체 견적의 기존 집계 기준을 유지합니다.</p>`;
   // [v91] 사본 그룹 뱃지 준비
   const __gb={};try{estimateGroups(list.filter(f=>!f.exSum)).forEach(g=>{if(g.dups.length){__gb[g.rep.id]='rep:'+(g.dups.length+1);g.dups.forEach(d=>__gb[d.id]='dup');}});}catch(e){}
   html+=`<table class="estimate-table estimates-list"><colgroup><col class="est-col-file"><col class="est-col-project"><col class="est-col-amount"><col class="est-col-actions"></colgroup><thead><tr><th scope="col">견적 파일 · 작업 내용</th><th scope="col">프로젝트 · 날짜</th><th scope="col" class="amt">견적 금액 (원)</th><th scope="col">관리 · 상세 입력</th></tr></thead><tbody>`;
-  visible.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''};
-    html+=`<tr data-id="${f.id}">
-      <td class="est-file"><div class="est-name">${escapeHtml(f.name)}</div><div class="est-content">${escapeHtml(estimateContentSummary(f)||'작업 내용 미입력')}</div><div class="est-badges">${e._edited&&!f._fromQuote?'<span>✎ 수정됨</span>':''}${__gb[f.id]?`<span>${String(__gb[f.id]).startsWith('rep')?'사본 '+String(__gb[f.id]).split(':')[1]+'건 중 대표':'사본 · 중복 집계 제외'}</span>`:''}${f.exSum?'<span class="excluded">집계 제외</span>':''}</div></td>
+  visible.forEach(f=>{const e=f.est||{amount:0,customer:'',date:''},__chk=hjEstFileCheck(f);
+    html+=`<tr data-id="${f.id}"${__chk.needsCheck?' data-needcheck="1"':''}>
+      <td class="est-file"><div class="est-name">${escapeHtml(f.name)}</div><div class="est-content">${escapeHtml(estimateContentSummary(f)||'작업 내용 미입력')}</div><div class="est-badges">${__chk.needsCheck?'<span class="est-check-warn" style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74">⚠ 원본 확인 필요</span>':''}${__chk.verified?`<span class="est-check-ok" title="${escapeAttr((e.verifiedAt||'')+' '+(e.verifiedBy||''))}">✓ 원본 확인됨 ${escapeHtml(String(e.verifiedAt||'').slice(0,10))}</span>`:''}${e._edited&&!f._fromQuote?'<span>✎ 수정됨</span>':''}${__gb[f.id]?`<span>${String(__gb[f.id]).startsWith('rep')?'사본 '+String(__gb[f.id]).split(':')[1]+'건 중 대표':'사본 · 중복 집계 제외'}</span>`:''}${f.exSum?'<span class="excluded">집계 제외</span>':''}</div>${__chk.needsCheck?hjEstIssuesHTML(__chk):''}</td>
       <td class="est-project">${estimateInfoButton('file',f.id,f.project)}<div class="est-date">${escapeHtml(estimateListDate(f))}</div></td>
       <td class="est-amount amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(f.name)} 견적 금액 (원)" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}"${f._fromQuote?qeRoAttr():''}>${f._fromQuote?'<small class="est-fromquote-note" style="display:block;font-size:11px;color:var(--muted);font-weight:400">앱 견적 · ✍ 편집에서 수정</small>':''}</td>
-      <td class="est-manage"><div class="est-actions">${previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"${f._fromQuote?qeRoAttr():''}></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"${f._fromQuote?qeRoAttr():''}></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"${f._fromQuote?qeRoAttr():''}></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button></div></details></td>
+      <td class="est-manage"><div class="est-actions">${__chk.needsCheck?`<button class="mini-btn" data-estcheck="${f.id}" title="원본을 보고 값이 맞으면 확정">🔍 원본 보기 · 확정</button>`:previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"${f._fromQuote?qeRoAttr():''}></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"${f._fromQuote?qeRoAttr():''}></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"${f._fromQuote?qeRoAttr():''}></label><label>공급가 (원)<input type="text" inputmode="numeric" data-ef="supply" data-id="${f.id}" value="${(Math.round(+e.supply||0)).toLocaleString('ko-KR')}"${f._fromQuote?qeRoAttr():''}></label><label>부가세 (원)<input type="text" inputmode="numeric" data-ef="vat" data-id="${f.id}" value="${(Math.round(+e.vat||0)).toLocaleString('ko-KR')}"${f._fromQuote?qeRoAttr():''}></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button></div></details></td>
     </tr>`;});
   html+=`</tbody></table>`;
   if(!visible.length)html+=`<div class="empty" role="status"><b>검색 결과가 없습니다</b>검색어·표시 대상을 바꾸거나 ‘전체 보기’를 눌러주세요. 저장된 견적서는 그대로 있습니다.</div>`;
@@ -31399,7 +31474,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-estcheck],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -31601,6 +31676,7 @@ function setupDelegation(){
     if(d.learn!==undefined){const f=state.files.find(x=>x.id===d.learn);if(f)learnEstimate(f);return;}
     if(d.open!==undefined){state.activeProject=d.open;state.tab='project';__projView=null;return render();}
     if(d.preview!==undefined){e.stopPropagation();return previewEstimate(d.preview);}
+    if(d.estcheck!==undefined){e.stopPropagation();return previewEstimate(d.estcheck);}
     if(d.rename!==undefined){e.stopPropagation();return renameFile(d.rename);}
     if(d.fcopy!==undefined){e.stopPropagation();return docCopy(d.fcopy);}
     if(d.fdel!==undefined){e.stopPropagation();return docDelete(d.fdel);}
@@ -31642,7 +31718,9 @@ function setupDelegation(){
       // v330 앱 견적(가상 파일)의 금액·고객·날짜는 견적에서 다시 만들어진다 — 여기서 고치면 다시 불러올 때 조용히 되돌아갔다
       if(f._fromQuote){render();toast('앱에서 만든 견적은 ✍ 편집(견적 편집기)에서 고치세요 — 여기서 고친 값은 남지 않습니다');return;}
       f.est=f.est||{};
-      if(d.ef==='amount')f.est.amount=+t.value.replace(/[^\d]/g,'')||0;else f.est[d.ef]=t.value;
+      if(d.ef==='amount'||d.ef==='supply'||d.ef==='vat')f.est[d.ef]=+t.value.replace(/[^\d]/g,'')||0;else f.est[d.ef]=t.value;
+      // v333 확정 뒤 값을 바꾸면 확정을 푼다 — 고친 값은 다시 원본과 대조해야 한다
+      if(hjEstUnverify(f.est))toast('값을 고쳐 원본 확정을 풀었습니다 — 원본과 다시 대조해 확정해 주세요');
       f.est._edited=true;markDirty();renderEstimateFieldEdit(t.closest('.estimates-view'));return;}
     if(t.matches('input[data-recv]'))return setReceived(d.recv,t.value);
     if(t.matches('input[data-cost]'))return setCost(d.proj,d.cost,t.value);
@@ -32337,19 +32415,53 @@ window.addEventListener('keydown',e=>{
 async function previewEstimate(id){
   const f=state.files.find(x=>x.id===id);if(!f)return;
   const e=f.est||{};
+  // v333 앱 견적이 아니면 공급가·부가세·합계를 원본을 보며 바로 고치고 [✓ 원본과 맞음 — 확정] 한다
+  const editable=!f._fromQuote&&f.kind==='estimate';
+  const numIn=(key,label)=>`<label class="pv-row pv-edit"><span>${label}</span><input type="text" inputmode="numeric" id="pvEst_${key}" data-pvest="${key}" aria-label="${escapeAttr(label)} (원)" value="${Math.round(+e[key]||0).toLocaleString('ko-KR')}" style="max-width:150px;text-align:right"></label>`;
   const info=`<div class="pv-info">
+    <div id="pvEstCheck" role="status"></div>
     <div class="pv-row"><span>고객/현장</span><b>${escapeHtml(e.customer||'-')}</b></div>
-    <div class="pv-row"><span>견적 금액</span><b style="color:var(--clay)">${won(e.amount||0)}</b></div>
+    ${editable?numIn('amount','견적 금액')+numIn('supply','공급가액')+numIn('vat','부가세'):`<div class="pv-row"><span>견적 금액</span><b style="color:var(--clay)">${won(e.amount||0)}</b></div>
     ${e.supply?`<div class="pv-row"><span>공급가액</span><b>${won(e.supply)}</b></div>`:''}
-    ${e.vat?`<div class="pv-row"><span>부가세</span><b>${won(e.vat)}</b></div>`:''}
+    ${e.vat?`<div class="pv-row"><span>부가세</span><b>${won(e.vat)}</b></div>`:''}`}
     <div class="pv-row"><span>견적일</span><b>${escapeHtml(e.date||'-')}</b></div>
     <div class="pv-row"><span>사업자번호</span><b>${escapeHtml(e.bizno||'-')}</b></div>
     <div class="pv-row"><span>내용</span><b>${escapeHtml(estimateContentSummary(f)||'-')}</b></div>
     <div class="pv-row"><span>파일</span><b style="font-size:11px;word-break:break-all">${escapeHtml(f.name)}</b></div>
   </div>`;
+  const btns=[{label:'닫기',cls:editable?'ghost':'blue',fn:closeModal}];
+  if(editable)btns.push({label:'✓ 원본과 맞음 — 확정',cls:'blue',fn:()=>{
+    const cur=state.files.find(x=>x.id===id);if(!cur){closeModal();return;}
+    pvEstCommit(cur);   // 아직 change 가 안 난 칸까지 반영한 뒤 확정한다
+    hjEstVerify(cur.est,(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.owner)||'');
+    markDirty();closeModal();render();
+    toast('원본과 대조해 확정했습니다 — 합계 '+won(cur.est.amount||0)+(hjEstCheck(cur.est,cur.text).ok?'':' (계산이 안 맞는 값도 원본 그대로로 확정)'));
+  }});
   openModal('견적서 미리보기',
     `<div class="pv-wrap"><div class="pv-canvas" id="pvCanvas"><div class="pv-loading">불러오는 중…</div></div>${info}</div>`,
-    [{label:'닫기',cls:'blue',fn:closeModal}], true);
+    btns, true);
+  // 검증 표시 — 모달은 #view 밖이라 위임이 닿지 않는다: 칸에 직접 건다
+  function pvEstRefresh(){
+    const box=document.getElementById('pvEstCheck'),cur=state.files.find(x=>x.id===id);if(!box||!cur)return;
+    const chk=hjEstFileCheck(cur),ce=cur.est||{};
+    box.innerHTML=chk.verified?`<p class="pv-check-ok" style="margin:0 0 8px;color:#166534;font-weight:700">✓ 원본 확인됨 · ${escapeHtml(ce.verifiedAt||'')}${ce.verifiedBy?' · '+escapeHtml(ce.verifiedBy):''}</p>`+(chk.issues.length?'<p class="hint" style="margin:0 0 8px">계산이 맞지 않는 값이지만 원본 그대로라고 확정했습니다.</p>':'')
+      :(chk.issues.length?`<div class="pv-check-warn" style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px;margin:0 0 8px"><b style="color:#9a3412">⚠ 원본 확인 필요</b>${hjEstIssuesHTML(chk)}<p class="hint" style="margin:6px 0 0">왼쪽 원본과 비교해 틀린 칸을 고친 뒤 [✓ 원본과 맞음 — 확정]을 누르세요. 확정 전이어도 합계는 매출·청구에 그대로 들어가 있습니다.</p></div>`
+      :(editable?'<p class="hint" style="margin:0 0 8px">자동으로 읽은 값입니다. 원본과 같으면 확정해 두세요.</p>':''));
+  }
+  function pvEstCommit(cur){
+    let changed=false;cur.est=cur.est||{};
+    document.querySelectorAll('#modalRoot input[data-pvest]').forEach(el=>{
+      const k=el.dataset.pvest,v=+String(el.value).replace(/[^\d]/g,'')||0;
+      if(Math.round(+cur.est[k]||0)!==v){cur.est[k]=v;changed=true;}
+    });
+    if(changed){cur.est._edited=true;if(hjEstUnverify(cur.est))toast('값을 고쳐 원본 확정을 풀었습니다');markDirty();}
+    return changed;
+  }
+  pvEstRefresh();
+  let pvEdited=false;window.__modalOnClose=()=>{if(pvEdited&&state.tab==='estimates')render();};   // 모달에서 고친 값을 목록 배지에 반영
+  if(editable)document.querySelectorAll('#modalRoot input[data-pvest]').forEach(el=>{
+    el.onchange=()=>{const cur=state.files.find(x=>x.id===id);if(!cur)return;if(pvEstCommit(cur))pvEdited=true;el.value=Math.round(+cur.est[el.dataset.pvest]||0).toLocaleString('ko-KR');pvEstRefresh();};
+  });
   // 렌더링
   const box=document.getElementById('pvCanvas');
   try{
@@ -32394,7 +32506,7 @@ async function previewEstimate(id){
       const q=parseQuoteFromGrid(grid,f.name);
       if(q&&quoteRealItems(q).length){
         f.quote=q;
-        if(!(f.est&&f.est._edited))f.est=applyLearning(quoteToEst(q),f);
+        if(!hjEstLocked(f.est))f.est=applyLearning(quoteToEst(q),f);
         markDirty();
       }
       const rows=grid.slice(0,40);
