@@ -19,6 +19,8 @@
     duplicate: '같은 번호의 자료가 다른 내용으로 이미 있습니다. 대표 확인이 필요합니다.', 'not-found': '프로젝트나 업무를 찾을 수 없습니다.', 'evidence-bound': '업무 연결이 바뀌었습니다.',
     'too-many-attempts': '여러 번 실패했습니다. [다시 올리기]를 눌러 주세요.', 'device-only': ''
   };
+  // Last cause after the attempt budget: a short label, not REASONS (those promise an automatic retry that a failed item never gets).
+  const CAUSES = { network: '연결 끊김', busy: '서버 바쁨', 'rate-limited': '요청 많음', 'server-error': '서버 처리 실패', 'storage-failed': '저장 확인 실패', 'auth-unavailable': '인증 서버 연결 실패', 'bad-response': '응답 확인 실패', 'upload-not-found': '서버의 올리기 기록 없음' };
   function code(e) { return String(e?.code || 'network').replace(/_/g, '-'); }
   function mimeOf(file) {
     const ext = (/\.([a-z0-9]{1,5})$/i.exec(file.name || '') || [])[1]?.toLowerCase() || '';
@@ -50,7 +52,7 @@
   }
   async function tx(mode, fn) { const d = await db(); return new Promise((ok, no) => { const t = d.transaction('items', mode), s = t.objectStore('items'), r = fn(s); t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error); t.onabort = () => no(t.error || new Error('abort')); }); }
   const idbPut = item => tx('readwrite', s => s.put(item)), idbDel = key => tx('readwrite', s => s.delete(key)), idbAll = () => tx('readonly', s => s.getAll());
-  const persisted = item => { const out = {}; ['key', 'scope', 'createdAt', 'file', 'entity', 'requestId', 'revision', 'uploadId', 'state', 'error', 'attempts'].forEach(k => { if (item[k] !== undefined) out[k] = item[k]; }); return out; };
+  const persisted = item => { const out = {}; ['key', 'scope', 'createdAt', 'file', 'entity', 'requestId', 'revision', 'uploadId', 'state', 'error', 'detail', 'attempts'].forEach(k => { if (item[k] !== undefined) out[k] = item[k]; }); return out; };
 
   function create(ctx) {
     const items = new Map(); let loadedScope = '', running = false, timer = 0, active = null, notifyTimer = 0;
@@ -87,7 +89,7 @@
       }
       changed(); kick(); return { added, skipped, deviceOnly };
     }
-    function retry(key) { const i = items.get(key); if (!i || i.scope !== scope() || active === i) return; i.state = 'queued'; i.attempts = 0; i.nextAt = 0; i.error = ''; save(i); changed(); kick(); }
+    function retry(key) { const i = items.get(key); if (!i || i.scope !== scope() || active === i) return; i.state = 'queued'; i.attempts = 0; i.nextAt = 0; i.error = ''; i.detail = ''; save(i); changed(); kick(); }
     async function cancel(key) { const i = items.get(key); if (!i || i.scope !== scope()) return; i.cancelled = true; if (active !== i) await drop(i); }
     function stop() {
       // Logout or permission loss: forget the view and every in-memory (device-only) original; stored items wait for the same staff member.
@@ -98,7 +100,8 @@
     function schedule() {
       clearTimeout(timer); timer = 0; if (!ctx.data() || !scope()) return;
       const online = typeof navigator === 'undefined' || navigator.onLine !== false; // Offline: the 'online' event wakes the queue, no polling.
-      const next = mine().filter(i => !i.cancelled && (i.state === 'waiting' || online && i.state === 'queued')).reduce((m, i) => Math.min(m, i.state === 'queued' ? Date.now() : i.nextAt), Infinity);
+      // Offline, a passed 'waiting' deadline would re-arm a 50 ms timer forever (pump breaks on onLine=false): arm nothing.
+      const next = online ? mine().filter(i => !i.cancelled && (i.state === 'waiting' || i.state === 'queued')).reduce((m, i) => Math.min(m, i.state === 'queued' ? Date.now() : i.nextAt), Infinity) : Infinity;
       if (Number.isFinite(next)) timer = setTimeout(pump, Math.max(50, next - Date.now()));
     }
     async function pump() {
@@ -173,7 +176,8 @@
     if (typeof window !== 'undefined') window.addEventListener('online', () => { mine().forEach(i => { if (i.state === 'waiting') i.nextAt = 0; }); kick(); });
     function view() {
       return mine().map(i => ({ key: i.key, name: i.entity.name, kind: i.entity.kind, size: i.entity.size, projectId: i.entity.projectId, state: i.state, progress: i.progress || 0, attempts: i.attempts || 0, nextAt: i.nextAt || 0,
-        reason: i.state === 'failed' && i.detail ? REASONS[i.detail] + ' (' + (REASONS[i.error] || i.error) + ')' : REASONS[i.error] || (i.error ? '처리하지 못했습니다(' + i.error + ').' : ''), deviceOnly: !!i.volatile }));
+        // A failed item with a retryable cause stopped only because of the attempt budget (older rows kept no detail): never say "will retry automatically".
+        reason: i.state === 'failed' && (i.detail || RETRY.includes(i.error) || i.error === 'upload-not-found') ? REASONS[i.detail || 'too-many-attempts'] + (i.error ? ' (마지막 원인: ' + (CAUSES[i.error] || i.error) + ')' : '') : REASONS[i.error] || (i.error ? '처리하지 못했습니다(' + i.error + ').' : ''), deviceOnly: !!i.volatile }));
     }
     return Object.freeze({ add, retry, cancel, stop, kick, view, busy: () => running });
   }

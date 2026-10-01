@@ -16,6 +16,9 @@ const MUTATIONS = {
   'no-online-retry': ["mine().forEach(i => { if (i.state === 'waiting') i.nextAt = 0; }); kick();", '/* mutation: offline items wait forever */'],
   'scope-leak': ["const scope = () => ctx.data()?.me?.id || '';", "const scope = () => ctx.data() ? 'shared-device' : '';"],
   'cancel-noop': ['if (active !== i) await drop(i);', '/* mutation: cancel keeps the copy */'],
+  'no-committed-check': ['if (committed(item)) return true;', 'if (c === "duplicate") throw err;'],
+  'offline-polling': ["const next = online ? mine()", "const next = true ? mine()"],
+  'failed-says-auto-retry': ["state === 'failed' && (i.detail || RETRY.includes(i.error) || i.error === 'upload-not-found')", "state === 'failed' && i.detail"],
   'heic-no-preview': ['const out = await (await loadHeic2any())', 'throw new Error("mutation"); const out = await (await loadHeic2any())']
 };
 let hit = false;
@@ -94,6 +97,34 @@ async function run() {
     assert.equal(h.writes.length, 2); assert.deepEqual(h.writes[1], h.writes[0]); assert.equal(h.store.evidence.length, 1);
     await choose(h, { name: 'again.png', mimeType: 'image/png', buffer: PNG }); await h.page.waitForFunction(() => document.getElementById('connection').textContent.includes('같은 원본 1개는 뺐습니다'));
     assert.equal(h.store.evidence.length, 1); assert.equal(h.writes.length, 2); await h.close();
+  });
+  for (const mode of ['duplicate-after-write', 'conflict-after-write']) await test('server already holds the evidence but answers ' + mode.split('-')[0] + ': the item finishes as done, no failure, one record', async () => {
+    const h = await make(); h.failNext = mode;
+    await choose(h, { name: mode + '.png', mimeType: 'image/png', buffer: PNG }); await drained(h, 1);
+    assert.equal(h.store.evidence.length, 1); assert.equal(h.writes.length, 1, 'already committed: no resend after the refresh'); assert.equal(await idbCount(h.page), 0); await h.close();
+  });
+  await test('offline with a passed retry deadline: no timer loop until the online event', async () => {
+    const h = await make(); h.failNext = 'network-before-write';
+    await choose(h, { name: 'loop.png', mimeType: 'image/png', buffer: PNG }); await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=waiting]'));
+    await h.context.setOffline(true);
+    // Count every pump timer armed while offline, across the 2 s backoff deadline and one more second.
+    await h.page.evaluate(() => { const o = window.setTimeout; window.__pumpTimers = 0; window.__t0 = Date.now(); window.setTimeout = (f, d, ...a) => { if (f && f.name === 'pump') window.__pumpTimers++; return o(f, d, ...a); }; });
+    await h.page.waitForFunction(() => Date.now() - window.__t0 > 3200, null, { polling: 200, timeout: 10000 });
+    const armed = await h.page.evaluate(() => window.__pumpTimers); assert(armed <= 1, 'offline queue re-armed its timer ' + armed + ' times');
+    assert.equal(h.store.evidence.length, 0); await h.context.setOffline(false); await drained(h, 1); await h.close();
+  });
+  await test('a failed item stored without detail (attempt budget spent) never promises an automatic retry after reload', async () => {
+    const h = await make(); h.failNext = 'network-before-write';
+    await choose(h, { name: 'budget.png', mimeType: 'image/png', buffer: PNG }); await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=waiting]'));
+    await h.context.setOffline(true);
+    // Rewrite the stored row as an older build left it: failed, retryable cause, no detail.
+    await h.page.evaluate(() => new Promise((ok, no) => { const r = indexedDB.open('hj-team-upload', 1); r.onsuccess = () => { const t = r.result.transaction('items', 'readwrite'), st = t.objectStore('items'), q = st.getAll(); q.onsuccess = () => { q.result.forEach(row => { row.state = 'failed'; row.error = 'network'; row.attempts = 6; delete row.detail; st.put(row); }); }; t.oncomplete = () => { r.result.close(); ok(); }; t.onerror = () => no(t.error); }; r.onerror = () => no(r.error); }));
+    // Leave the page before going online, or the 'online' event would upload the in-memory copy first.
+    const url = h.page.url(); await h.page.goto('about:blank'); await h.context.setOffline(false); await h.page.goto(url); await h.login(); await openProject(h);
+    await h.page.waitForFunction(() => document.querySelector('#uploadQueue [data-queue-state=failed]'));
+    const text = await h.page.textContent('#uploadQueue'); assert(text.includes('여러 번 실패했습니다'), text); assert(!text.includes('자동으로 다시 올립니다'), text);
+    h.page.once('dialog', d => d.accept()); await h.page.locator('#uploadQueue').getByRole('button', { name: '취소', exact: true }).click();
+    await h.page.waitForFunction(() => !document.querySelector('#uploadQueue [data-queue-key]')); await h.close();
   });
   await test('offline: originals wait; coming back online uploads them without a click', async () => {
     const h = await make(); await h.context.setOffline(true);

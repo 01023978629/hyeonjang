@@ -117,6 +117,8 @@ async function harness(options = {}) {
           const out = engine.teamApply_(h.store, identity(), body.action, payload, new Date().toISOString(), crypto.randomUUID(), digest, attachment);
           h.store = clone(out.store); result = { data: clone(engine.teamPresent_(h.store, identity())), replayed: out.replayed };
           if (h.failNext === 'network-after-write') { h.failNext = ''; return route.abort('failed'); }
+          // v333: stored, but the answer says duplicate/conflict (another tab or a lost answer under a different requestId).
+          if (h.failNext === 'duplicate-after-write' || h.failNext === 'conflict-after-write') { const c = h.failNext.replace('-after-write', ''); h.failNext = ''; throw new Error(c); }
         }
       }
       result.ok = true;
