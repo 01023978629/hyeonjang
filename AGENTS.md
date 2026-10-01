@@ -3,6 +3,77 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-09-26 현장 안전 v330 (PR 후보, v329 위 — 같은 PR #162)
+
+3차 묶음(범위 밖 결함 5건) + **발굴 검토**: 8영역(견적·일정·사진 유입·정산·보증·관리사무소·복원·v329 통합)에 발견자, 발견마다
+코드 근거·운영 규칙 두 반박자 — 둘 다 인정한 39건 중 38건(1건은 3차에서 이미 고침)을 여섯 작업 트리에서 고쳤다. 반박된 12건은 결함 아님.
+- **매출·청구 한 벌**: 매출은 `hjSalesEntries()` 한 곳(부가세 신고 `vatReportData`·세무 엑셀·월말 결산 `collectQuotesByMonth`), 청구는
+  `hjEstBill(name,groups)` 한 곳(집계된 견적 묶음마다 최신 앱 견적 품목, 묶음이 다르면 합친다 — v328 `hjCountedEstIds` 규칙의 확장).
+  `projStats` 에 `bill`(청구서 공사대금 합계)·`billVat` — **잔금 due = bill + 추가공사 − 받은 돈**(부가세 별도 견적도 청구서와 같은 값).
+  미연결 앱 견적은 **수주 표시(result 'won')일 때만** 매출. 받은 돈 음수 정정은 모든 보고에 들어간다. **매출·청구를 새로 셀 때 이 두 함수를 써라.**
+- **견적 편집**: ✍ 편집은 앱 견적이면 원래 견적을 `editQuote`(깊은 복사), 엑셀·PDF 견적이면 부가세 포함/별도를 사람이 고른다(`quoteSupplyForTotal` —
+  나눠떨어지지 않으면 '포함'을 내놓지 않는다). 저장하면 원본 사본 묶음 전체에 exSum. AI·사진 견적 초안은 **[저장] 전에는 목록에 없다**
+  (`quoteCommitEditing` 한 곳, [목록으로]는 `quoteEditDirty` 면 묻는다). [📤 보냄]은 보낸 날짜만(종결·수주 유지). 목록의 앱 견적 금액칸은 읽기 전용.
+  applyData 는 원본 견적이 없는 `quote_<id>` 파생 파일을 지운다.
+- **일정**: `saveScheduleEdit` 는 레코드를 **바꾸지 않고 칸만 덮는다**(report·labor·prep·asId·icsUid·payPlan 보존, 0시간 허용). 세금 일정은 안정 id
+  `tax_<날짜>_<종류>` + `state.calendarImports` 의 'tax:' 표식 — 지우거나 고쳐도 되살아나지 않는다. 분할납 💰 일정은 `payPlan:'down|mid|bal'` —
+  다시 저장하면 앞으로 올 옛 회차를 갈아 끼운다(지난 날짜 회차는 받은 것으로 보고 둔다), 비율 합 100% 아니면 저장·문자 막음. 인건비 장부
+  [지출 반영]은 현장 전체 기간 합계.
+- **사진 유입**: 이름만 같은 기록끼리 합치지 않는다(iPhone 은 늘 image.jpg) — 서버 목록 병합(`relayLoadDriveFiles`)은 빈 미배정 복구 기록만
+  합치고, 연결은 크기가 하나로 맞을 때만(둘 이상이면 고르지 않고 미배정). applyData 이름 폴백은 크기·현장이 달라도 안 합친다. 전송 대기열 항목은
+  `ref`('k:'+fileKey)·project 를 기억해 성공 때 그 기록에 Drive ID 를 붙인다(`relayQueueLinkUpload`). 촬영 버튼 동영상은 앱 목록에만(서버 백업은
+  사진 전용, 원본은 [🎬 원본 관리]). 같은 경로를 미배정으로 저장해 둔 정리 폴더 사진은 PC 스캔이 현장을 되살리지 않는다(`_orgNullKnown`, 세션 전용).
+- **날짜**: 사용자 날짜는 `localDate()`·`localStamp()`. `toISOString().slice(0,10)` 류는 `tests/local-date.check.js` 가 막는다(허용 8곳 = 파일 이름·UTC 검증,
+  줄마다 이유). **보증 만료는 `hjWarranty(p).end` 한 곳**(알림·점검 문자·보증서 같은 값, 보증 시작 안 누른 현장도 36개월). 완료를 내리면 준공일은
+  `doneAtPrev` 로 옮겼다가 다시 올리면 되살린다 — 준공일을 바꾸는 길은 🛡 보증 수정의 준공일 칸(doneAt 도 맞춘다). [✍️ 서명 확인] 뒤
+  `warrantyLinkSignedOpen` 이 서명 든 보증서를 연다. 보증 조항 `hjWarrantyClauses(termLabel,fromLabel)`.
+- **관리사무소**: 오더 사진(`aptPhotoList`)은 그 단지 안에서만·동/호 경계 일치, 📸 탭도 같은 묶음(`__aptPhotoOrderId`). 정산서 부가세 표기는 오더의
+  실제 조건(모르면 표기 없음). 미입금 청구는 6개월 창 밖이어도 보인다.
+- **복원·삭제**: JSON 불러오기·엑셀 이사 전 안전판(`hjSnapshot(…,true,true)` — 실패하면 멈춤, 빈 새 기기도 되게 allowEmpty). 이사 마법사 JSON 버튼 =
+  파일 고르기. AS 삭제는 `hjAsDelete` 한 곳(확인·안전판·연결 방문 일정 따로 묻기). 보증 링크 같은 contractId 는 한 줄.
+- **3차(범위 밖)**: 보증 링크 idem 에 내용 지문, 카톡 카드·공사 스토리에 계약 부가세·공사기간(기록 값만), 지운 현장의 수금 일정 정리,
+  전체장부 엑셀에 AS 새 칸·현장 부대사항(출입번호 걸러짐), 접는 머리 44·검증 오류 칸 표시 17곳 더, 계약 특약 검토 문서
+  `docs/계약-특약-검토-20260926.md`(대표가 문안을 고른다 — 법률 자문 아님).
+- 대표 확인 대기(v330): ① **부가세 별도 견적의 잔금·입금 문자·고객 페이지·영수증에 부가세가 붙는다**(청구서와 같게) ② AI·사진 견적 초안은 [저장]
+  전 새로고침하면 사라진다 ③ 엑셀·PDF 견적 ✍ 편집 때 부가세 포함/별도를 매번 묻는다 ④ 보증 만료 알림·무상점검 제안이 약 1년 → 가장 늦은
+  항목 끝(약 3년)으로 — 마감 1년 전 점검 알림을 따로 원하는지 ⑤ 정산서에 부가세 조건 모르는 손 입력 오더는 표기 없음 ⑥ 카톡 공사 스토리
+  계약 줄 '(부가세 포함) — 서명 완료 · 공사기간 …' ⑦ 계약 특약 문서의 6문항 ⑧ 분할납 수금 여부를 날짜로 판정(미리 받은 앞날짜 회차는 다시
+  저장하면 새 금액으로) ⑨ 이름이 같은 옛 사진은 확신이 없으면 미배정으로 남는다(미배정이 조금 늘 수 있다).
+- 남은 것: 전송 대기열 연결 실패 때도 항목을 지워 fileId 를 잃는다(low) · AS 에서 방문 일정 날짜를 바꿔도 visitAt 안 따라감 · AI set_labor 가
+  '이달현장합계' 라고 보고 · 선택 복원이 같은 이름 현장이 있으면 수금 일정·'(삭제됨)' 기록을 다시 잇지 않는다.
+
+## 2026-09-26 폰 규칙 한 벌·실무 빈 고리 v329 (PR 후보, v328 위)
+
+v328 과 같은 PR(#162)에 얹었다. 작업 트리 6개에서 구현 → 적대적 검토 → 고침.
+- **폰 전역 규칙(body.mobile-mode 와 `@media(max-width:640px)` 양쪽)**: 입력 16px(`!important` — 인라인 113곳을 이긴다, 큰 글씨 모드는 `max(16px,…)`), 체크박스·라디오 22px + 감싼 label 44, `tel:`·`sms:`·버튼형 링크 44, 버튼 44. **새 화면에 16px·44px 을 또 덧대지 마라** — 패널별 덧댐은 죽은 줄이라 지웠다. 인라인 `min-height` 44 미만 버튼은 `tap-inline.check.js` 가 막는다. `--muted` #587391(흰 바탕 4.9:1), `.footnote` = var(--muted) — 대표 승인 2026-09-26.
+- **`tests/mobile-more-sweep.e2e.js`**: 더보기 119화면을 대상 함수 스텁 없이 실제로 연다 — 360 폰 모드·360 PC 모드(@media 만)·768 폰 모드(body 규칙만) 세 번. 넘침·44·16·체크박스 22·Esc 초점 복귀·대비. 허용목록 3(addproject 브라우저 prompt·opendrive 새 창·restore PC 전용). 새 더보기 기능은 여기서 자동으로 검사된다.
+- **AI 비서 시트**: role=dialog·폰 뒤로가기 = 닫기(`mobileSheetHistoryOpen`)·스크롤 잠금(`body.ai-sheet-open` — `modal-open` 을 쓰면 위에서 모달이 닫힐 때 풀린다)·연 버튼으로 초점(`aiSheetOpenA11y`/`aiHide(fromHistory)`).
+- **검증 오류는 칸에 `hjFieldIssue(el,msg)`**(aria-invalid·칸 아래 role=alert·입력하면 풀림, 토스트는 그대로). AS·아파트 오더·거래처·자재·수금·노하우 7화면만 붙였다 — 나머지 검증 토스트 약 50곳은 아직. `#toast` role=status, 표시 시간 2.4초+글자당 40ms(상한 6초). 자료 없는 통계(funnelView·cashFlow)는 숫자 대신 .empty — '안정적' 단정 금지.
+- **대시보드 표 카드화**: `dash-cards` 클래스 + `hjDashCardLabels`(헤더 → `data-label`), 폰이면 `wrapWideTables` 가 `.tbl-scroll` 로 감싸지 않는다(`hjDashCardsPhone` = CSS 와 같은 두 조건). 아파트 오더 줄 `.apo-head/.apo-tools` 는 폰에서 줄바꿈.
+- **AS 기록(asLog 레코드 안)**: visitAt(넣으면 일정 등록을 묻고 `visitSchedId` 로 기억 — 다시 바꾸면 옮긴다)·fix·fee(비우면 무상, **옛 완료 기록에 '무상'을 지어내지 않는다**)·warrantyItem(**접수일 기준** 보증 안/밖)·photos(안정 참조). 'AS 방문' 일정은 공사 기간 계산에서 뺀다. 접수·보증 목록에 보관 현장 포함(`warrantyList(withArchived)`, 알림 `warrantyDue` 는 여전히 뺌). 고객 안내 문자는 기존 `msgTemplate('as')` 복사·공유뿐.
+- **준공 체크 → 기능**: `STAGE_CHECK_GO`·`stageChecklistItems(p,idx)`. 예치금(siteRules.deposit)이 있으면 '관리실 예치금 환급 확인' 행. 작업지시 주의사항은 `hjSiteText`(출입번호 걸러짐)로 미리 채운다. 계약 초안 7항에 작업시간·엘리베이터·폐기물 칸 값(새 문구 없음). 도어락 안내는 문안이 없어 버튼 없음(문안 신설은 대표 승인).
+- **견적 흐름**: 「📐 실측에서 가져오기」(`#qmMeasure`, 단가 0 — 금액을 짓지 않는다, `measureRef` 로 중복 방지). 미수주 **종결 = 옛 '실패'(result:'lost') 한 개념** + `lost:{at,reason}`(`HJ_QUOTE_LOST_REASONS` 5개), 수주 분석은 `quoteStatus` 한 곳으로 센다(수주 = 현장 연결 또는 수주 표시 — 결산 수주율이 오를 수 있다). 30일 지난 진행 견적은 `quoteStaleData`(365일까지). `customerTimeline` = `hjStoryData`(고객 화면에 계약·AS·보증·추가공사도 보인다).
+- **v328 통합 후속(같은 PR)**: 청구서·명세서 품목과 `hjExtrasBill` 이 같은 '집계된 견적'(`hjCountedEstIds`)을 본다. 견적에 담는 추가공사는 부가세 포함/별도 둘 다 청구 합계가 확인 금액만큼만 오르게 단가를 역산한다. 이름 변경은 `due_` 수금 일정 id·제목까지. 전체장부 엑셀 **11시트**(추가공사 시트 — '견적에 담김' 행은 들이지 않는다). 선택 복원은 같은 `officeIntakeProjectId` 쌍둥이를 만들지 않고, '(삭제됨)' 기록이 하나뿐이면 다시 잇는다(`hjProjectTombstonesOf`). 지운 portal_key 는 IDB `portal_key_dropped` 로 되살아나지 않는다. 검사 `v328-integration.e2e.js`.
+- 대표 확인 대기(v329): ① 폰 폭에서 입력·버튼이 커져 긴 화면이 조금 더 길어짐, 보조 글자 색 ② 준공 체크의 보증서·리뷰 버튼은 완료일이 생긴 뒤에야 동작 ③ 견적 '실패' → '종결' 표기(엑셀 상태 열 포함) ④ 공사 스토리(고객 카톡)에 'AS 처리 — 처리 내용 30자' 줄 ⑤ 통계 빈 화면 문구·토스트 최대 6초 ⑥ 부가세 모를 때 종이 계약 초안 문구 ⑦ '견적에 담김' 추가공사는 엑셀 이사 때 기록이 안 옮겨짐.
+- 남은 것(다음 묶음): 지운 현장의 `due_` 수금 일정이 제목째 남는다(hjDeleteProjectCore) · 전체장부 엑셀에 AS 새 열 없음 · 사례 zip summary 32px.
+
+## 2026-09-26 계약·정산 정확성·데이터 안전·개인정보 v328 (PR 후보)
+
+대표 "위 내용 진행"(2026-09-26). 작업 트리 10개에서 구현 → 적대적 검토 → 고침을 거쳐 합쳤다. 기준 main `b519e35`(v327).
+- **전자계약 body(`contractSend(p,amount,terms)`)**: `vatIncluded` 는 **true/false 로 명시**, 모르면(표기 없는 엑셀·PDF·손으로 고친 금액·견적마다 다름) 확인 화면에서 사람이 고르기 전엔 서버를 부르지 않는다. 서버 `ctStandardBody_` 는 값이 없으면 '(부가세 별도)'로 찍는다. `period` 는 이 현장 일정에서(💰·상담·실측 제외), 없으면 보내지 않는다. `scope` 는 **늘 배열**(빈 문자열이면 서버가 제목을 범위 자리에 넣는다), 견적 품목 이름, 사진 전/후 공정명은 거른다. `idem` 에 내용 지문(FNV-1a) — 같은 분 안에 고쳐 보내면 옛 링크가 돌아오던 결함. 검사 `contract-body.e2e.js`(변이 27).
+- **계약 조건 정본 `HJ_PAY_RATIO={down:.5,mid:.4,bal:.1}`**(manmool Pure.gs `PAYMENT_RATIO` 와 같은 값, 대표 확정). 보증 기간 문구는 `hjWarrantyPeriodText` 한 곳 — 초안·완료 문자·완료보고서·간이 계약서가 여기서 나온다. **숫자를 새로 적지 마라.** 잔금 = 총액 − 계약금 − 중도금(서버 paymentPlan 과 같은 셈). 간이 계약서의 '보증 개월' 입력칸은 없어졌다(현장 🛡 보증 항목을 따른다). 검사 `contract-terms.e2e.js` 가 '하자보수…1년' 단독 약속 재등장을 정적으로 막는다.
+- **엑셀 이사 `__iwFullImport`**: v193 에서 ① 현장 시트 열 하나가 빠진 뒤 원가·완료일이 한 칸씩 밀려 읽혔다. 이제 **헤더 이름으로 열을 찾는다**(`HJ_IW_FULL_COLS`·`__iwCols`), 헤더를 일부만 찾으면 못 찾은 열은 읽지 않는다(옆 칸 값으로 채우는 것보다 빈칸이 낫다). '(보관)' → archived. v193~v327 사이에 내보낸 파일로 이사한 기기는 원가·완료일이 틀려 있을 수 있다. 검사 `ledger-roundtrip.e2e.js`.
+- **추가공사 정산 `hjExtrasBill(p)` → {agreed, pending, quoted, total}**: 청구 대상은 확인받음+금액 있음+저장된 견적에 안 담긴 것. `projStats` 가 이 합계를 잔금에 더한다(est 에 섞지 않는다). [➕ 견적에 담기]는 품목에 `extraId` 를 남기고, 옛 품목은 같은 이름·같은 금액이면 담긴 것으로 본다 — **애매하면 청구서에서 뺀다**(이미 나간 문서를 두 번 청구하지 않게). 청구서·명세서·정산 요약·보증서 프리필·공사 스토리·고객 페이지 잔금이 같은 값. 확인 글(`hjExtraText`) 고객 문구는 그대로. 검사 `extras-settle.e2e.js`.
+- **현장 이름 키 저장소 목록의 정본 `hjProjectRefWalk(name,visit,identity)`**: files(+_aptUnit)·schedule·notes·payLog·asLog·quotes·expenses·workLogs·trips·satisfaction·aptOrders·aiOps.queue + 이 폰 `hj_calc_log/cart`. 이름 변경은 전부 따라가고, **삭제는 기록을 지우지 않고 '(삭제됨) 이름 · 날짜' 로 옮겨** 같은 이름 재생성 때 옛 수금·AS·견적이 붙지 않게 한다. UI·AI 삭제가 같은 함수. `renameProject`·삭제는 안전판을 먼저 찍느라 async — 누르고 바로 state 를 읽는 검사는 기다려야 한다. 새 이름 키 저장소를 만들면 `hjProjectRefWalk` 에 넣어라. 검사 `project-rename.e2e.js`.
+- **사진 안정 참조 `hjFileRef(f)`('d:'+Drive ID 또는 'k:'+fileKey) · `hjFilesByRefs`**: 파일 id(uid)는 부팅·복원·스캔마다 바뀐다. `casePack.photos`·`extras[].photo`·`warrantyDoc.photoIds` 는 안정 참조를 저장하고 옛 id 도 읽어 조용히 옮긴다(뒤처진 탭은 쓰지 않음). 이름·크기 짐작은 **그 현장 사진 안에서만**. 정말 없어진 사진은 '사진을 찾을 수 없음 N장' — 자동으로 목록에서 지우지 않는다. 검사 `photo-refs.e2e.js`.
+- **파일 필드 복원 정본 `hjApplySavedFileFields(f,s,revert)`**: applyData 병합·되돌리기와 「선택 복원」(`restoreSelectFiles`, fileKey 매칭)이 같이 쓴다. `backupUserEdits` 는 저장 레코드 전 필드를 담는다. 원본/정리본 병합 때 원본 증빙은 옮기지 않고 합치지 않는다. Drive 형식·크기는 Drive ID 가 같거나 빌 때만 덮는다(백업 뒤 붙은 Drive 연결이 크기 0 이 되던 결함). `restore-parity` ⑤ 가 현장 레코드 전체를 merge·revert 로 왕복 비교한다 — applyData 의 `{...clean}` 전개를 명시 목록으로 바꾸면 빨간불. 검사 `restore-select.e2e.js`.
+- **📤 사진 묶음**: `hjCaseJpeg` 로 다시 구워(EXIF 없음, 긴 변 1800) `사진_01.jpg` 번호 이름. 굽기 실패는 원본으로 채우지 않고 뺀다. 동영상은 기본 제외, `#pbVideo` 를 골라야 원본 그대로(이름만 번호) 들어간다. 검사 `photo-bundle-privacy.e2e.js`. 대표 확인 대기: 공유 제목·본문에 현장명(동·호수 포함 가능)이 실린다.
+- **AI 출구 마스킹 `hjAiMaskOut`**: 도구 결과가 모델로 돌아가는 한 곳(aiAgentSend 의 functionResponse)에서 전화·9자리 이상 숫자열을 '···1234' 로. 날짜·쉼표 금액·'원'이 붙은 숫자·회사 번호는 그대로. 동선 조언 프롬프트 주소는 `hjAddrArea` 로 시·구·동까지. 외부 링크 `target=_blank` 는 전부 `rel="noopener noreferrer"`(`blank-rel.check.js`), `<meta name="referrer" content="strict-origin-when-cross-origin">`.
+- **고객 페이지 비밀키 → IDB `portal_key`**(메모리 `__portalKey`, 부팅 읽기 `window.__hjPortalKeyDone`). `serializeData` 의 portalCfg 는 `portalCfgSafe` 로 key 를 뺀다. applyData 는 들어온 key 를 상태에 두지 않고, 이 기기에 키가 없을 때만 한 번 IDB 로 옮긴다. 입력칸은 password, 빈 값 저장 = 안 바꿈, [지우기]+확인. 검사 `portal-key.e2e.js`.
+- 작업 트리 병렬 검사 도구: `/tmp/claude-0/hjtest.sh <트리> <포트> <검사…>` — 8299/8398 을 트리별 포트로 바꾼 임시 복사본을 돌린다. `dead-endpoint.check.js` 는 그 임시 복사본 자신을 잡으니 node 로 직접 돌린다.
+- 대표 확인 대기: ① 서명 계약서 제4조가 '공사기간은 2026-10-05 ~ 2026-10-09.' 로 끝난다(다듬으려면 manmool 서버 수정·수동 배포) ② 부가세 표기 없는 엑셀·PDF 견적은 보낼 때마다 포함/별도를 고른다 ③ 사진 묶음 제목의 현장명 ④ 묶음 사진 화질(긴 변 1800)이 외주팀에 충분한지.
+
+## 2026-09-25 관리사무소 작업 안내 v327 (배포됨 #161 · Pages #177)
 ## 2026-09-28 아파트 프로젝트·동호수 사진 정리 v331
 
 - `aptProject*`: 아파트명을 프로젝트로, 동·호수/공용부를 `aptUnits`로 등록한다. PC/사진/아파트 관리 진입점과 미리보기·백업 다운로드 제공. 상세 `APARTMENT-PROJECTS-v331.md`.
@@ -688,7 +759,7 @@ node scripts/verify-office-ops-branch-scope.mjs
 - AI: `geminiCall()`(서버 중계 우선), `aiFC()`(도구 호출), `AI_TOOLS`/`aiToolRun()`
 - 아파트 오더: `aptOrderManage()`, `aptSettle()`, `aptStats()`, `aptPhotoCount()`
 - 주간·운영 보고: `weekBriefData/Text()`, `opsReportData/Text()`
-- 전체 장부 엑셀: `exportFullXlsx()` (10시트)
+- 전체 장부 엑셀: `exportFullXlsx()` (11시트 — v328 추가공사)
 - `apps-script-commercial/`: separate Apps Script project인 source-only 프로젝트.
   자체 Script Properties와 수동 deployment가 필요하고 `APP_TOKEN`을 공유하지 않으며,
   Pages merge로 배포되지 않는다.

@@ -117,6 +117,7 @@ function assertShellPathsSafe(paths, label) {
     ['직원 로그인 HTML', request('https://example.test/hyeonjang/team.html', { mode: 'navigate', destination: 'document' })],
     ['직원 API 설정', request('https://example.test/hyeonjang/team-config.js')],
     ['직원 화면 스크립트', request('https://example.test/hyeonjang/team-ui.js')],
+    ['직원 업로드 대기열 스크립트', request('https://example.test/hyeonjang/team-upload.js')], // v333: 직원 화면은 오프라인 캐시 밖 — 원본은 IDB 대기열에만
     ['공개 백업 HTML', request('https://example.test/hyeonjang/backup/index_v104_original.html', { mode: 'navigate', destination: 'document' })],
     ['테스트 스크립트', request('https://example.test/hyeonjang/tests/x.js')],
     ['Apps Script 소스', request('https://example.test/hyeonjang/apps-script/Code.gs')],

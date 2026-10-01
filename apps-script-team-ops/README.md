@@ -28,13 +28,14 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 - **회사만 통제하는 전용 신원 단지**를 사용해야 합니다. 고객 아파트 관리소장이 비밀번호를 재발급할 수 있는 단지를 회사 직원 신원으로 쓰지 마세요. 포털 관리자는 사실상 회사 로그인 신원을 관리합니다.
 - 기존 대표용 `index.html`과 공용 `APP_TOKEN`은 여전히 회사 전체 자료에 접근할 수 있습니다. 직원 페이지 추가만으로 과거에 배포한 공용 키가 무효화되지 않습니다. 직원이 이미 공용 키를 안다면 별도 승인·백업·기기 전환 계획에 따라 키를 교체하고 대표 앱을 분리해야 합니다. 이 작업은 자동 실행하지 않습니다.
+- (v333) 보험 준비 건의 단계 충족 점검 `teamClaimReadiness_` — 선택한 증빙에 작업 전·원인 확인·마무리 사진 각 1장, 서류 PDF 1개가 있는지 본다. **경고만 한다**(`claims[].readiness`·`claimBundle.readiness`·검토 기록 `review.warnings`). 필수 서류는 대표가 정하기 전이라 `claimReview`는 여전히 `claim-incomplete` 규칙으로만 막는다. 목록에 `reviewedAt`·`reviewStale`(검토 뒤 자료가 바뀜)을 함께 준다. 서버 소스만 바뀌었다 — 반영은 대표가 손으로 배포한다.
 - 직원 화면은 기존 IndexedDB, 원본 사진, 견적, 연락처, 회사 공용 연결정보를 자동 이관하지 않습니다. 새 회사 서버에는 명시 등록한 업무·권한·프로젝트 사진·대표 전용 보험 준비 자료를 저장합니다. 업무 본문에 고객 출입 암호/연락처를 입력하지 마세요.
 - 실제 대표·직원·다른 팀·퇴사 계정으로 인증, 접근 차단, 2기기 충돌/재시도 검증이 필요합니다. 모의 검사 통과는 실계정 인증 성공이 아닙니다.
 - 독립 프로젝트 배포와 Drive 폴더 생성/속성 설정은 외부 변경입니다. 대상과 범위를 승인받은 뒤 수행하세요.
 
 ## 승인 후 서버 설치 절차
 
-1. 새 Apps Script 프로젝트에 `Code.gs`, `TeamPure.gs`, `TeamProjects.gs`, `TeamEvidence.gs`, `appsscript.json`을 설치합니다. 배포자 전용 비공개 Drive 폴더를 마련합니다. 공개 공유뿐 아니라 다른 편집자·뷰어가 있는 폴더도 사용하지 않습니다. 공유 상태이면 코드가 접근을 중단하며 공유 해제를 자동 실행하지 않습니다.
+1. 새 Apps Script 프로젝트에 `Code.gs`, `TeamPure.gs`, `TeamProjects.gs`, `TeamEvidence.gs`, `TeamMedia.gs`(v333), `appsscript.json`을 설치합니다. 배포자 전용 비공개 Drive 폴더를 마련합니다. 공개 공유뿐 아니라 다른 편집자·뷰어가 있는 폴더도 사용하지 않습니다. 공유 상태이면 코드가 접근을 중단하며 공유 해제를 자동 실행하지 않습니다.
 2. Script Properties를 아래와 같이 설정합니다. 실제 값은 Git/보고서/콘솔에 기록하지 않습니다.
 
    | 속성 | 값 |
@@ -48,9 +49,26 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 3. 프로젝트 소유자가 편집기에서 `companyBootstrapFromProperties_()`를 한 번 실행합니다. 기존 `COMPANY_HEAD`가 있으면 중단하며 덮어쓰지 않습니다. 임시 대표 속성 두 개는 성공 후 제거됩니다. 비밀번호를 생성하지 않습니다.
 4. 배포자 권한으로 실행되는 웹 앱을 배포합니다. 클라이언트가 호출 가능한 접근 범위라도 모든 실제 자료 요청은 서버에서 인증·구성원 권한을 재확인합니다. 도메인 정책에 따라 허용되지 않으면 이를 우회하지 마세요.
-5. `team-config.js`의 `apiUrl`에 **이 새 회사 서버**의 `/exec` URL만 지정합니다. `APP_TOKEN`·비밀번호·세션 토큰은 절대 넣지 않습니다. 현재 기본값은 비어 있어 로그인 버튼이 잠겨 있습니다.
+5. 직원 작업실 로그인 칸 아래 「서버 연결 설정」에 **이 새 회사 서버**의 `/exec` URL 을 넣고 [연결 확인 후 저장]합니다(v333 — health 가 `company-team-v3` 일 때만 이 기기에 저장, 비밀값 아님). 모든 기기에 고정하려면 `team-config.js`의 `apiUrl`에 같은 URL 을 넣어 배포하며, 그러면 고정 주소가 기기 입력보다 우선합니다. `APP_TOKEN`·비밀번호·세션 토큰은 절대 넣지 않습니다.
 6. 직원들이 로그인 후 표시되는 식별정보를 회사 관리자에게 전달하면 관리자가 ‘직원 권한 연결’에서 등록합니다.
-7. 2기기와 역할별 실제 검사를 통과한 뒤 Pages와 운영 활성화를 각각 확인합니다.
+7. 대표 계정으로 「권한 점검 → 전 직원 권한 점검」을 누르고, 팀장·직원·외주 계정으로 각각 「내 권한 확인」을 눌러 모두 ✓ 인지 봅니다. 그 뒤 2기기 실제 검사를 통과하면 Pages와 운영 활성화를 각각 확인합니다. 클릭 단위 순서와 점검 결과 읽는 법은 `../docs/team-ops-setup.md`.
+
+## 권한 점검 `companyDiagnose` (v333)
+
+대표(owner)만 호출할 수 있는 **읽기 전용** 액션입니다(다른 역할은 `forbidden`, payload 는 비우거나 `{}`). 저장본·HEAD 를 바꾸지 않습니다.
+돌려주는 것: 스크립트 속성의 **있음/없음 불리언**(값은 돌려주지 않음, `COMPANY_OWNER_*` 는 부트스트랩 뒤 `false` 여야 정상), 자료 버전, 팀·업무 수,
+구성원마다 실제 게이트(`teamMember_`·`teamPresent_`·`teamCanAssign_`)를 돌린 결과 — 접근 가능 여부, 보이는 업무 수와 업무 ID 목록의 SHA-256 지문,
+보이는 팀·배정 가능 팀 ID, 동료 식별정보·감사 이력 노출 여부, 연결 단지 일치 여부. 포털 userId·officeId·폴더 ID·URL 은 돌려주지 않습니다.
+화면은 이 결과를 화면 쪽에 따로 적은 역할 규칙(대표 전체 / 팀장 자기 팀 / 직원·외주 자기 배정)과 맞춰 ✓·✗ 로 보여 줍니다. 옛 서버는 `invalid-action` 이며 화면은 재배포를 안내합니다. 서비스 이름(`company-team-v3`)은 그대로라 옛 서버에서도 로그인은 됩니다.
+
+## v333 사진·동영상 올리기(HEIC·동영상·실패 후 재시도)
+
+- HEIC/HEIF 사진은 **원본 그대로**(12MiB 이하) 저장한다. 서버는 `ftyp`+HEIF 브랜드로 형식을 확인하고, JPEG 변환은 직원 화면의 미리보기에서만 한다. 원본 보존 계약(편집·압축·변환 없음)과 보험 증빙 원본 요구 때문이다.
+- 동영상(MP4·MOV·WebM, 최대 100MB, `TEAM_VIDEO_MAX`)은 `evidenceMediaBegin` → `evidenceMediaChunk`(1MiB, 256KiB 정렬) → `evidenceUpload{uploadId}` 순서다. Drive 파일 ID를 먼저 받아 Script Properties `TEAM_MEDIA_JOB_<uploadId>`에 적은 뒤 바이트를 보낸다 — 응답이 끊겨 다시 보내도 원본은 하나다. 진행 위치는 서버(Drive)가 정본이고, 다시 보낸 청크는 붙이지 않는다. 청크마다 권한을 다시 확인한다. 완성 확인은 Drive의 SHA-256(`sha256Checksum`)·크기·형식·부모 폴더로 한다(100MB를 Apps Script 메모리에 올리지 않는다). 재생·보험 묶음은 `evidenceReadChunk`(1MiB)로 읽고 화면이 전체 SHA-256을 다시 맞춘다.
+- 업로드 진행은 회사 스냅샷을 만들지 않는다(청크 100개가 revision 100개가 되지 않게). 작업 기록은 진행 중 최대 100건, 증빙이 확정됐거나 7일(Drive 이어 올리기 세션 수명)이 지난 것만 지운다. Drive 원본은 자동 삭제하지 않는다.
+- 동영상은 보험 묶음 50MiB 상한 계산에 그대로 들어간다. 큰 동영상은 묶음에서 빼고 [원본 동영상 받기]로 따로 전달한다.
+- `script.external_request` 와 `drive` 범위는 이미 매니페스트에 있다. 배포 후 재승인 화면이 나오면 대표가 승인한다.
+- 구서버(이 파일이 없는 v3)에 새 화면이 붙으면 동영상은 `invalid-action`, HEIC는 `invalid-file` 로 대기열에 '실패'로 남는다 — 서버를 갱신한 뒤 [다시 올리기]를 누르면 된다.
 
 ## 보존·충돌·용량
 
@@ -69,4 +87,4 @@ v330은 `health.service = company-team-v3` 계약이다. `TeamProjects.gs`, `Tea
 
 ## 검사
 
-`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth|history-reset|history-client`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id|team-filter|action-autosave` (`node tests/company-team-ui.e2e.js --mutations`로 화면 5종 일괄 검사). 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.
+`node tests/run-all.js company-team` (저장소 루트). 단위 검사 변이: `HJ_TEAM_MUTATION=scope|revision|auth|history-reset|history-client|diagnose-open|diagnose-leak|diagnose-fake|diagnose-write`, 화면 변이: `HJ_TEAM_UI_MUTATION=allow-role-leak|persist-session|retry-new-id|team-filter|action-autosave` (`node tests/company-team-ui.e2e.js --mutations`로 화면 5종 일괄 검사). 모든 데이터는 가상이며 실제 인증 서버를 호출하지 않습니다. 최종 배포 게이트는 필터 없는 `node tests/run-all.js`입니다.

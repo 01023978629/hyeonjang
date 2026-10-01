@@ -27,6 +27,8 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
   await page.waitForTimeout(1400);
 
   // ── 고정 fixture: 적자·예산120%초과·미수95일·보증임박·방치20일·정상·리뷰(완공30일) 7현장 ──
+  // 보증현장D: v330 부터 보증 만료는 보증서와 같은 항목별 기간(방수 3년)이다 — 예전 343일(12개월 기준 임박)은 이제 임박이 아니라
+  // 완공 1073일(36개월 만료 약 3주 전)로 옮겼다. 12개월로 세던 것이 결함이었다(dates-warranty-office ⓑ).
   //   날짜는 실행일 기준 상대(결정성). est는 견적 파일로, 예산초과는 지출장부(자재) 태깅으로 주입.
   async function seed() {
     await page.evaluate(() => {
@@ -37,7 +39,7 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
         { name: '적자현장A', stage: 2, received: 0, phases: [], cost: { material: 12000000, labor: 0, outsource: 0 }, customer: { name: '가', phone: '', addr: '' }, archived: false },
         { name: '예산현장B', stage: 2, received: 30000000, budget: 10000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '나', phone: '', addr: '' }, archived: false },
         { name: '미수현장C', stage: 3, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, doneAt: d(95), customer: { name: '다', phone: '', addr: '' }, archived: false },
-        { name: '보증현장D', stage: 3, received: 5000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, doneAt: d(343), customer: { name: '라', phone: '', addr: '' }, archived: false },
+        { name: '보증현장D', stage: 3, received: 5000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, doneAt: d(1073), customer: { name: '라', phone: '', addr: '' }, archived: false },
         { name: '방치현장E', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '마', phone: '', addr: '' }, archived: false },
         { name: '정상현장F', stage: 2, received: 10000000, phases: [], cost: { material: 1000000, labor: 0, outsource: 0 }, customer: { name: '바', phone: '', addr: '' }, archived: false },
         { name: '리뷰현장G', stage: 3, received: 5000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, doneAt: d(30), customer: { name: '사', phone: '01000000000', addr: '' }, archived: false }
@@ -50,7 +52,7 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
         { id: 'estB', kind: 'estimate', project: '예산현장B', name: 'B견적', est: { amount: 30000000 }, when: whenBack(1) },
         { id: 'phB', kind: 'photo', project: '예산현장B', name: 'B사진', when: whenBack(0) },
         { id: 'estC', kind: 'estimate', project: '미수현장C', name: 'C견적', est: { amount: 5000000 }, when: whenBack(96) },
-        { id: 'estD', kind: 'estimate', project: '보증현장D', name: 'D견적', est: { amount: 5000000 }, when: whenBack(343) },
+        { id: 'estD', kind: 'estimate', project: '보증현장D', name: 'D견적', est: { amount: 5000000 }, when: whenBack(1073) },
         { id: 'phE', kind: 'photo', project: '방치현장E', name: 'E사진', when: whenBack(20) },
         { id: 'estF', kind: 'estimate', project: '정상현장F', name: 'F견적', est: { amount: 10000000 }, when: whenBack(1) },
         { id: 'phF', kind: 'photo', project: '정상현장F', name: 'F사진', when: whenBack(0) },
@@ -102,7 +104,8 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
         src: {
           margin: names(lossAlertData()),
           budget: names(budgetAlertData()),
-          warranty: names(warrantyDue()),
+          // v331 새 계약: 보드는 warrantyDue 중 만료 30일 안쪽까지만(3년 전에 끝난 보증이 긴급 1위로 남던 결함 — dash-reports ②)
+          warranty: names(warrantyDue().filter(w => w.daysLeft >= -30)),
           stale: names(staleProjectData()),
           review: names(reviewRequestData().filter(x => !x.requested && x.customer && x.customer.phone))
         }

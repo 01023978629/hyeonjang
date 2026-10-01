@@ -37,7 +37,7 @@ async function harness(options = {}) {
     const request = route.request(), url = request.url();
     if (url.startsWith(ORIGIN + '/')) {
       const name = new URL(url).pathname.slice(1);
-      if (['team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js'].includes(name)) {
+      if (['team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js', 'team-upload.js'].includes(name)) {
         let content = name === 'team-config.js' ? 'window.HJ_TEAM_CONFIG={apiUrl:' + JSON.stringify(options.unconfigured ? '' : API) + '};' : fs.readFileSync(path.join(ROOT, name), 'utf8');
         if (name === 'team-ui.js' && MUTANT === 'allow-role-leak') content = content.replace("if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' ? d.me.teamIds.includes(t.teamId) : t.assigneeId === d.me.id))) return false;", '/* mutation: ignore projection */');
         if (name === 'team-ui.js' && MUTANT === 'team-filter') content = content.replace('if (team) return d.tasks.filter(t => t.teamId === team.id);', 'if (team) return d.tasks;');
@@ -71,6 +71,37 @@ async function harness(options = {}) {
           if (!e || !engine.teamEvidenceVisible_(h.store, engine.teamMember_(h.store, identity()), e)) throw new Error('forbidden');
           if (h.holdEvidence) { const hold = h.holdEvidence; h.holdEvidence = null; await hold.promise; }
           result = { file: { mime: e.mime, name: e.name, size: e.size, sha256: e.sha256, base64: h.files[e.id] } };
+        } else if (['evidenceMediaBegin', 'evidenceMediaChunk', 'evidenceReadChunk'].includes(body.action)) {
+          // v333 fake of TeamMedia.gs: server-held offset, resend never appends twice, whole-file SHA check on completion.
+          h.media ||= {}; h.mediaCalls ||= []; h.mediaCalls.push({ action: body.action, offset: body.payload.offset, uploadId: body.payload.uploadId });
+          // holdMedia/failMedia may name the exact call number ({ at: n }) so tests never race a timer.
+          const nth = h.mediaCalls.length, due = x => x && (!x.at || x.at === nth);
+          if (due(h.holdMedia)) { const hold = h.holdMedia; h.holdMedia = null; await hold.promise; }
+          const failing = due(h.failMedia) ? h.failMedia.mode || h.failMedia : ''; if (failing) h.failMedia = '';
+          if (failing === 'network-before') return route.abort('failed');
+          const me = engine.teamMember_(h.store, identity());
+          if (body.action === 'evidenceReadChunk') {
+            const e = h.store.evidence.find(e => e.id === body.payload.evidenceId); if (!e || !engine.teamEvidenceVisible_(h.store, me, e)) throw new Error('forbidden');
+            const all = Buffer.from(h.files[e.id], 'base64'), part = all.subarray(body.payload.offset, body.payload.offset + body.payload.length);
+            result = { chunk: { mime: e.mime, size: e.size, sha256: e.sha256, offset: body.payload.offset, nextOffset: body.payload.offset + part.length, eof: body.payload.offset + part.length === e.size, base64: part.toString('base64') } };
+          } else {
+            let job = h.media[body.payload.uploadId];
+            if (body.action === 'evidenceMediaBegin') {
+              const meta = engine.teamEvidenceValidate_(h.store, me, body.payload.entity); if (meta.kind !== 'video') throw new Error('invalid-input');
+              if (h.store.evidence?.some(e => e.id === meta.id)) result = { upload: { uploadId: body.payload.uploadId, state: 'committed', offset: meta.size, size: meta.size, chunkBytes: 1048576 } };
+              else { if (job && JSON.stringify(job.entity) !== JSON.stringify(body.payload.entity)) throw new Error('request-conflict'); job = h.media[body.payload.uploadId] ||= { entity: clone(body.payload.entity), parts: [], actor: me.id }; }
+            } else {
+              if (!job) throw new Error('upload-not-found'); if (job.actor !== me.id) throw new Error('forbidden'); engine.teamEvidenceValidate_(h.store, me, job.entity);
+              const bytes = Buffer.from(body.payload.base64, 'base64'), have = Buffer.concat(job.parts).length;
+              if (body.payload.offset === have) job.parts.push(bytes);
+            }
+            if (!result) {
+              const all = Buffer.concat(job.parts), complete = all.length === job.entity.size;
+              if (complete && digest(all) !== job.entity.sha256) throw new Error('hash-mismatch');
+              result = { upload: { uploadId: body.payload.uploadId, state: complete ? 'complete' : 'uploading', offset: all.length, size: job.entity.size, chunkBytes: 1048576 } };
+            }
+          }
+          if (failing === 'network-after') return route.abort('failed');
         } else if (body.action === 'claimBundle') {
           if (h.bundleChange) { h.store.tasks[0].handoff = '모의 변경'; h.bundleChange = false; }
           result = { bundle: clone(engine.teamClaimBundle_(h.store, engine.teamMember_(h.store, identity()), body.payload.claimId, digest)) };
@@ -80,11 +111,14 @@ async function harness(options = {}) {
           if (h.failNext === 'unknown') { h.failNext = ''; throw new Error('unknown-secret-detail'); }
           if (h.failNext === 'session-expired') { h.failNext = ''; throw new Error('session-expired'); }
           const payload = clone(body.payload); let attachment;
-          if (body.action === 'evidenceUpload') { h.files[payload.entity.id] = payload.base64; delete payload.base64; attachment = { fileId: 'MOCK_PRIVATE_FILE', binding: digest(JSON.stringify([h.role, payload.entity])) }; }
+          if (body.action === 'evidenceUpload' && payload.uploadId) { const job = h.media?.[payload.uploadId]; if (!job || Buffer.concat(job.parts).length !== payload.entity.size) throw new Error('upload-incomplete'); h.files[payload.entity.id] = Buffer.concat(job.parts).toString('base64'); delete payload.uploadId; attachment = { fileId: 'MOCK_PRIVATE_FILE', binding: digest(JSON.stringify([h.role, payload.entity])) }; }
+          else if (body.action === 'evidenceUpload') { h.files[payload.entity.id] = payload.base64; delete payload.base64; attachment = { fileId: 'MOCK_PRIVATE_FILE', binding: digest(JSON.stringify([h.role, payload.entity])) }; }
           if (h.failNext === 'network-before-write') { h.failNext = ''; return route.abort('failed'); }
           const out = engine.teamApply_(h.store, identity(), body.action, payload, new Date().toISOString(), crypto.randomUUID(), digest, attachment);
           h.store = clone(out.store); result = { data: clone(engine.teamPresent_(h.store, identity())), replayed: out.replayed };
           if (h.failNext === 'network-after-write') { h.failNext = ''; return route.abort('failed'); }
+          // v333: stored, but the answer says duplicate/conflict (another tab or a lost answer under a different requestId).
+          if (h.failNext === 'duplicate-after-write' || h.failNext === 'conflict-after-write') { const c = h.failNext.replace('-after-write', ''); h.failNext = ''; throw new Error(c); }
         }
       }
       result.ok = true;

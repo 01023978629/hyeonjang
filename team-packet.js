@@ -2,7 +2,8 @@
 (function (root) {
   'use strict';
   const MAX_BYTES = 50 * 1024 * 1024, MAX_FILES = 50;
-  const EXT = Object.freeze({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf'});
+  // v333: HEIC photos and videos travel as untouched originals. Videos count toward the same 50MiB (the server already sums sizes).
+  const EXT = Object.freeze({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/heic':'heic','image/heif':'heif','video/mp4':'mp4','video/quicktime':'mov','video/webm':'webm','application/pdf':'pdf'});
   const PHASE = Object.freeze({before:'작업 전',cause:'원인 확인',during:'작업 중',after:'작업 후'});
   const COST = Object.freeze({cause:'원인 교정',restore:'피해 복구',other:'기타'});
   const STATUS = Object.freeze({todo:'대기',doing:'작업 중',blocked:'보류',review:'검수 요청',done:'완료 승인'});
@@ -67,11 +68,13 @@
       if (!Object.prototype.hasOwnProperty.call(EXT,f.mime) || e.mime !== f.mime) fail('invalid-mime');
       if (!Number.isSafeInteger(e.size) || f.size !== e.size || !(f.bytes instanceof Uint8Array) || f.bytes.byteLength !== f.size) fail('size-mismatch');
       if (digest(f.sha256) !== digest(e.sha256)) fail('hash-mismatch');
-      if (e.kind !== 'photo' && e.kind !== 'document') fail('invalid-kind');
-      if (e.kind === 'photo' && (f.mime === 'application/pdf' || !taskIds.has(id(e.taskId)))) fail('task-mismatch');
+      if (e.kind !== 'photo' && e.kind !== 'video' && e.kind !== 'document') fail('invalid-kind');
+      if ((e.kind === 'video') !== f.mime.startsWith('video/')) fail('invalid-kind');
+      if ((e.kind === 'photo' || e.kind === 'video') && (f.mime === 'application/pdf' || !taskIds.has(id(e.taskId)))) fail('task-mismatch');
       if (e.kind === 'document' && e.taskId && !taskIds.has(id(e.taskId))) fail('task-mismatch');
-      if (e.kind === 'photo' && !Object.prototype.hasOwnProperty.call(PHASE,e.phase)) fail('invalid-phase');
-      return {id:fileId,mime:f.mime,size:f.size,sha256:f.sha256,kind:e.kind,taskId:text(e.taskId,128),
+      if (e.kind !== 'document' && !Object.prototype.hasOwnProperty.call(PHASE,e.phase)) fail('invalid-phase');
+      const duration = e.kind === 'video' && Number.isFinite(e.duration) && e.duration > 0 ? e.duration : '';
+      return {id:fileId,mime:f.mime,size:f.size,sha256:f.sha256,kind:e.kind,taskId:text(e.taskId,128),duration,
         phase:text(e.phase,40),caption:text(e.caption,2000),capturedDate:text(e.capturedDate,64),bytes:new Uint8Array(f.bytes)};
     });
     let amount = 0;
@@ -91,6 +94,10 @@
     const ok = f.mime === 'image/jpeg' ? b.length >= 3 && b[0] === 255 && b[1] === 216 && b[2] === 255 :
       f.mime === 'image/png' ? b.length >= 8 && [137,80,78,71,13,10,26,10].every((n,i) => b[i] === n) :
       f.mime === 'image/webp' ? b.length >= 12 && ascii(0,4) === 'RIFF' && ascii(8,12) === 'WEBP' :
+      f.mime === 'image/heic' || f.mime === 'image/heif' ? b.length >= 12 && ascii(4,8) === 'ftyp' && ['heic','heix','hevc','hevx','heim','heis','hevm','hevs','mif1','msf1'].includes(ascii(8,12)) :
+      f.mime === 'video/mp4' ? b.length >= 8 && ascii(4,8) === 'ftyp' :
+      f.mime === 'video/quicktime' ? b.length >= 8 && ['ftyp','moov','wide','mdat','free','skip','pnot'].includes(ascii(4,8)) :
+      f.mime === 'video/webm' ? b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 :
       f.mime === 'application/pdf' && b.length >= 5 && ascii(0,5) === '%PDF-';
     if (!ok) fail('invalid-file');
   }
@@ -116,7 +123,10 @@
     const rows = n.claim.items.map(i => '<tr><td>'+esc(COST[i.kind])+'</td><td>'+lines(i.description)+'</td><td class="money">'+i.amount.toLocaleString('ko-KR')+'원</td></tr>').join('');
     const mode = {'customer-support':'고객 보험 청구 자료 지원','contractor-billing':'의뢰 공사비 청구 자료',undecided:'청구 방식 미확정'}[n.claim.mode] || '청구 방식 미확정';
     const tasks = n.tasks.map(t => '<article><h3>'+esc(t.title)+'</h3><p>'+esc(STATUS[t.status] || t.status)+' · '+esc([t.workDate,t.startTime,t.endTime ? '~ '+t.endTime : ''].filter(Boolean).join(' '))+'</p><p>담당자 내부 식별번호: '+esc(t.assigneeId || '미지정')+'</p><p>'+lines(t.handoff || '현재 작업 보고 없음')+'</p>'+(t.history.length ? '<details open><summary>기록된 작업 보고 이력</summary><ol>'+t.history.map(h => '<li><strong>'+esc(h.at)+' · '+esc(STATUS[h.status] || h.status)+'</strong><p>'+lines(h.handoff || '보고 내용 없음')+'</p></li>').join('')+'</ol></details>' : '<p>과거 보고 이력이 없는 작업입니다.</p>')+'</article>').join('');
-    const photos = n.files.map(f => '<figure><figcaption>'+esc(f.kind === 'photo' ? PHASE[f.phase] : '참고 서류')+' · '+lines(f.caption || '설명 미입력')+'</figcaption>'+(f.kind === 'photo' ? '<img src="'+f.path+'" alt="'+esc(f.caption || PHASE[f.phase])+'">' : '<p><a href="'+f.path+'" download>첨부 원본 서류 열기</a></p>')+(f.capturedDate ? '<p>입력된 촬영일: '+esc(f.capturedDate)+' (EXIF 자동 확인 아님)</p>' : '')+'<p class="small">원본 '+esc(f.path)+' · SHA-256 '+f.sha256+'</p></figure>').join('');
+    const media = f => f.kind === 'video' ? '<p><a href="'+f.path+'" download>동영상 원본 열기</a>'+(f.duration ? ' · 길이 '+esc(f.duration)+'초' : ' · 길이 정보 없음')+'</p>' :
+      f.kind === 'photo' ? '<img src="'+f.path+'" alt="'+esc(f.caption || PHASE[f.phase])+'">'+(/^image\/hei/.test(f.mime) ? '<p class="small">HEIC 원본입니다. 브라우저에 따라 위 그림이 보이지 않으면 <a href="'+f.path+'" download>원본 파일</a>을 직접 여세요.</p>' : '') :
+      '<p><a href="'+f.path+'" download>첨부 원본 서류 열기</a></p>';
+    const photos = n.files.map(f => '<figure><figcaption>'+esc(f.kind === 'document' ? '참고 서류' : (f.kind === 'video' ? '동영상 · ' : '')+PHASE[f.phase])+' · '+lines(f.caption || '설명 미입력')+'</figcaption>'+media(f)+(f.capturedDate ? '<p>입력된 촬영일: '+esc(f.capturedDate)+' (EXIF 자동 확인 아님)</p>' : '')+'<p class="small">원본 '+esc(f.path)+' · SHA-256 '+f.sha256+'</p></figure>').join('');
     const submissions = n.submissions.length ? '<h2>사용자가 입력한 제출 기록</h2><p>수기 기록이며 보험사 실제 수신·접수 확인을 뜻하지 않습니다.</p><ul>'+n.submissions.map(s => {
       const current = s.fingerprint === n.fingerprint;
       return '<li><strong>'+(current ? '이 자료 기준 수동 기록' : '이전 자료 기준 수동 기록')+'</strong><p>'+esc([s.date,s.channel,s.reference].filter(Boolean).join(' · '))+'</p><p class="small">기록 당시 자료 지문: '+s.fingerprint+'</p>'+(current ? '' : '<p>현재 자료와 지문이 다릅니다. 위 접수번호는 현재 자료를 제출했다는 기록이 아닙니다.</p>')+'</li>';
@@ -135,7 +145,7 @@
       f.path = 'originals/'+String(i+1).padStart(3,'0')+'.'+EXT[f.mime];
     }
     const manifest = {schema:1,purpose:'insurance-preparation-not-submission',fingerprint:n.fingerprint,project:{id:n.project.id,name:n.project.name},claimId:n.claim.id,
-      originals:n.files.map(f => ({id:f.id,path:f.path,mime:f.mime,size:f.size,sha256:f.sha256,kind:f.kind,taskId:f.taskId,phase:f.phase,caption:f.caption}))};
+      originals:n.files.map(f => ({id:f.id,path:f.path,mime:f.mime,size:f.size,sha256:f.sha256,kind:f.kind,taskId:f.taskId,phase:f.phase,caption:f.caption,...(f.kind === 'video' ? {duration:f.duration} : {})}))};
     const costCsv = '\uFEFF'+[['구분','세부 내용','입력 금액(원)'],...n.claim.items.map(i => [COST[i.kind],i.description,i.amount]),['합계','',n.claim.amount]].map(r => r.map(csv).join(',')).join('\r\n')+'\r\n';
     const entries = n.files.map(f => ({name:f.path,bytes:f.bytes}));
     for (const [name,body] of [['report.html',report(n)],['cost-items.csv',costCsv],['manifest.json',JSON.stringify(manifest,null,2)],['제출전-확인.txt',WARNING+'\n압축을 모두 푼 뒤 report.html을 열어 확인하세요.\n보험사 요구서류와 제출 권한을 별도로 확인하세요.\n원본 사진에 위치·개인정보가 포함될 수 있습니다.\n다운로드는 실제 제출이 아니며 자동 전송하지 않습니다.\n']]) entries.push({name,bytes:encoder.encode(body)});

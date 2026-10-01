@@ -91,7 +91,9 @@ let browser;
   assert(xlsx.sheets.includes('아파트오더'), '④ 아파트오더 시트가 없다 — 세무 자료에서 통째로 빠진다: ' + xlsx.sheets.join(','));
   assert(xlsx.rows === 5, '④ 시트 행수가 틀리다(머리 1+오더 4): ' + xlsx.rows);
   assert(/신흥마을아파트/.test(xlsx.flat) && /103동 1204호/.test(xlsx.flat), '④ 시트에 단지·동/호가 없다');
-  assert(xlsx.ret && xlsx.ret.시트 === 10, '④ 시트 수 보고가 10이 아니다: ' + JSON.stringify(xlsx.ret));
+  // v328: ⑪ 추가공사 시트가 붙어 11 — 아파트오더는 그대로 10번째 자리(잔금에 더해지는 추가공사가 이사에서 빠지던 것, v328 통합 검토)
+  // v330: ⑫ 현장규칙 시트가 붙어 12 — 부대사항(siteRules)이 이사 경로에 없던 v284 남은 한계. 아파트오더 자리는 그대로 10번째
+  assert(xlsx.ret && xlsx.ret.시트 === 12, '④ 시트 수 보고가 12가 아니다: ' + JSON.stringify(xlsx.ret));
 
   // ⑤ 오더가 없으면 줄이 안 생긴다 — 빈 소음 금지
   const empty = await page.evaluate(() => {

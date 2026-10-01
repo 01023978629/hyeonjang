@@ -13,7 +13,7 @@ if (output === root || output === path.parse(output).root) throw new Error('저�
 // 아이콘을 여기 안 넣으면 저장소에는 있는데 Pages 에 안 올라간다 — 폰에서 설치할 때만 드러난다.
 const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-backup.js', 'privacy.html', 'sw.js', 'terms.html',
   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
-  'operations-review.js', 'team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js'];
+  'operations-review.js', 'team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js', 'team-upload.js'];
 await mkdir(output, { recursive: false });
 for (const rel of publicFiles) {
   const source = path.join(root, rel);

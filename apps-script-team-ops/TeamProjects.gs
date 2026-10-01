@@ -12,11 +12,11 @@ function teamEvidenceVisible_(s,m,e){
   if(e.kind==='document')return m.role==='owner';
   var t=s.tasks.find(function(t){return t.id===e.taskId&&t.projectId===e.projectId;});return !!t&&teamCanSee_(m,t);
 }
-function teamEvidencePublic_(e){var out={};['id','projectId','taskId','kind','phase','caption','capturedDate','name','mime','size','sha256','uploaderId','uploadedAt'].forEach(function(k){out[k]=e[k];});return out;}
+function teamEvidencePublic_(e){var out={};['id','projectId','taskId','kind','phase','caption','capturedDate','name','mime','size','sha256','uploaderId','uploadedAt'].forEach(function(k){out[k]=e[k];});if(e.kind==='video')out.duration=e.duration===undefined?'':e.duration;return out;}
 function teamProjectsPresent_(s,m,result){
   result.projects=teamList_(s,'projects').filter(function(p){return teamProjectVisible_(s,m,p);}).map(function(p){var v=teamClone_(p);if(m.role!=='owner')v.teamIds=v.teamIds.filter(function(id){return m.teamIds.indexOf(id)>=0;});return v;});
   result.evidence=teamList_(s,'evidence').filter(function(e){return teamEvidenceVisible_(s,m,e);}).map(teamEvidencePublic_);
-  result.claims=m.role==='owner'?teamList_(s,'claims').map(function(c){var v=teamClone_(c),fingerprint=teamClaimFingerprint_(s,c,companyDigest_);delete v.review;v.reviewCurrent=!!c.review&&c.review.fingerprint===fingerprint;v.status=v.reviewCurrent?'ready':'draft';if(c.submissions&&c.submissions.length)v.status=c.submissions[c.submissions.length-1].fingerprint===fingerprint?'submitted':'changed-after-submission';return v;}):[];
+  result.claims=m.role==='owner'?teamList_(s,'claims').map(function(c){var v=teamClone_(c),source=teamClaimSource_(s,c),fingerprint=companyDigest_(JSON.stringify(source));delete v.review;v.reviewCurrent=!!c.review&&c.review.fingerprint===fingerprint;v.reviewedAt=c.review?c.review.at:'';v.reviewStale=!!c.review&&!v.reviewCurrent;v.readiness=teamClaimReadiness_(source.evidence);v.status=v.reviewCurrent?'ready':'draft';if(c.submissions&&c.submissions.length)v.status=c.submissions[c.submissions.length-1].fingerprint===fingerprint?'submitted':'changed-after-submission';return v;}):[];
   return result;
 }
 function teamTaskProject_(s,actor,e,t,old){
@@ -35,10 +35,19 @@ function teamClaimSource_(s,c){
   var ids=selected.map(function(e){return e.taskId;});
   return {claim:{id:c.id,projectId:c.projectId,mode:c.mode,insurerName:c.insurerName,referenceNo:c.referenceNo,accidentDate:c.accidentDate,incident:c.incident,cause:c.cause,repair:c.repair,items:c.items,selectedEvidenceIds:c.selectedEvidenceIds,insurerConfirmed:c.insurerConfirmed,consentConfirmed:c.consentConfirmed},project:teamClone_(p),tasks:s.tasks.filter(function(t){return t.projectId===p.id&&ids.indexOf(t.id)>=0;}).map(teamClone_),evidence:selected};
 }
+// Stage readiness is a WARNING, never a gate: required insurer documents are not decided yet (owner decision pending).
+// claimReview still blocks only on claim-incomplete. Same rule is mirrored in team-projects.js readiness().
+var TEAM_CLAIM_STAGES=['before','cause','after'];
+function teamClaimReadiness_(evidence){
+  var out={photos:{before:0,cause:0,after:0},documents:0,warnings:[]};
+  (evidence||[]).forEach(function(e){if(e&&e.kind==='photo'&&TEAM_CLAIM_STAGES.indexOf(e.phase)>=0)out.photos[e.phase]++;else if(e&&e.kind==='document'&&e.mime==='application/pdf')out.documents++;});
+  TEAM_CLAIM_STAGES.forEach(function(k){if(!out.photos[k])out.warnings.push('missing-'+k);});if(!out.documents)out.warnings.push('missing-document');
+  return out;
+}
 function teamClaimFingerprint_(s,c,digest){return digest(JSON.stringify(teamClaimSource_(s,c)));}
 function teamClaimBundle_(s,actor,id,digest){
   if(actor.role!=='owner')teamError_('forbidden');var c=teamList_(s,'claims').find(function(c){return c.id===id;});if(!c)teamError_('not-found');
-  var source=teamClaimSource_(s,c),fingerprint=digest(JSON.stringify(source));return {claim:source.claim,project:source.project,tasks:source.tasks,evidence:source.evidence,fingerprint:fingerprint,reviewCurrent:!!c.review&&c.review.fingerprint===fingerprint,submissions:teamClone_(c.submissions||[])};
+  var source=teamClaimSource_(s,c),fingerprint=digest(JSON.stringify(source));return {claim:source.claim,project:source.project,tasks:source.tasks,evidence:source.evidence,fingerprint:fingerprint,reviewCurrent:!!c.review&&c.review.fingerprint===fingerprint,readiness:teamClaimReadiness_(source.evidence),submissions:teamClone_(c.submissions||[])};
 }
 function teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachment,payload){
   var list,old,record,id;
@@ -82,7 +91,7 @@ function teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachm
       teamKeys_(e,['id','expectedFingerprint']);teamText_(e.expectedFingerprint,100);if(e.expectedFingerprint!==teamClaimFingerprint_(s,record,digest))teamError_('review-stale');
       if(record.mode==='undecided'||!record.insurerName||!record.accidentDate||record.accidentDate>teamBusinessDate_(now)||!record.incident||!record.cause||!record.repair||!record.items.length||!record.insurerConfirmed||!record.consentConfirmed)teamError_('claim-incomplete');
       var source=teamClaimSource_(s,record);if(!source.evidence.some(function(x){return x.kind==='photo';}))teamError_('claim-incomplete');
-      record.review={at:now,actorId:actor.id,fingerprint:digest(JSON.stringify(source)),snapshot:source};
+      record.review={at:now,actorId:actor.id,fingerprint:digest(JSON.stringify(source)),snapshot:source,warnings:teamClaimReadiness_(source.evidence).warnings};
     }else{
       teamKeys_(e,['id','submittedDate','channel','referenceNo','expectedFingerprint']);teamText_(e.expectedFingerprint,100);var fingerprint=teamClaimFingerprint_(s,record,digest);
       if(e.expectedFingerprint!==fingerprint)teamError_('review-stale');

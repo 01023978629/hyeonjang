@@ -8,7 +8,11 @@ const mutations = {
   escape:["return String(value).replace(/[&<>\"']/g,", "return String(value).replace(/NEVER_ESCAPES/g,"],
   csv:["out = \"'\" + out;","out = out;"],
   project:["if (id(c.projectId) !== project.id) fail('project-mismatch');", "if (false) fail('project-mismatch');"],
-  'submission-current':["const current = s.fingerprint === n.fingerprint;", "const current = true;"]
+  'submission-current':["const current = s.fingerprint === n.fingerprint;", "const current = true;"],
+  // v333 HEIC/video originals
+  'video-kind':["if ((e.kind === 'video') !== f.mime.startsWith('video/')) fail('invalid-kind');", ""],
+  'heic-magic':["['heic','heix','hevc','hevx','heim','heis','hevm','hevs','mif1','msf1'].includes(ascii(8,12))", "true"],
+  'video-link':["'<p><a href=\"'+f.path+'\" download>동영상 원본 열기</a>'", "'<img src=\"'+f.path+'\"><p>'"]
 };
 if (mutation) {
   assert(mutations[mutation], 'unknown packet mutation');
@@ -109,6 +113,21 @@ async function reject(change,pattern) { const f = fixture(); change(f); await as
     f.bundle.claim.selectedEvidenceIds=f.files.map(file=>file.id);
     const entries=await unzip(await packet.build(f.bundle,f.files)), html=entries.get('report.html').toString('utf8'); assert(entries.has('originals/001.pdf')); assert(entries.has('originals/002.png')); assert(entries.has('originals/003.webp')); assert(html.includes('href="originals/001.pdf"')); assert(!html.includes('src="originals/001.pdf"')); assert(!/<iframe|<embed|<object/.test(html));
     f.bundle.evidence[0].kind='photo'; await assert.rejects(()=>packet.build(f.bundle,f.files),/task-mismatch/);
+  });
+  await test('v333: HEIC photo and MP4/MOV/WebM video originals kept byte-exact; videos linked, never <img>; duration only if recorded',async()=> {
+    const f=fixture(), heic=Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypheic'),Buffer.from('TEST_ONLY')]), mp4=Buffer.concat([Buffer.from([0,0,0,32]),Buffer.from('ftypisomTEST_ONLY')]), mov=Buffer.concat([Buffer.from([0,0,0,8]),Buffer.from('wideTEST_ONLY')]), webm=Buffer.from([0x1a,0x45,0xdf,0xa3,1,2,3]);
+    const samples=[['image/heic',heic,'photo'],['video/mp4',mp4,'video',12.5],['video/quicktime',mov,'video',''],['video/webm',webm,'video']];
+    f.files=samples.map(([mime,bytes],i)=>({id:'media-'+i,mime,size:bytes.length,sha256:sha(bytes),bytes:new Uint8Array(bytes)}));
+    f.bundle.evidence=f.files.map((file,i)=>({...file,projectId:'project-one',taskId:'task-one',kind:samples[i][2],phase:'cause',caption:'TEST_MEDIA_'+i,...(samples[i][2]==='video'?{duration:samples[i][3]}:{})}));
+    f.bundle.claim.selectedEvidenceIds=f.files.map(file=>file.id);
+    const entries=await unzip(await packet.build(f.bundle,f.files)), html=entries.get('report.html').toString('utf8'), manifest=JSON.parse(entries.get('manifest.json'));
+    assert.deepEqual(['originals/001.heic','originals/002.mp4','originals/003.mov','originals/004.webm'].map(k=>sha(entries.get(k))),samples.map(([,b])=>sha(b)));
+    for(const k of ['002.mp4','003.mov','004.webm']){assert(html.includes('<a href="originals/'+k+'" download>동영상 원본 열기</a>'));assert(!html.includes('<img src="originals/'+k));}
+    assert(html.includes('길이 12.5초')); assert(html.includes('길이 정보 없음')); assert(html.includes('HEIC 원본입니다')); assert.equal(manifest.originals[1].duration,12.5); assert.equal(manifest.originals[2].duration,''); assert(!('duration' in manifest.originals[0]));
+    await reject(g=>{g.files[0]={...g.files[0],mime:'image/heic'};g.bundle.evidence[0].mime='image/heic';},/invalid-file/); // JPEG bytes renamed .heic
+    await reject(g=>{const b=Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisomTEST')]);g.files[0]={...g.files[0],mime:'image/heic',bytes:new Uint8Array(b),size:b.length,sha256:sha(b)};Object.assign(g.bundle.evidence[0],{mime:'image/heic',size:b.length,sha256:sha(b)});},/invalid-file/); // an MP4 container is not a HEIF photo
+    await reject(g=>{const b=Buffer.from('RIFF____WEBPTEST');g.files[0]={...g.files[0],mime:'video/mp4',bytes:new Uint8Array(b),size:b.length,sha256:sha(b)};Object.assign(g.bundle.evidence[0],{mime:'video/mp4',size:b.length,sha256:sha(b),kind:'video'});},/invalid-file/);
+    await reject(g=>{const b=Buffer.concat([Buffer.from([0,0,0,8]),Buffer.from('ftypisom')]);g.files[0]={...g.files[0],mime:'video/mp4',bytes:new Uint8Array(b),size:b.length,sha256:sha(b)};Object.assign(g.bundle.evidence[0],{mime:'video/mp4',size:b.length,sha256:sha(b)});},/invalid-kind/); // video bytes labelled photo
   });
   await test('unselected documents do not leak',async()=> {
     const f=fixture(); f.bundle.evidence.push({...f.bundle.evidence[0],id:'not-selected',caption:'FORBIDDEN_UNSELECTED_CAPTION'});
