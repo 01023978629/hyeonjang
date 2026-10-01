@@ -28,8 +28,10 @@ async function preserved(page){return page.evaluate(()=>({
   memo:JSON.stringify(state.notes.filter(n=>!n.todo)),activeProject:state.activeProject
 }));}
 async function openTodo(page){
-  await page.locator(NAV).click();await settle(page);
-  assert.equal(await page.locator('#modalRoot #todoText').count(),1,'today work navigation must dispatch to the existing todo view');
+  // v333 새 계약: 하단 [오늘 할일]은 '내 업무' 한 화면을 열고, 기존 이 기기 할일 화면은 그 안의 [✅ 이 기기 할일] 로 그대로 닿는다.
+  await page.locator(NAV).click();await page.locator('#modalRoot #myWork').waitFor();
+  await page.locator('#modalRoot #mwLocal').click();await settle(page);
+  assert.equal(await page.locator('#modalRoot #todoText').count(),1,'today work navigation must still reach the existing todo view');
   await page.waitForFunction(()=>document.activeElement?.id==='todoText');
 }
 (async()=>{
