@@ -13,7 +13,12 @@ const mutations={
  'reparent':['TeamProjects.gs',"if(old&&(old.projectId||'')!==projectId&&teamList_", "if(false&&old&&(old.projectId||'')!==projectId&&teamList_"],
  'private-load':['Code.gs','companyPrivate_(DriveApp.getFolderById(c.folder));','/* mutation: no private root read guard */'],
  'private-commit':['Code.gs','var folder=DriveApp.getFolderById(c.folder);companyPrivate_(folder);','var folder=DriveApp.getFolderById(c.folder);'],
- 'private-snapshot':['Code.gs','companyInside_(file,c.folder);','/* mutation: no snapshot ACL/parent guard */']
+ 'private-snapshot':['Code.gs','companyInside_(file,c.folder);','/* mutation: no snapshot ACL/parent guard */'],
+ // [v333] 단계 충족은 경고일 뿐 — 검토를 막으면 안 되고(대표 결정 전), 빠진 단계는 반드시 경고로 보여야 한다.
+ 'readiness-blocks':['TeamProjects.gs',"var source=teamClaimSource_(s,record);if(!source.evidence.some(","var source=teamClaimSource_(s,record);if(teamClaimReadiness_(source.evidence).warnings.length)teamError_('claim-incomplete');if(!source.evidence.some("],
+ 'readiness-silent':['TeamProjects.gs',"TEAM_CLAIM_STAGES.forEach(function(k){if(!out.photos[k])out.warnings.push('missing-'+k);});","/* mutation: no stage warnings */"],
+ 'readiness-doc-any':['TeamProjects.gs',"else if(e&&e.kind==='document'&&e.mime==='application/pdf')out.documents++;","else if(e&&e.kind==='document')out.documents++;"],
+ 'review-stale-hidden':['TeamProjects.gs',"v.reviewStale=!!c.review&&!v.reviewCurrent;","v.reviewStale=false;"]
 };
 if(mode){const [file,from,to]=mutations[mode]||[];assert(file,'unknown mutation');assert(source[file].includes(from),'mutation anchor missing');source[file]=source[file].replace(from,to);}
 const clone=v=>JSON.parse(JSON.stringify(v)),hex=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -89,11 +94,20 @@ const actualEvidence=JSON.parse(files.get(JSON.parse(props.get('COMPANY_HEAD')).
 const tampered=Buffer.from(original);tampered[30]^=1;files.get(actualEvidence.fileId).bytes=tampered;assert.throws(()=>call('evidenceRead',{evidenceId:firstMeta.id}),/hash-mismatch/,'same-sized corruption is detected by hash');files.get(actualEvidence.fileId).bytes=original;
 files.get(actualEvidence.fileId).shared=true;assert.throws(()=>call('evidenceRead',{evidenceId:firstMeta.id}),/private-storage-required/);files.get(actualEvidence.fileId).shared=false;
 const draft={projectId:pa,mode:'customer-support',insurerName:'TEST_INSURER',referenceNo:'',accidentDate:'2026-09-27',incident:'TEST_INCIDENT',cause:'TEST_CAUSE',repair:'TEST_REPAIR',items:[{kind:'cause',description:'TEST_CAUSE_REPAIR',amount:100000},{kind:'restore',description:'TEST_RESTORE',amount:200000}],selectedEvidenceIds:[firstMeta.id,docMeta.id],insurerConfirmed:true,consentConfirmed:true};
-save('claimSave',draft);const claimId=data.claims[0].id;let bundle=call('claimBundle',{claimId}).bundle;assert.equal(bundle.reviewCurrent,false);assert.equal(bundle.evidence.length,2);assert.equal(bundle.claim.items.reduce((n,i)=>n+i.amount,0),300000);assert.equal(data.claims[0].submissions.length,0,'bundle/export is not submission');
+save('claimSave',draft);const claimId=data.claims[0].id;let bundle=call('claimBundle',{claimId}).bundle;assert.equal(bundle.reviewCurrent,false);
+// [v333] 단계 충족 점검: 작업 전 사진 1 · 서류 PDF 1 → 원인 확인·마무리 사진만 경고. 화면 목록과 묶음(bundle)이 같은 규칙.
+assert.deepEqual(clone(bundle.readiness),{photos:{before:1,cause:0,after:0},documents:1,warnings:['missing-cause','missing-after']},'stage readiness counts only selected evidence by phase; PDF documents satisfy the document stage');
+assert.deepEqual(clone(data.claims[0].readiness),clone(bundle.readiness),'presented claim carries the same readiness as the bundle');
+assert.equal(data.claims[0].reviewStale,false,'never-reviewed claim is draft, not stale');assert.equal(data.claims[0].reviewedAt,'');
+assert.deepEqual(clone(context.teamClaimReadiness_([{kind:'document',mime:'image/png',phase:'document'},{kind:'photo',phase:'during'}])),{photos:{before:0,cause:0,after:0},documents:0,warnings:['missing-before','missing-cause','missing-after','missing-document']},'image scans and during photos do not satisfy stage/document readiness');
+assert.deepEqual(clone(context.teamClaimReadiness_([{kind:'photo',phase:'before'},{kind:'photo',phase:'cause'},{kind:'photo',phase:'after'},{kind:'document',mime:'application/pdf',phase:'document'}])).warnings,[],'complete stages produce no warning');assert.equal(bundle.evidence.length,2);assert.equal(bundle.claim.items.reduce((n,i)=>n+i.amount,0),300000);assert.equal(data.claims[0].submissions.length,0,'bundle/export is not submission');
 assert.throws(()=>save('claimSave',{...draft,id:claimId,projectId:pb}),/project-immutable/);
 assert.throws(()=>save('claimSave',{...draft,id:claimId,selectedEvidenceIds:['missing']}),/evidence-missing/);
 save('claimSave',{...draft,id:claimId,consentConfirmed:false});assert.throws(()=>save('claimReview',{id:claimId}),/claim-incomplete/);save('claimSave',{...draft,id:claimId});save('claimReview',{id:claimId});bundle=call('claimBundle',{claimId}).bundle;assert.equal(bundle.reviewCurrent,true);const reviewed=bundle.fingerprint;
-save('taskSave',{...taskFields(data.tasks.find(t=>t.id===first.id)),status:'doing',handoff:'TEST_UPDATED_REPORT'});bundle=call('claimBundle',{claimId}).bundle;assert.equal(bundle.reviewCurrent,false);assert.notEqual(bundle.fingerprint,reviewed);assert.throws(()=>save('claimSubmitRecord',{id:claimId,submittedDate:'2026-09-27',channel:'TEST_MANUAL_PORTAL',referenceNo:'TEST_RECEIPT'}),/review-stale/);
+// 경고가 남아도 검토(준비 고정)는 된다 — 막지 않고 기록만. 준비는 제출이 아니다.
+assert.equal(data.claims[0].status,'ready');assert.equal(data.claims[0].submissions.length,0,'review (preparation) is not a submission record');assert.ok(data.claims[0].reviewedAt,'review time is shown');
+assert.deepEqual(JSON.parse(files.get(JSON.parse(props.get('COMPANY_HEAD')).fileId).bytes.toString()).claims[0].review.warnings,['missing-cause','missing-after'],'review stores the stage warnings it was approved with');
+save('taskSave',{...taskFields(data.tasks.find(t=>t.id===first.id)),status:'doing',handoff:'TEST_UPDATED_REPORT'});bundle=call('claimBundle',{claimId}).bundle;assert.equal(bundle.reviewCurrent,false);assert.notEqual(bundle.fingerprint,reviewed);assert.equal(data.claims[0].reviewStale,true,'changed after review is shown as invalidated preparation');assert.equal(data.claims[0].status,'draft');assert.throws(()=>save('claimSubmitRecord',{id:claimId,submittedDate:'2026-09-27',channel:'TEST_MANUAL_PORTAL',referenceNo:'TEST_RECEIPT'}),/review-stale/);
 save('claimReview',{id:claimId});save('claimSubmitRecord',{id:claimId,submittedDate:'2026-09-27',channel:'TEST_MANUAL_PORTAL',referenceNo:'TEST_RECEIPT'});assert.equal(data.claims[0].status,'submitted');const submitted=clone(data.claims[0].submissions[0]);assert.equal(submitted.snapshot.claim.items[0].amount,100000);
 save('claimSave',{...draft,id:claimId,repair:'TEST_AMENDED_REPAIR'});assert.equal(data.claims[0].status,'changed-after-submission');assert.deepEqual(data.claims[0].submissions[0],submitted,'submission snapshots immutable after edits');
 assert.throws(()=>save('claimSubmitRecord',{id:claimId,submittedDate:'2026-09-27',channel:'TEST',referenceNo:'TEST'}),/review-stale/);

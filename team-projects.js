@@ -157,10 +157,34 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     const list = n('div', undefined, 'grid'); list.id = 'claimList'; root.append(list);
     claims().forEach(c => {
       const card = n('article', undefined, 'card'); card.dataset.claimId = c.id;
-      card.append(n('h3', projects().find(p => p.id === c.projectId)?.name || '프로젝트'), n('p', (types[c.mode] || '방식 확인 필요') + ' · ' + (c.insurerName || '보험사 미입력'), 'meta'), n('p', '현재 자료 ' + (c.reviewCurrent ? '검토 확인됨' : '재검토 필요') + ' · 수동 제출 기록 ' + (c.submissions?.length || 0) + '회'));
-      const row = n('div', undefined, 'row'); row.append(b('내용·금액·사진 선택', () => claimEditor(c)), b('자료 검토 확인', () => reviewEditor(c)), b('제출 준비 ZIP 받기', () => exportClaim(c)), b('직접 제출한 사실 기록', () => submissionEditor(c))); card.append(row);
-      (c.submissions || []).forEach(s => card.append(n('p', '사용자 수동 기록 · ' + (s.submittedDate || '') + ' · ' + (s.channel || '') + ' · 당시 자료 ' + (s.fingerprint || '').slice(0, 12), 'meta'))); list.append(card);
+      card.append(n('h3', projects().find(p => p.id === c.projectId)?.name || '프로젝트'), n('p', (types[c.mode] || '방식 확인 필요') + ' · ' + (c.insurerName || '보험사 미입력'), 'meta'));
+      readinessLines(card, readiness(c));
+      // 준비(검토 고정)와 실제 제출 기록은 다른 줄·다른 색이다 — 검토나 ZIP 다운로드를 '제출했다'로 읽지 않게.
+      const prep = c.reviewCurrent ? n('p', '✔ 제출 준비 완료(검토 고정)' + (c.reviewedAt ? ' · 검토 ' + String(c.reviewedAt).slice(0, 10) : '') + ' — 보험사 제출은 아직 아닙니다', 'claim-line claim-ready')
+        : c.reviewStale ? n('p', '✖ 준비 상태 무효 — 검토 뒤 자료가 바뀌었습니다. 「자료 검토 확인」으로 다시 검토하세요', 'claim-line claim-stale')
+        : n('p', '○ 제출 준비 전 — 「자료 검토 확인」이 필요합니다', 'claim-line claim-draft');
+      prep.dataset.claimPrep = c.reviewCurrent ? 'ready' : c.reviewStale ? 'stale' : 'draft'; card.append(prep);
+      const subs = c.submissions || [];
+      if (!subs.length) { const none = n('p', '📮 제출 기록 없음 — 실제로 낸 뒤에만 「직접 제출한 사실 기록」에 적습니다', 'claim-line claim-nosub'); none.dataset.claimSubmission = 'none'; card.append(none); }
+      subs.forEach(s => { const line = n('p', '📮 제출 기록(직접 낸 뒤 손으로 적음) · ' + (s.submittedDate || '') + ' · ' + (s.channel || '') + ' · 접수번호 ' + (s.referenceNo || '') + ' · 당시 자료 ' + (s.fingerprint || '').slice(0, 12), 'claim-line claim-submitted'); line.dataset.claimSubmission = 'record'; card.append(line); });
+      if (c.status === 'changed-after-submission') card.append(n('p', '마지막 제출 기록 뒤 자료가 바뀌었습니다 — 위 제출 기록은 바뀌기 전 자료 기준입니다', 'meta'));
+      const zip = b('제출 준비 ZIP 받기', () => exportClaim(c)), zipNote = n('span', '다운로드는 제출 기록이 아닙니다', 'meta'); zipNote.dataset.zipNote = '1';
+      const row = n('div', undefined, 'row'); row.append(b('내용·금액·사진 선택', () => claimEditor(c)), b('자료 검토 확인', () => reviewEditor(c)), zip, zipNote, b('직접 제출한 사실 기록', () => submissionEditor(c))); card.append(row);
+      list.append(card);
     });
+  }
+  // 단계 충족 점검 — 경고만 한다(필수 서류는 대표 결정 전). 서버 teamClaimReadiness_ 와 같은 규칙.
+  function readiness(c) {
+    const out = { photos: { before: 0, cause: 0, after: 0 }, documents: 0, warnings: [] }, chosen = new Set(c.selectedEvidenceIds || []);
+    evidence().filter(e => chosen.has(e.id) && e.projectId === c.projectId).forEach(e => { if (e.kind === 'photo' && Object.hasOwn(out.photos, e.phase)) out.photos[e.phase]++; else if (e.kind === 'document' && e.mime === 'application/pdf') out.documents++; });
+    ['before', 'cause', 'after'].forEach(k => { if (!out.photos[k]) out.warnings.push('missing-' + k); }); if (!out.documents) out.warnings.push('missing-document');
+    return out;
+  }
+  const warnText = { 'missing-before': '작업 전 사진', 'missing-cause': '원인 확인 사진', 'missing-after': '마무리 사진', 'missing-document': '수리 내역 서류(PDF)' };
+  function readinessLines(root, r) {
+    if (!r || !r.photos) return;
+    root.append(n('p', '단계 사진 · 작업 전 ' + r.photos.before + ' · 원인 확인 ' + r.photos.cause + ' · 마무리 ' + r.photos.after + ' · 서류 PDF ' + r.documents, 'meta'));
+    if (r.warnings.length) { const w = n('p', '⚠ 빠진 단계(경고 — 검토는 막지 않습니다): ' + r.warnings.map(k => warnText[k] || k).join(', '), 'claim-line claim-warn'); w.dataset.claimWarnings = r.warnings.join(' '); root.append(w); }
   }
   function claimEditor(c = {}) {
     if (!owner() || !begin('claim', '보험 제출 준비 정보', c)) return;
@@ -195,7 +219,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     if (!owner() || !begin('review', '선택 자료 검토 확인', c)) return;
     const e = edit;
     fields.append(n('p', '프로젝트·업무 보고·선택 사진과 서류·금액의 현재 상태를 서버에서 묶어 기록합니다. 이후 관련 자료가 바뀌면 다시 검토해야 합니다. 보험 승인이나 실제 제출 완료를 뜻하지 않습니다.', 'notice'));
-    try { if (!await confirmedBundle(e)) return; const confirm = check(fields, 'reviewConfirm', '위 최신 내용과 원본 증빙을 직접 확인했습니다.'); confirm.required = true; save.textContent = '현재 자료 검토 기록'; save.disabled = false; msg.textContent = '다른 기기에서 내용이 바뀌면 다시 검토해야 합니다.'; }
+    try { const reviewed = await confirmedBundle(e); if (!reviewed) return; readinessLines(fields, reviewed.readiness || readiness(c)); const confirm = check(fields, 'reviewConfirm', '위 최신 내용과 원본 증빙을 직접 확인했습니다.'); confirm.required = true; save.textContent = '현재 자료 검토 기록'; save.disabled = false; msg.textContent = '다른 기기에서 내용이 바뀌면 다시 검토해야 합니다.'; }
     catch (error) { if (alive(e)) { e.blocked = true; report(error); } } finally { if (alive(e)) e.busy = false; }
   }
   async function submissionEditor(c) {

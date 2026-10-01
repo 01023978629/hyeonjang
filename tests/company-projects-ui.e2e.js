@@ -19,7 +19,12 @@ function mutate(name, content) {
     'retry-new-id': ['const r = await ctx.api(e.pending.action, e.pending.payload);', 'e.pending.payload.requestId=crypto.randomUUID(); const r = await ctx.api(e.pending.action, e.pending.payload);'],
     'claim-auto-submit': ["download(zip, '보험-제출준비.zip');", "ctx.api('claimSubmitRecord',{requestId:crypto.randomUUID(),revision:data().revision,entity:{id:c.id,submittedDate:localDay(),channel:'MUTANT',referenceNo:'MUTANT'}}); download(zip, '보험-제출준비.zip');"],
     'claim-no-recheck': ["if (!latest.reviewCurrent || latest.fingerprint !== bundle.fingerprint)", 'if (false)'],
-    'ignore-hash': ['bytes.length !== e.size || await sha(bytes) !== e.sha256', 'false']
+    'ignore-hash': ['bytes.length !== e.size || await sha(bytes) !== e.sha256', 'false'],
+    // [v333] 준비(검토 고정)와 제출 기록·무효 표시·단계 경고가 화면에서 사라지면 잡는다.
+    'stale-as-draft': ["c.reviewStale ? n('p', '✖ 준비 상태 무효", "false ? n('p', '✖ 준비 상태 무효"],
+    'no-stage-warning': ["if (r.warnings.length) { const w", "if (false) { const w"],
+    'zip-note-gone': ["row.append(b('내용·금액·사진 선택', () => claimEditor(c)), b('자료 검토 확인', () => reviewEditor(c)), zip, zipNote,", "row.append(b('내용·금액·사진 선택', () => claimEditor(c)), b('자료 검토 확인', () => reviewEditor(c)), zip,"],
+    'submission-as-ready': ["'claim-line claim-submitted'", "'claim-line claim-ready'"]
   };
   const pair = mutations[MUTANT]; assert(pair && content.includes(pair[0]), 'mutation anchor missing ' + MUTANT); hit = true;
   content = content.replace(pair[0], pair[1]);
@@ -101,6 +106,23 @@ async function run() {
     await h.page.getByRole('button', { name: '직접 제출한 사실 기록' }).click(); await h.page.fill('#xp-channel', '모의 직접 제출 경로'); await h.page.fill('#xp-referenceNo', 'TEST_RECEIPT'); await h.page.click('#projectSave'); await settle(h); assert.equal(h.store.claims[0].submissions.length, 1); assert(h.store.claims[0].submissions[0].snapshot);
     await h.close();
   });
+  await test('[v333] stage warnings, preparation vs manual submission are separate lines; changed data invalidates preparation', async () => {
+    const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s }); await h.login(); await claimReady(h);
+    const card = h.page.locator('#claimList article').first();
+    const warn = await card.locator('[data-claim-warnings]').getAttribute('data-claim-warnings');
+    assert.equal(warn, 'missing-before missing-cause missing-document', 'only an after photo was selected: before/cause/PDF are warned, review still allowed');
+    assert((await card.locator('[data-claim-warnings]').textContent()).includes('검토는 막지 않습니다'));
+    assert.equal(await card.locator('[data-claim-prep]').getAttribute('data-claim-prep'), 'ready'); assert((await card.locator('[data-claim-prep]').textContent()).includes('제출 준비 완료(검토 고정)'));
+    assert.equal(await card.locator('[data-claim-submission]').getAttribute('data-claim-submission'), 'none');
+    assert.equal(await card.locator('[data-zip-note]').textContent(), '다운로드는 제출 기록이 아닙니다'); assert(await card.locator('[data-zip-note]').isVisible());
+    const colors = await card.evaluate(el => [getComputedStyle(el.querySelector('[data-claim-prep]')).backgroundColor, getComputedStyle(el.querySelector('[data-claim-submission]')).backgroundColor]); assert.notEqual(colors[0], colors[1], 'preparation and submission lines use different colors');
+    await h.page.getByRole('button', { name: '직접 제출한 사실 기록' }).click(); await h.page.fill('#xp-channel', '모의 직접 제출 경로'); await h.page.fill('#xp-referenceNo', 'TEST_RECEIPT_V333'); await h.page.click('#projectSave'); await settle(h);
+    const rec = h.page.locator('#claimList article').first().locator('[data-claim-submission="record"]'); assert.equal(await rec.count(), 1); assert((await rec.textContent()).includes('TEST_RECEIPT_V333')); assert(await rec.evaluate(el => el.classList.contains('claim-submitted') && !el.classList.contains('claim-ready')));
+    h.store.tasks[0].handoff = '검토 뒤 바뀐 모의 보고'; h.store.revision++; await h.page.click('#refresh'); await h.page.waitForFunction(() => document.querySelector('#claimList [data-claim-prep]')?.dataset.claimPrep === 'stale');
+    assert((await h.page.textContent('#claimList [data-claim-prep]')).includes('준비 상태 무효 — 검토 뒤 자료가 바뀌었습니다'));
+    assert.equal(await h.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, '360px no overflow with new lines');
+    await h.close();
+  });
   await test('report change while original download in flight prevents stale ZIP', async () => {
     const s = seedTen(); s.tasks = [task()]; const h = await make({ store: s }); await h.login(); await claimReady(h); let downloads = 0, release;
     h.page.on('download', () => downloads++); h.holdEvidence = { promise: new Promise(r => { release = r; }) }; await h.page.getByRole('button', { name: '제출 준비 ZIP 받기' }).click();
@@ -129,7 +151,7 @@ async function run() {
   assert(!MUTANT || hit, 'mutation did not apply'); await browser.close(); console.log('company-projects-ui: ' + count + '/' + count + ' PASS');
 }
 if (process.argv.includes('--mutations')) {
-  const { spawnSync } = require('child_process'); for (const mode of ['batch-auto-save', 'retry-new-id', 'claim-auto-submit', 'claim-no-recheck', 'ignore-hash']) {
+  const { spawnSync } = require('child_process'); for (const mode of ['batch-auto-save', 'retry-new-id', 'claim-auto-submit', 'claim-no-recheck', 'ignore-hash', 'stale-as-draft', 'no-stage-warning', 'zip-note-gone', 'submission-as-ready']) {
     const r = spawnSync(process.execPath, [__filename], { env: { ...process.env, HJ_PROJECT_UI_MUTATION: mode }, timeout: 170000, encoding: 'utf8' }); assert(!r.error, String(r.error)); assert.notEqual(r.status, 0, mode + ' survived'); assert((r.stdout + r.stderr).includes('FAIL company-projects-ui'), mode + ' no assertion reached'); console.log('DETECTED ' + mode);
   }
 } else run().catch(async e => { console.error('FAIL company-projects-ui:', e.stack); if (browser) await browser.close().catch(() => {}); process.exitCode = 1; });

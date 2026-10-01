@@ -12156,7 +12156,7 @@ async function officeIntakeFlush(){
       if(item.blocked===true&&!officeIntakeAcceptBlockRecoverable(item)){failed=true;break;}
       try{
         const res=item.blocked===true?{ok:false,error:'photos-pending',status:item.blockedStatus||''}:await officeIntakeSendQueuedItem(item);
-        if(res&&res.ok===true){if(item.action==='officeAccept')officeIntakeApplyAcceptResult(item,res);d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
+        if(res&&res.ok===true){if(item.action==='officeAccept')officeIntakeApplyAcceptResult(item,res);officeReportAck(item,res);d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;changed=true;continue;}
         if(item.action==='officeAccept'&&String(res&&res.error||'')==='photos-pending'){
           const recovered=await officeIntakeRecoverQueuedAccept(item,res);changed=true;
           if(recovered&&recovered.ok){d.outbox=d.outbox.filter(function(x){return x!==item&&x.id!==item.id;});sent++;continue;}
@@ -12167,13 +12167,13 @@ async function officeIntakeFlush(){
         if(item.action==='officeAccept'){officeIntakeClassifyQueuedAcceptFailure(item,res);changed=true;failed=true;break;}
         if(item.action==='officeSetStatus'&&String(res&&res.error||'')==='invalid-completion-photos'){
           if(officeIntakeSupersedeInFlightCompletion(d,item,pending)){changed=true;break;}
-          item.attempts=(Number(item.attempts)||0)+1;item.lastError='완료 사진 선택 또는 manifest 수정이 필요합니다';item.blocked=true;item.blockedCode='invalid-completion-photos';item.blockedAt=new Date().toISOString();changed=true;failed=true;break;
+          item.attempts=(Number(item.attempts)||0)+1;item.lastError='완료 사진 선택 또는 manifest 수정이 필요합니다';item.blocked=true;item.blockedCode='invalid-completion-photos';item.blockedAt=new Date().toISOString();officeReportFailed(item,'invalid-completion-photos');changed=true;failed=true;break;
         }
-        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(res);d.lastError=item.lastError;changed=true;failed=true;
+        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(res);d.lastError=item.lastError;officeReportFailed(item,res&&res.error);changed=true;failed=true;
         break;
       }catch(e){
         if(item.action==='officeAccept'){officeIntakeClassifyQueuedAcceptFailure(item,e);changed=true;failed=true;break;}
-        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(e);d.lastError=item.lastError;changed=true;failed=true;
+        item.attempts=(Number(item.attempts)||0)+1;item.lastError=officeIntakeError(e);d.lastError=item.lastError;officeReportFailed(item,'network');changed=true;failed=true;
         break;
       }
     }
@@ -12292,6 +12292,114 @@ function officeIntakeCompletionPayload(order){
   const amount=order&&order.publicAmount;
   return {summary:summary,photoIds:available,publicPhotoIds:publicIds,publicAmount:amount==null?null:num(amount)};
 }
+/* [v333] 관리사무소 완료 보고 — 보내기 전 점검과 '준비 · 전송 대기 · 접수 확인' 기록.
+   예전에는 빠진 사진을 서버가 막은 뒤에야 알았고, '보냈다'는 전송 대기열(outbox)에서 빠진 것으로만 암시됐다.
+   기록은 오더 안 officeReport 에 남긴다(직렬화 최상위 키 그대로). 서버로 가는 payload.completionReport 와 다른 것이다.
+   🔴 sentAt 은 관리사무소 서버가 ok:true 로 답한 때(officeIntakeFlush)에만 적는다 — 대기열에 넣은 것은 '보냈다'가 아니다. */
+const OFFICE_REPORT_STATUSES=['completed','billed','paid'];
+// 서버가 완료 사진을 막을 때(invalid-completion-photos) 화면에 띄우는 말과 같은 말 — 점검표와 운영 오류 줄이 다르게 말하지 않게 한 곳에 둔다.
+const OFFICE_COMPLETION_PHOTO_BLOCK_LABEL='완료 사진 선택 또는 manifest 수정 필요';
+function officeCompletionPhotoPool(o){
+  const list=[],seen=new Set(),add=function(f){if(f&&f.kind==='photo'&&!seen.has(f)){seen.add(f);list.push(f);}};
+  try{aptPhotoList(o).forEach(add);}catch(e){}
+  const intake=new Set((Array.isArray(o&&o.intakePhotoIds)?o.intakePhotoIds:[]).map(String));
+  if(intake.size)(state.files||[]).forEach(function(f){if(f&&intake.has(String(f._driveId||'')))add(f);});
+  return list;
+}
+// 점검은 판정만 한다 — 아무것도 고치거나 보내지 않는다. 사진 공정은 hjPhaseHit 한 곳(전후 갤러리·후기 재료·보증서와 같은 쪽)으로 본다.
+function officeCompletionChecklist(o){
+  const pool=officeCompletionPhotoPool(o);
+  const before=pool.filter(function(f){return hjPhaseHit(f,PHASE_BEFORE);}).length,after=pool.filter(function(f){return hjPhaseHit(f,PHASE_AFTER);}).length;
+  const report=officeIntakeCompletionPayload(o),available=new Set(officeIntakeAvailablePhotoIds(o).map(String));
+  const items=[];
+  items.push({key:'before',ok:before>0,label:'시공 전 사진 1장 이상',detail:before?before+'장':'공정이 「시공 전」(철거·기존·바탕 등)인 이 동·호수 사진이 없습니다 — 사진 탭에서 공정을 붙이세요'});
+  items.push({key:'after',ok:after>0,label:'시공 후(완료) 사진 1장 이상',detail:after?after+'장':'공정이 「완료」(마감·완공·청소 등)인 이 동·호수 사진이 없습니다 — 사진 탭에서 공정을 붙이세요'});
+  items.push({key:'summary',ok:!!String(report.summary||'').trim(),label:'작업 내용 한 줄',detail:String(report.summary||'').trim()?'있음':'공개 완료 메모와 작업 내용이 모두 비어 있습니다'});
+  if(o&&o.publicAmount!=null)items.push({key:'amount',ok:num(o.publicAmount)>0,label:'공개 금액 값',detail:num(o.publicAmount)>0?won(num(o.publicAmount)):'공개 금액이 0원입니다 — 비공개로 두려면 칸을 비우세요'});
+  const chosen=[...new Set((Array.isArray(o&&o.publicPhotoIds)?o.publicPhotoIds:[]).map(function(v){return String(v||'').trim();}).filter(Boolean))];
+  if(chosen.length){
+    const lost=chosen.filter(function(id){return !available.has(id)||!(state.files||[]).some(function(f){return f&&String(f._driveId||'')===id;});});
+    items.push({key:'publicPhotos',ok:!lost.length,label:'고른 공개 사진이 실제로 있고 업로드 완료',detail:lost.length?OFFICE_COMPLETION_PHOTO_BLOCK_LABEL+' — 고른 사진 '+lost.length+'장이 이 오더의 업로드 완료 사진 목록에 없습니다(지워졌거나 업로드 전·다른 동·호수)':chosen.length+'장'});
+  }
+  const missing=items.filter(function(x){return !x.ok;});
+  return {items:items,missing:missing,ok:!missing.length};
+}
+function officeReportOf(o){if(!o.officeReport||typeof o.officeReport!=='object'||Array.isArray(o.officeReport))o.officeReport={};return o.officeReport;}
+function officeReportPrepared(o,check,forced){
+  if(!o||o.source!=='office-intake')return;
+  const r=officeReportOf(o);r.preparedAt=new Date().toISOString();
+  r.checklist={ok:!!(check&&check.ok),missing:(check&&check.missing||[]).map(function(x){return x.key;}),forced:!!forced};
+  officeIntakeMarkDirty();
+}
+// 대기열에 넣은 때 — '전송 대기'. 보낸 것이 아니다.
+function officeReportQueued(o,item){
+  const p=item&&item.payload||{};if(!o||!item||item.action!=='officeSetStatus'||!OFFICE_REPORT_STATUSES.includes(String(p.status||'')))return false;
+  const r=officeReportOf(o),rev=officeIntakeProjectionRevision(p.projectionRevision);
+  if(r.queuedRevision===rev&&r.queuedAt)return false;
+  r.queuedAt=new Date().toISOString();r.queuedRevision=rev;return true;
+}
+// 관리사무소 서버가 ok:true 로 답했을 때만 부른다(officeIntakeFlush). 같은 접수번호의 모든 로컬 오더에 적는다(옛 동기화 실패로 남은 사본 포함).
+function officeReportAck(item,res){
+  const p=item&&item.payload||{};
+  if(!item||item.action!=='officeSetStatus'||!res||res.ok!==true||!OFFICE_REPORT_STATUSES.includes(String(p.status||'')))return false;
+  const rev=officeIntakeProjectionRevision(p.projectionRevision),at=new Date().toISOString();let hit=false;
+  (state.aptOrders||[]).forEach(function(o){
+    if(!o||String(o.sourceRequestId||'')!==String(p.requestId||''))return;
+    const r=officeReportOf(o);if(r.sentAt&&rev<(Number(r.sentRevision)||0))return;
+    r.sentAt=at;r.sentRevision=rev;r.sentStatus=String(p.status);
+    r.serverReceipt={receiptNo:String(res.receiptNo||'').slice(0,80),status:String(res.status||'').slice(0,40),projectionRevision:officeIntakeProjectionRevision(res.projectionRevision),updatedAt:String(res.updatedAt||'').slice(0,40)};
+    delete r.failedAt;delete r.failCode;hit=true;
+  });
+  return hit;
+}
+function officeReportFailed(item,code){
+  const p=item&&item.payload||{};if(!item||item.action!=='officeSetStatus'||!OFFICE_REPORT_STATUSES.includes(String(p.status||'')))return false;
+  const raw=String(code||'sync-error').toLowerCase(),safe=/^[a-z0-9_-]{1,60}$/.test(raw)?raw:'sync-error',at=new Date().toISOString();let hit=false;
+  (state.aptOrders||[]).forEach(function(o){if(o&&String(o.sourceRequestId||'')===String(p.requestId||'')){const r=officeReportOf(o);r.failedAt=at;r.failCode=safe;hit=true;}});
+  return hit;
+}
+function officeReportClock(iso){
+  const d=new Date(iso);if(!iso||isNaN(d))return '';
+  const hm=pad(d.getHours())+':'+pad(d.getMinutes());
+  return localDate(d)===localDate()?hm:(d.getMonth()+1)+'/'+d.getDate()+' '+hm;
+}
+// 화면 표시용 판정 — 대기열(지금 상태)과 기록(officeReport)을 같이 본다.
+function officeReportView(o){
+  if(!o||o.source!=='office-intake'||!o.sourceRequestId||!aptOrderCompleted(o))return null;
+  const r=o.officeReport&&typeof o.officeReport==='object'?o.officeReport:{},id=String(o.sourceRequestId);
+  const pend=(officeIntakeData().outbox||[]).filter(function(item){return item&&item.action==='officeSetStatus'&&item.payload&&String(item.payload.requestId||'')===id&&OFFICE_REPORT_STATUSES.includes(String(item.payload.status||''));});
+  const sent=!pend.length&&!!r.sentAt&&(Number(r.sentRevision)||0)>=(Number(r.queuedRevision)||0);
+  let fail='';
+  const blocked=pend.find(function(item){return item.blocked===true;}),errored=pend.find(function(item){return (Number(item.attempts)||0)>0&&item.lastError;});
+  if(blocked)fail='⛔ 관리사무소 서버가 막음 — '+(blocked.blockedCode==='invalid-completion-photos'?OFFICE_COMPLETION_PHOTO_BLOCK_LABEL:'확인 필요')+' ['+String(blocked.blockedCode||'blocked')+']';
+  else if(errored)fail='⚠️ 전송 실패 — '+String(errored.lastError)+' · [다시 동기화]로 다시 보냅니다';
+  return {prepared:!!(r.preparedAt||r.queuedAt||r.sentAt||pend.length),queued:pend.length>0,sent:sent,sentAt:sent?r.sentAt:'',receiptNo:sent&&r.serverReceipt?r.serverReceipt.receiptNo:'',fail:fail,
+    unconfirmed:!pend.length&&!sent,forced:!!(r.checklist&&r.checklist.forced),missing:r.checklist&&Array.isArray(r.checklist.missing)?r.checklist.missing:[]};
+}
+function officeReportBadgesHtml(o){
+  const v=officeReportView(o);if(!v)return '';
+  const badge=function(stage,on,text){return '<span data-office-report-stage="'+stage+'" data-on="'+(on?'1':'0')+'" style="font-size:11px;border-radius:20px;padding:2px 8px;border:1px solid '+(on?'#0a7f43':'var(--line-soft)')+';color:'+(on?'#0a7f43':'var(--muted)')+';font-weight:'+(on?'700':'400')+'">'+text+'</span>';};
+  return '<div data-office-report="'+escapeAttr(o.id)+'" style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">'+
+    badge('prepared',v.prepared,'📝 준비됨'+(v.forced?' (빠진 항목 있음)':''))+
+    badge('queued',v.queued,'⏳ 전송 대기')+
+    badge('sent',v.sent,v.sent?'✅ 관리사무소 접수 확인 '+escapeHtml(officeReportClock(v.sentAt)):'✅ 관리사무소 접수 확인 전')+
+    (v.fail?'<div data-office-report-fail style="flex-basis:100%;font-size:11.5px;color:#b91c1c;font-weight:700">'+escapeHtml(v.fail)+'</div>':'')+
+    (v.unconfirmed&&v.prepared?'<div style="flex-basis:100%;font-size:11px;color:var(--muted)">이 폰에 관리사무소 서버의 접수 확인 기록이 없습니다 — 보냈다고 보지 마세요</div>':'')+
+    '</div>';
+}
+function officeCompletionChecklistHtml(o){
+  const chk=officeCompletionChecklist(o);
+  return '<div data-office-checklist="'+escapeAttr(o.id)+'" style="font-size:11.5px;line-height:1.5;border:1px solid '+(chk.ok?'var(--line-soft)':'#fdba74')+';border-radius:8px;padding:6px 8px"><b>보내기 전 점검</b>'+
+    chk.items.map(function(x){return '<div data-check-key="'+x.key+'" data-ok="'+(x.ok?'1':'0')+'" style="color:'+(x.ok?'inherit':'#b91c1c')+'">'+(x.ok?'✓ ':'✗ ')+escapeHtml(x.label)+' — '+escapeHtml(x.detail)+'</div>';}).join('')+'</div>';
+}
+function officeCompletionCheckDialog(o,chk,onSend,onCancel){
+  const body='<div style="font-size:13px;line-height:1.6"><div style="margin-bottom:8px"><b>'+escapeHtml(aptOfficeName(o.officeId)+' · '+(o.unit||''))+'</b> 완료 보고에 빠진 것이 '+chk.missing.length+'개 있습니다.</div>'+
+    chk.missing.map(function(x){return '<div data-missing-key="'+x.key+'" style="color:#b91c1c;margin:4px 0">✗ '+escapeHtml(x.label)+'<br><span style="font-size:12px">'+escapeHtml(x.detail)+'</span></div>';}).join('')+
+    '<div style="font-size:12px;color:var(--muted);margin-top:8px">완료로 바꾸면 관리사무소 보고가 전송 대기열에 들어갑니다. 관리사무소 서버가 받았다는 답을 받아야 「✅ 관리사무소 접수 확인」이 켜집니다. 서버가 사진을 막으면 「'+OFFICE_COMPLETION_PHOTO_BLOCK_LABEL+'」로 표시됩니다.</div></div>';
+  openModal('📋 관리사무소 완료 보고 — 보내기 전 점검',body,[
+    {label:'취소 (완료 안 함)',cls:'ghost',fn:function(){closeModal();if(onCancel)onCancel();}},
+    {label:'그래도 보내기',cls:'clay',fn:function(){if(!confirm('빠진 항목 '+chk.missing.length+'개가 있는 채로 완료 처리하고 관리사무소 보고를 전송 대기에 넣을까요?'))return;closeModal();onSend();}}]);
+}
 function officeIntakeRequestMaxProjectionRevision(requestId){
   const id=String(requestId||'');let max=0;
   (state.aptOrders||[]).forEach(function(order){if(order&&String(order.sourceRequestId||'')===id)max=Math.max(max,officeIntakeProjectionRevision(order.officeProjectionRevision));});
@@ -12313,7 +12421,8 @@ function officeIntakeProjectionPayload(order){
 }
 function officeIntakeQueueOrderStatus(order,silent){
   if(!order||order.source!=='office-intake'||!order.sourceRequestId)return;
-  officeIntakeQueue('officeSetStatus',officeIntakeProjectionPayload(order),silent);
+  const item=officeIntakeQueue('officeSetStatus',officeIntakeProjectionPayload(order),silent);
+  if(officeReportQueued(order,item)&&!silent)officeIntakeMarkDirty();
 }
 function officeIntakeQueueOrderStatuses(orders){let queued=0;(orders||[]).forEach(function(order){const before=officeIntakeData().outbox.length;officeIntakeQueueOrderStatus(order,true);if(officeIntakeData().outbox.length>before)queued++;});return queued;}
 function officeIntakeQueueCommittedOrderStatus(order){
@@ -13161,14 +13270,14 @@ function officeIntakeCompletionControls(o){
   if(!o||o.source!=='office-intake'||!o.sourceRequestId)return '';
   const allowed=officeIntakeAvailablePhotoIds(o);
   const chosen=new Set(Array.isArray(o.publicPhotoIds)?o.publicPhotoIds:[]);
-  return '<details style="margin-top:7px;border-top:1px dashed var(--line-soft);padding-top:6px"><summary style="font-size:11.5px;cursor:pointer">관리사무소 공개 완료 보고 (기본 비공개)</summary><div style="display:grid;gap:6px;margin-top:7px"><label style="font-size:11.5px">공개 금액(원 · 비우면 비공개)<input class="apoPublicAmount" data-id="'+escapeAttr(o.id)+'" inputmode="numeric" value="'+escapeAttr(o.publicAmount==null?'':String(o.publicAmount))+'" style="display:block;width:100%;padding:7px;margin-top:3px"></label><label style="font-size:11.5px">공개 완료 메모 (최대 800자)<textarea class="apoCompletionSummary" data-id="'+escapeAttr(o.id)+'" maxlength="800" style="display:block;width:100%;min-height:48px;padding:7px;margin-top:3px" placeholder="고객 연락처·내부 원가 없이 입력">'+escapeHtml(o.completionSummary||'')+'</textarea></label>'+(allowed.length?'<div style="font-size:11.5px">공개 사진 선택 (접수 사진 또는 서버 규격에 맞는 연결 현장 사진)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'+allowed.map(function(id,index){const f=(state.files||[]).find(function(file){return file&&file._driveId===id;});const label=(index+1)+'번 '+String(f&&f.name||'현장 사진');return '<label style="font-size:11px"><input class="apoPublicPhoto" data-id="'+escapeAttr(o.id)+'" value="'+escapeAttr(id)+'" aria-label="'+escapeAttr(label)+' 공개" type="checkbox"'+(chosen.has(id)?' checked':'')+'> '+escapeHtml(label)+'</label>';}).join('')+'</div></div>':'<div style="font-size:11px;color:var(--muted)">공개 가능한 접수·현장 사진이 없습니다.</div>')+'</div></details>';
+  return officeReportBadgesHtml(o)+'<details style="margin-top:7px;border-top:1px dashed var(--line-soft);padding-top:6px"><summary style="font-size:11.5px;cursor:pointer">관리사무소 공개 완료 보고 (기본 비공개)</summary><div style="display:grid;gap:6px;margin-top:7px">'+officeCompletionChecklistHtml(o)+'<label style="font-size:11.5px">공개 금액(원 · 비우면 비공개)<input class="apoPublicAmount" data-id="'+escapeAttr(o.id)+'" inputmode="numeric" value="'+escapeAttr(o.publicAmount==null?'':String(o.publicAmount))+'" style="display:block;width:100%;padding:7px;margin-top:3px"></label><label style="font-size:11.5px">공개 완료 메모 (최대 800자)<textarea class="apoCompletionSummary" data-id="'+escapeAttr(o.id)+'" maxlength="800" style="display:block;width:100%;min-height:48px;padding:7px;margin-top:3px" placeholder="고객 연락처·내부 원가 없이 입력">'+escapeHtml(o.completionSummary||'')+'</textarea></label>'+(allowed.length?'<div style="font-size:11.5px">공개 사진 선택 (접수 사진 또는 서버 규격에 맞는 연결 현장 사진)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'+allowed.map(function(id,index){const f=(state.files||[]).find(function(file){return file&&file._driveId===id;});const label=(index+1)+'번 '+String(f&&f.name||'현장 사진');return '<label style="font-size:11px"><input class="apoPublicPhoto" data-id="'+escapeAttr(o.id)+'" value="'+escapeAttr(id)+'" aria-label="'+escapeAttr(label)+' 공개" type="checkbox"'+(chosen.has(id)?' checked':'')+'> '+escapeHtml(label)+'</label>';}).join('')+'</div></div>':'<div style="font-size:11px;color:var(--muted)">공개 가능한 접수·현장 사진이 없습니다.</div>')+'</div></details>';
 }
 function officeIntakeOperationalErrorHtml(){
   const rows=officeIntakeData().operationalErrors||[];
   const blocked=(officeIntakeData().outbox||[]).filter(function(item){return item&&item.blocked===true&&(item.blockedCode==='invalid-completion-photos'||item.blockedCode==='photos-pending'||String(item.blockedCode||'').indexOf('accept-')===0);});
   if(!rows.length&&!blocked.length)return '';
   const messages=rows.map(function(row){return escapeHtml([row.code,row.receiptNo||row.requestId,row.at].filter(Boolean).join(' · '));});
-  blocked.forEach(function(item){let label='완료 사진 선택 또는 manifest 수정 필요';if(item.blockedCode==='photos-pending')label='접수 사진 업로드 확인 후 다시 동기화 필요';else if(item.blockedCode==='accept-auth-error')label='중계 서버 인증·설정 확인 후 다시 동기화 필요';else if(item.blockedCode==='accept-invalid-input')label='접수 연결 정보 입력 오류 · 앱 업데이트 확인 필요';else if(item.blockedCode==='accept-sync-error')label='접수 등록 응답 확인 후 다시 동기화 필요';messages.push(label+' ['+escapeHtml(String(item.blockedCode||'blocked'))+'] · '+escapeHtml(String(item.payload&&item.payload.requestId||'')));});
+  blocked.forEach(function(item){let label=OFFICE_COMPLETION_PHOTO_BLOCK_LABEL;if(item.blockedCode==='photos-pending')label='접수 사진 업로드 확인 후 다시 동기화 필요';else if(item.blockedCode==='accept-auth-error')label='중계 서버 인증·설정 확인 후 다시 동기화 필요';else if(item.blockedCode==='accept-invalid-input')label='접수 연결 정보 입력 오류 · 앱 업데이트 확인 필요';else if(item.blockedCode==='accept-sync-error')label='접수 등록 응답 확인 후 다시 동기화 필요';messages.push(label+' ['+escapeHtml(String(item.blockedCode||'blocked'))+'] · '+escapeHtml(String(item.payload&&item.payload.requestId||'')));});
   return '<div style="margin:8px 0;padding:7px 8px;border:1px solid #fdba74;border-radius:8px;font-size:11px;color:#9a3412">동기화 운영 오류 '+messages.join('<br>')+'</div>';
 }
 function aptOrderManage(filterOffice){
@@ -13315,7 +13424,14 @@ function aptOrderManage(filterOffice){
       if(entered===null)return;visitDate=String(entered).trim();if(!isRealIsoDate(visitDate)){toast('방문 날짜를 YYYY-MM-DD로 입력하세요');return;}
     }
     if(target==='done'){
-      try{await persistAptDoneTransition(o.id,localDate());aptOrderManage(filterOffice||o.officeId);toast('완료 처리됨');}catch(error){toast('완료 저장 실패: '+(error.message||error));}return;
+      // 관리사무소 접수 오더는 완료가 곧 관리사무소 보고다 — 빠진 사진·내용을 먼저 보여 주고, [그래도 보내기]는 확인 뒤에만.
+      const intake=o.source==='office-intake'&&!!o.sourceRequestId,chk=intake?officeCompletionChecklist(o):null;
+      const finish=async function(forced){
+        try{await persistAptDoneTransition(o.id,localDate());const live=(state.aptOrders||[]).find(x=>x.id===o.id);if(intake&&live)officeReportPrepared(live,chk,forced);aptOrderManage(filterOffice||o.officeId);toast(intake?'완료 처리됨 — 관리사무소 보고는 전송 대기(서버 확인 전)':'완료 처리됨');}
+        catch(error){toast('완료 저장 실패: '+(error.message||error));}
+      };
+      if(chk&&chk.missing.length){officeCompletionCheckDialog(o,chk,function(){finish(true);},function(){aptOrderManage(filterOffice||o.officeId);});return;}
+      await finish(false);return;
     }
     const succeed=function(order){aptOrderManage(filterOffice||o.officeId);aptFocusOrder(order.id);toast(APT_STAT[target][0]+' 처리됨');};
     await startAptPaidTransitionFromRow({order:o,targetState:target,visitDate,select:s,onSuccess:succeed});
