@@ -74,6 +74,38 @@ v328 과 같은 PR(#162)에 얹었다. 작업 트리 6개에서 구현 → 적�
 - 대표 확인 대기: ① 서명 계약서 제4조가 '공사기간은 2026-10-05 ~ 2026-10-09.' 로 끝난다(다듬으려면 manmool 서버 수정·수동 배포) ② 부가세 표기 없는 엑셀·PDF 견적은 보낼 때마다 포함/별도를 고른다 ③ 사진 묶음 제목의 현장명 ④ 묶음 사진 화질(긴 변 1800)이 외주팀에 충분한지.
 
 ## 2026-09-25 관리사무소 작업 안내 v327 (배포됨 #161 · Pages #177)
+## 2026-09-28 아파트 프로젝트·동호수 사진 정리 v331
+
+- `aptProject*`: 아파트명을 프로젝트로, 동·호수/공용부를 `aptUnits`로 등록한다. PC/사진/아파트 관리 진입점과 미리보기·백업 다운로드 제공. 상세 `APARTMENT-PROJECTS-v331.md`.
+- 기존 사진 전용 프로젝트만 명시 확인 후 연결을 옮기고 원래 프로젝트는 보관한다. 금융/고객/업무 참조·완료일·보증 기준·중복·손상 데이터는 자동 통합 금지. 원본 경로/파일/Drive/해시 유지.
+- 전체 상태 비교 + `aptUnitMutation`/`durableLocalMutation` 안전판·CAS 경로 필수. 서버 전송/완료보고/보험 제출은 하지 않는다. `apartment-projects.e2e.js` 및 metadata/financial/stale 변이를 검증한다.
+- v330 웹은 PR #163, main `f1d86bf`, Pages 실행 `36328490599`로 배포 확인됨. 별도 직원 서버는 소스 준비만 됐고 Google 승인·대표 계정 연결·웹앱 배포는 미완료다. 이 작업이 해당 계정을 임의로 활성화하지 않는다.
+
+## 2026-09-27 프로젝트 사진·보험 제출 준비 v330 (웹 배포, 별도 서버 승인 대기)
+
+- 사용자 목적: 10명 기술자의 업무 배정/진행 → 프로젝트 사진 수집 → 보험 제출 준비. `team.html`의 기술자 일정 / 프로젝트 사진 / 보험 제출 준비를 추가했다. 웹 배포와 비공개 저장소 준비는 확인됐지만 실제 직원 계정 연결·서버 활성화·보험사 제출은 미진행이다. 상세 `TEAM-PROJECT-CLAIMS-v330.md`.
+- 서버 health `company-team-v3`, 신규 `TeamProjects.gs`, `TeamEvidence.gs`. 원본 JPG/PNG/WebP 12MiB, 대표 문서 PDF. 회사 JSON 및 첨부 폴더/파일의 비공개·부모 검증을 유지한다. 원본 UUID별 영속 의도+원본 재사용, revision 변경 때도 evidence UUID를 버리지 않는다.
+- 10건 배정은 한 snapshot에 원자 저장, 기술자 교차팀 시간 중복 차단. 새 projectId 명시 연결, 사진이 있는 업무 재귀속 차단. 기존 자유문자 프로젝트 이름으로 자동 이관하지 않는다.
+- 보험은 owner만 관리. 자료 검토 및 수동 제출 기록은 서버 fingerprint/snapshot + 클라이언트 expectedFingerprint에 묶인다. 다운로드가 제출을 기록해서는 안 된다. 과거 제출 기록은 현재/이전 자료 기준을 표시한다. 실제 보험사 API는 없다.
+- 신규 `team-projects.js`, `team-packet.js`는 Pages 허용목록에만 추가하고 SW 캐시에서는 제외한다. 세션/사진/금융 데이터 localStorage 금지. 신규 unit/e2e 및 변이 뒤 최종 필터 없는 `node tests/run-all.js`가 필수다.
+
+## 2026-09-27 직원 작업실 v329 (로컬 구현·미배포)
+
+- 사용자 정정: 조직도 자체가 아니라 소속·역할에 따라 각자 일하는 페이지가 핵심. `team.html`의 내 업무 / 팀별 작업실 / 검수·승인 / 운영 관리가 주 동선, 직원·팀 설정과 변경 이력은 대표 보조 메뉴다. 상세 `TEAM-WORKSPACES-v329.md`.
+- 경로는 `#mine`, `#teams`, `#team/<opaque ID>`, `#review`, `#operations`, `#settings`, `#audit`만. 현장명·검색어·보고는 URL이나 localStorage에 저장하지 않는다. 접근 권한 재검증, 작성 중 이동 차단, 필터 초기화·포커스 복귀를 유지한다.
+- `task.history`는 서버 생성 append-only, 동일값 저장/동일 requestId 재시도에는 누적하지 않는다. legacy 최초 변경은 마지막 보고 baseline만 보존(과거 전체 복원 아님). 100건이면 새 변경 중단, 기존 이력 삭제 금지. 서버 전체 4M 문자 제한 유지. 재배정받은 직원도 해당 업무 과거 보고를 읽는 계약이다.
+- 팀장은 소속 팀만, 직원·외주는 본인 배정만. 직원의 완료업무는 조회 전용. 보완 요청(review→doing)은 새 사유가 필수. 금액/사진/기존 공용 접근 권한은 이 작업실에 자동 연동하지 않는다. 실제 직원 연결과 배포는 여전히 미진행이다.
+
+## 2026-09-27 팀별 운영 v328 (로컬 구현·미배포)
+
+- `team.html` + `team-ui.js` + 빈 `team-config.js`: 별도 직원 업무 화면. `apps-script-team-ops/`는 별도 서버이며 기존 릴레이/관리사무소 포털에 합치지 않는다. 실제 설치·회사 신원·구성원 연결은 미진행. `TEAM-OPERATIONS-v328.md`와 서버 README를 읽고 운영 경계를 유지한다.
+- 기본 팀은 대표·관리 / 누수·배관팀 / 인테리어팀 / 관리사무소 대응팀(사용자 확인). 회사 owner/lead/member/external 권한은 포털 역할과 분리. 고객 아파트 포털을 회사 신원 단지로 사용하지 않는다. 과거 APP_TOKEN 접근은 별도 승인된 전환 없이는 차단됐다고 주장하지 않는다.
+- 기존 업무는 JSON 초안으로 개별 검토 이관. 자동 삭제/양방향 동기화/실계정 생성 없음. 회사 서버의 immutable snapshots + revision + requestId를 보존하며 public stage에 서버 소스/데이터를 넣지 않는다. 직원 페이지는 SW 캐시에서 제외한다.
+- `operations-review.js`: 세대 `lifecycle`, 프로젝트 `costReview`만 중첩 저장. 날짜/원가 CAS·스냅샷 실패 중단. 보증서 HTML·서명 링크·직접 서명·발급 기록은 같은 날짜/기간 snapshot을 따른다. 기존 서명에 snapshot이 없으면 종전 방식이다.
+- `media-safety.js` 현장별 100건 원본 일괄 점검 + 완료 영수증 IDB 원자 보관. 서버 `MediaRelay.gs` archive는 기본 OFF, 회사 전용 폴더로 명시 설정한 경우만 사용. 영수증과 과거 snapshot을 지워 중복 전송 방어를 약화하지 않는다.
+- 신규 검사: `company-team.unit`, `company-team-ui.e2e`, `operations-review.e2e`, `media-batch-audit.e2e`, `media-journal-archive.unit`. 관련 환경 변수의 변이는 각 파일에서 확인한다. 배포 게이트는 여전히 필터 없는 `node tests/run-all.js` 전체 재실행이다.
+
+## 2026-09-25 관리사무소 작업 안내 v327 (PR 후보)
 
 대표 요청 "관리사무소에 작업 가능한 작업 리스트를 보여 줄 수 있는 창". 더보기(고객·영업) 「📋 관리사무소 작업 안내」
 (`officeWorkListView`, 행동 계약 **118→119**). 담당자에게 폰으로 보여 주거나(📺 크게 보기 = 새 창 30px 글씨) 카톡으로

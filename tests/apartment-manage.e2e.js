@@ -142,7 +142,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     // 위임이 아니라 정적 탭 배선이지만, 클릭이 실제로 화면을 바꾸는지가 핵심이다
     await tab.click();
     await page.waitForFunction(() => state.tab === 'aptmgmt');
-    await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
+    await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.tab[data-tab="aptmgmt"]').getAttribute('aria-selected'), 'true');
 
     const heads = await page.locator('#view .cust-card:not(#aptOthers) .cust-h').allInnerTexts();
@@ -166,11 +166,11 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
   await scenario('일괄 등록은 미리보기를 거친다 · 취소하면 자료가 그대로다', async (test) => {
     const { page } = test;
     await page.locator('.tab[data-tab="aptmgmt"]').click();
-    await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
+    await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
     const before = await units(page);
     assert.deepEqual(before.map(u => u[1]), [0, 0, 0, 0, 0, 1, 0, 0, 0, 0], '누르기 전에는 아무것도 등록돼 있지 않다');
 
-    await page.locator('#view [data-aptbulk]').click();
+    await page.locator('#view [data-aptbulk="1"]').click();
     await page.locator('#aptBulkPanel').waitFor({ state: 'visible' });
     const preview = await page.locator('#aptBulkPanel').innerText();
     assert.match(preview, /4곳을 등록합니다/, '동명·보관·기등록·형식만같은현장을 뺀 4곳만');
@@ -187,7 +187,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
   await scenario('등록하면 이름에서 읽은 동·호수만 들어간다 · 두 번 눌러도 중복이 없다', async (test) => {
     const { page } = test;
     await page.locator('.tab[data-tab="aptmgmt"]').click();
-    await page.locator('#view [data-aptbulk]').click();
+    await page.locator('#view [data-aptbulk="1"]').click();
     await page.locator('#aptBulkSave').click();
     await page.waitForFunction(() => !document.querySelector('#aptBulkPanel'));
 
@@ -240,7 +240,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
   await scenario('관리사무소 — 미등록이면 그 자리에서 등록하고, 등록되면 오더 상태를 요약해 보여준다', async (test) => {
     const { page } = test;
     await page.locator('.tab[data-tab="aptmgmt"]').click();
-    await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
+    await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
 
     // 가상선비마을3단지는 관리사무소가 없다 — 그 카드에 등록 버튼이 있어야 한다
     const card = page.locator('#view .cust-card:not(#aptOthers)').filter({ hasText: '가상선비마을3단지' });
@@ -282,7 +282,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     assert(await page.locator('.tab[data-tab="aptmgmt"]').isHidden(), '폰에서 상단 탭은 숨는다');
     assert(await page.evaluate(() => MORE_NAV_SHORTCUTS.some(s => s.tab === 'aptmgmt')), '더보기에 아파트 관리가 있어야 폰에서 닿는다');
     await page.evaluate(() => { state.tab = 'aptmgmt'; render(); syncMobileNav(); });
-    await page.locator('#view [data-aptbulk]').waitFor({ state: 'visible' });
+    await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
     const nodes = await page.locator('#view button:visible').evaluateAll(els => els.map(el => {
       const r = el.getBoundingClientRect(); return { t: el.textContent.trim().slice(0, 12), w: r.width, h: r.height };
     }));

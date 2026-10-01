@@ -18,7 +18,7 @@ const out = path.join(temp, '_site');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 여기에 안 적으면 저장소에는 있는데 Pages 에
 // 안 올라가고, 그건 폰에서 설치할 때에만 드러난다. 늘릴 때는 왜 늘렸는지 여기에 적어라.
 const expected = ['.nojekyll', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
-  'index.html', 'media-safety.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'terms.html'];
+  'index.html', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
   'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
@@ -425,13 +425,18 @@ try {
   assert(JSON.stringify(files) === JSON.stringify(expected),
     '공개 산출물이 허용목록과 다르다\nwant: ' + expected.join(', ') + '\n got: ' + files.join(', '));
   assert(!fs.existsSync(path.join(out, 'backup', 'index_v104_original.html')), '공개 백업 HTML이 산출물에 포함됐다');
-  assert(!fs.existsSync(path.join(out, 'tests')) && !fs.existsSync(path.join(out, 'apps-script')), '내부 테스트/서버 소스가 산출물에 포함됐다');
+  assert(!fs.existsSync(path.join(out, 'tests')) && !fs.existsSync(path.join(out, 'apps-script')) && !fs.existsSync(path.join(out,'apps-script-team-ops')), '내부 테스트/서버 소스가 산출물에 포함됐다');
   const stagedIndex=fs.readFileSync(path.join(out,'index.html'),'utf8');
-  for(const name of ['media-safety.js','shared-todo-backup.js']){
+  for(const name of ['media-safety.js','shared-todo-backup.js','operations-review.js']){
     assert(stagedIndex.includes('<script src="./'+name+'"></script>'),'새 공개 모듈이 앱에 연결되지 않았다: '+name);
     assert(fs.readFileSync(path.join(out,name),'utf8')===fs.readFileSync(path.join(root,name),'utf8'),'새 공개 모듈이 원본과 다르다: '+name);
   }
-  for (const pageName of ['index.html', 'privacy.html', 'terms.html']) {
+  const teamHtml=fs.readFileSync(path.join(out,'team.html'),'utf8');
+  for(const name of ['team-config.js','team-ui.js']){
+    assert(teamHtml.includes('<script defer src="'+name+'"></script>'),'직원 페이지 모듈 연결 누락: '+name);
+    assert(fs.readFileSync(path.join(out,name),'utf8')===fs.readFileSync(path.join(root,name),'utf8'),'직원 모듈 원본 불일치: '+name);
+  }
+  for (const pageName of ['index.html', 'privacy.html', 'terms.html','team.html']) {
     const sourceHtml = fs.readFileSync(path.join(root, pageName), 'utf8');
     const stagedHtml = fs.readFileSync(path.join(out, pageName), 'utf8');
     assertNoindexPolicy(sourceHtml, '소스 ' + pageName);

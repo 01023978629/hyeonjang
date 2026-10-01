@@ -10,6 +10,12 @@ var MEDIA_RELAY_ALIGN = 256 * 1024;
 var MEDIA_RELAY_JOB_PREFIX = 'MEDIA_RELAY_JOB_';
 var MEDIA_RELAY_MAX_JOBS = 256;
 var MEDIA_RELAY_PROPERTIES_BYTES = 400 * 1024;
+// Opt in only after configuring a dedicated, private folder INSIDE DRIVE_FOLDER_ID.
+// MEDIA_RELAY_ARCHIVE_ENABLED=true, MEDIA_RELAY_ARCHIVE_FOLDER_ID and
+// MEDIA_RELAY_ARCHIVE_ROOT_ID are administrator Script Properties. Once used, the
+// archive stays mandatory even if enabled is later cleared: old IDs must not replay.
+var MEDIA_RELAY_ARCHIVE_PREFIX = 'MEDIA_RELAY_ARCHIVE_SHARD_';
+var MEDIA_RELAY_ARCHIVE_MAX_BYTES = 4 * 1024 * 1024;
 var MEDIA_RELAY_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif', 'image/avif',
   'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo', 'video/x-matroska', 'video/3gpp', 'video/3gpp2'];
 
@@ -180,8 +186,9 @@ function mediaJobValid_(job, uploadId) {
     (job.state === 'complete' ? job.offset === job.size && job.session === '' : job.offset < job.size);
 }
 function mediaLoadJob_(uploadId) {
+  var archive = mediaArchiveContext_();
   var raw = props_().getProperty(MEDIA_RELAY_JOB_PREFIX + uploadId);
-  if (raw === null) return null;
+  if (raw === null) return archive ? mediaArchiveRead_(archive, uploadId).jobs[uploadId] || null : null;
   var job;
   try { job = JSON.parse(raw); } catch (_) { mediaThrow_('journal-invalid'); }
   if (!mediaJobValid_(job, uploadId)) mediaThrow_('journal-invalid');
@@ -189,7 +196,21 @@ function mediaLoadJob_(uploadId) {
 }
 function mediaSaveJob_(job) {
   if (!mediaJobValid_(job, job.uploadId)) mediaThrow_('journal-invalid');
+  var archive = mediaArchiveContext_();
+  if (archive && job.state === 'complete') { mediaArchiveSave_(archive, job); return; }
   var properties = props_(), all = properties.getProperties(), key = MEDIA_RELAY_JOB_PREFIX + job.uploadId;
+  if (archive) {
+    // Bounded migration of old COMPLETED receipts only, before admitting new work.
+    var moved = 0;
+    Object.keys(all).some(function (name) {
+      if (name.indexOf(MEDIA_RELAY_JOB_PREFIX) !== 0 || name === key) return false;
+      var old; try { old = JSON.parse(all[name]); } catch (_) { mediaThrow_('journal-invalid'); }
+      if (!mediaJobValid_(old, name.slice(MEDIA_RELAY_JOB_PREFIX.length))) mediaThrow_('journal-invalid');
+      if (old.state === 'complete') { mediaArchiveSave_(archive, old); moved++; }
+      return moved >= 16;
+    });
+    all = properties.getProperties();
+  }
   var value = JSON.stringify(job), count = 0, total = 0;
   all[key] = value;
   Object.keys(all).forEach(function (name) {
@@ -200,6 +221,78 @@ function mediaSaveJob_(job) {
   try {
     properties.setProperty(key, value);
     if (properties.getProperty(key) !== value) mediaThrow_('journal-write-failed');
+  } catch (_) { mediaThrow_('journal-write-failed'); }
+}
+function mediaArchiveContext_() {
+  var p = props_(), used = p.getProperty('MEDIA_RELAY_ARCHIVE_USED');
+  if (p.getProperty('MEDIA_RELAY_ARCHIVE_ENABLED') !== 'true' && !used) return null;
+  var rootId = p.getProperty('MEDIA_RELAY_ARCHIVE_ROOT_ID'), folderId = p.getProperty('MEDIA_RELAY_ARCHIVE_FOLDER_ID');
+  if (!mediaId_(rootId) || !mediaId_(folderId)) mediaThrow_('journal-archive-unavailable');
+  var root = rootFolder_();
+  if (root.getId() !== rootId) mediaThrow_('connection-changed');
+  var folder;
+  try { folder = DriveApp.getFolderById(folderId); if (folder.getId() === rootId || !isInsideRoot_(folder, root)) mediaThrow_('journal-archive-unavailable'); }
+  catch (_) { mediaThrow_('journal-archive-unavailable'); }
+  // A durable sticky binding prevents turning off/repointing an archive to forget IDs.
+  var binding = JSON.stringify({ rootId: rootId, folderId: folderId });
+  if (used && used !== binding) mediaThrow_('journal-archive-unavailable');
+  return { rootId: rootId, folderId: folderId, folder: folder, binding: binding };
+}
+function mediaArchiveRead_(ctx, uploadId) {
+  var shard = uploadId.slice(0, 2), name = '_media_receipts_v1_' + shard + '_';
+  var key = MEDIA_RELAY_ARCHIVE_PREFIX + shard, marker = props_().getProperty(key), file = null;
+  var index = props_().getProperty('MEDIA_RELAY_ARCHIVE_INDEX') || '';
+  if (index && !/^[a-f0-9]{2}(,[a-f0-9]{2})*$/.test(index)) mediaThrow_('journal-archive-unavailable');
+  if (index.split(',').indexOf(shard) >= 0 && !marker) mediaThrow_('journal-archive-unavailable');
+  if (marker) {
+    try {
+      if (!mediaId_(marker)) mediaThrow_('journal-archive-unavailable');
+      file = DriveApp.getFileById(marker);
+      var parents = file.getParents(), inside = false;
+      while (parents.hasNext()) { if (parents.next().getId() === ctx.folderId) inside = true; }
+      if (!inside || file.getId() !== marker || file.getName().indexOf(name) !== 0) mediaThrow_('journal-archive-unavailable');
+    } catch (_) { mediaThrow_('journal-archive-unavailable'); }
+  }
+  var envelope = { schema: 1, rootId: ctx.rootId, folderId: ctx.folderId, jobs: {} };
+  if (file) {
+    try {
+      if (file.getSize() > MEDIA_RELAY_ARCHIVE_MAX_BYTES) mediaThrow_('journal-archive-unavailable');
+      envelope = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+    } catch (_) { mediaThrow_('journal-archive-unavailable'); }
+    if (!mediaKeys_(envelope, ['schema', 'rootId', 'folderId', 'jobs']) || envelope.schema !== 1 || envelope.rootId !== ctx.rootId || envelope.folderId !== ctx.folderId || !envelope.jobs || typeof envelope.jobs !== 'object' || Array.isArray(envelope.jobs)) mediaThrow_('journal-archive-unavailable');
+    var keys = Object.keys(envelope.jobs);
+    if (keys.length > 2048 || keys.some(function (id) { var j = envelope.jobs[id]; return id.slice(0, 2) !== shard || !mediaJobValid_(j, id) || j.rootId !== ctx.rootId || j.state !== 'complete'; })) mediaThrow_('journal-archive-unavailable');
+  }
+  return { key: key, name: name, file: file, envelope: envelope, jobs: envelope.jobs };
+}
+function mediaArchiveSave_(ctx, job) {
+  if (job.rootId !== ctx.rootId || job.state !== 'complete') mediaThrow_('connection-changed');
+  var shard = mediaArchiveRead_(ctx, job.uploadId), previous = shard.jobs[job.uploadId];
+  if (previous && JSON.stringify(previous) !== JSON.stringify(job)) mediaThrow_('journal-invalid');
+  shard.jobs[job.uploadId] = job;
+  var raw = JSON.stringify(shard.envelope), p = props_();
+  if (Object.keys(shard.jobs).length > 2048 || Utilities.newBlob(raw).getBytes().length > MEDIA_RELAY_ARCHIVE_MAX_BYTES) mediaThrow_('journal-full');
+  try {
+    // Set sticky configuration BEFORE any receipts can leave Script Properties.
+    p.setProperty('MEDIA_RELAY_ARCHIVE_USED', ctx.binding);
+    if (p.getProperty('MEDIA_RELAY_ARCHIVE_USED') !== ctx.binding) mediaThrow_('journal-write-failed');
+    // Copy-on-write snapshots: a failed/silent/partial write never destroys the
+    // previous shard. Old snapshots are preserved for administrator recovery.
+    if (!previous) shard.file = ctx.folder.createFile(shard.name + Utilities.getUuid() + '.json', raw, 'application/json');
+    // The complete old shard, not just the appended row, must round-trip exactly.
+    if (shard.file.getBlob().getDataAsString('UTF-8') !== raw) mediaThrow_('journal-write-failed');
+    p.setProperty(shard.key, shard.file.getId());
+    if (p.getProperty(shard.key) !== shard.file.getId()) mediaThrow_('journal-write-failed');
+    var index = p.getProperty('MEDIA_RELAY_ARCHIVE_INDEX') || '', names = index ? index.split(',') : [];
+    if (names.indexOf(job.uploadId.slice(0, 2)) < 0) names.push(job.uploadId.slice(0, 2));
+    var nextIndex = names.sort().join(',');
+    p.setProperty('MEDIA_RELAY_ARCHIVE_INDEX', nextIndex);
+    if (p.getProperty('MEDIA_RELAY_ARCHIVE_INDEX') !== nextIndex) mediaThrow_('journal-write-failed');
+    var reloaded = mediaArchiveRead_(ctx, job.uploadId);
+    if (JSON.stringify(reloaded.envelope) !== raw) mediaThrow_('journal-write-failed');
+    // This removes only a duplicate receipt property, NEVER an original Drive file.
+    p.deleteProperty(MEDIA_RELAY_JOB_PREFIX + job.uploadId);
+    if (p.getProperty(MEDIA_RELAY_JOB_PREFIX + job.uploadId) !== null) mediaThrow_('journal-write-failed');
   } catch (_) { mediaThrow_('journal-write-failed'); }
 }
 function mediaFolder_(root) {
