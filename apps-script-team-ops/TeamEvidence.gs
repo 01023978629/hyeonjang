@@ -1,18 +1,25 @@
 /* Immutable original evidence. Never publishes a Drive URL or changes sharing permissions. */
 'use strict';
+// v333: HEIC/HEIF photos are stored as the untouched original (preview conversion is client-only).
+// Videos never travel as one base64 body: they use the TeamMedia.gs resumable chunk path.
+var TEAM_PHOTO_MAX=12*1024*1024,TEAM_VIDEO_MAX=100*1024*1024;
+var TEAM_PHOTO_MIMES=['image/jpeg','image/png','image/webp','image/heic','image/heif'],TEAM_VIDEO_MIMES=['video/mp4','video/quicktime','video/webm'];
 function teamEvidenceValidate_(s,actor,e){
-  teamKeys_(e,['id','projectId','taskId','kind','mime','name','size','sha256','phase','caption','capturedDate']);teamUuid_(e.id);
+  teamKeys_(e,['id','projectId','taskId','kind','mime','name','size','sha256','phase','caption','capturedDate','duration']);teamUuid_(e.id);
   var p=teamProject_(s,teamId_(e.projectId));if(!p.active||!teamProjectVisible_(s,actor,p))teamError_('forbidden');
-  if(e.kind!=='photo'&&e.kind!=='document')teamError_('invalid-input');
+  if(e.kind!=='photo'&&e.kind!=='video'&&e.kind!=='document')teamError_('invalid-input');
   if(e.kind==='document'&&actor.role!=='owner')teamError_('forbidden');
   var taskId=e.taskId||'';
-  if(e.kind==='photo'){var t=s.tasks.find(function(t){return t.id===taskId&&t.projectId===p.id;});if(!t||!teamCanSee_(actor,t))teamError_('forbidden');if(actor.role!=='owner'&&actor.role!=='lead'&&t.status==='done')teamError_('forbidden');}
+  if(e.kind!=='document'){var t=s.tasks.find(function(t){return t.id===taskId&&t.projectId===p.id;});if(!t||!teamCanSee_(actor,t))teamError_('forbidden');if(actor.role!=='owner'&&actor.role!=='lead'&&t.status==='done')teamError_('forbidden');}
   else if(taskId)teamError_('invalid-input');
-  var types=e.kind==='photo'?['image/jpeg','image/png','image/webp']:['image/jpeg','image/png','image/webp','application/pdf'];
-  if(types.indexOf(e.mime)<0||!Number.isSafeInteger(e.size)||e.size<8||e.size>12*1024*1024||typeof e.sha256!=='string'||!/^[a-f0-9]{64}$/.test(e.sha256))teamError_('invalid-file');
+  var types=e.kind==='photo'?TEAM_PHOTO_MIMES:e.kind==='video'?TEAM_VIDEO_MIMES:['image/jpeg','image/png','image/webp','application/pdf'];
+  if(types.indexOf(e.mime)<0||!Number.isSafeInteger(e.size)||e.size<8||e.size>(e.kind==='video'?TEAM_VIDEO_MAX:TEAM_PHOTO_MAX)||typeof e.sha256!=='string'||!/^[a-f0-9]{64}$/.test(e.sha256))teamError_('invalid-file');
+  // Duration is what the phone reported, never invented: unknown stays empty, and only videos carry it.
+  var duration='';if(e.duration!==undefined&&e.duration!==''){if(e.kind!=='video'||typeof e.duration!=='number'||!Number.isFinite(e.duration)||e.duration<=0||e.duration>86400)teamError_('invalid-input');duration=Math.round(e.duration*10)/10;}
   var name=teamText_(e.name,160);if(/[\\/]/.test(name)||name==='.'||name==='..')teamError_('invalid-file');
   if((e.kind==='document'?['document']:['before','cause','during','after']).indexOf(e.phase)<0)teamError_('invalid-input');
-  return {id:e.id,projectId:p.id,taskId:taskId,kind:e.kind,mime:e.mime,name:name,size:e.size,sha256:e.sha256,phase:e.phase,caption:teamLong_(e.caption,1000),capturedDate:e.capturedDate?teamDate_(e.capturedDate):''};
+  var out={id:e.id,projectId:p.id,taskId:taskId,kind:e.kind,mime:e.mime,name:name,size:e.size,sha256:e.sha256,phase:e.phase,caption:teamLong_(e.caption,1000),capturedDate:e.capturedDate?teamDate_(e.capturedDate):''};
+  if(e.kind==='video')out.duration=duration;return out;
 }
 function companyBytesHash_(bytes){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,bytes).map(function(x){return ('0'+((x+256)%256).toString(16)).slice(-2);}).join('');}
 function companyBytes_(base64,e){
@@ -24,17 +31,23 @@ function companyBytes_(base64,e){
   if(e.mime==='image/png')magic=[137,80,78,71,13,10,26,10].every(function(v,i){return b[i]===v;});
   if(e.mime==='image/webp')magic=String.fromCharCode.apply(null,b.slice(0,4))==='RIFF'&&String.fromCharCode.apply(null,b.slice(8,12))==='WEBP';
   if(e.mime==='application/pdf')magic=String.fromCharCode.apply(null,b.slice(0,5))==='%PDF-';
+  if(e.mime==='image/heic'||e.mime==='image/heif')magic=teamHeifBrand_(b);
   if(!magic)teamError_('invalid-file');return bytes;
 }
+// ISO-BMFF 'ftyp' box with a HEIF-family major brand. Keeps renamed JPEG/PNG from posing as HEIC.
+function teamHeifBrand_(b){var a=String.fromCharCode.apply(null,b.slice(4,12));return a.slice(0,4)==='ftyp'&&['heic','heix','hevc','hevx','heim','heis','hevm','hevs','mif1','msf1'].indexOf(a.slice(4))>=0;}
 function companyPrivate_(item){if(item.getSharingAccess()!==DriveApp.Access.PRIVATE||item.getEditors().length||item.getViewers().length)teamError_('private-storage-required');}
 function companyOnlyNamed_(folder,name){var files=folder.getFilesByName(name),hit=null;while(files.hasNext()){if(hit)teamError_('storage-ambiguous');hit=files.next();}return hit;}
 function companyInside_(file,folder){var it=file.getParents(),found=false;while(it.hasNext())if(it.next().getId()===folder)found=true;if(!found)teamError_('corrupt');companyPrivate_(file);}
 function companyVerifyEvidence_(file,c,meta){
+  if(meta.kind==='video'){teamMediaVerify_(file,c,meta);return null;} // Up to 100MiB: Drive's own SHA-256, never a full in-memory read.
   companyInside_(file,c.folder);var blob=file.getBlob(),bytes=blob.getBytes();if(blob.getContentType()!==meta.mime||bytes.length!==meta.size||companyBytesHash_(bytes)!==meta.sha256)teamError_('hash-mismatch');return bytes;
 }
 function companyEvidenceUpload_(c,loaded,identity,payload,now,newId){
-  teamKeys_(payload,['requestId','revision','entity','base64']);teamUuid_(payload.requestId);
+  teamKeys_(payload,['requestId','revision','entity','base64','uploadId']);teamUuid_(payload.requestId);
   var state=loaded.state,actor=teamMember_(state,identity),meta=teamEvidenceValidate_(state,actor,payload.entity);
+  if(meta.kind==='video')return teamMediaCommit_(c,loaded,identity,actor,payload,meta,now,newId);
+  if(payload.uploadId!==undefined)teamError_('invalid-input');
   var bytes=companyBytes_(payload.base64,meta); // Replays must still identify the exact original, not just reuse metadata.
   var canonical={requestId:payload.requestId,revision:payload.revision,entity:payload.entity};
   var hash=companyDigest_(JSON.stringify([actor.id,'evidenceUpload',canonical])),prior=state.requests.find(function(r){return r.id===payload.requestId;});
@@ -62,6 +75,7 @@ function companyEvidenceUpload_(c,loaded,identity,payload,now,newId){
 }
 function companyEvidenceRead_(c,s,identity,payload){
   teamKeys_(payload,['evidenceId']);teamUuid_(payload.evidenceId);var m=teamMember_(s,identity),e=teamList_(s,'evidence').find(function(e){return e.id===payload.evidenceId;});
-  if(!e||!teamEvidenceVisible_(s,m,e))teamError_('forbidden');companyPrivate_(DriveApp.getFolderById(c.folder));
+  if(!e||!teamEvidenceVisible_(s,m,e))teamError_('forbidden');if(e.kind==='video')teamError_('invalid-input'); // Videos are read in verified chunks.
+  companyPrivate_(DriveApp.getFolderById(c.folder));
   var bytes=companyVerifyEvidence_(DriveApp.getFileById(e.fileId),c,e);return {mime:e.mime,name:e.name,size:e.size,sha256:e.sha256,base64:Utilities.base64Encode(bytes)};
 }

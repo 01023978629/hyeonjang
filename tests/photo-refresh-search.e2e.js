@@ -265,6 +265,10 @@ async function assertSearchUnchanged(page) {
     });
     const photoButton = page.locator('.apoPh[data-id="virtual-order"]');
     assert.match(await photoButton.innerText(), /1/);
+    // [v329] 폰에서 오더 줄 도구 묶음이 둘째 줄로 내려가(tests/dash-cards.e2e.js ⑥) 📸 버튼이 창 안이지만 모달의
+    // sticky 버튼줄(.mfoot) 뒤에 반쯤 가려진 자리에 온다. Playwright 는 '창 안'이면 스크롤하지 않고 그 자리를 눌러
+    // 버튼줄이 클릭을 받는다 — 사람은 모달을 밀어 올리고 누른다. 같은 버튼을 가운데로 올린 뒤 누른다(단정은 그대로).
+    await photoButton.evaluate(el => el.scrollIntoView({ block: 'center' }));
     await photoButton.click();
     await page.waitForFunction(() => state.tab === 'photos' && !document.querySelector('#modalRoot .modal'));
     assert.equal(await page.locator('.cluster img').count(), 1, 'order badge opens only the matching filename photo, not the work-label-only photo');

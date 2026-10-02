@@ -72,7 +72,8 @@ assert(/else if\(a==='extrawork'\)\{return extraWork\(\);\}/.test(source), '① 
   assert((await extras())[0].agreed === false, '③ 되돌리기');
   await page.click('#modalRoot .exAgree[data-i="0"]');
   await page.selectOption('#modalRoot .exIn[data-k="photo"][data-i="0"]', 'f1');
-  assert((await extras())[0].photo === 'f1' && /📷 사진 있음/.test(await modalText()), '③ 사진 연결');
+  // 새 계약(photo-refs): 선택지 값은 이 화면의 파일 id 지만 현장에는 안정 참조('k:'+fileKey)로 적힌다 — id 는 폰·복원 뒤 새로 붙는다
+  assert((await extras())[0].photo === 'k:거실 벽면.jpg|0' && /📷 사진 있음/.test(await modalText()), '③ 사진 연결: ' + (await extras())[0].photo);
 
   // ④ 현장에 저장·왕복
   list = await extras();
@@ -111,7 +112,11 @@ assert(/else if\(a==='extrawork'\)\{return extraWork\(\);\}/.test(source), '① 
   await page.evaluate(() => { state.editingQuote = newQuote(false); extraWork('평화로운아파트'); });
   await page.click('#modalRoot .mfoot button:has-text("견적에 담기")');
   const q = await page.evaluate(() => state.editingQuote.items);
-  assert(q.length === 2 && q[0].name === '[추가] 거실 선반 설치' && q[0].price === 300000 && q[0].spec === '공기 +1일' && q[1].name === '[추가] 베란다 타일 덧방' && q[1].price === 450000, '⑥ 견적 품목: ' + JSON.stringify(q));
+  // v328 새 계약: 새 견적은 '부가세 포함'(앱 기본값)이라 단가는 공급가로 넣고, 견적 합계는 확인받은 금액만큼만 는다
+  // (예전에는 30만을 단가로 넣어 견적이 33만을 청구했다 — 고객이 확인한 금액은 30만, v328 통합 검토)
+  const qt = await page.evaluate(() => ({ vat: state.editingQuote.vatIncluded, total: quoteCalc(state.editingQuote).total }));
+  assert(qt.vat === true && q.length === 2 && q[0].name === '[추가] 거실 선반 설치' && q[0].price === 272727 && q[0].spec === '공기 +1일' && q[1].name === '[추가] 베란다 타일 덧방' && q[1].price === 409091
+    && qt.total === 750000, '⑥ 견적 품목: ' + JSON.stringify({ q, qt }));
 
   // ⑦ 지우기·현장 전환
   await page.evaluate(() => extraWork('평화로운아파트'));

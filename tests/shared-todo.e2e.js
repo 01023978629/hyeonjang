@@ -44,6 +44,8 @@ function sameSnapshot(actual,baseline,label){
   }
   assert.deepEqual(Object.keys(actual).sort(),Object.keys(baseline).sort(),label+' — snapshot shape changed');
 }
+// v333 새 계약: 하단 [오늘 할일]은 '내 업무'를 열고, 연결된 기기의 팀 공유 할일은 그 안의 [☁ 팀 공유 할일]로 연다.
+async function openShared(page){await page.locator(NAV).click();await page.locator('#myWork #mwShared').click();}
 async function refresh(page){await page.locator('#stRefresh').click();await status(page,'ready');}
 async function add(page,mock,project,text){
   await page.locator('#stFilter').selectOption('');
@@ -128,8 +130,8 @@ async function mobileBounds(page){
   try{
     const A=await openDevice('test-a',360),B=await openDevice('test-b',320);
     const a=A.page,b=B.page,baselineA=await snapshot(a),baselineB=await snapshot(b);
-    await a.locator(NAV).click();await status(a,'ready');
-    await b.locator(NAV).click();await status(b,'ready');
+    await openShared(a);await status(a,'ready');
+    await openShared(b);await status(b,'ready');
     assert.equal(await a.locator('#sharedTodoView').count(),1,'connected bottom action opens shared work');
     assert.equal(await a.locator('#stProject').inputValue(),PROJECT,'active project starts selected');
     await a.locator('#stProject').selectOption('');await a.locator('#stText').fill('TEST missing project cannot submit');
@@ -199,7 +201,7 @@ async function mobileBounds(page){
     await b.locator('#stProject').selectOption(OTHER);await b.locator('#stText').fill('TEST reload-persisted pending task');
     await b.locator('#stSave').click();await status(b,'pending');
     const persisted=mock.calls.filter(x=>x.action==='sharedTodoSave'&&x.deviceId==='test-b').at(-1);
-    await B.boot();await b.locator(NAV).click();await status(b,'pending');
+    await B.boot();await openShared(b);await status(b,'pending');
     await b.locator('#stRetry').click();await status(b,'ready');
     const replay=mock.calls.filter(x=>x.action==='sharedTodoSave'&&x.deviceId==='test-b').at(-1);
     assert.deepEqual(replay.payload,persisted.payload,'reload retains the exact durable operation');
@@ -223,14 +225,14 @@ async function mobileBounds(page){
 
     await a.keyboard.press('Escape');await closed(a);
     assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__todo','closing restores bottom action focus');
-    await a.locator(NAV).click();await status(a,'ready');
+    await openShared(a);await status(a,'ready');
     mock.inject('test-a','sharedTodoList','hold');await a.evaluate(()=>{hjSharedTodoRefresh();});
     await waitUntil(()=>mock.holds.some(x=>x.device==='test-a'&&!x.done),'late response held');
     await a.keyboard.press('Escape');await closed(a);mock.releaseAll();
     await waitUntil(()=>mock.holds.every(x=>x.done),'closed modal response settled');
     assert.equal(await a.locator('#sharedTodoView').count(),0,'late response cannot reopen a dismissed screen');
     assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__todo','late response cannot steal restored focus');
-    await a.locator(NAV).click();await status(a,'ready');
+    await openShared(a);await status(a,'ready');
     const changed=mock.create(PROJECT,'TEST old connection late result must be ignored');
     mock.inject('test-a','sharedTodoList','hold');await a.evaluate(()=>{hjSharedTodoRefresh();});
     await waitUntil(()=>mock.holds.some(x=>x.device==='test-a'&&!x.done),'connection-change response held');
@@ -248,7 +250,7 @@ async function mobileBounds(page){
     assert.equal(await c.locator('.todoRow[data-id="TEST-LOCAL-TODO"]').count(),1,'legacy local tasks remain explicitly accessible');
     assert.equal(await c.evaluate(()=>state.notes.length),2,'browsing local tasks does not automatically publish them');
     const D=await openDevice('test-unsupported',360),d=D.page;
-    mock.inject('test-unsupported','sharedTodoHealth','unavailable');await d.locator(NAV).click();await status(d,'unavailable');
+    mock.inject('test-unsupported','sharedTodoHealth','unavailable');await openShared(d);await status(d,'unavailable');
     assert.equal(await d.locator('#stList [data-st-id]').count(),0);
     assert.match(await d.locator('#stStatus').innerText(),/서버|배포|업데이트|지원/);
     await C.context.close();await D.context.close();
@@ -256,7 +258,7 @@ async function mobileBounds(page){
 
     const E=await openDevice('test-project-edit',320),e=E.page;
     const otherTask=mock.create(OTHER,'TEST select exact task project when editing');
-    await e.locator(NAV).click();await status(e,'ready');await e.locator('#stFilter').selectOption('');
+    await openShared(e);await status(e,'ready');await e.locator('#stFilter').selectOption('');
     await e.locator('#stProject').selectOption(PROJECT);await row(e,otherTask.id).locator('[data-st-edit]').click();
     assert.equal(await e.locator('#stProject').inputValue(),OTHER,'editing another project cannot retain the previous form project');
     await saveEdit(e,'TEST edited under correct other project');
@@ -265,7 +267,7 @@ async function mobileBounds(page){
     console.log('PASS shared todo 9: selected task project overrides the earlier editor selection');
 
     const F=await openDevice('test-two-tabs',360),F2=await openDevice('test-two-tabs',360,true,F.context),f=F.page,f2=F2.page;
-    await f.locator(NAV).click();await status(f,'ready');await f2.locator(NAV).click();await status(f2,'ready');
+    await openShared(f);await status(f,'ready');await openShared(f2);await status(f2,'ready');
     mock.inject('test-two-tabs','sharedTodoSave','lost-ack');
     await f.locator('#stProject').selectOption(PROJECT);await f.locator('#stText').fill('TEST first tab pending operation');await f.locator('#stSave').click();await status(f,'pending');
     const firstPending=await f.evaluate(async()=>idbGetStrict(__hjSharedTodo.key)),beforeSecond=mock.count('sharedTodoSave');
@@ -280,11 +282,11 @@ async function mobileBounds(page){
 
     const G=await openDevice('test-recovered-edit',360),g=G.page;
     const original=mock.create(PROJECT,'TEST existing task before interrupted edit');
-    await g.locator(NAV).click();await status(g,'ready');await row(g,original.id).locator('[data-st-edit]').click();
+    await openShared(g);await status(g,'ready');await row(g,original.id).locator('[data-st-edit]').click();
     mock.inject('test-recovered-edit','sharedTodoSave','lost-ack');await g.locator('#stText').fill('TEST interrupted edit keeps original identity');await g.locator('#stSave').click();await status(g,'pending');
     const originalOp=mock.calls.filter(x=>x.action==='sharedTodoSave'&&x.deviceId==='test-recovered-edit').at(-1);
     mock.update(mock.tasks.get(original.id),{text:'TEST another employee subsequent change'});
-    await G.boot();await g.locator(NAV).click();await status(g,'pending');
+    await G.boot();await openShared(g);await status(g,'pending');
     // Model an expired server receipt with a now-newer task, a valid conflict after replay.
     mock.inject('test-recovered-edit','sharedTodoSave','conflict');await g.locator('#stRetry').click();await status(g,'conflict');
     assert.equal(await g.locator('#stText').inputValue(),'TEST interrupted edit keeps original identity');
@@ -302,7 +304,7 @@ async function mobileBounds(page){
     console.log('PASS shared todo 11: recovered edit conflicts retain identity and do not create copies');
 
     const H=await openDevice('test-auth-retry',360),h=H.page;
-    await h.locator(NAV).click();await status(h,'ready');mock.inject('test-auth-retry','sharedTodoSave','lost-ack');
+    await openShared(h);await status(h,'ready');mock.inject('test-auth-retry','sharedTodoSave','lost-ack');
     await h.locator('#stText').fill('TEST auth retry keeps uncertain mutation');await h.locator('#stSave').click();await status(h,'pending');
     const authPending=await h.evaluate(async()=>idbGetStrict(__hjSharedTodo.key));
     mock.inject('test-auth-retry','sharedTodoSave','auth');await h.locator('#stRetry').click();
@@ -315,7 +317,7 @@ async function mobileBounds(page){
     console.log('PASS shared todo 12: lost-ack then authentication failure retains exact pending request');
 
     const I=await openDevice('test-polling',360),i=I.page;
-    await i.clock.install();await i.locator(NAV).click();await status(i,'ready');
+    await i.clock.install();await openShared(i);await status(i,'ready');
     const autoTask=mock.create(PROJECT,'TEST automatic refresh from another employee');
     await i.clock.runFor(30001);await row(i,autoTask.id).waitFor();
     const countVisible=mock.calls.filter(x=>x.deviceId==='test-polling'&&x.action==='sharedTodoList').length;
@@ -331,7 +333,7 @@ async function mobileBounds(page){
     console.log('PASS shared todo 13: 30-second polling refreshes visible work, not hidden or closed screens');
 
     const J=await openDevice('test-corrupt-reservation',360),j=J.page;
-    await j.locator(NAV).click();await status(j,'ready');
+    await openShared(j);await status(j,'ready');
     for(const kind of ['circular','bigint']){
       await j.evaluate(async kind=>{const value={kind};if(kind==='circular')value.self=value;else value.amount=1n;await idbSet(__hjSharedTodo.key,value);},kind);
       const countBefore=mock.count('sharedTodoSave');

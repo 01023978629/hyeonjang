@@ -144,11 +144,13 @@ let browser;
     return { file: window.__xl.file, flat,
       hasUnit: flat.indexOf('105동 202호') < 0 && flat.indexOf('지하주차장') >= 0,  // a2 는 paid → 정산 대상 아님, a3 만
       hasSum: flat.indexOf('344000') >= 0,   // 합계 = a3 300,000 + a5 44,000
-      hasVатNote: flat.indexOf('부가세 별도') >= 0 };
+      // v330 새 계약: 부가세 표기는 오더의 승인 조건(commercialTerms.vatMode)에서만 온다. a3·a5 는 조건이 없는 손 입력 오더라
+      // 표기를 지어내지 않는다(예전에는 늘 '부가세 별도' — 포함 조건 오더를 관리사무소가 10% 더 청구로 읽었다). 값별 표기는 dates-warranty-office ⓖ.
+      noVatGuess: flat.indexOf('부가세 별도') < 0 && flat.indexOf('부가세 포함') < 0 };
   });
   assert(/신흥마을아파트/.test(xlsx.file) && xlsx.file.indexOf('정산서.xlsx') >= 0, '⑥ 파일명에 단지·월이 없다: ' + xlsx.file);
   assert(xlsx.hasUnit, '⑥ 정산 대상(청구분)만 실려야 하는데 어긋났다: ' + xlsx.flat.slice(0, 200));
-  assert(xlsx.hasSum && xlsx.hasVатNote, '⑥ 합계·부가세 별도 표기가 없다');
+  assert(xlsx.hasSum && xlsx.noVatGuess, '⑥ 합계가 없거나, 조건을 모르는 오더에 부가세 표기를 지어냈다');
 
   // ⑦ 엑셀 모듈이 안 떠도 조용히 죽지 않는다
   const noXlsx = await page.evaluate(async () => {

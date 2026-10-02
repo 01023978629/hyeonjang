@@ -34,7 +34,10 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const r = await page.evaluate(() => {
       // 부가세 별도 견적: est.amount 에 부가세가 안 들어 있다. 계약금 300만 수금.
       state.projects = [{ name: '갈마동', stage: 2, received: 3000000, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '김고객', phone: '', addr: '대전' }, archived: false }];
-      state.files = [{ id: 'e2', kind: 'estimate', project: '갈마동', name: '별도견적',
+      // v330 새 계약: 공급가 = 합계인 외부 파일만으로는 '부가세 별도'라 단정하지 않는다(손으로 고친 금액·표기 없는 엑셀이 부가세를
+      // 되얹어 잔금·고객 문구가 부풀었다 — revenue-basis ⑥). 분명한 신호(전체장부 이관 견적의 세액, _import)가 있을 때만 얹는다.
+      // 이 검사가 지키는 것은 그대로 — 부가세를 얹는 경로에서도 합계 − 기수금 = 청구금액.
+      state.files = [{ id: 'e2', kind: 'estimate', project: '갈마동', name: '별도견적', _import: true,
         est: { amount: 10000000, supply: 10000000, vat: 1000000, date: '2026-05-10' }, when: new Date('2026-05-10') }];
       state.quotes = [];
       const inv = invoiceHTML('갈마동'), stmt = statementHTML('갈마동');
@@ -45,13 +48,15 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
         return m ? Number(m[1].replace(/,/g, '')) : null;
       };
       return { 합계: grab('공사대금 합계', inv), 기수금: grab('기수금', inv), 청구: grab('청구 금액', inv),
-               명세서잔금: grab('잔금', stmt) };
+               명세서잔금: grab('잔금', stmt),
+               신호없음: (() => { delete state.files[0]._import; const v = grab('청구 금액', invoiceHTML('갈마동')); state.files[0]._import = true; return v; })() };
     });
     assert(r.합계 === 11000000, '청구서 합계가 11,000,000 이 아니다: ' + r.합계);
     assert(r.기수금 === 3000000, '기수금이 3,000,000 이 아니다: ' + r.기수금);
     assert(r.청구 === r.합계 - r.기수금,
       '문서 안에서 산수가 안 맞는다 — 합계 ' + r.합계 + ' − 기수금 ' + r.기수금 + ' = ' + (r.합계 - r.기수금) + ' 인데 청구금액은 ' + r.청구);
     assert(r.명세서잔금 === 8000000, '거래명세서 잔금도 합계 기준이어야 한다: ' + r.명세서잔금);
+    assert(r.신호없음 === 7000000, '신호 없는 공급가=합계 파일은 금액을 합계로 본다(부가세를 되얹지 않는다): ' + r.신호없음);
   });
 
   // (1) 품목 없는(외부 견적파일만) 완료현장 → 청구서/명세서: 공급가=부가세 제외, 합계=총액(이중가산 없음)

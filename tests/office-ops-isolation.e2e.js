@@ -11,7 +11,11 @@ const { webcrypto } = require('node:crypto');
 const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 // strong/dynamic 검사는 같은 소스를 연속으로 읽는다. 마지막 정확한 입력 하나의
 // 토큰만 재사용하고 모든 바인딩/변이 판정은 그대로 실행한다(느린 PC의 180초 초과 방지).
-let lastBindingScan=null;
+let lastBindingScan=null, baseBindingScan=null;
+// Immutable token arrays can share a structural index between the two independent audits.
+// Different source/mutation inputs still get different token arrays and are fully checked.
+const bindingStructureCache = new WeakMap();
+let lastFunctionSource = null, lastFunctionBodies = new Map();
 /* 이 파일의 토크나이저는 정규식 리터럴을 문맥으로 판정한다(canStartRegex). `&&` 와 `||` 는 그 판정 목록에
    없어서, `x && /re/.test(y)` 를 만나면 '/' 를 나눗셈으로 읽고 다음 '/' 까지를 통째로 문자열처럼 삼킨다 —
    그러면 파일 끝까지 '닫히지 않은 정규식' 이 되고, 이 파일의 격리 검사 전체가 조용히 눈을 감는다.
@@ -34,22 +38,27 @@ try {
 }
 
 function regexEscape(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function bindingTokens(candidate) {
+function bindingTokens(candidate, forceFull = false) {
   const input = String(candidate);
-  if(lastBindingScan&&lastBindingScan.input===input)return lastBindingScan.tokens;
+  if(!forceFull&&lastBindingScan&&lastBindingScan.input===input)return lastBindingScan.tokens;
   const scripts = [...input.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   const lastScriptEnd = input.toLowerCase().lastIndexOf('</script>');
   const closingHtmlAt = input.toLowerCase().indexOf('</html>', lastScriptEnd + 9);
   const appendedTail = input.slice(closingHtmlAt >= 0 ? closingHtmlAt + 7 : lastScriptEnd + 9);
   const text = scripts.length ? scripts.map(match => match[1]).join('\n') + '\n;\n' + appendedTail : input;
-  const tokens = [];
+  // Append-only mutation fixtures share an EXACT, already validated immutable prefix.
+  // Keep all its tokens and lexical offsets; parse the newline-delimited suffix in the same context.
+  // Any in-place change, script-boundary change, or non-newline append takes the full lexer path.
+  const reuse = !forceFull && baseBindingScan && input.startsWith(source) && input.length > source.length &&
+    text.startsWith(baseBindingScan.text) && /^[\r\n]/.test(text.slice(baseBindingScan.text.length));
+  const tokens = reuse ? baseBindingScan.tokens.slice() : [];
   const punctuators = ['>>>=', '**=', '&&=', '||=', '??=', '<<=', '>>=', '=>', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '='];
   const regexPrefixKeywords = new Set(['return', 'throw', 'case', 'delete', 'void', 'typeof', 'instanceof', 'in', 'of', 'yield', 'await', 'else', 'do']);
   const regexPrefixPunctuators = new Set(['(', '[', '{', ',', ';', ':', '?', '!', '~', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=', '=>']);
   const controlKeywords = new Set(['if', 'while', 'for', 'with', 'switch', 'catch']);
   const controlBlockKeywords = new Set(['else', 'do', 'try', 'finally']);
   const declarationExpressionPrefixes = new Set(['(', '[', ',', ':', '?', '!', '~', '+', '-', '*', '/', '%', '<', '>', '&', '|', '^', '=>', 'return', 'throw', 'case', 'delete', 'void', 'typeof', 'await', 'yield', 'new', 'extends', '=', '+=', '-=', '*=', '/=', '%=', '**=', '<<=', '>>=', '>>>=', '&=', '|=', '^=', '&&=', '||=', '??=']);
-  let i = 0, lastTokenEnd = 0;
+  let i = reuse ? baseBindingScan.text.length : 0, lastTokenEnd = reuse ? baseBindingScan.lastTokenEnd : 0;
   const push = (type, value, index, end = index + String(value).length) => {
     const lineBreakBefore = tokens.length > 0 && /[\r\n\u2028\u2029]/.test(text.slice(lastTokenEnd, index));
     tokens.push({ type, value, index, end, lineBreakBefore });
@@ -183,8 +192,10 @@ function bindingTokens(candidate) {
     if (stopAtTemplateBrace) throw new Error('malformed supplied source: unterminated template expression');
   };
   scanCode(false);
-  lastBindingScan={input,tokens:Object.freeze(tokens.map(Object.freeze))};
-  return tokens;
+  const frozen = Object.freeze(tokens.map(Object.freeze));
+  if (!forceFull) lastBindingScan = { input, tokens: frozen };
+  if (!forceFull && input === source) baseBindingScan = { text, lastTokenEnd, tokens: frozen };
+  return frozen;
 }
 function isClassKeywordToken(tokens, at) {
   const token = tokens[at], previous = tokens[at - 1], next = tokens[at + 1];
@@ -272,6 +283,7 @@ function isExtendsExpressionBody(tokens, outerClassAt, openAt) {
   return hasExtends && (isFunctionExpressionBody(tokens, openAt) || isNestedClassExpressionBody(tokens, outerClassAt, openAt));
 }
 function bindingStructure(tokens) {
+  if (bindingStructureCache.has(tokens)) return bindingStructureCache.get(tokens);
   const bracePairs = new Map(), braceStack = [], depthAt = [], parenDepthAt = [], bracketDepthAt = [];
   let depth = 0, parens = 0, brackets = 0;
   for (let at = 0; at < tokens.length; at += 1) {
@@ -306,7 +318,8 @@ function bindingStructure(tokens) {
       else if ((tokens[at].value === ';' || tokens[at].value === '}') && parens === 0 && brackets === 0) break;
     }
   }
-  return { bracePairs, depthAt, parenDepthAt, bracketDepthAt, classRanges };
+  const result = { bracePairs, depthAt, parenDepthAt, bracketDepthAt, classRanges };
+  bindingStructureCache.set(tokens, result); return result;
 }
 function containingClass(structure, at) {
   return structure.classRanges.filter(range => range.open < at && at < range.close).sort((a, b) => (a.close - a.open) - (b.close - b.open))[0] || null;
@@ -327,6 +340,9 @@ function bindingReassignments(tokens, protectedNames) {
   const findings = [], globals = new Set(['globalThis', 'global', 'window', 'self', 'this', 'exports']), structure = bindingStructure(tokens);
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
+    // Only protected names or actual global roots can write a protected binding.
+    // Skip irrelevant tokens before computing grouped/class spans; do not skip any eligible lvalue.
+    if (token.type !== 'identifier' || (!protectedNames.has(token.value) && !globals.has(token.value) && token.value !== 'module')) continue;
     const reference = token.type === 'identifier' ? groupedReference(tokens, i) : { start: i, end: i + 1 };
     if (token.type === 'identifier' && protectedNames.has(token.value) && bindingAssignmentOperators.has(tokens[reference.end] && tokens[reference.end].value) && (!tokens[reference.start - 1] || tokens[reference.start - 1].value !== '.') && !isDirectClassField(tokens, i, reference, reference.end, structure)) {
       findings.push(token.value + ' ' + tokens[reference.end].value);
@@ -351,8 +367,9 @@ function auditIsolatedFunctionBindings(candidate, requiredNames = []) {
   const tokens = bindingTokens(candidate), declarations = functionDeclarations(tokens);
   const prefixedNames = declarations.filter(name => /^(?:officeOps|commercial)/.test(name));
   const protectedNames = new Set([...requiredNames, ...prefixedNames]);
+  const counts = new Map(); declarations.forEach(name => counts.set(name, (counts.get(name) || 0) + 1));
   for (const name of protectedNames) {
-    const count = declarations.filter(declared => declared === name).length;
+    const count = counts.get(name) || 0;
     assert.equal(count, 1, 'isolated binding declaration count for ' + name + ' must be 1, got ' + count);
   }
   const reassignments = bindingReassignments(tokens, protectedNames);
@@ -360,6 +377,8 @@ function auditIsolatedFunctionBindings(candidate, requiredNames = []) {
   return prefixedNames;
 }
 function extractFunctionFrom(candidate, name) {
+  if (candidate !== lastFunctionSource) { lastFunctionSource = candidate; lastFunctionBodies = new Map(); }
+  if (lastFunctionBodies.has(name)) return lastFunctionBodies.get(name);
   const match = new RegExp('(?:async\\s+)?function\\s+' + regexEscape(name) + '\\s*\\(').exec(candidate);
   assert.ok(match, 'missing isolated function: ' + name);
   const paramsStart = candidate.indexOf('(', match.index + match[0].length - 1);
@@ -380,7 +399,7 @@ function extractFunctionFrom(candidate, name) {
     }
     if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
     if (ch === '{') depth += 1;
-    if (ch === '}' && --depth === 0) return candidate.slice(match.index, i + 1);
+    if (ch === '}' && --depth === 0) { const body = candidate.slice(match.index, i + 1); lastFunctionBodies.set(name, body); return body; }
   }
   assert.fail('unbalanced isolated function: ' + name);
 }
@@ -740,6 +759,10 @@ async function assertRepresentativeMutationsBlocked(client, label) {
     return names;
   }
   const duplicateCommercialBindingMutant = source + '\nfunction commercialRequestWithTimeout(){void state.officeOpsLeak;}\n';
+  for (const suffix of ['\n(globalThis[`commercialRequestWithTimeout`])+=function(){};\n', '\n// newline comment\nclass OfficeLexicalFixture { field=1; } /commercialRequestWithTimeout=/.test("x");\n']) {
+    const candidate = source + suffix;
+    assert.deepEqual(bindingTokens(candidate), bindingTokens(candidate, true), 'warm prefix tokens must exactly match the cold full lexer, including positions and line breaks');
+  }
   const reassignedCommercialBindingMutant = source + '\ncommercialRequestWithTimeout=function(){void state.officeOpsLeak;};\n';
   for (const [label, mutant, expectedError] of [
     ['duplicate declaration', duplicateCommercialBindingMutant, /binding declaration count/],
