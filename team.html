@@ -47,6 +47,8 @@
   </section>
   <section id="sessionPanel" hidden class="card" aria-label="로그인 정보">
     <div class="row between"><div><strong id="who"></strong><p id="lastRead" class="meta"></p></div><div class="row"><button id="refresh" type="button">최신 자료 확인</button><button id="logout" type="button">로그아웃</button></div></div>
+    <p id="assignmentNotice" class="notice" role="status" hidden></p>
+    <p class="meta">업무 알림은 최신 조회 결과 기준입니다. 앱을 닫은 동안의 자동 푸시·문자는 보내지 않습니다.</p>
     <details><summary>회사 권한 연결용 내 식별정보</summary><p class="muted">계정이 처음이라 팀이 안 보이면 아래 두 값을 회사 관리자에게 전달하세요. 비밀번호는 전달하지 마세요.</p><code id="identity" class="identity-value"></code><button id="copyIdentity" type="button">식별정보 복사</button></details>
   </section>
   <div id="workspace" hidden>

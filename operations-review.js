@@ -102,3 +102,67 @@ function hjCompanyLegacyTasks(){return hjTeamList().filter(n=>hjTeamData(n).stat
 function hjCompanyLegacySend(){hjCompanyDraftsSend(hjCompanyLegacyTasks());}
 function hjCompanyLegacyExport(){hjCompanyDrafts(hjCompanyLegacyTasks());}
 function hjCompanySharedExport(){const s=__hjSharedTodo;if(!hjSharedTodoCurrent(s)||!s.ready||s.busy||s.pending)return toast('공유 할일의 최신 조회·저장 결과를 먼저 확인하세요.');const project=s.root.querySelector('#stFilter').value;hjCompanyDrafts(s.tasks.filter(t=>!t.done&&(!project||t.project===project)).map(t=>({title:t.text.slice(0,160),project:t.project,due:'',handoff:t.text.length>160?t.text:'',sourceRef:'shared-todo:'+t.id})));}
+
+/* v335: representative connection summary + explicit identity-only project handoff.
+ * Never calls login, creates a company account, moves originals or polls a private server. */
+let __hjOperationsCheck=null;
+function hjOperationsCenter(){
+  if(photoIntakePending()||__modalCloseLocked)return toast('진행 중인 사진 추가·저장을 먼저 마쳐 주세요.');
+  const rows=photoSourceRows(),count=k=>rows.filter(r=>r.source.key===k).length,url=hjTeamServerUrl();
+  const names=(state.projects||[]).filter(p=>p&&typeof p.name==='string'&&p.name&&state.projects.filter(x=>x.name===p.name).length===1).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
+  const drive=typeof __gdToken!=='undefined'&&__gdToken&&__gdTokenExp>Date.now()?'이 화면에 Drive 로그인 세션 있음 · 원본 보관 검증과 별도':'현재 Drive 로그인 확인 없음 · 서버 릴레이 설정과 별도';
+  openModal('운영 연결 점검','<section id="operationsConnections"><p>현재 기기 설정과 마지막 조회 기록을 모았습니다. 설정이 있다고 실제 인증·백업이 완료된 것은 아닙니다. 비밀번호·토큰·폴더 ID는 표시하지 않습니다.</p>'+
+    '<h3>1. 직원 업무 서버</h3><p id="opsTeamHealth" role="status">'+(url?'주소 설정됨 · 이 화면에서 응답 확인 전':'이 기기 직원 서버 미설정')+'</p><div class="row"><button id="opsHealthCheck" type="button" class="blue">서버 응답 확인</button><a class="btn ghost" href="./team.html#mine" target="_blank" rel="noopener noreferrer">직원 작업실·권한 확인 ↗</a></div><p>서버 응답 확인은 health 조회만 합니다. 실제 직원 로그인과 권한은 직원 작업실에서 확인하세요.</p>'+
+    '<h3>2. 관리사무소 접수</h3>'+webOfficeConnectionHtml()+'<button id="opsOfficeOpen" class="ghost" type="button">접수 검토·연결 설정</button>'+
+    '<h3>3. 사진·원본</h3><p>'+escapeHtml(drive)+'</p><p>기기 기록 '+rows.length+'개 · 서버 연결 기록 '+count('remote')+' · PC 연결 '+count('folder')+' · 화면 파일 '+count('session')+' · 미리보기만 '+count('preview')+' · 연결 확인 필요 '+count('missing')+'</p><p>위 숫자는 원본 파일의 실제 존재나 동일성 검증 결과가 아닙니다.</p><button id="opsPhotoOpen" class="ghost" type="button">사진 보관 상태 자세히</button>'+
+    '<h3>4. 아파트·동호수 연결</h3><label for="opsProject">연결 자료를 만들 현장</label><select id="opsProject"><option value="">직접 선택하세요</option>'+names.map((n,i)=>'<option value="'+i+'">'+escapeHtml(n)+'</option>').join('')+'</select><p>아파트명·등록한 동호수/공용부·안정 연결 키만 내보냅니다. 고객 정보·메모·사진·금액은 넣지 않습니다. 직원 작업실에서 대표가 대상 프로젝트를 확인해 가져오며 자동 동기화는 아닙니다.</p><button id="opsProjectExport" class="blue" type="button">연결 JSON 만들기</button><p id="opsExportStatus" role="status"></p><label for="opsLinkJson">직원 작업실에 붙여 넣을 연결 JSON</label><textarea id="opsLinkJson" readonly rows="6"></textarea><button id="opsLinkDownload" class="ghost" type="button" disabled>연결 JSON 내려받기</button></section>',[{label:'닫기',cls:'ghost',fn:()=>closeModal()}]);
+  const root=document.getElementById('operationsConnections'),status=root.querySelector('#opsTeamHealth');hjOpsFormStyle('operationsConnections');
+  root.querySelector('#opsOfficeOpen').onclick=()=>webWorkCenterOpen();root.querySelector('#opsPhotoOpen').onclick=()=>photoSourceView();
+  const check=root.querySelector('#opsHealthCheck');check.disabled=!url||navigator.onLine===false;
+  if(__hjOperationsCheck&&__hjOperationsCheck.url===url)status.textContent=__hjOperationsCheck.text+' · 확인 '+new Date(__hjOperationsCheck.at).toLocaleString('ko-KR')+' (실제 로그인 확인 아님)';
+  check.onclick=async()=>{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);check.disabled=true;status.dataset.checking='true';status.textContent='서버 응답 확인 중…';
+    const current=()=>root.isConnected&&hjTeamServerUrl()===url;
+    try{
+      const r=await fetch(url,{method:'POST',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({action:'health'}),signal:controller.signal});
+      const h=await r.json();if(!current())return;
+      const endpoint=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+      if(!r.ok||h.ok!==true||h.service!=='company-team-v3'||!endpoint.test(h.portalUrl||''))throw new Error('invalid');
+      const supported=Array.isArray(h.capabilities)&&['project-units-v1','task-ack-v1'].every(k=>h.capabilities.includes(k));
+      const text=supported?'회사 업무 서버 응답 정상 · 동호수/업무 수락 API 지원':'회사 업무 서버 응답 정상 · 동호수/업무 수락은 별도 서버 업데이트 필요';
+      __hjOperationsCheck={url,at:Date.now(),text};status.textContent=text+' · '+new Date().toLocaleString('ko-KR')+' · 실제 계정·권한 확인 전';
+    }catch(_){if(current()){__hjOperationsCheck=null;status.textContent='서버 응답을 확인하지 못했습니다. 인터넷·서버 설정을 확인하세요. 실제 계정 상태는 판단하지 않았습니다.';}}
+    finally{clearTimeout(timer);status.dataset.checking='false';if(current())check.disabled=navigator.onLine===false;}
+  };
+  let packet=null;
+  root.querySelector('#opsProject').onchange=()=>{packet=null;root.querySelector('#opsLinkDownload').disabled=true;root.querySelector('#opsLinkJson').value='';root.querySelector('#opsExportStatus').textContent='선택한 현장의 연결 자료를 새로 만들어 주세요.';};
+  root.querySelector('#opsProjectExport').onclick=async()=>{
+    const exportButton=root.querySelector('#opsProjectExport'),out=root.querySelector('#opsExportStatus'),selector=root.querySelector('#opsProject');
+    const name=selector.value!==''?names[Number(selector.value)]:'';if(!name){out.textContent='연결할 아파트를 직접 선택하세요.';selector.focus();return;}
+    if(!confirm(name+'의 아파트명·등록 위치만 연결 JSON으로 만듭니다. 최초 한 번 안정 연결 키를 안전판과 함께 저장하며, 직원 서버·사진 원본은 바꾸지 않습니다. 만들까요?'))return;
+    exportButton.disabled=true;packet=null;root.querySelector('#opsLinkDownload').disabled=true;root.querySelector('#opsLinkJson').value='';
+    try{
+      packet=await hjCompanyProjectPacket(name,url,()=>root.isConnected&&selector.value!==''&&names[Number(selector.value)]===name);
+      if(!root.isConnected)return;root.querySelector('#opsLinkJson').value=JSON.stringify(packet,null,2);root.querySelector('#opsLinkDownload').disabled=false;out.textContent='연결 자료 준비됨 · 직원 서버에 아직 등록하지 않았습니다. 동·호수 정보가 포함되므로 회사 대표에게만 전달하세요.';
+    }catch(e){if(root.isConnected)out.textContent=e.message||'연결 자료 생성 실패';}
+    finally{if(root.isConnected)exportButton.disabled=false;}
+  };
+  root.querySelector('#opsLinkDownload').onclick=()=>{
+    if(!packet)return;const blob=new Blob([JSON.stringify(packet,null,2)],{type:'application/json'}),blobUrl=URL.createObjectURL(blob),a=document.createElement('a');a.href=blobUrl;a.download='아파트-직원연결.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(blobUrl),30000);
+  };
+}
+async function hjCompanyProjectPacket(name,apiUrl,alive=()=>true){
+  const endpoint=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+  if(!endpoint.test(apiUrl)||hjTeamServerUrl()!==apiUrl)throw new Error('직원 작업실 서버를 먼저 연결해 주세요.');
+  const p=aptUnitProject(name);if(!p)throw new Error('현장 이름이 중복되거나 변경되었습니다.');
+  const units=aptUnitList(p);if(aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||units.length!==p.aptUnits.length))throw new Error('등록 위치 정보를 먼저 확인하세요. 잘못된 위치를 추정하지 않습니다.');
+  const fingerprint=paidStableJson({name:p.name,units:p.aptUnits||[],key:p.companyProjectKey||''});
+  const current=()=>{const now=aptUnitProject(name);if(!alive()||hjTeamServerUrl()!==apiUrl||!now||paidStableJson({name:now.name,units:now.aptUnits||[],key:now.companyProjectKey||''})!==fingerprint)throw new Error('연결 대상·서버·위치가 바뀌었습니다. 다시 확인하세요.');};
+  current();const key=p.companyProjectKey||crypto.randomUUID();
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(key)||state.projects.some(x=>x.name!==name&&x.companyProjectKey===key))throw new Error('현장 연결 키가 중복되거나 손상되었습니다.');
+  const packet={format:'company-project-links-v1',apiUrl,sourceKey:key,name,units:units.map(u=>({id:u.id,type:u.type,dong:u.dong,ho:u.ho,name:u.name}))};
+  if(JSON.stringify(packet).length>45000)throw new Error('연결 자료가 전송 한도를 넘습니다. 관리자에게 위치 분할을 요청하세요.');
+  if(!p.companyProjectKey)await durableLocalMutation({snapshotLabel:'직원 프로젝트 연결 키 생성 전',beforeCommit:current,mutateDraft:d=>{const target=aptUnitProject(name,d);if(!target)throw new Error('현장 변경');target.companyProjectKey=key;return true;}});
+  if(!alive()||hjTeamServerUrl()!==apiUrl)throw new Error('화면 또는 서버가 바뀌어 내보내기를 중단했습니다. 이미 저장한 연결 키와 원본은 보존했습니다.');
+  return packet;
+}

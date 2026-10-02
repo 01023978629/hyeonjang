@@ -4,7 +4,7 @@ const base=path.join(__dirname,'..','apps-script-team-ops');
 let pure=fs.readFileSync(path.join(base,'TeamPure.gs'),'utf8');
 if(process.env.HJ_TEAM_MUTATION==='scope')pure=pure.replace("return m.role==='owner' || (m.role==='lead' ? m.teamIds.indexOf(t.teamId)>=0 : t.assigneeId===m.id);","return true;");
 if(process.env.HJ_TEAM_MUTATION==='history-reset')pure=pure.replace('task.history=old&&old.history?old.history.slice():[];', 'task.history=[];');
-if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'projectId','workDate','startTime','endTime']);", "'projectId','workDate','startTime','endTime','history']);");
+if(process.env.HJ_TEAM_MUTATION==='history-client')pure=pure.replace("'projectId','workDate','startTime','endTime','unitId']);", "'projectId','workDate','startTime','endTime','unitId','history']);");
 if(process.env.HJ_TEAM_MUTATION==='revision')pure=pure.replace('payload.revision!==s.revision','false');
 if(process.env.HJ_TEAM_MUTATION==='auth')pure=pure.replace("if (hits.length!==1) teamError_('forbidden'); return hits[0];","return hits[0] || s.members[0];");
 let code=fs.readFileSync(path.join(base,'Code.gs'),'utf8');

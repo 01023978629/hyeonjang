@@ -14,15 +14,18 @@ function teamEvidenceVisible_(s,m,e){
 }
 function teamEvidencePublic_(e){var out={};['id','projectId','taskId','kind','phase','caption','capturedDate','name','mime','size','sha256','uploaderId','uploadedAt'].forEach(function(k){out[k]=e[k];});if(e.kind==='video')out.duration=e.duration===undefined?'':e.duration;return out;}
 function teamProjectsPresent_(s,m,result){
-  result.projects=teamList_(s,'projects').filter(function(p){return teamProjectVisible_(s,m,p);}).map(function(p){var v=teamClone_(p);if(m.role!=='owner')v.teamIds=v.teamIds.filter(function(id){return m.teamIds.indexOf(id)>=0;});return v;});
+  result.capabilities=['project-units-v1','task-ack-v1'];
+  result.projects=teamList_(s,'projects').filter(function(p){return teamProjectVisible_(s,m,p);}).map(function(p){var v=teamClone_(p);if(m.role!=='owner'){v.teamIds=v.teamIds.filter(function(id){return m.teamIds.indexOf(id)>=0;});delete v.sourceKey;v.units=(v.units||[]).filter(function(u){return result.tasks.some(function(t){return t.projectId===p.id&&t.unitId===u.id;});});}return v;});
   result.evidence=teamList_(s,'evidence').filter(function(e){return teamEvidenceVisible_(s,m,e);}).map(teamEvidencePublic_);
   result.claims=m.role==='owner'?teamList_(s,'claims').map(function(c){var v=teamClone_(c),source=teamClaimSource_(s,c),fingerprint=companyDigest_(JSON.stringify(source));delete v.review;v.reviewCurrent=!!c.review&&c.review.fingerprint===fingerprint;v.reviewedAt=c.review?c.review.at:'';v.reviewStale=!!c.review&&!v.reviewCurrent;v.readiness=teamClaimReadiness_(source.evidence);v.status=v.reviewCurrent?'ready':'draft';if(c.submissions&&c.submissions.length)v.status=c.submissions[c.submissions.length-1].fingerprint===fingerprint?'submitted':'changed-after-submission';return v;}):[];
   return result;
 }
 function teamTaskProject_(s,actor,e,t,old){
   var projectId=e.projectId||'';
-  if(old&&(old.projectId||'')!==projectId&&teamList_(s,'evidence').some(function(ev){return ev.taskId===old.id;}))teamError_('evidence-bound');
+  var unitId=e.unitId||'';
+  if(old&&((old.projectId||'')!==projectId||(old.unitId||'')!==unitId)&&teamList_(s,'evidence').some(function(ev){return ev.taskId===old.id;}))teamError_('evidence-bound');
   if(projectId){var p=teamProject_(s,teamId_(projectId));if(p.teamIds.indexOf(t.teamId)<0||!p.active&&(!old||old.projectId!==p.id||t.status!=='done'))teamError_('invalid-project');t.projectId=p.id;t.project=p.name;}
+  if(unitId){if(!projectId||!(p.units||[]).some(function(u){return u.id===unitId;}))teamError_('invalid-unit');t.unitId=teamId_(unitId);}
   var date=e.workDate||'',start=e.startTime||'',end=e.endTime||'';
   if(date||start||end){
     teamDate_(date);if(typeof start!=='string'||typeof end!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||start>=end)teamError_('invalid-schedule');
@@ -51,6 +54,20 @@ function teamClaimBundle_(s,actor,id,digest){
 }
 function teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachment,payload){
   var list,old,record,id;
+  if(action==='taskAcknowledge'){
+    teamKeys_(e,['id','assignmentVersion']);old=s.tasks.find(function(t){return t.id===e.id;});
+    // Only the authenticated current assignee can accept; a team leader cannot sign for a colleague.
+    if(!old||!teamCanSee_(actor,old)||old.assigneeId!==actor.id)teamError_('forbidden');
+    if(old.status==='done')teamError_('invalid-transition');
+    if(!Number.isSafeInteger(e.assignmentVersion)||e.assignmentVersion!==(old.assignmentVersion||0))teamError_('ack-stale');
+    var receipts=old.acknowledgements||[];
+    if(!receipts.some(function(r){return r.memberId===actor.id&&r.assignmentVersion===e.assignmentVersion;})){
+      if(receipts.length>=100)teamError_('capacity');
+      record=teamClone_(old);record.acknowledgements=receipts.concat([{memberId:actor.id,assignmentVersion:e.assignmentVersion,at:now}]);
+      s.tasks=s.tasks.map(function(t){return t===old?record:t;});
+    }
+    return {id:old.id,kind:'task'};
+  }
   if(action==='taskBatch'){
     teamKeys_(e,['tasks']);if(!Array.isArray(e.tasks)||!e.tasks.length||e.tasks.length>10||actor.role!=='owner'&&actor.role!=='lead')teamError_('forbidden');
     var draft=s;
@@ -62,12 +79,20 @@ function teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachm
     return {id:newId,kind:'taskBatch'};
   }
   if(action==='projectSave'){
-    if(actor.role!=='owner')teamError_('forbidden');teamKeys_(e,['id','name','teamIds','active']);
+    if(actor.role!=='owner')teamError_('forbidden');teamKeys_(e,['id','name','teamIds','active','sourceKey','units']);
     if(typeof e.active!=='boolean'||!Array.isArray(e.teamIds)||!e.teamIds.length||e.teamIds.length>20||new Set(e.teamIds).size!==e.teamIds.length||e.teamIds.some(function(id){return !s.teams.some(function(t){return t.id===id&&t.active;});}))teamError_('invalid-team');
     list=teamList_(s,'projects');old=list.find(function(p){return p.id===e.id;});if(e.id&&!old)teamError_('not-found');var name=teamText_(e.name,160);
     if(list.some(function(p){return p.id!==e.id&&p.name===name;}))teamError_('duplicate');
     if(old&&s.tasks.some(function(t){return t.projectId===old.id&&(e.teamIds.indexOf(t.teamId)<0||!e.active&&t.status!=='done');}))teamError_('project-in-use');
-    record={id:old?old.id:newId,name:name,teamIds:e.teamIds.slice(),active:e.active};s.projects=old?list.map(function(p){return p===old?record:p;}):list.concat([record]);if(s.projects.length>500)teamError_('capacity');return {id:record.id,kind:'project'};
+    record={id:old?old.id:newId,name:name,teamIds:e.teamIds.slice(),active:e.active};
+    var sourceKey=e.sourceKey===undefined?(old&&old.sourceKey||''):e.sourceKey;
+    var units=e.units===undefined?(old&&old.units||[]):teamProjectUnits_(e.units);
+    if(sourceKey){teamUuid_(sourceKey);if(list.some(function(p){return p.id!==record.id&&p.sourceKey===sourceKey;}))teamError_('duplicate-source');record.sourceKey=sourceKey;}
+    if(old&&old.sourceKey&&old.sourceKey!==sourceKey)teamError_('project-immutable');
+    // An in-use location is immutable. Correcting it requires a separate reviewed migration.
+    if(old&&(old.units||[]).some(function(u){return s.tasks.some(function(t){return t.projectId===old.id&&t.unitId===u.id;})&&!units.some(function(v){return JSON.stringify(v)===JSON.stringify(u);});}))teamError_('unit-in-use');
+    if(units.length)record.units=units;
+    s.projects=old?list.map(function(p){return p===old?record:p;}):list.concat([record]);if(s.projects.length>500)teamError_('capacity');return {id:record.id,kind:'project'};
   }
   if(action==='evidenceUpload'){
     var meta=teamEvidenceValidate_(s,actor,e);
@@ -101,4 +126,18 @@ function teamProjectMutation_(s,actor,action,e,now,newId,digest,identity,attachm
     }
   }
   s.claims=old?list.map(function(c){return c===old?record:c;}):list.concat([record]);if(s.claims.length>300)teamError_('capacity');return {id:record.id,kind:'claim'};
+}
+
+function teamProjectUnits_(units){
+  if(!Array.isArray(units)||units.length>500)teamError_('invalid-input');
+  var ids=[],labels=[];
+  return units.map(function(u){
+    teamKeys_(u,['id','type','dong','ho','name']);var id=teamId_(u.id),out;
+    if(!/^[A-Za-z0-9_-]{1,100}$/.test(id))teamError_('invalid-input');
+    if(u.type==='unit'&&typeof u.dong==='string'&&typeof u.ho==='string'&&/^[1-9]\d{0,5}$/.test(u.dong)&&/^[1-9]\d{0,5}$/.test(u.ho)&&u.name==='')out={id:id,type:'unit',dong:u.dong,ho:u.ho,name:''};
+    else if(u.type==='common'&&u.dong===''&&u.ho==='')out={id:id,type:'common',dong:'',ho:'',name:teamText_(u.name,40)};
+    else teamError_('invalid-input');
+    var label=out.type==='unit'?out.dong+'동'+out.ho+'호':out.name.replace(/\s/g,'').toLowerCase();
+    if(ids.indexOf(id)>=0||labels.indexOf(label)>=0)teamError_('duplicate');ids.push(id);labels.push(label);return out;
+  });
 }
