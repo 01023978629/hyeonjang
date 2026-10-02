@@ -10,7 +10,7 @@ const mutations={
  'hash':['TeamEvidence.gs','companyBytesHash_(bytes)!==meta.sha256','false'],
  'intent':['TeamEvidence.gs',"if(intent.getBlob().getDataAsString('UTF-8')!==intentText)teamError_('request-conflict');","if(false)teamError_('request-conflict');"],
  'review':['TeamProjects.gs',"if(!record.review||record.review.fingerprint!==fingerprint)teamError_('review-stale');","if(!record.review)teamError_('review-stale');"],
- 'reparent':['TeamProjects.gs',"if(old&&(old.projectId||'')!==projectId&&teamList_", "if(false&&old&&(old.projectId||'')!==projectId&&teamList_"],
+ 'reparent':['TeamProjects.gs',"if(old&&((old.projectId||'')!==projectId||(old.unitId||'')!==unitId)&&teamList_", "if(false&&old&&((old.projectId||'')!==projectId||(old.unitId||'')!==unitId)&&teamList_"],
  'private-load':['Code.gs','companyPrivate_(DriveApp.getFolderById(c.folder));','/* mutation: no private root read guard */'],
  'private-commit':['Code.gs','var folder=DriveApp.getFolderById(c.folder);companyPrivate_(folder);','var folder=DriveApp.getFolderById(c.folder);'],
  'private-snapshot':['Code.gs','companyInside_(file,c.folder);','/* mutation: no snapshot ACL/parent guard */'],

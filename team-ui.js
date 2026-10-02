@@ -33,6 +33,7 @@
     'self-lockout': '자신의 관리자 권한·계정·활성 상태는 해제할 수 없습니다.', 'last-owner': '마지막 관리자는 해제할 수 없습니다.',
     'identity-immutable': '이미 연결한 계정의 식별정보는 바꿀 수 없습니다.', 'reassign-open-tasks': '먼저 남은 업무를 다른 담당자에게 배정해 주세요.',
     'not-found': '대상이 변경되었거나 없습니다. 최신 자료와 비교해 주세요.', capacity: '서버 보관 한도에 도달했습니다. 관리자에게 확인해 주세요.',
+    'invalid-unit': '이 프로젝트에 등록된 동·호수 또는 공용부를 선택하세요.', 'unit-in-use': '업무에 연결된 위치는 바꿀 수 없습니다. 관리자 검토가 필요합니다.', 'ack-stale': '업무 배정이 바뀌었습니다. 최신 업무를 다시 확인한 뒤 수락하세요.',
     busy: '서버가 다른 요청을 처리 중입니다. 잠시 후 같은 내용으로 다시 확인해 주세요.',
     'auth-unavailable': '인증 서버에 연결하지 못했습니다. 잠시 후 다시 확인해 주세요.',
     'storage-failed': '서버 저장 결과를 확인하지 못했습니다. 같은 내용으로 재확인해 주세요.',
@@ -64,7 +65,8 @@
     if (!d.tasks.every(t => d.me.role === 'owner' || (d.me.role === 'lead' ? d.me.teamIds.includes(t.teamId) : t.assigneeId === d.me.id))) return false;
     if (!d.tasks.every(t => t.history === undefined || Array.isArray(t.history) && t.history.length <= 100 && t.history.every(h => h && str(h.at, 40, false) && id(h.actorId) && Object.hasOwn(statuses, h.status) && str(h.handoff) && id(h.teamId) && id(h.assigneeId) && Number.isSafeInteger(h.revision) && h.revision >= 0 && typeof h.baseline === 'boolean'))) return false;
     if (d.me.role !== 'owner' && d.audit.length) return false;
-    return projectUI.valid(d) && d.audit.every(a => a && str(a.at, 40) && id(a.actorId) && ['teamSave', 'memberSave', 'taskSave', 'projectSave', 'taskBatch', 'evidenceUpload', 'claimSave', 'claimReview', 'claimSubmitRecord'].includes(a.action) && id(a.targetId) && str(a.kind, 20) && Number.isSafeInteger(a.revision));
+    if (!d.tasks.every(t => (t.assignmentVersion === undefined || Number.isSafeInteger(t.assignmentVersion) && t.assignmentVersion >= 0 && t.assignmentVersion <= d.revision) && (t.acknowledgements === undefined || Array.isArray(t.acknowledgements) && t.acknowledgements.length <= 100 && t.acknowledgements.every(r => r && id(r.memberId) && str(r.at, 40, false) && Number.isSafeInteger(r.assignmentVersion) && r.assignmentVersion >= 0 && r.assignmentVersion <= d.revision)))) return false;
+    return projectUI.valid(d) && d.audit.every(a => a && str(a.at, 40) && id(a.actorId) && ['teamSave', 'memberSave', 'taskSave', 'taskAcknowledge', 'projectSave', 'taskBatch', 'evidenceUpload', 'claimSave', 'claimReview', 'claimSubmitRecord'].includes(a.action) && id(a.targetId) && str(a.kind, 20) && Number.isSafeInteger(a.revision));
   }
   async function request(url, body, epoch = state.epoch) {
     if (!endpointPattern.test(url)) fail('not-configured');
@@ -94,6 +96,7 @@
     $('projectFilter').replaceChildren(new Option('모든 현장', '')); $('assigneeFilter').replaceChildren(new Option('모든 담당자', ''));
     $('teamScope').textContent = ''; $('pageTitle').textContent = '직원 작업실'; document.title = '현장 · 직원 작업실';
     $('taskStats').textContent = ''; $('lastRead').textContent = ''; editorNotice('');
+    $('assignmentNotice').textContent = ''; $('assignmentNotice').hidden = true;
   }
   function endSession(text) {
     state.epoch++; activeRequests.forEach(c => c.abort()); activeRequests.clear(); clearTimeout(state.timer);
@@ -233,6 +236,9 @@
     const d = state.data; if (!d) return;
     $('workspace').hidden = false; $('who').textContent = d.me.name + ' · ' + roles[d.me.role];
     $('lastRead').textContent = '조회 ' + new Date().toLocaleString('ko-KR') + ' · 자료 버전 ' + d.revision;
+    const supported = d.capabilities?.includes('task-ack-v1'), waiting = d.tasks.filter(t => t.assigneeId === d.me.id && t.status !== 'done' && !assignmentReceipt(t)).length;
+    $('assignmentNotice').hidden = false;
+    $('assignmentNotice').textContent = supported ? (waiting ? '새 배정·변경 확인 필요 ' + waiting + '건 · 내 업무에서 내용을 확인하고 「업무 확인·수락」을 누르세요.' : d.tasks.some(t => t.assigneeId === d.me.id && t.status !== 'done') ? '현재 조회한 내 업무의 배정 확인이 끝났습니다.' : '현재 조회한 내 진행 업무가 없습니다.') : '이 서버는 업무 수락 기록을 지원하지 않습니다. 기존 업무 처리는 가능하며, 수락 기능은 별도 서버 업데이트 후 사용합니다.';
     rememberFilters(); const page = state.page || location.hash.slice(1) || 'mine'; state.page = pageAllowed(page) ? page : 'mine';
     history.replaceState(null, '', '#' + state.page); resetFilters(); renderPage();
   }
@@ -246,9 +252,12 @@
       const card = node('article', undefined, 'task'), top = node('div', undefined, 'row between'); card.dataset.taskId = t.id;
       top.append(node('span', statuses[t.status], 'badge ' + t.status), node('span', t.due ? '기한 ' + t.due : '기한 미지정', 'meta'));
       card.append(top, node('p', t.project, 'meta'), node('h3', t.title), node('p', teamName(t.teamId) + ' · ' + memberName(t.assigneeId), 'meta'));
+      if (t.projectId) card.append(node('p', projectUI.location(t), 'meta'));
+      if (d.capabilities?.includes('task-ack-v1')) { const receipt = assignmentReceipt(t); card.append(node('p', receipt ? '담당자 수락 확인 · ' + receipt.at : '현재 배정 미확인 · 일정/현장/담당자 변경 시 다시 확인', 'notice')); }
       if (t.handoff) card.append(node('p', t.handoff, 'pre'));
       if (t.workDate) card.append(node('p', '작업일 ' + t.workDate + ' ' + (t.startTime || '') + (t.endTime ? '–' + t.endTime : ''), 'meta'));
       const actions = node('div', undefined, 'row task-actions');
+      if (d.capabilities?.includes('task-ack-v1') && t.assigneeId === d.me.id && t.status !== 'done' && !assignmentReceipt(t)) actions.append(button('업무 확인·수락', () => openEditor('ack', t), 'primary'));
       if (t.status === 'todo' || t.status === 'blocked') actions.append(button('작업 시작', () => openTaskAction(t, 'doing', '작업 시작'), 'primary'));
       if (t.status === 'doing') actions.append(button('검수 요청', () => openTaskAction(t, 'review', '검수 요청'), 'primary'));
       if (t.status === 'review' && canAssign(t.teamId)) { actions.append(button('완료 승인', () => openTaskAction(t, 'done', '완료 승인'), 'primary'), button('보완 요청', () => openTaskAction(t, 'doing', '보완 요청', true))); }
@@ -258,6 +267,7 @@
       if (!t.history?.length) list.append(node('li', '아직 상세 이력이 없습니다. 기존 최신 보고는 위 내용이며 다음 변경부터 이력이 쌓입니다.')); history.append(list); card.append(history); $('taskList').append(card);
     });
   }
+  function assignmentReceipt(t) { return (t.acknowledgements || []).find(r => r.memberId === t.assigneeId && r.assignmentVersion === (t.assignmentVersion || 0)); }
   function openTaskAction(task, status, label, requireNote = false) {
     openEditor('task', task); if (!state.editor) return;
     $('edit-status').value = status; $('editorTitle').textContent = label + ' · ' + task.title; $('save').textContent = label + ' 저장'; state.editor.requireNote = requireNote;
@@ -278,7 +288,7 @@
     }); if (!groups.length) $('orgList').append(node('li', '현재 권한으로 볼 수 있는 팀이 없습니다.'));
   }
   function renderAudit() {
-    $('auditList').replaceChildren(); const labels = { teamSave: '팀 변경', memberSave: '직원 권한 변경', taskSave: '업무 변경', projectSave: '프로젝트 변경', taskBatch: '업무 일괄 배정', evidenceUpload: '원본 증빙 등록', claimSave: '보험 준비 변경', claimReview: '자료 검토 기록', claimSubmitRecord: '직접 제출 사실 수동 기록' };
+    $('auditList').replaceChildren(); const labels = { teamSave: '팀 변경', memberSave: '직원 권한 변경', taskSave: '업무 변경', taskAcknowledge: '담당자 업무 수락', projectSave: '프로젝트 변경', taskBatch: '업무 일괄 배정', evidenceUpload: '원본 증빙 등록', claimSave: '보험 준비 변경', claimReview: '자료 검토 기록', claimSubmitRecord: '직접 제출 사실 수동 기록' };
     state.data.audit.forEach(a => $('auditList').append(node('li', a.at + ' · ' + memberName(a.actorId) + ' · ' + labels[a.action] + ' · 대상 ' + a.targetId + ' · 버전 ' + a.revision)));
     if (!state.data.audit.length) $('auditList').append(node('li', '표시할 변경 이력이 없습니다.'));
   }
@@ -295,12 +305,16 @@
   }
   function returnFocus(taskId) { const target = taskId && $('taskList').querySelector('[data-task-id="' + CSS.escape(taskId) + '"] button'); (target && !$('tasksPanel').hidden ? target : $('pageTitle')).focus(); }
   function openEditor(kind, old = {}, imported = null) {
-    if (!state.data || state.editor || projectUI.hasDraft() || (kind !== 'task' && state.data.me.role !== 'owner')) return;
+    if (!state.data || state.editor || projectUI.hasDraft() || (!['task', 'ack'].includes(kind) && state.data.me.role !== 'owner')) return;
+    if (kind === 'ack' && (!state.data.capabilities?.includes('task-ack-v1') || old.assigneeId !== state.data.me.id || old.status === 'done')) return;
     if (kind === 'task' && !old.id && !assignableTeams().length) return;
     state.editor = { kind, old: JSON.parse(JSON.stringify(old)), revision: state.data.revision, pending: null, busy: false, conflict: false, imported };
     const form = $('editorFields'); form.replaceChildren(); editorNotice(''); $('conflictLatest').hidden = true; $('compare').hidden = true; $('rebase').hidden = true; $('save').hidden = false; $('save').disabled = false; $('save').textContent = '저장';
-    $('editorTitle').textContent = ({ team: '팀', member: '직원 권한', task: '업무' })[kind] + (old.id ? ' 수정' : ' 등록');
-    if (kind === 'team') {
+    $('editorTitle').textContent = kind === 'ack' ? '업무 확인·수락' : ({ team: '팀', member: '직원 권한', task: '업무' })[kind] + (old.id ? ' 수정' : ' 등록');
+    if (kind === 'ack') {
+      form.append(node('h3', old.title), node('p', old.project + ' · ' + projectUI.location(old)), node('p', '기한 ' + (old.due || '미정') + ' · 작업일 ' + (old.workDate || '미정') + ' ' + (old.startTime || '') + '–' + (old.endTime || '')), node('p', old.handoff || '추가 작업 안내 없음', 'pre'), node('p', '내 계정으로 현재 배정 내용을 확인하고 수락합니다. 작업 시작·검수·완료 승인을 대신하지 않습니다.', 'notice'));
+      const label = node('label', undefined, 'check'), input = node('input'); input.type = 'checkbox'; input.id = 'edit-ackConfirm'; input.required = true; label.append(input, node('span', '위 현장·위치·작업 일정 확인')); form.append(label); $('save').textContent = '확인·수락 저장';
+    } else if (kind === 'team') {
       field(form, 'name', '팀 이름', 'text', old.name || '', { max: 60, required: true });
       field(form, 'active', '사용 상태', 'select', String(old.active !== false), { options: [['true', '사용'], ['false', '비활성화']] });
       form.append(node('p', '직원 또는 미완료 업무가 남아 있는 팀은 비활성화할 수 없습니다.', 'muted'));
@@ -318,7 +332,11 @@
       field(form, 'title', '할 일', 'text', source.title || '', { max: 160, required: true, disabled: !canEdit });
       field(form, 'project', '현장명', 'text', source.project || (!old.id && !imported ? $('projectFilter').value : '') || '', { max: 160, required: true, disabled: !canEdit, help: '사진을 모으려면 아래에서 등록 프로젝트를 연결하세요. 이름만 같은 기존 자료는 자동 공유하지 않습니다.' });
       const linkedProject = field(form, 'projectId', '사진함에 연결할 프로젝트', 'select', source.projectId || '', { disabled: !canEdit, options: [['', '연결 안 함 · 기존 현장명 유지'], ...(state.data.projects || []).map(p => [p.id, p.name])] });
-      linkedProject.onchange = () => { const p = state.data.projects?.find(p => p.id === linkedProject.value); if (p) $('edit-project').value = p.name; };
+      const unitSupported = state.data.capabilities?.includes('project-units-v1');
+      const unit = field(form, 'unitId', '동·호수 / 공용부', 'select', '', { disabled: !canEdit || !unitSupported });
+      const fillUnits = preferred => { unit.replaceChildren(new Option('위치 미지정', '')); (state.data.projects?.find(p => p.id === linkedProject.value)?.units || []).forEach(u => unit.add(new Option(projectUI.unitLabel(u), u.id))); unit.value = preferred || ''; };
+      fillUnits(source.unitId); if (!unitSupported) form.append(node('p', '동·호수 연결은 별도 직원 서버 업데이트 후 사용합니다.', 'muted'));
+      linkedProject.onchange = () => { const p = state.data.projects?.find(p => p.id === linkedProject.value); if (p) $('edit-project').value = p.name; fillUnits(''); };
       const available = canEdit ? assignableTeams() : state.data.teams.filter(t => t.id === old.teamId);
       const teams = field(form, 'teamId', '담당 팀', 'select', old.teamId || contextTeam?.id || available[0]?.id || '', { required: true, disabled: !canEdit, options: available.map(t => [t.id, t.name]) });
       const assignee = field(form, 'assigneeId', '담당자', 'select', '', { required: true, disabled: !canEdit });
@@ -341,7 +359,8 @@
     const e = state.editor, value = k => $('edit-' + k).value, old = e.old;
     if (e.kind === 'team') return { id: old.id || '', name: value('name').trim(), active: value('active') === 'true' };
     if (e.kind === 'member') return { id: old.id || '', name: value('name').trim(), userId: value('userId').trim(), officeId: value('officeId'), role: value('role'), active: value('active') === 'true', teamIds: [...$('editorFields').querySelectorAll('input[name=teamIds]:checked')].map(i => i.value) };
-    return { id: old.id || '', title: value('title').trim(), project: value('project').trim(), projectId: value('projectId'), workDate: value('workDate'), startTime: value('startTime'), endTime: value('endTime'), teamId: value('teamId'), assigneeId: value('assigneeId'), due: value('due'), status: value('status'), handoff: value('handoff'), sourceRef: e.imported?.sourceRef || old.sourceRef || '' };
+    if (e.kind === 'ack') return { id: old.id, assignmentVersion: old.assignmentVersion || 0 };
+    return { id: old.id || '', title: value('title').trim(), project: value('project').trim(), projectId: value('projectId'), ...(state.data.capabilities?.includes('project-units-v1') ? { unitId: value('unitId') } : {}), workDate: value('workDate'), startTime: value('startTime'), endTime: value('endTime'), teamId: value('teamId'), assigneeId: value('assigneeId'), due: value('due'), status: value('status'), handoff: value('handoff'), sourceRef: e.imported?.sourceRef || old.sourceRef || '' };
   }
   function freezeFields(freeze) {
     [...$('editorFields').querySelectorAll('input,select,textarea')].forEach(n => { if (freeze) { if (!n.disabled) n.dataset.temporarilyDisabled = '1'; n.disabled = true; } else if (n.dataset.temporarilyDisabled) { n.disabled = false; delete n.dataset.temporarilyDisabled; } });
@@ -353,7 +372,7 @@
       const entity = entityFromForm(); if (['blocked', 'review'].includes(entity.status) && !entity.handoff.trim()) { editorNotice(errors['handoff-required']); $('edit-handoff').focus(); return; }
       if (edit.kind === 'task' && edit.old.status === 'review' && entity.status === 'doing' && (!entity.handoff.trim() || entity.handoff === edit.old.handoff)) { editorNotice(errors['review-note-required']); $('edit-handoff').focus(); return; }
       if (!crypto.randomUUID) { editorNotice('이 브라우저에서 안전한 요청 번호를 만들 수 없습니다. 최신 브라우저를 사용해 주세요.'); return; }
-      edit.pending = { action: edit.kind + 'Save', payload: { requestId: crypto.randomUUID(), revision: edit.revision, entity } };
+      edit.pending = { action: edit.kind === 'ack' ? 'taskAcknowledge' : edit.kind + 'Save', payload: { requestId: crypto.randomUUID(), revision: edit.revision, entity } };
     }
     const epoch = state.epoch; edit.busy = true; freezeFields(true); $('save').disabled = true; editorNotice('서버에 저장 결과를 확인하고 있습니다.', false);
     try {
@@ -364,7 +383,7 @@
       const code = codeOf(err); if (code === 'session-expired') { endSession(message(err)); return; }
       if (code === 'forbidden') { handleReadError(err); return; }
       editorNotice(message(err));
-      if (['conflict', 'request-conflict', 'not-found', 'duplicate-source'].includes(code)) { edit.pending = null; edit.conflict = true; $('compare').hidden = false; $('save').disabled = true; freezeFields(false); }
+      if (['conflict', 'request-conflict', 'not-found', 'duplicate-source', 'ack-stale'].includes(code)) { edit.pending = null; edit.conflict = true; $('compare').hidden = false; $('save').disabled = true; freezeFields(false); }
       else if (['network', 'bad-response', 'server-error', 'storage-failed', 'busy', 'auth-unavailable'].includes(code) || !errors[code]) { $('save').textContent = '보낸 내용으로 결과 재확인'; }
       else { edit.pending = null; freezeFields(false); $('save').textContent = '저장'; }
     } finally { if (state.editor === edit) { edit.busy = false; $('save').disabled = edit.conflict; } }
@@ -383,6 +402,7 @@
   }
   function rebase() {
     const e = state.editor; if (!e || e.busy || e.latestRevision !== state.data?.revision) return;
+    if (e.kind === 'ack') { const current = state.data.tasks.find(t => t.id === e.old.id); state.editor = null; $('editor').close(); $('editorFields').replaceChildren(); if (current) openEditor('ack', current); return; }
     e.revision = e.latestRevision; e.conflict = false; e.pending = null; freezeFields(false); $('save').disabled = false; $('save').textContent = '검토한 내용 저장'; $('compare').hidden = true; $('rebase').hidden = true;
     editorNotice('최신 버전을 기준으로 다시 검토할 수 있습니다. 저장을 눌러야 전송됩니다.', false);
   }

@@ -4,7 +4,9 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const { node: n, button: b } = ctx, phases = { before: '작업 전', cause: '원인 확인', during: '작업 중', after: '마무리', document: '증빙 서류' };
   const types = { undecided: '담당자 확인 전', 'customer-support': '고객 보험 청구 지원', 'contractor-billing': '보험 의뢰 공사비 청구' };
   const messages = { 'schedule-conflict': '담당자의 다른 일정과 겹칩니다. 시간 또는 담당자를 바꿔 주세요.', 'invalid-schedule': '작업일과 시작·종료 시간을 함께 입력하세요.', 'project-in-use': '사용 중인 프로젝트입니다.', 'evidence-bound': '사진이 연결된 업무의 프로젝트는 바꿀 수 없습니다.', 'invalid-project': '연결 가능한 프로젝트를 선택하세요.', 'evidence-missing': '선택한 증빙을 확인할 수 없습니다.', 'invalid-file': 'JPG·PNG·WebP·HEIC 사진(12MiB), MP4·MOV·WebM 동영상(100MB) 또는 대표용 PDF 원본과 크기를 확인하세요.', 'hash-mismatch': '원본 해시가 일치하지 않습니다. 원본 저장 상태를 확인해야 합니다.', 'storage-ambiguous': '동일 번호의 원본이 여러 개입니다. 자동 처리하지 않으며 관리자 확인이 필요합니다.', 'review-required': '자료가 바뀌었거나 검토 전입니다. 제출 자료를 다시 검토해 주세요.', 'review-stale': '검토한 자료가 바뀌었습니다. 최신 내용으로 다시 검토해 주세요.', 'claim-incomplete': '청구 방식·보험사·사고일·발견 및 보수 내용·금액·사진·동의 확인을 완료하세요.', 'project-immutable': '기존 청구 건의 프로젝트는 바꿀 수 없습니다.', 'private-storage-required': '회사 전용 비공개 저장 폴더를 확인해야 합니다.' };
-  let selected = '', day = localDay(), edit = null, busy = false, viewEpoch = 0, queueFilter = 'all', queueProject = '', queueRetryBusy = false;
+  // Empty and @-prefixed filters cannot collide with the server's nonempty ASCII location IDs.
+  const unitAll = '', unitMissing = '@unassigned';
+  let selected = '', selectedUnit = unitAll, day = localDay(), edit = null, busy = false, viewEpoch = 0, queueFilter = 'all', queueProject = '', queueRetryBusy = false;
   const objectUrls = new Set(), photoUrls = new Set();
   const HEIC2ANY = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js'; // Same CDN and version as the main app.
   const dlg = n('dialog'); dlg.id = 'projectEditor'; dlg.setAttribute('aria-labelledby', 'projectEditTitle');
@@ -20,6 +22,12 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const data = () => ctx.data(), owner = () => data()?.me.role === 'owner';
   const manager = () => ['owner', 'lead'].includes(data()?.me.role);
   const projects = () => data()?.projects || [], evidence = () => data()?.evidence || [], claims = () => data()?.claims || [];
+  const supports = name => data()?.capabilities?.includes(name);
+  const unitLabel = u => u.type === 'common' ? u.name : u.dong + '동 ' + u.ho + '호';
+  const location = t => { const u = projects().find(p => p.id === t.projectId)?.units?.find(u => u.id === t.unitId); return u ? unitLabel(u) : '위치 미지정'; };
+  function unitsValid(us) {
+    return Array.isArray(us) && us.length <= 500 && new Set(us.map(u => u?.id)).size === us.length && us.every(u => u && Object.keys(u).every(k => ['id', 'type', 'dong', 'ho', 'name'].includes(k)) && typeof u.id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(u.id) && (u.type === 'unit' ? typeof u.dong === 'string' && typeof u.ho === 'string' && /^[1-9]\d{0,5}$/.test(u.dong) && /^[1-9]\d{0,5}$/.test(u.ho) && u.name === '' : u.type === 'common' && u.dong === '' && u.ho === '' && typeof u.name === 'string' && !!u.name.trim() && u.name.length <= 40 && !/[\x00-\x1f]/.test(u.name))) && new Set(us.map(u => unitLabel(u).replace(/\s/g, '').toLowerCase())).size === us.length;
+  }
   const queue = window.HJTeamUpload.create({ api: ctx.api, accept: ctx.accept, data, epoch: ctx.epoch, binding: ctx.binding, onError: ctx.onError, onChange: () => renderQueue(),
     onDone: item => ctx.notice(item.entity.name + ' 원본의 서버 저장을 확인했습니다.') });
   const canAssign = team => owner() || data()?.me.role === 'lead' && data().me.teamIds.includes(team);
@@ -37,7 +45,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const value = key => form.elements.namedItem(key)?.value || '';
   const checks = key => [...fields.querySelectorAll('input[name="' + key + '"]:checked')].map(el => el.value);
   function reset() {
-    viewEpoch++; busy = false; selected = ''; edit = null; queueFilter = 'all'; queueProject = ''; queueRetryBusy = false; fields.replaceChildren(); msg.textContent = ''; dlg.close(); queue.stop();
+    viewEpoch++; busy = false; selected = ''; selectedUnit = unitAll; edit = null; queueFilter = 'all'; queueProject = ''; queueRetryBusy = false; fields.replaceChildren(); msg.textContent = ''; dlg.close(); queue.stop();
     objectUrls.forEach(url => URL.revokeObjectURL(url)); objectUrls.clear(); photoUrls.clear();
     ['plannerPanel', 'projectsPanel', 'claimsPanel'].forEach(id => document.getElementById(id)?.replaceChildren());
   }
@@ -76,6 +84,21 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     const group = n('fieldset'); group.append(n('legend', '담당 팀'));
     data().teams.filter(t => t.active).forEach(t => check(group, 'teams', t.name, p.teamIds?.includes(t.id), t.id)); fields.append(group);
     fields.append(n('p', '기존 현장 앱의 이름과 같아도 자동 연결하지 않습니다. 직원 업무에 이 프로젝트를 직접 지정해 사진을 모읍니다.', 'notice'));
+    if (supports('project-units-v1')) {
+      fields.append(n('p', p.sourceKey ? '현장 앱 연결 키가 등록돼 있습니다. 연결 키와 업무에 쓰인 위치는 교체하지 않습니다.' : '현장 앱 → 운영 연결 점검에서 이 아파트 연결 JSON을 만들고 아래에 붙여 넣으세요. 사진·고객 메모는 포함하지 않습니다.', 'meta'));
+      field(fields, 'linkJson', '현장 앱 아파트·동호수 연결 JSON', 'textarea', '', { max: 50000 });
+      const preview = n('p', '', 'notice'); preview.id = 'projectLinkPreview';
+      const confirmLink = check(fields, 'linkConfirm', '지금 수정하는 프로젝트가 연결 자료의 아파트임을 확인했습니다.'); confirmLink.hidden = true; confirmLink.closest('label').hidden = true;
+      fields.append(b('연결 자료 미리보기', () => {
+        try {
+          const raw = value('linkJson'), v = JSON.parse(raw); const binding = ctx.binding();
+          if (!binding || raw.length > 50000 || v?.format !== 'company-project-links-v1' || Object.keys(v).some(k => !['format', 'apiUrl', 'sourceKey', 'name', 'units'].includes(k)) || v.apiUrl !== binding.apiUrl || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 160 || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v.sourceKey) || !unitsValid(v.units) || p.sourceKey && p.sourceKey !== v.sourceKey) throw new Error('invalid');
+          edit.link = { sourceKey: v.sourceKey, units: v.units }; edit.linkRaw = raw; edit.linkTargetName = value('name').trim(); edit.linkApiUrl = binding.apiUrl;
+          preview.textContent = '가져올 아파트: ' + v.name + '\n대상: ' + edit.linkTargetName + '\n위치 ' + v.units.length + '곳: ' + v.units.map(unitLabel).join(' · ') + '\n아직 서버에 저장하지 않았습니다. 대상과 담당 팀을 확인하고 저장하세요.';
+          confirmLink.hidden = false; confirmLink.closest('label').hidden = false; confirmLink.required = true; confirmLink.checked = false;
+        } catch (_) { edit.link = null; confirmLink.checked = false; confirmLink.required = false; confirmLink.closest('label').hidden = true; preview.textContent = '연결 자료 형식·직원 서버·아파트 연결 키를 확인하세요. 기존 자료는 바뀌지 않았습니다.'; }
+      }), preview);
+    } else fields.append(n('p', '아파트·동호수 연결은 별도 직원 서버 업데이트 후 사용합니다.', 'notice'));
   }
   function planner(root) {
     const top = n('div', undefined, 'row between'); top.append(n('h2', '기술자별 작업 배정'));
@@ -102,9 +125,10 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
       if (rows.children.length >= 10) return;
       const i = rows.children.length, row = n('fieldset'); row.className = 'batch-row'; row.append(n('legend', '배정 ' + (i + 1)));
       const ps = field(row, 'p' + i, '프로젝트', 'select', '', { required: true, choices: [['', '선택'], ...projects().filter(p => p.active && p.teamIds.some(canAssign)).map(p => [p.id, p.name])] });
+      const unit = field(row, 'u' + i, '동·호수 / 공용부', 'select', '', { choices: [['', '위치 미지정']] }); unit.disabled = !supports('project-units-v1');
       const team = field(row, 't' + i, '담당 팀', 'select', '', { required: true }), person = field(row, 'm' + i, '기술자', 'select', '', { required: true });
       function fillPeople() { choices(person, [['', '선택'], ...data().members.filter(m => m.active && m.teamIds.includes(team.value)).map(m => [m.id, m.name])]); }
-      ps.onchange = () => { choices(team, [['', '선택'], ...data().teams.filter(t => t.active && canAssign(t.id) && projects().find(p => p.id === ps.value)?.teamIds.includes(t.id)).map(t => [t.id, t.name])]); fillPeople(); }; team.onchange = fillPeople; ps.onchange();
+      ps.onchange = () => { choices(team, [['', '선택'], ...data().teams.filter(t => t.active && canAssign(t.id) && projects().find(p => p.id === ps.value)?.teamIds.includes(t.id)).map(t => [t.id, t.name])]); choices(unit, [['', '위치 미지정'], ...(projects().find(p => p.id === ps.value)?.units || []).map(u => [u.id, unitLabel(u)])]); fillPeople(); }; team.onchange = fillPeople; ps.onchange();
       field(row, 'title' + i, '할 일', 'text', '', { required: true, max: 160 }); field(row, 'd' + i, '작업일', 'date', day, { required: true });
       const times = n('div', undefined, 'grid'); field(times, 's' + i, '시작', 'time', '09:00', { required: true }); field(times, 'e' + i, '종료', 'time', '12:00', { required: true }); row.append(times); rows.append(row); add.disabled = rows.children.length >= 10;
     }
@@ -114,18 +138,22 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     const top = n('div', undefined, 'row between'); top.append(n('h2', '프로젝트 사진함')); if (owner()) top.append(b('프로젝트 등록', () => projectEditor(), 'primary')); root.append(top);
     root.append(n('p', '기술자는 본인 업무에 연결한 사진만, 팀장은 담당 팀 사진만 볼 수 있습니다. 대표는 프로젝트 전체 사진과 보험 증빙을 모읍니다.', 'muted'));
     const select = field(root, 'projectSelect', '프로젝트 선택', 'select', selected, { choices: [['', '프로젝트를 선택하세요'], ...projects().map(p => [p.id, p.name + (p.active ? '' : ' · 보관')])] });
-    if (!projects().some(p => p.id === selected)) selected = ''; select.value = selected; select.onchange = () => { selected = select.value; render('projects'); };
+    if (!projects().some(p => p.id === selected)) selected = ''; select.value = selected; select.onchange = () => { selected = select.value; selectedUnit = unitAll; render('projects'); };
     const qbox = n('section', undefined, 'card'); qbox.id = 'uploadQueue'; qbox.setAttribute('aria-label', '이 기기 올리기 대기열'); root.append(qbox); renderQueue();
     const p = projects().find(p => p.id === selected); if (!p) { root.append(n('p', '기존 문자열 현장명은 자동 연결되지 않습니다. 대표가 프로젝트 등록 후 업무에 연결해 주세요.', 'notice')); return; }
     const actions = n('div', undefined, 'row'); if (owner()) actions.append(b('프로젝트 수정', () => projectEditor(p)));
     if (data().tasks.some(t => t.projectId === p.id)) actions.append(b('작업 사진·동영상 올리기', () => uploadEditor(p, 'photo'), 'primary'));
     if (owner()) actions.append(b('보험 증빙 서류 올리기', () => uploadEditor(p, 'document'))); root.append(actions, qbox);
-    const tasks = data().tasks.filter(t => t.projectId === p.id); root.append(n('p', '연결 업무 ' + tasks.length + '건 · 완료 ' + tasks.filter(t => t.status === 'done').length + '건', 'meta'));
-    tasks.forEach(t => root.append(b(t.title + ' · ' + ctx.statuses[t.status], () => ctx.openTask(t))));
+    const unit = field(root, 'unitFilter', '동·호수 / 공용부별 업무·사진', 'select', selectedUnit, { choices: [[unitAll, '모든 위치'], [unitMissing, '위치 미지정'], ...(p.units || []).map(u => [u.id, unitLabel(u)])] });
+    if (![...unit.options].some(o => o.value === selectedUnit)) selectedUnit = unitAll; unit.value = selectedUnit; unit.onchange = () => { selectedUnit = unit.value; render('projects'); };
+    const matchesUnit = t => selectedUnit === unitAll || (selectedUnit === unitMissing ? !t?.unitId : t?.unitId === selectedUnit);
+    const tasks = data().tasks.filter(t => t.projectId === p.id && matchesUnit(t)); root.append(n('p', '선택한 위치 업무 ' + tasks.length + '건 · 완료 ' + tasks.filter(t => t.status === 'done').length + '건', 'meta'));
+    tasks.forEach(t => root.append(b(location(t) + ' · ' + t.title + ' · ' + ctx.statuses[t.status], () => ctx.openTask(t))));
     const grid = n('div', undefined, 'grid photo-grid'); grid.id = 'projectEvidence'; root.append(grid);
-    evidence().filter(e => e.projectId === p.id).forEach(e => {
+    evidence().filter(e => e.projectId === p.id && matchesUnit(data().tasks.find(t => t.id === e.taskId))).forEach(e => {
       const card = n('article', undefined, 'card'); card.dataset.evidenceId = e.id;
       card.append(n('h3', (e.kind === 'video' ? '🎬 동영상 · ' : '') + (phases[e.phase] || '증빙')), n('p', e.caption || '설명 없음'), n('p', (e.kind === 'video' ? (e.duration ? '길이 ' + e.duration + '초 · ' : '길이 모름 · ') : '') + (isHeic(e.mime) ? 'HEIC 원본 · ' : '') + (e.capturedDate ? '사용자 입력 촬영일 ' + e.capturedDate + ' · ' : '') + (e.size / 1024 / 1024).toFixed(2) + 'MiB', 'meta'));
+      card.append(n('p', e.kind === 'document' ? '프로젝트 공통 서류' : location(data().tasks.find(t => t.id === e.taskId) || {}), 'meta'));
       const target = n('div'); card.append(target, b(e.mime === 'application/pdf' ? '원본 서류 받기' : e.kind === 'video' ? '원본 동영상 보기' : '원본 사진 보기', () => showEvidence(e, target))); grid.append(card);
     });
     if (!grid.children.length) grid.append(n('p', '아직 이 프로젝트에 등록한 사진·서류가 없습니다.', 'notice'));
@@ -133,7 +161,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   function uploadEditor(p, kind) {
     if (!begin('upload', kind === 'photo' ? '프로젝트 작업 사진·동영상 올리기' : '대표 전용 보험 증빙 서류', { projectId: p.id, kind })) return;
     fields.append(n('p', p.name, 'page-context'));
-    if (kind === 'photo') field(fields, 'task', '사진을 연결할 업무', 'select', '', { required: true, choices: [['', '선택'], ...data().tasks.filter(t => t.projectId === p.id).map(t => [t.id, t.title])] });
+    if (kind === 'photo') field(fields, 'task', '사진을 연결할 업무', 'select', '', { required: true, choices: [['', '선택'], ...data().tasks.filter(t => t.projectId === p.id).map(t => [t.id, location(t) + ' · ' + t.title])] });
     field(fields, 'phase', '작업 단계', 'select', kind === 'photo' ? 'before' : 'document', { choices: Object.entries(phases).filter(([k]) => kind === 'photo' ? k !== 'document' : k === 'document') });
     field(fields, 'caption', '사진·서류 설명', 'textarea', '', { max: 1000 }); field(fields, 'date', '촬영일·작성일 (직접 확인)', 'date');
     const file = field(fields, 'files', kind === 'photo' ? '원본 파일 · 최대 10개 · 사진(JPG·PNG·WebP·HEIC) 각 12MiB, 동영상(MP4·MOV·WebM) 각 100MB 이하' : '원본 파일 · 최대 10개, 각 12MiB 이하', 'file', '', { required: true }); file.multiple = true;
@@ -268,8 +296,11 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     } catch (error) { if (alive(e)) { e.blocked = true; report(error); } } finally { if (alive(e)) e.busy = false; }
   }
   function payloadEntity(e) {
-    if (e.kind === 'project') return { id: e.old.id || '', name: value('name').trim(), active: value('active') === 'true', teamIds: checks('teams') };
-    if (e.kind === 'batch') return { tasks: [...document.getElementById('batchRows').children].map((_, i) => ({ title: value('title' + i), project: projects().find(p => p.id === value('p' + i))?.name || '', projectId: value('p' + i), teamId: value('t' + i), assigneeId: value('m' + i), workDate: value('d' + i), startTime: value('s' + i), endTime: value('e' + i), due: value('d' + i), status: 'todo', handoff: '', sourceRef: '' })) };
+    if (e.kind === 'project') {
+      if ((e.link || value('linkJson')) && (!e.link || e.linkRaw !== value('linkJson') || e.linkTargetName !== value('name').trim() || e.linkApiUrl !== ctx.binding()?.apiUrl || !checks('linkConfirm').length)) throw Object.assign(new Error('invalid-input'), { code: 'invalid-input', detail: '연결 JSON을 다시 미리보고 대상 아파트를 확인하세요.' });
+      return { id: e.old.id || '', name: value('name').trim(), active: value('active') === 'true', teamIds: checks('teams'), ...(e.link ? e.link : {}) };
+    }
+    if (e.kind === 'batch') return { tasks: [...document.getElementById('batchRows').children].map((_, i) => ({ title: value('title' + i), project: projects().find(p => p.id === value('p' + i))?.name || '', projectId: value('p' + i), ...(supports('project-units-v1') ? { unitId: value('u' + i) } : {}), teamId: value('t' + i), assigneeId: value('m' + i), workDate: value('d' + i), startTime: value('s' + i), endTime: value('e' + i), due: value('d' + i), status: 'todo', handoff: '', sourceRef: '' })) };
     if (e.kind === 'review') return { id: e.old.id, expectedFingerprint: e.fingerprint };
     if (e.kind === 'submission') return { id: e.old.id, expectedFingerprint: e.fingerprint, submittedDate: value('submittedDate'), channel: value('channel'), referenceNo: value('referenceNo') };
     const items = [...document.getElementById('claimItems').children].map((_, i) => ({ kind: value('kind' + i), description: value('desc' + i).trim(), amount: Number(value('amount' + i)) })).filter(i => i.description || i.amount);
@@ -387,7 +418,11 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     const ps = d.projects || [], es = d.evidence || [], cs = d.claims || [];
     if (ps.length > 500 || es.length > 10000 || cs.length > 1000 || d.me.role !== 'owner' && cs.length) return false;
     if (!ps.every(p => p && typeof p.id === 'string' && typeof p.name === 'string' && p.name.length <= 160 && Array.isArray(p.teamIds) && typeof p.active === 'boolean')) return false;
+    if (d.capabilities !== undefined && (!Array.isArray(d.capabilities) || d.capabilities.some(x => typeof x !== 'string'))) return false;
+    if (!ps.every(p => (p.units === undefined || unitsValid(p.units)) && (d.me.role === 'owner' || !('sourceKey' in p)) && (p.sourceKey === undefined || typeof p.sourceKey === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(p.sourceKey)))) return false;
+    if (!d.tasks.every(t => !t.unitId || ps.some(p => p.id === t.projectId && p.units?.some(u => u.id === t.unitId)))) return false;
+    if (d.me.role !== 'owner' && !ps.every(p => (p.units || []).every(u => d.tasks.some(t => t.projectId === p.id && t.unitId === u.id)))) return false;
     return es.every(e => e && typeof e.id === 'string' && typeof e.projectId === 'string' && typeof e.caption === 'string' && Object.hasOwn(phases, e.phase) && (e.kind === 'video' ? ['video/mp4', 'video/quicktime', 'video/webm'] : ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']).includes(e.mime) && /^[a-f0-9]{64}$/.test(e.sha256) && Number.isSafeInteger(e.size) && e.size > 0 && e.size <= (e.kind === 'video' ? 100 : 12) * 1048576 && (e.duration === undefined || e.duration === '' || e.kind === 'video' && Number.isFinite(e.duration) && e.duration > 0) && !('fileId' in e) && !('base64' in e) && (e.kind === 'document' ? d.me.role === 'owner' : (e.kind === 'photo' || e.kind === 'video') && d.tasks.some(t => t.id === e.taskId && t.projectId === e.projectId))) && cs.every(c => c && typeof c.id === 'string' && typeof c.projectId === 'string' && Array.isArray(c.items) && Array.isArray(c.selectedEvidenceIds));
   }
-  return Object.freeze({ render, reset, valid, hasDraft: () => !!edit || busy });
+  return Object.freeze({ render, reset, valid, unitLabel, location, hasDraft: () => !!edit || busy });
 } });

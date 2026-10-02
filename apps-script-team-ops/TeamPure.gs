@@ -76,13 +76,15 @@ function teamApply_(store, identity, action, payload, now, newId, digest, attach
     s.members=old?s.members.map(function(m){return m===old?member:m;}):s.members.concat([member]);
     if(!s.members.some(function(m){return m.active&&m.role==='owner';}))teamError_('last-owner');
   } else if(action==='taskSave') {
-    teamKeys_(e,['id','title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime']);
+    teamKeys_(e,['id','title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime','unitId']);
     old=s.tasks.find(function(t){return t.id===e.id;});if(e.id&&!old)teamError_('not-found');
     if(old&&!teamCanSee_(actor,old))teamError_('forbidden');
+    // A still-open old client omits the new optional field. Never erase its existing location.
+    if(old&&e.unitId===undefined&&(e.projectId||'')===(old.projectId||'')){e=teamClone_(e);e.unitId=old.unitId||'';}
     var assign=teamCanAssign_(actor,e.teamId)&&(!old||teamCanAssign_(actor,old.teamId));
     if(!s.teams.some(function(t){return t.id===e.teamId&&t.active;}))teamError_('invalid-team');
     if(!s.members.some(function(m){return m.id===e.assigneeId&&m.active&&m.teamIds.indexOf(e.teamId)>=0;}))teamError_('invalid-assignee');
-    if(!assign&&(!old||old.assigneeId!==actor.id||['title','project','teamId','assigneeId','due','sourceRef','projectId','workDate','startTime','endTime'].some(function(k){return (e[k]||'')!==(old[k]||'');})))teamError_('forbidden');
+    if(!assign&&(!old||old.assigneeId!==actor.id||['title','project','teamId','assigneeId','due','sourceRef','projectId','workDate','startTime','endTime','unitId'].some(function(k){return (e[k]||'')!==(old[k]||'');})))teamError_('forbidden');
     if(!assign&&old&&old.status==='done'&&['status','handoff'].some(function(k){return (e[k]||'')!==(old[k]||'');}))teamError_('forbidden');
     var transitions={todo:['doing','blocked','review'],doing:['blocked','review'],blocked:['doing','review'],review:['doing','done'],done:['doing']};
     if(!Object.prototype.hasOwnProperty.call(transitions,e.status))teamError_('invalid-input');
@@ -97,8 +99,12 @@ function teamApply_(store, identity, action, payload, now, newId, digest, attach
     teamTaskProject_(s,actor,e,task,old);
     if(task.sourceRef&&s.tasks.some(function(t){return t.id!==targetId&&t.sourceRef===task.sourceRef;}))teamError_('duplicate-source');
     // Only the server appends reports; client-supplied history is rejected by teamKeys_.
-    var changed=!old||['title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime'].some(function(k){return (old[k]||'')!==(task[k]||'');});
+    var changed=!old||['title','project','teamId','assigneeId','due','status','handoff','sourceRef','projectId','workDate','startTime','endTime','unitId'].some(function(k){return (old[k]||'')!==(task[k]||'');});
     if(changed){
+      // Assignment receipts survive progress reports, but never a changed location, person or schedule.
+      var assignmentChanged=!old||['title','project','projectId','unitId','teamId','assigneeId','due','workDate','startTime','endTime'].some(function(k){return (old[k]||'')!==(task[k]||'');})||assign&&actor.id!==task.assigneeId&&old.handoff!==task.handoff;
+      task.assignmentVersion=assignmentChanged?s.revision+1:(old.assignmentVersion||0);
+      if(old&&old.acknowledgements)task.acknowledgements=old.acknowledgements.slice();
       task.history=old&&old.history?old.history.slice():[];
       if(old&&!old.history)task.history.push({at:old.updatedAt,actorId:old.updatedBy,status:old.status,handoff:old.handoff,teamId:old.teamId,assigneeId:old.assigneeId,revision:0,baseline:true});
       if(task.history.length>=100)teamError_('capacity');
