@@ -29,11 +29,10 @@ let browser;
 const FAKE_OPENAI = 'sk-TEST-FAKE-OPENAI-KEY';
 const LLAMA_URL = 'https://llama.test.invalid/v1/chat/completions';
 
-async function boot(page) {
-  await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__hjRestoreDone && typeof window.loadDemo === 'function');
-  await page.evaluate(() => window.__hjRestoreDone);
-  await page.evaluate(() => window.__hjOfficeOpsBootDone);
+async function boot(page, navigate = true) {
+  if (navigate) await page.goto(APP, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone && window.__hjRelayBootDone && typeof window.loadDemo === 'function');
+  await page.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone, window.__hjRelayBootDone]));
   // 부팅 시더가 시나리오 한복판에 자료를 심지 않게 재운다
   await page.evaluate(() => { for (const n of ['taxCalendarEnsure', 'coworkSchedEnsure', 'backupBootCheck', 'kakaoCheckNew', 'aiOpsBootCheck', 'aiQueueSanitize']) if (typeof window[n] === 'function') window[n] = () => 0; });
 }
@@ -156,9 +155,8 @@ async function boot(page) {
 
     // ④ [데모 끝내기] → 내 자료
     // 사이드바 버튼도 데모 중에는 [데모 끝내기]다(띠의 버튼은 ⑤에서 누른다)
-    await Promise.all([page.waitForEvent('load'), page.click('#btnDemo')]);
-    await page.waitForFunction(() => window.__hjRestoreDone);
-    await page.evaluate(() => window.__hjRestoreDone);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('#btnDemo')]);
+    await boot(page, false);
     await page.waitForFunction(() => Array.isArray(state.projects) && state.projects.length > 0);
     const back = await page.evaluate(() => ({ names: state.projects.map(p => p.name).join('|'), q: (state.quotes || []).map(q => q.id).join('|'), pl: (state.payLog || []).length, files: state.files.map(f => f.name).join('|'), demo: !!state._demo, bar: !!document.getElementById('hjDemoBar') }));
     assert(back.names === '실제 현장 TEST|방금 추가 TEST' && back.q === 'q-real-1' && back.pl === 1 && !back.demo && !back.bar, '④ 데모를 끝내면 내 자료가 그대로 돌아온다: ' + JSON.stringify(back));
@@ -186,8 +184,8 @@ async function boot(page) {
     const ov = await page.evaluate(() => { const b = document.getElementById('hjDemoBar'); return { doc: document.documentElement.scrollWidth - document.documentElement.clientWidth, bar: b.scrollWidth - b.clientWidth }; });
     assert(ov.doc <= 0 && ov.bar <= 0, '⑤ 폰 폭에서 데모 띠가 넘치지 않는다: ' + JSON.stringify(ov));
     // 띠의 [데모 끝내기] → 빈 기기로 돌아간다(데모는 어디에도 저장되지 않았다)
-    await Promise.all([page.waitForEvent('load'), page.click('#hjDemoExit')]);
-    await boot(page);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('#hjDemoExit')]);
+    await boot(page, false);
     const after = await page.evaluate(() => ({ n: state.projects.length, f: state.files.length, demo: !!state._demo, bar: !!document.getElementById('hjDemoBar') }));
     assert(after.n === 0 && after.f === 0 && !after.demo && !after.bar, '⑤ 띠의 [데모 끝내기] → 빈 기기 그대로: ' + JSON.stringify(after));
     // 데모 중에 실제 자료가 들어오면(불러오기·서버 받기 = applyData) 데모 표시가 사라진다 — 표시가 남으면 실제 자료를 데모로 착각한다
@@ -263,8 +261,8 @@ async function boot(page) {
     assert(r.toast >= 1, 'A⑩ 왜 멈췄는지 말한다: ' + JSON.stringify(r));
     assert(r.saved === 'a.jpg:실제현장 TEST', 'A⑩ 이 기기에 저장된 사진 색인이 그대로다: ' + JSON.stringify(r));
     // [데모 끝내기] → 새로 열린 뒤에도 사진 배정이 남아 있다
-    await Promise.all([page.waitForEvent('load'), page.click('#hjDemoExit')]);
-    await boot(page);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('#hjDemoExit')]);
+    await boot(page, false);
     const back = await page.evaluate(() => ({ files: state.files.map(x => x.name + ':' + x.project + ':' + (x._phase || '')).join('|'), demo: !!state._demo }));
     assert(back.files === 'a.jpg:실제현장 TEST:타일' && !back.demo, 'A⑩ 데모를 끝내면 사진 색인(현장·공정)이 그대로다: ' + JSON.stringify(back));
     // 읽는 도중 데모에 들어간 경우 — 반쪽 결과로 _현장.json 을 불러와 색인을 정리하지 않는다
@@ -309,7 +307,7 @@ async function boot(page) {
       aiProviderSet('llama');
     }, { k: FAKE_OPENAI, u: LLAMA_URL });
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await boot(page);
+    await boot(page, false);
     await page.waitForFunction(() => !!window.__openaiKey && typeof llamaReady === 'function' && llamaReady());
     // ⑥ 새로고침 뒤에도 선택이 남는다
     const st = await page.evaluate(() => ({ prov: window.__aiProvider, name: aiProviderName(), ls: localStorage.getItem('hj_ai_provider'), gem: !!window.__geminiKey }));
@@ -357,7 +355,7 @@ async function boot(page) {
     for (const v of ['gemini', 'openai']) {
       await page.evaluate(v => aiProviderSet(v), v);
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await boot(page);
+      await boot(page, false);
       await page.waitForFunction(() => !!window.__openaiKey);
       assert((await page.evaluate(() => window.__aiProvider)) === v, '⑥ ' + v + ' 선택도 새로고침 뒤에 남는다');
     }
@@ -377,4 +375,4 @@ async function boot(page) {
   console.log('settings-safety: 전부 통과');
   await browser.close();
   process.exit(0);
-})().catch(async e => { console.error('FAIL', e.message); try { await browser.close(); } catch (_) {} process.exit(1); });
+})().catch(async e => { console.error('FAIL', e.stack || e.message); try { await browser.close(); } catch (_) {} process.exit(1); });
