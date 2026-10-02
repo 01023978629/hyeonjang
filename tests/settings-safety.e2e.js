@@ -183,6 +183,13 @@ async function boot(page, navigate = true) {
     assert(await page.evaluate(() => !!document.getElementById('hjDemoBar')), '⑤ 첫 안내로 연 데모에도 표시 띠가 뜬다');
     const ov = await page.evaluate(() => { const b = document.getElementById('hjDemoBar'); return { doc: document.documentElement.scrollWidth - document.documentElement.clientWidth, bar: b.scrollWidth - b.clientWidth }; });
     assert(ov.doc <= 0 && ov.bar <= 0, '⑤ 폰 폭에서 데모 띠가 넘치지 않는다: ' + JSON.stringify(ov));
+    // A stale-tab warning must remain visible and keep its save fence, without covering Demo Exit.
+    const stacked = await page.evaluate(() => {
+      __tabStale = true; __tabBanner('TEST 다른 탭 변경 경고 — 새로고침으로 최신 자료를 확인하세요.');
+      const bar = document.getElementById('hjDemoBar').getBoundingClientRect(), warn = document.getElementById('hjTabWarn').getBoundingClientRect();
+      return { stale: __tabStale, separated: bar.top >= warn.bottom };
+    });
+    assert(stacked.stale && stacked.separated, '⑤ 탭 변경 저장 차단은 유지하고 데모 끝내기 띠를 경고 아래에 둔다: ' + JSON.stringify(stacked));
     // 띠의 [데모 끝내기] → 빈 기기로 돌아간다(데모는 어디에도 저장되지 않았다)
     await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('#hjDemoExit')]);
     await boot(page, false);

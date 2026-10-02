@@ -4,7 +4,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const { node: n, button: b } = ctx, phases = { before: '작업 전', cause: '원인 확인', during: '작업 중', after: '마무리', document: '증빙 서류' };
   const types = { undecided: '담당자 확인 전', 'customer-support': '고객 보험 청구 지원', 'contractor-billing': '보험 의뢰 공사비 청구' };
   const messages = { 'schedule-conflict': '담당자의 다른 일정과 겹칩니다. 시간 또는 담당자를 바꿔 주세요.', 'invalid-schedule': '작업일과 시작·종료 시간을 함께 입력하세요.', 'project-in-use': '사용 중인 프로젝트입니다.', 'evidence-bound': '사진이 연결된 업무의 프로젝트는 바꿀 수 없습니다.', 'invalid-project': '연결 가능한 프로젝트를 선택하세요.', 'evidence-missing': '선택한 증빙을 확인할 수 없습니다.', 'invalid-file': 'JPG·PNG·WebP·HEIC 사진(12MiB), MP4·MOV·WebM 동영상(100MB) 또는 대표용 PDF 원본과 크기를 확인하세요.', 'hash-mismatch': '원본 해시가 일치하지 않습니다. 원본 저장 상태를 확인해야 합니다.', 'storage-ambiguous': '동일 번호의 원본이 여러 개입니다. 자동 처리하지 않으며 관리자 확인이 필요합니다.', 'review-required': '자료가 바뀌었거나 검토 전입니다. 제출 자료를 다시 검토해 주세요.', 'review-stale': '검토한 자료가 바뀌었습니다. 최신 내용으로 다시 검토해 주세요.', 'claim-incomplete': '청구 방식·보험사·사고일·발견 및 보수 내용·금액·사진·동의 확인을 완료하세요.', 'project-immutable': '기존 청구 건의 프로젝트는 바꿀 수 없습니다.', 'private-storage-required': '회사 전용 비공개 저장 폴더를 확인해야 합니다.' };
-  let selected = '', day = localDay(), edit = null, busy = false, viewEpoch = 0;
+  let selected = '', day = localDay(), edit = null, busy = false, viewEpoch = 0, queueFilter = 'all', queueProject = '', queueRetryBusy = false;
   const objectUrls = new Set(), photoUrls = new Set();
   const HEIC2ANY = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js'; // Same CDN and version as the main app.
   const dlg = n('dialog'); dlg.id = 'projectEditor'; dlg.setAttribute('aria-labelledby', 'projectEditTitle');
@@ -20,7 +20,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const data = () => ctx.data(), owner = () => data()?.me.role === 'owner';
   const manager = () => ['owner', 'lead'].includes(data()?.me.role);
   const projects = () => data()?.projects || [], evidence = () => data()?.evidence || [], claims = () => data()?.claims || [];
-  const queue = window.HJTeamUpload.create({ api: ctx.api, accept: ctx.accept, data, epoch: ctx.epoch, onError: ctx.onError, onChange: () => renderQueue(),
+  const queue = window.HJTeamUpload.create({ api: ctx.api, accept: ctx.accept, data, epoch: ctx.epoch, binding: ctx.binding, onError: ctx.onError, onChange: () => renderQueue(),
     onDone: item => ctx.notice(item.entity.name + ' 원본의 서버 저장을 확인했습니다.') });
   const canAssign = team => owner() || data()?.me.role === 'lead' && data().me.teamIds.includes(team);
   const errText = e => messages[e.code] || ctx.message(e);
@@ -37,7 +37,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const value = key => form.elements.namedItem(key)?.value || '';
   const checks = key => [...fields.querySelectorAll('input[name="' + key + '"]:checked')].map(el => el.value);
   function reset() {
-    viewEpoch++; busy = false; selected = ''; edit = null; fields.replaceChildren(); msg.textContent = ''; dlg.close(); queue.stop();
+    viewEpoch++; busy = false; selected = ''; edit = null; queueFilter = 'all'; queueProject = ''; queueRetryBusy = false; fields.replaceChildren(); msg.textContent = ''; dlg.close(); queue.stop();
     objectUrls.forEach(url => URL.revokeObjectURL(url)); objectUrls.clear(); photoUrls.clear();
     ['plannerPanel', 'projectsPanel', 'claimsPanel'].forEach(id => document.getElementById(id)?.replaceChildren());
   }
@@ -115,11 +115,11 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     root.append(n('p', '기술자는 본인 업무에 연결한 사진만, 팀장은 담당 팀 사진만 볼 수 있습니다. 대표는 프로젝트 전체 사진과 보험 증빙을 모읍니다.', 'muted'));
     const select = field(root, 'projectSelect', '프로젝트 선택', 'select', selected, { choices: [['', '프로젝트를 선택하세요'], ...projects().map(p => [p.id, p.name + (p.active ? '' : ' · 보관')])] });
     if (!projects().some(p => p.id === selected)) selected = ''; select.value = selected; select.onchange = () => { selected = select.value; render('projects'); };
+    const qbox = n('section', undefined, 'card'); qbox.id = 'uploadQueue'; qbox.setAttribute('aria-label', '이 기기 올리기 대기열'); root.append(qbox); renderQueue();
     const p = projects().find(p => p.id === selected); if (!p) { root.append(n('p', '기존 문자열 현장명은 자동 연결되지 않습니다. 대표가 프로젝트 등록 후 업무에 연결해 주세요.', 'notice')); return; }
     const actions = n('div', undefined, 'row'); if (owner()) actions.append(b('프로젝트 수정', () => projectEditor(p)));
     if (data().tasks.some(t => t.projectId === p.id)) actions.append(b('작업 사진·동영상 올리기', () => uploadEditor(p, 'photo'), 'primary'));
-    if (owner()) actions.append(b('보험 증빙 서류 올리기', () => uploadEditor(p, 'document'))); root.append(actions);
-    const qbox = n('section', undefined, 'card'); qbox.id = 'uploadQueue'; qbox.setAttribute('aria-live', 'polite'); root.append(qbox); renderQueue();
+    if (owner()) actions.append(b('보험 증빙 서류 올리기', () => uploadEditor(p, 'document'))); root.append(actions, qbox);
     const tasks = data().tasks.filter(t => t.projectId === p.id); root.append(n('p', '연결 업무 ' + tasks.length + '건 · 완료 ' + tasks.filter(t => t.status === 'done').length + '건', 'meta'));
     tasks.forEach(t => root.append(b(t.title + ' · ' + ctx.statuses[t.status], () => ctx.openTask(t))));
     const grid = n('div', undefined, 'grid photo-grid'); grid.id = 'projectEvidence'; root.append(grid);
@@ -139,7 +139,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     const file = field(fields, 'files', kind === 'photo' ? '원본 파일 · 최대 10개 · 사진(JPG·PNG·WebP·HEIC) 각 12MiB, 동영상(MP4·MOV·WebM) 각 100MB 이하' : '원본 파일 · 최대 10개, 각 12MiB 이하', 'file', '', { required: true }); file.multiple = true;
     file.accept = kind === 'photo' ? 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/quicktime,video/webm,.mov,.mp4,.webm' : 'image/jpeg,image/png,image/webp,application/pdf';
     fields.append(n('p', '원본을 편집·압축·변환하지 않습니다(HEIC도 원본 그대로). 사진·영상 속 얼굴·차량 번호·주소·위치정보를 확인하세요. 서류는 대표만 볼 수 있습니다.', 'notice'),
-      n('p', '[대기열에 넣고 올리기]를 누르면 이 기기의 업로드 대기열에 원본을 보관한 뒤 순서대로 올립니다. 연결이 끊기거나 앱을 다시 열어도, 같은 직원으로 로그인하면 이어서 올립니다. 서버 저장이 확인되면 이 기기 사본은 지웁니다.', 'muted')); save.textContent = '대기열에 넣고 올리기';
+      n('p', '[대기열에 넣고 올리기]를 누르면 이 기기의 업로드 대기열에 원본을 보관한 뒤 순서대로 올립니다. 연결이 끊기거나 앱을 다시 열어도, 같은 회사 서버·직원 계정으로 로그인하면 이어서 올립니다. 다른 서버로 바꾸면 이전 대기 사진은 전송하지 않습니다. 서버 저장이 확인되면 이 기기 사본은 지웁니다.', 'muted')); save.textContent = '대기열에 넣고 올리기';
   }
   async function sha(bytes) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(v => v.toString(16).padStart(2, '0')).join(''); }
   const isHeic = mime => mime === 'image/heic' || mime === 'image/heif';
@@ -286,22 +286,56 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   }
   function renderQueue() {
     const box = document.getElementById('uploadQueue'); if (!box) return;
-    const rows = queue.view(), stateText = { queued: '대기', uploading: '올리는 중', waiting: '다시 시도 대기', failed: '실패', done: '완료' };
-    box.replaceChildren(n('h3', '올리기 대기열 ' + rows.length + '개'));
-    if (!rows.length) { box.append(n('p', '대기 중인 원본이 없습니다.', 'muted')); return; }
-    box.append(n('p', '서버 저장이 확인될 때까지 원본 사본이 이 기기에 남습니다. 공용 기기라면 다 올린 뒤 확인하세요.', 'muted'));
-    rows.forEach(r => {
+    const rows = queue.view(), summary = queue.summary(), stateText = { queued: '대기', uploading: '올리는 중', preparing: '재시도 준비', waiting: '다시 시도 대기', failed: '실패', done: '완료' };
+    // Keep filter controls alive while progress changes, so tapping/focusing them on a phone is not interrupted.
+    if (!box.querySelector('#queueSummary')) {
+      box.append(n('h3', '이 기기 올리기 대기열'));
+      const stats = n('p', '', 'meta'); stats.id = 'queueSummary'; stats.setAttribute('role', 'status'); box.append(stats);
+      const legacy = n('p', '', 'notice error'); legacy.id = 'uploadQueueHeld'; box.append(legacy);
+      const controls = n('div', undefined, 'grid'); controls.id = 'queueFilters'; box.append(controls);
+      const states = field(controls, 'queueState', '대기열 상태', 'select', queueFilter, { choices: [['all', '전체'], ['active', '대기·올리는 중'], ['failed', '실패만']] }); states.id = 'queueStateFilter'; states.closest('label').htmlFor = states.id;
+      states.onchange = () => { queueFilter = states.value; renderQueue(); };
+      const ps = field(controls, 'queueProject', '대기열 현장', 'select'); ps.id = 'queueProjectFilter'; ps.closest('label').htmlFor = ps.id;
+      ps.onchange = () => { queueProject = ps.value; renderQueue(); };
+      const retry = b('화면의 실패 원본 다시 올리기', retryVisible, 'primary'); retry.id = 'queueRetryBatch'; box.append(retry);
+      const help = n('p', '현재 회사·계정의 이 기기 원본만 표시합니다. 서버 저장이 확인될 때까지 원본 사본이 남습니다. 다른 서버·계정에서 대기한 원본은 원래 연결로 로그인해 확인하세요. 동료의 기기 대기열은 여기서 보지 않습니다. 권한·형식 오류는 개별 확인하세요.', 'muted'); help.id = 'queueHelp'; box.append(help);
+      const list = n('div', undefined, 'grid'); list.id = 'uploadQueueItems'; box.append(list);
+    }
+    box.querySelector('#queueSummary').textContent = '전체 ' + summary.total + '개 · 대기 ' + summary.queued + ' · 올리는 중 ' + summary.uploading + ' · 실패 ' + summary.failed + (summary.deviceOnly ? ' · 기기 보관 실패 ' + summary.deviceOnly : '');
+    const legacy = box.querySelector('#uploadQueueHeld'); legacy.hidden = !summary.held;
+    legacy.textContent = summary.held ? '이전 버전 원본 ' + summary.held + '개는 서버 연결을 확인할 수 없어 보류했습니다. 자동 전송·삭제하지 않습니다. 원래 사진을 다시 선택해 현재 현장에 올려 주세요.' : '';
+    const ps = box.querySelector('#queueProjectFilter'), list = [['', '모든 현장'], ...projects().map(p => [p.id, p.name])];
+    if (!projects().some(p => p.id === queueProject)) queueProject = '';
+    const signature = JSON.stringify(list); if (ps.dataset.choices !== signature) { choices(ps, list, queueProject); ps.dataset.choices = signature; } else ps.value = queueProject;
+    box.querySelector('#queueStateFilter').value = queueFilter;
+    const shown = rows.filter(r => (!queueProject || r.projectId === queueProject) && (queueFilter === 'all' || (queueFilter === 'failed' ? r.state === 'failed' : r.state !== 'failed')));
+    const retry = box.querySelector('#queueRetryBatch'), retryCount = shown.filter(r => r.canRetry).length;
+    box.querySelector('#queueFilters').hidden = box.querySelector('#queueHelp').hidden = retry.hidden = !rows.length;
+    retry.disabled = queueRetryBusy || !retryCount; retry.textContent = queueRetryBusy ? '재시도 준비 중…' : '화면의 실패 원본 다시 올리기 (' + retryCount + '개)';
+    const target = box.querySelector('#uploadQueueItems'); target.replaceChildren();
+    if (!shown.length) target.append(n('p', rows.length ? '이 조건에 맞는 원본이 없습니다. 필터를 바꿔 확인하세요.' : '대기 중인 원본이 없습니다.', 'muted'));
+    shown.forEach(r => {
       const row = n('div', undefined, 'task'); row.dataset.queueKey = r.key; row.dataset.queueState = r.state;
       const pct = Math.floor(r.progress * 100), label = (r.kind === 'video' ? '🎬 ' : '') + r.name + ' · ' + (r.size / 1048576).toFixed(1) + 'MiB';
-      row.append(n('strong', label), n('p', stateText[r.state] + (r.state === 'uploading' && r.kind === 'video' ? ' ' + pct + '%' : '') + (r.state === 'waiting' ? ' · ' + r.attempts + '번째 실패' : ''), 'meta'));
+      const p = projects().find(p => p.id === r.projectId), task = data()?.tasks.find(t => t.id === r.taskId && t.projectId === r.projectId);
+      row.append(n('strong', label), n('p', (p?.name || '현장 접근 권한 확인 필요') + ' · ' + (r.kind === 'document' ? '대표 증빙 서류' : task?.title || '업무 접근 권한 확인 필요'), 'page-context'),
+        n('p', stateText[r.state] + (r.state === 'uploading' && r.kind === 'video' ? ' ' + pct + '%' : '') + (r.state === 'waiting' ? ' · ' + r.attempts + '번째 실패' : '') + (Number.isFinite(r.createdAt) ? ' · 등록 ' + new Date(r.createdAt).toLocaleString('ko-KR') : ''), 'meta'));
       if (r.state === 'uploading' && r.kind === 'video') { const bar = n('progress'); bar.max = 100; bar.value = pct; bar.setAttribute('aria-label', r.name + ' 올리는 중'); row.append(bar); }
       if (r.reason) row.append(n('p', r.reason, r.state === 'failed' ? 'notice error' : 'muted'));
       if (r.deviceOnly) row.append(n('p', '이 기기에 원본을 보관하지 못했습니다(저장 공간 부족 또는 비공개 모드). 화면을 닫거나 로그아웃하면 다시 골라야 합니다.', 'notice error'));
       const tools = n('div', undefined, 'row');
       if (r.state === 'failed' || r.state === 'waiting') tools.append(b('다시 올리기', () => queue.retry(r.key)));
       tools.append(b('취소', () => { if (confirm(r.name + ' 올리기를 취소하고 이 기기 사본을 지울까요? 이미 서버에 저장된 경우에는 서버 자료가 지워지지 않습니다.')) queue.cancel(r.key); }));
-      row.append(tools); box.append(row);
+      row.append(tools); target.append(row);
     });
+  }
+  async function retryVisible() {
+    if (queueRetryBusy || !data()) return;
+    const keys = queue.view().filter(r => r.canRetry && (!queueProject || r.projectId === queueProject) && queueFilter !== 'active').map(r => r.key);
+    if (!keys.length || !confirm('현재 필터에 보이는 일시 오류 사진·동영상·서류 ' + keys.length + '개를 다시 올릴까요? 같은 원본·등록 번호를 사용하며, 권한·형식 오류 원본은 제외합니다.')) return;
+    const epoch = ctx.epoch(), view = viewEpoch; queueRetryBusy = true; renderQueue();
+    try { const count = await queue.retryFailed(keys); if (epoch === ctx.epoch() && view === viewEpoch && data()) ctx.notice(count + '개 원본을 재시도 대기열에 넣었습니다. 서버 저장 결과를 확인하세요.'); }
+    finally { if (epoch === ctx.epoch() && view === viewEpoch && data()) { queueRetryBusy = false; renderQueue(); } }
   }
   async function submit(event) {
     event.preventDefault(); const e = edit; if (!e || e.busy || e.blocked || !data()) return;

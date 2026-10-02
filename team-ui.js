@@ -587,7 +587,9 @@
     state.epoch++; apiUrl = ''; state.portalUrl = ''; loginEnabled(false); $('apiUrlInput').value = ''; renderConnect();
     connectNotice('저장한 주소를 지웠습니다.'); notice(errors['not-configured'], true);
   }
-  const projectUI = window.HJTeamProjects.create({ node, button, data: () => state.data, epoch: () => state.epoch, api, accept: acceptData, notice, message, onError: handleReadError, hasTaskDraft: () => !!state.editor, openTask: t => openEditor('task', t), statuses });
+  const projectUI = window.HJTeamProjects.create({ node, button, data: () => state.data, epoch: () => state.epoch,
+    binding: () => state.data && state.identity ? { apiUrl, portalUrl: state.portalUrl, officeId: state.identity.officeId, userId: state.identity.userId } : null,
+    api, accept: acceptData, notice, message, onError: handleReadError, hasTaskDraft: () => !!state.editor, openTask: t => openEditor('task', t), statuses });
   $('loginForm').addEventListener('submit', login); $('logout').onclick = logout; $('refresh').onclick = read;
   $('copyIdentity').onclick = async () => { try { await navigator.clipboard.writeText($('identity').textContent); notice('계정 연결용 식별정보를 복사했습니다. 비밀번호는 포함되지 않습니다.'); } catch (_) { notice('복사 권한이 없습니다. 펼친 식별정보를 직접 선택해 복사해 주세요.', true); } };
   Object.entries(navPages).forEach(([key, page]) => $('tab' + key).onclick = () => go(page));

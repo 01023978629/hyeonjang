@@ -1775,11 +1775,12 @@ function __tabBanner(msg){try{
     b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#8a5a00;color:#fff;font-size:13px;font-weight:600;padding:9px 44px 9px 12px;line-height:1.45;box-shadow:0 2px 8px rgba(0,0,0,.25)';
     const x=document.createElement('button');x.textContent='×';x.setAttribute('aria-label','경고 닫기');
     x.style.cssText='position:absolute;right:4px;top:2px;background:none;border:0;color:#fff;font-size:19px;padding:6px 10px;cursor:pointer';
-    x.onclick=()=>b.remove();
+    x.onclick=()=>{b.remove();hjDemoBarSync();};
     const s=document.createElement('span');s.id='hjTabWarnMsg';
     b.appendChild(s);b.appendChild(x);document.body.appendChild(b);
   }
   const s=document.getElementById('hjTabWarnMsg');if(s)s.textContent=msg;
+  hjDemoBarSync();
 }catch(e){}}
 function __tabWarnOnce(k,msg){if(__tabWarned[k])return;__tabWarned[k]=true;__tabBanner(msg);}
 function multiTabOpenWarn(){__tabWarnOnce('open','⚠️ 현장 앱이 다른 탭/창에도 열려 있습니다 — 한 곳에서만 작업하세요');}
@@ -3177,7 +3178,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v333-restoreguard';
+const APP_BUILD='hyeonjang-v334-staffqueue';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4880,7 +4881,7 @@ function hjDemoBarSync(){try{
   if(sb)sb.textContent=on?'🚪 데모 끝내기 — 내 자료로 돌아가기':'🧪 데모 데이터로 둘러보기';
   let b=document.getElementById('hjDemoBar');
   if(!on){if(b)b.remove();return;}
-  if(b)return;
+  if(b){hjDemoBarPosition(b);return;}
   b=document.createElement('div');b.id='hjDemoBar';b.setAttribute('role','status');
   b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:60;background:#5b21b6;color:#fff;font-size:13px;font-weight:600;line-height:1.4;padding:4px 10px;display:flex;align-items:center;gap:10px;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)';
   const t=document.createElement('span');t.style.cssText='flex:1 1 auto;min-width:0;overflow-wrap:anywhere';
@@ -4889,7 +4890,13 @@ function hjDemoBarSync(){try{
   x.style.cssText='flex:0 0 auto;min-height:44px;min-width:44px;padding:6px 14px;border-radius:10px;border:0;background:#fff;color:#5b21b6;font-weight:700;font-size:14px;cursor:pointer';
   x.onclick=hjDemoExit;
   b.append(t,x);document.body.appendChild(b);
+  hjDemoBarPosition(b);
 }catch(e){}}
+function hjDemoBarPosition(bar){
+  // Keep the warning and its write fence; place the exit control below it, not behind it.
+  const warn=document.getElementById('hjTabWarn');bar.style.top=(warn?warn.getBoundingClientRect().bottom:0)+'px';
+}
+window.addEventListener('resize',()=>hjDemoBarSync());
 function hjDemoExit(){
   if(!state._demo){hjDemoBarSync();return false;}
   toast('내 자료로 돌아갑니다…');

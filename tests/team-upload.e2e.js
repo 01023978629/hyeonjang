@@ -11,10 +11,10 @@ const VIDEO = (() => { const b = Buffer.alloc(2 * MiB + 300 * 1024); for (let i 
 // Each mutation undoes one promise of the queue; the run must fail.
 const MUTATIONS = {
   'no-persist': ["if (!fits) { item.volatile = true; item.warn = 'device-only'; } else await save(item);", 'item.volatile = true;'],
-  'new-request-on-retry': ['if (!item.requestId) await stamp(item);', 'await stamp(item);'],
+  'new-request-on-retry': ['if (!item.requestId) await stamp(item, e);', 'await stamp(item, e);'],
   'resend-from-zero': ["      while (live(e) && !item.cancelled && up && up.state === 'uploading') {", "      if (up && up.state === 'uploading') up.offset = 0;\n      while (live(e) && !item.cancelled && up && up.state === 'uploading') {"],
   'no-online-retry': ["mine().forEach(i => { if (i.state === 'waiting') i.nextAt = 0; }); kick();", '/* mutation: offline items wait forever */'],
-  'scope-leak': ["const scope = () => ctx.data()?.me?.id || '';", "const scope = () => ctx.data() ? 'shared-device' : '';"],
+  'scope-leak': ["return 'v2:' + JSON.stringify([binding.apiUrl, binding.portalUrl, binding.officeId, binding.userId, member]);", "return 'shared-device';"],
   'cancel-noop': ['if (active !== i) await drop(i);', '/* mutation: cancel keeps the copy */'],
   'no-committed-check': ['if (committed(item)) return true;', 'if (c === "duplicate") throw err;'],
   'offline-polling': ["const next = online ? mine()", "const next = true ? mine()"],

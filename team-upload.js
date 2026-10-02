@@ -1,5 +1,5 @@
-/* Staff evidence upload queue (v333). Originals wait in THIS device's IndexedDB until the company server confirms them.
- * Same requestId/evidence id on every retry, so a resend can never make a second record. Videos go in 1 MiB chunks
+/* Staff evidence upload queue (v334). Originals wait in THIS device's IndexedDB until the company server confirms them.
+ * Replays keep their requestId; a confirmed revision conflict rebases with a new request and the same evidence id. Videos go in 1 MiB chunks
  * and resume from the server's offset. No sending happens without a logged-in session; nothing goes to insurers. */
 (function (root) {
   'use strict';
@@ -55,8 +55,18 @@
   const persisted = item => { const out = {}; ['key', 'scope', 'createdAt', 'file', 'entity', 'requestId', 'revision', 'uploadId', 'state', 'error', 'detail', 'attempts'].forEach(k => { if (item[k] !== undefined) out[k] = item[k]; }); return out; };
 
   function create(ctx) {
-    const items = new Map(); let loadedScope = '', running = false, timer = 0, active = null, notifyTimer = 0;
-    const scope = () => ctx.data()?.me?.id || '';
+    const items = new Map(); let loadedScope = '', loading = null, generation = 0, held = 0, running = false, timer = 0, active = null, notifyTimer = 0;
+    const endpoint = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+    function scope() {
+      const binding = ctx.binding?.(), member = ctx.data()?.me?.id;
+      if (!binding || !endpoint.test(binding.apiUrl) || !endpoint.test(binding.portalUrl) ||
+        ![binding.officeId, binding.userId, member].every(v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v)) return '';
+      // A member ID is local to a company server. Never infer an old item's server from today's login.
+      return 'v2:' + JSON.stringify([binding.apiUrl, binding.portalUrl, binding.officeId, binding.userId, member]);
+    }
+    const capture = () => ({ scope: scope(), epoch: ctx.epoch(), generation });
+    const live = e => !!e.scope && e.scope === scope() && e.epoch === ctx.epoch() && e.generation === generation && !!ctx.data();
+    function assertLive(e) { if (!live(e)) throw Object.assign(new Error('stale'), { code: 'stale' }); }
     const mine = () => [...items.values()].filter(i => i.scope === scope()).sort((a, b) => a.createdAt - b.createdAt);
     function changed() { clearTimeout(notifyTimer); notifyTimer = setTimeout(() => ctx.onChange(), 60); }
     async function save(item) {
@@ -65,11 +75,17 @@
     }
     async function drop(item) { items.delete(item.key); if (!item.volatile) { try { await idbDel(item.key); } catch (_) { /* stays until next successful open */ } } changed(); }
     async function load() {
-      const s = scope(); if (!s || loadedScope === s) return; loadedScope = s;
-      let rows = []; try { rows = await idbAll(); } catch (_) { return; }
-      if (scope() !== s) return;
-      rows.forEach(r => { if (r && r.file instanceof Blob && !items.has(r.key)) items.set(r.key, { ...r, state: r.state === 'failed' ? 'failed' : 'queued', progress: 0, nextAt: 0 }); });
-      changed();
+      const e = capture(), s = e.scope; if (!s || loadedScope === s) return;
+      if (loading && live(loading.context)) return loading.promise;
+      const pending = { context: e }; loading = pending;
+      pending.promise = (async () => {
+        let rows = []; try { rows = await idbAll(); } catch (_) { return; }
+        if (!live(e)) return;
+        held = rows.filter(r => r && r.scope === ctx.data()?.me?.id && r.file instanceof Blob).length;
+        rows.forEach(r => { if (r && r.scope === s && r.file instanceof Blob && !items.has(r.key)) items.set(r.key, { ...r, state: r.state === 'failed' ? 'failed' : 'queued', progress: 0, nextAt: 0 }); });
+        loadedScope = s; changed();
+      })();
+      try { await pending.promise; } finally { if (loading === pending) loading = null; }
     }
     async function room(bytes) {
       try { const est = await navigator.storage?.estimate?.(); if (est && Number.isFinite(est.quota) && Number.isFinite(est.usage) && est.quota - est.usage < bytes * 1.1) return false; } catch (_) { /* unknown: try to store */ }
@@ -77,23 +93,39 @@
     }
     // entities: prepared by the caller (validated kind/mime/size/hash). Returns {added, skipped, deviceOnly}.
     async function add(entries) {
-      const s = scope(); if (!s) return { added: 0, skipped: 0, deviceOnly: 0 };
+      const e = capture(), s = e.scope; if (!s) return { added: 0, skipped: 0, deviceOnly: 0 };
+      await load(); assertLive(e);
       const known = new Set([...(ctx.data()?.evidence || []).map(e => e.taskId + ':' + e.sha256), ...mine().map(i => i.entity.taskId + ':' + i.entity.sha256)]);
       const total = entries.reduce((n, e) => n + e.file.size, 0), fits = await room(total);
+      assertLive(e);
       let added = 0, skipped = 0, deviceOnly = 0;
       for (const { file, entity } of entries) {
         const dupe = entity.taskId + ':' + entity.sha256; if (known.has(dupe)) { skipped++; continue; } known.add(dupe);
         const item = { key: crypto.randomUUID(), scope: s, createdAt: Date.now() + added, file, entity, state: 'queued', attempts: 0, progress: 0, nextAt: 0 };
         if (!fits) { item.volatile = true; item.warn = 'device-only'; } else await save(item);
+        assertLive(e);
         if (item.volatile) deviceOnly++; items.set(item.key, item); added++;
       }
       changed(); kick(); return { added, skipped, deviceOnly };
     }
-    function retry(key) { const i = items.get(key); if (!i || i.scope !== scope() || active === i) return; i.state = 'queued'; i.attempts = 0; i.nextAt = 0; i.error = ''; i.detail = ''; save(i); changed(); kick(); }
+    const retryable = i => RETRY.includes(i.error) || i.error === 'upload-not-found';
+    async function requeue(i, e) {
+      if (!live(e) || !i || i.scope !== e.scope || i.cancelled || active === i || !['failed', 'waiting'].includes(i.state)) return false;
+      const next = { ...i, state: 'queued', attempts: 0, nextAt: 0, error: '', detail: '' };
+      i.state = 'preparing'; changed(); await save(next);
+      if (!live(e) || i.cancelled || items.get(i.key) !== i) return false;
+      Object.assign(i, next); return true;
+    }
+    async function retry(key) { const e = capture(); if (await requeue(items.get(key), e)) { changed(); kick(); } }
+    async function retryFailed(keys) {
+      const e = capture(); let count = 0;
+      for (const key of new Set(keys)) { const i = items.get(key); if (i?.state === 'failed' && retryable(i) && await requeue(i, e)) count++; }
+      if (live(e)) { changed(); kick(); } return count;
+    }
     async function cancel(key) { const i = items.get(key); if (!i || i.scope !== scope()) return; i.cancelled = true; if (active !== i) await drop(i); }
     function stop() {
-      // Logout or permission loss: forget the view and every in-memory (device-only) original; stored items wait for the same staff member.
-      clearTimeout(timer); timer = 0; loadedScope = '';
+      // Logout or permission loss invalidates in-flight reads too; durable items stay bound to the original company and staff.
+      generation++; clearTimeout(timer); timer = 0; loadedScope = ''; loading = null; held = 0;
       [...items.values()].forEach(i => { i.cancelled = i.cancelled || i.volatile; }); items.clear(); changed();
     }
     function kick() { if (!ctx.data() || !scope()) return; load().then(pump); }
@@ -105,10 +137,10 @@
       if (Number.isFinite(next)) timer = setTimeout(pump, Math.max(50, next - Date.now()));
     }
     async function pump() {
-      if (running || !ctx.data() || !scope()) return; running = true; const myEpoch = ctx.epoch();
+      if (running || !ctx.data() || !scope()) return; running = true; const myEpoch = capture();
       try {
         for (;;) {
-          if (myEpoch !== ctx.epoch() || !ctx.data()) return;
+          if (!live(myEpoch)) return;
           if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
           const item = mine().find(i => (i.state === 'queued' || i.state === 'waiting' && i.nextAt <= Date.now()) && !i.cancelled); if (!item) break;
           active = item; await run(item, myEpoch); active = null;
@@ -116,41 +148,46 @@
         }
       } finally { running = false; active = null; schedule(); }
     }
-    const live = e => e === ctx.epoch() && !!ctx.data();
-    async function refresh() { const r = await ctx.api('list'); ctx.accept(r.data); }
+    async function refresh(e) { assertLive(e); const r = await ctx.api('list'); assertLive(e); ctx.accept(r.data); }
     const committed = item => (ctx.data()?.evidence || []).some(e => e.id === item.entity.id && e.sha256 === item.entity.sha256);
-    async function stamp(item) { item.requestId = crypto.randomUUID(); item.revision = ctx.data().revision; await save(item); } // Durable BEFORE sending: a restart replays the same request.
+    async function stamp(item, e) { assertLive(e); item.requestId = crypto.randomUUID(); item.revision = ctx.data().revision; await save(item); assertLive(e); } // Durable BEFORE sending: a restart replays the same request.
     async function commit(item, e) {
-      if (!item.requestId) await stamp(item);
+      assertLive(e); if (!item.requestId) await stamp(item, e);
       for (let rebase = 0; ; rebase++) {
         try {
           const payload = { requestId: item.requestId, revision: item.revision, entity: item.entity };
           if (item.entity.kind === 'video') payload.uploadId = item.uploadId; else payload.base64 = encode(new Uint8Array(await item.file.arrayBuffer()));
-          const r = await ctx.api('evidenceUpload', payload); if (!live(e)) return; ctx.accept(r.data); return true;
+          if (item.cancelled) return;
+          assertLive(e); const r = await ctx.api('evidenceUpload', payload); if (!live(e)) return; ctx.accept(r.data); return true;
         } catch (err) {
           const c = code(err); if (!live(e) || c === 'stale') return;
           // Append-only evidence: a revision conflict is rebased like the editor does (same evidence UUID and bytes, new request).
-          if (['conflict', 'request-conflict', 'duplicate'].includes(c) && rebase < 3) { await refresh(); if (!live(e)) return; if (committed(item)) return true; if (c === 'duplicate') throw err; await stamp(item); continue; }
+          if (['conflict', 'request-conflict', 'duplicate'].includes(c) && rebase < 3) { await refresh(e); if (!live(e)) return; if (committed(item)) return true; if (c === 'duplicate') throw err; await stamp(item, e); continue; }
           throw err;
         }
       }
     }
     async function sendVideo(item, e) {
+      assertLive(e);
       if (!item.uploadId) { item.uploadId = crypto.randomUUID(); await save(item); }
+      assertLive(e);
       let up;
       try { up = (await ctx.api('evidenceMediaBegin', { uploadId: item.uploadId, entity: item.entity })).upload; }
       catch (err) { if (code(err) === 'upload-not-found') { item.uploadId = ''; } throw err; }
+      assertLive(e);
       while (live(e) && !item.cancelled && up && up.state === 'uploading') {
         if (!Number.isSafeInteger(up.offset) || up.offset < 0 || up.offset >= item.file.size || up.size !== item.file.size) throw Object.assign(new Error('bad-response'), { code: 'bad-response' });
         item.progress = up.offset / item.file.size; changed();
         const bytes = new Uint8Array(await item.file.slice(up.offset, up.offset + CHUNK).arrayBuffer()), before = up.offset;
-        up = (await ctx.api('evidenceMediaChunk', { uploadId: item.uploadId, offset: up.offset, base64: encode(bytes) })).upload;
+        if (item.cancelled) return;
+        assertLive(e); up = (await ctx.api('evidenceMediaChunk', { uploadId: item.uploadId, offset: up.offset, base64: encode(bytes) })).upload;
+        assertLive(e);
         if (up && up.offset > before) item.attempts = 0; // Progress resets the backoff budget: long videos meet the rate limit, not a dead end.
       }
       if (!live(e) || item.cancelled) return;
       if (!up || !['complete', 'committed'].includes(up.state)) throw Object.assign(new Error('bad-response'), { code: 'bad-response' });
       item.progress = 1; changed();
-      if (up.state === 'committed') { await refresh(); return live(e) && committed(item); }
+      if (up.state === 'committed') { await refresh(e); return live(e) && committed(item); }
       return commit(item, e);
     }
     async function run(item, e) {
@@ -160,7 +197,7 @@
         const ok = item.entity.kind === 'video' ? await sendVideo(item, e) : await commit(item, e);
         if (!live(e)) { item.state = 'queued'; return; }
         if (item.cancelled) return;
-        if (ok) { item.state = 'done'; await drop(item); ctx.onDone(item); return; }
+        if (ok) { item.state = 'done'; await drop(item); if (live(e)) ctx.onDone(item); return; }
         throw Object.assign(new Error('bad-response'), { code: 'bad-response' });
       } catch (err) {
         const c = code(err); if (!live(e) || c === 'stale') { item.state = 'queued'; return; }
@@ -175,11 +212,16 @@
     }
     if (typeof window !== 'undefined') window.addEventListener('online', () => { mine().forEach(i => { if (i.state === 'waiting') i.nextAt = 0; }); kick(); });
     function view() {
-      return mine().map(i => ({ key: i.key, name: i.entity.name, kind: i.entity.kind, size: i.entity.size, projectId: i.entity.projectId, state: i.state, progress: i.progress || 0, attempts: i.attempts || 0, nextAt: i.nextAt || 0,
+      return mine().map(i => ({ key: i.key, name: i.entity.name, kind: i.entity.kind, size: i.entity.size, projectId: i.entity.projectId, taskId: i.entity.taskId, createdAt: i.createdAt, state: i.state, canRetry: i.state === 'failed' && retryable(i), progress: i.progress || 0, attempts: i.attempts || 0, nextAt: i.nextAt || 0,
         // A failed item with a retryable cause stopped only because of the attempt budget (older rows kept no detail): never say "will retry automatically".
         reason: i.state === 'failed' && (i.detail || RETRY.includes(i.error) || i.error === 'upload-not-found') ? REASONS[i.detail || 'too-many-attempts'] + (i.error ? ' (마지막 원인: ' + (CAUSES[i.error] || i.error) + ')' : '') : REASONS[i.error] || (i.error ? '처리하지 못했습니다(' + i.error + ').' : ''), deviceOnly: !!i.volatile }));
     }
-    return Object.freeze({ add, retry, cancel, stop, kick, view, busy: () => running });
+    function summary() {
+      const rows = mine(); return { total: rows.length, queued: rows.filter(i => ['queued', 'waiting', 'preparing'].includes(i.state)).length,
+        uploading: rows.filter(i => i.state === 'uploading').length, failed: rows.filter(i => i.state === 'failed').length,
+        deviceOnly: rows.filter(i => i.volatile).length, held: scope() === loadedScope ? held : 0 };
+    }
+    return Object.freeze({ add, retry, retryFailed, cancel, stop, kick, view, summary, busy: () => running });
   }
   async function prepare(fileList, documents, meta) {
     // Reject the whole selection before anything is queued: a half-queued batch is harder to reason about than a clear error.
