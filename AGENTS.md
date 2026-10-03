@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-03 v336 인수인계 정정·v337 테스트 안정화 (제품 변경 없음)
+
+- 대표가 세 첨부 검토 뒤 "수정해여 배포"로 수정·브랜치 업로드·PR·main 병합·Pages 배포를 승인했다. 기준 main은 PR #167의 `df5d8e3`, 제품 빌드는 `hyeonjang-v337-customermessages`다. 테스트·문서·PR 검증만 수정하며 APP_BUILD/SW/TARGET_BUILD 3곳, 공개 18파일, 실제 계정·사진·Drive·Apps Script·발송·PC 종료는 바꾸지 않는다. 아래 과거 '미배포'는 당시 기록이다.
+- 첨부 패치는 main `bea9902`/v335 기준으로, 테스트 2개는 같지만 AGENTS 절은 충돌한다. 원본 PDF/메일 패치를 덮지 않고 최신 main에 최소 변경을 재작성했다. 병합 뒤 v335로 되돌리지 않는다. 수정 안내·검증 경계는 `docs/test-stability-v337-20261003.md`.
+- portal-key ⑪: 이번 applyData의 `toast()` 호출을 직접 기록하면서 원함수도 호출한다. warranty ⑤(⑦): 직전 토스트를 비우고 새 알림과 e1/e3의 정확한 공정값을 기다린다. 대기 실패를 catch로 삼키지 않는다. 최종 보안·사진 공정 단언은 유지한다.
+- auto-sync의 설정 완료 신호 뒤에도 relayBoot는 IDB 대기열을 읽는다. 실제 boot/배지/online listener와 지연 합성 IDB를 사용해 기존 측정 2회(online+relayBoot), BootDone 대기 후 1회(online만)를 결정적으로 재현했다. 첨부의 '부팅 경합 가설 기각'은 일반 기각 근거가 아니므로 정정한다. eventTrigger 측정에만 실제 `__hjRelayBootDone` 대기를 넣었고 기대 `calls:2, afterOnline:1, queueFlushes:1`은 유지한다. 실패 시 합성 호출 스택을 진단으로 남긴다.
+- `test-stability.unit.js`는 실제 boot/listener와 E2E 공용 probe를 검사한다. inbox coordinator·IDB만 합성이다. `test-stability.mutations.js`는 앱 파일을 고치지 않고 HTML을 메모리에서만 바꿔 보호 제거 5종을 검사한다. PR 검증은 기존 전체 회귀 뒤 이 변이를 추가한다. 180초 제한·기본 동시 수·기존 단독 재시도 1회는 변경하지 않는다. 최종 전체 종료코드 0 및 CI/Pages·공개 파일 일치 전에는 완료라고 보고하지 않는다.
+- 로컬 Windows: 정적 5종·OfficeOps 서버 격리·결정적 VM 통과(종료 0). 포털 11/11·보증서 19/19·auto-sync·VM baseline 4파일 통과, 보호 제거 5/5 의도한 실패 탐지(각 종료 1, 변이 러너 종료 0). 관련 읽기 전용 사전/수정후 검토 완료. 필터 없는 전체 225파일은 PR CI에서 실행하고 실제 결과·재시도·Pages/공개 완료는 해당 PR 검증 기록을 따른다. 실계정·실기기 검증을 뜻하지 않는다.
+
 ## 2026-10-03 v337 배포 승인 및 병합 전 게이트
 
 - 사용자가 v336 선택 첨부와 v337 고객용 문구의 배포를 승인했다. 브랜치 `codex/biz-select-send-20261002`에서 업로드·PR·전체 검증·main 병합·Pages 반영을 진행한다. 아래 '미배포/보류'는 개발 당시 기록이다. 실제 공개 완료는 PR/Pages 실행과 라이브 파일·화면 확인으로 별도 증명한다.

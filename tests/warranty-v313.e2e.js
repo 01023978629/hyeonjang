@@ -12,6 +12,7 @@ try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
 
 const APP = 'http://127.0.0.1:8299/index.html';
+const { installTestMutation } = require('./test-stability-fixture');
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const results = [];
 async function test(name, fn) {
@@ -28,6 +29,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); } catch (e) {} });
+  await page.route('https://**/*', route => route.abort());
+  await installTestMutation(page);
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
   await page.evaluate(async () => {
@@ -361,15 +364,22 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert((await ph('org2')) === null, '정리 폴더 사진에 공정을 붙이면 재스캔 때 p.phases 로 올라간다');
   });
 
-  await test('⑤(⑦) 안전판을 지나는 사이 사진 목록이 통째로 바뀌면 쓰지 않는다(끊긴 객체에 쓰고 성공이라 하지 않는다)', async () => {
+  await test('⑤(⑦) 안전판 뒤 새 사진 목록을 id로 다시 찾아 저장한다(끊긴 객체에 쓰지 않는다)', async () => {
     await seed(basePhotos, [baseProject]);
     await page.evaluate(n => { warrantyView(n); window.__wrPick = { before: ['e1'], after: ['e3'] }; }, N);
     await page.evaluate(() => {   // 안전판이 끝나는 순간 state.files 를 새 객체 배열로 교체(유상 커밋·안전판 복구가 하는 일)
       const orig = window.__origSnap;
       hjSnapshot = async function (l, f, a) { const ok = await orig(l, f, a); state.files = state.files.map(x => ({ ...x })); return ok; };
     });
+    // 직전 단계의 "공정" 알림이 아니라 이번 쓰기의 알림과 정확한 결과를 기다린다.
+    await page.evaluate(() => { document.getElementById('toast').textContent = ''; });
     await clickMake(); await waitDoc();
     await page.waitForFunction(() => (document.getElementById('toast') || {}).textContent.includes('공정'), null, { timeout: 8000 });
+    await page.waitForFunction(() => {
+      const before = state.files.find(f => f.id === 'e1');
+      const after = state.files.find(f => f.id === 'e3');
+      return before && after && before._phase === '시공 전' && after._phase === '완료';
+    }, null, { timeout: 8000 });
     const r = await page.evaluate(() => ({ e1: state.files.find(f => f.id === 'e1')._phase, e3: state.files.find(f => f.id === 'e3')._phase,
       toast: document.getElementById('toast').textContent }));
     assert(r.e1 === '시공 전' && r.e3 === '완료', '교체된 새 목록에 제대로 써야 한다(id 로 다시 찾는다): ' + JSON.stringify(r));

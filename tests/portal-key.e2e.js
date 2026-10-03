@@ -28,6 +28,7 @@ let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
 const APP = 'http://127.0.0.1:8299/index.html';
+const { installTestMutation } = require('./test-stability-fixture');
 const assert = (v, m) => { if (!v) throw new Error(m); };
 let browser;
 
@@ -60,6 +61,7 @@ async function newPage(requests) {
     return route.abort();
   });
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
+  await installTestMutation(page);
   return { ctx, page };
 }
 async function boot(page, reload) {
@@ -415,7 +417,26 @@ const pollIdb = (page, key, pred, label) => page.evaluate(async ({ key, pred, la
     const st = await pe.evaluate(async () => ({ idb: await idbGet('portal_key'), mem: portalKeyGet(), cfg: state.portalCfg }));
     assert(!st.idb && st.mem === KEY8 && !('key' in (st.cfg || {})), '쓰기 실패 뒤 상태: ' + JSON.stringify(st));
     // applyData(옛 백업 가져오기) 경로도 같다
-    await pe.evaluate(() => { __portalKey = null; window.__hjTestToasts.length = 0; IDBObjectStore.prototype.put = (function (orig) { return function (val, key) { if (key === 'portal_key') throw new DOMException('시험', 'QuotaExceededError'); return orig.apply(this, arguments); }; })(IDBObjectStore.prototype.put); });
+    // 같은 문구가 이미 표시된 DOM 대신, 이번 applyData가 호출한 알림을 직접 관찰한다.
+    // 원래 toast도 호출하므로 앱의 표시 동작은 바꾸지 않는다.
+    await pe.evaluate(() => {
+      __portalKey = null;
+      window.__hjTestToasts.length = 0;
+      if (!window.__hjTestToastHooked) {
+        const originalToast = window.toast;
+        window.toast = function (message) {
+          window.__hjTestToasts.push(String(message));
+          return originalToast.apply(this, arguments);
+        };
+        window.__hjTestToastHooked = true;
+      }
+      IDBObjectStore.prototype.put = (function (originalPut) {
+        return function (value, key) {
+          if (key === 'portal_key') throw new DOMException('시험', 'QuotaExceededError');
+          return originalPut.apply(this, arguments);
+        };
+      })(IDBObjectStore.prototype.put);
+    });
     await pe.evaluate(({ BASE, KEY8 }) => { const d = serializeData(); d.portalCfg = { base: BASE, key: KEY8 }; applyData(d); }, { BASE, KEY8 });
     await pe.waitForFunction(() => (window.__hjTestToasts || []).some(t => t.includes('비밀키') && t.includes('다시 넣어')));
     assert(!pe.__errors.length, 'pageerror: ' + pe.__errors.join(' | '));
