@@ -6,6 +6,7 @@ try { ({ chromium } = require('playwright')); }
 catch (_) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
 const APP = 'http://127.0.0.1:8299/index.html';
+const { installTestMutation, eventTriggerProbe } = require('./test-stability-fixture');
 let browser;
 
 async function openPage(options = {}) {
@@ -21,6 +22,7 @@ async function openPage(options = {}) {
     }, options.failAllIdb);
   }
   await page.route('https://**/*', route => route.abort());
+  await installTestMutation(page);
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   return page;
 }
@@ -212,38 +214,13 @@ async function invokeAutoStart(page, restoreResult, relayResult) {
   await page.close();
 
   const eventTriggerPage = await openPage();
-  const eventTrigger = await eventTriggerPage.evaluate(async () => {
-    await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone]);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    let calls = 0;
-    let queueFlushes = 0;
-    window.cloudOfficeInbox = async () => {
-      calls += 1;
-      return { ok: true, requests: [], cursor: '', operationalErrors: [] };
-    };
-    window.cloudFlushQueue = () => { queueFlushes += 1; };
-    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-    __relay.url = 'https://relay.test/exec';
-    __relay.token = 'test-token';
-    __officeIntakeAutoLastStartedAt = 0;
-    __officeIntakeSyncPromise = null;
-
-    window.dispatchEvent(new Event('online'));
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const afterOnline = calls;
-
-    __officeIntakeAutoLastStartedAt = 0;
-    document.dispatchEvent(new Event('visibilitychange'));
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    return { calls, afterOnline, queueFlushes };
-  });
+  // 설정 복원 뒤에도 relayBoot는 IDB 대기열을 읽는다. 부팅이 끝난 뒤 spy를 설치한다.
+  const { flushStacks, ...eventTrigger } = await eventTriggerPage.evaluate(eventTriggerProbe);
   assert.deepEqual(eventTrigger, {
     calls: 2,
     afterOnline: 1,
     queueFlushes: 1
-  }, 'online keeps its queue flush and both online and visible foreground events request the inbox');
+  }, 'online keeps its queue flush and both online and visible foreground events request the inbox\n' + flushStacks.join('\n---\n'));
   await eventTriggerPage.close();
 
   const blockedCases = [

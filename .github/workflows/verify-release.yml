@@ -50,5 +50,13 @@ jobs:
       - name: Verify selected-sharing protection mutations
         run: node tests/biz-select.mutations.js
 
+      - name: Verify test-stability protection mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
+          export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+          node tests/test-stability.mutations.js
+
       - name: Stage public allowlist without publishing
         run: node scripts/stage-pages.mjs _verify_site
