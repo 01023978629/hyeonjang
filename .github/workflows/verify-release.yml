@@ -1,0 +1,54 @@
+name: Verify release before merge
+
+on:
+  pull_request:
+    branches:
+      - main
+
+# PR 검사는 공개 배포/환경/비밀값에 접근하지 않는다.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v7
+        with:
+          # 고정 기준 커밋과 merge-base를 대조하는 격리 검사가 전체 이력을 요구한다.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install security test browser
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/hj-e2e" --no-save --package-lock=false playwright@1.55.0
+          "$RUNNER_TEMP/hj-e2e/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Verify release guards (full suite)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
+          CHROME="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+          sudo mkdir -p /opt/pw-browsers
+          sudo ln -sfn "$CHROME" /opt/pw-browsers/chromium
+          export PLAYWRIGHT_EXECUTABLE="$CHROME"
+          node tests/run-all.js
+
+      - name: Verify selected-sharing protection mutations
+        run: node tests/biz-select.mutations.js
+
+      - name: Stage public allowlist without publishing
+        run: node scripts/stage-pages.mjs _verify_site
