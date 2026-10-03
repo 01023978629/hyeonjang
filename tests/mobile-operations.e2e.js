@@ -2,6 +2,7 @@
    No real account, upload, photo, message or backend. Requires static-server:8299.
    HJ_MOBILE_OPERATIONS_MUTATION=project|summary|prepguard must fail assertions. */
 'use strict';
+const { installTestMutation, waitForTouchLayout } = require('./test-stability-fixture');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -41,6 +42,7 @@ async function boot(width) {
     if (MUTATION && url.pathname === '/index.html') return route.fulfill({ contentType: 'text/html; charset=utf-8', body: source });
     return route.continue();
   });
+  await installTestMutation(page);
   await page.addInitScript(() => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); });
   await page.goto(APP, { waitUntil: 'domcontentloaded' }); await gis;
   await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
@@ -96,9 +98,14 @@ async function searchProject(page, query) {
   await page.locator('button.gsItem[data-search-project]').first().waitFor({ state: 'visible' });
 }
 async function mobileFits(page, selector) {
+  await waitForTouchLayout(page, selector);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), 'no horizontal overflow');
-  for (const button of await page.locator(selector).all()) {
-    const box = await button.boundingBox(); assert(box && box.width >= 44 && box.height >= 44, '44px touch target');
+  const buttons = await page.locator(selector).all();
+  assert(buttons.length > 0, 'touch targets present: ' + selector);
+  for (const button of buttons) {
+    const box = await button.boundingBox();
+    const detail = await button.evaluate(el => ({ id: el.id, text: el.textContent, prep: el.dataset.schprep, report: el.dataset.schreport, css: getComputedStyle(el).height, layout: el.offsetHeight, transform: getComputedStyle(el).transform }));
+    assert(box && box.width >= 44 && box.height >= 44, '44px touch target: ' + JSON.stringify({ box, detail }));
   }
 }
 (async () => {
@@ -189,7 +196,7 @@ async function mobileFits(page, selector) {
     assert.equal(await page.evaluate(() => JSON.stringify(state.schedule.find(s => s.id === 's2'))), other);
     await historySettled(page); await page.locator('[data-schreport="s2"]').click();
     assert.match(await page.locator('#modalRoot').innerText(), /가상현장02/); assert.equal(await page.locator('#rDone').count(), 1);
-    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#modalRoot .modal'));
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#modalRoot .modal') && document.activeElement.dataset.schreport === 's2');
     await mobileFits(page, '[data-schprep], [data-schreport]');
   }, width);
   await scenario('열어둔 준비물의 교체·삭제·수정·중복 ID는 쓰기 차단', async page => {

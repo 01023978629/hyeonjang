@@ -12,6 +12,7 @@
 
    전제: tests/static-server.js(8299) 실행 중 */
 'use strict';
+const { installTestMutation } = require('./test-stability-fixture');
 let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
@@ -31,6 +32,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   await page.route('https://**/*', route => route.abort());
+  await installTestMutation(page);
   await page.addInitScript(() => {
     try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); } catch (e) {}
   });
@@ -194,6 +196,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('③ 거래처 이름 칸', async () => {
     await page.evaluate(() => supplierEditDialog());
+    await page.waitForFunction(() => document.activeElement === document.querySelector('#modalRoot .modal'));
     await clickFoot(/^저장$/);
     assert(/거래처 이름/.test(await lastToast()), '토스트가 사라졌다');
     await fieldCheck('거래처 이름', '#supName', /거래처 이름을 입력/, '가상한밭철물');
@@ -202,10 +205,13 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('③ 자재 이름 칸 — 단가표·재고 두 곳', async () => {
     await page.evaluate(() => materialEditDialog());
+    // 이 화면은 openModal의 0ms 초점 뒤 자재 이름의 50ms 초점이 마지막이다.
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'matName');
     await clickFoot(/^저장$/);
     await fieldCheck('자재(단가표) 이름', '#matName', /자재 이름을 입력/, '가상 실크 벽지');
     await page.evaluate(() => closeModal());
     await page.evaluate(() => inventoryAdd());
+    await page.waitForFunction(() => document.activeElement === document.querySelector('#modalRoot .modal'));
     await clickFoot(/^추가$/);
     await fieldCheck('자재(재고) 이름', '#invName', /자재 이름을 입력/, '가상 타일 본드');
     await page.evaluate(() => closeModal());
