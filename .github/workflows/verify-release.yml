@@ -60,3 +60,11 @@ jobs:
 
       - name: Stage public allowlist without publishing
         run: node scripts/stage-pages.mjs _verify_site
+
+      - name: Verify selected-document protections without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
+          export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+          node tests/document-select.mutations.js
