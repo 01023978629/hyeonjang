@@ -68,3 +68,11 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
           export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
           node tests/document-select.mutations.js
+
+      - name: Verify document-upload protections without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
+          export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
+          node tests/document-upload.mutations.js

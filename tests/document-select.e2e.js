@@ -1,5 +1,6 @@
 /* v338: disposable IDB and synthetic files only. No business files, uploads or real accounts.
-   HJ_DOCUMENT_SELECT_MUTATION=append|storage|settlement|source|move must trip the named protection. */
+   HJ_DOCUMENT_SELECT_MUTATION=append|storage|settlement|source|move|startup must trip the named protection.
+   startup holds the real GIS preload invocation behind an explicit latch and must detect a removed end-signal wait. */
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -8,7 +9,7 @@ let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'))
 const {waitForTouchLayout}=require('./test-stability-fixture');
 const APP='http://127.0.0.1:8299/index.html',ORIGIN=new URL(APP).origin;
 const MUTATION=process.env.HJ_DOCUMENT_SELECT_MUTATION||'';
-assert(['','append','storage','settlement','source','move'].includes(MUTATION));
+assert(['','append','storage','settlement','source','move','startup'].includes(MUTATION));
 const A='가상 가아파트',B='가상 나아파트';let browser,passed=0;
 function mutatedSource(){
   let source=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
@@ -19,7 +20,7 @@ function mutatedSource(){
     source:["if(!strong&&!exact)return false; // 이름·크기 폴백은 수동 항목/기기 원본의 신원이 아니다.","/* synthetic removal of manual source identity guard */"],
     move:["if(item&&(f.kind==='estimate')!==(item.role==='estimate'))throw new Error('견적서는 견적 항목 안에서만 이동하세요. 정산서로 변경해 집계를 바꾸지 않습니다.');","/* synthetic removal of financial kind guard */"]
   };
-  if(MUTATION){const [from,to]=replacements[MUTATION];assert(source.includes(from)&&source.indexOf(from)===source.lastIndexOf(from),'unique mutation anchor');source=source.replace(from,to);}
+  if(MUTATION&&MUTATION!=='startup'){const [from,to]=replacements[MUTATION];assert(source.includes(from)&&source.indexOf(from)===source.lastIndexOf(from),'unique mutation anchor');source=source.replace(from,to);}
   return source;
 }
 async function boot(width=390,empty=false){
@@ -61,7 +62,7 @@ async function close(page){await page.keyboard.press('Escape');await page.waitFo
   await run('original storage failure leaves metadata unchanged',async t=>{const before=await snapshot(t.page);await t.page.evaluate(()=>{documentStoreOriginals=async()=>{throw new Error('FAKE quota');};});assert.match((await register(t.page)).error,/quota/);assert.deepEqual(await snapshot(t.page),before);});
   await run('missing original verification cannot report success',async t=>{const before=await snapshot(t.page);await t.page.evaluate(()=>{idbGetStrict=async key=>key.startsWith('document_blob:')?undefined:null;});assert.match((await register(t.page)).error,/원본 보관/);assert.deepEqual(await snapshot(t.page),before);});
   await run('snapshot failure writes no original or index',async t=>{const before=await snapshot(t.page);await t.page.evaluate(()=>{hjSnapshot=async()=>false;documentStoreOriginals=async()=>{__docCalls.push('unexpected-store');};});assert.match((await register(t.page)).error,/안전판|required snapshot/);assert.deepEqual(await snapshot(t.page),before);});
-  await run('file chooser cancel and unchecked file perform no registration',async t=>{const before=await snapshot(t.page);await t.page.locator('[data-document-import="other"]').click();await t.page.locator('#documentRegisterFiles').setInputFiles({name:'가상 선택 취소.pdf',mimeType:'application/pdf',buffer:Buffer.from('SYNTHETIC-CANCEL')});await t.page.locator('[data-document-pick]').uncheck();await t.page.getByRole('button',{name:'선택 파일 등록',exact:true}).click();await t.page.locator('[data-document-error]').filter({hasText:'1~50'}).waitFor();assert.deepEqual(await snapshot(t.page),before);await close(t.page);});
+  await run('file chooser cancel and unchecked file perform no registration',async t=>{const before=await snapshot(t.page);await t.page.locator('[data-document-import="other"]').click();await t.page.locator('#documentRegisterFiles').setInputFiles({name:'가상 선택 취소.pdf',mimeType:'application/pdf',buffer:Buffer.from('SYNTHETIC-CANCEL')});await t.page.locator('[data-document-pick]').uncheck();await t.page.getByRole('button',{name:'선택 파일 업로드',exact:true}).click();await t.page.locator('[data-document-error]').filter({hasText:'1~50'}).waitFor();assert.deepEqual(await snapshot(t.page),before);await close(t.page);});
   await run('settlement never becomes accounting estimate or photo',async t=>{assert.deepEqual(await register(t.page,'settlement','가상 합계금액 정산서.pdf'),{result:1});const r=await t.page.evaluate(async()=>{const f=state.files.at(-1);f.text='공급가액 합계금액 견적 금액';const kind=classify(f);f.ocr='pending';let reads=0;pdfText=async()=>{reads++;return 'unexpected';};await runBatchOCR();const data=serializeData();state.files=[];applyData(data,{revert:true});const restored=state.files.find(f=>f.name.includes('정산서'));return{kind,reads,restored:restored.kind,sales:salesEstimateFiles().map(f=>f.name)};});assert.equal(r.kind,'other','manual settlement role must win');assert.equal(r.restored,'other');assert.equal(r.reads,0);assert.deepEqual(r.sales,['가상 기존 견적.pdf']);});
   await run('document photo survives exact hydration and legacy restore',async t=>{const r=await attempt(t.page,"async a=>documentRegister([new File(['FAKE-IMAGE'],'가상 계약.jpg',{type:'image/jpeg',lastModified:12345})],'contract',a)",A);assert.deepEqual(r,{result:1});const result=await t.page.evaluate(()=>{const d=serializeData();applyPaidCommittedState(d);const exact=state.files.at(-1).kind;state.files=[];applyData(d,{revert:true});return{exact,legacy:state.files.at(-1).kind,classification:classify(state.files.at(-1))};});assert.deepEqual(result,{exact:'other',legacy:'other',classification:'other'});});
   await run('selected restore keeps document role and original cache consistent',async t=>{
@@ -97,9 +98,20 @@ async function close(page){await page.keyboard.press('Escape');await page.waitFo
   });
   await run('refresh restores original lazily without Google login',async t=>{
     assert.deepEqual(await register(t.page),{result:1});const name=await t.page.evaluate(()=>state.files.at(-1).name);
-    // Reload reruns the app's unchanged startup CDN scripts; measure the feature read after startup.
+    // GIS preloading starts after async IDB boot, so the document load event is not its end signal.
+    // Hold the unchanged preload invocation until those boot promises finish to expose this race deterministically.
+    const preload='try{gdLoadGIS().then(',html=mutatedSource();assert.equal(html.split(preload).length,2,'one actual startup GIS invocation');
+    await t.page.addInitScript(()=>{window.__docBootGISGate=new Promise(resolve=>{window.__releaseDocBootGIS=resolve;});});
+    await t.page.route(APP,r=>r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html.replace(preload,'try{window.__docBootGISGate.then(()=>gdLoadGIS()).then(')}));
+    const gis=t.page.waitForEvent('requestfailed',{predicate:r=>r.url()==='https://accounts.google.com/gsi/client',timeout:25000});
     t.setObserve(false);await t.page.reload({waitUntil:'load'});await t.page.waitForFunction(()=>window.__hjRestoreDone&&window.__hjRelayBootDone);
-    await t.page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone,__hjRelayBootDone]);window.__docCalls=[];gdGetToken=async()=>{__docCalls.push('auth');throw new Error('unexpected auth');};});t.setObserve(true);
+    await t.page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone,__hjRelayBootDone]);});
+    let startupFinished=false;
+    const observationReady=(async()=>{if(MUTATION!=='startup')await gis;startupFinished=true;})();
+    try{assert.equal(startupFinished,false,'startup request must finish before feature measurement');}
+    finally{await t.page.evaluate(()=>__releaseDocBootGIS());await gis;}
+    await observationReady;
+    await t.page.evaluate(()=>{window.__docCalls=[];gdGetToken=async()=>{__docCalls.push('auth');throw new Error('unexpected auth');};});t.setObserve(true);
     const r=await t.page.evaluate(async name=>{const f=state.files.find(f=>f.name===name),blob=await getFileOf(f);return{kind:f.kind,virtual:f._virtual,preview:canPreviewFile(f),bytes:await blob.text(),local:!!f.documentMeta.localBlobId};},name);
     assert.deepEqual(r,{kind:'other',virtual:true,preview:true,bytes:'SYNTHETIC-DOC',local:true});
   });
