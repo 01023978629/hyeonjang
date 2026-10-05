@@ -290,6 +290,12 @@
   .document-label{font-size:12px;overflow-wrap:anywhere;color:var(--muted);padding-top:4px}
   .document-items{border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px}
   .document-items summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+  #documentForm.sch-form label{font-size:14px}
+  #documentForm.sch-form label.document-pick{flex-direction:row;align-items:flex-start;gap:10px;min-height:44px;padding:10px;border:1px solid var(--line-soft);border-radius:10px;cursor:pointer;text-align:left;color:var(--ink)}
+  #documentForm.sch-form .document-pick input[type=checkbox]{flex:0 0 22px;width:22px;height:22px;min-width:22px;min-height:22px;padding:0;margin:0;accent-color:var(--blueprint)}
+  #documentForm .document-pick span{flex:1;min-width:0}
+  #documentForm .document-pick small,#documentForm .hint{font-size:13px;line-height:1.55}
+  #documentServerConsent+span small{color:var(--muted);font-weight:400;margin-top:4px}
   #modalRoot .modal:has(#documentForm) button,#documentForm select{min-height:44px;min-width:44px}
   #documentForm input,#documentForm select{font-size:16px;max-width:100%;min-width:0}
   #documentForm [data-document-error]{color:var(--warn);overflow-wrap:anywhere}
@@ -2063,9 +2069,13 @@ function hjApplySavedFileFields(f,s,revert,keepSource){
   if((sk==='other'||!sk)&&isMediaExt(f.ext)&&!documentMetaValid(s.documentMeta))sk='photo';
   f.kind=sk;f.project=s.project||null;
   if(has('documentMeta')){
-    const currentBlob=keepSource&&documentMetaValid(f.documentMeta)?.localBlobId;
+    const currentMeta=keepSource&&documentMetaValid(f.documentMeta),currentBlob=currentMeta?.localBlobId;
     f.documentMeta=structuredClone(s.documentMeta);
-    if(currentBlob&&documentMetaValid(f.documentMeta))f.documentMeta.localBlobId=currentBlob;
+    if(currentBlob&&documentMetaValid(f.documentMeta)){
+      const sameBlob=f.documentMeta.localBlobId===currentBlob;f.documentMeta.localBlobId=currentBlob;
+      if(currentMeta.serverUpload)f.documentMeta.serverUpload=structuredClone(currentMeta.serverUpload);
+      else if(!sameBlob)delete f.documentMeta.serverUpload;
+    }
   }
   else if(revert&&!keepSource)delete f.documentMeta;
   if(documentMetaValid(f.documentMeta))f.kind=documentRoleKind(f.documentMeta.role);
@@ -3208,7 +3218,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v338-documentselect';
+const APP_BUILD='hyeonjang-v339-documentupload';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3252,6 +3262,7 @@ function appVersionUnlock(){
   const go=document.getElementById('hjVerNewGo');if(go)go.disabled=false;
 }
 function appVersionPhotoGuard(){
+  if(window.__documentUploadPending){toast('서류 업로드 확인·저장 중입니다 — 완료한 뒤 새로고침해 주세요');return true;}
   if(!photoIntakePending())return false;
   const go=document.getElementById('hjVerNewGo');if(go)go.disabled=false;
   toast('사진 추가 확인 또는 처리가 진행 중입니다 — 먼저 마친 뒤 새로고침해 주세요');
@@ -5550,7 +5561,9 @@ async function getFileOf(rec){
   const meta=documentMetaValid(rec.documentMeta);
   if(meta&&meta.localBlobId){
     const saved=await idbGetStrict('document_blob:'+meta.localBlobId);
+    if(saved==null&&meta.serverUpload)return documentGetServerOriginal(rec);
     if(!(saved instanceof Blob)||saved.size!==rec.size||saved.name!==rec.name)throw new Error('이 기기에 서류 원본이 없습니다. 등록한 기기에서 확인하거나 원본을 다시 선택하세요.');
+    if(meta.serverUpload&&await documentHash(await saved.arrayBuffer())!==documentServerMeta(meta.serverUpload).sha256)throw new Error('기기 보관 원본의 내용이 전송 기록과 다릅니다. 덮어쓰거나 새로 전송하지 않았습니다.');
     return saved;
   }
   return null;
@@ -7602,7 +7615,7 @@ function cardHtml(f,layout){
   return `<div class="card k-${f.kind}${documentRow?' document-row':''}" data-id="${f.id}">
     <div class="thumb"${canPreview?` style="cursor:zoom-in" data-preview="${f.id}"`:''}>${thumb}${documentRow?'':`<span class="badge ${k.badge}">${k.label}</span>${ocrTag(f)}`}</div>
     <div class="meta"><div class="nm">${escapeHtml(f.name)}</div>
-      <div class="sub">${fmtSize(f.size)} · ${f.kind==='estimate'?escapeHtml(documentRow?estimateListDate(f):estimateDateSummary(f)):fmtDate(f.when)}</div>${gps}${extra}${documentRow?ocrTag(f):''}${documentRow&&documentMetaValid(f.documentMeta)?`<div class="document-label">항목: ${escapeHtml(f.documentMeta.label)} · ${escapeHtml(f.project||'프로젝트 미지정')}${f.documentMeta.localBlobId?' · 기기 보관본':''}</div>`:''}</div>
+      <div class="sub">${fmtSize(f.size)} · ${f.kind==='estimate'?escapeHtml(documentRow?estimateListDate(f):estimateDateSummary(f)):fmtDate(f.when)}</div>${gps}${extra}${documentRow?ocrTag(f):''}${documentRow&&documentMetaValid(f.documentMeta)?`<div class="document-label">항목: ${escapeHtml(f.documentMeta.label)} · ${escapeHtml(f.project||'프로젝트 미지정')}${f.documentMeta.localBlobId?' · 기기 원본 등록 기록':''}</div>`:''}</div>
     ${actbtns}
     <div class="cardact">
       ${documentMetaValid(f.documentMeta)?`<span class="document-label">${escapeHtml(DOCUMENT_ROLES[f.documentMeta.role])} · 항목/프로젝트는 ‘이동’으로 변경</span>`:`<select data-act="kind" data-id="${f.id}" aria-label="${escapeAttr(f.name)} 파일 종류">${kindOptions(f.kind)}</select>`}
@@ -8932,6 +8945,221 @@ async function documentReadEstimates(keys,stillCurrent=()=>true){
     }});
   });
 }
+/* v339: 선택 업로드. 레거시 doc 서버는 멱등 업로드가 아니므로 공용 relayQueue를 쓰지 않는다.
+   원본/전송 의도/응답은 기기에 먼저 내구 보관하고, 응답 유실은 조회·해시 확인으로만 복구한다. */
+const DOCUMENT_SERVER_MIMES=Object.freeze({pdf:'application/pdf',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',xls:'application/vnd.ms-excel',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png'});
+const DOCUMENT_SERVER_ID=/^[A-Za-z0-9_-]{10,200}$/;
+const DOCUMENT_HASH=/^[a-f0-9]{64}$/;
+let __documentShareNotice='';
+function documentServerIssue(f){
+  if(!DOCUMENT_SERVER_MIMES[bestExt(f.name,f.type||f._driveMimeType)])return '서버 미지원 형식 · PDF·엑셀·JPG/PNG로 저장한 뒤 업로드하세요.';
+  if(f.size>9*1024*1024)return '서버 상한 9MB 초과 · 기기에 보관한 원본을 이용하세요.';
+  return '';
+}
+function documentServerMeta(meta){
+  if(meta==null)return null;
+  if(!paidPlainObject(meta)||meta.schemaVersion!==1||!DOCUMENT_UUID.test(meta.requestId)||!DOCUMENT_HASH.test(meta.connectionFingerprint)||!DOCUMENT_HASH.test(meta.sha256)||
+    !['uncertain','rejected','uploaded'].includes(meta.status)||typeof meta.name!=='string'||!meta.name||meta.name.length>80||
+    !Object.values(DOCUMENT_SERVER_MIMES).includes(meta.mimeType)||!Number.isSafeInteger(meta.size)||meta.size<1||meta.size>9*1024*1024||
+    (meta.status==='uploaded'&&(!DOCUMENT_SERVER_ID.test(meta.fileId||'')||typeof meta.verifiedAt!=='string')))throw new Error('서버 전송 기록 형식을 확인하세요. 중복 업로드하지 않았습니다.');
+  return meta;
+}
+function documentConnection(){
+  if(!relayReady()||!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(__relay.url))throw new Error('연결된 회사 서버 설정을 확인하세요. 원본은 기기에 보관됩니다.');
+  return {url:__relay.url,token:__relay.token,device:__relay.device||'unknown'};
+}
+function documentSameConnection(c){return c.url===__relay.url&&c.token===__relay.token&&c.device===(__relay.device||'unknown');}
+async function documentHash(bytes){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(n=>n.toString(16).padStart(2,'0')).join('');}
+async function documentConnectionFingerprint(c){return documentHash(new TextEncoder().encode(c.url+'\n'+c.token));}
+async function documentServerCall(c,action,payload){
+  if(!documentSameConnection(c))throw new Error('서버 연결이 바뀌었습니다. 기존 전송 기록은 보존했습니다.');
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);
+  try{
+    const r=await fetch(c.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},signal:controller.signal,
+      body:JSON.stringify({token:c.token,action,deviceId:c.device,ts:Date.now(),payload})});
+    if(!r.ok)throw new Error('서버 응답을 확인하지 못했습니다.');
+    return await r.json();
+  }finally{clearTimeout(timer);}
+}
+function documentServerName(f,id){
+  return 'hjdoc_'+id+'.'+bestExt(f.name,f.type);
+}
+function documentJobKey(f,fp){return 'document_upload:'+f.documentMeta.localBlobId+':'+fp;}
+async function documentStoreJob(key,job){
+  await documentJobAtomic(key,current=>{
+    if(current&&(current.schemaVersion!==1||current.blobId!==job.blobId||current.originalName!==job.originalName||current.meta?.requestId!==job.meta.requestId||current.meta?.connectionFingerprint!==job.meta.connectionFingerprint||current.meta?.sha256!==job.meta.sha256||current.meta?.size!==job.meta.size||current.meta?.mimeType!==job.meta.mimeType||current.meta?.name!==job.meta.name||(current.fileId&&job.fileId!==current.fileId)))throw new Error('다른 전송 기록이 있습니다. 덮어쓰지 않았습니다.');
+    return job;
+  });const saved=await idbGetStrict(key);
+  if(paidStableJson(saved)!==paidStableJson(job))throw new Error('전송 기록을 안전하게 보관하지 못했습니다. 자동 재전송하지 않습니다.');
+}
+function documentJobAtomic(key,change){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open('hyeonjang-db',1);request.onerror=()=>reject(request.error);request.onupgradeneeded=()=>request.result.createObjectStore('kv');
+    request.onsuccess=()=>{const db=request.result,tx=db.transaction('kv','readwrite'),store=tx.objectStore('kv');let error,result;
+      const read=store.get(key);read.onsuccess=()=>{try{result=change(read.result);store.put(result,key);}catch(e){error=e;tx.abort();}};
+      tx.oncomplete=()=>{db.close();resolve(result);};tx.onabort=()=>{db.close();reject(error||tx.error||new Error('전송 기록 저장 실패'));};tx.onerror=()=>{};
+    };
+  });
+}
+async function documentReserveAttempt(key,job){
+  const reserved=await documentJobAtomic(key,saved=>{
+    if(!saved||saved.sent!==false||paidStableJson(saved)!==paidStableJson(job))throw new Error('이미 전송 시도가 기록되었습니다. 서버 확인을 먼저 하세요.');
+    return {...saved,sent:true};
+  });
+  if(paidStableJson(await idbGetStrict(key))!==paidStableJson(reserved))throw new Error('전송 예약 확인 실패 — 서버에 보내지 않았습니다.');
+  return reserved;
+}
+async function documentVerifyServer(c,meta,fileId){
+  if(!DOCUMENT_SERVER_ID.test(fileId||''))throw new Error('서버 원본 ID를 확인하지 못했습니다.');
+  const r=await documentServerCall(c,'download',{fileId});
+  if(!documentSameConnection(c))throw new Error('서버 연결이 바뀌었습니다. 원본 연결을 변경하지 않았습니다.');
+  if(r?.ok!==true||r.fileId!==fileId||r.name!==meta.name||r.mimeType!==meta.mimeType||r.size!==meta.size||typeof r.dataB64!=='string'||r.dataB64.length>RELAY_MAX_B64)throw new Error('서버 원본 정보가 일치하지 않습니다. 다시 전송하지 않고 확인을 기다립니다.');
+  const bytes=b64ToBytes(r.dataB64);
+  if(!bytes||bytes.length!==meta.size||await documentHash(bytes)!==meta.sha256)throw new Error('서버 원본 내용이 일치하지 않습니다. 기존 원본은 보존했습니다.');
+  if(!documentSameConnection(c))throw new Error('서버 연결이 바뀌었습니다. 다시 확인하세요.');
+  return new File([bytes],meta.name,{type:meta.mimeType});
+}
+async function documentGetServerOriginal(rec){
+  const meta=documentServerMeta(rec.documentMeta?.serverUpload);
+  if(!meta||!DOCUMENT_SERVER_ID.test(rec._driveId||'')||rec.size!==meta.size||(meta.status==='uploaded'&&rec._driveId!==meta.fileId))throw new Error('이 기기에 원본이 없고 서버 보관도 확인되지 않았습니다. 등록한 기기에서 확인하세요.');
+  const c=documentConnection(),before=documentFingerprint(),fileId=rec._driveId,blobId=rec.documentMeta.localBlobId,originalName=rec.name,fp=await documentConnectionFingerprint(c);
+  const check=()=>{if(!documentSameConnection(c)||!state.files.includes(rec)||documentFingerprint()!==before)throw new Error('자료 또는 서버 연결이 바뀌었습니다. 원본을 다시 선택하세요.');return true;};
+  if(fp!==meta.connectionFingerprint||!documentSameConnection(c))throw new Error('등록 당시 회사 서버에 연결한 뒤 원본을 열어 주세요.');
+  check();const file=await documentVerifyServer(c,meta,fileId);check();
+  const original=new File([file],originalName,{type:meta.mimeType});
+  await documentJobAtomic('document_blob:'+blobId,saved=>{check();if(saved!=null)throw new Error('기기 원본 보관 상태가 바뀌었습니다. 다시 열어 주세요.');return original;});check();
+  if(meta.status!=='uploaded'){
+    // 전체 안전판은 분류를 되돌리지만 실제 Drive 원본 ID는 유지한다. 새 전송 없이 같은 ID를 검증한다.
+    // 읽기 호출자의 원본 신원을 유지하도록 캐시·검증 영수증만 보관한다. 앱 분류 증빙은 명시적 「서버 저장·확인」에서 복구한다.
+    const verified={...meta,status:'uploaded',fileId,verifiedAt:new Date().toISOString()};
+    await documentStoreJob(documentJobKey(rec,fp),{schemaVersion:1,blobId,originalName,meta:verified,sent:true,fileId});check();
+  }
+  return original;
+}
+async function documentApplyServerRecords(rows,c,fp,current){
+  const before=documentFingerprint();
+  const check=()=>{documentGuard();if(!current()||!documentSameConnection(c)||documentFingerprint()!==before)throw new Error('자료 또는 서버 연결이 변경되었습니다. 전송 기록은 기기에 보존했습니다.');};
+  return durableLocalMutation({snapshotLabel:'서류 서버 연결 저장 전',beforeCommit:check,mutateDraft:d=>{
+    for(const row of rows){const matches=d.files.filter(f=>f.key===row.key);if(matches.length!==1)throw new Error('서류 연결이 없거나 중복되었습니다.');
+      const f=matches[0],m=documentMetaValid(f.documentMeta);if(!m||m.localBlobId!==row.blobId||f.name!==row.originalName||f.size!==row.meta.size)throw new Error('서류 원본이 바뀌었습니다.');
+      const old=documentServerMeta(m.serverUpload);if(old&&(old.requestId!==row.meta.requestId||old.connectionFingerprint!==fp))throw new Error('기존 전송 기록을 바꾸지 않았습니다.');
+      if(row.meta.status==='uploaded'){
+        if(f.driveId&&f.driveId!==row.meta.fileId)throw new Error('기존 Drive 연결을 덮어쓰지 않습니다.');
+        f.driveId=row.meta.fileId;f.driveMimeType=row.meta.mimeType;f.driveSize=row.meta.size;
+      }
+      f.documentMeta={...m,serverUpload:row.meta};
+    }return rows.length;
+  }});
+}
+async function documentUploadFiles(keys,current=()=>true,progress=()=>{}){
+  if(!navigator.locks)throw new Error('이 브라우저는 안전한 동시 업로드 잠금을 지원하지 않습니다. 최신 Chrome에서 다시 시도하세요. 기기 원본은 그대로입니다.');
+  return navigator.locks.request('hj-document-upload-v1',()=>documentWithWrite(async()=>{
+    if(!current())throw new Error('업로드 확인 창이 닫혔습니다.');
+    const unique=[...new Set(keys||[])];if(!unique.length||unique.length>50)throw new Error('업로드할 기기 보관 서류를 1~50개 선택하세요.');
+    const records=unique.map(key=>{const fs=state.files.filter(f=>fileKey(f)===key);if(fs.length!==1||!documentMovable(fs[0])||!documentMetaValid(fs[0].documentMeta)?.localBlobId)throw new Error('선택 업로드로 기기에 보관한 서류를 선택하세요.');return fs[0];});
+    const report={local:records.length,uploaded:0,uncertain:0,rejected:0,localOnly:0,deferred:0,shared:false};
+    __documentShareNotice='기기 등록 기록 유지 · 앱 전체 분류 공유 저장 미확인. 이번 전송 결과를 확인 중입니다.';
+    if(!relayReady()||navigator.onLine===false){report.deferred=records.length;__documentShareNotice='선택 서류의 기기 등록 기록은 유지됩니다. 서버 미연결/오프라인이므로 연결한 뒤 수동 업로드하세요.';return report;}
+    const c=documentConnection(),fp=await documentConnectionFingerprint(c),prepared=[],before=documentFingerprint();
+    const check=()=>{documentGuard();if(!current()||!documentSameConnection(c)||documentFingerprint()!==before)throw new Error('화면·자료·서버 연결이 바뀌었습니다. 원본과 전송 기록은 보존했습니다.');};
+    window.__documentUploadPending=true;
+    try{
+      for(const f of records){check();if(documentServerIssue(f)){report.localOnly++;continue;}
+        const old=documentServerMeta(f.documentMeta.serverUpload);if(old&&old.connectionFingerprint!==fp)throw new Error('이 서류의 등록 당시 서버에 연결하세요. 다른 서버에 자동 복제하지 않습니다.');
+        if(old?.status==='uploaded'){if(f._driveId!==old.fileId)throw new Error('서버 원본 연결이 일치하지 않습니다.');report.uploaded++;continue;}
+        progress('기기 원본 확인 중… '+f.name);
+        const original=await idbGetStrict('document_blob:'+f.documentMeta.localBlobId);check();
+        if(!(original instanceof File)||original.name!==f.name||original.size!==f.size)throw new Error('기기 원본이 없어 업로드하지 않았습니다. 등록한 기기에서 확인하세요.');
+        const sha256=await documentHash(await original.arrayBuffer());check();
+        const jobKey=documentJobKey(f,fp),saved=await idbGetStrict(jobKey);check();
+        const storedMeta=saved?documentServerMeta(saved.meta):null;
+        const meta=old||storedMeta||{schemaVersion:1,requestId:crypto.randomUUID(),connectionFingerprint:fp,sha256,size:f.size,mimeType:DOCUMENT_SERVER_MIMES[bestExt(f.name,original.type)],status:'uncertain'};
+        if(meta.sha256!==sha256||meta.size!==f.size)throw new Error('기기 원본 내용이 바뀌었습니다. 기존 전송을 다시 보내지 않습니다.');
+        if(!meta.name)meta.name=documentServerName(f,meta.requestId);
+        const descriptor=m=>({requestId:m.requestId,connectionFingerprint:m.connectionFingerprint,sha256:m.sha256,size:m.size,mimeType:m.mimeType,name:m.name});
+        if(saved&&(saved.schemaVersion!==1||typeof saved.sent!=='boolean'||saved.blobId!==f.documentMeta.localBlobId||saved.originalName!==f.name||paidStableJson(descriptor(storedMeta))!==paidStableJson(descriptor(meta))))throw new Error('기기 전송 기록이 다릅니다. 중복 업로드를 중단했습니다.');
+        const job=saved||{schemaVersion:1,blobId:f.documentMeta.localBlobId,originalName:f.name,meta,sent:!!old};
+        if(f._driveId){
+          if(!old&&!storedMeta)throw new Error('기존 서버 연결의 원본 증빙이 없습니다. 새로 업로드하지 않습니다.');
+          if(job.fileId&&job.fileId!==f._driveId)throw new Error('기존 서버 원본 ID가 다릅니다. 덮어쓰지 않습니다.');
+          job.sent=true;job.fileId=f._driveId;
+        }
+        await documentStoreJob(jobKey,job);check();prepared.push({key:fileKey(f),blobId:f.documentMeta.localBlobId,originalName:f.name,meta,job,jobKey,original});
+      }
+      if(prepared.length)await documentApplyServerRecords(prepared,c,fp,current);
+      let expected=documentFingerprint();
+      const live=()=>{documentGuard();if(!current()||!documentSameConnection(c)||documentFingerprint()!==expected)throw new Error('화면·자료·서버 연결이 바뀌었습니다. 전송 결과는 기기에 보존했습니다.');};
+      const results=[];
+      for(const row of prepared){
+        live();let job=row.job;progress('서버 업로드·확인 중… '+row.originalName);
+        try{
+          let fileId=job.fileId;
+          if(!job.sent){
+            const payload=await relayBuildUploadPayload(row.original,'doc',row.meta.name,row.meta.mimeType);live();
+            // 요청보다 먼저 attempted를 내구 기록한다. 새로고침/응답 유실 뒤 createFile을 반복하지 않는다.
+            job=await documentReserveAttempt(row.jobKey,job);row.job=job;live();
+            const r=await documentServerCall(c,'upload',payload);
+            if(r?.ok!==true){
+              if(['unauthorized','not-configured','bad-request','too-large'].includes(r?.error)){job.sent=false;row.meta={...row.meta,status:'rejected'};job.meta=row.meta;await documentStoreJob(row.jobKey,job);report.rejected++;results.push(row);live();continue;}
+              throw new Error('서버 업로드 응답을 확인하지 못했습니다.');
+            }
+            if(!DOCUMENT_SERVER_ID.test(r.fileId||'')||r.name!==row.meta.name||r.mimeType!==row.meta.mimeType||r.size!==row.meta.size)throw new Error('서버 응답의 원본 정보가 일치하지 않습니다.');
+            fileId=r.fileId;job.fileId=fileId;await documentStoreJob(row.jobKey,job);live();
+          }
+          if(!fileId){
+            const list=await documentServerCall(c,'listFiles',{kind:'doc'});live();
+            if(list?.ok!==true||!Array.isArray(list.files)||list.truncated===true)throw new Error('서버 목록을 완전히 확인하지 못했습니다.');
+            const hits=list.files.filter(f=>f.name===row.meta.name&&f.size===row.meta.size&&f.mimeType===row.meta.mimeType&&DOCUMENT_SERVER_ID.test(f.id||''));
+            if(hits.length!==1)throw new Error('서버 원본을 유일하게 확인하지 못했습니다. 자동 재전송하지 않습니다.');
+            fileId=hits[0].id;job.fileId=fileId;await documentStoreJob(row.jobKey,job);live();
+          }
+          await documentVerifyServer(c,row.meta,fileId);live();
+          row.meta={...row.meta,status:'uploaded',fileId,verifiedAt:new Date().toISOString()};job.meta=row.meta;
+          await documentStoreJob(row.jobKey,job);live();report.uploaded++;results.push(row);
+        }catch(error){
+          row.meta={...row.meta,status:'uncertain'};report.uncertain++;results.push(row);
+          // 최초 의도와 수신 ID는 이미 IDB에 있다. 늦은 응답/저장 오류에도 원본·영수증을 삭제하지 않는다.
+          live();
+        }
+      }
+      if(results.length)await documentApplyServerRecords(results,c,fp,current);
+      expected=documentFingerprint();live();
+      // 원본 바이트는 선택 파일만 보낸다. 분류 공유는 기존 전체 앱 JSON revision 저장 계약이다.
+      // 기존 레거시 save 큐/자동 덮어쓰기/백업 삭제는 호출하지 않는다.
+      const r=await documentServerCall(c,'save',{data:serializeData(),baseRevision:__relay.rev||0});live();
+      if(r?.ok===true&&Number.isSafeInteger(r.revision)&&r.revision>=0){
+        __relay.rev=r.revision;__relay.syncAt=r.savedAt||new Date().toISOString();
+        await idbSet('relay_rev',__relay.rev);await idbSet('relay_syncAt',__relay.syncAt);live();report.shared=true;relaySetStatus('saved');
+      }else relaySetStatus(r?.error==='conflict'?'conflict':'netfail');
+      __documentShareNotice=report.shared?'앱 전체 분류 공유 저장 완료 · 서버 원본 확인은 각 서류의 상태를 확인하세요.':'기기 등록 기록 유지 · 앱 전체 분류 공유 저장 미확인. 서버와 기기 자료를 비교한 뒤 저장하세요.';
+      try{render();}catch(e){}
+      return report;
+    }catch(error){
+      __documentShareNotice='기기 등록 기록 유지 · 앱 전체 분류 공유 저장 미확인. 원본 전송 기록은 보존했습니다. 연결과 서버 자료를 확인한 뒤 수동으로 다시 확인하세요.';
+      if(documentSameConnection(c))relaySetStatus('netfail');
+      throw error;
+    }finally{window.__documentUploadPending=false;}
+  }));
+}
+function documentUploadSummary(r){return (r.notRequested?'기기 원본 보관 완료 '+r.local+'개 · 서버 업로드 선택 안 함':'선택 서류 '+r.local+'개 · 서버 원본 확인 '+r.uploaded+'개'+(r.uncertain?' · 서버 확인 필요 '+r.uncertain+'개':'')+(r.rejected?' · 서버 거부 '+r.rejected+'개':'')+(r.localOnly?' · 서버 형식/크기 제외 '+r.localOnly+'개':'')+(r.deferred?' · 미연결/오프라인 전송 대기 '+r.deferred+'개':'')+' · '+(r.shared?'분류 공유 저장 완료':'분류 공유 저장 미확인'));}
+async function documentSubmit(files,itemId,project,current,progress,uploadServer=true){
+  const old=new Set(state.files.map(fileKey)),n=await documentRegister(files,itemId,project,current);
+  const keys=state.files.filter(f=>!old.has(fileKey(f))&&documentMetaValid(f.documentMeta)?.localBlobId).map(fileKey);
+  if(keys.length!==n)throw new Error('기기 보관은 완료했지만 새 서류 연결을 확인하지 못했습니다. 목록에서 선택해 서버에 올리세요.');
+  if(!uploadServer)return {local:n,notRequested:true};
+  try{return await documentUploadFiles(keys,current,progress);}catch(e){throw new Error('기기 보관 '+n+'개 완료. '+e.message+' 목록에서 서버 확인·업로드를 다시 선택하세요.');}
+}
+function documentServerStatus(f){
+  if(!documentMetaValid(f.documentMeta)?.localBlobId)return '';
+  let m;try{m=documentServerMeta(f.documentMeta.serverUpload);}catch(e){return '서버 전송 기록 확인 필요';}
+  return m?.status==='uploaded'?(f._driveId===m.fileId?'서버 원본 확인 완료':'서버 연결 기록 확인 필요'):m?.status==='uncertain'?'서버 확인 필요 · 자동 재전송 안 함':m?.status==='rejected'?'기기 등록 기록 · 서버 업로드 거부':documentServerIssue(f)?'기기 등록 기록 · 서버 형식/크기 제한':'기기 등록 기록 · 서버 미전송';
+}
+function documentUploadOpen(singleKey){
+  try{documentGuard();const keys=singleKey?[singleKey]:[...__documentSelection];if(!keys.length)throw new Error('기기에 보관한 서류를 체크하세요.');
+    openModal('기기 서류 → 회사 서버 업로드·확인',`<div id="documentForm"><p>원본 파일은 선택한 ${keys.length}개만 연결된 회사 서버에 보냅니다. 기기에 이미 보관된 원본은 그대로 유지합니다. 다른 기기의 파일은 서버 확인 완료 후 원본 열기로 이 기기에 보관할 수 있습니다.</p><p class="hint">분류 공유 저장은 기존 서버의 전체 자료 저장 방식입니다. 선택한 서류뿐 아니라 현재 앱 전체의 프로젝트·고객·견적·정산·수금·파일 분류 정보도 함께 저장됩니다. 선택하지 않은 원본 파일은 전송하지 않습니다.</p><p class="hint">PDF·엑셀·JPG/PNG · 파일당 9MB까지. 응답이 끊긴 파일은 UUID·원본 해시로 서버를 먼저 확인하며 자동 재전송하지 않습니다. 항목·프로젝트는 앱 분류로 공유하고 실제 Drive 하위 폴더 이동은 하지 않습니다.</p><p class="hint">같은 서버 인증을 가진 직원도 원본을 볼 수 있습니다. 개인별 문서 권한이 아닙니다. 통장·계약서 등 민감한 서류는 공유 대상을 확인한 뒤 진행하세요.</p><p data-document-error role="alert" tabindex="-1"></p></div>`,[
+      {label:'취소',cls:'ghost',fn:closeModal},{label:'서버 업로드·확인',cls:'blue',fn:()=>{const form=$('#documentForm');return documentModalAction(form,current=>documentUploadFiles(keys,current,text=>{form.querySelector('[data-document-error]').textContent=text;}),documentUploadSummary);}}],true);
+  }catch(e){toast(e.message);}
+}
 function documentItemOptions(selected,keep=false){return (keep?'<option value="">현재 항목 유지</option>':'')+documentCatalog().map(i=>`<option value="${escapeAttr(i.id)}"${i.id===selected?' selected':''}>${escapeHtml(i.label)} · ${escapeHtml(DOCUMENT_ROLES[i.role])}</option>`).join('');}
 async function documentModalAction(form,work,success){
   if(!form?.isConnected||form.dataset.busy==='1')return;form.dataset.busy='1';window.__modalCloseLocked=true;
@@ -8949,8 +9177,8 @@ function documentCreateItemOpen(){
 }
 function documentRegisterOpen(preferred='other',dropped=[]){
   try{documentGuard();const item=documentCatalog().some(i=>i.id===preferred)?preferred:'other';let files=Array.from(dropped||[]);
-    openModal('선택한 파일만 등록',`<div id="documentForm" class="sch-form"><label for="documentRegisterItem">서류 항목<select id="documentRegisterItem">${documentItemOptions(item)}</select></label><label for="documentRegisterProject">프로젝트<select id="documentRegisterProject">${projectOptions(state.activeProject)}</select></label><label for="documentRegisterFiles">등록할 파일 선택<input id="documentRegisterFiles" type="file" multiple accept="${DOCUMENT_ACCEPT}"></label><p class="hint">폴더 전체를 스캔하지 않습니다. 최대 50개 · 파일당 25MB · 합계 100MB. 등록 후 필요한 PDF·엑셀 견적만 따로 읽을 수 있습니다.</p><div id="documentRegisterList"></div><p class="hint">원본은 이 브라우저의 기기 저장소에 보관합니다. PC/Drive 파일은 이동·업로드하지 않습니다. 브라우저 자료를 지우면 원본 보관본도 지워지므로 PC 원본을 보존하세요.</p><p data-document-error role="alert" tabindex="-1"></p></div>`,[
-      {label:'취소',cls:'ghost',fn:closeModal},{label:'선택 파일 등록',cls:'blue',fn:()=>{const form=$('#documentForm'),selected=[...form.querySelectorAll('input[data-document-pick]:checked')].map(e=>files[Number(e.dataset.documentPick)]);return documentModalAction(form,current=>documentRegister(selected,$('#documentRegisterItem').value,$('#documentRegisterProject').value,current),n=>n+'개 서류를 기기에 등록했습니다. 자동 OCR·원본 업로드는 하지 않았습니다.');}}],true);
+    openModal('서류 파일 업로드',`<div id="documentForm" class="sch-form"><label for="documentRegisterFiles">업로드할 파일 선택<input id="documentRegisterFiles" type="file" multiple accept="${DOCUMENT_ACCEPT}"></label><label for="documentRegisterItem">넣을 서류 항목<select id="documentRegisterItem">${documentItemOptions(item)}</select></label><label for="documentRegisterProject">프로젝트<select id="documentRegisterProject">${projectOptions(state.activeProject)}</select></label><p class="hint">고른 파일만 원본 그대로 기기에 보관합니다. 폴더 스캔·자동 OCR 없음. 기기 보관 최대 50개 · 파일당 25MB · 합계 100MB.</p><div id="documentRegisterList"></div><label class="document-pick"><input id="documentServerConsent" type="checkbox"><span>연결된 회사 서버에도 원본 저장<small>PDF·엑셀·JPG/PNG · 파일당 9MB까지. 다른 형식·큰 파일은 기기에만 보관됩니다. 분류 공유를 위해 현재 앱 전체의 프로젝트·고객·견적·정산·수금·파일 분류 정보도 함께 저장합니다. 선택하지 않은 원본 파일은 전송하지 않습니다. 같은 서버 인증을 가진 직원도 원본을 볼 수 있습니다. 통장·계약서 등 민감한 서류는 공유 대상을 확인하세요.</small></span></label><p class="hint">항목·프로젝트별로 앱에서 정리하며 원본 이름·PC 폴더는 그대로입니다. 서버 파일은 전송번호 이름으로 공통 서류 폴더에 저장합니다. 브라우저 자료를 지우면 기기 보관본도 지워지므로 PC 원본을 보존하세요. 견적의 금액 읽기는 필요한 파일만 별도 선택합니다.</p><p data-document-error role="alert" tabindex="-1"></p></div>`,[
+      {label:'취소',cls:'ghost',fn:closeModal},{label:'선택 파일 업로드',cls:'blue',fn:()=>{const form=$('#documentForm'),selected=[...form.querySelectorAll('input[data-document-pick]:checked')].map(e=>files[Number(e.dataset.documentPick)]),server=$('#documentServerConsent').checked;return documentModalAction(form,current=>documentSubmit(selected,$('#documentRegisterItem').value,$('#documentRegisterProject').value,current,text=>{form.querySelector('[data-document-error]').textContent=text;},server),documentUploadSummary);}}],true);
     const form=$('#documentForm'),paint=()=>{const prior=[];form.querySelector('#documentRegisterList').innerHTML=files.map((f,i)=>{const issue=documentSelectionIssue(f,state.files,prior);prior.push(f);return `<label class="document-pick"><input type="checkbox" data-document-pick="${i}"${issue?' disabled':' checked'}><span>${escapeHtml(f.name)} · ${fmtSize(f.size)}${issue?`<small>${escapeHtml(issue)}</small>`:''}</span></label>`;}).join('')||'<p class="hint">선택한 파일이 없습니다.</p>';};
     form.querySelector('#documentRegisterFiles').onchange=e=>{files=Array.from(e.target.files||[]);paint();};paint();
   }catch(e){toast(e.message);}
@@ -8969,12 +9197,12 @@ function documentReadOpen(){
     {label:'취소',cls:'ghost',fn:closeModal},{label:'선택 견적 읽기',cls:'blue',fn:()=>{const form=$('#documentForm');return documentModalAction(form,current=>documentReadEstimates(keys,current),n=>n+'개 견적을 읽었습니다. 추출 금액은 원본과 확인하세요.');}}],true);
 }
 function documentToolbar(estimate=false){
-  return `<div class="document-toolbar"><button class="blue" data-document-import="${estimate?'estimate':'other'}">${estimate?'견적서 선택 등록':'서류 선택 등록'}</button><button class="ghost" data-document-import="settlement">정산서 선택 등록</button><button class="ghost" data-document-create>+ 필요 항목 만들기</button></div><p class="list-intro">선택 파일만 기기에 보관 · 자동 OCR 없음 · 원본 폴더 이동 없음. 정산서 파일은 견적/매출 합계에 중복 반영하지 않습니다.</p>`;
+  return `<div class="document-toolbar"><button class="blue" data-document-import="${estimate?'estimate':'other'}">${estimate?'견적서 업로드':'서류 업로드'}</button><button class="ghost" data-document-import="settlement">정산서 업로드</button><button class="ghost" data-document-create>+ 필요 항목 만들기</button></div><p class="list-intro">파일 선택 → 항목·프로젝트 지정 → 기기 보관 · 선택 시 서버 저장. 폴더 스캔·자동 OCR 없음. 정산서 업로드는 견적/매출 합계를 바꾸지 않습니다.</p>${__documentShareNotice?`<p role="status" class="list-intro">${escapeHtml(__documentShareNotice)}</p>`:''}`;
 }
-function documentSelectionToolbar(){return `<div class="document-toolbar"><span role="status" id="documentSelectionCount">선택 ${__documentSelection.size}개</span><button class="ghost" data-document-move-selected>선택 서류 이동</button><button class="ghost" data-document-read>선택 견적만 읽기</button><button class="ghost" data-document-clear>선택 해제</button></div>`;}
+function documentSelectionToolbar(){return `<div class="document-toolbar"><span role="status" id="documentSelectionCount">선택 ${__documentSelection.size}개</span><button class="ghost" data-document-upload-selected>선택 서류 서버 저장·확인</button><button class="ghost" data-document-move-selected>선택 서류 이동</button><button class="ghost" data-document-read>선택 견적만 읽기</button><button class="ghost" data-document-clear>선택 해제</button></div>`;}
 function documentFilterMatch(f){const meta=documentMetaValid(f.documentMeta),id=meta?.itemId||(f.kind==='estimate'?'estimate':f.kind==='other'?'other':f.kind);return __documentItemFilter==='all'||__documentItemFilter===id;}
 function documentListCard(f){return cardHtml(f,'document');}
-function documentFileTools(f){if(!documentMovable(f))return '';const key=fileKey(f);return `<label class="document-pick"><input type="checkbox" data-document-select="${escapeAttr(key)}"${__documentSelection.has(key)?' checked':''}><span>선택</span></label><button class="mini-btn" data-document-move="${escapeAttr(key)}" aria-label="${escapeAttr(f.name)} 항목·프로젝트 이동">↔ 이동</button>${documentMetaValid(f.documentMeta)?.localBlobId?`<button class="mini-btn" data-document-download="${escapeAttr(key)}">원본 내려받기</button>`:''}`;}
+function documentFileTools(f){if(!documentMovable(f))return '';const key=fileKey(f);return `<label class="document-pick"><input type="checkbox" data-document-select="${escapeAttr(key)}"${__documentSelection.has(key)?' checked':''}><span>선택</span></label><button class="mini-btn" data-document-move="${escapeAttr(key)}" aria-label="${escapeAttr(f.name)} 항목·프로젝트 이동">↔ 이동</button>${documentMetaValid(f.documentMeta)?.localBlobId?`<span class="document-label" role="status">${escapeHtml(documentServerStatus(f))}</span><button class="mini-btn" data-document-upload="${escapeAttr(key)}">서버 저장·확인</button><button class="mini-btn" data-document-download="${escapeAttr(key)}">원본 내려받기</button>`:''}`;}
 async function documentDownload(key){
   try{const fs=state.files.filter(f=>fileKey(f)===key);if(fs.length!==1||!documentMetaValid(fs[0].documentMeta)?.localBlobId)throw new Error('기기 보관 원본을 확인하세요.');
     const f=fs[0],blob=await getFileOf(f);if(!state.files.includes(f))throw new Error('자료가 바뀌어 내려받지 않았습니다. 다시 선택하세요.');
@@ -30567,7 +30795,7 @@ function viewEstimates(){
   const list=state.files.filter(f=>f.kind==='estimate');
   if(!list.length){
     const m=monthlyQuoteHTML();
-    return `<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}${documentSettlementList()}<div class="empty"><b>불러온 견적서가 없습니다</b>견적 파일만 선택 등록하고 필요한 PDF·엑셀 견적을 체크해 읽으세요.${m?' 아래는 앱에서 작성한 견적 기준 월별 현황입니다.':''}</div>${m}</section>`;
+    return `<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}${documentSettlementList()}<div class="empty"><b>업로드한 견적서가 없습니다</b>견적 파일을 선택해 업로드하세요. 금액 읽기는 필요한 PDF·엑셀 견적만 별도로 체크합니다.${m?' 아래는 앱에서 작성한 견적 기준 월별 현황입니다.':''}</div>${m}</section>`;
   }
   // 현장별 합계
   const byProj={};estimateGroups(list).map(g=>g.rep).forEach(f=>{const k=f.project||'(현장 미지정)';byProj[k]=(byProj[k]||0)+(f.est?.amount||0);});
@@ -32042,7 +32270,7 @@ function setupDelegation(){
   // ---- 클릭 위임 ----
   view.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.matches&&e.target.matches('.ph-vid[data-light],.ext[data-light]')){e.preventDefault();e.target.click();}});   // 동영상 타일·형식 상자를 키보드로도
   view.addEventListener('click',e=>{
-    const doc=e.target.closest('[data-document-import],[data-document-create],[data-document-filter],[data-document-move],[data-document-move-selected],[data-document-read],[data-document-clear],[data-document-download]');
+    const doc=e.target.closest('[data-document-import],[data-document-create],[data-document-filter],[data-document-move],[data-document-move-selected],[data-document-read],[data-document-clear],[data-document-download],[data-document-upload],[data-document-upload-selected]');
     if(doc){
       if(doc.dataset.documentImport!==undefined)return documentRegisterOpen(doc.dataset.documentImport);
       if(doc.dataset.documentCreate!==undefined)return documentCreateItemOpen();
@@ -32050,6 +32278,8 @@ function setupDelegation(){
       if(doc.dataset.documentMoveSelected!==undefined)return documentMoveOpen();
       if(doc.dataset.documentRead!==undefined)return documentReadOpen();
       if(doc.dataset.documentDownload!==undefined)return documentDownload(doc.dataset.documentDownload);
+      if(doc.dataset.documentUpload!==undefined)return documentUploadOpen(doc.dataset.documentUpload);
+      if(doc.dataset.documentUploadSelected!==undefined)return documentUploadOpen();
       if(doc.dataset.documentClear!==undefined){__documentSelection.clear();render();return;}
       if(doc.dataset.documentFilter!==undefined){__documentItemFilter=doc.dataset.documentFilter;render();return;}
     }
