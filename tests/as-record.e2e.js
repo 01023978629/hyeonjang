@@ -161,7 +161,9 @@ const DIR = '가상/현장사진/';
   await page.selectOption('#modalRoot .asmPhAdd[data-id="as-new"]', 'f1');
   await page.evaluate(() => { __tabStale = false; });
   r = await rec('as-new');
-  assert(JSON.stringify(r.photos) === JSON.stringify(['k:' + DIR + '가상_누수.jpg|1111']), '⑤ 안정 참조로 저장: ' + JSON.stringify(r.photos));
+  // v333 새 계약: 안정 참조는 파일 기록의 고유 ID('f:'+fid, photo-fid.e2e.js)
+  const f1Ref = await page.evaluate(() => 'f:' + state.files.find(f => f.id === 'f1').fid);
+  assert(/^f:lg-[0-9a-f]{16}$/.test(f1Ref) && JSON.stringify(r.photos) === JSON.stringify([f1Ref]), '⑤ 안정 참조로 저장: ' + JSON.stringify(r.photos));
   const addable = await page.$$eval('#modalRoot .asmPhAdd[data-id="as-new"] option', os => os.map(o => o.value));
   assert(!addable.includes('f3') && !addable.includes('f1') && addable.includes('f2'), '⑤ 고를 수 있는 사진은 그 현장의, 아직 안 붙인 것만: ' + JSON.stringify(addable));
   // 부팅·복원처럼 파일 id 가 새로 붙어도 따라간다
@@ -170,11 +172,12 @@ const DIR = '가상/현장사진/';
   assert(chips.includes('가상_누수.jpg') && !/찾을 수 없음/.test(chips), '⑤ id 가 바뀌어도 사진이 이어진다');
   // 옛 id 로 적힌 기록은 조용히 지금 형식으로
   await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').photos = ['n-f2']; asManage(); });
-  assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:' + DIR + '가상_보수후.jpg|2222']), '⑤ 옛 id 를 안정 참조로 고쳐 적는다: ' + JSON.stringify((await rec('as-3')).photos));
+  const f2Ref = await page.evaluate(() => 'f:' + state.files.find(f => f.id === 'n-f2').fid);   // v333 지금 형식 = 고유 ID
+  assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify([f2Ref]), '⑤ 옛 id 를 안정 참조로 고쳐 적는다: ' + JSON.stringify((await rec('as-3')).photos));
   // 없어진 사진 — 알리되 지우지 않는다(옛 id 를 고쳐 적는 김에 같이 지워지지 않게 한 기록에 둘 다)
   await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').photos = ['n-f2', 'k:가상/없는사진.jpg|9']; asManage(); });
   const miss = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .asmRec')].find(x => x.dataset.id === 'as-3').textContent);
-  assert(/사진을 찾을 수 없음 1장/.test(miss) && JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:' + DIR + '가상_보수후.jpg|2222', 'k:가상/없는사진.jpg|9']), '⑤ 없어진 사진은 알리고 목록에서 지우지 않는다: ' + JSON.stringify((await rec('as-3')).photos));
+  assert(/사진을 찾을 수 없음 1장/.test(miss) && JSON.stringify((await rec('as-3')).photos) === JSON.stringify([f2Ref, 'k:가상/없는사진.jpg|9']), '⑤ 없어진 사진은 알리고 목록에서 지우지 않는다: ' + JSON.stringify((await rec('as-3')).photos));
   // 사람이 확인하고서만 뺀다 — 거절하면 그대로, 승낙하면 찾을 수 없는 것만 빠지고 찾은 사진은 남는다
   await page.evaluate(() => { const r = [...document.querySelectorAll('#modalRoot .asmRec')].find(x => x.dataset.id === 'as-3'); r.querySelector('details').open = true; });
   dialogs.length = 0; dialogAnswer = false;
@@ -182,7 +185,7 @@ const DIR = '가상/현장사진/';
   assert(dialogs.some(m => /연결을 이 AS 기록에서 뺄까요/.test(m)) && (await rec('as-3')).photos.length === 2, '⑤ 연결 빼기는 묻고, 거절하면 그대로: ' + JSON.stringify(await rec('as-3')));
   dialogAnswer = true;
   await page.click('#modalRoot .asmRec[data-id="as-3"] .asmMissDel');
-  assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify(['k:' + DIR + '가상_보수후.jpg|2222']), '⑤ 승낙 → 찾을 수 없는 사진만 뺀다: ' + JSON.stringify((await rec('as-3')).photos));
+  assert(JSON.stringify((await rec('as-3')).photos) === JSON.stringify([f2Ref]), '⑤ 승낙 → 찾을 수 없는 사진만 뺀다: ' + JSON.stringify((await rec('as-3')).photos));
   assert(!(await page.evaluate(() => document.querySelector('#modalRoot .asmRec[data-id="as-3"] .asmMissDel'))), '⑤ 다 빼면 경고·버튼이 사라진다');
   // 이름·크기 짐작은 그 현장 사진 안에서만 — 딴 현장의 같은 이름·크기 사진으로 바꿔 적지 않는다
   await page.evaluate(() => { state.asLog.find(x => x.id === 'as-3').photos = ['k:옮긴폴더/가상_남의사진.jpg|3333']; asManage(); });

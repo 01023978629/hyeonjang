@@ -926,7 +926,9 @@ async function runBrowserAcceptance() {
           const candidate = serializeData(); candidate.savedAt = '2026-09-01T01:00:00.000Z'; candidate.learn = null;
           validatePaidSerializedState(candidate);
           const queueCandidateRows = candidate.files.filter(file => file && file.name === 'queue-duplicate.jpg');
-          const identicalQueueCandidateRows = queueCandidateRows.length === 2 && JSON.stringify(queueCandidateRows[0]) === JSON.stringify(queueCandidateRows[1]);
+          // v333 새 계약: 같은 경로·이름·크기 두 기록은 고유 ID(fid)만 다르다 — 나머지 칸은 글자까지 같아야 이 시드가 '같은 짝 키 두 줄' 상황이다
+          const noFid = row => { const { fid, ...rest } = row; return rest; };
+          const identicalQueueCandidateRows = queueCandidateRows.length === 2 && JSON.stringify(noFid(queueCandidateRows[0])) === JSON.stringify(noFid(queueCandidateRows[1])) && !!queueCandidateRows[0].fid && queueCandidateRows[0].fid !== queueCandidateRows[1].fid;
           window.__exactRuntimeFile = runtimeFile; window.__exactRuntimeHandle = runtimeHandle; window.__exactLocalThumb = localThumb; window.__exactUnsafeThumb = unsafeThumb;
           window.__exactQueueFileA = queueFileA; window.__exactQueueFileB = queueFileB; window.__exactQueueThumbA = queueThumbA; window.__exactQueueThumbB = queueThumbB;
           for (const key of PAID_SERIALIZED_STATE_KEYS.filter(key => !['version','app','savedAt','files','_savedFileCount'].includes(key))) {
@@ -989,7 +991,7 @@ async function runBrowserAcceptance() {
           'every PAID_SERIALIZED_STATE_KEYS field round-trips byte-for-byte with the exact savedAt and key order');
         assert.deepEqual(hydration.runtimeCheck.localDrive, [null, null, 0, null], 'candidate null/zero Drive metadata overwrites unvalidated live metadata');
         assert.deepEqual(hydration.runtimeCheck.duplicateRows, ['원본/', '_정리완료/테스트/사진/'], 'paid exact hydration preserves duplicate photo rows and order');
-        assert.equal(hydration.runtimeCheck.identicalQueueCandidateRows, true, 'fixture contains two byte-identical saved rows with one shared stable match key');
+        assert.equal(hydration.runtimeCheck.identicalQueueCandidateRows, true, 'fixture contains two saved rows identical except their fid, with one shared stable match key');
         assert.deepEqual([hydration.runtimeCheck.queueFilesInOrder, hydration.runtimeCheck.queueThumbsInOrder], [true, true],
           'identical stable-key rows consume distinct File and thumbnail resources exactly once in queue order');
         assert.deepEqual(hydration.runtimeCheck.derivedQuoteRows, ['quote_quote_exact_1'], 'quote-derived runtime row is reconstructed once and excluded from serialized files');

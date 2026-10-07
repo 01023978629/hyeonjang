@@ -86,7 +86,9 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   for (const id of ['p-before', 'p-mid', 'p-after']) await page.check('#modalRoot .cpChk[data-id="' + id + '"]');
   const stored = await page.evaluate(() => (state.projects[0].casePack || {}).photos);
   // 새 계약(photo-refs): 칸의 data-id 는 이 화면의 파일 id, 현장에는 안정 참조('k:'+fileKey)로 적힌다 — id 는 폰·복원 뒤 새로 붙어 선택이 비었다
-  const REF = { 'p-before': 'k:거실 벽면.jpg|0', 'p-mid': 'k:배관 교체 중.jpg|0', 'p-after': 'k:김철수 1302호 완료.jpg|0' };
+  // v333 새 계약: 안정 참조는 파일 기록의 고유 ID('f:'+fid, photo-fid.e2e.js) — 옛 기록은 처음 쓸 때 정해지는 값이 붙는다
+  const REF = await page.evaluate(() => Object.fromEntries(['p-before', 'p-mid', 'p-after'].map(id => [id, 'f:' + state.files.find(f => f.id === id).fid])));
+  assert(Object.values(REF).every(v => /^f:lg-[0-9a-f]{16}$/.test(v)), '③ 사진마다 고유 ID: ' + JSON.stringify(REF));
   assert(JSON.stringify(stored) === JSON.stringify([REF['p-before'], REF['p-mid'], REF['p-after']]) && await page.evaluate(() => state.dirty === true), '③ p.casePack.photos + dirty: ' + JSON.stringify(stored));
   assert(/고른 사진 3장 \(시공 전 1 · 작업 중 1 · 완료 1\)/.test(await page.evaluate(() => document.querySelector('#cpCount').textContent)), '③ 개수 글이 바로 바뀐다');
   await page.uncheck('#modalRoot .cpChk[data-id="p-mid"]');

@@ -55,6 +55,7 @@ async function seed(page) {
     document.getElementById('globalSearch').value = '';
     window.__fieldsearchxss = 0;
     render();
+    serializeData();   // v333 옛 기록에는 첫 저장 때 고유 ID(fid)가 한 번 붙는다 — 아래 snapshot() 의 serializeData 가 처음 붙이지 않게 저장된 상태에서 시작한다
     window.__fieldSearchRefs = { files: state.files.slice(), projects: state.projects.slice() };
     if (!window.__fieldSearchOriginalDirty) window.__fieldSearchOriginalDirty = markDirty;
     window.__fieldSearchDirtyCalls = 0;

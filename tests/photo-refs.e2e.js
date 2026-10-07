@@ -6,7 +6,7 @@
    완료보증서 보관본이 사진 없이 나가는데 화면은 '같은 사본' 이라 말했다. case-pack ⑥ 왕복은 files 를 비우지 않아 못 잡았다.
    지키는 것:
      ① 옛 id 로 적힌 자료도 읽히고, 화면을 열면 안정 참조로 고쳐 적힌다(dirty) — 뒤처진 탭이면 적지 않는다
-     ② 세 기능이 사진을 적을 때 안정 참조('d:'+Drive ID, 없으면 'k:'+fileKey)로 적는다
+     ② 세 기능이 사진을 적을 때 안정 참조로 적는다 — v333 부터 파일 기록의 고유 ID('f:'+fid). 옛 'd:'·'k:' 참조는 ⑤ 에서 계속 읽힌다
      ③ serializeData → state.files 를 비우고 applyData(폰 가상 레코드, 새 id) → hydrateThumbs 뒤에도 세 참조가 같은 사진을 가리킨다,
         현장 이름을 바꿔도 끊기지 않는다
      ④ 정말 없어진 사진은 조용히 빈 값이 아니라 '사진을 찾을 수 없음 N장' 으로 알린다 — 저절로 지우지 않고, [목록에서 빼기]로만 뺀다,
@@ -68,7 +68,11 @@ let browser;
       ph('s-x1', '지울_사진.jpg', 4001, null, '2026-09-04T09:00')
     ];
     state.quotes = []; state.activeProject = P; state.dirty = false;
+    serializeData();   // v333 저장 한 번 — fid 없는 옛 기록에 고유 ID 가 붙는다(아래 기대값 FID)
   }, { P, DIR });
+  // v333 새 계약: 세 기능이 적는 참조는 'f:'+fid. 시드 직후의 fid 를 기억해 둔다(④에서 지운 사진도 같은 값을 가리켜야 한다)
+  const FID = await page.evaluate(() => Object.fromEntries(state.files.map(f => [f.name, 'f:' + f.fid])));
+  assert(Object.values(FID).length === 6 && Object.values(FID).every(v => /^f:lg-[0-9a-f]{16}$/.test(v)) && new Set(Object.values(FID)).size === 6, 'v333 시드 — 옛 기록마다 다른 고유 ID: ' + JSON.stringify(FID));
 
   // ── ① 옛 id 자료 — 읽히고, 열면 새 형식으로 고쳐 적힌다 ────────────────────────────
   // 뒤처진 탭: 화면에는 풀어 보여 주되 적지 않는다
@@ -106,21 +110,21 @@ let browser;
   await page.evaluate(n => { closeModal(true); extraWork(n); }, P);
   await page.selectOption('#modalRoot .exIn[data-k="photo"][data-i="0"]', 's-a2');
   stale = await page.evaluate(() => state.projects[0].extras[0].photo);
-  assert(stale === 'k:' + '현장사진/석교동주택/' + '후_주방.jpg|2002', '① 추가공사 — 고른 사진은 파일 id 가 아니라 안정 참조로 적힌다: ' + stale);
+  assert(stale === FID['후_주방.jpg'], '① 추가공사 — 고른 사진은 파일 id 가 아니라 안정 참조로 적힌다: ' + stale);
   await page.evaluate(() => { state.projects[0].extras[0].photo = 's-a1'; });
   await page.evaluate(n => { __tabStale = false; closeModal(true); const n0 = window.__mdN; casePackView(n); window.__wrote = window.__mdN - n0; }, P);
   let mig = await page.evaluate(() => ({ photos: state.projects[0].casePack.photos.slice(), dirty: window.__wrote > 0,
     checked: [...document.querySelectorAll('#modalRoot .cpChk:checked')].map(e => e.dataset.id).sort(), count: document.querySelector('#cpCount').textContent }));
-  assert(JSON.stringify(mig.photos) === JSON.stringify(['d:DRIVE-FAKE-B1', 'k:' + DIR + '중_배관.jpg|3001']) && mig.dirty === true,
-    '① 사례 — 옛 id 가 d:/k: 로 고쳐 적히고 dirty: ' + JSON.stringify(mig));
+  assert(JSON.stringify(mig.photos) === JSON.stringify([FID['전_거실.jpg'], FID['중_배관.jpg']]) && mig.dirty === true,
+    '① 사례 — 옛 id 가 f: 로 고쳐 적히고 dirty: ' + JSON.stringify(mig));
   assert(JSON.stringify(mig.checked) === JSON.stringify(['s-b1', 's-m1']) && /고른 사진 2장/.test(mig.count), '① 사례 — 옛 id 선택이 체크로 보인다: ' + JSON.stringify(mig));
   await page.evaluate(n => { closeModal(true); const n0 = window.__mdN; extraWork(n); window.__wrote = window.__mdN - n0; }, P);
   mig = await page.evaluate(() => ({ photo: state.projects[0].extras[0].photo, dirty: window.__wrote > 0, text: document.querySelector('#modalRoot').textContent,
     sel: (document.querySelector('#modalRoot .exIn[data-k="photo"][data-i="0"]').selectedOptions[0] || {}).textContent }));
-  assert(mig.photo === 'd:DRIVE-FAKE-A1' && mig.dirty === true && /📷 사진 있음/.test(mig.text) && mig.sel === '후_거실.jpg', '① 추가공사 — 옛 id 가 고쳐 적히고 사진이 보인다: ' + JSON.stringify({ ...mig, text: mig.text.slice(0, 60) }));
+  assert(mig.photo === FID['후_거실.jpg'] && mig.dirty === true && /📷 사진 있음/.test(mig.text) && mig.sel === '후_거실.jpg', '① 추가공사 — 옛 id 가 고쳐 적히고 사진이 보인다: ' + JSON.stringify({ ...mig, text: mig.text.slice(0, 60) }));
   await page.evaluate(n => { closeModal(true); const p = state.projects[0]; p.warrantyDoc = { at: '2026-09-08', file: 'x.html', html: warrantyHTML(n, { hideEmptyPhotos: true }), photoIds: { before: ['s-b2'], after: ['s-a2'] } }; const n0 = window.__mdN; warrantyDocView(n); window.__wrote = window.__mdN - n0; }, P);
   mig = await page.evaluate(() => ({ ids: state.projects[0].warrantyDoc.photoIds, dirty: window.__wrote > 0, same: document.querySelector('#wdSame').textContent }));
-  assert(JSON.stringify(mig.ids) === JSON.stringify({ before: ['k:' + DIR + '전_주방.jpg|1002'], after: ['k:' + DIR + '후_주방.jpg|2002'] }) && mig.dirty === true && /같은 사본입니다/.test(mig.same),
+  assert(JSON.stringify(mig.ids) === JSON.stringify({ before: [FID['전_주방.jpg']], after: [FID['후_주방.jpg']] }) && mig.dirty === true && /같은 사본입니다/.test(mig.same),
     '① 보증서 보관본 — 옛 id 가 고쳐 적힌다: ' + JSON.stringify(mig));
 
   // ── ② 세 기능이 적는 값 ────────────────────────────────────────────────────────────
@@ -129,14 +133,14 @@ let browser;
   await page.uncheck('#modalRoot .cpChk[data-id="' + await idOf('중_배관.jpg') + '"]');
   await page.check('#modalRoot .cpChk[data-id="' + await idOf('중_배관.jpg') + '"]');
   const casePhotos = (await proj()).casePack.photos;
-  assert(JSON.stringify(casePhotos) === JSON.stringify(['d:DRIVE-FAKE-B1', 'k:' + DIR + '전_주방.jpg|1002', 'k:' + DIR + '후_주방.jpg|2002', 'k:' + DIR + '중_배관.jpg|3001']),
+  assert(JSON.stringify(casePhotos) === JSON.stringify([FID['전_거실.jpg'], FID['전_주방.jpg'], FID['후_주방.jpg'], FID['중_배관.jpg']]),
     '② 사례 — 체크는 안정 참조로 적힌다(해제·재체크도 한 번만): ' + JSON.stringify(casePhotos));
   await page.evaluate(n => { closeModal(true); extraWork(n); }, P);
   await page.click('#exAdd'); await page.click('#exAdd');
   await page.selectOption('#modalRoot .exIn[data-k="photo"][data-i="0"]', await idOf('후_거실.jpg'));
   await page.selectOption('#modalRoot .exIn[data-k="photo"][data-i="1"]', await idOf('중_배관.jpg'));
   const exPhotos = (await proj()).extras.map(x => x.photo);
-  assert(JSON.stringify(exPhotos) === JSON.stringify(['d:DRIVE-FAKE-A1', 'k:' + DIR + '중_배관.jpg|3001']), '② 추가공사 — 사진 연결은 안정 참조로: ' + JSON.stringify(exPhotos));
+  assert(JSON.stringify(exPhotos) === JSON.stringify([FID['후_거실.jpg'], FID['중_배관.jpg']]), '② 추가공사 — 사진 연결은 안정 참조로: ' + JSON.stringify(exPhotos));
   const issued = await page.evaluate(async n => {
     closeModal(true);
     const orig = hjWarrantyShareHtml; let sent = '';
@@ -144,7 +148,7 @@ let browser;
     try { await warrantyIssueSend(n); } finally { hjWarrantyShareHtml = orig; }
     return { ids: state.projects[0].warrantyDoc.photoIds, sentPhotos: (sent.match(/data-photo="/g) || []).length };
   }, P);
-  assert(JSON.stringify(issued.ids) === JSON.stringify({ before: ['d:DRIVE-FAKE-B1', 'k:' + DIR + '전_주방.jpg|1002'], after: ['k:' + DIR + '후_주방.jpg|2002', 'd:DRIVE-FAKE-A1'] }) && issued.sentPhotos === 4,
+  assert(JSON.stringify(issued.ids) === JSON.stringify({ before: [FID['전_거실.jpg'], FID['전_주방.jpg']], after: [FID['후_주방.jpg'], FID['후_거실.jpg']] }) && issued.sentPhotos === 4,
     '② 완료보증서 — 보관본에 안정 참조, 보낸 본에는 사진 4장: ' + JSON.stringify(issued));
 
   // ── ③ 폰·복원·기기 이동: serializeData → files 비우고 applyData(가상 레코드, 새 id) → hydrateThumbs ─────────
@@ -219,7 +223,7 @@ let browser;
   const lostN0 = await page.evaluate(() => window.__mdN);
   await page.click('#cpLostClear');
   lost = await page.evaluate(n0 => ({ hidden: document.querySelector('#cpLost').hidden, photos: state.projects[0].casePack.photos.slice(), dirty: window.__mdN > n0 }), lostN0);
-  assert(lost.hidden && JSON.stringify(lost.photos) === JSON.stringify(['d:DRIVE-FAKE-B1', 'k:' + DIR + '후_주방.jpg|2002']) && lost.dirty && /2장을 목록에서 뺐습니다/.test(await lastToast()),
+  assert(lost.hidden && JSON.stringify(lost.photos) === JSON.stringify([FID['전_거실.jpg'], FID['후_주방.jpg']]) && lost.dirty && /2장을 목록에서 뺐습니다/.test(await lastToast()),
     '④ 사례 — [목록에서 빼기] 로만 뺀다: ' + JSON.stringify(lost));
   const blocked = await page.evaluate(() => { const p = state.projects[0]; const keep = p.casePack; p.casePack = { place: '석교동', symptom: 'a', method: 'b', cause: 'c', work: 'd', duration: 'e', consent: true, photos: ['k:없는/사진.jpg|1', 's-nothing'] };
     const r = hjCaseBlock(p); p.casePack = keep; return r; });
@@ -229,7 +233,7 @@ let browser;
   lost = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#modalRoot .exRow')].map(r => !!r.querySelector('.exMiss')), sum: document.querySelector('#exNote').textContent,
     sel: (document.querySelector('#modalRoot .exIn[data-k="photo"][data-i="1"]').selectedOptions[0] || {}).textContent, photo: state.projects[0].extras[1].photo, dirty: window.__wrote > 0 }));
   assert(JSON.stringify(lost.rows) === JSON.stringify([false, true]) && /사진을 찾을 수 없음 1장/.test(lost.sum) && /찾을 수 없는 사진/.test(lost.sel), '④ 추가공사 — 줄과 합계에 알린다: ' + JSON.stringify(lost));
-  assert(lost.photo === 'k:' + DIR + '중_배관.jpg|3001' && lost.dirty === false, '④ 추가공사 — 연결값은 그대로 둔다: ' + JSON.stringify(lost));
+  assert(lost.photo === FID['중_배관.jpg'] && lost.dirty === false, '④ 추가공사 — 연결값은 그대로 둔다: ' + JSON.stringify(lost));
   // 사진이 하나도 없는 현장이어도 찾을 수 없는 연결을 풀 수 있게 선택지가 나온다
   const empty = await page.evaluate(n => {
     closeModal(true);
@@ -264,7 +268,7 @@ let browser;
     const f = (id, name, prefix, size, extra) => ({ id, kind: 'photo', name, prefix, size, ...(extra || {}) });
     // 정리 폴더로 옮겨짐(이름·크기 같음) — 따라가고 새 경로로 고쳐 적는다
     state.files = [f('z1', 'a.jpg', '_정리완료/X/시공전/', 500)];
-    let r = hjFilesByRefs(['k:현장사진/X/a.jpg|500']); out.moved = [r.files.map(x => x.id), r.healed, r.changed];
+    let r = hjFilesByRefs(['k:현장사진/X/a.jpg|500']); out.moved = [r.files.map(x => x.id), r.healed, r.changed]; out.fid1 = state.files[0].fid;
     // 크기가 다른 같은 이름 정리본 하나뿐 — 다른 사진이다(v323 은 같은 이름·같은 크기 쌍만 합친다).
     // 2026-09-26 새 계약: 예전엔 이름만 보고 따라갔는데, IMG_0001 같은 폰 이름은 현장마다 겹쳐 A 현장의 잃은 사진이 B 현장 사진으로 고쳐 적혔다.
     state.files = [f('z2', 'b.jpg', '_정리완료/X/완료/', 480)];
@@ -291,25 +295,28 @@ let browser;
     r = hjFilesByRefs(['k:현장사진/X/e.jpg|500']); out.diff = r.missing.length;
     // Drive 에 올라가면 'd:' 로 고쳐 적는다
     state.files = [f('z8', 'g.jpg', '현장사진/X/', 700, { _driveId: 'DRIVE-FAKE-G' })];
-    r = hjFilesByRefs(['k:현장사진/X/g.jpg|700', 'z8']); out.up = [r.files.length, r.healed];
+    r = hjFilesByRefs(['k:현장사진/X/g.jpg|700', 'z8']); out.up = [r.files.length, r.healed]; out.fid8 = state.files[0].fid;
     // 같은 Drive ID 가 두 기록에 붙은 모호한 원본/정리본은 경로로 가리킨다
     state.files = [f('z9', 'h.jpg', '현장사진/X/', 700, { _driveId: 'DRIVE-FAKE-H' }), f('z10', 'h.jpg', '_정리완료/X/완료/', 700, { _driveId: 'DRIVE-FAKE-H' })];
     out.dup = [hjFileRef(state.files[0]), hjFileRef(state.files[1])];
     state.files = [f('z11', 'i.jpg', '', 0)];
     out.noSize = hjFilesByRefs(['k:다른/i.jpg|0']).missing.length;   // 크기를 모르면 이름만으로 고르지 않는다
     out.empty = hjFilesByRefs(null).files.length + hjFilesByRefs([null, '', undefined]).healed.length;
+    out.fid = { z1: out.fid1, z8: out.fid8 };
     state.files = keep;
     return out;
   });
-  assert(JSON.stringify(rules.moved) === JSON.stringify([['z1'], ['k:_정리완료/X/시공전/a.jpg|500'], true]), '⑤ 정리 폴더로 옮겨진 사진을 따라가고 새 경로로 고쳐 적는다: ' + JSON.stringify(rules.moved));
+  // v333 새 계약: 찾은 사진은 그 기록의 고유 ID('f:'+fid)로 고쳐 적는다 — 옛 'd:'·'k:' 참조를 읽는 규칙(아래)은 그대로
+  assert(JSON.stringify(rules.moved) === JSON.stringify([['z1'], ['f:' + rules.fid.z1], true]), '⑤ 정리 폴더로 옮겨진 사진을 따라가고 고유 ID 로 고쳐 적는다: ' + JSON.stringify(rules.moved));
   assert(JSON.stringify(rules.merged) === JSON.stringify([0, 1, false]), '⑤ 크기가 다른 같은 이름 정리본은 따라가지 않는다: ' + JSON.stringify(rules.merged));
   assert(JSON.stringify(rules.cross) === JSON.stringify([0, 1, ['k:현장사진/A현장/IMG_0001.jpg|500']]), '⑤ A 현장 잃은 사진을 B 현장 같은 이름 사진으로 고쳐 적지 않는다: ' + JSON.stringify(rules.cross));
   assert(JSON.stringify(rules.crossPool) === JSON.stringify([0, 1]), '⑤ pool 밖(딴 현장) 사진은 같은 이름·크기여도 고르지 않는다: ' + JSON.stringify(rules.crossPool));
   assert(JSON.stringify(rules.ex) === JSON.stringify(['k:현장사진/A현장/IMG_0002.jpg|500', true]), "⑤ 추가공사는 딴 현장 같은 이름 사진으로 고쳐 적지 않고 '사진을 찾을 수 없음' 을 띄운다: " + JSON.stringify(rules.ex));
   assert(JSON.stringify(rules.wd) === JSON.stringify([1, 0, false]), "⑤ 보증서 보관본은 딴 현장 같은 이름 사진을 '찾을 수 없음' 으로 센다: " + JSON.stringify(rules.wd));
   assert(JSON.stringify(rules.ambSame) === JSON.stringify([0, 1]) && JSON.stringify(rules.ambOrg) === JSON.stringify([0, 1]) && rules.diff === 1 && rules.noSize === 1, '⑤ 모호하면 고르지 않는다: ' + JSON.stringify(rules));
-  assert(JSON.stringify(rules.up) === JSON.stringify([1, ['d:DRIVE-FAKE-G']]), "⑤ Drive 에 올라가면 'd:' 로(옛 id 와 겹치면 한 번만): " + JSON.stringify(rules.up));
-  assert(JSON.stringify(rules.dup) === JSON.stringify(['k:현장사진/X/h.jpg|700', 'k:_정리완료/X/완료/h.jpg|700']), "⑤ 같은 Drive ID 두 기록은 'k:' 로: " + JSON.stringify(rules.dup));
+  assert(JSON.stringify(rules.up) === JSON.stringify([1, ['f:' + rules.fid.z8]]), "⑤ 옛 'k:'·옛 id 로 가리킨 같은 사진은 고유 ID 하나로(겹치면 한 번만): " + JSON.stringify(rules.up));
+  // v333: 같은 Drive ID 두 기록(원본/정리본)도 고유 ID 로 서로 다르게 가리킨다(예전엔 'k:' 경로로 물러섰다)
+  assert(rules.dup.length === 2 && rules.dup.every(v => /^f:lg-/.test(v)) && rules.dup[0] !== rules.dup[1], "⑤ 같은 Drive ID 두 기록은 서로 다른 'f:' 로: " + JSON.stringify(rules.dup));
   assert(rules.empty === 0, '⑤ 빈 값은 건너뛴다: ' + rules.empty);
 
   // ⑥ 최상위 키는 그대로(참조는 현장 객체 안 필드), pageerror 0

@@ -194,7 +194,9 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
         storedPhotos, photoIds: w.photoIds, regenIds, storedLen: w.html.length };
     }, N);
     // 새 계약(photo-refs): 보관본에는 파일 id 가 아니라 안정 참조('k:'+fileKey) — id 는 폰·복원 뒤 새로 붙어 보관본이 사진 없이 나갔다
-    assert(r.storedPhotos === 0 && eq(r.photoIds, { before: ['k:가상_b1.png|10', 'k:가상_b2.png|10'], after: ['k:가상_a3.png|10', 'k:가상_a2.png|10'] }), '보관본에는 사진 base64 대신 참조만(안전판·릴레이 부풀림 방지): ' + JSON.stringify([r.storedPhotos, r.photoIds]));
+    // v333: 안정 참조는 파일 기록의 고유 ID('f:'+fid, photo-fid.e2e.js)
+    const REF = await page.evaluate(() => Object.fromEntries(state.files.map(f => [f.id, 'f:' + f.fid])));
+    assert(r.storedPhotos === 0 && eq(r.photoIds, { before: [REF.b1, REF.b2], after: [REF.a3, REF.a2] }) && Object.values(REF).every(v => /^f:lg-/.test(v)), '보관본에는 사진 base64 대신 참조만(안전판·릴레이 부풀림 방지): ' + JSON.stringify([r.storedPhotos, r.photoIds]));
     assert(eq(r.regenIds, ['b1', 'b2', 'a3', 'a2']), '보관본 보기는 id 로 같은 사진을 다시 합성해야 한다: ' + JSON.stringify(r.regenIds));
     assert(r.storedLen < 60000, '보관본이 사진 없이도 6만 자를 넘는다: ' + r.storedLen);
     assert(r.ids.length === 4, '사진 4장(전2·후2): ' + JSON.stringify(r.ids));
@@ -368,8 +370,9 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       const orig = window.__origSnap;
       hjSnapshot = async function (l, f, a) { const ok = await orig(l, f, a); state.files = state.files.map(x => ({ ...x })); return ok; };
     });
+    // 앞 검사(⑤(③))의 토스트도 '공정' 을 담고 남아 있다 — 이 검사가 띄운 토스트(2장)를 기다린다(앞 토스트에 걸리면 쓰기 전에 읽는다)
     await clickMake(); await waitDoc();
-    await page.waitForFunction(() => (document.getElementById('toast') || {}).textContent.includes('공정'), null, { timeout: 8000 });
+    await page.waitForFunction(() => /공정을 붙였어요 — 시공 전 1 · 완료 1|공정은 저장하지 않았어요/.test((document.getElementById('toast') || {}).textContent || ''), null, { timeout: 8000 });
     const r = await page.evaluate(() => ({ e1: state.files.find(f => f.id === 'e1')._phase, e3: state.files.find(f => f.id === 'e3')._phase,
       toast: document.getElementById('toast').textContent }));
     assert(r.e1 === '시공 전' && r.e3 === '완료', '교체된 새 목록에 제대로 써야 한다(id 로 다시 찾는다): ' + JSON.stringify(r));
