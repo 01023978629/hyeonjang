@@ -20083,10 +20083,14 @@ function warrantyList(withArchived){
     const a=hjWarrantyAlerts(p);
     if(!a||!a.item)return;
     const months=hjWarrantyMonths(p);
+    // nextDaysLeft — 다가올 가장 이른 만료(목록 정렬 키). 전부 끝난 현장은 null.
+    const next=a.groups.find(g=>g.daysLeft>=0);
     out.push({name:p.name,archived:!!p.archived,customer:p.customer||{},doneAt:p.doneAt,months,items:hjWarranty(p).items,expiry:a.end,allDaysLeft:a.allDaysLeft,
-      item:a.item,daysLeft:a.item.daysLeft,remaining:a.remaining,groups:a.groups});
+      item:a.item,daysLeft:a.item.daysLeft,remaining:a.remaining,groups:a.groups,nextDaysLeft:next?next.daysLeft:null});
   });
-  return out.sort((a,b)=>a.daysLeft-b.daysLeft);
+  // 정렬은 '다가올 가장 이른 만료' 순 — 알릴 묶음(daysLeft)으로 정렬하면 완공 13~22개월 현장(마감 1년 지남·설비 2년 창은 아직)이
+  // 가장 음수가 돼 약 10개월 동안 맨 위를 차지하고 방수 3년 D-5 같은 진짜 임박 현장이 밀렸다. 전부 끝난 현장은 뒤로(최근에 끝난 순).
+  return out.sort((a,b)=>{const an=a.nextDaysLeft==null?Infinity:a.nextDaysLeft,bn=b.nextDaysLeft==null?Infinity:b.nextDaysLeft;return (an-bn)||(b.allDaysLeft-a.allDaysLeft)||a.daysLeft-b.daysLeft;});
 }
 // 만료 임박(60일 이내) 또는 만료됨 — 항목 묶음 기준(대표 결정 2026-10-01). 끝난 보증도 넘긴다(보드가 창을 좁힌다).
 function warrantyDue(){

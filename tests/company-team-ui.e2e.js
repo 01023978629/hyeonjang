@@ -26,7 +26,7 @@ function seed() {
 let browser, count = 0;
 async function test(name, fn) { await fn(); count++; console.log('PASS ' + name); }
 async function harness(options = {}) {
-  const context = await browser.newContext({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block' });
+  const context = await browser.newContext({ viewport: { width: 360, height: 740 }, serviceWorkers: 'block', hasTouch: !!options.touch });
   const page = await context.newPage(); page.setDefaultTimeout(6500);
   const h = { page, context, store: seed(), role: options.role || 'owner', calls: [], errors: [], writes: [], failNext: '', holdList: null, malformed: false, outOfScope: false };
   if (options.store) h.store = clone(options.store); h.files = {};
@@ -47,6 +47,9 @@ async function harness(options = {}) {
         // 대표 결정 2026-10-01: 20-minute idle logout and its one-minute warning.
         if (name === 'team-ui.js' && MUTANT === 'idle-no-logout') content = content.replace('if (now >= state.idleAt + IDLE_MS) { logout(IDLE_MESSAGE); return; }', '');
         if (name === 'team-ui.js' && MUTANT === 'idle-no-warning') content = content.replace('if (now >= state.idleAt + IDLE_MS - IDLE_WARN_MS) showIdleWarning(true);', '');
+        // A touch fires pointerdown AND touchstart before its click; ignoring only pointerdown inside the banner hid it on touchstart and the click fell through.
+        if (name === 'team-ui.js' && MUTANT === 'idle-touch-ghost') content = content.replace("const activity = ev => { if (ev && ev.target && ev.target.closest && ev.target.closest('#idleNotice')) return; touchSession(); };", "const activity = ev => { if (ev && ev.type === 'pointerdown' && ev.target && ev.target.closest && ev.target.closest('#idleNotice')) return; touchSession(); };");
+        if (name === 'team-ui.js' && MUTANT === 'idle-text-literal') content = content.replace('IDLE_MIN = Math.round(IDLE_MS / 60000)', 'IDLE_MIN = 19');
         if (name === 'team-ui.js' && MUTANT === 'idle-no-extend') content = content.replace("$('idleExtend').onclick = () => touchSession(); ['pointerdown', 'keydown', 'touchstart', 'touchmove', 'wheel'].forEach(ev => window.addEventListener(ev, activity, { passive: true, capture: true }));", '');
         if (options.mutate) content = options.mutate(name, content);
         return route.fulfill({ status: 200, contentType: name.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8', body: content });
@@ -234,6 +237,36 @@ async function run() {
     assert.equal(logouts(), before + 1, 'the server session is ended the same way as the logout button'); assert(await h.page.isHidden('#workspace')); assert.equal(await h.page.textContent('#identity'), '');
     assert.equal(await h.page.evaluate(() => localStorage.length + sessionStorage.length), 0); assert(await h.page.isHidden('#idleNotice')); await h.close();
   });
+  await test('the idle warning text and the login footnote say the minutes IDLE_MS actually means', async () => {
+    // The literal '20분' used to be written in three places; mutant idle-text-literal cuts the wording loose from IDLE_MS (timing unchanged, text wrong).
+    const src = fs.readFileSync(path.join(ROOT, 'team-ui.js'), 'utf8'), mutatedMin = Number(/const IDLE_MS = (\d+) \* 60000/.exec(src)[1]);
+    assert(!/\d+분 동안/.test(src) && !/\d+분 뒤/.test(src), 'team-ui.js writes no minute count as a literal');
+    assert(!/\d+분 동안/.test(fs.readFileSync(path.join(ROOT, 'team.html'), 'utf8')), 'team.html leaves the footnote minutes to team-ui.js');
+    const h = await harness(); await h.page.clock.install({ time: new Date('2026-10-01T09:00:00+09:00') });
+    await h.page.waitForFunction(() => document.getElementById('idleFootnote').textContent.includes('분'));
+    assert.equal(await h.page.textContent('#idleFootnote'), mutatedMin + '분 동안 쓰지 않으면 자동으로 로그아웃됩니다.');
+    await h.login(); await h.page.clock.fastForward(mutatedMin * 60000 - 30 * 1000); await h.page.waitForFunction(() => !document.getElementById('idleNotice').hidden);
+    assert.equal(await h.page.textContent('#idleText'), '1분 뒤 자동 로그아웃됩니다 — ' + mutatedMin + '분 동안 쓰지 않았습니다. 계속 쓰려면 누르세요.');
+    await h.page.clock.fastForward(31 * 1000); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
+    assert((await h.page.textContent('#connection')).includes(mutatedMin + '분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.'), await h.page.textContent('#connection')); await h.close();
+  });
+  await test('on a touch screen, tapping [계속 사용] extends the session and never ghost-clicks what sits under the banner', async () => {
+    // A tap fires pointerdown, touchstart, then click. Hiding the banner on touchstart let the click hit-test the header link under it,
+    // navigating to the field app and dropping the memory-only session — the opposite of 대표 결정 ⑤.
+    const h = await harness({ touch: true }); await h.page.clock.install({ time: new Date('2026-10-01T09:00:00+09:00') }); await h.login();
+    const M = 60000, logouts = () => h.calls.filter(c => c.action === 'portalLogout').length, before = logouts();
+    await h.page.evaluate(() => { window.__clicks = []; window.addEventListener('click', e => window.__clicks.push(e.target.id || e.target.tagName + ':' + (e.target.getAttribute('href') || '')), true); });
+    await h.page.clock.fastForward(19 * M + 30 * 1000); await h.page.waitForFunction(() => !document.getElementById('idleNotice').hidden);
+    // Precondition: something else sits under the button (the banner is position:fixed over the page), so a fallen-through click is observable.
+    const under = await h.page.evaluate(() => { const n = document.getElementById('idleNotice'), b = document.getElementById('idleExtend').getBoundingClientRect(); n.style.visibility = 'hidden'; const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); n.style.visibility = ''; return el ? el.id || el.tagName : ''; });
+    assert(under && under !== 'idleExtend', 'precondition: an element lies under the button: ' + under);
+    await h.page.tap('#idleExtend'); await h.page.waitForFunction(() => document.getElementById('idleNotice').hidden);
+    assert.deepEqual(await h.page.evaluate(() => window.__clicks), ['idleExtend'], 'the tap clicked the button and nothing else');
+    assert(new URL(h.page.url()).pathname.endsWith('/team.html'), 'still on team.html: ' + h.page.url()); assert(await h.page.isHidden('#loginPanel'), 'still logged in');
+    await h.page.clock.fastForward(18 * M); assert(await h.page.isHidden('#loginPanel'), 'the tap restarted the idle clock'); assert(await h.page.isHidden('#idleNotice')); assert.equal(logouts(), before);
+    await h.page.touchscreen.tap(180, 400); await h.page.clock.fastForward(18 * M); assert(await h.page.isHidden('#loginPanel'), 'a touch elsewhere is activity'); assert(await h.page.isHidden('#idleNotice'));
+    await h.close();
+  });
   await test('expired session clears even an unsaved editor', async () => {
     const h = await harness(); await h.login(); await newTask(h, '세션 만료 초안 모의'); h.failNext = 'session-expired'; await h.page.click('#save'); await h.page.waitForFunction(() => !document.getElementById('loginPanel').hidden);
     assert.equal(await h.page.locator('#editorFields input').count(), 0); assert.equal(await h.page.textContent('#identity'), ''); assert(await h.page.isHidden('#workspace')); await h.close();
@@ -289,7 +322,7 @@ async function run() {
 module.exports = { harness, seed, engine, clone, digest, setBrowser: value => { browser = value; } };
 if (require.main === module && process.argv.includes('--mutations')) {
   const { spawnSync } = require('child_process'); let caught = 0;
-  const names = ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave', 'idle-no-logout', 'idle-no-warning', 'idle-no-extend'];
+  const names = ['allow-role-leak', 'persist-session', 'retry-new-id', 'team-filter', 'action-autosave', 'idle-no-logout', 'idle-no-warning', 'idle-no-extend', 'idle-touch-ghost', 'idle-text-literal'];
   for (const name of names) {
     const result = spawnSync(process.execPath, [__filename], { env: { ...process.env, HJ_TEAM_UI_MUTATION: name }, timeout: 120000, encoding: 'utf8' });
     assert(!result.error, name + ': runner error ' + result.error); assert.notEqual(result.status, 0, name + ' survived'); assert((result.stdout + result.stderr).includes('FAIL company-team-ui:'), name + ': did not reach assertions'); console.log('DETECTED ' + name); caught++;

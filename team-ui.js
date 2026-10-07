@@ -11,7 +11,9 @@
   const API_KEY = 'hj_team_api_url', HANDOFF_KEY = 'hj_company_drafts_handoff', HANDOFF_TTL = 24 * 3600000;
   // 대표 결정 2026-10-01: 20 minutes without a touch, key, wheel/touch scroll or request logs the device out (shared phones). One timer serves
   // both the server expiry and the idle deadline; a warning line appears one minute before and any activity extends.
-  const IDLE_MS = 20 * 60000, IDLE_WARN_MS = 60000, IDLE_MESSAGE = '20분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.';
+  const IDLE_MS = 20 * 60000, IDLE_WARN_MS = 60000, IDLE_MIN = Math.round(IDLE_MS / 60000), IDLE_WARN_MIN = Math.round(IDLE_WARN_MS / 60000);
+  // 사용자 문구의 분 수는 IDLE_MS 에서만 온다 — 글자로 박아 두면 상수를 바꿀 때 안내가 거짓이 된다(team.html 각주도 부팅 때 여기서 채운다).
+  const IDLE_MESSAGE = IDLE_MIN + '분 동안 쓰지 않아 자동으로 로그아웃했습니다 — 다시 로그인하세요.', IDLE_FOOTNOTE = IDLE_MIN + '분 동안 쓰지 않으면 자동으로 로그아웃됩니다.';
   const configUrl = typeof window.HJ_TEAM_CONFIG?.apiUrl === 'string' ? window.HJ_TEAM_CONFIG.apiUrl.trim() : '';
   const configFixed = endpointPattern.test(configUrl); // A deployed team-config.js always wins over a typed address.
   function deviceUrl() { try { const v = localStorage.getItem(API_KEY) || ''; return endpointPattern.test(v) ? v : ''; } catch (_) { return ''; } }
@@ -108,7 +110,7 @@
   }
   function loginEnabled(yes) { [...$('loginForm').elements].forEach(el => { el.disabled = !yes; }); }
   /* Session clock: the server expiry and the idle deadline share state.timer (never two timers). */
-  function showIdleWarning(on) { state.idleWarned = !!on; const el = $('idleNotice'); if (!el) return; el.hidden = !on; if (on) $('idleText').textContent = '1분 뒤 자동 로그아웃됩니다 — 20분 동안 쓰지 않았습니다. 계속 쓰려면 누르세요.'; }
+  function showIdleWarning(on) { state.idleWarned = !!on; const el = $('idleNotice'); if (!el) return; el.hidden = !on; if (on) $('idleText').textContent = IDLE_WARN_MIN + '분 뒤 자동 로그아웃됩니다 — ' + IDLE_MIN + '분 동안 쓰지 않았습니다. 계속 쓰려면 누르세요.'; }
   function armSessionTimer() {
     clearTimeout(state.timer); state.timer = 0; if (!state.token) return;
     const idleEnd = state.idleAt + IDLE_MS, next = Math.min(state.expiry, state.idleWarned ? idleEnd : idleEnd - IDLE_WARN_MS);
@@ -614,8 +616,11 @@
   const projectUI = window.HJTeamProjects.create({ node, button, data: () => state.data, epoch: () => state.epoch, api, accept: acceptData, notice, message, onError: handleReadError, hasTaskDraft: () => !!state.editor, openTask: t => openEditor('task', t), statuses });
   $('loginForm').addEventListener('submit', login); $('logout').onclick = () => logout(); $('refresh').onclick = read;
   // User input only — not the 'scroll' event, which programmatic scrollIntoView/focus restores also fire and would extend a session nobody is using.
-  // A press that starts on the banner itself is left to the button's click (hiding the banner on pointerdown would swallow that click).
-  const activity = ev => { if (ev && ev.type === 'pointerdown' && ev.target && ev.target.closest && ev.target.closest('#idleNotice')) return; touchSession(); };
+  // Any event that starts on the banner itself is left to the button's click, whatever its type: a touch fires pointerdown AND
+  // touchstart before the click, and hiding the banner on either would make the tap's click hit-test the element underneath
+  // (the header's 「현장 앱」 link, or the sticky tab bar) — a ghost click that navigated away and dropped the memory-only session.
+  const activity = ev => { if (ev && ev.target && ev.target.closest && ev.target.closest('#idleNotice')) return; touchSession(); };
+  const idleFoot = $('idleFootnote'); if (idleFoot) idleFoot.textContent = IDLE_FOOTNOTE;
   $('idleExtend').onclick = () => touchSession(); ['pointerdown', 'keydown', 'touchstart', 'touchmove', 'wheel'].forEach(ev => window.addEventListener(ev, activity, { passive: true, capture: true }));
   $('copyIdentity').onclick = async () => { try { await navigator.clipboard.writeText($('identity').textContent); notice('계정 연결용 식별정보를 복사했습니다. 비밀번호는 포함되지 않습니다.'); } catch (_) { notice('복사 권한이 없습니다. 펼친 식별정보를 직접 선택해 복사해 주세요.', true); } };
   Object.entries(navPages).forEach(([key, page]) => $('tab' + key).onclick = () => go(page));

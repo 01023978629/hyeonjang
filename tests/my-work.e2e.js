@@ -171,10 +171,20 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
     //    기록자 칸은 고른 사람으로 미리 채운다(바꿀 수 있다).
     await page.keyboard.press('Escape');await closed(page);
     await page.evaluate(({P1})=>{const today=localDate();state.notes.push({id:'team-peer',date:'가상',day:today,text:'[팀 업무]',todo:true,done:false,project:P1,teamTask:{schema:1,title:'동료 배관 사진 정리',assignee:'가상동료',due:today,status:'todo',handoff:'',recorder:'가상기록',updatedAt:new Date().toISOString(),revision:1}});},{P1});
-    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
     const chips=()=>page.locator('#myWork [data-mw-who]').evaluateAll(es=>es.map(e=>({v:e.dataset.mwWho,t:e.textContent,on:e.getAttribute('aria-pressed'),h:e.getBoundingClientRect().height})));
     const titles=()=>page.locator('#myWork [data-mw-todo]').evaluateAll(es=>es.map(e=>e.querySelector('.mwTitle').textContent));
+    // 기억한 이름이 지금 열린 팀 업무의 담당자에 없어도(퇴사·이름 바꿈) 칩으로 보인다 — 왜 팀 할일이 비었는지 보이게. 팀 업무만 빈다.
+    await page.evaluate(()=>localStorage.setItem('hj_mywork_who','가상퇴사'));
+    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
     let c=await chips();
+    assert.deepEqual(c.map(x=>x.v+':'+x.on),[':false','가상담당:false','가상동료:false','가상퇴사:true'],'⑩ 기억한 이름이 담당자에 없어도 눌린 칩으로 보인다: '+JSON.stringify(c));
+    const teamRows=await page.locator('#myWork [data-mw-todo]').evaluateAll(es=>es.filter(e=>[...e.querySelectorAll('.mwBadge')].some(b=>b.textContent==='팀 업무판')).map(e=>e.querySelector('.mwTitle').textContent));
+    assert.deepEqual(teamRows,[],'⑩ 그 사람 팀 업무는 없다 — 팀 업무판 줄이 빈다: '+JSON.stringify(teamRows));
+    assert((await titles()).includes('실리콘 사기'),'⑩ 이 기기 할일은 그대로');
+    await page.keyboard.press('Escape');await closed(page);
+    await page.evaluate(()=>localStorage.removeItem('hj_mywork_who'));
+    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    c=await chips();
     assert.deepEqual(c.map(x=>x.v+':'+x.t+':'+x.on),[':전체:true','가상담당:가상담당:false','가상동료:가상동료:false'],'⑩ 칩 = 전체 + 담당자들(기한이 내일인 업무의 담당자도), 기억 없으면 전체: '+JSON.stringify(c));
     assert(c.every(x=>x.h>=43.5),'⑩ 칩 44px');
     assert((await titles()).includes('동료 배관 사진 정리'),'⑩ 전체면 모두 보인다');

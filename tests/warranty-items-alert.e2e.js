@@ -138,7 +138,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const rows = [...document.querySelectorAll('#modalRoot .wtSms, #modalRoot .wtItem')].length;
       const txt = document.getElementById('modalRoot').textContent.replace(/\s+/g, ' ');
       const line = n => { const b = [...document.querySelectorAll('#modalRoot b')].find(x => x.textContent === n); return b ? b.parentElement.parentElement.textContent.replace(/\s+/g, ' ') : ''; };
-      const res = { out, rows, a: line('가상마감임박'), b: line('가상설비지남'), e: line('가상전체끝'), d: line('가상중간'), f: line('가상구형'), hasBtnB: !!document.querySelector('#modalRoot .wtSms[data-n="가상설비지남"]'), hasBtnD: !!document.querySelector('#modalRoot .wtSms[data-n="가상중간"]') };
+      const res = { out, rows, a: line('가상마감임박'), b: line('가상설비지남'), e: line('가상전체끝'), d: line('가상중간'), f: line('가상구형'), hasBtnB: !!document.querySelector('#modalRoot .wtSms[data-n="가상설비지남"]'), hasBtnD: !!document.querySelector('#modalRoot .wtSms[data-n="가상중간"]'),
+        order: [...document.querySelectorAll('#modalRoot b')].map(b => b.textContent) };
       closeModal(true); return res;
     });
     assert(r.out.완공현장 === 6 && r.out.임박 === 6, '요약 수: ' + JSON.stringify(r.out));
@@ -147,6 +148,9 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(/마감·전기 1년 만료/.test(r.d) && r.hasBtnD, '창 밖이어도 지난 묶음은 배지로 보인다: ' + r.d);
     assert(/만료됨/.test(r.e) && !/방수 3년 만료/.test(r.e), '전부 끝난 현장만 만료됨: ' + r.e);
     assert(/D-50/.test(r.f) && !/방수·/.test(r.f.split('완공')[0]), '구형 숫자 보증 배지는 항목 이름 없이: ' + r.f);
+    // 정렬은 '다가올 가장 이른 만료' 순(전부 끝난 현장은 맨 뒤) — 알릴 묶음의 daysLeft 로 정렬하면 마감 1년이 지난 현장(D+183·D+21)이
+    // 가장 음수라 맨 위를 차지하고 방수 D-14 가 네 번째로 밀렸다. 가상설비지남은 다음 만료가 방수 2027-09-10(344일) 이라 가상중간(설비 2027-04-01) 뒤.
+    assert(r.order.join('>') === '가상방수마지막>가상마감임박>가상구형>가상중간>가상설비지남>가상전체끝', '목록 순서 = 다가올 가장 이른 만료 순: ' + JSON.stringify(r.order));
   });
 
   await test('⑥ 점검 문자 — 항목 이름을 넣고 문장 틀 유지, 이어지는 보증 한 문장 · 전체 끝·구형은 예전 문장', async () => {

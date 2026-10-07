@@ -221,15 +221,21 @@ let browser;
     o.intakePhotoIds = ['DRIVE_INTAKE_1']; const r1 = officeCompletionChecklist(o);   // 이 기기에 파일이 없는 접수 사진(다른 기기 접수)도 수로 친다
     state.files.push({ id: 'f-in2', name: '접수사진.jpg', kind: 'photo', project: '모의 아파트 현장', prefix: '', ext: 'jpg', size: 1000, when: null, _phase: null, _worklabel: '', _driveId: 'DRIVE_INTAKE_2', _driveMimeType: 'image/jpeg', _driveSize: 1000, _virtual: true });
     o.intakePhotoIds = ['DRIVE_INTAKE_1', 'DRIVE_INTAKE_2']; const r2 = officeCompletionChecklist(o);
-    const same = phases() === p0 + '' || phases() === JSON.stringify(JSON.parse(p0).concat([['f-in2', null]]));
-    o.intakePhotoIds = JSON.parse(keep); state.files = state.files.filter(f => f.id !== 'f-in2');
+    // 접수 사진이면서 이 기기에서 '시공 전' 공정 표식도 붙은 사진(이 동·호수 이름이라 aptPhotoList 풀에도 든다) — 두 번 세지 않는다
+    state.files.push({ id: 'f-in1', name: '102동1002호_접수전.jpg', kind: 'photo', project: '모의 아파트 현장', prefix: '', ext: 'jpg', size: 1000, when: null, _phase: '시공 전', _worklabel: '', _driveId: 'DRIVE_INTAKE_1', _driveMimeType: 'image/jpeg', _driveSize: 1000, _virtual: true });
+    const inPool = officeCompletionPhotoPool(o).some(f => f.id === 'f-in1') && hjPhaseHit(state.files.find(f => f.id === 'f-in1'), PHASE_BEFORE);
+    const r3 = officeCompletionChecklist(o);
+    const same = phases() === p0 + '' || phases() === JSON.stringify(JSON.parse(p0).concat([['f-in2', null], ['f-in1', '시공 전']]));
+    o.intakePhotoIds = JSON.parse(keep); state.files = state.files.filter(f => f.id !== 'f-in2' && f.id !== 'f-in1');
     const g = (r, k) => r.items.find(x => x.key === k);
-    return { b0: g(r0, 'before'), b1: g(r1, 'before'), a1: g(r1, 'after'), b2: g(r2, 'before'), missing2: r2.missing.map(x => x.key), same };
+    return { b0: g(r0, 'before'), b1: g(r1, 'before'), a1: g(r1, 'after'), b2: g(r2, 'before'), missing2: r2.missing.map(x => x.key), b3: g(r3, 'before'), inPool, same };
   });
   assert(!intakeChk.b0.ok, '⑫ 전제: 접수 사진이 없으면 시공 전은 여전히 빠짐');
   assert(intakeChk.b1.ok && intakeChk.b1.detail === '1장 (관리사무소 접수 사진 1장 포함)', '⑫ 접수 사진 한 장이 시공 전으로 세어지지 않음: ' + JSON.stringify(intakeChk.b1));
   assert(intakeChk.a1 && !intakeChk.a1.ok, '⑫ 접수 사진은 시공 후 사진이 아니다');
   assert(intakeChk.b2.detail === '2장 (관리사무소 접수 사진 2장 포함)' && JSON.stringify(intakeChk.missing2) === '["after"]', '⑫ 접수 사진 두 장 = 시공 전 2장, 빠진 것은 후만: ' + JSON.stringify([intakeChk.b2, intakeChk.missing2]));
+  assert(intakeChk.inPool, '⑫ 전제: 접수 사진이면서 시공 전 표식이 붙은 파일이 사진 풀에 들고 PHASE_BEFORE 에 맞는다');
+  assert(intakeChk.b3.detail === '2장 (관리사무소 접수 사진 2장 포함)', '⑫ 접수 사진에 시공 전 표식까지 붙으면 한 장을 두 번 셌다: ' + JSON.stringify(intakeChk.b3));
   assert(intakeChk.same, '⑫ 점검표가 사진의 공정 표식(_phase)을 바꿨다');
 
   // ⑧ 직렬화 왕복

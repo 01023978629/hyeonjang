@@ -36,7 +36,7 @@
       <label class="field" for="loginCode">관리자가 발급한 비밀번호<input id="loginCode" name="loginCode" type="password" autocomplete="current-password" maxlength="64" required disabled></label>
       <button id="loginButton" class="primary" type="submit" disabled>로그인</button>
     </form>
-    <p class="footnote">비밀번호와 로그인 세션은 이 페이지의 메모리에서만 사용하며 새로고침하면 다시 로그인해야 합니다. 공용 기기에서는 사용 후 로그아웃하세요. 20분 동안 쓰지 않으면 자동으로 로그아웃됩니다.</p>
+    <p class="footnote">비밀번호와 로그인 세션은 이 페이지의 메모리에서만 사용하며 새로고침하면 다시 로그인해야 합니다. 공용 기기에서는 사용 후 로그아웃하세요. <span id="idleFootnote"></span></p>
     <details id="connectBox"><summary>서버 연결 설정 · 대표</summary>
       <p class="muted">Apps Script 「배포 관리」의 웹 앱 URL(끝이 /exec)을 붙여 넣고 [연결 확인 후 저장]을 누르세요. 주소는 비밀값이 아니며 이 기기에만 저장됩니다. 비밀번호·로그인 세션은 저장하지 않습니다. 대표가 알려 준 주소만 넣으세요.</p>
       <p id="connectFixed" class="meta" hidden></p>
