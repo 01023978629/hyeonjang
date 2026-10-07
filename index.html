@@ -29882,7 +29882,7 @@ function viewPhotos(){
     <span class="pb-stat">사진 <b>${photos.length}</b></span>
     ${(__narrow&&!dupCount)?'':`<span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>`}
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'전체 사진 보기':'의심 사진 보기'}</button>`:''}
-    <button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>
+    ${__narrow?'':'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>'}
     ${__sureN?`<button class="clay tiny" id="btnSuggestAll" title="현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.">✨ ${__narrow?'추천':'추천대로'} ${__sureN}묶음 배정</button>`:''}
   </div>`;
   if(!__narrow&&__sureN)html+=`<p class="hint" style="margin:0 0 8px">✨ <b>추천대로 ${__sureN}묶음 배정</b>은 현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.</p>`;
@@ -29890,6 +29890,7 @@ function viewPhotos(){
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
   const __selBtn=`<button class="${__selMode?'clay':'ghost'} tiny" id="btnSelMode" aria-pressed="${__selMode?'true':'false'}" title="${__selMode?'선택 모드를 종료합니다':'사진을 눌러 여러 장을 선택하는 모드입니다'}" style="font-size:12.5px;padding:8px 12px">${__selMode?'✓ 선택 종료':'✓ 사진 선택'}</button>`;
   const __moreBtns=`<button class="ghost tiny" id="btnPhotoTools" style="font-size:12.5px;padding:8px 12px">⋯ 사진 도구</button>
+    ${__narrow?'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>':''}
     <button class="blue tiny" data-aptbulk="project" style="min-height:44px">🏢 아파트 · 동·호수</button>
     <button class="ghost tiny" id="btnMediaOriginal" onclick="hjMediaView()" style="font-size:12.5px;padding:8px 12px;min-height:44px">🎬 원본·영상 관리</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>

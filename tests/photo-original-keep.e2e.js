@@ -98,6 +98,7 @@ let browser;
   });
   assert.equal(race.ok,false,'source replacement after hashing blocks restore commit');assert.equal(race.n,1);assert.equal(race.left,1);
   await page.evaluate(()=>__seedOriginal('date'));
+  await page.locator('#btnPhotoMore').click();
   await page.locator('#btnTrimDup').click();
   await page.waitForFunction(()=>document.querySelector('#modalRoot')?.textContent.includes('안전 정리 가능 0장'));
   assert.match(await page.locator('#modalRoot').innerText(),/중복 사진 원본만 남기기/);
@@ -107,7 +108,7 @@ let browser;
   await page.waitForFunction(()=>document.querySelector('#modalRoot')?.textContent.includes('1장 중복 삭제'));
   assert.match(await page.locator('#modalRoot').innerText(),/original \(1\)\.jpg → original\.jpg 유지/);
   assert.equal(await page.evaluate(()=>state.files.length),2,'preview does not delete');
-  if(process.env.HJ_ORIGINAL_SCREENSHOT){await page.locator('.toast').evaluateAll(es=>es.forEach(e=>e.remove()));await page.screenshot({path:process.env.HJ_ORIGINAL_SCREENSHOT});}
+  if(process.env.HJ_ORIGINAL_SCREENSHOT){await page.locator('#toast').evaluate(e=>e.remove());await page.screenshot({path:process.env.HJ_ORIGINAL_SCREENSHOT});}
   console.log('PASS original selection, server reads, complete group limits, same-path durable recovery, collision protection and preview');
   await browser.close();browser=null;
 })().catch(async e=>{console.error(e);if(browser)await browser.close();process.exitCode=1;});
