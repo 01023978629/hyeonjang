@@ -568,7 +568,7 @@
   a.call-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--ok);border-color:#bfe6d6;line-height:1}
   a.call-btn:hover{background:var(--ok);color:#fff;border-color:var(--ok)}
   .ph-tools{position:absolute;top:4px;right:4px;display:flex;gap:3px;opacity:0;transition:opacity .15s}
-  .ph:hover .ph-tools{opacity:1}
+  .ph:hover .ph-tools,.ph:focus-within .ph-tools{opacity:1}
   .ph-menu{position:absolute;top:3px;right:3px;width:36px;height:36px;padding:0;border-radius:9px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;font-size:18px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
   .ph-tools button{width:22px;height:22px;padding:0;font-size:11px;border-radius:5px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .ph-tools button:hover{background:var(--blueprint);transform:none}
@@ -3218,7 +3218,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v339-documentupload';
+const APP_BUILD='hyeonjang-v340-photodelete';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -30600,6 +30600,12 @@ function deleteSelectedPhotos(){
     }}
   ], true);
 }
+// 원본이 이 기기에 없는 사진도 앱 목록에서는 안전하게 삭제할 수 있다.
+function photoActionTools(p){
+  return __mobileMode
+    ?`<button class="ph-menu" data-phmore="${p.id}" aria-label="사진 도구: ${escapeAttr(p.name||'현장 사진')}">⋯</button>`
+    :`<div class="ph-tools">${p._virtual?'':`<button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button>`}<button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`;
+}
 function photoCell(p){
   const phases=p.project?phasesOfCached(p.project):[];
   const cur=phaseOf(p);
@@ -30614,10 +30620,7 @@ function photoCell(p){
   }else{
     sel=`<span class="ph-hint">현장 먼저</span>`;
   }
-  // 폰(v256): 마우스를 올려야 보이던 22px 도구 세 개 대신 손가락 크기 ⋯ 하나 → 큰 버튼 시트(이동·이름·삭제). PC 는 그대로.
-  const tools=p._virtual?'':(__mobileMode
-    ?`<button class="ph-menu" data-phmore="${p.id}" aria-label="사진 도구: ${escapeAttr(p.name||'현장 사진')}">⋯</button>`
-    :`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button><button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`);
+  const tools=photoActionTools(p);
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
@@ -32223,7 +32226,7 @@ function viewProject(){
 function photoCellProj(f,phases){
   const cur=phaseOf(f);
   const sel=phases.length?`<select class="ph-phase" data-phase="${f.id}"><option value="">공정</option>${phases.map(ph=>`<option value="${escapeAttr(ph)}"${ph===cur?' selected':''}>${escapeHtml(ph)}</option>`).join('')}</select>`:'';
-  const tools=(!f._virtual)?`<div class="ph-tools"><button data-movephoto="${f.id}" title="파일 이동">⇄</button><button data-rename="${f.id}" title="이름 변경">✎</button><button data-delphoto="${f.id}" title="사진 삭제">🗑</button></div>`:'';
+  const tools=photoActionTools(f);
   return `<div class="ph${__sel.has(f.id)?' sel':''}">
     ${photoImg(f,800,f.id)}
     ${selChk(f.id)}
@@ -33350,7 +33353,7 @@ function photoToolSheet(id){
   const f=state.files.find(x=>x.id===id);if(!f)return;
   const btn=(label,cls,fn)=>`<button class="${cls} phToolBtn" data-fn="${fn}" style="width:100%;min-height:48px;font-size:15px;margin-bottom:8px">${label}</button>`;
   openModal('사진 도구','<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;word-break:break-all">'+escapeHtml(f.name||'')+'</div>'+
-    btn('⇄ 파일 이동','ghost','move')+btn('✎ 이름 변경','ghost','rename')+btn('🗑 사진 삭제','warn','delete'),
+    (f._virtual?'':btn('⇄ 파일 이동','ghost','move')+btn('✎ 이름 변경','ghost','rename'))+btn('🗑 사진 삭제','warn','delete'),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.querySelectorAll('#modalRoot .phToolBtn').forEach(b=>{b.onclick=()=>{const fn=b.dataset.fn;closeModal();setTimeout(()=>{if(fn==='move')moveSinglePhoto(id);else if(fn==='rename')renameFile(id);else if(fn==='delete')deletePhoto(id);},40);};});
 }
