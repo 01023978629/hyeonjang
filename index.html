@@ -568,7 +568,7 @@
   a.call-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--ok);border-color:#bfe6d6;line-height:1}
   a.call-btn:hover{background:var(--ok);color:#fff;border-color:var(--ok)}
   .ph-tools{position:absolute;top:4px;right:4px;display:flex;gap:3px;opacity:0;transition:opacity .15s}
-  .ph:hover .ph-tools{opacity:1}
+  .ph:hover .ph-tools,.ph:focus-within .ph-tools{opacity:1}
   .ph-menu{position:absolute;top:3px;right:3px;width:36px;height:36px;padding:0;border-radius:9px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;font-size:18px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
   .ph-tools button{width:22px;height:22px;padding:0;font-size:11px;border-radius:5px;border:1px solid #fff;background:rgba(11,78,162,.85);color:#fff;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center}
   .ph-tools button:hover{background:var(--blueprint);transform:none}
@@ -30602,9 +30602,9 @@ function deleteSelectedPhotos(){
 }
 // 원본이 이 기기에 없는 사진도 앱 목록에서는 안전하게 삭제할 수 있다.
 function photoActionTools(p){
-  return (__mobileMode||p._virtual)
+  return __mobileMode
     ?`<button class="ph-menu" data-phmore="${p.id}" aria-label="사진 도구: ${escapeAttr(p.name||'현장 사진')}">⋯</button>`
-    :`<div class="ph-tools"><button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button><button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`;
+    :`<div class="ph-tools">${p._virtual?'':`<button data-movephoto="${p.id}" title="파일 이동">⇄</button><button data-rename="${p.id}" title="이름 변경">✎</button>`}<button data-delphoto="${p.id}" title="사진 삭제">🗑</button></div>`;
 }
 function photoCell(p){
   const phases=p.project?phasesOfCached(p.project):[];

@@ -13,7 +13,9 @@ const MUTATION = process.env.HJ_DELETE_ACCESS_MUTATION || '';
 const mutations = {
   photos: ['const tools=photoActionTools(p);', "const tools=p._virtual?'':photoActionTools(p);"],
   project: ['const tools=photoActionTools(f);', "const tools=f._virtual?'':photoActionTools(f);"],
-  mobile: ['return (__mobileMode||p._virtual)', 'return false'],
+  mobile: ['return __mobileMode', 'return false'],
+  desktop: ['return __mobileMode', 'return (__mobileMode||p._virtual)'],
+  hover: ['.ph:hover .ph-tools,.ph:focus-within .ph-tools{opacity:1}', '.ph:hover .ph-tools-disabled,.ph:focus-within .ph-tools{opacity:1}'],
   sheet: ["(f._virtual?'':btn('⇄ 파일 이동','ghost','move')+btn('✎ 이름 변경','ghost','rename'))", "(btn('⇄ 파일 이동','ghost','move')+btn('✎ 이름 변경','ghost','rename'))"]
 };
 let source;
@@ -66,24 +68,50 @@ let browser;
       render(); syncMobileNav(); clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
     }, { mobile, view });
     for (const id of ['TEST_DRIVE', 'TEST_RESTORED']) {
-      const button = page.locator('[data-phmore="' + id + '"]');
-      assert.equal(await button.count(), 1, view + ' virtual photo must expose a menu');
-      const box = await button.boundingBox();
-      assert(box && box.width >= 36 && box.height >= 36, 'visible touch-sized menu');
-      await button.click();
-      assert.deepEqual(await page.locator('#modalRoot .phToolBtn').evaluateAll(bs => bs.map(b => b.dataset.fn)), ['delete'], 'virtual photo offers delete without local-only tools');
-      if (process.env.HJ_DELETE_ACCESS_SCREENSHOTS && mobile && view === 'photos' && id === 'TEST_DRIVE') {
-        await page.screenshot({ path: path.join(process.env.HJ_DELETE_ACCESS_SCREENSHOTS, 'photo-delete-menu.png') });
-      }
-      await page.locator('#modalRoot .phToolBtn[data-fn="delete"]').click();
+      const button = page.locator((mobile ? '[data-phmore="' : '[data-delphoto="') + id + '"]');
+      assert.equal(await button.count(), 1, view + ' virtual photo must expose delete control');
+      const openDelete = async () => {
+        if (mobile) {
+          const box = await button.boundingBox();
+          assert(box && box.width >= 36 && box.height >= 36, 'visible touch-sized menu');
+          await button.click();
+          assert.deepEqual(await page.locator('#modalRoot .phToolBtn').evaluateAll(bs => bs.map(b => b.dataset.fn)), ['delete'], 'virtual photo offers delete without local-only tools');
+          if (process.env.HJ_DELETE_ACCESS_SCREENSHOTS && view === 'photos' && id === 'TEST_DRIVE') {
+            await page.screenshot({ path: path.join(process.env.HJ_DELETE_ACCESS_SCREENSHOTS, 'photo-delete-menu.png') });
+          }
+          await page.locator('#modalRoot .phToolBtn[data-fn="delete"]').click();
+        } else {
+          const photo = page.locator('.ph').filter({ has: button });
+          const tools = photo.locator('.ph-tools');
+          const opacity = async () => tools.evaluate(async el => {
+            getComputedStyle(el).opacity;
+            await Promise.all(el.getAnimations().map(a => a.finished));
+            return getComputedStyle(el).opacity;
+          });
+          await page.locator('#globalSearch').focus();
+          await page.mouse.move(0, 0);
+          assert.equal(await opacity(), '0', 'PC tools stay hidden until hover or focus');
+          await photo.hover();
+          assert.equal(await opacity(), '1', 'PC hover reveals delete control');
+          assert.equal(await photo.locator('[data-movephoto],[data-rename]').count(), 0, 'virtual PC photo hides local-only tools');
+          if (process.env.HJ_DELETE_ACCESS_SCREENSHOTS && view === 'photos' && id === 'TEST_DRIVE') {
+            await page.screenshot({ path: path.join(process.env.HJ_DELETE_ACCESS_SCREENSHOTS, 'photo-delete-hover.png') });
+          }
+          await page.mouse.move(0, 0);
+          await button.focus();
+          assert.equal(await opacity(), '1', 'keyboard focus reveals delete control');
+          await photo.hover();
+          await button.click();
+        }
+      };
+      await openDelete();
       await page.waitForFunction(() => document.querySelector('#modalRoot .mbody')?.textContent.includes('안전 백업이 저장된 뒤'));
       assert.match(await page.locator('#modalRoot .mbody').innerText(), /PC·휴대폰·드라이브 원본은 삭제하지 않습니다/);
       assert(await page.evaluate(id => state.files.some(f => f.id === id), id), 'opening confirmation preserves photo');
       await page.locator('#modalRoot .mfoot button.ghost').click();
       await page.waitForFunction(() => !document.querySelector('#modalRoot .modal') && !__mobileSheetHistoryRetire);
       assert(await page.evaluate(id => state.files.some(f => f.id === id), id), 'cancel preserves photo');
-      await button.click();
-      await page.locator('#modalRoot .phToolBtn[data-fn="delete"]').click();
+      await openDelete();
       await page.waitForFunction(() => document.querySelector('#modalRoot .mbody')?.textContent.includes('안전 백업이 저장된 뒤'));
       await page.locator('#modalRoot .mfoot button.warn').click();
       await page.waitForFunction(id => !state.files.some(f => f.id === id) && !__modalCloseLocked && !__mobileSheetHistoryRetire, id);
