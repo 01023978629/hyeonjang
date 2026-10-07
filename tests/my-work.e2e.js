@@ -5,6 +5,7 @@
       사진 0장이면 '사진 없이 완료할까요?' — 아니오면 저장 안 함, 사진이 있으면 묻지 않음
    ⑥ 할일 체크(이 기기)·팀 업무 완료(기록자 이름 필수) ⑦ 직원 작업실 링크(설정됐을 때만) ⑧ 빈 화면 + 내일 미리보기
    ⑨ 360px 넘침 0 · 누르는 것 44 · 입력 16 · Esc/뒤로가기 닫으면 하단 버튼으로 초점
+   ⑩ 팀 업무판 담당자 칩(대표 결정 2026-10-01) — 눌러서 고르고 이 기기에 기억, 기록자 칸 미리 채움
    가짜 자료만 쓴다(공유 서버는 tests/shared-todo-mock 의 메모리 모의 서버). */
 'use strict';
 const assert=require('node:assert/strict');
@@ -166,6 +167,49 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
     await page.waitForFunction(()=>!document.querySelector('[data-mw-teamdone="team-now"]'));
     assert.equal(await page.evaluate(()=>state.notes.find(n=>n.id==='memo-1').text),'가상 회의 메모','⑥ 일반 메모는 그대로');
 
+    // ⑩ 대표 결정 2026-10-01 — 팀 업무판 업무는 '내가 누구인지'를 눌러서 고른다(로그인 없음). 칩 = 담당자들 + 전체, 이 기기(hj_mywork_who)에 기억,
+    //    기록자 칸은 고른 사람으로 미리 채운다(바꿀 수 있다).
+    await page.keyboard.press('Escape');await closed(page);
+    await page.evaluate(({P1})=>{const today=localDate();state.notes.push({id:'team-peer',date:'가상',day:today,text:'[팀 업무]',todo:true,done:false,project:P1,teamTask:{schema:1,title:'동료 배관 사진 정리',assignee:'가상동료',due:today,status:'todo',handoff:'',recorder:'가상기록',updatedAt:new Date().toISOString(),revision:1}});},{P1});
+    const chips=()=>page.locator('#myWork [data-mw-who]').evaluateAll(es=>es.map(e=>({v:e.dataset.mwWho,t:e.textContent,on:e.getAttribute('aria-pressed'),h:e.getBoundingClientRect().height})));
+    const titles=()=>page.locator('#myWork [data-mw-todo]').evaluateAll(es=>es.map(e=>e.querySelector('.mwTitle').textContent));
+    // 기억한 이름이 지금 열린 팀 업무의 담당자에 없어도(퇴사·이름 바꿈) 칩으로 보인다 — 왜 팀 할일이 비었는지 보이게. 팀 업무만 빈다.
+    await page.evaluate(()=>localStorage.setItem('hj_mywork_who','가상퇴사'));
+    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    let c=await chips();
+    assert.deepEqual(c.map(x=>x.v+':'+x.on),[':false','가상담당:false','가상동료:false','가상퇴사:true'],'⑩ 기억한 이름이 담당자에 없어도 눌린 칩으로 보인다: '+JSON.stringify(c));
+    const teamRows=await page.locator('#myWork [data-mw-todo]').evaluateAll(es=>es.filter(e=>[...e.querySelectorAll('.mwBadge')].some(b=>b.textContent==='팀 업무판')).map(e=>e.querySelector('.mwTitle').textContent));
+    assert.deepEqual(teamRows,[],'⑩ 그 사람 팀 업무는 없다 — 팀 업무판 줄이 빈다: '+JSON.stringify(teamRows));
+    assert((await titles()).includes('실리콘 사기'),'⑩ 이 기기 할일은 그대로');
+    await page.keyboard.press('Escape');await closed(page);
+    await page.evaluate(()=>localStorage.removeItem('hj_mywork_who'));
+    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    c=await chips();
+    assert.deepEqual(c.map(x=>x.v+':'+x.t+':'+x.on),[':전체:true','가상담당:가상담당:false','가상동료:가상동료:false'],'⑩ 칩 = 전체 + 담당자들(기한이 내일인 업무의 담당자도), 기억 없으면 전체: '+JSON.stringify(c));
+    assert(c.every(x=>x.h>=43.5),'⑩ 칩 44px');
+    assert((await titles()).includes('동료 배관 사진 정리'),'⑩ 전체면 모두 보인다');
+    await page.locator('[data-mw-who="가상담당"]').click();
+    await page.waitForFunction(()=>document.querySelector('#myWork [data-mw-who="가상담당"]')?.getAttribute('aria-pressed')==='true');
+    assert(!(await titles()).includes('동료 배관 사진 정리'),'⑩ 가상담당을 고르면 동료 업무는 안 보인다: '+JSON.stringify(await titles()));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('hj_mywork_who')),'가상담당','⑩ 이 기기에 기억');
+    assert.equal(await page.evaluate(()=>document.activeElement?.dataset.mwWho),'가상담당','⑩ 다시 그려도 초점은 누른 칩');
+    assert((await titles()).includes('실리콘 사기'),'⑩ 이 기기 할일·팀 공유는 담당자 필터와 무관');
+    await page.locator('[data-mw-who="가상동료"]').click();
+    await page.waitForFunction(()=>document.querySelector('#myWork [data-mw-who="가상동료"]')?.getAttribute('aria-pressed')==='true');
+    assert((await titles()).includes('동료 배관 사진 정리'),'⑩ 가상동료 업무가 보인다');
+    await page.locator('[data-mw-teamdone="team-peer"]').click();
+    assert.equal(await page.locator('[data-mw-rec="team-peer"]').inputValue(),'가상동료','⑩ 기록자 칸은 고른 사람으로 미리 채운다');
+    await page.locator('[data-mw-rec="team-peer"]').fill('가상동료2');assert.equal(await page.locator('[data-mw-rec="team-peer"]').inputValue(),'가상동료2','⑩ 바꿀 수 있다');
+    // 닫고 다시 열어도 그대로
+    await page.keyboard.press('Escape');await closed(page);
+    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    c=await chips();assert.equal(c.find(x=>x.on==='true')?.v,'가상동료','⑩ 다음에 열면 기억한 사람: '+JSON.stringify(c));
+    assert(!(await titles()).includes('다음 주 점검')&&(await titles()).includes('동료 배관 사진 정리'),'⑩ 기억한 필터가 적용된 채 열린다');
+    await page.locator('[data-mw-who=""]').click();
+    await page.waitForFunction(()=>document.querySelector('#myWork [data-mw-who=""]')?.getAttribute('aria-pressed')==='true');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('hj_mywork_who')),null,'⑩ 전체를 고르면 기억을 지운다');
+    assert.equal(await page.locator('[data-mw-rec="team-peer"]').inputValue(),'','⑩ 전체면 기록자 칸은 비어 있다');
+    assert.equal(mock.count('sharedTodoSave'),0,'⑩ 서버 쓰기 없음');
     // ⑨ Esc·뒤로가기로 닫으면 하단 버튼으로
     await page.keyboard.press('Escape');await closed(page);
     await page.locator(NAV).click();await page.locator('#myWork').waitFor();
@@ -194,6 +238,6 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
       await page.keyboard.press('Escape');await closed(page);
       await context.close();}
     assert.deepEqual(errors,[],'page errors: '+errors.join('\n'));
-    console.log('PASS my-work ①~⑨');
+    console.log('PASS my-work ①~⑩');
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

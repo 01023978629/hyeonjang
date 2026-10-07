@@ -6,7 +6,11 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   const messages = { 'schedule-conflict': '담당자의 다른 일정과 겹칩니다. 시간 또는 담당자를 바꿔 주세요.', 'invalid-schedule': '작업일과 시작·종료 시간을 함께 입력하세요.', 'project-in-use': '사용 중인 프로젝트입니다.', 'evidence-bound': '사진이 연결된 업무의 프로젝트는 바꿀 수 없습니다.', 'invalid-project': '연결 가능한 프로젝트를 선택하세요.', 'evidence-missing': '선택한 증빙을 확인할 수 없습니다.', 'invalid-file': 'JPG·PNG·WebP·HEIC 사진(12MiB), MP4·MOV·WebM 동영상(100MB) 또는 대표용 PDF 원본과 크기를 확인하세요.', 'hash-mismatch': '원본 해시가 일치하지 않습니다. 원본 저장 상태를 확인해야 합니다.', 'storage-ambiguous': '동일 번호의 원본이 여러 개입니다. 자동 처리하지 않으며 관리자 확인이 필요합니다.', 'review-required': '자료가 바뀌었거나 검토 전입니다. 제출 자료를 다시 검토해 주세요.', 'review-stale': '검토한 자료가 바뀌었습니다. 최신 내용으로 다시 검토해 주세요.', 'claim-incomplete': '청구 방식·보험사·사고일·발견 및 보수 내용·금액·사진·동의 확인을 완료하세요.', 'project-immutable': '기존 청구 건의 프로젝트는 바꿀 수 없습니다.', 'private-storage-required': '회사 전용 비공개 저장 폴더를 확인해야 합니다.' };
   let selected = '', day = localDay(), edit = null, busy = false, viewEpoch = 0;
   const objectUrls = new Set(), photoUrls = new Set();
-  const HEIC2ANY = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js'; // Same CDN and version as the main app.
+  const HEIC2ANY = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js'; // Same CDN and version as the main app (index.html ensureHeic2any).
+  // 대표 결정 2026-10-01: subresource integrity. sha384 of the npm registry file heic2any@0.0.4 dist/heic2any.min.js (1,351,840 bytes);
+  // jsDelivr serves the npm file byte for byte. The same constant lives in index.html (HEIC2ANY_INTEGRITY) — change both or neither.
+  const HEIC2ANY_INTEGRITY = 'sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL';
+  const HEIC_LOAD_FAIL = 'HEIC 변환 도구를 불러오지 못했습니다(무결성 확인 실패) — JPEG 로 바꿔 올려 주세요';
   const dlg = n('dialog'); dlg.id = 'projectEditor'; dlg.setAttribute('aria-labelledby', 'projectEditTitle');
   const form = n('form'), head = n('div', undefined, 'dialog-head row between'), title = n('h2'); title.id = 'projectEditTitle';
   const close = b('닫기', closeEdit); close.id = 'projectEditClose'; head.append(title, close);
@@ -164,7 +168,9 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   function loadHeic2any() {
     // Loaded only when this browser cannot draw HEIC itself (most Android/PC Chrome). Preview only: the original is never replaced.
     if (window.heic2any) return Promise.resolve(window.heic2any);
-    heicLoading ||= new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = HEIC2ANY; sc.crossOrigin = 'anonymous'; sc.referrerPolicy = 'no-referrer'; sc.onload = () => window.heic2any ? ok(window.heic2any) : no(new Error('heic')); sc.onerror = () => { heicLoading = null; sc.remove(); no(new Error('heic')); }; document.head.append(sc); });
+    // A blocked (integrity mismatch) or missing script rejects with code 'heic-load' so the viewer can say so instead of failing quietly.
+    const failed = () => Object.assign(new Error('heic-load'), { code: 'heic-load' });
+    heicLoading ||= new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = HEIC2ANY; sc.integrity = HEIC2ANY_INTEGRITY; sc.crossOrigin = 'anonymous'; sc.referrerPolicy = 'no-referrer'; sc.onload = () => { if (window.heic2any) ok(window.heic2any); else { heicLoading = null; sc.remove(); no(failed()); } }; sc.onerror = () => { heicLoading = null; sc.remove(); no(failed()); }; document.head.append(sc); });
     return heicLoading;
   }
   async function previewSrc(blob, mime) {
@@ -181,7 +187,8 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
       const blob = new Blob([file.bytes], { type: e.mime }); if (e.mime === 'application/pdf') { download(blob, '증빙-원본.pdf'); target.textContent = '원본 서류를 다운로드했습니다. 실제 보험사 제출은 하지 않았습니다.'; }
       else if (e.kind === 'video') { const url = URL.createObjectURL(blob); objectUrls.add(url); photoUrls.add(url); const v = n('video'); v.controls = true; v.preload = 'metadata'; v.playsInline = true; v.src = url; v.setAttribute('aria-label', e.caption || '동영상 원본'); v.style.cssText = 'max-width:100%;height:auto'; target.replaceChildren(v, b('원본 동영상 받기', () => download(blob, '증빙-원본.' + ({ 'video/quicktime': 'mov', 'video/webm': 'webm' }[e.mime] || 'mp4'))));
       } else {
-        let src = ''; try { src = await previewSrc(blob, e.mime); } catch (_) { src = ''; } if (!current()) return;
+        let src = '', loadFail = false; try { src = await previewSrc(blob, e.mime); } catch (err) { src = ''; loadFail = !!(err && err.code === 'heic-load'); } if (!current()) return;
+        if (loadFail) { target.replaceChildren(n('p', HEIC_LOAD_FAIL + (navigator.onLine === false ? ' (지금은 인터넷 연결이 없습니다)' : '') + ' 원본은 서버에 그대로 있습니다.', 'notice error'), b('원본 HEIC 받기', () => download(blob, '증빙-원본.heic'))); return; }
         if (!src) { target.replaceChildren(n('p', '이 기기에서 HEIC 미리보기를 만들지 못했습니다. 원본은 서버에 그대로 있습니다.', 'notice'), b('원본 HEIC 받기', () => download(blob, '증빙-원본.heic'))); return; }
         const img = n('img'); img.src = src; img.alt = e.caption || phases[e.phase]; img.style.cssText = 'max-width:100%;height:auto'; target.replaceChildren(img);
         if (isHeic(e.mime)) target.append(n('p', '미리보기는 JPEG로 바꿔 보여 준 것이며 저장된 원본(HEIC)은 바뀌지 않았습니다.', 'meta'));
@@ -211,8 +218,10 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
     });
   }
   // 단계 충족 점검 — 경고만 한다(필수 서류는 대표 결정 전). 서버 teamClaimReadiness_ 와 같은 규칙.
+  // 대표 결정 2026-10-01: stage readiness is 선택 사항 — it never blocks review or the manual submission record. Mirrors TeamProjects.gs teamClaimReadiness_.
+  const STAGE_NOTE = '선택 사항 — 없어도 제출 준비·기록을 막지 않습니다';
   function readiness(c) {
-    const out = { photos: { before: 0, cause: 0, after: 0 }, documents: 0, warnings: [] }, chosen = new Set(c.selectedEvidenceIds || []);
+    const out = { photos: { before: 0, cause: 0, after: 0 }, documents: 0, warnings: [], optional: true, note: STAGE_NOTE }, chosen = new Set(c.selectedEvidenceIds || []);
     evidence().filter(e => chosen.has(e.id) && e.projectId === c.projectId).forEach(e => { if (e.kind === 'photo' && Object.hasOwn(out.photos, e.phase)) out.photos[e.phase]++; else if (e.kind === 'document' && e.mime === 'application/pdf') out.documents++; });
     ['before', 'cause', 'after'].forEach(k => { if (!out.photos[k]) out.warnings.push('missing-' + k); }); if (!out.documents) out.warnings.push('missing-document');
     return out;
@@ -221,7 +230,7 @@ window.HJTeamProjects = Object.freeze({ create(ctx) {
   function readinessLines(root, r) {
     if (!r || !r.photos) return;
     root.append(n('p', '단계 사진 · 작업 전 ' + r.photos.before + ' · 원인 확인 ' + r.photos.cause + ' · 마무리 ' + r.photos.after + ' · 서류 PDF ' + r.documents, 'meta'));
-    if (r.warnings.length) { const w = n('p', '⚠ 빠진 단계(경고 — 검토는 막지 않습니다): ' + r.warnings.map(k => warnText[k] || k).join(', '), 'claim-line claim-warn'); w.dataset.claimWarnings = r.warnings.join(' '); root.append(w); }
+    if (r.warnings.length) { const w = n('p', '⚠ 빠진 단계(' + (r.note || STAGE_NOTE) + '): ' + r.warnings.map(k => warnText[k] || k).join(', '), 'claim-line claim-warn'); w.dataset.claimWarnings = r.warnings.join(' '); root.append(w); }
   }
   function claimEditor(c = {}) {
     if (!owner() || !begin('claim', '보험 제출 준비 정보', c)) return;
