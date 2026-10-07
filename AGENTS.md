@@ -1,7 +1,72 @@
 # 코덱스 인수인계서 — hyeonjang (현장 앱)
 
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
-> 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
+> 2026-10-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
+
+## 2026-10-07 사진 고유 ID·작업건·견적 검증·대표 결정 v333 (PR 후보, v332 위 — 같은 PR #162)
+
+대표 요청 7건(2026-09-30)을 작업 트리 7개에서 구현 → 적대적 검토 → 고침 뒤 합쳤다. 기준 v332 = main(v331 codex 아파트 프로젝트) + PR #162(v328~v330).
+②직원 작업실 운영 연결·③내 업무·⑤직원 업로드·⑦완료 보고/보험은 v332 에 먼저 들어갔고(아래 v332 절), 이 절은 ①④⑥ + 대표 결정(2026-10-01).
+- **① 사진 고유 ID `f.fid`**(파일 레코드 안 필드 — 최상위 키 41개 그대로): 새 기록 = `hjNewFid()`(UUID), 옛 자료·Drive 목록에서 들인 기록 = `hjAssignFids` 가
+  경로|Drive ID|순번으로 정하는 값(`lg-…`, 같은 서버 자료를 읽는 기기마다 같다). **새 파일 기록을 `{...f}` 로 복사해 만들면 `fid:hjNewFid()` 를 넣어라** — 안 넣으면 원본과
+  같은 fid 가 되어 저장 때 둘째가 무작위로 새 값을 받는다. `hjFileRef` 는 `'f:'+fid` 를 먼저 적고 옛 `'d:'·'k:'` 도 읽는다. applyData 짝 찾기 3단계(fid → 경로 → 이름),
+  재스캔은 경로+크기+수정 시각이 같을 때만 `hjFidRestore`. 같은 이름·크기라도 fid 가 다르면 중복으로 지우지 않는다(iPhone image.jpg). 옛 기기(v332 이하)가 저장한
+  자료는 fid 를 빼고 'f:' 참조 글자만 싣는다 — applyData 는 이 기기 fid 를 `hjFidRefSet`(files 뺀 모든 최상위 키의 'f:' 글자)이 가리키면 지킨다.
+- **① 충돌 3-way 합치기**: 저장 성공·불러오기 때 서버와 맞춘 자료를 IDB `relay_base`(revision·서버 주소 지문, 6MB 상한, 서버로 안 보냄)에 둔다. 충돌이면
+  `hjSyncMerge3`(컬렉션별·레코드 id 별, 파일은 fid; fid 없는 서버본은 `hjSyncFillFids` 로 빌린다) → 한쪽만 바뀐 것은 자동, 양쪽이 다르면 항목마다 [서버 것]/[내 것]
+  (`relayMergeModal`). 서버 쪽 변경이 없으면 묻지 않고 이어 저장. base 가 없거나 낡으면 옛 3지선다(`relayConflictModalLegacy`), [전체로 고르기] 탈출구.
+  `relayConflictModal` 은 이름은 같지만 async 디스패처다. 검사 `photo-fid.e2e.js`·`sync-merge.e2e.js`.
+- **④ 동·호수 안 작업건 `u.jobs[]`**(세대 레코드 안, 쓰기는 `aptUnitMutation` 한 길): 관리사무소 오더는 오더당 작업건 하나로 자동으로 보이고(`ojob_<오더 id>`), 화면을
+  여는 것만으로는 쓰지 않는다 — 사진·견적·AS 를 이을 때 세대에 적는다(`hjUnitJobEnsureDraft`). 연결은 사진 `_aptUnit.jobId`, 견적·AS `unitRef={unitId,jobId}`.
+  옛 자료는 '작업건 미지정'(자동으로 안 붙임). 작업건 이름에 '…님'·전화·이메일·출입 번호를 받지 않는다. 한 번 그리는 동안의 세대 목록·작업건 색인은 `hjUnitJobCtx`
+  (세대 300·오더 150 에서 35초 → 21ms). 매출·청구(`hjSalesEntries`·`hjEstBill`)는 이 연결을 보지 않는다. 전체장부 엑셀·엑셀 이사에는 작업건·unitRef 가 없다.
+  검사 `unit-jobs.e2e.js`.
+- **⑥ 견적 인식값 검증은 `hjEstCheck(est,text)` 한 곳**: 공급가+부가세≠합계(±10원)·부가세 10%±2%·본문 최대 숫자/파일 이름 폴백(`amountFrom`: 'total'|'max'|'fname'|'hand')·
+  1만~10억 밖·본문에 실제로 전화/사업자번호/날짜 꼴로 있는 숫자. '⚠ 원본 확인 필요' 배지·필터·첫 화면 한 줄(`dashboardEstCheckHTML`, 0건이면 없음). 확정은
+  `est.verifiedAt/verifiedBy/verifiedSig`(값이 바뀌면 풀림, `hjEstVerified`) — 재OCR·미리보기 재해석·`fixXlsxEstVat` 는 `hjEstLocked` 를 지나 확정값을 덮지 않는다.
+  원본을 못 띄우는 파일은 [원본 없이 확정…]으로 따로 묻는다. 돈 계산은 그대로(확정 전에도 합계에 든다 — 머리 줄이 말한다). 검사 `estimate-check.e2e.js`.
+- **대표 결정 2026-10-01(코드 자리마다 '대표 결정 2026-10-01' 주석)**: ⓐ 보증 알림은 **항목 묶음별**(`hjWarrantyAlerts(p)` — 마감·전기 12 / 설비 24 / 방수 36, 숫자는
+  `WARRANTY_ITEMS_DEFAULT` 그대로) — 점검 문자·파수꾼(묶음마다 한 줄)·현장 보드·알림 센터·AI 플래너·🛡 보증 관리가 항목·기간을 말한다. 보증서 문서는 그대로.
+  ⓑ 내 업무 담당자 칩(`hjMyWorkWhoNames`, 이 폰 `hj_mywork_who`) — 로그인 없이 누르는 사람 고르기. ⓒ 관리사무소 접수 사진(`intakePhotoIds`)은 '시공 전'으로 센다
+  (공정 표식은 안 붙임). ⓓ 보험 단계(전·원인·후 사진, PDF)는 선택 사항(`optional:true`) — 제출 준비·기록을 막지 않는다. ⓔ 직원 작업실 20분 자동 로그아웃
+  (`IDLE_MS` 한 곳, 1분 전 배너 [계속 사용], 업로드 대기열 IDB 보존). ⓕ heic2any 스크립트 `integrity`(sha384, npm heic2any@0.0.4 dist 1,351,840바이트에서 계산)
+  + `crossorigin=anonymous` — index.html `ensureHeic2any` 와 team-projects.js 둘 다. 검사 `warranty-items-alert.e2e.js`·`heic-integrity.e2e.js`.
+- 대표 확인 대기(v333): ① 충돌 창 문구·동작이 바뀐다(서버 변경 없으면 묻지 않음, 양쪽이 다른 항목은 다 골라야 저장) ② 옛 앱(v332 이하) 기기는 'f:' 참조를 못 읽어
+  같은 버전이 될 때까지 '사진을 찾을 수 없음'이 뜰 수 있다 ③ 견적 부가세 허용 오차 10%±2%, 계산이 안 맞는 값도 '원본 그대로' 확정 허용, `verifiedBy`=COMPANY.owner
+  ④ 관리사무소 오더 작업건 제목 '관리사무소 접수 <접수번호> · <날짜>'(오더 글은 안 넣음), 오더 작업건은 세대 화면에서 못 지움 ⑤ 보증 알림 문구(점검 문자에
+  '…마감(도배·바닥·타일)·전기 보증 만료 … 설비·방수 보증은 그대로 이어집니다') ⑥ **서버 `apps-script/Watchdog.gs` 는 아직 현장당 하나(가장 늦은 끝 또는 준공+1년)로
+  캘린더 알림** — 🔴 1번 폴더라 에이전트가 못 고친다, 대표 손 수정·배포 ⑦ 공개 금액 0원을 누락으로 볼지(미답) ⑧ 🛡 AS 보증 관리 목록 순서가 '지난 묶음 먼저' → '다가올 가장 이른 만료 먼저, 전부 끝난 현장 맨 뒤'.
+- 남은 것: 작업건 안에서 견적·AS 새로 만들기 없음(연결만) · `aptUnitForOrder` 가 기록된 `order.unitId` 보다 라벨 매칭 우선 · 원본/정리본 합치기에서 두 fid 가 다 있으면
+  지워지는 쪽 참조는 '찾을 수 없음' · 옛 견적에는 `amountFrom` 이 없어 '최대 숫자 추정' 경고가 안 뜬다(다시 읽으면 붙음).
+
+## 2026-09-30 직원 작업실 운영 연결·내 업무·직원 업로드·완료 보고 v332 (PR 후보, v331 main 위 — 같은 PR #162)
+
+대표 요청 7건(2026-09-30) 중 ②③⑤⑦. 기준 = main `f1d86bf`(v331 codex 아파트 프로젝트) + PR #162(v328~v330) 병합(`3fb1ec5`). 작업 트리 4개에서 구현 → 적대적 검토 → 고침.
+- **② 직원 작업실 연결(team.html)**: 로그인 칸 아래 「연결 설정」 — 대표가 /exec 주소를 넣으면 health 가 `company-team-v3` 일 때만 이 기기 localStorage
+  `hj_team_api_url` 에 저장(공개 주소, 비밀값 아님 — 세션·비밀번호는 메모리만). 배포 설정 주소(team-config.js)가 있으면 그것이 이긴다. 서버 `companyDiagnose`
+  (대표 전용·읽기 전용 — 속성은 있음/없음, 구성원마다 실제 게이트를 돌린 결과를 업무 ID 지문으로)와 「내 권한 확인」(모든 역할). 현장 앱 팀 업무 →
+  「직원 작업실로 초안 보내기」는 같은 출처 전달함(`hj_company_drafts_handoff`, 하루·한 번 읽으면 삭제, 대표 계정에만 보임)에 두고 직원 작업실에서 한 건씩
+  배정·저장 — 자동 등록·양방향 동기화 없음. 설치 앱(standalone)이면 같은 창으로 연다(_blank 는 Safari 가 저장소를 따로 쓴다). **서버 배포는 대표 손**:
+  `docs/team-ops-setup.md`. 검사 `team-connect.e2e.js`·`company-team.unit.js`.
+- **③ 내 업무 `myWorkView`**: 하단 [오늘 할일]이 먼저 연다 — 오늘 일정(💰·세금 제외) 카드마다 [▶ 작업 시작](일정 레코드 `startedAt`)·[📷 사진 등록]·[✅ 완료 보고]
+  (`workLogSave(…, schId)` — 그 일정의 작업일지, 예전엔 같은 날 첫 일정에 붙었다)·[🧰 챙김]. 밀린·오늘 할일은 이 기기 할일·팀 업무판·팀 공유 세 출처를 한 목록에
+  (같은 현장·같은 글은 한 줄). 직원 작업실은 건수를 못 읽는다(세션이 그 창 메모리) — 열기 링크만. 옛 화면(todoLocalView·hjSharedTodoView·hjTeamBoard)은 안의
+  링크로 산다. 검사 `my-work.e2e.js`; mobile-todo-nav·shared-todo 는 내 업무를 거치는 새 계약.
+- **⑤ 직원 사진함(team-projects.js·새 `team-upload.js`·서버 `TeamMedia.gs`)**: HEIC/HEIF 원본 그대로(변환은 미리보기만, 본앱과 같은 heic2any@0.0.4), 동영상
+  MP4·MOV·WebM 100MB — Drive ID 먼저 받고 1MiB 청크 이어 올리기(진행 위치는 서버가 정본, 청크마다 권한, 완성은 Drive SHA-256). 실패 후 재시도: 고른 원본을
+  직원별 IDB 대기열에 두고 서버 확인 뒤 지운다(requestId 는 보내기 전에 저장 — 새로고침 뒤 같은 요청, 중복 증빙 없음), 오프라인이면 타이머를 걸지 않고
+  'online' 이벤트가 깨운다, 6번 실패하면 [다시 올리기]. 보험 묶음 50MiB 를 넘는 동영상은 [원본 동영상 받기]로 따로. `team-upload.js` 는 Pages 허용목록에만
+  (SW 캐시 제외 — v320 다섯 곳 표). 구서버면 동영상·HEIC 가 대기열에 '실패'로 남고 갱신 뒤 [다시 올리기]. 검사 `team-upload.e2e.js`·`company-projects.unit.js`·`team-packet.unit.js`.
+- **⑦ 관리사무소 완료 보고**: 완료로 바꾸기 전 점검 `officeCompletionChecklist`(시공 전·후 사진 `hjPhaseHit`, 작업 내용, 공개 금액 0원 아님, 공개 사진이 업로드
+  완료 목록에 있는지 — 빠지면 [그래도 보내기]는 확인 뒤). 오더 안 `officeReport`(preparedAt·checklist·queuedAt/queuedRevision·sentAt/sentRevision/serverReceipt·
+  failedAt/failCode) — **sentAt 은 `officeIntakeFlush` 가 서버 ok:true 를 받은 때에만**. 오더 줄 배지 📝 준비됨 · ⏳ 전송 대기 · ✅ 관리사무소 접수 확인 hh:mm ·
+  ○ 확인 전, 고친 뒤에는 `officeReportRefreshDom(o)` 가 그 오더 줄만 제자리에서 바꾼다(목록 전체를 다시 그리면 치던 칸 초점이 날아간다). 이 버전 전 완료 오더는
+  '보고 기록 없음'. 직원 서버 `teamClaimReadiness_` 는 단계 부족을 경고로만. 검사 `office-completion-check.e2e.js`.
+- 그 밖에: 일정 브리핑 '지도 ›' 링크 44px(오늘 일정에 주소가 있을 때만 떠서 sweep 이 날짜에 따라 잡았다). 전체 회귀 v332: 211개 중 208 통과(team-workboard·
+  apartment-projects 는 컨테이너 한글 다운로드 이름 알려진 실패 — 기준 main 에서도 같음, GitHub Actions 에서는 통과).
+- 대표 확인 대기(v332): ① 하단 [오늘 할일]이 내 업무를 먼저 열고 옛 목록은 한 번 더 ② 팀 업무판은 로그인이 없어 전원 업무가 보인다(→ v333 담당자 칩)
+  ③ 직원 폰 업로드 대기열 원본이 로그아웃 뒤에도 남는다(공용 기기면 [취소], → v333 20분 자동 로그아웃) ④ 직원 로그인용 '회사 단지'는 포털에서 대표가 정한다
+  ⑤ apps-script-team-ops 변경은 대표 손배포(`docs/team-ops-setup.md`).
 
 ## 2026-09-26 현장 안전 v330 (PR 후보, v329 위 — 같은 PR #162)
 
