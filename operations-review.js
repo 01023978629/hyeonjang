@@ -4,22 +4,28 @@ function hjUnitLifecycleSave(name,unitId,input){
   const p=aptUnitProject(name),unit=p&&aptUnitList(p).find(u=>u.id===unitId);
   if(!unit)throw new Error('등록된 위치를 다시 선택하세요.');
   const before=paidStableJson(unit),startedAt=String(input.startedAt||''),doneAt=String(input.doneAt||''),text=String(input.text||'').trim(),date=String(input.date||localDate());
+  // v333 방문·보수 기록을 그 세대의 작업건에 잇는다(비우면 작업건 미지정). 착공·완료일은 세대 단위 그대로.
+  const jobId=String(input.jobId||'');if(jobId&&!hjUnitJobFind(p,unitId,jobId))throw new Error('작업건을 다시 선택하세요.');
   if([startedAt,doneAt].some(d=>d&&!isRealIsoDate(d))||!isRealIsoDate(date)||doneAt&&doneAt>localDate()||startedAt&&doneAt&&startedAt>doneAt||date>localDate()||text.length>1000)throw new Error('날짜·작업 기록을 확인하세요. 완료·방문일은 미래로 입력할 수 없습니다.');
   return aptUnitMutation({snapshotLabel:'세대 완료일·보수 기록 변경 전',mutateDraft:draft=>{
     const current=aptUnitProject(name,draft),u=current&&aptUnitList(current).find(x=>x.id===unitId);
     if(!u||paidStableJson(u)!==before)throw new Error('위치 정보가 변경되었습니다. 다시 열어 주세요.');
     const old=u.lifecycle||{},history=Array.isArray(old.history)?old.history.slice():[];
     if(history.length>=200)throw new Error('이력 200건에 도달했습니다. 기존 이력은 보존했습니다.');
-    if(text||startedAt!==(old.startedAt||'')||doneAt!==(old.doneAt||''))history.push({id:uid(),at:new Date().toISOString(),date,text,startedAt,doneAt});
+    if(text||startedAt!==(old.startedAt||'')||doneAt!==(old.doneAt||'')){
+      if(jobId&&text)hjUnitJobEnsureDraft(draft,name,unitId,jobId);
+      history.push({id:uid(),at:new Date().toISOString(),date,text,startedAt,doneAt,...(jobId&&text?{jobId}:{})});
+    }
     u.lifecycle={startedAt,doneAt,history};return true;
   }});
 }
-function hjUnitLifecycleView(name,unitId){
+function hjUnitLifecycleView(name,unitId,jobId){
   const p=aptUnitProject(name),u=p&&aptUnitList(p).find(x=>x.id===unitId);if(!u)return toast('등록된 위치를 다시 선택하세요.');
-  const l=u.lifecycle||{},E=escapeHtml,A=escapeAttr;
-  openModal('세대·공용부 작업 이력','<section id="unitLife"><p>'+E(name+' · '+aptUnitLabel(u))+'</p><p>다른 세대와 현장 전체 준공일은 바꾸지 않습니다. 보수 방문 기록만 추가하면 원공사 완료일은 유지됩니다.</p><label>착공일<input id="lifeStart" type="date" value="'+A(l.startedAt||'')+'"></label><label>원공사 완료일<input id="lifeDone" type="date" max="'+localDate()+'" value="'+A(l.doneAt||'')+'"></label><label>작업·방문일<input id="lifeDate" type="date" max="'+localDate()+'" value="'+localDate()+'"></label><label>추가할 작업·보수 기록<textarea id="lifeText" maxlength="1000" rows="3"></textarea></label><p id="lifeError" role="alert"></p><details><summary>변경·방문 이력 '+(l.history||[]).length+'건</summary>'+(l.history||[]).slice().reverse().map(x=>'<p>'+E(x.date+' · '+(x.text||'날짜 수정')+' · 완료일 '+(x.doneAt||'미입력'))+'</p>').join('')+'</details></section>',[
-    {label:'목록으로',cls:'ghost',fn:()=>aptUnitView(name,unitId)},
-    {label:'저장',cls:'blue',fn:async()=>{const get=id=>document.getElementById(id).value;try{await hjUnitLifecycleSave(name,unitId,{startedAt:get('lifeStart'),doneAt:get('lifeDone'),date:get('lifeDate'),text:get('lifeText')});hjUnitLifecycleView(name,unitId);toast('이 기기에 저장했습니다. 다른 기기는 최신 자료를 불러오세요.');}catch(e){document.getElementById('lifeError').textContent=e.message;}}}
+  const l=u.lifecycle||{},E=escapeHtml,A=escapeAttr,jobs=hjUnitJobsOf(p,u),jobTitle=id=>{const j=id&&jobs.find(x=>x.id===id);return j?' · '+j.title:'';};
+  if(!jobs.some(j=>j.id===jobId))jobId='';
+  openModal('세대·공용부 작업 이력','<section id="unitLife"><p>'+E(name+' · '+aptUnitLabel(u))+'</p><p>다른 세대와 현장 전체 준공일은 바꾸지 않습니다. 보수 방문 기록만 추가하면 원공사 완료일은 유지됩니다.</p><label>착공일<input id="lifeStart" type="date" value="'+A(l.startedAt||'')+'"></label><label>원공사 완료일<input id="lifeDone" type="date" max="'+localDate()+'" value="'+A(l.doneAt||'')+'"></label><label>작업·방문일<input id="lifeDate" type="date" max="'+localDate()+'" value="'+localDate()+'"></label><label>작업건<select id="lifeJob"><option value="">작업건 미지정</option>'+jobs.map(j=>'<option value="'+A(j.id)+'"'+(j.id===jobId?' selected':'')+'>'+E(j.title)+'</option>').join('')+'</select></label><label>추가할 작업·보수 기록<textarea id="lifeText" maxlength="1000" rows="3"></textarea></label><p id="lifeError" role="alert"></p><details><summary>변경·방문 이력 '+(l.history||[]).length+'건</summary>'+(l.history||[]).slice().reverse().map(x=>'<p>'+E(x.date+' · '+(x.text||'날짜 수정')+jobTitle(x.jobId)+' · 완료일 '+(x.doneAt||'미입력'))+'</p>').join('')+'</details></section>',[
+    {label:'목록으로',cls:'ghost',fn:()=>aptUnitView(name,unitId,80,jobId)},
+    {label:'저장',cls:'blue',fn:async()=>{const get=id=>document.getElementById(id).value;try{await hjUnitLifecycleSave(name,unitId,{startedAt:get('lifeStart'),doneAt:get('lifeDone'),date:get('lifeDate'),text:get('lifeText'),jobId:get('lifeJob')});hjUnitLifecycleView(name,unitId,get('lifeJob'));toast('이 기기에 저장했습니다. 다른 기기는 최신 자료를 불러오세요.');}catch(e){document.getElementById('lifeError').textContent=e.message;}}}
   ],true);hjOpsFormStyle('unitLife');
 }
 function hjWarrantyContext(name,unitId,snapshot){
