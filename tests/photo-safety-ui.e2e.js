@@ -5,7 +5,7 @@ let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'))
 const ORIGIN='http://127.0.0.1:8299';
 const mutation=process.env.HJ_PHOTO_SAFETY_MUTATION||'';
 const mutations={
-  hash:["async function duplicateOriginalHash(f){","async function duplicateOriginalHash(f){return '0'.repeat(64);"],
+  hash:["async function duplicateOriginalHash(f,originals){","async function duplicateOriginalHash(f,originals){return '0'.repeat(64);"],
   metadata:['function duplicateMetadata(f){',"function duplicateMetadata(f){return '';"],
   proof:["if([f._originalSha256,f._mediaOriginal?.sha256].some(proof=>proof&&String(proof).toLowerCase()!==hash))","if(false)"],
   snapshot:["if(await hjSnapshot('검증된 중복 사진 정리 전',true)!==true)",'if(false)'],

@@ -3218,7 +3218,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v340-photodelete';
+const APP_BUILD='hyeonjang-v341-originalkeep';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6395,37 +6395,62 @@ function photoRecoveryRevision(value){
   for(const b of value.batches){
     if(!b||typeof b.id!=='string'||!Array.isArray(b.records)||!b.records.length||b.records.length>50||typeof b.at!=='string')throw new Error('복구 기록을 확인할 수 없습니다');
     for(const r of b.records)if(!r||r.kind!=='photo'||typeof r.name!=='string'||typeof r.id!=='string')throw new Error('사진 복구 기록 오류');
+    if(b.keepers!==undefined&&(!Array.isArray(b.keepers)||b.keepers.length!==b.records.length||b.keepers.some(k=>!k||typeof k.identity!=='string'||typeof k.path!=='string'||!/^[a-f0-9]{64}$/.test(k.hash)||!Number.isInteger(k.pathCount)||k.pathCount<0)))throw new Error('원본 유지 기록 오류');
   }
   return value.revision;
 }
 function duplicateMetadata(f){
   return JSON.stringify([f.project||'',f._phase||'',f._worklabel||'',f._aptUnit??null,
-    f.when?new Date(f.when).toISOString():null,f.lat??null,f.lng??null,f.address||'',f.contact||'',f.text||'',f.ocr||'',f.est??null,f.ledger??null,f.quote??null]);
+    f.when?new Date(f.when).toISOString():null,f.lat??null,f.lng??null,f.address||'',f.contact||'',f.text||'',f.ocr||'na',f.est??null,f.ledger??null,f.quote??null]);
 }
-async function duplicateOriginalHash(f){
+async function duplicateOriginalHash(f,originals){
   let blob=f._file;
   if(f.handle){
     if(typeof f.handle.queryPermission!=='function'||await f.handle.queryPermission({mode:'read'})!=='granted')throw new Error('원본 연결/읽기 권한 확인 필요');
     blob=await f.handle.getFile();
   }
-  if(!(blob instanceof Blob)||!blob.size||blob.size>32*1048576||blob.size!==Number(f.size))throw new Error('원본 없음·크기 불일치 또는 32MB 초과');
+  if(!(blob instanceof Blob)&&f._mediaOriginal?.fileId&&Number(f.size)<=32*1048576&&window.HJMedia?.readOriginal){
+    const result=await HJMedia.readOriginal(f.id);
+    if(!result?.ok)throw new Error('서버 원본 확인 실패 — 연결을 확인하세요');
+    blob=result.blob;
+  }
+  if(!(blob instanceof Blob)||!blob.size||blob.size>32*1048576||blob.size!==Number(f.size))throw new Error('원본 재연결 필요·크기 불일치 또는 32MB 초과');
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))).map(n=>n.toString(16).padStart(2,'0')).join('');
   if([f._originalSha256,f._mediaOriginal?.sha256].some(proof=>proof&&String(proof).toLowerCase()!==hash))throw new Error('등록된 원본 증빙과 불일치 — 재연결 확인 필요');
+  if(originals)originals.set(f,blob);
   return hash;
+}
+function duplicateKeeperIdentity(f){
+  return JSON.stringify([(f.prefix||'')+f.name,Number(f.size),duplicateMetadata(f),f._driveId||'',f._mediaOriginal||null,f._originalSha256||'']);
+}
+function duplicateKeeperRank(f,hash){
+  const m=f._mediaOriginal;
+  return (/^[A-Za-z0-9_-]{8,200}$/.test(m?.fileId||'')&&Number(m.size)===Number(f.size)&&String(m.sha256).toLowerCase()===hash?100:0)+(f._driveId?10:0)+(f.handle?5:0)+(!/(?:\(\d+\)|사본|copy)(?:\.[^.]+)?$/i.test(f.name)?1:0);
 }
 async function verifyDuplicatePhotos(){
   const refs=state.files.slice(),before=JSON.stringify(serializeData().files),sources=refs.map(f=>[f._file,f.handle]);
   const current=()=>refs.length===state.files.length&&refs.every((f,i)=>state.files[i]===f&&f._file===sources[i][0]&&f.handle===sources[i][1])&&before===JSON.stringify(serializeData().files);
-  const groups=markDuplicates(refs.filter(f=>f.kind==='photo')),pairs=[],held=[];let checked=0,bytes=0;
+  const bySize=new Map();
+  refs.filter(f=>f.kind==='photo'&&!isVideoRec(f)).forEach(f=>{const key=Number(f.size);if(key>0){if(!bySize.has(key))bySize.set(key,[]);bySize.get(key).push(f);}});
+  const groups=[...bySize.values()].filter(g=>g.length>1),pairs=[],held=[];let checked=0,bytes=0;
   for(const group of groups){
+    const total=group.reduce((n,f)=>n+Number(f.size),0);
+    if(checked+group.length>50||bytes+total>128*1048576||group.some(f=>Number(f.size)>32*1048576)){
+      group.forEach(f=>held.push({f,reason:'묶음 전체 확인 필요 — 한 번에 50장·128MB, 사진당 32MB 한도'}));continue;
+    }
+    checked+=group.length;bytes+=total;
     const verified=new Map();
     for(const f of group){
       if(!current())throw new Error('검증 중 자료가 변경되었습니다. 다시 검증하세요');
-      if(++checked>50||(bytes+=Number(f.size)||0)>128*1048576){held.push({f,reason:'한 번에 50장·128MB까지만 검증'});continue;}
       try{
-        const hash=await duplicateOriginalHash(f),key=hash+'|'+duplicateMetadata(f),keep=verified.get(key);
-        if(keep)pairs.push({keep,file:f,hash});else{verified.set(key,f);held.push({f,reason:'대표 유지 또는 내용·작업 정보가 다름'});}
+        const hash=await duplicateOriginalHash(f),key=hash+'|'+duplicateMetadata(f);
+        if(!verified.has(key))verified.set(key,[]);verified.get(key).push({f,hash});
       }catch(e){held.push({f,reason:String(e.message||e)});}
+    }
+    for(const candidates of verified.values()){
+      candidates.sort((a,b)=>duplicateKeeperRank(b.f,b.hash)-duplicateKeeperRank(a.f,a.hash));
+      const {f:keep,hash}=candidates[0];held.push({f:keep,reason:'원본 유지 또는 내용·작업 정보가 다름'});
+      candidates.slice(1).forEach(({f})=>pairs.push({keep,file:f,hash}));
     }
   }
   if(!current())throw new Error('검증 중 자료가 변경되었습니다. 다시 검증하세요');
@@ -6438,16 +6463,20 @@ async function saveVerifiedDuplicates(plan){
     const old=await idbGetStrict(PHOTO_RECOVERY_KEY),revision=photoRecoveryRevision(old),batches=old?.batches||[];
     if(batches.length>=30)throw new Error('복구함 30회 한도입니다. 복구 기록을 먼저 확인하세요');
     if(await hjSnapshot('검증된 중복 사진 정리 전',true)!==true)throw new Error('안전판 저장 실패');
+    const originals=new Map();
     for(const pair of plan.pairs){
-      if(!plan.current()||duplicateMetadata(pair.keep)!==duplicateMetadata(pair.file)||await duplicateOriginalHash(pair.keep)!==pair.hash||await duplicateOriginalHash(pair.file)!==pair.hash)throw new Error('원본이나 작업 정보가 변경되었습니다. 다시 검증하세요');
+      if(!plan.current()||duplicateMetadata(pair.keep)!==duplicateMetadata(pair.file)||await duplicateOriginalHash(pair.keep,originals)!==pair.hash||await duplicateOriginalHash(pair.file,originals)!==pair.hash)throw new Error('원본이나 작업 정보가 변경되었습니다. 다시 검증하세요');
     }
     const ids=new Set(plan.pairs.map(p=>p.file.id));
     if(ids.size!==plan.pairs.length||state.files.filter(f=>ids.has(f.id)).length!==ids.size||plan.pairs.some(p=>ids.has(p.keep.id)))throw new Error('사진 식별자가 겹칩니다');
     const records=structuredClone(plan.pairs.map(p=>p.file));
+    records.forEach((f,i)=>{f._file=originals.get(plan.pairs[i].file);f.handle=null;});
     records.forEach(f=>{if(String(f.thumb||'').startsWith('blob:'))f.thumb='';delete f._sourceVerification;delete f._dup;delete f._dupOf;});
     const retainedBytes=batches.reduce((n,b)=>n+b.records.reduce((m,f)=>m+(f._file?.size||0),0),0)+records.reduce((n,f)=>n+(f._file?.size||0),0);
     if(retainedBytes>128*1048576)throw new Error('이 기기 복구함 원본 보관 한도(128MB)를 넘습니다');
-    const journal={schemaVersion:1,revision:crypto.randomUUID(),batches:[...batches,{id:crypto.randomUUID(),at:new Date().toISOString(),records}]};
+    const remaining=state.files.filter(f=>!ids.has(f.id));
+    const keepers=plan.pairs.map(p=>({identity:duplicateKeeperIdentity(p.keep),path:(p.keep.prefix||'')+p.keep.name,hash:p.hash,pathCount:remaining.filter(f=>(f.prefix||'')+f.name===(p.file.prefix||'')+p.file.name).length}));
+    const journal={schemaVersion:1,revision:crypto.randomUUID(),batches:[...batches,{id:crypto.randomUUID(),at:new Date().toISOString(),records,keepers}]};
     if(!await guardedPersistMediaFiles(state.files.filter(f=>!ids.has(f.id)),plan.current,undefined,{expected:revision,value:journal}))throw new Error('저장 충돌 — 자료를 새로 확인하세요');
     plan.pairs.forEach(p=>{revokeThumbUrl(p.file);__sel.delete(p.file.id);});__photoCache.key='';
     return true;
@@ -6460,11 +6489,16 @@ async function restoreDuplicateBatch(id){
   try{
     const old=await idbGetStrict(PHOTO_RECOVERY_KEY),revision=photoRecoveryRevision(old),batch=old?.batches.find(b=>b.id===id);
     if(!batch)throw new Error('복구 기록이 변경되었습니다');
-    const fingerprint=()=>JSON.stringify({...serializeData(),savedAt:''}),before=fingerprint(),refs=state.files.slice(),current=()=>before===fingerprint()&&refs.length===state.files.length&&refs.every((f,i)=>f===state.files[i]);
+    const fingerprint=()=>JSON.stringify({...serializeData(),savedAt:''}),before=fingerprint(),refs=state.files.slice(),sources=refs.map(f=>[f._file,f.handle]),current=()=>before===fingerprint()&&refs.length===state.files.length&&refs.every((f,i)=>f===state.files[i]&&f._file===sources[i][0]&&f.handle===sources[i][1]);
     const paths=new Set(refs.map(f=>(f.prefix||'')+f.name)),ids=new Set(refs.map(f=>f.id));
     const records=structuredClone(batch.records);
-    for(const f of records){
-      const path=(f.prefix||'')+f.name;if(paths.has(path)||ids.has(f.id))throw new Error('이미 목록에 있거나 경로가 겹칩니다. 현재 자료를 확인하세요');
+    for(const [i,f] of records.entries()){
+      const path=(f.prefix||'')+f.name;
+      if(ids.has(f.id))throw new Error('이미 목록에 있습니다. 현재 자료를 확인하세요');
+      if(paths.has(path)){
+        const proof=batch.keepers?.[i],matches=proof?refs.filter(r=>duplicateKeeperIdentity(r)===proof.identity):[],pathCount=refs.filter(r=>(r.prefix||'')+r.name===path).length;
+        if(!proof||proof.pathCount!==pathCount||(pathCount>0&&(proof.path!==path||pathCount!==1))||matches.length!==1||duplicateMetadata(matches[0])!==duplicateMetadata(f)||await duplicateOriginalHash(matches[0])!==proof.hash||await duplicateOriginalHash(f)!==proof.hash||!current())throw new Error('경로가 겹치거나 유지한 원본이 변경되었습니다. 복구 기록을 유지합니다');
+      }
       const projects=state.projects.filter(p=>p.name===f.project);
       if(f.project&&projects.length!==1)throw new Error('기존 현장이 삭제되거나 이름이 변경되었습니다. 복구 기록을 유지합니다');
       if(f._aptUnit&&(f._aptUnit.project!==f.project||!aptUnitList(projects[0]).some(u=>u.id===f._aptUnit.unitId)))throw new Error('기존 동·호수 연결이 변경되었습니다. 복구 기록을 유지합니다');
@@ -6487,13 +6521,13 @@ async function photoRecoveryView(){
 }
 async function trimDuplicates(){
   if(__modalCloseLocked||photoIntakePending())return;
-  openModal('중복 원본 검증','<p role="status">원본을 읽어 SHA-256으로 비교 중입니다. 사진을 변경하지 않습니다.</p>');
+  openModal('중복 사진 원본만 남기기','<p role="status">원본을 읽어 SHA-256으로 비교 중입니다. 사진을 변경하지 않습니다.</p>');
   const modal=document.querySelector('#modalRoot .modal');
   try{
     const plan=await verifyDuplicatePhotos();if(!modal.isConnected)return;
-    openModal('중복 원본 검증', '<p><b>안전 정리 가능 '+plan.pairs.length+'장</b> · 원본 바이트와 현장·작업 정보가 같은 사진만 포함합니다. 미리보기·파일 크기만으로는 정리하지 않습니다.</p><p>이 기기의 목록에서 정리하며 PC·드라이브 원본은 유지합니다. 재스캔·다시 불러오기 시 사진이 다시 나타날 수 있습니다. 복구함은 이 브라우저에만 저장되며 JSON 백업에 포함되지 않습니다.</p>'+plan.pairs.map(p=>'<p style="overflow-wrap:anywhere">'+escapeHtml(p.file.name)+' → '+escapeHtml(p.keep.name)+' 유지</p>').join('')+'<details><summary>유지·확인 필요 '+plan.held.length+'장</summary>'+plan.held.map(r=>'<p>'+escapeHtml(r.f.name)+' · '+escapeHtml(r.reason)+'</p>').join('')+'</details>',[
+    openModal('중복 사진 원본만 남기기', '<p><b>안전 정리 가능 '+plan.pairs.length+'장</b> · 원본 바이트와 현장·작업 정보가 같은 사진만 포함합니다. 서버 원본 증빙이 있는 사진을 우선 남기고, 다음으로 기존 원본 연결과 사본 표시가 없는 이름을 우선합니다. 미리보기·파일 크기만으로는 정리하지 않습니다.</p><p>이 기기의 목록에서 정리하며 PC·드라이브 원본은 유지합니다. 재스캔·다시 불러오기 시 사진이 다시 나타날 수 있습니다. 복구함은 이 브라우저에만 저장되며 JSON 백업에 포함되지 않습니다.</p>'+plan.pairs.map(p=>'<p style="overflow-wrap:anywhere">'+escapeHtml(p.file.name)+' → '+escapeHtml(p.keep.name)+' 유지</p>').join('')+'<details><summary>유지·확인 필요 '+plan.held.length+'장</summary>'+plan.held.map(r=>'<p>'+escapeHtml(r.f.name)+' · '+escapeHtml(r.reason)+'</p>').join('')+'</details>',[
       {label:'닫기',cls:'ghost',fn:closeModal},{label:'복구함 보기',cls:'ghost',fn:photoRecoveryView},
-      ...(plan.pairs.length?[{label:plan.pairs.length+'장 안전 정리',cls:'warn',fn:async()=>{if(await saveVerifiedDuplicates(plan)){markDirty();closeModal();render();toast('검증된 사진을 정리했습니다. 사진 도구의 복구함에서 되돌릴 수 있습니다.');}}}]:[])]);
+      ...(plan.pairs.length?[{label:plan.pairs.length+'장 중복 삭제',cls:'warn',fn:async()=>{if(await saveVerifiedDuplicates(plan)){markDirty();closeModal();render();toast('검증된 사진을 정리했습니다. 사진 도구의 복구함에서 되돌릴 수 있습니다.');}}}]:[])]);
   }catch(e){if(modal.isConnected)openModal('중복 검증 중단','<p>'+escapeHtml(e.message||e)+'</p>');}
 }
 
@@ -7478,7 +7512,7 @@ function photoToolsView(){
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">점검</div>'+
     it('📍','사진 배정 점검','GPS 로 현장과 맞지 않는 사진을 찾아 다시 배정하고, 중복 사진을 정리합니다.','photoAssignmentAudit')+
     it('🗂','사진 보관 상태 확인','서버 연결·이 화면의 파일·PC 연결·미리보기 기록을 구분합니다. 사진을 변경하지 않습니다.','photoSourceView')+
-    it('🔎','중복 원본 검증','원본 내용과 작업 정보가 같은 사진만 안전 정리합니다.','trimDuplicates')+
+    it('🔎','중복 사진 원본만 남기기','파일 내용과 현장·작업 정보가 같은 사진만 정리합니다.','trimDuplicates')+
     it('↩️','중복 정리 복구함','이 기기에서 안전 정리한 사진 기록을 되돌립니다.','photoRecoveryView')+
     it('🎬','원본 재연결·사진/영상 전송','기존 기록에 원본 연결, 서버 검증, 실패 파일 이어 올리기','hjMediaView'),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -29847,7 +29881,8 @@ function viewPhotos(){
     <span class="pb-stat">묶음 <b>${clusters.length}</b></span>
     <span class="pb-stat">사진 <b>${photos.length}</b></span>
     ${(__narrow&&!dupCount)?'':`<span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>`}
-    ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'전체 사진 보기':'의심 사진 보기'}</button><button class="warn tiny" id="btnTrimDup">원본 검증</button>`:''}
+    ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'전체 사진 보기':'의심 사진 보기'}</button>`:''}
+    <button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>
     ${__sureN?`<button class="clay tiny" id="btnSuggestAll" title="현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.">✨ ${__narrow?'추천':'추천대로'} ${__sureN}묶음 배정</button>`:''}
   </div>`;
   if(!__narrow&&__sureN)html+=`<p class="hint" style="margin:0 0 8px">✨ <b>추천대로 ${__sureN}묶음 배정</b>은 현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.</p>`;
