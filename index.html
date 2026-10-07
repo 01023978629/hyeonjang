@@ -13359,8 +13359,9 @@ function hjUnitJobEnsureDraft(draft,projectName,unitId,jobId){
   if(hjUnitJobsStored(u).length>=HJ_UNIT_JOB_MAX)throw new Error('한 위치에는 작업건을 '+HJ_UNIT_JOB_MAX+'건까지 둘 수 있습니다.');
   const job=hjUnitJobFromOrder(o);
   u.jobs=(Array.isArray(u.jobs)?u.jobs:[]).concat(job);
-  // 오더에 세대 id 를 남긴다(라벨을 고쳐도 어느 세대 오더였는지 남게). OfficeOps 전환 오더는 키 목록을 정확히 검사하므로 손대지 않는다.
-  if(o.source!=='officeops-preventive-inspection')o.unitId=u.id;
+  // 오더에 세대 id 를 남긴다(라벨을 고쳐도 어느 세대 오더였는지 남게). 키 목록을 정확히 검사하는 전환 오더(hjOrderKeysFrozen)는 손대지 않는다.
+  // (이 구간은 office-ops-isolation 검사가 격리를 지키는 곳이라 전환 서버 이름·source 값을 여기 적지 않는다.)
+  if(!hjOrderKeysFrozen(o))o.unitId=u.id;
   return job;
 }
 /* 한 화면을 그리는 동안 쓰는 작업건 묶음 — 사진·견적·AS 마다 hjUnitJobsOf 를 다시 돌리면 사진×오더×세대가 되어
@@ -36699,6 +36700,9 @@ function officeOpsAptOrderDraft(inspection,options){
   return Object.freeze({id:input.pendingOrderId,officeId:localOffice.id,unit:'공용부',text:terms.scope,amount:terms.quotedAmount,pipeType:'미확정',date:localDate(),state:'visit',
     source:'officeops-preventive-inspection',sourceOfficeOpsInspectionId:inspection.inspectionId,sourceOfficeOpsConversionId:input.conversionId});
 }
+/* 전환 오더(예방점검 → 유료 오더)는 officeOpsValidateExistingConversionOrder 가 키 목록을 정확히 검사한다 — 다른 구간(작업건 등)이
+   오더에 칸을 덧붙이기 전에 이것으로 묻는다. OfficeIntake 구간은 격리 검사 때문에 source 값을 직접 적을 수 없어 여기 둔다. */
+function hjOrderKeysFrozen(o){return !!o&&o.source==='officeops-preventive-inspection';}
 function officeOpsValidateExistingConversionOrder(order,context){
   const expectedKeys=['id','officeId','unit','text','amount','pipeType','date','source','sourceOfficeOpsInspectionId','sourceOfficeOpsConversionId','status','commercialGateVersion','commercialTerms','commercialApproval'];
   const proof=context&&context.proof,terms=context&&context.commercialTerms,receipt=context&&context.commercialApproval,localOffice=context&&context.localOffice;
