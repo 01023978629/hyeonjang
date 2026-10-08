@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v354 🗓 여러 날 공정 이어 보이기 (Claude Cowork, v353 위 — PR 대기)
+
+- 같은 요청(운영 편의). 🗓 공정표는 3일짜리 타일을 '타일 (3일차 시작)' **일정 하나**(시작일)와 메모 `시작~끝 (3일)` 로 만든다 — 그래서 둘째·셋째 날에는 대시보드 '📅 오늘 일정'·📋 내 업무·달력·🔔 알림 문자 어디에도 안 보였고("오늘은 할 일이 없습니다"), 공정 진행률은 둘째 날부터 '예정', 🕒 지연 점검은 **아직 하는 중인 공정**을 시작 이틀 뒤부터 지연이라 불렀다. 버전 핀 `hyeonjang-v354-multiday`. 새 저장 키·새 일정 없음(읽기 전용).
+- 기간 `hjSchSpan(s)`: 메모 첫머리 `HJ_RANGE_MEMO_RE`(v353 에서 만든 것을 이번에 `HJ_PLAN_SKIP_RE` 옆으로 옮김 — 렌더 경로가 쓰므로 앞쪽에)가 **그 일정 날짜~더 늦은 날**(60일 이하)일 때만, 아니면 하루짜리. `hjSchContOn(s,날)` — 시작 다음 날~끝, 일요일 제외, 완료 보고(`hjSchReported`)면 끝난 것 → `{day,days,from,to}`. `hjSchContinuing(날,filter)`·`hjSchContLabel` ('↳ 이어서 2/3일째 · 11/4(수)~11/6(금)').
+- 붙인 곳: `dashboardTodayHTML`(운영 루틴 제외, `[data-schcont]` 줄) · `hjMyWorkSchedules`(→ 📋 내 업무; 이어지는 날 카드는 [▶ 작업 시작] 없음 — 시작 기록은 첫날 것이라 '진행 중 · 몇 시부터' 가 틀린다) · `calendarHTML`(이어지는 날 옅은 막대 `.cal-cont`, 읽기 글 '이어지는 공정 N건') · `viewSchedule`(고른 날, 안 골랐으면 오늘 묶음 끝에 붙임; 일요일 고르면 빈 상태) · `notifyDrafts`(작업자 글 '작업: 타일 (2/3일째)', 고객 글 '…작업이 이어집니다'; AI 도구 `schedule_notify` 도 같은 목록) · `hjPhaseProgress`(이어지는 날 '진행 중') · `hjPhaseDelays`(끝나는 날부터 셈, 결과에 `to`; `hjDelayView` 에 '시작~끝 예정').
+- 새 `tests/multiday-v354.e2e.js` 6/6(v353 에서는 1/6 — ⑥ 저장본 불변만 원래도 참): 기간 규칙(일요일 낀 도배·완료·사람 메모), 대시보드·내 업무, 달력 막대·고른 날·일요일·390px, 알림 문안, 진행률·지연, 읽기 경로 불변. 오늘은 `localDate` 를 가로채 2026-11-05(목)로 고정. 관련 15개(board-v351·delay-v347·extraprogress-v346·uiux·vatproof-v349·ics-import·ics-save·menu-schedule·mobile-nav-badges·mobile-todo-nav·my-work·prep-check·shared-todo·cascade-v353·schedule-safety)·정적 검사 17개 통과.
+- 다음 후보: 🔍 일정 점검(`scheduleConflicts`)의 하루 과부하 셈에 이어지는 날 인원·시간을 더하기(지금은 시작일만 센다).
+
 ## 2026-10-09 v353 📅 뒤 일정 같이 옮기기 (Claude Cowork, v352 위 — PR 대기)
 
 - 대표 "회계보다 회사가 운영되는 일을 하는 부분을 발전". 비·자재·앞 공정 때문에 공정 하나가 밀리면 뒤 공정(도배·바닥·청소…)을 **일정 하나하나 열어** 날짜를 바꿔야 했다(공정 5개면 다섯 번). 버전 핀 `hyeonjang-v353-cascade`. 새 저장 키 없음(41개), 메뉴 수 122 그대로.
