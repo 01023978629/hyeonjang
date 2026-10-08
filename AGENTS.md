@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v347 공정 지연 점검 (Claude Cowork, v346 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘" — v346 공정 진행률의 자연스러운 다음: **일정은 지났는데 사진도 완료 보고도 없는 공정**을 찾아 알린다(1인 시공은 비·자재·앞 공정으로 밀리는데, 밀린 줄 모르면 고객에게 "오늘 온다더니" 가 된다). 버전 핀 `hyeonjang-v347-delaycheck`. 새 저장 키·새 더보기 메뉴 없음(120 그대로).
+- `hjPhaseDelays(p,today)` (읽기 전용) — 시공(stage 2)·보관 아닌 현장의 🗓 일정 가운데 `HJ_DELAY_MIN_DAYS`(2)일 이상 지났고, 완료 보고(`report.progress==='완료'`/`report.done`)가 없고, `hjPhaseProgress` 가 완료·진행 중으로 보지 않으며(그 공정 사진 없음), 같은 제목의 더 늦은 일정(이미 옮긴 것)이 없는 것. 제목은 v346 과 같은 `HJ_PLAN_SUFFIX_RE`/`HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측 제외). **어제 것은 지연이 아니다**(하루 밀림은 흔하다). 상담·완료 현장은 대상이 아니다.
+- 대시보드 '오늘의 체크' 🕒 줄 + 현장 버튼 `data-delayquick` → `hjDelayView(name)`: 공정마다 [✅ 완료 보고]=기존 `myWorkReport(일정 id)`, [📅 일정 옮기기]=기존 `openScheduleEdit(id)`, 아래 [✉️ 일정 안내 문자]=`hjDelayText`(공정 이름만 적고 **조정된 날짜는 '(여기에 적어 주세요)' 빈칸** — 날짜·사유를 지어내지 않는다, 연락처 있으면 `hjSendSms`, 없으면 복사, 자동 발송 없음). 현장 보드(projHealthBoard) 축은 늘리지 않았다 — `health-board` 의 openAction 화이트리스트(더보기 함수만) 계약 때문.
+- 새 `tests/delay-v347.e2e.js` 3/3(v346 에서는 0/3): 판정 경계(완료 보고·사진·옮긴 일정·어제·💰/AS·시공 아닌 현장), 대시보드→창→기존 함수 연결·문자 초안에 날짜 없음·서버 요청 0·390px, 읽기 경로 저장본 불변(v345 규칙). 관련 9개(brief-actions·health-board·extraprogress-v346·punchlist-v345·quickinput-v344·schedule-safety·completion-links·my-work·mobile-operations) 9/9.
+
 ## 2026-10-08 v346 공정 진행률·추가공사 미청구 경고 (Claude Cowork, v345 위 — PR 대기)
 
 - 대표 "더 진행" — v345 비교표의 다음 후보 둘(Houzz Pro 단계별 진행률 · 추가공사 미청구 경고). 새 입력·새 저장 키 없음(최상위 41개 그대로). 버전 핀 `hyeonjang-v346-extraprogress`.

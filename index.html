@@ -3266,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v346-extraprogress';
+const APP_BUILD='hyeonjang-v347-delaycheck';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8747,6 +8747,10 @@ function hjDailyBrief(){
     const exOpen=acts.filter(p=>(p.stage||0)>=2&&hjExtrasBill(p).pending.length>0);
     if(exOpen.length){const n=exOpen.reduce((a,p)=>a+hjExtrasBill(p).pending.length,0);
       checks.push({ic:'🖊',t:'확인 전·금액 협의 추가공사 '+n+'건이 남은 현장 '+exOpen.length+'곳: '+exOpen.slice(0,3).map(p=>p.name).join(', ')+(exOpen.length>3?' 외':'')+' — 확인받고 금액을 적어야 청구서·잔금에 들어가요',acts:exOpen.slice(0,4).map(p=>({k:'extra',p:p.name}))});}
+    // v347 공정 지연 — 시공 현장의 지난 일정 가운데 사진·완료 보고가 없는 공정(hjPhaseDelays). 밀렸으면 일정을 옮기고 고객에게 알린다.
+    const late=acts.map(p=>({p,d:hjPhaseDelays(p,todayK)})).filter(x=>x.d.length);
+    if(late.length){const n=late.reduce((a,x)=>a+x.d.length,0);
+      checks.push({ic:'🕒',t:'일정이 지났는데 사진·완료 보고가 없는 공정 '+n+'개: '+late.slice(0,3).map(x=>x.p.name+'('+x.d[0].name+' '+x.d[0].late+'일)').join(', ')+(late.length>3?' 외':'')+' — 밀렸으면 일정을 옮기고 고객에게 알려 주세요',acts:late.slice(0,4).map(x=>({k:'delay',p:x.p.name}))});}
   }catch(e){}
   const adNoPerf=(state.adPosts||[]).filter(a=>a&&!(a.perf||a.performance||a.result||a.metrics)).length;
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
@@ -8931,7 +8935,7 @@ function hjDailyBriefHTML(){
       h+=sec('✅ 오늘의 체크');
       // v344 알림에서 바로 입력 — 현장 이름 버튼이 입금 기록(recvQuickView)·고객 정보(hjCustQuickView) 창을 연다
       h+=b.checks.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+
-        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick',extra:'data-extraquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고',extra:'추가공사 확인'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 ',extra:'🖊 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
+        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick',extra:'data-extraquick',delay:'data-delayquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고',extra:'추가공사 확인',delay:'공정 지연 점검'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 ',extra:'🖊 ',delay:'🕒 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
         '</div>').join('');
     }
   }
@@ -12050,6 +12054,62 @@ function hjPhaseProgressLine(pr){
   if(!pr||!pr.total)return '';
   return '공정 '+pr.total+'개 중 '+pr.done.length+'개 완료'+(pr.done.length?' ('+pr.done.slice(0,4).join('·')+(pr.done.length>4?' 외':'')+')':'')+
     (pr.doing.length?' · 진행 중: '+pr.doing.slice(0,3).join('·'):'')+(pr.todo.length?' · 다음: '+pr.todo[0]:'');
+}
+/* ═══════════ 🕒 공정 지연 점검 (v347) — 일정은 지났는데 사진도 완료 보고도 없는 공정 ═══════════
+   1인 시공은 비·자재·앞 공정 때문에 일정이 밀리는 일이 잦은데, 밀린 줄 모르고 고객에게 말을 안 하면 "오늘 온다더니" 가 된다.
+   읽기 전용 — 이 현장 🗓 일정(💰·AS 방문·상담·실측 제외) 가운데 날짜가 이틀 이상 지났고(어제 것은 아직 '늦었다' 고 하지 않는다),
+   완료 보고가 없고, 그 공정 사진도 없고(hjPhaseProgress 가 완료·진행 중으로 보지 않음), 같은 제목의 더 늦은 일정도 없는(이미 옮긴 것) 것.
+   시공(stage 2) 현장만 — 상담·실측 단계의 지난 일정은 '시공 지연' 이 아니고, 완료 현장은 끝났다. 날짜를 지어내거나 고객에게 자동으로 보내지 않는다. */
+const HJ_DELAY_MIN_DAYS=2;
+function hjDaysBetween(from,to){const a=new Date(String(from)+'T00:00:00'),b=new Date(String(to)+'T00:00:00');if(isNaN(a)||isNaN(b))return 0;return Math.round((b-a)/86400000);}
+function hjPhaseDelays(p,today){
+  if(!p||p.archived||(p.stage||0)!==2)return [];
+  today=today||localDate();
+  const mine=(state.schedule||[]).filter(s=>s&&s.project===p.name&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.date||'')));
+  const title=s=>String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim();
+  const done=s=>!!(s.report&&(s.report.progress==='완료'||String(s.report.done||'').trim()));
+  let pr=null;try{pr=hjPhaseProgress(p);}catch(e){pr={done:[],doing:[]};}
+  const worked=new Set([...pr.done,...pr.doing]);
+  const out=[];
+  mine.forEach(s=>{
+    const t=title(s);if(!t||HJ_PLAN_SKIP_RE.test(t)||done(s))return;
+    const late=hjDaysBetween(s.date,today);if(late<HJ_DELAY_MIN_DAYS)return;
+    if(worked.has(t)||[...worked].some(n=>t===n||t.startsWith(n+' ')))return;           // 사진이 있거나 완료 보고가 있는 공정은 손을 댄 것이다
+    if(mine.some(o=>o!==s&&title(o)===t&&hjDaysBetween(o.date,today)<HJ_DELAY_MIN_DAYS))return;   // 같은 공정을 뒤로 옮겨 둔 일정이 있다
+    out.push({id:s.id,name:t,date:s.date,late});
+  });
+  return out.sort((a,b)=>b.late-a.late);
+}
+// 고객 안내 글 — 날짜·사유를 지어내지 않는다. 새 날짜는 대표가 적는다. 자동 발송 없음.
+function hjDelayText(p,items){
+  const cust=(p&&p.customer)||{};
+  const L=['['+COMPANY.name+'] '+p.name+' 공사 일정 안내'];
+  L.push('안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.');
+  L.push((items||[]).map(x=>x.name).join('·')+' 작업이 예정보다 늦어지고 있어 일정을 조정하고 있습니다.');
+  L.push('조정된 날짜: (여기에 적어 주세요)');
+  L.push('불편을 드려 죄송합니다. 확정되는 대로 다시 안내드리겠습니다.');
+  L.push('- '+COMPANY.owner+' '+COMPANY.tel);
+  return L.join('\n');
+}
+function hjDelayView(projectName){
+  const p=(state.projects||[]).find(x=>x&&x.name===projectName);
+  if(!p){toast('현장을 찾을 수 없습니다: '+projectName);return;}
+  const items=hjPhaseDelays(p);
+  const rows=items.map(x=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #fcd34d;border-radius:11px;padding:9px;margin-bottom:8px">'+
+      '<span style="flex:1;min-width:140px;font-size:13.5px"><b>'+escapeHtml(x.name)+'</b><br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(x.date)+' 예정 · <b style="color:#b45309">'+x.late+'일 지남</b></span></span>'+
+      '<button type="button" class="ghost dlReport" data-id="'+escapeAttr(String(x.id))+'" style="min-height:44px;padding:0 10px;font-size:12.5px">✅ 완료 보고</button>'+
+      '<button type="button" class="ghost dlMove" data-id="'+escapeAttr(String(x.id))+'" style="min-height:44px;padding:0 10px;font-size:12.5px">📅 일정 옮기기</button></div>').join('');
+  const body='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">일정은 지났는데 사진도 완료 보고도 없는 공정입니다. 했으면 [완료 보고], 밀렸으면 [일정 옮기기] 뒤 고객에게 알려 주세요. 자동으로 보내지 않습니다.</div>'+
+    (rows||'<div class="empty" style="padding:14px"><b>지연 의심 공정이 없습니다</b></div>');
+  openModal('🕒 공정 지연 점검 — '+escapeHtml(p.name),body,[
+    ...(items.length?[{label:'✉️ 일정 안내 문자',cls:'clay',fn:()=>{const t=hjDelayText(p,items);
+        if(p.customer&&p.customer.phone){hjSendSms(p.customer.phone,t);toast('문자 앱을 열었어요 — 조정된 날짜를 적고 보내세요');}
+        else coworkCopy(t,'일정 안내 글');}}]:[]),
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelectorAll('.dlReport').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.id));
+  root.querySelectorAll('.dlMove').forEach(b=>b.onclick=()=>openScheduleEdit(b.dataset.id));
+  return {현장:p.name,지연:items.length};
 }
 
 /* ═══════════ 📨 고객 진행 보고 — 문안 + 사진 리포트 + 고객 문자 ═══════════ */
@@ -33108,7 +33168,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -33323,6 +33383,7 @@ function setupDelegation(){
     if(d.punchquick!==undefined){e.stopPropagation();return punchListView(d.punchquick);}
     if(d.progressquick!==undefined){e.stopPropagation();return customerProgress(d.progressquick);}
     if(d.extraquick!==undefined){e.stopPropagation();return extraWork(d.extraquick);}   // v346 추가공사 확인 창
+    if(d.delayquick!==undefined){e.stopPropagation();return hjDelayView(d.delayquick);}   // v347 공정 지연 점검
     if(d.portal!==undefined){e.stopPropagation();return portalView(d.portal);}
     if(d.ptopen!==undefined){e.stopPropagation();return portalView(d.ptopen);}
     if(d.ptcopy!==undefined){e.stopPropagation();const p=state.projects.find(x=>x.name===d.ptcopy);if(p&&p.portalUrl)coworkCopy(p.portalUrl,'고객 페이지 링크');else toast('아직 발행 전이에요');return;}
