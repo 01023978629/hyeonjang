@@ -75,7 +75,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       window.__calls = []; const oReport = window.myWorkReport, oEdit = window.openScheduleEdit, oSms = window.hjSendSms;
       window.myWorkReport = id => { __calls.push(['report', String(id)]); }; window.openScheduleEdit = id => { __calls.push(['edit', String(id)]); };
       window.hjSendSms = (tel, text) => { __calls.push(['sms', tel, text]); };
-      let fetches = 0; const of = window.fetch; window.fetch = (...a) => { fetches++; return of(...a); };
+      // 앱 서버(릴레이·고객 페이지·전자계약) 요청만 센다 — 병렬 실행에서는 부팅이 늦게 쏘는 글꼴·GIS 미리읽기가 섞여 거짓 실패가 난다(v346 검사에서 1회 관찰)
+      let fetches = 0; const of = window.fetch; window.fetch = (...a) => { if (/script\.google|workers\.dev|\/portal\/|\/relay|127\.0\.0\.1:8398/.test(String(a[0]))) fetches++; return of(...a); };
       document.querySelector('[data-delayquick="대전"]').click(); await new Promise(r => setTimeout(r, 100));
       const root = document.getElementById('modalRoot');
       const title = root.querySelector('.modal h3').textContent, rows = [...root.querySelectorAll('.dlReport')].length;

@@ -27,7 +27,8 @@ const EUCKR_CSV_HEX = 'b0c5b7a1c0cfc0da2cc3e2b1ddb1ddbed72cc0d4b1ddb1ddbed72cb0c
   page.on('pageerror', e => errs.push(String(e)));
   page.on('dialog', d => d.accept());
   let fetches = 0;
-  await page.route('https://**/*', route => { fetches++; route.abort(); });
+  // 가져오기가 만들 수 있는 요청만 센다(xlsx 라이브러리 CDN·앱 서버) — 부팅이 늦게 쏘는 글꼴·GIS 미리읽기는 병렬 실행에서 시점이 흔들린다
+  await page.route('https://**/*', route => { if (/xlsx|script\.google|workers\.dev|\/portal\//.test(route.request().url())) fetches++; route.abort(); });
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1400);

@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v351 현장 보드에 지연·추가공사·증빙·보수 축 + 더보기 🕒 공정 지연 점검 (Claude Cowork, v350 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘". v345~v348 신호(보수 필요·추가공사 확인 전·공정 지연·증빙 미기록)가 대시보드 '오늘의 체크' 줄에만 있어 **맨 위 🏥 현장 보드 순위에 안 잡혔다**(v347 때 화이트리스트 계약 때문에 미뤘던 것). 버전 핀 `hyeonjang-v351-boardsignals`. 새 저장 키 없음(41개).
+- `projHealthBoard` 에 축 넷 — `idx.delay/extra/proof/punch` 를 현장마다 한 번씩 **원 함수 결과로만** 만든다(`hjPhaseDelays`·`hjExtrasBill(p).pending`(stage≥2)·`hjProofPending(today,name)`·`hjPunchOpen`(stage≥2), 임계값 재계산 없음 — 검사 ①이 축 집합 = 원 함수 집합을 대조). 라벨 '공정 지연 N개 · D일'·'추가공사 확인 전 N건'·'증빙 미기록 N건 · D일'·'보수 필요 N곳'. 긴급은 `BOARD_URGENT.delayDays`(7)·`proofDays`(5, 현금영수증 발행 기한)만, 나머지 둘은 주의. 보관 현장은 루프가 건너뛴다.
+- 배지가 **그 현장 화면**을 연다: reason 에 `arg`(현장 이름) → `data-boardarg` → 위임이 `fn(arg)`. `BOARD_ACTIONS` 에 `hjDelayPick·extraWork·hjProofView·punchListView` — 모두 더보기에서도 부르는 함수(health-board ⑦ `inMah` 계약 유지, `KNOWN_ACTIONS` 넷 추가). 위임 셀렉터에 `[data-boardarg]` 등록(click-delegation 검사가 잡았다).
+- **더보기 현장·시공 [🕒 공정 지연 점검]**(`delaycheck` → `hjDelayPick()`): 지연 있는 시공 현장이 하나면 바로 `hjDelayView`, 여럿이면 고르기(최장 지연 순), 없으면 빈 상태 창(더보기 전수 검사는 화면이 열려야 한다). `hjDelayPick(현장)` 은 그 현장 창 — 보드 배지가 이걸 쓴다. 행동 계약 **121 → 122**(`mobile-more-tools` TARGETS `delaycheck:['hjDelayPick']`, `mobile-more-sweep`·`mobile-office-connect`). `MORE_HELP.delaycheck` 검색어.
+- 검사 안정화(같은 커밋): `extraprogress-v346` ②·`delay-v347` ②·`bankimport-v350` ③의 '요청 0' 단정이 **모든 fetch** 를 세어 병렬 실행에서 부팅이 늦게 쏘는 글꼴·GIS 미리읽기에 거짓 실패했다(Codex Windows 지정 검사에서 extraprogress-v346 1회, 단독 재시도 통과). 이제 앱이 보낼 수 있는 요청(고객 페이지 `/portal/save`·릴레이·전자계약·xlsx CDN)만 센다 — 단정의 뜻은 그대로.
+- 새 `tests/board-v351.e2e.js` 4/4(v350 에서는 0/4): 축 드리프트·라벨·긴급·보관/상담 제외, 배지 → 함수(현장)·화이트리스트 밖 무시, 더보기 셋 경로·메뉴 122·390px, 읽기 경로 저장본 불변. 검사 시드는 기존 여섯 축 함수를 `()=>[]` 로 비운다(방치 축이 빈 시드 현장을 전부 긴급으로 만들어 등급 단정이 안 됐다). 관련 11개(health-board 11/11·delay-v347·brief-actions·punchlist-v345·extraprogress-v346·payproof-v348·extra-work·completion-links·mobile-more-tools·mobile-office-connect·mobile-more-sweep) 통과(별도 포트 사본으로 실행).
+
 ## 2026-10-09 v350 🏦 통장 입금 내역 가져오기 (Claude Cowork, v349 위 — PR 대기)
 
 - 대표 "개발을 더 진행해줘". 실데이터(2026-10-08) 견적 72곳에 **입금 기록 0건** — 미수·독촉·분할납·부가세·증빙(v348)이 전부 입금 기록 위에 서 있는데 그 바닥이 비어 있었다. 통장에 들어온 돈을 한 건씩 손으로 옮기는 일이 안 되고 있었으니, 은행 거래내역 파일에서 **입금 줄만 뽑아 현장을 제안하고 사람이 체크한 것만 저장**한다. 버전 핀 `hyeonjang-v350-bankimport`. 새 저장 키 없음(41개), 더보기 메뉴 수 121 그대로(💰 수금 이력 창의 [🏦 통장에서 가져오기] 버튼).

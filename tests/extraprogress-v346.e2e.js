@@ -80,7 +80,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const p = state.projects.find(x => x.name === '대전');
       p.portalUrl = 'https://example.invalid/p/x'; p.portalSig = portalSig('대전');
       const stale0 = portalStaleList().map(x => x.name);
-      let fetches = 0; const of = window.fetch; window.fetch = (...a) => { fetches++; return of(...a); };
+      // 고객 페이지 저장 요청(/portal/save)만 센다 — 병렬 실행에서는 부팅이 늦게 쏘는 다른 요청(글꼴·GIS 미리읽기)이 같은 창에 섞여 거짓 실패가 났다(Codex Windows 실행 1회)
+      let fetches = 0; const of = window.fetch; window.fetch = (...a) => { if (/\/portal\/save/.test(String(a[0]))) fetches++; return of(...a); };
       await setPhase('a2', '마감·청소');   // 타일 사진을 마감 공정으로 — 진행률이 바뀐다
       await new Promise(r => setTimeout(r, 120));
       const stale1 = portalStaleList().map(x => x.name);
@@ -93,7 +94,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.stale0.length === 0 && JSON.stringify(r.stale1) === JSON.stringify(['대전']), '갱신 필요 목록: ' + JSON.stringify([r.stale0, r.stale1]));
     // 타일 사진이 사라졌으니 타일은 다시 '예정'이다 — 사진이 없는 공정을 완료로 지어내지 않는다
     assert(r.memo === '진행 중 · 공정 4개 중 2개 완료 (철거·도배) · 진행 중: 마감·청소 · 다음: 타일', '바뀐 메모: ' + r.memo);
-    assert(r.fetches === 0, '서버 설정이 없으면 요청하지 않는다: ' + r.fetches);
+    assert(r.fetches === 0, '서버 설정이 없으면 고객 페이지 저장 요청을 보내지 않는다: ' + r.fetches);
     assert(r.keys === 41, '최상위 저장 키 41개 그대로: ' + r.keys);
   });
 
