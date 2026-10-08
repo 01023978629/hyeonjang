@@ -3266,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v343-followup';
+const APP_BUILD='hyeonjang-v344-quickinput';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8136,6 +8136,46 @@ function setCost(name,field,val){const p=state.projects.find(x=>x.name===name);i
 
 /* ---------- 고객 정보 ---------- */
 function setCustomer(name,field,val){const p=state.projects.find(x=>x.name===name);if(p){if(!p.customer)p.customer={name:'',phone:'',addr:''};p.customer[field]=val;markDirty();/*입력 중 재렌더 안 함*/}}
+/* v344 고객 정보 빠른 입력 — 2026-10-08 자료: 45개 현장 모두 고객 이름·연락처가 비어 미수 독촉·안부 문자·고객 페이지가
+   작동하지 않았다. 견적 파일에는 연락처가 없어 자동으로 채울 수 없으니, 필요한 순간(오늘의 체크 알림·견적을 현장에 연결한 직후)에
+   바로 넣는 창을 연다. 저장은 현장 화면 고객 칸과 같은 setCustomer. */
+const __custOffered=new Set();
+function hjCustDigits(v){return String(v||'').replace(/[^0-9]/g,'');}
+function hjCustQuickView(pjName,opts){
+  const p=(state.projects||[]).find(x=>x&&x.name===pjName);
+  if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const cu=p.customer||{name:'',phone:'',addr:''};
+  const cards=(state.files||[]).filter(f=>f&&f.kind==='card'&&f.contact).length;
+  const lead=opts&&opts.lead;
+  const field=(id,label,val,ph,mode)=>'<label for="'+id+'" style="font-size:11.5px;color:var(--muted)">'+label+'</label>'+
+    '<input id="'+id+'" type="text"'+(mode?' inputmode="'+mode+'"':'')+' value="'+escapeAttr(val||'')+'" placeholder="'+escapeAttr(ph)+'" style="width:100%;padding:11px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">';
+  const body=(lead?'<p style="margin:0 0 10px;font-size:13.5px">'+escapeHtml(lead)+'</p>':'')+
+    field('cqName','고객 이름',cu.name,'예: 김민수')+field('cqPhone','연락처',cu.phone,'010-0000-0000','tel')+field('cqAddr','주소 (선택)',cu.addr,'현장 주소')+
+    '<p class="hint" style="margin:0">연락처를 넣어 두면 미수 독촉·안부 문자·고객 페이지가 이 번호로 갑니다.</p>';
+  openModal('👤 고객 정보 — '+pjName,body,[
+    {label:lead?'나중에':'닫기',cls:'ghost',fn:closeModal},
+    ...(cards?[{label:'📇 명함에서 불러오기',cls:'ghost',fn:()=>{closeModal();loadCustomerFromCard(pjName);}}]:[]),
+    {label:'저장',cls:'clay',fn:()=>{
+      const n=document.getElementById('cqName').value.trim(),ph=document.getElementById('cqPhone').value.trim(),a=document.getElementById('cqAddr').value.trim();
+      if(ph&&hjCustDigits(ph).length<9){hjFieldIssue(document.getElementById('cqPhone'),'연락처 숫자를 확인하세요 (예: 010-1234-5678)');return;}
+      if(!n&&!ph&&!a){hjFieldIssue(document.getElementById('cqName'),'이름이나 연락처를 넣어 주세요');return;}
+      setCustomer(pjName,'name',n);setCustomer(pjName,'phone',ph);setCustomer(pjName,'addr',a);
+      closeModal();render();toast('👤 '+pjName+' 고객 정보를 저장했어요');
+    }}
+  ]);
+  return true;
+}
+// 견적을 현장에 연결한 직후, 그 현장 고객 이름·연락처가 모두 비었으면 한 번만 묻는다(이 화면에서 같은 현장은 다시 묻지 않음)
+function hjCustOfferAfterAssign(pjName){
+  try{
+    if(!pjName||__custOffered.has(pjName))return false;
+    const p=(state.projects||[]).find(x=>x&&x.name===pjName);if(!p)return false;
+    const cu=p.customer||{};
+    if(String(cu.name||'').trim()||hjCustDigits(cu.phone).length>=8)return false;
+    __custOffered.add(pjName);
+    return hjCustQuickView(pjName,{lead:'견적을 '+pjName+'에 연결했어요. 고객 연락처도 넣어 둘까요?'});
+  }catch(e){return false;}
+}
 function loadCustomerFromCard(projName){
   const cards=state.files.filter(f=>f.kind==='card'&&f.contact);
   if(!cards.length){toast('불러올 명함 연락처가 없습니다. 명함을 OCR하면 목록에 나옵니다.');return;}
@@ -8676,9 +8716,9 @@ function hjDailyBrief(){
   //   견적 파일에는 고객 연락처가 없어 자동으로 채울 수 없다 — 빈 곳을 알려 주고 직접 넣게 한다.
   try{
     const noRecv=pay.filter(x=>x.est>0&&!x.recv&&!(state.payLog||[]).some(r=>r&&r.project===x.name)).map(x=>x.name);
-    if(noRecv.length)checks.push({ic:'💰',t:'견적은 있는데 수금 기록이 없는 현장 '+noRecv.length+'곳: '+noRecv.slice(0,3).join(', ')+(noRecv.length>3?' 외':'')+' — 받은 돈을 입력해야 미수·독촉이 작동해요'});
+    if(noRecv.length)checks.push({ic:'💰',t:'견적은 있는데 수금 기록이 없는 현장 '+noRecv.length+'곳: '+noRecv.slice(0,3).join(', ')+(noRecv.length>3?' 외':'')+' — 받은 돈을 입력해야 미수·독촉이 작동해요',acts:noRecv.slice(0,4).map(n=>({k:'recv',p:n}))});
     const noPhone=acts.filter(p=>projStats(p.name).est>0&&String((p.customer&&p.customer.phone)||'').replace(/[^\d]/g,'').length<8).map(p=>p.name);
-    if(noPhone.length)checks.push({ic:'📇',t:'고객 연락처 없는 견적 현장 '+noPhone.length+'곳: '+noPhone.slice(0,3).join(', ')+(noPhone.length>3?' 외':'')});
+    if(noPhone.length)checks.push({ic:'📇',t:'고객 연락처 없는 견적 현장 '+noPhone.length+'곳: '+noPhone.slice(0,3).join(', ')+(noPhone.length>3?' 외':''),acts:noPhone.slice(0,4).map(n=>({k:'cust',p:n}))});
     // v343 다른 업체 이름 견적(용진인테리어 등)이 매출로 잡혀 있으면 외주(매입)인지 확인하게
     const vend=(state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&!f.exSum&&!(f.est&&f.est.purchase)&&(Number(f.est&&f.est.amount)||0)>0&&!hjEstAmtSuspect(f)&&hjEstVendorName(f));
     if(vend.length)checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)]'});
@@ -8863,7 +8903,10 @@ function hjDailyBriefHTML(){
     // 5) 오늘의 체크(근거 있을 때만)
     if(b.checks.length){
       h+=sec('✅ 오늘의 체크');
-      h+=b.checks.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+'</div>').join('');
+      // v344 알림에서 바로 입력 — 현장 이름 버튼이 입금 기록(recvQuickView)·고객 정보(hjCustQuickView) 창을 연다
+      h+=b.checks.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+
+        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+(a.k==='recv'?'data-recvquick':'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+(a.k==='recv'?'입금 기록':'고객 연락처 입력')+'">'+(a.k==='recv'?'💰 ':'📇 ')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
+        '</div>').join('');
     }
   }
   // AI 브리지: 복사 버튼(전화번호 원문 미포함)
@@ -17418,14 +17461,34 @@ function vatReportData(from,to){
   hjSalesEntries().forEach(r=>{if(!inRange(r.ym))return;salesSupply+=r.supply;salesVat+=r.vat;salesRows.push({ym:r.ym,label:r.label,supply:r.supply,vat:r.vat});});
   // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
   let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
+  // v344 지출장부(state.expenses)의 자재·외주도 매입에 넣는다 — projStats 와 같은 택일 규칙: 현장에 수기 자재/외주비(p.cost)가 있으면
+  //   그 항목은 수기만, 없으면 장부만 센다(이중계상 방지). 현장 없는 장부 지출(project '')은 날짜 기준으로 그대로 센다.
+  //   v343 외주(매입) 견적 → 외주 지출이 여기서 매입세액 공제 쪽에 잡힌다. 장비·유류·식대·기타는 예전처럼 매입에 넣지 않는다.
+  const __expByPj=new Map();
+  (state.expenses||[]).forEach(e=>{
+    if(!e)return;const cat=String(e.category||''),amt=num(e.amount);if(!(amt>0))return;
+    const kind=cat.indexOf('자재')===0?'material':cat.indexOf('외주')===0?'outsource':null;if(!kind)return;
+    const k=String(e.project||'');if(!__expByPj.has(k))__expByPj.set(k,[]);__expByPj.get(k).push({e,kind,amt,ym:String(e.date||'').slice(0,7)});
+  });
+  const __pushExp=(rows,kind)=>rows.filter(x=>x.kind===kind&&inRange(x.ym)).forEach(x=>{
+    if(kind==='material'){buyMaterial+=x.amt;buyRows.push({ym:x.ym,label:(x.e.project||x.e.vendor||'장부')+' 자재'+(x.e.vendor&&x.e.project?' · '+x.e.vendor:''),amount:x.amt,type:'자재'});}
+    else{buyOutsource+=x.amt;buyRows.push({ym:x.ym,label:(x.e.project||x.e.vendor||'장부')+' 외주'+(x.e.vendor&&x.e.project?' · '+x.e.vendor:''),amount:x.amt,type:'외주'});}
+  });
   state.projects.filter(p=>!p.archived).forEach(p=>{
     // 자재·외주는 완료 시점(doneAt) 또는 현재 분기에 귀속. 완료일이 범위 내인 현장만 집계(단순화)
     const ym=String(p.doneAt||'').slice(0,7);
+    const c=p.cost||{},rows=__expByPj.get(p.name)||[];
     if(p.doneAt&&inRange(ym)){
-      const c=p.cost||{};
       if(num(c.material)>0){buyMaterial+=num(c.material);buyRows.push({ym,label:p.name+' 자재',amount:num(c.material),type:'자재'});}
       if(num(c.outsource)>0){buyOutsource+=num(c.outsource);buyRows.push({ym,label:p.name+' 외주',amount:num(c.outsource),type:'외주'});}
     }
+    if(!(num(c.material)>0))__pushExp(rows,'material');
+    if(!(num(c.outsource)>0))__pushExp(rows,'outsource');
+    __expByPj.delete(p.name);
+  });
+  __expByPj.forEach((rows,k)=>{   // 현장 없음·보관 현장·이름이 바뀐 현장의 장부 지출 — 날짜 기준
+    if(k&&state.projects.some(p=>p.name===k&&!p.archived))return;
+    __pushExp(rows,'material');__pushExp(rows,'outsource');
   });
   // 인건비: 일정 labor는 날짜별이라 정확히 시기 귀속
   (state.schedule||[]).forEach(s=>{if(s.labor&&num(s.labor.amount)>0){const ym=String(s.date||'').slice(0,7);if(inRange(ym)){buyLabor+=num(s.labor.amount);buyRows.push({ym,label:(s.project||s.title||'인건비')+' 인건비',amount:num(s.labor.amount),type:'인건비'});}}});
@@ -31299,7 +31362,7 @@ function estimateInfoOpen(type,id,selected){
     {label:'프로젝트 저장',cls:'blue',fn:async()=>{
       const root=document.getElementById('modalRoot'),buttons=[...root.querySelectorAll('button,select')];if(__estimateProjectBusy)return;
       const val=$('#estimateProject').value,name=val?names[Number(val)-1]:null;buttons.forEach(b=>b.disabled=true);window.__modalCloseLocked=true;
-      try{await estimateProjectAssign(target.type,target.id,name);window.__modalCloseLocked=false;closeModal();toast('견적 프로젝트를 저장했습니다');}
+      try{await estimateProjectAssign(target.type,target.id,name);window.__modalCloseLocked=false;closeModal();toast('견적 프로젝트를 저장했습니다');hjCustOfferAfterAssign(name);}
       catch(e){$('#estimateInfoError').textContent='저장하지 못했습니다. '+String(e.message||e);}
       finally{window.__modalCloseLocked=false;buttons.forEach(b=>b.disabled=false);}
     }}]);
@@ -32867,7 +32930,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -33078,6 +33141,7 @@ function setupDelegation(){
     if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
     if(d.finalize!==undefined){e.stopPropagation();return estFinalApply();}
     if(d.recvquick!==undefined){e.stopPropagation();return recvQuickView(d.recvquick);}
+    if(d.custquick!==undefined){e.stopPropagation();return hjCustQuickView(d.custquick);}
     if(d.portal!==undefined){e.stopPropagation();return portalView(d.portal);}
     if(d.ptopen!==undefined){e.stopPropagation();return portalView(d.ptopen);}
     if(d.ptcopy!==undefined){e.stopPropagation();const p=state.projects.find(x=>x.name===d.ptcopy);if(p&&p.portalUrl)coworkCopy(p.portalUrl,'고객 페이지 링크');else toast('아직 발행 전이에요');return;}

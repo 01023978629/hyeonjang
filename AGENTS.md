@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v344 고객·수금 빠른 입력 (Claude Cowork, v343 위 — PR 대기)
+
+- 기준은 v343 브랜치 `claude/v343-followups`. 대표 "더 개발 진행" — v342 목록에서 남은 '고객·수금 입력 바로가기'. 버전 핀 `hyeonjang-v344-quickinput`.
+- 대시보드 '오늘의 체크'의 v342 알림(수금 기록 없음·고객 연락처 없음)에 현장 이름 버튼(`acts`)을 붙였다 — `data-recvquick`(기존 `recvQuickView` 입금 기록)·`data-custquick`(새 `hjCustQuickView`). 텍스트 브리핑(L.push)은 그대로 문장만.
+- `hjCustQuickView(현장, {lead})`: 이름·연락처·주소, 명함에서 불러오기(`loadCustomerFromCard`), 빈 입력·숫자 9자리 미만 번호는 `hjFieldIssue` 로 막는다. 저장은 현장 화면 고객 칸과 같은 `setCustomer` 3번.
+- 견적 '날짜 · 프로젝트' 창에서 현장을 저장한 직후 `hjCustOfferAfterAssign` — 그 현장 고객 이름·연락처가 모두 비었으면 한 번만 묻는다(`__custOffered`, 이 화면 동안 같은 현장은 다시 안 물음). 견적 파일에는 연락처가 없어 자동 채우기는 하지 않는다.
+- 부가세 준비(`vatReportData`) 매입에 지출장부(`state.expenses`)의 자재·외주를 넣었다 — projStats 와 같은 택일 규칙(현장에 수기 자재/외주비가 있으면 그 항목은 수기만, 없으면 장부만), 현장 없음·보관 현장의 장부 지출은 날짜 기준. v343 외주(매입) 견적 → 외주 지출이 이제 매입세액 공제 쪽에 잡힌다. 장비·유류·식대·기타는 예전처럼 제외.
+- `durableLocalMutation` 저장 왕복 뒤 파일 id 가 바뀔 수 있어 새 검사는 이름으로 다시 찾는다. 새 `tests/quickinput-v344.e2e.js` 4/4(v343 에서는 0/4·마지막 한 건은 장부 반영 전이라 실패). 필터 없는 `tests/run-all.js` 232개 중 228 통과(실패 4개는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제), 부가세 반영 뒤 세무·장부·대시보드 관련 21개 재실행 21/21.
+
 ## 2026-10-08 v343 드라이브 빈 기록 예방·외주(매입) 견적·옛 호수 현장 합치기 (Claude Cowork, v342 위 — PR 대기)
 
 - 기준은 v342 브랜치 `claude/v342-estimate-dup-fixes`(main `ce3b80e` 위 1커밋). 대표가 v342 다음 단계로 세 가지를 골랐다. 버전 핀 `hyeonjang-v343-followup`.
