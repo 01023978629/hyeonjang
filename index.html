@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v354-multiday';
+const APP_BUILD='hyeonjang-v355-dayinfo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -12116,6 +12116,30 @@ function hjSchContinuing(ymd,filter){
     .sort((a,b)=>String(a.s.time||'99:99').localeCompare(String(b.s.time||'99:99'))||String(a.s.date).localeCompare(String(b.s.date)));
 }
 function hjSchContLabel(c){return c?'↳ 이어서 '+c.day+'/'+c.days+'일째 · '+hjMdDow(c.from)+'~'+hjMdDow(c.to):'';}
+// 그 일정이 이어지는 날 목록(시작일 제외·일요일 제외·완료 보고면 없음) — 달력 막대·일정 점검이 같이 쓴다
+function hjSchContDates(s){
+  if(!s||!s.date||hjSchReported(s))return [];
+  const sp=hjSchSpan(s);if(sp.days<2)return [];
+  const dt=new Date(sp.from+'T00:00:00');if(isNaN(dt))return [];
+  const out=[];for(let i=0;i<62;i++){dt.setDate(dt.getDate()+1);const ds=hjYmd(dt);if(ds>sp.to)break;if(dt.getDay()!==0)out.push(ds);}
+  return out;
+}
+/* v355 일정 추가·수정 창에서 날짜를 고르면 그날 잡힌 다른 일정(여러 날 공정의 이어지는 날 포함)을 바로 보인다.
+   1인·소규모 시공은 하루에 한 팀이라, AS 방문을 넣으려다 그날 타일 2일째인 걸 모르고 겹치게 잡는 일이 잦다. 읽기 전용·막지 않음. */
+function hjSchDayOthers(ymd,selfId){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd||'')))return [];
+  const own=(state.schedule||[]).filter(o=>o&&o.id!==selfId&&o.date===ymd&&hjPrepOtherOk(o)).map(o=>({s:o,c:null}));
+  return own.concat(hjSchContinuing(ymd,o=>o.id!==selfId&&hjPrepOtherOk(o)))
+    .sort((a,b)=>String(a.s.time||'99:99').localeCompare(String(b.s.time||'99:99')));
+}
+function hjSchDayInfoHTML(ymd,selfId){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd||'')))return '';
+  const rows=hjSchDayOthers(ymd,selfId),d=new Date(ymd+'T00:00:00'),sun=d.getDay()===0;
+  const head=(sun?'<b style="color:#d04545">일요일</b> · ':'')+hjMdDow(ymd)+' ';
+  if(!rows.length)return head+'다른 일정 없음';
+  const one=x=>'<li>'+escapeHtml((x.s.time?x.s.time+' ':'')+hjCut(String(x.s.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim(),18)+(x.c?' ('+x.c.day+'/'+x.c.days+'일째)':'')+(x.s.project?' · '+hjCut(x.s.project,12):''))+'</li>';
+  return head+'다른 일정 <b>'+rows.length+'건</b><ul style="margin:3px 0 0;padding-left:18px">'+rows.slice(0,4).map(one).join('')+(rows.length>4?'<li>외 '+(rows.length-4)+'건</li>':'')+'</ul>';
+}
 /* ═══════════ 🕒 공정 지연 점검 (v347) — 일정은 지났는데 사진도 완료 보고도 없는 공정 ═══════════
    1인 시공은 비·자재·앞 공정 때문에 일정이 밀리는 일이 잦은데, 밀린 줄 모르고 고객에게 말을 안 하면 "오늘 온다더니" 가 된다.
    읽기 전용 — 이 현장 🗓 일정(💰·AS 방문·상담·실측 제외) 가운데 날짜가 이틀 이상 지났고(어제 것은 아직 '늦었다' 고 하지 않는다),
@@ -18532,6 +18556,7 @@ function schedTimeRange(s){
 function scheduleConflicts(){
   const acts=(state.schedule||[]).filter(s=>!/^💰/.test(s.title||''));
   const byDate={};acts.forEach(s=>{(byDate[s.date]=byDate[s.date]||[]).push(s);});
+  acts.forEach(s=>hjSchContDates(s).forEach(ds=>{(byDate[ds]=byDate[ds]||[]).push(s);}));   // v355 여러 날 공정은 이어지는 날에도 그 팀을 쓴다
   const conflicts=[],overloads=[];
   Object.keys(byDate).forEach(date=>{
     const list=byDate[date].slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
@@ -32370,10 +32395,8 @@ function calendarHTML(){
   const dayInfo={};
   (state.schedule||[]).forEach(s=>{if(s.date.startsWith(ym)){const d=+s.date.split('-')[2];if(!dayInfo[d])dayInfo[d]={cnt:0,rep:false};dayInfo[d].cnt++;if(s.report)dayInfo[d].rep=true;}});
   // v354 여러 날 공정이 이어지는 날(둘째 날~끝, 일요일 빼고)에 옅은 막대 — 시작일 점과 구분한다
-  (state.schedule||[]).forEach(s=>{if(!s||!s.date||hjSchReported(s))return;const sp=hjSchSpan(s);if(sp.days<2)return;
-    const dt=new Date(sp.from+'T00:00:00');if(isNaN(dt))return;
-    for(let i=0;i<62;i++){dt.setDate(dt.getDate()+1);const ds=hjYmd(dt);if(ds>sp.to)break;if(dt.getDay()===0||!ds.startsWith(ym+'-'))continue;
-      const dn=+ds.slice(8);if(!dayInfo[dn])dayInfo[dn]={cnt:0,rep:false};dayInfo[dn].cont=(dayInfo[dn].cont||0)+1;}});
+  (state.schedule||[]).forEach(s=>hjSchContDates(s).forEach(ds=>{if(!ds.startsWith(ym+'-'))return;
+    const dn=+ds.slice(8);if(!dayInfo[dn])dayInfo[dn]={cnt:0,rep:false};dayInfo[dn].cont=(dayInfo[dn].cont||0)+1;}));
   let cells='';
   // 빈 칸 (월 시작 전)
   for(let i=0;i<startDow;i++)cells+=`<div class="cal-cell empty"></div>`;
@@ -32481,6 +32504,7 @@ function openScheduleEdit(id){
       <label>날짜<input type="date" id="schDate" value="${escapeAttr(s.date)}"></label>
       <label>시작 시간<input type="time" id="schTime" value="${escapeAttr(s.time)}"></label>
     </div>
+    <div id="schDayInfo" class="hint" aria-live="polite" style="margin:-2px 0 2px;font-size:12.5px;line-height:1.5"></div>
     <div class="sch-row2">
       <label>작업 시간(시간)<input type="number" id="schHours" value="${escapeAttr(String(s.hours??8))}" min="0" max="24" step="0.5"></label>
       <label>인부 수(명)<input type="number" id="schWorkers" value="${escapeAttr(String(s.workers||''))}" min="0" placeholder="예: 3"></label>
@@ -32492,6 +32516,8 @@ function openScheduleEdit(id){
     {label:'저장',cls:'blue',fn:()=>saveScheduleEdit(s.id,isNew)},
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
+  const dIn=document.getElementById('schDate'),dInfo=document.getElementById('schDayInfo');   // v355 그날 다른 일정
+  if(dIn&&dInfo){const upd=()=>{dInfo.innerHTML=hjSchDayInfoHTML(dIn.value,isNew?null:s.id);};dIn.addEventListener('input',upd);dIn.addEventListener('change',upd);upd();}
 }
 /* ═══════════ 📅 뒤 일정 같이 옮기기 (v353) — 공정 하나가 밀리면 뒤 공정도 같이 민다 ═══════════
    비·자재·앞 공정 때문에 타일이 이틀 밀리면 도배·바닥·청소도 이틀씩 밀어야 하는데, 지금까지는 일정 하나하나를 열어 날짜를 바꿨다
