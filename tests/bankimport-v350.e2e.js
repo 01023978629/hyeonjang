@@ -152,7 +152,20 @@ const EUCKR_CSV_HEX = 'b0c5b7a1c0cfc0da2cc3e2b1ddb1ddbed72cc0d4b1ddb1ddbed72cb0c
     assert(after.n === before.n + 1 && after.recv === before.recv + 1500000, '저장: ' + JSON.stringify([before, after]));
     assert(after.rec.d === '2026-10-02' && after.rec.project === '대전' && after.rec.amt === 1500000 && after.rec.payer === '김고객' && !after.rec.proof, '저장본 입금 기록: ' + JSON.stringify(after.rec));
     assert(after.keys === 41 && before.keys === 41 && after.dirty === true, '최상위 키 41·dirty: ' + JSON.stringify([before.keys, after.keys, after.dirty]));
-    assert(/수금 이력/.test(after.title), '저장 뒤 수금 이력으로 돌아온다: ' + after.title);
+    assert(/입금 1건 저장됨 — 다음 할 일/.test(after.title), '저장 뒤 다음 할 일 창(v352): ' + after.title);
+    const follow = await page.evaluate(async () => {
+      const calls = []; const oR = window.sendPaymentReceipt; window.sendPaymentReceipt = (...a) => { calls.push(a); };
+      const row = document.querySelector('#modalRoot .bsRow'); const rcpt = row.querySelector('.bsRcpt').textContent; row.querySelector('.bsRcpt').click();
+      row.querySelector('.bsProof').click(); await new Promise(r => setTimeout(r, 80));
+      const proofTitle = document.querySelector('#modalRoot .modal h3').textContent;
+      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /뒤로|‹/.test(b.textContent)).click(); await new Promise(r => setTimeout(r, 80));
+      const backTitle = document.querySelector('#modalRoot .modal h3').textContent;
+      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /수금 이력/.test(b.textContent)).click(); await new Promise(r => setTimeout(r, 80));
+      window.sendPaymentReceipt = oR;
+      return { calls, rcpt, proofTitle, backTitle, title: document.querySelector('#modalRoot .modal h3').textContent };
+    });
+    assert(/입금 확인 문자/.test(follow.rcpt) && follow.calls.length === 1 && follow.calls[0][0] === '대전' && follow.calls[0][1].amt === 1500000 && follow.calls[0][1].d === '2026-10-02', '확인 문자 → sendPaymentReceipt(현장,{d,amt}): ' + JSON.stringify(follow));
+    assert(/증빙/.test(follow.proofTitle) && /다음 할 일/.test(follow.backTitle) && /수금 이력/.test(follow.title), '증빙 기록 왕복·수금 이력: ' + JSON.stringify(follow));
     // 같은 파일을 다시 넣으면 '이미 기록됨' 으로 체크가 풀려 두 번 저장되지 않는다
     await page.evaluate(async () => { closeModal(); hjBankImportView(); await new Promise(r => setTimeout(r, 60)); });
     await page.setInputFiles('#bkFile', { name: '거래내역.csv', mimeType: 'text/csv', buffer: Buffer.from(EUCKR_CSV_HEX, 'hex') });

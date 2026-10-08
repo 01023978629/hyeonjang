@@ -3266,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v351-boardsignals';
+const APP_BUILD='hyeonjang-v352-importfollow';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -35914,16 +35914,36 @@ function hjBankImportRender(res,fileName){
     if(picked.some(({x})=>x.date>today)){toast('입금일이 미래인 줄이 있어요 — 파일 날짜를 확인하세요');return;}
     const sumAmt=picked.reduce((a,{x})=>a+x.amt,0);
     if(!confirm('입금 '+picked.length+'건 · '+won(sumAmt)+'을 수금 이력에 저장할까요?\n현장이 맞는지 다시 확인하세요 — 틀리면 그 현장 잔금이 잘못 줄어듭니다.'))return;
-    let n=0;const touched=new Set();
+    let n=0;const touched=new Set(),saved=[];
     picked.forEach(({x,pj})=>{const p=(state.projects||[]).find(q=>q&&q.name===pj);if(!p)return;
       const rec={d:x.date,project:pj,amt:x.amt};if(x.payer)rec.payer=String(x.payer).slice(0,30);
-      if(hjPayRecordAdd(p,rec)){n++;touched.add(pj);}});
+      if(hjPayRecordAdd(p,rec)){n++;touched.add(pj);saved.push({pj,d:x.date,amt:x.amt});}});
     if(!n){toast('저장된 입금이 없어요');return;}
     markDirty();touched.forEach(pj=>{try{portalAutoSync(pj);}catch(e){}});
     toast('🏦 입금 '+n+'건 저장 — 수금 이력에 반영'+(noPj?' · 현장 없는 '+noPj+'줄 건너뜀':'')+(dups?' · 이미 기록 '+dups+'줄 건너뜀':''));
     try{render();}catch(e){}
-    closeModal();try{payHistoryView(true);}catch(e){}
+    closeModal();hjBankAfterSave(saved);
   };
+}
+/* v352 저장 뒤 다음 할 일 — 💰 입금 기록 창은 저장마다 '입금 확인 문자' 를 제안하는데(v205) 통장 가져오기는 여러 건을 한 번에 적으니
+   목록으로 보여 준다: 줄마다 [확인 문자](기존 sendPaymentReceipt — 연락처 있으면 문자 앱, 없으면 공유·복사)·[증빙 기록](v348 hjProofView).
+   자동 발송 없음. 닫으면 수금 이력. */
+function hjBankAfterSave(saved){
+  const list=Array.isArray(saved)?saved:[];
+  if(!list.length){try{payHistoryView(true);}catch(e){}return;}
+  const rows=list.map((x,i)=>{const p=(state.projects||[]).find(q=>q&&q.name===x.pj);const ph=p&&p.customer&&String(p.customer.phone||'').replace(/[^\d]/g,'').length>=8;
+    return '<div class="bsRow" data-i="'+i+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:9px 10px;margin-bottom:8px">'+
+      '<div style="font-size:13px;margin-bottom:6px"><b>'+escapeHtml(x.pj)+'</b> · <b style="color:#15803d">'+won(x.amt)+'</b> <span style="color:var(--muted)">'+escapeHtml(x.d)+'</span></div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+        '<button type="button" class="clay tiny bsRcpt" data-i="'+i+'" style="min-height:44px;padding:0 12px">'+(ph?'✉️ 입금 확인 문자':'📋 입금 확인 글')+'</button>'+
+        '<button type="button" class="ghost tiny bsProof" data-i="'+i+'" style="min-height:44px;padding:0 12px">🧾 증빙 기록</button></div></div>';}).join('');
+  openModal('🏦 입금 '+list.length+'건 저장됨 — 다음 할 일',
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">고객에게 입금 확인을 보내면 신뢰가 쌓이고, 10만원 이상 현금·이체는 현금영수증 발행 뒤 증빙을 적어 두세요. 자동으로 보내지 않습니다.</div>'+rows,
+    [{label:'💰 수금 이력',cls:'ghost',fn:()=>{closeModal();try{payHistoryView(true);}catch(e){}}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  root.querySelectorAll('.bsRcpt').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.i];if(!x)return;try{sendPaymentReceipt(x.pj,{d:x.d,amt:x.amt});}catch(e){toast('확인 문자를 만들지 못했어요');}});
+  root.querySelectorAll('.bsProof').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.i];if(!x)return;hjProofView(x.pj,()=>hjBankAfterSave(list));});
+  return {건수:list.length};
 }
 const AS_STL={open:['진행중','#fef2f2','#dc2626'],done:['완료','#f0fdf4','#15803d']};
 function asStBadge(st){
