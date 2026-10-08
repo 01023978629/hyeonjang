@@ -3,6 +3,16 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v345 준공 하자점검표(punch list) (Claude Cowork, v344 위 — PR 대기)
+
+- 대표 요청: 다른 회사 앱(Buildertrend·Houzz Pro·CoConstruct·JobNimbus·Procore·도배르만)과 비교해 없는 것을 찾아 30분 개발. 비교 결과 이 앱에 이미 있는 것: 견적·계약서 초안·추가공사(확인받음→청구)·분할납 계획·공정표 자동 생성·고객 페이지·진행 보고 문안·보증서·AS·전후 비교·사례 글. **없던 것: 인도 전 하자점검표(punch list)**. 버전 핀 `hyeonjang-v345-punchlist`.
+- `punchListView(현장)` (더보기 현장·시공 [🧾 준공 하자점검표], 준공 전 체크 줄 [🧾 점검표], 대시보드 버튼). 저장은 `p.punch[]` `{id,area,text,status:''|ok|fix|done|na,photo(hjFileRef),note,at}` — 추가공사(p.extras)와 같은 자리, **최상위 저장 키 41개 그대로**. 공간별 기본 항목(`PUNCH_DEFAULT_ITEMS`, 11개 공간)은 고른 공간만, 이미 넣은 공간은 다시 안 넣는다. 사진 연결은 extraWork 와 같은 안정 참조·치유(hjFilesByRefs·hjRefHealOk).
+- 준공 전 체크(STAGE_CHECK[3])에 '준공 하자점검표 작성·고객 확인' 줄 추가 — `stageChecklistItems` 가 현재 상태(점검 N곳·양호·보수 필요 남음)를 셋째 칸에 넣고, `STAGE_CHECK_GO.punch` 가 점검표를 연다. 보수 필요가 남아도 완료로 올리는 것은 막지 않는다(알려만 준다).
+- 대시보드 '오늘의 체크'(v344 `acts` 버튼 틀 확장: punch·progress): 보수 필요가 남은 현장 → 점검표, **오늘 사진을 찍은 시공(stage 2) 현장 → 기존 `customerProgress`(고객 진행 보고)** — Houzz/Buildertrend 의 '일일 고객 업데이트'를 기존 문안 기능으로 잇는다.
+- 고객 확인 글 `hjPunchText` (보수 예정/완료 나눠 적음, 자동 발송 없음, 연락처 있으면 `hjSendSms`). 인도 뒤 접수는 그대로 AS 관리.
+- 검사 계약을 셋 올렸다: 더보기 메뉴 수 **119 → 120**(`mobile-more-tools` TARGETS 에 `punchlist:['punchListView']`, `mobile-more-sweep`·`mobile-office-connect` 의 119), `completion-links` ① 준공 전 체크 GO 버튼 목록 맨 앞에 `punch`. tap-inline(인라인 버튼 44)·sweep(체크 label 44) 규칙 때문에 상태 버튼·기본 항목 버튼·공간 칩을 44px 로 맞췄다.
+- 새 `tests/punchlist-v345.e2e.js` 3/3(390px·저장 키·대시보드·문안). 필터 없는 `tests/run-all.js` 233개 중 225 통과 → 위 계약·44px 수정 뒤 관련 17개 재실행 17/17; 남은 4개(apartment-projects·document-select·document-upload·team-workboard)는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제.
+
 ## 2026-10-08 v344 고객·수금 빠른 입력 (Claude Cowork, v343 위 — PR 대기)
 
 - 기준은 v343 브랜치 `claude/v343-followups`. 대표 "더 개발 진행" — v342 목록에서 남은 '고객·수금 입력 바로가기'. 버전 핀 `hyeonjang-v344-quickinput`.

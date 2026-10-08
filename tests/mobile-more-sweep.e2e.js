@@ -1,6 +1,6 @@
-/* mobile-more-sweep.e2e.js — 더보기 119개 화면을 갤럭시 폭(360×740)으로 전부 실제로 연다 (v329)
+/* mobile-more-sweep.e2e.js — 더보기 120개 화면을 갤럭시 폭(360×740)으로 전부 실제로 연다 (v329)
 
-   mobile-more-tools 는 119개 메뉴가 '맞는 함수를 부르는지'만 본다(대상 함수를 스텁한다). 그래서 화면 자체가
+   mobile-more-tools 는 120개 메뉴가 '맞는 함수를 부르는지'만 본다(대상 함수를 스텁한다). 그래서 화면 자체가
    폰에서 어떤지는 아무도 안 봤다 — 입력칸 글자 11.5px(iOS 는 16 미만이면 누를 때 화면을 확대한다), 20px 체크박스,
    40px 탭, 옆으로 2px 흔들리는 모달이 그대로 있었다. 이 검사는 대상 함수를 스텁하지 않고 실제로 연다.
 
@@ -128,7 +128,7 @@ async function boot(mobile,width=360){
 async function sweep(page,errors,mobile,width=360){
   const tag=(mobile?'폰 모드':'PC 모드')+' 폭 '+width;
   const actions=await page.evaluate(()=>MORE_CATS.flatMap(c=>c.items.map(i=>i[0])));
-  assert.equal(actions.length,119,'더보기 기능 수(행동 계약 119)');
+  assert.equal(actions.length,120,'더보기 기능 수(행동 계약 120)');
   const confirmSet=await page.evaluate(()=>Object.keys(MORE_RUN_CONFIRM));
   assert.equal(confirmSet.length,5);
   const before=failures.length;let opened=0;
@@ -283,5 +283,5 @@ const parseRgb=s=>{const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(s);if(!m)throw 
     await fontRules(page,'폰 모드 폭 768');await sweep(page,errors,true,768);await context.close();}
   await browser.close();
   if(failures.length){console.error('FAIL mobile-more-sweep — 위반 '+failures.length+'건');for(const f of failures)console.error('  '+f);process.exitCode=1;return;}
-  console.log('== mobile-more-sweep: 폰 모드 360·PC 모드 360·폰 모드 768 각 119개 메뉴 — 위반 0 · 화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개 · '+Math.round((Date.now()-t0)/1000)+'초 ==');
+  console.log('== mobile-more-sweep: 폰 모드 360·PC 모드 360·폰 모드 768 각 120개 메뉴 — 위반 0 · 화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개 · '+Math.round((Date.now()-t0)/1000)+'초 ==');
 })().catch(async e=>{console.error('FAIL mobile-more-sweep',e);if(browser)await browser.close();process.exitCode=1;});

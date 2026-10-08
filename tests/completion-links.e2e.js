@@ -82,7 +82,8 @@ const PLAIN = '규칙없는가짜현장';
   const st0 = await page.evaluate(nm => { const p = state.projects.find(x => x.name === nm); return { stage: p.stage, doneAt: p.doneAt || null, modal: !!document.querySelector('#modalRoot .clChk') }; }, NAME);
   assert(st0.modal && st0.stage === 2 && st0.doneAt === null, '① 체크 창은 완료일 없이 뜬다: ' + JSON.stringify(st0));
   const go = await page.evaluate(() => [...document.querySelectorAll('#modalRoot .clGo')].map(b => ({ k: b.dataset.go, l: b.textContent, h: b.getBoundingClientRect().height })));
-  assert(JSON.stringify(go.map(x => x.k)) === JSON.stringify(['balance', 'warranty', 'zip', 'review']), '① 버튼 네 개(도어락·예치금 줄 제외): ' + JSON.stringify(go));
+  // v345 '준공 하자점검표' 줄(punch)이 맨 앞에 추가됐다 — 도어락·예치금 줄에는 여전히 버튼이 없다
+  assert(JSON.stringify(go.map(x => x.k)) === JSON.stringify(['punch', 'balance', 'warranty', 'zip', 'review']), '① 버튼 다섯 개(도어락·예치금 줄 제외): ' + JSON.stringify(go));
   assert(go.every(x => x.h >= 44), '① 버튼은 44px: ' + JSON.stringify(go.map(x => x.h)));
   // 누르기 전에 체크한 것이 저장돼야 한다(다른 창이 이 창을 덮는다)
   await page.click('#modalRoot .clChk[data-k="pwchange"]');
