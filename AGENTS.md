@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v348 입금 증빙(현금영수증·세금계산서) 기록 (Claude Cowork, v347 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘" — 돈 흐름의 빈 고리: 입금은 적는데 **현금영수증·세금계산서를 발행했는지는 어디에도 못 적었다**. 실내건축 공사업은 현금영수증 의무발행 업종(건당 10만원 이상 현금·계좌이체 거래 → 입금일부터 5일 안, 미발행은 가산세 대상 — 기준은 홈택스 안내 확인, 앱은 금액을 단정하지 않는다). 버전 핀 `hyeonjang-v348-payproof`.
+- 저장은 **입금 기록(`state.payLog` 항목) 안에 `proof`('cash'|'tax'|'card'|'etc')·`proofAt`** 만 더한다 — payLog 항목은 통째로 직렬화되므로 유상 왕복(paidStableJson)에 그대로 실린다. 최상위 키 41개 그대로. 옛 기록은 빈 값(=아직). 읽기 `hjProofPending(today,현장)`(10만원 이상·`HJ_PROOF_WARN_DAYS` 2일 지난 빈 기록, 배열을 만들지 않음), 쓰기 `hjProofSet(rec,kind)` 한 곳(같은 종류를 다시 누르면 지움).
+- 보이는 자리: 💰 입금 기록 창(`recvQuickView`)에 '증빙' 선택(기본 '아직'), 대시보드 '오늘의 체크' 🧾 줄 + 현장 버튼 `data-proofquick` → `hjProofView(현장)`(최근 40건, 종류 버튼 44px, [📇 세금계산서 정보]=기존 `taxInvoiceInfo`), 더보기 경영·돈 **[🧾 입금 증빙 기록]**(`payproof`, 행동 계약 **120 → 121** — `mobile-more-tools` TARGETS `payproof:['hjProofView']`, `mobile-more-sweep`·`mobile-office-connect` 의 120). 발행 자체는 홈택스에서 — 앱이 대신하거나 발행했다고 짓지 않는다.
+- 새 `tests/payproof-v348.e2e.js` 3/3(알림 경계·기록/지움·저장·입금 창·더보기·읽기 경로 저장본 불변). 관련 10개(mobile-more-tools·sweep·office-connect·recv-entry·brief-actions·quickinput-v344·delay-v347·extraprogress-v346·restore-parity·ledger-roundtrip) 10/10. 검사 작성 중 교훈: `serializeData().payLog` 는 **같은 객체 참조**라 '저장본' 값을 보려면 JSON 왕복으로 베껴야 한다.
+
 ## 2026-10-08 v347 공정 지연 점검 (Claude Cowork, v346 위 — PR 대기)
 
 - 대표 "개발을 더 진행해줘" — v346 공정 진행률의 자연스러운 다음: **일정은 지났는데 사진도 완료 보고도 없는 공정**을 찾아 알린다(1인 시공은 비·자재·앞 공정으로 밀리는데, 밀린 줄 모르면 고객에게 "오늘 온다더니" 가 된다). 버전 핀 `hyeonjang-v347-delaycheck`. 새 저장 키·새 더보기 메뉴 없음(120 그대로).
