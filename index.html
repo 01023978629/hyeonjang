@@ -3266,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v352-importfollow';
+const APP_BUILD='hyeonjang-v353-cascade';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -32448,6 +32448,90 @@ function openScheduleEdit(id){
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
 }
+/* ═══════════ 📅 뒤 일정 같이 옮기기 (v353) — 공정 하나가 밀리면 뒤 공정도 같이 민다 ═══════════
+   비·자재·앞 공정 때문에 타일이 이틀 밀리면 도배·바닥·청소도 이틀씩 밀어야 하는데, 지금까지는 일정 하나하나를 열어 날짜를 바꿨다
+   (공정 5개면 다섯 번). 현장 일정의 날짜를 바꿔 저장하면 같은 현장의 뒤 일정을 '같은 작업일 수만큼' 옮길지 묻는다.
+   · 작업일 셈은 🗓 공정표(planAssignDates)와 같다 — 일요일만 건너뛰고 토요일은 작업일.
+   · 옮기는 것: 같은 현장 · 옛 날짜보다 뒤 · 완료 보고 없음 · 💰 수금·AS 방문·상담·실측(HJ_PLAN_SKIP_RE)·분할납·세금 자동·AS 연결 일정이 아님.
+   · 자동으로 옮기지 않는다 — 목록을 보여 주고 체크한 것만. 옮긴 뒤 [↩ 되돌리기]와 고객 일정 안내 글(자동 발송 없음).
+   · 공정표가 만든 메모 '시작~끝 (N일)' 은 날짜와 함께 옮긴다(사람이 메모를 고친 저장이면 그 칸은 손대지 않는다). */
+const HJ_RANGE_MEMO_RE=/^(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})/;
+function hjYmd(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function hjMdDow(ymd){const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d))return String(ymd||'');return (d.getMonth()+1)+'/'+d.getDate()+'('+['일','월','화','수','목','금','토'][d.getDay()]+')';}
+// 일요일을 뺀 작업일 차이(뒤로 가면 +, 앞으로 당기면 -). 터무니없는 거리(10년 넘게)는 0 — 잘못 친 연도로 수천 번 돌지 않게
+function hjWorkDaysBetween(from,to){
+  const a=new Date(String(from)+'T00:00:00'),b=new Date(String(to)+'T00:00:00');
+  if(isNaN(a)||isNaN(b)||Math.abs(b-a)>3660*86400000)return 0;
+  const step=b>=a?1:-1,end=hjYmd(b),d=new Date(a);let n=0;
+  while(hjYmd(d)!==end){d.setDate(d.getDate()+step);if(d.getDay()!==0)n+=step;}
+  return n;
+}
+function hjShiftWorkDays(ymd,n){
+  const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d)||!n)return String(ymd);
+  const step=n>0?1:-1;let left=Math.min(Math.abs(n),3660);
+  while(left>0){d.setDate(d.getDate()+step);if(d.getDay()!==0)left--;}
+  return hjYmd(d);
+}
+function hjShiftRangeMemo(memo,oldDate,n){
+  const m=String(memo||'').match(HJ_RANGE_MEMO_RE);
+  if(!m||m[1]!==oldDate||!n)return null;
+  return String(memo).replace(HJ_RANGE_MEMO_RE,hjShiftWorkDays(m[1],n)+'~'+hjShiftWorkDays(m[2],n));
+}
+// 읽기 전용 — 옮길 후보만 고른다
+function hjCascadeCands(s,prevDate){
+  if(!s||!s.project||!HJ_YMD_RE.test(String(prevDate||''))||HJ_PLAN_SKIP_RE.test(String(s.title||'')))return [];
+  const asLinked=new Set((state.asLog||[]).map(a=>a&&a.visitSchedId).filter(Boolean));
+  const done=o=>!!(o.report&&(o.report.progress==='완료'||String(o.report.done||'').trim()));
+  return (state.schedule||[]).filter(o=>o&&o!==s&&o.project===s.project&&HJ_YMD_RE.test(String(o.date||''))&&o.date>prevDate&&
+      !HJ_PLAN_SKIP_RE.test(String(o.title||''))&&!done(o)&&!o.payPlan&&!o._taxAuto&&!o.asId&&!asLinked.has(o.id))
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||'')));
+}
+// 고객 안내 글 — 사유를 지어내지 않는다. 바뀐 날짜만. 자동 발송 없음.
+function hjScheduleChangeText(p,moves){
+  const cust=(p&&p.customer)||{};
+  const L=['['+COMPANY.name+'] '+((p&&p.name)||'공사')+' 공사 일정 변경 안내'];
+  L.push('안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.');
+  L.push('공사 일정이 아래와 같이 조정되었습니다.');
+  (moves||[]).forEach(m=>L.push('· '+hjCut(String(m.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업',30)+': '+hjMdDow(m.from)+' → '+hjMdDow(m.to)));
+  L.push('불편을 드려 죄송합니다. 궁금하신 점은 편하게 연락 주세요.');
+  L.push('- '+COMPANY.owner+' '+COMPANY.tel);
+  return L.join('\n');
+}
+function hjCascadeOffer(s,prevDate,delta,cands){
+  const verb=delta>0?'미루기':'당기기',days=Math.abs(delta);
+  const plan=cands.map(o=>({o,from:o.date,to:hjShiftWorkDays(o.date,delta)}));
+  const rows=plan.map((x,i)=>'<label style="display:flex;align-items:center;gap:10px;min-height:48px;border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px;margin-bottom:6px;cursor:pointer">'+
+      '<input type="checkbox" class="ccChk" data-i="'+i+'" checked style="width:22px;height:22px;flex:none">'+
+      '<span style="flex:1;min-width:0;font-size:13px"><b>'+escapeHtml(hjCut(x.o.title||'일정',30))+'</b><br><span style="font-size:12px;color:var(--muted-2)">'+escapeHtml(hjMdDow(x.from))+' → <b style="color:var(--ink)">'+escapeHtml(hjMdDow(x.to))+'</b></span></span></label>').join('');
+  const body='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:10px"><b>'+escapeHtml(hjCut(s.title||'일정',30))+'</b>을(를) '+escapeHtml(hjMdDow(prevDate))+' → <b>'+escapeHtml(hjMdDow(s.date))+'</b>로 옮겼어요(작업일 '+days+'일). '+
+      '<b>'+escapeHtml(s.project)+'</b>의 뒤 일정도 같은 만큼 '+(delta>0?'미룰까요':'당길까요')+'? 일요일은 건너뜁니다. 체크한 것만 옮겨요.</div>'+rows+
+    '<div class="hint" style="margin-top:6px">완료 보고된 일정·💰 수금·AS 방문·상담·실측 일정은 목록에 넣지 않았어요.</div>';
+  openModal('📅 뒤 일정도 같이 '+(delta>0?'미룰까요':'당길까요')+'?',body,[
+    {label:'📅 체크한 일정 같이 '+verb,cls:'clay',fn:()=>{
+      const picked=[...document.querySelectorAll('#modalRoot .ccChk')].filter(c=>c.checked).map(c=>plan[+c.dataset.i]).filter(Boolean);
+      if(!picked.length){toast('옮길 일정을 체크하세요');return;}
+      const undo=[],moves=[{title:s.title,from:prevDate,to:s.date}];
+      picked.forEach(x=>{const o=x.o;if(!(state.schedule||[]).includes(o)||o.date!==x.from)return;   // 그 사이 다른 곳에서 바뀐 일정은 건드리지 않는다
+        undo.push({o,date:o.date,memo:o.memo});const nm=hjShiftRangeMemo(o.memo,o.date,delta);o.date=x.to;if(nm!==null)o.memo=nm;moves.push({title:o.title,from:x.from,to:x.to});});
+      if(!undo.length){toast('일정이 그 사이 바뀌었어요 — 일정표에서 다시 확인하세요');closeModal();render();return;}
+      markDirty();render();hjCascadeDone(s,moves,undo,verb);
+    }},
+    {label:'이 일정만',cls:'ghost',fn:closeModal}],true);
+  return {후보:plan.length,작업일:delta};
+}
+function hjCascadeDone(s,moves,undo,verb){
+  const p=(state.projects||[]).find(x=>x&&x.name===s.project);
+  const n=moves.length-1;
+  const body='<div style="font-size:13px;margin-bottom:8px">뒤 일정 <b>'+n+'개</b>를 같이 옮겼어요.</div>'+
+    moves.map(m=>'<div style="font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--line-soft)">'+escapeHtml(hjCut(m.title||'일정',30))+' · '+escapeHtml(hjMdDow(m.from))+' → <b>'+escapeHtml(hjMdDow(m.to))+'</b></div>').join('')+
+    '<div class="hint" style="margin-top:8px">고객에게는 자동으로 보내지 않아요. 안내 글을 열어 확인한 뒤 보내세요.</div>';
+  openModal('📅 일정 '+verb+' 완료',body,[
+    ...(p?[{label:'✉️ 고객 일정 안내',cls:'clay',fn:()=>{const t=hjScheduleChangeText(p,moves);
+        if(p.customer&&p.customer.phone){hjSendSms(p.customer.phone,t);toast('문자 앱을 열었어요 — 확인하고 보내세요');}else coworkCopy(t,'일정 변경 안내 글');}}]:[]),
+    {label:'↩ 되돌리기',cls:'ghost',fn:()=>{let back=0;undo.forEach(u=>{if((state.schedule||[]).includes(u.o)){u.o.date=u.date;u.o.memo=u.memo;back++;}});
+        if(back)markDirty();closeModal();render();toast('뒤 일정 '+back+'개를 원래 날짜로 돌렸어요');}},
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+}
 /* 일정 수정은 기존 레코드에 폼 칸만 덮는다 — 새 객체로 갈아 끼우면 같은 레코드에 붙은 작업 보고(report)·일당(labor)·
    준비물 체크(prep)·.ics 식별자(icsUid)·세금 자동 표식(_taxAuto)·분할납 표식(payPlan) 이 지워졌다(인건비 장부 합계가 0 이 됐다).
    시간은 0 도 값이다(AS 방문·분할납·종일 .ics 일정) — 빈 칸일 때만 기존 값(새 일정은 8)을 쓴다.
@@ -32469,13 +32553,19 @@ function saveScheduleEdit(id,isNew){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T00:00:00'))){toast('날짜를 고르세요.');hjFieldIssue(document.getElementById('schDate'),'날짜를 고르세요.');return;}
   if(!Number.isFinite(hours)||hours<0||hours>24){toast('작업 시간은 0~24 사이로 적어 주세요.');hjFieldIssue(document.getElementById('schHours'),'작업 시간은 0~24 사이로 적어 주세요.');return;}
   let s,asMoved=0;
-  const prevDate=old?old.date:null;
+  const prevDate=old?old.date:null,prevProject=old?old.project:null,prevMemo=old?String(old.memo||''):null;
+  if(!isNew&&prevDate!==date&&f.memo===prevMemo.trim()){const nm=hjShiftRangeMemo(prevMemo,prevDate,hjWorkDaysBetween(prevDate,date));if(nm!==null)f.memo=nm;}   // v353 공정표 메모 '시작~끝' 도 날짜를 따라간다
   if(isNew){s=Object.assign({id},f,{report:null});state.schedule.push(s);}
   else{s=Object.assign(old,f);}
   /* v331 AS 에서 올린 방문 일정(AS 기록의 visitSchedId)의 날짜를 여기서 바꾸면 AS 방문일(visitAt)도 따라간다.
      반대 방향(AS 화면 → 일정)은 asManage 가 이미 옮긴다. 날짜를 바꾼 때만 — 다른 칸만 고친 저장은 AS 를 건드리지 않는다. */
   if(!isNew&&prevDate!==date)(state.asLog||[]).forEach(a=>{if(a&&a.visitSchedId===s.id&&a.visitAt!==date){a.visitAt=date;asMoved++;}});
   markDirty();closeModal();render();toast('일정 저장됨'+(asMoved?' · AS 방문일도 '+date+' 로 맞췄습니다':''));if(isNew)hjGcalMaybeOpen(s);
+  // v353 현장 일정의 날짜만 옮긴 저장이면 같은 현장의 뒤 일정도 같이 옮길지 묻는다(현장을 바꾼 저장은 묻지 않는다)
+  if(!isNew&&prevDate!==date&&s.project&&s.project===prevProject){
+    const delta=hjWorkDaysBetween(prevDate,date);
+    if(delta){const cands=hjCascadeCands(s,prevDate);if(cands.length)hjCascadeOffer(s,prevDate,delta,cands);}
+  }
 }
 // 일일 작업 보고서 작성
 async function exportReport(id, asPdf){

@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v353 📅 뒤 일정 같이 옮기기 (Claude Cowork, v352 위 — PR 대기)
+
+- 대표 "회계보다 회사가 운영되는 일을 하는 부분을 발전". 비·자재·앞 공정 때문에 공정 하나가 밀리면 뒤 공정(도배·바닥·청소…)을 **일정 하나하나 열어** 날짜를 바꿔야 했다(공정 5개면 다섯 번). 버전 핀 `hyeonjang-v353-cascade`. 새 저장 키 없음(41개), 메뉴 수 122 그대로.
+- `saveScheduleEdit` 끝: 기존 일정의 **날짜만** 바뀌고(현장은 그대로) 현장이 있으면 `hjCascadeCands(s,옛날짜)` 후보를 `hjCascadeOffer` 창으로 묻는다 — 같은 현장 · 옛 날짜보다 뒤 · 완료 보고 없음 · `HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측) 아님 · `payPlan`·`_taxAuto`·`asId`·AS `visitSchedId` 연결 아님. 옮긴 일정 자체가 💰/AS 면 묻지 않는다. 후보는 체크박스(기본 체크), [📅 체크한 일정 같이 미루기/당기기]·[이 일정만].
+- 작업일 셈 `hjWorkDaysBetween`·`hjShiftWorkDays` 는 🗓 공정표 `planAssignDates` 와 같다(일요일만 건너뜀, 토요일은 작업일; 10년 넘는 거리는 0 — 잘못 친 연도로 수천 번 돌지 않게). 공정표 메모 `시작~끝 (N일)`(`HJ_RANGE_MEMO_RE`)은 날짜를 따라간다 — 옮긴 일정은 사람이 메모 칸을 안 고친 저장일 때만.
+- 옮긴 뒤 `hjCascadeDone` 창: 바뀐 날짜 목록, [✉️ 고객 일정 안내](`hjScheduleChangeText` — 바뀐 날짜만, 사유를 짓지 않음; 연락처 있으면 `hjSendSms` 로 문자 앱, 없으면 복사 — 자동 발송 없음), [↩ 되돌리기](같이 옮긴 것만 원래 날짜·메모로). 적용 직전 그 일정이 다른 곳에서 바뀌었으면(`o.date!==계획 시작일`) 건너뛴다.
+- 새 `tests/cascade-v353.e2e.js` 4/4(v352 에서는 0/4): 후보 규칙·작업일(토→화, 월→수)·메모 따라감·고객 글, 체크 빼기·되돌리기, 이 일정만·당기기·묻지 않는 저장 다섯 경우·사람이 고친 메모 보존, 작업일 셈 = `planAssignDates`·후보 고르기 저장본 불변. 관련 6개(delay-v347·field-issue-more·schedule-add-prefill·schedule-safety·v331-follow·mobile-more-tools)와 정적 검사 17개 통과.
+
 ## 2026-10-09 v352 통장 가져오기 저장 뒤 다음 할 일 (Claude Cowork, v351 위 — PR 대기)
 
 - v350 으로 여러 입금을 한 번에 적으면 💰 입금 기록 창이 저장마다 제안하던 '입금 확인 문자'(v205)와 v348 증빙 기록으로 가는 길이 끊겼다. 저장 뒤 `hjBankAfterSave(saved)` 창 — 줄마다 [✉️ 입금 확인 문자](연락처 없으면 '📋 입금 확인 글' — 기존 `sendPaymentReceipt(현장,{d,amt})` 그대로: 문자 앱·공유·복사, 자동 발송 없음)·[🧾 증빙 기록](`hjProofView(현장, 뒤로=이 창)`), 아래 [💰 수금 이력]. 버전 핀 `hyeonjang-v352-importfollow`. 저장 구조·메뉴 수(122) 그대로.
