@@ -3,6 +3,16 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v342 견적 이중 계상·사진 중복 도구·운영 정리 (Claude Cowork, 로컬 검증 — PR 대기)
+
+- 기준 main `ce3b80e`(v341 #173). 대표 자료(브라우저 실데이터, 읽기만)에서 확인한 문제를 고친다: 미배정 PDF가 현장 엑셀과 따로 매출에 더해짐, `파일.xlsx - 견적서.pdf`(구글 시트 출력)·`- 복사본` 정규화 실패, 10억 오인식 금액, 견적 탭 합계만 전 현장을 한 번에 묶어 다른 숫자, 중복 사진 검사가 같은 크기 묶음 앞 50장에서 매번 멈춰 늘 0장, 같은 Drive ID 빈 기록 242개, 두 현장에 들어간 같은 사진 14장, 세금 기한 휴일 미보정, 목록 미리보기 800px.
+- 견적: `hjEstNormName`(밖으로 뺀 정규화), `hjEstSkipIds`(10억 이상 미수정 금액·`hjLooseEstShadows` 미배정 사본을 `estimateGroups` 가 exSum 처럼 건너뜀 — 모든 집계가 한 곳에서 따라온다), `hjEstIssues` 목록 배지(10억·1만 미만·파일명 금액 불일치·다른 업체명·미배정 사본), 견적 탭 합계는 현장별 묶음(hjSalesEntries 와 같은 값)·배정/미지정 분리, 대시보드 '진행 현장 견적'+미지정 별도, 정산 엑셀 '집계' 열, `hjFuzzyProjectFor`(오타 1글자·단지 토큰, 기본 체크 해제, 동점이면 제안 안 함, 스캔 뒤 자동 창은 정확 일치만).
+- 사진: `verifyDuplicatePhotos` 는 같은 크기 + 같은 `duplicateMetadata` 후보만 읽고 확인한 후보는 `__dupCleanSigs` 로 건너뜀([다음 묶음 검사]). `hjDriveGhostRecords`/`hjRemoveDriveGhosts`(PC 원본 기록과 Drive ID·이름이 같고 더 가진 정보 없는 빈 기록, removedIds 넘기지 않음), `hjCrossDupFind`/`hjCrossDupMerge`(크기·촬영시각 같은 두 현장 사진을 바이트로 확인 → 현장 쌍마다 남길 현장 선택, 공정·메모 이전 후 `saveVerifiedDuplicates`). `deletePhotoRecordsSafely` 는 남은 기록이 쓰는 Drive ID 를 삭제 목록에 올리지 않는다. 자동 병합(applyData·equalSizeScanPhotoPair)은 건드리지 않았다.
+- 운영: 방치 현장 화면에 [완료로]·[보관]·빈 현장/60일+ 일괄 보관(안전판 뒤), 오늘의 체크에 수금 기록·고객 연락처 빈칸 알림(견적 파일에 연락처가 없어 자동 채우기는 하지 않음). `hjTaxDueDate`(토·일·고정 공휴일·2026~2029 설·추석) — 일정 id 는 법정 날짜 그대로, `_taxAuto` 이고 법정 날짜인 예전 자동 일정만 실제 기한으로 옮긴다. 목록 미리보기 `HJ_GRID_THUMB_W=320`, `relayCall` 3초 넘으면 오른쪽 아래 대기 표시(요청 자체는 그대로).
+- 정규식은 상수(`HJ_HANGUL_ONLY_RE`·`HJ_YMD_RE`·`HJ_COPYISH_RE`) — office-ops-isolation 토크나이저 규칙. APP_BUILD/SW/TARGET_BUILD = `hyeonjang-v342-dupfix`.
+- 목록 미리보기를 320px 로 줄였으므로 `tests/apartment-projects.e2e.js` 의 허용 썸네일 주소(가짜 Drive 썸네일 GET)도 `=w320`·`sz=w320` 으로 맞췄다. 컨테이너에서는 이 검사가 앞쪽 다운로드 이름에서 먼저 떨어져 이 단정까지 못 가므로, 다운로드 이름만 너그럽게 한 로컬 사본으로 끝까지 돌려 확인했다(apartment-projects·document-select·document-upload·team-workboard 모두 끝까지 통과).
+- 새 `tests/estimate-photo-dup-v342.e2e.js` 11/11(v341 에서는 1/11 — 회귀를 실제로 잡는다). 필터 없는 `tests/run-all.js` 229개 중 224 통과 — 실패 5개 중 `photo-safety-ui` 는 이 변경의 버그였다(중복 검사 '확인 끝' 서명에 원본 출처가 없어 같은 id·크기·정보로 바이트만 바뀐 시드를 건너뜀 → 서명에 Blob/핸들 객체 id·원본 증빙 추가, 이후 통과). 나머지 4개(`apartment-projects`·`document-select`·`document-upload`·`team-workboard`)는 v341 기준에서도 같은 자리에서 떨어지는 컨테이너 한글 다운로드 이름('download') 알려진 실패. 수정 후 관련 46개 재실행 46/46. 실데이터 읽기 전용 대조: 견적 합계 72,401,700 → 69,431,700(태산그린 `xlsx - 견적서.pdf` 2,970,000 한 건). 이 세션은 GitHub 쓰기 권한이 없어 브랜치·PR 은 대표 또는 권한 있는 세션이 올린다.
+
 ## 2026-10-07 v340 불러온 사진의 개별 삭제 (배포 승인, PR 검증 대기)
 
 - 기준 main은 `073f0e2`(v339, PR #171). 사용자 요청은 드라이브·백업 사진도 삭제 가능하게 수정하는 것이다. PC hover 추가와 최종 검증 결과를 안내한 뒤 2026-10-07 사용자가 "배포"로 수정본 업로드·PR 검증·main 병합·GitHub Pages 반영을 승인했다. 실제 사진 삭제·원본 변경·서버 배포는 포함하지 않는다.
