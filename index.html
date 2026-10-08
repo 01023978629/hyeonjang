@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v355-dayinfo';
+const APP_BUILD='hyeonjang-v356-schshare';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7623,6 +7623,7 @@ function schMoreView(sid){
   openModal('⋯ '+(s.title||'일정'),
     '<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">'+escapeHtml((s.date||'')+(s.time?' '+s.time:''))+(s.project?' · '+escapeHtml(s.project):'')+'</div>'+
     it('👷','작업지시 보내기','작업자에게 날짜·현장·할 일을 문자로 전달합니다.','workorder')+
+    it('📤','팀에 공유','카톡·문자·캘린더 파일로 이 일정을 팀원에게 보냅니다.','share')+
     it('📅','구글 캘린더에 추가','구글 캘린더에 이 일정을 넣습니다.','gcal')+
     it('📲','폰 캘린더에 추가','아이폰·안드로이드 기본 캘린더(.ics)로 저장합니다.','ics'),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -7631,6 +7632,7 @@ function schMoreView(sid){
     setTimeout(function(){
       try{
         if(a==='workorder')openWorkOrder({schId:sid});
+        else if(a==='share')hjSchShareView({ids:[sid]});
         else if(a==='gcal')addToGoogleCalendar(sid);
         else if(a==='ics')exportScheduleICS(sid);
       }catch(e){toast('실행할 수 없어요: '+(e.message||e));}
@@ -12358,7 +12360,7 @@ function scheduleNotify(ymd){
     :'<div class="empty" style="padding:18px"><b>'+hjKD(ymd)+' 일정이 없습니다</b>일정표에서 일정을 추가하면 안내 문안이 자동으로 만들어집니다.</div>';
   openModal('🔔 일정 알림 문자',head+'<div style="max-height:50vh;overflow:auto">'+rows+'</div>'+
     (items.length?'<button class="ghost tiny" id="snAll" style="width:100%;margin-top:8px;padding:10px">📋 작업자용 전체 묶어 복사 ('+items.length+'건)</button>':''),
-    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    [{label:'📤 팀 공유',cls:'ghost',fn:()=>hjSchShareView({kind:'day',date:ymd,back:()=>scheduleNotify(ymd)})},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelectorAll('.snW').forEach(b=>b.onclick=()=>{const it=items[+b.dataset.i];if(navigator.clipboard)navigator.clipboard.writeText(it.worker).then(()=>toast('작업자 문안 복사됨 — 카톡·문자에 붙여넣으세요'));});
   root.querySelectorAll('.snC').forEach(b=>b.onclick=()=>{const it=items[+b.dataset.i];if(it.custPhone){closeModal();hjSendSms(it.custPhone,it.customer);}else if(navigator.clipboard)navigator.clipboard.writeText(it.customer).then(()=>toast('고객 문안 복사됨'));});
@@ -12367,6 +12369,121 @@ function scheduleNotify(ymd){
   return {날짜:ymd,건수:items.length};
 }
 
+/* ═══════════ 📤 일정 공유 (v356) — 팀원에게 카톡·문자·캘린더 파일로 ═══════════
+   대표 요청(2026-10-09): "팀원들이 일정을 확인하도록 공유 기능으로 일정을 카톡·캘린더·문자로". 지금까지는 일정 하나씩
+   작업지시(문자)·폰 캘린더(.ics)로만 보낼 수 있었고, 이번 주 일정을 팀 단톡방에 올리려면 손으로 옮겨 적었다.
+   · 범위: 오늘·내일·이번 주·다음 주(월~일)·그날(달력에서 고른 날·🔔 알림 문자 창의 날)·일정 하나(⋯ 메뉴). 현장 하나로 좁히기.
+   · 여러 날 공정은 이어지는 날에도 'N/M일째' 로 넣는다(v354 규칙). 💰 수금·세금 자동 일정은 넣지 않는다(팀 일정이 아니다).
+   · 글: 날짜별 시간·작업·현장·주소·인원·메모. 고객 이름·전화번호는 넣지 않는다. 보내기 전에 고칠 수 있다.
+   · 카톡 = 공유 시트(kakaoShareText — 안 되면 복사), 문자 = 받는 번호(여러 명은 쉼표)로 문자 앱을 연다,
+     캘린더 = 같은 범위를 .ics 파일로(여러 날 공정은 날마다 하나씩) 공유 시트에 — 단톡방에 올리면 팀원이 눌러 자기 캘린더에 넣는다.
+   · 자동 발송 없음 — 어느 길이든 마지막 '보내기'는 사람이 누른다. 저장하는 것 없음(받는 번호도 저장하지 않는다). */
+const HJ_RANGE_TAIL_RE=/^\s*\(\d+일\)\s*/;
+const HJ_SMS_SPLIT_RE=/[,;\n\/]+/;
+function hjAddDays(ymd,n){const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d))return String(ymd);d.setDate(d.getDate()+n);return hjYmd(d);}
+function hjSchShareRange(kind,date){
+  const today=localDate(),dow=(new Date(today+'T00:00:00').getDay()+6)%7,mon=hjAddDays(today,-dow);
+  if(kind==='tomorrow'){const t=hjAddDays(today,1);return {kind,from:t,to:t,label:'내일'};}
+  if(kind==='week')return {kind,from:mon,to:hjAddDays(mon,6),label:'이번 주'};
+  if(kind==='nextweek')return {kind,from:hjAddDays(mon,7),to:hjAddDays(mon,13),label:'다음 주'};
+  if(kind==='day'&&HJ_YMD_RE.test(String(date||'')))return {kind,from:date,to:date,label:hjMdDow(date)};
+  return {kind:'today',from:today,to:today,label:'오늘'};
+}
+// 읽기 전용 — 날짜별 [{date, rows:[{s,c}]}] (c = 이어지는 날 정보, 시작일이면 null)
+function hjSchShareDays(from,to,project,ids){
+  const out=[],put=(d,s,c)=>{let day=out.find(x=>x.date===d);if(!day){day={date:d,rows:[]};out.push(day);}day.rows.push({s,c});};
+  if(Array.isArray(ids)&&ids.length){
+    ids.map(id=>(state.schedule||[]).find(s=>s&&s.id===id)).filter(Boolean).forEach(s=>{
+      if(HJ_YMD_RE.test(String(s.date||'')))put(s.date,s,null);
+      hjSchContDates(s).forEach(d=>put(d,s,hjSchContOn(s,d)));});
+    return out.sort((a,b)=>a.date.localeCompare(b.date));
+  }
+  const ok=s=>!!s&&hjPrepOtherOk(s)&&(!project||s.project===project);
+  const byTime=(a,b)=>String(a.time||'99:99').localeCompare(String(b.time||'99:99'));
+  for(let d=from,i=0;d<=to&&i<62;d=hjAddDays(d,1),i++){
+    (state.schedule||[]).filter(s=>ok(s)&&s.date===d).sort(byTime).forEach(s=>put(d,s,null));
+    hjSchContinuing(d,ok).forEach(x=>put(d,x.s,x.c));
+  }
+  return out;
+}
+function hjSchShareTitle(s,c){
+  const base=String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업',sp=hjSchSpan(s);
+  return c?base+' ('+c.day+'/'+c.days+'일째)':(sp.days>1?base+' ('+sp.days+'일 · ~'+hjMdDow(sp.to)+')':base);
+}
+function hjSchShareMemo(s){return String(s.memo||'').replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'').replace(/\s+/g,' ').trim();}
+function hjSchShareAddr(s){const p=s.project?(state.projects||[]).find(x=>x&&x.name===s.project):null;return p&&p.customer?String(p.customer.addr||'').trim():'';}
+function hjSchShareText(days,label,span){
+  const L=['['+COMPANY.name+'] 작업 일정'+(label?' — '+label:'')+(span&&span!==label?' '+span:'')];
+  if(!days.length)L.push('','잡힌 일정이 없습니다.');
+  days.forEach(day=>{L.push('','■ '+hjMdDow(day.date));
+    day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=c?'':hjSchShareMemo(s);
+      L.push('· '+(s.time?s.time+' ':'')+hjSchShareTitle(s,c)+(s.project?' — '+s.project:''));
+      const sub=[addr?'주소: '+addr:'',s.workers?'👷 '+s.workers+'명':'',memo?hjCut(memo,60):''].filter(Boolean);
+      if(sub.length)L.push('  '+sub.join(' · '));});});
+  L.push('','문의 '+COMPANY.owner+' '+COMPANY.tel);
+  return L.join('\n');
+}
+// .ics 용 — 여러 날 공정은 날마다 하나(UID 에 -dN), 고객 정보·작업 보고는 넣지 않는다
+function hjSchShareIcsItems(days){
+  const out=[];
+  days.forEach(day=>day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=hjSchShareMemo(s);
+    out.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
+      project:s.project||'',workers:s.workers||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
+  return out;
+}
+function hjSmsUrl(phones,text){
+  const list=(phones||[]).map(telHref).filter(t=>t.replace(/\D/g,'').length>=9);
+  if(!list.length)return '';
+  const ios=/(iPhone|iPad|Mac)/i.test(navigator.userAgent),body=encodeURIComponent(text);
+  if(list.length===1)return 'sms:'+list[0]+(ios?'&':'?')+'body='+body;
+  return ios?'sms:/open?addresses='+list.join(',')+'&body='+body:'sms:'+list.join(',')+'?body='+body;
+}
+function hjSmsGo(url){location.href=url;}
+function hjSchShareView(opts){
+  opts=opts||{};
+  const ids=Array.isArray(opts.ids)?opts.ids.filter(Boolean):[];
+  const one=ids.length?(state.schedule||[]).find(s=>s&&s.id===ids[0]):null;
+  if(ids.length&&!one){toast('일정을 찾을 수 없어요');return;}
+  const dayDate=HJ_YMD_RE.test(String(opts.date||''))?opts.date:(__calSelDate||'');
+  const rg=one?null:hjSchShareRange(opts.kind||(dayDate?'day':'today'),dayDate);
+  const all=one?null:hjSchShareDays(rg.from,rg.to,'');
+  const names=one?[]:[...new Set(all.flatMap(d=>d.rows.map(r=>r.s.project).filter(Boolean)))];
+  const project=one?'':(names.includes(opts.project)?opts.project:'');
+  const days=one?hjSchShareDays(null,null,'',[one.id]):(project?hjSchShareDays(rg.from,rg.to,project):all);
+  const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():rg.label+(project?' · '+project:'');
+  const span=one?'':(rg.from===rg.to?hjMdDow(rg.from):hjMdDow(rg.from)+'~'+hjMdDow(rg.to));
+  const n=days.reduce((a,d)=>a+d.rows.length,0),text=hjSchShareText(days,label,span);
+  const chip=(k,lb)=>'<button type="button" class="'+(rg&&rg.kind===k?'blue':'ghost')+' shRange" data-k="'+k+'" aria-pressed="'+(rg&&rg.kind===k?'true':'false')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px">'+escapeHtml(lb)+'</button>';
+  const contacts=(state.contacts||[]).filter(c=>c&&telHref(c.phone));
+  const body='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:8px">팀원에게 보낼 일정 글입니다. 보내기 전에 고칠 수 있어요. 고객 이름·전화번호는 넣지 않고, 자동으로 보내지 않습니다.</div>'+
+    (one?'':'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+chip('today','오늘')+chip('tomorrow','내일')+chip('week','이번 주')+chip('nextweek','다음 주')+(dayDate?chip('day',hjMdDow(dayDate)):'')+'</div>'+
+      (names.length>1||project?'<label style="display:block;font-size:12.5px;margin-bottom:8px">현장<select id="shProj" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 현장</option>'+names.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===project?' selected':'')+'>'+escapeHtml(nm)+'</option>').join('')+'</select></label>':''))+
+    '<div id="shCount" style="font-size:13px;margin:4px 0 6px"><b>일정 '+n+'건</b>'+(span?' · '+escapeHtml(span):'')+'</div>'+
+    '<textarea id="shText" rows="10" style="display:block;width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;padding:10px">'+escapeHtml(text)+'</textarea>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+
+      '<button type="button" class="clay" id="shKakao" style="flex:1 1 140px;min-height:48px">💬 카톡으로 공유</button>'+
+      '<button type="button" class="ghost" id="shCal" style="flex:1 1 140px;min-height:48px">📅 캘린더 파일(.ics)</button>'+
+      '<button type="button" class="ghost" id="shCopy" style="flex:1 1 100px;min-height:48px">📋 복사</button></div>'+
+    '<label for="shPhone" style="display:block;font-size:13px;font-weight:700;margin-top:12px">✉️ 문자로 보내기 <span style="font-weight:400;color:var(--muted);font-size:12px">받는 번호 — 여러 명은 쉼표(,)로</span></label>'+
+    '<div style="display:flex;gap:6px;margin-top:4px"><input type="tel" id="shPhone" list="shContacts" autocomplete="off" placeholder="010-0000-0000, 010-…" style="flex:1;min-width:0;min-height:44px;font-size:16px;padding:8px">'+
+      '<button type="button" class="blue" id="shSms" style="min-height:44px;padding:0 14px">문자 열기</button></div>'+
+    '<datalist id="shContacts">'+contacts.map(c=>'<option value="'+escapeAttr(c.phone)+'">'+escapeHtml((c.name||'')+(c.company?' · '+c.company:''))+'</option>').join('')+'</datalist>'+
+    '<div class="hint" style="margin-top:8px">캘린더 파일을 카톡방에 올리면 팀원이 눌러 자기 폰 캘린더에 넣을 수 있어요. 여러 날 공정은 날마다 하나씩 들어갑니다.</div>';
+  openModal('📤 일정 공유'+(one?' — '+hjCut(label,20):''),body,[...(opts.back?[{label:'‹ 뒤로',cls:'ghost',fn:opts.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot'),cur=()=>String(root.querySelector('#shText').value||'').trim();
+  const again=o=>hjSchShareView(Object.assign({},opts,o));
+  root.querySelectorAll('.shRange').forEach(b=>b.onclick=()=>again({kind:b.dataset.k,date:dayDate,project}));
+  const ps=root.querySelector('#shProj');if(ps)ps.onchange=()=>again({kind:rg.kind,date:dayDate,project:ps.value});
+  const none=()=>{if(n)return false;toast('공유할 일정이 없습니다 — 범위를 바꿔 보세요');return true;};
+  root.querySelector('#shKakao').onclick=()=>{if(none())return;kakaoShareText(cur(),COMPANY.name+' 작업 일정');};
+  root.querySelector('#shCopy').onclick=()=>{if(none())return;coworkCopy(cur(),'일정 공유 글');};
+  root.querySelector('#shCal').onclick=()=>{if(none())return;saveICSToPhone(hjSchShareIcsItems(days),safeName(COMPANY.name+'_일정_'+(one?label:rg.label+(project?'_'+project:''))+'_'+(days[0]?days[0].date:''))+'.ics');};
+  root.querySelector('#shSms').onclick=()=>{if(none())return;const inp=root.querySelector('#shPhone');
+    const url=hjSmsUrl(String(inp.value||'').split(HJ_SMS_SPLIT_RE),cur());
+    if(!url){toast('받는 번호를 적어 주세요');hjFieldIssue(inp,'받는 번호를 적어 주세요 (여러 명은 쉼표로)');return;}
+    hjSmsGo(url);};
+  return {건수:n,범위:label};
+}
 /* ═══════════ 📋 작업지시 보내기 (Phase 2 · 휴먼 이펙터 디스패치) ═══════════ */
 /* AI(운영)가 현장 작업자·외주팀(사람의 손)에게 작업을 지시한다. 발송은 폰 네이티브 SMS(hjSendSms)
    재사용 — 서버·배포 불필요. 완료 확인은 기존 사진 업로드로 회수(새 매커니즘 없음).
@@ -32302,7 +32419,7 @@ function calMonth(){return __calYM||localMonth();}
 function viewSchedule(){
   const today=localDate();
   let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schRoutine">🔁 운영 루틴 담기</button> <button class="ghost tiny" id="schNotify">🔔 알림 문자</button> <button class="ghost tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
+    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schRoutine">🔁 운영 루틴 담기</button> <button class="ghost tiny" id="schNotify">🔔 알림 문자</button> <button class="ghost tiny" id="schShare">📤 일정 공유</button> <button class="ghost tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
   // ===== 월 달력 =====
   html+=calendarHTML();
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
@@ -33453,7 +33570,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -33489,6 +33606,7 @@ function setupDelegation(){
     if(t.id==='schAdd')return openScheduleEdit(null);
     if(t.id==='schRoutine')return hjRoutineSeed();
     if(t.id==='schNotify')return scheduleNotify();
+    if(t.id==='schShare')return hjSchShareView({kind:__calSelDate?'day':'today',date:__calSelDate||''});
     if(t.id==='schLabor')return laborLedger();
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();

@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v356 📤 일정 공유 — 팀원에게 카톡·문자·캘린더 파일로 (Claude Cowork, v355 위 — PR 대기)
+
+- 대표 "팀원들이 일정을 확인하도록 공유 기능으로 일정을 카톡·캘린더·문자로 공유". 지금까지는 일정 하나씩 작업지시(문자)·폰 캘린더(.ics)만 됐고, 이번 주 일정을 팀 단톡방에 올리려면 손으로 옮겨 적었다. 버전 핀 `hyeonjang-v356-schshare`. 새 저장 키 없음(받는 번호도 저장 안 함), 더보기 메뉴 수 122 그대로.
+- `hjSchShareView(opts)` — `{kind:'today'|'tomorrow'|'week'|'nextweek'|'day', date, project, back}` 또는 `{ids:[일정 id]}`(일정 하나: 시작일 + 이어지는 날). 범위 `hjSchShareRange`(주 = 월~일), 목록 `hjSchShareDays`(💰·세금 자동 = `hjPrepOtherOk` 제외, 현장 좁히기, v354 이어지는 공정 'N/M일째'). 글 `hjSchShareText` — 날짜별 시간·작업(여러 날이면 '타일 (3일 · ~11/6(금))')·현장, 둘째 줄 주소·👷 인원·메모(공정표 기간 메모는 뺌, 60자). **고객 이름·전화번호는 넣지 않는다.** 글은 textarea 라 보내기 전에 고칠 수 있다.
+- 보내는 길(모두 사람이 마지막에 누름): [💬 카톡으로 공유] `kakaoShareText`(공유 시트, 안 되면 복사) · [📅 캘린더 파일(.ics)] `hjSchShareIcsItems` → 기존 `saveICSToPhone`(여러 날 공정은 날마다 VEVENT 하나, UID `id-dN`; 설명에 주소·메모만 — 고객·작업 보고 없음) · [📋 복사] · [✉️ 문자] 받는 번호(쉼표로 여러 명, 연락처 datalist) → `hjSmsUrl`(한 명은 기존 `hjSendSms` 꼴, 여러 명은 안드로이드 `sms:a,b?body=`·아이폰 `sms:/open?addresses=a,b&body=`) → `hjSmsGo`(검사가 가로챔). 범위에 일정이 없으면 네 길 모두 막고 알린다.
+- 입구: 일정 탭 툴바 `#schShare`(위임 셀렉터·핸들러 등록; 달력에서 날을 골랐으면 그날) · 일정 ⋯ `schMoreView` 에 [📤 팀에 공유](`data-act="share"`) · 🔔 알림 문자 창 아래 [📤 팀 공유](그날, ‹ 뒤로 = 알림 문자 창).
+- 새 `tests/schshare-v356.e2e.js` 6/6(v355 에서는 0/6): 범위·글 규칙(넣지 말 것 포함), 툴바 → 칩·현장 → 고친 글이 공유 시트로·44px·390px, 문자 링크 넷(빈 번호·한 명·여러 명·아이폰), ⋯ 메뉴 → 일정 하나 → .ics UID 셋·내용·고객 정보 없음, 알림 문자 창 왕복·빈 범위 차단, 저장본 불변. 관련 11개(ics-save·ics-import·menu-schedule·uiux·multiday-v354·dayinfo-v355·cascade-v353·mobile-friendly-ui·mobile-more-sweep·schedule-safety·my-work)·정적 검사 17개 통과. v355 기준 컨테이너 전체 242개 중 238(실패 4 = 늘 같은 한글 다운로드 이름 apartment-projects·document-select·document-upload·team-workboard).
+- 다음 후보: 더보기 메뉴에 [📤 일정 공유] 입구(메뉴 계약 122 → 123, 검사 셋 갱신 필요) · 팀원 연락처를 '팀' 으로 묶어 두고 한 번에 고르기(연락처에 구분 칸이 없어 대표 확인 필요).
+
 ## 2026-10-09 v355 일정 창 '그날 다른 일정' + 일정 점검에 이어지는 날 (Claude Cowork, v354 위 — PR 대기)
 
 - 같은 요청(운영 편의). 1인·소규모 시공은 하루 한 팀이라, AS 방문을 넣으려다 그날 타일 2일째인 걸 모르고 겹치게 잡는 일이 잦다. 버전 핀 `hyeonjang-v355-dayinfo`. 새 저장 키 없음, 읽기 전용, 막지 않음.
