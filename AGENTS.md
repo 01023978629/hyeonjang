@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v346 공정 진행률·추가공사 미청구 경고 (Claude Cowork, v345 위 — PR 대기)
+
+- 대표 "더 진행" — v345 비교표의 다음 후보 둘(Houzz Pro 단계별 진행률 · 추가공사 미청구 경고). 새 입력·새 저장 키 없음(최상위 41개 그대로). 버전 핀 `hyeonjang-v346-extraprogress`.
+- **공정 진행률 `hjPhaseProgress(p)` → {total,done,doing,todo,pct}** (읽기 전용). 공정 목록은 `hjPhaseNames(p)` = `p.phases`(문자열·옛 객체 둘 다), 비어 있으면 이 현장 🗓 공정표 일정 제목(`HJ_PLAN_SUFFIX_RE` 로 ' (N일차 시작)' 제거, `HJ_PLAN_SKIP_RE` 💰·AS 방문·상담·실측 제외). 판정은 두 신호만: 사진 공정 표시(`_phase`, 뒤 공정에도 사진이 있으면 앞 공정은 완료)와 일정 완료 보고(`report.progress==='완료'` 또는 `report.done`, 제목이 공정 이름이거나 '공정 이름 ' 으로 시작). **날짜가 지난 것은 완료가 아니다**(비로 밀린 공정을 고객 화면이 완료라 하면 안 된다). 오늘 일정이 잡힌 공정은 진행 중.
+- 한 줄 `hjPhaseProgressLine` 을 세 곳이 같이 쓴다: `portalBuild` 시공 단계 메모(예전 '최근: '+last.title 은 공정이 문자열이라 늘 빈 글이었다 — 고친 결함), `customerProgressText`(없으면 예전 '(철거·타일 진행)' 그대로), 브리핑 진행 현장 칩 '공정 2/4'. `portalSig` 에 시공 메모를 넣어 진행률이 바뀌면 고객 페이지가 '갱신 필요'. `setPhase`·`applyBulkPhase`·`myWorkReport` 저장 뒤 `portalAutoSync`(서버 설정 없으면 요청 0 — 검사로 고정).
+- **추가공사 미청구**: 대시보드 '오늘의 체크'에 시공·완료(stage≥2) 현장의 `hjExtrasBill(p).pending`(확인 전·금액 협의·금액 확인 필요) 합계 + 현장 버튼 `data-extraquick` → `extraWork(name)`(클릭 위임 목록에 등록). 준공 전 체크 `STAGE_CHECK[3]` 둘째 줄 '추가공사 확인받음·금액 적기(청구서에 반영)' `extra` — `stageChecklistItems` 가 확인받음 N건 금액·견적에 담김·`hjExtrasPendingLine` 을 셋째 칸에, `STAGE_CHECK_GO.extra` 🖊 추가공사. 실측 단계 현장은 대상 아님.
+- **v345 결함 수정(이 커밋에 포함)**: `hjPunchList` 가 읽기만 하는 자리(대시보드 `hjPunchOpen`·준공 체크 줄·문안)에서도 `p.punch=[]` 를 만들어, 유상 저장 뒤 `assertPaidLiveStateExact`(저장본 == 지금 상태) 가 어긋나 **'paid exact live state conflict'** 로 저장이 실패 처리됐다(Windows 전체 검사 `apartment-projects` 에서 발견 — 컨테이너는 그 앞 다운로드 이름에서 떨어져 못 봤다). 읽기는 `hjPunchItems(p)`(배열을 만들지 않음), 쓰기(점검표 화면·기본 항목 넣기)만 `hjPunchList`. **화면을 그리는 함수는 현장 객체에 빈 배열을 붙이면 안 된다**(hjExtrasBill 주석과 같은 규칙) — 새 검사 ④가 대시보드·준공 체크·문안·고객 페이지를 전부 그린 뒤 저장본이 같은지 본다.
+- 검사 계약: `completion-links` ① GO 목록 `['punch','extra','balance','warranty','zip','review']`(여섯 개). 더보기 메뉴 수 120 그대로. 새 `tests/extraprogress-v346.e2e.js` 4/4(v345 에서는 0/4). 관련 17개(brief-actions·completion-links·extra-work·extras-settle·photo-refs·punchlist·quickinput·ledger-roundtrip·mobile-more-tools·restore-parity·revenue-basis·site-rules·v328-integration·portal-key·followup-v343·estimate-photo-dup-v342·mobile-more-sweep) 17/17. 필터 없는 전체 결과는 아래 v345 와 같은 방식으로 적는다(컨테이너 알려진 실패 4개 외 0).
+
 ## 2026-10-08 v345 준공 하자점검표(punch list) (Claude Cowork, v344 위 — PR 대기)
 
 - 대표 요청: 다른 회사 앱(Buildertrend·Houzz Pro·CoConstruct·JobNimbus·Procore·도배르만)과 비교해 없는 것을 찾아 30분 개발. 비교 결과 이 앱에 이미 있는 것: 견적·계약서 초안·추가공사(확인받음→청구)·분할납 계획·공정표 자동 생성·고객 페이지·진행 보고 문안·보증서·AS·전후 비교·사례 글. **없던 것: 인도 전 하자점검표(punch list)**. 버전 핀 `hyeonjang-v345-punchlist`.

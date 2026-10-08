@@ -3266,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v345-punchlist';
+const APP_BUILD='hyeonjang-v346-extraprogress';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5720,6 +5720,7 @@ const STAGE_CHECK={
     ['자재 반입 일정 확인','material']]},
   3:{key:'done',title:'📋 준공 전 체크',items:[
     ['준공 하자점검표 작성·고객 확인','punch'],
+    ['추가공사 확인받음·금액 적기(청구서에 반영)','extra'],
     ['잔금 청구(입금 안내 발송)','balance'],
     ['보증(하자보수) 안내 문자','warranty'],
     ['고객께 도어락 비번 변경 안내','pwchange'],
@@ -5783,6 +5784,7 @@ function hjCompletionMsgFor(n){
 }
 const STAGE_CHECK_GO={
   punch:{l:'🧾 점검표',fn:function(n){punchListView(n);}},
+  extra:{l:'🖊 추가공사',fn:function(n){extraWork(n);}},
   balance:{l:'💳 청구서',fn:function(n){settleDocs(n);}},
   warranty:{l:'🛡 보증 안내',fn:function(n){hjCompletionMsgFor(n);}},
   zip:{l:'📦 ZIP',fn:function(n){exportProjectZIP(n);}},
@@ -5797,8 +5799,13 @@ function stageChecklistItems(p,idx){
     const dep=String((hjSiteRulesSafe(hjSiteRules(p))||{}).deposit||'').trim();
     if(dep)items.push(['관리실 예치금 환급 확인','deposit',dep]);
     // v345 점검표 줄에 현재 상태를 보인다 — 보수 필요가 남아 있으면 그 수를, 아직 안 썼으면 '아직 없음'
-    try{const t=hjPunchStats(hjPunchList(p));const i=items.findIndex(it=>it[1]==='punch');
+    try{const t=hjPunchStats(hjPunchItems(p));const i=items.findIndex(it=>it[1]==='punch');
       if(i>=0)items[i]=[items[i][0],'punch',t.total?('점검 '+t.total+'곳 · 양호 '+t.ok+(t.fix?' · 보수 필요 '+t.fix+'곳 남음':'')+(t.done?' · 보수 완료 '+t.done:'')):'아직 점검표가 없어요'];}catch(e){}
+    // v346 추가공사 줄 — 청구서에 더해지는 금액과 아직 안 들어가는 건수(hjExtrasBill 한 곳). 적어 둔 것이 없으면 '없음'.
+    try{const b=hjExtrasBill(p);const i=items.findIndex(it=>it[1]==='extra');
+      if(i>=0)items[i]=[items[i][0],'extra',(b.agreed.length||b.pending.length||b.quoted.length)
+        ?[b.agreed.length?'확인받음 '+b.agreed.length+'건 '+won(b.total)+' 청구서에 더해짐':'',b.quoted.length?'견적에 담김 '+b.quoted.length+'건':'',b.pending.length?hjExtrasPendingLine(b):''].filter(Boolean).join(' · ')
+        :'적어 둔 추가공사 없음'];}catch(e){}
   }
   return items;
 }
@@ -6368,6 +6375,7 @@ async function setPhase(id, phaseName){
   const ph=phaseName||null;
   f._phase=ph;
   markDirty();
+  if(f.project)try{portalAutoSync(f.project);}catch(e){}   // v346 공정 진행률이 고객 페이지에 실린다 — 공정 표시가 바뀌면 자동 갱신 후보
   // 즉시 이동 모드 + 실제 파일 + 폴더 연결 + 공정 지정(해제 아님)일 때만 이동
   if(__moveMode==='instant' && ph && !f._virtual && state.dirHandle && FS_OK && f.project){
     try{
@@ -8694,7 +8702,8 @@ function hjDailyBrief(){
       next=phases.find(ph=>!donePh.has(ph))||'';
     }
     const s=projStats(p.name);
-    return {name:p.name,stage:p.stage||0,stageName:STAGES[p.stage||0]||'',next,phaseN:phases.length,recv:s.recv,est:s.est};
+    let prog=null;try{const pr=hjPhaseProgress(p);if(pr.total)prog=pr.done.length+'/'+pr.total;}catch(e){}   // v346 공정 진행률(완료/전체)
+    return {name:p.name,stage:p.stage||0,stageName:STAGES[p.stage||0]||'',next,phaseN:phases.length,recv:s.recv,est:s.est,prog};
   }).sort((a,b)=>b.stage-a.stage);
   // 📞 챙길 연락: 홈페이지 리드 노트(마커) + 초기단계(상담·실측) 연락처 있는 현장(후속 유도)
   const leadNotes=(state.notes||[]).filter(n=>n&&/\[홈페이지 상담 리드\]/.test(n.text||''))
@@ -8733,6 +8742,11 @@ function hjDailyBrief(){
     const todayK=localDate();
     const shot=acts.filter(p=>(p.stage||0)===2&&(state.files||[]).some(f=>f&&f.kind==='photo'&&f.project===p.name&&f.when&&localDate(new Date(f.when))===todayK)).map(p=>p.name);
     if(shot.length)checks.push({ic:'📨',t:'오늘 사진을 찍은 시공 현장 '+shot.length+'곳 — 고객에게 진행 보고를 보내면 신뢰가 쌓여요',acts:shot.slice(0,4).map(n=>({k:'progress',p:n}))});
+    // v346 추가공사 미청구 — 시공·완료 현장에 '확인 전·금액 협의' 추가공사가 남아 있으면 청구서·잔금에 안 들어간다(hjExtrasBill pending).
+    //   Houzz 조사: 추가공사를 청구하지 못하면 공사 가치의 10~15% 를 잃는다. 확인받음+금액이 돼야 잔금에 더해진다.
+    const exOpen=acts.filter(p=>(p.stage||0)>=2&&hjExtrasBill(p).pending.length>0);
+    if(exOpen.length){const n=exOpen.reduce((a,p)=>a+hjExtrasBill(p).pending.length,0);
+      checks.push({ic:'🖊',t:'확인 전·금액 협의 추가공사 '+n+'건이 남은 현장 '+exOpen.length+'곳: '+exOpen.slice(0,3).map(p=>p.name).join(', ')+(exOpen.length>3?' 외':'')+' — 확인받고 금액을 적어야 청구서·잔금에 들어가요',acts:exOpen.slice(0,4).map(p=>({k:'extra',p:p.name}))});}
   }catch(e){}
   const adNoPerf=(state.adPosts||[]).filter(a=>a&&!(a.perf||a.performance||a.result||a.metrics)).length;
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
@@ -8881,6 +8895,7 @@ function hjDailyBriefHTML(){
     if(b.doing.length){
       // 각 진행 현장 → [📋 작업지시] 원탭(기존 openWorkOrder({proj}) 재사용, 현장 프리필)
       h+=b.doing.map(p=>'<div style="font-size:13px;padding:2px 0;display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0"> · <b>'+escapeHtml(p.name)+'</b> <span class="stage-chip" style="font-size:11px">'+escapeHtml(p.stageName)+'</span>'+
+        (p.prog?' <span style="color:var(--muted)">공정 '+escapeHtml(p.prog)+'</span>':'')+
         (p.next?' <span style="color:var(--muted)">다음 공정: '+escapeHtml(p.next)+'</span>':(p.phaseN?'':' <span style="color:var(--muted)">공정 미설정</span>'))+'</span>'+
         '<button class="ghost tiny" data-workorderp="'+escapeAttr(p.name)+'" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="작업지시 문자 만들기">📋 작업지시</button></div>').join('');
     } else { h+='<div class="hint" style="margin:0">진행 중인 현장 없음.</div>'; }
@@ -8916,7 +8931,7 @@ function hjDailyBriefHTML(){
       h+=sec('✅ 오늘의 체크');
       // v344 알림에서 바로 입력 — 현장 이름 버튼이 입금 기록(recvQuickView)·고객 정보(hjCustQuickView) 창을 연다
       h+=b.checks.map(c=>'<div style="font-size:13px;padding:2px 0"> '+c.ic+' '+escapeHtml(c.t)+
-        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
+        (c.acts&&c.acts.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin:5px 0 3px 20px">'+c.acts.map(a=>'<button type="button" class="mini-btn" '+({recv:'data-recvquick',cust:'data-custquick',punch:'data-punchquick',progress:'data-progressquick',extra:'data-extraquick'}[a.k]||'data-custquick')+'="'+escapeAttr(a.p)+'" title="'+({recv:'입금 기록',cust:'고객 연락처 입력',punch:'준공 하자점검표',progress:'고객 진행 보고',extra:'추가공사 확인'}[a.k]||'')+'">'+({recv:'💰 ',cust:'📇 ',punch:'🧾 ',progress:'📨 ',extra:'🖊 '}[a.k]||'')+escapeHtml(a.p)+'</button>').join('')+'</div>':'')+
         '</div>').join('');
     }
   }
@@ -11994,6 +12009,49 @@ function portfolioCard(projName){
   return {현장:projName,후보:cands.length};
 }
 
+/* ═══════════ 📊 공정 진행률 (v346) — 고객 페이지·진행 보고·브리핑이 같은 값을 말한다 ═══════════
+   다른 회사 앱(Houzz Pro·Buildertrend)의 '단계별 진행률' 비교에서 이 앱에 없던 것. 새 입력은 없다 — 이미 적는 두 가지에서 읽는다.
+   · 사진 공정 표시(f._phase): 그 공정 사진이 있으면 손을 댄 것이다. 뒤 공정에도 사진이 있으면 앞 공정은 지나간 것(완료)으로 본다.
+   · 일정 완료 보고(s.report.progress '완료' 또는 report.done): 제목이 그 공정 이름으로 시작하는 일정(🗓 공정표가 만든 꼴)이 완료되면 완료.
+   · 그 밖은 예정. 날짜가 지났다고 완료로 치지 않는다 — 비가 와서 밀린 공정을 고객 화면이 '완료' 라고 말하면 안 된다.
+   공정 목록은 현장의 p.phases(사진 탭 공정)다. 비어 있으면 이 현장 🗓 공정표 일정(💰·AS·상담·실측 제외)의 제목을 쓴다.
+   읽기 전용 — state 를 바꾸지 않는다. */
+const HJ_PLAN_SUFFIX_RE=/\s*\(\d+일차 시작\)\s*$/;
+const HJ_PLAN_SKIP_RE=/^💰|AS 방문|상담|실측/;
+function hjPhaseNames(p){
+  const raw=(p&&Array.isArray(p.phases))?p.phases:[];
+  const names=raw.map(x=>typeof x==='string'?x:(x&&(x.title||x.name))||'').map(s=>String(s).trim()).filter(Boolean);
+  if(names.length)return [...new Set(names)];
+  const fromSch=[];
+  (state.schedule||[]).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))).forEach(s=>{
+    if(!s||s.project!==(p&&p.name)||!s.date)return;const t=String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim();
+    if(!t||HJ_PLAN_SKIP_RE.test(t)||fromSch.includes(t))return;fromSch.push(t);});
+  return fromSch;
+}
+function hjPhaseProgress(p){
+  const names=hjPhaseNames(p);
+  const out={total:names.length,done:[],doing:[],todo:[],pct:0};
+  if(!p||!names.length)return out;
+  const shot=new Set((state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===p.name&&f._phase).map(f=>String(f._phase).trim()));
+  const reported=new Set(),today=localDate(),todaySch=new Set();
+  (state.schedule||[]).forEach(s=>{if(!s||s.project!==p.name)return;
+    const t=String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim();const n=names.find(x=>t===x||t.startsWith(x+' '));if(!n)return;
+    if(s.report&&(s.report.progress==='완료'||String(s.report.done||'').trim()))reported.add(n);else if(s.date===today)todaySch.add(n);});
+  const lastShot=names.reduce((a,n,i)=>shot.has(n)?i:a,-1);
+  names.forEach((n,i)=>{
+    if(reported.has(n)||(shot.has(n)&&i<lastShot))out.done.push(n);
+    else if(shot.has(n)||todaySch.has(n))out.doing.push(n);
+    else out.todo.push(n);});
+  out.pct=Math.round(out.done.length/names.length*100);
+  return out;
+}
+// 한 줄 요약 — 고객 페이지 '시공' 단계 메모·진행 보고 문안·브리핑이 같은 글을 쓴다. 공정이 없으면 빈 글.
+function hjPhaseProgressLine(pr){
+  if(!pr||!pr.total)return '';
+  return '공정 '+pr.total+'개 중 '+pr.done.length+'개 완료'+(pr.done.length?' ('+pr.done.slice(0,4).join('·')+(pr.done.length>4?' 외':'')+')':'')+
+    (pr.doing.length?' · 진행 중: '+pr.doing.slice(0,3).join('·'):'')+(pr.todo.length?' · 다음: '+pr.todo[0]:'');
+}
+
 /* ═══════════ 📨 고객 진행 보고 — 문안 + 사진 리포트 + 고객 문자 ═══════════ */
 function customerProgressData(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return null;
@@ -12003,13 +12061,16 @@ function customerProgressData(name){
   const next=[...(state.schedule||[])].filter(s=>s.project===name&&s.date>=today&&!/^💰/.test(s.title||'')).sort((a,b)=>String(a.date+a.time).localeCompare(String(b.date+b.time)))[0]||null;
   const photos=state.files.filter(f=>f.project===name&&f.kind==='photo');
   const phaseDone=[...new Set(photos.map(f=>f._phase).filter(Boolean))];
-  return {name,p,cust,stage:STAGES[p.stage||0],done,next,photoN:photos.length,phaseDone};
+  let progress=null;try{progress=hjPhaseProgress(p);}catch(e){}   // v346 공정 진행률 — 고객 페이지와 같은 계산
+  return {name,p,cust,stage:STAGES[p.stage||0],done,next,photoN:photos.length,phaseDone,progress};
 }
 function hjKD(ymd){const d=new Date(ymd+'T00:00:00');return (d.getMonth()+1)+'/'+d.getDate()+'('+'일월화수목금토'[d.getDay()]+')';}
 function customerProgressText(d){
   const L=['['+COMPANY.name+'] '+d.name+' 진행 안내'];
   L.push('안녕하세요'+(d.cust.name?' '+d.cust.name+'님':'')+', '+COMPANY.name+'입니다.');
-  L.push('현재 「'+d.stage+'」 단계로 진행 중입니다'+(d.phaseDone.length?' ('+d.phaseDone.slice(0,4).join('·')+' 진행)':'')+'.');
+  // v346 공정 진행률이 있으면 그 줄(고객 페이지와 같은 글), 없으면 예전처럼 사진이 붙은 공정만
+  const pl=hjPhaseProgressLine(d.progress);
+  L.push('현재 「'+d.stage+'」 단계로 진행 중입니다'+(pl?' — '+pl:(d.phaseDone.length?' ('+d.phaseDone.slice(0,4).join('·')+' 진행)':''))+'.');
   if(d.done)L.push('최근 작업: '+hjCut(d.done.report.done,50)+' ('+hjKD(d.done.date)+')');
   if(d.next)L.push('다음 일정: '+hjKD(d.next.date)+' '+(d.next.time||'')+' '+d.next.title);
   L.push('궁금하신 점은 언제든 연락 주세요. 감사합니다.');
@@ -24063,20 +24124,24 @@ const PUNCH_DEFAULT_ITEMS={
   '외부·기타':['폐기물 반출 완료','공사 안내문 철거','잔여 자재 정리']
 };
 const PUNCH_STATUS={ok:{l:'양호',c:'var(--ok)'},fix:{l:'보수 필요',c:'#b91c1c'},done:{l:'보수 완료',c:'var(--moss)'},na:{l:'해당 없음',c:'var(--muted)'}};
+// 읽기 전용 — p.punch 를 만들지 않는다. 대시보드·준공 체크·문안이 그리는 중에 현장 객체에 punch:[] 를 붙이면 유상 저장 뒤
+// assertPaidLiveStateExact(저장본 == 지금 상태) 가 어긋나 'paid exact live state conflict' 로 저장이 실패 처리됐다(v345 결함, Windows 전체 검사에서 발견).
+function hjPunchItems(p){return (p&&Array.isArray(p.punch))?p.punch:[];}
+// 쓰기용 — 점검표 화면에서 항목을 넣을 때만 배열을 만든다(hjExtraList 와 같은 역할 분리).
 function hjPunchList(p){if(!p)return [];if(!Array.isArray(p.punch))p.punch=[];return p.punch;}
 function hjPunchStats(list){
   const s={total:0,ok:0,fix:0,done:0,na:0,unchecked:0};
   (list||[]).forEach(x=>{if(!x)return;s.total++;if(PUNCH_STATUS[x.status])s[x.status]++;else s.unchecked++;});
   return s;
 }
-function hjPunchOpen(p){return hjPunchStats(hjPunchList(p)).fix;}   // 남은 보수 필요 건수 — 준공 전 체크·대시보드가 읽는다
+function hjPunchOpen(p){return hjPunchStats(hjPunchItems(p)).fix;}   // 남은 보수 필요 건수 — 준공 전 체크·대시보드가 읽는다
 function hjPunchSeed(p,areas){
   const list=hjPunchList(p);const have=new Set(list.map(x=>(x.area||'')+'|'+(x.text||'')));let n=0;
   (areas||[]).forEach(a=>(PUNCH_DEFAULT_ITEMS[a]||[]).forEach(t=>{if(have.has(a+'|'+t))return;list.push({id:uid(),area:a,text:t,status:'',photo:'',note:'',at:''});have.add(a+'|'+t);n++;}));
   return n;
 }
 function hjPunchText(p){
-  const list=hjPunchList(p),st=hjPunchStats(list),cust=p.customer||{};
+  const list=hjPunchItems(p),st=hjPunchStats(list),cust=p.customer||{};
   const L=['['+COMPANY.name+'] '+p.name+' 준공 점검 결과'];
   L.push('안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.');
   L.push(localDate()+' 기준 준공 전 점검을 마쳤습니다. 점검 '+st.total+'곳 중 양호 '+st.ok+'곳'+(st.done?' · 보수 완료 '+st.done+'곳':'')+(st.fix?' · 보수 예정 '+st.fix+'곳':'')+'.');
@@ -25066,6 +25131,7 @@ function myWorkReport(schId){
     const r=workLogSave(s.project,text,s.date,s.id);
     if(!r||r.오류){toast('작업일지를 저장하지 못했습니다');return;}
     s.report.progress='완료';s.report.filledAt=new Date().toISOString();markDirty();dashboardOperationsRefresh();
+    if(s.project)try{portalAutoSync(s.project);}catch(e){}   // v346 공정 완료 보고 → 고객 페이지 진행률
     toast('완료 보고를 작업일지에 저장했습니다');myWorkView({refresh:false});}}],true);
   const pb=document.getElementById('mwReportPhoto');if(pb)pb.onclick=()=>hjMyWorkPhoto(s.project,s.title||'');
   const ta=document.getElementById('mwDoneText');if(ta){ta.onfocus=()=>hjKeepAboveFooter(ta);setTimeout(()=>{try{ta.focus();}catch(_){}},0);}
@@ -29653,10 +29719,11 @@ function portalBuild(pjName){
     if(i===idx&&i===3)s.memo='공사가 마무리되었습니다';
     return s;
   });
-  // 시공 단계면 최근 공정 메모
-  if(idx===2&&Array.isArray(p.phases)&&p.phases.length){
-    const last=p.phases[p.phases.length-1];
-    steps[2].memo='진행 중 · 최근: '+(last.title||last.name||'');
+  // 시공 단계면 공정 진행률(v346) — 예전 '최근: ' 메모는 공정이 글자(문자열)일 때 빈 글이 됐다(last.title 만 봤다).
+  // 고객 화면의 진행 현황 셋째 줄에 '공정 7개 중 3개 완료 (철거·설비·타일) · 진행 중: 도배 · 다음: 바닥재' 로 보인다.
+  if(idx===2){
+    let pl='';try{pl=hjPhaseProgressLine(hjPhaseProgress(p));}catch(e){}
+    if(pl)steps[2].memo='진행 중 · '+pl;
   }
   const photos=state.files
     .filter(function(f){return f.kind==='photo'&&f.project===pjName&&f.thumb;})
@@ -29931,7 +29998,8 @@ function portalSig(pjName){
   const p=state.projects.find(function(x){return x.name===pjName;})||{};
   return [ (p.stage||0), (p.received||0), (d.quote&&d.quote.amount)||0, (d.photos||[]).length,
     d.notice||'', (d.ask&&d.ask.q)||'', (d.ask&&d.ask.choice)||'',
-    (d.approval&&d.approval.approvedAt)||'', (d.review&&d.review.stars)||'', (d.payment&&d.payment.account)||'' ].join('|');
+    (d.approval&&d.approval.approvedAt)||'', (d.review&&d.review.stars)||'', (d.payment&&d.payment.account)||'',
+    (d.steps&&d.steps[2]&&d.steps[2].memo)||'' ].join('|');   // v346 공정 진행률이 바뀌면 고객 페이지도 '갱신 필요'
 }
 function portalStaleList(){
   return (state.projects||[]).filter(function(p){
@@ -31049,6 +31117,7 @@ async function applyBulkPhase(scopeProj,phase){
   if(!fs.length){toast('이 현장의 선택된 사진이 없습니다.');return;}
   fs.forEach(f=>f._phase=phase);
   markDirty();
+  try{portalAutoSync(scopeProj);}catch(e){}   // v346 공정 진행률 → 고객 페이지
   // 즉시이동 모드 + 폴더연결이면 실제 이동
   if(typeof __moveMode!=='undefined' && __moveMode==='instant' && state.dirHandle && FS_OK){
     let moved=0;
@@ -33039,7 +33108,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -33253,6 +33322,7 @@ function setupDelegation(){
     if(d.custquick!==undefined){e.stopPropagation();return hjCustQuickView(d.custquick);}
     if(d.punchquick!==undefined){e.stopPropagation();return punchListView(d.punchquick);}
     if(d.progressquick!==undefined){e.stopPropagation();return customerProgress(d.progressquick);}
+    if(d.extraquick!==undefined){e.stopPropagation();return extraWork(d.extraquick);}   // v346 추가공사 확인 창
     if(d.portal!==undefined){e.stopPropagation();return portalView(d.portal);}
     if(d.ptopen!==undefined){e.stopPropagation();return portalView(d.ptopen);}
     if(d.ptcopy!==undefined){e.stopPropagation();const p=state.projects.find(x=>x.name===d.ptcopy);if(p&&p.portalUrl)coworkCopy(p.portalUrl,'고객 페이지 링크');else toast('아직 발행 전이에요');return;}
