@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-08 v343 드라이브 빈 기록 예방·외주(매입) 견적·옛 호수 현장 합치기 (Claude Cowork, v342 위 — PR 대기)
+
+- 기준은 v342 브랜치 `claude/v342-estimate-dup-fixes`(main `ce3b80e` 위 1커밋). 대표가 v342 다음 단계로 세 가지를 골랐다. 버전 핀 `hyeonjang-v343-followup`.
+- 드라이브 빈 기록 예방: `applyData` 병합에서 `hjSavedDriveGhost(s)` 가 참이면 그 저장 기록을 새로 만들지 않는다(`window.__driveGhostSkipped` 로 셈). 조건은 v342 `hjDriveGhostRecords` 와 같다 — PC 원본 기록(handle·_file)이 같은 Drive ID·같은 이름을 쓰고, 저장 기록이 더 가진 정보(현장·공정·작업명·동호수·연락처·메모·장부·견적·집계 제외·원본 증빙)가 없을 때. 되돌리기(revert)와 PC 원본이 없는 기기(폰)는 예전 동작 그대로. v323 `equalSizeScanPhotoPair` 통과 규칙은 건드리지 않았다.
+- 외주(매입) 견적: 견적 탭 [상세 입력 → 🏢 외주(매입)] → `hjEstTogglePurchase`. 같은 견적의 사본(엑셀·PDF)까지 `est.purchase`·`est.purchaseKey` 를 켜고 `estimateGroups` 가 건너뛴다(매출·청구·부가세 매출에서 빠짐). 현장·금액이 있으면 `expenseAdd({category:'외주', sourceKey:'estpurchase:…'})` 로 한 번만 지출 기록 → projStats 외주 원가(수기 외주비 없을 때). 되돌리면 금액·현장이 그대로인 그 지출만 지운다. 목록 배지·견적 합계 줄·정산 엑셀 '집계' 열·대시보드 '오늘의 체크'(다른 업체 이름 견적이 매출에 잡힘)에 표시. 부가세 매입(vatReportData)은 기존대로 수기 원가만 본다.
+- 옛 호수 현장 합치기: 아파트 관리 탭 [🏢 옛 호수 현장 합치기] / 방치 현장 화면 → `hjAptLegacyMergeView`. 후보는 `aptNameParse` 로 읽히고 같은 `aptComplexKey` 단지 현장이 정확히 하나일 때만, 판정은 v331 `aptProjectPreview`(→ `aptProjectSourceCheck`) 그대로. 적용 `hjAptLegacyMergeApply` 는 `aptProjectApply` 와 같은 변경(사진 동·호수 이동·공정 합집합·원본 보관 aptPhotoArchive)을 한 `aptUnitMutation` 안에서 여러 곳 처리 — 안전판 1회(12곳을 하나씩 하면 안전판이 모두 밀려난다). 동 없는 이름·'704-1102'·약칭은 추정하지 않고 '직접 확인'으로만 보인다.
+- 정규식은 상수(`HJ_UNITNAME_RE`·`HJ_VENDOR_RE`). 새 `tests/followup-v343.e2e.js` 3/3(v342 에서는 0/3). 필터 없는 `tests/run-all.js` 231개 중 227 통과 — 실패 4개는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제이며, 다운로드 이름만 너그럽게 한 로컬 사본으로 네 검사 모두 끝까지 통과(실측 2026-10-08).
+
 ## 2026-10-08 v342 견적 이중 계상·사진 중복 도구·운영 정리 (Claude Cowork, 로컬 검증 — PR 대기)
 
 - 기준 main `ce3b80e`(v341 #173). 대표 자료(브라우저 실데이터, 읽기만)에서 확인한 문제를 고친다: 미배정 PDF가 현장 엑셀과 따로 매출에 더해짐, `파일.xlsx - 견적서.pdf`(구글 시트 출력)·`- 복사본` 정규화 실패, 10억 오인식 금액, 견적 탭 합계만 전 현장을 한 번에 묶어 다른 숫자, 중복 사진 검사가 같은 크기 묶음 앞 50장에서 매번 멈춰 늘 0장, 같은 Drive ID 빈 기록 242개, 두 현장에 들어간 같은 사진 14장, 세금 기한 휴일 미보정, 목록 미리보기 800px.

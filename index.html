@@ -1997,6 +1997,20 @@ function serializeData(source,savedAt){
 let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(savedAt) — 오래된 로컬이 최신 드라이브를 덮지 않게
 /* 경로+이름+크기는 파일 신원이 아니다. 같은 iPhone 이름이나 서로 다른 Drive 원본이 같은 key를 가질 수 있다.
    전체/선택 복원은 같은 일대일 매칭을 쓴다. 확인된 Drive 연결을 먼저 예약하고, 모호한 기록은 추정하지 않는다. */
+/* v343 같은 Drive 사진을 가리키는 '빈 저장 기록' — 2026-10-08 실측 242개가 applyData 병합에서 생겼다.
+   PC 원본에 연결된 기록(handle·_file)이 이미 같은 Drive ID·같은 이름을 쓰고 있고, 저장 기록이 그보다 더 가진 정보
+   (현장·공정·작업명·동호수·연락처·메모·장부·견적·집계 제외·원본 증빙)가 없을 때만 참. 원본/정리본 같은 크기 쌍(v323
+   equalSizeScanPhotoPair)은 바로 위 줄이 일부러 통과시키지만, 그 Drive 파일은 남는 기록이 계속 가리키므로 잃는 것이 없다.
+   빈 기록은 촬영일 대신 불러온 날짜가 찍혀 날짜별 묶음을 흐트러뜨렸다. v342 hjDriveGhostRecords(정리 버튼)와 같은 기준. */
+function hjSavedDriveGhost(s){
+  const has=v=>v!==undefined&&v!==null&&v!==''&&v!==false;
+  if(!s||!s.driveId||(s.kind&&s.kind!=='photo'))return false;
+  if(has(s.sourceSha256)||has(s.mediaOriginal)||documentMetaValid(s.documentMeta))return false;
+  const nm=String(baseName(s.name)).toLowerCase();
+  const pairs=[['project','project'],['phase','_phase'],['worklabel','_worklabel'],['aptUnit','_aptUnit'],['contact','contact'],['text','text'],['est','est'],['ledger','ledger'],['quote','quote'],['exSum','exSum']];
+  return (state.files||[]).some(f=>f&&f._driveId===s.driveId&&(f.handle||f._file instanceof Blob)&&String(baseName(f.name)).toLowerCase()===nm&&
+    !pairs.some(([a,b])=>has(s[a])&&JSON.stringify(s[a])!==JSON.stringify(f[b]??null)));
+}
 function hjFileDriveIdentity(f){return String(f?._driveId||f?.driveId||'');}
 const HJ_FILE_SHA_RE=/^[a-f0-9]{64}$/;
 function hjFileIdentityCompatible(f,s){
@@ -2216,6 +2230,8 @@ function applyData(data,opts){
       if(_walked&&!s.driveId&&!s._manual&&!documentMetaValid(s.documentMeta)&&!(window.__walkNames&&window.__walkNames.has(_nm)))return;
     }
     if(s.driveId&&state.files.some(f=>f._driveId===s.driveId&&hjFileIdentityCompatible(f,s)&&!equalSizeScanPhotoPair(f,s)))return;   // 다른 Drive ID나 서로 다른 원본 증빙은 보존한다.
+    // [v343] 같은 Drive 사진의 '빈 기록'은 새로 만들지 않는다(hjSavedDriveGhost). 되돌리기는 스냅샷 그대로여야 해서 예외.
+    if(!__revert&&s.driveId&&hjSavedDriveGhost(s)){window.__driveGhostSkipped=(window.__driveGhostSkipped||0)+1;return;}
     if(!s.driveId&&state.files.some(f=>hjSavedFileEquivalent(f,s)))return;
     const fext=bestExt(s.name,'');   // ext()는 'IMG.HEIC의 사본'에서 ''반환 → bestExt로 실제 확장자 인식(재분류가 실제로 먹게)
     // 교정: 저장된 kind가 'other'인데 실제로는 이미지 확장자면 photo로 바로잡음("의 사본" 등으로 과거에 오분류된 것 복구)
@@ -3250,7 +3266,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v342-dupfix';
+const APP_BUILD='hyeonjang-v343-followup';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8663,6 +8679,9 @@ function hjDailyBrief(){
     if(noRecv.length)checks.push({ic:'💰',t:'견적은 있는데 수금 기록이 없는 현장 '+noRecv.length+'곳: '+noRecv.slice(0,3).join(', ')+(noRecv.length>3?' 외':'')+' — 받은 돈을 입력해야 미수·독촉이 작동해요'});
     const noPhone=acts.filter(p=>projStats(p.name).est>0&&String((p.customer&&p.customer.phone)||'').replace(/[^\d]/g,'').length<8).map(p=>p.name);
     if(noPhone.length)checks.push({ic:'📇',t:'고객 연락처 없는 견적 현장 '+noPhone.length+'곳: '+noPhone.slice(0,3).join(', ')+(noPhone.length>3?' 외':'')});
+    // v343 다른 업체 이름 견적(용진인테리어 등)이 매출로 잡혀 있으면 외주(매입)인지 확인하게
+    const vend=(state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&!f.exSum&&!(f.est&&f.est.purchase)&&(Number(f.est&&f.est.amount)||0)>0&&!hjEstAmtSuspect(f)&&hjEstVendorName(f));
+    if(vend.length)checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)]'});
   }catch(e){}
   const adNoPerf=(state.adPosts||[]).filter(a=>a&&!(a.perf||a.performance||a.result||a.metrics)).length;
   if(adNoPerf>0)checks.push({ic:'📣',t:'광고 성과 미기록 '+adNoPerf+'건'});
@@ -13828,6 +13847,81 @@ async function aptProjectApply(plan){
     return {name:target.name,unitId,count:fresh.count};
   }});
 }
+/* v343 옛 호수별 현장 → 단지 동·호수로 한꺼번에 합치기.
+   '삼성아파트 21동 301호' 처럼 예전에 호수마다 만든 현장이, 같은 이름의 단지 현장(동·호수 관리)과 따로 남아 있다
+   (2026-10-08 실측: 빈 현장 14곳 중 12곳). 한 곳씩 하는 기존 v331 길(aptProjectPreview → aptProjectApply)을 그대로 쓰고
+   안전판만 한 번 찍는다 — 12곳을 하나씩 하면 안전판 12개가 앞선 안전판을 모두 밀어낸다.
+   · 대상: 이름이 'OO 101동 501호' 꼴(aptNameParse)이고 같은 이름(aptComplexKey)의 단지 현장이 정확히 하나일 때만.
+   · 견적·정산·고객·일정·완료일 등 연결 기록이 있으면 v331 규칙(aptProjectSourceCheck)대로 막고 이유를 보여 준다.
+   · 동이 빠진 이름('1502호')·'704-1102'·약칭 단지명은 추정하지 않는다 — '직접 확인'으로만 보인다.
+   · 옛 현장의 사진은 그 동·호수로 옮기고, 공정은 단지 현장 공정에 더하며, 옛 현장은 지우지 않고 보관한다(aptPhotoArchive). */
+const HJ_UNITNAME_RE=/\d\s*호$|\d+\s*-\s*\d+$/;
+function hjAptLegacyCandidates(data){
+  data=data||serializeData();
+  const out=[];
+  (data.projects||[]).forEach(p=>{
+    if(!p||p.archived||aptUnitManaged(p)&&(p.aptUnits||[]).length)return;
+    const parsed=aptNameParse(p.name);
+    if(!parsed){if(HJ_UNITNAME_RE.test(String(p.name||'').trim()))out.push({name:p.name,ok:false,reason:'동·호수를 이름에서 확실히 읽을 수 없어요 — [아파트 · 동·호수 등록]에서 직접 고르세요'});return;}
+    const targets=(data.projects||[]).filter(q=>q!==p&&!q.archived&&aptUnitManaged(q)&&aptComplexKey(q.name)===aptComplexKey(parsed.complex));
+    if(targets.length!==1){out.push({name:p.name,ok:false,reason:targets.length?'같은 이름 단지 현장이 둘 이상이에요':'같은 이름의 단지 현장이 없어요('+parsed.complex+') — 이름이 다르면 직접 고르세요'});return;}
+    const label=parsed.dong+'동 '+parsed.ho+'호';
+    try{const plan=aptProjectPreview(targets[0].name,{type:'unit',dong:parsed.dong,ho:parsed.ho},p.name,data);out.push({name:p.name,ok:true,target:targets[0].name,label,count:plan.count,plan});}
+    catch(e){out.push({name:p.name,ok:false,target:targets[0].name,label,reason:String(e.message||e)});}
+  });
+  return out;
+}
+function hjAptLegacyCount(){
+  try{return (state.projects||[]).filter(p=>p&&!p.archived&&!(aptUnitManaged(p)&&(p.aptUnits||[]).length)&&(aptNameParse(p.name)||HJ_UNITNAME_RE.test(String(p.name||'').trim()))).length;}catch(e){return 0;}
+}
+async function hjAptLegacyMergeApply(cands){
+  const plans=cands.filter(c=>c.ok).map(c=>c.plan);
+  if(!plans.length)throw new Error('합칠 수 있는 현장이 없습니다.');
+  const stamp=plans[0].stamp;
+  return aptUnitMutation({snapshotLabel:'옛 호수 현장 '+plans.length+'곳 단지로 합치기 전',mutateDraft:draft=>{
+    if(aptProjectStamp(draft)!==stamp)throw new Error('미리보기 이후 자료가 변경되었습니다. 다시 열어 확인하세요.');
+    const done=[];
+    plans.forEach(plan=>{
+      const fresh=aptProjectPreview(plan.name,plan.unit,plan.sourceName,draft);
+      if(fresh.count!==plan.count)throw new Error(plan.sourceName+'의 사진 연결이 바뀌었습니다. 다시 열어 확인하세요.');
+      const target=aptUnitProject(plan.name,draft);
+      if(!target)throw new Error(plan.name+' 현장을 찾지 못했습니다.');
+      if(!target.aptUnits)target.aptUnits=[];
+      const unitId=fresh.unitId||('unit_'+uid());
+      if(!fresh.unitId)target.aptUnits.push({id:unitId,...fresh.unit});
+      const source=aptUnitProject(fresh.sourceName,draft);
+      draft.files.filter(f=>f.project===source.name).forEach(f=>{f.project=target.name;f.aptUnit={project:target.name,unitId};});
+      target.phases=[...new Set([...(target.phases||[]),...(source.phases||[])])];
+      source.archived=true;
+      source.aptPhotoArchive={target:target.name,unitId,count:fresh.count,at:new Date().toISOString()};
+      done.push({from:source.name,to:target.name,unitId,count:fresh.count});
+    });
+    return done;
+  }});
+}
+function hjAptLegacyMergeView(){
+  if(window.__modalCloseLocked||photoIntakePending())return;
+  let cands=[];
+  try{cands=hjAptLegacyCandidates();}catch(e){toast('확인하지 못했습니다: '+String(e.message||e));return;}
+  const ok=cands.filter(c=>c.ok),bad=cands.filter(c=>!c.ok);
+  const row=c=>'<li style="padding:8px 0;border-bottom:1px solid var(--line-soft)"><b style="overflow-wrap:anywhere">'+escapeHtml(c.name)+'</b>'+
+    (c.ok?'<br><span class="hint" style="display:inline">→ '+escapeHtml(c.target)+' · '+escapeHtml(c.label)+(c.count?' · 사진 '+c.count+'장 이동':' · 사진 없음')+'</span>'
+         :'<br><span class="hint" style="display:inline;color:var(--warn)">'+escapeHtml(c.reason)+'</span>')+'</li>';
+  const body='<div class="apt-unit-panel" id="aptLegacyPanel">'+
+    '<p>예전에 호수마다 따로 만든 현장을 같은 단지 현장의 <b>동·호수</b>로 합칩니다. 사진은 그 동·호수로 옮기고, 공정은 단지 현장에 더하며, 옛 현장은 지우지 않고 <b>보관</b>합니다. 합치기 전에 안전판을 한 번 만듭니다.</p>'+
+    (ok.length?'<h4 style="margin:10px 0 2px">합칠 수 있는 현장 '+ok.length+'곳</h4><ul style="list-style:none;padding:0;margin:0">'+ok.map(row).join('')+'</ul>':'<p>바로 합칠 수 있는 현장이 없습니다.</p>')+
+    (bad.length?'<details style="margin-top:10px"'+(ok.length?'':' open')+'><summary>직접 확인이 필요한 현장 '+bad.length+'곳</summary><ul style="list-style:none;padding:0;margin:0">'+bad.map(row).join('')+'</ul></details>':'')+
+    '<p id="aptUnitIssue" role="alert"></p></div>';
+  openModal('옛 호수 현장 합치기',body,[
+    {label:'닫기',cls:'ghost',fn:closeModal},
+    ...(ok.length?[{label:ok.length+'곳 단지로 합치기',cls:'clay',fn:()=>aptUnitUiWrite(()=>hjAptLegacyMergeApply(cands),done=>{
+      closeModal();try{rebuildOrganizedProjectAliases();}catch(e){}render();
+      const moved=done.reduce((n,d)=>n+d.count,0);
+      toast('🏢 옛 호수 현장 '+done.length+'곳을 단지로 합쳤어요'+(moved?' · 사진 '+moved+'장 이동':'')+' — 옛 현장은 보관함에 있습니다');
+    })}]:[])
+  ]);
+  try{aptUnitModalStyle();}catch(e){}
+}
 function aptProjectCreateView(prefill='',sourceName=''){
   const parsed=aptNameParse(sourceName||prefill),name=parsed?.complex||prefill;
   openModal('아파트 프로젝트 · 동·호수 등록',`<div class="apt-unit-panel" id="aptProjectPanel">
@@ -13976,7 +14070,7 @@ function viewAptMgmt(){
   const scan=aptMgmtGroups(),others=scan.others;
   const groups=[...scan.groups.values()].sort((a,b)=>b.sites.length-a.sites.length||a.name.localeCompare(b.name,'ko'));
   const plan=aptBulkPlan(),siteN=groups.reduce((n,g)=>n+g.sites.length,0),unitN=groups.reduce((n,g)=>n+g.sites.reduce((m,s)=>m+s.units,0),0);
-  let html=`<div class="toolbar"><button class="blue" data-aptbulk="project" style="min-height:44px">🏢 아파트 프로젝트 만들기 · 사진 정리</button><button class="clay" data-aptbulk="1" style="min-height:44px"${plan.length?'':' disabled'}>🏢 동·호수 일괄 등록${plan.length?' ('+plan.length+'곳)':''}</button>
+  let html=`<div class="toolbar"><button class="blue" data-aptbulk="project" style="min-height:44px">🏢 아파트 프로젝트 만들기 · 사진 정리</button><button class="clay" data-aptbulk="1" style="min-height:44px"${plan.length?'':' disabled'}>🏢 동·호수 일괄 등록${plan.length?' ('+plan.length+'곳)':''}</button>${(()=>{const n=hjAptLegacyCount();return n?`<button class="ghost" data-aptlegacy="1" style="min-height:44px">🏢 옛 호수 현장 합치기 (${n}곳)</button>`:'';})()}
     <span class="hint" style="margin:0;align-self:center">현장 이름에서 읽은 동·호수를 <b>미리 보고</b> 등록합니다. 누르는 즉시 바뀌지 않습니다.</span></div>`;
   html+=`<div class="grid" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
     <div class="kpi"><span class="kl">단지</span><span class="kv">${groups.length}<small>곳</small></span></div>
@@ -22418,6 +22512,7 @@ async function staleProjects(){
       (r.customer&&r.customer.phone?'<button class="stpSms clay tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px">📩 진행 상황 안부</button>':'')+
       '<button class="stpDone ghost tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px" title="완료 단계로 바꿉니다(준공일 기록)">✅ 완료로</button>'+
       '<button class="stpArc ghost tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px" title="목록에서 접어둡니다 — 자료는 그대로, 왼쪽 목록 [보관]에서 되돌릴 수 있어요">📦 보관</button>'+
+      (r.legacyOf?'<button class="stpLegacy ghost tiny" style="padding:7px 12px" title="'+escapeAttr(r.legacyOf)+'의 동·호수로 합치고 이 현장은 보관">🏢 단지로 합치기</button>':'')+
       (r.empty?'<span style="font-size:11px;color:var(--muted);align-self:center">기록 없는 빈 현장'+(r.legacyOf?' · '+escapeHtml(r.legacyOf)+'의 옛 호수 현장':'')+'</span>':'')+
       '</div>'+
     '</div>';
@@ -22446,6 +22541,7 @@ async function staleProjects(){
   const ao=document.getElementById('stpArcOld');if(ao)ao.onclick=()=>arcMany(oldRows.map(r=>r.name),'60일 넘게 조용한 현장');
   document.querySelectorAll('.stpArc').forEach(b=>b.onclick=()=>{const p=state.projects.find(x=>x.name===b.dataset.n);if(!p)return;p.archived=true;markDirty();render();toast('📦 '+p.name+' 보관 — 왼쪽 목록 [보관]에서 되돌릴 수 있어요');staleProjects();});
   document.querySelectorAll('.stpDone').forEach(b=>b.onclick=()=>{const n=b.dataset.n;closeModal();setStage(n,STAGES.length-1);});
+  document.querySelectorAll('.stpLegacy').forEach(b=>b.onclick=()=>hjAptLegacyMergeView());
   document.querySelectorAll('.stpSms').forEach(b=>b.onclick=()=>{
     const r=rows.find(x=>x.name===b.dataset.n);if(!r)return;
     const cust=r.customer||{};
@@ -27419,7 +27515,7 @@ function hjEstLetters(name){return hjEstNormName(name).replace(/[^가-힣a-z]/g,
 //   같은 금액(>0) 이면서 ① 파일명 날짜(YYYYMMDD)가 같고 글자가 어긋나지 않거나 ② 날짜가 없으면 글자가 서로를 포함할 때만.
 //   다른 현장의 같은 금액 견적('20260324 A현장.pdf' vs 'B현장 견적')은 글자가 달라 묶지 않는다.
 function hjLooseEstShadows(files){
-  const all=(files||state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&f.est);
+  const all=(files||state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&f.est&&!f.est.purchase);
   const assigned=all.filter(f=>f.project&&(Number(f.est.amount)||0)>0&&!hjEstAmtSuspect(f));
   const out=new Map();if(!assigned.length)return out;
   all.forEach(f=>{
@@ -27469,13 +27565,68 @@ function hjEstIssues(f,shadows){
     if(![amt,s,s+v,Math.round(amt*1.1),Math.round(amt/1.1),Math.round(s*1.1)].some(near))
       out.push({warn:true,t:'⚠ 파일명 금액 '+won(na)+'과 읽은 금액이 달라요 — 원본 확인'});
   }
-  try{
-    const me=String(COMPANY&&COMPANY.name||'만물인테리어').replace(/\s+/g,'');
-    const m=String(f.name||'').replace(/\.[a-z0-9]+$/i,'').match(/([가-힣A-Za-z0-9]{2,12})\s*인테리어/);
-    if(m&&(m[1]+'인테리어')!==me&&me.indexOf(m[1])<0)out.push({warn:false,t:'🏢 다른 업체 이름('+m[1]+'인테리어) — 우리 매출이 아니면 집계 제외'});
-  }catch(e){}
+  if(e.purchase)out.push({warn:false,t:'🏢 외주(매입) 견적 · 매출에서 제외'});
+  else{const v=hjEstVendorName(f);if(v)out.push({warn:false,t:'🏢 다른 업체 이름('+v+') — 우리 매출이 아니면 [상세 입력 → 외주(매입)]'});}
   return out;
 }
+// 파일명 속 다른 인테리어 업체 이름('태산그린 넥산 작업-용진인테리어' → 용진인테리어). 우리 상호면 ''.
+const HJ_VENDOR_RE=/([가-힣A-Za-z0-9]{2,12})\s*인테리어/;
+function hjEstVendorName(f){
+  try{
+    const me=String(COMPANY&&COMPANY.name||'만물인테리어').replace(/\s+/g,'');
+    const m=String(f&&f.name||'').replace(/\.[a-z0-9]+$/i,'').match(HJ_VENDOR_RE);
+    return m&&(m[1]+'인테리어')!==me&&me.indexOf(m[1])<0?m[1]+'인테리어':'';
+  }catch(e){return '';}
+}
+/* v343 외주(매입) 견적 — 다른 업체가 우리에게 낸 견적(용진인테리어 등)은 매출이 아니라 원가다.
+   [상세 입력 → 🏢 외주(매입)]을 누르면 est.purchase 를 켜서 estimateGroups 가 매출·청구·부가세 매출에서 빼고,
+   현장이 정해져 있고 금액이 있으면 그 현장 '외주' 지출(state.expenses, sourceKey 로 한 번만)을 함께 기록한다 →
+   projStats 외주 원가(수기 외주비가 없을 때, 택일 규칙)에 잡힌다. 되돌리면 그 지출이 손대지 않은 그대로일 때만 함께 지운다. */
+function hjEstPurchaseKey(f){return 'estpurchase:'+((typeof fileKey==='function'&&fileKey(f))||f.id);}
+function hjEstExpenseDate(f){
+  const d=String(f&&f.est&&f.est.date||'').trim().replace(/[./]/g,'-').slice(0,10);
+  if(HJ_YMD_RE.test(d))return d;
+  try{if(f.when)return localDate(new Date(f.when));}catch(e){}
+  return localDate();
+}
+function hjEstTogglePurchase(id){
+  const f=(state.files||[]).find(x=>x&&x.id===id&&x.kind==='estimate'&&!x._fromQuote);
+  if(!f){toast('견적 파일을 찾지 못했습니다');return false;}
+  f.est=f.est||{};
+  state.expenses=state.expenses||[];
+  if(!f.est.purchase){
+    // 같은 견적의 다른 형식(엑셀·PDF 사본)까지 함께 — 하나만 바꾸면 남은 사본이 대표가 돼 매출에 다시 잡힌다.
+    const pj=f.project||'';
+    let members=[f];
+    try{const g=estimateGroups((state.files||[]).filter(x=>x&&x.kind==='estimate'&&!x._fromQuote&&(x.project||'')===pj)).find(g=>g.rep===f||(g.dups||[]).includes(f));if(g)members=[g.rep].concat(g.dups||[]);}catch(e){}
+    if(!members.includes(f))members.push(f);
+    const rep=members.find(x=>!hjEstAmtSuspect(x)&&(Number(x.est&&x.est.amount)||0)>0)||f;
+    const key=hjEstPurchaseKey(rep);
+    members.forEach(x=>{x.est=x.est||{};x.est.purchase=true;x.est.purchaseKey=key;});
+    let added='';
+    const amt=Number(rep.est&&rep.est.amount)||0;
+    if(pj&&amt>0&&!state.expenses.some(x=>x&&x.sourceKey===key)){
+      const r=expenseAdd({amount:amt,category:'외주',date:hjEstExpenseDate(rep),project:pj,vendor:hjEstVendorName(rep),memo:'외주 견적: '+rep.name,sourceKey:key});
+      if(r&&!r.오류)added=' · '+pj+' 외주비 '+won(amt)+'을 지출로 기록';
+    }
+    markDirty();render();toast('🏢 외주(매입) 견적으로 바꿔 매출에서 뺐어요'+(members.length>1?' (사본 '+(members.length-1)+'건 포함)':'')+added);
+  }else{
+    const key=f.est.purchaseKey||hjEstPurchaseKey(f);
+    const members=(state.files||[]).filter(x=>x&&x.kind==='estimate'&&x.est&&x.est.purchase&&(x===f||x.est.purchaseKey===key));
+    const amtOf=x=>Number(x.est&&x.est.amount)||0;
+    let removed='';
+    const i=state.expenses.findIndex(x=>x&&x.sourceKey===key);
+    if(i>=0){
+      const x=state.expenses[i];
+      if(members.some(m=>amtOf(m)===Number(x.amount))&&x.project===(f.project||'')){state.expenses.splice(i,1);removed=' · 함께 기록한 외주비 지출도 지웠어요';}
+      else removed=' · 함께 기록한 외주비 지출은 고친 적이 있어 그대로 뒀어요';
+    }
+    members.forEach(x=>{delete x.est.purchase;delete x.est.purchaseKey;});
+    markDirty();render();toast('매출 견적으로 되돌렸어요'+removed);
+  }
+  return true;
+}
+
 // 견적 그룹핑: 같은 견적의 다른 포맷·사본을 [{rep(대표), dups(사본들)}]로
 function estimateGroups(estFiles){
   try{
@@ -27485,6 +27636,7 @@ function estimateGroups(estFiles){
     (estFiles||[]).forEach(function(f){
       if(f.exSum)return; // [v91] 사장님이 집계 제외한 견적(초기안 등)
       if(__skip.has(f.id))return; // [v342] 금액 확인 필요·배정된 견적의 사본 — 목록에는 남고 배지로 이유를 보여 준다
+      if(f.est&&f.est.purchase)return; // [v343] 외주(매입) 견적 — 우리 매출이 아니다(현장 외주비 지출로 따로 잡는다)
       let key=norm(f.name);const amt=(f.est&&f.est.amount)||0;
       // 이름이 거의 안 남으면 금액으로 묶지 않는다 — 금액만 같은 서로 다른 견적이 통째로 합쳐진다.
       // 못 묶는 건 '사본 2건'으로 보이는 것뿐이지만, 잘못 묶으면 매출이 조용히 사라진다.
@@ -31224,7 +31376,8 @@ function viewEstimates(){
   const total=Object.values(byProj).reduce((a,b)=>a+b,0),visible=estimateListRows(list);
   const __looseTotal=byProj['(현장 미지정)']||0;
   let __shadows=new Map();try{__shadows=hjLooseEstShadows(list);}catch(e){}
-  let html=`<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}<div class="estimate-overview"><div><span>전체 견적 파일</span><b>${list.length}건</b></div><div><span>프로젝트 미지정</span><b>${list.filter(f=>!f.project).length}건</b></div><div><span>견적 합계 · 매출 집계 기준</span><b>${won(total)}</b><small style="display:block;color:var(--muted);font-size:11px;margin-top:2px">현장 배정 ${won(total-__looseTotal)} · 미지정 ${won(__looseTotal)} · 사본·집계 제외 뺌</small></div></div><div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
+  const __purchase=list.filter(f=>f.est&&f.est.purchase&&!f._fromQuote),__purchaseN=__purchase.length,__purchaseSum=__purchase.reduce((n,f)=>n+(Number(f.est.amount)||0),0);
+  let html=`<section class="estimates-view">${documentToolbar(true)}${documentSelectionToolbar()}<div class="estimate-overview"><div><span>전체 견적 파일</span><b>${list.length}건</b></div><div><span>프로젝트 미지정</span><b>${list.filter(f=>!f.project).length}건</b></div><div><span>견적 합계 · 매출 집계 기준</span><b>${won(total)}</b><small style="display:block;color:var(--muted);font-size:11px;margin-top:2px">현장 배정 ${won(total-__looseTotal)} · 미지정 ${won(__looseTotal)} · 사본·집계 제외 뺌${__purchaseN?' · 외주(매입) '+__purchaseN+'건 '+won(__purchaseSum)+' 별도':''}</small></div></div><div class="toolbar"><button class="moss tiny" id="btnXlsx">견적 정산 엑셀 내보내기</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트로 저장됩니다.</span></div>`;
   try{const _fc=estFinalCandidates();if(_fc.length){html+=`<div class="hint" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:0 0 10px">⭐ 최종본(★)이 있는 달의 다른 안 <b>${_fc.length}건</b>이 매출에 같이 잡히고 있어요. <button class="moss tiny" data-finalize="1" style="padding:5px 10px;margin-left:6px">한 번에 집계 제외</button></div>`;}}catch(e){}
   html+=`<p class="list-intro">금액은 바로 수정하고, 고객명·견적일·사업자번호는 ‘상세 입력’에서 확인하세요. 자동으로 읽은 값은 원본과 대조해 주세요.</p><div class="estimate-list-tools"><label class="estimate-search" for="estimateListSearch">견적 검색<input id="estimateListSearch" type="search" placeholder="파일명 · 프로젝트 · 고객명" value="${escapeAttr(__estimateListUI.search)}"></label><label for="estimateListStatus">표시 대상<select id="estimateListStatus">${[['all','전체 견적'],['unassigned','프로젝트 미지정'],['excluded','집계 제외']].map(([v,t])=>`<option value="${v}"${__estimateListUI.status===v?' selected':''}>${t}</option>`).join('')}</select></label><label for="estimateListSort">정렬<select id="estimateListSort">${[['original','기존 순서'],['date','견적일 최신순'],['amount','금액 높은순']].map(([v,t])=>`<option value="${v}"${__estimateListUI.sort===v?' selected':''}>${t}</option>`).join('')}</select></label><button class="ghost" id="estimateListReset">전체 보기</button></div><p class="list-intro" id="estimateListCount" role="status" aria-live="polite">전체 ${list.length}건 중 ${visible.length}건 표시${state.search?' · 상단 통합 검색 적용 중':''}</p><p class="estimate-footnote">검색·필터는 목록에만 적용됩니다. 위 합계와 엑셀 내보내기는 검색과 상관없이 전체 견적 기준입니다.</p>`;
   // [v91] 사본 그룹 뱃지 준비
@@ -31235,7 +31388,7 @@ function viewEstimates(){
       <td class="est-file"><div class="est-name">${escapeHtml(f.name)}</div><div class="est-content">${escapeHtml(estimateContentSummary(f)||'작업 내용 미입력')}</div><div class="est-badges">${e._edited&&!f._fromQuote?'<span>✎ 수정됨</span>':''}${__gb[f.id]?`<span>${String(__gb[f.id]).startsWith('rep')?'사본 '+String(__gb[f.id]).split(':')[1]+'건 중 대표':'사본 · 중복 집계 제외'}</span>`:''}${f.exSum?'<span class="excluded">집계 제외</span>':''}${hjEstIssues(f,__shadows).map(x=>'<span class="'+(x.warn?'est-warn':'est-info')+'">'+escapeHtml(x.t)+'</span>').join('')}</div><div class="document-toolbar">${documentFileTools(f)}</div></td>
       <td class="est-project">${estimateInfoButton('file',f.id,f.project)}<div class="est-date">${escapeHtml(estimateListDate(f))}</div></td>
       <td class="est-amount amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(f.name)} 견적 금액 (원)" data-ef="amount" data-id="${f.id}" value="${(e.amount||0).toLocaleString('ko-KR')}"${f._fromQuote?qeRoAttr():''}>${f._fromQuote?'<small class="est-fromquote-note" style="display:block;font-size:11px;color:var(--muted);font-weight:400">앱 견적 · ✍ 편집에서 수정</small>':''}</td>
-      <td class="est-manage"><div class="est-actions">${previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"${f._fromQuote?qeRoAttr():''}></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"${f._fromQuote?qeRoAttr():''}></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"${f._fromQuote?qeRoAttr():''}></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button></div></details></td>
+      <td class="est-manage"><div class="est-actions">${previewButtonHtml(f,'미리보기')}<button class="mini-btn" data-toedit="${f.id}" title="견적 편집기로 열기">✍ 편집</button></div><details class="est-row-details" data-estimate-details="${escapeAttr(f.id)}"${__estimateOpenDetails.has(f.id)?' open':''}><summary>상세 입력</summary><label>고객 / 현장명<input type="text" data-ef="customer" data-id="${f.id}" value="${escapeAttr(e.customer||'')}"${f._fromQuote?qeRoAttr():''}></label><label>견적일<input type="text" placeholder="YYYY-MM-DD" data-ef="date" data-id="${f.id}" value="${escapeAttr(e.date||'')}"${f._fromQuote?qeRoAttr():''}></label><label>사업자번호<input type="text" data-ef="bizno" data-id="${f.id}" value="${escapeAttr(e.bizno||'')}"${f._fromQuote?qeRoAttr():''}></label><div class="est-actions"><button class="mini-btn" data-learn="${f.id}" title="이 거래처 양식 기억">★ 양식 기억</button><button class="mini-btn" data-exsum="${f.id}" title="매출 집계 포함/제외">${f.exSum?'↩ 집계 포함':'Σ 집계 제외'}</button>${f._fromQuote?'':`<button class="mini-btn" data-estpurchase="${f.id}" title="다른 업체가 낸 외주·매입 견적이면 매출에서 빼고 현장 외주비로 기록">${e.purchase?'↩ 매출 견적으로':'🏢 외주(매입)'}</button>`}</div></details></td>
     </tr>`;});
   html+=`</tbody></table>`;
   if(!visible.length)html+=`<div class="empty" role="status"><b>검색 결과가 없습니다</b>검색어·표시 대상을 바꾸거나 ‘전체 보기’를 눌러주세요. 저장된 견적서는 그대로 있습니다.</div>`;
@@ -32714,7 +32867,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -32727,6 +32880,7 @@ function setupDelegation(){
     if(d.aptunits!==undefined)return aptUnitView(d.aptunits);
     if(d.aptadd!==undefined)return aptUnitEdit(d.aptadd);
     if(d.aptbulk!==undefined)return d.aptbulk==='project'?aptProjectCreateView('',d.aptsource||''):aptBulkView();
+    if(d.aptlegacy!==undefined)return hjAptLegacyMergeView();
     if(d.aptorders!==undefined)return aptOrderManage();
     if(d.aptoffadd!==undefined)return aptMgmtOfficeAdd(d.aptoffadd);
     if(d.aptgo!==undefined){state.tab='project';state.activeProject=d.aptgo;__projView=null;render();syncMobileNav();return;}
@@ -32920,6 +33074,7 @@ function setupDelegation(){
     if(d.fcopy!==undefined){e.stopPropagation();return docCopy(d.fcopy);}
     if(d.fdel!==undefined){e.stopPropagation();return docDelete(d.fdel);}
     if(d.fsend!==undefined){e.stopPropagation();return docSend(d.fsend);}
+    if(d.estpurchase!==undefined){e.stopPropagation();hjEstTogglePurchase(d.estpurchase);return;}
     if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
     if(d.finalize!==undefined){e.stopPropagation();return estFinalApply();}
     if(d.recvquick!==undefined){e.stopPropagation();return recvQuickView(d.recvquick);}
@@ -33359,7 +33514,7 @@ async function exportEstimateXLSX(){
   let __shX=new Map();try{__shX=hjLooseEstShadows(__estAll);}catch(e){}
   __estAll.forEach(f=>{
     const e=f.est||{};
-    const why=__repIds.has(f.id)?'포함':f.exSum?'집계 제외':hjEstAmtSuspect(f)?'확인 필요(10억 이상)':__shX.has(f.id)?'제외: '+__shX.get(f.id).project+' 견적의 사본':'제외: 사본';
+    const why=(e.purchase&&!f._fromQuote)?'외주(매입) — 매출 아님':__repIds.has(f.id)?'포함':f.exSum?'집계 제외':hjEstAmtSuspect(f)?'확인 필요(10억 이상)':__shX.has(f.id)?'제외: '+__shX.get(f.id).project+' 견적의 사본':'제외: 사본';
     sheet2.push([f.project||'(미지정)',f.name,e.customer||'',e.date||'',e.supply||'',e.vat||'',e.amount||0,e.bizno||'',why]);
   });
   if(sheet2.length===1)sheet2.push(['(견적서 없음)','','','','','','','']);
