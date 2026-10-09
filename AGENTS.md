@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v368 🚚 자재 발주 → 납품 확인 (Claude Cowork, v367 위 — PR 대기)
+
+- 발주 문자는 만들었지만 보낸 발주가 언제 들어오는지·들어왔는지 기록이 없어, 공정 날 아침에 '타일 왔나?'를 전화로 확인했다. 버전 핀 `hyeonjang-v368-matdue`. 새 최상위 키 없음 — 현장 레코드 안 `p.matOrders`(workOrders 와 같은 방식, `projectBackupSafe` 로 그대로 저장, `portalBuild` 는 고른 칸만이라 고객 페이지에 안 실림).
+- 기록: `{id, sup, items:[{name,spec,qty,unit}], due 납품 예정일, at 발주일, recvAt 입고 확인일('' = 미입고), memo}`. `hjMatRecord(project,{sup,items,due,memo})` — 같은 거래처·날짜·품목의 미입고 기록이 있으면 새로 만들지 않고 `{dup:true}`. `hjMatReceive(id,on)` 입고 확인/취소(오늘 날짜). `hjMatState` → late/today/soon(D-n)/nodate/recv, `hjMatAll(project)` 그 순서로 정렬, `hjMatPending(limit)` 미입고·납품일 ≤ limit. 품목 줄 `HJ_MAT_LINE_RE`('이름 × 수량단위').
+- 입구: 📦 발주 문자 화면 카드 `.moRec` [🚚 납품 확인에 올리기](현장 있는 묶음만 — 작업실 재고 발주는 버튼 없음) · 현장 화면 `[data-pjmat]` 칸(기록이 있거나 시공 단계, 기다림 4줄 + `[data-matrecv]` ✅ 입고·`[data-matadd]`·`[data-matview]`, 위임 등록) · `hjMatView(project?,back?)` 창(칩 지남/오늘/예정/미정, `.mdRecv`·`.mdUndo`·`.mdEdit`, + 추가) · `hjMatEdit(id|null,{project,back})`(고치기·🗑 삭제·추가, 거래처나 품목 없으면 저장 안 함) · 🔔 `briefExtraItems` '🚚 납품 확인 N건 · 지남 M건'(action `matdue`) · 🌙 오늘 마감 `d.mat`(내일까지 미입고) + `[data-dc-mat]` · 더보기 '현장·시공' `['matdue','🚚','납품 확인']` → **메뉴 계약 123 → 124**(mobile-more-tools·mobile-more-sweep·mobile-office-connect·board-v351 갱신). 자동 발송 없음.
+- 새 `tests/matdue-v368.e2e.js` 6/6(v367 에서는 0/6). 메뉴 계약 4개 + 관련 20개(action-search·asview-v367·brief-actions·calc-safety·crewclash-v362·dayclose-v359·order-materials·recv-entry·site-bom·pjsched-v364·as-record·project-rename·apartment-units·apartment-manage·uiux·mobile-friendly-ui·completion-links·health-board·dash-reports·v219-operations)·정적 검사 통과(별도 포트 사본).
+- 검사 방식 변경(대표와 합의 2026-10-10): Codex 는 버전마다 새 검사 + 관련 검사 + 정적 검사만 돌리고 push. 전체 검사는 GitHub CI(push 마다 자동)와 Claude 컨테이너가 맡고, Windows 전체 검사는 병합 직전에 한 번.
+
 ## 2026-10-09 v367 AS 방문 일정 한눈에 (Claude Cowork, v366 위 — PR 대기)
 
 - AS 기록에는 '방문 2026-11-06' 날짜만 보여 시간·담당·보고 여부는 일정표에서 찾아야 했고, 방문을 아직 안 잡은 AS 가 묻혔다. 버전 핀 `hyeonjang-v367-asview`. 저장 없음(읽기 전용).

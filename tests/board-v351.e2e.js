@@ -105,7 +105,7 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(
     assert(/공정 지연 점검 — 지연현장/.test(r.t1), '지연 점검창: ' + r.t1);
   });
 
-  await test('더보기 🕒 공정 지연 점검 — 여럿이면 고르기, 하나면 바로, 없으면 빈 상태(390px·메뉴 123 — v358 일정 공유 추가)', async () => {
+  await test('더보기 🕒 공정 지연 점검 — 여럿이면 고르기, 하나면 바로, 없으면 빈 상태(390px·메뉴 124 — v358 일정 공유·v368 납품 확인 추가)', async () => {
     const r = await page.evaluate(async ({ d9 }) => {
       const n = MORE_CATS.flatMap(c => c.items).length;
       // 둘: 고르기 창
@@ -126,7 +126,7 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(
       const wide = document.documentElement.scrollWidth - document.documentElement.clientWidth;
       return { n, pick, opened, one, none, wide };
     }, { d9: ago(9) });
-    assert(r.n === 123, '더보기 메뉴 수: ' + r.n);   // v358 📤 일정 공유 추가로 122 → 123
+    assert(r.n === 124, '더보기 메뉴 수: ' + r.n);   // v358 📤 일정 공유 122 → 123, v368 🚚 납품 확인 → 124
     assert(/공정 지연 점검$/.test(r.pick.title) && r.pick.rows.length === 2 && r.pick.rows[0][0] === '지연현장' && r.pick.rows.every(x => x[1] >= 44), '고르기 창: ' + JSON.stringify(r.pick));
     assert(/공정 지연 점검 — 지연현장/.test(r.opened) && /공정 지연 점검 — 지연현장/.test(r.one), '바로 열기: ' + r.opened + ' / ' + r.one);
     assert(/공정 지연 점검/.test(r.none.title) && r.none.empty, '빈 상태: ' + JSON.stringify(r.none));
