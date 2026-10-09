@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v366 AS 방문 보고 → AS 기록 마무리 (Claude Cowork, v365 위 — PR 대기)
+
+- AS 방문 일정에 작업 보고를 저장해도 AS 기록은 '접수' 그대로라, 처리 내용·사진·완료를 🔧 AS 관리에서 다시 적고 고객 완료 안내도 따로 썼다. 버전 핀 `hyeonjang-v366-asclose`. 새 최상위 키 없음(AS 기록의 `status`·`fix`·`photos` 는 v329 칸).
+- `hjAsForSched(s)` = `s.asId` 의 AS, 없으면 `visitSchedId === s.id` 인 AS(v331 옛 방문 일정). `hjAsCloseOffer(s,back)`: 그 AS 가 완료 전이고 보고에 글/진행률이 있으면 '🔧 AS 기록 마무리' 창 — `#acFix`(이미 적힌 `fix`, 없으면 보고 글)·`#acPhotos`(그날 `reportPhotos(s)` 중 아직 연결 안 된 사진을 `hjFileRef` 로, 기본 체크) → [✅ AS 완료로 저장](status done)·[처리중으로 저장](doing)·[나중에](아무것도 안 바꿈). 누르는 순간 AS 가 바뀌었으면(다른 곳에서 완료 등) 저장하지 않는다.
+- 완료로 저장하면 `hjAsDoneAfter` '✅ AS 완료 — 고객 안내': `#adText`(`hjAsDoneText` — 방문 날짜·처리 내용, 고쳐서 보냄) → [✉️ 고객에게 완료 안내](`hjSendSms`, 연락처 없으면 [📋 완료 안내 글 복사])·[🔧 AS 관리]·[닫기]. 자동 발송 없음.
+- 입구 두 곳: `saveReport`(일정표 📋 일일 작업 보고, 이미지/PDF 로 저장할 때는 묻지 않음)·`myWorkReport`(내 업무 ✅ 완료 보고 — 끝나면 `myWorkView` 로 돌아감).
+- 새 `tests/asclose-v366.e2e.js` 5/5(v365 에서는 0/5). 관련 13개(as-record·asvisit-v365·v331-follow·dayclose-v359·delay-v347·mobile-operations·multiday-v354·my-work·watch-card·health-board·ui-feedback·delete-guard·schedule-safety)·정적 검사 통과(별도 포트 사본). ui-feedback 은 병렬 실행에서 토스트 시간 한 번 흔들림 → 단독 통과.
+
 ## 2026-10-09 v365 AS 접수 → 방문 일정·담당 한 번에 (Claude Cowork, v364 위 — PR 대기)
 
 - AS 를 접수하고 방문일을 넣으면 '일정에도 올릴까요?'로 시간·담당 없는 일정만 생겼고, 시간·담당·고객 안내·작업지시는 각각 다른 화면에서 했다. 버전 핀 `hyeonjang-v365-asvisit`. 새 최상위 키 없음(일정 `asId`·AS `visitSchedId`·`visitAt` 은 v331 부터 있던 필드).

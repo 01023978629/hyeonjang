@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v365-asvisit';
+const APP_BUILD='hyeonjang-v366-asclose';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13179,6 +13179,64 @@ function hjAsVisitAfter(a,s){
     {label:'🔧 AS 관리',cls:'ghost',fn:()=>asManage(a.id)},
     {label:'닫기',cls:'ghost',fn:closeModal}],true);
   return {현장:a.project,날짜:s.date};
+}
+/* ── v366 🔧 AS 방문 보고 → AS 기록 마무리 ──
+   AS 방문 일정(asId 또는 AS 기록의 visitSchedId)에 작업 보고를 저장해도 AS 기록은 '접수' 그대로였다 — 처리 내용·사진·완료를
+   🔧 AS 관리에서 다시 적어야 했고, 고객 완료 안내도 따로 썼다. 보고 저장(일정표 📋 보고 · 내 업무 ✅ 완료 보고) 뒤 그 AS 가
+   완료 전이면 '🔧 AS 기록 마무리' 창: 처리 내용(보고 글로 채움, 이미 적힌 처리 내용이 있으면 그것)·그날 현장 사진 연결(분쟁 근거)
+   → [✅ AS 완료로 저장]·[처리중으로 저장]·[나중에]. 완료로 저장하면 고객 완료 안내 글(고쳐서 문자/복사). 자동 발송 없음.
+   버튼을 누르기 전에는 아무것도 바꾸지 않는다. 새 최상위 키 없음(AS 기록의 status·fix·photos 는 v329 부터 있던 칸). */
+function hjAsForSched(s){
+  if(!s)return null;
+  const log=state.asLog||[];
+  return (s.asId&&log.find(a=>a&&a.id===s.asId))||log.find(a=>a&&a.visitSchedId&&a.visitSchedId===s.id)||null;
+}
+function hjAsCloseOffer(s,back){
+  const a=hjAsForSched(s),r=(s&&s.report)||{};
+  if(!a||a.status==='done'||!(String(r.done||'').trim()||r.progress))return false;
+  const fix=String(a.fix||'').trim()||String(r.done||'').trim();
+  const have=new Set((Array.isArray(a.photos)?a.photos:[]).map(String));
+  const add=[...new Set(reportPhotos(s).map(hjFileRef).filter(x=>x&&!have.has(x)))];
+  const leave=()=>{if(back)back();else closeModal();};
+  const body='<div style="font-size:13px;line-height:1.6;margin-bottom:8px"><b>'+escapeHtml(hjCut(a.text||'AS',40))+'</b> 방문 보고를 저장했어요. AS 기록에도 남길까요?</div>'+
+    '<label style="display:block;font-size:12.5px;font-weight:700">처리 내용 (무엇을 어떻게 고쳤나)<textarea id="acFix" rows="3" style="display:block;width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;padding:10px;margin-top:4px">'+escapeHtml(fix)+'</textarea></label>'+
+    (add.length?'<label style="display:flex;align-items:center;gap:10px;min-height:44px;font-size:13px;margin-top:6px;cursor:pointer"><input type="checkbox" id="acPhotos" checked style="width:22px;height:22px;flex:none"><span>그날 현장 사진 <b>'+add.length+'장</b>도 AS 기록에 연결 (분쟁 근거)</span></label>':'')+
+    '<div class="hint" style="margin-top:6px">지금 AS 상태: '+escapeHtml((AS_STAT[a.status]||AS_STAT.open)[0])+' · 유상 금액·보증 공종은 🔧 AS 관리에서 적어요.</div>';
+  const save=status=>{
+    if(hjAsForSched(s)!==a||a.status==='done'){toast('AS 기록이 그 사이 바뀌었어요 — 🔧 AS 관리에서 확인하세요');closeModal();return null;}
+    const t=String((document.getElementById('acFix')||{}).value||'').trim();
+    if(t)a.fix=t;
+    const pc=document.getElementById('acPhotos');let linked=0;
+    if(pc&&pc.checked){const cur=Array.isArray(a.photos)?a.photos.slice():[],seen=new Set(cur.map(String));
+      add.forEach(x=>{if(!seen.has(x)){cur.push(x);seen.add(x);linked++;}});if(linked)a.photos=cur;}
+    a.status=status;markDirty();try{render();}catch(e){}
+    return linked;
+  };
+  openModal('🔧 AS 기록 마무리',body,[
+    {label:'✅ AS 완료로 저장',cls:'clay',fn:()=>{const n=save('done');if(n===null)return;toast('✅ AS 완료 처리'+(n?' · 사진 '+n+'장 연결':''));hjAsDoneAfter(a,s,back);}},
+    {label:'처리중으로 저장',cls:'ghost',fn:()=>{const n=save('doing');if(n===null)return;toast('AS 처리중으로 저장했어요'+(n?' · 사진 '+n+'장 연결':''));leave();}},
+    {label:'나중에',cls:'ghost',fn:leave}],true);
+  return true;
+}
+function hjAsDoneText(a,s,p){
+  const cust=(p&&p.customer)||{},fix=String(a.fix||'').trim();
+  return ['['+COMPANY.name+'] AS 처리 완료 안내','안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',
+    '접수하신 '+(a.text?'"'+hjCut(a.text,40)+'" ':'')+'건을 '+hjMdDow(s.date)+'에 방문해 처리했습니다.',
+    fix?'처리 내용: '+hjCut(fix,80):'',
+    '사용하시다 불편한 점이 있으면 언제든 연락 주세요.','- '+COMPANY.owner+' '+COMPANY.tel].filter(Boolean).join('\n');
+}
+function hjAsDoneAfter(a,s,back){
+  const p=(state.projects||[]).find(x=>x&&x.name===a.project);
+  const ph=p&&p.customer&&telHref(p.customer.phone),text=hjAsDoneText(a,s,p);
+  const body='<div style="font-size:13px;line-height:1.6;margin-bottom:8px">AS 기록을 <b style="color:#0a7f43">완료</b>로 남겼어요. 고객에게 완료 안내를 보낼까요?</div>'+
+    '<textarea id="adText" rows="7" style="display:block;width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;padding:10px">'+escapeHtml(text)+'</textarea>'+
+    '<div class="hint" style="margin-top:6px">고쳐서 보낼 수 있고, 자동으로 보내지 않습니다.</div>';
+  openModal('✅ AS 완료 — 고객 안내',body,[
+    {label:ph?'✉️ 고객에게 완료 안내':'📋 완료 안내 글 복사',cls:'clay',fn:()=>{const t=String((document.getElementById('adText')||{}).value||text).trim();
+      if(ph){hjSendSms(p.customer.phone,t);toast('문자 앱을 열었어요 — 확인하고 보내세요');}else coworkCopy(t,'AS 완료 안내 글');}},
+    {label:'🔧 AS 관리',cls:'ghost',fn:()=>asManage(a.id)},
+    {label:'닫기',cls:'ghost',fn:()=>{if(back)back();else closeModal();}}],true);
+  return {현장:a.project};
 }
 function asManage(focusId){
   if(focusId&&typeof focusId==='string')__asmOpen.add(focusId);
@@ -25669,7 +25727,8 @@ function myWorkReport(schId){
     if(!r||r.오류){toast('작업일지를 저장하지 못했습니다');return;}
     s.report.progress='완료';s.report.filledAt=new Date().toISOString();markDirty();dashboardOperationsRefresh();
     if(s.project)try{portalAutoSync(s.project);}catch(e){}   // v346 공정 완료 보고 → 고객 페이지 진행률
-    toast('완료 보고를 작업일지에 저장했습니다');myWorkView({refresh:false});}}],true);
+    toast('완료 보고를 작업일지에 저장했습니다');
+    if(!hjAsCloseOffer(s,()=>myWorkView({refresh:false})))myWorkView({refresh:false});}}],true);   // v366 AS 방문이면 AS 기록 마무리 뒤 내 업무로
   const pb=document.getElementById('mwReportPhoto');if(pb)pb.onclick=()=>hjMyWorkPhoto(s.project,s.title||'');
   const ta=document.getElementById('mwDoneText');if(ta){ta.onfocus=()=>hjKeepAboveFooter(ta);setTimeout(()=>{try{ta.focus();}catch(_){}},0);}
 }
@@ -33075,6 +33134,7 @@ function saveReport(id,keepOpen){
   markDirty();
   if(keepOpen){return;}
   closeModal();render();toast('작업 보고 저장됨');
+  hjAsCloseOffer(s);   // v366 AS 방문 일정이면 AS 기록 마무리(처리 내용·사진·완료)
 }
 function deleteSchedule(id){  const s=state.schedule.find(x=>x.id===id);if(!s)return;
   openModal('일정 삭제',`<p style="font-size:13px">‘${escapeHtml(s.title)}’ 일정을 삭제할까요?</p>`,
