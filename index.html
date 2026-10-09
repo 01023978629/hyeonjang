@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v356-schshare';
+const APP_BUILD='hyeonjang-v357-crew';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9161,6 +9161,7 @@ function dashboardTodayHTML(){
     const inner=`<button data-gosch="${escapeAttr(s.id)}" style="display:block;min-height:44px;white-space:normal;overflow-wrap:anywhere;${s.routine?'flex:1;min-width:0;margin:0;':'width:100%;margin:4px 0;'}text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;cursor:pointer;font:inherit">`+
     `<b style="color:var(--blueprint)">${showDate?escapeHtml(String(s.date).slice(5))+' ':''}${s.time?escapeHtml(s.time)+' ':''}${escapeHtml(s.title||'작업')}</b>`+
     `${s.project?`<span style="margin-left:8px;font-size:12px;color:var(--muted)">📍${escapeHtml(s.project)}</span>`:''}`+
+    `${s.crew?`<span data-dashcrew style="margin-left:6px;font-size:12px;color:var(--muted)">👤${escapeHtml(hjCrewText(s.crew))}</span>`:''}`+
     `${cont?`<span data-schcont style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(hjSchContLabel(cont))}</span>`:''}`+
     `${s.workers?`<span style="margin-left:6px;font-size:12px;color:var(--muted)">👷${escapeHtml(String(s.workers))}명</span>`:''}</button>`;
     // 운영 루틴 일정은 [▶ 바로] 한 번으로 해당 화면(사진/광고/회계)이나 백업 실행으로 점프
@@ -12337,7 +12338,7 @@ function notifyDrafts(ymd){
     const cust=p.customer||{};
     const addr=(cust.addr||'').trim();
     const title=c?String(s.title||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' ('+c.day+'/'+c.days+'일째)':s.title;
-    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(s.memo?'\n메모: '+s.memo:'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
+    const worker=['['+COMPANY.name+'] 작업 안내',hjKD(ymd)+' '+(s.time||'')+' · '+(s.project||'현장 미지정')+(addr?'\n주소: '+addr:''),'작업: '+title+(s.memo?'\n메모: '+s.memo:'')+(s.crew?'\n담당: '+hjCrewText(s.crew):'')+(s.workers?'\n인원: '+s.workers:''),'문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
     const customer=c
       ?['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+'에도 '+(s.project?s.project+' ':'')+title+' 작업이 이어집니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n')
       :['안녕하세요'+(cust.name?' '+cust.name+'님':'')+', '+COMPANY.name+'입니다.',hjKD(ymd)+' '+(s.time||'')+'에 '+(s.project?s.project+' ':'')+s.title+' 작업으로 방문 예정입니다.','참고 부탁드리며, 문의는 '+COMPANY.tel+'로 연락 주세요. 감사합니다.'].join('\n');
@@ -12378,6 +12379,17 @@ function scheduleNotify(ymd){
    · 카톡 = 공유 시트(kakaoShareText — 안 되면 복사), 문자 = 받는 번호(여러 명은 쉼표)로 문자 앱을 연다,
      캘린더 = 같은 범위를 .ics 파일로(여러 날 공정은 날마다 하나씩) 공유 시트에 — 단톡방에 올리면 팀원이 눌러 자기 캘린더에 넣는다.
    · 자동 발송 없음 — 어느 길이든 마지막 '보내기'는 사람이 누른다. 저장하는 것 없음(받는 번호도 저장하지 않는다). */
+/* ═══════════ 👷 일정 담당 팀원 (v357) ═══════════
+   일정에는 인원 '수'만 있어 누가 어느 현장에 가는지 일정표에 없었다 — 대표 머릿속에만 있었고, 팀원에게 일정을 공유해도
+   '내 일정'을 골라 줄 수 없었다. 일정 항목 안에 crew(쉼표로 나눈 이름 글자)를, 연락처 항목 안에 team(true)을 더한다 — 최상위 저장 키 그대로.
+   · 연락처에서 '👷 팀원' 으로 표시한 사람은 일정 창에서 눌러 고른다(이름은 직접 적어도 된다).
+   · 담당은 일정표·대시보드·📋 내 업무·🔔 알림 문자·📤 일정 공유 글·캘린더 파일에 보인다. 공유 창은 담당별로 좁히고,
+     그 사람이 팀원 연락처에 번호가 있으면 문자 받는 번호를 채운다(보내기는 사람이). 작업지시 창도 담당이 한 명이면 번호를 채운다. */
+const HJ_CREW_SPLIT_RE=/[,，·\/]+/;
+function hjCrewList(v){const seen=new Set();return String(v||'').split(HJ_CREW_SPLIT_RE).map(x=>x.trim().replace(/\s+/g,' ').slice(0,20)).filter(x=>x&&!seen.has(x)&&seen.add(x)).slice(0,10);}
+function hjCrewText(v){return hjCrewList(v).join(', ');}
+function hjTeamContacts(){return (state.contacts||[]).filter(c=>c&&c.team&&String(c.name||'').trim());}
+function hjCrewPhone(name){const n=String(name||'').trim();if(!n)return '';const c=hjTeamContacts().find(x=>String(x.name).trim()===n&&telHref(x.phone));return c?String(c.phone):'';}
 const HJ_RANGE_TAIL_RE=/^\s*\(\d+일\)\s*/;
 const HJ_SMS_SPLIT_RE=/[,;\n\/]+/;
 function hjAddDays(ymd,n){const d=new Date(String(ymd)+'T00:00:00');if(isNaN(d))return String(ymd);d.setDate(d.getDate()+n);return hjYmd(d);}
@@ -12390,7 +12402,7 @@ function hjSchShareRange(kind,date){
   return {kind:'today',from:today,to:today,label:'오늘'};
 }
 // 읽기 전용 — 날짜별 [{date, rows:[{s,c}]}] (c = 이어지는 날 정보, 시작일이면 null)
-function hjSchShareDays(from,to,project,ids){
+function hjSchShareDays(from,to,project,ids,crew){
   const out=[],put=(d,s,c)=>{let day=out.find(x=>x.date===d);if(!day){day={date:d,rows:[]};out.push(day);}day.rows.push({s,c});};
   if(Array.isArray(ids)&&ids.length){
     ids.map(id=>(state.schedule||[]).find(s=>s&&s.id===id)).filter(Boolean).forEach(s=>{
@@ -12398,7 +12410,7 @@ function hjSchShareDays(from,to,project,ids){
       hjSchContDates(s).forEach(d=>put(d,s,hjSchContOn(s,d)));});
     return out.sort((a,b)=>a.date.localeCompare(b.date));
   }
-  const ok=s=>!!s&&hjPrepOtherOk(s)&&(!project||s.project===project);
+  const ok=s=>!!s&&hjPrepOtherOk(s)&&(!project||s.project===project)&&(!crew||hjCrewList(s.crew).includes(crew));
   const byTime=(a,b)=>String(a.time||'99:99').localeCompare(String(b.time||'99:99'));
   for(let d=from,i=0;d<=to&&i<62;d=hjAddDays(d,1),i++){
     (state.schedule||[]).filter(s=>ok(s)&&s.date===d).sort(byTime).forEach(s=>put(d,s,null));
@@ -12418,7 +12430,7 @@ function hjSchShareText(days,label,span){
   days.forEach(day=>{L.push('','■ '+hjMdDow(day.date));
     day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=c?'':hjSchShareMemo(s);
       L.push('· '+(s.time?s.time+' ':'')+hjSchShareTitle(s,c)+(s.project?' — '+s.project:''));
-      const sub=[addr?'주소: '+addr:'',s.workers?'👷 '+s.workers+'명':'',memo?hjCut(memo,60):''].filter(Boolean);
+      const sub=[addr?'주소: '+addr:'',s.crew?'👤 '+hjCrewText(s.crew):'',s.workers?'👷 '+s.workers+'명':'',memo?hjCut(memo,60):''].filter(Boolean);
       if(sub.length)L.push('  '+sub.join(' · '));});});
   L.push('','문의 '+COMPANY.owner+' '+COMPANY.tel);
   return L.join('\n');
@@ -12428,7 +12440,7 @@ function hjSchShareIcsItems(days){
   const out=[];
   days.forEach(day=>day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=hjSchShareMemo(s);
     out.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
-      project:s.project||'',workers:s.workers||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
+      project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
   return out;
 }
 function hjSmsUrl(phones,text){
@@ -12449,15 +12461,19 @@ function hjSchShareView(opts){
   const all=one?null:hjSchShareDays(rg.from,rg.to,'');
   const names=one?[]:[...new Set(all.flatMap(d=>d.rows.map(r=>r.s.project).filter(Boolean)))];
   const project=one?'':(names.includes(opts.project)?opts.project:'');
-  const days=one?hjSchShareDays(null,null,'',[one.id]):(project?hjSchShareDays(rg.from,rg.to,project):all);
-  const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():rg.label+(project?' · '+project:'');
+  const crews=one?[]:[...new Set(all.flatMap(d=>d.rows.flatMap(r=>hjCrewList(r.s.crew))))];   // v357 담당별
+  const crew=one?'':(crews.includes(opts.crew)?opts.crew:'');
+  const days=one?hjSchShareDays(null,null,'',[one.id]):(project||crew?hjSchShareDays(rg.from,rg.to,project,null,crew):all);
+  const label=one?String(one.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim():rg.label+(project?' · '+project:'')+(crew?' · '+crew:'');
+  const phonePre=crew?hjCrewPhone(crew):(one&&hjCrewList(one.crew).length===1?hjCrewPhone(hjCrewList(one.crew)[0]):'');
   const span=one?'':(rg.from===rg.to?hjMdDow(rg.from):hjMdDow(rg.from)+'~'+hjMdDow(rg.to));
   const n=days.reduce((a,d)=>a+d.rows.length,0),text=hjSchShareText(days,label,span);
   const chip=(k,lb)=>'<button type="button" class="'+(rg&&rg.kind===k?'blue':'ghost')+' shRange" data-k="'+k+'" aria-pressed="'+(rg&&rg.kind===k?'true':'false')+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px">'+escapeHtml(lb)+'</button>';
   const contacts=(state.contacts||[]).filter(c=>c&&telHref(c.phone));
   const body='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:8px">팀원에게 보낼 일정 글입니다. 보내기 전에 고칠 수 있어요. 고객 이름·전화번호는 넣지 않고, 자동으로 보내지 않습니다.</div>'+
     (one?'':'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+chip('today','오늘')+chip('tomorrow','내일')+chip('week','이번 주')+chip('nextweek','다음 주')+(dayDate?chip('day',hjMdDow(dayDate)):'')+'</div>'+
-      (names.length>1||project?'<label style="display:block;font-size:12.5px;margin-bottom:8px">현장<select id="shProj" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 현장</option>'+names.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===project?' selected':'')+'>'+escapeHtml(nm)+'</option>').join('')+'</select></label>':''))+
+      (names.length>1||project?'<label style="display:block;font-size:12.5px;margin-bottom:8px">현장<select id="shProj" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 현장</option>'+names.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===project?' selected':'')+'>'+escapeHtml(nm)+'</option>').join('')+'</select></label>':'')+
+      (crews.length?'<label style="display:block;font-size:12.5px;margin-bottom:8px">담당<select id="shCrew" style="display:block;width:100%;min-height:44px;font-size:16px;margin-top:4px"><option value="">전체 팀원</option>'+crews.map(nm=>'<option value="'+escapeAttr(nm)+'"'+(nm===crew?' selected':'')+'>👤 '+escapeHtml(nm)+'</option>').join('')+'</select></label>':''))+
     '<div id="shCount" style="font-size:13px;margin:4px 0 6px"><b>일정 '+n+'건</b>'+(span?' · '+escapeHtml(span):'')+'</div>'+
     '<textarea id="shText" rows="10" style="display:block;width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;line-height:1.5;padding:10px">'+escapeHtml(text)+'</textarea>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+
@@ -12465,19 +12481,20 @@ function hjSchShareView(opts){
       '<button type="button" class="ghost" id="shCal" style="flex:1 1 140px;min-height:48px">📅 캘린더 파일(.ics)</button>'+
       '<button type="button" class="ghost" id="shCopy" style="flex:1 1 100px;min-height:48px">📋 복사</button></div>'+
     '<label for="shPhone" style="display:block;font-size:13px;font-weight:700;margin-top:12px">✉️ 문자로 보내기 <span style="font-weight:400;color:var(--muted);font-size:12px">받는 번호 — 여러 명은 쉼표(,)로</span></label>'+
-    '<div style="display:flex;gap:6px;margin-top:4px"><input type="tel" id="shPhone" list="shContacts" autocomplete="off" placeholder="010-0000-0000, 010-…" style="flex:1;min-width:0;min-height:44px;font-size:16px;padding:8px">'+
+    '<div style="display:flex;gap:6px;margin-top:4px"><input type="tel" id="shPhone" list="shContacts" autocomplete="off" value="'+escapeAttr(phonePre)+'" placeholder="010-0000-0000, 010-…" style="flex:1;min-width:0;min-height:44px;font-size:16px;padding:8px">'+
       '<button type="button" class="blue" id="shSms" style="min-height:44px;padding:0 14px">문자 열기</button></div>'+
     '<datalist id="shContacts">'+contacts.map(c=>'<option value="'+escapeAttr(c.phone)+'">'+escapeHtml((c.name||'')+(c.company?' · '+c.company:''))+'</option>').join('')+'</datalist>'+
     '<div class="hint" style="margin-top:8px">캘린더 파일을 카톡방에 올리면 팀원이 눌러 자기 폰 캘린더에 넣을 수 있어요. 여러 날 공정은 날마다 하나씩 들어갑니다.</div>';
   openModal('📤 일정 공유'+(one?' — '+hjCut(label,20):''),body,[...(opts.back?[{label:'‹ 뒤로',cls:'ghost',fn:opts.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot'),cur=()=>String(root.querySelector('#shText').value||'').trim();
   const again=o=>hjSchShareView(Object.assign({},opts,o));
-  root.querySelectorAll('.shRange').forEach(b=>b.onclick=()=>again({kind:b.dataset.k,date:dayDate,project}));
-  const ps=root.querySelector('#shProj');if(ps)ps.onchange=()=>again({kind:rg.kind,date:dayDate,project:ps.value});
+  root.querySelectorAll('.shRange').forEach(b=>b.onclick=()=>again({kind:b.dataset.k,date:dayDate,project,crew}));
+  const ps=root.querySelector('#shProj');if(ps)ps.onchange=()=>again({kind:rg.kind,date:dayDate,project:ps.value,crew});
+  const cs=root.querySelector('#shCrew');if(cs)cs.onchange=()=>again({kind:rg.kind,date:dayDate,project,crew:cs.value});
   const none=()=>{if(n)return false;toast('공유할 일정이 없습니다 — 범위를 바꿔 보세요');return true;};
   root.querySelector('#shKakao').onclick=()=>{if(none())return;kakaoShareText(cur(),COMPANY.name+' 작업 일정');};
   root.querySelector('#shCopy').onclick=()=>{if(none())return;coworkCopy(cur(),'일정 공유 글');};
-  root.querySelector('#shCal').onclick=()=>{if(none())return;saveICSToPhone(hjSchShareIcsItems(days),safeName(COMPANY.name+'_일정_'+(one?label:rg.label+(project?'_'+project:''))+'_'+(days[0]?days[0].date:''))+'.ics');};
+  root.querySelector('#shCal').onclick=()=>{if(none())return;saveICSToPhone(hjSchShareIcsItems(days),safeName(COMPANY.name+'_일정_'+(one?label:rg.label+(project?'_'+project:'')+(crew?'_'+crew:''))+'_'+(days[0]?days[0].date:''))+'.ics');};
   root.querySelector('#shSms').onclick=()=>{if(none())return;const inp=root.querySelector('#shPhone');
     const url=hjSmsUrl(String(inp.value||'').split(HJ_SMS_SPLIT_RE),cur());
     if(!url){toast('받는 번호를 적어 주세요');hjFieldIssue(inp,'받는 번호를 적어 주세요 (여러 명은 쉼표로)');return;}
@@ -12542,10 +12559,11 @@ function openWorkOrder(ref){
   // 현장 부대사항(작업 시간·엘리베이터·폐기물…)을 주의사항에 미리 채운다 — 고칠 수 있다. 출입 번호로 보이는 칸은 hjSiteText 가 거른다.
   const siteSafe=p?hjSiteRulesSafe(hjSiteRules(p)):null;
   const cauPrefill=(p&&hjSiteFilled(siteSafe))?hjSiteText(p.name,siteSafe).split('\n').slice(1).join('\n'):'';
+  const woCrew=s?hjCrewList(s.crew):[],woPhonePre=woCrew.length===1?hjCrewPhone(woCrew[0]):'';   // v357 담당이 팀원 한 명이면 번호를 채운다
   const workersHint=(s&&s.workers)?`<div style="font-size:11px;color:var(--muted);margin-top:3px">이 일정 예정 인원: 👷 ${escapeHtml(String(s.workers))}명 — 실제 담당 작업자 번호를 입력하세요</div>`:'';
   const body=`
     <div class="sch-form" style="display:flex;flex-direction:column;gap:9px">
-      <label>받는 사람(작업자) 전화<input type="tel" id="woPhone" list="woContacts" placeholder="010-0000-0000" autocomplete="off">
+      <label>받는 사람(작업자) 전화<input type="tel" id="woPhone" list="woContacts" value="${escapeAttr(woPhonePre)}" placeholder="010-0000-0000" autocomplete="off">
         <datalist id="woContacts">${dlOpts}</datalist>${workersHint}</label>
       <div class="sch-row2">
         <label>현장<input type="text" id="woSite" value="${escapeAttr(projName||'')}" placeholder="현장명"></label>
@@ -25406,7 +25424,7 @@ function myWorkView(opts){
     const cont=s.date!==today?hjSchContOn(s,today):null;   // v354 이어지는 날 — 시작 기록은 첫날 것이라 '진행 중 · 몇 시부터' 로 보이면 틀린다
     const state_=cont?escapeHtml(hjSchContLabel(cont))+' · 끝나면 완료 보고':done?'✅ 완료 보고됨'+(s.report.filledAt?' · '+escapeHtml(localStamp(new Date(s.report.filledAt)).slice(11)):''):started?'▶ 진행 중 · '+escapeHtml(started.slice(11,16))+' 부터':'대기 · 아직 시작 전';
     const prep=hjPrepOtherOk(s)?'<button type="button" class="ghost" data-mw-prep="'+id+'" aria-label="'+escapeAttr(t+' 출발 전 챙김')+'">🧰 '+escapeHtml(dashboardPrepLabel(s))+'</button>':'';
-    return '<article class="mwCard'+(done?' mwDone':'')+'" data-mw-sch="'+id+'"><div class="mwMeta">'+escapeHtml((s.time||'시간 미정'))+(s.project?' · 📍'+escapeHtml(s.project):' · 현장 없음')+'</div>'+
+    return '<article class="mwCard'+(done?' mwDone':'')+'" data-mw-sch="'+id+'"><div class="mwMeta">'+escapeHtml((s.time||'시간 미정'))+(s.project?' · 📍'+escapeHtml(s.project):' · 현장 없음')+(s.crew?' · 👤 '+escapeHtml(hjCrewText(s.crew)):'')+'</div>'+
       '<div class="mwTitle">'+escapeHtml(t)+'</div><div class="mwState" data-mw-state="'+id+'">'+state_+'</div><div class="mwActions">'+
       (done||started||cont?'':'<button type="button" class="blue" data-mw-start="'+id+'" aria-label="'+escapeAttr(t+' 작업 시작')+'">▶ 작업 시작</button>')+
       (s.project?'<button type="button" class="ghost" data-mw-photo="'+id+'" aria-label="'+escapeAttr(t+' 사진 등록')+'">📷 사진 등록</button>':'')+
@@ -32467,6 +32485,7 @@ function viewSchedule(){
         <div class="sch-body">
           <div class="sch-title">${escapeHtml(s.title||'(제목 없음)')}${s.project?` <span class="sch-proj">🏗️ ${escapeHtml(s.project)}</span>`:''}</div>
           ${s.workers?`<div class="sch-meta">👷 예정 인원 ${escapeHtml(String(s.workers))}명${s.memo?' · '+escapeHtml(s.memo):''}</div>`:(s.memo?`<div class="sch-meta">${escapeHtml(s.memo)}</div>`:'')}
+          ${s.crew?`<div class="sch-meta" data-schcrew>👤 담당 ${escapeHtml(hjCrewText(s.crew))}</div>`:''}
           ${cont?`<div class="sch-meta" data-schcont style="color:var(--clay);font-weight:600">${escapeHtml(hjSchContLabel(cont))}</div>`:''}
           ${r?`<div class="sch-report">
             <div class="sr-h">📋 작업 보고 ${r.progress?`<span class="sr-prog">${r.progress}</span>`:''}</div>
@@ -32626,6 +32645,8 @@ function openScheduleEdit(id){
       <label>작업 시간(시간)<input type="number" id="schHours" value="${escapeAttr(String(s.hours??8))}" min="0" max="24" step="0.5"></label>
       <label>인부 수(명)<input type="number" id="schWorkers" value="${escapeAttr(String(s.workers||''))}" min="0" placeholder="예: 3"></label>
     </div>
+    <label>담당 팀원<input type="text" id="schCrew" value="${escapeAttr(hjCrewText(s.crew))}" placeholder="예: 김타일, 박도배" autocomplete="off"></label>
+    <div id="schCrewChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 2px">${hjTeamContacts().length?hjTeamContacts().slice(0,12).map(c=>{const n=String(c.name).trim();const on=hjCrewList(s.crew).includes(n);return `<button type="button" class="${on?'blue':'ghost'} schCrewChip" data-n="${escapeAttr(n)}" aria-pressed="${on?'true':'false'}" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:13px">👷 ${escapeHtml(n)}</button>`;}).join(''):`<span class="hint" style="font-size:12px">연락처에서 '👷 팀원'으로 표시하면 여기서 눌러 고를 수 있어요.</span>`}</div>
     <label>현장<select id="schProj">${projOpts}</select></label>
     <label>메모<textarea id="schMemo" placeholder="작업 내용·자재·특이사항">${escapeHtml(s.memo||'')}</textarea></label>
   </div>`;
@@ -32633,6 +32654,10 @@ function openScheduleEdit(id){
     {label:'저장',cls:'blue',fn:()=>saveScheduleEdit(s.id,isNew)},
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
+  const crIn=document.getElementById('schCrew');   // v357 담당 팀원 칩 — 누르면 넣고 다시 누르면 뺀다
+  document.querySelectorAll('#modalRoot .schCrewChip').forEach(b=>b.onclick=()=>{const n=b.dataset.n,list=hjCrewList(crIn.value),i=list.indexOf(n);
+    if(i>=0)list.splice(i,1);else list.push(n);crIn.value=list.join(', ');
+    document.querySelectorAll('#modalRoot .schCrewChip').forEach(x=>{const on=list.includes(x.dataset.n);x.className=(on?'blue':'ghost')+' schCrewChip';x.setAttribute('aria-pressed',on?'true':'false');});});
   const dIn=document.getElementById('schDate'),dInfo=document.getElementById('schDayInfo');   // v355 그날 다른 일정
   if(dIn&&dInfo){const upd=()=>{dInfo.innerHTML=hjSchDayInfoHTML(dIn.value,isNew?null:s.id);};dIn.addEventListener('input',upd);dIn.addEventListener('change',upd);upd();}
 }
@@ -32734,7 +32759,7 @@ function saveScheduleEdit(id,isNew){
     date, time:g('schTime').value,
     title:g('schTitle').value.trim(), project:g('schProj').value,
     workers:g('schWorkers').value, memo:g('schMemo').value.trim(),
-    hours
+    hours, crew:hjCrewText((g('schCrew')||{}).value)
   };
   if(!f.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T00:00:00'))){toast('날짜를 고르세요.');hjFieldIssue(document.getElementById('schDate'),'날짜를 고르세요.');return;}
@@ -32881,6 +32906,7 @@ function buildICS(items){
     const end=icsDateTime(s.date,s.time,s.hours||8);
     let desc=[];
     if(s.workers)desc.push('예정 인원 '+s.workers+'명');
+    if(s.crew)desc.push('담당 '+hjCrewText(s.crew));
     if(s.project)desc.push('현장: '+s.project);
     if(s.memo)desc.push(s.memo);
     if(s.report){const r=s.report;
@@ -33130,7 +33156,7 @@ function viewContacts(){
     const initial=(c.name||'명').slice(0,1);
     const role=[c.title,c.company].filter(Boolean).join(' · ');
     html+=`<div class="contact"><div class="av">${escapeHtml(initial)}</div>
-      <div class="ci"><b>${escapeHtml(c.name||'(이름 미상)')}</b>${role?` <span style="font-size:11px;color:var(--moss);font-weight:600">${escapeHtml(role)}</span>`:''}
+      <div class="ci"><b>${escapeHtml(c.name||'(이름 미상)')}</b>${c.team?' <span data-conteam style="font-size:11px;color:var(--blueprint);font-weight:700;white-space:nowrap">👷 팀원</span>':''}${role?` <span style="font-size:11px;color:var(--moss);font-weight:600">${escapeHtml(role)}</span>`:''}
       <div>${escapeHtml(c.phone||'')}</div>
       ${c.memo?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(c.memo)}</div>`:''}</div>
       <div class="con-tools">
@@ -33170,6 +33196,7 @@ function openContactEdit(id){
       <label>직급<input type="text" id="cTitle" value="${escapeAttr(c.title||'')}" placeholder="대표/팀장"></label>
     </div>
     <label>메모<textarea id="cMemo" placeholder="거래 내용·특이사항">${escapeHtml(c.memo||'')}</textarea></label>
+    <label style="display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer"><input type="checkbox" id="cTeam"${c.team?' checked':''} style="width:22px;height:22px;flex:none"><span>👷 팀원(작업자·협력팀) <span style="font-size:12px;color:var(--muted)">— 일정 담당·일정 공유에서 바로 고를 수 있어요</span></span></label>
   </div>`;
   openModal(isNew?'연락처 추가':'연락처 수정', body, [
     {label:'저장',cls:'blue',fn:()=>saveContactEdit(c.id,isNew)},
@@ -33180,8 +33207,10 @@ function saveContactEdit(id,isNew){
   const g=i=>document.getElementById(i);
   const c={id,name:g('cName').value.trim(),phone:g('cPhone').value.trim(),company:g('cCompany').value.trim(),title:g('cTitle').value.trim(),memo:g('cMemo').value.trim()};
   if(!c.name&&!c.phone){toast('이름이나 전화 중 하나는 입력하세요.');hjFieldIssue(document.getElementById('cName'),'이름이나 전화 중 하나는 입력하세요.');return;}
-  if(isNew)state.contacts.push(c);
-  else{const i=state.contacts.findIndex(x=>x.id===id);if(i>=0)state.contacts[i]=c;}
+  const team=!!(g('cTeam')&&g('cTeam').checked);
+  /* v357 수정은 기존 항목에 폼 칸만 덮는다 — 예전에는 새 객체로 갈아 끼워 폼에 없는 칸(카카오 문의의 tag '고객'·email 등)이 지워졌다(일정 수정 v3xx 와 같은 결함). */
+  if(isNew){if(team)c.team=true;state.contacts.push(c);}
+  else{const old=state.contacts.find(x=>x.id===id);if(old){Object.assign(old,c);if(team)old.team=true;else delete old.team;}}
   markDirty();closeModal();render();toast('연락처 저장됨');
 }
 function deleteContact(id){

@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v357 👷 일정 담당 팀원 + 연락처 '팀원' (Claude Cowork, v356 위 — PR 대기)
+
+- 대표 "PC 종료하지 말고 개발 진행"(운영 편의 계속). 일정에는 인원 '수'만 있어 누가 어느 현장에 가는지 일정표에 없었고, v356 공유도 '그 사람 일정'을 골라 줄 수 없었다. 버전 핀 `hyeonjang-v357-crew`. **최상위 저장 키 41개 그대로** — 일정 항목 안 `crew`(쉼표로 나눈 이름 글자), 연락처 항목 안 `team`(true, 해제하면 키를 지움).
+- 도우미 `hjCrewList`(`HJ_CREW_SPLIT_RE` 쉼표·전각 쉼표·가운뎃점·빗금, 앞뒤 공백·중복 제거, 이름 20자·10명까지)·`hjCrewText`·`hjTeamContacts`·`hjCrewPhone(이름)`(팀원 연락처에서 같은 이름의 번호).
+- 연락처 수정 창 [👷 팀원] 체크박스, 목록에 '👷 팀원' 배지(`[data-conteam]`). **`saveContactEdit` 이 기존 항목에 폼 칸만 덮도록 고쳤다** — 예전엔 새 객체로 갈아 끼워 폼에 없는 칸(카카오 문의의 `tag:'고객'`·`email`)이 지워졌다(일정 수정에서 고쳤던 것과 같은 결함).
+- 일정 창 '담당 팀원' `#schCrew` + 팀원 칩 `.schCrewChip`(누르면 넣고/빼고, `aria-pressed`, 44px; 팀원이 없으면 안내 한 줄). `saveScheduleEdit` 의 덮는 칸에 `crew`. 보이는 곳: 일정표 `[data-schcrew]`·대시보드 오늘 일정 `[data-dashcrew]`·📋 내 업무 카드 머리·🔔 알림 문자 작업자 글 '담당:'·`buildICS` 설명 '담당 …'·📤 공유 글 '👤 …'.
+- 📤 공유 창: 범위 안 담당 이름으로 `#shCrew`(전체 팀원/👤 이름) — 고르면 그 사람 일정만(`hjSchShareDays` 다섯째 인자), 머리 '오늘 · 김타일', 범위를 바꿔도 유지, 팀원 연락처 번호가 있으면 `#shPhone` 을 채운다. 일정 하나 공유도 담당이 한 명이면 번호. 📋 작업지시 창(`openWorkOrder`)도 담당이 팀원 한 명이면 `#woPhone` 을 채운다(여럿·팀원 아님은 비움). 보내기는 언제나 사람이.
+- 새 `tests/crew-v357.e2e.js` 6/6(v356 에서는 1/6 — ⑥ 저장본 불변만 원래도 참). 관련 26개(schshare-v356·dayinfo-v355·multiday-v354·cascade-v353·field-issue-more·schedule-safety·schedule-add-prefill·v331-follow·my-work·ics-save·ics-import·menu-schedule·uiux·mobile-friendly-ui·office-ops-isolation·pages-artifact·brief-actions·completion-links·file-identity·health-board·ledger-roundtrip·marketing-draft·mobile-more-tools·mobile-operations·privacy·restore-delete-safety)·정적 검사 17개 통과.
+
 ## 2026-10-09 v356 📤 일정 공유 — 팀원에게 카톡·문자·캘린더 파일로 (Claude Cowork, v355 위 — PR 대기)
 
 - 대표 "팀원들이 일정을 확인하도록 공유 기능으로 일정을 카톡·캘린더·문자로 공유". 지금까지는 일정 하나씩 작업지시(문자)·폰 캘린더(.ics)만 됐고, 이번 주 일정을 팀 단톡방에 올리려면 손으로 옮겨 적었다. 버전 핀 `hyeonjang-v356-schshare`. 새 저장 키 없음(받는 번호도 저장 안 함), 더보기 메뉴 수 122 그대로.
@@ -10,7 +19,7 @@
 - 보내는 길(모두 사람이 마지막에 누름): [💬 카톡으로 공유] `kakaoShareText`(공유 시트, 안 되면 복사) · [📅 캘린더 파일(.ics)] `hjSchShareIcsItems` → 기존 `saveICSToPhone`(여러 날 공정은 날마다 VEVENT 하나, UID `id-dN`; 설명에 주소·메모만 — 고객·작업 보고 없음) · [📋 복사] · [✉️ 문자] 받는 번호(쉼표로 여러 명, 연락처 datalist) → `hjSmsUrl`(한 명은 기존 `hjSendSms` 꼴, 여러 명은 안드로이드 `sms:a,b?body=`·아이폰 `sms:/open?addresses=a,b&body=`) → `hjSmsGo`(검사가 가로챔). 범위에 일정이 없으면 네 길 모두 막고 알린다.
 - 입구: 일정 탭 툴바 `#schShare`(위임 셀렉터·핸들러 등록; 달력에서 날을 골랐으면 그날) · 일정 ⋯ `schMoreView` 에 [📤 팀에 공유](`data-act="share"`) · 🔔 알림 문자 창 아래 [📤 팀 공유](그날, ‹ 뒤로 = 알림 문자 창).
 - 새 `tests/schshare-v356.e2e.js` 6/6(v355 에서는 0/6): 범위·글 규칙(넣지 말 것 포함), 툴바 → 칩·현장 → 고친 글이 공유 시트로·44px·390px, 문자 링크 넷(빈 번호·한 명·여러 명·아이폰), ⋯ 메뉴 → 일정 하나 → .ics UID 셋·내용·고객 정보 없음, 알림 문자 창 왕복·빈 범위 차단, 저장본 불변. 관련 11개(ics-save·ics-import·menu-schedule·uiux·multiday-v354·dayinfo-v355·cascade-v353·mobile-friendly-ui·mobile-more-sweep·schedule-safety·my-work)·정적 검사 17개 통과. v355 기준 컨테이너 전체 242개 중 238(실패 4 = 늘 같은 한글 다운로드 이름 apartment-projects·document-select·document-upload·team-workboard).
-- 다음 후보: 더보기 메뉴에 [📤 일정 공유] 입구(메뉴 계약 122 → 123, 검사 셋 갱신 필요) · 팀원 연락처를 '팀' 으로 묶어 두고 한 번에 고르기(연락처에 구분 칸이 없어 대표 확인 필요).
+- 다음 후보였던 '팀원 연락처 묶기'는 v357(연락처 [👷 팀원]·일정 담당)으로, 더보기 입구는 v358 로 했다.
 
 ## 2026-10-09 v355 일정 창 '그날 다른 일정' + 일정 점검에 이어지는 날 (Claude Cowork, v354 위 — PR 대기)
 
