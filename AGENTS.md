@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v361 📄 일정 복사 (Claude Cowork, v360 위 — PR 대기)
+
+- 같은 작업을 다른 날에 또 잡을 때(같은 현장·시간·인원·담당·메모) 처음부터 다시 적었다. 일정 ⋯(`schMoreView`)에 [📄 일정 복사](`data-act="copy"`, 팀에 공유 다음) → `hjScheduleCopy(id)` → `openScheduleEdit(null, hjScheduleCopyDraft(원본))` — **새 일정 창을 채워 열 뿐, 저장 전엔 아무것도 생기지 않는다**(제목 '📄 일정 복사'). 버전 핀 `hyeonjang-v361-schcopy`.
+- `openScheduleEdit(id, draft)` — 둘째 인자가 있으면 그 값으로 새 일정을 채우고 '+ 일정 추가' 의 달력 날짜·보고 있던 현장 미리 채움은 건너뛴다(둘째 인자 없는 기존 호출 6곳은 예전 그대로). 복사본: 날짜 = 다음 작업일(`hjShiftWorkDays(+1)`, 일요일 건너뜀), 제목의 '(N일차 시작)' 꼬리표·공정표 기간 메모(`HJ_RANGE_MEMO_RE`+`HJ_RANGE_TAIL_RE`) 제거, 작업 보고·시작 기록·준비물·일당·캘린더/세금/분할납/AS 표시는 옮기지 않는다(저장은 기존 `saveScheduleEdit` 새 일정 경로).
+- 새 `tests/schcopy-v361.e2e.js` 3/3(v360 에서는 1/3 — ③ '+ 일정 추가' 예전 그대로는 원래도 참). `schshare-v356` ④의 ⋯ 메뉴 목록 단정에 'copy' 추가. 관련 10개(schshare-v356·crew-v357·cascade-v353·dayinfo-v355·schedule-safety·schedule-add-prefill·field-issue-more·v331-follow·percrew-v360·dayclose-v359)·정적 검사 17개 통과.
+
 ## 2026-10-09 v360 📤 일정 공유 '👥 팀원별로 보내기' (Claude Cowork, v359 위 — PR 대기)
 
 - v357 로 담당을 고를 수 있게 됐지만, 팀원 셋에게 각자 일정을 보내려면 담당을 하나씩 바꿔 가며 세 번 보내야 했다. 공유 창(담당을 고르지 않았고 일정 하나 공유가 아닐 때)에 `#shPerCrew` — 범위·현장 안 담당 이름마다 한 줄: '👤 이름 · N건', `[.shPcSms]`(팀원 연락처 번호가 있을 때, `hjSmsUrl([번호],글)`→`hjSmsGo`)·`[.shPcKakao]`(`kakaoShareText`). 글은 그 사람 담당 일정으로 새로 만든다(`hjSchShareDays(…,crew)`+`hjSchShareText`, 머리 '이번 주 · 이름') — 위 글상자에서 고친 내용은 들어가지 않는다. 담당 없는 일정 수를 한 줄로 알린다. 버전 핀 `hyeonjang-v360-percrew`. 저장 없음.

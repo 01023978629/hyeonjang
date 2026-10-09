@@ -141,7 +141,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const f = window.__shared[0] && window.__shared[0].files && window.__shared[0].files[0];
       return { items, one, file: f ? { name: f.name, type: f.type, text: await f.text() } : null };
     });
-    assert(JSON.stringify(r.items) === JSON.stringify(['workorder', 'share', 'gcal', 'ics']), '⋯ 메뉴: ' + JSON.stringify(r.items));
+    assert(JSON.stringify(r.items) === JSON.stringify(['workorder', 'share', 'copy', 'gcal', 'ics'])   /* v361 📄 일정 복사 추가 */, '⋯ 메뉴: ' + JSON.stringify(r.items));
     assert(/일정 공유 — 타일/.test(r.one.title) && r.one.chips === 0 && /일정 3건/.test(r.one.count) && /■ 11\/4\(수\)[\s\S]*■ 11\/5\(목\)[\s\S]*타일 \(2\/3일째\)[\s\S]*■ 11\/6\(금\)[\s\S]*타일 \(3\/3일째\)/.test(r.one.text), '일정 하나: ' + JSON.stringify(r.one));
     assert(r.file && /\.ics$/.test(r.file.name) && r.file.type === 'text/calendar', '파일: ' + JSON.stringify(r.file && { name: r.file.name, type: r.file.type }));
     const ics = r.file.text;
