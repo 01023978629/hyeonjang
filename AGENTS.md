@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v362 👷 담당 겹침 — 같은 팀원이 같은 시간 두 곳 (Claude Cowork, v361 위 — PR 대기)
+
+- v357 로 담당을 적게 되자 '김타일을 타일 현장(9~17시)과 조명 현장(13시)에 동시에' 같은 이중 배정이 생길 수 있는데, 🔍 일정 점검은 사람을 모르고 시간만 봤다(다른 팀원 두 명이 같은 시간에 다른 현장에 가는 정상 배치도 '시간 겹침'). 버전 핀 `hyeonjang-v362-crewclash`. 저장 없음.
+- `hjCrewClash(a,b)` — 두 일정 담당(`hjCrewList`)에 같은 사람이 있고 `schedTimeRange` 가 겹치거나 어느 한쪽에 시간이 없으면(하루짜리) 겹친 이름 배열.
+- `scheduleConflicts()` 에 `crewClashes:[{date,a,b,names}]`(v355 이어지는 날 포함, `hasIssue` 에 포함). **두 일정 모두 담당이 있으면 사람 기준** — 같은 사람이면 담당 겹침, 다른 사람이면 시간이 겹쳐도 충돌 아님. 한쪽이라도 담당이 없으면 예전 '시간 겹침' 그대로(담당을 전혀 안 쓰면 결과 동일 — 검사 ④). `scheduleCheck` 에 '👷 담당 겹침 N건' 묶음(`[data-crewclash]`, 시간 없으면 '종일'), 반환값에 `담당겹침`.
+- 일정 창 '그날 다른 일정'(v355 `hjSchDayInfoHTML(날,자기id,form)`) — 지금 폼의 시간·작업 시간·담당 기준으로 겹치는 줄에 '⚠ 이름 겹침'(`li[data-crewclash]`, 위로 올림), 머리에 '👷 담당 겹침 N'. 날짜·시간·작업 시간·담당 입력과 팀원 칩 클릭에서 다시 그린다.
+- 🌙 오늘 마감(v359) `hjDayCloseData().clashes` = 내일 담당 겹침 → 요약 칩 '담당 겹침 N'·내일 일정 아래 `[data-dc-clash]` 줄 + `[data-dc-check]`(🔍 일정 점검).
+- 새 `tests/crewclash-v362.e2e.js` 4/4(v361 에서는 0/4). 관련 8개(dayinfo-v355·dayclose-v359·crew-v357·schcopy-v361·schedule-safety·field-issue-more·my-work·multiday-v354)·정적 검사 17개 통과.
+
 ## 2026-10-09 v361 📄 일정 복사 (Claude Cowork, v360 위 — PR 대기)
 
 - 같은 작업을 다른 날에 또 잡을 때(같은 현장·시간·인원·담당·메모) 처음부터 다시 적었다. 일정 ⋯(`schMoreView`)에 [📄 일정 복사](`data-act="copy"`, 팀에 공유 다음) → `hjScheduleCopy(id)` → `openScheduleEdit(null, hjScheduleCopyDraft(원본))` — **새 일정 창을 채워 열 뿐, 저장 전엔 아무것도 생기지 않는다**(제목 '📄 일정 복사'). 버전 핀 `hyeonjang-v361-schcopy`.

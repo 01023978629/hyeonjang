@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v361-schcopy';
+const APP_BUILD='hyeonjang-v362-crewclash';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -12137,13 +12137,25 @@ function hjSchDayOthers(ymd,selfId){
   return own.concat(hjSchContinuing(ymd,o=>o.id!==selfId&&hjPrepOtherOk(o)))
     .sort((a,b)=>String(a.s.time||'99:99').localeCompare(String(b.s.time||'99:99')));
 }
-function hjSchDayInfoHTML(ymd,selfId){
+/* v362 👷 담당 겹침 — 같은 날 같은 팀원이 두 일정에 잡혀 있고 시간이 겹치면(어느 한쪽이라도 시간이 없으면 하루짜리로 보고 겹침) 겹친 이름을 돌려준다.
+   두 일정 모두 담당이 적혀 있고 겹치는 사람이 없으면 시간이 겹쳐도 '다른 팀' 이라 충돌이 아니다(scheduleConflicts 가 이 규칙을 쓴다). */
+function hjCrewClash(a,b){
+  const ca=hjCrewList(a&&a.crew),cb=hjCrewList(b&&b.crew);if(!ca.length||!cb.length)return [];
+  const common=ca.filter(n=>cb.includes(n));if(!common.length)return [];
+  const ra=schedTimeRange(a),rb=schedTimeRange(b);
+  return (!ra||!rb||(ra.start<rb.end&&rb.start<ra.end))?common:[];
+}
+function hjSchDayInfoHTML(ymd,selfId,form){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd||'')))return '';
   const rows=hjSchDayOthers(ymd,selfId),d=new Date(ymd+'T00:00:00'),sun=d.getDay()===0;
+  const clash=x=>form?hjCrewClash(form,x.s):[];
+  const nClash=rows.filter(x=>clash(x).length).length;
   const head=(sun?'<b style="color:#d04545">일요일</b> · ':'')+hjMdDow(ymd)+' ';
   if(!rows.length)return head+'다른 일정 없음';
-  const one=x=>'<li>'+escapeHtml((x.s.time?x.s.time+' ':'')+hjCut(String(x.s.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim(),18)+(x.c?' ('+x.c.day+'/'+x.c.days+'일째)':'')+(x.s.project?' · '+hjCut(x.s.project,12):''))+'</li>';
-  return head+'다른 일정 <b>'+rows.length+'건</b><ul style="margin:3px 0 0;padding-left:18px">'+rows.slice(0,4).map(one).join('')+(rows.length>4?'<li>외 '+(rows.length-4)+'건</li>':'')+'</ul>';
+  const one=x=>{const c=clash(x);return '<li'+(c.length?' data-crewclash':'')+'>'+escapeHtml((x.s.time?x.s.time+' ':'')+hjCut(String(x.s.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim(),18)+(x.c?' ('+x.c.day+'/'+x.c.days+'일째)':'')+(x.s.project?' · '+hjCut(x.s.project,12):'')+(x.s.crew?' · 👤 '+hjCrewText(x.s.crew):''))+
+    (c.length?' <b style="color:#b45309">⚠ '+escapeHtml(c.join(', '))+' 겹침</b>':'')+'</li>';};
+  const sorted=rows.slice().sort((a,b)=>(clash(b).length?1:0)-(clash(a).length?1:0));   // 겹치는 일정을 위로 — 4개까지만 보여도 놓치지 않게
+  return head+'다른 일정 <b>'+rows.length+'건</b>'+(nClash?' · <b style="color:#b45309">👷 담당 겹침 '+nClash+'</b>':'')+'<ul style="margin:3px 0 0;padding-left:18px">'+sorted.slice(0,4).map(one).join('')+(rows.length>4?'<li>외 '+(rows.length-4)+'건</li>':'')+'</ul>';
 }
 /* ═══════════ 🕒 공정 지연 점검 (v347) — 일정은 지났는데 사진도 완료 보고도 없는 공정 ═══════════
    1인 시공은 비·자재·앞 공정 때문에 일정이 밀리는 일이 잦은데, 밀린 줄 모르고 고객에게 말을 안 하면 "오늘 온다더니" 가 된다.
@@ -12533,7 +12545,8 @@ function hjDayCloseData(today){
     needReport:rows.filter(r=>!r.done&&r.endsToday),ongoing:rows.filter(r=>!r.done&&!r.endsToday),reported:rows.filter(r=>r.done).length,
     photos:photos.length,loose:photos.filter(f=>!f.project).length,
     tmr,noCrew:team?tmr.filter(x=>!x.c&&!hjCrewList(x.s.crew).length).map(x=>x.s.id):[],
-    asToday:(state.asLog||[]).filter(a=>a&&a.date===today&&a.status!=='done')};
+    asToday:(state.asLog||[]).filter(a=>a&&a.date===today&&a.status!=='done'),
+    clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})()};   // v362 내일 담당 겹침
 }
 function hjDayCloseView(){
   const d=hjDayCloseData();
@@ -12542,7 +12555,7 @@ function hjDayCloseView(){
   const name=(s,c)=>escapeHtml((s.time?s.time+' ':'')+hjSchShareTitle(s,c))+(s.project?' <span style="color:var(--muted)">· '+escapeHtml(s.project)+'</span>':'')+(s.crew?' <span style="color:var(--muted)">· 👤 '+escapeHtml(hjCrewText(s.crew))+'</span>':'');
   const id=s=>escapeAttr(String(s.id));
   const chip=(t,warn)=>'<span style="display:inline-block;font-size:12px;border:1px solid '+(warn?'#fcd34d':'var(--line-soft)')+';color:'+(warn?'#b45309':'var(--muted)')+';border-radius:999px;padding:2px 8px;margin:0 4px 4px 0">'+t+'</span>';
-  const head='<div id="dcSummary" style="margin-bottom:4px">'+chip('보고할 일정 '+d.needReport.length,d.needReport.length>0)+chip('미배정 사진 '+d.loose,d.loose>0)+chip('내일 일정 '+d.tmr.length,false)+(d.noCrew.length?chip('담당 없음 '+d.noCrew.length,true):'')+(d.asToday.length?chip('오늘 AS '+d.asToday.length,true):'')+'</div>';
+  const head='<div id="dcSummary" style="margin-bottom:4px">'+chip('보고할 일정 '+d.needReport.length,d.needReport.length>0)+chip('미배정 사진 '+d.loose,d.loose>0)+chip('내일 일정 '+d.tmr.length,false)+(d.noCrew.length?chip('담당 없음 '+d.noCrew.length,true):'')+(d.clashes.length?chip('담당 겹침 '+d.clashes.length,true):'')+(d.asToday.length?chip('오늘 AS '+d.asToday.length,true):'')+'</div>';
   const h4=t=>'<h4 style="font-size:14px;margin:14px 0 6px">'+t+'</h4>';
   let body='<div id="dayClose" style="overflow-wrap:anywhere;min-width:0">'+head;
   body+=h4('✅ 오늘 보고할 일정 '+d.needReport.length)+(d.needReport.length?d.needReport.map(r=>row(name(r.s,r.c),btn('clay','data-dc-report="'+id(r.s)+'"','✅ 완료 보고'))).join('')
@@ -12551,6 +12564,7 @@ function hjDayCloseView(){
   body+=h4('📷 오늘 사진 '+d.photos+'장')+(d.loose?row('현장이 정해지지 않은 사진 <b>'+d.loose+'장</b>',btn('ghost','data-dc-photos','📷 사진 정리')):'<p class="hint" style="margin:0">'+(d.photos?'오늘 사진은 모두 현장이 정해졌어요.':'오늘 찍은 사진이 없어요.')+'</p>');
   body+=h4('🗓 내일 '+escapeHtml(hjMdDow(d.tomorrow))+' 일정 '+d.tmr.length)+(d.tmr.length?d.tmr.map(x=>row(name(x.s,x.c)+(d.noCrew.includes(x.s.id)?' <span style="color:#b45309;white-space:nowrap">· 담당 없음</span>':''),
       (d.noCrew.includes(x.s.id)?btn('ghost','data-dc-crew="'+id(x.s)+'"','👤 담당 정하기'):'')+btn('ghost','data-dc-prep="'+id(x.s)+'"','🧰 준비물'))).join('')+
+      (d.clashes.length?'<div data-dc-clash style="font-size:12.5px;color:#b45309;margin:2px 0 6px">⚠ 담당 겹침: '+d.clashes.map(c=>escapeHtml(c.names.join(', ')+' — '+hjCut(c.a.title,10)+' ↔ '+hjCut(c.b.title,10))).join(' · ')+' '+btn('ghost','data-dc-check','🔍 일정 점검')+'</div>':'')+
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+btn('blue','data-dc-share','📤 팀에 내일 일정 보내기')+btn('ghost','data-dc-notify','🔔 고객 알림 문자')+'</div>'
     :'<p class="hint" style="margin:0">내일 잡힌 일정이 없어요.</p>');
   if(d.asToday.length)body+=h4('🔧 오늘 접수된 AS '+d.asToday.length)+row(d.asToday.slice(0,3).map(a=>escapeHtml(hjCut(String(a.text||'AS'),24)+(a.project?' · '+a.project:''))).join('<br>'),btn('ghost','data-dc-as','🔧 AS 관리'));
@@ -12565,6 +12579,7 @@ function hjDayCloseView(){
   if(q('[data-dc-share]'))q('[data-dc-share]').onclick=()=>hjSchShareView({kind:'tomorrow',back:hjDayCloseView});
   if(q('[data-dc-notify]'))q('[data-dc-notify]').onclick=()=>scheduleNotify(d.tomorrow);
   if(q('[data-dc-as]'))q('[data-dc-as]').onclick=()=>asManage();
+  if(q('[data-dc-check]'))q('[data-dc-check]').onclick=()=>scheduleCheck();
   return {보고할일정:d.needReport.length,미배정사진:d.loose,내일일정:d.tmr.length,담당없음:d.noCrew.length};
 }
 /* ═══════════ 📋 작업지시 보내기 (Phase 2 · 휴먼 이펙터 디스패치) ═══════════ */
@@ -18758,16 +18773,17 @@ function scheduleConflicts(){
   const acts=(state.schedule||[]).filter(s=>!/^💰/.test(s.title||''));
   const byDate={};acts.forEach(s=>{(byDate[s.date]=byDate[s.date]||[]).push(s);});
   acts.forEach(s=>hjSchContDates(s).forEach(ds=>{(byDate[ds]=byDate[ds]||[]).push(s);}));   // v355 여러 날 공정은 이어지는 날에도 그 팀을 쓴다
-  const conflicts=[],overloads=[];
+  const conflicts=[],overloads=[],crewClashes=[];
   Object.keys(byDate).forEach(date=>{
     const list=byDate[date].slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
-    // 시간 겹침(같은 날, 시간 있는 것끼리)
+    // 시간 겹침(같은 날, 시간 있는 것끼리). v362: 두 일정 모두 담당이 적혀 있으면 사람으로 본다 — 같은 사람이면 '담당 겹침', 다른 사람이면 충돌 아님
     for(let i=0;i<list.length;i++){
-      const ri=schedTimeRange(list[i]);if(!ri)continue;
       for(let j=i+1;j<list.length;j++){
-        const rj=schedTimeRange(list[j]);if(!rj)continue;
+        const a=list[i],b=list[j];
+        if(hjCrewList(a.crew).length&&hjCrewList(b.crew).length){const names=hjCrewClash(a,b);if(names.length)crewClashes.push({date,a,b,names});continue;}
+        const ri=schedTimeRange(a),rj=schedTimeRange(b);if(!ri||!rj)continue;
         if(ri.start<rj.end&&rj.start<ri.end){
-          conflicts.push({date,a:list[i],b:list[j]});
+          conflicts.push({date,a,b});
         }
       }
     }
@@ -18775,7 +18791,7 @@ function scheduleConflicts(){
     const totalH=list.reduce((a,s)=>a+(num(s.hours)>0?num(s.hours):2),0);
     if(list.length>=3||totalH>10)overloads.push({date,count:list.length,hours:totalH,items:list});
   });
-  return {conflicts,overloads,hasIssue:conflicts.length>0||overloads.length>0};
+  return {conflicts,overloads,crewClashes,hasIssue:conflicts.length>0||overloads.length>0||crewClashes.length>0};
 }
 function scheduleCheck(){
   const d=scheduleConflicts();
@@ -18790,6 +18806,12 @@ function scheduleCheck(){
         body+='<div style="background:#fef2f2;border-radius:10px;padding:10px;margin-bottom:6px;font-size:12.5px"><b>'+hjKD(c.date)+'</b><br>· '+(c.a.time||'')+' '+escapeHtml(hjCut(c.a.title,16))+(c.a.project?' @'+escapeHtml(hjCut(c.a.project,8)):'')+'<br>· '+(c.b.time||'')+' '+escapeHtml(hjCut(c.b.title,16))+(c.b.project?' @'+escapeHtml(hjCut(c.b.project,8)):'')+'</div>';
       });
     }
+    if(d.crewClashes.length){   // v362
+      body+='<div style="font-size:13px;font-weight:800;color:#c2410c;margin:12px 0 6px">👷 담당 겹침 '+d.crewClashes.length+'건</div>';
+      d.crewClashes.slice(0,6).forEach(c=>{
+        body+='<div data-crewclash style="background:#fff7ed;border-radius:10px;padding:10px;margin-bottom:6px;font-size:12.5px"><b>'+hjKD(c.date)+'</b> · 👤 '+escapeHtml(c.names.join(', '))+'<br>· '+escapeHtml((c.a.time||'종일')+' '+hjCut(c.a.title,16)+(c.a.project?' @'+hjCut(c.a.project,8):''))+'<br>· '+escapeHtml((c.b.time||'종일')+' '+hjCut(c.b.title,16)+(c.b.project?' @'+hjCut(c.b.project,8):''))+'</div>';
+      });
+    }
     if(d.overloads.length){
       body+='<div style="font-size:13px;font-weight:800;color:#b45309;margin:12px 0 6px">🟠 과부하 일정 '+d.overloads.length+'일</div>';
       d.overloads.slice(0,6).forEach(o=>{
@@ -18801,7 +18823,7 @@ function scheduleCheck(){
   body+='<button class="moss" id="scGoSched" style="width:100%;padding:12px;margin-top:12px">🗓 일정 화면으로</button>';
   openModal('📅 일정 점검',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const gb=document.getElementById('scGoSched');if(gb)gb.onclick=()=>{closeModal();state.tab='schedule';render();};
-  return {충돌:d.conflicts.length,과부하일:d.overloads.length,이상:d.hasIssue};
+  return {충돌:d.conflicts.length,과부하일:d.overloads.length,담당겹침:d.crewClashes.length,이상:d.hasIssue};
 }
 
 /* ═══════════ 📇 거래처 관리 — 자재상·외주 업체 연락처·거래이력·단가 ═══════════ */
@@ -32742,7 +32764,10 @@ function openScheduleEdit(id,draft){
     if(i>=0)list.splice(i,1);else list.push(n);crIn.value=list.join(', ');
     document.querySelectorAll('#modalRoot .schCrewChip').forEach(x=>{const on=list.includes(x.dataset.n);x.className=(on?'blue':'ghost')+' schCrewChip';x.setAttribute('aria-pressed',on?'true':'false');});});
   const dIn=document.getElementById('schDate'),dInfo=document.getElementById('schDayInfo');   // v355 그날 다른 일정
-  if(dIn&&dInfo){const upd=()=>{dInfo.innerHTML=hjSchDayInfoHTML(dIn.value,isNew?null:s.id);};dIn.addEventListener('input',upd);dIn.addEventListener('change',upd);upd();}
+  if(dIn&&dInfo){const g=i=>(document.getElementById(i)||{}).value||'';
+    const upd=()=>{dInfo.innerHTML=hjSchDayInfoHTML(dIn.value,isNew?null:s.id,{time:g('schTime'),hours:g('schHours'),crew:g('schCrew')});};   // v362 담당·시간이 바뀌어도 겹침을 다시 본다
+    ['schDate','schTime','schHours','schCrew'].forEach(i=>{const el=document.getElementById(i);if(el){el.addEventListener('input',upd);el.addEventListener('change',upd);}});
+    document.querySelectorAll('#modalRoot .schCrewChip').forEach(b=>b.addEventListener('click',upd));upd();}
 }
 /* ═══════════ 📅 뒤 일정 같이 옮기기 (v353) — 공정 하나가 밀리면 뒤 공정도 같이 민다 ═══════════
    비·자재·앞 공정 때문에 타일이 이틀 밀리면 도배·바닥·청소도 이틀씩 밀어야 하는데, 지금까지는 일정 하나하나를 열어 날짜를 바꿨다
