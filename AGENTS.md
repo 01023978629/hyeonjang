@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v367 AS 방문 일정 한눈에 (Claude Cowork, v366 위 — PR 대기)
+
+- AS 기록에는 '방문 2026-11-06' 날짜만 보여 시간·담당·보고 여부는 일정표에서 찾아야 했고, 방문을 아직 안 잡은 AS 가 묻혔다. 버전 핀 `hyeonjang-v367-asview`. 저장 없음(읽기 전용).
+- `hjAsVisitSched(a)`(visitSchedId 가 지금 일정에 있을 때만)·`hjAsVisitLine(a)` → 있으면 `{kind:'set'}` '📅 11/6(금) 10:00 · 👤 김타일'(담당 없으면 '· 담당 미정', 보고 글/진행률 있으면 '· 📋 보고됨'), 없으면 완료 전 AS 만 `{kind:'none'}` '📅 방문 일정 미정'(방문일만 있으면 '11/12(목) — 시간·담당 미정'), 완료 AS 는 null. 지워진 일정을 가리키면 미정. `hjAsUnscheduled(list)`.
+- 🔧 AS 관리: 줄마다 `.asmVisitLine`, 머리 칸 '방문 미정 N건'. 현장 화면 AS 카드: `.asCardVisit` + 완료 전 AS 에 `[data-asvisit]` 📅(→ `hjAsVisitPlan`, 위임 셀렉터·핸들러 등록). 대시보드 `briefExtraItems` '미처리 AS N건 · 방문 미정 M건'. 방문 줄이 보이는 기록은 `hjAsSummary` 에서 '방문 날짜'를 빼서 두 번 쓰지 않는다(방문 줄 없는 완료 AS 는 그대로).
+- 새 `tests/asview-v367.e2e.js` 4/4(v366 에서는 1/4 — ④ 저장본 불변은 원래도 참). 관련 17개(as-record·health-board·dates-warranty-office·project-rename·completion-links·warranty-link·brief-actions·dash-reports·asvisit-v365·asclose-v366·uiux·mobile-friendly-ui·pjsched-v364·custsched-v363·v331-follow·delete-guard·watch-card)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-09 v366 AS 방문 보고 → AS 기록 마무리 (Claude Cowork, v365 위 — PR 대기)
 
 - AS 방문 일정에 작업 보고를 저장해도 AS 기록은 '접수' 그대로라, 처리 내용·사진·완료를 🔧 AS 관리에서 다시 적고 고객 완료 안내도 따로 썼다. 버전 핀 `hyeonjang-v366-asclose`. 새 최상위 키 없음(AS 기록의 `status`·`fix`·`photos` 는 v329 칸).
