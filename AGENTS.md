@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v359 🌙 오늘 마감 — 하루를 닫을 때 한 화면 (Claude Cowork, v358 위 — PR 대기)
+
+- 같은 요청(운영 편의 계속). 하루 끝에 확인하던 것이 📋 내 업무(완료 보고)·현장 사진(미배정)·일정표(내일·담당)·🔔 알림 문자 네 화면에 흩어져 있었다. 버전 핀 `hyeonjang-v359-dayclose`. 새 저장 키 없음, 메뉴 수 123 그대로(입구는 대시보드·내 업무).
+- `hjDayCloseData(오늘)` 읽기 전용: 보고할 일정 = `hjMyWorkSchedules(오늘)`(💰·세금 자동 제외, v354 이어지는 공정 포함) 중 **오늘 끝나는 것**(`hjSchSpan(s).to<=오늘`)이고 `hjSchReported` 가 아닌 것, 여러 날 공정 중간 날은 `ongoing`('내일도 계속'), 오늘 찍은 사진(`f.when` 의 로컬 날짜)·그중 현장 없음, 내일 일정(시작+이어짐), `noCrew`(팀원 연락처가 하나라도 있을 때만, 이어지는 날 제외, 담당 빈 일정), 오늘 접수된 끝나지 않은 AS(`status!=='done'`).
+- `hjDayCloseView()` — 요약 칩 줄 `#dcSummary`, 버튼은 기존 화면만 연다: `[data-dc-report]`→`myWorkReport`, `[data-dc-crew]`→`openScheduleEdit`, `[data-dc-prep]`→`prepCheck`, `[data-dc-share]`→`hjSchShareView({kind:'tomorrow',back:hjDayCloseView})`, `[data-dc-notify]`→`scheduleNotify(내일)`, `[data-dc-photos]`→현장 사진 탭, `[data-dc-as]`→`asManage`. 창 자체는 아무것도 바꾸지 않는다(모달 안 버튼은 창을 연 뒤 직접 묶음).
+- 입구: 대시보드 '📅 오늘 일정' 머리 `[data-dayclose]`(위임 셀렉터·핸들러 등록) · 📋 내 업무 목록 링크 `#mwClose`.
+- 새 `tests/dayclose-v359.e2e.js` 5/5(v358 에서는 0/5). 관련 14개(my-work·mobile-nav-badges·mobile-todo-nav·uiux·multiday-v354·crew-v357·schshare-v356·brief-actions·mobile-operations·mobile-friendly-ui·health-board·dash-reports·dash-cards·mobile-more-sweep)·정적 검사 17개 통과.
+
 ## 2026-10-09 v358 더보기 메뉴에 📤 일정 공유 (Claude Cowork, v357 위 — PR 대기)
 
 - v356 일정 공유가 일정 탭·일정 ⋯·알림 문자 창에서만 열려, 대시보드나 다른 탭에서 '팀에 이번 주 일정 보내기'를 찾기 어려웠다. 더보기 현장·시공에 `['schshare','📤','일정 공유']`(🕒 공정 지연 점검 다음) → `moreActionHandler` `hjSchShareView()`(오늘 범위로 열림), `MORE_HELP.schshare` 검색어. 버전 핀 `hyeonjang-v358-moreshare`.
