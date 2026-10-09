@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v365 AS 접수 → 방문 일정·담당 한 번에 (Claude Cowork, v364 위 — PR 대기)
+
+- AS 를 접수하고 방문일을 넣으면 '일정에도 올릴까요?'로 시간·담당 없는 일정만 생겼고, 시간·담당·고객 안내·작업지시는 각각 다른 화면에서 했다. 버전 핀 `hyeonjang-v365-asvisit`. 새 최상위 키 없음(일정 `asId`·AS `visitSchedId`·`visitAt` 은 v331 부터 있던 필드).
+- AS 기록 펼침에 `.asmVisit` [📅 방문 일정 잡기/고치기 (날짜·시간·담당)] → `hjAsVisitPlan(asId)`: 이어진 일정이 있으면 `openScheduleEdit(id,null,{asId})`, 없으면 초안(방문일 또는 다음 작업일 `hjShiftWorkDays`·10:00·2시간·'🔧 AS 방문: …'·현장·'AS 접수 날짜 — 증상' 메모)으로 연다. 창 제목 '🔧 AS 방문 일정' — 담당 칩·그날 겹침(v355/v362)이 그대로 붙는다.
+- `openScheduleEdit(id,draft,link)`·`saveScheduleEdit(id,isNew,link)`: link.asId 면 새 일정에 `asId`, AS 에 `visitSchedId`, 저장 뒤 `visitAt = 일정 날짜`(v331 날짜 따라가기 다음에 맞춘다). 저장 뒤 `hjAsVisitAfter` 창 '🔧 AS 방문 — 다음 할 일': `#avText`(고객 방문 안내 글 `hjAsVisitText` — 주소·담당 없음, 고쳐서 보냄) → [✉️ 고객에게 방문 안내](`hjSendSms`, 연락처 없으면 [📋 방문 안내 글 복사])·[📋 담당에게 작업지시](`openWorkOrder({schId})` — v357 담당 번호 자동)·[🔧 AS 관리]·[닫기]. 자동 발송 없음.
+- `hjCascadeCands` 는 `s.asId` 인 일정을 옮겨도 뒤 공정을 밀자고 묻지 않는다(제목을 'AS 방문' 아닌 것으로 고쳐도). AS 접수 `#asmAdd` 뒤 `asManage(새 id)`로 새 기록을 펼친다.
+- 새 `tests/asvisit-v365.e2e.js` 6/6(v364 에서는 0/6). 관련 26개(as-record·v331-follow·ui-feedback·contract-terms·delete-guard·delete-due·restore-delete-safety·health-board·cascade-v353·multiday-v354·dayinfo-v355·schshare-v356·crew-v357·dayclose-v359·percrew-v360·schcopy-v361·crewclash-v362·custsched-v363·pjsched-v364·schedule-safety·schedule-add-prefill·field-issue-more·mobile-more-tools·dates-warranty-office·v219-operations·v328-integration)·정적 검사 통과.
+
 ## 2026-10-09 v364 현장 화면 '🗓 이 현장 일정' 칸 (Claude Cowork, v363 위 — PR 대기)
 
 - 현장 화면(`viewProject`)에 일정 칸이 없어, 이 현장이 언제 무엇을 하는지 보려면 일정표로 가서 찾아야 했다. 고객 카드 다음, AS 기록 앞에 `[data-pjsched]` 칸. 버전 핀 `hyeonjang-v364-pjsched`. 저장 없음(목록은 읽기만).
