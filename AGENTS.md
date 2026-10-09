@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v364 현장 화면 '🗓 이 현장 일정' 칸 (Claude Cowork, v363 위 — PR 대기)
+
+- 현장 화면(`viewProject`)에 일정 칸이 없어, 이 현장이 언제 무엇을 하는지 보려면 일정표로 가서 찾아야 했다. 고객 카드 다음, AS 기록 앞에 `[data-pjsched]` 칸. 버전 핀 `hyeonjang-v364-pjsched`. 저장 없음(목록은 읽기만).
+- 남은 일정 = 이 현장·`_taxAuto` 아님·완료 보고 없음·끝나는 날(`hjSchSpan`) 오늘 이후(💰 수금 일정은 대표용이라 포함), 날짜·시간순 8줄 `[data-pjschrow]` — '11/4(수)~11/6(금) 타일 · 2/3일째 · 👤 김타일', 줄마다 `[data-schedit]`(기존)·`[data-schcopy]`(v361 복사). 넘치면 '외 N건 — 일정표에서 보기'(`data-gosch`). 칸은 일정이 있거나 실측·시공 단계일 때만(상담·완료 단계에 일정이 없으면 숨김), 비면 안내 한 줄.
+- 아래 `[data-pjschadd]`(activeProject = 이 현장 → '+ 일정 추가' 미리 채움)·`[data-custsched]`(v363)·`[data-pjshare]`(`hjSchShareView({kind:'week',project})`). 위임 셀렉터·핸들러에 `schcopy·pjschadd·pjshare` 등록.
+- 새 `tests/pjsched-v364.e2e.js` 4/4(v363 에서는 1/4 — ④ 저장본 불변은 원래도 참). 관련 12개(custsched-v363·schcopy-v361·apartment-units·apartment-manage·project-rename·as-record·brief-actions·completion-links·warranty-link·mobile-friendly-ui·uiux)·정적 검사 17개 통과(별도 포트 사본).
+
 ## 2026-10-09 v363 🗓 고객 공사 일정 안내 (Claude Cowork, v362 위 — PR 대기)
 
 - 고객이 가장 자주 묻는 "다음엔 뭐 해요, 언제 와요?" — 📤 일정 공유(v356)는 팀원용(고객 이름 빼고 담당·주소·내부 메모)이라 고객에게 그대로 보낼 수 없었다. 버전 핀 `hyeonjang-v363-custsched`. 저장 없음.
