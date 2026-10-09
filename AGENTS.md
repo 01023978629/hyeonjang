@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-09 v358 더보기 메뉴에 📤 일정 공유 (Claude Cowork, v357 위 — PR 대기)
+
+- v356 일정 공유가 일정 탭·일정 ⋯·알림 문자 창에서만 열려, 대시보드나 다른 탭에서 '팀에 이번 주 일정 보내기'를 찾기 어려웠다. 더보기 현장·시공에 `['schshare','📤','일정 공유']`(🕒 공정 지연 점검 다음) → `moreActionHandler` `hjSchShareView()`(오늘 범위로 열림), `MORE_HELP.schshare` 검색어. 버전 핀 `hyeonjang-v358-moreshare`.
+- **행동 계약 122 → 123**: `mobile-more-tools`(TARGETS `schshare:['hjSchShareView']`)·`mobile-more-sweep`·`mobile-office-connect`·`board-v351`(메뉴 수 단정) 갱신. 네 검사 + schshare-v356·crew-v357 통과.
+
 ## 2026-10-09 v357 👷 일정 담당 팀원 + 연락처 '팀원' (Claude Cowork, v356 위 — PR 대기)
 
 - 대표 "PC 종료하지 말고 개발 진행"(운영 편의 계속). 일정에는 인원 '수'만 있어 누가 어느 현장에 가는지 일정표에 없었고, v356 공유도 '그 사람 일정'을 골라 줄 수 없었다. 버전 핀 `hyeonjang-v357-crew`. **최상위 저장 키 41개 그대로** — 일정 항목 안 `crew`(쉼표로 나눈 이름 글자), 연락처 항목 안 `team`(true, 해제하면 키를 지움).
