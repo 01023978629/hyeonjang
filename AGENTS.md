@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v370 현장에서 자재 받기 (Claude Cowork, v369 위 — PR 대기)
+
+- 자재는 현장에 있는 팀원이 받는데 입고 확인은 대표가 사무실 화면에서만 눌렀고, 팀 공유 글에는 그날 자재가 들어온다는 말이 없었다. 버전 핀 `hyeonjang-v370-mwmat`. 새 저장 칸 없음.
+- `hjMatDueOn(projects,ymd,withLate)` — 그 현장들의 미입고 중 납품일 = ymd(withLate 면 ≤ ymd). 📋 내 업무(`myWorkView`)에 오늘 일정 현장(`hjMyWorkSchedules(today)`)의 오늘·지난 미입고를 '🚚 오늘 받을 자재 N' 카드 `[data-mw-mat]` + `[data-mw-matrecv]` [✅ 받았어요](→ `hjMatReceive(id,true)` 그 기록 recvAt 만, `myWorkView({refresh:false})`). 받을 게 없거나 오늘 일정이 없으면 칸 없음.
+- 📤 팀 일정 공유 글(`hjSchShareText`) — 날마다 일정 줄 뒤에 `hjMatShareLines(day,today)` '  🚚 자재 도착 예정 — 현장: 거래처 · 품목'(그날 일정 현장의 그날 납품, 그날이 오늘이면 지난 미입고도 '(지난 납품, 아직 입고 확인 안 됨)'). 담당별·현장별 좁히기를 그대로 따른다. 고객용 글(`hjCustSchedText`)·캘린더 파일에는 넣지 않는다.
+- 새 `tests/mwmat-v370.e2e.js` 4/4(v369 에서는 2/4 — 칸 없음·저장본 불변은 원래도 참). 관련 16개(my-work·schshare-v356·percrew-v360·custsched-v363·mobile-operations·dayclose-v359·matdue-v368·matsched-v369·crew-v357·multiday-v354·uiux·mobile-friendly-ui·watch-card·schcopy-v361·crewclash-v362·brief-actions)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v369 공정 일정 ↔ 자재 납품 (Claude Cowork, v368 위 — PR 대기)
 
 - 공정 날 아침에야 '자재가 안 왔다'를 알았다. 그 일정에 쓸 자재가 아직 입고 확인 안 됐으면 일정 줄에 '🚚 미입고 N'. 버전 핀 `hyeonjang-v369-matsched`. 새 최상위 키 없음 — 납품 기록에 선택 칸 `o.schId`(공정 잇기)만 더한다.

@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v369-matsched';
+const APP_BUILD='hyeonjang-v370-mwmat';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -12449,7 +12449,8 @@ function hjSchShareText(days,label,span){
     day.rows.forEach(({s,c})=>{const addr=hjSchShareAddr(s),memo=c?'':hjSchShareMemo(s);
       L.push('· '+(s.time?s.time+' ':'')+hjSchShareTitle(s,c)+(s.project?' — '+s.project:''));
       const sub=[addr?'주소: '+addr:'',s.crew?'👤 '+hjCrewText(s.crew):'',s.workers?'👷 '+s.workers+'명':'',memo?hjCut(memo,60):''].filter(Boolean);
-      if(sub.length)L.push('  '+sub.join(' · '));});});
+      if(sub.length)L.push('  '+sub.join(' · '));});
+    try{hjMatShareLines(day,localDate()).forEach(t=>L.push(t));}catch(e){}});   // v370 그날 현장에 들어올 자재
   L.push('','문의 '+COMPANY.owner+' '+COMPANY.tel);
   return L.join('\n');
 }
@@ -16030,6 +16031,18 @@ function hjMatSchOptions(projectName){
 }
 // 공정에 이으면 납품 예정일 기본값 = 그 공정 전 작업일(오늘보다 앞이면 오늘)
 function hjMatDueFor(sch){if(!sch||!HJ_YMD_RE.test(String(sch.date||'')))return '';const d=hjShiftWorkDays(sch.date,-1),t=localDate();return d<t?t:d;}
+/* ── v370 현장에서 자재 받기 ──
+   자재는 현장에 있는 팀원이 받는데, 입고 확인은 대표가 사무실 화면에서만 눌렀다. 📋 내 업무에 '🚚 오늘 받을 자재'(오늘 일정 현장의 미입고 중
+   납품일 ≤ 오늘)와 [✅ 받았어요]를 두고, 📤 팀 일정 공유 글의 그날 아래에 '🚚 자재 도착 예정' 줄(그날 일정 현장의 그날 납품, 오늘이면 지난 미입고도)을 넣는다.
+   고객용 글(🗓 고객 일정 안내)에는 넣지 않는다. 받는 순간 바뀌는 것은 그 납품 기록의 recvAt 하나. */
+function hjMatDueOn(projects,ymd,withLate){
+  const set=new Set(projects||[]);
+  return hjMatAll().filter(x=>set.has(x.p.name)&&!x.o.recvAt&&HJ_YMD_RE.test(String(x.o.due||''))&&(withLate?x.o.due<=ymd:x.o.due===ymd));
+}
+function hjMatShareLines(day,today){
+  const pj=[...new Set(day.rows.map(r=>r.s&&r.s.project).filter(Boolean))];
+  return hjMatDueOn(pj,day.date,day.date===today).map(x=>'  🚚 자재 도착 예정 — '+x.p.name+': '+(x.o.sup?x.o.sup+' · ':'')+hjMatItemsText(x.o.items,2)+(x.o.due<day.date?' (지난 납품, 아직 입고 확인 안 됨)':''));
+}
 function hjMatEdit(id,opts){
   opts=opts||{};
   const f=id?hjMatFind(id):null;if(id&&!f){toast('납품 기록을 찾을 수 없어요');return;}
@@ -25851,6 +25864,7 @@ function myWorkView(opts){
   }
   const today=localDate(),tmr=new Date();tmr.setDate(tmr.getDate()+1);const tomorrow=localDate(tmr);
   const sch=hjMyWorkSchedules(today),todos=hjMyWorkTodos(__hjMyWork.sharedState==='ready'?__hjMyWork.shared:null);
+  const mats=hjMatDueOn(sch.map(s=>s.project).filter(Boolean),today,true);   // v370 오늘 일정 현장에 들어올(지난 것 포함) 미입고 자재
   const css='<style>#myWork{font-size:16px;overflow-wrap:anywhere;min-width:0}#myWork h4{font-size:15px;margin:14px 0 6px}#myWork .mwCard{border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;margin:8px 0;min-width:0}'+
     '#myWork .mwCard.mwDone{opacity:.75;border-color:var(--moss)}#myWork .mwMeta{font-size:13px;color:var(--muted)}#myWork .mwTitle{font-size:16px;font-weight:700;margin:3px 0}#myWork .mwState{font-size:13.5px;margin:3px 0 6px}'+
     '#myWork .mwActions{display:flex;flex-wrap:wrap;gap:6px}#myWork .mwActions button{white-space:normal;flex:1 1 auto}#myWork .mwBadge{display:inline-block;font-size:12px;border:1px solid var(--line-soft);border-radius:8px;padding:1px 6px;margin:0 4px 2px 0;color:var(--blueprint)}'+
@@ -25872,6 +25886,9 @@ function myWorkView(opts){
   const ahead=empty?hjMyWorkSchedules(tomorrow):[];
   const body=css+'<section id="myWork" aria-label="내 업무"><p class="mwMeta" style="margin:0 0 4px">'+escapeHtml(today)+' 기준 · 작업 시작·사진·완료 보고를 여기서 합니다. 현장 단계는 바꾸지 않습니다.</p>'+
     '<h4>📅 오늘 일정 '+sch.length+'</h4>'+(sch.length?sch.map(schCard).join(''):'<p class="hint" style="margin:0">오늘 잡힌 일정이 없습니다.</p>')+
+    (mats.length?'<h4>🚚 오늘 받을 자재 '+mats.length+'</h4>'+mats.map(x=>'<article class="mwCard" data-mw-mat="'+escapeAttr(x.o.id)+'"><div class="mwMeta"><b style="color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</b> · 📍'+escapeHtml(x.p.name)+'</div>'+
+      '<div class="mwTitle">'+escapeHtml((x.o.sup?x.o.sup+' — ':'')+hjMatItemsText(x.o.items,3))+'</div>'+(x.o.memo?'<div class="mwMeta">'+escapeHtml(x.o.memo)+'</div>':'')+
+      '<div class="mwActions"><button type="button" class="clay" data-mw-matrecv="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 받았어요')+'">✅ 받았어요</button></div></article>').join(''):'')+
     '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
     (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
     '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button></div>'+
@@ -25890,6 +25907,9 @@ function hjMyWorkBind(root){
   root.querySelectorAll('[data-mw-done]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.mwDone));
   root.querySelectorAll('[data-mw-report]').forEach(b=>b.onclick=()=>openReportEdit(b.dataset.mwReport));
   root.querySelectorAll('[data-mw-prep]').forEach(b=>b.onclick=()=>prepCheck(b.dataset.mwPrep));
+  root.querySelectorAll('[data-mw-matrecv]').forEach(b=>b.onclick=()=>{   // v370 현장에서 받은 자재 — 그 납품 기록 recvAt 만
+    if(hjMatReceive(b.dataset.mwMatrecv,true)){toast('✅ 입고 확인 — 오늘 날짜로 적었어요');try{dashboardOperationsRefresh();}catch(e){}}else toast('이미 입고 확인됐거나 기록이 바뀌었어요');
+    myWorkView({refresh:false});});
   root.querySelectorAll('[data-mw-local]').forEach(c=>c.onchange=()=>{const n=hjTodoList().find(x=>String(x.id)===c.dataset.mwLocal);if(!n){toast('할일이 바뀌었습니다');return myWorkView({refresh:false});}
     n.done=!!c.checked;n.doneAt=n.done?new Date().toLocaleString('ko-KR'):'';markDirty();dashboardOperationsRefresh();toast('끝낸 일로 옮겼습니다');myWorkView({refresh:false});});
   root.querySelectorAll('[data-mw-teamdone]').forEach(b=>b.onclick=()=>{const row=root.querySelector('[data-mw-recrow="'+CSS.escape(b.dataset.mwTeamdone)+'"]');if(!row)return;row.hidden=!row.hidden;if(!row.hidden){const i=row.querySelector('input');i.focus();hjKeepAboveFooter(i);}});
