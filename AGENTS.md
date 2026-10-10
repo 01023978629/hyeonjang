@@ -3,6 +3,278 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v376 현장 AS 카드 줄 배치 (Claude Cowork, v375 위 — PR 대기)
+
+- v367 패치가 PC 에 두 번 고쳐 올라가는 사이 Codex 가 앞선 판을 적용해, 현장 화면 AS 카드 줄 배치 고침이 PR 에 빠졌다(390px 폰에서 📅·✏️·상태·🗑 버튼 4개가 글 칸을 한 글자 폭으로 밀어 '욕/실/실/리…'로 꺾였다). 버전 핀 `hyeonjang-v376-ascard`.
+- 카드 줄 `.asCardRow` flex-wrap, 글 칸 `flex:1 1 160px`, 버튼들을 `.asCardCtl` 한 묶음(margin-left:auto, flex-wrap) — 좁으면 버튼 묶음이 글 아래 줄로 내려간다. `tests/asview-v367.e2e.js` ② 에 글 칸 150px 이상·줄 4개 검사를 되살림. 저장 칸 변화 없음.
+
+## 2026-10-10 v375 👷 팀원 주간 현황 (Claude Cowork, v374 위 — PR 대기)
+
+- 일정표·달력은 날짜별이라 '이번 주 김타일은 며칠·어디, 비는 날은'을 사람 기준으로 보려면 하루씩 넘겨 봐야 했다. 버전 핀 `hyeonjang-v375-crewweek`. 저장 없음(읽기 전용).
+- `hjCrewWeekData(kind)` — `hjSchShareRange('week'|'nextweek')` 월~일, 사람 = 👷 팀원 연락처(`hjTeamContacts`) + 그 주 일정 담당 이름. 사람마다 `hjSchShareDays(from,to,'',null,name)`(그날 시작하는 것 먼저, 여러 날 공정의 이어지는 날 포함, 💰·세금 자동 제외 — v356 규칙) → byDate·work(일한 날 수)·sites·empty(월~토 빈 날)·clashDates(`scheduleConflicts().crewClashes`). noCrew = 담당 없는 일정 수.
+- `hjCrewWeekView(kind,back)` '👷 팀원 주간 현황' `#crewWeek`: [이번 주]/[다음 주] `.cwRange`, 사람 카드 `.cwPerson`(요약 `.cwSum`, 겹침 `.cwClash`, 7칸 `.cwCell`/`.cwJob`, 팀원 연락처 없음 표시), 일한 날이 있으면 `.cwShare` [📤 이름 일정 보내기] → `hjSchShareView({kind,crew,back})`.
+- 더보기 '현장·시공' `['crewweek','👷','팀원 주간 현황']` → **메뉴 계약 124 → 125**(mobile-more-tools·mobile-more-sweep·mobile-office-connect·board-v351 갱신).
+- 새 `tests/crewweek-v375.e2e.js` 3/3(v374 에서는 0/3). 메뉴 계약 4개 + 관련 6개(schshare-v356·percrew-v360·crewclash-v362·crew-v357·uiux·mobile-friendly-ui)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v374 공정 완료 → 다음 공정 담당에게 알리기 (Claude Cowork, v373 위 — PR 대기)
+
+- 한 공정이 끝나면 다음 공정 팀에게 '끝났으니 예정대로'·전달 사항을 따로 전화·문자로 알렸다. 버전 핀 `hyeonjang-v374-handoff`. 새 최상위 키 없음 — 끝난 일정에 `handoffAt`(보낸 날)만.
+- `hjHandoffNext(s)` — 같은 현장, 완료 보고 전, 세금 자동·AS 방문·`HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측) 제외, s 뒤(날짜가 뒤거나 같은 날 더 늦은 시간) 중 가장 이른 일정. s 가 상담·실측·💰·AS 면 null. `hjHandoffText(s,n)` — 끝난 공정·다음 날짜/시간/이름·주소(`hjSchShareAddr`)·전달 사항(보고 `issue`). 고객 이름·전화 없음.
+- `hjHandoffOffer(s,back)` — 보고 진행률 '완료'이고 다음 공정이 있으면 '🔨 다음 공정에 알리기' 창 `#handoff`/`#hoText`: 다음 공정 담당의 👷 팀원 번호(`hjCrewPhone`)가 있으면 [✉️ 담당에게 문자](`hjSmsGo(hjSmsUrl(phones,text))`)·[💬 카톡], 없으면 [💬 카톡]·[📋 복사](`coworkCopy`)·[나중에]. 보내면 `s.handoffAt = 오늘`. 자동 발송 없음.
+- 입구: `saveReport`(→ `if(!hjAsCloseOffer(s))hjHandoffOffer(s)`) · `myWorkReport`(AS 마무리 → 다음 공정 → 내 업무 순). AS 방문 일정은 AS 마무리 창(v366)이 먼저.
+- 새 `tests/handoff-v374.e2e.js` 4/4(v373 에서는 0/4). 관련 13개(asclose-v366·asvisit-v365·my-work·dayclose-v359·delay-v347·mobile-operations·watch-card·multiday-v354·matissue-v372·mwmat-v370·schedule-safety·crew-v357·v331-follow)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v373 발주 점검 (Claude Cowork, v372 위 — PR 대기)
+
+- 자재를 쓰는 공정이 다가오는데 발주를 했는지는 기억에 맡겼다. 버전 핀 `hyeonjang-v373-matplan`. 새 최상위 키 없음 — 일정 레코드 안 `matNone`(자재 없음 표시)만.
+- `HJ_MAT_TRADE_RE`(타일·도배·벽지·마루·장판·바닥재·목공·몰딩·도장·페인트·설비·욕실·주방·싱크·조명·창호·샷시·섀시·필름·방수·중문·가구·도어) · `hjMatPlanRows(project,days=7)` = 오늘~+7일에 시작하는 그런 일정 중 이은 납품(`o.schId`) 없음 — `hjMatSchOk` 밖(💰·AS·세금)·완료 보고·`matNone` 제외.
+- 🚚 납품 확인 창: '📋 발주 점검' 칩(있을 때만)·칸 `.mpRow` — `.mpAdd` [🚚 납품 예정](`hjMatEdit(null,{project,schId,back})`)·`.mpNone` [자재 없음](그 일정 `matNone = true`). 🌙 오늘 마감 `d.matPlan` → `[data-dc-matplan]` 줄(납품 칸은 미입고나 발주 점검이 있을 때).
+- 새 `tests/matplan-v373.e2e.js` 3/3(v372 에서는 0/3). 관련 12개(dayclose-v359·matdue-v368·matsched-v369·mwmat-v370·matask-v371·matissue-v372·my-work·schcopy-v361·uiux·mobile-friendly-ui·crewclash-v362·mobile-more-sweep)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v372 입고 문제 → 교환·추가 납품 (Claude Cowork, v371 위 — PR 대기)
+
+- 받은 자재가 파손·부족·다른 물건이어도 '입고 ✅'로 끝나 기록이 없었고 교환 요청은 기억에 맡겼다. 버전 핀 `hyeonjang-v372-matissue`. 새 최상위 키 없음 — 납품 기록에 `issue`(문제 글)·`issueAt`·`issueDone`.
+- `hjMatState` — `recvAt` 있고 `issue` 있고 `issueDone` 없으면 `{k:'issue', t:'⚠ 입고 문제 — …'}`. `HJ_MAT_RANK` late 0 · **issue 1** · today 2 · soon 3 · nodate 4 · recv 5. `hjMatAskText` issue 문안 '받은 자재에 문제가 있습니다: … / 교환·추가 납품 일정을 알려 주세요'.
+- `hjMatIssueSave(id,text)`(입고 안 됐으면 오늘로 입고 + 문제, issueDone 지움) · `hjMatIssueDone(id)` · `hjMatIssueView(id,back)` '⚠ 자재 문제' 창(`#miText` — 빈 글 막음, [📷 입고 사진] = `hjMyWorkPhoto(현장,'자재 입고 거래처')`).
+- 입구·표시: 📋 내 업무 받을 자재 카드 `[data-mw-matissue]` [⚠ 문제 있음] · 🚚 납품 확인 창 '⚠ 문제' 칩(있을 때만), 문제 줄 `.mdFix` [✅ 해결]·`.mdAsk`·`.mdIssue`, 해결된 입고 줄 '입고 문제 해결 날짜' · 고치기 창 `#meIssue`(받은 기록만, 글이 바뀌면 issueAt 새로·issueDone 지움, 비우면 셋 다 삭제) · 🔔 `briefExtraItems` '자재 입고 문제 N건'(action matdue) · 현장 칸 머리 '· 문제 N건', 문제 줄 `[data-matask]`·`[data-matfix]` [✅ 해결](위임 등록).
+- 새 `tests/matissue-v372.e2e.js` 5/5(v371 에서는 0/5). 관련 12개(matdue-v368·matsched-v369·mwmat-v370·matask-v371·my-work·dayclose-v359·brief-actions·pjsched-v364·uiux·mobile-friendly-ui·mobile-operations·order-materials)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v371 늦은 납품 → 거래처 확인 문자·전화 (Claude Cowork, v370 위 — PR 대기)
+
+- 납품일이 지났거나 오늘인데 안 들어오면 거래처 번호를 따로 찾아 전화·문자를 했다. 버전 핀 `hyeonjang-v371-matask`. 새 최상위 키 없음 — 납품 기록에 `askedAt`(마지막 문의일), 📇 `state.suppliers` 에 번호 기억(기존 칸).
+- `hjMatAskText(p,o)` 상황별 문안(late·today·soon·nodate — 거래처·현장·주소·품목, 고객 이름·전화 없음). `hjMatAsk(id,back)` '📞 거래처 확인' 창: `#maPhone`(`hjMatSupPhone` — 📇 거래처 번호), `#maText` → [✉️ 확인 문자](`hjSendSms`)·[📞 전화](`hjTelGo` — 번호 없으면 막음)·[← 뒤로]. 누르면 그 기록 `askedAt = 오늘`, 번호가 바뀌었으면 거래처 갱신, 없던 거래처는 추가(`matSupplierUrl` 쇼핑몰 제외). 자동 발송 없음.
+- 입구: 🚚 납품 확인 창 줄 `.mdAsk` 📞(입고 전만, 줄에 `.mdAsked` '📨 11/5(목) 문의') · 현장 '🚚 자재 납품' 칸 `[data-matask]`(지남·오늘 줄만, 위임 등록).
+- 새 `tests/matask-v371.e2e.js` 4/4(v370 에서는 0/4). 관련 15개(matdue-v368·matsched-v369·mwmat-v370·order-materials·recv-entry·uiux·mobile-friendly-ui·pjsched-v364·dayclose-v359·brief-actions·calc-flow·calc-safety·ledger-roundtrip·materials·privacy)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v370 현장에서 자재 받기 (Claude Cowork, v369 위 — PR 대기)
+
+- 자재는 현장에 있는 팀원이 받는데 입고 확인은 대표가 사무실 화면에서만 눌렀고, 팀 공유 글에는 그날 자재가 들어온다는 말이 없었다. 버전 핀 `hyeonjang-v370-mwmat`. 새 저장 칸 없음.
+- `hjMatDueOn(projects,ymd,withLate)` — 그 현장들의 미입고 중 납품일 = ymd(withLate 면 ≤ ymd). 📋 내 업무(`myWorkView`)에 오늘 일정 현장(`hjMyWorkSchedules(today)`)의 오늘·지난 미입고를 '🚚 오늘 받을 자재 N' 카드 `[data-mw-mat]` + `[data-mw-matrecv]` [✅ 받았어요](→ `hjMatReceive(id,true)` 그 기록 recvAt 만, `myWorkView({refresh:false})`). 받을 게 없거나 오늘 일정이 없으면 칸 없음.
+- 📤 팀 일정 공유 글(`hjSchShareText`) — 날마다 일정 줄 뒤에 `hjMatShareLines(day,today)` '  🚚 자재 도착 예정 — 현장: 거래처 · 품목'(그날 일정 현장의 그날 납품, 그날이 오늘이면 지난 미입고도 '(지난 납품, 아직 입고 확인 안 됨)'). 담당별·현장별 좁히기를 그대로 따른다. 고객용 글(`hjCustSchedText`)·캘린더 파일에는 넣지 않는다.
+- 새 `tests/mwmat-v370.e2e.js` 4/4(v369 에서는 2/4 — 칸 없음·저장본 불변은 원래도 참). 관련 16개(my-work·schshare-v356·percrew-v360·custsched-v363·mobile-operations·dayclose-v359·matdue-v368·matsched-v369·crew-v357·multiday-v354·uiux·mobile-friendly-ui·watch-card·schcopy-v361·crewclash-v362·brief-actions)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v369 공정 일정 ↔ 자재 납품 (Claude Cowork, v368 위 — PR 대기)
+
+- 공정 날 아침에야 '자재가 안 왔다'를 알았다. 그 일정에 쓸 자재가 아직 입고 확인 안 됐으면 일정 줄에 '🚚 미입고 N'. 버전 핀 `hyeonjang-v369-matsched`. 새 최상위 키 없음 — 납품 기록에 선택 칸 `o.schId`(공정 잇기)만 더한다.
+- `hjMatForSched(s,ymd)` = 같은 현장 미입고 중 (`o.schId === s.id`) 또는 (안 이었거나 이은 일정이 지워졌고 `due ≤ max(s.date, ymd)`). 다른 일정에 이은 것·날짜 미정 제외. `hjMatSchOk` — 💰 수금·AS 방문(`hjIsAsVisitSched`)·세금 자동·현장 없는 일정은 보지 않는다. `hjMatBadge(s,ymd)` → `[data-matwarn]` '🚚 미입고 N'(title 에 거래처·품목).
+- 표시: 📋 내 업무 카드 `.mwMeta`(완료 보고 전만) · 대시보드 오늘/다가오는 일정 칩(루틴 제외) · 🌙 오늘 마감 내일 일정 줄 · 현장 '🗓 이 현장 일정' 줄. 모두 읽기 전용.
+- 잇기: 일정 ⋯ `schMoreView` 에 `data-act="mat"` [🚚 이 공정 자재 납품 예정](현장 일정만, 설명에 '이은 납품 N건 · 미입고 M건') → `hjMatEdit(null,{project,schId})` — 예정일 기본 = `hjMatDueFor`(공정 전 작업일, 오늘보다 앞이면 오늘). `hjMatEdit` 에 `#meSch` '어느 공정용 (선택)'(`hjMatSchOptions` — 그 현장의 보고 전·끝나는 날 오늘 이후 일정), 고르면 손대지 않은 예정일만 그 공정 전 작업일로. 비우면 `schId` 삭제. 🚚 납품 확인 창 줄에 `.mdSch` '🔨 도배 11/10(화)용'.
+- 일정 ⋯ 메뉴 계약이 바뀌어 schcopy-v361·schshare-v356 의 메뉴 목록 검사에 'mat' 추가.
+- 새 `tests/matsched-v369.e2e.js` 5/5(v368 에서는 1/5 — ⑤ 저장본 불변은 원래도 참). 관련 20개(dayclose-v359·my-work·matdue-v368·pjsched-v364·dash-reports·brief-actions·schcopy-v361·schshare-v356·crew-v357·crewclash-v362·schedule-safety·mobile-operations·watch-card·uiux·mobile-friendly-ui·multiday-v354·custsched-v363·asvisit-v365·mobile-more-sweep)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-10 v368 🚚 자재 발주 → 납품 확인 (Claude Cowork, v367 위 — PR 대기)
+
+- 발주 문자는 만들었지만 보낸 발주가 언제 들어오는지·들어왔는지 기록이 없어, 공정 날 아침에 '타일 왔나?'를 전화로 확인했다. 버전 핀 `hyeonjang-v368-matdue`. 새 최상위 키 없음 — 현장 레코드 안 `p.matOrders`(workOrders 와 같은 방식, `projectBackupSafe` 로 그대로 저장, `portalBuild` 는 고른 칸만이라 고객 페이지에 안 실림).
+- 기록: `{id, sup, items:[{name,spec,qty,unit}], due 납품 예정일, at 발주일, recvAt 입고 확인일('' = 미입고), memo}`. `hjMatRecord(project,{sup,items,due,memo})` — 같은 거래처·날짜·품목의 미입고 기록이 있으면 새로 만들지 않고 `{dup:true}`. `hjMatReceive(id,on)` 입고 확인/취소(오늘 날짜). `hjMatState` → late/today/soon(D-n)/nodate/recv, `hjMatAll(project)` 그 순서로 정렬, `hjMatPending(limit)` 미입고·납품일 ≤ limit. 품목 줄 `HJ_MAT_LINE_RE`('이름 × 수량단위').
+- 입구: 📦 발주 문자 화면 카드 `.moRec` [🚚 납품 확인에 올리기](현장 있는 묶음만 — 작업실 재고 발주는 버튼 없음) · 현장 화면 `[data-pjmat]` 칸(기록이 있거나 시공 단계, 기다림 4줄 + `[data-matrecv]` ✅ 입고·`[data-matadd]`·`[data-matview]`, 위임 등록) · `hjMatView(project?,back?)` 창(칩 지남/오늘/예정/미정, `.mdRecv`·`.mdUndo`·`.mdEdit`, + 추가) · `hjMatEdit(id|null,{project,back})`(고치기·🗑 삭제·추가, 거래처나 품목 없으면 저장 안 함) · 🔔 `briefExtraItems` '🚚 납품 확인 N건 · 지남 M건'(action `matdue`) · 🌙 오늘 마감 `d.mat`(내일까지 미입고) + `[data-dc-mat]` · 더보기 '현장·시공' `['matdue','🚚','납품 확인']` → **메뉴 계약 123 → 124**(mobile-more-tools·mobile-more-sweep·mobile-office-connect·board-v351 갱신). 자동 발송 없음.
+- 새 `tests/matdue-v368.e2e.js` 6/6(v367 에서는 0/6). 메뉴 계약 4개 + 관련 20개(action-search·asview-v367·brief-actions·calc-safety·crewclash-v362·dayclose-v359·order-materials·recv-entry·site-bom·pjsched-v364·as-record·project-rename·apartment-units·apartment-manage·uiux·mobile-friendly-ui·completion-links·health-board·dash-reports·v219-operations)·정적 검사 통과(별도 포트 사본).
+- 검사 방식 변경(대표와 합의 2026-10-10): Codex 는 버전마다 새 검사 + 관련 검사 + 정적 검사만 돌리고 push. 전체 검사는 GitHub CI(push 마다 자동)와 Claude 컨테이너가 맡고, Windows 전체 검사는 병합 직전에 한 번.
+
+## 2026-10-09 v367 AS 방문 일정 한눈에 (Claude Cowork, v366 위 — PR 대기)
+
+- AS 기록에는 '방문 2026-11-06' 날짜만 보여 시간·담당·보고 여부는 일정표에서 찾아야 했고, 방문을 아직 안 잡은 AS 가 묻혔다. 버전 핀 `hyeonjang-v367-asview`. 저장 없음(읽기 전용).
+- `hjAsVisitSched(a)`(visitSchedId 가 지금 일정에 있을 때만)·`hjAsVisitLine(a)` → 있으면 `{kind:'set'}` '📅 11/6(금) 10:00 · 👤 김타일'(담당 없으면 '· 담당 미정', 보고 글/진행률 있으면 '· 📋 보고됨'), 없으면 완료 전 AS 만 `{kind:'none'}` '📅 방문 일정 미정'(방문일만 있으면 '11/12(목) — 시간·담당 미정'), 완료 AS 는 null. 지워진 일정을 가리키면 미정. `hjAsUnscheduled(list)`.
+- 🔧 AS 관리: 줄마다 `.asmVisitLine`, 머리 칸 '방문 미정 N건'. 현장 화면 AS 카드: `.asCardVisit` + 완료 전 AS 에 `[data-asvisit]` 📅(→ `hjAsVisitPlan`, 위임 셀렉터·핸들러 등록). 카드 줄 `.asCardRow` 는 flex-wrap, 버튼들은 `.asCardCtl` 한 묶음으로 — 390px 폰에서 버튼 4개가 글 칸을 한 글자 폭으로 밀던 것을 막는다(글 칸 150px 이상 검사). 대시보드 `briefExtraItems` '미처리 AS N건 · 방문 미정 M건'. 방문 줄이 보이는 기록은 `hjAsSummary` 에서 '방문 날짜'를 빼서 두 번 쓰지 않는다(방문 줄 없는 완료 AS 는 그대로).
+- 새 `tests/asview-v367.e2e.js` 4/4(v366 에서는 1/4 — ④ 저장본 불변은 원래도 참). 관련 17개(as-record·health-board·dates-warranty-office·project-rename·completion-links·warranty-link·brief-actions·dash-reports·asvisit-v365·asclose-v366·uiux·mobile-friendly-ui·pjsched-v364·custsched-v363·v331-follow·delete-guard·watch-card)·정적 검사 통과(별도 포트 사본).
+
+## 2026-10-09 v366 AS 방문 보고 → AS 기록 마무리 (Claude Cowork, v365 위 — PR 대기)
+
+- AS 방문 일정에 작업 보고를 저장해도 AS 기록은 '접수' 그대로라, 처리 내용·사진·완료를 🔧 AS 관리에서 다시 적고 고객 완료 안내도 따로 썼다. 버전 핀 `hyeonjang-v366-asclose`. 새 최상위 키 없음(AS 기록의 `status`·`fix`·`photos` 는 v329 칸).
+- `hjAsForSched(s)` = `s.asId` 의 AS, 없으면 `visitSchedId === s.id` 인 AS(v331 옛 방문 일정). `hjAsCloseOffer(s,back)`: 그 AS 가 완료 전이고 보고에 글/진행률이 있으면 '🔧 AS 기록 마무리' 창 — `#acFix`(이미 적힌 `fix`, 없으면 보고 글)·`#acPhotos`(그날 `reportPhotos(s)` 중 아직 연결 안 된 사진을 `hjFileRef` 로, 기본 체크) → [✅ AS 완료로 저장](status done)·[처리중으로 저장](doing)·[나중에](아무것도 안 바꿈). 누르는 순간 AS 가 바뀌었으면(다른 곳에서 완료 등) 저장하지 않는다.
+- 완료로 저장하면 `hjAsDoneAfter` '✅ AS 완료 — 고객 안내': `#adText`(`hjAsDoneText` — 방문 날짜·처리 내용, 고쳐서 보냄) → [✉️ 고객에게 완료 안내](`hjSendSms`, 연락처 없으면 [📋 완료 안내 글 복사])·[🔧 AS 관리]·[닫기]. 자동 발송 없음.
+- 입구 두 곳: `saveReport`(일정표 📋 일일 작업 보고, 이미지/PDF 로 저장할 때는 묻지 않음)·`myWorkReport`(내 업무 ✅ 완료 보고 — 끝나면 `myWorkView` 로 돌아감).
+- 새 `tests/asclose-v366.e2e.js` 5/5(v365 에서는 0/5). 관련 13개(as-record·asvisit-v365·v331-follow·dayclose-v359·delay-v347·mobile-operations·multiday-v354·my-work·watch-card·health-board·ui-feedback·delete-guard·schedule-safety)·정적 검사 통과(별도 포트 사본). ui-feedback 은 병렬 실행에서 토스트 시간 한 번 흔들림 → 단독 통과.
+
+## 2026-10-09 v365 AS 접수 → 방문 일정·담당 한 번에 (Claude Cowork, v364 위 — PR 대기)
+
+- AS 를 접수하고 방문일을 넣으면 '일정에도 올릴까요?'로 시간·담당 없는 일정만 생겼고, 시간·담당·고객 안내·작업지시는 각각 다른 화면에서 했다. 버전 핀 `hyeonjang-v365-asvisit`. 새 최상위 키 없음(일정 `asId`·AS `visitSchedId`·`visitAt` 은 v331 부터 있던 필드).
+- AS 기록 펼침에 `.asmVisit` [📅 방문 일정 잡기/고치기 (날짜·시간·담당)] → `hjAsVisitPlan(asId)`: 이어진 일정이 있으면 `openScheduleEdit(id,null,{asId})`, 없으면 초안(방문일 또는 다음 작업일 `hjShiftWorkDays`·10:00·2시간·'🔧 AS 방문: …'·현장·'AS 접수 날짜 — 증상' 메모)으로 연다. 창 제목 '🔧 AS 방문 일정' — 담당 칩·그날 겹침(v355/v362)이 그대로 붙는다.
+- `openScheduleEdit(id,draft,link)`·`saveScheduleEdit(id,isNew,link)`: link.asId 면 새 일정에 `asId`, AS 에 `visitSchedId`, 저장 뒤 `visitAt = 일정 날짜`(v331 날짜 따라가기 다음에 맞춘다). 저장 뒤 `hjAsVisitAfter` 창 '🔧 AS 방문 — 다음 할 일': `#avText`(고객 방문 안내 글 `hjAsVisitText` — 주소·담당 없음, 고쳐서 보냄) → [✉️ 고객에게 방문 안내](`hjSendSms`, 연락처 없으면 [📋 방문 안내 글 복사])·[📋 담당에게 작업지시](`openWorkOrder({schId})` — v357 담당 번호 자동)·[🔧 AS 관리]·[닫기]. 자동 발송 없음.
+- `hjCascadeCands` 는 `s.asId` 인 일정을 옮겨도 뒤 공정을 밀자고 묻지 않는다(제목을 'AS 방문' 아닌 것으로 고쳐도). AS 접수 `#asmAdd` 뒤 `asManage(새 id)`로 새 기록을 펼친다.
+- 새 `tests/asvisit-v365.e2e.js` 6/6(v364 에서는 0/6). 관련 26개(as-record·v331-follow·ui-feedback·contract-terms·delete-guard·delete-due·restore-delete-safety·health-board·cascade-v353·multiday-v354·dayinfo-v355·schshare-v356·crew-v357·dayclose-v359·percrew-v360·schcopy-v361·crewclash-v362·custsched-v363·pjsched-v364·schedule-safety·schedule-add-prefill·field-issue-more·mobile-more-tools·dates-warranty-office·v219-operations·v328-integration)·정적 검사 통과.
+
+## 2026-10-09 v364 현장 화면 '🗓 이 현장 일정' 칸 (Claude Cowork, v363 위 — PR 대기)
+
+- 현장 화면(`viewProject`)에 일정 칸이 없어, 이 현장이 언제 무엇을 하는지 보려면 일정표로 가서 찾아야 했다. 고객 카드 다음, AS 기록 앞에 `[data-pjsched]` 칸. 버전 핀 `hyeonjang-v364-pjsched`. 저장 없음(목록은 읽기만).
+- 남은 일정 = 이 현장·`_taxAuto` 아님·완료 보고 없음·끝나는 날(`hjSchSpan`) 오늘 이후(💰 수금 일정은 대표용이라 포함), 날짜·시간순 8줄 `[data-pjschrow]` — '11/4(수)~11/6(금) 타일 · 2/3일째 · 👤 김타일', 줄마다 `[data-schedit]`(기존)·`[data-schcopy]`(v361 복사). 넘치면 '외 N건 — 일정표에서 보기'(`data-gosch`). 칸은 일정이 있거나 실측·시공 단계일 때만(상담·완료 단계에 일정이 없으면 숨김), 비면 안내 한 줄.
+- 아래 `[data-pjschadd]`(activeProject = 이 현장 → '+ 일정 추가' 미리 채움)·`[data-custsched]`(v363)·`[data-pjshare]`(`hjSchShareView({kind:'week',project})`). 위임 셀렉터·핸들러에 `schcopy·pjschadd·pjshare` 등록.
+- 새 `tests/pjsched-v364.e2e.js` 4/4(v363 에서는 1/4 — ④ 저장본 불변은 원래도 참). 관련 12개(custsched-v363·schcopy-v361·apartment-units·apartment-manage·project-rename·as-record·brief-actions·completion-links·warranty-link·mobile-friendly-ui·uiux)·정적 검사 17개 통과(별도 포트 사본).
+
+## 2026-10-09 v363 🗓 고객 공사 일정 안내 (Claude Cowork, v362 위 — PR 대기)
+
+- 고객이 가장 자주 묻는 "다음엔 뭐 해요, 언제 와요?" — 📤 일정 공유(v356)는 팀원용(고객 이름 빼고 담당·주소·내부 메모)이라 고객에게 그대로 보낼 수 없었다. 버전 핀 `hyeonjang-v363-custsched`. 저장 없음.
+- `hjCustSchedRows(현장)` 읽기 전용: 그 현장 일정 중 `hjPrepOtherOk`(💰·세금 자동 제외)·완료 보고 없음·끝나는 날(`hjSchSpan(s).to`)이 오늘 이후, 날짜·시간순. `hjCustSchedText(p,rows)` — '○○ 공사 일정 안내', 고객 이름, '· 11/4(수)~11/6(금) 타일'(여러 날은 시작~끝, 하루짜리는 시간 포함), 15건까지, '일정이 바뀌면 바로 다시 알려드리겠습니다.' **담당 팀원·주소·메모·💰·다른 현장·'(N일차 시작)' 꼬리표는 넣지 않는다.** 남은 일정이 없으면 그렇게 말한다.
+- `hjCustSchedView(현장, back)` — 글상자(고칠 수 있음) + [✉️ 고객에게 문자](`hjSendSms`, 고객 번호 있을 때만; 없으면 안내 한 줄)·[💬 카톡으로 공유]·[📋 복사]. 자동 발송 없음.
+- 입구: 현장 화면 고객 카드 `[data-custsched]`(위임 셀렉터·핸들러 등록) · 📤 공유 창에서 현장을 골랐을 때 `#shCust`(‹ 뒤로 = 같은 공유 창).
+- 새 `tests/custsched-v363.e2e.js` 3/3(v362 에서는 0/3). 관련 schshare-v356·percrew-v360·crew-v357·brief-actions·as-record·mobile-friendly-ui·uiux·apartment-units·project-rename·dash-cards·정적 검사 17개 통과(별도 포트 사본).
+
+## 2026-10-09 v362 👷 담당 겹침 — 같은 팀원이 같은 시간 두 곳 (Claude Cowork, v361 위 — PR 대기)
+
+- v357 로 담당을 적게 되자 '김타일을 타일 현장(9~17시)과 조명 현장(13시)에 동시에' 같은 이중 배정이 생길 수 있는데, 🔍 일정 점검은 사람을 모르고 시간만 봤다(다른 팀원 두 명이 같은 시간에 다른 현장에 가는 정상 배치도 '시간 겹침'). 버전 핀 `hyeonjang-v362-crewclash`. 저장 없음.
+- `hjCrewClash(a,b)` — 두 일정 담당(`hjCrewList`)에 같은 사람이 있고 `schedTimeRange` 가 겹치거나 어느 한쪽에 시간이 없으면(하루짜리) 겹친 이름 배열.
+- `scheduleConflicts()` 에 `crewClashes:[{date,a,b,names}]`(v355 이어지는 날 포함, `hasIssue` 에 포함). **두 일정 모두 담당이 있으면 사람 기준** — 같은 사람이면 담당 겹침, 다른 사람이면 시간이 겹쳐도 충돌 아님. 한쪽이라도 담당이 없으면 예전 '시간 겹침' 그대로(담당을 전혀 안 쓰면 결과 동일 — 검사 ④). `scheduleCheck` 에 '👷 담당 겹침 N건' 묶음(`[data-crewclash]`, 시간 없으면 '종일'), 반환값에 `담당겹침`.
+- 일정 창 '그날 다른 일정'(v355 `hjSchDayInfoHTML(날,자기id,form)`) — 지금 폼의 시간·작업 시간·담당 기준으로 겹치는 줄에 '⚠ 이름 겹침'(`li[data-crewclash]`, 위로 올림), 머리에 '👷 담당 겹침 N'. 날짜·시간·작업 시간·담당 입력과 팀원 칩 클릭에서 다시 그린다.
+- 🌙 오늘 마감(v359) `hjDayCloseData().clashes` = 내일 담당 겹침 → 요약 칩 '담당 겹침 N'·내일 일정 아래 `[data-dc-clash]` 줄 + `[data-dc-check]`(🔍 일정 점검).
+- 새 `tests/crewclash-v362.e2e.js` 4/4(v361 에서는 0/4). 관련 8개(dayinfo-v355·dayclose-v359·crew-v357·schcopy-v361·schedule-safety·field-issue-more·my-work·multiday-v354)·정적 검사 17개 통과.
+
+## 2026-10-09 v361 📄 일정 복사 (Claude Cowork, v360 위 — PR 대기)
+
+- 같은 작업을 다른 날에 또 잡을 때(같은 현장·시간·인원·담당·메모) 처음부터 다시 적었다. 일정 ⋯(`schMoreView`)에 [📄 일정 복사](`data-act="copy"`, 팀에 공유 다음) → `hjScheduleCopy(id)` → `openScheduleEdit(null, hjScheduleCopyDraft(원본))` — **새 일정 창을 채워 열 뿐, 저장 전엔 아무것도 생기지 않는다**(제목 '📄 일정 복사'). 버전 핀 `hyeonjang-v361-schcopy`.
+- `openScheduleEdit(id, draft)` — 둘째 인자가 있으면 그 값으로 새 일정을 채우고 '+ 일정 추가' 의 달력 날짜·보고 있던 현장 미리 채움은 건너뛴다(둘째 인자 없는 기존 호출 6곳은 예전 그대로). 복사본: 날짜 = 다음 작업일(`hjShiftWorkDays(+1)`, 일요일 건너뜀), 제목의 '(N일차 시작)' 꼬리표·공정표 기간 메모(`HJ_RANGE_MEMO_RE`+`HJ_RANGE_TAIL_RE`) 제거, 작업 보고·시작 기록·준비물·일당·캘린더/세금/분할납/AS 표시는 옮기지 않는다(저장은 기존 `saveScheduleEdit` 새 일정 경로).
+- 새 `tests/schcopy-v361.e2e.js` 3/3(v360 에서는 1/3 — ③ '+ 일정 추가' 예전 그대로는 원래도 참). `schshare-v356` ④의 ⋯ 메뉴 목록 단정에 'copy' 추가. 관련 10개(schshare-v356·crew-v357·cascade-v353·dayinfo-v355·schedule-safety·schedule-add-prefill·field-issue-more·v331-follow·percrew-v360·dayclose-v359)·정적 검사 17개 통과.
+
+## 2026-10-09 v360 📤 일정 공유 '👥 팀원별로 보내기' (Claude Cowork, v359 위 — PR 대기)
+
+- v357 로 담당을 고를 수 있게 됐지만, 팀원 셋에게 각자 일정을 보내려면 담당을 하나씩 바꿔 가며 세 번 보내야 했다. 공유 창(담당을 고르지 않았고 일정 하나 공유가 아닐 때)에 `#shPerCrew` — 범위·현장 안 담당 이름마다 한 줄: '👤 이름 · N건', `[.shPcSms]`(팀원 연락처 번호가 있을 때, `hjSmsUrl([번호],글)`→`hjSmsGo`)·`[.shPcKakao]`(`kakaoShareText`). 글은 그 사람 담당 일정으로 새로 만든다(`hjSchShareDays(…,crew)`+`hjSchShareText`, 머리 '이번 주 · 이름') — 위 글상자에서 고친 내용은 들어가지 않는다. 담당 없는 일정 수를 한 줄로 알린다. 버전 핀 `hyeonjang-v360-percrew`. 저장 없음.
+- 새 `tests/percrew-v360.e2e.js` 3/3(v359 에서는 1/3 — ③ '칸 없음·저장본 불변'은 원래도 참). 관련 schshare-v356·crew-v357·dayclose-v359·mobile-more-sweep·정적 검사 17개 통과.
+
+## 2026-10-09 v359 🌙 오늘 마감 — 하루를 닫을 때 한 화면 (Claude Cowork, v358 위 — PR 대기)
+
+- 같은 요청(운영 편의 계속). 하루 끝에 확인하던 것이 📋 내 업무(완료 보고)·현장 사진(미배정)·일정표(내일·담당)·🔔 알림 문자 네 화면에 흩어져 있었다. 버전 핀 `hyeonjang-v359-dayclose`. 새 저장 키 없음, 메뉴 수 123 그대로(입구는 대시보드·내 업무).
+- `hjDayCloseData(오늘)` 읽기 전용: 보고할 일정 = `hjMyWorkSchedules(오늘)`(💰·세금 자동 제외, v354 이어지는 공정 포함) 중 **오늘 끝나는 것**(`hjSchSpan(s).to<=오늘`)이고 `hjSchReported` 가 아닌 것, 여러 날 공정 중간 날은 `ongoing`('내일도 계속'), 오늘 찍은 사진(`f.when` 의 로컬 날짜)·그중 현장 없음, 내일 일정(시작+이어짐), `noCrew`(팀원 연락처가 하나라도 있을 때만, 이어지는 날 제외, 담당 빈 일정), 오늘 접수된 끝나지 않은 AS(`status!=='done'`).
+- `hjDayCloseView()` — 요약 칩 줄 `#dcSummary`, 버튼은 기존 화면만 연다: `[data-dc-report]`→`myWorkReport`, `[data-dc-crew]`→`openScheduleEdit`, `[data-dc-prep]`→`prepCheck`, `[data-dc-share]`→`hjSchShareView({kind:'tomorrow',back:hjDayCloseView})`, `[data-dc-notify]`→`scheduleNotify(내일)`, `[data-dc-photos]`→현장 사진 탭, `[data-dc-as]`→`asManage`. 창 자체는 아무것도 바꾸지 않는다(모달 안 버튼은 창을 연 뒤 직접 묶음).
+- 입구: 대시보드 '📅 오늘 일정' 머리 `[data-dayclose]`(위임 셀렉터·핸들러 등록) · 📋 내 업무 목록 링크 `#mwClose`.
+- 새 `tests/dayclose-v359.e2e.js` 5/5(v358 에서는 0/5). 관련 14개(my-work·mobile-nav-badges·mobile-todo-nav·uiux·multiday-v354·crew-v357·schshare-v356·brief-actions·mobile-operations·mobile-friendly-ui·health-board·dash-reports·dash-cards·mobile-more-sweep)·정적 검사 17개 통과.
+
+## 2026-10-09 v358 더보기 메뉴에 📤 일정 공유 (Claude Cowork, v357 위 — PR 대기)
+
+- v356 일정 공유가 일정 탭·일정 ⋯·알림 문자 창에서만 열려, 대시보드나 다른 탭에서 '팀에 이번 주 일정 보내기'를 찾기 어려웠다. 더보기 현장·시공에 `['schshare','📤','일정 공유']`(🕒 공정 지연 점검 다음) → `moreActionHandler` `hjSchShareView()`(오늘 범위로 열림), `MORE_HELP.schshare` 검색어. 버전 핀 `hyeonjang-v358-moreshare`.
+- **행동 계약 122 → 123**: `mobile-more-tools`(TARGETS `schshare:['hjSchShareView']`)·`mobile-more-sweep`·`mobile-office-connect`·`board-v351`(메뉴 수 단정) 갱신. 네 검사 + schshare-v356·crew-v357 통과.
+
+## 2026-10-09 v357 👷 일정 담당 팀원 + 연락처 '팀원' (Claude Cowork, v356 위 — PR 대기)
+
+- 대표 "PC 종료하지 말고 개발 진행"(운영 편의 계속). 일정에는 인원 '수'만 있어 누가 어느 현장에 가는지 일정표에 없었고, v356 공유도 '그 사람 일정'을 골라 줄 수 없었다. 버전 핀 `hyeonjang-v357-crew`. **최상위 저장 키 41개 그대로** — 일정 항목 안 `crew`(쉼표로 나눈 이름 글자), 연락처 항목 안 `team`(true, 해제하면 키를 지움).
+- 도우미 `hjCrewList`(`HJ_CREW_SPLIT_RE` 쉼표·전각 쉼표·가운뎃점·빗금, 앞뒤 공백·중복 제거, 이름 20자·10명까지)·`hjCrewText`·`hjTeamContacts`·`hjCrewPhone(이름)`(팀원 연락처에서 같은 이름의 번호).
+- 연락처 수정 창 [👷 팀원] 체크박스, 목록에 '👷 팀원' 배지(`[data-conteam]`). **`saveContactEdit` 이 기존 항목에 폼 칸만 덮도록 고쳤다** — 예전엔 새 객체로 갈아 끼워 폼에 없는 칸(카카오 문의의 `tag:'고객'`·`email`)이 지워졌다(일정 수정에서 고쳤던 것과 같은 결함).
+- 일정 창 '담당 팀원' `#schCrew` + 팀원 칩 `.schCrewChip`(누르면 넣고/빼고, `aria-pressed`, 44px; 팀원이 없으면 안내 한 줄). `saveScheduleEdit` 의 덮는 칸에 `crew`. 보이는 곳: 일정표 `[data-schcrew]`·대시보드 오늘 일정 `[data-dashcrew]`·📋 내 업무 카드 머리·🔔 알림 문자 작업자 글 '담당:'·`buildICS` 설명 '담당 …'·📤 공유 글 '👤 …'.
+- 📤 공유 창: 범위 안 담당 이름으로 `#shCrew`(전체 팀원/👤 이름) — 고르면 그 사람 일정만(`hjSchShareDays` 다섯째 인자), 머리 '오늘 · 김타일', 범위를 바꿔도 유지, 팀원 연락처 번호가 있으면 `#shPhone` 을 채운다. 일정 하나 공유도 담당이 한 명이면 번호. 📋 작업지시 창(`openWorkOrder`)도 담당이 팀원 한 명이면 `#woPhone` 을 채운다(여럿·팀원 아님은 비움). 보내기는 언제나 사람이.
+- 새 `tests/crew-v357.e2e.js` 6/6(v356 에서는 1/6 — ⑥ 저장본 불변만 원래도 참). 관련 26개(schshare-v356·dayinfo-v355·multiday-v354·cascade-v353·field-issue-more·schedule-safety·schedule-add-prefill·v331-follow·my-work·ics-save·ics-import·menu-schedule·uiux·mobile-friendly-ui·office-ops-isolation·pages-artifact·brief-actions·completion-links·file-identity·health-board·ledger-roundtrip·marketing-draft·mobile-more-tools·mobile-operations·privacy·restore-delete-safety)·정적 검사 17개 통과.
+
+## 2026-10-09 v356 📤 일정 공유 — 팀원에게 카톡·문자·캘린더 파일로 (Claude Cowork, v355 위 — PR 대기)
+
+- 대표 "팀원들이 일정을 확인하도록 공유 기능으로 일정을 카톡·캘린더·문자로 공유". 지금까지는 일정 하나씩 작업지시(문자)·폰 캘린더(.ics)만 됐고, 이번 주 일정을 팀 단톡방에 올리려면 손으로 옮겨 적었다. 버전 핀 `hyeonjang-v356-schshare`. 새 저장 키 없음(받는 번호도 저장 안 함), 더보기 메뉴 수 122 그대로.
+- `hjSchShareView(opts)` — `{kind:'today'|'tomorrow'|'week'|'nextweek'|'day', date, project, back}` 또는 `{ids:[일정 id]}`(일정 하나: 시작일 + 이어지는 날). 범위 `hjSchShareRange`(주 = 월~일), 목록 `hjSchShareDays`(💰·세금 자동 = `hjPrepOtherOk` 제외, 현장 좁히기, v354 이어지는 공정 'N/M일째'). 글 `hjSchShareText` — 날짜별 시간·작업(여러 날이면 '타일 (3일 · ~11/6(금))')·현장, 둘째 줄 주소·👷 인원·메모(공정표 기간 메모는 뺌, 60자). **고객 이름·전화번호는 넣지 않는다.** 글은 textarea 라 보내기 전에 고칠 수 있다.
+- 보내는 길(모두 사람이 마지막에 누름): [💬 카톡으로 공유] `kakaoShareText`(공유 시트, 안 되면 복사) · [📅 캘린더 파일(.ics)] `hjSchShareIcsItems` → 기존 `saveICSToPhone`(여러 날 공정은 날마다 VEVENT 하나, UID `id-dN`; 설명에 주소·메모만 — 고객·작업 보고 없음) · [📋 복사] · [✉️ 문자] 받는 번호(쉼표로 여러 명, 연락처 datalist) → `hjSmsUrl`(한 명은 기존 `hjSendSms` 꼴, 여러 명은 안드로이드 `sms:a,b?body=`·아이폰 `sms:/open?addresses=a,b&body=`) → `hjSmsGo`(검사가 가로챔). 범위에 일정이 없으면 네 길 모두 막고 알린다.
+- 입구: 일정 탭 툴바 `#schShare`(위임 셀렉터·핸들러 등록; 달력에서 날을 골랐으면 그날) · 일정 ⋯ `schMoreView` 에 [📤 팀에 공유](`data-act="share"`) · 🔔 알림 문자 창 아래 [📤 팀 공유](그날, ‹ 뒤로 = 알림 문자 창).
+- 새 `tests/schshare-v356.e2e.js` 6/6(v355 에서는 0/6): 범위·글 규칙(넣지 말 것 포함), 툴바 → 칩·현장 → 고친 글이 공유 시트로·44px·390px, 문자 링크 넷(빈 번호·한 명·여러 명·아이폰), ⋯ 메뉴 → 일정 하나 → .ics UID 셋·내용·고객 정보 없음, 알림 문자 창 왕복·빈 범위 차단, 저장본 불변. 관련 11개(ics-save·ics-import·menu-schedule·uiux·multiday-v354·dayinfo-v355·cascade-v353·mobile-friendly-ui·mobile-more-sweep·schedule-safety·my-work)·정적 검사 17개 통과. v355 기준 컨테이너 전체 242개 중 238(실패 4 = 늘 같은 한글 다운로드 이름 apartment-projects·document-select·document-upload·team-workboard).
+- 다음 후보였던 '팀원 연락처 묶기'는 v357(연락처 [👷 팀원]·일정 담당)으로, 더보기 입구는 v358 로 했다.
+
+## 2026-10-09 v355 일정 창 '그날 다른 일정' + 일정 점검에 이어지는 날 (Claude Cowork, v354 위 — PR 대기)
+
+- 같은 요청(운영 편의). 1인·소규모 시공은 하루 한 팀이라, AS 방문을 넣으려다 그날 타일 2일째인 걸 모르고 겹치게 잡는 일이 잦다. 버전 핀 `hyeonjang-v355-dayinfo`. 새 저장 키 없음, 읽기 전용, 막지 않음.
+- `openScheduleEdit` 날짜 줄 아래 `#schDayInfo`(aria-live) — 날짜를 바꾸면(`input`·`change`) `hjSchDayInfoHTML(날, 자기 id)`: 그날 일정(자기·💰·세금 자동 제외 = `hjPrepOtherOk`) + v354 이어지는 공정('타일 (2/3일째)'), 시간순 4개까지, 일요일이면 '일요일'. 후보 계산 `hjSchDayOthers`.
+- `hjSchContDates(s)` — 이어지는 날 목록(시작일·일요일 제외, 완료 보고면 없음). 달력 막대(v354 의 반복문을 이 함수로)와 `scheduleConflicts` 가 같이 쓴다 — 🔍 일정 점검의 시간 겹침·과부하에 이어지는 날의 공정도 들어간다(예전엔 시작일만 셈).
+- 새 `tests/dayinfo-v355.e2e.js` 3/3(v354 에서는 1/3 — ③ 저장본 불변만 원래도 참). 관련 11개(cascade-v353·multiday-v354·field-issue-more·schedule-add-prefill·schedule-safety·v331-follow·delay-v347·my-work·uiux·menu-schedule·mobile-more-tools)·정적 검사 17개 통과(별도 포트 사본으로 실행).
+
+## 2026-10-09 v354 🗓 여러 날 공정 이어 보이기 (Claude Cowork, v353 위 — PR 대기)
+
+- 같은 요청(운영 편의). 🗓 공정표는 3일짜리 타일을 '타일 (3일차 시작)' **일정 하나**(시작일)와 메모 `시작~끝 (3일)` 로 만든다 — 그래서 둘째·셋째 날에는 대시보드 '📅 오늘 일정'·📋 내 업무·달력·🔔 알림 문자 어디에도 안 보였고("오늘은 할 일이 없습니다"), 공정 진행률은 둘째 날부터 '예정', 🕒 지연 점검은 **아직 하는 중인 공정**을 시작 이틀 뒤부터 지연이라 불렀다. 버전 핀 `hyeonjang-v354-multiday`. 새 저장 키·새 일정 없음(읽기 전용).
+- 기간 `hjSchSpan(s)`: 메모 첫머리 `HJ_RANGE_MEMO_RE`(v353 에서 만든 것을 이번에 `HJ_PLAN_SKIP_RE` 옆으로 옮김 — 렌더 경로가 쓰므로 앞쪽에)가 **그 일정 날짜~더 늦은 날**(60일 이하)일 때만, 아니면 하루짜리. `hjSchContOn(s,날)` — 시작 다음 날~끝, 일요일 제외, 완료 보고(`hjSchReported`)면 끝난 것 → `{day,days,from,to}`. `hjSchContinuing(날,filter)`·`hjSchContLabel` ('↳ 이어서 2/3일째 · 11/4(수)~11/6(금)').
+- 붙인 곳: `dashboardTodayHTML`(운영 루틴 제외, `[data-schcont]` 줄) · `hjMyWorkSchedules`(→ 📋 내 업무; 이어지는 날 카드는 [▶ 작업 시작] 없음 — 시작 기록은 첫날 것이라 '진행 중 · 몇 시부터' 가 틀린다) · `calendarHTML`(이어지는 날 옅은 막대 `.cal-cont`, 읽기 글 '이어지는 공정 N건') · `viewSchedule`(고른 날, 안 골랐으면 오늘 묶음 끝에 붙임; 일요일 고르면 빈 상태) · `notifyDrafts`(작업자 글 '작업: 타일 (2/3일째)', 고객 글 '…작업이 이어집니다'; AI 도구 `schedule_notify` 도 같은 목록) · `hjPhaseProgress`(이어지는 날 '진행 중') · `hjPhaseDelays`(끝나는 날부터 셈, 결과에 `to`; `hjDelayView` 에 '시작~끝 예정').
+- 새 `tests/multiday-v354.e2e.js` 6/6(v353 에서는 1/6 — ⑥ 저장본 불변만 원래도 참): 기간 규칙(일요일 낀 도배·완료·사람 메모), 대시보드·내 업무, 달력 막대·고른 날·일요일·390px, 알림 문안, 진행률·지연, 읽기 경로 불변. 오늘은 `localDate` 를 가로채 2026-11-05(목)로 고정. 관련 15개(board-v351·delay-v347·extraprogress-v346·uiux·vatproof-v349·ics-import·ics-save·menu-schedule·mobile-nav-badges·mobile-todo-nav·my-work·prep-check·shared-todo·cascade-v353·schedule-safety)·정적 검사 17개 통과.
+- 다음 후보였던 🔍 일정 점검의 이어지는 날 셈은 v355 에서 했다.
+
+## 2026-10-09 v353 📅 뒤 일정 같이 옮기기 (Claude Cowork, v352 위 — PR 대기)
+
+- 대표 "회계보다 회사가 운영되는 일을 하는 부분을 발전". 비·자재·앞 공정 때문에 공정 하나가 밀리면 뒤 공정(도배·바닥·청소…)을 **일정 하나하나 열어** 날짜를 바꿔야 했다(공정 5개면 다섯 번). 버전 핀 `hyeonjang-v353-cascade`. 새 저장 키 없음(41개), 메뉴 수 122 그대로.
+- `saveScheduleEdit` 끝: 기존 일정의 **날짜만** 바뀌고(현장은 그대로) 현장이 있으면 `hjCascadeCands(s,옛날짜)` 후보를 `hjCascadeOffer` 창으로 묻는다 — 같은 현장 · 옛 날짜보다 뒤 · 완료 보고 없음 · `HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측) 아님 · `payPlan`·`_taxAuto`·`asId`·AS `visitSchedId` 연결 아님. 옮긴 일정 자체가 💰/AS 면 묻지 않는다. 후보는 체크박스(기본 체크), [📅 체크한 일정 같이 미루기/당기기]·[이 일정만].
+- 작업일 셈 `hjWorkDaysBetween`·`hjShiftWorkDays` 는 🗓 공정표 `planAssignDates` 와 같다(일요일만 건너뜀, 토요일은 작업일; 10년 넘는 거리는 0 — 잘못 친 연도로 수천 번 돌지 않게). 공정표 메모 `시작~끝 (N일)`(`HJ_RANGE_MEMO_RE`)은 날짜를 따라간다 — 옮긴 일정은 사람이 메모 칸을 안 고친 저장일 때만.
+- 옮긴 뒤 `hjCascadeDone` 창: 바뀐 날짜 목록, [✉️ 고객 일정 안내](`hjScheduleChangeText` — 바뀐 날짜만, 사유를 짓지 않음; 연락처 있으면 `hjSendSms` 로 문자 앱, 없으면 복사 — 자동 발송 없음), [↩ 되돌리기](같이 옮긴 것만 원래 날짜·메모로). 적용 직전 그 일정이 다른 곳에서 바뀌었으면(`o.date!==계획 시작일`) 건너뛴다.
+- 새 `tests/cascade-v353.e2e.js` 4/4(v352 에서는 0/4): 후보 규칙·작업일(토→화, 월→수)·메모 따라감·고객 글, 체크 빼기·되돌리기, 이 일정만·당기기·묻지 않는 저장 다섯 경우·사람이 고친 메모 보존, 작업일 셈 = `planAssignDates`·후보 고르기 저장본 불변. 관련 6개(delay-v347·field-issue-more·schedule-add-prefill·schedule-safety·v331-follow·mobile-more-tools)와 정적 검사 17개 통과.
+
+## 2026-10-09 v352 통장 가져오기 저장 뒤 다음 할 일 (Claude Cowork, v351 위 — PR 대기)
+
+- v350 으로 여러 입금을 한 번에 적으면 💰 입금 기록 창이 저장마다 제안하던 '입금 확인 문자'(v205)와 v348 증빙 기록으로 가는 길이 끊겼다. 저장 뒤 `hjBankAfterSave(saved)` 창 — 줄마다 [✉️ 입금 확인 문자](연락처 없으면 '📋 입금 확인 글' — 기존 `sendPaymentReceipt(현장,{d,amt})` 그대로: 문자 앱·공유·복사, 자동 발송 없음)·[🧾 증빙 기록](`hjProofView(현장, 뒤로=이 창)`), 아래 [💰 수금 이력]. 버전 핀 `hyeonjang-v352-importfollow`. 저장 구조·메뉴 수(122) 그대로.
+- `tests/bankimport-v350.e2e.js` ③에 이어 붙였다(확인 문자 → `sendPaymentReceipt` 인자, 증빙 창 왕복, 수금 이력 복귀).
+
+## 2026-10-09 v351 현장 보드에 지연·추가공사·증빙·보수 축 + 더보기 🕒 공정 지연 점검 (Claude Cowork, v350 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘". v345~v348 신호(보수 필요·추가공사 확인 전·공정 지연·증빙 미기록)가 대시보드 '오늘의 체크' 줄에만 있어 **맨 위 🏥 현장 보드 순위에 안 잡혔다**(v347 때 화이트리스트 계약 때문에 미뤘던 것). 버전 핀 `hyeonjang-v351-boardsignals`. 새 저장 키 없음(41개).
+- `projHealthBoard` 에 축 넷 — `idx.delay/extra/proof/punch` 를 현장마다 한 번씩 **원 함수 결과로만** 만든다(`hjPhaseDelays`·`hjExtrasBill(p).pending`(stage≥2)·`hjProofPending(today,name)`·`hjPunchOpen`(stage≥2), 임계값 재계산 없음 — 검사 ①이 축 집합 = 원 함수 집합을 대조). 라벨 '공정 지연 N개 · D일'·'추가공사 확인 전 N건'·'증빙 미기록 N건 · D일'·'보수 필요 N곳'. 긴급은 `BOARD_URGENT.delayDays`(7)·`proofDays`(5, 현금영수증 발행 기한)만, 나머지 둘은 주의. 보관 현장은 루프가 건너뛴다.
+- 배지가 **그 현장 화면**을 연다: reason 에 `arg`(현장 이름) → `data-boardarg` → 위임이 `fn(arg)`. `BOARD_ACTIONS` 에 `hjDelayPick·extraWork·hjProofView·punchListView` — 모두 더보기에서도 부르는 함수(health-board ⑦ `inMah` 계약 유지, `KNOWN_ACTIONS` 넷 추가). 위임 셀렉터에 `[data-boardarg]` 등록(click-delegation 검사가 잡았다).
+- **더보기 현장·시공 [🕒 공정 지연 점검]**(`delaycheck` → `hjDelayPick()`): 지연 있는 시공 현장이 하나면 바로 `hjDelayView`, 여럿이면 고르기(최장 지연 순), 없으면 빈 상태 창(더보기 전수 검사는 화면이 열려야 한다). `hjDelayPick(현장)` 은 그 현장 창 — 보드 배지가 이걸 쓴다. 행동 계약 **121 → 122**(`mobile-more-tools` TARGETS `delaycheck:['hjDelayPick']`, `mobile-more-sweep`·`mobile-office-connect`). `MORE_HELP.delaycheck` 검색어.
+- 검사 안정화(같은 커밋): `extraprogress-v346` ②·`delay-v347` ②·`bankimport-v350` ③의 '요청 0' 단정이 **모든 fetch** 를 세어 병렬 실행에서 부팅이 늦게 쏘는 글꼴·GIS 미리읽기에 거짓 실패했다(Codex Windows 지정 검사에서 extraprogress-v346 1회, 단독 재시도 통과). 이제 앱이 보낼 수 있는 요청(고객 페이지 `/portal/save`·릴레이·전자계약·xlsx CDN)만 센다 — 단정의 뜻은 그대로.
+- 새 `tests/board-v351.e2e.js` 4/4(v350 에서는 0/4): 축 드리프트·라벨·긴급·보관/상담 제외, 배지 → 함수(현장)·화이트리스트 밖 무시, 더보기 셋 경로·메뉴 122·390px, 읽기 경로 저장본 불변. 검사 시드는 기존 여섯 축 함수를 `()=>[]` 로 비운다(방치 축이 빈 시드 현장을 전부 긴급으로 만들어 등급 단정이 안 됐다). 관련 11개(health-board 11/11·delay-v347·brief-actions·punchlist-v345·extraprogress-v346·payproof-v348·extra-work·completion-links·mobile-more-tools·mobile-office-connect·mobile-more-sweep) 통과(별도 포트 사본으로 실행).
+
+## 2026-10-09 v350 🏦 통장 입금 내역 가져오기 (Claude Cowork, v349 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘". 실데이터(2026-10-08) 견적 72곳에 **입금 기록 0건** — 미수·독촉·분할납·부가세·증빙(v348)이 전부 입금 기록 위에 서 있는데 그 바닥이 비어 있었다. 통장에 들어온 돈을 한 건씩 손으로 옮기는 일이 안 되고 있었으니, 은행 거래내역 파일에서 **입금 줄만 뽑아 현장을 제안하고 사람이 체크한 것만 저장**한다. 버전 핀 `hyeonjang-v350-bankimport`. 새 저장 키 없음(41개), 더보기 메뉴 수 121 그대로(💰 수금 이력 창의 [🏦 통장에서 가져오기] 버튼).
+- 읽기: `hjBankReadFile(file)` — csv·txt 는 `hjBankDecode`(utf-8 실패 → euc-kr; 은행 csv 는 보통 EUC-KR) + `hjBankCsvGrid`, xlsx 는 `ensureXLSX` 뒤 시트마다. `hjBankRowsFromGrid(grid)` 가 앞 30행에서 머리글을 찾는다 — 날짜 열(`HJ_BANK_DATE_RE`) + 입금 열(`HJ_BANK_IN_RE`, 농협 '입금금액') 또는 거래금액+구분 열(카카오 '구분'·'거래금액'); 못 찾으면 `reason` 으로 어느 열이 없는지 말한다. 입금자명은 '보낸분·입금자·의뢰인·거래기록사항·적요·내용…' 순. 합계·소계 줄 제외, 출금·0원 제외. 날짜 `hjBankDate` — 2026/10/02 14:22·2026.10.03·20261004·엑셀 일련번호(UTC 날짜만, `toISOString().slice` 안 씀). 정규식은 전부 상수(토크나이저 규칙).
+- 제안 `hjBankMatch(row,projects,statsOf,payLog)`: **이름이 맞을 때만 고른다** — 입금자=고객명(3)·전에 같은 입금자로 기록(3, payLog 의 `payer`)·입금자≈현장명(2). 금액(잔금과 같음·`HJ_PAY_RATIO` 비율)은 +1 이라 **금액만 맞으면 힌트로만** 보이고 고르지 않는다(같은 금액 잔금이 둘이면 틀린다). 동점이면 비우고 후보를 적는다. 보관 현장은 후보 아님. `hjBankDup` — 같은 날·같은 금액(·같은 현장)이 payLog 에 있으면 '이미 기록됨'(체크 해제, 저장 때도 다시 걸러 두 번 안 적힌다).
+- 저장은 **`hjPayRecordAdd(p,rec)` 한 곳** — 💰 입금 기록 창(`recvQuickView`)의 받은 돈 누계·payLog push·5000건 캡·옛 독촉/입금확인 작업 닫기를 떼어 내 둘이 같이 쓴다(동작 동일, 검사 ④). 가져온 기록은 `{d,project,amt,payer}` — `payer`(30자)는 다음 가져오기의 '전에 같은 입금자' 근거. 증빙은 저장 뒤 v348 창에서. 확인창(confirm)에 건수·합계, 미래 날짜 줄은 막는다. 파일은 저장하지 않고 잔액·다른 사람 거래는 화면에서만 보고 버린다. 저장 뒤 `portalAutoSync`(설정 없으면 요청 0).
+- 대시보드 💰 '수금 기록 없는 현장' 알림 글 끝에 가는 길을 적었다(통장 거래내역 파일이 있으면 💰 수금 이력 → 🏦 통장에서 가져오기).
+- 새 `tests/bankimport-v350.e2e.js` 4/4(v349 에서는 0/4): 격자 읽기(두 은행 꼴·날짜 네 꼴·합계/출금 제외·못 읽는 이유·csv 따옴표), 제안 규칙 10가지, 화면 끝까지(EUC-KR csv 바이트 → 제안 → 현장 바꾸기 → 저장 → 같은 파일 다시 넣으면 중복 차단 → 390px·요청 0·키 41), 💰 입금 기록 창 동작 유지·읽기 경로 저장본 불변. 관련 16개(recv-entry·due-settle-all·brief-actions·quickinput-v344·payproof-v348·vatproof-v349·ledger-roundtrip·dates-warranty-office·project-rename·restore-parity·apt-orders·apt-amount·mobile-more-tools·sweep·office-connect) 16/16. 전체 결과는 아래 v349 방식으로 적는다.
+- 한계(다음 후보): 입금자명이 고객명과 다르고 처음이면 제안이 비어 손으로 골라야 한다(한 번 고르면 다음부터 '전에 같은 입금자'). 분할납 💰 일정의 회차 금액과는 아직 안 맞춰 본다(계약 비율만). 한 파일에 같은 날·같은 금액 입금이 둘이면 둘째 줄은 첫째를 저장한 뒤 '이미 기록됨'으로 보인다 — 실제로 두 건이면 💰 입금 기록 창에서 손으로.
+
+## 2026-10-08 v349 부가세 준비 ↔ 입금 증빙 연결 (Claude Cowork, v348 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘" — v348 에서 적기 시작한 증빙을 **부가세 준비 창에서 한눈에**. 신고 기간 입금(payLog, 입금일 기준)을 현금영수증·세금계산서·카드·기타·미기록으로 센다 — 홈택스 현금영수증 발행 내역·전자세금계산서 합계와 맞춰 보는 참고 줄. **입금일 기준이라 매출(견적 기준)과 다를 수 있다**고 화면에 적는다. 버전 핀 `hyeonjang-v349-vatproof`.
+- `hjProofSummary(from,to)` → `{cash,tax,card,etc,none,total:{n,sum}}`(읽기 전용) · `hjProofSummaryLine`. `vatReport` 매입 아래 '🧾 입금 증빙' 칩 줄(미기록은 붉게) + [🧾 입금 증빙 기록 열기] → `hjProofView('', 뒤로=vatReport)` · 요약 복사 글에 '입금 증빙(입금일 기준): …' 한 줄 · `vatExportXlsx` 에 **4번째 시트 '입금증빙'**(입금일·현장·금액·증빙·기록일, 기간 밖 제외; 반환 `시트:4`). 저장 구조·더보기 수(121)·매출·매입 계산은 그대로.
+- 주의: `vatReport` 안의 `won` 은 `hjNum`(원 없음) 지역 변수다 — 칩 숫자는 다른 숫자처럼 '원' 없이, 복사 글은 전역 `won` 으로 '원' 붙음(기존 줄도 `won(x)+'원'`).
+- **실데이터(대표 `_현장.json` 2026-10-08, 읽기 전용 dry run) 확인 후속**: 상담·완료 현장에도 옛 사진 공정으로 브리핑 칩 '2/3' 이 떴다 → 브리핑 칩·진행 보고 문안의 진행률은 **시공(stage 2) 현장만**(고객 페이지는 원래 시공 단계만). 공정 이름이 '지하실 배관 교체 및 1동 807호 806호 계량기 밸브 교체' 처럼 길어 `hjPhaseProgressLine` 은 공정 하나를 24자에서 자른다. 실데이터에서 v347 지연 알림 1건(금성백조 8/13 일정·56일)·추가공사 미청구 0·입금 증빙 0(입금 기록 0건이라 v348 은 기록을 시작해야 보인다).
+- v348 기준 컨테이너 필터 없는 전체 `tests/run-all.js`: **236개 중 232 통과** — 실패 4개는 알려진 컨테이너 한글 다운로드 이름 문제(apartment-projects·document-select·document-upload·team-workboard, 단독 재시도 1건 통과). Windows(Codex) 전체는 v346 시점 234/234.
+- 새 `tests/vatproof-v349.e2e.js` 4/4(v348 에서는 0/4): 집계·칩·안내·복사 글·증빙 창 왕복·390px, 엑셀 시트(XLSX 스텁), 읽기 경로 저장본 불변. 관련 6개(dash-reports·revenue-basis·sales-basis·quote-vat·quickinput-v344·payproof-v348) 통과(별도 포트 사본으로 실행).
+
+## 2026-10-08 v348 입금 증빙(현금영수증·세금계산서) 기록 (Claude Cowork, v347 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘" — 돈 흐름의 빈 고리: 입금은 적는데 **현금영수증·세금계산서를 발행했는지는 어디에도 못 적었다**. 실내건축 공사업은 현금영수증 의무발행 업종(건당 10만원 이상 현금·계좌이체 거래 → 입금일부터 5일 안, 미발행은 가산세 대상 — 기준은 홈택스 안내 확인, 앱은 금액을 단정하지 않는다). 버전 핀 `hyeonjang-v348-payproof`.
+- 저장은 **입금 기록(`state.payLog` 항목) 안에 `proof`('cash'|'tax'|'card'|'etc')·`proofAt`** 만 더한다 — payLog 항목은 통째로 직렬화되므로 유상 왕복(paidStableJson)에 그대로 실린다. 최상위 키 41개 그대로. 옛 기록은 빈 값(=아직). 읽기 `hjProofPending(today,현장)`(10만원 이상·`HJ_PROOF_WARN_DAYS` 2일 지난 빈 기록, 배열을 만들지 않음), 쓰기 `hjProofSet(rec,kind)` 한 곳(같은 종류를 다시 누르면 지움).
+- 보이는 자리: 💰 입금 기록 창(`recvQuickView`)에 '증빙' 선택(기본 '아직'), 대시보드 '오늘의 체크' 🧾 줄 + 현장 버튼 `data-proofquick` → `hjProofView(현장)`(최근 40건, 종류 버튼 44px, [📇 세금계산서 정보]=기존 `taxInvoiceInfo`), 더보기 경영·돈 **[🧾 입금 증빙 기록]**(`payproof`, 행동 계약 **120 → 121** — `mobile-more-tools` TARGETS `payproof:['hjProofView']`, `mobile-more-sweep`·`mobile-office-connect` 의 120). 발행 자체는 홈택스에서 — 앱이 대신하거나 발행했다고 짓지 않는다.
+- 새 `tests/payproof-v348.e2e.js` 3/3(알림 경계·기록/지움·저장·입금 창·더보기·읽기 경로 저장본 불변). 관련 10개(mobile-more-tools·sweep·office-connect·recv-entry·brief-actions·quickinput-v344·delay-v347·extraprogress-v346·restore-parity·ledger-roundtrip) 10/10. 검사 작성 중 교훈: `serializeData().payLog` 는 **같은 객체 참조**라 '저장본' 값을 보려면 JSON 왕복으로 베껴야 한다.
+
+## 2026-10-08 v347 공정 지연 점검 (Claude Cowork, v346 위 — PR 대기)
+
+- 대표 "개발을 더 진행해줘" — v346 공정 진행률의 자연스러운 다음: **일정은 지났는데 사진도 완료 보고도 없는 공정**을 찾아 알린다(1인 시공은 비·자재·앞 공정으로 밀리는데, 밀린 줄 모르면 고객에게 "오늘 온다더니" 가 된다). 버전 핀 `hyeonjang-v347-delaycheck`. 새 저장 키·새 더보기 메뉴 없음(120 그대로).
+- `hjPhaseDelays(p,today)` (읽기 전용) — 시공(stage 2)·보관 아닌 현장의 🗓 일정 가운데 `HJ_DELAY_MIN_DAYS`(2)일 이상 지났고, 완료 보고(`report.progress==='완료'`/`report.done`)가 없고, `hjPhaseProgress` 가 완료·진행 중으로 보지 않으며(그 공정 사진 없음), 같은 제목의 더 늦은 일정(이미 옮긴 것)이 없는 것. 제목은 v346 과 같은 `HJ_PLAN_SUFFIX_RE`/`HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측 제외). **어제 것은 지연이 아니다**(하루 밀림은 흔하다). 상담·완료 현장은 대상이 아니다.
+- 대시보드 '오늘의 체크' 🕒 줄 + 현장 버튼 `data-delayquick` → `hjDelayView(name)`: 공정마다 [✅ 완료 보고]=기존 `myWorkReport(일정 id)`, [📅 일정 옮기기]=기존 `openScheduleEdit(id)`, 아래 [✉️ 일정 안내 문자]=`hjDelayText`(공정 이름만 적고 **조정된 날짜는 '(여기에 적어 주세요)' 빈칸** — 날짜·사유를 지어내지 않는다, 연락처 있으면 `hjSendSms`, 없으면 복사, 자동 발송 없음). 현장 보드(projHealthBoard) 축은 늘리지 않았다 — `health-board` 의 openAction 화이트리스트(더보기 함수만) 계약 때문.
+- 새 `tests/delay-v347.e2e.js` 3/3(v346 에서는 0/3): 판정 경계(완료 보고·사진·옮긴 일정·어제·💰/AS·시공 아닌 현장), 대시보드→창→기존 함수 연결·문자 초안에 날짜 없음·서버 요청 0·390px, 읽기 경로 저장본 불변(v345 규칙). 관련 9개(brief-actions·health-board·extraprogress-v346·punchlist-v345·quickinput-v344·schedule-safety·completion-links·my-work·mobile-operations) 9/9.
+
+## 2026-10-08 v346 공정 진행률·추가공사 미청구 경고 (Claude Cowork, v345 위 — PR 대기)
+
+- 대표 "더 진행" — v345 비교표의 다음 후보 둘(Houzz Pro 단계별 진행률 · 추가공사 미청구 경고). 새 입력·새 저장 키 없음(최상위 41개 그대로). 버전 핀 `hyeonjang-v346-extraprogress`.
+- **공정 진행률 `hjPhaseProgress(p)` → {total,done,doing,todo,pct}** (읽기 전용). 공정 목록은 `hjPhaseNames(p)` = `p.phases`(문자열·옛 객체 둘 다), 비어 있으면 이 현장 🗓 공정표 일정 제목(`HJ_PLAN_SUFFIX_RE` 로 ' (N일차 시작)' 제거, `HJ_PLAN_SKIP_RE` 💰·AS 방문·상담·실측 제외). 판정은 두 신호만: 사진 공정 표시(`_phase`, 뒤 공정에도 사진이 있으면 앞 공정은 완료)와 일정 완료 보고(`report.progress==='완료'` 또는 `report.done`, 제목이 공정 이름이거나 '공정 이름 ' 으로 시작). **날짜가 지난 것은 완료가 아니다**(비로 밀린 공정을 고객 화면이 완료라 하면 안 된다). 오늘 일정이 잡힌 공정은 진행 중.
+- 한 줄 `hjPhaseProgressLine` 을 세 곳이 같이 쓴다: `portalBuild` 시공 단계 메모(예전 '최근: '+last.title 은 공정이 문자열이라 늘 빈 글이었다 — 고친 결함), `customerProgressText`(없으면 예전 '(철거·타일 진행)' 그대로), 브리핑 진행 현장 칩 '공정 2/4'. `portalSig` 에 시공 메모를 넣어 진행률이 바뀌면 고객 페이지가 '갱신 필요'. `setPhase`·`applyBulkPhase`·`myWorkReport` 저장 뒤 `portalAutoSync`(서버 설정 없으면 요청 0 — 검사로 고정).
+- **추가공사 미청구**: 대시보드 '오늘의 체크'에 시공·완료(stage≥2) 현장의 `hjExtrasBill(p).pending`(확인 전·금액 협의·금액 확인 필요) 합계 + 현장 버튼 `data-extraquick` → `extraWork(name)`(클릭 위임 목록에 등록). 준공 전 체크 `STAGE_CHECK[3]` 둘째 줄 '추가공사 확인받음·금액 적기(청구서에 반영)' `extra` — `stageChecklistItems` 가 확인받음 N건 금액·견적에 담김·`hjExtrasPendingLine` 을 셋째 칸에, `STAGE_CHECK_GO.extra` 🖊 추가공사. 실측 단계 현장은 대상 아님.
+- **v345 결함 수정(이 커밋에 포함)**: `hjPunchList` 가 읽기만 하는 자리(대시보드 `hjPunchOpen`·준공 체크 줄·문안)에서도 `p.punch=[]` 를 만들어, 유상 저장 뒤 `assertPaidLiveStateExact`(저장본 == 지금 상태) 가 어긋나 **'paid exact live state conflict'** 로 저장이 실패 처리됐다(Windows 전체 검사 `apartment-projects` 에서 발견 — 컨테이너는 그 앞 다운로드 이름에서 떨어져 못 봤다). 읽기는 `hjPunchItems(p)`(배열을 만들지 않음), 쓰기(점검표 화면·기본 항목 넣기)만 `hjPunchList`. **화면을 그리는 함수는 현장 객체에 빈 배열을 붙이면 안 된다**(hjExtrasBill 주석과 같은 규칙) — 새 검사 ④가 대시보드·준공 체크·문안·고객 페이지를 전부 그린 뒤 저장본이 같은지 본다.
+- 검사 계약: `completion-links` ① GO 목록 `['punch','extra','balance','warranty','zip','review']`(여섯 개). 더보기 메뉴 수 120 그대로. 새 `tests/extraprogress-v346.e2e.js` 4/4(v345 에서는 0/4). 관련 17개(brief-actions·completion-links·extra-work·extras-settle·photo-refs·punchlist·quickinput·ledger-roundtrip·mobile-more-tools·restore-parity·revenue-basis·site-rules·v328-integration·portal-key·followup-v343·estimate-photo-dup-v342·mobile-more-sweep) 17/17. 필터 없는 전체 결과는 아래 v345 와 같은 방식으로 적는다(컨테이너 알려진 실패 4개 외 0).
+
+## 2026-10-08 v345 준공 하자점검표(punch list) (Claude Cowork, v344 위 — PR 대기)
+
+- 대표 요청: 다른 회사 앱(Buildertrend·Houzz Pro·CoConstruct·JobNimbus·Procore·도배르만)과 비교해 없는 것을 찾아 30분 개발. 비교 결과 이 앱에 이미 있는 것: 견적·계약서 초안·추가공사(확인받음→청구)·분할납 계획·공정표 자동 생성·고객 페이지·진행 보고 문안·보증서·AS·전후 비교·사례 글. **없던 것: 인도 전 하자점검표(punch list)**. 버전 핀 `hyeonjang-v345-punchlist`.
+- `punchListView(현장)` (더보기 현장·시공 [🧾 준공 하자점검표], 준공 전 체크 줄 [🧾 점검표], 대시보드 버튼). 저장은 `p.punch[]` `{id,area,text,status:''|ok|fix|done|na,photo(hjFileRef),note,at}` — 추가공사(p.extras)와 같은 자리, **최상위 저장 키 41개 그대로**. 공간별 기본 항목(`PUNCH_DEFAULT_ITEMS`, 11개 공간)은 고른 공간만, 이미 넣은 공간은 다시 안 넣는다. 사진 연결은 extraWork 와 같은 안정 참조·치유(hjFilesByRefs·hjRefHealOk).
+- 준공 전 체크(STAGE_CHECK[3])에 '준공 하자점검표 작성·고객 확인' 줄 추가 — `stageChecklistItems` 가 현재 상태(점검 N곳·양호·보수 필요 남음)를 셋째 칸에 넣고, `STAGE_CHECK_GO.punch` 가 점검표를 연다. 보수 필요가 남아도 완료로 올리는 것은 막지 않는다(알려만 준다).
+- 대시보드 '오늘의 체크'(v344 `acts` 버튼 틀 확장: punch·progress): 보수 필요가 남은 현장 → 점검표, **오늘 사진을 찍은 시공(stage 2) 현장 → 기존 `customerProgress`(고객 진행 보고)** — Houzz/Buildertrend 의 '일일 고객 업데이트'를 기존 문안 기능으로 잇는다.
+- 고객 확인 글 `hjPunchText` (보수 예정/완료 나눠 적음, 자동 발송 없음, 연락처 있으면 `hjSendSms`). 인도 뒤 접수는 그대로 AS 관리.
+- 검사 계약을 셋 올렸다: 더보기 메뉴 수 **119 → 120**(`mobile-more-tools` TARGETS 에 `punchlist:['punchListView']`, `mobile-more-sweep`·`mobile-office-connect` 의 119), `completion-links` ① 준공 전 체크 GO 버튼 목록 맨 앞에 `punch`. tap-inline(인라인 버튼 44)·sweep(체크 label 44) 규칙 때문에 상태 버튼·기본 항목 버튼·공간 칩을 44px 로 맞췄다.
+- 새 `tests/punchlist-v345.e2e.js` 3/3(390px·저장 키·대시보드·문안). 필터 없는 `tests/run-all.js` 233개 중 225 통과 → 위 계약·44px 수정 뒤 관련 17개 재실행 17/17; 남은 4개(apartment-projects·document-select·document-upload·team-workboard)는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제.
+
+## 2026-10-08 v344 고객·수금 빠른 입력 (Claude Cowork, v343 위 — PR 대기)
+
+- 기준은 v343 브랜치 `claude/v343-followups`. 대표 "더 개발 진행" — v342 목록에서 남은 '고객·수금 입력 바로가기'. 버전 핀 `hyeonjang-v344-quickinput`.
+- 대시보드 '오늘의 체크'의 v342 알림(수금 기록 없음·고객 연락처 없음)에 현장 이름 버튼(`acts`)을 붙였다 — `data-recvquick`(기존 `recvQuickView` 입금 기록)·`data-custquick`(새 `hjCustQuickView`). 텍스트 브리핑(L.push)은 그대로 문장만.
+- `hjCustQuickView(현장, {lead})`: 이름·연락처·주소, 명함에서 불러오기(`loadCustomerFromCard`), 빈 입력·숫자 9자리 미만 번호는 `hjFieldIssue` 로 막는다. 저장은 현장 화면 고객 칸과 같은 `setCustomer` 3번.
+- 견적 '날짜 · 프로젝트' 창에서 현장을 저장한 직후 `hjCustOfferAfterAssign` — 그 현장 고객 이름·연락처가 모두 비었으면 한 번만 묻는다(`__custOffered`, 이 화면 동안 같은 현장은 다시 안 물음). 견적 파일에는 연락처가 없어 자동 채우기는 하지 않는다.
+- 부가세 준비(`vatReportData`) 매입에 지출장부(`state.expenses`)의 자재·외주를 넣었다 — projStats 와 같은 택일 규칙(현장에 수기 자재/외주비가 있으면 그 항목은 수기만, 없으면 장부만), 현장 없음·보관 현장의 장부 지출은 날짜 기준. v343 외주(매입) 견적 → 외주 지출이 이제 매입세액 공제 쪽에 잡힌다. 장비·유류·식대·기타는 예전처럼 제외.
+- `durableLocalMutation` 저장 왕복 뒤 파일 id 가 바뀔 수 있어 새 검사는 이름으로 다시 찾는다. 새 `tests/quickinput-v344.e2e.js` 4/4(v343 에서는 0/4·마지막 한 건은 장부 반영 전이라 실패). 필터 없는 `tests/run-all.js` 232개 중 228 통과(실패 4개는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제), 부가세 반영 뒤 세무·장부·대시보드 관련 21개 재실행 21/21.
+
+## 2026-10-08 v343 드라이브 빈 기록 예방·외주(매입) 견적·옛 호수 현장 합치기 (Claude Cowork, v342 위 — PR 대기)
+
+- 기준은 v342 브랜치 `claude/v342-estimate-dup-fixes`(main `ce3b80e` 위 1커밋). 대표가 v342 다음 단계로 세 가지를 골랐다. 버전 핀 `hyeonjang-v343-followup`.
+- 드라이브 빈 기록 예방: `applyData` 병합에서 `hjSavedDriveGhost(s)` 가 참이면 그 저장 기록을 새로 만들지 않는다(`window.__driveGhostSkipped` 로 셈). 조건은 v342 `hjDriveGhostRecords` 와 같다 — PC 원본 기록(handle·_file)이 같은 Drive ID·같은 이름을 쓰고, 저장 기록이 더 가진 정보(현장·공정·작업명·동호수·연락처·메모·장부·견적·집계 제외·원본 증빙)가 없을 때. 되돌리기(revert)와 PC 원본이 없는 기기(폰)는 예전 동작 그대로. v323 `equalSizeScanPhotoPair` 통과 규칙은 건드리지 않았다.
+- 외주(매입) 견적: 견적 탭 [상세 입력 → 🏢 외주(매입)] → `hjEstTogglePurchase`. 같은 견적의 사본(엑셀·PDF)까지 `est.purchase`·`est.purchaseKey` 를 켜고 `estimateGroups` 가 건너뛴다(매출·청구·부가세 매출에서 빠짐). 현장·금액이 있으면 `expenseAdd({category:'외주', sourceKey:'estpurchase:…'})` 로 한 번만 지출 기록 → projStats 외주 원가(수기 외주비 없을 때). 되돌리면 금액·현장이 그대로인 그 지출만 지운다. 목록 배지·견적 합계 줄·정산 엑셀 '집계' 열·대시보드 '오늘의 체크'(다른 업체 이름 견적이 매출에 잡힘)에 표시. 부가세 매입(vatReportData)은 기존대로 수기 원가만 본다.
+- 옛 호수 현장 합치기: 아파트 관리 탭 [🏢 옛 호수 현장 합치기] / 방치 현장 화면 → `hjAptLegacyMergeView`. 후보는 `aptNameParse` 로 읽히고 같은 `aptComplexKey` 단지 현장이 정확히 하나일 때만, 판정은 v331 `aptProjectPreview`(→ `aptProjectSourceCheck`) 그대로. 적용 `hjAptLegacyMergeApply` 는 `aptProjectApply` 와 같은 변경(사진 동·호수 이동·공정 합집합·원본 보관 aptPhotoArchive)을 한 `aptUnitMutation` 안에서 여러 곳 처리 — 안전판 1회(12곳을 하나씩 하면 안전판이 모두 밀려난다). 동 없는 이름·'704-1102'·약칭은 추정하지 않고 '직접 확인'으로만 보인다.
+- 정규식은 상수(`HJ_UNITNAME_RE`·`HJ_VENDOR_RE`). 새 `tests/followup-v343.e2e.js` 3/3(v342 에서는 0/3). 필터 없는 `tests/run-all.js` 231개 중 227 통과 — 실패 4개는 v341 때와 같은 컨테이너 한글 다운로드 이름 문제이며, 다운로드 이름만 너그럽게 한 로컬 사본으로 네 검사 모두 끝까지 통과(실측 2026-10-08).
+
+## 2026-10-08 v342 견적 이중 계상·사진 중복 도구·운영 정리 (Claude Cowork, 로컬 검증 — PR 대기)
+
+- 기준 main `ce3b80e`(v341 #173). 대표 자료(브라우저 실데이터, 읽기만)에서 확인한 문제를 고친다: 미배정 PDF가 현장 엑셀과 따로 매출에 더해짐, `파일.xlsx - 견적서.pdf`(구글 시트 출력)·`- 복사본` 정규화 실패, 10억 오인식 금액, 견적 탭 합계만 전 현장을 한 번에 묶어 다른 숫자, 중복 사진 검사가 같은 크기 묶음 앞 50장에서 매번 멈춰 늘 0장, 같은 Drive ID 빈 기록 242개, 두 현장에 들어간 같은 사진 14장, 세금 기한 휴일 미보정, 목록 미리보기 800px.
+- 견적: `hjEstNormName`(밖으로 뺀 정규화), `hjEstSkipIds`(10억 이상 미수정 금액·`hjLooseEstShadows` 미배정 사본을 `estimateGroups` 가 exSum 처럼 건너뜀 — 모든 집계가 한 곳에서 따라온다), `hjEstIssues` 목록 배지(10억·1만 미만·파일명 금액 불일치·다른 업체명·미배정 사본), 견적 탭 합계는 현장별 묶음(hjSalesEntries 와 같은 값)·배정/미지정 분리, 대시보드 '진행 현장 견적'+미지정 별도, 정산 엑셀 '집계' 열, `hjFuzzyProjectFor`(오타 1글자·단지 토큰, 기본 체크 해제, 동점이면 제안 안 함, 스캔 뒤 자동 창은 정확 일치만).
+- 사진: `verifyDuplicatePhotos` 는 같은 크기 + 같은 `duplicateMetadata` 후보만 읽고 확인한 후보는 `__dupCleanSigs` 로 건너뜀([다음 묶음 검사]). `hjDriveGhostRecords`/`hjRemoveDriveGhosts`(PC 원본 기록과 Drive ID·이름이 같고 더 가진 정보 없는 빈 기록, removedIds 넘기지 않음), `hjCrossDupFind`/`hjCrossDupMerge`(크기·촬영시각 같은 두 현장 사진을 바이트로 확인 → 현장 쌍마다 남길 현장 선택, 공정·메모 이전 후 `saveVerifiedDuplicates`). `deletePhotoRecordsSafely` 는 남은 기록이 쓰는 Drive ID 를 삭제 목록에 올리지 않는다. 자동 병합(applyData·equalSizeScanPhotoPair)은 건드리지 않았다.
+- 운영: 방치 현장 화면에 [완료로]·[보관]·빈 현장/60일+ 일괄 보관(안전판 뒤), 오늘의 체크에 수금 기록·고객 연락처 빈칸 알림(견적 파일에 연락처가 없어 자동 채우기는 하지 않음). `hjTaxDueDate`(토·일·고정 공휴일·2026~2029 설·추석) — 일정 id 는 법정 날짜 그대로, `_taxAuto` 이고 법정 날짜인 예전 자동 일정만 실제 기한으로 옮긴다. 목록 미리보기 `HJ_GRID_THUMB_W=320`, `relayCall` 3초 넘으면 오른쪽 아래 대기 표시(요청 자체는 그대로).
+- 정규식은 상수(`HJ_HANGUL_ONLY_RE`·`HJ_YMD_RE`·`HJ_COPYISH_RE`) — office-ops-isolation 토크나이저 규칙. APP_BUILD/SW/TARGET_BUILD = `hyeonjang-v342-dupfix`.
+- 목록 미리보기를 320px 로 줄였으므로 `tests/apartment-projects.e2e.js` 의 허용 썸네일 주소(가짜 Drive 썸네일 GET)도 `=w320`·`sz=w320` 으로 맞췄다. 컨테이너에서는 이 검사가 앞쪽 다운로드 이름에서 먼저 떨어져 이 단정까지 못 가므로, 다운로드 이름만 너그럽게 한 로컬 사본으로 끝까지 돌려 확인했다(apartment-projects·document-select·document-upload·team-workboard 모두 끝까지 통과).
+- 새 `tests/estimate-photo-dup-v342.e2e.js` 11/11(v341 에서는 1/11 — 회귀를 실제로 잡는다). 필터 없는 `tests/run-all.js` 229개 중 224 통과 — 실패 5개 중 `photo-safety-ui` 는 이 변경의 버그였다(중복 검사 '확인 끝' 서명에 원본 출처가 없어 같은 id·크기·정보로 바이트만 바뀐 시드를 건너뜀 → 서명에 Blob/핸들 객체 id·원본 증빙 추가, 이후 통과). 나머지 4개(`apartment-projects`·`document-select`·`document-upload`·`team-workboard`)는 v341 기준에서도 같은 자리에서 떨어지는 컨테이너 한글 다운로드 이름('download') 알려진 실패. 수정 후 관련 46개 재실행 46/46. 실데이터 읽기 전용 대조: 견적 합계 72,401,700 → 69,431,700(태산그린 `xlsx - 견적서.pdf` 2,970,000 한 건). 이 세션은 GitHub 쓰기 권한이 없어 브랜치·PR 은 대표 또는 권한 있는 세션이 올린다.
+
 ## 2026-10-07 v340 불러온 사진의 개별 삭제 (배포 승인, PR 검증 대기)
 
 - 기준 main은 `073f0e2`(v339, PR #171). 사용자 요청은 드라이브·백업 사진도 삭제 가능하게 수정하는 것이다. PC hover 추가와 최종 검증 결과를 안내한 뒤 2026-10-07 사용자가 "배포"로 수정본 업로드·PR 검증·main 병합·GitHub Pages 반영을 승인했다. 실제 사진 삭제·원본 변경·서버 배포는 포함하지 않는다.
