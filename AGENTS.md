@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v371 늦은 납품 → 거래처 확인 문자·전화 (Claude Cowork, v370 위 — PR 대기)
+
+- 납품일이 지났거나 오늘인데 안 들어오면 거래처 번호를 따로 찾아 전화·문자를 했다. 버전 핀 `hyeonjang-v371-matask`. 새 최상위 키 없음 — 납품 기록에 `askedAt`(마지막 문의일), 📇 `state.suppliers` 에 번호 기억(기존 칸).
+- `hjMatAskText(p,o)` 상황별 문안(late·today·soon·nodate — 거래처·현장·주소·품목, 고객 이름·전화 없음). `hjMatAsk(id,back)` '📞 거래처 확인' 창: `#maPhone`(`hjMatSupPhone` — 📇 거래처 번호), `#maText` → [✉️ 확인 문자](`hjSendSms`)·[📞 전화](`hjTelGo` — 번호 없으면 막음)·[← 뒤로]. 누르면 그 기록 `askedAt = 오늘`, 번호가 바뀌었으면 거래처 갱신, 없던 거래처는 추가(`matSupplierUrl` 쇼핑몰 제외). 자동 발송 없음.
+- 입구: 🚚 납품 확인 창 줄 `.mdAsk` 📞(입고 전만, 줄에 `.mdAsked` '📨 11/5(목) 문의') · 현장 '🚚 자재 납품' 칸 `[data-matask]`(지남·오늘 줄만, 위임 등록).
+- 새 `tests/matask-v371.e2e.js` 4/4(v370 에서는 0/4). 관련 15개(matdue-v368·matsched-v369·mwmat-v370·order-materials·recv-entry·uiux·mobile-friendly-ui·pjsched-v364·dayclose-v359·brief-actions·calc-flow·calc-safety·ledger-roundtrip·materials·privacy)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v370 현장에서 자재 받기 (Claude Cowork, v369 위 — PR 대기)
 
 - 자재는 현장에 있는 팀원이 받는데 입고 확인은 대표가 사무실 화면에서만 눌렀고, 팀 공유 글에는 그날 자재가 들어온다는 말이 없었다. 버전 핀 `hyeonjang-v370-mwmat`. 새 저장 칸 없음.
