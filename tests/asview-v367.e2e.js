@@ -90,13 +90,14 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       document.querySelector('#view [data-asvisit="as1"]').click();
       const a1 = { h3: document.querySelector('#modalRoot h3').textContent, date: document.getElementById('schDate').value, crew: document.getElementById('schCrew').value };
       closeModal(true);
-      return { lines, btns, label, a2, a1, wide: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      const tw = [...document.querySelectorAll('#view .asCardRow > div:not(.asCardCtl)')].map(x => x.getBoundingClientRect().width), textW = tw.length === 4 ? Math.min(...tw) : -tw.length;
+      return { lines, btns, label, a2, a1, textW, wide: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
     assert(JSON.stringify(r.lines) === JSON.stringify([WANT.as1, WANT.as2, WANT.as3]), '카드 줄: ' + JSON.stringify(r.lines));
     assert(JSON.stringify(r.btns) === JSON.stringify(['as1', 'as2', 'as3']) && /고치기/.test(r.label), '[📅]: ' + JSON.stringify(r));
     assert(r.a2.h3 === '🔧 AS 방문 일정' && r.a2.date === '2026-11-12' && r.a2.title === '🔧 AS 방문: 현관 문틀 벌어짐', '미정 → 새 창: ' + JSON.stringify(r.a2));
     assert(r.a1.h3 === '🔧 AS 방문 일정' && r.a1.date === '2026-11-06' && r.a1.crew === '김타일', '있으면 그 일정: ' + JSON.stringify(r.a1));
-    assert(r.wide <= 0, '390px 가로 넘침: ' + r.wide);
+    assert(r.wide <= 0 && r.textW >= 150, '390px 가로 넘침·글 칸이 좁아 한 글자씩 꺾이지 않게: ' + JSON.stringify({ wide: r.wide, textW: r.textW }));
   });
 
   await test('③ 대시보드 알림 \'미처리 AS 4건 · 방문 미정 2건\', 다 잡히면 \'방문 미정\' 없음', async () => {
