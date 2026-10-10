@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v375 👷 팀원 주간 현황 (Claude Cowork, v374 위 — PR 대기)
+
+- 일정표·달력은 날짜별이라 '이번 주 김타일은 며칠·어디, 비는 날은'을 사람 기준으로 보려면 하루씩 넘겨 봐야 했다. 버전 핀 `hyeonjang-v375-crewweek`. 저장 없음(읽기 전용).
+- `hjCrewWeekData(kind)` — `hjSchShareRange('week'|'nextweek')` 월~일, 사람 = 👷 팀원 연락처(`hjTeamContacts`) + 그 주 일정 담당 이름. 사람마다 `hjSchShareDays(from,to,'',null,name)`(그날 시작하는 것 먼저, 여러 날 공정의 이어지는 날 포함, 💰·세금 자동 제외 — v356 규칙) → byDate·work(일한 날 수)·sites·empty(월~토 빈 날)·clashDates(`scheduleConflicts().crewClashes`). noCrew = 담당 없는 일정 수.
+- `hjCrewWeekView(kind,back)` '👷 팀원 주간 현황' `#crewWeek`: [이번 주]/[다음 주] `.cwRange`, 사람 카드 `.cwPerson`(요약 `.cwSum`, 겹침 `.cwClash`, 7칸 `.cwCell`/`.cwJob`, 팀원 연락처 없음 표시), 일한 날이 있으면 `.cwShare` [📤 이름 일정 보내기] → `hjSchShareView({kind,crew,back})`.
+- 더보기 '현장·시공' `['crewweek','👷','팀원 주간 현황']` → **메뉴 계약 124 → 125**(mobile-more-tools·mobile-more-sweep·mobile-office-connect·board-v351 갱신).
+- 새 `tests/crewweek-v375.e2e.js` 3/3(v374 에서는 0/3). 메뉴 계약 4개 + 관련 6개(schshare-v356·percrew-v360·crewclash-v362·crew-v357·uiux·mobile-friendly-ui)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v374 공정 완료 → 다음 공정 담당에게 알리기 (Claude Cowork, v373 위 — PR 대기)
 
 - 한 공정이 끝나면 다음 공정 팀에게 '끝났으니 예정대로'·전달 사항을 따로 전화·문자로 알렸다. 버전 핀 `hyeonjang-v374-handoff`. 새 최상위 키 없음 — 끝난 일정에 `handoffAt`(보낸 날)만.
