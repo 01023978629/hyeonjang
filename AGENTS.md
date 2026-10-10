@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v373 발주 점검 (Claude Cowork, v372 위 — PR 대기)
+
+- 자재를 쓰는 공정이 다가오는데 발주를 했는지는 기억에 맡겼다. 버전 핀 `hyeonjang-v373-matplan`. 새 최상위 키 없음 — 일정 레코드 안 `matNone`(자재 없음 표시)만.
+- `HJ_MAT_TRADE_RE`(타일·도배·벽지·마루·장판·바닥재·목공·몰딩·도장·페인트·설비·욕실·주방·싱크·조명·창호·샷시·섀시·필름·방수·중문·가구·도어) · `hjMatPlanRows(project,days=7)` = 오늘~+7일에 시작하는 그런 일정 중 이은 납품(`o.schId`) 없음 — `hjMatSchOk` 밖(💰·AS·세금)·완료 보고·`matNone` 제외.
+- 🚚 납품 확인 창: '📋 발주 점검' 칩(있을 때만)·칸 `.mpRow` — `.mpAdd` [🚚 납품 예정](`hjMatEdit(null,{project,schId,back})`)·`.mpNone` [자재 없음](그 일정 `matNone = true`). 🌙 오늘 마감 `d.matPlan` → `[data-dc-matplan]` 줄(납품 칸은 미입고나 발주 점검이 있을 때).
+- 새 `tests/matplan-v373.e2e.js` 3/3(v372 에서는 0/3). 관련 12개(dayclose-v359·matdue-v368·matsched-v369·mwmat-v370·matask-v371·matissue-v372·my-work·schcopy-v361·uiux·mobile-friendly-ui·crewclash-v362·mobile-more-sweep)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v372 입고 문제 → 교환·추가 납품 (Claude Cowork, v371 위 — PR 대기)
 
 - 받은 자재가 파손·부족·다른 물건이어도 '입고 ✅'로 끝나 기록이 없었고 교환 요청은 기억에 맡겼다. 버전 핀 `hyeonjang-v372-matissue`. 새 최상위 키 없음 — 납품 기록에 `issue`(문제 글)·`issueAt`·`issueDone`.
