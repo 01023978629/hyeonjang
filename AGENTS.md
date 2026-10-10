@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v369 공정 일정 ↔ 자재 납품 (Claude Cowork, v368 위 — PR 대기)
+
+- 공정 날 아침에야 '자재가 안 왔다'를 알았다. 그 일정에 쓸 자재가 아직 입고 확인 안 됐으면 일정 줄에 '🚚 미입고 N'. 버전 핀 `hyeonjang-v369-matsched`. 새 최상위 키 없음 — 납품 기록에 선택 칸 `o.schId`(공정 잇기)만 더한다.
+- `hjMatForSched(s,ymd)` = 같은 현장 미입고 중 (`o.schId === s.id`) 또는 (안 이었거나 이은 일정이 지워졌고 `due ≤ max(s.date, ymd)`). 다른 일정에 이은 것·날짜 미정 제외. `hjMatSchOk` — 💰 수금·AS 방문(`hjIsAsVisitSched`)·세금 자동·현장 없는 일정은 보지 않는다. `hjMatBadge(s,ymd)` → `[data-matwarn]` '🚚 미입고 N'(title 에 거래처·품목).
+- 표시: 📋 내 업무 카드 `.mwMeta`(완료 보고 전만) · 대시보드 오늘/다가오는 일정 칩(루틴 제외) · 🌙 오늘 마감 내일 일정 줄 · 현장 '🗓 이 현장 일정' 줄. 모두 읽기 전용.
+- 잇기: 일정 ⋯ `schMoreView` 에 `data-act="mat"` [🚚 이 공정 자재 납품 예정](현장 일정만, 설명에 '이은 납품 N건 · 미입고 M건') → `hjMatEdit(null,{project,schId})` — 예정일 기본 = `hjMatDueFor`(공정 전 작업일, 오늘보다 앞이면 오늘). `hjMatEdit` 에 `#meSch` '어느 공정용 (선택)'(`hjMatSchOptions` — 그 현장의 보고 전·끝나는 날 오늘 이후 일정), 고르면 손대지 않은 예정일만 그 공정 전 작업일로. 비우면 `schId` 삭제. 🚚 납품 확인 창 줄에 `.mdSch` '🔨 도배 11/10(화)용'.
+- 일정 ⋯ 메뉴 계약이 바뀌어 schcopy-v361·schshare-v356 의 메뉴 목록 검사에 'mat' 추가.
+- 새 `tests/matsched-v369.e2e.js` 5/5(v368 에서는 1/5 — ⑤ 저장본 불변은 원래도 참). 관련 20개(dayclose-v359·my-work·matdue-v368·pjsched-v364·dash-reports·brief-actions·schcopy-v361·schshare-v356·crew-v357·crewclash-v362·schedule-safety·mobile-operations·watch-card·uiux·mobile-friendly-ui·multiday-v354·custsched-v363·asvisit-v365·mobile-more-sweep)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v368 🚚 자재 발주 → 납품 확인 (Claude Cowork, v367 위 — PR 대기)
 
 - 발주 문자는 만들었지만 보낸 발주가 언제 들어오는지·들어왔는지 기록이 없어, 공정 날 아침에 '타일 왔나?'를 전화로 확인했다. 버전 핀 `hyeonjang-v368-matdue`. 새 최상위 키 없음 — 현장 레코드 안 `p.matOrders`(workOrders 와 같은 방식, `projectBackupSafe` 로 그대로 저장, `portalBuild` 는 고른 칸만이라 고객 페이지에 안 실림).

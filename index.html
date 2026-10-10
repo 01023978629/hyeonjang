@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v368-matdue';
+const APP_BUILD='hyeonjang-v369-matsched';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7625,6 +7625,8 @@ function schMoreView(sid){
     it('👷','작업지시 보내기','작업자에게 날짜·현장·할 일을 문자로 전달합니다.','workorder')+
     it('📤','팀에 공유','카톡·문자·캘린더 파일로 이 일정을 팀원에게 보냅니다.','share')+
     it('📄','일정 복사','같은 현장·시간·담당으로 다음 작업일에 새 일정을 만듭니다(저장 전 고칠 수 있어요).','copy')+
+    (hjMatSchOk(s)?it('🚚','이 공정 자재 납품 예정',(()=>{const p=(state.projects||[]).find(x=>x&&x.name===s.project),n=hjMatOrders(p).filter(o=>o.schId===s.id),w=hjMatForSched(s).length;
+      return '발주한 자재의 납품 예정일을 이 일정에 이어 둡니다(공정 전 작업일로 채워요)'+(n.length||w?' — 이은 납품 '+n.length+'건 · 미입고 '+w+'건':'')+'.';})(),'mat'):'')+
     it('📅','구글 캘린더에 추가','구글 캘린더에 이 일정을 넣습니다.','gcal')+
     it('📲','폰 캘린더에 추가','아이폰·안드로이드 기본 캘린더(.ics)로 저장합니다.','ics'),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
@@ -7635,6 +7637,7 @@ function schMoreView(sid){
         if(a==='workorder')openWorkOrder({schId:sid});
         else if(a==='share')hjSchShareView({ids:[sid]});
         else if(a==='copy')hjScheduleCopy(sid);
+        else if(a==='mat')hjMatEdit(null,{project:s.project,schId:sid});   // v369
         else if(a==='gcal')addToGoogleCalendar(sid);
         else if(a==='ics')exportScheduleICS(sid);
       }catch(e){toast('실행할 수 없어요: '+(e.message||e));}
@@ -9164,6 +9167,7 @@ function dashboardTodayHTML(){
     `<b style="color:var(--blueprint)">${showDate?escapeHtml(String(s.date).slice(5))+' ':''}${s.time?escapeHtml(s.time)+' ':''}${escapeHtml(s.title||'작업')}</b>`+
     `${s.project?`<span style="margin-left:8px;font-size:12px;color:var(--muted)">📍${escapeHtml(s.project)}</span>`:''}`+
     `${s.crew?`<span data-dashcrew style="margin-left:6px;font-size:12px;color:var(--muted)">👤${escapeHtml(hjCrewText(s.crew))}</span>`:''}`+
+    `${s.routine?'':hjMatBadge(s,showDate?s.date:today)}`+
     `${cont?`<span data-schcont style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${escapeHtml(hjSchContLabel(cont))}</span>`:''}`+
     `${s.workers?`<span style="margin-left:6px;font-size:12px;color:var(--muted)">👷${escapeHtml(String(s.workers))}명</span>`:''}</button>`;
     // 운영 루틴 일정은 [▶ 바로] 한 번으로 해당 화면(사진/광고/회계)이나 백업 실행으로 점프
@@ -12607,7 +12611,7 @@ function hjDayCloseView(){
     :'<p class="hint" style="margin:0 0 4px">'+(d.reported?'오늘 끝나는 일정은 모두 보고했어요 ('+d.reported+'건).':'오늘 끝나는 일정이 없어요.')+'</p>')+
     (d.ongoing.length?'<p class="hint" style="margin:4px 0 0">내일도 계속: '+d.ongoing.map(r=>escapeHtml(hjSchShareTitle(r.s,r.c||{day:1,days:hjSchSpan(r.s).days}))).join(' · ')+'</p>':'');
   body+=h4('📷 오늘 사진 '+d.photos+'장')+(d.loose?row('현장이 정해지지 않은 사진 <b>'+d.loose+'장</b>',btn('ghost','data-dc-photos','📷 사진 정리')):'<p class="hint" style="margin:0">'+(d.photos?'오늘 사진은 모두 현장이 정해졌어요.':'오늘 찍은 사진이 없어요.')+'</p>');
-  body+=h4('🗓 내일 '+escapeHtml(hjMdDow(d.tomorrow))+' 일정 '+d.tmr.length)+(d.tmr.length?d.tmr.map(x=>row(name(x.s,x.c)+(d.noCrew.includes(x.s.id)?' <span style="color:#b45309;white-space:nowrap">· 담당 없음</span>':''),
+  body+=h4('🗓 내일 '+escapeHtml(hjMdDow(d.tomorrow))+' 일정 '+d.tmr.length)+(d.tmr.length?d.tmr.map(x=>row(name(x.s,x.c)+hjMatBadge(x.s,d.tomorrow)+(d.noCrew.includes(x.s.id)?' <span style="color:#b45309;white-space:nowrap">· 담당 없음</span>':''),
       (d.noCrew.includes(x.s.id)?btn('ghost','data-dc-crew="'+id(x.s)+'"','👤 담당 정하기'):'')+btn('ghost','data-dc-prep="'+id(x.s)+'"','🧰 준비물'))).join('')+
       (d.clashes.length?'<div data-dc-clash style="font-size:12.5px;color:#b45309;margin:2px 0 6px">⚠ 담당 겹침: '+d.clashes.map(c=>escapeHtml(c.names.join(', ')+' — '+hjCut(c.a.title,10)+' ↔ '+hjCut(c.b.title,10))).join(' · ')+' '+btn('ghost','data-dc-check','🔍 일정 점검')+'</div>':'')+
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+btn('blue','data-dc-share','📤 팀에 내일 일정 보내기')+btn('ghost','data-dc-notify','🔔 고객 알림 문자')+'</div>'
@@ -15985,6 +15989,7 @@ function hjMatRecord(projectName,rec){
   const dup=hjMatOrders(p).find(o=>!o.recvAt&&JSON.stringify([o.sup||'',o.due||'',(o.items||[]).map(x=>({name:x.name,spec:x.spec||'',qty:x.qty,unit:x.unit||''}))])===key);
   if(dup)return {o:dup,dup:true};
   const o={id:uid(),sup,items,due,at:localDate(),recvAt:'',memo:String(rec.memo||'').trim().slice(0,200)};
+  if(rec.schId&&(state.schedule||[]).some(x=>x&&x.id===rec.schId))o.schId=String(rec.schId);   // v369 공정 잇기(선택)
   p.matOrders=hjMatOrders(p).concat([o]);markDirty();
   return {o,dup:false};
 }
@@ -15993,13 +15998,48 @@ function hjMatReceive(id,on){
   if(on){if(f.o.recvAt)return false;f.o.recvAt=localDate();}else{if(!f.o.recvAt)return false;f.o.recvAt='';}
   markDirty();return true;
 }
+/* ── v369 공정 일정 ↔ 자재 납품 ──
+   공정 날 아침에야 '자재가 안 왔다'를 알았다. 그 일정에 쓸 자재가 아직 입고 확인 안 됐으면 일정 줄에 '🚚 미입고 N'
+   (📋 내 업무·대시보드 오늘/다가오는 일정·🌙 오늘 마감 내일 일정·현장 '🗓 이 현장 일정'). 납품 기록에 공정을 이을 수 있다(o.schId, 선택 —
+   일정 ⋯ [🚚 이 공정 자재 납품 예정]·납품 기록 창 '어느 공정용').
+   이 일정의 자재 = 같은 현장 미입고 중 (이 일정에 이은 것) 또는 (공정을 잇지 않았거나 이은 일정이 지워졌고, 납품 예정일이 보는 날 이하).
+   다른 일정에 이은 것·날짜 미정은 빼고, 💰 수금·AS 방문·세금 자동 일정은 보지 않는다. 읽기 전용. */
+function hjMatSchOk(s){return !!(s&&s.project&&!s._taxAuto&&!/^💰/.test(String(s.title||''))&&!hjIsAsVisitSched(s));}
+function hjMatForSched(s,ymd){
+  if(!hjMatSchOk(s))return [];
+  const p=(state.projects||[]).find(x=>x&&x.name===s.project);if(!p)return [];
+  const day=HJ_YMD_RE.test(String(ymd||''))&&ymd>String(s.date||'')?ymd:String(s.date||'');
+  const ids=new Set((state.schedule||[]).map(x=>x&&x.id));
+  return hjMatOrders(p).filter(o=>!o.recvAt&&(o.schId&&ids.has(o.schId)?o.schId===s.id:(HJ_YMD_RE.test(String(o.due||''))&&o.due<=day)));
+}
+function hjMatBadge(s,ymd){
+  const m=hjMatForSched(s,ymd);if(!m.length)return '';
+  const tip=m.map(o=>(o.sup?o.sup+' · ':'')+hjMatItemsText(o.items,2)).join(' / ');
+  return '<span data-matwarn title="'+escapeAttr('입고 확인 안 된 자재: '+tip)+'" style="display:inline-block;margin-left:6px;font-size:12px;font-weight:700;color:#c2410c;white-space:nowrap">🚚 미입고 '+m.length+'</span>';
+}
+function hjMatSchedLabel(o){
+  if(!o||!o.schId)return '';
+  const t=(state.schedule||[]).find(x=>x&&x.id===o.schId);
+  return t?String(t.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim()+' '+hjMdDow(t.date)+'용':'';
+}
+// 그 현장의 이을 수 있는 공정 — 완료 보고 전, 끝나는 날이 오늘 이후(💰·AS·세금 자동 제외), 날짜순
+function hjMatSchOptions(projectName){
+  const today=localDate();
+  return (state.schedule||[]).filter(x=>x&&x.project===projectName&&hjMatSchOk(x)&&!hjSchReported(x)&&HJ_YMD_RE.test(String(x.date||''))&&hjSchSpan(x).to>=today)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||''))).slice(0,30);
+}
+// 공정에 이으면 납품 예정일 기본값 = 그 공정 전 작업일(오늘보다 앞이면 오늘)
+function hjMatDueFor(sch){if(!sch||!HJ_YMD_RE.test(String(sch.date||'')))return '';const d=hjShiftWorkDays(sch.date,-1),t=localDate();return d<t?t:d;}
 function hjMatEdit(id,opts){
   opts=opts||{};
   const f=id?hjMatFind(id):null;if(id&&!f){toast('납품 기록을 찾을 수 없어요');return;}
-  const o=f?f.o:{sup:'',items:[],due:hjAddDays(localDate(),1),memo:''};
+  const sch0=!f&&opts.schId?(state.schedule||[]).find(x=>x&&x.id===opts.schId):null;   // v369 일정 ⋯ 에서 열면 그 공정에 이어 둔다
+  const o=f?f.o:{sup:'',items:[],due:sch0?hjMatDueFor(sch0):hjAddDays(localDate(),1),memo:'',schId:sch0?sch0.id:''};
   const back=opts.back||null,leave=()=>{if(back)back();else closeModal();};
   const live=(state.projects||[]).filter(p=>p&&!p.archived);
-  const pjName=f?f.p.name:(opts.project||'');
+  const pjName=f?f.p.name:(opts.project||(sch0&&sch0.project)||'');
+  const schOpts=pjName?hjMatSchOptions(pjName):[];
+  if(o.schId&&!schOpts.some(x=>x.id===o.schId)){const cur=(state.schedule||[]).find(x=>x&&x.id===o.schId);if(cur)schOpts.unshift(cur);}
   const supNames=[...new Set([...(state.suppliers||[]).map(x=>x&&x.name),...Object.values(state.supplierMap||{})])].filter(Boolean);
   const fld='display:block;width:100%;box-sizing:border-box;padding:9px;font-size:16px;min-height:44px;margin-top:4px;font-family:inherit';
   const body='<div id="matEdit" style="font-size:12.5px;font-weight:700">'+
@@ -16008,26 +16048,30 @@ function hjMatEdit(id,opts){
     '<label style="display:block;margin-top:8px">거래처<input id="meSup" list="meSupList" value="'+escapeAttr(o.sup||'')+'" placeholder="예: 대림타일" autocomplete="off" style="'+fld+'"></label>'+
     '<datalist id="meSupList">'+supNames.map(n=>'<option value="'+escapeAttr(n)+'">').join('')+'</datalist>'+
     '<label style="display:block;margin-top:8px">품목 (한 줄에 하나 — 예: 타일 600각 × 42장)<textarea id="meItems" rows="4" style="'+fld+';line-height:1.5">'+escapeHtml((o.items||[]).map(hjMatItemLine).join('\n'))+'</textarea></label>'+
+    (pjName?'<label style="display:block;margin-top:8px">어느 공정용 (선택)<select id="meSch" style="'+fld+'"><option value="">공정 안 정함 — 납품일로만 확인</option>'+schOpts.map(x=>'<option value="'+escapeAttr(x.id)+'" data-due="'+escapeAttr(hjMatDueFor(x))+'"'+(x.id===o.schId?' selected':'')+'>'+escapeHtml(hjMdDow(x.date)+' '+String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim())+'</option>').join('')+'</select></label>':'')+
     '<label style="display:block;margin-top:8px">납품 예정일<input type="date" id="meDue" value="'+escapeAttr(o.due||'')+'" style="'+fld+'"></label>'+
     '<label style="display:block;margin-top:8px">메모<input id="meMemo" value="'+escapeAttr(o.memo||'')+'" placeholder="예: 오전 하차, 엘리베이터 예약" style="'+fld+'"></label>'+
     (f&&f.o.recvAt?'<div class="hint" style="margin-top:8px;font-weight:400">입고 확인: '+escapeHtml(f.o.recvAt)+'</div>':'')+'</div>';
   openModal(f?'🚚 납품 기록 고치기':'🚚 납품 예정 추가',body,[
     {label:'저장',cls:'blue',fn:()=>{
       const g=i=>document.getElementById(i);
-      const items=hjMatParseItems(g('meItems').value),sup=g('meSup').value.trim(),due=g('meDue').value,memo=g('meMemo').value.trim().slice(0,200);
+      const items=hjMatParseItems(g('meItems').value),sup=g('meSup').value.trim(),due=g('meDue').value,memo=g('meMemo').value.trim().slice(0,200),schId=String((g('meSch')||{}).value||'');
       if(!items.length&&!sup){toast('거래처나 품목을 적어 주세요');hjFieldIssue(g('meItems'),'거래처나 품목을 적어 주세요');return;}
       if(f){
         const cur=hjMatFind(id);if(!cur||cur.o!==f.o){toast('납품 기록이 그 사이 바뀌었어요 — 다시 열어 주세요');return;}
-        Object.assign(f.o,{sup,items,due:HJ_YMD_RE.test(String(due||''))?due:'',memo});markDirty();toast('납품 기록을 고쳤어요');
+        Object.assign(f.o,{sup,items,due:HJ_YMD_RE.test(String(due||''))?due:'',memo});if(schId)f.o.schId=schId;else delete f.o.schId;markDirty();toast('납품 기록을 고쳤어요');
       }else{
         const pj=pjName||(g('meProj')||{}).value;if(!pj){toast('현장을 고르세요');return;}
-        const r=hjMatRecord(pj,{sup,items,due,memo});if(!r){toast('현장을 찾을 수 없어요');return;}
+        const r=hjMatRecord(pj,{sup,items,due,memo,schId});if(!r){toast('현장을 찾을 수 없어요');return;}
         toast(r.dup?'이미 같은 납품 기록이 있어요':'🚚 납품 예정을 올렸어요');
       }
       try{render();}catch(e){}leave();}},
     ...(f?[{label:'🗑 삭제',cls:'warn',fn:()=>{if(!confirm('이 납품 기록을 지울까요?\n'+(f.o.sup||'')+' — '+hjMatItemsText(f.o.items,2)))return;
       f.p.matOrders=hjMatOrders(f.p).filter(x=>x!==f.o);if(!f.p.matOrders.length)delete f.p.matOrders;markDirty();try{render();}catch(e){}toast('납품 기록을 지웠어요');leave();}}]:[]),
     {label:back?'← 뒤로':'취소',cls:'ghost',fn:leave}],true);
+  // v369 공정을 고르면 납품일이 아직 손대지 않은 값일 때만 그 공정 전 작업일로 바꾼다
+  const selEl=document.getElementById('meSch'),dueEl=document.getElementById('meDue');
+  if(selEl&&dueEl){let auto=dueEl.value;selEl.onchange=()=>{const opt=selEl.options[selEl.selectedIndex],nd=opt&&opt.dataset.due;if(nd&&dueEl.value===auto){dueEl.value=nd;auto=nd;}};}
 }
 function hjMatView(projectName,back){
   if(typeof projectName!=='string')projectName='';
@@ -16039,7 +16083,8 @@ function hjMatView(projectName,back){
   const row=x=>'<div class="mdRow" data-id="'+escapeAttr(x.o.id)+'" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px">'+
     '<div style="flex:1 1 180px;min-width:0;font-size:13px;line-height:1.5"><div class="mdState" style="font-weight:700;color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</div>'+
       '<div>'+(projectName?'':'<b>'+escapeHtml(x.p.name)+'</b> · ')+escapeHtml(x.o.sup||'거래처 미기재')+'</div>'+
-      '<div style="color:var(--muted)">'+escapeHtml(hjMatItemsText(x.o.items,3))+(x.o.memo?' · '+escapeHtml(hjCut(x.o.memo,40)):'')+'</div></div>'+
+      '<div style="color:var(--muted)">'+escapeHtml(hjMatItemsText(x.o.items,3))+(x.o.memo?' · '+escapeHtml(hjCut(x.o.memo,40)):'')+'</div>'+
+      (hjMatSchedLabel(x.o)?'<div class="mdSch" style="font-size:12px;color:var(--blueprint)">🔨 '+escapeHtml(hjMatSchedLabel(x.o))+'</div>':'')+'</div>'+
     '<div style="display:flex;gap:6px;margin-left:auto">'+
       (x.o.recvAt?'<button type="button" class="ghost mdUndo" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">↩ 입고 취소</button>'
         :'<button type="button" class="clay mdRecv" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 12px;font-size:12.5px">✅ 입고 확인</button>')+
@@ -25816,7 +25861,7 @@ function myWorkView(opts){
     const cont=s.date!==today?hjSchContOn(s,today):null;   // v354 이어지는 날 — 시작 기록은 첫날 것이라 '진행 중 · 몇 시부터' 로 보이면 틀린다
     const state_=cont?escapeHtml(hjSchContLabel(cont))+' · 끝나면 완료 보고':done?'✅ 완료 보고됨'+(s.report.filledAt?' · '+escapeHtml(localStamp(new Date(s.report.filledAt)).slice(11)):''):started?'▶ 진행 중 · '+escapeHtml(started.slice(11,16))+' 부터':'대기 · 아직 시작 전';
     const prep=hjPrepOtherOk(s)?'<button type="button" class="ghost" data-mw-prep="'+id+'" aria-label="'+escapeAttr(t+' 출발 전 챙김')+'">🧰 '+escapeHtml(dashboardPrepLabel(s))+'</button>':'';
-    return '<article class="mwCard'+(done?' mwDone':'')+'" data-mw-sch="'+id+'"><div class="mwMeta">'+escapeHtml((s.time||'시간 미정'))+(s.project?' · 📍'+escapeHtml(s.project):' · 현장 없음')+(s.crew?' · 👤 '+escapeHtml(hjCrewText(s.crew)):'')+'</div>'+
+    return '<article class="mwCard'+(done?' mwDone':'')+'" data-mw-sch="'+id+'"><div class="mwMeta">'+escapeHtml((s.time||'시간 미정'))+(s.project?' · 📍'+escapeHtml(s.project):' · 현장 없음')+(s.crew?' · 👤 '+escapeHtml(hjCrewText(s.crew)):'')+(done?'':hjMatBadge(s,today))+'</div>'+
       '<div class="mwTitle">'+escapeHtml(t)+'</div><div class="mwState" data-mw-state="'+id+'">'+state_+'</div><div class="mwActions">'+
       (done||started||cont?'':'<button type="button" class="blue" data-mw-start="'+id+'" aria-label="'+escapeAttr(t+' 작업 시작')+'">▶ 작업 시작</button>')+
       (s.project?'<button type="button" class="ghost" data-mw-photo="'+id+'" aria-label="'+escapeAttr(t+' 사진 등록')+'">📷 사진 등록</button>':'')+
@@ -33826,7 +33871,7 @@ function viewProject(){
       .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||'')));
     if(rest.length||((p.stage||0)>=1&&(p.stage||0)<3)){
       const row=s=>{const sp=hjSchSpan(s),c=hjSchContOn(s,today);
-        return `<div data-pjschrow="${escapeAttr(String(s.id))}" style="display:flex;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:9px;padding:6px 8px;margin:6px 0"><span style="flex:1;min-width:0;font-size:12.5px;line-height:1.5"><b>${escapeHtml(hjMdDow(sp.from)+(sp.to!==sp.from?'~'+hjMdDow(sp.to):''))}</b>${s.time&&sp.days<2?' '+escapeHtml(s.time):''} ${escapeHtml(String(s.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim())}${c?` <span style="color:var(--clay)">· ${c.day}/${c.days}일째</span>`:''}${s.crew?` <span style="color:var(--muted)">· 👤 ${escapeHtml(hjCrewText(s.crew))}</span>`:''}</span>`+
+        return `<div data-pjschrow="${escapeAttr(String(s.id))}" style="display:flex;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:9px;padding:6px 8px;margin:6px 0"><span style="flex:1;min-width:0;font-size:12.5px;line-height:1.5"><b>${escapeHtml(hjMdDow(sp.from)+(sp.to!==sp.from?'~'+hjMdDow(sp.to):''))}</b>${s.time&&sp.days<2?' '+escapeHtml(s.time):''} ${escapeHtml(String(s.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim())}${c?` <span style="color:var(--clay)">· ${c.day}/${c.days}일째</span>`:''}${s.crew?` <span style="color:var(--muted)">· 👤 ${escapeHtml(hjCrewText(s.crew))}</span>`:''}${hjMatBadge(s,today)}</span>`+
           `<button class="mini-btn" data-schedit="${escapeAttr(String(s.id))}" title="일정 수정" aria-label="${escapeAttr((s.title||'일정')+' 수정')}">✎</button><button class="mini-btn" data-schcopy="${escapeAttr(String(s.id))}" title="일정 복사 — 다음 작업일" aria-label="${escapeAttr((s.title||'일정')+' 복사')}">📄</button></div>`;};
       html+=`<div class="cust-card" data-pjsched style="margin-top:10px"><div class="cust-h">🗓 이 현장 일정 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">남은 일정 ${rest.length}건</span></div>`+
         (rest.length?rest.slice(0,8).map(row).join('')+(rest.length>8?`<button class="ghost tiny" data-gosch="" style="width:100%;margin-top:4px">외 ${rest.length-8}건 — 일정표에서 보기</button>`:''):`<div class="hint" style="margin:6px 0">남은 일정이 없어요. 아래 [+ 일정 추가]나 견적의 🗓 공정표로 잡을 수 있어요.</div>`)+

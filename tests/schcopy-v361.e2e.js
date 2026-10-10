@@ -49,7 +49,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { items, title: document.querySelector('#modalRoot h3').textContent, f: { date: g('schDate'), time: g('schTime'), title: g('schTitle'), hours: g('schHours'), workers: g('schWorkers'), crew: g('schCrew'), proj: g('schProj'), memo: g('schMemo') }, n: state.schedule.length,
         chip: (document.querySelector('#modalRoot .schCrewChip[data-n="김타일"]') || {}).getAttribute && document.querySelector('#modalRoot .schCrewChip[data-n="김타일"]').getAttribute('aria-pressed') };
     });
-    assert(JSON.stringify(r.items) === JSON.stringify(['workorder', 'share', 'copy', 'gcal', 'ics']), '⋯ 메뉴: ' + JSON.stringify(r.items));
+    assert(JSON.stringify(r.items) === JSON.stringify(['workorder', 'share', 'copy', 'mat', 'gcal', 'ics'])   /* v369 🚚 이 공정 자재 납품 예정(현장 일정) */, '⋯ 메뉴: ' + JSON.stringify(r.items));
     assert(r.title === '📄 일정 복사' && r.n === 1, '창·아직 안 생김: ' + JSON.stringify(r));
     assert(JSON.stringify(r.f) === JSON.stringify({ date: '2026-11-09', time: '08:30', title: '타일', hours: '6', workers: '2', crew: '김타일', proj: '가상현장A', memo: '줄눈 회색' }), '채운 값: ' + JSON.stringify(r.f));
     assert(r.chip === 'true', '담당 칩 눌림: ' + r.chip);
