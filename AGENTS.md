@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v374 공정 완료 → 다음 공정 담당에게 알리기 (Claude Cowork, v373 위 — PR 대기)
+
+- 한 공정이 끝나면 다음 공정 팀에게 '끝났으니 예정대로'·전달 사항을 따로 전화·문자로 알렸다. 버전 핀 `hyeonjang-v374-handoff`. 새 최상위 키 없음 — 끝난 일정에 `handoffAt`(보낸 날)만.
+- `hjHandoffNext(s)` — 같은 현장, 완료 보고 전, 세금 자동·AS 방문·`HJ_PLAN_SKIP_RE`(💰·AS 방문·상담·실측) 제외, s 뒤(날짜가 뒤거나 같은 날 더 늦은 시간) 중 가장 이른 일정. s 가 상담·실측·💰·AS 면 null. `hjHandoffText(s,n)` — 끝난 공정·다음 날짜/시간/이름·주소(`hjSchShareAddr`)·전달 사항(보고 `issue`). 고객 이름·전화 없음.
+- `hjHandoffOffer(s,back)` — 보고 진행률 '완료'이고 다음 공정이 있으면 '🔨 다음 공정에 알리기' 창 `#handoff`/`#hoText`: 다음 공정 담당의 👷 팀원 번호(`hjCrewPhone`)가 있으면 [✉️ 담당에게 문자](`hjSmsGo(hjSmsUrl(phones,text))`)·[💬 카톡], 없으면 [💬 카톡]·[📋 복사](`coworkCopy`)·[나중에]. 보내면 `s.handoffAt = 오늘`. 자동 발송 없음.
+- 입구: `saveReport`(→ `if(!hjAsCloseOffer(s))hjHandoffOffer(s)`) · `myWorkReport`(AS 마무리 → 다음 공정 → 내 업무 순). AS 방문 일정은 AS 마무리 창(v366)이 먼저.
+- 새 `tests/handoff-v374.e2e.js` 4/4(v373 에서는 0/4). 관련 13개(asclose-v366·asvisit-v365·my-work·dayclose-v359·delay-v347·mobile-operations·watch-card·multiday-v354·matissue-v372·mwmat-v370·schedule-safety·crew-v357·v331-follow)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v373 발주 점검 (Claude Cowork, v372 위 — PR 대기)
 
 - 자재를 쓰는 공정이 다가오는데 발주를 했는지는 기억에 맡겼다. 버전 핀 `hyeonjang-v373-matplan`. 새 최상위 키 없음 — 일정 레코드 안 `matNone`(자재 없음 표시)만.
