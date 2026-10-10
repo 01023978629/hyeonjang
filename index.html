@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v371-matask';
+const APP_BUILD='hyeonjang-v372-matissue';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -15961,6 +15961,7 @@ function hjMatParseItems(text){
 }
 function hjMatState(o,today){
   today=today||localDate();
+  if(o.recvAt&&String(o.issue||'').trim()&&!o.issueDone)return {k:'issue',t:'⚠ 입고 문제 — '+hjCut(String(o.issue).trim(),40),c:'#b45309'};   // v372 받았는데 파손·부족 — 해결 전까지 챙길 일
   if(o.recvAt)return {k:'recv',t:'✅ 입고 '+(HJ_YMD_RE.test(String(o.recvAt))?hjMdDow(o.recvAt):''),c:'#0a7f43'};
   if(!HJ_YMD_RE.test(String(o.due||'')))return {k:'nodate',t:'📦 납품일 미정',c:'var(--muted)'};
   if(o.due<today)return {k:'late',t:'⚠ '+hjMdDow(o.due)+' 납품 예정이었음 — 입고 확인 안 됨',c:'#c2410c'};
@@ -15968,7 +15969,7 @@ function hjMatState(o,today){
   const dd=Math.round((new Date(o.due+'T00:00:00')-new Date(today+'T00:00:00'))/864e5);
   return {k:'soon',t:'📅 '+hjMdDow(o.due)+' 납품 예정 (D-'+dd+')',c:'var(--ink)'};
 }
-const HJ_MAT_RANK={late:0,today:1,soon:2,nodate:3,recv:4};
+const HJ_MAT_RANK={late:0,issue:1,today:2,soon:3,nodate:4,recv:5};
 function hjMatSort(a,b){
   const r=HJ_MAT_RANK[a.st.k]-HJ_MAT_RANK[b.st.k];if(r)return r;
   if(a.st.k==='recv')return String(b.o.recvAt||'').localeCompare(String(a.o.recvAt||''));
@@ -16052,7 +16053,8 @@ function hjMatSupPhone(sup){const k=String(sup||'').trim();if(!k)return '';const
 function hjMatAskText(p,o,today){
   const st=hjMatState(o,today),addr=String(((p&&p.customer)||{}).addr||'').trim(),when=HJ_YMD_RE.test(String(o.due||''))?hjMdDow(o.due):'';
   const L=['['+COMPANY.name+'] '+(o.sup?o.sup+'님, ':'')+'자재 납품 확인 부탁드립니다.','■ 현장: '+(p?p.name:'')+(addr?' ('+addr+')':''),'■ 품목: '+hjMatItemsText(o.items,3)];
-  if(st.k==='late')L.push('■ '+when+' 납품 예정이었는데 아직 도착 전입니다. 도착 예정 시간을 알려 주세요.');
+  if(st.k==='issue')L.push('■ '+(HJ_YMD_RE.test(String(o.recvAt||''))?hjMdDow(o.recvAt)+' ':'')+'받은 자재에 문제가 있습니다: '+String(o.issue||'').trim(),'■ 교환·추가 납품 일정을 알려 주세요.');   // v372
+  else if(st.k==='late')L.push('■ '+when+' 납품 예정이었는데 아직 도착 전입니다. 도착 예정 시간을 알려 주세요.');
   else if(st.k==='today')L.push('■ 오늘 '+when+' 납품 예정입니다. 도착 시간을 알려 주세요.');
   else if(st.k==='soon')L.push('■ '+when+' 납품 예정 맞는지 확인 부탁드립니다.');
   else L.push('■ 납품 가능한 날짜를 알려 주세요.');
@@ -16090,6 +16092,30 @@ function hjMatAsk(id,back){
     {label:back?'← 뒤로':'닫기',cls:'ghost',fn:leave}],true);
   return {거래처:o.sup||'',상태:st.k};
 }
+/* ── v372 입고 문제 → 교환·추가 납품 ──
+   받은 자재가 파손·부족·다른 물건이어도 '입고 ✅'로 끝나 기록이 없었고, 교환 요청은 기억에 맡겼다. 받을 때 [⚠ 문제 있음]으로
+   입고 + 문제 메모(issue, issueAt)를 남기면 해결(issueDone) 전까지 '⚠ 입고 문제' 상태 — 🚚 납품 확인 창·현장 '🚚 자재 납품' 칸·🔔 알림에 남고,
+   [📞] 거래처 확인 문안이 '받은 자재에 문제 — 교환·추가 납품 일정'으로 바뀐다. [✅ 해결]로 닫는다. 입고 사진은 기존 사진 추가(현장·'자재 입고' 이름)로. */
+function hjMatIssueSave(id,text){
+  const f=hjMatFind(id),t=String(text||'').trim().slice(0,200);if(!f||!t)return false;
+  if(!f.o.recvAt)f.o.recvAt=localDate();
+  f.o.issue=t;f.o.issueAt=localDate();delete f.o.issueDone;markDirty();return true;
+}
+function hjMatIssueDone(id){const f=hjMatFind(id);if(!f||!String(f.o.issue||'').trim()||f.o.issueDone)return false;f.o.issueDone=localDate();markDirty();return true;}
+function hjMatIssueView(id,back){
+  const f=hjMatFind(id);if(!f){toast('납품 기록을 찾을 수 없어요');return;}
+  const {p,o}=f,leave=()=>{if(back)back();else closeModal();};
+  const body='<div id="matIssue" style="overflow-wrap:anywhere;min-width:0"><div style="font-size:13px;line-height:1.6;margin-bottom:8px"><b>'+escapeHtml(p.name)+'</b> · '+escapeHtml((o.sup||'거래처 미기재')+' — '+hjMatItemsText(o.items,3))+'</div>'+
+    '<label style="display:block;font-size:12.5px;font-weight:700">어떤 문제가 있나요?<textarea id="miText" rows="3" placeholder="예: 타일 2장 파손, 본드 1통 부족, 색상 다름" style="display:block;width:100%;box-sizing:border-box;padding:9px;font-size:16px;min-height:44px;margin-top:4px;font-family:inherit;line-height:1.5">'+escapeHtml(o.issue||'')+'</textarea></label>'+
+    '<div class="hint" style="margin-top:6px">받은 것으로 적고 문제를 남겨요. 해결될 때까지 🚚 납품 확인·알림에 남고, 거래처 확인 문자로 교환·추가 납품을 요청할 수 있어요. 사진은 [📷 입고 사진]으로.</div></div>';
+  openModal('⚠ 자재 문제'+(o.sup?' — '+o.sup:''),body,[
+    {label:'⚠ 문제로 입고 저장',cls:'clay',fn:()=>{const ta=document.getElementById('miText');
+      if(!String(ta.value||'').trim()){toast('문제를 적어 주세요');hjFieldIssue(ta,'문제를 적어 주세요');return;}
+      if(!hjMatIssueSave(id,ta.value)){toast('납품 기록이 바뀌었어요 — 다시 열어 주세요');return;}
+      toast('⚠ 입고 문제를 남겼어요 — 해결되면 [✅ 해결]');try{render();}catch(e){}leave();}},
+    {label:'📷 입고 사진',cls:'ghost',fn:()=>hjMyWorkPhoto(p.name,'자재 입고 '+(o.sup||''))},
+    {label:back?'← 뒤로':'닫기',cls:'ghost',fn:leave}],true);
+}
 function hjMatEdit(id,opts){
   opts=opts||{};
   const f=id?hjMatFind(id):null;if(id&&!f){toast('납품 기록을 찾을 수 없어요');return;}
@@ -16111,7 +16137,8 @@ function hjMatEdit(id,opts){
     (pjName?'<label style="display:block;margin-top:8px">어느 공정용 (선택)<select id="meSch" style="'+fld+'"><option value="">공정 안 정함 — 납품일로만 확인</option>'+schOpts.map(x=>'<option value="'+escapeAttr(x.id)+'" data-due="'+escapeAttr(hjMatDueFor(x))+'"'+(x.id===o.schId?' selected':'')+'>'+escapeHtml(hjMdDow(x.date)+' '+String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim())+'</option>').join('')+'</select></label>':'')+
     '<label style="display:block;margin-top:8px">납품 예정일<input type="date" id="meDue" value="'+escapeAttr(o.due||'')+'" style="'+fld+'"></label>'+
     '<label style="display:block;margin-top:8px">메모<input id="meMemo" value="'+escapeAttr(o.memo||'')+'" placeholder="예: 오전 하차, 엘리베이터 예약" style="'+fld+'"></label>'+
-    (f&&f.o.recvAt?'<div class="hint" style="margin-top:8px;font-weight:400">입고 확인: '+escapeHtml(f.o.recvAt)+'</div>':'')+'</div>';
+    (f&&f.o.recvAt?'<label style="display:block;margin-top:8px">입고 문제 (파손·부족·다른 물건 — 비우면 문제 없음)<textarea id="meIssue" rows="2" style="'+fld+';line-height:1.5">'+escapeHtml(f.o.issue||'')+'</textarea></label>'+
+      '<div class="hint" style="margin-top:8px;font-weight:400">입고 확인: '+escapeHtml(f.o.recvAt)+(f.o.issueDone?' · 문제 해결: '+escapeHtml(f.o.issueDone):'')+'</div>':'')+'</div>';
   openModal(f?'🚚 납품 기록 고치기':'🚚 납품 예정 추가',body,[
     {label:'저장',cls:'blue',fn:()=>{
       const g=i=>document.getElementById(i);
@@ -16119,7 +16146,10 @@ function hjMatEdit(id,opts){
       if(!items.length&&!sup){toast('거래처나 품목을 적어 주세요');hjFieldIssue(g('meItems'),'거래처나 품목을 적어 주세요');return;}
       if(f){
         const cur=hjMatFind(id);if(!cur||cur.o!==f.o){toast('납품 기록이 그 사이 바뀌었어요 — 다시 열어 주세요');return;}
-        Object.assign(f.o,{sup,items,due:HJ_YMD_RE.test(String(due||''))?due:'',memo});if(schId)f.o.schId=schId;else delete f.o.schId;markDirty();toast('납품 기록을 고쳤어요');
+        Object.assign(f.o,{sup,items,due:HJ_YMD_RE.test(String(due||''))?due:'',memo});if(schId)f.o.schId=schId;else delete f.o.schId;
+        const isEl=g('meIssue');if(isEl&&f.o.recvAt){const it=String(isEl.value||'').trim().slice(0,200);   // v372 입고 문제 — 글이 바뀌면 다시 '해결 전'
+          if(!it){delete f.o.issue;delete f.o.issueAt;delete f.o.issueDone;}else if(it!==String(f.o.issue||'').trim()){f.o.issue=it;f.o.issueAt=localDate();delete f.o.issueDone;}}
+        markDirty();toast('납품 기록을 고쳤어요');
       }else{
         const pj=pjName||(g('meProj')||{}).value;if(!pj){toast('현장을 고르세요');return;}
         const r=hjMatRecord(pj,{sup,items,due,memo,schId});if(!r){toast('현장을 찾을 수 없어요');return;}
@@ -16145,14 +16175,17 @@ function hjMatView(projectName,back){
       '<div>'+(projectName?'':'<b>'+escapeHtml(x.p.name)+'</b> · ')+escapeHtml(x.o.sup||'거래처 미기재')+'</div>'+
       '<div style="color:var(--muted)">'+escapeHtml(hjMatItemsText(x.o.items,3))+(x.o.memo?' · '+escapeHtml(hjCut(x.o.memo,40)):'')+'</div>'+
       (hjMatSchedLabel(x.o)?'<div class="mdSch" style="font-size:12px;color:var(--blueprint)">🔨 '+escapeHtml(hjMatSchedLabel(x.o))+'</div>':'')+
-      (!x.o.recvAt&&hjMatAsked(x.o)?'<div class="mdAsked" style="font-size:12px;color:var(--muted)">'+escapeHtml(hjMatAsked(x.o))+'</div>':'')+'</div>'+
+      (x.st.k==='issue'?'<div class="mdIssue" style="font-size:12px;color:var(--muted)">입고 '+escapeHtml(hjMdDow(x.o.recvAt))+' · 문제 적은 날 '+escapeHtml(HJ_YMD_RE.test(String(x.o.issueAt||''))?hjMdDow(x.o.issueAt):'-')+'</div>':'')+
+      (x.st.k==='recv'&&x.o.issueDone?'<div class="mdIssue" style="font-size:12px;color:var(--muted)">입고 문제 해결 '+escapeHtml(hjMdDow(x.o.issueDone))+'</div>':'')+
+      ((!x.o.recvAt||x.st.k==='issue')&&hjMatAsked(x.o)?'<div class="mdAsked" style="font-size:12px;color:var(--muted)">'+escapeHtml(hjMatAsked(x.o))+'</div>':'')+'</div>'+
     '<div style="display:flex;gap:6px;margin-left:auto">'+
-      (x.o.recvAt?'<button type="button" class="ghost mdUndo" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">↩ 입고 취소</button>'
+      (x.st.k==='issue'?'<button type="button" class="clay mdFix" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 12px;font-size:12.5px">✅ 해결</button>':
+       x.o.recvAt?'<button type="button" class="ghost mdUndo" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">↩ 입고 취소</button>'
         :'<button type="button" class="clay mdRecv" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 12px;font-size:12.5px">✅ 입고 확인</button>')+
-      (x.o.recvAt?'':'<button type="button" class="ghost mdAsk" data-id="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'거래처')+' 확인 문자·전화')+'" style="min-height:44px;min-width:44px;padding:0 10px">📞</button>')+
+      (x.o.recvAt&&x.st.k!=='issue'?'':'<button type="button" class="ghost mdAsk" data-id="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'거래처')+' 확인 문자·전화')+'" style="min-height:44px;min-width:44px;padding:0 10px">📞</button>')+
       '<button type="button" class="ghost mdEdit" data-id="'+escapeAttr(x.o.id)+'" aria-label="납품 기록 고치기" style="min-height:44px;min-width:44px;padding:0 10px">✎</button></div></div>';
   const body='<div id="matView" style="overflow-wrap:anywhere;min-width:0">'+
-    '<div style="margin-bottom:6px">'+chip('⚠ 지남',cnt('late'),'#c2410c')+chip('🚚 오늘',cnt('today'),'var(--blueprint)')+chip('📅 예정',cnt('soon'),'var(--ink)')+chip('미정',cnt('nodate'),'var(--ink)')+'</div>'+
+    '<div style="margin-bottom:6px">'+chip('⚠ 지남',cnt('late'),'#c2410c')+(cnt('issue')?chip('⚠ 문제',cnt('issue'),'#b45309'):'')+chip('🚚 오늘',cnt('today'),'var(--blueprint)')+chip('📅 예정',cnt('soon'),'var(--ink)')+chip('미정',cnt('nodate'),'var(--ink)')+'</div>'+
     (open.length?open.map(row).join(''):'<div class="empty" style="padding:14px"><b>기다리는 납품이 없어요</b>📦 발주 문자 화면의 [🚚 납품 확인에 올리기]나 아래 [+ 납품 예정 추가]로 올리면 여기서 입고를 확인해요.</div>')+
     (recent.length?'<h4 style="font-size:13.5px;margin:12px 0 6px">최근 입고</h4>'+recent.map(row).join(''):'')+
     '<p class="hint" style="margin:8px 0 0">거래처·고객에게 자동으로 보내지 않아요. 입고 확인은 오늘 날짜로 적고, 잘못 눌렀으면 [↩ 입고 취소].</p></div>';
@@ -16164,6 +16197,7 @@ function hjMatView(projectName,back){
   root.querySelectorAll('.mdUndo').forEach(b=>b.onclick=()=>{if(hjMatReceive(b.dataset.id,false)){toast('입고 확인을 취소했어요');try{render();}catch(e){}}self();});
   root.querySelectorAll('.mdEdit').forEach(b=>b.onclick=()=>hjMatEdit(b.dataset.id,{back:self}));
   root.querySelectorAll('.mdAsk').forEach(b=>b.onclick=()=>hjMatAsk(b.dataset.id,self));   // v371
+  root.querySelectorAll('.mdFix').forEach(b=>b.onclick=()=>{if(hjMatIssueDone(b.dataset.id)){toast('✅ 입고 문제 해결로 적었어요');try{render();}catch(e){}}self();});   // v372
   return {미입고:open.length,지남:cnt('late'),오늘:cnt('today')};
 }
 
@@ -22304,6 +22338,8 @@ function briefExtraItems(){
   // v368 🚚 납품 확인 — 오늘 들어올 것·예정일이 지났는데 입고 확인 없는 것
   try{
     const md=hjMatPending(localDate());
+    const mi=hjMatAll().filter(x=>x.st.k==='issue');   // v372 입고 문제 — 해결 전
+    if(mi.length)items.push({ic:'⚠',t:'자재 입고 문제 '+mi.length+'건',sub:mi[0].p.name+' '+(mi[0].o.sup||'')+' — '+hjCut(String(mi[0].o.issue||''),30),action:'matdue'});
     if(md.length){const late=md.filter(x=>x.st.k==='late').length;items.push({ic:'🚚',t:'납품 확인 '+md.length+'건'+(late?' · 지남 '+late+'건':''),sub:md[0].p.name+' '+(md[0].o.sup||'')+' '+hjMatItemsText(md[0].o.items),action:'matdue'});}
   }catch(e){}
   // 3) 매출 목표 페이스(뒤처지면)
@@ -25938,7 +25974,8 @@ function myWorkView(opts){
     '<h4>📅 오늘 일정 '+sch.length+'</h4>'+(sch.length?sch.map(schCard).join(''):'<p class="hint" style="margin:0">오늘 잡힌 일정이 없습니다.</p>')+
     (mats.length?'<h4>🚚 오늘 받을 자재 '+mats.length+'</h4>'+mats.map(x=>'<article class="mwCard" data-mw-mat="'+escapeAttr(x.o.id)+'"><div class="mwMeta"><b style="color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</b> · 📍'+escapeHtml(x.p.name)+'</div>'+
       '<div class="mwTitle">'+escapeHtml((x.o.sup?x.o.sup+' — ':'')+hjMatItemsText(x.o.items,3))+'</div>'+(x.o.memo?'<div class="mwMeta">'+escapeHtml(x.o.memo)+'</div>':'')+
-      '<div class="mwActions"><button type="button" class="clay" data-mw-matrecv="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 받았어요')+'">✅ 받았어요</button></div></article>').join(''):'')+
+      '<div class="mwActions"><button type="button" class="clay" data-mw-matrecv="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 받았어요')+'">✅ 받았어요</button>'+
+      '<button type="button" class="ghost" data-mw-matissue="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'자재')+' 문제 있음')+'">⚠ 문제 있음</button></div></article>').join(''):'')+
     '<div id="mwTodoBox">'+hjMyWorkTodoBoxHTML(todos)+'</div>'+
     (empty?'<div class="empty" id="mwEmpty" style="padding:14px;margin-top:10px"><b>오늘은 할 일이 없습니다</b>'+(ahead.length?'내일('+escapeHtml(tomorrow)+') 일정 '+ahead.length+'건:<ul style="text-align:left;margin:6px 0 0;padding-left:18px">'+ahead.slice(0,5).map(s=>'<li>'+escapeHtml((s.time?s.time+' ':'')+(s.title||'작업')+(s.project?' · '+s.project:''))+'</li>').join('')+'</ul>':'내일 잡힌 일정도 없습니다.')+'</div>':'')+
     '<h4>목록 전체</h4><div class="mwLinks"><button type="button" class="ghost" id="mwClose">🌙 오늘 마감</button><button type="button" class="ghost" id="mwLocal">✅ 이 기기 할일 · 추가</button>'+(relayReady()?'<button type="button" class="ghost" id="mwShared">☁ 팀 공유 할일</button>':'')+'<button type="button" class="ghost" id="mwBoard">👥 팀 업무판</button></div>'+
@@ -25957,6 +25994,7 @@ function hjMyWorkBind(root){
   root.querySelectorAll('[data-mw-done]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.mwDone));
   root.querySelectorAll('[data-mw-report]').forEach(b=>b.onclick=()=>openReportEdit(b.dataset.mwReport));
   root.querySelectorAll('[data-mw-prep]').forEach(b=>b.onclick=()=>prepCheck(b.dataset.mwPrep));
+  root.querySelectorAll('[data-mw-matissue]').forEach(b=>b.onclick=()=>hjMatIssueView(b.dataset.mwMatissue,()=>myWorkView({refresh:false})));   // v372
   root.querySelectorAll('[data-mw-matrecv]').forEach(b=>b.onclick=()=>{   // v370 현장에서 받은 자재 — 그 납품 기록 recvAt 만
     if(hjMatReceive(b.dataset.mwMatrecv,true)){toast('✅ 입고 확인 — 오늘 날짜로 적었어요');try{dashboardOperationsRefresh();}catch(e){}}else toast('이미 입고 확인됐거나 기록이 바뀌었어요');
     myWorkView({refresh:false});});
@@ -33950,11 +33988,11 @@ function viewProject(){
   }
   /* v368 🚚 자재 납품 — 이 현장 발주가 언제 들어오는지·들어왔는지. 기록이 있거나 시공 단계일 때만. 읽기 전용(입고 버튼은 누를 때만). */
   {
-    const mats=hjMatAll(p.name),wait=mats.filter(x=>x.st.k!=='recv');
+    const mats=hjMatAll(p.name),wait=mats.filter(x=>x.st.k!=='recv'),iss=wait.filter(x=>x.st.k==='issue').length;   // v372 입고 문제도 챙길 줄
     if(mats.length||(p.stage||0)===2){
       const late=wait.filter(x=>x.st.k==='late').length;
-      html+=`<div class="cust-card" data-pjmat style="margin-top:10px"><div class="cust-h">🚚 자재 납품 <span style="font-size:11px;color:${late?'#c2410c':'var(--muted)'};font-weight:${late?700:400};margin-left:6px">기다림 ${wait.length}건${late?' · 지남 '+late+'건':''} · 입고 ${mats.length-wait.length}건</span></div>`+
-        (wait.length?wait.slice(0,4).map(x=>`<div data-pjmatrow="${escapeAttr(x.o.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:9px;padding:6px 8px;margin:6px 0"><span style="flex:1 1 160px;min-width:0;font-size:12.5px;line-height:1.5"><b style="color:${x.st.c}">${escapeHtml(x.st.t)}</b><br>${escapeHtml((x.o.sup||'거래처 미기재')+' · '+hjMatItemsText(x.o.items,2))}${hjMatAsked(x.o)?`<br><span style="color:var(--muted)">${escapeHtml(hjMatAsked(x.o))}</span>`:''}</span>${x.st.k==='late'||x.st.k==='today'?`<button class="mini-btn" data-matask="${escapeAttr(x.o.id)}" style="margin-left:auto" aria-label="${escapeAttr((x.o.sup||'거래처')+' 확인 문자·전화')}">📞</button>`:''}<button class="mini-btn" data-matrecv="${escapeAttr(x.o.id)}" style="${x.st.k==='late'||x.st.k==='today'?'':'margin-left:auto'}" aria-label="${escapeAttr((x.o.sup||'')+' 입고 확인')}">✅ 입고</button></div>`).join('')+(wait.length>4?`<div class="hint" style="margin:2px 0">외 ${wait.length-4}건</div>`:'')
+      html+=`<div class="cust-card" data-pjmat style="margin-top:10px"><div class="cust-h">🚚 자재 납품 <span style="font-size:11px;color:${late?'#c2410c':'var(--muted)'};font-weight:${late?700:400};margin-left:6px">기다림 ${wait.length-iss}건${late?' · 지남 '+late+'건':''}${iss?' · 문제 '+iss+'건':''} · 입고 ${mats.length-wait.length}건</span></div>`+
+        (wait.length?wait.slice(0,4).map(x=>`<div data-pjmatrow="${escapeAttr(x.o.id)}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:9px;padding:6px 8px;margin:6px 0"><span style="flex:1 1 160px;min-width:0;font-size:12.5px;line-height:1.5"><b style="color:${x.st.c}">${escapeHtml(x.st.t)}</b><br>${escapeHtml((x.o.sup||'거래처 미기재')+' · '+hjMatItemsText(x.o.items,2))}${hjMatAsked(x.o)?`<br><span style="color:var(--muted)">${escapeHtml(hjMatAsked(x.o))}</span>`:''}</span>${x.st.k==='late'||x.st.k==='today'||x.st.k==='issue'?`<button class="mini-btn" data-matask="${escapeAttr(x.o.id)}" style="margin-left:auto" aria-label="${escapeAttr((x.o.sup||'거래처')+' 확인 문자·전화')}">📞</button>`:''}${x.st.k==='issue'?`<button class="mini-btn" data-matfix="${escapeAttr(x.o.id)}" aria-label="${escapeAttr((x.o.sup||'')+' 입고 문제 해결')}">✅ 해결</button>`:`<button class="mini-btn" data-matrecv="${escapeAttr(x.o.id)}" style="${x.st.k==='late'||x.st.k==='today'?'':'margin-left:auto'}" aria-label="${escapeAttr((x.o.sup||'')+' 입고 확인')}">✅ 입고</button>`}</div>`).join('')+(wait.length>4?`<div class="hint" style="margin:2px 0">외 ${wait.length-4}건</div>`:'')
           :`<div class="hint" style="margin:6px 0">${mats.length?'기다리는 납품이 없어요 — 모두 입고 확인했어요.':'발주한 자재를 올려 두면 납품일·입고를 여기서 확인해요.'}</div>`)+
         `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="mini-btn" data-matadd="${escapeAttr(p.name)}">+ 납품 예정</button><button class="mini-btn" data-matview="${escapeAttr(p.name)}">🚚 납품 확인 전체</button></div></div>`;
     }
@@ -34160,7 +34198,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -34314,6 +34352,7 @@ function setupDelegation(){
     if(d.matadd!==undefined)return hjMatEdit(null,{project:d.matadd});
     if(d.matview!==undefined)return hjMatView(d.matview);
     if(d.matask!==undefined)return hjMatAsk(d.matask);   // v371
+    if(d.matfix!==undefined){if(hjMatIssueDone(d.matfix)){toast('✅ 입고 문제 해결로 적었어요');render();}return;}   // v372
     if(d.asvisit!==undefined)return hjAsVisitPlan(d.asvisit);   // v367 현장 AS 카드 [📅] → AS 방문 일정 창
     if(d.asedit!==undefined)return asManage(d.asedit);   // 방문일·처리 내용·유상 금액·공종·사진은 AS 관리 화면 한 곳에서 적는다
     if(d.asdel!==undefined){hjAsDelete(d.asdel,render);return;}   // AS 관리 화면의 ✕ 와 같은 확인·안전판(hjAsDelete)

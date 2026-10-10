@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-10 v372 입고 문제 → 교환·추가 납품 (Claude Cowork, v371 위 — PR 대기)
+
+- 받은 자재가 파손·부족·다른 물건이어도 '입고 ✅'로 끝나 기록이 없었고 교환 요청은 기억에 맡겼다. 버전 핀 `hyeonjang-v372-matissue`. 새 최상위 키 없음 — 납품 기록에 `issue`(문제 글)·`issueAt`·`issueDone`.
+- `hjMatState` — `recvAt` 있고 `issue` 있고 `issueDone` 없으면 `{k:'issue', t:'⚠ 입고 문제 — …'}`. `HJ_MAT_RANK` late 0 · **issue 1** · today 2 · soon 3 · nodate 4 · recv 5. `hjMatAskText` issue 문안 '받은 자재에 문제가 있습니다: … / 교환·추가 납품 일정을 알려 주세요'.
+- `hjMatIssueSave(id,text)`(입고 안 됐으면 오늘로 입고 + 문제, issueDone 지움) · `hjMatIssueDone(id)` · `hjMatIssueView(id,back)` '⚠ 자재 문제' 창(`#miText` — 빈 글 막음, [📷 입고 사진] = `hjMyWorkPhoto(현장,'자재 입고 거래처')`).
+- 입구·표시: 📋 내 업무 받을 자재 카드 `[data-mw-matissue]` [⚠ 문제 있음] · 🚚 납품 확인 창 '⚠ 문제' 칩(있을 때만), 문제 줄 `.mdFix` [✅ 해결]·`.mdAsk`·`.mdIssue`, 해결된 입고 줄 '입고 문제 해결 날짜' · 고치기 창 `#meIssue`(받은 기록만, 글이 바뀌면 issueAt 새로·issueDone 지움, 비우면 셋 다 삭제) · 🔔 `briefExtraItems` '자재 입고 문제 N건'(action matdue) · 현장 칸 머리 '· 문제 N건', 문제 줄 `[data-matask]`·`[data-matfix]` [✅ 해결](위임 등록).
+- 새 `tests/matissue-v372.e2e.js` 5/5(v371 에서는 0/5). 관련 12개(matdue-v368·matsched-v369·mwmat-v370·matask-v371·my-work·dayclose-v359·brief-actions·pjsched-v364·uiux·mobile-friendly-ui·mobile-operations·order-materials)·정적 검사 통과(별도 포트 사본).
+
 ## 2026-10-10 v371 늦은 납품 → 거래처 확인 문자·전화 (Claude Cowork, v370 위 — PR 대기)
 
 - 납품일이 지났거나 오늘인데 안 들어오면 거래처 번호를 따로 찾아 전화·문자를 했다. 버전 핀 `hyeonjang-v371-matask`. 새 최상위 키 없음 — 납품 기록에 `askedAt`(마지막 문의일), 📇 `state.suppliers` 에 번호 기억(기존 칸).
