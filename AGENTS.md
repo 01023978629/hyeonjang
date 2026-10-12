@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v389 대시보드 '🧾 실측 끝, 견적 안 쓴 현장' + [🧾 견적 쓰기] (Claude Cowork, v388 위 — PR 대기)
+
+- v384 '📐 상담·실측 끝' 창에서 [나중에]를 누르면 견적을 다시 떠올릴 곳이 없었다. 문의(v386 📥) → 견적(v389 🧾) → 팔로업(v388 ⏰) 으로 이어지게. 버전 핀 `hyeonjang-v389-quotewait`.
+- `hjQuoteWaiting()` 순수 읽기 — 보관 아님·stage ≤ 1·이 현장 견적(state.quotes)·견적 파일(kind 'estimate') 없음, 그리고 (상담·실측 일정 `HJ_CONSULT_RE` 를 '완료'로 보고 또는 stage 1). 💰(`HJ_INQ_MONEY_RE`)·세금 자동·AS 방문 일정은 안 셈. 오늘 이후로 잡힌 안 끝난 상담·실측 일정이 있으면 아직 견적 차례가 아니다.
+- 대시보드 '✅ 오늘 현장 업무' `#dashboardQuoteWaiting` — '🧾 실측 끝, 견적 안 쓴 현장 N곳 — 앞 3곳 (외)' + `[data-qwait]` [🧾 ○○ 견적 쓰기](44px). v386 문의 줄보다 위(문의 줄 바로 뒤가 버튼 줄 — inqpending-v386 의 '+ div button' 계약).
+- `hjQuoteStartFor(name)` 로 v384 창 [🧾 견적서 쓰기] 를 뽑아 둘이 같이 씀 — 상담이면 실측으로, 현장·주소 채운 새 견적, v387 미저장 견적 보호 창 그대로. 클릭 위임 `closest(...)` 에 `[data-qwait]` 등록.
+- 새 `tests/quotewait-v389.e2e.js` 3/3(v388 에서는 0/3). 관련 consultquote-v384·reviewfix-v387·inqpending-v386·inquiry-v383·quotelink-v388·quote-flow·quote-edit-safety·mobile-operations·dash-reports·health-board·board-v351·schcopy-v361·정적 검사 통과.
+
 ## 2026-10-12 v388 상담·실측 현장에 붙은 견적은 아직 '수주'가 아니다 (Claude Cowork, v387 위 — PR 대기)
 
 - `quoteStatus` 는 '현장 연결 = 수주'였다. v383 새 문의·v384 상담 끝 → 견적 은 현장(상담·실측)을 먼저 만들고 견적을 붙이므로, 붙이자마자 수주로 세어 ⏰ 견적 팔로업에서 빠지고 수주 분석·퍼널 수주율이 부풀었다. 버전 핀 `hyeonjang-v388-quotelink`.

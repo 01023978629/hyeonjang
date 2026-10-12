@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v388-quotelink';
+const APP_BUILD='hyeonjang-v389-quotewait';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9131,6 +9131,7 @@ function dashboardTodoHTML(){
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
     // 사례 후보는 첫 화면에 — 더보기 안에만 두면 "어느 현장을 아직 안 보냈나"를 폰에서 다시 못 본다(v254 폰 첫 화면 규칙).
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
+    hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
     '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
@@ -13365,29 +13366,51 @@ function hjConsultNextOffer(s,back){
     '</div>',
     [{label:'나중에',cls:'ghost',fn:()=>{closeModal();if(back)back();}},
      {label:'📐 실측 노트',cls:'ghost',fn:()=>{closeModal();measureNote(p.name);}},
-     {label:'🧾 견적서 쓰기',cls:'clay',fn:()=>{
-        closeModal();
-        const start=()=>{
-          const q0=(state.projects||[]).find(x=>x&&x.name===p.name&&!x.archived);
-          if(!q0){toast('현장을 찾을 수 없어요');return;}
-          if((q0.stage||0)===0){window.__clPass=1;setStage(q0.name,1);window.__clPass=0;}
-          state.editingQuote=Object.assign(newQuote(),{project:q0.name,title:q0.name+' 견적',place:String((q0.customer||{}).addr||'').trim()});
-          state.tab='quotemaker';state.activeProject=null;render();
-          try{hjQuoteMeasureSync();}catch(e){}
-          toast('🧾 '+q0.name+' 새 견적서 — 품목을 채우세요');
-        };
-        // v387 작성 중인 견적에 저장하지 않은 내용이 있으면 먼저 묻는다(그대로 바꾸면 입력이 사라졌다 — GPT 검토 R1).
-        //   [계속 편집]은 단계도 바꾸지 않고 그 견적으로 돌아간다.
-        if(quoteEditDirty()){
-          openModal('저장하지 않은 견적','<p style="font-size:13px;line-height:1.6">‘'+escapeHtml(state.editingQuote.title||state.editingQuote.no||'견적서')+'’에 저장하지 않은 내용이 있습니다.<br>새 견적서('+escapeHtml(p.name)+')를 열기 전에 어떻게 할까요?</p>',
-            [{label:'계속 편집',cls:'ghost',fn:()=>{closeModal();state.tab='quotemaker';state.activeProject=null;render();}},
-             {label:'저장 안 하고 새 견적',cls:'warn',fn:()=>{closeModal();start();}},
-             {label:'저장하고 새 견적',cls:'blue',fn:()=>{closeModal();saveQuoteEdit();start();}}]);
-          return;
-        }
-        start();
-      }}]);
+     {label:'🧾 견적서 쓰기',cls:'clay',fn:()=>{closeModal();hjQuoteStartFor(p.name);}}]);
   return true;
+}
+/* v389 이 현장 새 견적서 열기 — v384 상담 끝 창·대시보드 '🧾 견적 안 쓴 현장' 이 같이 쓴다.
+   상담이면 실측으로 올리고, 견적 작성 화면에 현장·주소를 채운 새 견적. v387 작성 중인 견적에 저장 안 한 내용이 있으면 먼저 묻는다
+   (그대로 바꾸면 입력이 사라졌다 — GPT 검토 R1). [계속 편집]은 단계도 바꾸지 않고 그 견적으로 돌아간다. */
+function hjQuoteStartFor(name){
+  const start=()=>{
+    const q0=(state.projects||[]).find(x=>x&&x.name===name&&!x.archived);
+    if(!q0){toast('현장을 찾을 수 없어요');return;}
+    if((q0.stage||0)===0){window.__clPass=1;setStage(q0.name,1);window.__clPass=0;}
+    state.editingQuote=Object.assign(newQuote(),{project:q0.name,title:q0.name+' 견적',place:String((q0.customer||{}).addr||'').trim()});
+    state.tab='quotemaker';state.activeProject=null;render();
+    try{hjQuoteMeasureSync();}catch(e){}
+    toast('🧾 '+q0.name+' 새 견적서 — 품목을 채우세요');
+  };
+  if(quoteEditDirty()){
+    openModal('저장하지 않은 견적','<p style="font-size:13px;line-height:1.6">‘'+escapeHtml(state.editingQuote.title||state.editingQuote.no||'견적서')+'’에 저장하지 않은 내용이 있습니다.<br>새 견적서('+escapeHtml(name)+')를 열기 전에 어떻게 할까요?</p>',
+      [{label:'계속 편집',cls:'ghost',fn:()=>{closeModal();state.tab='quotemaker';state.activeProject=null;render();}},
+       {label:'저장 안 하고 새 견적',cls:'warn',fn:()=>{closeModal();start();}},
+       {label:'저장하고 새 견적',cls:'blue',fn:()=>{closeModal();saveQuoteEdit();start();}}]);
+    return;
+  }
+  start();
+}
+/* v389 🧾 견적 안 쓴 현장 — 상담·실측을 다녀왔는데(상담·실측 일정 '완료' 보고, 또는 단계가 '실측') 견적서·견적 파일이 하나도 없는 현장.
+   v384 창에서 [나중에]를 누르면 다시 떠올릴 곳이 없었다. 앞으로 잡힌(아직 안 끝난) 상담·실측 일정이 있으면 아직 견적 차례가 아니다. 순수 읽기. */
+function hjQuoteWaiting(){
+  const today=localDate();
+  const cs=s=>s&&HJ_CONSULT_RE.test(String(s.title||''))&&!HJ_INQ_MONEY_RE.test(String(s.title||''))&&!s._taxAuto&&!hjIsAsVisitSched(s);
+  return (state.projects||[]).filter(p=>{
+    if(!p||p.archived||(p.stage||0)>1)return false;
+    if((state.quotes||[]).some(q=>q&&q.project===p.name))return false;
+    if((state.files||[]).some(f=>f&&f.kind==='estimate'&&f.project===p.name))return false;
+    const mine=(state.schedule||[]).filter(s=>s&&s.project===p.name&&cs(s));
+    if(mine.some(s=>String(s.date||'')>=today&&((s.report||{}).progress!=='완료')))return false;
+    return (p.stage||0)===1||mine.some(s=>(s.report||{}).progress==='완료');
+  }).map(p=>p.name);
+}
+function hjQuoteWaitingHtml(){
+  let l=[];try{l=hjQuoteWaiting();}catch(e){return '';}
+  if(!l.length)return '';
+  return '<div id="dashboardQuoteWaiting" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px">'+
+    '<span style="flex:1 1 180px;min-width:0;color:#0b4ea2">🧾 실측 끝, 견적 안 쓴 현장 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
+    '<button type="button" class="ghost" data-qwait="'+escapeAttr(l[0])+'" style="min-height:44px;padding:0 10px">🧾 '+escapeHtml(hjCut(l[0],10))+' 견적 쓰기</button></div>';
 }
 function hjHandoffOffer(s,back){
   const r=(s&&s.report)||{};
@@ -34665,7 +34688,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -34906,6 +34929,7 @@ function setupDelegation(){
     if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
     if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
     if(d.addraft!==undefined){e.stopPropagation();return adDraftOpen(d.addraft);}
+    if(d.qwait!==undefined){e.stopPropagation();return hjQuoteStartFor(d.qwait);}   // v389
     if(d.inqsched!==undefined){e.stopPropagation();return openScheduleEdit(null,{title:'상담·실측: '+d.inqsched,project:d.inqsched,date:hjShiftWorkDays(localDate(),1),time:'10:00',hours:1},{title:'🗓 상담·실측 일정'});}   // v386
     if(d.adcase!==undefined){e.stopPropagation();if(d.adcase==='web')return casePackView(d.adproj||'');return adDraftOpen(d.adcase,d.adproj||'');}   // v385 만물 웹 = 📰 사례 내보내기(사진·6항목·EXIF 제거 ZIP)
     if(d.adperf!==undefined){e.stopPropagation();return adPerfOpen(d.adperf);}
