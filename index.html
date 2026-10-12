@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v406-phasehint';
+const APP_BUILD='hyeonjang-v407-reviewfix4';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5716,7 +5716,7 @@ function hjProjNameList(){
   const out=[];(state.projects||[]).filter(p=>p&&!p.archived).forEach(p=>{out.push(p.name);try{out.push(hjCasePlaceOf(p.name));}catch(e){}});return [...new Set(out.filter(Boolean))];
 }
 function hjProjNamesRefresh(){let dl=document.getElementById('hjProjNames');if(!dl){dl=document.createElement('datalist');dl.id='hjProjNames';document.body.appendChild(dl);}dl.innerHTML=hjProjNameList().map(n=>'<option value="'+escapeAttr(n)+'"></option>').join('');}
-const HJ_NAME_GAPS_RE=/[\s·-]+/g,HJ_NAME_END_RE=/(?:아파트단지|아파트|apt)$/;
+const HJ_NAME_GAPS_RE=/[\s·-]+/g,HJ_NAME_END_RE=/(?:아파트|apt)/g;
 function hjNormName(s){return String(s||'').toLowerCase().replace(HJ_NAME_GAPS_RE,'').replace(HJ_NAME_END_RE,'');}
 function hjNameNear(a,b){
   if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,edits=0;
@@ -12922,7 +12922,7 @@ function hjDayCloseView(){
   body+='<p class="hint" style="margin:12px 0 0">이 창은 아무것도 바꾸지 않아요. 버튼이 여는 화면에서 저장합니다. 고객·팀원에게 자동으로 보내지 않습니다.</p></div>';
   openModal('🌙 오늘 마감 — '+hjMdDow(d.today),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('dayClose');
-  root.querySelectorAll('[data-dc-photolog]').forEach(b=>b.onclick=()=>{const g=hjPhotoDayGroups(d.today).find(g=>g.project===b.dataset.dcPhotolog&&!g.has);if(g)openScheduleEdit(null,hjPhotoLogDraft(g,d.today),{title:'📝 오늘 작업 기록'});});
+  root.querySelectorAll('[data-dc-photolog]').forEach(b=>b.onclick=()=>{const g=hjPhotoDayGroups(d.today).find(g=>g.project===b.dataset.dcPhotolog&&!g.has);if(g)openScheduleEdit(null,hjPhotoLogDraft(g,d.today),{title:'📝 오늘 작업 기록',photoOrigin:{project:g.project,date:d.today,n:g.n}});});
   const all=root.querySelector('[data-dc-photologall]');if(all)all.onclick=()=>hjPhotoLogAll(d.today);
   root.querySelectorAll('[data-dc-report]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.dcReport));
   root.querySelectorAll('[data-dc-crew]').forEach(b=>b.onclick=()=>openScheduleEdit(b.dataset.dcCrew));
@@ -23593,7 +23593,8 @@ function hjQuoteFollowDay(q){
   if(!q)return '';
   const sent=String(q.sentAt||'');
   if(isRealIsoDate(sent))return sent;
-  if(sent){const d=new Date(sent);if(!isNaN(d.getTime()))return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}
+  // v407 모양만 날짜인 값은 Date의 자동 보정으로 다른 날이 되지 않게 한다.
+  if(sent.length>10&&sent[10]==='T'&&isRealIsoDate(sent.slice(0,10))){const d=new Date(sent);if(!isNaN(d.getTime()))return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}
   return isRealIsoDate(String(q.date||''))?q.date:'';
 }
 function hjQuoteOpenForFollow(q){const st=quoteStatus(q);return hjQuoteHasContent(q)&&st!=='won'&&st!=='lost';}   // 수주(현장 연결·수주 표시)·종결은 팔로업 대상이 아니다
@@ -23708,9 +23709,10 @@ function quoteFollowupSmsText(q){
   return '안녕하세요, '+COMPANY.name+'입니다. 지난번 보내드린 "'+(q.title||'견적')+'" 견적 검토는 어떠셨을까요? 궁금하신 점이나 조정이 필요하시면 편하게 말씀해 주세요. 좋은 조건으로 도와드리겠습니다. '+COMPANY.tel;
 }
 async function quoteFollowup(){
-  const undated=(state.quotes||[]).filter(q=>hjQuoteOpenForFollow(q)&&!hjQuoteFollowDay(q)).length;
+  const undated=(state.quotes||[]).filter(q=>hjQuoteOpenForFollow(q)&&!hjQuoteFollowDay(q));
   const future=hjEstFileLatest().future,futureHtml=future.length?'<div class="hint" id="efFuture" style="margin-top:12px">📅 날짜가 미래인 견적 파일 '+future.length+'개 — 파일 이름·날짜 확인</div>':'';
-  const undatedHtml=(undated?'<div class="hint" id="qfUndated" style="margin-top:12px">날짜 없는 견적 '+undated+'건</div>':'')+futureHtml;
+  // v407 날짜 없는 견적은 안심 문구에 묻지 않고, 먼저 확인할 목록과 편집 버튼을 보여 준다.
+  const undatedHtml=(undated.length?'<div id="qfUndated" style="margin:0 0 12px;overflow-wrap:anywhere"><b>📅 날짜를 확인할 견적 '+undated.length+'건</b>'+undated.map(q=>'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span style="flex:1 1 160px">'+escapeHtml(q.title||'견적')+'</span><button type="button" class="ghost qfUndatedOpen" data-id="'+escapeAttr(q.id)+'" style="min-height:44px">📄 견적 열기</button></div>').join('')+'</div>':'')+futureHtml;
   const rows=quoteFollowupData();const stale=quoteStaleData();const files=hjEstFileFollowData(),fileActive=files.filter(r=>r.days<=30),fileStale=files.filter(r=>r.days>30),total=rows.length+fileActive.length,fileHtml=hjEstFileFollowHtml(files);const [c1,c2]=hjBrandGrad('#e8912d','#c2410c');
   // 종결 칩 — 누르면 그 줄이 닫히고 목록을 다시 그린다. 「종결」 버튼이 칩 줄을 연다(잘못 누름 한 번으로 닫히지 않게).
   const closeBox=q=>'<button type="button" class="qfClose ghost tiny" data-q="'+escapeAttr(q.id)+'" aria-expanded="false" style="min-height:44px;padding:0 12px">✕ 종결</button>'+
@@ -23721,6 +23723,11 @@ async function quoteFollowup(){
       '<div style="font-size:11.5px;color:var(--muted);margin:3px 0 6px">'+q.date+' 작성·보냄 · '+hjMan(q.total)+(q.place?' · '+escapeHtml(q.place):'')+'</div>'+closeBox(q)+'</div>').join('')+
     (stale.length>20?'<div style="font-size:11px;color:var(--muted);margin-top:6px">… 외 '+(stale.length-20)+'건 — 📄 견적 이력에서도 종결할 수 있어요</div>':''):'';
   const wire=()=>{
+    document.querySelectorAll('#modalRoot .qfUndatedOpen').forEach(b=>b.onclick=()=>{
+      const id=b.dataset.id;if(!(state.quotes||[]).some(q=>q.id===id)){toast('견적을 찾을 수 없어요');return;}
+      if(quoteEditDirty()){toast('작성 중인 견적을 먼저 저장하거나 닫아 주세요');return;}
+      closeModal();state.tab='quotemaker';state.activeProject=null;editQuote(id);
+    });
     hjEstFileFollowWire();
     document.querySelectorAll('#modalRoot .qfClose').forEach(b=>b.onclick=()=>{
       const box=document.querySelector('#modalRoot .qfReasons[data-q="'+CSS.escape(b.dataset.q)+'"]');if(!box)return;
@@ -23731,10 +23738,11 @@ async function quoteFollowup(){
       toast('「'+((q&&q.title)||'견적')+'」 종결 — 사유: '+b.dataset.r);quoteFollowup();});
   };
   if(!total&&(stale.length||fileStale.length)){
-    openModal('⏰ 견적 팔로업','<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">보낸 지 3~30일 된 팔로업 대상은 없어요.</div>'+staleHtml+fileHtml+undatedHtml,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    openModal('⏰ 견적 팔로업',undatedHtml+'<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">보낸 지 3~30일 된 팔로업 대상은 없어요.</div>'+staleHtml+fileHtml,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     wire();
     return {팔로업:0,종결대상:stale.length+fileStale.length};
   }
+  if(!total&&undated.length){openModal('⏰ 견적 팔로업',undatedHtml,[{label:'닫기',cls:'ghost',fn:closeModal}],true);wire();return {팔로업:0};}
   if(!total){
     openModal('⏰ 견적 팔로업','<div style="text-align:center;padding:30px"><div style="font-size:40px">👍</div><div style="margin-top:10px;font-size:14px">팔로업할 견적이 없어요.</div><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">보낸 지 3일이 지나도 수주 안 된 견적이 생기면<br>여기서 알려드립니다. 지금은 다 챙기고 계세요!</div></div>'+undatedHtml,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
     return {팔로업:0};
@@ -23751,9 +23759,9 @@ async function quoteFollowup(){
   const body=
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">지금이 골든타임</div><div style="font-size:17px;font-weight:800">⏰ 팔로업 대기 '+total+'건</div><div style="font-size:12px;opacity:.95;margin-top:2px">보낸 지 3~7일이 연락 최적기예요</div></div>'+
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">답 없는 견적, 가만히 두면 잊혀집니다. 부담 없는 안부로 다시 떠올리게 하세요.</div>'+
-    items+
+    undatedHtml+items+
     staleHtml+fileHtml+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 견적을 붙인 현장이 <b>시공 단계로 넘어가면(수주)</b> 자동으로 이 목록에서 빠집니다. 상담·실측 단계 현장에 붙은 견적은 아직 답을 기다리는 견적이에요. 안 하기로 한 견적은 <b>✕ 종결</b>로 사유와 함께 닫으면 수주 분석에 쌓여요. 파일 견적의 종결은 현장에만 기록돼요.</div>'+undatedHtml;
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 견적을 붙인 현장이 <b>시공 단계로 넘어가면(수주)</b> 자동으로 이 목록에서 빠집니다. 상담·실측 단계 현장에 붙은 견적은 아직 답을 기다리는 견적이에요. 안 하기로 한 견적은 <b>✕ 종결</b>로 사유와 함께 닫으면 수주 분석에 쌓여요. 파일 견적의 종결은 현장에만 기록돼요.</div>';
   openModal('⏰ 견적 골든타임',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   wire();
   document.querySelectorAll('#modalRoot .qfWon').forEach(b=>b.onclick=()=>{closeModal();hjQuoteWin(b.dataset.q,()=>quoteFollowup());});   // v390
@@ -24071,11 +24079,16 @@ function hjProjOpenQuoteDay(name){
 }
 /* v396 작업 전 라벨을 제외한 사진만 추천 근거로 읽는다. 날짜 없는 사진도 장수에는 포함한다. */
 const HJ_PREWORK_RE=/상담|실측|견적|확인|탐사/;
+/* v407 완료 표식만으로 실제 작업을 단정하지 않는다. 등록 공정 유무와 무관하게 사진 라벨의 공정을 읽는다. */
+function hjPhotoWorkPhases(f){
+  const label=hjPhotoLabel(f);if(!label||HJ_PREWORK_RE.test(label)||HJ_PHASE_SKIP_RE.test(label))return [];
+  return HJ_PHASE_MAP.filter(([re])=>re.test(label)).map(([,phase])=>phase);
+}
 function hjStaleWorkPhotos(name){
   let n=0,last='';
   (state.files||[]).forEach(f=>{
     if(!f||f.project!==name||f.kind!=='photo')return;
-    const label=hjPhotoLabel(f);if(!label||HJ_PREWORK_RE.test(label)||!hjAdPhotoUsable(f))return;
+    if(!hjPhotoWorkPhases(f).length)return;
     n++;if(!f.when)return;const d=new Date(f.when);if(isNaN(d.getTime()))return;
     const day=localDate(d);if(day>last)last=day;
   });
@@ -24137,6 +24150,12 @@ function hjDoneDateView(name,suggest,back){
       }}]);
   return true;
 }
+/* v407 일괄 완료 확인에 사용한 객체와 준공일 근거를 안전판 뒤에도 확인한다. */
+function hjStaleDonePlan(n,today){
+  const p=(state.projects||[]).find(p=>p&&p.name===n),at=projLastActivity(n),last=at?localDate(at):'';
+  const prev=p&&p.doneAtPrev,done=p&&p.doneAt,okd=v=>isRealIsoDate(String(v||''))&&v<=today;
+  return {n,p,stage:p&&(p.stage||0),prev,done,last,d:okd(prev)?prev:okd(last)?last:today,src:okd(prev)?'이전 준공일':okd(last)?'마지막 활동일':'오늘'};
+}
 async function staleProjects(){
   const rows=staleProjectData();const [c1,c2]=hjBrandGrad('#7c3aed','#c2410c');
   const STAGES_KO=['상담','실측','시공','완료'];
@@ -24155,7 +24174,7 @@ async function staleProjects(){
       '<button class="stpArc ghost tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px" title="목록에서 접어둡니다 — 자료는 그대로, 왼쪽 목록 [보관]에서 되돌릴 수 있어요">📦 보관</button>'+
       (r.legacyOf?'<button class="stpLegacy ghost tiny" style="padding:7px 12px" title="'+escapeAttr(r.legacyOf)+'의 동·호수로 합치고 이 현장은 보관">🏢 단지로 합치기</button>':'')+
       (r.pick?'<span class="stpWork" style="font-size:11px;align-self:center">🛠 작업 사진 '+r.work.n+'장 · 마지막 '+escapeHtml(r.work.last?r.work.last.slice(5):'날짜 없음')+'</span>':'')+
-      (r.doneHint?'<span class="stpHint" style="font-size:11px;color:var(--hj-ok-fg);align-self:center">📷 \'완료\' 사진 있음</span>':'')+
+      (r.doneHint?'<span class="stpHint" style="font-size:11px;color:var(--hj-ok-fg);align-self:center">'+(r.work.n?"📷 '완료' 사진 있음":"📷 '완료' 표식 사진 있음(작업 라벨 없음)")+'</span>':'')+
       (r.openQuote?'<button type="button" class="stpQf ghost tiny" data-n="'+escapeAttr(r.name)+'" style="min-height:44px;padding:0 12px" title="답 없는 견적 — 팔로업하거나 종결하세요">⏰ 답 없는 견적 '+escapeHtml(r.openQuote.slice(5))+'</button>':'')+   // v392
       (!r.empty?'<label class="stpPick" style="display:inline-flex;align-items:center;gap:6px;min-height:44px;font-size:12px;cursor:pointer"><input type="checkbox" class="stpChk" data-n="'+escapeAttr(r.name)+'" style="width:20px;height:20px"> 한꺼번에 완료</label>':'')+
       (r.empty?'<span style="font-size:11px;color:var(--muted);align-self:center">기록 없는 빈 현장'+(r.legacyOf?' · '+escapeHtml(r.legacyOf)+'의 옛 호수 현장':'')+'</span>':'')+
@@ -24193,17 +24212,20 @@ async function staleProjects(){
   const updatePicked=()=>{if(!dm)return;const n=picked().length;dm.disabled=!n;dm.textContent='✅ 고른 현장 완료 '+n+'곳';};
   document.querySelectorAll('#modalRoot .stpChk').forEach(c=>c.onchange=updatePicked);
   const rec=document.getElementById('stpPickRec');if(rec)rec.onclick=()=>{document.querySelectorAll('#modalRoot .stpChk').forEach(c=>{if(rows.some(r=>r.name===c.dataset.n&&r.pick))c.checked=true;});updatePicked();};
+  let doneBusy=false;
   if(dm)dm.onclick=async()=>{
-    const names=picked();if(!names.length)return;
-    const today=localDate();
-    const okd=v=>HJ_YMD_RE.test(String(v||''))&&v<=today;
-    const plan=names.map(n=>{const r=rows.find(x=>x.name===n)||{};const p=state.projects.find(x=>x.name===n)||{};
-      // v387 날짜마다 어디서 왔는지 같이 보인다(이전 준공일 / 마지막 활동일 / 오늘)
-      return okd(p.doneAtPrev)?{n,d:p.doneAtPrev,src:'이전 준공일'}:okd(r.last)?{n,d:r.last,src:'마지막 활동일'}:{n,d:today,src:'오늘'};});
+    if(doneBusy)return;const names=picked();if(!names.length)return;
+    const today=localDate(),plan=names.map(n=>hjStaleDonePlan(n,today)),box=document.querySelector('#modalRoot .modal');
     if(!confirm('고른 '+plan.length+'곳을 아래 준공일로 완료할까요?\n\n'+plan.slice(0,12).map(x=>x.n+' — '+x.d+' ('+x.src+')').join('\n')+(plan.length>12?'\n외 '+(plan.length-12)+'곳':'')+'\n\n보증·AS 기간이 이 날부터 셉니다. 현장 화면 단계 버튼에서 되돌릴 수 있어요.'))return;
-    if(await hjSnapshot('현장 '+plan.length+'곳 완료 전',true)!==true){toast('안전판 저장 실패 — 바꾸지 않았습니다');return;}
-    let k=0;plan.forEach(x=>{const p=state.projects.find(q=>q.name===x.n);if(!p||p.archived)return;p.stage=STAGES.length-1;p.doneAt=x.d;delete p.doneAtPrev;k++;try{portalAutoSync(x.n);}catch(e){}});
-    markDirty();render();toast('✅ '+k+'곳 완료 — 준공일은 확인 창의 날짜');staleProjects();
+    doneBusy=true;try{
+      if(await hjSnapshot('현장 '+plan.length+'곳 완료 전',true)!==true){toast('안전판 저장 실패 — 바꾸지 않았습니다');return;}
+      if(!box.isConnected)return;
+      let k=0,changed=0;plan.forEach(x=>{const now=hjStaleDonePlan(x.n,today);
+        if(!hjProjectActionValid(x.p,x.n,x.stage,2)||now.prev!==x.prev||now.done!==x.done||now.last!==x.last||now.d!==x.d||now.src!==x.src){changed++;return;}
+        x.p.stage=STAGES.length-1;x.p.doneAt=x.d;delete x.p.doneAtPrev;k++;try{portalAutoSync(x.n);}catch(e){}
+      });
+      if(k)markDirty();render();staleProjects();toast('✅ '+k+'곳 완료 — 준공일은 확인 창의 날짜'+(changed?' · '+changed+'곳은 그 사이 바뀌어 두었어요 — 다시 열어 확인':''));
+    }finally{doneBusy=false;}
   };
   const ao=document.getElementById('stpArcOld');if(ao)ao.onclick=()=>arcMany(oldRows.map(r=>r.name),'60일 넘게 조용한 현장');
   document.querySelectorAll('#modalRoot .stpQf').forEach(b=>b.onclick=()=>quoteFollowup());   // v392 30일 넘은 견적은 팔로업 창의 '🗂 30일 지난 견적'에서 종결
@@ -34208,6 +34230,12 @@ function saveScheduleEdit(id,isNew,link,draftReport){
   if(!f.title){toast('제목을 입력하세요.');hjFieldIssue(document.getElementById('schTitle'),'제목을 입력하세요.');return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T00:00:00'))){toast('날짜를 고르세요.');hjFieldIssue(document.getElementById('schDate'),'날짜를 고르세요.');return;}
   if(!Number.isFinite(hours)||hours<0||hours>24){toast('작업 시간은 0~24 사이로 적어 주세요.');hjFieldIssue(document.getElementById('schHours'),'작업 시간은 0~24 사이로 적어 주세요.');return;}
+  // v407 사진 초안의 날짜·현장을 고쳐도 원래 사진 근거는 메모에 남긴다.
+  const origin=isNew&&link&&link.photoOrigin;
+  if(origin&&(f.date!==origin.date||f.project!==origin.project)){
+    const base='📷 사진 '+origin.n+'장으로 기록',note=base+'(원래 현장/날짜: '+origin.project+' / '+origin.date+')';
+    f.memo=f.memo.includes(base)?f.memo.replace(base,note):(f.memo?f.memo+'\n':'')+note;
+  }
   let s,asMoved=0;
   const prevDate=old?old.date:null,prevProject=old?old.project:null,prevMemo=old?String(old.memo||''):null;
   if(!isNew&&prevDate!==date&&f.memo===prevMemo.trim()){const nm=hjShiftRangeMemo(prevMemo,prevDate,hjWorkDaysBetween(prevDate,date));if(nm!==null)f.memo=nm;}   // v353 공정표 메모 '시작~끝' 도 날짜를 따라간다
