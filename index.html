@@ -34,13 +34,13 @@
     --moss:#0e7a6b;         /* 보조 강조(틸) */
     --muted:#587391;        /* 흐린 보조 텍스트(통합) — v329: #6a86a3(흰 바탕 3.8:1)→흰 4.9·옅은 바탕(#f4f7fb) 4.6:1. 대표 승인 2026-09-26 */
     --muted-2:#5a7186;      /* 조금 더 진한 보조 텍스트 */
-    --warn:#d2453b; --ok:#1f9d6b; --gold:#9a7b25;
+    --hj-field-error:#d2453b; --warn:#d2453b; --ok:#1f9d6b; --gold:#9a7b25;
     --shadow:0 1px 2px rgba(15,36,56,.04), 0 14px 34px -22px rgba(13,78,162,.45); --r:10px;
   }
   [data-office-intake-status][data-office-intake-mode="stale"]{color:var(--warn)!important}
   /* v399 안내와 카드 배경을 함께 테마에 맞춰 작은 글씨도 읽을 수 있게 한다. */
   :root{--hj-warn-fg:#b45309;--hj-info-fg:#0b4ea2;--hj-ok-fg:#0a7f43;--hj-danger-fg:#c2410c;--hj-warn-bg:#fffbeb;--hj-danger-bg:#fff5f5;--hj-warn-border:#fcd34d;--hj-danger-border:#fca5a5}
-  body.dark{--hj-warn-fg:#fbd38d;--hj-info-fg:#8fc3ff;--hj-ok-fg:#71dbac;--hj-danger-fg:#ffb99c;--hj-warn-bg:rgba(140,91,14,.18);--hj-danger-bg:rgba(145,48,48,.18);--hj-warn-border:#80612b;--hj-danger-border:#855151}
+  body.dark{--hj-field-error:var(--hj-danger-fg);--hj-warn-fg:#fbd38d;--hj-info-fg:#8fc3ff;--hj-ok-fg:#71dbac;--hj-danger-fg:#ffb99c;--hj-warn-bg:rgba(140,91,14,.18);--hj-danger-bg:rgba(145,48,48,.18);--hj-warn-border:#80612b;--hj-danger-border:#855151}
   body.dark #dashboardCompanyTeam,body.dark .hjAdLink{color:var(--blueprint)}
   body.dark{
     --ink:#e8eef5; --paper:#0f1822; --paper-2:#17222e; --line:#2f6fd0; --line-soft:#2a3a4d;
@@ -1244,7 +1244,7 @@ function hjFieldIssue(el,msg){
   if(!s||!s.isConnected){
     s=document.createElement('span');s.className='field-issue';s.setAttribute('role','alert');
     s.id='fi-'+(el.id||('x'+Math.random().toString(36).slice(2,8)));
-    s.style.cssText='display:block;color:var(--warn);font-size:12.5px;line-height:1.4;margin:2px 0 8px';
+    s.style.cssText='display:block;color:var(--hj-field-error);font-size:12.5px;line-height:1.4;margin:2px 0 8px';
     // 가로로 늘어선 줄(flex) 안의 칸이면 줄을 쪼개지 않게 그 줄 바로 아래에 둔다.
     const par=el.parentElement,cs=par?getComputedStyle(par):null;
     const inRow=cs&&/flex/.test(cs.display)&&!/column/.test(cs.flexDirection)&&par!==document.body;
@@ -2364,8 +2364,9 @@ function exportData(){
   clearDirty();backupMarkDone('file');toast('현장데이터 파일을 내보냈습니다 — 구글드라이브 만물인테리어▸데이터에 두세요');
 }
 /* 데이터 불러오기: 폰·다른 PC에서 파일 선택 → 복원 */
-function importData(){
-  if(!window.__bkGuardPass){window.__bkGuardPass=true;try{backupGuard('데이터 복원(덮어쓰기)',function(){window.__bkGuardPass=false;importData();});return;}catch(e){window.__bkGuardPass=false;}}window.__bkGuardPass=false;
+/* v402 백업 권고 뒤 파일 선택으로 한 번만 진행한다. 적용 직전 필수 안전판은 유지한다. */
+function importData(){return backupGuard('데이터 복원(덮어쓰기)',hjImportDataPick);}
+function hjImportDataPick(){
   const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
   inp.onchange=async()=>{
     const f=inp.files[0];if(!f)return;
@@ -3272,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v401-labelfield';
+const APP_BUILD='hyeonjang-v402-reviewfix3';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8201,18 +8202,18 @@ function hjCustMissing(days=90){
   return (state.projects||[]).filter(p=>{
     if(!p||p.archived||hjCustDigits((p.customer||{}).phone).length>=9)return false;
     const stage=p.stage||0;
-    return stage>=0&&stage<3?recent(projLastActivity(p.name)):stage===3&&isRealIsoDate(p.doneAt)&&recent(new Date(p.doneAt+'T00:00:00'));
+    return stage>=0&&stage<3?(recent(projLastActivity(p.name,localDate()))||(!projLastActivity(p.name,localDate())&&(state.schedule||[]).some(s=>s.project===p.name&&isRealIsoDate(s.date)&&s.date>localDate()))):stage===3&&isRealIsoDate(p.doneAt)&&recent(new Date(p.doneAt+'T00:00:00'));
   }).sort((a,b)=>hjCustActivityTime(b)-hjCustActivityTime(a)).map(p=>p.name);
 }
 /* v394 완료 기록만 있는 현장도 마지막 날짜를 보여 줄 수 있도록 준공일을 보조로 쓴다. */
-function hjCustActivityTime(p){const d=projLastActivity(p.name);return d?d.getTime():(isRealIsoDate(p.doneAt)?new Date(p.doneAt+'T00:00:00').getTime():0);}
+function hjCustActivityTime(p){const d=projLastActivity(p.name,localDate());return d?d.getTime():(isRealIsoDate(p.doneAt)?new Date(p.doneAt+'T00:00:00').getTime():0);}
 function hjCustMissingHtml(){
   const n=hjCustMissing().length;if(!n)return '';
   return '<div id="dashboardCustMissing" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px"><span style="flex:1 1 180px;min-width:0">👤 연락처 없는 현장 '+n+'곳</span><button type="button" class="ghost" data-custfill style="min-height:44px;padding:0 10px">👤 채우기</button></div>';
 }
 /* v394 변경 전 안전판이 성공해야 이름·연락처만 저장한다. 빈칸은 기존 값을 지우지 않는다. */
 function hjCustFillView(){
-  const names=hjCustMissing(),ps=names.map(n=>state.projects.find(p=>p.name===n));
+  const names=hjCustMissing(),ps=(state.projects||[]).filter(p=>names.includes(p.name)).sort((a,b)=>hjCustActivityTime(b)-hjCustActivityTime(a));
   const body='<div id="custFill" style="overflow-wrap:anywhere">'+(ps.length?ps.map((p,i)=>{
     const cu=p.customer||{},at=hjCustActivityTime(p);
     return '<div class="cfRow" data-i="'+i+'" style="padding:10px 0;border-bottom:1px solid var(--line-soft)"><b>'+escapeHtml(p.name)+'</b><div class="hint">'+escapeHtml(STAGES[p.stage||0])+' · 마지막 활동 '+(at?localDate(new Date(at)):'기록 없음')+'</div>'+
@@ -8227,15 +8228,27 @@ function hjCustFillView(){
     for(let i=0;i<ps.length;i++){
       const ne=box.querySelector('#cfName'+i),pe=box.querySelector('#cfPhone'+i),name=ne.value.trim(),phone=pe.value.trim(),p=ps[i],cu=p.customer||{};
       if(phone&&hjCustDigits(phone).length<9){hjFieldIssue(pe,'연락처 숫자를 확인하세요 (예: 010-1234-5678)');return;}
-      if((name&&name!==String(cu.name||''))||(phone&&phone!==String(cu.phone||'')))changes.push({p,name,phone});
+      if((name&&name!==String(cu.name||''))||(phone&&phone!==String(cu.phone||'')))changes.push({p,project:p.name,stage:p.stage||0,before:{name:String(cu.name||''),phone:String(cu.phone||'')},name:name&&name!==String(cu.name||'')?name:null,phone:phone&&phone!==String(cu.phone||'')?phone:null});
     }
     if(!changes.length){toast('0곳 저장');return;}
     busy=true;
     try{
       if(!await hjSnapshot('연락처 모아 채우기 전',true)){toast('안전판을 저장하지 못했어요. 다시 시도해 주세요');return;}
-      if(!box.isConnected||changes.some(c=>!state.projects.includes(c.p))){toast('현장 정보가 바뀌었어요. 다시 열어 주세요');return;}
-      changes.forEach(c=>{if(c.name)setCustomer(c.p.name,'name',c.name);if(c.phone)setCustomer(c.p.name,'phone',c.phone);});
-      render();hjCustFillView();toast(changes.length+'곳 저장');
+      if(!box.isConnected)return;
+      let saved=0,conflicts=0,duplicates=0,invalid=0;
+      changes.forEach(c=>{
+        if(state.projects.filter(p=>p.name===c.project).length>1){duplicates++;return;}
+        if(!hjProjectActionValid(c.p,c.project,c.stage,3)){invalid++;return;}
+        const cu=c.p.customer||{};
+        if(String(cu.name||'')!==c.before.name||String(cu.phone||'')!==c.before.phone){conflicts++;return;}
+        if(!c.p.customer)c.p.customer={name:'',phone:'',addr:''};
+        if(c.name!==null)c.p.customer.name=c.name;if(c.phone!==null)c.p.customer.phone=c.phone;saved++;
+      });
+      if(saved)markDirty();render();hjCustFillView();
+      const messages=[saved+'곳 저장'];
+      if(duplicates)messages.push('같은 이름 현장이 둘 — 현장 화면에서 따로 저장하세요');
+      if(conflicts)messages.push('다른 곳에서 바뀐 현장 '+conflicts+'곳은 두었어요 — 다시 열어 확인');
+      if(invalid)messages.push('현장 정보가 바뀌었어요. 다시 열어 주세요');toast(messages.join(' · '));
     }finally{busy=false;}
   }}],true);
   document.querySelectorAll('#custFill .cfRow').forEach(row=>{const i=row.dataset.i;hjContactPickWire(row.querySelector('.cfPick'),row.querySelector('#cfName'+i),row.querySelector('#cfPhone'+i));});
@@ -8249,7 +8262,7 @@ function hjCustQuickView(pjName,opts){
   const field=(id,label,val,ph,mode)=>'<label for="'+id+'" style="font-size:11.5px;color:var(--muted)">'+label+'</label>'+
     '<input id="'+id+'" type="text"'+(mode?' inputmode="'+mode+'"':'')+' value="'+escapeAttr(val||'')+'" placeholder="'+escapeAttr(ph)+'" style="width:100%;padding:11px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">';
   const body=(lead?'<p style="margin:0 0 10px;font-size:13.5px">'+escapeHtml(lead)+'</p>':'')+
-    (contactsPickerSupported()?'<button type="button" id="cqPick" class="ghost" style="min-height:44px;margin-bottom:8px">📇 주소록에서 고르기</button>':'')+
+    (contactsPickerSupported()?'<button type="button" id="cqPick" class="ghost" style="display:block;width:100%;min-height:44px;margin-bottom:8px">📇 주소록에서 고르기</button>':'')+
     field('cqName','고객 이름',cu.name,'예: 김민수')+field('cqPhone','연락처',cu.phone,'010-0000-0000','tel')+field('cqAddr','주소 (선택)',cu.addr,'현장 주소')+
     '<label for="cqSrc" style="font-size:11.5px;color:var(--muted)">어디서 보고 연락하셨나요? (선택)</label><select id="cqSrc" style="width:100%;min-height:44px;padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">'+hjLeadSrcOptions(p.leadSrc||'')+'</select>'+
     '<p class="hint" style="margin:0">연락처를 넣어 두면 미수 독촉·안부 문자·고객 페이지가 이 번호로 갑니다.</p>';
@@ -23469,21 +23482,27 @@ function hjEstFileDay(f){
   if(!f.when)return '';
   const when=new Date(f.when);return isNaN(when.getTime())?'':localDate(when);
 }
+/* v402 미래·매입 파일은 분리하고 같은 날 사본은 금액·최종본·엑셀 순으로 고른다. */
+const HJ_EST_FINAL_RE=/^★/,HJ_EST_XLS_RE=/\.xlsx?$/i;
 function hjEstFileLatest(){
-  const rows=new Map();
+  const rows=new Map(),future=[],today=localDate(),skip=hjEstSkipIds(state.files||[]);
   (state.files||[]).forEach(f=>{
-    if(!f||f.kind!=='estimate'||f._fromQuote||!f.project)return;
-    const p=(state.projects||[]).find(p=>p&&p.name===f.project&&!p.archived&&(p.stage||0)<=1&&!p.estClosed);if(!p)return;
+    if(!f||f.kind!=='estimate'||f._fromQuote||!f.project||f.exSum||skip.has(f.id)||(f.est&&f.est.purchase))return;
+    const p=(state.projects||[]).find(p=>p&&p.name===f.project&&!p.archived&&(p.stage||0)<=1);if(!p)return;
     const date=hjEstFileDay(f);if(!date)return;
-    const old=rows.get(p.name);if(old&&old.date>=date)return;
-    const amount=Number(f.est&&f.est.amount)||0;
-    rows.set(p.name,{project:p.name,file:String(f.name||''),date,amount:Number.isFinite(amount)?amount:0});
+    const amount=Number(f.est&&f.est.amount)||0,row={project:p.name,file:String(f.name||''),date,amount:Number.isFinite(amount)?amount:0};
+    if(date>today){future.push(row);return;}
+    if(p.estClosed&&date<=String(p.estClosed.upto||p.estClosed.at||''))return;
+    const rank=r=>[r.amount>0?1:0,HJ_EST_FINAL_RE.test(r.file)?1:0,HJ_EST_XLS_RE.test(r.file)?1:0].join('');
+    const old=rows.get(p.name);if(old&&(old.date>date||(old.date===date&&(rank(old)>rank(row)||(rank(old)===rank(row)&&old.file.localeCompare(row.file)<=0)))))return;
+    rows.set(p.name,row);
   });
-  return [...rows.values()];
+  return {rows:[...rows.values()],future};
 }
 function hjEstFileFollowData(){
   const today=new Date();today.setHours(0,0,0,0);
-  return hjEstFileLatest().filter(r=>hjStaleWorkPhotos(r.project).last<r.date).filter(r=>!(state.quotes||[]).some(q=>q&&q.project===r.project&&hjQuoteOpenForFollow(q)))
+  const shown=new Set([...quoteFollowupData(),...quoteStaleData().slice(0,20)].map(q=>q.project));
+  return hjEstFileLatest().rows.filter(r=>hjStaleWorkPhotos(r.project).last<r.date).filter(r=>!shown.has(r.project))
     .map(r=>Object.assign({},r,{days:Math.round((today-new Date(r.date+'T00:00:00'))/86400000)}))
     .filter(r=>r.days>=3).sort((a,b)=>a.days-b.days);
 }
@@ -23503,7 +23522,7 @@ function hjEstFileFollowWire(){
     row.querySelector('.efClose').onclick=()=>{const box=row.querySelector('.efReasons');box.hidden=!box.hidden;row.querySelector('.efClose').setAttribute('aria-expanded',String(!box.hidden));};
     row.querySelectorAll('.efReason').forEach(b=>b.onclick=()=>{
       if(!current()||!HJ_QUOTE_LOST_REASONS.includes(b.dataset.r))return;
-      const p=state.projects.find(p=>p.name===project);p.estClosed={at:localDate(),reason:b.dataset.r};markDirty();quoteFollowup();
+      const p=state.projects.find(p=>p.name===project);p.estClosed={at:localDate(),reason:b.dataset.r,upto:current().date};markDirty();quoteFollowup();
     });
   });
 }
@@ -23566,7 +23585,8 @@ function quoteFollowupSmsText(q){
 }
 async function quoteFollowup(){
   const undated=(state.quotes||[]).filter(q=>hjQuoteOpenForFollow(q)&&!hjQuoteFollowDay(q)).length;
-  const undatedHtml=undated?'<div class="hint" id="qfUndated" style="margin-top:12px">날짜 없는 견적 '+undated+'건</div>':'';
+  const future=hjEstFileLatest().future,futureHtml=future.length?'<div class="hint" id="efFuture" style="margin-top:12px">📅 날짜가 미래인 견적 파일 '+future.length+'개 — 파일 이름·날짜 확인</div>':'';
+  const undatedHtml=(undated?'<div class="hint" id="qfUndated" style="margin-top:12px">날짜 없는 견적 '+undated+'건</div>':'')+futureHtml;
   const rows=quoteFollowupData();const stale=quoteStaleData();const files=hjEstFileFollowData(),fileActive=files.filter(r=>r.days<=30),fileStale=files.filter(r=>r.days>30),total=rows.length+fileActive.length,fileHtml=hjEstFileFollowHtml(files);const [c1,c2]=hjBrandGrad('#e8912d','#c2410c');
   // 종결 칩 — 누르면 그 줄이 닫히고 목록을 다시 그린다. 「종결」 버튼이 칩 줄을 연다(잘못 누름 한 번으로 닫히지 않게).
   const closeBox=q=>'<button type="button" class="qfClose ghost tiny" data-q="'+escapeAttr(q.id)+'" aria-expanded="false" style="min-height:44px;padding:0 12px">✕ 종결</button>'+
@@ -23891,17 +23911,17 @@ async function dataHealth(){
 
 /* ═══════════ 💤 방치 현장 알림 — 오래 업데이트 없는 진행 현장 ═══════════ */
 // 현장의 최근 활동일(파일 when·일정 date 중 최신)
-function projLastActivity(projName){
+function projLastActivity(projName,upto){
   let latest=null;
   (state.files||[]).forEach(f=>{
     if(f.project!==projName)return;
     const w=f.when?new Date(f.when):null;
-    if(w&&!isNaN(w.getTime())&&(!latest||w>latest))latest=w;
+    if(w&&!isNaN(w.getTime())&&(!upto||localDate(w)<=upto)&&(!latest||w>latest))latest=w;
   });
   (state.schedule||[]).forEach(s=>{
     if(s.project!==projName||!s.date)return;
     const d=new Date(s.date+'T00:00:00');
-    if(!isNaN(d.getTime())&&(!latest||d>latest))latest=d;
+    if(!isNaN(d.getTime())&&(!upto||localDate(d)<=upto)&&(!latest||d>latest))latest=d;
   });
   // v387 문의 접수일 — 방금 받은 문의가 사진·일정이 없다고 바로 '방치 현장'에 들어가지 않게. 현장 칸(inquiryAt)과
   //   v383 메모 첫 줄 '[문의 접수] YYYY-MM-DD'(형식이 고정된 날짜)만 읽는다 — toLocaleString 날짜 글은 파싱하지 않는다.
@@ -23909,7 +23929,7 @@ function projLastActivity(projName){
   const pj=(state.projects||[]).find(p=>p&&p.name===projName);
   if(pj&&HJ_YMD_RE.test(String(pj.inquiryAt||'')))seen.push(pj.inquiryAt);
   (state.notes||[]).forEach(n=>{if(!n||n.project!==projName)return;const m=String(n.text||'').match(HJ_INQ_DATE_RE);if(m)seen.push(m[1]);});
-  seen.forEach(ymd=>{const d=new Date(ymd+'T00:00:00');if(!isNaN(d.getTime())&&(!latest||d>latest))latest=d;});
+  seen.forEach(ymd=>{const d=new Date(ymd+'T00:00:00');if(!isNaN(d.getTime())&&(!upto||ymd<=upto)&&(!latest||d>latest))latest=d;});
   return latest;
 }
 const HJ_INQ_DATE_RE=/^\[문의 접수\] (\d{4}-\d{2}-\d{2})/;
@@ -23917,11 +23937,11 @@ const HJ_STALE_DONE_RE=/완료|완성|준공/;
 /* v392 이 현장에 붙은 진행 중 견적(작성·보냄 — 수주·종결 아님)의 가장 늦은 날(작성일·보낸 날). 없으면 ''.
    답을 기다리는 견적이 있는 상담·실측 현장은 '방치'가 아니라 ⏰ 견적 팔로업 차례다. */
 function hjProjOpenQuoteDay(name){
-  const file=hjEstFileLatest().find(r=>r.project===name);   // v395 종결 전 파일 날짜도 함께 본다
+  const file=hjEstFileLatest().rows.find(r=>r.project===name&&hjStaleWorkPhotos(name).last<r.date);   // v395 종결 전 파일 날짜도 함께 본다
   let best=file?file.date:'';
   (state.quotes||[]).forEach(q=>{
     if(!q||q.project!==name||!hjQuoteOpenForFollow(q))return;
-    const day=hjQuoteFollowDay(q);if(day>best)best=day;
+    const day=hjQuoteFollowDay(q);if(day<=localDate()&&day>best)best=day;
   });
   return best;
 }

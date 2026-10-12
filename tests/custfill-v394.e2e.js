@@ -8,8 +8,9 @@ async function test(n,fn){try{await fn();results.push(true);console.log('PASS '+
  page.on('pageerror',e=>errors.push(String(e)));page.on('dialog',d=>d.accept());await page.route('https://**/*',r=>r.abort());
  await page.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_gcal_auto','0');window.ContactsManager=function(){};Object.defineProperty(navigator,'contacts',{configurable:true,value:{select:async()=>window.__pick||[]}});});
  await page.goto('http://127.0.0.1:8299/index.html',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!!window.__hjOfficeOpsBootDone);
- await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);const orig=localDate;window.localDate=d=>d?orig(d):'2026-11-05';window.taxCalendarEnsure=()=>0;window.coworkSchedEnsure=()=>0;window.portalAutoSync=()=>0;window.__snap=()=>{const d=serializeData();d.savedAt='';return paidStableJson(d);};});
- const seed=()=>page.evaluate(()=>{
+ await page.evaluate(async()=>{await Promise.all([__hjRestoreDone,__hjRelayConfigDone,__hjOfficeOpsBootDone]);const orig=localDate;window.localDate=d=>d?orig(d):'2026-11-05';window.taxCalendarEnsure=()=>0;window.coworkSchedEnsure=()=>0;window.portalAutoSync=()=>0;aiOpsEnsureState().enabled=false;clearTimeout(__idbSaveTimer);await __appStateWriteQueue;window.__snap=()=>{const d=serializeData();d.savedAt='';return paidStableJson(d);};});
+ const seed=()=>page.evaluate(async()=>{
+  clearTimeout(__idbSaveTimer);await __appStateWriteQueue;
   closeModal(true);state._demo=false;state.files=[];state.quotes=[];state.schedule=[];state.notes=[];state.payLog=[];state.asLog=[];state.contacts=[];
   const p=(name,stage,x)=>Object.assign({name,stage,received:0,phases:[],cost:{},customer:{name:'기존가상',phone:'',addr:'유지 주소'},leadSrc:'referral'},x||{});
   state.projects=[p('최근상담',0,{inquiryAt:'2026-11-02'}),p('최근실측',1,{inquiryAt:'2026-11-03'}),p('최근시공',2,{inquiryAt:'2026-11-04'}),p('옛상담',0,{inquiryAt:'2026-01-01'}),p('옛실측',1,{inquiryAt:'2026-01-01'}),p('옛시공',2,{inquiryAt:'2026-01-01'}),p('최근완료',3,{doneAt:'2026-10-06'}),p('옛완료',3,{doneAt:'2026-04-19',inquiryAt:'2026-11-05'}),p('보관',0,{archived:true,inquiryAt:'2026-11-05'}),p('번호있음',0,{inquiryAt:'2026-11-05',customer:{phone:'010-0000-0000'}}),p('기록없음',0)];
