@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v396 방치 현장 추천 고르기
+
+- 작업 사진이 있는 오래된 상담·실측 현장을 사람이 쉽게 고르도록 hjStaleWorkPhotos와 추천 체크 버튼을 추가했다. 사진 날짜가 견적일 이상이면 hjEstFileFollowData에서 제외한다. 완료 확인·안전판·준공일 흐름은 유지한다.
+- 신규 stalepick-v396 4/4, v395 변이 0/4, 관련·정적 총 25/25 파일 통과. 읽기 전용 리뷰와 diff 검사 통과. CI는 PR에서 확인.
+
 ## 2026-10-12 v395 견적서 파일도 견적 팔로업에
 
 - hjEstFileDay/hjEstFileLatest/hjEstFileFollowData로 현장별 최신 실제 파일 견적을 조회한다. hjEstFileFollowHtml/Wire와 quoteFollowup에 파일 묶음·문자·수주 단계·현장 estClosed 종결을 연결하고 hjProjOpenQuoteDay·hjDayCloseSales에 파일 기준을 반영했다. 견적 이력·수주 분석·회계 집계는 유지한다.
