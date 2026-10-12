@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v405 사진 작업명 제안·빈 라벨 채우기
+
+- hjWorkLabelOptions는 현장 최근→전체 빈도→HJ_WORK_DICT 순으로 제안한다. 사진 묶음 공유 datalist는 초점 이동 때 현장별 갱신, 아파트 작업명도 재사용한다. hjLabelGaps는 한국 날짜로 빈 사진 후보를 읽고 hjLabelGapView는 강제 안전판 뒤 여전히 빈 사진만 setWorkLabel로 채운다. 20장부터 오늘 챙길 일에 안내한다.
+- 신규5/5, v404변이0/5, 관련·정적 최종28/28 파일 통과. 기존 apt-unit-assign의 현장만 제안 기대는 새 지시서의 전체 빈도·사전 확장에 맞춰 갱신했고 나머지 보호는 유지(7/7). 읽기 리뷰 통과. CI는 PR에서 확인.
+
 ## 2026-10-12 v404 현장 이름 자동완성·유사 경고
 
 - hjProjNameList/hjNormName/hjSimilarProjects로 세 입력칸 후보와 유사 현장 선택을 추가했다. hjSimilarView에서 기존 열기·명시적 새로 생성, hjInquirySubmit/Create로 기존 현장 빈 고객 칸·문의 기록만 채운다. 더보기 prompt는 datalist가 있는 창으로 바꾸었다.
