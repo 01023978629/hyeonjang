@@ -28,7 +28,14 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   page.on('pageerror', e => errs.push(String(e)));
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  // v400 자료 복원·설정·운영 부팅과 저장 큐가 끝난 뒤 검사 자료를 만든다.
+  await page.waitForFunction(() => !!window.__hjOfficeOpsBootDone);
+  await page.evaluate(async () => {
+    await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]);
+    window.taxCalendarEnsure = () => 0; window.coworkSchedEnsure = () => false;
+    aiOpsEnsureState().enabled = false;
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+  });
 
   await test('드라이브 병합은 PC 원본과 같은 Drive 사진의 빈 기록을 새로 만들지 않는다 (정보 다름·되돌리기·폰은 예전대로)', async () => {
     const r = await page.evaluate(() => {
@@ -91,15 +98,22 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       state.payLog = [{ id: 'pl1', project: '효성혜링턴 105동501호', amount: 100000, date: '2026-06-01' }];
       state.files = [{ id: 'f1', name: 'a.jpg', kind: 'photo', ext: 'jpg', size: 10, prefix: '현장사진/', project: '삼성아파트 21동 301호', when: new Date('2026-06-01'), handle: null, _file: null, _virtual: true, text: '', ocr: 'na' }];
       render();
+      const beforePlan = serializeData(); beforePlan.savedAt = '';
       const c = hjAptLegacyCandidates();
-      let snaps = 0; const orig = hjSnapshot; window.hjSnapshot = async (...a) => { snaps++; return orig(...a); };
-      let done; try { done = await hjAptLegacyMergeApply(c); } finally { window.hjSnapshot = orig; }
+      let snaps = 0, changedKeys = []; const orig = hjSnapshot;
+      window.hjSnapshot = async (...a) => {
+        snaps++; const result = await orig(...a); const afterSnapshot = serializeData(); afterSnapshot.savedAt = '';
+        changedKeys = [...new Set([...Object.keys(beforePlan), ...Object.keys(afterSnapshot)])].filter(k => paidStableJson(beforePlan[k]) !== paidStableJson(afterSnapshot[k]));
+        return result;
+      };
+      let done; try { done = await hjAptLegacyMergeApply(c); } catch(error) { error.message += " / 합치기 계획 전·안전판 뒤 바뀐 키: " + (changedKeys.join(", ") || "(없음)"); throw error; } finally { window.hjSnapshot = orig; }
       const sam = state.projects.find(p => p.name === '삼성아파트');
-      return { ok: c.filter(x => x.ok).map(x => x.name), blocked: c.filter(x => !x.ok).map(x => x.name), done: done.length, snaps,
+      return { ok: c.filter(x => x.ok).map(x => x.name), blocked: c.filter(x => !x.ok).map(x => x.name), done: done.length, snaps, changedKeys,
         units: aptUnitList(sam).map(u => u.dong + '-' + u.ho), phases: sam.phases, file: [state.files[0].project, state.files[0]._aptUnit && state.files[0]._aptUnit.unitId === aptUnitList(sam)[0].id],
         archived: state.projects.filter(p => p.archived).map(p => p.name).sort(), hyo: state.projects.find(p => p.name === '효성혜링턴 105동501호').archived || false,
         mug: aptUnitList(state.projects.find(p => p.name === '무궁화아파트')).length };
     });
+    if (r.done !== 2) console.log('합치기 계획 전/안전판 뒤 바뀐 최상위 키:', r.changedKeys.join(', ') || '(없음)');
     assert(JSON.stringify(r.ok) === JSON.stringify(['삼성아파트 21동 301호', '무궁화아파트 202동903호']), '합칠 대상: ' + JSON.stringify(r));
     assert(['열매마을 704-1102', '목양마을아파트 1502호', '효성혜링턴 105동501호'].every(n => r.blocked.includes(n)), '추정·연결 기록 현장은 막아야 한다: ' + JSON.stringify(r.blocked));
     assert(r.snaps === 1, '안전판은 한 번만: ' + r.snaps);
