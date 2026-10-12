@@ -38,6 +38,10 @@
     --shadow:0 1px 2px rgba(15,36,56,.04), 0 14px 34px -22px rgba(13,78,162,.45); --r:10px;
   }
   [data-office-intake-status][data-office-intake-mode="stale"]{color:var(--warn)!important}
+  /* v399 안내와 카드 배경을 함께 테마에 맞춰 작은 글씨도 읽을 수 있게 한다. */
+  :root{--hj-warn-fg:#b45309;--hj-info-fg:#0b4ea2;--hj-ok-fg:#0a7f43;--hj-danger-fg:#c2410c;--hj-warn-bg:#fffbeb;--hj-danger-bg:#fff5f5;--hj-warn-border:#fcd34d;--hj-danger-border:#fca5a5}
+  body.dark{--hj-warn-fg:#fbd38d;--hj-info-fg:#8fc3ff;--hj-ok-fg:#71dbac;--hj-danger-fg:#ffb99c;--hj-warn-bg:rgba(140,91,14,.18);--hj-danger-bg:rgba(145,48,48,.18);--hj-warn-border:#80612b;--hj-danger-border:#855151}
+  body.dark #dashboardCompanyTeam,body.dark .hjAdLink{color:var(--blueprint)}
   body.dark{
     --ink:#e8eef5; --paper:#0f1822; --paper-2:#17222e; --line:#2f6fd0; --line-soft:#2a3a4d;
     --clay:#3a8bf0; --clay-soft:#5b9bf0; --blueprint:#6ab0ff; --blueprint-2:#3a8bf0;
@@ -55,7 +59,7 @@
   .tbl-scroll::-webkit-scrollbar{height:6px}
   .tbl-scroll::-webkit-scrollbar-thumb{background:#c8d3e0;border-radius:3px}
   body.dark .thumb,body.dark .ph,body.dark .drop,body.dark .empty,body.dark .phasebar,body.dark .photo-bar,body.dark .stagedist .sd{background:#1c2836}
-  body.dark input,body.dark select{background:#1c2836;color:var(--ink)}
+  body.dark input,body.dark select,body.dark textarea{background:#1c2836;color:var(--ink)}
   body.dark .restorebar{background:#1c2f44}
   body.dark .help-quick,body.dark .pv-canvas{background:#1c2836}
   /* 다크모드 안내문구 가독성: 어두운 회색 글씨를 밝게 */
@@ -3268,7 +3272,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v398-reviewfix2';
+const APP_BUILD='hyeonjang-v399-darkfix';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -12767,7 +12771,7 @@ function hjDayCloseView(){
     (d.mat.length>5?'<p class="hint" style="margin:0 0 4px">외 '+(d.mat.length-5)+'건</p>':'')+
     (d.matPlan?'<p data-dc-matplan style="font-size:12.5px;color:#b45309;margin:2px 0 6px">📋 발주 점검: 다음 7일 공정 중 납품 기록 없는 것 '+d.matPlan+'개</p>':'')+'<div style="display:flex;gap:6px">'+btn('ghost','data-dc-mat','🚚 납품 확인')+'</div>';   // v368·v373
   if(d.promo.length)body+=h4('📣 완공 현장 홍보 — 안 올린 채널 '+d.promo.reduce((a,r)=>a+r.missing.length,0)+'개')+   // v378
-    d.promo.slice(0,4).map(r=>row('<span data-dc-promo>'+escapeHtml(r.name)+' <span style="color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span><br><span style="font-size:12px;color:#b45309">남은 곳: '+r.missing.map(hjAdChName).join('·')+'</span></span>','')).join('')+
+    d.promo.slice(0,4).map(r=>row('<span data-dc-promo>'+escapeHtml(r.name)+' <span style="color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span><br><span style="font-size:12px;color:var(--hj-warn-fg)">남은 곳: '+r.missing.map(hjAdChName).join('·')+'</span></span>','')).join('')+
     (d.promo.length>4?'<p class="hint" style="margin:0 0 4px">외 '+(d.promo.length-4)+'곳</p>':'')+
     '<div style="display:flex;gap:6px">'+btn('ghost','data-dc-ads','📣 광고 관리')+'</div>';
   {const S=d.sales||{inqToday:[],noSched:[],wait:[],follow:0};   // v391 📞 영업
@@ -13517,7 +13521,7 @@ function hjQuoteWaitingHtml(){
   let l=[];try{l=hjQuoteWaiting();}catch(e){return '';}
   if(!l.length)return '';
   return '<div id="dashboardQuoteWaiting" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px">'+
-    '<span style="flex:1 1 180px;min-width:0;color:#0b4ea2">🧾 실측 끝, 견적 안 쓴 현장 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
+    '<span style="flex:1 1 180px;min-width:0;color:var(--hj-info-fg)">🧾 실측 끝, 견적 안 쓴 현장 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
     '<button type="button" class="ghost" data-qwait="'+escapeAttr(l[0])+'" style="min-height:44px;padding:0 10px">🧾 '+escapeHtml(hjCut(l[0],10))+' 견적 쓰기</button></div>';
 }
 function hjHandoffOffer(s,back){
@@ -23593,8 +23597,8 @@ async function quoteFollowup(){
   }
   const items=rows.map(q=>{
     const hot=q.days<=7;
-    return '<div style="padding:12px;border:1px solid '+(hot?'#fcd34d':'var(--line-soft)')+';border-radius:11px;margin-bottom:8px;background:'+(hot?'#fffbeb':'var(--paper)')+'">'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(q.title)+'</b><span style="font-size:11px;font-weight:700;color:'+(hot?'#b45309':'var(--muted)')+'">'+q.days+'일 경과'+(hot?' 🔥':'')+'</span></div>'+
+    return '<div style="padding:12px;border:1px solid '+(hot?'var(--hj-warn-border)':'var(--line-soft)')+';border-radius:11px;margin-bottom:8px;background:'+(hot?'var(--hj-warn-bg)':'var(--paper)')+'">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(q.title)+'</b><span style="font-size:11px;font-weight:700;color:'+(hot?'var(--hj-warn-fg)':'var(--muted)')+'">'+q.days+'일 경과'+(hot?' 🔥':'')+'</span></div>'+
       '<div style="font-size:11.5px;color:var(--muted);margin-bottom:7px">'+q.date+' 작성·보냄 · '+hjMan(q.total)+(q.place?' · '+escapeHtml(q.place):'')+(q.project?' · <span class="qfProj">📂 '+escapeHtml(q.project)+' ('+STAGES[Math.min(3,Math.max(0,((state.projects||[]).find(x=>x&&x.name===q.project)||{}).stage||0))]+')</span>':'')+'</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="qfSms clay tiny" data-q="'+escapeAttr(q.id)+'" style="min-height:44px;padding:0 12px">📩 팔로업 문자 보내기</button>'+
       '<button type="button" class="qfWon ghost tiny" data-q="'+escapeAttr(q.id)+'" style="min-height:44px;padding:0 12px">🎉 수주</button>'+closeBox(q)+'</div>'+
@@ -23998,8 +24002,8 @@ async function staleProjects(){
   }
   const items=rows.map(r=>{
     const severe=r.days===null||r.days>=30;
-    return '<div style="padding:12px;border:1px solid '+(severe?'#fca5a5':'#fcd34d')+';border-radius:11px;margin-bottom:8px;background:'+(severe?'#fff5f5':'#fffbeb')+'">'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(r.name)+'</b><span style="font-size:11px;font-weight:700;color:'+(severe?'#c2410c':'#b45309')+'">'+(r.days===null?'활동 기록 없음':r.days+'일째 조용')+'</span></div>'+
+    return '<div style="padding:12px;border:1px solid '+(severe?'var(--hj-danger-border)':'var(--hj-warn-border)')+';border-radius:11px;margin-bottom:8px;background:'+(severe?'var(--hj-danger-bg)':'var(--hj-warn-bg)')+'">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(r.name)+'</b><span style="font-size:11px;font-weight:700;color:'+(severe?'var(--hj-danger-fg)':'var(--hj-warn-fg)')+'">'+(r.days===null?'활동 기록 없음':r.days+'일째 조용')+'</span></div>'+
       '<div style="font-size:11.5px;color:var(--muted)">'+(STAGES_KO[r.stage]||'진행')+' 단계'+(r.last?' · 마지막 활동 '+r.last:'')+'</div>'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
       (r.customer&&r.customer.phone?'<button class="stpSms clay tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px">📩 진행 상황 안부</button>':'')+
@@ -24007,7 +24011,7 @@ async function staleProjects(){
       '<button class="stpArc ghost tiny" data-n="'+escapeAttr(r.name)+'" style="padding:7px 12px" title="목록에서 접어둡니다 — 자료는 그대로, 왼쪽 목록 [보관]에서 되돌릴 수 있어요">📦 보관</button>'+
       (r.legacyOf?'<button class="stpLegacy ghost tiny" style="padding:7px 12px" title="'+escapeAttr(r.legacyOf)+'의 동·호수로 합치고 이 현장은 보관">🏢 단지로 합치기</button>':'')+
       (r.pick?'<span class="stpWork" style="font-size:11px;align-self:center">🛠 작업 사진 '+r.work.n+'장 · 마지막 '+escapeHtml(r.work.last?r.work.last.slice(5):'날짜 없음')+'</span>':'')+
-      (r.doneHint?'<span class="stpHint" style="font-size:11px;color:#0a7f43;align-self:center">📷 \'완료\' 사진 있음</span>':'')+
+      (r.doneHint?'<span class="stpHint" style="font-size:11px;color:var(--hj-ok-fg);align-self:center">📷 \'완료\' 사진 있음</span>':'')+
       (r.openQuote?'<button type="button" class="stpQf ghost tiny" data-n="'+escapeAttr(r.name)+'" style="min-height:44px;padding:0 12px" title="답 없는 견적 — 팔로업하거나 종결하세요">⏰ 답 없는 견적 '+escapeHtml(r.openQuote.slice(5))+'</button>':'')+   // v392
       (!r.empty?'<label class="stpPick" style="display:inline-flex;align-items:center;gap:6px;min-height:44px;font-size:12px;cursor:pointer"><input type="checkbox" class="stpChk" data-n="'+escapeAttr(r.name)+'" style="width:20px;height:20px"> 한꺼번에 완료</label>':'')+
       (r.empty?'<span style="font-size:11px;color:var(--muted);align-self:center">기록 없는 빈 현장'+(r.legacyOf?' · '+escapeHtml(r.legacyOf)+'의 옛 호수 현장':'')+'</span>':'')+
@@ -30408,7 +30412,7 @@ function hjInquiryView(prefill){
       '<textarea id="inqText" rows="3" placeholder="예: 베란다 우수관 아래로 물이 샘, 이번 주 방문 희망" style="width:100%;padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">'+escapeHtml(v.text)+'</textarea>'+
       '<label for="inqSrc" style="font-size:11.5px;color:var(--muted)">어디서 보고 연락하셨나요?</label>'+
       '<select id="inqSrc" style="width:100%;min-height:44px;padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 6px">'+hjLeadSrcOptions(v.src)+'</select>'+
-      '<div id="inqDup" hidden style="font-size:12.5px;color:#b45309;margin:6px 0 0"></div>'+
+      '<div id="inqDup" hidden style="font-size:12.5px;color:var(--hj-warn-fg);margin:6px 0 0"></div>'+
     '</div>',
     [{label:'취소',cls:'ghost',fn:closeModal},
      {label:'📥 등록',cls:'clay',fn:()=>{
@@ -30446,7 +30450,7 @@ function hjInquiryPendingHtml(){
   let l=[];try{l=hjInquiryPending();}catch(e){return '';}
   if(!l.length)return '';
   return '<div id="dashboardInquiryPending" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px">'+
-    '<span style="flex:1 1 180px;min-width:0;color:#b45309">📥 다음 일정 안 잡힌 문의 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
+    '<span style="flex:1 1 180px;min-width:0;color:var(--hj-warn-fg)">📥 다음 일정 안 잡힌 문의 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
     '<button type="button" class="ghost" data-inqsched="'+escapeAttr(l[0])+'" style="min-height:44px;padding:0 10px">🗓 '+escapeHtml(hjCut(l[0],10))+' 일정 잡기</button></div>';
 }
 function hjInquiryNext(pj){
@@ -30459,7 +30463,7 @@ function hjInquiryNext(pj){
 function hjAdCaseLine(p){
   const st=hjAdCaseStatus(p.name);
   return '<div class="adCaseLine" style="margin-top:9px;font-size:12.5px;overflow-wrap:anywhere">📣 사례 홍보 '+
-    (st.posted.length?'<span style="color:#0a7f43">✓ '+st.posted.map(hjAdChName).join('·')+'</span>':'<span style="color:var(--muted)">아직 올린 곳 없음</span>')+
+    (st.posted.length?'<span style="color:var(--hj-ok-fg)">✓ '+st.posted.map(hjAdChName).join('·')+'</span>':'<span style="color:var(--muted)">아직 올린 곳 없음</span>')+
     (st.missing.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+st.missing.map(function(id){const c=AD_CH.find(function(x){return x.id===id;})||{ic:'',n:id};
       return '<button class="mini-btn" data-adcase="'+id+'" data-adproj="'+escapeAttr(p.name)+'">'+c.ic+' '+c.n+'</button>';}).join('')+'</div>':' · 다섯 곳 모두 올렸어요')+
   '</div>';
@@ -30474,10 +30478,10 @@ function hjAdCaseHtml(){
     rows.map(function(r){
       return '<div class="adCaseRow" data-proj="'+escapeAttr(r.name)+'" style="padding:8px 0 2px;border-top:1px dashed var(--line-soft);margin-top:7px">'+
         '<div style="font-size:12.5px;min-width:0;overflow-wrap:anywhere"><b>'+escapeHtml(r.name)+'</b> <span style="font-size:11px;color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span>'+
-        (r.posted.length?' <span class="adCaseDone" style="font-size:11px;color:#0a7f43">✓ '+r.posted.map(function(id){return chOf(id).n;}).join('·')+'</span>':'')+'</div>'+
+        (r.posted.length?' <span class="adCaseDone" style="font-size:11px;color:var(--hj-ok-fg)">✓ '+r.posted.map(function(id){return chOf(id).n;}).join('·')+'</span>':'')+'</div>'+
         (r.missing.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+r.missing.map(function(id){const c=chOf(id);
           return '<button class="ghost tiny adCaseCh" data-adcase="'+id+'" data-adproj="'+escapeAttr(r.name)+'" style="min-height:44px;padding:0 11px">'+c.ic+' '+c.n+'</button>';}).join('')+'</div>'
-          :'<div style="font-size:11.5px;color:#0a7f43;margin-top:4px">다섯 곳 모두 올렸어요</div>')+
+          :'<div style="font-size:11.5px;color:var(--hj-ok-fg);margin-top:4px">다섯 곳 모두 올렸어요</div>')+
       '</div>';
     }).join('')+
     '<div class="hint" style="margin:8px 0 0;font-size:11px">채널을 누르면 그 현장 원고가 열려요. 올린 뒤 원고 창 [게시 기록에 추가]를 누르면 ✓ 로 바뀝니다. 🏠 만물 웹은 📰 사례 내보내기가 열리고, 홈페이지에 올라간 것을 확인한 뒤 [🏠 웹 게시 표시]를 누르면 ✓ 입니다(앱이 직접 올리지는 않아요).</div>'+
@@ -30495,7 +30499,7 @@ function viewAds(){
   const folderN=(state.files||[]).filter(function(f){return String(f.prefix||'').indexOf('광고/')===0;}).length;
   let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
     '<span class="hint" style="margin:0">채널별 포스팅 기록을 남겨 홍보 흐름을 관리해요.'+(folderN?' · 📁 광고 폴더 파일 '+folderN+'개':'')+'</span>'+
-    '<a class="ghost tiny" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
+    '<a class="ghost tiny hjAdLink" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px">'+chips+'</div>';
   html+=hjAdCaseHtml();
   html+=hjLeadSrcHtml();   // v379
@@ -30512,7 +30516,7 @@ function viewAds(){
       '<span style="font-size:15px">'+ch.ic+'</span>'+
       '<span style="flex:1;min-width:0;font-size:12.5px"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(p.title||'(제목 없음)')+'</b><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml(p.date||'')+(p.project?' · 🏗 '+escapeHtml(p.project):'')+(p.memo?' · '+escapeHtml(p.memo):'')+(p.res&&p.res.memo?' · '+escapeHtml(p.res.memo):'')+'</span></span>'+
       '<button class="'+(inq?'blue':'ghost')+' tiny" data-adperf="'+escapeAttr(p.id)+'" style="padding:7px 9px" title="이 게시글 성과 기록">📈'+(inq?' '+inq:'')+'</button>'+
-      (p.url?'<a class="ghost tiny" href="'+escapeAttr(p.url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 9px">🔗</a>':'')+
+      (p.url?'<a class="ghost tiny hjAdLink" href="'+escapeAttr(p.url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 9px">🔗</a>':'')+
       '<button class="ghost tiny" data-addel="'+escapeAttr(p.id)+'" style="padding:7px 9px;color:#b91c1c">🗑</button>'+
     '</div>';
   }).join(''):'<div style="text-align:center;color:var(--muted);padding:22px;font-size:12.5px">'+ch.n+' 기록이 아직 없어요.<br><span style="font-size:11.5px">올린 글의 날짜·제목·링크를 남겨두면 다음 홍보 계획이 쉬워져요.</span></div>';
