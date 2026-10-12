@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v378 📣 사례 홍보를 현장 상세·오늘 마감·이름 바꾸기에 잇기 (Claude Cowork, v377 위 — PR 대기)
+
+- v377 의 홍보 현황은 광고 탭에서만 보였고, 현장 이름을 바꾸거나 지우면 홍보 기록(adPosts.project)이 옛 이름에 남아 ✓ 가 사라졌다. 버전 핀 `hyeonjang-v378-adcase`.
+- `hjProjectRefWalk`·`HJ_PROJECT_REF_LABELS`('홍보 기록')·`hjProjectTombstonesOf`·`hjTombBackupEvidence` 에 `adPosts` — 이름 바꾸기는 새 이름으로, 지우기는 '(삭제됨) 이름 · 날짜' 로 남기고 선택 복원이 다시 잇는다.
+- 현장 상세 🎉 준공 관리 카드 안 `hjAdCaseLine(p)` — '📣 사례 홍보 ✓ 인스타·당근' + 남은 채널 `[data-adcase][data-adproj]` 버튼(그 현장·채널 원고). 준공 전 현장엔 없음. `hjAdCaseStatus(name)` 한 곳이 광고 탭 현황과 같이 쓴다.
+- 🌙 오늘 마감 `d.promo` = 2주 안 완공 현장 중 남은 채널이 있는 곳 → '📣 완공 현장 홍보 — 안 올린 채널 N개'·남은 곳, `[data-dc-ads]` → 광고 탭. 읽기 전용.
+- 새 `tests/adcase-v378.e2e.js` 4/4(v377 에서는 0/4). 관련 14개(adlocal-v377·dayclose-v359·delete-due·project-rename·v328-integration·warranty-review·photo-refs 등)·정적 검사 통과.
+
 ## 2026-10-12 v377 📣 지역 채널 원고 · 🏁 완공 현장 홍보 현황 (Claude Cowork, v376 위 — PR 대기)
 
 - 대표가 최근 사례를 인스타·당근·네이버 지도·카카오맵·만물 웹에 올리려 할 때, 광고 탭에는 스레드·인스타·메타·블로그만 있어 지역 채널 원고를 매번 손으로 썼고, 어느 현장을 어디까지 올렸는지 볼 곳이 없었다. 버전 핀 `hyeonjang-v377-adlocal`.
