@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v393-contactpick';
+const APP_BUILD='hyeonjang-v394-custfill';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8190,6 +8190,52 @@ function hjContactPickWire(button,name,phone){
     finally{button.disabled=false;}
   };
 }
+/* v394 최근 현장 중 연락처가 빠진 곳만 모아 채운다. 후보 조회는 저장본을 바꾸지 않는다. */
+function hjCustMissing(days=90){
+  const today=new Date(localDate()+'T00:00:00'),limit=Math.max(0,Number(days)||0);
+  const recent=d=>{if(!d||isNaN(d.getTime()))return false;const age=today-new Date(localDate(d)+'T00:00:00');return age>=0&&age<=limit*86400000;};
+  return (state.projects||[]).filter(p=>{
+    if(!p||p.archived||hjCustDigits((p.customer||{}).phone).length>=9)return false;
+    const stage=p.stage||0;
+    return stage>=0&&stage<3?recent(projLastActivity(p.name)):stage===3&&isRealIsoDate(p.doneAt)&&recent(new Date(p.doneAt+'T00:00:00'));
+  }).sort((a,b)=>hjCustActivityTime(b)-hjCustActivityTime(a)).map(p=>p.name);
+}
+/* v394 완료 기록만 있는 현장도 마지막 날짜를 보여 줄 수 있도록 준공일을 보조로 쓴다. */
+function hjCustActivityTime(p){const d=projLastActivity(p.name);return d?d.getTime():(isRealIsoDate(p.doneAt)?new Date(p.doneAt+'T00:00:00').getTime():0);}
+function hjCustMissingHtml(){
+  const n=hjCustMissing().length;if(!n)return '';
+  return '<div id="dashboardCustMissing" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px"><span style="flex:1 1 180px;min-width:0">👤 연락처 없는 현장 '+n+'곳</span><button type="button" class="ghost" data-custfill style="min-height:44px;padding:0 10px">👤 채우기</button></div>';
+}
+/* v394 변경 전 안전판이 성공해야 이름·연락처만 저장한다. 빈칸은 기존 값을 지우지 않는다. */
+function hjCustFillView(){
+  const names=hjCustMissing(),ps=names.map(n=>state.projects.find(p=>p.name===n));
+  const body='<div id="custFill" style="overflow-wrap:anywhere">'+(ps.length?ps.map((p,i)=>{
+    const cu=p.customer||{},at=hjCustActivityTime(p);
+    return '<div class="cfRow" data-i="'+i+'" style="padding:10px 0;border-bottom:1px solid var(--line-soft)"><b>'+escapeHtml(p.name)+'</b><div class="hint">'+escapeHtml(STAGES[p.stage||0])+' · 마지막 활동 '+(at?localDate(new Date(at)):'기록 없음')+'</div>'+
+      '<label for="cfName'+i+'">이름</label><input id="cfName'+i+'" value="'+escapeAttr(cu.name||'')+'" style="width:100%;min-height:44px;font-size:16px;margin:4px 0 8px">'+
+      '<label for="cfPhone'+i+'">연락처</label><input id="cfPhone'+i+'" inputmode="tel" value="'+escapeAttr(cu.phone||'')+'" style="width:100%;min-height:44px;font-size:16px;margin:4px 0 8px">'+
+      (contactsPickerSupported()?'<button type="button" class="ghost cfPick" style="min-height:44px">📇 주소록에서 고르기</button>':'')+'</div>';
+  }).join(''):'<p>연락처를 채울 현장이 없어요.</p>')+'</div>';
+  let busy=false;
+  openModal('👤 연락처 빈 현장 '+names.length+'곳',body,[{label:'닫기',cls:'ghost',fn:closeModal},{label:'저장',cls:'clay',fn:async()=>{
+    if(busy)return;
+    const box=document.getElementById('custFill'),changes=[];
+    for(let i=0;i<ps.length;i++){
+      const ne=box.querySelector('#cfName'+i),pe=box.querySelector('#cfPhone'+i),name=ne.value.trim(),phone=pe.value.trim(),p=ps[i],cu=p.customer||{};
+      if(phone&&hjCustDigits(phone).length<9){hjFieldIssue(pe,'연락처 숫자를 확인하세요 (예: 010-1234-5678)');return;}
+      if((name&&name!==String(cu.name||''))||(phone&&phone!==String(cu.phone||'')))changes.push({p,name,phone});
+    }
+    if(!changes.length){toast('0곳 저장');return;}
+    busy=true;
+    try{
+      if(!await hjSnapshot('연락처 모아 채우기 전',true)){toast('안전판을 저장하지 못했어요. 다시 시도해 주세요');return;}
+      if(!box.isConnected||changes.some(c=>!state.projects.includes(c.p))){toast('현장 정보가 바뀌었어요. 다시 열어 주세요');return;}
+      changes.forEach(c=>{if(c.name)setCustomer(c.p.name,'name',c.name);if(c.phone)setCustomer(c.p.name,'phone',c.phone);});
+      render();hjCustFillView();toast(changes.length+'곳 저장');
+    }finally{busy=false;}
+  }}],true);
+  document.querySelectorAll('#custFill .cfRow').forEach(row=>{const i=row.dataset.i;hjContactPickWire(row.querySelector('.cfPick'),row.querySelector('#cfName'+i),row.querySelector('#cfPhone'+i));});
+}
 function hjCustQuickView(pjName,opts){
   const p=(state.projects||[]).find(x=>x&&x.name===pjName);
   if(!p){toast('현장을 찾을 수 없어요');return false;}
@@ -9159,6 +9205,7 @@ function dashboardTodoHTML(){
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
     // 사례 후보는 첫 화면에 — 더보기 안에만 두면 "어느 현장을 아직 안 보냈나"를 폰에서 다시 못 본다(v254 폰 첫 화면 규칙).
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
+    hjCustMissingHtml()+     // v394 연락처 빈 최근 현장
     hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
@@ -23755,7 +23802,7 @@ async function dataHealth(){
       '<div style="font-size:11px;color:#0a7f43">💡 '+tip+'</div>'+
     '</div>';
   };
-  const cats=cat('📞','연락처 없는 현장',d.issues.noPhone,'연락처를 넣으면 문자·팔로업·리뷰 요청을 쓸 수 있어요')+
+  const cats=cat('📞','연락처 없는 현장',d.issues.noPhone,'연락처를 넣으면 문자·팔로업·리뷰 요청을 쓸 수 있어요'+(hjCustMissing().length?'<br><button type="button" id="healthCustFill" class="ghost" style="min-height:44px;margin-top:6px">👤 채우기</button>':''))+
     cat('🙍','고객명 없는 현장',d.issues.noCustomer,'고객명을 넣으면 반복 고객·단골 관리가 정확해져요')+
     cat('📅','완공일 없는 완료 현장',d.issues.noDoneAt,'완공일을 넣으면 보증 만료·리뷰 요청이 자동 작동해요')+
     cat('🧾','견적 없는 진행 현장',d.issues.noEstimate,'견적을 등록하면 마진·예산 경고가 정확해져요');
@@ -23766,6 +23813,7 @@ async function dataHealth(){
       '<div style="text-align:center;padding:20px"><div style="font-size:40px">✨</div><div style="margin-top:8px;font-size:14px">데이터가 아주 깔끔해요!</div><div style="font-size:12px;color:var(--muted);margin-top:6px">모든 현장에 필요한 정보가 잘 채워져 있습니다.</div></div>')+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 각 현장을 열어 빠진 정보를 채우세요. 데이터가 탄탄할수록 AI가 더 똑똑하게 도와드려요.</div>';
   openModal('🧯 데이터 건강 검진',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const fill=document.getElementById('healthCustFill');if(fill)fill.onclick=()=>hjCustFillView();
   return {점수:d.score,보완항목:d.total};
 }
 
@@ -34782,7 +34830,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -35023,6 +35071,7 @@ function setupDelegation(){
     if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
     if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
     if(d.addraft!==undefined){e.stopPropagation();return adDraftOpen(d.addraft);}
+    if(d.custfill!==undefined){e.stopPropagation();return hjCustFillView();}   // v394
     if(d.qwait!==undefined){e.stopPropagation();return hjQuoteStartFor(d.qwait);}   // v389
     if(d.inqsched!==undefined){e.stopPropagation();return hjInquirySchedOpen(d.inqsched);}   // v386 (v391 hjInquirySchedOpen 으로 묶음)
     if(d.adcase!==undefined){e.stopPropagation();if(d.adcase==='web')return casePackView(d.adproj||'');return adDraftOpen(d.adcase,d.adproj||'');}   // v385 만물 웹 = 📰 사례 내보내기(사진·6항목·EXIF 제거 ZIP)
