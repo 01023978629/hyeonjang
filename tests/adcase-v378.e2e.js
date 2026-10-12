@@ -55,7 +55,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const text = line ? line.firstChild.textContent + line.children[0].textContent : '';
       const btns = line ? [...line.querySelectorAll('[data-adcase]')].map(b => b.dataset.adcase + '|' + b.dataset.adproj) : [];
       const w = document.documentElement.scrollWidth - document.documentElement.clientWidth;
-      line.querySelector('[data-adcase="web"]').click();
+      line.querySelector('[data-adcase="naverplace"]').click();   // v385 부터 만물 웹 버튼은 📰 사례 내보내기를 연다(caseweb-v385)
       const draft = { proj: document.getElementById('adDraftProj').value, ch: (document.querySelector('#adDraftChs .blue') || {}).dataset.draftch };
       closeModal(true);
       state.activeProject = '가상아파트E'; render();
@@ -64,7 +64,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { text, btns, w, draft, none };
     });
     assert(/📣 사례 홍보 ✓ 인스타·당근/.test(r.text) && JSON.stringify(r.btns) === JSON.stringify(['naverplace|가상아파트A', 'kakaomap|가상아파트A', 'web|가상아파트A']) && r.w <= 0, '줄: ' + JSON.stringify(r));
-    assert(r.draft.proj === '가상아파트A' && r.draft.ch === 'web' && r.none, '원고·준공 전: ' + JSON.stringify(r));
+    assert(r.draft.proj === '가상아파트A' && r.draft.ch === 'naverplace' && r.none, '원고·준공 전: ' + JSON.stringify(r));
   });
 
   await test('② 현장 이름 바꾸기 — 홍보 기록도 새 이름(확인 창에 \'홍보 기록 3건\'), ✓ 유지', async () => {

@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v384-consultquote';
+const APP_BUILD='hyeonjang-v385-casewebmark';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -25595,6 +25595,7 @@ async function hjCaseTagSave(p,tags){
   toast('사진 '+(nb+na)+'장에 공정을 붙였어요 — '+PHASE_SIDE_NAME.before+' '+nb+' · '+PHASE_SIDE_NAME.after+' '+na+' (되돌리기: 더보기 › 🛡 안전판)');
   return {n:nb+na,before:nb,after:na};
 }
+function hjCaseWebPosted(name){return (state.adPosts||[]).some(function(x){return x&&x.ch==='web'&&x.project===name;});}
 function casePackView(projectName){
   const alive=(typeof state!=='undefined'&&Array.isArray(state.projects))?state.projects.filter(x=>x&&x.name):[];
   // 끝난 현장이 곧 사례 후보다 — 보관 현장을 빼면 이 기능이 제일 필요한 때 못 쓴다.
@@ -25647,6 +25648,13 @@ function casePackView(projectName){
   openModal('📰 사례 내보내기 — '+escapeHtml(p.name),body,
     [{label:'📋 재료 복사',cls:'ghost',fn:()=>{const why=hjCaseBlock(live());if(why){toast(why);return;}hjSiteCopy(hjCaseText(live()),'사례 재료를 복사했습니다 — 사진은 「📦 ZIP」으로 따로 보내세요');}},
      {label:'📦 ZIP 만들기',cls:'clay',fn:()=>hjCaseZip(live())},
+     // v385 홈페이지에 올라간 뒤 한 번 — 광고 탭 🏁 완공 현장 홍보·현장 준공 관리의 '만물 웹' 이 ✓ 가 된다(같은 현장은 한 번만 적는다)
+     {label:hjCaseWebPosted(p.name)?'🏠 웹 게시됨 ✓':'🏠 웹 게시 표시',cls:'ghost',fn:()=>{
+        if(hjCaseWebPosted(live().name)){toast('이미 만물 웹 게시로 표시돼 있어요');return;}
+        state.adPosts=state.adPosts||[];
+        state.adPosts.push({id:uid(),ch:'web',date:localDate(),title:'사례: '+(hjCaseVal(live(),hjCaseData(live()),'place')||live().name),url:'',memo:'사례 내보내기',project:live().name});
+        markDirty();toast('🏠 만물 웹 게시로 표시했어요 — 🏁 홍보 현황에 ✓');casePackView(live().name);
+      }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjModalTapTargets();
   const root=document.getElementById('modalRoot');
@@ -34840,7 +34848,7 @@ function setupDelegation(){
     if(d.adadd!==undefined){e.stopPropagation();return adPostAdd(d.adadd);}
     if(d.addel!==undefined){e.stopPropagation();state.adPosts=(state.adPosts||[]).filter(x=>x.id!==d.addel);markDirty();render();return;}
     if(d.addraft!==undefined){e.stopPropagation();return adDraftOpen(d.addraft);}
-    if(d.adcase!==undefined){e.stopPropagation();return adDraftOpen(d.adcase,d.adproj||'');}
+    if(d.adcase!==undefined){e.stopPropagation();if(d.adcase==='web')return casePackView(d.adproj||'');return adDraftOpen(d.adcase,d.adproj||'');}   // v385 만물 웹 = 📰 사례 내보내기(사진·6항목·EXIF 제거 ZIP)
     if(d.adperf!==undefined){e.stopPropagation();return adPerfOpen(d.adperf);}
     if(d.routinego!==undefined){e.stopPropagation();return hjRoutineGo(d.routinego);}
     if(d.cwtax!==undefined){e.stopPropagation();try{coworkTaskView('cw_tax');}catch(e2){}return;}

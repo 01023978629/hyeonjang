@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v385 '만물 웹' 홍보 칩 → 📰 사례 내보내기 · 웹 게시 표시 (Claude Cowork, v384 위 — PR 대기)
+
+- v377 의 만물 웹 칩은 '사례 재료' 원고 창을 열었지만, 홈페이지 사례의 실제 길은 v321 📰 사례 내보내기(사진 선택·6항목·EXIF 제거 ZIP)다. 웹에 올린 뒤 ✓ 를 남길 곳도 없었다. 버전 핀 `hyeonjang-v385-casewebmark`.
+- 클릭 위임 `data-adcase==='web'` → `casePackView(현장)`(광고 탭 🏁·현장 준공 관리 둘 다). 다른 채널은 그대로 원고 창.
+- 사례 내보내기 바닥 버튼 `[🏠 웹 게시 표시]` → adPosts 에 {ch:'web', project, title:'사례: 동네+단지', memo:'사례 내보내기'} 한 번(`hjCaseWebPosted` — 이미 있으면 '🏠 웹 게시됨 ✓', 더 안 적음) → 🏁 홍보 현황 ✓.
+- `tests/adcase-v378.e2e.js` ① 원고 칩을 web → naverplace 로(동작 바뀜). 새 `tests/caseweb-v385.e2e.js` 2/2(v384 에서는 0/2). 관련 case-pack·marketing-safety·photo-refs·adlocal-v377·mobile-more-tools·정적 검사 통과.
+
 ## 2026-10-12 v384 상담·실측 끝 → 견적 (Claude Cowork, v383 위 — PR 대기)
 
 - 상담·실측을 다녀와 보고해도 견적은 견적 작성 탭에서 새로 시작해 현장을 다시 골라야 했고, 현장 단계는 '상담'에 그대로 남았다. 버전 핀 `hyeonjang-v384-consultquote`.
