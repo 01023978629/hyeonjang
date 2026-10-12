@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v396-stalepick';
+const APP_BUILD='hyeonjang-v397-contactdedupe';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -34526,41 +34526,10 @@ function exportAllVCF(){
 function contactsPickerSupported(){
   return ('contacts' in navigator) && ('ContactsManager' in window) && navigator.contacts && typeof navigator.contacts.select==='function';
 }
-async function importPhoneContacts(){
-  if(!contactsPickerSupported()){
-    toast('이 기기는 주소록 불러오기를 지원하지 않습니다 — 안드로이드 크롬에서 사용하세요(아이폰·PC는 미지원).');
-    return;
-  }
-  try{
-    const props=['name','tel'];
-    // email·회사도 기기가 지원하면 함께 요청
-    try{ const avail=await navigator.contacts.getProperties(); ['email'].forEach(p=>{if(avail.includes(p)&&!props.includes(p))props.push(p);}); }catch(_){}
-    const picked=await navigator.contacts.select(props,{multiple:true});
-    if(!picked||!picked.length){toast('선택된 연락처가 없습니다.');return;}
-    let added=0, dup=0;
-    const existPhones=new Set((state.contacts||[]).map(c=>telHref(c.phone)).filter(Boolean));
-    for(const p of picked){
-      const name=(p.name&&p.name[0])?String(p.name[0]).trim():'';
-      const phoneRaw=(p.tel&&p.tel[0])?String(p.tel[0]).trim():'';
-      const email=(p.email&&p.email[0])?String(p.email[0]).trim():'';
-      if(!name&&!phoneRaw)continue;
-      const key=telHref(phoneRaw);
-      if(key&&existPhones.has(key)){dup++;continue;}   // 같은 번호 중복 방지
-      state.contacts.push({id:uid(),name,phone:phoneRaw,company:'',title:'',email,memo:'폰 주소록에서 가져옴'});
-      if(key)existPhones.add(key);
-      added++;
-    }
-    markDirty();render();
-    toast(`📥 ${added}명 추가`+(dup?` · 중복 ${dup}명 건너뜀`:'')+(added?' — 주소록에 저장됨':''));
-  }catch(e){
-    // 사용자가 취소하면 보통 빈 배열이지만, 일부 기기는 예외 → 조용히 처리
-    if(String(e&&e.name)==='AbortError'||String(e&&e.name)==='InvalidStateError')return;
-    toast('주소록 불러오기 실패: '+(e.message||e));
-  }
-}
+/* v397 뒤에서 가려지던 중복 선언을 없애고 실제 동작의 지원 판정을 공유한다. */
 // 폰 주소록에서 불러오기 (Contact Picker API — 안드로이드 크롬 등에서만 지원, 아이폰 사파리·PC는 미지원)
 async function importPhoneContacts(){
-  if(!('contacts' in navigator)||!navigator.contacts||!navigator.contacts.select){
+  if(!contactsPickerSupported()){
     toast('폰 연락처 불러오기는 안드로이드 크롬에서만 됩니다. 아이폰·PC는 직접 추가하거나 명함 촬영을 쓰세요.');
     return;
   }
