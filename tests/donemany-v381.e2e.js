@@ -40,8 +40,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const P = (name, x) => Object.assign({ name, stage: 0, received: 0, phases: [], cost: {}, customer: {} }, x || {});
     state.projects = [P('가상현장S1'), P('가상현장S2', { doneAtPrev: '2026-07-10' }), P('가상현장S3')];
     state.files = [
-      { key: 'f1', name: 'f1.jpg', prefix: '현장사진/', kind: 'photo', project: '가상현장S1', worklabel: '작업 완료', when: '2026-06-20T03:00:00.000Z' },
-      { key: 'f2', name: 'f2.jpg', prefix: '현장사진/', kind: 'photo', project: '가상현장S1', worklabel: '철거', when: '2026-06-18T03:00:00.000Z' }
+      { key: 'f1', name: 'f1.jpg', prefix: '현장사진/', kind: 'photo', project: '가상현장S1', _worklabel: '작업 완료', when: '2026-06-20T03:00:00.000Z' },
+      { key: 'f2', name: 'f2.jpg', prefix: '현장사진/', kind: 'photo', project: '가상현장S1', _worklabel: '철거', when: '2026-06-18T03:00:00.000Z' }
     ];
     state.schedule = [{ id: 'r1', date: '2026-06-01', time: '09:00', title: '타일', project: '가상현장S2', workers: '', memo: '', hours: 8, report: null }];
     state.tab = 'dashboard'; state.activeProject = null; render();

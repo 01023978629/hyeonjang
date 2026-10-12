@@ -132,7 +132,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     await base();
     const r = await page.evaluate(() => {
       state.projects = [{ name: '가상완공', stage: 3, received: 0, phases: ['타일'], cost: {}, customer: {}, doneAt: '2026-11-01' }];
-      state.files = [{ key: 'f1', name: 'f1.jpg', prefix: '현장사진/', kind: 'photo', project: '가상완공', worklabel: '청소 정리' }];
+      state.files = [{ key: 'f1', name: 'f1.jpg', prefix: '현장사진/', kind: 'photo', project: '가상완공', _worklabel: '청소 정리' }];
       adDraftOpen('daangn', '가상완공');
       const ph = (document.getElementById('adDraftPhotos') || {}).textContent || '';
       const hasBtn = !!document.getElementById('adDraftPh');

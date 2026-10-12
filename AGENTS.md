@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v401 사진 작업명 메모리 필드 고침
+
+- 저장 필드 이름을 읽던 hjAdPhotoUsable·staleProjectData doneHint·hjStaleWorkPhotos를 hjPhotoLabel로 통일했다. 추천 집계는 정리·청소 사진도 제외한다. 저장/복원 변환은 유지하고 실제 메모리 시드 5개를 교정했다.
+- 신규 labelfield-v401 3/3, v400 변이 0/3(정리 제외·완료 힌트·작업 장수 모두 실패), 관련·정적 30/30 파일 통과. 읽기 전용 리뷰·diff 검사 완료. CI는 PR에서 확인.
+
 ## 2026-10-12 v400 불안정 검사 대기 조건 보완
 
 - followup-v343·snapshot-restore-guard는 부팅 promise와 저장 큐 뒤 시더를 중립화한다. multi-tab-guard ③은 탭2 IDB 저장 전진·스탬프 일치 후 탭1 stale을 기다린다. 기존 가드/단언은 유지하고 실패 진단만 추가했다. 앱은 버전핀만 변경.

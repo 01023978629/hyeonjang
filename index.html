@@ -3272,7 +3272,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v400-flakywait';
+const APP_BUILD='hyeonjang-v401-labelfield';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -23931,7 +23931,7 @@ function hjStaleWorkPhotos(name){
   let n=0,last='';
   (state.files||[]).forEach(f=>{
     if(!f||f.project!==name||f.kind!=='photo')return;
-    const label=String(f.worklabel||f.phase||'').trim();if(!label||HJ_PREWORK_RE.test(label))return;
+    const label=hjPhotoLabel(f);if(!label||HJ_PREWORK_RE.test(label)||!hjAdPhotoUsable(f))return;
     n++;if(!f.when)return;const d=new Date(f.when);if(isNaN(d.getTime()))return;
     const day=localDate(d);if(day>last)last=day;
   });
@@ -23957,7 +23957,7 @@ function staleProjectData(){
       try{const c=hjProjectRefCount(p.name);empty=!Object.keys(c).some(k=>c[k]>0);}catch(e){}
       try{const base=(state.projects||[]).find(q=>q!==p&&!q.archived&&aptUnitManaged(q)&&p.name.replace(/\s+/g,'').indexOf(q.name.replace(/\s+/g,''))===0&&p.name.length>q.name.length);if(base)legacyOf=base.name;}catch(e){}
       // v381 사진 분류에 '완료·완성·준공'이 있으면 끝난 현장일 가능성이 높다 — 줄에 표시해 [완료] 판단을 돕는다
-      const doneHint=(state.files||[]).some(f=>f&&f.project===p.name&&f.kind==='photo'&&HJ_STALE_DONE_RE.test(String(f.worklabel||f.phase||'')));
+      const doneHint=(state.files||[]).some(f=>f&&f.project===p.name&&f.kind==='photo'&&HJ_STALE_DONE_RE.test(hjPhotoLabel(f)));
       out.push({name:p.name,stage:p.stage,days,last:last?last.getFullYear()+'-'+pad2(last.getMonth()+1)+'-'+pad2(last.getDate()):null,customer:p.customer||{},empty,legacyOf,doneHint,openQuote:oq,work:hjStaleWorkPhotos(p.name),pick:(p.stage||0)<=1&&!empty&&days!==null&&days>=30&&!oq&&hjStaleWorkPhotos(p.name).n>=1});
     }
   });
@@ -30328,7 +30328,9 @@ function adPostsOf(ch){return (state.adPosts||[]).filter(function(p){return p.ch
    홍보 사진은 '정리·청소'로 분류된 사진을 뺀다(대표 지시 2026-10-11) — 원고 창의 사진 수도 같은 거름. */
 const HJ_AD_CASE_CH=['instagram','daangn','naverplace','kakaomap','web'];
 const HJ_AD_SKIP_PHOTO_RE=/정리|청소/;
-function hjAdPhotoUsable(f){return !HJ_AD_SKIP_PHOTO_RE.test(String((f&&(f.worklabel||f.phase))||''));}
+/* v401 메모리 작업명과 저장 형식의 경계를 공유해 실제 사진 분류를 놓치지 않는다. */
+function hjPhotoLabel(f){return String((f&&(f._worklabel||f._phase||f.worklabel||f.phase))||'').trim();}
+function hjAdPhotoUsable(f){return !HJ_AD_SKIP_PHOTO_RE.test(hjPhotoLabel(f));}
 function hjAdCaseStatus(name){
   const posted=HJ_AD_CASE_CH.filter(function(id){return (state.adPosts||[]).some(function(x){return x&&x.project===name&&x.ch===id;});});
   return {posted:posted,missing:HJ_AD_CASE_CH.filter(function(id){return posted.indexOf(id)<0;})};

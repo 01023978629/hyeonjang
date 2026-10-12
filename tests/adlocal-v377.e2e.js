@@ -51,7 +51,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       { id: 'a3', ch: 'threads', date: '2026-11-02', title: 'A 스레드', url: '', memo: '', project: '가상아파트A' },
       { id: 'a4', ch: 'naverplace', date: '2026-11-02', title: '현장 없는 기록', url: '', memo: '' }
     ];
-    const F = (name, wl) => ({ key: name, name, prefix: '현장사진/', kind: 'photo', project: '가상아파트A', worklabel: wl, phase: wl });
+    const F = (name, wl) => ({ key: name, name, prefix: '현장사진/', kind: 'photo', project: '가상아파트A', _worklabel: wl, _phase: wl });
     state.files = [F('a.jpg', '작업 전'), F('b.jpg', '작업 후 바닥 정리'), F('c.jpg', '청소 완료')];
     window.__adCh = 'threads'; state.tab = 'dashboard'; state.activeProject = null; render();
   });
