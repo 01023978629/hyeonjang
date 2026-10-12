@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v378-adcase';
+const APP_BUILD='hyeonjang-v379-leadsrc';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8174,6 +8174,7 @@ function hjCustQuickView(pjName,opts){
     '<input id="'+id+'" type="text"'+(mode?' inputmode="'+mode+'"':'')+' value="'+escapeAttr(val||'')+'" placeholder="'+escapeAttr(ph)+'" style="width:100%;padding:11px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">';
   const body=(lead?'<p style="margin:0 0 10px;font-size:13.5px">'+escapeHtml(lead)+'</p>':'')+
     field('cqName','고객 이름',cu.name,'예: 김민수')+field('cqPhone','연락처',cu.phone,'010-0000-0000','tel')+field('cqAddr','주소 (선택)',cu.addr,'현장 주소')+
+    '<label for="cqSrc" style="font-size:11.5px;color:var(--muted)">어디서 보고 연락하셨나요? (선택)</label><select id="cqSrc" style="width:100%;min-height:44px;padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">'+hjLeadSrcOptions(p.leadSrc||'')+'</select>'+
     '<p class="hint" style="margin:0">연락처를 넣어 두면 미수 독촉·안부 문자·고객 페이지가 이 번호로 갑니다.</p>';
   openModal('👤 고객 정보 — '+pjName,body,[
     {label:lead?'나중에':'닫기',cls:'ghost',fn:closeModal},
@@ -8181,8 +8182,9 @@ function hjCustQuickView(pjName,opts){
     {label:'저장',cls:'clay',fn:()=>{
       const n=document.getElementById('cqName').value.trim(),ph=document.getElementById('cqPhone').value.trim(),a=document.getElementById('cqAddr').value.trim();
       if(ph&&hjCustDigits(ph).length<9){hjFieldIssue(document.getElementById('cqPhone'),'연락처 숫자를 확인하세요 (예: 010-1234-5678)');return;}
-      if(!n&&!ph&&!a){hjFieldIssue(document.getElementById('cqName'),'이름이나 연락처를 넣어 주세요');return;}
-      setCustomer(pjName,'name',n);setCustomer(pjName,'phone',ph);setCustomer(pjName,'addr',a);
+      const src=(document.getElementById('cqSrc')||{}).value||'';
+      if(!n&&!ph&&!a&&!src){hjFieldIssue(document.getElementById('cqName'),'이름이나 연락처를 넣어 주세요');return;}
+      setCustomer(pjName,'name',n);setCustomer(pjName,'phone',ph);setCustomer(pjName,'addr',a);hjSetLeadSrc(pjName,src);   // v379 문의 경로
       closeModal();render();toast('👤 '+pjName+' 고객 정보를 저장했어요');
     }}
   ]);
@@ -29963,6 +29965,35 @@ function hjAdCaseRows(days,limit){
 }
 function hjAdChName(id){const c=AD_CH.find(function(x){return x.id===id;});return c?c.n:id;}
 /* v378 현장 상세 🎉 준공 관리 안의 📣 사례 홍보 줄 — 올린 채널 ✓ · 남은 채널 버튼(누르면 그 현장·채널 원고). 읽기 전용. */
+/* v379 📞 문의 경로 — 현장(고객)이 어디서 보고 연락했는지 p.leadSrc 에 하나 고른다(모르면 비움). 광고 탭이 채널별로 세어
+   '어느 채널이 실제 손님을 데려오나'를 게시 기록(📈 수기 입력) 없이도 보인다. 고객 정보 칸·👤 빠른 입력 창에서 고른다. */
+const HJ_LEAD_SRC=[['daangn','🥕 당근'],['naverplace','📍 네이버 지도'],['kakaomap','🗺 카카오맵'],['instagram','📷 인스타'],['web','🏠 만물 웹'],
+  ['blog','✍️ 네이버 블로그'],['threads','🧵 스레드'],['referral','🤝 소개'],['repeat','🔁 다시 맡긴 고객'],['office','🏢 관리사무소'],['etc','기타']];
+function hjLeadSrcLabel(id){const x=HJ_LEAD_SRC.find(function(r){return r[0]===id;});return x?x[1]:'';}
+function hjLeadSrcOptions(cur){
+  return '<option value="">— 모름 —</option>'+HJ_LEAD_SRC.map(function(r){return '<option value="'+r[0]+'"'+(r[0]===cur?' selected':'')+'>'+r[1]+'</option>';}).join('');
+}
+function hjSetLeadSrc(name,v){
+  const p=(state.projects||[]).find(function(x){return x&&x.name===name;});if(!p)return false;
+  const ok=HJ_LEAD_SRC.some(function(r){return r[0]===v;});
+  if(ok){if(p.leadSrc===v)return true;p.leadSrc=v;}else{if(!('leadSrc' in p))return true;delete p.leadSrc;}
+  markDirty();return true;
+}
+// 채널별 문의 수 — 보관 아닌 현장의 leadSrc. 많은 순, 같으면 HJ_LEAD_SRC 순. unknown = 경로를 모르는 현장 수.
+function hjLeadSrcStats(){
+  const ps=(state.projects||[]).filter(function(p){return p&&!p.archived;});
+  const rows=HJ_LEAD_SRC.map(function(r,i){return {id:r[0],label:r[1],i:i,n:ps.filter(function(p){return p.leadSrc===r[0];}).length};})
+    .filter(function(x){return x.n>0;}).sort(function(a,b){return b.n-a.n||a.i-b.i;});
+  return {rows:rows,known:rows.reduce(function(a,x){return a+x.n;},0),unknown:ps.filter(function(p){return !HJ_LEAD_SRC.some(function(r){return r[0]===p.leadSrc;});}).length};
+}
+function hjLeadSrcHtml(){
+  const st=hjLeadSrcStats();
+  return '<div class="adLeadSrc" style="border:1px solid var(--line-soft);border-radius:13px;padding:10px 12px;margin:0 0 12px;background:var(--paper);font-size:12.5px;overflow-wrap:anywhere">'+
+    '<b>📞 문의 경로</b> <span style="color:var(--muted);font-size:11.5px">· 현장 '+st.known+'곳 앎 · 모름 '+st.unknown+'곳</span>'+
+    (st.rows.length?'<div style="margin-top:5px">'+st.rows.map(function(x){return '<span class="adLeadN" style="display:inline-block;margin:0 10px 3px 0">'+x.label+' <b>'+x.n+'</b></span>';}).join('')+'</div>'
+      :'<div style="color:var(--muted);margin-top:4px">현장 화면 👤 고객 정보의 [문의 경로]를 골라 두면 채널별로 몇 곳이 왔는지 여기에 쌓여요.</div>')+
+  '</div>';
+}
 function hjAdCaseLine(p){
   const st=hjAdCaseStatus(p.name);
   return '<div class="adCaseLine" style="margin-top:9px;font-size:12.5px;overflow-wrap:anywhere">📣 사례 홍보 '+
@@ -30005,6 +30036,7 @@ function viewAds(){
     '<a class="ghost tiny" href="'+ch.url+'" target="_blank" rel="noopener" style="text-decoration:none;padding:8px 11px">'+ch.ic+' '+ch.n+' 열기 ↗</a></div>';
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px">'+chips+'</div>';
   html+=hjAdCaseHtml();
+  html+=hjLeadSrcHtml();   // v379
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
     '<button class="blue tiny" data-addraft="'+ch.id+'" style="padding:11px 16px;font-weight:700">✍️ 원고 만들기</button>'+
     '<button class="clay tiny" data-adadd="'+ch.id+'" style="padding:11px 16px">＋ 게시 기록</button></div>';
@@ -34180,6 +34212,7 @@ function viewProject(){
         <label>이름<input type="text" data-cust="name" data-proj="${escapeAttr(p.name)}" value="${escapeAttr(cu.name||'')}" placeholder="고객명"></label>
         <label>연락처<input type="text" data-cust="phone" data-proj="${escapeAttr(p.name)}" value="${escapeAttr(cu.phone||'')}" placeholder="010-0000-0000"></label>
         <label>주소<input type="text" data-cust="addr" data-proj="${escapeAttr(p.name)}" value="${escapeAttr(cu.addr||'')}" placeholder="현장 주소"></label>
+        <label>문의 경로<select data-leadsrc="${escapeAttr(p.name)}" style="min-height:44px">${hjLeadSrcOptions(p.leadSrc||'')}</select></label>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         <button class="mini-btn call-btn" data-callcust="${escapeAttr(p.name)}" title="고객에게 전화 걸기">📞 전화</button>
@@ -34693,6 +34726,7 @@ function setupDelegation(){
     if(t.matches('input[data-recv]'))return setReceived(d.recv,t.value);
     if(t.matches('input[data-cost]'))return setCost(d.proj,d.cost,t.value);
     if(t.matches('input[data-cust]'))return setCustomer(d.proj,d.cust,t.value);
+    if(t.matches('select[data-leadsrc]')){hjSetLeadSrc(d.leadsrc,t.value);return;}   // v379 문의 경로
     // 견적 폼 필드
     if(t.id==='qmTitle')return setQuoteField('title',t.value);
     if(t.id==='qmNo')return setQuoteField('no',t.value);

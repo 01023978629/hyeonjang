@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v379 📞 문의 경로 → 광고 탭 채널별 문의 수 (Claude Cowork, v378 위 — PR 대기)
+
+- 홍보 채널을 늘렸지만 '어느 채널이 실제 손님을 데려오나'는 게시 기록마다 📈 문의 수를 손으로 적어야만 보였다(기록 0건). 버전 핀 `hyeonjang-v379-leadsrc`.
+- 현장(고객) 하나에 문의 경로 하나 — `p.leadSrc`(`HJ_LEAD_SRC`: 당근·네이버 지도·카카오맵·인스타·만물 웹·블로그·스레드·소개·다시 맡긴 고객·관리사무소·기타, 모르면 칸 없음). 현장 화면 👤 고객 정보 `select[data-leadsrc]`(view 'change' 위임 → `hjSetLeadSrc`)와 👤 빠른 입력 창 `#cqSrc`(경로만 골라도 저장).
+- 광고 탭 `hjLeadSrcHtml()` — 보관 아닌 현장의 경로별 수(많은 순)·앎/모름(`hjLeadSrcStats`). 읽기 전용. 이름 바꾸기·지우기는 현장 안 칸이라 따라간다.
+- 새 `tests/leadsrc-v379.e2e.js` 3/3(v378 에서는 0/3). 관련 quickinput-v344·adlocal-v377·adcase-v378·marketing-draft·uiux·mobile-friendly-ui·정적 검사 통과.
+
 ## 2026-10-12 v378 📣 사례 홍보를 현장 상세·오늘 마감·이름 바꾸기에 잇기 (Claude Cowork, v377 위 — PR 대기)
 
 - v377 의 홍보 현황은 광고 탭에서만 보였고, 현장 이름을 바꾸거나 지우면 홍보 기록(adPosts.project)이 옛 이름에 남아 ✓ 가 사라졌다. 버전 핀 `hyeonjang-v378-adcase`.
