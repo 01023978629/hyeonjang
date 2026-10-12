@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v404 현장 이름 자동완성·유사 경고
+
+- hjProjNameList/hjNormName/hjSimilarProjects로 세 입력칸 후보와 유사 현장 선택을 추가했다. hjSimilarView에서 기존 열기·명시적 새로 생성, hjInquirySubmit/Create로 기존 현장 빈 고객 칸·문의 기록만 채운다. 더보기 prompt는 datalist가 있는 창으로 바꾸었다.
+- 신규6/6, v403변이0/6, 관련·정적25/25(아파트 검사 포함) 통과, 읽기 리뷰 완료. 중간 아파트 단어 정규화 예시 충돌과 아파트 즉시 생성은 보고서 질문으로 보류하고 기존 동호수 안전 절차를 유지한다. CI는 PR에서 확인.
+
 ## 2026-10-12 v403 오늘 사진 작업 기록
 
 - hjPhotoDayGroups/hjPhotoLogDraft로 사진을 현장별 일정·완료 보고 초안으로 읽는다. 오늘 마감 개별 편집과 hjPhotoLogAll 확인·안전판 저장을 연결했다. saveScheduleEdit는 명시적인 새 초안 report를 markDirty 전에 보존한다. AS 방문·수금·세금은 기존 작업 일정으로 치지 않는다.

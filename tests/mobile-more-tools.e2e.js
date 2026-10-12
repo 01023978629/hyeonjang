@@ -12,7 +12,7 @@ assert(['','dispatch','favorite'].includes(MUTATION));
 // Independent expected contract, not parsed from moreActionHandler or generated from MORE_CATS.
 const TARGETS={
   webbridge:['webWorkCenterOpen'],officeops:['officeOpsView'],officework:['officeWorkListView'],biz:['shareBizCard'],gdrive:['openGdriveSetup'],opendrive:['openDrive'],
-  photobundle:['sendPhotoBundles'],sheet:['exportToSheet'],voice:['voiceMemo'],ai:['aiHelper'],addproject:['addProject'],restore:['openRestore'],
+  photobundle:['sendPhotoBundles'],sheet:['exportToSheet'],voice:['voiceMemo'],ai:['aiHelper'],addproject:['hjProjectQuickAdd'],restore:['openRestore'],
   backups:['backupHistory'],asmanage:['asManage'],aptorders:['aptOrderManage'],pjmap:['allProjectsMap'],fullxlsx:['exportFullXlsx'],activebrief:['aiActiveBrief'],
   opsreport:['opsReport','week'],aiprovider:['aiProviderManage'],llama:['llamaSetup'],autopilot:['aiAutoOperateView'],cowork:['coworkTasksManage'],
   backupcenter:['backupCenter'],claudeinbox:['claudeInboxView'],bulkassign:['bulkAssignCenter'],taxcal:['taxCalendarView'],contractdraft:['contractDraftView'],
@@ -111,7 +111,7 @@ async function capture(t,name){if(!process.env.HJ_MOBILE_MORE_SCREENSHOT_DIR)ret
       }}finally{moreDispatch=nativeDispatch;window.prompt=nativePrompt;for(const fn of Object.keys(saved))window[fn]=saved[fn];state.lastMove=null;}
       await wait(()=>!window.__mobileSheetHistoryRetire);return out;
     },TARGETS);
-    assert.equal(records.length,126);for(const r of records){const [fn,...args]=TARGETS[r.action];assert.deepEqual(r.hits,[{fn,args}],'exact endpoint for '+r.action);assert.equal(r.result,true,'registered successful dispatch '+r.action);assert(r.enabled&&r.width>=43.5&&r.height>=43.5,'enabled 44px menu chip '+r.action);if(r.action==='ledgertab')assert.equal(r.tab,'ledger');if(r.action==='adstab')assert.equal(r.tab,'ads');if(['ledgertab','adstab'].includes(r.action))assert.equal(r.project,null);if(r.action==='addproject')assert.equal(r.newProject,'가상 신규 현장');}
+    assert.equal(records.length,126);for(const r of records){const [fn,...args]=TARGETS[r.action];assert.deepEqual(r.hits,[{fn,args}],'exact endpoint for '+r.action);assert.equal(r.result,true,'registered successful dispatch '+r.action);assert(r.enabled&&r.width>=43.5&&r.height>=43.5,'enabled 44px menu chip '+r.action);if(r.action==='ledgertab')assert.equal(r.tab,'ledger');if(r.action==='adstab')assert.equal(r.tab,'ads');if(['ledgertab','adstab'].includes(r.action))assert.equal(r.project,null);}
     await readonly(t,before);
   });
   await run('잘못된 최근사용·즐겨찾기 저장값을 안전하게 읽고 제한',async t=>{

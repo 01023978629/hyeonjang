@@ -28,7 +28,7 @@ const ONLY=(process.env.HJ_SWEEP_ONLY||'').split(',').filter(Boolean);
 
 /* 화면을 띄우지 않는 메뉴 — 고칠 수 없는 예외라 이유를 적는다. 이 둘이 나중에 화면을 띄우면 검사가 떨어진다
    (허용목록이 낡으면 알려 준다). 20개를 넘기면 보고할 것.
-   (v330) addproject(브라우저 prompt 한 줄)는 빠졌다 — PROMPT_FLOW 가 prompt 를 스텁해 끝까지 탄다(현장이 실제로 생기고
+   (v404) addproject는 FORM_FLOW가 자동완성 창의 취소·추가를 끝까지 탄다(현장이 실제로 생기고
    그 현장 화면(#view)을 같은 자로 잰다, 취소하면 아무것도 안 생긴다). */
 const NO_SCREEN={
   opendrive:'구글 드라이브 만물 폴더를 새 창(window.open)으로 연다 — 앱 밖이다',
@@ -43,8 +43,8 @@ const SHEET={ai:'#aiSheet'};
 const EXTRA_MODALS=[['자재 발주서','materialOrder("fake-q1")','.moChk'],
   ['설정 전 탭','openGdriveSetup()','summary','.setTab'],
   ['고객 페이지','portalView("가상 가아파트 101동 1001호")','summary']];
-/* 브라우저 prompt 로 받는 메뉴 — [prompt 에 돌려줄 값, 끝난 뒤 확인하는 식(참이어야 함)] */
-const PROMPT_FLOW={addproject:['가상 새 현장 스윕','state.projects.some(p=>p.name==="가상 새 현장 스윕")&&state.activeProject==="가상 새 현장 스윕"']};
+/* 자동완성 입력창을 거치는 메뉴 — [입력값, 추가 뒤 확인하는 식] */
+const FORM_FLOW={addproject:['가상 새 현장 스윕','state.projects.some(p=>p.name==="가상 새 현장 스윕")&&state.activeProject==="가상 새 현장 스윕"']};
 /* 막아 둔 외부 호출 중 불려도 되는 것 */
 const ALLOW_EXTERNAL={opendrive:['window.open']};
 
@@ -196,21 +196,22 @@ async function sweep(page,errors,mobile,width=360){
     if(res.modal)scope='#modalRoot';
     else if(SHEET[action]&&res.sheet)scope=SHEET[action];
     else if(VIEW_TAB[action]&&res.tab===VIEW_TAB[action])scope='#view';
-    if(PROMPT_FLOW[action]){
-      // prompt 를 스텁해 한 번은 취소(아무것도 안 생김), 한 번은 값을 넣는다. 그다음 그려진 #view 를 같은 자로 잰다.
-      // 위에서 [더보기] 칩으로 한 번 이미 눌렀다(전역 prompt 스텁은 null = 취소) — 그때 무엇이든 생겼으면 취소가 안 먹은 것이다.
+    if(FORM_FLOW[action]){
+      // v404 prompt 대신 자동완성 입력창. 취소 불변·명시적 추가·실제 화면 검증은 유지한다.
       const pr=await page.evaluate(async ({action,val,ok})=>{const leaked=state.projects.some(p=>p.name===val);state.projects=state.projects.filter(p=>p.name!==val);
-        const n0=state.projects.length;const keep=window.prompt;let asked=0;
-        const run=async(ret)=>{window.prompt=(m)=>{asked++;return ret;};try{await Promise.resolve(moreActionHandler(action));}finally{window.prompt=keep;}};
-        await run(null);const cancelKept=state.projects.length===n0;
+        const n0=state.projects.length;let asked=0;const formAudit=__sweepAudit('#modalRoot');closeModal(true);
+        const wait=async()=>{const until=Date.now()+5000;while(__mobileSheetHistoryRetire){if(Date.now()>until)throw Error('form close timeout');await new Promise(requestAnimationFrame);}};
+        const run=async(ret)=>{await wait();await Promise.resolve(moreActionHandler(action));const input=document.getElementById('hjQuickProj');if(!input)throw Error('quick project form missing');asked++;
+          if(ret!==null)input.value=ret;[...document.querySelectorAll('#modalRoot .mfoot button')].find(b=>b.textContent===(ret===null?'취소':'추가')).click();await wait();};
+        await run(null);const cancelKept=state.projects.length===n0&&!document.getElementById('hjQuickProj')&&!document.querySelector('#modalRoot .modal');
         await run(val);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-        const done=!!(0,eval)(ok);const audit=__sweepAudit('#view');
+        const done=!!(0,eval)(ok);const audit=[...formAudit,...__sweepAudit('#view')];
         state.projects=state.projects.filter(p=>p.name!==val);state.activeProject='가상 가아파트 101동 1001호';render();
-        return {asked,cancelKept:cancelKept&&!leaked,done,audit};},{action,val:PROMPT_FLOW[action][0],ok:PROMPT_FLOW[action][1]});
-      if(pr.asked!==2)fail('prompt 가 '+pr.asked+'번 불렸다(2 기대)');
-      if(!pr.cancelKept)fail('prompt 를 취소했는데 현장이 생겼다');
-      if(!pr.done)fail('prompt 에 넣은 값으로 끝나지 않았다');
-      for(const x of pr.audit)fail('(추가 뒤 화면) '+x);
+        return {asked,cancelKept:cancelKept&&!leaked,done,audit};},{action,val:FORM_FLOW[action][0],ok:FORM_FLOW[action][1]});
+      if(pr.asked!==2)fail('입력창이 '+pr.asked+'번 열렸다(2 기대)');
+      if(!pr.cancelKept)fail('입력창을 취소했는데 현장이 생겼다');
+      if(!pr.done)fail('입력한 값으로 현장 추가가 끝나지 않았다');
+      for(const x of pr.audit)fail('(현장 추가 화면) '+x);
       opened++;continue;
     }
     if(NO_SCREEN[action]){
@@ -234,7 +235,7 @@ async function sweep(page,errors,mobile,width=360){
     }
   }
   if(errors.length)failures.push('['+tag+'] pageerror: '+errors.slice(0,5).join(' | '));
-  const expectOpened=(ONLY.length?ONLY:actions).filter(a=>!NO_SCREEN[a]).length;   // PROMPT_FLOW 도 '연 화면'으로 센다
+  const expectOpened=(ONLY.length?ONLY:actions).filter(a=>!NO_SCREEN[a]).length;   // FORM_FLOW 도 '연 화면'으로 센다
   if(opened!==expectOpened)failures.push('['+tag+'] 연 화면 '+opened+' ≠ 기대 '+expectOpened);
   console.log((failures.length===before?'PASS ':'FAIL ')+tag+': 화면 '+opened+'개 열어 잼(화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개)');
 }
