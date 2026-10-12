@@ -19,15 +19,15 @@ async function test(n,fn){try{await fn();results.push(true);console.log('PASS '+
  });
  const row=n=>page.locator('.efRow').filter({has:page.locator('b',{hasText:new RegExp('^'+n+'$')})});
  await test('① 날짜 우선순위·최신 파일·대상·기간·조회 불변',async()=>{
-  await seed();const r=await page.evaluate(()=>{const before=__snap(),rows=hjEstFileFollowData();return {rows,same:before===__snap(),expected:[__ago(6),__ago(10),__ago(12),__ago(15),__ago(20),__ago(40)]};});
-  assert.deepEqual(r.rows.map(r=>r.project),['수주대상','날짜','이름','파일시각','잘못된날짜','오래됨']);assert.deepEqual(r.rows.map(r=>r.date),r.expected);assert.deepEqual(r.rows.map(r=>r.days),[6,10,12,15,20,40]);assert.equal(r.rows[1].amount,1200000);assert.equal(r.rows[3].amount,0);assert(r.rows.every(r=>!('phone'in r)));assert(r.same);
+  await seed();const r=await page.evaluate(()=>{const before=__snap(),rows=hjEstFileFollowData();return {rows,same:before===__snap(),expected:[__ago(6),__ago(10),__ago(12),__ago(15),__ago(20),__ago(40),__ago(366)]};});
+  assert.deepEqual(r.rows.map(r=>r.project),['수주대상','날짜','이름','파일시각','잘못된날짜','오래됨','일년밖']);assert.deepEqual(r.rows.map(r=>r.date),r.expected);assert.deepEqual(r.rows.map(r=>r.days),[6,10,12,15,20,40,366]);assert.equal(r.rows[1].amount,1200000);assert.equal(r.rows[3].amount,0);assert(r.rows.every(r=>!('phone'in r)));assert(r.same);
  });
  await test('실제 Date 객체와 저장·복원 뒤 파일 날짜',async()=>{
   await seed();const r=await page.evaluate(()=>{const f=state.files.find(f=>f.project==='파일시각');f.when=new Date(__ago(15)+'T12:00:00');const first=hjEstFileFollowData().find(r=>r.project==='파일시각').date;const saved=serializeData();applyData(saved);const restored=state.files.find(f=>f.project==='파일시각');return {first,after:hjEstFileFollowData().find(r=>r.project==='파일시각').date,isDate:restored.when instanceof Date,expected:__ago(15)};});assert.equal(r.first,r.expected);assert.equal(r.after,r.expected);assert(r.isDate);
  });
  await test('② 파일 묶음·문자·종결·수주 단계·44px',async()=>{
   await seed();const r=await page.evaluate(async()=>{window.__quotesBefore=JSON.stringify(state.quotes);window.__sms=[];window.hjSendSms=(phone,text)=>__sms.push({phone,text});const result=await quoteFollowup();return {result,text:document.querySelector('.modal').textContent,heights:[...document.querySelectorAll('#estFileFollow button:not(.efReason)')].map(b=>b.getBoundingClientRect().height),w:document.querySelector('.modal').scrollWidth-document.querySelector('.modal').clientWidth};});
-  assert.equal(r.result.팔로업,6);assert.equal(r.result.종결대상,1);assert(r.text.includes('📄 견적서 파일'));assert(r.text.includes('팔로업 대기 6건'));assert(r.text.includes('30일 지난 파일 1건'));assert(r.heights.length===18&&r.heights.every(h=>h>=44));assert(r.w<=0);
+  assert.equal(r.result.팔로업,6);assert.equal(r.result.종결대상,2);assert(r.text.includes('📄 견적서 파일'));assert(r.text.includes('팔로업 대기 6건'));assert(r.text.includes('30일 지난 파일 2건'));assert(r.heights.length===21&&r.heights.every(h=>h>=44));assert(r.w<=0);
   await row('날짜').locator('.efSms').click();const sms=await page.evaluate(()=>__sms);assert.equal(sms[0].phone,'010-0000-0000');assert(sms[0].text.includes('날짜 견적'));
   await row('날짜').locator('.efClose').click();assert((await row('날짜').locator('.efReason').first().boundingBox()).height>=44);await row('날짜').locator('.efReason').filter({hasText:'가격'}).click();assert.equal(await row('날짜').count(),0);assert(await page.evaluate(()=>state.projects[0].estClosed.at===localDate()&&state.projects[0].estClosed.reason==='가격'&&JSON.stringify(state.quotes)===__quotesBefore));
   await row('수주대상').locator('.efWon').click();assert.equal(await page.locator('#modalRoot h3').textContent(),'🎉 수주 — 수주대상');assert(!(await page.locator('#quoteWonNext').textContent()).includes('수주로 표시했어요'));

@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v398 검토 F1~F9·N1 고침
+
+- quoteEditDirty 기본값 비교, hjQuoteFollowDay 한국 날짜 공유, hjQuoteHasContent 빈 견적 제외, 기간 상한 제거, quoteStatus 종결 우선, hjProjectActionValid 현장 객체 재검증을 추가했다. 수주율 분모·문의 문구·홍보 전체 집계·주소록 빈 이름 보존도 고쳤다.
+- 신규 reviewfix-v398 10/10, v397 변이 0/10. 관련 20개·정적 18개 통과. F3의 365일 상한 제거에 맞춰 quote-flow·estfollow-v395의 건수/목록/버튼 기대를, F9에 맞춰 inqpending-v386 문구 기대를 변경했다. 날짜 기준 변경에 맞춰 행 표기도 작성·보냄으로 수정. 리뷰와 diff 검사 통과. CI는 PR에서 확인.
+
 ## 2026-10-12 v397 주소록 불러오기 중복 선언 정리
 
 - 뒤 선언에 가려진 importPhoneContacts 앞 정의를 제거하고 contactsPickerSupported로 지원 판정을 공유한다. 실제 뒤 정의의 토스트·중복·취소 동작은 유지했다.

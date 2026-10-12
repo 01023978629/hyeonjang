@@ -1,8 +1,8 @@
-/* inqpending-v386.e2e.js — v386 대시보드 [📞 새 문의 받기] + '📥 상담 일정 안 잡힌 문의' (Playwright)
+/* inqpending-v386.e2e.js — v386 대시보드 [📞 새 문의 받기] + '📥 다음 일정 안 잡힌 문의' (Playwright)
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'.
    · 대시보드 '✅ 오늘 현장 업무' 첫 버튼 [📞 새 문의 받기] → v383 새 문의 창.
    · 상담 단계(보관 아님)·고객 연락처 있음·[문의 접수]/[홈페이지 상담 리드] 메모 또는 카카오 문의로 들어왔고, 오늘 이후 일정이 없는 현장 →
-     '📥 상담 일정 안 잡힌 문의 N곳 — 이름…' + 첫 곳 [🗓 일정 잡기](다음 작업일 10:00 상담·실측). 없으면 줄 없음. 읽기 전용. 오늘은 2026-11-05(목) 고정. */
+     '📥 다음 일정 안 잡힌 문의 N곳 — 이름…' + 첫 곳 [🗓 일정 잡기](다음 작업일 10:00 상담·실측). 없으면 줄 없음. 읽기 전용. 오늘은 2026-11-05(목) 고정. */
 'use strict';
 let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
@@ -59,7 +59,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const inq = document.querySelector('#modalRoot h3').textContent; closeModal(true);
       return { list, line, first, w, sch, inq };
     });
-    assert(JSON.stringify(r.list) === JSON.stringify(['문의A', '카카오C']) && /📥 상담 일정 안 잡힌 문의 2곳 — 문의A · 카카오C/.test(r.line) && /🗓 문의A 일정 잡기/.test(r.line), '줄: ' + JSON.stringify(r));
+    assert(JSON.stringify(r.list) === JSON.stringify(['문의A', '카카오C']) && /📥 다음 일정 안 잡힌 문의 2곳 — 문의A · 카카오C/.test(r.line) && /🗓 문의A 일정 잡기/.test(r.line), '줄: ' + JSON.stringify(r));
     assert(r.sch.h3 === '🗓 상담·실측 일정' && r.sch.title === '상담·실측: 문의A' && r.sch.date === '2026-11-06' && r.first === 'dashboardInquiryOpen' && r.inq === '📞 새 문의 받기' && r.w <= 0, '버튼: ' + JSON.stringify(r));
   });
 
