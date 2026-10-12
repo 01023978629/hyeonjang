@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v405-worklabel';
+const APP_BUILD='hyeonjang-v406-phasehint';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6415,6 +6415,32 @@ async function ensurePhaseDir(projName, phaseName){
   const root=await state.dirHandle.getDirectoryHandle('_정리완료',{create:true});
   const pd=await root.getDirectoryHandle(safeName(projName),{create:true});
   return await pd.getDirectoryHandle(safeName(phaseName),{create:true});
+}
+/* v406 비어 있는 공정 입력을 사진 작업명으로 돕되 선택한 공정만 기존 추가 경로로 저장한다. */
+const HJ_PHASE_MAP=[[/방수|도막/,'방수'],[/배관|우수관|수전|난방|오수|트렌치|밸브/,'설비'],[/미장/,'미장'],[/타일/,'타일'],[/넥산|처마|고정대/,'넥산·처마'],[/실리콘|코킹/,'실리콘'],[/철거/,'철거'],[/도장|페인트/,'도장']];
+const HJ_PHASE_SKIP_RE=/탐사|정리|청소|보양/,HJ_PHASE_NORM_RE=/[\s·-]+/g;
+const HJ_PHASE_HINT_BUSY=new Set();
+function hjPhaseHintKey(label){return hjPhaseLabel(label).toLowerCase().replace(HJ_PHASE_NORM_RE,'');}
+function hjPhasesFromPhotos(name){
+  const p=(state.projects||[]).find(p=>p.name===name&&!p.archived);if(!p)return [];
+  const have=new Set((p.phases||[]).map(hjPhaseHintKey)),counts=new Map();
+  (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||f.project!==name)return;const label=String(f._worklabel||'').trim();if(!label||HJ_PHASE_SKIP_RE.test(label))return;
+    const phases=new Set(HJ_PHASE_MAP.filter(([re])=>re.test(label)).map(([,phase])=>phase));phases.forEach(phase=>{if(!have.has(hjPhaseHintKey(phase)))counts.set(phase,(counts.get(phase)||0)+1);});
+  });
+  return [...counts].map(([phase,n])=>({phase,n})).sort((a,b)=>b.n-a.n||a.phase.localeCompare(b.phase));
+}
+function hjPhaseHintHtml(name){
+  const rows=hjPhasesFromPhotos(name);if(!rows.length)return '';
+  return '<div class="phase-hints" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;overflow-wrap:anywhere"><span>📷 사진에서 읽은 공정: </span>'+rows.map(r=>'<button type="button" class="ghost" data-phasehint="'+escapeAttr(name)+'" data-hintphase="'+escapeAttr(r.phase)+'" style="min-height:44px">+ '+escapeHtml(r.phase)+' ('+r.n+'장)</button>').join('')+'<button type="button" class="clay" data-phasehintall="'+escapeAttr(name)+'" style="min-height:44px">모두 추가</button></div>';
+}
+async function hjPhaseHintAdd(name,phase){
+  if(HJ_PHASE_HINT_BUSY.has(name))return;const p=state.projects.find(p=>p.name===name),stage=p&&(p.stage||0);
+  if(!hjProjectActionValid(p,name,stage,3))return;
+  const rows=hjPhasesFromPhotos(name).filter(r=>!phase||r.phase===phase);if(!rows.length)return;
+  HJ_PHASE_HINT_BUSY.add(name);
+  try{if(!phase&&await hjSnapshot('사진 공정 추가 전',true)!==true){toast('안전판을 저장하지 못했어요. 다시 시도해 주세요');return;}
+    for(const r of rows){if(!hjProjectActionValid(p,name,stage,3))return;if(hjPhasesFromPhotos(name).some(x=>x.phase===r.phase))await addPhase(name,r.phase);}
+  }finally{HJ_PHASE_HINT_BUSY.delete(name);}
 }
 async function addPhase(projName, phaseName){
   const p=state.projects.find(x=>x.name===projName);if(!p)return;
@@ -34910,6 +34936,7 @@ function viewProject(){
     // 공정 관리 바
     html+=`<div class="phasebar">
       <div class="phase-chips">${phases.length?phases.map(ph=>`<span class="phase-chip">${escapeHtml(ph)} <b role="button" tabindex="0" data-delphase="${escapeAttr(ph)}" data-proj="${escapeAttr(p.name)}" title="삭제" aria-label="${escapeAttr(p.name)} ${escapeAttr(ph)} 공정 삭제">×</b></span>`).join(''):'<span class="ph-hint" style="position:static">아직 공정이 없습니다. 예) 철거, 방수 1차, 목공</span>'}</div>
+      ${hjPhaseHintHtml(p.name)}
       <div class="phase-add"><input type="text" data-phaseinput="${escapeAttr(p.name)}" placeholder="공정 추가 (예: 방수 1차)" maxlength="20"><button class="clay tiny" data-addphase="${escapeAttr(p.name)}">추가</button></div>
     </div>`;
     // ===== 날짜별 그룹 (날짜 1차 기준) =====
@@ -35021,7 +35048,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -35227,6 +35254,8 @@ function setupDelegation(){
     if(d.worklog!==undefined){e.stopPropagation();return workView(d.worklog);}
     if(d.trip!==undefined){e.stopPropagation();window.__trip=null;tripView(true);return;}
     if(d.aptreport!==undefined){e.stopPropagation();return aptReportView(d.aptreport);}
+    if(d.phasehint!==undefined){hjPhaseHintAdd(d.phasehint,d.hintphase);return;}
+    if(d.phasehintall!==undefined){hjPhaseHintAdd(d.phasehintall);return;}
     if(d.addphase!==undefined){const inp=view.querySelector(`input[data-phaseinput="${CSS.escape(d.addphase)}"]`);if(inp)addPhase(d.addphase,inp.value);return;}
     if(d.delphase!==undefined)return removePhase(d.proj,d.delphase);
     if(d.light!==undefined){e.stopPropagation();if(__selMode&&t.closest('.ph'))return toggleSel(d.light);return openLightbox(d.light,null);}
