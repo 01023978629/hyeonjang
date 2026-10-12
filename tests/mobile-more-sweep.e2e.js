@@ -128,7 +128,7 @@ async function boot(mobile,width=360){
 async function sweep(page,errors,mobile,width=360){
   const tag=(mobile?'폰 모드':'PC 모드')+' 폭 '+width;
   const actions=await page.evaluate(()=>MORE_CATS.flatMap(c=>c.items.map(i=>i[0])));
-  assert.equal(actions.length,125,'더보기 기능 수(행동 계약 125)');
+  assert.equal(actions.length,126,'더보기 기능 수(행동 계약 126)');
   const confirmSet=await page.evaluate(()=>Object.keys(MORE_RUN_CONFIRM));
   assert.equal(confirmSet.length,5);
   const before=failures.length;let opened=0;
@@ -283,5 +283,5 @@ const parseRgb=s=>{const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(s);if(!m)throw 
     await fontRules(page,'폰 모드 폭 768');await sweep(page,errors,true,768);await context.close();}
   await browser.close();
   if(failures.length){console.error('FAIL mobile-more-sweep — 위반 '+failures.length+'건');for(const f of failures)console.error('  '+f);process.exitCode=1;return;}
-  console.log('== mobile-more-sweep: 폰 모드 360·PC 모드 360·폰 모드 768 각 125개 메뉴 — 위반 0 · 화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개 · '+Math.round((Date.now()-t0)/1000)+'초 ==');
+  console.log('== mobile-more-sweep: 폰 모드 360·PC 모드 360·폰 모드 768 각 126개 메뉴 — 위반 0 · 화면 없음 허용 '+Object.keys(NO_SCREEN).length+'개 · '+Math.round((Date.now()-t0)/1000)+'초 ==');
 })().catch(async e=>{console.error('FAIL mobile-more-sweep',e);if(browser)await browser.close();process.exitCode=1;});

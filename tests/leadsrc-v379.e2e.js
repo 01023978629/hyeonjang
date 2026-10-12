@@ -57,7 +57,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       state.tab = 'dashboard'; state.activeProject = null; render();
       return { opts, w, a, shown, gone };
     });
-    assert(JSON.stringify(r.opts) === JSON.stringify(['', 'daangn', 'naverplace', 'kakaomap', 'instagram', 'web', 'blog', 'threads', 'referral', 'repeat', 'office', 'etc']), '보기: ' + JSON.stringify(r.opts));
+    assert(JSON.stringify(r.opts) === JSON.stringify(['', 'daangn', 'naverplace', 'kakaomap', 'kakaoch', 'instagram', 'web', 'blog', 'threads', 'referral', 'repeat', 'office', 'etc']), '보기: ' + JSON.stringify(r.opts));
     assert(r.a === 'kakaomap' && r.shown === 'kakaomap' && r.gone && r.w <= 0, '저장: ' + JSON.stringify(r));
   });
 

@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v383 📞 새 문의 받기 · 카카오 챗봇 문의 경로 (Claude Cowork, v382 위 — PR 대기)
+
+- 전화·방문 문의는 현장 추가(이름만) → 고객 칸 → 메모 → 일정을 따로 해야 해서 통화 중 받아 적은 내용이 종이에 남았다. 버전 핀 `hyeonjang-v383-inquiry`.
+- 더보기 '고객·영업' 맨 앞 `['inquiry','📞','새 문의 받기']` → `hjInquiryView()` — 고객 이름·연락처·지역(단지 = 현장 이름)·문의 내용·문의 경로. `hjInquiryCreate(d)` 가 현장(상담, 같은 이름이면 ' 2')·📇 연락처(같은 번호 없을 때, tag 고객)·메모 '[문의 접수] 날짜 · 경로'를 만들고, `hjInquiryNext` 에서 [🗓 상담·실측 일정](다음 작업일 10:00)·[📂 현장 열기]. 같은 번호 현장이 있으면 `#inqDup` 로 한 번 알리고 다시 누르면 등록. 이름·연락처 둘 다 없거나 번호가 짧으면 막음.
+- `HJ_LEAD_SRC` 에 `kakaoch`(💬 카카오톡 채널), `kakaoLeadApply` 가 만드는 현장에 `leadSrc:'kakaoch'`.
+- 더보기 메뉴 계약 125 → **126** — mobile-more-tools(TARGETS `inquiry:['hjInquiryView']`)·mobile-more-sweep·mobile-office-connect·board-v351 갱신. leadsrc-v379 보기 목록에 kakaoch.
+- 새 `tests/inquiry-v383.e2e.js` 4/4(v382 에서는 0/4). 관련 메뉴 계약 4개·leadsrc-v379·leadweb-v382·dates-warranty-office·정적 검사 통과.
+
 ## 2026-10-12 v382 홈페이지 상담 리드 → 문의 경로 '만물 웹' (Claude Cowork, v381 위 — PR 대기)
 
 - 홈페이지 상담(#lead=)으로 만든 현장은 문의 경로가 분명한데 v379 [문의 경로]가 비어 '모름'으로 셌다. 버전 핀 `hyeonjang-v382-leadweb`.
