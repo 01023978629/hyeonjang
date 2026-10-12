@@ -3268,7 +3268,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v392-stalequote';
+const APP_BUILD='hyeonjang-v393-contactpick';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -8164,6 +8164,32 @@ function setCustomer(name,field,val){const p=state.projects.find(x=>x.name===nam
    바로 넣는 창을 연다. 저장은 현장 화면 고객 칸과 같은 setCustomer. */
 const __custOffered=new Set();
 function hjCustDigits(v){return String(v||'').replace(/[^0-9]/g,'');}
+/* v393 주소록에서 고른 한 사람은 입력칸에만 채운다. 저장은 각 창의 기존 저장 버튼이 맡는다. */
+async function hjPickOneContact(){
+  if(!contactsPickerSupported())return null;
+  try{
+    const picked=await navigator.contacts.select(['name','tel'],{multiple:false});
+    if(!picked||!picked.length)return null;
+    const c=picked[0],name=String(c.name&&c.name[0]||'').trim(),raw=String(c.tel&&c.tel[0]||'').trim();
+    const digits=hjCustDigits(raw);
+    let phone=raw;
+    if(digits.length===11&&digits.startsWith('010'))phone=digits.slice(0,3)+'-'+digits.slice(3,7)+'-'+digits.slice(7);
+    else if(digits.length===10&&digits.startsWith('01'))phone=digits.slice(0,3)+'-'+digits.slice(3,6)+'-'+digits.slice(6);
+    return {name,phone};
+  }catch(e){
+    if(!e||!['AbortError','InvalidStateError'].includes(e.name))toast('주소록을 열지 못했어요');
+    return null;
+  }
+}
+/* v393 닫힌 창의 늦은 주소록 응답이 다음 창 입력을 바꾸지 않도록 원래 입력칸에만 적용한다. */
+function hjContactPickWire(button,name,phone){
+  if(!button)return;
+  button.onclick=async()=>{
+    button.disabled=true;
+    try{const c=await hjPickOneContact();if(c&&name.isConnected&&phone.isConnected){name.value=c.name;phone.value=c.phone;phone.dispatchEvent(new Event('input',{bubbles:true}));}}
+    finally{button.disabled=false;}
+  };
+}
 function hjCustQuickView(pjName,opts){
   const p=(state.projects||[]).find(x=>x&&x.name===pjName);
   if(!p){toast('현장을 찾을 수 없어요');return false;}
@@ -8173,6 +8199,7 @@ function hjCustQuickView(pjName,opts){
   const field=(id,label,val,ph,mode)=>'<label for="'+id+'" style="font-size:11.5px;color:var(--muted)">'+label+'</label>'+
     '<input id="'+id+'" type="text"'+(mode?' inputmode="'+mode+'"':'')+' value="'+escapeAttr(val||'')+'" placeholder="'+escapeAttr(ph)+'" style="width:100%;padding:11px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">';
   const body=(lead?'<p style="margin:0 0 10px;font-size:13.5px">'+escapeHtml(lead)+'</p>':'')+
+    (contactsPickerSupported()?'<button type="button" id="cqPick" class="ghost" style="min-height:44px;margin-bottom:8px">📇 주소록에서 고르기</button>':'')+
     field('cqName','고객 이름',cu.name,'예: 김민수')+field('cqPhone','연락처',cu.phone,'010-0000-0000','tel')+field('cqAddr','주소 (선택)',cu.addr,'현장 주소')+
     '<label for="cqSrc" style="font-size:11.5px;color:var(--muted)">어디서 보고 연락하셨나요? (선택)</label><select id="cqSrc" style="width:100%;min-height:44px;padding:10px;font-size:16px;border-radius:10px;border:1px solid var(--line-soft);margin:4px 0 10px">'+hjLeadSrcOptions(p.leadSrc||'')+'</select>'+
     '<p class="hint" style="margin:0">연락처를 넣어 두면 미수 독촉·안부 문자·고객 페이지가 이 번호로 갑니다.</p>';
@@ -8188,6 +8215,7 @@ function hjCustQuickView(pjName,opts){
       closeModal();render();toast('👤 '+pjName+' 고객 정보를 저장했어요');
     }}
   ]);
+  hjContactPickWire(document.getElementById('cqPick'),document.getElementById('cqName'),document.getElementById('cqPhone'));
   return true;
 }
 // 견적을 현장에 연결한 직후, 그 현장 고객 이름·연락처가 모두 비었으면 한 번만 묻는다(이 화면에서 같은 현장은 다시 묻지 않음)
@@ -30240,6 +30268,7 @@ function hjInquiryView(prefill){
   let dupFor='';   // v387 중복 알림을 보여 준 번호(숫자만) — 번호를 바꾸면 새 번호로 다시 확인
   openModal('📞 새 문의 받기',
     '<div id="inquiry">'+
+      (contactsPickerSupported()?'<button type="button" id="inqPick" class="ghost" style="min-height:44px;margin-bottom:8px">📇 주소록에서 고르기</button>':'')+
       field('inqName','고객 이름',v.name,'예: 김민수')+field('inqPhone','연락처',v.phone,'010-0000-0000','tel')+
       field('inqArea','지역·단지 (현장 이름이 됩니다)',v.area,'예: 법동 삼호아파트')+
       '<label for="inqText" style="font-size:11.5px;color:var(--muted)">문의 내용</label>'+
@@ -30264,6 +30293,7 @@ function hjInquiryView(prefill){
         closeModal();render();toast('📥 '+pj+' — 문의를 등록했어요');
         hjInquiryNext(pj);
       }}]);
+  hjContactPickWire(document.getElementById('inqPick'),document.getElementById('inqName'),document.getElementById('inqPhone'));
   const ph=document.getElementById('inqPhone');
   if(ph)ph.addEventListener('input',()=>{dupFor='';const box=document.getElementById('inqDup');if(box){box.hidden=true;box.textContent='';}});   // v387 번호를 고치면 옛 알림을 지운다
   return true;
