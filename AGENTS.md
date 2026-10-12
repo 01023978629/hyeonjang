@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v380 💤 방치 현장 '✅ 완료로' → 준공일 고르기 (Claude Cowork, v379 위 — PR 대기)
+
+- 2026-10-08 자료: 사진·작업이 끝난 현장 대부분이 '상담' 단계에 멈춰 있다. 방치 현장 창의 [✅ 완료로]는 setStage 를 바로 불러 누른 날(오늘)이 준공일이 되어, 한 달 전 끝난 현장의 보증·AS·홍보 기간이 오늘부터 셌다. 버전 핀 `hyeonjang-v380-donedate`.
+- `hjDoneDateView(name,suggest,back)` — 준공일 칸(기본값: 내렸던 준공일 doneAtPrev → 마지막 활동일(사진·일정) → 오늘, 오늘 뒤 막음). [✅ 이 날짜로 완료] = `__clPass` 로 준공 체크 창을 건너뛰고 setStage(완료) 뒤 doneAt 을 고른 날로, doneAtPrev 지움 → 방치 현장 창으로 돌아감. [취소]는 아무것도 안 바꿈.
+- 새 `tests/donedate-v380.e2e.js` 2/2(v379 에서는 0/2). 관련 board-v351·health-board·warranty-review·adcase-v378·watchdog·정적 검사 통과.
+
 ## 2026-10-12 v379 📞 문의 경로 → 광고 탭 채널별 문의 수 (Claude Cowork, v378 위 — PR 대기)
 
 - 홍보 채널을 늘렸지만 '어느 채널이 실제 손님을 데려오나'는 게시 기록마다 📈 문의 수를 손으로 적어야만 보였다(기록 0건). 버전 핀 `hyeonjang-v379-leadsrc`.
