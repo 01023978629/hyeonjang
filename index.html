@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v407-reviewfix4';
+const APP_BUILD='hyeonjang-v408-reportfill';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -36474,17 +36474,41 @@ async function sendBiz(){
   }catch(e){if(e&&e.name!=='AbortError')toast('공유하지 못했습니다. 선택 이미지 저장·글 복사로 직접 첨부해 주세요.');}finally{__bizSending=false;}
 }
 /* ═══ v206 📄 관리사무소 완료보고서 (캔버스→PDF, 한글 안전) ═══ */
+/* v408 파일명 대신 실제 사진 작업명·한국 날짜로 보고서 초안을 읽는다. 저장본은 바꾸지 않는다. */
+const HJ_REPORT_CLEAN_RE=/정리|청소/,HJ_REPORT_LATE_RE=/탐사|확인/;
+const HJ_REPORT_AUTO_NAME_RE=/^(?:KakaoTalk[_ -]|IMG[_ -]|DSC)/i,HJ_REPORT_NAME_DAY_RE=/(20\d{2})[_.-]?(\d{2})[_.-]?(\d{2})/;
+function hjReportPhotoGroups(photos){
+  const groups=new Map(),time=f=>{const t=new Date(f&&f.when).getTime();return f&&f.when&&Number.isFinite(t)?t:Infinity;};
+  (photos||[]).filter(f=>f&&f.kind==='photo').forEach(f=>{
+    const label=hjWorkLabelClean(hjPhotoLabel(f)),key=hjPhaseHintKey(label)||'';let g=groups.get(key);
+    if(!g){g={label:label||'기타',blank:!label,photos:[],first:'',last:'',n:0};groups.set(key,g);}g.photos.push(f);
+  });
+  const rank=g=>g.blank?1:HJ_REPORT_CLEAN_RE.test(g.label)?3:HJ_REPORT_LATE_RE.test(g.label)?2:0;
+  return [...groups.values()].map(g=>{g.photos.sort((a,b)=>time(a)-time(b));const days=g.photos.map(hjPhotoKoreanDay).filter(Boolean).sort();g.n=g.photos.length;g.first=days[0]||'';g.last=days.at(-1)||'';return g;})
+    .sort((a,b)=>rank(a)-rank(b)||(a.first||'9999').localeCompare(b.first||'9999')||a.label.localeCompare(b.label));
+}
+function hjReportGroupDay(g){return g.first?g.first.slice(5)+(g.last!==g.first?'~'+g.last.slice(5):''):'날짜 없음';}
+function hjReportDraft(name){
+  const p=(state.projects||[]).find(p=>p&&p.name===name)||{},photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===name);
+  const work=photos.filter(f=>hjPhotoWorkPhases(f).length),days=(work.length?work:photos).map(hjPhotoKoreanDay).filter(Boolean).sort();
+  const start=p.startDate||days[0]||'',end=p.doneAt||days.at(-1)||'',groups=hjReportPhotoGroups(photos),used=new Set(),works=[];
+  const line=g=>g.blank?'기타 작업 사진 '+g.n+'장':g.label+' ('+(g.first?hjReportGroupDay(g)+', ':'')+g.n+'장)';
+  (Array.isArray(p.phases)?p.phases:[]).forEach(phase=>{const label=hjPhaseLabel(phase).trim(),key=hjPhaseHintKey(label);if(!label||used.has(key))return;const g=groups.find(g=>!g.blank&&hjPhaseHintKey(g.label)===key);works.push(g?line(g):label);used.add(key);});
+  groups.forEach(g=>{if(g.blank||!used.has(hjPhaseHintKey(g.label))){works.push(line(g));if(!g.blank)used.add(hjPhaseHintKey(g.label));}});
+  const place=hjCasePlaceOf(name),dest=place?(place.includes('관리')?place:place+' 관리사무소'):(name.includes('관리')?name:name+' 관리사무소');
+  return {period:(start+' ~ '+end).trim(),works,dest,photos:photos.length,unlabeled:photos.filter(f=>!hjWorkLabelClean(f._worklabel)).length};
+}
 function rptPhotoCap(f){
-  // 파일명 "20260814_1652_지하실_신설배관_보온마감_전경.jpg" → "지하실 신설배관 보온마감 전경"
-  let s=String(f.name||'').replace(/\.[a-z0-9]+$/i,'');
-  s=s.replace(/^20\d{6}[_\- ]?(\d{4})?[_\- ]?/,'');
-  s=s.replace(/[_\-]+/g,' ').trim();
-  const when=f.when?new Date(f.when):null;
-  const hm=(when&&!isNaN(when))?(pad2(when.getHours())+':'+pad2(when.getMinutes())):'';
-  let tag='';
-  if(/(작업|시공|교체|보수|공사)\s*전|전$/.test(s))tag='전';
-  if(/(작업|시공|교체|보수|공사)\s*후|후$|마감|완료/.test(s))tag='후';
-  return {cap:s||f.name,hm,tag};
+  const label=hjWorkLabelClean(hjPhotoLabel(f)),when=f.when?new Date(f.when):null;
+  const hm=when&&!isNaN(when)?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(when):'';
+  let cap=label;
+  if(!cap){
+    const name=String(f.name||'');
+    if(HJ_REPORT_AUTO_NAME_RE.test(name)){const m=name.match(HJ_REPORT_NAME_DAY_RE),day=m?m[1]+'-'+m[2]+'-'+m[3]:'';cap=hjPhotoKoreanDay(f)||(isRealIsoDate(day)?day:'날짜 없는 사진');}
+    else cap=name.replace(/\.[a-z0-9]+$/i,'').replace(/^20\d{6}[_\- ]?(\d{4})?[_\- ]?/,'').replace(/[_\-]+/g,' ').trim()||'사진';
+  }
+  let tag='';if(/(작업|시공|교체|보수|공사)\s*전|전$/.test(label))tag='전';if(/(작업|시공|교체|보수|공사)\s*후|후$|마감|완료/.test(label))tag='후';
+  return {cap,hm,tag};
 }
 function rptWrap(ctx,text,maxW){
   const out=[];let line='';
@@ -36553,7 +36577,9 @@ async function buildAptReportPDF(o){
   }));
 
   // ── 사진 대장 (2×3/페이지) ──
-  const ph=o.photos;
+  // v408 그룹 순서만 바꾸고 기존 6장/페이지 계산과 사진 개수는 유지한다.
+  const groups=hjReportPhotoGroups(o.photos),ph=groups.flatMap(g=>g.photos),heads=new Map();let offset=0;
+  groups.forEach(g=>{heads.set(offset,'■ '+g.label+' — '+hjReportGroupDay(g)+' ('+g.n+'장)');offset+=g.n;});
   const per=6,cols=2;
   const cellW=(CW-140-40)/cols, cellH=430, imgH=330;
   for(let pi=0;pi<ph.length;pi+=per){
@@ -36572,6 +36598,7 @@ async function buildAptReportPDF(o){
           const dw=im.width*r,dh=im.height*r;
           x.drawImage(im,cx+(cellW-dw)/2,cy+8+(imgH-dh)/2,dw,dh);
         }else{x.fillStyle='#f0f2f5';x.fillRect(cx+2,cy+2,cellW-4,imgH);}
+        const groupTitle=heads.get(pi+i);if(groupTitle){x.font='bold 18px sans-serif';let title=groupTitle;while(title.length&&x.measureText(title+(title===groupTitle?'':'…')).width>cellW-8)title=title.slice(0,-1);T(title+(title===groupTitle?'':'…'),cx+4,cy-26,'bold 18px sans-serif','#0b4ea2');}
         const m=rptPhotoCap(f);
         if(m.tag){
           x.fillStyle=m.tag==='전'?'#64748b':'#0b8a4b';
@@ -36612,25 +36639,25 @@ function aptReportView(pjName){
   const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo'&&f.thumb;})
     .sort(function(a,b){return new Date(a.when||0)-new Date(b.when||0);});
   const st=projStats(pjName);
-  const works=(Array.isArray(p.phases)&&p.phases.length)
-    ? p.phases.map(function(x){return typeof x==='string'?x:(x.title||x.name||'');}).filter(Boolean).join('\n')
-    : '';
+  const draft=hjReportDraft(pjName),works=draft.works.join('\n');
   const F=function(id,label,val,ph2,tag){
     return '<label style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label>'+
       (tag==='ta'
         ?'<textarea id="'+id+'" rows="4" placeholder="'+ph2+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;font-family:inherit">'+escapeHtml(val||'')+'</textarea>'
         :'<input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph2+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">');
   };
-  const period=((p.startDate||'')+(p.doneAt?(' ~ '+p.doneAt):' ~ ')).trim();
+  const period=draft.period;
   openModal('📄 완료보고서 — '+pjName,
-    F('rpDest','제출처',pjName.includes('관리')?pjName:(pjName+' 관리사무소'),'예: 금성백조아파트 관리사무소')+
+    '<p class="hint">사진 작업명으로 미리 채웠어요 — 고쳐 쓰세요</p>'+
+    F('rpDest','제출처',draft.dest,'예: 금성백조아파트 관리사무소')+
     F('rpTitle','공사명',pjName+' 공사','예: 지하 배관 교체 공사')+
     F('rpPeriod','공사 기간',period,'예: 2026-08-14 ~ 2026-08-14')+
     F('rpWorker','작업자',COMPANY.owner+' 1인','예: 전병덕 외 1인')+
     F('rpWorks','작업 내용 (한 줄에 하나)',works,'예: 지하실 노후 배관 교체·보온 마감','ta')+
     F('rpNote','특이사항 (선택)','','예: 806·807호 급수 정상 확인, 누수 없음','ta')+
     '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12.5px"><input type="checkbox" id="rpAmt" style="width:18px;height:18px"> 공사 금액 표시 ('+won(st.est)+')</label>'+
-    '<p class="hint" style="margin-top:8px">사진 '+ph.length+'장이 시각순으로 사진 대장에 들어갑니다. 마지막 장에 관리사무소 확인란이 붙습니다.</p>',
+    '<p class="hint" style="margin-top:8px">사진 '+ph.length+'장이 작업명별로 묶여 사진 대장에 들어갑니다. 묶음 안은 시각순이며 마지막 장에 관리사무소 확인란이 붙습니다.</p>'+
+    (draft.unlabeled?'<div class="hint" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span>현장 사진 '+draft.photos+'장 중 작업명 없는 사진 '+draft.unlabeled+'장</span><button type="button" class="ghost" id="rpFillLabels" style="min-height:44px">🏷 작업명 채우기</button></div>':''),
     [{label:'📄 PDF 만들기',cls:'clay',fn:async function(){
         const o={site:pjName,
           dest:document.getElementById('rpDest').value.trim(),
@@ -36649,6 +36676,7 @@ function aptReportView(pjName){
         catch(e){toast('PDF 생성 실패: '+(e.message||e));}
       }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const fill=document.getElementById('rpFillLabels');if(fill)fill.onclick=()=>hjLabelGapView();
   return {사진:ph.length};
 }
 
