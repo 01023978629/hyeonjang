@@ -66,7 +66,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(a.h3 === '✅ 문의 등록 — 법동 가상아파트', '다음 창: ' + JSON.stringify(a));
     assert(r.p && r.p.stage === 0 && r.p.cu.name === '김가상' && r.p.cu.phone === '010-3333-4444' && r.p.cu.addr === '법동 가상아파트' && r.p.src === 'daangn', '현장: ' + JSON.stringify(r.p));
     assert(r.note === '[문의 접수] 2026-11-05 · 🥕 당근\n베란다 우수관 아래로 물이 샘' && r.c && r.c.name === '김가상' && r.c.tag === '고객', '메모·연락처: ' + JSON.stringify(r));
-    assert(JSON.stringify(r.btns) === JSON.stringify(['닫기', '📂 현장 열기', '🗓 상담·실측 일정']) && r.sch.title === '상담·실측: 법동 가상아파트' && r.sch.date === '2026-11-06', '일정: ' + JSON.stringify(r));
+    assert(JSON.stringify(r.btns) === JSON.stringify(['닫기', '📂 현장 열기', '🗓 상담·실측 일정']) && r.sch.h3 === '🗓 상담·실측 일정' && r.sch.title === '상담·실측: 법동 가상아파트' && r.sch.date === '2026-11-06', '일정: ' + JSON.stringify(r));
   });
 
   await test('② 이름·연락처 둘 다 비거나 번호가 짧으면 막는다 · 취소는 저장본을 바꾸지 않는다', async () => {

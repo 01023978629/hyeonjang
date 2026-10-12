@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v386 대시보드 [📞 새 문의 받기] · 상담 일정 안 잡힌 문의 (Claude Cowork, v385 위 — PR 대기)
+
+- v383 새 문의 창은 더보기 안에만 있어 통화 중에 찾기 어려웠고, 문의를 받아 놓고 상담 일정을 안 잡은 곳이 보이지 않았다. 버전 핀 `hyeonjang-v386-inqpending`.
+- 대시보드 '✅ 오늘 현장 업무' 버튼 줄 맨 앞 `#dashboardInquiryOpen` [📞 새 문의 받기]. 그 위 `hjInquiryPendingHtml()` — `hjInquiryPending()`: 상담 단계·보관 아님·고객 번호 있음·[문의 접수]/[홈페이지 상담 리드] 메모 또는 kakaoLead, 오늘 이후 일정 없음 → '📥 상담 일정 안 잡힌 문의 N곳' + 첫 곳 `[data-inqsched]` [🗓 일정 잡기](#view 클릭 위임 → 다음 작업일 10:00 상담·실측).
+- `openScheduleEdit(id,draft,link)` 의 `link.title` — 미리 채운 새 일정이 '📄 일정 복사'로 보이지 않게(v383 문의 다음·v386 일정 잡기는 '🗓 상담·실측 일정'). inquiry-v383 검사에 제목 확인 추가.
+- 새 `tests/inqpending-v386.e2e.js` 2/2(v385 에서는 0/2). 관련 mobile-operations·schcopy-v361·asvisit-v365·case-pack·dash-reports·consultquote-v384·inquiry-v383·정적 검사 통과.
+
 ## 2026-10-12 v385 '만물 웹' 홍보 칩 → 📰 사례 내보내기 · 웹 게시 표시 (Claude Cowork, v384 위 — PR 대기)
 
 - v377 의 만물 웹 칩은 '사례 재료' 원고 창을 열었지만, 홈페이지 사례의 실제 길은 v321 📰 사례 내보내기(사진 선택·6항목·EXIF 제거 ZIP)다. 웹에 올린 뒤 ✓ 를 남길 곳도 없었다. 버전 핀 `hyeonjang-v385-casewebmark`.
