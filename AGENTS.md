@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v384 상담·실측 끝 → 견적 (Claude Cowork, v383 위 — PR 대기)
+
+- 상담·실측을 다녀와 보고해도 견적은 견적 작성 탭에서 새로 시작해 현장을 다시 골라야 했고, 현장 단계는 '상담'에 그대로 남았다. 버전 핀 `hyeonjang-v384-consultquote`.
+- `hjConsultNextOffer(s,back)` — 제목에 상담·실측(`HJ_CONSULT_RE`)이 든 일정을 진행률 '완료'로 보고(일정표 saveReport · 📋 내 업무 myWorkReport — v366 AS 마무리·v374 다음 공정 창 다음 순서)하고 현장이 상담·실측 단계면 '📐 상담·실측 끝' 창. [🧾 견적서 쓰기] = 상담이면 setStage(1)(`__clPass`), `state.editingQuote` 에 이 현장·제목·주소(place)를 채운 newQuote, 견적 작성 탭. [📐 실측 노트] = measureNote(현장). [나중에]는 아무것도 안 바꿈. 💰·AS 방문 제외.
+- 새 `tests/consultquote-v384.e2e.js` 3/3(v383 에서는 0/3). 관련 handoff-v374·asclose-v366·asvisit-v365·delay-v347·quote-edit-safety·quote-flow·measure-note·calc-safety·dayclose-v359·mwmat-v370·정적 검사 통과.
+
 ## 2026-10-12 v383 📞 새 문의 받기 · 카카오 챗봇 문의 경로 (Claude Cowork, v382 위 — PR 대기)
 
 - 전화·방문 문의는 현장 추가(이름만) → 고객 칸 → 메모 → 일정을 따로 해야 해서 통화 중 받아 적은 내용이 종이에 남았다. 버전 핀 `hyeonjang-v383-inquiry`.
