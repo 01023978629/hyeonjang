@@ -56,6 +56,8 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
           { id: 'r3', room: '빈칸', w: '', h: '', hgt: '', open: '', note: '' },
         ] },
       { name: '빈현장', stage: 1, received: 0, phases: [], cost: {} },
+      // v388 현장 연결 = 수주는 그 현장이 시공·완료일 때만 — '수주 견적'(q3)은 시공 단계 현장에 붙인다
+      { name: '시공현장', stage: 2, received: 0, phases: [], cost: {} },
       { name: '고객현장', stage: 3, doneAt: '2026-09-01', received: 500000, phases: ['도배'], cost: {},
         customer: { name: '박가상', phone: '010-0000-5678' },
         contractLog: [{ at: '2026-08-01T09:00:00Z', contractNo: 'C-TEST-1', amount: 1000000, serverStatus: 'COMPLETED', completedAt: '2026-08-02T10:00:00Z' }],
@@ -68,7 +70,7 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
     state.quotes = [
       { id: 'q1', title: '가상 도배 견적', date: D5, items: it('도배(실크)', 3000000), vatIncluded: false },
       { id: 'q2', title: '가상 오래된 견적', date: D45, items: it('장판', 1000000), vatIncluded: false },
-      { id: 'q3', title: '수주 견적', date: D10, project: '실측현장', items: it('도배(실크)', 3200000), vatIncluded: false },
+      { id: 'q3', title: '수주 견적', date: D10, project: '시공현장', items: it('도배(실크)', 3200000), vatIncluded: false },
       { id: 'q4', title: '옛 실패 표시', date: D8, result: 'lost', items: it('타일', 900000), vatIncluded: false },
       { id: 'q5', title: '아주 옛 견적', date: D400, items: it('몰딩', 500000), vatIncluded: false },
       // 현장 연결 없이 수주로 표시한 것 — 견적 이력과 수주 분석이 같은 판정(quoteStatus)을 쓰는지

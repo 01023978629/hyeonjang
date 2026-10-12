@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v388 상담·실측 현장에 붙은 견적은 아직 '수주'가 아니다 (Claude Cowork, v387 위 — PR 대기)
+
+- `quoteStatus` 는 '현장 연결 = 수주'였다. v383 새 문의·v384 상담 끝 → 견적 은 현장(상담·실측)을 먼저 만들고 견적을 붙이므로, 붙이자마자 수주로 세어 ⏰ 견적 팔로업에서 빠지고 수주 분석·퍼널 수주율이 부풀었다. 버전 핀 `hyeonjang-v388-quotelink`.
+- `hjQuoteProjectEarly(q)` — 붙은 현장이 있고 보관이 아니며 stage ≤ 1(상담·실측)이면 true → `quoteStatus` 는 보냄/작성(진행 중). 현장을 못 찾거나(지운·옛 이름) 보관 현장이면 예전대로 수주. 현장이 시공(2) 이상이 되면 수주.
+- 같은 판정 한 곳으로: `funnelData().quoteWon`(전엔 `q.project` 직접)·`similarQuotes` 가산(+5)도 `quoteStatus(q)==='won'`.
+- ⏰ 견적 팔로업: 줄에 `.qfProj` '📂 현장 (단계)', `quoteFollowupData`/`quoteStaleData` 행에 `project`(이름만 — 번호는 싣지 않음). [📩 팔로업 문자 보내기]는 `hjQuoteFollowPhone(q)`(붙은 현장 고객 번호)로 받는 분을 채워 문자 앱을 연다(보내기는 휴대폰에서 직접). 버튼 높이 44px. 안내 문구 '시공 단계로 넘어가면(수주)'.
+- 매출 집계(`hjSalesEntries`·현장 견적 = 매출 예정)는 그대로 — 회계 판정은 바꾸지 않았다.
+- `tests/quote-flow.e2e.js` 시드에 '시공현장'(stage 2)을 더하고 q3 '수주 견적'을 거기 붙임(실측 현장 연결은 이제 진행 중). 새 `tests/quotelink-v388.e2e.js` 3/3(v387 에서는 0/3). 관련 brief-actions·quote-edit-safety·ui-feedback·dash-reports·consultquote-v384·reviewfix-v387·inquiry-v383·inqpending-v386·mobile-more-tools·정적 검사 통과.
+
 ## 2026-10-12 v387 GPT 코드 검토(v377~v386) 고침 — R1~R11 (Claude Cowork, v386 위 — PR 대기)
 
 - Codex 가 `hyeonjang_deploy\review-v377-v386.md` 로 v377~v386 을 검토(Windows 전체 271/271·CI 271/271)하고 R1~R11 을 재현했다. 버전 핀 `hyeonjang-v387-reviewfix`.
