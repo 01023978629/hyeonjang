@@ -80,7 +80,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { s1: [P('가상현장S1').stage, P('가상현장S1').doneAt], s2: [P('가상현장S2').stage, P('가상현장S2').doneAt, 'doneAtPrev' in P('가상현장S2')], s3: P('가상현장S3').stage,
         h3: (document.querySelector('#modalRoot h3') || {}).textContent, left: [...document.querySelectorAll('#modalRoot .stpDone')].map(b => b.dataset.n) };
     });
-    assert(dialogs.length === 1 && /고른 2곳을 완료로/.test(dialogs[0]) && /가상현장S1 — 2026-06-20/.test(dialogs[0]) && /가상현장S2 — 2026-07-10/.test(dialogs[0]), '확인 창: ' + JSON.stringify(dialogs));
+    assert(dialogs.length === 1 && /고른 2곳을 아래 준공일로 완료/.test(dialogs[0]) && /가상현장S1 — 2026-06-20 \(마지막 활동일\)/.test(dialogs[0]) && /가상현장S2 — 2026-07-10 \(이전 준공일\)/.test(dialogs[0]), '확인 창: ' + JSON.stringify(dialogs));
     assert(JSON.stringify(r.s1) === JSON.stringify([3, '2026-06-20']) && JSON.stringify(r.s2) === JSON.stringify([3, '2026-07-10', false]) && r.s3 === 0, '완료: ' + JSON.stringify(r));
     assert(r.h3 === '💤 방치 현장' && JSON.stringify(r.left) === JSON.stringify(['가상현장S3']), '다시 그림: ' + JSON.stringify(r));
     await page.evaluate(() => closeModal(true));

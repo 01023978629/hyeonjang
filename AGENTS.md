@@ -3,6 +3,18 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v387 GPT 코드 검토(v377~v386) 고침 — R1~R11 (Claude Cowork, v386 위 — PR 대기)
+
+- Codex 가 `hyeonjang_deploy\review-v377-v386.md` 로 v377~v386 을 검토(Windows 전체 271/271·CI 271/271)하고 R1~R11 을 재현했다. 버전 핀 `hyeonjang-v387-reviewfix`.
+- R1(P1) `hjConsultNextOffer` [🧾 견적서 쓰기] — `quoteEditDirty()` 면 '저장하지 않은 견적' 창(계속 편집 = 그 견적·단계 그대로 / 저장 안 하고 새 견적 / 저장하고 새 견적). 전에는 미저장 견적을 그대로 덮었다.
+- R2 `hjDayCloseData().promo` = `hjAdCaseRows(14,999)` 에서 남은 곳을 먼저 거르고, 화면에서 4곳 + '외 N곳'. 전에는 4곳을 먼저 잘라 다섯 번째 남은 곳이 빠졌다.
+- R3 새 문의 중복 알림을 번호(`dupFor` = 숫자만)에 묶음, `#inqPhone` input 이면 옛 알림을 지움.
+- R4 문의 접수일 `p.inquiryAt`(새 문의·홈페이지 리드·카카오 문의) + 메모 첫 줄 '[문의 접수] YYYY-MM-DD'(`HJ_INQ_DATE_RE`)를 `projLastActivity` 에 — 방금 받은 문의가 바로 방치 현장에 들지 않음. toLocaleString 날짜는 파싱하지 않음.
+- R5 일괄 완료 확인 창 '아래 준공일로' + 날짜마다 (이전 준공일/마지막 활동일/오늘), 토스트 '확인 창의 날짜'. R6 정리 사진만 있으면 '모두 정리·청소 사진이라 뺐어요' + [📂 사진 보기]. R7 홍보 도움말에 만물 웹(사례 내보내기·웹 게시 표시) 따로. R8 '문의 경로 입력 N곳 · 미입력 M곳'. R9 카카오맵 원고의 보양·정리 단정 → 대괄호 자리.
+- R10 `hjInquiryPending` — 💰(`HJ_INQ_MONEY_RE`)·세금 자동·AS 방문 일정은 상담 일정으로 안 침. R11 `setStage` 가 현장을 못 찾으면 `__clPass` 를 지우고, `hjDoneDateView` 는 저장 때 현장을 다시 확인(없으면 멈춤).
+- leadsrc-v379(문구)·donemany-v381(확인 창 문구) 검사 갱신. 새 `tests/reviewfix-v387.e2e.js` 7/7(v386 에서는 0/7). v377~v386 새 검사 10개·관련 16개·정적 검사 통과.
+- 참고: Windows 전체 실행에서 multi-tab-guard·snapshot-restore-guard 가 동시 3 부하에서 한 번 실패 후 단독 재실행 통과(이번 변경과 무관한 파일, 대기 시간 경합 추정 — 아직 고치지 않음).
+
 ## 2026-10-12 v386 대시보드 [📞 새 문의 받기] · 상담 일정 안 잡힌 문의 (Claude Cowork, v385 위 — PR 대기)
 
 - v383 새 문의 창은 더보기 안에만 있어 통화 중에 찾기 어려웠고, 문의를 받아 놓고 상담 일정을 안 잡은 곳이 보이지 않았다. 버전 핀 `hyeonjang-v386-inqpending`.

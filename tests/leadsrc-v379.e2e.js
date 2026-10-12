@@ -91,7 +91,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { rows: st.rows.map(x => x.id + ':' + x.n), known: st.known, unknown: st.unknown, head, ns, w, same: snap() === b0 };
     });
     assert(JSON.stringify(r.rows) === JSON.stringify(['daangn:2', 'naverplace:1', 'referral:1']) && r.known === 4 && r.unknown === 1, '수: ' + JSON.stringify(r));
-    assert(/📞 문의 경로/.test(r.head) && /현장 4곳 앎 · 모름 1곳/.test(r.head) && JSON.stringify(r.ns) === JSON.stringify(['🥕 당근 2', '📍 네이버 지도 1', '🤝 소개 1']) && r.w <= 0, '칸: ' + JSON.stringify(r));
+    assert(/📞 문의 경로/.test(r.head) && /문의 경로 입력 4곳 · 미입력 1곳/.test(r.head) && JSON.stringify(r.ns) === JSON.stringify(['🥕 당근 2', '📍 네이버 지도 1', '🤝 소개 1']) && r.w <= 0, '칸: ' + JSON.stringify(r));
     assert(r.same, '저장본이 바뀌었다');
   });
 
