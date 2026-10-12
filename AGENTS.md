@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v390 🎉 수주 → 현장 단계 (Claude Cowork, v389 위 — PR 대기)
+
+- 견적을 수주로 표시해도 붙은 현장이 상담·실측에 남아 📥 문의·💤 방치 목록에 계속 걸렸고 착공 전 체크도 안 열렸다. 버전 핀 `hyeonjang-v390-quotewon`.
+- ⏰ 견적 팔로업 줄마다 `.qfWon` [🎉 수주](44px) → `hjQuoteWin(id,back)` — result 'won'·lost 지움·markDirty. `hjQuoteStageOffer(q,back)`: 붙은 현장이 보관 아님·stage ≤ 1 이면 '🎉 수주 — 현장' 창 [그대로 두기](back = 팔로업 창) / [🔨 시공으로 올리기](보통 `setStage(name,2)` — 착공 전 체크가 안 끝났으면 체크리스트 창). 현장 없는·시공 이상 현장 견적은 묻지 않고 back.
+- 📄 견적 이력 `quoteMark(id,'won')` 도 수주로 켤 때만 같은 물음(back = 견적 이력). 풀 때는 안 묻는다.
+- 새 `tests/quotewon-v390.e2e.js` 3/3(v389 에서는 0/3). 관련 quotelink-v388·quotewait-v389·quote-flow·quote-edit-safety·consultquote-v384·brief-actions·정적 검사 통과.
+
 ## 2026-10-12 v389 대시보드 '🧾 실측 끝, 견적 안 쓴 현장' + [🧾 견적 쓰기] (Claude Cowork, v388 위 — PR 대기)
 
 - v384 '📐 상담·실측 끝' 창에서 [나중에]를 누르면 견적을 다시 떠올릴 곳이 없었다. 문의(v386 📥) → 견적(v389 🧾) → 팔로업(v388 ⏰) 으로 이어지게. 버전 핀 `hyeonjang-v389-quotewait`.
