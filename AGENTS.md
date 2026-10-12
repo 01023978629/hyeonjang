@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v391 🌙 오늘 마감의 📞 영업 (Claude Cowork, v390 위 — PR 대기)
+
+- 문의(v383·v386) → 견적(v389) → 팔로업(v388) 을 하루 끝에 한 번 더 보게. 버전 핀 `hyeonjang-v391-dcsales`.
+- `hjDayCloseData().sales = hjDayCloseSales(today)` 순수 읽기 — inqToday(보관 아님·`inquiryAt === today`)·noSched(`hjInquiryPending`)·wait(`hjQuoteWaiting`)·follow(`quoteFollowupData().length`).
+- `hjDayCloseView` 홍보 칸 뒤 `#dcSales` — h4 '📞 영업 — 오늘 받은 문의 N곳', 오늘 문의 이름, 📥 줄 + `[data-dc-inqsched]`, 🧾 줄 + `[data-dc-qwait]`(closeModal 뒤 `hjQuoteStartFor`), ⏰ 줄 + `[data-dc-qfollow]`(`quoteFollowup`). 넷 다 없으면 칸 없음. 앞 3곳 + '외 N곳'.
+- `hjInquirySchedOpen(pj)` — v386 대시보드 `[data-inqsched]` 와 같이 씀(다음 작업일 10:00 '상담·실측: 현장').
+- 새 `tests/dcsales-v391.e2e.js` 3/3(v390 에서는 1/3 — ③ '없으면 칸 없음'만 통과). 관련 dayclose-v359·inqpending-v386·quotewait-v389·quotelink-v388·adcase-v378·reviewfix-v387·matdue-v368·matplan-v373·crewclash-v362·정적 검사 통과.
+
 ## 2026-10-12 v390 🎉 수주 → 현장 단계 (Claude Cowork, v389 위 — PR 대기)
 
 - 견적을 수주로 표시해도 붙은 현장이 상담·실측에 남아 📥 문의·💤 방치 목록에 계속 걸렸고 착공 전 체크도 안 열렸다. 버전 핀 `hyeonjang-v390-quotewon`.
