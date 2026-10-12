@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v377 📣 지역 채널 원고 · 🏁 완공 현장 홍보 현황 (Claude Cowork, v376 위 — PR 대기)
+
+- 대표가 최근 사례를 인스타·당근·네이버 지도·카카오맵·만물 웹에 올리려 할 때, 광고 탭에는 스레드·인스타·메타·블로그만 있어 지역 채널 원고를 매번 손으로 썼고, 어느 현장을 어디까지 올렸는지 볼 곳이 없었다. 버전 핀 `hyeonjang-v377-adlocal`.
+- `AD_CH` 에 당근(`daangn`)·네이버 지도(`naverplace`)·카카오맵(`kakaomap`) — `local:true` — 와 만물 웹(`web`)을 더함(칩 8개). `adDraftText` 지역 갈래: 짧은 '소식'(작업 전·한 일·마무리 + 상담 안내, 회사 전화, 가격·보증 기간·고객 정보 없음). 만물 웹은 사례 담당(GPT·Claude)에게 넘길 '사례 재료' 6줄.
+- 광고 탭 맨 위 `hjAdCaseHtml()` — 60일 안 완공(doneAt, 보관 제외) 최근 4곳마다 다섯 채널(`HJ_AD_CASE_CH` 인스타·당근·네이버 지도·카카오맵·만물 웹) 중 올린 곳 ✓·남은 칩. 남은 칩 `[data-adcase][data-adproj]` → `adDraftOpen(ch, 현장)`. 원고 창 [게시 기록에 추가]·[＋ 게시 기록](현장 선택 `#adProj`)이 기록 안에 `project` 를 남김(최상위 키 변화 없음, 현장 안 고르면 칸 없음).
+- 원고 창 사진 수는 '정리·청소' 분류 사진(`HJ_AD_SKIP_PHOTO_RE`)을 뺀다 — 대표 지시(2026-10-11, 홍보 사진에서 정리 사진 제외).
+- 새 `tests/adlocal-v377.e2e.js` 4/4(v376 에서는 0/4). 관련 marketing-draft·marketing-safety·health-board·mobile-more-tools·mobile-more-sweep·office-ops-conversion·정적 검사 통과.
+
 ## 2026-10-10 v376 현장 AS 카드 줄 배치 (Claude Cowork, v375 위 — PR 대기)
 
 - v367 패치가 PC 에 두 번 고쳐 올라가는 사이 Codex 가 앞선 판을 적용해, 현장 화면 AS 카드 줄 배치 고침이 PR 에 빠졌다(390px 폰에서 📅·✏️·상태·🗑 버튼 4개가 글 칸을 한 글자 폭으로 밀어 '욕/실/실/리…'로 꺾였다). 버전 핀 `hyeonjang-v376-ascard`.
