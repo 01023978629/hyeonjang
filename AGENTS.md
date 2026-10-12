@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v392 답 기다리는 견적이 있는 현장은 '💤 방치'가 아니다 (Claude Cowork, v391 위 — PR 대기)
+
+- v388 로 상담·실측 현장 견적이 팔로업 대상이 됐는데, 그 현장이 사진·일정이 14일 없으면 💤 방치 목록·대시보드 브리핑·AI '방치 현장 안부' 문자 제안·위험 리포트에도 같이 걸려 [✅ 완료로]·안부 문자를 권했다. 버전 핀 `hyeonjang-v392-stalequote`.
+- `hjProjOpenQuoteDay(name)` — 이 현장에 붙은 진행 중 견적(`hjQuoteOpenForFollow` — 수주·종결 아님)의 작성일·보낸 날 중 가장 늦은 날. `staleProjectData` 가 그 날이 30일 안이면 그 현장을 뺀다(⏰ 견적 팔로업이 맡음), 넘었으면 행에 `openQuote`.
+- 💤 방치 현장 창 줄에 `.stpQf` [⏰ 답 없는 견적 MM-DD](44px) → `quoteFollowup()`(30일 지난 견적은 거기서 종결). `projLastActivity` 는 그대로(준공일 제안에 쓰이므로 견적 날짜를 섞지 않음).
+- 새 `tests/stalequote-v392.e2e.js` 2/2(v391 에서는 0/2). 관련 donemany-v381·donedate-v380·health-board·board-v351·brief-actions·quotelink-v388·reviewfix-v387·operations-review·mobile-more-tools·정적 검사 통과.
+
 ## 2026-10-12 v391 🌙 오늘 마감의 📞 영업 (Claude Cowork, v390 위 — PR 대기)
 
 - 문의(v383·v386) → 견적(v389) → 팔로업(v388) 을 하루 끝에 한 번 더 보게. 버전 핀 `hyeonjang-v391-dcsales`.
