@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-12 v395 견적서 파일도 견적 팔로업에
+
+- hjEstFileDay/hjEstFileLatest/hjEstFileFollowData로 현장별 최신 실제 파일 견적을 조회한다. hjEstFileFollowHtml/Wire와 quoteFollowup에 파일 묶음·문자·수주 단계·현장 estClosed 종결을 연결하고 hjProjOpenQuoteDay·hjDayCloseSales에 파일 기준을 반영했다. 견적 이력·수주 분석·회계 집계는 유지한다.
+- 신규 estfollow-v395 5/5, v394 변이 0/5, 관련 10개·정적 17개 통과. 실제 f.when Date 객체 누락을 검토에서 찾아 수정하고 저장·복원 왕복 검사도 통과. 최종 리뷰·diff 검사 통과, CI는 PR에서 확인.
+
 ## 2026-10-12 v394 연락처 빈 최근 현장 모아 채우기
 
 - hjCustMissing은 최근 활동/준공일로 연락처가 빈 현장 이름을 읽고, hjCustFillView는 번호 전체 검증 및 강제 안전판 성공 뒤 변경된 이름·연락처만 setCustomer로 저장한다. 빈칸은 유지한다. 대시보드 견적 대기 위와 데이터 검진에 진입 버튼을 추가했다.
