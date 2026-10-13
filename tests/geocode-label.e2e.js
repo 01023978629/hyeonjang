@@ -127,6 +127,38 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
       '조회 함수 안에서 직접 주소를 조립한다 — 두 경로가 갈라질 자리를 남기면 안 됨');
   });
 
+  await test('⑧-1 GPS 조회 주소는 GPS 좌표가 있는 사진에만 저장한다', async () => {
+    const r = await page.evaluate(async () => {
+      const oldLookup=window.hjLookupPlace,oldConfirm=window.confirm,oldClusters=window.__clusters;
+      const oldKakaoKey=window.__kakaoKey;
+      window.hjLookupPlace=async()=>({addr:'대전 중구 새 주소 12',src:'kakao'});
+      const cluster=(address)=>({lat:36.31,lng:127.42,address,items:[
+        {lat:36.31,lng:127.42,address:'GPS 사진의 이전 주소'},
+        {lat:null,lng:null,address:'GPS 없는 사진의 기존 주소'},
+        {lat:undefined,lng:undefined,address:null}
+      ]});
+      const one=cluster('');
+      await geocodeCluster(one,{disabled:false,textContent:'주소 조회'});
+      const all=cluster('');window.__clusters=[all];
+      await geocodeAllClusters();
+      const upgrade=cluster('대전 중구 옛 주소');window.__clusters=[upgrade];
+      window.__kakaoKey='TEST_KEY';window.confirm=()=>true;
+      await geocodeUpgradeClusters();
+      const out={one:one.items.map(p=>p.address),oneCluster:one.address,
+        all:all.items.map(p=>p.address),allCluster:all.address,
+        upgrade:upgrade.items.map(p=>p.address),upgradeCluster:upgrade.address};
+      window.hjLookupPlace=oldLookup;window.confirm=oldConfirm;window.__clusters=oldClusters;
+      if(oldKakaoKey===undefined)delete window.__kakaoKey;else window.__kakaoKey=oldKakaoKey;
+      return out;
+    });
+    for(const path of ['one','all','upgrade']){
+      assert(r[path][0]==='대전 중구 새 주소 12',path+' GPS 사진 주소가 갱신되지 않음: '+JSON.stringify(r[path]));
+      assert(r[path][1]==='GPS 없는 사진의 기존 주소',path+' GPS 없는 사진 주소가 덮임: '+JSON.stringify(r[path]));
+      assert(r[path][2]===null,path+' GPS 없는 빈 사진에 주소가 생김: '+JSON.stringify(r[path]));
+      assert(r[path+'Cluster']==='대전 중구 새 주소 12',path+' 묶음 표시 주소가 갱신되지 않음');
+    }
+  });
+
   await test('⑧-2 위치 표기는 주소+프로젝트+GPS 를 함께 쓴다', async () => {
     const r = await page.evaluate(() => ({
       trench: hjClusterLocationLabel({
@@ -437,8 +469,8 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
           cb([{ road_address: { address_name: '대전 중구 계룡로 12', building_name: '한빛빌라' },
                 address: { address_name: '대전 중구 태평동 45-6' } }], 'OK');
         }; } } } };
-      const 옛주소 = { lat: 36.1, lng: 127.1, address: '대전 중구 계룡로', items: [{ address: '대전 중구 계룡로' }] };
-      const 손으로적음 = { lat: 36.2, lng: 127.2, address: '대전 서구 둔산로 1 · 크로바 101동', items: [{ address: '대전 서구 둔산로 1 · 크로바 101동' }] };
+      const 옛주소 = { lat: 36.1, lng: 127.1, address: '대전 중구 계룡로', items: [{ lat:36.1, lng:127.1, address: '대전 중구 계룡로' }] };
+      const 손으로적음 = { lat: 36.2, lng: 127.2, address: '대전 서구 둔산로 1 · 크로바 101동', items: [{ lat:36.2, lng:127.2, address: '대전 서구 둔산로 1 · 크로바 101동' }] };
       const 위치없음 = { lat: null, address: '어딘가', items: [] };
       window.__clusters = [옛주소, 손으로적음, 위치없음];
       const realConfirm = window.confirm; window.confirm = () => true;

@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-13 · v409 GPS 주소를 GPS 사진에만 저장
+
+- `geocodeCluster`·`geocodeAllClusters`·`geocodeUpgradeClusters`는 주소를 사진 시간 묶음 전체에 쓰지 않고, 유효한 GPS 좌표가 있는 사진 레코드에만 저장한다. GPS 없는 사진의 기존 주소·빈 값은 보존한다.
+- 버전 핀 `hyeonjang-v409-geoscope`. `geocode-label` 회귀 검사와 정적 검사 18개 통과(19/19).
+
 ## 2026-10-12 · v408 완료보고서 자동 채움
 
 - 기간·작업 내용이 비고 사진 설명에 자동 파일명 숫자가 나오던 완료보고서를 hjReportDraft/hjReportPhotoGroups/rptPhotoCap으로 보완한다. 작업 사진의 한국 날짜·작업명별 장수·기존 공정과 기간을 읽기만 하며 폼의 수동 수정값을 유지한다.

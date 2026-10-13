@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v408-reportfill';
+const APP_BUILD='hyeonjang-v409-geoscope';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6995,6 +6995,20 @@ function setClusterBuilding(c){
   markDirty(); if(typeof __photoCache!=='undefined')__photoCache.key=null; render();
   toast(name?('건물명 저장: '+name):'건물명을 지웠습니다');
 }
+// GPS 로 찾은 주소는 실제 좌표를 가진 사진에만 저장한다. 시간상 묶였을 뿐 위치를 모르는 사진까지
+// 같은 현장이라고 단정하면, 다른 날·다른 현장 사진에 틀린 주소가 오래 남는다.
+function hjApplyGeocodedClusterAddress(c,addr){
+  if(!c||!Array.isArray(c.items))return 0;
+  let n=0;
+  c.items.forEach(p=>{
+    if(!p||p.lat==null||p.lng==null)return;
+    const lat=Number(p.lat),lng=Number(p.lng);
+    if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat > 90||lng < -180||lng > 180)return;
+    p.address=addr;n++;
+  });
+  if(n)c.address=addr;
+  return n;
+}
 async function geocodeCluster(c,btn){
   if(c.lat==null){toast('이 묶음엔 GPS가 없습니다.');return;}
   btn.disabled=true;btn.textContent='조회 중…';
@@ -7002,7 +7016,7 @@ async function geocodeCluster(c,btn){
     const got=await hjLookupPlace(c.lat,c.lng);
     const addr=got.addr;
     if(!addr){toast('주소를 찾지 못했습니다.');btn.disabled=false;btn.textContent='주소 조회';return;}
-    c.items.forEach(p=>p.address=addr);c.address=addr;
+    if(!hjApplyGeocodedClusterAddress(c,addr)){toast('GPS가 기록된 사진을 찾지 못했습니다.');btn.disabled=false;btn.textContent='주소 조회';return;}
     markDirty();render();toast('주소: '+addr);
   }catch(e){toast('주소 조회 실패(네트워크).');btn.disabled=false;btn.textContent='주소 조회';}
 }
@@ -7019,7 +7033,7 @@ async function geocodeAllClusters(){
     try{
       const got=await hjLookupPlace(c.lat,c.lng);
       src=got.src;
-      if(got.addr){ c.items.forEach(p=>p.address=got.addr); c.address=got.addr; ok++; }
+      if(got.addr&&hjApplyGeocodedClusterAddress(c,got.addr))ok++;
     }catch(e){}
     done++;
     if(done%2===0||done===cs.length){ if(typeof __photoCache!=='undefined')__photoCache.key=null; scheduleRender(); toast('📍 위치 확인 중 '+done+'/'+cs.length); }
@@ -7043,7 +7057,7 @@ async function geocodeUpgradeClusters(){
     try{
       const got=await hjLookupPlace(c.lat,c.lng);
       src=got.src;
-      if(got.addr&&got.addr!==c.address){ c.items.forEach(p=>p.address=got.addr); c.address=got.addr; ok++; }
+      if(got.addr&&got.addr!==c.address){ if(hjApplyGeocodedClusterAddress(c,got.addr))ok++; }
       else if(got.addr) same++;
     }catch(e){}
     done++;
