@@ -154,7 +154,7 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
     assert(r.assigned === '대전광역시 서구 관저2동 구봉산북로 · 효성혜링턴 105동501호 · GPS 36.29290, 127.34130', '프로젝트 포함: ' + r.assigned);
     assert(r.half === '대전광역시 중구 목동로 · GPS 36.33123, 127.41234', '절반 배정 묶음에 프로젝트명을 단정하면 안 됨: ' + r.half);
     assert(r.coordPlace === '관저동현장 · GPS 36.29290, 127.34130', '좌표를 두 번 쓰면 안 됨: ' + r.coordPlace);
-    assert(r.noGps === '대전광역시 중구 목동로', 'GPS 없는 사진에 0,0 좌표를 만들면 안 됨: ' + r.noGps);
+    assert(r.noGps === '위치 미확인 · 시간 기준 묶음', 'GPS 없는 저장 주소를 확인된 위치로 표시하면 안 됨: ' + r.noGps);
   });
 
   await test('⑧-3 실제 사진 탭 위치 줄에도 상세 표기가 보인다', async () => {
@@ -394,8 +394,8 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
 
   await test('⑲ 확인한 건물명을 묶음 사진 전체에 저장한다', async () => {
     const r = await page.evaluate(() => {
-      const p1 = { address: '대전 중구 계룡로 12' }, p2 = { address: '대전 중구 계룡로 12' };
-      const c = { address: '대전 중구 계룡로 12', items: [p1, p2] };
+      const p1 = { lat:36.1,lng:127.1,address: '대전 중구 계룡로 12' }, p2 = { lat:36.1,lng:127.1,address: '대전 중구 계룡로 12' };
+      const c = { lat:36.1,lng:127.1,address: '대전 중구 계룡로 12', items: [p1, p2] };
       const realPrompt = window.prompt;
       window.prompt = () => '한빛빌라 나동';
       setClusterBuilding(c);
@@ -437,15 +437,17 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
           cb([{ road_address: { address_name: '대전 중구 계룡로 12', building_name: '한빛빌라' },
                 address: { address_name: '대전 중구 태평동 45-6' } }], 'OK');
         }; } } } };
-      const 옛주소 = { lat: 36.1, lng: 127.1, address: '대전 중구 계룡로', items: [{ address: '대전 중구 계룡로' }] };
+      const 옛주소 = { lat: 36.1, lng: 127.1, address: '대전 중구 계룡로', items: [{ lat:36.1,lng:127.1,address: '대전 중구 계룡로' }] };
       const 손으로적음 = { lat: 36.2, lng: 127.2, address: '대전 서구 둔산로 1 · 크로바 101동', items: [{ address: '대전 서구 둔산로 1 · 크로바 101동' }] };
       const 위치없음 = { lat: null, address: '어딘가', items: [] };
       window.__clusters = [옛주소, 손으로적음, 위치없음];
+      const realFiles=state.files;state.files=옛주소.items.concat(손으로적음.items);
       const realConfirm = window.confirm; window.confirm = () => true;
       await geocodeUpgradeClusters();
       await wait(100);
       window.confirm = realConfirm;
       const out = { 옛주소: 옛주소.address, 사진도: 옛주소.items[0].address, 손으로적음: 손으로적음.address };
+      state.files=realFiles;
       window.__kakaoKey = null; window.__kakaoSdkKey = null; delete window.kakao; window.__clusters = [];
       return out;
     });
