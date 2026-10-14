@@ -3218,7 +3218,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v343-duplicatediscard';
+const APP_BUILD='hyeonjang-v410-bathroom';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -30994,9 +30994,11 @@ function won2kor(n){
   return (neg?'마이너스 ':'')+s+'원정';
 }
 function viewQuoteMaker(){
+  /* v410 고객과 자재·시공비를 함께 고르는 욕실 상담을 열어도 편집 중 견적은 유지한다. */
+  const hjBathLink='<a class="ghost tiny" href="./bathroom.html" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;border:1px solid var(--line-soft);border-radius:8px;text-decoration:none">🛁 욕실 상담·견적</a>';
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button></div>`;
+      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button>${hjBathLink}</div>`;
     html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
     if(!state.quotes.length){
       html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
@@ -31046,7 +31048,7 @@ function viewQuoteMaker(){
       <button class="moss tiny" id="qmDriveSave">☁️ 드라이브 저장</button>
       <button class="ghost tiny" id="qmXlsx">⬇ 엑셀로 저장</button>
       <button class="blue tiny" id="qmSave">저장</button>
-      <button class="ghost tiny" id="qmClose">목록으로</button>
+      <button class="ghost tiny" id="qmClose">목록으로</button>${hjBathLink}
     </div></div>
   <div class="qm-wrap">
     <div class="qm-form">

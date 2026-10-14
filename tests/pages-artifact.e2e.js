@@ -18,7 +18,8 @@ const out = path.join(temp, '_site');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 여기에 안 적으면 저장소에는 있는데 Pages 에
 // 안 올라가고, 그건 폰에서 설치할 때에만 드러난다. 늘릴 때는 왜 늘렸는지 여기에 적어라.
 // 2026-10-01 v333: team-upload.js — 직원 사진함의 영속 업로드 대기열(HEIC·동영상·실패 후 재시도). team.html 이 부른다.
-const expected = ['.nojekyll', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+// v410: 공개 상담 셸과 생성 참고 이미지만. 고객별 초안/사진/단가 파일은 배포하지 않는다.
+const expected = ['.nojekyll', 'apple-touch-icon.png', 'bathroom-gray.png', 'bathroom-model.js', 'bathroom-warm.png', 'bathroom-white.png', 'bathroom.css', 'bathroom.html', 'bathroom.js', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
   'index.html', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team-upload.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
