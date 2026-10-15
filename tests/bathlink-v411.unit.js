@@ -110,4 +110,18 @@ test('면적 소수2자리 매핑도 차이를 보존하고 수량0 반올림은
  const tiny=priced();tiny.size.extraOpening=16.259;assert.equal(M.toAppItems(M.calculate(tiny),tiny)[1].qty,0);assert.throws(()=>M.hjBathHandoff(tiny,NOW),/수량이 0/);
 });
 
-console.log('PASS bathlink-v411 unit '+passed+'/12');
+test('v418 추정 단가는 앱 전달 전에 차단하며 보호 제거 변이를 탐지',()=>{
+ const d=priced();d.wall.price=10000;d.priceSources={'욕실 벽 타일(박스)':{kind:'estimate',supplyPrice:10000,n:3,min:9000,max:11000,weak:false}};
+ const before=JSON.stringify(d),reject=api=>assert.throws(()=>api.hjBathHandoff(d,NOW),error=>error.code==='BATH_ESTIMATE_PENDING');
+ reject(M);assert.equal(JSON.stringify(d),before);
+ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),source=fs.readFileSync(path.join(__dirname,'../bathroom-model.js'),'utf8');
+ const guard=source.split(/\r?\n/).find(line=>line.includes("error.code='BATH_ESTIMATE_PENDING'"));
+ assert(guard&&source.split(guard).length===2,'추정 전송 보호 변이 대상은 한 곳');
+ const sandbox={module:{exports:{}}};vm.runInNewContext(source.replace(guard,''),sandbox);
+ assert.equal(sandbox.module.exports.calculate(d).hasEstimates,true);
+ assert.throws(()=>reject(sandbox.module.exports),/Missing expected exception/,'추정 보호를 지우면 행동 검사가 실패');
+ d.priceSources['욕실 벽 타일(박스)']={kind:'app',supplyPrice:10000};
+ assert.equal(M.hjBathHandoff(d,NOW).items[0].priceSource.kind,'app','확인된 앱 저장 단가는 출처와 함께 전달');
+});
+
+console.log('PASS bathlink-v411 unit '+passed+'/13');

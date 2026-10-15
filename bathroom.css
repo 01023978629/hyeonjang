@@ -46,3 +46,12 @@ h1,h2,h3,p,dd,dt,label,button,small{word-break:keep-all;overflow-wrap:anywhere}
   .report .price-table td small{font-size:11px;line-height:1.75;white-space:normal;overflow-wrap:anywhere}
   .report .price-table td:last-child{border-top:1px solid var(--line);padding-top:10px;font-size:16px;font-weight:700}
 }
+.price-estimate-notice{margin:8px 0 16px}.price-prefill-notice{margin:0 0 16px;background:#eaf0e9;color:#284c43;border-color:#738d77}
+.price-source{display:block;max-width:100%;margin-top:7px;padding:5px 7px;border-radius:4px;font-size:11px;line-height:1.6;font-weight:500;white-space:normal;overflow-wrap:anywhere;word-break:keep-all;text-align:left;color:#4c6157;background:#eaf0e9}
+.price-source[data-price-source="estimate"]{background:#faf1df;color:#70532c;border:1px solid #e6d2ae}
+.field-grid label.has-price-source{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;align-content:start}
+.field-grid label.has-price-source>input{grid-area:2/1}.field-grid label.has-price-source>.price-source{grid-area:3/1}
+.field-grid label.has-price-source>span{position:static;grid-area:2/1;align-self:center;justify-self:end;margin:8px 11px 0 0}
+.estimate-total{font-size:12px;line-height:1.75;color:#70532c;background:#faf1df;border-radius:5px;padding:9px 12px;font-weight:600;overflow-wrap:anywhere}
+.summary .estimate-total{margin-top:16px}.report .estimate-total{margin:16px 0}.report-total .estimate-total{margin:0 0 9px}.report td .price-source{font-size:11px}
+@media print{.price-estimate-notice{display:none}.price-source,.estimate-total{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report td .price-source{font-size:8pt}.estimate-total{break-inside:avoid}}

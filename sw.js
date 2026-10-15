@@ -15,7 +15,8 @@ const SHELL_PATHS=new Set([
   SCOPE_PATH+'icon-192.png',
   SCOPE_PATH+'icon-512.png',
   SCOPE_PATH+'icon-maskable-512.png',
-  SCOPE_PATH+'apple-touch-icon.png'
+  SCOPE_PATH+'apple-touch-icon.png',
+  SCOPE_PATH+'bathroom-defaults.json'
 ]);
 function cacheableShellRequest(request){
   if(request.method!=='GET'||request.headers.has('Authorization'))return false;

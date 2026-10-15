@@ -7,6 +7,14 @@ let chromium;try{({chromium}=require('/opt/node22/lib/node_modules/playwright'))
 const BASE='http://127.0.0.1:8299',HANDOFF='hj_bath_handoff',PREFILL='hj_bath_prefill',DRAFT='hj_bathroom_consult_v1';
 const CANARY=process.argv.includes('--canary')||process.env.HJ_BATHLINK_CANARY==='1';
 const A='TEST_BATH_SITE_A',B='TEST_BATH_SITE_B';
+// Synthetic historical values exercise the actual fetch/normalize/source path only
+// in the two explicit integration scenarios below. Existing v411 scenarios see 404.
+const ESTIMATE_TABLE={generatedAt:'2026-10-16T00:00:00.000Z',source:'과거 견적 6건(합성 자료)',vat:'exclusive',items:{
+ '욕실 벽 타일(박스)':{price:28000,n:6,min:25000,max:32000},'욕실 벽 타일 시공(㎡)':{price:18000,n:4,min:16000,max:20000},
+ '욕실 바닥 타일(박스)':{price:24000,n:4,min:22000,max:26000},'욕실 바닥 타일 시공(㎡)':{price:22000,n:4,min:20000,max:24000},
+ '양변기':{price:250000,n:2,min:230000,max:270000,weak:true},'양변기 시공':{price:70000,n:3,min:60000,max:80000},
+ '방수·바탕 보수':{price:90000,n:3,min:80000,max:100000}
+}};
 const field=(page,key)=>page.locator('[data-path="'+key+'"]');
 let browser,passed=0;
 function appFixture(){return {version:2,app:'현장',savedAt:new Date(Date.now()-60000).toISOString(),files:[],quotes:[],schedule:[],notes:[{id:'TEST_KEEP_NOTE',text:'TEST_KEEP_NOTE'}],contacts:[],payLog:[],
@@ -14,9 +22,10 @@ function appFixture(){return {version:2,app:'현장',savedAt:new Date(Date.now()
  priceBook:{'욕실 벽 타일(박스)':10000,'욕실 벽 타일 시공(㎡)':20000,'욕실 바닥 타일(박스)':8000,'욕실 바닥 타일 시공(㎡)':15000,'양변기':100000,'양변기 시공':50000,'TEST_UNRELATED_PRICE':98765}};}
 function handoff(extra={}){return {at:new Date().toISOString(),version:1,project:A,customer:{name:'TEST_HANDOFF_CUSTOMER',addr:'TEST_HANDOFF_ADDRESS'},place:'TEST_HANDOFF_ADDRESS',vat:'exclusive',method:'full',days:{work:2,unusable:1,start:'TEST_START'},items:[{name:'TEST_HANDOFF_ITEM',spec:'TEST_SPEC',qty:2,price:100,pending:false}],memo:'TEST_HANDOFF_MEMO',total:220,...extra};}
 async function turn(page){await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
-async function makeContext(width=390,initial={}){
+async function makeContext(width=390,initial={},estimates=false){
  const context=await browser.newContext({viewport:{width,height:844},serviceWorkers:'block',timezoneId:'Asia/Seoul'}),errors=[];
  await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin!==BASE)return route.abort();if(u.pathname==='/__bathlink_seed__')return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><title>synthetic seed</title>'});return route.continue();});
+ await context.route('**/bathroom-defaults.json*',route=>route.fulfill(estimates?{status:200,contentType:'application/json',body:JSON.stringify(ESTIMATE_TABLE)}:{status:404,body:''}));
  context.on('page',page=>{page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(30000);page.on('pageerror',e=>errors.push(String(e)));page.on('dialog',d=>d.accept());});
  const seed=await context.newPage();await seed.goto(BASE+'/__bathlink_seed__');
  await seed.evaluate(async({fixture,initial})=>{
@@ -67,7 +76,7 @@ async function pricedBath(page,inclusive=false,pending=false){
 }
 async function send(page){await page.locator('#sendToApp').click();const raw=await page.evaluate(key=>localStorage.getItem(key),HANDOFF);assert(raw,'BATHLINK_UI_CREATED_HANDOFF');assert(await page.locator('#openAppLink').isVisible(),'BATHLINK_OPEN_APP_VISIBLE');assert.equal(await page.locator('#openAppLink').getAttribute('href'),'./index.html');assert.notEqual(await page.locator('#openAppLink').getAttribute('target'),'_blank','BATHLINK_APP_LINK_SAME_TAB');return JSON.parse(raw);}
 async function quote(page){return page.evaluate(()=>({q:state.editingQuote,total:state.editingQuote?quoteCalc(state.editingQuote).total:null,quotes:state.quotes,keys:Object.keys(serializeData()).filter(k=>k!=='savedAt').sort(),raw:localStorage.getItem('hj_bath_handoff')}));}
-async function run(name,fn,width=390,initial={}){const t=await makeContext(width,initial);try{await fn(t);assert.deepEqual(t.errors,[],'NO_PAGE_ERRORS '+name);passed++;console.log('PASS '+name);}finally{await t.context.close();}}
+async function run(name,fn,width=390,initial={},estimates=false){const t=await makeContext(width,initial,estimates);try{await fn(t);assert.deepEqual(t.errors,[],'NO_PAGE_ERRORS '+name);passed++;console.log('PASS '+name);}finally{await t.context.close();}}
 async function uiRoundTrip(t,inclusive=false,pending=false){
  const b=await bath(t);await pricedBath(b,inclusive,pending);const payload=await send(b);assert.equal(payload.total,1078990,'BATHLINK_BATH_TOTAL_INDEPENDENT');assert.equal(payload.customer.name,'TEST_HANDOFF_CUSTOMER');assert.equal(payload.place,'TEST_HANDOFF_ADDRESS');
  const expected=[['욕실 벽 타일(박스)',13,10000],['욕실 벽 타일 시공(㎡)',16.26,20000],['욕실 바닥 타일(박스)',3,8000],['욕실 바닥 타일 시공(㎡)',3.78,15000],['타일 접착제',5,25000],['줄눈재',4,5000],['양변기',2,100000],['양변기 시공',2,50000]];
@@ -127,6 +136,42 @@ async function methodDaysAndMobile(t){
  const payload=await send(b);assert.deepEqual(payload.days,{work:3,unusable:2,start:'TEST_START_AFTER_REVIEW'});assert(payload.memo.includes('TEST_START_AFTER_REVIEW'));
  await geometry(b,['#sendToApp','#workMethod']);const headings=await b.locator('h1,h2').evaluateAll(els=>els.map(el=>({text:el.textContent,overflow:el.scrollWidth-el.clientWidth,wordBreak:getComputedStyle(el).wordBreak,wrap:getComputedStyle(el).overflowWrap})));for(const h of headings){assert(h.overflow<=0,'BATHLINK_HEADING_OVERFLOW '+h.text);assert.equal(h.wordBreak,'keep-all');assert.equal(h.wrap,'anywhere');}
 }
+async function bathStorage(page){return page.evaluate(async()=>{
+ const stored=await new Promise((resolve,reject)=>{const request=indexedDB.open('hyeonjang-db',1);request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('kv','readonly'),read=tx.objectStore('kv').get('appState');read.onerror=()=>reject(read.error);read.onsuccess=()=>{db.close();resolve(read.result);};};});
+ return {stored,local:Object.fromEntries(Object.entries(localStorage).sort(([a],[b])=>a.localeCompare(b)))};
+});}
+async function estimatedTransferBlocked(t){
+ const b=await bath(t);await b.waitForFunction(()=>document.documentElement.dataset.bathPricesReady==='true');
+ assert.equal(await field(b,'wall.price').inputValue(),'28000','BATHLINK_ESTIMATED_PRICE_LOADED');
+ assert.equal(await b.locator('[data-price-source="estimate"][data-source-path="wall.price"]').count(),1,'BATHLINK_ESTIMATE_SOURCE_PRESENT');
+ const before=await bathStorage(b);assert(before.local[HANDOFF]&&before.local[DRAFT],'BATHLINK_PRESERVATION_FIXTURES_PRESENT');
+ assert(await b.locator('#sendToApp').isDisabled(),'BATHLINK_ESTIMATE_SEND_DISABLED');
+ assert(await b.locator('#appHandoffBlocked').isVisible(),'BATHLINK_ESTIMATE_PERSISTENT_NOTICE');assert.match(await b.locator('#appHandoffBlocked').textContent(),/추정/);
+ // dispatchEvent deliberately reaches the real handler despite the disabled control.
+ // This protects the payload too, rather than testing only the button presentation.
+ await b.locator('#sendToApp').dispatchEvent('click');await turn(b);
+ assert.deepEqual(await bathStorage(b),before,'BATHLINK_ESTIMATE_BLOCK_PRESERVES_ALL_STORAGE');
+ assert(await b.locator('#openAppLink').isHidden(),'BATHLINK_BLOCKED_NO_SUCCESS_LINK');
+ assert.match(await b.locator('#status').textContent(),/추정|확인/,'BATHLINK_BLOCKED_HANDLER_NOTICE');
+}
+async function savedPriceProvenance(t){
+ const a=await app(t);await clearEditor(a);await a.evaluate(A=>{state.activeProject=A;render();},A);const before=await snapshot(a);
+ const opened=t.context.waitForEvent('page');await a.locator('#qmBathroom').click();const b=await opened;await b.waitForLoadState('domcontentloaded');await b.waitForFunction(()=>document.documentElement.dataset.bathReady==='true'&&document.documentElement.dataset.bathPricesReady==='true');
+ for(const [path,value]of [['wall.price',10000],['wall.labor',20000],['floor.price',8000],['floor.labor',15000],['scope.4.material',100000],['scope.4.labor',50000]]){
+  assert.equal(await field(b,path).inputValue(),String(value),'BATHLINK_APP_PRICE_BEATS_ESTIMATE '+path);
+  assert.equal(await b.locator('[data-price-source="app"][data-source-path="'+path+'"]').count(),1,'BATHLINK_APP_SOURCE_BADGE '+path);
+  assert.equal(await b.locator('[data-price-source="estimate"][data-source-path="'+path+'"]').count(),0,'BATHLINK_NO_FALSE_ESTIMATE '+path);
+ }
+ assert.equal(await field(b,'scope.2.material').inputValue(),'90000');assert(!await field(b,'scope.2.enabled').isChecked());
+ assert.equal(await b.locator('[data-price-source="estimate"][data-source-path="scope.2.material"]').count(),1,'BATHLINK_UNSELECTED_ESTIMATE_RETAINED');
+ assert(await b.locator('#sendToApp').isEnabled(),'BATHLINK_UNSELECTED_ESTIMATE_DOES_NOT_BLOCK');
+ assert(await b.locator('#appHandoffBlocked').isHidden());assert.equal(await b.evaluate(key=>localStorage.getItem(key),PREFILL),null);
+ await b.locator('#saveDraft').click();const draft=await b.evaluate(key=>JSON.parse(localStorage.getItem(key)),DRAFT);
+ assert.deepEqual(draft.priceSources['욕실 벽 타일(박스)'],{kind:'app',supplyPrice:10000},'BATHLINK_APP_PROVENANCE_SAVED');
+ assert.equal(draft.priceSources['방수·바탕 보수'].kind,'estimate','BATHLINK_UNSELECTED_PROVENANCE_SAVED');
+ const payload=await send(b);assert.equal(payload.items.length,4);assert.equal(payload.items[0].price,10000,'BATHLINK_HANDOFF_USES_SAVED_APP_PRICE');assert.deepEqual(payload.items[0].priceSource,{kind:'app',supplyPrice:10000},'BATHLINK_HANDOFF_PRESERVES_APP_PROVENANCE');assert.equal(payload.total,589490,'BATHLINK_APP_PRICE_TOTAL_INDEPENDENT');
+ await unchanged(a,before,'BATHLINK_PROVENANCE_IMPORT_READ_ONLY');
+}
 async function expiredPrefill(t){const b=await bath(t);assert.equal(await b.evaluate(key=>localStorage.getItem(key),PREFILL),null,'BATHLINK_EXPIRED_PREFILL_CONSUMED');assert.equal(await field(b,'project').inputValue(),'');assert.equal(await field(b,'wall.price').inputValue(),'');assert(await b.locator('#appPrefillNotice').isHidden());assert.equal(await b.evaluate(()=>localStorage.getItem('bathlink_unrelated')),'TEST_KEEP');}
 (async()=>{
  browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform==='win32'?undefined:'/opt/pw-browsers/chromium')});
@@ -141,6 +186,8 @@ async function expiredPrefill(t){const b=await bath(t);assert.equal(await b.eval
   await run('공사 방식·기간·고객 출력·320px',methodDaysAndMobile,320);
   await run('공사 방식·기간·고객 출력·390px',methodDaysAndMobile,390);
   for(const delta of [-601000,60000])await run('미리 채우기 시각 거부 '+delta,expiredPrefill,390,{[PREFILL]:{at:new Date(Date.now()+delta).toISOString(),project:'TEST_EXPIRED',customer:{name:'TEST_EXPIRED',addr:'TEST_EXPIRED'},prices:{'욕실 벽 타일(박스)':10000}}});
+  await run('추정 단가의 앱 전송 보류·직접 핸들러·저장 원문 보존',estimatedTransferBlocked,390,{[HANDOFF]:handoff({memo:'TEST_PREVIOUS_HANDOFF_KEEP'}),[DRAFT]:'{"version":99,"note":"TEST_DRAFT_ORIGINAL_KEEP"}'},true);
+  await run('저장한 앱 단가 우선·app 출처·미선택 추정 보존·전송',savedPriceProvenance,390,{},true);
   console.log('bathlink-v411 e2e '+passed+'/'+passed);
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
