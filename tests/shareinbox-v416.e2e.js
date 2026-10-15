@@ -162,6 +162,26 @@ async function finish(item) {
   observed.push({ errors: item.errors, side: await item.page.evaluate(() => __v416SideEffects) });
   await item.ctx.close();
 }
+async function discardDialog(item, accept) {
+  item.page.removeListener('dialog', item.dialogHandler);
+  let dialog;
+  try {
+    // hjShareDiscard reads IDB before showing confirm, so click completion is
+    // not the confirmation boundary. Register first and await the real dialog.
+    const event = item.page.waitForEvent('dialog');
+    const click = item.page.locator('#hjShareDiscard').click();
+    dialog = await event;
+    assert.equal(dialog.type(), 'confirm', 'discard must use an explicit confirmation');
+    assert.match(dialog.message(), /버릴|삭제/);
+    if (accept) await dialog.accept(); else await dialog.dismiss();
+    await click;
+  } catch (error) {
+    if (dialog) await dialog.dismiss().catch(() => {});
+    throw error;
+  } finally {
+    item.page.on('dialog', item.dialogHandler);
+  }
+}
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
@@ -305,14 +325,9 @@ async function finish(item) {
   });
   await test('discard requires confirmation and cannot delete accepted originals', async () => {
     const before = await rows(expiry.page);
-    await expiry.page.locator('#hjShareDiscard').click(); // Default native-dialog handler cancels.
+    await discardDialog(expiry, false);
     assert.deepEqual(await rows(expiry.page), before, 'discard cancellation keeps every original');
-    expiry.page.removeListener('dialog', expiry.dialogHandler);
-    let confirmation = '';
-    expiry.page.once('dialog', async dialog => { confirmation = dialog.message(); await dialog.accept(); });
-    try { await expiry.page.locator('#hjShareDiscard').click(); }
-    finally { expiry.page.on('dialog', expiry.dialogHandler); }
-    assert.match(confirmation, /버릴|삭제/);
+    await discardDialog(expiry, true);
     await expiry.page.evaluate(async () => {
       const end = Date.now() + 10000;
       while (Date.now() < end) {
