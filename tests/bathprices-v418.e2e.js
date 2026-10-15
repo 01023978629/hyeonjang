@@ -38,11 +38,11 @@ async function download(p,id){const wait=p.waitForEvent('download');await p.loca
    assert((await p.locator('.estimate-total').count())>0);assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
    if(process.env.HJ_V418_SHOTS){fs.mkdirSync(process.env.HJ_V418_SHOTS,{recursive:true});await p.locator('#tileFields').evaluate(el=>el.scrollIntoView({block:'start'}));await p.screenshot({path:path.join(process.env.HJ_V418_SHOTS,'v418-prices-390.png')});}
   });
-  await scenario('유효 앱 단가와 0원 우선·핸드오프 소비',{prefill:{at:new Date().toISOString(),prices:{'욕실 벽 타일(박스)':31000,'욕실 바닥 타일(박스)':0,'양변기':false}}},async p=>{
+  await scenario('유효 앱 단가와 0원 우선·핸드오프 소비',{prefill:{at:new Date().toISOString(),project:'',customer:{name:'',addr:''},prices:{'욕실 벽 타일(박스)':31000,'욕실 바닥 타일(박스)':0,'양변기':false}}},async p=>{
    assert.equal(await input(p,'wall.price').inputValue(),'31000');assert.equal(await input(p,'floor.price').inputValue(),'0');assert.equal(await badge(p,'wall.price').count(),0);
    assert.equal(await input(p,'scope.4.material').inputValue(),'250000');assert.equal(await p.evaluate(()=>localStorage.getItem('hj_bath_prefill')),null);
   });
-  for(const [name,at] of [['만료',new Date(Date.now()-11*60e3).toISOString()],['미래',new Date(Date.now()+60e3).toISOString()]])await scenario(name+' 핸드오프 무시',{prefill:{at,prices:{'욕실 벽 타일(박스)':999}}},async p=>{
+  for(const [name,at] of [['만료',new Date(Date.now()-11*60e3).toISOString()],['미래',new Date(Date.now()+60e3).toISOString()]])await scenario(name+' 핸드오프 무시',{prefill:{at,project:'',customer:{name:'',addr:''},prices:{'욕실 벽 타일(박스)':999}}},async p=>{
    assert.equal(await input(p,'wall.price').inputValue(),'28000');assert.equal(await p.evaluate(()=>localStorage.getItem('hj_bath_prefill')),null);
   });
   await scenario('늦은 추정 응답이 사용자 입력·지운 빈 칸을 덮지 않음',{delay:true},async(p,release)=>{

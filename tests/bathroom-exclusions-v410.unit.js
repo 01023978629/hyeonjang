@@ -17,7 +17,7 @@ test('기본 미포함 목록은 기존 공사 순서 뒤에 접착제와 줄눈
 test('모든 공사를 선택해도 미선택 부자재는 CSV 미포함 행에 남음',()=>{
  const d=allScope(priced()),r=M.calculate(d);
  assert.deepEqual(r.excluded,['타일 접착제','줄눈재']);
- assert.equal(r.rows.length,30,'타일 네 행과 선택한 공사 13개의 자재·시공 행만 합산');
+ assert.equal(r.rows.length,44,'v411 타일 네 행과 선택한 공사 20개의 자재·시공 행만 합산');
  assert.equal(r.total,1352978);assert(r.complete);
  assert(M.toCSV(r).includes('"미포함 품목","타일 접착제, 줄눈재"'));
 });
