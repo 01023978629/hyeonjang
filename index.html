@@ -6092,7 +6092,7 @@ function hjLeakCardHtml(p){
   if(!p||hjProjectKind(p)!=='leak')return '';
   const d=hjLeakIntakeData(p),chip=t=>'<span style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">'+escapeHtml(t)+'</span>';
   const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인'];
-  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button></div></div>';
+  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button></div></div>';
 }
 
 /* v419 출동 알림과 미완료 집계는 현재 현장/일정만 읽는다. 다른 유형의 긴급 일정은 누수 출동으로 세지 않는다. */
@@ -9812,7 +9812,7 @@ function hjDailyBriefHTML(){
         '<button class="clay tiny" data-qfollow="1" style="padding:3px 8px;font-size:11px;white-space:nowrap" title="견적 팔로업 문자 초안">⏰ 팔로업</button></div>').join('');
     }
     // 4) 대금 현황(힌트)
-    h+=sec('💰 대금 현황(힌트)');
+    h+=sec('💰 대금 현황(힌트)');h+=hjLeakReceiptPendingHtml();
     if(b.totEst>0){
       h+='<div style="font-size:13px">수금 <b style="color:var(--ok)">'+won(b.totRecv)+'</b> <span class="hint" style="display:inline">· 진행 현장 견적 '+won(b.totEst)+(b.looseN?' · 현장 미지정 견적 '+b.looseN+'건 '+won(b.looseEst)+' 별도':'')+'</span></div>';
     } else if(b.totRecv>0){
@@ -13103,6 +13103,11 @@ function hjProofPending(today,projectName){
 function hjProofSet(rec,kind){
   if(!rec||!(state.payLog||[]).includes(rec))return false;
   if(kind){rec.proof=kind;rec.proofAt=localDate();}else{delete rec.proof;delete rec.proofAt;}
+  /* v421 기존 입금 증빙 화면과 견적의 받은 돈 기록은 같은 증빙 상태를 유지한다. */
+  for(const q of (state.quotes||[])){if(!q.paid||q.paid.payLogId!==rec.id||q.id!==rec.quoteId||q.project!==rec.project)continue;
+    const old=paidStableJson(q.paid.receipt),type={cash:'현금영수증',tax:'세금계산서',card:'카드전표',etc:'없음'}[kind]||(q.paid.receipt||{}).type||'없음';q.paid.receipt={type,issued:!!kind&&kind!=='etc'};
+    const edit=state.editingQuote;if(edit&&edit.id===q.id&&edit.paid&&edit.paid.payLogId===rec.id&&paidStableJson(edit.paid.receipt)===old)edit.paid.receipt={...q.paid.receipt};
+  }
   markDirty();return true;
 }
 // v349 부가세 준비용 집계 — 신고 기간(YYYY-MM~YYYY-MM)에 들어온 입금을 증빙 종류별로 센다(읽기 전용).
@@ -14312,7 +14317,7 @@ function hjQuoteStartFor(name){
     openModal('저장하지 않은 견적','<p style="font-size:13px;line-height:1.6">‘'+escapeHtml(state.editingQuote.title||state.editingQuote.no||'견적서')+'’에 저장하지 않은 내용이 있습니다.<br>새 견적서('+escapeHtml(name)+')를 열기 전에 어떻게 할까요?</p>',
       [{label:'계속 편집',cls:'ghost',fn:()=>{closeModal();state.tab='quotemaker';state.activeProject=null;render();}},
        {label:'저장 안 하고 새 견적',cls:'warn',fn:()=>{closeModal();start();}},
-       {label:'저장하고 새 견적',cls:'blue',fn:()=>{if(!hjProjectActionValid(q0,name,stage,1))return;closeModal();saveQuoteEdit();start();}}]);
+       {label:'저장하고 새 견적',cls:'blue',fn:()=>{if(!hjProjectActionValid(q0,name,stage,1))return;closeModal();if(saveQuoteEdit()===false)return;start();}}]);
     return;
   }
   start();
@@ -30751,7 +30756,8 @@ function msgCenterView(tab){
   const leakChoose=document.getElementById('mcLeakChoose');if(leakChoose)leakChoose.onclick=()=>hjLeakSmsChoose();
   return {템플릿:kinds.length};
 }
-function msgCenterCompose(kind){
+/* v421 선택 현장의 초안도 기존 문자 센터에서 확인·수정한다. 발송은 기존 버튼을 눌렀을 때만 실행한다. */
+function msgCenterCompose(kind,preset){
   const projs=(state.projects||[]).filter(function(p){return !p.archived;});
   const opts=projs.map(function(p,i){return '<option value="'+i+'">'+escapeHtml(p.name)+(p.customer&&p.customer.name?' — '+escapeHtml(p.customer.name):'')+'</option>';}).join('');
   const needDate=kind==='start';
@@ -30763,12 +30769,13 @@ function msgCenterCompose(kind){
     '<label style="font-size:11.5px;color:var(--muted)">문자 내용 (수정 가능)</label>'+
     '<textarea id="mcBody" style="width:100%;min-height:190px;padding:11px;font-size:12.5px;line-height:1.65;margin-top:4px;border-radius:9px;border:1px solid var(--line-soft)"></textarea>'+
     '<div style="display:flex;gap:8px;margin-top:10px"><button class="clay" id="mcSend" style="flex:1;padding:12px;font-size:13.5px">💬 문자 보내기</button><button class="ghost" id="mcCopy" style="padding:12px 15px;font-size:13px">📋 복사</button></div>',
-    [{label:'‹ 상황',cls:'ghost',fn:msgCenterView},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+    [{label:preset&&preset.back?'편집으로':'‹ 상황',cls:'ghost',fn:preset&&preset.back||msgCenterView},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const fill=function(){
     const p=projs[+document.getElementById('mcProj').value];
     const extra={date:needDate?(document.getElementById('mcDate')||{}).value:''};
-    document.getElementById('mcBody').value=msgTemplate(kind,p,extra);
+    document.getElementById('mcBody').value=preset&&p&&p.name===preset.project?preset.text:msgTemplate(kind,p,extra);
   };
+  if(preset){const i=projs.findIndex(p=>p.name===preset.project);if(i>=0)document.getElementById('mcProj').value=String(i);}
   fill();
   document.getElementById('mcProj').onchange=fill;
   const d=document.getElementById('mcDate');if(d)d.onchange=fill;
@@ -32070,28 +32077,25 @@ function estFinalApply(){
 // 없으면 저장 후 대시보드로 튕겨 "알람이 꺼졌는지" 그 자리에서 확인할 수 없다.
 /* 입금 기록 한 건을 적는 한 곳(v350) — 💰 입금 기록 창과 🏦 통장 가져오기가 같이 쓴다. 받은 돈 누계(p.received)와
    수금 이력(payLog)이 같이 움직이고, 예전 버전이 만들어 둔 독촉·입금확인 작업을 닫는다. markDirty 는 부른 쪽이 한다. */
-function hjPayRecordAdd(p,rec){
-  const amt=Math.round(num(rec&&rec.amt)),d=String(rec&&rec.d||''),pjName=p.name;
+/* v421 선택한 저장 후보에도 기존 입금 경로를 적용한다. 대상 생략 시 이전 화면·통장 가져오기의 동작을 유지한다. */
+function hjPayRecordAdd(p,rec,target){
+  const book=target||state,amt=Math.round(num(rec&&rec.amt)),d=String(rec&&rec.d||'');
   if(!p||!(amt>0)||!d)return false;
+  const pjName=p.name;
   p.received=(p.received||0)+amt;
-  state.payLog=state.payLog||[];
-  state.payLog.push(Object.assign({},rec,{d:d,project:pjName,amt:amt}));
-  if(state.payLog.length>5000)state.payLog=state.payLog.slice(-5000);   // serializeData 캡과 동일
-  // 예전 버전이 만들어 둔 독촉/입금확인 작업이 남아 있으면 입금 기록과 함께 닫는다.
-  // 미수 추적을 걷어냈으니 앱이 다시 이런 작업을 만들지 않는다.
+  book.payLog=book.payLog||[];
+  book.payLog.push(Object.assign({},rec,{d:d,project:pjName,amt:amt}));
+  if(book.payLog.length>5000)book.payLog=book.payLog.slice(-5000);
   try{
-    const o=aiOpsEnsureState();const now=new Date().toISOString();
-    // 현장 매칭은 t.project 우선 — title 부분일치만 쓰면 "래미안" 입금이 "래미안2차" 작업까지 닫는다
+    // 후보 저장은 전역 상태 보정 함수를 호출하지 않는다. 기존 후보의 작업 큐만 같은 규칙으로 닫는다.
+    const o=book===state?aiOpsEnsureState():book.aiOps;if(!o||typeof o!=='object')return true;
+    const now=new Date().toISOString();
     const mine=function(t){return t.project?t.project===pjName:String(t.title||'').includes(pjName);};
     (o.queue||[]).forEach(function(t){
       if((t.status==='pending'||t.status==='approved')&&/미수금|입금\s*확인|독촉/.test(t.title||'')&&mine(t)){
-        t.status='done';t.reason='(자동) '+d+' '+won(amt)+' 입금 기록';
-        t.updatedAt=now;
+        t.status='done';t.reason='(자동) '+d+' '+won(amt)+' 입금 기록';t.updatedAt=now;
       }
     });
-    // 완납 처리한 작업은 **큐에서 뺀다**(aiExecuteTask·aiQueueDismiss 와 같은 방식).
-    // 남겨 두면 목록에 계속 보여 "알람이 안 꺼진다"가 되고, [승인]→[실행] 로 이미
-    // 다 낸 고객에게 독촉 문자 작성창이 열린다.
     o.queue=(o.queue||[]).filter(function(t){return t.status!=='done';});
   }catch(e){}
   return true;
@@ -34129,6 +34133,8 @@ async function estimateProjectAssign(type,id,project){
   if(name&&!aptUnitProject(name))throw new Error('프로젝트가 없거나 이름이 중복되었습니다.');
   const prior=target.q?target.q.project:target.f.project;
   if((prior||null)===name)return false;
+  /* v421 수금 장부에 연결된 견적의 현장만 따로 옮기지 않는다. */
+  if(target.q&&target.q.paid&&target.q.paid.payLogId)throw new Error('받은 돈이 연결된 견적은 현장을 바꿀 수 없습니다.');
   const before=JSON.stringify(target.q||target.f.est),key=target.f&&!target.q?fileKey(target.f):null;
   __estimateProjectBusy=true;
   try{return await durableLocalMutation({snapshotLabel:'견적 프로젝트 지정 전',beforeCommit:()=>{if(!estimateDerivedQuotesConsistent())throw new Error('작성 견적 정보가 변경되었습니다. 편집기에서 확인하세요.');},mutateDraft:draft=>{
@@ -34381,7 +34387,7 @@ function hjBathHandoffApply(raw){
     if(d.customer.name)memo.push('고객: '+d.customer.name);
     if(!project)memo.push('현장을 골라 연결하세요');
     const q=Object.assign(newQuote(),{title:d.project?d.project+' 욕실 견적':'욕실 견적',place:d.place,project:project?project.name:null,vatIncluded:true,items:now.items,memo:memo.join('\n'),bathroomImport:true});
-    if(saveOld)saveQuoteEdit();
+    if(saveOld&&saveQuoteEdit()===false)return false;
     state.editingQuote=q;state.tab='quotemaker';state.activeProject=null;render();
     try{if(localStorage.getItem('hj_bath_handoff')===raw)localStorage.removeItem('hj_bath_handoff');}catch(e){__hjBathSkipped.add(raw);}
     closeModal();toast('욕실 상담을 새 견적서로 불러왔어요. 확인 후 저장하세요.');return true;
@@ -34417,6 +34423,199 @@ function hjBathHandoffBoot(){
   window.addEventListener('focus',hjBathHandoffCheck);
   window.addEventListener('storage',e=>{if(e.key==='hj_bath_handoff')hjBathHandoffCheck();});
   document.addEventListener('visibilitychange',hjBathHandoffCheck);
+}
+
+/* v421 누수 품목명은 단가장 학습 키다. 원인별 선택만 제안하고 등록하지 않은 단가는 빈칸으로 둔다. */
+const HJ_LEAK_ITEMS=Object.freeze([
+  ['출장·탐지비','식'],['배관 교체','m'],['배관 부속·밸브','개'],['방수 보수','㎡'],['타일 복구','㎡'],['천장 점검구 설치','개'],['도배·마감 복구','식'],['폐기물 처리','식'],['아랫집 피해 복구 협의','식']
+].map(([name,unit])=>Object.freeze({name,unit})));
+function hjLeakQuoteItems(p){
+  const cause=String(p&&p.leak&&p.leak.detect&&p.leak.detect.cause||''),book=state.priceBook||{};
+  const selected=/급수|온수|난방/.test(cause)?[0,1,2,4]:/배수/.test(cause)?[0,1,7]:/방수층/.test(cause)?[0,3,4]:[0];
+  return HJ_LEAK_ITEMS.map((it,i)=>({name:it.name,spec:it.unit,qty:1,price:typeof book[it.name]==='number'&&Number.isSafeInteger(book[it.name])&&book[it.name]>=0?book[it.name]:i===8?0:'',checked:selected.includes(i)}));
+}
+function hjLeakQuoteTarget(q){return hjLeakProject(q&&q.project||state.activeProject);}
+function hjLeakQuoteMeta(p,q){
+  const d=p.leak&&p.leak.detect||{};
+  if(!String(q.title||'').trim())q.title=p.name+' 누수 수리 견적';
+  if(!String(q.place||'').trim())q.place=String(p.customer&&p.customer.addr||'');
+  q.project=p.name;q.leak={...(q.leak||{}),cause:d.cause||'원인 미확정',zone:d.zone||'',from:'template',at:new Date().toISOString()};
+}
+function hjLeakQuoteIssue(q){
+  const saved=q&&(state.quotes||[]).find(x=>x.id===q.id);
+  if(saved&&saved.paid&&saved.paid.payLogId&&(saved.project||null)!==(q.project||null))return '받은 돈이 연결된 견적은 현장을 바꿀 수 없습니다. 원래 현장을 유지해 주세요.';
+  if(!q||!q.leak)return '';
+  const rows=(q.items||[]).filter(it=>String(it.name||'').trim());
+  if(!rows.length)return '견적에 넣을 품목을 골라 주세요.';
+  for(const it of rows){
+    if(it.price===''||it.price==null)return it.name+' 단가를 확인해 입력해 주세요. 무료인 항목은 0을 입력하세요.';
+    const qty=String(it.qty).trim(),price=String(it.price).trim();
+    if(!/^\d+(?:\.\d{1,4})?$/.test(qty)||!(Number(qty)>0)||!/^\d+(?:,\d{3})*$/.test(price)||!Number.isSafeInteger(Number(price.replace(/,/g,'')))||!Number.isSafeInteger(Math.round(Number(qty)*Number(price.replace(/,/g,'')))))return it.name+' 수량과 단가를 확인해 주세요.';
+  }
+  if(!Number.isSafeInteger(quoteCalc(q).total))return '견적 합계가 너무 큽니다. 수량과 단가를 확인해 주세요.';
+  return '';
+}
+function hjLeakQuoteModalFit(){
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
+}
+function hjLeakQuoteTemplate(){
+  const q=state.editingQuote,p=hjLeakQuoteTarget(q);if(!q||!hjLeakProjectCurrent(p,p&&p.name))return;
+  const stamp=paidStableJson(q),rows=hjLeakQuoteItems(p),current=()=>state.editingQuote===q&&paidStableJson(q)===stamp&&hjLeakProjectCurrent(p,p.name);
+  const apply=(items,replace)=>{
+    if(!current()){toast('견적이나 현장이 바뀌었습니다. 다시 열어 주세요.');return;}
+    q.items=(replace?[]:(q.items||[]).filter(it=>String(it.name||'').trim()||num(it.price))).concat(items);hjLeakQuoteMeta(p,q);closeModal();render();
+  };
+  const body='<div id="hjLeakTemplateForm"><p class="hint">단가장에 없는 가격은 빈칸입니다. 저장 전에 확인해 주세요.</p>'+rows.map((r,i)=>'<label style="display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere"><input type="checkbox" data-leak-template-check="'+i+'"'+(r.checked?' checked':'')+'><span>'+escapeHtml(r.name)+' ('+escapeHtml(r.spec)+') · '+(r.price===''?'단가 확인 필요':won(r.price))+'</span></label>').join('')+'</div>';
+  openModal('💧 누수 템플릿 넣기',body,[{label:'선택한 품목 넣기',cls:'blue',fn:()=>{
+    if(!current()){toast('견적이나 현장이 바뀌었습니다. 다시 열어 주세요.');return;}
+    const items=[...document.querySelectorAll('[data-leak-template-check]:checked')].map(el=>{const r=rows[+el.dataset.leakTemplateCheck];return {name:r.name,spec:r.spec,qty:r.qty,price:r.price};});
+    if(!items.length){toast('품목을 하나 이상 골라 주세요.');return;}
+    if((q.items||[]).some(it=>String(it.name||'').trim()||num(it.price))){openModal('기존 품목이 있습니다','<p>선택한 누수 품목을 어떻게 넣을까요?</p>',[{label:'뒤에 추가',cls:'blue',fn:()=>apply(items,false)},{label:'바꾸기',cls:'warn',fn:()=>apply(items,true)},{label:'취소',cls:'ghost',fn:closeModal}]);hjLeakQuoteModalFit();}
+    else apply(items,true);
+  }},{label:'취소',cls:'ghost',fn:closeModal}],true);hjLeakQuoteModalFit();
+}
+/* v421 간이 견적도 같은 편집 초안을 사용한다. 다른 초안은 명시적 선택 없이 버리지 않고, 읽기/고객 미리보기는 저장하지 않는다. */
+let __hjLeakQuick=null;
+function hjLeakQuickCurrent(s){return !!s&&__hjLeakQuick===s&&state.editingQuote===s.q&&(!s.draftStamp||paidStableJson(s.q)===s.draftStamp)&&hjLeakProjectCurrent(s.p,s.name);}
+function hjLeakQuickQuote(name){
+  if(__modalCloseLocked||photoIntakePending()||__appVersionUpdating||__tabStale){toast('진행 중인 작업을 마친 뒤 다시 열어 주세요.');return;}
+  const p=hjLeakProject(name);if(!hjLeakProjectCurrent(p,name))return;
+  if(__hjLeakQuick&&__hjLeakQuick.name===name&&state.editingQuote===__hjLeakQuick.q){if(paidStableJson(__hjLeakQuick.q)!==__hjLeakQuick.draftStamp){toast('전체 편집기에서 바꾼 견적을 먼저 저장해 주세요.');state.tab='quotemaker';state.activeProject=null;render();return;}__hjLeakQuick.p=p;hjLeakQuickView(__hjLeakQuick);return;}
+  const old=state.editingQuote,stamp=paidStableJson(old);
+  const start=()=>{if(!hjLeakProjectCurrent(p,name))return;const q=newQuote();hjLeakQuoteMeta(p,q);const s={q,p,name,rows:hjLeakQuoteItems(p),busy:false};state.editingQuote=q;__hjLeakQuick=s;hjLeakQuickSync(s);s.initial=paidStableJson(q);hjLeakQuickView(s);};
+  if(quoteEditDirty()){
+    const current=()=>state.editingQuote===old&&paidStableJson(old)===stamp&&hjLeakProjectCurrent(p,name);
+    openModal('저장하지 않은 견적','<p>작성 중인 견적을 먼저 정리해 주세요.</p>',[{label:'계속 편집',cls:'ghost',fn:closeModal},{label:'저장 안 하고 새 견적',cls:'warn',fn:()=>{if(!current())return;start();}},{label:'저장하고 새 견적',cls:'blue',fn:()=>{if(!current())return;if(saveQuoteEdit()===false)return;start();}}]);hjLeakQuoteModalFit();return;
+  }
+  start();
+}
+function hjLeakQuickSync(s){s.q.items=s.rows.filter(r=>r.checked).map(r=>({name:r.name,spec:r.spec,qty:r.qty,price:r.price}));s.draftStamp=paidStableJson(s.q);}
+function hjLeakQuickClose(s){
+  closeModal();
+  if(hjLeakQuickCurrent(s)&&paidStableJson(s.q)===s.initial&&!(state.quotes||[]).some(q=>q.id===s.q.id)){state.editingQuote=null;__hjLeakQuick=null;}
+}
+function hjLeakQuickView(s){
+  if(!hjLeakQuickCurrent(s)){toast('견적이나 현장이 바뀌었습니다. 현장에서 다시 열어 주세요.');return;}
+  const inputStyle='width:100%;min-width:0;min-height:44px;box-sizing:border-box;font-size:17px';
+  const body='<div id="hjLeakQuoteForm" style="min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 8px"><b>'+escapeHtml(s.name)+'</b><br><span class="hint">공급가 단가 · 미등록 가격은 직접 확인해 주세요.</span></p>'+s.rows.map((r,i)=>'<div style="padding:8px 0;border-bottom:1px solid var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox" data-leakquote-check="'+i+'"'+(r.checked?' checked':'')+' style="width:22px;height:22px"><b>'+escapeHtml(r.name)+'</b></label><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:8px"><label style="min-width:0;font-size:12px">수량 ('+escapeHtml(r.spec)+')<input type="text" inputmode="decimal" data-leakquote-qty="'+i+'" value="'+escapeAttr(String(r.qty))+'" style="'+inputStyle+'"></label><label style="min-width:0;font-size:12px">단가 (원)<input type="text" inputmode="numeric" data-leakquote-price="'+i+'" value="'+escapeAttr(String(r.price))+'" placeholder="단가 확인 필요" style="'+inputStyle+'"></label></div></div>').join('')+'<label style="display:block;margin-top:12px">부가세<select id="hjLeakQuoteVat" style="'+inputStyle+'"><option value="1"'+(s.q.vatIncluded?' selected':'')+'>부가세 포함</option><option value="0"'+(!s.q.vatIncluded?' selected':'')+'>부가세 별도</option></select></label><div id="hjLeakQuoteTotal" aria-live="polite" style="font-size:24px;font-weight:800;margin-top:12px"></div><p id="hjLeakQuoteIssue" role="alert" style="color:var(--warn);font-size:13px"></p></div>';
+  const requireReady=()=>{const issue=!hjLeakQuickCurrent(s)?'견적이나 현장이 바뀌었습니다. 다시 열어 주세요.':hjLeakQuoteIssue(s.q);if(issue){document.getElementById('hjLeakQuoteIssue').textContent=issue;return false;}return true;};
+  const save=async()=>{
+    if(s.busy||!requireReady())return;s.busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(el=>el.disabled=true);
+    try{const id=s.q.id;if(saveQuoteEdit()===false)return;const q=state.quotes.find(q=>q.id===id);s.q=JSON.parse(JSON.stringify(q));s.draftStamp=paidStableJson(s.q);state.editingQuote=s.q;if(!await guardedPersistCurrentState())throw new Error('기기 저장을 확인하지 못했습니다. 다시 저장해 주세요.');toast('누수 견적을 저장했어요');}
+    catch(e){const el=document.getElementById('hjLeakQuoteIssue');if(el)el.textContent=String(e.message||e);}
+    finally{s.busy=false;__modalCloseLocked=false;controls.forEach(el=>el.disabled=false);}
+  };
+  const customer=()=>{if(!requireReady())return;const c=quoteCalc(s.q);openModal('고객용 견적','<div id="hjLeakQuoteCustomer" style="text-align:center;overflow-wrap:anywhere"><p>'+escapeHtml(COMPANY.name)+'</p><h3>'+escapeHtml(s.name)+' 누수 수리</h3><p style="font-size:38px;font-weight:800;margin:24px 0 8px">'+won(c.total)+'</p><p>'+(s.q.vatIncluded?'부가세 포함':'부가세 별도')+'</p><p>'+escapeHtml(s.q.items.map(r=>r.name).join(' · '))+'</p><p>'+escapeHtml(COMPANY.tel)+'</p></div>',[{label:'편집으로',cls:'blue',fn:()=>hjLeakQuickView(s)}],true);hjLeakQuoteModalFit();};
+  const sms=()=>{if(!requireReady())return;const c=quoteCalc(s.q),text=['['+COMPANY.name+'] '+s.q.title,...s.q.items.map(it=>it.name+' '+it.qty+it.spec+' × '+won(num(it.price))), '합계 '+won(c.total)+' ('+(s.q.vatIncluded?'부가세 포함':'부가세 별도')+')','문의 '+COMPANY.tel].join('\n');msgCenterCompose('leakquote',{project:s.name,text,back:()=>hjLeakQuickView(s)});hjLeakQuoteModalFit();};
+  openModal('⚡ 누수 즉시 견적',body,[{label:'저장',cls:'blue',fn:save},{label:'고객에게 보여주기',cls:'clay',fn:customer},{label:'문자 초안',cls:'ghost',fn:sms},{label:'💳 받은 돈 기록',cls:'ghost',fn:()=>hjLeakPaymentView(s.q,()=>{s.p=hjLeakProject(s.name);s.draftStamp=paidStableJson(s.q);hjLeakQuickView(s);})},{label:'닫기',cls:'ghost',fn:()=>hjLeakQuickClose(s)}],true);hjLeakQuoteModalFit();
+  const form=document.getElementById('hjLeakQuoteForm');
+  const update=()=>{if(!hjLeakQuickCurrent(s)||s.busy)return;form.querySelectorAll('[data-leakquote-check]').forEach(el=>s.rows[+el.dataset.leakquoteCheck].checked=el.checked);form.querySelectorAll('[data-leakquote-qty]').forEach(el=>s.rows[+el.dataset.leakquoteQty].qty=el.value);form.querySelectorAll('[data-leakquote-price]').forEach(el=>s.rows[+el.dataset.leakquotePrice].price=el.value);s.q.vatIncluded=form.querySelector('#hjLeakQuoteVat').value==='1';hjLeakQuickSync(s);show();};
+  const show=()=>{const issue=hjLeakQuoteIssue(s.q);form.querySelector('#hjLeakQuoteTotal').textContent=issue?'단가·수량 확인 필요':won(quoteCalc(s.q).total);form.querySelector('#hjLeakQuoteIssue').textContent=issue;};
+  form.oninput=update;form.onchange=update;show();
+}
+
+
+/* v421 받은 돈은 저장된 견적과 기존 수금 장부에 한 번만 묶는다. 읽을 때 장부나 견적을 보정하지 않는다. */
+const HJ_LEAK_PAY_METHODS=Object.freeze(['카드','계좌이체','현금']);
+const HJ_LEAK_PAY_RECEIPTS=Object.freeze(['세금계산서','현금영수증','카드전표','없음']);
+const HJ_LEAK_PAY_AMOUNT_RE=/^(?:\d+|\d{1,3}(?:,\d{3})+)$/;
+const HJ_LEAK_PAY_DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+function hjLeakPaymentQuoteStamp(q){
+  const copy=JSON.parse(JSON.stringify(q||{}));delete copy._srcFileId;return paidStableJson(copy);
+}
+function hjLeakPaymentContext(q){
+  if(!q||!q.id)throw new Error('견적을 먼저 저장한 뒤 받은 돈을 기록해 주세요.');
+  const matches=(state.quotes||[]).filter(x=>x&&x.id===q.id),saved=matches.length===1?matches[0]:null;
+  if(!saved)throw new Error('견적을 먼저 저장한 뒤 받은 돈을 기록해 주세요.');
+  const editing=state.editingQuote&&state.editingQuote.id===q.id?state.editingQuote:null,stamp=hjLeakPaymentQuoteStamp(saved);
+  if(hjLeakPaymentQuoteStamp(q)!==stamp||(editing&&hjLeakPaymentQuoteStamp(editing)!==stamp))throw new Error('견적에 저장하지 않은 변경이 있어요. 먼저 저장한 뒤 받은 돈을 기록해 주세요.');
+  const project=hjLeakProject(saved.project);
+  if(!hjLeakProjectCurrent(project,saved.project))throw new Error('연결된 누수 현장을 확인한 뒤 다시 열어 주세요.');
+  const paid=saved.paid&&typeof saved.paid==='object'?saved.paid:null,id=paid&&paid.payLogId;
+  if(paid&&(!id||typeof id!=='string'))throw new Error('이 견적의 수금 연결을 확인해 주세요. 중복으로 추가하지 않았습니다.');
+  const linked=id?(state.payLog||[]).filter(x=>x&&x.id===id):[],record=linked.length===1?linked[0]:null;
+  if(id&&(!record||record.project!==saved.project||record.quoteId!==saved.id||!Number.isSafeInteger(Number(record.amt))||Number(record.amt)<=0))throw new Error('연결된 수금 기록이 달라졌어요. 수금 이력을 확인해 주세요.');
+  return {q,saved,project,editing,stamp,projectStamp:paidStableJson(projectBackupSafe(project)),record,recordStamp:paidStableJson(record),payLogId:id||('leakpay_'+uid())};
+}
+function hjLeakPaymentCurrent(context,stillOpen){
+  if(!context||!hjLeakProjectCurrent(context.project,context.saved.project)||(stillOpen&&!stillOpen()))return false;
+  const rows=(state.quotes||[]).filter(x=>x&&x.id===context.saved.id);
+  if(rows.length!==1||rows[0]!==context.saved||hjLeakPaymentQuoteStamp(rows[0])!==context.stamp||hjLeakPaymentQuoteStamp(context.q)!==context.stamp||paidStableJson(projectBackupSafe(context.project))!==context.projectStamp)return false;
+  const editing=state.editingQuote&&state.editingQuote.id===context.saved.id?state.editingQuote:null;
+  if(editing!==context.editing||(editing&&hjLeakPaymentQuoteStamp(editing)!==context.stamp))return false;
+  const linked=(state.payLog||[]).filter(x=>x&&x.id===context.payLogId);
+  return context.record?linked.length===1&&linked[0]===context.record&&paidStableJson(linked[0])===context.recordStamp:linked.length===0;
+}
+/* v421 날짜·금액을 그대로 확인하고 원자 저장한다. 안전판 대기 중 견적/현장/연결 수금이 바뀌면 이전 화면의 값으로 덮지 않는다. */
+async function hjLeakPaymentSave(context,input,stillOpen){
+  const raw=String(input&&input.amount!=null?input.amount:'').trim(),amount=HJ_LEAK_PAY_AMOUNT_RE.test(raw)?Number(raw.replace(/,/g,'')):NaN;
+  const method=String(input&&input.method||''),at=String(input&&input.at||''),type=String(input&&input.receipt&&input.receipt.type||''),issued=!!(input&&input.receipt&&input.receipt.issued)&&type!=='없음';
+  if(!HJ_LEAK_PAY_METHODS.includes(method))throw new Error('받은 방법을 선택해 주세요.');
+  if(!Number.isSafeInteger(amount)||amount<=0)throw new Error('받은 금액을 1원 이상 정수로 입력해 주세요.');
+  const date=HJ_LEAK_PAY_DATE_RE.test(at)?new Date(at+'T00:00:00'):null;
+  if(!date||isNaN(date.getTime())||localDate(date)!==at||at>localDate())throw new Error('실제로 받은 날짜를 오늘까지의 날짜로 입력해 주세요.');
+  if(!HJ_LEAK_PAY_RECEIPTS.includes(type))throw new Error('영수증 종류를 선택해 주세요.');
+  const ensure=()=>{if(!hjLeakPaymentCurrent(context,stillOpen))throw new Error('견적 또는 수금 정보가 바뀌었습니다. 다시 열어 주세요.');};ensure();
+  const paid={method,amount,at,receipt:{type,issued},payLogId:context.payLogId};
+  const result=await durableLocalMutation({snapshotLabel:'누수 견적 받은 돈 기록 전',beforeCommit:ensure,mutateDraft:draft=>{
+    const quotes=(draft.quotes||[]).filter(x=>x&&x.id===context.saved.id),quote=quotes.length===1?quotes[0]:null;
+    const projects=(draft.projects||[]).filter(x=>x&&x.name===context.saved.project),project=projects.length===1?projects[0]:null;
+    if(!quote||hjLeakPaymentQuoteStamp(quote)!==context.stamp||!project||project.archived||hjProjectKind(project)!=='leak'||paidStableJson(project)!==context.projectStamp)throw new Error('견적 또는 현장이 바뀌었습니다. 다시 열어 주세요.');
+    draft.payLog=Array.isArray(draft.payLog)?draft.payLog:[];
+    const linked=draft.payLog.filter(x=>x&&x.id===context.payLogId),record=linked.length===1?linked[0]:null;
+    const proofKey={세금계산서:'tax',현금영수증:'cash',카드전표:'card'}[type]||'';
+    const next={id:context.payLogId,d:at,project:quote.project,amt:amount,method,quoteId:quote.id,source:'leak-quote'};
+    if(issued&&proofKey){next.proof=proofKey;next.proofAt=localDate();}
+    if(context.record){
+      if(!record||paidStableJson(record)!==context.recordStamp)throw new Error('수금 기록이 바뀌었습니다. 다시 열어 주세요.');
+      const received=num(project.received)+amount-Number(record.amt);
+      if(!Number.isSafeInteger(received)||received<0)throw new Error('현장의 수금 누계를 먼저 확인해 주세요. 중복으로 추가하지 않았습니다.');
+      project.received=received;Object.assign(record,next);delete record.proof;delete record.proofAt;
+      if(next.proof){record.proof=next.proof;record.proofAt=next.proofAt;}
+    }else{
+      if(linked.length||!Number.isSafeInteger(num(project.received)+amount))throw new Error('수금 기록을 추가하지 못했습니다. 다시 확인해 주세요.');
+      project.received=num(project.received);
+      if(!hjPayRecordAdd(project,next,draft))throw new Error('수금 기록을 추가하지 못했습니다. 다시 확인해 주세요.');
+    }
+    quote.paid=JSON.parse(JSON.stringify(paid));return {id:quote.id,paid};
+  }});
+  const fresh=(state.quotes||[]).find(x=>x&&x.id===result.id);
+  if(fresh&&context.editing&&state.editingQuote===context.editing)context.editing.paid=JSON.parse(JSON.stringify(fresh.paid));
+  return result;
+}
+/* v421 결제 수단 호출 없이 받은 돈과 증빙 상태를 입력한다. 저장 버튼은 안전판·원자 저장이 끝날 때까지 한 번만 실행한다. */
+function hjLeakPaymentView(q,back){
+  if(__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('진행 중인 저장을 마친 뒤 다시 열어 주세요.');return false;}
+  let context;try{context=hjLeakPaymentContext(q);}catch(e){toast(String(e&&e.message||e));return false;}
+  const old=context.saved.paid||{},receipt=old.receipt||{},total=quoteCalc(context.saved).total,today=localDate();let busy=false;
+  const style='width:100%;min-height:44px;font-size:16px;box-sizing:border-box';
+  const select=(id,label,values,current,empty)=>'<label for="'+id+'" style="display:block;margin:10px 0 4px;font-size:13px">'+label+'</label><select id="'+id+'" style="'+style+'">'+(empty?'<option value="">선택해 주세요</option>':'')+values.map(v=>'<option value="'+escapeAttr(v)+'"'+(v===current?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select>';
+  const body='<div id="hjLeakPayForm" style="min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 8px;font-size:14px"><b>'+escapeHtml(context.saved.project)+'</b><br>'+escapeHtml(context.saved.title||context.saved.no||'견적서')+' · 합계 '+won(total)+'</p>'+select('hjLeakPayMethod','받은 방법',HJ_LEAK_PAY_METHODS,old.method||'',true)+
+    '<label for="hjLeakPayAmount" style="display:block;margin:10px 0 4px;font-size:13px">받은 금액 (원)</label><input id="hjLeakPayAmount" type="text" inputmode="numeric" value="'+escapeAttr(String(old.amount==null?total:old.amount))+'" style="'+style+'">'+
+    '<label for="hjLeakPayDate" style="display:block;margin:10px 0 4px;font-size:13px">받은 날짜</label><input id="hjLeakPayDate" type="date" max="'+today+'" value="'+escapeAttr(old.at||today)+'" style="'+style+'">'+select('hjLeakPayReceipt','영수증 종류',HJ_LEAK_PAY_RECEIPTS,receipt.type||'없음')+
+    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;margin-top:8px"><input id="hjLeakPayIssued" type="checkbox"'+(receipt.issued?' checked':'')+' style="width:20px;height:20px">발행했어요</label><p id="hjLeakPayIssue" role="alert" style="min-height:20px;color:var(--warn);margin:8px 0 0"></p></div>';
+  const save=async()=>{
+    if(busy)return;const form=document.getElementById('hjLeakPayForm');if(!form)return;
+    const g=id=>form.querySelector('#'+id),input={method:g('hjLeakPayMethod').value,amount:g('hjLeakPayAmount').value,at:g('hjLeakPayDate').value,receipt:{type:g('hjLeakPayReceipt').value,issued:g('hjLeakPayIssued').checked}};
+    busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(el=>el.disabled=true);let saved=false;
+    try{await hjLeakPaymentSave(context,input,()=>form.isConnected&&document.getElementById('hjLeakPayForm')===form);webWorkMarkDirtyAfterPersist();saved=true;}
+    catch(e){const issue=g('hjLeakPayIssue');if(issue)issue.textContent=String(e&&e.message||'저장하지 못했습니다. 다시 시도해 주세요.');}
+    finally{__modalCloseLocked=false;busy=false;controls.forEach(el=>el.disabled=false);if(g('hjLeakPayReceipt').value==='없음')g('hjLeakPayIssued').disabled=true;}
+    if(!saved)return;closeModal(true);render();toast('💳 받은 돈을 저장했어요');if(typeof back==='function')back();
+  };
+  openModal('💳 받은 돈 기록',body,[{label:'저장',cls:'blue',fn:save},{label:'취소',cls:'ghost',fn:()=>{closeModal();if(typeof back==='function')back();}}],true);
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
+  const receiptEl=document.getElementById('hjLeakPayReceipt'),issuedEl=document.getElementById('hjLeakPayIssued');
+  const sync=()=>{issuedEl.disabled=receiptEl.value==='없음';if(issuedEl.disabled)issuedEl.checked=false;};receiptEl.onchange=sync;sync();return true;
+}
+/* v421 미발행 표시는 저장된 견적의 증빙 상태만 읽는다. 받은 금액 집계는 기존 payLog/p.received 경로를 그대로 쓴다. */
+function hjLeakReceiptPending(quotes){
+  return (Array.isArray(quotes)?quotes:(state.quotes||[])).filter(q=>q&&q.paid&&Number(q.paid.amount)>0&&q.paid.receipt&&['세금계산서','현금영수증'].includes(q.paid.receipt.type)&&q.paid.receipt.issued!==true).length;
+}
+function hjLeakReceiptPendingHtml(){
+  const count=hjLeakReceiptPending();return count?'<div data-leak-receipts style="font-size:13px;margin:6px 0;color:var(--warn)">영수증 미발행 '+count+'건</div>':'';
 }
 
 function viewQuoteMaker(){
@@ -34463,7 +34662,7 @@ function viewQuoteMaker(){
     <td data-label="품명"><input type="text" data-qi="${i}" data-qf="name" value="${escapeAttr(it.name)}" placeholder="품명" list="qmItemNames"></td>
     <td data-label="규격"><input type="text" data-qi="${i}" data-qf="spec" value="${escapeAttr(it.spec)}" placeholder="규격"></td>
     <td data-label="수량"><input type="text" data-qi="${i}" data-qf="qty" value="${escapeAttr(it.qty)}" class="qm-qty" style="text-align:center"></td>
-    <td data-label="단가"><input type="text" data-qi="${i}" data-qf="price" value="${num(it.price).toLocaleString('ko-KR')}" class="qm-price" style="text-align:right"></td>
+    <td data-label="단가"><input type="text" data-qi="${i}" data-qf="price" value="${q.leak&&(it.price===''||it.price==null)?'':num(it.price).toLocaleString('ko-KR')}" placeholder="${q.leak?'단가 확인 필요':''}" class="qm-price" style="text-align:right"></td>
     <td class="qm-amt" data-label="공급가액">${won(num(it.qty)*num(it.price))}</td>
     <td class="qm-delcell"><button class="qm-del" data-qidel="${i}" title="행 삭제">×</button></td>
   </tr>`).join('');
@@ -34474,7 +34673,7 @@ function viewQuoteMaker(){
       <button class="moss tiny" id="qmDriveSave">☁️ 드라이브 저장</button>
       <button class="ghost tiny" id="qmXlsx">⬇ 엑셀로 저장</button>
       <button class="blue tiny" id="qmSave">저장</button>
-      <button class="ghost tiny" id="qmClose">목록으로</button>${hjBathLink}
+      <button class="ghost tiny" id="qmClose">목록으로</button>${hjBathLink}${hjLeakQuoteTarget(q)?'<button type="button" class="blue tiny" id="qmLeakTemplate" style="min-height:44px">💧 누수 템플릿 넣기</button><button type="button" class="ghost tiny" id="qmLeakPaid" style="min-height:44px">💳 받은 돈 기록</button>':''}
     </div></div>
   <div class="qm-wrap">
     <div class="qm-form">
@@ -34618,6 +34817,8 @@ function quoteExcludeSrcGroup(src){
 function quoteSrcNote(n){return n?(' · 원래 견적 파일'+(n>1?' '+n+'개(같은 견적의 사본 포함)는':'은')+' 매출 집계에서 뺐어요(견적·정산에서 Σ 로 되돌릴 수 있음)'):'';}
 function saveQuoteEdit(){
   const q=state.editingQuote;if(!q)return;
+  /* v421 미등록 단가가 확정 0원 견적으로 저장·학습되지 않도록 원문을 보존한다. */
+  const leakIssue=hjLeakQuoteIssue(q);if(leakIssue){toast(leakIssue);return false;}
   // 빈 행(품명·단가 모두 없음) 자동 정리
   q.items=q.items.filter(it=>String(it.name||'').trim()||num(it.price));
   if(!q.items.length)q.items=[{name:'',spec:'',qty:1,price:0}];
@@ -35964,8 +36165,8 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
+    const t=e.target.closest('[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -36001,6 +36202,9 @@ function setupDelegation(){
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmBathroom')return hjBathPrefillOpen();
+    if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
+    if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
+    if(t.id==='qmLeakPaid')return hjLeakPaymentView(state.editingQuote);
     if(t.id==='qmNew')return startNewQuote();
     if(t.id==='schPastToggle'){__schShowAll=!__schShowAll;return render();}
     if(t.id==='schAdd')return openScheduleEdit(null);
@@ -36051,6 +36255,7 @@ function setupDelegation(){
     if(d.schedit!==undefined)return openScheduleEdit(d.schedit);
     if(d.schdel!==undefined)return deleteSchedule(d.schdel);
     if(t.id==='qmClose')return closeQuoteEdit();
+    if(['qmPdf','qmSend','qmDriveSave','qmXlsx'].includes(t.id)){const issue=hjLeakQuoteIssue(state.editingQuote);if(issue){toast(issue);return;}}
     if(t.id==='qmSave')return saveQuoteEdit();
     if(t.id==='qmPdf')return printQuote(null);
     if(t.id==='qmSend')return sendQuote();
@@ -36423,6 +36628,7 @@ function quoteHTML(q){
 function printQuote(id){
   const q=id?state.quotes.find(x=>x.id===id):state.editingQuote;
   if(!q){toast('견적서를 찾을 수 없습니다.');return;}
+  const leakIssue=hjLeakQuoteIssue(q);if(leakIssue){toast(leakIssue);return;}
   // 편집 중인 견적은 인쇄 전에 자동 저장 → 인쇄·창닫기 후에도 목록에서 계속 수정 가능
   if(!id&&state.editingQuote){const r=quoteCommitEditing(state.editingQuote);markDirty();if(r.srcExcluded)toast('견적서 저장됨'+quoteSrcNote(r.srcExcluded));}   // 목록에는 복사본 — 인쇄 뒤 계속 고친 값은 [저장]해야 남는다
   const __html=`<!doctype html><html><head><meta charset="utf-8"><title>견적서_${escapeHtml(q.title||q.no)}</title>
