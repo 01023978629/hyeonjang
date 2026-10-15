@@ -1,6 +1,21 @@
 /* 현장 앱 오프라인 캐시 — 공개 앱 셸 허용목록만 네트워크 우선으로 저장 */
-const C='hyeonjang-v421-leakquote';
-self.addEventListener('install',e=>{self.skipWaiting();});
+const C='hyeonjang-v425-offlinequeue';
+self.addEventListener('install',e=>{e.waitUntil((async()=>{
+  // 첫 실행은 아직 SW가 제어하지 않아 fetch 캐시에 들어오지 않는다. 공개 셸만 먼저 준비한다.
+  // 응답 하나라도 실패하면 기존 워커/캐시를 유지하며 새 워커로 넘어가지 않는다.
+  const ready=[];
+  for(const path of SHELL_PATHS){
+    const request=new Request(new URL(path,self.location.origin).href,{method:'GET',mode:'same-origin',credentials:'omit',redirect:'error',cache:'reload'});
+    if(!cacheableShellRequest(request))throw new Error('shell-install-request');
+    const response=await fetch(request);
+    if(!cacheableShellResponse(response))throw new Error('shell-install-response');
+    if(response.url){const url=new URL(response.url);if(url.origin!==self.location.origin||url.search||url.pathname!==new URL(request.url).pathname)throw new Error('shell-install-response-url');}
+    ready.push([request,response]);
+  }
+  const cache=await caches.open(C);
+  for(const [request,response] of ready)await cache.put(request,response.clone());
+  await self.skipWaiting();
+})());});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
 
 const SCOPE_PATH=new URL('./',self.location.href).pathname;
@@ -36,9 +51,9 @@ function shareInboxOpen(){
   return new Promise((resolve,reject)=>{
     let settled=false;
     const fail=()=>{if(!settled){settled=true;reject(new Error('share-storage'));}};
-    const request=indexedDB.open('hyeonjang-share',1);
+    const request=indexedDB.open('hyeonjang-share',2);
     request.onupgradeneeded=()=>{
-      try{if(!request.result.objectStoreNames.contains('inbox'))request.result.createObjectStore('inbox',{keyPath:'id'});}
+      try{if(!request.result.objectStoreNames.contains('inbox'))request.result.createObjectStore('inbox',{keyPath:'id'});if(!request.result.objectStoreNames.contains('outbox'))request.result.createObjectStore('outbox',{keyPath:'id'});}
       catch(_){try{request.transaction.abort();}catch(_){}fail();}
     };
     request.onerror=fail;request.onblocked=fail;

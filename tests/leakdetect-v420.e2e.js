@@ -258,7 +258,7 @@ const baseline = process.env.HJ_V420_BASELINE && execFileSync('git', ['show', pr
     await page.evaluate(async ({ png, at }) => {
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const db = await new Promise((resolve, reject) => {
-        const request = indexedDB.open('hyeonjang-share', 1);
+        const request = indexedDB.open('hyeonjang-share'); // Preserve compatibility with the installed share/outbox schema.
         request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('inbox')) request.result.createObjectStore('inbox', { keyPath: 'id' }); };
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
