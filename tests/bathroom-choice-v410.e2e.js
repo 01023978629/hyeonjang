@@ -1,3 +1,4 @@
+/* v418: 이 기존 검사에서는 과거 단가 자동채움을 끈다. 자동채움은 bathprices-v418에서 별도로 검증한다. */
 /* 선택 카드의 계산 근거·빈 단가 바로가기·모바일 견적서를 실제 고객 출력과 대조한다. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
@@ -180,7 +181,7 @@ async function outputParity(page){
   try{
    await ctx.route('https://**/*',r=>r.abort());
    if(mutation){const source=fs.readFileSync(path.join(__dirname,'..',mutation.file),'utf8');assert.equal(source.split(mutation.from).length,2,'unique mutation target '+name);await ctx.route('**/'+mutation.file,r=>r.fulfill({status:200,contentType:'application/javascript',body:source.replace(mutation.from,mutation.to)}));}
-   await page.goto(BASE+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
+   await page.route("**/bathroom-defaults.json*",r=>r.fulfill({status:404,body:""}));await page.goto(BASE+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
    await page.evaluate(()=>{window.confirm=()=>true;window.__choicePrints=0;window.print=()=>window.__choicePrints++;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__choiceCopied=text;}}});localStorage.setItem('bath_choice_unrelated','KEEP');});
    let caught;try{await run(page);}catch(e){caught=e;}
    if(mutation)assert(caught&&caught.code==='ERR_ASSERTION'&&caught.message.includes(mutation.marker),'mutation must fail at intended assertion: '+name+' '+(caught&&caught.stack));else if(caught)throw caught;
@@ -202,7 +203,7 @@ async function outputParity(page){
    ['카드 계산 근거 제거',scopeExplanation,{file:'bathroom.js',from:"$('breakdown-'+s.id).innerHTML=hjBathScopeBreakdown(s);",to:"$('breakdown-'+s.id).innerHTML='';",marker:'CHOICE_MATERIAL_FORMULA'}],
    ['단가 바로가기 초점 제거',missingNavigation,{file:'bathroom.js',from:'el.focus({preventScroll:true});',to:'',marker:'CHOICE_PRICE_TARGET_FOCUS'}],
    ['제품 설명 이스케이프 제거',scopeExplanation,{file:'bathroom.js',from:"$('description-'+s.id).textContent=",to:"$('description-'+s.id).innerHTML=",marker:'CHOICE_PRODUCT_TEXT_PRESERVED'}],
-   ['모바일 판매단가 표제 제거',mobileAndFile,{file:'bathroom.js',from:'data-label="판매단가"',to:'data-removed-label="판매단가"',marker:'CHOICE_CELL_LABELS'}],
+   ['모바일 판매단가 표제 제거',mobileAndFile,{file:'bathroom.js',from:'<td role="cell" data-label="판매단가"',to:'<td role="cell" data-removed-label="판매단가"',marker:'CHOICE_CELL_LABELS'}],
    ['부자재 포장 금액 산식 제거',consumableExplanation,{file:'bathroom.js',from:"+hit.packs+'포장 × '+won(hit.price)",to:"+'TEST_REMOVED_PACK_PRICE'",marker:'CHOICE_CONSUMABLE_PRICE'}]
   ])await scenario(name,run,mutation);
  }finally{await browser.close();}

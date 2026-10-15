@@ -1,3 +1,4 @@
+/* v418: 이 기존 검사에서는 과거 단가 자동채움을 끈다. 자동채움은 bathprices-v418에서 별도로 검증한다. */
 /* 실제 입력/출력과 비동기 생성 중 입력을 검증한다. 보호 제거는 메모리 응답에만 적용한다. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
@@ -11,7 +12,7 @@ const source=fs.readFileSync(path.join(__dirname,'../bathroom.js'),'utf8');
   try{
    await page.route('https://**/*',r=>r.abort());
    if(script)await page.route('**/bathroom.js',r=>r.fulfill({status:200,contentType:'text/javascript',body:script}));
-   await page.goto('http://127.0.0.1:8299/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
+   await page.route("**/bathroom-defaults.json*",r=>r.fulfill({status:404,body:""}));await page.goto('http://127.0.0.1:8299/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
    await run(page);assert.deepEqual(errors,[]);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
    if(!script){passed++;console.log('PASS '+name);}
   }finally{await ctx.close();}
@@ -72,7 +73,7 @@ const source=fs.readFileSync(path.join(__dirname,'../bathroom.js'),'utf8');
    await page.unroute('**/bathroom.css');const retry=page.waitForEvent('download');await page.locator('#exportHTML').click();await retry;
   });
   for(const [name,from,to,run,marker] of [
-   ['직접 규격 단가 보호 제거','if(changed){data[k].price=null;','if(false){data[k].price=null;',manualPrice,'MANUAL_PRICE_RECHECK'],
+   ['직접 규격 단가 보호 제거','if(changed){hjBathClearProductSources(path);','if(false){hjBathClearProductSources(path);',manualPrice,'MANUAL_PRICE_RECHECK'],
    ['파일 생성 중 입력 잠금 제거',"b.disabled=htmlExporting&&b.id==='exportHTML'",'b.disabled=false',exportBusy,'EXPORT_BUSY_INPUT'],
    ['중복 파일 생성 진입 보호 제거','if(!result||htmlExporting||photoPending)return;','if(!result||photoPending)return;',exportBusy,'EXPORT_BUSY_DUPLICATE']
   ]){

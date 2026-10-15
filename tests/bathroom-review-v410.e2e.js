@@ -1,3 +1,4 @@
+/* v418: 이 기존 검사에서는 과거 단가 자동채움을 끈다. 자동채움은 bathprices-v418에서 별도로 검증한다. */
 /* 리뷰 F1~F3: 실제 화면/고객 파일/인쇄, 이미지 예산, 연락 버튼과 보호 제거 변이. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
@@ -44,7 +45,7 @@ async function checkF3(page){
       await ctx.route('https://**/*',r=>r.abort());
       if(mutation)await ctx.route('**/'+mutation.file,r=>{const source=fs.readFileSync(path.join(root,mutation.file),'utf8');assert(source.includes(mutation.from));return r.fulfill({contentType:'application/javascript',body:source.replaceAll(mutation.from,mutation.to)});});
       const page=await ctx.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(String(e)));
-      await page.goto(base+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
+      await page.route("**/bathroom-defaults.json*",r=>r.fulfill({status:404,body:""}));await page.goto(base+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
       if(mutation){let detected=false;try{await check(page);}catch(e){assert.equal(e.code,'ERR_ASSERTION');assert(e.message.includes(mutation.marker),e.message);detected=true;}assert(detected,'Mutation survived: '+name);console.log('DETECTED '+name);}
       else{await check(page);console.log('PASS '+name);}
       assert.deepEqual(errors,[]);
