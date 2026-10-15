@@ -30683,13 +30683,14 @@ function hjLeakSmsChoose(key){
   openModal('💧 누수 문자 · 현장 선택','<div id="hjLeakSmsChooser" style="min-width:0;overflow-wrap:anywhere">'+(projects.length?projects.map((p,i)=>'<button type="button" class="ghost" data-leak-sms-project="'+i+'" style="display:block;width:100%;min-height:44px;white-space:normal;text-align:left;margin-bottom:8px">'+escapeHtml(p.name)+'</button>').join(''):'<p>선택할 누수 현장이 없습니다. 현장 유형과 같은 이름의 현장이 있는지 확인해 주세요.</p>')+'</div>',[{label:'‹ 문자 센터',cls:'ghost',fn:()=>msgCenterView('leak')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.querySelectorAll('[data-leak-sms-project]').forEach(b=>b.onclick=()=>hjLeakSmsView(projects[Number(b.dataset.leakSmsProject)].name,key));
 }
+const HJ_LEAK_SMS_PRIVATE_UNIT_RE=/\d{1,4}\s*동|\d{1,4}\s*호(?:실)?/;
 function hjLeakSmsUiPrivate(p,text){
   const compact=v=>String(v||'').replace(/\s/g,'').toLowerCase(),body=compact(text),customer=p.customer||{};
   if([customer.name,customer.addr,p.name,p.leak?.detect?.place].some(v=>compact(v).length>=2&&body.includes(compact(v))))return true;
   const digits=v=>String(v||'').replace(/\D/g,''),phone=digits(customer.phone);
   if(phone.length>=8&&digits(text).includes(phone))return true;
   const company=digits(COMPANY.tel),phones=String(text).match(/0\d{1,2}[ -]?\d{3,4}[ -]?\d{4}/g)||[];
-  return phones.some(v=>digits(v)!==company)||/\d{1,4}\s*동|\d{1,4}\s*호(?:실)?/.test(String(text));
+  return phones.some(v=>digits(v)!==company)||HJ_LEAK_SMS_PRIVATE_UNIT_RE.test(String(text));
 }
 function hjLeakSmsView(name,key){
   if(!name)return hjLeakSmsChoose(key);
