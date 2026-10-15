@@ -14,7 +14,7 @@ if (output === root || output === path.parse(output).root) throw new Error('ì €ì
 const publicFiles = ['.nojekyll', 'index.html', 'media-safety.js', 'shared-todo-backup.js', 'privacy.html', 'sw.js', 'terms.html',
   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
   'operations-review.js', 'team.html', 'team-ui.js', 'team-projects.js', 'team-packet.js', 'team-config.js', 'team-upload.js',
-  'bathroom.html', 'bathroom.css', 'bathroom-model.js', 'bathroom.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom-gray.webp'];
+  'bathroom-defaults.json', 'bathroom.html', 'bathroom.css', 'bathroom-model.js', 'bathroom.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom-gray.webp'];
 await mkdir(output, { recursive: false });
 for (const rel of publicFiles) {
   const source = path.join(root, rel);

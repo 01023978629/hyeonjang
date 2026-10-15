@@ -1,3 +1,4 @@
+/* v418: 이 기존 검사에서는 과거 단가 자동채움을 끈다. 자동채움은 bathprices-v418에서 별도로 검증한다. */
 /* 미선택 입력은 보존하고, 선택 검증과 손상 초안 거부는 고객 출력까지 유지한다. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
@@ -131,7 +132,7 @@ async function pendingRecovery(page){
   try{
    await ctx.route('https://**/*',r=>r.abort());
    if(mutation){const source=fs.readFileSync(path.join(__dirname,'..',mutation.file),'utf8');assert.equal(source.split(mutation.from).length,2,'unique mutation target '+name);await ctx.route('**/'+mutation.file,r=>r.fulfill({status:200,contentType:'application/javascript',body:source.replace(mutation.from,mutation.to)}));}
-   await page.goto(BASE+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
+   await page.route("**/bathroom-defaults.json*",r=>r.fulfill({status:404,body:""}));await page.goto(BASE+'/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
    await page.evaluate(()=>{window.__validationConfirms=0;window.confirm=()=>{window.__validationConfirms++;return true;};window.__validationPrints=0;window.print=()=>window.__validationPrints++;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__validationCopy=text;}}});localStorage.setItem('bath_validation_unrelated','KEEP');});
    let caught;try{await run(page);}catch(e){caught=e;}
    if(mutation)assert(caught&&caught.code==='ERR_ASSERTION'&&caught.message.includes(mutation.marker),'mutation must fail at intended assertion: '+name+' '+(caught&&caught.stack));else if(caught)throw caught;

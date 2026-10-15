@@ -16,7 +16,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 // 왜 늘렸는지 여기에 적어라 — 그게 이 검사의 쓸모다.
 // Representative-only operations shell has no credentials. Staff pages are deliberately not cached.
 const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./operations-review.js','./privacy.html','./terms.html',
-  './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png'];
+  './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./bathroom-defaults.json'];
 const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
 const puts = [];

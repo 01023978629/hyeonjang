@@ -1,5 +1,5 @@
 /* 현장 앱 오프라인 캐시 — 공개 앱 셸 허용목록만 네트워크 우선으로 저장 */
-const C='hyeonjang-v410-bathroom';
+const C='hyeonjang-v418-bathprices';
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)));await clients.claim();})());});
 
@@ -15,7 +15,8 @@ const SHELL_PATHS=new Set([
   SCOPE_PATH+'icon-192.png',
   SCOPE_PATH+'icon-512.png',
   SCOPE_PATH+'icon-maskable-512.png',
-  SCOPE_PATH+'apple-touch-icon.png'
+  SCOPE_PATH+'apple-touch-icon.png',
+  SCOPE_PATH+'bathroom-defaults.json'
 ]);
 function cacheableShellRequest(request){
   if(request.method!=='GET'||request.headers.has('Authorization'))return false;

@@ -1,3 +1,4 @@
+/* v418: 이 기존 검사에서는 과거 단가 자동채움을 끈다. 자동채움은 bathprices-v418에서 별도로 검증한다. */
 /* 사진 준비/취소/실패가 늦게 끝나도 고객 출력은 현재 선택과 일치한다. */
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
@@ -9,7 +10,7 @@ const source=fs.readFileSync(path.join(__dirname,'../bathroom.js'),'utf8');
   const ctx=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'}),page=await ctx.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(String(e)));
   try{
    await ctx.route('https://**/*',r=>r.abort());if(script)await page.route('**/bathroom.js',r=>r.fulfill({status:200,contentType:'text/javascript',body:script}));
-   await page.goto('http://127.0.0.1:8299/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
+   await page.route("**/bathroom-defaults.json*",r=>r.fulfill({status:404,body:""}));await page.goto('http://127.0.0.1:8299/bathroom.html');await page.waitForFunction(()=>document.documentElement.dataset.bathReady==='true');
    await page.evaluate(()=>{
     const nativeDecode=Image.prototype.decode,nativeFetch=window.fetch;window.__photoJobs=[];window.__photoHTML=0;window.__photoPrints=0;
     Image.prototype.decode=function(){const ready=nativeDecode.call(this);ready.catch(()=>{});return new Promise((resolve,reject)=>window.__photoJobs.push({ok:async()=>{await ready;resolve();},fail:()=>reject(new Error('TEST_IMAGE_FAILURE'))}));};
