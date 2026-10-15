@@ -3293,7 +3293,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v420-leakdetect';
+const APP_BUILD='hyeonjang-v424-leaksms';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6092,7 +6092,7 @@ function hjLeakCardHtml(p){
   if(!p||hjProjectKind(p)!=='leak')return '';
   const d=hjLeakIntakeData(p),chip=t=>'<span style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">'+escapeHtml(t)+'</span>';
   const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인'];
-  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button></div></div>';
+  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button></div></div>';
 }
 
 /* v419 출동 알림과 미완료 집계는 현재 현장/일정만 읽는다. 다른 유형의 긴급 일정은 누수 출동으로 세지 않는다. */
@@ -6246,6 +6246,131 @@ function setStage(name,idx){const p=state.projects.find(x=>x.name===name);if(!p)
   if(restored)try{toast('준공일 '+restored+' 그대로 — 바꾸려면 🛡 보증 수정의 준공일 칸');}catch(e){}
 }}
 /* v420 누수 탐지 — 명시한 누수 현장만 다룬다. 요약과 모달 열기는 저장본을 바꾸지 않는다. */
+/* v424 문자 초안은 읽기만 한다. 실제 발송 여부는 사람이 확인하며 원자 저장으로 체크와 노트를 함께 남긴다. */
+const HJ_LEAK_SMS=Object.freeze([
+  {key:'intake',title:'접수 확인'},{key:'dispatch',title:'출동 전 안내'},{key:'detect',title:'탐지 결과'},
+  {key:'quote',title:'견적 안내'},{key:'done',title:'수리 완료'},{key:'pay',title:'입금 안내'},{key:'third',title:'아랫집·관리사무소 안내'}
+].map(Object.freeze));
+const HJ_LEAK_SMS_MONEY_RE=/(?:₩|KRW)\s*[\d,.]+|[\d,.]+\s*(?:억|만|천)?\s*원/g;
+const HJ_LEAK_SMS_QTY_RE=/^\d+(?:\.\d{1,4})?$/;
+const HJ_LEAK_SMS_PRICE_RE=/^\d+(?:,\d{3})*$/;
+const HJ_LEAK_SMS_TIME_RE=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+function hjLeakSmsText(v,max=300){return typeof v==='string'?v.replace(HJ_LEAK_ONE_LINE_RE,' ').trim().slice(0,max):'';}
+function hjLeakSmsPlain(v,max=300){return hjLeakSmsText(v,max).replace(HJ_LEAK_SMS_MONEY_RE,'[금액은 견적에서 확인]');}
+function hjLeakSmsKey(key){return HJ_LEAK_SMS.some(x=>x.key===key);}
+function hjLeakSmsQuotes(p){
+  if(!p||p.kind!=='leak'||hjLeakProject(p.name)!==p)return [];
+  const rows=(state.quotes||[]).filter(q=>q&&q.project===p.name&&q.leak&&typeof q.leak==='object'&&!Array.isArray(q.leak)&&q.result!=='lost'&&!(q.lost&&q.lost.at));
+  return rows.filter(q=>q.id&&(state.quotes||[]).filter(x=>x&&x.id===q.id).length===1);
+}
+function hjLeakSmsQuote(p,options={}){
+  const rows=hjLeakSmsQuotes(p),has=options.quoteId!==undefined&&options.quoteId!==null&&options.quoteId!=='';
+  return has?rows.find(q=>String(q.id)===String(options.quoteId))||null:rows.length===1?rows[0]:null;
+}
+function hjLeakSmsQuoteTotal(q){
+  if(!q||!Array.isArray(q.items)||!q.items.length||typeof q.vatIncluded!=='boolean')return null;
+  for(const it of q.items){
+    if(!it||it.price==null||it.price===''||it.qty==null||!String(it.name||'').trim())return null;
+    const qty=String(it.qty).trim(),price=String(it.price).trim(),n=Number(price.replace(/,/g,''));
+    if(!HJ_LEAK_SMS_QTY_RE.test(qty)||!(Number(qty)>0)||!HJ_LEAK_SMS_PRICE_RE.test(price)||!Number.isSafeInteger(n)||n<0||!Number.isSafeInteger(Math.round(Number(qty)*n)))return null;
+  }
+  const amount=quoteCalc(q);return Number.isSafeInteger(amount.total)&&amount.total>=0?amount:null;
+}
+function hjLeakSmsArrival(p){
+  if(!p||hjLeakProject(p.name)!==p)return '';
+  const rows=(state.schedule||[]).filter(s=>s&&s.project===p.name&&s.urgent===true&&isRealIsoDate(s.date)&&HJ_LEAK_SMS_TIME_RE.test(String(s.time||''))&&new Date(s.date+'T'+s.time+':00').getTime()>=Date.now()&&!(s.report&&s.report.progress==='완료'));
+  return rows.length===1?rows[0].date+' '+rows[0].time+' (등록된 출동 일정 기준)':'';
+}
+function hjLeakSmsEvent(p,key,today=localDate()){
+  let latest=0;
+  const dayMs=day=>isRealIsoDate(day)&&day<=today?new Date(day+'T00:00:00').getTime():0;
+  const add=(v,fallback)=>{const ms=typeof v==='string'?Date.parse(v):NaN;latest=Math.max(latest,Number.isFinite(ms)&&ms<=Date.now()?ms:dayMs(fallback));};
+  if(key==='detect'){
+    for(const s of state.schedule||[])if(s&&s.project===p.name&&s.urgent===true&&dayMs(s.date)&&s.report&&s.report.progress==='완료')add(s.report.filledAt,s.date);
+    const d=p.leak&&p.leak.detect;if(d&&typeof d==='object')add(d.at,'');
+  }else if(key==='done')latest=dayMs(p.doneAt);
+  return latest;
+}
+function hjLeakSmsSent(p,key,today=localDate()){
+  if(!p||p.kind!=='leak'||!hjLeakSmsKey(key))return false;
+  const raw=p.leak&&p.leak.sms&&p.leak.sms[key],at=typeof raw==='string'?Date.parse(raw):NaN;
+  return Number.isFinite(at)&&at<=Date.now()&&at>=hjLeakSmsEvent(p,key,today);
+}
+function hjLeakSmsStage(p){
+  if(!p||p.kind!=='leak')return 'intake';
+  if(Number(p.stage)===3)return 'done';
+  if(Number(p.stage)===2)return 'quote';
+  if(p.leak&&p.leak.detect||hjLeakSmsEvent(p,'detect')>0)return 'detect';
+  if(Number(p.stage)===1&&(state.schedule||[]).some(s=>s&&s.project===p.name&&s.urgent===true&&isRealIsoDate(s.date)&&s.date>=localDate()&&!(s.report&&s.report.progress==='완료')))return 'dispatch';
+  return 'intake';
+}
+function hjLeakSmsPending(today=localDate()){
+  const out={detect:[],done:[]};if(!isRealIsoDate(today))return out;
+  const dispatched=new Set((state.schedule||[]).filter(s=>s&&s.urgent===true&&s.date===today&&s.report&&s.report.progress==='완료').map(s=>s.project));
+  for(const p of state.projects||[]){
+    if(!p||hjLeakProject(p.name)!==p)continue;
+    if(dispatched.has(p.name)&&!hjLeakSmsSent(p,'detect',today))out.detect.push(p.name);
+    if(Number(p.stage)===3&&(!p.doneAt||isRealIsoDate(p.doneAt)&&p.doneAt<=today)&&!hjLeakSmsSent(p,'done',today))out.done.push(p.name);
+  }
+  return out;
+}
+function hjLeakSmsDraft(p,key,options={}){
+  if(!p||p.kind!=='leak'||!hjLeakSmsKey(key))return '';
+  options=options&&typeof options==='object'?options:{};
+  const sign='\n\n'+String(COMPANY.name||'만물인테리어'),finished=Number(p.stage)===3;
+  // 제3자용은 현장명/주소/고객/원인 위치/자유 메모를 어떤 경로로도 합치지 않는다.
+  if(key==='third'){
+    const target=['아랫집','관리사무소','이웃'].includes(options.thirdTarget)?options.thirdTarget:'이웃·관리사무소';
+    return '[누수 관련 안내]\n'+target+' 담당자님께 안내드립니다.\n'+(finished?'누수 관련 수리 완료 후 피해 상태를 함께 확인하고자 합니다.':'누수 관련 확인을 진행하고 있습니다. 원인과 수리 상태는 확인된 내용만 별도로 안내드리겠습니다.')+'\n피해 확인에 필요한 서류는 담당자와 상의해 주세요.\n원인 세대의 정보는 적지 않았습니다.'+sign;
+  }
+  const intake=hjLeakIntakeData(p),arrival=hjLeakSmsPlain(options.arrival,80)||hjLeakSmsArrival(p),valve=hjLeakSmsPlain(options.valvePlace,120);
+  if(key==='intake')return '안녕하세요. 누수 문의를 접수했습니다.\n위치: '+(intake.where.join('·')||'확인 필요')+'\n언제부터: '+(intake.since||'확인 필요')+'\n출동 예정: '+(arrival||'시간을 확인한 뒤 안내드리겠습니다.')+'\n물이 보이는 곳과 주변 사진 2장을 보내 주시면 준비가 빨라집니다.'+sign;
+  if(key==='dispatch')return '안녕하세요. 출발 전에 도착 시간을 안내드립니다.\n도착 예정: '+(arrival||'시간 확인 후 안내')+'\n차량 진입과 주차할 곳을 알려 주세요.\n'+(valve?'잠글 수 있는 밸브 위치: '+valve+'. 안전하게 잠글 수 있는지 먼저 확인해 주세요.':'밸브 위치를 모르면 무리하게 조작하지 말고 알려 주세요.')+' 공용 밸브는 관리사무소에 확인해 주세요.'+sign;
+  if(key==='detect'){
+    const summary=hjLeakSmsPlain(hjLeakSummary(p),1600)||'탐지 결과가 아직 기록되지 않았습니다. 원인을 확인한 뒤 안내드리겠습니다.';
+    const zone=p.leak&&p.leak.detect&&p.leak.detect.zone;
+    return '누수 확인 내용입니다.\n'+summary+'\n'+(zone==='공용부'?'관리사무소와 조치 범위를 먼저 상의하겠습니다.':'확인된 작업 범위를 기준으로 견적 또는 관리사무소 협의를 안내드리겠습니다.')+'\n보험 적용과 필요한 서류는 가입한 보험사에 확인해 주세요.'+sign;
+  }
+  if(key==='done'){
+    const reports=(state.schedule||[]).filter(s=>s&&s.project===p.name&&s.urgent!==true&&s.report&&s.report.progress==='완료'&&hjLeakSmsPlain(s.report.done)&&isRealIsoDate(s.date)&&s.date<=localDate()).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const work=reports.length?hjLeakSmsPlain(reports[0].report.done,600):'완료 기록에서 수리 내용을 확인해 안내드리겠습니다.';
+    const warranty=finished?hjWarranty(p):null;
+    const items=warranty&&Array.isArray(warranty.items)?warranty.items.filter(x=>x&&Number.isFinite(Number(x.months))&&Number(x.months)>0):[];
+    return (finished?'누수 수리를 마쳤습니다.':'수리 완료 여부를 확인한 뒤 안내드리겠습니다.')+'\n수리 내용: '+work+'\n보증: '+(items.length?hjLeakSmsPlain(hjWarrantyPeriodText(items),600):'확정된 보증 항목과 기간을 확인해 안내드리겠습니다.')+'\n상태를 확인할 사진 1장을 보내 주세요.\n사용을 다시 시작할 시간은 작업 때 안내받은 양생 시간을 따라 주세요. 같은 증상이 보이면 알려 주세요.'+sign;
+  }
+  const q=hjLeakSmsQuote(p,options),amount=hjLeakSmsQuoteTotal(q),billing=amount&&Number.isSafeInteger(amount.supply+amount.vat)?amount.supply+amount.vat:null;
+  const accounts=Array.isArray(COMPANY.accounts)?COMPANY.accounts:[],idx=options.accountIdx;
+  const account=Number.isInteger(idx)&&idx>=0&&idx<accounts.length?accounts[idx]:null;
+  const accountText=account?String(account.bank||'')+' '+String(account.no||'')+' '+String(account.holder||''):'계좌를 선택한 뒤 안내드리겠습니다.';
+  if(key==='quote')return '누수 수리 견적 안내입니다.\n'+(amount&&billing!==null?(q.vatIncluded?'견적 금액: '+won(amount.total)+' (부가세 포함)':'견적 공급가: '+won(amount.supply)+' (부가세 별도)')+'\n공급가 '+won(amount.supply)+' · 부가세 '+won(amount.vat)+'\n부가세 포함 합계: '+won(billing):'견적과 단가를 확인한 뒤 금액을 안내드리겠습니다.')+'\n결제 방법: 계좌이체 또는 현장에서 확인한 방법\n입금 계좌: '+accountText+'\n공사 중 추가로 발견되는 내용은 먼저 알려드리고 상의하겠습니다.'+sign;
+  let due=null;
+  if(billing!==null){
+    const paid=q.paid&&typeof q.paid==='object'?q.paid:null;
+    if(paid){if(typeof paid.amount==='number'&&Number.isSafeInteger(paid.amount)&&paid.amount>=0&&paid.amount<=billing)due=billing-paid.amount;}
+    else if(p.received==null||(typeof p.received==='number'||typeof p.received==='string'&&p.received.trim()!=='')&&Number.isFinite(Number(p.received))&&Number(p.received)===0)due=billing;
+  }
+  return '누수 수리 입금 안내입니다.\n'+(due===null?'이미 받은 돈과 견적을 대조한 뒤 입금액을 안내드리겠습니다.':due===0?'선택한 견적에서 추가로 받을 금액은 없습니다.':'선택한 견적의 남은 금액: '+won(due)+' (부가세 포함 합계에서 받은 돈 차감)')+'\n계좌: '+accountText+'\n입금 전 금액과 계좌를 확인해 주세요. 영수증이 필요하시면 종류를 알려 주세요. 발급 여부를 확인해 안내드리겠습니다.'+sign;
+}
+function hjLeakSmsExpected(p){
+  return JSON.stringify({project:projectBackupSafe(p),schedule:(state.schedule||[]).filter(s=>s&&s.project===p.name),quotes:hjLeakSmsQuotes(p)});
+}
+async function hjLeakSmsMark(p,key,expected,stillOpen){
+  const name=p&&p.name,current=()=>!!p&&hjLeakProject(name)===p&&!__tabStale&&!__appVersionUpdating&&typeof expected==='string'&&hjLeakSmsExpected(p)===expected&&(!stillOpen||stillOpen());
+  if(!hjLeakSmsKey(key)||!current())throw new Error('현장이나 문자 안내 정보가 바뀌었습니다. 다시 열어 주세요.');
+  const validObject=v=>v==null||typeof v==='object'&&!Array.isArray(v);
+  if(!validObject(p.leak)||!validObject(p.leak&&p.leak.sms))throw new Error('기존 누수 문자 기록 형식을 확인해 주세요.');
+  if(hjLeakSmsSent(p,key))return {changed:false,key,at:p.leak.sms[key],project:name};
+  const at=new Date().toISOString(),projectBefore=JSON.stringify(projectBackupSafe(p));
+  return durableLocalMutation({snapshotLabel:'누수 문자 체크 저장 전',beforeCommit:()=>{if(!current())throw new Error('현장이나 문자 안내 정보가 바뀌었습니다. 다시 열어 주세요.');},mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
+    if(!target||target.archived||target.kind!=='leak'||JSON.stringify(target)!==projectBefore)throw new Error('현장 정보가 바뀌었습니다. 문자 기록을 다시 확인해 주세요.');
+    if(draft.notes!=null&&!Array.isArray(draft.notes))throw new Error('기존 현장 노트 형식을 확인해 주세요.');
+    target.leak={...(target.leak||{}),sms:{...(target.leak&&target.leak.sms||{}),[key]:at}};
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),project:name,text:'[문자] '+HJ_LEAK_SMS.find(x=>x.key===key).title+' · 보냈음 체크'+(key==='third'?' · 고객 동의 확인':'')});
+    return {changed:true,key,at,project:name};
+  }});
+}
 const HJ_LEAK_METHODS=['육안','청음','압력(급수)','압력(온수)','압력(난방)','가스','열화상','형광(염료)','습도계','배수 테스트'];
 const HJ_LEAK_CAUSES=['급수관','온수관','난방 배관','배수관','방수층(욕실·베란다)','외벽·창호','결로','윗세대','원인 미확정'];
 const HJ_LEAK_ZONES=['전유부','공용부','경계 불명'];
@@ -13378,7 +13503,7 @@ function hjDayCloseData(today){
     matPlan:hjMatPlanRows('',7).length,   // v373 다음 7일 발주 점검
     promo:hjAdCaseRows(14,0).filter(r=>r.missing.length),   // v378 2주 안 완공 현장 중 사례를 안 올린 채널이 남은 곳 — v387 남은 곳을 먼저 거르고 보일 때 4곳으로 자름
     clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})(),   // v362 내일 담당 겹침
-    sales:hjDayCloseSales(today)};   // v391 영업 — 오늘 문의·상담 일정 안 잡힌 문의·견적 안 쓴 현장·답 기다리는 견적
+    sales:hjDayCloseSales(today),leakSms:hjLeakSmsPending(today)};   // 영업·누수 문자 안내는 순수 조회
 }
 /* v391 🌙 오늘 마감의 📞 영업 — 문의(v383·v386) → 견적(v389) → 팔로업(v388) 을 하루 끝에 한 번 더. 순수 읽기. */
 function hjDayCloseSales(today){
@@ -13466,9 +13591,14 @@ function hjDayCloseView(){
        (S.follow?row('⏰ 답 기다리는 견적 <b>'+S.follow+'건</b> (작성·보낸 지 3~30일)',btn('ghost','data-dc-qfollow','⏰ 견적 팔로업')):'')+
      '</div>';
    }}
+  {const pending=d.leakSms||{detect:[],done:[]};
+   if(pending.detect.length||pending.done.length)body+=h4('💬 누수 문자 안내')+'<div id="dcLeakSms">'+
+     [['detect','오늘 출동했는데 탐지 결과 문자 안 보낸 현장'],['done','수리 완료했는데 완료 문자 안 보낸 현장']].map(([key,label])=>pending[key].length?row('<span data-dc-leaksms-count="'+key+'">'+label+' <b>'+pending[key].length+'곳</b></span>',pending[key].map(n=>btn('ghost','data-dc-leaksms="'+escapeAttr(n)+'" data-sms-key="'+key+'"',escapeHtml(hjCut(n,18))+' · 문자 준비')).join('')):'').join('')+'</div>';
+  }
   body+='<p class="hint" style="margin:12px 0 0">이 창은 아무것도 바꾸지 않아요. 버튼이 여는 화면에서 저장합니다. 고객·팀원에게 자동으로 보내지 않습니다.</p></div>';
   openModal('🌙 오늘 마감 — '+hjMdDow(d.today),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('dayClose');
+  root.querySelectorAll('[data-dc-leaksms]').forEach(b=>b.onclick=()=>hjLeakSmsView(b.dataset.dcLeaksms,b.dataset.smsKey));
   root.querySelectorAll('[data-dc-photolog]').forEach(b=>b.onclick=()=>{const g=hjPhotoDayGroups(d.today).find(g=>g.project===b.dataset.dcPhotolog&&!g.has);if(g)openScheduleEdit(null,hjPhotoLogDraft(g,d.today),{title:'📝 오늘 작업 기록',photoOrigin:{project:g.project,date:d.today,n:g.n}});});
   const all=root.querySelector('[data-dc-photologall]');if(all)all.onclick=()=>hjPhotoLogAll(d.today);
   root.querySelectorAll('[data-dc-report]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.dcReport));
@@ -30542,15 +30672,83 @@ function msgTemplate(kind,p,extra){
   };
   return T[kind]||'';
 }
-function msgCenterView(){
+/* 누수 문자는 초안을 편집한 뒤 사람이 복사/문자 앱/보냈음 기록을 각각 선택한다. */
+function hjLeakSmsChoose(key){
+  const projects=(state.projects||[]).filter(p=>p&&!p.archived&&hjLeakProject(p.name)===p);
+  openModal('💧 누수 문자 · 현장 선택','<div id="hjLeakSmsChooser" style="min-width:0;overflow-wrap:anywhere">'+(projects.length?projects.map((p,i)=>'<button type="button" class="ghost" data-leak-sms-project="'+i+'" style="display:block;width:100%;min-height:44px;white-space:normal;text-align:left;margin-bottom:8px">'+escapeHtml(p.name)+'</button>').join(''):'<p>선택할 누수 현장이 없습니다. 현장 유형과 같은 이름의 현장이 있는지 확인해 주세요.</p>')+'</div>',[{label:'‹ 문자 센터',cls:'ghost',fn:()=>msgCenterView('leak')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('[data-leak-sms-project]').forEach(b=>b.onclick=()=>hjLeakSmsView(projects[Number(b.dataset.leakSmsProject)].name,key));
+}
+function hjLeakSmsUiPrivate(p,text){
+  const compact=v=>String(v||'').replace(/\s/g,'').toLowerCase(),body=compact(text),customer=p.customer||{};
+  if([customer.name,customer.addr,p.name,p.leak?.detect?.place].some(v=>compact(v).length>=2&&body.includes(compact(v))))return true;
+  const digits=v=>String(v||'').replace(/\D/g,''),phone=digits(customer.phone);
+  if(phone.length>=8&&digits(text).includes(phone))return true;
+  const company=digits(COMPANY.tel),phones=String(text).match(/0\d{1,2}[ -]?\d{3,4}[ -]?\d{4}/g)||[];
+  return phones.some(v=>digits(v)!==company)||/\d{1,4}\s*동|\d{1,4}\s*호(?:실)?/.test(String(text));
+}
+function hjLeakSmsView(name,key){
+  if(!name)return hjLeakSmsChoose(key);
+  let p=hjLeakProject(name);
+  if(!p||__tabStale||__appVersionUpdating){toast('현장 이름·종류 또는 다른 탭의 변경을 확인한 뒤 다시 열어 주세요');return false;}
+  const current=hjLeakSmsStage(p),chosen=HJ_LEAK_SMS.find(x=>x.key===key)||HJ_LEAK_SMS.find(x=>x.key===current)||HJ_LEAK_SMS[0];key=chosen.key;
+  let expected=hjLeakSmsExpected(p),busy=false,generated='',generatedOptions='';
+  const quotes=hjLeakSmsQuotes(p),accounts=Array.isArray(COMPANY.accounts)?COMPANY.accounts:[],money=key==='quote'||key==='pay',third=key==='third';
+  const related=JSON.stringify({quotes,accounts});
+  const sentText=()=>{const at=p.leak?.sms?.[key];return at?(hjLeakSmsSent(p,key)?'✓ 보냈음 · ':'이전 체크 · ')+String(at).slice(0,16).replace('T',' '):'아직 보냈음 체크가 없습니다';};
+  const stageButton=x=>'<button type="button" class="'+(x.key===key?'blue':'ghost')+'" data-leak-sms-key="'+x.key+'" aria-pressed="'+(x.key===key)+'" style="min-height:44px;min-width:44px;white-space:normal;text-align:left;width:100%;margin:4px 0">'+escapeHtml(x.title)+(hjLeakSmsSent(p,x.key)?' ✓':'')+'</button>';
+  const stage=HJ_LEAK_SMS.find(x=>x.key===current)||HJ_LEAK_SMS[0];
+  const controls=money?'<div style="display:grid;gap:10px;margin:10px 0"><label>안내할 누수 견적<select id="hjLeakSmsQuote" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">'+(quotes.length?'견적을 선택해 주세요':'연결된 누수 견적 없음')+'</option>'+quotes.map((q,i)=>'<option value="'+escapeAttr(q.id)+'"'+(quotes.length===1?' selected':'')+'>'+escapeHtml(q.no||q.date||('견적 '+(i+1)))+'</option>').join('')+'</select></label><label>안내할 입금 계좌 · 선택<select id="hjLeakSmsAccount" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">계좌 넣지 않음</option>'+accounts.map((a,i)=>'<option value="'+i+'">'+escapeHtml(a.label||a.bank||('계좌 '+(i+1)))+'</option>').join('')+'</select></label></div>':'';
+  const thirdControls=third?'<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin:10px 0"><p class="hint">원인 세대의 이름·전화·주소·동호수를 쓰지 마세요. 고객 동의를 받은 뒤 제3자에게 안내합니다.</p><label style="display:flex;align-items:center;gap:8px;min-height:44px"><input id="hjLeakSmsConsent" type="checkbox">고객에게 이 안내를 전달해도 된다는 동의를 받았습니다</label><label>안내 대상<select id="hjLeakSmsThirdTarget" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="아랫집">아랫집</option><option value="관리사무소">관리사무소</option><option value="이웃">이웃</option></select></label><label style="display:block;margin-top:8px">받는 분 번호 · 직접 입력<input id="hjLeakSmsPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="고객 번호는 자동으로 넣지 않습니다" style="width:100%;min-height:44px;font-size:16px"></label></div>':'';
+  const dispatchControls=key==='dispatch'||key==='intake'?'<label style="display:block;margin:8px 0">도착 예정 시간 · 선택<input id="hjLeakSmsArrival" type="time" style="width:100%;min-height:44px;font-size:16px"></label>'+(key==='dispatch'?'<label style="display:block;margin:8px 0">확인한 잠금 밸브 위치 · 선택<input id="hjLeakSmsValve" maxlength="100" style="width:100%;min-height:44px;font-size:16px" placeholder="모르면 비워 두세요"></label>':''):'';
+  openModal('💬 누수 문자 · '+chosen.title,'<div id="hjLeakSms" style="min-width:0;overflow-wrap:anywhere"><p><b>'+escapeHtml(name)+'</b></p><p class="hint">현재 단계에 맞는 안내</p>'+stageButton(stage)+'<details'+(key!==stage.key?' open':'')+'><summary style="min-height:44px;cursor:pointer">다른 단계 문자 보기</summary>'+HJ_LEAK_SMS.filter(x=>x.key!==stage.key).map(stageButton).join('')+'</details>'+controls+thirdControls+dispatchControls+'<button type="button" class="ghost" id="hjLeakSmsRebuild" style="min-height:44px;white-space:normal;margin:8px 0">선택 정보로 초안 다시 만들기</button><label for="hjLeakSmsBody" style="display:block">문자 내용 · 직접 수정 가능</label><textarea id="hjLeakSmsBody" rows="9" maxlength="6000" style="display:block;width:100%;min-width:0;min-height:180px;font-size:16px;line-height:1.5"></textarea><p id="hjLeakSmsSent" role="status" style="font-size:13px">'+escapeHtml(sentText())+'</p><p id="hjLeakSmsIssue" role="alert" style="color:var(--warn);min-height:20px"></p><div style="display:flex;flex-wrap:wrap;gap:8px"><button type="button" class="ghost" id="hjLeakSmsCopy" style="min-width:44px;min-height:44px">📋 복사</button><button type="button" class="blue" id="hjLeakSmsSend" style="min-width:44px;min-height:44px">✉️ 문자 앱</button><button type="button" class="clay" id="hjLeakSmsMark" style="min-width:44px;min-height:44px">보냈음 체크</button></div><p class="hint">자동으로 보내거나 보냈음으로 기록하지 않습니다. 문자 앱에서 실제로 보낸 뒤 체크하세요. 번호가 없으면 문안을 복사해 전달할 수 있어요.</p></div>',[{label:'‹ 현장 선택',cls:'ghost',fn:()=>hjLeakSmsChoose()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('hjLeakSms'),find=id=>root.querySelector('#'+id),body=find('hjLeakSmsBody'),issue=find('hjLeakSmsIssue');
+  const valid=()=>{
+    if(!root.isConnected||busy)return false;
+    if(__tabStale||__appVersionUpdating||hjLeakProject(name)!==p||hjLeakSmsExpected(p)!==expected){issue.textContent='자료가 변경되었습니다. 작성한 문안을 보관하고 창을 다시 열어 주세요.';return false;}
+    if(money&&JSON.stringify({quotes:hjLeakSmsQuotes(p),accounts:COMPANY.accounts||[]})!==related){issue.textContent='견적 또는 계좌가 변경되었습니다. 작성한 문안을 보관하고 창을 다시 열어 주세요.';return false;}
+    return true;
+  };
+  const options=()=>{const o={};if(money){const q=find('hjLeakSmsQuote').value,a=find('hjLeakSmsAccount').value;if(q)o.quoteId=q;if(a!=='')o.accountIdx=Number(a);}if(third)o.thirdTarget=find('hjLeakSmsThirdTarget').value;const arrival=find('hjLeakSmsArrival'),valve=find('hjLeakSmsValve');if(arrival&&arrival.value)o.arrival=arrival.value;if(valve&&valve.value.trim())o.valvePlace=valve.value.trim();return o;};
+  const fill=()=>{const selected=options();generated=hjLeakSmsDraft(p,key,selected);generatedOptions=JSON.stringify(selected);body.value=generated;issue.textContent='';};fill();
+  ['hjLeakSmsQuote','hjLeakSmsAccount','hjLeakSmsArrival','hjLeakSmsValve','hjLeakSmsThirdTarget'].forEach(id=>{const control=find(id);if(control)control.addEventListener('input',()=>{issue.textContent=JSON.stringify(options())===generatedOptions?'':'선택 정보가 바뀌었습니다. 초안 다시 만들기를 눌러 문안에 반영한 뒤 전달해 주세요.';});});
+  find('hjLeakSmsRebuild').onclick=()=>{if(!valid())return;if(body.value!==generated&&!confirm('직접 고친 문안을 선택 정보로 다시 만들까요?'))return;fill();};
+  root.querySelectorAll('[data-leak-sms-key]').forEach(b=>b.onclick=()=>{if(!valid())return;if(body.value!==generated&&!confirm('직접 고친 문안을 닫고 다른 단계로 이동할까요?'))return;hjLeakSmsView(name,b.dataset.leakSmsKey);});
+  const outbound=()=>{
+    if(!valid())return false;
+    if(JSON.stringify(options())!==generatedOptions){issue.textContent='선택 정보가 바뀌었습니다. 초안 다시 만들기를 눌러 문안에 반영한 뒤 전달해 주세요.';return false;}
+    if(!body.value.trim()){issue.textContent='전달할 문안을 먼저 확인해 주세요.';return false;}
+    if(third&&!find('hjLeakSmsConsent').checked){issue.textContent='제3자에게 안내하기 전에 고객 동의를 확인해 주세요.';return false;}
+    if(third&&hjLeakSmsUiPrivate(p,body.value)){issue.textContent='고객 이름·연락처·주소·동호수가 포함되어 있습니다. 제3자 안내 문안에서 지운 뒤 다시 확인해 주세요.';return false;}
+    issue.textContent='';return true;
+  };
+  find('hjLeakSmsCopy').onclick=()=>{if(outbound())coworkCopy(body.value,'누수 안내 문안');};
+  find('hjLeakSmsSend').onclick=()=>{
+    if(!outbound())return;
+    const phone=third?find('hjLeakSmsPhone').value.trim():String(p.customer?.phone||''),tel=telHref(phone);
+    if(third&&(!tel||!/^\d{8,15}$/.test(String(tel).replace(/\D/g,''))||String(tel).replace(/\D/g,'')===String(p.customer?.phone||'').replace(/\D/g,''))){issue.textContent='제3자 수신번호를 직접 확인해 입력해 주세요. 고객 번호로 대신 보내지 않습니다.';return;}
+    if(!tel){coworkCopy(body.value,'누수 안내 문안');issue.textContent='연락처가 없어 문안을 복사했습니다. 받는 분을 확인한 뒤 붙여넣어 주세요.';return;}
+    hjSendSms(phone,body.value);toast('문자 앱을 열었어요. 받는 분과 내용을 확인하고 직접 보내세요');
+  };
+  find('hjLeakSmsMark').onclick=async()=>{
+    if(!outbound())return;
+    const draft=body.value,controls=[...root.querySelectorAll('button,input,select,textarea')];busy=true;controls.forEach(x=>x.disabled=true);
+    try{const result=await hjLeakSmsMark(p,key,expected,()=>root.isConnected&&body.value===draft);if(result.changed)webWorkMarkDirtyAfterPersist();if(!root.isConnected)return;p=hjLeakProject(name);expected=hjLeakSmsExpected(p);find('hjLeakSmsSent').textContent=sentText();issue.textContent=result.changed?'보냈음 기록을 저장했습니다.':'이미 보냈음으로 기록되어 있습니다.';root.querySelectorAll('[data-leak-sms-key]').forEach(b=>{const item=HJ_LEAK_SMS.find(x=>x.key===b.dataset.leakSmsKey);b.textContent=item.title+(hjLeakSmsSent(p,item.key)?' ✓':'');});}
+    catch(e){if(root.isConnected)issue.textContent=String(e&&e.message||'기록을 저장하지 못했습니다. 문안은 그대로 두었습니다.');}
+    finally{busy=false;controls.forEach(x=>{if(x.isConnected)x.disabled=false;});}
+  };
+  return {key,project:name};
+}
+function msgCenterView(tab){
   const kinds=[['start','🔨','착공 안내'],['done','🎉','준공 인사'],['as','🛠','AS 접수 답변'],['review','⭐','안부·리뷰 부탁'],['thanks','🙏','감사·명절 인사'],['taxreq','🧾','계산서 정보 요청'],['sorry','📵','부재중 답신'],['loc','📍','현장 위치 안내'],['access','🔑','작업자 출입 안내'],['recvok','🧾','입금 확인증']];
   const btns=kinds.map(function(k){return '<button class="ghost mcKind" data-k="'+k[0]+'" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px;background:var(--paper)"><span style="font-size:18px">'+k[1]+'</span><b style="font-size:13px">'+k[2]+'</b></button>';}).join('');
   const [c1,c2]=hjBrandGrad('#0e7a6b','#0b4ea2');
   openModal('💬 문자 센터',
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">고객 소통</div><div style="font-size:19px;font-weight:800">💬 상황별 문자 센터</div></div>'+
-    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">상황을 고르면 현장·고객 이름이 채워진 문자가 준비돼요.</div>'+btns,
+    '<div role="tablist" aria-label="문자 종류" style="display:flex;gap:8px;margin-bottom:10px"><button type="button" id="mcGeneralTab" role="tab" aria-selected="'+(tab!=='leak')+'" class="'+(tab==='leak'?'ghost':'blue')+'" style="min-height:44px;flex:1">일반</button><button type="button" id="mcLeakTab" role="tab" aria-selected="'+(tab==='leak')+'" class="'+(tab==='leak'?'blue':'ghost')+'" style="min-height:44px;flex:1">💧 누수</button></div>'+(tab==='leak'?'<p class="hint">현장을 고른 뒤 현재 단계의 문안을 확인하고 직접 전달합니다.</p><button type="button" class="blue" id="mcLeakChoose" style="width:100%;min-height:44px">💬 누수 현장 선택</button>':'<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">상황을 고르면 현장·고객 이름이 채워진 문자가 준비돼요.</div>'+btns),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.querySelectorAll('.mcKind').forEach(function(b){b.onclick=function(){msgCenterCompose(b.dataset.k);};});
+  document.getElementById('mcGeneralTab').onclick=()=>msgCenterView('general');document.getElementById('mcLeakTab').onclick=()=>msgCenterView('leak');
+  const leakChoose=document.getElementById('mcLeakChoose');if(leakChoose)leakChoose.onclick=()=>hjLeakSmsChoose();
   return {템플릿:kinds.length};
 }
 function msgCenterCompose(kind){
@@ -35767,6 +35965,7 @@ function setupDelegation(){
       return;
     }
     const t=e.target.closest('[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
