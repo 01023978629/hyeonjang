@@ -3293,7 +3293,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v422-leakreport';
+const APP_BUILD='hyeonjang-v428-taxissue';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -12961,6 +12961,120 @@ function hjDelayView(projectName){
   root.querySelectorAll('.dlMove').forEach(b=>b.onclick=()=>openScheduleEdit(b.dataset.id));
   return {현장:p.name,지연:items.length};
 }
+/* v428 발행은 사람이 확인해 기록한다. 조회/분리 집계는 기존 자료를 보정하거나 저장하지 않는다. */
+const HJ_TAX_ISSUE_STATUSES=Object.freeze(['pending','issued','notApplicable','declined']);
+function hjTaxIssueMethod(value){return ({계좌:'계좌이체',계좌이체:'계좌이체',현금:'현금',카드:'카드',기타:'기타',bank:'계좌이체',cash:'현금',card:'카드',other:'기타'})[String(value||'')]||'';}
+function hjTaxIssueDay(value){const text=typeof value==='string'?value:'';return /^\d{4}-\d{2}-\d{2}$/.test(text)&&isRealIsoDate(text)?text:'';}
+function hjTaxIssueKind(name){if(typeof name!=='string'||!name.trim())return 'unknown';const rows=(state.projects||[]).filter(p=>p&&p.name===name);return rows.length===1&&['interior','leak'].includes(rows[0].kind)?rows[0].kind:'unknown';}
+function hjTaxIssueSuggest(name){const rows=typeof name==='string'&&name.trim()?(state.projects||[]).filter(p=>p&&p.name===name):[];return rows.length===1&&String(rows[0].customer?.bizno||'').trim()?'tax':'cash';}
+function hjTaxIssueRead(rec){
+  const r=rec&&typeof rec==='object'?rec:{},hasIssue=Object.prototype.hasOwnProperty.call(r,'issue'),raw=r.issue&&typeof r.issue==='object'&&!Array.isArray(r.issue)?r.issue:null;
+  let method=hjTaxIssueMethod(r.method),type='',status='pending',no='',at='',legacy=!hasIssue,needsReview=hasIssue&&!raw;
+  if(raw){type=['tax','cash','none',''].includes(raw.type)?raw.type:'';status=HJ_TAX_ISSUE_STATUSES.includes(raw.status)?raw.status:'pending';no=typeof raw.no==='string'?raw.no:'';at=hjTaxIssueDay(raw.at);
+    if(!HJ_TAX_ISSUE_STATUSES.includes(raw.status)||!['tax','cash','none',''].includes(raw.type)||raw.at&&!at)needsReview=true;
+    if(status==='issued'&&!['tax','cash'].includes(type)){status='pending';needsReview=true;}
+    if(status==='notApplicable'&&method!=='카드'){status='pending';needsReview=true;}
+  }else if(!hasIssue&&(r.proof==='cash'||r.proof==='tax')){type=r.proof;status='issued';at=hjTaxIssueDay(r.proofAt);}
+  else if(!hasIssue&&r.proof==='card'){if(method&&method!=='카드'){type='';status='pending';needsReview=true;}else{method='카드';type='none';status='notApplicable';}}
+  else if(r.proof==='etc')needsReview=true;
+  if(method==='카드'){type='none';status='notApplicable';no='';at='';}
+  if(!method||method==='기타'||status==='declined')needsReview=true;
+  const label=status==='issued'?(type==='tax'?'세금계산서 발행':'현금영수증 발행'):status==='notApplicable'?'카드 · 발행 해당 없음':status==='declined'?'고객이 원치 않음 · 의무 확인':'미발행';
+  return {method,type,status,no,at,legacy,needsReview,label};
+}
+function hjTaxIssueNormalize(input,rec){
+  const value=input&&typeof input==='object'?input:{},old=hjTaxIssueRead(rec),method=value.method===undefined?old.method:hjTaxIssueMethod(value.method);
+  if(value.method!==undefined&&String(value.method||'')&&!method)throw new Error('결제 방법을 다시 선택해 주세요.');
+  if(Object.prototype.hasOwnProperty.call(value,'issue')&&(!value.issue||typeof value.issue!=='object'||Array.isArray(value.issue)))throw new Error('발행 기록 형식을 확인해 주세요.');
+  const raw=value.issue&&typeof value.issue==='object'&&!Array.isArray(value.issue)?value.issue:{};
+  let type=raw.type===undefined?old.type:raw.type,status=raw.status===undefined?old.status:raw.status;
+  if(!['tax','cash','none',''].includes(type)||!HJ_TAX_ISSUE_STATUSES.includes(status))throw new Error('발행 종류와 상태를 다시 선택해 주세요.');
+  let no=raw.no===undefined?old.no:raw.no,at=raw.at===undefined?old.at:raw.at;
+  if(typeof no!=='string'||no.length>100||typeof at!=='string')throw new Error('발행번호와 발행일을 확인해 주세요.');no=no.trim();
+  if(method==='카드'){type='none';status='notApplicable';no='';at='';}
+  else if(status==='notApplicable')throw new Error('카드 결제일 때만 발행 해당 없음으로 기록할 수 있습니다.');
+  else if(status==='issued'){
+    if(!['tax','cash'].includes(type))throw new Error('실제로 발행한 세금계산서 또는 현금영수증을 선택해 주세요.');
+    at=at||localDate();if(!hjTaxIssueDay(at)||at>localDate())throw new Error('발행일은 오늘까지의 실제 날짜로 입력해 주세요.');
+  }else{at='';no='';if(status==='declined')type='none';}
+  return {method,issue:{type,status,no,at}};
+}
+function hjTaxIssueApply(rec,value){
+  rec.method=value.method;rec.issue=structuredClone(value.issue);delete rec.proof;delete rec.proofAt;
+  if(value.issue.status==='issued'&&['tax','cash'].includes(value.issue.type)){rec.proof=value.issue.type;rec.proofAt=value.issue.at;}
+  else if(value.issue.status==='notApplicable'&&value.method==='카드')rec.proof='card';
+  else if(value.issue.status==='declined'||value.issue.status==='pending'&&value.issue.type==='none'&&value.method==='기타')rec.proof='etc';
+  return rec;
+}
+function hjTaxIssueReceipt(value){return {type:value.issue.status==='notApplicable'?'카드전표':({tax:'세금계산서',cash:'현금영수증'})[value.issue.type]||'없음',issued:value.issue.status==='issued'&&['tax','cash'].includes(value.issue.type)};}
+function hjTaxIssueRange(day,from,to){
+  const valid=value=>!value||/^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)||!!hjTaxIssueDay(value);
+  if(!valid(from)||!valid(to))return false;if(!from&&!to)return true;
+  if(typeof day!=='string'||!/^\d{4}-(?:0[1-9]|1[0-2])(?:-\d{2})?$/.test(day))return false;
+  if((from&&from.length===10||to&&to.length===10)&&!hjTaxIssueDay(day))return false;
+  return (!from||day.slice(0,from.length)>=from)&&(!to||day.slice(0,to.length)<=to);
+}
+function hjTaxIssueRows(from='',to=''){
+  return (state.payLog||[]).filter(r=>r&&typeof r==='object').map(rec=>{const d=hjTaxIssueDay(rec.d),raw=rec.amt,amt=typeof raw==='number'?raw:typeof raw==='string'&&/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(raw.trim())?Number(raw.replace(/,/g,'')):NaN;return {rec,d,ym:d.slice(0,7),project:rec.project||'',amt,kind:hjTaxIssueKind(rec.project),...hjTaxIssueRead(rec)};}).filter(row=>Number.isFinite(row.amt)&&hjTaxIssueRange(row.d,from,to));
+}
+function hjTaxIssuePending(today=localDate(),options={}){
+  if(!hjTaxIssueDay(today))return [];
+  return hjTaxIssueRows(options.from||'',options.to||'').filter(row=>row.amt>0&&row.d&&row.d<=today&&(!options.project||row.project===options.project)&&(!options.todayOnly||row.d===today)&&['계좌이체','현금'].includes(row.method)&&['pending','declined'].includes(row.status)).map(row=>({...row,days:hjDaysBetween(row.d,today)})).filter(row=>row.days>=Math.max(0,Number(options.minDays)||0)).sort((a,b)=>b.days-a.days);
+}
+function hjTaxIssueSales(from='',to=''){
+  return hjSalesEntries().map(entry=>{const raw=entry.quote?.date||entry.file?.est?.date,day=hjTaxIssueDay(raw)||(/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(entry.ym||''))?entry.ym:'');return {...entry,kind:hjTaxIssueKind(entry.project),d:day};}).filter(entry=>Number.isFinite(Number(entry.amount))&&hjTaxIssueRange(entry.d,from,to));
+}
+function hjTaxIssueSummary(from='',to=''){
+  const make=()=>({interior:{n:0,sum:0},leak:{n:0,sum:0},unknown:{n:0,sum:0},total:{n:0,sum:0}}),out={receipt:make(),sales:make()};
+  const add=(group,kind,amount)=>{group[kind].n++;group[kind].sum+=amount;group.total.n++;group.total.sum+=amount;};
+  hjTaxIssueRows(from,to).forEach(row=>add(out.receipt,row.kind,row.amt));hjTaxIssueSales(from,to).forEach(row=>add(out.sales,row.kind,Number(row.amount)));return out;
+}
+function hjTaxIssueContext(rec){
+  const rows=state.payLog||[],index=rows.indexOf(rec);if(!rec||index<0||rows.filter(x=>x===rec).length!==1||rec.id&&rows.filter(x=>x&&x.id===rec.id).length!==1)throw new Error('수금 기록이 겹치거나 변경되었습니다. 다시 열어 주세요.');
+  const projects=(state.projects||[]).filter(p=>p&&p.name===rec.project);if(rec.project&&projects.length!==1)throw new Error('같은 이름이 없는 현장을 확인한 뒤 다시 열어 주세요.');
+  const quotes=rec.id?(state.quotes||[]).filter(q=>q&&q.paid?.payLogId===rec.id):[];
+  if(quotes.length>1||quotes.some(q=>q.id!==rec.quoteId||q.project!==rec.project))throw new Error('견적과 수금 연결을 먼저 확인해 주세요.');
+  const editing=state.editingQuote&&quotes.includes((state.quotes||[]).find(q=>q&&q.id===state.editingQuote.id))?state.editingQuote:null;
+  if(editing&&paidStableJson(editing.paid)!==paidStableJson(quotes[0].paid))throw new Error('견적의 받은 돈에 저장하지 않은 변경이 있습니다. 먼저 저장한 뒤 발행 상태를 기록해 주세요.');
+  return {rec,index,rows,stamp:paidStableJson(rec),bookStamp:paidStableJson(rows),project:projects[0]||null,projectStamp:projects[0]?paidStableJson(projectBackupSafe(projects[0])):'',quotes,quoteStamps:quotes.map(q=>hjLeakPaymentQuoteStamp(q)),editing,editingPaid:editing?paidStableJson(editing.paid):''};
+}
+async function hjTaxIssueSave(context,input,stillOpen){
+  if(!context)throw new Error('수금 기록을 다시 열어 주세요.');const value=hjTaxIssueNormalize(input,context.rec);
+  if(context.quotes.length&&!value.method)throw new Error('견적에 연결된 수금의 결제 방법을 선택해 주세요.');
+  const current=()=>!__tabStale&&!__appVersionUpdating&&state.payLog===context.rows&&paidStableJson(state.payLog)===context.bookStamp&&state.payLog[context.index]===context.rec&&(!context.project||state.projects.filter(p=>p&&p.name===context.rec.project).length===1&&state.projects.includes(context.project)&&paidStableJson(projectBackupSafe(context.project))===context.projectStamp)&&(!context.rec.id||(state.quotes||[]).filter(q=>q&&q.paid?.payLogId===context.rec.id).length===context.quotes.length)&&context.quotes.every((q,i)=>(state.quotes||[]).filter(x=>x&&x.id===q.id).length===1&&state.quotes.includes(q)&&hjLeakPaymentQuoteStamp(q)===context.quoteStamps[i])&&(!context.editing||state.editingQuote===context.editing&&paidStableJson(context.editing.paid)===context.editingPaid)&&(!stillOpen||stillOpen());
+  const ensure=()=>{if(!current())throw new Error('수금 또는 견적이 바뀌었습니다. 입력을 보관하고 다시 열어 주세요.');};ensure();
+  const result=await durableLocalMutation({snapshotLabel:'수금 발행 기록 전',beforeCommit:ensure,mutateDraft:draft=>{
+    if(paidStableJson(draft.payLog||[])!==context.bookStamp)throw new Error('수금 기록이 바뀌었습니다. 다시 확인해 주세요.');
+    const rec=draft.payLog[context.index];hjTaxIssueApply(rec,value);
+    for(let i=0;i<context.quotes.length;i++){const q=context.quotes[i],matches=(draft.quotes||[]).filter(x=>x&&x.id===q.id),target=matches.length===1?matches[0]:null;if(!target||hjLeakPaymentQuoteStamp(target)!==context.quoteStamps[i])throw new Error('연결된 견적이 바뀌었습니다.');target.paid={...target.paid,method:value.method,receipt:hjTaxIssueReceipt(value)};}
+    return {index:context.index,id:rec.id||'',issue:structuredClone(value.issue)};
+  }});
+  if(context.editing&&state.editingQuote===context.editing&&paidStableJson(context.editing.paid)===context.editingPaid){const q=(state.quotes||[]).find(x=>x&&x.id===context.editing.id);if(q)context.editing.paid=structuredClone(q.paid);}
+  webWorkMarkDirtyAfterPersist();return result;
+}
+/* 수금 추가도 후보에만 반영한다. 저장 실패 시 열린 입력과 현장 누계는 그대로 둔다. */
+function hjTaxIssueReceiveContext(p){
+  if(__tabStale||__appVersionUpdating||!p||typeof p.name!=='string'||!p.name.trim()||!(state.projects||[]).includes(p)||(state.projects||[]).filter(x=>x&&x.name===p.name).length!==1)throw new Error('현장 자료가 바뀌었습니다. 다시 열어 확인해 주세요.');
+  const raw=p.received==null||p.received===''?0:p.received,received=typeof raw==='number'?raw:typeof raw==='string'&&/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())?Number(raw.replace(/,/g,'')):NaN;
+  if(!Number.isSafeInteger(received)||received<0)throw new Error('현장의 수금 누계를 먼저 확인해 주세요.');
+  return {project:p,name:p.name,projectStamp:paidStableJson(projectBackupSafe(p)),rows:state.payLog,bookStamp:paidStableJson(state.payLog||[]),received};
+}
+async function hjTaxIssueReceive(context,input,stillOpen){
+  if(!context)throw new Error('입금 기록 창을 다시 열어 주세요.');
+  const raw=input&&input.amt,amount=typeof raw==='number'?raw:typeof raw==='string'&&/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw.trim())?Number(raw.replace(/,/g,'')):NaN,d=hjTaxIssueDay(input&&input.d);
+  if(!Number.isSafeInteger(amount)||amount<=0||!Number.isSafeInteger(context.received+amount))throw new Error('입금액을 1원 이상 정수로 확인해 주세요.');
+  if(!d||d>localDate())throw new Error('실제로 받은 날짜를 오늘까지의 날짜로 입력해 주세요.');
+  const fields=hjTaxIssueNormalize(input),id='taxpay_'+uid();
+  const ensure=()=>{if(__tabStale||__appVersionUpdating||state.payLog!==context.rows||paidStableJson(state.payLog||[])!==context.bookStamp||!(state.projects||[]).includes(context.project)||(state.projects||[]).filter(p=>p&&p.name===context.name).length!==1||context.project.name!==context.name||paidStableJson(projectBackupSafe(context.project))!==context.projectStamp||(stillOpen&&!stillOpen()))throw new Error('현장 또는 수금 정보가 바뀌었습니다. 입력을 보관하고 다시 열어 확인해 주세요.');};ensure();
+  const result=await durableLocalMutation({snapshotLabel:'입금 및 발행 기록 추가 전',beforeCommit:ensure,mutateDraft:draft=>{
+    const projects=(draft.projects||[]).filter(p=>p&&p.name===context.name),p=projects.length===1?projects[0]:null;
+    if(!p||paidStableJson(p)!==context.projectStamp||paidStableJson(draft.payLog||[])!==context.bookStamp)throw new Error('현장 또는 수금 정보가 바뀌었습니다. 다시 확인해 주세요.');
+    const rec={id,d,project:context.name,amt:amount,...fields};p.received=context.received;
+    if(!hjPayRecordAdd(p,rec,draft))throw new Error('입금 기록을 저장하지 못했습니다. 입력을 확인해 다시 시도해 주세요.');
+    return {project:context.name,d,amt:amount,id};
+  }});
+  webWorkMarkDirtyAfterPersist();return result;
+}
 /* ═══════════ 🧾 입금 증빙 기록 (v348) — 현금영수증·세금계산서를 발행했는지 입금 기록에 남긴다 ═══════════
    실내건축 공사업은 현금영수증 의무발행 업종이다 — 건당 10만원 이상 현금(계좌이체 포함) 거래는 입금일부터 5일 안에 발행해야 하고
    안 하면 가산세 대상이다(국세청 안내 기준 — 금액·기한은 홈택스에서 확인). 앱은 입금은 적게 하면서 발행했는지는 어디에도 못 적었다.
@@ -12975,15 +13089,11 @@ function hjProofPending(today,projectName){
   return (state.payLog||[]).filter(x=>x&&typeof x==='object'&&(!projectName||x.project===projectName)&&!HJ_PROOF[x.proof]&&Math.round(num(x.amt))>=HJ_PROOF_MIN_AMT&&
     /^\d{4}-\d{2}-\d{2}$/.test(String(x.d||''))&&hjDaysBetween(x.d,today)>=HJ_PROOF_WARN_DAYS).map(x=>({rec:x,d:x.d,project:x.project||'',amt:Math.round(num(x.amt)),days:hjDaysBetween(x.d,today)})).sort((a,b)=>b.days-a.days);
 }
-function hjProofSet(rec,kind){
-  if(!rec||!(state.payLog||[]).includes(rec))return false;
-  if(kind){rec.proof=kind;rec.proofAt=localDate();}else{delete rec.proof;delete rec.proofAt;}
-  /* v421 기존 입금 증빙 화면과 견적의 받은 돈 기록은 같은 증빙 상태를 유지한다. */
-  for(const q of (state.quotes||[])){if(!q.paid||q.paid.payLogId!==rec.id||q.id!==rec.quoteId||q.project!==rec.project)continue;
-    const old=paidStableJson(q.paid.receipt),type={cash:'현금영수증',tax:'세금계산서',card:'카드전표',etc:'없음'}[kind]||(q.paid.receipt||{}).type||'없음';q.paid.receipt={type,issued:!!kind&&kind!=='etc'};
-    const edit=state.editingQuote;if(edit&&edit.id===q.id&&edit.paid&&edit.paid.payLogId===rec.id&&paidStableJson(edit.paid.receipt)===old)edit.paid.receipt={...q.paid.receipt};
-  }
-  markDirty();return true;
+async function hjProofSet(rec,kind){
+  if(!rec||!(state.payLog||[]).includes(rec)||kind&&!Object.prototype.hasOwnProperty.call(HJ_PROOF,kind))return false;
+  const old=hjTaxIssueRead(rec),method=kind==='card'?'카드':kind==='etc'?'기타':old.method;
+  const issue={type:kind==='cash'||kind==='tax'?kind:kind==='card'||kind==='etc'?'none':old.type==='none'?'':old.type,status:kind==='cash'||kind==='tax'?'issued':kind==='card'?'notApplicable':'pending',no:'',at:kind==='cash'||kind==='tax'?localDate():''};
+  await hjTaxIssueSave(hjTaxIssueContext(rec),{method,issue});return true;
 }
 // v349 부가세 준비용 집계 — 신고 기간(YYYY-MM~YYYY-MM)에 들어온 입금을 증빙 종류별로 센다(읽기 전용).
 //   입금 기준이라 매출(견적 기준)과 다를 수 있다 — 홈택스 현금영수증 발행 내역·전자세금계산서 합계와 맞춰 보는 참고 줄.
@@ -12998,15 +13108,102 @@ function hjProofSummaryLine(ps){
   if(!ps||!ps.total.n)return '';
   return ['현금영수증 '+ps.cash.n+'건 '+won(ps.cash.sum),'세금계산서 '+ps.tax.n+'건 '+won(ps.tax.sum),'카드 '+ps.card.n+'건 '+won(ps.card.sum)].concat(ps.etc.n?['기타 '+ps.etc.n+'건 '+won(ps.etc.sum)]:[]).concat(['미기록 '+ps.none.n+'건 '+won(ps.none.sum)]).join(' · ');
 }
+/* v428 발행은 앱 밖에서 하고 이 화면은 확인한 상태만 기록한다. 조회·입력 초안은 저장하지 않는다. */
+function hjTaxIssueFields(prefix,rec,project,options={}){
+  const r=rec?hjTaxIssueRead(rec):{method:'',type:hjTaxIssueSuggest(project),status:'pending',no:'',at:''};
+  const style='width:100%;min-height:44px;box-sizing:border-box;font-size:16px;min-width:0';
+  const sel=(suffix,label,items,value)=>'<label for="'+prefix+suffix+'" style="display:block;margin:9px 0 4px">'+label+'</label><select id="'+prefix+suffix+'" style="'+style+'">'+items.map(x=>'<option value="'+escapeAttr(x[0])+'"'+(x[0]===value?' selected':'')+'>'+escapeHtml(x[1])+'</option>').join('')+'</select>';
+  return '<div data-tax-fields="'+prefix+'" style="min-width:0;overflow-wrap:anywhere;font-size:13px">'+
+    (options.noMethod?'':sel('Method','결제 방법',[['','미확인'],['계좌이체','계좌이체'],['현금','현금'],['카드','카드'],['기타','기타']],r.method))+
+    sel('Type','발행 종류 (제안은 실제 발행이 아닙니다)',[['','종류 미확인'],['tax','세금계산서'],['cash','현금영수증'],['none','카드 · 해당 없음']],r.type)+
+    sel('Status','발행 상태',[['pending','미발행 · 확인 필요'],['issued','발행했음'],['notApplicable','카드 · 해당 없음'],['declined','고객이 원치 않음 · 발행 의무 확인']],r.status||'pending')+
+    '<label for="'+prefix+'No" style="display:block;margin:9px 0 4px">승인·발행번호 (선택)</label><input id="'+prefix+'No" maxlength="100" value="'+escapeAttr(r.no||'')+'" style="'+style+'">'+
+    '<label for="'+prefix+'At" style="display:block;margin:9px 0 4px">발행일</label><input id="'+prefix+'At" type="date" max="'+localDate()+'" value="'+escapeAttr(String(r.at||'').slice(0,10))+'" style="'+style+'">'+
+    '<p class="hint" style="margin:6px 0">발행·로그인은 하지 않습니다. 고객이 원치 않아도 발행 의무가 없어지는 것은 아니에요. 거래일 기준 기한을 확인하세요.</p></div>';
+}
+function hjTaxIssueBind(prefix,project,methodId){
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(b=>{b.style.minHeight='44px';b.style.whiteSpace='normal';});
+  const g=s=>document.getElementById(prefix+s),method=document.getElementById(methodId||prefix+'Method');
+  const sync=(changed)=>{
+    if(!g('Type')||!g('Status'))return;
+    const card=method&&method.value==='카드';
+    if(card){g('Type').value='none';g('Status').value='notApplicable';}
+    else if(changed==='method'&&g('Status').value==='notApplicable'){g('Type').value=hjTaxIssueSuggest(project);g('Status').value='pending';}
+    if(changed==='status'&&g('Status').value==='issued'&&!g('At').value)g('At').value=localDate();
+    g('Type').disabled=card;g('Status').disabled=card;
+    g('No').disabled=card||g('Status').value!=='issued';g('At').disabled=card||g('Status').value!=='issued';
+  };
+  if(method)method.addEventListener('change',()=>sync('method'));
+  g('Status').addEventListener('change',()=>sync('status'));sync();return sync;
+}
+function hjTaxIssueInput(prefix,methodId){
+  const g=s=>document.getElementById(prefix+s),status=g('Status').value;
+  return {method:document.getElementById(methodId||prefix+'Method').value,issue:{type:g('Type').value,status,no:status==='issued'?g('No').value.trim():'',at:status==='issued'?g('At').value:''}};
+}
+function hjTaxIssueLegacySelect(prefix,key,sync,methodId){
+  const g=s=>document.getElementById(prefix+s),m=document.getElementById(methodId||prefix+'Method');
+  if(key==='card')m.value='카드';
+  else if(m.value==='카드'){m.value='';toast('카드 이외 증빙을 골랐어요. 실제 결제 방법을 다시 선택해 주세요.');hjFieldIssue(m,'실제 결제 방법을 다시 선택해 주세요.');}
+  g('Type').value=key==='tax'?'tax':key==='cash'?'cash':key==='card'?'none':'';
+  g('Status').value=key==='card'?'notApplicable':['tax','cash'].includes(key)?'issued':'pending';
+  if(g('Status').value==='issued'&&!g('At').value)g('At').value=localDate();sync();
+}
+function hjTaxIssueEdit(rec,onSaved,initialStatus){
+  if(__tabStale||__appVersionUpdating||__modalCloseLocked||photoIntakePending()){toast('진행 중인 작업을 마치고 최신 화면에서 다시 열어 주세요.');return false;}
+  let context;try{context=hjTaxIssueContext(rec);}catch(e){toast(String(e&&e.message||e));return false;}
+  const body='<div id="hjTaxIssueForm" style="min-width:0;overflow-wrap:anywhere"><p><b>'+escapeHtml(rec.project||'현장 미확인')+'</b><br>'+escapeHtml(String(rec.d||''))+' · '+won(num(rec.amt))+'</p>'+hjTaxIssueFields('ti',rec,rec.project)+'<p id="hjTaxIssueError" role="alert" style="min-height:20px;color:var(--warn)"></p></div>';
+  let busy=false;
+  const save=async()=>{
+    const form=document.getElementById('hjTaxIssueForm');if(busy||!form)return;
+    let input;try{input=hjTaxIssueNormalize(hjTaxIssueInput('ti'),rec);}catch(e){form.querySelector('#hjTaxIssueError').textContent=String(e&&e.message||e);return;}
+    busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(b=>b.disabled=true);let ok=false;
+    try{await hjTaxIssueSave(context,input,()=>form.isConnected&&document.getElementById('hjTaxIssueForm')===form);ok=true;}
+    catch(e){form.querySelector('#hjTaxIssueError').textContent=String(e&&e.message||'저장하지 못했습니다. 입력을 확인해 다시 시도해 주세요.');}
+    finally{busy=false;__modalCloseLocked=false;controls.forEach(b=>b.disabled=false);sync();}
+    if(ok){closeModal(true);render();toast('발행 상태를 기록했어요');if(typeof onSaved==='function')onSaved();}
+  };
+  openModal('🧾 발행 상태 기록',body,[{label:'기록 저장',cls:'clay',fn:save},{label:'취소',cls:'ghost',fn:closeModal}],true);
+  const sync=hjTaxIssueBind('ti',rec.project);if(initialStatus){const r=hjTaxIssueRead(rec);document.getElementById('tiStatus').value=initialStatus;if(!r.type||r.type==='none')document.getElementById('tiType').value=hjTaxIssueSuggest(rec.project);if(initialStatus==='issued')document.getElementById('tiAt').value=localDate();sync();}
+  const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons.forEach(b=>b.style.minHeight='44px');if(buttons[0])buttons[0].id='hjTaxIssueSave';return true;
+}
+function hjTaxIssueView(options={}){
+  const rows=hjTaxIssuePending(localDate(),options),sum=rows.reduce((a,r)=>a+r.amt,0);
+  const all=hjTaxIssueRows(options.from||'',options.to||'').filter(r=>!options.project||r.project===options.project),unknown=all.filter(r=>!r.method);
+  const body='<div id="hjTaxIssueList" style="min-width:0;overflow-wrap:anywhere"><b>발행 안 한 수금 '+rows.length+'건 '+won(sum)+'</b><p class="hint">계좌·현금 수금 중 발행 확인이 필요한 내역입니다. 고객 거부도 면제로 보지 않습니다. 거래일 기준 기한 확인 · 실제 발행은 홈택스에서 합니다.</p>'+
+    rows.map((r,i)=>'<div data-tax-issue-row="'+i+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px"><b>'+escapeHtml(r.project||'현장 미확인')+'</b><div>'+escapeHtml(r.d)+' · '+won(r.amt)+' · '+escapeHtml(r.method)+' · '+escapeHtml(r.label||'미발행')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"><button class="ghost" data-tax-issue-edit="'+i+'" style="min-height:44px">발행했음 기록</button><button class="ghost" data-tax-issue-decline="'+i+'" style="min-height:44px">고객이 원치 않음</button></div></div>').join('')+
+    (!rows.length?'<p>지금 조건에 해당하는 미발행 기록이 없습니다.</p>':'')+
+    (unknown.length?'<p class="hint">결제 방법 미확인 '+unknown.length+'건은 미발행으로 추정하지 않았습니다. 입금 증빙 기록에서 확인해 주세요.</p>':'')+'</div>';
+  openModal('🧾 발행 확인',body,[{label:'전체 입금 증빙',cls:'ghost',fn:()=>hjProofView(options.project,()=>hjTaxIssueView(options))},...(options.back?[{label:'‹ 뒤로',cls:'ghost',fn:options.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  const root=document.getElementById('hjTaxIssueList');root.querySelectorAll('[data-tax-issue-edit]').forEach(b=>b.onclick=()=>hjTaxIssueEdit(rows[+b.dataset.taxIssueEdit].rec,()=>hjTaxIssueView(options),'issued'));root.querySelectorAll('[data-tax-issue-decline]').forEach(b=>b.onclick=()=>hjTaxIssueEdit(rows[+b.dataset.taxIssueDecline].rec,()=>hjTaxIssueView(options),'declined'));
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(b=>b.style.minHeight='44px');return {건수:rows.length,금액:sum,미확인:unknown.length};
+}
+function hjTaxIssueSplitHtml(from,to){
+  return '<section data-tax-split data-from="'+escapeAttr(from||'')+'" data-to="'+escapeAttr(to||'')+'" style="border:1px solid var(--line-soft);padding:10px;border-radius:11px;margin:10px 0;min-width:0"><b>공사 유형별 집계</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="ghost" data-tax-basis="receipt" aria-pressed="true" style="min-height:44px">수금 기준</button><button class="ghost" data-tax-basis="sales" aria-pressed="false" style="min-height:44px">수주 기준</button></div><div data-tax-split-rows></div><p class="hint" data-tax-split-note></p></section>';
+}
+function hjTaxIssuePendingHtml(options={}){
+  const rows=hjTaxIssuePending(localDate(),options);
+  return '<div style="border:1px solid var(--line-soft);border-radius:11px;padding:10px;margin:10px 0;overflow-wrap:anywhere"><b>발행 안 한 수금 '+rows.length+'건 '+won(rows.reduce((s,r)=>s+r.amt,0))+'</b><p class="hint">계좌·현금의 미발행 및 고객 거부 기록 · 거래일 기준 기한 확인</p><button class="ghost" data-tax-pending data-project="'+escapeAttr(options.project||'')+'" data-from="'+escapeAttr(options.from||'')+'" data-to="'+escapeAttr(options.to||'')+'" style="min-height:44px">발행 목록 확인</button></div>';
+}
+function hjTaxIssuePendingBind(root,back){
+  root.querySelectorAll('[data-tax-pending]').forEach(b=>b.onclick=()=>hjTaxIssueView({project:b.dataset.project,from:b.dataset.from,to:b.dataset.to,back}));
+}
+function hjTaxIssueSplitBind(root){
+  root.querySelectorAll('[data-tax-split]').forEach(box=>{
+    const show=basis=>{const summary=hjTaxIssueSummary(box.dataset.from,box.dataset.to)[basis];box.querySelectorAll('[data-tax-basis]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.taxBasis===basis)));box.querySelector('[data-tax-split-rows]').innerHTML=[['interior','인테리어'],['leak','누수'],['unknown','유형 미확인'],['total','합계']].map(([k,label])=>'<div data-tax-kind="'+k+'" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:5px 0"><span>'+label+'</span><b>'+summary[k].n+'건 · '+won(summary[k].sum)+'</b></div>').join('');box.querySelector('[data-tax-split-note]').textContent=basis==='receipt'?'수금일 기준 · 정정 금액 포함. 결제 방법·발행 여부와는 별도입니다.':'기존 매출 판정의 수주·매출일 기준입니다. 실제 입금 합계와 다를 수 있어요.';};
+    box.querySelectorAll('[data-tax-basis]').forEach(b=>b.onclick=()=>show(b.dataset.taxBasis));show('receipt');
+  });
+}
 function hjProofView(projectName,back){
   const today=localDate();
   const all=(state.payLog||[]).filter(x=>x&&typeof x==='object'&&(!projectName||x.project===projectName)&&Math.round(num(x.amt))>0).slice().sort((a,b)=>String(b.d).localeCompare(String(a.d)));
   const pend=new Set(hjProofPending(today,projectName).map(x=>x.rec));
-  const rows=all.slice(0,40).map((x,i)=>{const k=HJ_PROOF[x.proof]?x.proof:'';
+  const rows=all.slice(0,40).map((x,i)=>{const k=HJ_PROOF[x.proof]?x.proof:'',issue=hjTaxIssueRead(x);
     return '<div class="prRow" data-i="'+i+'" style="border:1px solid '+(k?'var(--line-soft)':pend.has(x)?'#fca5a5':'#fcd34d')+';border-radius:11px;padding:9px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:6px"><span style="min-width:0"><b>'+won(Math.round(num(x.amt)))+'</b> <span style="color:var(--muted-2)">'+escapeHtml(String(x.d||''))+(projectName?'':' · '+escapeHtml(x.project||'현장 없음'))+'</span></span>'+
         '<span style="font-size:12px;white-space:nowrap;color:'+(k?'var(--moss)':pend.has(x)?'#b91c1c':'#b45309')+'">'+(k?'✓ '+hjProofLabel(k)+(x.proofAt?' · '+escapeHtml(x.proofAt):''):pend.has(x)?'⚠ 증빙 기록 없음':'아직')+'</span></div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+Object.keys(HJ_PROOF).map(kk=>'<button type="button" class="ghost prSet" data-i="'+i+'" data-k="'+kk+'" aria-pressed="'+(k===kk?'true':'false')+'" style="min-height:44px;padding:0 10px;border-radius:999px;font-size:12px'+(k===kk?';border-color:var(--moss);color:var(--moss);font-weight:700':'')+'">'+HJ_PROOF[kk]+'</button>').join('')+'</div></div>';}).join('');
+      '<div style="font-size:12px;margin:5px 0;overflow-wrap:anywhere">'+escapeHtml((issue.method||'결제 방법 미확인')+' · '+(!issue.method&&issue.status==='pending'?'발행 상태 미확인':issue.label))+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+Object.keys(HJ_PROOF).map(kk=>'<button type="button" class="ghost prSet" data-i="'+i+'" data-k="'+kk+'" aria-pressed="'+(k===kk?'true':'false')+'" style="min-height:44px;padding:0 10px;border-radius:999px;font-size:12px'+(k===kk?';border-color:var(--moss);color:var(--moss);font-weight:700':'')+'">'+HJ_PROOF[kk]+'</button>').join('')+'<button type="button" class="ghost" data-pr-issue="'+i+'" style="min-height:44px">방법·발행 상세</button></div></div>';}).join('');
   const body='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:8px">실내건축 공사업은 <b>현금영수증 의무발행 업종</b>입니다 — 건당 10만원 이상 현금·계좌이체 거래는 입금일부터 5일 안에 발행해야 하고, 안 하면 가산세 대상이에요(기준은 홈택스 안내 확인). 발행했으면 어떤 증빙인지 눌러 두세요 — 부가세 준비 때 다시 찾지 않아도 됩니다. 발행 자체는 홈택스에서 합니다.</div>'+
     (rows||'<div class="empty" style="padding:14px"><b>입금 기록이 없습니다</b></div>')+(all.length>40?'<div class="hint">최근 40건만 보입니다</div>':'');
   openModal('🧾 입금 증빙 기록'+(projectName?' — '+escapeHtml(projectName):''),body,[
@@ -13014,9 +13211,11 @@ function hjProofView(projectName,back){
     ...(back?[{label:'‹ 뒤로',cls:'ghost',fn:back}]:[]),
     {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
-  root.querySelectorAll('.prSet').forEach(b=>b.onclick=()=>{const rec=all[+b.dataset.i];if(!rec)return;const cur=HJ_PROOF[rec.proof]?rec.proof:'';
-    if(!hjProofSet(rec,cur===b.dataset.k?'':b.dataset.k)){toast('입금 기록이 바뀌었습니다 — 다시 열어 주세요');return;}
-    toast(cur===b.dataset.k?'증빙 표시를 지웠어요':hjProofLabel(b.dataset.k)+' 발행으로 적었어요');hjProofView(projectName,back);});
+  root.querySelectorAll('[data-pr-issue]').forEach(b=>b.onclick=()=>hjTaxIssueEdit(all[+b.dataset.prIssue],()=>hjProofView(projectName,back)));
+  root.querySelectorAll('.prSet').forEach(b=>b.onclick=async()=>{const rec=all[+b.dataset.i];if(!rec||b.disabled)return;const cur=HJ_PROOF[rec.proof]?rec.proof:'';b.disabled=true;
+    try{if(!await hjProofSet(rec,cur===b.dataset.k?'':b.dataset.k)){toast('입금 기록이 바뀌었습니다 — 다시 열어 주세요');return;}
+      toast(cur===b.dataset.k?'증빙 표시를 지웠어요':'증빙 상태를 기록했어요');if(b.isConnected)hjProofView(projectName,back);
+    }catch(e){toast(String(e&&e.message||'기록하지 못했습니다. 다시 확인해 주세요.'));}finally{if(b.isConnected)b.disabled=false;}});
   return {건수:all.length,기록없음:pend.size};
 }
 
@@ -13383,6 +13582,7 @@ function hjDayCloseData(today){
     matPlan:hjMatPlanRows('',7).length,   // v373 다음 7일 발주 점검
     promo:hjAdCaseRows(14,0).filter(r=>r.missing.length),   // v378 2주 안 완공 현장 중 사례를 안 올린 채널이 남은 곳 — v387 남은 곳을 먼저 거르고 보일 때 4곳으로 자름
     clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})(),   // v362 내일 담당 겹침
+    taxIssue:hjTaxIssuePending(today,{todayOnly:true}),
     sales:hjDayCloseSales(today)};   // v391 영업 — 오늘 문의·상담 일정 안 잡힌 문의·견적 안 쓴 현장·답 기다리는 견적
 }
 /* v391 🌙 오늘 마감의 📞 영업 — 문의(v383·v386) → 견적(v389) → 팔로업(v388) 을 하루 끝에 한 번 더. 순수 읽기. */
@@ -13472,6 +13672,7 @@ function hjDayCloseView(){
        (S.follow?row('⏰ 답 기다리는 견적 <b>'+S.follow+'건</b> (작성·보낸 지 3~30일)',btn('ghost','data-dc-qfollow','⏰ 견적 팔로업')):'')+
      '</div>';
    }}
+  if(d.taxIssue.length)body+=h4('🧾 오늘 수금 발행 확인')+row('오늘 수금 중 미발행 <b>'+d.taxIssue.length+'건</b> · '+won(d.taxIssue.reduce((s,r)=>s+r.amt,0)),btn('ghost','data-dc-taxissue','발행 확인'));
   body+='<p class="hint" style="margin:12px 0 0">이 창은 아무것도 바꾸지 않아요. 버튼이 여는 화면에서 저장합니다. 고객·팀원에게 자동으로 보내지 않습니다.</p></div>';
   openModal('🌙 오늘 마감 — '+hjMdDow(d.today),body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('dayClose');
@@ -13492,6 +13693,7 @@ function hjDayCloseView(){
   if(q('[data-dc-inqsched]'))q('[data-dc-inqsched]').onclick=e=>hjInquirySchedOpen(e.currentTarget.dataset.dcInqsched);   // v391
   if(q('[data-dc-qwait]'))q('[data-dc-qwait]').onclick=e=>{const n=e.currentTarget.dataset.dcQwait;closeModal();hjQuoteStartFor(n);};
   if(q('[data-dc-qfollow]'))q('[data-dc-qfollow]').onclick=()=>quoteFollowup();
+  if(q('[data-dc-taxissue]'))q('[data-dc-taxissue]').onclick=()=>hjTaxIssueView({todayOnly:true,back:hjDayCloseView});
   return {보고할일정:d.needReport.length,미배정사진:d.loose,내일일정:d.tmr.length,담당없음:d.noCrew.length};
 }
 /* ═══════════ 📋 작업지시 보내기 (Phase 2 · 휴먼 이펙터 디스패치) ═══════════ */
@@ -17557,6 +17759,14 @@ async function allProjectsMap(){
 }
 
 /* ═══════════ 📤 전체 장부 엑셀 — 12시트 한 파일 ═══════════ */
+/* v428 수금/발행 내보내기도 화면과 같은 읽기 전용 판정을 쓴다. 옛 세 열은 이관 호환을 위해 유지한다. */
+function hjTaxIssueExportRows(records=state.payLog||[]){
+  const projected=new Map(hjTaxIssueRows().map(row=>[row.rec,row]));
+  const rows=[['일자','현장','금액','결제 방법','발행 상태','증빙 종류','승인·발행번호','발행 기록일','공사 구분']];
+  records.forEach(rec=>{if(!rec||typeof rec!=='object')return;const r=projected.get(rec)||{};
+    rows.push([String(rec.d||''),String(rec.project||''),num(rec.amt),r.method||'미확인',r.label||'미확인',({tax:'세금계산서',cash:'현금영수증',none:'해당 없음'})[r.type]||'',r.no||'',r.at||'',({interior:'인테리어',leak:'누수'})[r.kind]||'미분류']);
+  });return rows;
+}
 async function exportFullXlsx(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return {오류:'모듈'};}
   const wb=XLSX.utils.book_new();
@@ -17585,8 +17795,7 @@ async function exportFullXlsx(){
   });
   add('외부견적',s3);counts['외부견적']=s3.length-1;
   // ④ 수금 이력
-  const s4=[['일자','현장','금액']];
-  (state.payLog||[]).forEach(x=>s4.push([x.d,x.project,x.amt]));
+  const s4=hjTaxIssueExportRows();
   add('수금이력',s4);counts['수금이력']=s4.length-1;
   // ⑤ 인건비
   const s5=[['일자','일정','현장','작업자','금액']];
@@ -19395,7 +19604,7 @@ function vatReportData(from,to){
   // 매출: 현장 매출(projStats.est)과 같은 규칙 한 벌(hjSalesEntries) — 종결·작성 중 견적은 빼고, 앱 견적과 그 엑셀 사본은 한 번, 날짜 기준
   const inRange=ym=>ym&&ym>=from&&ym<=to;
   let salesSupply=0,salesVat=0;const salesRows=[];
-  hjSalesEntries().forEach(r=>{if(!inRange(r.ym))return;salesSupply+=r.supply;salesVat+=r.vat;salesRows.push({ym:r.ym,label:r.label,supply:r.supply,vat:r.vat});});
+  hjSalesEntries().forEach(r=>{if(!inRange(r.ym))return;salesSupply+=r.supply;salesVat+=r.vat;salesRows.push({ym:r.ym,label:r.label,supply:r.supply,vat:r.vat,kind:hjTaxIssueKind(r.project)});});
   // 매입: 완료(또는 진행) 현장의 자재·외주비(세금계산서 받는 매입으로 가정) + 인건비(일정 labor, 날짜 기준)
   let buyMaterial=0,buyOutsource=0,buyLabor=0;const buyRows=[];
   // v344 지출장부(state.expenses)의 자재·외주도 매입에 넣는다 — projStats 와 같은 택일 규칙: 현장에 수기 자재/외주비(p.cost)가 있으면
@@ -19493,17 +19702,18 @@ async function vatExportXlsx(periodKey){
     [d.payable>=0?'납부예상세액':'환급예상세액',Math.abs(d.payable)]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'요약');
   // 매출 상세
-  const s1=[['월','내역','공급가','부가세','합계']];
-  d.salesRows.slice().sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s1.push([r.ym,r.label,r.supply,r.vat,r.supply+r.vat]));
+  const s1=[['월','내역','공급가','부가세','합계','공사 구분']];
+  d.salesRows.slice().sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s1.push([r.ym,r.label,r.supply,r.vat,r.supply+r.vat,({interior:'인테리어',leak:'누수'})[r.kind]||'미분류']));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'매출');
   // 매입 상세
   const s2=[['월','내역','구분','금액']];
   d.buyRows.slice().sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(r=>s2.push([r.ym,r.label,r.type,r.amount]));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'매입');
   // v349 입금 증빙 — 세무사가 홈택스 발행 내역과 맞출 수 있게 입금 한 건마다 증빙 종류(입금일 기준, 매출과 다를 수 있음)
-  const s3=[['입금일','현장','금액','증빙','기록일']];
+  const s3=[['입금일','현장','금액','증빙','기록일','결제 방법','발행 상태','승인·발행번호','공사 구분']];
+  const issueRows=new Map(hjTaxIssueRows(pd.from,pd.to).map(row=>[row.rec,row]));
   (state.payLog||[]).filter(x=>x&&typeof x==='object'&&Math.round(num(x.amt))>0&&String(x.d||'').slice(0,7)>=pd.from&&String(x.d||'').slice(0,7)<=pd.to).slice().sort((a,b)=>String(a.d).localeCompare(String(b.d)))
-    .forEach(x=>s3.push([String(x.d||''),x.project||'',Math.round(num(x.amt)),hjProofLabel(x.proof)||'미기록',x.proofAt||'']));
+    .forEach(x=>{const r=issueRows.get(x)||{};s3.push([String(x.d||''),x.project||'',Math.round(num(x.amt)),hjProofLabel(x.proof)||'미기록',x.proofAt||'',r.method||'미확인',r.label||'미확인',r.no||'',({interior:'인테리어',leak:'누수'})[r.kind]||'미분류']);});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s3),'입금증빙');
   const fname=COMPANY.name+'_부가세신고_'+pd.key+'_'+localDate()+'.xlsx';
   XLSX.writeFile(wb,fname);
@@ -20181,13 +20391,14 @@ function pnl(ym){
   // 추세
   const trend=pnlTrend(6);
   const trendBlock='<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">📊 6개월 추이</div><div style="display:flex;gap:12px;font-size:11px;margin-bottom:4px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:#e8912d">■ 지출</span></div><div style="background:var(--paper-2);border-radius:10px;padding:8px 4px 2px">'+pnlTrendSVG(trend)+'</div>';
-  const body=nav+hero+io+catBlock+incBlock+trendBlock+
+  const body=nav+hero+io+hjTaxIssueSplitHtml(ym,ym)+hjTaxIssuePendingHtml({from:ym,to:ym})+catBlock+incBlock+trendBlock+
     '<div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">💡 수금은 실제 입금된 돈(payLog), 지출은 간편 장부 기록 기준입니다. 현장별 원가·마진은 [📊 수익 분석]에서 볼 수 있어요.</div>'+
     '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="moss" id="pnlExp" style="flex:1;min-width:120px;padding:11px">💳 지출 장부</button><button class="moss" id="pnlProfit" style="flex:1;min-width:120px;padding:11px">📊 수익 분석</button></div>';
   openModal('💰 월별 손익',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelector('#pnlExp').onclick=()=>{closeModal();try{expenseLedger(ym);}catch(e){}};
   root.querySelector('#pnlProfit').onclick=()=>{closeModal();try{profitAnalysis();}catch(e){}};
+  hjTaxIssueSplitBind(root);hjTaxIssuePendingBind(root,()=>pnl(ym));
   return {월:ym,수입:d.income,지출:d.spend,실손익:d.net,이익률:d.margin};
 }
 
@@ -23312,6 +23523,8 @@ function monthlyReportPage(ym,d,pnl){
 // 기존 aiActiveBriefData를 확장: 추가 알림 항목을 수집(보증 만료·AS 미완료·매출 목표)
 function briefExtraItems(){
   const items=[];
+  const issueDue=hjTaxIssuePending(localDate(),{minDays:5});
+  if(issueDue.length)items.push({ic:'🧾',t:'수금 후 5일 지난 미발행 '+issueDue.length+'건',sub:'거래일 기준 기한 확인 · '+won(issueDue.reduce((s,r)=>s+r.amt,0)),action:'taxissue'});
   // 1) 보증 만료 임박(warrantyDue 있으면)
   try{
     if(typeof warrantyDue==='function'){
@@ -23411,6 +23624,7 @@ function alertCenter(){
       else if(act==='kakaoin'&&typeof kakaoOpenInbox==='function')kakaoOpenInbox();
       else if(act==='ptlist'&&typeof portalListView==='function')portalListView();
       else if(act==='vatc'&&typeof vatCenterView==='function')vatCenterView();
+      else if(act==='taxissue')hjTaxIssueView({minDays:5,back:alertCenter});
       else if(act==='ops'&&typeof aiOpsCenter==='function')aiOpsCenter();
       else if(act==='as'&&typeof asManage==='function')asManage();
       else if(act==='matdue'&&typeof hjMatView==='function')hjMatView();
@@ -30299,6 +30513,38 @@ function taxCalendarEnsure(){
   }catch(e){}
   return added;
 }
+function hjTaxIssueCalendarProposals(today=localDate()){
+  const date=hjTaxIssueDay(today);if(!date)return [];
+  const y=Number(date.slice(0,4)),m=Number(date.slice(5,7))-1,title='세금계산서 발행 마감(전월분)',rows=[];
+  for(let i=0;i<13;i++){
+    const target=new Date(y,m+i,10),raw=localDate(target),day=hjTaxDueDate(raw),id='tax_'+raw+'_issue10';
+    if(day<today)continue;
+    const exists=(state.schedule||[]).some(s=>s&&(s.id===id||[raw,day].includes(s.date)&&s.title===title));
+    if(!exists&&!(state.calendarImports||[]).includes('tax:'+id))rows.push({id,raw,date:day,title});
+  }
+  return rows.slice(0,12);
+}
+function hjTaxIssueCalendarOffer(){
+  if(__tabStale||__appVersionUpdating||__modalCloseLocked||photoIntakePending()){toast('진행 중인 작업을 마치고 최신 화면에서 다시 열어 주세요.');return;}
+  const rows=hjTaxIssueCalendarProposals();if(!rows.length){toast('추가할 발행 마감 일정이 없습니다.');return;}
+  const stamp=()=>paidStableJson({schedule:state.schedule||[],calendarImports:state.calendarImports||[]}),expected=stamp();let busy=false;
+  const body='<div id="hjTaxIssueCalendarConfirm" style="overflow-wrap:anywhere"><p>다음 '+rows.length+'회의 <b>세금계산서 발행 마감(전월분)</b> 확인 일정을 추가할까요?</p><p class="hint">매월 10일 기준 제안입니다. 휴일 조정·발행 대상·실제 기한은 홈택스에서 확인하세요. 확인을 눌러야 일정에 추가합니다.</p><div>'+rows.map(r=>escapeHtml(r.date)+(r.raw!==r.date?' (10일 휴일 조정)':'')).join('<br>')+'</div><p id="hjTaxIssueCalendarError" role="alert" style="color:var(--warn)"></p></div>';
+  const save=async()=>{
+    const form=document.getElementById('hjTaxIssueCalendarConfirm');if(busy||!form)return;
+    const ensure=()=>{if(__tabStale||__appVersionUpdating||!form.isConnected||document.getElementById('hjTaxIssueCalendarConfirm')!==form||stamp()!==expected)throw new Error('일정 자료가 바뀌었습니다. 다시 열어 확인해 주세요.');};
+    busy=true;__modalCloseLocked=true;const buttons=[...document.querySelectorAll('#modalRoot button')];buttons.forEach(b=>b.disabled=true);let ok=false;
+    try{ensure();await durableLocalMutation({snapshotLabel:'발행 마감 일정 추가 전',beforeCommit:ensure,mutateDraft:draft=>{
+      if(paidStableJson({schedule:draft.schedule||[],calendarImports:draft.calendarImports||[]})!==expected)throw new Error('일정 자료가 바뀌었습니다. 다시 열어 주세요.');
+      draft.schedule=Array.isArray(draft.schedule)?draft.schedule:[];draft.calendarImports=Array.isArray(draft.calendarImports)?draft.calendarImports:[];
+      rows.forEach(r=>{draft.schedule.push(Object.assign(newSchedule(),{id:r.id,date:r.date,title:r.title,time:'09:00',project:'',workers:'',memo:'발행 여부를 직접 확인하기 위한 일정 · 거래일 기준 실제 기한은 홈택스 확인',_taxAuto:true}));draft.calendarImports.push('tax:'+r.id);});return {added:rows.length};
+    }});webWorkMarkDirtyAfterPersist();ok=true;}catch(e){form.querySelector('#hjTaxIssueCalendarError').textContent=String(e&&e.message||'일정을 저장하지 못했습니다.');}
+    finally{busy=false;__modalCloseLocked=false;buttons.forEach(b=>b.disabled=false);}
+    if(ok){closeModal(true);toast('발행 마감 확인 일정 '+rows.length+'건을 추가했어요');taxCalendarView();}
+  };
+  openModal('📅 발행 마감 일정 추가 확인',body,[{label:'확인 · 일정 추가',cls:'clay',fn:save},{label:'취소',cls:'ghost',fn:closeModal}],true);
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons.forEach(b=>b.style.minHeight='44px');if(buttons[0])buttons[0].id='hjTaxIssueCalendarAdd';
+}
 function taxCalendarView(){
   const added=taxCalendarEnsure();
   const items=taxCalendarItems().slice(0,6);
@@ -30316,10 +30562,12 @@ function taxCalendarView(){
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">신고 놓치지 않기</div><div style="font-size:19px;font-weight:800">📅 세금 캘린더</div>'+(added?'<div style="font-size:11.5px;opacity:.95;margin-top:2px">일정 '+added+'건을 자동 등록했어요</div>':'')+'</div>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">부가세(1·4·7·10월)·종합소득세(5월) — 일정 탭에 자동 등록되어 브리핑에도 나와요</div>'+
     list+
+    (hjTaxIssueCalendarProposals().length?'<div style="border:1px solid var(--line-soft);padding:10px;border-radius:10px;margin:8px 0"><b>전월분 세금계산서 발행 확인</b><p class="hint">매월 10일 확인 일정을 제안합니다. 직접 확인한 뒤 추가할 수 있어요.</p><button id="txIssueOffer" class="ghost" style="min-height:44px">발행 마감 일정 추가 제안</button></div>':'')+
     '<button class="moss" id="txCw" style="width:100%;padding:12px;font-size:13px;margin-top:6px">🖥 Cowork 세금 정리 명령서 열기</button>'+
     '<div style="font-size:10.5px;color:var(--muted);margin-top:9px;line-height:1.5">💡 세무 신고 기한은 법정 공휴일에 따라 조정될 수 있어요. 정확한 기한은 홈택스 공지를 확인하세요.</div>';
   openModal('📅 세금 캘린더',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const cw=document.getElementById('txCw');if(cw)cw.onclick=function(){try{coworkTaskView('cw_tax');}catch(e){}};
+  const issueOffer=document.getElementById('txIssueOffer');if(issueOffer)issueOffer.onclick=hjTaxIssueCalendarOffer;
   return {다가오는일정:items.length,자동등록:added};
 }
 
@@ -31885,6 +32133,7 @@ function estFinalApply(){
 function hjPayRecordAdd(p,rec,target){
   const book=target||state,amt=Math.round(num(rec&&rec.amt)),d=String(rec&&rec.d||'');
   if(!p||!(amt>0)||!d)return false;
+  if(rec&&(Object.prototype.hasOwnProperty.call(rec,'issue')||Object.prototype.hasOwnProperty.call(rec,'method'))){rec={...rec};hjTaxIssueApply(rec,hjTaxIssueNormalize(rec,rec));}
   const pjName=p.name;
   p.received=(p.received||0)+amt;
   book.payLog=book.payLog||[];
@@ -31905,8 +32154,10 @@ function hjPayRecordAdd(p,rec,target){
   return true;
 }
 function recvQuickView(pjName,back){
-  const p=state.projects.find(function(x){return x.name===pjName;});
-  if(!p){toast('현장을 찾을 수 없어요');return;}
+  const matches=state.projects.filter(function(x){return x.name===pjName;}),p=matches[0];
+  if(matches.length!==1){toast('현장 이름을 하나로 확인한 뒤 입금을 기록해 주세요');return;}
+  let receiveContext;try{receiveContext=hjTaxIssueReceiveContext(p);}catch(e){toast(String(e&&e.message||e));return;}
+  let busy=false;
   const st=projStats(pjName);
   const today=localDate();
   // 이미 넣은 수금(얼마·언제)을 같은 화면에서 보여준다 — 안 보이면 같은 입금을 또 넣게 된다
@@ -31919,7 +32170,7 @@ function recvQuickView(pjName,back){
     '</div>':
     '<div style="margin-top:12px;font-size:11.5px;color:var(--muted);text-align:center;padding:8px">기록된 수금이 아직 없어요.</div>';
   const body=
-    '<div style="font-size:13px;line-height:1.7">'+
+    '<div id="rqForm" style="font-size:13px;line-height:1.7">'+
     '<div style="display:flex;justify-content:space-between;background:var(--paper-2);border-radius:11px;padding:11px 13px;margin-bottom:11px">'+
       '<span>견적 <b>'+won(st.est||0)+'</b></span><span>수금 <b style="color:var(--ok)">'+won(st.recv||0)+'</b></span></div>'+
     '<label for="rqAmt" style="font-size:11.5px;color:var(--muted)">입금액</label>'+
@@ -31929,10 +32180,13 @@ function recvQuickView(pjName,back){
     // v348 증빙 — 발행했으면 바로 적고, 아직이면 비워 둔다(이틀 뒤 '오늘의 체크'가 다시 묻는다)
     '<label for="rqProof" style="font-size:11.5px;color:var(--muted)">증빙(현금영수증·세금계산서) — 발행했으면 골라 두세요</label>'+
     '<select id="rqProof" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px"><option value="">아직 (나중에 기록)</option>'+Object.keys(HJ_PROOF).map(function(k){return '<option value="'+k+'">'+HJ_PROOF[k]+'</option>';}).join('')+'</select>'+
-    hist+
+    hjTaxIssueFields('rqTax',null,pjName)+
+    '<button type="button" class="ghost" id="rqTaxPending" style="min-height:44px;margin-top:8px">발행 안 한 수금 '+hjTaxIssuePending(today,{project:pjName}).length+'건 확인</button>'+hist+'<p id="rqIssue" role="alert" style="color:var(--warn);min-height:20px"></p>'+
     '</div>';
   openModal('💰 입금 기록 — '+pjName,body,[
-    {label:'입금 저장',cls:'clay',fn:function(){
+    {label:'입금 저장',cls:'clay',fn:async function(){
+      const form=document.getElementById('rqForm');if(busy||!form)return;
+      form.querySelector('#rqIssue').textContent='';
       const rawAmt=document.getElementById('rqAmt').value||'';
       if(hjIsNegativeAmount(rawAmt)){toast('마이너스 금액은 넣을 수 없어요 — 잘못 넣었으면 아래 이력에서 고쳐주세요');hjFieldIssue(document.getElementById('rqAmt'),'마이너스 금액은 넣을 수 없어요');return;}
       const amt=won2num(rawAmt);
@@ -31940,9 +32194,13 @@ function recvQuickView(pjName,back){
       if(!amt||amt<=0){toast('입금액을 입력하세요');hjFieldIssue(document.getElementById('rqAmt'),'입금액을 입력하세요');return;}
       // 아직 오지 않은 돈을 받은 것으로 적으면 이번 주 수금·매출이 부풀려진다
       if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');hjFieldIssue(document.getElementById('rqDate'),'입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
-      {const rec={d:d,project:pjName,amt:amt};const pk=(document.getElementById('rqProof')||{}).value||'';if(HJ_PROOF[pk]){rec.proof=pk;rec.proofAt=today;}   // v348
-       hjPayRecordAdd(p,rec);}   // v350 통장 가져오기와 같은 한 곳
-      markDirty();closeModal();render();
+      if(__tabStale||__appVersionUpdating||state.projects.filter(x=>x.name===pjName).length!==1||!state.projects.includes(p)){toast('현장 자료가 바뀌었습니다. 다시 열어 확인해 주세요.');return;}
+      let input;try{input=Object.assign({d:d,amt:amt},hjTaxIssueNormalize(hjTaxIssueInput('rqTax')));}catch(e){form.querySelector('#rqIssue').textContent=String(e&&e.message||e);return;}
+      busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(el=>el.disabled=true);let saved=false;
+      try{await hjTaxIssueReceive(receiveContext,input,()=>form.isConnected&&document.getElementById('rqForm')===form);saved=true;}
+      catch(e){form.querySelector('#rqIssue').textContent=String(e&&e.message||'입금 기록을 저장하지 못했습니다. 입력을 확인해 다시 시도해 주세요.');}
+      finally{busy=false;__modalCloseLocked=false;controls.forEach(el=>el.disabled=false);sync();}
+      if(!saved)return;closeModal(true);render();
       try{portalAutoSync(pjName);}catch(e){}
       toast('💰 '+won(amt)+' 입금 기록');
       // [v205] 입금 확인증 제안
@@ -31955,6 +32213,9 @@ function recvQuickView(pjName,back){
     }},
     (typeof back==='function'?{label:'‹ 뒤로',cls:'ghost',fn:function(){back();}}:null),
     {label:'취소',cls:'ghost',fn:closeModal}].filter(Boolean),true);
+  const sync=hjTaxIssueBind('rqTax',pjName);
+  document.getElementById('rqProof').onchange=e=>hjTaxIssueLegacySelect('rqTax',e.target.value,sync);
+  document.getElementById('rqTaxPending').onclick=()=>{if(document.getElementById('rqAmt').value.trim()){toast('입력 중인 입금을 먼저 저장해 주세요. 입력은 그대로 두었습니다.');return;}hjTaxIssueView({project:pjName,back:()=>recvQuickView(pjName,back)});};
 }
 /* ── 🧾 세무사 전달용 xlsx (매출/매입/카드/요약) ── */
 async function ledgerExportTax(){
@@ -34323,7 +34584,7 @@ function hjLeakQuickView(s){
 
 
 /* v421 받은 돈은 저장된 견적과 기존 수금 장부에 한 번만 묶는다. 읽을 때 장부나 견적을 보정하지 않는다. */
-const HJ_LEAK_PAY_METHODS=Object.freeze(['카드','계좌이체','현금']);
+const HJ_LEAK_PAY_METHODS=Object.freeze(['카드','계좌이체','현금','기타']);
 const HJ_LEAK_PAY_RECEIPTS=Object.freeze(['세금계산서','현금영수증','카드전표','없음']);
 const HJ_LEAK_PAY_AMOUNT_RE=/^(?:\d+|\d{1,3}(?:,\d{3})+)$/;
 const HJ_LEAK_PAY_DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
@@ -34361,24 +34622,25 @@ async function hjLeakPaymentSave(context,input,stillOpen){
   if(!Number.isSafeInteger(amount)||amount<=0)throw new Error('받은 금액을 1원 이상 정수로 입력해 주세요.');
   const date=HJ_LEAK_PAY_DATE_RE.test(at)?new Date(at+'T00:00:00'):null;
   if(!date||isNaN(date.getTime())||localDate(date)!==at||at>localDate())throw new Error('실제로 받은 날짜를 오늘까지의 날짜로 입력해 주세요.');
-  if(!HJ_LEAK_PAY_RECEIPTS.includes(type))throw new Error('영수증 종류를 선택해 주세요.');
+  if(!input.issue&&!HJ_LEAK_PAY_RECEIPTS.includes(type))throw new Error('영수증 종류를 선택해 주세요.');
   const ensure=()=>{if(!hjLeakPaymentCurrent(context,stillOpen))throw new Error('견적 또는 수금 정보가 바뀌었습니다. 다시 열어 주세요.');};ensure();
-  const paid={method,amount,at,receipt:{type,issued},payLogId:context.payLogId};
+  const priorIssue=hjTaxIssueRead(context.record),issueInput=input.issue||{type:({세금계산서:'tax',현금영수증:'cash',카드전표:'none',없음:'none'})[type]||'',status:method==='카드'?'notApplicable':issued?'issued':'pending',no:issued?priorIssue.no:'',at:issued?(priorIssue.at||localDate()):''};
+  const issueValue=hjTaxIssueNormalize({method,issue:issueInput},context.record);
+  const paid={method,amount,at,receipt:hjTaxIssueReceipt(issueValue),payLogId:context.payLogId};
   const result=await durableLocalMutation({snapshotLabel:'누수 견적 받은 돈 기록 전',beforeCommit:ensure,mutateDraft:draft=>{
     const quotes=(draft.quotes||[]).filter(x=>x&&x.id===context.saved.id),quote=quotes.length===1?quotes[0]:null;
     const projects=(draft.projects||[]).filter(x=>x&&x.name===context.saved.project),project=projects.length===1?projects[0]:null;
     if(!quote||hjLeakPaymentQuoteStamp(quote)!==context.stamp||!project||project.archived||hjProjectKind(project)!=='leak'||paidStableJson(project)!==context.projectStamp)throw new Error('견적 또는 현장이 바뀌었습니다. 다시 열어 주세요.');
     draft.payLog=Array.isArray(draft.payLog)?draft.payLog:[];
     const linked=draft.payLog.filter(x=>x&&x.id===context.payLogId),record=linked.length===1?linked[0]:null;
-    const proofKey={세금계산서:'tax',현금영수증:'cash',카드전표:'card'}[type]||'';
     const next={id:context.payLogId,d:at,project:quote.project,amt:amount,method,quoteId:quote.id,source:'leak-quote'};
-    if(issued&&proofKey){next.proof=proofKey;next.proofAt=localDate();}
+    hjTaxIssueApply(next,issueValue);
     if(context.record){
       if(!record||paidStableJson(record)!==context.recordStamp)throw new Error('수금 기록이 바뀌었습니다. 다시 열어 주세요.');
       const received=num(project.received)+amount-Number(record.amt);
       if(!Number.isSafeInteger(received)||received<0)throw new Error('현장의 수금 누계를 먼저 확인해 주세요. 중복으로 추가하지 않았습니다.');
       project.received=received;Object.assign(record,next);delete record.proof;delete record.proofAt;
-      if(next.proof){record.proof=next.proof;record.proofAt=next.proofAt;}
+      if(next.proof){record.proof=next.proof;if(next.proofAt)record.proofAt=next.proofAt;}
     }else{
       if(linked.length||!Number.isSafeInteger(num(project.received)+amount))throw new Error('수금 기록을 추가하지 못했습니다. 다시 확인해 주세요.');
       project.received=num(project.received);
@@ -34400,21 +34662,24 @@ function hjLeakPaymentView(q,back){
   const body='<div id="hjLeakPayForm" style="min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 8px;font-size:14px"><b>'+escapeHtml(context.saved.project)+'</b><br>'+escapeHtml(context.saved.title||context.saved.no||'견적서')+' · 합계 '+won(total)+'</p>'+select('hjLeakPayMethod','받은 방법',HJ_LEAK_PAY_METHODS,old.method||'',true)+
     '<label for="hjLeakPayAmount" style="display:block;margin:10px 0 4px;font-size:13px">받은 금액 (원)</label><input id="hjLeakPayAmount" type="text" inputmode="numeric" value="'+escapeAttr(String(old.amount==null?total:old.amount))+'" style="'+style+'">'+
     '<label for="hjLeakPayDate" style="display:block;margin:10px 0 4px;font-size:13px">받은 날짜</label><input id="hjLeakPayDate" type="date" max="'+today+'" value="'+escapeAttr(old.at||today)+'" style="'+style+'">'+select('hjLeakPayReceipt','영수증 종류',HJ_LEAK_PAY_RECEIPTS,receipt.type||'없음')+
-    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;margin-top:8px"><input id="hjLeakPayIssued" type="checkbox"'+(receipt.issued?' checked':'')+' style="width:20px;height:20px">발행했어요</label><p id="hjLeakPayIssue" role="alert" style="min-height:20px;color:var(--warn);margin:8px 0 0"></p></div>';
+    '<label style="display:flex;align-items:center;gap:8px;min-height:44px;margin-top:8px"><input id="hjLeakPayIssued" type="checkbox"'+(receipt.issued?' checked':'')+' style="width:20px;height:20px">발행했어요</label>'+hjTaxIssueFields('hjLeakTax',context.record||null,context.saved.project,{noMethod:true})+'<p id="hjLeakPayIssue" role="alert" style="min-height:20px;color:var(--warn);margin:8px 0 0"></p></div>';
   const save=async()=>{
     if(busy)return;const form=document.getElementById('hjLeakPayForm');if(!form)return;
-    const g=id=>form.querySelector('#'+id),input={method:g('hjLeakPayMethod').value,amount:g('hjLeakPayAmount').value,at:g('hjLeakPayDate').value,receipt:{type:g('hjLeakPayReceipt').value,issued:g('hjLeakPayIssued').checked}};
+    const g=id=>form.querySelector('#'+id),input=Object.assign({amount:g('hjLeakPayAmount').value,at:g('hjLeakPayDate').value,receipt:{type:g('hjLeakPayReceipt').value,issued:g('hjLeakPayIssued').checked}},hjTaxIssueInput('hjLeakTax','hjLeakPayMethod'));
     busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(el=>el.disabled=true);let saved=false;
     try{await hjLeakPaymentSave(context,input,()=>form.isConnected&&document.getElementById('hjLeakPayForm')===form);webWorkMarkDirtyAfterPersist();saved=true;}
     catch(e){const issue=g('hjLeakPayIssue');if(issue)issue.textContent=String(e&&e.message||'저장하지 못했습니다. 다시 시도해 주세요.');}
-    finally{__modalCloseLocked=false;busy=false;controls.forEach(el=>el.disabled=false);if(g('hjLeakPayReceipt').value==='없음')g('hjLeakPayIssued').disabled=true;}
+    finally{__modalCloseLocked=false;busy=false;controls.forEach(el=>el.disabled=false);sync();toLegacy();}
     if(!saved)return;closeModal(true);render();toast('💳 받은 돈을 저장했어요');if(typeof back==='function')back();
   };
   openModal('💳 받은 돈 기록',body,[{label:'저장',cls:'blue',fn:save},{label:'취소',cls:'ghost',fn:()=>{closeModal();if(typeof back==='function')back();}}],true);
   const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
   document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
-  const receiptEl=document.getElementById('hjLeakPayReceipt'),issuedEl=document.getElementById('hjLeakPayIssued');
-  const sync=()=>{issuedEl.disabled=receiptEl.value==='없음';if(issuedEl.disabled)issuedEl.checked=false;};receiptEl.onchange=sync;sync();return true;
+  const receiptEl=document.getElementById('hjLeakPayReceipt'),issuedEl=document.getElementById('hjLeakPayIssued'),typeEl=document.getElementById('hjLeakTaxType'),statusEl=document.getElementById('hjLeakTaxStatus'),methodEl=document.getElementById('hjLeakPayMethod');
+  const sync=hjTaxIssueBind('hjLeakTax',context.saved.project,'hjLeakPayMethod');
+  const toLegacy=()=>{receiptEl.value=methodEl.value==='카드'&&statusEl.value==='notApplicable'?'카드전표':statusEl.value==='declined'?'없음':({tax:'세금계산서',cash:'현금영수증'})[typeEl.value]||'없음';issuedEl.checked=statusEl.value==='issued';issuedEl.disabled=methodEl.value==='카드'||receiptEl.value==='없음';};
+  const fromLegacy=()=>{typeEl.value={'세금계산서':'tax','현금영수증':'cash','카드전표':'none'}[receiptEl.value]||'';statusEl.value=issuedEl.checked?'issued':'pending';if(statusEl.value==='issued'&&!document.getElementById('hjLeakTaxAt').value)document.getElementById('hjLeakTaxAt').value=localDate();sync();toLegacy();};
+  receiptEl.onchange=fromLegacy;issuedEl.onchange=fromLegacy;typeEl.addEventListener('change',toLegacy);statusEl.addEventListener('change',toLegacy);methodEl.addEventListener('change',toLegacy);toLegacy();return true;
 }
 /* v421 미발행 표시는 저장된 견적의 증빙 상태만 읽는다. 받은 금액 집계는 기존 payLog/p.received 경로를 그대로 쓴다. */
 function hjLeakReceiptPending(quotes){
@@ -38382,7 +38647,7 @@ function monthCloseView(step,ym){
   let body=bar,btns=[];
   if(S===1){
     body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">1. 이 달 수금 확인</div>'+
-      box(kv('수금',won(D.recv)+' ('+D.payCnt+'건)','#15803d')+kv('이달 완료 현장',D.done.length+'곳'))+
+      box(kv('수금',won(D.recv)+' ('+D.payCnt+'건)','#15803d')+kv('이달 완료 현장',D.done.length+'곳'))+hjTaxIssueSplitHtml(D.ym,D.ym)+
       '<p class="hint">빠진 입금이 있으면 [💰 수금 이력]에서 채워주세요. 통장과 대조하면 정확합니다.</p>';
     btns=[{label:'💰 수금 이력 열기',cls:'ghost',fn:function(){payHistoryView(true);}},
           {label:'다음 →',cls:'clay',fn:function(){monthCloseView(2);}}];
@@ -38408,7 +38673,7 @@ function monthCloseView(step,ym){
     body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">4. 청구·세금계산서</div>'+
       box(kv('관리소 청구 대기',D.apt.length?D.apt.length+'건 '+won(D.aptSum):'없음',D.apt.length?'#c2410c':'var(--muted)')+
           (D.vat?kv('부가세 신고','D-'+D.vat.dday+' ('+D.vat.due+')',D.vat.dday<=14?'#dc2626':'var(--ink)'):''))+
-      '<p class="hint">관리소는 <b>월 마감</b>이 있습니다 — 이달 완료 건은 이번 주 안에 계산서를 넘기는 게 좋아요.</p>';
+      hjTaxIssuePendingHtml({from:D.ym,to:D.ym})+'<p class="hint">관리소는 <b>월 마감</b>이 있습니다 — 이달 완료 건은 이번 주 안에 계산서를 넘기는 게 좋아요.</p>';
     btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(3);}},
           (D.apt.length?{label:'🏢 오더 이력',cls:'ghost',fn:function(){aptHistoryView(true);}}:null),
           {label:'다음 →',cls:'clay',fn:function(){monthCloseView(5);}}].filter(Boolean);
@@ -38426,6 +38691,7 @@ function monthCloseView(step,ym){
   }
   const closed=(state.monthClosed||{})[D.ym];
   openModal('📆 '+(+m)+'월 마감'+(closed?' (마감됨)':'')+' — '+S+'/5',body,btns.concat([{label:'닫기',cls:'ghost',fn:closeModal}]),true);
+  hjTaxIssueSplitBind(document.getElementById('modalRoot'));hjTaxIssuePendingBind(document.getElementById('modalRoot'),()=>monthCloseView(S,D.ym));
   document.querySelectorAll('#modalRoot .mcDue').forEach(function(b){b.onclick=function(){
     const pj=(state.projects||[]).find(x=>x.name===b.dataset.pj);
     if(!pj){toast('현장을 찾을 수 없어요');return;}
@@ -38624,7 +38890,7 @@ function payHistoryView(reset){
       tile('총 수금',hjMan(total),'#15803d','↑')+
       tile('이번 달',hjMan(thisM),'#1d4ed8','')+
       tile('현장 수',pjs.length+'곳','#475569','')+
-    '</div>'+
+    '</div>'+hjTaxIssuePendingHtml({project:F.pj,from:F.from,to:F.to})+
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
       '<div style="display:grid;grid-template-columns:62px 1fr 92px 30px;gap:6px;padding:9px 10px;background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700"><div>일자</div><div>현장</div><div style="text-align:right">금액</div><div></div></div>'+
       (rows.length?rows.map((x,i)=>'<div style="display:grid;grid-template-columns:62px 1fr 92px 30px;gap:6px;padding:10px;align-items:center;font-size:11.5px;'+(i%2?'background:var(--paper-2);':'')+'border-top:1px solid var(--line-soft)">'+
@@ -38650,14 +38916,14 @@ function payHistoryView(reset){
   document.getElementById('phReset').onclick=function(){payHistoryView(true);};
   document.querySelectorAll('#modalRoot .phPg').forEach(b=>{b.onclick=function(){rd();F.page=+b.dataset.p;payHistoryView();};});
   document.querySelectorAll('#modalRoot .phMg').forEach(b=>{b.onclick=function(){recvQuickView(b.dataset.pj,function(){payHistoryView();});};});
+  hjTaxIssuePendingBind(document.getElementById('modalRoot'),()=>payHistoryView());
   return {건수:list.length,합계:total};
 }
 async function payHistExcel(){
   try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패');return;}
   const list=payHistFilter();
   if(!list.length){toast('내보낼 입금이 없어요');return;}
-  const aoa=[['일자','현장','금액']];
-  list.forEach(x=>aoa.push([x.d||'',x.project||'',num(x.amt)]));
+  const aoa=hjTaxIssueExportRows(list);
   aoa.push(['','합계',list.reduce((s,x)=>s+num(x.amt),0)]);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'수금이력');
