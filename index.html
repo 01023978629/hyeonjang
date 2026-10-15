@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v418-bathprices';
+const APP_BUILD='hyeonjang-v415-instanotel';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -30855,6 +30855,13 @@ function adHashtags(f){
   if(f.pyeong)t.push('#'+f.pyeong+'평인테리어');
   return t.slice(0,10).join(' ');
 }
+/* v415 Instagram은 연락처 대신 DM·프로필 링크로 안내하고 수동 원고는 저장을 막지 않고 알린다. */
+const HJ_INSTA_NO_TEL=true;
+const HJ_AD_TEL_DIGITS_RE=/\D/g;
+function hjAdTextHasTel(text){
+  const tel=String(COMPANY.tel||'').replace(HJ_AD_TEL_DIGITS_RE,'');
+  return !!tel&&String(text||'').replace(HJ_AD_TEL_DIGITS_RE,'').includes(tel);
+}
 function adDraftText(chId,f){
   const py=f.pyeong?f.pyeong+'평':'';
   const worksShort=String(f.works).split(/[,·]/).map(function(s){return s.trim();}).filter(Boolean).slice(0,3).join('·');
@@ -30890,7 +30897,18 @@ function adDraftText(chId,f){
         contact].join('\n')
     };
   }
-  if(chId==='threads'||chId==='instagram'){
+  if(chId==='instagram'){
+    return {
+      title:headBits+(worksShort?' · '+worksShort:''),
+      body:[(f.loc||'대전')+(py?' '+py:'')+(worksShort?' '+worksShort:' 인테리어')+' 완료 ✅',
+        (f.period?'공사기간 '+f.period+' · ':'')+'대표가 직접 시공하고 관리했습니다.']
+        .concat(hasSignal?['',signalLine]:[])
+        .concat(['','[전/후 사진]','',
+        (HJ_INSTA_NO_TEL?'상담은 DM 또는 프로필 링크로 주세요.':'상담은 DM 또는 '+COMPANY.tel),'',
+        adHashtags(f)]).join('\n')
+    };
+  }
+  if(chId==='threads'){
     return {
       title:headBits+(worksShort?' · '+worksShort:''),
       body:[(f.loc||'대전')+(py?' '+py:'')+(worksShort?' '+worksShort:' 인테리어')+' 완료 ✅',
@@ -30986,6 +31004,7 @@ function adDraftOpen(chId,projName){
     '<label style="font-size:11.5px;color:var(--muted)">본문 (대괄호 [ ] 자리만 채우면 완성)</label>'+
     '<textarea id="adDraftTa" rows="12" style="width:100%;padding:10px;margin:4px 0;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;line-height:1.65;max-height:44vh"></textarea>'+
     '<div class="hint" style="margin-top:6px">현장 자료(지역·평수·공정·일정)에서 자동으로 채웠어요. 고객 실명·금액은 넣지 않습니다.</div>'+
+    '<div id="adDraftInstaNotice" class="hint" hidden style="margin-top:8px">인스타에는 전화번호를 넣지 않습니다 — 문의는 DM·프로필 링크</div>'+
     '<div id="adDraftPhotos" style="margin-top:8px"></div>',
     [{label:'📋 복사하고 채널 열기',cls:'blue',fn:async function(){
         const c=AD_CH.find(function(x){return x.id===curCh;})||AD_CH[0];
@@ -30998,12 +31017,13 @@ function adDraftOpen(chId,projName){
       }},
      {label:'게시 기록에 추가',cls:'clay',fn:function(){
         const t=document.getElementById('adDraftTitle').value.trim();
+        const warnTel=HJ_INSTA_NO_TEL&&curCh==='instagram'&&hjAdTextHasTel(t+'\n'+document.getElementById('adDraftTa').value);
         state.adPosts=state.adPosts||[];
         const rec={id:uid(),ch:curCh,date:localDate(),title:t||'(원고)',url:'',memo:'원고 작성'};
         const pj=(document.getElementById('adDraftProj')||{}).value||'';
         if(pj)rec.project=pj;   // v377 어느 현장 사례인지 — 🏁 완공 현장 홍보 현황의 ✓
         state.adPosts.push(rec);
-        markDirty();closeModal();render();toast('기록 저장됨 — 게시 후 링크를 채워두면 좋아요');
+        markDirty();closeModal();render();toast(warnTel?'인스타 원고에 전화번호가 있어요 — 대표 지시: 인스타에는 미기재':'기록 저장됨 — 게시 후 링크를 채워두면 좋아요');
       }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   // 채널 칩 — 원고를 유지한 채 채널만 바꿔 다시 생성
@@ -31011,7 +31031,7 @@ function adDraftOpen(chId,projName){
     const box=document.getElementById('adDraftChs');
     if(!box)return;
     box.innerHTML=AD_CH.map(function(c){
-      return '<button class="'+(c.id===curCh?'blue':'ghost')+' tiny" data-draftch="'+c.id+'" style="padding:8px 11px">'+c.ic+' '+c.n+'</button>';
+      return '<button class="'+(c.id===curCh?'blue':'ghost')+' tiny" data-draftch="'+c.id+'" style="padding:8px 11px;min-height:44px">'+c.ic+' '+c.n+'</button>';
     }).join('');
     box.querySelectorAll('[data-draftch]').forEach(function(el){
       el.onclick=function(){curCh=el.dataset.draftch;renderChs();fill();};
@@ -31023,6 +31043,7 @@ function adDraftOpen(chId,projName){
     const d=adDraftText(curCh,f);
     document.getElementById('adDraftTitle').value=d.title;
     document.getElementById('adDraftTa').value=d.body;
+    document.getElementById('adDraftInstaNotice').hidden=!(HJ_INSTA_NO_TEL&&curCh==='instagram');
     // 📸 현장 사진 연동 — 원고에 쓸 사진으로 바로 이어준다
     const box=document.getElementById('adDraftPhotos');
     if(box){
