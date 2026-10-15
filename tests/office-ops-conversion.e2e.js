@@ -225,12 +225,14 @@ async function createActualConversionPage(browser, appUrl, scenario) {
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
-    await window.__hjRestoreDone; await window.__hjOfficeOpsBootDone;
+    await Promise.all([window.__hjRestoreDone, window.__hjOfficeOpsBootDone, window.__hjRelayConfigDone, window.__hjRelayBootDone]);
     // Isolate the synthetic conversion records from the unrelated 4s tax/4.5s
     // Cowork seeders: either can call markDirty -> hjSnapshot during a fence test.
     // Page-local only (not addInitScript): reload acceptance below still exercises
     // the real paid-generation seeder suppression and configured AI boot path.
     taxCalendarEnsure = () => 0; coworkSchedEnsure = () => 0;
+    // AI 부팅/정리도 markDirty -> hjSnapshot을 호출한다. 전환 격리 검사 중의 자동 쓰기만 막는다.
+    aiOpsBootCheck = () => 0; aiQueueSanitize = () => 0;
     clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
   });
   await page.evaluate(async () => {
@@ -246,9 +248,10 @@ async function openActualSiblingPage(context, appUrl) {
   const page = await context.newPage(); page.setDefaultTimeout(12000);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
-    await window.__hjRestoreDone;
+    await Promise.all([window.__hjRestoreDone, window.__hjOfficeOpsBootDone, window.__hjRelayConfigDone, window.__hjRelayBootDone]);
     // Same initial fixture isolation; a later reload restores the actual seeders.
     taxCalendarEnsure = () => 0; coworkSchedEnsure = () => 0;
+    aiOpsBootCheck = () => 0; aiQueueSanitize = () => 0;
     clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
   });
   return page;
@@ -1835,6 +1838,8 @@ async function runBrowserAcceptance() {
             return window.__durableBoundaryNativeSnapshot(...args);
           };
           window.__durableBoundaryWriter = null; window.__durableBoundaryTerminal = null; window.__durableBoundaryTriggered = false;
+          // 경계 검사 도중 1.5초 AI 부팅 콜백이 도착하던 순서를 고정 재현한다.
+          aiOpsBootCheck();
           const nativePost = __tabBC && __tabBC.postMessage.bind(__tabBC);
           if (!nativePost) throw new Error('BroadcastChannel unavailable for durable release-boundary fixture');
           __tabBC.postMessage = function(message) {

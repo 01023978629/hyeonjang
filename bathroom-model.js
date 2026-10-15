@@ -31,7 +31,23 @@
     consumables:[{id:'adhesive',name:'타일 접착제',enabled:false,usage:4,pack:20,price:null},{id:'grout',name:'줄눈재',enabled:false,usage:0.3,pack:2,price:null}],
     scope:scope.map(([id,name,group,unit,qty,note])=>({id,name,group,unit,qty,note,enabled:false,material:null,labor:null,model:''}))};}
   const round=(n,d=2)=>Math.round((n+Number.EPSILON)*10**d)/10**d;
-  const ceil=n=>Math.ceil(n-1e-10);
+  /* v410 소수 치수의 이진 오차로 반 원을 버리거나 필요한 타일 한 장을 빼지 않는다.
+     입력 소수는 계산 중에만 정수 분수로 유지하고 저장/표시 결과는 기존 Number 형식이다. */
+  function hjBathFraction(value){
+    const [coefficient,exponent='0']=String(value).split('e'),scale=(coefficient.split('.')[1]||'').length-Number(exponent),n=BigInt(coefficient.replace('.',''));
+    return scale<0?[n*10n**BigInt(-scale),1n]:[n,10n**BigInt(scale)];
+  }
+  const hjBathAdd=(a,b)=>[a[0]*b[1]+b[0]*a[1],a[1]*b[1]];
+  const hjBathSub=(a,b)=>[a[0]*b[1]-b[0]*a[1],a[1]*b[1]];
+  const hjBathMul=(a,b)=>[a[0]*b[0],a[1]*b[1]];
+  const hjBathDiv=(a,b)=>[a[0]*b[1],a[1]*b[0]];
+  const hjBathCeil=([n,d])=>Number((n+d-1n)/d);
+  const hjBathWon=([n,d])=>Number((n*2n+d)/(d*2n));
+  function hjBathValue([n,d]){
+    if(n<0n)return -hjBathValue([-n,d]);
+    // 큰 분모도 Infinity로 바꾸지 않고, 표시 정밀도보다 충분히 긴 소수로 돌려준다.
+    return Number(String(n/d)+'.'+((n%d)*10n**30n/d).toString().padStart(30,'0'));
+  }
   function number(v,label,min,max,integer=false){if(v===null||v===undefined||String(v).trim()==='')throw Error(label+'을 입력해 주세요.');const n=Number(v);if(!Number.isFinite(n)||n<min||n>max||(integer&&!Number.isInteger(n)))throw Error(label+' 범위를 확인해 주세요 ('+min+'~'+max+').');return n;}
   function price(v,label){return v===null||v===undefined||String(v).trim()===''?null:number(v,label+' (원 단위 정수)',0,100000000,true);}
   function text(v,max){if(typeof v!=='string')return '';return v.slice(0,max);}
@@ -47,14 +63,20 @@
     x.scope=d.scope.map(base=>{const s=Array.isArray(raw.scope)&&raw.scope.find(s=>s&&s.id===base.id);if(!s)throw Error('공사 항목을 확인해 주세요.');return {...base,enabled:s.enabled===true,qty:number(s.qty,base.name+' 수량',1,100,true),material:price(s.material,base.name+' 자재 판매단가'),labor:price(s.labor,base.name+' 시공 단가'),model:text(s.model,140)};});
     return x;
   }
-  function tile(area,t){const each=t.width*t.height/1000000,need=ceil(area*(1+t.waste/100)/each),boxes=ceil(need/t.pack),buy=boxes*t.pack;return {area,each,need,boxes,buy,spare:buy-ceil(area/each),packSurplus:buy-need,buyArea:round(buy*each,4),waste:t.waste,pack:t.pack};}
+  function tile(areaFraction,t){
+    const eachFraction=hjBathDiv(hjBathMul(hjBathFraction(t.width),hjBathFraction(t.height)),hjBathFraction(1000000)),base=hjBathDiv(areaFraction,eachFraction),withWaste=hjBathMul(base,hjBathDiv(hjBathAdd(hjBathFraction(100),hjBathFraction(t.waste)),hjBathFraction(100)));
+    const need=hjBathCeil(withWaste),boxes=hjBathCeil(hjBathDiv(hjBathFraction(need),hjBathFraction(t.pack))),buy=boxes*t.pack;
+    return {area:hjBathValue(areaFraction),each:hjBathValue(eachFraction),need,boxes,buy,spare:buy-hjBathCeil(base),packSurplus:buy-need,buyArea:round(hjBathValue(hjBathMul(hjBathFraction(buy),eachFraction)),4),waste:t.waste,pack:t.pack};
+  }
   function calculate(raw){
-    const d=normalize(raw),s=d.size,floorArea=s.width*s.depth/10000,grossWall=2*(s.width+s.depth)*s.height/10000,opening=s.doorWidth*s.doorHeight/10000+s.extraOpening;
-    if(s.doorHeight>s.height)throw Error('문 높이가 벽 높이보다 큽니다.');if(s.doorWidth>Math.max(s.width,s.depth))throw Error('문 너비가 욕실의 한 벽보다 큽니다.');if(opening>=grossWall)throw Error('문·창 공제 면적은 전체 벽 면적보다 작아야 합니다.');
-    const wallArea=grossWall-opening,wall=tile(wallArea,d.wall),floor=tile(floorArea,d.floor),rows=[];
-    function add(id,kind,name,qty,unit,unitPrice,basis){rows.push({id,kind,name,qty,unit,price:unitPrice,amount:unitPrice===null?null:Math.round(qty*unitPrice),basis});}
-    for(const [key,label,t] of [['wall','벽',wall],['floor','바닥',floor]]){add(key+'Tile','자재',label+' 타일',t.boxes,'박스',d[key].price,d[key].width+'×'+d[key].height+'mm · '+d[key].pack+'장/박스 · 실구매 '+t.buy+'장');add(key+'Work','시공',label+' 타일 시공',t.area,'㎡',d[key].labor,'순면적 기준 · 여유분/박스 잔량에는 시공비를 붙이지 않습니다.');}
-    const consumables=d.consumables.filter(c=>c.enabled).map(c=>{const area=wallArea+floorArea,kg=area*c.usage,packs=ceil(kg/c.pack);add(c.id,'자재',c.name,packs,'포장',c.price,round(area,6)+'㎡ × '+c.usage+'kg/㎡ ÷ '+c.pack+'kg/포장 (올림)');return {...c,area,kg,packs};});
+    const d=normalize(raw),s=d.size,floorFraction=hjBathDiv(hjBathMul(hjBathFraction(s.width),hjBathFraction(s.depth)),hjBathFraction(10000));
+    const grossFraction=hjBathDiv(hjBathMul(hjBathMul(hjBathFraction(2),hjBathAdd(hjBathFraction(s.width),hjBathFraction(s.depth))),hjBathFraction(s.height)),hjBathFraction(10000));
+    const openingFraction=hjBathAdd(hjBathDiv(hjBathMul(hjBathFraction(s.doorWidth),hjBathFraction(s.doorHeight)),hjBathFraction(10000)),hjBathFraction(s.extraOpening)),wallFraction=hjBathSub(grossFraction,openingFraction),grossWall=hjBathValue(grossFraction),opening=hjBathValue(openingFraction);
+    if(s.doorHeight>s.height)throw Error('문 높이가 벽 높이보다 큽니다.');if(s.doorWidth>Math.max(s.width,s.depth))throw Error('문 너비가 욕실의 한 벽보다 큽니다.');if(wallFraction[0]<=0n)throw Error('문·창 공제 면적은 전체 벽 면적보다 작아야 합니다.');
+    const wall=tile(wallFraction,d.wall),floor=tile(floorFraction,d.floor),rows=[];
+    function add(id,kind,name,qty,unit,unitPrice,basis,exactQty=hjBathFraction(qty)){rows.push({id,kind,name,qty,unit,price:unitPrice,amount:unitPrice===null?null:hjBathWon(hjBathMul(exactQty,hjBathFraction(unitPrice))),basis});}
+    for(const [key,label,t] of [['wall','벽',wall],['floor','바닥',floor]]){add(key+'Tile','자재',label+' 타일',t.boxes,'박스',d[key].price,d[key].width+'×'+d[key].height+'mm · '+d[key].pack+'장/박스 · 실구매 '+t.buy+'장');add(key+'Work','시공',label+' 타일 시공',t.area,'㎡',d[key].labor,'순면적 기준 · 여유분/박스 잔량에는 시공비를 붙이지 않습니다.',key==='wall'?wallFraction:floorFraction);}
+    const consumables=d.consumables.filter(c=>c.enabled).map(c=>{const areaFraction=hjBathAdd(wallFraction,floorFraction),kgFraction=hjBathMul(areaFraction,hjBathFraction(c.usage)),area=hjBathValue(areaFraction),kg=hjBathValue(kgFraction),packs=hjBathCeil(hjBathDiv(kgFraction,hjBathFraction(c.pack)));add(c.id,'자재',c.name,packs,'포장',c.price,round(area,6)+'㎡ × '+c.usage+'kg/㎡ ÷ '+c.pack+'kg/포장 (올림)');return {...c,area,kg,packs};});
     d.scope.filter(s=>s.enabled).forEach(s=>{const basis=unitPriceLabel(s.unit)+' · '+(s.model?s.model+' · ':'')+s.note;add(s.id+'Mat','자재',s.name,s.qty,s.unit,s.material,basis);add(s.id+'Work','시공',s.name,s.qty,s.unit,s.labor,basis);});
     const missing=rows.filter(r=>r.amount===null),material=rows.filter(r=>r.kind==='자재').reduce((n,r)=>n+(r.amount||0),0),labor=rows.filter(r=>r.kind==='시공').reduce((n,r)=>n+(r.amount||0),0),entered=material+labor;
     if(!Number.isSafeInteger(entered)||entered>1000000000)throw Error('합계가 너무 큽니다. 수량·단가를 다시 확인해 주세요.');

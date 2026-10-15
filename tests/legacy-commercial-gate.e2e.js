@@ -135,9 +135,12 @@ async function round3NativeEvidence(page){return page.evaluate(async()=>{const k
  const recoveredMalformed=await page.evaluate(async()=>{state._demo=false;state.notes=[{id:'malformed-recovered'}];const ok=await guardedPersistCurrentState();return{ok,pointer:await idbGet('paid_commit_pointer'),journal:await idbGet('paid_commit_journal'),app:await idbGet('appState'),source:window.__hjRestoreSource,recoveryFlag:__paidCommitRecoveryMalformedPointer};});
  assert.equal(recoveredMalformed.source,'legacy-appState');assert.equal(recoveredMalformed.ok,true,'guarded persistence repairs the exact malformed pointer observed at boot');assert.equal(recoveredMalformed.pointer,undefined);assert.equal(recoveredMalformed.journal,undefined);assert.deepEqual(recoveredMalformed.app.notes,[{id:'malformed-recovered'}]);assert.equal(recoveredMalformed.recoveryFlag,false);
 
- const isolated=await open(browser,url),deep=await isolated.page.evaluate(async({terms,makeReceipt})=>{
+ const isolated=await open(browser,url);
+ // 부팅 저장이 먼저 끝난 상황을 고정 재현한다. 빈 DB를 만들 때 메모리 기준 시각도 함께 비워야 한다.
+ const bootStamp=await isolated.page.evaluate(async()=>{state._demo=false;state.notes=[{id:'TEST_PRIOR_BOOT_SAVE'}];await guardedPersistCurrentState();return __tabStamp;});assert(bootStamp,'fixture must start with an existing saved generation stamp');
+ const deep=await isolated.page.evaluate(async({terms,makeReceipt})=>{
   clearTimeout(__idbSaveTimer);__idbSaveTimer=null;state._demo=false;state.projects=[];state.files=[];state.quotes=[];state.notes=[];state.schedule=[];state.calendarImports=[];state.aptOrders=[];state.payLog=[];
-  await idbDel('appState');await idbDel('paid_commit_pointer');await idbDel('paid_commit_journal');__paidCommitPointerKey=null;__paidApprovalConsumptions.clear();
+  await idbDel('appState');await idbDel('paid_commit_pointer');await idbDel('paid_commit_journal');__paidCommitPointerKey=null;__tabStamp=null;__paidApprovalConsumptions.clear();
   let nonceSerial=0;validateCommercialApproval=async({commercialApproval})=>Object.freeze({receiptId:commercialApproval.receiptId,nonce:'deep_nonce_'+(++nonceSerial),serverNowKst:'2026-08-31T12:00:00+09:00',verifyExpiresAtKst:'2026-08-31T12:01:00+09:00',useBeforeMonotonicMs:Number.MAX_SAFE_INTEGER});
   const rec=id=>({...makeReceipt,receiptId:'receipt_'+id,subjectId:id,approvalEvidenceFileId:'drive_'+id});
   const capture=async work=>{try{return{ok:true,value:await work()};}catch(e){return{ok:false,error:String(e.code||e.message||e)};}};
