@@ -8,3 +8,32 @@
 .mobile-total{display:none}@media(max-width:760px){body{padding-bottom:86px}.mobile-total{position:fixed;bottom:0;left:0;right:0;z-index:9;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px max(12px,env(safe-area-inset-bottom));background:#fffffff5;border-top:1px solid var(--line);box-shadow:0 -5px 20px #243d3608}.mobile-total small{display:block;font-size:10px}.mobile-total strong{display:block;margin-top:3px;font-size:20px}.mobile-total .button{font-size:12px}.toast{bottom:98px}.customer-mode{padding-bottom:0}}@media print{.mobile-total{display:none!important}body{padding-bottom:0}}
 
 .report-contact{margin-top:24px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;break-inside:avoid}.contact-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.contact-actions .button{min-height:44px}@media print{.report-contact{font-size:10pt}.contact-actions{display:none!important}}
+
+/* v410 선택 비용의 근거와 아직 확인할 단가를 같은 자리에서 읽는다. */
+.option-breakdown{padding:0 12px 12px;font-size:12px;line-height:1.75;overflow-wrap:anywhere}
+.option-breakdown>span,.option-breakdown>small{display:block}
+.option-breakdown strong{font-weight:700;color:var(--green)}
+.option-description{padding:0 12px 12px;font-size:12px;line-height:1.75;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.option-description:empty{display:none}
+.price-checklist{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:8px;background:#f4f6f1;overflow-wrap:anywhere}
+.price-checklist h3{font-size:15px;line-height:1.6}
+.price-checklist p{font-size:12px;line-height:1.75;margin-top:6px}
+.price-check-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.price-check-actions button[data-price-path]{min-width:0;min-height:44px;width:100%;padding:11px 12px;border:1px solid #aab7ad;border-radius:6px;background:white;color:var(--green);font-size:12px;line-height:1.6;justify-content:flex-start;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.price-check-actions button[data-price-path]:hover{background:var(--green-soft)}
+
+/* 화면의 좁은 폭에서만 같은 견적 표를 카드로 보여 준다. 인쇄는 기존 표다. */
+@media screen and (max-width:760px){
+  .price-check-actions{grid-template-columns:minmax(0,1fr)}
+  .report .price-table{display:block;min-width:0;width:100%;border:0;font-size:13px}
+  .report .price-table thead{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .report .price-table tbody{display:block;width:100%}
+  .report .price-table tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%;padding:14px 12px;margin:0 0 12px;border:1px solid var(--line);border-radius:8px;background:white}
+  .report .price-table td{display:block;min-width:0;padding:0;border:0;text-align:left;white-space:normal;overflow-wrap:anywhere}
+  .report .price-table td::before{content:attr(data-label);display:block;margin-bottom:3px;font-size:11px;font-weight:500;line-height:1.6;color:var(--muted)}
+  .report .price-table td:first-child,.report .price-table td:nth-child(2),.report .price-table td:last-child{grid-column:1/-1}
+  .report .price-table td:first-child::before{display:inline;margin-right:8px}
+  .report .price-table td .kind{font-size:12px;white-space:normal}
+  .report .price-table td small{font-size:11px;line-height:1.75;white-space:normal;overflow-wrap:anywhere}
+  .report .price-table td:last-child{border-top:1px solid var(--line);padding-top:10px;font-size:16px;font-weight:700}
+}

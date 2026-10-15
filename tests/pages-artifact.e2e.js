@@ -27,7 +27,7 @@ const requiredGuards = [
   'version-sync.check.js', 'sw-cache.check.js', 'pages-artifact.e2e.js',
   'office-ops-isolation.e2e.js', 'office-ops-ui.e2e.js', 'paid-work-gate.e2e.js',
   'apt-commercial-ui.e2e.js', 'legacy-commercial-gate.e2e.js',
-  'office-ops-conversion.e2e.js', 'relay.e2e.js',
+  'office-ops-conversion.e2e.js', 'office-ops-conversion-recovery.e2e.js', 'relay.e2e.js',
   'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js',
   'web-work-bridge.e2e.js', 'media-safety.e2e.js', 'media-intake.e2e.js',
   'media-relay-server.unit.js', 'shared-todo-backup.unit.js', 'shared-todo-backup.e2e.js'
@@ -464,6 +464,9 @@ try {
   const missingGuardMutant = new Set(testNames);
   missingGuardMutant.delete('office-ops-conversion.e2e.js');
   nodeAssert.throws(() => assertRequiredGuards(missingGuardMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'missing deployment guard fixture must be rejected');
+  const missingRecoveryGuardMutant = new Set(testNames);
+  missingRecoveryGuardMutant.delete('office-ops-conversion-recovery.e2e.js');
+  nodeAssert.throws(() => assertRequiredGuards(missingRecoveryGuardMutant, 'mutant'), /office-ops-conversion-recovery\.e2e\.js/, 'missing recovery entry must be rejected without running only half the conversion cases');
   assertRequiredGuards(testNames, '배포 전');
   const runner = fs.readFileSync(path.join(root, 'tests', 'run-all.js'), 'utf8');
   const missingListSuiteMutant = runner.replace(/function\s+listSuite\s*\(/, 'function listSuiteMissing(');
@@ -474,6 +477,8 @@ try {
   const filteredRunnerMutant = withoutRunnerGuard(runner, 'office-ops-conversion.e2e.js');
   assert(testNames.has('office-ops-conversion.e2e.js'), 'runner mutant prerequisite keeps the required test file on disk');
   nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRunnerMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'no-filter runner mutation must be rejected while the file stays on disk');
+  const filteredRecoveryRunnerMutant = withoutRunnerGuard(runner, 'office-ops-conversion-recovery.e2e.js');
+  nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRecoveryRunnerMutant, 'mutant'), /office-ops-conversion-recovery\.e2e\.js/, 'runner omission of only the recovery entry must be rejected');
   assertRunnerContainsRequiredGuards(runner, '배포 전 실제');
   const duplicateRunnerBindingMutant = runner + "\nfunction listSuite(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));}\n";
   const reassignedRunnerBindingMutant = runner + "\nlistSuite=function(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));};\n";

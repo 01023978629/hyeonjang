@@ -219,6 +219,9 @@ async function routeBrowserCommercial(scenario, route) {
 
 async function createActualConversionPage(browser, appUrl, scenario) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  // Keep the real local app; unrelated CDN/GIS boot assets must not delay this conversion fixture.
+  const appOrigin = new URL(appUrl).origin;
+  await context.route(/^https?:\/\//, route => new URL(route.request().url()).origin === appOrigin ? route.continue() : route.abort());
   await context.addInitScript(() => localStorage.setItem('hj_onboard_done', '1'));
   await context.route('https://office.example/**', route => routeBrowserOffice(scenario, route));
   await context.route('https://commercial.example/**', route => routeBrowserCommercial(scenario, route));
@@ -799,14 +802,53 @@ function startAppServer() {
 /* Browser acceptance is intentionally reached only after every named product
    helper exists.  The RED run therefore fails above on the first absent helper,
    before any product code is written. */
-async function runBrowserAcceptance() {
+/* Two entry points keep all 43 independent browser scenarios under the unchanged
+   per-file deadline. The original entry owns both VM contracts exactly once. */
+const OFFICE_CONVERSION_GROUPS = Object.freeze({
+  conversion: Object.freeze({ entry: 'office-ops-conversion.e2e.js', cases: Object.freeze([
+    'conversion-ui', 'exact-hydration', 'configured-paid-ai', 'conversion-success',
+    'response-loss: Begin response loss', 'response-loss: Arm response loss',
+    'response-loss: local commit before Record request loss', 'response-loss: Record response loss', 'response-loss: Finalize response loss',
+    'shared-lock: Record shared-lock race', 'shared-lock: Finalize shared-lock race', 'shared-lock: converted shared-lock verification race',
+    'shared-lock: Record response-loss shared-lock fence', 'shared-lock: Finalize response-loss shared-lock fence',
+    'ack-reload-timeout', 'initial-load-timeout'
+  ]) }),
+  recovery: Object.freeze({ entry: 'office-ops-conversion-recovery.e2e.js', cases: Object.freeze([
+    'exact-live-apply', 'candidate: unrelated duplicate order IDs', 'candidate: empty unrelated order ID',
+    'candidate: duplicate selected office ID ownership', 'candidate: duplicate normalized office name ambiguity',
+    'candidate: unrelated retired receipt collision', 'candidate: malformed unrelated approval audit',
+    'stale-rendered-cancel', 'unavailable-lock: Record', 'unavailable-lock: Finalize', 'unavailable-lock: converted',
+    'validation-release', 'pre-fence-release', 'post-fence-release', 'release-boundary', 'durable-release-boundary',
+    'durable-generation: stale memory plus advanced missing-order generation',
+    'durable-generation: native pointer advanced without BroadcastChannel',
+    'durable-generation: bound durable generation with duplicate order ID',
+    'durable-generation: bound durable generation with unrelated duplicate order IDs',
+    'durable-generation: bound durable generation with one-field order mismatch',
+    'finalize-durable', 'converted-durable',
+    'validation-window: Record validation-window stale race',
+    'validation-window: Finalize validation-window pointer race',
+    'validation-window: converted return validation-window pointer race', 'cas-and-render'
+  ]) })
+});
+
+async function runBrowserAcceptance(group) {
+  const expected = OFFICE_CONVERSION_GROUPS[group].cases, completed = [];
+  const covered = id => {
+    assert.ok(expected.includes(id), 'OFFICE_CONVERSION_UNEXPECTED_CASE ' + group + ': ' + id);
+    assert.ok(!completed.includes(id), 'OFFICE_CONVERSION_DUPLICATE_CASE ' + group + ': ' + id);
+    completed.push(id);
+  };
   const server = await startAppServer();
   const port = server.address().port;
   const appUrl = 'http://127.0.0.1:' + port + '/index.html';
   let browser;
   try {
     browser = await chromium.launch(process.env.PLAYWRIGHT_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE } : {});
+    if (group === 'conversion') {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    // The UI-only page loads the same blocking external boot assets before its stubs are installed.
+    const appOrigin = new URL(appUrl).origin;
+    await page.context().route(/^https?:\/\//, route => new URL(route.request().url()).origin === appOrigin ? route.continue() : route.abort());
     page.setDefaultTimeout(10000);
     const errors = [];
     page.on('pageerror', error => errors.push(String(error)));
@@ -883,6 +925,8 @@ async function runBrowserAcceptance() {
     await page.evaluate(store => window.__uiResolveConversion(store.inspections[0]), freshStore());
     await page.locator('.officeops-conversion-modal').waitFor({ state: 'detached' });
     assert.equal(errors.length, 0, 'conversion UI raises no pageerror: ' + errors.join(' | '));
+
+    covered('conversion-ui');
 
     const exactHydrationScenario = createBrowserScenario();
     {
@@ -1074,6 +1118,7 @@ async function runBrowserAcceptance() {
         assert.deepEqual([failedReapply.stale, failedReapply.recovery, failedReapply.sameDurableBytes], [true, true, true],
           'a failed final paid boot exact apply blocks later writes and exposes recovery-required state');
       } finally { await actual.context.close(); }
+      covered('exact-hydration');
     }
 
     const configuredPaidAiScenario = createBrowserScenario();
@@ -1123,6 +1168,7 @@ async function runBrowserAcceptance() {
         assert.equal(configuredBoot.taskStatus, 'dismissed', 'configured paid aiOps still sanitizes a removed-feature queue task');
         assert.deepEqual(configuredBoot.changedKeys, ['aiOps'], 'configured AI automation changes only its owned serialized state after exact hydration');
       } finally { await actual.context.close(); }
+      covered('configured-paid-ai');
     }
 
     const successScenario = createBrowserScenario();
@@ -1167,6 +1213,7 @@ async function runBrowserAcceptance() {
         assert.deepEqual(Object.keys(restored.order.commercialApproval), ['receiptId','subjectType','subjectId','approvedTermsSha256','approvalEvidenceType','approvalEvidenceFileId','approvalEvidenceSha256','approvedAt','approvedByRole','issuedAt','receiptHmac']);
         assert.deepEqual(restored.order.commercialApproval, successScenario.receipt, 'all eleven signed receipt fields survive boot recovery');
       } finally { await actual.context.close(); }
+      covered('conversion-success');
     }
 
     for (const [label, options, expectedStage, expectedOrders] of [
@@ -1249,6 +1296,7 @@ async function runBrowserAcceptance() {
             label + ' intervening replay conflict has zero mutation effects');
         }
       } finally { await actual.context.close(); }
+      covered('response-loss: ' + label);
     }
 
     for (const race of [
@@ -1367,6 +1415,7 @@ async function runBrowserAcceptance() {
         try { await actual.page.evaluate(() => { if (window.__releaseDurableRead) window.__releaseDurableRead(); }); } catch (_) {}
         await actual.context.close();
       }
+      covered('shared-lock: ' + race.label);
     }
 
     const ackReloadTimeoutScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
@@ -1431,6 +1480,7 @@ async function runBrowserAcceptance() {
         if (ackReloadTimeoutScenario.hangRelease) ackReloadTimeoutScenario.hangRelease();
         await actual.context.close();
       }
+      covered('ack-reload-timeout');
     }
 
     const initialLoadTimeoutScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
@@ -1488,8 +1538,12 @@ async function runBrowserAcceptance() {
         if (initialLoadTimeoutScenario.hangRelease) initialLoadTimeoutScenario.hangRelease();
         await actual.context.close();
       }
+      covered('initial-load-timeout');
     }
 
+    }
+
+    if (group === 'recovery') {
     const exactLiveApplyScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
     {
       const actual = await createActualConversionPage(browser, appUrl, exactLiveApplyScenario);
@@ -1555,6 +1609,7 @@ async function runBrowserAcceptance() {
         if (releaseValidation) releaseValidation();
         await actual.context.close();
       }
+      covered('exact-live-apply');
     }
 
     for (const candidateCase of [
@@ -1616,6 +1671,7 @@ async function runBrowserAcceptance() {
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, 1, candidateCase.label + ' clean retry sends exactly one Record');
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, 1, candidateCase.label + ' clean retry sends exactly one Finalize');
       } finally { await actual.context.close(); }
+      covered('candidate: ' + candidateCase.label);
     }
 
     const renderedCancelScenario = createBrowserScenario({ lossAfter: 'officeInspectionBeginConversion' });
@@ -1644,6 +1700,7 @@ async function runBrowserAcceptance() {
           'stale rendered cancel sends zero cancel mutations');
         assert.equal(renderedCancelScenario.store.inspections[0].status, 'conversion-pending', 'stale rendered cancel preserves the in-flight conversion');
       } finally { await actual.context.close(); }
+      covered('stale-rendered-cancel');
     }
 
     for (const unavailableCase of [
@@ -1666,6 +1723,7 @@ async function runBrowserAcceptance() {
         const recovered = await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller);
         assert.equal(recovered, 'converted', unavailableCase.label + ' can resume after Web Locks become available again');
       } finally { await actual.context.close(); }
+      covered('unavailable-lock: ' + unavailableCase.label);
     }
 
     const validationReleaseScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
@@ -1686,6 +1744,7 @@ async function runBrowserAcceptance() {
           'validation error releases the shared lock');
         assert.equal(await actual.page.evaluate(async value => (await resumeOfficeOpsInspectionConversion(value)).status, caller), 'converted');
       } finally { await actual.context.close(); }
+      covered('validation-release');
     }
 
     const preFenceReleaseScenario = createBrowserScenario({ failBefore: 'officeInspectionRecordLocalCommit' });
@@ -1735,6 +1794,7 @@ async function runBrowserAcceptance() {
         await actual.page.evaluate(async () => { await window.__hjRestoreDone; });
         assert.equal(await actual.page.evaluate(async () => { await officeOpsLoad(); return (await resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'))).status; }), 'converted');
       } finally { await actual.context.close(); }
+      covered('pre-fence-release');
     }
 
     const postFenceReleaseScenario = createBrowserScenario({ lossAfter: 'officeInspectionRecordLocalCommit' });
@@ -1763,6 +1823,7 @@ async function runBrowserAcceptance() {
         assert.equal(await actual.page.evaluate(async () => { await officeOpsLoad(); return (await resumeOfficeOpsInspectionConversion(officeOpsConversionCallerForInspection('inspection_conversion_001'))).status; }), 'converted',
           'reload recovers from the post-fence failure without duplicating the terminal mutation');
       } finally { await actual.context.close(); }
+      covered('post-fence-release');
     }
 
     const releaseBoundaryScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
@@ -1807,6 +1868,7 @@ async function runBrowserAcceptance() {
         assert.deepEqual(boundary.generationNotes, boundary.appStateNotes); assert.doesNotMatch(JSON.stringify(boundary.generationNotes), /unvalidated-release-boundary/);
         assert.deepEqual([boundary.stale, boundary.recovery, boundary.reacquired], [true, true, true], 'release-boundary mismatch marks recovery and releases the lock');
       } finally { await actual.context.close(); }
+      covered('release-boundary');
     }
 
     const durableReleaseBoundaryScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
@@ -1888,6 +1950,7 @@ async function runBrowserAcceptance() {
         assert.deepEqual([boundary.stale, boundary.recovery, boundary.reacquired], [true, true, true],
           'durable release-boundary mismatch marks recovery and releases the lock');
       } finally { await actual.context.close(); }
+      covered('durable-release-boundary');
     }
 
     for (const [label, mode, bindTab, stale, expectedError] of [
@@ -1928,6 +1991,7 @@ async function runBrowserAcceptance() {
           assert.deepEqual(restored, { orders: 0, source: 'paid-generation' }, label + ' reload preserves the newer durable generation as authoritative');
         }
       } finally { await actual.context.close(); }
+      covered('durable-generation: ' + label);
     }
 
     const finalizeDurableScenario = createBrowserScenario({ lossAfter: 'officeInspectionRecordLocalCommit' });
@@ -1952,6 +2016,7 @@ async function runBrowserAcceptance() {
         assert.equal(finalizeDurableScenario.store.inspections[0].status, 'conversion-local-committed');
         assert.equal(finalizeDurableScenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, 'durable mismatch sends zero Finalize mutations');
       } finally { await actual.context.close(); }
+      covered('finalize-durable');
     }
 
     const convertedDurableScenario = createBrowserScenario({ lossAfter: 'officeInspectionFinalizeConversion' });
@@ -1975,6 +2040,7 @@ async function runBrowserAcceptance() {
         assert.match(resumeFailure, /durable|local order identity/, 'idempotent converted return remains bound to durable order truth');
         assert.equal(convertedDurableScenario.officeCalls.filter(call => call.mutationId).length, beforeMutations, 'converted durable failure sends zero mutations');
       } finally { await actual.context.close(); }
+      covered('converted-durable');
     }
 
     for (const [label, setup, expectedStage, verifyTrigger] of [
@@ -2011,6 +2077,7 @@ async function runBrowserAcceptance() {
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionRecordLocalCommit').length, beforeRecord, label + ' sends zero new Record mutations');
         assert.equal(scenario.officeCalls.filter(call => call.action === 'officeInspectionFinalizeConversion').length, beforeFinalize, label + ' sends zero new Finalize mutations');
       } finally { await actual.context.close(); }
+      covered('validation-window: ' + label);
     }
 
     const casAndRenderScenario = createBrowserScenario({ lossAfter: 'officeInspectionArmLocalCommit' });
@@ -2046,16 +2113,31 @@ async function runBrowserAcceptance() {
         assert.equal(recovered.count, 1, 'render-failed Task 5 order recovers from the durable generation after reload');
         assert.deepEqual(recovered.order.commercialApproval, casAndRenderScenario.receipt);
       } finally { await actual.context.close(); }
+      covered('cas-and-render');
+    }
     }
   } finally {
     if (browser) await browser.close();
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
+  assert.deepEqual(completed, expected, 'OFFICE_CONVERSION_GROUP_COVERAGE ' + group);
+  console.log('PASS  OfficeOps ' + group + ' browser scenarios ' + completed.length + '/' + expected.length);
 }
 
-(async () => {
-  await runDurableStaleQueueVmContract();
-  await runVmContracts();
-  await runBrowserAcceptance();
-  console.log('PASS  OfficeOps conversion proof, recovery, cancel, UI, and durable isolation');
-})().catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });
+async function runOfficeConversionGroup(group) {
+  assert.ok(Object.hasOwn(OFFICE_CONVERSION_GROUPS, group), 'OFFICE_CONVERSION_KNOWN_GROUP');
+  assert.deepEqual(Object.values(OFFICE_CONVERSION_GROUPS).map(plan => plan.cases.length), [16, 27], 'OFFICE_CONVERSION_MANIFEST_COUNTS');
+  const allCases = Object.values(OFFICE_CONVERSION_GROUPS).flatMap(plan => plan.cases);
+  assert.equal(new Set(allCases).size, 43, 'OFFICE_CONVERSION_MANIFEST_UNIQUE');
+  assert.equal(path.basename(process.argv[1]), OFFICE_CONVERSION_GROUPS[group].entry, 'OFFICE_CONVERSION_ENTRY_GROUP');
+  console.log('START OfficeOps ' + group + ': ' + OFFICE_CONVERSION_GROUPS[group].cases.length + ' browser scenarios' + (group === 'conversion' ? ' + 2 VM contracts' : ''));
+  if (group === 'conversion') {
+    await runDurableStaleQueueVmContract();
+    await runVmContracts();
+    console.log('PASS  OfficeOps conversion VM contracts 2/2');
+  }
+  await runBrowserAcceptance(group);
+}
+
+module.exports = { runOfficeConversionGroup };
+if (require.main === module) runOfficeConversionGroup('conversion').catch(error => { console.error('FAIL', error && error.stack || error); process.exitCode = 1; });

@@ -11,12 +11,17 @@ for(const name of ['executePaidWorkGate','transitionAptOrderWithGate','updateCom
    세는 시도 한복판에 떨어졌다. 그래서 다시 불러올 때마다: 부팅 시더 타이머를 재우고(aiOpsBootCheck 1.5초·backupBootCheck 3초·
    taxCalendarEnsure 4초…), 띄워진 안전판이 끝났다는 신호(__snapLastAt — hjSnapshot 이 쓰기를 마친 뒤에만 찍는다)를 기다리고
    (markDirty 가 안 불렸거나 지킬 자료가 없으면 쓰기가 없다), 떠난 appState 쓰기(__appStateWriteQueue)를 기다린다.
-   검사 내용·기대값은 그대로다. */
+    검사 내용·기대값은 그대로다.
+    v410: snapshot 완료 뒤에도 persistLocal의 예약 저장이 남아 있었다. historical buffer 변조 직후
+    그 예약을 실행하면 부팅 저장의 CAS가 거부되어 __tabStale가 켜지고, 본 검사가 false 대신 stale 예외를
+    받는 경합을 제어된 타이머로 재현했다. fixture를 건드리기 전에 예약을 취소하고 이미 시작한 writer는
+    실제 큐 완료를 기다린다. stale 보호·CAS 단언·시간 제한·재시도 정책은 바꾸지 않는다. */
 const BOOT_QUIET=async()=>{
  await window.__hjRestoreDone;
  for(const n of ['aiOpsBootCheck','aiQueueSanitize','taxCalendarEnsure','coworkSchedEnsure','backupBootCheck','kakaoCheckNew'])if(typeof window[n]==='function')window[n]=()=>0;
  const empty=()=>{const d=serializeData();return !(d.projects||[]).length&&!(d.files||[]).length&&!(d.quotes||[]).length&&!(d.notes||[]).length;};
  for(let i=0;!(!state.dirty||__snapLastAt>0||empty());i++){if(i>500)throw new Error('boot snapshot did not settle (state.dirty but __snapLastAt 0)');await new Promise(r=>setTimeout(r,20));}
+ clearTimeout(__idbSaveTimer);__idbSaveTimer=null;
  await __appStateWriteQueue;
 };
 const TERMS={workKind:'repair',scope:'욕실 누수 보수',exclusions:['타일 전체 교체'],vatMode:'included',quotedAmount:250000,validUntil:'2026-09-30',scheduleWindow:'2026-09-05 오전'};
