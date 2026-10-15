@@ -3293,7 +3293,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v422-leakreport';
+const APP_BUILD='hyeonjang-v423-leakwarranty';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6008,14 +6008,15 @@ async function hjLeakIntakeSave(p,name,input,expected,stillOpen){
 }
 
 /* v419 누수 사진은 선택할 때에는 메모리 초안만 유지한다. 접수를 저장한 뒤 기존 사진 확인을 거친다. */
-function hjLeakIntakeView(name){
+function hjLeakIntakeView(name,resume){
   const p=hjLeakProject(name);
   if(!hjLeakProjectCurrent(p,name)){toast('현장 정보가 바뀌었습니다. 다시 열어 주세요.');return false;}
   if(__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('진행 중인 저장을 마친 뒤 다시 열어 주세요.');return false;}
-  const expected=JSON.stringify(p.leak&&p.leak.intake||null),d=hjLeakIntakeData(p);
-  let selectedPhotos=[],busy=false;
+  // v423 이전 기록/AS 왕복의 초안은 메모리에만 보존하며 저장본 변경 시 덮어쓰기를 막는다.
+  const expected=resume?resume.expected:JSON.stringify(p.leak&&p.leak.intake||null),d=resume?hjLeakIntakeData({leak:{intake:resume.input}}):hjLeakIntakeData(p);
+  let selectedPhotos=resume&&Array.isArray(resume.photos)?resume.photos.slice():[],busy=false;
   const field=(key,id,label)=>'<label for="'+id+'" style="display:block;font-size:13px;margin:10px 0 4px">'+label+'</label><select id="'+id+'" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">선택 안 함</option>'+HJ_LEAK_INTAKE_CHOICES[key].map(v=>'<option value="'+escapeAttr(v)+'"'+(d[key]===v?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select>';
-  const body='<div id="hjLeakIntake" style="min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 10px;font-size:14px"><b>'+escapeHtml(name)+'</b> · 통화하며 확인한 내용만 골라 주세요.</p>'+
+  const body='<div id="hjLeakIntake" style="min-width:0;overflow-wrap:anywhere">'+hjLeakRepeatBanner(p)+'<p style="margin:0 0 10px;font-size:14px"><b>'+escapeHtml(name)+'</b> · 통화하며 확인한 내용만 골라 주세요.</p>'+
     '<fieldset style="min-width:0;margin:0;padding:8px;border:1px solid var(--line-soft);border-radius:10px"><legend>어디서 (여러 곳 선택)</legend><div style="display:flex;flex-wrap:wrap;gap:6px">'+HJ_LEAK_INTAKE_CHOICES.where.map(v=>'<label style="display:flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;border:1px solid var(--line-soft);border-radius:10px"><input type="checkbox" data-leakwhere value="'+escapeAttr(v)+'"'+(d.where.includes(v)?' checked':'')+' style="width:18px;height:18px">'+escapeHtml(v)+'</label>').join('')+'</div></fieldset>'+
     field('since','hjLeakSince','언제부터')+field('amount','hjLeakAmount','물 양')+field('neighbor','hjLeakNeighbor','윗집·아랫집')+field('office','hjLeakOffice','관리사무소 연락')+field('insurance','hjLeakInsurance','보험')+
     '<label for="hjLeakMemo" style="display:block;font-size:13px;margin:10px 0 4px">메모</label><textarea id="hjLeakMemo" maxlength="2000" rows="3" style="display:block;width:100%;font-size:16px;min-height:88px">'+escapeHtml(d.memo)+'</textarea>'+
@@ -6056,6 +6057,9 @@ function hjLeakIntakeView(name){
   const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
   document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
   const photo=document.getElementById('hjLeakPhotos'),count=document.getElementById('hjLeakPhotoCount'),issue=document.getElementById('hjLeakIssue');
+  if(selectedPhotos.length)count.textContent='사진 '+selectedPhotos.length+'장 선택 · 접수 저장 후 확인';
+  if(resume&&resume.expected!==JSON.stringify(p.leak&&p.leak.intake||null))issue.textContent='접수 저장본이 바뀌었습니다. 입력은 보존했지만 덮어쓰지 않습니다. 내용을 확인한 뒤 다시 열어 주세요.';
+  hjLeakRepeatBind(p,()=>hjLeakIntakeCapture(document.getElementById('hjLeakIntake'),expected,selectedPhotos),draft=>hjLeakIntakeView(name,draft));
   photo.onchange=()=>{
     const picked=Array.from(photo.files||[]);
     if(picked.length>2){photo.value='';selectedPhotos=[];count.textContent='선택한 사진 없음';issue.textContent='사진은 최대 2장까지 골라 주세요. 파일은 추가하지 않았습니다.';return;}
@@ -6092,7 +6096,7 @@ function hjLeakCardHtml(p){
   if(!p||hjProjectKind(p)!=='leak')return '';
   const d=hjLeakIntakeData(p),chip=t=>'<span style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">'+escapeHtml(t)+'</span>';
   const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인'];
-  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button>'+hjLeakReportButton(p)+'</div></div>';
+  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+hjLeakRepeatChip(p)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button>'+hjLeakReportButton(p)+'</div></div>';
 }
 
 /* v419 출동 알림과 미완료 집계는 현재 현장/일정만 읽는다. 다른 유형의 긴급 일정은 누수 출동으로 세지 않는다. */
@@ -6101,10 +6105,10 @@ function hjLeakTodayData(today=localDate()){
     .map(s=>({s,p:hjLeakProject(s.project)})).sort((a,b)=>String(a.s.time||'').localeCompare(String(b.s.time||''))||String(a.p.name).localeCompare(String(b.p.name),'ko'));
 }
 function hjLeakTodayHtml(){
-  const rows=hjLeakTodayData();if(!rows.length)return '';
+  const rows=hjLeakTodayData(),repeat=hjLeakRepeatDashboardHtml();if(!rows.length)return repeat;
   const text='🚨 오늘 출동 '+rows.length+'건 — '+rows.map(({s,p})=>p.name+' '+(s.time||'시간 미정')).join(' · ');
   const withAddr=rows.filter(({p})=>String((p.customer||{}).addr||'').trim()),unique=[...new Map(withAddr.map(r=>[r.p.name,r.p])).values()];
-  return '<div data-leak-today style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;border:1px solid #b91c1c;border-radius:10px;padding:8px 10px;margin:4px 0 10px"><b style="flex:1 1 220px;min-width:0;overflow-wrap:anywhere;font-size:13px">'+escapeHtml(text)+'</b>'+unique.map(p=>'<button type="button" class="ghost" data-navi="'+escapeAttr(p.name)+'" aria-label="'+escapeAttr(p.name+' 길찾기')+'" style="min-height:44px;white-space:normal">🗺 길찾기'+(unique.length>1?' · '+escapeHtml(p.name):'')+'</button>').join('')+'</div>';
+  return '<div data-leak-today style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;border:1px solid #b91c1c;border-radius:10px;padding:8px 10px;margin:4px 0 10px"><b style="flex:1 1 220px;min-width:0;overflow-wrap:anywhere;font-size:13px">'+escapeHtml(text)+'</b>'+unique.map(p=>'<button type="button" class="ghost" data-navi="'+escapeAttr(p.name)+'" aria-label="'+escapeAttr(p.name+' 길찾기')+'" style="min-height:44px;white-space:normal">🗺 길찾기'+(unique.length>1?' · '+escapeHtml(p.name):'')+'</button>').join('')+'</div>'+repeat;
 }
 function hjLeakPendingRepairs(today=localDate()){
   const completed=new Set((state.schedule||[]).filter(s=>s&&s.urgent===true&&HJ_YMD_RE.test(String(s.date||''))&&s.date<=today&&s.report&&s.report.progress==='완료').map(s=>s.project));
@@ -6117,18 +6121,32 @@ function hjScheduleUrgentAttrs(s){return s&&s.urgent===true?' leak-urgent':'';}
 function hjScheduleUrgentIcon(s){return s&&s.urgent===true&&!String(s.title||'').startsWith('🚨')?'🚨 ':'';}
 function hjLeakFilterHtml(){return '<div class="toolbar" style="margin:6px 0;display:flex;flex-wrap:wrap"><button type="button" class="'+(__hjLeakFilter?'blue':'ghost')+'" data-leakfilter aria-pressed="'+__hjLeakFilter+'" style="min-height:44px">💧 누수</button></div>';}
 function hjPhotoIntakeCloseHook(callback){if(typeof callback!=='function')return;const previous=window.__modalOnClose;window.__modalOnClose=()=>{try{if(previous)previous();}finally{callback();}};}
-function hjProjectQuickAdd(){
-  hjProjNamesRefresh();openModal('➕ 현장 추가','<label for="hjQuickProj">현장 이름</label><input id="hjQuickProj" list="hjProjNames" maxlength="40" style="width:100%;min-height:44px" placeholder="예: 망원동 카페">'+hjProjectKindField('hjQuickKind','interior'),[{label:'취소',cls:'ghost',fn:closeModal},{label:'추가',cls:'clay',fn:()=>{const v=document.getElementById('hjQuickProj').value.trim();if(!v){hjFieldIssue(document.getElementById('hjQuickProj'),'현장 이름을 입력하세요');return;}document.getElementById('newProj').value=v;document.getElementById('newProjKind').value=document.getElementById('hjQuickKind').value;closeModal(true);addProject();}}]);
+function hjProjectQuickAdd(options){
+  const leak=!!options?.leakPrevRef;hjProjNamesRefresh();
+  openModal(leak?'➕ 다른 원인 누수 현장':'➕ 현장 추가','<label for="hjQuickProj">현장 이름</label><input id="hjQuickProj" list="hjProjNames" maxlength="40" style="width:100%;min-height:44px" placeholder="'+(leak?'이전 현장과 구분되는 새 이름':'예: 망원동 카페')+'">'+hjProjectKindField('hjQuickKind',leak?'leak':'interior')+(leak?'<p class="hint">새 현장을 확인하여 추가하면 이전 공사의 주소와 참조만 연결합니다. 기존 현장을 선택하면 새 사건을 만들지 않습니다.</p>':''),[
+    {label:'취소',cls:'ghost',fn:closeModal},{label:'추가',cls:'clay',fn:()=>{
+      const v=document.getElementById('hjQuickProj').value.trim();if(!v){hjFieldIssue(document.getElementById('hjQuickProj'),'현장 이름을 입력하세요');return;}
+      document.getElementById('newProj').value=v;document.getElementById('newProjKind').value=leak?'leak':document.getElementById('hjQuickKind').value;
+      if(!leak)closeModal(true);addProject(undefined,leak?'leak':undefined,options);
+    }}]);
+  if(leak){document.getElementById('hjQuickKind').disabled=true;hjLeakModalReturn(options.back);hjLeakModalStyle();}
 }
-function addProject(confirmed,selectedKind){const v=$('#newProj').value.trim(),kind=selectedKind||hjProjectKind({kind:($('#newProjKind')||{}).value});
-  // v330: 검증 오류를 칸에 붙인다 — 단 칸이 화면에 보일 때만(폰 더보기의 prompt 경로는 사이드바 칸이 숨어 있어 토스트만).
+function addProject(confirmed,selectedKind,options){const v=$('#newProj').value.trim(),kind=selectedKind||hjProjectKind({kind:($('#newProjKind')||{}).value}),leak=!!options?.leakPrevRef;
+  // v330: 검증 오류를 칸에 붙인다 — 단 칸이 화면에 보일 때만.
   const issue=m=>{const el=$('#newProj');if(el&&el.getClientRects().length)hjFieldIssue(el,m);};
   if(!v){issue('현장 이름을 입력하세요');return;}
-  if(v&&confirmed!==v&&!state.projects.some(p=>p.name===v)){const names=hjSimilarProjects(v);if(names.length)return hjSimilarView(names,name=>{const p=state.projects.find(p=>p.name===name&&!p.archived);if(!p)return;closeModal();state.activeProject=name;state.tab='project';__projView=null;render();},()=>{closeModal(true);addProject(v,kind);},false);}
-  // v331: 아파트 이름이면 아파트 프로젝트 만들기로(동·호수 등록)
-  if(aptNameParse(v)||aptIsComplexName(v,null))return aptProjectCreateView(v,'',kind);
+  if(v&&confirmed!==v&&!state.projects.some(p=>p.name===v)){
+    const names=hjSimilarProjects(v);if(names.length){
+      const result=hjSimilarView(names,name=>{const p=state.projects.find(p=>p.name===name&&!p.archived);if(!p)return;if(leak)window.__modalOnClose=null;closeModal();state.activeProject=name;state.tab='project';__projView=null;render();},()=>{if(leak)window.__modalOnClose=null;closeModal(true);addProject(v,kind,options);},false);
+      if(leak)hjLeakModalReturn(options.back);return result;
+    }
+  }
+  // v331 / v423: 아파트 등록·미리보기 경로는 그대로 사용하고 이전 누수 참조만 후보로 전달한다.
+  if(aptNameParse(v)||aptIsComplexName(v,null))return aptProjectCreateView(v,'',kind,options);
   if(state.projects.some(p=>p.name===v)){toast('이미 있는 현장입니다.');issue('이미 있는 현장입니다.');return;}
-  state.projects.push({name:v,kind,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');$('#newProjKind').value='interior';if(kind==='leak')hjLeakIntakeView(v);}
+  if(leak)return hjLeakNewProjectCommit(v,options);
+  state.projects.push({name:v,kind,stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null});state.activeProject=v;$('#newProj').value='';markDirty();render();toast('현장 “'+v+'” 추가됨');$('#newProjKind').value='interior';if(kind==='leak')hjLeakIntakeView(v);
+}
 const STAGE_CHECK={
   2:{key:'start',title:'📋 착공 전 체크',items:[
     ['관리사무소에 공사 신고(신청서·예치금)','notify'],
@@ -6343,7 +6361,7 @@ function hjLeakDetectView(name){
    파생 견적 파일을 옛 이름으로 되돌려 매출에서 빠졌다. 삭제는 그 기록을 고아로 남겨 같은 이름으로 새 현장을 만들면 옛 수금·AS·견적·
    지출이 새 현장에 붙었다. 두 동작이 이 한 목록(hjProjectRefWalk)을 보게 해 새 저장소를 한 곳에만 더하면 되게 한다.
    한계: ☁ 팀 공유 할일은 회사 서버에 있어 여기서 바꾸지 않는다(확인 창에 적는다). */
-const HJ_PROJECT_REF_LABELS={files:'사진·서류',estFiles:'견적서 파일',schedule:'일정',notes:'메모·할일·회의록',payLog:'수금 기록',asLog:'AS 기록',quotes:'견적서',
+const HJ_PROJECT_REF_LABELS={leakRefs:'누수 이전 기록',files:'사진·서류',estFiles:'견적서 파일',schedule:'일정',notes:'메모·할일·회의록',payLog:'수금 기록',asLog:'AS 기록',quotes:'견적서',
   expenses:'지출',workLogs:'작업시간',trips:'운행 기록',satisfaction:'만족도',adPosts:'홍보 기록',aptOrders:'관리사무소 오더',aiOps:'AI 할 일',calcLog:'자재 계산 기록(이 폰)',calcCart:'발주 목록(이 폰)'};
 // 이름 name 에 걸린 기록마다 visit(store, rec, set) 을 부른다. set(v) 가 그 기록의 현장 이름을 바꾼다.
 // identity 가 있으면 관리사무소 오더는 식별자로 찾는다(이름이 같아도 식별자가 다른 오더는 남의 것이다).
@@ -6364,6 +6382,12 @@ function hjProjectRefWalk(name,visit,identity){
     if((idOk&&oid===identity)||((!oid||!idOk)&&o.project===name))visit('aptOrders',o,v=>{o.project=v;});
   });
   arr(state.aiOps&&state.aiOps.queue).forEach(t=>{if(t&&typeof t==='object'&&t.project===name)visit('aiOps',t,v=>{t.project=v;});});
+  // v423 이름 fallback 참조는 이름 변경/삭제의 같은 cascade를 따른다.
+  const owners=arr(state.projects).filter(p=>p&&p.name===name),owner=owners.length===1?owners[0]:null;
+  if(!owner||hjLeakProjectRef(owner)===name){
+    arr(state.asLog).forEach(a=>{if(a?.leak?.prevProjectId===name)visit('leakRefs',a,v=>{a.leak.prevProjectId=v;});});
+    arr(state.projects).forEach(p=>{if(p?.leak?.prevId===name)visit('leakRefs',p,v=>{p.leak.prevId=v;});});
+  }
 }
 // 이 폰 localStorage 의 자재 계산 기록·발주 목록(v277·v278) — 백업에 안 실리지만 현장별로 묶여 보인다.
 function hjProjectRefLocal(name,to){
@@ -6391,6 +6415,8 @@ function hjProjectTombstonesOf(name){
   // 일정은 삭제 때 연결만 푼다('') — 다만 사람이 메모를 적어 둔 수금 약속일 일정은 '(삭제됨)' 이름으로 옮겨 둔다(hjDeleteProjectCore).
   ['schedule','notes','payLog','asLog','quotes','expenses','workLogs','trips','satisfaction','adPosts','aptOrders'].forEach(k=>arr(state[k]).forEach(r=>r&&see(r.project)));
   arr(state.aiOps&&state.aiOps.queue).forEach(t=>t&&see(t.project));
+  arr(state.asLog).forEach(a=>a?.leak&&see(a.leak.prevProjectId));
+  arr(state.projects).forEach(p=>p?.leak&&see(p.leak.prevId));
   return [...out];
 }
 /* v331 '(삭제됨)' 이름 t 에 옮겨 둔 기록 중 백업 자료 bdata 의 현장 name 기록과 같은 것의 수 — 선택 복원이 같은 이름 현장이
@@ -9884,12 +9910,12 @@ function dashboardOperationsRefresh(){
 }
 // 대시보드 맨 위 '오늘 일정' — 출발 전 챙김과 작업일지에 바로 연결한다.
 function dashboardTodayHTML(){
-  const sch=(state.schedule||[]); if(!sch.length)return '';
+  const sch=(state.schedule||[]); if(!sch.length)return hjLeakTodayHtml();
   const today=localDate();
   const todays=sch.filter(s=>s.date===today).slice().sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   const upcoming=sch.filter(s=>s.date>today).slice().sort((a,b)=>String((a.date||'')+(a.time||'')).localeCompare(String((b.date||'')+(b.time||'')))).slice(0,3);
   const conts=hjSchContinuing(today,s=>!s.routine);   // v354 여러 날 공정의 둘째 날부터
-  if(!todays.length&&!upcoming.length&&!conts.length)return '';
+  if(!todays.length&&!upcoming.length&&!conts.length)return hjLeakTodayHtml();
   const chip=(s,showDate,cont)=>{
     const inner=`<button data-gosch="${escapeAttr(s.id)}" style="display:block;min-height:44px;white-space:normal;overflow-wrap:anywhere;${s.routine?'flex:1;min-width:0;margin:0;':'width:100%;margin:4px 0;'}text-align:left;border:1px solid var(--line-soft);background:var(--paper);border-radius:9px;padding:9px 12px;cursor:pointer;font:inherit">`+
     `<b style="color:var(--blueprint)">${showDate?escapeHtml(String(s.date).slice(5))+' ':''}${s.time?escapeHtml(s.time)+' ':''}${escapeHtml(s.title||'작업')}</b>`+
@@ -14327,6 +14353,9 @@ function asManage(focusId){
   root.querySelector('#asmAdd').onclick=()=>{
     const pj=root.querySelector('#asmProj').value, txt=root.querySelector('#asmText').value.trim();
     if(!txt){toast('증상을 입력하세요.');hjFieldIssue(root.querySelector('#asmText'),'증상을 입력하세요.');return;}
+    // v423 누수 AS는 원인 확인을 거치며 취소하면 입력을 복원한다.
+    const leakProject=(state.projects||[]).filter(p=>p&&p.name===pj);
+    if(leakProject.length===1&&leakProject[0].kind==='leak')return hjLeakAsView(hjLeakProjectRef(leakProject[0]),{text:txt},()=>{asManage();const select=document.getElementById('asmProj'),input=document.getElementById('asmText');if(select)select.value=pj;if(input)input.value=txt;});
     state.asLog=state.asLog||[];
     const na={id:uid(),project:pj,date:localDate(),text:txt,status:'open'};state.asLog.push(na);
     markDirty();asManage(na.id);toast('AS 접수됨 — "'+pj+'"');   // v365 새 기록을 펼쳐 [📅 방문 일정 잡기]가 바로 보이게
@@ -15518,7 +15547,9 @@ async function aptProjectApply(plan){
     const fresh=aptProjectPreview(plan.name,plan.unit,plan.sourceName,draft);
     if(fresh.count!==plan.count||fresh.unitId!==plan.unitId)throw new Error('프로젝트 또는 사진 연결이 바뀌었습니다. 다시 확인하세요.');
     let target=aptUnitProject(plan.name,draft);
-    if(!target){target=aptProjectDefault(plan.name);target.kind=hjProjectKind(plan);draft.projects.push(target);}
+    // v423 새 사건 확인에만 이전 누수 참조를 적용한다.
+    if(plan.leakPrevRef&&(target||plan.sourceName))throw new Error('다른 원인 누수는 새로운 현장으로만 등록하세요.');
+    if(!target){target=aptProjectDefault(plan.name);target.kind=hjProjectKind(plan);if(plan.leakPrevRef)hjLeakNewProjectFields(target,plan,draft);draft.projects.push(target);}
     if(!target.aptUnits)target.aptUnits=[];
     const unitId=fresh.unitId||('unit_'+uid());
     if(!fresh.unitId)target.aptUnits.push({id:unitId,...fresh.unit});
@@ -15607,7 +15638,7 @@ function hjAptLegacyMergeView(){
   ]);
   try{aptUnitModalStyle();}catch(e){}
 }
-function aptProjectCreateView(prefill='',sourceName='',kind='interior'){
+function aptProjectCreateView(prefill='',sourceName='',kind='interior',options){
   const parsed=aptNameParse(sourceName||prefill),name=parsed?.complex||prefill;
   openModal('아파트 프로젝트 · 동·호수 등록',`<div class="apt-unit-panel" id="aptProjectPanel">
     <p>프로젝트는 <b>아파트명</b> 하나로 만들고, 사진은 그 안의 <b>동·호수 / 공용부</b>에서 관리합니다.</p>
@@ -15622,10 +15653,12 @@ function aptProjectCreateView(prefill='',sourceName='',kind='interior'){
     <p id="aptUnitIssue" role="alert"></p></div>`,[
     {label:'취소',cls:'ghost',fn:closeModal},
     {label:'미리보기',cls:'clay',fn:()=>{
-      try{const plan=aptProjectPreview($('#aptProjectName').value,{type:$('#aptProjectType').value,dong:$('#aptProjectDong').value,ho:$('#aptProjectHo').value,name:$('#aptProjectCommon').value},$('#aptProjectSource').value);plan.kind=hjProjectKind({kind});aptProjectConfirmView(plan);}
+      try{const plan=aptProjectPreview($('#aptProjectName').value,{type:$('#aptProjectType').value,dong:$('#aptProjectDong').value,ho:$('#aptProjectHo').value,name:$('#aptProjectCommon').value},$('#aptProjectSource').value);plan.kind=hjProjectKind({kind});if(options?.leakPrevRef){if(plan.existing||plan.sourceName)throw new Error('새 누수 사건은 기존 현장과 다른 이름으로 만들고 사진 가져오기를 선택하지 마세요.');plan.leakPrevRef=options.leakPrevRef;plan.leakPrevStamp=options.leakPrevStamp;plan.leakBack=options.back;}aptProjectConfirmView(plan);}
       catch(e){$('#aptUnitIssue').textContent=e.message;}
     }}]);
   aptUnitModalStyle();$('#aptProjectType').onchange=()=>{const common=$('#aptProjectType').value==='common';$('#aptProjectNumbers').style.display=common?'none':'';$('#aptProjectCommonLabel').hidden=!common;};
+  // v423 새 원인 접수는 기존 사진을 이동하지 않고 취소 시 AS 입력으로 돌아간다.
+  if(options?.leakPrevRef){$('#aptProjectSource').disabled=true;hjLeakModalReturn(options.back);}
 }
 function aptProjectConfirmView(plan){
   openModal('아파트 사진 정리 — 최종 확인',`<div class="apt-unit-panel" id="aptProjectConfirm">
@@ -15635,7 +15668,8 @@ function aptProjectConfirmView(plan){
     <p class="hint">저장 전 안전판을 만듭니다. 이 기기 저장 후 다른 직원과 공유하려면 기존 회사 드라이브 저장·동기화를 완료하세요. 보험·견적·계약 제출이나 원본 파일 이동은 하지 않습니다.</p><p id="aptUnitIssue" role="alert"></p></div>`,[
     {label:'취소',cls:'ghost',fn:closeModal},
     {label:'백업 파일 받기',cls:'ghost',fn:aptProjectDownloadBackup},
-    {label:'확인 후 저장',cls:'clay',fn:()=>aptUnitUiWrite(()=>aptProjectApply(plan),r=>{state.activeProject=r.name;$('#newProj').value='';rebuildOrganizedProjectAliases();render();if(!plan.existing&&plan.kind==='leak')hjLeakIntakeView(r.name);else aptUnitView(r.name,r.unitId);toast('아파트 위치 저장 완료 · 공유 전 드라이브 저장을 확인하세요.');})}]);aptUnitModalStyle();
+    {label:'확인 후 저장',cls:'clay',fn:()=>aptUnitUiWrite(()=>aptProjectApply(plan),r=>{if(plan.leakPrevRef)window.__modalOnClose=null;state.activeProject=r.name;$('#newProj').value='';rebuildOrganizedProjectAliases();render();if(!plan.existing&&plan.kind==='leak')hjLeakIntakeView(r.name);else aptUnitView(r.name,r.unitId);toast('아파트 위치 저장 완료 · 공유 전 드라이브 저장을 확인하세요.');})}]);aptUnitModalStyle();
+  if(plan.leakPrevRef)hjLeakModalReturn(plan.leakBack);
 }
 function aptProjectDownloadBackup(){
   // 공유 시트 지원 여부와 무관하게 PC에 보관할 수 있는 복사본. 기존 저장완료 표시는 바꾸지 않는다.
@@ -16226,6 +16260,8 @@ function hjReviewSms(name){
 function hjWarrantyStart(name){
   const p=(state.projects||[]).find(x=>x.name===name);
   if(!p){toast('현장을 찾을 수 없습니다');return;}
+  // v423 누수만 원인별 추천과 후보 우선 저장을 사용한다.
+  if(p.kind==='leak')return hjLeakWarrantyView(p);
   const cur=(p.warranty&&typeof p.warranty==='object'&&Array.isArray(p.warranty.items)&&p.warranty.items.length)?p.warranty.items:WARRANTY_ITEMS_DEFAULT;
   const startDefault=(p.warranty&&typeof p.warranty==='object'&&p.warranty.startedAt)||p.doneAt||localDate();
   const rowHtml=it=>'<div class="wsRow" style="display:flex;gap:6px;margin-bottom:6px"><input class="wsName" value="'+escapeAttr(it.name||'')+'" placeholder="항목(예: 방수)" style="flex:2;min-width:0;padding:8px;font-size:13px"><input class="wsMon" type="number" min="0" value="'+escapeAttr(String(num(it.months)||0))+'" style="width:72px;padding:8px;font-size:13px"><span style="align-self:center;font-size:12px;color:var(--muted)">개월</span><button class="ghost tiny wsDel" style="padding:6px 8px">✕</button></div>';
@@ -18831,9 +18867,10 @@ function warrantyHTML(name,opts){
       row('작업명',cell(workName,200))+
       row('작업장소',cell(place,240))+
       row('작업내용 / 범위',cell(scope,300))+
+      (pj&&pj.kind==='leak'?row('원인·수리 범위',cell(hjLeakSummary(pj)||'확인된 원인·수리 기록 없음',600)):'')+
       row('작업완료일',cell(startStr,140))+
       row('보증기간','<b>'+cell(periodStartStr,110)+' ~ '+cell(endStr,110)+'</b> <span style="color:#5b6b82">('+fromLabel+' '+escapeHtml(termLabel)+')</span>'+
-        (witems.length>1?'<div style="font-size:12px;color:#5b6b82;margin-top:4px">'+escapeHtml(hjWarrantyPeriodText(witems))+'</div>':''))+
+        ((witems.length>1||(pj&&pj.kind==='leak'))?'<div style="font-size:12px;color:#5b6b82;margin-top:4px">'+escapeHtml(hjWarrantyPeriodText(witems))+'</div>':''))+
     '</tbody></table>'+
     '<div class="note" style="text-align:left"><b style="display:block;margin-bottom:6px">보증 및 보수 안내</b>'+
       '<ol style="margin:0;padding-left:18px">'+CLAUSES.map(c=>'<li style="margin-bottom:5px"><b>('+c[0]+')</b> '+c[1]+'</li>').join('')+'</ol></div>'+
@@ -34498,7 +34535,7 @@ function hjLeakReportModel(p,input){
     action:neighbor?hjLeakReportNeighborText(action,p):action,materials:neighbor?[]:items.map(it=>it.name+(it.qty?' '+it.qty+it.spec:'')),opinion:neighbor?hjLeakReportNeighborText(o.opinion,p):o.opinion,
     photos:selected.photos.map(f=>({...f})),photoNotice:selected.multi?'여러 세대의 사진이 섞이지 않도록 사진을 생략했습니다. 세대별 자료에서 사진을 확인해 주세요.':'',
     amount:!o.hideAmount&&calc?{total:calc.total,vat:q.vatIncluded?'부가세 포함':'부가세 별도',payment:hjLeakReportPayment(q,calc.total)}:null,
-    quoteNotice:!o.hideAmount&&!calc?(q?'견적 금액 확인 필요':'저장된 누수 견적 없음'):'',warranty:'수리 부위 1년 책임 보수',privacy:HJ_LEAK_REPORT_PRIVACY,footer:HJ_LEAK_REPORT_FOOTER,
+    quoteNotice:!o.hideAmount&&!calc?(q?'견적 금액 확인 필요':'저장된 누수 견적 없음'):'',warranty:neighbor?hjLeakReportNeighborText(hjLeakWarrantyReportText(p),p):hjLeakWarrantyReportText(p),privacy:HJ_LEAK_REPORT_PRIVACY,footer:HJ_LEAK_REPORT_FOOTER,
     issue:!o.hideAmount&&quoteIssue?quoteIssue:''};
   if(neighbor){model.photos=model.photos.filter(f=>f.tag==='before'||f.tag==='after');model.photoNotice=selected.multi?'여러 세대 사진은 안내문에서 생략했습니다.':'';}
   model.pdfName=safeName(model.no+'_'+model.purposeLabel+'_누수보고서')+'.pdf';return model;
@@ -34613,6 +34650,332 @@ function hjLeakReportForm(s){
   root.querySelectorAll('input,textarea').forEach(el=>el.oninput=()=>{if(!s.busy)fresh();});
   root.querySelector('#hjLeakReportSms').onclick=()=>{if(s.busy||!s.issued)return;read();const no=s.issued.record.no;msgCenterCompose('leakreport',{project:s.name,text:'['+COMPANY.name+'] 보고서를 보내드립니다.\n누수 탐지·수리 보고서 '+no+'\n내용을 확인해 주세요.',back:()=>hjLeakReportForm(s)});hjLeakQuoteModalFit();};
   fresh();if(s.issued)root.querySelector('#hjLeakReportStatus').textContent=s.issued.record.no+' 발행됨 · 파일을 직접 전달해 주세요.';return true;
+}
+
+/* v423 누수 추천 보증은 기존 앱의 기간을 줄이지 않는다. 제조사 기간은 확인 전 숫자로 추정하지 않는다. */
+const HJ_LEAK_WARRANTY_ITEMS=Object.freeze([
+  Object.freeze({key:'pipe',name:'배관 수리',requestedMonths:12,minMonths:24,months:24}),
+  Object.freeze({key:'waterproof',name:'방수 재시공',requestedMonths:24,minMonths:36,months:36}),
+  Object.freeze({key:'seal',name:'실리콘·줄눈',requestedMonths:6,minMonths:12,months:12}),
+  Object.freeze({key:'manufacturer',name:'부품 교체 (제조사 기준)',requestedMonths:null,minMonths:0,months:null})
+]);
+/* v423 새 추천 보증의 저장 하한만 제공한다. 기존 사용자 지정 보증의 읽기/개월은 바꾸지 않는다. */
+function hjLeakWarrantyMinimum(name){
+  const text=typeof name==='string'?name:'';
+  if(/제조사|부품 교체/.test(text))return 0;
+  if(/방수/.test(text))return 36;
+  if(/배관|급배수|급수|온수|난방|배수/.test(text))return 24;
+  if(/실리콘|줄눈|마감/.test(text))return 12;
+  return 0;
+}
+/* v423 원인과 보증 공종을 좁게 연결해 다른 공종의 긴 만료일을 재발 보증으로 사용하지 않는다. */
+function hjLeakWarrantyCauseGroup(cause){
+  const text=typeof cause==='string'?cause.trim():'';
+  if(['급수관','온수관','난방 배관','배수관'].includes(text))return 'pipe';
+  if(text==='방수층(욕실·베란다)'||text==='방수층')return 'waterproof';
+  if(text==='실리콘·줄눈'||text==='실리콘'||text==='줄눈')return 'seal';
+  return '';
+}
+/* v423 등록값이 있으면 사본으로 우선하며, 신규 누수만 확인된 원인에 맞춘 추천 체크를 제공한다. */
+function hjLeakWarrantyDefaults(p){
+  const saved=p&&p.warranty;
+  if(saved&&typeof saved==='object'&&Array.isArray(saved.items)&&saved.items.length){
+    return saved.items.filter(it=>it&&typeof it==='object').map((it,i)=>({key:'existing-'+i,name:it.name,months:it.months,expiresAt:it.expiresAt,minMonths:0,requestedMonths:it.months,checked:true,existing:true}));
+  }
+  if(!p||p.kind!=='leak')return [];
+  const group=hjLeakWarrantyCauseGroup(p.leak?.detect?.cause),legacy=Number(saved),legacyMonths=(typeof saved==='number'||typeof saved==='string')&&Number.isFinite(legacy)&&legacy>0?legacy:0;
+  return HJ_LEAK_WARRANTY_ITEMS.map(it=>({...it,months:it.months===null?null:Math.max(it.months,legacyMonths),checked:it.key!=='manufacturer'&&it.key===group,existing:false,expiresAt:''}));
+}
+/* v423 정확한 주소/명시 등록 세대/엄격한 레거시 이름만 읽는다. 공용부·손상·상충 정보에서 세대를 추측하지 않는다. */
+function hjLeakPlace(p){
+  const blank={complex:'',dong:'',ho:'',complexKey:'',unitKey:'',source:'',valid:false,reason:'주소·세대 확인 필요'};
+  if(!p||typeof p!=='object')return blank;
+  const clean=value=>typeof value==='string'?value.normalize('NFKC').trim().replace(/\s+/g,' '):'';
+  const addr=clean(p.customer?.addr),name=clean(p.name),address=aptNameParse(addr),legacy=aptNameParse(name);
+  const raw=p.aptUnits,registered=Array.isArray(raw)&&raw.length>0,units=registered?aptUnitList(p):[];
+  if(raw!==undefined&&!Array.isArray(raw))return {...blank,reason:'등록 세대 확인 필요'};
+  if(registered&&units.length!==raw.length)return {...blank,reason:'등록 세대 확인 필요'};
+  const make=(value,source,reason='')=>{
+    const complex=clean(value.complex),complexKey=aptComplexKey(complex),dong=String(Number(value.dong)),ho=String(Number(value.ho));
+    if(!complexKey||!Number.isInteger(Number(value.dong))||!Number.isInteger(Number(value.ho))||Number(value.dong)<1||Number(value.ho)<1)return {...blank,reason:'동·호수 확인 필요'};
+    return {complex,dong,ho,complexKey,unitKey:complexKey+'|'+dong+'|'+ho,source,valid:true,reason};
+  };
+  const same=(a,b)=>aptComplexKey(a.complex)===aptComplexKey(b.complex)&&Number(a.dong)===Number(b.dong)&&Number(a.ho)===Number(b.ho);
+  if(address&&legacy&&!same(address,legacy))return {...blank,reason:'주소와 현장 이름의 세대가 다릅니다'};
+  if(registered){
+    if(units.length!==1||units[0].type!=='unit'){
+      // 명시한 주소가 있어도 다세대/공용부 프로젝트 전체를 한 세대로 간주하지 않는다.
+      const complex=address?.complex||legacy?.complex||(!aptNameParse(name)?name:'');
+      return {...blank,complex,complexKey:aptComplexKey(complex),source:'registered',reason:'여러 세대·공용부의 접수 세대 확인 필요'};
+    }
+    const u=units[0],reg={complex:legacy?.complex||name,dong:u.dong,ho:u.ho};
+    if(!reg.complex)return blank;
+    if(legacy&&!same(reg,legacy))return {...blank,reason:'등록 세대와 현장 이름이 다릅니다'};
+    if(address&&!same(reg,address)){
+      // v423 다른 원인의 새 사건명은 단지명이 아닐 수 있다. 명시 prevId와 양쪽 주소가 같은 세대를 증명할 때만 허용한다.
+      const ref=typeof p.leak?.prevId==='string'?p.leak.prevId:'',previous=ref?hjLeakProjectByRef(ref):null;
+      const previousAddress=previous&&previous!==p&&previous.kind==='leak'?aptNameParse(clean(previous.customer?.addr)):null;
+      const previousName=previousAddress?aptNameParse(clean(previous.name)):null;
+      const previousRaw=previous?.aptUnits,previousUnits=Array.isArray(previousRaw)&&previousRaw.length?aptUnitList(previous):[];
+      const previousRegistrationOk=previousRaw===undefined||(Array.isArray(previousRaw)&&(!previousRaw.length||(previousRaw.length===1&&previousUnits.length===1&&previousUnits[0].type==='unit'&&Number(previousUnits[0].dong)===Number(address.dong)&&Number(previousUnits[0].ho)===Number(address.ho))));
+      const explicitAlias=!legacy&&previousAddress&&same(address,previousAddress)&&Number(reg.dong)===Number(address.dong)&&Number(reg.ho)===Number(address.ho)&&(!previousName||same(previousName,previousAddress))&&previousRegistrationOk;
+      if(!explicitAlias)return {...blank,reason:'주소와 등록 세대가 다릅니다'};
+    }
+    // 주소에 동·호수가 없는 등록 현장도 직접 등록한 유일 세대는 근거가 된다.
+    return make(address||reg,address?'address':'registered');
+  }
+  if(address)return make(address,'address');
+  if(!addr&&legacy)return make(legacy,'legacy-name');
+  return blank;
+}
+/* v423 날짜가 잘못되어도 JS Date의 자동 다음 달 보정으로 보증 안이 되지 않게 검증한다. */
+function hjLeakRepeatDay(value){
+  if(value instanceof Date)return Number.isFinite(value.getTime())?hjPhotoKoreanDay({when:value}):'';
+  if(typeof value!=='string')return '';
+  const text=value.trim(),match=text.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if(!match)return '';
+  const y=Number(match[1]),m=Number(match[2]),d=Number(match[3]),check=new Date(Date.UTC(y,m-1,d));
+  if(y<1900||y>9999||check.getUTCFullYear()!==y||check.getUTCMonth()!==m-1||check.getUTCDate()!==d)return '';
+  if(text.length===10)return text;
+  if(!Number.isFinite(Date.parse(text)))return '';
+  return hjPhotoKoreanDay({when:text});
+}
+/* v423 사건 순서는 접수 시점, 없으면 완료일만 사용한다. 날짜가 같고 시간 증거가 없으면 순서를 단정하지 않는다. */
+function hjLeakRepeatEvent(p){
+  const at=p?.leak?.intake?.at,intakeDay=hjLeakRepeatDay(at),doneDay=hjLeakRepeatDay(p?.doneAt),day=intakeDay||doneDay;
+  if(!day)return {day:'',at:'',time:null,precision:'none',source:''};
+  const timed=!!intakeDay&&(at instanceof Date||(typeof at==='string'&&at.includes('T'))),time=timed?new Date(at).getTime():new Date(day+'T00:00:00+09:00').getTime();
+  return {day,at:intakeDay?(at instanceof Date?at.toISOString():String(at)):day,time,precision:timed?'time':'day',source:intakeDay?'intake':'done'};
+}
+/* v423 재발 보증은 접수일과 관련 수리 항목을 비교한다. 다른 공종 최장 종료일이나 오늘 기준 dday는 쓰지 않는다. */
+function hjLeakRepeatWarranty(previous,current,captureDay){
+  const currentCause=typeof current?.leak?.detect?.cause==='string'?current.leak.detect.cause.trim():'',previousCause=typeof previous?.leak?.detect?.cause==='string'?previous.leak.detect.cause.trim():'';
+  const cause=currentCause&&currentCause!=='원인 미확정'?currentCause:previousCause,group=hjLeakWarrantyCauseGroup(cause);
+  const empty={startedAt:'',warrantyEnd:'',inside:null,itemName:'',items:[]};
+  // v423 현재 원인이 확정됐는데 이전 수리 원인 공종이 다르거나 불명확하면 기본 보증 목록으로 연결하지 않는다.
+  if(currentCause&&currentCause!=='원인 미확정'&&hjLeakWarrantyCauseGroup(currentCause)!==hjLeakWarrantyCauseGroup(previousCause))return empty;
+  if(!group||!hjLeakRepeatDay(captureDay))return empty;
+  let w;try{w=hjWarranty(previous);}catch(_){return empty;}
+  if(!w||!Array.isArray(w.items))return empty;
+  const relevant=w.items.filter(it=>{
+    if(!it||typeof it.name!=='string'||/제조사|부품 교체/.test(it.name))return false;
+    if(group==='pipe')return /배관|급배수|급수|온수|난방|배수/.test(it.name)&&!/방수/.test(it.name);
+    if(group==='waterproof')return /방수/.test(it.name);
+    return /실리콘|줄눈|마감/.test(it.name);
+  });
+  const startedAt=hjLeakRepeatDay(w.startedAt||previous.doneAt),items=relevant.map(it=>{
+    const expiresAt=hjLeakRepeatDay(it.expiresAt),valid=!!startedAt&&!!expiresAt&&expiresAt>=startedAt;
+    return {name:String(it.name),months:it.months,expiresAt,inside:valid?captureDay>=startedAt&&captureDay<=expiresAt:null};
+  });
+  const valid=items.filter(it=>it.inside!==null).sort((a,b)=>b.expiresAt.localeCompare(a.expiresAt)),selected=valid.find(it=>it.inside===true)||valid[0]||items[0];
+  const inside=items.some(it=>it.inside===true)?true:(items.length&&items.every(it=>it.inside===false)?false:null);
+  return {startedAt,warrantyEnd:selected?.expiresAt||'',inside,itemName:selected?.name||'',items};
+}
+/* v423 유일한 누수 현장만 재발 집계에 사용한다. 보관 현장은 과거 수리 증거이므로 포함한다. */
+function hjLeakRepeatRows(){
+  const all=Array.isArray(state.projects)?state.projects:[],names=new Map();
+  all.forEach(p=>{if(p&&typeof p.name==='string')names.set(p.name,(names.get(p.name)||0)+1);});
+  return all.filter(p=>p&&p.kind==='leak'&&typeof p.name==='string'&&p.name.trim()&&names.get(p.name)===1).map(p=>{
+    const projectRef=hjLeakProjectRef(p),place=hjLeakPlace(p),event=hjLeakRepeatEvent(p),cause=typeof p.leak?.detect?.cause==='string'&&p.leak.detect.cause.trim()?p.leak.detect.cause.trim():'원인 미확정';
+    return {project:p,projectRef,name:p.name,place,event,cause};
+  }).filter(row=>row.projectRef&&row.place.complexKey);
+}
+/* v423 현재 포함 건수와 확정 과거 이력을 사본으로 반환한다. 조회만으로 ID·주소·보증을 저장하지 않는다. */
+function hjLeakRepeat(p){
+  const place=hjLeakPlace(p),empty={complexKey:place.complexKey,unitKey:place.unitKey,unitCount:0,complexCount:0,causes:[],previous:[],ordinal:null};
+  if(!p||p.kind!=='leak')return empty;
+  const rows=hjLeakRepeatRows(),current=rows.find(row=>row.project===p);
+  if(!current)return empty;
+  const complexRows=rows.filter(row=>row.place.complexKey===place.complexKey),unitRows=place.unitKey?complexRows.filter(row=>row.place.unitKey===place.unitKey):[],counts=new Map();
+  complexRows.forEach(row=>counts.set(row.cause,(counts.get(row.cause)||0)+1));
+  const event=current.event,captureDay=event.day||localDate(),before=row=>{
+    if(row.project===p||!row.event.day)return false;
+    if(row.event.day!==captureDay)return row.event.day<captureDay;
+    return event.precision==='time'&&row.event.precision==='time'&&row.event.time<event.time;
+  };
+  const past=unitRows.filter(before).sort((a,b)=>b.event.time-a.event.time||a.name.localeCompare(b.name)),previous=past.map(row=>({projectRef:row.projectRef,name:row.name,intakeAt:row.event.at,cause:row.cause,...hjLeakRepeatWarranty(row.project,p,captureDay)}));
+  const certain=event.source==='intake'&&unitRows.every(row=>row.event.day&&(row.project===p||row.event.day!==event.day||(row.event.precision==='time'&&event.precision==='time'&&row.event.time!==event.time)));
+  return {complexKey:place.complexKey,unitKey:place.unitKey,unitCount:unitRows.length,complexCount:complexRows.length,causes:Array.from(counts,([cause,count])=>({cause,count})).sort((a,b)=>b.count-a.count||a.cause.localeCompare(b.cause)),previous,ordinal:certain?past.length+1:null};
+}
+/* v423 대시보드의 재발 세대 수는 사건 수가 아니라 같은 세대 2건 이상인 고유 세대 수다. */
+function hjLeakRepeatSummary(){
+  const rows=hjLeakRepeatRows(),groups=new Map();
+  rows.forEach(row=>{if(!row.place.unitKey)return;const key=row.place.unitKey;if(!groups.has(key))groups.set(key,{unitKey:key,complexKey:row.place.complexKey,count:0,names:[]});const group=groups.get(key);group.count++;group.names.push(row.name);});
+  const units=Array.from(groups.values()).filter(row=>row.count>=2).map(row=>({...row,names:row.names.slice().sort()})).sort((a,b)=>a.unitKey.localeCompare(b.unitKey));
+  return {repeatUnits:units.length,complexes:new Set(units.map(row=>row.complexKey)).size,projects:units.reduce((n,row)=>n+row.count,0),units};
+}
+
+/* v423 누수 이전 기록은 유일한 기존 ID, 없으면 정확한 현장 이름으로만 연결한다. 읽기 중 ID를 만들지 않는다. */
+function hjLeakProjectRef(p,data=state){
+  const all=Array.isArray(data.projects)?data.projects:[];
+  if(!p||p.kind!=='leak'||typeof p.name!=='string'||all.filter(x=>x&&x.name===p.name).length!==1)return '';
+  const id=typeof p.id==='string'?p.id.trim():'';
+  if(id)return all.filter(x=>x&&x.id===id).length===1&&!all.some(x=>x!==p&&x&&x.name===id)?id:'';
+  if(all.some(x=>x!==p&&x&&x.id===p.name))return '';
+  return p.name;
+}
+function hjLeakProjectByRef(ref,data=state){
+  if(typeof ref!=='string'||!ref)return null;
+  const all=Array.isArray(data.projects)?data.projects:[],hits=all.filter(p=>p&&(p.id===ref||p.name===ref));
+  return hits.length===1&&hits[0].kind==='leak'&&hjLeakProjectRef(hits[0],data)===ref?hits[0]:null;
+}
+function hjLeakProjectStamp(p){return JSON.stringify(p?projectBackupSafe(p):null);}
+function hjLeakModalStyle(){
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
+}
+/* v423 접수 초안은 메모리에만 유지한다. AS 창의 닫기·취소도 입력과 선택 사진을 복원한다. */
+function hjLeakModalReturn(back){
+  if(typeof back!=='function')return;
+  let returned=false;window.__modalOnClose=()=>{if(returned)return;returned=true;setTimeout(()=>{if(!document.querySelector('#modalRoot .modal'))back();},0);};
+}
+/* v423 신규 보증의 하한과 기존 약정 보존은 저장 후보에서 검증해 실패 시 준공일도 그대로 남긴다. */
+function hjLeakWarrantyInput(p,input){
+  const start=hjLeakRepeatDay(input&&input.startedAt);
+  if(!start||start!==input.startedAt||start>localDate())throw new Error('준공일은 오늘까지의 올바른 날짜로 입력하세요.');
+  const defs=hjLeakWarrantyDefaults(p),selected=Array.isArray(input.items)?input.items:[],seen=new Set(),items=[];
+  selected.forEach(row=>{
+    const def=defs.find(x=>x.key===row.key);
+    if(!def||seen.has(row.key))throw new Error('보증 항목이 바뀌었습니다. 다시 열어 주세요.');
+    seen.add(row.key);if(!row.checked){if(def.existing)throw new Error('기존 보증 항목은 이 화면에서 삭제하지 않습니다.');return;}
+    const months=Number(row.months);
+    if(String(row.months).trim()===''||!Number.isInteger(months)||months<1||months>1200)throw new Error(def.name+'의 확인한 보증 개월을 입력하세요.');
+    const minimum=def.existing?Number(def.months):Number(def.minMonths||0);
+    if(Number.isFinite(minimum)&&months<minimum)throw new Error(def.name+'은 기존 기준 '+minimum+'개월보다 줄일 수 없습니다.');
+    const oldStart=p.warranty&&typeof p.warranty==='object'?p.warranty.startedAt:'';
+    const unchanged=def.existing&&start===oldStart&&months===Number(def.months);
+    const expiresAt=unchanged?def.expiresAt:hjAddMonths(start,months);
+    if(!hjLeakRepeatDay(expiresAt))throw new Error(def.name+'의 기존 만료일을 먼저 확인해 주세요.');
+    if(def.existing&&hjLeakRepeatDay(def.expiresAt)&&expiresAt<def.expiresAt)throw new Error(def.name+'의 기존 만료일 '+def.expiresAt+'보다 앞당길 수 없습니다.');
+    items.push({name:def.name,months:unchanged?def.months:months,expiresAt});
+  });
+  if(defs.some(d=>d.existing&&!seen.has(d.key)))throw new Error('기존 보증 항목이 빠졌습니다. 다시 열어 주세요.');
+  if(!items.length)throw new Error('실제로 시공한 보증 항목을 하나 이상 골라 주세요.');
+  return {startedAt:start,items};
+}
+async function hjLeakWarrantySave(p,input,expected,stillOpen){
+  const ref=hjLeakProjectRef(p),current=()=>hjLeakProjectByRef(ref)===p&&hjLeakProjectStamp(p)===expected&&!__tabStale&&(!stillOpen||stillOpen());
+  if(!current())throw new Error('현장 정보가 바뀌었습니다. 보증을 다시 열어 주세요.');
+  const warranty=hjLeakWarrantyInput(p,input);
+  return durableLocalMutation({snapshotLabel:'누수 보증 시작 전',beforeCommit:()=>{if(!current())throw new Error('현장 정보가 바뀌었습니다. 보증을 다시 열어 주세요.');},mutateDraft:draft=>{
+    const target=hjLeakProjectByRef(ref,draft);
+    if(!target||hjLeakProjectStamp(target)!==expected)throw new Error('보증 정보가 바뀌었습니다. 다시 확인해 주세요.');
+    target.warranty={startedAt:warranty.startedAt,items:warranty.items.map(x=>({...x}))};target.doneAt=warranty.startedAt;delete target.doneAtPrev;
+    return {name:target.name,items:warranty.items.length};
+  }});
+}
+function hjLeakWarrantyView(p){
+  if(!hjLeakProjectRef(p)||__modalCloseLocked||photoIntakePending()||__appVersionUpdating)return false;
+  const expected=hjLeakProjectStamp(p),defs=hjLeakWarrantyDefaults(p),start=hjLeakRepeatDay(p.warranty?.startedAt)||hjLeakRepeatDay(p.doneAt)||localDate();let busy=false;
+  const body='<div id="hjLeakWarranty"><p>실제로 수리한 항목을 골라 주세요. 신규 기본 기간은 배관 24개월·방수 36개월·실리콘과 줄눈 12개월입니다. 기존 약정은 줄이지 않습니다.</p>'+
+    '<label for="wsStart">준공일(보증 시작)</label><input id="wsStart" type="date" value="'+escapeAttr(start)+'" max="'+localDate()+'" style="display:block;width:100%;min-height:44px">'+
+    '<div id="wsList">'+defs.map(d=>'<div class="wsRow" data-leakwarrantykey="'+escapeAttr(d.key)+'" style="padding:10px 0;border-bottom:1px solid var(--line-soft)"><label style="display:flex;align-items:center;gap:8px;min-height:44px"><input class="wsPick" type="checkbox"'+(d.checked?' checked':'')+(d.existing?' disabled':'')+' style="width:20px;height:20px">'+escapeHtml(d.name)+'</label><label style="display:flex;align-items:center;gap:8px">보증 기간 <input class="wsMon" type="number" min="'+escapeAttr(String(d.existing?Number(d.months)||1:Math.max(1,d.minMonths)))+'" max="1200" step="1" value="'+escapeAttr(d.months===null?'':String(d.months))+'" placeholder="확인한 기간" style="width:110px;min-height:44px;font-size:16px">개월</label>'+(d.existing?'<p class="hint">기존 약정 · 만료 '+escapeHtml(d.expiresAt||'확인 필요')+'</p>':d.key==='manufacturer'?'<p class="hint">제조사가 정한 기간을 확인한 뒤 선택하세요.</p>':'')+'</div>').join('')+'</div><p id="hjLeakWarrantyIssue" role="alert"></p></div>';
+  openModal('🛡 누수 보증 — '+p.name,body,[{label:'보증 저장',cls:'clay',fn:async()=>{
+    if(busy)return;const root=document.getElementById('hjLeakWarranty');if(!root)return;
+    const input={startedAt:root.querySelector('#wsStart').value,items:[...root.querySelectorAll('[data-leakwarrantykey]')].map(r=>({key:r.dataset.leakwarrantykey,checked:r.querySelector('.wsPick').checked,months:r.querySelector('.wsMon').value}))};
+    const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input')],disabled=controls.map(x=>x.disabled);busy=true;__modalCloseLocked=true;controls.forEach(x=>x.disabled=true);let result;
+    try{result=await hjLeakWarrantySave(p,input,expected,()=>root.isConnected&&document.getElementById('hjLeakWarranty')===root);webWorkMarkDirtyAfterPersist();}
+    catch(e){root.querySelector('#hjLeakWarrantyIssue').textContent=String(e.message||e);}
+    finally{__modalCloseLocked=false;busy=false;controls.forEach((x,i)=>x.disabled=disabled[i]);}
+    if(result){closeModal(true);render();toast('🛡 누수 보증 '+result.items+'개 항목 저장됨');}
+  }},{label:'취소',cls:'ghost',fn:closeModal}],true);hjLeakModalStyle();return true;
+}
+/* v423 이전 보증은 같은 접수창에서 펼쳐 읽는다. 폼을 교체하지 않아 사진 선택과 입력을 보존한다. */
+function hjLeakRepeatBanner(p){
+  const r=hjLeakRepeat(p);if(r.unitCount<2&&r.complexCount<3)return '';
+  const unit=r.unitCount>=2?(r.ordinal?'이 세대 '+r.ordinal+'번째 누수':'이 세대 누수 '+r.unitCount+'건'):'',complex=r.complexCount>=3?'이 단지 누수 '+r.complexCount+'건':'';
+  const previous=r.previous.map(prev=>'<li style="padding:8px 0;overflow-wrap:anywhere"><b>'+escapeHtml(prev.name)+'</b> · '+escapeHtml(hjLeakRepeatDay(prev.intakeAt)||'접수일 확인 필요')+'<br>'+escapeHtml(prev.cause)+'<br>'+escapeHtml(prev.inside===true?'해당 수리 항목 보증 기간 안':prev.inside===false?'해당 수리 항목 보증 기간 밖':'보증 항목 확인 필요')+(prev.warrantyEnd?' · '+escapeHtml(prev.itemName)+' / '+escapeHtml(prev.warrantyEnd)+'까지':'')+(prev.inside===true?'<br><button type="button" class="ghost" data-leakpreviousas="'+escapeAttr(prev.projectRef)+'" style="min-height:44px">이전 공사 AS로 접수</button>':'')+'</li>').join('');
+  const latest=r.previous[0],line=latest?'이전 '+(hjLeakRepeatDay(latest.intakeAt)||'접수일 미확인')+' '+latest.cause+(latest.warrantyEnd?' · '+latest.itemName+' 보증 ~'+latest.warrantyEnd:''):'';
+  return '<section data-leak-repeat-banner style="border:1px solid var(--warn);border-radius:10px;padding:10px;margin:0 0 12px;overflow-wrap:anywhere"><b>⚠ '+escapeHtml([unit,complex].filter(Boolean).join(' · '))+'</b>'+(line?'<p style="margin:6px 0">'+escapeHtml(line)+'</p>':'')+(r.previous.some(x=>x.inside===true)?'<p style="margin:6px 0">보증 안 재발 — 같은 원인인지 확인 후 AS로 처리하세요.</p>':'')+(complex?'<p style="margin:6px 0">'+r.causes.map(x=>escapeHtml(x.cause)+' '+x.count+'건').join(' · ')+'</p>':'')+(previous?'<details><summary style="display:flex;align-items:center;min-height:44px;cursor:pointer">이전 기록 보기</summary><ul style="padding-left:20px;margin:0">'+previous+'</ul></details>':'<p class="hint">접수 날짜를 확인하면 이전 이력의 순서를 표시합니다.</p>')+'</section>';
+}
+function hjLeakRepeatChip(p){const r=hjLeakRepeat(p),causes=r.causes.map(x=>x.cause+' '+x.count+'건').join(' · ');return r.complexCount>=3?'<span data-leak-repeat-chip style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">🏢 이 단지 누수 '+r.complexCount+'건 ('+escapeHtml(causes)+')</span>':'';}
+function hjLeakRepeatDashboardHtml(){const r=hjLeakRepeatSummary();return r.repeatUnits?'<p data-leak-repeat-summary style="margin:6px 0 10px;overflow-wrap:anywhere">💧 재발 세대 '+r.repeatUnits+'곳</p>':'';}
+function hjLeakIntakeCapture(root,expected,photos){
+  const g=id=>root.querySelector('#'+id);return {expected,photos:photos.slice(),input:{where:[...root.querySelectorAll('[data-leakwhere]:checked')].map(x=>x.value),since:g('hjLeakSince').value,amount:g('hjLeakAmount').value,neighbor:g('hjLeakNeighbor').value,office:g('hjLeakOffice').value,insurance:g('hjLeakInsurance').value,memo:g('hjLeakMemo').value}};
+}
+function hjLeakRepeatBind(p,capture,restore){
+  const root=document.getElementById('hjLeakIntake');if(!root)return;
+  root.querySelectorAll('[data-leakpreviousas]').forEach(button=>button.onclick=()=>{
+    if(__modalCloseLocked)return;const ref=button.dataset.leakpreviousas,current=hjLeakRepeat(p).previous.find(x=>x.projectRef===ref&&x.inside===true);
+    if(!current){toast('이전 보증 정보가 바뀌었습니다. 접수를 다시 열어 주세요.');return;}
+    const draft=capture();hjLeakAsView(ref,{currentRef:hjLeakProjectRef(p),text:draft.input.memo,returnOnSaved:true},()=>restore(draft));
+  });
+}
+/* v423 누수 AS는 같은 원인 확인 후 기존 asLog에 원자 저장한다. 다른 원인은 신규 현장을 제안만 한다. */
+async function hjLeakAsSave(p,input,expected,context={},stillOpen){
+  const ref=hjLeakProjectRef(p),currentP=context.currentRef?hjLeakProjectByRef(context.currentRef):null,currentStamp=context.currentStamp||'';
+  const valid=()=>hjLeakProjectByRef(ref)===p&&hjLeakProjectStamp(p)===expected&&!__tabStale&&(!context.currentRef||(hjLeakProjectByRef(context.currentRef)===currentP&&hjLeakProjectStamp(currentP)===currentStamp))&&(!stillOpen||stillOpen());
+  if(!valid())throw new Error('현장 정보가 바뀌었습니다. AS 접수를 다시 열어 주세요.');
+  const text=String(input.text||'').trim();if(!text)throw new Error('AS 증상을 입력하세요.');if(text.length>2000)throw new Error('증상은 2000자 이내로 입력하세요.');
+  if(input.same!=='same')throw new Error('이전 공사와 같은 원인인지 확인해 주세요.');
+  const id=context.id||uid(),date=localDate(),cause=String(p.leak?.detect?.cause||'원인 미확정'),coverage=hjLeakRepeatWarranty(p,currentP||p,date);
+  return durableLocalMutation({snapshotLabel:'누수 AS 접수 전',beforeCommit:()=>{if(!valid())throw new Error('현장 정보가 바뀌었습니다. AS 접수를 다시 열어 주세요.');},mutateDraft:draft=>{
+    const target=hjLeakProjectByRef(ref,draft),related=context.currentRef?hjLeakProjectByRef(context.currentRef,draft):null;
+    if(!target||hjLeakProjectStamp(target)!==expected||(context.currentRef&&(!related||hjLeakProjectStamp(related)!==currentStamp)))throw new Error('접수 대상 현장이 바뀌었습니다. 다시 확인하세요.');
+    draft.asLog=Array.isArray(draft.asLog)?draft.asLog:[];if(draft.asLog.some(a=>a&&a.id===id))throw new Error('이미 접수한 기록입니다. 목록을 확인하세요.');
+    const a={id,project:target.name,date,text,status:'open',leak:{prevProjectId:ref,cause,same:true}};if(coverage.itemName)a.warrantyItem=coverage.itemName;draft.asLog.push(a);return id;
+  }});
+}
+function hjLeakAsView(ref,options={},back){
+  const p=hjLeakProjectByRef(ref);if(!p||__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('현장 정보와 진행 중인 작업을 확인하세요.');return false;}
+  const expected=hjLeakProjectStamp(p),related=options.currentRef?hjLeakProjectByRef(options.currentRef):null,context={id:options.id||uid(),currentRef:options.currentRef||'',currentStamp:related?hjLeakProjectStamp(related):''};let busy=false;
+  const text=String(options.text||'').slice(0,2000),same=['same','different'].includes(options.same)?options.same:'';
+  const body='<div id="hjLeakAs"><p><b>'+escapeHtml(p.name)+'</b><br>이전 원인: '+escapeHtml(p.leak?.detect?.cause||'원인 미확정')+'</p><label for="hjLeakAsText">증상</label><textarea id="hjLeakAsText" rows="3" maxlength="2000" style="display:block;width:100%;min-height:88px;font-size:16px">'+escapeHtml(text)+'</textarea><label for="hjLeakAsSame" style="display:block;margin-top:10px">이전 공사와 원인이 같은가요?</label><select id="hjLeakAsSame" style="width:100%;min-height:44px;font-size:16px"><option value="">확인 후 선택</option><option value="same"'+(same==='same'?' selected':'')+'>같은 원인</option><option value="different"'+(same==='different'?' selected':'')+'>다른 원인</option></select><p class="hint">다른 원인이면 새 누수 현장을 제안합니다. 확인 전에는 기록을 만들지 않습니다.</p><p id="hjLeakAsIssue" role="alert"></p></div>';
+  openModal('🔧 누수 AS 접수',body,[{label:'확인 후 접수',cls:'clay',fn:async()=>{
+    if(busy)return;const root=document.getElementById('hjLeakAs');if(!root)return;const input={text:root.querySelector('#hjLeakAsText').value,same:root.querySelector('#hjLeakAsSame').value};
+    if(input.same==='different'){if(hjLeakProjectByRef(ref)!==p||hjLeakProjectStamp(p)!==expected){root.querySelector('#hjLeakAsIssue').textContent='현장 정보가 바뀌었습니다. 다시 열어 주세요.';return;}hjLeakAsDifferentView(p,{...options,...input,id:context.id},back);return;}
+    const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select,#modalRoot textarea')];busy=true;__modalCloseLocked=true;controls.forEach(x=>x.disabled=true);let id;
+    try{id=await hjLeakAsSave(p,input,expected,context,()=>root.isConnected&&document.getElementById('hjLeakAs')===root);webWorkMarkDirtyAfterPersist();}
+    catch(e){root.querySelector('#hjLeakAsIssue').textContent=String(e.message||e);}
+    finally{busy=false;__modalCloseLocked=false;controls.forEach(x=>x.disabled=false);}
+    if(id){window.__modalOnClose=null;closeModal(true);render();if(back&&options.returnOnSaved)back();else asManage(id);toast('🔧 같은 원인 AS를 접수했어요');}
+  }},{label:'취소',cls:'ghost',fn:closeModal}],true);hjLeakModalStyle();hjLeakModalReturn(back);return true;
+}
+function hjLeakAsDifferentView(p,options,back){
+  const ref=hjLeakProjectRef(p),expected=hjLeakProjectStamp(p),returnAs=()=>hjLeakAsView(ref,options,back);
+  openModal('다른 원인 · 새 누수 현장 제안','<p>이전 공사의 AS와 구분해 새 누수 현장으로 접수할 수 있습니다. 기존 현장과 AS 기록은 그대로 유지됩니다.</p><p>새 현장 이름을 입력하고 추가를 확인한 뒤에만 이전 공사 연결을 저장합니다.</p>',[
+    {label:'새 누수 현장 만들기',cls:'clay',fn:()=>{if(hjLeakProjectByRef(ref)!==p||hjLeakProjectStamp(p)!==expected){toast('이전 현장이 바뀌었습니다. 다시 확인하세요.');return;}hjProjectQuickAdd({kind:'leak',leakPrevRef:ref,leakPrevStamp:expected,back:returnAs});}},
+    {label:'뒤로',cls:'ghost',fn:returnAs},{label:'취소',cls:'ghost',fn:closeModal}]);hjLeakModalStyle();hjLeakModalReturn(back);
+}
+/* v423 새 원인 연결은 사용자가 새 현장을 추가할 때만 적용한다. 기존 현장 재사용·사진 이동에는 적용하지 않는다. */
+function hjLeakNewProjectFields(target,options,data=state){
+  if(!options?.leakPrevRef)return target;
+  const previous=hjLeakProjectByRef(options.leakPrevRef,data);
+  if(!previous||hjLeakProjectStamp(previous)!==options.leakPrevStamp)throw new Error('이전 공사 정보가 바뀌었습니다. AS 화면에서 다시 시작하세요.');
+  if(target.kind!=='leak'||target.name===previous.name)throw new Error('다른 원인은 새로운 누수 현장 이름으로 등록하세요.');
+  target.leak={...(target.leak||{}),prevId:options.leakPrevRef};
+  const addr=String(previous.customer?.addr||'').trim();if(addr)target.customer={...(target.customer||{}),addr};return target;
+}
+async function hjLeakNewProjectSave(name,options,stillOpen){
+  const previous=hjLeakProjectByRef(options.leakPrevRef),stamp=options.leakPrevStamp;
+  const valid=()=>previous&&hjLeakProjectByRef(options.leakPrevRef)===previous&&hjLeakProjectStamp(previous)===stamp&&!__tabStale&&!(state.projects||[]).some(p=>p&&p.name===name)&&(!stillOpen||stillOpen());
+  if(!valid())throw new Error('현장 정보 또는 이름이 바뀌었습니다. 다시 확인하세요.');
+  return durableLocalMutation({snapshotLabel:'다른 원인 누수 현장 추가 전',beforeCommit:()=>{if(!valid())throw new Error('이전 공사 또는 새 현장 이름이 바뀌었습니다.');},mutateDraft:draft=>{
+    if((draft.projects||[]).some(p=>p&&p.name===name))throw new Error('이미 있는 현장입니다. 새 이름으로 등록하세요.');
+    const target=hjLeakNewProjectFields({name,kind:'leak',stage:0,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:''},geo:null},options,draft);
+    draft.projects.push(target);return name;
+  }});
+}
+function hjLeakNewProjectCommit(name,options){
+  if(__modalCloseLocked)return;
+  const panel=document.querySelector('#modalRoot .modal'),quick=panel&&panel.querySelector('#hjQuickProj'),newProj=document.getElementById('newProj');
+  const controls=[...new Set([...(panel?panel.querySelectorAll('button,input,select,textarea'):[]),newProj].filter(Boolean))],disabled=controls.map(el=>el.disabled);
+  // v423 저장 대기 중 입력을 잠그고 재검증한다. 기존 disabled(누수 유형 고정 등)는 실패 뒤에도 보존한다.
+  controls.forEach(el=>el.disabled=true);__modalCloseLocked=true;
+  const stillOpen=()=>document.querySelector('#modalRoot .modal')===panel&&(!quick||(quick.isConnected&&panel.querySelector('#hjQuickProj')===quick&&quick.value.trim()===name));
+  hjLeakNewProjectSave(name,options,stillOpen).then(saved=>{webWorkMarkDirtyAfterPersist();window.__modalOnClose=null;closeModal(true);__modalCloseLocked=false;state.activeProject=saved;state.tab='project';$('#newProj').value='';render();$('#newProjKind').value='interior';hjLeakIntakeView(saved);toast('다른 원인 누수 현장을 추가했어요');},e=>{toast(String(e.message||e));}).finally(()=>{__modalCloseLocked=false;controls.forEach((el,i)=>el.disabled=disabled[i]);});
+}
+/* v423 보고서는 저장된 약정만 읽는다. hjWarranty의 미등록 기본값을 확정 보증처럼 표시하지 않는다. */
+function hjLeakWarrantyReportText(p){
+  const raw=p&&p.warranty;
+  if(!raw||typeof raw!=='object'||!Array.isArray(raw.items)||!raw.items.length)return '보증 항목·기간은 보증 등록 후 확인해 주세요.';
+  const startedAt=hjLeakRepeatDay(raw.startedAt),items=raw.items.map(it=>{
+    if(!it||typeof it.name!=='string'||!it.name.trim())return '';
+    const months=Number(it.months),expiresAt=hjLeakRepeatDay(it.expiresAt);
+    if(!Number.isInteger(months)||months<1||!startedAt||!expiresAt||expiresAt<startedAt)return it.name+' · 보증 기간 확인 필요';
+    return it.name+' '+months+'개월 ('+startedAt+' ~ '+expiresAt+')';
+  }).filter(Boolean);
+  return items.length?items.join(' · '):'보증 항목·기간은 보증 등록 후 확인해 주세요.';
 }
 
 function viewQuoteMaker(){
@@ -36316,6 +36679,9 @@ function setupDelegation(){
     if(t.id==='asAdd'){
       const inp=$('#asNew');const txt=(inp&&inp.value||'').trim();
       if(!txt){toast('AS 내용을 입력하세요.');return;}
+      // v423 현장 카드도 전역 AS와 같은 원인 질문을 사용한다.
+      const leakProject=(state.projects||[]).filter(p=>p&&p.name===t.dataset.proj);
+      if(leakProject.length===1&&leakProject[0].kind==='leak')return hjLeakAsView(hjLeakProjectRef(leakProject[0]),{text:txt},()=>{render();const input=document.getElementById('asNew');if(input)input.value=txt;});
       state.asLog=state.asLog||[];
       state.asLog.push({id:uid(),project:t.dataset.proj,date:localDate(),text:txt,status:'open'});   // 접수일은 이 기기 날짜 — UTC(toISOString)면 아침 9시 전 접수가 전날로 적혀 보증 판정 기준일이 어긋난다
       // 보증기간 내/외 힌트(과설계 금지 — 토스트로만)
