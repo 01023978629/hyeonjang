@@ -18,7 +18,8 @@ const out = path.join(temp, '_site');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 여기에 안 적으면 저장소에는 있는데 Pages 에
 // 안 올라가고, 그건 폰에서 설치할 때에만 드러난다. 늘릴 때는 왜 늘렸는지 여기에 적어라.
 // 2026-10-01 v333: team-upload.js — 직원 사진함의 영속 업로드 대기열(HEIC·동영상·실패 후 재시도). team.html 이 부른다.
-const expected = ['.nojekyll', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+// v410: 공개 상담 셸과 생성 참고 이미지만. 고객별 초안/사진/단가 파일은 배포하지 않는다.
+const expected = ['.nojekyll', 'apple-touch-icon.png', 'bathroom-gray.webp', 'bathroom-model.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom.css', 'bathroom.html', 'bathroom.js', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
   'index.html', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team-upload.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
@@ -26,7 +27,7 @@ const requiredGuards = [
   'version-sync.check.js', 'sw-cache.check.js', 'pages-artifact.e2e.js',
   'office-ops-isolation.e2e.js', 'office-ops-ui.e2e.js', 'paid-work-gate.e2e.js',
   'apt-commercial-ui.e2e.js', 'legacy-commercial-gate.e2e.js',
-  'office-ops-conversion.e2e.js', 'relay.e2e.js',
+  'office-ops-conversion.e2e.js', 'office-ops-conversion-recovery.e2e.js', 'relay.e2e.js',
   'ai-high-risk-confirm.e2e.js', 'sensitive-query.e2e.js',
   'web-work-bridge.e2e.js', 'media-safety.e2e.js', 'media-intake.e2e.js',
   'media-relay-server.unit.js', 'shared-todo-backup.unit.js', 'shared-todo-backup.e2e.js'
@@ -463,6 +464,9 @@ try {
   const missingGuardMutant = new Set(testNames);
   missingGuardMutant.delete('office-ops-conversion.e2e.js');
   nodeAssert.throws(() => assertRequiredGuards(missingGuardMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'missing deployment guard fixture must be rejected');
+  const missingRecoveryGuardMutant = new Set(testNames);
+  missingRecoveryGuardMutant.delete('office-ops-conversion-recovery.e2e.js');
+  nodeAssert.throws(() => assertRequiredGuards(missingRecoveryGuardMutant, 'mutant'), /office-ops-conversion-recovery\.e2e\.js/, 'missing recovery entry must be rejected without running only half the conversion cases');
   assertRequiredGuards(testNames, '배포 전');
   const runner = fs.readFileSync(path.join(root, 'tests', 'run-all.js'), 'utf8');
   const missingListSuiteMutant = runner.replace(/function\s+listSuite\s*\(/, 'function listSuiteMissing(');
@@ -473,6 +477,8 @@ try {
   const filteredRunnerMutant = withoutRunnerGuard(runner, 'office-ops-conversion.e2e.js');
   assert(testNames.has('office-ops-conversion.e2e.js'), 'runner mutant prerequisite keeps the required test file on disk');
   nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRunnerMutant, 'mutant'), /office-ops-conversion\.e2e\.js/, 'no-filter runner mutation must be rejected while the file stays on disk');
+  const filteredRecoveryRunnerMutant = withoutRunnerGuard(runner, 'office-ops-conversion-recovery.e2e.js');
+  nodeAssert.throws(() => assertRunnerContainsRequiredGuards(filteredRecoveryRunnerMutant, 'mutant'), /office-ops-conversion-recovery\.e2e\.js/, 'runner omission of only the recovery entry must be rejected');
   assertRunnerContainsRequiredGuards(runner, '배포 전 실제');
   const duplicateRunnerBindingMutant = runner + "\nfunction listSuite(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));}\n";
   const reassignedRunnerBindingMutant = runner + "\nlistSuite=function(){return fs.readdirSync(TESTS).filter(file=>/\\.(?:check|unit|e2e)\\.js$/.test(file)&&file!=='office-ops-conversion.e2e.js').map(file=>path.join('tests',file));};\n";

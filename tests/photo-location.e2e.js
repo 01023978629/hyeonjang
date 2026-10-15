@@ -26,6 +26,11 @@ const {chromium}=require('playwright');
     const rows=await page.locator('.cluster').allTextContents();assert.equal(rows.length,2);
     assert(rows.some(x=>x.includes('현장 방문')&&x.includes('현장 미지정 4장')&&x.includes('GPS 36.10000, 127.10000')));
     const unknown=page.locator('.cluster').filter({hasText:'현장 미지정 21장'});
+    // 앞 묶음이 긴 화면을 재현한다. content-visibility:auto 영역은 실제로 스크롤한 뒤 표시 문구를 읽는다.
+    await page.locator('.cluster').first().evaluate(el=>{el.style.minHeight='12000px';});
+    await page.waitForFunction(()=>{const el=[...document.querySelectorAll('.cluster')].find(x=>x.textContent.includes('현장 미지정 21장'));return el&&el.innerText==='';});
+    await unknown.scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>{const el=[...document.querySelectorAll('.cluster')].find(x=>x.textContent.includes('현장 미지정 21장'));return el&&el.innerText.includes('사진 묶음');});
     const unknownText=await unknown.innerText();
     assert.match(unknownText,/사진 묶음/);assert.match(unknownText,/위치 미확인 · 시간 기준 묶음/);
     assert(!unknownText.includes('TEST_STORED_ADDRESS'));assert(!unknownText.includes('GPS '));
