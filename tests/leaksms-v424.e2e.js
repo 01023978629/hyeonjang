@@ -43,7 +43,13 @@ let browser, passed = 0;
   await page.evaluate(async keys => { await Promise.all(keys.map(key => window[key])); if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone; }, BOOT);
   assert.equal(await page.evaluate(() => typeof hjLeakSmsDraft === 'function' && typeof hjLeakSmsView === 'function' && typeof hjLeakSmsPending === 'function'), true, 'LEAK_SMS_API_PRESENT');
   await page.evaluate(async () => {
-    aiOpsEnsureState().enabled = false; clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+    aiOpsEnsureState().enabled = false;
+    // Boot schedules these real one-time initializers at 4s/4.5s. Complete them
+    // before the fixture; their stored markers make the later timer callbacks
+    // idempotent, without arbitrary sleep or hiding any serialized-state changes.
+    taxCalendarEnsure(); coworkSchedEnsure();
+    if (!state._cwSchedInit || !Array.isArray(state.calendarImports)) throw Error('TEST_V424_BOOT_SEEDERS_NOT_READY');
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
     hjSendSms = (phone, text) => { __v424Calls.sms.push({ phone, text }); };
   });
   if (process.env.HJ_V424_MUTATION) {
@@ -71,6 +77,9 @@ let browser, passed = 0;
         detect: { methods: ['청음'], cause: '온수관', zone: '전유부', place: privateFields[3], pressure: { from: 7, to: 0, unit: 'bar' }, humidity: 0, note: 'TEST_DETECT_NOTE', revisit: false, at } };
       state.projects = [p, project(interior, 'interior')];
       state.quotes = [{ id: 'TEST_LEAK_SMS_QUOTE', project: leak, title: 'TEST_LEAK_QUOTE', date: day, leak: { from: 'template', cause: '급수관', zone: '전유부' }, items: [{ name: '배관 교체', qty: 1, price: 100000 }], vatIncluded: true, paid: { amount: 20000 } }];
+      // Normal quote saves also create a derived project file. Keep the fixture
+      // faithful to that path so exact hydration does not invent a missing file.
+      state.quotes.forEach(q => syncQuoteToProject(q));
       state.schedule = [{ id: 'TEST_LEAK_SMS_DISPATCH', project: leak, title: '누수 출동', date: day, time: '10:00', endTime: '11:00', urgent: true, report: { progress: '완료', text: 'TEST_DISPATCH_REPORTED' } }];
       state.activeProject = leak; state.tab = 'project'; state.search = ''; __photoCache.key = null; __sel.clear(); __selMode = false;
       __relay.url = ''; __relay.token = ''; __gdToken = null; __v424Calls.copied = []; __v424Calls.sms = []; __v424Calls.otherExternal = [];
@@ -84,6 +93,20 @@ let browser, passed = 0;
       const live = serializeData(); live.savedAt = '';
       return { live: paidStableJson(live), stored: paidStableJson(await idbGetStrict('appState')), keys: Object.keys(live).sort() };
     });
+  }
+  function sameSnapshot(actual, expected, label = 'serialized state remains unchanged') {
+    const changed = [];
+    for (const section of ['live', 'stored']) {
+      if (actual[section] === expected[section]) continue;
+      const a = JSON.parse(actual[section]), b = JSON.parse(expected[section]);
+      if (!a || !b || typeof a !== 'object' || typeof b !== 'object') { changed.push(section); continue; }
+      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (Object.hasOwn(a, key) !== Object.hasOwn(b, key) || JSON.stringify(a[key]) !== JSON.stringify(b[key])) changed.push(section + '.' + key);
+      }
+    }
+    if (JSON.stringify(actual.keys) !== JSON.stringify(expected.keys)) changed.push('keys');
+    // Keep full equality coverage while showing only changed field names in logs.
+    assert.deepEqual(changed, [], label + ' (changed field names only)');
   }
   async function open(key) {
     await close();
@@ -111,7 +134,7 @@ let browser, passed = 0;
     assert.match(get('quote'), /110,?000\s*원/); assert.match(get('quote'), /부가세/); assert.match(get('quote'), /추가.*먼저/);
     assert.match(get('pay'), /90,?000\s*원/); assert(!/20,?000\s*원/.test(get('pay')), 'received must not be deducted again');
     for (const secret of [...PRIVATE, LEAK]) assert(!get('third').includes(secret), 'THIRD_MASKED: customer, address and origin household must be absent');
-    assert.match(get('third'), /관리사무소/); assert.deepEqual(await snapshot(), before);
+    assert.match(get('third'), /관리사무소/); sameSnapshot(await snapshot(), before);
   });
   await test('four stage defaults use completed dispatch evidence and never write', async () => {
     await seed(); const before = await snapshot();
@@ -123,7 +146,7 @@ let browser, passed = 0;
         hjLeakSmsStage({ ...p, stage: 2 }), hjLeakSmsStage({ ...p, stage: 3 })
       ];
     });
-    assert.deepEqual(stages, ['intake', 'detect', 'quote', 'done']); assert.deepEqual(await snapshot(), before);
+    assert.deepEqual(stages, ['intake', 'detect', 'quote', 'done']); sameSnapshot(await snapshot(), before);
   });
   await test('ambiguous quote, unsupported paid amount, and unselected account stay unconfirmed', async () => {
     await seed();
@@ -138,19 +161,19 @@ let browser, passed = 0;
     assert(!/\d[\d,]*\s*원/.test(facts.noSelection), 'multiple quotes need explicit selection');
     assert(!/\d[\d,]*\s*원/.test(facts.badPaid), 'invalid paid balance must not produce an invented amount');
     for (const account of facts.accounts) assert(!facts.noAccount.includes(account), 'bank account must not be selected automatically');
-    assert.deepEqual(await snapshot(), before);
+    sameSnapshot(await snapshot(), before);
     await open('quote'); assert.equal(await page.locator('#hjLeakSmsQuote').inputValue(), ''); assert.equal(await page.locator('#hjLeakSmsAccount').inputValue(), '');
   });
   await test('open, copy and SMS app actions do not mark sent', async () => {
     await seed(); const before = await snapshot(); await open();
-    assert.deepEqual(await snapshot(), before); assert.equal(await page.locator('[data-leak-sms-key]').count(), 7);
+    sameSnapshot(await snapshot(), before); assert.equal(await page.locator('[data-leak-sms-key]').count(), 7);
     assert.equal(await page.locator('#hjLeakSms details').count(), 1); assert.equal(await page.locator('#hjLeakSms details').evaluate(el => el.open), false);
     await page.locator('#hjLeakSmsBody').fill('TEST_EDITED_SMS_BODY');
     await page.locator('#hjLeakSmsCopy').click(); await page.waitForFunction(() => __v424Calls.copied.length === 1);
     await page.locator('#hjLeakSmsSend').click(); await page.waitForFunction(() => __v424Calls.sms.length === 1);
     const calls = await page.evaluate(() => __v424Calls);
     assert.equal(calls.copied[0], 'TEST_EDITED_SMS_BODY'); assert.equal(calls.sms[0].text, 'TEST_EDITED_SMS_BODY'); assert.equal(calls.sms[0].phone.replace(/\D/g, ''), PRIVATE[1].replace(/\D/g, ''));
-    assert.deepEqual(await snapshot(), before, 'copy/deep-link opening is not a sent receipt'); await shot('01-leak-sms');
+    sameSnapshot(await snapshot(), before, 'copy/deep-link opening is not a sent receipt'); await shot('01-leak-sms');
   });
   await test('third-party view requires consent and an explicit different recipient', async () => {
     await seed(); const before = await snapshot(); await open('third');
@@ -160,18 +183,19 @@ let browser, passed = 0;
     await page.locator('#hjLeakSmsConsent').check(); await page.locator('#hjLeakSmsSend').click(); assert.equal(await page.evaluate(() => __v424Calls.sms.length), 0);
     await page.locator('#hjLeakSmsPhone').fill(PRIVATE[1]); await page.locator('#hjLeakSmsSend').click(); assert.equal(await page.evaluate(() => __v424Calls.sms.length), 0, 'third-party recipient must not default back to the customer');
     await page.locator('#hjLeakSmsPhone').fill('010-0000-0001'); await page.locator('#hjLeakSmsSend').click(); await page.waitForFunction(() => __v424Calls.sms.length === 1);
-    assert.equal(await page.evaluate(() => __v424Calls.sms[0].phone.replace(/\D/g, '')), '01000000001'); assert.deepEqual(await snapshot(), before); await shot('02-third-consent');
+    assert.equal(await page.evaluate(() => __v424Calls.sms[0].phone.replace(/\D/g, '')), '01000000001'); sameSnapshot(await snapshot(), before); await shot('02-third-consent');
   });
   await test('mark sent commits the receipt and one note atomically, and repeat is read only', async () => {
     await seed(); const keys = (await snapshot()).keys; await open('detect');
-    await page.locator('#hjLeakSmsMark').click(); await page.waitForFunction(() => !!state.projects[0].leak.sms?.detect);
+    await page.locator('#hjLeakSmsMark').click(); await page.waitForFunction(() => !!state.projects[0].leak.sms?.detect || document.getElementById('hjLeakSmsIssue')?.textContent);
+    assert.equal(await page.evaluate(() => !!state.projects[0].leak.sms?.detect), true, await page.locator('#hjLeakSmsIssue').innerText());
     await page.waitForFunction(() => document.getElementById('hjLeakSmsSent')?.textContent.includes('✓'));
     const result = await page.evaluate(async () => ({ p: state.projects[0], notes: state.notes, stored: await idbGetStrict('appState') }));
     assert(Number.isFinite(Date.parse(result.p.leak.sms.detect))); assert.equal(result.notes.length, 1); assert.match(result.notes[0].text, /^\[문자\]/);
     assert.deepEqual(result.stored.projects[0].leak.sms, result.p.leak.sms); assert.deepEqual(result.stored.notes, result.notes); assert.deepEqual((await snapshot()).keys, keys);
     const before = await snapshot();
     const repeat = await page.evaluate(async () => { const p = state.projects[0]; return hjLeakSmsMark(p, 'detect', hjLeakSmsExpected(p), () => true); });
-    assert.equal(repeat.changed, false); assert.deepEqual(await snapshot(), before, 'already marked stage must not add a note or commit again');
+    assert.equal(repeat.changed, false); sameSnapshot(await snapshot(), before, 'already marked stage must not add a note or commit again');
     await close();
     await page.evaluate(async () => {
       state.projects[0].leak.sms.detect = hjAddDays(localDate(), -1) + 'T03:00:00.000Z';
@@ -190,7 +214,7 @@ let browser, passed = 0;
     try {
       await page.locator('#hjLeakSmsMark').click(); await page.waitForFunction(() => document.getElementById('hjLeakSmsIssue')?.textContent.includes('TEST_V424_ATOMIC_FAIL'));
       assert.equal(await page.locator('#hjLeakSmsBody').inputValue(), 'TEST_UNSAVED_MESSAGE'); assert.equal(await page.locator('#hjLeakSmsMark').isEnabled(), true);
-      assert.deepEqual(await snapshot(), before);
+      sameSnapshot(await snapshot(), before);
     } finally { await page.evaluate(() => { paidCommitWriteAtomic = __v424Writer; delete window.__v424Writer; }); }
     await page.locator('#hjLeakSmsMark').click(); await page.waitForFunction(() => !!state.projects[0].leak.sms?.detect);
     assert.equal(await page.evaluate(() => state.notes.filter(n => n.text.startsWith('[문자]')).length), 1);
@@ -209,7 +233,7 @@ let browser, passed = 0;
     assert.deepEqual(result.direct.detect, [LEAK]); assert.deepEqual(result.direct.done, ['TEST_DONE_UNNOTIFIED']); assert.deepEqual(result.day, result.direct);
     await page.evaluate(() => hjDayCloseView());
     assert.equal(await page.locator('[data-dc-leaksms][data-sms-key="detect"]').count(), 1); assert.equal(await page.locator('[data-dc-leaksms][data-sms-key="done"]').count(), 1);
-    assert.deepEqual(await snapshot(), before); await shot('03-leak-dayclose');
+    sameSnapshot(await snapshot(), before); await shot('03-leak-dayclose');
   });
   await test('mobile sizes, existing message center and menu126 remain intact', async () => {
     await seed(); await open();
