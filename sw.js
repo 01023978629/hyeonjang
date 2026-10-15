@@ -10,7 +10,10 @@ self.addEventListener('install',e=>{e.waitUntil((async()=>{
     const response=await fetch(request);
     if(!cacheableShellResponse(response))throw new Error('shell-install-response');
     if(response.url){const url=new URL(response.url);if(url.origin!==self.location.origin||url.search||url.pathname!==new URL(request.url).pathname)throw new Error('shell-install-response-url');}
-    ready.push([request,response]);
+    // 큰 HTML 응답을 읽지 않고 쌓으면 no-store 서버의 다음 요청이 막힐 수 있다.
+    // 각 본문을 먼저 끝까지 읽고, 모든 응답이 검증된 뒤에만 새 캐시를 쓴다.
+    const body=await response.arrayBuffer();
+    ready.push([request,new Response(body,{status:response.status,statusText:response.statusText,headers:response.headers})]);
   }
   const cache=await caches.open(C);
   for(const [request,response] of ready)await cache.put(request,response.clone());

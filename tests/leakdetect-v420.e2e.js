@@ -255,6 +255,8 @@ const baseline = process.env.HJ_V420_BASELINE && execFileSync('git', ['show', pr
   });
   await test('shared photo metadata retry honors the newly selected tag without ingesting twice', async () => {
     await seed();
+    // v425 keeps originals from earlier gallery intake in the same inbox. Scope this retry to its exact share ID.
+    const retainedOriginals = await page.evaluate(async () => Promise.all((await HJShareInbox.read()).map(async row => ({ id: row.id, bytes: row.blob ? [...new Uint8Array(await row.blob.arrayBuffer())] : null }))));
     await page.evaluate(async ({ png, at }) => {
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const db = await new Promise((resolve, reject) => {
@@ -286,7 +288,7 @@ const baseline = process.env.HJ_V420_BASELINE && execFileSync('git', ['show', pr
       await page.locator('#photoIntakeLeakTags [data-intake-leaktag="before"]').click();
       await page.locator('#photoIntakeConfirm').click();
       assert.equal((await page.evaluate(() => window.__hjShareInboxLastDone)).status, 'failed');
-      const first = await page.evaluate(async () => ({ file: state.files[0], rows: (await HJShareInbox.read()).map(row => ({ id: row.id, accepted: row.acceptedRecordId, staged: row.stagedRecordId, hasBlob: row.blob instanceof Blob })), stored: await idbGetStrict('appState') }));
+      const first = await page.evaluate(async () => ({ file: state.files[0], rows: (await HJShareInbox.read()).filter(row => row.id === 'TEST_V420_SHARE_RETRY').map(row => ({ id: row.id, accepted: row.acceptedRecordId, staged: row.stagedRecordId, hasBlob: row.blob instanceof Blob })), stored: await idbGetStrict('appState') }));
       assert.equal(first.file._leaktag, 'before'); assert.equal(first.file._worklabel, 'TEST_SHARE_ORIGINAL_WORK');
       assert.equal(first.stored.files.length, 0, 'failed metadata must remain unaccepted');
       assert.equal(first.rows.length, 1); assert.equal(first.rows[0].accepted, undefined); assert.equal(first.rows[0].staged, first.file.id); assert.equal(first.rows[0].hasBlob, true);
@@ -295,12 +297,13 @@ const baseline = process.env.HJ_V420_BASELINE && execFileSync('git', ['show', pr
       await page.locator('#photoIntakeLeakTags [data-intake-leaktag="after"]').click();
       await page.locator('#photoIntakeConfirm').click();
       assert.equal((await page.evaluate(() => window.__hjShareInboxLastDone)).status, 'complete');
-      const retry = await page.evaluate(async () => ({ files: state.files, calls: __v420Retry.calls, saved: await idbGetStrict('appState'), rows: await Promise.all((await HJShareInbox.read()).map(async row => ({ accepted: row.acceptedRecordId, bytes: row.blob ? [...new Uint8Array(await row.blob.arrayBuffer())] : null }))) }));
+      const retry = await page.evaluate(async () => ({ files: state.files, calls: __v420Retry.calls, saved: await idbGetStrict('appState'), rows: await Promise.all((await HJShareInbox.read()).filter(row => row.id === 'TEST_V420_SHARE_RETRY').map(async row => ({ accepted: row.acceptedRecordId, bytes: row.blob ? [...new Uint8Array(await row.blob.arrayBuffer())] : null }))) }));
       assert.equal(retry.files.length, 1); assert.equal(retry.calls, 1, 'retry must reuse the staged original');
       assert.equal(retry.files[0].id, first.file.id); assert.equal(retry.files[0]._leaktag, 'after', 'SHARED_RETRY_EXPLICIT_TAG');
       assert.equal(retry.files[0]._worklabel, first.file._worklabel); assert.equal(retry.files[0]._phase, first.file._phase);
       assert.equal(retry.saved.files[0].leaktag, 'after'); assert.equal(retry.rows[0].accepted, first.file.id);
       assert.deepEqual(Buffer.from(retry.rows[0].bytes), Buffer.from(PNG, 'base64'), 'accepted original bytes are retained');
+      assert.deepEqual(await page.evaluate(async () => Promise.all((await HJShareInbox.read()).filter(row => row.id !== 'TEST_V420_SHARE_RETRY').map(async row => ({ id: row.id, bytes: row.blob ? [...new Uint8Array(await row.blob.arrayBuffer())] : null })))), retainedOriginals, 'earlier gallery originals must not be removed by a shared-photo retry');
     } finally {
       await page.evaluate(() => { guardedPersistCurrentState = __v420Retry.realSave; ingestFile = __v420Retry.realIngest; delete window.__v420Retry; });
     }

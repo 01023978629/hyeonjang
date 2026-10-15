@@ -19,6 +19,12 @@ let browser, passed = 0;
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
   const context = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Seoul', serviceWorkers: 'block' });
   const page = await context.newPage(), errors = [], cache = new Map(), requests = [], driveRequests = [];
+  // Windows Chromium resets its renderer online flag on navigation even while context traffic is offline.
+  // Keep real traffic blocked by setOffline and refresh the DevTools network state; never mock navigator.onLine.
+  const networkState = await context.newCDPSession(page);
+  await networkState.send('Network.enable');
+  const refreshNetworkState = value => networkState.send('Network.overrideNetworkState', { offline: value, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const setOffline = async value => { await context.setOffline(value); await refreshNetworkState(value); };
   let offline = false, failUploads = false, revision = 0, realWrites = 0, driveMock = false, saveReceipt = null;
   page.setDefaultTimeout(12000); page.on('pageerror', e => errors.push(String(e)));
   const dismiss = dialog => dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss();
@@ -85,6 +91,7 @@ let browser, passed = 0;
   }, [...PNG]);
   async function boot() {
     await page.goto(APP, { waitUntil: 'domcontentloaded' });
+    await refreshNetworkState(offline);
     await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(k => !!window[k]), BOOT);
     await page.evaluate(async keys => {
       await Promise.all(keys.map(k => window[k])); if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
@@ -145,7 +152,7 @@ let browser, passed = 0;
     }, PROJECT);
   });
   await test('offline real photo, worklog and detection saves create five durable rows', async () => {
-    offline = true; await context.setOffline(true); assert.equal(await page.evaluate(() => navigator.onLine), false);
+    offline = true; await setOffline(true); assert.equal(await page.evaluate(() => navigator.onLine), false);
     await page.evaluate(mock => { __relay.url = mock; __relay.token = 'TEST_OFFLINE_TOKEN'; }, MOCK);
     await addPhotos(3, 1);
     await page.evaluate(project => voiceWorkLog(project), PROJECT); await page.locator('#wlText').fill('TEST_OFFLINE_WORKLOG'); await page.getByRole('button', { name: '💾 일지 저장', exact: true }).click();
@@ -187,18 +194,24 @@ let browser, passed = 0;
     sameSnapshot(await snapshot(), before, 'report read and renderer input'); await close();
   });
   await test('online event drains the original five rows in FIFO order', async () => {
+    const readDrift = () => page.evaluate(async () => {
+      const saved = await hjOutboxSaved(), live = serializeData(), paths = [];
+      const walk = (a, b, path) => { if (path === 'savedAt' || paidStableJson(a) === paidStableJson(b)) return; if (a && b && typeof a === 'object' && typeof b === 'object') { for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) walk(a[key], b[key], path ? path + '.' + key : key); } else paths.push(path); };
+      walk(live, saved, ''); return paths;
+    });
+    assert.deepEqual(await readDrift(), [], 'OUTBOX_LIVE_SAVED_MATCH (field paths only)');
     if (process.env.HJ_V425_MUTATION) assert(await page.evaluate(() => __v425RemovedOnline.outbox > 0 && __v425RemovedOnline.legacy > 0), 'mutation must remove direct online and legacy online-to-outbox paths');
-    const start = requests.length; offline = false; await context.setOffline(false);
+    const start = requests.length; offline = false; await setOffline(false);
     const remaining = await pollRows(items => items.length === 0);
-    assert.equal(remaining.length, 0, 'ONLINE_EVENT_DRAINS_FIFO: online event must drain all five saved records, rows=' + compactRows(remaining));
+    assert.equal(remaining.length, 0, 'ONLINE_EVENT_DRAINS_FIFO: online event must drain all five saved records, rows=' + compactRows(remaining) + ', driftPaths=' + JSON.stringify(await readDrift()));
     const sent = requests.slice(start).filter(r => ['upload', 'save'].includes(r.action));
     assert.deepEqual([...new Set(sent.map(r => r.head).filter(Boolean))], fifo, 'FIFO applies to all file/note/detect rows');
     assert.deepEqual(sent.filter(r => r.action === 'upload').map(r => r.name), ['TEST_OFFLINE_1.png', 'TEST_OFFLINE_2.png', 'TEST_OFFLINE_3.png']);
     assert.equal(await page.evaluate(() => state.files.filter(f => f._driveId).length), 3); assert.deepEqual(await originalFacts(), originals, 'successful cloud sync must retain local originals');
   });
   await test('HTTP500 reaches five attempts, stops automatic retry, and manual UI retries', async () => {
-    offline = true; await context.setOffline(true); await addPhotos(1, 4); await waitCount(1, 'RETRY_PHOTO_QUEUED');
-    failUploads = true; offline = false; await context.setOffline(false);
+    offline = true; await setOffline(true); await addPhotos(1, 4); await waitCount(1, 'RETRY_PHOTO_QUEUED');
+    failUploads = true; offline = false; await setOffline(false);
     const firstFailure = await pollRows(items => items.length === 1 && items[0].tries === 1);
     assert.equal(firstFailure.length, 1, 'HTTP_500_FIRST_ATTEMPT: rows=' + compactRows(firstFailure));
     assert.equal(firstFailure[0].tries, 1, 'HTTP_500_FIRST_ATTEMPT: rows=' + compactRows(firstFailure));
@@ -210,7 +223,7 @@ let browser, passed = 0;
     failUploads = false; await page.locator('#hjOutboxRetry').click(); await waitCount(0, 'MANUAL_RETRY_DRAINS'); await close();
   });
   await test('removing one queue row requires confirmation and preserves app record and blob', async () => {
-    offline = true; await context.setOffline(true); await addPhotos(1, 5); await waitCount(1, 'REMOVE_PHOTO_QUEUED');
+    offline = true; await setOffline(true); await addPhotos(1, 5); await waitCount(1, 'REMOVE_PHOTO_QUEUED');
     const before = await snapshot(), bytes = await originalFacts(); await page.evaluate(() => hjOutboxView()); await page.locator('#hjOutboxView').waitFor({ state: 'visible' });
     const sizes = await page.locator('#hjOutboxView button:visible, #hjOutboxRetry:visible').evaluateAll(nodes => nodes.map(n => ({ id: n.id, w: n.getBoundingClientRect().width, h: n.getBoundingClientRect().height })));
     assert(sizes.length >= 2); assert(sizes.every(s => s.w >= 44 && s.h >= 44), JSON.stringify(sizes)); assert(await page.locator('#modalRoot .modal').evaluate(n => n.scrollWidth <= n.clientWidth + 1)); await shot('03-outbox-remove');
@@ -228,7 +241,7 @@ let browser, passed = 0;
       __relay.url = ''; __relay.token = ''; __gdToken = 'TEST_DRIVE_TOKEN'; __gdFolderId = 'TEST_COMPANY_ROOT'; window.__gdSub = {};
     }, name);
     await addPhotos(1, 6, name); await waitCount(1, 'DRIVE_PHOTO_QUEUED');
-    driveMock = true; offline = false; await context.setOffline(false); await waitCount(0, 'DIRECT_DRIVE_UPLOAD');
+    driveMock = true; offline = false; await setOffline(false); await waitCount(0, 'DIRECT_DRIVE_UPLOAD');
     assert.equal(driveRequests.filter(r => r.method === 'GET').length, 1);
     assert.match(driveRequests[0].query, /name='현장사진'/); assert(!driveRequests[0].query.includes(name), 'project name must not become a Drive folder query');
     const create = driveRequests.find(r => r.method === 'POST'); assert(create); assert.deepEqual(create.json.parents, ['TEST_PHOTO_FOLDER']); assert.equal(create.json.name, 'TEST_OFFLINE_6.png');
@@ -238,26 +251,26 @@ let browser, passed = 0;
     await page.evaluate(() => { __gdToken = null; __gdFolderId = null; window.__gdSub = {}; });
   });
   await test('relay save receipt restores revision after restart without resending saved state', async () => {
-    offline = true; await context.setOffline(true);
+    offline = true; await setOffline(true);
     await page.evaluate(async mock => { __relay.url = mock; __relay.token = 'TEST_OFFLINE_TOKEN'; __relay.rev = 100; await idbSet('relay_rev', 100); }, MOCK);
     await page.evaluate(project => voiceWorkLog(project), PROJECT); await page.locator('#wlText').fill('TEST_RECEIPT_WORKLOG'); await page.getByRole('button', { name: '💾 일지 저장', exact: true }).click();
     await page.waitForFunction(() => !document.getElementById('wlText')); await close(); await waitCount(1, 'RECEIPT_NOTE_QUEUED');
     await page.evaluate(() => { window.__v425RealIdbSet = idbSet; idbSet = function (key, value) { if (key === 'relay_rev') return Promise.reject(Error('TEST_RELAY_REV_WRITE_FAILED')); return __v425RealIdbSet(key, value); }; });
     saveReceipt = { revision: 777, savedAt: '2026-10-16T04:00:00.000Z' };
-    const before = requests.filter(r => r.action === 'save').length; offline = false; await context.setOffline(false);
+    const before = requests.filter(r => r.action === 'save').length; offline = false; await setOffline(false);
     const held = await pollRows(items => items.length === 1 && items[0].receipt?.backend === 'relay-state' && items[0].receipt.revision === 777 && !items[0].claim);
     assert.equal(held.length, 1, 'RELAY_STATE_RECEIPT_RETAINED: rows=' + compactRows(held)); assert.equal(held[0].receipt?.revision, 777); assert.equal(held[0].receipt.savedAt, saveReceipt.savedAt);
     await page.waitForFunction(() => !__hjOutboxFlushing && !__hjOutboxUiSending); assert.equal(requests.filter(r => r.action === 'save').length - before, 1);
-    offline = true; await context.setOffline(true); await boot();
+    offline = true; await setOffline(true); await boot();
     assert.equal(await page.evaluate(() => idbGetStrict('relay_rev')), 100); assert.equal((await rows())[0].receipt.revision, 777);
     await page.evaluate(mock => { __relay.url = mock; __relay.token = 'TEST_OFFLINE_TOKEN'; __relay.rev = 100; }, MOCK);
-    const sends = requests.filter(r => r.action === 'save').length; offline = false; await context.setOffline(false); await waitCount(0, 'RELAY_RECEIPT_ACK_AFTER_RESTART');
+    const sends = requests.filter(r => r.action === 'save').length; offline = false; await setOffline(false); await waitCount(0, 'RELAY_RECEIPT_ACK_AFTER_RESTART');
     assert.equal(requests.filter(r => r.action === 'save').length, sends, 'receipt ACK must not repeat the successful save HTTP request');
     const restored = await page.evaluate(async () => ({ live: __relay.rev, stored: await idbGetStrict('relay_rev'), time: await idbGetStrict('relay_syncAt') }));
     assert.deepEqual(restored, { live: 777, stored: 777, time: saveReceipt.savedAt }); saveReceipt = null;
   });
   await test('31 photographs retain every original and accurately report 30 queued plus one excluded', async () => {
-    offline = true; await context.setOffline(true); const result = await addPhotos(31, 100); await waitCount(30, 'THIRTY_ITEM_QUEUE_LIMIT');
+    offline = true; await setOffline(true); const result = await addPhotos(31, 100); await waitCount(30, 'THIRTY_ITEM_QUEUE_LIMIT');
     assert.equal(result.report.ok, 0); assert.equal(result.report.queued, 30); assert.equal(result.report.excluded, 1); assert.equal(result.report.excludedFiles.length, 1);
     assert.match(result.text, /자동 전송 대기 제외\s*1장/); assert.match(result.text, /전송 대기\s*30장/);
     const kept = (await originalFacts()).filter(f => /^TEST_OFFLINE_1\d\d\.png$/.test(f.name)); assert.equal(kept.length, 31);
@@ -278,6 +291,10 @@ let browser, passed = 0;
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= 390)); assert.equal(realWrites, 0); assert.equal(await page.evaluate(() => __v425External), 0); assert.deepEqual(errors, []);
   });
   await context.close();
+  // This separate cold-install scenario starts a fresh browser network service;
+  // the previous scenario intentionally used DevTools offline emulation.
+  await browser.close();
+  browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
   await test('real installed service worker supports cold-shell offline reload with the original photo', async () => {
     const swURL = new URL(APP); swURL.hostname = 'localhost';
     const swContext = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Seoul', serviceWorkers: 'allow' });
@@ -285,11 +302,16 @@ let browser, passed = 0;
     swPage.setDefaultTimeout(12000); swPage.on('dialog', dismiss); swPage.on('pageerror', e => swErrors.push(String(e)));
     // No response cache, index substitution or route.fulfill in this context:
     // offline HTML/scripts must come from the real installed service worker.
-    await swContext.route('**/*', route => {
-      const r = route.request();
-      if (new URL(r.url()).origin === swURL.origin && ['GET', 'HEAD'].includes(r.method())) return route.continue();
-      if (!['GET', 'HEAD'].includes(r.method())) blockedWrites++;
+    // Intercept external URLs only at context level. Pausing the worker's own
+    // same-origin install fetches can deadlock Chromium's installation network.
+    await swContext.route(url => url.origin !== swURL.origin, route => {
+      if (!['GET', 'HEAD'].includes(route.request().method())) blockedWrites++;
       return route.abort('blockedbyclient');
+    });
+    // The localhost test server is read-only; observe unexpected local writes
+    // without pausing its shell requests. All external traffic stays blocked.
+    swContext.on('request', request => {
+      if (new URL(request.url()).origin === swURL.origin && !['GET', 'HEAD'].includes(request.method())) blockedWrites++;
     });
     await swPage.addInitScript(() => {
       localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_ver_checked_at', String(Date.now()));
@@ -305,6 +327,7 @@ let browser, passed = 0;
       await swPage.waitForFunction(() => !!navigator.serviceWorker.controller);
       const warm = await swPage.evaluate(async () => { const registration = await navigator.serviceWorker.ready; const names = await caches.keys(); const cache = await caches.open('hyeonjang-v425-offlinequeue'); return { active: registration.active?.state, cachedIndex: !!await cache.match(new URL('index.html', location.href).href), names }; });
       assert.equal(warm.active, 'activated'); assert.equal(warm.cachedIndex, true, 'SW_INSTALL_WARMS_INDEX_BEFORE_OFFLINE_RESTART');
+      const swNetworkState = await swContext.newCDPSession(swPage); await swNetworkState.send('Network.enable');
       await swPage.evaluate(async () => {
         closeModal(true); __tabStale = false; __appVersionUpdating = false; state._demo = false; state.dirHandle = null;
         for (const key of ['files', 'notes', 'schedule', 'quotes', 'payLog', 'asLog', 'contacts']) state[key] = [];
@@ -322,7 +345,9 @@ let browser, passed = 0;
       await swPage.waitForFunction(() => typeof __mobileSheetHistoryRetire === 'undefined' || !__mobileSheetHistoryRetire);
       const fact = async () => swPage.evaluate(async () => { const rec = state.files[0], blob = await getFileOf(rec); return { count: state.files.length, project: rec.project, work: rec._worklabel, phase: rec._phase, tag: hjPhotoLeakTag(rec), token: rec._shareInboxId, bytes: [...new Uint8Array(await blob.arrayBuffer())], queue: (await hjOutboxRead()).map(r => ({ id: r.id, kind: r.kind, ref: r.ref })) }; });
       const before = await fact(); assert.equal(before.queue.length, 1); assert.deepEqual(Buffer.from(before.bytes), PNG);
-      await swPage.reload({ waitUntil: 'domcontentloaded' }); await swBoot();
+      await swPage.reload({ waitUntil: 'domcontentloaded' });
+      await swNetworkState.send('Network.overrideNetworkState', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      await swBoot();
       assert.equal(await swPage.evaluate(() => navigator.onLine), false); assert.deepEqual(await fact(), before, 'REAL_SW_OFFLINE_RELOAD_PRESERVES_ORIGINAL_AND_LINKS');
       assert.equal(blockedWrites, 0); assert.equal(await swPage.evaluate(() => __v425SwExternal), 0); assert.deepEqual(swErrors, []);
     } finally { await swContext.close(); }

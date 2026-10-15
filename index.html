@@ -1830,6 +1830,7 @@ function persistLocal(){
   __idbSaveTimer=setTimeout(async()=>{try{
     if(__tabStale){multiTabStaleWarn();return;}
     if(!(await guardedPersistCurrentState())){__tabStale=true;multiTabStaleWarn();}
+    else if(typeof hjOutboxLocalSaved==='function')hjOutboxLocalSaved();
   }catch(e){}},800);
 }
 try{
@@ -3891,7 +3892,13 @@ function hjShareAt(value){const n=typeof value==='number'?value:Date.parse(value
 function hjShareMedia(row){return !!row&&typeof row.id==='string'&&row.blob instanceof Blob&&row.size===row.blob.size&&typeof row.name==='string';}
 /* v425 outbox에는 원본을 넣지 않는다. inbox 원본과 저장본의 영속 token을 확인한 뒤에만 보낸다. */
 const HJ_OUTBOX_MAX=30,HJ_OUTBOX_BYTES=300*1024*1024,HJ_OUTBOX_LEASE=10*60000;
-let __hjOutboxFlushing=null;
+let __hjOutboxFlushing=null,__hjOutboxResumeAfterSave=false;
+/* 온라인 복구 때 다른 자동 동기화의 기기 저장을 기다렸다면, 저장 성공 뒤 한 번 이어 보낸다. */
+function hjOutboxLocalSaved(){
+  if(!__hjOutboxResumeAfterSave||navigator.onLine===false||__tabStale)return;
+  __hjOutboxResumeAfterSave=false;
+  setTimeout(()=>hjOutboxOnline().catch(()=>{}),0);
+}
 function hjOutboxChanged(){try{window.dispatchEvent(new Event('hj-outbox-change'));}catch(_){} }
 function hjOutboxGuard(){if(state._demo||__tabStale||__appVersionUpdating)throw new Error('최신 자료를 확인한 뒤 대기함을 다시 열어 주세요');}
 function hjOutboxError(message,code){const error=new Error(message);error.outboxCode=code;return error;}
@@ -3992,7 +3999,7 @@ async function hjOutboxClaimUpdate(item,change){
   return hjOutboxWrite((rows,inbox,store,originals)=>{const row=rows.find(r=>r.id===item.id);if(!row||row.proofHash!==item.proofHash||!row.claim||row.claim.token!==item.claim.token)throw hjOutboxError('대기 기록 처리 권한이 바뀌었습니다','claim');const value=change(row,inbox,originals);store.put(row);return value;});
 }
 async function hjOutboxSending(item){
-  hjOutboxGuard();const saved=await hjOutboxSaved();if(saved.savedAt!==item.savedAt||!hjOutboxLiveMatches(saved)||!hjOutboxTarget(saved,item.kind,item.ref))throw hjOutboxError('자료가 변경되었습니다. 기기 저장이 끝나면 다시 시도해 주세요','defer');
+  hjOutboxGuard();const saved=await hjOutboxSaved();if(saved.savedAt!==item.savedAt||!hjOutboxLiveMatches(saved)||!hjOutboxTarget(saved,item.kind,item.ref))throw hjOutboxError('자료가 변경되었습니다. 기기 저장이 끝나면 다시 시도해 주세요','local');
   await hjOutboxClaimUpdate(item,row=>{row.claim.phase='sending';row.claim.expiresAt=Date.now()+HJ_OUTBOX_LEASE;});
 }
 async function hjOutboxReceipt(item,receipt){
@@ -4013,7 +4020,7 @@ async function hjOutboxLinkReceipt(item){
   hjOutboxGuard();let saved=await hjOutboxSaved(),target=hjOutboxTarget(saved,'file',item.ref);if(!target)throw hjOutboxError('사진 기록을 찾을 수 없습니다. 원본과 업로드 결과를 보관합니다','blocked');
   if(target.driveId&&target.driveId!==receipt.fileId)throw hjOutboxError('사진의 서버 연결이 바뀌었습니다. 대기함에서 확인해 주세요','blocked');
   if(target.driveId!==receipt.fileId){
-    if(!hjOutboxLiveMatches(saved))throw hjOutboxError('작성 중인 자료의 기기 저장이 끝나면 다시 시도해 주세요','defer');
+    if(!hjOutboxLiveMatches(saved))throw hjOutboxError('작성 중인 자료의 기기 저장이 끝나면 다시 시도해 주세요','local');
     const current=hjOutboxTarget(state,'file',item.ref);if(!current)throw hjOutboxError('현재 사진 기록이 모호합니다','blocked');
     const files=state.files.map(file=>file!==current?file:{...file,_driveId:receipt.fileId,_driveMimeType:receipt.mimeType||'',_driveSize:Number(receipt.size)||0,_relayLink:receipt.backend==='relay'?'relay:'+receipt.fileId:file._relayLink});
     const unchanged=()=>!__tabStale&&!__appVersionUpdating&&hjOutboxTarget(state,'file',item.ref)===current&&hjOutboxLiveMatches(saved);
@@ -4092,7 +4099,7 @@ async function hjOutboxSendState(item,saved){
 async function hjOutboxFail(item,error){
   return hjOutboxClaimUpdate(item,(row,inbox,originals)=>{
     const code=error&&error.outboxCode,http=!!(error&&error.__http),started=row.claim.phase==='sending',receipt=row.receipt;
-    if(code==='defer'){row.status=receipt?'receipt':'ready';row.lastError=error.message;}
+    if(code==='defer'||code==='local'){if(code==='local')__hjOutboxResumeAfterSave=true;row.status=receipt?'receipt':'ready';row.lastError=error.message;}
     else if(code==='blocked'){row.status='blocked';row.lastError=error.message;}
     else if(receipt&&receipt.bytesComplete){row.status='receipt';row.lastError='전송은 끝났습니다. 기기 연결 저장만 다시 확인합니다';}
     else if(http||code==='retry'||receipt&&receipt.backend==='drive'&&!receipt.bytesComplete){row.tries=(Number(row.tries)||0)+1;row.status=row.tries>=5?'manual':receipt?'receipt':'ready';row.lastError=http?String(error.message):'전송에 실패했습니다. 기기 원본은 보관합니다';}
@@ -4115,7 +4122,7 @@ async function hjOutboxFlush(options){
       for(let n=0;n<HJ_OUTBOX_MAX;n++){
         if(navigator.onLine===false){stopped='offline';break;}hjOutboxGuard();item=await hjOutboxClaim(options);if(!item)break;
         try{
-          const saved=await hjOutboxSaved();if(!hjOutboxLiveMatches(saved))throw hjOutboxError('작성 중인 자료의 기기 저장이 끝나면 다시 시도해 주세요','defer');item.savedAt=saved.savedAt;
+          const saved=await hjOutboxSaved();if(!hjOutboxLiveMatches(saved))throw hjOutboxError('작성 중인 자료의 기기 저장이 끝나면 다시 시도해 주세요','local');item.savedAt=saved.savedAt;
           const done=item.kind==='file'?await hjOutboxSendFile(item,saved):await hjOutboxSendState(item,saved);if(done)sent++;item=null;
         }catch(error){stopped=await hjOutboxFail(item,error);item=null;break;}
         if(options.id)break;
@@ -38089,7 +38096,8 @@ async function buildAptReportPDF(o){
 function aptReportView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
-  const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo'&&f.thumb;})
+  // v425 대기 사진은 재시작 직후 미리보기보다 기기 원본이 먼저 복원될 수 있다.
+  const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo'&&!isVideoRec(f)&&(f.thumb||f._shareInboxId&&f._file instanceof Blob);})
     .sort(function(a,b){return new Date(a.when||0)-new Date(b.when||0);});
   const st=projStats(pjName);
   const draft=hjReportDraft(pjName),works=draft.works.join('\n');
