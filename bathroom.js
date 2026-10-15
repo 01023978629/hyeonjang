@@ -29,19 +29,6 @@
     const value=M.sourcePrice(source,data.vat);if(!M.validUnitPrice(value))return false;
     set(t.path,value);data.priceSources[t.name]=source;const el=document.querySelector('[data-path="'+t.path+'"]');if(el)el.value=value;return true;
   }
-  function hjBathConsumePrefill(){
-    let raw;
-    try{raw=localStorage.getItem('hj_bath_prefill');if(raw!==null)localStorage.removeItem('hj_bath_prefill');}catch(_){return;}
-    if(!raw)return;
-    try{
-      const p=JSON.parse(raw),isoAt=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
-      const validAt=typeof p?.at==='string'&&isoAt.test(p.at),at=validAt?Date.parse(p.at):NaN,age=Date.now()-at;
-      if(!Number.isFinite(at)||age<0||age>600000||!p.prices||typeof p.prices!=='object'||Array.isArray(p.prices))return;
-      let count=0;
-      for(const t of M.priceTargets(data))if(Object.prototype.hasOwnProperty.call(p.prices,t.name)&&M.validUnitPrice(p.prices[t.name]))if(hjBathApplySource(t,{kind:'app',supplyPrice:p.prices[t.name]}))count++;
-      if(count){$('pricePrefillNotice').hidden=false;$('pricePrefillNotice').textContent='앱에서 가져온 저장 단가 '+count+'개 · 현장·고객 정보는 가져오지 않습니다.';}
-    }catch(_){}
-  }
   async function hjBathLoadDefaults(){
     const owner=data,epoch=defaultsEpoch,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
     try{
@@ -67,6 +54,21 @@
     if(consumable){const p='consumables.'+consumable[1]+'.price',t=M.priceTargets(data).find(t=>t.path===p);if(data.priceSources?.[t.name])hjBathForgetPrice(p,true);else touchedPrices.add(p);}
   }
   function notify(message){clearTimeout(toastTimer);$('status').textContent=message;$('status').hidden=false;toastTimer=setTimeout(()=>$('status').hidden=true,5000);}
+  /* v411 앱이 명시적으로 보낸 일회성 상담 정보만 읽는다. 기존 초안은 자동 복원하지 않는다. */
+  function hjBathReadPrefill(){
+    let raw;
+    try{raw=localStorage.getItem('hj_bath_prefill');if(!raw)return;localStorage.removeItem('hj_bath_prefill');}catch(_){return;}
+    try{
+      const applied=M.hjBathApplyPrefill(data,JSON.parse(raw));if(!applied)return;
+      data=applied.data;$('appPrefillNotice').textContent='앱에서 가져옴: '+(applied.project||'현장 미지정')+' · 단가 '+applied.count+'개';$('appPrefillNotice').hidden=false;
+      if(applied.count){$('pricePrefillNotice').textContent='앱에서 가져온 저장 단가 '+applied.count+'개를 우선 적용했습니다. 추정 단가는 남은 빈칸에만 채웁니다.';$('pricePrefillNotice').hidden=false;}
+    }catch(_){}
+  }
+  function hjBathSendToApp(){
+    if(!result){notify('입력 오류를 먼저 확인해 주세요.');return;}
+    try{const payload=M.hjBathHandoff(data);localStorage.setItem('hj_bath_handoff',JSON.stringify(payload));$('appHandoffNotice').hidden=false;$('openAppLink').hidden=false;notify("앱 탭으로 돌아가면 '욕실 견적 불러오기' 창이 뜹니다.");}
+    catch(error){if(error.code==='BATH_ESTIMATE_PENDING'){$('appHandoffBlocked').hidden=false;$('appHandoffNotice').hidden=true;$('openAppLink').hidden=true;notify(error.message);}else notify('앱으로 넘기지 못했습니다. 입력값과 기기 저장 권한을 확인해 주세요.');}
+  }
   function input(path,label,unit,attrs=''){return '<label>'+label+'<input type="number" data-path="'+path+'" '+attrs+'>'+ (unit?'<span>'+unit+'</span>':'')+'</label>';}
   /* v410 직접 바꾼 규격도 제품 선택과 같은 가격 확인 절차를 거친다. */
   function hjBathSyncTilePreset(k){const el=document.querySelector('[data-tile-preset="'+k+'"]'),t=data[k],v=[t.width,t.height,t.pack].map(Number).join(',');el.value=[...el.options].some(o=>o.value===v)?v:'';}
@@ -113,7 +115,9 @@
     if(r.hasEstimates){$('report').querySelector('.report-top').insertAdjacentHTML('afterend','<p class="notice estimate-total">'+escape(priceNotice)+'<br><strong>추정 단가 포함 · '+r.estimatedRows.length+'개 항목</strong></p>');$('report').querySelector('.report-total').insertAdjacentHTML('afterbegin','<p class="estimate-total">추정 단가 포함 · 확정 금액 아님</p>');}
   }
   function update(){
+    $('methodNotice').hidden=data.method!=='overlay';
     hjBathPriceBadges();
+    $('appHandoffBlocked').hidden=true;
     data.scope.forEach(s=>{$('scope-'+s.id).classList.toggle('selected',s.enabled);let message;try{const amount=M.hjBathScopeAmount(s);message=(s.enabled?'선택됨 · ':'선택하면 ')+(amount===null?'단가 확인 필요':'+ '+won(amount)+' (부가세 '+(data.vat==='inclusive'?'포함':'별도')+')');}catch(_){message=(s.enabled?'선택됨 · ':'선택 시 ')+'수량·단가 확인 필요';}$('price-'+s.id).textContent=message;$('breakdown-'+s.id).innerHTML=hjBathScopeBreakdown(s);$('description-'+s.id).textContent=(s.model?s.model+' · ':'')+s.note;});
     try{
       result=M.calculate(data);$('formErrors').hidden=true;const r=result;hjBathPriceChecklist(r);
@@ -123,8 +127,12 @@
       data.consumables.forEach(c=>{const hit=r.consumables.find(x=>x.id===c.id);$(c.id+'Result').textContent=hit?fmt(hit.area)+'㎡ × '+fmt(hit.usage)+'kg/㎡ = '+fmt(hit.kg)+'kg → '+hit.packs+'포장 (포장 단위 올림) · '+hit.packs+'포장 × '+won(hit.price)+' = '+won(r.rows.find(x=>x.id===c.id).amount)+' (부가세 '+(data.vat==='inclusive'?'포함':'별도')+')':'포함을 선택하면 수량과 금액이 더해집니다.';});
       $('liveSummary').innerHTML='<div class="summary-total"><small>부가세 포함 예상 합계</small><strong>'+(r.complete?won(r.total):'단가 확인 중')+'</strong><p>'+(r.complete?(data.priceStatus==='confirmed'?'등록한 판매 단가 기준':'판매 단가 확인 전'):'비어 있는 단가 '+r.missing.length+'개를 입력하면 합계가 나옵니다.')+'</p></div><dl><dt>자재비'+(!r.complete?' (입력분)':'')+'</dt><dd>'+won(r.material)+'</dd><dt>시공비'+(!r.complete?' (입력분)':'')+'</dt><dd>'+won(r.labor)+'</dd><dt>부가세</dt><dd>'+(r.complete?won(r.vat):'미확정')+'</dd><dt>선택한 추가 공사</dt><dd>'+data.scope.filter(s=>s.enabled).length+'개</dd></dl>';
       if(r.hasEstimates)$('liveSummary').insertAdjacentHTML('afterbegin','<p class="estimate-total">추정 단가 포함 · '+r.estimatedRows.length+'개 항목<br>확정 금액이 아닙니다.</p>');
-      $('mobileAmount').textContent=r.complete?won(r.total):'단가 확인 중';$('mobileStatus').textContent=(r.hasEstimates?'추정 단가 포함 · ':'')+(r.complete?'부가세 포함 합계':'빈 단가 '+r.missing.length+'개');
-      renderReport(r);document.querySelectorAll('.export-buttons button').forEach(b=>b.disabled=htmlExporting&&b.id==='exportHTML');
+      $('mobileAmount').textContent=r.complete?won(r.total):'단가 확인 중';$('mobileStatus').textContent=(r.hasEstimates?'추정 단가 포함 · ':'')+(r.complete?'부가세 포함 합계':'빈 단가 '+r.missing.length+'개 · 추가 공사 '+data.scope.filter(s=>s.enabled).length+'개 선택');
+      renderReport(r);
+      /* v411 고객 HTML과 인쇄도 이 보고서를 복사하므로 새 상담 조건을 한 번만 그린다. */
+      $('report').querySelector('.report-info dl').insertAdjacentHTML('beforeend','<dt>주소</dt><dd>'+escape(r.data.place||'상담 시 확인')+'</dd><dt>시공 방식</dt><dd>'+escape(M.hjBathMethodLabel(r.data.method))+'</dd><dt>공사 기간</dt><dd>'+escape(M.hjBathDaysText(r.data.days))+'</dd>');
+      document.querySelectorAll('.export-buttons button').forEach(b=>b.disabled=htmlExporting&&b.id==='exportHTML');
+      $('sendToApp').disabled=r.hasEstimates;$('appHandoffBlocked').hidden=!r.hasEstimates;
     }catch(e){result=null;$('priceChecklist').textContent='입력 오류를 먼저 확인해 주세요.';$('formErrors').textContent=e.message;$('formErrors').hidden=false;$('liveSummary').innerHTML='<div class="error">'+escape(e.message)+'</div>';$('report').innerHTML='<p class="error">계산할 수 없습니다. '+escape(e.message)+'</p>';$('areaSummary').innerHTML='';$('mobileAmount').textContent='입력 확인 필요';$('mobileStatus').textContent='치수·수량·단가를 확인해 주세요';['wall','floor'].forEach(k=>$(k+'Result').textContent='치수를 확인해 주세요.');data.consumables.forEach(c=>$(c.id+'Result').textContent='입력 오류를 확인하면 수량과 금액을 다시 계산합니다.');document.querySelectorAll('.export-buttons button').forEach(b=>b.disabled=true);}hjBathPhotoControls();
   }
   $('priceChecklist').addEventListener('click',e=>{
@@ -137,6 +145,7 @@
   $('bathForm').addEventListener('input',e=>{
     const el=e.target,path=el.dataset.path;if(!path)return;
     const tileField=/^(wall|floor)\.(width|height|pack)$/.exec(path),productField=tileField||/^consumables\.\d+\.pack$/.test(path),changed=productField&&Number(get(path))!==Number(el.value);
+    if(path==='method'&&get(path)!==el.value){data.scope.forEach((s,i)=>{if(s.id==='demolition'||s.id==='waste'){s.enabled=el.value==='full';document.querySelector('[data-path="scope.'+i+'.enabled"]').checked=s.enabled;}});}
     hjBathForgetPrice(path);set(path,el.type==='checkbox'?el.checked:el.value);
     if(changed){hjBathClearProductSources(path);notify('규격·포장 용량을 바꿨습니다. 선택한 제품의 판매단가를 다시 확인해 주세요.');}
     if(tileField)hjBathSyncTilePreset(tileField[1]);
@@ -151,17 +160,18 @@
   $('styleCards').addEventListener('click',e=>{const b=e.target.closest('[data-style]');if(!b)return;data.style=b.dataset.style;document.querySelectorAll('[data-style]').forEach(el=>el.setAttribute('aria-pressed',String(el===b)));update();});
   $('customerMode').addEventListener('click',()=>{if(!result){$('measure').scrollIntoView();notify('입력 오류를 먼저 확인해 주세요.');return;}const active=document.body.classList.toggle('customer-mode');$('customerMode').textContent=active?'계속 선택하기 ←':'고객용 보기 ↗';$('customerMode').setAttribute('aria-pressed',String(active));(active?$('quote'):$('measure')).scrollIntoView({behavior:'auto'});});
   $('saveDraft').addEventListener('click',()=>{if(!result){notify('입력 오류를 먼저 확인해 주세요.');return;}try{localStorage.setItem(KEY,JSON.stringify(result.data));notify('이 기기에 초안을 저장했습니다. 추가한 사진은 저장하지 않습니다.');}catch(_){notify('기기 저장 공간 또는 브라우저 권한을 확인해 주세요.');}});
-  $('loadDraft').addEventListener('click',()=>{try{const saved=localStorage.getItem(KEY);if(!saved){notify('저장한 초안이 없습니다.');return;}const checked=M.calculate(JSON.parse(saved));if(!window.confirm('현재 입력 대신 이 기기에 저장한 상담 초안을 불러올까요? 현재 탭에 추가한 사진은 함께 비웁니다.'))return;defaultsEpoch++;data=checked.data;touchedPrices.clear();$('pricePrefillNotice').hidden=true;photoToken++;photoPending=false;photo='';$('sitePhoto').value='';$('sitePhotoPreview').removeAttribute('src');$('sitePhotoPreview').hidden=true;$('clearPhoto').hidden=true;renderFields();update();notify('저장한 초안을 불러왔습니다.');}catch(_){notify('저장한 초안을 읽을 수 없습니다. 현재 입력은 그대로 두었습니다.');}});
+  $('loadDraft').addEventListener('click',()=>{try{const saved=localStorage.getItem(KEY);if(!saved){notify('저장한 초안이 없습니다.');return;}const checked=M.calculate(JSON.parse(saved));if(!window.confirm('현재 입력 대신 이 기기에 저장한 상담 초안을 불러올까요? 현재 탭에 추가한 사진은 함께 비웁니다.'))return;defaultsEpoch++;data=checked.data;touchedPrices.clear();$('pricePrefillNotice').hidden=true;$('appPrefillNotice').hidden=true;photoToken++;photoPending=false;photo='';$('sitePhoto').value='';$('sitePhotoPreview').removeAttribute('src');$('sitePhotoPreview').hidden=true;$('clearPhoto').hidden=true;renderFields();update();notify('저장한 초안을 불러왔습니다.');}catch(_){notify('저장한 초안을 읽을 수 없습니다. 현재 입력은 그대로 두었습니다.');}});
   $('clearDraft').addEventListener('click',()=>{if(!window.confirm('이 페이지에서 저장한 상담 초안만 지울까요? 현재 화면의 입력은 남습니다.'))return;try{localStorage.removeItem(KEY);notify('이 페이지의 저장 초안을 지웠습니다.');}catch(_){notify('기기 저장 권한을 확인해 주세요.');}});
   $('sitePhoto').addEventListener('change',async e=>{const token=++photoToken,file=e.target.files[0];photoPending=false;if(!file){update();return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){e.target.value='';update();notify('10MB 이하의 JPG·PNG·WebP 사진을 선택해 주세요.');return;}photoPending=true;update();const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();if(token!==photoToken)return;const ratio=Math.min(1,1600/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*ratio));canvas.height=Math.max(1,Math.round(img.height*ratio));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);photo=canvas.toDataURL('image/jpeg',0.82);$('sitePhotoPreview').src=photo;$('sitePhotoPreview').hidden=false;$('clearPhoto').hidden=false;update();notify('사진을 추가했습니다. 서버로 보내지 않았습니다.');}catch(_){if(token===photoToken){e.target.value='';notify('사진을 읽을 수 없습니다. 다른 사진을 선택해 주세요.');}}finally{URL.revokeObjectURL(url);if(token===photoToken){photoPending=false;update();}}});
   $('clearPhoto').addEventListener('click',()=>{photoToken++;photoPending=false;photo='';$('sitePhoto').value='';$('sitePhotoPreview').removeAttribute('src');$('sitePhotoPreview').hidden=true;$('clearPhoto').hidden=true;update();});
   function download(text,type,filename){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function filename(ext){return (data.date||'상담')+' 욕실 '+(data.project||'견적').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').slice(0,65)+'.'+ext;}
   $('exportCSV').addEventListener('click',()=>{if(result)download(M.toCSV(result),'text/csv;charset=utf-8',filename('csv'));});
+  $('sendToApp').addEventListener('click',hjBathSendToApp);
   function summaryText(){const r=result,d=r.data,lines=['[만물인테리어 욕실 상담]',d.project||'현장 미입력','스타일: '+M.styles.find(s=>s.id===d.style).name,'치수: '+d.size.width+'×'+d.size.depth+'cm, 높이 '+d.size.height+'cm','벽 타일: '+r.wall.need+'장 필요 → '+r.wall.boxes+'박스('+r.wall.buy+'장)','바닥 타일: '+r.floor.need+'장 필요 → '+r.floor.boxes+'박스('+r.floor.buy+'장)','자재비'+(!r.complete?'(입력분)':'')+': '+won(r.material),'시공비'+(!r.complete?'(입력분)':'')+': '+won(r.labor),'부가세 포함 합계'+(r.hasEstimates?' (추정 단가 포함)':'')+': '+(r.complete?won(r.total):'단가 '+r.missing.length+'개 확인 필요'),'선택 공사: '+(d.scope.filter(s=>s.enabled).map(s=>s.name+' × '+s.qty+s.unit+(s.model?' · '+s.model:'')).join('\n')||'추가 선택 없음'),'미포함: '+(r.excluded.join(', ')||'없음'),'별도 협의: '+d.exclusions,'요청: '+d.request,'타일 자재는 구매 박스, 시공은 순면적 기준입니다. 실측·제품·판매단가 확인 후 확정합니다.'];if(r.hasEstimates)lines.push(priceNotice,...r.estimatedRows.map(row=>row.name+' ('+row.kind+'): '+M.sourceDescription(row.priceSource)));return lines.join('\n');}
-  $('copyQuote').addEventListener('click',async()=>{if(!result)return;const text=summaryText();try{await navigator.clipboard.writeText(text);notify('상담 내용을 복사했습니다. 고객에게 보낼 곳에 직접 붙여 넣어 주세요.');}catch(_){$('copyText').value=text;$('copyDialog').showModal();$('copyText').select();}});
+  $('copyQuote').addEventListener('click',async()=>{if(!result)return;const d=result.data,text=summaryText()+'\n주소: '+(d.place||'상담 시 확인')+'\n시공 방식: '+M.hjBathMethodLabel(d.method)+'\n'+M.hjBathDaysText(d.days);try{await navigator.clipboard.writeText(text);notify('상담 내용을 복사했습니다. 고객에게 보낼 곳에 직접 붙여 넣어 주세요.');}catch(_){$('copyText').value=text;$('copyDialog').showModal();$('copyText').select();}});
   $('printQuote').addEventListener('click',()=>{if(result&&!photoPending)window.print();});
   async function asDataURL(url){const response=await fetch(url,{credentials:'omit'});if(!response.ok)throw Error('image');const blob=await response.blob();return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
   $('exportHTML').addEventListener('click',async()=>{if(!result||htmlExporting||photoPending)return;const button=$('exportHTML'),copy=$('report').cloneNode(true),name=filename('html');htmlExporting=true;button.disabled=true;try{const response=await fetch('bathroom.css',{credentials:'omit'});if(!response.ok)throw Error('css');const css=await response.text();for(const img of copy.querySelectorAll('img'))if(!img.src.startsWith('data:'))img.src=await asDataURL(img.src);const html='<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>욕실 상담용 견적서</title><style>'+css+'</style><body><main><div class="report-toolbar"><p>상담용 견적·자재 계산서 · 인쇄 메뉴에서 PDF로 저장할 수 있습니다.</p></div>'+copy.outerHTML+'</main></body></html>';download(html,'text/html;charset=utf-8',name);notify('고객용 파일을 저장했습니다. 선택 내용과 이미지만 담은 읽기용 파일입니다.');}catch(_){notify('파일을 만들지 못했습니다. 연결을 확인하거나 인쇄 / PDF를 사용해 주세요.');}finally{htmlExporting=false;button.disabled=!result||photoPending;}});
-  hjBathConsumePrefill();renderFields();update();document.documentElement.dataset.bathReady='true';document.documentElement.dataset.bathPricesReady='false';window.__hjBathPricesDone=hjBathLoadDefaults();
+  hjBathReadPrefill();renderFields();update();document.documentElement.dataset.bathReady='true';document.documentElement.dataset.bathPricesReady='false';window.__hjBathPricesDone=hjBathLoadDefaults();
 })();
