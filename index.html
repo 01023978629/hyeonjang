@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="현장">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="./manifest.webmanifest">
 <!-- 2026-07-05 통합 v62: 🔁 운영 루프 대시보드 카드·알림↔큐 연동·배치 승인 (v61 Daily/Weekly/Monthly 포함)·AI_TOOLS 168종 · 💾 자동저장 재진입방지 · 📶 오프라인 · 💥 장애복구10 · 🛡 손상백업 방어 · 📥 데이터 이사 마법사 · 🧰 개발자 가이드(동봉 DEVELOPER.md) · 🎨 브랜드 테마 · 🔗 고객 진행 페이지 · 📅 캘린더 자동 · 🏁 20시나리오 리허설 · 📖 사용설명서 · 🗺 현장 지도 · 📤 전체 장부 엑셀 · ⚡ 대용량 렌더 최적화 · 🔧 AS 관리+무상기간 · 🚚 자재 발주서 · 👷 인건비 장부 · 🔍 만능 검색 · 🛡 안전판(스냅샷) · 📊 수익 분석 · 📱 한눈 보기+바로가기+뱃지 · 📦 단가장 · 🏷 포트폴리오 · 📨 고객 진행 보고 · 🔔 일정 알림 문자 · 🌅 브리핑 · 🤖 오늘 자동 점검 · 🧠 현장 파일철 · 🧹 사진 자동정리 · 📊 주간 리포트 · 🧾 견적 검토 · 🗓 월말 결산 · 📈 거래처 장부 · 💾 수금 이력 -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>현장 — 인테리어 파일 정리</title>
@@ -1104,6 +1105,7 @@ body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:4
     <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line-soft);display:flex;flex-direction:column;gap:6px">
       <button class="moss tiny" id="btnBizCard" style="width:100%">📇 사업자·명함 보내기 (사진+글·카톡/문자)</button>
       <button class="blue tiny" id="btnInstall" style="width:100%;display:none">⤓ 앱 설치 (바탕화면)</button>
+      <p class="hint">갤러리에서 공유 → 현장 으로 사진을 바로 넣을 수 있어요(설치 후)</p>
       <button class="ghost tiny" id="btnHelp" style="width:100%">📖 사용법 보기</button>
       <button class="ghost tiny" id="btnDemo" style="width:100%">🧪 데모 데이터로 둘러보기</button>
       <button class="clay tiny" style="width:100%" onclick="aiAgent()">🤖 AI 비서 — 말로 시키기</button>
@@ -1396,7 +1398,7 @@ function mergeOrganizedPhotoDuplicates(files){
   const proofKept=(keep,old)=>{
     const sha=f=>/^[a-f0-9]{64}$/.test(f.sourceSha256||'')?f.sourceSha256:'';
     const orig=f=>f.mediaOriginal&&typeof f.mediaOriginal==='object'?JSON.stringify(f.mediaOriginal):'';
-    return (!sha(old)||sha(old)===sha(keep))&&(!orig(old)||orig(old)===orig(keep));
+    return (keep.shareInboxId||'')===(old.shareInboxId||'')&&(!sha(old)||sha(old)===sha(keep))&&(!orig(old)||orig(old)===orig(keep));
   };
   // Drive 연결값(ID·형식·크기)은 한 묶음이다. ID 만 옮기면 형식·크기가 빈 채로 남아 관리사무소 완료 사진
   // (officeCompletionPhotoSafe)처럼 형식·크기를 확인하는 곳에서 그 사진이 빠진다.
@@ -1994,6 +1996,7 @@ function serializeData(source,savedAt){
       phase:supplied?f._phase:(f._phase||null),worklabel:supplied?f._worklabel:(f._worklabel||null),gdFolder:supplied?f._gdFolder:(f._gdFolder||null),
       driveId:supplied?f._driveId:(f._driveId||null),driveMimeType:supplied?f._driveMimeType:(f._driveMimeType||null),driveSize:supplied?f._driveSize:(Number(f._driveSize)||0),size:supplied?f.size:(f.size||0),
       ...(f._originalSha256?{sourceSha256:f._originalSha256}:{}),...(f._mediaOriginal?{mediaOriginal:structuredClone(f._mediaOriginal)}:{}),
+      ...(typeof f._shareInboxId==='string'&&f._shareInboxId?{shareInboxId:f._shareInboxId}:{}),
       lat:f.lat,lng:f.lng,when:f.when==null?null:(f.when instanceof Date?f.when.toISOString():new Date(f.when).toISOString()),
       ...(Object.prototype.hasOwnProperty.call(f,'documentMeta')?{documentMeta:structuredClone(f.documentMeta)}:{}),
       ...(Object.prototype.hasOwnProperty.call(f,'_aptUnit')?{aptUnit:structuredClone(f._aptUnit)}:{}),
@@ -2011,7 +2014,7 @@ let __lastData=null, __dataAt='';   // 마지막 적용한 데이터·시각(sav
 function hjSavedDriveGhost(s){
   const has=v=>v!==undefined&&v!==null&&v!==''&&v!==false;
   if(!s||!s.driveId||(s.kind&&s.kind!=='photo'))return false;
-  if(has(s.sourceSha256)||has(s.mediaOriginal)||documentMetaValid(s.documentMeta))return false;
+  if(has(s.sourceSha256)||has(s.mediaOriginal)||has(s.shareInboxId)||documentMetaValid(s.documentMeta))return false;
   const nm=String(baseName(s.name)).toLowerCase();
   const pairs=[['project','project'],['phase','_phase'],['worklabel','_worklabel'],['aptUnit','_aptUnit'],['contact','contact'],['text','text'],['est','est'],['ledger','ledger'],['quote','quote'],['exSum','exSum']];
   return (state.files||[]).some(f=>f&&f._driveId===s.driveId&&(f.handle||f._file instanceof Blob)&&String(baseName(f.name)).toLowerCase()===nm&&
@@ -2020,6 +2023,8 @@ function hjSavedDriveGhost(s){
 function hjFileDriveIdentity(f){return String(f?._driveId||f?.driveId||'');}
 const HJ_FILE_SHA_RE=/^[a-f0-9]{64}$/;
 function hjFileIdentityCompatible(f,s){
+  const shareA=f?._shareInboxId||f?.shareInboxId||'',shareB=s?._shareInboxId||s?.shareInboxId||'';
+  if(shareA!==shareB)return false;
   const a=hjFileDriveIdentity(f),b=hjFileDriveIdentity(s);
   if(a&&b&&a!==b)return false;
   const sha=x=>String(x?._originalSha256||x?.sourceSha256||'');
@@ -2075,7 +2080,7 @@ function hjSavedFileEquivalent(f,s){
   if(hjFileDriveIdentity(f)!==hjFileDriveIdentity(s))return false;
   const fields=[['kind','kind'],['project','project'],['_aptUnit','aptUnit'],['_phase','phase'],['_worklabel','worklabel'],
     ['text','text'],['ocr','ocr'],['est','est'],['exSum','exSum'],['ledger','ledger'],['quote','quote'],['contact','contact'],['address','address'],
-    ['_originalSha256','sourceSha256'],['_mediaOriginal','mediaOriginal'],['sourceModifiedAt','sourceModifiedAt'],['documentMeta','documentMeta']];
+    ['_originalSha256','sourceSha256'],['_mediaOriginal','mediaOriginal'],['_shareInboxId','shareInboxId'],['sourceModifiedAt','sourceModifiedAt'],['documentMeta','documentMeta']];
   return fields.every(([a,b])=>JSON.stringify(f[a]??null)===JSON.stringify(s[b]??null));
 }
 /* 저장 레코드(serializeData 의 files 한 줄) s → 지금 목록의 파일 객체 f.
@@ -2089,6 +2094,8 @@ function hjSavedFileEquivalent(f,s){
    예전 규칙(스냅샷 그대로) 그대로다. */
 function hjApplySavedFileFields(f,s,revert,keepSource){
   const has=k=>Object.prototype.hasOwnProperty.call(s,k);
+  // 기기에 남긴 공유 원본의 연결은 이름·크기로 다른 기록에 옮기지 않는다.
+  if(typeof s.shareInboxId==='string'&&s.shareInboxId&&(!f._shareInboxId||f._shareInboxId===s.shareInboxId))f._shareInboxId=s.shareInboxId;
   // 교정: 저장 kind가 other인데 실제 이미지면 photo로(과거 "의 사본" 오분류 복구)
   let sk=s.kind||f.kind;
   if((sk==='other'||!sk)&&isMediaExt(f.ext)&&!documentMetaValid(s.documentMeta))sk='photo';
@@ -2248,6 +2255,7 @@ function applyData(data,opts){
     // 부팅·서버·드라이브 복원 한 번에 '집계 제외' 표시가 풀려 초안 견적이 매출·부가세에
     // 다시 잡히고, 그 상태로 저장되면 서버 사본까지 오염된다(실제 재현됨).
     state.files.push({id:uid(),name:s.name,handle:null,prefix:s.prefix||'',ext:fext,size:s.size||0,
+      ...(typeof s.shareInboxId==='string'&&s.shareInboxId?{_shareInboxId:s.shareInboxId}:{}),
       ...(/^[a-f0-9]{64}$/.test(s.sourceSha256||'')?{_originalSha256:s.sourceSha256}:{}),...(s.mediaOriginal&&typeof s.mediaOriginal==='object'?{_mediaOriginal:structuredClone(s.mediaOriginal)}:{}),
       ...(Object.prototype.hasOwnProperty.call(s,'aptUnit')?{_aptUnit:structuredClone(s.aptUnit)}:{}),
       ...(Object.prototype.hasOwnProperty.call(s,'sourceModifiedAt')?{sourceModifiedAt:s.sourceModifiedAt}:{}),
@@ -3273,7 +3281,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v415-instanotel';
+const APP_BUILD='hyeonjang-v416-sharetarget';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3826,6 +3834,156 @@ async function gdUploadBlob(blob,name,mime,subName){
   if(!u.ok)throw new Error('업로드 '+u.status);
   return id;
 }
+/* v416 공유 수신 원본은 앱 저장본과 분리한다. 확인 전에는 state를 바꾸지 않으며,
+   추가 성공 후에도 Blob을 보존하여 같은 기록의 _file에만 다시 연결한다. */
+const __hjShareEntry=(()=>{const q=new URLSearchParams(location.search),v=q.get('view');return {view:v==='shareinbox'||v==='photos'&&q.get('capture')==='1'?v:'',capture:v==='photos'&&q.get('capture')==='1',error:v==='shareinbox'&&q.get('err')==='1'};})();
+const HJ_SHARE_MAX_AGE=7*86400000,HJ_SHARE_LEASE=10*60000;
+const __hjShareOwner='tab-'+(typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+let __hjShareChecking=null,__hjShareImporting=false,__hjShareReady=false,__hjShareCapture=__hjShareEntry.capture,__hjShareRetry=0,__hjShareAccepted=null;
+const __hjShareLater=new Set();
+function hjShareAt(value){const n=typeof value==='number'?value:Date.parse(value);return Number.isFinite(n)?n:NaN;}
+function hjShareMedia(row){return !!row&&typeof row.id==='string'&&row.blob instanceof Blob&&row.size===row.blob.size&&typeof row.name==='string';}
+function hjShareOpenDB(){return new Promise((resolve,reject)=>{
+  const request=indexedDB.open('hyeonjang-share',1);
+  request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('inbox'))request.result.createObjectStore('inbox',{keyPath:'id'});};
+  request.onerror=()=>reject(request.error||new Error('이 기기의 공유 사진을 읽지 못했습니다'));
+  request.onblocked=()=>reject(new Error('공유 사진을 쓰는 다른 창을 닫고 다시 열어 주세요'));
+  request.onsuccess=()=>resolve(request.result);
+});}
+async function hjShareRead(){
+  if(typeof indexedDB.databases==='function'){const dbs=await indexedDB.databases();if(!dbs.some(db=>db.name==='hyeonjang-share'))return [];}
+  const db=await hjShareOpenDB();return new Promise((resolve,reject)=>{
+    let rows=[];const tx=db.transaction('inbox','readonly'),request=tx.objectStore('inbox').getAll();
+    request.onsuccess=()=>{rows=request.result||[];};tx.oncomplete=()=>{db.close();resolve(rows);};tx.onabort=()=>{db.close();reject(tx.error||new Error('공유 사진을 읽지 못했습니다'));};tx.onerror=()=>{};
+  });
+}
+async function hjShareWrite(change){
+  const db=await hjShareOpenDB();return new Promise((resolve,reject)=>{
+    let result,reason;const tx=db.transaction('inbox','readwrite'),store=tx.objectStore('inbox'),request=store.getAll();
+    request.onsuccess=()=>{try{result=change(request.result||[],store);}catch(e){reason=e;tx.abort();}};
+    tx.oncomplete=()=>{db.close();resolve(result);};tx.onabort=()=>{db.close();reject(reason||tx.error||new Error('공유 사진 저장을 확인하지 못했습니다'));};tx.onerror=()=>{};
+  });
+}
+function hjShareFile(row){
+  if(!hjShareMedia(row))throw new Error('사진 원본을 읽지 못했습니다. 수신함에 그대로 두었습니다');
+  const modified=Number.isFinite(row.lastModified)&&row.lastModified>0?row.lastModified:0;
+  return new File([row.blob],row.name,{type:typeof row.type==='string'?row.type:'',lastModified:modified});
+}
+function hjShareSameRecord(row,rec){return hjShareMedia(row)&&rec&&rec.kind==='photo'&&rec._shareInboxId===row.id&&rec.name===row.name&&Number(rec.size)===row.size;}
+async function hjShareResolveFile(rec){
+  if(!rec||!rec.id)return null;
+  if(!rec._shareInboxId)return null;
+  if(!__hjShareAccepted){const rows=await hjShareRead();__hjShareAccepted=new Map(rows.filter(r=>r.acceptedRecordId&&hjShareMedia(r)).map(r=>[r.id,r]));}
+  const row=__hjShareAccepted.get(rec._shareInboxId);if(!row||!hjShareSameRecord(row,rec)||state.files.filter(f=>f._shareInboxId===rec._shareInboxId).length!==1)return null;
+  const file=hjShareFile(row);rec._file=file;return file;
+}
+async function hjShareRestoreAccepted(rows){
+  rows=rows||await hjShareRead();__hjShareAccepted=new Map(rows.filter(r=>r.acceptedRecordId&&hjShareMedia(r)).map(r=>[r.id,r]));
+  let count=0;for(const rec of state.files){const row=__hjShareAccepted.get(rec._shareInboxId);if(!rec._file&&row&&hjShareSameRecord(row,rec)&&state.files.filter(f=>f._shareInboxId===rec._shareInboxId).length===1){rec._file=hjShareFile(row);count++;}}return count;
+}
+function hjShareClaimBusy(row,owner){return !!row.claim&&row.claim.owner!==owner&&(!Number.isFinite(row.claim.expiresAt)||row.claim.expiresAt>Date.now());}
+async function hjShareClaim(ids){
+  return hjShareWrite((rows,store)=>{const picked=ids.map(id=>rows.find(row=>row.id===id));
+    if(picked.some(row=>!hjShareMedia(row)||row.acceptedRecordId||hjShareClaimBusy(row,__hjShareOwner)))throw new Error('다른 창에서 처리 중이거나 이미 추가된 사진입니다. 새로고침 후 확인해 주세요');
+    for(const row of picked){row.claim={owner:__hjShareOwner,at:Date.now(),expiresAt:Date.now()+HJ_SHARE_LEASE,phase:'selected'};store.put(row);}return picked;
+  });
+}
+async function hjShareClaimUpdate(ids,phase,record){
+  return hjShareWrite((rows,store)=>{for(const id of ids){const row=rows.find(r=>r.id===id);
+    if(!row||row.acceptedRecordId||!row.claim||row.claim.owner!==__hjShareOwner)throw new Error('사진 처리 권한이 바뀌었습니다. 수신함에서 다시 확인해 주세요');
+    row.claim.phase=phase;row.claim.expiresAt=Date.now()+HJ_SHARE_LEASE;
+    if(record){if(!hjShareSameRecord(row,record)||state.files.filter(rec=>rec._shareInboxId===row.id).length!==1)throw new Error('앞서 추가한 사진과 다릅니다. 원본을 그대로 보관합니다');row.stagedRecordId=record.id;}
+    store.put(row);
+  }});
+}
+async function hjShareRelease(ids){
+  return hjShareWrite((rows,store)=>{for(const row of rows)if(ids.includes(row.id)&&row.claim?.owner===__hjShareOwner){delete row.claim;store.put(row);}});
+}
+async function hjShareAcknowledge(ids,files,outcome){
+  return hjShareWrite((rows,store)=>{let accepted=0;for(const row of rows){if(!ids.includes(row.id)||row.claim?.owner!==__hjShareOwner)continue;
+    const file=files.get(row.id),pair=(outcome.pairs||[]).find(p=>p.file===file);
+    if(outcome.metadataSaved&&pair&&state.files.includes(pair.rec)&&hjShareSameRecord(row,pair.rec)){row.acceptedRecordId=pair.rec.id;row.acceptedAt=Date.now();accepted++;}
+    delete row.claim;store.put(row);
+  }return accepted;});
+}
+async function hjShareDiscard(ids){
+  const rows=await hjShareRead(),picked=rows.filter(row=>ids.includes(row.id)&&!row.acceptedRecordId);
+  if(!picked.length)return false;
+  if(!confirm('공유받은 사진과 안내를 이 기기의 수신함에서 버릴까요? 이미 현장에 추가한 원본과 휴대폰 사진첩은 그대로 둡니다.'))return false;
+  await hjShareWrite((current,store)=>{for(const row of current)if(ids.includes(row.id)&&!row.acceptedRecordId){if(row.claim||row.stagedRecordId)throw new Error('추가 중이거나 저장 확인이 필요한 사진은 버리지 않았습니다. 사진 추가 결과를 먼저 확인해 주세요');store.delete(row.id);}});
+  closeModal();toast('선택한 수신 사진을 버렸습니다');return true;
+}
+function hjShareCaptureMount(){
+  if(!__hjShareCapture||state.tab!=='photos'||document.getElementById('hjShareCapture'))return;
+  const view=document.getElementById('view');if(!view)return;
+  const button=document.createElement('button');button.id='hjShareCapture';button.className='clay';button.type='button';button.textContent='📸 지금 찍기';button.style.cssText='min-height:44px;min-width:44px;width:100%;margin-bottom:12px';button.onclick=()=>openCamera();view.prepend(button);
+}
+function hjShareConsumeQuery(){
+  if(!__hjShareEntry.view)return;const url=new URL(location.href);url.searchParams.delete('view');url.searchParams.delete('capture');if(__hjShareEntry.view==='shareinbox')url.searchParams.delete('err');history.replaceState(history.state,'',url.pathname+url.search+url.hash);
+}
+async function hjShareImportPending(ids,project){
+  if(__hjShareImporting||photoIntakePending()||__modalCloseLocked)throw new Error('진행 중인 사진 추가를 먼저 마쳐 주세요');
+  if(state._demo||__tabStale||__appVersionUpdating)throw new Error('내 자료의 최신 화면에서 사진을 추가해 주세요');
+  const targets=state.projects.filter(p=>p&&p.name===project&&!p.archived);if(targets.length!==1)throw new Error('동일한 이름이 없는 현장을 하나 골라 주세요');
+  __hjShareImporting=true;const projectObject=targets[0];let rows,files;
+  try{rows=await hjShareClaim(ids);files=new Map(rows.map(row=>[row.id,hjShareFile(row)]));}catch(e){__hjShareImporting=false;throw e;}
+  let settled=false,complete;
+  const done=new Promise(resolve=>{complete=resolve;});window.__hjShareInboxLastDone=done;
+  const finish=async outcome=>{if(settled)return;settled=true;try{
+    const accepted=outcome?await hjShareAcknowledge(ids,files,outcome):(await hjShareRelease(ids),0);
+    __hjShareAccepted=null;ids.forEach(id=>__hjShareLater.add(id));
+    complete(outcome?{status:outcome.metadataSaved?'complete':'failed',accepted,...outcome}:{status:'cancelled',accepted:0});
+  }catch(e){toast(e.message||'수신함 확인에 실패했습니다. 원본은 보관 중입니다');complete({status:'failed',error:String(e&&e.message||e),accepted:0});}finally{__hjShareImporting=false;}};
+  const validate=async()=>{if(!state.projects.includes(projectObject)||state.projects.filter(p=>p&&p.name===project&&!p.archived).length!==1||__tabStale)throw new Error('현장 또는 저장 상태가 바뀌었습니다. 새로고침 후 확인해 주세요');await hjShareClaimUpdate(ids,'importing');};
+  const context={project,source:'share',onCancel:()=>finish(null),beforeAdd:validate,beforeEach:validate,
+    reuseRecord:file=>{const row=rows.find(row=>files.get(row.id)===file),matches=state.files.filter(rec=>rec._shareInboxId===row.id);if(matches.length>1||matches.length===1&&!hjShareSameRecord(row,matches[0]))throw new Error('같은 수신 사진의 기록이 달라 원본을 그대로 보관합니다');return matches[0]||null;},
+    onRecord:async(file,rec)=>{const row=rows.find(row=>files.get(row.id)===file);if(!row||rec._shareInboxId&&rec._shareInboxId!==row.id)throw new Error('공유 사진이 바뀌었습니다');rec._shareInboxId=row.id;await hjShareClaimUpdate([row.id],'importing',rec);row.stagedRecordId=rec.id;},
+    onComplete:finish};
+  try{const opened=openPhotoIntake([...files.values()],context);if(opened===false)await finish(null);}catch(e){await finish(null);throw e;}
+  return {opened:true,done};
+}
+async function hjShareShow(rows){
+  const pending=rows.filter(row=>hjShareMedia(row)&&!row.acceptedRecordId),meta=rows.filter(row=>row.kind==='share-meta'&&!row.dismissedAt),ids=[...pending,...meta].map(row=>row.id);
+  const projects=state.projects.filter(p=>p&&!p.archived&&state.projects.filter(x=>x&&x.name===p.name).length===1).map(p=>({project:p,recent:projLastActivity(p.name,localDate())?.getTime()||0})).sort((a,b)=>b.recent-a.recent||a.project.name.localeCompare(b.project.name,'ko'));
+  const urls=[],thumbs=pending.map(row=>{const type=String(row.type||'');let content='🎬 동영상';if(type.startsWith('image/')){const url=URL.createObjectURL(row.blob);urls.push(url);content='<img src="'+escapeAttr(url)+'" alt="공유받은 사진 미리보기" style="width:100%;height:90px;object-fit:cover;border-radius:8px">';}return '<figure style="margin:0;min-width:0">'+content+'<figcaption style="font-size:11px;overflow-wrap:anywhere;margin-top:4px">'+escapeHtml(row.name)+'</figcaption></figure>';}).join('');
+  const dropped=meta.reduce((n,row)=>n+(Number.isSafeInteger(row.droppedCount)&&row.droppedCount>0?row.droppedCount:0),0);
+  openModal('📥 공유받은 사진 '+pending.length+'장','<div id="hjShareInbox" style="min-width:0;overflow-wrap:anywhere"><p class="hint">이 기기에 보관한 미리보기입니다. 현장과 작업 내용을 확인하기 전에는 어디에도 올리지 않습니다.</p>'+(dropped?'<p role="status">개수·용량·형식 제한으로 '+dropped+'개를 받지 못했습니다. 필요한 사진은 나누어 다시 공유해 주세요.</p>':'')+'<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0">'+thumbs+'</div><label for="hjShareProject">현장 고르기 · 최근 작업 현장부터</label><select id="hjShareProject" style="display:block;width:100%;min-width:0;min-height:44px;font-size:16px;margin-top:6px"><option value="">현장을 선택해 주세요</option>'+projects.map((item,i)=>'<option value="'+(i+1)+'"'+(item.project.name===state.activeProject?' selected':'')+'>'+escapeHtml(item.project.name)+'</option>').join('')+'</select><p id="hjShareIssue" role="alert" style="color:var(--warn)"></p><p class="hint">추가한 원본은 이 기기에 계속 보관합니다. 아직 추가하지 않은 사진은 7일 뒤 수신함에서 정리합니다.</p></div>',[
+    {label:'현장에 사진 넣기',cls:'clay',fn:async()=>{const el=document.getElementById('hjShareProject'),issue=document.getElementById('hjShareIssue'),target=projects[Number(el.value)-1];if(!target){issue.textContent='사진을 넣을 현장을 골라 주세요';el.focus();return;}if(!pending.length){issue.textContent='추가할 사진이 없습니다';return;}try{await hjShareImportPending(pending.map(row=>row.id),target.project.name);urls.forEach(URL.revokeObjectURL);meta.forEach(row=>__hjShareLater.add(row.id));}catch(e){issue.textContent=e.message||'사진을 추가하지 못했습니다';}}},
+    {label:'나중에',cls:'ghost',fn:closeModal},{label:'버리기',cls:'ghost',fn:async()=>{try{await hjShareDiscard(ids);}catch(e){const issue=document.getElementById('hjShareIssue');if(issue)issue.textContent=e.message;}}}
+  ]);
+  const buttons=document.querySelectorAll('#modalRoot .mfoot button');['hjShareImport','hjShareLater','hjShareDiscard'].forEach((id,i)=>{buttons[i].id=id;buttons[i].style.minHeight='44px';buttons[i].style.minWidth='44px';});
+  document.querySelector('#modalRoot .modal').classList.add('mobile-scroll-modal');
+  const close=document.querySelector('#modalRoot .modal-close');close.style.minHeight='44px';close.style.minWidth='44px';
+  window.__modalOnClose=()=>{ids.forEach(id=>__hjShareLater.add(id));urls.forEach(URL.revokeObjectURL);};return true;
+}
+async function hjShareCheck(options){
+  options=options||{};if(!__hjShareReady&&!options.boot)return false;if(__hjShareChecking)return __hjShareChecking;
+  __hjShareChecking=(async()=>{
+    const rows=await hjShareRead(),pending=rows.filter(row=>!row.acceptedRecordId&&(hjShareMedia(row)||row.kind==='share-meta')&&(options.force||!__hjShareLater.has(row.id)));
+    if(!pending.length)return false;
+    if(__hjShareImporting||photoIntakePending()||__modalCloseLocked||document.querySelector('#modalRoot .modal')||document.getElementById('hjOnboard')||document.getElementById('cameraProjectSheet')){
+      if(!__hjShareRetry)__hjShareRetry=setTimeout(()=>{__hjShareRetry=0;hjShareCheck(options).catch(()=>{});},1000);return false;
+    }
+    return hjShareShow(pending);
+  })();try{return await __hjShareChecking;}finally{__hjShareChecking=null;}
+}
+window.HJShareInbox={read:hjShareRead,check:hjShareCheck,open:()=>hjShareCheck({force:true}),importPending:hjShareImportPending,discard:hjShareDiscard,restoreAccepted:hjShareRestoreAccepted,resolveFile:hjShareResolveFile};
+function hjShareBoot(){
+  window.__hjShareInboxBootDone=Promise.resolve(window.__hjRestoreDone).then(async restored=>{
+    if(restored?.ok===false)return {ok:false,error:'restore-failed'};
+    hjShareConsumeQuery();
+    if(__hjShareCapture){state.tab='photos';render();syncMobileNav();hjShareCaptureMount();try{if(!document.querySelector('#modalRoot .modal'))openCamera();}catch(_){} }
+    let rows=await hjShareRead();
+    // 응답 직전 종료된 탭도 저장본에 동일 ID가 확인될 때만 이미 추가한 것으로 복구한다.
+    const recovered=rows.filter(row=>!row.acceptedRecordId&&row.stagedRecordId&&state.files.filter(rec=>hjShareSameRecord(row,rec)).length===1&&state.files.filter(rec=>rec._shareInboxId===row.id).length===1);
+    const expired=rows.filter(row=>!row.acceptedRecordId&&!row.stagedRecordId&&!row.claim&&Number.isFinite(hjShareAt(row.at))&&Date.now()-hjShareAt(row.at)>HJ_SHARE_MAX_AGE);
+    if(recovered.length||expired.length){await hjShareWrite((current,store)=>{for(const row of current){if(row.acceptedRecordId)continue;if(recovered.some(r=>r.id===row.id)&&state.files.some(rec=>hjShareSameRecord(row,rec))){row.acceptedRecordId=row.stagedRecordId;row.acceptedAt=Date.now();delete row.claim;store.put(row);}else if(expired.some(r=>r.id===row.id)&&!row.claim&&!row.stagedRecordId)store.delete(row.id);}});rows=await hjShareRead();if(expired.length)toast('7일 지난 미등록 공유 사진·안내 '+expired.length+'개를 수신함에서 정리했습니다');}
+    await hjShareRestoreAccepted(rows);__hjShareReady=true;
+    if(__hjShareEntry.error)toast('공유 사진을 받지 못했습니다. 사진첩에서 다시 공유해 주세요');
+    await hjShareCheck({boot:true,force:__hjShareEntry.view==='shareinbox'});return {ok:true};
+  }).catch(e=>{if(__hjShareEntry.view)toast('공유 사진을 읽지 못했습니다. 원본은 사진첩에 유지하고 다시 열어 주세요');return {ok:false,error:String(e&&e.message||e)};});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){if(!__hjShareImporting&&!photoIntakePending())__hjShareLater.clear();hjShareCheck().catch(()=>{});}});
 // 갤러리와 촬영은 같은 확인·추가 흐름을 사용한다. 실제 원본 영구저장/중계 큐 계약은 변경하지 않는다.
 let __photoIntakeBusy=false;
 function photoIntakePending(){return __photoIntakeBusy||!!document.getElementById('photoIntakeProject')||!!window.HJMedia?.busy;}
@@ -3845,16 +4003,16 @@ function gdUploadPhotos(unitContext){
   inp.click();
 }
 function openPhotoIntake(files,context){
-  if(photoIntakeUpdateGuard())return;
-  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('사진 추가가 이미 열려 있습니다');return;}
-  const picked=Array.from(files||[]);if(!picked.length)return;
+  if(photoIntakeUpdateGuard())return false;
+  if(__photoIntakeBusy||document.getElementById('photoIntakeProject')){toast('사진 추가가 이미 열려 있습니다');return false;}
+  const picked=Array.from(files||[]);if(!picked.length)return false;
   context=context||{};
   const projects=sortProjectDisplay(state.projects,projectPhotoCounts(state.files)).map(p=>({name:p.name,archived:!!p.archived}));
   const selected=projects.findIndex(p=>p.name===context.project);
   const options=projects.map((p,i)=>`<option value="${i+1}"${i===selected?' selected':''}>${escapeHtml(p.name)}${p.archived?' (보관 현장)':''}</option>`).join('');
   const total=picked.reduce((n,f)=>n+(Number(f.size)||0),0);
   openModal('사진 추가 확인',`<div id="photoIntakeForm" style="min-width:0;overflow-wrap:anywhere">
-    <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':'갤러리 사진'}</p>
+    <p><b>${picked.length}장 선택</b> · ${(total/1048576).toFixed(1)}MB · ${context.source==='camera'?'촬영한 사진':context.source==='share'?'공유받은 사진':'갤러리 사진'}</p>
     <label for="photoIntakeProject">사진을 추가할 현장</label>
     <select id="photoIntakeProject" aria-describedby="photoIntakeIssue" style="display:block;width:100%;min-height:44px;font-size:16px;margin:6px 0 12px"><option value="">현장을 선택해 주세요</option>${options}<option value="none">미배정으로 추가 (나중에 배정)</option></select>
     <label for="photoIntakeUnit">동·호수 / 공용부 (선택)</label>
@@ -3866,7 +4024,7 @@ function openPhotoIntake(files,context){
     <p class="hint">사진은 앱 목록에 추가하고, 서버 또는 Google Drive가 연결돼 있을 때만 백업합니다. 백업 확인 전 원본을 지우거나 앱을 새로고침하지 마세요.</p>
     <p id="photoIntakeIssue" role="alert" style="color:var(--warn);min-height:20px"></p></div>`,[
     {label:'취소',cls:'ghost',fn:closeModal},
-    {label:'이 내용으로 사진 추가',cls:'clay',fn:()=>{
+    {label:'이 내용으로 사진 추가',cls:'clay',fn:async()=>{
       if(__photoIntakeBusy)return;
       const sel=document.getElementById('photoIntakeProject'),issue=document.getElementById('photoIntakeIssue');
       const target=sel.value==='none'?null:projects[Number(sel.value)-1];
@@ -3877,7 +4035,12 @@ function openPhotoIntake(files,context){
       if(approved.unitId&&!unit){issue.textContent='동·호수가 변경되었습니다. 다시 선택해 주세요.';return;}
       approved.unitLabel=unit?aptUnitLabel(unit):'';approved.source=context.source||'';
       __photoIntakeBusy=true;
-      runPhotoIntake(picked,approved);
+      try{
+        if(context.beforeAdd)await context.beforeAdd();
+        approved.onRecord=context.onRecord;approved.beforeEach=context.beforeEach;approved.reuseRecord=context.reuseRecord;
+        const outcome=await runPhotoIntake(picked,approved);
+        if(context.onComplete)await context.onComplete(outcome);
+      }catch(e){__photoIntakeBusy=false;toast(String(e&&e.message||'사진 추가를 마치지 못했습니다'));if(context.onCancel)await context.onCancel();}
     }}]);
   document.querySelector('#modalRoot .modal').classList.add('mobile-scroll-modal','photo-intake-modal');
   const buttons=document.querySelectorAll('#modalRoot .mfoot button');buttons[0].id='photoIntakeCancel';buttons[1].id='photoIntakeConfirm';
@@ -3890,6 +4053,8 @@ function openPhotoIntake(files,context){
     if(initial&&units.some(u=>u.id===context.unitId))unitSelect.value=context.unitId;
   };
   projectSelect.onchange=()=>refreshUnits(false);refreshUnits(true);
+  if(context.onCancel)window.__modalOnClose=()=>{Promise.resolve(context.onCancel()).catch(()=>{});};
+  return true;
 }
 async function runPhotoIntake(files,approved){
   const pairs=[],readFailed=[],videos=[];
@@ -3905,32 +4070,39 @@ async function runPhotoIntake(files,approved){
     if(approved.unitId&&!aptUnitList(aptUnitProject(approved.project)).some(u=>u.id===approved.unitId))throw new Error('선택한 동·호수가 변경되어 중단했습니다. 다시 선택해 주세요.');
     for(let i=0;i<files.length;i++){
       const file=files[i];progress('앱 목록에 추가 중 '+(i+1)+' / '+files.length);
+      let freshRecord=null;
       try{
+        if(approved.beforeEach)await approved.beforeEach(file);
         // v330 📷 촬영 입력은 동영상도 받는다(accept image/*,video/*, v275) — 예전에는 여기서 '지원하지 않는 사진 형식'으로
         // 버려져 '읽기 실패'로 셌다. 동영상도 앱 목록에 넣고(서버 중계는 사진 전용 — relayUploadFiles 가 거른다) 결과 화면에서 따로 알린다.
         const fe=bestExt(file.name,file.type),isVid=isVideoExt(fe);
         if(!IMG.includes(fe)&&!isVid)throw new Error('지원하지 않는 사진 형식');
-        const rec=await ingestFile(file,null,'',{restoreEdits:false});
-        if(isVid)videos.push(file.name||'동영상');
+        const reused=approved.reuseRecord?approved.reuseRecord(file):null;
+        if(reused&&(!state.files.includes(reused)||reused.project!==approved.project))throw new Error('앞서 추가한 사진의 현장·저장 상태를 먼저 확인해 주세요');
+        const rec=reused||await ingestFile(file,null,'',{restoreEdits:false});if(!reused)freshRecord=rec;
         // 재스캔이 아닌 명시적인 새 사진 추가: 파일명 추정보다 승인한 현장·작업명이 우선이다.
-        rec.kind='photo';rec.project=approved.project;rec._worklabel=approved.workLabel||null;
-        if(approved.unitId)rec._aptUnit={project:approved.project,unitId:approved.unitId};
-        pairs.push({file,rec});
-      }catch(e){readFailed.push(file.name||'사진');}
+        if(!reused){rec.kind='photo';rec.project=approved.project;rec._worklabel=approved.workLabel||null;
+          if(approved.unitId)rec._aptUnit={project:approved.project,unitId:approved.unitId};}
+        if(approved.onRecord)await approved.onRecord(file,rec);
+        if(isVid)videos.push(file.name||'동영상');
+        pairs.push({file,rec,reused:!!reused});
+      }catch(e){if(freshRecord){const at=state.files.indexOf(freshRecord);if(at>=0)state.files.splice(at,1);}readFailed.push(file.name||'사진');}
     }
     if(pairs.length){
+      if(approved.beforeEach)await approved.beforeEach(); // 긴 파일 읽기 뒤에도 수신 사진의 처리 권한을 다시 확인한다.
       markDirty();
       // 원본 바이트의 영구 보관이 아니라 기존 앱 기록 저장의 성공 여부만 확인한다.
       metadataSaved=await guardedPersistCurrentState();
       if(!metadataSaved)throw new Error('다른 탭의 변경 또는 저장 공간 문제로 앱 기록 저장을 확인하지 못했습니다. 원본을 유지하고 저장 상태를 확인해 주세요.');
       state.tab='photos';state.search='';const search=document.getElementById('globalSearch');if(search)search.value='';render();syncMobileNav();
-      if(relayReady()){
-        cloudAttempted=true;progress('서버에 백업 중 · '+pairs.length+'장');
-        await relayUploadFiles(pairs.map(p=>p.file),'photo',pairs.map(p=>p.rec),report);
-      }else if(typeof __gdToken!=='undefined'&&__gdToken){
+      const uploadPairs=pairs.filter(p=>!p.reused||!p.rec._driveId),alreadyBacked=pairs.length-uploadPairs.length;
+      if(relayReady()&&uploadPairs.length){
+        cloudAttempted=true;progress('서버에 백업 중 · '+uploadPairs.length+'장');
+        await relayUploadFiles(uploadPairs.map(p=>p.file),'photo',uploadPairs.map(p=>p.rec),report);
+      }else if(typeof __gdToken!=='undefined'&&__gdToken&&uploadPairs.length){
         cloudAttempted=true;
-        for(let i=0;i<pairs.length;i++){
-          const {file,rec}=pairs[i];progress('드라이브에 백업 중 '+(i+1)+' / '+pairs.length);
+        for(let i=0;i<uploadPairs.length;i++){
+          const {file,rec}=uploadPairs[i];progress('드라이브에 백업 중 '+(i+1)+' / '+uploadPairs.length);
           if(isVideoRec(rec))continue;   // 사진 백업 경로는 사진만 — 동영상 원본은 🎬 원본 관리(최대 100MB)
           try{
             const id=await gdUploadBlob(file,file.name,file.type||'image/jpeg','현장사진');
@@ -3940,6 +4112,7 @@ async function runPhotoIntake(files,approved){
         }
         if(report.ok)markDirty();
       }
+      report.ok+=alreadyBacked;
       if(cloudAttempted){metadataSaved=await guardedPersistCurrentState();if(!metadataSaved)error='백업 결과의 앱 기록 저장을 확인하지 못했습니다. 앱을 새로고침하지 말고 저장 상태를 확인해 주세요.';}
     }
   }catch(e){error=String(e&&e.message||'사진 추가 중 오류가 발생했습니다. 원본을 유지하고 저장 상태를 확인해 주세요.');}
@@ -3958,6 +4131,7 @@ async function runPhotoIntake(files,approved){
       ${videos.length?`<p id="photoIntakeVideo">🎬 동영상 ${videos.length}개는 앱 목록에만 추가했습니다 — 사진 백업(서버·드라이브)은 사진만 올립니다. 원본은 [🎬 원본 관리]에서 전송하세요(파일 하나당 최대 100MB, 회사 서버 연결 필요).${approved.source==='camera'?' 기종에 따라 촬영한 동영상이 사진첩에 남지 않을 수 있으니, 원본 전송 전에는 앱을 닫거나 새로고침하지 마세요.':''}</p>`:''}
       ${readFailed.length?'<p class="hint">읽기 실패한 사진만 다시 선택해 추가하세요.</p>':''}</div>`,[{label:'사진 목록 보기',cls:'clay',fn:closeModal},{label:'사진 보관 상태',cls:'ghost',fn:photoSourceView},...(videos.length&&window.HJMedia&&typeof window.HJMedia.view==='function'?[{label:'🎬 원본 관리',cls:'ghost',fn:()=>window.HJMedia.view()}]:[]),...(pairs.length-videos.length>0&&report.ok<pairs.length-videos.length?[{label:'연결·대기열 확인',cls:'ghost',fn:()=>openGdriveSetup()}]:[])]);
   }
+  return {pairs,readFailed,metadataSaved,error,report};
 }
 // 구글드라이브 만물인테리어▸현장사진(앱이 올린 사진)을 앱으로 불러오기 — 동시 호출은 단일 in-flight로 직렬화(상태 손상 방지)
 let __gdPullInflight=null;
@@ -5613,6 +5787,7 @@ async function runBatchOCR(){
 async function getFileOf(rec){
   if(rec.handle)return await rec.handle.getFile();
   if(rec._file)return rec._file;
+  if(window.HJShareInbox){const shared=await window.HJShareInbox.resolveFile(rec);if(shared)return shared;}
   const meta=documentMetaValid(rec.documentMeta);
   if(meta&&meta.localBlobId){
     const saved=await idbGetStrict('document_blob:'+meta.localBlobId);
@@ -7653,11 +7828,12 @@ function render(){
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(typeof syncMobileNav==='function')syncMobileNav();
-  if(!state.files.length&&!['dashboard','docs','quotemaker','schedule','contacts','estimates','ads','project','aptmgmt'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();return;}
+  if(!state.files.length&&!['dashboard','docs','quotemaker','schedule','contacts','estimates','ads','project','aptmgmt'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();hjShareCaptureMount();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
   v.innerHTML=map[state.tab]();
   try{wrapWideTables(v);startWrapObserver();}catch(e){}   // [v215/218] 가로 넘침 방지(뒤늦게 그려지는 표 포함)
   bindDrop();bindEvents();bindProjectSearch(v);
+  hjShareCaptureMount();
   try{observeHeicLazy();}catch(e){}   // 보이는 로컬 HEIC만 변환(지연 로딩)
 }
 /* ═══ v217 ⚡ 기능 바로가기 — 검색창에 이름만 치면 그 화면으로 ═══ */
@@ -13316,9 +13492,9 @@ function hjBootExtras(){
     // Cowork 기본 작업을 부팅 시 1회 결정적으로 초기화 — 지연 초기화(coworkTasksEnsure)가
     // 렌더·조회 도중 coworkTasks(null→기본)·_coworkInit 을 바꿔 직렬화가 세션 중간에 달라지던 비결정성 제거.
     try{coworkTasksEnsure();}catch(e){}
-    const v=new URLSearchParams(location.search).get('view');
+    const v=__hjShareEntry.view||new URLSearchParams(location.search).get('view');
     if(v){
-      try{history.replaceState(null,'',location.pathname);}catch(e){}
+      if(!__hjShareEntry.view)try{history.replaceState(null,'',location.pathname);}catch(e){}
       if(v==='schedule'){state.tab='schedule';render();}
       else if(v==='ai'){setTimeout(()=>{try{aiAgent();}catch(e){}},600);}
       else if(v==='glance'){hjGlanceShow(true);}
@@ -17730,6 +17906,7 @@ const HJ_ONBOARD=[
 ];
 function hjOnboardShow(force){
   if(!force&&localStorage.getItem('hj_onboard_done')==='1')return false;
+  if(!force&&(__hjShareEntry.view||document.getElementById('hjShareInbox')||photoIntakePending()))return false;
   let i=0;
   const render=()=>{
     const s=HJ_ONBOARD[i];const last=i===HJ_ONBOARD.length-1;
@@ -38613,7 +38790,7 @@ function freezePaidMetadata(){
 }
 function paidExactFileMatchKey(value,serialized){
   const file=value||{},key=serialized?file.key:fileKey(file);
-  return JSON.stringify([file.name,file.prefix,file.size,key]);
+  return JSON.stringify([file.name,file.prefix,file.size,key,serialized?file.shareInboxId||'':file._shareInboxId||'']);
 }
 function paidCloneOptional(value){return value===undefined?undefined:paidClone(value);}
 function paidExactSameLocalResource(matched,saved){
@@ -38636,6 +38813,7 @@ function paidExactRuntimeFiles(candidateFiles,currentFiles){
       thumb:(sameLocal||sameDrive)?matched.thumb:null,text:saved.text,ocr:saved.ocr,est:paidCloneOptional(saved.est),exSum:saved.exSum,ledger:paidCloneOptional(saved.ledger),quote:paidCloneOptional(saved.quote),contact:paidCloneOptional(saved.contact),
       _phase:saved.phase,_worklabel:saved.worklabel,_gdFolder:saved.gdFolder,_driveId:saved.driveId,_driveMimeType:saved.driveMimeType,_driveSize:saved.driveSize,
       ...(/^[a-f0-9]{64}$/.test(saved.sourceSha256||'')?{_originalSha256:saved.sourceSha256}:{}),...(saved.mediaOriginal?{_mediaOriginal:structuredClone(saved.mediaOriginal)}:{}),
+      ...(typeof saved.shareInboxId==='string'&&saved.shareInboxId?{_shareInboxId:saved.shareInboxId}:{}),
       ...(Object.prototype.hasOwnProperty.call(saved,'aptUnit')?{_aptUnit:paidCloneOptional(saved.aptUnit)}:{}),
       ...(Object.prototype.hasOwnProperty.call(saved,'sourceModifiedAt')?{sourceModifiedAt:saved.sourceModifiedAt}:{}),
       _relayLink:saved.driveId?'relay:'+saved.driveId:null,_file:matched?matched._file:null,_heicFile:matched?matched._heicFile:null,_needHeic:matched?matched._needHeic:false,
@@ -38761,31 +38939,7 @@ try{Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){
 try{officeIntakeAutoStart();}catch(e){}
 
 /* ========== PWA: 설치형 앱 + 오프라인 + 폴더 기억 ========== */
-// manifest를 동적으로 주입 (단일 HTML 유지)
-(function(){
-  // 아이콘은 실제 파일이다 — 크롬은 manifest 의 SVG 를 설치 아이콘으로 쓰지 않고,
-  // data: URI 는 구글이 가져갈 주소가 없다. maskable 은 안드로이드가 원·스퀘어클로
-  // 잘라 내므로 안전원(가운데 지름 2/3) 안에 글자가 들어간 별도 파일을 쓴다.
-  // **manifest 안의 주소는 절대주소여야 한다.** 이 manifest 는 blob: URL 로 붙는데,
-  // blob: 에는 경로가 없어 상대주소를 풀 수 없다 — 실제로 브라우저에서
-  // new URL('icon-192.png', blobHref) 가 'Invalid URL' 로 던지는 것을 확인했다.
-  // 그래서 문서 주소를 기준으로 미리 풀어서 넣는다(뜻하는 주소는 그대로다).
-  const abs=(p)=>new URL(p,location.href).href;
-  const icon192=abs('icon-192.png'), icon512=abs('icon-512.png'), iconMask=abs('icon-maskable-512.png');
-  const manifest={name:'현장 — 인테리어 파일 정리',short_name:'현장',start_url:abs('.'),display:'standalone',
-    background_color:'#ffffff',theme_color:'#0b4ea2',
-    icons:[{src:icon192,sizes:'192x192',type:'image/png',purpose:'any'},
-           {src:icon512,sizes:'512x512',type:'image/png',purpose:'any'},
-           {src:iconMask,sizes:'512x512',type:'image/png',purpose:'maskable'}],
-    shortcuts:[
-      {name:'오늘 일정',url:abs('./?view=schedule'),icons:[{src:icon192,sizes:'192x192',type:'image/png'}]},
-      {name:'AI 비서',url:abs('./?view=ai'),icons:[{src:icon192,sizes:'192x192',type:'image/png'}]},
-      {name:'한눈 보기',url:abs('./?view=glance'),icons:[{src:icon192,sizes:'192x192',type:'image/png'}]}
-    ]};
-  const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
-  const link=document.createElement('link');link.rel='manifest';link.href=URL.createObjectURL(blob);
-  document.head.appendChild(link);
-})();
+// 설치 정보는 실제 manifest.webmanifest에서 읽는다.
 // service worker (오프라인 캐시) — 실제 파일(sw.js)로 등록. blob URL 등록은 브라우저가 거부해 지금까지 조용히 실패하고 있었음.
 if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -40460,11 +40614,12 @@ function hjLeadCreate(s){
   toast('상담 리드 “'+nm+'” 현장 등록됨');
 }
 var __hjLead=/[#&]lead=/.test(location.hash);
-try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead&&!__hjShareEntry.view){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
 /* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
 try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
 /* 앱이 이미 열린 탭에서 #lead= 링크로 재진입(주소만 변경, 재로드 없음)해도 인입되도록 */
 window.addEventListener('hashchange',function(){try{if(/[#&]lead=/.test(location.hash))hjLeadIntake();}catch(e){}});
+try{hjShareBoot();}catch(e){}
 try{hjNetWatch();}catch(e){}
 // 저장된 화면 설정 복원
 (async()=>{try{
