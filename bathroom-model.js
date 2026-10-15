@@ -48,8 +48,14 @@
     // 큰 분모도 Infinity로 바꾸지 않고, 표시 정밀도보다 충분히 긴 소수로 돌려준다.
     return Number(String(n/d)+'.'+((n%d)*10n**30n/d).toString().padStart(30,'0'));
   }
-  function number(v,label,min,max,integer=false){if(v===null||v===undefined||String(v).trim()==='')throw Error(label+'을 입력해 주세요.');const n=Number(v);if(!Number.isFinite(n)||n<min||n>max||(integer&&!Number.isInteger(n)))throw Error(label+' 범위를 확인해 주세요 ('+min+'~'+max+').');return n;}
-  function price(v,label){return v===null||v===undefined||String(v).trim()===''?null:number(v,label+' (원 단위 정수)',0,100000000,true);}
+  /* v410 숫자가 아닌 저장값을 0원/1원으로 바꾸지 않고, 미선택 입력은 재선택할 때 검증한다. */
+  function hjBathNumericInput(v,label){if(v!==null&&v!==undefined&&typeof v!=='string'&&(typeof v!=='number'||!Number.isFinite(v)))throw Error(label+'은 숫자로 입력해 주세요.');if(typeof v==='string'&&v.trim()!==''&&!Number.isFinite(Number(v)))throw Error(label+'은 숫자로 입력해 주세요.');}
+  function number(v,label,min,max,integer=false){hjBathNumericInput(v,label);if(v===null||v===undefined||String(v).trim()==='')throw Error(label+'을 입력해 주세요.');const n=Number(v);if(!Number.isFinite(n)||n<min||n>max||(integer&&!Number.isInteger(n)))throw Error(label+' 범위를 확인해 주세요 ('+min+'~'+max+').');return n;}
+  function price(v,label){hjBathNumericInput(v,label);return v===null||v===undefined||String(v).trim()===''?null:number(v,label+' (원 단위 정수)',0,100000000,true);}
+  function hjBathOptionalNumber(v,label,min,max,integer,enabled){hjBathNumericInput(v,label);return enabled?number(v,label,min,max,integer):v===undefined?null:v;}
+  function hjBathOptionalPrice(v,label,enabled){hjBathNumericInput(v,label);return enabled?price(v,label):v===undefined?null:v;}
+  function hjBathScopeValues(s,label,enabled){return {qty:hjBathOptionalNumber(s.qty,label+' 수량',1,100,true,enabled),material:hjBathOptionalPrice(s.material,label+' 자재 판매단가',enabled),labor:hjBathOptionalPrice(s.labor,label+' 시공 단가',enabled)};}
+  function hjBathScopeAmount(s){const v=hjBathScopeValues(s,s.name,true);return v.material===null||v.labor===null?null:v.qty*(v.material+v.labor);}
   function text(v,max){if(typeof v!=='string')return '';return v.slice(0,max);}
   function normalize(raw){
     if(!raw||raw.version!==1)throw Error('이 상담 초안의 형식을 읽을 수 없습니다.');
@@ -59,8 +65,8 @@
     const z=raw.size||{};for(const k of ['width','depth'])x.size[k]=number(z[k],'욕실 '+(k==='width'?'가로':'세로')+'(cm)',50,2000);x.size.height=number(z.height,'벽 높이(cm)',50,600);
     x.size.doorWidth=number(z.doorWidth,'문 너비(cm)',0,500);x.size.doorHeight=number(z.doorHeight,'문 높이(cm)',0,600);x.size.extraOpening=number(z.extraOpening,'추가 공제 면적(㎡)',0,1000);
     for(const k of ['wall','floor']){const s=raw[k]||{},label=k==='wall'?'벽':'바닥';x[k]={width:number(s.width,label+' 타일 가로(mm)',10,3000),height:number(s.height,label+' 타일 세로(mm)',10,3000),pack:number(s.pack,label+' 타일 박스당 장수',1,1000,true),waste:number(s.waste,label+' 여유율(%)',0,50),price:price(s.price,label+' 타일 박스 판매단가'),labor:price(s.labor,label+' 타일 ㎡당 시공비')};}
-    x.consumables=d.consumables.map(base=>{const s=Array.isArray(raw.consumables)&&raw.consumables.find(s=>s&&s.id===base.id);if(!s)throw Error('부자재 항목을 확인해 주세요.');return {...base,enabled:s.enabled===true,usage:number(s.usage,base.name+' ㎡당 사용량(kg)',0.01,100),pack:number(s.pack,base.name+' 포장 용량(kg)',0.01,1000),price:price(s.price,base.name+' 포장 판매단가')};});
-    x.scope=d.scope.map(base=>{const s=Array.isArray(raw.scope)&&raw.scope.find(s=>s&&s.id===base.id);if(!s)throw Error('공사 항목을 확인해 주세요.');return {...base,enabled:s.enabled===true,qty:number(s.qty,base.name+' 수량',1,100,true),material:price(s.material,base.name+' 자재 판매단가'),labor:price(s.labor,base.name+' 시공 단가'),model:text(s.model,140)};});
+    x.consumables=d.consumables.map(base=>{const s=Array.isArray(raw.consumables)&&raw.consumables.find(s=>s&&s.id===base.id);if(!s)throw Error('부자재 항목을 확인해 주세요.');const enabled=s.enabled===true;return {...base,enabled,usage:hjBathOptionalNumber(s.usage,base.name+' ㎡당 사용량(kg)',0.01,100,false,enabled),pack:hjBathOptionalNumber(s.pack,base.name+' 포장 용량(kg)',0.01,1000,false,enabled),price:hjBathOptionalPrice(s.price,base.name+' 포장 판매단가',enabled)};});
+    x.scope=d.scope.map(base=>{const s=Array.isArray(raw.scope)&&raw.scope.find(s=>s&&s.id===base.id);if(!s)throw Error('공사 항목을 확인해 주세요.');return {...base,enabled:s.enabled===true,...hjBathScopeValues(s,base.name,s.enabled===true),model:text(s.model,140)};});
     return x;
   }
   function tile(areaFraction,t){
@@ -88,5 +94,5 @@
     const d=r.data,lines=[['만물인테리어 욕실 상담용 견적·자재 계산서'],['현장',d.project],['고객',d.customer],['작성일',d.date],['상태',!r.complete?'단가 확인 필요':d.priceStatus==='confirmed'?'입력 판매단가 기준 · 실측 후 확정':'판매단가 확인 전 · 실측 후 확정'],['단가 기준',d.vat==='inclusive'?'입력단가 부가세 포함':'입력단가 부가세 별도'],['계산 기준','타일 자재비=구매 박스×박스 판매단가 / 타일 시공비=순면적×㎡당 단가'],['구분','품목','수량','단위','판매단가(원)','금액(원)','근거'],...r.rows.map(x=>[x.kind,x.name,x.qty,x.unit,x.price===null?'확인 필요':x.price,x.amount===null?'확인 필요':x.amount,x.basis]),['자재 합계',r.material],['시공 합계',r.labor],['공급가액',r.complete?r.supply:'미확정'],['부가세',r.complete?r.vat:'미확정'],['총액',r.complete?r.total:'미확정'],[],['타일','순면적(㎡)','여유율(%)','필요 장수','구매 박스','실구매 장수','박스 반올림 여분'],...['wall','floor'].map(k=>{const t=r[k];return [k==='wall'?'벽':'바닥',t.area,t.waste,t.need,t.boxes,t.buy,t.packSurplus];}),['미포함 품목',r.excluded.join(', ')||'없음'],['별도 협의',d.exclusions],['고객 요청',d.request],['안내','직사각형 욕실의 입력 치수 기준. 줄눈 폭·패턴·기둥·단차·현장 손실은 발주 전 확인합니다. 부자재 사용량은 제품 시방값으로 수정해야 합니다.']];
     return '\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n');
   }
-  return {styles,defaults,normalize,calculate,toCSV,round,unitPriceLabel};
+  return {styles,defaults,normalize,calculate,toCSV,round,unitPriceLabel,hjBathScopeAmount};
 });

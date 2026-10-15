@@ -53,7 +53,8 @@ test('초안의 임의 항목명은 표시하지 않고 정본 이름과 저장 
  assert(!Object.hasOwn(r.data,'excluded'),'파생 목록을 저장 초안에 넣지 않음');
  assert.equal(r.data.consumables[0].price,10000,'미선택 값은 보존');
  assert.equal(r.total,1352978,'미선택 단가를 합산하지 않음');
- d.consumables[0].usage='';assert.throws(()=>M.calculate(d),/타일 접착제/,'기존 미선택 입력 검증 정책 유지');
+ d.consumables[0].usage='';assert.equal(M.calculate(d).data.consumables[0].usage,'','미선택 입력은 그대로 보존');
+ d.consumables[0].enabled=true;assert.throws(()=>M.calculate(d),/타일 접착제/,'재선택하면 입력 검증 적용');
 });
 
 const source=fs.readFileSync(path.join(__dirname,'../bathroom-model.js'),'utf8');
