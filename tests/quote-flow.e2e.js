@@ -56,6 +56,8 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
           { id: 'r3', room: '빈칸', w: '', h: '', hgt: '', open: '', note: '' },
         ] },
       { name: '빈현장', stage: 1, received: 0, phases: [], cost: {} },
+      // v388 현장 연결 = 수주는 그 현장이 시공·완료일 때만 — '수주 견적'(q3)은 시공 단계 현장에 붙인다
+      { name: '시공현장', stage: 2, received: 0, phases: [], cost: {} },
       { name: '고객현장', stage: 3, doneAt: '2026-09-01', received: 500000, phases: ['도배'], cost: {},
         customer: { name: '박가상', phone: '010-0000-5678' },
         contractLog: [{ at: '2026-08-01T09:00:00Z', contractNo: 'C-TEST-1', amount: 1000000, serverStatus: 'COMPLETED', completedAt: '2026-08-02T10:00:00Z' }],
@@ -68,7 +70,7 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
     state.quotes = [
       { id: 'q1', title: '가상 도배 견적', date: D5, items: it('도배(실크)', 3000000), vatIncluded: false },
       { id: 'q2', title: '가상 오래된 견적', date: D45, items: it('장판', 1000000), vatIncluded: false },
-      { id: 'q3', title: '수주 견적', date: D10, project: '실측현장', items: it('도배(실크)', 3200000), vatIncluded: false },
+      { id: 'q3', title: '수주 견적', date: D10, project: '시공현장', items: it('도배(실크)', 3200000), vatIncluded: false },
       { id: 'q4', title: '옛 실패 표시', date: D8, result: 'lost', items: it('타일', 900000), vatIncluded: false },
       { id: 'q5', title: '아주 옛 견적', date: D400, items: it('몰딩', 500000), vatIncluded: false },
       // 현장 연결 없이 수주로 표시한 것 — 견적 이력과 수주 분석이 같은 판정(quoteStatus)을 쓰는지
@@ -129,11 +131,11 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   let fu = await page.evaluate(() => quoteFollowupData().map(x => x.id).join(','));
   assert(fu === 'q1', '② 팔로업은 진행 중 3~30일만(수주·종결 제외): ' + fu);
   let st = await page.evaluate(() => quoteStaleData().map(x => x.id).join(','));
-  assert(st === 'q2', '② 30일 지난 견적이 종결 대상으로: ' + st);
+  assert(st === 'q2,q5', '② 30일 지난 견적이 종결 대상으로: ' + st);
   await page.evaluate(() => quoteFollowup());
   await page.waitForSelector('#modalRoot .qfClose[data-q="q1"]');
   mt = await modalText();
-  assert(/30일 지난 견적 1건/.test(mt) && /가상 오래된 견적/.test(mt), '② 팔로업 화면에 30일 지난 견적: ' + mt.slice(0, 300));
+  assert(/30일 지난 견적 2건/.test(mt) && /가상 오래된 견적/.test(mt), '② 팔로업 화면에 30일 지난 견적: ' + mt.slice(0, 300));
   assert(await page.evaluate(() => { const r = document.querySelector('#modalRoot .qfReasons[data-q="q1"]'); return r.hidden && getComputedStyle(r).display === 'none'; }), '② 사유 칩은 종결을 눌러야 열린다');
   await page.click('#modalRoot .qfClose[data-q="q1"]');
   await page.waitForFunction(() => !document.querySelector('#modalRoot .qfReasons[data-q="q1"]').hidden);
@@ -145,8 +147,8 @@ assert(/if\(t\.id==='qmMeasure'\)return quoteFromMeasure\(\);/.test(source), '�
   // 팔로업 대상이 없어도 30일 지난 견적이 있으면 화면이 그것을 보여 준다
   await page.click('#modalRoot .qfClose[data-q="q2"]');
   await page.click('#modalRoot .qfReason[data-id="q2"][data-r="연락 두절"]');
-  await page.waitForFunction(() => !document.querySelector('#modalRoot .qfClose'));
-  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q2'); return q.lost.reason === '연락 두절' && quoteStaleData().length === 0; }), '② 30일 지난 견적 종결');
+  await page.waitForFunction(() => !document.querySelector('#modalRoot .qfClose[data-q="q2"]'));
+  assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q2'); return q.lost.reason === '연락 두절' && quoteStaleData().map(x=>x.id).join(',') === 'q5'; }), '② 30일 지난 견적 종결');
   // 견적 이력의 ✕ 종결 과 같은 개념 — 표시하면 lost 가 생기고, 풀면 같이 지워진다
   await page.evaluate(() => { closeModal(); quoteMark('q5', 'lost'); });
   assert(await page.evaluate(() => { const q = state.quotes.find(x => x.id === 'q5'); return q.result === 'lost' && q.lost && !!q.lost.at && q.lost.reason === ''; }), '② 견적 이력 종결 = lost 기록');

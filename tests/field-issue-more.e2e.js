@@ -291,11 +291,13 @@ async function boot(browser, mobile, viewport) {
     await closeAll();
   });
 
-  await test('현장 추가(폰 더보기 prompt 경로) — 숨은 사이드바 칸에 표시를 달지 않는다', async () => {
-    const r = await page.evaluate((dup) => { const keep = window.prompt; window.prompt = () => dup; try { moreActionHandler('addproject'); } finally { window.prompt = keep; }
-      const el = document.getElementById('newProj'); return { hidden: !el.getClientRects().length, inv: el.getAttribute('aria-invalid'), n: state.projects.length }; }, P1);
+  await test('현장 추가(폰 더보기 입력창) — 숨은 사이드바 칸에 표시를 달지 않는다', async () => {
+    await page.evaluate(() => moreActionHandler('addproject')); await modalReady();
+    await page.fill('#hjQuickProj', P1); await clickFoot(/^추가$/);
+    await page.waitForFunction(() => !document.getElementById('hjQuickProj') && !window.__mobileSheetHistoryRetire);
+    const r = await page.evaluate(() => { const el = document.getElementById('newProj'); return { hidden: !el.getClientRects().length, inv: el.getAttribute('aria-invalid'), n: state.projects.length }; });
     assert(r.hidden, '폰 모드인데 사이드바 칸이 보인다 — 이 검사의 전제가 무너졌다');
-    await toastIs(/이미 있는 현장/, '현장 추가(prompt)');
+    await toastIs(/이미 있는 현장/, '현장 추가(입력창)');
     assert(r.inv !== 'true' && r.n === 2, '숨은 칸에 오류 표시를 달았거나 중복 현장이 생겼다 ' + JSON.stringify(r));
   });
 
@@ -316,6 +318,9 @@ async function boot(browser, mobile, viewport) {
     assert((await page.evaluate(() => state.projects.length)) === 2, '거부했는데 현장이 생겼다');
     await page.fill('#newProj', '가상칸검사현장 C');
     await page.click('#btnAddProj');
+    await modalReady();
+    assert((await page.evaluate(() => state.projects.length)) === 2, '유사 이름 확인 전에 현장이 생겼다');
+    await clickFoot(/^그래도 새로 만들기$/);
     assert((await page.evaluate(() => state.projects.length)) === 3, '맞는 이름인데 현장이 안 생겼다');
     assert((await page.evaluate(() => document.querySelectorAll('.field-issue').length)) === 0, '성공한 뒤에도 오류 표시가 남았다');
   });

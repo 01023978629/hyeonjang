@@ -54,7 +54,14 @@ let browser;
     // A fresh document also disposes prior render/automatic-work timers. Do not
     // let a later task from a successful case contaminate a subsequent case.
     await page.goto(APP, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]));
+    await page.waitForFunction(() => !!window.__hjOfficeOpsBootDone);
+    await page.evaluate(async () => {
+      await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]);
+      // v400 합성 자료와 뒤늦은 자동 일정 생성의 경쟁을 없앤다. 복구 보호는 실제 코드 그대로.
+      window.taxCalendarEnsure = () => 0; window.coworkSchedEnsure = () => false;
+      aiOpsEnsureState().enabled = false;
+      clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+    });
     await page.evaluate(async ({ mode, empty }) => {
       const original = window.__restoreGuardOriginal = { hjSnapshot, applyData, markDirty, render, closeModal, toast, idbSet, idbGetStrict };
       window.__restoreGuardBase = JSON.parse(JSON.stringify(serializeData()));
@@ -137,8 +144,15 @@ let browser;
         title: document.getElementById('modalTitle')?.textContent || '' };
     });
   }
+  function equalObserved(actual, expected, message) {
+    try { assert.deepEqual(actual, expected, message); }
+    catch (error) {
+      console.error('복구 상태가 달라진 필드:', ['projects','notes','files','quotes','dirty'].filter(k => JSON.stringify(actual[k]) !== JSON.stringify(expected[k])).join(', ') || '(없음)');
+      throw error;
+    }
+  }
   function unchanged(p) {
-    assert.deepEqual(p.after, p.before, 'current projects/notes/dirty state must remain intact');
+    equalObserved(p.after, p.before, 'current projects/notes/dirty state must remain intact');
     assert.equal(p.applies, 0, 'applyData must not run before a successful safety snapshot');
     assert.equal(p.marks, 0, 'failed/pending restore must not mark data dirty');
     assert.equal(p.renders, 0, 'failed/pending restore must not render restored state');
@@ -203,7 +217,7 @@ let browser;
     });
     await clickConfirm(); await settled();
     let p = await observe();
-    assert.deepEqual(p.after, p.before);
+    equalObserved(p.after, p.before);
     assert.equal(p.applies, 1); assert.equal(p.marks, 0); assert.equal(p.renders, 0); assert.equal(p.closes, 0);
     assert(p.dialogOpen); assert(p.messages.some(text => /복구 실패/.test(text)));
     assert.equal(JSON.parse(p.snapshotsAfter).filter(record => record.label === '복구 직전').length, 1);
@@ -227,7 +241,7 @@ let browser;
     await page.evaluate(() => window.__restoreGuardProbe.resolve(true));
     await settled(); p = await observe();
     assert.equal(p.applies, 1); assert.equal(p.marks, 1); assert.equal(p.renders, 1); assert.equal(p.closes, 1);
-    assert.deepEqual(p.atApply, p.before, 'first mutation occurs only after the snapshot resolves');
+    equalObserved(p.atApply, p.before, 'first mutation occurs only after the snapshot resolves');
     assert.deepEqual(p.after.projects, ['TEST_OLD_PROJECT']);
   });
 
@@ -246,7 +260,7 @@ let browser;
     await seed('real'); await clickConfirm(); await settled();
     const p = await observe();
     assert.equal(p.applies, 1); assert.deepEqual(p.appliedOptions, { revert: true });
-    assert.deepEqual(p.atApply, p.before);
+    equalObserved(p.atApply, p.before);
     const safety = p.persistedBeforeApply.find(record => record.label === '복구 직전');
     assert(safety, 'real IDB write must have completed before applyData');
     assert.deepEqual(safety.data.projects.map(project => project.name), ['TEST_CURRENT_PROJECT']);

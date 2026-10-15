@@ -1,7 +1,10 @@
 package kr.manmool.hyeonjang;
 
 import static org.junit.Assert.*;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Looper;
@@ -9,6 +12,7 @@ import android.text.Layout;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -16,6 +20,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import org.junit.Test;
+import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
@@ -30,6 +35,93 @@ import java.time.Duration;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class MainActivityTest {
+    @Before public void resetLauncherPreferences() {
+        assertTrue(launcherPreferences().edit().clear().commit());
+    }
+
+    private SharedPreferences launcherPreferences() {
+        return RuntimeEnvironment.getApplication().getSharedPreferences(
+                MainActivity.LAUNCH_PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    // Count entry into the real TWA/CCT path; no replacement launch implementation.
+    public static class ObservedActivity extends MainActivity {
+        int launchAttempts;
+        @Override protected void openField() {
+            launchAttempts++;
+            super.openField();
+        }
+    }
+
+    private CheckBox automaticChoice(MainActivity activity) {
+        return (CheckBox) findText(activity.getWindow().getDecorView(),
+                activity.getString(R.string.open_automatically));
+    }
+
+    @Test public void versionMatchesTheInstallableApp() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+        assertEquals("1.1.0", info.versionName);
+        assertEquals(2L, info.getLongVersionCode());
+        assertTrue(context.getString(R.string.version).contains("1.1.0"));
+    }
+
+    @Test public void firstLaunchRequiresGuidanceEvenWithAnExistingOptIn() {
+        assertTrue(launcherPreferences().edit().putBoolean(MainActivity.OPEN_AUTOMATICALLY, true).commit());
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            assertTrue(automaticChoice(c.get()).isChecked());
+            assertEquals(0, c.get().launchAttempts);
+            assertNull(Shadows.shadowOf(c.get()).getNextStartedActivity());
+        }
+    }
+
+    @Test public void choosingAutomaticOpeningWaitsForTheNextNewLaunch() {
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            automaticChoice(c.get()).performClick();
+            assertTrue(launcherPreferences().getBoolean(MainActivity.OPEN_AUTOMATICALLY, false));
+            assertEquals(0, c.get().launchAttempts);
+            c.recreate();
+            assertTrue(automaticChoice(c.get()).isChecked());
+            assertEquals("Rotation is not a new launch", 0, c.get().launchAttempts);
+        }
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            assertTrue(automaticChoice(c.get()).isChecked());
+            assertEquals(1, c.get().launchAttempts);
+            assertNotNull("Real launch path must show the existing missing-browser dialog", ShadowDialog.getLatestDialog());
+            assertEquals(0, c.get().databaseList().length);
+            assertEquals("Only launcher preferences are stored", 2, launcherPreferences().getAll().size());
+        }
+    }
+
+    @Test public void returningAndRotationNeverRepeatAnAutomaticLaunch() {
+        assertTrue(launcherPreferences().edit().putBoolean(MainActivity.GUIDANCE_SEEN, true)
+                .putBoolean(MainActivity.OPEN_AUTOMATICALLY, true).commit());
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            assertEquals(1, c.get().launchAttempts);
+            c.pause().stop().start().resume();
+            assertEquals("Returning from the browser must keep guidance reachable", 1, c.get().launchAttempts);
+            c.recreate();
+            assertEquals("Rotation must not relaunch", 0, c.get().launchAttempts);
+            assertTrue(automaticChoice(c.get()).isChecked());
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(13));
+            assertEquals("No late launch may survive recreation", 0, c.get().launchAttempts);
+        }
+    }
+
+    @Test public void uncheckingIsPersistedAndKeepsTheNextLaunchOnGuidance() {
+        assertTrue(launcherPreferences().edit().putBoolean(MainActivity.GUIDANCE_SEEN, true)
+                .putBoolean(MainActivity.OPEN_AUTOMATICALLY, true).commit());
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            assertEquals(1, c.get().launchAttempts);
+            automaticChoice(c.get()).performClick();
+            assertFalse(launcherPreferences().getBoolean(MainActivity.OPEN_AUTOMATICALLY, true));
+        }
+        try (ActivityController<ObservedActivity> c = Robolectric.buildActivity(ObservedActivity.class).setup()) {
+            assertFalse(automaticChoice(c.get()).isChecked());
+            assertEquals(0, c.get().launchAttempts);
+        }
+    }
+
     private TextView findText(View view, String text) {
         if (view instanceof TextView && text.contentEquals(((TextView) view).getText())) return (TextView) view;
         if (view instanceof ViewGroup) {
@@ -158,7 +250,7 @@ public class MainActivityTest {
                 // The smaller body must grow, so checking its measured size proves scaling is active.
                 assertTrue("The test must actually increase the rendered body font size", body.getTextSize() > 15 * density);
             }
-            int[] actions = { R.string.open_field, R.string.open_default, R.string.privacy };
+            int[] actions = { R.string.open_field, R.string.open_automatically, R.string.open_default, R.string.privacy };
             for (int action : actions) {
                 TextView button = findText(scroll, a.getString(action));
                 assertNotNull(button);
