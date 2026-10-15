@@ -138,23 +138,25 @@ check(/<link rel="icon"[^>]*href="icon-192\.png">/.test(html), 'index.html 의 r
 check(!/<link rel="(?:icon|apple-touch-icon)"[^>]*href="data:/.test(html),
   'index.html 이 아직 인라인 data: 아이콘을 쓴다 — 가져갈 주소가 없다');
 
-/* ⑤ manifest — blob: 로 붙기 때문에 **절대주소**여야 한다.
-      상대주소를 넣으면 new URL('icon-192.png', blobHref) 가 던진다(브라우저에서 확인함). */
-const mfBlock = html.match(/manifest를 동적으로 주입[\s\S]*?\n\}\)\(\);/);
-if (!mfBlock) fail.push('index.html 에서 manifest 주입 블록을 못 찾았다 — 형식이 바뀌었으면 이 검사부터 고쳐라');
-else {
-  const blk = mfBlock[0];
-  check(/const abs\s*=\s*\(p\)\s*=>\s*new URL\(p,\s*location\.href\)\.href/.test(blk),
-    'manifest 의 주소를 절대주소로 바꾸는 abs() 가 없다 — blob: manifest 에서는 상대주소가 풀리지 않는다');
-  for (const [name, varName] of [['icon-192.png', 'icon192'], ['icon-512.png', 'icon512'], ['icon-maskable-512.png', 'iconMask']]) {
-    check(new RegExp(`${varName}\\s*=\\s*abs\\('${name.replace(/\./g, '\\.')}'\\)`).test(blk),
-      `manifest 의 ${varName} 가 abs('${name}') 가 아니다`);
-  }
-  check(/purpose:'maskable'/.test(blk), "manifest 에 purpose:'maskable' 아이콘이 없다 — 안드로이드가 흰 테두리를 두른다");
-  check(/purpose:'any'/.test(blk), "manifest 에 purpose:'any' 아이콘이 없다");
-  check(!/type:'image\/svg\+xml'/.test(blk), 'manifest 가 아직 SVG 아이콘을 쓴다 — 크롬은 설치 아이콘으로 쓰지 않는다');
-  check(/start_url:abs\('\.'\)/.test(blk), "manifest 의 start_url 도 절대주소여야 한다");
-}
+/* ⑤ v416 actual manifest: relative URLs resolve inside the installed app scope. */
+check(/<link\s+rel="manifest"\s+href="\.\/manifest\.webmanifest"\s*\/?>/.test(html), 'manifest link must point to the actual public file');
+check(!html.includes("JSON.stringify(manifest)"), 'blob manifest injection must not return');
+try {
+  const mf=JSON.parse(read('manifest.webmanifest'));
+  check(mf.name==='현장 — 인테리어 파일 정리'&&mf.short_name==='현장', 'installed app identity must be preserved');
+  check(mf.id==='./'&&mf.scope==='./'&&mf.start_url==='./'&&mf.display==='standalone', 'manifest scope/id/start/display must stay inside the app');
+  check(mf.background_color==='#ffffff'&&mf.theme_color==='#0b4ea2', 'installation colors preserved');
+  const expectedIcons=[{src:'./icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'./icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},{src:'./icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}];
+  check(JSON.stringify(mf.icons)===JSON.stringify(expectedIcons), 'manifest must keep exact three PNG icons and safe maskable');
+  const shortcuts=[['📸 사진 넣기','./?view=photos&capture=1'],['오늘 일정','./?view=schedule'],['AI 비서','./?view=ai'],['한눈 보기','./?view=glance']];
+  check(JSON.stringify((mf.shortcuts||[]).map(s=>[s.name,s.url]))===JSON.stringify(shortcuts), 'photo shortcut and three original shortcuts preserved');
+  check((mf.shortcuts||[]).every(s=>JSON.stringify(s.icons)===JSON.stringify([{src:'./icon-192.png',sizes:'192x192',type:'image/png'}])), 'shortcut icons must resolve to public PNG');
+  check(JSON.stringify(mf.share_target)===JSON.stringify({action:'./share-target',method:'POST',enctype:'multipart/form-data',params:{title:'title',text:'text',url:'url',files:[{name:'media',accept:['image/*','video/*']}]}}), 'share target contract must match image/video local receiver');
+  const mfUrl=new URL('manifest.webmanifest','https://example.test/hyeonjang/');
+  for(const entry of mf.icons||[])check(new URL(entry.src,mfUrl).pathname.startsWith('/hyeonjang/'), 'manifest icon stays inside app scope');
+} catch(e){fail.push('actual manifest parse/contract failed: '+e.message);}
+check(sw.includes("SCOPE_PATH+'manifest.webmanifest'"), 'public manifest must be cached');
+check(stage.includes("'manifest.webmanifest'"), 'public manifest must be deployed');
 
 /* ⑥ 오프라인 캐시와 배포 허용목록 — 빠뜨리면 폰에서만 드러난다 */
 for (const name of Object.keys(ICONS)) {
@@ -167,4 +169,4 @@ if (fail.length) {
   fail.forEach((x) => console.error('  - ' + x));
   process.exit(1);
 }
-console.log(`✓ 앱 아이콘 ${Object.keys(ICONS).length}장 — 크기·maskable 안전원·head·manifest 절대주소·오프라인 캐시·배포 허용목록`);
+console.log(`✓ 앱 아이콘 ${Object.keys(ICONS).length}장 — 크기·maskable 안전원·head·실제 manifest·공유 대상·오프라인 캐시·배포 허용목록`);
