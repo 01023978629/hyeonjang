@@ -14,7 +14,7 @@ async function test(name, fn) {
   catch (e) { results.push({ name, ok: false, err: String(e && e.stack || e).slice(0, 800) }); console.log('FAIL  ' + name + '\n      ' + String(e && e.message || e)); }
 }
 function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
-const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingView', 'staleProjects', 'reviewRequest', 'asManage'];
+const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingView', 'staleProjects', 'reviewRequest', 'asManage', 'hjDelayPick', 'extraWork', 'hjProofView', 'punchListView'];   // v351 뒤 넷은 현장 이름을 받는 더보기 함수
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.platform !== 'win32' ? '/opt/pw-browsers/chromium' : undefined });

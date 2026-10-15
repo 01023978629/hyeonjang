@@ -10,10 +10,10 @@ $taskPrivate=Join-Path $env:LOCALAPPDATA 'Manmool\AndroidSigning\hyeonjang'
 $taskKey=Join-Path $taskPrivate 'release.jks'
 $taskPasswordFile=Join-Path $taskPrivate 'password.dpapi'
 $taskDistRoot=Join-Path $taskRoot 'dist'
-$taskReleaseId='1.0.0-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
+$taskReleaseId='1.1.0-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $taskOutput=Join-Path $taskDistRoot ('.pending-' + $taskReleaseId)
 $taskReleaseOutput=Join-Path $taskDistRoot $taskReleaseId
-$taskApk=Join-Path $taskOutput 'hyeonjang-galaxy-1.0.0.apk'
+$taskApk=Join-Path $taskOutput 'hyeonjang-galaxy-1.1.0.apk'
 $taskOldJava=$env:JAVA_HOME
 $taskOldAndroid=$env:ANDROID_HOME
 $taskOldPath=$env:PATH
@@ -39,7 +39,7 @@ try {
     $taskUnsigned=Join-Path $taskRoot 'app\build\outputs\apk\release\app-release-unsigned.apk'
     $taskBadging=& (Join-Path $AndroidSdk 'build-tools\36.0.0\aapt.exe') dump badging $taskUnsigned
     Assert-Success 'Compiled APK metadata'
-    if(-not($taskBadging -match "^package: name='kr\.manmool\.hyeonjang' versionCode='1' versionName='1\.0\.0'")){
+    if(-not($taskBadging -match "^package: name='kr\.manmool\.hyeonjang' versionCode='2' versionName='1\.1\.0'")){
         throw 'Unexpected compiled package/version. Update release metadata together with the Android version.'
     }
     if($taskBadging -match '^application-debuggable'){throw 'Debuggable APK cannot be released'}
@@ -116,7 +116,7 @@ try {
     Assert-Success 'APK alignment verification'
     $taskCertificate=($taskVerification | Select-String '^Signer #1 certificate SHA-256 digest: (.+)$').Matches.Groups[1].Value
     $taskManifest=[ordered]@{
-        package='kr.manmool.hyeonjang'; version='1.0.0'; versionCode=1; file=[IO.Path]::GetFileName($taskApk)
+        package='kr.manmool.hyeonjang'; version='1.1.0'; versionCode=2; file=[IO.Path]::GetFileName($taskApk)
         sha256=(Get-FileHash -LiteralPath $taskApk -Algorithm SHA256).Hash.ToLowerInvariant()
         certificateSha256=$taskCertificate; bytes=(Get-Item -LiteralPath $taskApk).Length
         builtAtUtc=[DateTime]::UtcNow.ToString('o'); deviceTested=$false; domainVerificationDeployed=$false
@@ -128,7 +128,7 @@ try {
         target=@{namespace='android_app'; package_name='kr.manmool.hyeonjang'; sha256_cert_fingerprints=@($taskFingerprint)}
     })
     # Prepared only. This belongs at the ORIGIN root, not /hyeonjang/.well-known/.
-    [IO.File]::WriteAllText((Join-Path $taskOutput 'assetlinks.pending.json'),(ConvertTo-Json -InputObject $taskAssociation -Depth 6),[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $taskOutput 'assetlinks.json'),(ConvertTo-Json -InputObject $taskAssociation -Depth 6),[Text.UTF8Encoding]::new($false))
     # Promote only a fully verified, unique build directory. Never overwrite an earlier release.
     $taskExpectedRoot=[IO.Path]::GetFullPath($taskDistRoot) + [IO.Path]::DirectorySeparatorChar
     foreach($taskCandidate in @($taskOutput,$taskReleaseOutput)) {
@@ -138,7 +138,7 @@ try {
     }
     if(Test-Path -LiteralPath $taskReleaseOutput){throw 'Release output already exists'}
     Rename-Item -LiteralPath $taskOutput -NewName $taskReleaseId
-    Write-Output ('APK ready: ' + (Join-Path $taskReleaseOutput 'hyeonjang-galaxy-1.0.0.apk'))
+    Write-Output ('APK ready: ' + (Join-Path $taskReleaseOutput 'hyeonjang-galaxy-1.1.0.apk'))
     Write-Output 'Physical Galaxy validation and public distribution have NOT been performed.'
 } finally {
     Remove-Item Env:HJ_APK_STORE_PASSWORD -ErrorAction SilentlyContinue

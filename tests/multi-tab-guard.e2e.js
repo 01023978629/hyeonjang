@@ -85,12 +85,24 @@ async function boot(ctx, errors) {
   //    (뮤테이션 실행 중 실측 — 게이트 플레이크가 된다).
   //    → 조용한 구간 동안 persistLocal 자체를 스텁해 저장 시도를 봉인하고,
   //      방송만으로 stale 이 서는지를 결정적으로 본다.
-  await p2.evaluate(async () => {
-    state.notes = [{ id: 'n2', text: '탭2 메모' }];
-    markDirty();
-    await new Promise(r => setTimeout(r, 1300));
-  });
-  await p1.waitForTimeout(400);
+  // v400 탭2의 실제 IDB 저장과 탭1 방송 수신을 각각 기다린다. persistLocal 스텁은 유지한다.
+  try {
+    await p2.evaluate(async () => {
+      const previous = (await idbGet('appState'))?.savedAt || '';
+      state.notes = [{ id: 'n2', text: '탭2 메모' }]; markDirty();
+      const deadline = Date.now() + 10000;
+      while (Date.now() < deadline) {
+        const current = await idbGet('appState');
+        if (current?.savedAt > previous && current.savedAt === __tabStamp) return;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('③ 탭2 IDB savedAt 전진 대기 실패');
+    });
+    await p1.waitForFunction(() => __tabStale === true, null, { timeout: 10000 });
+  } catch (error) {
+    const stamps = await Promise.all([p1,p2].map(p => p.evaluate(async () => ({stamp:__tabStamp,stale:__tabStale,savedAt:(await idbGet('appState'))?.savedAt || ''}))));
+    console.error('③ 탭 상태:', JSON.stringify(stamps)); throw error;
+  }
   const r3 = await p1.evaluate(() => ({ stale: __tabStale, banner: (document.getElementById('hjTabWarnMsg') || {}).textContent || '', toasts: window.__toasts.slice() }));
   assert(r3.stale === true, '③ 다른 탭의 저장 방송을 받고도 뒤처짐 표시가 안 됐다: ' + JSON.stringify(r3));
   // 방송 수신만으로 경고하지 않는다 — 경고는 실제 저장이 막히는 순간에만.

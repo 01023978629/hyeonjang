@@ -42,7 +42,7 @@ async function inject(){if(mutation)await page.evaluate(m=>{
   await context.addInitScript(()=>{localStorage.setItem('hj_onboard_done','1');localStorage.setItem('hj_ver_checked_at',String(Date.now()));});
   const requests=[];await context.route('**/*',r=>{
     const req=r.request(),url=req.url();if(new URL(url).origin===origin)return r.continue();
-    const publicBootOrFakeThumb=req.method()==='GET'&&['https://accounts.google.com/gsi/client','https://lh3.googleusercontent.com/d/FAKE-A=w800','https://drive.google.com/thumbnail?id=FAKE-A&sz=w800','https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js','https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'].includes(url);
+    const publicBootOrFakeThumb=req.method()==='GET'&&['https://accounts.google.com/gsi/client','https://lh3.googleusercontent.com/d/FAKE-A=w320','https://drive.google.com/thumbnail?id=FAKE-A&sz=w320','https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js','https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'].includes(url);
     if(!publicBootOrFakeThumb)requests.push(req.method()+' '+url);return r.abort();
   });
   page=await context.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',e=>errors.push(e.message));

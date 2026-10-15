@@ -5,6 +5,25 @@
 후속 모바일 화면 개선·모의검사는 [v293 검사 기록](mobile-screen-v293-20260913.md)을 참고한다.
 후속 작업은 APK 1.0.0 본체를 변경하지 않았으며, 웹 후보의 공개 배포와 실기기 확인은 별도다.
 
+## 2026-10-16 · 1.1.0 빌드·연결 파일 배포
+
+- 앱 버전만 `1.1.0` / versionCode `2`로 갱신한다. 웹 `index.html`·서비스워커·웹 버전 고정값은 이 작업에서 변경하지 않는다.
+- 첫 실행에는 저장 자료와 브라우저 선택 안내를 항상 표시한다. **다음부터 바로 열기**는 기본 꺼짐이며 연결앱 전용 SharedPreferences에만 보관한다. 안내를 본 뒤 사용자가 체크한 경우 다음 신규 실행에 기존 TWA/Custom Tab 경로로 연결한다. 회전·저장된 화면 복원·브라우저 복귀는 자동 실행 계기가 아니다.
+- 웹에서 뒤로 돌아오면 안내 화면에서 체크를 해제할 수 있다. Chrome/Samsung Internet의 자료 분리 안내, 고정 HTTPS 주소, 외부 Intent 무시, 검증 실패 시 Custom Tab 폴백을 유지한다.
+- 도메인 루트 [assetlinks PR #1](https://github.com/01023978629/01023978629.github.io/pull/1)은 P2 위임으로 `7672b0c`에 병합했다. Pages `38792549054` 성공 후 2026-10-16 04:18 KST 루트 URL의 HTTP 200과 새 릴리스의 패키지·관계·인증서 지문 일치를 확인했다. `.nojekyll`을 함께 추가했고 기존 index.html·robots.txt는 유지했다. 실제 갤럭시에서 주소줄이 사라지는지는 별도 확인이 필요하다.
+- 새 출력은 `android-galaxy/dist/1.1.0-<시각>-<고유값>/`의 `hyeonjang-galaxy-1.1.0.apk`, `release.json`, `assetlinks.json`이다. 출력 준비와 공개 배포를 구분한다. APK·개인 키·암호는 커밋하지 않는다.
+- 로컬 검증: JVM 16/16, Android lint·release 빌드·기존 서명·정렬 검증, 웹 정적 18/18·관련 6/6 파일, Android 보호 변이 8/8 통과. 새 체크박스 검사는 이전 코드에서 컴파일 후 의도한 단언 실패를 확인했다. 로컬 전체 run-all은 실행하지 않았으며 최종 전체 회귀는 PR #174 CI로 확인한다. 상세 로그·APK 경로·SHA-256·지문은 비커밋 `보고/v417.md`에 기록한다.
+- APK SHA-256은 `31a716a70cfa814ffee4b356d610e3613c960266b6b27a758e0ed9d14a77a0bc`, 공개 인증서 SHA-256은 `672552d9ffc92d6df082904120eddfa5f1a54d8a9d629f0486d3df4b6653fe57`이다. 기존 1.0.0과 인증서가 일치한다. release.json의 domainVerificationDeployed=false는 빌드 당시 값이며 이후 P2 배포 증거는 위 실행 기록을 따른다.
+- 갤럭시 설치·같은 서명 업데이트·주소줄 제거·사진/Drive 확인은 **실기기 미검증**이다. 에뮬레이터나 JVM 결과로 대신 완료 표기하지 않는다.
+
+기존 키 재사용 빌드 명령은 다음과 같다. `-InitializeSigning`을 사용하지 않으며 `Partial signing state` 또는 `Signing password missing`이면 중단하고 기존 상태를 보존한다.
+
+```powershell
+.\Build-Galaxy.ps1 -JavaHome '<JDK 17 경로>' -AndroidSdk '<Android SDK 경로>'
+```
+
+아래 1.0.0의 해시·검사 수·배포 상태는 2026-09-13 당시 기록이며 1.1.0의 검증 결과가 아니다.
+
 ## 요약과 현재 상태
 
 갤럭시 1대에서 기존 현장 웹을 열어 사용하는 Android 연결앱을 준비한다. 아이폰 앱은 이번 범위에서 제외한다. Mac은 필요하지 않으며 Windows에서 Android 빌드를 진행한다.

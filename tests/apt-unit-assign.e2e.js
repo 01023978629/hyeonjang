@@ -134,13 +134,13 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     assert(rt === 6, '직렬화에 작업명이 남아야 백업에 실린다: ' + rt);
   });
 
-  await test('작업명 제안 목록은 이 현장에서 쓴 것만 · 빈 칸은 확인을 거쳐야 지운다', async () => {
+  await test('작업명 제안은 현장 최근→전체 빈도→사전 · 빈 칸은 확인을 거쳐야 지운다', async () => {
     await seed();
     await page.evaluate(A => { state.files.find(f => f.id === 'kk1')._worklabel = 'TEST 지난 작업';
       state.files.push({ id: 'other', name: '가상_other.jpg', kind: 'photo', ext: 'jpg', prefix: '', size: 1, project: '가상 다른현장', when: new Date('2026-09-01'), _worklabel: 'TEST 남의 현장 작업' });
       aptUnitView(A, ''); }, A);
     let r = await page.evaluate(() => [...document.querySelectorAll('#aptUnitWorkList option')].map(o => o.value));
-    assert(eq(r, ['TEST 지난 작업']), '제안은 이 현장에서 쓴 작업명만: ' + JSON.stringify(r));
+    assert(eq(r.slice(0, 3), ['TEST 지난 작업', 'TEST 남의 현장 작업', '1차 방수']) && r.includes('정리·청소') && new Set(r).size === r.length, 'v405 현장 최근→전체 빈도→사전, 중복 없음: ' + JSON.stringify(r));
     // 빈 칸 + 취소 → 그대로
     await page.evaluate(() => { window.confirm = () => false; document.getElementById('aptUnitSelectAll').click(); document.getElementById('aptUnitWork').value = '   '; document.getElementById('aptUnitWorkSave').click(); });
     assert((await page.evaluate(() => state.files.find(f => f.id === 'kk1')._worklabel)) === 'TEST 지난 작업', '취소했는데 작업명을 지웠다');

@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -16,6 +17,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -31,6 +33,9 @@ import androidx.core.view.WindowInsetsCompat;
 import com.google.androidbrowserhelper.trusted.TwaLauncher;
 
 public class MainActivity extends Activity {
+    static final String LAUNCH_PREFERENCES = "hyeonjang_launcher";
+    static final String GUIDANCE_SEEN = "guidance_seen";
+    static final String OPEN_AUTOMATICALLY = "open_automatically";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TwaLauncher launcher;
     private Button openButton;
@@ -45,6 +50,10 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        SharedPreferences preferences = getSharedPreferences(LAUNCH_PREFERENCES, MODE_PRIVATE);
+        // A saved activity is a rotation/restoration, not a new request to open the web.
+        boolean openOnThisLaunch = state == null && preferences.getBoolean(GUIDANCE_SEEN, false)
+                && preferences.getBoolean(OPEN_AUTOMATICALLY, false);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout column = new LinearLayout(this);
@@ -66,13 +75,24 @@ public class MainActivity extends Activity {
         openButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(22,112,90)));
         addText(column, chromeAvailable() ? R.string.browser_chrome : R.string.browser_default, 14, true, Color.DKGRAY);
         addText(column, R.string.browser_note, 14, false, Color.DKGRAY);
+        CheckBox automatic = new CheckBox(this);
+        automatic.setText(R.string.open_automatically);
+        automatic.setTextSize(16);
+        automatic.setMinHeight(dp(48));
+        automatic.setChecked(preferences.getBoolean(OPEN_AUTOMATICALLY, false));
+        automatic.setOnCheckedChangeListener((button, checked) ->
+                preferences.edit().putBoolean(OPEN_AUTOMATICALLY, checked).apply());
+        column.addView(automatic, new LinearLayout.LayoutParams(-1, -2));
+        addText(column, R.string.open_automatically_note, 14, false, Color.DKGRAY);
         addButton(column, R.string.open_default, () -> openExternal(LaunchPolicy.FIELD_URL));
         card(column, R.string.storage_title, R.string.storage_body);
         card(column, R.string.upload_title, R.string.upload_body);
         card(column, R.string.install_title, R.string.install_body);
         addButton(column, R.string.privacy, () -> openExternal(LaunchPolicy.PRIVACY_URL));
         addText(column, R.string.version, 13, false, Color.DKGRAY);
-        // Never auto-launch: users must first see storage and browser-selection guidance.
+        // The first launch always keeps the guidance visible, even if a stale opt-in exists.
+        preferences.edit().putBoolean(GUIDANCE_SEEN, true).apply();
+        if (openOnThisLaunch) openField();
     }
 
     protected boolean chromeAvailable() {
@@ -82,7 +102,7 @@ public class MainActivity extends Activity {
         } catch (PackageManager.NameNotFoundException e) { return false; }
     }
 
-    private void openField() {
+    protected void openField() {
         if (opening) return;
         opening = true;
         openButton.setEnabled(false);
