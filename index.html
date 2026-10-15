@@ -3273,7 +3273,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v414-bathroom';
+const APP_BUILD='hyeonjang-v411-bathlink';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -33594,9 +33594,96 @@ function won2kor(n){
   }
   return (neg?'마이너스 ':'')+s+'원정';
 }
+/* v411 욕실 상담은 임시 전달 키로만 연결한다. 확인 전에는 저장 자료와 작성 중 견적을 바꾸지 않는다. */
+const HJ_BATH_PRICE_NAMES=['욕실 벽 타일(박스)','욕실 바닥 타일(박스)','욕실 벽 타일 시공(㎡)','욕실 바닥 타일 시공(㎡)','타일 접착제','줄눈재'].concat(['기존 욕실 철거','폐기물 운반·처리','방수·바탕 보수','급배수 배관 보수','양변기','세면대·하부장','세면 수전','샤워 수전','거울·수납장','천장 마감','환풍기','샤워 파티션','실리콘·마감 청소','욕조 철거','욕조 설치','비데','젠다이·선반','욕실 문·문틀 교체','유가(바닥 배수구) 교체','수건걸이·액세서리 세트'].flatMap(n=>[n,n+' 시공']));
+function hjBathPrefillData(){
+  const name=String((state.editingQuote||{}).project||state.activeProject||'');
+  const p=(state.projects||[]).find(p=>p&&p.name===name),c=p&&p.customer||{},prices={};
+  HJ_BATH_PRICE_NAMES.forEach(n=>{const v=(state.priceBook||{})[n];if(typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=100000000)prices[n]=v;});
+  return {at:new Date().toISOString(),project:name,customer:{name:String(c.name||''),addr:String(c.addr||'')},prices};
+}
+function hjBathPrefillOpen(){
+  try{localStorage.setItem('hj_bath_prefill',JSON.stringify(hjBathPrefillData()));}
+  catch(e){toast('상담 정보를 준비하지 못했어요. 기기 저장 공간을 확인하세요.');return false;}
+  window.open('./bathroom.html','_blank','noopener');return true;
+}
+const HJ_BATH_HANDOFF_AT=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const __hjBathSkipped=new Set();let __hjBathReady=false;
+function hjBathHandoffRead(){
+  let raw;try{raw=localStorage.getItem('hj_bath_handoff');}catch(e){return null;}if(!raw)return null;
+  try{
+    if(raw.length>262144)throw Error('size');const d=JSON.parse(raw),age=Date.now()-Date.parse(d.at);
+    const str=(v,n)=>typeof v==='string'&&v.length<=n;
+    if(!d||d.version!==1||!str(d.at,40)||!HJ_BATH_HANDOFF_AT.test(d.at)||!Number.isFinite(age)||age<0||age>86400000||!str(d.project,100)||!str(d.place,300)||!str(d.memo,6000)||!['exclusive','inclusive'].includes(d.vat)||!['full','overlay'].includes(d.method)||!d.customer||!str(d.customer.name,100)||!str(d.customer.addr,300)||!Array.isArray(d.items)||!d.items.length||d.items.length>100)throw Error('schema');
+    if(!d.days||!str(d.days.start,100)||!['work','unusable'].every(k=>d.days[k]===null||(Number.isInteger(d.days[k])&&d.days[k]>=0&&d.days[k]<=60)))throw Error('days');
+    if(!d.items.every(it=>it&&str(it.name,150)&&it.name.trim()&&str(it.spec,1000)&&typeof it.qty==='number'&&Number.isFinite(it.qty)&&it.qty>0&&it.qty<=1000000&&typeof it.price==='number'&&Number.isFinite(it.price)&&it.price>=0&&it.price<=100000000&&typeof it.pending==='boolean'))throw Error('items');
+    const items=d.items.map(it=>({name:it.name,spec:it.spec+(it.pending&&!it.spec.includes('단가 확인')?' · 단가 확인':''),qty:it.qty,price:it.pending?0:(d.vat==='inclusive'?Math.round(it.price/1.1):it.price)}));
+    const subtotal=d.items.reduce((sum,it)=>sum+(it.pending?0:it.qty*it.price),0);
+    const expected=d.total===undefined?(d.vat==='inclusive'?Math.round(subtotal):Math.round(subtotal)+Math.round(Math.round(subtotal)*.1)):d.total;
+    if(typeof expected!=='number'||!Number.isFinite(expected)||expected<0||expected>100000000000000)throw Error('total');
+    const total=quoteCalc({items,vatIncluded:true}).total;
+    return {raw,data:d,items,total,expected,diff:Math.abs(total-expected),pending:d.items.filter(it=>it.pending).length};
+  }catch(e){try{if(localStorage.getItem('hj_bath_handoff')===raw)localStorage.removeItem('hj_bath_handoff');}catch(_){}return null;}
+}
+/* v411 다른 탭·대화상자에서 바뀐 입력을 오래된 확인 버튼이 덮지 않도록 직전까지 재검증한다. */
+function hjBathHandoffCurrent(raw){
+  if(__tabStale){toast('다른 탭에서 자료가 바뀌었어요. 새로고침 뒤 불러오세요.');return null;}
+  const h=hjBathHandoffRead();if(!h||h.raw!==raw){toast('욕실 상담이 바뀌었어요. 최신 상담을 다시 확인하세요.');return null;}
+  if(h.diff>1){toast('단가 환산 후 합계 차이가 있어 불러오기를 보류했어요. 상담 단가를 확인하세요.');return null;}return h;
+}
+function hjBathHandoffApply(raw){
+  const h=hjBathHandoffCurrent(raw);if(!h)return false;
+  const old=state.editingQuote,snapshot=paidStableJson(old);
+  const stillCurrent=()=>{if(state.editingQuote!==old||paidStableJson(state.editingQuote)!==snapshot){toast('작성 중 견적이 바뀌었어요. 다시 확인하세요.');return null;}return hjBathHandoffCurrent(raw);};
+  const apply=saveOld=>{
+    const now=stillCurrent();if(!now)return false;
+    const d=now.data,project=(state.projects||[]).find(p=>p&&p.name===d.project),memo=[d.memo];
+    if(d.vat==='inclusive')memo.push('부가세 포함 입력값을 공급가로 환산');
+    if(now.pending&&!d.memo.includes('단가 확인 필요'))memo.push('단가 확인 필요 '+now.pending+'건');
+    if(d.customer.name)memo.push('고객: '+d.customer.name);
+    if(!project)memo.push('현장을 골라 연결하세요');
+    const q=Object.assign(newQuote(),{title:d.project?d.project+' 욕실 견적':'욕실 견적',place:d.place,project:project?project.name:null,vatIncluded:true,items:now.items,memo:memo.join('\n'),bathroomImport:true});
+    if(saveOld)saveQuoteEdit();
+    state.editingQuote=q;state.tab='quotemaker';state.activeProject=null;render();
+    try{if(localStorage.getItem('hj_bath_handoff')===raw)localStorage.removeItem('hj_bath_handoff');}catch(e){__hjBathSkipped.add(raw);}
+    closeModal();toast('욕실 상담을 새 견적서로 불러왔어요. 확인 후 저장하세요.');return true;
+  };
+  if(quoteEditDirty()){
+    openModal('저장하지 않은 견적','<p>작성 중인 견적이 있어요. 욕실 상담을 불러오기 전에 어떻게 할까요?</p>',[
+      {label:'계속 편집',cls:'ghost',fn:()=>{closeModal();state.tab='quotemaker';state.activeProject=null;render();}},
+      {label:'저장 안 하고 새 견적',cls:'warn',fn:()=>apply(false)},
+      {label:'저장하고 새 견적',cls:'blue',fn:()=>apply(true)}]);
+    window.__modalOnClose=()=>__hjBathSkipped.add(raw);return false;
+  }
+  return apply(false);
+}
+function hjBathHandoffCheck(){
+  const root=document.getElementById('modalRoot');
+  if(!__hjBathReady||__tabStale||document.visibilityState==='hidden'||!root||root.querySelector('.modal'))return false;
+  const h=hjBathHandoffRead();if(!h||__hjBathSkipped.has(h.raw))return false;
+  let advancing=false;
+  const body='<div id="hjBathHandoff" style="word-break:keep-all;overflow-wrap:anywhere"><p><b>'+escapeHtml(h.data.project||'현장 미지정')+'</b> · 품목 '+h.items.length+'개</p><p>입력분 합계 '+won(h.expected)+' · 단가 확인 필요 '+h.pending+'건</p>'+(h.diff>1?'<p role="alert">앱 환산 합계 '+won(h.total)+' — '+won(h.diff)+' 차이가 있어 불러오기를 보류합니다. 상담 단가를 확인하세요.</p>':'<p class="hint">새 견적서에서 확인한 뒤 저장하세요.</p>')+'</div>';
+  openModal('🛁 욕실 상담 견적 불러오기',body,[
+    {label:'나중에',cls:'ghost',fn:closeModal},
+    {label:'불러오기',cls:'blue',fn:()=>{if(!hjBathHandoffCurrent(h.raw))return;advancing=true;closeModal();hjBathHandoffApply(h.raw);}}]);
+  if(h.diff>1)root.querySelector('.mfoot button:last-child').disabled=true;
+  window.__modalOnClose=()=>{if(!advancing)__hjBathSkipped.add(h.raw);};return true;
+}
+function hjBathHandoffBoot(){
+  Promise.resolve(window.__hjRestoreDone).catch(()=>{}).then(()=>{
+    __hjBathReady=true;
+    const root=document.getElementById('modalRoot');
+    if(root)new MutationObserver(()=>hjBathHandoffCheck()).observe(root,{childList:true});
+    hjBathHandoffCheck();
+  });
+  window.addEventListener('focus',hjBathHandoffCheck);
+  window.addEventListener('storage',e=>{if(e.key==='hj_bath_handoff')hjBathHandoffCheck();});
+  document.addEventListener('visibilitychange',hjBathHandoffCheck);
+}
+
 function viewQuoteMaker(){
   /* v410 고객과 자재·시공비를 함께 고르는 욕실 상담을 열어도 편집 중 견적은 유지한다. */
-  const hjBathLink='<a class="ghost tiny" href="./bathroom.html" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;border:1px solid var(--line-soft);border-radius:8px;text-decoration:none">🛁 욕실 상담·견적</a>';
+  const hjBathLink='<button type="button" class="ghost tiny" id="qmBathroom" style="min-height:44px">🛁 욕실 상담·견적</button>';
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
       <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button>${hjBathLink}</div>`;
@@ -33660,7 +33747,7 @@ function viewQuoteMaker(){
         <label>장소<input type="text" id="qmPlace" value="${escapeAttr(q.place)}" placeholder="현장 주소"></label>
         <label>부가세<select id="qmVat"><option value="1"${q.vatIncluded?' selected':''}>부가세 포함</option><option value="0"${!q.vatIncluded?' selected':''}>부가세 별도</option></select></label>
         <label>입금 계좌<select id="qmAcct">${acctOpts}</select></label>
-        <label>연결 현장<select id="qmProj">${projOpts}</select></label>
+        <label>연결 현장<select id="qmProj">${projOpts}</select>${q.bathroomImport&&!q.project?'<span class="hint">현장을 골라 연결하세요</span>':''}</label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
       </div>
       <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
@@ -35139,7 +35226,7 @@ function setupDelegation(){
       if(input&&input.getClientRects().length)input.focus();
       return;
     }
-    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
@@ -35170,6 +35257,7 @@ function setupDelegation(){
     if(t.id==='btnCsv')return exportContactsCSV();
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
+    if(t.id==='qmBathroom')return hjBathPrefillOpen();
     if(t.id==='qmNew')return startNewQuote();
     if(t.id==='schPastToggle'){__schShowAll=!__schShowAll;return render();}
     if(t.id==='schAdd')return openScheduleEdit(null);
@@ -40439,7 +40527,10 @@ function hjLeadCreate(s){
   toast('상담 리드 “'+nm+'” 현장 등록됨');
 }
 var __hjLead=/[#&]lead=/.test(location.hash);
-try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
+/* v411 상담에서 돌아온 첫 방문은 인입 확인이 온보딩에 가려지지 않게 한다. */
+var __hjBathArrival=!!hjBathHandoffRead();
+hjBathHandoffBoot();
+try{if(localStorage.getItem('hj_onboard_done')!=='1'&&!(state.projects||[]).length&&!__hjLead&&!__hjBathArrival){setTimeout(()=>hjOnboardShow(),400);}else{hjBootExtras();try{hjMorningMaybe();}catch(e){}try{weekBriefMaybe();}catch(e){}try{aiActiveBriefMaybe();}catch(e){}try{opsReportMaybe();}catch(e){}try{if(hjNotifyEnabled())setTimeout(()=>hjNotifyFire(),1400);}catch(e){}}}catch(e){try{hjBootExtras();}catch(_){}}
 /* 리드 인입은 로컬 복원(__hjRestoreDone) 완료 후 실행 — 늦은 applyData가 등록분을 덮어쓰거나 중복검사가 빈 notes를 보는 경합 방지 */
 try{if(__hjLead)Promise.resolve(window.__hjRestoreDone).catch(function(){}).then(function(){setTimeout(function(){try{hjLeadIntake();}catch(e){}},500);});}catch(e){}
 /* 앱이 이미 열린 탭에서 #lead= 링크로 재진입(주소만 변경, 재로드 없음)해도 인입되도록 */
