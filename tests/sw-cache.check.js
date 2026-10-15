@@ -14,9 +14,10 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 // 2026-09-19 v320: 앱 아이콘 네 장을 더했다. 글자 없는 정적 그림이고, 비행기모드에서
 // 홈 화면 아이콘이 깨지지 않으려면 캐시에 있어야 한다. 늘릴 때는 이 줄을 손으로 고치고
 // 왜 늘렸는지 여기에 적어라 — 그게 이 검사의 쓸모다.
+// v416 real manifest is public installation metadata; shared media never enters Cache Storage.
 // Representative-only operations shell has no credentials. Staff pages are deliberately not cached.
 const EXPECTED_SHELL_PATHS = ['./','./index.html','./media-safety.js','./shared-todo-backup.js','./operations-review.js','./privacy.html','./terms.html',
-  './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./bathroom-defaults.json'];
+  './icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png','./bathroom-defaults.json','./manifest.webmanifest'];
 const FORBIDDEN_SHELL_DATA = /officeOps|office_ops|commercialApproval|commercial_approval|token|cache|response|https?:\/\//i;
 const handlers = {};
 const puts = [];

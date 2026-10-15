@@ -121,6 +121,74 @@ async function filtering({page}){
  await openMore(page);assert.equal(await page.locator('.more-cat-block [data-moreaction]').count(),126,'LEAK_MORE_DOM_126');await geometry(page,['#moreSearch']);await page.locator('#moreSheetClose').click();await page.waitForFunction(()=>!document.getElementById('moreSheet')&&!__mobileSheetHistoryRetire);await same(page,before,'LEAK_FILTER_AND_MENU_READ_ONLY');
 }
 
+/* v419/v416 integration: one synthetic scenario for the combined callback contract.
+   Real PNG ingestion and durable metadata saves remain unchanged. A beforeEach
+   gate only pauses the supported callback boundary; every timeout is a failure. */
+async function photoCallbacks({page}){
+ const before=await snap(page);
+ await page.evaluate(async name=>{
+  const canvas=document.createElement('canvas');canvas.width=12;canvas.height=12;
+  const ctx=canvas.getContext('2d');ctx.fillStyle='#315ca8';ctx.fillRect(0,0,12,12);
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('synthetic PNG creation failed')),'image/png'));
+  const file=new File([blob],'TEST_LEAK_CALLBACK.png',{type:'image/png',lastModified:Date.now()});
+  window.__v419PhotoCallbacks={file,events:[],beforeAdd:0,beforeEach:0,gateEntered:false,release:null,outcome:null};
+  openPhotoIntake([file],{project:name,source:'gallery',
+   onCancel:()=>{window.__v419PhotoCallbacks.events.push('cancel');},
+   onClose:()=>{window.__v419PhotoCallbacks.events.push('close');},
+   onComplete:()=>{window.__v419PhotoCallbacks.events.push('complete');}
+  });
+ },LEAK);
+ await page.locator('#photoIntakeCancel').waitFor();
+ assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.events),[],'LEAK_CALLBACK_INITIAL_OPEN_SILENT');
+ await page.locator('#photoIntakeCancel').click();
+ await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal'));
+ await turn(page);
+ assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.events),['cancel','close'],'LEAK_CALLBACK_CANCEL_THEN_CLOSE_ONCE');
+ assert.deepEqual(await snap(page),before,'LEAK_CALLBACK_CANCEL_PRESERVES_SYNTHETIC_DATA');
+
+ await page.waitForFunction(()=>!__mobileSheetHistoryRetire&&!__mobileSheetHistoryDeferredOpen);
+ await page.evaluate(name=>{
+  const probe=window.__v419PhotoCallbacks;probe.events=[];
+  const gate=new Promise(resolve=>{probe.release=resolve;});
+  openPhotoIntake([probe.file],{project:name,source:'gallery',
+   beforeAdd:async()=>{probe.beforeAdd++;},
+   beforeEach:async file=>{probe.beforeEach++;if(file&&!probe.gateEntered){probe.gateEntered=true;await gate;}},
+   onCancel:()=>{probe.events.push('cancel');},
+   onClose:()=>{probe.events.push('close');},
+   onComplete:outcome=>{probe.outcome={pairs:outcome.pairs.length,readFailed:outcome.readFailed.length,metadataSaved:outcome.metadataSaved,error:outcome.error};probe.events.push('complete');}
+  });
+ },LEAK);
+ await page.locator('#photoIntakeWork').fill('TEST_CALLBACK_WORK');
+ try{
+  await page.locator('#photoIntakeConfirm').click();
+  await page.waitForFunction(()=>window.__v419PhotoCallbacks.gateEntered&&!!document.getElementById('photoIntakeProgress'));
+  assert.deepEqual(await page.evaluate(()=>({events:window.__v419PhotoCallbacks.events,beforeAdd:window.__v419PhotoCallbacks.beforeAdd,beforeEach:window.__v419PhotoCallbacks.beforeEach,files:state.files.length,result:!!document.getElementById('photoIntakeResult'),locked:__modalCloseLocked})),{events:[],beforeAdd:1,beforeEach:1,files:0,result:false,locked:true},'LEAK_CALLBACK_PROGRESS_DOES_NOT_CANCEL_COMPLETE_OR_CONTINUE');
+  await page.keyboard.press('Escape');await turn(page);
+  assert.equal(await page.locator('#photoIntakeProgress').count(),1,'LEAK_CALLBACK_PROGRESS_CANNOT_CLOSE');
+  assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.events),[],'LEAK_CALLBACK_LOCKED_CLOSE_IS_SILENT');
+  await page.evaluate(()=>window.__v419PhotoCallbacks.release());
+  await page.locator('#photoIntakeResult').waitFor({timeout:45000});
+  await page.waitForFunction(()=>window.__v419PhotoCallbacks.outcome!==null);
+  assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.events),['complete'],'LEAK_CALLBACK_RESULT_COMPLETES_WITHOUT_CANCEL_OR_CLOSE');
+  assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.outcome),{pairs:1,readFailed:0,metadataSaved:true,error:''},'LEAK_CALLBACK_REAL_PNG_COMPLETED');
+  assert.match(await page.locator('#photoIntakeResult').textContent(),/앱 목록 추가 1장/);
+  await footer(page,'사진 목록 보기').click();
+  await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal'));await turn(page);
+  assert.deepEqual(await page.evaluate(()=>window.__v419PhotoCallbacks.events),['complete','close'],'LEAK_CALLBACK_RESULT_CLOSE_ONCE_WITHOUT_CANCEL');
+  await queue(page);
+  const after=await snap(page),photos=after.data.files.filter(file=>file.name==='TEST_LEAK_CALLBACK.png');
+  assert.equal(photos.length,1,'LEAK_CALLBACK_INGESTS_ONE_REAL_PNG');
+  assert.equal(photos[0].project,LEAK);assert.equal(photos[0].worklabel,'TEST_CALLBACK_WORK');
+  assert.equal(after.stored.files.filter(file=>file.name==='TEST_LEAK_CALLBACK.png'&&file.project===LEAK&&file.worklabel==='TEST_CALLBACK_WORK').length,1,'LEAK_CALLBACK_METADATA_DURABLE');
+  assert.deepEqual(after.data.schedule,before.data.schedule,'LEAK_CALLBACK_PROBE_DOES_NOT_CREATE_DISPATCH');
+  assert.deepEqual(after.keys,before.keys,'LEAK_CALLBACK_TOP_KEYS_UNCHANGED');
+ }finally{
+  // Release an outstanding gate even on assertion failure; never convert a
+  // timeout or failed assertion into successful regression evidence.
+  await page.evaluate(()=>{const probe=window.__v419PhotoCallbacks;if(probe&&probe.release)probe.release();});
+ }
+}
+
 (async()=>{
  const opts={headless:true};if(process.env.PLAYWRIGHT_EXECUTABLE)opts.executablePath=process.env.PLAYWRIGHT_EXECUTABLE;else if(process.platform!=='win32')opts.executablePath='/opt/pw-browsers/chromium';browser=await chromium.launch(opts);
  if(CANARY){const t=await boot();await t.context.close();console.log('PASS LEAK_FEATURE_PRESENT');return;}
@@ -131,7 +199,8 @@ async function filtering({page}){
  await run('④ 오늘 출동·길찾기44·마감 미완료·읽기 불변',dashboard);
  await run('⑤ leak-pipe 웹 문의 및 수동 문의 유형',inquiries);
  await run('⑥ 누수 목록 필터·더보기126·390px·읽기 불변',filtering);
- console.log('PASS leakintake-v419 '+passed+'/6; separate mutations: urgent, dashboard');
+ await run('⑦ 사진 공유·누수 닫힘 콜백 공존',photoCallbacks);
+ console.log('PASS leakintake-v419 '+passed+'/7; separate mutations: urgent, dashboard');
 })().catch(error=>{if(MUTATION&&error.code==='ERR_ASSERTION'&&String(error.message).includes(MUTATION_MARKER[MUTATION]))console.error('MUTATION_DETECTED '+MUTATION+' '+MUTATION_MARKER[MUTATION]);console.error(error);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();});
 
 
