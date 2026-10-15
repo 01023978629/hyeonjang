@@ -74,7 +74,7 @@ const source=fs.readFileSync(path.join(__dirname,'../bathroom.js'),'utf8');
   for(const [name,from,to,run,marker] of [
    ['직접 규격 단가 보호 제거','if(changed){data[k].price=null;','if(false){data[k].price=null;',manualPrice,'MANUAL_PRICE_RECHECK'],
    ['파일 생성 중 입력 잠금 제거',"b.disabled=htmlExporting&&b.id==='exportHTML'",'b.disabled=false',exportBusy,'EXPORT_BUSY_INPUT'],
-   ['중복 파일 생성 진입 보호 제거','if(!result||htmlExporting)return;','if(!result)return;',exportBusy,'EXPORT_BUSY_DUPLICATE']
+   ['중복 파일 생성 진입 보호 제거','if(!result||htmlExporting||photoPending)return;','if(!result||photoPending)return;',exportBusy,'EXPORT_BUSY_DUPLICATE']
   ]){
    assert.equal(source.split(from).length,2,'unique mutation target '+name);let caught;
    try{await scenario(name,run,source.replace(from,to));}catch(e){caught=e;}
