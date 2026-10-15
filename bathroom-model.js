@@ -3,9 +3,9 @@
 (function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.HJBath=api;})(typeof globalThis==='object'?globalThis:this,function(){
   'use strict';
   const styles=[
-    {id:'warm',name:'웜 베이지',sub:'따뜻한 돌의 질감과 우드 포인트',image:'bathroom-warm.png'},
-    {id:'white',name:'클린 화이트',sub:'밝고 단정한, 오래 보아도 편안한 욕실',image:'bathroom-white.png'},
-    {id:'gray',name:'모던 그레이',sub:'차분한 회색으로 정돈한 공간',image:'bathroom-gray.png'}
+    {id:'warm',name:'웜 베이지',sub:'따뜻한 돌의 질감과 우드 포인트',image:'bathroom-warm.webp'},
+    {id:'white',name:'클린 화이트',sub:'밝고 단정한, 오래 보아도 편안한 욕실',image:'bathroom-white.webp'},
+    {id:'gray',name:'모던 그레이',sub:'차분한 회색으로 정돈한 공간',image:'bathroom-gray.webp'}
   ];
   const scope=[
     ['demolition','기존 욕실 철거','철거·바탕','식',1,'기존 타일·기구 철거. 폐기물 운반은 별도 행입니다.'],
@@ -22,6 +22,7 @@
     ['screen','샤워 파티션','기구·마감','개',1,'크기·유리·고정 방식에 따라 금액이 달라집니다.'],
     ['finish','실리콘·마감 청소','기구·마감','식',1,'실리콘 마감과 공사 범위 내 정리 기준입니다.']
   ];
+  const unitPriceLabel=unit=>unit==='식'?'1식(일괄) 가격':unit+'당 가격';
   const clone=v=>JSON.parse(JSON.stringify(v));
   function defaults(){return {version:1,style:'warm',project:'',customer:'',date:'',request:'',exclusions:'배관 위치 변경, 숨은 누수·바탕 추가 보수, 문·문틀 교체, 양중·주차 비용은 현장 확인 후 별도 협의합니다.',vat:'exclusive',priceStatus:'pending',
     size:{width:180,depth:210,height:230,doorWidth:80,doorHeight:210,extraOpening:0},
@@ -54,7 +55,7 @@
     function add(id,kind,name,qty,unit,unitPrice,basis){rows.push({id,kind,name,qty,unit,price:unitPrice,amount:unitPrice===null?null:Math.round(qty*unitPrice),basis});}
     for(const [key,label,t] of [['wall','벽',wall],['floor','바닥',floor]]){add(key+'Tile','자재',label+' 타일',t.boxes,'박스',d[key].price,d[key].width+'×'+d[key].height+'mm · '+d[key].pack+'장/박스 · 실구매 '+t.buy+'장');add(key+'Work','시공',label+' 타일 시공',t.area,'㎡',d[key].labor,'순면적 기준 · 여유분/박스 잔량에는 시공비를 붙이지 않습니다.');}
     const consumables=d.consumables.filter(c=>c.enabled).map(c=>{const area=wallArea+floorArea,kg=area*c.usage,packs=ceil(kg/c.pack);add(c.id,'자재',c.name,packs,'포장',c.price,round(area,6)+'㎡ × '+c.usage+'kg/㎡ ÷ '+c.pack+'kg/포장 (올림)');return {...c,area,kg,packs};});
-    d.scope.filter(s=>s.enabled).forEach(s=>{const basis=(s.model?s.model+' · ':'')+s.note;add(s.id+'Mat','자재',s.name,s.qty,s.unit,s.material,basis);add(s.id+'Work','시공',s.name,s.qty,s.unit,s.labor,basis);});
+    d.scope.filter(s=>s.enabled).forEach(s=>{const basis=unitPriceLabel(s.unit)+' · '+(s.model?s.model+' · ':'')+s.note;add(s.id+'Mat','자재',s.name,s.qty,s.unit,s.material,basis);add(s.id+'Work','시공',s.name,s.qty,s.unit,s.labor,basis);});
     const missing=rows.filter(r=>r.amount===null),material=rows.filter(r=>r.kind==='자재').reduce((n,r)=>n+(r.amount||0),0),labor=rows.filter(r=>r.kind==='시공').reduce((n,r)=>n+(r.amount||0),0),entered=material+labor;
     if(!Number.isSafeInteger(entered)||entered>1000000000)throw Error('합계가 너무 큽니다. 수량·단가를 다시 확인해 주세요.');
     const supply=d.vat==='inclusive'?Math.round(entered/1.1):entered,vat=d.vat==='inclusive'?entered-supply:Math.round(supply*0.1),total=supply+vat;
@@ -65,5 +66,5 @@
     const d=r.data,lines=[['만물인테리어 욕실 상담용 견적·자재 계산서'],['현장',d.project],['고객',d.customer],['작성일',d.date],['상태',!r.complete?'단가 확인 필요':d.priceStatus==='confirmed'?'입력 판매단가 기준 · 실측 후 확정':'판매단가 확인 전 · 실측 후 확정'],['단가 기준',d.vat==='inclusive'?'입력단가 부가세 포함':'입력단가 부가세 별도'],['계산 기준','타일 자재비=구매 박스×박스 판매단가 / 타일 시공비=순면적×㎡당 단가'],['구분','품목','수량','단위','판매단가(원)','금액(원)','근거'],...r.rows.map(x=>[x.kind,x.name,x.qty,x.unit,x.price===null?'확인 필요':x.price,x.amount===null?'확인 필요':x.amount,x.basis]),['자재 합계',r.material],['시공 합계',r.labor],['공급가액',r.complete?r.supply:'미확정'],['부가세',r.complete?r.vat:'미확정'],['총액',r.complete?r.total:'미확정'],[],['타일','순면적(㎡)','여유율(%)','필요 장수','구매 박스','실구매 장수','박스 반올림 여분'],...['wall','floor'].map(k=>{const t=r[k];return [k==='wall'?'벽':'바닥',t.area,t.waste,t.need,t.boxes,t.buy,t.packSurplus];}),['미포함 품목',r.excluded.join(', ')],['별도 협의',d.exclusions],['고객 요청',d.request],['안내','직사각형 욕실의 입력 치수 기준. 줄눈 폭·패턴·기둥·단차·현장 손실은 발주 전 확인합니다. 부자재 사용량은 제품 시방값으로 수정해야 합니다.']];
     return '\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n');
   }
-  return {styles,defaults,normalize,calculate,toCSV,round};
+  return {styles,defaults,normalize,calculate,toCSV,round,unitPriceLabel};
 });

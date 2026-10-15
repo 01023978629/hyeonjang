@@ -8,5 +8,7 @@ run(source);const mutations=[
  ['박스 대신 필요한 장수에 가격 적용',"label+' 타일',t.boxes,","label+' 타일',t.need,"],
  ['부가세 제거','Math.round(supply*0.1)','Math.round(supply*0)'],
  ['면적을 먼저 반올림','floorArea=s.width*s.depth/10000','floorArea=round(s.width*s.depth/10000,4)'],
- ['소수 판매단가 허용',"100000000,true);}","100000000);}"]
+ ['소수 판매단가 허용',"100000000,true);}","100000000);}"],
+ ['일괄 가격 오표기',"unit==='식'?'1식(일괄) 가격':unit+'당 가격'","unit+'당 가격'"],
+ ['출력 단위 가격 근거 누락',"const basis=unitPriceLabel(s.unit)+' · '+","const basis="]
 ];for(const [name,a,b] of mutations){assert(source.includes(a),'mutation target '+name);let caught=false;try{run(source.replace(a,b));}catch(_){caught=true;}assert(caught,'NOT DETECTED '+name);console.log('DETECTED '+name);}console.log('bathroom mutations '+mutations.length+'/'+mutations.length);
