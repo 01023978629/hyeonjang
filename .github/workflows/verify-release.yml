@@ -84,3 +84,4 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/hj-e2e/node_modules"
           export PLAYWRIGHT_EXECUTABLE="$(node -e 'console.log(require("playwright").chromium.executablePath())')"
           node tests/photo-original-keep.mutations.js
+          node tests/photo-no-recovery.mutations.js

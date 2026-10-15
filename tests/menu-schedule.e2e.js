@@ -74,6 +74,10 @@ let browser;
     for (let i = 0; i < 40; i++) state.files.push({ id: 'q' + i, name: 'q' + i + '.jpg', ext: 'jpg', kind: 'photo', project: i % 2 ? '둔산현장' : '은행현장', when: new Date('2026-08-1' + (i % 9) + 'T09:' + String(i).padStart(2, '0') + ':00'), size: 1000 + i, _driveId: 'd' + i });
     const orig = projPhases; window.__pp = 0; projPhases = (n) => { window.__pp++; return orig(n); };
     state.tab = 'photos'; state.activeProject = null; __photoCache.key = null; render();
+    // 서로 다른 현장을 분리하면 12묶음 초기 표시를 넘는다. 실제 더 보기로 40장을 모두 펼친다.
+    for(let n=0;n<4;n++){
+      const more=document.getElementById('btnMoreClusters');if(!more)break;more.click();
+    }
     projPhases = orig;
     const cells = document.querySelectorAll('#view .ph-cell').length;
     const withPhase = document.querySelectorAll('#view .ph-phase-btn').length;
