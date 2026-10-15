@@ -6277,7 +6277,7 @@ function hjLeakSummary(p){
 function hjLeakCard(p){
   if(!p||p.kind!=='leak')return '';
   const summary=hjLeakSummary(p);
-  return '<section class="cust-card" data-leak-card style="min-width:0;margin:8px 0 12px;overflow-wrap:anywhere"><div class="cust-h">💧 누수 탐지 기록</div><p data-leak-summary style="font-size:13px;line-height:1.6;margin:6px 0">'+escapeHtml(summary||'확인한 방법과 원인을 기록해 주세요. 아직 원인이 정해지지 않았으면 미확정으로 남길 수 있어요.')+'</p><button class="blue" data-leakdetect="'+escapeAttr(p.name)+'" style="min-width:44px;min-height:44px">🔍 탐지 기록</button></section>';
+  return '<section class="cust-card" data-leak-detect-card style="min-width:0;margin:8px 0 12px;overflow-wrap:anywhere"><div class="cust-h">💧 누수 탐지 기록</div><p data-leak-summary style="font-size:13px;line-height:1.6;margin:6px 0">'+escapeHtml(summary||'확인한 방법과 원인을 기록해 주세요. 아직 원인이 정해지지 않았으면 미확정으로 남길 수 있어요.')+'</p><button class="blue" data-leakdetect="'+escapeAttr(p.name)+'" style="min-width:44px;min-height:44px">🔍 탐지 기록</button></section>';
 }
 async function hjLeakDetectSave(p,name,input,expected,stage,stillOpen){
   const current=()=>{
