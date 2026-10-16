@@ -334,8 +334,8 @@ async function rendererNetwork(session, offline) {
     try {
       await swPage.goto(swURL.href, { waitUntil: 'domcontentloaded' }); await swBoot();
       await swPage.waitForFunction(() => !!navigator.serviceWorker.controller);
-      const warm = await swPage.evaluate(async () => { const registration = await navigator.serviceWorker.ready; const names = await caches.keys(); const cache = await caches.open('hyeonjang-v425-offlinequeue'); return { active: registration.active?.state, cachedIndex: !!await cache.match(new URL('index.html', location.href).href), names }; });
-      assert.equal(warm.active, 'activated'); assert.equal(warm.cachedIndex, true, 'SW_INSTALL_WARMS_INDEX_BEFORE_OFFLINE_RESTART');
+      const warm = await swPage.evaluate(async () => { const registration = await navigator.serviceWorker.ready; const names = await caches.keys(); const build = APP_BUILD; const cache = names.includes(build) ? await caches.open(build) : null; return { active: registration.active?.state, cachedIndex: !!cache && !!await cache.match(new URL('index.html', location.href).href), names, build }; });
+      assert.equal(warm.active, 'activated'); assert(warm.names.includes(warm.build), 'SW_CACHE_MATCHES_CURRENT_BUILD'); assert.equal(warm.cachedIndex, true, 'SW_INSTALL_WARMS_INDEX_BEFORE_OFFLINE_RESTART');
       const swNetworkState = await swContext.newCDPSession(swPage); await swNetworkState.send('Network.enable');
       await swPage.evaluate(async () => {
         closeModal(true); __tabStale = false; __appVersionUpdating = false; state._demo = false; state.dirHandle = null;
