@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v432 팀 패킷 연동 1차 (📤 팀에 업무 보내기 / 📥 팀 작업 가져오기)
+
+- 규격은 지시서/팀앱_연동_인터페이스.md 의 work-order.json(type hj-work-order, version 1)·work-report.json(hj-work-report) 그대로(hjWoValidate 가 필드 추가·개명을 막는다). 패킷에 고객 이름·전체 전화·금액을 넣지 않는다 — hjWoPrivacyIssues 가 걸리면 저장·복사·공유 자체를 하지 않는다(변이 privacy-off 가 잡는다). 주소는 호수를 뺀 값, 동·호수는 인터페이스의 unit 칸, 연락처는 대표 번호 마스킹만.
+- 보내기(hjTeamPacketSendView — 현장 카드 [📤 팀에 업무 보내기]): 후보는 현장의 할 일(개인 todo·팀 업무)·준비물·앞으로의 일정(💰·세금 자동 제외), 담당은 팀원 연락처/팀 업무 담당 이름. id 는 `wo_YYYYMMDD_nnn`(전체 현장의 기록으로 다음 번호, 같은 화면에서 다시 보내면 같은 id·같은 기록에 sentAt·resent 만 갱신). 기록은 p.workOrders[] 기존 자리에 {packetId,sentAt,via,assignee,due,priority,checklist,items,reports} + 노트 `[팀 지시] …` 원자 저장. QR 은 인코더가 없어 뺐다(v446). "미완료 업무 JSON 초안 내보내기(v328)" 는 저장소에 없어 맞출 대상이 없었다.
+- 가져오기(hjTeamReportImportView — 팀 업무·인수인계 [📥 팀 작업 가져오기]): JSON 붙여넣기/파일 + 사진 zip(JSZip). 매칭은 orderId → 현장 이름 유일 일치 → 사람이 고름. 반영은 보고마다 durableLocalMutation(묶음 전 hjSnapshot 1회): done → 지시에 묶인 할 일·팀 업무·준비물 완료 + 작업시간(state.workLogs) 1건(09:00 + 보고 시간 기준, memo 에 보고자·내용·이슈), review/blocked → 대시보드 줄(hjTeamReportPendingHtml), 보고는 wo.reports[] 또는 지시 없는 현장은 p.teamReports[]. 같은 reportId(없으면 orderId|workDate)는 두 번 반영하지 않는다. 사진은 기존 openPhotoIntake(사진 추가 확인)로, phase 는 패킷 값 우선(누수 현장 _leaktag before/cause/after, 그 밖에 _phase).
+- 핀3곳 hyeonjang-v432-teampacket(v431 위에 쌓은 브랜치). 신규 tests/teampacket-v432.e2e.js 4/4, 변이·기준선 실패 확인, 관련(team-packet.unit/photo-intake-safety/team-connect)·정적 19개 통과. team-workboard.e2e 는 이 컨테이너에서 main 에서도 같은 자리(다운로드 파일명)에서 실패한다 — CI 가 판정.
+
 ## 2026-10-16 v431 공개 누수 접수 페이지 + 앱 문의함 연결
 
 - `leak.html/leak.css/leak.js` 는 서버 없는 공개 페이지(stage-pages 등록, sw.js 셸 목록에는 넣지 않음). 증상 6항목은 앱 v419 `HJ_LEAK_INTAKE_CHOICES` 와 같은 항목·같은 값이어야 하며 검사가 두 상수를 대조한다. 페이지는 저장·업로드·외부 요청이 없고(사진은 문자 답장), 가격·과장 문구 없음, 회사 번호 010-2397-8629 표시. [📨 문자로 보내기]는 `sms:01023978629?body=[누수접수] 어디서=…;언제=…;물양=…;이웃=…;관리사무소=…;보험=…;동=…;시간=…;이름=…` 한 줄 + 사진 2장 안내. 카카오 채널 버튼은 주소가 비어 있으면 숨긴다(가짜 링크 금지, 대표가 주소를 주면 leak.js KAKAO_URL).

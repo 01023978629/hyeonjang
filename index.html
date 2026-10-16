@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v431-leakintakeweb';
+const APP_BUILD='hyeonjang-v432-teampacket';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10295,6 +10295,7 @@ function dashboardTodoHTML(){
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
     hjCustMissingHtml()+     // v394 연락처 빈 최근 현장
     hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
+    hjTeamReportPendingHtml()+   // v432 팀 보고 검수 요청·막힘
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
     '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
@@ -27285,7 +27286,7 @@ function hjTeamBoard(filters){
       '<div class="teamActions"><button type="button" class="blue" data-team-edit="'+escapeAttr(n.id)+'">업무 수정·인계</button>'+(linked?'<button type="button" class="ghost" data-team-project="'+escapeAttr(n.project)+'">현장 열기</button>':'')+'</div></article>';}).join('');
   const load=names.map(name=>{const mine=all.filter(n=>hjTeamData(n).assignee===name&&hjTeamData(n).status!=='done');return name+' '+mine.length+'건';}).join(' / ');
   openModal('팀 업무·인수인계',css+'<style>#teamBoard select{font-size:16px}#teamBoard .teamFilters{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}</style><section id="teamBoard">'+(typeof hjTeamServerUrl==='function'&&hjTeamServerUrl()?'<p><a id="teamPortalOpen" href="./team.html"'+(typeof hjTeamPortalSameWindow==='function'&&hjTeamPortalSameWindow()?'':' target="_blank" rel="noopener noreferrer"')+'>직원 작업실에서 열기</a> · 이 기기에 직원 작업실 서버가 연결돼 있습니다</p><button type="button" class="blue" id="teamDraftSend" onclick="hjCompanyLegacySend()">직원 작업실로 초안 보내기</button> <button type="button" class="ghost" onclick="hjCompanyLegacyExport()">JSON 파일로 내려받기</button>':'<p><a href="./team.html" target="_blank" rel="noopener">직원 작업실 · 업무 배정·검수 열기</a> · 별도 서버 설정 후 이용 — 직원 작업실의 「서버 연결 설정」에 주소를 넣으면 여기서 초안을 바로 보낼 수 있습니다</p><button type="button" class="ghost" onclick="hjCompanyLegacyExport()">기존 미완료 업무 이전 초안</button>')+'<p>아래는 기존 기기 저장 업무입니다. 포털로 자동 이전·동기화하지 않습니다.</p><p id="teamBoardSummary" role="status">'+escapeHtml(hjTeamSummary())+'</p>'+
-    '<p style="font-size:14px">담당별 미완료: '+escapeHtml(load||'담당자를 입력하면 여기에 표시됩니다.')+'</p><button type="button" class="clay" id="teamAdd">새 팀 업무</button>'+
+    '<p style="font-size:14px">담당별 미완료: '+escapeHtml(load||'담당자를 입력하면 여기에 표시됩니다.')+'</p><button type="button" class="clay" id="teamAdd">새 팀 업무</button> <button type="button" class="ghost" id="teamPacketIn">📥 팀 작업 가져오기</button>'+
     '<div class="teamFilters" style="margin-top:12px">'+choices('teamProjectFilter','현장',[['','전체 현장'],...projects.map(x=>[x,x])],f.project)+
     choices('teamAssigneeFilter','담당자',[['','전체 담당'],['@unassigned','미배정'],...names.map(x=>[x,x])],f.assignee)+
     choices('teamStatusFilter','진행 상태',[['open','미완료 전체'],['','완료 포함 전체'],['late','기한 지남'],...Object.entries(HJ_TEAM_STATUS)],f.status)+'</div>'+
@@ -27296,6 +27297,7 @@ function hjTeamBoard(filters){
   const readFilters=()=>({project:root.querySelector('#teamProjectFilter').value,assignee:root.querySelector('#teamAssigneeFilter').value,status:root.querySelector('#teamStatusFilter').value});
   root.querySelectorAll('select').forEach(el=>el.onchange=()=>{const focusId=el.id;hjTeamBoard(readFilters());setTimeout(()=>document.getElementById(focusId)?.focus(),0);});
   root.querySelector('#teamAdd').onclick=()=>hjTeamEdit(null,readFilters());
+  {const pin=root.querySelector('#teamPacketIn');if(pin)pin.onclick=()=>{closeModal();hjTeamReportImportView();};}   // v432
   root.querySelectorAll('[data-team-edit]').forEach(el=>el.onclick=()=>hjTeamEdit(el.dataset.teamEdit,readFilters()));
   root.querySelectorAll('[data-team-project]').forEach(el=>el.onclick=()=>hjSearchProjectOpen(el.dataset.teamProject));
   const more=root.querySelector('#teamMore');if(more)more.onclick=()=>hjTeamBoard({...readFilters(),limit:f.limit+50});
@@ -36854,7 +36856,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="ghost tiny" data-teamsend="${escapeAttr(state.activeProject)}">📤 팀에 업무 보내기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=hjLeakCardHtml(p)+hjLeakCard(p)+stageBar(p)+aptUnitProjectCard(p)+hjProjLinksLine(p);
 
   // ⏱ 작업시간 · 🚗 운행
@@ -37129,7 +37131,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37344,6 +37346,7 @@ function setupDelegation(){
     if(d.marginboard!==undefined){e.stopPropagation();return hjMarginBoardView();}   // v429
     if(d.warranty!==undefined){e.stopPropagation();return warrantyView(d.warranty);}
     if(d.dochub!==undefined){e.stopPropagation();return docHubView(d.dochub);}
+    if(d.teamsend!==undefined){e.stopPropagation();return hjTeamPacketSendView(d.teamsend);}   // v432
     if(d.schmore!==undefined){e.stopPropagation();return schMoreView(d.schmore);}
     if(d.punch!==undefined){e.stopPropagation();return workPunch(d.punch);}
     if(d.worklog!==undefined){e.stopPropagation();return workView(d.worklog);}
@@ -39665,6 +39668,308 @@ function hjLeakWebLinkHtml(){
     '<button type="button" class="ghost tiny" data-leakwebcopy="intro" style="min-height:44px;padding:0 12px">✍️ 소개글 복사 (번호 없음)</button>'+
     '<a class="ghost tiny hjAdLink" href="'+escapeAttr(HJ_LEAK_WEB_URL)+'" target="_blank" rel="noopener" style="text-decoration:none;min-height:44px;display:inline-flex;align-items:center;padding:0 12px">열어 보기 ↗</a></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:6px">QR 코드는 v446(리뷰 QR)에서 같이 들어옵니다. 받은 문자는 📞 새 문의 받기 › [📋 접수 문자 붙여넣기]로 읽습니다.</div></div>';
+}
+/* ═══ v432 📤 팀에 업무 보내기 · 📥 팀 작업 가져오기 — 팀 워크스페이스 앱과 패킷(JSON·zip)으로 잇는다 ═══
+   두 앱은 서버를 공유하지 않는다(2차 API 는 v444 이후). 규격은 지시서/팀앱_연동_인터페이스.md 의 work-order.json(type hj-work-order, version 1)·
+   work-report.json(type hj-work-report) 그대로. 고객 이름·전체 전화·금액은 패킷에 넣지 않는다(hjWoPrivacyIssues 가 막고 검사가 고정한다).
+   지시 기록은 현장 레코드 안 p.workOrders[] 기존 구조에 {packetId,sentAt,assignee,due,checklist,items,reports} 를 더해 둔다(새 최상위 키 없음).
+   가져온 보고는 작업시간(state.workLogs) 1건 + wo.reports[] + 사진(기존 사진 넣기 경로 openPhotoIntake). 같은 reportId/orderId+workDate 는 두 번 반영하지 않는다. */
+const HJ_WO_TYPE='hj-work-order',HJ_WR_TYPE='hj-work-report',HJ_WO_VERSION=1;
+const HJ_WO_CHECKLIST=Object.freeze(['작업 전 사진','작업 중 사진','완료 사진','정리·청소','고객(관리사무소) 확인']);
+const HJ_WO_PHOTOS=Object.freeze([['before','작업 전'],['during','작업 중'],['after','작업 후']]);
+const HJ_WO_PRIORITY=Object.freeze(['normal','urgent']);
+const HJ_WR_STATUS=Object.freeze(['todo','doing','blocked','review','done']);
+const HJ_WR_STATUS_LABEL=Object.freeze({todo:'대기',doing:'진행',blocked:'⛔ 막힘',review:'🔎 검수 요청',done:'✅ 완료'});
+const HJ_WO_ID_RE=/^wo_(\d{8})_(\d{3,})$/;
+const HJ_WO_PHASE_LEAK=Object.freeze({before:'before',cause:'cause',after:'after'});
+const HJ_WO_PHASE_LABEL=Object.freeze({before:'시공 전',cause:'원인 확인',during:'작업 중',after:'완료'});
+function hjWoOrders(p){return Array.isArray(p&&p.workOrders)?p.workOrders.filter(w=>w&&typeof w==='object'&&typeof w.packetId==='string'):[];}
+function hjWoNextId(source=state,day=localDate()){
+  const date=String(day).replace(/-/g,'');let max=0;
+  (source.projects||[]).forEach(p=>hjWoOrders(p).forEach(w=>{const m=HJ_WO_ID_RE.exec(w.packetId);if(m&&m[1]===date){const n=Number(m[2]);if(Number.isSafeInteger(n)&&n>max)max=n;}}));
+  return 'wo_'+date+'_'+String(max+1).padStart(3,'0');
+}
+function hjWoText(v,max){return typeof v==='string'?v.replace(/\s+$/,'').slice(0,max||200):'';}
+/* 지시 후보 — 현장의 할 일(개인 todo·팀 업무)·준비물·앞으로의 일정. 읽기 전용. */
+function hjWoCandidates(name,fromDay){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return [];
+  const out=[],from=isRealIsoDate(String(fromDay||''))?fromDay:localDate();
+  (state.notes||[]).filter(n=>n&&n.todo&&!n.done&&String(n.project||'')===name).forEach(n=>{const team=hjIsTeamTask(n),t=team?hjTeamData(n):null;
+    out.push({key:'todo:'+n.id,kind:team?'team':'todo',text:hjWoText(team?(t.title||n.text):n.text,200),ref:String(n.id),assignee:team?hjWoText(t.assignee,20):'',due:team&&hjTeamDate(t.due)?t.due:''});});
+  (Array.isArray(p.checklist)?p.checklist:[]).filter(c=>c&&!c.done&&String(c.text||'').trim()).forEach(c=>out.push({key:'prep:'+c.id,kind:'prep',text:'준비물: '+hjWoText(c.text,120),ref:String(c.id)}));
+  (state.schedule||[]).filter(s=>s&&s.project===name&&isRealIsoDate(String(s.date||''))&&s.date>=from&&!/^💰/.test(String(s.title||''))&&!s._taxAuto).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||''))).slice(0,10)
+    .forEach(s=>out.push({key:'sch:'+s.id,kind:'sched',text:hjWoText(s.title||'일정',120)+' ('+s.date+(s.time?' '+s.time:'')+(s.workers?' · 👷 '+s.workers+'명':'')+')',ref:String(s.id),due:s.date,startTime:typeof s.time==='string'?s.time:'',endTime:typeof s.endTime==='string'?s.endTime:'',crew:hjCrewList(s.crew)}));
+  return out;
+}
+function hjWoAddrSafe(addr){return hjWoText(String(addr||'').replace(/\d+\s*동\s*\d+\s*호/g,'').replace(/\d+\s*호/g,'').replace(/\s{2,}/g,' ').trim(),120);}
+function hjWoUnit(p){const parsed=aptNameParse(String(p&&p.customer&&p.customer.addr||''))||aptNameParse(String(p&&p.name||''));return parsed&&parsed.dong&&parsed.ho?parsed.dong+'동 '+parsed.ho+'호':'';}
+/* 패킷 — 인터페이스 문서의 필드만, 그 이름 그대로. */
+function hjWoBuild(name,draft){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
+  const d=draft||{},checklist=(Array.isArray(d.checklist)?d.checklist:HJ_WO_CHECKLIST.slice()).map(x=>hjWoText(String(x),80)).filter(Boolean).slice(0,20);
+  const photosWanted=HJ_WO_PHOTOS.map(x=>x[0]).filter(k=>!Array.isArray(d.photosWanted)||d.photosWanted.includes(k));
+  const order={id:HJ_WO_ID_RE.test(String(d.id||''))?d.id:hjWoNextId(),project:{name:p.name,kind:hjProjectKind(p)},title:hjWoText(d.title,120)||p.name+' 작업',detail:hjWoText(d.detail,2000),
+    assignee:hjWoText(d.assignee,20),due:isRealIsoDate(String(d.due||''))?d.due:'',priority:HJ_WO_PRIORITY.includes(d.priority)?d.priority:'normal',checklist,photosWanted,notes:hjWoText(d.notes,1000),contactMasked:'010-****-'+String(COMPANY.tel).replace(/\D/g,'').slice(-4)};
+  const addr=hjWoAddrSafe(p.customer&&p.customer.addr),unit=hjWoUnit(p);
+  if(addr)order.project.addr=addr;if(unit)order.project.unit=unit;
+  if(/^\d{2}:\d{2}$/.test(String(d.startTime||'')))order.startTime=d.startTime;if(/^\d{2}:\d{2}$/.test(String(d.endTime||'')))order.endTime=d.endTime;
+  return {type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders:[order]};
+}
+/* 개인정보 검사 — 고객 이름·전화(전체)·금액이 패킷 어디에도 없어야 한다. 하나라도 있으면 보내지 않는다. */
+function hjWoPrivacyIssues(packet,p){
+  const json=JSON.stringify(packet||{}),issues=[],cust=p&&p.customer||{};
+  const name=String(cust.name||'').trim();if(name.length>=2&&json.includes(name))issues.push('고객 이름');
+  const digits=hjCustDigits(cust.phone);if(digits.length>=9&&json.replace(/\D/g,'').includes(digits))issues.push('고객 전화번호');
+  const masked=json.replace(/010-\*{4}-\d{4}/g,'');
+  if(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/.test(masked))issues.push('전화번호 형식');
+  if(/\d[\d,]{2,}\s*원|\d+\s*만\s*원|금액|견적가|잔금|계약금|중도금|수금/.test(json))issues.push('금액');
+  return issues;
+}
+/* 인터페이스 스키마 검증 — 팀 앱이 그대로 읽을 수 있는지(보내기 전 자가 검사·검사용). */
+function hjWoValidate(packet){
+  const e=[];
+  if(!packet||packet.type!==HJ_WO_TYPE||packet.version!==1)e.push('type/version');
+  if(!packet||!Array.isArray(packet.orders)||!packet.orders.length)e.push('orders');
+  (packet&&Array.isArray(packet.orders)?packet.orders:[]).forEach((o,i)=>{
+    if(!o||!HJ_WO_ID_RE.test(String(o.id||'')))e.push('orders['+i+'].id');
+    if(!o||!o.project||typeof o.project.name!=='string'||!o.project.name||!['interior','leak'].includes(o.project.kind))e.push('orders['+i+'].project');
+    if(!o||typeof o.title!=='string'||!o.title)e.push('orders['+i+'].title');
+    if(!o||!HJ_WO_PRIORITY.includes(o.priority))e.push('orders['+i+'].priority');
+    if(!o||!Array.isArray(o.checklist)||!o.checklist.every(x=>typeof x==='string'))e.push('orders['+i+'].checklist');
+    if(!o||!Array.isArray(o.photosWanted)||!o.photosWanted.every(x=>HJ_WO_PHOTOS.some(p=>p[0]===x)))e.push('orders['+i+'].photosWanted');
+    if(o&&o.due&&!isRealIsoDate(String(o.due)))e.push('orders['+i+'].due');
+    const allowed=['id','project','title','detail','assignee','due','startTime','endTime','priority','checklist','photosWanted','notes','contactMasked'];
+    Object.keys(o||{}).forEach(k=>{if(!allowed.includes(k))e.push('orders['+i+'].'+k+' 는 인터페이스에 없는 필드');});
+  });
+  return e;
+}
+/* 보낸 기록 — 같은 packetId 면 sentAt 만 갱신(재전송 같은 id). 원자 저장 + 현장 노트 한 줄. */
+async function hjWoRecord(name,order,via,items){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)throw new Error('현장을 찾을 수 없어요');
+  const at=new Date().toISOString(),refs=(Array.isArray(items)?items:[]).map(x=>({kind:String(x.kind||''),ref:String(x.ref||''),text:hjWoText(x.text,120)})).slice(0,40);
+  return durableLocalMutation({snapshotLabel:'팀 지시 기록 전',mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
+    if(!target)throw new Error('현장을 찾을 수 없습니다.');
+    if(target.workOrders!=null&&!Array.isArray(target.workOrders))throw new Error('기존 지시 기록 형식을 확인해 주세요.');
+    const list=target.workOrders||[],found=list.find(w=>w&&w.packetId===order.id);
+    let record;
+    if(found){record=found;record.sentAt=at;record.via=String(via||'');record.resent=(Number(record.resent)||0)+1;}
+    else{record={at,packetId:order.id,sentAt:at,via:String(via||''),worker:'',title:order.title,date:order.due||'',assignee:order.assignee||'',due:order.due||'',priority:order.priority,checklist:order.checklist.slice(),photosWanted:order.photosWanted.slice(),items:refs,reports:[]};
+      list.push(record);if(list.length>50)list.splice(0,list.length-50);target.workOrders=list;}
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[팀 지시] '+(order.due?hjMdDow(order.due)+' ':'')+(refs.length||1)+'건'+(order.assignee?' → '+order.assignee:'')+' · '+order.id+(found?' (다시 보냄)':''),project:name});
+    return {packetId:order.id,resent:!!found};
+  }});
+}
+function hjWoDownload(text,fname){const u=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);try{a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);}}
+async function hjWoShare(text,fname){
+  const file=new File([text],fname,{type:'application/json'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:'팀 업무 지시 '+fname});return true;}catch(e){if(e&&e.name==='AbortError')return false;}}
+  hjWoDownload(text,fname);toast('저장됨 — 카톡·Drive 로 팀원에게 보내세요');return true;
+}
+/* 📤 팀에 업무 보내기 화면 — 후보 체크 → 담당·기한·우선순위·체크리스트·사진 요청 → 미리보기(개인정보 검사) → JSON 저장/복사/공유. */
+function hjTeamPacketSendView(name,opts){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const o=opts&&typeof opts==='object'?opts:{};
+  const s=o.resume||{id:o.packetId||'',picked:null,title:'',detail:null,assignee:'',due:o.date||hjAddDays(localDate(),1),startTime:'',endTime:'',priority:'normal',checklist:HJ_WO_CHECKLIST.join('\n'),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:null};
+  const cands=hjWoCandidates(name,o.date),names=[...new Set([...hjTeamContacts().map(c=>String(c.name).trim()),...hjTeamList().map(n=>String(hjTeamData(n).assignee||'').trim())].filter(Boolean))];
+  if(s.picked===null)s.picked=cands.filter(c=>!o.date||c.kind!=='sched'||c.due===o.date).map(c=>c.key);
+  if(s.notes===null){const safe=hjSiteRulesSafe(hjSiteRules(p));s.notes=hjSiteFilled(safe)?hjSiteText(p.name,safe).split('\n').slice(1).join('\n'):'';}
+  if(!s.assignee){const a=cands.find(c=>c.assignee)||null,crew=cands.find(c=>Array.isArray(c.crew)&&c.crew.length===1);s.assignee=a?a.assignee:(crew?crew.crew[0]:'');}
+  const C=(id,label,on)=>'<label style="display:flex;gap:8px;align-items:flex-start;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" '+id+(on?' checked':'')+' style="width:18px;height:18px;flex:none;margin-top:3px"> <span>'+label+'</span></label>';
+  const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
+  const T=(id,label,val,rows)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><textarea id="'+id+'" rows="'+(rows||3)+'" style="width:100%;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(val||'')+'</textarea>';
+  const body='<div id="hjTeamPacket" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px">팀 앱으로 보내는 업무 지시(work-order.json). 고객 이름·전화·금액은 들어가지 않습니다. 번호 '+escapeHtml(s.id||hjWoNextId())+'</div>'+
+    '<div style="font-size:12px;font-weight:700;margin:10px 0 2px">지시 항목 '+(cands.length?'('+cands.length+'개 중 고르기)':'— 할 일·준비물·일정이 없어요(제목·내용만 보냅니다)')+'</div>'+
+    cands.map(c=>C('data-wo-item="'+escapeAttr(c.key)+'"',(c.kind==='team'?'👥 ':c.kind==='todo'?'✅ ':c.kind==='prep'?'🧰 ':'🗓 ')+escapeHtml(c.text),s.picked.includes(c.key))).join('')+
+    F('woTitle','제목',s.title||p.name+' 작업')+
+    T('woDetail','내용 (체크한 항목으로 채움 · 고칠 수 있음)',s.detail==null?cands.filter(c=>s.picked.includes(c.key)).map(c=>'· '+c.text).join('\n'):s.detail,4)+
+    '<label for="woAssignee" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">담당 (👷 팀원 이름)</label><input id="woAssignee" list="woNames" maxlength="20" value="'+escapeAttr(s.assignee)+'" placeholder="예: 이윤규" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box"><datalist id="woNames">'+names.map(n=>'<option value="'+escapeAttr(n)+'"></option>').join('')+'</datalist>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr));gap:8px">'+F('woDue','기한',s.due,'type="date"')+F('woStart','시작(선택)',s.startTime,'type="time"')+F('woEnd','끝(선택)',s.endTime,'type="time"')+'</div>'+
+    '<div role="radiogroup" aria-label="우선순위" style="display:flex;gap:6px;margin-top:8px">'+HJ_WO_PRIORITY.map(k=>'<button type="button" data-wo-priority="'+k+'" aria-pressed="'+(s.priority===k)+'" class="'+(s.priority===k?'blue':'ghost')+'" style="min-height:44px">'+(k==='urgent'?'🚨 급함':'보통')+'</button>').join('')+'</div>'+
+    T('woChecklist','체크리스트 (한 줄에 하나)',s.checklist,4)+
+    '<div style="font-size:12px;font-weight:700;margin:9px 0 2px">사진 요청</div><div style="display:flex;flex-wrap:wrap;gap:0 14px">'+HJ_WO_PHOTOS.map(([k,l])=>C('data-wo-photo="'+k+'"',l,s.photosWanted.includes(k))).join('')+'</div>'+
+    T('woNotes','주의사항 (현장 부대사항으로 채움)',s.notes,2)+
+    '<div id="woPrivacy" role="status" style="font-size:12.5px;margin-top:8px"></div>'+
+    '<details style="margin-top:6px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px">미리보기 (JSON)</summary><pre id="woPreview" style="font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--paper-2);border-radius:8px;padding:8px;max-height:240px;overflow:auto"></pre></details></div>';
+  openModal('📤 팀에 업무 보내기 — '+name,body,[{label:'💾 JSON 저장',cls:'clay',fn:()=>send('file')},{label:'📋 복사',cls:'ghost',fn:()=>send('clipboard')},{label:'📤 공유',cls:'ghost',fn:()=>send('share')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjTeamPacket');
+  const read=()=>{if(!root||!root.isConnected)return;const g=id=>root.querySelector('#'+id);
+    s.picked=[...root.querySelectorAll('[data-wo-item]')].filter(el=>el.checked).map(el=>el.dataset.woItem);
+    s.title=g('woTitle').value;s.detail=g('woDetail').value;s.assignee=g('woAssignee').value.trim();s.due=g('woDue').value;s.startTime=g('woStart').value;s.endTime=g('woEnd').value;
+    s.checklist=g('woChecklist').value;s.photosWanted=[...root.querySelectorAll('[data-wo-photo]')].filter(el=>el.checked).map(el=>el.dataset.woPhoto);s.notes=g('woNotes').value;};
+  const packet=()=>{read();const items=cands.filter(c=>s.picked.includes(c.key));
+    return {items,packet:hjWoBuild(name,{id:s.id,title:s.title,detail:s.detail,assignee:s.assignee,due:s.due,startTime:s.startTime,endTime:s.endTime,priority:s.priority,checklist:s.checklist.split('\n').map(x=>x.trim()).filter(Boolean),photosWanted:s.photosWanted,notes:s.notes})};};
+  const refresh=()=>{const {packet:pk}=packet();if(!pk)return null;s.id=pk.orders[0].id;const issues=hjWoPrivacyIssues(pk,p),schema=hjWoValidate(pk);
+    root.querySelector('#woPreview').textContent=JSON.stringify(pk,null,2);
+    root.querySelector('#woPrivacy').innerHTML=(issues.length?'<span data-wo-privacy="fail" style="color:var(--warn);font-weight:700">⛔ 개인정보 검사 실패: '+escapeHtml(issues.join(', '))+' — 내용·주의사항에서 지워 주세요</span>':'<span data-wo-privacy="ok" style="color:var(--hj-ok-fg, #0a7f43);font-weight:700">✓ 개인정보 검사 통과 (고객 이름·전화·금액 없음)</span>')+(schema.length?'<div style="color:var(--warn)">형식 확인: '+escapeHtml(schema.join(', '))+'</div>':'');
+    return {pk,issues,schema};};
+  root.querySelectorAll('input,textarea').forEach(el=>{el.oninput=refresh;el.onchange=refresh;});
+  root.querySelectorAll('[data-wo-item]').forEach(el=>el.onchange=()=>{read();root.querySelector('#woDetail').value=cands.filter(c=>s.picked.includes(c.key)).map(c=>'· '+c.text).join('\n');refresh();});
+  root.querySelectorAll('[data-wo-priority]').forEach(b=>b.onclick=()=>{s.priority=b.dataset.woPriority;root.querySelectorAll('[data-wo-priority]').forEach(x=>{const on=x.dataset.woPriority===s.priority;x.className=on?'blue':'ghost';x.setAttribute('aria-pressed',String(on));});refresh();});
+  let busy=false;
+  const send=async via=>{
+    if(busy)return;const r=refresh();if(!r)return;
+    if(r.issues.length){toast('개인정보 검사에 걸려 보내지 않았어요: '+r.issues.join(', '));return;}
+    if(r.schema.length){toast('형식을 확인해 주세요: '+r.schema[0]);return;}
+    busy=true;const text=JSON.stringify(r.pk,null,2),fname='work-order_'+r.pk.orders[0].id+'.json';
+    try{
+      let delivered=true;
+      if(via==='file')hjWoDownload(text,fname);
+      else if(via==='clipboard')coworkCopy(text,'팀 업무 지시 JSON');
+      else delivered=await hjWoShare(text,fname);
+      if(!delivered)return;
+      const rec=await hjWoRecord(name,r.pk.orders[0],via,packet().items);webWorkMarkDirtyAfterPersist();
+      toast('📤 '+rec.packetId+(rec.resent?' 다시 보냄':' 보냄')+' — 팀 앱 [📥 업무 가져오기]에서 읽습니다');
+    }catch(e){toast('보내기 실패: '+(e&&e.message||e));}
+    finally{busy=false;}
+  };
+  refresh();return true;
+}
+/* ── 📥 팀 작업 가져오기 ────────────────────────────────────────────────── */
+function hjWrParse(text){
+  let packet;try{packet=typeof text==='string'?JSON.parse(text):text;}catch(e){return {ok:false,error:'JSON 을 읽을 수 없어요',reports:[]};}
+  if(!packet||packet.type!==HJ_WR_TYPE)return {ok:false,error:'work-report.json(type hj-work-report)이 아니에요',reports:[]};
+  const reporter=hjWoText(packet.reporter,20),rows=Array.isArray(packet.reports)?packet.reports:[];
+  const reports=rows.map((r,i)=>{
+    if(!r||typeof r!=='object')return null;
+    const orderId=HJ_WO_ID_RE.test(String(r.orderId||''))?String(r.orderId):'',projectName=hjWoText(r.project&&r.project.name,160).trim();
+    const status=HJ_WR_STATUS.includes(r.status)?r.status:'',workDate=isRealIsoDate(String(r.workDate||''))?String(r.workDate):'';
+    const hours=Number(r.hours);
+    const checklist=(Array.isArray(r.checklist)?r.checklist:[]).filter(c=>c&&typeof c.text==='string').map(c=>({text:hjWoText(c.text,80),ok:c.ok===true})).slice(0,30);
+    const photos=(Array.isArray(r.photos)?r.photos:[]).filter(x=>x&&typeof x.file==='string').map(x=>({file:String(x.file).replace(/^\/+/,''),phase:['before','cause','during','after'].includes(x.phase)?x.phase:'',takenAt:hjWoText(x.takenAt,40),note:hjWoText(x.note,120)})).slice(0,50);
+    const key=hjWoText(r.id,80)||((orderId||projectName)+'|'+workDate);
+    const problems=[];if(!orderId&&!projectName)problems.push('현장·지시 번호 없음');if(!status)problems.push('상태 없음');if(!workDate)problems.push('작업일 없음');
+    return {index:i,key,reporter,orderId,projectName,status,workDate,hours:Number.isFinite(hours)&&hours>=0?Math.round(hours*10)/10:0,done:hjWoText(r.done,1000),issue:hjWoText(r.issue,1000),checklist,photos,problems};
+  }).filter(Boolean);
+  return {ok:reports.length>0,error:reports.length?'':'보고가 비어 있어요',reporter,sentAt:hjWoText(packet.sentAt,40),reports};
+}
+/* 매칭 — orderId 로 지시를 낸 현장 → 현장 이름 정확 일치(유일) → 사람이 고름. */
+function hjWrMatch(report){
+  const projects=(state.projects||[]).filter(p=>p&&!p.archived);
+  if(report.orderId){const p=projects.find(x=>hjWoOrders(x).some(w=>w.packetId===report.orderId));if(p)return {project:p.name,order:report.orderId,how:'지시 번호'};}
+  if(report.projectName){const hits=projects.filter(x=>x.name===report.projectName);if(hits.length===1)return {project:hits[0].name,order:'',how:'현장 이름'};}
+  return null;
+}
+function hjWrApplied(name,key){const p=(state.projects||[]).find(x=>x&&x.name===name);return !!p&&(hjWoOrders(p).some(w=>Array.isArray(w.reports)&&w.reports.some(r=>r&&r.key===key))||(Array.isArray(p.teamReports)&&p.teamReports.some(r=>r&&r.key===key)));}
+/* 반영(사진 제외) — 원자 저장 한 번: 상태별 할 일 완료·작업시간 1건·wo.reports(또는 지시 없는 보고는 p.teamReports)·노트. */
+async function hjWrApply(report,match){
+  const name=match.project;
+  if(hjWrApplied(name,report.key))return {skipped:'dup'};
+  const at=new Date().toISOString();
+  return durableLocalMutation({snapshotLabel:'팀 작업 보고 반영 전',mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
+    if(!target)throw new Error('현장을 찾을 수 없습니다.');
+    const entry={key:report.key,status:report.status,workDate:report.workDate,hours:report.hours,done:report.done,issue:report.issue,reporter:report.reporter,checklist:report.checklist,photos:report.photos.length,at};
+    const wo=match.order?(target.workOrders||[]).find(w=>w&&w.packetId===match.order):null;
+    if(wo){if(!Array.isArray(wo.reports))wo.reports=[];if(wo.reports.some(r=>r&&r.key===report.key))return {skipped:'dup'};wo.reports.push(entry);}
+    else{if(target.teamReports!=null&&!Array.isArray(target.teamReports))throw new Error('기존 보고 형식을 확인해 주세요.');target.teamReports=[...(target.teamReports||[]),entry];}
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    if(report.status==='done'){
+      // 지시에 묶인 할 일(개인·팀)을 완료로. 보고 자체는 작업시간 1건으로 남긴다(보고 시간 기준 — 실제 출퇴근 시각이 아니다).
+      const refs=wo&&Array.isArray(wo.items)?wo.items.filter(x=>x&&x.kind!=='sched'&&x.kind!=='prep').map(x=>x.ref):[];
+      draft.notes.forEach(n=>{if(n&&n.todo&&!n.done&&refs.includes(String(n.id))){n.done=true;n.doneAt=report.workDate;if(n.teamTask&&typeof n.teamTask==='object')n.teamTask.status='done';}});
+      if(wo&&Array.isArray(wo.items))wo.items.filter(x=>x&&x.kind==='prep').forEach(x=>{(target.checklist||[]).forEach(c=>{if(c&&String(c.id)===x.ref)c.done=true;});});
+      draft.workLogs=Array.isArray(draft.workLogs)?draft.workLogs:[];
+      const mins=Math.round(report.hours*60),start=9*60,end=start+mins,hm=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+      draft.workLogs.push({id:uid(),project:name,date:report.workDate,in:hm(start),out:mins>0?hm(end):'',memo:'[팀 보고'+(report.reporter?' · '+report.reporter:'')+'] '+(report.done||'완료')+(report.issue?' / 이슈: '+report.issue:'')+(report.hours?' (보고 '+report.hours+'h 기준)':''),teamReport:{key:report.key,orderId:match.order||'',hours:report.hours,reporter:report.reporter}});
+    }
+    const label=HJ_WR_STATUS_LABEL[report.status]||report.status;
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[팀 보고] '+report.workDate+' '+label+(report.reporter?' · '+report.reporter:'')+(report.done?' · '+hjWoText(report.done,120):'')+(report.issue?' · 이슈: '+hjWoText(report.issue,120):''),project:name});
+    return {applied:true,status:report.status};
+  }});
+}
+/* 보고 사진 — 기존 사진 넣기 경로(사진 추가 확인 → 저장 → 백업). phase 는 패킷 값 우선: 누수 현장은 _leaktag(before/cause/after), 그 밖에는 _phase. */
+function hjWrPhotoHook(report,match){
+  const p=(state.projects||[]).find(x=>x&&x.name===match.project),leak=!!p&&p.kind==='leak',byName=new Map(report.photos.map(x=>[x.file.split('/').pop(),x]));
+  return (file,rec)=>{const meta=byName.get(String(file&&file.name||'').split('/').pop());if(!meta)return;
+    if(meta.phase){if(leak&&HJ_WO_PHASE_LEAK[meta.phase]){rec._leaktag=HJ_WO_PHASE_LEAK[meta.phase];delete rec.leaktag;}rec._phase=HJ_WO_PHASE_LABEL[meta.phase];}
+    if(!rec._worklabel&&(meta.note||report.done))rec._worklabel=hjWoText(meta.note||report.done,80);
+    rec._teamReport=report.key;};
+}
+async function hjWrReadZip(file){
+  await ensureJSZip();const zip=await JSZip.loadAsync(file),out=[];
+  for(const [path,entry] of Object.entries(zip.files)){if(entry.dir||!/\.(jpe?g|png|webp|heic|heif|mp4|mov|webm)$/i.test(path))continue;const blob=await entry.async('blob');out.push(new File([blob],path.split('/').pop(),{type:blob.type||(/\.png$/i.test(path)?'image/png':/\.webp$/i.test(path)?'image/webp':/\.(mp4|mov|webm)$/i.test(path)?'video/mp4':'image/jpeg')}));}
+  return out;
+}
+function hjTeamReportImportView(prefill){
+  const pre=prefill&&typeof prefill==='object'?prefill:{};
+  const s={text:String(pre.text||''),files:Array.isArray(pre.files)?pre.files.slice():[],parsed:null,choices:{}};
+  openModal('📥 팀 작업 가져오기',
+    '<div id="hjTeamImport" style="min-width:0;overflow-wrap:anywhere">'+
+    '<p class="hint" style="margin:0 0 6px">팀 앱 [📤 작업 보고 내보내기]의 work-report.json 을 붙여 넣거나 파일로 고르고, 사진 zip 이 있으면 같이 고르세요. 같은 보고는 두 번 반영하지 않습니다.</p>'+
+    '<textarea id="tiText" rows="5" placeholder=\'{"type":"hj-work-report", ...}\' style="width:100%;padding:9px 10px;font-size:13px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(s.text)+'</textarea>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"><label style="font-size:12px;font-weight:700;flex:1;min-width:140px">JSON 파일<input id="tiJson" type="file" accept=".json,application/json" style="display:block;width:100%;min-height:44px;margin-top:4px"></label>'+
+    '<label style="font-size:12px;font-weight:700;flex:1;min-width:140px">사진 zip (선택)<input id="tiZip" type="file" accept=".zip,application/zip" style="display:block;width:100%;min-height:44px;margin-top:4px"></label></div>'+
+    '<button type="button" id="tiPreview" class="blue" style="min-height:44px;margin-top:8px">미리보기</button>'+
+    '<div id="tiList" style="margin-top:8px"></div><p id="tiIssue" role="alert" style="min-height:18px;color:var(--warn);font-size:12.5px"></p></div>',
+    [{label:'✅ 반영',cls:'clay',fn:()=>apply()},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjTeamImport'),issue=root.querySelector('#tiIssue'),list=root.querySelector('#tiList');
+  const projOptions=sel=>'<option value="">— 현장 고르기 —</option>'+(state.projects||[]).filter(p=>p&&!p.archived).map(p=>'<option value="'+escapeAttr(p.name)+'"'+(sel===p.name?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join('');
+  const preview=()=>{
+    const parsed=hjWrParse(root.querySelector('#tiText').value);s.parsed=parsed;
+    if(!parsed.ok){list.innerHTML='';issue.textContent=parsed.error||'읽을 보고가 없어요';return parsed;}
+    issue.textContent='';
+    const names=new Set(s.files.map(f=>String(f.name||'').split('/').pop()));
+    list.innerHTML='<div style="font-size:12px;color:var(--muted)">보고 '+parsed.reports.length+'건'+(parsed.reporter?' · 보고자 '+escapeHtml(parsed.reporter):'')+' · 사진 파일 '+s.files.length+'장</div>'+parsed.reports.map(r=>{
+      const m=hjWrMatch(r),chosen=m?m.project:(s.choices[r.key]||''),dup=chosen&&hjWrApplied(chosen,r.key),found=r.photos.filter(x=>names.has(x.file.split('/').pop())).length;
+      return '<div data-ti-report="'+escapeAttr(r.key)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 10px;margin-top:6px;font-size:12.5px;line-height:1.6">'+
+        '<b>'+escapeHtml(HJ_WR_STATUS_LABEL[r.status]||r.status||'상태 없음')+'</b> · '+escapeHtml(r.workDate||'작업일 없음')+(r.hours?' · '+r.hours+'h':'')+(r.done?'<div>'+escapeHtml(hjWoText(r.done,160))+'</div>':'')+(r.issue?'<div style="color:#b45309">이슈: '+escapeHtml(hjWoText(r.issue,160))+'</div>':'')+
+        (r.photos.length?'<div style="color:var(--muted)">사진 '+r.photos.length+'장 (zip 에서 찾음 '+found+'장)</div>':'')+
+        (m?'<div data-ti-matched style="color:var(--hj-ok-fg,#0a7f43)">→ '+escapeHtml(m.project)+' <span style="color:var(--muted)">('+m.how+(m.order?' '+m.order:'')+')</span></div>':'<div data-ti-unmatched style="color:#b45309">현장을 찾지 못했어요 — 고르세요<select data-ti-pick="'+escapeAttr(r.key)+'" style="display:block;width:100%;min-height:44px;font-size:14px;margin-top:4px">'+projOptions(chosen)+'</select></div>')+
+        (r.problems.length?'<div style="color:var(--warn)">'+escapeHtml(r.problems.join(' · '))+' — 반영하지 않습니다</div>':'')+(dup?'<div data-ti-dup style="color:var(--muted)">이미 반영한 보고 — 건너뜀</div>':'')+'</div>';}).join('');
+    list.querySelectorAll('[data-ti-pick]').forEach(el=>el.onchange=()=>{s.choices[el.dataset.tiPick]=el.value;});
+    return parsed;
+  };
+  root.querySelector('#tiPreview').onclick=preview;
+  root.querySelector('#tiJson').onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;root.querySelector('#tiText').value=await f.text();preview();};
+  root.querySelector('#tiZip').onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;try{s.files=await hjWrReadZip(f);toast('사진 '+s.files.length+'장을 읽었어요');preview();}catch(err){issue.textContent='zip 을 읽지 못했어요: '+(err&&err.message||err);}};
+  let busy=false;
+  const apply=async()=>{
+    if(busy)return;const parsed=preview();if(!parsed.ok)return;
+    const jobs=parsed.reports.map(r=>({r,m:hjWrMatch(r)||(s.choices[r.key]?{project:s.choices[r.key],order:'',how:'직접 선택'}:null)}));
+    const ready=jobs.filter(j=>j.m&&!j.r.problems.length);
+    if(!ready.length){issue.textContent='반영할 보고가 없어요 — 현장을 고르거나 보고 내용을 확인해 주세요';return;}
+    busy=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select,#modalRoot textarea')];controls.forEach(el=>el.disabled=true);
+    let applied=0,dup=0,failed=0;const photoJobs=[];
+    try{
+      // 반영 직전 스냅샷 1회(각 durableLocalMutation 이 자체 스냅샷을 또 남기지만, 가져오기 묶음의 되돌림 지점은 여기 하나다).
+      if(!(await hjSnapshot('팀 작업 가져오기 전',true,true)))throw new Error('안전판 저장에 실패했어요');
+      for(const j of ready){
+        try{const r=await hjWrApply(j.r,j.m);if(r&&r.skipped==='dup'){dup++;continue;}applied++;
+          const names=new Set(j.r.photos.map(x=>x.file.split('/').pop())),files=s.files.filter(f=>names.has(String(f.name||'').split('/').pop()));
+          if(files.length)photoJobs.push({files,report:j.r,match:j.m});}
+        catch(e){failed++;issue.textContent='반영 실패: '+(e&&e.message||e);}
+      }
+      webWorkMarkDirtyAfterPersist();
+    }finally{busy=false;controls.forEach(el=>el.disabled=false);}
+    closeModal();render();
+    toast('📥 보고 '+applied+'건 반영'+(dup?' · 중복 '+dup+'건 건너뜀':'')+(failed?' · 실패 '+failed+'건':'')+(photoJobs.length?' · 사진 추가 확인으로 이어집니다':''));
+    const next=()=>{const job=photoJobs.shift();if(!job)return;setTimeout(()=>{const opened=openPhotoIntake(job.files,{project:job.match.project,source:'team',onRecord:hjWrPhotoHook(job.report,job.match),onComplete:async()=>{next();},onCancel:async()=>{next();}});if(opened===false)next();},120);};
+    next();
+  };
+  if(s.text)preview();
+  return true;
+}
+/* 대시보드 — 검수 요청·막힘 보고 줄(읽기 전용). */
+function hjTeamReportPending(){
+  const out=[];
+  (state.projects||[]).filter(p=>p&&!p.archived).forEach(p=>{
+    const all=[...hjWoOrders(p).flatMap(w=>Array.isArray(w.reports)?w.reports:[]),...(Array.isArray(p.teamReports)?p.teamReports:[])];
+    all.filter(r=>r&&(r.status==='review'||r.status==='blocked')&&!r.ack).forEach(r=>out.push({project:p.name,status:r.status,issue:r.issue||'',done:r.done||'',workDate:r.workDate||'',reporter:r.reporter||''}));
+  });
+  return out;
+}
+function hjTeamReportPendingHtml(){
+  const rows=hjTeamReportPending();if(!rows.length)return '';
+  const review=rows.filter(r=>r.status==='review'),blocked=rows.filter(r=>r.status==='blocked');
+  return '<div data-team-report-pending style="font-size:13px;margin:0 0 8px;line-height:1.6">'+
+    (review.length?'<div style="color:var(--hj-warn-fg,#b45309)">🔎 검수 요청 '+review.length+'건 — '+review.slice(0,3).map(r=>escapeHtml(r.project)).join(' · ')+'</div>':'')+
+    (blocked.length?'<div style="color:var(--warn)">⛔ 막힘 '+blocked.length+'건 — '+blocked.slice(0,3).map(r=>escapeHtml(r.project)+(r.issue?' ('+escapeHtml(hjWoText(r.issue,40))+')':'')).join(' · ')+'</div>':'')+'</div>';
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
