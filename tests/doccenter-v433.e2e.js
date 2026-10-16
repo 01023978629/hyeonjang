@@ -137,7 +137,7 @@ let browser, passed = 0, page;
     assert.deepEqual(groups, ['영업·계약', '시공 중', '준공·돈', 'AS·보증', '누수·보험', '아파트·행정', '보관']);
     const acts = await page.locator('#modalRoot .docHubBtn').evaluateAll(nodes => nodes.map(n => n.dataset.act));
     for (const act of [...LEGACY_ACTS, 'workcert', 'leaknarr', 'leakreport', 'statement', 'invoice', 'quote', 'contract', 'worklog', 'progress', 'order', 'aslog']) assert(acts.includes(act), 'entry ' + act);
-    assert(acts.filter(a => a.startsWith('todo:')).length >= 6, 'planned rows are listed as 예정');
+    assert(acts.filter(a => a.startsWith('todo:')).length >= 5, 'planned rows are listed as 예정'); // v442 피해 확인서가 실제 항목이 되어 예정 줄이 하나 줄었다
     const status = await page.locator('#modalRoot .docHubStatus').allInnerTexts();
     assert(status.some(t => /사진 3장 · 주소 있음 · 번호 자동/.test(t)), 'workcert status line: ' + JSON.stringify(status));
     assert(status.some(t => /입금 기록 1건/.test(t)), 'receipt status line');

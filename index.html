@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v440-crew';
+const APP_BUILD='hyeonjang-v442-insurance';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6389,7 +6389,7 @@ function hjLeakCardHtml(p){
   if(!p||hjProjectKind(p)!=='leak')return '';
   const d=hjLeakIntakeData(p),chip=t=>'<span style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">'+escapeHtml(t)+'</span>';
   const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인'];
-  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+hjLeakRepeatChip(p)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button>'+hjLeakReportButton(p)+'</div></div>';
+  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+hjLeakRepeatChip(p)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button>'+hjLeakReportButton(p)+hjInsClaimButton(p)+'</div></div>';
 }
 
 /* v419 출동 알림과 미완료 집계는 현재 현장/일정만 읽는다. 다른 유형의 긴급 일정은 누수 출동으로 세지 않는다. */
@@ -6398,7 +6398,7 @@ function hjLeakTodayData(today=localDate()){
     .map(s=>({s,p:hjLeakProject(s.project)})).sort((a,b)=>String(a.s.time||'').localeCompare(String(b.s.time||''))||String(a.p.name).localeCompare(String(b.p.name),'ko'));
 }
 function hjLeakTodayHtml(){
-  const rows=hjLeakTodayData(),repeat=hjLeakRepeatDashboardHtml();if(!rows.length)return repeat;
+  const rows=hjLeakTodayData(),repeat=hjLeakRepeatDashboardHtml()+hjInsDashHtml();if(!rows.length)return repeat;   // v442 보험 서류 진행 줄
   const text='🚨 오늘 출동 '+rows.length+'건 — '+rows.map(({s,p})=>p.name+' '+(s.time||'시간 미정')).join(' · ');
   const withAddr=rows.filter(({p})=>String((p.customer||{}).addr||'').trim()),unique=[...new Map(withAddr.map(r=>[r.p.name,r.p])).values()];
   return '<div data-leak-today style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;border:1px solid #b91c1c;border-radius:10px;padding:8px 10px;margin:4px 0 10px"><b style="flex:1 1 220px;min-width:0;overflow-wrap:anywhere;font-size:13px">'+escapeHtml(text)+'</b>'+unique.map(p=>'<button type="button" class="ghost" data-navi="'+escapeAttr(p.name)+'" aria-label="'+escapeAttr(p.name+' 길찾기')+'" style="min-height:44px;white-space:normal">🗺 길찾기'+(unique.length>1?' · '+escapeHtml(p.name):'')+'</button>').join('')+'</div>'+repeat;
@@ -13831,6 +13831,7 @@ function hjDayCloseData(today){
     matPlan:hjMatPlanRows('',7).length,   // v373 다음 7일 발주 점검
     matCost:hjMatCostPending().length,   // v439 입고했는데 원가 반영 안 한 발주
     crewPay:Number(today.slice(8,10))>=25?hjCrewPayPending(today.slice(0,7)):[],   // v440 월말 주: 지급 명세 안 만든 사람
+    insDue:hjInsDue(today),   // v442 오늘 보험 서류 제출 예정
     promo:hjAdCaseRows(14,0).filter(r=>r.missing.length),   // v378 2주 안 완공 현장 중 사례를 안 올린 채널이 남은 곳 — v387 남은 곳을 먼저 거르고 보일 때 4곳으로 자름
     clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})(),   // v362 내일 담당 겹침
     sales:hjDayCloseSales(today),leakSms:hjLeakSmsPending(today)};   // 영업·누수 문자 안내는 순수 조회
@@ -13908,6 +13909,7 @@ function hjDayCloseView(){
     (d.matPlan?'<p data-dc-matplan style="font-size:12.5px;color:#b45309;margin:2px 0 6px">📋 발주 점검: 다음 7일 공정 중 납품 기록 없는 것 '+d.matPlan+'개</p>':'')+
     (d.matCost?'<p data-dc-matcost style="font-size:12.5px;color:#b45309;margin:2px 0 6px">💰 입고했는데 원가 반영 안 한 발주 '+d.matCost+'건 — 🚚 납품 확인에서 [💰 원가 반영]</p>':'')+
     '<div style="display:flex;gap:6px">'+btn('ghost','data-dc-mat','🚚 납품 확인')+'</div>';   // v368·v373
+  if(d.insDue&&d.insDue.length)body+=h4('🧾 오늘 보험 서류 제출 예정 '+d.insDue.length+'곳')+row('<span data-dc-insdue>'+escapeHtml(d.insDue.slice(0,4).join(' · '))+(d.insDue.length>4?' 외':'')+'</span>','');   // v442
   if(d.crewPay&&d.crewPay.length)body+=h4('💸 이번 달 지급 명세 안 만든 사람 '+d.crewPay.length+'명')+row('<span data-dc-crewpay>'+escapeHtml(d.crewPay.slice(0,4).join(' · '))+(d.crewPay.length>4?' 외':'')+'</span>','');
   if(d.promo.length)body+=h4('📣 완공 현장 홍보 — 안 올린 채널 '+d.promo.reduce((a,r)=>a+r.missing.length,0)+'개')+   // v378
     d.promo.slice(0,4).map(r=>row('<span data-dc-promo>'+escapeHtml(r.name)+' <span style="color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span><br><span style="font-size:12px;color:var(--hj-warn-fg)">남은 곳: '+r.missing.map(hjAdChName).join('·')+'</span></span>','')).join('')+
@@ -37267,7 +37269,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37304,6 +37306,7 @@ function setupDelegation(){
     if(t.id==='custLoad')return loadCustomerFromCard(state.activeProject);
     if(t.id==='qmBathroom')return hjBathPrefillOpen();
     if(t.hasAttribute('data-leakreport'))return hjLeakReportView(t.dataset.leakreport);
+    if(d.insclaim!==undefined)return hjInsClaimView(d.insclaim);   // v442 🧾 보험 서류
     if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
     if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
     if(t.id==='qmLeakPaid')return hjLeakPaymentView(state.editingQuote);
@@ -38901,7 +38904,7 @@ function aptReportView(pjName){
    진입점은 그대로 하나(더보기·현장 카드의 📎 서류 만들기). 기능을 더하지 않고 자리만 정리했고, 예정 항목은 회색으로 두어
    다음 지시서 번호를 적어 둔다 — 눌러도 아무 데도 가지 않는다는 것을 토스트로 말한다. 기존 8개 진입점(완료보고서·하자보증서·
    보증서 문자·간이영수증·정산 문서·ZIP·PDF 묶음·포트폴리오)은 같은 함수로 그대로 연다. */
-const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438',damage:'v442',apt:'v441'});
+const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438',apt:'v441'});
 function docHubView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
@@ -38957,7 +38960,8 @@ function docHubView(pjName){
     group('누수·보험')+
     item('📄','누수 보고서',leak?'보험사·관리사무소·아랫집 용도별 PDF.':'누수 현장에서만.','leakreport',leak?('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+(reports?' · 발행 '+reports+'건':'')):'누수 현장 아님',(leak&&intake&&detect)?'':'warn')+
     item('📝','누수 사고 경위서'+NEW,'보험 청구 보조 — 접수·탐지·조치를 사실 순서로 1쪽. 용도 3종.','leaknarr',leak?(issued('leaknarr')||('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+' · 조치 '+((quotes.length||doneOk)?'✓':'없음'))):'누수 현장 아님',leak?(issued('leaknarr')?'ok':''):'warn')+
-    item('🏢','피해 확인서 (아랫집)','피해 세대 확인용 체크리스트.','todo:damage','','')+
+    item('🏢','피해 확인서 (아랫집)'+NEW,'피해 세대·부위·사진·탐지 결과를 한 장에 — 현장 서명 또는 링크 서명. 금액·고객 이름 없음.','damage',leak?(issued('damage')||('탐지 '+(detect?'✓':'없음')+' · 사진 '+docThumbs+'장')):'누수 현장 아님',leak?(issued('damage')?'ok':''):'warn')+
+    item('🧾','보험 청구 체크리스트'+NEW,'보험사에 낼 서류 12가지 — 저희 준비 6 · 고객 준비 6, 고객 안내문·제출 기록까지.','insclaim',leak?(function(){const c=hjInsClaim(p);if(!hjInsStarted(p))return '시작 전';const pr=hjInsProgress(p,c);return '진행 '+pr.done+'/'+pr.total+((c.submitted||[]).length?' · 제출 '+c.submitted.length+'회':'');})():'누수 현장 아님',leak?'':'warn')+
     item('🗂','증빙 묶음'+NEW,'견적·사진 전중후·영수증·명세서·보증서·수금 기록을 ZIP 하나로. 용도 3종(세무사/보험·관리사무소/고객).','evidence',issued('evidence')||('사진 '+ph+'장 · 견적 '+anyQuote+'건 · 입금 '+pays.length+'건'),issued('evidence')?'ok':'')+
     group('아파트·행정')+
     item('🏢','공사 신청서 · 입주민 안내문 · 엘리베이터 게시문 · 이웃 동의서','아파트 4종 — 앱 안에서 작성.','todo:apt','','')+
@@ -38992,6 +38996,8 @@ function docHubView(pjName){
         else if(a==='order'){if(quotes.length)materialOrder(quotes[0].id);else toast('앱 견적이 없어요 — 견적서를 먼저 만들어 주세요');}
         else if(a==='aslog')asHistoryView();
         else if(a==='evidence')hjEvidenceView(pjName);   // v427
+        else if(a==='damage'){if(leak)hjInsDamageView(pjName);else toast('누수 현장에서만 만들 수 있어요');}   // v442
+        else if(a==='insclaim'){if(leak)hjInsClaimView(pjName);else toast('누수 현장에서만 열 수 있어요');}
       }catch(e){toast('열 수 없어요: '+(e.message||e));}
     },80);
   };});
@@ -39006,9 +39012,10 @@ const HJ_DOC433_TYPES=Object.freeze({
   workcert:Object.freeze({t:'수리·작업 확인서',prefix:'WC',ic:'🧰'}),
   leaknarr:Object.freeze({t:'누수 사고 경위서',prefix:'LN',ic:'📝'}),
   payrcpt:Object.freeze({t:'간이영수증',prefix:'MM',ic:'🧾'}),
-  evidence:Object.freeze({t:'증빙 묶음',prefix:'EV',ic:'🗂'})   // v427
+  evidence:Object.freeze({t:'증빙 묶음',prefix:'EV',ic:'🗂'}),   // v427
+  damage:Object.freeze({t:'피해 확인서',prefix:'DC',ic:'🏢'})   // v442 아랫집 누수 피해 확인
 });
-const HJ_DOC433_NO_RE=/^(WC|LN|MM|EV)-(\d{8})-(\d{2,})$/;
+const HJ_DOC433_NO_RE=/^(WC|LN|MM|EV|DC)-(\d{8})-(\d{2,})$/;
 const HJ_LEAKNARR_PURPOSES=Object.freeze({insurance:'보험사 제출용',office:'관리사무소 제출용',self:'본인 보관용'});
 const HJ_LEAKNARR_SCOPES=Object.freeze(['우리 집(세대 안)','아랫집','공용부']);
 const HJ_DOC433_DISCLAIMER='사실 관계 정리용 — 보험 심사·책임 판단을 대신하지 않습니다.';
@@ -40408,6 +40415,442 @@ function hjSubQuoteView(name,resume){
 }
 /* 외주 원가 참고(선택한 외주 견적) — 마진 보드·비교표가 읽는다. 읽기 전용. */
 function hjSubQuotePicked(p){return hjSubQuotes(p).filter(x=>x.status==='picked'&&num(x.amount)>0);}
+/* ═══ v442 누수 보험 청구 도우미 — 피해 확인서(아랫집) · 보험 서류 체크리스트 · 제출 이력 ═══
+   데이터는 현장 레코드 안 p.leak.claim 한 덩어리({insurer, claimNo, dueAt, checklist:{key:{done,at,skip,fileRef,fileName,note}}, extra[], submitted:[{at,via,keys[],memo}],
+   memo, closedAt, tplSeen, damage:{victimUnit,causeUnit,checkedAt,parts[],partsMemo,photoRefs[],sigs[],links[]}}) — 새 최상위 직렬화 키 없음.
+   고객 쪽 서류(청구서·등본·신분증·통장 …)는 체크만 한다 — 파일·번호를 받지 않는다. 보험증권 번호·주민번호·계좌 칸은 없고, 메모·접수번호에
+   주민번호 꼴이 들어오면 저장하지 않는다. 기본 목록은 2026-10 인터넷 자료(비즈워치 2021-07 일배책 누수 기사, 뱅크샐러드 2026-09 누수 보험 정리,
+   보험 정리 블로그) 기준이고 보험사마다 다르다 — 현장에서 고친 목록(해당 없음·추가 서류)은 이 기기 localStorage hj_ins_tpl 에 보험사별로 남겨
+   다음 현장에 "제안"만 한다(강제 아님, 개인정보 없음). 고객 안내문에는 금액을 넣지 않는다(메모·상태에 적힌 금액도 지운다). 자동 발송 없음.
+   피해 확인서는 v433 문서 엔진·발행 기록(p.docs type damage, DC-번호)을 쓰고, 고객 이름·전화·금액·현장 이름을 싣지 않는다(동·호수만). */
+const HJ_INS_CHECKLIST=Object.freeze([
+  Object.freeze({key:'opinion',side:'ours',label:'누수 탐지 소견서',hint:'원인·발생 위치·피해 위치·수리 부위·공용부/전유부·탐지 방법(청음·가스·열화상 등)',make:'leakreport'}),
+  Object.freeze({key:'quote',side:'ours',label:'원인 수리 견적서',hint:'수리 품목·수량 — 보험사가 견적 2곳을 달라고 할 때도 있어요',make:'quote'}),
+  Object.freeze({key:'receipt',side:'ours',label:'수리비 영수증',hint:'간이영수증 + 현금영수증·카드전표·세금계산서(홈택스 발행은 따로)',make:'payrcpt'}),
+  Object.freeze({key:'photos',side:'ours',label:'탐지·공사 사진 (수리 전·중·후)',hint:'날짜가 보이게 — 증빙 묶음(보험용) ZIP',make:'evidence'}),
+  Object.freeze({key:'narr',side:'ours',label:'사고 경위서',hint:'발생일·발견 경위·조치를 사실 순서로',make:'leaknarr'}),
+  Object.freeze({key:'damage',side:'ours',label:'피해 확인서 (아랫집 피해 시)',hint:'피해 세대가 함께 확인·서명 — 아랫집 피해가 없으면 [해당 없음]',make:'damage'}),
+  Object.freeze({key:'claimform',side:'cust',label:'보험금 청구서 · 개인정보 처리 동의서',hint:'보험사 양식 — 동의서는 등본에 오른 가족 모두'}),
+  Object.freeze({key:'resident',side:'cust',label:'주민등록등본',hint:'최근 1개월 안에 뗀 것 — 가족 확인용'}),
+  Object.freeze({key:'ownership',side:'cust',label:'등기부등본 또는 건축물대장 · (세입자·임대) 임대차계약서',hint:'사고 난 집의 소유·거주 확인'}),
+  Object.freeze({key:'idbank',side:'cust',label:'신분증 사본 · 보험금 받을 통장 사본',hint:'보험사에 바로 내요 — 앱에는 저장하지 않아요'}),
+  Object.freeze({key:'officelog',side:'cust',label:'관리사무소 누수 민원 기록',hint:'공동주택이면 관리사무소에서 받아요'}),
+  Object.freeze({key:'victim',side:'cust',label:'아랫집 서류 (피해·복구 사진 · 복구 견적서·영수증 · 이체 내역)',hint:'피해 세대가 준비 — 업체에 직접 이체한 내역이 중요해요'})
+]);
+const HJ_INS_NOTES=Object.freeze([
+  '물이 새는 걸 알면 바로 수리 전·중·후 사진을 날짜가 보이게 남겨 두세요 — 수리 뒤 사진만 있으면 인정이 어려울 수 있어요.',
+  '공사 전에 보험사에 먼저 접수하고 공사비 범위를 물어보세요.',
+  '증권에 적힌 주소와 사고 난 집 주소가 같아야 해요 — 이사했다면 주소 변경을 확인하세요.',
+  '자기부담금은 가입 시기·상품마다 달라요 — 증권에서 확인하세요.',
+  '노후 배관·관리 소홀·고의로 난 사고는 보상이 어려울 수 있어요.',
+  '원인이 공용 배관·옥상·외벽 같은 공용부면 개인 보험이 아니라 관리사무소(단지 보험)로 접수합니다.',
+  '보험사가 아랫집 연락처를 물을 수 있어요 — 아랫집에 미리 양해를 구해 두세요.'
+]);
+const HJ_INS_SOURCE='2026-10 인터넷 자료 기준(비즈워치 일배책 누수 기사, 뱅크샐러드 누수 보험 정리 등) — 보험사마다 요구 서류가 달라요. 접수 때 받은 목록으로 고쳐 쓰세요.';
+const HJ_INS_DEDUCT_NOTE='대표용 참고: 2020년 4월 이후 가입한 일배책은 누수 자기부담금이 50만 원인 경우가 많고, 그 전 가입분은 더 적거나 없을 수 있어요(상품마다 다름). 고객 안내문에는 넣지 않습니다.';
+const HJ_INS_VIA=Object.freeze(['보험사 앱','팩스','이메일','방문','우편']);
+const HJ_INS_INSURERS=Object.freeze(['삼성화재','현대해상','DB손해보험','KB손해보험','메리츠화재','한화손해보험','롯데손해보험','흥국화재','NH농협손해보험','MG손해보험']);
+const HJ_INS_DAMAGE_PARTS=Object.freeze(['천장','벽','바닥','가구·가전','조명·전기']);
+const HJ_INS_DAMAGE_MAX=6;
+const HJ_INS_TPL_KEY='hj_ins_tpl';
+const HJ_INS_RRN_RE=/\d{6}\s*-?\s*[1-8]\d{6}/;
+const HJ_INS_AMOUNT_RE=/(?:₩\s*)?\d[\d,]*(?:\.\d+)?\s*(?:만\s*)?원|\d[\d,]*\s*만(?=\s|$|[^가-힣])/g;
+function hjInsPlain(v){return !!v&&typeof v==='object'&&!Array.isArray(v);}
+function hjInsText(v,max){return typeof v==='string'?v.replace(/[\r\n\t]+/g,' ').trim().slice(0,max||120):'';}
+/* 금액 지우기 — 고객 안내문에 나가는 모든 자유 글(상태·메모·추가 서류 이름)에 쓴다. */
+function hjInsNoAmount(t){return String(t==null?'':t).replace(HJ_INS_AMOUNT_RE,'').replace(/\s*·\s*(?=·|$)/g,'').replace(/\s{2,}/g,' ').trim();}
+function hjInsClaim(p){return p&&hjInsPlain(p.leak)&&hjInsPlain(p.leak.claim)?p.leak.claim:null;}
+function hjInsClaimEdit(p){
+  if(!hjInsPlain(p.leak))p.leak={};
+  if(!hjInsPlain(p.leak.claim))p.leak.claim={checklist:{},submitted:[]};
+  const c=p.leak.claim;if(!hjInsPlain(c.checklist))c.checklist={};if(!Array.isArray(c.submitted))c.submitted=[];
+  return c;
+}
+function hjInsItems(c){
+  const extra=(c&&Array.isArray(c.extra)?c.extra:[]).filter(x=>hjInsPlain(x)&&/^x_[a-z0-9]{3,12}$/.test(String(x.key||''))&&hjInsText(x.label,60))
+    .map(x=>({key:x.key,side:'cust',label:hjInsText(x.label,60),hint:'보험사가 따로 달라고 한 서류',extra:true}));
+  return HJ_INS_CHECKLIST.concat(extra);
+}
+/* 앱 안 기록으로 이미 준비된 것(보고서·견적·영수증·묶음·경위서·확인서 발행) — 읽기 전용. */
+function hjInsAuto(p,key){
+  const leak=hjInsPlain(p&&p.leak)?p.leak:{},last=a=>a.length?a[a.length-1]:null;
+  if(key==='opinion'){const r=last((Array.isArray(leak.reports)?leak.reports:[]).filter(x=>x&&x.purpose==='insurance'&&typeof x.no==='string'));return r?'보험사 제출용 '+r.no:'';}
+  if(key==='quote'){const q=hjLeakReportQuote(p);if(!q||hjLeakQuoteIssue(q))return '';const t=quoteCalc(q).total;return '견적 '+String(q.date||'')+(t>0?' · '+won(t):'');}
+  const doc={receipt:'payrcpt',photos:'evidence',narr:'leaknarr',damage:'damage'}[key];
+  if(doc){const r=last(hjDocLogsOf(p,doc));return r?HJ_DOC433_TYPES[doc].t+' '+r.no:'';}
+  return '';
+}
+function hjInsItemState(p,c,it){
+  const e=c&&hjInsPlain(c.checklist)&&hjInsPlain(c.checklist[it.key])?c.checklist[it.key]:{};
+  if(e.skip===true)return {done:false,skip:true,auto:'',detail:'해당 없음',e};
+  const auto=it.side==='ours'?hjInsAuto(p,it.key):'';
+  const detail=[auto,e.done===true&&e.at?'완료 '+String(e.at).slice(5):'',e.fileName?'첨부 '+hjInsText(e.fileName,60):'',hjInsText(e.note,80)].filter(Boolean).join(' · ');
+  return {done:e.done===true||!!auto,skip:false,auto,detail,e};
+}
+function hjInsProgress(p,c){
+  const rows=hjInsItems(c).map(it=>({it,s:hjInsItemState(p,c,it)})),live=rows.filter(r=>!r.s.skip);
+  return {rows,done:live.filter(r=>r.s.done).length,total:live.length,missing:live.filter(r=>!r.s.done).map(r=>r.it)};
+}
+function hjInsStarted(p){const c=hjInsClaim(p);return !!c&&!!(hjInsText(c.insurer,40)||Object.keys(hjInsPlain(c.checklist)?c.checklist:{}).length||(Array.isArray(c.submitted)&&c.submitted.length)||c.dueAt||hjInsPlain(c.damage));}
+/* 보험사별 고친 목록(기기 기본값 제안) — 보험사 이름·항목 키·추가 서류 이름만 남는다. */
+function hjInsTplAll(){try{const v=JSON.parse(localStorage.getItem(HJ_INS_TPL_KEY)||'{}');return hjInsPlain(v)?v:{};}catch(e){return {};}}
+function hjInsTplOf(insurer){
+  const k=hjInsText(insurer,40);if(!k)return null;const t=hjInsTplAll()[k];if(!hjInsPlain(t))return null;
+  const skip=(Array.isArray(t.skip)?t.skip:[]).filter(x=>HJ_INS_CHECKLIST.some(i=>i.key===x)),extra=(Array.isArray(t.extra)?t.extra:[]).map(x=>hjInsText(x,60)).filter(Boolean).slice(0,8);
+  return skip.length||extra.length?{skip,extra,at:hjInsText(t.at,10)}:null;
+}
+function hjInsTplSave(c){
+  const k=hjInsText(c&&c.insurer,40);if(!k)return;
+  const all=hjInsTplAll(),skip=HJ_INS_CHECKLIST.filter(i=>hjInsPlain(c.checklist[i.key])&&c.checklist[i.key].skip===true).map(i=>i.key),extra=hjInsItems(c).filter(i=>i.extra).map(i=>i.label);
+  if(!skip.length&&!extra.length)delete all[k];else all[k]={skip,extra,at:localDate()};
+  try{localStorage.setItem(HJ_INS_TPL_KEY,JSON.stringify(all));}catch(e){}
+}
+function hjInsTplDiff(c,tpl){
+  if(!tpl||!c)return null;
+  const skip=tpl.skip.filter(k=>!(hjInsPlain(c.checklist&&c.checklist[k])&&c.checklist[k].skip===true)),have=new Set(hjInsItems(c).filter(i=>i.extra).map(i=>i.label)),extra=tpl.extra.filter(l=>!have.has(l));
+  return skip.length||extra.length?{skip,extra}:null;
+}
+function hjInsTplApply(c,d){
+  d.skip.forEach(k=>{c.checklist[k]={...(hjInsPlain(c.checklist[k])?c.checklist[k]:{}),skip:true};});
+  c.extra=(Array.isArray(c.extra)?c.extra:[]).concat(d.extra.map(label=>({key:'x_'+uid().replace(/[^a-z0-9]/g,'').slice(0,8).padEnd(3,'0'),label})));
+}
+/* 탐지 결과(v420) 요약 — 피해 확인서·경위와 같은 값. */
+function hjInsDetect(p){
+  const d=hjInsPlain(p&&p.leak)&&hjInsPlain(p.leak.detect)?p.leak.detect:null;if(!d)return null;
+  return {methods:HJ_LEAK_METHODS.filter(m=>Array.isArray(d.methods)&&d.methods.includes(m)),cause:HJ_LEAK_CAUSES.includes(d.cause)?d.cause:'원인 미확정',place:hjInsText(d.place,120),zone:HJ_LEAK_ZONES.includes(d.zone)?d.zone:'경계 불명'};
+}
+function hjInsDetectText(p){const d=hjInsDetect(p);return d?[d.methods.length?'탐지 '+d.methods.join('·'):'','원인 '+d.cause+(d.place?' ('+d.place+')':''),'구분 '+d.zone].filter(Boolean).join(' · '):'';}
+/* 동·호수 — 고객 주소의 "○동 ○호"에서. 아랫집 = 같은 동 한 층 아래(접수에 '윗집이 원인 추정'이면 거꾸로). 고칠 수 있다. */
+function hjInsUnits(p){
+  const m=/(\d{1,4})\s*동\s*(\d{3,4})\s*호/.exec(String((p&&p.customer||{}).addr||''));
+  if(!m)return {cause:'',victim:''};
+  const dong=m[1],ho=Number(m[2]),mine=dong+'동 '+ho+'호';
+  if(hjLeakIntakeData(p).neighbor==='윗집이 원인 추정')return {cause:dong+'동 '+(ho+100)+'호',victim:mine};
+  return {cause:mine,victim:ho>=200?dong+'동 '+(ho-100)+'호':''};
+}
+function hjInsDamage(p){const c=hjInsClaim(p);return c&&hjInsPlain(c.damage)?c.damage:null;}
+function hjInsDamagePool(p){return (state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===p.name&&hjDocThumbOk(f));}
+function hjInsPhotoText(f){return [f._worklabel,f.worklabel,f.memo,f.caption,f.name].filter(x=>typeof x==='string').join(' ');}
+function hjInsDamageSuggest(p){return hjInsDamagePool(p).filter(f=>hjPhotoLeakTag(f)==='before'||/아랫집/.test(hjInsPhotoText(f))).slice(0,HJ_INS_DAMAGE_MAX);}
+function hjInsDamagePhotos(p,refs){return hjFilesByRefs(Array.isArray(refs)?refs:[],hjInsDamagePool(p)).files.filter(f=>hjDocThumbOk(f)).slice(0,HJ_INS_DAMAGE_MAX);}
+/* 화면 입력의 시작값 — 저장된 것이 있으면 그것, 없으면 주소·사진에서 제안. 읽기 전용. */
+function hjInsDamageDraft(p){
+  const dm=hjInsDamage(p)||{},u=hjInsUnits(p);
+  return {victimUnit:typeof dm.victimUnit==='string'?dm.victimUnit:u.victim,causeUnit:typeof dm.causeUnit==='string'?dm.causeUnit:u.cause,
+    checkedAt:isRealIsoDate(String(dm.checkedAt||''))?dm.checkedAt:localDate(),parts:Array.isArray(dm.parts)?dm.parts.filter(x=>HJ_INS_DAMAGE_PARTS.includes(x)):[],
+    partsMemo:hjInsText(dm.partsMemo,200),photoRefs:Array.isArray(dm.photoRefs)?dm.photoRefs.slice(0,HJ_INS_DAMAGE_MAX):hjInsDamageSuggest(p).map(hjFileRef),no:''};
+}
+function hjInsDamageSigs(p){
+  const dm=hjInsDamage(p),out={};
+  (dm&&Array.isArray(dm.sigs)?dm.sigs:[]).forEach(s=>{if(s&&(s.role==='victim'||s.role==='cause')&&WR_SIG_PNG_RE.test(String(s.png||'')))out[s.role]=s;});
+  return out;
+}
+function hjInsDamageSave(p,s){
+  const c=hjInsClaimEdit(p),old=hjInsPlain(c.damage)?c.damage:{};
+  c.damage={...old,victimUnit:hjInsText(s.victimUnit,60),causeUnit:hjInsText(s.causeUnit,60),checkedAt:isRealIsoDate(String(s.checkedAt||''))?s.checkedAt:localDate(),
+    parts:(s.parts||[]).filter(x=>HJ_INS_DAMAGE_PARTS.includes(x)),partsMemo:hjInsText(s.partsMemo,200),photoRefs:(s.photoRefs||[]).slice(0,HJ_INS_DAMAGE_MAX)};
+  markDirty();return c.damage;
+}
+/* 피해 확인서 모델 — 동·호수만 싣는다(고객 이름·전화·현장 이름·금액 없음). 피해 세대 이름은 서명이 없으면 자필란. */
+function hjInsDamageModel(p,s){
+  if(!p||p.kind!=='leak')return null;
+  const photos=hjInsDamagePhotos(p,s.photoRefs);
+  return {type:'damage',title:'누수 피해 확인서',no:hjDoc433No('DC',s.no),day:localDate(),victimUnit:hjInsText(s.victimUnit,60),causeUnit:hjInsText(s.causeUnit,60),
+    checkedAt:isRealIsoDate(String(s.checkedAt||''))?s.checkedAt:localDate(),parts:(s.parts||[]).filter(x=>HJ_INS_DAMAGE_PARTS.includes(x)),partsMemo:hjInsText(s.partsMemo,200),
+    photos:photos.map(f=>{const tag=hjPhotoLeakTag(f);return {id:String(f.id||''),thumb:f.thumb,label:'피해 사진',caption:(tag?HJ_PHOTO_LEAK_LABELS[tag]:'피해 사진')+(hjPhotoKoreanDay(f)?' · '+hjPhotoKoreanDay(f):'')};}),
+    detectText:hjInsDetectText(p),sigs:hjInsDamageSigs(p),disclaimer:HJ_DOC433_DISCLAIMER};
+}
+function hjInsDamageHtml(m){
+  if(!m)return null;
+  const box=x=>'<div class="keep" style="flex:1;min-width:170px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px"><div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+x.title+'</div><div style="font-size:12.5px;line-height:2">'+x.body+'</div><div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab;min-height:34px">'+(x.foot||'서명 또는 날인')+'</div></div>';
+  const signed=(sig,label)=>sig?'<img src="'+escapeAttr(sig.png)+'" alt="'+escapeAttr(label)+' 서명" style="display:block;height:56px;max-width:100%;object-fit:contain"><div style="margin-top:4px">'+escapeHtml(sig.at)+(sig.via==='link'?' · 링크 서명':' · 현장 서명')+'</div>':'';
+  const v=m.sigs.victim,c=m.sigs.cause;
+  const inner=
+    '<div class="note" data-doc433-disclaimer style="border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center">'+escapeHtml(m.disclaimer)+'</div>'+
+    '<div class="prow"><span><b>문서번호</b>'+escapeHtml(m.no)+'</span><span><b>확인일</b>'+hjDocDate(m.checkedAt)+'</span><span><b>작성일</b>'+hjDocDate(m.day)+'</span></div>'+
+    '<table class="items"><tbody>'+
+      hjDoc433Row('피해 세대',hjDoc433Cell(m.victimUnit,160))+hjDoc433Row('원인 세대',hjDoc433Cell(m.causeUnit,160))+
+      hjDoc433Row('피해 부위','<span data-ins-damage-parts>'+HJ_INS_DAMAGE_PARTS.map(x=>(m.parts.includes(x)?'☑ ':'☐ ')+x).join('&nbsp;&nbsp;')+'</span>'+(m.partsMemo?'<div style="margin-top:4px;white-space:pre-wrap">'+escapeHtml(m.partsMemo)+'</div>':''))+
+      hjDoc433Row('탐지 결과',m.detectText?'<span data-ins-damage-detect>'+escapeHtml(m.detectText)+'</span>':'<span style="color:#8b98ab">탐지 기록 없음</span>')+
+    '</tbody></table>'+
+    (m.photos.length?'<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:4px 0 0">피해 사진 '+m.photos.length+'장</div>'+hjDoc433PhotoGrid(m.photos,'data-ins-damage-photos'):'')+
+    '<div style="font-size:12.5px;line-height:1.8;margin:6px 0 12px">위 세대의 누수 피해 사실을 현장에서 함께 확인하였습니다. 보상 범위와 책임은 보험사 심사로 정해집니다.</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      box({title:'피해 세대',body:'동·호수 : '+hjDoc433Cell(m.victimUnit,100)+'<br>성명 : '+hjDoc433Cell(v?v.name:'',100),foot:signed(v,'피해 세대')})+
+      box({title:'원인 세대',body:'동·호수 : '+hjDoc433Cell(m.causeUnit,100)+'<br>성명 : '+hjDoc433Cell(c?c.name:'',100),foot:signed(c,'원인 세대')})+
+      box({title:escapeHtml(COMPANY.name),body:'대표자 : '+escapeHtml(COMPANY.owner)+'<br>연락처 : '+escapeHtml(COMPANY.tel),foot:'확인'})+
+    '</div>';
+  return hjDocShell('누 수 피 해 확 인 서',inner,'#9a3412');
+}
+/* 현장 서명판 — 하자보증서 서명(p.warrantySigs)과 섞지 않고 claim.damage.sigs 에 역할별 최신 하나만 둔다. */
+function hjInsSigCapture(name,role,back){
+  const p=hjLeakProject(name);if(!p){toast('누수 현장에서만 받을 수 있어요');return false;}
+  const who=role==='cause'?'원인 세대':'피해 세대';
+  openModal('✍ '+who+' 확인 서명',
+    '<div id="hjInsSig" style="min-width:0"><p class="hint" style="margin:0 0 8px">폰을 '+who+'에 건네 주세요. 성명을 적고 손가락으로 서명합니다. 확인서에는 금액이 들어가지 않습니다.</p>'+
+    '<label for="isgName" style="display:block;font-size:12px;font-weight:700;margin:6px 0 3px">성명</label><input id="isgName" maxlength="40" placeholder="예: 홍길동" style="width:100%;min-height:44px;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px;box-sizing:border-box">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px"><b style="font-size:12px;flex:1">서명 (손가락으로)</b><button type="button" class="ghost tiny" id="isgClear" style="min-height:44px;min-width:44px">지우기</button></div>'+
+    '<canvas id="isgPad" width="640" height="180" style="width:100%;height:120px;border:1.5px dashed var(--line-soft);border-radius:8px;touch-action:none;background:#fff"></canvas></div>',
+    [{label:'✍ 서명 저장',cls:'clay',fn:()=>{
+        const nm=hjInsText((document.getElementById('isgName')||{}).value,40);
+        if(!nm){toast('성명을 적어 주세요');return;}
+        if(!drawn){toast('서명을 해 주세요');return;}
+        const small=document.createElement('canvas');small.width=480;small.height=135;small.getContext('2d').drawImage(pad,0,0,480,135);
+        const c=hjInsClaimEdit(p),dm=hjInsPlain(c.damage)?c.damage:(c.damage={});
+        dm.sigs=(Array.isArray(dm.sigs)?dm.sigs:[]).filter(x=>x&&x.role!==role).concat([{id:'is_'+uid(),role,name:nm,at:localStamp(),png:small.toDataURL('image/png'),via:'pad'}]);
+        markDirty();toast('✍ '+who+' 서명을 보관했어요 — '+nm);back();
+      }},
+     {label:'취소',cls:'ghost',fn:back}],true);
+  hjModalTapTargets();
+  const pad=document.getElementById('isgPad');let drawn=false;const g=pad?pad.getContext('2d'):null;
+  if(g){g.lineWidth=3.5;g.lineCap='round';g.strokeStyle='#16233b';let on=false,px=0,py=0;
+    const pos=e=>{const r=pad.getBoundingClientRect();return {x:(e.clientX-r.left)*pad.width/r.width,y:(e.clientY-r.top)*pad.height/r.height};};
+    pad.onpointerdown=e=>{on=true;const q=pos(e);px=q.x;py=q.y;try{pad.setPointerCapture(e.pointerId);}catch(_){}};
+    pad.onpointermove=e=>{if(!on)return;const q=pos(e);g.beginPath();g.moveTo(px,py);g.lineTo(q.x,q.y);g.stroke();px=q.x;py=q.y;drawn=true;};
+    pad.onpointerup=pad.onpointercancel=()=>{on=false;};}
+  const cl=document.getElementById('isgClear');if(cl)cl.onclick=()=>{if(g){g.clearRect(0,0,pad.width,pad.height);drawn=false;}};
+  return true;
+}
+/* 링크 서명 — 하자보증서 링크와 같은 전자계약 서버(quickSend·contract.signature)를 docKind 'leak-damage' 로 쓴다. 금액 없음.
+   피해 세대 휴대폰은 서버로만 가고 앱에는 남지 않는다(이름·동·호수만). 서버가 아직 이 문서를 모르면 현장 서명으로 안내한다. */
+function hjInsDamageLinkBody(p,s,o){
+  return {site:hjInsText(o.org||s.victimUnit,60),cause:hjInsText(s.causeUnit,60),checkedAt:hjDocDate(isRealIsoDate(String(s.checkedAt||''))?s.checkedAt:localDate()),
+    parts:(s.parts||[]).filter(x=>HJ_INS_DAMAGE_PARTS.includes(x)).join(', ')+(s.partsMemo?' / '+hjInsText(s.partsMemo,200):''),detect:hjInsDetectText(p),customerName:hjInsText(o.name,40),
+    operator:{co:COMPANY.name,rep:COMPANY.owner,bizNo:COMPANY.bizno,tel:COMPANY.tel},note:'누수 피해 사실을 함께 확인했다는 서명입니다. 보상 범위·책임은 보험사 심사로 정해집니다.'};
+}
+function hjInsDamageLinkSend(name,s,back){
+  const p=hjLeakProject(name);if(!p)return false;
+  if(!contractFeatureAvailable()){toast('전자계약이 잠겨 있습니다 — ☁️ 설정에서 [자가진단]을 먼저 통과시키세요');return false;}
+  openModal('🔗 링크로 피해 세대 서명 받기',
+    '<div id="hjInsLink" style="min-width:0"><p class="hint" style="margin:0 0 8px">피해 세대 폰으로 <b>링크</b>를 보내 서명을 받습니다. 서명하면 [✍️ 링크 서명 가져오기]로 확인서에 붙입니다. 링크 내용에 금액은 없습니다.</p>'+
+    '<label for="dlName" style="display:block;font-size:12px;font-weight:700;margin:6px 0 3px">피해 세대 성명</label><input id="dlName" maxlength="40" style="width:100%;min-height:44px;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px;box-sizing:border-box">'+
+    '<label for="dlPhone" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">휴대폰 (앱에 저장하지 않아요)</label><input id="dlPhone" type="tel" inputmode="numeric" maxlength="13" placeholder="010-0000-0000" style="width:100%;min-height:44px;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px;box-sizing:border-box">'+
+    '<label for="dlOrg" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">동·호수</label><input id="dlOrg" maxlength="60" value="'+escapeAttr(s.victimUnit||'')+'" style="width:100%;min-height:44px;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px;box-sizing:border-box"></div>',
+    [{label:'🔗 링크 만들기',cls:'clay',fn:async()=>{
+        const nm=hjInsText((document.getElementById('dlName')||{}).value,40),phone=String((document.getElementById('dlPhone')||{}).value||'').trim(),org=hjInsText((document.getElementById('dlOrg')||{}).value,60);
+        if(!nm){toast('피해 세대 성명을 적어 주세요');return;}
+        if(!/^01[016789]\d{7,8}$/.test(phone.replace(/\D/g,''))){toast('휴대폰 번호를 확인해 주세요');return;}
+        const payload={docKind:'leak-damage',title:(org||'피해 세대')+' 누수 피해 확인',operatorName:COMPANY.name,customer:{name:nm,phone},body:hjInsDamageLinkBody(p,s,{name:nm,org})};
+        let j;
+        try{j=await contractCall('quickSend',payload,{idem:'dm:'+name+':'+contractIdemHash(JSON.stringify(payload))+':'+Math.floor(Date.now()/60000)});}
+        catch(e){
+          if(e.__code==='UNAUTHORIZED'){toast('관리자 토큰을 확인하세요 (☁️ 설정)');return;}
+          if(e.__code==='BAD_REQUEST'){toast('전자계약 서버가 아직 피해 확인서를 모릅니다 — 서버를 갱신하기 전에는 [✍ 현장 서명]으로 받아 주세요');return;}
+          toast('링크 생성 실패: '+(e&&e.message||e));return;
+        }
+        const c=hjInsClaimEdit(p),dm=hjInsPlain(c.damage)?c.damage:(c.damage={});
+        dm.links=Array.isArray(dm.links)?dm.links:[];
+        let req=j&&j.contractId?dm.links.find(L=>L&&L.contractId===j.contractId):null;
+        if(!req){req={id:'dl_'+uid(),at:new Date().toISOString(),contractId:String(j&&j.contractId||''),contractNo:String(j&&j.contractNo||''),name:nm,org};dm.links.push(req);if(dm.links.length>20)dm.links=dm.links.slice(-20);}
+        markDirty();
+        const link=String(j&&j.signUrl||''),text='['+COMPANY.name+'] '+(org||'')+' 누수 피해 확인 서명 링크입니다.\n'+link;
+        openModal('🔗 피해 확인 서명 링크'+(link?' 생성됨':''),
+          '<div id="hjInsLinkShow" style="font-size:13px;line-height:1.65;min-width:0;overflow-wrap:anywhere"><div style="background:var(--paper-2);border-radius:10px;padding:11px;margin-bottom:10px"><b>'+escapeHtml(req.contractNo||'피해 확인서')+'</b> · '+escapeHtml(nm)+'<br>문자 자동 발송은 꺼져 있어요 — <b>아래 링크를 직접 보내세요.</b><br><span style="color:var(--warn)">이 링크는 지금만 볼 수 있어요</span> — 창을 닫으면 다시 못 봅니다.</div>'+
+          (link?'<input id="dlLink" readonly value="'+escapeAttr(link)+'" style="width:100%;min-height:44px;box-sizing:border-box"><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><button type="button" class="blue tiny" id="dlCopy" style="min-height:44px">링크 복사</button><button type="button" class="clay tiny" id="dlShare" style="min-height:44px">공유하기</button></div>':'<p class="hint" style="margin:0">서명 링크를 받지 못했어요 — 서버 설정을 확인하세요.</p>')+'</div>',
+          [{label:'✍️ 서명 확인',cls:'moss',fn:()=>hjInsDamageLinkPull(name,req.id,back)},{label:'← 확인서로',cls:'ghost',fn:back}],true);
+        hjModalTapTargets();
+        const cp=document.getElementById('dlCopy');if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(link);toast('서명 링크 복사됨');}catch(e){toast('링크를 길게 눌러 복사하세요');}};
+        const sh=document.getElementById('dlShare');if(sh)sh.onclick=async()=>{try{if(navigator.share){await navigator.share({title:'누수 피해 확인 서명',text});return;}}catch(e){if(e&&e.name==='AbortError')return;}try{await navigator.clipboard.writeText(text);toast('안내 문구와 링크 복사됨');}catch(e){toast('링크를 길게 눌러 복사하세요');}};
+      }},
+     {label:'취소',cls:'ghost',fn:back}],true);
+  hjModalTapTargets();
+  return true;
+}
+async function hjInsDamageLinkPull(name,linkId,back){
+  const p=hjLeakProject(name);if(!p)return false;
+  const dm=hjInsDamage(p),req=dm&&Array.isArray(dm.links)?dm.links.find(L=>L&&L.id===linkId):null;
+  if(!req||!req.contractId){toast('서명 요청을 찾을 수 없어요');return false;}
+  if(!contractFeatureAvailable()){toast('전자계약이 잠겨 있습니다 — ☁️ 설정에서 [자가진단]을 먼저 통과시키세요');return false;}
+  let j;
+  try{j=await contractCall('contract.signature',{id:req.contractId});}
+  catch(e){if(e.__code==='BAD_STATE'){toast('아직 서명하지 않았어요');return false;}toast('서명 확인 실패: '+(e&&e.message||e));return false;}
+  const raw=String(j&&j.signatureImage||'');if(!WR_SIG_PNG_RE.test(raw)){toast('서명 이미지를 읽지 못했어요');return false;}
+  const png=typeof hjSigShrink==='function'?await hjSigShrink(raw):raw,sd=j.signedAt?new Date(j.signedAt):null,at=sd&&!isNaN(sd.getTime())?localStamp(sd):localStamp();
+  dm.sigs=(Array.isArray(dm.sigs)?dm.sigs:[]).filter(x=>x&&x.role!=='victim').concat([{id:'is_'+uid(),role:'victim',name:hjInsText(j.signerName||req.name,40)||req.name,at,png,via:'link'}]);
+  req.signedAt=String(j.signedAt||new Date().toISOString());
+  markDirty();toast('✍️ 피해 세대 서명을 가져왔어요');back();return true;
+}
+function hjInsDamageView(name,resume){
+  const p=hjLeakProject(name);if(!p){toast('누수 현장에서만 만들 수 있어요');return false;}
+  const s=resume&&typeof resume==='object'?resume:hjInsDamageDraft(p);
+  const pool=hjInsDamagePool(p),picked=new Set(hjInsDamagePhotos(p,s.photoRefs).map(hjFileRef)),sigs=hjInsDamageSigs(p),dm=hjInsDamage(p)||{};
+  const links=(Array.isArray(dm.links)?dm.links:[]).filter(L=>L&&L.id&&L.contractId&&!L.signedAt),detect=hjInsDetectText(p);
+  const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
+  const sigRow=(role,label)=>{const g=sigs[role];return '<div data-dm-sig="'+role+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--line-soft);font-size:12.5px"><span style="flex:1;min-width:0"><b>'+label+'</b> · '+(g?'✅ '+escapeHtml(g.name)+' ('+(g.via==='link'?'링크':'현장')+')':'서명 없음')+'</span>'+
+    '<button type="button" class="ghost tiny" data-dm-sign="'+role+'" style="min-height:44px">✍ 현장 서명</button>'+(role==='victim'?'<button type="button" class="ghost tiny" id="dmLink" style="min-height:44px">🔗 링크로</button>':'')+'</div>';};
+  const body='<div id="hjInsDamage" style="min-width:0;overflow-wrap:anywhere">'+
+    '<p class="hint" style="margin:0 0 4px">아랫집 피해를 함께 확인하고 서명받는 한 장 — 고객 이름·전화·금액은 들어가지 않아요(동·호수만).</p>'+
+    F('dmVictim','피해 세대 동·호수 (이름은 서명란에 직접)',s.victimUnit,'type="text" placeholder="예: 101동 1103호"')+F('dmCause','원인 세대 동·호수',s.causeUnit,'type="text" placeholder="예: 101동 1203호"')+F('dmDate','확인일',s.checkedAt,'type="date"')+
+    '<div style="font-size:12px;font-weight:700;margin:9px 0 2px">피해 부위</div><div style="display:flex;flex-wrap:wrap;gap:2px 12px">'+HJ_INS_DAMAGE_PARTS.map(x=>'<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:13px"><input type="checkbox" data-dm-part="'+escapeAttr(x)+'"'+(s.parts.includes(x)?' checked':'')+' style="width:18px;height:18px"> '+escapeHtml(x)+'</label>').join('')+'</div>'+
+    '<label for="dmPartsMemo" style="display:block;font-size:12px;font-weight:700;margin:6px 0 3px">피해 내용 (선택)</label><textarea id="dmPartsMemo" rows="2" placeholder="예: 욕실 천장 석고보드 얼룩·처짐" style="width:100%;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(s.partsMemo)+'</textarea>'+
+    '<div data-dm-detect style="font-size:12.5px;margin:8px 0;padding:8px 10px;border-radius:9px;background:var(--paper-2)">탐지 결과(자동): '+(detect?escapeHtml(detect):'<span style="color:var(--warn)">탐지 기록 없음 — 💧 탐지 기록을 먼저 적으면 채워져요</span>')+'</div>'+
+    (pool.length?'<div style="font-size:12px;font-weight:700;margin:9px 0 4px">피해 사진 <span id="dmPhotoCount">'+picked.size+'/'+HJ_INS_DAMAGE_MAX+'</span> <span style="font-weight:400;color:var(--muted)">(조치 전·"아랫집" 사진을 먼저 골라 뒀어요)</span></div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">'+
+      pool.map(f=>{const ref=hjFileRef(f),on=picked.has(ref);return '<button type="button" data-dm-photo="'+escapeAttr(ref)+'" aria-pressed="'+on+'" style="min-height:44px;padding:0;border:2px solid '+(on?'var(--clay)':'transparent')+';border-radius:8px;overflow:hidden;background:#eef2f7"><img src="'+escapeAttr(f.thumb)+'" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;display:block"></button>';}).join('')+'</div>':'<p class="hint">이 현장 사진이 없어요 — 사진 없이도 만들 수 있어요.</p>')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 2px">서명</div>'+sigRow('victim','피해 세대')+
+    links.map(L=>'<div data-dm-link-pending style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;padding:4px 0"><span style="flex:1;min-width:0">🔗 '+escapeHtml(L.name||'')+' '+escapeHtml(L.org||'')+' — 서명 기다리는 중</span><button type="button" class="moss tiny" data-dm-pull="'+escapeAttr(L.id)+'" style="min-height:44px">✍️ 링크 서명 가져오기</button></div>').join('')+
+    sigRow('cause','원인 세대')+'</div>';
+  openModal('🏢 피해 확인서 (아랫집)',body,[{label:'📄 확인서 만들기',cls:'clay',fn:()=>make()},{label:'💾 저장',cls:'ghost',fn:()=>{read();hjInsDamageSave(p,s);toast('💾 피해 확인서 입력을 저장했어요');}},{label:'← 보험 청구',cls:'ghost',fn:()=>{read();keep();hjInsClaimView(name);}}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjInsDamage');
+  const read=()=>{s.victimUnit=root.querySelector('#dmVictim').value.trim();s.causeUnit=root.querySelector('#dmCause').value.trim();s.checkedAt=root.querySelector('#dmDate').value||localDate();
+    s.parts=[...root.querySelectorAll('[data-dm-part]')].filter(el=>el.checked).map(el=>el.dataset.dmPart);s.partsMemo=root.querySelector('#dmPartsMemo').value.trim();return s;};
+  const self=()=>hjInsDamageView(name,s);
+  /* 화면을 열고 닫기만 하면 저장본이 바뀌지 않게 — 저장된 값(없으면 자동 제안)과 다를 때만 남긴다. */
+  const pick=x=>JSON.stringify([x.victimUnit||'',x.causeUnit||'',x.checkedAt||'',(x.parts||[]).slice().sort(),x.partsMemo||'',(x.photoRefs||[]).slice()]);
+  const keep=()=>{if(pick(s)!==pick(hjInsDamageDraft(p)))hjInsDamageSave(p,s);};
+  root.querySelectorAll('[data-dm-photo]').forEach(b=>b.onclick=()=>{read();const ref=b.dataset.dmPhoto,cur=hjInsDamagePhotos(p,s.photoRefs).map(hjFileRef),i=cur.indexOf(ref);
+    if(i>=0)cur.splice(i,1);else if(cur.length<HJ_INS_DAMAGE_MAX)cur.push(ref);else{toast('피해 사진은 '+HJ_INS_DAMAGE_MAX+'장까지');return;}
+    s.photoRefs=cur;self();});
+  root.querySelectorAll('[data-dm-sign]').forEach(b=>b.onclick=()=>{read();hjInsDamageSave(p,s);hjInsSigCapture(name,b.dataset.dmSign,self);});
+  {const lk=root.querySelector('#dmLink');if(lk)lk.onclick=()=>{read();hjInsDamageSave(p,s);hjInsDamageLinkSend(name,s,self);};}
+  root.querySelectorAll('[data-dm-pull]').forEach(b=>b.onclick=()=>{read();hjInsDamageSave(p,s);hjInsDamageLinkPull(name,b.dataset.dmPull,self);});
+  const make=()=>{read();keep();const m=hjInsDamageModel(p,s);if(!m)return;s.no=m.no;const html=hjInsDamageHtml(m);
+    hjDocDeliverView(name,html,safeName(m.no+'_누수피해확인서'),'🏢 피해 확인서',self,{image:true,onDeliver:via=>{hjDoc433IssueQuiet(name,{type:'damage',no:m.no,purpose:via,name:'피해 확인서'});}});};
+  return true;
+}
+/* 고객 안내문 — 저희 준비/고객님 준비/알아둘 것. 금액은 넣지 않는다(상태·메모의 금액도 hjInsNoAmount 로 지운다). */
+function hjInsGuideModel(p){
+  const c=hjInsClaim(p)||{checklist:{}},pr=hjInsProgress(p,c),pub=r=>({label:hjInsNoAmount(r.it.label),hint:r.it.hint,mark:r.s.skip?'–':r.s.done?'✓':'☐',status:r.s.skip?'해당 없음':hjInsNoAmount(r.s.detail)});
+  return {insurer:hjInsText(c.insurer,40),ours:pr.rows.filter(r=>r.it.side==='ours').map(pub),cust:pr.rows.filter(r=>r.it.side==='cust').map(pub),done:pr.done,total:pr.total};
+}
+function hjInsGuideText(p){
+  const m=hjInsGuideModel(p),line=r=>'· '+r.label+(r.mark==='✓'?' ✓':r.mark==='–'?' (해당 없음)':'')+(r.mark==='✓'&&r.status?' — '+r.status:'');
+  return '['+COMPANY.name+'] 보험 청구에 필요한 서류 안내'+(m.insurer?' ('+m.insurer+')':'')+'\n\n저희가 준비:\n'+m.ours.map(line).join('\n')+'\n\n고객님 준비:\n'+m.cust.map(line).join('\n')+
+    '\n\n알아두실 점:\n'+HJ_INS_NOTES.map(n=>'· '+n).join('\n')+'\n\n※ 보험사마다 요구 서류가 달라요. 궁금한 점은 '+COMPANY.tel+' 로 연락 주세요.';
+}
+function hjInsGuideHtml(p){
+  const m=hjInsGuideModel(p);
+  const tr=r=>'<tr><td class="c" style="width:40px">'+r.mark+'</td><td class="nm">'+escapeHtml(r.label)+'<div style="font-size:11px;color:#5b6b82">'+escapeHtml(r.hint)+'</div></td><td style="width:160px;font-size:11.5px;color:#0a7f43">'+escapeHtml(r.mark==='☐'?'준비 중':r.status)+'</td></tr>';
+  const inner='<div class="prow"><span><b>작성일</b>'+hjDocDate()+'</span>'+(m.insurer?'<span><b>보험사</b>'+escapeHtml(m.insurer)+'</span>':'')+'<span><b>진행</b>'+m.done+' / '+m.total+'</span></div>'+
+    '<div style="font-size:13px;font-weight:700;margin:10px 0 4px">저희(만물인테리어)가 준비하는 서류</div><table class="items" data-ins-guide-ours><tbody>'+m.ours.map(tr).join('')+'</tbody></table>'+
+    '<div style="font-size:13px;font-weight:700;margin:10px 0 4px">고객님이 준비하실 서류</div><table class="items" data-ins-guide-cust><tbody>'+m.cust.map(tr).join('')+'</tbody></table>'+
+    '<div class="note" style="line-height:1.8">'+HJ_INS_NOTES.map(n=>'· '+escapeHtml(n)).join('<br>')+'</div>'+
+    '<div class="note" style="color:#5b6b82">'+escapeHtml(HJ_INS_SOURCE)+'</div>'+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.tel)+'</div>';
+  return hjDocShell('보험 청구 서류 안내',inner,'#0e7490');
+}
+function hjInsGuideView(name){
+  const p=hjLeakProject(name);if(!p)return false;
+  return hjDocDeliverView(name,hjInsGuideHtml(p),safeName(name+'_보험서류안내_'+localDate()),'💬 보험 서류 안내',()=>hjInsClaimView(name),{image:true,sms:{text:hjInsGuideText(p),kind:'insguide'}});
+}
+/* [첨부] — 우리가 만든 서류만(고객 서류는 받지 않는다). 파일은 기존 서류 목록(기타)에 현장과 함께 들어가고, 체크리스트는 이름·참조만 기억한다. */
+async function hjInsAttach(name,key,file){
+  const p=hjLeakProject(name),it=HJ_INS_CHECKLIST.find(x=>x.key===key&&x.side==='ours');
+  if(!p||!it||!file)return null;
+  let rec;try{rec=await ingestFile(file);}catch(e){toast('첨부하지 못했어요: '+(e&&e.message||e));return null;}
+  rec.kind='other';rec.project=name;
+  const c=hjInsClaimEdit(p),old=hjInsPlain(c.checklist[key])?c.checklist[key]:{};
+  c.checklist[key]={...old,done:true,at:localDate(),fileRef:hjFileRef(rec),fileName:hjInsText(rec.name,80)};delete c.checklist[key].skip;
+  markDirty();return rec;
+}
+function hjInsSubmitView(name){
+  const p=hjLeakProject(name);if(!p)return false;
+  const c=hjInsClaim(p)||{checklist:{}},pr=hjInsProgress(p,c);let via=HJ_INS_VIA[0];
+  openModal('📤 보험사에 제출했음 — '+name,
+    '<div id="hjInsSubmit" style="min-width:0;overflow-wrap:anywhere"><label for="isDate" style="display:block;font-size:12px;font-weight:700;margin:0 0 3px">제출일</label><input id="isDate" type="date" value="'+escapeAttr(localDate())+'" style="width:100%;min-height:44px;padding:8px;font-size:14px;box-sizing:border-box">'+
+    '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">보낸 방법</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+HJ_INS_VIA.map(v=>'<button type="button" class="'+(v===via?'blue':'ghost')+' tiny" data-is-via="'+escapeAttr(v)+'" aria-pressed="'+(v===via)+'" style="min-height:44px;min-width:44px;padding:0 12px">'+escapeHtml(v)+'</button>').join('')+'</div>'+
+    '<div style="font-size:12px;font-weight:700;margin:10px 0 2px">보낸 서류</div>'+pr.rows.filter(r=>!r.s.skip).map(r=>'<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px"><input type="checkbox" data-is-key="'+escapeAttr(r.it.key)+'"'+(r.s.done?' checked':'')+' style="width:18px;height:18px;flex:none"> '+escapeHtml(r.it.label)+'</label>').join('')+'</div>',
+    [{label:'📤 기록',cls:'clay',fn:()=>{
+        const at=(document.getElementById('isDate')||{}).value||'',keys=[...document.querySelectorAll('#hjInsSubmit [data-is-key]')].filter(el=>el.checked).map(el=>el.dataset.isKey);
+        if(!isRealIsoDate(at)){toast('제출일을 확인해 주세요');return;}
+        if(!keys.length){toast('보낸 서류를 하나 이상 골라 주세요');return;}
+        const cc=hjInsClaimEdit(p);cc.submitted.push({at,via,keys,memo:''});
+        state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[보험 제출] '+at.slice(5).replace('-','/')+' '+via+' — '+keys.length+'건'+(cc.insurer?' · '+hjInsText(cc.insurer,40):''),project:name});
+        markDirty();toast('📤 제출 기록 — '+keys.length+'건');hjInsClaimView(name);
+      }},
+     {label:'← 뒤로',cls:'ghost',fn:()=>hjInsClaimView(name)}],true);
+  hjModalTapTargets();
+  document.querySelectorAll('#hjInsSubmit [data-is-via]').forEach(b=>b.onclick=()=>{via=b.dataset.isVia;document.querySelectorAll('#hjInsSubmit [data-is-via]').forEach(x=>{const on=x.dataset.isVia===via;x.className=(on?'blue':'ghost')+' tiny';x.setAttribute('aria-pressed',String(on));});});
+  return true;
+}
+/* 🧾 보험 청구 체크리스트 — 누수 현장 카드 [🧾 보험 서류]·📎 서류 만들기에서 연다. */
+function hjInsClaimView(name){
+  const p=hjLeakProject(name);if(!p){toast('누수 현장에서만 열 수 있어요');return false;}
+  const c=hjInsClaim(p)||{checklist:{},submitted:[]},pr=hjInsProgress(p,c),det=hjInsDetect(p);
+  const insurers=[...new Set([...(state.projects||[]).map(x=>hjInsText((hjInsClaim(x)||{}).insurer,40)),...Object.keys(hjInsTplAll()),...HJ_INS_INSURERS].filter(Boolean))].slice(0,30);
+  const btn=(attr,label,cls)=>'<button type="button" class="'+(cls||'ghost')+' tiny" '+attr+' style="min-height:44px;min-width:44px;padding:0 10px">'+label+'</button>';
+  const row=r=>{const it=r.it,s=r.s;
+    return '<div data-ins-item="'+escapeAttr(it.key)+'" data-ins-state="'+(s.skip?'skip':s.done?'done':'todo')+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-top:6px'+(s.skip?';opacity:.62':'')+'">'+
+      '<div style="font-size:13px"><b>'+(s.skip?'➖':s.done?'✅':'⬜')+' '+escapeHtml(it.label)+'</b></div><div style="font-size:11.5px;color:var(--muted);line-height:1.5">'+escapeHtml(it.hint)+'</div>'+
+      (s.detail&&!s.skip?'<div data-ins-detail style="font-size:11.5px;color:#0a7f43;margin-top:2px">'+escapeHtml(s.detail)+'</div>':'')+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+
+        (it.make&&!s.skip?btn('data-ins-make="'+escapeAttr(it.key)+'"','🛠 만들기','blue'):'')+(it.side==='ours'&&!s.skip?btn('data-ins-attach="'+escapeAttr(it.key)+'"','📎 첨부'):'')+
+        (!s.skip?btn('data-ins-done="'+escapeAttr(it.key)+'"',s.e.done===true?'↩ 완료 취소':'✔ 완료',s.e.done===true?'ghost':'clay'):'')+
+        btn('data-ins-skip="'+escapeAttr(it.key)+'"',s.skip?'↩ 다시 넣기':'해당 없음')+(it.extra?btn('data-ins-extra-del="'+escapeAttr(it.key)+'"','🗑 빼기'):'')+
+      '</div></div>';};
+  const subs=(Array.isArray(c.submitted)?c.submitted:[]).map((x,i)=>'<div data-ins-sub="'+i+'" style="border-top:1px dashed var(--line-soft);padding:6px 0;font-size:12.5px"><b>'+escapeHtml(String(x&&x.at||'').slice(5).replace('-','/'))+' '+escapeHtml(x&&x.via||'')+' — '+(Array.isArray(x&&x.keys)?x.keys.length:0)+'건</b>'+
+    '<input type="text" data-ins-sub-memo="'+i+'" value="'+escapeAttr(hjInsText(x&&x.memo,120))+'" placeholder="보완 요청 메모 (예: 피해 사진 추가 요청)" style="display:block;width:100%;min-height:44px;margin-top:4px;padding:8px;font-size:13px;box-sizing:border-box"></div>').join('');
+  const inp='width:100%;min-height:44px;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box';
+  /* 보험사별로 고친 목록 제안 — 보험사 칸을 바꾸면 이 칸만 다시 그린다(화면 전체를 다시 그리면 다음 칸으로 옮겨 누른 입력이 사라진다). */
+  const tplHtml=()=>{const cc=hjInsClaim(p)||{checklist:{}},t=cc.insurer&&cc.tplSeen!==cc.insurer?hjInsTplDiff(cc,hjInsTplOf(cc.insurer)):null;
+    return t?'<div data-ins-tpl style="border:1px solid var(--blueprint);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:12.5px">💡 <b>'+escapeHtml(cc.insurer)+'</b> 지난번에 고친 목록이 있어요 — '+escapeHtml([...t.skip.map(k=>(HJ_INS_CHECKLIST.find(i=>i.key===k)||{}).label+' 해당 없음'),...t.extra.map(l=>l+' 추가')].join(' · '))+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+btn('data-ins-tpl="apply"','적용','blue')+btn('data-ins-tpl="keep"','그대로 둘게요')+'</div></div>':'';};
+  const pct=pr.total?Math.round(pr.done*100/pr.total):0;
+  const body='<div id="hjInsClaim" style="min-width:0;overflow-wrap:anywhere">'+
+    (det&&det.zone==='공용부'?'<div data-ins-zone style="border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:10px;padding:8px 10px;font-size:12.5px;margin-bottom:8px">⚠ 탐지 결과 원인이 공용부예요 — 개인 보험이 아니라 관리사무소(단지 보험) 접수 대상일 수 있어요.</div>':'')+
+    '<label for="insInsurer" style="display:block;font-size:12px;font-weight:700;margin:0 0 3px">보험사</label><input id="insInsurer" list="insInsurerList" value="'+escapeAttr(hjInsText(c.insurer,40))+'" placeholder="예: ○○화재" style="'+inp+'"><datalist id="insInsurerList">'+insurers.map(x=>'<option value="'+escapeAttr(x)+'">').join('')+'</datalist>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px"><label for="insClaimNo" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">접수번호 (선택)</label><input id="insClaimNo" value="'+escapeAttr(hjInsText(c.claimNo,40))+'" style="'+inp+'"></div>'+
+    '<div style="flex:1;min-width:140px"><label for="insDue" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">제출 예정일</label><input id="insDue" type="date" value="'+escapeAttr(isRealIsoDate(String(c.dueAt||''))?c.dueAt:'')+'" style="'+inp+'"></div></div>'+
+    '<div id="insTplBox">'+tplHtml()+'</div>'+
+    '<div data-ins-progress style="margin:12px 0 4px;font-size:13px">진행 <b>'+pr.done+'/'+pr.total+'</b><div style="height:8px;border-radius:6px;background:var(--paper-2);margin-top:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#0a7f43"></div></div></div>'+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:10px 0 0">저희가 준비 (만물인테리어)</div>'+pr.rows.filter(r=>r.it.side==='ours').map(row).join('')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:14px 0 0">고객님 준비 — 체크만 해요 (신분증·통장·등본은 앱에 저장하지 않아요)</div>'+pr.rows.filter(r=>r.it.side==='cust').map(row).join('')+
+    '<div style="display:flex;gap:6px;margin-top:8px"><input id="insExtraLabel" maxlength="60" placeholder="보험사가 더 달라는 서류 (예: 손해사정 위임장)" style="'+inp+';flex:1"><button type="button" class="ghost tiny" id="insExtraAdd" style="min-height:44px;min-width:44px;padding:0 12px">➕ 추가</button></div>'+
+    '<details style="margin-top:10px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px;display:flex;align-items:center">📌 알아둘 것</summary><ul style="margin:4px 0;padding-left:18px;font-size:12px;line-height:1.7">'+HJ_INS_NOTES.map(n=>'<li>'+escapeHtml(n)+'</li>').join('')+'</ul><p class="hint" style="margin:4px 0">'+escapeHtml(HJ_INS_DEDUCT_NOTE)+'</p><p class="hint" style="margin:4px 0">'+escapeHtml(HJ_INS_SOURCE)+'</p></details>'+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 2px">제출 기록</div>'+(subs||'<p class="hint" style="margin:0">아직 제출 기록이 없어요.</p>')+
+    '<label for="insMemo" style="display:block;font-size:12px;font-weight:700;margin:10px 0 3px">메모 (대표용 — 주민번호·계좌·증권번호는 적지 마세요)</label><textarea id="insMemo" rows="2" style="'+inp+';font-family:inherit">'+escapeHtml(hjInsText(c.memo,300))+'</textarea>'+
+    '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;margin-top:4px"><input type="checkbox" id="insClosed"'+(c.closedAt?' checked':'')+' style="width:18px;height:18px"> 청구 끝남 (보험금 지급·종결)</label>'+
+    '<input type="file" id="insAttachFile" accept="image/*,.pdf" hidden></div>';
+  openModal('🧾 보험 청구 — '+name,body,[{label:'💬 고객 안내문',cls:'clay',fn:()=>{flush();hjInsGuideView(name);}},{label:'📤 제출했음',cls:'blue',fn:()=>{flush();hjInsSubmitView(name);}},{label:'닫기',cls:'ghost',fn:()=>{flush();closeModal();}}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjInsClaim');
+  /* 다시 그리기 전에 적던 칸을 먼저 저장하고 한 번만 그린다(v440 인건비 장부와 같은 이유 — iOS 는 버튼을 눌러도 입력 포커스가 남는다). */
+  let redraw=false;const again=()=>{if(redraw)return;redraw=true;hjInsClaimView(name);};
+  const saveText=(key,el,max)=>{const v=hjInsText(el.value,max),cur=hjInsClaim(p)||{};if((cur[key]||'')===v)return false;if(HJ_INS_RRN_RE.test(v)){toast('주민번호처럼 보이는 숫자는 저장하지 않아요');return false;}const cc=hjInsClaimEdit(p);if(v)cc[key]=v;else delete cc[key];markDirty();return true;};
+  const flush=()=>{
+    if(!root.isConnected)return;
+    saveText('insurer',root.querySelector('#insInsurer'),40);saveText('claimNo',root.querySelector('#insClaimNo'),40);saveText('memo',root.querySelector('#insMemo'),300);
+    const due=root.querySelector('#insDue').value,want=isRealIsoDate(due)?due:'';if(((hjInsClaim(p)||{}).dueAt||'')!==want){const cc=hjInsClaimEdit(p);if(want)cc.dueAt=want;else delete cc.dueAt;markDirty();}
+    const cur=hjInsClaim(p);
+    if(cur&&Array.isArray(cur.submitted))root.querySelectorAll('[data-ins-sub-memo]').forEach(el=>{const x=cur.submitted[Number(el.dataset.insSubMemo)],v=hjInsText(el.value,120);if(!x||(x.memo||'')===v)return;if(HJ_INS_RRN_RE.test(v)){toast('주민번호처럼 보이는 숫자는 저장하지 않아요');return;}x.memo=v;markDirty();});
+  };
+  const edit=fn=>{if(redraw)return;flush();const cc=hjInsClaimEdit(p);fn(cc);markDirty();again();};
+  const bindTpl=()=>root.querySelectorAll('button[data-ins-tpl]').forEach(b=>b.onclick=()=>edit(cc=>{const d=hjInsTplDiff(cc,hjInsTplOf(cc.insurer));if(b.dataset.insTpl==='apply'&&d)hjInsTplApply(cc,d);cc.tplSeen=hjInsText(cc.insurer,40);}));
+  root.querySelector('#insInsurer').onchange=()=>{if(redraw)return;flush();root.querySelector('#insTplBox').innerHTML=tplHtml();bindTpl();};
+  ['#insClaimNo','#insMemo','#insDue'].forEach(sel=>{root.querySelector(sel).onchange=()=>{if(!redraw)flush();};});
+  root.querySelectorAll('[data-ins-sub-memo]').forEach(el=>el.onchange=()=>{if(!redraw)flush();});
+  root.querySelectorAll('[data-ins-done]').forEach(b=>b.onclick=()=>edit(cc=>{const k=b.dataset.insDone,e=hjInsPlain(cc.checklist[k])?cc.checklist[k]:{};if(e.done===true){const n={...e};delete n.done;delete n.at;cc.checklist[k]=n;}else cc.checklist[k]={...e,done:true,at:localDate()};}));
+  root.querySelectorAll('[data-ins-skip]').forEach(b=>b.onclick=()=>edit(cc=>{const k=b.dataset.insSkip,e=hjInsPlain(cc.checklist[k])?cc.checklist[k]:{};if(e.skip===true){const n={...e};delete n.skip;cc.checklist[k]=n;}else cc.checklist[k]={...e,skip:true};hjInsTplSave(cc);}));
+  root.querySelectorAll('[data-ins-extra-del]').forEach(b=>b.onclick=()=>edit(cc=>{cc.extra=(Array.isArray(cc.extra)?cc.extra:[]).filter(x=>x&&x.key!==b.dataset.insExtraDel);delete cc.checklist[b.dataset.insExtraDel];hjInsTplSave(cc);}));
+  root.querySelector('#insExtraAdd').onclick=()=>{const label=hjInsText(root.querySelector('#insExtraLabel').value,60);if(!label){toast('서류 이름을 적어 주세요');return;}
+    if(HJ_INS_RRN_RE.test(label)){toast('주민번호처럼 보이는 숫자는 저장하지 않아요');return;}
+    edit(cc=>{cc.extra=(Array.isArray(cc.extra)?cc.extra:[]).concat([{key:'x_'+uid().replace(/[^a-z0-9]/g,'').slice(0,8).padEnd(3,'0'),label}]);hjInsTplSave(cc);});};
+  bindTpl();
+  root.querySelector('#insClosed').onchange=e=>edit(cc=>{if(e.target.checked)cc.closedAt=localDate();else delete cc.closedAt;});
+  const fileEl=root.querySelector('#insAttachFile');
+  root.querySelectorAll('[data-ins-attach]').forEach(b=>b.onclick=()=>{fileEl.dataset.key=b.dataset.insAttach;fileEl.click();});
+  fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;flush();const rec=await hjInsAttach(name,fileEl.dataset.key,f);if(rec){toast('📎 '+rec.name+' 첨부 — 서류 목록(기타)에도 들어갔어요');render();}again();};
+  root.querySelectorAll('[data-ins-make]').forEach(b=>b.onclick=()=>{flush();const k=b.dataset.insMake;   // 모달→모달 교체(openModal) — 견적 편집기만 탭이라 닫고 연다
+    if(k==='opinion')return hjLeakReportView(name);
+    if(k==='quote'){const q=hjLeakReportQuote(p);if(q){closeModal();state.tab='quotemaker';editQuote(q.id);return;}return hjLeakQuickQuote(name);}
+    if(k==='receipt')return payRcptDialog(name);
+    if(k==='photos')return hjEvidenceView(name,{purpose:'insurance',hideAmount:false,fullName:false,parts:{},genLeakReport:false});
+    if(k==='narr')return hjLeakNarrView(name);
+    if(k==='damage')return hjInsDamageView(name);});
+  return true;
+}
+/* 대시보드 누수 줄 · 오늘 마감 — 읽기 전용 집계. */
+function hjInsActive(){return (state.projects||[]).filter(p=>p&&!p.archived&&hjProjectKind(p)==='leak'&&hjInsStarted(p)&&!(hjInsClaim(p)||{}).closedAt).map(p=>({p,pr:hjInsProgress(p,hjInsClaim(p))}));}
+function hjInsDashHtml(){
+  const rows=hjInsActive();if(!rows.length)return '';
+  const miss=rows.reduce((a,r)=>a+r.pr.missing.length,0);
+  return '<p data-ins-dash style="margin:6px 0 10px;overflow-wrap:anywhere">🧾 보험 서류 진행 중 '+rows.length+'곳'+(miss?' (미완 '+miss+')':'')+'</p>';
+}
+function hjInsDue(today){
+  today=today||localDate();
+  return (state.projects||[]).filter(p=>{const c=hjInsClaim(p);return p&&!p.archived&&c&&!c.closedAt&&c.dueAt===today&&!(Array.isArray(c.submitted)?c.submitted:[]).some(x=>x&&x.at===today);}).map(p=>p.name);
+}
+function hjInsClaimButton(p){return p&&hjProjectKind(p)==='leak'?'<button type="button" class="ghost" data-insclaim="'+escapeAttr(p.name)+'" style="min-height:44px">🧾 보험 서류</button>':'';}
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
 function tripExpensed(t){
