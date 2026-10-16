@@ -3,6 +3,17 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v445 📈 분석 — 채널별 문의→수주 전환 · 공종×동 마진·수요 · 누수 반복 단지
+
+- 진입: 💼 회계 탭 툴바 [📈 분석](data-insight 위임) · 📣 광고 탭 📞 문의 경로 상자 [📈 채널별 전환]. hjInsightView/hjInsightData — 읽기 전용(기간·공종 선택은 메모리 __hjInsight, 저장 자료 그대로 — 검사가 저장본 비교).
+- 문의 1건 = 현장 1곳. 문의 날짜 hjInsightInqDate: p.inquiryAt → [문의 접수] 노트 → [홈페이지 상담 리드] 노트 날짜 → 가장 이른 활동(일정·앱 견적·견적 파일·입금·준공). 날짜 없는 현장은 기간 밖(개수만 표시). 보관 현장도 센다(지난 실적).
+- 채널 hjInsightChannel: p.leadSrc → p.kakaoLead → '[문의 접수] 날짜 · 경로' 노트 글(HJ_LEAD_SRC 라벨) → 홈페이지 리드 → 모름. '기타'(직접 고른 etc)와 '모름'은 한 줄 '기타·모름', 그 비율 줄(hjInsightUnknownHtml, data-insight-unknown)은 늘 보인다 — 20% 이상이면 주황 + 문의 경로 채우기 안내(변이 hide-unknown 이 INSIGHT_UNKNOWN_SHOWN 에서 잡는다).
+- 단계는 누적: 상담(일정 — 💰·세금 자동·AS 방문 제외 — 또는 실측 이상·견적·수주) ⊇ 견적(앱 견적·견적 파일·수주) ⊇ 수주(시공 이상·준공·입금). 매출 = 수주 현장의 v429 hjProjectMargin 공급가, 건당 매출은 매출 있는 수주만. 첫 답장 중앙값 = 문의 노트의 replyAt(v436 이 남길 칸) − 노트 시각(at, 없으면 ko-KR 날짜 글 hjKoDateTime), 기록 없으면 '—'.
+- 공종 hjInsightTrade: 누수 현장은 탐지 원인 묶음(누수·배관/방수/외벽/기타), 인테리어는 현장 이름·공정·앱 견적 품목 낱말(HJ_INSIGHT_TRADES 순서 첫 일치, 없으면 '인테리어 기타'). 동 hjDongOf(HJ_DONG_RE): 주소 → 현장 이름의 '한글1~5자(+숫자1)동' 낱말, 숫자 동(101동)·단지 낱말·출동/이동 같은 일반 낱말(HJ_DONG_STOP) 제외. 공종×동 표: 문의·수주·수주율·평균 공사비·평균 마진율(원가 있는 수주만, Σ마진/Σ매출)·재문의율(경로 '다시 맡긴 고객' 또는 같은 고객 번호의 더 이른 문의). 규칙 요약: 마진율 상위 3 / 그 나머지 하위 3 / 문의 2+ 이고 수주율이 전체보다 낮은 동 3.
+- 누수 반복 hjInsightLeak(전체 기간): 단지명은 hjAptUnitOf 결과 중 단지 낱말(HJ_APT_COMPLEX_RE)이 든 한 낱말만(현장 이름 앞의 사람 이름이 나오지 않게), 없으면 동 단위. 2건 이상만, 원인 4묶음·같은 세대 재발 수·마지막(접수일)·[🗺](네이버 지도 검색 링크 열기만)·원인 2번 이상이면 "관리사무소에 협력 제안" → 기존 📇 사업자·명함 보내기('관리사무소 업체 등록' 문구).
+- 내보내기: 엑셀 시트 3(채널 전환·공종·동·누수 반복 단지, 기존 ensureXLSX) · 이미지(hjDocShell 문서 → 기존 hjDocHtmlToPng). 화면·엑셀·이미지 모두 고객 이름·전화·호수·현장 이름 없음(검사가 세 군데를 다 훑는다). 표는 가로 스크롤 상자 안에서만 넘친다.
+- 핀3곳 hyeonjang-v445-insight(v446 위 — 번호는 지시서 번호, 배포 순서는 패치 순서). 신규 tests/insight-v445.e2e.js 4/4(합성 40곳: 채널 5·공종 2·동 6·반복 단지 2, 기대값은 검사 쪽 계산), 변이 hide-unknown·기준선 실패 확인, 관련 10개(margin-v429/inqpending-v386/leakdetect-v420/leadsrc-v379/leakwarranty-v423/ledger-cost-apply/ledger-roundtrip/margin/mobile-more-tools/publicweb-v446)·정적 통과.
+
 ## 2026-10-16 v446 공개 웹 — 리뷰 QR(앱 안 인코더) · ⭐ 리뷰 QR 카드 · 보고서·영수증 끝 QR · 사례 ZIP case.json
 
 - QR 인코더(hjQrMatrix/hjQrDraw/hjQrPngDataUrl/hjQrSvg): 외부 라이브러리 없음, 바이트 모드(UTF-8)·오류정정 M·버전 1~10(213바이트까지, 넘으면 null). 공개 참조 구현(Nayuki QR Code generator)과 표·배치·벌점(N1~N4)이 같아 같은 그림이 나온다 — 2026-10-16 버전 1~10×마스크 8×한글 275가지를 한 칸씩 대조, zxing 으로 전부 읽힘(OpenCV 고전 검출기는 일부 마스크에서 위치를 못 찾지만 Aruco 검출기·zxing 은 다 읽는다 — 인코딩 문제 아님). 문서에는 PNG(<img data-qr>, 칸 8px) — 워드(.doc)가 SVG 를 못 그려서다.

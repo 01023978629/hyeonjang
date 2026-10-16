@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v446-publicweb';
+const APP_BUILD='hyeonjang-v445-insight';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -31782,6 +31782,7 @@ function viewLedger(){
     '<button class="moss tiny" data-payhist="1" style="padding:8px 12px">💰 수금 이력</button>'+
     '<button class="blue tiny" data-mclose="1" style="padding:8px 12px">📆 월말 마감</button>'+
     '<button class="ghost tiny" data-marginboard="1" style="padding:8px 12px">📊 마진 보드</button>'+
+    '<button class="ghost tiny" data-insight="1" style="padding:8px 12px">📈 분석</button>'+   // v445 채널·공종·동·누수 단지
     '<button class="ghost tiny" data-trip="" style="padding:8px 12px">🚗 운행일지</button>'+
     '<button class="clay tiny" data-vatc="1" style="padding:8px 12px">🧾 부가세 준비 (D-'+vatPeriod().dday+')</button>'+
     '<button class="ghost tiny" data-lgexport="1" style="padding:8px 12px">📤 세무사 전달용 xlsx</button>'+
@@ -31911,6 +31912,7 @@ function hjLeadSrcHtml(){
   const st=hjLeadSrcStats();
   return '<div class="adLeadSrc" style="border:1px solid var(--line-soft);border-radius:13px;padding:10px 12px;margin:0 0 12px;background:var(--paper);font-size:12.5px;overflow-wrap:anywhere">'+
     '<b>📞 문의 경로</b> <span style="color:var(--muted);font-size:11.5px">· 문의 경로 입력 '+st.known+'곳 · 미입력 '+st.unknown+'곳</span>'+
+    ' <button type="button" class="ghost tiny" data-insight="1" style="min-height:44px;padding:0 10px;margin-left:4px">📈 채널별 전환</button>'+   // v445
     (st.rows.length?'<div style="margin-top:5px">'+st.rows.map(function(x){return '<span class="adLeadN" style="display:inline-block;margin:0 10px 3px 0">'+x.label+' <b>'+x.n+'</b></span>';}).join('')+'</div>'
       :'<div style="color:var(--muted);margin-top:4px">현장 화면 👤 고객 정보의 [문의 경로]를 골라 두면 채널별로 몇 곳이 왔는지 여기에 쌓여요.</div>')+
   '</div>';
@@ -37304,7 +37306,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37524,6 +37526,7 @@ function setupDelegation(){
     if(d.qhist!==undefined){e.stopPropagation();return quoteHistoryView(true);}
     if(d.mclose!==undefined){e.stopPropagation();return monthCloseView(1);}
     if(d.marginboard!==undefined){e.stopPropagation();return hjMarginBoardView();}   // v429
+    if(d.insight!==undefined){e.stopPropagation();return hjInsightView();}   // v445
     if(d.warranty!==undefined){e.stopPropagation();return warrantyView(d.warranty);}
     if(d.dochub!==undefined){e.stopPropagation();return docHubView(d.dochub);}
     if(d.teamsend!==undefined){e.stopPropagation();return hjTeamPacketSendView(d.teamsend);}   // v432
@@ -41846,6 +41849,277 @@ function hjCaseJson(p,included){
   return {format:'manmool-case/1',title:(place+' '+v('symptom')).trim(),area,kind,tags:[...new Set([kind,area].filter(Boolean))],summary,
     photos:(included||[]).map(x=>({file:x.file,phase:HJ_CASE_SIDE_EN[hjCaseSide(x.f)]||'mid',caption:hjCaseCaption(x.f)})),
     date:/^\d{4}-\d{2}-\d{2}$/.test(String(p.doneAt||''))?p.doneAt:localDate(),consent:!!d.consent,app:APP_BUILD};
+}
+/* ═══ v445 📈 분석 — 채널별 문의→수주 전환 · 공종·동별 마진·수요 · 누수 반복 단지 ═══
+   읽기 전용 — 어떤 레코드도 바꾸지 않는다(기간·보기 선택은 메모리 변수 __hjInsight). 외부 서버·지도 타일 없음:
+   지도는 기존 네이버 지도 검색 링크로 열기만. 화면·엑셀·이미지에 고객 이름·전화·호수·현장 이름을 싣지 않는다 — 채널·공종·동·단지명·숫자만.
+   · 문의 1건 = 현장 1곳(📞 새 문의 받기가 현장을 만든다). 문의 날짜: p.inquiryAt → [문의 접수] 노트 → [홈페이지 상담 리드] 노트 날짜 →
+     가장 이른 활동(일정·견적·입금·준공). 날짜가 하나도 없으면 기간 집계 밖(개수만 알린다).
+   · 채널: p.leadSrc → 카카오 리드(p.kakaoLead) → '[문의 접수] 날짜 · 경로' 노트 → 홈페이지 리드 노트 → 모름.
+     '기타'(직접 고른 기타)와 '모름'(미입력)은 한 줄 '기타·모름' 으로 세고 그 비율을 늘 보인다 — 자료 품질 신호(검사 변이 hide-unknown 이 지킨다).
+   · 단계는 누적으로 센다: 상담(일정·실측 이상·견적·수주) ⊇ 견적(앱 견적·견적 파일·수주) ⊇ 수주(시공 이상·준공·입금). 매출은 v429 hjProjectMargin 공급가.
+   · 첫 답장 중앙값: v436 이 문의 노트에 남기는 replyAt 과 노트 시각(at, 없으면 ko-KR 날짜 글)의 차이(분). 기록이 없으면 '—'.
+   · 공종은 현장 이름·공정·견적 품목의 낱말(HJ_INSIGHT_TRADES), 누수 현장은 탐지 원인 묶음(배관·방수·외벽·기타). 동은 주소 → 현장 이름의 '○○동'(HJ_DONG_RE). */
+const HJ_DONG_STOP=Object.freeze(['출동','이동','공동','자동','운동','활동','행동','노동','진동','변동','작동','연동','가동','발동','소동','충동','감동','냉동','난동','협동','파동','수동','유동','기동','구동','능동','부동','선동','폭동','시동','합동','별동']);
+const HJ_DONG_RE=/(?:^|[\s(,·/])([가-힣]{1,5}\d?동)(?=$|[\s),·/])/g;
+function hjDongOf(text){
+  const s=String(text||'').normalize('NFKC');HJ_DONG_RE.lastIndex=0;let m;
+  while((m=HJ_DONG_RE.exec(s))){const w=m[1];if(!HJ_DONG_STOP.includes(w)&&!HJ_APT_COMPLEX_RE.test(w))return w;}
+  return '';
+}
+function hjInsightDong(p){return hjDongOf((p&&p.customer&&p.customer.addr)||'')||hjDongOf(p&&p.name);}
+const HJ_INSIGHT_TRADES=Object.freeze([
+  ['욕실',/욕실|화장실|욕조|변기|세면대|샤워/],['주방',/주방|싱크|상판|후드/],['방수',/방수|도막|우레탄|발수/],
+  ['배관·설비',/배관|설비|급수|온수|난방|분배기|보일러|수전|배수|하수|우수관/],['도배',/도배|벽지/],['바닥',/마루|장판|바닥재|데코타일|미장|몰탈/],
+  ['타일',/타일|줄눈/],['창호',/샷시|섀시|창호|방충망/],['도장',/도장|페인트|탄성코트/],['목공',/목공|몰딩|중문|문틀|가벽/],['전기',/전기|조명|콘센트|스위치/]
+]);
+const HJ_INSIGHT_CAUSE_GROUPS=Object.freeze([['배관',['급수관','온수관','난방 배관','배수관']],['방수',['방수층(욕실·베란다)']],['외벽',['외벽·창호']],['기타',['결로','윗세대','원인 미확정']]]);
+function hjInsightCauseGroup(c){const g=HJ_INSIGHT_CAUSE_GROUPS.find(x=>x[1].includes(c));return g?g[0]:'기타';}
+function hjInsightLeakCause(p){const c=p&&p.leak&&p.leak.detect&&typeof p.leak.detect.cause==='string'?p.leak.detect.cause.trim():'';return c||'원인 미확정';}
+function hjInsightTrade(p,ix){
+  if(hjProjectKind(p)==='leak')return '누수·'+hjInsightCauseGroup(hjInsightLeakCause(p));
+  const q=(ix&&ix.quotes.get(p.name))||[];
+  const text=[p.name,(Array.isArray(p.phases)?p.phases:[]).join(' '),q.map(x=>(Array.isArray(x.items)?x.items:[]).map(it=>it&&it.name||'').join(' ')).join(' ')].join(' ');
+  const hit=HJ_INSIGHT_TRADES.find(t=>t[1].test(text));return hit?hit[0]:'인테리어 기타';
+}
+// 프로젝트별 색인 — 현장마다 전체 배열을 다시 훑지 않게 한 번 묶는다(읽기만).
+function hjInsightIndex(){
+  const ix={notes:new Map(),sch:new Map(),quotes:new Map(),est:new Map(),pay:new Map()},put=(m,k,v)=>{if(!k)return;if(!m.has(k))m.set(k,[]);m.get(k).push(v);};
+  (state.notes||[]).forEach(n=>{if(n)put(ix.notes,n.project,n);});
+  (state.schedule||[]).forEach(s=>{if(s)put(ix.sch,s.project,s);});
+  (state.quotes||[]).forEach(q=>{if(q)put(ix.quotes,q.project,q);});
+  (state.files||[]).forEach(f=>{if(f&&f.kind==='estimate')put(ix.est,f.project,f);});
+  (state.payLog||[]).forEach(x=>{if(x)put(ix.pay,x.project,x);});
+  return ix;
+}
+function hjInsightInqDate(p,ix,notes){
+  if(!p)return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(p.inquiryAt||'')))return p.inquiryAt;
+  const ns=notes||((ix&&ix.notes.get(p.name))||[]);
+  for(const n of ns){const m=HJ_INQ_DATE_RE.exec(String(n.text||''));if(m)return m[1];}
+  const lead=ns.find(n=>/^\[홈페이지 상담 리드\]/.test(String(n.text||'')));if(lead){const d=hjRetYmd(lead.date);if(d)return d;}
+  if(!ix)return '';
+  const days=[];
+  (ix.sch.get(p.name)||[]).forEach(s=>{if(/^\d{4}-\d{2}-\d{2}$/.test(String(s.date||'')))days.push(s.date);});
+  (ix.quotes.get(p.name)||[]).forEach(q=>{const d=hjRetYmd(q.date);if(d)days.push(d);});
+  (ix.est.get(p.name)||[]).forEach(f=>{const d=hjRetYmd(f.est&&f.est.date)||hjRetYmd(f.when);if(d)days.push(d);});
+  (ix.pay.get(p.name)||[]).forEach(x=>{const d=hjRetYmd(x.d);if(d)days.push(d);});
+  {const d=hjRetYmd(p.doneAt);if(d)days.push(d);}
+  return days.sort()[0]||'';
+}
+function hjInsightChannel(p,notes){
+  if(HJ_LEAD_SRC.some(r=>r[0]===p.leadSrc))return p.leadSrc;
+  if(p.kakaoLead)return 'kakaoch';
+  for(const n of notes||[]){
+    const t=String(n.text||''),m=/^\[문의 접수\] \d{4}-\d{2}-\d{2} · (.+)$/m.exec(t);
+    if(m){const hit=HJ_LEAD_SRC.find(r=>r[1]===m[1].trim());if(hit)return hit[0];}
+    if(/^\[홈페이지 상담 리드\]/.test(t))return 'web';
+  }
+  return '';
+}
+function hjInsightStages(p,ix){
+  const sch=(ix.sch.get(p.name)||[]).filter(s=>!HJ_INQ_MONEY_RE.test(String(s.title||''))&&!s._taxAuto&&!hjIsAsVisitSched(s));
+  const paid=(ix.pay.get(p.name)||[]).some(x=>num(x.amt)>0)||num(p.received)>0;
+  const won=(p.stage||0)>=2||!!p.doneAt||paid;
+  const quoted=won||(ix.quotes.get(p.name)||[]).length>0||(ix.est.get(p.name)||[]).length>0;
+  return {consult:quoted||(p.stage||0)>=1||sch.length>0,quoted,won};
+}
+// ko-KR toLocaleString('2026. 10. 16. 오후 8:10:22') → ms. 시각이 없으면 NaN(첫 답장 계산에서 뺀다).
+function hjKoDateTime(s){
+  const m=/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(String(s||''));
+  if(!m)return NaN;let h=Number(m[5]);if(m[4]==='오후'&&h<12)h+=12;if(m[4]==='오전'&&h===12)h=0;
+  return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[6]),Number(m[7]||0)).getTime();
+}
+function hjInsightReplyMin(notes){
+  let best=null;
+  for(const n of notes||[]){
+    if(!n||!n.replyAt||!HJ_INQ_NOTE_RE.test(String(n.text||'')))continue;
+    const at=Date.parse(n.at||''),from=Number.isFinite(at)?at:hjKoDateTime(n.date),rep=Date.parse(n.replyAt);
+    if(!Number.isFinite(from)||!Number.isFinite(rep)||rep<from)continue;
+    const min=Math.round((rep-from)/60000);if(best==null||min<best)best=min;
+  }
+  return best;
+}
+function hjMedian(list){const a=(list||[]).filter(Number.isFinite).slice().sort((x,y)=>x-y);if(!a.length)return null;const h=Math.floor(a.length/2);return a.length%2?a[h]:Math.round((a[h-1]+a[h])/2);}
+function hjInsightMinText(min){if(min==null)return '—';if(min<60)return min+'분';const h=Math.floor(min/60),m=min%60;return h<48?(h+'시간'+(m?' '+m+'분':'')):Math.round(min/1440)+'일';}
+function hjInsightRows(){
+  const ix=hjInsightIndex(),out=[];
+  (state.projects||[]).forEach(p=>{
+    if(!p||!p.name)return;
+    const notes=ix.notes.get(p.name)||[],st=hjInsightStages(p,ix),m=st.won?hjProjectMargin(p.name,false):null,ok=m&&!m.noRevenue;
+    out.push({p,date:hjInsightInqDate(p,ix,notes),kind:hjProjectKind(p),ch:hjInsightChannel(p,notes),consult:st.consult,quoted:st.quoted,won:st.won,
+      revenue:ok?m.revenue:0,cost:ok&&!m.missing?m.cost:null,margin:ok&&m.margin!=null?m.margin:null,reply:hjInsightReplyMin(notes),
+      dong:hjInsightDong(p),trade:hjInsightTrade(p,ix),digits:hjCustDigits((p.customer||{}).phone)});
+  });
+  // 재문의 — 경로가 '다시 맡긴 고객' 이거나 같은 고객 번호의 더 이른 문의가 있는 것
+  const byPhone=new Map();out.forEach(r=>{if(r.digits.length>=9){if(!byPhone.has(r.digits))byPhone.set(r.digits,[]);byPhone.get(r.digits).push(r);}});
+  out.forEach(r=>{r.repeat=r.ch==='repeat'||(r.digits.length>=9&&byPhone.get(r.digits).some(o=>o!==r&&o.date&&r.date&&o.date<r.date));});
+  return out;
+}
+function hjInsightAgg(list){
+  const won=list.filter(r=>r.won),rev=won.filter(r=>r.revenue>0),costed=rev.filter(r=>r.cost!=null),replies=list.map(r=>r.reply).filter(x=>x!=null);
+  const revenue=rev.reduce((a,r)=>a+r.revenue,0),revC=costed.reduce((a,r)=>a+r.revenue,0),margin=costed.reduce((a,r)=>a+r.margin,0);
+  return {inq:list.length,consult:list.filter(r=>r.consult).length,quoted:list.filter(r=>r.quoted).length,won:won.length,
+    rate:list.length?Math.round(won.length/list.length*100):null,revenue,perWon:rev.length?Math.round(revenue/rev.length):null,noRev:won.length-rev.length,
+    marginRate:revC>0?Math.round(margin/revC*100):null,margin,costMissing:rev.length-costed.length,
+    repeatRate:list.length?Math.round(list.filter(r=>r.repeat).length/list.length*100):null,replyMed:hjMedian(replies),replyN:replies.length};
+}
+function hjInsightChannels(rows){
+  const map=new Map();rows.forEach(r=>{const id=r.ch&&r.ch!=='etc'?r.ch:'other';if(!map.has(id))map.set(id,[]);map.get(id).push(r);});
+  if(!map.has('other'))map.set('other',[]);
+  const list=[...map].map(([id,l])=>Object.assign({id,label:id==='other'?'기타·모름':hjLeadSrcLabel(id)},hjInsightAgg(l)))
+    .sort((a,b)=>(a.id==='other')-(b.id==='other')||b.inq-a.inq||a.label.localeCompare(b.label));
+  const unknown=rows.filter(r=>!r.ch).length,etc=rows.filter(r=>r.ch==='etc').length;
+  return {rows:list,total:Object.assign({id:'total',label:'합계'},hjInsightAgg(rows)),unknown,etc,otherShare:rows.length?Math.round((unknown+etc)/rows.length*100):null};
+}
+function hjInsightGroup(rows,keyOf){const m=new Map();rows.forEach(r=>{const k=keyOf(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);});return m;}
+function hjInsightCross(rows){
+  return [...hjInsightGroup(rows,r=>r.trade+'|'+(r.dong||''))].map(([k,l])=>Object.assign({trade:l[0].trade,dong:l[0].dong||'동 모름'},hjInsightAgg(l)))
+    .sort((a,b)=>b.inq-a.inq||b.won-a.won||a.trade.localeCompare(b.trade)||a.dong.localeCompare(b.dong));
+}
+function hjInsightSummary(rows,label){
+  const all=hjInsightAgg(rows);
+  const trades=[...hjInsightGroup(rows,r=>r.trade)].map(([t,l])=>Object.assign({trade:t},hjInsightAgg(l))).filter(t=>t.marginRate!=null)
+    .sort((a,b)=>b.marginRate-a.marginRate||b.won-a.won||a.trade.localeCompare(b.trade));
+  const best=trades.slice(0,3),worst=trades.slice(best.length).reverse().slice(0,3);
+  const dongs=[...hjInsightGroup(rows.filter(r=>r.dong),r=>r.dong)].map(([d,l])=>Object.assign({dong:d},hjInsightAgg(l)));
+  const cold=dongs.filter(d=>d.inq>=2&&all.rate!=null&&d.rate<all.rate).sort((a,b)=>a.rate-b.rate||b.inq-a.inq||a.dong.localeCompare(b.dong)).slice(0,3);
+  const tr=t=>t.trade+' '+t.marginRate+'%';
+  const parts=[];
+  if(best.length)parts.push('가장 남는 공종: '+best.map(tr).join(' · '));else parts.push('원가가 입력된 수주 현장이 없어 마진 순위를 낼 수 없습니다');
+  if(worst.length)parts.push('가장 안 남는 공종: '+worst.map(tr).join(' · '));
+  parts.push('문의는 많은데 수주 안 되는 동: '+(cold.length?cold.map(d=>d.dong+'(문의 '+d.inq+' · 수주 '+d.won+')').join(' · '):'없음'));
+  return {best,worst,cold,text:label+' — '+parts.join(' / ')};
+}
+// 누수 반복 — 단지명은 단지 낱말(아파트·마을·단지 …)이 든 한 낱말만 쓴다(현장 이름 앞부분에 섞인 사람 이름이 나오지 않게). 없으면 동 단위.
+function hjInsightComplexOf(p){
+  const u=hjAptUnitOf(p),hit=String(u.complex||'').split(/\s+/).filter(Boolean).reverse().find(w=>HJ_APT_COMPLEX_RE.test(w)&&!hjCasePii(w).length);
+  return hit?{complex:hit,unit:u.dong&&u.ho?aptComplexKey(hit)+'|'+u.dong+'|'+u.ho:''}:{complex:'',unit:''};
+}
+function hjInsightLeak(){
+  const groups=new Map();
+  (state.projects||[]).filter(p=>p&&p.name&&(p.kind==='leak'||p.leak)).forEach(p=>{
+    const c=hjInsightComplexOf(p),dong=hjInsightDong(p),key=c.complex?'c:'+aptComplexKey(c.complex):(dong?'d:'+dong:'');
+    if(!key)return;
+    if(!groups.has(key))groups.set(key,{key,label:c.complex||dong,dong,isComplex:!!c.complex,list:[]});
+    const g=groups.get(key);if(!g.dong&&dong)g.dong=dong;
+    const ev=hjLeakRepeatEvent(p);
+    g.list.push({day:ev.day||hjInsightInqDate(p)||'',cause:hjInsightLeakCause(p),unit:c.unit});
+  });
+  return [...groups.values()].filter(g=>g.list.length>=2).map(g=>{
+    const causes={배관:0,방수:0,외벽:0,기타:0};g.list.forEach(x=>{causes[hjInsightCauseGroup(x.cause)]++;});
+    const units=new Map();g.list.forEach(x=>{if(x.unit)units.set(x.unit,(units.get(x.unit)||0)+1);});
+    const top=Object.entries(causes).filter(([k,n])=>k!=='기타'&&n>=2).sort((a,b)=>b[1]-a[1])[0];
+    return {key:g.key,label:g.label,dong:g.dong,isComplex:g.isComplex,n:g.list.length,last:g.list.map(x=>x.day).filter(Boolean).sort().pop()||'',
+      causes,repeatUnits:[...units.values()].filter(n=>n>=2).length,top:top?{cause:top[0],n:top[1]}:null,
+      mapUrl:'https://map.naver.com/p/search/'+encodeURIComponent(((g.isComplex&&g.dong)?g.dong+' ':'')+g.label)};
+  }).sort((a,b)=>b.n-a.n||String(b.last).localeCompare(String(a.last))||a.label.localeCompare(b.label));
+}
+const HJ_INSIGHT_PERIODS=Object.freeze([['m0','이번 달'],['m1','지난 달'],['q0','이번 분기'],['q1','지난 분기'],['y0','올해'],['12m','최근 12개월'],['all','전체']]);
+let __hjInsight={period:'12m',kind:'all'};
+function hjInsightRange(key,today){
+  const t=String(today||localDate()),y=Number(t.slice(0,4)),mo=Number(t.slice(5,7)),ymd=(yy,mm,dd)=>yy+'-'+String(mm).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+  const last=(yy,mm)=>new Date(yy,mm,0).getDate(),label=(HJ_INSIGHT_PERIODS.find(x=>x[0]===key)||HJ_INSIGHT_PERIODS[5])[1];
+  if(key==='m0')return {from:ymd(y,mo,1),to:t,label};
+  if(key==='m1'){const py=mo===1?y-1:y,pm=mo===1?12:mo-1;return {from:ymd(py,pm,1),to:ymd(py,pm,last(py,pm)),label};}
+  const qs=Math.floor((mo-1)/3)*3+1;
+  if(key==='q0')return {from:ymd(y,qs,1),to:t,label};
+  if(key==='q1'){const py=qs===1?y-1:y,ps=qs===1?10:qs-3;return {from:ymd(py,ps,1),to:ymd(py,ps+2,last(py,ps+2)),label};}
+  if(key==='y0')return {from:ymd(y,1,1),to:t,label};
+  if(key==='all')return {from:'',to:'',label};
+  return {from:hjAddDays(t,-364),to:t,label:'최근 12개월'};
+}
+function hjInsightData(opts){
+  const o=Object.assign({},__hjInsight,opts||{}),today=o.today||localDate(),period=HJ_INSIGHT_PERIODS.some(x=>x[0]===o.period)?o.period:'12m';
+  const kind=['all','interior','leak'].includes(o.kind)?o.kind:'all',range=hjInsightRange(period,today),all=hjInsightRows();
+  const dated=all.filter(r=>r.date),inRange=dated.filter(r=>(!range.from||r.date>=range.from)&&(!range.to||r.date<=range.to)),rows=kind==='all'?inRange:inRange.filter(r=>r.kind===kind);
+  return {period,periodLabel:range.label,kind,from:range.from,to:range.to,n:rows.length,undated:all.length-dated.length,
+    channels:hjInsightChannels(rows),cross:hjInsightCross(rows),summary:hjInsightSummary(rows,range.label),leak:hjInsightLeak()};
+}
+/* 화면 — 표는 가로 스크롤 상자 안에서만 넘친다(모달·쪽은 390px 안). */
+const HJ_INSIGHT_SCROLL='overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;min-width:0;border:1px solid var(--line-soft);border-radius:10px;margin:6px 0 10px';
+function hjInsightPct(v){return v==null?'—':v+'%';}
+function hjInsightUnknownHtml(ch){
+  const n=ch.total.inq,share=ch.otherShare;
+  return '<div data-insight-unknown style="font-size:12.5px;margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:var(--paper-2);color:'+(share!=null&&share>=20?'#b45309':'var(--muted)')+'">❓ 경로 모름 '+ch.unknown+'건 · 기타 '+ch.etc+'건 — 전체 문의 '+n+'건 중 <b>'+hjInsightPct(share)+'</b>'+
+    (share!=null&&share>=20?' · 현장 👤 고객 정보의 [문의 경로]를 채울수록 채널 비교가 정확해집니다':'')+'</div>';
+}
+function hjInsightBar(rate){
+  const w=rate==null?0:Math.max(2,Math.min(100,Math.abs(rate))),b=hjMarginBand(rate),c=b?b.color:'#cbd5e1';
+  return '<span style="display:flex;align-items:center;gap:6px;min-width:96px"><span style="flex:1;height:9px;background:var(--paper-2);border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:'+w+'%;background:'+c+'"></span></span><b style="font-size:11.5px;color:'+c+';white-space:nowrap">'+hjInsightPct(rate)+'</b></span>';
+}
+function hjInsightChannelTable(ch){
+  const tr=(r,b)=>'<tr data-insight-ch="'+escapeAttr(r.id)+'"'+(b?' style="font-weight:800;background:var(--paper-2)"':'')+'><td style="white-space:nowrap">'+escapeHtml(r.label)+'</td><td class="amt">'+r.inq+'</td><td class="amt">'+r.consult+'</td><td class="amt">'+r.quoted+'</td><td class="amt">'+r.won+'</td>'+
+    '<td class="amt"><b>'+hjInsightPct(r.rate)+'</b></td><td class="amt">'+escapeHtml(hjMan(r.revenue))+'</td><td class="amt">'+(r.perWon==null?'—':escapeHtml(hjMan(r.perWon)))+'</td><td class="amt">'+escapeHtml(hjInsightMinText(r.replyMed))+(r.replyN?' <span style="color:var(--muted);font-size:10.5px">('+r.replyN+')</span>':'')+'</td></tr>';
+  return '<div style="'+HJ_INSIGHT_SCROLL+'"><table class="estimate-table" data-insight-table="channel" style="width:100%;min-width:640px;font-size:12px"><thead><tr><th>채널</th><th class="amt">문의</th><th class="amt">상담</th><th class="amt">견적</th><th class="amt">수주</th><th class="amt">전환율</th><th class="amt">매출</th><th class="amt">건당 매출</th><th class="amt">첫 답장(중앙값)</th></tr></thead><tbody>'+
+    ch.rows.map(r=>tr(r,false)).join('')+tr(ch.total,true)+'</tbody></table></div>';
+}
+function hjInsightCrossTable(cross,limit){
+  const rows=cross.slice(0,limit||cross.length);
+  return '<div style="'+HJ_INSIGHT_SCROLL+'"><table class="estimate-table" data-insight-table="trade" style="width:100%;min-width:620px;font-size:12px"><thead><tr><th>공종</th><th>동</th><th class="amt">문의</th><th class="amt">수주</th><th class="amt">수주율</th><th class="amt">평균 공사비</th><th>평균 마진율</th><th class="amt">재문의율</th></tr></thead><tbody>'+
+    (rows.length?rows.map(r=>'<tr data-insight-cross><td style="white-space:nowrap">'+escapeHtml(r.trade)+'</td><td style="white-space:nowrap">'+escapeHtml(r.dong)+'</td><td class="amt">'+r.inq+'</td><td class="amt">'+r.won+'</td><td class="amt">'+hjInsightPct(r.rate)+'</td><td class="amt">'+(r.perWon==null?'—':escapeHtml(hjMan(r.perWon)))+'</td><td>'+
+      (r.marginRate==null?'<span style="color:var(--muted);font-size:11.5px">'+(r.won?'원가 미입력':'—')+'</span>':hjInsightBar(r.marginRate))+'</td><td class="amt">'+hjInsightPct(r.repeatRate)+'</td></tr>').join('')
+      :'<tr><td colspan="8" style="color:var(--muted)">이 기간 문의가 없습니다</td></tr>')+'</tbody></table></div>'+
+    (cross.length>rows.length?'<div style="font-size:11.5px;color:var(--muted)">외 '+(cross.length-rows.length)+'줄은 엑셀에 있습니다</div>':'');
+}
+function hjInsightLeakTable(leak,buttons){
+  if(!leak.length)return '<div class="empty" data-insight-leak-empty style="padding:12px"><b>같은 단지·동에서 2번 이상 난 누수가 아직 없습니다</b>누수 현장 주소나 이름에 단지·동이 있으면 여기에 모입니다.</div>';
+  const c=x=>['배관','방수','외벽','기타'].map(k=>k+' '+x.causes[k]).join(' · ');
+  return '<div style="'+HJ_INSIGHT_SCROLL+'"><table class="estimate-table" data-insight-table="leak" style="width:100%;min-width:560px;font-size:12px"><thead><tr><th>단지·동</th><th class="amt">건수</th><th>마지막</th><th>원인(배관·방수·외벽·기타)</th><th class="amt">같은 세대 재발</th>'+(buttons?'<th>지도</th>':'')+'</tr></thead><tbody>'+
+    leak.map((x,i)=>'<tr data-insight-leak="'+escapeAttr(x.label)+'"><td style="white-space:nowrap">'+escapeHtml(x.label)+(x.isComplex&&x.dong?' <span style="color:var(--muted);font-size:11px">'+escapeHtml(x.dong)+'</span>':(x.isComplex?'':' <span style="color:var(--muted);font-size:11px">(단지 모름)</span>'))+'</td><td class="amt"><b>'+x.n+'</b></td><td>'+escapeHtml(x.last||'—')+'</td><td>'+escapeHtml(c(x))+'</td><td class="amt">'+(x.repeatUnits?'<b style="color:#b91c1c">'+x.repeatUnits+'세대</b>':'—')+'</td>'+
+      (buttons?'<td><button type="button" class="ghost tiny" data-insight-map="'+i+'" style="min-height:44px;min-width:44px">🗺</button></td>':'')+'</tr>').join('')+'</tbody></table></div>'+
+    (buttons?leak.filter(x=>x.top).map(x=>'<div data-insight-pitch style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;margin:0 0 6px"><span style="flex:1 1 200px;min-width:0">🏢 '+escapeHtml(x.label)+'은(는) '+escapeHtml(x.top.cause)+' 원인이 '+x.top.n+'번 — 관리사무소에 협력 제안</span>'+
+      '<button type="button" class="ghost tiny" data-insight-pitch-go style="min-height:44px">📇 사업자·명함 보내기</button></div>').join(''):'');
+}
+function hjInsightHtml(d){
+  const per=HJ_INSIGHT_PERIODS.map(([k,l])=>'<option value="'+k+'"'+(k===d.period?' selected':'')+'>'+l+'</option>').join('');
+  const kinds=[['all','전체'],['interior','🏠 인테리어'],['leak','💧 누수']].map(([k,l])=>'<button type="button" class="'+(k===d.kind?'blue':'ghost')+' tiny" data-insight-kind="'+k+'" aria-pressed="'+(k===d.kind)+'" style="min-height:44px;min-width:44px">'+l+'</button>').join('');
+  const t=d.channels.total,f=(n,lab)=>'<span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="flex:0 0 44px">'+lab+'</span><span style="flex:1;height:10px;background:var(--paper-2);border-radius:5px;overflow:hidden"><span style="display:block;height:100%;width:'+(t.inq?Math.round(n/t.inq*100):0)+'%;background:#0b4ea2"></span></span><b style="flex:0 0 34px;text-align:right">'+n+'</b></span>';
+  return '<div id="hjInsight" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><label style="font-size:12px;color:var(--muted)">기간 <select id="insPeriod" style="min-height:44px;font-size:14px;padding:6px 8px">'+per+'</select></label>'+kinds+'</div>'+
+    '<div data-insight-summary style="font-size:12.5px;line-height:1.6;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">📌 '+escapeHtml(d.summary.text)+'</div>'+
+    '<h4 style="margin:8px 0 4px">📞 채널별 문의 → 수주</h4>'+
+    '<div style="display:grid;gap:4px;margin:4px 0 6px">'+f(t.inq,'문의')+f(t.consult,'상담')+f(t.quoted,'견적')+f(t.won,'수주')+'</div>'+
+    hjInsightUnknownHtml(d.channels)+hjInsightChannelTable(d.channels)+
+    '<h4 style="margin:12px 0 4px">🧱 공종 × 동 — 마진·수요</h4>'+hjInsightCrossTable(d.cross,20)+
+    '<h4 style="margin:12px 0 4px">💧 누수 반복 단지 <span style="font-weight:600;color:var(--muted);font-size:12px">(전체 기간 · 2번 이상)</span></h4>'+hjInsightLeakTable(d.leak,true)+
+    '<p class="hint" style="margin-top:8px">기간은 문의 날짜 기준'+(d.undated?' · 날짜를 알 수 없는 현장 '+d.undated+'곳은 빠졌습니다':'')+'. 단계는 누적(수주한 현장은 상담·견적도 한 것으로 셈). 매출은 수주 견적 공급가, 마진율은 원가가 입력된 현장만. 첫 답장은 첫 답장 기록이 있는 문의만. 이 화면은 읽기만 합니다 — 고객 이름·전화·호수는 나오지 않습니다.</p></div>';
+}
+function hjInsightSheets(d){
+  const ch=[['기간',d.periodLabel+(d.from?' ('+d.from+' ~ '+d.to+')':''),'공종',d.kind==='all'?'전체':(d.kind==='leak'?'누수':'인테리어')],[],['채널','문의','상담','견적','수주','전환율(%)','매출(공급가)','건당 매출','첫 답장 중앙값(분)','첫 답장 기록 수']];
+  d.channels.rows.concat([d.channels.total]).forEach(r=>ch.push([r.label,r.inq,r.consult,r.quoted,r.won,r.rate==null?'':r.rate,r.revenue,r.perWon==null?'':r.perWon,r.replyMed==null?'':r.replyMed,r.replyN]));
+  ch.push([],['경로 모름',d.channels.unknown,'기타',d.channels.etc,'비율(%)',d.channels.otherShare==null?'':d.channels.otherShare]);
+  const tr=[['공종','동','문의','수주','수주율(%)','평균 공사비','평균 마진율(%)','원가 미입력','재문의율(%)']];
+  d.cross.forEach(r=>tr.push([r.trade,r.dong,r.inq,r.won,r.rate==null?'':r.rate,r.perWon==null?'':r.perWon,r.marginRate==null?'':r.marginRate,r.costMissing,r.repeatRate==null?'':r.repeatRate]));
+  tr.push([],['요약',d.summary.text]);
+  const lk=[['단지·동','동','건수','마지막','배관','방수','외벽','기타','같은 세대 재발(세대)']];
+  d.leak.forEach(x=>lk.push([x.label,x.isComplex?x.dong:'',x.n,x.last,x.causes['배관'],x.causes['방수'],x.causes['외벽'],x.causes['기타'],x.repeatUnits]));
+  return [['채널 전환',ch],['공종·동',tr],['누수 반복 단지',lk]];
+}
+async function hjInsightXlsx(d){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈을 불러오지 못했어요(인터넷 확인)');return false;}
+  const wb=XLSX.utils.book_new();hjInsightSheets(d).forEach(([name,aoa])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),name));
+  XLSX.writeFile(wb,COMPANY.name+'_분석_'+d.periodLabel.replace(/\s+/g,'')+'_'+localDate().replace(/-/g,'')+'.xlsx');
+  toast('📥 분석 엑셀 저장됨 (표 3개) — 고객 이름·전화·호수는 들어 있지 않습니다');return true;
+}
+function hjInsightDocHtml(d){
+  return hjDocShell('분 석 요 약','<div class="prow"><span><b>기간</b>'+escapeHtml(d.periodLabel+(d.from?' ('+d.from+' ~ '+d.to+')':''))+'</span><span><b>공종</b>'+(d.kind==='all'?'전체':(d.kind==='leak'?'누수':'인테리어'))+'</span></div>'+
+    '<div class="note">📌 '+escapeHtml(d.summary.text)+'</div>'+hjInsightUnknownHtml(d.channels)+hjInsightChannelTable(d.channels)+hjInsightCrossTable(d.cross,30)+hjInsightLeakTable(d.leak,false));
+}
+function hjInsightView(opts){
+  if(opts&&typeof opts==='object'){if(opts.period)__hjInsight.period=opts.period;if(opts.kind)__hjInsight.kind=opts.kind;}
+  const d=hjInsightData();
+  openModal('📈 분석 — 채널·공종·동·누수 단지',hjInsightHtml(d),
+    [{label:'📥 엑셀 (표 3개)',cls:'moss',fn:()=>hjInsightXlsx(d)},
+     {label:'🖼 이미지',cls:'ghost',fn:async()=>{try{await hjDocHtmlToPng(hjInsightDocHtml(d),COMPANY.name+'_분석_'+localDate().replace(/-/g,''));}catch(e){toast('이미지 저장 실패: '+(e.message||e));}}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjInsight');if(!root)return d;
+  root.querySelector('#insPeriod').onchange=e=>hjInsightView({period:e.target.value});
+  root.querySelectorAll('[data-insight-kind]').forEach(b=>b.onclick=()=>hjInsightView({kind:b.dataset.insightKind}));
+  root.querySelectorAll('[data-insight-map]').forEach(b=>b.onclick=()=>{const x=d.leak[Number(b.dataset.insightMap)];if(x)window.open(x.mapUrl,'_blank','noopener');});
+  root.querySelectorAll('[data-insight-pitch-go]').forEach(b=>b.onclick=()=>{closeModal();shareBizCard();toast("문구에서 '관리사무소 업체 등록'을 고르세요");});
+  return d;
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
