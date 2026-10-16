@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v442-insurance';
+const APP_BUILD='hyeonjang-v447-retention';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -3748,7 +3748,7 @@ async function gdBackup(){
     const b='gc314159boundary';
     const body='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+b+'--';
     const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:{Authorization:'Bearer '+__gdToken,'Content-Type':'multipart/related; boundary='+b},body});
-    if(r.ok){ try{idbSet('gd_lastbackup',today);}catch(e){} gdPruneBackups(); }
+    if(r.ok){ try{idbSet('gd_lastbackup',today);}catch(e){} try{backupMarkDone('drive');}catch(e){} gdPruneBackups(); }   // v447 드라이브 백업도 '마지막 백업'
   }catch(e){}
 }
 async function gdListBackups(){
@@ -3780,6 +3780,7 @@ async function gdRestoreBackup(fileId){
     // 이게 없으면 날짜를 잘못 골랐을 때 되돌아올 방법이 사라진다.
     if(!(await relayGuardSnapshot('드라이브 복원 전'))){ toast('🛡 백업 실패로 되돌리기를 중단했습니다 — 지금 자료는 그대로입니다'); return false; }
     applyData(data,{revert:true});render();markDirty();   // 복원본 그대로 — 되돌리기 약속(병합 아님)
+    try{hjAuditAdd('restore','드라이브 백업',1);}catch(e){}   // v447
     toast('이전 버전으로 되돌렸습니다 — 직전 자료는 🛡 안전판에 보관');
     return true;
   }catch(e){ toast('복원 실패: '+(e.message||e)); return false; }
@@ -5095,7 +5096,7 @@ function openGdriveSetup(){
     {id:'ct',     ic:'📨', label:'전자계약',   html:contractSec, on:ctUnlocked, warn:!!(__contract.url&&__contract.token)&&!ctUnlocked},
     {id:'office', ic:'🏢', label:'OfficeOps',  html:officeOpsSec, on:!!(__officeOps.url&&__officeOps.token), warn:__officeOps.mode==='export-only'},
     {id:'keys',   ic:'🔑', label:'AI·지도 키', html:keysSec,     on:!!(window.__geminiKey||window.__visionKey||window.__kakaoKey||window.__openaiKey)},
-    {id:'etc',    ic:'⭐', label:'기타',       html:`<button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 12px">📴 오프라인 대기함</button>`+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
+    {id:'etc',    ic:'⭐', label:'기타',       html:`<button type="button" class="ghost" id="hjSafetyOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">🔒 데이터 안전 (개인정보 보존·백업 점검·변경 기록)</button><button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 12px">📴 오프라인 대기함</button>`+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
   ];
   const dot=(t)=>t.warn
     ? '<span title="자가진단 필요" style="width:7px;height:7px;border-radius:50%;background:var(--warn,#c99a2e);display:inline-block"></span>'
@@ -5151,6 +5152,7 @@ function openGdriveSetup(){
   const root=document.getElementById('modalRoot');
   const cidEl=root.querySelector('#gdCid');
   const outboxButton=root.querySelector('#hjOutboxOpen');if(outboxButton)outboxButton.onclick=()=>hjOutboxView();
+  const safetyButton=root.querySelector('#hjSafetyOpen');if(safetyButton)safetyButton.onclick=()=>hjDataSafetyView();   // v447
   const saveCid=async()=>{const v=cidEl.value.trim();__gdCfg={clientId:v};__gdToken=null;__gdTokenClient=null;__gdFileId=null;__gdTokenPromise=null;__gdTokenExp=0;try{await idbSet('gd_config',__gdCfg);}catch(e){}};
   root.querySelector('#gdLogin').onclick=async()=>{await saveCid();if(!__gdCfg.clientId){toast('클라이언트 ID를 먼저 넣으세요');return;}try{await gdGetToken(true);const dot=root.querySelector('#gdDot');if(dot)dot.textContent='☁️ 연결됨';toast('구글드라이브 연결됨 — 자료 확인 중...');try{await idbSet('gd_autoload',true);}catch(e){}
     // 로그인 시 드라이브에 자료가 있으면 강제로 내려받고(현장·사진 확실히), 비었을 때만 이 기기 자료로 시작
@@ -7013,6 +7015,7 @@ function deleteProject(name){
       if(!ok){busy=false;toast('안전판을 저장하지 못해 삭제하지 않았습니다. 저장 공간을 확인하세요.');return;}
       const r=hjDeleteProjectCore(name);
       if(!r){busy=false;closeModal();toast('그사이 현장이 없어져 삭제하지 않았습니다.');return;}
+      try{hjAuditAdd('delete','현장',1);}catch(e){}   // v447
       markDirty();closeModal();render();// 견적서 파일은 미배정이 아니라 '(삭제됨)' 이름으로 간다(hjDeleteProjectCore v331) — 확인 창과 같은 말을 한다
       const keptWhat=[r.kept.estFiles?'견적서 파일':'',Object.keys(r.kept).some(k=>k!=='estFiles')?'기록':''].filter(Boolean).join('·');
       toast('현장 “'+name+'” 삭제됨 (사진·서류는 미배정으로 보존'+(keptWhat?', '+keptWhat+'은 “'+r.tomb+'”로 보존':'')+')');
@@ -9745,7 +9748,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML();
+  let html=dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+hjSafetyDashHtml();   // v447 백업 3일·보존 정리·복원 리허설
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -14076,6 +14079,7 @@ async function hjSnapshot(label,force,allowEmpty){
     while(snaps.length>12){let i=-1;for(let j=0;j<snaps.length-1;j++){if(hjSnapRoutine(snaps[j].label)){i=j;break;}}snaps.splice(i<0?0:i,1);}
     await idbSet('hj_snaps',snaps);
     __snapLastAt=now;__snapLastLabel=String(label||'');
+    if(force)try{hjAuditAdd('snapshot',String(label||'자동'),(data.projects||[]).length);}catch(e){}   // v447 변경 기록(강제 안전판 = 큰 변경 직전)
     return true;
   }catch(e){return false;}
 }
@@ -14098,6 +14102,7 @@ async function hjRestoreSnapshot(s){
     if(saved!==true){toast('🛡 안전 스냅샷 저장 실패 — 복구하지 않았습니다. 저장 공간을 확인한 뒤 다시 시도하세요');return false;}
     try{applyData(data,{revert:true});}catch(e){toast('복구 실패 — 복구 직전 안전판을 확인하세요');return false;}
     markDirty();render();closeModal(true);
+    try{hjAuditAdd('restore','안전판',1);}catch(e){}   // v447
     toast('🛡 '+hjSnapTime(s.at)+' 시점으로 복구됨 — 클라우드 저장 상태는 별도로 확인하세요');
     return true;
   }finally{
@@ -20902,7 +20907,7 @@ function hjSupImportRows(rows,opts){
     if(s){let ch=false;if(!s.phone&&phone){s.phone=phone;ch=true;}if(!s.addr&&addr){s.addr=addr;ch=true;}if(!s.items&&items){s.items=items;ch=true;}if(s.hidden){delete s.hidden;ch=true;}if(ch)merged++;else skipped++;}
     else{state.suppliers.push({name,phone,category:'자재',memo:'',items,addr});added++;}
   });
-  if(added||merged)markDirty();
+  if(added||merged){markDirty();try{hjAuditAdd('import','거래처 명단',added+merged);}catch(e){}}   // v447 변경 기록
   return {added,merged,skipped};
 }
 function hjSupParseCsv(text){
@@ -30249,10 +30254,10 @@ function backupCardHTML(){
     const days=backupDaysSince();
     const never=!info;
     const msg=never?'아직 백업한 적이 없어요':(days>=30?days+'일째 백업 안 함':days+'일 전 백업');
-    return '<div class="hj-card" style="background:linear-gradient(120deg,#fef3c7,#fde68a);border:1px solid #fbbf24;border-radius:14px;padding:14px;margin:10px 0">'+
+    return '<div class="hj-card" data-backup-card="alert" style="background:linear-gradient(120deg,#fee2e2,#fecaca);border:1px solid #ef4444;border-radius:14px;padding:14px;margin:10px 0">'+   // v447 7일 넘으면 빨강
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<span style="font-size:26px">💾</span>'+
-        '<div style="flex:1;min-width:0"><b style="font-size:13.5px;color:#92400e">데이터 백업이 필요해요</b><br><span style="font-size:11.5px;color:#a16207">'+msg+' · 폰이 고장나면 자료가 사라질 수 있어요</span></div>'+
+        '<div style="flex:1;min-width:0"><b style="font-size:13.5px;color:#991b1b">데이터 백업이 필요해요</b><br><span style="font-size:11.5px;color:#b91c1c">'+msg+' · 폰이 고장나면 자료가 사라질 수 있어요</span></div>'+
       '</div>'+
       '<div style="display:flex;gap:7px;margin-top:10px">'+
         '<button class="clay" onclick="try{backupNow()}catch(e){}" style="flex:1;padding:11px;font-size:13px">💾 지금 백업</button>'+
@@ -36994,7 +36999,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="ghost tiny" data-teamsend="${escapeAttr(state.activeProject)}">📤 팀에 업무 보내기</button><button class="ghost tiny" data-subquote="${escapeAttr(state.activeProject)}">🔧 외주 견적 요청</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="ghost tiny" data-retreq="${escapeAttr(state.activeProject)}" title="고객이 개인정보 삭제를 요청했을 때">🔒 개인정보</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="ghost tiny" data-teamsend="${escapeAttr(state.activeProject)}">📤 팀에 업무 보내기</button><button class="ghost tiny" data-subquote="${escapeAttr(state.activeProject)}">🔧 외주 견적 요청</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=hjLeakCardHtml(p)+hjLeakCard(p)+stageBar(p)+aptUnitProjectCard(p)+hjProjLinksLine(p);
 
   // ⏱ 작업시간 · 🚗 운행
@@ -37269,7 +37274,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37307,6 +37312,8 @@ function setupDelegation(){
     if(t.id==='qmBathroom')return hjBathPrefillOpen();
     if(t.hasAttribute('data-leakreport'))return hjLeakReportView(t.dataset.leakreport);
     if(d.insclaim!==undefined)return hjInsClaimView(d.insclaim);   // v442 🧾 보험 서류
+    if(d.retOpen!==undefined)return hjRetView();   // v447 🔒 보존 정리 검토
+    if(d.safetyOpen!==undefined)return hjDataSafetyView();
     if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
     if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
     if(t.id==='qmLeakPaid')return hjLeakPaymentView(state.editingQuote);
@@ -37461,6 +37468,7 @@ function setupDelegation(){
     if(d.history!==undefined)return projectHistory(d.history);
     if(d.renproj!==undefined)return renameProject(d.renproj);
     if(d.delproj!==undefined)return deleteProject(d.delproj);
+    if(d.retreq!==undefined)return hjRetRequestView(d.retreq);   // v447 개인정보 삭제 요청
     if(d.map!==undefined)return showProjectMap(d.map);
     if(d.organize!==undefined)return organizeByPhase(d.organize);
     if(d.pview!==undefined){__projView=(d.pview==='all')?null:+d.pview;return render();}
@@ -40851,6 +40859,332 @@ function hjInsDue(today){
   return (state.projects||[]).filter(p=>{const c=hjInsClaim(p);return p&&!p.archived&&c&&!c.closedAt&&c.dueAt===today&&!(Array.isArray(c.submitted)?c.submitted:[]).some(x=>x&&x.at===today);}).map(p=>p.name);
 }
 function hjInsClaimButton(p){return p&&hjProjectKind(p)==='leak'?'<button type="button" class="ghost" data-insclaim="'+escapeAttr(p.name)+'" style="min-height:44px">🧾 보험 서류</button>':'';}
+/* ═══ v447 데이터 안전 — 개인정보 보존 3년·정리(익명화)·삭제 요청 · 백업 점검·복원 리허설 · 변경 기록 ═══
+   대표 결정(10/16): 보존 3년. 기준일 = 그 현장의 마지막 활동일(준공·수금·AS·노트 중 최신). 3년 지나면 "정리 대상" — 개인정보만 지우고
+   거래 기록(금액·날짜·품목·영수증·세금계산서 기록)은 익명으로 남긴다(세법상 장부·증빙 5년). 문의만 한 연락처는 1년.
+   예외: 보증 기간 남음, 대금 정리 전(숫자는 보이지 않는다 — 2026-08-13 미수 표시 없앰 결정), 진행 중 AS, 분쟁 메모, 관리사무소·팀원·거래처 연락처.
+   자동 실행 없음 — 목록·미리보기를 보고 대표가 고른 것만, "정리" 를 직접 쳐야 바뀐다. 바꾸기 전에 안전판(hjSnapshot 강제)을 먼저 찍고
+   못 찍으면 아무것도 바꾸지 않는다. 기록은 현장 안 p.anon·연락처 안 c.anon 뿐(새 최상위 키 없음).
+   변경 기록은 직렬화 자료 밖 IndexedDB 'hyeonjang-audit'(90일 순환) — 고객 이름·번호 대신 종류·개수만 적는다. */
+const HJ_RETENTION=Object.freeze({years:3,inquiryYears:1,ledgerYears:5,backupWarnDays:3,backupAlertDays:7,auditDays:90,auditMax:200,rehearsalDays:30});
+const HJ_RET_CONFIRM='정리';
+const HJ_RET_PHONE_RE=/(?:\+?82[-\s]?)?0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/g;
+const HJ_RET_EMAIL_RE=/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+const HJ_RET_UNIT_RE=/\d{1,4}\s*동\s*\d{1,4}\s*호|\d{2,4}\s*호(?![가-힣])/g;
+const HJ_RET_RULES='보존 '+HJ_RETENTION.years+'년 — 마지막 활동일(준공·수금·AS·노트) 기준. 정리하면 고객 이름·전화·메일·상세 주소(동까지 남김)·서명 이미지를 지우고, 거래 기록(금액·날짜·품목·영수증·세금계산서 기록)은 세법상 '+HJ_RETENTION.ledgerYears+'년 보존이라 익명으로 남깁니다. 문의만 하고 거래가 없는 연락처는 '+HJ_RETENTION.inquiryYears+'년.';
+/* 날짜 — 'YYYY-MM-DD' · ISO · 노트의 '2026. 10. 16. 오후 7:05:12' 를 모두 'YYYY-MM-DD' 로. 못 읽으면 ''. */
+function hjRetYmd(v){
+  if(!v)return '';
+  if(v instanceof Date)return isNaN(v.getTime())?'':localDate(v);
+  const s=String(v).trim();let m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if(m&&/T/.test(s)&&s.length>10){const d=new Date(s);return isNaN(d.getTime())?m[1]+'-'+m[2]+'-'+m[3]:localDate(d);}
+  if(m)return m[1]+'-'+m[2]+'-'+m[3];
+  m=/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?/.exec(s);
+  return m?m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0'):'';
+}
+function hjRetCutoff(today,years){
+  const [y,m,d]=String(today||localDate()).split('-').map(Number),yy=y-years;
+  const last=new Date(yy,m,0).getDate();return yy+'-'+String(m).padStart(2,'0')+'-'+String(Math.min(d,last)).padStart(2,'0');
+}
+/* 마지막 활동일 — 읽기 전용. {date, src} (없으면 date ''). */
+function hjRetLastActivity(p){
+  if(!p)return {date:'',src:''};
+  const name=p.name,cand=[];
+  const add=(v,src)=>{const d=hjRetYmd(v);if(d)cand.push({date:d,src});};
+  add(p.doneAt,'준공');
+  (state.payLog||[]).forEach(x=>{if(x&&x.project===name)add(x.d||x.date,'수금');});
+  (state.asLog||[]).forEach(a=>{if(a&&a.project===name){add(a.date,'AS');add(a.visitAt,'AS');add(a.doneAt,'AS');}});
+  (state.notes||[]).forEach(n=>{if(n&&n.project===name)add(n.date,'노트');});
+  cand.sort((a,b)=>b.date.localeCompare(a.date));
+  return cand[0]||{date:'',src:''};
+}
+/* 예외 — 하나라도 있으면 정리하지 않는다. 대금은 "정리 전" 표시만(금액 없음). */
+function hjRetExceptions(p,today){
+  today=today||localDate();const r=[];
+  try{const w=hjWarranty(p);if(w&&w.end&&String(w.end)>=today)r.push('보증 남음 ~'+w.end);}catch(e){}
+  try{if(num(projStats(p.name).due)>0)r.push('대금 정리 전');}catch(e){}
+  if((state.asLog||[]).some(a=>a&&a.project===p.name&&a.status!=='done'))r.push('진행 중 AS');
+  if((state.notes||[]).some(n=>n&&n.project===p.name&&/분쟁/.test(String(n.text||''))))r.push('분쟁 메모');
+  return r;
+}
+function hjRetContactKeep(c){
+  const t=[c&&c.name,c&&c.company,c&&c.title,c&&c.tag].map(x=>String(x||'')).join(' '),digits=hjCustDigits(c&&c.phone);
+  if(c&&c.team)return '팀원';
+  if(/관리사무소|관리소|관리실/.test(t))return '관리사무소';
+  if(/거래처|협력/.test(String(c&&c.tag||''))||(digits.length>=9&&(state.suppliers||[]).some(s=>s&&hjCustDigits(s.phone)===digits)))return '거래처';
+  return '';
+}
+function hjRetDealt(p){return !!p&&((Number(p.stage)||0)>=2||num(p.received)>0||(state.quotes||[]).some(q=>q&&q.project===p.name)||(state.payLog||[]).some(x=>x&&x.project===p.name));}
+/* 정리 대상 목록 — 읽기 전용. projects: 3년 지난 현장(예외 포함, eligible 표시), contacts: 문의만 한 연락처 1년. */
+function hjRetCandidates(today){
+  today=today||localDate();
+  const cut3=hjRetCutoff(today,HJ_RETENTION.years),cut1=hjRetCutoff(today,HJ_RETENTION.inquiryYears);
+  const projects=[];let noDate=0;
+  (state.projects||[]).forEach(p=>{
+    if(!p||p.anon)return;const a=hjRetLastActivity(p);
+    if(!a.date){noDate++;return;}
+    if(a.date>cut3)return;
+    const ex=hjRetExceptions(p,today);projects.push({name:p.name,date:a.date,src:a.src,exceptions:ex,eligible:!ex.length});
+  });
+  const contacts=[];
+  (state.contacts||[]).forEach(c=>{
+    if(!c||c.anon||String(c.tag||'')!=='고객')return;
+    const digits=hjCustDigits(c.phone);if(digits.length<9)return;
+    const linked=(state.projects||[]).filter(p=>p&&hjCustDigits((p.customer||{}).phone)===digits);
+    if(!linked.length||linked.some(hjRetDealt))return;   // 거래가 있으면 현장 쪽 3년 규칙을 따른다
+    const date=linked.map(p=>hjRetLastActivity(p).date||hjRetYmd(p.inquiryAt)).filter(Boolean).sort().pop()||'';
+    if(!date||date>cut1)return;
+    const keep=hjRetContactKeep(c);contacts.push({id:c.id,label:hjMaskTel(c.phone),date,exceptions:keep?[keep]:[],eligible:!keep});
+  });
+  projects.sort((a,b)=>a.date.localeCompare(b.date));contacts.sort((a,b)=>a.date.localeCompare(b.date));
+  return {today,cut3,cut1,projects,contacts,noDate,eligible:projects.filter(x=>x.eligible).length+contacts.filter(x=>x.eligible).length};
+}
+function hjRetAddrDong(a){
+  const t=String(a||'').trim().split(/\s+/).filter(Boolean),out=[];
+  for(const w of t){if(/\d/.test(w))break;out.push(w);if(/(동|읍|면|리|가)$/.test(w)&&out.length>=2)break;}
+  return out.slice(0,5).join(' ');
+}
+function hjRetScrub(text,custName){
+  let t=String(text==null?'':text);const n=String(custName||'').trim();
+  if(n.length>=2&&n!=='고객')t=t.split(n).join('고객');
+  return t.replace(HJ_RET_PHONE_RE,'(번호 삭제)').replace(HJ_RET_EMAIL_RE,'(메일 삭제)').replace(HJ_RET_UNIT_RE,'(동·호수 삭제)');
+}
+/* 미리보기 — 무엇이 지워지고 무엇이 남는지 센다. 읽기 전용. */
+function hjRetPreview(name){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
+  const c=p.customer||{},custName=String(c.name||'').trim(),digits=hjCustDigits(c.phone),sc=t=>typeof t==='string'&&hjRetScrub(t,custName)!==t;
+  const claim=hjInsPlain(p.leak)&&hjInsPlain(p.leak.claim)?p.leak.claim:null,dm=claim&&hjInsPlain(claim.damage)?claim.damage:null;
+  const contacts=digits.length>=9?(state.contacts||[]).filter(x=>x&&!x.anon&&hjCustDigits(x.phone)===digits&&!hjRetContactKeep(x)).length:0;
+  return {name,
+    remove:{name:!!custName&&custName!=='고객',phone:!!String(c.phone||'').trim(),email:!!(c.email||c.kakao||c.kakaoId),addr:String(c.addr||'')!==hjRetAddrDong(c.addr),addrAfter:hjRetAddrDong(c.addr),
+      sigs:(Array.isArray(p.warrantySigs)?p.warrantySigs.length:0)+(dm&&Array.isArray(dm.sigs)?dm.sigs.length:0),warrantyCopy:!!(p.warrantyDoc&&p.warrantyDoc.html),
+      notes:(state.notes||[]).filter(n=>n&&n.project===name&&sc(n.text)).length,schedule:(state.schedule||[]).filter(s=>s&&s.project===name&&(sc(s.title)||sc(s.memo))).length,
+      quotes:(state.quotes||[]).filter(q=>q&&q.project===name&&(sc(q.title)||sc(q.memo)||(typeof q.place==='string'&&q.place!==hjRetAddrDong(q.place)))).length,contacts,
+      files:(state.files||[]).filter(f=>f&&f.project===name&&((f._fromQuote&&sc(f.name))||sc(f.text)||(f.est&&sc(f.est.customer))||!!f.contact)).length,
+      rename:custName.length>=2&&custName!=='고객'&&name.includes(custName)},
+    keep:{quotes:(state.quotes||[]).filter(q=>q&&q.project===name).length,pay:(state.payLog||[]).filter(x=>x&&x.project===name).length,expenses:(state.expenses||[]).filter(e=>e&&e.project===name).length,docs:Array.isArray(p.docs)?p.docs.length:0,files:(state.files||[]).filter(f=>f&&f.project===name).length}};
+}
+function hjRetAnonContact(c,reason){
+  if(!c||c.anon)return false;const old=String(c.name||'').trim();
+  c.name='고객';c.phone='';delete c.email;delete c.kakao;
+  if(typeof c.memo==='string')c.memo=hjRetScrub(c.memo,old);if(typeof c.company==='string')c.company=hjRetAddrDong(c.company);if(typeof c.title==='string')c.title=hjRetScrub(c.title,old);
+  c.anon={at:localDate(),reason:reason==='request'?'request':'retention'};return true;
+}
+/* 익명화 — 살아 있는 state 를 바꾼다(부르는 쪽이 먼저 안전판을 찍는다). 금액·날짜·품목·영수증·발행 기록은 그대로. */
+function hjRetAnonProject(name,reason){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||p.anon)return null;
+  const c=p.customer&&typeof p.customer==='object'?p.customer:{},custName=String(c.name||'').trim(),digits=hjCustDigits(c.phone),sc=t=>hjRetScrub(t,custName);
+  const n={notes:0,schedule:0,quotes:0,sigs:0,contacts:0,renamed:''};
+  const cust={...c,name:'고객',phone:'',addr:hjRetAddrDong(c.addr)};delete cust.email;delete cust.kakao;delete cust.kakaoId;p.customer=cust;
+  if(Array.isArray(p.warrantySigs)){n.sigs+=p.warrantySigs.length;delete p.warrantySigs;}
+  if(Array.isArray(p.warrantyLinks))p.warrantyLinks=p.warrantyLinks.map(L=>L&&typeof L==='object'?{id:L.id,at:L.at,contractNo:L.contractNo,role:L.role,signedAt:L.signedAt}:L).map(L=>{Object.keys(L||{}).forEach(k=>{if(L[k]===undefined)delete L[k];});return L;});
+  if(p.warrantyDoc&&typeof p.warrantyDoc==='object'&&p.warrantyDoc.html)delete p.warrantyDoc.html;
+  const claim=hjInsPlain(p.leak)&&hjInsPlain(p.leak.claim)?p.leak.claim:null;
+  if(claim){if(hjInsPlain(claim.damage)){const dm=claim.damage;if(Array.isArray(dm.sigs)){n.sigs+=dm.sigs.length;delete dm.sigs;}if(Array.isArray(dm.links))dm.links=dm.links.map(L=>({id:L&&L.id,at:L&&L.at,contractNo:L&&L.contractNo,signedAt:L&&L.signedAt}));}
+    if(typeof claim.memo==='string')claim.memo=sc(claim.memo);}
+  (state.notes||[]).forEach(x=>{if(x&&x.project===name&&typeof x.text==='string'){const t=sc(x.text);if(t!==x.text){x.text=t;n.notes++;}}});
+  (state.schedule||[]).forEach(s=>{if(!s||s.project!==name)return;let ch=false;['title','memo'].forEach(k=>{if(typeof s[k]==='string'){const t=sc(s[k]);if(t!==s[k]){s[k]=t;ch=true;}}});if(s.phone){delete s.phone;ch=true;}if(ch)n.schedule++;});
+  (state.quotes||[]).forEach(q=>{if(!q||q.project!==name)return;let ch=false;if(typeof q.place==='string'){const t=hjRetAddrDong(q.place);if(t!==q.place){q.place=t;ch=true;}}['title','memo'].forEach(k=>{if(typeof q[k]==='string'){const t=sc(q[k]);if(t!==q[k]){q[k]=t;ch=true;}}});if(ch)n.quotes++;});
+  (state.asLog||[]).forEach(a=>{if(a&&a.project===name&&typeof a.text==='string')a.text=sc(a.text);});
+  /* 파일 — 견적에서 만든 가상 견적서 이름·견적서 글자(OCR)·고객 칸·명함 인식값. 파일 자체와 금액(est.amount)은 그대로. */
+  (state.files||[]).forEach(f=>{if(!f||f.project!==name)return;let ch=false;
+    if(f._fromQuote&&typeof f.name==='string'){const t=sc(f.name);if(t!==f.name){f.name=t;ch=true;}}
+    if(f.est&&typeof f.est==='object'&&typeof f.est.customer==='string'){const t=sc(f.est.customer);if(t!==f.est.customer){f.est={...f.est,customer:t};ch=true;}}
+    if(typeof f.text==='string'&&f.text){const t=sc(f.text);if(t!==f.text){f.text=t;ch=true;}}
+    if(f.contact){delete f.contact;ch=true;}
+    if(typeof f.address==='string'&&f.address!==hjRetAddrDong(f.address)){f.address=hjRetAddrDong(f.address);ch=true;}
+    if(ch)n.files=(n.files||0)+1;});
+  if(digits.length>=9)(state.contacts||[]).forEach(x=>{if(x&&hjCustDigits(x.phone)===digits&&!hjRetContactKeep(x)&&hjRetAnonContact(x,reason))n.contacts++;});
+  p.anon={at:localDate(),by:'owner',reason:reason==='request'?'request':'retention'};
+  if(custName.length>=2&&custName!=='고객'&&name.includes(custName)){
+    const base=name.split(custName).join('고객').trim()||'고객 현장';let nv=base,i=2;while((state.projects||[]).some(x=>x!==p&&x.name===nv)){nv=base+' '+i;i++;}
+    hjRenameProjectRefs(name,nv);n.renamed=nv;
+  }
+  return n;
+}
+/* 정리 실행 — 안전판(강제) → 익명화 → 변경 기록. 안전판을 못 찍으면 아무것도 바꾸지 않는다. */
+async function hjRetApply(sel,reason){
+  const names=(sel&&sel.projects||[]).filter(x=>typeof x==='string'),ids=(sel&&sel.contacts||[]).filter(x=>typeof x==='string');
+  if(!names.length&&!ids.length)return {오류:'고른 것이 없어요'};
+  let ok=false;try{ok=await hjSnapshot('개인정보 정리 전',true,true);}catch(e){ok=false;}
+  if(ok!==true)return {오류:'안전판을 저장하지 못해 정리하지 않았어요. 저장 공간을 확인하세요.'};
+  let projects=0,contacts=0;const renamed=[];
+  names.forEach(nm=>{const r=hjRetAnonProject(nm,reason);if(r){projects++;contacts+=r.contacts;if(r.renamed)renamed.push(r.renamed);}});
+  ids.forEach(id=>{const c=(state.contacts||[]).find(x=>x&&x.id===id);if(c&&!hjRetContactKeep(c)&&hjRetAnonContact(c,reason))contacts++;});
+  if(projects||contacts){markDirty();await hjAuditAdd('anon',reason==='request'?'삭제 요청':'보존 기간',projects+contacts);}
+  return {projects,contacts,renamed};
+}
+function hjRetDashHtml(){
+  let seen='';try{seen=localStorage.getItem('hj_ret_seen')||'';}catch(e){}
+  if(seen===localDate().slice(0,7))return '';
+  let n=0;try{n=hjRetCandidates().eligible;}catch(e){n=0;}
+  return n?'<p data-ret-dash style="margin:6px 0;font-size:13px">🔒 보존 '+HJ_RETENTION.years+'년 지난 자료 '+n+'건 — <button type="button" class="ghost tiny" data-ret-open style="min-height:44px">정리 검토</button></p>':'';
+}
+function hjRetView(){
+  const d=hjRetCandidates(),picks=new Set();
+  try{localStorage.setItem('hj_ret_seen',localDate().slice(0,7));}catch(e){}
+  const row=(kind,x,label)=>'<div data-ret-row="'+kind+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px;margin-top:6px;font-size:12.5px'+(x.eligible?'':';opacity:.7')+'">'+
+    (x.eligible?'<label style="display:flex;align-items:center;gap:8px;min-height:44px;flex:1;min-width:0"><input type="checkbox" data-ret-pick="'+kind+':'+escapeAttr(kind==='p'?x.name:x.id)+'" style="width:18px;height:18px;flex:none"><span style="min-width:0"><b>'+escapeHtml(label)+'</b><br><span style="color:var(--muted)">기준일 '+escapeHtml(x.date)+(x.src?' ('+escapeHtml(x.src)+')':'')+'</span></span></label>'
+      :'<span style="flex:1;min-width:0"><b>'+escapeHtml(label)+'</b><br><span style="color:var(--muted)">기준일 '+escapeHtml(x.date)+' · </span><span data-ret-except style="color:#b45309">정리 안 함: '+escapeHtml(x.exceptions.join(' · '))+'</span></span>')+
+    (kind==='p'?'<button type="button" class="ghost tiny" data-ret-preview="'+escapeAttr(x.name)+'" style="min-height:44px;min-width:44px">미리보기</button>':'')+'</div>';
+  const body='<div id="hjRet" style="min-width:0;overflow-wrap:anywhere"><p class="hint" style="margin:0 0 6px">'+escapeHtml(HJ_RET_RULES)+'</p>'+
+    '<p class="hint" style="margin:0 0 8px">자동으로 지우지 않아요 — 고른 것만, 정리 전에 🛡 안전판을 먼저 남깁니다. 정리한 개인정보는 되돌릴 수 없어요(안전판 복구로만).</p>'+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:8px 0 0">현장 — '+HJ_RETENTION.years+'년 지남 '+d.projects.length+'곳 (기준 '+escapeHtml(d.cut3)+' 이전)</div>'+(d.projects.map(x=>row('p',x,x.name)).join('')||'<p class="hint" style="margin:4px 0">정리 대상 현장이 없어요.</p>')+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 0">문의만 한 연락처 — '+HJ_RETENTION.inquiryYears+'년 지남 '+d.contacts.length+'명</div>'+(d.contacts.map(x=>row('c',x,'연락처 '+x.label)).join('')||'<p class="hint" style="margin:4px 0">정리 대상 연락처가 없어요.</p>')+
+    (d.noDate?'<p class="hint" style="margin:8px 0 0">기준일을 알 수 없는 현장 '+d.noDate+'곳은 목록에 넣지 않았어요.</p>':'')+
+    '<p id="hjRetPicked" role="status" style="font-size:12.5px;margin:10px 0 0">고른 것 0건</p></div>';
+  openModal('🔒 개인정보 보존·정리',body,[{label:'🔒 선택 정리',cls:'warn',fn:()=>{if(!picks.size){toast('정리할 것을 골라 주세요');return;}hjRetConfirm([...picks]);}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjRet');
+  root.querySelectorAll('[data-ret-pick]').forEach(el=>el.onchange=()=>{if(el.checked)picks.add(el.dataset.retPick);else picks.delete(el.dataset.retPick);root.querySelector('#hjRetPicked').textContent='고른 것 '+picks.size+'건';});
+  root.querySelectorAll('[data-ret-preview]').forEach(b=>b.onclick=()=>hjRetPreviewView(b.dataset.retPreview,()=>hjRetView()));
+  return d;
+}
+function hjRetPreviewHtml(v){
+  if(!v)return '';const r=v.remove,k=v.keep,li=(on,t)=>on?'<li>'+t+'</li>':'';
+  return '<div data-ret-preview-box style="font-size:12.5px;line-height:1.7"><b>지우는 것</b><ul style="margin:2px 0 8px;padding-left:18px">'+
+    li(r.name,'고객 이름 → "고객"')+li(r.phone,'전화번호')+li(r.email,'메일·카카오 ID')+li(r.addr,'상세 주소 → "'+escapeHtml(r.addrAfter||'(없음)')+'"까지만')+li(r.sigs,'서명 이미지 '+r.sigs+'개')+li(r.warrantyCopy,'보증서 보관본(고객 이름 포함)')+
+    li(r.notes,'노트 '+r.notes+'건의 이름·번호·동호수')+li(r.schedule,'일정 '+r.schedule+'건의 이름·번호')+li(r.quotes,'견적 '+r.quotes+'건의 주소·이름(금액·품목은 그대로)')+li(r.contacts,'같은 번호 연락처 '+r.contacts+'명')+li(r.files,'파일 '+r.files+'개의 이름·글자 속 개인정보(파일과 금액은 그대로)')+li(r.rename,'현장 이름의 고객 이름 → "고객"')+
+    '</ul><b>남기는 것 (세법 '+HJ_RETENTION.ledgerYears+'년)</b><ul style="margin:2px 0;padding-left:18px"><li>견적 '+k.quotes+'건 (금액·품목)</li><li>수금 기록 '+k.pay+'건</li><li>지출 '+k.expenses+'건</li><li>발행 문서 기록 '+k.docs+'건</li><li>사진·서류 파일 '+k.files+'개</li></ul></div>';
+}
+function hjRetPreviewView(name,back){
+  const v=hjRetPreview(name);if(!v){toast('현장을 찾을 수 없어요');return false;}
+  openModal('🔒 미리보기 — '+name,hjRetPreviewHtml(v),[{label:'← 목록',cls:'ghost',fn:back||closeModal}],true);hjModalTapTargets();return true;
+}
+/* 2단계 확인 — "정리" 를 직접 쳐야 버튼이 듣는다. */
+function hjRetConfirm(keys,opts){
+  const o=opts||{},projects=keys.filter(k=>k.startsWith('p:')).map(k=>k.slice(2)),contacts=keys.filter(k=>k.startsWith('c:')).map(k=>k.slice(2));
+  openModal('🔒 정리 확인',
+    '<div id="hjRetConfirm" style="min-width:0"><p style="font-size:13.5px;line-height:1.7;margin:0 0 8px">현장 <b>'+projects.length+'곳</b>'+(contacts.length?' · 연락처 <b>'+contacts.length+'명</b>':'')+'의 개인정보를 지웁니다. 금액·날짜·품목 기록은 익명으로 남아요.</p>'+
+    '<p class="hint" style="margin:0 0 8px">되돌릴 수 없어요 — 정리 직전 🛡 안전판이 자동으로 남고, 그 안전판으로만 되돌릴 수 있습니다.</p>'+
+    '<label for="hjRetWord" style="display:block;font-size:12px;font-weight:700;margin:0 0 3px">확인하려면 <b>'+HJ_RET_CONFIRM+'</b> 를 입력하세요</label><input id="hjRetWord" autocomplete="off" style="width:100%;min-height:44px;padding:9px;font-size:15px;box-sizing:border-box"></div>',
+    [{label:'🔒 정리',cls:'warn',fn:async()=>{
+        if(String((document.getElementById('hjRetWord')||{}).value||'').trim()!==HJ_RET_CONFIRM){toast('"'+HJ_RET_CONFIRM+'" 를 입력해야 정리합니다');return;}
+        const r=await hjRetApply({projects,contacts},o.reason||'retention');
+        if(r.오류){toast(r.오류);return;}
+        render();toast('🔒 정리 완료 — 현장 '+r.projects+'곳 · 연락처 '+r.contacts+'명 (안전판에 정리 전 상태가 남아 있어요)');
+        if(typeof o.done==='function')o.done(r);else hjRetView();
+      }},{label:'취소',cls:'ghost',fn:o.back||(()=>hjRetView())}],true);
+  hjModalTapTargets();
+}
+/* F2 고객 요청 삭제 — 그 현장·그 고객 연락처에만 같은 익명화(사유 request) + 고객 안내 문자 초안(금액 없음). */
+function hjRetRequestText(){return '['+COMPANY.name+'] 요청하신 개인정보(성함·연락처·상세 주소)를 지웠습니다. 공사 금액·날짜 같은 거래 기록은 세법상 '+HJ_RETENTION.ledgerYears+'년 보관해야 해서 이름 없이 남겨 둡니다. 궁금한 점은 '+COMPANY.tel+' 로 연락 주세요.';}
+function hjRetRequestView(name){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  if(p.anon){toast('이미 개인정보를 정리한 현장이에요 ('+(p.anon.at||'')+')');return false;}
+  const phone=String((p.customer||{}).phone||'').trim(),text=hjRetRequestText(),ex=hjRetExceptions(p);
+  openModal('🔒 개인정보 삭제 요청 처리 — '+name,
+    '<div id="hjRetRequest" style="min-width:0;overflow-wrap:anywhere"><p class="hint" style="margin:0 0 8px">고객이 개인정보 삭제를 요청했을 때 — 이 현장과 같은 번호 연락처의 개인정보만 지우고, 거래 기록은 익명으로 남깁니다(세법 '+HJ_RETENTION.ledgerYears+'년).</p>'+
+    (ex.length?'<p data-ret-request-warn style="font-size:12.5px;color:#b45309;margin:0 0 8px">참고: '+escapeHtml(ex.join(' · '))+' — 요청이면 처리할 수 있지만, 보증·AS 연락이 어려워져요.</p>':'')+
+    hjRetPreviewHtml(hjRetPreview(name))+
+    '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">고객 안내 문자 (초안 · 금액 없음)</div><div data-ret-request-text style="white-space:pre-wrap;font-size:12.5px;background:var(--paper-2);border-radius:9px;padding:8px 10px">'+escapeHtml(text)+'</div></div>',
+    [{label:'💬 안내 문자 초안',cls:'ghost',fn:()=>hjSendSms(phone,text)},{label:'🔒 삭제 처리',cls:'warn',fn:()=>hjRetConfirm(['p:'+name],{reason:'request',back:()=>hjRetRequestView(name),done:()=>{closeModal();}})},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();return true;
+}
+/* F3 백업 점검 — 이 기기의 마지막 백업(파일 내보내기·드라이브) 기준. 3일 넘으면 노랑 한 줄, 7일 넘으면 기존 백업 카드(빨강). */
+function hjBackupState(now){
+  const info=backupLastInfo(),at=info&&info.at?Number(info.at):0,days=at?Math.floor(((now||Date.now())-at)/86400000):999;
+  return {at,days,kind:info&&info.kind||'',level:days>=HJ_RETENTION.backupAlertDays?'alert':days>=HJ_RETENTION.backupWarnDays?'warn':'ok'};
+}
+function hjBackupNudgeHtml(){
+  const hasData=(state.projects||[]).length||(state.files||[]).length;if(!hasData)return '';
+  const b=hjBackupState();if(b.level!=='warn')return '';
+  return '<p data-backup-nudge="warn" style="margin:6px 0;font-size:13px;color:#a16207">💾 백업 '+b.days+'일 넘음 — <button type="button" class="ghost tiny" onclick="try{backupNow()}catch(e){}" style="min-height:44px">지금 백업</button></p>';
+}
+/* 복원 리허설 — 가장 최근 안전판을 읽어 레코드 수·최상위 키를 지금과 비교한다(실제 복원은 안 함). */
+async function hjRestoreRehearsal(){
+  let snaps=[];try{snaps=(await idbGet('hj_snaps'))||[];}catch(e){snaps=[];}
+  const s=Array.isArray(snaps)&&snaps.length?snaps[snaps.length-1]:null;
+  try{localStorage.setItem('hj_restore_rehearsal_at',String(Date.now()));}catch(e){}
+  if(!s)return {ok:false,reason:'안전판이 아직 없어요',diff:0};
+  let data;try{data=JSON.parse(JSON.stringify(s.data));}catch(e){return {ok:false,reason:'안전판을 읽지 못했어요',diff:0};}
+  if(!data||typeof data!=='object'||Array.isArray(data)||!Array.isArray(data.files))return {ok:false,reason:'안전판 형식이 맞지 않아요',diff:0};
+  const live=serializeData(),cnt=d=>({projects:(d.projects||[]).length,files:(d.files||[]).length,quotes:(d.quotes||[]).length,schedule:(d.schedule||[]).length});
+  const a=cnt(data),b=cnt(live),ka=Object.keys(data).filter(k=>k!=='savedAt').sort(),kb=Object.keys(live).filter(k=>k!=='savedAt').sort();
+  const missing=kb.filter(k=>!ka.includes(k)),extra=ka.filter(k=>!kb.includes(k)),changed=Object.keys(a).filter(k=>a[k]!==b[k]);
+  hjAuditAdd('backup','복원 리허설',1);
+  return {ok:true,at:s.at,label:s.label,snap:a,live:b,missing,extra,changed,diff:missing.length+extra.length+changed.length};
+}
+function hjRehearsalDue(now){let t=0;try{t=Number(localStorage.getItem('hj_restore_rehearsal_at')||0);}catch(e){}return !t||((now||Date.now())-t)>=HJ_RETENTION.rehearsalDays*86400000;}
+function hjSafetyDashHtml(){
+  let h='';try{h+=hjBackupNudgeHtml();}catch(e){}try{h+=hjRetDashHtml();}catch(e){}
+  try{if(((state.projects||[]).length)&&hjRehearsalDue())h+='<p data-rehearsal-dash style="margin:6px 0;font-size:13px;color:var(--muted)">🧪 복원 리허설 한 달 넘음 — <button type="button" class="ghost tiny" data-safety-open style="min-height:44px">점검</button></p>';}catch(e){}
+  return h;
+}
+/* F4 변경 기록 — IndexedDB 'hyeonjang-audit'(직렬화 자료 밖). 고객 이름·번호는 적지 않는다(종류·대상 종류·개수만). */
+const HJ_AUDIT_DB='hyeonjang-audit';
+const HJ_AUDIT_KINDS=Object.freeze({snapshot:'안전판',delete:'삭제',anon:'개인정보 정리',restore:'복원',import:'가져오기',settings:'설정',backup:'백업 점검',staff:'직원 모드'});
+let __hjAuditDb=null;
+function hjAuditOpen(){
+  if(__hjAuditDb)return __hjAuditDb;
+  __hjAuditDb=new Promise((res,rej)=>{try{const rq=indexedDB.open(HJ_AUDIT_DB,1);rq.onupgradeneeded=()=>{const db=rq.result;if(!db.objectStoreNames.contains('log'))db.createObjectStore('log',{keyPath:'id',autoIncrement:true});};rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);}catch(e){rej(e);}});
+  __hjAuditDb.catch(()=>{__hjAuditDb=null;});
+  return __hjAuditDb;
+}
+function hjAuditDevice(){return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent||'')?'폰':'PC';}
+function hjAuditTarget(t){return String(t==null?'':t).split(' — ')[0].replace(HJ_RET_PHONE_RE,'').replace(HJ_RET_EMAIL_RE,'').trim().slice(0,40);}
+async function hjAuditAdd(kind,target,count,extra){
+  try{
+    if(state._demo)return false;
+    const db=await hjAuditOpen();
+    const rec={at:new Date().toISOString(),kind:Object.prototype.hasOwnProperty.call(HJ_AUDIT_KINDS,kind)?kind:'settings',target:hjAuditTarget(target),count:Math.max(0,Math.round(Number(count)||0)),by:extra&&extra.by==='staff'?'staff':'owner',device:hjAuditDevice()};
+    await new Promise((res,rej)=>{const tx=db.transaction('log','readwrite');tx.objectStore('log').add(rec);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});
+    return true;
+  }catch(e){return false;}
+}
+async function hjAuditAll(){
+  const db=await hjAuditOpen();
+  return new Promise((res,rej)=>{const tx=db.transaction('log','readonly'),rq=tx.objectStore('log').getAll();rq.onsuccess=()=>res((rq.result||[]).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))||b.id-a.id));rq.onerror=()=>rej(rq.error);});
+}
+/* 90일 지난 기록을 지운다(순환). 지운 개수를 돌려준다. */
+async function hjAuditPrune(now){
+  const db=await hjAuditOpen(),limit=new Date((now||Date.now())-HJ_RETENTION.auditDays*86400000).toISOString();
+  return new Promise((res,rej)=>{let n=0;const tx=db.transaction('log','readwrite'),st=tx.objectStore('log'),rq=st.openCursor();rq.onsuccess=()=>{const cur=rq.result;if(!cur)return;if(String(cur.value&&cur.value.at||'')<limit){cur.delete();n++;}cur.continue();};tx.oncomplete=()=>res(n);tx.onerror=()=>rej(tx.error);});
+}
+function hjAuditCsv(rows){
+  const q=v=>{const s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  return '﻿'+['시각,종류,대상,개수,누가,기기'].concat(rows.map(r=>[r.at,HJ_AUDIT_KINDS[r.kind]||r.kind,r.target,r.count,r.by==='staff'?'직원':'대표',r.device].map(q).join(','))).join('\n');
+}
+async function hjAuditView(filter){
+  const f=filter&&typeof filter==='object'?filter:{kind:'',from:''};
+  try{await hjAuditPrune();}catch(e){}
+  let rows=[];try{rows=await hjAuditAll();}catch(e){toast('변경 기록을 읽지 못했어요');rows=[];}
+  const shown=rows.filter(r=>(!f.kind||r.kind===f.kind)&&(!f.from||String(r.at).slice(0,10)>=f.from)).slice(0,HJ_RETENTION.auditMax);
+  openModal('🧾 변경 기록',
+    '<div id="hjAudit" style="min-width:0;overflow-wrap:anywhere"><p class="hint" style="margin:0 0 6px">이 기기에서 한 큰 변경(안전판·삭제·정리·복원·가져오기)만 '+HJ_RETENTION.auditDays+'일 남깁니다. 고객 이름·번호는 적지 않아요.</p>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><select id="auditKind" style="min-height:44px;font-size:14px;flex:1;min-width:120px"><option value="">전체 종류</option>'+Object.keys(HJ_AUDIT_KINDS).map(k=>'<option value="'+k+'"'+(f.kind===k?' selected':'')+'>'+HJ_AUDIT_KINDS[k]+'</option>').join('')+'</select>'+
+    '<input type="date" id="auditFrom" value="'+escapeAttr(f.from||'')+'" style="min-height:44px;font-size:14px;flex:1;min-width:120px"></div>'+
+    '<p id="auditCount" style="font-size:12.5px;margin:0 0 4px">'+shown.length+'건'+(rows.length>shown.length?' (전체 '+rows.length+'건)':'')+'</p>'+
+    (shown.map(r=>'<div data-audit-row style="display:flex;gap:8px;font-size:12px;padding:5px 0;border-top:1px dashed var(--line-soft)"><span style="white-space:nowrap;color:var(--muted)">'+escapeHtml(hjSnapTime(r.at))+'</span><span style="flex:1;min-width:0"><b>'+escapeHtml(HJ_AUDIT_KINDS[r.kind]||r.kind)+'</b> '+escapeHtml(r.target)+(r.count?' · '+r.count+'건':'')+'</span><span style="color:var(--muted)">'+(r.by==='staff'?'직원':'대표')+' · '+escapeHtml(r.device)+'</span></div>').join('')||'<p class="hint">기록이 없어요.</p>')+'</div>',
+    [{label:'📥 CSV',cls:'ghost',fn:()=>{hjDocDownload(hjAuditCsv(shown),'변경기록_'+localDate()+'.csv','text/csv');toast('📥 변경 기록 CSV 저장');}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjAudit');
+  root.querySelector('#auditKind').onchange=e=>hjAuditView({...f,kind:e.target.value});
+  root.querySelector('#auditFrom').onchange=e=>hjAuditView({...f,from:e.target.value});
+  return shown;
+}
+/* 설정 › 기타 [🔒 데이터 안전] — 개인정보 보존·백업 점검·복원 리허설·변경 기록을 한곳에서. */
+function hjDataSafetyView(result){
+  const b=hjBackupState(),d=hjRetCandidates(),r=result&&typeof result==='object'?result:null;
+  const when=b.at?new Date(b.at).toLocaleString('ko-KR'):'없음';
+  openModal('🔒 데이터 안전',
+    '<div id="hjSafety" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div data-safety-backup="'+b.level+'" style="border:1px solid '+(b.level==='alert'?'#ef4444':b.level==='warn'?'#f59e0b':'var(--line-soft)')+';border-radius:10px;padding:9px 10px;font-size:13px"><b>💾 마지막 백업</b> '+escapeHtml(when)+(b.at?' ('+b.days+'일 전'+(b.kind==='drive'?' · 드라이브':' · 파일')+')':'')+
+      '<div style="font-size:11.5px;color:var(--muted);margin-top:2px">이 기기 기준 — '+HJ_RETENTION.backupWarnDays+'일 넘으면 노랑, '+HJ_RETENTION.backupAlertDays+'일 넘으면 빨강으로 첫 화면에 알려요.</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="clay tiny" id="sfBackup" style="min-height:44px">💾 지금 백업</button><button type="button" class="ghost tiny" id="sfRehearse" style="min-height:44px">🧪 복원 리허설</button></div>'+
+      (r?'<div data-rehearsal-result="'+(r.ok?(r.diff?'diff':'ok'):'fail')+'" style="margin-top:6px;font-size:12.5px">'+(r.ok?(r.diff?'⚠ 복원 가능 — 지금과 차이 '+r.diff+'곳 ('+escapeHtml([...r.changed.map(k=>k+' '+r.snap[k]+'→'+r.live[k]),...r.missing.map(k=>'+'+k),...r.extra.map(k=>'−'+k)].join(' · '))+')':'✓ 복원 가능 — 최근 안전판('+escapeHtml(hjSnapTime(r.at))+')이 지금과 같은 구성이에요'):'✗ '+escapeHtml(r.reason))+'</div>':'')+'</div>'+
+    '<button type="button" class="ghost" id="sfRet" style="display:block;width:100%;min-height:44px;margin-top:8px;text-align:left">🔒 개인정보 보존·정리 — 정리 대상 '+d.eligible+'건</button>'+
+    '<button type="button" class="ghost" id="sfAudit" style="display:block;width:100%;min-height:44px;margin-top:6px;text-align:left">🧾 변경 기록</button>'+
+    '<p class="hint" style="margin:8px 0 0">'+escapeHtml(HJ_RET_RULES)+'</p></div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjSafety');
+  root.querySelector('#sfBackup').onclick=()=>{try{backupNow();}catch(e){}};
+  root.querySelector('#sfRehearse').onclick=async()=>{const res=await hjRestoreRehearsal();hjDataSafetyView(res);};
+  root.querySelector('#sfRet').onclick=()=>hjRetView();
+  root.querySelector('#sfAudit').onclick=()=>hjAuditView();
+  return {backup:b,eligible:d.eligible};
+}
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
 function tripExpensed(t){

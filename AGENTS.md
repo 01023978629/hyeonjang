@@ -3,6 +3,16 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v447 데이터 안전 (개인정보 보존 3년·정리 · 삭제 요청 · 백업 점검·복원 리허설 · 변경 기록)
+
+- HJ_RETENTION{years 3(대표 결정), inquiryYears 1, ledgerYears 5, backupWarnDays 3, backupAlertDays 7, auditDays 90}. 기준일 = 마지막 활동일(준공 doneAt·수금 payLog.d·AS asLog date/visitAt/doneAt·노트 date — ko-KR 날짜 문자열도 hjRetYmd 가 읽는다). 정확히 3년 전 날도 대상(±1일 테스트). 기준일 없는 현장은 목록에 넣지 않고 개수만.
+- 예외(정리 안 함): 보증 남음(hjWarranty end ≥ 오늘 — 기본 보증이 36개월이라 준공 기준이면 사실상 3년 하루 뒤부터 대상), 대금 정리 전(projStats.due>0 — 숫자는 보여 주지 않는다, 2026-08-13 미수 표시 없앰 결정과 receivable-removed.check 를 지킨다; 변이 ignore-due 가 RET_EXCEPTION_DUE 에서 잡는다), 진행 중 AS, 분쟁 메모. 연락처는 tag 고객 + 같은 번호 현장에 거래(stage≥2·수금·견적)가 없을 때만 1년 규칙, 관리사무소·팀원·거래처는 제외.
+- 정리(hjRetApply)는 자동 실행 없음 — 🔒 목록에서 고르고 "정리" 를 직접 쳐야 하고, 바꾸기 전에 hjSnapshot('개인정보 정리 전',강제)을 찍고 못 찍으면 아무것도 안 바꾼다(변이 skip-snapshot 이 RET_SNAPSHOT_FIRST 에서 잡는다). 지우는 것: 고객 이름→'고객'·전화·메일·카카오, 주소는 행정동까지(hjRetAddrDong), 하자보증 서명·보관본 html·피해 확인서 서명/링크 이름, 그 현장 노트·일정·견적 제목/메모/주소·AS 글·파일(가상 견적서 이름·OCR 글자·est.customer·명함 인식)의 이름·번호·동호수, 같은 번호 연락처, 현장 이름에 든 고객 이름(hjRenameProjectRefs 로 모든 참조 함께). 남기는 것: 견적 금액·품목, 수금·지출, 발행 문서 기록, 파일. 기록 p.anon{at,by,reason retention|request}·c.anon.
+- 삭제 요청(현장 상세 [🔒 개인정보], data-retreq 위임): 그 현장만 같은 익명화(reason request) + 고객 안내 문자 초안(세법 5년 보관 설명, 금액 없음, hjSendSms 초안만). 현장 통째 삭제는 기존 deleteProject(안전판 이미 있음)에 변경 기록만 더했다.
+- 백업 점검: backupMarkDone 을 드라이브 백업 성공에도 붙였다(이전엔 파일 내보내기만). 첫 화면 hjSafetyDashHtml — 3~6일 노랑 한 줄(data-backup-nudge), 7일+ 는 기존 백업 카드를 빨강으로(data-backup-card=alert), 보존 정리 대상 월 1회 알림(hj_ret_seen 달 기준), 복원 리허설 30일 알림. 복원 리허설(hjRestoreRehearsal)은 최근 안전판을 읽어 레코드 수·최상위 키를 지금과 비교만 한다(복원 안 함).
+- 변경 기록: IndexedDB 'hyeonjang-audit'(직렬화 자료 밖) {at,kind,target,count,by,device} — 대상은 종류 이름만(' — ' 뒤 현장 이름은 잘라냄, 번호·메일 제거). 강제 안전판(hjSnapshot force=true — durableLocalMutation 포함)·현장 삭제·정리·안전판/드라이브 복원·거래처 명단 가져오기·리허설을 남긴다. 직원 모드(v444)·설정 변경 훅은 아직 없음. 🧾 변경 기록 화면: 종류·날짜 필터, 200건, CSV(BOM), 열 때 90일 지난 것 정리.
+- 진입: ⚙️ 설정 › ⭐ 기타 [🔒 데이터 안전] → 백업 상태·리허설·보존 정리·변경 기록. 더보기 126 유지. 핀3곳 hyeonjang-v447-retention(v442 위). 신규 tests/retention-v447.e2e.js 4/4, 변이 2종·기준선 실패 확인, 관련 12개(snapshot-guard/snapshot-policy/snapshot-restore-guard/snapshot-revert/delete-guard/restore-safety/settings-tabs/settings-safety/key-persist/project-rename/storage-durability/dash-reports)·정적 21개 통과. 운영 자료로 실행하지 않았다(합성 자료만).
+
 ## 2026-10-16 v442 누수 보험 청구 도우미 (피해 확인서 · 보험 서류 체크리스트 · 제출 이력)
 
 - 데이터는 현장 레코드 안 p.leak.claim 한 덩어리(insurer·claimNo·dueAt·checklist{key:{done,at,skip,fileRef,fileName}}·extra[]·submitted[{at,via,keys,memo}]·memo·closedAt·tplSeen·damage{…}). 고객 쪽 서류(청구서·등본·신분증·통장 …)는 체크만 — [첨부]는 우리가 만든 6가지에만 있고, 보험증권 번호·주민번호·계좌 칸은 없다. 메모·접수번호·보완 메모·추가 서류 이름에 주민번호 꼴(6자리-7자리)이 들어오면 저장하지 않는다.
