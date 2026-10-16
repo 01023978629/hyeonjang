@@ -79,24 +79,35 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   });
 
   await test('입금 기록 창에서 증빙을 고르면 그 기록에 남고, 안 고르면 빈 값이다; 더보기 경영·돈에서 열린다', async () => {
-    const r = await page.evaluate(async () => {
-      const n0 = state.payLog.length;
-      recvQuickView('둔산'); await new Promise(r => setTimeout(r, 80));
-      const sel = document.getElementById('rqProof'); const opts = [...sel.options].map(o => o.value);
-      document.getElementById('rqAmt').value = '700000'; sel.value = 'cash';
-      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /입금 저장/.test(b.textContent)).click(); await new Promise(r => setTimeout(r, 120));
-      closeModal(); await new Promise(r => setTimeout(r, 60)); try { closeModal(); } catch (e) {}
-      const a = state.payLog[state.payLog.length - 1];
-      recvQuickView('둔산'); await new Promise(r => setTimeout(r, 80));
-      document.getElementById('rqAmt').value = '150000';
-      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /입금 저장/.test(b.textContent)).click(); await new Promise(r => setTimeout(r, 120));
-      closeModal(); await new Promise(r => setTimeout(r, 60)); try { closeModal(); } catch (e) {}
-      const b = state.payLog[state.payLog.length - 1];
-      moreActionHandler('payproof'); await new Promise(r => setTimeout(r, 80));
+    const n0 = await page.evaluate(() => state.payLog.length);
+    await page.evaluate(() => recvQuickView('둔산'));
+    const opts = await page.locator('#rqProof option').evaluateAll(nodes => nodes.map(o => o.value));
+    // v428: 실제 선택 이벤트가 발행 입력을 갱신하고, 원자 저장 뒤에만 확인증 제안을 연다.
+    // 고정 sleep/강제 close로 다음 입력창과 늦은 확인증 모달을 경쟁시키지 않는다.
+    const save = async (amount, proof, expectedCount) => {
+      await page.locator('#rqAmt').fill(String(amount));
+      await page.locator('#rqTaxMethod').selectOption('계좌이체');
+      if (proof) await page.locator('#rqProof').selectOption(proof);
+      await page.locator('#modalRoot .mfoot').getByRole('button', { name: '입금 저장', exact: true }).click();
+      await page.waitForFunction(({ amount, count }) => !__modalCloseLocked &&
+        (state.payLog.length === count && state.payLog[state.payLog.length - 1].amt === amount ||
+         !!document.getElementById('rqIssue')?.textContent), { amount, count: expectedCount });
+      const issue = await page.evaluate(() => document.getElementById('rqIssue')?.textContent || '');
+      assert(!issue, '입금 저장 오류: ' + issue);
+      await page.waitForFunction(() => /입금 확인증/.test(document.querySelector('#modalRoot .modal h3')?.textContent || ''));
+      await page.locator('#modalRoot .mfoot').getByRole('button', { name: '나중에', exact: true }).click();
+      return page.evaluate(() => { const x = state.payLog[state.payLog.length - 1]; return { amt:x.amt, proof:x.proof || null, proofAt:x.proofAt, project:x.project }; });
+    };
+    const a = await save(700000, 'cash', n0 + 1);
+    await page.evaluate(() => recvQuickView('둔산'));
+    const b = await save(150000, '', n0 + 2);
+    const tail = await page.evaluate(() => {
+      moreActionHandler('payproof');
       const title = document.querySelector('#modalRoot .modal h3').textContent, rows = document.querySelectorAll('#modalRoot .prRow').length;
       closeModal();
-      return { n: state.payLog.length - n0, opts, a: { amt: a.amt, proof: a.proof, proofAt: a.proofAt, project: a.project }, b: { amt: b.amt, proof: b.proof || null, project: b.project }, title, rows };
+      return { count:state.payLog.length, title, rows };
     });
+    const r = { n:tail.count - n0, opts, a, b, title:tail.title, rows:tail.rows };
     assert(JSON.stringify(r.opts) === JSON.stringify(['', 'cash', 'tax', 'card', 'etc']), '선택지: ' + JSON.stringify(r.opts));
     assert(r.n === 2 && r.a.amt === 700000 && r.a.proof === 'cash' && r.a.project === '둔산' && /^\d{4}-\d{2}-\d{2}$/.test(r.a.proofAt), '증빙과 함께 저장: ' + JSON.stringify(r.a));
     assert(r.b.amt === 150000 && r.b.proof === null, '안 고르면 빈 값: ' + JSON.stringify(r.b));

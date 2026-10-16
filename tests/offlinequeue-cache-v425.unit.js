@@ -6,6 +6,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const source=fs.readFileSync(process.env.HJ_OFFLINE_SW_SOURCE||path.join(__dirname,'../sw.js'),'utf8');
+const BUILD=source.match(/const\s+C\s*=\s*'([^']+)'/)?.[1];
+assert.match(BUILD||'',/^hyeonjang-v\d+-[a-z0-9-]+$/,'CURRENT_CACHE_BUILD_PRESENT');
 const ORIGIN='https://offline.example.test';
 const SUFFIXES=['','index.html','media-safety.js','shared-todo-backup.js','operations-review.js','privacy.html','terms.html','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png','bathroom-defaults.json','manifest.webmanifest'];
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -47,7 +49,7 @@ async function test(name,fn){await fn();passed++;console.log('PASS offlinequeue-
       const expected=SUFFIXES.map(s=>ORIGIN+prefix+s);assert.deepEqual(h.requests.map(r=>r.url),expected,'INSTALL_EXACT_EXISTING_ALLOWLIST');assert.deepEqual(h.puts,expected);assert.equal(h.current.size,expected.length);
       for(const r of h.requests){const u=new URL(r.url);assert.equal(u.origin,ORIGIN);assert.equal(u.search,'');assert.equal(r.method,'GET');assert.equal(r.mode,'same-origin');assert.equal(r.credentials,'omit');assert.equal(r.redirect,'error');assert.equal(r.cache,'reload');assert.equal(r.headers.has('Authorization'),false);assert.equal(r.body,null);assert(!/share-target|relay|upload|appState|outbox|inbox|\.json\?/.test(r.url));}
       assert.equal(h.skipped,1);assert.equal(h.claimed,0);assert.equal(h.events.at(-1),'skip');unchangedOld(h);
-      await h.activate();assert.equal(h.claimed,1);assert.deepEqual(h.deleted,['hyeonjang-v424-leaksms']);assert(h.cacheNames.has('hyeonjang-v425-offlinequeue'));
+      await h.activate();assert.equal(h.claimed,1);assert.deepEqual(h.deleted,['hyeonjang-v424-leaksms']);assert.deepEqual([...h.cacheNames.keys()],[BUILD],'ACTIVATION_RETAINS_ONLY_CURRENT_BUILD');
     }
   });
   await test('skipWaiting waits for the final cache write to finish',async()=>{
