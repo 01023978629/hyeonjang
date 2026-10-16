@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v425-offlinequeue';
+const APP_BUILD='hyeonjang-v433-doccenter';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -19485,9 +19485,13 @@ function payRcptDialog(name,pre){
   const all=(state.payLog||[]).filter(x=>x&&x.project===name);
   const rows=all.filter(x=>num(x.amt)>0).slice().sort((a,b)=>String(b.d||'').localeCompare(String(a.d||''))).slice(0,8);
   const fixed=all.length-rows.length;
+  const p0=pre||{};
+  // v433 받은 돈 기록(hjPayRcptOffer)·현장 마감 2종에서 넘어오면 그 입금 줄을 미리 고른 것으로 표시한다.
+  const preId=String(p0.payLogId||'');
   const pick=rows.length
-    ? '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px">📥 입금 기록에서 고르기 — 고르면 금액·수령일자가 채워집니다</div>'+
-      rows.map(x=>'<button class="ghost prcRow" data-d="'+escapeAttr(String(x.d||''))+'" data-a="'+escapeAttr(String(Math.round(num(x.amt))))+'" style="display:flex;justify-content:space-between;width:100%;padding:9px 11px;margin-bottom:5px;border:1px solid var(--line-soft);border-radius:10px;min-height:44px"><span style="color:var(--muted);font-size:12px">'+escapeHtml(String(x.d||''))+'</span><b style="font-size:12.5px">'+won(Math.round(num(x.amt)))+'</b></button>').join('')+
+    ? '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 5px">📥 입금 기록에서 고르기 — 고르면 금액·수령일자·결제방법이 채워집니다</div>'+
+      rows.map(x=>{const sel=preId&&String(x.id||'')===preId;
+        return '<button type="button" class="ghost prcRow" data-d="'+escapeAttr(String(x.d||''))+'" data-a="'+escapeAttr(String(Math.round(num(x.amt))))+'" data-m="'+escapeAttr(String(x.method||''))+'" aria-pressed="'+(sel?'true':'false')+'" style="display:flex;justify-content:space-between;width:100%;padding:9px 11px;margin-bottom:5px;border:1px solid '+(sel?'var(--clay)':'var(--line-soft)')+';border-radius:10px;min-height:44px"><span style="color:var(--muted);font-size:12px">'+escapeHtml(String(x.d||''))+(sel?' · 선택됨':'')+'</span><b style="font-size:12.5px">'+won(Math.round(num(x.amt)))+'</b></button>';}).join('')+
       (fixed>0?'<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">정정(마이너스) 기록 '+fixed+'건은 목록에서 뺐습니다.</div>':'')
     : '<div style="font-size:12px;color:#c2410c;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:8px">이 현장의 입금 기록이 없어요. 금액을 손으로 적거나, 먼저 <b>[💰 입금 기록]</b>을 해주세요.</div>';
   const F=function(id,label,val,ph,type,extra){
@@ -19499,7 +19503,8 @@ function payRcptDialog(name,pre){
       '<select id="'+id+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;min-height:44px">'+
       list.map(function(v){return '<option value="'+escapeAttr(v[0])+'"'+(cur===v[0]?' selected':'')+'>'+escapeHtml(v[1])+'</option>';}).join('')+'</select>';
   };
-  const p0=pre||{};
+  // v433 일련번호 자동 — MM-YYYYMMDD-nn(기존 placeholder 형식). 발행 기록(p.docs)을 읽어 오늘 다음 번호를 제안하고, 사람이 고칠 수 있다.
+  let autoNo='';try{autoNo=hjDocNextNo('MM');}catch(e){autoNo='';}
   const body=
     '<div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+escapeHtml(name)+' · 지금까지 받은 돈 '+hjMan(d.recv)+' <span style="color:#c2410c">(누계는 영수증에 쓰지 않습니다)</span></div>'+
     pick+
@@ -19509,7 +19514,7 @@ function payRcptDialog(name,pre){
     S('prcMethod','결제방법',p0.method||'',[['','— 비워 두기 (인쇄 후 손으로) —'],['현금','현금'],['계좌이체','계좌이체'],['카드','카드'],['기타','기타']])+
     F('prcPayer','입금자명 (선택)',p0.payer||'','통장에 찍힌 이름이 고객명과 다르면')+
     F('prcWork','공사명 (선택)',p0.work||'','비우면 현장 이름이 들어갑니다')+
-    F('prcNo','영수증번호 (선택)',p0.no||'','예: MM-'+today.replace(/-/g,'')+'-01')+
+    F('prcNo','영수증번호 (자동 · 고칠 수 있음)',p0.no||autoNo,'예: MM-'+today.replace(/-/g,'')+'-01')+
     S('prcVat','부가세 표기 (비고에만)',p0.vatNote||'',[['','— 표기 안 함 —'],['부가세 포함','부가세 포함'],['부가세 별도','부가세 별도']])+
     (d.items.length?'<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:12px;line-height:1.5;min-height:44px;cursor:pointer"><input type="checkbox" id="prcItems" style="margin-top:3px;width:18px;height:18px;flex:none"> <span>견적 품목 '+d.items.length+'개를 <b>수령내역에 채웁니다</b> (최대 '+PAY_RCPT_ROWS+'줄)</span></label>':'')+
     '<p class="hint" style="margin-top:10px">세금계산서·현금영수증은 홈택스에서 따로 발행합니다 — 이 종이는 <b>돈을 받았다는 확인</b>입니다.</p>';
@@ -19518,21 +19523,27 @@ function payRcptDialog(name,pre){
         const g=function(id){const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
         const useItems=!!(document.getElementById('prcItems')&&document.getElementById('prcItems').checked);
         const o={amt:won2num(g('prcAmt')),date:g('prcDate'),kind:g('prcKind'),method:g('prcMethod'),
-          payer:g('prcPayer'),work:g('prcWork'),no:g('prcNo'),vatNote:g('prcVat'),
+          payer:g('prcPayer'),work:g('prcWork'),no:g('prcNo'),vatNote:g('prcVat'),payLogId:preId,
           items:useItems?d.items.slice(0,PAY_RCPT_ROWS):[]};
         const html=payRcptHTML(name,o);
         if(!html){toast('영수증을 만들 수 없어요');return;}
         closeModal();
         const base=safeName(name)+'_간이영수증_'+(o.date||localDate());
-        hjDocDeliverView(name,html,base,'🧾 간이영수증',function(){payRcptDialog(name,o);});
+        // v433 PDF·워드·HTML 에 이미지(PNG) 한 장과 문자 초안을 더한다. 실제로 가져간 시점에만 발행 기록(p.docs, 번호 기준 한 번).
+        hjDocDeliverView(name,html,base,'🧾 간이영수증',function(){payRcptDialog(name,o);},{
+          onDeliver:function(via){if(HJ_DOC433_NO_RE.test(String(o.no||'')))hjDoc433IssueQuiet(name,{type:'payrcpt',no:o.no,purpose:o.kind||'',name:'간이영수증'+(o.amt>0?' '+won(o.amt):'')});},
+          image:true,sms:{text:'['+COMPANY.name+'] '+HJ_DOC433_RCPT_SMS,kind:'doc433'}});
       }},
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
   const root=document.getElementById('modalRoot');
   // 모달은 #view 위임 밖이라 여기서 직접 건다
   root.querySelectorAll('.prcRow').forEach(function(b){b.onclick=function(){
-    const a=document.getElementById('prcAmt'),dt=document.getElementById('prcDate');
+    const a=document.getElementById('prcAmt'),dt=document.getElementById('prcDate'),mt=document.getElementById('prcMethod');
     if(a)a.value=won(num(b.dataset.a));
     if(dt)dt.value=b.dataset.d||'';
+    if(mt&&b.dataset.m&&Array.prototype.some.call(mt.options,function(op){return op.value===b.dataset.m;}))mt.value=b.dataset.m;
+    root.querySelectorAll('.prcRow').forEach(function(x){const on=x===b;x.setAttribute('aria-pressed',on?'true':'false');x.style.borderColor=on?'var(--clay)':'var(--line-soft)';});
   };});
   return {열림:'간이영수증',현장:name};
 }
@@ -19682,6 +19693,10 @@ function hjDocDeliverView(name,html,base,label,backFn,opts){
     B('hjDocPdf','clay','🖨 PDF로 저장 · 인쇄','인쇄 창에서 "PDF로 저장"을 고르세요 — 관리사무소 제출은 이게 무난합니다')+
     B('hjDocWord','blue','📄 워드(.doc)로 저장','워드에서 열어 고칠 수 있습니다')+
     B('hjDocHtml','ghost','🔗 공유 · HTML 파일','카톡·문자로 그냥 넘길 때')+
+    // v433 이미지 한 장·문자 초안·다음 단계 버튼 — 확인서·경위서·간이영수증이 켠다(기존 문서는 그대로 세 갈래).
+    ((opts&&opts.image)?B('hjDocImage','ghost','🖼 이미지(PNG) 한 장','문자·카톡에 사진처럼 바로 붙일 때'):'')+
+    ((opts&&opts.sms&&opts.sms.text)?B('hjDocSms','ghost','💬 문자 초안','문구만 채워 둡니다 — 파일 첨부는 직접'):'')+
+    ((opts&&Array.isArray(opts.extra))?opts.extra.map(function(x){return B(x.id,x.cls||'ghost',x.txt,x.sub||'');}).join(''):'')+
     ((opts&&typeof opts.onSign==='function')?B('hjDocSign','moss','✍ 확인자 서명 받기','현장에서 폰을 건네 관리사무소·의뢰인이 직접 서명 — 서명이 문서에 들어갑니다'):'')+
     ((opts&&typeof opts.onSignLink==='function')?B('hjDocSignLink','ghost','🔗 링크로 서명받기','확인자가 자리에 없을 때 — 링크를 보내고, 서명하면 가져와 문서에 붙입니다'):''),
     backFn?[{label:'← 뒤로',cls:'ghost',fn:backFn},{label:'닫기',cls:'ghost',fn:closeModal}]
@@ -19694,6 +19709,15 @@ function hjDocDeliverView(name,html,base,label,backFn,opts){
     try{const ok=await hjWarrantyShareHtml(name,html,base+'.html',label);if(ok===true&&onDeliver)onDeliver('html');}
     catch(e){toast('저장 실패: '+(e.message||e));}
   });
+  on('hjDocImage',async function(){
+    try{const ok=await hjDocHtmlToPng(html,base);if(ok===true&&onDeliver)onDeliver('image');}
+    catch(e){toast('이미지 저장 실패: '+(e.message||e));}
+  });
+  on('hjDocSms',function(){
+    const sm=opts.sms;
+    msgCenterCompose(sm.kind||'doc433',{project:name,text:sm.text,back:function(){hjDocDeliverView(name,html,base,label,backFn,opts);}});
+  });
+  (opts&&Array.isArray(opts.extra)?opts.extra:[]).forEach(function(x){if(typeof x.fn==='function')on(x.id,x.fn);});
   on('hjDocSign',function(){opts.onSign();});
   on('hjDocSignLink',function(){opts.onSignLink();});
   return true;
@@ -35004,10 +35028,14 @@ function hjLeakPaymentView(q,back){
     if(busy)return;const form=document.getElementById('hjLeakPayForm');if(!form)return;
     const g=id=>form.querySelector('#'+id),input={method:g('hjLeakPayMethod').value,amount:g('hjLeakPayAmount').value,at:g('hjLeakPayDate').value,receipt:{type:g('hjLeakPayReceipt').value,issued:g('hjLeakPayIssued').checked}};
     busy=true;__modalCloseLocked=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select')];controls.forEach(el=>el.disabled=true);let saved=false;
-    try{await hjLeakPaymentSave(context,input,()=>form.isConnected&&document.getElementById('hjLeakPayForm')===form);webWorkMarkDirtyAfterPersist();saved=true;}
+    let savedPaid=null;
+    try{const r=await hjLeakPaymentSave(context,input,()=>form.isConnected&&document.getElementById('hjLeakPayForm')===form);webWorkMarkDirtyAfterPersist();saved=true;savedPaid=r&&r.paid&&typeof r.paid==='object'?r.paid:null;}
     catch(e){const issue=g('hjLeakPayIssue');if(issue)issue.textContent=String(e&&e.message||'저장하지 못했습니다. 다시 시도해 주세요.');}
     finally{__modalCloseLocked=false;busy=false;controls.forEach(el=>el.disabled=false);if(g('hjLeakPayReceipt').value==='없음')g('hjLeakPayIssued').disabled=true;}
-    if(!saved)return;closeModal(true);render();toast('💳 받은 돈을 저장했어요');if(typeof back==='function')back();
+    if(!saved)return;closeModal(true);render();toast('💳 받은 돈을 저장했어요');
+    // v433 저장 직후 그 입금 기록으로 간이영수증을 바로 만들 수 있게 — 선택 창(나중에 → 원래 화면). 저장 자체는 위에서 이미 끝났다.
+    if(savedPaid&&typeof hjPayRcptOffer==='function'&&hjPayRcptOffer(context.saved.project,{amt:savedPaid.amount,date:savedPaid.at,method:savedPaid.method,payLogId:savedPaid.payLogId},back))return;
+    if(typeof back==='function')back();
   };
   openModal('💳 받은 돈 기록',body,[{label:'저장',cls:'blue',fn:save},{label:'취소',cls:'ghost',fn:()=>{closeModal();if(typeof back==='function')back();}}],true);
   const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
@@ -35020,7 +35048,12 @@ function hjLeakReceiptPending(quotes){
   return (Array.isArray(quotes)?quotes:(state.quotes||[])).filter(q=>q&&q.paid&&Number(q.paid.amount)>0&&q.paid.receipt&&['세금계산서','현금영수증'].includes(q.paid.receipt.type)&&q.paid.receipt.issued!==true).length;
 }
 function hjLeakReceiptPendingHtml(){
-  const count=hjLeakReceiptPending();return count?'<div data-leak-receipts style="font-size:13px;margin:6px 0;color:var(--warn)">영수증 미발행 '+count+'건</div>':'';
+  const count=hjLeakReceiptPending();
+  // v433 간이영수증(대금 수령 확인)은 세금계산서·현금영수증과 별개 — 같은 줄에 구분해서만 보여 주고 미발행 수에는 섞지 않는다.
+  const simple=typeof hjDoc433SimpleReceipts==='function'?hjDoc433SimpleReceipts():0;
+  if(!count&&!simple)return '';
+  return '<div data-leak-receipts style="font-size:13px;margin:6px 0;color:var(--warn)">'+(count?'영수증 미발행 '+count+'건':'')+(count&&simple?' · ':'')+
+    (simple?'<span data-doc433-simple style="color:var(--muted)">간이영수증 발행 '+simple+'건 (이번 달 · 세금계산서·현금영수증과 별개)</span>':'')+'</div>';
 }
 
 /* v422 누수 보고서는 저장된 현장·탐지·견적과 태그 사진의 읽기 전용 초안이다.
@@ -38712,35 +38745,79 @@ function aptReportView(pjName){
   return {사진:ph.length};
 }
 
-/* ═══ v214 📎 서류 허브 — 현장 문서를 한곳에서 ═══ */
+/* ═══ v214 📎 서류 허브 → v433 📎 문서 센터 — 업무 단계별 그룹 + "자동으로 채워지는 것 / 비어 있는 자료" 한 줄 ═══
+   진입점은 그대로 하나(더보기·현장 카드의 📎 서류 만들기). 기능을 더하지 않고 자리만 정리했고, 예정 항목은 회색으로 두어
+   다음 지시서 번호를 적어 둔다 — 눌러도 아무 데도 가지 않는다는 것을 토스트로 말한다. 기존 8개 진입점(완료보고서·하자보증서·
+   보증서 문자·간이영수증·정산 문서·ZIP·PDF 묶음·포트폴리오)은 같은 함수로 그대로 연다. */
+const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438',damage:'v442',bundle:'v427',apt:'v441'});
 function docHubView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
-  const ph=(state.files||[]).filter(function(f){return f.project===pjName&&f.kind==='photo';}).length;
-  const doneOk=!!p.doneAt;
-  const item=function(icon,title,desc,act,tone,warn){
-    return '<button class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;background:'+(tone||'var(--paper)')+'">'+
+  const files=(state.files||[]).filter(function(f){return f&&f.project===pjName;});
+  const ph=files.filter(function(f){return f.kind==='photo';}).length;
+  const docThumbs=files.filter(function(f){return f.kind==='photo'&&hjDocThumbOk(f);}).length;
+  const doneOk=!!p.doneAt,leak=p.kind==='leak';
+  const quotes=(state.quotes||[]).filter(function(q){return q&&q.project===pjName;}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  const est=files.filter(function(f){return f.kind==='estimate';}).length,anyQuote=quotes.length+est;
+  const pays=(state.payLog||[]).filter(function(x){return x&&x.project===pjName&&num(x.amt)>0;});
+  const logs=hjDocLogs(p),last=function(type){const r=hjDocLogsOf(p,type);return r.length?r[r.length-1]:null;};
+  const sigs=Array.isArray(p.warrantySigs)?p.warrantySigs.length:0;
+  let w=null;try{w=hjWarranty(p);}catch(e){w=null;}
+  const intake=!!(p.leak&&p.leak.intake),detect=!!(p.leak&&p.leak.detect),reports=Array.isArray(p.leak&&p.leak.reports)?p.leak.reports.length:0;
+  const wl=(state.schedule||[]).filter(function(s){return s&&s.project===pjName&&hjSchReported(s);}).length;
+  const asN=(state.asLog||[]).filter(function(a){return a&&a.project===pjName;}).length;
+  const cust=p.customer||{};
+  const issued=function(type){const r=last(type);return r?'발행 '+r.no+' · '+(hjPhotoKoreanDay({when:r.at})||''):'';};
+  const NEW='<span style="font-size:10px;color:#0a7f43;font-weight:700"> 새</span>';
+  const item=function(icon,title,desc,act,status,tone){
+    const planned=/^todo:/.test(act);
+    return '<button type="button" class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;min-height:44px;background:'+(planned?'var(--paper-2);opacity:.72':'var(--paper)')+'">'+
       '<span style="font-size:19px;line-height:1.1">'+icon+'</span>'+
-      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+'</b>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+(planned?' <span style="font-size:10.5px;color:var(--muted);font-weight:600">예정 · '+HJ_DOC433_PLANNED[act.slice(5)]+'</span>':'')+'</b>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div>'+
-      (warn?'<div style="font-size:10.5px;color:#c2410c;margin-top:3px">'+warn+'</div>':'')+'</span></button>';
+      (status?'<div class="docHubStatus" style="font-size:10.5px;margin-top:3px;color:'+(tone==='warn'?'#c2410c':tone==='ok'?'#0a7f43':'var(--muted)')+'">'+status+'</div>':'')+'</span></button>';
   };
+  const group=function(title){return '<div class="docHubGroup" style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">'+title+'</div>';};
   openModal('📎 서류 만들기 — '+pjName,
-    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">사진 '+ph+'장 · '+(doneOk?('준공 '+p.doneAt):'진행 중')+'</div>'+
-    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:4px 0 6px">제출·보고</div>'+
-    item('📄','완료보고서 PDF','관리사무소·고객 제출용. 표지+사진대장+확인란까지 A4로.','aptreport','var(--paper)',ph?'':'사진이 없으면 대장이 비어요')+
-    item('🛡','하자보증서','관리사무소 제출용 「작업 하자보증서」. 제출처·작업장소·완료일·보증기간이 채워집니다.','warranty','var(--paper)',doneOk?'':'준공 처리 후 발급됩니다')+
-    item('🧾','완료보증서 문자로 보내기','파일 대신 문자로 바로 — 고객이 링크로 확인·서명.','wdoc','var(--paper)','')+
-    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">돈·정산</div>'+
-    item('🧾','간이영수증','현장에서 받은 공사대금의 수령 확인. 수령내역·결제방법·수령인 서명란까지.','payrcpt','var(--paper)','')+
-    item('📄','정산 문서 (명세서·청구서)','거래명세서·청구서·하자보증서를 한곳에서.','settle','var(--paper)','')+
-    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">보관·정리</div>'+
-    item('📦','서류 묶음 ZIP','사진·견적·보고서를 한 파일로. 보관·세무·분쟁 대비용.','zip','var(--paper)','')+
-    item('📕','PDF 묶음','사진·서류를 PDF 한 장으로 이어붙입니다.','pdf','var(--paper)','')+
-    item('📖','포트폴리오 PDF','시공 사진을 홍보용 화보로. 새 고객 상담에 보여주세요.','portfolio','var(--paper)',''),
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">사진 '+ph+'장 · 견적 '+anyQuote+'건 · 입금 '+pays.length+'건 · '+(doneOk?('준공 '+escapeHtml(p.doneAt)):'진행 중')+(logs.length?' · 발행 문서 '+logs.length+'건':'')+'</div>'+
+    group('영업·계약')+
+    item('🧾','견적서 (엑셀·PDF)',quotes.length?'최근 견적을 열어 엑셀·PDF 로 내보냅니다.':'새 견적서를 시작합니다.','quote',quotes.length?'견적 '+quotes.length+'건 · 최근 '+escapeHtml(quotes[0].date||''):'견적 없음 — 새로 만들기','')+
+    item('📊','견적 비교표','고객에게 2~3안을 나란히.','todo:compare','','')+
+    item('📝','계약서 초안','견적을 고르면 계약금액·지급 조건이 채워진 초안.','contract',anyQuote?'견적 '+anyQuote+'건에서 고름':'배정된 견적 없음',anyQuote?'':'warn')+
+    item('📋','공사 전 준비 안내문','주차·엘리베이터·소음 안내.','todo:prep','','')+
+    group('시공 중')+
+    item('🗒','작업일지','날짜별 한 일·시간을 적습니다.','worklog',wl?'기록 '+wl+'건':'기록 없음','')+
+    item('🖼','일일 작업보고서 (사진)','최근 사진 4장으로 고객 진행 보고 이미지.','progress',ph?'사진 '+ph+'장':'사진 없음 — 보고서가 비어요',ph?'':'warn')+
+    item('🚚','자재 발주서','견적 품목을 거래처별 발주서로.','order',quotes.length?'최근 견적 품목 기준':'앱 견적 없음',quotes.length?'':'warn')+
+    item('📤','작업 지시서 PDF (팀 패킷)','팀 앱으로 보내는 업무 지시.','todo:wo','','')+
+    group('준공·돈')+
+    item('📄','완료보고서 PDF','관리사무소·고객 제출용. 표지+사진대장+확인란까지 A4로.','aptreport',(ph?'사진 '+ph+'장':'사진 0장')+' · '+(doneOk?'준공일 '+escapeHtml(p.doneAt):'준공일 없음'),(ph&&doneOk)?'':'warn')+
+    item('🧰','수리·작업 확인서'+NEW,'"오늘 이렇게 했습니다" 한 장 — 방문·작업·자재·전후 사진·보증, 고객 서명까지.','workcert',issued('workcert')||('사진 '+docThumbs+'장 · '+(cust.addr?'주소 있음':'주소 없음')+' · 번호 자동'),issued('workcert')?'ok':'')+
+    item('📋','거래명세서','공급 품목·금액·기수금을 정리한 명세.','statement',anyQuote?'품목 자동':'견적 없음 — 품목이 비어요',anyQuote?'':'warn')+
+    item('💳','청구서','잔금(또는 전액) 청구 + 입금 계좌.','invoice','','')+
+    item('🧾','간이영수증 <span style="font-size:10px;color:#0a7f43;font-weight:700">바로 보내기</span>','이번에 받은 돈의 수령 확인 — 입금 기록에서 고르면 채워지고, PDF·이미지·문자 초안까지.','payrcpt',issued('payrcpt')||(pays.length?'입금 기록 '+pays.length+'건':'입금 기록 없음 — 금액은 손으로'),issued('payrcpt')?'ok':'')+
+    item('📄','정산 문서 한곳에서','거래명세서·청구서·하자보증서·간이영수증을 한 화면에서.','settle','','')+
+    item('🏠','준공 후 관리 안내문','환기·실리콘·배수 관리 팁.','todo:aftercare','','')+
+    group('AS·보증')+
+    item('🛡','하자보증서','관리사무소 제출용 「작업 하자보증서」. 제출처·작업장소·완료일·보증기간이 채워집니다.','warranty',doneOk?((w?'보증 ~'+escapeHtml(w.end):'보증 기간 기본값')+(sigs?' · 서명 '+sigs+'건':'')):'준공 처리 후 발급됩니다',doneOk?'':'warn')+
+    item('🔗','보증서 문자 링크','파일 대신 문자로 바로 — 고객이 링크로 확인·서명.','wdoc',cust.phone?'고객 번호 있음':'고객 번호 없음',cust.phone?'':'warn')+
+    item('🛠','AS 방문 확인 (AS 로그)','접수·방문·처리 기록.','aslog',asN?'AS '+asN+'건':'AS 기록 없음','')+
+    group('누수·보험')+
+    item('📄','누수 보고서',leak?'보험사·관리사무소·아랫집 용도별 PDF.':'누수 현장에서만.','leakreport',leak?('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+(reports?' · 발행 '+reports+'건':'')):'누수 현장 아님',(leak&&intake&&detect)?'':'warn')+
+    item('📝','누수 사고 경위서'+NEW,'보험 청구 보조 — 접수·탐지·조치를 사실 순서로 1쪽. 용도 3종.','leaknarr',leak?(issued('leaknarr')||('접수 '+(intake?'✓':'없음')+' · 탐지 '+(detect?'✓':'없음')+' · 조치 '+((quotes.length||doneOk)?'✓':'없음'))):'누수 현장 아님',leak?(issued('leaknarr')?'ok':''):'warn')+
+    item('🏢','피해 확인서 (아랫집)','피해 세대 확인용 체크리스트.','todo:damage','','')+
+    item('🗂','증빙 묶음','사진·견적·영수증·문서를 건별로.','todo:bundle','','')+
+    group('아파트·행정')+
+    item('🏢','공사 신청서 · 입주민 안내문 · 엘리베이터 게시문 · 이웃 동의서','아파트 4종 — 앱 안에서 작성.','todo:apt','','')+
+    group('보관')+
+    item('📦','서류 묶음 ZIP','사진·견적·보고서를 한 파일로. 보관·세무·분쟁 대비용.','zip',logs.length?'발행 문서 '+logs.length+'건 포함':'','')+
+    item('📕','PDF 묶음','사진·서류를 PDF 한 장으로 이어붙입니다.','pdf','','')+
+    item('📖','포트폴리오 PDF','시공 사진을 홍보용 화보로. 새 고객 상담에 보여주세요.','portfolio','',''),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
   document.querySelectorAll('#modalRoot .docHubBtn').forEach(function(b){b.onclick=function(){
     const a=b.dataset.act;
+    if(/^todo:/.test(a)){toast('다음 지시서 예정 ('+HJ_DOC433_PLANNED[a.slice(5)]+') — 지금은 기존 문서로 대신해 주세요');return;}
     closeModal();
     setTimeout(function(){
       try{
@@ -38752,10 +38829,342 @@ function docHubView(pjName){
         else if(a==='portfolio')exportPortfolio(pjName);
         else if(a==='payrcpt')payRcptDialog(pjName);
         else if(a==='settle')settleDocs(pjName);
+        else if(a==='statement'||a==='invoice'){const def=HJ_SETTLE_DOCS[a];hjDocDeliverView(pjName,def.fn(pjName),safeName(pjName)+'_'+def.t+'_'+localDate(),def.ic+' '+def.t,function(){docHubView(pjName);});}
+        else if(a==='workcert')hjWorkCertView(pjName);
+        else if(a==='leaknarr'){if(leak)hjLeakNarrView(pjName);else toast('누수 현장에서만 만들 수 있어요');}
+        else if(a==='leakreport'){if(leak)hjLeakReportView(pjName);else toast('누수 현장에서만 만들 수 있어요');}
+        else if(a==='quote'){if(quotes.length)editQuote(quotes[0].id);else hjQuoteStartFor(pjName);}
+        else if(a==='contract')contractDraftView();
+        else if(a==='worklog')workView(pjName);
+        else if(a==='progress')makeProgressReport(pjName);
+        else if(a==='order'){if(quotes.length)materialOrder(quotes[0].id);else toast('앱 견적이 없어요 — 견적서를 먼저 만들어 주세요');}
+        else if(a==='aslog')asHistoryView();
       }catch(e){toast('열 수 없어요: '+(e.message||e));}
     },80);
   };});
-  return {현장:pjName,사진:ph};
+  return {현장:pjName,사진:ph,문서:logs.length};
+}
+/* ═══ v433 문서 센터 — 수리·작업 확인서 · 누수 사고 경위서 · 간이영수증 바로 보내기 ═══
+   발행 기록은 현장 레코드 안 p.docs[] 에만 남긴다(새 최상위 직렬화 키 없음). 모델·미리보기는 읽기 전용이고,
+   실제로 PDF·워드·HTML·이미지를 가져간 시점에만 durableLocalMutation 으로 p.docs + 현장 노트 한 줄을 원자 저장한다(번호 기준 한 번).
+   출력 엔진은 기존 hjDocShell/hjDocPrint/hjDocWordMhtml/hjDocDownload 그대로 — 이미지(PNG)만 견적서 PDF 가 쓰는 html2canvas 로더로 한 장 뜬다.
+   금액은 체크해야 보이고(기본 숨김), 의뢰인 이름은 가림이 기본이다 — 틀리면 위험한 칸은 사람이 켠다. */
+const HJ_DOC433_TYPES=Object.freeze({
+  workcert:Object.freeze({t:'수리·작업 확인서',prefix:'WC',ic:'🧰'}),
+  leaknarr:Object.freeze({t:'누수 사고 경위서',prefix:'LN',ic:'📝'}),
+  payrcpt:Object.freeze({t:'간이영수증',prefix:'MM',ic:'🧾'})
+});
+const HJ_DOC433_NO_RE=/^(WC|LN|MM)-(\d{8})-(\d{2,})$/;
+const HJ_LEAKNARR_PURPOSES=Object.freeze({insurance:'보험사 제출용',office:'관리사무소 제출용',self:'본인 보관용'});
+const HJ_LEAKNARR_SCOPES=Object.freeze(['우리 집(세대 안)','아랫집','공용부']);
+const HJ_DOC433_DISCLAIMER='사실 관계 정리용 — 보험 심사·책임 판단을 대신하지 않습니다.';
+const HJ_DOC433_TAX_NOTE='세금계산서·현금영수증은 홈택스에서 따로 발행합니다.';
+const HJ_DOC433_RCPT_SMS='오늘 받은 공사대금 영수증입니다. 세금계산서/현금영수증은 홈택스 발행 기준으로 안내드립니다.';
+const HJ_DOC433_DEFAULT_WARRANTY='수리 부위 1년 책임 보수';
+const HJ_DOC433_TEXT_LIMIT=600;
+function hjDocLogs(p){return Array.isArray(p&&p.docs)?p.docs.filter(x=>x&&typeof x==='object'&&typeof x.no==='string'&&typeof x.type==='string'):[];}
+function hjDocLogsOf(p,type){return hjDocLogs(p).filter(x=>x.type===type);}
+/* 번호는 전체 현장의 발행 기록만 읽어 제안한다 — 미리보기로 소비하지 않는다(v422 보고서 번호와 같은 규칙). */
+function hjDocNextNo(prefix,source=state,day=localDate()){
+  const date=String(day||'').replace(/-/g,'');let max=0;
+  if(!/^\d{8}$/.test(date)||!HJ_DOC433_NO_RE.test(prefix+'-'+date+'-01'))throw new Error('문서 번호를 만들 수 없습니다.');
+  (source.projects||[]).forEach(p=>hjDocLogs(p).forEach(r=>{const m=HJ_DOC433_NO_RE.exec(r.no);if(m&&m[1]===prefix&&m[2]===date){const n=Number(m[3]);if(Number.isSafeInteger(n)&&n>max)max=n;}}));
+  return prefix+'-'+date+'-'+String(max+1).padStart(2,'0');
+}
+function hjDoc433No(prefix,given){const no=String(given||'');return HJ_DOC433_NO_RE.test(no)&&no.indexOf(prefix+'-')===0?no:hjDocNextNo(prefix);}
+function hjDoc433Text(v,max=HJ_DOC433_TEXT_LIMIT){return typeof v==='string'?v.slice(0,max):'';}
+function hjDoc433Name(p,full){const name=hjDoc433Text(p&&p.customer&&p.customer.name,100).trim();return full===true?(name||'의뢰인'):hjLeakReportMaskName(name);}
+/* 현장 사진 — 전/후 1장씩(누수 현장은 v420 태그, 그 밖에는 공정), 없으면 최신 2장. 문서에 실을 수 있는 썸네일만(hjDocThumbOk). */
+function hjDoc433Photos(p,max=2){
+  const pool=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&f.project===p.name&&hjDocThumbOk(f));
+  const time=f=>{const n=new Date(f.when||0).getTime();return Number.isFinite(n)?n:0;};
+  const leak=p.kind==='leak',cap=(f,label)=>({id:String(f.id||''),label,thumb:f.thumb,caption:label+(hjPhotoKoreanDay(f)?' · '+hjPhotoKoreanDay(f):'')});
+  const before=pool.filter(f=>leak?hjPhotoLeakTag(f)==='before':hjPhaseHit(f,PHASE_BEFORE)).sort((a,b)=>time(a)-time(b));
+  const after=pool.filter(f=>leak?hjPhotoLeakTag(f)==='after':hjPhaseHit(f,PHASE_AFTER)).sort((a,b)=>time(b)-time(a));
+  const cause=leak?pool.filter(f=>hjPhotoLeakTag(f)==='cause').sort((a,b)=>time(a)-time(b)):[];
+  const pick=[];
+  if(before[0])pick.push(cap(before[0],leak?HJ_PHOTO_LEAK_LABELS.before:PHASE_SIDE_NAME.before));
+  if(after[0])pick.push(cap(after[0],leak?HJ_PHOTO_LEAK_LABELS.after:PHASE_SIDE_NAME.after));
+  if(!pick.length)pool.slice().sort((a,b)=>time(b)-time(a)).slice(0,max).forEach(f=>pick.push(cap(f,'현장 사진')));
+  return {photos:pick.slice(0,max),cause:cause.slice(0,2).map(f=>cap(f,HJ_PHOTO_LEAK_LABELS.cause)),total:pool.length,beforeN:before.length,afterN:after.length};
+}
+/* 방문 일시 — 보고된 출동(🚨) → 출동 → 이 현장의 최근 일정(오늘까지) → 준공일. 없으면 빈칸(앱이 날짜를 지어내지 않는다). */
+function hjDoc433Visit(p){
+  const today=localDate();
+  const rows=(state.schedule||[]).filter(s=>s&&s.project===p.name&&isRealIsoDate(String(s.date||''))&&s.date<=today).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.time||'').localeCompare(String(a.time||'')));
+  const s=rows.find(x=>x.urgent===true&&hjSchReported(x))||rows.find(x=>x.urgent===true)||rows[0]||null;
+  if(s)return {date:s.date,time:typeof s.time==='string'?s.time:'',label:s.date+(typeof s.time==='string'&&s.time?' '+s.time:'')};
+  return p.doneAt?{date:p.doneAt,time:'',label:String(p.doneAt)}:null;
+}
+/* 작업 내용·자재 — 누수 즉시 견적(v421) 품목 → 청구 기준 견적 품목 → 완료보고서 공정(사진 작업명) 순. 앱이 아는 것만 적는다. */
+function hjDoc433Works(p){
+  const d=settleDocData(p.name);
+  if(!d)return {works:[],materials:[],quote:null,total:0,vat:'',recv:0,cust:{},warranty:null};
+  const lq=p.kind==='leak'?hjLeakReportQuote(p):null;
+  const items=lq?(Array.isArray(lq.items)?lq.items:[]).filter(it=>it&&hjDoc433Text(it.name,200).trim()).map(it=>({name:hjDoc433Text(it.name,200),qty:it.qty==null?'':String(it.qty),spec:hjDoc433Text(it.spec,100)}))
+                :d.items.map(it=>({name:String(it.name||''),qty:it.qty==null?'':String(it.qty),spec:String(it.spec||'')}));
+  let works=items.map(it=>it.name+(it.qty?' '+it.qty+it.spec:''));
+  if(!works.length){try{works=hjReportDraft(p.name).works.slice();}catch(e){works=[];}}
+  let total=0,vat='';
+  if(lq){if(!hjLeakQuoteIssue(lq)){total=quoteCalc(lq).total;vat=lq.vatIncluded?'부가세 포함':'부가세 별도';}}
+  else if(num(d.billTotal)>0){total=num(d.billTotal);vat='부가세 포함';}
+  return {works,materials:items.map(it=>it.name+(it.qty?' '+it.qty+it.spec:'')),quote:lq||d.quote||null,total,vat,recv:num(d.recv),cust:d.cust||{},warranty:d.warranty};
+}
+function hjDoc433WarrantyText(p){
+  const w=p&&p.warranty;
+  if(w&&typeof w==='object'&&Array.isArray(w.items)&&w.items.length)return p.kind==='leak'?hjLeakWarrantyReportText(p):hjWarrantyPeriodText(w.items);
+  return HJ_DOC433_DEFAULT_WARRANTY;
+}
+/* F2 수리·작업 확인서 모델 — 읽기 전용. 번호는 주어진 것(같은 화면에서 다시 만들 때)을 쓰고 없으면 다음 번호를 제안한다. */
+function hjWorkCertModel(p,input){
+  if(!p)return null;
+  const o=input&&typeof input==='object'?input:{};
+  const base=hjDoc433Works(p),visit=hjDoc433Visit(p),photos=hjDoc433Photos(p),day=localDate();
+  const works=o.works==null?base.works:String(o.works).split('\n').map(s=>s.trim()).filter(Boolean).slice(0,30);
+  const showAmount=o.showAmount===true,fullName=o.fullName===true;
+  const sig=o.sig&&typeof o.sig==='object'&&WR_SIG_PNG_RE.test(String(o.sig.png||''))?{name:String(o.sig.name||''),org:String(o.sig.org||''),at:String(o.sig.at||''),png:o.sig.png}:null;
+  return {type:'workcert',title:HJ_DOC433_TYPES.workcert.t,no:hjDoc433No('WC',o.no),day,at:new Date().toISOString(),project:p.name,
+    address:hjDoc433Text(base.cust.addr,300),customer:hjDoc433Name(p,fullName),fullName,visit:visit?visit.label:'',
+    works,materials:base.materials.slice(0,30),amount:(showAmount&&base.total>0)?{total:base.total,vat:base.vat,recv:base.recv}:null,showAmount,total:base.total,
+    warranty:hjDoc433Text(o.warranty,200).trim()||hjDoc433WarrantyText(p),photos:photos.photos,photoNote:photos.total?'':'사진 없음 — 사진을 넣으면 전/후 1장씩 들어갑니다',
+    memo:hjDoc433Text(o.memo),sig,taxNote:HJ_DOC433_TAX_NOTE,worker:COMPANY.owner};
+}
+function hjDoc433Cell(v,n){return (v==null||String(v)==='')?'<span style="display:inline-block;min-width:'+(n||150)+'px;border-bottom:1px solid #c7d2e0">&nbsp;</span>':escapeHtml(String(v));}
+function hjDoc433Row(k,v){return '<tr><td class="nm" style="width:112px;background:#f7fafd;vertical-align:top;font-weight:700">'+k+'</td><td>'+v+'</td></tr>';}
+function hjDoc433List(list){return list&&list.length?'<ul style="margin:0;padding-left:18px;line-height:1.8">'+list.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>':hjDoc433Cell('',300);}
+function hjDoc433PhotoGrid(list,attr){
+  if(!list||!list.length)return '';
+  return '<div '+attr+' style="display:grid;grid-template-columns:repeat('+(list.length>=2?2:1)+',minmax(0,1fr));gap:8px;margin:6px 0 14px">'+list.map(f=>'<figure class="keep" style="margin:0;border:1px solid #e5ebf2;border-radius:8px;overflow:hidden"><img data-photo="'+escapeAttr(f.id)+'" src="'+escapeAttr(f.thumb)+'" alt="'+escapeAttr(f.label)+'" style="display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:#eef2f7"><figcaption style="font-size:11px;color:#5b6b82;text-align:center;padding:5px">'+escapeHtml(f.caption)+'</figcaption></figure>').join('')+'</div>';
+}
+function hjDoc433SignRow(left,right){
+  const box=x=>'<div class="keep" style="flex:1;min-width:220px;border:1px solid #e5ebf2;border-radius:10px;padding:12px 14px"><div style="font-size:12px;color:#5b6b82;font-weight:700;margin-bottom:8px">'+x.title+'</div><div style="font-size:12.5px;line-height:2">'+x.body+'</div><div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5ebf2;font-size:12px;color:#8b98ab;min-height:34px">'+(x.foot||'서명 또는 날인')+'</div></div>';
+  return '<div style="display:flex;gap:10px;flex-wrap:wrap">'+box(left)+box(right)+'</div>';
+}
+function hjWorkCertHtml(m){
+  if(!m)return null;
+  const sigFoot=m.sig?'<img src="'+escapeAttr(m.sig.png)+'" alt="고객 서명" style="display:block;height:56px;max-width:100%;object-fit:contain"><div style="margin-top:4px">서명 '+escapeHtml(m.sig.at)+' · 전자서명(앱 서명판)</div>':'';
+  const inner=
+    '<div class="prow"><span><b>문서번호</b>'+escapeHtml(m.no)+'</span><span><b>작성일</b>'+hjDocDate(m.day)+'</span></div>'+
+    '<table class="items"><tbody>'+
+      hjDoc433Row('현장명',escapeHtml(m.project))+hjDoc433Row('현장 주소',hjDoc433Cell(m.address,260))+hjDoc433Row('의뢰인',escapeHtml(m.customer))+
+      hjDoc433Row('방문 일시',hjDoc433Cell(m.visit,160))+hjDoc433Row('작업 내용',hjDoc433List(m.works))+hjDoc433Row('사용 자재',hjDoc433List(m.materials))+
+      (m.amount?'<tr data-doc433-amount><td class="nm" style="background:#f7fafd;font-weight:700">공사 금액</td><td><b>'+hjNum(m.amount.total)+' 원</b> <span style="color:#5b6b82">('+escapeHtml(m.amount.vat)+')</span>'+(m.amount.recv>0?' · 받은 돈 '+hjNum(m.amount.recv)+' 원':'')+'</td></tr>':'')+
+      hjDoc433Row('보증',escapeHtml(m.warranty))+(m.memo?hjDoc433Row('특이사항','<div style="white-space:pre-wrap">'+escapeHtml(m.memo)+'</div>'):'')+
+    '</tbody></table>'+
+    (m.photos.length?'<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:4px 0 0">작업 사진</div>'+hjDoc433PhotoGrid(m.photos,'data-doc433-photos'):(m.photoNote?'<div class="note">'+escapeHtml(m.photoNote)+'</div>':''))+
+    '<div style="font-size:13px;line-height:1.8;margin:6px 0 12px">위와 같이 작업을 수행하였음을 확인합니다.</div>'+
+    hjDoc433SignRow({title:'작업자 ('+escapeHtml(COMPANY.name)+')',body:'대표자 : '+escapeHtml(m.worker)+'<br>연락처 : '+escapeHtml(COMPANY.tel)+'<br>사업자등록번호 : '+escapeHtml(COMPANY.bizno)},
+      {title:'고객 확인',body:'성명 : '+(m.sig&&m.sig.name?escapeHtml(m.sig.name):hjDoc433Cell('',120))+'<br>동·호수 / 소속 : '+(m.sig&&m.sig.org?escapeHtml(m.sig.org):hjDoc433Cell('',120))+'<br>연락처 : '+hjDoc433Cell('',120),foot:sigFoot})+
+    '<div class="note" data-doc433-taxnote style="margin-top:16px">※ '+escapeHtml(m.taxNote)+'</div>';
+  return hjDocShell('수리 · 작업 확인서',inner,'#0e7a6b');
+}
+/* 공통 발행 기록 — 실제로 파일을 가져간 시점에만, 번호 기준으로 한 번만. 같은 번호가 다른 현장에 이미 있으면 막는다. */
+async function hjDoc433Issue(name,entry){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p||!entry||!HJ_DOC433_TYPES[entry.type]||!HJ_DOC433_NO_RE.test(String(entry.no||'')))throw new Error('문서 발행 정보를 확인해 주세요.');
+  const def=HJ_DOC433_TYPES[entry.type],no=String(entry.no);
+  if(hjDocLogsOf(p,entry.type).some(r=>r.no===no))return {dup:true,no};
+  if((state.projects||[]).some(x=>x&&x!==p&&hjDocLogsOf(x,entry.type).some(r=>r.no===no)))throw new Error('문서 번호 '+no+'는 다른 현장에서 이미 썼습니다. 문서를 다시 만들어 주세요.');
+  const at=new Date().toISOString();
+  const record={type:entry.type,no,at,purpose:hjDoc433Text(entry.purpose,60),name:hjDoc433Text(entry.name,120)||def.t};
+  const stamp=paidStableJson(projectBackupSafe(p));
+  const ensure=()=>{const cur=(state.projects||[]).find(x=>x&&x.name===name);if(!cur||paidStableJson(projectBackupSafe(cur))!==stamp)throw new Error('현장 정보가 바뀌었습니다. 문서를 다시 열어 주세요.');};
+  return durableLocalMutation({snapshotLabel:'문서 발행 기록 전',beforeCommit:ensure,mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
+    if(!target)throw new Error('현장을 찾을 수 없습니다.');
+    if(target.docs!=null&&!Array.isArray(target.docs))throw new Error('기존 문서 기록 형식을 확인해 주세요.');
+    if((target.docs||[]).some(r=>r&&r.no===no&&r.type===record.type))return {dup:true,no};
+    target.docs=[...(target.docs||[]),record];
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[문서] '+def.t+' 발행 · '+no+(record.purpose?' · '+record.purpose:''),project:name});
+    return record;
+  }});
+}
+function hjDoc433IssueQuiet(name,entry){
+  return hjDoc433Issue(name,entry).then(r=>{if(r&&!r.dup){webWorkMarkDirtyAfterPersist();toast(HJ_DOC433_TYPES[entry.type].ic+' '+HJ_DOC433_TYPES[entry.type].t+' '+r.no+' 발행 기록');}return r;}).catch(e=>{toast('발행 기록 실패: '+(e&&e.message||e));return null;});
+}
+/* 문서 HTML → PNG 한 장. 견적서 PDF 가 쓰는 같은 html2canvas 로더(loadExtLib)로 — 새 PDF 엔진이 아니다.
+   화면 밖 iframe 에 문서를 띄워 .doc 만 그린다(인쇄 버튼줄 .pbar 제외) — 문서 스타일이 앱 화면으로 새지 않는다. 공유 가능하면 공유창, 아니면 다운로드. */
+async function hjDocHtmlToPng(html,base){
+  if(!html)return false;
+  await loadExtLib('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',()=>window.html2canvas);
+  let ifr=document.getElementById('hjDocPngFrame');if(ifr)ifr.remove();
+  ifr=document.createElement('iframe');ifr.id='hjDocPngFrame';
+  ifr.style.cssText='position:fixed;left:-10000px;top:0;width:760px;height:1400px;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(ifr);
+  try{
+    const idoc=ifr.contentWindow.document;idoc.open();idoc.write(String(html));idoc.close();
+    await new Promise(res=>{if(idoc.readyState==='complete')return res();ifr.onload=()=>res();setTimeout(res,1500);});
+    idoc.querySelectorAll('.pbar').forEach(el=>el.remove());
+    await Promise.all(Array.prototype.slice.call(idoc.images||[]).map(im=>im.complete?null:new Promise(r=>{im.onload=im.onerror=r;setTimeout(r,3000);})));
+    const target=idoc.querySelector('.doc')||idoc.body;
+    ifr.style.height=Math.max(600,(target.scrollHeight||0)+60)+'px';
+    const cv=await window.html2canvas(target,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
+    const blob=await new Promise(r=>cv.toBlob(r,'image/png'));
+    if(!blob)throw new Error('이미지를 만들지 못했어요');
+    const fname=String(base||'문서')+'.png',file=new File([blob],fname,{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:String(base||'문서')});return true;}catch(e){if(e&&e.name==='AbortError')return false;}}
+    const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);
+    toast('🖼 이미지로 저장했어요 — 문자·카톡에 사진으로 붙이세요');return true;
+  }finally{ifr.remove();}
+}
+function hjDoc433Field(id,label,val,rows){
+  return '<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label>'+
+    '<textarea id="'+id+'" rows="'+(rows||3)+'" maxlength="'+HJ_DOC433_TEXT_LIMIT+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;font-family:inherit;box-sizing:border-box">'+escapeHtml(val||'')+'</textarea>';
+}
+function hjDoc433Check(id,label,on,attr){
+  return '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="'+id+'"'+(attr||'')+(on?' checked':'')+' style="width:18px;height:18px;flex:none"> <span>'+label+'</span></label>';
+}
+/* 최근 입금 한 건 — 현장 마감 2종에서 간이영수증을 미리 채울 때. 정정(마이너스) 줄은 영수증이 될 수 없다. */
+function hjDoc433LastPay(name){
+  const rows=(state.payLog||[]).filter(x=>x&&x.project===name&&num(x.amt)>0).slice().sort((a,b)=>String(b.d||'').localeCompare(String(a.d||'')));
+  const x=rows[0];return x?{amt:won(Math.round(num(x.amt))),date:String(x.d||''),method:['현금','계좌이체','카드','기타'].includes(x.method)?x.method:'',kind:'',payLogId:String(x.id||'')}:null;
+}
+/* F2 수리·작업 확인서 화면 — 자동 채움을 보여주고, 사람이 작업 내용·보증 문구·특이사항만 고친다. 서명은 문서 화면에서 받는다. */
+function hjWorkCertView(name,resume){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const s=resume&&typeof resume==='object'?resume:{works:null,memo:'',warranty:'',showAmount:false,fullName:false,no:''};
+  const m0=hjWorkCertModel(p,s),wk=hjDoc433Works(p),photos=hjDoc433Photos(p);
+  openModal('🧰 수리·작업 확인서 — '+name,
+    '<div id="hjWorkCertForm">'+
+    '<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:6px">자동 채움: 방문 '+(m0.visit?escapeHtml(m0.visit):'<span style="color:#c2410c">일정 없음</span>')+' · 작업 '+m0.works.length+'줄 · 사진 '+photos.photos.length+'장'+(m0.address?'':' · <span style="color:#c2410c">주소 없음</span>')+' · 번호 '+escapeHtml(m0.no)+'</div>'+
+    hjDoc433Field('wcWorks','작업 내용 (한 줄에 하나)',s.works==null?m0.works.join('\n'):s.works,4)+
+    '<label for="wcWarranty" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">보증 문구</label><input id="wcWarranty" maxlength="200" value="'+escapeAttr(s.warranty||m0.warranty)+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px;box-sizing:border-box">'+
+    hjDoc433Field('wcMemo','특이사항 (선택)',s.memo,2)+
+    hjDoc433Check('wcAmount','공사 금액 표시 '+(wk.total>0?'('+escapeHtml(won(wk.total))+(wk.vat?' · '+escapeHtml(wk.vat):'')+')':'(견적 없음 — 표시할 금액이 없어요)'),s.showAmount,wk.total>0?'':' disabled')+
+    hjDoc433Check('wcFullName','의뢰인 이름 전체 표시 (기본은 '+escapeHtml(hjDoc433Name(p,false))+')',s.fullName)+
+    '<p class="hint" style="margin-top:6px">'+escapeHtml(HJ_DOC433_TAX_NOTE)+' 고객 확인 서명은 문서 화면의 [✍ 확인자 서명 받기]로 받습니다.</p></div>',
+    [{label:'🧰 확인서 만들기',cls:'clay',fn:()=>make(false)},{label:'🧾 현장 마감 2종',cls:'moss',fn:()=>make(true)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const read=()=>{const g=id=>document.getElementById(id);
+    s.works=g('wcWorks')?g('wcWorks').value:s.works;s.warranty=g('wcWarranty')?String(g('wcWarranty').value||'').trim():s.warranty;s.memo=g('wcMemo')?g('wcMemo').value:s.memo;
+    s.showAmount=!!(g('wcAmount')&&g('wcAmount').checked);s.fullName=!!(g('wcFullName')&&g('wcFullName').checked);};
+  const live=()=>(state.projects||[]).find(x=>x&&x.name===name)||null;   // 발행 뒤 원자 저장이 레코드를 갈아끼울 수 있다 — 늘 이름으로 다시 찾는다
+  const make=pair=>{
+    read();
+    const cur=live();if(!cur){toast('현장을 찾을 수 없어요');return;}
+    const model=hjWorkCertModel(cur,s);if(!model)return;s.no=model.no;
+    const html=hjWorkCertHtml(model);if(!html){toast('확인서를 만들 수 없어요');return;}
+    closeModal();
+    const base=safeName(name)+'_수리작업확인서_'+model.no;
+    const back=()=>hjWorkCertView(name,s);
+    const smsText=pair?'['+COMPANY.name+'] 오늘 작업 확인서와 공사대금 영수증을 보내드립니다.\n수리·작업 확인서 '+model.no+'\n'+HJ_DOC433_RCPT_SMS
+                      :'['+COMPANY.name+'] 오늘 작업 내용을 정리한 수리·작업 확인서('+model.no+')를 보내드립니다.\n확인 부탁드립니다. '+HJ_DOC433_TAX_NOTE;
+    const show=(doc,sig,mdl)=>hjDocDeliverView(name,doc,base+(sig?'_서명':''),'🧰 수리·작업 확인서'+(sig?' (서명)':''),back,{
+      onDeliver:via=>{hjDoc433IssueQuiet(name,{type:'workcert',no:mdl.no,purpose:via,name:mdl.title});},
+      onSign:sig?undefined:()=>warrantySigCapture(name,{warrantyContext:{doc:'workcert',no:mdl.no}},sg=>{const m2=live()?hjWorkCertModel(live(),{...s,sig:sg}):null;const signed=m2&&hjWorkCertHtml(m2);if(signed)show(signed,sg,m2);else toast('서명이 든 확인서를 만들 수 없어요');}),
+      image:true,sms:{text:smsText,kind:'doc433'},
+      extra:pair?[{id:'hjDocNextRcpt',cls:'moss',txt:'🧾 다음: 간이영수증',sub:'같은 현장의 최근 입금으로 채워 엽니다 — 문자 초안은 위 [💬 문자 초안] 하나로',fn:()=>{closeModal();payRcptDialog(name,hjDoc433LastPay(name)||undefined);}}]:[]
+    });
+    show(html,null,model);
+  };
+  return true;
+}
+/* F4 누수 사고 경위서 — 접수(v419)·탐지(v420)·조치(견적·확인서)를 사실 순서로 정리한다. 금액은 싣지 않는다(경위서는 사실 관계 문서).
+   없는 기록은 빈칸 대신 '기록 없음' 으로 적는다 — 빈칸은 나중에 누가 손으로 채우면 앱 기록과 다른 말이 된다. */
+function hjLeakNarrOptions(input){
+  const o=input&&typeof input==='object'?input:{};
+  const purpose=Object.prototype.hasOwnProperty.call(HJ_LEAKNARR_PURPOSES,o.purpose)?o.purpose:'insurance';
+  return {purpose,fullName:purpose==='insurance'&&o.fullName===true,scopes:HJ_LEAKNARR_SCOPES.filter(s=>Array.isArray(o.scopes)&&o.scopes.includes(s)),
+    damage:hjDoc433Text(o.damage),found:typeof o.found==='string'?o.found.slice(0,HJ_DOC433_TEXT_LIMIT):null,action:typeof o.action==='string'?o.action.slice(0,HJ_DOC433_TEXT_LIMIT):null,no:o.no};
+}
+function hjLeakNarrModel(p,input){
+  if(!p||p.kind!=='leak')return null;
+  const o=hjLeakNarrOptions(input),leak=p.leak&&typeof p.leak==='object'&&!Array.isArray(p.leak)?p.leak:{},day=localDate();
+  const hasIntake=!!(leak.intake&&typeof leak.intake==='object'),intake=hjLeakIntakeData(p);
+  const d=leak.detect&&typeof leak.detect==='object'&&!Array.isArray(leak.detect)?leak.detect:null;
+  const base=hjDoc433Works(p),photos=hjDoc433Photos(p),certs=hjDocLogsOf(p,'workcert'),visit=hjDoc433Visit(p);
+  const detect=d?{methods:HJ_LEAK_METHODS.filter(m=>Array.isArray(d.methods)&&d.methods.includes(m)),cause:HJ_LEAK_CAUSES.includes(d.cause)?d.cause:'원인 미확정',place:hjDoc433Text(d.place,200),zone:HJ_LEAK_ZONES.includes(d.zone)?d.zone:'경계 불명',at:hjPhotoKoreanDay({when:d.at})}:null;
+  return {type:'leaknarr',title:HJ_DOC433_TYPES.leaknarr.t,no:hjDoc433No('LN',o.no),day,at:new Date().toISOString(),purpose:o.purpose,purposeLabel:HJ_LEAKNARR_PURPOSES[o.purpose],
+    project:p.name,address:hjDoc433Text(base.cust.addr,300),customer:hjDoc433Name(p,o.fullName),fullName:o.fullName,
+    hasIntake,receivedAt:hasIntake?hjPhotoKoreanDay({when:intake.at}):'',since:intake.since,where:intake.where.slice(),amount:intake.amount,neighbor:intake.neighbor,office:intake.office,insurance:intake.insurance,
+    found:o.found===null?(hasIntake?hjLeakIntakeSummary(intake):''):o.found,
+    detect,visit:visit?visit.label:'',
+    action:o.action===null?base.works.join('\n'):o.action,hasAction:!!(base.works.length||certs.length||p.doneAt),doneAt:p.doneAt?String(p.doneAt):'',certNos:certs.map(c=>c.no),
+    scopes:o.scopes,damage:o.damage,photos:[...photos.cause,...photos.photos].slice(0,4),disclaimer:HJ_DOC433_DISCLAIMER,privacy:HJ_LEAK_REPORT_PRIVACY};
+}
+function hjLeakNarrHtml(m){
+  if(!m)return null;
+  const none=t=>'<span style="color:#8b98ab">'+escapeHtml(t)+'</span>';
+  const pre=t=>'<div style="white-space:pre-wrap;line-height:1.7">'+escapeHtml(t)+'</div>';
+  const intake=m.hasIntake?[m.receivedAt?'접수일 '+m.receivedAt:'',m.since?'발생 추정 '+m.since:'',m.where.length?'위치 '+m.where.join('·'):'',m.amount?'물 양 '+m.amount:'',m.neighbor?'이웃 '+m.neighbor:'',m.office?'관리사무소 '+m.office:'',m.insurance?'보험 '+m.insurance:''].filter(Boolean).join(' · '):'';
+  const detect=m.detect?[m.detect.at?'탐지일 '+m.detect.at:'',m.detect.methods.length?'방법 '+m.detect.methods.join('·'):'','원인 '+m.detect.cause,m.detect.place?'위치 '+m.detect.place:'','구분 '+m.detect.zone].filter(Boolean).join(' · '):'';
+  const action=[m.visit?'방문 '+m.visit:'',m.doneAt?'완료 '+m.doneAt:'',m.action,m.certNos.length?'수리·작업 확인서 '+m.certNos.join(', '):''].filter(Boolean).join('\n');
+  const inner=
+    '<div class="note" data-doc433-disclaimer style="border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center">'+escapeHtml(m.disclaimer)+'</div>'+
+    '<div class="prow"><span><b>문서번호</b>'+escapeHtml(m.no)+'</span><span><b>작성일</b>'+hjDocDate(m.day)+'</span><span><b>용도</b>'+escapeHtml(m.purposeLabel)+'</span></div>'+
+    '<table class="items"><tbody>'+
+      hjDoc433Row('현장명',escapeHtml(m.project))+hjDoc433Row('주소',hjDoc433Cell(m.address,260))+hjDoc433Row('의뢰인',escapeHtml(m.customer))+
+      hjDoc433Row('① 접수·발견',intake?escapeHtml(intake):none('접수 기록 없음 — 접수 체크리스트를 적으면 채워집니다'))+
+      hjDoc433Row('발견 경위·증상',m.found?pre(m.found):none('기록 없음'))+
+      hjDoc433Row('② 탐지·원인',detect?escapeHtml(detect):none('탐지 기록 없음 — 탐지 기록을 적으면 채워집니다'))+
+      hjDoc433Row('③ 조치·수리',action?pre(action):none('조치 기록 없음 — 견적·확인서를 만들면 채워집니다'))+
+      hjDoc433Row('④ 피해 범위',(m.scopes.length||m.damage)?pre([m.scopes.length?m.scopes.map(s=>'☑ '+s).join('  '):'',m.damage].filter(Boolean).join('\n')):none('피해 범위 미기재 — 체크 후 발행하세요'))+
+    '</tbody></table>'+
+    (m.photos.length?'<div style="font-size:12px;color:#5b6b82;font-weight:700;margin:4px 0 0">현장 사진 (원인·피해)</div>'+hjDoc433PhotoGrid(m.photos,'data-doc433-photos'):'')+
+    '<div style="font-size:12.5px;line-height:1.8;margin:6px 0 12px">위 내용은 현장 확인 시점에 기록한 사실을 정리한 것입니다.</div>'+
+    hjDoc433SignRow({title:'작성자 ('+escapeHtml(COMPANY.name)+')',body:'대표자 : '+escapeHtml(COMPANY.owner)+'<br>연락처 : '+escapeHtml(COMPANY.tel)},{title:'의뢰인 확인',body:'성명 : '+hjDoc433Cell('',120)+'<br>연락처 : '+hjDoc433Cell('',120)})+
+    '<div class="note" style="margin-top:16px">'+escapeHtml(m.privacy)+'</div>';
+  return hjDocShell('누 수 사 고 경 위 서',inner,'#164e63');
+}
+function hjLeakNarrView(name,resume){
+  const p=hjLeakProject(name);
+  if(!p){toast('누수 현장에서만 만들 수 있어요');return false;}
+  const s=resume&&typeof resume==='object'?resume:{purpose:'insurance',fullName:false,scopes:[],damage:'',found:null,action:null,no:''};
+  const m0=hjLeakNarrModel(p,s);if(!m0)return false;
+  const flag=ok=>ok?'✓':'<span style="color:#c2410c">없음</span>';
+  openModal('📝 누수 사고 경위서 — '+name,
+    '<div id="hjLeakNarrForm">'+
+    '<div role="group" aria-label="경위서 용도" style="display:flex;flex-wrap:wrap;gap:6px">'+Object.entries(HJ_LEAKNARR_PURPOSES).map(([k,label])=>'<button type="button" data-leaknarr-purpose="'+k+'" aria-pressed="'+(s.purpose===k)+'" class="'+(s.purpose===k?'blue':'ghost')+'" style="min-height:44px;white-space:normal">'+label+'</button>').join('')+'</div>'+
+    '<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px;margin:8px 0">자동 채움: 접수 '+flag(m0.hasIntake)+' · 탐지 '+flag(!!m0.detect)+' · 조치 '+flag(m0.hasAction)+' · 사진 '+m0.photos.length+'장 · 번호 '+escapeHtml(m0.no)+'</div>'+
+    hjDoc433Check('hjLeakNarrFullName','의뢰인 이름 전체 표시 (보험사용 · 기본은 '+escapeHtml(hjDoc433Name(p,false))+')',s.fullName,s.purpose==='insurance'?'':' disabled')+
+    '<div style="font-size:12px;font-weight:700;margin:6px 0 0">피해 범위 (사람이 체크)</div><div style="display:flex;flex-wrap:wrap;gap:0 14px">'+HJ_LEAKNARR_SCOPES.map(sc=>'<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-leaknarr-scope="'+escapeAttr(sc)+'"'+(s.scopes.includes(sc)?' checked':'')+' style="width:18px;height:18px"> '+escapeHtml(sc)+'</label>').join('')+'</div>'+
+    hjDoc433Field('hjLeakNarrDamage','피해 내용 메모 (선택)',s.damage,2)+
+    hjDoc433Field('hjLeakNarrFound','발견 경위·증상 (접수 기록으로 채움)',s.found==null?m0.found:s.found,3)+
+    hjDoc433Field('hjLeakNarrAction','조치·수리 내용 (견적·확인서로 채움)',s.action==null?m0.action:s.action,3)+
+    '<p class="hint">'+escapeHtml(HJ_DOC433_DISCLAIMER)+' 금액은 싣지 않습니다 — 금액은 견적서·영수증으로.</p></div>',
+    [{label:'📝 경위서 만들기',cls:'clay',fn:()=>make(false)},{label:'📄 보험 제출 2종',cls:'blue',fn:()=>make(true)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjLeakNarrForm');
+  const read=()=>{if(!root||!root.isConnected)return;
+    s.fullName=!!root.querySelector('#hjLeakNarrFullName').checked;s.scopes=[...root.querySelectorAll('[data-leaknarr-scope]')].filter(el=>el.checked).map(el=>el.dataset.leaknarrScope);
+    s.damage=root.querySelector('#hjLeakNarrDamage').value;s.found=root.querySelector('#hjLeakNarrFound').value;s.action=root.querySelector('#hjLeakNarrAction').value;};
+  root.querySelectorAll('[data-leaknarr-purpose]').forEach(b=>b.onclick=()=>{read();s.purpose=b.dataset.leaknarrPurpose;if(s.purpose!=='insurance')s.fullName=false;
+    root.querySelectorAll('[data-leaknarr-purpose]').forEach(x=>{const yes=x.dataset.leaknarrPurpose===s.purpose;x.className=yes?'blue':'ghost';x.setAttribute('aria-pressed',String(yes));});
+    const fn=root.querySelector('#hjLeakNarrFullName');fn.disabled=s.purpose!=='insurance';fn.checked=s.fullName;});
+  const make=pair=>{
+    read();
+    const cur=hjLeakProject(name);if(!cur){toast('현장 정보가 바뀌었습니다. 다시 열어 주세요.');return;}   // 발행 뒤 원자 저장이 레코드를 갈아끼울 수 있다
+    const model=hjLeakNarrModel(cur,s);if(!model)return;s.no=model.no;
+    const html=hjLeakNarrHtml(model);if(!html){toast('경위서를 만들 수 없어요');return;}
+    closeModal();
+    const base=safeName(name)+'_누수사고경위서_'+model.no,back=()=>hjLeakNarrView(name,s);
+    hjDocDeliverView(name,html,base,'📝 누수 사고 경위서 ('+model.purposeLabel+')',back,{
+      onDeliver:via=>{hjDoc433IssueQuiet(name,{type:'leaknarr',no:model.no,purpose:model.purposeLabel,name:model.title});},
+      image:true,sms:{text:'['+COMPANY.name+'] 누수 사고 경위서('+model.no+' · '+model.purposeLabel+')를 보내드립니다.\n'+HJ_DOC433_DISCLAIMER,kind:'doc433'},
+      extra:pair?[{id:'hjDocNextLeakReport',cls:'blue',txt:'📄 다음: 누수 보고서 (보험 제출 2종)',sub:'같은 현장의 누수 탐지·수리 보고서를 이어서 발행합니다',fn:()=>{closeModal();hjLeakReportView(name);}}]:[]
+    });
+  };
+  return true;
+}
+/* F3 받은 돈을 저장한 직후 — 그 입금 기록으로 간이영수증을 바로. 토스트는 글자뿐이라 작은 선택 창을 띄운다(나중에 → 원래 화면). */
+function hjPayRcptOffer(name,pre,back){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p||state._demo)return false;
+  const o=pre&&typeof pre==='object'?pre:{},amt=Math.round(num(o.amt));
+  openModal('💳 받은 돈을 저장했어요',
+    '<div style="font-size:13px;line-height:1.7"><b>'+escapeHtml(name)+'</b>'+(amt>0?' · <b>'+escapeHtml(won(amt))+'</b>':'')+(o.date?' · '+escapeHtml(String(o.date)):'')+(o.method?' · '+escapeHtml(String(o.method)):'')+
+    '<br><span style="color:var(--muted);font-size:12px">이 입금으로 간이영수증(대금 수령 확인)을 바로 만들 수 있어요. '+escapeHtml(HJ_DOC433_TAX_NOTE)+'</span></div>',
+    [{label:'🧾 영수증 만들기',cls:'clay',fn:function(){closeModal();payRcptDialog(name,{amt:amt>0?won(amt):'',date:String(o.date||''),method:['현금','계좌이체','카드','기타'].includes(o.method)?o.method:'',kind:'',payLogId:String(o.payLogId||'')});}},
+     {label:'나중에',cls:'ghost',fn:function(){closeModal();if(typeof back==='function')back();}}],true);
+  hjModalTapTargets();
+  return true;
+}
+/* 대시보드 집계 — 간이영수증은 세금계산서·현금영수증과 별개다. 이번 달(현지 날짜) 발행 건수만 구분 표시한다. */
+function hjDoc433SimpleReceipts(month){
+  const ym=String(month||localDate().slice(0,7));
+  return (state.projects||[]).filter(p=>p&&!p.archived).reduce((n,p)=>n+hjDocLogsOf(p,'payrcpt').filter(r=>(hjPhotoKoreanDay({when:r.at})||'').slice(0,7)===ym).length,0);
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
