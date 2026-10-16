@@ -3,6 +3,17 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v437 📊 견적 비교표 · 견적 비교 제안서 · 고객 폰으로 보내기
+
+- 안 이름 q.tier('basic'|'standard'|'premium', 없으면 칸 없음) — 견적 편집기 [안 (비교표)] 칸(#qmTier), 견적 목록 카드에 '기본안' 배지(data-qtier). 새 최상위 키 없음.
+- hjQuoteCompare(quotes): 품목 이름(공백 정리) 합집합 × 안 열, 칸 = 수량×단가(공급가, quoteCalc 계약)·같은 이름 합산·규격 표시, 차이(값 다름 또는 한쪽만) data-qc-diff(변이 no-diff 가 QC_DIFF_MARKED 에서 잡는다). 합계는 공급가·부가세 10%·부가세 포함 + '견적서 표기'(원래 포함/별도) — 표기가 섞이면 data-qc-mixed 안내.
+- hjQuoteCompareView(현장[,ids]): 폰(<560px)은 안마다 카드 세로(data-qc-card), 넓으면 표(가로 스크롤 상자). 2~3개 고르기(3개 넘으면 거절), 기본 선택은 안 이름 붙은 견적 먼저. 진입: 📎 서류 만들기의 '견적 비교표 · 제안서'(예정 줄 todo:compare → 실제 compare — doccenter-v433 예정 줄 단언 ≥4→≥3·클릭 대상 todo:prep 으로 고침) · 견적서 탭 목록 [📊 비교표](#qmCompare, 활성 현장 또는 견적 2개+ 현장 고르기).
+- [✅ 이 안으로 확정](hjQuoteTierConfirm): 비교한 안 중 고르지 않은 앱 견적의 가상 견적 파일(quote_<id>)에 exSum — 매출 Σ 에서만 빠지고(견적·정산 Σ 로 되돌림) 견적은 그대로 + 노트 '[견적 안 확정]'. 안 여러 개가 현장 매출에 다 더해져 마진·대시보드가 부풀던 문제를 막는다. 견적 저장 토스트에 '이 현장 견적 n개가 매출에 모두 더해집니다' 안내(hjQuoteTierNote).
+- 제안서(hjProposalModel/Html → 기존 hjDocDeliverView): 제목·받는 분·현장 → 고객 요청(문의 노트 본문, hjRetScrub 로 이름·번호·메일·동호수 지움) → 비교표 → 사례 사진 4장(hjProposalCasePhotos: 다른 현장 사례 묶음 중 hjCaseBlock 통과 — 동의·개인정보·과장 표현 — 같은 공종(hjInsightTrade) 먼저·최근 순, 현장마다 전·후 1장씩, 공정 이름에 개인정보·과장 있으면 그 사진 제외, 설명은 동+공정만; 변이 case-filter 가 PROPOSAL_CASE_FILTER 에서 잡는다) → 공사 기간(contractPeriodProposal)·하자 보수(기본 보증 목록)·결제(HJ_PAY_RATIO) → 연락처. [이름 가리기]면 '고객님'·동 단위 제목·현장.
+- 발행 기록 p.proposals[{id,at,quoteIds,pdfName,via}] + 노트 '[제안서] 견적 비교 n안 · 파일명' — 실제로 가져간 때(PDF·워드·HTML·이미지) 만들기 한 번에 한 줄(durableLocalMutation, 같은 id 는 dup). 검사 씨앗 사진은 _driveId 를 줘야 원자 저장 뒤에도 썸네일이 남는다(실제 사진은 핸들·드라이브 id 가 있다).
+- 고객 폰: 서버 저장 없이 되는 범위 — 보증서와 같은 파일 공유(🔗 공유 · HTML 파일 = hjWarrantyShareHtml, Web Share 파일 → 카톡·문자 첨부)와 💬 문자 초안(HJ_PROPOSAL_SMS, msgCenterCompose 'doc433' — 자동 발송 없음). 열람 링크·읽음 확인은 서버가 필요해 다음 단계(지시서대로). v413 욕실 3안은 main 에 없어 연결하지 않았다.
+- 핀3곳 hyeonjang-v437-proposal(v445 위). 신규 tests/proposal-v437.e2e.js 4/4, 변이 no-diff·case-filter·기준선 실패 확인, 관련 13개(quotewon-v390/caseweb-v385/warranty-link/doccenter-v433/quote-edit-safety/quote-flow/quote-vat/estimate-dedupe/consultquote-v384/stalequote-v392/leakquote-v421/mobile-more-tools)·정적 통과.
+
 ## 2026-10-16 v445 📈 분석 — 채널별 문의→수주 전환 · 공종×동 마진·수요 · 누수 반복 단지
 
 - 진입: 💼 회계 탭 툴바 [📈 분석](data-insight 위임) · 📣 광고 탭 📞 문의 경로 상자 [📈 채널별 전환]. hjInsightView/hjInsightData — 읽기 전용(기간·공종 선택은 메모리 __hjInsight, 저장 자료 그대로 — 검사가 저장본 비교).

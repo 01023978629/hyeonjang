@@ -137,13 +137,13 @@ let browser, passed = 0, page;
     assert.deepEqual(groups, ['영업·계약', '시공 중', '준공·돈', 'AS·보증', '누수·보험', '아파트·행정', '보관']);
     const acts = await page.locator('#modalRoot .docHubBtn').evaluateAll(nodes => nodes.map(n => n.dataset.act));
     for (const act of [...LEGACY_ACTS, 'workcert', 'leaknarr', 'leakreport', 'statement', 'invoice', 'quote', 'contract', 'worklog', 'progress', 'order', 'aslog']) assert(acts.includes(act), 'entry ' + act);
-    assert(acts.filter(a => a.startsWith('todo:')).length >= 4, 'planned rows are listed as 예정'); // v442 피해 확인서·v441 아파트 4종이 실제 항목이 되어 예정 줄이 줄었다
+    assert(acts.filter(a => a.startsWith('todo:')).length >= 3, 'planned rows are listed as 예정'); // v442 피해 확인서·v441 아파트 4종·v437 견적 비교표가 실제 항목이 되어 예정 줄이 줄었다
     const status = await page.locator('#modalRoot .docHubStatus').allInnerTexts();
     assert(status.some(t => /사진 3장 · 주소 있음 · 번호 자동/.test(t)), 'workcert status line: ' + JSON.stringify(status));
     assert(status.some(t => /입금 기록 1건/.test(t)), 'receipt status line');
     assert(status.some(t => /접수 ✓ · 탐지 ✓/.test(t)), 'leak status line');
     await tapOk('#modalRoot .docHubBtn'); await noOverflow(); await shot('01-doc-center');
-    await page.locator('#modalRoot .docHubBtn[data-act="todo:compare"]').click();
+    await page.locator('#modalRoot .docHubBtn[data-act="todo:prep"]').click();   // v437 비교표는 실제 항목(compare)이 됐다
     assert.equal(await page.locator('#modalRoot .docHubBtn').count() > 0, true, 'planned row keeps the center open');
     sameSnapshot(await snapshot(), before);
     await page.evaluate(fns => { window.__v433Real = {}; for (const [act, fn] of Object.entries(fns)) { __v433Real[fn] = window[fn]; window[fn] = (...args) => { __v433Calls.legacy.push([act, args[0]]); }; } }, LEGACY_FNS);

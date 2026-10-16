@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v445-insight';
+const APP_BUILD='hyeonjang-v437-proposal';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -35751,7 +35751,7 @@ function viewQuoteMaker(){
   const hjBathLink='<button type="button" class="ghost tiny" id="qmBathroom" style="min-height:44px">🛁 욕실 상담·견적</button>';
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button>${hjBathLink}</div>`;
+      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
     html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
     if(!state.quotes.length){
       html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
@@ -35762,7 +35762,7 @@ function viewQuoteMaker(){
       const c=quoteCalc(q);
       html+=`<div class="card" style="cursor:default">
         <div class="meta" style="padding:14px">
-          <div class="nm" style="font-size:14px">${escapeHtml(q.title||'(제목 없음)')}</div>
+          <div class="nm" style="font-size:14px">${hjQuoteTierLabel(q)?'<span data-qtier style="font-size:11px;font-weight:800;color:#fff;background:#0b4ea2;border-radius:999px;padding:1px 7px;margin-right:4px">'+hjQuoteTierLabel(q)+'안</span>':''}${escapeHtml(q.title||'(제목 없음)')}</div>
           <div class="sub">${escapeHtml(q.no||'')} · ${escapeHtml(estimateDateSummary(null,q))}</div>
           <div class="ext-info" style="font-size:15px;color:var(--clay);font-weight:700">${won(c.total)}</div>
           <div class="sub">${q.vatIncluded?'부가세 포함':'부가세 별도'} · ${q.project?('🏗️ '+escapeHtml(q.project)):'현장 미연결'}</div>
@@ -35811,6 +35811,7 @@ function viewQuoteMaker(){
         <label>견적일<input type="date" id="qmDate" value="${escapeAttr(q.date)}"></label>
         <label>장소<input type="text" id="qmPlace" value="${escapeAttr(q.place)}" placeholder="현장 주소"></label>
         <label>부가세<select id="qmVat"><option value="1"${q.vatIncluded?' selected':''}>부가세 포함</option><option value="0"${!q.vatIncluded?' selected':''}>부가세 별도</option></select></label>
+        <label>안 (비교표)<select id="qmTier">${hjQuoteTierOptions(q.tier||'')}</select></label>
         <label>입금 계좌<select id="qmAcct">${acctOpts}</select></label>
         <label>연결 현장<select id="qmProj">${projOpts}</select>${q.bathroomImport&&!q.project?'<span class="hint">현장을 골라 연결하세요</span>':''}</label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
@@ -35958,7 +35959,7 @@ function saveQuoteEdit(){
   markDirty();
   state.editingQuote=null;render();
   const srcNote=quoteSrcNote(r.srcExcluded);
-  toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')))+srcNote);
+  toast((legalGuide?('⚠️ 견적서 저장됨 · '+legalGuide):('견적서 저장됨'+(q.project?` · ${q.project} 매출 반영`:'')))+srcNote+hjQuoteTierNote(q));   // v437 안 여러 개가 매출에 다 더해질 때
 }
 function deleteQuote(id){const q=state.quotes.find(x=>x.id===id);if(!q)return;
   openModal('견적서 삭제',`<p style="font-size:13px">‘${escapeHtml(q.title||q.no)}’ 견적서를 삭제할까요?</p>`,
@@ -37306,7 +37307,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37353,6 +37354,7 @@ function setupDelegation(){
     if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
     if(t.id==='qmLeakPaid')return hjLeakPaymentView(state.editingQuote);
     if(t.id==='qmNew')return startNewQuote();
+    if(t.id==='qmCompare')return hjQuoteComparePick();   // v437
     if(t.id==='schPastToggle'){__schShowAll=!__schShowAll;return render();}
     if(t.id==='schAdd')return openScheduleEdit(null);
     if(t.id==='schRoutine')return hjRoutineSeed();
@@ -37621,6 +37623,7 @@ function setupDelegation(){
     if(t.id==='qmPlace')return setQuoteField('place',t.value);
     if(t.id==='qmMemo')return setQuoteField('memo',t.value);
     if(t.id==='qmVat'){setQuoteField('vatIncluded',t.value);return render();}
+    if(t.id==='qmTier'){const eq=state.editingQuote;if(eq){if(HJ_QUOTE_TIERS[t.value])eq.tier=t.value;else delete eq.tier;}return;}   // v437 안 이름 — 값이 없으면 칸을 남기지 않는다
     if(t.id==='qmAcct'){setQuoteField('accountIdx',t.value);return render();}
     if(t.id==='qmProj'){setQuoteField('project',t.value);hjQuoteMeasureSync();return;}
     // 견적 품목 (수량·단가만 합계 갱신 위해 render, 품명·규격은 값만)
@@ -38989,7 +38992,7 @@ function docHubView(pjName){
     '<div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">사진 '+ph+'장 · 견적 '+anyQuote+'건 · 입금 '+pays.length+'건 · '+(doneOk?('준공 '+escapeHtml(p.doneAt)):'진행 중')+(logs.length?' · 발행 문서 '+logs.length+'건':'')+'</div>'+
     group('영업·계약')+
     item('🧾','견적서 (엑셀·PDF)',quotes.length?'최근 견적을 열어 엑셀·PDF 로 내보냅니다.':'새 견적서를 시작합니다.','quote',quotes.length?'견적 '+quotes.length+'건 · 최근 '+escapeHtml(quotes[0].date||''):'견적 없음 — 새로 만들기','')+
-    item('📊','견적 비교표','고객에게 2~3안을 나란히.','todo:compare','','')+
+    item('📊','견적 비교표 · 제안서'+NEW,'고객에게 2~3안을 나란히 — 차이 품목 색 표시, 제안서 PDF·고객 폰 파일·문자 초안까지.','compare',quotes.length>=2?('앱 견적 '+quotes.length+'개'+(hjProposals(p).length?' · 제안서 '+hjProposals(p).length+'회':'')):'앱 견적 2개 이상 필요',quotes.length>=2?(hjProposals(p).length?'ok':''):'warn')+   // v437
     item('📝','계약서 초안','견적을 고르면 계약금액·지급 조건이 채워진 초안.','contract',anyQuote?'견적 '+anyQuote+'건에서 고름':'배정된 견적 없음',anyQuote?'':'warn')+
     item('📋','공사 전 준비 안내문','주차·엘리베이터·소음 안내.','todo:prep','','')+
     group('시공 중')+
@@ -39053,6 +39056,7 @@ function docHubView(pjName){
         else if(a==='insclaim'){if(leak)hjInsClaimView(pjName);else toast('누수 현장에서만 열 수 있어요');}
         else if(a==='aptdocs')hjAptDocsView(pjName);   // v441
         else if(a==='reviewqr')hjReviewQrCardView(function(){docHubView(pjName);});   // v446
+        else if(a==='compare')hjQuoteCompareView(pjName);   // v437
       }catch(e){toast('열 수 없어요: '+(e.message||e));}
     },80);
   };});
@@ -42120,6 +42124,200 @@ function hjInsightView(opts){
   root.querySelectorAll('[data-insight-map]').forEach(b=>b.onclick=()=>{const x=d.leak[Number(b.dataset.insightMap)];if(x)window.open(x.mapUrl,'_blank','noopener');});
   root.querySelectorAll('[data-insight-pitch-go]').forEach(b=>b.onclick=()=>{closeModal();shareBizCard();toast("문구에서 '관리사무소 업체 등록'을 고르세요");});
   return d;
+}
+/* ═══ v437 📊 견적 비교표 · 견적 비교 제안서 · 고객 폰으로 보내기 ═══
+   · 안 이름은 견적 레코드 안 q.tier('basic'|'standard'|'premium'|'') — 견적 편집기 [안] 칸. 새 최상위 키 없음.
+   · 비교는 품목 이름(공백 정리) 합집합 × 안 열. 칸 금액은 수량×단가(입력 단가 = 공급가, quoteCalc 와 같은 계약). 한 안에 같은 이름이
+     여러 줄이면 더한다. 안마다 금액이 다르거나 한쪽에만 있는 줄은 차이로 칠한다(data-qc-diff — 검사 변이 no-diff 가 지킨다).
+   · 부가세 혼합: 견적서 표기(포함/별도)는 안마다 다를 수 있어 합계를 공급가·부가세(10%)·부가세 포함 세 줄로 같은 기준에 맞추고,
+     '견적서 표기' 줄에 원래 표기를 그대로 둔다.
+   · 제안서(hjDocShell → 기존 hjDocDeliverView): 표지 → 고객 요청 요약(문의 노트 본문, 이름·번호·메일·동호수 지움) → 비교표 →
+     사례 사진 4장(다른 현장 사례 묶음 중 hjCaseBlock 통과 — 고객 동의·개인정보·과장 표현 없음 — 같은 공종 먼저, 공정 이름에 개인정보가
+     있는 사진 제외; 설명은 동 + 공정만) → 공사 기간·보증·결제 조건 → 연락처. [이름 가리기]면 고객 이름 대신 '고객님', 현장은 동 단위.
+   · 발행 기록 p.proposals[{id,at,quoteIds,pdfName,via}] + 노트 '[제안서]' — 실제로 가져간 때(PDF·워드·HTML·이미지) 한 번(durableLocalMutation).
+   · 고객 폰: 서버 저장 없이 되는 범위 — 보증서와 같은 파일 공유(🔗 공유 · HTML 파일 → 카톡·문자 첨부)와 💬 문자 초안.
+     열람 링크·읽음 확인은 서버가 있어야 해서 다음 단계(지시서대로).
+   · [✅ 이 안으로 확정] — 고르지 않은 안의 앱 견적(가상 견적 파일)을 매출 Σ 에서 뺀다(f.exSum — 견적·정산의 Σ 로 되돌림).
+     안 여러 개가 현장 매출에 다 더해지면 마진·대시보드가 부푼다. */
+const HJ_QUOTE_TIERS=Object.freeze({basic:'기본',standard:'표준',premium:'고급'});
+const HJ_QUOTE_TIER_ORDER=Object.freeze(['basic','standard','premium']);
+function hjQuoteTierLabel(q){return HJ_QUOTE_TIERS[q&&q.tier]||'';}
+function hjQuoteTierOptions(cur){return '<option value="">안 구분 없음</option>'+HJ_QUOTE_TIER_ORDER.map(k=>'<option value="'+k+'"'+(cur===k?' selected':'')+'>'+HJ_QUOTE_TIERS[k]+'안</option>').join('');}
+function hjQuotesOf(name){
+  const rank=q=>{const i=HJ_QUOTE_TIER_ORDER.indexOf(q.tier);return i<0?9:i;};
+  return (state.quotes||[]).filter(q=>q&&q.project===name&&Array.isArray(q.items)).slice().sort((a,b)=>rank(a)-rank(b)||String(a.date||'').localeCompare(String(b.date||''))||String(a.id).localeCompare(String(b.id)));
+}
+function hjCompareKey(name){return String(name||'').replace(/\s+/g,' ').trim()||'(품명 없음)';}
+function hjQuoteCompare(quotes){
+  const used=new Set();
+  const cols=(quotes||[]).map((q,i)=>{const c=quoteCalc(q);let label=hjQuoteTierLabel(q)?hjQuoteTierLabel(q)+'안':String.fromCharCode(65+i)+'안';
+    if(used.has(label))label+=' '+(i+1);used.add(label);
+    return {id:q.id,label,tier:q.tier||'',title:String(q.title||''),vatIncluded:!!q.vatIncluded,supply:c.supply,vat:c.vat,gross:c.supply+c.vat,shown:c.total,items:new Map()};});
+  const order=[];
+  (quotes||[]).forEach((q,ci)=>quoteRealItems(q).forEach(it=>{
+    const k=hjCompareKey(it.name),amt=Math.round(num(it.qty)*num(it.price));if(!order.includes(k))order.push(k);
+    const m=cols[ci].items,cur=m.get(k)||{amt:0,spec:[]};cur.amt+=amt;const sp=String(it.spec||'').trim();if(sp&&!cur.spec.includes(sp))cur.spec.push(sp);m.set(k,cur);}));
+  const rows=order.map(k=>{const cells=cols.map(c=>c.items.has(k)?c.items.get(k).amt:null);
+    return {name:k,cells,specs:cols.map(c=>c.items.has(k)?c.items.get(k).spec.join(', '):''),diff:new Set(cells.map(v=>v==null?'-':String(v))).size>1};});
+  const mixed=new Set(cols.map(c=>c.vatIncluded)).size>1;
+  return {cols,rows,diffCount:rows.filter(r=>r.diff).length,mixed};
+}
+const HJ_QC_DIFF_BG='#fff7ed';
+function hjQuoteCompareTableHtml(cmp,doc){
+  const cell=v=>v==null?'<span style="color:#94a3b8">—</span>':escapeHtml(won(v));
+  const head='<tr><th style="text-align:left">품목</th>'+cmp.cols.map(c=>'<th class="amt" data-qc-col="'+escapeAttr(c.id)+'">'+escapeHtml(c.label)+'</th>').join('')+'</tr>';
+  const body=cmp.rows.map(r=>'<tr'+(r.diff?' data-qc-diff style="background:'+HJ_QC_DIFF_BG+'"':'')+'><td'+(r.diff?' style="font-weight:700"':'')+'>'+escapeHtml(r.name)+(r.diff?' <span style="color:#c2410c;font-size:10.5px">차이</span>':'')+'</td>'+r.cells.map((v,i)=>'<td class="amt">'+cell(v)+(r.specs[i]?'<div style="font-size:10.5px;color:#64748b">'+escapeHtml(r.specs[i])+'</div>':'')+'</td>').join('')+'</tr>').join('');
+  const tot=(label,key,bold)=>'<tr data-qc-total="'+key+'" style="background:#f4f7fb'+(bold?';font-weight:800':'')+'"><td>'+label+'</td>'+cmp.cols.map(c=>'<td class="amt">'+escapeHtml(won(c[key]))+'</td>').join('')+'</tr>';
+  const shown='<tr data-qc-total="shown"><td>견적서 표기</td>'+cmp.cols.map(c=>'<td class="amt">'+escapeHtml(won(c.shown))+'<div style="font-size:10.5px;color:#64748b">'+(c.vatIncluded?'부가세 포함':'부가세 별도')+'</div></td>').join('')+'</tr>';
+  const table='<table class="'+(doc?'items':'estimate-table')+'" data-qc-table style="width:100%;font-size:12.5px;'+(doc?'':'min-width:'+(160+cmp.cols.length*110)+'px')+'"><thead>'+head+'</thead><tbody>'+body+tot('공급가 합계','supply')+tot('부가세 (10%)','vat')+tot('부가세 포함 합계','gross',true)+shown+'</tbody></table>';
+  return (doc?table:'<div style="overflow-x:auto;max-width:100%;min-width:0;border:1px solid var(--line-soft);border-radius:10px">'+table+'</div>')+
+    (cmp.mixed?'<div data-qc-mixed style="font-size:11.5px;color:#b45309;margin:6px 0">※ 견적서마다 부가세 표기가 달라(포함/별도) 합계는 공급가·부가세 포함 두 기준으로 나란히 맞췄습니다.</div>':'');
+}
+// 폰(좁은 화면) — 안마다 카드 한 장, 세로로. 차이 나는 품목은 같은 색.
+function hjQuoteCompareCardsHtml(cmp){
+  return '<div data-qc-cards style="display:grid;gap:10px">'+cmp.cols.map((c,ci)=>'<div data-qc-card="'+escapeAttr(c.id)+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;background:var(--paper);min-width:0">'+
+    '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap"><b style="font-size:15px">'+escapeHtml(c.label)+'</b><span style="font-size:15px;font-weight:800;color:var(--clay)">'+escapeHtml(won(c.gross))+'</span></div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px">부가세 포함 · 공급가 '+escapeHtml(won(c.supply))+' · 견적서 표기 '+escapeHtml(won(c.shown))+' ('+(c.vatIncluded?'부가세 포함':'부가세 별도')+')</div>'+
+    cmp.rows.filter(r=>r.cells[ci]!=null).map(r=>'<div'+(r.diff?' data-qc-diff style="background:'+HJ_QC_DIFF_BG+';border-radius:6px;padding:2px 4px"':' style="padding:2px 4px"')+'><span style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(r.name)+(r.diff?' <span style="color:#c2410c;font-size:10.5px">차이</span>':'')+'</span><b style="white-space:nowrap">'+escapeHtml(won(r.cells[ci]))+'</b></span></div>').join('')+
+    (cmp.rows.some(r=>r.cells[ci]==null)?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px">이 안에 없는 품목: '+escapeHtml(cmp.rows.filter(r=>r.cells[ci]==null).map(r=>r.name).join(', '))+'</div>':'')+
+    '<button type="button" class="ghost tiny" data-qc-choose="'+escapeAttr(c.id)+'" style="min-height:44px;margin-top:8px;width:100%">✅ 이 안으로 확정</button></div>').join('')+'</div>';
+}
+function hjQuoteCompareNarrow(){return (window.innerWidth||1024)<560;}
+// 고객 요청 요약 — 문의 노트 본문(첫 줄 '[문의 접수] …' 은 뺀다). 이름·번호·메일·동호수는 지운다.
+function hjProposalRequest(p){
+  const name=String((p.customer||{}).name||'').trim(),lines=[];
+  (state.notes||[]).filter(n=>n&&n.project===p.name&&HJ_INQ_NOTE_RE.test(String(n.text||''))).forEach(n=>{
+    String(n.text||'').split('\n').slice(1).map(s=>hjRetScrub(s,name).trim()).filter(Boolean).forEach(s=>{if(!lines.includes(s))lines.push(s);});});
+  return lines.slice(0,4).map(s=>s.slice(0,120));
+}
+// 사례 사진 — 다른 현장의 사례 묶음 중 hjCaseBlock 을 통과한 것(동의·개인정보·과장 표현). 같은 공종 먼저, 현장마다 전·후 한 장씩.
+function hjProposalCasePhotos(p,max){
+  const ix=hjInsightIndex(),trade=hjInsightTrade(p,ix),kind=hjProjectKind(p),lim=max||4,out=[];
+  const cands=(state.projects||[]).filter(x=>x&&x!==p&&x.name!==p.name&&hjProjectKind(x)===kind&&x.casePack&&!hjCaseBlock(x))
+    .map(x=>({x,same:hjInsightTrade(x,ix)===trade,at:String(hjCaseData(x).sentAt||x.doneAt||'')}))
+    .sort((a,b)=>(b.same-a.same)||b.at.localeCompare(a.at)||a.x.name.localeCompare(b.x.name));
+  for(const c of cands){
+    const area=hjCaseAreaOf(c.x,hjCaseVal(c.x,hjCaseData(c.x),'place'));
+    const ok=hjCaseSelected(c.x).filter(f=>hjDocThumbOk(f)&&!hjCasePii(String(f._phase||'')).length&&!hjAdBanned(String(f._phase||'')).length);
+    const pick=[ok.find(f=>hjCaseSide(f)==='전'),ok.find(f=>hjCaseSide(f)==='후')].filter(Boolean);
+    for(const f of (pick.length?pick:ok.slice(0,2))){if(out.length>=lim)break;out.push({id:f.id,thumb:f.thumb,label:(area?area+' · ':'')+hjCaseCaption(f)});}
+    if(out.length>=lim)break;
+  }
+  return out;
+}
+function hjProposalModel(name,ids,opts){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
+  const quotes=(ids||[]).map(id=>(state.quotes||[]).find(q=>q&&q.id===id&&q.project===name)).filter(Boolean);
+  if(quotes.length<2)return null;
+  const o=opts||{},hide=!!o.hideName,c=p.customer||{},cmp=hjQuoteCompare(quotes);
+  const period=contractPeriodProposal(p);
+  return {name,ids:quotes.map(q=>q.id),cmp,hide,date:localDate(),
+    title:(hide?(hjInsightDong(p)||'현장'):name)+' 공사 제안',
+    to:hide?'고객님':(String(c.name||'').trim()?String(c.name).trim()+' 님':'고객님'),
+    site:hide?(hjInsightDong(p)||''):String(c.addr||name),
+    request:hide?hjProposalRequest(p).map(s=>s.replace(HJ_RET_UNIT_RE,'(동·호수 삭제)')):hjProposalRequest(p),
+    photos:hjProposalCasePhotos(p,4),
+    period:period?(hjDocDate(period.from)+' ~ '+hjDocDate(period.to)+' (일정표 기준, 착공 전 다시 확인)'):'착공일·기간은 계약 때 함께 정합니다',
+    warranty:hjWarrantyPeriodText(WARRANTY_ITEMS_DEFAULT)+' 책임 보수 (공종별, 계약서 기준)',
+    pay:'계약금 '+hjPayPct('down')+'% · 중도금 '+hjPayPct('mid')+'% · 잔금 '+hjPayPct('bal')+'% (계약서 기준, 협의 가능)'};
+}
+function hjProposalHtml(m){
+  if(!m)return null;
+  const sec=(t,body)=>'<div class="keep" style="margin:0 0 16px"><div style="font-size:13px;font-weight:800;color:#0b4ea2;margin:0 0 6px">'+t+'</div>'+body+'</div>';
+  const inner='<div data-proposal-title style="font-size:17px;font-weight:800;margin:0 0 10px">'+escapeHtml(m.title)+'</div><div class="prow"><span><b>받는 분</b>'+escapeHtml(m.to)+'</span>'+(m.site?'<span><b>현장</b>'+escapeHtml(m.site)+'</span>':'')+'<span><b>작성일</b>'+escapeHtml(hjDocDate(m.date))+'</span><span><b>비교 안</b>'+m.cmp.cols.length+'개</span></div>'+
+    '<div class="note">'+escapeHtml(m.to)+', 요청하신 공사를 '+m.cmp.cols.length+'가지 구성으로 나란히 정리했습니다. 안마다 포함되는 품목과 금액을 비교해 보시고 편하게 말씀해 주세요.</div>'+
+    sec('1. 요청하신 내용',m.request.length?hjDoc433List(m.request):'<div style="font-size:12.5px;color:#5b6b82">상담 때 말씀하신 내용을 바탕으로 구성했습니다.</div>')+
+    sec('2. 안별 비교 (차이 나는 품목은 색으로 표시)',hjQuoteCompareTableHtml(m.cmp,true))+
+    (m.photos.length?sec('3. 비슷한 공사 사례',hjDoc433PhotoGrid(m.photos,'data-proposal-photos')+'<div style="font-size:11px;color:#8b98ab">다른 현장 사진입니다(고객 동의를 받은 사례만, 위치는 동 단위까지).</div>'):'')+
+    sec((m.photos.length?'4':'3')+'. 공사 기간 · 보증 · 결제',hjDoc433List(['공사 기간: '+m.period,'하자 보수: '+m.warranty,'결제: '+m.pay]))+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> 대표 '+escapeHtml(COMPANY.owner)+' · '+escapeHtml(COMPANY.tel)+'</div>'+
+    '<div class="note" style="margin-top:12px">※ 금액은 견적서 기준이며 현장 확인 뒤 달라질 수 있습니다. 표에 없는 추가 공사는 따로 말씀드리고 진행합니다.</div>';
+  return hjDocShell('견 적 비 교 제 안 서',inner,'#0b4ea2');
+}
+function hjProposals(p){return Array.isArray(p&&p.proposals)?p.proposals:[];}
+async function hjProposalIssue(name,rec){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!rec||!rec.id)throw new Error('제안서 발행 정보를 확인해 주세요.');
+  if(hjProposals(p).some(r=>r&&r.id===rec.id))return {dup:true};
+  const record={id:String(rec.id),at:new Date().toISOString(),quoteIds:(rec.quoteIds||[]).map(String).slice(0,3),pdfName:String(rec.pdfName||'').slice(0,120),via:String(rec.via||'').slice(0,12)};
+  const stamp=paidStableJson(projectBackupSafe(p));
+  const ensure=()=>{const cur=(state.projects||[]).find(x=>x&&x.name===name);if(!cur||paidStableJson(projectBackupSafe(cur))!==stamp)throw new Error('현장 정보가 바뀌었습니다. 제안서를 다시 만들어 주세요.');};
+  return durableLocalMutation({snapshotLabel:'제안서 발행 기록 전',beforeCommit:ensure,mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;
+    if(!target)throw new Error('현장을 찾을 수 없습니다.');
+    if(target.proposals!=null&&!Array.isArray(target.proposals))throw new Error('기존 제안서 기록 형식을 확인해 주세요.');
+    if((target.proposals||[]).some(r=>r&&r.id===record.id))return {dup:true};
+    target.proposals=[...(target.proposals||[]),record];
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(record.at).toLocaleString('ko-KR'),text:'[제안서] 견적 비교 '+record.quoteIds.length+'안 · '+record.pdfName+(record.via?' · '+record.via:''),project:name});
+    return record;
+  }});
+}
+const HJ_PROPOSAL_SMS='요청하신 견적 비교안입니다 — 안별 포함 품목과 금액을 파일로 보내드립니다. 궁금한 점은 편하게 연락 주세요.';
+function hjProposalDeliver(name,ids,opts){
+  const m=hjProposalModel(name,ids,opts);if(!m){toast('비교할 견적을 2개 이상 골라 주세요');return false;}
+  const html=hjProposalHtml(m),pid='pr_'+uid(),base=safeName(m.hide?m.title:name)+'_견적비교제안서_'+m.date.replace(/-/g,'');
+  closeModal();
+  return hjDocDeliverView(name,html,base,'📊 견적 비교 제안서',()=>hjQuoteCompareView(name,m.ids),{
+    onDeliver:via=>{hjProposalIssue(name,{id:pid,quoteIds:m.ids,pdfName:base+'.pdf',via}).then(r=>{if(r&&!r.dup){webWorkMarkDirtyAfterPersist();toast('📊 제안서 발행 기록');}}).catch(e=>toast('발행 기록 실패: '+(e&&e.message||e)));},
+    image:true,sms:{text:'['+COMPANY.name+'] '+HJ_PROPOSAL_SMS+'\n'+COMPANY.tel,kind:'doc433'}});
+}
+// 고객이 고른 안 — 나머지 안의 앱 견적(가상 견적 파일)을 매출 Σ 에서 뺀다. 고른 안은 다시 넣는다.
+function hjQuoteTierConfirm(name,chosenId,ids){
+  const list=(ids||[]).map(id=>(state.quotes||[]).find(q=>q&&q.id===id&&q.project===name)).filter(Boolean),chosen=list.find(q=>q.id===chosenId);
+  if(!chosen||list.length<2){toast('확정할 안을 찾을 수 없어요');return false;}
+  let n=0;
+  list.forEach(q=>{const f=(state.files||[]).find(x=>x&&x.id==='quote_'+q.id);if(!f)return;const ex=q.id!==chosenId;if(!!f.exSum!==ex){f.exSum=ex;n++;}});
+  const label=hjQuoteCompare([chosen]).cols[0].label.replace(/^A안$/,'고른 안');
+  (state.notes=state.notes||[]).push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[견적 안 확정] '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':(chosen.title||'고른 안'))+' — 나머지 '+(list.length-1)+'안은 매출 Σ 에서 뺌',project:name});
+  markDirty();render();
+  toast('✅ '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':label)+'으로 확정 — 나머지 '+(list.length-1)+'안은 매출 합계에서 뺐어요(견적·정산 Σ 로 되돌림)');
+  return n;
+}
+function hjQuoteTierNote(q){
+  if(!q||!q.project)return '';
+  const same=hjQuotesOf(q.project);if(same.length<2)return '';
+  const live=same.filter(x=>{const f=(state.files||[]).find(y=>y&&y.id==='quote_'+x.id);return f&&!f.exSum;});
+  return live.length>=2?' · 이 현장 견적 '+live.length+'개가 매출에 모두 더해집니다 — 안이면 📊 비교표에서 [이 안으로 확정]':'';
+}
+function hjQuoteCompareView(name,pick){
+  const all=hjQuotesOf(name);
+  if(all.length<2){
+    openModal('📊 견적 비교표 — '+name,'<div class="empty" data-qc-empty style="padding:16px"><b>이 현장의 앱 견적이 '+all.length+'개입니다</b>비교하려면 견적이 2개 이상 있어야 합니다. ✍ 견적서 편집기에서 다른 구성으로 하나 더 만들고 [안] 칸에서 기본·표준·고급을 고르세요.</div>',
+      [{label:'✍ 견적서 작성',cls:'clay',fn:()=>{closeModal();state.tab='quotemaker';state.editingQuote=null;render();}},{label:'닫기',cls:'ghost',fn:closeModal}]);
+    hjModalTapTargets();return false;
+  }
+  const want=Array.isArray(pick)?pick.filter(id=>all.some(q=>q.id===id)):[];
+  const sel=(want.length>=2?want:all.filter(q=>q.tier).map(q=>q.id).concat(all.filter(q=>!q.tier).map(q=>q.id))).slice(0,3);
+  const quotes=sel.map(id=>all.find(q=>q.id===id)),cmp=hjQuoteCompare(quotes),narrow=hjQuoteCompareNarrow();
+  const picker=all.map(q=>{const c=quoteCalc(q);return '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-qc-pick="'+escapeAttr(q.id)+'"'+(sel.includes(q.id)?' checked':'')+' style="width:20px;height:20px;flex:none"> <span style="min-width:0;overflow-wrap:anywhere">'+(hjQuoteTierLabel(q)?'<b>'+hjQuoteTierLabel(q)+'안</b> · ':'')+escapeHtml(q.title||q.no||'견적')+' · '+escapeHtml(won(c.total))+' <span style="color:var(--muted)">'+escapeHtml(q.date||'')+'</span></span></label>';}).join('');
+  const body='<div id="hjQuoteCompare" style="min-width:0;overflow-wrap:anywhere">'+
+    '<details'+(all.length>3||!want.length?' open':'')+' style="margin-bottom:8px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px;font-weight:700">비교할 견적 고르기 (2~3개) · 지금 '+sel.length+'개</summary>'+picker+'</details>'+
+    '<div data-qc-summary style="font-size:12.5px;background:var(--paper-2);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+cmp.cols.map(c=>'<b>'+escapeHtml(c.label)+'</b> '+escapeHtml(hjMan(c.gross))).join(' · ')+' <span style="color:var(--muted)">(부가세 포함 기준)</span> · 차이 품목 '+cmp.diffCount+'개</div>'+
+    (narrow?hjQuoteCompareCardsHtml(cmp):hjQuoteCompareTableHtml(cmp,false)+'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+cmp.cols.map(c=>'<button type="button" class="ghost tiny" data-qc-choose="'+escapeAttr(c.id)+'" style="min-height:44px">✅ '+escapeHtml(c.label)+'으로 확정</button>').join('')+'</div>')+
+    '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;margin-top:8px;cursor:pointer"><input type="checkbox" id="qcHide" style="width:20px;height:20px;flex:none"> 제안서에서 고객 이름 가리기 (현장은 동 단위로)</label>'+
+    '<p class="hint" style="margin-top:6px">[✅ 확정]은 고르지 않은 안을 매출 합계에서만 뺍니다(견적은 그대로, 견적·정산 Σ 로 되돌림). 제안서는 PDF·워드·HTML 파일·이미지로 — 고객 폰에는 🔗 공유(카톡·문자 첨부)와 💬 문자 초안으로 보냅니다.</p></div>';
+  openModal('📊 견적 비교표 — '+name,body,
+    [{label:'📄 제안서 만들기',cls:'clay',fn:()=>hjProposalDeliver(name,sel,{hideName:!!(document.getElementById('qcHide')||{}).checked})},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjQuoteCompare');
+  root.querySelectorAll('[data-qc-pick]').forEach(el=>el.onchange=()=>{
+    const ids=[...root.querySelectorAll('[data-qc-pick]')].filter(x=>x.checked).map(x=>x.dataset.qcPick);
+    if(ids.length>3){el.checked=false;toast('3개까지 비교할 수 있어요');return;}
+    if(ids.length<2){toast('2개 이상 골라 주세요');return;}
+    hjQuoteCompareView(name,ids);
+  });
+  root.querySelectorAll('[data-qc-choose]').forEach(b=>b.onclick=()=>{hjQuoteTierConfirm(name,b.dataset.qcChoose,sel);hjQuoteCompareView(name,sel);});
+  return cmp;
+}
+function hjQuoteComparePick(){
+  const names=[...new Set((state.quotes||[]).filter(q=>q&&q.project).map(q=>q.project))].filter(n=>hjQuotesOf(n).length>=2);
+  if(state.activeProject&&names.includes(state.activeProject))return hjQuoteCompareView(state.activeProject);
+  if(!names.length){openModal('📊 견적 비교표','<div class="empty" style="padding:16px"><b>견적이 2개 이상인 현장이 없습니다</b>같은 현장에 다른 구성의 견적을 하나 더 만들고 [안] 칸에서 기본·표준·고급을 고르세요.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);hjModalTapTargets();return false;}
+  if(names.length===1)return hjQuoteCompareView(names[0]);
+  openModal('📊 견적 비교표 — 현장 고르기',names.map(n=>'<button type="button" class="ghost" data-qc-proj="'+escapeAttr(n)+'" style="display:block;width:100%;min-height:44px;text-align:left;margin-bottom:6px">'+escapeHtml(n)+' · 견적 '+hjQuotesOf(n).length+'개</button>').join(''),[{label:'닫기',cls:'ghost',fn:closeModal}]);
+  hjModalTapTargets();
+  document.querySelectorAll('#modalRoot [data-qc-proj]').forEach(b=>b.onclick=()=>hjQuoteCompareView(b.dataset.qcProj));
+  return true;
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
