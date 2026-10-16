@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v439-material';
+const APP_BUILD='hyeonjang-v440-crew';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13688,7 +13688,7 @@ function hjCrewWeekView(kind,back){
     '<div style="font-size:13px;line-height:1.5"><b>👷 '+escapeHtml(p.name)+'</b> <span class="cwSum" style="color:var(--muted)">· '+p.work+'일 · 현장 '+p.sites.length+'곳'+
       (p.empty.length?' · 빈 날 '+escapeHtml(p.empty.map(dow).join('·')):'')+'</span>'+
       (p.clashDates.length?' <span class="cwClash" style="color:#b45309;font-weight:700">· ⚠ 겹침 '+escapeHtml(p.clashDates.map(hjMdDow).join(', '))+'</span>':'')+
-      (p.team?'':' <span style="color:var(--muted);font-size:12px">· 👷 팀원 연락처 없음</span>')+'</div>'+
+      (p.team?'':' <span style="color:var(--muted);font-size:12px">· 👷 팀원 연락처 없음</span>')+(function(){const c=hjCrewContact(p.name);return c&&(c.trade||num(c.dayRate)>0)?' <span data-crew-info style="color:var(--muted);font-size:12px">· '+escapeHtml([c.trade||'',num(c.dayRate)>0?'일당 '+won(c.dayRate):''].filter(Boolean).join(' · '))+'</span>':'';})()+'</div>'+
     '<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin:6px 0">'+d.dates.map(ymd=>cell(p,ymd)).join('')+'</div>'+
     (p.work?'<button type="button" class="ghost cwShare" data-name="'+escapeAttr(p.name)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">📤 '+escapeHtml(p.name)+' 일정 보내기'+(p.phone?'':' (번호 없음)')+'</button>':'')+'</div>';
   const body='<div id="crewWeek" style="overflow-wrap:anywhere;min-width:0">'+
@@ -13830,6 +13830,7 @@ function hjDayCloseData(today){
     mat:hjMatPending(tomorrow),   // v368 오늘·내일(지난 것 포함) 납품 — 미입고
     matPlan:hjMatPlanRows('',7).length,   // v373 다음 7일 발주 점검
     matCost:hjMatCostPending().length,   // v439 입고했는데 원가 반영 안 한 발주
+    crewPay:Number(today.slice(8,10))>=25?hjCrewPayPending(today.slice(0,7)):[],   // v440 월말 주: 지급 명세 안 만든 사람
     promo:hjAdCaseRows(14,0).filter(r=>r.missing.length),   // v378 2주 안 완공 현장 중 사례를 안 올린 채널이 남은 곳 — v387 남은 곳을 먼저 거르고 보일 때 4곳으로 자름
     clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})(),   // v362 내일 담당 겹침
     sales:hjDayCloseSales(today),leakSms:hjLeakSmsPending(today)};   // 영업·누수 문자 안내는 순수 조회
@@ -13907,6 +13908,7 @@ function hjDayCloseView(){
     (d.matPlan?'<p data-dc-matplan style="font-size:12.5px;color:#b45309;margin:2px 0 6px">📋 발주 점검: 다음 7일 공정 중 납품 기록 없는 것 '+d.matPlan+'개</p>':'')+
     (d.matCost?'<p data-dc-matcost style="font-size:12.5px;color:#b45309;margin:2px 0 6px">💰 입고했는데 원가 반영 안 한 발주 '+d.matCost+'건 — 🚚 납품 확인에서 [💰 원가 반영]</p>':'')+
     '<div style="display:flex;gap:6px">'+btn('ghost','data-dc-mat','🚚 납품 확인')+'</div>';   // v368·v373
+  if(d.crewPay&&d.crewPay.length)body+=h4('💸 이번 달 지급 명세 안 만든 사람 '+d.crewPay.length+'명')+row('<span data-dc-crewpay>'+escapeHtml(d.crewPay.slice(0,4).join(' · '))+(d.crewPay.length>4?' 외':'')+'</span>','');
   if(d.promo.length)body+=h4('📣 완공 현장 홍보 — 안 올린 채널 '+d.promo.reduce((a,r)=>a+r.missing.length,0)+'개')+   // v378
     d.promo.slice(0,4).map(r=>row('<span data-dc-promo>'+escapeHtml(r.name)+' <span style="color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span><br><span style="font-size:12px;color:var(--hj-warn-fg)">남은 곳: '+r.missing.map(hjAdChName).join('·')+'</span></span>','')).join('')+
     (d.promo.length>4?'<p class="hint" style="margin:0 0 4px">외 '+(d.promo.length-4)+'곳</p>':'')+
@@ -17716,24 +17718,40 @@ function laborLedger(ym){
     return '<div style="border-bottom:1px dashed var(--line-soft);padding:7px 0">'+
       '<div style="font-size:12.5px"><b>'+(+s.date.slice(8,10))+'일</b> '+(s.time?s.time+' ':'')+escapeHtml(hjCut(s.title,14))+(s.project?' <span style="color:var(--muted)">@'+escapeHtml(hjCut(s.project,9))+'</span>':'')+'</div>'+
       '<div style="display:flex;gap:5px;margin-top:5px">'+
-        '<input class="llNames" data-id="'+escapeAttr(s.id)+'" placeholder="작업자 (예: 김반장,박씨)" value="'+escapeAttr(lb.names||'')+'" style="flex:1.4;padding:7px;font-size:12.5px">'+
-        '<input class="llAmt" data-id="'+escapeAttr(s.id)+'" placeholder="일당 합계" inputmode="numeric" value="'+(num(lb.amount)?Number(lb.amount).toLocaleString('ko-KR'):'')+'" style="flex:1;text-align:right;padding:7px;font-size:12.5px">'+
-      '</div></div>';
+        '<input class="llNames" data-id="'+escapeAttr(s.id)+'" placeholder="작업자 (예: 김반장,박씨)" value="'+escapeAttr(lb.names||'')+'" style="flex:1.4;padding:7px;font-size:12.5px;min-height:44px">'+
+        '<input class="llAmt" data-id="'+escapeAttr(s.id)+'" placeholder="일당 합계" inputmode="numeric" value="'+(num(lb.amount)?Number(lb.amount).toLocaleString('ko-KR'):'')+'" style="flex:1;text-align:right;padding:7px;font-size:12.5px;min-height:44px"'+(Object.keys(hjLaborBy(s)).length?' readonly title="사람별 공수 합계"':'')+'>'+
+      '</div>'+
+      (function(){const by=hjLaborBy(s),names=[...new Set([...hjCrewList(s.crew),...Object.keys(by),...String(lb.names||'').split(/[,·\/\s]+/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x))])].slice(0,8);
+        return names.length?'<div class="llBy" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px">'+names.map(n=>{const v=by[n];const rate=v?v.rate:hjCrewRate(n);
+          return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:12px"><span>'+escapeHtml(n)+'</span>'+[[1,'1'],[0.5,'½'],[0,'-']].map(([d,l])=>'<button type="button" class="llDay '+(((v&&v.days===d)||(!v&&d===0))?'blue':'ghost')+' tiny" data-id="'+escapeAttr(s.id)+'" data-name="'+escapeAttr(n)+'" data-days="'+d+'" style="min-width:44px;min-height:44px;padding:0 8px">'+l+'</button>').join('')+
+            (v?'<input class="llRate" data-id="'+escapeAttr(s.id)+'" data-name="'+escapeAttr(n)+'" inputmode="numeric" value="'+escapeAttr(rate?rate.toLocaleString('ko-KR'):'')+'" placeholder="일당" style="width:84px;min-height:44px;padding:6px;font-size:12.5px;text-align:right">':'')+'</span>';}).join('')+'</div>':'';})()+'</div>';
   }).join(''):'<div class="empty" style="padding:14px"><b>이 달 일정이 없습니다</b>일정표에 작업을 등록하면 여기서 일당을 기록합니다.</div>';
   const pjRows=Object.keys(d.byPj).map(k=>
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 0;font-size:12.5px"><span>'+escapeHtml(k)+(function(){const t=laborProjectTotal(k).total;return t!==d.byPj[k]?'<br><span class="llAll" style="font-size:11px;color:var(--muted)">전체 기간 '+won(t)+' 로 반영</span>':'';})()+'</span><span><b>'+won(d.byPj[k])+'</b> <button class="blue tiny llApply" data-pj="'+escapeAttr(k)+'" style="padding:5px 9px;margin-left:4px">지출 반영</button></span></div>').join('')||'<div style="font-size:12px;color:var(--muted)">기록된 일당이 없습니다.</div>';
   const wkKeys=Object.keys(d.byWk).sort((a,b)=>d.byWk[b]-d.byWk[a]);
   const wkRows=wkKeys.length?wkKeys.map(k=>'<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px"><span>👷 '+escapeHtml(k)+'</span><b>≈ '+won(Math.round(d.byWk[k]))+'</b></div>').join('')+'<div style="font-size:10.5px;color:var(--muted)">≈ 여러 명이 함께한 날은 균등 분할 추정</div>':'';
   openModal('👷 인건비 장부',
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+mBtns+'<span style="align-self:center;font-size:12.5px;color:var(--muted)">이 달 합계 <b style="color:var(--ink)">'+won(d.total)+'</b></span></div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+mBtns+'<span style="align-self:center;font-size:12.5px;color:var(--muted)">이 달 합계 <b style="color:var(--ink)">'+won(d.total)+'</b></span><button type="button" class="clay tiny" id="llSettle" style="min-height:44px;padding:0 12px">👤 사람별 정산표</button></div>'+
     '<div style="max-height:34vh;overflow:auto">'+rows+'</div>'+
     '<div style="font-weight:700;font-size:13px;margin:10px 0 2px">현장별 합계 → 지출 반영</div>'+pjRows+
     (wkRows?'<div style="font-weight:700;font-size:13px;margin:10px 0 2px">작업자별(이 달)</div>'+wkRows:''),
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   const save=(id,f,v)=>{const s=(state.schedule||[]).find(x=>x.id===id);if(!s)return;s.labor=s.labor||{};s.labor[f]=f==='amount'?won2num(v):v;markDirty();};
+  /* v440 사람별 1/½ 버튼이 생기면서 — 다른 칸에 적던 값은 먼저 저장하고 한 번만 다시 그린다. iOS 는 버튼을 눌러도 입력 칸 포커스가 남아,
+     다시 그리며 그 칸이 빠질 때 change 가 한 번 더 온다 — 그때는 값만 맞추고 또 그리지 않는다(겹쳐 그리면 NotFoundError 로 화면이 깨졌다). */
+  let redraw=false;
+  const again=()=>{if(redraw)return;redraw=true;laborLedger(d.ym);};
+  const flush=()=>{
+    root.querySelectorAll('.llNames').forEach(i=>{const s=(state.schedule||[]).find(x=>x.id===i.dataset.id);if(s&&i.value.trim()!==String((s.labor||{}).names||''))save(i.dataset.id,'names',i.value.trim());});
+    root.querySelectorAll('.llAmt:not([readonly])').forEach(i=>{const s=(state.schedule||[]).find(x=>x.id===i.dataset.id);if(s&&won2num(i.value)!==num(s.labor&&s.labor.amount))save(i.dataset.id,'amount',i.value);});
+    root.querySelectorAll('.llRate').forEach(i=>{const s=(state.schedule||[]).find(x=>x.id===i.dataset.id),v=hjLaborBy(s)[i.dataset.name];if(v&&won2num(i.value)!==v.rate)hjLaborSetPerson(i.dataset.id,i.dataset.name,v.days,won2num(i.value));});
+  };
   root.querySelectorAll('.llNames').forEach(i=>i.onchange=()=>save(i.dataset.id,'names',i.value.trim()));
-  root.querySelectorAll('.llAmt').forEach(i=>i.onchange=()=>{save(i.dataset.id,'amount',i.value);laborLedger(d.ym);});
+  root.querySelectorAll('.llAmt').forEach(i=>i.onchange=()=>{save(i.dataset.id,'amount',i.value);again();});
+  root.querySelectorAll('.llDay').forEach(b=>b.onclick=()=>{if(redraw)return;flush();hjLaborSetPerson(b.dataset.id,b.dataset.name,Number(b.dataset.days));again();});
+  root.querySelectorAll('.llRate').forEach(i=>i.onchange=()=>{flush();again();});
+  {const cs=root.querySelector('#llSettle');if(cs)cs.onclick=()=>hjCrewSettleView(d.ym,()=>laborLedger(d.ym));}
   root.querySelectorAll('.llApply').forEach(b=>b.onclick=()=>{
     const pj=b.dataset.pj;
     const lt=laborProjectTotal(pj),sum=lt.total;
@@ -20831,7 +20849,8 @@ function supplierAdd(o){
   state.suppliers=state.suppliers||[];
   let sup=state.suppliers.find(s=>s.name===name);
   // v439 자재상 칸(주소·영업시간·결제·배송)은 같은 레코드 안 — 값이 온 칸만 바꾼다
-  const extra=s=>{['addr','hours','pay'].forEach(k=>{if(o[k]!==undefined)s[k]=String(o[k]||'').slice(0,120);});if(o.delivery!==undefined)s.delivery=!!o.delivery;};
+  const extra=s=>{['addr','hours','pay','trade','lead'].forEach(k=>{if(o[k]!==undefined)s[k]=String(o[k]||'').slice(0,120);});if(o.delivery!==undefined)s.delivery=!!o.delivery;if(o.taxInvoice!==undefined)s.taxInvoice=!!o.taxInvoice;
+    if(o.rate!==undefined){const r=o.rate&&typeof o.rate==='object'?o.rate:null;if(r&&HJ_SUB_RATE_TYPES.some(x=>x[0]===r.type)&&num(r.amount)>0)s.rate={type:r.type,amount:Math.round(num(r.amount))};else delete s.rate;}};   // v440 외주팀 칸
   if(sup){
     // 외부 AI 출구(hjAiMaskOut)는 연락처를 '···1234' 로 가려 돌려보낸다 — 모델이 그 값을 되넘기면 원문을 덮어쓴다. 가린 값은 무시.
     if(o.phone!==undefined&&!/^\s*···/.test(String(o.phone)))sup.phone=o.phone;
@@ -20853,7 +20872,8 @@ function hjSupHasRecords(name){
   const s=(state.suppliers||[]).find(x=>x&&x.name===n);
   if(s&&hjSupPrices(s).length)return true;
   if((state.projects||[]).some(p=>hjMatOrders(p).some(o=>String(o.sup||'').trim()===n)))return true;
-  return (state.expenses||[]).some(e=>e&&String(e.memo||'').includes(n));
+  if((state.projects||[]).some(p=>hjSubQuotes(p).some(x=>String(x.sup||'').trim()===n)))return true;   // v440 외주 견적 요청 기록
+  return (state.expenses||[]).some(e=>e&&(String(e.memo||'').includes(n)||(e.src==='crewpay'&&e.who===n)));
 }
 function hjSupRemove(name){
   const s=(state.suppliers||[]).find(x=>x&&x.name===name);if(!s)return {오류:'거래처 없음'};
@@ -20861,14 +20881,22 @@ function hjSupRemove(name){
   state.suppliers=(state.suppliers||[]).filter(x=>x!==s);markDirty();render();return {삭제:name};
 }
 /* v439 명단 불러오기 — 이름·전화·주소·품목 4열(머리글 있어도 됨). 같은 이름은 빈 칸만 채운다(병합). 읽기 함수 아님 — 부른 쪽이 저장. */
-function hjSupImportRows(rows){
+function hjSupImportRows(rows,opts){
+  const cat=opts&&opts.category==='외주'?'외주':'자재';   // v440 외주팀 명단은 이름·전화·공종·단가 4열
   let added=0,merged=0,skipped=0;const head=/이름|거래처|상호|name/i;
   (rows||[]).forEach((r,i)=>{
     const cells=Array.isArray(r)?r.map(c=>String(c==null?'':c).trim()):[];
     if(!cells.length||!cells[0]||(i===0&&head.test(cells[0])&&!/\d/.test(cells[1]||'')&&(cells[1]||'').length<12&&/전화|연락|phone|주소|품목/i.test(cells.slice(1).join(' '))))return;
-    const name=cells[0].slice(0,40),phone=(cells[1]||'').slice(0,20),addr=(cells[2]||'').slice(0,120),items=(cells[3]||'').slice(0,120);
+    const name=cells[0].slice(0,40),phone=(cells[1]||'').slice(0,20);
     state.suppliers=state.suppliers||[];
     const s=state.suppliers.find(x=>x&&x.name===name);
+    if(cat==='외주'){
+      const trade=HJ_CREW_TRADES.includes((cells[2]||'').trim())?(cells[2]||'').trim():'',amount=won2num(cells[3]||''),rate=amount>0?{type:'day',amount}:undefined;
+      if(s){let ch=false;if(!s.phone&&phone){s.phone=phone;ch=true;}if(!s.trade&&trade){s.trade=trade;ch=true;}if(!s.rate&&rate){s.rate=rate;ch=true;}if(s.hidden){delete s.hidden;ch=true;}if(ch)merged++;else skipped++;}
+      else{const rec={name,phone,category:'외주',memo:'',items:trade,trade};if(rate)rec.rate=rate;state.suppliers.push(rec);added++;}
+      return;
+    }
+    const addr=(cells[2]||'').slice(0,120),items=(cells[3]||'').slice(0,120);
     if(s){let ch=false;if(!s.phone&&phone){s.phone=phone;ch=true;}if(!s.addr&&addr){s.addr=addr;ch=true;}if(!s.items&&items){s.items=items;ch=true;}if(s.hidden){delete s.hidden;ch=true;}if(ch)merged++;else skipped++;}
     else{state.suppliers.push({name,phone,category:'자재',memo:'',items,addr});added++;}
   });
@@ -20879,10 +20907,10 @@ function hjSupParseCsv(text){
   const out=[];String(text||'').replace(/^﻿/,'').split(/\r?\n/).forEach(line=>{if(!line.trim())return;const cells=[];let cur='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if((ch===','||ch==='\t')&&!q){cells.push(cur);cur='';}else cur+=ch;}cells.push(cur);out.push(cells);});
   return out;
 }
-async function hjSupImportFile(file){
+async function hjSupImportFile(file,opts){
   if(!file)return null;
-  if(/\.xlsx?$/i.test(file.name)){await ensureXLSX();const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];return hjSupImportRows(XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''}));}
-  return hjSupImportRows(hjSupParseCsv(await file.text()));
+  if(/\.xlsx?$/i.test(file.name)){await ensureXLSX();const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];return hjSupImportRows(XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''}),opts);}
+  return hjSupImportRows(hjSupParseCsv(await file.text()),opts);
 }
 function suppliers(){
   const all=supplierList(),list=all.filter(s=>!s.hidden),hidden=all.filter(s=>s.hidden);
@@ -20893,12 +20921,14 @@ function suppliers(){
       '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(s.name)+'</b>'+(s.category?' <span style="font-size:10.5px;color:var(--muted);background:var(--paper-2);border-radius:8px;padding:1px 7px">'+escapeHtml(s.category)+'</span>':'')+
       (s.items?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(hjCut(s.items,20))+'</span>':'')+
       ((s.addr||s.pay||s.delivery)?'<br><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml([s.addr?hjCut(s.addr,16):'',s.pay||'',s.delivery?'배송 가능':''].filter(Boolean).join(' · '))+'</span>':'')+
+      ((s.trade||s.rate||s.lead)?'<br><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml([s.trade||'',s.lead?'대표 '+s.lead:'',s.rate&&num(s.rate.amount)>0?(HJ_SUB_RATE_TYPES.find(x=>x[0]===s.rate.type)||['','단가'])[1]+' '+won(s.rate.amount):'',s.taxInvoice?'세금계산서 가능':''].filter(Boolean).join(' · '))+'</span>':'')+
       ((st.건수||prices)?'<br><span style="font-size:10.5px;color:var(--muted)">'+(st.건수?'거래 '+st.건수+'건 · '+hjMan(st.거래액):'')+(prices?(st.건수?' · ':'')+'단가 '+prices+'개':'')+'</span>':'')+'</span>'+
       (s.phone?'<a href="tel:'+escapeAttr(s.phone)+'" onclick="event.stopPropagation()" style="font-size:20px;text-decoration:none;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">📞</a>':'')+'</div>';
   }).join(''):'<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:16px">등록된 거래처가 없습니다.<br>자재발주에서 자동 등록되거나, 아래 [➕ 거래처 추가]로 넣으세요.</div>';
   const body='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">자주 쓰는 자재상·외주 업체를 모아둡니다. 이름을 누르면 정보를 수정할 수 있어요. 입고 확인할 때 자재비가 현장 원가로 들어가요.</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button type="button" class="blue tiny" id="supAddMat" style="min-height:44px;padding:0 12px">➕ 자재상 추가</button>'+
-    '<button type="button" class="ghost tiny" id="supImport" style="min-height:44px;padding:0 12px">📥 명단 불러오기 (CSV·엑셀)</button><input id="supImportFile" type="file" accept=".csv,.txt,.xlsx,.xls,text/csv" hidden>'+
+    '<button type="button" class="ghost tiny" id="supImport" style="min-height:44px;padding:0 12px">📥 자재상 명단 (CSV·엑셀)</button><input id="supImportFile" type="file" accept=".csv,.txt,.xlsx,.xls,text/csv" hidden>'+
+    '<button type="button" class="blue tiny" id="supAddSub" style="min-height:44px;padding:0 12px">➕ 외주팀 추가</button><button type="button" class="ghost tiny" id="supImportSub" style="min-height:44px;padding:0 12px">📥 외주팀 명단 (이름·전화·공종·단가)</button>'+
     '<button type="button" class="ghost tiny" id="supPrices" style="min-height:44px;padding:0 12px">📋 자재 단가표</button></div>'+
     rows+
     (hidden.length?'<details style="margin-top:8px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px">숨긴 거래처 '+hidden.length+'</summary>'+hidden.map(s=>'<div style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:12.5px"><span style="flex:1;min-width:0">'+escapeHtml(s.name)+'</span><button type="button" class="ghost tiny supUnhide" data-n="'+escapeAttr(s.name)+'" style="min-height:44px">되살리기</button></div>').join('')+'</details>':'')+
@@ -20907,10 +20937,12 @@ function suppliers(){
   const root=document.getElementById('modalRoot');
   root.querySelector('#supAdd').onclick=()=>supplierEditDialog();
   root.querySelector('#supAddMat').onclick=()=>supplierEditDialog(null,{category:'자재'});
+  root.querySelector('#supAddSub').onclick=()=>supplierEditDialog(null,{category:'외주'});   // v440
+  root.querySelector('#supImportSub').onclick=()=>{fileEl.dataset.cat='외주';fileEl.click();};
   root.querySelector('#supPrices').onclick=()=>hjSupPriceTableView(()=>suppliers());
   const fileEl=root.querySelector('#supImportFile');
-  root.querySelector('#supImport').onclick=()=>fileEl.click();
-  fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;try{const r=await hjSupImportFile(f);toast('📥 명단: 추가 '+r.added+' · 보완 '+r.merged+(r.skipped?' · 그대로 '+r.skipped:''));suppliers();}catch(e){toast('명단을 읽지 못했어요: '+(e&&e.message||e));}};
+  root.querySelector('#supImport').onclick=()=>{fileEl.dataset.cat='자재';fileEl.click();};
+  fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;try{const r=await hjSupImportFile(f,{category:fileEl.dataset.cat||'자재'});toast('📥 명단: 추가 '+r.added+' · 보완 '+r.merged+(r.skipped?' · 그대로 '+r.skipped:''));suppliers();}catch(e){toast('명단을 읽지 못했어요: '+(e&&e.message||e));}};
   root.querySelectorAll('.supUnhide').forEach(b=>b.onclick=()=>{supplierAdd({name:b.dataset.n,hidden:false});toast('되살렸어요');suppliers();});
   root.querySelectorAll('.supRow').forEach(b=>b.onclick=()=>supplierEditDialog(b.dataset.n));
   return {거래처수:list.length};
@@ -20935,6 +20967,12 @@ function supplierEditDialog(name,opts){
     '<input id="supHours" value="'+escapeAttr(sup?sup.hours||'':'')+'" placeholder="영업시간 (예: 평일 07:30~18:00, 토 ~13:00)" style="'+inp+'">'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="supPay" style="'+inp+';flex:1;min-width:140px"><option value="">결제 — 정하지 않음</option>'+HJ_SUP_PAY.map(v=>'<option value="'+v+'"'+(sup&&sup.pay===v?' selected':'')+'>'+v+'</option>').join('')+'</select>'+
     '<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:12.5px;flex:none"><input type="checkbox" id="supDelivery"'+(sup&&sup.delivery?' checked':'')+' style="width:18px;height:18px"> 배송 가능</label></div></div>'+
+    '<div id="supSubFields" style="margin-top:4px"><label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">외주팀 정보 (선택)</label>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap"><select id="supTrade" style="'+inp+';flex:1;min-width:120px"><option value="">공종 — 고르기</option>'+HJ_CREW_TRADES.map(t=>'<option value="'+t+'"'+(sup&&sup.trade===t?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+    '<input id="supLead" value="'+escapeAttr(sup?sup.lead||'':'')+'" placeholder="대표 작업자 이름" style="'+inp+';flex:1;min-width:120px"></div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap"><select id="supRateType" style="'+inp+';flex:1;min-width:100px">'+HJ_SUB_RATE_TYPES.map(([k,l])=>'<option value="'+k+'"'+(sup&&sup.rate&&sup.rate.type===k?' selected':'')+'>'+l+'</option>').join('')+'</select>'+
+    '<input id="supRateAmt" inputmode="numeric" value="'+escapeAttr(sup&&sup.rate&&num(sup.rate.amount)>0?Number(sup.rate.amount).toLocaleString('ko-KR'):'')+'" placeholder="금액(원)" style="'+inp+';flex:1;min-width:120px"></div>'+
+    '<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:12.5px"><input type="checkbox" id="supTax"'+(sup&&sup.taxInvoice?' checked':'')+' style="width:18px;height:18px"> 세금계산서 발행 가능</label></div>'+
     (sup&&hjSupPrices(sup).length?'<p class="hint" style="margin-top:6px">이 거래처 단가 '+hjSupPrices(sup).length+'개 — [📋 자재 단가표]에서 봅니다.</p>':'');
   openModal(sup?'✏️ 거래처 수정':'➕ 거래처 추가',body,[
     {label:'저장',cls:'clay',fn:()=>{
@@ -20942,14 +20980,15 @@ function supplierEditDialog(name,opts){
       if(!nm){toast('거래처 이름을 입력해 주세요.');hjFieldIssue(document.getElementById('supName'),'거래처 이름을 입력해 주세요.');return;}
       const g=id=>document.getElementById(id);
       supplierAdd({name:nm,category:window.__supCat||(sup?sup.category:'자재'),phone:g('supPhone').value,items:g('supItems').value,memo:g('supMemo').value,
-        addr:g('supAddr').value.trim(),hours:g('supHours').value.trim(),pay:g('supPay').value,delivery:g('supDelivery').checked});
+        addr:g('supAddr').value.trim(),hours:g('supHours').value.trim(),pay:g('supPay').value,delivery:g('supDelivery').checked,
+        trade:g('supTrade').value,lead:g('supLead').value.trim(),rate:{type:g('supRateType').value,amount:won2num(g('supRateAmt').value)},taxInvoice:g('supTax').checked});
       toast(sup?'수정했습니다':'거래처를 추가했습니다');suppliers();
     }},
     sup?{label:'삭제',cls:'warn',fn:()=>{const r=hjSupRemove(sup.name);suppliers();toast(r.숨김?'거래 기록이 있어 숨겼어요 — 목록 아래 [숨긴 거래처]에서 되살릴 수 있어요':'삭제됨');}}:{label:'취소',cls:'ghost',fn:()=>suppliers()}],true);
   hjModalTapTargets();
   const root=document.getElementById('modalRoot');
   window.__supCat=sup?sup.category:(cats.includes(o.category)?o.category:'자재');
-  const matBox=root.querySelector('#supMatFields'),syncMat=()=>{matBox.hidden=window.__supCat!=='자재';};
+  const matBox=root.querySelector('#supMatFields'),subBox=root.querySelector('#supSubFields'),syncMat=()=>{matBox.hidden=window.__supCat!=='자재';subBox.hidden=window.__supCat!=='외주';};
   root.querySelectorAll('.supCat').forEach(btn=>{
     if(btn.dataset.c===window.__supCat)btn.className='supCat clay tiny';
     btn.onclick=()=>{window.__supCat=btn.dataset.c;root.querySelectorAll('.supCat').forEach(x=>x.className='supCat ghost tiny');btn.className='supCat clay tiny';syncMat();};
@@ -36817,11 +36856,15 @@ function openContactEdit(id){
     </div>
     <label>메모<textarea id="cMemo" placeholder="거래 내용·특이사항">${escapeHtml(c.memo||'')}</textarea></label>
     <label style="display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer"><input type="checkbox" id="cTeam"${c.team?' checked':''} style="width:22px;height:22px;flex:none"><span>👷 팀원(작업자·협력팀) <span style="font-size:12px;color:var(--muted)">— 일정 담당·일정 공유에서 바로 고를 수 있어요</span></span></label>
+    <div id="cCrewFields"${c.team?'':' hidden'} style="margin-top:4px"><div class="sch-row2"><label>공종<select id="cTrade"><option value="">— 고르기 —</option>${HJ_CREW_TRADES.map(t=>'<option value="'+t+'"'+(c.trade===t?' selected':'')+'>'+t+'</option>').join('')}</select></label>
+      <label>기본 일당(원)<input type="text" id="cDayRate" inputmode="numeric" value="${num(c.dayRate)>0?escapeAttr(Number(c.dayRate).toLocaleString('ko-KR')):''}" placeholder="예: 250,000"></label></div>
+    <label style="display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer"><input type="checkbox" id="cHalfDay"${c.halfDay?' checked':''} style="width:22px;height:22px;flex:none"><span>반일(½) 가능</span></label><p class="hint" style="margin:0">v440 사람별 공수·지급 명세에 쓰는 값이에요. 계좌번호는 저장하지 않아요.</p></div>
   </div>`;
   openModal(isNew?'연락처 추가':'연락처 수정', body, [
     {label:'저장',cls:'blue',fn:()=>saveContactEdit(c.id,isNew)},
     {label:'취소',cls:'ghost',fn:closeModal}
   ], true);
+  {const t=document.getElementById('cTeam'),f=document.getElementById('cCrewFields');if(t&&f)t.onchange=()=>{f.hidden=!t.checked;};}   // v440
 }
 function saveContactEdit(id,isNew){
   const g=i=>document.getElementById(i);
@@ -36829,8 +36872,11 @@ function saveContactEdit(id,isNew){
   if(!c.name&&!c.phone){toast('이름이나 전화 중 하나는 입력하세요.');hjFieldIssue(document.getElementById('cName'),'이름이나 전화 중 하나는 입력하세요.');return;}
   const team=!!(g('cTeam')&&g('cTeam').checked);
   /* v357 수정은 기존 항목에 폼 칸만 덮는다 — 예전에는 새 객체로 갈아 끼워 폼에 없는 칸(카카오 문의의 tag '고객'·email 등)이 지워졌다(일정 수정 v3xx 와 같은 결함). */
-  if(isNew){if(team)c.team=true;state.contacts.push(c);}
-  else{const old=state.contacts.find(x=>x.id===id);if(old){Object.assign(old,c);if(team)old.team=true;else delete old.team;}}
+  // v440 작업자 칸 — 팀원일 때만 저장, 아니면 지운다
+  const crew=team?{trade:HJ_CREW_TRADES.includes(g('cTrade')&&g('cTrade').value)?g('cTrade').value:'',dayRate:won2num(g('cDayRate')?g('cDayRate').value:''),halfDay:!!(g('cHalfDay')&&g('cHalfDay').checked)}:null;
+  const applyCrew=t=>{if(crew){if(crew.trade)t.trade=crew.trade;else delete t.trade;if(crew.dayRate>0)t.dayRate=crew.dayRate;else delete t.dayRate;if(crew.halfDay)t.halfDay=true;else delete t.halfDay;}else{delete t.trade;delete t.dayRate;delete t.halfDay;}};
+  if(isNew){if(team)c.team=true;applyCrew(c);state.contacts.push(c);}
+  else{const old=state.contacts.find(x=>x.id===id);if(old){Object.assign(old,c);if(team)old.team=true;else delete old.team;applyCrew(old);}}
   markDirty();closeModal();render();toast('연락처 저장됨');
 }
 function deleteContact(id){
@@ -36946,7 +36992,7 @@ function viewProject(){
   const p=state.projects.find(x=>x.name===state.activeProject);
   const list=state.files.filter(f=>f.project===state.activeProject);
   let html=`<div class="panel-head" style="margin-bottom:8px"><h2 style="font-size:18px"><span style="color:var(--clay)">●</span> ${escapeHtml(state.activeProject)}</h2>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="ghost tiny" data-teamsend="${escapeAttr(state.activeProject)}">📤 팀에 업무 보내기</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="blue tiny" data-history="${escapeAttr(state.activeProject)}" title="이 현장의 전체 이력">🧠 파일철</button><button class="ghost tiny" data-renproj="${escapeAttr(state.activeProject)}" title="현장명 수정">✎ 이름</button><button class="ghost tiny" data-delproj="${escapeAttr(state.activeProject)}" title="현장 삭제">🗑 삭제</button><button class="blue tiny" data-dochub="${escapeAttr(state.activeProject)}">📎 서류 만들기</button><button class="ghost tiny" data-teamsend="${escapeAttr(state.activeProject)}">📤 팀에 업무 보내기</button><button class="ghost tiny" data-subquote="${escapeAttr(state.activeProject)}">🔧 외주 견적 요청</button><button class="clay tiny pc-only-action" data-save="${escapeAttr(state.activeProject)}">정리(이동)</button></div></div>`;
   html+=hjLeakCardHtml(p)+hjLeakCard(p)+stageBar(p)+aptUnitProjectCard(p)+hjProjLinksLine(p);
 
   // ⏱ 작업시간 · 🚗 운행
@@ -37221,7 +37267,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37437,6 +37483,7 @@ function setupDelegation(){
     if(d.warranty!==undefined){e.stopPropagation();return warrantyView(d.warranty);}
     if(d.dochub!==undefined){e.stopPropagation();return docHubView(d.dochub);}
     if(d.teamsend!==undefined){e.stopPropagation();return hjTeamPacketSendView(d.teamsend);}   // v432
+    if(d.subquote!==undefined){e.stopPropagation();return hjSubQuoteView(d.subquote);}   // v440
     if(d.schmore!==undefined){e.stopPropagation();return schMoreView(d.schmore);}
     if(d.punch!==undefined){e.stopPropagation();return workPunch(d.punch);}
     if(d.worklog!==undefined){e.stopPropagation();return workView(d.worklog);}
@@ -40194,6 +40241,173 @@ function hjQuoteCostHintHtml(q){
   if(!hints.length)return '';
   return '<div data-quote-cost-hint style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;line-height:1.6">📋 자재 원가 참고(최근 산 값, 견적 단가는 그대로): '+hints.map(h=>escapeHtml(h.name)+' '+escapeHtml(won(h.s.price))+'('+escapeHtml(h.s.sup)+')').join(' · ')+'</div>';
 }
+/* ═══ v440 외주팀·작업자 명단 · 일당·공수 정산표 · 외주 견적 요청서 · 지급 명세 ═══
+   새 최상위 직렬화 키 없음 — 작업자는 주소록 팀원(c.team) 레코드 안 c.trade/c.dayRate/c.halfDay, 외주팀은 📇 거래처(외주) 안 s.trade/s.lead/s.rate/s.taxInvoice,
+   사람별 공수는 일정 s.labor.by={이름:{days,rate}} (합계는 기존 s.labor.amount 와 같이 맞춰 laborProjectTotal·[지출 반영]이 그대로),
+   외주 견적 요청은 p.subQuotes[], 지급 기록은 기존 지출 장부 state.expenses(src 'crewpay', sourceKey 'crewpay|이름|월' 로 두 번 안 넣음).
+   계좌번호는 저장하지 않는다(명세에 "계좌: 전화로 확인"). 외주 요청서에 고객 이름·전화를 넣지 않는다. 자동 발송 없음. */
+const HJ_CREW_TRADES=Object.freeze(['타일','목공','도배','설비','전기','철거','방수','도장','기타']);
+const HJ_SUB_RATE_TYPES=Object.freeze([['day','일당'],['pyeong','평당'],['job','건당']]);
+const HJ_SUB_STATUS=Object.freeze({asked:'요청함',got:'금액 받음',picked:'선택'});
+const HJ_CREW_PAY_NOTE='입금 후 문자로 알려 드립니다. 계좌: 전화로 확인';
+function hjCrewContact(name){const n=String(name||'').trim();return hjTeamContacts().find(c=>String(c.name).trim()===n)||null;}
+function hjCrewRate(name){const c=hjCrewContact(name);return c&&num(c.dayRate)>0?Math.round(num(c.dayRate)):0;}
+function hjLaborBy(s){const by=s&&s.labor&&s.labor.by;if(!by||typeof by!=='object'||Array.isArray(by))return {};const out={};Object.keys(by).forEach(k=>{const v=by[k];const days=Number(v&&v.days);if(!k.trim()||!(days>0))return;out[k.trim()]={days:days===0.5?0.5:Math.max(1,Math.round(days)),rate:Math.max(0,Math.round(num(v.rate)))};});return out;}
+function hjLaborByTotal(by){return Object.values(by||{}).reduce((a,v)=>a+Math.round(v.days*v.rate),0);}
+/* 사람별 공수 저장 — days 0 이면 지우고, 합계를 s.labor.amount 에 쓴다(기존 장부·현장 반영과 한 값). names 도 맞춘다. */
+function hjLaborSetPerson(schId,name,days,rate){
+  const s=(state.schedule||[]).find(x=>x&&x.id===schId);if(!s)return null;
+  const n=String(name||'').trim();if(!n)return null;
+  s.labor=s.labor&&typeof s.labor==='object'?s.labor:{};
+  const by=hjLaborBy(s);
+  if(!(days>0))delete by[n];else by[n]={days:days===0.5?0.5:1,rate:Math.max(0,Math.round(num(rate!=null?rate:(by[n]?by[n].rate:hjCrewRate(n)))))};
+  if(Object.keys(by).length){s.labor.by=by;s.labor.amount=hjLaborByTotal(by);s.labor.names=Object.keys(by).join(', ');}
+  else{delete s.labor.by;if(s.labor.amount&&!s.labor.manual)s.labor.amount=0;}
+  markDirty();return by;
+}
+/* 월 정산표 — 사람 × 날짜. 선지급(지출 장부 src crewpay, 같은 달)을 빼서 지급할 금액. 읽기 전용. */
+function hjCrewSettleData(ym){
+  ym=ym||localDate().slice(0,7);
+  const rows=(state.schedule||[]).filter(s=>s&&String(s.date||'').slice(0,7)===ym&&!/^💰/.test(String(s.title||''))&&!s._taxAuto).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const people={},dates=new Set();
+  rows.forEach(s=>{const by=hjLaborBy(s);Object.keys(by).forEach(n=>{const p=people[n]=people[n]||{name:n,days:0,amount:0,cells:{},sites:new Set(),lines:[]};const v=by[n],amt=Math.round(v.days*v.rate);p.days+=v.days;p.amount+=amt;p.cells[s.date]=(p.cells[s.date]||0)+v.days;dates.add(s.date);if(s.project)p.sites.add(s.project);p.lines.push({date:s.date,project:s.project||'',title:String(s.title||''),days:v.days,rate:v.rate,amount:amt});});});
+  const paid=(state.expenses||[]).filter(e=>e&&e.src==='crewpay'&&e.ym===ym);
+  const list=Object.values(people).map(p=>{const pre=paid.filter(e=>e.who===p.name).reduce((a,e)=>a+num(e.amount),0);return {...p,sites:[...p.sites],prepaid:pre,due:Math.max(0,p.amount-pre),paidDone:paid.some(e=>e.who===p.name&&e.final),rate:hjCrewRate(p.name),trade:(hjCrewContact(p.name)||{}).trade||''};}).sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name,'ko'));
+  const byPj={};rows.forEach(s=>{const amt=num(s.labor&&s.labor.amount);if(amt>0&&s.project)byPj[s.project]=(byPj[s.project]||0)+amt;});
+  return {ym,people:list,dates:[...dates].sort(),total:list.reduce((a,p)=>a+p.amount,0),byPj,pendingPayslip:list.filter(p=>p.amount>0&&!p.paidDone).map(p=>p.name)};
+}
+function hjCrewPayPending(ym){return hjCrewSettleData(ym||localDate().slice(0,7)).pendingPayslip;}
+function hjCrewSettleView(ym,back){
+  const d=hjCrewSettleData(ym),[y,m]=d.ym.split('-');
+  const shift=n=>{const x=new Date(d.ym+'-01T00:00:00');x.setMonth(x.getMonth()+n);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');};
+  const cell=v=>v>=1?'●'+(v>1?'×'+v:''):v===0.5?'½':'·';
+  const grid=d.people.length?'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table data-crew-grid style="border-collapse:collapse;font-size:11.5px;min-width:'+(120+d.dates.length*26)+'px"><thead><tr><th style="text-align:left;padding:4px;position:sticky;left:0;background:var(--paper)">사람</th>'+d.dates.map(x=>'<th style="padding:2px;font-weight:600;color:var(--muted)">'+(+x.slice(8,10))+'</th>').join('')+'<th style="padding:4px">공수</th></tr></thead><tbody>'+
+    d.people.map(p=>'<tr data-crew-person="'+escapeAttr(p.name)+'"><td style="padding:4px;position:sticky;left:0;background:var(--paper);white-space:nowrap"><b>'+escapeHtml(p.name)+'</b>'+(p.trade?' <span style="color:var(--muted)">'+escapeHtml(p.trade)+'</span>':'')+'</td>'+d.dates.map(x=>'<td style="text-align:center;padding:2px">'+cell(p.cells[x]||0)+'</td>').join('')+'<td style="text-align:center;padding:4px;font-weight:700">'+p.days+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty" style="padding:14px"><b>이 달 사람별 공수가 없어요</b>👷 인건비 장부의 일정 줄에서 이름별 1/½ 를 누르면 여기 쌓여요.</div>';
+  const list=d.people.map(p=>'<div data-crew-row="'+escapeAttr(p.name)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 10px;margin-top:6px;font-size:12.5px;line-height:1.6"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>👷 '+escapeHtml(p.name)+'</b><span>공수 '+p.days+' · 일당 합 <b>'+escapeHtml(won(p.amount))+'</b>'+(p.prepaid?' · 선지급 −'+escapeHtml(won(p.prepaid)):'')+' · 지급할 금액 <b style="color:'+(p.due>0?'#c2410c':'#0a7f43')+'">'+escapeHtml(won(p.due))+'</b>'+(p.paidDone?' ✅ 지급함':'')+'</span></div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="clay tiny" data-crew-payslip="'+escapeAttr(p.name)+'" style="min-height:44px;padding:0 12px">💸 지급 명세</button></div></div>').join('');
+  const pj=Object.keys(d.byPj).map(k=>'<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0"><span>'+escapeHtml(k)+'</span><b>'+escapeHtml(won(d.byPj[k]))+'</b></div>').join('');
+  openModal('👤 사람별 정산표 — '+y+'년 '+(+m)+'월',
+    '<div id="hjCrewSettle" style="min-width:0;overflow-wrap:anywhere"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><button type="button" class="ghost tiny" id="csPrev" style="min-height:44px;min-width:44px">‹</button><input type="month" id="csMonth" value="'+escapeAttr(d.ym)+'" style="min-height:44px;font-size:14px;padding:6px 8px"><button type="button" class="ghost tiny" id="csNext" style="min-height:44px;min-width:44px">›</button><span class="hint" style="margin:0">합계 <b>'+escapeHtml(won(d.total))+'</b> · '+d.people.length+'명</span></div>'+
+    grid+list+(pj?'<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">현장별 합계 (👷 인건비 장부 [지출 반영]과 같은 값)</div>'+pj:'')+
+    '<p class="hint" style="margin-top:10px">계좌번호는 앱에 저장하지 않아요 — 지급은 은행 앱에서, 명세에는 "계좌: 전화로 확인"으로 적습니다. 선지급은 지출 장부의 [지급] 기록에서 뺍니다.</p></div>',
+    [{label:'📥 엑셀',cls:'ghost',fn:()=>hjCrewSettleXlsx(d)},{label:'📄 PDF 1장',cls:'ghost',fn:()=>{const html=hjCrewSettleHtml(d);hjDocDeliverView(d.ym,html,'만물_정산_'+d.ym,'👤 사람별 정산표',()=>hjCrewSettleView(d.ym,back));}},{label:back?'← 뒤로':'닫기',cls:'ghost',fn:()=>{closeModal();if(back)back();}}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjCrewSettle');
+  root.querySelector('#csPrev').onclick=()=>hjCrewSettleView(shift(-1),back);root.querySelector('#csNext').onclick=()=>hjCrewSettleView(shift(1),back);
+  root.querySelector('#csMonth').onchange=e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))hjCrewSettleView(e.target.value,back);};
+  root.querySelectorAll('[data-crew-payslip]').forEach(b=>b.onclick=()=>hjCrewPayslipView(b.dataset.crewPayslip,d.ym,()=>hjCrewSettleView(d.ym,back)));
+  return d;
+}
+function hjCrewSettleHtml(d){
+  const [y,m]=d.ym.split('-');
+  const rows=d.people.map(p=>'<tr><td class="nm">'+escapeHtml(p.name)+(p.trade?' <span style="color:#8b98ab">'+escapeHtml(p.trade)+'</span>':'')+'</td><td class="c">'+p.days+'</td><td class="r">'+hjNum(p.amount)+'</td><td class="r">'+(p.prepaid?hjNum(p.prepaid):'-')+'</td><td class="r"><b>'+hjNum(p.due)+'</b></td></tr>').join('');
+  const inner='<div class="prow"><span><b>정산 월</b>'+y+'년 '+(+m)+'월</span><span><b>작성일</b>'+hjDocDate()+'</span></div>'+
+    '<table class="items"><thead><tr><th>작업자</th><th style="width:60px">공수</th><th style="width:110px">일당 합</th><th style="width:100px">선지급</th><th style="width:110px">지급할 금액</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" class="c" style="color:#8b98ab;padding:14px">기록 없음</td></tr>')+'</tbody></table>'+
+    '<div class="sumbox"><div class="sumtab"><div class="row total"><span>합계</span><span>'+hjNum(d.total)+' 원</span></div></div></div>'+
+    '<div class="note">'+escapeHtml(HJ_CREW_PAY_NOTE)+' · 내부 정산용이며 세금계산서·원천징수는 세무사와 확인합니다.</div>';
+  return hjDocShell('일당 · 공수 정산표',inner,'#7c3aed');
+}
+async function hjCrewSettleXlsx(d){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈을 불러오지 못했어요');return false;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['작업자','공종','공수','일당 합','선지급','지급할 금액'],...d.people.map(p=>[p.name,p.trade,p.days,p.amount,p.prepaid,p.due]),['합계','',d.people.reduce((a,p)=>a+p.days,0),d.total,'','']]),'요약');
+  d.people.slice(0,20).forEach(p=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['날짜','현장','작업','공수','일당','금액'],...p.lines.map(l=>[l.date,l.project,l.title,l.days,l.rate,l.amount])]),p.name.slice(0,28)));
+  XLSX.writeFile(wb,'만물_정산_'+d.ym+'.xlsx');toast('📥 정산표 엑셀 저장됨');return true;
+}
+/* 지급 명세 — 사람(또는 외주팀) 월 명세. [지급했음]은 지출 장부에 1건(sourceKey 로 두 번 안 넣음). 현장 배분은 기존 [지출 반영]이 맡는다. */
+function hjCrewPayslipData(who,ym){
+  const d=hjCrewSettleData(ym),p=d.people.find(x=>x.name===who)||{name:who,days:0,amount:0,prepaid:0,due:0,lines:[],paidDone:false,trade:''};
+  const sup=(state.suppliers||[]).find(s=>s&&s.name===who&&s.category==='외주');
+  return {who,ym,person:p,kind:sup?'외주':'인건비',phone:sup?String(sup.phone||''):String((hjCrewContact(who)||{}).phone||''),key:'crewpay|'+who+'|'+ym,note:HJ_CREW_PAY_NOTE};
+}
+function hjCrewPayslipText(d){
+  const [y,m]=d.ym.split('-');
+  return '['+COMPANY.name+'] '+d.who+'님 '+(+m)+'월 지급 명세\n'+d.person.lines.map(l=>l.date.slice(5)+' '+(l.project?l.project+' ':'')+(l.days===0.5?'반일':'1일')+' '+won(l.amount)).join('\n')+'\n공수 '+d.person.days+' · 합계 '+won(d.person.amount)+(d.person.prepaid?' · 선지급 '+won(d.person.prepaid):'')+'\n지급액 '+won(d.person.due)+'\n'+d.note;
+}
+function hjCrewPayslipHtml(d){
+  const [y,m]=d.ym.split('-');
+  const inner='<div class="prow"><span><b>받는 분</b>'+escapeHtml(d.who)+'</span><span><b>정산 월</b>'+y+'년 '+(+m)+'월</span><span><b>작성일</b>'+hjDocDate()+'</span></div>'+
+    '<table class="items"><thead><tr><th style="width:80px">날짜</th><th>현장 · 작업</th><th style="width:60px">공수</th><th style="width:90px">일당</th><th style="width:100px">금액</th></tr></thead><tbody>'+
+    (d.person.lines.map(l=>'<tr><td class="c">'+escapeHtml(l.date.slice(5))+'</td><td class="nm">'+escapeHtml((l.project?l.project+' · ':'')+l.title)+'</td><td class="c">'+(l.days===0.5?'½':l.days)+'</td><td class="r">'+hjNum(l.rate)+'</td><td class="r">'+hjNum(l.amount)+'</td></tr>').join('')||'<tr><td colspan="5" class="c" style="color:#8b98ab;padding:14px">이 달 기록 없음</td></tr>')+'</tbody></table>'+
+    '<div class="sumbox"><div class="sumtab"><div class="row"><span>일당 합</span><b>'+hjNum(d.person.amount)+' 원</b></div>'+(d.person.prepaid?'<div class="row"><span>선지급 차감</span><b>- '+hjNum(d.person.prepaid)+' 원</b></div>':'')+'<div class="row total"><span>지급액</span><span>'+hjNum(d.person.due)+' 원</span></div></div></div>'+
+    '<div class="note">'+escapeHtml(d.note)+'</div>'+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.tel)+'</div>';
+  return hjDocShell('지 급 명 세 서',inner,'#7c3aed');
+}
+function hjCrewPayMark(who,ym,amount){
+  const key='crewpay|'+who+'|'+ym;
+  if((state.expenses||[]).some(e=>e&&e.sourceKey===key))return {dup:true};
+  const d=hjCrewPayslipData(who,ym),amt=Math.round(num(amount!=null?amount:d.person.due));
+  if(!(amt>0))return {오류:'지급액이 없어요'};
+  const r=expenseAdd({date:localDate(),amount:amt,category:d.kind==='외주'?'외주':'인건비',method:'현금',memo:'[지급] '+who+' '+ym,project:'',vendor:who,sourceKey:key});
+  if(r&&r.오류)return r;
+  const e=(state.expenses||[]).find(x=>x&&x.sourceKey===key);if(e){e.src='crewpay';e.who=who;e.ym=ym;e.final=true;markDirty();}
+  return {기록:amt,key};
+}
+function hjCrewPayslipView(who,ym,back){
+  const d=hjCrewPayslipData(who,ym),html=hjCrewPayslipHtml(d),base='만물_정산_'+ym+'_'+safeName(who);
+  const text=hjCrewPayslipText(d);
+  const show=()=>hjDocDeliverView(who,html,base,'💸 지급 명세 ('+d.kind+')',back,{
+    sms:{text,kind:'crewpay'},
+    extra:[{id:'hjCrewPaid',cls:d.person.paidDone?'ghost':'clay',txt:d.person.paidDone?'✅ 지급 기록 있음 ('+ym+')':'💸 지급했음 — 지출 장부에 '+won(d.person.due),sub:d.person.paidDone?'이 달 지급은 이미 지출 장부에 있어요(두 번 넣지 않습니다)':'지출 장부에 '+d.kind+' 1건으로 남기고, 현장별 배분은 👷 인건비 장부 [지출 반영]으로',fn:()=>{
+      const r=hjCrewPayMark(who,ym);if(r.dup){toast('이미 이 달 지급을 기록했어요');return;}if(r.오류){toast(r.오류);return;}toast('💸 '+who+' '+won(r.기록)+' 지급 기록 — 지출 장부('+d.kind+')');render();hjCrewPayslipView(who,ym,back);}}]});
+  return show();
+}
+/* 외주 견적 요청서 — 현장 화면 [🔧 외주 견적 요청]. 고객 이름·전화는 넣지 않는다(주소는 동·호수까지). 기록 p.subQuotes[]. */
+function hjSubQuotes(p){return Array.isArray(p&&p.subQuotes)?p.subQuotes.filter(x=>x&&x.id):[];}
+function hjSubQuoteText(p,draft){
+  const sup=String(draft.sup||'').trim(),items=(draft.items||[]).map(x=>'· '+x).join('\n');
+  return '['+COMPANY.name+'] '+(sup?sup+' ':'')+'외주 견적 요청\n공종: '+(draft.trade||'-')+'\n현장: '+(draft.addr||p.name)+'\n범위:\n'+(items||'· (상담 후 확정)')+'\n희망 일정: '+(draft.when||'협의')+(draft.memo?'\n참고: '+draft.memo:'')+'\n금액·가능 일정 회신 부탁드립니다. '+COMPANY.owner+' '+COMPANY.tel;
+}
+function hjSubQuotePrivacyOk(p,text){const c=p.customer||{},name=String(c.name||'').trim(),digits=hjCustDigits(c.phone);return !(name.length>=2&&text.includes(name))&&!(digits.length>=9&&text.replace(/\D/g,'').includes(digits));}
+function hjSubQuoteHtml(p,draft){
+  const inner='<div class="prow"><span><b>요청일</b>'+hjDocDate()+'</span><span><b>받는 곳</b>'+escapeHtml(draft.sup||'-')+'</span><span><b>공종</b>'+escapeHtml(draft.trade||'-')+'</span></div>'+
+    '<table class="items"><tbody><tr><td class="nm" style="width:112px;background:#f7fafd;font-weight:700">현장</td><td>'+escapeHtml(draft.addr||p.name)+'</td></tr><tr><td class="nm" style="background:#f7fafd;font-weight:700">범위</td><td>'+((draft.items||[]).length?'<ul style="margin:0;padding-left:18px">'+draft.items.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul>':'상담 후 확정')+'</td></tr><tr><td class="nm" style="background:#f7fafd;font-weight:700">희망 일정</td><td>'+escapeHtml(draft.when||'협의')+'</td></tr>'+(draft.memo?'<tr><td class="nm" style="background:#f7fafd;font-weight:700">참고</td><td style="white-space:pre-wrap">'+escapeHtml(draft.memo)+'</td></tr>':'')+'</tbody></table>'+
+    (draft.photos&&draft.photos.length?'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:6px 0 14px">'+draft.photos.map(f=>'<img data-photo="'+escapeAttr(f.id)+'" src="'+escapeAttr(f.thumb)+'" alt="현장 사진" style="width:100%;aspect-ratio:4/3;object-fit:contain;background:#eef2f7;border-radius:8px">').join('')+'</div>':'')+
+    '<div class="note">금액(공급가·부가세 구분)과 가능한 일정을 회신해 주세요. 고객 정보는 계약 후 안내합니다.</div>'+
+    '<div class="stamp"><span class="big">'+escapeHtml(COMPANY.name)+'</span> '+escapeHtml(COMPANY.owner)+' · '+escapeHtml(COMPANY.tel)+'</div>';
+  return hjDocShell('외 주 견 적 요 청 서',inner,'#b45309');
+}
+function hjSubQuoteView(name,resume){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const subs=(state.suppliers||[]).filter(s=>s&&!s.hidden&&s.category==='외주'),d=settleDocData(name)||{items:[],cust:{}};
+  const s=resume&&typeof resume==='object'?resume:{sup:'',trade:'',picked:null,when:'',memo:'',photos:[]};
+  const quoteItems=(d.workItems||d.items||[]).map(it=>String(it.name||'').trim()).filter(Boolean).slice(0,20);
+  if(s.picked===null)s.picked=quoteItems.slice();
+  const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project===name&&!isVideoRec(f)&&hjDocThumbOk(f)).slice(-12);
+  const existing=hjSubQuotes(p);
+  const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
+  const body='<div id="hjSubQuote" style="min-width:0;overflow-wrap:anywhere">'+
+    '<label for="sqSup" style="display:block;font-size:12px;font-weight:700;margin:0 0 3px">외주팀</label><input id="sqSup" list="sqSupList" value="'+escapeAttr(s.sup)+'" placeholder="📇 거래처(외주)에서 고르거나 새 이름" style="width:100%;min-height:44px;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box"><datalist id="sqSupList">'+subs.map(x=>'<option value="'+escapeAttr(x.name)+'">'+escapeHtml(x.trade||'')+'</option>').join('')+'</datalist>'+
+    '<label for="sqTrade" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">공종</label><select id="sqTrade" style="width:100%;min-height:44px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft)"><option value="">— 고르기 —</option>'+HJ_CREW_TRADES.map(t=>'<option value="'+t+'"'+(s.trade===t?' selected':'')+'>'+t+'</option>').join('')+'</select>'+
+    (quoteItems.length?'<div style="font-size:12px;font-weight:700;margin:9px 0 2px">범위 (견적 품목에서 체크)</div>'+quoteItems.map(it=>'<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px"><input type="checkbox" data-sq-item="'+escapeAttr(it)+'"'+(s.picked.includes(it)?' checked':'')+' style="width:18px;height:18px"> '+escapeHtml(it)+'</label>').join(''):'<p class="hint">견적 품목이 없어 범위는 참고 메모로 적어 주세요.</p>')+
+    F('sqAddr','현장 주소 (동·호수까지 · 고객 이름·전화는 넣지 않습니다)',s.addr!=null?s.addr:String(d.cust.addr||p.name))+
+    F('sqWhen','희망 일정',s.when,'placeholder="예: 10/20~22 중 하루"')+
+    '<label for="sqMemo" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">참고 (선택)</label><textarea id="sqMemo" rows="2" style="width:100%;padding:9px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(s.memo)+'</textarea>'+
+    (photos.length?'<div style="font-size:12px;font-weight:700;margin:9px 0 4px">사진 (4장까지 · 얼굴·문패 없는 것)</div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px">'+photos.map(f=>'<button type="button" data-sq-photo="'+escapeAttr(f.id)+'" aria-pressed="'+(s.photos.includes(f.id))+'" style="min-height:44px;padding:0;border:2px solid '+(s.photos.includes(f.id)?'var(--clay)':'transparent')+';border-radius:8px;overflow:hidden;background:#eef2f7"><img src="'+escapeAttr(f.thumb)+'" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;display:block"></button>').join('')+'</div>':'')+
+    '<p id="sqPrivacy" role="status" style="font-size:12.5px;margin:8px 0 0"></p>'+
+    (existing.length?'<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">요청 기록</div>'+existing.map(x=>'<div data-sq-record="'+escapeAttr(x.id)+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px;padding:6px 0;border-top:1px dashed var(--line-soft)"><span style="flex:1;min-width:0"><b>'+escapeHtml(x.sup)+'</b> · '+escapeHtml(x.trade||'')+' · '+escapeHtml(hjMdDow(String(x.at||'').slice(0,10)))+' · '+escapeHtml(HJ_SUB_STATUS[x.status]||x.status)+(num(x.amount)>0?' · <b>'+escapeHtml(won(x.amount))+'</b>':'')+'</span>'+
+      (x.status==='asked'?'<input type="text" inputmode="numeric" data-sq-amt="'+escapeAttr(x.id)+'" placeholder="받은 금액" style="width:110px;min-height:44px;padding:6px 8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft)"><button type="button" class="ghost tiny" data-sq-got="'+escapeAttr(x.id)+'" style="min-height:44px;min-width:44px">금액 받음</button>':x.status==='got'?'<button type="button" class="clay tiny" data-sq-pick="'+escapeAttr(x.id)+'" style="min-height:44px;min-width:44px">선택</button>':'')+'</div>').join(''):'')+'</div>';
+  openModal('🔧 외주 견적 요청 — '+name,body,[{label:'💬 문자 초안',cls:'clay',fn:()=>send('sms')},{label:'📄 요청서(PDF)',cls:'ghost',fn:()=>send('pdf')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjSubQuote');
+  const read=()=>{s.sup=root.querySelector('#sqSup').value.trim();s.trade=root.querySelector('#sqTrade').value;s.picked=[...root.querySelectorAll('[data-sq-item]')].filter(el=>el.checked).map(el=>el.dataset.sqItem);s.addr=root.querySelector('#sqAddr').value.trim();s.when=root.querySelector('#sqWhen').value.trim();s.memo=root.querySelector('#sqMemo').value.trim();
+    return {sup:s.sup,trade:s.trade,items:s.picked,addr:s.addr,when:s.when,memo:s.memo,photos:photos.filter(f=>s.photos.includes(f.id))};};
+  const check=()=>{const dr=read(),text=hjSubQuoteText(p,dr),ok=hjSubQuotePrivacyOk(p,text);root.querySelector('#sqPrivacy').innerHTML=ok?'<span data-sq-privacy="ok" style="color:#0a7f43;font-weight:700">✓ 고객 이름·전화 없음</span>':'<span data-sq-privacy="fail" style="color:var(--warn);font-weight:700">⛔ 고객 이름 또는 전화가 들어 있어요 — 주소·참고에서 지워 주세요</span>';return {dr,text,ok};};
+  root.querySelectorAll('input,textarea,select').forEach(el=>{el.oninput=check;el.onchange=check;});
+  root.querySelectorAll('[data-sq-photo]').forEach(b=>b.onclick=()=>{const id=b.dataset.sqPhoto,i=s.photos.indexOf(id);if(i>=0)s.photos.splice(i,1);else if(s.photos.length<4)s.photos.push(id);else{toast('사진은 4장까지');return;}read();hjSubQuoteView(name,s);});
+  const record=(dr)=>{const rec={id:uid(),sup:dr.sup,trade:dr.trade,at:new Date().toISOString(),items:dr.items.slice(),when:dr.when,status:'asked',amount:0};p.subQuotes=hjSubQuotes(p).concat([rec]);
+    if(dr.sup&&!(state.suppliers||[]).some(x=>x&&x.name===dr.sup))supplierAdd({name:dr.sup,category:'외주'});state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[외주 견적 요청] '+dr.sup+' · '+(dr.trade||'-'),project:name});markDirty();return rec;};
+  const send=mode=>{const {dr,text,ok}=check();if(!dr.sup){toast('외주팀 이름을 적어 주세요');return;}if(!ok){toast('고객 이름·전화가 들어 있어 보내지 않았어요');return;}
+    record(dr);
+    if(mode==='sms'){const sup=(state.suppliers||[]).find(x=>x&&x.name===dr.sup);closeModal();hjSendSms(sup&&sup.phone||'',text);toast('🔧 문자 앱에 요청 문구를 넣었어요 — 사진은 직접 첨부');}
+    else{closeModal();hjDocDeliverView(name,hjSubQuoteHtml(p,dr),safeName(name)+'_외주견적요청_'+localDate(),'🔧 외주 견적 요청서',()=>hjSubQuoteView(name,s),{image:true,sms:{text,kind:'subquote'}});}};
+  root.querySelectorAll('[data-sq-got]').forEach(b=>b.onclick=()=>{const rec=hjSubQuotes(p).find(x=>x.id===b.dataset.sqGot);const amt=won2num((root.querySelector('[data-sq-amt="'+b.dataset.sqGot+'"]')||{}).value);if(!rec||!(amt>0)){toast('받은 금액을 적어 주세요');return;}rec.amount=amt;rec.status='got';rec.gotAt=localDate();markDirty();hjSubQuoteView(name,s);});
+  root.querySelectorAll('[data-sq-pick]').forEach(b=>b.onclick=()=>{const rec=hjSubQuotes(p).find(x=>x.id===b.dataset.sqPick);if(!rec)return;hjSubQuotes(p).forEach(x=>{if(x.status==='picked')x.status='got';});rec.status='picked';markDirty();toast('🔧 '+rec.sup+' 선택 — 외주 원가 참고 '+won(rec.amount));hjSubQuoteView(name,s);});
+  check();return true;
+}
+/* 외주 원가 참고(선택한 외주 견적) — 마진 보드·비교표가 읽는다. 읽기 전용. */
+function hjSubQuotePicked(p){return hjSubQuotes(p).filter(x=>x.status==='picked'&&num(x.amount)>0);}
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
 function tripExpensed(t){

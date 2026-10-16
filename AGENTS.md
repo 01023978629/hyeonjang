@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v440 외주팀·작업자 명단 · 일당·공수 정산표 · 외주 견적 요청서 · 지급 명세
+
+- 명단은 앱에서 직접 추가(대표 결정 10/16, 초기 파일 없음): 작업자는 👷 팀원 연락처(c.team) 안 c.trade/dayRate/halfDay(팀원 체크를 풀면 같이 지운다), 외주팀은 📇 거래처 category 외주 안 s.trade/lead/rate{type day|pyeong|job,amount}/taxInvoice. [➕ 외주팀 추가]·[📥 외주팀 명단](CSV·엑셀 이름·전화·공종·단가 4열, v439 와 같은 경로·같은 이름은 빈 칸만 보완). 삭제는 기록(발주·단가·지출·외주 견적 요청·지급)이 있으면 숨김. 👷 팀원 주간 현황에 공종·일당(data-crew-info).
+- 사람별 공수는 일정 s.labor.by={이름:{days 1|0.5,rate}} — 👷 인건비 장부 일정 줄의 이름별 [1][½][-] 토글(.llDay)과 일당 칸(.llRate, 기본은 명단 일당). 합계는 기존 s.labor.amount 에 같이 써서 laborLedgerData·laborProjectTotal·[지출 반영]이 손대지 않고 같은 값을 본다(테스트가 정산표 현장별 합계 = laborProjectTotal 을 확인). 장부 핸들러는 다시 그리기 전에 적던 칸을 먼저 저장하고 한 번만 그린다 — iOS 처럼 입력 포커스가 남은 채 버튼을 누르면 늦게 오는 change 로 겹쳐 그려 NotFoundError 가 났다(LEDGER_NO_NESTED_REDRAW).
+- 👤 사람별 정산표(hjCrewSettleView, 장부 [👤 사람별 정산표]): 사람×날짜 격자·공수·일당 합·선지급 차감(지출 장부 src crewpay 같은 달)·지급할 금액, 📥 엑셀(요약+사람별 시트)·📄 PDF 1장. 💸 지급 명세(hjCrewPayslipView): 날짜·현장·공수·금액·차감·지급액 + "입금 후 문자로 알려 드립니다. 계좌: 전화로 확인"(계좌번호는 저장하지 않는다), 문자 초안·PDF, [💸 지급했음] → state.expenses 1건(category 인건비|외주, src crewpay, who, ym, final, sourceKey crewpay|이름|월 로 두 번 안 넣음 — 변이 pay-dup 이 CREW_PAY_ONCE 에서 잡는다). 현장 배분은 기존 [지출 반영]이 맡는다(자동으로 p.cost 를 건드리지 않는다). 🌙 오늘 마감은 25일부터 "이번 달 지급 명세 안 만든 사람 n명"(data-dc-crewpay).
+- 🔧 외주 견적 요청(현장 카드 [data-subquote], 클릭 위임 등록): 외주팀·공종·견적 품목 체크·주소(동·호수까지)·희망 일정·사진 4장 → 문자 초안(hjSendSms)·요청서 PDF. 고객 이름·전화가 문구에 있으면 보내지도 기록하지도 않는다(hjSubQuotePrivacyOk — 변이 phone-unmask 가 SUBQUOTE_NO_CUSTOMER_PHONE 에서 잡는다). 기록 p.subQuotes[]{id,sup,trade,at,items,when,status asked|got|picked,amount}, 받은 금액 → 선택, hjSubQuotePicked 가 외주 원가 참고(v437 비교표가 읽을 자리). 모르는 외주팀 이름은 📇 거래처(외주)에 추가.
+- 핀3곳 hyeonjang-v440-crew(v439 위에 쌓은 브랜치). 신규 tests/crew-v440.e2e.js 4/4, 변이 2종·기준선(3c7db67 CREW_API_PRESENT)·겹쳐 그리기 탐침 실패 확인, 관련 10개(crew-v357/crewweek-v375/contactpick-v393/dayclose-v359/material-v439/schedule-safety/field-issue-more/percrew-v360/ui-feedback/settle-docs)·정적 21개 통과. 새 최상위 키 없음, 더보기 126 유지.
+
 ## 2026-10-16 v439 자재상 명단 · 발주→입고→원가 · 자재 단가표 · 남은 자재
 
 - 📇 거래처: 자재 분류에 주소·영업시간·결제(현금/월말 외상/카드)·배송 칸(같은 레코드 s.addr/hours/pay/delivery), [➕ 자재상 추가]·[📥 명단 불러오기](CSV·엑셀 4열 이름·전화·주소·품목, 같은 이름은 빈 칸만 보완)·📇 주소록 번호 채우기. 삭제는 거래 기록(단가·발주·지출)이 있으면 s.hidden 숨김 → [숨긴 거래처]에서 되살림. 대표 결정대로 초기 명단 파일은 없고 데모에만 3곳.
