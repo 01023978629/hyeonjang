@@ -1957,8 +1957,9 @@ function portalCfgSafe(cfg){
   const out={};Object.keys(cfg).forEach(function(k){if(k!=='key')out[k]=cfg[k];});
   return out;
 }
-function serializeData(source,savedAt){
+function serializeData(source,savedAt,runtimeFiles=false){
   const supplied=arguments.length>0,current=supplied?source:state;
+  const sparseFiles=supplied&&!runtimeFiles;
   if(!current||typeof current!=='object')throw new Error('invalid serialized state source');
   return {
     version:2, app:'현장', savedAt:savedAt!==undefined?savedAt:new Date().toISOString(),
@@ -2000,9 +2001,9 @@ function serializeData(source,savedAt){
     contacts:supplied?current.contacts:(current.contacts||[]),
     projects:(supplied?current.projects:(current.projects||[])).map(projectBackupSafe),
     files:(Array.isArray(current.files)?current.files:[]).filter(f=>!f._fromQuote).map(f=>({key:fileKey(f),name:f.name,prefix:f.prefix,kind:f.kind,project:f.project,
-      text:supplied?f.text:(f.text||''),ocr:f.ocr,est:f.est,exSum:supplied?f.exSum:(f.exSum||false),ledger:supplied?f.ledger:(f.ledger||null),quote:supplied?f.quote:(f.quote||null),contact:f.contact,address:f.address,
-      phase:supplied?f._phase:(f._phase||null),worklabel:supplied?f._worklabel:(f._worklabel||null),gdFolder:supplied?f._gdFolder:(f._gdFolder||null),
-      driveId:supplied?f._driveId:(f._driveId||null),driveMimeType:supplied?f._driveMimeType:(f._driveMimeType||null),driveSize:supplied?f._driveSize:(Number(f._driveSize)||0),size:supplied?f.size:(f.size||0),
+      text:sparseFiles?f.text:(f.text||''),ocr:f.ocr,est:f.est,exSum:sparseFiles?f.exSum:(f.exSum||false),ledger:sparseFiles?f.ledger:(f.ledger||null),quote:sparseFiles?f.quote:(f.quote||null),contact:f.contact,address:f.address,
+      phase:sparseFiles?f._phase:(f._phase||null),worklabel:sparseFiles?f._worklabel:(f._worklabel||null),gdFolder:sparseFiles?f._gdFolder:(f._gdFolder||null),
+      driveId:sparseFiles?f._driveId:(f._driveId||null),driveMimeType:sparseFiles?f._driveMimeType:(f._driveMimeType||null),driveSize:sparseFiles?f._driveSize:(Number(f._driveSize)||0),size:sparseFiles?f.size:(f.size||0),
       ...(f._originalSha256?{sourceSha256:f._originalSha256}:{}),...(f._mediaOriginal?{mediaOriginal:structuredClone(f._mediaOriginal)}:{}),
       ...(typeof f._shareInboxId==='string'&&f._shareInboxId?{shareInboxId:f._shareInboxId}:{}),
       ...(hjPhotoLeakTag(f)?{leaktag:hjPhotoLeakTag(f)}:{}),
@@ -3991,7 +3992,7 @@ function hjOutboxLiveMatches(saved){return paidStableJson({...serializeData(),sa
 async function hjOutboxClaim(options){
   return hjOutboxWrite((rows,inbox,store)=>{
     hjOutboxGuard();if(rows.some(row=>row.claim&&row.claim.expiresAt>Date.now()))return null;
-    const picked=rows.filter(row=>(!options.id||row.id===options.id)&&(['ready','receipt'].includes(row.status)||options.manual&&['manual','blocked'].includes(row.status))&&(options.manual||Number(row.tries||0)<5)).sort((a,b)=>(a.seq||0)-(b.seq||0)||String(a.at).localeCompare(String(b.at))||String(a.id).localeCompare(String(b.id)))[0];
+    const picked=rows.filter(row=>(!options.id||row.id===options.id)&&!(options.skipIds||[]).includes(row.id)&&(['ready','receipt'].includes(row.status)||options.manual&&['manual','blocked'].includes(row.status))&&(options.manual||Number(row.tries||0)<5)).sort((a,b)=>(a.seq||0)-(b.seq||0)||String(a.at).localeCompare(String(b.at))||String(a.id).localeCompare(String(b.id)))[0];
     if(!picked)return null;picked.status='sending';picked.claim={owner:__hjShareOwner,token:crypto.randomUUID(),expiresAt:Date.now()+HJ_OUTBOX_LEASE,phase:'preparing'};store.put(picked);return structuredClone(picked);
   });
 }
@@ -4041,7 +4042,7 @@ async function hjOutboxSendFile(item,saved){
   if(!hjShareMedia(original)||original.name!==target.name||original.size!==Number(target.size))throw hjOutboxError('기기에 보관한 사진 원본을 확인해 주세요','blocked');
   if(original.outboxUncertain&&!item.receipt)throw hjOutboxError('이전 전송 결과 확인이 필요합니다','uncertain');
   if(original.outboxReceipt&&!item.receipt){item.receipt=structuredClone(original.outboxReceipt);if(item.receipt.bytesComplete)return hjOutboxLinkReceipt(item);}
-  const file=hjShareFile(original);if(file.type.startsWith('video/')||isVideoExt(ext(file.name)))throw hjOutboxError('동영상 원본은 이 기기에 보관합니다. 기존 폴더 저장 경로를 이용해 주세요','blocked');
+  const file=hjShareFile(original);if(file.type.startsWith('video/')||isVideoExt(ext(file.name)))throw hjOutboxError('동영상 원본은 이 기기에 보관합니다. 기존 폴더 저장 경로를 이용해 주세요','local-media');
   if(await hjOutboxLegacyOwns(target))throw hjOutboxError('기존 전송 대기함이 처리 중인 사진입니다. 기존 대기함 결과를 확인해 주세요','blocked');
   if(item.receipt&&item.receipt.backend==='drive'||!relayReady()&&__gdToken){
     if(!__gdToken)throw hjOutboxError('드라이브 연결을 설정에서 확인해 주세요','blocked');
@@ -4100,7 +4101,7 @@ async function hjOutboxFail(item,error){
   return hjOutboxClaimUpdate(item,(row,inbox,originals)=>{
     const code=error&&error.outboxCode,http=!!(error&&error.__http),started=row.claim.phase==='sending',receipt=row.receipt;
     if(code==='defer'||code==='local'){if(code==='local')__hjOutboxResumeAfterSave=true;row.status=receipt?'receipt':'ready';row.lastError=error.message;}
-    else if(code==='blocked'){row.status='blocked';row.lastError=error.message;}
+    else if(code==='blocked'||code==='local-media'){row.status='blocked';row.lastError=error.message;}
     else if(receipt&&receipt.bytesComplete){row.status='receipt';row.lastError='전송은 끝났습니다. 기기 연결 저장만 다시 확인합니다';}
     else if(http||code==='retry'||receipt&&receipt.backend==='drive'&&!receipt.bytesComplete){row.tries=(Number(row.tries)||0)+1;row.status=row.tries>=5?'manual':receipt?'receipt':'ready';row.lastError=http?String(error.message):'전송에 실패했습니다. 기기 원본은 보관합니다';}
     else if(code==='uncertain'||started){row.status='uncertain';row.lastError='전송 결과를 확인하지 못했습니다. 중복 방지를 위해 자동 재전송을 멈췄습니다';const original=row.kind==='file'?inbox.find(r=>r.id===row.ref):null;if(original){original.outboxUncertain=true;originals.put(original);}}
@@ -4114,17 +4115,17 @@ async function hjOutboxFlush(options){
   if(__hjOutboxFlushing)return {sent:0,remaining:(await hjOutboxRead()).length,stopped:'busy'};
   if(navigator.onLine===false)return {sent:0,remaining:(await hjOutboxRead()).length,stopped:'offline'};
   if(__relaySaving||__relayFlushing)return {sent:0,remaining:(await hjOutboxRead()).length,stopped:'busy'};
-  const run=async()=>{let sent=0,stopped='',item=null;
+  const run=async()=>{let sent=0,stopped='',item=null;const skipIds=[];
     try{
       hjOutboxGuard();await hjOutboxReconcile();
       const pending=await hjOutboxRead();if(!pending.length)return {sent:0,remaining:0,stopped:''};
       const count=pending.filter(row=>row.kind==='file').length;if(count)toast('☁ 대기 사진 '+count+'장 올리는 중 …');
       for(let n=0;n<HJ_OUTBOX_MAX;n++){
-        if(navigator.onLine===false){stopped='offline';break;}hjOutboxGuard();item=await hjOutboxClaim(options);if(!item)break;
+        if(navigator.onLine===false){stopped='offline';break;}hjOutboxGuard();item=await hjOutboxClaim({...options,skipIds});if(!item)break;
         try{
           const saved=await hjOutboxSaved();if(!hjOutboxLiveMatches(saved))throw hjOutboxError('작성 중인 자료의 기기 저장이 끝나면 다시 시도해 주세요','local');item.savedAt=saved.savedAt;
           const done=item.kind==='file'?await hjOutboxSendFile(item,saved):await hjOutboxSendState(item,saved);if(done)sent++;item=null;
-        }catch(error){stopped=await hjOutboxFail(item,error);item=null;break;}
+        }catch(error){const localMedia=error&&error.outboxCode==='local-media';stopped=await hjOutboxFail(item,error);if(localMedia)skipIds.push(item.id);item=null;if(localMedia&&!options.id)continue;break;}
         if(options.id)break;
       }
     }catch(error){if(item){try{await hjOutboxFail(item,error);}catch(_){}}stopped=stopped||'blocked';}
@@ -4387,11 +4388,13 @@ async function runPhotoIntake(files,approved){
         // 공유 재시도에서도 이번에 승인한 태그만 반영한다. 미선택이면 기존 태그·작업 정보는 보존한다.
         if(approved.leakTag&&hjPhotoLeakProject(rec)){rec._leaktag=approved.leakTag;delete rec.leaktag;}
         if(approved.onRecord)await approved.onRecord(file,rec);
-        // 원본 보관과 전송 의도를 먼저 확보한다. 실패한 경우 메타 저장만 성공한 것으로 안내하지 않는다.
+        // 원본이 저장된 뒤 전송 의도만 실패해도 승인한 현장·작업명은 기기에 보존한다.
         const originalRef=await hjOutboxKeepFile(rec,file);
-        const outboxId=await hjOutboxStage('file',originalRef,rec);outboxIds.push(outboxId);
+        let outboxId='',outboxError='';
+        try{outboxId=await hjOutboxStage('file',originalRef,rec);outboxIds.push(outboxId);}
+        catch(e){outboxError=String(e&&e.message||'전송 대기 목록 저장 실패');queueWarning='전송 대기 목록을 저장하지 못한 사진은 자동 전송에서 제외했습니다. 원본과 승인한 현장·작업명은 기기에 보관하고, [📴 오프라인 대기함]에서 복구 안내를 확인해 주세요.';}
         if(isVid)videos.push(file.name||'동영상');
-        pairs.push({file,rec,reused:!!reused,outboxId});
+        pairs.push({file,rec,reused:!!reused,outboxId,outboxError});
       }catch(e){if(freshRecord){const at=state.files.indexOf(freshRecord);if(at>=0)state.files.splice(at,1);}readFailed.push(file.name||'사진');}
     }
     if(pairs.length){
@@ -4401,7 +4404,7 @@ async function runPhotoIntake(files,approved){
       // 위에서 보관한 원본과 연결된 앱 기록이 실제 저장된 뒤에만 전송 대기를 활성화한다.
       metadataSaved=await guardedPersistCurrentState();
       if(!metadataSaved)throw new Error('다른 탭의 변경 또는 저장 공간 문제로 앱 기록 저장을 확인하지 못했습니다. 사진을 다시 고르지 말고 [기록 저장 다시 확인]을 눌러 주세요. 원본은 그대로 보관합니다.');
-      queueWarning=await hjOutboxAfterLocal(outboxIds);
+      const localQueueWarning=await hjOutboxAfterLocal(outboxIds);if(localQueueWarning)queueWarning=[queueWarning,localQueueWarning].filter(Boolean).join('\n');
       state.tab='photos';state.search='';const search=document.getElementById('globalSearch');if(search)search.value='';render();syncMobileNav();
       if(!queueWarning&&navigator.onLine!==false){
         cloudAttempted=true;progress('기기 저장 완료 · 전송 대기를 확인합니다.');
@@ -4409,6 +4412,7 @@ async function runPhotoIntake(files,approved){
       }
       const waiting=await hjOutboxRead();
       for(const pair of pairs){
+        if(pair.outboxError){report.excluded++;report.excludedFiles.push(pair.file.name||'사진');continue;}
         const row=waiting.find(r=>r.id===pair.outboxId),saved=state.files.filter(f=>f._shareInboxId===pair.rec._shareInboxId);
         if(!row&&saved.length===1&&saved[0]._driveId)report.ok++;
         else if(!row){report.excluded++;report.excludedFiles.push(pair.file.name||'사진');}
@@ -4430,7 +4434,7 @@ async function runPhotoIntake(files,approved){
       ${report.excluded?'<p role="alert">대기 목록에서 제외된 '+report.excluded+'장의 원본과 앱 기록은 이 기기에 보관했습니다. 이 사진은 자동 전송되지 않습니다. 원본을 유지하고 [사진 보관 상태]에서 백업 방법을 확인해 주세요.</p>':''}
       <p class="hint">${metadataSaved?'원본과 현장·작업명 기록을 이 기기에 저장했습니다. ':''}이 기기 보관은 서버 백업과 다릅니다. 휴대폰 원본도 유지해 주세요.</p>
       ${(report.queued||report.failed||report.ok<pairs.length-videos.length)?'<p class="hint">[📴 오프라인 대기함]에서 전송 상태를 확인할 수 있습니다. 연결되면 전송을 다시 확인하며, 대기 목록에서 빼도 이 기기에 보관한 원본은 지우지 않습니다.</p>':''}
-      ${videos.length?`<p id="photoIntakeVideo">🎬 동영상 ${videos.length}개의 원본은 이 기기에 보관했습니다. 사진 자동 백업은 동영상을 보내지 않습니다. [🎬 원본 관리]에서 전송을 확인하세요(파일 하나당 최대 100MB, 회사 서버 연결 필요).</p>`:''}
+      ${videos.length?`<p id="photoIntakeVideo">🎬 동영상 ${videos.length}개의 원본은 이 기기에 보관했습니다. 카메라로 촬영한 파일은 사진첩에 남지 않을 수 있으니 휴대폰 원본도 따로 보관해 주세요. 사진 자동 백업은 동영상을 보내지 않습니다. [🎬 원본 관리]에서 전송을 확인하세요(파일 하나당 최대 100MB, 회사 서버 연결 필요).</p>`:''}
       ${readFailed.length?'<p class="hint">읽기 또는 기기 보관을 확인하지 못한 사진만 다시 선택해 추가하세요.</p>':''}</div>`,[{label:'사진 목록 보기',cls:'clay',fn:closeModal},...(!metadataSaved&&pairs.length?[{label:'기록 저장 다시 확인',cls:'blue',fn:()=>{if(photoIntakeUpdateGuard()||__photoIntakeBusy)return;__photoIntakeBusy=true;return runPhotoIntake(pairs.map(p=>p.file),{...approved,reuseRecord:file=>pairs.find(p=>p.file===file)?.rec||null});}}]:[]),{label:'📴 오프라인 대기함',cls:'ghost',fn:()=>hjOutboxView()},{label:'사진 보관 상태',cls:'ghost',fn:photoSourceView},...(videos.length&&window.HJMedia&&typeof window.HJMedia.view==='function'?[{label:'🎬 원본 관리',cls:'ghost',fn:()=>window.HJMedia.view()}]:[])]);
     hjPhotoIntakeCloseHook(approved.onClose);
   }
@@ -4930,7 +4934,6 @@ function openGdriveSetup(){
   const origin=location.origin;
   const relaySec=`<div style="font-size:13px;line-height:1.7;border:1.5px solid var(--moss,#7a8a55);border-radius:12px;padding:12px;margin-bottom:12px;background:rgba(122,138,85,.06)">
     <b style="font-size:14px">✅ 권장: 서버 연결 (모바일 OK — 구글 로그인 불필요)</b>
-    <button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:8px 0">📴 오프라인 대기함</button>
     <p style="margin:6px 0 8px;font-size:12.5px;color:var(--muted-2)">휴대폰 사파리·카톡에서도 <b>로그인·팝업 없이</b> 드라이브 만물인테리어 폴더에 저장/불러오기/사진 업로드가 됩니다. 설치 방법은 <b>APPS_SCRIPT_설치방법.md</b> 참고. ⚠️ 대용량 영상·원본 파일은 지원하지 않음(사진은 자동 압축).</p>
     <label style="display:block;margin-bottom:6px">서버 주소 (Apps Script 웹앱 URL)
       <input type="text" id="ryUrl" value="${escapeAttr(__relay.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin-top:4px">
@@ -5090,7 +5093,7 @@ function openGdriveSetup(){
     {id:'ct',     ic:'📨', label:'전자계약',   html:contractSec, on:ctUnlocked, warn:!!(__contract.url&&__contract.token)&&!ctUnlocked},
     {id:'office', ic:'🏢', label:'OfficeOps',  html:officeOpsSec, on:!!(__officeOps.url&&__officeOps.token), warn:__officeOps.mode==='export-only'},
     {id:'keys',   ic:'🔑', label:'AI·지도 키', html:keysSec,     on:!!(window.__geminiKey||window.__visionKey||window.__kakaoKey||window.__openaiKey)},
-    {id:'etc',    ic:'⭐', label:'기타',       html:reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
+    {id:'etc',    ic:'⭐', label:'기타',       html:`<button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 12px">📴 오프라인 대기함</button>`+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
   ];
   const dot=(t)=>t.warn
     ? '<span title="자가진단 필요" style="width:7px;height:7px;border-radius:50%;background:var(--warn,#c99a2e);display:inline-block"></span>'
@@ -40468,7 +40471,9 @@ async function guardedPersistMediaFiles(files,stillCurrent,removedIds,photoJourn
   return withAppStateWriteLock(async()=>{
     if(state._demo||__tabStale||__paidCommitRecoverySnapshot||!stillCurrent())return false;
     const base=JSON.stringify({...serializeData(),savedAt:''}),unchanged=()=>stillCurrent()&&JSON.stringify({...serializeData(),savedAt:''})===base;
-    const data=serializeData({...serializeData(),files,_savedFileCount:files.length});
+    // The candidate holds runtime file records. Use the same explicit defaults as
+    // serializeData() so a committed receipt still matches the live state exactly.
+    const data=serializeData({...serializeData(),files,_savedFileCount:files.length},undefined,true);
     const removedExpected=removedIds===undefined?undefined:await idbGetStrict('removed_ids');
     if(removedExpected!==undefined&&removedExpected!==null&&(!Array.isArray(removedExpected)||removedExpected.some(x=>typeof x!=='string')))return false;
     const stamp=Date.parse(__tabStamp||'');if(Number.isFinite(stamp)&&Date.parse(data.savedAt)<=stamp)data.savedAt=new Date(stamp+1).toISOString();

@@ -15,6 +15,15 @@ const baseline = process.env.HJ_V425_BASELINE && execFileSync('git', ['show', pr
 const shellPaths = text => { const hit = text.match(/const SHELL_PATHS=new Set\(\[([\s\S]*?)\]\);/); assert(hit, 'SW_SHELL_PATHS_PRESENT'); return hit[1].replace(/\s/g, ''); };
 const baseSW = execFileSync('git', ['show', '8e9fdfe:sw.js'], { cwd: ROOT, encoding: 'utf8' });
 let browser, passed = 0;
+async function rendererNetwork(session, offline) {
+  const state = { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
+  if (process.env.HJ_V425_LEGACY_CDP === '1') return session.send('Network.emulateNetworkConditions', state);
+  try { await session.send('Network.overrideNetworkState', state); }
+  catch (error) {
+    if (!/wasn't found|Method not found/.test(String(error))) throw error;
+    await session.send('Network.emulateNetworkConditions', state);
+  }
+}
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
   const context = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, timezoneId: 'Asia/Seoul', serviceWorkers: 'block' });
@@ -23,7 +32,7 @@ let browser, passed = 0;
   // Keep real traffic blocked by setOffline and refresh the DevTools network state; never mock navigator.onLine.
   const networkState = await context.newCDPSession(page);
   await networkState.send('Network.enable');
-  const refreshNetworkState = value => networkState.send('Network.overrideNetworkState', { offline: value, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const refreshNetworkState = value => rendererNetwork(networkState, value);
   const setOffline = async value => { await context.setOffline(value); await refreshNetworkState(value); };
   let offline = false, failUploads = false, revision = 0, realWrites = 0, driveMock = false, saveReceipt = null;
   page.setDefaultTimeout(12000); page.on('pageerror', e => errors.push(String(e)));
@@ -280,7 +289,7 @@ let browser, passed = 0;
     await boot(); assert.deepEqual((await originalFacts()).filter(f => /^TEST_OFFLINE_1\d\d\.png$/.test(f.name)), kept, 'queue eviction and removal must not delete any of the 31 original blobs');
   });
   await test('serialization, shell allowlist, menu126 and external side effects remain unchanged', async () => {
-    const before = await snapshot(); await page.evaluate(() => openGdriveSetup()); await page.locator('#hjOutboxOpen').waitFor({ state: 'visible' });
+    const before = await snapshot(); await page.evaluate(() => openGdriveSetup()); await page.locator('#setTab-etc').click(); await page.locator('#hjOutboxOpen').waitFor({ state: 'visible' });
     assert((await page.locator('#hjOutboxOpen').boundingBox()).height >= 44); await page.locator('#hjOutboxOpen').click();
     await page.locator('[data-outbox-empty]').waitFor({ state: 'visible' }); assert.match(await page.locator('#hjOutboxView').innerText(), /기기 사진 다시 올리기/);
     const choose = page.waitForEvent('filechooser'); await page.locator('#hjOutboxRestorePhotos').click(); await (await choose).setFiles([]);
@@ -346,7 +355,7 @@ let browser, passed = 0;
       const fact = async () => swPage.evaluate(async () => { const rec = state.files[0], blob = await getFileOf(rec); return { count: state.files.length, project: rec.project, work: rec._worklabel, phase: rec._phase, tag: hjPhotoLeakTag(rec), token: rec._shareInboxId, bytes: [...new Uint8Array(await blob.arrayBuffer())], queue: (await hjOutboxRead()).map(r => ({ id: r.id, kind: r.kind, ref: r.ref })) }; });
       const before = await fact(); assert.equal(before.queue.length, 1); assert.deepEqual(Buffer.from(before.bytes), PNG);
       await swPage.reload({ waitUntil: 'domcontentloaded' });
-      await swNetworkState.send('Network.overrideNetworkState', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      await rendererNetwork(swNetworkState, true);
       await swBoot();
       assert.equal(await swPage.evaluate(() => navigator.onLine), false); assert.deepEqual(await fact(), before, 'REAL_SW_OFFLINE_RELOAD_PRESERVES_ORIGINAL_AND_LINKS');
       assert.equal(blockedWrites, 0); assert.equal(await swPage.evaluate(() => __v425SwExternal), 0); assert.deepEqual(swErrors, []);
