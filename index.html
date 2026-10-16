@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v432-teampacket';
+const APP_BUILD='hyeonjang-v439-material';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5558,6 +5558,12 @@ async function loadDemo(){
     {id:uid(),date:'2025-03-12',time:'09:00',title:'방수 1차',project:'망원동 카페',workers:'2',memo:'화장실·베란다',hours:6,report:null},
     {id:uid(),date:localDate(),time:'10:00',title:'현장 실측',project:'성수동 사무실',workers:'1',memo:'견적용 실측',hours:2,report:null},
   ];
+  // v439 데모 자재상 3곳·단가·입고 발주 2건(1건은 원가 반영 전)
+  state.suppliers=[{name:'한밭철물',phone:'',category:'자재',memo:'데모',items:'배관 부속, 실리콘, 공구',addr:'대전 중구',pay:'현금',delivery:true,prices:[{name:'실리콘 투명',spec:'',unit:'개',price:4500,at:'2025-03-01',src:'recv'},{name:'PB 엘보',spec:'15A',unit:'개',price:900,at:'2025-03-01',src:'recv'},{name:'배관 부속 세트',spec:'',unit:'식',price:38000,at:'2025-03-05',src:'manual'},{name:'마대',spec:'',unit:'장',price:600,at:'2025-03-02',src:'manual'}]},
+    {name:'대전타일',phone:'',category:'자재',memo:'데모',items:'타일, 본드, 줄눈',addr:'대전 서구',pay:'월말 외상',delivery:true,prices:[{name:'타일 600각',spec:'',unit:'장',price:12000,at:'2025-03-03',src:'recv'},{name:'타일 본드',spec:'20kg',unit:'포',price:14000,at:'2025-03-03',src:'recv'},{name:'줄눈재',spec:'',unit:'포',price:9000,at:'2025-03-03',src:'manual'},{name:'실리콘 투명',spec:'',unit:'개',price:4200,at:'2025-03-04',src:'manual'}]},
+    {name:'중부도기',phone:'',category:'자재',memo:'데모',items:'도기, 수전, 욕실 액세서리',addr:'대전 동구',pay:'카드',delivery:false,prices:[{name:'양변기',spec:'',unit:'대',price:180000,at:'2025-03-06',src:'recv'},{name:'세면기',spec:'',unit:'대',price:95000,at:'2025-03-06',src:'recv'},{name:'수전',spec:'욕실',unit:'개',price:42000,at:'2025-03-06',src:'manual'},{name:'타일 600각',spec:'',unit:'장',price:12800,at:'2025-03-07',src:'manual'}]}];
+  {const cafe=state.projects.find(p=>p.name==='망원동 카페');if(cafe){cafe.matOrders=[{id:uid(),sup:'대전타일',items:[{name:'타일 600각',spec:'',qty:42,unit:'장',price:12000},{name:'타일 본드',spec:'20kg',qty:3,unit:'포',price:14000}],due:'2025-03-11',at:'2025-03-09',recvAt:'2025-03-11',memo:'데모',total:546000,costApplied:true,costAppliedAmt:546000,costAppliedAt:'2025-03-11'},
+    {id:uid(),sup:'한밭철물',items:[{name:'실리콘 투명',spec:'',qty:6,unit:'개',price:4500},{name:'마대',spec:'',qty:20,unit:'장',price:600}],due:'2025-03-12',at:'2025-03-11',recvAt:'2025-03-12',memo:'데모 · 원가 반영 전',total:39000}];}}
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
   $('#mountHint').textContent='테스트용 가상 현장 3곳입니다. 각 탭을 눌러 확인하세요. 데모 중에는 아무것도 저장되지 않습니다 — 끝내려면 위 [데모 끝내기].';
@@ -13823,6 +13829,7 @@ function hjDayCloseData(today){
     asToday:(state.asLog||[]).filter(a=>a&&a.date===today&&a.status!=='done'),
     mat:hjMatPending(tomorrow),   // v368 오늘·내일(지난 것 포함) 납품 — 미입고
     matPlan:hjMatPlanRows('',7).length,   // v373 다음 7일 발주 점검
+    matCost:hjMatCostPending().length,   // v439 입고했는데 원가 반영 안 한 발주
     promo:hjAdCaseRows(14,0).filter(r=>r.missing.length),   // v378 2주 안 완공 현장 중 사례를 안 올린 채널이 남은 곳 — v387 남은 곳을 먼저 거르고 보일 때 4곳으로 자름
     clashes:(()=>{try{return scheduleConflicts().crewClashes.filter(c=>c.date===tomorrow);}catch(e){return [];}})(),   // v362 내일 담당 겹침
     sales:hjDayCloseSales(today),leakSms:hjLeakSmsPending(today)};   // 영업·누수 문자 안내는 순수 조회
@@ -13895,9 +13902,11 @@ function hjDayCloseView(){
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+btn('blue','data-dc-share','📤 팀에 내일 일정 보내기')+btn('ghost','data-dc-notify','🔔 고객 알림 문자')+'</div>'
     :'<p class="hint" style="margin:0">내일 잡힌 일정이 없어요.</p>');
   if(d.asToday.length)body+=h4('🔧 오늘 접수된 AS '+d.asToday.length)+row(d.asToday.slice(0,3).map(a=>escapeHtml(hjCut(String(a.text||'AS'),24)+(a.project?' · '+a.project:''))).join('<br>'),btn('ghost','data-dc-as','🔧 AS 관리'));
-  if(d.mat.length||d.matPlan)body+=h4('🚚 납품 확인 '+d.mat.length)+d.mat.slice(0,5).map(x=>row('<b style="color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</b><br>'+escapeHtml(x.p.name+' · '+(x.o.sup||'거래처 미기재')+' · '+hjMatItemsText(x.o.items,2)),'')).join('')+
+  if(d.mat.length||d.matPlan||d.matCost)body+=h4('🚚 납품 확인 '+d.mat.length)+d.mat.slice(0,5).map(x=>row('<b style="color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</b><br>'+escapeHtml(x.p.name+' · '+(x.o.sup||'거래처 미기재')+' · '+hjMatItemsText(x.o.items,2)),'')).join('')+
     (d.mat.length>5?'<p class="hint" style="margin:0 0 4px">외 '+(d.mat.length-5)+'건</p>':'')+
-    (d.matPlan?'<p data-dc-matplan style="font-size:12.5px;color:#b45309;margin:2px 0 6px">📋 발주 점검: 다음 7일 공정 중 납품 기록 없는 것 '+d.matPlan+'개</p>':'')+'<div style="display:flex;gap:6px">'+btn('ghost','data-dc-mat','🚚 납품 확인')+'</div>';   // v368·v373
+    (d.matPlan?'<p data-dc-matplan style="font-size:12.5px;color:#b45309;margin:2px 0 6px">📋 발주 점검: 다음 7일 공정 중 납품 기록 없는 것 '+d.matPlan+'개</p>':'')+
+    (d.matCost?'<p data-dc-matcost style="font-size:12.5px;color:#b45309;margin:2px 0 6px">💰 입고했는데 원가 반영 안 한 발주 '+d.matCost+'건 — 🚚 납품 확인에서 [💰 원가 반영]</p>':'')+
+    '<div style="display:flex;gap:6px">'+btn('ghost','data-dc-mat','🚚 납품 확인')+'</div>';   // v368·v373
   if(d.promo.length)body+=h4('📣 완공 현장 홍보 — 안 올린 채널 '+d.promo.reduce((a,r)=>a+r.missing.length,0)+'개')+   // v378
     d.promo.slice(0,4).map(r=>row('<span data-dc-promo>'+escapeHtml(r.name)+' <span style="color:var(--muted)">· 완공 '+escapeHtml(hjMdDow(r.doneAt))+'</span><br><span style="font-size:12px;color:var(--hj-warn-fg)">남은 곳: '+r.missing.map(hjAdChName).join('·')+'</span></span>','')).join('')+
     (d.promo.length>4?'<p class="hint" style="margin:0 0 4px">외 '+(d.promo.length-4)+'곳</p>':'')+
@@ -17351,7 +17360,7 @@ function materialOrderResult(q,picked,date,back){
   root.querySelectorAll('.moCopy').forEach(b=>b.onclick=()=>{if(navigator.clipboard)navigator.clipboard.writeText(txtOf(b.dataset.g)).then(()=>toast('복사됨'));});
   root.querySelectorAll('.moRec').forEach(b=>b.onclick=()=>{   // v368 이 거래처 발주를 그 현장 '🚚 자재 납품'에 올린다 — 누를 때만
     const key=keys[+b.dataset.g];if(!key)return;const pj=meta[key].project||q.project;
-    const r=hjMatRecord(pj,{sup:meta[key].sup,items:groups[key],due:date});
+    const r=hjMatRecord(pj,{sup:meta[key].sup,items:(groups[key]||[]).map(it=>({name:it.name,spec:it.spec,qty:it.qty,unit:it.unit})),due:date});   // v439 견적 판매단가는 원가가 아니다 — 단가표 제안만
     if(!r){toast('현장을 찾을 수 없어요');return;}
     b.textContent=r.dup?'✅ 이미 올린 발주':'✅ 납품 확인에 올림';b.disabled=true;
     toast(r.dup?'이미 올린 발주예요':'🚚 '+pj+' 납품 확인에 올렸어요'+(r.o.due?' — '+hjMdDow(r.o.due):''));});
@@ -17374,15 +17383,19 @@ function materialOrderResult(q,picked,date,back){
    · 거래처·고객에게 자동으로 보내지 않는다. 고객 페이지에 싣지 않는다(portalBuild 는 고른 칸만). 화면을 그리는 것만으로는 아무것도 바꾸지 않는다. */
 const HJ_MAT_LINE_RE=/^(.*?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(\S{0,6})\s*$/;
 function hjMatOrders(p){return p&&Array.isArray(p.matOrders)?p.matOrders.filter(o=>o&&o.id):[];}
-function hjMatItemLine(x){return String(x&&x.name||'').trim()+(x&&x.spec?' '+String(x.spec).trim():'')+(x&&x.qty?' × '+x.qty+(x.unit||''):'');}
+function hjMatItemLine(x){return String(x&&x.name||'').trim()+(x&&x.spec?' '+String(x.spec).trim():'')+(x&&x.qty?' × '+x.qty+(x.unit||''):'')+(x&&num(x.price)>0?' @'+Math.round(num(x.price)).toLocaleString('ko-KR'):'');}   // v439 @단가(공급가)
 function hjMatItemsText(items,max){
   const it=(items||[]).filter(x=>x&&String(x.name||'').trim());if(!it.length)return '품목 미기재';
   max=max||1;return it.slice(0,max).map(hjMatItemLine).join(', ')+(it.length>max?' 외 '+(it.length-max)+'종':'');
 }
 function hjMatParseItems(text){
-  return String(text||'').split('\n').map(l=>l.trim()).filter(Boolean).slice(0,40).map(l=>{
+  return String(text||'').split('\n').map(l=>l.trim()).filter(Boolean).slice(0,40).map(raw=>{
+    // v439 줄 끝 '@12,000' 은 단가(공급가) — 없으면 빈 값(0 으로 치지 않는다)
+    const pm=HJ_MAT_PRICE_RE.exec(raw),price=pm?Math.round(Number(pm[1].replace(/,/g,''))):0,l=pm?raw.slice(0,pm.index).trim():raw;
     const m=HJ_MAT_LINE_RE.exec(l);
-    return m&&m[1].trim()?{name:m[1].trim().slice(0,60),spec:'',qty:Number(m[2]),unit:m[3].slice(0,6)}:{name:l.slice(0,60),spec:'',qty:'',unit:''};
+    const it=m&&m[1].trim()?{name:m[1].trim().slice(0,60),spec:'',qty:Number(m[2]),unit:m[3].slice(0,6)}:{name:l.slice(0,60),spec:'',qty:'',unit:''};
+    if(price>0)it.price=price;
+    return it;
   });
 }
 function hjMatState(o,today){
@@ -17411,12 +17424,14 @@ function hjMatPending(limit){return hjMatAll().filter(x=>!x.o.recvAt&&HJ_YMD_RE.
 function hjMatFind(id){for(const p of (state.projects||[])){const o=hjMatOrders(p).find(x=>x.id===id);if(o)return {p,o};}return null;}
 function hjMatRecord(projectName,rec){
   const p=(state.projects||[]).find(x=>x&&x.name===projectName);if(!p)return null;
-  const items=(rec.items||[]).map(x=>({name:String(x.name||'').trim(),spec:String(x.spec||'').trim(),qty:x.qty===''||x.qty==null?'':Number(x.qty)||'',unit:String(x.unit||'').trim()})).filter(x=>x.name);
   const sup=String(rec.sup||'').trim(),due=HJ_YMD_RE.test(String(rec.due||''))?rec.due:'';
+  // v439 단가(공급가)는 적은 값만 — 없으면 단가표에서 제안(거래처+품목 일치 → 최근값). 견적 판매단가를 원가로 쓰지 않는다.
+  const items=(rec.items||[]).map(x=>{const it={name:String(x.name||'').trim(),spec:String(x.spec||'').trim(),qty:x.qty===''||x.qty==null?'':Number(x.qty)||'',unit:String(x.unit||'').trim()};const pr=Math.round(num(x.price));if(pr>0)it.price=pr;else if(rec.suggest!==false){const sg=hjSupPriceSuggest(sup,it.name,it.spec);if(sg&&sg.price>0)it.price=sg.price;}return it;}).filter(x=>x.name);
   const key=JSON.stringify([sup,due,items]);
   const dup=hjMatOrders(p).find(o=>!o.recvAt&&JSON.stringify([o.sup||'',o.due||'',(o.items||[]).map(x=>({name:x.name,spec:x.spec||'',qty:x.qty,unit:x.unit||''}))])===key);
   if(dup)return {o:dup,dup:true};
   const o={id:uid(),sup,items,due,at:localDate(),recvAt:'',memo:String(rec.memo||'').trim().slice(0,200)};
+  {const t=hjMatOrderTotal(o);if(t!=null)o.total=t;}   // v439 Σ 수량×단가(없으면 비움)
   if(rec.schId&&(state.schedule||[]).some(x=>x&&x.id===rec.schId))o.schId=String(rec.schId);   // v369 공정 잇기(선택)
   p.matOrders=hjMatOrders(p).concat([o]);markDirty();
   return {o,dup:false};
@@ -17571,7 +17586,8 @@ function hjMatEdit(id,opts){
       '<label>현장<select id="meProj" style="'+fld+'">'+(live.length?'':'<option value="">현장이 없어요</option>')+live.map(p=>'<option value="'+escapeAttr(p.name)+'"'+(p.name===state.activeProject?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')+'</select></label>')+
     '<label style="display:block;margin-top:8px">거래처<input id="meSup" list="meSupList" value="'+escapeAttr(o.sup||'')+'" placeholder="예: 대림타일" autocomplete="off" style="'+fld+'"></label>'+
     '<datalist id="meSupList">'+supNames.map(n=>'<option value="'+escapeAttr(n)+'">').join('')+'</datalist>'+
-    '<label style="display:block;margin-top:8px">품목 (한 줄에 하나 — 예: 타일 600각 × 42장)<textarea id="meItems" rows="4" style="'+fld+';line-height:1.5">'+escapeHtml((o.items||[]).map(hjMatItemLine).join('\n'))+'</textarea></label>'+
+    '<label style="display:block;margin-top:8px">품목 (한 줄에 하나 — 예: 타일 600각 × 42장 @12,000)<textarea id="meItems" rows="4" style="'+fld+';line-height:1.5">'+escapeHtml((o.items||[]).map(hjMatItemLine).join('\n'))+'</textarea></label>'+
+    '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;font-weight:400"><button type="button" id="meSuggest" class="ghost tiny" style="min-height:44px">📋 단가 제안 채우기</button><span id="meTotal" class="hint" style="margin:0"></span></div>'+   // v439
     (pjName?'<label style="display:block;margin-top:8px">어느 공정용 (선택)<select id="meSch" style="'+fld+'"><option value="">공정 안 정함 — 납품일로만 확인</option>'+schOpts.map(x=>'<option value="'+escapeAttr(x.id)+'" data-due="'+escapeAttr(hjMatDueFor(x))+'"'+(x.id===o.schId?' selected':'')+'>'+escapeHtml(hjMdDow(x.date)+' '+String(x.title||'일정').replace(HJ_PLAN_SUFFIX_RE,'').trim())+'</option>').join('')+'</select></label>':'')+
     '<label style="display:block;margin-top:8px">납품 예정일<input type="date" id="meDue" value="'+escapeAttr(o.due||'')+'" style="'+fld+'"></label>'+
     '<label style="display:block;margin-top:8px">메모<input id="meMemo" value="'+escapeAttr(o.memo||'')+'" placeholder="예: 오전 하차, 엘리베이터 예약" style="'+fld+'"></label>'+
@@ -17585,6 +17601,7 @@ function hjMatEdit(id,opts){
       if(f){
         const cur=hjMatFind(id);if(!cur||cur.o!==f.o){toast('납품 기록이 그 사이 바뀌었어요 — 다시 열어 주세요');return;}
         Object.assign(f.o,{sup,items,due:HJ_YMD_RE.test(String(due||''))?due:'',memo});if(schId)f.o.schId=schId;else delete f.o.schId;
+        {const t=hjMatOrderTotal(f.o);if(t!=null)f.o.total=t;else delete f.o.total;}   // v439
         const isEl=g('meIssue');if(isEl&&f.o.recvAt){const it=String(isEl.value||'').trim().slice(0,200);   // v372 입고 문제 — 글이 바뀌면 다시 '해결 전'
           if(!it){delete f.o.issue;delete f.o.issueAt;delete f.o.issueDone;}else if(it!==String(f.o.issue||'').trim()){f.o.issue=it;f.o.issueAt=localDate();delete f.o.issueDone;}}
         markDirty();toast('납품 기록을 고쳤어요');
@@ -17600,6 +17617,11 @@ function hjMatEdit(id,opts){
   // v369 공정을 고르면 납품일이 아직 손대지 않은 값일 때만 그 공정 전 작업일로 바꾼다
   const selEl=document.getElementById('meSch'),dueEl=document.getElementById('meDue');
   if(selEl&&dueEl){let auto=dueEl.value;selEl.onchange=()=>{const opt=selEl.options[selEl.selectedIndex],nd=opt&&opt.dataset.due;if(nd&&dueEl.value===auto){dueEl.value=nd;auto=nd;}};}
+  // v439 단가 합계 미리보기 + 단가표 제안 채우기(빈 단가만)
+  {const ta=document.getElementById('meItems'),tot=document.getElementById('meTotal'),sg=document.getElementById('meSuggest'),supEl=document.getElementById('meSup');
+    const paint=()=>{if(!ta||!tot)return;const t=hjMatOrderTotal({items:hjMatParseItems(ta.value)});tot.textContent=t!=null?'단가 합계 '+won(t)+' (공급가)':'단가를 적으면 입고 때 원가로 더할 수 있어요';};
+    if(ta){ta.oninput=paint;paint();}
+    if(sg&&ta)sg.onclick=()=>{let n=0;const lines=hjMatParseItems(ta.value).map(it=>{if(!(num(it.price)>0)){const s=hjSupPriceSuggest(supEl?supEl.value:'',it.name,it.spec);if(s){it.price=s.price;n++;}}return hjMatItemLine(it);});ta.value=lines.join('\n');paint();toast(n?'📋 단가표에서 '+n+'개 채웠어요 — 실제 금액으로 고치세요':'제안할 단가가 없어요 (거래처·품목 이름이 단가표와 맞아야 해요)');};}
 }
 function hjMatView(projectName,back){
   if(typeof projectName!=='string')projectName='';
@@ -17612,14 +17634,14 @@ function hjMatView(projectName,back){
   const row=x=>'<div class="mdRow" data-id="'+escapeAttr(x.o.id)+'" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px">'+
     '<div style="flex:1 1 180px;min-width:0;font-size:13px;line-height:1.5"><div class="mdState" style="font-weight:700;color:'+x.st.c+'">'+escapeHtml(x.st.t)+'</div>'+
       '<div>'+(projectName?'':'<b>'+escapeHtml(x.p.name)+'</b> · ')+escapeHtml(x.o.sup||'거래처 미기재')+'</div>'+
-      '<div style="color:var(--muted)">'+escapeHtml(hjMatItemsText(x.o.items,3))+(x.o.memo?' · '+escapeHtml(hjCut(x.o.memo,40)):'')+'</div>'+
+      '<div style="color:var(--muted)">'+escapeHtml(hjMatItemsText(x.o.items,3))+(x.o.memo?' · '+escapeHtml(hjCut(x.o.memo,40)):'')+((num(x.o.total)||hjMatOrderTotal(x.o))>0?' · <span data-mat-total>'+escapeHtml(won(num(x.o.total)||hjMatOrderTotal(x.o)))+(x.o.costApplied?' <b style="color:#0a7f43">원가 반영됨</b>':' <span style="color:#b45309">원가 미반영</span>')+'</span>':'')+'</div>'+   // v439
       (hjMatSchedLabel(x.o)?'<div class="mdSch" style="font-size:12px;color:var(--blueprint)">🔨 '+escapeHtml(hjMatSchedLabel(x.o))+'</div>':'')+
       (x.st.k==='issue'?'<div class="mdIssue" style="font-size:12px;color:var(--muted)">입고 '+escapeHtml(hjMdDow(x.o.recvAt))+' · 문제 적은 날 '+escapeHtml(HJ_YMD_RE.test(String(x.o.issueAt||''))?hjMdDow(x.o.issueAt):'-')+'</div>':'')+
       (x.st.k==='recv'&&x.o.issueDone?'<div class="mdIssue" style="font-size:12px;color:var(--muted)">입고 문제 해결 '+escapeHtml(hjMdDow(x.o.issueDone))+'</div>':'')+
       ((!x.o.recvAt||x.st.k==='issue')&&hjMatAsked(x.o)?'<div class="mdAsked" style="font-size:12px;color:var(--muted)">'+escapeHtml(hjMatAsked(x.o))+'</div>':'')+'</div>'+
     '<div style="display:flex;gap:6px;margin-left:auto">'+
       (x.st.k==='issue'?'<button type="button" class="clay mdFix" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 12px;font-size:12.5px">✅ 해결</button>':
-       x.o.recvAt?'<button type="button" class="ghost mdUndo" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">↩ 입고 취소</button>'
+       x.o.recvAt?((num(x.o.total)||hjMatOrderTotal(x.o))>0&&!x.o.costApplied?'<button type="button" class="clay mdCost" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">💰 원가 반영</button>':'')+'<button type="button" class="ghost mdLeft" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">📦 남음</button><button type="button" class="ghost mdUndo" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 10px;font-size:12.5px">↩ 입고 취소</button>'
         :'<button type="button" class="clay mdRecv" data-id="'+escapeAttr(x.o.id)+'" style="min-height:44px;padding:0 12px;font-size:12.5px">✅ 입고 확인</button>')+
       (x.o.recvAt&&x.st.k!=='issue'?'':'<button type="button" class="ghost mdAsk" data-id="'+escapeAttr(x.o.id)+'" aria-label="'+escapeAttr((x.o.sup||'거래처')+' 확인 문자·전화')+'" style="min-height:44px;min-width:44px;padding:0 10px">📞</button>')+
       '<button type="button" class="ghost mdEdit" data-id="'+escapeAttr(x.o.id)+'" aria-label="납품 기록 고치기" style="min-height:44px;min-width:44px;padding:0 10px">✎</button></div></div>';
@@ -17639,8 +17661,10 @@ function hjMatView(projectName,back){
     {label:'+ 납품 예정 추가',cls:'blue',fn:()=>hjMatEdit(null,{project:projectName,back:self})},
     {label:back?'← 뒤로':'닫기',cls:'ghost',fn:()=>{if(back)back();else closeModal();}}],true);
   const root=document.getElementById('matView');
-  root.querySelectorAll('.mdRecv').forEach(b=>b.onclick=()=>{if(hjMatReceive(b.dataset.id,true)){toast('✅ 입고 확인 — 오늘 날짜로 적었어요');try{render();}catch(e){}}self();});
-  root.querySelectorAll('.mdUndo').forEach(b=>b.onclick=()=>{if(hjMatReceive(b.dataset.id,false)){toast('입고 확인을 취소했어요');try{render();}catch(e){}}self();});
+  root.querySelectorAll('.mdRecv').forEach(b=>b.onclick=()=>{if(hjMatReceive(b.dataset.id,true)){toast('✅ 입고 확인 — 오늘 날짜로 적었어요');try{render();}catch(e){}if(hjMatCostAsk(b.dataset.id,self))return;}self();});   // v439 입고 → 원가 반영 묻기
+  root.querySelectorAll('.mdUndo').forEach(b=>b.onclick=()=>{const reverted=hjMatCostRevert(b.dataset.id);if(hjMatReceive(b.dataset.id,false)){toast(reverted?'입고 확인을 취소하고 자재비를 원가에서 뺐어요':'입고 확인을 취소했어요');try{render();}catch(e){}}self();});
+  root.querySelectorAll('.mdLeft').forEach(b=>b.onclick=()=>hjMatLeftView(b.dataset.id,self));   // v439 남은 자재
+  root.querySelectorAll('.mdCost').forEach(b=>b.onclick=()=>{hjMatCostAsk(b.dataset.id,self);});   // v439 나중에 미룬 원가 반영
   root.querySelectorAll('.mdEdit').forEach(b=>b.onclick=()=>hjMatEdit(b.dataset.id,{back:self}));
   root.querySelectorAll('.mdAsk').forEach(b=>b.onclick=()=>hjMatAsk(b.dataset.id,self));   // v371
   root.querySelectorAll('.mpAdd').forEach(b=>b.onclick=()=>{const x=(state.schedule||[]).find(v=>v&&v.id===b.dataset.sid);if(!x){toast('일정이 바뀌었어요');return self();}hjMatEdit(null,{project:x.project,schId:x.id,back:self});});   // v373
@@ -20806,66 +20830,132 @@ function supplierAdd(o){
   if(!name)return {오류:'거래처 이름이 필요합니다.'};
   state.suppliers=state.suppliers||[];
   let sup=state.suppliers.find(s=>s.name===name);
+  // v439 자재상 칸(주소·영업시간·결제·배송)은 같은 레코드 안 — 값이 온 칸만 바꾼다
+  const extra=s=>{['addr','hours','pay'].forEach(k=>{if(o[k]!==undefined)s[k]=String(o[k]||'').slice(0,120);});if(o.delivery!==undefined)s.delivery=!!o.delivery;};
   if(sup){
     // 외부 AI 출구(hjAiMaskOut)는 연락처를 '···1234' 로 가려 돌려보낸다 — 모델이 그 값을 되넘기면 원문을 덮어쓴다. 가린 값은 무시.
     if(o.phone!==undefined&&!/^\s*···/.test(String(o.phone)))sup.phone=o.phone;
     if(o.category!==undefined)sup.category=o.category;
     if(o.memo!==undefined)sup.memo=o.memo;
     if(o.items!==undefined)sup.items=o.items;
+    extra(sup);if(o.hidden===false)delete sup.hidden;
     markDirty();render();
     return {수정:name,연락처:sup.phone||'',분류:sup.category||''};
   }
   sup={name,phone:String(o.phone||''),category:String(o.category||'자재'),memo:String(o.memo||''),items:String(o.items||'')};
+  extra(sup);
   state.suppliers.push(sup);markDirty();render();
   return {추가:name,연락처:sup.phone||'',분류:sup.category||''};
 }
+/* v439 거래처에 거래 기록(발주·단가·지출)이 있으면 지우지 않고 숨긴다 — 기록이 가리키는 이름이 사라지면 발주 화면이 '거래처 미기재' 가 된다. */
+function hjSupHasRecords(name){
+  const n=String(name||'').trim();if(!n)return false;
+  const s=(state.suppliers||[]).find(x=>x&&x.name===n);
+  if(s&&hjSupPrices(s).length)return true;
+  if((state.projects||[]).some(p=>hjMatOrders(p).some(o=>String(o.sup||'').trim()===n)))return true;
+  return (state.expenses||[]).some(e=>e&&String(e.memo||'').includes(n));
+}
+function hjSupRemove(name){
+  const s=(state.suppliers||[]).find(x=>x&&x.name===name);if(!s)return {오류:'거래처 없음'};
+  if(hjSupHasRecords(name)){s.hidden=true;markDirty();render();return {숨김:name};}
+  state.suppliers=(state.suppliers||[]).filter(x=>x!==s);markDirty();render();return {삭제:name};
+}
+/* v439 명단 불러오기 — 이름·전화·주소·품목 4열(머리글 있어도 됨). 같은 이름은 빈 칸만 채운다(병합). 읽기 함수 아님 — 부른 쪽이 저장. */
+function hjSupImportRows(rows){
+  let added=0,merged=0,skipped=0;const head=/이름|거래처|상호|name/i;
+  (rows||[]).forEach((r,i)=>{
+    const cells=Array.isArray(r)?r.map(c=>String(c==null?'':c).trim()):[];
+    if(!cells.length||!cells[0]||(i===0&&head.test(cells[0])&&!/\d/.test(cells[1]||'')&&(cells[1]||'').length<12&&/전화|연락|phone|주소|품목/i.test(cells.slice(1).join(' '))))return;
+    const name=cells[0].slice(0,40),phone=(cells[1]||'').slice(0,20),addr=(cells[2]||'').slice(0,120),items=(cells[3]||'').slice(0,120);
+    state.suppliers=state.suppliers||[];
+    const s=state.suppliers.find(x=>x&&x.name===name);
+    if(s){let ch=false;if(!s.phone&&phone){s.phone=phone;ch=true;}if(!s.addr&&addr){s.addr=addr;ch=true;}if(!s.items&&items){s.items=items;ch=true;}if(s.hidden){delete s.hidden;ch=true;}if(ch)merged++;else skipped++;}
+    else{state.suppliers.push({name,phone,category:'자재',memo:'',items,addr});added++;}
+  });
+  if(added||merged)markDirty();
+  return {added,merged,skipped};
+}
+function hjSupParseCsv(text){
+  const out=[];String(text||'').replace(/^﻿/,'').split(/\r?\n/).forEach(line=>{if(!line.trim())return;const cells=[];let cur='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if((ch===','||ch==='\t')&&!q){cells.push(cur);cur='';}else cur+=ch;}cells.push(cur);out.push(cells);});
+  return out;
+}
+async function hjSupImportFile(file){
+  if(!file)return null;
+  if(/\.xlsx?$/i.test(file.name)){await ensureXLSX();const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];return hjSupImportRows(XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false,defval:''}));}
+  return hjSupImportRows(hjSupParseCsv(await file.text()));
+}
 function suppliers(){
-  const list=supplierList();
+  const all=supplierList(),list=all.filter(s=>!s.hidden),hidden=all.filter(s=>s.hidden);
   const rows=list.length?list.map(s=>{
-    const st=supplierStats(s.name);
-    return '<div class="supRow" data-n="'+escapeAttr(s.name)+'" style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px">'+
+    const st=supplierStats(s.name),prices=hjSupPrices(s).length;
+    return '<div class="supRow" data-n="'+escapeAttr(s.name)+'" style="display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;min-height:44px">'+
       '<span style="font-size:22px">'+(s.category==='외주'?'🔧':s.category==='장비'?'🚜':'📦')+'</span>'+
       '<span style="flex:1;min-width:0"><b style="font-size:13px">'+escapeHtml(s.name)+'</b>'+(s.category?' <span style="font-size:10.5px;color:var(--muted);background:var(--paper-2);border-radius:8px;padding:1px 7px">'+escapeHtml(s.category)+'</span>':'')+
       (s.items?'<br><span style="font-size:11px;color:var(--muted)">'+escapeHtml(hjCut(s.items,20))+'</span>':'')+
-      (st.건수?'<br><span style="font-size:10.5px;color:var(--muted)">거래 '+st.건수+'건 · '+hjMan(st.거래액)+'</span>':'')+'</span>'+
-      (s.phone?'<a href="tel:'+escapeAttr(s.phone)+'" onclick="event.stopPropagation()" style="font-size:20px;text-decoration:none">📞</a>':'')+'</div>';
+      ((s.addr||s.pay||s.delivery)?'<br><span style="font-size:10.5px;color:var(--muted)">'+escapeHtml([s.addr?hjCut(s.addr,16):'',s.pay||'',s.delivery?'배송 가능':''].filter(Boolean).join(' · '))+'</span>':'')+
+      ((st.건수||prices)?'<br><span style="font-size:10.5px;color:var(--muted)">'+(st.건수?'거래 '+st.건수+'건 · '+hjMan(st.거래액):'')+(prices?(st.건수?' · ':'')+'단가 '+prices+'개':'')+'</span>':'')+'</span>'+
+      (s.phone?'<a href="tel:'+escapeAttr(s.phone)+'" onclick="event.stopPropagation()" style="font-size:20px;text-decoration:none;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">📞</a>':'')+'</div>';
   }).join(''):'<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:16px">등록된 거래처가 없습니다.<br>자재발주에서 자동 등록되거나, 아래 [➕ 거래처 추가]로 넣으세요.</div>';
-  const body='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">자주 쓰는 자재상·외주 업체를 모아둡니다. 이름을 누르면 정보를 수정할 수 있어요.</div>'+
+  const body='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">자주 쓰는 자재상·외주 업체를 모아둡니다. 이름을 누르면 정보를 수정할 수 있어요. 입고 확인할 때 자재비가 현장 원가로 들어가요.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button type="button" class="blue tiny" id="supAddMat" style="min-height:44px;padding:0 12px">➕ 자재상 추가</button>'+
+    '<button type="button" class="ghost tiny" id="supImport" style="min-height:44px;padding:0 12px">📥 명단 불러오기 (CSV·엑셀)</button><input id="supImportFile" type="file" accept=".csv,.txt,.xlsx,.xls,text/csv" hidden>'+
+    '<button type="button" class="ghost tiny" id="supPrices" style="min-height:44px;padding:0 12px">📋 자재 단가표</button></div>'+
     rows+
-    '<button class="clay" id="supAdd" style="width:100%;padding:12px;margin-top:8px">➕ 거래처 추가</button>';
+    (hidden.length?'<details style="margin-top:8px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px">숨긴 거래처 '+hidden.length+'</summary>'+hidden.map(s=>'<div style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:12.5px"><span style="flex:1;min-width:0">'+escapeHtml(s.name)+'</span><button type="button" class="ghost tiny supUnhide" data-n="'+escapeAttr(s.name)+'" style="min-height:44px">되살리기</button></div>').join('')+'</details>':'')+
+    '<button class="clay" id="supAdd" style="width:100%;padding:12px;margin-top:8px;min-height:44px">➕ 거래처 추가</button>';
   openModal('📇 거래처 ('+list.length+')',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   root.querySelector('#supAdd').onclick=()=>supplierEditDialog();
+  root.querySelector('#supAddMat').onclick=()=>supplierEditDialog(null,{category:'자재'});
+  root.querySelector('#supPrices').onclick=()=>hjSupPriceTableView(()=>suppliers());
+  const fileEl=root.querySelector('#supImportFile');
+  root.querySelector('#supImport').onclick=()=>fileEl.click();
+  fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;try{const r=await hjSupImportFile(f);toast('📥 명단: 추가 '+r.added+' · 보완 '+r.merged+(r.skipped?' · 그대로 '+r.skipped:''));suppliers();}catch(e){toast('명단을 읽지 못했어요: '+(e&&e.message||e));}};
+  root.querySelectorAll('.supUnhide').forEach(b=>b.onclick=()=>{supplierAdd({name:b.dataset.n,hidden:false});toast('되살렸어요');suppliers();});
   root.querySelectorAll('.supRow').forEach(b=>b.onclick=()=>supplierEditDialog(b.dataset.n));
   return {거래처수:list.length};
 }
-function supplierEditDialog(name){
-  const sup=name?(state.suppliers||[]).find(s=>s.name===name):null;
+function supplierEditDialog(name,opts){
+  const sup=name?(state.suppliers||[]).find(s=>s.name===name):null,o=opts||{};
   const cats=['자재','외주','장비','기타'];
-  const catBtns=cats.map(c=>'<button type="button" class="supCat ghost tiny" data-c="'+c+'" style="padding:7px 12px;margin:2px">'+c+'</button>').join('');
+  const catBtns=cats.map(c=>'<button type="button" class="supCat ghost tiny" data-c="'+c+'" style="padding:7px 12px;margin:2px;min-height:44px">'+c+'</button>').join('');
+  const inp='width:100%;padding:9px;font-size:13px;margin-bottom:6px;box-sizing:border-box;min-height:44px';
   const body=
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">거래처 이름</label>'+
-    '<input id="supName" value="'+escapeAttr(sup?sup.name:'')+'" placeholder="예: 한밭철물" style="width:100%;padding:11px;font-size:15px;margin-bottom:10px"'+(sup?' readonly':'')+'>'+
+    '<input id="supName" value="'+escapeAttr(sup?sup.name:'')+'" placeholder="예: 한밭철물" style="width:100%;padding:11px;font-size:15px;margin-bottom:10px;box-sizing:border-box;min-height:44px"'+(sup?' readonly':'')+'>'+
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">분류</label>'+
     '<div id="supCats" style="margin-bottom:10px">'+catBtns+'</div>'+
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">연락처 · 취급품목 · 메모</label>'+
-    '<input id="supPhone" value="'+escapeAttr(sup?sup.phone||'':'')+'" placeholder="전화번호" inputmode="tel" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+
-    '<input id="supItems" value="'+escapeAttr(sup?sup.items||'':'')+'" placeholder="취급 품목(예: 타일, 본드)" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px">'+
-    '<input id="supMemo" value="'+escapeAttr(sup?sup.memo||'':'')+'" placeholder="메모(단가·거래 조건 등)" style="width:100%;padding:9px;font-size:13px">';
+    '<div style="display:flex;gap:6px"><input id="supPhone" value="'+escapeAttr(sup?sup.phone||'':'')+'" placeholder="전화번호" inputmode="tel" style="'+inp+';flex:1">'+(contactsPickerSupported()?'<button type="button" id="supPick" class="ghost tiny" style="min-height:44px;flex:none">📇 주소록</button>':'')+'</div>'+
+    '<input id="supItems" value="'+escapeAttr(sup?sup.items||'':'')+'" placeholder="취급 품목(예: 타일, 본드)" style="'+inp+'">'+
+    '<input id="supMemo" value="'+escapeAttr(sup?sup.memo||'':'')+'" placeholder="메모(단가·거래 조건 등)" style="'+inp+'">'+
+    // v439 자재상 칸 — 분류가 자재일 때만 보인다
+    '<div id="supMatFields" style="margin-top:4px"><label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">자재상 정보 (선택)</label>'+
+    '<input id="supAddr" value="'+escapeAttr(sup?sup.addr||'':'')+'" placeholder="주소 한 줄 (예: 대전 중구 대종로 ○○)" style="'+inp+'">'+
+    '<input id="supHours" value="'+escapeAttr(sup?sup.hours||'':'')+'" placeholder="영업시간 (예: 평일 07:30~18:00, 토 ~13:00)" style="'+inp+'">'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="supPay" style="'+inp+';flex:1;min-width:140px"><option value="">결제 — 정하지 않음</option>'+HJ_SUP_PAY.map(v=>'<option value="'+v+'"'+(sup&&sup.pay===v?' selected':'')+'>'+v+'</option>').join('')+'</select>'+
+    '<label style="display:flex;gap:6px;align-items:center;min-height:44px;font-size:12.5px;flex:none"><input type="checkbox" id="supDelivery"'+(sup&&sup.delivery?' checked':'')+' style="width:18px;height:18px"> 배송 가능</label></div></div>'+
+    (sup&&hjSupPrices(sup).length?'<p class="hint" style="margin-top:6px">이 거래처 단가 '+hjSupPrices(sup).length+'개 — [📋 자재 단가표]에서 봅니다.</p>':'');
   openModal(sup?'✏️ 거래처 수정':'➕ 거래처 추가',body,[
     {label:'저장',cls:'clay',fn:()=>{
       const nm=document.getElementById('supName').value.trim();
       if(!nm){toast('거래처 이름을 입력해 주세요.');hjFieldIssue(document.getElementById('supName'),'거래처 이름을 입력해 주세요.');return;}
-      supplierAdd({name:nm,category:window.__supCat||(sup?sup.category:'자재'),phone:document.getElementById('supPhone').value,items:document.getElementById('supItems').value,memo:document.getElementById('supMemo').value});
+      const g=id=>document.getElementById(id);
+      supplierAdd({name:nm,category:window.__supCat||(sup?sup.category:'자재'),phone:g('supPhone').value,items:g('supItems').value,memo:g('supMemo').value,
+        addr:g('supAddr').value.trim(),hours:g('supHours').value.trim(),pay:g('supPay').value,delivery:g('supDelivery').checked});
       toast(sup?'수정했습니다':'거래처를 추가했습니다');suppliers();
     }},
-    sup?{label:'삭제',cls:'warn',fn:()=>{state.suppliers=(state.suppliers||[]).filter(s=>s.name!==sup.name);markDirty();suppliers();toast('삭제됨');}}:{label:'취소',cls:'ghost',fn:()=>suppliers()}]);
+    sup?{label:'삭제',cls:'warn',fn:()=>{const r=hjSupRemove(sup.name);suppliers();toast(r.숨김?'거래 기록이 있어 숨겼어요 — 목록 아래 [숨긴 거래처]에서 되살릴 수 있어요':'삭제됨');}}:{label:'취소',cls:'ghost',fn:()=>suppliers()}],true);
+  hjModalTapTargets();
   const root=document.getElementById('modalRoot');
-  window.__supCat=sup?sup.category:'자재';
+  window.__supCat=sup?sup.category:(cats.includes(o.category)?o.category:'자재');
+  const matBox=root.querySelector('#supMatFields'),syncMat=()=>{matBox.hidden=window.__supCat!=='자재';};
   root.querySelectorAll('.supCat').forEach(btn=>{
     if(btn.dataset.c===window.__supCat)btn.className='supCat clay tiny';
-    btn.onclick=()=>{window.__supCat=btn.dataset.c;root.querySelectorAll('.supCat').forEach(x=>x.className='supCat ghost tiny');btn.className='supCat clay tiny';};
+    btn.onclick=()=>{window.__supCat=btn.dataset.c;root.querySelectorAll('.supCat').forEach(x=>x.className='supCat ghost tiny');btn.className='supCat clay tiny';syncMat();};
   });
+  syncMat();
+  const pick=root.querySelector('#supPick');if(pick)pick.onclick=async()=>{const c=await hjPickOneContact();if(!c)return;if(c.phone)root.querySelector('#supPhone').value=c.phone;if(!root.querySelector('#supName').value.trim()&&c.name)root.querySelector('#supName').value=c.name;};
 }
 
 /* ═══════════ 📊 연간 리포트 — 한 해 결산 (매출·수금·지출·완료) ═══════════ */
@@ -35650,7 +35740,7 @@ function viewQuoteMaker(){
         <label>연결 현장<select id="qmProj">${projOpts}</select>${q.bathroomImport&&!q.project?'<span class="hint">현장을 골라 연결하세요</span>':''}</label>
         <label>비고<input type="text" id="qmMemo" value="${escapeAttr(q.memo)}" placeholder="예: 계약금 500만원 선입금"></label>
       </div>
-      <div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
+      ${hjQuoteCostHintHtml(q)}<div class="qm-items-h">품목 <button class="clay tiny" id="qmAddItem">+ 품목 추가</button> <button class="moss tiny" id="qmAi">🤖 AI 항목 제안</button> <button class="blue tiny" id="qmReview">🧾 AI 검토</button> <button class="ghost tiny" id="qmBook">📦 단가장</button> <button class="ghost tiny" id="qmMat" aria-label="자재 목록에서 품목 넣기" title="🛒 자재 구매처·단가에 정리한 자재를 품목으로 넣는다">🛒 자재</button> <button class="moss tiny" id="qmSet">📦 품목 세트</button> <button class="ghost tiny" id="qmCalc" aria-label="자재 계산기 열기" title="🧮 면적·규격으로 소요량을 내고 그대로 품목으로 담는다">🧮 계산기</button> <button class="ghost tiny" id="qmMeasure" aria-label="실측 노트의 방 면적을 품목으로 가져오기"${hjQuoteMeasureRooms(q).length?'':' hidden style="display:none"'}>📐 실측에서 가져오기</button> <button class="moss tiny" id="qmOrder">🚚 발주서</button></div>
       <div class="qm-quick">${['철거','방수','타일,기구','도배(실크)','씽크대','화장실','몰딩','장판','인건비','식대,부자재','폐기물','NEGO'].map(n=>`<button class="qm-chip" data-qadd="${escapeAttr(n)}" title="품목 빠른 추가">+ ${escapeHtml(n)}</button>`).join('')}</div>
       <datalist id="qmItemNames">${(()=>{const base=['철거','화장실','방수','타일,기구','주방,베란다타일','몰딩','씽크대','붙박이장문','장판','도배(실크)','식대,부자재','폐기물','인건비','목공','시트지','중문','신발장','키큰장','샷시','마감재','실리콘','경비','장비대','스텐 물받이','용마루','NEGO'];const pb=state.priceBook||{};const mats={};(state.materials||[]).forEach(m=>{const b=matBest(m);if(m.name&&b&&!pb[m.name])mats[m.name]='공급가 '+matSupplyPrice(b.price).toLocaleString('ko-KR')+'원 (🛒)';});const names=[...new Set([...Object.keys(pb),...Object.keys(mats),...base])];return names.map(n=>`<option value="${escapeAttr(n)}"${pb[n]?` label="${Number(pb[n]).toLocaleString('ko-KR')}원"`:(mats[n]?` label="${escapeAttr(mats[n])}"`:'')}></option>`).join('');})()}</datalist>
       <div class="qm-table-wrap"><table class="qm-table">
@@ -39970,6 +40060,139 @@ function hjTeamReportPendingHtml(){
   return '<div data-team-report-pending style="font-size:13px;margin:0 0 8px;line-height:1.6">'+
     (review.length?'<div style="color:var(--hj-warn-fg,#b45309)">🔎 검수 요청 '+review.length+'건 — '+review.slice(0,3).map(r=>escapeHtml(r.project)).join(' · ')+'</div>':'')+
     (blocked.length?'<div style="color:var(--warn)">⛔ 막힘 '+blocked.length+'건 — '+blocked.slice(0,3).map(r=>escapeHtml(r.project)+(r.issue?' ('+escapeHtml(hjWoText(r.issue,40))+')':'')).join(' · ')+'</div>':'')+'</div>';
+}
+/* ═══ v439 자재상 명단 · 발주→입고→원가 자동 반영 · 자재 단가표 · 남은 자재 ═══
+   새 최상위 직렬화 키 없음 — 단가는 거래처 레코드 안 s.prices[]{name,spec,unit,price,at,src}(품목당 최근 5개), 발주는 p.matOrders[] 안 items[].price·o.total·
+   o.costApplied·items[].left. 원가 반영은 입고 확인 때 묻고 한 번만 더한다(costApplied 가드 — 변이 검사가 이 가드를 노린다). 자동 발송 없음.
+   state.supplierMap/state.materials(🛒 자재 구매처·단가)는 건드리지 않는다 — 그쪽은 '파는 값·링크', 여기는 '내가 산 값'. */
+const HJ_SUP_PAY=Object.freeze(['현금','월말 외상','카드']);
+const HJ_SUP_PRICES_KEEP=5;
+const HJ_MAT_PRICE_RE=/\s*@\s*([\d,]+(?:\.\d+)?)\s*원?\s*$/;
+function hjSupPrices(s){return Array.isArray(s&&s.prices)?s.prices.filter(x=>x&&typeof x.name==='string'&&num(x.price)>0):[];}
+function hjSupPriceKey(name,spec){const n=v=>String(v||'').trim().replace(/\s+/g,' ').toLowerCase();return n(name)+'|'+n(spec);}
+/* 단가 기록 — 거래처가 없으면 만든다(supplierAdd 와 같은 꼴). 부른 쪽이 markDirty. */
+function hjSupPriceAdd(supName,entry,src){
+  const name=String(supName||'').trim(),item=String(entry&&entry.name||'').trim(),price=Math.round(num(entry&&entry.price));
+  if(!name||!item||!(price>0))return null;
+  state.suppliers=state.suppliers||[];
+  let s=state.suppliers.find(x=>x&&x.name===name);
+  if(!s){s={name,phone:'',category:'자재',memo:'',items:''};state.suppliers.push(s);}
+  if(!Array.isArray(s.prices))s.prices=[];
+  const rec={name:item.slice(0,60),spec:String(entry.spec||'').trim().slice(0,40),unit:String(entry.unit||'').trim().slice(0,6),price,at:HJ_YMD_RE.test(String(entry.at||''))?String(entry.at):localDate(),src:src==='recv'?'recv':'manual'};
+  const key=hjSupPriceKey(rec.name,rec.spec);
+  const same=s.prices.filter(x=>hjSupPriceKey(x.name,x.spec)===key).concat([rec]).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+  s.prices=s.prices.filter(x=>hjSupPriceKey(x.name,x.spec)!==key).concat(same.slice(-HJ_SUP_PRICES_KEEP));
+  return rec;
+}
+/* 최근 단가 제안 — 거래처+품목 일치 → 그 거래처 최근값, 거래처가 없거나 기록이 없으면 전체 최저가 거래처. 읽기 전용. */
+function hjSupPriceSuggest(supName,itemName,spec){
+  const key=hjSupPriceKey(itemName,spec),loose=hjSupPriceKey(itemName,''),rows=[];
+  (state.suppliers||[]).forEach(s=>{if(!s||s.hidden)return;hjSupPrices(s).forEach(x=>{if(hjSupPriceKey(x.name,x.spec)===key||hjSupPriceKey(x.name,'')===loose)rows.push({sup:s.name,name:x.name,spec:x.spec,unit:x.unit,price:x.price,at:x.at});});});
+  if(!rows.length)return null;
+  rows.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  const sup=String(supName||'').trim(),mine=rows.find(r=>r.sup===sup);
+  if(mine)return {price:mine.price,sup:mine.sup,at:mine.at,best:false};
+  const latest=new Map();rows.forEach(r=>{if(!latest.has(r.sup))latest.set(r.sup,r);});
+  const best=[...latest.values()].sort((a,b)=>a.price-b.price)[0];
+  return {price:best.price,sup:best.sup,at:best.at,best:true};
+}
+/* 단가표 — 거래처별 품목 최근 단가 + 같은 품목을 파는 곳이 둘 이상이면 최저가 표시. 읽기 전용. */
+function hjSupPriceTable(){
+  const rows=[];
+  (state.suppliers||[]).forEach(s=>{if(!s||s.hidden)return;const latest=new Map();hjSupPrices(s).slice().sort((a,b)=>String(a.at).localeCompare(String(b.at))).forEach(x=>latest.set(hjSupPriceKey(x.name,x.spec),x));latest.forEach(x=>rows.push({sup:s.name,name:x.name,spec:x.spec,unit:x.unit,price:x.price,at:x.at,src:x.src}));});
+  const byItem=new Map();rows.forEach(r=>{const k=hjSupPriceKey(r.name,r.spec);const list=byItem.get(k)||[];list.push(r);byItem.set(k,list);});
+  rows.forEach(r=>{const list=byItem.get(hjSupPriceKey(r.name,r.spec)),min=Math.min(...list.map(x=>x.price));r.sellers=new Set(list.map(x=>x.sup)).size;r.best=r.sellers>1&&r.price===min;});
+  return rows.sort((a,b)=>a.sup.localeCompare(b.sup,'ko')||a.name.localeCompare(b.name,'ko'));
+}
+function hjMatOrderTotal(o){let t=0,any=false;(o&&Array.isArray(o.items)?o.items:[]).forEach(it=>{const pr=num(it&&it.price);if(pr>0){any=true;t+=Math.round((num(it&&it.qty)||1)*pr);}});return any?t:null;}
+function hjMatCostPending(){const out=[];(state.projects||[]).forEach(p=>{if(!p||p.archived)return;hjMatOrders(p).forEach(o=>{const t=num(o.total)||hjMatOrderTotal(o);if(o.recvAt&&t>0&&!o.costApplied)out.push({p,o,total:t});});});return out;}
+/* 입고 → 원가 반영. costApplied 가 있으면 두 번 더하지 않는다. 금액은 입고 자리에서 고친 값(amount)을 쓴다. */
+function hjMatCostApply(id,amount){
+  const f=hjMatFind(id);if(!f||!f.o.recvAt)return {오류:'입고 확인된 발주가 아니에요'};
+  if(f.o.costApplied)return {이미:true,금액:num(f.o.costAppliedAmt)};
+  const amt=Math.round(num(amount!=null?amount:(f.o.total||hjMatOrderTotal(f.o))));if(!(amt>0))return {오류:'자재비 금액이 없어요'};
+  if(!f.p.cost)f.p.cost={material:0,labor:0,outsource:0};
+  f.p.cost.material=Math.round(num(f.p.cost.material))+amt;
+  f.o.costApplied=true;f.o.costAppliedAmt=amt;f.o.costAppliedAt=localDate();if(amt!==num(f.o.total))f.o.total=amt;
+  (f.o.items||[]).forEach(it=>{if(num(it&&it.price)>0)hjSupPriceAdd(f.o.sup,{name:it.name,spec:it.spec,unit:it.unit,price:it.price,at:f.o.recvAt},'recv');});
+  state.notes=state.notes||[];
+  state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[자재비] '+hjMdDow(f.o.recvAt)+' '+(f.o.sup||'거래처 미기재')+' '+won(amt)+' → 원가(자재)',project:f.p.name});
+  markDirty();return {반영:amt,원가자재:f.p.cost.material};
+}
+function hjMatCostRevert(id){
+  const f=hjMatFind(id);if(!f||!f.o.costApplied)return false;
+  const amt=Math.round(num(f.o.costAppliedAmt));
+  if(f.p.cost)f.p.cost.material=Math.max(0,Math.round(num(f.p.cost.material))-amt);   // 음수 방지
+  delete f.o.costApplied;delete f.o.costAppliedAmt;delete f.o.costAppliedAt;
+  state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[자재비 취소] '+(f.o.sup||'거래처 미기재')+' '+won(amt)+' — 입고 취소로 원가에서 뺌',project:f.p.name});
+  markDirty();return true;
+}
+/* 입고 확인 뒤 묻는 창 — "자재비 ○○원을 원가(자재)에 더할까요?" 금액은 고칠 수 있다. */
+function hjMatCostAsk(id,after){
+  const f=hjMatFind(id);const done=()=>{if(typeof after==='function')after();};
+  if(!f||!f.o.recvAt||f.o.costApplied){done();return false;}
+  const total=num(f.o.total)||hjMatOrderTotal(f.o);
+  if(!(total>0)){done();return false;}
+  const dup=(state.files||[]).filter(x=>x&&x.kind==='receipt'&&x.project===f.p.name&&String(x.when||'').slice(0,10)===f.o.recvAt&&num(x.amount)===total).length;
+  openModal('💰 자재비 원가 반영',
+    '<div id="hjMatCost" style="font-size:13px;line-height:1.7"><b>'+escapeHtml(f.o.sup||'거래처 미기재')+'</b> · '+escapeHtml(hjMatItemsText(f.o.items,3))+'<br>자재비 <b>'+escapeHtml(won(total))+'</b>을 「'+escapeHtml(f.p.name)+'」 원가(자재)에 더할까요?'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:10px 0 3px">실제 금액 (달라졌으면 고치세요 · 공급가)</label><input id="hjMatCostAmt" type="text" inputmode="numeric" value="'+escapeAttr(total.toLocaleString('ko-KR'))+'" style="width:100%;min-height:44px;padding:9px 10px;font-size:16px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">'+
+    (dup?'<p style="color:#b45309;font-size:12px;margin:6px 0 0">⚠️ 같은 날짜·금액의 영수증 사진이 이미 있어요 — 중복인지 확인하세요</p>':'')+
+    '<p class="hint" style="margin-top:8px">한 번만 더해집니다. 입고 취소하면 다시 뺍니다. 단가는 자재 단가표에 기억돼 다음 발주에서 제안돼요.</p></div>',
+    [{label:'➕ 더하기',cls:'clay',fn:()=>{const r=hjMatCostApply(id,won2num(document.getElementById('hjMatCostAmt').value));closeModal();if(r&&r.반영){toast('💰 자재비 '+won(r.반영)+' → 원가(자재) '+won(r.원가자재));try{render();}catch(e){}}else toast(r&&r.오류||'반영하지 못했어요');done();}},
+     {label:'나중에',cls:'ghost',fn:()=>{closeModal();done();}}],true);
+  hjModalTapTargets();return true;
+}
+/* 남은 자재 — 입고 수량 − 쓴 수량을 입고 건에 적고(o.items[].left), 📦 자재 재고로 옮긴다(수량 합산, 레코드 추가만). */
+function hjMatLeftView(id,back){
+  const f=hjMatFind(id);if(!f||!f.o.recvAt){toast('입고 확인된 발주에서만 남은 자재를 적어요');return false;}
+  const items=(f.o.items||[]).filter(x=>x&&String(x.name||'').trim());
+  const row=(it,i)=>'<div style="display:flex;gap:8px;align-items:center;margin:6px 0;font-size:13px"><span style="flex:1;min-width:0">'+escapeHtml(hjMatItemLine(it))+(it.movedToInv?' <span style="font-size:11px;color:var(--muted)">(재고로 옮김 '+escapeHtml(String(it.movedToInv))+')</span>':'')+'</span>'+
+    '<input type="number" min="0" step="any" data-mat-left="'+i+'" value="'+escapeAttr(it.left==null?'':String(it.left))+'" placeholder="남음" style="width:88px;min-height:44px;padding:8px;font-size:16px;border-radius:9px;border:1px solid var(--line-soft)"><span style="font-size:12px;color:var(--muted);width:30px">'+escapeHtml(it.unit||'')+'</span></div>';
+  openModal('📦 남은 자재 — '+f.p.name,'<div id="hjMatLeft"><p class="hint" style="margin:0 0 6px">'+escapeHtml(f.o.sup||'거래처 미기재')+' · 입고 '+escapeHtml(hjMdDow(f.o.recvAt))+'. 현장에서 쓰고 남은 수량만 적으세요.</p>'+items.map(row).join('')+'</div>',
+    [{label:'저장',cls:'blue',fn:()=>{save();closeModal();toast('남은 자재를 적었어요');if(back)back();}},
+     {label:'📦 재고로 옮기기',cls:'clay',fn:()=>{save();const r=hjMatLeftToInventory(id);closeModal();toast(r.moved?'📦 재고에 '+r.moved+'개 품목을 더했어요':'옮길 남은 자재가 없어요 (이미 옮겼거나 0)');if(back)back();}},
+     {label:'닫기',cls:'ghost',fn:()=>{closeModal();if(back)back();}}],true);
+  hjModalTapTargets();
+  const save=()=>{const cur=hjMatFind(id);if(!cur)return;document.querySelectorAll('[data-mat-left]').forEach(el=>{const it=items[Number(el.dataset.matLeft)];if(!it)return;const v=el.value.trim();if(v==='')delete it.left;else it.left=Math.max(0,Number(v)||0);});markDirty();};
+  return true;
+}
+function hjMatLeftToInventory(id){
+  const f=hjMatFind(id);if(!f)return {moved:0};
+  let moved=0;const inv=inventoryEnsure();
+  (f.o.items||[]).forEach(it=>{const left=num(it&&it.left);if(!(left>0)||it.movedToInv)return;
+    const nm=String(it.name||'').trim();if(!nm)return;
+    let row=inv.find(x=>x&&String(x.name||'').trim()===nm&&(!it.unit||!x.unit||x.unit===it.unit));
+    if(row){row.qty=num(row.qty)+left;if(!row.supplier&&f.o.sup)row.supplier=f.o.sup;row.updatedAt=new Date().toISOString();}
+    else inv.push({id:uid(),name:nm,qty:left,unit:String(it.unit||''),minQty:0,supplier:String(f.o.sup||''),updatedAt:new Date().toISOString()});
+    it.movedToInv=localDate();moved++;});
+  if(moved)markDirty();
+  return {moved};
+}
+/* 📋 자재 단가표 화면 — 거래처별 품목·규격·단위·공급가·최근 구매일, 직접 추가. 읽기(표) + 추가(단가 기록)만. */
+function hjSupPriceTableView(back){
+  const rows=hjSupPriceTable(),sups=(state.suppliers||[]).filter(s=>s&&!s.hidden&&s.category!=='외주').map(s=>s.name);
+  const groups=[];rows.forEach(r=>{let g=groups.find(x=>x.sup===r.sup);if(!g){g={sup:r.sup,rows:[]};groups.push(g);}g.rows.push(r);});
+  const body='<div id="hjPriceTable" style="min-width:0;overflow-wrap:anywhere">'+
+    '<p class="hint" style="margin:0 0 8px">입고 확인한 발주의 단가가 자동으로 쌓이고(품목당 최근 5개), 직접 적을 수도 있어요. 같은 품목을 여러 곳이 팔면 <b style="color:#0a7f43">최저</b> 표시.</p>'+
+    (groups.length?groups.map(g=>'<div data-price-sup="'+escapeAttr(g.sup)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px"><b style="font-size:13px">'+escapeHtml(g.sup)+'</b>'+
+      g.rows.map(r=>'<div data-price-row style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;padding:4px 0;border-top:1px dashed var(--line-soft)"><span style="flex:1;min-width:0">'+escapeHtml(r.name)+(r.spec?' <span style="color:var(--muted)">'+escapeHtml(r.spec)+'</span>':'')+(r.best?' <span data-price-best style="font-size:10.5px;color:#0a7f43;font-weight:700">최저</span>':'')+'</span><b>'+escapeHtml(won(r.price))+(r.unit?'/'+escapeHtml(r.unit):'')+'</b><span style="font-size:11px;color:var(--muted)">'+escapeHtml(r.at)+(r.src==='recv'?' 입고':'')+'</span></div>').join('')+'</div>').join(''):'<div style="font-size:12.5px;color:var(--muted);text-align:center;padding:14px">아직 단가가 없어요 — 발주에 단가를 적고 입고 확인하면 여기 쌓여요.</div>')+
+    '<details style="margin-top:6px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px;font-weight:700">➕ 단가 직접 적기</summary>'+
+    '<input id="ptSup" list="ptSupList" placeholder="거래처" style="width:100%;min-height:44px;padding:8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;margin-top:6px"><datalist id="ptSupList">'+sups.map(n=>'<option value="'+escapeAttr(n)+'"></option>').join('')+'</datalist>'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:6px;margin-top:6px"><input id="ptName" placeholder="품목" style="min-height:44px;padding:8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);min-width:0"><input id="ptSpec" placeholder="규격" style="min-height:44px;padding:8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);min-width:0"><input id="ptUnit" placeholder="단위" style="min-height:44px;padding:8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);min-width:0"><input id="ptPrice" inputmode="numeric" placeholder="공급가" style="min-height:44px;padding:8px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);min-width:0"></div>'+
+    '<button type="button" id="ptAdd" class="clay" style="min-height:44px;margin-top:6px;width:100%">기록</button></details></div>';
+  openModal('📋 자재 단가표 ('+rows.length+')',body,[{label:back?'← 뒤로':'닫기',cls:'ghost',fn:()=>{closeModal();if(back)back();}}],true);
+  hjModalTapTargets();
+  document.getElementById('ptAdd').onclick=()=>{const g=id=>document.getElementById(id);const r=hjSupPriceAdd(g('ptSup').value,{name:g('ptName').value,spec:g('ptSpec').value,unit:g('ptUnit').value,price:won2num(g('ptPrice').value)},'manual');
+    if(!r){toast('거래처·품목·공급가를 적어 주세요');return;}markDirty();toast('단가를 기록했어요');hjSupPriceTableView(back);};
+  return {rows:rows.length};
+}
+/* 견적 편집기 참고 — 품목별 자재 원가(최근 단가·거래처)만 보여 준다. 견적 단가는 바꾸지 않는다. */
+function hjQuoteCostHintHtml(q){
+  const items=(q&&Array.isArray(q.items)?q.items:[]).filter(it=>it&&String(it.name||'').trim());
+  const hints=items.map(it=>{const s=hjSupPriceSuggest('',String(it.name),String(it.spec||''));return s?{name:String(it.name),s}:null;}).filter(Boolean).slice(0,8);
+  if(!hints.length)return '';
+  return '<div data-quote-cost-hint style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;line-height:1.6">📋 자재 원가 참고(최근 산 값, 견적 단가는 그대로): '+hints.map(h=>escapeHtml(h.name)+' '+escapeHtml(won(h.s.price))+'('+escapeHtml(h.s.sup)+')').join(' · ')+'</div>';
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}

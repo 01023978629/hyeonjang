@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v439 자재상 명단 · 발주→입고→원가 · 자재 단가표 · 남은 자재
+
+- 📇 거래처: 자재 분류에 주소·영업시간·결제(현금/월말 외상/카드)·배송 칸(같은 레코드 s.addr/hours/pay/delivery), [➕ 자재상 추가]·[📥 명단 불러오기](CSV·엑셀 4열 이름·전화·주소·품목, 같은 이름은 빈 칸만 보완)·📇 주소록 번호 채우기. 삭제는 거래 기록(단가·발주·지출)이 있으면 s.hidden 숨김 → [숨긴 거래처]에서 되살림. 대표 결정대로 초기 명단 파일은 없고 데모에만 3곳.
+- 발주 품목 줄 끝 `@12,000` 이 단가(공급가, 빈 값은 0 으로 치지 않음) → o.items[].price·o.total. 발주 문자 화면에서 납품 확인에 올릴 때 견적 판매단가는 쓰지 않고 단가표 제안만. [✅ 입고 확인] 뒤 hjMatCostAsk 가 "자재비 ○○원을 원가(자재)에 더할까요"를 묻고(금액 고치기 가능) 한 번만 더한다(o.costApplied 가드 — 변이 cost-guard 가 잡는다) + 노트 `[자재비] …` + 단가표 기록(src recv). [↩ 입고 취소]는 뺀다(음수 방지). 미룬 건은 [💰 원가 반영] 버튼과 🌙 오늘 마감 줄(data-dc-matcost).
+- 단가표는 거래처 레코드 안 s.prices[]{name,spec,unit,price,at,src} 품목당 최근 5개, 더보기 항목을 늘리지 않고 📇 거래처 [📋 자재 단가표]에서 연다(최저가 표시·직접 기록). 견적 편집기 품목 위에 "자재 원가 참고" 한 줄만(견적 단가 불변). 남은 자재는 입고 건 [📦 남음] → o.items[].left → [재고로 옮기기]로 기존 state.inventory 에 수량 합산(movedToInv 로 두 번 안 옮김). state.supplierMap/state.materials 는 건드리지 않았다.
+- 핀3곳 hyeonjang-v439-material(v432 위에 쌓은 브랜치). 신규 tests/material-v439.e2e.js 4/4, 변이·기준선 실패 확인, 관련 9개(matdue-v368/matsched-v369/matissue-v372/matplan-v373/materials/order-materials/quote-materials/margin/margin-v429/demo-banner)·정적 19개 통과.
+
 ## 2026-10-16 v432 팀 패킷 연동 1차 (📤 팀에 업무 보내기 / 📥 팀 작업 가져오기)
 
 - 규격은 지시서/팀앱_연동_인터페이스.md 의 work-order.json(type hj-work-order, version 1)·work-report.json(hj-work-report) 그대로(hjWoValidate 가 필드 추가·개명을 막는다). 패킷에 고객 이름·전체 전화·금액을 넣지 않는다 — hjWoPrivacyIssues 가 걸리면 저장·복사·공유 자체를 하지 않는다(변이 privacy-off 가 잡는다). 주소는 호수를 뺀 값, 동·호수는 인터페이스의 unit 칸, 연락처는 대표 번호 마스킹만.
