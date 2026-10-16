@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v433-doccenter';
+const APP_BUILD='hyeonjang-v429-margin';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -31614,6 +31614,7 @@ function viewLedger(){
   let html='<div class="toolbar" style="flex-wrap:wrap;gap:6px">'+
     '<button class="moss tiny" data-payhist="1" style="padding:8px 12px">💰 수금 이력</button>'+
     '<button class="blue tiny" data-mclose="1" style="padding:8px 12px">📆 월말 마감</button>'+
+    '<button class="ghost tiny" data-marginboard="1" style="padding:8px 12px">📊 마진 보드</button>'+
     '<button class="ghost tiny" data-trip="" style="padding:8px 12px">🚗 운행일지</button>'+
     '<button class="clay tiny" data-vatc="1" style="padding:8px 12px">🧾 부가세 준비 (D-'+vatPeriod().dday+')</button>'+
     '<button class="ghost tiny" data-lgexport="1" style="padding:8px 12px">📤 세무사 전달용 xlsx</button>'+
@@ -36950,6 +36951,8 @@ function viewProject(){
           <span style="font-size:12px;color:var(--muted)">수금 ${won(st.recv||0)} / 견적 ${won(st.est||0)}</span>
         </div></div>`;
     }
+    // v429 건별 마진 — 매출(견적)·원가(자재·인건·외주)·마진율 한 줄. 원가가 비면 '원가 미입력' 으로만 보인다.
+    html+=hjProjectMarginHtml(p.name);
   }
   // 🧰 자재 체크리스트 — 현장 나가기 전 준비 확인
   {
@@ -37121,7 +37124,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37333,6 +37336,7 @@ function setupDelegation(){
     if(d.payhist!==undefined){e.stopPropagation();return payHistoryView(true);}
     if(d.qhist!==undefined){e.stopPropagation();return quoteHistoryView(true);}
     if(d.mclose!==undefined){e.stopPropagation();return monthCloseView(1);}
+    if(d.marginboard!==undefined){e.stopPropagation();return hjMarginBoardView();}   // v429
     if(d.warranty!==undefined){e.stopPropagation();return warrantyView(d.warranty);}
     if(d.dochub!==undefined){e.stopPropagation();return docHubView(d.dochub);}
     if(d.schmore!==undefined){e.stopPropagation();return schMoreView(d.schmore);}
@@ -37359,6 +37363,8 @@ function setupDelegation(){
     if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
     if(d.finalize!==undefined){e.stopPropagation();return estFinalApply();}
     if(d.recvquick!==undefined){e.stopPropagation();return recvQuickView(d.recvquick);}
+    if(d.margintoggle!==undefined){e.stopPropagation();__hjMarginGross=!__hjMarginGross;render();return;}   // v429 공급가 ↔ 부가세 포함
+    if(d.costedit!==undefined){e.stopPropagation();return hjCostInputView(d.costedit);}
     if(d.custquick!==undefined){e.stopPropagation();return hjCustQuickView(d.custquick);}
     if(d.punchquick!==undefined){e.stopPropagation();return punchListView(d.punchquick);}
     if(d.progressquick!==undefined){e.stopPropagation();return customerProgress(d.progressquick);}
@@ -39165,6 +39171,199 @@ function hjPayRcptOffer(name,pre,back){
 function hjDoc433SimpleReceipts(month){
   const ym=String(month||localDate().slice(0,7));
   return (state.projects||[]).filter(p=>p&&!p.archived).reduce((n,p)=>n+hjDocLogsOf(p,'payrcpt').filter(r=>(hjPhotoKoreanDay({when:r.at})||'').slice(0,7)===ym).length,0);
+}
+/* ═══ v429 📈 건별 마진 · 📊 월 마진 보드 · 누수 원가 템플릿 ═══
+   보드·건별 계산은 읽기 전용(저장본 불변, projStats 재사용). 원가 입력은 기존 p.cost.{material,labor,outsource} 와 같은 칸이다.
+   외부 라이브러리 없음(막대는 CSS), 엑셀만 기존 ensureXLSX. 원가가 비면 0 으로 계산하지 않고 '원가 미입력' 으로만 보인다 —
+   빈 원가를 0 으로 치면 마진 100% 가 찍혀 어떤 공종·동네를 늘릴지 판단이 거꾸로 선다. */
+const HJ_MARGIN_BANDS=Object.freeze([
+  Object.freeze({key:'good',min:30,color:'#0a7f43',label:'30%↑ 좋음'}),
+  Object.freeze({key:'ok',min:15,color:'#2563eb',label:'15~30% 보통'}),
+  Object.freeze({key:'low',min:0,color:'#c2410c',label:'15% 미만'}),
+  Object.freeze({key:'loss',min:-Infinity,color:'#b91c1c',label:'적자'})
+]);
+let __hjMarginGross=false;   // 기본 공급가(부가세 제외) 기준 — 토글로 부가세 포함 보기
+function hjMarginBand(rate){if(!Number.isFinite(rate))return null;return HJ_MARGIN_BANDS.find(b=>rate>=b.min)||HJ_MARGIN_BANDS[HJ_MARGIN_BANDS.length-1];}
+/* 건별 마진 — 매출은 수주 견적 합계(기본 공급가, gross 면 부가세 포함), 원가는 유효원가(수기>0 우선, 아니면 장부). 비어 있으면 null. */
+function hjProjectMargin(name,gross){
+  let s;try{s=projStats(name);}catch(e){return null;}
+  if(!s)return null;
+  const revenue=gross?num(s.est):num(s.supply),hasCost=num(s.costEffective)>0,cost=gross?num(s.costEffective):num(s.costSupply);
+  const margin=(revenue>0&&hasCost)?revenue-cost:null,rate=margin!=null?Math.round(margin/revenue*100):null;
+  const empty=['material','labor','outsource'].filter(k=>!(num(s[k])>0));
+  return {name,gross:!!gross,revenue,cost:hasCost?cost:null,margin,rate,band:hjMarginBand(rate),missing:!hasCost,partial:hasCost&&empty.length>0,empty,noRevenue:!(revenue>0),
+    fields:{material:num(s.material),labor:num(s.labor),outsource:num(s.outsource)},srcs:{material:s.matSrc,labor:s.labSrc,outsource:s.outSrc},etc:num(s.costEtc)};
+}
+function hjMarginText(m){
+  if(!m)return '';
+  if(m.noRevenue)return '견적 없음';
+  if(m.missing)return '원가 미입력';
+  return won(m.margin)+' ('+m.rate+'%)'+(m.partial?' · 일부 미입력':'');
+}
+/* 현장 카드 💰 칸 — 한 줄 마진 + 원가 입력 단추. 읽기만 한다. */
+function hjProjectMarginHtml(name){
+  const m=hjProjectMargin(name,__hjMarginGross);
+  if(!m||m.noRevenue)return '';
+  const color=m.missing?'var(--muted)':(m.band?m.band.color:'var(--muted)');
+  return '<div class="cust-card" data-margin-card="'+escapeAttr(name)+'" style="margin-top:10px"><div class="cust-h" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">📈 건별 마진 '+
+    '<button type="button" class="ghost tiny" data-margintoggle="'+escapeAttr(name)+'" style="min-height:44px;padding:8px 10px;font-size:11px">'+(m.gross?'부가세 포함 기준':'공급가 기준')+' ⇄</button></div>'+
+    '<div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:12.5px">'+
+      '<span>매출 <b>'+escapeHtml(won(m.revenue))+'</b></span>'+
+      '<span>원가 '+(m.missing?'<span data-margin-missing style="color:var(--muted);font-weight:700">원가 미입력</span>':'<b>'+escapeHtml(won(m.cost))+'</b>')+'</span>'+
+      '<span>마진 <b data-margin-value style="color:'+color+'">'+(m.missing?'—':escapeHtml(won(m.margin))+' · '+m.rate+'%')+'</b>'+(m.band&&!m.missing?' <span style="font-size:10.5px;color:'+color+'">'+escapeHtml(m.band.label)+'</span>':'')+(m.partial?' <span style="font-size:10.5px;color:#b45309">일부 원가 미입력('+m.empty.map(k=>({material:'자재',labor:'인건',outsource:'외주'})[k]).join('·')+')</span>':'')+'</span>'+
+      '<button type="button" class="moss tiny" data-costedit="'+escapeAttr(name)+'" style="min-height:44px;padding:8px 12px">✏ 원가 입력</button>'+
+    '</div>'+(m.etc>0?'<div style="font-size:11px;color:var(--muted);margin-top:4px">기타경비(장비·유류·식대) '+escapeHtml(won(m.etc))+' 은 마진에서 뺐습니다</div>':'')+'</div>';
+}
+/* 월 배정 — 준공월 → 집계 견적의 견적일 → 마지막 수금일. 날짜가 없으면 '월 미정'(보드 합계에 넣지 않고 수만 센다). */
+function hjMarginMonthOf(p){
+  if(!p)return {ym:'',basis:''};
+  if(p.doneAt&&/^\d{4}-\d{2}/.test(String(p.doneAt)))return {ym:String(p.doneAt).slice(0,7),basis:'준공'};
+  const estDays=(state.files||[]).filter(f=>f&&f.project===p.name&&f.kind==='estimate'&&f.est&&num(f.est.amount)>0).map(f=>{const d=String(f.est.date||'');return /^\d{4}-\d{2}-\d{2}/.test(d)?d.slice(0,10):(f.when?hjPhotoKoreanDay(f):'');}).filter(Boolean).sort();
+  if(estDays.length)return {ym:estDays[estDays.length-1].slice(0,7),basis:'견적'};
+  const pays=(state.payLog||[]).filter(x=>x&&x.project===p.name&&/^\d{4}-\d{2}/.test(String(x.d||''))).map(x=>String(x.d)).sort();
+  if(pays.length)return {ym:pays[pays.length-1].slice(0,7),basis:'수금'};
+  return {ym:'',basis:''};
+}
+function hjMarginBoardGroups(ym,gross){
+  const month=String(ym||localDate().slice(0,7));
+  const groups={interior:{key:'interior',label:'🏠 인테리어',n:0,revenue:0,cost:0,margin:0,rows:[],missing:0},leak:{key:'leak',label:'💧 누수',n:0,revenue:0,cost:0,margin:0,rows:[],missing:0}};
+  let undated=0;
+  (state.projects||[]).filter(p=>p&&!p.archived).forEach(p=>{
+    const when=hjMarginMonthOf(p);
+    if(!when.ym){undated++;return;}
+    if(when.ym!==month)return;
+    const m=hjProjectMargin(p.name,gross);if(!m||m.noRevenue)return;
+    const g=groups[hjProjectKind(p)];g.n++;g.revenue+=m.revenue;g.rows.push({...m,basis:when.basis});
+    if(m.missing)g.missing++;else{g.cost+=m.cost;g.margin+=m.margin;}
+  });
+  Object.values(groups).forEach(g=>{
+    const rev=g.rows.filter(r=>!r.missing).reduce((a,r)=>a+r.revenue,0);
+    g.countedRevenue=rev;g.rate=rev>0?Math.round(g.margin/rev*100):null;g.band=hjMarginBand(g.rate);
+    g.rows.sort((a,b)=>((b.rate==null?-Infinity:b.rate)-(a.rate==null?-Infinity:a.rate))||b.revenue-a.revenue||a.name.localeCompare(b.name));
+  });
+  return {ym:month,groups,undated};
+}
+function hjMarginBoardTotals(groups){
+  const list=Object.values(groups),t={n:0,revenue:0,cost:0,margin:0,missing:0,countedRevenue:0};
+  list.forEach(g=>{t.n+=g.n;t.revenue+=g.revenue;t.cost+=g.cost;t.margin+=g.margin;t.missing+=g.missing;t.countedRevenue+=g.countedRevenue;});
+  t.rate=t.countedRevenue>0?Math.round(t.margin/t.countedRevenue*100):null;t.band=hjMarginBand(t.rate);return t;
+}
+function hjMarginBoardSummary(ym,groups,totals){
+  const [y,m]=String(ym).split('-'),part=g=>g.n?g.label.replace(/^\S+\s/,'')+' '+g.n+'건'+(g.rate==null?' (원가 미입력)':' 평균 마진율 '+g.rate+'%'):'';
+  const parts=[part(groups.leak),part(groups.interior)].filter(Boolean);
+  if(!parts.length)return (+m)+'월 집계할 현장이 없습니다 — 준공일·견적일이 이 달인 현장이 없어요.';
+  return (+m)+'월 '+parts.join(', ')+(totals.missing?' — 원가 미입력 '+totals.missing+'건':'');
+}
+function hjMarginBoardData(ym,gross){
+  const cur=hjMarginBoardGroups(ym,gross),totals=hjMarginBoardTotals(cur.groups);
+  const trend=[];
+  for(let i=2;i>=0;i--){const d=new Date(cur.ym+'-01T00:00:00');d.setMonth(d.getMonth()-i);const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const g=key===cur.ym?cur.groups:hjMarginBoardGroups(key,gross).groups;trend.push({ym:key,...hjMarginBoardTotals(g)});}
+  return {ym:cur.ym,gross:!!gross,groups:cur.groups,totals,undated:cur.undated,trend,summary:hjMarginBoardSummary(cur.ym,cur.groups,totals)};
+}
+function hjMarginBar(r){
+  const rate=r.rate,width=rate==null?0:Math.max(2,Math.min(100,Math.abs(rate))),color=r.missing?'#cbd5e1':(r.band?r.band.color:'#94a3b8');
+  return '<div data-margin-bar="'+escapeAttr(r.name)+'" style="display:flex;align-items:center;gap:8px;min-width:0;margin:4px 0">'+
+    '<span style="flex:0 0 108px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="'+escapeAttr(r.name)+'">'+escapeHtml(r.name)+'</span>'+
+    '<span style="flex:1;min-width:0;height:12px;background:var(--paper-2);border-radius:6px;overflow:hidden;position:relative"><span style="display:block;height:100%;width:'+width+'%;max-width:100%;background:'+color+'"></span></span>'+
+    '<span style="flex:0 0 92px;text-align:right;font-size:11.5px;color:'+(r.missing?'var(--muted)':color)+';font-weight:700;white-space:nowrap">'+(r.missing?'원가 미입력':(rate+'% · '+hjMan(r.margin)))+'</span></div>';
+}
+function hjMarginBoardHtml(d){
+  const g=k=>d.groups[k];
+  const card=x=>'<div data-margin-group="'+x.key+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--paper)">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:13.5px">'+x.label+' <span style="font-weight:600;color:var(--muted)">'+x.n+'건</span></b>'+
+      '<span style="font-size:12px">매출 '+escapeHtml(hjMan(x.revenue))+' · 원가 '+escapeHtml(hjMan(x.cost))+' · 마진 <b style="color:'+(x.band?x.band.color:'var(--muted)')+'">'+(x.rate==null?'—':escapeHtml(hjMan(x.margin))+' ('+x.rate+'%)')+'</b></span></div>'+
+    (x.missing?'<div data-margin-missing-count style="font-size:11.5px;color:#b45309;margin-top:4px">⚠️ 원가 미입력 '+x.missing+'건 — 합계·마진율에서 뺐습니다</div>':'')+
+    (x.rows.length?'<div style="margin-top:8px">'+x.rows.map(hjMarginBar).join('')+'</div>':'<div style="font-size:12px;color:var(--muted);margin-top:6px">이 달 현장 없음</div>')+
+    (x.rows.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+x.rows.filter(r=>r.missing||r.partial).slice(0,6).map(r=>'<button type="button" class="ghost tiny" data-mbcost="'+escapeAttr(r.name)+'" style="min-height:44px">✏ '+escapeHtml(r.name)+' 원가</button>').join('')+'</div>':'')+
+  '</div>';
+  const trend='<table class="estimate-table" style="width:100%;font-size:12px;margin-top:4px"><thead><tr><th>월</th><th class="amt">건</th><th class="amt">매출</th><th class="amt">마진</th><th class="amt">마진율</th></tr></thead><tbody>'+
+    d.trend.map(t=>'<tr'+(t.ym===d.ym?' style="background:var(--paper-2);font-weight:700"':'')+'><td>'+escapeHtml(t.ym)+'</td><td class="amt">'+t.n+'</td><td class="amt">'+escapeHtml(hjMan(t.revenue))+'</td><td class="amt">'+(t.rate==null?'—':escapeHtml(hjMan(t.margin)))+'</td><td class="amt" style="color:'+(t.band?t.band.color:'var(--muted)')+'">'+(t.rate==null?'—':t.rate+'%')+'</td></tr>').join('')+'</tbody></table>';
+  return '<div id="hjMarginBoard" style="min-width:0">'+
+    '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">'+
+      '<button type="button" class="ghost tiny" id="mbPrev" style="min-height:44px;min-width:44px">‹</button>'+
+      '<input type="month" id="mbMonth" value="'+escapeAttr(d.ym)+'" style="min-height:44px;font-size:14px;padding:6px 8px">'+
+      '<button type="button" class="ghost tiny" id="mbNext" style="min-height:44px;min-width:44px">›</button>'+
+      '<button type="button" class="ghost tiny" id="mbBasis" style="min-height:44px">'+(d.gross?'부가세 포함 기준':'공급가 기준')+' ⇄</button>'+
+      '<button type="button" class="moss tiny" id="mbXlsx" style="min-height:44px">📥 엑셀</button></div>'+
+    '<div data-margin-summary style="font-size:12.5px;line-height:1.6;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+escapeHtml(d.summary)+(d.undated?' <span style="color:var(--muted)">· 날짜 없는 현장 '+d.undated+'곳은 집계 밖</span>':'')+'</div>'+
+    card(g('leak'))+card(g('interior'))+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">지난 3개월 추이</div>'+trend+
+    '<p class="hint" style="margin-top:10px">매출은 수주 견적 합계('+(d.gross?'부가세 포함':'공급가, 부가세 제외')+'), 원가는 자재·인건·외주(수기 > 장부). 원가가 빈 현장은 0으로 치지 않고 합계에서 뺍니다. 색: '+HJ_MARGIN_BANDS.map(b=>'<span style="color:'+b.color+'">'+escapeHtml(b.label)+'</span>').join(' · ')+'</p></div>';
+}
+async function hjMarginBoardXlsx(d){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈을 불러오지 못했어요(인터넷 확인)');return false;}
+  const rows=[['월',d.ym,'기준',d.gross?'부가세 포함':'공급가'],[],['구분','현장','월 배정 근거','매출','원가','마진','마진율(%)','원가 상태']];
+  ['leak','interior'].forEach(k=>d.groups[k].rows.forEach(r=>rows.push([d.groups[k].label.replace(/^\S+\s/,''),r.name,r.basis,r.revenue,r.missing?'':r.cost,r.missing?'':r.margin,r.rate==null?'':r.rate,r.missing?'원가 미입력':(r.partial?'일부 미입력':'입력됨')])));
+  rows.push([],['합계','',String(d.totals.n)+'건',d.totals.revenue,d.totals.cost,d.totals.margin,d.totals.rate==null?'':d.totals.rate,d.totals.missing?'원가 미입력 '+d.totals.missing+'건':'']);
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),d.ym+' 마진');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['월','건','매출','원가','마진','마진율(%)'],...d.trend.map(t=>[t.ym,t.n,t.revenue,t.cost,t.margin,t.rate==null?'':t.rate])]),'추이');
+  XLSX.writeFile(wb,COMPANY.name+'_마진보드_'+d.ym+'.xlsx');toast('📥 마진 보드 엑셀 저장됨 (내부용)');return true;
+}
+function hjMarginBoardView(ym,gross){
+  const month=ym||localDate().slice(0,7),g=gross==null?__hjMarginGross:!!gross;
+  const d=hjMarginBoardData(month,g);
+  openModal('📊 마진 보드',hjMarginBoardHtml(d),[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjMarginBoard');if(!root)return d;
+  const shift=n=>{const x=new Date(month+'-01T00:00:00');x.setMonth(x.getMonth()+n);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');};
+  root.querySelector('#mbPrev').onclick=()=>hjMarginBoardView(shift(-1),g);
+  root.querySelector('#mbNext').onclick=()=>hjMarginBoardView(shift(1),g);
+  root.querySelector('#mbMonth').onchange=e=>{if(/^\d{4}-\d{2}$/.test(e.target.value))hjMarginBoardView(e.target.value,g);};
+  root.querySelector('#mbBasis').onclick=()=>{__hjMarginGross=!g;hjMarginBoardView(month,!g);};
+  root.querySelector('#mbXlsx').onclick=()=>{hjMarginBoardXlsx(d);};
+  root.querySelectorAll('[data-mbcost]').forEach(b=>b.onclick=()=>hjCostInputView(b.dataset.mbcost,()=>hjMarginBoardView(month,g)));
+  return d;
+}
+/* F2 누수 원가 템플릿 — 탐지 원인별 기본 틀. 빈 칸에만 제안 금액을 넣고 사람이 고친다(기존 값은 절대 덮지 않는다).
+   일당은 일정 인건비 기록의 중앙값, 없으면 제안용 상수. 금액은 제안이지 단가표가 아니다. */
+const HJ_LEAK_COST_DAY_RATE=250000;
+const HJ_LEAK_COST_TPL=Object.freeze({
+  pipe:Object.freeze({label:'배관 수리',material:50000,laborDays:1,outsource:0,note:'자재 소액 · 인건 0.5~1일'}),
+  waterproof:Object.freeze({label:'방수 재시공',material:250000,laborDays:2.5,outsource:0,note:'자재 · 인건 2~3일'}),
+  seal:Object.freeze({label:'실리콘·줄눈',material:30000,laborDays:0.5,outsource:0,note:'자재 소액 · 인건 반나절'}),
+  exterior:Object.freeze({label:'외벽·창호',material:0,laborDays:0,outsource:500000,note:'외주 — 받은 견적 금액으로 고치세요'})
+});
+function hjLeakCostDayRate(){const amts=(state.schedule||[]).map(s=>num(s&&s.labor&&s.labor.amount)).filter(n=>n>0).sort((a,b)=>a-b);return amts.length?amts[Math.floor(amts.length/2)]:HJ_LEAK_COST_DAY_RATE;}
+function hjLeakCostGroup(p){const cause=String(p&&p.leak&&p.leak.detect&&p.leak.detect.cause||'').trim();if(cause==='외벽·창호')return 'exterior';return hjLeakWarrantyCauseGroup(cause)||'';}
+function hjLeakCostTemplate(p,current){
+  if(!p||p.kind!=='leak')return null;
+  const key=hjLeakCostGroup(p),tpl=HJ_LEAK_COST_TPL[key];if(!tpl)return null;
+  const rate=hjLeakCostDayRate(),cur=current||{},out={key,label:tpl.label,note:tpl.note,dayRate:rate,filled:{},kept:[]};
+  const propose={material:tpl.material,labor:Math.round(tpl.laborDays*rate),outsource:tpl.outsource};
+  ['material','labor','outsource'].forEach(k=>{if(num(cur[k])>0)out.kept.push(k);else if(propose[k]>0)out.filled[k]=propose[k];});
+  return out;
+}
+/* 원가 입력 창 — 정산 탭 표의 자재·인건·외주 칸과 같은 값(p.cost). 저장은 기존 setCost 와 같은 뜻(won2num → markDirty → render). */
+function hjCostSave(name,vals){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return false;
+  if(!p.cost)p.cost={material:0,labor:0,outsource:0};
+  ['material','labor','outsource'].forEach(k=>{if(vals&&vals[k]!==undefined)p.cost[k]=won2num(vals[k]);});
+  markDirty();render();return true;
+}
+function hjCostInputView(name,back){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);
+  if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const c=p.cost||{},m=hjProjectMargin(name,__hjMarginGross)||{fields:{},srcs:{}};
+  const F=(k,label)=>{const manual=num(c[k]),ledger=m.srcs[k]==='장부'?m.fields[k]:0;
+    return '<label for="ci_'+k+'" style="display:block;font-size:12px;font-weight:700;margin:9px 0 3px">'+label+(ledger>0?' <span style="font-weight:400;color:#2563eb">📒 장부 집계 '+escapeHtml(won(ledger))+' (비워 두면 장부 값 사용)</span>':'')+'</label>'+
+      '<input id="ci_'+k+'" type="text" inputmode="numeric" data-ci="'+k+'" value="'+(manual>0?escapeAttr(manual.toLocaleString('ko-KR')):'')+'" placeholder="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:14px;box-sizing:border-box;min-height:44px">';};
+  const tpl=hjLeakCostTemplate(p,c);
+  openModal('✏ 원가 입력 — '+name,
+    '<div id="hjCostForm"><div style="font-size:12px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px">매출 '+escapeHtml(won(m.revenue||0))+' ('+(m.gross?'부가세 포함':'공급가')+') · 지금 마진: <b>'+escapeHtml(hjMarginText(m))+'</b></div>'+
+    F('material','자재비')+F('labor','인건비')+F('outsource','외주비')+
+    (p.kind==='leak'?(tpl?'<button type="button" class="ghost" id="ciTemplate" style="min-height:44px;margin-top:10px;width:100%;white-space:normal">🧩 템플릿 채우기 — '+escapeHtml(tpl.label)+' ('+escapeHtml(tpl.note)+' · 일당 '+escapeHtml(won(tpl.dayRate))+')</button><p class="hint" style="margin-top:4px">빈 칸에만 제안 금액이 들어가고 적은 값은 그대로 둡니다. 제안값은 단가표가 아니니 실제 금액으로 고쳐 주세요.</p>':'<p class="hint" style="margin-top:8px">탐지 원인을 기록하면 원인별 원가 템플릿을 제안합니다.</p>'):'')+'</div>',
+    [{label:'💾 저장',cls:'clay',fn:()=>{const g=k=>(document.getElementById('ci_'+k)||{}).value||'';hjCostSave(name,{material:g('material'),labor:g('labor'),outsource:g('outsource')});closeModal();toast('✏ 원가를 저장했어요 — 마진이 다시 계산됩니다');if(typeof back==='function')back();}},
+     {label:'닫기',cls:'ghost',fn:()=>{closeModal();if(typeof back==='function')back();}}],true);
+  hjModalTapTargets();
+  const tb=document.getElementById('ciTemplate');
+  if(tb&&tpl)tb.onclick=()=>{
+    const now={material:(document.getElementById('ci_material')||{}).value,labor:(document.getElementById('ci_labor')||{}).value,outsource:(document.getElementById('ci_outsource')||{}).value};
+    const t=hjLeakCostTemplate(p,{material:won2num(now.material),labor:won2num(now.labor),outsource:won2num(now.outsource)});if(!t)return;
+    Object.keys(t.filled).forEach(k=>{const el=document.getElementById('ci_'+k);if(el)el.value=t.filled[k].toLocaleString('ko-KR');});
+    const n=Object.keys(t.filled).length;toast(n?'🧩 빈 칸 '+n+'개에 제안 금액을 넣었어요 — 실제 금액으로 고쳐 주세요':'빈 칸이 없어 바꾸지 않았어요');
+  };
+  return true;
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}

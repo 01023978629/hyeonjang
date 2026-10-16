@@ -1,5 +1,5 @@
 /* 현장 앱 오프라인 캐시 — 공개 앱 셸 허용목록만 네트워크 우선으로 저장 */
-const C='hyeonjang-v433-doccenter';
+const C='hyeonjang-v429-margin';
 self.addEventListener('install',e=>{e.waitUntil((async()=>{
   // 첫 실행은 아직 SW가 제어하지 않아 fetch 캐시에 들어오지 않는다. 공개 셸만 먼저 준비한다.
   // 응답 하나라도 실패하면 기존 워커/캐시를 유지하며 새 워커로 넘어가지 않는다.
