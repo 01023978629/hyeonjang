@@ -3,6 +3,20 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v449 리허설 R1·R4·R5 고침 (스택 끝에서 합성 리허설 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r1.js(누수 하루 12단계)·rehearsal-r4r5.js(월말 8 + 팀 4) — 390px·합성·외부 쓰기 0, HJ_REHEARSAL_APP 로 대상 주소. v436 끝에서 24/24 통과하며 찾은 문제를 고쳤고, v449 에서 다시 24/24.
+- 월말 마감 2단계 잔금 줄(mcData.due): 위 주석대로 진행/완료(단계≥2·준공·받은 돈 있음) 현장만 — 상담·실측 단계 견적에 '잔금 안내' 문자가 나갈 수 있었다. **'미수금 정리' 단계 자체는 그대로**(extras-settle·revenue-basis 가 지키는 기존 기능 — 2026-08-13 결정과 맞는지는 v434 결정 때 대표에게 묻는다).
+- 👷 직원 모드(v444) 구멍: 현장 고객 카드의 이름·번호·주소 입력칸(.cust-card .cust-grid)·고객 문자/페이지/전자계약/일정 안내·연락처 수정·고객 빠른 입력·일정 탭 👷 인건비(#schLabor)를 숨기고, 돈·고객 창 함수(laborLedger·expenseLedger·pnl·monthCloseView·recvQuickView·payHistoryView·hjProofView·settleDocs·hjTaxPackView·hjInsightView·hjMarginBoardView·hjCrewSettleView·hjCustQuickView·hjSeasonView)는 직원 모드면 토스트만 띄우고 false — 더보기·음성·AI 길로도 안 열린다. 통화·길찾기는 그대로. 변이 staff-cust 가 STAFF_CUSTOMER_HIDDEN 에서 잡는다.
+- 💰 마진 보드(v429): 수주 전(단계<2·준공 없음·받은 돈 없음 — hjMarginWon, 📈 분석의 '수주'와 같은 기준) 견적은 매출에서 빼고 요약에 '수주 전 견적 n곳은 뺐어요'(data-margin-pending).
+- 👷 인건비 장부: 달 목록에서 세금 자동 일정·💰 수금 일정을 빼고(내년 세금 일정 때문에 1년 뒤 빈 달이 열렸다) 기본은 이번 달, 다른 해는 'YY년 M월'. 작업자별 합계는 v440 사람별 공수·일당(labor.by)이 있으면 그 값(사람별 정산표와 같은 값). 일당 합계 칸 390px 안(min-width:0).
+- 💬 첫 답장(v436): 이 현장에 다가오는 일정이 있으면(hjFirstReplyBooked) 새 시간을 묻지 않고 '{오늘/내일 …} 방문으로 잡아 두었습니다' + 화면 data-fr-booked. 누수 문자 '접수 확인'·'출동 안내'를 보냈음 체크했으면 답장한 것(hjInquiryReplied) — 📈 분석 첫 답장 분(hjInsightReplyMin(notes,p))에도 그 시각.
+- 누수 단계 체크: 누수 현장은 STAGE_CHECK_LEAK(📋 수리 전 체크: 물 잠금·전기 차단/아랫집·관리사무소 알림/보양/원인 사진, 📋 수리 마무리 체크: 재확인/복구·청소/추가공사/잔금 청구/보증 안내/완료 문자(💬 단추)/사진 정리) — 저장 키(start/done)는 같다(hjStageCheckDef). 인테리어는 그대로.
+- 누수 문자(v424): 완료 문자는 일반 일정 완료 보고가 없고 끝난 현장이면 출동 일정 완료 보고를 수리 내용으로 쓴다. 🌙 오늘 마감 '탐지 결과 문자 안 보낸 현장'에서 완료(3단계)·완료 문자 보낸 현장은 뺀다.
+- 그 밖: coworkCopy 토스트는 Cowork 명령(라벨 없음 또는 {cowork:true})만 'Cowork에 붙여넣으세요', 나머지는 '복사됨 — 붙여 넣어 쓰세요' · 📎 서류 만들기 견적 수에서 앱 견적의 가상 파일 빼기 + 카드 글자색 var(--ink)(button:hover 의 흰 글자) · 증빙 묶음 기간 시작은 누수 접수일/문의일(hjEvidenceStartOf), 간이영수증 n건 줄 · 사진 찍는 법 leakRepair 카드 + '누수 수리' 지시 guideKey(인터페이스 문서에도) · 지시 메모 '고객 고객' 한 번으로 · 계절 캠페인 기본은 지금 시기(이미 보냈어도) · 증빙 묶음·세무 자료에서 [← 월말 마감] · 폰에서 창이 열려 있으면 토스트는 위(:has).
+- 안 고친 것(다음): 사진 넣을 때 '☁ 대기 사진 올리는 중' 토스트 두 번(v425, 서버 없어도) — offlinequeue 검사가 #189 전에는 버전 문자열 때문에 깨져 있어 그 뒤에.
+- 핀3곳 hyeonjang-v449-rehearsal(v443-fix 위). 신규 tests/rehearsalfix-v449.e2e.js 6/6, 변이 staff-cust·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 관련 29개 통과(leakdetect-v420 은 브라우저 4개 동시일 때 한 번 시간 차로 실패 — 혼자 다시 10/10, v436 끝에서도 10/10), team2-v444 는 사진 찍는 법 카드 5장으로 고침. 정적 19개 통과.
+
 ## 2026-10-16 v436 💬 첫 답장 60초 — 채널별 템플릿 · 문의함 연결
 
 - 자동 발송 없음 — hjFirstReplyView(pj) 초안을 [📋 복사](navigator.clipboard → 실패 시 coworkCopyFallback)하거나 [💬 문자 앱](hjSendSms, 고객 번호가 있을 때만). 채널·유형 고르기·초안 보기는 읽기 전용(검사가 저장본 비교).

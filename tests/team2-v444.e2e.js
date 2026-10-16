@@ -263,15 +263,15 @@ let browser, passed = 0, page;
     assert.deepEqual(stored.work, [['staff', true]]); assert.equal(stored.rep.by, 'staff'); assert(stored.rep.seenAt); assert.deepEqual(stored.note, [true]);
   });
 
-  await test('④ 📷 사진 찍는 법 — 사진 탭 단추 · 카드 4종 + 공통 4줄 · A4 한 장(문서 엔진) · guideKey 검사(선택 필드) · 읽기 전용', async () => {
+  await test('④ 📷 사진 찍는 법 — 사진 탭 단추 · 카드 5종(v449 누수 수리) + 공통 4줄 · A4 한 장(문서 엔진) · guideKey 검사(선택 필드) · 읽기 전용', async () => {
     await seed(); const before = await snapshot();
     await page.evaluate(() => { state.tab = 'photos'; render(); }); await tapOk('#btnPhotoGuideEmpty'); await page.locator('#btnPhotoGuideEmpty').click(); await page.locator('#hjPhotoGuide').waitFor();
     assert.match(await page.evaluate(() => { const real = state.files; state.files = [{ id: 'TEST_PH', kind: 'photo', name: 'a.jpg', ext: 'jpg', project: null, date: localDate() }]; try { return viewPhotos(); } finally { state.files = real; } }), /id="btnPhotoGuide"/, 'photo tools carry the guide button');
-    assert.deepEqual(await page.locator('#hjPhotoGuide [data-guide]').evaluateAll(n => n.map(x => x.dataset.guide)), ['leakDetect', 'tile', 'wallpaper', 'finish']);
+    assert.deepEqual(await page.locator('#hjPhotoGuide [data-guide]').evaluateAll(n => n.map(x => x.dataset.guide)), ['leakDetect', 'leakRepair', 'tile', 'wallpaper', 'finish']);   // v449 누수 수리 카드
     assert.equal(await page.locator('#hjPhotoGuide [data-guide-tips] li').count(), 4);
     await tapOk('#modalRoot .mfoot button'); await noOverflow(); await shot('03-photo-guide');
     await footer('🖨 A4 한 장').click(); await page.waitForFunction(() => __v444.deliver.length === 1);
-    const html = await page.evaluate(() => __v444.deliver[0].html); assert.match(html, /사 진 찍 는 법/); assert.equal((html.match(/data-guide="/g) || []).length, 4);
+    const html = await page.evaluate(() => __v444.deliver[0].html); assert.match(html, /사 진 찍 는 법/); assert.equal((html.match(/data-guide="/g) || []).length, 5);
     await close();
     const v = await page.evaluate(leak => { const pk = hjWoBuild(leak, { title: '누수 탐지' }), o = pk.orders[0];
       const bad = JSON.parse(JSON.stringify(pk)); bad.orders[0].guideKey = 'nope'; const none = JSON.parse(JSON.stringify(pk)); delete none.orders[0].guideKey;

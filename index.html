@@ -732,6 +732,7 @@
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:80;max-width:90vw;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   body.mobile-mode #toast{bottom:calc(72px + env(safe-area-inset-bottom,0px));width:max-content;max-width:calc(100vw - 32px);overflow-wrap:anywhere}
+  body.mobile-mode:has(#modalRoot .modal) #toast{bottom:auto;top:calc(10px + env(safe-area-inset-top,0px))}   /* v449 창이 열려 있으면 위에 — 아래 단추를 가리지 않게 */
   .worklog-row,.worklog-head{display:grid;grid-template-columns:58px minmax(0,1fr) 96px 150px;gap:6px;padding:10px;align-items:center}
   .worklog-row{font-size:11.5px;border-top:1px solid var(--line-soft)}
   .worklog-head{background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700}
@@ -3317,7 +3318,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v436-firstreply';
+const APP_BUILD='hyeonjang-v449-rehearsal';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6469,9 +6470,26 @@ const STAGE_CHECK={
     ['현장 사진 정리·📦 ZIP 보관','zip'],
     ['리뷰·소개 부탁 문자','review']]}
 };
+// v449 누수 현장은 인테리어 착공·준공 체크(관리사무소 공사 신고·엘리베이터 보양·도어락 비번) 대신 누수 수리 체크. 저장 키(start/done)는 같다.
+const STAGE_CHECK_LEAK={
+  2:{key:'start',title:'📋 수리 전 체크',items:[
+    ['물 잠금·전기 차단 위치 확인','valve'],
+    ['아랫집·관리사무소에 작업 시간 알림','neighbor'],
+    ['바닥·가구 보양','protect'],
+    ['원인 부위 사진(넓게·가까이)','photo']]},
+  3:{key:'done',title:'📋 수리 마무리 체크',items:[
+    ['압력·누수 재확인(수치 사진)','retest'],
+    ['복구·청소','restore'],
+    ['추가공사 확인받음·금액 적기(청구서에 반영)','extra'],
+    ['잔금 청구(입금 안내 발송)','balance'],
+    ['보증(하자보수) 안내 문자','warranty'],
+    ['완료 문자(💬 누수 문자)','sms'],
+    ['현장 사진 정리·📦 ZIP 보관','zip']]}
+};
+function hjStageCheckDef(p,idx){return p&&hjProjectKind(p)==='leak'&&STAGE_CHECK_LEAK[idx]?STAGE_CHECK_LEAK[idx]:STAGE_CHECK[idx];}
 function stageChecklistView(name,idx){
   const p=state.projects.find(x=>x.name===name);
-  const def=STAGE_CHECK[idx];
+  const def=hjStageCheckDef(p,idx);
   if(!p||!def)return;
   p.checklists=p.checklists||{};
   const st=p.checklists[def.key]=p.checklists[def.key]||{};
@@ -6530,12 +6548,13 @@ const STAGE_CHECK_GO={
   balance:{l:'💳 청구서',fn:function(n){settleDocs(n);}},
   warranty:{l:'🛡 보증 안내',fn:function(n){hjCompletionMsgFor(n);}},
   zip:{l:'📦 ZIP',fn:function(n){exportProjectZIP(n);}},
-  review:{l:'🗣 리뷰 요청',fn:function(n){hjReviewSms(n);}}
+  review:{l:'🗣 리뷰 요청',fn:function(n){hjReviewSms(n);}},
+  sms:{l:'💬 완료 문자',fn:function(n){hjLeakSmsView(n,'done');}}   // v449 누수 수리 마무리
 };
 /* 체크 줄 목록 — 준공 때 관리실 예치금 칸(siteRules.deposit)이 적혀 있으면 환급 확인 줄을 더한다.
    체크 상태는 다른 줄과 같은 곳(p.checklists.done.deposit)에 남는다. */
 function stageChecklistItems(p,idx){
-  const def=STAGE_CHECK[idx];if(!def)return [];
+  const def=hjStageCheckDef(p,idx);if(!def)return [];
   const items=def.items.slice();
   if(idx===3){
     const dep=String((hjSiteRulesSafe(hjSiteRules(p))||{}).deposit||'').trim();
@@ -6634,7 +6653,7 @@ function hjLeakSmsPending(today=localDate()){
   const dispatched=new Set((state.schedule||[]).filter(s=>s&&s.urgent===true&&s.date===today&&s.report&&s.report.progress==='완료').map(s=>s.project));
   for(const p of state.projects||[]){
     if(!p||hjLeakProject(p.name)!==p)continue;
-    if(dispatched.has(p.name)&&!hjLeakSmsSent(p,'detect',today))out.detect.push(p.name);
+    if(dispatched.has(p.name)&&!hjLeakSmsSent(p,'detect',today)&&Number(p.stage)!==3&&!hjLeakSmsSent(p,'done',today))out.detect.push(p.name);   // v449 이미 끝내고 완료 문자를 보낸 현장은 탐지 문자를 다시 묻지 않는다
     if(Number(p.stage)===3&&(!p.doneAt||isRealIsoDate(p.doneAt)&&p.doneAt<=today)&&!hjLeakSmsSent(p,'done',today))out.done.push(p.name);
   }
   return out;
@@ -6657,7 +6676,10 @@ function hjLeakSmsDraft(p,key,options={}){
     return '누수 확인 내용입니다.\n'+summary+'\n'+(zone==='공용부'?'관리사무소와 조치 범위를 먼저 상의하겠습니다.':'확인된 작업 범위를 기준으로 견적 또는 관리사무소 협의를 안내드리겠습니다.')+'\n보험 적용과 필요한 서류는 가입한 보험사에 확인해 주세요.'+sign;
   }
   if(key==='done'){
-    const reports=(state.schedule||[]).filter(s=>s&&s.project===p.name&&s.urgent!==true&&s.report&&s.report.progress==='완료'&&hjLeakSmsPlain(s.report.done)&&isRealIsoDate(s.date)&&s.date<=localDate()).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const doneRep=s=>s&&s.project===p.name&&s.report&&s.report.progress==='완료'&&hjLeakSmsPlain(s.report.done)&&isRealIsoDate(s.date)&&s.date<=localDate();
+    let reports=(state.schedule||[]).filter(s=>doneRep(s)&&s.urgent!==true);
+    if(!reports.length&&finished)reports=(state.schedule||[]).filter(s=>doneRep(s)&&s.urgent===true);   // v449 출동한 날 바로 고친 현장 — 출동 일정의 완료 보고가 수리 내용
+    reports.sort((a,b)=>String(b.date).localeCompare(String(a.date)));
     const work=reports.length?hjLeakSmsPlain(reports[0].report.done,600):'완료 기록에서 수리 내용을 확인해 안내드리겠습니다.';
     const warranty=finished?hjWarranty(p):null;
     const items=warranty&&Array.isArray(warranty.items)?warranty.items.filter(x=>x&&Number.isFinite(Number(x.months))&&Number(x.months)>0):[];
@@ -17708,11 +17730,12 @@ function hjMatView(projectName,back){
 
 /* ═══════════ 👷 인건비 장부 — 일정별 일당 기록 → 현장 지출(인건비) 반영 ═══════════ */
 function laborMonths(){
-  const s=new Set();(state.schedule||[]).forEach(x=>{if(x.date)s.add(String(x.date).slice(0,7));});
+  // v449 세금 자동 일정·💰 수금 일정은 달 목록에 넣지 않는다 — 내년 세금 일정 때문에 1년 뒤 빈 달이 먼저 열렸다.
+  const s=new Set();(state.schedule||[]).forEach(x=>{if(x&&x.date&&!x._taxAuto&&!/^💰/.test(String(x.title||'')))s.add(String(x.date).slice(0,7));});
   return [...s].sort((a,b)=>b.localeCompare(a));
 }
 function laborLedgerData(ym){
-  if(!ym){const l=laborMonths();ym=l[0]||localDate().slice(0,7);}
+  if(!ym){const l=laborMonths(),cur=localDate().slice(0,7);ym=l.includes(cur)?cur:(l.find(m=>m<=cur)||l[l.length-1]||cur);}   // v449 기본은 이번 달
   const rows=(state.schedule||[]).filter(s=>String(s.date||'').slice(0,7)===ym&&!/^💰/.test(s.title||''))
     .sort((a,b)=>String(a.date+(a.time||'')).localeCompare(String(b.date+(b.time||''))));
   const byPj={},byWk={};let total=0;
@@ -17720,8 +17743,10 @@ function laborLedgerData(ym){
     const amt=num(s.labor&&s.labor.amount);if(amt<=0)return;
     total+=amt;
     if(s.project)byPj[s.project]=(byPj[s.project]||0)+amt;
-    const names=String((s.labor&&s.labor.names)||s.workers||'').split(/[,·\/\s]+/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x));
-    if(names.length){const per=amt/names.length;names.forEach(n=>byWk[n]=(byWk[n]||0)+per);}
+    const by=hjLaborBy(s),byN=Object.keys(by);
+    if(byN.length)byN.forEach(n=>byWk[n]=(byWk[n]||0)+Math.round(by[n].days*by[n].rate));   // v449 사람별 공수·일당(v440)이 있으면 그 값 — [👤 사람별 정산표]와 같은 값
+    else{const names=String((s.labor&&s.labor.names)||s.workers||'').split(/[,·\/\s]+/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x));
+      if(names.length){const per=amt/names.length;names.forEach(n=>byWk[n]=(byWk[n]||0)+per);}}
   });
   return {ym,rows,total,byPj,byWk,months:laborMonths()};
 }
@@ -17743,14 +17768,14 @@ function applyLaborToProject(name,sum){
 }
 function laborLedger(ym){
   const d=laborLedgerData(ym);
-  const mBtns=d.months.slice(0,6).map(m=>'<button class="'+(m===d.ym?'blue':'ghost')+' tiny" onclick="laborLedger(\''+m+'\')">'+(+m.split('-')[1])+'월</button>').join('');
+  const mBtns=d.months.slice(0,6).map(m=>'<button class="'+(m===d.ym?'blue':'ghost')+' tiny" onclick="laborLedger(\''+m+'\')">'+(m.slice(0,4)===localDate().slice(0,4)?'':m.slice(2,4)+'년 ')+(+m.split('-')[1])+'월</button>').join('');
   const rows=d.rows.length?d.rows.map(s=>{
     const lb=s.labor||{};
     return '<div style="border-bottom:1px dashed var(--line-soft);padding:7px 0">'+
       '<div style="font-size:12.5px"><b>'+(+s.date.slice(8,10))+'일</b> '+(s.time?s.time+' ':'')+escapeHtml(hjCut(s.title,14))+(s.project?' <span style="color:var(--muted)">@'+escapeHtml(hjCut(s.project,9))+'</span>':'')+'</div>'+
       '<div style="display:flex;gap:5px;margin-top:5px">'+
-        '<input class="llNames" data-id="'+escapeAttr(s.id)+'" placeholder="작업자 (예: 김반장,박씨)" value="'+escapeAttr(lb.names||'')+'" style="flex:1.4;padding:7px;font-size:12.5px;min-height:44px">'+
-        '<input class="llAmt" data-id="'+escapeAttr(s.id)+'" placeholder="일당 합계" inputmode="numeric" value="'+(num(lb.amount)?Number(lb.amount).toLocaleString('ko-KR'):'')+'" style="flex:1;text-align:right;padding:7px;font-size:12.5px;min-height:44px"'+(Object.keys(hjLaborBy(s)).length?' readonly title="사람별 공수 합계"':'')+'>'+
+        '<input class="llNames" data-id="'+escapeAttr(s.id)+'" placeholder="작업자 (예: 김반장,박씨)" value="'+escapeAttr(lb.names||'')+'" style="flex:1.4;min-width:0;padding:7px;font-size:12.5px;min-height:44px">'+
+        '<input class="llAmt" data-id="'+escapeAttr(s.id)+'" placeholder="일당 합계" inputmode="numeric" value="'+(num(lb.amount)?Number(lb.amount).toLocaleString('ko-KR'):'')+'" style="flex:1;min-width:0;text-align:right;padding:7px;font-size:12.5px;min-height:44px"'+(Object.keys(hjLaborBy(s)).length?' readonly title="사람별 공수 합계"':'')+'>'+
       '</div>'+
       (function(){const by=hjLaborBy(s),names=[...new Set([...hjCrewList(s.crew),...Object.keys(by),...String(lb.names||'').split(/[,·\/\s]+/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x))])].slice(0,8);
         return names.length?'<div class="llBy" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px">'+names.map(n=>{const v=by[n];const rate=v?v.rate:hjCrewRate(n);
@@ -30173,8 +30198,10 @@ function coworkTasksEnsure(){
 }
 
 // 안전한 복사
-function coworkCopy(text,label){
-  const done=()=>toast('📋 '+(label||'명령')+' 복사됨 — Cowork에 붙여넣으세요');
+function coworkCopy(text,label,opts){
+  // v449 Cowork 명령만 'Cowork에 붙여넣으세요' — 고객·팀 문자, 링크, 원고 복사에 Cowork 안내가 떠서 헷갈렸다.
+  const cw=!label||!!(opts&&opts.cowork);
+  const done=()=>toast('📋 '+(label||'명령')+' 복사됨'+(cw?' — Cowork에 붙여넣으세요':' — 붙여 넣어 쓰세요'));
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>coworkCopyFallback(text,done));}
     else coworkCopyFallback(text,done);
@@ -30208,7 +30235,7 @@ function coworkTasksManage(){
     '</div>';
   openModal('🖥 Cowork 작업 지휘부',body,[{label:'🧰 스킬 명령문',cls:'ghost',fn:function(){coworkCopy(coworkSkillCatalogText(),'스킬 명령문 카탈로그');}},{label:'⏰ 예약',cls:'moss',fn:function(){coworkSchedView();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const rebind=()=>coworkTasksManage();
-  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(cwWithSkill(t),t.title);});
+  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(cwWithSkill(t),t.title,{cowork:true});});
   document.querySelectorAll('.cwView').forEach(b=>b.onclick=()=>coworkTaskView(b.dataset.id));
   document.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
   const addBtn=document.getElementById('cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
@@ -30226,7 +30253,7 @@ function coworkTaskView(id){
     '<button class="clay" id="cwvCopy" style="width:100%;padding:13px;font-size:14px;margin-top:12px">📋 이 명령 복사</button>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 복사한 뒤 PC의 Cowork 입력창에 붙여넣고, 자료 폴더가 열려 있는지 확인하세요.</div>';
   openModal('📋 '+t.title,body,[{label:'✏️ 수정',cls:'ghost',fn:()=>coworkTaskEdit(id)},{label:'‹ 목록',cls:'ghost',fn:()=>coworkTasksManage()}],true);
-  const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(cwWithSkill(t),t.title);
+  const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(cwWithSkill(t),t.title,{cowork:true});
   return {작업:t.title};
 }
 
@@ -31532,7 +31559,7 @@ function coworkSchedView(){
   document.querySelectorAll('.cwsTg').forEach(function(b){b.onclick=function(){const s=state.coworkSched.find(function(x){return x.id===b.dataset.s;});if(s){s.enabled=!s.enabled;markDirty();coworkSchedView();}};});
   document.querySelectorAll('.cwsDel').forEach(function(b){b.onclick=function(){state.coworkSched=state.coworkSched.filter(function(x){return x.id!==b.dataset.s;});markDirty();toast('예약 삭제됨');coworkSchedView();};});
   document.querySelectorAll('.cwsDone').forEach(function(b){b.onclick=function(){coworkSchedMarkDone(b.dataset.s);};});
-  document.querySelectorAll('.cwsCopy').forEach(function(b){b.onclick=function(){const t=tasks.find(function(x){return x.id===b.dataset.t;});if(t)coworkCopy(cwWithSkill(t),t.title);};});
+  document.querySelectorAll('.cwsCopy').forEach(function(b){b.onclick=function(){const t=tasks.find(function(x){return x.id===b.dataset.t;});if(t)coworkCopy(cwWithSkill(t),t.title,{cowork:true});};});
   const ex=document.getElementById('cwsExport');if(ex)ex.onclick=function(){coworkOrderExport();};
   return {오늘예정:due.length,예약수:(state.coworkSched||[]).length};
 }
@@ -38995,7 +39022,7 @@ function docHubView(pjName){
   const docThumbs=files.filter(function(f){return f.kind==='photo'&&hjDocThumbOk(f);}).length;
   const doneOk=!!p.doneAt,leak=p.kind==='leak';
   const quotes=(state.quotes||[]).filter(function(q){return q&&q.project===pjName;}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
-  const est=files.filter(function(f){return f.kind==='estimate';}).length,anyQuote=quotes.length+est;
+  const est=files.filter(function(f){return f.kind==='estimate'&&!f._fromQuote&&!f._virtual;}).length,anyQuote=quotes.length+est;   // v449 앱 견적에서 만든 가상 견적 파일은 견적과 같은 것 — 두 번 세지 않는다
   const pays=(state.payLog||[]).filter(function(x){return x&&x.project===pjName&&num(x.amt)>0;});
   const logs=hjDocLogs(p),last=function(type){const r=hjDocLogsOf(p,type);return r.length?r[r.length-1]:null;};
   const sigs=Array.isArray(p.warrantySigs)?p.warrantySigs.length:0;
@@ -39008,7 +39035,7 @@ function docHubView(pjName){
   const NEW='<span style="font-size:10px;color:#0a7f43;font-weight:700"> 새</span>';
   const item=function(icon,title,desc,act,status,tone){
     const planned=/^todo:/.test(act);
-    return '<button type="button" class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;min-height:44px;background:'+(planned?'var(--paper-2);opacity:.72':'var(--paper)')+'">'+
+    return '<button type="button" class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;min-height:44px;color:var(--ink);background:'+(planned?'var(--paper-2);opacity:.72':'var(--paper)')+'">'+
       '<span style="font-size:19px;line-height:1.1">'+icon+'</span>'+
       '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+(planned?' <span style="font-size:10.5px;color:var(--muted);font-weight:600">예정 · '+HJ_DOC433_PLANNED[act.slice(5)]+'</span>':'')+'</b>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div>'+
@@ -39469,11 +39496,12 @@ function hjMarginMonthOf(p){
 function hjMarginBoardGroups(ym,gross){
   const month=String(ym||localDate().slice(0,7));
   const groups={interior:{key:'interior',label:'🏠 인테리어',n:0,revenue:0,cost:0,margin:0,rows:[],missing:0},leak:{key:'leak',label:'💧 누수',n:0,revenue:0,cost:0,margin:0,rows:[],missing:0}};
-  let undated=0;
+  let undated=0,pending=0;
   (state.projects||[]).filter(p=>p&&!p.archived).forEach(p=>{
     const when=hjMarginMonthOf(p);
     if(!when.ym){undated++;return;}
     if(when.ym!==month)return;
+    if(!hjMarginWon(p)){pending++;return;}   // v449 수주 전(상담·실측 단계, 받은 돈 없음) 견적은 매출에 넣지 않는다 — 📈 분석의 '수주'와 같은 기준
     const m=hjProjectMargin(p.name,gross);if(!m||m.noRevenue)return;
     const g=groups[hjProjectKind(p)];g.n++;g.revenue+=m.revenue;g.rows.push({...m,basis:when.basis});
     if(m.missing)g.missing++;else{g.cost+=m.cost;g.margin+=m.margin;}
@@ -39483,8 +39511,9 @@ function hjMarginBoardGroups(ym,gross){
     g.countedRevenue=rev;g.rate=rev>0?Math.round(g.margin/rev*100):null;g.band=hjMarginBand(g.rate);
     g.rows.sort((a,b)=>((b.rate==null?-Infinity:b.rate)-(a.rate==null?-Infinity:a.rate))||b.revenue-a.revenue||a.name.localeCompare(b.name));
   });
-  return {ym:month,groups,undated};
+  return {ym:month,groups,undated,pending};
 }
+function hjMarginWon(p){return !!p&&((p.stage||0)>=2||!!p.doneAt||num(p.received)>0||(state.payLog||[]).some(x=>x&&x.project===p.name&&num(x.amt)>0));}
 function hjMarginBoardTotals(groups){
   const list=Object.values(groups),t={n:0,revenue:0,cost:0,margin:0,missing:0,countedRevenue:0};
   list.forEach(g=>{t.n+=g.n;t.revenue+=g.revenue;t.cost+=g.cost;t.margin+=g.margin;t.missing+=g.missing;t.countedRevenue+=g.countedRevenue;});
@@ -39501,7 +39530,7 @@ function hjMarginBoardData(ym,gross){
   const trend=[];
   for(let i=2;i>=0;i--){const d=new Date(cur.ym+'-01T00:00:00');d.setMonth(d.getMonth()-i);const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     const g=key===cur.ym?cur.groups:hjMarginBoardGroups(key,gross).groups;trend.push({ym:key,...hjMarginBoardTotals(g)});}
-  return {ym:cur.ym,gross:!!gross,groups:cur.groups,totals,undated:cur.undated,trend,summary:hjMarginBoardSummary(cur.ym,cur.groups,totals)};
+  return {ym:cur.ym,gross:!!gross,groups:cur.groups,totals,undated:cur.undated,pending:cur.pending||0,trend,summary:hjMarginBoardSummary(cur.ym,cur.groups,totals)};
 }
 function hjMarginBar(r){
   const rate=r.rate,width=rate==null?0:Math.max(2,Math.min(100,Math.abs(rate))),color=r.missing?'#cbd5e1':(r.band?r.band.color:'#94a3b8');
@@ -39528,7 +39557,7 @@ function hjMarginBoardHtml(d){
       '<button type="button" class="ghost tiny" id="mbNext" style="min-height:44px;min-width:44px">›</button>'+
       '<button type="button" class="ghost tiny" id="mbBasis" style="min-height:44px">'+(d.gross?'부가세 포함 기준':'공급가 기준')+' ⇄</button>'+
       '<button type="button" class="moss tiny" id="mbXlsx" style="min-height:44px">📥 엑셀</button></div>'+
-    '<div data-margin-summary style="font-size:12.5px;line-height:1.6;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+escapeHtml(d.summary)+(d.undated?' <span style="color:var(--muted)">· 날짜 없는 현장 '+d.undated+'곳은 집계 밖</span>':'')+'</div>'+
+    '<div data-margin-summary style="font-size:12.5px;line-height:1.6;background:var(--paper-2);border-radius:10px;padding:10px;margin-bottom:10px">'+escapeHtml(d.summary)+(d.pending?' <span data-margin-pending style="color:var(--muted)">· 수주 전 견적 '+d.pending+'곳은 뺐어요</span>':'')+(d.undated?' <span style="color:var(--muted)">· 날짜 없는 현장 '+d.undated+'곳은 집계 밖</span>':'')+'</div>'+
     card(g('leak'))+card(g('interior'))+
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">지난 3개월 추이</div>'+trend+
     '<p class="hint" style="margin-top:10px">매출은 수주 견적 합계('+(d.gross?'부가세 포함':'공급가, 부가세 제외')+'), 원가는 자재·인건·외주(수기 > 장부). 원가가 빈 현장은 0으로 치지 않고 합계에서 뺍니다. 색: '+HJ_MARGIN_BANDS.map(b=>'<span style="color:'+b.color+'">'+escapeHtml(b.label)+'</span>').join(' · ')+'</p></div>';
@@ -39661,6 +39690,12 @@ function hjEvidenceDocsText(p){
   const logs=hjDocLogs(p);if(!logs.length)return '발행 문서 기록 없음';
   return logs.map(r=>'· '+(HJ_DOC433_TYPES[r.type]?HJ_DOC433_TYPES[r.type].t:(HJ_APT_DOC_TYPES[r.type]||r.type))+' '+r.no+' · '+(hjPhotoKoreanDay({when:r.at})||'')+(r.purpose?' · '+r.purpose:'')).join('\n');
 }
+// v449 시작일 — 누수 현장은 착공일이 없어 '기간: ? ~'로 나왔다. 접수 시각(누수) → 문의 접수일 순으로.
+function hjEvidenceStartOf(p){
+  const at=p&&p.leak&&p.leak.intake&&p.leak.intake.at;
+  if(typeof at==='string'&&at){const d=new Date(at);if(!isNaN(d))return localDate(d);}
+  return p&&isRealIsoDate(String(p.inquiryAt||''))?String(p.inquiryAt):'';
+}
 /* 묶음 계획 — 읽기 전용. 어떤 파일이 어떤 이름으로 들어가고 무엇이 빠지는지 먼저 보여 준다. */
 function hjEvidencePlan(name,input){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
@@ -39673,7 +39708,8 @@ function hjEvidencePlan(name,input){
     if(!estFiles.length&&!quotes.length)notes.push('견적 없음');
   }
   if(o.parts.photos){const ph=hjEvidencePhotos(name);ph.forEach(x=>add('02_사진/'+x.fileName,'photo',x.f,{side:x.side}));if(!ph.length)notes.push('사진 없음');}
-  if(o.parts.receipts){const rc=(state.files||[]).filter(f=>f&&f.project===name&&f.kind==='receipt');rc.forEach(f=>add('03_영수증/'+safeName(f.name),'file',f));if(!rc.length)notes.push('영수증 사진 없음 — 🧾 영수증 넣기로 찍어 두면 담깁니다');}
+  if(o.parts.receipts){const rc=(state.files||[]).filter(f=>f&&f.project===name&&f.kind==='receipt');rc.forEach(f=>add('03_영수증/'+safeName(f.name),'file',f));if(!rc.length)notes.push('영수증 사진 없음 — 🧾 영수증 넣기로 찍어 두면 담깁니다');
+    const pr=hjDocLogsOf(p,'payrcpt');if(pr.length)notes.push('간이영수증 '+pr.length+'건('+pr.map(r=>r.no).join(', ')+') — '+(o.hideAmount?'금액 숨김이라 넣지 않았어요':'번호는 06_수금발행기록.xlsx 에, 문서는 📎 서류 만들기 › 간이영수증에서 다시 뽑을 수 있어요'));}   // v449
   if(o.parts.reports){
     const certs=hjDocLogsOf(p,'workcert'),narrs=hjDocLogsOf(p,'leaknarr'),reports=Array.isArray(p.leak&&p.leak.reports)?p.leak.reports:[];
     certs.slice(-1).forEach(r=>{const m=hjWorkCertModel(p,{no:r.no,showAmount:!o.hideAmount,fullName:!o.maskName});if(m)add('04_보고서/수리작업확인서_'+r.no+'.html','html',hjWorkCertHtml(m));});
@@ -39690,7 +39726,7 @@ function hjEvidencePlan(name,input){
   const s=projStats(name),day=localDate();
   const head=['['+COMPANY.name+' 증빙 묶음] '+name,'용도: '+o.purposeLabel+(o.hideAmount?' · 금액 숨김':''),'만든 날: '+day,'',
     '의뢰인: '+(o.maskName?hjLeakReportMaskName(cust.name):(cust.name||'—'))+(o.withPhone&&cust.phone?' · '+cust.phone:''),'현장 주소: '+(cust.addr||'—'),
-    '기간: '+(p.startDate||'?')+' ~ '+(p.doneAt||'진행 중'),'유형: '+(leak?'누수·배관':'인테리어')+(leak&&hjLeakSummary(p)?' · '+hjLeakSummary(p):''),''];
+    '기간: '+(p.startDate||hjEvidenceStartOf(p)||'?')+' ~ '+(p.doneAt||'진행 중'),'유형: '+(leak?'누수·배관':'인테리어')+(leak&&hjLeakSummary(p)?' · '+hjLeakSummary(p):''),''];
   if(!o.hideAmount)head.push('견적(매출): '+won(s.est)+' · 수금: '+won(s.recv));
   if(o.internal)head.push('원가(내부): 자재 '+won(s.material)+' · 인건 '+won(s.labor)+' · 외주 '+won(s.outsource)+' · 합계 '+won(s.costEffective));
   head.push('','[포함 파일]');entries.forEach(e=>head.push('· '+e.path));
@@ -39809,13 +39845,14 @@ async function hjEvidenceMonthBundle(ym){
   hjEvidenceDownload(blob,fileName);
   return {fileName,projects:names.length,added,skipped};
 }
-function hjEvidenceMonthView(ym){
+function hjEvidenceMonthView(ym,back){
   const month=String(ym||localDate().slice(0,7)),names=hjEvidenceMonthProjects(month),[y,m]=month.split('-');
   openModal('🗂 '+(+m)+'월 증빙 전부',
     '<div id="hjEvidenceMonth"><div style="font-size:12.5px;line-height:1.6">'+y+'년 '+(+m)+'월에 <b>완료했거나 수금이 있는 현장 '+names.length+'곳</b>을 세무사용(이름 가림·연락처 제외·금액 전부)으로 현장별 폴더에 담고, 요약 xlsx(현장·매출·수금·발행)를 붙입니다.</div>'+
     (names.length?'<ul style="margin:8px 0 0;padding-left:18px;font-size:12.5px;line-height:1.8">'+names.map(n=>'<li>'+escapeHtml(n)+'</li>').join('')+'</ul>':'<div style="font-size:12px;color:var(--muted);margin-top:8px">해당 현장이 없어요.</div>')+
     '<p class="hint" style="margin-top:8px">세무사 전달 자료는 따로 — 경비·영수증은 💳 간편 장부·세금 캘린더의 [📤 세무사 전달 자료], 홈택스 부가세 엑셀은 💼 회계의 [📤 세무사 전달용 xlsx]. 이 묶음은 현장 증빙(사진·견적·명세·보증·수금)입니다.</p></div>',
-    [{label:'🗂 ZIP 만들기',cls:'clay',fn:async function(){if(!names.length)return;const btns=[...document.querySelectorAll('#modalRoot button')];btns.forEach(b=>b.disabled=true);toast('🗂 '+(+m)+'월 증빙 묶는 중…');try{const r=await hjEvidenceMonthBundle(month);closeModal();toast('🗂 '+r.fileName+' — 현장 '+r.projects+'곳 · 파일 '+r.added+'개'+(r.skipped?' (제외 '+r.skipped+')':''));}catch(e){toast('묶음 실패: '+(e&&e.message||e));btns.forEach(b=>b.disabled=false);}}},
+    [{label:'🗂 ZIP 만들기',cls:'clay',fn:async function(){if(!names.length)return;const btns=[...document.querySelectorAll('#modalRoot button')];btns.forEach(b=>b.disabled=true);toast('🗂 '+(+m)+'월 증빙 묶는 중…');try{const r=await hjEvidenceMonthBundle(month);if(typeof back==='function')back();else closeModal();toast('🗂 '+r.fileName+' — 현장 '+r.projects+'곳 · 파일 '+r.added+'개'+(r.skipped?' (제외 '+r.skipped+')':''));}catch(e){toast('묶음 실패: '+(e&&e.message||e));btns.forEach(b=>b.disabled=false);}}},
+     ...(typeof back==='function'?[{label:'← 월말 마감',cls:'ghost',fn:back}]:[]),   // v449
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjModalTapTargets();
   return {month,projects:names};
@@ -41963,13 +42000,15 @@ function hjKoDateTime(s){
   if(!m)return NaN;let h=Number(m[5]);if(m[4]==='오후'&&h<12)h+=12;if(m[4]==='오전'&&h===12)h=0;
   return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),h,Number(m[6]),Number(m[7]||0)).getTime();
 }
-function hjInsightReplyMin(notes){
+function hjInsightReplyMin(notes,p){
   let best=null;
+  // v449 누수 문의는 '접수 확인'·'출동 안내' 문자(보냈음 체크 시각)도 첫 답장으로 본다.
+  const sms=p&&p.leak&&p.leak.sms&&typeof p.leak.sms==='object'?['intake','dispatch'].map(k=>Date.parse(p.leak.sms[k]||'')).filter(Number.isFinite):[];
   for(const n of notes||[]){
-    if(!n||!n.replyAt||!HJ_INQ_NOTE_RE.test(String(n.text||'')))continue;
-    const at=Date.parse(n.at||''),from=Number.isFinite(at)?at:hjKoDateTime(n.date),rep=Date.parse(n.replyAt);
-    if(!Number.isFinite(from)||!Number.isFinite(rep)||rep<from)continue;
-    const min=Math.round((rep-from)/60000);if(best==null||min<best)best=min;
+    if(!n||!HJ_INQ_NOTE_RE.test(String(n.text||'')))continue;
+    const at=Date.parse(n.at||''),from=Number.isFinite(at)?at:hjKoDateTime(n.date);if(!Number.isFinite(from))continue;
+    const reps=[Date.parse(n.replyAt||''),...sms].filter(x=>Number.isFinite(x)&&x>=from);if(!reps.length)continue;
+    const min=Math.round((Math.min(...reps)-from)/60000);if(best==null||min<best)best=min;
   }
   return best;
 }
@@ -41981,7 +42020,7 @@ function hjInsightRows(){
     if(!p||!p.name)return;
     const notes=ix.notes.get(p.name)||[],st=hjInsightStages(p,ix),m=st.won?hjProjectMargin(p.name,false):null,ok=m&&!m.noRevenue;
     out.push({p,date:hjInsightInqDate(p,ix,notes),kind:hjProjectKind(p),ch:hjInsightChannel(p,notes),consult:st.consult,quoted:st.quoted,won:st.won,
-      revenue:ok?m.revenue:0,cost:ok&&!m.missing?m.cost:null,margin:ok&&m.margin!=null?m.margin:null,reply:hjInsightReplyMin(notes),
+      revenue:ok?m.revenue:0,cost:ok&&!m.missing?m.cost:null,margin:ok&&m.margin!=null?m.margin:null,reply:hjInsightReplyMin(notes,p),
       dong:hjInsightDong(p),trade:hjInsightTrade(p,ix),digits:hjCustDigits((p.customer||{}).phone)});
   });
   // 재문의 — 경로가 '다시 맡긴 고객' 이거나 같은 고객 번호의 더 이른 문의가 있는 것
@@ -42496,7 +42535,7 @@ function hjSeasonDueHtml(){
 }
 let __hjSeasonSel=null;
 function hjSeasonView(campaignId){
-  const all=hjSeasonAll(),camp=hjSeasonGet(campaignId)||hjSeasonDue()[0]||all[0],t=hjSeasonTargets(camp.id);
+  const all=hjSeasonAll(),camp=hjSeasonGet(campaignId)||hjSeasonDue()[0]||all.find(c=>hjSeasonInWindow(c))||all[0],t=hjSeasonTargets(camp.id);   // v449 이미 보낸 시기여도 지금 시기 캠페인부터
   if(!__hjSeasonSel||__hjSeasonSel.id!==camp.id)__hjSeasonSel={id:camp.id,keys:new Set(t.rows.filter(r=>r.selectable).map(r=>r.key))};
   const sel=__hjSeasonSel.keys;[...sel].forEach(k=>{if(!t.rows.some(r=>r.key===k&&r.selectable))sel.delete(k);});
   const picks=all.map(c=>'<button type="button" class="'+(c.id===camp.id?'blue':'ghost')+' tiny" data-season-pick="'+escapeAttr(c.id)+'" aria-pressed="'+(c.id===camp.id)+'" style="min-height:44px;white-space:normal;text-align:left">'+escapeHtml((c.ic||'🌦')+' '+c.title)+(hjSeasonInWindow(c,t.today)?' <span style="font-size:10.5px;color:#0a7f43">· 지금 시기</span>':'')+'</button>').join('');
@@ -42610,16 +42649,17 @@ function hjWoTradeOf(p,text){
 }
 const HJ_PHOTO_GUIDE=Object.freeze({
   leakDetect:{title:'누수 탐지',ic:'💧',cuts:['계량기(수도) 숫자 — 모든 물을 잠근 뒤 멈춤 확인 전·후','탐지 장비 화면(청음·열화상·가스 수치)이 보이게','원인 부위 넓게 1장 + 가까이 1장','아랫집 피해 부위(천장·벽) 넓게']},
+  leakRepair:{title:'누수 수리',ic:'🔧',cuts:['개방 전 — 원인 부위 넓게','교체·보수한 배관·이음부 가까이','압력·누수 재확인 수치 화면','복구·청소 뒤 같은 자리']},   // v449
   tile:{title:'타일·방수',ic:'🧱',cuts:['철거 뒤 바탕면 전체','방수층 — 1차·2차 바른 뒤 각각','줄눈 전 / 줄눈 후 같은 자리','배수구 주변 가까이']},
   wallpaper:{title:'도배',ic:'🧻',cuts:['초배(밑작업) 끝난 벽 전체','이음매·모서리 가까이','마감 뒤 방 전체']},
   finish:{title:'완료',ic:'✅',cuts:['방(공간) 4방향 — 문 쪽에서 시작해 시계 방향','디테일 2컷 — 코너·실리콘·이음','쓰레기·자재 치운 뒤 바닥']}
 });
 const HJ_PHOTO_TIPS=Object.freeze(['밝게 — 조명을 켜고 창을 등지고 찍기','수평 — 문틀·타일 줄에 화면 선을 맞추기','날짜 — 카메라 날짜 표시를 켜거나 앱으로 바로 찍기(촬영 시각이 남는다)','개인정보 피하기 — 얼굴·문패·택배 라벨·차량 번호가 안 나오게']);
-function hjWoGuideKey(p,trade){if(hjProjectKind(p)==='leak')return 'leakDetect';if(trade==='타일')return 'tile';if(trade==='도배')return 'wallpaper';return 'finish';}
+function hjWoGuideKey(p,trade){if(hjProjectKind(p)==='leak')return trade==='누수 수리'?'leakRepair':'leakDetect';if(trade==='타일')return 'tile';if(trade==='도배')return 'wallpaper';return 'finish';}
 // 메모 정리 — 고객 이름·번호·메일·동호수는 지우고, 돈 이야기 줄은 통째로 뺀다(직원 화면에 돈·개인정보 금지).
 function hjWoMemoSafe(p,memo){
   const name=String((p&&p.customer||{}).name||'').trim();
-  return String(memo||'').split('\n').filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).trim()).filter(Boolean).join('\n').slice(0,600);
+  return String(memo||'').split('\n').filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).replace(/고객(\s+고객)+/g,'고객').trim()).filter(Boolean).join('\n').slice(0,600);
 }
 function hjWoDaySchedules(day){
   return (state.schedule||[]).filter(s=>s&&s.date===day&&s.project&&!/^💰/.test(String(s.title||''))&&!s._taxAuto&&(state.projects||[]).some(p=>p&&p.name===s.project))
@@ -42810,12 +42850,19 @@ function hjStaffReviewView(){
       'body.hj-staff [data-archive],body.hj-staff [data-unarchive],body.hj-staff #btnTrimDup,body.hj-staff #btnToggleDup,body.hj-staff #btnOrganizeAll,body.hj-staff [data-organize],body.hj-staff .snapRestore,body.hj-staff .wkDel,'+
       'body.hj-staff [data-payhist],body.hj-staff [data-mclose],body.hj-staff [data-marginboard],body.hj-staff [data-insight],body.hj-staff [data-vatc],body.hj-staff [data-lgexport],body.hj-staff [data-lgtoexp],body.hj-staff [data-qpay],body.hj-staff [data-recvquick],'+
       'body.hj-staff [data-margin-card],body.hj-staff [data-costedit],body.hj-staff [data-margintoggle],body.hj-staff [data-season],body.hj-staff [data-qpdf],body.hj-staff [data-dun],body.hj-staff [data-exsum],body.hj-staff [data-finalize],body.hj-staff [data-estpurchase],'+
-      'body.hj-staff input[data-recv],body.hj-staff input[data-cost],body.hj-staff .kpis,body.hj-staff .ratewrap,body.hj-staff .amt,body.hj-staff #btnLoadCostLedger,body.hj-staff #btnXlsxDash,body.hj-staff #btnXlsxTax,body.hj-staff [data-staff-hide]{display:none!important}';
+      'body.hj-staff input[data-recv],body.hj-staff input[data-cost],body.hj-staff .kpis,body.hj-staff .ratewrap,body.hj-staff .amt,body.hj-staff #btnLoadCostLedger,body.hj-staff #btnXlsxDash,body.hj-staff #btnXlsxTax,'+
+      'body.hj-staff .cust-card .cust-grid,body.hj-staff [data-portal],body.hj-staff [data-contractsend],body.hj-staff [data-smscust],body.hj-staff [data-custsched],body.hj-staff [data-custquick],body.hj-staff [data-conedit],body.hj-staff #schLabor,'+   // v449 고객 이름·번호·주소 입력칸, 고객 문자·페이지·계약, 인건비 장부
+      'body.hj-staff [data-staff-hide]{display:none!important}';
     (document.head||document.documentElement).appendChild(st);}catch(e){}
   const realRender=render;
   render=function(){if(hjStaffOn()&&HJ_STAFF_BLOCK_TABS.includes(state.tab)){state.tab='dashboard';try{toast('👷 직원 모드에서는 견적·정산·회계를 볼 수 없어요');}catch(e){}}return realRender.apply(this,arguments);};
   const realSettings=openGdriveSetup;
   openGdriveSetup=function(){if(hjStaffOn())return hjStaffView();return realSettings.apply(this,arguments);};
+  // v449 돈·고객 정보 창은 직원 모드에서 열지 않는다 — 단추를 숨겨도 더보기·음성·AI 같은 다른 길로 열 수 있다.
+  ['laborLedger','expenseLedger','pnl','monthCloseView','recvQuickView','payHistoryView','hjProofView','settleDocs','hjTaxPackView','hjInsightView','hjMarginBoardView','hjCrewSettleView','hjCustQuickView','hjSeasonView'].forEach(fn=>{
+    const real=window[fn];if(typeof real!=='function')return;
+    window[fn]=function(){if(hjStaffOn()){try{toast('👷 직원 모드에서는 돈·고객 정보 창을 열 수 없어요');}catch(e){}return false;}return real.apply(this,arguments);};
+  });
   const realIngest=ingestFile;
   ingestFile=function(){const p=realIngest.apply(this,arguments);if(p&&typeof p.then==='function')p.then(r=>{try{hjStaffPhotoQueue(r);}catch(e){}},()=>{});else{try{hjStaffPhotoQueue(p);}catch(e){}}return p;};
   const start=()=>{if(hjStaffOn())hjStaffApply();};
@@ -43117,7 +43164,7 @@ async function hjTaxPackRecord(ym,info){
     return {again,checked:!!s};
   }});
 }
-function hjTaxPackView(ym){
+function hjTaxPackView(ym,back){
   const month=/^\d{4}-\d{2}$/.test(String(ym||''))?String(ym):hjTaxPackDefaultMonth(),D=hjTaxPackData(month),hist=hjTaxPackHistory(month),[y,m]=month.split('-');
   const shift=k=>{const d=new Date(month+'-01T00:00:00');d.setMonth(d.getMonth()+k);return d.getFullYear()+'-'+pad2(d.getMonth()+1);},prev=shift(-1),next=shift(1);
   const kv=(k,v,attr)=>'<div '+(attr||'')+' style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line-soft);font-size:13px"><span style="color:var(--muted)">'+k+'</span><b>'+v+'</b></div>';
@@ -43138,12 +43185,12 @@ function hjTaxPackView(ym){
       if(mode==='drive')await hjEvidenceDrive(r.blob,r.D.fileName);else hjEvidenceDownload(r.blob,r.D.fileName);
       const rec=await hjTaxPackRecord(month,{exp:r.D.counts.exps,photos:r.added,missing:r.missing.length,via:mode});try{webWorkMarkDirtyAfterPersist();}catch(_){}
       toast('📤 '+r.D.fileName+(mode==='drive'?' 드라이브에 저장':' 저장')+(rec&&rec.again?' (다시 만듦)':'')+(r.missing.length?' · 원본 없는 영수증 '+r.missing.length+'장':''));
-      hjTaxPackView(month);
+      hjTaxPackView(month,back);
     }catch(e){toast('세무 자료를 만들지 못했어요: '+(e&&e.message||e));btns.forEach(b=>{if(b.isConnected)b.disabled=false;});}
     finally{busy=false;}
   };
-  openModal('📤 세무사 전달 자료',body,[{label:'📦 ZIP 저장',cls:'clay',fn:()=>run('file')},{label:'☁️ 드라이브에 저장',cls:'ghost',fn:()=>run('drive')},{label:'🧾 영수증 넣기',cls:'ghost',fn:()=>{closeModal();hjReceiptAdd();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
-  document.querySelectorAll('#hjTaxPack [data-taxpack-month]').forEach(b=>b.onclick=()=>hjTaxPackView(b.dataset.taxpackMonth));
+  openModal('📤 세무사 전달 자료',body,[{label:'📦 ZIP 저장',cls:'clay',fn:()=>run('file')},{label:'☁️ 드라이브에 저장',cls:'ghost',fn:()=>run('drive')},{label:'🧾 영수증 넣기',cls:'ghost',fn:()=>{closeModal();hjReceiptAdd();}},...(typeof back==='function'?[{label:'← 월말 마감',cls:'ghost',fn:back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  document.querySelectorAll('#hjTaxPack [data-taxpack-month]').forEach(b=>b.onclick=()=>hjTaxPackView(b.dataset.taxpackMonth,back));
   hjModalTapTargets();return D;
 }
 /* ═══ v436 💬 첫 답장 60초 — 채널별 템플릿 · 문의함 연결 ═══
@@ -43182,15 +43229,26 @@ function hjFirstReplySlots(now){
     .map(s=>{const st=toMin(s.time),en=/^\d{2}:\d{2}$/.test(String(s.endTime||''))?toMin(s.endTime):st+Math.round((Number(s.hours)>0?Number(s.hours):2)*60);return [st-30,Math.max(en,st+30)+30];});
   const free=(day,from)=>{const b=busy(day),out=[];for(let m=Math.max(9*60,from);m+60<=18*60;m+=60)if(!b.some(([x,y])=>m<y&&m+60>x))out.push(m);return out;};
   const nowMin=at.getHours()*60+at.getMinutes(),start=Math.ceil((nowMin+60)/60)*60;
-  const label=(day,m)=>(day===today?'오늘':day===tmr?'내일':hjMdDow(day))+' '+(m<12*60?'오전 ':'오후 ')+((Math.floor(m/60)+11)%12+1)+'시'+(m%60?' '+(m%60)+'분':'');
   let slots=free(today,start).slice(0,2).map(m=>({day:today,m}));
   if(slots.length<2)slots=slots.concat(free(next,9*60).slice(0,2-slots.length).map(m=>({day:next,m})));
-  return slots.map(x=>({day:x.day,time:pad2(Math.floor(x.m/60))+':'+pad2(x.m%60),label:label(x.day,x.m)}));
+  return slots.map(x=>{const time=pad2(Math.floor(x.m/60))+':'+pad2(x.m%60);return {day:x.day,time,label:hjFirstReplyLabel(x.day,time,today)};});
+}
+function hjFirstReplyLabel(day,time,today){
+  const t=today||localDate(),m=/^\d{2}:\d{2}$/.test(String(time||''))?Number(String(time).slice(0,2))*60+Number(String(time).slice(3,5)):null;
+  return (day===t?'오늘':day===hjAddDays(t,1)?'내일':hjMdDow(day))+(m==null?'':' '+(m<12*60?'오전 ':'오후 ')+((Math.floor(m/60)+11)%12+1)+'시'+(m%60?' '+(m%60)+'분':''));
+}
+// v449 이미 잡힌 방문 — 이 현장의 다가오는 일정(💰·세금 자동·끝난 일정 빼고). 있으면 새 시간을 묻지 않고 그 시간을 알린다(출동 잡은 누수 문의에 '1시·2시 어떠세요'가 나가던 것).
+function hjFirstReplyBooked(pj,now){
+  const at=now instanceof Date&&!isNaN(now)?now:new Date(),today=localDate(at),hm=pad2(at.getHours())+':'+pad2(at.getMinutes());
+  const s=(state.schedule||[]).filter(x=>x&&x.project===pj&&isRealIsoDate(String(x.date||''))&&!x._taxAuto&&!HJ_INQ_MONEY_RE.test(String(x.title||''))&&!(x.report&&x.report.progress==='완료')&&
+      (x.date>today||x.date===today&&(!/^\d{2}:\d{2}$/.test(String(x.time||''))||x.time>=hm)))
+    .sort((a,b)=>String(a.date+(a.time||'')).localeCompare(String(b.date+(b.time||''))))[0];
+  return s?{day:s.date,time:String(s.time||''),label:hjFirstReplyLabel(s.date,s.time,today)}:null;
 }
 function hjFirstReplyDraft(o){
   const ch=hjFirstReplyCh(o&&o.ch),kind=o&&o.kind==='leak'?'leak':'interior',slots=Array.isArray(o&&o.slots)?o.slots:hjFirstReplySlots();
-  const nm=String(o&&o.name||'').trim(),when=slots.length>=2?slots[0].label+' 또는 '+slots[1].label:slots.length?slots[0].label:'';
-  const ask=when?' '+when+(kind==='leak'?' 방문 가능한데 언제가 편하세요?':' 방문 가능한데 편하신 시간 있으실까요?'):(kind==='leak'?' 오늘·내일 중 편하신 시간 알려 주시면 맞춰 가겠습니다.':' 편하신 날짜·시간 알려 주시면 맞춰 가겠습니다.');
+  const nm=String(o&&o.name||'').trim(),when=slots.length>=2?slots[0].label+' 또는 '+slots[1].label:slots.length?slots[0].label:'',booked=o&&o.booked&&o.booked.label?o.booked:null;
+  const ask=booked?' '+booked.label+' 방문으로 잡아 두었습니다. 시간이 안 맞으시면 편하신 시간 말씀해 주세요.':when?' '+when+(kind==='leak'?' 방문 가능한데 언제가 편하세요?':' 방문 가능한데 편하신 시간 있으실까요?'):(kind==='leak'?' 오늘·내일 중 편하신 시간 알려 주시면 맞춰 가겠습니다.':' 편하신 날짜·시간 알려 주시면 맞춰 가겠습니다.');
   const lines=['안녕하세요'+(nm?', '+nm+'님':'')+'. '+COMPANY.name+' '+COMPANY.owner+'입니다. '+ch.greet,
     HJ_FIRST_REPLY.lead[kind]+ask,HJ_FIRST_REPLY.need[kind],
     hjFirstReplyTelOk(ch.id)?HJ_FIRST_REPLY.tel.replace('{tel}',COMPANY.tel):HJ_FIRST_REPLY.dm];
@@ -43199,7 +43257,11 @@ function hjFirstReplyDraft(o){
   return text;
 }
 // 이 현장에 첫 답장 기록이 있나 — 어느 노트든 replyAt.
-function hjInquiryReplied(pj){return (state.notes||[]).some(n=>n&&n.project===pj&&typeof n.replyAt==='string'&&!!n.replyAt);}
+function hjInquiryReplied(pj){
+  if((state.notes||[]).some(n=>n&&n.project===pj&&typeof n.replyAt==='string'&&!!n.replyAt))return true;
+  const p=(state.projects||[]).find(x=>x&&x.name===pj),sms=p&&p.leak&&p.leak.sms;   // v449 누수 문자(접수 확인·출동 안내)를 보냈음 체크했으면 답장한 것
+  return !!(sms&&typeof sms==='object'&&['intake','dispatch'].some(k=>typeof sms[k]==='string'&&Date.parse(sms[k])>0));
+}
 function hjInquiryNoReply(list){return (list||[]).filter(pj=>!hjInquiryReplied(pj));}
 function hjInquiryNoReplyHtml(list){
   let l=[];try{l=hjInquiryNoReply(list);}catch(e){return '';}
@@ -43223,12 +43285,13 @@ function hjFirstReplyCopy(text,done){
 function hjFirstReplyView(pj){
   const p=(state.projects||[]).find(x=>x&&x.name===pj);if(!p){toast('현장을 찾을 수 없어요');return false;}
   const cust=p.customer||{},phone=hjCustDigits(cust.phone).length>=9?String(cust.phone):'';
-  const s={ch:hjFirstReplyChOf(p),kind:hjProjectKind(p)==='leak'?'leak':'interior',slots:hjFirstReplySlots(new Date())};
+  const s={ch:hjFirstReplyChOf(p),kind:hjProjectKind(p)==='leak'?'leak':'interior',slots:hjFirstReplySlots(new Date()),booked:hjFirstReplyBooked(pj,new Date())};
   const chip=(attr,val,label,on)=>'<button type="button" '+attr+'="'+escapeAttr(val)+'" aria-pressed="'+on+'" class="'+(on?'blue':'ghost')+'" style="min-height:44px;min-width:44px;padding:4px 10px;font-size:12.5px">'+escapeHtml(label)+'</button>';
   const body='<div id="hjFirstReply" style="min-width:0;overflow-wrap:anywhere">'+
     '<div style="font-size:12px;font-weight:700;margin:0 0 4px">어디로 온 문의?</div><div role="radiogroup" aria-label="채널" style="display:flex;flex-wrap:wrap;gap:6px">'+HJ_FIRST_REPLY.channels.map(c=>chip('data-fr-ch',c.id,c.label,c.id===s.ch)).join('')+'</div>'+
     '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">무슨 일?</div><div role="radiogroup" aria-label="유형" style="display:flex;gap:6px">'+HJ_FIRST_REPLY.kinds.map(([k,l])=>chip('data-fr-kind',k,l,k===s.kind)).join('')+'</div>'+
-    '<div data-fr-slots style="font-size:12.5px;margin:10px 0 4px">🕑 가능 시간: <b>'+escapeHtml(s.slots.map(x=>x.label).join(' · ')||'오늘·내일 빈 시간 없음 — 초안에서 고쳐 주세요')+'</b> <span style="color:var(--muted)">(일정 탭의 빈 시간)</span></div>'+
+    (s.booked?'<div data-fr-booked style="font-size:12.5px;margin:10px 0 4px">🗓 잡힌 방문: <b>'+escapeHtml(s.booked.label)+'</b> <span style="color:var(--muted)">(이 현장 일정 — 초안이 이 시간을 알립니다)</span></div>':
+    '<div data-fr-slots style="font-size:12.5px;margin:10px 0 4px">🕑 가능 시간: <b>'+escapeHtml(s.slots.map(x=>x.label).join(' · ')||'오늘·내일 빈 시간 없음 — 초안에서 고쳐 주세요')+'</b> <span style="color:var(--muted)">(일정 탭의 빈 시간)</span></div>')+
     '<textarea id="frText" rows="7" style="width:100%;font-size:15px;line-height:1.55;padding:10px;border-radius:10px;border:1px solid var(--line-soft);box-sizing:border-box"></textarea>'+
     '<div id="frCheck" role="status" style="font-size:12.5px;margin-top:4px;min-height:18px"></div>'+
     (hjInquiryReplied(pj)?'<p data-fr-replied class="hint" style="margin:4px 0 0">이미 첫 답장을 기록했어요 — 다시 보내도 첫 답장 시각은 그대로입니다.</p>':'')+
@@ -43244,7 +43307,7 @@ function hjFirstReplyView(pj){
   const check=()=>{const t=ta.value,n=t.replace(/\s/g,'').length,tel=/0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/.test(t)||hjAdTextHasTel(t);
     chk.innerHTML=s.ch==='instagram'&&tel?'<span data-fr-tel style="color:var(--warn);font-weight:700">⚠️ 인스타 DM 에는 전화번호를 넣지 않아요 — 지우고 보내 주세요</span>':
       '<span data-fr-ok style="color:'+(n>200?'#b45309':'#0a7f43')+'">'+(n>200?'조금 길어요 — ':'✓ ')+n+'자'+(s.ch==='instagram'?' · 전화번호 없음':'')+'</span>';};
-  const fill=()=>{ta.value=hjFirstReplyDraft({ch:s.ch,kind:s.kind,slots:s.slots});check();};
+  const fill=()=>{ta.value=hjFirstReplyDraft({ch:s.ch,kind:s.kind,slots:s.slots,booked:s.booked});check();};
   root.querySelectorAll('[data-fr-ch]').forEach(b=>b.onclick=()=>{s.ch=b.dataset.frCh;root.querySelectorAll('[data-fr-ch]').forEach(x=>{const on=x===b;x.setAttribute('aria-pressed',String(on));x.className=on?'blue':'ghost';});fill();});
   root.querySelectorAll('[data-fr-kind]').forEach(b=>b.onclick=()=>{s.kind=b.dataset.frKind;root.querySelectorAll('[data-fr-kind]').forEach(x=>{const on=x===b;x.setAttribute('aria-pressed',String(on));x.className=on?'blue':'ghost';});fill();});
   ta.oninput=check;fill();
@@ -43756,6 +43819,7 @@ function mcData(ym){
   (state.projects||[]).forEach(function(p){
     if(p.archived)return;
     const st=projStats(p.name);
+    if(!((p.stage||0)>=2||p.doneAt||num(st.recv)>0))return;   // v449 위 주석대로 진행/완료(또는 받은 돈이 있는) 현장만 — 상담·실측 단계 견적에 '잔금 안내' 문자가 나가던 것을 막는다
     const rest=num(st.due);
     if((st.est>0||st.extra>0)&&rest>0)due.push({name:p.name,est:st.est,bill:num(st.bill)||st.est,billVat:num(st.billVat),extra:st.extra||0,recv:st.recv,rest:rest,stage:p.stage||0});   // bill: 잔금(rest)과 같은 청구 기준 — 줄의 '계약' 이 잔금과 셈이 맞게(v330)
   });
@@ -43808,7 +43872,7 @@ function monthCloseView(step,ym){
       box(kv('수금',won(D.recv)+' ('+D.payCnt+'건)','#15803d')+kv('이달 완료 현장',D.done.length+'곳'))+
       '<p class="hint">빠진 입금이 있으면 [💰 수금 이력]에서 채워주세요. 통장과 대조하면 정확합니다.</p>';
     btns=[{label:'💰 수금 이력 열기',cls:'ghost',fn:function(){payHistoryView(true);}},
-          {label:'🗂 이번 달 증빙 전부',cls:'ghost',fn:function(){hjEvidenceMonthView(D.ym);}},   // v427
+          {label:'🗂 이번 달 증빙 전부',cls:'ghost',fn:function(){hjEvidenceMonthView(D.ym,function(){monthCloseView(1,D.ym);});}},   // v427 · v449 돌아오기
           {label:'다음 →',cls:'clay',fn:function(){monthCloseView(2);}}];
   }else if(S===2){
     const rows=D.due.length?D.due.slice(0,8).map(function(x){
@@ -43828,7 +43892,7 @@ function monthCloseView(step,ym){
       (D.expCnt?'':'<p class="hint">자재·인건비 지출이 하나도 없네요. 지출을 넣어야 이 달에 실제로 얼마 남았는지 나옵니다.</p>');
     btns=[{label:'← 이전',cls:'ghost',fn:function(){monthCloseView(2);}},
           {label:'🧾 영수증 넣기',cls:'ghost',fn:function(){closeModal();hjReceiptAdd();}},   // v435
-          {label:'📤 세무사 자료',cls:'ghost',fn:function(){hjTaxPackView(D.ym);}},             // v435
+          {label:'📤 세무사 자료',cls:'ghost',fn:function(){hjTaxPackView(D.ym,function(){monthCloseView(3,D.ym);});}},             // v435 · v449 돌아오기
           {label:'다음 →',cls:'clay',fn:function(){monthCloseView(4);}}];
   }else if(S===4){
     body+='<div style="font-size:13px;font-weight:800;margin-bottom:8px">4. 청구·세금계산서</div>'+
