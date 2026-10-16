@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v443 모바일 — 일정·출동 N분 전 알림 · 폰 캘린더 알람 · 음성 메모
+
+- 알림 ①(앱이 떠 있을 때): hjAlertDue(now) — 오늘 시각 있는 일정 중 N분(hj_alert_cfg min 10/30/60, 기본 30) 안, 출동만 옵션(s.urgent). 1분 타이머(hjAlertRun)가 hjAlertTick → 상단 빨간 띠(#hjAlertBar, [열기]로 그 현장) + 진동 + 권한 허용 시 알림(서비스워커 showNotification → 안 되면 new Notification). 한 번 울린 일정은 이 기기 localStorage hj_alerted('id|날짜 시각', 최근 200개)로 다시 안 울린다 — 지시서의 s.alerted(일정 레코드) 대신 기기 기록으로 바꿨다(알림은 기기마다 따로, 저장 자료·클라우드 저장을 매번 건드리지 않게; 변이 alert-dup 이 ALERT_ONCE 에서 잡는다). 시각을 바꾸면 다시 울린다. 자동화 브라우저(navigator.webdriver)에서는 1분 타이머를 켜지 않는다 — 검사는 hjAlertTick(시각)을 직접 부른다.
+- 알림 ②(확실한 알림): buildICS(items,{alarmMin}) 에 VALARM(TRIGGER:-PTNM, 시각 있는 일정만)·LOCATION(s.location). 옵션 없이 부르는 기존 내보내기는 그대로(알람 없음). hjAlertIcsItems(날짜): 제목 "[현장] 일정 — 주소", 설명 "준비물: …"(hjPrepFor) + 메모에서 고객 이름·전화 지움. 첫 화면 [📅 오늘 일정 n건 폰 캘린더에 넣기](data-ics-today 위임), 일정 카드 개별 .ics(exportScheduleICS)도 알람·같은 제목.
+- 설정: ⚙️ 설정 › ⭐ 기타 [🔔 일정·출동 알림] — 켜기, 분, 소리·진동, 출동만, 권한 버튼(누를 때만 Notification.requestPermission), 첫 사용 도움말 1장("앱이 꺼져 있으면 폰 캘린더 알림이 확실합니다", hj_alert_help_seen).
+- 음성: hjMicAttach(root, 칸) — 일일 작업 보고(#rDone)·내 업무 완료 보고(#mwDoneText)·누수 탐지 메모(#hjLeakNote) 옆 [🎤 누르고 말하기](pointerdown~up 동안 SpeechRecognition ko-KR, 글은 칸에만 — 저장은 원래 저장 버튼). 미지원이면 [🎙 녹음] → MediaRecorder 최대 60초·2MB → 기존 파일(기타, '음성_YYYYMMDD_HHMM.webm', 그 현장)로 넣고 칸에 [음성 MM/DD HH:MM]. 지시서의 kind 'voice' 대신 기타(서류 목록에 보이게). 탐지 메모 [🧩 말한 내용으로 칸 채우기]: hjVoiceFields 가 "방법/원인/위치" 다음 칸 이름까지를 값으로 나눠 방법 버튼·원인·위치를 제안(압력은 급수/온수/난방 말한 것만, 안 하면 급수).
+- sw.js SHELL_PATHS 그대로(테스트가 main 과 비교). 핀3곳 hyeonjang-v443-mobilealert(v441 위). 신규 tests/mobilealert-v443.e2e.js 5/5, 변이·기준선 실패 확인, 관련 12개(ics-save/leakdetect-v420/crew-v357/dash-cards/reportfill-v408/leakintake-v419/my-work/mobile-operations/dayclose-v359/handoff-v374/delay-v347/asclose-v366)·sw-cache·정적 21개 통과. 실기기(갤럭시) 알림 1건·받아쓰기 1건 손검사는 아직 — 대표님 폰 또는 에뮬레이터 확인 필요.
+
 ## 2026-10-16 v441 아파트 서류 4종 (공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서)
 
 - hjAptUnitOf: 단지·동·호수는 현장 이름(aptNameParse) → 고객 주소의 "○동 ○호"(단지는 그 앞 낱말 중 아파트·파크·자이 … 가 든 것) 순, 못 찾으면 빈칸. 관리사무소는 state.aptOffices(aptComplexKey 같음), 공사 기간은 그 현장 일정(hjSchSpan 여러 날 포함) 처음~끝, 소음 작업일은 일정 제목·메모의 철거·타공·코어·할석 …, 공종은 최근 견적 품목 위 5개. 화면(hjAptDocsView)에서 모두 고칠 수 있다. 작업 시간 기본 09:00~18:00, 소음 작업 10:00~17:00.
