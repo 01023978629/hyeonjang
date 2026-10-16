@@ -124,7 +124,7 @@ async function transactionBoundary(swSource){
     const retained={id:'SYNTHETIC_ACCEPTED',acceptedRecordId:'SYNTHETIC_APP_RECORD',blob:file('SYNTHETIC_KEEP.jpg')};
     const h=makeHarness(source,{existing:[[retained.id,retained]]}),photo=file(),video=file('SYNTHETIC_VIDEO.mp4',7,'video/mp4',1700001000456);
     redirected(await shared(h,[photo,video],{extra:{title:'T'.repeat(240),text:'X'.repeat(2400),url:'https://outside.invalid/DO_NOT_SEND'}}));
-    assert.deepEqual(h.stats.opens,[{name:'hyeonjang-share',version:1}]);assert.deepEqual(plain(h.stats.creates),[{key:'inbox',config:{keyPath:'id'}}]);
+    assert.deepEqual(h.stats.opens,[{name:'hyeonjang-share',version:2}]);assert.deepEqual(plain(h.stats.creates),[{key:'inbox',config:{keyPath:'id'}},{key:'outbox',config:{keyPath:'id'}}]);
     const rows=[...h.rows.values()].filter(r=>r!==retained);assert.equal(rows.length,2);assert.strictEqual(h.rows.get(retained.id),retained);
     for(const [row,original]of rows.map((r,i)=>[r,[photo,video][i]])){
       assert.strictEqual(row.blob,original);assert.equal(row.name,original.name);assert.equal(row.size,original.size);assert.equal(row.type,original.type);assert.equal(row.lastModified,0,'SHARE_MULTIPART_MODIFIED_UNKNOWN');

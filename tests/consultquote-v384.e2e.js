@@ -26,14 +26,22 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  const boot = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
+  await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(key => !!window[key]), boot);
+  await page.evaluate(async keys => {
+    await Promise.all(keys.map(key => window[key]));
+    if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
+    if (window.__hjOutboxUiBootDone) await __hjOutboxUiBootDone;
+    taxCalendarEnsure(); coworkSchedEnsure();
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+  }, boot);
   await page.evaluate(() => {
-    window.taxCalendarEnsure = () => 0; window.coworkSchedEnsure = () => 0; window.backupBootCheck = () => 0; window.kakaoCheckNew = () => 0;
+    window.backupBootCheck = () => 0; window.kakaoCheckNew = () => 0;
     try { aiOpsEnsureState().enabled = false; } catch (e) {}
     const orig = window.localDate; window.localDate = (d) => d ? orig(d) : '2026-11-05';
     window.portalAutoSync = () => 0;
   });
-  const seed = () => page.evaluate(() => {
+  const seed = () => page.evaluate(async () => {
     try { closeModal(true); } catch (e) {}
     state._demo = false; state.payLog = []; state.quotes = []; state.notes = []; state.asLog = []; state.satisfaction = []; state.files = []; state.adPosts = []; state.contacts = [];
     const P = (name, x) => Object.assign({ name, stage: 0, received: 0, phases: [], cost: {}, customer: { name: '김가상', phone: '010-3333-4444', addr: '대전 대덕구 법동 1' } }, x || {});
@@ -41,6 +49,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     const S = (id, title, project, x) => Object.assign({ id, date: '2026-11-05', time: '10:00', title, project, workers: '', memo: '', hours: 1, report: null }, x || {});
     state.schedule = [S('c1', '상담·실측: 가상현장A', '가상현장A'), S('c2', '실측', '가상현장B'), S('t1', '타일', '가상현장A', { hours: 8 })];
     state.tab = 'dashboard'; state.activeProject = null; render();
+    clearTimeout(__idbSaveTimer);
+    if (!(await guardedPersistCurrentState())) throw Error('CONSULT_QUOTE_SEED_SAVE_FAILED');
   });
   const report = (id, prog) => page.evaluate(({ id, prog }) => {
     openReportEdit(id); document.getElementById('rDone').value = '실측 완료, 욕실 2곳'; document.getElementById('rProgress').value = prog;
@@ -83,9 +93,14 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('③ 📋 내 업무 ✅ 완료 보고(상담·실측) → 📐 창, [📐 실측 노트]는 이 현장 실측 노트', async () => {
     await seed();
-    const r = await page.evaluate(() => {
+    await page.evaluate(() => {
       myWorkReport('c1'); document.getElementById('mwDoneText').value = '실측 끝';
-      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /완료 보고 저장/.test(b.textContent)).click();
+    });
+    await page.getByRole('button', { name: '완료 보고 저장', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#modalRoot h3')?.textContent === '📐 상담·실측 끝 — 가상현장A');
+    const saved = await page.evaluate(async () => (await idbGetStrict('appState')).schedule.find(s => s.id === 'c1')?.report);
+    assert(saved?.progress === '완료' && saved.done === '실측 끝', '내 업무 보고 기기 저장');
+    const r = await page.evaluate(() => {
       const h3 = document.querySelector('#modalRoot h3').textContent;
       [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /실측 노트/.test(b.textContent)).click();
       const h3b = (document.querySelector('#modalRoot h3') || {}).textContent || '';

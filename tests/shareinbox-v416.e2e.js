@@ -93,7 +93,7 @@ async function seedProject(page) {
 async function putRows(page, rows) {
   await page.evaluate(async ({ rows, bytes, bytesTwo }) => {
     const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open('hyeonjang-share', 1);
+      const req = indexedDB.open('hyeonjang-share'); // Use the installed schema; new fixture DBs still start at v1.
       req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('inbox')) req.result.createObjectStore('inbox', { keyPath: 'id' }); };
       req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
     });
@@ -117,7 +117,7 @@ function photo(id, offset = 0, extra = {}) {
 async function rows(page) {
   return page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open('hyeonjang-share', 1); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+      const req = indexedDB.open('hyeonjang-share'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
     });
     try {
       const all = await new Promise((resolve, reject) => {

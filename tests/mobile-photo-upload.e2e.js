@@ -1,5 +1,5 @@
 /* 모바일 사진 올리기: 승인 전 무변경, 현장/작업명 고정, 파일별 정확한 연결.
-   실제 PNG -> ingestFile -> 압축 -> relayUploadFiles를 실행하며 네트워크만 모의한다.
+   실제 PNG -> ingestFile -> 기기 원본/메타 저장 -> outbox -> 압축/서버 연결을 실행하며 네트워크만 모의한다.
    고객 자료/계정/외부 서버는 사용하지 않는다. static-server.js(8299) 필요.
    HJ_PHOTO_UPLOAD_MUTATION=project|targets|restore-edits: 배정/ID 연결/동명 분리를 깨면
    같은 회귀가 실패해야 한다. 운영 파일 및 저장 구조는 변경하지 않는다. */
@@ -29,13 +29,15 @@ async function boot(width, options = {}) {
     ? route.continue() : route.abort());
   await page.addInitScript(() => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('pref_mobile', '1'); });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone);
+  await page.waitForFunction(() => window.__hjRestoreDone && window.__hjRelayConfigDone && window.__hjOfficeOpsBootDone && window.__hjRelayBootDone);
   await page.evaluate(async () => {
-    await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone]);
+    await Promise.all([window.__hjRestoreDone, window.__hjRelayConfigDone, window.__hjOfficeOpsBootDone, window.__hjRelayBootDone]);
+    if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
+    if (window.__hjOutboxUiBootDone) await __hjOutboxUiBootDone;
     taxCalendarEnsure(); coworkSchedEnsure(); aiOpsEnsureState().enabled = false;
     clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
   });
-  await page.evaluate(({ a, b, options, mutation }) => {
+  await page.evaluate(async ({ a, b, options, mutation }) => {
     const project = name => ({ name, archived: false, stage: 1, received: 0, phases: [],
       cost: { material: 0, labor: 0, outsource: 0 }, customer: {} });
     state.projects = [project(a), project(b)]; state.files = [];
@@ -48,10 +50,16 @@ async function boot(width, options = {}) {
     window.__ingestCalls = []; window.__snapshotCalls = []; window.__uploadMutationApplied = 0;
     window.__uploadOptions = options;
     if (options.queueQuota) {
-      const nativeIdbSet = idbSet;
-      idbSet = async function(key, value) {
-        if (key === 'relay_queue') throw new DOMException('가상 큐 저장 공간 부족', 'QuotaExceededError');
-        return nativeIdbSet.apply(this, arguments);
+      // Fail only the send-intent store, after the separate original inbox write.
+      // A quota failure in inbox would test original preservation failure instead.
+      window.__queueQuotaHits = 0;
+      const nativeAdd = IDBObjectStore.prototype.add;
+      IDBObjectStore.prototype.add = function() {
+        if (this.name === 'outbox') {
+          window.__queueQuotaHits++;
+          throw new DOMException('가상 outbox 저장 공간 부족', 'QuotaExceededError');
+        }
+        return nativeAdd.apply(this, arguments);
       };
     }
     const nativeSnapshot = hjSnapshot;
@@ -90,23 +98,29 @@ async function boot(width, options = {}) {
       return { ok: true, fileId: 'fake-upload-' + window.__uploadCalls.length, mimeType: payload.mimeType,
         size: Math.floor(payload.dataB64.length * 3 / 4) };
     };
-    gdUploadBlob = async function(file, name, mime, folder) {
+    gdUploadBlob = async function(file, name, mime, folder, opts = {}) {
       window.__driveCalls.push({ name, mime, folder }); window.__uploadEvents.push('drive:' + name);
+      if (opts.beforeSend) await opts.beforeSend();
       if (name === options.remoteFail) throw new Error('가상 Drive 실패');
-      return 'fake-direct-' + window.__driveCalls.length;
+      const id = 'fake-direct-' + window.__driveCalls.length;
+      if (opts.onCreated) await opts.onCreated(id);
+      return id;
     };
     if (mutation === 'targets') {
-      const nativeUpload = relayUploadFiles;
-      relayUploadFiles = async function(files, kind, targets, report) {
-        if (targets && targets.length > 1) {
+      const nativeLink = hjOutboxLinkReceipt;
+      hjOutboxLinkReceipt = async function(item) {
+        const other = state.files.find(file => file.kind === 'photo' && file._shareInboxId && file._shareInboxId !== item.ref);
+        if (other) {
           window.__uploadMutationApplied++;
-          targets = targets.slice().reverse();
+          item = { ...item, ref: other._shareInboxId };
         }
-        return nativeUpload.call(this, files, kind, targets, report);
+        return nativeLink.call(this, item);
       };
     }
     window.__originalProjectsJson = JSON.stringify(state.projects);
     render(); syncMobileNav();
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+    if (!(await guardedPersistCurrentState())) throw Error('MOBILE_PHOTO_FIXTURE_DURABLE');
   }, { a: A, b: B, options, mutation: MUTATION });
   return { page, context, errors, width };
 }
@@ -156,6 +170,20 @@ async function facts(page) {
     snapshots: window.__snapshotCalls, events: window.__uploadEvents, active: state.activeProject,
     unchangedProjects: JSON.stringify(state.projects) === window.__originalProjectsJson }));
 }
+async function durableFacts(page) {
+  return page.evaluate(async () => ({
+    queue: (await hjOutboxRead()).map(row => ({ kind: row.kind, ref: row.ref, status: row.status, tries: row.tries, error: row.lastError })),
+    originals: await Promise.all((await hjShareRead()).filter(row => row.blob instanceof Blob).map(async row => ({
+      id: row.id, name: row.name, bytes: [...new Uint8Array(await row.blob.arrayBuffer())]
+    }))),
+    files: ((await idbGetStrict('appState'))?.files || []).map(row => ({ name: row.name, project: row.project,
+      work: row.worklabel || '', driveId: row.driveId || '', token: row.shareInboxId || '' }))
+  }));
+}
+function assertOriginals(durable, names) {
+  assert.deepEqual(durable.originals.map(row => row.name).sort(), names.slice().sort(), 'every selected original remains in the separate inbox');
+  for (const row of durable.originals) assert.deepEqual(Buffer.from(row.bytes), PNG, 'original bytes remain exact: ' + row.name);
+}
 async function assertTouchModal(page) {
   const controls = await page.locator('#modalRoot button:visible, #modalRoot input:visible, #modalRoot select:visible, #modalRoot textarea:visible').evaluateAll(nodes => nodes.map(el => {
     const r = el.getBoundingClientRect();
@@ -191,6 +219,11 @@ async function assertTouchModal(page) {
       assert(f.uploads.every(row => row.mimeType === 'image/jpeg' && row.kind === 'photo' && row.size > 0), 'real image compression produces the network payload');
       assert.match(text, /2/);
       assert.match(text, /서버|백업/);
+      const durable = await durableFacts(page);
+      assertOriginals(durable, ['photo-a.png', 'photo-b.png']);
+      assert.deepEqual(durable.queue, [], 'successful receipts remove only their exact outbox items');
+      assert.deepEqual(durable.files.map(row => [row.name, row.project, row.work, row.driveId]),
+        [['photo-a.png', A, WORK, 'fake-upload-1'], ['photo-b.png', A, WORK, 'fake-upload-2']], 'server IDs are durable, not just painted in memory');
     });
   }
 
@@ -258,6 +291,10 @@ async function assertTouchModal(page) {
     assert.deepEqual([f.uploads.length, f.direct.length, f.files[0].driveId], [0, 0, '']);
     assert.match(text, /서버|드라이브|백업/); assert.match(text, /연결|미완료|없|되지|미백업|실행하지 않았/);
     assert.doesNotMatch(text, /원본.*(?:영구|안전하게 저장)|(?:서버|드라이브).*백업 완료/);
+    const durable = await durableFacts(page); assertOriginals(durable, ['photo-a.png']);
+    assert.equal(durable.queue.length, 1); assert.equal(durable.queue[0].status, 'ready');
+    assert.equal(durable.queue[0].ref, durable.files[0].token);
+    assert.deepEqual([durable.files[0].project, durable.files[0].work, durable.files[0].driveId], [A, WORK, '']);
   });
 
   await scenario(390, { network: 'drive', remoteFail: 'photo-b.png' }, '직접 Drive 일부 실패를 구분하고 파일 연결 유지', async page => {
@@ -266,6 +303,11 @@ async function assertTouchModal(page) {
     assert.deepEqual(f.files.map(row => [row.project, row.driveId]), [[A, 'fake-direct-1'], [A, '']]);
     assert.equal(f.uploads.length, 0); assert.equal(f.direct.length, 2);
     assert.match(text, /실패/); assert.match(await expandedResult(page), /photo-b\.png/);
+    const durable = await durableFacts(page); assertOriginals(durable, ['photo-a.png', 'photo-b.png']);
+    assert.equal(durable.queue.length, 1); assert.equal(durable.queue[0].status, 'uncertain');
+    assert.equal(durable.queue[0].ref, durable.files.find(row => row.name === 'photo-b.png').token);
+    assert.equal(durable.files.find(row => row.name === 'photo-a.png').driveId, 'fake-direct-1');
+    assert.equal(durable.files.find(row => row.name === 'photo-b.png').driveId, '');
   });
 
   await scenario(390, { network: 'relay', remoteFail: 'photo-b.png' }, '서버 일부 실패를 구분하고 성공 사진만 ID 연결', async page => {
@@ -273,32 +315,46 @@ async function assertTouchModal(page) {
     const text = await result(page), f = await facts(page);
     assert.deepEqual(f.files.map(row => [row.project, row.driveId]), [[A, 'fake-upload-1'], [A, '']]);
     assert.equal(f.uploads.length, 2); assert.equal(f.direct.length, 0);
-    assert.match(text, /백업 확인 1장/); assert.match(text, /백업 실패 1장/);
+    assert.match(text, /백업 확인 1장/); assert.match(text, /전송 대기 1장/); assert.match(text, /백업 실패 0장/);
     assert.match(await expandedResult(page), /photo-b\.png/);
+    const durable = await durableFacts(page); assertOriginals(durable, ['photo-a.png', 'photo-b.png']);
+    assert.equal(durable.queue.length, 1); assert.equal(durable.queue[0].status, 'ready'); assert.equal(durable.queue[0].tries, 1);
+    assert.equal(durable.queue[0].ref, durable.files.find(row => row.name === 'photo-b.png').token);
+    assert.equal(durable.files.find(row => row.name === 'photo-a.png').driveId, 'fake-upload-1');
+    assert.equal(durable.files.find(row => row.name === 'photo-b.png').driveId, '');
   });
 
-  await scenario(390, { network: 'relay', offline: true }, '통신 실패는 성공으로 표시하지 않고 전송 대기로 구분', async page => {
+  await scenario(390, { network: 'relay', offline: true }, '응답 유실은 성공으로 표시하지 않고 원본 보관·결과 확인으로 구분', async page => {
     await gallery(page, [pick()]); await approve(page); const text = await result(page), f = await facts(page);
     assert.equal(f.files.length, 1); assert.equal(f.files[0].driveId, '');
-    const queue = await page.evaluate(async () => (await idbGet('relay_queue') || []).filter(row => row.action === 'upload'));
-    assert.equal(queue.length, 1, 'existing durable relay queue receives the compressed upload');
-    assert.match(text, /대기/);
+    const durable = await durableFacts(page); assertOriginals(durable, ['photo-a.png']);
+    assert.equal(durable.queue.length, 1); assert.equal(durable.queue[0].status, 'uncertain', 'response loss must not automatically send twice');
+    assert.equal(durable.queue[0].ref, durable.files[0].token);
+    assert.deepEqual([durable.files[0].project, durable.files[0].work, durable.files[0].driveId], [A, WORK, '']);
+    assert.match(text, /백업 확인 0장/); assert.match(text, /백업 실패 1장/);
+    const calls = f.uploads.length;
+    await page.evaluate(() => hjOutboxFlush({ manual: true }));
+    assert.equal((await facts(page)).uploads.length, calls, 'uncertain upload cannot be resent even by ordinary manual retry');
   });
 
   await scenario(390, { network: 'relay', offline: true, queueQuota: true }, '대기열 저장 실패를 전송 대기로 오표시하지 않음', async page => {
     await gallery(page, [pick()]); await approve(page); const text = await result(page), f = await facts(page);
     assert.equal(f.files.length, 1); assert.equal(f.files[0].driveId, '');
-    const queue = await page.evaluate(async () => (await idbGet('relay_queue') || []).filter(row => row.action === 'upload'));
-    assert.equal(queue.length, 0);
-    assert.match(text, /전송 대기 0장/); assert.match(text, /백업 실패 1장/);
+    const durable = await durableFacts(page); assertOriginals(durable, ['photo-a.png']);
+    assert.equal(await page.evaluate(() => __queueQuotaHits > 0), true, 'the outbox-only fault was exercised');
+    assert.equal(durable.queue.length, 0);
+    assert.equal(durable.files.length, 1, 'quota cannot lose approved photo metadata after preserving its original');
+    assert.deepEqual([durable.files[0].project, durable.files[0].work, durable.files[0].driveId], [A, WORK, '']);
+    assert.match(text, /전송 대기 0장/); assert.match(text, /백업 확인 0장/);
+    assert.match(text, /자동 전송 대기 제외 1장/);
     assert.match(await expandedResult(page), /photo-a\.png/);
-    const connection = page.locator('#modalRoot .mfoot button').filter({ hasText: '연결·대기열 확인' });
+    const connection = page.locator('#modalRoot .mfoot button').filter({ hasText: '📴 오프라인 대기함' });
     assert.equal(await connection.count(), 1, 'backup failure has a concrete recovery action');
     await connection.click();
     await page.locator('#photoIntakeResult').waitFor({ state: 'detached' });
     await page.locator('#modalRoot .modal').waitFor({ state: 'visible' });
-    assert.match(await page.locator('#modalRoot').innerText(), /저장|백업|설정/);
-    assert.equal((await facts(page)).uploads.length, 1, 'opening settings does not retry or duplicate the upload');
+    assert.match(await page.locator('#modalRoot').innerText(), /저장|백업|보관/);
+    assert.equal((await facts(page)).uploads.length, 0, 'no remote write begins before a durable send intent exists');
   });
 
   await scenario(390, {}, '동명 새 사진에 기존 사진 Drive ID·OCR·공정이 승계되지 않음', async page => {
