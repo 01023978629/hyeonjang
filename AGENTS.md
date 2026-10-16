@@ -3,6 +3,17 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v435 🧾 영수증 → 경비(기기 안 글자 읽기) · 월별 세무사 전달 자료
+
+- 넣는 곳: 사진 탭 도구 #btnReceiptAdd(빈 사진 탭 #btnReceiptAddEmpty) · 💳 간편 장부 #expReceipt · 월말 마감 3단계 · 더보기 [🧾 영수증 스캔](cardReceiptScan('receipt') 가 hjReceiptAdd 로 감 — 옛 Gemini 영수증 길은 안 탄다, 명함 스캔은 그대로). 폰은 바로 카메라/갤러리, PC 는 끌어놓기 칸(#rcDrop)+고르기. 여러 장이면 한 장씩.
+- 글자 읽기 hjReceiptOcrText = 기기 안 Tesseract(getWorker, kor+eng)만 — Vision·Gemini 키가 있어도 영수증 사진을 바깥으로 보내지 않는다(HEIC 는 heic2any 로 JPG 바꿔 읽음). [✍ 직접 입력]으로 기다리지 않고 넘어갈 수 있다. 풀이 hjReceiptParse(날짜 여러 형식·400일 안, 합계/결제금액 줄 우선·없으면 전화·사업자 줄 뺀 가장 큰 금액, 상호/가맹점 줄·없으면 첫 이름 줄, 카드/현금, 분류 HJ_EXP_CAT_DICT — 상호 먼저·글자는 가장 많이 걸린 분류). 실제 Tesseract(5.1, kor+eng)로 합성 영수증 3장을 읽혀 날짜·금액·상호·분류가 다 맞는 것을 확인했다(검사는 스텁).
+- 확인 화면 hjReceiptConfirmView(큰 입력칸 52px): 날짜·금액·상호·결제·분류 7종(HJ_EXP_CAT7 자재/공구/유류/식대/주차·통행/외주/기타)·현장(공통=없음)·[이 현장 원가에 넣기](기본 켬)·메모. 같은 날짜·금액(상호가 둘 다 있으면 상호까지 — hjReceiptDups, 카드 월 합계 제외) 지출이 있으면 data-rc-dup 경고 + 단추 '⚠️ 그래도 저장'(변이 dup-off 가 RECEIPT_DUP_WARNS 에서 잡는다).
+- 저장 hjReceiptSave = durableLocalMutation 한 번: 원본은 서류 길 그대로 IDB 'document_blob:<uuid>'(beforeCommit 에서 보관·확인), 파일 레코드 kind 'receipt'·documentMeta role 'receipt'(DOCUMENT_ROLES·KIND·documentRoleKind·documentMovable·서류 탭 목록에 receipt 추가)·이름 '영수증_YYYYMMDD_상호_금액원.ext'·text=읽은 글자, 지출 {src:'receipt', fileId:'k:'+fileKey, cat, category=HJ_EXP_CAT_LEDGER(공구→장비, 주차·통행→기타), ocr{raw≤800,guess}}. 새 최상위 키 없음.
+- 원가 반영 = 지출을 그 현장에 단다(projStats 유효원가가 수기 0 이면 장부 합으로 읽음: 자재→material·외주→outsource·그 밖→기타 경비). 끄면 영수증 파일만 현장에 두고 지출 project 는 ''. 수기 p.cost 는 건드리지 않는다 — 수기 자재비가 있으면 화면에 '이중 계산 방지' 안내. v439 입고 원가 반영 창의 중복 경고는 영수증 지출(같은 날짜·금액)을 본다.
+- 📤 세무사 전달 자료 hjTaxPackView(월 ‹ ›, 💳 장부 #expTaxPack · 세금 캘린더 #txPack · 월말 마감 3단계): xlsx 시트 3개 — 매출(그 달 수금·세금계산서/현금영수증 발행 상태·간이영수증 번호·이 달 준공 현장) / 지출(분류·장부 분류·상호·금액·결제·현장·영수증 파일 이름 또는 '없음'·출처) / 요약 + 영수증 사진(getFileOf, 없으면 썸네일, 그래도 없으면 00_읽어주세요.txt 에 빠진 이름) → '만물_세무자료_YYYY-MM.zip'(다운로드 또는 hjEvidenceDrive). **지시서의 ③ 미수 시트는 넣지 않았다**(2026-08-13 대표 결정·receivable-removed 검사) — 대신 요약 시트. 만든 뒤 hjTaxPackRecord: 노트 '[세무 자료] YYYY-MM 만듦'(taxPack{ym,at,exp,photos,via,again}) + 그 반기 부가세 일정(1~6월→tax_YYYY-07-25_vat1, 7~12월→tax_(Y+1)-01-25_vat2)의 taxPacks[ym] — 세금 캘린더 줄에 '✅ 세무 자료 n월 만듦'(hjTaxPackDoneHtml). 같은 달 두 번째는 '(다시 만듦)'.
+- 장부 줄에 상호·[🧾](data-rc-view → hjReceiptPreview, 기기 원본 보기 · ← 장부). v427 증빙 묶음 03_영수증 이 이 영수증을 담는다.
+- 핀3곳 hyeonjang-v435-expenseocr(v444 위). 신규 tests/expenseocr-v435.e2e.js 4/4(합성 영수증 PNG·글자 읽기/zip/xlsx 스텁), 변이 dup-off·기준선(EXPENSEOCR_API_PRESENT) 실패 확인. 관련 14개(document-select·document-upload·evidence-v427·extras-settle·mobile-friendly-ui·mobile-more-tools·mobile-photo-upload·photo-first-screen·revenue-basis·material-v439·ledger-cost-apply·amount-sign·margin-v429·team2-v444)·정적 19개 — document-select/document-upload 의 '다운로드 파일 이름' 한 칸은 main(3c7db67)에서도 똑같이 실패하는 이 컨테이너 환경 문제(통과 수 20·12 로 main 과 같음).
+
 ## 2026-10-16 v444 👷 팀 앱 연동 2 — 내일 일정 한 번에 지시 · 공종별 체크리스트 · 사진 찍는 법 · 직원 모드
 
 - 서버 없이 되는 부분만(서버 API·직원 로그인·푸시는 팀 앱 서버 설계 뒤). 팀 앱 코드는 안 건드림 — work-order.json(v432 hjWoBuild/hjWoValidate) 그대로에 **선택 필드 guideKey 하나**(HJ_PHOTO_GUIDE 의 leakDetect/tile/wallpaper/finish, 없으면 통과·모르는 값이면 orders[i].guideKey 오류)를 더했고 지시서/팀앱_연동_인터페이스.md 에도 한 줄 적었다. v432 단건 보내기도 guideKey 를 싣는다.
