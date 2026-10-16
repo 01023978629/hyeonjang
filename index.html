@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v438-warrantycare';
+const APP_BUILD='hyeonjang-v441-aptdocs';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5527,7 +5527,8 @@ async function loadDemo(){
   state.projects=[
     {name:'망원동 카페',stage:2,received:8000000,phases:['철거','방수 1차','방수 2차','목공','타일'],cost:{material:4200000,labor:3000000,outsource:1200000},customer:{name:'김민수',phone:'010-2345-6789',addr:'서울 마포구 망원동'}},
     {name:'대치동 아파트',stage:3,received:24500000,phases:['철거','설비','도배'],cost:{material:12000000,labor:9000000,outsource:4000000}},
-    {name:'성수동 사무실',stage:1,received:0,phases:[],cost:{material:0,labor:0,outsource:0}}
+    {name:'성수동 사무실',stage:1,received:0,phases:[],cost:{material:0,labor:0,outsource:0}},
+    {name:'은행동 한빛아파트 101동 702호',stage:1,received:0,phases:[],cost:{material:0,labor:0,outsource:0},customer:{name:'',phone:'',addr:'대전 중구 은행동 한빛아파트 101동 702호'}}   // v441
   ];
   const svg=(label,c)=>'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="${c}"/><text x="100" y="105" font-size="20" fill="#fff" text-anchor="middle" font-family="sans-serif">${label}</text></svg>`);
   const D=(s)=>new Date(s);
@@ -5559,6 +5560,8 @@ async function loadDemo(){
       report:{done:'바닥·벽 철거 완료, 폐기물 반출',actualWorkers:'3',material:'마대 20장',issue:'배관 노후 확인 — 교체 검토',progress:'완료',weather:'맑음',filledAt:new Date().toISOString()}},
     {id:uid(),date:'2025-03-12',time:'09:00',title:'방수 1차',project:'망원동 카페',workers:'2',memo:'화장실·베란다',hours:6,report:null},
     {id:uid(),date:localDate(),time:'10:00',title:'현장 실측',project:'성수동 사무실',workers:'1',memo:'견적용 실측',hours:2,report:null},
+    {id:uid(),date:hjAddDays(localDate(),2),time:'09:00',title:'철거 작업',project:'은행동 한빛아파트 101동 702호',workers:'2',memo:'욕실·주방 철거',hours:8,report:null},   // v441 데모: 아파트 시공 D-2 → 서류 4종 할 일
+    {id:uid(),date:hjAddDays(localDate(),3),time:'09:00',title:'설비·방수',project:'은행동 한빛아파트 101동 702호',workers:'2',memo:'',hours:8,report:null},
   ];
   // v439 데모 자재상 3곳·단가·입고 발주 2건(1건은 원가 반영 전)
   state.suppliers=[{name:'한밭철물',phone:'',category:'자재',memo:'데모',items:'배관 부속, 실리콘, 공구',addr:'대전 중구',pay:'현금',delivery:true,prices:[{name:'실리콘 투명',spec:'',unit:'개',price:4500,at:'2025-03-01',src:'recv'},{name:'PB 엘보',spec:'15A',unit:'개',price:900,at:'2025-03-01',src:'recv'},{name:'배관 부속 세트',spec:'',unit:'식',price:38000,at:'2025-03-05',src:'manual'},{name:'마대',spec:'',unit:'장',price:600,at:'2025-03-02',src:'manual'}]},
@@ -10304,6 +10307,7 @@ function dashboardTodoHTML(){
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
     hjCustMissingHtml()+     // v394 연락처 빈 최근 현장
     hjWarrantyCareHtml()+     // v438 보증 만료 60·30일 전 안부
+    hjAptDocsDueHtml()+     // v441 아파트 시공 D-3 관리사무소 서류
     hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
     hjTeamReportPendingHtml()+   // v432 팀 보고 검수 요청·막힘
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
@@ -16254,7 +16258,7 @@ function viewAptMgmt(){
       ? `<div class="hint" style="margin:2px 0 8px">🏢 관리사무소 등록됨${office.manager?' · '+escapeHtml(office.manager):''} · 오더 ${orders.length}건${statSum?' — '+statSum:''} <button class="ghost tiny" data-aptorders="1" style="min-height:44px;margin-left:6px">오더 보기</button></div>`
       : `<div class="hint" style="margin:2px 0 8px">관리사무소 미등록 — 접수 일감을 받으려면 단지를 먼저 등록하세요. <button class="blue tiny" data-aptoffadd="${escapeAttr(g.name)}" style="min-height:44px;margin-left:6px">🏢 관리사무소 등록</button></div>`;
     html+=`<div>${g.sites.slice().sort((a,b)=>a.label.localeCompare(b.label,'ko',{numeric:true})).map(s=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line-soft)">
-      <button class="ghost tiny" data-aptgo="${escapeAttr(s.name)}" style="min-height:44px" title="이 현장 열기">${escapeHtml(s.label)}</button>
+      <button class="ghost tiny" data-aptgo="${escapeAttr(s.name)}" style="min-height:44px" title="이 현장 열기">${escapeHtml(s.label)}</button><button class="ghost tiny" data-aptdocs-open="${escapeAttr(s.name)}" style="min-height:44px" title="관리사무소 서류 4종">📄 서류 4종</button>
       <span class="hint" style="margin:0">${escapeHtml(STAGES[s.stage]||'')} · 사진 ${s.photos}장 · 동·호수 ${s.units}곳${s.parsed&&!s.registered?' · <b>미등록</b>':''}</span></div>`).join('')}</div></div>`;
   });
   // 이름 끝은 "…동 …호" 인데 아파트로 볼 낱말이 없는 현장. 등록에서는 빼되 숨기지는 않는다 —
@@ -37278,7 +37282,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37319,6 +37323,7 @@ function setupDelegation(){
     if(d.retOpen!==undefined)return hjRetView();   // v447 🔒 보존 정리 검토
     if(d.safetyOpen!==undefined)return hjDataSafetyView();
     if(d.wcareOpen!==undefined)return hjWarrantyCareView();   // v438 보증 만료 앞둔 현장
+    if(d.aptdocsOpen!==undefined)return hjAptDocsView(d.aptdocsOpen);   // v441 아파트 서류 4종
     if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
     if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
     if(t.id==='qmLeakPaid')return hjLeakPaymentView(state.editingQuote);
@@ -38917,7 +38922,7 @@ function aptReportView(pjName){
    진입점은 그대로 하나(더보기·현장 카드의 📎 서류 만들기). 기능을 더하지 않고 자리만 정리했고, 예정 항목은 회색으로 두어
    다음 지시서 번호를 적어 둔다 — 눌러도 아무 데도 가지 않는다는 것을 토스트로 말한다. 기존 8개 진입점(완료보고서·하자보증서·
    보증서 문자·간이영수증·정산 문서·ZIP·PDF 묶음·포트폴리오)은 같은 함수로 그대로 연다. */
-const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438',apt:'v441'});
+const HJ_DOC433_PLANNED=Object.freeze({compare:'v437',prep:'v437',wo:'v432',aftercare:'v438'});
 function docHubView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
@@ -38977,7 +38982,7 @@ function docHubView(pjName){
     item('🧾','보험 청구 체크리스트'+NEW,'보험사에 낼 서류 12가지 — 저희 준비 6 · 고객 준비 6, 고객 안내문·제출 기록까지.','insclaim',leak?(function(){const c=hjInsClaim(p);if(!hjInsStarted(p))return '시작 전';const pr=hjInsProgress(p,c);return '진행 '+pr.done+'/'+pr.total+((c.submitted||[]).length?' · 제출 '+c.submitted.length+'회':'');})():'누수 현장 아님',leak?'':'warn')+
     item('🗂','증빙 묶음'+NEW,'견적·사진 전중후·영수증·명세서·보증서·수금 기록을 ZIP 하나로. 용도 3종(세무사/보험·관리사무소/고객).','evidence',issued('evidence')||('사진 '+ph+'장 · 견적 '+anyQuote+'건 · 입금 '+pays.length+'건'),issued('evidence')?'ok':'')+
     group('아파트·행정')+
-    item('🏢','공사 신청서 · 입주민 안내문 · 엘리베이터 게시문 · 이웃 동의서','아파트 4종 — 앱 안에서 작성.','todo:apt','','')+
+    item('🏢','공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서'+NEW,'아파트 4종 — 단지·동·호수·기간·공종이 채워지고, 4종 ZIP·관리사무소 문자 초안까지.','aptdocs',(function(){const u=hjAptUnitOf(p);const n=Object.keys(HJ_APT_DOC_TYPES).filter(t=>hjDocLogsOf(p,t).length).length;return (u.dong?escapeHtml((u.complex?u.complex+' ':'')+u.dong+'동 '+u.ho+'호'):'동·호수 없음')+(n?' · 발행 '+n+'/4':'');})(),hjAptUnitOf(p).dong?'':'warn')+
     group('보관')+
     item('📦','서류 묶음 ZIP','사진·견적·보고서를 한 파일로. 보관·세무·분쟁 대비용.','zip',logs.length?'발행 문서 '+logs.length+'건 포함':'','')+
     item('📕','PDF 묶음','사진·서류를 PDF 한 장으로 이어붙입니다.','pdf','','')+
@@ -39011,6 +39016,7 @@ function docHubView(pjName){
         else if(a==='evidence')hjEvidenceView(pjName);   // v427
         else if(a==='damage'){if(leak)hjInsDamageView(pjName);else toast('누수 현장에서만 만들 수 있어요');}   // v442
         else if(a==='insclaim'){if(leak)hjInsClaimView(pjName);else toast('누수 현장에서만 열 수 있어요');}
+        else if(a==='aptdocs')hjAptDocsView(pjName);   // v441
       }catch(e){toast('열 수 없어요: '+(e.message||e));}
     },80);
   };});
@@ -39586,7 +39592,7 @@ function hjEvidenceLedgerRows(p){
 }
 function hjEvidenceDocsText(p){
   const logs=hjDocLogs(p);if(!logs.length)return '발행 문서 기록 없음';
-  return logs.map(r=>'· '+(HJ_DOC433_TYPES[r.type]?HJ_DOC433_TYPES[r.type].t:r.type)+' '+r.no+' · '+(hjPhotoKoreanDay({when:r.at})||'')+(r.purpose?' · '+r.purpose:'')).join('\n');
+  return logs.map(r=>'· '+(HJ_DOC433_TYPES[r.type]?HJ_DOC433_TYPES[r.type].t:(HJ_APT_DOC_TYPES[r.type]||r.type))+' '+r.no+' · '+(hjPhotoKoreanDay({when:r.at})||'')+(r.purpose?' · '+r.purpose:'')).join('\n');
 }
 /* 묶음 계획 — 읽기 전용. 어떤 파일이 어떤 이름으로 들어가고 무엇이 빠지는지 먼저 보여 준다. */
 function hjEvidencePlan(name,input){
@@ -41313,6 +41319,151 @@ function hjWarrantyCareView(){
     state.notes=state.notes||[];state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[보증 안부] '+r.items.join('·')+' 만료 '+r.expiresAt+' 앞두고 안부 문자 (D-'+r.left+')',project:r.name});
     markDirty();render();toast('🛡 '+r.name+' — 안부 기록, '+HJ_WCARE_HIDE_DAYS+'일 동안 숨김');hjWarrantyCareView();});
   return rows;
+}
+/* ═══ v441 아파트 서류 4종 — 공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서 ═══
+   단지·동·호수는 현장 이름(aptNameParse)이나 고객 주소의 "○동 ○호"에서, 관리사무소는 🏢 아파트 관리(state.aptOffices)에서, 공사 기간·소음 작업일은
+   일정표에서, 공종은 최근 견적 품목 위 5개에서 채운다(고칠 수 있음). 출력은 기존 문서 엔진(hjDocShell/hjDocDeliverView), 발행 기록은 v433 자리 p.docs
+   (type aptapply/aptnotice/aptpost/aptconsent, AA/AN/AP/AC 번호). 동의서는 세대 칸만, 이름은 자필란으로 비운다. 고객 이름·전화는 싣지 않는다
+   (연락처는 만물인테리어 대표 번호). 관리사무소 자체 양식은 파일로만 보관(현장 안 p.aptForm 참조) — 자동 채움은 하지 않는다. 자동 발송 없음. */
+const HJ_APT_DOC_TYPES=Object.freeze({aptapply:'공사 신청서',aptnotice:'입주민 안내문',aptpost:'현관 게시문',aptconsent:'이웃 동의서'});
+const HJ_APT_NOISY_RE=/철거|타공|코어|할석|해체|브레이커|드릴|천공|까대기/;
+const HJ_APT_COMPLEX_RE=/아파트|APT|타운|빌라|맨션|하이츠|캐슬|자이|푸르지오|힐스테이트|래미안|편한세상|아이파크|더샵|센트럴|파크|스카이|리버|시티|마을|단지/i;
+/* 단지·동·호수 — 이름 → 고객 주소 순. 못 찾으면 빈칸(앱이 지어내지 않는다). */
+function hjAptUnitOf(p){
+  const byName=aptNameParse(p&&p.name);if(byName)return {complex:byName.complex,dong:byName.dong,ho:byName.ho,from:'name'};
+  const addr=String((p&&p.customer||{}).addr||''),m=/(\d{1,4})\s*동\s*(\d{1,4})\s*호/.exec(addr);
+  if(!m)return {complex:'',dong:'',ho:'',from:''};
+  const before=addr.slice(0,m.index).trim().split(/\s+/).filter(Boolean),hit=before.slice().reverse().find(w=>HJ_APT_COMPLEX_RE.test(w));
+  return {complex:hit||before[before.length-1]||'',dong:String(Number(m[1])),ho:String(Number(m[2])),from:'addr'};
+}
+function hjAptOfficeOf(complex){const k=aptComplexKey(complex);return k?(state.aptOffices||[]).find(o=>o&&aptComplexKey(o.complex)===k)||null:null;}
+function hjAptSchedRows(p){return (state.schedule||[]).filter(s=>s&&s.project===p.name&&isRealIsoDate(String(s.date||''))&&!/^💰/.test(String(s.title||''))&&!s._taxAuto);}
+/* 모델 — 읽기 전용. input 은 화면에서 고친 값. */
+function hjAptDocModel(name,input){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
+  const o=input&&typeof input==='object'?input:{},u=hjAptUnitOf(p),office=hjAptOfficeOf(u.complex);
+  const rows=hjAptSchedRows(p),days=[];rows.forEach(s=>{const sp=hjSchSpan(s);let d=sp.from;for(let i=0;i<60&&d<=sp.to;i++){days.push(d);d=hjAddDays(d,1);}});
+  days.sort();const noisy=[...new Set(rows.filter(s=>HJ_APT_NOISY_RE.test(String(s.title||'')+' '+String(s.memo||''))).map(s=>s.date))].sort();
+  const q=(state.quotes||[]).filter(x=>x&&x.project===name).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0];
+  const works=q?quoteRealItems(q).map(it=>String(it.name||'').trim()).filter(Boolean).slice(0,5):[];
+  const pick=(k,v)=>typeof o[k]==='string'?o[k].trim():v;
+  return {project:name,complex:pick('complex',u.complex),dong:pick('dong',u.dong),ho:pick('ho',u.ho),unitFrom:u.from,office,officeName:office?office.complex+' 관리사무소':(u.complex?u.complex+' 관리사무소':'관리사무소'),
+    from:pick('from',days[0]||''),to:pick('to',days[days.length-1]||''),hours:pick('hours','09:00~18:00'),noisyHours:pick('noisyHours','10:00~17:00'),noisy:Array.isArray(o.noisy)?o.noisy:noisy,
+    works:typeof o.works==='string'?o.works.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,8):works,elevator:pick('elevator','사용 (바닥·벽 보양 후, 자재 반입 때만)'),route:pick('route','지하주차장 → 엘리베이터 → 세대'),
+    waste:pick('waste','당일 마대 포장 후 업체 수거 — 단지 안에 쌓아 두지 않음'),contact:COMPANY.owner+' '+COMPANY.tel,day:localDate()};
+}
+function hjAptUnitText(m){return [m.complex,m.dong?m.dong+'동':'',m.ho?m.ho+'호':''].filter(Boolean).join(' ');}
+function hjAptPeriodText(m){return m.from?(hjDocDate(m.from)+(m.to&&m.to!==m.from?' ~ '+hjDocDate(m.to):'')):'';}
+function hjAptApplyHtml(m){
+  const row=(k,v)=>hjDoc433Row(k,v);
+  const inner='<div class="prow"><span><b>제출처</b>'+escapeHtml(m.officeName)+'</span><span><b>작성일</b>'+hjDocDate(m.day)+'</span></div>'+
+    '<table class="items"><tbody>'+row('세대',hjDoc433Cell(hjAptUnitText(m),200))+row('공사 기간',hjDoc433Cell(hjAptPeriodText(m),200))+row('공종',hjDoc433List(m.works))+
+    row('작업 시간','평일 '+escapeHtml(m.hours)+' · 소음 작업 '+escapeHtml(m.noisyHours))+row('소음 작업일',m.noisy.length?escapeHtml(m.noisy.map(d=>hjMdDow(d)).join(', ')):hjDoc433Cell('',160))+
+    row('엘리베이터',escapeHtml(m.elevator))+row('자재 반입',escapeHtml(m.route))+row('폐기물',escapeHtml(m.waste))+row('소음 안내','엘리베이터 게시문·현관 게시문 부착, 위·아래·옆 세대 사전 안내')+
+    row('시공 업체',escapeHtml(COMPANY.name)+' · 대표 '+escapeHtml(COMPANY.owner))+row('비상 연락처',escapeHtml(COMPANY.tel))+'</tbody></table>'+
+    '<div style="font-size:13px;line-height:1.8;margin:6px 0 12px">위와 같이 세대 내부 공사를 신청합니다. 관리 규약과 안내 사항을 지키겠습니다.</div>'+
+    hjDoc433SignRow({title:'신청인 (시공 업체)',body:'상호 : '+escapeHtml(COMPANY.name)+'<br>대표 : '+escapeHtml(COMPANY.owner)},{title:'세대주',body:'세대 : '+hjDoc433Cell(hjAptUnitText(m),140)+'<br>성명 : '+hjDoc433Cell('',120)});
+  return hjDocShell('세대 내부 공사 신청서',inner,'#0e7490');
+}
+function hjAptNoticeHtml(m){
+  const inner='<div data-apt-notice style="text-align:center;line-height:1.6"><div style="font-size:26px;font-weight:800;margin:6px 0 14px">입주민 여러분께 양해 말씀 드립니다</div>'+
+    '<div style="font-size:21px;margin-bottom:10px"><b>'+escapeHtml(hjAptUnitText(m)||'세대')+'</b> 내부 공사</div>'+
+    '<div style="font-size:20px;margin-bottom:8px">기간 <b>'+escapeHtml(hjAptPeriodText(m)||'(일정 확정 후 안내)')+'</b></div>'+
+    '<div style="font-size:18px;margin-bottom:8px">작업 시간 '+escapeHtml(m.hours)+' (소음 작업 '+escapeHtml(m.noisyHours)+')</div>'+
+    (m.noisy.length?'<div style="font-size:19px;margin:12px 0;padding:10px;border:3px solid #c2410c;border-radius:12px;color:#9a3412"><b>소음이 큰 날</b><br>'+escapeHtml(m.noisy.map(d=>hjMdDow(d)).join(' · '))+'</div>':'')+
+    '<div style="font-size:17px;margin:14px 0">공사 중 불편을 드려 죄송합니다. 소음·분진을 줄이도록 조심하겠습니다.</div>'+
+    '<div style="font-size:19px;margin-top:10px">문의 <b>'+escapeHtml(COMPANY.name)+' '+escapeHtml(COMPANY.tel)+'</b></div></div>';
+  return hjDocShell('공 사 안 내',inner,'#0e7490');
+}
+function hjAptPostHtml(m){
+  const card='<div data-apt-post style="border:3px dashed #0e7490;border-radius:14px;padding:16px;margin:0 0 14px;text-align:center;min-height:280px;display:flex;flex-direction:column;justify-content:center;gap:8px">'+
+    '<div style="font-size:30px;font-weight:900;letter-spacing:4px">공 사 중</div><div style="font-size:18px">'+escapeHtml(hjAptUnitText(m)||'세대')+'</div>'+
+    '<div style="font-size:17px">'+escapeHtml(hjAptPeriodText(m)||'')+'</div><div style="font-size:15px">작업 '+escapeHtml(m.hours)+'</div>'+
+    '<div style="font-size:16px;font-weight:700">'+escapeHtml(COMPANY.name)+' '+escapeHtml(COMPANY.tel)+'</div></div>';
+  return hjDocShell('현관 게시문',card+card,'#0e7490');
+}
+function hjAptConsentHtml(m){
+  const rows=Array.from({length:6},(_,i)=>'<tr data-apt-consent-row><td class="c" style="width:36px">'+(i+1)+'</td><td style="width:150px">'+hjDoc433Cell('',120)+'</td><td>'+hjDoc433Cell('',120)+'</td><td style="width:110px">'+hjDoc433Cell('',80)+'</td></tr>').join('');
+  const inner='<div class="prow"><span><b>공사 세대</b>'+escapeHtml(hjAptUnitText(m)||'')+'</span><span><b>기간</b>'+escapeHtml(hjAptPeriodText(m)||'')+'</span></div>'+
+    '<div style="font-size:13px;line-height:1.8;margin-bottom:10px">위 세대에서 내부 공사('+escapeHtml(m.works.slice(0,3).join(', ')||'인테리어')+')를 진행합니다. 작업 시간은 '+escapeHtml(m.hours)+'(소음 작업 '+escapeHtml(m.noisyHours)+')이며, 소음·분진을 줄이도록 조심하겠습니다. 공사 진행에 동의해 주시면 아래에 적어 주세요.</div>'+
+    '<table class="items"><thead><tr><th>#</th><th>세대 (동·호수)</th><th>서명</th><th>날짜</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="note">수집 항목은 세대와 서명뿐이며 공사 동의 확인에만 씁니다. 문의 '+escapeHtml(COMPANY.name)+' '+escapeHtml(COMPANY.tel)+'</div>';
+  return hjDocShell('이웃 세대 공사 동의서',inner,'#0e7490');
+}
+const HJ_APT_DOC_HTML=Object.freeze({aptapply:hjAptApplyHtml,aptnotice:hjAptNoticeHtml,aptpost:hjAptPostHtml,aptconsent:hjAptConsentHtml});
+/* 발행 기록 — 4종을 한 번에(원자 저장) 남기고 노트 한 줄. 같은 종류를 이미 오늘 발행했으면 다시 남기지 않는다. */
+async function hjAptDocsIssue(name,types){
+  const list=(types||[]).filter(t=>HJ_APT_DOC_TYPES[t]);if(!list.length)return {added:0};
+  const day=localDate();
+  return durableLocalMutation({snapshotLabel:'아파트 서류 발행 기록 전',mutateDraft:draft=>{
+    const rows=(draft.projects||[]).filter(x=>x&&x.name===name),target=rows.length===1?rows[0]:null;if(!target)throw new Error('현장을 찾을 수 없습니다.');
+    if(target.docs!=null&&!Array.isArray(target.docs))throw new Error('기존 문서 기록 형식을 확인해 주세요.');
+    const docs=Array.isArray(target.docs)?target.docs.slice():[],at=new Date().toISOString(),added=[];
+    list.forEach(t=>{if(docs.some(r=>r&&r.type===t&&String(r.at||'').slice(0,10)===day))return;const pre={aptapply:'AA',aptnotice:'AN',aptpost:'AP',aptconsent:'AC'}[t];
+      let max=0;(draft.projects||[]).forEach(x=>(Array.isArray(x&&x.docs)?x.docs:[]).forEach(r=>{const m=new RegExp('^'+pre+'-'+day.replace(/-/g,'')+'-(\\d{2,})$').exec(String(r&&r.no||''));if(m)max=Math.max(max,Number(m[1]));}));
+      const rec={type:t,no:pre+'-'+day.replace(/-/g,'')+'-'+String(max+1).padStart(2,'0'),at,purpose:'apt',name:HJ_APT_DOC_TYPES[t]};docs.push(rec);added.push(rec);});
+    if(!added.length)return {added:0};
+    target.docs=docs;draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[아파트 서류] '+day.slice(5).replace('-','/')+' '+(added.length===4?'4종':added.map(r=>r.name).join('·'))+' 발행',project:name});
+    return {added:added.length,records:added};
+  }});
+}
+function hjAptDocsSms(m){return '['+COMPANY.name+'] '+m.officeName+' 담당자님, '+(hjAptUnitText(m)||'세대')+' 내부 공사 신청 서류 보내드립니다. 기간 '+(hjAptPeriodText(m)||'협의')+'. 확인 부탁드립니다. '+COMPANY.owner+' '+COMPANY.tel;}
+async function hjAptDocsZip(name,m){
+  let JSZipC;try{JSZipC=await ensureJSZip();}catch(e){toast('압축 모듈을 불러오지 못했어요');return false;}
+  const zip=new (JSZipC||window.JSZip)(),base=safeName((hjAptUnitText(m)||name)+'_아파트서류_'+localDate());
+  Object.keys(HJ_APT_DOC_TYPES).forEach((t,i)=>zip.file('0'+(i+1)+'_'+HJ_APT_DOC_TYPES[t]+'.html',HJ_APT_DOC_HTML[t](m)));
+  const p=(state.projects||[]).find(x=>x&&x.name===name),form=p&&p.aptForm&&p.aptForm.fileRef?hjFilesByRefs([p.aptForm.fileRef]).files[0]:null;
+  if(form){try{const blob=await getFileOf(form);if(blob)zip.file('05_관리사무소양식_'+safeName(form.name),blob);}catch(e){}}
+  const blob=await zip.generateAsync({type:'blob'});hjLeakReportDownload(blob,base+'.zip');
+  try{const r=await hjAptDocsIssue(name,Object.keys(HJ_APT_DOC_TYPES));if(r&&r.added)webWorkMarkDirtyAfterPersist();}catch(e){toast('발행 기록 실패: '+(e&&e.message||e));}
+  return true;
+}
+async function hjAptFormAttach(name,file){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!file)return null;
+  let rec;try{rec=await ingestFile(file);}catch(e){toast('첨부하지 못했어요: '+(e&&e.message||e));return null;}
+  rec.kind='other';rec.project=name;p.aptForm={fileRef:hjFileRef(rec),name:String(rec.name||'').slice(0,80),at:localDate()};markDirty();return rec;
+}
+function hjAptDocsView(name,resume){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const s=resume&&typeof resume==='object'?resume:{},m=hjAptDocModel(name,s),issued=t=>{const r=hjDocLogsOf(p,t);return r.length?r[r.length-1].no:'';};
+  const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
+  const body='<div id="hjAptDocs" style="min-width:0;overflow-wrap:anywhere">'+
+    '<p class="hint" style="margin:0 0 4px">현장·일정·견적에서 채웠어요 — 고칠 수 있어요. 고객 이름·전화는 넣지 않고 연락처는 '+escapeHtml(COMPANY.tel)+' 입니다.</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:2;min-width:150px">'+F('adComplex','단지',m.complex)+'</div><div style="flex:1;min-width:70px">'+F('adDong','동',m.dong,'type="text" inputmode="numeric"')+'</div><div style="flex:1;min-width:70px">'+F('adHo','호',m.ho,'type="text" inputmode="numeric"')+'</div></div>'+
+    '<div data-ad-office style="font-size:12.5px;margin-top:6px">🏢 '+escapeHtml(m.officeName)+(m.office?(m.office.manager?' · '+escapeHtml(m.office.manager):'')+(m.office.phone?' · '+escapeHtml(m.office.phone):''):' <span style="color:var(--muted)">(🏢 아파트 관리에 단지를 등록하면 담당자·번호가 채워져요)</span>')+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+F('adFrom','공사 시작',m.from,'type="date"')+'</div><div style="flex:1;min-width:140px">'+F('adTo','공사 끝',m.to,'type="date"')+'</div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+F('adHours','작업 시간',m.hours)+'</div><div style="flex:1;min-width:140px">'+F('adNoisyHours','소음 작업 시간',m.noisyHours)+'</div></div>'+
+    '<div data-ad-noisy style="font-size:12.5px;margin-top:6px">🔊 소음 작업일(일정의 철거·타공): '+(m.noisy.length?escapeHtml(m.noisy.map(d=>hjMdDow(d)).join(', ')):'<span style="color:var(--muted)">없음</span>')+'</div>'+
+    '<label for="adWorks" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">공종 (한 줄에 하나)</label><textarea id="adWorks" rows="3" style="width:100%;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(m.works.join('\n'))+'</textarea>'+
+    F('adElevator','엘리베이터',m.elevator)+F('adRoute','자재 반입 경로',m.route)+F('adWaste','폐기물 처리',m.waste)+
+    '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">서류</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">'+Object.keys(HJ_APT_DOC_TYPES).map(t=>'<button type="button" class="ghost" data-ad-doc="'+t+'" style="min-height:44px;text-align:left;padding:8px 10px;white-space:normal"><b>'+HJ_APT_DOC_TYPES[t]+'</b>'+(issued(t)?'<br><span style="font-size:11px;color:#0a7f43">발행 '+issued(t)+'</span>':'')+'</button>').join('')+'</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="ghost tiny" id="adForm" style="min-height:44px">📎 관리사무소 양식 넣기</button>'+(p.aptForm&&p.aptForm.name?'<span data-ad-form style="font-size:12px;align-self:center">보관: '+escapeHtml(p.aptForm.name)+'</span>':'')+'<input type="file" id="adFormFile" accept=".pdf,image/*,.hwp,.doc,.docx" hidden></div></div>';
+  openModal('🏢 아파트 서류 4종 — '+name,body,[{label:'📦 4종 ZIP',cls:'clay',fn:async()=>{read();await hjAptDocsZip(name,hjAptDocModel(name,s));hjAptDocsView(name,s);}},{label:'💬 관리사무소 문자',cls:'ghost',fn:()=>{read();const mm=hjAptDocModel(name,s);hjSendSms(mm.office&&mm.office.phone||'',hjAptDocsSms(mm));}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjAptDocs');
+  const read=()=>{[['complex','#adComplex'],['dong','#adDong'],['ho','#adHo'],['from','#adFrom'],['to','#adTo'],['hours','#adHours'],['noisyHours','#adNoisyHours'],['elevator','#adElevator'],['route','#adRoute'],['waste','#adWaste']].forEach(([k,sel])=>{const el=root.querySelector(sel);if(el)s[k]=el.value;});s.works=root.querySelector('#adWorks').value;return s;};
+  root.querySelectorAll('[data-ad-doc]').forEach(b=>b.onclick=()=>{read();const t=b.dataset.adDoc,mm=hjAptDocModel(name,s),html=HJ_APT_DOC_HTML[t](mm);
+    hjDocDeliverView(name,html,safeName((hjAptUnitText(mm)||name)+'_'+HJ_APT_DOC_TYPES[t]+'_'+localDate()),'🏢 '+HJ_APT_DOC_TYPES[t],()=>hjAptDocsView(name,s),{image:true,onDeliver:()=>{hjAptDocsIssue(name,[t]).then(r=>{if(r&&r.added)webWorkMarkDirtyAfterPersist();}).catch(e=>toast('발행 기록 실패: '+(e&&e.message||e)));}});});
+  const fileEl=root.querySelector('#adFormFile');
+  root.querySelector('#adForm').onclick=()=>fileEl.click();
+  fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;read();const rec=await hjAptFormAttach(name,f);if(rec)toast('📎 관리사무소 양식 보관 — ZIP 에 같이 들어가요');hjAptDocsView(name,s);};
+  return m;
+}
+/* 대시보드 할 일 — 아파트 현장(단지·동·호수를 알 수 있음)이고 시공 시작이 오늘~3일 뒤인데 신청서를 아직 안 낸 곳. 읽기 전용. */
+function hjAptDocsDue(today){
+  today=today||localDate();const lim=hjAddDays(today,3);
+  return (state.projects||[]).filter(p=>{
+    if(!p||p.archived||p.anon)return false;const u=hjAptUnitOf(p);if(!u.dong||!u.ho)return false;
+    const first=hjAptSchedRows(p).map(s=>s.date).sort()[0];if(!first||first<today||first>lim)return false;
+    return !hjDocLogsOf(p,'aptapply').length;
+  }).map(p=>({name:p.name,start:hjAptSchedRows(p).map(s=>s.date).sort()[0]}));
+}
+function hjAptDocsDueHtml(){
+  let rows=[];try{rows=hjAptDocsDue();}catch(e){rows=[];}
+  if(!rows.length)return '';
+  const today=localDate();
+  return rows.slice(0,2).map(r=>'<p data-aptdocs-due style="margin:0 0 7px;font-size:13.5px">🏢 관리사무소 서류 4종 만들기 — '+escapeHtml(r.name)+' (시공 D-'+Math.round((new Date(r.start+'T00:00:00')-new Date(today+'T00:00:00'))/86400000)+') <button type="button" class="clay tiny" data-aptdocs-open="'+escapeAttr(r.name)+'" style="min-height:44px">서류 4종</button></p>').join('');
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}

@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v441 아파트 서류 4종 (공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서)
+
+- hjAptUnitOf: 단지·동·호수는 현장 이름(aptNameParse) → 고객 주소의 "○동 ○호"(단지는 그 앞 낱말 중 아파트·파크·자이 … 가 든 것) 순, 못 찾으면 빈칸. 관리사무소는 state.aptOffices(aptComplexKey 같음), 공사 기간은 그 현장 일정(hjSchSpan 여러 날 포함) 처음~끝, 소음 작업일은 일정 제목·메모의 철거·타공·코어·할석 …, 공종은 최근 견적 품목 위 5개. 화면(hjAptDocsView)에서 모두 고칠 수 있다. 작업 시간 기본 09:00~18:00, 소음 작업 10:00~17:00.
+- 4종 HTML(hjAptApplyHtml/NoticeHtml/PostHtml/ConsentHtml, hjDocShell)은 고객 이름·전화를 싣지 않고 연락처는 회사 번호. 동의서는 세대·서명·날짜 6칸 모두 빈칸(이름 자필), 게시문은 1쪽에 2개. 발행 기록은 v433 자리 p.docs(type aptapply/aptnotice/aptpost/aptconsent, AA/AN/AP/AC-날짜-순번) — 문서 하나는 실제로 가져갈 때, [📦 4종 ZIP]은 ZIP을 만든 뒤 4건을 원자 저장(durableLocalMutation) + 노트 "[아파트 서류] MM/DD 4종 발행". 같은 날 같은 종류는 두 번 남기지 않는다. ZIP 에는 보관한 관리사무소 양식도 들어간다.
+- 관리사무소 자체 양식은 [📎 관리사무소 양식 넣기] → 기존 파일(기타, 그 현장)로 넣고 현장 안 p.aptForm{fileRef,name,at} 로만 가리킨다(p.docs 에 섞지 않음, 자동 채움 없음). [💬 관리사무소 문자]는 등록된 관리사무소 번호로 초안만.
+- 첫 화면 "오늘 현장 업무"에 아파트 현장(동·호수 앎) 시공 시작 오늘~3일 뒤 + 신청서 미발행이면 "🏢 관리사무소 서류 4종 만들기 — 현장 (시공 D-n)"(data-aptdocs-open 위임). 🏢 아파트 관리 단지 카드 현장 줄에 [📄 서류 4종]. 📎 서류 만들기의 예정 줄(todo:apt)을 실제 항목 aptdocs 로 바꿨다(doccenter-v433 예정 줄 단언 5→4).
+- 데모(loadDemo)에 '은행동 한빛아파트 101동 702호'(시공 D-2·D-3 일정) 추가 — settings-safety 의 데모 현장 수 단언 3→4.
+- 핀3곳 hyeonjang-v441-aptdocs(v438 위). 신규 tests/aptdocs-v441.e2e.js 3/3, 변이 no-unit·기준선 실패 확인, 관련 10개(doccenter-v433/apartment-manage/apartment-units/action-search/amount-sign/mobile-tap-table/settings-safety/trip-expense-overlap/evidence-v427/insurance-v442)·정적 21개 통과. apartment-projects 는 이 컨테이너에서만 실패하는 환경 문제(PC·CI 확인).
+
 ## 2026-10-16 v438 보증 만료 전 안부 · AS 무상/유상 판정 도움
 
 - 보증 만료 안부(hjWarrantyCareRows): 현장 보증 항목(hjWarranty items — 기본 방수 3년·설비 2년·마감·전기 1년, 사용자 보증은 저장된 expiresAt)마다 오늘 이후 가장 이른 만료가 60일 안이면 대상, 30일 안이면 30 단계. 첫 화면 "오늘 현장 업무"(dashboardTodoHTML)에 "🛡 보증 만료 앞둔 현장 n곳"(data-wcare, [안부 문자] data-wcare-open 클릭 위임). 문자는 초안만(msgCenterCompose kind warrantycare) — "준공 후 N년이 되어 갑니다 … 보증이 MM/DD까지예요 … 점검 방문 가능 시간 ① ② "(이틀 뒤부터 평일 둘, 오전 10시·오후 2시). [✅ 보냈음] → 현장 노트 [보증 안부] + 현장 안 p.warrantyCare{at,item,stage}, 30일 숨김(29일째 숨김·30일째 다시).

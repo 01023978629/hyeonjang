@@ -89,7 +89,7 @@ async function boot(page, navigate = true) {
     await page.evaluate(() => { state.projects.push({ name: '방금 추가 TEST', stage: 1, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 } }); markDirty(); });
     page.once('dialog', d => d.accept());
     await page.click('#btnDemo');
-    await page.waitForFunction(() => state._demo === true && state.projects.length === 3);
+    await page.waitForFunction(() => state._demo === true && state.projects.length === 4)   /* v441 데모에 아파트 현장(시공 D-2) 1곳 추가 */;
     const snap = await page.evaluate(async () => {
       const s = (await idbGet('hj_snaps')) || [];
       const d = s.filter(x => x.label === '데모 보기 전').pop();
@@ -178,7 +178,7 @@ async function boot(page, navigate = true) {
     const txt = await page.evaluate(() => document.getElementById('modalRoot').textContent);
     assert(!/설정에서 지우고/.test(txt) && /저장되지 않/.test(txt) && /데모 끝내기/.test(txt), '⑤ 첫 안내가 실제 빠져나오는 길을 말한다: ' + txt.slice(0, 200));
     await page.evaluate(() => { const b = [...document.querySelectorAll('#modalRoot button')].find(x => x.textContent.trim() === '예시 넣기'); b.click(); });
-    await page.waitForFunction(() => state._demo === true && state.projects.length === 3);
+    await page.waitForFunction(() => state._demo === true && state.projects.length === 4)   /* v441 데모에 아파트 현장(시공 D-2) 1곳 추가 */;
     assert(dialogs.length === 0, '⑤ 빈 기기는 묻지 않는다: ' + JSON.stringify(dialogs));
     assert(await page.evaluate(() => !!document.getElementById('hjDemoBar')), '⑤ 첫 안내로 연 데모에도 표시 띠가 뜬다');
     const ov = await page.evaluate(() => { const b = document.getElementById('hjDemoBar'); return { doc: document.documentElement.scrollWidth - document.documentElement.clientWidth, bar: b.scrollWidth - b.clientWidth }; });
@@ -241,7 +241,7 @@ async function boot(page, navigate = true) {
     const dlg = [];
     page.once('dialog', d => { dlg.push(d.message()); d.accept(); });
     await page.click('#btnDemo');
-    await page.waitForFunction(() => state._demo === true && state.projects.length === 3);
+    await page.waitForFunction(() => state._demo === true && state.projects.length === 4)   /* v441 데모에 아파트 현장(시공 D-2) 1곳 추가 */;
     assert(/폴더/.test(dlg[0] || '') && /다시 연결/.test(dlg[0] || ''), 'A⑩ 폴더를 연결한 기기는 끝낼 때 다시 연결해야 한다고 묻는 글에 적는다: ' + dlg[0]);
     const barTxt = await page.evaluate(() => (document.getElementById('hjDemoBar') || {}).textContent || '');
     assert(/폴더는 다시 연결/.test(barTxt), 'A⑩ 데모 띠도 폴더 재연결을 말한다: ' + barTxt);
