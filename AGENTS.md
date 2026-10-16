@@ -3,6 +3,17 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v448 🌦 계절 캠페인 — 장마 전 방수 점검 · 겨울 동파 · 환절기 결로 · 명절·새학기 전 도배 (대상 추출 + 원고)
+
+- 자동 발송 없음 — 명단(번호 줄바꿈)·문자 원고·인스타/당근 글을 복사해 대표가 문자 앱에서 보낸다. 기록은 연락처 안 c.mkt{consent,optOutAt,lastSentAt,sent[{c,at}]≤12}와 기존 state.adPosts(ch:'sms-season', campaign, count) 뿐 — 새 최상위 키 없음. 추출·원고는 읽기 전용(검사가 저장본 비교).
+- 광고 문자 규칙 HJ_AD_SMS_RULE(화면에 그대로): (광고) 머리 · 끝 "수신거부: 이 번호로 '거부' 회신" · 밤 9시~아침 8시 경고(hjSeasonNight — 복사할 때도 토스트) · 받는 사람은 ① 동의(c.mkt.consent) ② 거래 중 또는 거래 끝난 지 183일 안(hjSeasonRecentDeal — 그 번호의 모든 현장의 준공일·입금일, 진행 중이면 거래 중; 변이 six-month 가 SEASON_SIX_MONTH_RULE 에서 잡는다). 그 밖은 '동의 필요'로 회색·선택 불가, 수신거부 영구 제외, 90일 안 발송 제외, 한 번호 한 줄, 번호 없는 현장은 개수만.
+- 캠페인 4종 HJ_SEASON_CAMPAIGNS(시기 창·규칙·문자·SNS 문구) + 규칙 HJ_SEASON_RULES(leak13 누수 1~3년 전 · waterproof 방수/욕실/베란다/외벽 준공 · leakcomplex v445 반복 누수 단지의 관리사무소(state.aptOffices 번호) · outdoorpipe 보일러·동파·계량기·외부/베란다 수전 · leakpipe 누수 배관 원인 · condense 도배·단열·환풍기·결로·곰팡이(노트 포함) · old2y 준공 2년+ 인테리어 · partial 부분·실리콘·보수). 판정 텍스트는 현장 이름·공정·앱 견적 품목. 이름은 성+○○ 님, 관리사무소는 '단지 관리사무소'.
+- 화면 hjSeasonView(📣 광고 탭 [🌦 계절 캠페인] data-season · 첫 화면 시기 줄 hjSeasonDueHtml data-season-open — 시기 창 안이고 60일 안 발송 없을 때): 규칙 안내·밤 경고·캠페인 고르기·명단(체크, 기본은 보낼 수 있는 사람 전부)·건당 단가(localStorage hj_sms_unit_cost)·예상 비용·원고(글자 수, 70자 넘으면 장문)·복사 3종·[✅ 보냈음](확인 → lastSentAt·sent·adPosts 1건)·행마다 [🚫 거부]. 원고 복사는 hjSeasonIssue 통과해야 — 과장 표현(HJ_AD_BANNED)·(광고)/수신거부 지움·SNS 전화번호면 막는다.
+- 내 캠페인: [✏ 이 틀로 내 캠페인] → 이 기기 localStorage hj_season_custom(제목·기간·규칙·문구만, 과장 표현·개인정보 검사). 연락처 카드 [📣](data-conmkt → hjMktView): 동의 받음(오늘 — 수신거부 지움)·수신거부 처리, 카드에 상태 줄. 연락처가 없던 현장 고객·관리사무소는 보냈음/거부/동의 때 최소 연락처(이름·번호·꼬리표)를 만든다.
+- 동의 문의 한 줄(기본 꺼짐): 간이영수증 입력 #prcMktAsk → 문서 끝 □ 줄(HJ_MKT_ASK_LINE), 문자 센터 '준공 인사' #mcMktAsk → 본문 끝 질문(HJ_MKT_ASK_SMS) 넣고 빼기만. 고객이 동의하면 대표가 연락처 📣 에서 기록.
+- 성과 hjSeasonPerf(읽기): 보낸 날(adPosts) 뒤 30일 안에 그 캠페인을 받은 번호(c.mkt.sent)의 문의·수주 → v445 분석 화면 '🌦 계절 캠페인 성과' 표(엑셀 시트는 3개 그대로).
+- 핀3곳 hyeonjang-v448-season(v437 위). 신규 tests/season-v448.e2e.js 4/4(합성 30명·관리사무소 1, 캠페인별 기대 명단은 검사 쪽 손 계산), 변이 six-month·기준선 실패 확인, 관련 14개(instanotel-v415/leadsrc-v379/pay-receipt/insight-v445/contactimport-v397/contactpick-v393/dash-cards/marketing-draft/marketing-safety/inqpending-v386/doccenter-v433/publicweb-v446/proposal-v437/mobile-more-tools)·정적 통과. instanotel-v415 의 CHANNEL_TOUCH_HEIGHT_44 는 모달 열림 애니메이션 중 boundingBox 를 재서 가끔 실패한다(v437 판에서도 3번 중 1번) — 이번 변경과 무관.
+
 ## 2026-10-16 v437 📊 견적 비교표 · 견적 비교 제안서 · 고객 폰으로 보내기
 
 - 안 이름 q.tier('basic'|'standard'|'premium', 없으면 칸 없음) — 견적 편집기 [안 (비교표)] 칸(#qmTier), 견적 목록 카드에 '기본안' 배지(data-qtier). 새 최상위 키 없음.
