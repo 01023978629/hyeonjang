@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v438 보증 만료 전 안부 · AS 무상/유상 판정 도움
+
+- 보증 만료 안부(hjWarrantyCareRows): 현장 보증 항목(hjWarranty items — 기본 방수 3년·설비 2년·마감·전기 1년, 사용자 보증은 저장된 expiresAt)마다 오늘 이후 가장 이른 만료가 60일 안이면 대상, 30일 안이면 30 단계. 첫 화면 "오늘 현장 업무"(dashboardTodoHTML)에 "🛡 보증 만료 앞둔 현장 n곳"(data-wcare, [안부 문자] data-wcare-open 클릭 위임). 문자는 초안만(msgCenterCompose kind warrantycare) — "준공 후 N년이 되어 갑니다 … 보증이 MM/DD까지예요 … 점검 방문 가능 시간 ① ② "(이틀 뒤부터 평일 둘, 오전 10시·오후 2시). [✅ 보냈음] → 현장 노트 [보증 안부] + 현장 안 p.warrantyCare{at,item,stage}, 30일 숨김(29일째 숨김·30일째 다시).
+- AS 판정 도움(hjAsJudge·hjAsJudgeView, 🔧 AS 관리 기록 펼침의 [⚖ 무상·유상 판정 도움]): 5질문(보증 기간·같은 부위·과실/외부 요인·소모품·시공 범위, 예/아니요/모름) → 과실·외부 요인 → 유상, 범위 밖 → 유상, 기간 지남 → 유상, 소모품 → 현장 확인, 다른 부위 → 현장 확인, 모름 남음 → 현장 확인, 모두 맞으면 무상. 보증 기간 답은 AS 기록의 공종(hjAsWarrantyVerdict)에서 먼저 채운다. 최종 판정은 사람이 바꿀 수 있고(suggested 와 함께 저장), 저장은 AS 레코드 안 a.verdict{result,reasons,answers,suggested,at} + 노트 [AS 판정]. 고객 안내 문자 초안은 금액 없음, 기존 [💬 고객 안내 문자](hjAsCustomerMsg)도 판정이 있으면 판정 문구를 쓴다. 변이 ignore-misuse 가 AS_MISUSE_PAID 에서 잡는다.
+- 핀3곳 hyeonjang-v438-warrantycare(v447 위). 신규 tests/warrantycare-v438.e2e.js 3/3, 변이·기준선 실패 확인, 관련 10개(as-record/asclose-v366/asview-v367/asvisit-v365/inqpending-v386/stalequote-v392/warranty-v313/leakwarranty-v423/dates-warranty-office/warranty-review)·정적 21개 통과.
+
 ## 2026-10-16 v447 데이터 안전 (개인정보 보존 3년·정리 · 삭제 요청 · 백업 점검·복원 리허설 · 변경 기록)
 
 - HJ_RETENTION{years 3(대표 결정), inquiryYears 1, ledgerYears 5, backupWarnDays 3, backupAlertDays 7, auditDays 90}. 기준일 = 마지막 활동일(준공 doneAt·수금 payLog.d·AS asLog date/visitAt/doneAt·노트 date — ko-KR 날짜 문자열도 hjRetYmd 가 읽는다). 정확히 3년 전 날도 대상(±1일 테스트). 기준일 없는 현장은 목록에 넣지 않고 개수만.
