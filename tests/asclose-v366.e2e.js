@@ -27,9 +27,17 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   await page.route('https://**/*', route => route.abort());
   await page.addInitScript(() => { try { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); } catch (e) {} });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1400);
+  const boot = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone', '__hjRelayBootDone'];
+  await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(key => !!window[key]), boot);
+  await page.evaluate(async keys => {
+    await Promise.all(keys.map(key => window[key]));
+    if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
+    if (window.__hjOutboxUiBootDone) await __hjOutboxUiBootDone;
+    taxCalendarEnsure(); coworkSchedEnsure();
+    clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
+  }, boot);
   await page.evaluate(() => {
-    window.taxCalendarEnsure = () => 0; window.coworkSchedEnsure = () => 0; window.backupBootCheck = () => 0; window.kakaoCheckNew = () => 0;
+    window.backupBootCheck = () => 0; window.kakaoCheckNew = () => 0;
     try { aiOpsEnsureState().enabled = false; } catch (e) {}
     const orig = window.localDate; window.localDate = (d) => d ? orig(d) : '2026-11-05';
     window.portalAutoSync = () => 0;
@@ -37,7 +45,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     window.hjSendSms = (to, t) => { window.__sms.push({ to, t }); };
     window.coworkCopy = (t, label) => { window.__copied.push({ t, label }); };
   });
-  const seed = () => page.evaluate(() => {
+  const seed = () => page.evaluate(async () => {
     try { closeModal(true); } catch (e) {}
     state._demo = false; state.payLog = []; state.quotes = []; state.notes = [];
     state.contacts = [{ id: 'k1', name: '김타일', phone: '010-1111-2222', team: true }];
@@ -46,7 +54,11 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       { name: '가상현장B', stage: 5, received: 0, phases: [], cost: {}, customer: { name: '이가상', phone: '', addr: '' } }
     ];
     const px = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-    const F = (id, name, d) => ({ id, kind: 'photo', project: '가상현장A', name, size: 100, prefix: '가상현장A/', thumb: px, when: d });
+    const photoBytes = Uint8Array.from(atob(px.split(',')[1]), ch => ch.charCodeAt(0));
+    const F = (id, name, d) => ({ id, kind: 'photo', project: '가상현장A', name, size: 100, prefix: '가상현장A/', thumb: px, when: d,
+      // Atomic hydration retains previews only when a matching original or Drive
+      // identity exists. Keep the existing 100-byte file key with synthetic bytes.
+      _file: new File([photoBytes, new Uint8Array(100 - photoBytes.length)], name, { type: 'image/png' }) });
     state.files = [F('f1', 'a.jpg', new Date(2026, 10, 6, 11, 0)), F('f2', 'b.jpg', new Date(2026, 10, 6, 11, 30)), F('f3', 'c.jpg', new Date(2026, 10, 4, 9, 0))];
     state.asLog = [
       { id: 'as1', project: '가상현장A', date: '2026-11-03', text: '욕실 실리콘 들뜸', status: 'open', visitAt: '2026-11-06', visitSchedId: 'v1' },
@@ -60,6 +72,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     ];
     window.__sms = []; window.__copied = []; __calSelDate = null;
     state.tab = 'dashboard'; state.activeProject = null; render();
+    clearTimeout(__idbSaveTimer);
+    if (!(await guardedPersistCurrentState())) throw Error('AS_CLOSE_SEED_SAVE_FAILED');
   });
   const report = (id, done, prog) => page.evaluate(({ id, done, prog }) => {
     openReportEdit(id); document.getElementById('rDone').value = done; document.getElementById('rProgress').value = prog;
@@ -125,11 +139,17 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
   await test('④ 내 업무 ✅ 완료 보고 → 같은 창 — 사진 체크를 풀면 사진은 연결하지 않고, 끝나면 내 업무로 돌아간다 · 연락처 없으면 복사', async () => {
     await seed();
-    const done = (id, text) => page.evaluate(({ id, text }) => {
-      myWorkReport(id); document.getElementById('mwDoneText').value = text;
-      [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /완료 보고 저장/.test(b.textContent)).click();
-      return document.querySelector('#modalRoot h3').textContent;
-    }, { id, text });
+    const done = async (id, text) => {
+      // v425 persists the report atomically before showing the AS follow-up.
+      await page.evaluate(({ id, text }) => {
+        myWorkReport(id); document.getElementById('mwDoneText').value = text;
+      }, { id, text });
+      await page.getByRole('button', { name: '완료 보고 저장', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('#modalRoot h3')?.textContent === '🔧 AS 기록 마무리');
+      const saved = await page.evaluate(async id => (await idbGetStrict('appState')).schedule.find(s => s.id === id)?.report, id);
+      assert(saved?.progress === '완료' && saved.done.includes(text), '내 업무 보고 기기 저장');
+      return page.locator('#modalRoot h3').textContent();
+    };
     const h = await done('v1', '실리콘 재시공');
     assert(h === '🔧 AS 기록 마무리', '내 업무 보고 뒤: ' + h);
     const r = await page.evaluate(() => {
