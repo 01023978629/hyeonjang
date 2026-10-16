@@ -1,0 +1,33 @@
+/* v431 공개 누수 접수 — 390px 한 화면 우선. bathroom.css 와 같은 색·글꼴 토큰. 가격·과장 문구 없음. */
+:root{--ink:#243d36;--green:#284c43;--green-soft:#eaf0e9;--muted:#66726b;--paper:#f7f6f1;--line:#dce1d8;--gold:#b08b59;--white:#fff;--danger:#9b3530;color-scheme:light;font-family:Pretendard,"Noto Sans KR","Malgun Gothic",sans-serif;color:var(--ink);font-size:15px}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);word-break:keep-all;overflow-wrap:anywhere}
+button,input,textarea{font:inherit}button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}a{color:inherit;text-decoration:none}
+h1,h2,h3,p,figure,fieldset,legend{margin:0}fieldset{border:0;padding:0;min-width:0}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #ac7c36;outline-offset:3px}
+.header{max-width:720px;margin:auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;gap:10px;align-items:center;font-size:17px;font-weight:800;letter-spacing:-.6px}.brand-mark{background:var(--green);color:#fff;height:36px;width:36px;display:grid;place-items:center;font-size:23px;border-radius:9px}.brand small{display:block;font-size:10px;font-weight:500;letter-spacing:.3px;margin-top:2px}
+main{max-width:720px;margin:auto;padding:0 16px 24px}
+.eyebrow{display:block;font-size:10px;font-weight:800;letter-spacing:2px;color:#6b8073;margin-bottom:10px}
+.hero{padding:18px 2px 22px}.hero h1{font-size:34px;line-height:1.3;letter-spacing:-1.6px;font-weight:800}.hero p{font-size:14px;color:var(--muted);line-height:1.8;margin-top:14px}
+.card{border:1px solid var(--line);border-radius:12px;background:var(--white);padding:18px 16px;margin-bottom:14px}
+.card h2{font-size:19px;letter-spacing:-.6px;line-height:1.4;margin-bottom:6px}.card h2 small{font-size:11px;color:var(--muted);font-weight:500;margin-left:6px}
+legend{display:block;font-size:13px;font-weight:700;color:#4c6157;margin:14px 0 8px;width:100%}.req{font-size:11px;font-weight:500;color:var(--gold);margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:44px;padding:10px 14px;border-radius:22px;border:1px solid #cfd7cd;background:#fff;font-size:14px;color:var(--ink);cursor:pointer}
+.chip[aria-pressed=true],.chip[aria-checked=true]{background:var(--green);color:#fff;border-color:var(--green)}
+fieldset.invalid legend{color:var(--danger)}fieldset.invalid .chip{border-color:#d6aaa1}
+label{display:block;font-size:13px;font-weight:700;color:#4c6157;margin-top:14px}
+input,textarea{width:100%;min-width:0;background:#fff;border:1px solid #cfd7cd;border-radius:8px;min-height:46px;padding:10px 12px;color:var(--ink);margin-top:8px;font-size:16px}input.invalid{border-color:var(--danger);background:#fff7f5}textarea{resize:vertical;line-height:1.6;font-size:14px}
+.help{font-size:12px;line-height:1.75;color:var(--muted);margin-top:12px}
+.error{border:1px solid #d6aaa1;background:#fff4f1;color:var(--danger);font-size:13px;padding:12px 14px;border-radius:8px;margin-top:14px;line-height:1.6}
+.button{display:flex;justify-content:center;align-items:center;gap:12px;width:100%;min-height:50px;border-radius:9px;border:1px solid transparent;padding:12px 18px;font-size:15px;font-weight:700;line-height:1.35;margin-top:10px;background:none}.button span{margin-left:auto}
+.primary{background:var(--green);color:#fff}.outline{border-color:#aab7ad;color:var(--green);background:#fff}.quiet{background:#edf0e9;color:var(--green);min-height:44px;font-size:13px}
+.header .call{width:auto;margin:0;min-height:44px;padding:9px 13px;font-size:13px}
+.details{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}.details summary{cursor:pointer;font-size:13px;font-weight:700;min-height:44px;padding:10px 0;line-height:1.6;color:var(--green)}
+.tips ol{margin:8px 0 0;padding-left:18px;font-size:13.5px;line-height:1.75}.tips li{margin-bottom:8px}
+.notice{border-left:3px solid var(--gold);background:#faf7ef;padding:12px 14px;font-size:12.5px;line-height:1.7;color:#705d3d;margin-top:12px;border-radius:0 8px 8px 0}
+.footer{border-top:1px solid var(--line);max-width:720px;margin:auto;padding:22px 16px 40px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:12px;color:var(--muted)}.footer strong{color:var(--green)}.footer a{margin-left:auto;font-weight:700;color:var(--green)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#243d36;color:#fff;padding:13px 20px;border-radius:8px;font-size:13px;box-shadow:0 6px 20px #0002;max-width:calc(100% - 28px);z-index:20;line-height:1.6}
+[hidden]{display:none!important}
+@media(min-width:720px){.hero h1{font-size:42px}.card{padding:24px}.button{width:auto;min-width:260px}.actions .button{width:100%}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
