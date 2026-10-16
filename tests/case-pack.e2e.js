@@ -130,14 +130,16 @@ assert(/casepack:'[^']+'/.test(source), '① MORE_HELP 설명이 있다(검색�
   });
   assert(out.ok === true, '⑤ ZIP 이 만들어진다: ' + JSON.stringify(out).slice(0, 300));
   const names = Object.keys(out.rep).sort();
-  assert(JSON.stringify(names) === JSON.stringify(['01-전.jpg', '02-중.jpg', '03-후.jpg', '사례재료.txt']), '⑤ 파일 이름은 번호+전/중/후만(원본 이름의 사람·호수가 새지 않는다): ' + names.join(','));
+  // v446 case.json(홈페이지 초안 도구가 읽는 규격)이 더해졌다 — 내용은 tests/publicweb-v446 ④
+  assert(JSON.stringify(names) === JSON.stringify(['01-전.jpg', '02-중.jpg', '03-후.jpg', 'case.json', '사례재료.txt']), '⑤ 파일 이름은 번호+전/중/후만(원본 이름의 사람·호수가 새지 않는다): ' + names.join(','));
   for (const n of names.filter(x => x.endsWith('.jpg'))) {
     const r = out.rep[n];
     assert(r.soi && !r.hasExif, '⑤ ' + n + ' 은 JPEG 이고 Exif·GPS 가 없다: ' + JSON.stringify(r));
     assert(r.w === 1800 && r.h === 900, '⑤ ' + n + ' 긴 변 1800 으로 줄었다: ' + r.w + '×' + r.h);
   }
   const txt = out.rep['사례재료.txt'].text;
-  assert(/^1\. 동네\+단지: 평화로운아파트$/m.test(txt) && /^4\. 원인 \(전유\/공용\): 계량기함 뒤 매립 배관 이음부 — 세대 전유$/m.test(txt), '⑤ 6항목 형식(manmool new-case-post 가 읽는 줄): ' + txt.slice(0, 200));
+  // v446 줄 이름을 manmool parseMaterial 정규식 그대로로 고쳤다(예전 '4. 원인 (전유/공용):' 은 그쪽이 못 읽었다)
+  assert(/^1\. 동네\+단지: 평화로운아파트$/m.test(txt) && /^4\. 원인\+전유\/공용: 계량기함 뒤 매립 배관 이음부 — 세대 전유$/m.test(txt), '⑤ 6항목 형식(manmool new-case-post 가 읽는 줄): ' + txt.slice(0, 200));
   assert(/사진: 3장 \(시공 전 1 · 작업 중 1 · 완료 1\)/.test(txt) && /01-전\.jpg — 시공 전/.test(txt) && /공개 동의: 받음/.test(txt), '⑤ 사진 목록·동의 줄: ' + txt);
   assert(!/1302|김철수|107동/.test(txt), '⑤ 재료 글에 동·호수·이름이 없다');
   assert(out.clicked.length === 1 && /^사례_평화로운아파트_\d{8}\.zip$/.test(out.clicked[0]), '⑤ 내려받기 이름: ' + out.clicked.join(','));

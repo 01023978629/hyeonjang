@@ -3,6 +3,17 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v446 공개 웹 — 리뷰 QR(앱 안 인코더) · ⭐ 리뷰 QR 카드 · 보고서·영수증 끝 QR · 사례 ZIP case.json
+
+- QR 인코더(hjQrMatrix/hjQrDraw/hjQrPngDataUrl/hjQrSvg): 외부 라이브러리 없음, 바이트 모드(UTF-8)·오류정정 M·버전 1~10(213바이트까지, 넘으면 null). 공개 참조 구현(Nayuki QR Code generator)과 표·배치·벌점(N1~N4)이 같아 같은 그림이 나온다 — 2026-10-16 버전 1~10×마스크 8×한글 275가지를 한 칸씩 대조, zxing 으로 전부 읽힘(OpenCV 고전 검출기는 일부 마스크에서 위치를 못 찾지만 Aruco 검출기·zxing 은 다 읽는다 — 인코딩 문제 아님). 문서에는 PNG(<img data-qr>, 칸 8px) — 워드(.doc)가 SVG 를 못 그려서다.
+- 리뷰 링크: 설정 ⭐ 기타의 기존 __reviewUrl(이 기기 IndexedDB review_url)만 쓴다. hjReviewLink 는 http(s) 로 시작하는 것만(앞이 빠진 'naver.me/…' 는 폰 카메라가 글자로만 읽는다). 비었거나 아니거나 너무 길면 카드 대신 "설정에서 리뷰 링크를 넣으세요" + [⚙️ 설정 열기](hjOpenSettingsTab('etc','rvUrl') — openModal 의 setTimeout 포커스 뒤에 칸으로).
+- ⭐ 리뷰 QR 카드(hjReviewQrCardView/hjReviewQrCardHtml): A6(105×148mm) 두 장이 한 쪽(@page 210×148mm, 가운데 점선), 회사명·"시공 만족하셨다면 리뷰 한 줄 부탁드립니다"·QR·대표 번호. 기존 hjDocDeliverView(PDF·워드·HTML·이미지). 진입: 설정 리뷰 링크 옆 [⭐ 리뷰 QR 카드](칸에 적고 저장 안 했으면 먼저 저장), 📎 서류 만들기 AS·보증 그룹 reviewqr. 저장 자료 변화 없음.
+- 끝 QR 토글(hjQrToggleHtml/Read, localStorage hj_qr_on {report,rcpt}, 기본 켬, 링크 없으면 칸 자체가 없다): 완료보고서(aptReportView #rpQr → buildAptReportPDF 마지막 장 확인란 아래 왼쪽 330px, window.__rptQr 에 자리 기록 — 검사가 그 JPEG 을 다시 읽는다)·간이영수증(payRcptDialog #prcQr → payRcptHTML o.qr, 맨 끝 상자 data-review-qr). 보고서는 관리사무소에도 가니 대표가 끄면 그 기기에서 계속 꺼진다.
+- 사례 ZIP: 재료 글 줄 이름을 manmool scripts/new-case-post.mjs parseMaterial 정규식 그대로(HJ_CASE_SITE_LABEL '2. 증상'·'3. 탐지 방법'·'4. 원인+전유/공용')로 — 예전 화면 이름 줄 3개를 그쪽이 못 읽어 초안이 '필수 항목 누락'으로 멈췄다(case-pack.e2e 의 옛 단언도 고침). ZIP 에 case.json(format 'manmool-case/1': title·area(동 단위, 장소 낱말 → 없으면 고객 주소의 동·읍·면)·kind 누수|인테리어·tags·summary 6·photos[{file,phase before|mid|after,caption}]·date(준공일)·consent·app). 사진 설명은 공정 이름 — 동·호수·과장 표현이 섞이거나 분류명뿐이면 '시공 전·작업 중·완료'(재료 글 사진 줄도 같은 hjCaseCaption). 긴 변은 기존 1800 그대로(사이트 assets/cases 규격 — 지시서의 1600 대신).
+- 과장 표현 HJ_AD_BANNED(최저가·무조건·100%·평생 보증·업계 1위·지어낸 만족 후기 — manmool 사례 검사 정규식과 같은 축): 6항목에 있으면 ZIP·재료 복사를 막고(hjCaseBlock) 칸 아래 경고.
+- 홈페이지 쪽은 별도 패치(manmool 저장소): scripts/import-case-zip.mjs + Import-CaseZip.ps1 — ZIP 을 풀어 case.json 을 검사(동의·개인정보·과장·JPEG/EXIF)하고 .private/case-drafts 에 비공개 초안+사진을 만든다. 게시(site.json·posts·assets/cases)는 지금처럼 사람이 확인한 뒤. 지시서 F1 의 cases/ 갤러리·F2 랜딩 통합은 사이트에 이미 사례 체계(blog·case-finder·leak.html·검사 다수)가 있어 겹치므로 미룸.
+- 핀3곳 hyeonjang-v446-publicweb(v443 위). 신규 tests/publicweb-v446.e2e.js 5/5(참조 구현 지문 6·검사 쪽 디코더 왕복 — 형식 BCH·RS 신드롬·바이트 모드), 변이 qr-format·case-labels·기준선 실패 확인, 관련 16개(case-pack/marketing-safety/photo-refs/mobile-more-tools/pay-receipt/reportfill-v408/doccenter-v433/contract-terms/settings-tabs/warranty-review/mobile-modal-tap/key-persist/settings-safety/evidence-v427/aptdocs-v441/retention-v447)·정적 통과. offlinequeue-v425 e2e·cache unit 은 main 에 캐시 이름 'hyeonjang-v425-offlinequeue' 가 박혀 있어 핀을 올린 모든 판에서 실패한다 — PR #189(v428)이 현재 빌드를 읽게 고쳤고, 그 판으로 이 브랜치에서 13/13·8/8 통과. **#189 를 먼저 병합할 것.**
+
 ## 2026-10-16 v443 모바일 — 일정·출동 N분 전 알림 · 폰 캘린더 알람 · 음성 메모
 
 - 알림 ①(앱이 떠 있을 때): hjAlertDue(now) — 오늘 시각 있는 일정 중 N분(hj_alert_cfg min 10/30/60, 기본 30) 안, 출동만 옵션(s.urgent). 1분 타이머(hjAlertRun)가 hjAlertTick → 상단 빨간 띠(#hjAlertBar, [열기]로 그 현장) + 진동 + 권한 허용 시 알림(서비스워커 showNotification → 안 되면 new Notification). 한 번 울린 일정은 이 기기 localStorage hj_alerted('id|날짜 시각', 최근 200개)로 다시 안 울린다 — 지시서의 s.alerted(일정 레코드) 대신 기기 기록으로 바꿨다(알림은 기기마다 따로, 저장 자료·클라우드 저장을 매번 건드리지 않게; 변이 alert-dup 이 ALERT_ONCE 에서 잡는다). 시각을 바꾸면 다시 울린다. 자동화 브라우저(navigator.webdriver)에서는 1분 타이머를 켜지 않는다 — 검사는 hjAlertTick(시각)을 직접 부른다.
