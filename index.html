@@ -3317,7 +3317,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v435-expenseocr';
+const APP_BUILD='hyeonjang-v436-firstreply';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -13947,6 +13947,8 @@ function hjDayCloseView(){
        (S.wait.length?row('🧾 실측 끝, 견적 안 쓴 현장 <b>'+S.wait.length+'곳</b><br><span style="font-size:12px;color:var(--muted)">'+names(S.wait)+'</span>',btn('ghost','data-dc-qwait="'+escapeAttr(S.wait[0])+'"','🧾 '+escapeHtml(hjCut(S.wait[0],10))+' 견적 쓰기')):'')+
        (S.follow?row('⏰ 답 기다리는 견적 <b>'+S.follow+'건</b> (작성·보낸 지 3~30일)',btn('ghost','data-dc-qfollow','⏰ 견적 팔로업')):'')+
      '</div>';
+     {const nr=hjInquiryNoReply(S.inqToday);   // v436 오늘 들어와서 답장 안 한 문의 — 영업 칸 밑 따로(영업 칸 단추 목록은 그대로)
+      if(nr.length)body+='<div id="dcFirstReply">'+row('💬 오늘 들어와서 답장 안 한 문의 <b>'+nr.length+'곳</b><br><span style="font-size:12px;color:var(--muted)">'+names(nr)+'</span>',btn('clay','data-dc-firstreply="'+escapeAttr(nr[0])+'"','💬 '+escapeHtml(hjCut(nr[0],10))+' 첫 답장'))+'</div>';}
    }}
   {const pending=d.leakSms||{detect:[],done:[]};
    if(pending.detect.length||pending.done.length)body+=h4('💬 누수 문자 안내')+'<div id="dcLeakSms">'+
@@ -13957,6 +13959,7 @@ function hjDayCloseView(){
   const root=document.getElementById('dayClose');
   root.querySelectorAll('[data-dc-leaksms]').forEach(b=>b.onclick=()=>hjLeakSmsView(b.dataset.dcLeaksms,b.dataset.smsKey));
   root.querySelectorAll('[data-dc-leakreport]').forEach(b=>b.onclick=()=>hjLeakReportView(b.dataset.dcLeakreport));
+  root.querySelectorAll('[data-dc-firstreply]').forEach(b=>b.onclick=()=>hjFirstReplyView(b.dataset.dcFirstreply));   // v436
   root.querySelectorAll('[data-dc-photolog]').forEach(b=>b.onclick=()=>{const g=hjPhotoDayGroups(d.today).find(g=>g.project===b.dataset.dcPhotolog&&!g.has);if(g)openScheduleEdit(null,hjPhotoLogDraft(g,d.today),{title:'📝 오늘 작업 기록',photoOrigin:{project:g.project,date:d.today,n:g.n}});});
   const all=root.querySelector('[data-dc-photologall]');if(all)all.onclick=()=>hjPhotoLogAll(d.today);
   root.querySelectorAll('[data-dc-report]').forEach(b=>b.onclick=()=>myWorkReport(b.dataset.dcReport));
@@ -32023,11 +32026,12 @@ function hjInquiryPendingHtml(){
   if(!l.length)return '';
   return '<div id="dashboardInquiryPending" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px">'+
     '<span style="flex:1 1 180px;min-width:0;color:var(--hj-warn-fg)">📥 다음 일정 안 잡힌 문의 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
-    '<button type="button" class="ghost" data-inqsched="'+escapeAttr(l[0])+'" style="min-height:44px;padding:0 10px">🗓 '+escapeHtml(hjCut(l[0],10))+' 일정 잡기</button></div>';
+    '<button type="button" class="ghost" data-inqsched="'+escapeAttr(l[0])+'" style="min-height:44px;padding:0 10px">🗓 '+escapeHtml(hjCut(l[0],10))+' 일정 잡기</button>'+hjInquiryNoReplyHtml(l)+'</div>';   // v436 그중 답장 안 한 곳
 }
 function hjInquiryNext(pj){
   openModal('✅ 문의 등록 — '+pj,
-    '<p style="font-size:13px;margin:0 0 6px">현장(상담 단계)·연락처·메모를 만들었어요. 이어서 할 일을 고르세요.</p>',
+    '<p style="font-size:13px;margin:0 0 6px">현장(상담 단계)·연락처·메모를 만들었어요. 이어서 할 일을 고르세요.</p>'+
+    '<button type="button" class="blue" id="inqFirstReply" onclick="hjFirstReplyView('+escapeAttr(JSON.stringify(pj))+')" style="min-height:44px;width:100%;margin:4px 0 2px">💬 첫 답장 보내기 (60초 초안)</button>',   // v436
     [{label:'닫기',cls:'ghost',fn:closeModal},
      {label:'📂 현장 열기',cls:'ghost',fn:()=>{closeModal();state.tab='project';state.activeProject=pj;render();}},
      {label:'🗓 상담·실측 일정',cls:'clay',fn:()=>{closeModal();openScheduleEdit(null,{title:'상담·실측: '+pj,project:pj,date:hjShiftWorkDays(localDate(),1),time:'10:00',hours:1},{title:'🗓 상담·실측 일정'});}}]);
@@ -43141,6 +43145,110 @@ function hjTaxPackView(ym){
   openModal('📤 세무사 전달 자료',body,[{label:'📦 ZIP 저장',cls:'clay',fn:()=>run('file')},{label:'☁️ 드라이브에 저장',cls:'ghost',fn:()=>run('drive')},{label:'🧾 영수증 넣기',cls:'ghost',fn:()=>{closeModal();hjReceiptAdd();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   document.querySelectorAll('#hjTaxPack [data-taxpack-month]').forEach(b=>b.onclick=()=>hjTaxPackView(b.dataset.taxpackMonth));
   hjModalTapTargets();return D;
+}
+/* ═══ v436 💬 첫 답장 60초 — 채널별 템플릿 · 문의함 연결 ═══
+   · 자동 발송 없음 — 초안을 복사하거나(그 채널 앱에 붙여 넣기) 문자 앱을 연다(hjSendSms). 고르는 것·초안 보기는 읽기 전용.
+   · 채널 6(HJ_FIRST_REPLY.channels: 당근·네이버·인스타 DM·카카오 채널·문자·소개) × 유형 2(인테리어·누수). 문구 = 인사 → 가능 시간 2개
+     (hjFirstReplySlots: 오늘 일정의 빈 시간, 앞뒤 30분 이동 여유, 지금부터 1시간 뒤 정시부터 9~18시 · 모자라면 다음 작업일) → 필요한 정보 →
+     마무리. 누수는 사진 2장(넓게·가까이)·아랫집 연락 여부를 묻는다. 회사 번호는 인스타 DM 에만 빼고(hjFirstReplyTelOk — v415 규칙, 변이 insta-tel 이
+     INSTA_NO_TEL 에서 잡는다) 인스타는 'DM 으로 답 주세요'. 고친 초안에 번호가 들어가면 인스타일 때 경고만(막지 않음).
+   · 복사·문자 앱 → 문의 노트(가장 최근 [문의 접수]/[홈페이지 상담 리드])에 '[첫 답장] 10/16 10:12 당근' 한 줄 + replyAt(처음 한 번만, ISO —
+     v445 분석의 첫 답장 시간이 읽는다). 문의 노트가 없는 현장(카카오 리드 등)은 '[첫 답장] …' 노트를 새로(replyAt) — v445 계산에는 안 들어간다.
+     새 최상위 키 없음.
+   · 대시보드 '📥 다음 일정 안 잡힌 문의' 줄 안에 '💬 그중 답장 안 한 곳 n곳' + [💬 첫 답장] · 🌙 오늘 마감 영업 칸 밑에 '오늘 들어와서 답장 안 한 문의'
+     (#dcFirstReply) · 📞 새 문의 받기 다음 창 본문에 [💬 첫 답장 보내기]. */
+const HJ_FIRST_REPLY=Object.freeze({
+  channels:Object.freeze([
+    Object.freeze({id:'daangn',label:'🥕 당근',name:'당근',greet:'당근에서 문의 주셔서 감사합니다.'}),
+    Object.freeze({id:'naver',label:'📍 네이버',name:'네이버',greet:'네이버로 문의 주셔서 감사합니다.'}),
+    Object.freeze({id:'instagram',label:'📷 인스타 DM',name:'인스타 DM',greet:'DM 주셔서 감사합니다.'}),
+    Object.freeze({id:'kakao',label:'💬 카카오 채널',name:'카카오 채널',greet:'카카오톡 채널로 문의 주셔서 감사합니다.'}),
+    Object.freeze({id:'sms',label:'✉️ 문자',name:'문자',greet:'문의 주셔서 감사합니다.'}),
+    Object.freeze({id:'referral',label:'🤝 소개',name:'소개',greet:'소개받고 연락 주셔서 감사합니다.'})]),
+  kinds:Object.freeze([['interior','🏠 인테리어'],['leak','💧 누수']]),
+  lead:Object.freeze({interior:'현장을 보고 정확히 안내드리려고 합니다.',leak:'누수는 빨리 볼수록 피해가 적습니다.'}),
+  need:Object.freeze({interior:'공사하실 곳(욕실·주방 등)과 대략 평수 알려 주시면 준비해서 가겠습니다.',leak:'물 새는 곳 사진 2장(넓게 1장·가까이 1장) 보내 주시고, 아랫집에서 연락 왔는지도 알려 주세요.'}),
+  tel:'급하시면 {tel} 로 전화 주셔도 됩니다.',dm:'편하실 때 DM 으로 답 주세요.'
+});
+const HJ_FIRST_REPLY_SRC=Object.freeze({daangn:'daangn',naverplace:'naver',instagram:'instagram',kakaoch:'kakao',referral:'referral',office:'referral'});
+function hjFirstReplyTelOk(ch){return ch!=='instagram';}   // v415 인스타는 전화번호 없이 DM·프로필로
+function hjFirstReplyCh(id){return HJ_FIRST_REPLY.channels.find(c=>c.id===id)||HJ_FIRST_REPLY.channels.find(c=>c.id==='sms');}
+function hjFirstReplyChOf(p){return HJ_FIRST_REPLY_SRC[p&&p.leadSrc]||'sms';}
+// 가능 시간 2개 — 오늘 일정(시각 있는 것)의 빈 시간. 일정 앞뒤 30분은 이동 여유. 모자라면 다음 작업일 아침부터.
+function hjFirstReplySlots(now){
+  const at=now instanceof Date&&!isNaN(now)?now:new Date(),today=localDate(at),next=hjShiftWorkDays(today,1),tmr=hjAddDays(today,1);
+  const toMin=t=>Number(String(t).slice(0,2))*60+Number(String(t).slice(3,5));
+  const busy=day=>(state.schedule||[]).filter(s=>s&&s.date===day&&!s._taxAuto&&!HJ_INQ_MONEY_RE.test(String(s.title||''))&&/^\d{2}:\d{2}$/.test(String(s.time||'')))
+    .map(s=>{const st=toMin(s.time),en=/^\d{2}:\d{2}$/.test(String(s.endTime||''))?toMin(s.endTime):st+Math.round((Number(s.hours)>0?Number(s.hours):2)*60);return [st-30,Math.max(en,st+30)+30];});
+  const free=(day,from)=>{const b=busy(day),out=[];for(let m=Math.max(9*60,from);m+60<=18*60;m+=60)if(!b.some(([x,y])=>m<y&&m+60>x))out.push(m);return out;};
+  const nowMin=at.getHours()*60+at.getMinutes(),start=Math.ceil((nowMin+60)/60)*60;
+  const label=(day,m)=>(day===today?'오늘':day===tmr?'내일':hjMdDow(day))+' '+(m<12*60?'오전 ':'오후 ')+((Math.floor(m/60)+11)%12+1)+'시'+(m%60?' '+(m%60)+'분':'');
+  let slots=free(today,start).slice(0,2).map(m=>({day:today,m}));
+  if(slots.length<2)slots=slots.concat(free(next,9*60).slice(0,2-slots.length).map(m=>({day:next,m})));
+  return slots.map(x=>({day:x.day,time:pad2(Math.floor(x.m/60))+':'+pad2(x.m%60),label:label(x.day,x.m)}));
+}
+function hjFirstReplyDraft(o){
+  const ch=hjFirstReplyCh(o&&o.ch),kind=o&&o.kind==='leak'?'leak':'interior',slots=Array.isArray(o&&o.slots)?o.slots:hjFirstReplySlots();
+  const nm=String(o&&o.name||'').trim(),when=slots.length>=2?slots[0].label+' 또는 '+slots[1].label:slots.length?slots[0].label:'';
+  const ask=when?' '+when+(kind==='leak'?' 방문 가능한데 언제가 편하세요?':' 방문 가능한데 편하신 시간 있으실까요?'):(kind==='leak'?' 오늘·내일 중 편하신 시간 알려 주시면 맞춰 가겠습니다.':' 편하신 날짜·시간 알려 주시면 맞춰 가겠습니다.');
+  const lines=['안녕하세요'+(nm?', '+nm+'님':'')+'. '+COMPANY.name+' '+COMPANY.owner+'입니다. '+ch.greet,
+    HJ_FIRST_REPLY.lead[kind]+ask,HJ_FIRST_REPLY.need[kind],
+    hjFirstReplyTelOk(ch.id)?HJ_FIRST_REPLY.tel.replace('{tel}',COMPANY.tel):HJ_FIRST_REPLY.dm];
+  let text=lines.join('\n');
+  if(!hjFirstReplyTelOk(ch.id))text=text.replace(/0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/g,'').replace(/[ \t]{2,}/g,' ');
+  return text;
+}
+// 이 현장에 첫 답장 기록이 있나 — 어느 노트든 replyAt.
+function hjInquiryReplied(pj){return (state.notes||[]).some(n=>n&&n.project===pj&&typeof n.replyAt==='string'&&!!n.replyAt);}
+function hjInquiryNoReply(list){return (list||[]).filter(pj=>!hjInquiryReplied(pj));}
+function hjInquiryNoReplyHtml(list){
+  let l=[];try{l=hjInquiryNoReply(list);}catch(e){return '';}
+  if(!l.length)return '';
+  return '<span data-inq-noreply style="flex:1 1 100%;min-width:0;color:var(--hj-warn-fg);font-size:13px">💬 그중 답장 안 한 곳 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
+    '<button type="button" class="clay" data-firstreply="'+escapeAttr(l[0])+'" onclick="hjFirstReplyView(this.dataset.firstreply)" style="min-height:44px;padding:0 10px">💬 '+escapeHtml(hjCut(l[0],10))+' 첫 답장</button>';
+}
+function hjFirstReplyRecord(pj,chId){
+  const at=new Date(),iso=at.toISOString(),ch=hjFirstReplyCh(chId);
+  state.notes=state.notes||[];
+  const inq=state.notes.slice().reverse().find(n=>n&&n.project===pj&&HJ_INQ_NOTE_RE.test(String(n.text||'')));
+  const first=!hjInquiryReplied(pj),line=(first?'[첫 답장] ':'[다시 답장] ')+(at.getMonth()+1)+'/'+at.getDate()+' '+pad2(at.getHours())+':'+pad2(at.getMinutes())+' '+ch.name;
+  if(inq){if(!inq.replyAt&&first)inq.replyAt=iso;inq.text=String(inq.text||'')+'\n'+line;}
+  else state.notes.push(Object.assign({id:uid(),date:at.toLocaleString('ko-KR'),text:line,project:pj},first?{replyAt:iso}:{}));
+  markDirty();return {first,line};
+}
+function hjFirstReplyCopy(text,done){
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>coworkCopyFallback(text,done));return;}}catch(_){}
+  coworkCopyFallback(text,done);
+}
+function hjFirstReplyView(pj){
+  const p=(state.projects||[]).find(x=>x&&x.name===pj);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const cust=p.customer||{},phone=hjCustDigits(cust.phone).length>=9?String(cust.phone):'';
+  const s={ch:hjFirstReplyChOf(p),kind:hjProjectKind(p)==='leak'?'leak':'interior',slots:hjFirstReplySlots(new Date())};
+  const chip=(attr,val,label,on)=>'<button type="button" '+attr+'="'+escapeAttr(val)+'" aria-pressed="'+on+'" class="'+(on?'blue':'ghost')+'" style="min-height:44px;min-width:44px;padding:4px 10px;font-size:12.5px">'+escapeHtml(label)+'</button>';
+  const body='<div id="hjFirstReply" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:12px;font-weight:700;margin:0 0 4px">어디로 온 문의?</div><div role="radiogroup" aria-label="채널" style="display:flex;flex-wrap:wrap;gap:6px">'+HJ_FIRST_REPLY.channels.map(c=>chip('data-fr-ch',c.id,c.label,c.id===s.ch)).join('')+'</div>'+
+    '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">무슨 일?</div><div role="radiogroup" aria-label="유형" style="display:flex;gap:6px">'+HJ_FIRST_REPLY.kinds.map(([k,l])=>chip('data-fr-kind',k,l,k===s.kind)).join('')+'</div>'+
+    '<div data-fr-slots style="font-size:12.5px;margin:10px 0 4px">🕑 가능 시간: <b>'+escapeHtml(s.slots.map(x=>x.label).join(' · ')||'오늘·내일 빈 시간 없음 — 초안에서 고쳐 주세요')+'</b> <span style="color:var(--muted)">(일정 탭의 빈 시간)</span></div>'+
+    '<textarea id="frText" rows="7" style="width:100%;font-size:15px;line-height:1.55;padding:10px;border-radius:10px;border:1px solid var(--line-soft);box-sizing:border-box"></textarea>'+
+    '<div id="frCheck" role="status" style="font-size:12.5px;margin-top:4px;min-height:18px"></div>'+
+    (hjInquiryReplied(pj)?'<p data-fr-replied class="hint" style="margin:4px 0 0">이미 첫 답장을 기록했어요 — 다시 보내도 첫 답장 시각은 그대로입니다.</p>':'')+
+    '<p class="hint" style="margin:6px 0 0">자동으로 보내지 않아요. [📋 복사] 뒤 그 채널 앱에 붙여 넣거나 [💬 문자 앱]을 여세요. 누르면 문의 기록에 첫 답장 시각이 남습니다.</p></div>';
+  const send=via=>{
+    const text=document.getElementById('frText').value.trim();if(!text){toast('보낼 글이 비어 있어요');return;}
+    const done=()=>{const r=hjFirstReplyRecord(pj,s.ch);closeModal();try{render();}catch(_){}toast((via==='sms'?'💬 문자 앱을 열었어요':'📋 복사했어요 — '+hjFirstReplyCh(s.ch).name+' 에 붙여 넣으세요')+(r.first?' · 첫 답장 시각 기록':''));};
+    if(via==='sms'){hjSendSms(phone,text);done();}else hjFirstReplyCopy(text,done);
+  };
+  openModal('💬 첫 답장 — '+pj,body,[{label:'📋 복사',cls:'clay',fn:()=>send('copy')},...(phone?[{label:'💬 문자 앱',cls:'ghost',fn:()=>send('sms')}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const root=document.getElementById('hjFirstReply'),ta=document.getElementById('frText'),chk=document.getElementById('frCheck');
+  const check=()=>{const t=ta.value,n=t.replace(/\s/g,'').length,tel=/0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/.test(t)||hjAdTextHasTel(t);
+    chk.innerHTML=s.ch==='instagram'&&tel?'<span data-fr-tel style="color:var(--warn);font-weight:700">⚠️ 인스타 DM 에는 전화번호를 넣지 않아요 — 지우고 보내 주세요</span>':
+      '<span data-fr-ok style="color:'+(n>200?'#b45309':'#0a7f43')+'">'+(n>200?'조금 길어요 — ':'✓ ')+n+'자'+(s.ch==='instagram'?' · 전화번호 없음':'')+'</span>';};
+  const fill=()=>{ta.value=hjFirstReplyDraft({ch:s.ch,kind:s.kind,slots:s.slots});check();};
+  root.querySelectorAll('[data-fr-ch]').forEach(b=>b.onclick=()=>{s.ch=b.dataset.frCh;root.querySelectorAll('[data-fr-ch]').forEach(x=>{const on=x===b;x.setAttribute('aria-pressed',String(on));x.className=on?'blue':'ghost';});fill();});
+  root.querySelectorAll('[data-fr-kind]').forEach(b=>b.onclick=()=>{s.kind=b.dataset.frKind;root.querySelectorAll('[data-fr-kind]').forEach(x=>{const on=x===b;x.setAttribute('aria-pressed',String(on));x.className=on?'blue':'ghost';});fill();});
+  ta.oninput=check;fill();
+  return true;
 }
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}

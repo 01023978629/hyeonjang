@@ -3,6 +3,16 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v436 💬 첫 답장 60초 — 채널별 템플릿 · 문의함 연결
+
+- 자동 발송 없음 — hjFirstReplyView(pj) 초안을 [📋 복사](navigator.clipboard → 실패 시 coworkCopyFallback)하거나 [💬 문자 앱](hjSendSms, 고객 번호가 있을 때만). 채널·유형 고르기·초안 보기는 읽기 전용(검사가 저장본 비교).
+- HJ_FIRST_REPLY: 채널 6(당근·네이버·인스타 DM·카카오 채널·문자·소개 — 기본값은 p.leadSrc 에서 HJ_FIRST_REPLY_SRC, 모르면 문자) × 유형 2(인테리어·누수, 기본은 현장 kind). 문구 = 인사(회사·대표·채널 인사) → 가능 시간 2개 → 필요한 정보(인테리어: 공사할 곳·평수 / 누수: 사진 2장 넓게·가까이 + 아랫집 연락 여부) → 마무리(회사 번호, 인스타는 'DM 으로 답 주세요'). 200자(공백 빼고) 안.
+- 가능 시간 hjFirstReplySlots(now): 오늘 시각 있는 일정(💰·세금 자동 일정 빼고, 끝 시각 없으면 hours·없으면 2시간)의 앞뒤 30분을 이동 여유로 막고, 지금부터 1시간 뒤 정시~18시의 1시간 칸 2개. 모자라면 다음 작업일(hjShiftWorkDays) 9시부터. 이름은 '오늘/내일/M/D(요일) 오전·오후 N시'.
+- 인스타 규칙 hjFirstReplyTelOk(ch) — 인스타 DM 이면 번호 줄을 빼고 혹시 남은 번호 모양도 지운다(v415). 사람이 고친 글에 번호가 들어가면 data-fr-tel 경고만(막지 않음, v415 수동 원고와 같은 태도). 변이 insta-tel 이 INSTA_NO_TEL 에서 잡는다.
+- 기록 hjFirstReplyRecord: 그 현장의 가장 최근 문의 노트(HJ_INQ_NOTE_RE)에 '[첫 답장] M/D HH:MM 채널' 한 줄 + replyAt(ISO, 처음 한 번만 — 두 번째부터 '[다시 답장]'이고 replyAt 그대로). 문의 노트가 없는 현장(카카오 리드 등)은 '[첫 답장] …' 노트를 새로(replyAt) — v445 첫 답장 시간 계산(hjInsightReplyMin)은 문의 노트만 보므로 거기엔 안 들어간다. hjInquiryReplied = 그 현장 노트 중 replyAt 이 있나.
+- 자리: 대시보드 #dashboardInquiryPending 안(v386 줄·다음 형제 div 구조 그대로) '💬 그중 답장 안 한 곳 n곳'(data-inq-noreply) + [💬 첫 답장](data-firstreply, 인라인 onclick) · 🌙 오늘 마감 영업 칸(#dcSales — 단추 목록 그대로) 밑 #dcFirstReply '오늘 들어와서 답장 안 한 문의'(inquiryAt 오늘) · 📞 새 문의 받기 다음 창 본문 #inqFirstReply(아래 단추 3개 그대로).
+- 핀3곳 hyeonjang-v436-firstreply(v435 위). 신규 tests/firstreply-v436.e2e.js 4/4, 변이 insta-tel·기준선(FIRSTREPLY_API_PRESENT) 실패 확인. 관련 9개(inqpending-v386·dcsales-v391·instanotel-v415·inquiry-v383·insight-v445·estfollow-v395·darkfix-v399·leadsrc-v379·expenseocr-v435)·정적 19개 통과.
+
 ## 2026-10-16 v435 🧾 영수증 → 경비(기기 안 글자 읽기) · 월별 세무사 전달 자료
 
 - 넣는 곳: 사진 탭 도구 #btnReceiptAdd(빈 사진 탭 #btnReceiptAddEmpty) · 💳 간편 장부 #expReceipt · 월말 마감 3단계 · 더보기 [🧾 영수증 스캔](cardReceiptScan('receipt') 가 hjReceiptAdd 로 감 — 옛 Gemini 영수증 길은 안 탄다, 명함 스캔은 그대로). 폰은 바로 카메라/갤러리, PC 는 끌어놓기 칸(#rcDrop)+고르기. 여러 장이면 한 장씩.
