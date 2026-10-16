@@ -732,7 +732,8 @@
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:80;max-width:90vw;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   body.mobile-mode #toast{bottom:calc(72px + env(safe-area-inset-bottom,0px));width:max-content;max-width:calc(100vw - 32px);overflow-wrap:anywhere}
-  body.mobile-mode:has(#modalRoot .modal) #toast{bottom:auto;top:calc(10px + env(safe-area-inset-top,0px))}   /* v449 창이 열려 있으면 위에 — 아래 단추를 가리지 않게 */
+  body.mobile-mode:has(#modalRoot .modal) #toast{bottom:auto;top:calc(10px + env(safe-area-inset-top,0px))}
+  body:not(.mobile-mode) #dashboardInstall{display:none!important}   /* v450 PC 화면은 사이드바 ⤓ 앱 설치 단추(줄의 인라인 display 를 이긴다) */   /* v449 창이 열려 있으면 위에 — 아래 단추를 가리지 않게 */
   .worklog-row,.worklog-head{display:grid;grid-template-columns:58px minmax(0,1fr) 96px 150px;gap:6px;padding:10px;align-items:center}
   .worklog-row{font-size:11.5px;border-top:1px solid var(--line-soft)}
   .worklog-head{background:var(--paper-2);font-size:10.5px;color:var(--muted);font-weight:700}
@@ -1806,6 +1807,7 @@ function markDirty(){state.dirty=true;__photoCache.key=null;try{hjSnapshot('작�
      ② BroadcastChannel: 탭이 열리면 서로 인사해 양쪽 다 경고하고, 저장할 때마다
         savedAt 을 방송해 뒤처진 탭이 pagehide 같은 동기 경로에서도 안 덮게 한다. */
 let __idbSaveTimer=null,__tabStamp=null,__tabStale=false,__tabBC=null,__tabWarned={};
+let __hjLocalSavePending=false,__hjLocalSaveSeq=0;   // v450 기기(IndexedDB) 저장이 아직 안 끝났나 — 창 닫기 경고가 쓴다
 /* 경고는 토스트가 아니라 전용 배너로 띄운다 — 토스트는 한 칸뿐이라 ?lead 차단
    안내 같은 다른 메시지와 서로 덮는다(v240 배포 게이트에서 실측). 배너는
    지속 표시 + 닫기 버튼이라 2.4초 토스트보다 경고 성격에도 맞다. */
@@ -1829,10 +1831,11 @@ function multiTabStaleWarn(){__tabWarnOnce('stale','⚠️ 다른 탭이 더 최
 function persistLocal(){
   if(state._demo)return;
   clearTimeout(__idbSaveTimer);
+  const seq=++__hjLocalSaveSeq;__hjLocalSavePending=true;
   __idbSaveTimer=setTimeout(async()=>{try{
     if(__tabStale){multiTabStaleWarn();return;}
     if(!(await guardedPersistCurrentState())){__tabStale=true;multiTabStaleWarn();}
-    else if(typeof hjOutboxLocalSaved==='function')hjOutboxLocalSaved();
+    else{if(seq===__hjLocalSaveSeq)__hjLocalSavePending=false;if(typeof hjOutboxLocalSaved==='function')hjOutboxLocalSaved();}
   }catch(e){}},800);
 }
 try{
@@ -1858,7 +1861,9 @@ function toggleAutoSave(){
   toast(__autoSaveOn?'자동 저장 켜짐 (3분 간격)':'수동 저장 모드 — 직접 저장하세요');
 }
 // 창 닫기 전 경고
-window.addEventListener('beforeunload',e=>{if(state.dirty||photoIntakePending()){e.preventDefault();e.returnValue='';}});
+// v450 폰처럼 폴더를 연결하지 않은 기기는 state.dirty 가 풀릴 길이 없어(폴더 저장·파일 내보내기만 푼다) 자료가 이미 기기에 저장됐는데도
+// 앱을 다시 열거나 공유로 들어올 때마다 '사이트에서 나가시겠습니까?'가 떴다(리허설 R3) — 폴더 저장 전·기기 저장 전·사진 넣는 중일 때만 묻는다.
+window.addEventListener('beforeunload',e=>{if((state.dirty&&state.dirHandle)||__hjLocalSavePending||photoIntakePending()){e.preventDefault();e.returnValue='';}});
 window.addEventListener('unload',()=>{try{(state.files||[]).forEach(revokeThumbUrl);}catch(e){}});
 // 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
 window.addEventListener('pagehide',()=>{try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}});   // 뒤처진 탭은 닫힐 때도 안 덮는다
@@ -3318,7 +3323,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v449-rehearsal';
+const APP_BUILD='hyeonjang-v450-rehearsal2';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -4112,6 +4117,8 @@ async function hjOutboxFail(item,error){
     delete row.claim;return row.status;
   });
 }
+// v450 사진·기록을 올릴 곳(서버 또는 드라이브)이 연결돼 있나 — 없으면 대기함은 이 기기 보관만 한다
+function hjOutboxBackendReady(){try{return relayReady()||!!__gdToken;}catch(e){return false;}}
 async function hjOutboxFlush(options){
   options=typeof options==='boolean'?{manual:options}:options||{};
   if(!options.intake&&(photoIntakePending()||__modalCloseLocked))return {sent:0,remaining:(await hjOutboxRead()).length,stopped:'busy'};
@@ -4122,7 +4129,7 @@ async function hjOutboxFlush(options){
     try{
       hjOutboxGuard();await hjOutboxReconcile();
       const pending=await hjOutboxRead();if(!pending.length)return {sent:0,remaining:0,stopped:''};
-      const count=pending.filter(row=>row.kind==='file').length;if(count)toast('☁ 대기 사진 '+count+'장 올리는 중 …');
+      const count=pending.filter(row=>row.kind==='file').length;if(count&&!options.quiet&&hjOutboxBackendReady())toast('☁ 대기 사진 '+count+'장 올리는 중 …');   // v450 서버·드라이브 연결 전에는 올라가는 게 없다 — '올리는 중'을 띄우지 않는다
       for(let n=0;n<HJ_OUTBOX_MAX;n++){
         if(navigator.onLine===false){stopped='offline';break;}hjOutboxGuard();item=await hjOutboxClaim({...options,skipIds});if(!item)break;
         try{
@@ -4132,7 +4139,7 @@ async function hjOutboxFlush(options){
         if(options.id)break;
       }
     }catch(error){if(item){try{await hjOutboxFail(item,error);}catch(_){}}stopped=stopped||'blocked';}
-    const remaining=(await hjOutboxRead()).length;if(sent)toast('☁ 대기 자료 '+sent+'건 전송 끝'+(remaining?' · '+remaining+'건 대기':''));return {sent,remaining,stopped};
+    const remaining=(await hjOutboxRead()).length;if(sent&&!options.quiet)toast('☁ 대기 자료 '+sent+'건 전송 끝'+(remaining?' · '+remaining+'건 대기':''));return {sent,remaining,stopped};
   };
   __hjOutboxFlushing=run();try{return await __hjOutboxFlushing;}finally{__hjOutboxFlushing=null;hjOutboxChanged();}
 }
@@ -4691,10 +4698,19 @@ async function sendQuote(){
   const file=new File([pdf.blob],pdf.name,{type:'application/pdf'});
   const cn=(typeof COMPANY!=='undefined'&&COMPANY&&COMPANY.name)?COMPANY.name:'만물인테리어';
   const text=cn+' 견적서'+(q.title?' - '+q.title:'');
-  try{ if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:pdf.name,text}); return; } }
+  try{ if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:pdf.name,text}); hjQuoteMarkSentShared(q); return; } }
   catch(e){ if(String(e&&e.name)==='AbortError')return; }
   const a=document.createElement('a');a.href=URL.createObjectURL(pdf.blob);a.download=pdf.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast('PDF 저장됨 — 카톡/문자에 첨부해 보내세요.');
+}
+/* v450 공유 창으로 견적서를 보냈으면 보낸 날짜를 남긴다(비어 있을 때만) — 예전엔 견적 이력 [📤 보냄]을 따로 눌러야 팔로업 대상이 됐다(리허설 R2).
+   PDF 파일 저장만 한 경우(PC 다운로드)는 보냈는지 모르므로 그대로. 편집 중 사본과 저장된 견적에 같이 남겨 [저장]이 지우지 않게 한다. */
+function hjQuoteMarkSentShared(q){
+  if(!q||q.sentAt)return false;
+  const day=localDate(),saved=(state.quotes||[]).find(x=>x&&x.id===q.id);
+  q.sentAt=day;if(saved&&saved!==q&&!saved.sentAt)saved.sentAt=day;
+  markDirty();toast('📤 견적서를 보냈어요 — 보낸 날짜를 남겼어요(견적 이력 [📤 보냄]으로 되돌림)');
+  return true;
 }
 // 견적서 PDF를 구글드라이브 만물인테리어▸견적서 에 저장
 async function saveQuoteToDrive(){
@@ -7400,6 +7416,9 @@ async function ensurePhaseDir(projName, phaseName){
 /* v406 비어 있는 공정 입력을 사진 작업명으로 돕되 선택한 공정만 기존 추가 경로로 저장한다. */
 const HJ_PHASE_MAP=[[/방수|도막/,'방수'],[/배관|우수관|수전|난방|오수|트렌치|밸브/,'설비'],[/미장/,'미장'],[/타일/,'타일'],[/넥산|처마|고정대/,'넥산·처마'],[/실리콘|코킹/,'실리콘'],[/철거/,'철거'],[/도장|페인트/,'도장']];
 const HJ_PHASE_SKIP_RE=/탐사|정리|청소|보양/,HJ_PHASE_NORM_RE=/[\s·-]+/g;
+// v450 [모두 추가] 순서 — 예전엔 사진 수·가나다순이라 '방수·철거·타일'처럼 시공 순서와 거꾸로 들어갔다(리허설 R2). 목록에 없는 공정은 맨 뒤.
+const HJ_PHASE_SEQ=['철거','설비','방수','미장','타일','넥산·처마','도장','실리콘'];
+function hjPhaseSeq(ph){const i=HJ_PHASE_SEQ.indexOf(ph);return i<0?HJ_PHASE_SEQ.length:i;}
 const HJ_PHASE_HINT_BUSY=new Set();
 function hjPhaseHintKey(label){return hjPhaseLabel(label).toLowerCase().replace(HJ_PHASE_NORM_RE,'');}
 function hjPhasesFromPhotos(name){
@@ -7418,6 +7437,7 @@ async function hjPhaseHintAdd(name,phase){
   if(HJ_PHASE_HINT_BUSY.has(name))return;const p=state.projects.find(p=>p.name===name),stage=p&&(p.stage||0);
   if(!hjProjectActionValid(p,name,stage,3))return;
   const rows=hjPhasesFromPhotos(name).filter(r=>!phase||r.phase===phase);if(!rows.length)return;
+  if(!phase)rows.sort((a,b)=>hjPhaseSeq(a.phase)-hjPhaseSeq(b.phase));   // v450 [모두 추가]는 시공 순서대로
   HJ_PHASE_HINT_BUSY.add(name);
   try{if(!phase&&await hjSnapshot('사진 공정 추가 전',true)!==true){toast('안전판을 저장하지 못했어요. 다시 시도해 주세요');return;}
     for(const r of rows){if(!hjProjectActionValid(p,name,stage,3))return;if(hjPhasesFromPhotos(name).some(x=>x.phase===r.phase))await addPhase(name,r.phase);}
@@ -10337,6 +10357,7 @@ function dashboardTodoHTML(){
     '<b id="dashboardTodoTitle">✅ 오늘 현장 업무</b><p id="dashboardTodoSummary" role="status" style="margin:7px 0;font-size:14px">'+escapeHtml(dashboardTodoSummary())+'</p>'+
     // 사례 후보는 첫 화면에 — 더보기 안에만 두면 "어느 현장을 아직 안 보냈나"를 폰에서 다시 못 본다(v254 폰 첫 화면 규칙).
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
+    hjInstallLineHtml()+     // v450 폰에서 앱 설치(사이드바 단추가 모바일 모드에선 숨겨짐)
     hjCustMissingHtml()+     // v394 연락처 빈 최근 현장
     hjWarrantyCareHtml()+     // v438 보증 만료 60·30일 전 안부
     hjAptDocsDueHtml()+     // v441 아파트 시공 D-3 관리사무소 서류
@@ -10345,6 +10366,7 @@ function dashboardTodoHTML(){
     hjStaffRecordsHtml()+     // v444 직원이 남긴 기록(대표 화면에서만)
     hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
     hjTeamReportPendingHtml()+   // v432 팀 보고 검수 요청·막힘
+    hjInquiryBookedNoReplyHtml()+   // v450 방문은 잡았는데 답장 안 한 문의(아래 v386 줄 바로 뒤는 버튼 줄 — 계약 유지)
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" id="dashboardInquiryOpen" class="clay" onclick="hjInquiryView()" style="min-height:44px">📞 새 문의 받기</button>'+
     '<button type="button" id="dashboardTodoOpen" class="clay" onclick="todoLocalView()" style="min-height:44px">기존 할 일 확인·추가</button>'+
@@ -18862,10 +18884,11 @@ async function hjOutboxOnline(manual=false,id,options={}){
   try{
     const rows=await hjOutboxUiRefresh();if(!rows.length)return {sent:0,remaining:0};
     if(navigator.onLine===false){if(manual)toast('연결되면 다시 시도할 수 있어요. 사진과 기록은 기기에 보관합니다.');return {sent:0,remaining:rows.length,stopped:'offline'};}
-    const count=rows.filter(x=>x.kind==='file').length;toast(count?'☁ 대기 사진 '+count+'장 올리는 중…':'☁ 대기 기록을 확인하는 중…');
-    const result=await hjOutboxFlush({manual,id,intake:options.intake===true});await hjOutboxUiRefresh();
+    const count=rows.filter(x=>x.kind==='file').length,ready=hjOutboxBackendReady();
+    if(ready)toast(count?'☁ 대기 사진 '+count+'장 올리는 중…':'☁ 대기 기록을 확인하는 중…');   // v450 한 번만(예전엔 여기와 hjOutboxFlush 가 같은 말을 두 번) · 올릴 곳이 없으면 띄우지 않는다
+    const result=await hjOutboxFlush({manual,id,intake:options.intake===true,quiet:true});await hjOutboxUiRefresh();
     if(result.sent)toast('☁ 대기 자료 '+result.sent+'건 백업 확인'+(__hjOutboxUiRows.length?' · 남은 '+__hjOutboxUiRows.length+'건':' · 끝'));
-    else if(manual)toast('백업을 확인한 항목이 없습니다. 대기함의 상태를 확인해 주세요.');
+    else if(manual)toast(ready?'백업을 확인한 항목이 없습니다. 대기함의 상태를 확인해 주세요.':'서버·드라이브 연결 전이라 '+(count?'사진 '+count+'장은':'기록은')+' 이 기기에 보관합니다 — 설정에서 연결하면 올라가요.');
     return result;
   }catch(e){__hjOutboxUiProblem='연결 또는 대기함을 확인하지 못했습니다. 원본과 기록은 그대로 유지합니다.';hjNetBanner(true);if(manual)toast(__hjOutboxUiProblem);return {stopped:'error'};}
   finally{__hjOutboxUiSending=false;}
@@ -18901,7 +18924,7 @@ function hjNetBanner(show){
       document.body.appendChild(el);
     }
     const photos=__hjOutboxUiRows.filter(x=>x.kind==='file').length,records=__hjOutboxUiRows.length-photos;
-    el.innerHTML='<span style="display:block;overflow-wrap:anywhere">'+escapeHtml(__hjOutboxUiProblem||(navigator.onLine===false?'📴 오프라인':'☁ 백업 대기')+' — 사진 '+photos+'장 대기'+(records?' · 기록 '+records+'건':'')+' · 기록·조회는 그대로 됩니다.')+'</span><button type="button" id="hjNetOutbox" style="min-height:44px;margin-top:4px;background:transparent;border:1px solid currentColor;border-radius:8px;color:inherit;padding:0 12px">대기함 확인</button>';
+    el.innerHTML='<span style="display:block;overflow-wrap:anywhere">'+escapeHtml(__hjOutboxUiProblem||(navigator.onLine===false?'📴 오프라인 — 사진 '+photos+'장 대기'+(records?' · 기록 '+records+'건':''):hjOutboxBackendReady()?'☁ 백업 대기 — 사진 '+photos+'장 대기'+(records?' · 기록 '+records+'건':''):'💾 서버·드라이브 연결 전 — 사진 '+photos+'장'+(records?' · 기록 '+records+'건':'')+' 이 기기에 보관')+' · 기록·조회는 그대로 됩니다.')+'</span><button type="button" id="hjNetOutbox" style="min-height:44px;margin-top:4px;background:transparent;border:1px solid currentColor;border-radius:8px;color:inherit;padding:0 12px">대기함 확인</button>';
     el.querySelector('#hjNetOutbox').onclick=()=>hjOutboxView();
   }else if(el){el.remove();}
 }
@@ -23434,7 +23457,7 @@ function convTodoResult(todos,projName,ai){
 
 /* ═══════════ 📈 수주 성공 패턴 AI 코치 ═══════════ */
 function winRateData(){
-  const quotes=state.quotes||[];
+  const quotes=(state.quotes||[]).filter(q=>!hjQuoteTierAlt(q));   // v450 다른 안으로 확정돼 빠진 견적은 한 공사의 다른 구성 — 수주율에서 뺀다
   // 수주 = 현장이 연결됐거나 수주로 표시한 견적, 종결 = 사유와 함께 닫은 견적(견적 이력 '종결'과 같다), 나머지는 진행 중.
   // 판정은 quoteStatus 한 곳 — 예전엔 여기만 project 로 따로 세서 견적 이력의 수주율과 달랐다.
   const won=quotes.filter(q=>quoteStatus(q)==='won');
@@ -24880,7 +24903,7 @@ function hjQuoteClose(id,reason){
   q.lost={at:(q.lost&&q.lost.at)||localDate(),reason:r};
   markDirty();return true;
 }
-function hjQuoteLostReason(q){return (q&&q.lost&&q.lost.reason)||'';}
+function hjQuoteLostReason(q){return (q&&q.lost&&q.lost.reason)||(q&&q.tierLost?'다른 안 확정':'');}
 // 사유 칩 한 줄 — cls 는 누를 때 잡을 클래스(화면마다 다르게), 고른 사유는 채워 보인다
 function hjQuoteLostChips(q,cls){
   const cur=hjQuoteLostReason(q);
@@ -29321,7 +29344,7 @@ function funnelData(){
   const stageCount=[0,0,0,0];  // 상담·실측·시공·완료
   projs.forEach(p=>{const st=Math.min(3,Math.max(0,p.stage||0));for(let i=0;i<=st;i++)stageCount[i]++;});
   // 견적 → 계약(수주) 전환
-  const quotes=state.quotes||[];
+  const quotes=(state.quotes||[]).filter(q=>!hjQuoteTierAlt(q));   // v450 다른 안(같은 공사의 다른 구성)은 전환율에서 뺀다
   const quoteTotal=quotes.length;
   const quoteWon=quotes.filter(q=>quoteStatus(q)==='won').length;   // v388 수주 판정은 quoteStatus 한 곳(상담·실측 현장에 붙은 견적은 아직 계약 아님)
   const quoteRate=quoteTotal?Math.round(quoteWon/quoteTotal*100):0;
@@ -32695,7 +32718,7 @@ function estFinalCandidates(){
   const date8=function(nm){const m=String(nm||'').match(/(20\d{6})/);return m?m[1]:null;};
   const byPm={}; // project|YYYYMM → {star:[],plain:[]}
   (state.files||[]).forEach(function(f){
-    if(f.kind!=='estimate'||!f.project)return;
+    if(f.kind!=='estimate'||!f.project||f._fromQuote)return;   // v450 앱 견적(가상 파일)은 ★ 최종본 파일의 옛 안이 아니다 — 이름의 '제YYYYMMDD' 로 묶여 빠졌다
     if(!(f.est&&f.est.amount))return;
     const d=date8(f.name);if(!d)return;
     const k=f.project+'|'+d.slice(0,6);
@@ -32769,6 +32792,9 @@ function recvQuickView(pjName,back){
     '<input id="rqAmt" type="text" inputmode="numeric" value="" placeholder="통장에 들어온 금액" style="width:100%;padding:12px;font-size:16px;font-weight:800;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">'+
     '<label for="rqDate" style="font-size:11.5px;color:var(--muted)">입금일 (오늘까지)</label>'+
     '<input id="rqDate" type="date" value="'+today+'" max="'+today+'" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px">'+
+    // v450 결제 방법 — 간이영수증·세무 자료가 이 값을 쓴다(예전엔 칸이 없어 영수증 결제방법이 늘 비었다, 리허설 R2)
+    '<label for="rqMethod" style="font-size:11.5px;color:var(--muted)">결제 방법</label>'+
+    '<select id="rqMethod" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px">'+[['계좌이체','계좌이체'],['현금','현금'],['카드','카드'],['기타','기타'],['','모름 (비워 두기)']].map(function(o){return '<option value="'+o[0]+'">'+o[1]+'</option>';}).join('')+'</select>'+
     // v348 증빙 — 발행했으면 바로 적고, 아직이면 비워 둔다(이틀 뒤 '오늘의 체크'가 다시 묻는다)
     '<label for="rqProof" style="font-size:11.5px;color:var(--muted)">증빙(현금영수증·세금계산서) — 발행했으면 골라 두세요</label>'+
     '<select id="rqProof" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px"><option value="">아직 (나중에 기록)</option>'+Object.keys(HJ_PROOF).map(function(k){return '<option value="'+k+'">'+HJ_PROOF[k]+'</option>';}).join('')+'</select>'+
@@ -32784,6 +32810,7 @@ function recvQuickView(pjName,back){
       // 아직 오지 않은 돈을 받은 것으로 적으면 이번 주 수금·매출이 부풀려진다
       if(d>today){toast('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');hjFieldIssue(document.getElementById('rqDate'),'입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');return;}
       {const rec={d:d,project:pjName,amt:amt};const pk=(document.getElementById('rqProof')||{}).value||'';if(HJ_PROOF[pk]){rec.proof=pk;rec.proofAt=today;}   // v348
+       const pm=(document.getElementById('rqMethod')||{}).value||'';if(['현금','계좌이체','카드','기타'].includes(pm))rec.method=pm;   // v450
        hjPayRecordAdd(p,rec);}   // v350 통장 가져오기와 같은 한 곳
       markDirty();closeModal();render();
       try{portalAutoSync(pjName);}catch(e){}
@@ -34953,9 +34980,18 @@ function monthlyQuoteHTML(){
 }
 
 /* ==================== 견적 작성 모듈 ==================== */
+// v450 같은 날 두 번째 견적부터 '-2'·'-3' — 예전에는 날짜만으로 지어 같은 날 만든 기본안·고급안 번호가 똑같았다(견적서 PDF·이력·제안서, 리허설 R2)
+function hjQuoteNextNo(day){
+  const base='제'+String(day||localDate()).replace(/-/g,'');
+  const used=new Set(((typeof state!=='undefined'&&state.quotes)||[]).map(q=>q&&q.no).filter(Boolean));
+  if(typeof state!=='undefined'&&state.editingQuote&&state.editingQuote.no)used.add(state.editingQuote.no);
+  if(!used.has(base))return base;
+  for(let i=2;i<1000;i++){if(!used.has(base+'-'+i))return base+'-'+i;}
+  return base+'-'+uid().slice(0,4);
+}
 function newQuote(recordCreation=true){
   return {
-    id:uid(), title:'', no:'제'+localDate().replace(/-/g,''),
+    id:uid(), title:'', no:hjQuoteNextNo(),
     date:localDate(), place:'', vatIncluded:true,
     accountIdx:0, memo:'', project:null,
     items:[{name:'',spec:'',qty:1,price:0}],
@@ -35970,6 +36006,8 @@ function quoteCommitEditing(q){
   if(srcId)q.fromFileId=srcId;
   const copy=JSON.parse(JSON.stringify(q));
   const idx=state.quotes.findIndex(x=>x.id===q.id);
+  // v450 안 확정·Σ 제외(exSum·tierLost)는 저장된 견적 쪽 값이 주인 — 편집 중 비교표에서 확정해도 [저장]이 되돌리지 않는다. 현장을 바꾸면 푼다.
+  {const prev=idx>=0?state.quotes[idx]:null;['exSum','tierLost'].forEach(k=>{if(prev&&prev[k]&&(prev.project||'')===(copy.project||''))copy[k]=prev[k];else delete copy[k];});}
   if(idx>=0)state.quotes[idx]=copy;else state.quotes.push(copy);
   if(copy.project)syncQuoteToProject(copy); else state.files=state.files.filter(f=>f.id!=='quote_'+copy.id);  // 현장 연결 해제 시 유령 견적 파일 제거
   let srcExcluded=0;
@@ -36021,6 +36059,7 @@ function syncQuoteToProject(q){
   if(!f){f={id:vid,name:'[견적서] '+(q.title||q.no)+'.pdf',ext:'pdf',kind:'estimate',_virtual:true,_fromQuote:true};state.files.push(f);}
   f.project=q.project;
   f.est={amount:c.total,supply:c.supply,vat:c.vat,customer:q.title||'',date:q.date,bizno:COMPANY.bizno,_edited:true};
+  f.exSum=!!q.exSum;   // v450 가상 파일은 저장되지 않는다 — Σ 제외는 견적 레코드(q.exSum)가 주인(안 확정·Σ 단추가 같이 쓴다)
   if(q.fromFileId)f._editedFrom=q.fromFileId;else delete f._editedFrom;   // estimateGroups 2차 병합에서 빠진다(quoteCommitEditing v331)
 }
 function setQuoteField(field,val){const q=state.editingQuote;if(!q)return;
@@ -37608,7 +37647,9 @@ function setupDelegation(){
     if(d.fdel!==undefined){e.stopPropagation();return docDelete(d.fdel);}
     if(d.fsend!==undefined){e.stopPropagation();return docSend(d.fsend);}
     if(d.estpurchase!==undefined){e.stopPropagation();hjEstTogglePurchase(d.estpurchase);return;}
-    if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
+    if(d.exsum!==undefined){e.stopPropagation();const f=state.files.find(x=>x.id===d.exsum);if(f){f.exSum=!f.exSum;
+      if(f._fromQuote){const q=(state.quotes||[]).find(x=>x&&'quote_'+x.id===f.id);if(q){if(f.exSum)q.exSum=true;else{delete q.exSum;delete q.tierLost;}}}   // v450 앱 견적은 견적 레코드에 남긴다 · 다시 넣으면 '다른 안' 표시도 푼다
+      markDirty();render();toast(f.exSum?'Σ 집계에서 제외했어요':'집계에 다시 포함했어요');}return;}
     if(d.finalize!==undefined){e.stopPropagation();return estFinalApply();}
     if(d.recvquick!==undefined){e.stopPropagation();return recvQuickView(d.recvquick);}
     if(d.margintoggle!==undefined){e.stopPropagation();__hjMarginGross=!__hjMarginGross;render();return;}   // v429 공급가 ↔ 부가세 포함
@@ -42244,13 +42285,23 @@ function hjQuoteCompareTableHtml(cmp,doc){
     (cmp.mixed?'<div data-qc-mixed style="font-size:11.5px;color:#b45309;margin:6px 0">※ 견적서마다 부가세 표기가 달라(포함/별도) 합계는 공급가·부가세 포함 두 기준으로 나란히 맞췄습니다.</div>':'');
 }
 // 폰(좁은 화면) — 안마다 카드 한 장, 세로로. 차이 나는 품목은 같은 색.
-function hjQuoteCompareCardsHtml(cmp){
+// v450 이 비교 안에서 확정된 안 — 다른 안이 tierLost 로 가리키고 자신은 빠지지 않은 견적 id(없으면 '')
+function hjQuoteTierChosenIn(ids){
+  const qs=(ids||[]).map(id=>(state.quotes||[]).find(q=>q&&q.id===id)).filter(Boolean);
+  const c=qs.find(q=>!q.tierLost&&qs.some(o=>o!==q&&o.tierLost===q.id));
+  return c?c.id:'';
+}
+function hjQcChooseBtn(c,chosen,full){
+  const on=!!chosen&&c.id===chosen;
+  return '<button type="button" class="'+(on?'moss':'ghost')+' tiny" data-qc-choose="'+escapeAttr(c.id)+'" aria-pressed="'+on+'" style="min-height:44px'+(full?';margin-top:8px;width:100%':'')+'">'+(on?'✅ '+(full?'확정된 안':escapeHtml(c.label)+' 확정됨'):'✅ '+(full?'이 안':escapeHtml(c.label))+'으로 확정')+'</button>';
+}
+function hjQuoteCompareCardsHtml(cmp,chosen){
   return '<div data-qc-cards style="display:grid;gap:10px">'+cmp.cols.map((c,ci)=>'<div data-qc-card="'+escapeAttr(c.id)+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;background:var(--paper);min-width:0">'+
     '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap"><b style="font-size:15px">'+escapeHtml(c.label)+'</b><span style="font-size:15px;font-weight:800;color:var(--clay)">'+escapeHtml(won(c.gross))+'</span></div>'+
     '<div style="font-size:11.5px;color:var(--muted);margin:2px 0 8px">부가세 포함 · 공급가 '+escapeHtml(won(c.supply))+' · 견적서 표기 '+escapeHtml(won(c.shown))+' ('+(c.vatIncluded?'부가세 포함':'부가세 별도')+')</div>'+
     cmp.rows.filter(r=>r.cells[ci]!=null).map(r=>'<div'+(r.diff?' data-qc-diff style="background:'+HJ_QC_DIFF_BG+';border-radius:6px;padding:2px 4px"':' style="padding:2px 4px"')+'><span style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(r.name)+(r.diff?' <span style="color:#c2410c;font-size:10.5px">차이</span>':'')+'</span><b style="white-space:nowrap">'+escapeHtml(won(r.cells[ci]))+'</b></span></div>').join('')+
     (cmp.rows.some(r=>r.cells[ci]==null)?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px">이 안에 없는 품목: '+escapeHtml(cmp.rows.filter(r=>r.cells[ci]==null).map(r=>r.name).join(', '))+'</div>':'')+
-    '<button type="button" class="ghost tiny" data-qc-choose="'+escapeAttr(c.id)+'" style="min-height:44px;margin-top:8px;width:100%">✅ 이 안으로 확정</button></div>').join('')+'</div>';
+    hjQcChooseBtn(c,chosen,true)+'</div>').join('')+'</div>';
 }
 function hjQuoteCompareNarrow(){return (window.innerWidth||1024)<560;}
 // 고객 요청 요약 — 문의 노트 본문(첫 줄 '[문의 접수] …' 은 뺀다). 이름·번호·메일·동호수는 지운다.
@@ -42332,11 +42383,24 @@ function hjProposalDeliver(name,ids,opts){
     image:true,sms:{text:'['+COMPANY.name+'] '+HJ_PROPOSAL_SMS+'\n'+COMPANY.tel,kind:'doc433'}});
 }
 // 고객이 고른 안 — 나머지 안의 앱 견적(가상 견적 파일)을 매출 Σ 에서 뺀다. 고른 안은 다시 넣는다.
+/* v450 확정은 견적 레코드에 남긴다 — 고르지 않은 안: q.exSum(매출 Σ 제외) + q.tierLost(고른 안 id), 고른 안: 둘 다 지움.
+   예전에는 가상 견적 파일(저장 안 됨)에만 exSum 을 켜서 앱을 다시 켜면 확정이 풀리고 두 안이 다 매출에 더해졌다(리허설 R2·R3).
+   고르지 않은 안은 quoteStatus 'lost'(사유 '다른 안 확정') — 수동 '수주' 표시도 푼다(손으로 넣은 '종결'과 사유는 그대로). */
+function hjQuoteTierApply(list,chosenId){
+  let n=0;
+  (list||[]).forEach(q=>{
+    if(!q)return;const ex=q.id!==chosenId;
+    if(ex){q.exSum=true;q.tierLost=chosenId;if(q.result==='won')q.result='';}else{delete q.exSum;delete q.tierLost;}
+    const f=(state.files||[]).find(x=>x&&x.id==='quote_'+q.id);
+    if(f&&!!f.exSum!==ex){f.exSum=ex;n++;}
+  });
+  return n;
+}
+function hjQuoteTierAlt(q){return !!(q&&q.tierLost&&!q.result&&!(q.lost&&q.lost.at));}   // 다른 안으로 확정돼 빠진 견적(수주율 계산에서 뺀다 — 한 공사의 다른 구성)
 function hjQuoteTierConfirm(name,chosenId,ids){
   const list=(ids||[]).map(id=>(state.quotes||[]).find(q=>q&&q.id===id&&q.project===name)).filter(Boolean),chosen=list.find(q=>q.id===chosenId);
   if(!chosen||list.length<2){toast('확정할 안을 찾을 수 없어요');return false;}
-  let n=0;
-  list.forEach(q=>{const f=(state.files||[]).find(x=>x&&x.id==='quote_'+q.id);if(!f)return;const ex=q.id!==chosenId;if(!!f.exSum!==ex){f.exSum=ex;n++;}});
+  const n=hjQuoteTierApply(list,chosenId);
   const label=hjQuoteCompare([chosen]).cols[0].label.replace(/^A안$/,'고른 안');
   (state.notes=state.notes||[]).push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[견적 안 확정] '+(hjQuoteTierLabel(chosen)?hjQuoteTierLabel(chosen)+'안':(chosen.title||'고른 안'))+' — 나머지 '+(list.length-1)+'안은 매출 Σ 에서 뺌',project:name});
   markDirty();render();
@@ -42358,14 +42422,14 @@ function hjQuoteCompareView(name,pick){
   }
   const want=Array.isArray(pick)?pick.filter(id=>all.some(q=>q.id===id)):[];
   const sel=(want.length>=2?want:all.filter(q=>q.tier).map(q=>q.id).concat(all.filter(q=>!q.tier).map(q=>q.id))).slice(0,3);
-  const quotes=sel.map(id=>all.find(q=>q.id===id)),cmp=hjQuoteCompare(quotes),narrow=hjQuoteCompareNarrow();
+  const quotes=sel.map(id=>all.find(q=>q.id===id)),cmp=hjQuoteCompare(quotes),narrow=hjQuoteCompareNarrow(),chosen=hjQuoteTierChosenIn(sel);
   const picker=all.map(q=>{const c=quoteCalc(q);return '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-qc-pick="'+escapeAttr(q.id)+'"'+(sel.includes(q.id)?' checked':'')+' style="width:20px;height:20px;flex:none"> <span style="min-width:0;overflow-wrap:anywhere">'+(hjQuoteTierLabel(q)?'<b>'+hjQuoteTierLabel(q)+'안</b> · ':'')+escapeHtml(q.title||q.no||'견적')+' · '+escapeHtml(won(c.total))+' <span style="color:var(--muted)">'+escapeHtml(q.date||'')+'</span></span></label>';}).join('');
   const body='<div id="hjQuoteCompare" style="min-width:0;overflow-wrap:anywhere">'+
     '<details'+(all.length>3||!want.length?' open':'')+' style="margin-bottom:8px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px;font-weight:700">비교할 견적 고르기 (2~3개) · 지금 '+sel.length+'개</summary>'+picker+'</details>'+
-    '<div data-qc-summary style="font-size:12.5px;background:var(--paper-2);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+cmp.cols.map(c=>'<b>'+escapeHtml(c.label)+'</b> '+escapeHtml(hjMan(c.gross))).join(' · ')+' <span style="color:var(--muted)">(부가세 포함 기준)</span> · 차이 품목 '+cmp.diffCount+'개</div>'+
-    (narrow?hjQuoteCompareCardsHtml(cmp):hjQuoteCompareTableHtml(cmp,false)+'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+cmp.cols.map(c=>'<button type="button" class="ghost tiny" data-qc-choose="'+escapeAttr(c.id)+'" style="min-height:44px">✅ '+escapeHtml(c.label)+'으로 확정</button>').join('')+'</div>')+
+    '<div data-qc-summary style="font-size:12.5px;background:var(--paper-2);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+cmp.cols.map(c=>'<b>'+escapeHtml(c.label)+'</b> '+escapeHtml(hjMan(c.gross))).join(' · ')+' <span style="color:var(--muted)">(부가세 포함 기준)</span> · 차이 품목 '+cmp.diffCount+'개'+(chosen?' · <b data-qc-confirmed style="color:#15803d">✅ 확정: '+escapeHtml((cmp.cols.find(c=>c.id===chosen)||{}).label||'')+'</b>':'')+'</div>'+
+    (narrow?hjQuoteCompareCardsHtml(cmp,chosen):hjQuoteCompareTableHtml(cmp,false)+'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+cmp.cols.map(c=>hjQcChooseBtn(c,chosen,false)).join('')+'</div>')+
     '<label style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;margin-top:8px;cursor:pointer"><input type="checkbox" id="qcHide" style="width:20px;height:20px;flex:none"> 제안서에서 고객 이름 가리기 (현장은 동 단위로)</label>'+
-    '<p class="hint" style="margin-top:6px">[✅ 확정]은 고르지 않은 안을 매출 합계에서만 뺍니다(견적은 그대로, 견적·정산 Σ 로 되돌림). 제안서는 PDF·워드·HTML 파일·이미지로 — 고객 폰에는 🔗 공유(카톡·문자 첨부)와 💬 문자 초안으로 보냅니다.</p></div>';
+    '<p class="hint" style="margin-top:6px">[✅ 확정]은 고르지 않은 안을 매출 합계에서 빼고 견적 이력에 \'종결 · 다른 안 확정\'으로 남깁니다(견적은 그대로, 다른 안을 다시 확정하거나 견적·정산 Σ 로 되돌림). 제안서는 PDF·워드·HTML 파일·이미지로 — 고객 폰에는 🔗 공유(카톡·문자 첨부)와 💬 문자 초안으로 보냅니다.</p></div>';
   openModal('📊 견적 비교표 — '+name,body,
     [{label:'📄 제안서 만들기',cls:'clay',fn:()=>hjProposalDeliver(name,sel,{hideName:!!(document.getElementById('qcHide')||{}).checked})},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjModalTapTargets();
@@ -43269,6 +43333,30 @@ function hjInquiryNoReplyHtml(list){
   return '<span data-inq-noreply style="flex:1 1 100%;min-width:0;color:var(--hj-warn-fg);font-size:13px">💬 그중 답장 안 한 곳 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
     '<button type="button" class="clay" data-firstreply="'+escapeAttr(l[0])+'" onclick="hjFirstReplyView(this.dataset.firstreply)" style="min-height:44px;padding:0 10px">💬 '+escapeHtml(hjCut(l[0],10))+' 첫 답장</button>';
 }
+/* v450 방문(상담·실측)부터 잡은 문의는 '다음 일정 안 잡힌 문의' 줄에서 빠져, 답장을 안 했어도 첫 화면에 [💬 첫 답장]이 없었다(리허설 R2).
+   상담 단계 · 연락처 있음 · 문의 노트(또는 카카오 리드) · 앞으로 일정 있음 · 답장 기록 없음 · 문의 받은 지 3일 안 — 오래된 문의는 띄우지 않는다. 읽기 전용. */
+function hjInquiryAtMs(pj){
+  let best=NaN;
+  (state.notes||[]).forEach(n=>{if(!n||n.project!==pj||!HJ_INQ_NOTE_RE.test(String(n.text||'')))return;
+    let t=Date.parse(n.at||'');if(!Number.isFinite(t))t=hjKoDateTime(n.date);
+    if(!Number.isFinite(t)){const m=/^\[[^\]]+\]\s*(\d{4}-\d{2}-\d{2})/.exec(String(n.text||''));if(m)t=Date.parse(m[1]+'T09:00:00');}
+    if(Number.isFinite(t)&&!(t<=best))best=t;});
+  return best;
+}
+function hjInquiryBookedNoReply(now){
+  const t=now instanceof Date?now.getTime():Date.now(),pend=new Set(hjInquiryPending());
+  return (state.projects||[]).filter(p=>p&&!p.archived&&(p.stage||0)===0&&!pend.has(p.name)&&hjCustDigits((p.customer||{}).phone).length>=9&&
+      (p.kakaoLead||(state.notes||[]).some(n=>n&&n.project===p.name&&HJ_INQ_NOTE_RE.test(String(n.text||''))))&&!hjInquiryReplied(p.name)&&
+      (()=>{const at=hjInquiryAtMs(p.name);return Number.isFinite(at)&&t-at<=3*86400000;})())
+    .map(p=>p.name);
+}
+function hjInquiryBookedNoReplyHtml(){
+  let l=[];try{l=hjInquiryBookedNoReply();}catch(e){return '';}
+  if(!l.length)return '';
+  return '<div id="dashboardInquiryBookedNoReply" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px">'+
+    '<span style="flex:1 1 180px;min-width:0;color:var(--hj-warn-fg)">💬 방문은 잡았는데 답장 안 한 문의 '+l.length+'곳 — '+l.slice(0,3).map(escapeHtml).join(' · ')+(l.length>3?' 외':'')+'</span>'+
+    '<button type="button" class="clay" data-firstreply-booked="'+escapeAttr(l[0])+'" onclick="hjFirstReplyView(this.dataset.firstreplyBooked)" style="min-height:44px;padding:0 10px">💬 '+escapeHtml(hjCut(l[0],10))+' 첫 답장</button></div>';
+}
 function hjFirstReplyRecord(pj,chId){
   const at=new Date(),iso=at.toISOString(),ch=hjFirstReplyCh(chId);
   state.notes=state.notes||[];
@@ -43946,6 +44034,7 @@ function hjQuoteProjectEarly(q){
 function quoteStatus(q){
   if(q&&q.result)return q.result;              // won | lost (수동)
   if(q&&q.lost&&q.lost.at)return 'lost';        // v329 종결 기록만 남은 옛·손본 자료 — 종결은 result 와 lost 를 같이 쓴다(hjQuoteClose)
+  if(q&&q.tierLost)return 'lost';               // v450 같은 현장 비교표에서 다른 안으로 확정 — 고르지 않은 안은 수주가 아니다
   if(q&&q.project&&!hjQuoteProjectEarly(q))return 'won';   // 현장 연결 = 수주로 간주 — 현장이 아직 상담·실측이면 진행 중(v388)
   if(q&&q.sentAt)return 'sent';
   return 'draft';
@@ -43970,6 +44059,9 @@ function quoteMark(id,res){
   // 예전에는 result 를 비워 종결 사유가 지워지고 견적이 팔로업·30일 지난 목록으로 돌아왔다(보낸 날짜를 뒤늦게 남기는 흔한 동작).
   if(res==='sent'){q.sentAt=q.sentAt?'':localDate();markDirty();quoteHistoryView();toast(q.sentAt?'보낸 날짜를 남겼어요':'보냄 표시를 풀었어요');return;}
   q.result=(q.result===res)?'':res;
+  // v450 다른 안으로 확정돼 빠진 견적을 🎉 수주로 표시하면 그 안으로 다시 확정한다(매출 Σ 도 따라간다)
+  if(q.result==='won'&&q.tierLost){const grp=(state.quotes||[]).filter(x=>x&&q.project&&x.project===q.project&&(x.id===q.tierLost||x.tierLost===q.tierLost));
+    if(grp.length>=2)hjQuoteTierApply(grp,q.id);else{delete q.tierLost;delete q.exSum;const vf=(state.files||[]).find(x=>x&&x.id==='quote_'+q.id);if(vf)vf.exSum=false;}}
   // v329 '실패' 와 팔로업 「종결」 은 한 개념이다 — result==='lost' 이면 lost:{at,reason} 이 같이 있고, 풀리면 같이 지운다.
   if(q.result==='lost'){if(!q.lost||!q.lost.at)q.lost={at:localDate(),reason:''};}
   else if(q.lost)delete q.lost;
@@ -43985,7 +44077,7 @@ function quoteHistoryView(reset){
   const F=window.__qtHist;
   const list=quoteHistFilter();
   const amt=q=>quoteCalc(q).total;
-  const wonL=list.filter(q=>quoteStatus(q)==='won'), lostL=list.filter(q=>quoteStatus(q)==='lost');
+  const wonL=list.filter(q=>quoteStatus(q)==='won'), lostL=list.filter(q=>quoteStatus(q)==='lost'&&!hjQuoteTierAlt(q));   // v450 다른 안 확정으로 빠진 견적은 수주율에서 뺀다(목록에는 '종결 · 다른 안 확정')
   const pend=list.filter(q=>['draft','sent'].includes(quoteStatus(q)));
   const wonAmt=wonL.reduce((s,q)=>s+amt(q),0), pendAmt=pend.reduce((s,q)=>s+amt(q),0);
   const decided=wonL.length+lostL.length;
@@ -44030,7 +44122,7 @@ function quoteHistoryView(reset){
           '<button class="'+(st==='won'?'moss':'ghost')+' tiny qhWon" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">🎉 수주</button>'+
           '<button class="'+(st==='lost'?'clay':'ghost')+' tiny qhLost" data-id="'+q.id+'" style="flex:1;padding:6px;font-size:10.5px">✕ 종결</button>'+
           '<button class="ghost tiny qhEdit" data-id="'+q.id+'" style="flex:.7;padding:6px;font-size:10.5px">✎</button>'+
-        '</div>'+(st==='lost'&&q.result==='lost'?hjQuoteLostChips(q,'qhReason'):'')+'</div>';
+        '</div>'+(st==='lost'&&q.result==='lost'?hjQuoteLostChips(q,'qhReason'):'')+(hjQuoteTierAlt(q)?'<div data-qh-tieralt style="font-size:10.5px;color:var(--muted);margin-top:6px">다른 안으로 확정 — 매출·수주율에서 뺐어요 (이 안으로 바꾸려면 🎉 수주)</div>':'')+'</div>';
       }).join(''):'<div style="padding:26px;text-align:center;color:var(--muted);font-size:12px">조건에 맞는 견적이 없어요</div>')+
     '</div>'+
     '<div style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:11px">'+
@@ -45164,6 +45256,7 @@ function paidExactQuoteRuntimeFiles(quotes,currentFiles){
     const runtime=matched?{...matched}:{id,name:'[견적서] '+(quote.title||quote.no)+'.pdf',ext:'pdf',kind:'estimate',_virtual:true,_fromQuote:true};
     runtime.id=id;runtime._fromQuote=true;runtime.project=quote.project;
     runtime.est={amount:calc.total,supply:calc.supply,vat:calc.vat,customer:quote.title||'',date:quote.date,bizno:COMPANY.bizno,_edited:true};
+    runtime.exSum=!!quote.exSum;   // v450 syncQuoteToProject 와 같이 — 안 확정(고르지 않은 안 Σ 제외)은 견적 레코드가 주인(저장본 복원 경로)
     return runtime;
   });
 }
@@ -45283,12 +45376,30 @@ let __deferredPrompt=null;
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();__deferredPrompt=e;
   const b=$('#btnInstall');if(b){b.style.display='block';}
+  try{hjInstallLineShow();}catch(_){}   // v450 이미 그려진 첫 화면에도 바로
 });
 function installApp(){
   if(!__deferredPrompt){toast('이미 설치됐거나, 브라우저 메뉴의 ‘앱 설치’를 사용하세요.');return;}
   __deferredPrompt.prompt();
-  __deferredPrompt.userChoice.finally(()=>{__deferredPrompt=null;const b=$('#btnInstall');if(b)b.style.display='none';});
+  __deferredPrompt.userChoice.finally(()=>{__deferredPrompt=null;const b=$('#btnInstall');if(b)b.style.display='none';const l=document.getElementById('dashboardInstall');if(l)l.remove();});
 }
+/* v450 폰(모바일 모드)에서는 사이드바(aside)가 숨겨져 ⤓ 앱 설치 단추가 아무 데도 안 보였다(리허설 R3 — 앱이 크롬 기본 설치 배너도 막는다).
+   설치할 수 있을 때만 첫 화면 '오늘 현장 업무'에 한 줄. ✕ 는 이 기기에서 다시 안 띄움(localStorage hj_install_chip_off). PC 화면에서는 CSS 로 숨긴다(사이드바 단추가 있다). */
+function hjInstallLineHtml(){
+  let dp=null;try{dp=__deferredPrompt;}catch(e){return '';}
+  if(!dp)return '';
+  try{if(localStorage.getItem('hj_install_chip_off')==='1')return '';}catch(e){}
+  return '<div id="dashboardInstall" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:13.5px"><span style="flex:1 1 180px;min-width:0">📲 이 폰에 ‘현장’ 앱 설치 — 홈 화면 아이콘으로 바로 열려요</span>'+
+    '<button type="button" class="clay" data-install-go onclick="installApp()" style="min-height:44px;padding:0 12px">설치</button>'+
+    '<button type="button" class="ghost" data-install-off onclick="hjInstallLineOff()" aria-label="앱 설치 안내 닫기" style="min-height:44px;min-width:44px">✕</button></div>';
+}
+function hjInstallLineOff(){try{localStorage.setItem('hj_install_chip_off','1');}catch(e){}const l=document.getElementById('dashboardInstall');if(l)l.remove();}
+function hjInstallLineShow(){
+  if(document.getElementById('dashboardInstall'))return;
+  const anchor=document.getElementById('dashboardCaseSummary');if(!anchor)return;
+  const html=hjInstallLineHtml();if(html)anchor.insertAdjacentHTML('afterend',html);
+}
+window.addEventListener('appinstalled',()=>{__deferredPrompt=null;const l=document.getElementById('dashboardInstall');if(l)l.remove();});
 
 /* ===== 폴더 핸들 기억 (IndexedDB) — 다음 실행 시 자동 복원 ===== */
 /* idbGet 은 오류를 null 로 접는다(부팅 경로가 그렇게 기대한다). 안전판처럼 '읽기 실패'와 '비어 있음'을 구분해야

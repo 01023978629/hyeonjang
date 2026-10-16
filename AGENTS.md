@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-17 v450 리허설 R2·R3 고침 (인테리어 하루·폰 갤러리/설치/오프라인 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r2r3.js(R2 인테리어 하루 10단계 — 욕실 상담 페이지 연결 포함, R3 폰 5단계 — 공유·촬영·오프라인·설치·알림) — 390px·합성·외부 쓰기 0.
+- **견적 안 확정이 다시 켜면 풀리던 돈 문제(v437 내 코드)**: 가상 견적 파일(_fromQuote)은 직렬화되지 않아 f.exSum 이 앱을 다시 열면 사라지고 두 안이 다 매출에 더해졌다. 이제 견적 레코드가 주인 — 고르지 않은 안 q.exSum=true + q.tierLost=<고른 안 id>, 고른 안은 둘 다 지움(hjQuoteTierApply), 가상 파일을 만드는 두 곳 — syncQuoteToProject(옛 appState 복원·견적 저장)와 paidExactQuoteRuntimeFiles(확정 저장 durableLocalMutation 직후·paid-generation 복원 — 리허설 R3 가 탄 길) — 이 다 f.exSum=!!q.exSum. 견적·정산 Σ 단추도 앱 견적이면 q 에 같이 쓰고(다시 넣으면 tierLost 도 지움), quoteCommitEditing 은 저장된 견적의 exSum·tierLost 를 지킨다(현장을 바꾸면 푼다). estFinalCandidates 는 앱 견적을 뺀다(이름 '제YYYYMMDD' 로 ★ 최종본 묶음에 걸렸다).
+- 고르지 않은 안 = quoteStatus 'lost'(사유 '다른 안 확정', hjQuoteLostReason) — 수동 '수주' 표시는 풀고 수동 '종결'은 그대로. 수주율(winRateData·funnelData·견적 이력 '결정')에서는 뺀다(hjQuoteTierAlt — 한 공사의 다른 구성). 견적 이력 줄 data-qh-tieralt, 비교표 data-qc-confirmed·확정된 안 단추 aria-pressed. 다른 안을 🎉 수주로 누르면 그 안으로 다시 확정(quoteMark).
+- 견적 번호 hjQuoteNextNo: 같은 날 두 번째부터 '제YYYYMMDD-2'… (newQuote). 💰 입금 기록 #rqMethod(계좌이체 기본·현금·카드·기타·모름) → payLog.method → 간이영수증·세무 자료(rqAmt·rqDate 그대로, 미수 자동 채움 없음 — receivable-removed 계약).
+- 💬 방문은 잡았는데 답장 안 한 문의(문의 3일 안, hjInquiryBookedNoReply) — 대시보드 #dashboardInquiryBookedNoReply [data-firstreply-booked], v386 줄 바로 위(#dashboardInquiryPending + div 계약 유지).
+- 📲 폰 첫 화면 앱 설치 줄 #dashboardInstall(beforeinstallprompt 있을 때만, ✕ = localStorage hj_install_chip_off, PC 화면은 CSS 로 숨김 — 사이드바 ⤓ 단추). 모바일 모드에선 aside 가 숨겨져 설치 안내가 아무 데도 없었다.
+- 대기함(v425): hjOutboxBackendReady()(relayReady()||__gdToken) 없으면 '☁ 대기 사진 n장 올리는 중' 안 띄움, 손으로 누르면 '서버·드라이브 연결 전이라 … 이 기기에 보관', 아래 띠 '💾 서버·드라이브 연결 전 — … 이 기기에 보관'. hjOutboxOnline 은 flush 를 quiet 로 불러 토스트 한 번만.
+- 창 닫기 경고: (state.dirty&&state.dirHandle)||__hjLocalSavePending(persistLocal 의 기기 저장이 안 끝남)||photoIntakePending() — 폴더 없는 폰은 dirty 가 풀릴 길이 없어 공유로 다시 열 때마다 '나가시겠습니까?'가 떴다.
+- 📤 견적서 보내기(sendQuote) 공유 창이 끝나면 sentAt(비어 있을 때만, 편집 사본·저장본 같이 — hjQuoteMarkSentShared). 사진 공정 [모두 추가]는 시공 순서(HJ_PHASE_SEQ 철거·설비·방수·미장·타일·넥산·처마·도장·실리콘).
+- 욕실 상담(bathroom.html/js): #priceEstimateNotice 를 editor-only + 추정 단가 있을 때만, #methodScopeNotice(전체 철거인데 철거·폐기물이 빠짐 — 견적서 '미포함'으로 나감) editor-only.
+- 안 고친 것: 리뷰 링크 없이 ⭐ 리뷰 요청(토스트 안내만 — completion-links·warranty-review 가 지금 흐름을 지킴) · 인테리어 사진 추가 창 전/중/후 칸 · 완료보고서 공정 줄 중복.
+- 핀3곳 hyeonjang-v450-rehearsal2(v449 위). 신규 tests/rehearsalfix-v450.e2e.js 10/10(다시 켜기 두 길 — legacy-appState·paid-generation), 변이 tier-persist(TIER_PERSISTS_AFTER_RELOAD)·tier-exact(TIER_PERSISTS_AFTER_EXACT_RESTORE)·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 리허설 R2·R3 다시 15/15(관찰 21→10). 관련 80여 개 통과(bathroom-quality-v410·team-workboard·document-select·document-upload 의 다운로드 파일 이름 'download' 는 v449 에서도 같은 환경 문제). 정적 19개 통과.
+
 ## 2026-10-16 v449 리허설 R1·R4·R5 고침 (스택 끝에서 합성 리허설 → 찾은 것)
 
 - 리허설: /mnt/user-data/outputs/리허설/rehearsal-r1.js(누수 하루 12단계)·rehearsal-r4r5.js(월말 8 + 팀 4) — 390px·합성·외부 쓰기 0, HJ_REHEARSAL_APP 로 대상 주소. v436 끝에서 24/24 통과하며 찾은 문제를 고쳤고, v449 에서 다시 24/24.
