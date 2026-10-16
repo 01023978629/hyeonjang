@@ -179,8 +179,10 @@ let browser, passed = 0, page;
     await page.waitForFunction(() => /\[음성 \d{2}\/\d{2} \d{2}:\d{2}\]/.test(document.getElementById('hjLeakNote').value));
     const file = await page.evaluate(() => state.files.filter(f => /^음성_\d{8}_\d{4}\.webm$/.test(f.name)).map(f => [f.kind, f.project]));
     assert.deepEqual(file, [['other', LEAK]]);
-    await page.evaluate(() => { window.__recSize = 2 * 1024 * 1024 + 1; }); await page.locator('#hjLeakDetect [data-mic]').click(); await page.locator('#hjLeakDetect [data-mic]', { hasText: '멈추기' }).waitFor(); await page.locator('#hjLeakDetect [data-mic]').click();
-    await page.waitForFunction(() => /2MB/.test(document.querySelector('#toast').textContent)); assert.equal(await page.evaluate(() => state.files.filter(f => /^음성_/.test(f.name)).length), 1, 'over 2MB is not kept');
+    // 토스트 글자는 다음 토스트가 덮어쓴다 — 부하가 걸리면 기다리는 사이 사라져 가끔 실패했다. 나온 토스트를 모두 적어 두고 본다.
+    await page.evaluate(() => { window.__recSize = 2 * 1024 * 1024 + 1; window.__v443Toasts = []; if (!window.__v443ToastWrapped) { const real = toast; toast = m => { (window.__v443Toasts = window.__v443Toasts || []).push(String(m)); return real(m); }; window.__v443ToastWrapped = true; } });
+    await page.locator('#hjLeakDetect [data-mic]').click(); await page.locator('#hjLeakDetect [data-mic]', { hasText: '멈추기' }).waitFor(); await page.locator('#hjLeakDetect [data-mic]').click();
+    await page.waitForFunction(() => (window.__v443Toasts || []).some(t => /2MB/.test(t)) || /2MB/.test(document.querySelector('#toast').textContent)); assert.equal(await page.evaluate(() => state.files.filter(f => /^음성_/.test(f.name)).length), 1, 'over 2MB is not kept');
   });
 
   await test('⑤ sw 앱 셸 목록 그대로 · 새 최상위 키 없음 · 더보기 계약 · 390px', async () => {
