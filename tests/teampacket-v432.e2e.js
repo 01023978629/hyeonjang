@@ -162,13 +162,14 @@ let browser, passed = 0, page;
     await page.evaluate(() => { state.tab = 'dashboard'; }); // dashboard line checked after photos
     await page.locator('#photoIntakeConfirm').click();
     await page.waitForFunction(name => state.files.filter(f => f.project === name && f._teamReport).length === 2, LEAK, { timeout: 30000 });
+    await page.waitForFunction(int => document.getElementById('photoIntakeProject')?.selectedOptions[0]?.textContent === int, INT, { timeout: 30000 }).catch(() => {}); // v444: 다음 현장 확인창이 뜰 때까지(경합 방지) — 아래 assert 가 판정
     await page.locator('#photoIntakeProject').waitFor(); assert.equal(await page.evaluate(() => document.getElementById('photoIntakeProject').selectedOptions[0].textContent), INT, 'next project photos follow');
     await page.locator('#photoIntakeConfirm').click();
     await page.waitForFunction(name => state.files.filter(f => f.project === name && f._teamReport).length === 1, INT, { timeout: 30000 });
     const photos = await page.evaluate(({ leak, int }) => ({ leak: state.files.filter(f => f.project === leak).map(f => ({ name: f.name, tag: f._leaktag, phase: f._phase, label: f._worklabel })), int: state.files.filter(f => f.project === int).map(f => ({ tag: f._leaktag, phase: f._phase })) }), { leak: LEAK, int: INT });
     const l1 = photos.leak.find(x => x.name === '0001.jpg'), l2 = photos.leak.find(x => x.name === '0002.jpg');
     assert.equal(l1.tag, 'before'); assert.equal(l1.phase, '시공 전'); assert.equal(l1.label, '철거 전'); assert.equal(l2.tag, 'after'); assert.equal(l2.phase, '완료'); assert.equal(photos.int[0].tag, undefined); assert.equal(photos.int[0].phase, '완료');
-    await page.waitForFunction(() => !document.getElementById('photoIntakeProject')); await close();
+    await page.waitForFunction(() => !document.getElementById('photoIntakeProject')); await page.locator('#photoIntakeResult').waitFor({ timeout: 30000 }); await page.waitForFunction(() => !__photoIntakeBusy); await close(); // v444: 결과창까지 기다린 뒤 닫는다(늦게 뜬 결과창이 다음 단계를 가리던 경합)
     await page.evaluate(() => { state.tab = 'dashboard'; render(); }); await page.locator('[data-team-report-pending]').waitFor();
     assert.match(await page.locator('[data-team-report-pending]').innerText(), /검수 요청 1건[\s\S]*막힘 1건/); await shot('03-dashboard-pending');
     const before = await snapshot();

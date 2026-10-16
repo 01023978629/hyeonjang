@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-16 v444 👷 팀 앱 연동 2 — 내일 일정 한 번에 지시 · 공종별 체크리스트 · 사진 찍는 법 · 직원 모드
+
+- 서버 없이 되는 부분만(서버 API·직원 로그인·푸시는 팀 앱 서버 설계 뒤). 팀 앱 코드는 안 건드림 — work-order.json(v432 hjWoBuild/hjWoValidate) 그대로에 **선택 필드 guideKey 하나**(HJ_PHOTO_GUIDE 의 leakDetect/tile/wallpaper/finish, 없으면 통과·모르는 값이면 orders[i].guideKey 오류)를 더했고 지시서/팀앱_연동_인터페이스.md 에도 한 줄 적었다. v432 단건 보내기도 guideKey 를 싣는다.
+- [📤 내일 일정 팀에 보내기](일정 탭 #schTeamTomorrow → hjWoTomorrowView(day)): 그날 현장 일정(💰 수금·세금 자동 일정 제외)마다 지시 1개, 시간순 번호 wo_YYYYMMDD_nnn(hjWoNextId 다음부터), **이미 보낸 일정은 같은 번호로 다시 보냄**(items kind 'sched' ref 로 찾음 — 팀 앱에 같은 지시가 두 번 생기지 않게, 화면 data-wo-day-resend). 체크리스트는 공종 틀 HJ_WO_CHECKLIST_BY(철거·타일·도배·설비·누수 탐지·누수 수리 — hjWoTradeOf 가 일정 제목·메모·현장 이름으로 고름), 제목·메모는 hjRetScrub(고객 이름→'고객', 번호·메일·동호수 지움) + 돈 이야기 줄 통째로 뺌(hjWoMemoSafe). 그래도 hjWoPrivacyIssues 에 걸리면 ⛔ 표시하고 저장·복사·공유 모두 막는다. 기록은 hjWoRecordMany — 현장마다 p.workOrders(v432 와 같은 꼴 + guideKey) + '[팀 지시]' 노트, durableLocalMutation 한 번(스냅샷 '팀 지시(하루치) 기록 전' 1개).
+- 📷 사진 찍는 법 hjPhotoGuideView(사진 탭 도구 #btnPhotoGuide · 빈 사진 탭 #btnPhotoGuideEmpty): 공정 4종 카드(data-guide) + 공통 4줄(data-guide-tips) + [🖨 A4 한 장](hjDocShell → hjDocDeliverView). 읽기 전용.
+- 👷 직원 모드(설정 기타 #hjStaffOpen → hjStaffView, PIN 4자리 — localStorage hj_role='staff', hj_staff_pin=SHA-256(기기 소금 hj_staff_salt|PIN)): **기기 화면 제한이지 보안 권한이 아니다**(도움말 data-staff-help 에 그대로). 화면 글자만 가린다 — 텍스트 노드의 '…원' → (금액 숨김), 전화번호 → (번호 숨김), 숫자와 단위가 다른 조각(150<small>만원</small>)도 가림, 입력칸·글상자 값은 안 건드림(가린 글자가 저장되면 안 됨), MutationObserver 로 새로 그린 화면·모달도. 통화 단추(tel: 링크)는 그대로. CSS(#hjStaffCss)로 견적·정산·회계 탭, 삭제·대량 변경·복원·돈 화면 단추(data 속성 목록 + .kpis/.ratewrap/.amt), 글자로 고른 삭제·정리·되돌리기 단추(hjStaffHideNode → data-staff-hide)를 숨긴다. render 감싸기로 막힌 탭은 대시보드로(토스트), openGdriveSetup 감싸기로 설정 대신 직원 모드 창. 위쪽 띠 #hjStaffBar(z 65 — 머리줄 위·모달 아래, 모바일 머리줄 top 44px)·[끄기]는 PIN 맞아야.
+- 직원 모드에서 생긴 기록: workPunch 작업시간·saveReport 작업 보고에 by:'staff'(레코드 안 — 통째 직렬화), 사진은 ingestFile 감싸기(원래 promise 그대로 돌려줌 — async 로 감싸면 사진 추가 흐름 타이밍이 바뀐다)로 모아 2초 묶음마다 '[직원 사진] 현장 n장' 노트(by:'staff', 사진 참조 hjFileRef, 앱 목록에 남은 사진만). 파일 직렬화 칸은 안 늘렸다. 대표 첫 화면 '👷 직원이 남긴 기록 n건'(data-staff-records, 직원 모드에서는 안 보임) → [확인] hjStaffReviewView → [✅ 모두 확인함](노트 done · workLog.seenAt · report.seenAt).
+- 핀3곳 hyeonjang-v444-team2(v448 위). 신규 tests/team2-v444.e2e.js 5/5(① 하루치 지시·개인정보 막힘·원자 저장·같은 번호 다시 보냄 ② 작업 보고 가져오기 v432 길 ③ 직원 모드 ④ 사진 찍는 법·guideKey ⑤ 계약), 변이 mask-off(금액 가림 끔)는 STAFF_MONEY_MASKED·기준선은 TEAM2_API_PRESENT 에서 실패 확인. 관련 12개(teampacket-v432·photo-first-screen·mobile-photo-upload·settings-tabs·settings-safety·key-persist·dash-cards·dash-reports·reportfill-v408·mobile-more-tools·handoff-v374·mobilealert-v443)·정적 19개 통과. teampacket-v432 는 사진 결과창이 늦게 뜨는 경합(v448 판에서도 3번 중 1번 실패)이 있어 결과창(#photoIntakeResult)·__photoIntakeBusy 를 기다린 뒤 닫도록 검사만 고쳤다.
+
 ## 2026-10-16 v448 🌦 계절 캠페인 — 장마 전 방수 점검 · 겨울 동파 · 환절기 결로 · 명절·새학기 전 도배 (대상 추출 + 원고)
 
 - 자동 발송 없음 — 명단(번호 줄바꿈)·문자 원고·인스타/당근 글을 복사해 대표가 문자 앱에서 보낸다. 기록은 연락처 안 c.mkt{consent,optOutAt,lastSentAt,sent[{c,at}]≤12}와 기존 state.adPosts(ch:'sms-season', campaign, count) 뿐 — 새 최상위 키 없음. 추출·원고는 읽기 전용(검사가 저장본 비교).

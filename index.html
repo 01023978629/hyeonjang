@@ -3316,7 +3316,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v448-season';
+const APP_BUILD='hyeonjang-v444-team2';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5098,7 +5098,7 @@ function openGdriveSetup(){
     {id:'ct',     ic:'📨', label:'전자계약',   html:contractSec, on:ctUnlocked, warn:!!(__contract.url&&__contract.token)&&!ctUnlocked},
     {id:'office', ic:'🏢', label:'OfficeOps',  html:officeOpsSec, on:!!(__officeOps.url&&__officeOps.token), warn:__officeOps.mode==='export-only'},
     {id:'keys',   ic:'🔑', label:'AI·지도 키', html:keysSec,     on:!!(window.__geminiKey||window.__visionKey||window.__kakaoKey||window.__openaiKey)},
-    {id:'etc',    ic:'⭐', label:'기타',       html:`<button type="button" class="ghost" id="hjSafetyOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">🔒 데이터 안전 (개인정보 보존·백업 점검·변경 기록)</button><button type="button" class="ghost" id="hjAlertOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">🔔 일정·출동 알림 (몇 분 전·폰 캘린더)</button><button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 12px">📴 오프라인 대기함</button>`+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
+    {id:'etc',    ic:'⭐', label:'기타',       html:`<button type="button" class="ghost" id="hjSafetyOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">🔒 데이터 안전 (개인정보 보존·백업 점검·변경 기록)</button><button type="button" class="ghost" id="hjStaffOpen" onclick="hjStaffView()" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">👷 직원 모드 (금액·전화·삭제 가리기 · PIN)</button><button type="button" class="ghost" id="hjAlertOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 8px">🔔 일정·출동 알림 (몇 분 전·폰 캘린더)</button><button type="button" class="ghost" id="hjOutboxOpen" style="display:block;width:100%;min-height:44px;white-space:normal;margin:0 0 12px">📴 오프라인 대기함</button>`+reviewSec+`<details id="gdLegacy" style="margin-top:4px"><summary style="cursor:pointer;color:var(--muted-2);font-size:13px">🧰 비상용: Google 직접 연동 (기존 방식 — 로그인 필요)</summary><div style="margin-top:8px">`+gdBody+`</div></details>`, on:!!__reviewUrl}
   ];
   const dot=(t)=>t.warn
     ? '<span title="자가진단 필요" style="width:7px;height:7px;border-radius:50%;background:var(--warn,#c99a2e);display:inline-block"></span>'
@@ -8933,7 +8933,7 @@ function emptyState(tab){
   };
   const t=BY[tab]||['아직 불러온 파일이 없습니다','드라이브의 현장·견적·사진을 한 번에 불러오세요.'];
   return `<div class="drop" id="drop"><b>여기에 파일을 끌어다 놓아도 됩니다</b> — PC는 왼쪽 ‘작업 폴더’, 폰은 아래 드라이브 버튼으로 연결하세요.<br>‘일괄 글자 읽기’를 누르면 내용까지 읽어 정확히 분류합니다.</div><div class="empty"><b>${t[0]}</b>${t[1]}
-  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${tab==='photos'?'<button class="clay" id="btnGdPhotos" style="font-size:15px;padding:12px 20px;min-height:44px">📷 사진 선택해서 올리기</button>':''}<button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
+  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${tab==='photos'?'<button class="clay" id="btnGdPhotos" style="font-size:15px;padding:12px 20px;min-height:44px">📷 사진 선택해서 올리기</button><button class="ghost" id="btnPhotoGuideEmpty" onclick="hjPhotoGuideView()" style="font-size:15px;padding:12px 20px;min-height:44px">📷 사진 찍는 법</button>':''}<button class="clay" id="dashGdPull" style="font-size:15px;padding:12px 20px">☁️ 구글드라이브에서 불러오기</button><button class="blue" id="gdImportAll" style="font-size:15px;padding:12px 20px">📂 내 드라이브 전체 통합</button></div></div>`;}
 function selectableProjects(sel){return sortProjectDisplay(state.projects.filter(p=>!p.archived||p.name===sel),projectPhotoCounts(state.files));}
 function projectOptions(sel){let o=`<option value="">현장 미지정</option>`;selectableProjects(sel).forEach(p=>o+=`<option value="${escapeAttr(p.name)}"${p.name===sel?' selected':''}>${escapeHtml(p.name)}</option>`);return o;}
 // Opt-in selectors only. Search never dispatches change or rewrites the selected project.
@@ -10319,6 +10319,7 @@ function dashboardTodoHTML(){
     hjAptDocsDueHtml()+     // v441 아파트 시공 D-3 관리사무소 서류
     hjAlertTodayHtml()+     // v443 오늘 일정 폰 캘린더(알람)
     hjSeasonDueHtml()+     // v448 계절 캠페인 시기
+    hjStaffRecordsHtml()+     // v444 직원이 남긴 기록(대표 화면에서만)
     hjQuoteWaitingHtml()+     // v389 상담·실측 끝났는데 견적 안 쓴 현장(버튼 줄 바로 위는 v386 문의 줄 — inqpending-v386 의 '+ div button' 계약)
     hjTeamReportPendingHtml()+   // v432 팀 보고 검수 요청·막힘
     hjInquiryPendingHtml()+   // v386 상담 일정이 안 잡힌 새 문의
@@ -33857,7 +33858,7 @@ function viewPhotos(){
   if(!photos.length&&state.search&&state.files.some(f=>f.kind==='photo')){
     return `<div class="empty" id="photoSearchEmpty" role="status"><b>검색 결과가 없습니다</b><div style="margin:8px 0 14px;color:var(--muted);overflow-wrap:anywhere">‘${escapeHtml(state.search)}’와 일치하는 사진을 찾지 못했습니다.<br>저장된 사진은 그대로 있습니다. 검색을 지우면 전체 사진을 볼 수 있습니다.</div><button type="button" class="clay" id="btnClearPhotoSearch" style="width:auto;min-width:44px;min-height:44px;padding:12px 20px">검색 지우고 사진 보기</button></div>`;
   }
-  if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)">휴대폰·PC에서 사진을 선택한 뒤 현장과 작업 내용을 확인해 추가하세요.<br>기존 드라이브 사진도 아래에서 불러올 수 있습니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="btnGdPhotos" style="font-size:15px;padding:13px 22px;width:auto;min-height:44px">📷 사진 선택해서 올리기</button><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button></div></div>`;
+  if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)">휴대폰·PC에서 사진을 선택한 뒤 현장과 작업 내용을 확인해 추가하세요.<br>기존 드라이브 사진도 아래에서 불러올 수 있습니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="btnGdPhotos" style="font-size:15px;padding:13px 22px;width:auto;min-height:44px">📷 사진 선택해서 올리기</button><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button><button class="ghost" id="btnPhotoGuideEmpty" onclick="hjPhotoGuideView()" style="font-size:14px;padding:13px 18px;width:auto;min-height:44px">📷 사진 찍는 법</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
   const fp=photoFingerprint(photos);
   let dupSets, clusters;
@@ -33894,6 +33895,7 @@ function viewPhotos(){
     ${__narrow?'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>':''}
     <button class="blue tiny" data-aptbulk="project" style="min-height:44px">🏢 아파트 · 동·호수</button>
     <button class="ghost tiny" id="btnMediaOriginal" onclick="hjMediaView()" style="font-size:12.5px;padding:8px 12px;min-height:44px">🎬 원본·영상 관리</button>
+    <button class="ghost tiny" id="btnPhotoGuide" onclick="hjPhotoGuideView()" style="font-size:12.5px;padding:8px 12px;min-height:44px">📷 찍는 법</button>
       <button class="blue tiny" id="btnGotoDrive" style="font-size:12.5px;padding:8px 12px">📂 열기</button>
       <button class="moss tiny" id="btnPhotoBundle" style="font-size:12.5px;padding:8px 12px">📤 묶음발송(카톡30/문자10)</button>`;
   html+=`<div class="photo-toolbar">
@@ -36109,7 +36111,7 @@ function calMonth(){return __calYM||localMonth();}
 function viewSchedule(){
   const today=localDate();
   let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schRoutine">🔁 운영 루틴 담기</button> <button class="ghost tiny" id="schNotify">🔔 알림 문자</button> <button class="ghost tiny" id="schShare">📤 일정 공유</button> <button class="ghost tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
+    <button class="clay tiny" id="schAdd">+ 일정 추가</button> <button class="blue tiny" id="schRoutine">🔁 운영 루틴 담기</button> <button class="ghost tiny" id="schNotify">🔔 알림 문자</button> <button class="ghost tiny" id="schShare">📤 일정 공유</button> <button class="ghost tiny" id="schTeamTomorrow" onclick="hjWoTomorrowView()" style="min-height:44px">📤 내일 일정 팀에 보내기</button> <button class="ghost tiny" id="schLabor">👷 인건비</button> <button class="ghost tiny" id="schGcal">📅 캘린더 자동: ${hjGcalAutoOn()?'켬':'끔'}</button></div>`;
   // ===== 월 달력 =====
   html+=calendarHTML();
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
@@ -36581,7 +36583,8 @@ function saveReport(id,keepOpen){
     issue:g('rIssue').value.trim(),
     progress:g('rProgress').value,
     weather:g('rWeather').value,
-    filledAt:new Date().toISOString()
+    filledAt:new Date().toISOString(),
+    ...(hjStaffOn()?{by:'staff'}:{})   // v444 직원 모드 표식
   };}
   markDirty();
   if(keepOpen){return;}
@@ -39927,6 +39930,7 @@ function hjWoBuild(name,draft){
     assignee:hjWoText(d.assignee,20),due:isRealIsoDate(String(d.due||''))?d.due:'',priority:HJ_WO_PRIORITY.includes(d.priority)?d.priority:'normal',checklist,photosWanted,notes:hjWoText(d.notes,1000),contactMasked:'010-****-'+String(COMPANY.tel).replace(/\D/g,'').slice(-4)};
   const addr=hjWoAddrSafe(p.customer&&p.customer.addr),unit=hjWoUnit(p);
   if(addr)order.project.addr=addr;if(unit)order.project.unit=unit;
+  order.guideKey=hjWoGuideKey(p,hjWoTradeOf(p,order.title+' '+order.detail));   // v444 사진 찍는 법 열쇠(인터페이스 선택 필드)
   if(/^\d{2}:\d{2}$/.test(String(d.startTime||'')))order.startTime=d.startTime;if(/^\d{2}:\d{2}$/.test(String(d.endTime||'')))order.endTime=d.endTime;
   return {type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders:[order]};
 }
@@ -39953,7 +39957,8 @@ function hjWoValidate(packet){
     if(!o||!Array.isArray(o.checklist)||!o.checklist.every(x=>typeof x==='string'))e.push('orders['+i+'].checklist');
     if(!o||!Array.isArray(o.photosWanted)||!o.photosWanted.every(x=>HJ_WO_PHOTOS.some(p=>p[0]===x)))e.push('orders['+i+'].photosWanted');
     if(o&&o.due&&!isRealIsoDate(String(o.due)))e.push('orders['+i+'].due');
-    const allowed=['id','project','title','detail','assignee','due','startTime','endTime','priority','checklist','photosWanted','notes','contactMasked'];
+    if(o&&o.guideKey!=null&&!Object.prototype.hasOwnProperty.call(HJ_PHOTO_GUIDE,o.guideKey))e.push('orders['+i+'].guideKey');   // v444 선택 필드
+    const allowed=['id','project','title','detail','assignee','due','startTime','endTime','priority','checklist','photosWanted','notes','contactMasked','guideKey'];
     Object.keys(o||{}).forEach(k=>{if(!allowed.includes(k))e.push('orders['+i+'].'+k+' 는 인터페이스에 없는 필드');});
   });
   return e;
@@ -42566,6 +42571,244 @@ function hjMktView(contactId){
 }
 const HJ_MKT_ASK_LINE='□ 시공 뒤 계절 점검(장마 전·동파 예방 등) 안내 문자를 받겠습니다 — 원하시면 체크해 주세요. 언제든 "거부" 회신으로 멈출 수 있습니다.';
 const HJ_MKT_ASK_SMS='시공 뒤 계절 점검(장마 전·동파 예방 등) 안내 문자를 받으시겠어요? 원하시면 "동의"라고 답장 주세요. 언제든 "거부"로 멈출 수 있습니다.';
+/* ═══ v444 👷 팀 앱 연동 2 — 내일 일정 한 번에 지시 패킷 · 공종별 체크리스트 · 사진 찍는 법 · 직원 모드 ═══
+   서버 없이 되는 부분만(서버 API·직원 로그인·푸시는 팀 앱 서버 설계 뒤). 팀 앱 코드는 건드리지 않는다 — 규격은 팀앱_연동_인터페이스.md 의
+   work-order.json(v432 hjWoBuild/hjWoValidate) 그대로에 선택 필드 guideKey 하나를 더했다(문서에도 한 줄 추가).
+   · 내일 일정 전체 → [📤 내일 일정 팀에 보내기](일정 탭): 일정마다 주문 1개(같은 번호 규칙 wo_YYYYMMDD_nnn), 체크리스트는 공종 틀(HJ_WO_CHECKLIST_BY),
+     사진 요청 + guideKey(HJ_PHOTO_GUIDE). 메모는 고객 이름·번호·동호수·돈 이야기를 지우고 넣고, 그래도 개인정보 검사에 걸리면 보내지 않는다.
+     기록은 현장마다 p.workOrders(v432 와 같은 꼴) — 원자 저장 한 번.
+   · 직원 모드(localStorage hj_role='staff', PIN 4자리 해시 hj_staff_pin + 기기 소금 hj_staff_salt): 금액 글자 가림(화면·모달의 '…원' → '(금액 숨김)'),
+     전화번호 글자 가림(통화 버튼은 그대로), 견적·정산·회계 탭 막음, 삭제·대량 변경·백업 복원·돈 화면 단추 숨김, 설정은 직원 모드 끄기만.
+     이것은 기기 화면 제한이지 보안 권한이 아니다(자료는 이 기기에 그대로 있다 — 도움말에 적음). 진짜 권한 분리는 팀 앱 서버 몫.
+   · 직원 모드에서 생긴 작업시간·작업 보고는 레코드 안 by:'staff', 사진은 넣은 묶음마다 노트 '[직원 사진]'(by:'staff', 사진 참조) — 파일 직렬화 칸은 늘리지 않았다.
+     대표는 첫 화면 '👷 직원이 남긴 기록 n건' 줄에서 확인한다(확인하면 노트 done). */
+const HJ_WO_CHECKLIST_BY=Object.freeze({
+  '철거':['철거 전 사진(4방향)','보양(바닥·엘리베이터)','철거','폐기물 반출','철거 후 바탕 사진'],
+  '타일':['바탕면 사진','방수 1차·2차 (사진)','타일 붙이기','줄눈','완료 사진'],
+  '도배':['벽면 상태 사진','초배','정배','이음매 확인','완료 사진'],
+  '설비':['작업 전 사진','밸브 잠금 확인','배관 작업','누수 확인(압력·물 틀기)','완료 사진'],
+  '누수 탐지':['계량기 사진(멈춤 확인)','탐지 장비 화면 사진','원인 부위 넓게·가까이','아랫집 피해 사진','고객 설명'],
+  '누수 수리':['개방 전 사진','원인 부위 사진','교체·보수','압력·누수 재확인','복구·청소','완료 사진']
+});
+function hjWoTradeOf(p,text){
+  const t=String(text||'')+' '+String(p&&p.name||'');
+  if(hjProjectKind(p)==='leak')return /수리|교체|복구|공사|보수/.test(t)?'누수 수리':'누수 탐지';
+  if(/철거/.test(t))return '철거';if(/타일|욕실|방수|줄눈/.test(t))return '타일';if(/도배|벽지/.test(t))return '도배';if(/배관|설비|수전|보일러|분배기|변기/.test(t))return '설비';
+  return '';
+}
+const HJ_PHOTO_GUIDE=Object.freeze({
+  leakDetect:{title:'누수 탐지',ic:'💧',cuts:['계량기(수도) 숫자 — 모든 물을 잠근 뒤 멈춤 확인 전·후','탐지 장비 화면(청음·열화상·가스 수치)이 보이게','원인 부위 넓게 1장 + 가까이 1장','아랫집 피해 부위(천장·벽) 넓게']},
+  tile:{title:'타일·방수',ic:'🧱',cuts:['철거 뒤 바탕면 전체','방수층 — 1차·2차 바른 뒤 각각','줄눈 전 / 줄눈 후 같은 자리','배수구 주변 가까이']},
+  wallpaper:{title:'도배',ic:'🧻',cuts:['초배(밑작업) 끝난 벽 전체','이음매·모서리 가까이','마감 뒤 방 전체']},
+  finish:{title:'완료',ic:'✅',cuts:['방(공간) 4방향 — 문 쪽에서 시작해 시계 방향','디테일 2컷 — 코너·실리콘·이음','쓰레기·자재 치운 뒤 바닥']}
+});
+const HJ_PHOTO_TIPS=Object.freeze(['밝게 — 조명을 켜고 창을 등지고 찍기','수평 — 문틀·타일 줄에 화면 선을 맞추기','날짜 — 카메라 날짜 표시를 켜거나 앱으로 바로 찍기(촬영 시각이 남는다)','개인정보 피하기 — 얼굴·문패·택배 라벨·차량 번호가 안 나오게']);
+function hjWoGuideKey(p,trade){if(hjProjectKind(p)==='leak')return 'leakDetect';if(trade==='타일')return 'tile';if(trade==='도배')return 'wallpaper';return 'finish';}
+// 메모 정리 — 고객 이름·번호·메일·동호수는 지우고, 돈 이야기 줄은 통째로 뺀다(직원 화면에 돈·개인정보 금지).
+function hjWoMemoSafe(p,memo){
+  const name=String((p&&p.customer||{}).name||'').trim();
+  return String(memo||'').split('\n').filter(l=>!/\d[\d,]*\s*(?:만\s*)?원(?![가-힣])|금액|견적가|잔금|계약금|중도금|수금|입금/.test(l)).map(l=>hjRetScrub(l,name).trim()).filter(Boolean).join('\n').slice(0,600);
+}
+function hjWoDaySchedules(day){
+  return (state.schedule||[]).filter(s=>s&&s.date===day&&s.project&&!/^💰/.test(String(s.title||''))&&!s._taxAuto&&(state.projects||[]).some(p=>p&&p.name===s.project))
+    .sort((a,b)=>String(a.time||'99').localeCompare(String(b.time||'99'))||String(a.title||'').localeCompare(String(b.title||'')));
+}
+// 하루치 패킷 — 일정마다 주문 1개. 번호는 그날 이미 쓴 번호 다음부터.
+function hjWoBuildDay(day){
+  const rows=hjWoDaySchedules(day);if(!rows.length)return null;
+  const base=hjWoNextId(state,localDate()),m=HJ_WO_ID_RE.exec(base),date=m[1];let n=Number(m[2]);
+  const orders=[],refs=[];
+  // 이미 보낸 일정은 같은 번호로 다시 보낸다(팀 앱에서 같은 지시가 두 번 생기지 않게).
+  const sentId=(p,s)=>{const w=hjWoOrders(p).find(w=>HJ_WO_ID_RE.test(w.packetId)&&Array.isArray(w.items)&&w.items.some(x=>x&&x.kind==='sched'&&String(x.ref)===String(s.id)));return w?w.packetId:'';};
+  rows.forEach(s=>{
+    const p=(state.projects||[]).find(x=>x&&x.name===s.project),trade=hjWoTradeOf(p,s.title+' '+(s.memo||'')),crew=hjCrewList(s.crew),again=sentId(p,s);
+    const one=hjWoBuild(p.name,{id:again||'wo_'+date+'_'+String(n++).padStart(3,'0'),title:hjWoText(hjRetScrub(s.title||'작업',(p.customer||{}).name),120)+(trade?' ('+trade+')':''),detail:hjWoMemoSafe(p,s.memo),
+      assignee:hjWoText(crew.join(','),20),due:s.date,startTime:s.time||'',endTime:s.endTime||'',priority:s.urgent?'urgent':'normal',
+      checklist:(HJ_WO_CHECKLIST_BY[trade]||HJ_WO_CHECKLIST).slice(),photosWanted:HJ_WO_PHOTOS.map(x=>x[0]),notes:''});
+    const o=one.orders[0];o.guideKey=hjWoGuideKey(p,trade);
+    orders.push(o);refs.push({name:p.name,order:o,again:!!again,items:[{kind:'sched',ref:String(s.id),text:hjWoText(s.title||'일정',120)}],issues:hjWoPrivacyIssues({orders:[o]},p)});
+  });
+  return {packet:{type:HJ_WO_TYPE,version:HJ_WO_VERSION,issuedAt:new Date().toISOString(),issuer:COMPANY.name,orders},refs};
+}
+async function hjWoRecordMany(refs,via){
+  const at=new Date().toISOString();
+  return durableLocalMutation({snapshotLabel:'팀 지시(하루치) 기록 전',mutateDraft:draft=>{
+    let n=0;
+    refs.forEach(r=>{
+      const rows=(draft.projects||[]).filter(x=>x&&x.name===r.name),target=rows.length===1?rows[0]:null;
+      if(!target)throw new Error('현장을 찾을 수 없습니다: '+r.name);
+      if(target.workOrders!=null&&!Array.isArray(target.workOrders))throw new Error('기존 지시 기록 형식을 확인해 주세요.');
+      const list=target.workOrders||[],o=r.order,found=list.find(w=>w&&w.packetId===o.id);
+      if(found){found.sentAt=at;found.via=String(via||'');found.resent=(Number(found.resent)||0)+1;}
+      else{list.push({at,packetId:o.id,sentAt:at,via:String(via||''),worker:'',title:o.title,date:o.due||'',assignee:o.assignee||'',due:o.due||'',priority:o.priority,checklist:o.checklist.slice(),photosWanted:o.photosWanted.slice(),guideKey:o.guideKey||'',items:r.items,reports:[]});
+        if(list.length>50)list.splice(0,list.length-50);target.workOrders=list;}
+      draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+      draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[팀 지시] '+(o.due?hjMdDow(o.due)+' ':'')+o.title+(o.assignee?' → '+o.assignee:'')+' · '+o.id+(found?' (다시 보냄)':''),project:r.name});
+      n++;
+    });
+    return {n};
+  }});
+}
+function hjWoTomorrowView(day){
+  const d=isRealIsoDate(String(day||''))?day:hjAddDays(localDate(),1),built=hjWoBuildDay(d);
+  if(!built){openModal('📤 '+hjMdDow(d)+' 일정 팀에 보내기','<div class="empty" data-wo-day-empty style="padding:16px"><b>'+escapeHtml(hjMdDow(d))+' 현장 일정이 없습니다</b>일정에 현장을 연결해 두면 하루치 지시를 한 번에 만들 수 있습니다.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);hjModalTapTargets();return false;}
+  const bad=built.refs.filter(r=>r.issues.length),schema=hjWoValidate(built.packet);
+  const body='<div id="hjWoDay" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:11.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:10px">'+escapeHtml(hjMdDow(d))+' 일정 '+built.refs.length+'건을 지시 '+built.refs.length+'개로 — 고객 이름·전화·금액은 넣지 않고, 메모의 돈 이야기 줄은 뺐습니다.</div>'+
+    built.refs.map(r=>{const o=r.order,g=HJ_PHOTO_GUIDE[o.guideKey];return '<div data-wo-day-order="'+escapeAttr(o.id)+'" style="border:1px solid var(--line-soft);border-radius:11px;padding:10px;margin-top:8px;font-size:12.5px">'+
+      '<b>'+escapeHtml((o.startTime?o.startTime+' ':'')+o.title)+'</b> <span style="color:var(--muted)">'+escapeHtml(o.id)+'</span>'+(r.again?' <span data-wo-day-resend style="color:var(--muted)">↻ 다시 보냄(같은 번호)</span>':'')+'<br>'+escapeHtml(o.project.name)+(o.assignee?' · 👷 '+escapeHtml(o.assignee):' · 담당 없음')+(o.priority==='urgent'?' · 🚨 급함':'')+
+      '<div style="color:var(--muted);margin-top:3px">✅ '+escapeHtml(o.checklist.join(' · '))+'</div><div style="color:var(--muted)">📷 '+escapeHtml(g?g.title+' 찍는 법':'')+'</div>'+
+      (r.issues.length?'<div data-wo-day-privacy="fail" style="color:var(--warn);font-weight:700">⛔ 개인정보 검사: '+escapeHtml(r.issues.join(', '))+'</div>':'')+'</div>';}).join('')+
+    '<div id="woDayStatus" role="status" style="font-size:12.5px;margin-top:8px">'+(bad.length?'<span data-wo-day-privacy="fail" style="color:var(--warn);font-weight:700">⛔ '+bad.length+'개 지시에 개인정보가 남아 보내지 않습니다 — 일정 메모를 고쳐 주세요</span>':(schema.length?'<span style="color:var(--warn)">형식 확인: '+escapeHtml(schema[0])+'</span>':'<span data-wo-day-privacy="ok" style="color:#0a7f43;font-weight:700">✓ 고객 이름·전화·금액 없음 · 인터페이스 형식 맞음</span>'))+'</div>'+
+    '<details style="margin-top:6px"><summary style="min-height:44px;cursor:pointer;font-size:12.5px">미리보기 (JSON)</summary><pre id="woDayPreview" style="font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--paper-2);border-radius:8px;padding:8px;max-height:240px;overflow:auto">'+escapeHtml(JSON.stringify(built.packet,null,2))+'</pre></details></div>';
+  let busy=false;
+  const send=async via=>{
+    if(busy)return;if(bad.length){toast('개인정보 검사에 걸린 지시가 있어 보내지 않았어요');return;}if(schema.length){toast('형식을 확인해 주세요: '+schema[0]);return;}
+    busy=true;const text=JSON.stringify(built.packet,null,2),fname='work-order_'+d.replace(/-/g,'')+'_'+built.refs.length+'건.json';
+    try{
+      let ok=true;if(via==='file')hjWoDownload(text,fname);else if(via==='clipboard')coworkCopy(text,'팀 업무 지시 JSON');else ok=await hjWoShare(text,fname);
+      if(!ok)return;
+      const r=await hjWoRecordMany(built.refs,via);webWorkMarkDirtyAfterPersist();toast('📤 '+hjMdDow(d)+' 지시 '+r.n+'개 보냄 — 팀 앱 [📥 업무 가져오기]에서 읽습니다');
+    }catch(e){toast('보내기 실패: '+(e&&e.message||e));}finally{busy=false;}
+  };
+  openModal('📤 '+hjMdDow(d)+' 일정 팀에 보내기',body,[{label:'💾 JSON 저장',cls:'clay',fn:()=>send('file')},{label:'📋 복사',cls:'ghost',fn:()=>send('clipboard')},{label:'📤 공유',cls:'ghost',fn:()=>send('share')},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();return built;
+}
+/* 📷 사진 찍는 법 — 카드(앱 안)와 A4 한 장(기존 문서 엔진). */
+function hjPhotoGuideHtml(doc){
+  const card=k=>{const g=HJ_PHOTO_GUIDE[k];return '<div data-guide="'+k+'" class="keep" style="border:1px solid '+(doc?'#e5ebf2':'var(--line-soft)')+';border-radius:11px;padding:10px 12px;margin-bottom:8px"><b style="font-size:14px">'+g.ic+' '+escapeHtml(g.title)+'</b>'+
+    '<ol style="margin:6px 0 0;padding-left:20px;font-size:13px;line-height:1.7">'+g.cuts.map(c=>'<li>'+escapeHtml(c)+'</li>').join('')+'</ol></div>';};
+  return Object.keys(HJ_PHOTO_GUIDE).map(card).join('')+
+    '<div data-guide-tips style="border:1px dashed '+(doc?'#c7d2e0':'var(--line-soft)')+';border-radius:11px;padding:10px 12px;font-size:12.5px;line-height:1.7"><b>모든 사진 공통</b><ul style="margin:4px 0 0;padding-left:18px">'+HJ_PHOTO_TIPS.map(t=>'<li>'+escapeHtml(t)+'</li>').join('')+'</ul></div>';
+}
+function hjPhotoGuideView(){
+  openModal('📷 사진 찍는 법','<div id="hjPhotoGuide" style="min-width:0;overflow-wrap:anywhere"><p class="hint" style="margin:0 0 8px">공정마다 꼭 찍을 컷 — 팀 지시(work-order)에도 같은 열쇠(guideKey)로 들어가 팀 앱에서 같은 문구를 보여 줄 수 있습니다.</p>'+hjPhotoGuideHtml(false)+'</div>',
+    [{label:'🖨 A4 한 장',cls:'clay',fn:()=>{closeModal();hjDocDeliverView(COMPANY.name,hjDocShell('사 진 찍 는 법',hjPhotoGuideHtml(true)),'사진찍는법_'+localDate().replace(/-/g,''),'📷 사진 찍는 법',hjPhotoGuideView,{image:true});}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();return true;
+}
+/* ── 👷 직원 모드 ───────────────────────────────────────────────────────── */
+const HJ_STAFF_KEY='hj_role',HJ_STAFF_PIN_KEY='hj_staff_pin',HJ_STAFF_SALT_KEY='hj_staff_salt';
+const HJ_STAFF_BLOCK_TABS=Object.freeze(['estimates','quotemaker','ledger']);
+const HJ_STAFF_MONEY_RE=/[-−]?\d[\d,]*(?:\.\d+)?\s*(?:만\s*)?원(?![가-힣])/g;
+const HJ_STAFF_PHONE_RE=/0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/g;
+const HJ_STAFF_NUM_TAIL=/[-−]?\d[\d,]*(?:\.\d+)?\s*(?:만\s*)?$/,HJ_STAFF_UNIT_HEAD=/^\s*(?:만\s*)?원(?![가-힣])/;
+const HJ_STAFF_HELP='직원 모드는 이 기기 화면에서 금액·전화번호·삭제를 가리는 기능입니다. 보안 권한이 아닙니다 — 자료는 이 기기에 그대로 있습니다. 진짜 권한 분리는 팀 앱(직원 로그인) 몫입니다.';
+function hjStaffOn(){try{return localStorage.getItem(HJ_STAFF_KEY)==='staff';}catch(e){return false;}}
+async function hjStaffHash(pin){
+  let salt='';try{salt=localStorage.getItem(HJ_STAFF_SALT_KEY)||'';if(!salt){salt=uid()+uid();localStorage.setItem(HJ_STAFF_SALT_KEY,salt);}}catch(e){}
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+'|'+String(pin)));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// 글자 가리기 — 화면 글자(텍스트 노드)만. 입력칸·글상자 값은 건드리지 않는다(가린 글자가 저장되면 안 된다).
+function hjStaffMaskNode(root){
+  if(!root||!hjStaffOn())return 0;
+  const skip=n=>{for(let e=n.parentElement;e;e=e.parentElement){const t=e.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='TEXTAREA'||t==='INPUT'||e.isContentEditable)return true;}return false;};
+  const walk=document.createTreeWalker(root.nodeType===3?root.parentNode||root:root,NodeFilter.SHOW_TEXT);let n,c=0,prev=null;const list=[];
+  while((n=walk.nextNode()))list.push(n);
+  list.forEach(t=>{const v=t.nodeValue;if(!v||skip(t)){prev=null;return;}if(/^\s*$/.test(v))return;
+    const nv=v.replace(HJ_STAFF_MONEY_RE,'(금액 숨김)').replace(HJ_STAFF_PHONE_RE,'(번호 숨김)');if(nv!==v){t.nodeValue=nv;c++;}
+    // 숫자와 단위가 다른 글자 조각에 나뉜 경우(예: 150<small>만원</small>) — 앞 조각 끝 숫자를 가리고 단위를 지운다.
+    if(prev&&HJ_STAFF_UNIT_HEAD.test(t.nodeValue)&&HJ_STAFF_NUM_TAIL.test(prev.nodeValue)){prev.nodeValue=prev.nodeValue.replace(HJ_STAFF_NUM_TAIL,'(금액 숨김)');t.nodeValue=t.nodeValue.replace(HJ_STAFF_UNIT_HEAD,'');c++;}
+    prev=t;});
+  return c;
+}
+// 단추 가리기 — data 속성이 없는 삭제·정리·되돌리기 단추(모달 아래 단추 등)는 글자로 골라 data-staff-hide 를 붙인다(CSS 가 직원 모드에서만 숨김).
+const HJ_STAFF_HIDE_RE=/삭제|🗑|되돌리기|복원|일괄|선택 정리|정리 실행|중복 정리/;
+function hjStaffHideNode(root){
+  if(!root||root.nodeType!==1||!hjStaffOn())return 0;
+  const list=root.matches&&root.matches('button')?[root]:[...root.querySelectorAll('button')];let c=0;
+  list.forEach(b=>{if(b.id==='hjStaffOff'||b.hasAttribute('data-staff-hide'))return;const t=(b.textContent||'').trim();
+    if(HJ_STAFF_HIDE_RE.test(t)||(b.classList.contains('warn')&&/정리|이동|바꾸기/.test(t))){b.setAttribute('data-staff-hide','1');c++;}});
+  return c;
+}
+let __hjStaffObs=null;
+function hjStaffApply(){
+  const on=hjStaffOn();
+  document.body.classList.toggle('hj-staff',on);
+  let bar=document.getElementById('hjStaffBar');
+  if(on&&!bar){bar=document.createElement('div');bar.id='hjStaffBar';bar.setAttribute('role','status');
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:65;background:#0b4ea2;color:#fff;font-size:12.5px;font-weight:700;display:flex;gap:8px;align-items:center;justify-content:center;padding:4px 10px;min-height:44px;box-sizing:border-box';
+    bar.innerHTML='<span>👷 직원 모드 — 금액·전화번호·삭제가 숨겨져 있습니다</span><button type="button" id="hjStaffOff" style="min-height:44px;min-width:44px;border-radius:9px;border:0;background:#fff;color:#0b4ea2;font-weight:800;padding:0 12px">끄기</button>';
+    document.body.appendChild(bar);bar.querySelector('#hjStaffOff').onclick=()=>hjStaffView();}
+  if(!on&&bar)bar.remove();
+  if(on){hjStaffMaskNode(document.body);hjStaffHideNode(document.body);
+    if(!__hjStaffObs&&typeof MutationObserver!=='undefined'){__hjStaffObs=new MutationObserver(ms=>{if(!hjStaffOn())return;ms.forEach(m=>{if(m.type==='characterData')hjStaffMaskNode(m.target.parentNode);else m.addedNodes.forEach(x=>{if(x.nodeType===1||x.nodeType===3){const el=x.nodeType===3?x.parentNode:x;hjStaffMaskNode(el);hjStaffHideNode(el);}});});});
+      __hjStaffObs.observe(document.body,{childList:true,subtree:true,characterData:true});}}
+  else if(__hjStaffObs){__hjStaffObs.disconnect();__hjStaffObs=null;}
+  return on;
+}
+async function hjStaffSet(on,pin){
+  if(!/^\d{4}$/.test(String(pin||'')))return {ok:false,error:'PIN 은 숫자 4자리입니다'};
+  const h=await hjStaffHash(pin);
+  if(on){try{localStorage.setItem(HJ_STAFF_PIN_KEY,h);localStorage.setItem(HJ_STAFF_KEY,'staff');}catch(e){return {ok:false,error:'이 기기에 저장하지 못했습니다'};}}
+  else{let cur='';try{cur=localStorage.getItem(HJ_STAFF_PIN_KEY)||'';}catch(e){}if(cur&&cur!==h)return {ok:false,error:'PIN 이 맞지 않습니다'};try{localStorage.removeItem(HJ_STAFF_KEY);}catch(e){}}
+  if(on&&HJ_STAFF_BLOCK_TABS.includes(state.tab)){state.tab='dashboard';}
+  hjStaffApply();try{render();}catch(e){}
+  return {ok:true};
+}
+function hjStaffView(){
+  const on=hjStaffOn();
+  openModal('👷 직원 모드','<div id="hjStaff" style="font-size:13px;line-height:1.7"><div data-staff-state>'+(on?'지금 <b>켜져</b> 있습니다. 끄려면 PIN 을 넣으세요.':'켜면 이 기기 화면에서 ① 금액·견적·정산·회계를 가리고 ② 고객 전화는 통화 버튼만 남기고 ③ 삭제·대량 변경·백업 복원을 숨깁니다. 사진 넣기·작업시간·작업 보고·탐지 기록은 그대로 됩니다.')+'</div>'+
+    '<label style="display:block;font-size:12px;font-weight:700;margin:10px 0 3px">PIN 4자리'+(on?'':' (끌 때 필요)')+'</label><input id="stPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" style="width:100%;min-height:44px;font-size:18px;letter-spacing:6px;box-sizing:border-box">'+
+    '<p id="stIssue" role="alert" style="color:var(--warn);min-height:18px;font-size:12.5px;margin:6px 0"></p>'+
+    '<p class="hint" data-staff-help>'+escapeHtml(HJ_STAFF_HELP)+'</p></div>',
+    [{label:on?'🔓 직원 모드 끄기':'👷 직원 모드 켜기',cls:'clay',fn:async()=>{const r=await hjStaffSet(!on,(document.getElementById('stPin')||{}).value);if(!r.ok){document.getElementById('stIssue').textContent=r.error;return;}closeModal();toast(on?'🔓 직원 모드를 껐습니다':'👷 직원 모드 — 금액·전화·삭제를 가렸습니다');}},
+     {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();return true;
+}
+// 직원이 넣은 사진 — 묶음(2초 안)마다 노트 한 줄(by:'staff', 사진 참조). 파일 레코드 칸은 늘리지 않는다.
+let __hjStaffPhotoQ=[],__hjStaffPhotoT=null;
+function hjStaffPhotoQueue(rec){
+  if(!rec||!hjStaffOn()||rec.kind!=='photo'&&!IMG.includes(String(rec.ext||'').toLowerCase()))return;
+  __hjStaffPhotoQ.push(rec);clearTimeout(__hjStaffPhotoT);__hjStaffPhotoT=setTimeout(hjStaffPhotoFlush,2000);
+}
+function hjStaffPhotoFlush(){
+  const list=__hjStaffPhotoQ.splice(0);if(!list.length)return 0;
+  const by=new Map();list.forEach(f=>{const live=(state.files||[]).find(x=>x&&x.id===f.id);if(!live)return;const k=live.project||'';if(!by.has(k))by.set(k,[]);by.get(k).push(live);});   // 앱 목록에 남은 사진만
+  if(!by.size)return 0;
+  state.notes=state.notes||[];
+  by.forEach((fs,project)=>state.notes.push({id:uid(),date:new Date().toLocaleString('ko-KR'),text:'[직원 사진] '+(project||'현장 미지정')+' '+fs.length+'장',project:project||null,by:'staff',todo:false,photos:fs.map(f=>hjFileRef(f)).slice(0,50)}));
+  markDirty();return list.length;
+}
+function hjStaffRecords(){
+  const notes=(state.notes||[]).filter(n=>n&&n.by==='staff'&&!n.done).map(n=>({kind:'photo',id:n.id,text:n.text,project:n.project||''}));
+  const logs=(state.workLogs||[]).filter(w=>w&&w.by==='staff'&&!w.seenAt).map(w=>({kind:'worklog',id:w.id,text:'[직원 작업시간] '+(w.project||'')+' '+(w.date||'')+' '+(w.in||'')+'~'+(w.out||''),project:w.project||''}));
+  const reps=(state.schedule||[]).filter(s=>s&&s.report&&s.report.by==='staff'&&!s.report.seenAt).map(s=>({kind:'report',id:s.id,text:'[직원 작업 보고] '+(s.project||'')+' '+(s.date||'')+' '+String(s.report.done||'').slice(0,30),project:s.project||''}));
+  return notes.concat(logs,reps);
+}
+function hjStaffRecordsHtml(){
+  if(hjStaffOn())return '';
+  let rows=[];try{rows=hjStaffRecords();}catch(e){rows=[];}
+  if(!rows.length)return '';
+  return '<p data-staff-records style="margin:0 0 7px;font-size:13.5px">👷 직원이 남긴 기록 '+rows.length+'건 — '+escapeHtml(rows.slice(0,2).map(r=>r.text).join(' · '))+' <button type="button" class="clay tiny" data-staff-review="1" onclick="hjStaffReviewView()" style="min-height:44px">확인</button></p>';
+}
+function hjStaffReviewView(){
+  const rows=hjStaffRecords();
+  openModal('👷 직원이 남긴 기록',rows.length?'<div id="hjStaffReview" style="font-size:13px">'+rows.map(r=>'<div data-staff-row="'+escapeAttr(r.kind+':'+r.id)+'" style="padding:8px 2px;border-bottom:1px dashed var(--line-soft)">'+escapeHtml(r.text)+'</div>').join('')+'</div>':'<div class="empty" style="padding:14px"><b>확인할 기록이 없습니다</b></div>',
+    [{label:'✅ 모두 확인함',cls:'clay',fn:()=>{const now=new Date().toISOString();rows.forEach(r=>{if(r.kind==='photo'){const n=(state.notes||[]).find(x=>x&&x.id===r.id);if(n)n.done=true;}
+        else if(r.kind==='worklog'){const w=(state.workLogs||[]).find(x=>x&&x.id===r.id);if(w)w.seenAt=now;}else{const s=(state.schedule||[]).find(x=>x&&x.id===r.id);if(s&&s.report)s.report.seenAt=now;}});
+        markDirty();closeModal();render();toast('👷 직원 기록 '+rows.length+'건 확인');}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();return rows.length;
+}
+// v444 직원 모드 — 화면 가리기 CSS·탭 막기·설정 막기·사진 표식. 끄면 아무것도 안 한다.
+(function(){
+  try{const st=document.createElement('style');st.id='hjStaffCss';
+    st.textContent='body.hj-staff{padding-top:44px}body.hj-staff.mobile-mode header{top:44px}body.hj-staff .tab[data-tab="estimates"],body.hj-staff .tab[data-tab="quotemaker"],body.hj-staff .tab[data-tab="ledger"],'+
+      'body.hj-staff [data-fdel],body.hj-staff [data-delphoto],body.hj-staff [data-delproj],body.hj-staff [data-qdel],body.hj-staff [data-qidel],body.hj-staff [data-condel],body.hj-staff [data-asdel],body.hj-staff [data-schdel],body.hj-staff [data-ckdel],'+
+      'body.hj-staff [data-archive],body.hj-staff [data-unarchive],body.hj-staff #btnTrimDup,body.hj-staff #btnToggleDup,body.hj-staff #btnOrganizeAll,body.hj-staff [data-organize],body.hj-staff .snapRestore,body.hj-staff .wkDel,'+
+      'body.hj-staff [data-payhist],body.hj-staff [data-mclose],body.hj-staff [data-marginboard],body.hj-staff [data-insight],body.hj-staff [data-vatc],body.hj-staff [data-lgexport],body.hj-staff [data-lgtoexp],body.hj-staff [data-qpay],body.hj-staff [data-recvquick],'+
+      'body.hj-staff [data-margin-card],body.hj-staff [data-costedit],body.hj-staff [data-margintoggle],body.hj-staff [data-season],body.hj-staff [data-qpdf],body.hj-staff [data-dun],body.hj-staff [data-exsum],body.hj-staff [data-finalize],body.hj-staff [data-estpurchase],'+
+      'body.hj-staff input[data-recv],body.hj-staff input[data-cost],body.hj-staff .kpis,body.hj-staff .ratewrap,body.hj-staff .amt,body.hj-staff #btnLoadCostLedger,body.hj-staff #btnXlsxDash,body.hj-staff #btnXlsxTax,body.hj-staff [data-staff-hide]{display:none!important}';
+    (document.head||document.documentElement).appendChild(st);}catch(e){}
+  const realRender=render;
+  render=function(){if(hjStaffOn()&&HJ_STAFF_BLOCK_TABS.includes(state.tab)){state.tab='dashboard';try{toast('👷 직원 모드에서는 견적·정산·회계를 볼 수 없어요');}catch(e){}}return realRender.apply(this,arguments);};
+  const realSettings=openGdriveSetup;
+  openGdriveSetup=function(){if(hjStaffOn())return hjStaffView();return realSettings.apply(this,arguments);};
+  const realIngest=ingestFile;
+  ingestFile=function(){const p=realIngest.apply(this,arguments);if(p&&typeof p.then==='function')p.then(r=>{try{hjStaffPhotoQueue(r);}catch(e){}},()=>{});else{try{hjStaffPhotoQueue(p);}catch(e){}}return p;};
+  const start=()=>{if(hjStaffOn())hjStaffApply();};
+  if(document.body)setTimeout(start,0);else document.addEventListener('DOMContentLoaded',start);
+})();
 /* ═══ v213-A 🚗 차량 운행일지 ═══ */
 function tripData(){state.trips=state.trips||[];return state.trips;}
 function tripExpensed(t){
@@ -42733,7 +42976,7 @@ function workPunch(pjName){
   const hm=pad2(now.getHours())+':'+pad2(now.getMinutes());
   const open=workToday(pjName);
   if(!open){
-    workData().push({id:uid(),project:pjName,date:localDate(),in:hm,out:'',memo:''});
+    workData().push(Object.assign({id:uid(),project:pjName,date:localDate(),in:hm,out:'',memo:''},hjStaffOn()?{by:'staff'}:{}));   // v444 직원 모드 표식
     markDirty();render();toast('⏱ '+hm+' 작업 시작');
     return {상태:'시작',시각:hm};
   }
