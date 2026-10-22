@@ -122,7 +122,8 @@ async function test(name, fn) { try { await fn(); console.log('  ✓ ' + name); 
       await new Promise(x => setTimeout(x, 350));
       const v = document.getElementById('view');
       return {
-        shown: [...v.querySelectorAll('.tbl-hint')].filter(h => getComputedStyle(h).display !== 'none').length,
+        // v457: v452 부터 PC 마진 표(10열)는 일부러 옆으로 민다(금액 줄바꿈 금지) — '불필요한 안내'는 넘치지 않는 표에 붙은 안내만 센다
+        shown: [...v.querySelectorAll('.tbl-hint')].filter(h => getComputedStyle(h).display !== 'none').filter(h => { const w = h.nextElementSibling, t = w && w.querySelector('table'); return !(t && w && t.scrollWidth > w.clientWidth + 4); }).length,
         overflow: document.documentElement.scrollWidth > window.innerWidth + 1
       };
     });

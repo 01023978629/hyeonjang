@@ -1897,8 +1897,8 @@ function persistLocal(){
   clearTimeout(__idbSaveTimer);
   const seq=++__hjLocalSaveSeq;__hjLocalSavePending=true;
   __idbSaveTimer=setTimeout(async()=>{try{
-    if(__tabStale){multiTabStaleWarn();return;}
-    if(!(await guardedPersistCurrentState())){__tabStale=true;multiTabStaleWarn();}
+    if(__tabStale){__hjLocalSavePending=false;multiTabStaleWarn();return;}   // v457 낡은 탭은 저장하지 않는다 — '새로고침하세요' 띠를 띄우고 나서 창 닫기 경고로 막으면 안 된다
+    if(!(await guardedPersistCurrentState())){__tabStale=true;__hjLocalSavePending=false;multiTabStaleWarn();}
     else{if(seq===__hjLocalSaveSeq)__hjLocalSavePending=false;if(typeof hjOutboxLocalSaved==='function')hjOutboxLocalSaved();}
   }catch(e){}},800);
 }
@@ -1927,7 +1927,7 @@ function toggleAutoSave(){
 // 창 닫기 전 경고
 // v450 폰처럼 폴더를 연결하지 않은 기기는 state.dirty 가 풀릴 길이 없어(폴더 저장·파일 내보내기만 푼다) 자료가 이미 기기에 저장됐는데도
 // 앱을 다시 열거나 공유로 들어올 때마다 '사이트에서 나가시겠습니까?'가 떴다(리허설 R3) — 폴더 저장 전·기기 저장 전·사진 넣는 중일 때만 묻는다.
-window.addEventListener('beforeunload',e=>{if((state.dirty&&state.dirHandle)||__hjLocalSavePending||photoIntakePending()){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if((state.dirty&&state.dirHandle)||(__hjLocalSavePending&&!__tabStale)||photoIntakePending()){e.preventDefault();e.returnValue='';}});
 window.addEventListener('unload',()=>{try{(state.files||[]).forEach(revokeThumbUrl);}catch(e){}});
 // 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
 window.addEventListener('pagehide',()=>{try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}});   // 뒤처진 탭은 닫힐 때도 안 덮는다
@@ -3387,7 +3387,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v456-polish';
+const APP_BUILD='hyeonjang-v457-aptdocs2';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -41628,16 +41628,21 @@ function hjAptOfficeOf(complex){const k=aptComplexKey(complex);return k?(state.a
 const HJ_APT_NONWORK_RE=/^\s*(?:[🗓📏📐🔎🛠🔧]\s*)?(?:상담|실측|견적|현장\s*확인|방문\s*상담|AS|A\/S)/;
 function hjAptSchedRows(p){return (state.schedule||[]).filter(s=>s&&s.project===p.name&&isRealIsoDate(String(s.date||''))&&!/^💰/.test(String(s.title||''))&&!s._taxAuto&&!HJ_APT_NONWORK_RE.test(String(s.title||''))&&!(typeof hjIsAsVisitSched==='function'&&hjIsAsVisitSched(s)));}
 /* 모델 — 읽기 전용. input 은 화면에서 고친 값. */
+const HJ_APT_DOC_KEYS=['complex','dong','ho','from','to','hours','noisyHours','works','elevator','route','waste'];
 function hjAptDocModel(name,input){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return null;
-  const o=input&&typeof input==='object'?input:{},u=hjAptUnitOf(p),office=hjAptOfficeOf(u.complex);
+  const live=input&&typeof input==='object'?input:{},saved=!live.__auto&&p.aptDocs&&typeof p.aptDocs==='object'?p.aptDocs:{};   // v457 손으로 고친 값(p.aptDocs)은 자동값 위, 지금 화면 값은 그 위
+  const o=Object.assign({},saved,live),u=hjAptUnitOf(p);
+  const byId=o.officeId?(state.aptOffices||[]).find(x=>x&&x.id===o.officeId)||null:null;
+  const office=byId||hjAptOfficeOf(typeof o.complex==='string'&&o.complex.trim()?o.complex:u.complex)||hjAptOfficeOf(u.complex);
   const rows=hjAptSchedRows(p),days=[];rows.forEach(s=>{const sp=hjSchSpan(s);let d=sp.from;for(let i=0;i<60&&d<=sp.to;i++){days.push(d);d=hjAddDays(d,1);}});
   days.sort();const noisy=[...new Set(rows.filter(s=>HJ_APT_NOISY_RE.test(String(s.title||'')+' '+String(s.memo||''))).map(s=>s.date))].sort();
   const q=(state.quotes||[]).filter(x=>x&&x.project===name).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0];
   const works=q?quoteRealItems(q).map(it=>String(it.name||'').trim()).filter(Boolean).slice(0,5):[];
   const pick=(k,v)=>typeof o[k]==='string'?o[k].trim():v;
-  return {project:name,complex:pick('complex',u.complex),dong:pick('dong',u.dong),ho:pick('ho',u.ho),unitFrom:u.from,office,officeName:office?office.complex+' 관리사무소':(u.complex?u.complex+' 관리사무소':'관리사무소'),
-    from:pick('from',days[0]||''),to:pick('to',days[days.length-1]||''),hours:pick('hours','09:00~18:00'),noisyHours:pick('noisyHours','10:00~17:00'),noisy:Array.isArray(o.noisy)?o.noisy:noisy,
+  const complex=pick('complex',u.complex),from=pick('from',days[0]||'');let to=pick('to',days[days.length-1]||'');if(from&&(!to||to<from))to=from;   // 끝이 시작보다 앞서면 시작일로(시작만 뒤로 고쳤을 때)
+  return {project:name,complex,dong:pick('dong',u.dong),ho:pick('ho',u.ho),unitFrom:u.from,office,officeName:office?office.complex+' 관리사무소':(complex?complex+' 관리사무소':'관리사무소'),
+    from,to,autoFrom:days[0]||'',autoTo:days[days.length-1]||'',manualPeriod:!!(typeof o.from==='string'&&o.from!==(days[0]||'')||typeof o.to==='string'&&o.to!==(days[days.length-1]||'')),hours:pick('hours','09:00~18:00'),noisyHours:pick('noisyHours','10:00~17:00'),noisy:Array.isArray(o.noisy)?o.noisy:noisy,
     works:typeof o.works==='string'?o.works.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,8):works,elevator:pick('elevator','사용 (바닥·벽 보양 후, 자재 반입 때만)'),route:pick('route','지하주차장 → 엘리베이터 → 세대'),
     waste:pick('waste','당일 마대 포장 후 업체 수거 — 단지 안에 쌓아 두지 않음'),contact:COMPANY.owner+' '+COMPANY.tel,day:localDate()};
 }
@@ -41713,25 +41718,65 @@ async function hjAptFormAttach(name,file){
   let rec;try{rec=await ingestFile(file);}catch(e){toast('첨부하지 못했어요: '+(e&&e.message||e));return null;}
   rec.kind='other';rec.project=name;p.aptForm={fileRef:hjFileRef(rec),name:String(rec.name||'').slice(0,80),at:localDate()};markDirty();return rec;
 }
+/* v457 화면에서 고친 값은 현장 안 p.aptDocs 에 '자동값과 다른 것만' 남긴다 — 다시 열어도 그대로, 안 고친 칸은 일정·견적을 계속 따라간다.
+   바뀐 게 없으면 아무것도 저장하지 않는다(열고 닫기만 해도 저장본이 안 바뀜). 관리사무소를 골랐으면 officeId 도 남긴다. */
+function hjAptDocsRemember(name,s){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p||!s||typeof s!=='object')return false;
+  const auto=hjAptDocModel(name,{__auto:true});if(!auto)return false;
+  const keep={};
+  HJ_APT_DOC_KEYS.forEach(k=>{if(typeof s[k]!=='string')return;const v=s[k].trim(),a=k==='works'?auto.works.join('\n'):String(auto[k]||'');if(v!==a)keep[k]=v;});
+  if(s.officeId&&(state.aptOffices||[]).some(o=>o&&o.id===s.officeId))keep.officeId=s.officeId;
+  const prev=p.aptDocs&&typeof p.aptDocs==='object'?Object.assign({},p.aptDocs):{};delete prev.at;
+  if(JSON.stringify(prev)===JSON.stringify(keep)&&(Object.keys(keep).length||!p.aptDocs))return false;
+  if(Object.keys(keep).length)p.aptDocs=Object.assign(keep,{at:localDate()});else delete p.aptDocs;
+  markDirty();return true;
+}
+/* 관리사무소 명단(state.aptOffices)에 넣거나 고친다 — 같은 단지가 있으면 그 줄을 쓰고 빈 칸만 채운다. 돌려주는 값은 그 줄. */
+function hjAptOfficeUpsert(complex,manager,phone,id){
+  const name=String(complex||'').trim(),man=String(manager||'').trim(),tel=String(phone||'').trim();
+  if(!name)return null;state.aptOffices=Array.isArray(state.aptOffices)?state.aptOffices:[];
+  let o=id?(state.aptOffices.find(x=>x&&x.id===id)||null):null;
+  if(!o)o=state.aptOffices.find(x=>x&&aptComplexKey(x.complex)===aptComplexKey(name))||null;
+  if(o){let changed=false;if(o.complex!==name&&id){o.complex=name;changed=true;}if(man&&o.manager!==man){o.manager=man;changed=true;}if(tel&&o.phone!==tel){o.phone=tel;changed=true;}if(changed)markDirty();return o;}
+  o={id:uid(),complex:name,manager:man,phone:tel};state.aptOffices.push(o);markDirty();return o;
+}
 function hjAptDocsView(name,resume){
   const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
   const s=resume&&typeof resume==='object'?resume:{},m=hjAptDocModel(name,s),issued=t=>{const r=hjDocLogsOf(p,t);return r.length?r[r.length-1].no:'';};
+  const offices=(state.aptOffices||[]).filter(o=>o&&o.complex),officeLine=m.office
+    ?escapeHtml(m.officeName)+(m.office.manager?' · '+escapeHtml(m.office.manager):'')+(m.office.phone?' · '+escapeHtml(m.office.phone):'')+' <button type="button" class="ghost tiny" data-ad-office-edit style="min-height:44px">✎ '+(m.office.phone?'고치기':'번호 넣기')+'</button>'
+    :escapeHtml(m.officeName)+' <span style="color:var(--muted)">(명단에 없음)</span> '+(offices.length?'<select id="adOffice" aria-label="관리사무소 고르기" style="min-height:44px;max-width:100%;font-size:14px"><option value="">명단에서 고르기…</option>'+offices.map(o=>'<option value="'+escapeAttr(o.id)+'">'+escapeHtml(o.complex)+(o.phone?' · '+escapeHtml(o.phone):'')+'</option>').join('')+'</select> ':'')+'<button type="button" class="ghost tiny" data-ad-office-add style="min-height:44px">+ 관리사무소 등록</button>';
+  const periodNote=m.manualPeriod?'<div data-ad-period-manual style="font-size:12px;color:var(--hj-warn-fg);margin-top:4px">📌 손으로 적은 기간'+(m.autoFrom?' — 일정은 '+escapeHtml(hjMdDow(m.autoFrom))+(m.autoTo&&m.autoTo!==m.autoFrom?' ~ '+escapeHtml(hjMdDow(m.autoTo)):''):' — 이 현장엔 공사 일정이 없어요')+' <button type="button" class="ghost tiny" data-ad-period-reset style="min-height:44px">'+(m.autoFrom?'일정대로':'비우기')+'</button></div>'
+    :(m.from?'':'<div data-ad-period-empty style="font-size:12px;color:var(--muted);margin-top:4px">공사 일정이 아직 없어요 — 기간을 손으로 적어 두면 서류와 첫 화면 D-n 줄에 그대로 씁니다.</div>');
   const F=(id,label,val,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' value="'+escapeAttr(val||'')+'" style="width:100%;min-height:44px;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
   const body='<div id="hjAptDocs" style="min-width:0;overflow-wrap:anywhere">'+
     '<p class="hint" style="margin:0 0 4px">현장·일정·견적에서 채웠어요 — 고칠 수 있어요. 고객 이름·전화는 넣지 않고 연락처는 '+escapeHtml(COMPANY.tel)+' 입니다.</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:2;min-width:150px">'+F('adComplex','단지',m.complex)+'</div><div style="flex:1;min-width:70px">'+F('adDong','동',m.dong,'type="text" inputmode="numeric"')+'</div><div style="flex:1;min-width:70px">'+F('adHo','호',m.ho,'type="text" inputmode="numeric"')+'</div></div>'+
-    '<div data-ad-office style="font-size:12.5px;margin-top:6px">🏢 '+escapeHtml(m.officeName)+(m.office?(m.office.manager?' · '+escapeHtml(m.office.manager):'')+(m.office.phone?' · '+escapeHtml(m.office.phone):''):' <span style="color:var(--muted)">(🏢 아파트 관리에 단지를 등록하면 담당자·번호가 채워져요)</span>')+'</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+F('adFrom','공사 시작',m.from,'type="date"')+'</div><div style="flex:1;min-width:140px">'+F('adTo','공사 끝',m.to,'type="date"')+'</div></div>'+
+    '<div data-ad-office style="font-size:12.5px;margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">🏢 '+officeLine+'</div>'+
+    '<div id="adOfficeForm" hidden style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin-top:6px"><div style="font-size:12px;font-weight:700">관리사무소 명단에 적기</div>'+F('adOfComplex','단지',m.office?m.office.complex:m.complex)+F('adOfManager','담당자 (비워도 됨)',m.office?m.office.manager:'')+F('adOfPhone','관리사무소 연락처',m.office?m.office.phone:'','type="tel" inputmode="tel"')+
+      '<div style="display:flex;gap:6px;margin-top:8px"><button type="button" class="clay" data-ad-office-save style="min-height:44px;flex:1">명단에 저장</button><button type="button" class="ghost" data-ad-office-cancel style="min-height:44px">취소</button></div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+F('adFrom','공사 시작',m.from,'type="date"')+'</div><div style="flex:1;min-width:140px">'+F('adTo','공사 끝',m.to,'type="date"')+'</div></div>'+periodNote+
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:140px">'+F('adHours','작업 시간',m.hours)+'</div><div style="flex:1;min-width:140px">'+F('adNoisyHours','소음 작업 시간',m.noisyHours)+'</div></div>'+
     '<div data-ad-noisy style="font-size:12.5px;margin-top:6px">🔊 소음 작업일(일정의 철거·타공): '+(m.noisy.length?escapeHtml(m.noisy.map(d=>hjMdDow(d)).join(', ')):'<span style="color:var(--muted)">없음</span>')+'</div>'+
     '<label for="adWorks" style="display:block;font-size:12px;font-weight:700;margin:8px 0 3px">공종 (한 줄에 하나)</label><textarea id="adWorks" rows="3" style="width:100%;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box;font-family:inherit">'+escapeHtml(m.works.join('\n'))+'</textarea>'+
     F('adElevator','엘리베이터',m.elevator)+F('adRoute','자재 반입 경로',m.route)+F('adWaste','폐기물 처리',m.waste)+
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 4px">서류</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">'+Object.keys(HJ_APT_DOC_TYPES).map(t=>'<button type="button" class="ghost" data-ad-doc="'+t+'" style="min-height:44px;text-align:left;padding:8px 10px;white-space:normal"><b>'+HJ_APT_DOC_TYPES[t]+'</b>'+(issued(t)?'<br><span style="font-size:11px;color:#0a7f43">발행 '+issued(t)+'</span>':'')+'</button>').join('')+'</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="ghost tiny" id="adForm" style="min-height:44px">📎 관리사무소 양식 넣기</button>'+(p.aptForm&&p.aptForm.name?'<span data-ad-form style="font-size:12px;align-self:center">보관: '+escapeHtml(p.aptForm.name)+'</span>':'')+'<input type="file" id="adFormFile" accept=".pdf,image/*,.hwp,.doc,.docx" hidden></div></div>';
-  openModal('🏢 아파트 서류 4종 — '+name,body,[{label:'📦 4종 ZIP',cls:'clay',fn:async()=>{read();await hjAptDocsZip(name,hjAptDocModel(name,s));hjAptDocsView(name,s);}},{label:'💬 관리사무소 문자',cls:'ghost',fn:()=>{read();const mm=hjAptDocModel(name,s);hjSendSms(mm.office&&mm.office.phone||'',hjAptDocsSms(mm));}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  openModal('🏢 아파트 서류 4종 — '+name,body,[{label:'📦 4종 ZIP',cls:'clay',fn:async()=>{read();await hjAptDocsZip(name,hjAptDocModel(name,s));hjAptDocsView(name,s);}},{label:'💬 관리사무소 문자',cls:'ghost',fn:()=>{read();const mm=hjAptDocModel(name,s);if(!(mm.office&&mm.office.phone)){toast('관리사무소 번호를 먼저 넣어 주세요');const f=document.getElementById('adOfficeForm');if(f){f.hidden=false;try{f.querySelector('#adOfPhone').focus();}catch(_){}}return;}hjSendSms(mm.office.phone,hjAptDocsSms(mm));}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjModalTapTargets();
   const root=document.getElementById('hjAptDocs');
-  const read=()=>{[['complex','#adComplex'],['dong','#adDong'],['ho','#adHo'],['from','#adFrom'],['to','#adTo'],['hours','#adHours'],['noisyHours','#adNoisyHours'],['elevator','#adElevator'],['route','#adRoute'],['waste','#adWaste']].forEach(([k,sel])=>{const el=root.querySelector(sel);if(el)s[k]=el.value;});s.works=root.querySelector('#adWorks').value;return s;};
+  const read=()=>{[['complex','#adComplex'],['dong','#adDong'],['ho','#adHo'],['from','#adFrom'],['to','#adTo'],['hours','#adHours'],['noisyHours','#adNoisyHours'],['elevator','#adElevator'],['route','#adRoute'],['waste','#adWaste']].forEach(([k,sel])=>{const el=root.querySelector(sel);if(el)s[k]=el.value;});s.works=root.querySelector('#adWorks').value;hjAptDocsRemember(name,s);return s;};
+  root.querySelectorAll('input,textarea').forEach(el=>{if(/^adOf/.test(el.id)||el.type==='file')return;el.addEventListener('change',()=>read());});   // v457 고친 값은 창을 닫아도 남는다
+  window.__modalOnClose=()=>{hjAptDocsRemember(name,s);};
+  const officeForm=root.querySelector('#adOfficeForm'),showForm=on=>{officeForm.hidden=!on;if(on){try{officeForm.querySelector(m.office&&m.office.complex?'#adOfPhone':'#adOfComplex').focus();}catch(_){}}};
+  {const b=root.querySelector('[data-ad-office-add]');if(b)b.onclick=()=>showForm(true);}
+  {const b=root.querySelector('[data-ad-office-edit]');if(b)b.onclick=()=>showForm(true);}
+  root.querySelector('[data-ad-office-cancel]').onclick=()=>showForm(false);
+  root.querySelector('[data-ad-office-save]').onclick=()=>{read();const o=hjAptOfficeUpsert(root.querySelector('#adOfComplex').value,root.querySelector('#adOfManager').value,root.querySelector('#adOfPhone').value,m.office?m.office.id:'');
+    if(!o){toast('단지 이름을 적어 주세요');try{root.querySelector('#adOfComplex').focus();}catch(_){}return;}
+    s.officeId=o.id;hjAptDocsRemember(name,s);toast('🏢 관리사무소 명단에 적었어요 — '+o.complex);hjAptDocsView(name,s);};
+  {const sel=root.querySelector('#adOffice');if(sel)sel.onchange=()=>{if(!sel.value)return;read();s.officeId=sel.value;hjAptDocsRemember(name,s);hjAptDocsView(name,s);};}
+  {const b=root.querySelector('[data-ad-period-reset]');if(b)b.onclick=()=>{read();delete s.from;delete s.to;if(p.aptDocs){delete p.aptDocs.from;delete p.aptDocs.to;}hjAptDocsRemember(name,s);hjAptDocsView(name,s);};}
   root.querySelectorAll('[data-ad-doc]').forEach(b=>b.onclick=()=>{read();const t=b.dataset.adDoc,mm=hjAptDocModel(name,s),html=HJ_APT_DOC_HTML[t](mm);
     hjDocDeliverView(name,html,safeName((hjAptUnitText(mm)||name)+'_'+HJ_APT_DOC_TYPES[t]+'_'+localDate()),'🏢 '+HJ_APT_DOC_TYPES[t],()=>hjAptDocsView(name,s),{image:true,onDeliver:()=>{hjAptDocsIssue(name,[t]).then(r=>{if(r&&r.added)webWorkMarkDirtyAfterPersist();}).catch(e=>toast('발행 기록 실패: '+(e&&e.message||e)));}});});
   const fileEl=root.querySelector('#adFormFile');
@@ -41739,14 +41784,16 @@ function hjAptDocsView(name,resume){
   fileEl.onchange=async()=>{const f=fileEl.files&&fileEl.files[0];if(!f)return;read();const rec=await hjAptFormAttach(name,f);if(rec)toast('📎 관리사무소 양식 보관 — ZIP 에 같이 들어가요');hjAptDocsView(name,s);};
   return m;
 }
-/* 대시보드 할 일 — 아파트 현장(단지·동·호수를 알 수 있음)이고 시공 시작이 오늘~3일 뒤인데 신청서를 아직 안 낸 곳. 읽기 전용. */
+/* 대시보드 할 일 — 아파트 현장(단지·동·호수를 알 수 있음)이고 시공 시작이 오늘~3일 뒤인데 신청서를 아직 안 낸 곳. 읽기 전용. v457 손으로 적은 기간(p.aptDocs.from)이 있으면 그것. */
+function hjAptDocsStart(p){const d=p&&p.aptDocs&&typeof p.aptDocs==='object'?p.aptDocs:{};if(isRealIsoDate(String(d.from||'')))return d.from;return hjAptSchedRows(p).map(s=>s.date).sort()[0]||'';}
 function hjAptDocsDue(today){
   today=today||localDate();const lim=hjAddDays(today,3);
   return (state.projects||[]).filter(p=>{
-    if(!p||p.archived||p.anon)return false;const u=hjAptUnitOf(p);if(!u.dong||!u.ho)return false;
-    const first=hjAptSchedRows(p).map(s=>s.date).sort()[0];if(!first||first<today||first>lim)return false;
+    if(!p||p.archived||p.anon)return false;const u=hjAptUnitOf(p),d=p.aptDocs&&typeof p.aptDocs==='object'?p.aptDocs:{};
+    if(!(typeof d.dong==='string'?d.dong:u.dong)||!(typeof d.ho==='string'?d.ho:u.ho))return false;
+    const first=hjAptDocsStart(p);if(!first||first<today||first>lim)return false;
     return !hjDocLogsOf(p,'aptapply').length;
-  }).map(p=>({name:p.name,start:hjAptSchedRows(p).map(s=>s.date).sort()[0]}));
+  }).map(p=>({name:p.name,start:hjAptDocsStart(p)}));
 }
 function hjAptDocsDueHtml(){
   let rows=[];try{rows=hjAptDocsDue();}catch(e){rows=[];}

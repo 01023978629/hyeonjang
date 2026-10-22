@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v457 아파트 서류 2 — 손으로 적은 기간이 남음 · 관리사무소 명단에 바로 적기 · 낡은 탭 창 닫기 경고
+
+- 🏢 아파트 서류 화면에서 고친 값은 현장 안 `p.aptDocs` 에 **자동값과 다른 것만**(complex·dong·ho·from·to·hours·noisyHours·works·elevator·route·waste, officeId, at) 남긴다 — hjAptDocsRemember(이름,s): 칸 change·단추 누름·창 닫힘(__modalOnClose) 때. 바뀐 게 없으면 저장하지 않는다(aptdocs-v441 "열고 닫기만 하면 저장본 불변" 유지). hjAptDocModel 은 저장값 위에 화면값을 얹고(`{__auto:true}` 면 자동값만), 끝이 시작보다 앞서면 시작일로. 기간을 손으로 고치면 `[data-ad-period-manual]` "📌 손으로 적은 기간 — 일정은 …" + [일정대로](저장값에서 from·to 삭제), 일정이 없으면 `[data-ad-period-empty]` 안내.
+- 첫 화면 "🏢 관리사무소 서류 4종 만들기 (시공 D-n)"(hjAptDocsDue)은 hjAptDocsStart — 손으로 적은 from 이 있으면 그것, 없으면 일정 첫날. 동·호수도 저장값을 본다.
+- 관리사무소 명단(state.aptOffices): 서류 화면 `[data-ad-office]` 줄에서 바로 — 없으면 [+ 관리사무소 등록](단지 미리 채움, 담당자·번호 → hjAptOfficeUpsert: 같은 단지 키면 그 줄, 빈 칸만 채움·새 번호는 덮음), 명단에 있는데 이름이 달라 못 찾으면 `#adOffice` <select> 로 골라 `officeId` 연결, 있는 줄은 [✎ 고치기/번호 넣기]. 번호 없이 [💬 관리사무소 문자]를 누르면 보내지 않고 칸을 연다. prompt() 창은 쓰지 않는다.
+- 낡은 탭(__tabStale): persistLocal 이 저장을 건너뛰면 `__hjLocalSavePending` 도 내린다 · beforeunload 는 `pending&&!__tabStale` 일 때만 — '새로고침하세요' 띠를 띄워 놓고 창 닫기 경고로 막던 것(settings-safety ⑤가 v450 부터 깨져 있었다).
+- tests/mobile-tap-table "PC에서 불필요한 안내": v452 부터 PC 마진 표(10열·금액 줄바꿈 금지, 자연 폭 1369px)는 1280px 에서도 일부러 옆으로 민다 → 안내는 **넘치지 않는 표에 붙은 것만** 불필요한 것으로 센다(v452 부터 깨져 있던 단언).
+- 핀3곳 hyeonjang-v457-aptdocs2(v456 위). 신규 tests/aptdocs2-v457.e2e.js 2/2(390px), 기준선·변이 no-remember(MANUAL_PERIOD_KEPT) 실패 확인. 관련 21개 통과(aptdocs-v441·rehearsalfix-v451·apartment-manage/units·apt-orders/edit·doccenter-v433·mobile-tap-table·settings-safety·multi-tab-guard·rehearsalfix-v450·demo-banner·dash-cards·polish-v456·insurance-v442·evidence-v427·action-search). 정적 19개 통과.
+
 ## 2026-10-22 v456 다듬기 (R2·R7 남은 것) — 리뷰 링크 힌트 · 밝은 화면 작은 글자 · PC 영수증 확인 두 칸 · 키 없는 AI 두뇌 카드
 
 - 🎉 준공 관리 카드: `__reviewUrl` 이 비면 [⚠ 리뷰 링크 없음 — 설정](`[data-review-link-missing]`, hjOpenSettingsTab('etc','rvUrl')) — 링크 없이 리뷰 요청을 보내기 전에 보이게(R2). 링크를 넣으면 사라진다.
