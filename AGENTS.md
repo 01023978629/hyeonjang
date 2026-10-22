@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v464 📊 첫 화면 '현장별 지출 · 마진' 표 — PC 1280 맞춤 (개발_백로그 5번)
+
+- 1280px(옆 메뉴 포함 본문 ≈962px)에서 표 자연 폭이 1379px 이라 늘 옆으로 밀렸다. 고친 것(≥900px·PC 모드만): 열 제목·마진 칸은 줄바꿈 허용(`word-break:keep-all`, 낱말은 안 쪼갬), 마진 칸은 `projectMarginCellHtml` — `.mg-wrap > b.mg-amt(금액, nowrap·PC 에선 block) + .mg-sep(' · ', PC 에선 숨김) + .mg-note('30% (입력 원가 기준)', PC 에선 아래 줄)`; 글(innerText)은 projectMarginLabel 과 같은 뜻. 칸 여백 `8px 6px`, 원가 입력칸 `input.mg-in` 84px(border-box, 12px) — 예전 인라인 `width:96px` 는 기본 규칙 `#dashboardMarginTable input.mg-in{width:96px}` 로 옮김(폰은 .dash-cards 의 `width:auto!important` 가 그대로 이김). `min-width` 1180 → 900.
+- 결과: 1280 자연 폭 949px → 안 밀림, 1024(706px)는 그대로 스크롤, 금액은 안 꺾임(pcdark-v452 ⑦ 계약 유지, 이름 칸 150px 유지). 폰 카드형은 `.mg-wrap` 한 덩어리라 예전과 같은 한 줄 글.
+- 핀3곳 hyeonjang-v464-margin1280(v463 위). 신규 tests/margin1280-v464.e2e.js 3/3(1280·1024·1440·390), 기준선(1c80132: 1379px)·변이 wide(84px 규칙 제거 → 985px) 실패 확인. 관련 16개(pcdark-v452·mobile-tap-table·dash-cards·photo-safety-ui·margin·margin-v429·darkcards-v453·polish-v456·rehearsalfix-v449·board-v351·extras-settle·insight-v445·quote-vat·ledger-roundtrip·trip-expense-overlap·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-23 v463 👷 팀 앱 연동 4차 — 완료보고서의 '팀 보고 사진' 묶음 빼기/넣기 (개발_백로그 4번)
 
 - `hjTeamReportPhotos(p,photos)`(읽기만): 완료·검수 요청 보고마다 사진 묶음 — 이 세션에 `_teamReport===key` 가 남은 사진이 있으면 그것만(key), 없으면 보고 workDate 와 사진 한국 날짜(hjPhotoKoreanDay)가 같고 아직 다른 보고에 안 묶인 현장 사진(day; 같은 날 보고 둘이면 먼저 온 보고가 가져간다). `_teamReport` 는 직렬화되지 않아 새로 열면 day 로 떨어진다 — 그래서 묶음 줄에 '(보고 n장 · 이 기기 m장)' 을 같이 쓴다. 막힘·대기 보고, 사진 0장 + 못 찾은 보고는 줄이 없다.

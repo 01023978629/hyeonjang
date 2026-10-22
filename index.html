@@ -100,12 +100,21 @@
   body.dark [data-backup-card] b,body.dark [data-backup-card] span{color:var(--hj-danger-fg)!important}
   body.dark button.ghost{color:var(--blueprint)}
   body.dark #modalRoot button.blue span,body.dark #modalRoot button.clay span,body.dark #modalRoot button.moss span{color:#06111c;opacity:.9}
+  #dashboardMarginTable input.mg-in{width:96px}   /* v464 원가 입력칸 — 예전 인라인 width:96px 를 여기로(PC 는 아래 84px) */
   /* v452 PC 첫 화면 '현장별 지출·마진' 표 — 금액·날짜가 가운데서 꺾이고 이름 칸이 다섯 줄이 됐다 */
   @media(min-width:900px){
     body:not(.mobile-mode) #dashboardMarginTable td.amt,body:not(.mobile-mode) #dashboardMarginTable th{white-space:nowrap}
     body:not(.mobile-mode) #view table.dash-cards td[data-label="일자"],body:not(.mobile-mode) #view table.dash-cards td.amt b{white-space:nowrap}   /* 견적서 내역 날짜 '2026-10-/03'·합계 줄 */
     body:not(.mobile-mode) #dashboardMarginTable td.nm{min-width:150px}
-    body:not(.mobile-mode) #dashboardMarginTable{min-width:1180px}
+    /* v464 1280 에서 옆으로 안 밀리게 — 열 제목과 마진 칸의 괄호 설명은 줄바꿈 허용(낱말은 안 쪼갬), 굵은 금액(.mg-amt)만 nowrap. 금액 칸(td.amt)은 그대로 nowrap 이라 폭은 내용이 정한다(1024 는 스크롤). */
+    body:not(.mobile-mode) #dashboardMarginTable th,body:not(.mobile-mode) #dashboardMarginTable td{padding:8px 6px}
+    body:not(.mobile-mode) #dashboardMarginTable th{white-space:normal;word-break:keep-all;letter-spacing:.02em}
+    body:not(.mobile-mode) #dashboardMarginTable td.mg{white-space:normal;word-break:keep-all}
+    body:not(.mobile-mode) #dashboardMarginTable td.mg .mg-amt{white-space:nowrap;display:block}
+    body:not(.mobile-mode) #dashboardMarginTable td.mg .mg-note{display:block;font-size:10.5px;font-weight:600;opacity:.85;line-height:1.35}
+    body:not(.mobile-mode) #dashboardMarginTable td.mg .mg-sep{display:none}
+    body:not(.mobile-mode) #dashboardMarginTable td.amt input.mg-in{width:84px;box-sizing:border-box;font-size:12px;padding:5px 6px}
+    body:not(.mobile-mode) #dashboardMarginTable{min-width:900px}
     body:not(.mobile-mode) #dashboardQuoteTable{min-width:900px}   /* v455 1024px 에서 견적 이름 칸이 71px·4줄로 눌렸다 — 옆으로 밀기 */
     body:not(.mobile-mode) .dash-margin-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;border-radius:10px}
   }
@@ -3389,7 +3398,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v463-teamphotos';
+const APP_BUILD='hyeonjang-v464-margin1280';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9331,6 +9340,12 @@ function projectMarginLabel(s,net=false){
   if(!(s.costEffective>0))return '원가 입력 필요 · 마진 미확정';
   return won(net?s.marginNet:s.marginEff)+' · '+(net?s.marginRateNet:s.marginRateEff)+'% (입력 원가 기준)';
 }
+/* v464 첫 화면 마진 칸 — 글은 projectMarginLabel 과 같고(textContent 동일), 굵은 금액·비율만 .mg-amt(nowrap), 괄호 설명은 .mg-note(줄바꿈 허용). */
+function projectMarginCellHtml(s,net=false){
+  // 폰 카드형(.dash-cards td 가 flex)에서는 한 덩어리(.mg-wrap)로 있어야 예전처럼 한 줄 글로 보인다.
+  if(!s.est||!(s.costEffective>0))return '<span class="mg-wrap"><span class="mg-note">'+escapeHtml(projectMarginLabel(s,net))+'</span></span>';
+  return '<span class="mg-wrap"><b class="mg-amt">'+escapeHtml(won(net?s.marginNet:s.marginEff))+'</b><span class="mg-sep"> · </span><span class="mg-note">'+escapeHtml((net?s.marginRateNet:s.marginRateEff)+'% (입력 원가 기준)')+'</span></span>';
+}
 /* 현장별 순마진(부가세 제외) 집계 — 순수/읽기전용. state 미변형. 새 엔진/새 탭 없이 projStats 재사용. */
 function projMarginSummary(opts){
   opts=opts||{};
@@ -9953,19 +9968,19 @@ function viewDashboard(){
     html+=`<tr>
       <td class="nm"><b style="color:var(--blueprint)">${escapeHtml(s.name)}</b></td>
       <td class="amt">${won(s.est)}</td>
-      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 자재비" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.matSrc)}</td>
-      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 인건비" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.labSrc)}</td>
-      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 외주비" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" style="text-align:right;width:96px">${fieldBadge(s.outSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 자재비" data-cost="material" data-proj="${escapeAttr(s.name)}" value="${(s.material||0).toLocaleString('ko-KR')}" class="mg-in" style="text-align:right">${fieldBadge(s.matSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 인건비" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" class="mg-in" style="text-align:right">${fieldBadge(s.labSrc)}</td>
+      <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 외주비" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" class="mg-in" style="text-align:right">${fieldBadge(s.outSrc)}</td>
       <td class="amt">${won(s.costEffective)}</td>
-      <td class="amt" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${escapeHtml(projectMarginLabel(s))}</td>
-      <td class="amt" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${escapeHtml(projectMarginLabel(s,true))}</td>
+      <td class="amt mg" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s)}</td>
+      <td class="amt mg" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s,true)}</td>
       <td class="amt" style="color:var(--muted)">${s.costEtc>0?won(s.costEtc):'-'}</td>
       <td>${srcBadge(s.costSource)}</td>
     </tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td class="amt"><b>${won(totEst)}</b></td><td></td><td></td><td></td>
-    <td class="amt"><b>${won(totCost)}</b></td><td class="amt" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'}"><b>${escapeHtml(marginIncomplete?'원가 미입력 현장 포함 · 미확정':projectMarginLabel(__ms.total))}</b></td>
-    <td class="amt" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'}"><b>${escapeHtml(marginIncomplete?'원가 미입력 현장 포함 · 미확정':projectMarginLabel(__ms.total,true))}</b></td>
+    <td class="amt"><b>${won(totCost)}</b></td><td class="amt mg" style="color:${totMargin>=0?'var(--ok)':'var(--warn)'};font-weight:700">${marginIncomplete?'<span class="mg-wrap"><span class="mg-note">원가 미입력 현장 포함 · 미확정</span></span>':projectMarginCellHtml(__ms.total)}</td>
+    <td class="amt mg" style="color:${__ms.total.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${marginIncomplete?'<span class="mg-wrap"><span class="mg-note">원가 미입력 현장 포함 · 미확정</span></span>':projectMarginCellHtml(__ms.total,true)}</td>
     <td class="amt" style="color:var(--muted)"><b>${totEtc>0?won(totEtc):'-'}</b></td><td></td></tr>`;
   html+=`</tbody></table></div>`;
   html+=`<div class="toolbar" style="margin-top:16px"><button class="moss tiny" id="btnXlsxDash">견적 정산 엑셀 내보내기</button><button class="ghost tiny" id="btnXlsxTax" title="공급가액·부가세를 분기별로 집계 — 세무사 전달용">🧾 세무용 분기 정산</button><span class="hint" style="margin:0;align-self:center">정산표 + 견적상세 2개 시트</span></div>`;
