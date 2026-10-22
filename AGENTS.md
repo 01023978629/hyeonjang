@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v456 다듬기 (R2·R7 남은 것) — 리뷰 링크 힌트 · 밝은 화면 작은 글자 · PC 영수증 확인 두 칸 · 키 없는 AI 두뇌 카드
+
+- 🎉 준공 관리 카드: `__reviewUrl` 이 비면 [⚠ 리뷰 링크 없음 — 설정](`[data-review-link-missing]`, hjOpenSettingsTab('etc','rvUrl')) — 링크 없이 리뷰 요청을 보내기 전에 보이게(R2). 링크를 넣으면 사라진다.
+- 밝은 화면 작은 글자(R7 42건): `.st-tab small`·`.st-prog` #9fb3c6→#6b7f95 · `.ph-hint` 는 뒤쪽 규칙(571행 부근)이 v453 의 앞쪽 규칙을 덮어 효과가 없었다 → 그 규칙 자체를 고침 · `.ph-chk` 배경 .4→.62 · 글자색 `#e8912d` 12곳→`var(--hj-warn-fg)`(그래프 선·점은 그대로) · 글자색 `#94a3b8`/`#9ca3af`→`var(--muted)`/#6b7280(원가 출처 '없음', 비교표 '—', 시즌 상태, 수요·등급·위험 낮음, 고객 페이지) · 비준공 준공 카드 opacity .5→.8+본문 ink(warranty-review 가 style 의 opacity 를 확인하므로 opacity 는 남김) · 문서 센터 예정 줄·시즌 비선택 줄·보존 비대상 줄은 opacity 대신 `background:var(--paper-2)`.
+- AI 두뇌 선택(.provPick)·AI 운영 모드(.opProvPick): 키 없는 카드가 `disabled`+흐림이라 '눌러서 등록'이 눌리지 않았다 → disabled 제거, 점선 테두리(`data-available`/`data-ready`), 누르면 hjOpenSettingsTab('keys')(llama 는 llamaSetup). 키 있는 카드 동작은 그대로.
+- PC(≥900px, 비모바일) 🧾 영수증 확인 `#hjRcConfirm`: grid 두 칸 — 사진 `[data-rc-photo]` 1칸 sticky(60vh), 나머지 자식은 모두 2칸(`>:not([data-rc-photo]){grid-column:2}` — 12행 span 만 주면 13번째부터 사진 아래로 흘렀다). 폰은 그대로 한 줄.
+- 핀3곳 hyeonjang-v456-polish(v455 위). 신규 tests/polish-v456.e2e.js 4/4(1280·390 두 컨텍스트, 조상 opacity 를 섞은 4.5:1 대비 샘플러), 기준선(REVIEW_LINK_HINT)·변이 rc-grid(RECEIPT_TWO_COL) 실패 확인. 관련 15개 통과. 정적 19개 통과.
+- 알아둘 것: 부팅 토스트 '📅 전우철 시험 일정 2건…'(BUILTIN_CALENDAR_IMPORTS, 9/1·9/14 — 이미 지난 날짜)은 새 기기마다 한 번 뜬다 — 지울지는 대표 결정(수험번호가 공개 소스에 있다).
+
 ## 2026-10-22 v455 자재 뒷정리 (R6·R7 남은 것) — 입고 취소 뒤 재고 되돌림 · 단가 이력 중복 · 1024px 견적서 내역 표
 
 - hjMatReceive(id,false) 가 hjMatLeftFromInventory 로 📦 재고에 옮긴 남은 자재(o.items[].left·movedToInv)를 그 수량만큼 뺀다(0 아래 없음, 표식 지움) — 예전엔 입고 취소 뒤에도 재고에 남아 재입고 때 또 더해졌다.

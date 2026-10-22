@@ -91,7 +91,6 @@
   body.dark .cal-dow.sat,body.dark .cal-cell.sat .cal-d{color:#8fc3ff}
   body.dark [style^="color:#64748b"],body.dark [style*=";color:#64748b"],body.dark [style*=" color:#64748b"],body.dark [style^="color:#94a3b8"],body.dark [style*=";color:#94a3b8"],body.dark [style*=" color:#94a3b8"]{color:var(--muted)!important}
   body.dark [style*="#dcfce7"],body.dark [style*="#fecaca"]{background:var(--paper-2)!important;background-image:none!important}
-  .ph-hint{color:#6b7f95}   /* v453 밝은 화면 9px 안내 글자 2.4:1 → 4.5:1 */
   body.dark .ph-hint{background:rgba(23,34,46,.92);color:var(--muted)}
   body.dark .av,body.dark .st-tab.on,body.dark .st-prog.on,body.dark .tab .b{color:#06111c}
   body.dark a:not([class]){color:var(--blueprint)}
@@ -119,7 +118,11 @@
   /* v452 PC 📎 서류 만들기 — 카드 25장이 한 줄에 하나씩 서던 것을 두 칸으로 */
   body:not(.mobile-mode) .mbody:has(.docHubBtn){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px;align-items:start}
   body:not(.mobile-mode) .mbody:has(.docHubBtn)>:not(.docHubBtn){grid-column:1/-1}
-  body:not(.mobile-mode) .doc-preview-frame{height:60vh!important}   /* v452 문서 미리보기 창(42vh)을 PC 에선 더 크게 */   /* v452 PC 토스트도 위에 — 아래 단추를 가리지 않게 */
+  body:not(.mobile-mode) .doc-preview-frame{height:60vh!important}   /* v452 문서 미리보기 창(42vh)을 PC 에선 더 크게 */
+  /* v456 PC 🧾 영수증 확인 — 사진은 왼쪽에 고정, 칸은 오른쪽(한 칸 세로로 굴리던 것) */
+  @media(min-width:900px){body:not(.mobile-mode) #hjRcConfirm{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:0 16px;align-items:start}
+    body:not(.mobile-mode) #hjRcConfirm>[data-rc-photo]{grid-column:1;grid-row:1/span 99;max-height:60vh!important;position:sticky;top:0}
+    body:not(.mobile-mode) #hjRcConfirm>:not([data-rc-photo]){grid-column:2}}   /* v452 PC 토스트도 위에 — 아래 단추를 가리지 않게 */
   input[type=password]{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;font:inherit;color:var(--ink);background:var(--paper);width:100%;box-sizing:border-box}   /* v452 비밀번호 칸이 20px 기본 상자였다 */
   html{font-size:var(--fs,100%)}
   /* ===== 🤖 AI 운영 비서 ===== */
@@ -564,7 +567,7 @@
   .ph-phase-btn{text-align:left;cursor:pointer;font-weight:600}
   .ph-phase-btn:hover{border-color:var(--blueprint)}
   body.dark .ph-phase{background:rgba(20,28,38,.95)}
-  .ph-hint{position:absolute;bottom:4px;left:4px;right:4px;font-size:9px;color:#9fb3c6;text-align:center;background:rgba(255,255,255,.9);border-radius:4px;padding:2px}
+  .ph-hint{position:absolute;bottom:4px;left:4px;right:4px;font-size:9px;color:#6b7f95;text-align:center;background:rgba(255,255,255,.9);border-radius:4px;padding:2px}
   .phasebar{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--paper-2);margin-bottom:12px}
   .phase-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .phase-chip{font-size:11.5px;padding:3px 6px 3px 10px;border-radius:20px;background:rgba(29,111,224,.12);color:var(--blueprint);font-weight:600;display:inline-flex;align-items:center;gap:4px}
@@ -583,7 +586,7 @@
   .ph.sel{outline:3px solid var(--clay);outline-offset:-1px}
   .ph-load{width:100%;height:100%;min-height:108px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--paper-2);color:var(--muted);font-size:20px}
   .ph-load small{font-size:10px;font-weight:600}
-  .ph-chk{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:5px;border:1.5px solid #fff;background:rgba(15,36,56,.4);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
+  .ph-chk{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:5px;border:1.5px solid #fff;background:rgba(15,36,56,.62);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
   .ph-chk input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0}
   .ph-chk span{color:#fff;font-size:12px;opacity:0;font-weight:800}
   .ph-chk.on{background:var(--clay);border-color:var(--clay)}
@@ -701,13 +704,13 @@
   .stage-filter{display:flex;gap:0;margin:6px 0 10px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
   .stage-filter .st-tab{flex:1;text-align:center;padding:10px 4px;font-size:13px;font-weight:600;cursor:pointer;background:var(--paper);border-right:1px solid var(--line-soft);color:var(--muted-2);display:flex;flex-direction:column;gap:2px;transition:.12s}
   .stage-filter .st-tab:last-child{border-right:none}
-  .stage-filter .st-tab small{font-size:10px;font-weight:400;color:#9fb3c6}
+  .stage-filter .st-tab small{font-size:10px;font-weight:400;color:#6b7f95}   /* v456 10px 보조 글자 2.2:1 → 4.5:1 */
   .stage-filter .st-tab:hover{background:var(--paper-2)}
   .stage-filter .st-tab.on{background:var(--blueprint);color:#fff}
   .stage-filter .st-tab.on small{color:rgba(255,255,255,.8)}
   .stage-prog-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--muted)}
   .stage-prog{display:flex;gap:6px}
-  .st-prog{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line-soft);background:var(--paper);color:#9fb3c6;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;padding:0}
+  .st-prog{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line-soft);background:var(--paper);color:#6b7f95;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;padding:0}
   .st-prog.on{background:var(--moss);color:#fff;border-color:var(--moss);font-weight:700}
   .st-prog.done{background:rgba(14,122,107,.16);color:var(--moss);border-color:transparent}
   .st-prog:hover{transform:none;border-color:var(--moss)}
@@ -3384,7 +3387,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v455-material2';
+const APP_BUILD='hyeonjang-v456-polish';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9919,7 +9922,7 @@ function viewDashboard(){
   html+=`</tbody></table>`;
   // 현장별 지출·마진 표
   const __ms=projMarginSummary();
-  const srcBadge=src=>{const m={'수기':['#0a7f43','손'],'장부':['#2563eb','📒'],'혼합':['#b45309','혼'],'없음':['#94a3b8','–']};const a=m[src]||m['없음'];return `<span title="원가 출처: ${src}" style="display:inline-block;font-size:10px;font-weight:700;color:${a[0]};border:1px solid ${a[0]}55;border-radius:6px;padding:1px 5px">${a[1]} ${src}</span>`;};
+  const srcBadge=src=>{const m={'수기':['#0a7f43','손'],'장부':['#2563eb','📒'],'혼합':['#b45309','혼'],'없음':['var(--muted)','–']};const a=m[src]||m['없음'];return `<span title="원가 출처: ${src}" style="display:inline-block;font-size:10px;font-weight:700;color:${a[0]};border:1px solid ${a[0]}55;border-radius:6px;padding:1px 5px">${a[1]} ${src}</span>`;};
   html+=`<div class="dash-sec">현장별 지출 · 마진 <span style="font-size:11px;color:var(--muted);font-weight:400">· 자재·인건·외주를 입력하면 마진이 자동 계산됩니다</span></div>`;
   html+=`<div style="font-size:11.5px;color:var(--muted-2);margin:-4px 0 8px;line-height:1.6">ℹ️ <b>순마진</b> = 공급가(부가세 제외) 매출 − 원가. 자재·외주는 부가세 포함 지출로 보고 공급가(÷1.1)로 환산, 인건비는 면세로 그대로 차감합니다. 장비·유류·식대 등 기타경비는 순마진에서 빠지며 별도 표기합니다. (완전한 회계 순이익이 아니라 재료·인건·외주 기준 마진입니다.)</div>`;
   html+=`<div class="toolbar" style="margin:0 0 8px"><button class="blue tiny" id="btnLoadCostLedger" title="현장에 태깅된 지출장부를 원가로 제안(0인 항목만, 확인 후 반영)">📒 장부에서 원가 불러오기</button><button class="ghost" onclick="hjCostReviewView()">원가 확인·정산 마감</button></div>`;
@@ -16887,7 +16890,7 @@ function hjWarrantyStart(name){
 function hjCompletionCard(p){
   const done=((p.stage||0)>=STAGES.length-1)||!!p.doneAt;
   if(!done){
-    return '<div class="cust-card" data-donecard="0" style="margin-top:10px;opacity:.5"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">준공(완료) 처리 후 이용</span></div><div style="font-size:12px;color:var(--muted);margin-top:6px">현장을 <b>완료</b> 단계로 옮기면 ⭐ 리뷰 요청·🛡 보증 시작을 할 수 있어요.</div></div>';
+    return '<div class="cust-card" data-donecard="0" style="margin-top:10px;opacity:.8"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--ink);font-weight:400;margin-left:6px">준공(완료) 처리 후 이용</span></div><div style="font-size:12px;color:var(--ink);margin-top:6px">현장을 <b>완료</b> 단계로 옮기면 ⭐ 리뷰 요청·🛡 보증 시작을 할 수 있어요.</div></div>';   // v456 .5→.8 + 본문 ink(흐린 글자 1.9:1 → 5:1)
   }
   const w=hjWarranty(p);
   const reqd=reviewRequested(p.name);
@@ -16903,7 +16906,8 @@ function hjCompletionCard(p){
   }
   const rvBtn=reqd
     ? '<span class="mini-btn" style="opacity:.7;pointer-events:none">✅ 리뷰 요청함'+(reqAt?' ('+reqAt+')':'')+'</span>'
-    : '<button class="mini-btn" data-reviewreqp="'+escapeAttr(p.name)+'" title="리뷰 요청 문자 초안">⭐ 리뷰 요청</button>';
+    : '<button class="mini-btn" data-reviewreqp="'+escapeAttr(p.name)+'" title="리뷰 요청 문자 초안">⭐ 리뷰 요청</button>'+
+      (String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim()?'':'<button type="button" class="mini-btn" data-review-link-missing onclick="hjOpenSettingsTab(\'etc\',\'rvUrl\')" title="설정 › 기타 › 리뷰 링크" style="color:var(--hj-warn-fg);border-color:var(--hj-warn-border)">⚠ 리뷰 링크 없음 — 설정</button>');   // v456 링크 없이 보내기 전에 보이게(리허설 R2)
   const wtBtn='<button class="mini-btn" data-warrantystart="'+escapeAttr(p.name)+'">'+(w&&w.items?'🛡 보증 수정':'🛡 보증 시작')+'</button>';
   return '<div class="cust-card" data-donecard="1" style="margin-top:10px"><div class="cust-h">🎉 준공 관리 <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">리뷰 요청 + 보증 등록</span></div>'+
     '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+rvBtn+wtBtn+'</div>'+warrLine+hjAdCaseLine(p)+'</div>';
@@ -19263,14 +19267,14 @@ function revenueTrend(months){
     ? (d.trend>=0?'<span style="color:#0a7f43">▲ 최근 3개월 수금 '+d.trend+'% 증가</span>':'<span style="color:#c2410c">▼ 최근 3개월 수금 '+Math.abs(d.trend)+'% 감소</span>')
     : '';
   // 표
-  const tableRows=d.rows.slice().reverse().map(r=>'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="width:52px">'+r.mm+'월</span><span style="flex:1;text-align:right;color:#e8912d">'+hjMan(r.est)+'</span><span style="flex:1;text-align:right;color:'+hjBrandColor('#0b4ea2')+';font-weight:700">'+hjMan(r.recv)+'</span><span style="width:44px;text-align:right;color:var(--muted)">'+(r.done||'-')+'</span></div>').join('');
+  const tableRows=d.rows.slice().reverse().map(r=>'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px"><span style="width:52px">'+r.mm+'월</span><span style="flex:1;text-align:right;color:var(--hj-warn-fg)">'+hjMan(r.est)+'</span><span style="flex:1;text-align:right;color:'+hjBrandColor('#0b4ea2')+';font-weight:700">'+hjMan(r.recv)+'</span><span style="width:44px;text-align:right;color:var(--muted)">'+(r.done||'-')+'</span></div>').join('');
   const body=
     '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">'+btns+'<span style="flex:1"></span></div>'+
-    '<div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:6px"><span style="color:#e8912d">● 매출(견적)</span><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수금</span></div>'+
+    '<div style="display:flex;gap:14px;font-size:11.5px;margin-bottom:6px"><span style="color:var(--hj-warn-fg)">● 매출(견적)</span><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수금</span></div>'+
     '<div style="background:var(--paper-2);border-radius:12px;padding:10px 6px 4px">'+revenueTrendSVG(d)+'</div>'+
     (trendTxt?'<div style="font-size:13px;font-weight:700;text-align:center;margin:10px 0">'+trendTxt+'</div>':'')+
     '<div style="display:flex;gap:8px;margin:10px 0">'+
-      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+months+'개월 매출</div><div style="font-size:15px;font-weight:800;color:#e8912d">'+hjMan(d.totalEst)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+months+'개월 매출</div><div style="font-size:15px;font-weight:800;color:var(--hj-warn-fg)">'+hjMan(d.totalEst)+'</div></div>'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">'+months+'개월 수금</div><div style="font-size:15px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.totalRecv)+'</div></div>'+
     '</div>'+
     '<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-weight:700;padding-bottom:4px;border-bottom:1px solid var(--line-soft)"><span style="width:52px">월</span><span style="flex:1;text-align:right">매출</span><span style="flex:1;text-align:right">수금</span><span style="width:44px;text-align:right">완료</span></div>'+tableRows+'</div>';
@@ -20930,7 +20934,7 @@ function pnl(ym){
   // 수입/지출 대비
   const io='<div style="display:flex;gap:8px;margin-bottom:12px">'+
     '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">💰 수금(수입)</div><div style="font-size:17px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.income)+'</div></div>'+
-    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">💳 지출</div><div style="font-size:17px;font-weight:800;color:#e8912d">'+hjMan(d.spend)+'</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:11px;text-align:center"><div style="font-size:10.5px;color:var(--muted)">💳 지출</div><div style="font-size:17px;font-weight:800;color:var(--hj-warn-fg)">'+hjMan(d.spend)+'</div></div>'+
     '</div>';
   // 지출 분류
   const cats=HJ_EXP_CATS.filter(c=>d.spendByCat[c]>0);
@@ -20939,7 +20943,7 @@ function pnl(ym){
   const incBlock=d.incomeTop.length?'<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">💰 수금 현장</div>'+d.incomeTop.map(x=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--line-soft)"><span>'+escapeHtml(hjCut(x.name,16))+'</span><span>'+won(x.amt)+'</span></div>').join(''):'';
   // 추세
   const trend=pnlTrend(6);
-  const trendBlock='<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">📊 6개월 추이</div><div style="display:flex;gap:12px;font-size:11px;margin-bottom:4px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:#e8912d">■ 지출</span></div><div style="background:var(--paper-2);border-radius:10px;padding:8px 4px 2px">'+pnlTrendSVG(trend)+'</div>';
+  const trendBlock='<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">📊 6개월 추이</div><div style="display:flex;gap:12px;font-size:11px;margin-bottom:4px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:var(--hj-warn-fg)">■ 지출</span></div><div style="background:var(--paper-2);border-radius:10px;padding:8px 4px 2px">'+pnlTrendSVG(trend)+'</div>';
   const body=nav+hero+io+catBlock+incBlock+trendBlock+
     '<div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">💡 수금은 실제 입금된 돈(payLog), 지출은 간편 장부 기록 기준입니다. 현장별 원가·마진은 [📊 수익 분석]에서 볼 수 있어요.</div>'+
     '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="moss" id="pnlExp" style="flex:1;min-width:120px;padding:11px">💳 지출 장부</button><button class="moss" id="pnlProfit" style="flex:1;min-width:120px;padding:11px">📊 수익 분석</button></div>';
@@ -21219,10 +21223,10 @@ function annualReport(year){
     '<div style="background:'+(d.net>=0?'#f0fdf4':'#fef2f2')+';border-radius:14px;padding:16px;text-align:center;margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">'+year+'년 실손익 (수금 − 지출)</div><div style="font-size:26px;font-weight:800;color:'+netColor+';margin-top:2px">'+(d.net>=0?'+':'')+won(d.net)+' 원</div></div>'+
     '<div style="display:flex;gap:7px;margin-bottom:12px">'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">수금</div><div style="font-size:14px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.income)+'</div></div>'+
-      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">지출</div><div style="font-size:14px;font-weight:800;color:#e8912d">'+hjMan(d.spend)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">지출</div><div style="font-size:14px;font-weight:800;color:var(--hj-warn-fg)">'+hjMan(d.spend)+'</div></div>'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:9px;text-align:center"><div style="font-size:10px;color:var(--muted)">완료현장</div><div style="font-size:14px;font-weight:800;color:#0a7f43">'+d.doneCount+'곳</div></div>'+
     '</div>'+
-    '<div style="font-size:12px;font-weight:700;margin-bottom:2px">📊 월별 수입·지출</div><div style="display:flex;gap:10px;font-size:10.5px;color:var(--muted);margin-bottom:2px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:#e8912d">■ 지출</span></div>'+barChart+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:2px">📊 월별 수입·지출</div><div style="display:flex;gap:10px;font-size:10.5px;color:var(--muted);margin-bottom:2px"><span style="color:'+hjBrandColor('#0b4ea2')+'">■ 수입</span><span style="color:var(--hj-warn-fg)">■ 지출</span></div>'+barChart+
     catBlock+
     (d.bestMonth&&d.bestMonth.income>0?'<div style="font-size:12px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:8px;padding:8px">🏆 최고 매출 달: '+d.bestMonth.m+'월 ('+won(d.bestMonth.income)+')</div>':'')+
     '<div style="display:flex;gap:8px;margin-top:12px"><button class="clay" id="anXlsx" style="flex:1;padding:12px">📊 연간 엑셀</button><button class="moss" id="anCopy" style="flex:1;padding:12px">📋 요약 복사</button></div>';
@@ -22296,7 +22300,7 @@ async function opsReport(period){
   const tab=(pd,lbl)=>'<button class="orTab '+(period===pd?'clay':'ghost')+' tiny" data-p="'+pd+'" style="flex:1;padding:9px">'+lbl+'</button>';
   const kpi='<div style="display:flex;gap:7px;margin-bottom:12px">'+
     '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">수금</div><div style="font-size:15px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+'">'+hjMan(d.income)+'</div></div>'+
-    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">지출</div><div style="font-size:15px;font-weight:800;color:#e8912d">'+hjMan(d.spend)+'</div></div>'+
+    '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">지출</div><div style="font-size:15px;font-weight:800;color:var(--hj-warn-fg)">'+hjMan(d.spend)+'</div></div>'+
     '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">실손익</div><div style="font-size:15px;font-weight:800;color:'+netColor+'">'+hjMan(d.net)+'</div></div>'+
     '</div>';
   const stats='<div style="display:flex;gap:7px;margin-bottom:12px">'+
@@ -22531,7 +22535,7 @@ async function salesForecast(){
     '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:16px;color:#fff"><div style="font-size:12px;opacity:.9">AI 매출 예측</div><div style="font-size:19px;font-weight:800;margin-top:2px">'+d.nextLabel+' 예상</div></div>'+
     '<div style="background:var(--paper-2);border-radius:14px;padding:16px;text-align:center;margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">'+d.nextLabel+' 예상 수금</div><div style="font-size:26px;font-weight:800;color:'+hjBrandColor('#0b4ea2')+';margin-top:2px">'+won(d.predIncome)+' 원</div><div style="font-size:12px;margin-top:4px;color:'+trendColor+';font-weight:700">'+trendIcon+'</div></div>'+
     '<div style="display:flex;gap:7px;margin-bottom:12px">'+
-      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">예상 지출</div><div style="font-size:14px;font-weight:800;color:#e8912d">'+hjMan(d.predSpend)+'</div></div>'+
+      '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">예상 지출</div><div style="font-size:14px;font-weight:800;color:var(--hj-warn-fg)">'+hjMan(d.predSpend)+'</div></div>'+
       '<div style="flex:1;background:var(--paper-2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--muted)">예상 손익</div><div style="font-size:14px;font-weight:800;color:'+(d.predNet>=0?'#0a7f43':'#c2410c')+'">'+hjMan(d.predNet)+'</div></div>'+
       '</div>'+
     '<div style="font-size:12px;font-weight:700;margin-bottom:4px">📊 6개월 추이 + 예측</div>'+
@@ -22766,9 +22770,9 @@ function aiProviderManage(){
   const cur=window.__aiProvider||'gemini';
   const hasGemini=!!window.__geminiKey,hasOpenai=!!window.__openaiKey;
   const card=(id,ic,title,desc,cost,active,available)=>
-    '<button class="provPick" data-p="'+id+'" '+(available?'':'disabled')+' style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:'+(active?'var(--clay)':'var(--paper)')+';color:'+(active?'#fff':'var(--ink)')+';border:2px solid '+(active?'var(--clay)':'var(--line-soft)')+';border-radius:13px;padding:14px;margin-bottom:9px;cursor:'+(available?'pointer':'not-allowed')+';opacity:'+(available?'1':'.5')+'">'+
+    '<button class="provPick" data-p="'+id+'" data-available="'+(available?'1':'0')+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:'+(active?'var(--clay)':'var(--paper)')+';color:'+(active?'#fff':'var(--ink)')+';border:2px '+(available?'solid':'dashed')+' '+(active?'var(--clay)':'var(--line-soft)')+';border-radius:13px;padding:14px;margin-bottom:9px;cursor:pointer">'+
       '<span style="font-size:26px">'+ic+'</span>'+
-      '<span style="flex:1;min-width:0"><b style="font-size:14px">'+title+(active?' ✓':'')+'</b><br><span style="font-size:11.5px;opacity:.85">'+desc+'</span><br><span style="font-size:11px;font-weight:700;color:'+(active?'#fff':(cost==='무료'?'#0a7f43':'#c2410c'))+'">'+cost+(available?'':' · 키 필요')+'</span></span>'+
+      '<span style="flex:1;min-width:0"><b style="font-size:14px">'+title+(active?' ✓':'')+'</b><br><span style="font-size:11.5px">'+desc+'</span><br><span style="font-size:11px;font-weight:700;color:'+(active?'#fff':(cost==='무료'?'#0a7f43':'#c2410c'))+'">'+cost+(available?'':' · 키 필요')+'</span></span>'+
     '</button>';
   const body=
     '<div style="font-size:12.5px;color:var(--muted);background:var(--paper-2);border-radius:10px;padding:12px;margin-bottom:14px;line-height:1.6">AI 비서가 어떤 두뇌를 쓸지 고릅니다. <b>Gemini를 권장</b>해요 — 단 Gemini가 무료인 것은 키가 속한 구글 프로젝트에 <b>결제계정이 없을 때뿐</b>이고, 연결돼 있으면 ChatGPT와 마찬가지로 쓴 만큼 청구됩니다.</div>'+
@@ -22780,7 +22784,9 @@ function aiProviderManage(){
     '<button class="ghost" id="provKeys" style="width:100%;padding:11px;margin-top:8px">☁️ AI 키 설정 열기</button>';
   openModal('🔑 AI 두뇌 선택',body,[{label:'닫기',cls:'clay',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
-  root.querySelectorAll('.provPick').forEach(b=>{if(!b.disabled)b.onclick=()=>{aiProviderSet(b.dataset.p);const pn=b.dataset.p==='openai'?'ChatGPT':b.dataset.p==='llama'?'Llama(Ollama 등)':'Gemini';toast(pn+'를 사용합니다');aiProviderManage();};});
+  root.querySelectorAll('.provPick').forEach(b=>{b.onclick=()=>{
+    if(b.dataset.available!=='1'){closeModal();try{if(b.dataset.p==='llama')llamaSetup();else if(typeof hjOpenSettingsTab==='function')hjOpenSettingsTab('keys');else openGdriveSetup();}catch(_){}return;}   // v456 키 없는 두뇌를 누르면 키 화면으로(흐린 disabled 단추 → 읽히는 점선 카드)
+    aiProviderSet(b.dataset.p);const pn=b.dataset.p==='openai'?'ChatGPT':b.dataset.p==='llama'?'Llama(Ollama 등)':'Gemini';toast(pn+'를 사용합니다');aiProviderManage();};});
   {const lb=root.querySelector('#provLlama');if(lb)lb.onclick=()=>{closeModal();try{llamaSetup();}catch(e){}};}
   const kb=root.querySelector('#provKeys');if(kb)kb.onclick=()=>{closeModal();try{openGdriveSetup();}catch(e){}};
   return {현재:aiProviderName()};
@@ -24010,7 +24016,7 @@ function seasonCalendar(){
   const now=new Date();const m=now.getMonth()+1;
   const cur=SEASON_CALENDAR[m];const next=SEASON_CALENDAR[m===12?1:m+1];
   const [c1,c2]=hjBrandGrad('#0e7a6b','#1d6fd8');
-  const demandColor=d=>d==='높음'?'#0a7f43':d==='상승'||d==='중상'?'#e8912d':d==='중'?'#b45309':'#94a3b8';
+  const demandColor=d=>d==='높음'?'#0a7f43':d==='상승'||d==='중상'?'var(--hj-warn-fg)':d==='중'?'#b45309':'var(--muted)';
   const monthCard=(mm,data,isCur)=>'<div style="background:'+(isCur?'linear-gradient(120deg,'+c1+','+c2+')':'var(--paper-2)')+';border-radius:12px;padding:14px;margin-bottom:10px;color:'+(isCur?'#fff':'var(--ink)')+'">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px;font-weight:800">'+mm+'월</span><span style="font-size:11px;background:'+(isCur?'rgba(255,255,255,.25)':'var(--paper)')+';padding:2px 8px;border-radius:10px">'+data.tag+'</span><span style="font-size:11px;margin-left:auto;font-weight:700;color:'+(isCur?'#fff':demandColor(data.demand))+'">수요 '+data.demand+'</span></div>'+
     '<div style="font-size:12.5px;line-height:1.5;opacity:'+(isCur?'.95':'.85')+'">'+escapeHtml(data.tip)+'</div>'+
@@ -24460,7 +24466,7 @@ async function salesTarget(){
   }
   const rows=targets.slice(0,10).map((t,i)=>{
     const grade=t.score>=60?'🔥 최우선':t.score>=40?'⭐ 우선':'👍 검토';
-    const gradeColor=t.score>=60?'#c2410c':t.score>=40?'#e8912d':'#94a3b8';
+    const gradeColor=t.score>=60?'#c2410c':t.score>=40?'var(--hj-warn-fg)':'var(--muted)';
     return '<div style="padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:8px">'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(t.customer.name||t.name)+'</b><span style="font-size:11px;font-weight:700;color:'+gradeColor+'">'+grade+'</span></div>'+
       '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">📍'+escapeHtml(t.name)+'</div>'+
@@ -24816,7 +24822,7 @@ function contractReview(qid){
   const missingHigh=missing.filter(r=>r.risk==='high');
   const [c1,c2]=hjBrandGrad('#c2410c','#e8912d');
   const riskLabel=r=>r==='high'?'중요':r==='mid'?'권장':'참고';
-  const riskColor=r=>r==='high'?'#c2410c':r==='mid'?'#e8912d':'#94a3b8';
+  const riskColor=r=>r==='high'?'#c2410c':r==='mid'?'var(--hj-warn-fg)':'var(--muted)';
   const rows=results.map(r=>'<div style="display:flex;align-items:flex-start;gap:10px;padding:11px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;background:'+(r.present?'#f0fdf4':(r.risk==='high'?'#fff5f5':'var(--paper)'))+'">'+
     '<span style="font-size:18px">'+(r.present?'✅':'⚠️')+'</span>'+
     '<span style="flex:1"><b style="font-size:13px">'+escapeHtml(r.label)+'</b> <span style="font-size:10px;color:'+riskColor(r.risk)+';font-weight:700">'+riskLabel(r.risk)+'</span>'+
@@ -24925,7 +24931,7 @@ function aiOperateMode(){
   // 제공자 카드
   const provCard=(id,ic,name,desc,ready)=>{
     const sel=st.prov===id;
-    return '<button class="opProvPick" data-p="'+id+'" '+(ready?'':'disabled')+' style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px;margin-bottom:7px;border-radius:12px;border:2px solid '+(sel?'var(--clay)':'var(--line-soft)')+';background:'+(sel?'#eff6ff':(ready?'var(--paper)':'var(--paper-2)'))+';opacity:'+(ready?'1':'.55')+'">'+
+    return '<button class="opProvPick" data-p="'+id+'" data-ready="'+(ready?'1':'0')+'" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px;margin-bottom:7px;border-radius:12px;border:2px '+(ready?'solid':'dashed')+' '+(sel?'var(--clay)':'var(--line-soft)')+';background:'+(sel?'#eff6ff':(ready?'var(--paper)':'var(--paper-2)'))+'">'+
       '<span style="font-size:24px">'+ic+'</span>'+
       '<span style="flex:1;min-width:0"><b style="font-size:13.5px">'+name+'</b>'+(sel?' <span style="font-size:11px;color:var(--clay);font-weight:700">✓ 사용 중</span>':'')+'<br><span style="font-size:11px;color:var(--muted)">'+desc+'</span>'+(ready?'':'<br><span style="font-size:10.5px;color:#c2410c">설정 필요 — 눌러서 등록</span>')+'</span>'+
     '</button>';
@@ -29670,11 +29676,11 @@ function satisfactionManage(){
   const stars=n=>'★★★★★'.slice(0,n)+'☆☆☆☆☆'.slice(0,5-n);
   const distBars=st.count?[5,4,3,2,1].map(s=>{
     const cnt=st.dist[s-1];const w=st.count?Math.round(cnt/st.count*100):0;
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:11px"><span style="width:24px;color:#e8912d">'+s+'★</span><div style="flex:1;height:8px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:#e8912d"></div></div><span style="width:20px;text-align:right;color:var(--muted)">'+cnt+'</span></div>';
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:11px"><span style="width:24px;color:var(--hj-warn-fg)">'+s+'★</span><div style="flex:1;height:8px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:#e8912d"></div></div><span style="width:20px;text-align:right;color:var(--muted)">'+cnt+'</span></div>';
   }).join(''):'';
   const rows=arr.length?arr.slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(r=>
     '<div style="padding:11px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:7px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><b style="font-size:12.5px">'+escapeHtml(r.customer||r.project||'고객')+'</b><span style="font-size:13px;color:#e8912d">'+stars(+r.stars||0)+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><b style="font-size:12.5px">'+escapeHtml(r.customer||r.project||'고객')+'</b><span style="font-size:13px;color:var(--hj-warn-fg)">'+stars(+r.stars||0)+'</span></div>'+
       (r.comment?'<div style="font-size:11.5px;color:var(--ink);background:var(--paper-2);border-radius:8px;padding:8px;margin-top:4px">"'+escapeHtml(r.comment)+'"</div>':'')+
       '<div style="font-size:10px;color:var(--muted);margin-top:4px">'+escapeHtml(r.project||'')+(r.at?' · '+String(r.at).slice(0,10):'')+'</div>'+
     '</div>').join(''):'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">아직 수집된 만족도가 없어요.</div>';
@@ -29698,7 +29704,7 @@ function satisfactionAdd(){
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">현장</label>'+
     (done.length?'<select id="satProj" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px">'+projOpts+'</select>':'<input id="satProjName" placeholder="현장/고객 이름" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px">')+
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px">별점</label>'+
-    '<div id="satStarPick" style="font-size:32px;text-align:center;margin-bottom:10px;letter-spacing:4px;cursor:pointer">'+[1,2,3,4,5].map(i=>'<span class="satStar" data-s="'+i+'" style="color:#e8912d">★</span>').join('')+'</div>'+
+    '<div id="satStarPick" style="font-size:32px;text-align:center;margin-bottom:10px;letter-spacing:4px;cursor:pointer">'+[1,2,3,4,5].map(i=>'<span class="satStar" data-s="'+i+'" style="color:var(--hj-warn-fg)">★</span>').join('')+'</div>'+
     '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">후기(선택)</label>'+
     '<textarea id="satComment" placeholder="고객이 남긴 후기를 적어주세요" style="width:100%;padding:10px;font-size:13px;min-height:70px;margin-bottom:6px"></textarea>';
   openModal('+ 만족도 기록',body,[
@@ -33295,11 +33301,11 @@ function portalPreviewHtml(d){
   return '<div class="pv-phone">'+
     '<div class="pv-hd"><small>MANMUL INTERIOR</small><h2>'+E(d.name)+'</h2><p>고객님의 공사 진행 안내 페이지입니다</p></div>'+
     notice+
-    '<div class="pv-card"><h3>📋 공사 진행 현황</h3>'+(steps||'<p style="font-size:12px;color:#9ca3af">준비 중</p>')+'</div>'+
+    '<div class="pv-card"><h3>📋 공사 진행 현황</h3>'+(steps||'<p style="font-size:12px;color:#6b7280">준비 중</p>')+'</div>'+
     (d.quote&&d.quote.amount?'<div class="pv-card"><h3>💰 공사 비용</h3><div class="pv-amt">'+won(d.quote.amount)+'<small> 원</small></div>'+
       (d.quote.summary?'<div class="pv-sum">'+E(d.quote.summary)+'</div>':'')+apprBox+payBox+'</div>':'')+
     ask+
-    (ph?'<div class="pv-card"><h3>📸 현장 사진</h3><div class="pv-gal">'+ph+'</div></div>':'<div class="pv-card"><h3>📸 현장 사진</h3><p style="font-size:11.5px;color:#9ca3af">이 현장에 배정된 사진이 없어요 — 사진을 배정하면 고객에게도 보입니다</p></div>')+
+    (ph?'<div class="pv-card"><h3>📸 현장 사진</h3><div class="pv-gal">'+ph+'</div></div>':'<div class="pv-card"><h3>📸 현장 사진</h3><p style="font-size:11.5px;color:#6b7280">이 현장에 배정된 사진이 없어요 — 사진을 배정하면 고객에게도 보입니다</p></div>')+
     review+
     '<div class="pv-card"><h3>💬 대표에게 남기기</h3><div class="pv-ta">궁금한 점, 요청사항을 편하게 남겨주세요.</div><button class="pv-big" style="margin-top:8px;background:#0b4ea2;color:#fff">메시지 보내기</button></div>'+
     '<div class="pv-card" style="text-align:center;font-size:11px;color:#6b7280;line-height:1.7">만물인테리어 · 대표 전병덕<br>대전 중구 돌다리로 19번길 9 1층</div>'+
@@ -33323,12 +33329,12 @@ function portalPreview(pjName){
     '.pv-amt{font-size:22px;font-weight:800;text-align:center;color:#1f2937}.pv-amt small{font-size:11px;color:#6b7280;font-weight:400}'+
     '.pv-sum{font-size:11px;color:#4b5563;text-align:center;margin:4px 0 10px}'+
     '.pv-big{width:100%;padding:12px;border:0;border-radius:11px;background:#f4c430;font-size:13px;font-weight:800;color:#1f2937;pointer-events:none}'+
-    '.pv-tiny{font-size:9.5px;color:#9ca3af;text-align:center;margin-top:5px}'+
+    '.pv-tiny{font-size:9.5px;color:#6b7280;text-align:center;margin-top:5px}'+
     '.pv-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:10px;padding:11px;text-align:center;font-weight:700;font-size:12px}'+
     '.pv-ok span{display:block;font-size:10px;font-weight:400;margin-top:2px;color:#4d7c5f}'+
     '.pv-acc{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px;text-align:center;font-size:11.5px;line-height:1.7;margin-top:8px;color:#78350f}'+
     '.pv-gal{display:flex;gap:6px;overflow-x:auto}.pv-gal img{height:88px;border-radius:9px}'+
-    '.pv-ta{border:1px solid #e5e7eb;border-radius:10px;padding:9px;font-size:11px;color:#9ca3af;background:#fafafa}'+
+    '.pv-ta{border:1px solid #e5e7eb;border-radius:10px;padding:9px;font-size:11px;color:#6b7280;background:#fafafa}'+
     '.pv-foot{position:absolute;bottom:0;left:0;right:0;background:#fff;padding:9px 10px;display:flex;gap:6px;box-shadow:0 -3px 10px rgba(0,0,0,.07)}'+
     '.pv-foot span{flex:1;text-align:center;padding:11px;border-radius:10px;font-size:12px;font-weight:700}'+
     '.pv-call{background:#0b4ea2;color:#fff}.pv-sms{background:#eef2ff;color:#0b4ea2}'+
@@ -39187,7 +39193,7 @@ function docHubView(pjName){
   const NEW='<span style="font-size:10px;color:#0a7f43;font-weight:700"> 새</span>';
   const item=function(icon,title,desc,act,status,tone){
     const planned=/^todo:/.test(act);
-    return '<button type="button" class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;min-height:44px;color:var(--ink);background:'+(planned?'var(--paper-2);opacity:.72':'var(--paper)')+'">'+
+    return '<button type="button" class="docHubBtn" data-act="'+act+'" style="display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:7px;min-height:44px;color:var(--ink);background:'+(planned?'var(--paper-2)':'var(--paper)')+'">'+
       '<span style="font-size:19px;line-height:1.1">'+icon+'</span>'+
       '<span style="flex:1;min-width:0"><b style="font-size:13px">'+title+(planned?' <span style="font-size:10.5px;color:var(--muted);font-weight:600">준비 중</span>':'')+'</b>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5">'+desc+'</div>'+
@@ -41315,7 +41321,7 @@ function hjRetDashHtml(){
 function hjRetView(){
   const d=hjRetCandidates(),picks=new Set();
   try{localStorage.setItem('hj_ret_seen',localDate().slice(0,7));}catch(e){}
-  const row=(kind,x,label)=>'<div data-ret-row="'+kind+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px;margin-top:6px;font-size:12.5px'+(x.eligible?'':';opacity:.7')+'">'+
+  const row=(kind,x,label)=>'<div data-ret-row="'+kind+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:6px 10px;margin-top:6px;font-size:12.5px'+(x.eligible?'':';background:var(--paper-2)')+'">'+
     (x.eligible?'<label style="display:flex;align-items:center;gap:8px;min-height:44px;flex:1;min-width:0"><input type="checkbox" data-ret-pick="'+kind+':'+escapeAttr(kind==='p'?x.name:x.id)+'" style="width:18px;height:18px;flex:none"><span style="min-width:0"><b>'+escapeHtml(label)+'</b><br><span style="color:var(--muted)">기준일 '+escapeHtml(x.date)+(x.src?' ('+escapeHtml(x.src)+')':'')+'</span></span></label>'
       :'<span style="flex:1;min-width:0"><b>'+escapeHtml(label)+'</b><br><span style="color:var(--muted)">기준일 '+escapeHtml(x.date)+' · </span><span data-ret-except style="color:#b45309">정리 안 함: '+escapeHtml(x.exceptions.join(' · '))+'</span></span>')+
     (kind==='p'?'<button type="button" class="ghost tiny" data-ret-preview="'+escapeAttr(x.name)+'" style="min-height:44px;min-width:44px">미리보기</button>':'')+'</div>';
@@ -42411,7 +42417,7 @@ function hjQuoteCompare(quotes){
 }
 const HJ_QC_DIFF_BG='#fff7ed';
 function hjQuoteCompareTableHtml(cmp,doc){
-  const cell=v=>v==null?'<span style="color:#94a3b8">—</span>':escapeHtml(won(v));
+  const cell=v=>v==null?'<span style="color:var(--muted)">—</span>':escapeHtml(won(v));
   const head='<tr><th style="text-align:left">품목</th>'+cmp.cols.map(c=>'<th class="amt" data-qc-col="'+escapeAttr(c.id)+'">'+escapeHtml(c.label)+'</th>').join('')+'</tr>';
   const body=cmp.rows.map(r=>'<tr'+(r.diff?' data-qc-diff style="background:'+HJ_QC_DIFF_BG+'"':'')+'><td'+(r.diff?' style="font-weight:700"':'')+'>'+escapeHtml(r.name)+(r.diff?' <span style="color:#c2410c;font-size:10.5px">차이</span>':'')+'</td>'+r.cells.map((v,i)=>'<td class="amt">'+cell(v)+(r.specs[i]?'<div style="font-size:10.5px;color:#64748b">'+escapeHtml(r.specs[i])+'</div>':'')+'</td>').join('')+'</tr>').join('');
   const tot=(label,key,bold)=>'<tr data-qc-total="'+key+'" style="background:#f4f7fb'+(bold?';font-weight:800':'')+'"><td>'+label+'</td>'+cmp.cols.map(c=>'<td class="amt">'+escapeHtml(won(c[key]))+'</td>').join('')+'</tr>';
@@ -42682,7 +42688,7 @@ function hjSeasonTargets(campaignId,opts){
   }).sort((a,b)=>(b.selectable-a.selectable)||a.name.localeCompare(b.name)||a.key.localeCompare(b.key));
   return {campaign:camp,today,rows,noPhone,selectable:rows.filter(r=>r.selectable).length};
 }
-const HJ_SEASON_STATUS=Object.freeze({consent:['동의','#0a7f43'],sixmonth:['거래 6개월 안','#2563eb'],need:['동의 필요','#94a3b8'],recent:['90일 안 발송','#94a3b8'],optout:['수신거부','#b91c1c']});
+const HJ_SEASON_STATUS=Object.freeze({consent:['동의','#0a7f43'],sixmonth:['거래 6개월 안','#2563eb'],need:['동의 필요','var(--muted)'],recent:['90일 안 발송','var(--muted)'],optout:['수신거부','#b91c1c']});
 function hjSeasonNight(now){const h=(now||new Date()).getHours();return h>=HJ_AD_SMS_RULE.quietFrom||h<HJ_AD_SMS_RULE.quietTo;}
 function hjSeasonSms(camp){return HJ_AD_SMS_RULE.prefix+' ['+COMPANY.name+'] '+camp.title+'\n'+String(camp.sms||'').trim()+'\n문의 '+COMPANY.tel+'\n'+HJ_AD_SMS_RULE.optout;}
 function hjSeasonSns(camp){return camp.title+'\n\n'+String(camp.sns||camp.sms||'').trim()+'\n\n문의는 DM 또는 프로필 링크로 남겨 주세요.\n'+(camp.tags||'#대전인테리어');}
@@ -42740,7 +42746,7 @@ function hjSeasonView(campaignId){
   const sel=__hjSeasonSel.keys;[...sel].forEach(k=>{if(!t.rows.some(r=>r.key===k&&r.selectable))sel.delete(k);});
   const picks=all.map(c=>'<button type="button" class="'+(c.id===camp.id?'blue':'ghost')+' tiny" data-season-pick="'+escapeAttr(c.id)+'" aria-pressed="'+(c.id===camp.id)+'" style="min-height:44px;white-space:normal;text-align:left">'+escapeHtml((c.ic||'🌦')+' '+c.title)+(hjSeasonInWindow(c,t.today)?' <span data-season-now style="font-size:10.5px">· 지금 시기</span>':'')+'</button>').join('');
   const st=s=>{const x=HJ_SEASON_STATUS[s];return '<span data-season-status="'+s+'" style="font-size:11px;font-weight:700;color:'+x[1]+';white-space:nowrap">'+x[0]+'</span>';};
-  const row=r=>'<div data-season-row="'+escapeAttr(r.key)+'" style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--line-soft);'+(r.selectable?'':'opacity:.55')+'">'+
+  const row=r=>'<div data-season-row="'+escapeAttr(r.key)+'" style="display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--line-soft);'+(r.selectable?'':'background:var(--paper-2)')+'">'+
     '<label style="display:flex;gap:8px;align-items:center;flex:1;min-width:0;min-height:44px;cursor:'+(r.selectable?'pointer':'default')+'"><input type="checkbox" data-season-sel="'+escapeAttr(r.key)+'"'+(sel.has(r.key)?' checked':'')+(r.selectable?'':' disabled')+' style="width:20px;height:20px;flex:none">'+
     '<span style="min-width:0;font-size:12.5px;overflow-wrap:anywhere"><b>'+escapeHtml(r.name)+'</b> '+st(r.status)+'<br><span style="color:var(--muted)">'+escapeHtml([r.dong,r.trade,'마지막 거래 '+r.last].filter(Boolean).join(' · '))+'</span><br><span style="color:var(--muted);font-size:11px">'+escapeHtml(r.rules.join(' · '))+'</span></span></label>'+
     (r.status==='optout'?'':'<button type="button" class="ghost tiny" data-season-optout="'+escapeAttr(r.key)+'" style="min-height:44px;min-width:44px" aria-label="'+escapeAttr(r.name)+' 수신거부 처리">🚫 거부</button>')+'</div>';
