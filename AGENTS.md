@@ -3,6 +3,15 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v458 팀 앱 연동 3차 — 팀 작업 보고 → 📄 완료보고서 · 시기 줄 0명 숨김 · 묵은 검사 2개 고침
+
+- 보고는 v432 자리(wo.reports[]·p.teamReports[]) 그대로 읽는다 — hjTeamReportsOf(p)(order 붙여 날짜순), hjTeamDoneLines(p)(done 보고의 한 일 → 'MM/DD 한 일' 줄, 보고자 이름·이슈·검수(review) 보고는 안 넣음 — 관리사무소·고객에게 가는 문서). hjReportDraft 가 공정 줄 뒤에 이 줄을 날짜순으로 붙이고(같은 글은 한 번) 기간(days)에 보고 작업일을 넣는다 · 돌려주는 값에 team·teamPhotos. aptReportView 에 `[data-rp-team]` 안내.
+- 첫 화면 `[data-team-done-doc]` "📄 팀 보고 n건 들어옴 · 사진 m장 — 현장 [완료보고서 초안][넘기기]"(hjTeamDoneDocHtml, 팀 검수 줄 바로 뒤·v386 문의 줄 계약 유지, 3현장까지). [완료보고서 초안] → aptReportView · [넘기기] → hjTeamDoneMark(name,'skip') 보고 레코드 docAck · PDF 를 만들면 hjTeamDoneMark(name,'doc') docAt=오늘 → 줄이 내려간다. 새 저장 키 없음(보고 레코드 안 표식). 📎 서류 만들기 완료보고서 줄에 '👷 팀 보고 n건'.
+- HJ_WO_PHASE_LABEL.during '작업 중' → '시공 중'(v454 단계 이름과 같게 — 보고서 묶음이 합쳐진다).
+- hjSeasonDueHtml: 보낼 수 있는 고객이 0명이면 첫 화면 줄을 띄우지 않는다(시기 내내 '0명' 줄이 남았고 custfill-v394 의 줄 순서 계약도 깼다 — 10/22 환절기 결로 시기에 드러남). 원고는 더보기 › 계절 캠페인에서.
+- 묵은 검사(전체 333개를 한 번 돌려 찾음): geocode-label ⑮ 는 String(openGdriveSetup) 을 봤는데 v444 직원 모드 감싸기 뒤로는 감싼 함수라 늘 실패 → 실제로 열어 `#setTab-keys` 의 DOM 을 본다 · pages-artifact 허용목록 기대값에 v431 의 leak.css/html/js 가 빠져 있었다 · mobile-screen-layout 큰 글자 모드는 v454 단계 칸 때문에 .mbody 가 스크롤돼 scrollIntoView 가 0.2px 걸친다 → 1px 여유(닿는지는 elementFromPoint 가 본다). crew-v440 ③ 의 44px 단언은 4병렬에서만 43.99998 로 흔들린다(혼자 돌리면 통과). 환경 전용 실패: apartment-projects·bathroom-quality-v410·document-select/upload·team-workboard(다운로드 파일 이름), offlinequeue-v425·offlinequeue-cache-v425.unit(PR #189 캐시 이름), relay·office-intake-sync 는 mock-relay(8398)를 띄우면 통과.
+- 핀3곳 hyeonjang-v458-team3(v457 위). 신규 tests/team3-v458.e2e.js 3/3(390px, PDF 스텁), 기준선·변이 team-lines(TEAM_LINES_IN_REPORT) 실패 확인. 관련 13개 통과(teampacket-v432·team2-v444·photo-report·photo-report-output·reportfill-v408·inqpending-v386·dash-cards·doccenter-v433·app-version·phototags-v454·season-v448·custfill-v394·geocode-label). 정적 19개 통과. 이번엔 전체 묶음(333개)도 한 번 돌렸다 — 아래 v457 항목의 '묵은 검사' 참고.
+
 ## 2026-10-22 v457 아파트 서류 2 — 손으로 적은 기간이 남음 · 관리사무소 명단에 바로 적기 · 낡은 탭 창 닫기 경고
 
 - 🏢 아파트 서류 화면에서 고친 값은 현장 안 `p.aptDocs` 에 **자동값과 다른 것만**(complex·dong·ho·from·to·hours·noisyHours·works·elevator·route·waste, officeId, at) 남긴다 — hjAptDocsRemember(이름,s): 칸 change·단추 누름·창 닫힘(__modalOnClose) 때. 바뀐 게 없으면 저장하지 않는다(aptdocs-v441 "열고 닫기만 하면 저장본 불변" 유지). hjAptDocModel 은 저장값 위에 화면값을 얹고(`{__auto:true}` 면 자동값만), 끝이 시작보다 앞서면 시작일로. 기간을 손으로 고치면 `[data-ad-period-manual]` "📌 손으로 적은 기간 — 일정은 …" + [일정대로](저장값에서 from·to 삭제), 일정이 없으면 `[data-ad-period-empty]` 안내.

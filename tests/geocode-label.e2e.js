@@ -316,10 +316,11 @@ const 주소없음 = { display_name: '어딘가 바다 한가운데', address: {
   });
 
   await test('⑮ 설정 화면에 카카오 키 칸과 저장 버튼이 있다', async () => {
+    // v458: v444 직원 모드 감싸기 뒤로 String(openGdriveSetup) 은 감싼 함수라 — 실제로 열어서 화면(DOM)을 본다
     const r = await page.evaluate(() => {
-      const s = String(openGdriveSetup);
-      return { input: /id="gdKakao"/.test(s), save: /id="gdKakaoSave"/.test(s),
-        js: /JavaScript 키/.test(s), domain: /01023978629\.github\.io/.test(s) };
+      openGdriveSetup(); const root = document.getElementById('modalRoot'); const tab = root.querySelector('#setTab-keys'); if (tab) tab.click();
+      const s = root.innerHTML; const out = { input: !!root.querySelector('#gdKakao'), save: !!root.querySelector('#gdKakaoSave'), js: /JavaScript 키/.test(s), domain: /01023978629\.github\.io/.test(s) };
+      closeModal(true); return out;
     });
     assert(r.input && r.save, '입력칸 또는 저장 버튼이 없음: ' + JSON.stringify(r));
     assert(r.js, 'REST 키와 헷갈리지 않게 "JavaScript 키" 라고 적어야 함');

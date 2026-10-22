@@ -21,7 +21,7 @@ const out = path.join(temp, '_site');
 // v416: manifest.webmanifest는 설치·공유대상 선언뿐이며 수신 원본/DB는 공개 산출물에 넣지 않는다.
 // v418: 익명 표준품목 집계 단가표만 공개한다. 고객별 초안/사진/원본 견적은 배포하지 않는다.
 const expected = ['.nojekyll', 'apple-touch-icon.png', 'bathroom-defaults.json', 'bathroom-gray.webp', 'bathroom-model.js', 'bathroom-warm.webp', 'bathroom-white.webp', 'bathroom.css', 'bathroom.html', 'bathroom.js', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
-  'index.html', 'manifest.webmanifest', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team-upload.js', 'team.html', 'terms.html'];
+  'index.html', 'leak.css', 'leak.html', 'leak.js', 'manifest.webmanifest', 'media-safety.js', 'operations-review.js', 'privacy.html', 'shared-todo-backup.js', 'sw.js', 'team-config.js', 'team-packet.js', 'team-projects.js', 'team-ui.js', 'team-upload.js', 'team.html', 'terms.html'];
 const assert = (v, m) => { if (!v) throw new Error(m); };
 const requiredGuards = [
   'syntax.check.js', 'dead-endpoint.check.js', 'cost-honesty.check.js',
