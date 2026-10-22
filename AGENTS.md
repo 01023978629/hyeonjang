@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v459 어두운 화면 남은 8건 + 밝은 화면 '미연결' (리허설 R7 를 v458 판에서 다시 돌려 찾음)
+
+- R7 PC 스윕(514화면, 6.5분) v458 판: 밝은 화면 저대비 42→4(남은 4는 disabled 단추·이모지), 어두운 화면 15→8(모두 1노드). 고친 것 — v453 속성 선택자 목록에 배경 `#dbeafe`(코드 칩)·`#fef9c3`(키 배지)·`#f3f4f6`(승인 칩) 추가, 글자색 `#9a3412`→warn-fg·`#166534`→ok-fg·`#475569`→ink 추가 · `body.dark .ai-b.u{background:#1d6fe0;color:#fff}`(어두운 blueprint #6ab0ff 위 흰 글씨 2.3:1) · 💾 백업 센터 '미연결'·공개 페이지 '승인 대기' 칩 `#9ca3af`→var(--muted).
+- 남긴 것: `button:disabled{opacity:.4}` 글자(📨 전자계약 준비중·🏢 동·호수 일괄 등록) — 비활성 요소는 대비 예외. 이모지 아이콘. 'tabs-wrap'(PC 탭 줄 2줄, 511화면)은 v451 부터 같은 값 — 탭 14개가 한 줄에 안 들어가는 설계값이라 두었다.
+- 핀3곳 hyeonjang-v459-darkrest(v458 위). 신규 tests/darkrest-v459.e2e.js 3/3(1280 어두운/밝은, disabled 제외 4.5:1 샘플러), 기준선(DARK_REST_READABLE llamaSetup) 실패 확인. 관련 10개 통과. 정적 19개 통과. 리허설 결과 `리허설\r7-result.json`(v458 판, 이전 판은 r7-result-v452.json).
+
 ## 2026-10-22 v458 팀 앱 연동 3차 — 팀 작업 보고 → 📄 완료보고서 · 시기 줄 0명 숨김 · 묵은 검사 2개 고침
 
 - 보고는 v432 자리(wo.reports[]·p.teamReports[]) 그대로 읽는다 — hjTeamReportsOf(p)(order 붙여 날짜순), hjTeamDoneLines(p)(done 보고의 한 일 → 'MM/DD 한 일' 줄, 보고자 이름·이슈·검수(review) 보고는 안 넣음 — 관리사무소·고객에게 가는 문서). hjReportDraft 가 공정 줄 뒤에 이 줄을 날짜순으로 붙이고(같은 글은 한 번) 기간(days)에 보고 작업일을 넣는다 · 돌려주는 값에 team·teamPhotos. aptReportView 에 `[data-rp-team]` 안내.
