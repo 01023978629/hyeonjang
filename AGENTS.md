@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v455 자재 뒷정리 (R6·R7 남은 것) — 입고 취소 뒤 재고 되돌림 · 단가 이력 중복 · 1024px 견적서 내역 표
+
+- hjMatReceive(id,false) 가 hjMatLeftFromInventory 로 📦 재고에 옮긴 남은 자재(o.items[].left·movedToInv)를 그 수량만큼 뺀다(0 아래 없음, 표식 지움) — 예전엔 입고 취소 뒤에도 재고에 남아 재입고 때 또 더해졌다.
+- hjSupPriceAdd: 같은 품목·규격·단가·날짜·출처 기록은 한 번만 — 입고 취소→재입고→원가 반영을 반복하면 '단가 6개'로 불었다.
+- PC 첫 화면 견적서 내역 표 `#dashboardQuoteTable`(.dash-margin-scroll 안, 900px 이상 min-width 900px) — 1024px 에서 이름 칸이 71px·4줄이었다. 폰 카드(dash-cards)는 그대로.
+- 핀3곳 hyeonjang-v455-material2(v454 위). 신규 tests/material2-v455.e2e.js 3/3, 기준선(LEFTOVER_REVERTED) 실패 확인. 관련 8개 통과. 정적 19개 통과.
+
 ## 2026-10-22 v454 인테리어 사진 시공 전/중/후 칸 · 완료보고서 공정 줄 중복 (R2 남은 것)
 
 - 사진 추가 확인 창(openPhotoIntake) — 인테리어(누수 아님) 현장을 고르면 `#photoIntakeStageTags` 칩 [시공 전][시공 중][완료 (시공 후)](HJ_PHOTO_STAGE_LABELS, 누수 태그 단추와 같은 모양·44px). approved.stageTag → runPhotoIntake 가 새 기록의 공정 칸 `_phase`(저장 phase, 새 키 없음)에 HJ_PHOTO_STAGE_PHASE('시공 전'·'시공 중'·'완료') 를 넣는다 — PHASE_SIDE_NAME 과 같은 이름이라 전/후 갤러리(beforeAfterPairs)·하자보증서 풀(hjPhaseHit)이 그대로 읽는다. 재사용 기록·누수 현장·호출자 훅(onRecord)이 정한 공정은 건드리지 않는다. '시공 중'은 전/후 어느 쪽도 아니다(의도).

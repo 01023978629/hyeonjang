@@ -105,6 +105,7 @@
     body:not(.mobile-mode) #view table.dash-cards td[data-label="일자"],body:not(.mobile-mode) #view table.dash-cards td.amt b{white-space:nowrap}   /* 견적서 내역 날짜 '2026-10-/03'·합계 줄 */
     body:not(.mobile-mode) #dashboardMarginTable td.nm{min-width:150px}
     body:not(.mobile-mode) #dashboardMarginTable{min-width:1180px}
+    body:not(.mobile-mode) #dashboardQuoteTable{min-width:900px}   /* v455 1024px 에서 견적 이름 칸이 71px·4줄로 눌렸다 — 옆으로 밀기 */
     body:not(.mobile-mode) .dash-margin-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;border-radius:10px}
   }
   /* v452 PC 더보기 — 폰 하단 메뉴에만 있던 126개 기능 목록을 PC 탭 줄 끝 [⋯ 더보기] 로 연다(가운데 창) */
@@ -3383,7 +3384,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v454-phototags';
+const APP_BUILD='hyeonjang-v455-material2';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10502,7 +10503,7 @@ function dashboardEstimateDetailsHTML(){
   const estFiles=state.files.filter(f=>f.kind==='estimate'&&f.est&&(f.est.amount||f.est.supply));
   if(!estFiles.length)return '';
   let html=`<div style="margin-top:22px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#0b4ea2;margin-bottom:8px">📄 견적서 내역 <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400">· 드라이브 견적서 폴더에서 읽은 내용</span></div>`;
-  html+=`<table class="estimate-table dash-cards"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
+  html+=`<div class="dash-margin-scroll"><table class="estimate-table dash-cards" id="dashboardQuoteTable"><thead><tr><th>견적서</th><th>내용</th><th>현장</th><th>일자</th><th class="amt">공급가</th><th class="amt">부가세</th><th class="amt">합계</th><th>원본</th></tr></thead><tbody>`;
   let ts=0,tv=0,ta=0;
   // v331 사본 판정은 현장 안에서만(hjSalesEntries·projStats 와 같다) — 예전에는 전 현장 파일을 한 번에 묶어, 다른 현장의 같은 이름
   // 견적('욕실 견적.xlsx')이 '사본'으로 합쳐져 한 줄이 숨고 합계가 줄었다(500만 + 700만 → 700만). 미배정은 미배정끼리.
@@ -10512,7 +10513,7 @@ function dashboardEstimateDetailsHTML(){
     html+=`<tr><td>${escapeHtml(e.customer||f.name)}${g.dups.length?' <span style="font-size:10px;background:#e0e7ff;color:#4338ca;padding:1px 6px;border-radius:8px;white-space:nowrap">📎 사본 '+g.dups.length+'</span>':''}</td><td><div class="est-content">${escapeHtml(estimateContentSummary(f)||'-')}</div></td><td>${escapeHtml(f.project||'미배정')}</td><td>${escapeHtml(e.date||'')}</td><td class="amt">${won(supply)}</td><td class="amt">${won(vat)}</td><td class="amt">${won(amt)}</td><td>${previewButtonHtml(f,'보기')}</td></tr>`;
   });
   html+=`<tr style="background:var(--paper-2)"><td><b>합계</b></td><td></td><td></td><td></td><td class="amt"><b>${won(ts)}</b></td><td class="amt"><b>${won(tv)}</b></td><td class="amt"><b>${won(ta)}</b></td><td></td></tr>`;
-  html+=`</tbody></table>`;
+  html+=`</tbody></table></div>`;
   html+=`<p class="hint" style="margin:6px 0 0">견적서가 미배정이면 견적·정산 탭이나 서류 탭에서 현장을 지정할 수 있습니다. 금액이 비어 있으면 ‘일괄 글자 읽기(OCR)’를 누르세요.</p></div>`;
   return html;
 }
@@ -17591,7 +17592,7 @@ function hjMatRecord(projectName,rec){
 }
 function hjMatReceive(id,on){
   const f=hjMatFind(id);if(!f)return false;
-  if(on){if(f.o.recvAt)return false;f.o.recvAt=localDate();}else{if(!f.o.recvAt)return false;f.o.recvAt='';}
+  if(on){if(f.o.recvAt)return false;f.o.recvAt=localDate();}else{if(!f.o.recvAt)return false;f.o.recvAt='';try{hjMatLeftFromInventory(f);}catch(e){}}   // v455 입고 취소면 재고로 옮긴 남은 자재도 되돌린다
   markDirty();return true;
 }
 /* ── v369 공정 일정 ↔ 자재 납품 ──
@@ -40410,6 +40411,7 @@ function hjSupPriceAdd(supName,entry,src){
   if(!Array.isArray(s.prices))s.prices=[];
   const rec={name:item.slice(0,60),spec:String(entry.spec||'').trim().slice(0,40),unit:String(entry.unit||'').trim().slice(0,6),price,at:HJ_YMD_RE.test(String(entry.at||''))?String(entry.at):localDate(),src:src==='recv'?'recv':'manual'};
   const key=hjSupPriceKey(rec.name,rec.spec);
+  if(s.prices.some(x=>x&&hjSupPriceKey(x.name,x.spec)===key&&Math.round(num(x.price))===price&&String(x.at)===rec.at&&(x.src||'manual')===rec.src))return rec;   // v455 같은 날 같은 단가는 한 번만(입고 취소 → 재입고 때 이력이 불었다)
   const same=s.prices.filter(x=>hjSupPriceKey(x.name,x.spec)===key).concat([rec]).sort((a,b)=>String(a.at).localeCompare(String(b.at)));
   s.prices=s.prices.filter(x=>hjSupPriceKey(x.name,x.spec)!==key).concat(same.slice(-HJ_SUP_PRICES_KEEP));
   return rec;
@@ -40486,6 +40488,15 @@ function hjMatLeftView(id,back){
   hjModalTapTargets();
   const save=()=>{const cur=hjMatFind(id);if(!cur)return;document.querySelectorAll('[data-mat-left]').forEach(el=>{const it=items[Number(el.dataset.matLeft)];if(!it)return;const v=el.value.trim();if(v==='')delete it.left;else it.left=Math.max(0,Number(v)||0);});markDirty();};
   return true;
+}
+/* v455 입고 취소 — 📦 재고로 옮긴 남은 자재를 다시 뺀다(그 수량만큼, 0 아래로는 안 내려간다). 옮긴 표식(movedToInv)도 지운다. */
+function hjMatLeftFromInventory(f){
+  if(!f||!f.o)return 0;let n=0;const inv=Array.isArray(state.inventory)?state.inventory:[];
+  (f.o.items||[]).forEach(it=>{if(!it||!it.movedToInv)return;const left=num(it.left),nm=String(it.name||'').trim();
+    const row=inv.find(x=>x&&String(x.name||'').trim()===nm&&(!it.unit||!x.unit||x.unit===it.unit));
+    if(row&&left>0){row.qty=Math.max(0,num(row.qty)-left);row.updatedAt=new Date().toISOString();}
+    delete it.movedToInv;n++;});
+  return n;
 }
 function hjMatLeftToInventory(id){
   const f=hjMatFind(id);if(!f)return {moved:0};
