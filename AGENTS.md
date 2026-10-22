@@ -3,6 +3,19 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v452 PC 화면·어두운 화면 고침 (리허설 R7 — 1280·1024·다크 514화면 점검 → 찾은 것)
+
+- 점검 대본 /mnt/user-data/outputs/리허설/sweep-r7-pc.js(결과 r7-result.json): PC 1280·1024·다크 1280 에서 탭·현장·견적 편집기·설정·새 화면 35·더보기 115 를 열어 가로 넘침·가림·대비·죽은 단추를 쟀다. 넘침 0·페이지 오류 0·죽은 단추 0, 아래를 고쳤다.
+- **견적 편집기 합계 칸 잘림(1024px)**: `.qm-wrap{grid-template-columns:minmax(0,1fr) 260px}` — 1fr 은 품목표 최소 폭 아래로 못 줄어 `.qm-side` 가 `#view{overflow-x:clip}` 밖으로 나갔다(공급가·부가세·총액이 안 보임). 761~1100px PC 는 한 칸으로 쌓고 합계를 위로.
+- **PC 더보기**: 126개 기능 목록이 폰 하단 메뉴에만 있었다 → 탭 줄 끝 `#btnMorePc`(⋯ 더보기, `.tab-more`, 폰 모드는 숨김) 가 같은 openMoreSheet() 를 열고 PC 에선 가운데 창(`body:not(.mobile-mode) .more-sheet`). 검색창 바로가기(hjCmdRender)도 HJ_ACTIONS 30개 뒤에 더보기 기능(hjMoreCmdHits → moreOpenFeature)을 붙인다(같은 이름 한 번, 8개까지). `.tab` 이 아니라 탭 키보드 순환·roving 계약(uiux) 그대로.
+- **🤖 비서 창 z-index 9998 → 66**(모달 70·토스트 80 아래): 비서가 연 손익·설정 창이 폰에서는 통째로, PC 에선 닫기 단추가 비서 창 뒤에 숨었다. 키 없을 때는 hjOpenSettingsTab('keys') 로 🔑 탭을 바로 연다.
+- **officeOpsCall 주소·토큰 문**(commercialCall 과 같은 것, code 'office-setup'): 빈 주소로 postIsolated → fetch('') 가 앱 페이지 자신에게 POST 를 보냈다.
+- **어두운 화면**: `--card`(설정 탭 배경, 정의가 없어 흰색)·`--hj-soft-bg`·`--hj-diff-bg` 변수 + `body.dark` 값; 비교표 차이/합계 줄(`#hjQuoteCompare [data-qc-diff|data-qc-total]`); 단추 hover(`button:hover` 가 `--ink`=#e8eef5 바탕에 흰 글자라 글자가 사라짐) → 어두운 바탕; `.blue/.clay/.moss` 단추 글자 #06111c(#6ab0ff·#3fb89e 위 흰 글자 2.3:1); 선택된 설정 탭 글자; 계절 캠페인 '· 지금 시기'(`[data-season-now]`, 인라인 색 → CSS). 밝은 화면 선택 칩도 #bbf7d0.
+- **PC 배치**: 첫 화면 '현장별 지출·마진' 표 `#dashboardMarginTable`(td.nm 150px·금액 nowrap·min-width 1180·`.dash-margin-scroll` 가로 스크롤 — @media(min-width:900px) 안에서만, dash-cards 폰 카드 계약 유지); 인건비 장부 `#llRows`·사용설명서 `#hgBody` 의 안쪽 스크롤 상자는 PC 에서 max-height 없음(모달이 스크롤); 📎 서류 만들기는 PC 두 칸(`.mbody:has(.docHubBtn)`), '예정 · v437' 내부 표기 → '준비 중'; 문서 미리보기 `.doc-preview-frame` PC 60vh; PC 토스트도 위; `input[type=password]` 기본 상자 스타일; 백업 안내 토스트가 홈 카드와 같은 말('아직 백업한 적이 없어요').
+- 🧾 영수증 넣기(hjReceiptAdd)는 폰에서도 먼저 창을 연다(바로 고르려면 {pick:true}) — 더보기에서 바로 파일 선택창이 뜨는 건 mobile-more-sweep 의 '화면 없는 기능' 위반이었다(v435 부터 떨어져 있던 검사). 리허설 r4r5 대본도 맞춤.
+- 남은 것(다음): 다크 파스텔 인라인 배경(#eff6ff·#f0fdf4·#fffbeb·#fef2f2 27화면)·하드코딩 글자색(#0b4ea2·#b91c1c·#1d4ed8)·주 탭 11개 두 줄·외주 요청 범위 두 번(v451 에서 중복 제거함)·영수증 확인 PC 두 칸.
+- 핀3곳 hyeonjang-v452-pcdark(v451 위). 신규 tests/pcdark-v452.e2e.js 7/7(1280·1024·390 세 창), 변이 qm-grid(QM_SIDE_VISIBLE_1024)·기준선(PCDARK_API_PRESENT) 실패 확인. 관련 23개 통과(dash-cards 는 PC 표 규칙을 900px 이상으로 묶어 고침, mobile-more-sweep 126/126). 리허설 R4·R5 다시 12/12. 정적 19개 통과.
+
 ## 2026-10-22 v451 리허설 R6 고침 (관리·사후·안전 — 아파트 서류·보험·보증/AS·자재·외주·데이터 안전·공개 웹 → 찾은 것)
 
 - 리허설: /mnt/user-data/outputs/리허설/rehearsal-r6.js(8단계, 390px·합성·외부 쓰기 0) 결과 r6-result.json — 8/8 되지만 11가지 문제를 찾았고 그중 돈·개인정보·흐름 9가지를 여기서 고쳤다.
