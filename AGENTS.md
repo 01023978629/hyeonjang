@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v454 인테리어 사진 시공 전/중/후 칸 · 완료보고서 공정 줄 중복 (R2 남은 것)
+
+- 사진 추가 확인 창(openPhotoIntake) — 인테리어(누수 아님) 현장을 고르면 `#photoIntakeStageTags` 칩 [시공 전][시공 중][완료 (시공 후)](HJ_PHOTO_STAGE_LABELS, 누수 태그 단추와 같은 모양·44px). approved.stageTag → runPhotoIntake 가 새 기록의 공정 칸 `_phase`(저장 phase, 새 키 없음)에 HJ_PHOTO_STAGE_PHASE('시공 전'·'시공 중'·'완료') 를 넣는다 — PHASE_SIDE_NAME 과 같은 이름이라 전/후 갤러리(beforeAfterPairs)·하자보증서 풀(hjPhaseHit)이 그대로 읽는다. 재사용 기록·누수 현장·호출자 훅(onRecord)이 정한 공정은 건드리지 않는다. '시공 중'은 전/후 어느 쪽도 아니다(의도).
+- 완료보고서 초안(hjReportDraft) 작업 줄: 공정 줄과 사진 묶음을 **묶음 이름의 공종 낱말(HJ_PHASE_MAP)·묶음 사진의 공정 칸**으로도 맞춘다(groupKeys) — 예전엔 이름이 똑같을 때만 맞춰 '철거'와 '시공 전 — 기존 욕실 철거 (2장)'이 둘 다 들어갔다. 한 묶음은 한 번만.
+- 핀3곳 hyeonjang-v454-phototags(v453 위). 신규 tests/phototags-v454.e2e.js 4/4(실제 사진 추가 창·runPhotoIntake), 변이 report-dup(REPORT_NO_DUP_LINES)·기준선(PHOTOTAGS_API_PRESENT) 실패 확인. 관련 20개 통과(leakdetect-v420 은 4개 동시일 때 '실패한 저장은 appState 를 안 바꾼다' 단언이 800ms 자동 저장과 겹쳐 흔들림 — 혼자 10/10 두 번). 정적 19개 통과.
+
 ## 2026-10-22 v453 어두운 화면 — 인라인 파스텔 카드·진한 글자색 (R7 남은 48화면)
 
 - 인라인 style 로 박힌 밝은 배경(#eff6ff·#eef6ff·#f0fdf4·#fffbeb·#fff5f5·#fef2f2·#fff7ed·#f4f7fb·#f8fafc·#fee2e2·#fecaca·#dcfce7·#f7fafd)은 `body.dark [style*="#…"]{background:var(--paper-2)!important}` 로, 진한 글자색(#0b4ea2·#1d4ed8·#2563eb → --blueprint, #b91c1c·#c2410c·#991b1b → --hj-danger-fg, #0a7f43·#15803d → --hj-ok-fg, #b45309 → --hj-warn-fg, #64748b·#94a3b8 → --muted)은 `[style^="color:#…"],[style*=";color:#…"],[style*=" color:#…"]` 로만(배경·테두리에 쓴 같은 색은 그대로 — darkcards-v453 ④ 가 지킨다). 밝은 화면은 손대지 않는다.
