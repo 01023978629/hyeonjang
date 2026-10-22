@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v465 🔎 첫 화면 '검수 요청 · 막힘' 줄 — [확인함]으로 내리기 (v432 이후 내릴 길이 없던 줄)
+
+- v432 의 `hjTeamReportPending()` 은 `!r.ack` 만 걸렀는데 ack 를 적는 곳이 없어 검수 요청·막힘 줄이 영영 남았다. `hjTeamReportAck(name,key)` 가 보고 레코드(wo.reports[]·p.teamReports[]) 안에 `ack:true, ackAt`(v458 docAck 와 같은 방식 — 새 저장 키 없음, markDirty → 이 기기 저장)을 적는다. review·blocked 만, 이미 ack 면 0.
+- `hjTeamReportPendingHtml` 은 줄마다 `[data-team-report-row=key][data-project]` — '🔎/⛔ 현장 — MM/DD 한 일/이슈(60자)' + `[data-team-ack=key][data-project]` [확인함](44px, aria-label). 보고자 이름은 안 넣는다. 3줄 넘으면 '외 n건'. `hjTeamReportPending()` 행에 `key` 추가. #view 위임 `d.teamAck` → hjTeamReportAck + render + 토스트.
+- demo-v462 ① 의 검수 줄 정규식을 `[\s\S]*` 로 느슨하게(줄이 둘로 나뉨). 핀3곳 hyeonjang-v465-teamack(v464 위). 신규 tests/teamack-v465.e2e.js 2/2(390px, IDB 저장 확인), 기준선(192a19d)·변이 no-ack 실패 확인. 관련 10개(company-team-ui·demo-v462·team2-v444·team4-v463·teampacket-v432·team3-v458·dash-cards·inqpending-v386·custfill-v394·ownertodo-v460) 통과, 정적 19개 통과.
+
 ## 2026-10-23 v464 📊 첫 화면 '현장별 지출 · 마진' 표 — PC 1280 맞춤 (개발_백로그 5번)
 
 - 1280px(옆 메뉴 포함 본문 ≈962px)에서 표 자연 폭이 1379px 이라 늘 옆으로 밀렸다. 고친 것(≥900px·PC 모드만): 열 제목·마진 칸은 줄바꿈 허용(`word-break:keep-all`, 낱말은 안 쪼갬), 마진 칸은 `projectMarginCellHtml` — `.mg-wrap > b.mg-amt(금액, nowrap·PC 에선 block) + .mg-sep(' · ', PC 에선 숨김) + .mg-note('30% (입력 원가 기준)', PC 에선 아래 줄)`; 글(innerText)은 projectMarginLabel 과 같은 뜻. 칸 여백 `8px 6px`, 원가 입력칸 `input.mg-in` 84px(border-box, 12px) — 예전 인라인 `width:96px` 는 기본 규칙 `#dashboardMarginTable input.mg-in{width:96px}` 로 옮김(폰은 .dash-cards 의 `width:auto!important` 가 그대로 이김). `min-width` 1180 → 900.

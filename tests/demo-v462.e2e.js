@@ -75,7 +75,7 @@ let browser, passed = 0;
     assert.deepEqual(r.reports, [['done', '2025-03-10', 3, '박 반장'], ['review', '2025-03-12', 2, '박 반장']], 'DEMO_SEED team reports ' + JSON.stringify(r.reports));
     assert.deepEqual(r.lines, ['03/10 바닥·벽 철거, 폐기물 반출(마대 20장)'], 'DEMO_SEED done line');
     assert.deepEqual(r.pending, [['망원동 카페', 'review']]); assert.deepEqual(r.doneDoc, [['망원동 카페', 1, 3]]);
-    assert.match(r.dash.pending, /🔎 검수 요청 1건 — 망원동 카페/, 'dashboard review line: ' + r.dash.pending);
+    assert.match(r.dash.pending, /🔎 검수 요청 1건[\s\S]*망원동 카페/, 'dashboard review line: ' + r.dash.pending);   // v465 부터 줄마다 [확인함]
     assert.match(r.dash.done, /📄 팀 보고 1건 들어옴 · 사진 3장 — 망원동 카페/, 'dashboard done line: ' + r.dash.done);
     assert.deepEqual(r.docs, [['aptconsent', 'AC-', true]], 'one consent form issued 3 days ago ' + JSON.stringify(r.docs));
     assert.deepEqual(r.due, ['은행동 한빛아파트 101동 702호'], 'D-2 to-do stays (no 신청서 yet)'); assert.match(r.dash.apt, /서류 4종 만들기 — 은행동 한빛아파트 101동 702호 \(시공 D-2\)/, r.dash.apt);
