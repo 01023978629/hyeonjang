@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v463 👷 팀 앱 연동 4차 — 완료보고서의 '팀 보고 사진' 묶음 빼기/넣기 (개발_백로그 4번)
+
+- `hjTeamReportPhotos(p,photos)`(읽기만): 완료·검수 요청 보고마다 사진 묶음 — 이 세션에 `_teamReport===key` 가 남은 사진이 있으면 그것만(key), 없으면 보고 workDate 와 사진 한국 날짜(hjPhotoKoreanDay)가 같고 아직 다른 보고에 안 묶인 현장 사진(day; 같은 날 보고 둘이면 먼저 온 보고가 가져간다). `_teamReport` 는 직렬화되지 않아 새로 열면 day 로 떨어진다 — 그래서 묶음 줄에 '(보고 n장 · 이 기기 m장)' 을 같이 쓴다. 막힘·대기 보고, 사진 0장 + 못 찾은 보고는 줄이 없다.
+- `aptReportView` 입력칸 **위**에 `[data-rp-teamphotos]`: 줄마다 `[data-rp-team-bundle=key]`(label 44px, 체크 `[data-rp-team-include]`, 썸네일 4장까지; 이 기기에 0장이면 disabled). 체크를 풀면 그 사진이 `__rpExcluded`(창 안 변수)에 들어가 PDF `photos` 에서만 빠지고(`photos:ph.filter(f=>!__rpExcluded.has(f))`), 작업 내용 줄·저장 자료는 그대로. `[data-rp-photo-count]` 가 따라 바뀐다. 저장 키 없음, 빼기는 저장하지 않는다(창을 닫으면 원래대로).
+- 핀3곳 hyeonjang-v463-teamphotos(v462 위). 신규 tests/team4-v463.e2e.js 3/3(390px), 기준선(355625f)·변이 no-exclude 실패 확인. 관련 10개(team3-v458·demo-v462·doccenter-v433·leakreport-v422·phototags-v454·publicweb-v446·reportfill-v408·v219-operations·contract-terms·mobile-more-sweep) 통과, 정적 검사 통과.
+
 ## 2026-10-23 v462 🧪 데모 자료 보강 — 팀 보고 2건 · 아파트 서류 발행 1건 · 영수증 지출 2건 (개발_백로그 3번)
 
 - loadDemo 가 기존 저장 자리만 채운다(새 키·새 현장 없음, 현장 4곳 그대로 — settings-safety 의 `projects.length === 4` 계약 유지): 망원동 카페 `p.workOrders[0]`(wo_20250309_001) `.reports` 완료 1(03/10, 사진 3)·검수 요청 1(03/12) → 첫 화면 '🔎 검수 요청 1건'·'📄 팀 보고 1건 들어옴 · 사진 3장' 줄, 📎 서류 만들기 '👷 팀 보고 1건', [완료보고서 초안] 작업 내용에 '03/10 …' 줄(v458 hjReportDraft).

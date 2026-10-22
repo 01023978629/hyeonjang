@@ -3389,7 +3389,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v462-demo';
+const APP_BUILD='hyeonjang-v463-teamphotos';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -39192,6 +39192,27 @@ async function buildAptReportPDF(o){
   doc.save(safeName(o.site)+' 완료보고서.pdf');
   return {pages:pages.length,photos:ph.length};
 }
+/* v463 팀 앱 연동 4차 — 완료보고서의 '팀 보고 사진' 묶음. 보고 사진은 가져올 때 rec._teamReport=key 가 붙지만 저장되지 않는다(직렬화 제외) — 새로 열면 사라진다.
+   그래서 묶음은 두 겹으로 찾는다: ① 이 세션에 _teamReport 가 남아 있으면 그 사진만(key), ② 아니면 보고 작업일(workDate)과 사진의 한국 날짜가 같은, 다른 보고에 묶이지 않은 현장 사진(day — 같은 날 보고 둘이면 먼저 온 보고가 가져간다).
+   완료·검수 요청 보고만(막힘·대기는 사진 보고가 아니다). 읽기만 — 저장 자료를 바꾸지 않고, 빼기/넣기는 그 창 안에서만(저장 안 됨). */
+function hjTeamReportPhotos(p,photos){
+  const rows=hjTeamReportsOf(p).filter(r=>r&&(r.status==='done'||r.status==='review')),list=(photos||[]).filter(f=>f&&f.kind==='photo'),used=new Set();
+  return rows.map(r=>{
+    const byKey=list.filter(f=>f._teamReport===r.key);
+    const files=byKey.length?byKey:list.filter(f=>!f._teamReport&&!used.has(f)&&isRealIsoDate(String(r.workDate||''))&&hjPhotoKoreanDay(f)===r.workDate);
+    files.forEach(f=>used.add(f));
+    return {key:String(r.key||''),workDate:String(r.workDate||''),status:r.status,done:hjWoText(r.done,80).trim(),want:Number(r.photos)||0,files,how:byKey.length?'key':'day'};
+  }).filter(b=>b.key&&(b.want>0||b.files.length));
+}
+function hjTeamReportPhotosHtml(bundles){
+  if(!bundles.length)return '';
+  const md=d=>d?d.slice(5).replace('-','/'):'날짜 없음';
+  return '<div data-rp-teamphotos style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin:6px 0 2px"><b style="font-size:12.5px">👷 팀 보고 사진 묶음 '+bundles.length+'건</b>'+
+    '<p class="hint" style="margin:2px 0 4px">보고 작업일의 현장 사진이 먼저 보여요. 빼면 이 보고서 사진 대장에만 안 들어가고 사진은 그대로 남아요(저장 안 됨).</p>'+
+    bundles.map(b=>'<label data-rp-team-bundle="'+escapeAttr(b.key)+'" style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-rp-team-include'+(b.files.length?' checked':' disabled')+' style="width:18px;height:18px;flex:none;margin:0">'+
+      '<span style="flex:1;min-width:0;overflow-wrap:anywhere">'+escapeHtml(md(b.workDate))+' '+escapeHtml(b.done||(b.status==='review'?'검수 요청':'완료'))+' <span style="color:var(--muted)">(보고 '+b.want+'장 · 이 기기 '+b.files.length+'장'+(b.files.length?'':' — 없음')+')</span></span>'+
+      '<span style="display:flex;gap:3px;flex:none">'+b.files.slice(0,4).map(f=>f.thumb?'<img src="'+escapeAttr(f.thumb)+'" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:6px">':'').join('')+'</span></label>').join('')+'</div>';
+}
 function aptReportView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
   if(!p){toast('현장을 찾을 수 없어요');return;}
@@ -39207,10 +39228,12 @@ function aptReportView(pjName){
         :'<input id="'+id+'" value="'+escapeAttr(val||'')+'" placeholder="'+ph2+'" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line-soft);font-size:13px">');
   };
   const period=draft.period;
+  const bundles=hjTeamReportPhotos(p,ph),__rpExcluded=new Set();   // v463 팀 보고 사진 묶음 — 빼기/넣기는 이 창 안에서만
   openModal('📄 완료보고서 — '+pjName,
     (p.kind==='leak'?'<button type="button" id="rpLeakReport" class="blue" style="min-height:44px;white-space:normal">누수 현장이면 → 누수 보고서로</button>':'')+
     '<p class="hint">사진 작업명으로 미리 채웠어요 — 고쳐 쓰세요</p>'+
     (draft.team?'<p class="hint" data-rp-team style="margin-top:-4px">👷 팀 작업 보고 '+draft.team+'건의 한 일을 작업 내용 끝에 날짜 줄로 넣었어요'+(draft.teamPhotos?' (보고 사진 '+draft.teamPhotos+'장은 사진 대장에)':'')+' — 보고자 이름·이슈는 넣지 않습니다.</p>':'')+
+    hjTeamReportPhotosHtml(bundles)+   // v463
     F('rpDest','제출처',draft.dest,'예: 금성백조아파트 관리사무소')+
     F('rpTitle','공사명',pjName+' 공사','예: 지하 배관 교체 공사')+
     F('rpPeriod','공사 기간',period,'예: 2026-08-14 ~ 2026-08-14')+
@@ -39219,7 +39242,7 @@ function aptReportView(pjName){
     F('rpNote','특이사항 (선택)','','예: 806·807호 급수 정상 확인, 누수 없음','ta')+
     '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12.5px"><input type="checkbox" id="rpAmt" style="width:18px;height:18px"> 공사 금액 표시 ('+won(st.est)+')</label>'+
     hjQrToggleHtml('report','rpQr')+   // v446
-    '<p class="hint" style="margin-top:8px">사진 '+ph.length+'장이 '+(p.kind==='leak'&&ph.some(f=>hjPhotoLeakTag(f))?'누수 태그별로 먼저, 태그가 없으면 작업명별로':'작업명별로')+' 묶여 사진 대장에 들어갑니다. 묶음 안은 시각순이며 마지막 장에 관리사무소 확인란이 붙습니다.</p>'+
+    '<p class="hint" style="margin-top:8px">사진 <span data-rp-photo-count>'+ph.length+'</span>장이 '+(p.kind==='leak'&&ph.some(f=>hjPhotoLeakTag(f))?'누수 태그별로 먼저, 태그가 없으면 작업명별로':'작업명별로')+' 묶여 사진 대장에 들어갑니다. 묶음 안은 시각순이며 마지막 장에 관리사무소 확인란이 붙습니다.</p>'+
     (draft.unlabeled?'<div class="hint" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span>현장 사진 '+draft.photos+'장 중 작업명 없는 사진 '+draft.unlabeled+'장</span><button type="button" class="ghost" id="rpFillLabels" style="min-height:44px">🏷 작업명 채우기</button></div>':''),
     [{label:'📄 PDF 만들기',cls:'clay',fn:async function(){
         const o={site:pjName,
@@ -39232,7 +39255,7 @@ function aptReportView(pjName){
           showAmt:document.getElementById('rpAmt').checked,
           amt:st.est,vat:false,
           date:localDate(),
-          photos:ph,
+          photos:ph.filter(f=>!__rpExcluded.has(f)),   // v463 뺀 팀 보고 사진 묶음은 사진 대장에서만 빠진다
           qrUrl:hjQrToggleRead('report','rpQr')?hjReviewLink():''};   // v446 마지막 장 리뷰 QR
         if(!o.works.length)o.works=[o.title];
         closeModal();toast('📄 보고서 만드는 중…');
@@ -39242,6 +39265,10 @@ function aptReportView(pjName){
      {label:'닫기',cls:'ghost',fn:closeModal}],true);
   const leakReport=document.getElementById('rpLeakReport');if(leakReport)leakReport.onclick=()=>hjLeakReportView(pjName);
   const fill=document.getElementById('rpFillLabels');if(fill)fill.onclick=()=>hjLabelGapView();
+  // v463 묶음 체크 → 뺀 사진 집합(이 창 안에서만) + 사진 수 표시
+  document.querySelectorAll('#modalRoot [data-rp-team-bundle]').forEach(row=>{const cb=row.querySelector('[data-rp-team-include]');if(!cb)return;cb.onchange=()=>{
+    __rpExcluded.clear();document.querySelectorAll('#modalRoot [data-rp-team-bundle]').forEach(r=>{const c=r.querySelector('[data-rp-team-include]'),b=bundles.find(x=>x.key===r.getAttribute('data-rp-team-bundle'));if(c&&!c.checked&&b)b.files.forEach(f=>__rpExcluded.add(f));});
+    const n=document.querySelector('#modalRoot [data-rp-photo-count]');if(n)n.textContent=String(ph.filter(f=>!__rpExcluded.has(f)).length);};});
   return {사진:ph.length};
 }
 
