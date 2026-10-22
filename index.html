@@ -3389,7 +3389,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v459-darkrest';
+const APP_BUILD='hyeonjang-v460-ownertodo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10440,6 +10440,7 @@ function dashboardTodoHTML(){
     // 사례 후보는 첫 화면에 — 더보기 안에만 두면 "어느 현장을 아직 안 보냈나"를 폰에서 다시 못 본다(v254 폰 첫 화면 규칙).
     '<p id="dashboardCaseSummary" role="status" style="margin:0 0 7px;font-size:13.5px;color:var(--muted)">'+escapeHtml(dashboardCaseSummary())+'</p>'+
     hjInstallLineHtml()+     // v450 폰에서 앱 설치(사이드바 단추가 모바일 모드에선 숨겨짐)
+    hjOwnerTodoLineHtml()+     // v460 대표 할 일(Claude 인수인계) — 직원 모드에선 없음
     hjCustMissingHtml()+     // v394 연락처 빈 최근 현장
     hjWarrantyCareHtml()+     // v438 보증 만료 60·30일 전 안부
     hjAptDocsDueHtml()+     // v441 아파트 시공 D-3 관리사무소 서류
@@ -27595,7 +27596,7 @@ function hjTeamDate(value){
 }
 function hjTeamBoard(filters){
   if(__modalCloseLocked)return;
-  const f=Object.assign({project:'',assignee:'',status:'open',limit:50},filters||{}),all=hjTeamList(),today=localDate();
+  const f=Object.assign({project:'',assignee:'',status:'open',limit:50,ownerDone:false},filters||{}),all=hjTeamList(),today=localDate();
   const projects=[...new Set(all.map(n=>String(n.project||'')).filter(Boolean))].sort();
   const names=[...new Set(all.map(n=>String(hjTeamData(n).assignee||'')).filter(Boolean))].sort();
   if(f.project&&!projects.includes(f.project))f.project='';
@@ -27615,7 +27616,7 @@ function hjTeamBoard(filters){
       '<p style="font-size:13px">최근 기록: '+escapeHtml(t.recorder||'미기록')+' · '+escapeHtml(t.updatedAt?new Date(t.updatedAt).toLocaleString('ko-KR'):'시각 없음')+' (직접 입력 이름)</p>'+
       '<div class="teamActions"><button type="button" class="blue" data-team-edit="'+escapeAttr(n.id)+'">업무 수정·인계</button>'+(linked?'<button type="button" class="ghost" data-team-project="'+escapeAttr(n.project)+'">현장 열기</button>':'')+'</div></article>';}).join('');
   const load=names.map(name=>{const mine=all.filter(n=>hjTeamData(n).assignee===name&&hjTeamData(n).status!=='done');return name+' '+mine.length+'건';}).join(' / ');
-  openModal('팀 업무·인수인계',css+'<style>#teamBoard select{font-size:16px}#teamBoard .teamFilters{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}</style><section id="teamBoard">'+(typeof hjTeamServerUrl==='function'&&hjTeamServerUrl()?'<p><a id="teamPortalOpen" href="./team.html"'+(typeof hjTeamPortalSameWindow==='function'&&hjTeamPortalSameWindow()?'':' target="_blank" rel="noopener noreferrer"')+'>직원 작업실에서 열기</a> · 이 기기에 직원 작업실 서버가 연결돼 있습니다</p><button type="button" class="blue" id="teamDraftSend" onclick="hjCompanyLegacySend()">직원 작업실로 초안 보내기</button> <button type="button" class="ghost" onclick="hjCompanyLegacyExport()">JSON 파일로 내려받기</button>':'<p><a href="./team.html" target="_blank" rel="noopener">직원 작업실 · 업무 배정·검수 열기</a> · 별도 서버 설정 후 이용 — 직원 작업실의 「서버 연결 설정」에 주소를 넣으면 여기서 초안을 바로 보낼 수 있습니다</p><button type="button" class="ghost" onclick="hjCompanyLegacyExport()">기존 미완료 업무 이전 초안</button>')+'<p>아래는 기존 기기 저장 업무입니다. 포털로 자동 이전·동기화하지 않습니다.</p><p id="teamBoardSummary" role="status">'+escapeHtml(hjTeamSummary())+'</p>'+
+  openModal('팀 업무·인수인계',css+'<style>#teamBoard select{font-size:16px}#teamBoard .teamFilters{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr))}</style><section id="teamBoard">'+hjOwnerTodoCardHtml(!!f.ownerDone)+(typeof hjTeamServerUrl==='function'&&hjTeamServerUrl()?'<p><a id="teamPortalOpen" href="./team.html"'+(typeof hjTeamPortalSameWindow==='function'&&hjTeamPortalSameWindow()?'':' target="_blank" rel="noopener noreferrer"')+'>직원 작업실에서 열기</a> · 이 기기에 직원 작업실 서버가 연결돼 있습니다</p><button type="button" class="blue" id="teamDraftSend" onclick="hjCompanyLegacySend()">직원 작업실로 초안 보내기</button> <button type="button" class="ghost" onclick="hjCompanyLegacyExport()">JSON 파일로 내려받기</button>':'<p><a href="./team.html" target="_blank" rel="noopener">직원 작업실 · 업무 배정·검수 열기</a> · 별도 서버 설정 후 이용 — 직원 작업실의 「서버 연결 설정」에 주소를 넣으면 여기서 초안을 바로 보낼 수 있습니다</p><button type="button" class="ghost" onclick="hjCompanyLegacyExport()">기존 미완료 업무 이전 초안</button>')+'<p>아래는 기존 기기 저장 업무입니다. 포털로 자동 이전·동기화하지 않습니다.</p><p id="teamBoardSummary" role="status">'+escapeHtml(hjTeamSummary())+'</p>'+
     '<p style="font-size:14px">담당별 미완료: '+escapeHtml(load||'담당자를 입력하면 여기에 표시됩니다.')+'</p><button type="button" class="clay" id="teamAdd">새 팀 업무</button> <button type="button" class="ghost" id="teamPacketIn">📥 팀 작업 가져오기</button>'+
     '<div class="teamFilters" style="margin-top:12px">'+choices('teamProjectFilter','현장',[['','전체 현장'],...projects.map(x=>[x,x])],f.project)+
     choices('teamAssigneeFilter','담당자',[['','전체 담당'],['@unassigned','미배정'],...names.map(x=>[x,x])],f.assignee)+
@@ -27624,7 +27625,8 @@ function hjTeamBoard(filters){
     (rows.length>f.limit?'<button id="teamMore" type="button" class="ghost">다음 50건 더 보기 ('+f.limit+'/'+rows.length+')</button>':'')+
     '<details style="margin-top:16px;font-size:14px"><summary style="min-height:44px;cursor:pointer">5인 운영 전 확인할 점</summary><p>담당자·기록자 이름은 업무 구분용이며 로그인·접근권한이 아닙니다. 연결된 자료를 사용하는 사람은 전체 업무를 볼 수 있습니다. 동명이인은 이름 뒤에 팀명 등 구분을 적으세요.</p><p>실시간 공동 편집은 지원하지 않습니다. 다섯 기기 모두 최신 버전을 사용하고 저장 경로를 하나로 통일하세요. 한 사람이 저장을 마친 뒤 다음 사람이 최신 자료를 불러와 수정하세요. 충돌 시 전체 자료 확인이 필요합니다.</p><p>아래 저장 완료는 이 기기 기준입니다. 서버 전송·다른 직원의 수신 여부는 별도로 확인해야 합니다. 자동 문자·직원 알림은 발송하지 않습니다.</p></details></section>',[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('teamBoard');
-  const readFilters=()=>({project:root.querySelector('#teamProjectFilter').value,assignee:root.querySelector('#teamAssigneeFilter').value,status:root.querySelector('#teamStatusFilter').value});
+  const readFilters=()=>({project:root.querySelector('#teamProjectFilter').value,assignee:root.querySelector('#teamAssigneeFilter').value,status:root.querySelector('#teamStatusFilter').value,ownerDone:!!f.ownerDone});
+  hjOwnerTodoBind(root,showDone=>hjTeamBoard({...readFilters(),limit:f.limit,ownerDone:showDone===undefined?!!f.ownerDone:!!showDone}));   // v460
   root.querySelectorAll('select').forEach(el=>el.onchange=()=>{const focusId=el.id;hjTeamBoard(readFilters());setTimeout(()=>document.getElementById(focusId)?.focus(),0);});
   root.querySelector('#teamAdd').onclick=()=>hjTeamEdit(null,readFilters());
   {const pin=root.querySelector('#teamPacketIn');if(pin)pin.onclick=()=>{closeModal();hjTeamReportImportView();};}   // v432
@@ -37514,7 +37516,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-owner-todo-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37557,6 +37559,7 @@ function setupDelegation(){
     if(d.wcareOpen!==undefined)return hjWarrantyCareView();   // v438 보증 만료 앞둔 현장
     if(d.aptdocsOpen!==undefined)return hjAptDocsView(d.aptdocsOpen);   // v441 아파트 서류 4종
     if(d.teamDoneOpen!==undefined)return aptReportView(d.teamDoneOpen);   // v458 팀 완료 보고 → 완료보고서
+    if(t.hasAttribute('data-owner-todo-open'))return hjTeamBoard();   // v460 대표 할 일 → 팀 업무·인수인계 보드 맨 위 카드
     if(d.teamDoneSkip!==undefined){hjTeamDoneMark(d.teamDoneSkip,'skip');render();toast('완료보고서 줄을 넘겼어요 — 📎 서류 만들기에서 언제든 만들 수 있어요');return;}
     if(d.icsToday!==undefined)return hjAlertIcsSave(localDate());   // v443 오늘 일정 → 폰 캘린더(알람)
     if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
@@ -43145,7 +43148,7 @@ function hjStaffReviewView(){
       'body.hj-staff [data-payhist],body.hj-staff [data-mclose],body.hj-staff [data-marginboard],body.hj-staff [data-insight],body.hj-staff [data-vatc],body.hj-staff [data-lgexport],body.hj-staff [data-lgtoexp],body.hj-staff [data-qpay],body.hj-staff [data-recvquick],'+
       'body.hj-staff [data-margin-card],body.hj-staff [data-costedit],body.hj-staff [data-margintoggle],body.hj-staff [data-season],body.hj-staff [data-qpdf],body.hj-staff [data-dun],body.hj-staff [data-exsum],body.hj-staff [data-finalize],body.hj-staff [data-estpurchase],'+
       'body.hj-staff input[data-recv],body.hj-staff input[data-cost],body.hj-staff .kpis,body.hj-staff .ratewrap,body.hj-staff .amt,body.hj-staff #btnLoadCostLedger,body.hj-staff #btnXlsxDash,body.hj-staff #btnXlsxTax,'+
-      'body.hj-staff .cust-card .cust-grid,body.hj-staff [data-portal],body.hj-staff [data-contractsend],body.hj-staff [data-smscust],body.hj-staff [data-custsched],body.hj-staff [data-custquick],body.hj-staff [data-conedit],body.hj-staff #schLabor,'+   // v449 고객 이름·번호·주소 입력칸, 고객 문자·페이지·계약, 인건비 장부
+      'body.hj-staff [data-owner-todo-line],body.hj-staff [data-owner-todo-card],body.hj-staff .cust-card .cust-grid,body.hj-staff [data-portal],body.hj-staff [data-contractsend],body.hj-staff [data-smscust],body.hj-staff [data-custsched],body.hj-staff [data-custquick],body.hj-staff [data-conedit],body.hj-staff #schLabor,'+   // v449 고객 이름·번호·주소 입력칸, 고객 문자·페이지·계약, 인건비 장부
       'body.hj-staff [data-staff-hide]{display:none!important}';
     (document.head||document.documentElement).appendChild(st);}catch(e){}
   const realRender=render;
@@ -45618,6 +45621,61 @@ function installApp(){
 }
 /* v450 폰(모바일 모드)에서는 사이드바(aside)가 숨겨져 ⤓ 앱 설치 단추가 아무 데도 안 보였다(리허설 R3 — 앱이 크롬 기본 설치 배너도 막는다).
    설치할 수 있을 때만 첫 화면 '오늘 현장 업무'에 한 줄. ✕ 는 이 기기에서 다시 안 띄움(localStorage hj_install_chip_off). PC 화면에서는 CSS 로 숨긴다(사이드바 단추가 있다). */
+/* ═══ v460 📋 대표 할 일 — Claude 인수인계 ═══
+   보고\인수인계 §0 '대표가 할 일' 표를 앱 안(팀 업무·인수인계 보드 맨 위 + 첫 화면 한 줄)에서도 보게.
+   항목은 상수(판마다 갱신)이고, 체크는 이 기기 localStorage(hj_owner_todo_done) — 앱 자료는 바뀌지 않는다(새 저장 키 없음).
+   auto() 가 참이면 '자동 확인'으로 끝난 것 취급(리뷰 링크가 들어갔다 등). 직원 모드에서는 줄·카드를 숨긴다. */
+const HJ_OWNER_TODO_KEY='hj_owner_todo_done';
+const HJ_OWNER_TODO=Object.freeze([
+  {id:'merge-stack',ic:'🚀',title:'앱 새 판 올리기(병합)',why:'v427 부터 쌓인 묶음이 병합돼야 폰에 새 기능이 보입니다.',how:'PC 패치\\apply-stack-v427-v4NN.cmd 더블클릭 → PR → CI 녹색 → 병합 (또는 Cowork 작업 소스에 저장소 추가)',kind:'pc',auto:()=>/github\.io$/i.test(location.hostname)},
+  {id:'pr189',ic:'🔀',title:'PR #189 먼저 병합',why:'오프라인 대기함 검사가 그 뒤에 통과합니다.',how:'GitHub › Pull requests › #189 › Merge',kind:'link',url:'https://github.com/01023978629/hyeonjang/pull/189'},
+  {id:'review-url',ic:'⭐',title:'리뷰 링크 넣기',why:'리뷰 QR 카드·리뷰 요청 문자에 링크가 들어갑니다.',how:'네이버 지도(또는 카카오맵) 우리 업체 → 공유 → 링크 복사 → ⚙️ 설정 › ⭐ 기타 › 리뷰 링크 → 저장',kind:'settings',tab:'etc',focus:'rvUrl',auto:()=>!!String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim()},
+  {id:'decide-receivable',ic:'⚖️',title:"결정: 월말 마감 2단계 '미수금 정리' 둘지 뺄지",why:"8/13 '앱이 미수금을 추적·독촉하지 않는다' 결정과 어긋나 보입니다(v434 도 함께).",how:'Claude 에게 "둔다 / 뺀다" 한마디',kind:'decide'},
+  {id:'decide-snapshot',ic:'⚖️',title:'결정: 고객 삭제 요청 뒤 안전판(12칸)에 남는 정리 전 정보',why:'되돌리기용이라 바로 지우면 복구가 안 됩니다.',how:'"고객 안내문에 적는다 / 안전판도 지운다"',kind:'decide'},
+  {id:'decide-exam-toast',ic:'⚖️',title:"결정: 부팅 토스트 '📅 전우철 시험 일정' 빼기",why:'지난 시험(9/1·9/14)이고 수험번호가 공개 소스에 있습니다.',how:'"뺀다 / 둔다"',kind:'decide'},
+  {id:'kakao-channel',ic:'💬',title:'카카오 채널 주소 알려주기',why:'누수 공개 접수 페이지의 카톡 단추·채널 문의 첫 답장에 씁니다.',how:'카카오 채널 관리자센터 → 채널 URL 복사 → Claude 에게',kind:'decide'},
+  {id:'post-drafts',ic:'📝',title:'쌓인 홍보 원고 올리기',why:'화·목 저녁에 만물\\사례 작성\\ 에 원고가 생깁니다 — 게시는 대표가 합니다.',how:'토요일 발행_체크리스트.md 순서대로 네이버·당근·인스타·Threads, 만물 웹은 웹게시_패치 로 PR',kind:'pc'},
+  {id:'phone-check',ic:'📱',title:'병합 뒤 폰에서 버전 확인',why:'그 뒤 실제 자료로 하루 리허설을 같이 합니다.',how:'폰 앱 새로고침 → ⚙️ 설정 맨 아래 버전이 새 판',kind:'app',auto:()=>/github\.io$/i.test(location.hostname)}
+]);
+function hjOwnerTodoDone(){try{const v=JSON.parse(localStorage.getItem(HJ_OWNER_TODO_KEY)||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch(e){return {};}}
+function hjOwnerTodoAuto(item){try{return typeof item.auto==='function'&&item.auto()===true;}catch(e){return false;}}
+function hjOwnerTodoRows(){const done=hjOwnerTodoDone();return HJ_OWNER_TODO.map(item=>({item,auto:hjOwnerTodoAuto(item),doneAt:done[item.id]||''})).map(r=>Object.assign(r,{open:!r.auto&&!r.doneAt}));}
+function hjOwnerTodoOpenCount(){return hjOwnerTodoRows().filter(r=>r.open).length;}
+function hjOwnerTodoSet(id,on){
+  if(!HJ_OWNER_TODO.some(x=>x.id===id))return false;
+  const done=hjOwnerTodoDone();if(on)done[id]=localDate();else delete done[id];
+  try{localStorage.setItem(HJ_OWNER_TODO_KEY,JSON.stringify(done));}catch(e){}
+  return true;
+}
+function hjOwnerTodoLineHtml(){
+  if(typeof hjStaffOn==='function'&&hjStaffOn())return '';
+  let rows=[];try{rows=hjOwnerTodoRows().filter(r=>r.open);}catch(e){rows=[];}
+  if(!rows.length)return '';
+  return '<p data-owner-todo-line style="margin:0 0 7px;font-size:13.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="flex:1 1 200px;min-width:0">📋 대표 할 일 '+rows.length+'건 — '+escapeHtml(rows[0].item.ic+' '+rows[0].item.title)+(rows.length>1?' 외':'')+'</span>'+
+    '<button type="button" class="clay tiny" data-owner-todo-open style="min-height:44px">보기</button></p>';
+}
+function hjOwnerTodoCardHtml(showDone){
+  if(typeof hjStaffOn==='function'&&hjStaffOn())return '';
+  const rows=hjOwnerTodoRows(),open=rows.filter(r=>r.open),closed=rows.filter(r=>!r.open);
+  const row=r=>{const it=r.item;const act=it.kind==='settings'?'<button type="button" class="ghost tiny" data-owner-todo-settings="'+escapeAttr(it.tab)+'" data-focus="'+escapeAttr(it.focus||'')+'" style="min-height:44px">설정 열기</button>':
+      it.kind==='link'&&it.url?'<a class="ghost tiny" href="'+escapeAttr(it.url)+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:0 10px">열기 ↗</a>':'';
+    return '<li data-owner-todo-item="'+escapeAttr(it.id)+'" data-open="'+(r.open?'1':'0')+'" style="list-style:none;border-bottom:1px dashed var(--line-soft);padding:6px 0">'+
+      '<label style="display:flex;gap:10px;align-items:flex-start;min-height:44px;cursor:pointer"><input type="checkbox" data-owner-todo="'+escapeAttr(it.id)+'"'+(r.open?'':' checked')+(r.auto?' disabled':'')+' style="width:22px;height:22px;margin-top:11px;flex:none">'+
+      '<span style="flex:1;min-width:0"><b style="font-size:14px">'+escapeHtml(it.ic+' '+it.title)+'</b>'+(r.auto?' <span data-owner-todo-auto style="font-size:11px;color:var(--hj-ok-fg)">자동 확인</span>':r.doneAt?' <span style="font-size:11px;color:var(--muted)">완료 '+escapeHtml(r.doneAt)+'</span>':'')+
+      '<br><span style="font-size:12.5px;color:var(--muted)">'+escapeHtml(it.why)+'</span><br><span style="font-size:12.5px">'+escapeHtml(it.how)+'</span></span></label>'+(act?'<div style="margin:2px 0 0 32px">'+act+'</div>':'')+'</li>';};
+  return '<section data-owner-todo-card style="border:1.5px solid var(--hj-warn-border);background:var(--hj-warn-bg);border-radius:12px;padding:12px;margin-bottom:12px">'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="flex:1;min-width:0;font-size:15px">📋 대표 할 일 — Claude 인수인계</b><span data-owner-todo-count style="font-size:12.5px;color:var(--muted)">남은 것 '+open.length+'건</span></div>'+
+    '<p class="hint" style="margin:4px 0 6px">체크는 이 기기에만 남고 앱 자료는 바뀌지 않습니다. 자세한 건 PC 보고\\인수인계_20261022.md 맨 위 표.</p>'+
+    '<ul style="margin:0;padding:0">'+(open.length?open.map(row).join(''):'<li style="list-style:none;padding:8px 0;font-size:13.5px">남은 할 일이 없어요 👏</li>')+'</ul>'+
+    (closed.length?'<button type="button" class="ghost tiny" data-owner-todo-toggle aria-expanded="'+(showDone?'true':'false')+'" style="min-height:44px;margin-top:6px">'+(showDone?'끝난 것 숨기기':'끝난 것 '+closed.length+'건 보기')+'</button>'+(showDone?'<ul data-owner-todo-closed style="margin:6px 0 0;padding:0">'+closed.map(row).join('')+'</ul>':''):'')+
+    '</section>';
+}
+function hjOwnerTodoBind(root,rerender){
+  if(!root)return;
+  root.querySelectorAll('[data-owner-todo]').forEach(cb=>cb.onchange=()=>{hjOwnerTodoSet(cb.dataset.ownerTodo,cb.checked);rerender();try{render();}catch(e){}});
+  root.querySelectorAll('[data-owner-todo-settings]').forEach(b=>b.onclick=()=>{closeModal();hjOpenSettingsTab(b.dataset.ownerTodoSettings,b.dataset.focus||'');});
+  const t=root.querySelector('[data-owner-todo-toggle]');if(t)t.onclick=()=>rerender(t.getAttribute('aria-expanded')!=='true');
+}
 function hjInstallLineHtml(){
   let dp=null;try{dp=__deferredPrompt;}catch(e){return '';}
   if(!dp)return '';

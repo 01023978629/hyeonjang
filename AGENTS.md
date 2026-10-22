@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v460 📋 대표 할 일 — Claude 인수인계 (앱 안에서 보는 '대표가 할 일' 표)
+
+- `HJ_OWNER_TODO`(상수 9건: 묶음 병합·PR #189·리뷰 링크·결정 3건·카카오 채널 주소·원고 게시·병합 뒤 폰 확인; 판마다 갱신)와 체크 저장 `localStorage hj_owner_todo_done`({id:날짜}) — **앱 자료는 바뀌지 않는다**(새 저장 키 없음, 기기별). 항목 `auto()` 가 참이면 '자동 확인'(리뷰 링크가 들어감 / github.io 에서 실행 중 = 병합됨).
+- 팀 업무·인수인계 보드(hjTeamBoard) 맨 위 `[data-owner-todo-card]`(남은 것 n건·체크박스 44px·[설정 열기] hjOpenSettingsTab(tab,focus)·[열기 ↗] 링크·[끝난 것 n건 보기] — `filters.ownerDone` 으로 재그림) · 첫 화면 오늘 현장 업무 `[data-owner-todo-line]` "📋 대표 할 일 n건 — 첫 항목" + [보기](`data-owner-todo-open` → hjTeamBoard, #view 위임). 직원 모드(hjStaffOn/body.hj-staff)에선 둘 다 없음.
+- 핀3곳 hyeonjang-v460-ownertodo(v459 위). 신규 tests/ownertodo-v460.e2e.js 3/3(390·1280, 저장본 불변·새로고침 유지·자동 확인·설정 탭·직원 모드), 기준선(OWNER_TODO_LINE)·변이 no-persist(OWNER_TODO_PERSIST) 실패 확인. 관련 12개 통과. 정적 19개 통과. 체크박스는 바뀌면 카드를 다시 그리므로 검사에서 `check()` 대신 `click()`.
+
 ## 2026-10-22 v459 어두운 화면 남은 8건 + 밝은 화면 '미연결' (리허설 R7 를 v458 판에서 다시 돌려 찾음)
 
 - R7 PC 스윕(514화면, 6.5분) v458 판: 밝은 화면 저대비 42→4(남은 4는 disabled 단추·이모지), 어두운 화면 15→8(모두 1노드). 고친 것 — v453 속성 선택자 목록에 배경 `#dbeafe`(코드 칩)·`#fef9c3`(키 배지)·`#f3f4f6`(승인 칩) 추가, 글자색 `#9a3412`→warn-fg·`#166534`→ok-fg·`#475569`→ink 추가 · `body.dark .ai-b.u{background:#1d6fe0;color:#fff}`(어두운 blueprint #6ab0ff 위 흰 글씨 2.3:1) · 💾 백업 센터 '미연결'·공개 페이지 '승인 대기' 칩 `#9ca3af`→var(--muted).
