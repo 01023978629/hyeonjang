@@ -3,6 +3,20 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v451 리허설 R6 고침 (관리·사후·안전 — 아파트 서류·보험·보증/AS·자재·외주·데이터 안전·공개 웹 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r6.js(8단계, 390px·합성·외부 쓰기 0) 결과 r6-result.json — 8/8 되지만 11가지 문제를 찾았고 그중 돈·개인정보·흐름 9가지를 여기서 고쳤다.
+- **외주팀 일당(hjCrewRate)**: 팀원 연락처(c.dayRate)에 없으면 📇 거래처 외주(s.rate{type:'day',amount})도 본다 — 👷 인건비 장부 [1][½] 에서 외주팀 공수가 0원으로 들어가 정산표·지급 명세·현장 인건비가 줄었다. 장부 이름 토글은 사람별 공수(labor.by)가 있으면 그 이름만(띄어쓴 외주팀 이름이 낱말마다 유령 토글이 됐다).
+- **보존 정리(v447)**: hjRetContactLive — 같은 번호의 다른 현장이 아직 살아 있으면(최근 활동 3년 안·활동일 없는 진행 중) 📇 연락처는 익명화하지 않고 contactsKept 로 센다(미리보기 data-ret-contact-live, 완료 토스트 '… 연락처 n명은 남김'). hjRetScrub 은 '고객 고객' 을 '고객' 으로.
+- **백업(backupNow)**: 백업 기록(backupMarkDone)은 exportData 의 공유가 끝났을 때(then)만 — 공유 창을 닫아도 '0일 전 백업'이 되고 3·7일 경고가 꺼졌다.
+- **문자 받는 사람**: msgCenterCompose(kind,{to:{name,phone}}) — 고객이 아닌 받는 사람(외주팀·작업자)이면 현장 고르기 칸을 감추고(data-mc-to) 그 번호로만 보낸다(번호 없으면 복사). hjDocDeliverView 의 sms.to 가 넘긴다 — 지급 명세(hjCrewPayslipView)·외주 요청서 PDF(hjSubQuoteView) 의 💬 문자 초안이 현장 고객에게 가던 것. 보관(archived) 현장이 preset.project 면 목록에 넣는다(안부·AS 문자가 첫 현장 고객에게 가던 것). 아래 '편집으로' 라벨은 leakquote-v421·leakreport-v422 가 누르므로 그대로.
+- **아파트 서류(v441)**: hjAptSchedRows 가 상담·실측·견적·현장 확인·AS 방문 일정(HJ_APT_NONWORK_RE·hjIsAsVisitSched)을 뺀다 — 지난 상담 일정 때문에 D-n 줄이 안 뜨고 공사 시작일이 상담일이 됐다.
+- **한국 날짜**: hjIsoLocalDay/hjIsoLocalStamp(ISO Z → 이 기기 날짜·시각) — hjAptDocsIssue 의 '오늘 이미 발행' 비교(새벽 0~9시에 같은 서류가 -02 로 또 발행), 외주 요청 기록 날짜, 변경 기록 보기·CSV 시각. 다른 `.at.slice(0,10)` 자리(보증서 서명·세대 발행 이력·만족도·카카오 리드)는 표시용이라 두었다 — 같은 도우미로 바꾸면 된다.
+- **문서용 사진 미리보기**: hjDocThumbLater — 사진 넣기(runPhotoIntake)가 끝난 뒤 새 사진의 480px JPEG data: 를 만들어 thumb 과 thumb-local: 캐시에 둔다. 화면용 blob: 만 있어 하자보증서·피해 확인서·누수 보고서·외주 요청서의 사진 고르기(hjDocThumbOk)에 방금 찍은 사진이 안 나왔다(드라이브 재수신 사진만 됐다). thumb 은 직렬화하지 않는다(파일 화이트리스트 그대로).
+- 그 밖: 보증 만료 안부(hjWarrantyCareRows)는 📦 보관 현장도(끝낸 현장을 보관하는 게 정상 흐름) · 무상 판정 문자는 '무상 보수 대상으로 보여요 … 방문해서 확인한 뒤 확정'(방문 전 확정 약속 없음) · 첫 답장(hjInquiryNoReply)은 문의 30일 안만(HJ_FIRST_REPLY_DAYS, 시각 모르면 그대로) · 외주 요청 범위 품목 중복 제거 + 같은 날 같은 요청은 기록 1건.
+- 안 고친 것(대표 결정·다음): 삭제 요청 뒤 안전판 12칸에 정리 전 개인정보가 남음(안내문에 적을지·지울지) · 입고 취소 뒤 재고에 남은 자재 · 재입고 단가 이력 중복 · 인테리어 사진 전/중/후 칸 · 완료보고서 공정 줄 중복 · 사례 내보내기 누수 문구.
+- 핀3곳 hyeonjang-v451-rehearsal3(v450 위). 신규 tests/rehearsalfix-v451.e2e.js 7/7, 변이 crew-rate·sms-to·ret-live·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 관련 40여 개 통과(leakdetect-v420 은 4개 동시일 때 한 번 시간 차 — 혼자 10/10, offlinequeue-v425 는 #189 전 버전 문자열 문제 그대로). 정적 19개 통과.
+
 ## 2026-10-17 v450 리허설 R2·R3 고침 (인테리어 하루·폰 갤러리/설치/오프라인 → 찾은 것)
 
 - 리허설: /mnt/user-data/outputs/리허설/rehearsal-r2r3.js(R2 인테리어 하루 10단계 — 욕실 상담 페이지 연결 포함, R3 폰 5단계 — 공유·촬영·오프라인·설치·알림) — 390px·합성·외부 쓰기 0.
