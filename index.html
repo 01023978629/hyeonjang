@@ -3389,7 +3389,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v461-officelist';
+const APP_BUILD='hyeonjang-v462-demo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5671,13 +5671,31 @@ async function loadDemo(){
     {name:'중부도기',phone:'',category:'자재',memo:'데모',items:'도기, 수전, 욕실 액세서리',addr:'대전 동구',pay:'카드',delivery:false,prices:[{name:'양변기',spec:'',unit:'대',price:180000,at:'2025-03-06',src:'recv'},{name:'세면기',spec:'',unit:'대',price:95000,at:'2025-03-06',src:'recv'},{name:'수전',spec:'욕실',unit:'개',price:42000,at:'2025-03-06',src:'manual'},{name:'타일 600각',spec:'',unit:'장',price:12800,at:'2025-03-07',src:'manual'}]}];
   {const cafe=state.projects.find(p=>p.name==='망원동 카페');if(cafe){cafe.matOrders=[{id:uid(),sup:'대전타일',items:[{name:'타일 600각',spec:'',qty:42,unit:'장',price:12000},{name:'타일 본드',spec:'20kg',qty:3,unit:'포',price:14000}],due:'2025-03-11',at:'2025-03-09',recvAt:'2025-03-11',memo:'데모',total:546000,costApplied:true,costAppliedAmt:546000,costAppliedAt:'2025-03-11'},
     {id:uid(),sup:'한밭철물',items:[{name:'실리콘 투명',spec:'',qty:6,unit:'개',price:4500},{name:'마대',spec:'',qty:20,unit:'장',price:600}],due:'2025-03-12',at:'2025-03-11',recvAt:'2025-03-12',memo:'데모 · 원가 반영 전',total:39000}];}}
+  // v462 데모 자료 보강 — 첫 사용자가 v432~v458 기능을 데모에서 바로 보게. 기존 저장 자리만 쓴다(새 키 없음): 팀 작업 보고는 p.workOrders[].reports(v432, 완료 1·검수 요청 1 →
+  //      첫 화면 '🔎 검수 요청'·'📄 팀 보고 n건 들어옴' 줄과 📎 서류 만들기 '👷 팀 보고'), 아파트 서류는 p.docs(v441 — 이웃 동의서 1건만 발행, 신청서는 시공 D-2 '서류 4종 만들기' 할 일로 남긴다),
+  //      영수증 지출은 state.expenses[src:'receipt'] + kind:'receipt' 가상 파일(v435, _file 에 그림을 넣어 🧾 보기가 열린다). 데모는 어디에도 저장되지 않는다(_demo).
+  {const cafe=state.projects.find(p=>p.name==='망원동 카페');if(cafe){
+    const ck=(n)=>HJ_WO_CHECKLIST.map((t,i)=>({text:t,ok:i<n}));
+    cafe.workOrders=[{at:'2025-03-09T00:00:00.000Z',packetId:'wo_20250309_001',sentAt:'2025-03-09T00:00:00.000Z',via:'file',worker:'',title:'철거·방수 1차',date:'2025-03-10',assignee:'박 반장',due:'2025-03-10',priority:'normal',checklist:HJ_WO_CHECKLIST.slice(),photosWanted:['before','during','after'],items:[{kind:'sched',ref:'',text:'철거 작업 (2025-03-10 09:00 · 👷 3명)'}],
+      reports:[{key:'wr_demo_20250310',status:'done',workDate:'2025-03-10',hours:8,done:'바닥·벽 철거, 폐기물 반출(마대 20장)',issue:'',reporter:'박 반장',checklist:ck(4),photos:3,at:'2025-03-10T09:40:00.000Z'},
+        {key:'wr_demo_20250312',status:'review',workDate:'2025-03-12',hours:6,done:'화장실·베란다 방수 1차 도포',issue:'베란다 배수구 둘레 들뜸 — 2차 전에 확인 부탁',reporter:'박 반장',checklist:ck(2),photos:2,at:'2025-03-12T08:30:00.000Z'}]}];}}
+  {const apt=state.projects.find(p=>p.name==='은행동 한빛아파트 101동 702호');if(apt){const d=hjAddDays(localDate(),-3);
+    apt.docs=[{type:'aptconsent',no:'AC-'+d.replace(/-/g,'')+'-01',at:new Date(d+'T10:00:00').toISOString(),purpose:'apt',name:HJ_APT_DOC_TYPES.aptconsent}];}}
+  {const svgFile=(label,c,name)=>new File([`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="520"><rect width="360" height="520" fill="${c}"/><text x="180" y="250" font-size="26" fill="#fff" text-anchor="middle" font-family="sans-serif">${label}</text><text x="180" y="300" font-size="18" fill="#fff" text-anchor="middle" font-family="sans-serif">데모 영수증</text></svg>`],name,{type:'image/svg+xml'});
+    const rc=(date,vendor,amount,cat,method,project,memo,c)=>{const name='영수증_'+date.replace(/-/g,'')+'_'+vendor+'_'+amount+'원.jpg';   // 이름은 실제 영수증(hjReceiptFileName)과 같은 꼴, 내용은 SVG 그림(미리보기는 MIME 으로 연다)
+      const f=mk({name,ext:'jpg',kind:'receipt',project,when:D(date+'T12:00:00'),size:2048,thumb:svg(vendor,c),_file:svgFile(vendor+' '+amount.toLocaleString('ko-KR')+'원',c,name),ocr:'done',text:vendor+' '+amount+'원'});
+      state.files.push(f);
+      state.expenses.push({id:uid(),date,amount,category:HJ_EXP_CAT_LEDGER[cat]||'기타',method,memo,project:project||'',vendor,src:'receipt',fileId:'k:'+fileKey(f),cat,ocr:{raw:vendor+' '+amount+'원',guess:null}});};
+    state.expenses=[];   // 데모 화면에는 데모 지출만 — 실제 지출은 [데모 끝내기] 뒤 그대로(데모는 저장되지 않는다)
+    rc(hjAddDays(localDate(),-3),'한밭철물',38500,'자재','현금','망원동 카페','실리콘·배관 부속','#7a6a4a');
+    rc(hjAddDays(localDate(),-1),'SK주유소',55000,'유류','카드','','현장 이동 주유','#4a6a7a');}
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
-  $('#mountHint').textContent='테스트용 가상 현장 3곳입니다. 각 탭을 눌러 확인하세요. 데모 중에는 아무것도 저장되지 않습니다 — 끝내려면 위 [데모 끝내기].';
+  $('#mountHint').textContent='테스트용 가상 현장 '+state.projects.length+'곳입니다. 각 탭을 눌러 확인하세요. 데모 중에는 아무것도 저장되지 않습니다 — 끝내려면 위 [데모 끝내기].';
   $('#btnOcrAll').disabled=true;
   hjDemoBarSync();
   render();
-  toast('데모 데이터 로드됨 — 현장 3곳 · 파일 13개');
+  toast('데모 데이터 로드됨 — 현장 '+state.projects.length+'곳 · 파일 '+state.files.length+'개 · 팀 보고 2건 · 영수증 2장');
   return true;
 }
 let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기) → 중복(원본+정리본) 1회만 인입

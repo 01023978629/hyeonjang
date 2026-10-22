@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v462 🧪 데모 자료 보강 — 팀 보고 2건 · 아파트 서류 발행 1건 · 영수증 지출 2건 (개발_백로그 3번)
+
+- loadDemo 가 기존 저장 자리만 채운다(새 키·새 현장 없음, 현장 4곳 그대로 — settings-safety 의 `projects.length === 4` 계약 유지): 망원동 카페 `p.workOrders[0]`(wo_20250309_001) `.reports` 완료 1(03/10, 사진 3)·검수 요청 1(03/12) → 첫 화면 '🔎 검수 요청 1건'·'📄 팀 보고 1건 들어옴 · 사진 3장' 줄, 📎 서류 만들기 '👷 팀 보고 1건', [완료보고서 초안] 작업 내용에 '03/10 …' 줄(v458 hjReportDraft).
+- 은행동 한빛아파트 `p.docs` 에 **이웃 동의서(AC-)만** 3일 전 발행 — 신청서(aptapply)는 일부러 안 넣는다(aptdocs-v441 ③ 의 시공 D-2 '서류 4종 만들기' 할 일이 데모의 핵심). 📎 서류 만들기엔 '발행 1/4'.
+- 영수증 지출 2건: `state.expenses=[]` 로 비운 뒤 src:'receipt' 2줄(3일 전 한밭철물 38,500 현금 @망원동 카페 · 어제 SK주유소 55,000 카드 공통) + kind:'receipt' 가상 파일 2개(이름은 hjReceiptFileName 꼴 `영수증_YYYYMMDD_상호_금액원.jpg`, `_file` 에 SVG File 을 넣어 🧾 보기(hjReceiptPreview → getFileOf)가 그림을 연다). 실제 지출은 데모 화면에서만 안 보이고 저장본은 그대로([데모 끝내기]=reload 로 복귀, demo-v462 ③).
+- 토스트·mountHint 는 세어서 쓴다('현장 4곳 · 파일 17개 · 팀 보고 2건 · 영수증 2장'). 데모 숫자를 바꾸면 demo-v462 ① 의 토스트 단언도 같이.
+- 핀3곳 hyeonjang-v462-demo(v461 위). 신규 tests/demo-v462.e2e.js 3/3(390px 씨앗·화면, 1280px 저장 안 됨), 기준선(3606800)·변이 no-reports 모두 ① 에서 실패 확인. 관련 15개(settings-safety·demo-banner·aptdocs-v441·mobile-tap-table·action-search·amount-sign·trip-expense-overlap·team3-v458·dash-cards·mobile-more-sweep·inqpending-v386·expenseocr-v435·receipt-project·ledger-roundtrip·custfill-v394) 통과. 정적 19개 통과.
+
 ## 2026-10-22 v461 📇 관리사무소 명단 — 아파트 관리 탭 카드 · prompt() 대신 인라인 폼 (개발_백로그 2번)
 
 - 🏢 아파트 관리 탭 KPI 아래 `#aptOfficeList`(data-aptoff-list): state.aptOffices 전체 — 단지·담당자·📞 전화 링크·현장 수(aptMgmtGroups 단지 키 일치)·오더 수, 현장 많은 순. aptOfficeListRows/Text/Html 은 읽기만. [📋 복사](aptOfficeListCopy → clipboard, 실패 시 coworkCopyFallback) 글줄은 '단지 관리사무소 · 담당자 · 번호' — 고객 정보 없음.
