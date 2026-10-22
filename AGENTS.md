@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v453 어두운 화면 — 인라인 파스텔 카드·진한 글자색 (R7 남은 48화면)
+
+- 인라인 style 로 박힌 밝은 배경(#eff6ff·#eef6ff·#f0fdf4·#fffbeb·#fff5f5·#fef2f2·#fff7ed·#f4f7fb·#f8fafc·#fee2e2·#fecaca·#dcfce7·#f7fafd)은 `body.dark [style*="#…"]{background:var(--paper-2)!important}` 로, 진한 글자색(#0b4ea2·#1d4ed8·#2563eb → --blueprint, #b91c1c·#c2410c·#991b1b → --hj-danger-fg, #0a7f43·#15803d → --hj-ok-fg, #b45309 → --hj-warn-fg, #64748b·#94a3b8 → --muted)은 `[style^="color:#…"],[style*=";color:#…"],[style*=" color:#…"]` 로만(배경·테두리에 쓴 같은 색은 그대로 — darkcards-v453 ④ 가 지킨다). 밝은 화면은 손대지 않는다.
+- 그 밖 어두운 화면: 달력 토요일(.cal-dow.sat·.cal-cell.sat .cal-d) · .ph-hint 알약(밝은 화면도 9px 글자 #6b7f95 로) · 아바타·현장 단계 탭·탭 배지 글자 #06111c · class 없는 링크 --blueprint · 첫 화면 백업 카드(--hj-danger-bg) · ghost 단추 글자 · 모달 안 색 단추의 부제 span · 비교표 차이 줄 --hj-diff-bg 는 불투명 #3a2a20(반투명이면 대비를 잴 수 없다).
+- R7 PC 점검 다시: 어두운 화면 3:1 미만 48화면 → 15화면(남은 건 ✨ 아이콘·'26개월 남음' 알약처럼 아이콘·배지), 밝은 화면 42(9~11px 보조 글자 2.5~2.9:1 — 다음).
+- 핀3곳 hyeonjang-v453-darkcards(v452 위). 신규 tests/darkcards-v453.e2e.js 4/4(글자/배경 대비 측정), 기준선(DARK_CARDS_READABLE) 실패 확인. 관련 12개 통과(proposal-v437 은 부팅 2.5초 뒤 백업 토스트와 겹치면 '마지막 토스트' 단언이 흔들린다 — 혼자 4/4). 정적 19개 통과.
+
 ## 2026-10-22 v452 PC 화면·어두운 화면 고침 (리허설 R7 — 1280·1024·다크 514화면 점검 → 찾은 것)
 
 - 점검 대본 /mnt/user-data/outputs/리허설/sweep-r7-pc.js(결과 r7-result.json): PC 1280·1024·다크 1280 에서 탭·현장·견적 편집기·설정·새 화면 35·더보기 115 를 열어 가로 넘침·가림·대비·죽은 단추를 쟀다. 넘침 0·페이지 오류 0·죽은 단추 0, 아래를 고쳤다.

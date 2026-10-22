@@ -41,7 +41,7 @@
   [data-office-intake-status][data-office-intake-mode="stale"]{color:var(--warn)!important}
   /* v399 안내와 카드 배경을 함께 테마에 맞춰 작은 글씨도 읽을 수 있게 한다. */
   :root{--hj-warn-fg:#b45309;--hj-info-fg:#0b4ea2;--hj-ok-fg:#0a7f43;--hj-danger-fg:#c2410c;--hj-warn-bg:#fffbeb;--hj-danger-bg:#fff5f5;--hj-warn-border:#fcd34d;--hj-danger-border:#fca5a5;--card:#fff;--hj-soft-bg:#f4f7fb;--hj-diff-bg:#fff7ed}
-  body.dark{--card:#17222e;--hj-soft-bg:#1c2836;--hj-diff-bg:rgba(234,88,12,.22)}   /* v452 설정 탭(--card)·비교표 차이/합계 줄이 어두운 화면에서 흰 바탕에 흰 글씨였다(리허설 R7) */
+  body.dark{--card:#17222e;--hj-soft-bg:#1c2836;--hj-diff-bg:#3a2a20}   /* v452 설정 탭(--card)·비교표 차이/합계 줄이 어두운 화면에서 흰 바탕에 흰 글씨였다(리허설 R7) */
   body.dark{--hj-field-error:var(--hj-danger-fg);--hj-warn-fg:#fbd38d;--hj-info-fg:#8fc3ff;--hj-ok-fg:#71dbac;--hj-danger-fg:#ffb99c;--hj-warn-bg:rgba(140,91,14,.18);--hj-danger-bg:rgba(145,48,48,.18);--hj-warn-border:#80612b;--hj-danger-border:#855151}
   body.dark #dashboardCompanyTeam,body.dark .hjAdLink{color:var(--blueprint)}
   body.dark{
@@ -81,6 +81,24 @@
   body.dark [aria-pressed="true"] [data-season-now]{color:#064e3b}
   body.dark button.blue:hover [data-season-now]{color:#dcfce7}   /* 올렸을 때(파랑 바탕) */
   body.dark .setTab[aria-selected="true"]{color:#06111c!important}
+  /* v453 어두운 화면 — 인라인으로 박힌 밝은 파스텔 배경(안내 카드·KPI 칸·경고 상자)과 진한 글자색(#0b4ea2·#b91c1c·#1d4ed8·#0a7f43·#c2410c)을 테마 색으로.
+     인라인 style 은 속성 선택자로 잡는다(글자색은 background-color·border-color 가 아닌 color: 만). 리허설 R7 — 어두운 화면 48화면이 3:1 미만이었다. */
+  body.dark [style*="#eff6ff"],body.dark [style*="#eef6ff"],body.dark [style*="#f0fdf4"],body.dark [style*="#fffbeb"],body.dark [style*="#fff5f5"],body.dark [style*="#fef2f2"],body.dark [style*="#fff7ed"],body.dark [style*="#f4f7fb"],body.dark [style*="#f8fafc"],body.dark [style*="#fee2e2"],body.dark [style*="#f7fafd"]{background:var(--paper-2)!important;background-image:none!important}
+  body.dark [style^="color:#0b4ea2"],body.dark [style*=";color:#0b4ea2"],body.dark [style*=" color:#0b4ea2"],body.dark [style^="color:#1d4ed8"],body.dark [style*=";color:#1d4ed8"],body.dark [style*=" color:#1d4ed8"],body.dark [style^="color:#2563eb"],body.dark [style*=";color:#2563eb"],body.dark [style*=" color:#2563eb"]{color:var(--blueprint)!important}
+  body.dark [style^="color:#b91c1c"],body.dark [style*=";color:#b91c1c"],body.dark [style*=" color:#b91c1c"],body.dark [style^="color:#c2410c"],body.dark [style*=";color:#c2410c"],body.dark [style*=" color:#c2410c"],body.dark [style^="color:#991b1b"],body.dark [style*=";color:#991b1b"],body.dark [style*=" color:#991b1b"]{color:var(--hj-danger-fg)!important}
+  body.dark [style^="color:#0a7f43"],body.dark [style*=";color:#0a7f43"],body.dark [style*=" color:#0a7f43"],body.dark [style^="color:#15803d"],body.dark [style*=";color:#15803d"],body.dark [style*=" color:#15803d"]{color:var(--hj-ok-fg)!important}
+  body.dark [style^="color:#b45309"],body.dark [style*=";color:#b45309"],body.dark [style*=" color:#b45309"]{color:var(--hj-warn-fg)!important}
+  body.dark .cal-dow.sat,body.dark .cal-cell.sat .cal-d{color:#8fc3ff}
+  body.dark [style^="color:#64748b"],body.dark [style*=";color:#64748b"],body.dark [style*=" color:#64748b"],body.dark [style^="color:#94a3b8"],body.dark [style*=";color:#94a3b8"],body.dark [style*=" color:#94a3b8"]{color:var(--muted)!important}
+  body.dark [style*="#dcfce7"],body.dark [style*="#fecaca"]{background:var(--paper-2)!important;background-image:none!important}
+  .ph-hint{color:#6b7f95}   /* v453 밝은 화면 9px 안내 글자 2.4:1 → 4.5:1 */
+  body.dark .ph-hint{background:rgba(23,34,46,.92);color:var(--muted)}
+  body.dark .av,body.dark .st-tab.on,body.dark .st-prog.on,body.dark .tab .b{color:#06111c}
+  body.dark a:not([class]){color:var(--blueprint)}
+  body.dark [data-backup-card]{background:var(--hj-danger-bg)!important;border-color:var(--hj-danger-border)!important}
+  body.dark [data-backup-card] b,body.dark [data-backup-card] span{color:var(--hj-danger-fg)!important}
+  body.dark button.ghost{color:var(--blueprint)}
+  body.dark #modalRoot button.blue span,body.dark #modalRoot button.clay span,body.dark #modalRoot button.moss span{color:#06111c;opacity:.9}
   /* v452 PC 첫 화면 '현장별 지출·마진' 표 — 금액·날짜가 가운데서 꺾이고 이름 칸이 다섯 줄이 됐다 */
   @media(min-width:900px){
     body:not(.mobile-mode) #dashboardMarginTable td.amt,body:not(.mobile-mode) #dashboardMarginTable th{white-space:nowrap}
@@ -3365,7 +3383,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v452-pcdark';
+const APP_BUILD='hyeonjang-v453-darkcards';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
