@@ -145,7 +145,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.tab[data-tab="aptmgmt"]').getAttribute('aria-selected'), 'true');
 
-    const heads = await page.locator('#view .cust-card:not(#aptOthers) .cust-h').allInnerTexts();
+    const heads = await page.locator('#view .cust-card:not(#aptOthers):not(#aptOfficeList) .cust-h').allInnerTexts();
     const names = heads.map(h => h.split('\n')[0].trim());
     // 현장 많은 순 → 같으면 가나다순. 동명 현장도 목록에는 보인다(등록만 건너뛴다) — 안 보이면 사장님이 중복을 못 고친다.
     // '가상힐스테이트' 는 이름에 '아파트' 가 없지만 브랜드로 알아본다.
@@ -243,10 +243,13 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
     await page.locator('#view [data-aptbulk="1"]').waitFor({ state: 'visible' });
 
     // 가상선비마을3단지는 관리사무소가 없다 — 그 카드에 등록 버튼이 있어야 한다
-    const card = page.locator('#view .cust-card:not(#aptOthers)').filter({ hasText: '가상선비마을3단지' });
+    const card = page.locator('#view .cust-card:not(#aptOthers):not(#aptOfficeList)').filter({ hasText: '가상선비마을3단지' });
     assert.match(await card.innerText(), /관리사무소 미등록/, '미등록이면 그렇게 적는다');
-    page.once('dialog', async d => { await d.accept('가상 소장'); page.once('dialog', async d2 => { await d2.accept(''); }); });
+    // v461: prompt 대신 명단 카드의 인라인 폼이 단지 이름을 채운 채 열린다
     await card.locator('[data-aptoffadd]').click();
+    await page.locator('#view #aptOfficeForm:not([hidden])').waitFor();
+    assert.equal(await page.locator('#view #aofComplex').inputValue(), '가상선비마을3단지', '단지 이름은 다시 묻지 않는다');
+    await page.locator('#view #aofManager').fill('가상 소장'); await page.locator('#view [data-aptoff-save]').click();
     await page.waitForFunction(() => (state.aptOffices || []).some(o => o.complex === '가상선비마을3단지'));
     assert.equal(await page.evaluate(() => state.aptOffices.find(o => o.complex === '가상선비마을3단지').manager), '가상 소장', '담당자가 저장돼야 한다');
 
@@ -263,7 +266,7 @@ const units = (page) => page.evaluate(() => state.projects.map(p => [p.name, (p.
         { id: 'x3', officeId: id, unit: '1동 1502호', text: 'c', status: 'work', date: '2026-09-03' }];
       render();
     });
-    const gold = page.locator('#view .cust-card:not(#aptOthers)').filter({ hasText: '가상금성아파트' });
+    const gold = page.locator('#view .cust-card:not(#aptOthers):not(#aptOfficeList)').filter({ hasText: '가상금성아파트' });
     const txt = await gold.innerText();
     assert.match(txt, /오더 3건/, '총 건수: ' + txt);
     assert.match(txt, /접수 2/, '접수 2건이 보여야 한다: ' + txt);

@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-22 v461 📇 관리사무소 명단 — 아파트 관리 탭 카드 · prompt() 대신 인라인 폼 (개발_백로그 2번)
+
+- 🏢 아파트 관리 탭 KPI 아래 `#aptOfficeList`(data-aptoff-list): state.aptOffices 전체 — 단지·담당자·📞 전화 링크·현장 수(aptMgmtGroups 단지 키 일치)·오더 수, 현장 많은 순. aptOfficeListRows/Text/Html 은 읽기만. [📋 복사](aptOfficeListCopy → clipboard, 실패 시 coworkCopyFallback) 글줄은 '단지 관리사무소 · 담당자 · 번호' — 고객 정보 없음.
+- 인라인 폼 `#aptOfficeForm`(aofId·aofComplex·aofManager·aofPhone, `[data-aptoff-save]`·`[data-aptoff-cancel]`): [+ 등록](data-aptoff-new)·줄의 [✎](data-aptoff-edit=id)·단지 카드의 [🏢 관리사무소 등록](data-aptoffadd → aptMgmtOfficeAdd 가 폼이 화면에 있으면 prompt 대신 aptOfficeFormOpen) 모두 같은 폼. 저장은 v457 hjAptOfficeUpsert(같은 단지 = 한 줄, 새 값이 덮음) + 고치기(id)일 땐 빈 값으로 지우기도 허용. #view 위임.
+- tests/apartment-manage 는 dialog 두 번 대신 폼을 채우고, 단지 카드 선택자를 `.cust-card:not(#aptOthers):not(#aptOfficeList)` 로.
+- 핀3곳 hyeonjang-v461-officelist(v460 위). 신규 tests/officelist-v461.e2e.js 3/3(390px, prompt 가 뜨면 실패로 셈), 기준선·변이 list-off(OFFICE_LIST) 실패 확인. 관련 10개 통과. 정적 19개 통과.
+
 ## 2026-10-22 v460 📋 대표 할 일 — Claude 인수인계 (앱 안에서 보는 '대표가 할 일' 표)
 
 - `HJ_OWNER_TODO`(상수 9건: 묶음 병합·PR #189·리뷰 링크·결정 3건·카카오 채널 주소·원고 게시·병합 뒤 폰 확인; 판마다 갱신)와 체크 저장 `localStorage hj_owner_todo_done`({id:날짜}) — **앱 자료는 바뀌지 않는다**(새 저장 키 없음, 기기별). 항목 `auto()` 가 참이면 '자동 확인'(리뷰 링크가 들어감 / github.io 에서 실행 중 = 병합됨).

@@ -3389,7 +3389,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v460-ownertodo';
+const APP_BUILD='hyeonjang-v461-officelist';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -16296,6 +16296,7 @@ function aptMgmtOfficeAdd(complex){
   if(!name){toast('단지 이름을 알 수 없습니다');return;}
   const data=aptData();   // aptData() 는 state 를 돌려준다(offices 가 아니라 aptOffices)
   if((data.aptOffices||[]).some(o=>o&&aptComplexKey(o.complex)===aptComplexKey(name))){toast('이미 등록된 단지입니다');render();return;}
+  if(document.getElementById('aptOfficeForm')){aptOfficeFormOpen({complex:name});return;}   // v461 화면에 명단 카드가 있으면 prompt 대신 그 칸에
   const manager=(prompt(name+'\n담당자 (예: 김OO 소장) — 비워도 됩니다')||'').trim();
   const phone=(prompt(name+'\n관리사무소 연락처 — 비워도 됩니다')||'').trim();
   state.aptOffices.push({id:uid(),complex:name,manager,phone});
@@ -16376,6 +16377,48 @@ function aptBulkView(){
   aptUnitModalStyle();
   const bs=document.querySelectorAll('#modalRoot .mfoot button');bs[0].id='aptBulkCancel';bs[1].id='aptBulkSave';
 }
+/* v461 📇 관리사무소 명단 — 아파트 관리 탭 위쪽 카드. 등록·수정은 prompt 대신 인라인 폼(hjAptOfficeUpsert, v457) — 같은 단지는 한 줄.
+   [📋 복사]는 '단지 · 담당자 · 번호' 글줄(고객 정보 없음). 읽기 함수는 자료를 바꾸지 않는다. */
+function aptOfficeListRows(groups){
+  const gmap=new Map((groups||[]).map(g=>[aptComplexKey(g.name),g]));
+  return (state.aptOffices||[]).filter(o=>o&&o.complex).map(o=>{const g=gmap.get(aptComplexKey(o.complex));return {o,sites:g?g.sites.length:0,orders:(state.aptOrders||[]).filter(x=>x&&x.officeId===o.id).length};})
+    .sort((a,b)=>b.sites-a.sites||String(a.o.complex).localeCompare(String(b.o.complex),'ko'));
+}
+function aptOfficeListText(groups){return aptOfficeListRows(groups).map(r=>[r.o.complex+' 관리사무소',r.o.manager||'',r.o.phone||'(번호 없음)'].filter(Boolean).join(' · ')).join('\n');}
+function aptOfficeListHtml(groups){
+  const rows=aptOfficeListRows(groups);
+  const F=(id,label,extra)=>'<label for="'+id+'" style="display:block;font-size:12px;font-weight:700;margin:6px 0 3px">'+label+'</label><input id="'+id+'" '+(extra||'type="text"')+' style="width:100%;min-height:44px;padding:8px 10px;font-size:14px;border-radius:9px;border:1px solid var(--line-soft);box-sizing:border-box">';
+  return '<div class="cust-card" id="aptOfficeList" data-aptoff-list style="margin:0 0 10px"><div class="cust-h" style="gap:6px;flex-wrap:wrap"><b>📇 관리사무소 명단</b><span>· '+rows.length+'곳</span>'+
+    '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">'+(rows.length?'<button type="button" class="ghost tiny" data-aptoff-copy style="min-height:44px">📋 복사</button>':'')+'<button type="button" class="blue tiny" data-aptoff-new style="min-height:44px">+ 등록</button></span></div>'+
+    '<form id="aptOfficeForm" data-aptoff-form hidden style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:6px 0 8px" onsubmit="return false"><input type="hidden" id="aofId"><div data-aptoff-form-title style="font-size:12.5px;font-weight:700">관리사무소 명단에 적기</div>'+
+      F('aofComplex','단지')+F('aofManager','담당자 (비워도 됨)')+F('aofPhone','관리사무소 연락처','type="tel" inputmode="tel"')+
+      '<div style="display:flex;gap:6px;margin-top:8px"><button type="button" class="clay" data-aptoff-save style="min-height:44px;flex:1">명단에 저장</button><button type="button" class="ghost" data-aptoff-cancel style="min-height:44px">취소</button></div></form>'+
+    (rows.length?'<div>'+rows.map(r=>'<div data-aptoff-row="'+escapeAttr(r.o.id)+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line-soft);font-size:13px"><b style="min-width:0">'+escapeHtml(r.o.complex)+'</b>'+
+      (r.o.manager?'<span>'+escapeHtml(r.o.manager)+'</span>':'')+(r.o.phone?'<a href="tel:'+escapeAttr(String(r.o.phone).replace(/[^\d+]/g,''))+'" style="min-height:44px;display:inline-flex;align-items:center">📞 '+escapeHtml(r.o.phone)+'</a>':'<span style="color:var(--hj-warn-fg)">번호 없음</span>')+
+      '<span class="hint" style="margin:0">현장 '+r.sites+'곳'+(r.orders?' · 오더 '+r.orders+'건':'')+'</span><button type="button" class="ghost tiny" data-aptoff-edit="'+escapeAttr(r.o.id)+'" style="min-height:44px;min-width:44px;margin-left:auto" aria-label="'+escapeAttr(r.o.complex)+' 관리사무소 고치기">✎</button></div>').join('')+'</div>'
+    :'<p class="hint" style="margin:4px 0 0">등록된 관리사무소가 없어요 — 단지 카드의 [🏢 관리사무소 등록]이나 위 [+ 등록]으로 적어 두면 서류 4종·문자·오더에 바로 쓰입니다.</p>')+'</div>';
+}
+function aptOfficeFormOpen(o){
+  const f=document.getElementById('aptOfficeForm');if(!f)return false;const v=o&&typeof o==='object'?o:{};
+  f.hidden=false;f.querySelector('#aofId').value=v.id||'';f.querySelector('#aofComplex').value=v.complex||'';f.querySelector('#aofManager').value=v.manager||'';f.querySelector('#aofPhone').value=v.phone||'';
+  f.querySelector('[data-aptoff-form-title]').textContent=v.id?'관리사무소 고치기 — '+(v.complex||''):'관리사무소 명단에 적기';
+  try{f.scrollIntoView({block:'nearest'});f.querySelector(v.complex?'#aofPhone':'#aofComplex').focus();}catch(e){}
+  return true;
+}
+function aptOfficeFormSave(){
+  const f=document.getElementById('aptOfficeForm');if(!f)return null;
+  const id=f.querySelector('#aofId').value,complex=f.querySelector('#aofComplex').value.trim(),manager=f.querySelector('#aofManager').value.trim(),phone=f.querySelector('#aofPhone').value.trim();
+  if(!complex){toast('단지 이름을 적어 주세요');try{f.querySelector('#aofComplex').focus();}catch(e){}return null;}
+  const before=(state.aptOffices||[]).length,o=hjAptOfficeUpsert(complex,manager,phone,id);
+  if(!o)return null;
+  if(id&&o.id===id){if(manager!==(o.manager||'')){o.manager=manager;markDirty();}if(phone!==(o.phone||'')){o.phone=phone;markDirty();}}   // 고치기는 빈 값으로 지우는 것도 허용
+  toast((state.aptOffices||[]).length>before?'🏢 관리사무소 등록됨 — "'+o.complex+'"':'🏢 관리사무소 명단 갱신 — "'+o.complex+'"');
+  render();return o;
+}
+async function aptOfficeListCopy(){
+  const text=aptOfficeListText([...aptMgmtGroups().groups.values()]);if(!text){toast('복사할 관리사무소가 없어요');return false;}
+  try{await navigator.clipboard.writeText(text);toast('📋 관리사무소 명단 복사됨');return true;}catch(e){coworkCopyFallback(text,()=>toast('📋 관리사무소 명단 복사됨'));return true;}
+}
 function viewAptMgmt(){
   const scan=aptMgmtGroups(),others=scan.others;
   const groups=[...scan.groups.values()].sort((a,b)=>b.sites.length-a.sites.length||a.name.localeCompare(b.name,'ko'));
@@ -16388,6 +16431,7 @@ function viewAptMgmt(){
     <div class="kpi"><span class="kl">등록된 동·호수</span><span class="kv">${unitN}<small>곳</small></span></div>
     <div class="kpi"><span class="kl">등록 대기</span><span class="kv">${plan.length}<small>곳</small></span></div>
     ${others.length?`<div class="kpi"><span class="kl">아파트로 안 봄</span><span class="kv">${others.length}<small>곳</small></span></div>`:''}</div>`;
+  html+=aptOfficeListHtml(groups);   // v461 관리사무소 명단
   if(!groups.length&&!others.length)return html+`<div class="empty" style="padding:28px"><b>아직 아파트 현장이 없습니다</b>[아파트 프로젝트 만들기]에서 아파트명과 동·호수를 나누어 등록하세요.</div>`;
   groups.forEach(g=>{
     const office=(state.aptOffices||[]).find(o=>o&&aptComplexKey(o.complex)===aptComplexKey(g.name))||null;
@@ -37516,7 +37560,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-owner-todo-open],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37536,6 +37580,11 @@ function setupDelegation(){
     if(d.aptlegacy!==undefined)return hjAptLegacyMergeView();
     if(d.aptorders!==undefined)return aptOrderManage();
     if(d.aptoffadd!==undefined)return aptMgmtOfficeAdd(d.aptoffadd);
+    if(t.hasAttribute('data-aptoff-new'))return aptOfficeFormOpen({});   // v461 관리사무소 명단
+    if(d.aptoffEdit!==undefined){const o=(state.aptOffices||[]).find(x=>x&&x.id===d.aptoffEdit);return aptOfficeFormOpen(o||{});}
+    if(t.hasAttribute('data-aptoff-copy'))return aptOfficeListCopy();
+    if(t.hasAttribute('data-aptoff-save'))return aptOfficeFormSave();
+    if(t.hasAttribute('data-aptoff-cancel')){const f=document.getElementById('aptOfficeForm');if(f)f.hidden=true;return;}
     if(d.aptgo!==undefined){state.tab='project';state.activeProject=d.aptgo;__projView=null;render();syncMobileNav();return;}
     if(d.boardfilter!==undefined){e.stopPropagation();__boardFilter=!__boardFilter;return render();}
     if(d.boardreason!==undefined){e.stopPropagation();if(BOARD_ACTIONS.has(d.boardreason)){const fn=window[d.boardreason];if(typeof fn==='function'){try{if(d.boardarg!==undefined)fn(d.boardarg);else fn();}catch(_){}}}return;}   // v351 현장 축은 그 현장 화면
