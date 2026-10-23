@@ -16,6 +16,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
 
 const RAW_PHONE = '01033338888';   // 준공 현장 고객 전화 원문 — 딥링크 외 화면·이력 노출 금지
 const REVIEW_URL = 'https://naver.me/REVIEWTEST';
+const HOMEPAGE_REVIEW_URL = 'https://01023978629.github.io/manmool/review.html';   // v426 기본 링크(설정이 비었을 때)
 const DONE_AT = '2026-07-01';
 
 (async () => {
@@ -95,6 +96,7 @@ const DONE_AT = '2026-07-01';
     assert(r.sms.phone === RAW_PHONE, '딥링크 phone=원문: ' + r.sms.phone);
     assert(r.sms.text.includes('준공현장 A'), '문안에 현장명 포함');
     assert(r.sms.text.includes(REVIEW_URL), '문안에 리뷰 링크 포함');
+    assert(!r.sms.text.includes(HOMEPAGE_REVIEW_URL), '커스텀 링크가 있으면 기본 링크는 붙지 않는다');
     assert(typeof r.reqAt === 'string' && /\d{4}-\d\d-\d\dT/.test(r.reqAt), 'reviewRequestedAt(ISO) 기록: ' + r.reqAt);
     assert(!r.cardHtml.includes(RAW_PHONE), '준공관리 카드에 전화 원문 미노출');
     assert(!r.noteText.includes(RAW_PHONE), '이력(노트)에 전화 원문 미노출');
@@ -102,17 +104,21 @@ const DONE_AT = '2026-07-01';
     const reqd = await page.evaluate(() => (document.querySelector('[data-donecard]') || {}).outerHTML.includes('요청함'));
     assert(reqd, '리뷰 요청 후 "요청함" 표시');
   });
-  await test('리뷰 링크 미설정 시 문안에서 링크 줄 생략', async () => {
+  await test('리뷰 링크 미설정 시 홈페이지 후기 페이지 링크가 붙는다 (v426)', async () => {
     // 설정 UI로 리뷰 링크 비우기(실제 저장 경로 — __reviewUrl은 let이라 UI 통해서만 갱신)
     await page.evaluate(() => { openGdriveSetup(); const el = document.querySelector('#rvUrl'); el.value = ''; document.querySelector('#rvSave').click(); });
-    await page.waitForTimeout(200); await clearModal();
-    const cleared = await page.evaluate(() => __reviewUrl);
-    assert(cleared === '', '리뷰 링크 비워짐: ' + JSON.stringify(cleared));
+    await page.waitForTimeout(200);
+    const st = await page.evaluate(() => ({ cleared: __reviewUrl, state: (document.querySelector('#rvState') || {}).textContent || '' }));
+    await clearModal();
+    assert(st.cleared === '', '리뷰 링크 비워짐: ' + JSON.stringify(st.cleared));
+    assert(/홈페이지 후기 페이지/.test(st.state), '설정 상태가 기본 링크를 알린다: ' + st.state);
     await seed(); await openDetail('준공현장 A'); await page.waitForTimeout(150);
     await page.click('[data-reviewreqp]'); await page.waitForTimeout(200);
     const t = await page.evaluate(() => window.__sms[0].text);
     assert(t.includes('준공현장 A'), '현장명은 여전히 포함');
-    assert(!/https?:\/\//.test(t), '링크 미설정 시 링크 줄 생략: ' + JSON.stringify(t));
+    assert(t.includes(HOMEPAGE_REVIEW_URL), '미설정 시 홈페이지 후기 페이지 링크: ' + JSON.stringify(t));
+    assert(!t.includes(REVIEW_URL), '지운 커스텀 링크는 남지 않는다');
+    assert((t.match(/https?:\/\//g) || []).length === 1, '링크는 한 줄만: ' + JSON.stringify(t));
   });
 
   // 3) 보증 시작 — 법정 기본값(방수 3년·급배수 배관 2년) + serializeData 왕복 유지

@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v426 리뷰 요청 문자에 홈페이지 후기 링크 기본 포함
+
+- 왜: 설정의 ⭐ 리뷰 링크가 비어 있으면 리뷰 요청 문자가 링크 없이 나갔다 — 손님이 갈 곳이 없는 요청이었다.
+  공개 홈페이지에 후기 페이지(`manmool` `review.html`, manmool PR #223)가 생겨 기본 목적지가 생겼다.
+- 동작: `REVIEW_FALLBACK_URL`(`https://01023978629.github.io/manmool/review.html`). `hjReviewSms`는 설정 링크
+  (`__reviewUrl`)가 있으면 그것, 없으면 기본 링크를 **한 줄만** 붙인다. 설정 화면 문구·상태(`기본: 홈페이지 후기
+  페이지`)·비울 때 토스트가 그 사실을 말한다. 저장 위치는 그대로 이 기기 idb(`review_url`)뿐 — 직렬화 최상위 키·
+  클라우드 백업에 넣지 않는다(기존 `warranty-review` 검사가 계속 막는다). 더보기 126 그대로, 새 저장 키 없음.
+- 검사: `tests/warranty-review.e2e.js` — '미설정 시 홈페이지 후기 페이지 링크가 붙는다 (v426)'로 바꿨고(예전 '링크 줄
+  생략' 계약은 폐기), 커스텀 링크가 있으면 기본 링크는 붙지 않는다. 변이 5건 검출(기본 링크 제거·커스텀 무시·링크 두 줄·
+  설정 문구 되돌림·버전 핀 불일치). 관련 8파일(board-v351·completion-links·health-board·mobile-more-tools·
+  restore-parity·settings-tabs·test-stability.unit·warranty-review) 로컬 통과, 전체 회귀는 PR CI(`verify-release`).
+- 핀 3곳 `hyeonjang-v426-reviewlink`. 순서: manmool PR #223이 먼저 배포돼야 링크가 열린다 — 이 PR은 그 뒤에 병합.
+  Codex의 v428(#189)과는 파일 겹침 없이 독립이며, 그쪽이 먼저 병합되면 이 핀을 v429로 다시 올린다.
+
 ## 2026-10-16 v425 기기 안 오프라인 대기함
 
 - 사진 원본과 현장 기록을 기기에 보존하고 서버 동기화만 hyeonjang-share/outbox에서 순서 처리한다. 기존 공유 inbox·릴레이 대기열을 보존하며 대기 목록 제거로 사진을 지우지 않는다. 새 최상위 직렬화 키와 셸 경로를 추가하지 않는다.
