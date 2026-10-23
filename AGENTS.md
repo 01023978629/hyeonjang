@@ -3,6 +3,31 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v426 리뷰 요청 문자에 홈페이지 후기 링크 기본 포함
+
+- 왜: 설정의 ⭐ 리뷰 링크가 비어 있으면 리뷰 요청 문자가 링크 없이 나갔다 — 손님이 갈 곳이 없는 요청이었다.
+  공개 홈페이지에 후기 페이지(`manmool` `review.html`, manmool PR #223)가 생겨 기본 목적지가 생겼다.
+- 동작: `REVIEW_FALLBACK_URL`(`https://01023978629.github.io/manmool/review.html`). `hjReviewSms`는 설정 링크
+  (`__reviewUrl`)가 있으면 그것, 없으면 기본 링크를 **한 줄만** 붙인다. 설정 화면 문구·상태(`기본: 홈페이지 후기
+  페이지`)·비울 때 토스트가 그 사실을 말한다. 저장 위치는 그대로 이 기기 idb(`review_url`)뿐 — 직렬화 최상위 키·
+  클라우드 백업에 넣지 않는다(기존 `warranty-review` 검사가 계속 막는다). 더보기 126 그대로, 새 저장 키 없음.
+- 검사: `tests/warranty-review.e2e.js` — '미설정 시 홈페이지 후기 페이지 링크가 붙는다 (v426)'로 바꿨고(예전 '링크 줄
+  생략' 계약은 폐기), 커스텀 링크가 있으면 기본 링크는 붙지 않는다. 변이 5건 검출(기본 링크 제거·커스텀 무시·링크 두 줄·
+  설정 문구 되돌림·버전 핀 불일치). 관련 8파일(board-v351·completion-links·health-board·mobile-more-tools·
+  restore-parity·settings-tabs·test-stability.unit·warranty-review) 로컬 통과, 전체 회귀는 PR CI(`verify-release`).
+- 핀 3곳 `hyeonjang-v426-reviewlink`. 순서: manmool PR #223이 먼저 배포돼야 링크가 열린다 — 이 PR은 그 뒤에 병합.
+  Codex의 v428(#189)과 기능 파일은 겹치지 않지만, 핀 3곳·AGENTS.md·offlinequeue 검사 2개의 같은 줄을 양쪽이 고친다 —
+  나중에 병합되는 쪽이 충돌을 풀고, #189가 먼저면 이 핀을 v429로 다시 올린다.
+- **같은 규칙을 입구 다섯 곳에 다 건다.** 처음엔 `hjReviewSms`(현장 상세 ⭐·준공 체크 GO)에만 붙어서, 더보기 🗣 리뷰 요청과
+  AI 운영 큐가 부르는 `reviewRequestSms`, 문자 센터 '⭐ 안부·리뷰 부탁' 문안(`msgTemplate` review)은 여전히 링크 없이 나갔다.
+  `hjReviewLink()` 하나가 설정 링크 → 없으면 홈페이지 후기 페이지를 정하고 세 경로가 전부 그것을 쓴다(링크는 한 줄).
+  `tests/warranty-review.e2e.js`가 두 경로의 빈 설정·커스텀 설정을 모두 확인한다(변이 3건 — 더보기 링크 제거·문자 센터 링크 제거·커스텀 무시 — 전부 검출).
+- **네 번째 핀이 숨어 있었다.** `tests/offlinequeue-cache-v425.unit.js`·`tests/offlinequeue-v425.e2e.js` 가 캐시 이름
+  `hyeonjang-v425-offlinequeue` 를 리터럴로 들고 있어 버전을 올리자 PR CI 가 바로 떨어졌다(50개 중 1 실패, 브라우저 검사
+  미시작). 둘 다 `sw.js` 의 `const C='…'` 에서 현재 이름을 읽도록 고쳤다 — 버전을 올릴 때 고칠 핀은 계속 3곳이다.
+  검사 자체는 그대로다(활성화가 옛 캐시를 지우고 현재 캐시를 남기는지, 설치된 SW 가 현재 캐시로 index 를 데우는지).
+  **버전별 검사를 새로 쓸 때 캐시 이름·APP_BUILD 를 리터럴로 박지 마라** — 다음 버전이 올라가는 순간 그 검사가 막는다.
+
 ## 2026-10-16 v425 기기 안 오프라인 대기함
 
 - 사진 원본과 현장 기록을 기기에 보존하고 서버 동기화만 hyeonjang-share/outbox에서 순서 처리한다. 기존 공유 inbox·릴레이 대기열을 보존하며 대기 목록 제거로 사진을 지우지 않는다. 새 최상위 직렬화 키와 셸 경로를 추가하지 않는다.

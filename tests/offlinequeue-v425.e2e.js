@@ -14,6 +14,8 @@ const BOOT = ['__hjRestoreDone', '__hjRelayConfigDone', '__hjOfficeOpsBootDone',
 const baseline = process.env.HJ_V425_BASELINE && execFileSync('git', ['show', process.env.HJ_V425_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
 const shellPaths = text => { const hit = text.match(/const SHELL_PATHS=new Set\(\[([\s\S]*?)\]\);/); assert(hit, 'SW_SHELL_PATHS_PRESENT'); return hit[1].replace(/\s/g, ''); };
 const baseSW = execFileSync('git', ['show', '8e9fdfe:sw.js'], { cwd: ROOT, encoding: 'utf8' });
+// 현재 캐시 이름은 sw.js 의 핀(const C)에서 읽는다 — 버전을 올릴 때마다 여기 리터럴을 고치는 네 번째 핀을 두지 않는다(핀 3곳은 version-sync.check 가 맞춘다).
+const SW_CACHE = (/const C='([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')) || [])[1]; assert(SW_CACHE && /^hyeonjang-v\d+-/.test(SW_CACHE), 'SW_CACHE_PIN_READABLE: ' + SW_CACHE);
 let browser, passed = 0;
 async function rendererNetwork(session, offline) {
   const state = { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
@@ -334,7 +336,7 @@ async function rendererNetwork(session, offline) {
     try {
       await swPage.goto(swURL.href, { waitUntil: 'domcontentloaded' }); await swBoot();
       await swPage.waitForFunction(() => !!navigator.serviceWorker.controller);
-      const warm = await swPage.evaluate(async () => { const registration = await navigator.serviceWorker.ready; const names = await caches.keys(); const cache = await caches.open('hyeonjang-v425-offlinequeue'); return { active: registration.active?.state, cachedIndex: !!await cache.match(new URL('index.html', location.href).href), names }; });
+      const warm = await swPage.evaluate(async cacheName => { const registration = await navigator.serviceWorker.ready; const names = await caches.keys(); if (!names.includes(cacheName)) throw Error('SW_CURRENT_CACHE_MISSING ' + cacheName + ' in ' + names.join(',')); const cache = await caches.open(cacheName); return { active: registration.active?.state, cachedIndex: !!await cache.match(new URL('index.html', location.href).href), names }; }, SW_CACHE);
       assert.equal(warm.active, 'activated'); assert.equal(warm.cachedIndex, true, 'SW_INSTALL_WARMS_INDEX_BEFORE_OFFLINE_RESTART');
       const swNetworkState = await swContext.newCDPSession(swPage); await swNetworkState.send('Network.enable');
       await swPage.evaluate(async () => {
