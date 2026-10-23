@@ -141,6 +141,21 @@ const DONE_AT = '2026-07-01';
     await page.waitForTimeout(200); await clearModal();
   });
 
+  await test('문자 센터 작업자 출입 안내 문안이 비지 않고 출입번호를 담지 않는다 · 연간 결산 도움말은 연말 결산을 가리킨다', async () => {
+    await seed();
+    const r = await page.evaluate(() => {
+      const p = state.projects[0];
+      const access = msgTemplate('access', p);
+      const help = (HJ_HELP || []).flatMap(sec => sec.items || []).find(h => h.k === '연간 결산' && /더보기 \[📊 연간 결산\]/.test(h.d)) || {};
+      return { access, help: help.d || '', company: COMPANY.name, tel: COMPANY.tel };
+    });
+    assert(r.access.length > 40 && r.access.includes(r.company) && r.access.includes('준공현장 A'), '출입 안내 문안이 채워진다: ' + JSON.stringify(r.access.slice(0, 60)));
+    assert(/출입번호는 문자로 주고받지 않고/.test(r.access), '출입번호를 문자에 넣지 않는다는 안내');
+    const digits = r.access.split(r.tel).join('').match(/\d{4,}/g) || [];
+    assert(digits.length === 0, '회사 전화 외 4자리 이상 숫자(출입번호 등) 없음: ' + JSON.stringify(digits));
+    assert(/연말 결산/.test(r.help) && !/AI 총평까지 한 장으로/.test(r.help), '연간 결산 도움말이 AI 총평 위치(연말 결산)를 바르게 안내: ' + r.help);
+  });
+
   // 3) 보증 시작 — 법정 기본값(방수 3년·급배수 배관 2년) + serializeData 왕복 유지
   await test('[🛡 보증 시작] → 법정 기본 항목·만료일 계산 + 직렬화 왕복', async () => {
     // 리뷰 링크 복구(무관하지만 상태 정리)
