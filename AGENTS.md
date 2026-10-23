@@ -3,6 +3,41 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-23 v427 누수 접수 비용 출처·제출 서류 체크
+
+- 왜: 누수 접수에 "돈이 어디서 나오는지"(관리비·공용부 발주 / 보험 청구 / 자가 부담 / 미정)를 적을 자리가 없어 카드에서
+  안 보였고, 보고서 용도(보험사 제출용/관리사무소용)를 매번 손으로 골랐다. 출처별로 현장에서 챙길 서류를 체크해 둘 곳도 없었다.
+- 동작: `p.leak.funding {source,docs,at}` — `source`는 `HJ_LEAK_FUNDING_SOURCES` 키(`self/office/insurance/undecided`, 미입력 `''`),
+  `docs`는 `HJ_LEAK_FUNDING_DOCS[source]`의 id 부분집합(정본 순서·화이트리스트, 라벨은 `HJ_LEAK_FUNDING_DOC_LABELS` 화면 전용 —
+  id 를 바꾸면 기존 체크가 조용히 사라지므로 라벨만 고친다). 읽기 `hjLeakFundingData/Summary/Chip/Conflict`는 저장본을 바꾸지 않는다.
+  **쓰기 2경로**: ① 접수 모달(`hjLeakIntakeView`)의 '비용 출처' select 는 `hjLeakIntakeSave` 트랜잭션 안에서 **출처가 달라진 때만**
+  funding 을 쓰고(같으면 docs·at 불변, 둘 다 `''` 이면 키를 만들지 않음) 접수 노트 꼬리에 ` · 비용 출처 …` 만 붙인다 —
+  `hjLeakIntakeSummary`·보고서 '접수 내용'은 불변. 접수 모달에는 서류 체크 개수가 없으므로 출처를 바꾸면 `#hjLeakFundingHint` 가
+  '저장된 서류 체크 n건 중 m건은 이 출처에 없어 저장하면 지워져요' 를 미리 알리고(공통 id 만 남는 경우는 조용), '선택 안 함'으로 돌려
+  저장하면 접수 노트 꼬리가 ` · 비용 출처 지움` 으로 남는다(그 전엔 서류 7/7 이 0 으로 떨어져도 흔적이 없었다). ② 현장 카드 `📋 비용·서류`(`data-leakfunding` → `hjLeakFundingView`) 가 출처·서류
+  체크를 `hjLeakFundingSave` 로 funding 만 통째 교체하고 `[비용 출처] 날짜 · …` 노트 1건을 남긴다(접수에 넣지 않은 이유: 접수 저장은
+  `intake.at`=보고서 접수일을 다시 찍고 접수 노트를 매번 1건 더 남긴다). 모달 안 체크는 메모리 Set 이라 출처를 바꿨다 되돌려도 살아남고,
+  저장 때 그 출처 목록으로만 걸러진다. 두 writer 가 같은 키를 쓰므로 접수 저장 가드는 합성 스탬프 `hjLeakIntakeStamp`(intake+funding)
+  로 바꿨다 — 서류 모달을 열어 둔 채 접수에서 출처를 바꾸면 서류 저장이, 그 반대도 '바뀌었습니다' 로 거절된다(의도된 보호).
+  보고서 기본 용도는 `hjLeakReportDefaultPurpose`(보험 청구→보험사 제출용, 관리사무소→관리사무소용, 그 외 기존 'insurance') 로
+  미리 눌리고 용도 버튼으로 바꿀 수 있으며 `#hjLeakReportPurposeHint` 는 안내만 한다(막지 않음). 접수 선택지 office/insurance 와의
+  모순(보험 '없음'+보험 청구 등)도 안내만 — 보험 적용 여부를 앱이 단정하지 않는다. 더보기 126·직렬화 최상위 키·`PAID_SERIALIZED_STATE_KEYS`·
+  문자 7종·수금·세금계산서 코드는 손대지 않았다. `hjLeakReportStamp`·`hjLeakSmsExpected` 가 `projectBackupSafe(p)` 를 포함하므로
+  서류 저장 직후 열려 있던 보고서/문자 창은 기존 방식대로 '바뀌었습니다' 로 닫힌다.
+- 검사: `tests/leakfunding-v427.e2e.js` 7/7(읽기 불변·접수 경로·AS 왕복·서류 모달+`page.reload()` 복원·저장 실패/경합·보고서 기본
+  용도/힌트/모순·카드 6버튼 390px/44px). 변이 6건 전부 검출(`HJ_LEAK_FUNDING_MUTATION=purpose|whitelist|chip|resume|stamp|conflict`,
+  각각 명명된 ERR_ASSERTION 으로 `MUTATION_DETECTED`). `--canary` 는 v426 머리 c36df47 격리 복사본(8499)에서
+  `LEAK_FUNDING_FEATURE_PRESENT` 로 실패, v427 에서 통과. 로컬 통과: leakintake-v419·leakreport-v422·leaksms-v424·leakdetect-v420·
+  warranty-review·mobile-more-tools·leakwarranty-v423·restore-parity·board-v351 + 정적 검사 18/19(`office-ops-server-isolation` 은
+  얕은 클론에 기준 커밋 19657c3 이 없어 이 환경에서는 변경 전에도 실패 — OfficeOps 브랜치 전용 검사). 전체 회귀는 PR CI(`verify-release`).
+- 핀 3곳 `hyeonjang-v427-leakfunding`(APP_BUILD·sw.js `const C`·version-sync TARGET_BUILD). 새 검사에 버전 리터럴 없음.
+  더보기126·직렬화 최상위키 41 유지·새 최상위 키 없음. v426 PR #190(c36df47) 위에 쌓였다 — 병합 순서 manmool #223 → hyeonjang #190 → v427.
+  Codex v428(#189)과 기능 구역은 겹치지 않고 핀 3곳·AGENTS.md 맨 위·offlinequeue 검사 2줄만 겹친다(어느 쪽도 리터럴이 아님) —
+  나중에 병합되는 쪽이 풀고, #189 가 먼저면 이 핀을 v429 로 다시 올린다. 새 보고서 헬퍼는 35022(`hjLeakReceiptPending`, #189 구역) 앞이
+  아니라 `hjLeakReportOptions` 뒤에 두어 hunk 를 떼어 놓았다.
+- 대표 확인 대기: 서류 라벨 13개 구성(일반적으로 요구되는 수준의 추정 — 보험사·관리사무소마다 다름), '미정'(물어봤지만 안 정해짐)과
+  미입력의 구분, 보고서 본문 '접수 내용'에 출처를 찍을지(지금은 안 찍음), 카드 버튼 6개 밀도. 결과·기본값은 비커밋 `보고/v427.md`.
+
 ## 2026-10-23 v426 리뷰 요청 문자에 홈페이지 후기 링크 기본 포함
 
 - 왜: 설정의 ⭐ 리뷰 링크가 비어 있으면 리뷰 요청 문자가 링크 없이 나갔다 — 손님이 갈 곳이 없는 요청이었다.

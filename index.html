@@ -3319,7 +3319,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v426-reviewlink';
+const APP_BUILD='hyeonjang-v427-leakfunding';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -6241,6 +6241,13 @@ const HJ_LEAK_INTAKE_CHOICES=Object.freeze({
   insurance:Object.freeze(['일상배상책임 있음','없음','모름'])
 });
 const HJ_LEAK_ONE_LINE_RE=/[\r\n\t]+/g;
+/* v427 비용 출처·제출 서류 — p.leak.funding {source,docs(id),at}. 출처·서류 id 는 저장 키, 라벨은 화면 전용.
+   서류 목록은 일반적으로 요구되는 수준의 안내이며 체크는 현장 확인 기록일 뿐 제출·승인 결과가 아니다. */
+const HJ_LEAK_FUNDING_SOURCES=Object.freeze({self:'자가 부담',office:'관리사무소(관리비·공용부)',insurance:'보험 청구',undecided:'미정'});
+const HJ_LEAK_FUNDING_PURPOSE=Object.freeze({insurance:'insurance',office:'office'});
+const HJ_LEAK_FUNDING_DOC_LABELS=Object.freeze({claimNo:'보험사 사고 접수번호 확인',policy:'보험증권(일상배상책임) 확인',photoCause:'원인 부위 사진(탐지)',damagePhoto:'피해 부위 사진(아랫집 등 피해 세대)',quote:'견적서',report:'탐지·수리 보고서',photoWork:'조치 전·후 사진',officeContact:'관리사무소 담당자 확인',zoneProof:'전유·공용 구분 근거(탐지 기록)',approval:'공사 승인·발주 확인',warrantyDoc:'보증서 전달 여부 확인',askOffice:'관리사무소 연락 여부 확인',askInsurance:'보험 가입 여부 확인'});
+const HJ_LEAK_FUNDING_DOCS=Object.freeze({insurance:Object.freeze(['claimNo','policy','photoCause','damagePhoto','quote','report','photoWork']),office:Object.freeze(['officeContact','zoneProof','photoCause','quote','report','approval','photoWork']),self:Object.freeze(['quote','photoCause','photoWork','warrantyDoc']),undecided:Object.freeze(['askOffice','askInsurance','photoCause','photoWork'])});
+const HJ_LEAK_FUNDING_NOTICE='일반적으로 요구되는 서류이며 보험사·관리사무소마다 다를 수 있어요. 체크는 현장에서 확인했다는 기록이며 제출·승인 결과를 뜻하지 않아요.';
 
 function hjProjectKind(p){return p&&p.kind==='leak'?'leak':'interior';}
 function hjStageLabel(p,i){
@@ -6276,21 +6283,69 @@ function hjLeakIntakeSummary(intake){
   if(d.memo)parts.push(String(d.memo).replace(HJ_LEAK_ONE_LINE_RE,' ').trim());
   return parts.join(' · ')||'상세 내용 미입력';
 }
+/* v427 읽기 함수는 저장본을 바꾸지 않는다. 출처별 화이트리스트로 docs 를 걸러 정본 순서로 돌려준다. */
+function hjLeakFundingData(p){
+  const leak=p&&p.leak&&typeof p.leak==='object'&&!Array.isArray(p.leak)?p.leak:null,raw=leak&&leak.funding&&typeof leak.funding==='object'&&!Array.isArray(leak.funding)?leak.funding:null;
+  if(!raw)return {source:'',docs:[]};
+  const source=Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,raw.source)?raw.source:'';
+  const out={source,docs:(HJ_LEAK_FUNDING_DOCS[source]||[]).filter(id=>Array.isArray(raw.docs)&&raw.docs.includes(id))};
+  if(typeof raw.at==='string')out.at=raw.at;
+  return out;
+}
+function hjLeakFundingLabel(source){return HJ_LEAK_FUNDING_SOURCES[source]||'비용 출처 미입력';}
+function hjLeakFundingProgress(f){
+  const d=f||{},list=HJ_LEAK_FUNDING_DOCS[d.source]||[],docs=Array.isArray(d.docs)?d.docs:[];
+  return {done:list.filter(id=>docs.includes(id)).length,total:list.length,missing:list.filter(id=>!docs.includes(id)).map(id=>HJ_LEAK_FUNDING_DOC_LABELS[id])};
+}
+function hjLeakFundingSummary(f){
+  const d=f||{},pr=hjLeakFundingProgress(d);
+  return (HJ_LEAK_FUNDING_SOURCES[d.source]?'비용 출처 ':'')+hjLeakFundingLabel(d.source)+(pr.total?' · 서류 '+pr.done+'/'+pr.total:'');
+}
+function hjLeakFundingChip(p){const f=hjLeakFundingData(p),text=hjLeakFundingSummary(f);return '💰 '+(f.source?text.replace(/^비용 출처 /,''):text);}
+/* v427 접수 선택지(연락·가입 여부)와 비용 출처(누가 내는가)가 어긋나면 안내만 한다. 보험 적용 여부를 앱이 단정하지 않는다. */
+function hjLeakFundingConflict(intake,source){
+  const d=intake||{};
+  if(source==='insurance'&&d.insurance==='없음')return '접수에는 보험 없음으로 적혀 있어요. 보험사에 확인한 뒤 서류를 준비해 주세요.';
+  if(source==='office'&&d.office==='해당 없음(단독·상가)')return '접수에는 관리사무소 해당 없음으로 적혀 있어요. 비용 출처를 다시 확인해 주세요.';
+  return '';
+}
+/* v427 접수 저장은 intake 와 funding 두 키를 함께 쓰므로 합성 스탬프 하나로 둘 다 보호한다. */
+function hjLeakIntakeStamp(p){return JSON.stringify({intake:p&&p.leak&&p.leak.intake||null,funding:p&&p.leak&&p.leak.funding||null});}
 
 /* v419 저장 후보를 먼저 만든다. 저장 실패/다른 탭/현장 교체 때 접수와 노트가 절반만 남지 않는다. */
 async function hjLeakIntakeSave(p,name,input,expected,stillOpen){
-  const current=()=>hjLeakProjectCurrent(p,name)&&JSON.stringify(p.leak&&p.leak.intake||null)===expected&&(!stillOpen||stillOpen());
+  const current=()=>hjLeakProjectCurrent(p,name)&&hjLeakIntakeStamp(p)===expected&&(!stillOpen||stillOpen());
   if(!current())throw new Error('현장 정보가 바뀌었습니다. 접수 내용을 다시 열어 주세요.');
   const normalized=hjLeakIntakeData({leak:{intake:input}}),at=new Date().toISOString();
-  const intake={...normalized,where:normalized.where.slice(),at};
+  const intake={...normalized,where:normalized.where.slice(),at},src=Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,input&&input.funding)?input.funding:'';
   return durableLocalMutation({snapshotLabel:'누수 접수 저장 전',beforeCommit:()=>{
     if(!current())throw new Error('현장 정보가 바뀌었습니다. 접수 내용을 다시 열어 주세요.');
   },mutateDraft:draft=>{
     const found=(draft.projects||[]).filter(x=>x&&x.name===name),target=found.length===1?found[0]:null;
-    if(!target||target.archived||hjProjectKind(target)!=='leak'||JSON.stringify(target.leak&&target.leak.intake||null)!==expected)throw new Error('접수 정보가 바뀌었습니다. 다시 확인해 주세요.');
+    if(!target||target.archived||hjProjectKind(target)!=='leak'||hjLeakIntakeStamp(target)!==expected)throw new Error('접수 정보가 바뀌었습니다. 다시 확인해 주세요.');
     target.leak={...(target.leak&&typeof target.leak==='object'&&!Array.isArray(target.leak)?target.leak:{}),intake};
+    // v427 출처가 달라진 때만 funding 을 쓴다(같으면 docs·at 불변). 둘 다 '' 이면 funding 키를 만들지 않는다.
+    const prevFunding=hjLeakFundingData(target);
+    if(src!==prevFunding.source)target.leak.funding={...hjLeakFundingData({leak:{funding:{...prevFunding,source:src}}}),at};
     draft.notes=Array.isArray(draft.notes)?draft.notes:[];
-    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[누수 접수] '+localDate(new Date(at))+' · '+hjLeakIntakeSummary(intake),project:name});
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[누수 접수] '+localDate(new Date(at))+' · '+hjLeakIntakeSummary(intake)+(src?' · 비용 출처 '+HJ_LEAK_FUNDING_SOURCES[src]:(prevFunding.source?' · 비용 출처 지움':'')),project:name});
+    return name;
+  }});
+}
+/* v427 서류 체크는 접수와 분리해 funding 만 통째로 교체한다 — intake.at(보고서 접수일)과 접수 노트를 다시 찍지 않는다. */
+async function hjLeakFundingSave(p,name,input,expected,stillOpen){
+  const current=()=>hjLeakProjectCurrent(p,name)&&JSON.stringify(p.leak&&p.leak.funding||null)===expected&&(!stillOpen||stillOpen());
+  if(!current())throw new Error('비용 출처 정보가 바뀌었습니다. 다시 열어 주세요.');
+  const normalized=hjLeakFundingData({leak:{funding:input}}),at=new Date().toISOString();
+  const funding={source:normalized.source,docs:normalized.docs.slice(),at};
+  return durableLocalMutation({snapshotLabel:'비용 출처 저장 전',beforeCommit:()=>{
+    if(!current())throw new Error('비용 출처 정보가 바뀌었습니다. 다시 열어 주세요.');
+  },mutateDraft:draft=>{
+    const found=(draft.projects||[]).filter(x=>x&&x.name===name),target=found.length===1?found[0]:null;
+    if(!target||target.archived||hjProjectKind(target)!=='leak'||JSON.stringify(target.leak&&target.leak.funding||null)!==expected)throw new Error('비용 출처 정보가 바뀌었습니다. 다시 열어 주세요.');
+    target.leak={...(target.leak&&typeof target.leak==='object'&&!Array.isArray(target.leak)?target.leak:{}),funding};
+    draft.notes=Array.isArray(draft.notes)?draft.notes:[];
+    draft.notes.push({id:uid(),date:new Date(at).toLocaleString('ko-KR'),text:'[비용 출처] '+localDate(new Date(at))+' · '+hjLeakFundingSummary(funding),project:name});
     return name;
   }});
 }
@@ -6301,19 +6356,22 @@ function hjLeakIntakeView(name,resume){
   if(!hjLeakProjectCurrent(p,name)){toast('현장 정보가 바뀌었습니다. 다시 열어 주세요.');return false;}
   if(__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('진행 중인 저장을 마친 뒤 다시 열어 주세요.');return false;}
   // v423 이전 기록/AS 왕복의 초안은 메모리에만 보존하며 저장본 변경 시 덮어쓰기를 막는다.
-  const expected=resume?resume.expected:JSON.stringify(p.leak&&p.leak.intake||null),d=resume?hjLeakIntakeData({leak:{intake:resume.input}}):hjLeakIntakeData(p);
+  const expected=resume?resume.expected:hjLeakIntakeStamp(p),d=resume?hjLeakIntakeData({leak:{intake:resume.input}}):hjLeakIntakeData(p);
+  // v427 resume.input 은 hjLeakIntakeData 로 재정규화되어 funding 이 빠지므로 초안 최상위 funding 에서 따로 읽는다.
+  const fundingSel=resume?(Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,resume.funding)?resume.funding:''):hjLeakFundingData(p).source;
   let selectedPhotos=resume&&Array.isArray(resume.photos)?resume.photos.slice():[],busy=false;
   const field=(key,id,label)=>'<label for="'+id+'" style="display:block;font-size:13px;margin:10px 0 4px">'+label+'</label><select id="'+id+'" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">선택 안 함</option>'+HJ_LEAK_INTAKE_CHOICES[key].map(v=>'<option value="'+escapeAttr(v)+'"'+(d[key]===v?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select>';
   const body='<div id="hjLeakIntake" style="min-width:0;overflow-wrap:anywhere">'+hjLeakRepeatBanner(p)+'<p style="margin:0 0 10px;font-size:14px"><b>'+escapeHtml(name)+'</b> · 통화하며 확인한 내용만 골라 주세요.</p>'+
     '<fieldset style="min-width:0;margin:0;padding:8px;border:1px solid var(--line-soft);border-radius:10px"><legend>어디서 (여러 곳 선택)</legend><div style="display:flex;flex-wrap:wrap;gap:6px">'+HJ_LEAK_INTAKE_CHOICES.where.map(v=>'<label style="display:flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;border:1px solid var(--line-soft);border-radius:10px"><input type="checkbox" data-leakwhere value="'+escapeAttr(v)+'"'+(d.where.includes(v)?' checked':'')+' style="width:18px;height:18px">'+escapeHtml(v)+'</label>').join('')+'</div></fieldset>'+
     field('since','hjLeakSince','언제부터')+field('amount','hjLeakAmount','물 양')+field('neighbor','hjLeakNeighbor','윗집·아랫집')+field('office','hjLeakOffice','관리사무소 연락')+field('insurance','hjLeakInsurance','보험')+
+    '<label for="hjLeakFunding" style="display:block;font-size:13px;margin:10px 0 4px">비용 출처 (누가 부담하나요)</label><select id="hjLeakFunding" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">선택 안 함</option>'+Object.entries(HJ_LEAK_FUNDING_SOURCES).map(([k,v])=>'<option value="'+k+'"'+(fundingSel===k?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select><p id="hjLeakFundingHint" role="status" class="hint" style="margin:4px 0;min-height:18px"></p>'+
     '<label for="hjLeakMemo" style="display:block;font-size:13px;margin:10px 0 4px">메모</label><textarea id="hjLeakMemo" maxlength="2000" rows="3" style="display:block;width:100%;font-size:16px;min-height:88px">'+escapeHtml(d.memo)+'</textarea>'+
     '<label for="hjLeakPhotos" style="display:block;font-size:13px;margin:10px 0 4px">접수 사진 (최대 2장)</label><input id="hjLeakPhotos" type="file" accept="image/*" multiple style="display:block;width:100%;min-height:44px;font-size:14px"><p id="hjLeakPhotoCount" role="status" style="font-size:12px;margin:4px 0">선택한 사진 없음</p>'+
-    '<p class="hint" style="margin:8px 0">사진은 접수 저장 후 확인창에서 현장을 확인하고 추가합니다. 출동은 나중에 정해도 접수 내용은 저장됩니다.</p><p id="hjLeakIssue" role="alert" style="min-height:20px;color:var(--warn);margin:6px 0"></p></div>';
+    '<p class="hint" style="margin:8px 0">사진은 접수 저장 후 확인창에서 현장을 확인하고 추가합니다. 출동은 나중에 정해도 접수 내용은 저장됩니다. 제출 서류 체크는 저장 후 현장 카드의 📋 비용·서류에서 합니다.</p><p id="hjLeakIssue" role="alert" style="min-height:20px;color:var(--warn);margin:6px 0"></p></div>';
   const save=async offset=>{
     if(busy)return;
     const root=document.getElementById('hjLeakIntake');if(!root)return;
-    const g=id=>root.querySelector('#'+id),input={where:[...root.querySelectorAll('[data-leakwhere]:checked')].map(el=>el.value),since:g('hjLeakSince').value,amount:g('hjLeakAmount').value,neighbor:g('hjLeakNeighbor').value,office:g('hjLeakOffice').value,insurance:g('hjLeakInsurance').value,memo:g('hjLeakMemo').value.trim()};
+    const g=id=>root.querySelector('#'+id),input={where:[...root.querySelectorAll('[data-leakwhere]:checked')].map(el=>el.value),since:g('hjLeakSince').value,amount:g('hjLeakAmount').value,neighbor:g('hjLeakNeighbor').value,office:g('hjLeakOffice').value,insurance:g('hjLeakInsurance').value,memo:g('hjLeakMemo').value.trim(),funding:g('hjLeakFunding').value};
     busy=true;__modalCloseLocked=true;
     const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select,#modalRoot textarea')];controls.forEach(el=>el.disabled=true);
     let saved=false;
@@ -6346,13 +6404,57 @@ function hjLeakIntakeView(name,resume){
   document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
   const photo=document.getElementById('hjLeakPhotos'),count=document.getElementById('hjLeakPhotoCount'),issue=document.getElementById('hjLeakIssue');
   if(selectedPhotos.length)count.textContent='사진 '+selectedPhotos.length+'장 선택 · 접수 저장 후 확인';
-  if(resume&&resume.expected!==JSON.stringify(p.leak&&p.leak.intake||null))issue.textContent='접수 저장본이 바뀌었습니다. 입력은 보존했지만 덮어쓰지 않습니다. 내용을 확인한 뒤 다시 열어 주세요.';
+  if(resume&&resume.expected!==hjLeakIntakeStamp(p))issue.textContent='접수 저장본이 바뀌었습니다. 입력은 보존했지만 덮어쓰지 않습니다. 내용을 확인한 뒤 다시 열어 주세요.';
   hjLeakRepeatBind(p,()=>hjLeakIntakeCapture(document.getElementById('hjLeakIntake'),expected,selectedPhotos),draft=>hjLeakIntakeView(name,draft));
+  // v427 모달 안은 #view 위임이 닿지 않으므로 직접 건다. 모순은 안내만 하고 값을 바꾸지 않는다.
+  // 출처를 바꾸면 저장된 서류 체크가 새 출처 목록으로 걸러진다 — 접수 모달에는 체크 개수가 없으므로 지워질 건수를 미리 알린다.
+  const fundingHint=()=>{const r=document.getElementById('hjLeakIntake');if(!r)return;const g=id=>r.querySelector('#'+id),sel=g('hjLeakFunding').value,saved=hjLeakFundingData(p);
+    let text=hjLeakFundingConflict({insurance:g('hjLeakInsurance').value,office:g('hjLeakOffice').value},sel);
+    if(sel!==saved.source&&saved.docs.length){const drop=saved.docs.length-hjLeakFundingData({leak:{funding:{...saved,source:sel}}}).docs.length;if(drop>0)text+=(text?' ':'')+'저장된 서류 체크 '+saved.docs.length+'건 중 '+drop+'건은 이 출처에 없어 저장하면 지워져요(📋 비용·서류에서 확인).';}
+    g('hjLeakFundingHint').textContent=text;};
+  ['hjLeakFunding','hjLeakInsurance','hjLeakOffice'].forEach(id=>{document.getElementById(id).onchange=fundingHint;});fundingHint();
   photo.onchange=()=>{
     const picked=Array.from(photo.files||[]);
     if(picked.length>2){photo.value='';selectedPhotos=[];count.textContent='선택한 사진 없음';issue.textContent='사진은 최대 2장까지 골라 주세요. 파일은 추가하지 않았습니다.';return;}
     selectedPhotos=picked;issue.textContent='';count.textContent=picked.length?'사진 '+picked.length+'장 선택 · 접수 저장 후 확인': '선택한 사진 없음';
   };
+  return true;
+}
+
+/* v427 비용·서류 모달 — 체크는 메모리 Set 에 모아 출처를 바꿨다 되돌려도 살아남고, 저장 때 그 출처 목록으로만 걸러진다. */
+function hjLeakFundingView(name){
+  const p=hjLeakProject(name);
+  if(!hjLeakProjectCurrent(p,name)){toast('현장 정보가 바뀌었습니다. 다시 열어 주세요.');return false;}
+  if(__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('진행 중인 저장을 마친 뒤 다시 열어 주세요.');return false;}
+  const expected=JSON.stringify(p.leak&&p.leak.funding||null),d=hjLeakFundingData(p),intake=hjLeakIntakeData(p),checked=new Set(d.docs);
+  let sel=d.source,busy=false;
+  const docsHtml=()=>{const list=HJ_LEAK_FUNDING_DOCS[sel]||[];return '<legend>제출 서류 확인'+(list.length?' ('+list.filter(id=>checked.has(id)).length+'/'+list.length+')':'')+'</legend>'+(list.length?'<div style="display:flex;flex-wrap:wrap;gap:6px">'+list.map(id=>'<label style="display:flex;align-items:center;gap:6px;min-height:44px;padding:0 10px;border:1px solid var(--line-soft);border-radius:10px"><input type="checkbox" data-leakfundingdoc="'+escapeAttr(id)+'"'+(checked.has(id)?' checked':'')+' style="width:18px;height:18px">'+escapeHtml(HJ_LEAK_FUNDING_DOC_LABELS[id])+'</label>').join('')+'</div>':'<p class="hint" style="margin:4px 0">비용 출처를 고르면 서류 목록이 나와요.</p>');};
+  const purposeText=()=>'보고서 기본 용도: '+HJ_LEAK_REPORT_PURPOSES[hjLeakReportPurpose(HJ_LEAK_FUNDING_PURPOSE[sel])]+(HJ_LEAK_FUNDING_PURPOSE[sel]?' — 비용 출처에 따름':' — 출처와 무관한 기본값');
+  const body='<div id="hjLeakFundingModal" style="min-width:0;overflow-wrap:anywhere"><p style="margin:0 0 10px;font-size:14px"><b>'+escapeHtml(name)+'</b> · 누가 비용을 내는지와 현장에서 확인한 서류를 체크해 주세요.</p>'+
+    '<label for="hjLeakFundingSource" style="display:block;font-size:13px;margin:10px 0 4px">비용 출처</label><select id="hjLeakFundingSource" style="display:block;width:100%;min-height:44px;font-size:16px"><option value="">선택 안 함</option>'+Object.entries(HJ_LEAK_FUNDING_SOURCES).map(([k,v])=>'<option value="'+k+'"'+(sel===k?' selected':'')+'>'+escapeHtml(v)+'</option>').join('')+'</select>'+
+    '<p id="hjLeakFundingConflict" role="status" class="hint" style="margin:4px 0;min-height:18px">'+escapeHtml(hjLeakFundingConflict(intake,sel))+'</p>'+
+    '<fieldset id="hjLeakFundingDocs" style="min-width:0;margin:10px 0 0;padding:8px;border:1px solid var(--line-soft);border-radius:10px">'+docsHtml()+'</fieldset>'+
+    '<p id="hjLeakFundingPurpose" class="hint" style="margin:8px 0 0">'+escapeHtml(purposeText())+'</p>'+
+    '<p class="hint" style="margin:8px 0 0">'+escapeHtml(HJ_LEAK_FUNDING_NOTICE)+'</p><p class="hint" style="margin:4px 0">출처를 바꾸면 그 출처에 없는 체크는 저장되지 않습니다.</p><p id="hjLeakFundingIssue" role="alert" style="min-height:20px;color:var(--warn);margin:6px 0"></p></div>';
+  const syncChecked=root=>root.querySelectorAll('[data-leakfundingdoc]').forEach(cb=>{if(cb.checked)checked.add(cb.dataset.leakfundingdoc);else checked.delete(cb.dataset.leakfundingdoc);});
+  const save=async()=>{
+    if(busy)return;
+    const root=document.getElementById('hjLeakFundingModal');if(!root)return;
+    syncChecked(root);
+    busy=true;__modalCloseLocked=true;
+    const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select,#modalRoot textarea')];controls.forEach(el=>el.disabled=true);
+    let saved=false;
+    try{await hjLeakFundingSave(p,name,{source:sel,docs:[...checked]},expected,()=>root.isConnected&&document.getElementById('hjLeakFundingModal')===root);webWorkMarkDirtyAfterPersist();saved=true;}
+    catch(e){const issue=root.querySelector('#hjLeakFundingIssue');if(issue)issue.textContent=String(e&&e.message||'비용 출처를 저장하지 못했습니다. 다시 시도해 주세요.');}
+    finally{__modalCloseLocked=false;controls.forEach(el=>el.disabled=false);busy=false;}
+    if(!saved)return;
+    closeModal(true);render();toast('📋 '+name+' 비용 출처·서류를 저장했어요');
+  };
+  openModal('📋 비용·서류 — '+name,body,[{label:'저장',cls:'blue',fn:save},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const modal=document.querySelector('#modalRoot .modal');if(modal)modal.classList.add('mobile-scroll-modal');
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(el=>{el.style.minHeight='44px';el.style.whiteSpace='normal';});
+  const root=document.getElementById('hjLeakFundingModal'),source=root.querySelector('#hjLeakFundingSource');
+  source.onchange=()=>{if(busy)return;syncChecked(root);sel=Object.prototype.hasOwnProperty.call(HJ_LEAK_FUNDING_SOURCES,source.value)?source.value:'';root.querySelector('#hjLeakFundingDocs').innerHTML=docsHtml();root.querySelector('#hjLeakFundingConflict').textContent=hjLeakFundingConflict(intake,sel);root.querySelector('#hjLeakFundingPurpose').textContent=purposeText();};
   return true;
 }
 
@@ -6383,8 +6485,8 @@ function hjLeakDispatchView(name){
 function hjLeakCardHtml(p){
   if(!p||hjProjectKind(p)!=='leak')return '';
   const d=hjLeakIntakeData(p),chip=t=>'<span style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">'+escapeHtml(t)+'</span>';
-  const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인'];
-  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+hjLeakRepeatChip(p)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button>'+hjLeakReportButton(p)+'</div></div>';
+  const chips=[d.where.length?d.where.join('·'):'위치 미확인',d.amount||'물 양 미확인',d.insurance?'보험 '+d.insurance:'보험 미확인',hjLeakFundingChip(p)];
+  return '<div class="cust-card" data-leak-card style="min-width:0;overflow-wrap:anywhere;margin:8px 0"><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips.map(chip).join('')+hjLeakRepeatChip(p)+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"><button type="button" class="blue" data-leakintake="'+escapeAttr(p.name)+'" style="min-height:44px">💧 접수 내용</button><button type="button" class="clay" data-leakdispatch="'+escapeAttr(p.name)+'" style="min-height:44px">🚨 출동 잡기</button><button type="button" class="ghost" data-leaksms="'+escapeAttr(p.name)+'" style="min-height:44px">💬 누수 문자</button><button type="button" class="blue" data-leakquote="'+escapeAttr(p.name)+'" style="min-height:44px">⚡ 즉시 견적</button><button type="button" class="ghost" data-leakfunding="'+escapeAttr(p.name)+'" style="min-height:44px">📋 비용·서류</button>'+hjLeakReportButton(p)+'</div></div>';
 }
 
 /* v419 출동 알림과 미완료 집계는 현재 현장/일정만 읽는다. 다른 유형의 긴급 일정은 누수 출동으로 세지 않는다. */
@@ -35041,6 +35143,17 @@ function hjLeakReportOptions(value){
   return {purpose,fullName:purpose==='insurance'&&o.fullName===true,hideAmount:purpose!=='insurance'||o.hideAmount===true,
     action:typeof o.action==='string'?o.action.slice(0,HJ_LEAK_REPORT_TEXT_LIMIT):null,opinion:hjLeakReportText(o.opinion,HJ_LEAK_REPORT_TEXT_LIMIT)};
 }
+/* v427 보고서 기본 용도는 비용 출처를 따른다(보험 청구→보험사 제출용, 관리사무소→관리사무소용, 그 외 기존 기본). 용도 버튼으로 바꿀 수 있고 힌트는 막지 않는다. */
+function hjLeakReportDefaultPurpose(p){return hjLeakReportPurpose(HJ_LEAK_FUNDING_PURPOSE[hjLeakFundingData(p).source]);}
+function hjLeakReportPurposeHint(p,purpose){
+  const source=hjLeakFundingData(p).source,label=HJ_LEAK_FUNDING_SOURCES[source]||'미입력',mapped=HJ_LEAK_FUNDING_PURPOSE[source]||'';
+  if(purpose==='neighbor')return '아랫집 안내용 — 비용 출처와 무관';
+  if(!mapped)return '비용 출처 '+label+' — 기본은 보험사 제출용';
+  if(mapped===purpose)return '기본 용도: 비용 출처('+label+')에 따름';
+  if(source==='office'&&purpose==='insurance')return '⚠ 비용 출처는 관리사무소(관리비·공용부)인데 보험사 제출용(금액 포함)입니다. 받는 곳을 확인해 주세요.';
+  if(source==='insurance'&&purpose==='office')return '⚠ 비용 출처는 보험 청구인데 관리사무소용(금액 없음)입니다. 받는 곳을 확인해 주세요.';
+  return '';
+}
 /* v422 번호는 현지 발행일과 전체 현장의 기존 발행 기록만 읽어 제안한다. 미리보기로 소비하지 않는다. */
 function hjLeakReportNextNo(source=state,day=localDate()){
   const date=String(day).replace(/-/g,'');let max=0;
@@ -35175,14 +35288,15 @@ function hjLeakReportDownload(blob,name){const url=URL.createObjectURL(blob),a=d
 function hjLeakReportView(name){
   const p=hjLeakProject(name);if(!hjLeakProjectCurrent(p,name)||__modalCloseLocked||photoIntakePending()||__appVersionUpdating){toast('현장 정보와 진행 중인 저장을 확인한 뒤 다시 열어 주세요.');return false;}
   const initial=hjLeakReportModel(p,{});if(!initial)return false;
-  return hjLeakReportForm({name,p,stamp:hjLeakReportStamp(p),options:{purpose:'insurance',fullName:false,hideAmount:false,action:initial.action,opinion:''},busy:false,issued:null});
+  const purpose=hjLeakReportDefaultPurpose(p);
+  return hjLeakReportForm({name,p,stamp:hjLeakReportStamp(p),options:{purpose,fullName:false,hideAmount:purpose!=='insurance',action:initial.action,opinion:''},busy:false,issued:null});
 }
 function hjLeakReportForm(s){
   const fieldStyle='display:block;width:100%;min-height:88px;font:16px/1.5 inherit;box-sizing:border-box',o=s.options;
-  const body='<div id="hjLeakReportForm" style="min-width:0;overflow-wrap:anywhere"><div role="group" aria-label="보고서 용도" style="display:flex;flex-wrap:wrap;gap:6px">'+Object.entries(HJ_LEAK_REPORT_PURPOSES).map(([k,label])=>'<button type="button" data-leak-report-purpose="'+k+'" aria-pressed="'+(o.purpose===k)+'" class="'+(o.purpose===k?'blue':'ghost')+'" style="min-height:44px;white-space:normal">'+label+'</button>').join('')+'</div><label style="display:flex;gap:8px;align-items:center;min-height:44px"><input id="hjLeakReportFullName" type="checkbox"'+(o.fullName?' checked':'')+'>의뢰인 이름 전체 표시 (보험사용)</label><label style="display:flex;gap:8px;align-items:center;min-height:44px"><input id="hjLeakReportHideAmount" type="checkbox"'+(o.hideAmount?' checked':'')+'>금액 칸 숨김</label><label for="hjLeakReportAction" style="display:block;margin-top:9px;font-weight:700">조치 내용</label><textarea id="hjLeakReportAction" rows="3" maxlength="'+HJ_LEAK_REPORT_TEXT_LIMIT+'" style="'+fieldStyle+'">'+escapeHtml(o.action||'')+'</textarea><label for="hjLeakReportOpinion" style="display:block;margin-top:9px;font-weight:700">소견·재발 방지</label><textarea id="hjLeakReportOpinion" rows="3" maxlength="'+HJ_LEAK_REPORT_TEXT_LIMIT+'" style="'+fieldStyle+'">'+escapeHtml(o.opinion||'')+'</textarea><p class="hint">견적 품목으로 조치 초안을 채웠습니다. 실제로 조치한 내용만 남겨 주세요. '+escapeHtml(HJ_LEAK_REPORT_PRIVACY)+'</p><p id="hjLeakReportIssue" role="alert" style="min-height:20px;color:var(--warn)"></p><p id="hjLeakReportStatus" role="status" style="font-size:13px"></p><button type="button" class="ghost" id="hjLeakReportSms" style="min-height:44px;margin-bottom:8px"'+(s.issued?'':' hidden')+'>💬 문자 초안</button><div id="hjLeakReportPreview"></div></div>';
+  const body='<div id="hjLeakReportForm" style="min-width:0;overflow-wrap:anywhere"><div role="group" aria-label="보고서 용도" style="display:flex;flex-wrap:wrap;gap:6px">'+Object.entries(HJ_LEAK_REPORT_PURPOSES).map(([k,label])=>'<button type="button" data-leak-report-purpose="'+k+'" aria-pressed="'+(o.purpose===k)+'" class="'+(o.purpose===k?'blue':'ghost')+'" style="min-height:44px;white-space:normal">'+label+'</button>').join('')+'</div><p id="hjLeakReportPurposeHint" role="status" class="hint" style="margin:6px 0"></p><label style="display:flex;gap:8px;align-items:center;min-height:44px"><input id="hjLeakReportFullName" type="checkbox"'+(o.fullName?' checked':'')+'>의뢰인 이름 전체 표시 (보험사용)</label><label style="display:flex;gap:8px;align-items:center;min-height:44px"><input id="hjLeakReportHideAmount" type="checkbox"'+(o.hideAmount?' checked':'')+'>금액 칸 숨김</label><label for="hjLeakReportAction" style="display:block;margin-top:9px;font-weight:700">조치 내용</label><textarea id="hjLeakReportAction" rows="3" maxlength="'+HJ_LEAK_REPORT_TEXT_LIMIT+'" style="'+fieldStyle+'">'+escapeHtml(o.action||'')+'</textarea><label for="hjLeakReportOpinion" style="display:block;margin-top:9px;font-weight:700">소견·재발 방지</label><textarea id="hjLeakReportOpinion" rows="3" maxlength="'+HJ_LEAK_REPORT_TEXT_LIMIT+'" style="'+fieldStyle+'">'+escapeHtml(o.opinion||'')+'</textarea><p class="hint">견적 품목으로 조치 초안을 채웠습니다. 실제로 조치한 내용만 남겨 주세요. '+escapeHtml(HJ_LEAK_REPORT_PRIVACY)+'</p><p id="hjLeakReportIssue" role="alert" style="min-height:20px;color:var(--warn)"></p><p id="hjLeakReportStatus" role="status" style="font-size:13px"></p><button type="button" class="ghost" id="hjLeakReportSms" style="min-height:44px;margin-bottom:8px"'+(s.issued?'':' hidden')+'>💬 문자 초안</button><div id="hjLeakReportPreview"></div></div>';
   let root;
   const read=()=>{s.options={purpose:s.options.purpose,fullName:root.querySelector('#hjLeakReportFullName').checked,hideAmount:root.querySelector('#hjLeakReportHideAmount').checked,action:root.querySelector('#hjLeakReportAction').value,opinion:root.querySelector('#hjLeakReportOpinion').value};return hjLeakReportOptions(s.options);};
-  const fresh=()=>{const opts=read();s.options=opts;const key=paidStableJson({options:opts,day:localDate()}),model=s.issued&&s.issued.key===key?s.issued.model:hjLeakReportModel(s.p,opts);root.querySelector('#hjLeakReportPreview').innerHTML=hjLeakReportHtml(model);root.querySelector('#hjLeakReportFullName').disabled=opts.purpose!=='insurance';root.querySelector('#hjLeakReportFullName').checked=opts.fullName;root.querySelector('#hjLeakReportHideAmount').disabled=opts.purpose!=='insurance';root.querySelector('#hjLeakReportHideAmount').checked=opts.hideAmount;root.querySelectorAll('[data-leak-report-purpose]').forEach(b=>{const yes=b.dataset.leakReportPurpose===opts.purpose;b.className=yes?'blue':'ghost';b.setAttribute('aria-pressed',String(yes));});return model;};
+  const fresh=()=>{const opts=read();s.options=opts;const key=paidStableJson({options:opts,day:localDate()}),model=s.issued&&s.issued.key===key?s.issued.model:hjLeakReportModel(s.p,opts);root.querySelector('#hjLeakReportPreview').innerHTML=hjLeakReportHtml(model);root.querySelector('#hjLeakReportFullName').disabled=opts.purpose!=='insurance';root.querySelector('#hjLeakReportFullName').checked=opts.fullName;root.querySelector('#hjLeakReportHideAmount').disabled=opts.purpose!=='insurance';root.querySelector('#hjLeakReportHideAmount').checked=opts.hideAmount;root.querySelectorAll('[data-leak-report-purpose]').forEach(b=>{const yes=b.dataset.leakReportPurpose===opts.purpose;b.className=yes?'blue':'ghost';b.setAttribute('aria-pressed',String(yes));});root.querySelector('#hjLeakReportPurposeHint').textContent=hjLeakReportPurposeHint(s.p,opts.purpose);return model;};
   const showIssue=text=>{if(root&&root.isConnected)root.querySelector('#hjLeakReportIssue').textContent=text;};
   const current=()=>root&&root.isConnected&&document.getElementById('hjLeakReportForm')===root&&hjLeakReportCurrent(s.p,s.stamp);
   const issue=async mode=>{
@@ -35456,7 +35570,7 @@ function hjLeakRepeatBanner(p){
 function hjLeakRepeatChip(p){const r=hjLeakRepeat(p),causes=r.causes.map(x=>x.cause+' '+x.count+'건').join(' · ');return r.complexCount>=3?'<span data-leak-repeat-chip style="display:inline-block;max-width:100%;overflow-wrap:anywhere;padding:5px 9px;border:1px solid var(--line-soft);border-radius:999px;font-size:12px">🏢 이 단지 누수 '+r.complexCount+'건 ('+escapeHtml(causes)+')</span>':'';}
 function hjLeakRepeatDashboardHtml(){const r=hjLeakRepeatSummary();return r.repeatUnits?'<p data-leak-repeat-summary style="margin:6px 0 10px;overflow-wrap:anywhere">💧 재발 세대 '+r.repeatUnits+'곳</p>':'';}
 function hjLeakIntakeCapture(root,expected,photos){
-  const g=id=>root.querySelector('#'+id);return {expected,photos:photos.slice(),input:{where:[...root.querySelectorAll('[data-leakwhere]:checked')].map(x=>x.value),since:g('hjLeakSince').value,amount:g('hjLeakAmount').value,neighbor:g('hjLeakNeighbor').value,office:g('hjLeakOffice').value,insurance:g('hjLeakInsurance').value,memo:g('hjLeakMemo').value}};
+  const g=id=>root.querySelector('#'+id);return {expected,photos:photos.slice(),input:{where:[...root.querySelectorAll('[data-leakwhere]:checked')].map(x=>x.value),since:g('hjLeakSince').value,amount:g('hjLeakAmount').value,neighbor:g('hjLeakNeighbor').value,office:g('hjLeakOffice').value,insurance:g('hjLeakInsurance').value,memo:g('hjLeakMemo').value},funding:g('hjLeakFunding').value};
 }
 function hjLeakRepeatBind(p,capture,restore){
   const root=document.getElementById('hjLeakIntake');if(!root)return;
@@ -37091,12 +37205,13 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfunding],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
     if(d.leakintake!==undefined)return hjLeakIntakeView(d.leakintake);
     if(d.leakdispatch!==undefined)return hjLeakDispatchView(d.leakdispatch);
+    if(d.leakfunding!==undefined)return hjLeakFundingView(d.leakfunding);
     if(d.leakfilter!==undefined){__hjLeakFilter=!__hjLeakFilter;return render();}
     if(d.watchtoggle!==undefined){e.stopPropagation();__watchOpen=!__watchOpen;return render();}
     if(d.brieftoggle!==undefined){e.stopPropagation();__briefOpen=!__briefOpen;return render();}
