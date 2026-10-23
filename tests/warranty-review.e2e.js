@@ -121,6 +121,26 @@ const DONE_AT = '2026-07-01';
     assert((t.match(/https?:\/\//g) || []).length === 1, '링크는 한 줄만: ' + JSON.stringify(t));
   });
 
+  await test('리뷰 링크 규칙은 더보기 리뷰 요청·AI 큐(reviewRequestSms)와 문자 센터 문안에도 같다 (v426)', async () => {
+    // 비어 있을 때: 두 경로 모두 홈페이지 후기 페이지 링크 한 줄
+    await seed();
+    const empty = await page.evaluate(() => { window.__sms = []; reviewRequestSms('준공현장 A'); return { sms: window.__sms[0], tpl: msgTemplate('review', state.projects[0]) }; });
+    assert(empty.sms && empty.sms.phone === RAW_PHONE, 'reviewRequestSms 딥링크 phone=원문');
+    assert(empty.sms.text.includes(HOMEPAGE_REVIEW_URL), '더보기 리뷰 요청 문안에 기본 링크: ' + JSON.stringify(empty.sms.text));
+    assert((empty.sms.text.match(/https?:\/\//g) || []).length === 1, '더보기 문안 링크는 한 줄만');
+    assert(empty.tpl.includes(HOMEPAGE_REVIEW_URL), '문자 센터 리뷰 문안에 기본 링크: ' + JSON.stringify(empty.tpl));
+    assert((empty.tpl.match(/https?:\/\//g) || []).length === 1, '문자 센터 문안 링크는 한 줄만');
+    // 커스텀 링크를 설정 UI로 저장하면 두 경로 모두 그 링크로 바뀌고 기본 링크는 사라진다
+    await page.evaluate((u) => { openGdriveSetup(); const el = document.querySelector('#rvUrl'); el.value = u; document.querySelector('#rvSave').click(); }, REVIEW_URL);
+    await page.waitForTimeout(200); await clearModal();
+    const custom = await page.evaluate(() => { window.__sms = []; reviewRequestSms('준공현장 A'); return { sms: window.__sms[0].text, tpl: msgTemplate('review', state.projects[0]) }; });
+    assert(custom.sms.includes(REVIEW_URL) && !custom.sms.includes(HOMEPAGE_REVIEW_URL), '더보기 문안: 커스텀 링크만: ' + JSON.stringify(custom.sms));
+    assert(custom.tpl.includes(REVIEW_URL) && !custom.tpl.includes(HOMEPAGE_REVIEW_URL), '문자 센터 문안: 커스텀 링크만: ' + JSON.stringify(custom.tpl));
+    // 다음 검사를 위해 다시 비운다
+    await page.evaluate(() => { openGdriveSetup(); const el = document.querySelector('#rvUrl'); el.value = ''; document.querySelector('#rvSave').click(); });
+    await page.waitForTimeout(200); await clearModal();
+  });
+
   // 3) 보증 시작 — 법정 기본값(방수 3년·급배수 배관 2년) + serializeData 왕복 유지
   await test('[🛡 보증 시작] → 법정 기본 항목·만료일 계산 + 직렬화 왕복', async () => {
     // 리뷰 링크 복구(무관하지만 상태 정리)

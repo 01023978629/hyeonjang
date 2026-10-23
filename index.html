@@ -2500,6 +2500,7 @@ async function contractServerStatus(checkAdmin){
 let __reviewUrl='';
 // v426: 리뷰 링크를 안 넣어도 손님이 갈 곳이 있어야 한다 — 비워두면 홈페이지 후기 페이지(manmool review.html)로. 설정에 네이버 플레이스 등을 넣으면 그쪽이 우선.
 const REVIEW_FALLBACK_URL='https://01023978629.github.io/manmool/review.html';
+function hjReviewLink(){const custom=(__reviewUrl||'').trim();return {link:custom||REVIEW_FALLBACK_URL,custom:!!custom};}   // v426: 리뷰 요청 문안은 입구가 어디든 같은 규칙 — 설정 링크, 없으면 홈페이지 후기 페이지
 async function relayCall(action,payload){
   // ★커스텀 헤더 금지: text/plain = '단순 요청' → OPTIONS preflight가 없어 Apps Script에서 동작
   const body=JSON.stringify({token:__relay.token,action:action,deviceId:__relay.device||'unknown',ts:Date.now(),payload:payload||{}});
@@ -16666,8 +16667,7 @@ function hjReviewSms(name){
   const p=(state.projects||[]).find(x=>x.name===name);
   if(!p){toast('현장을 찾을 수 없습니다');return;}
   const cust=p.customer||{};
-  const custom=(__reviewUrl||'').trim();
-  const link=custom||REVIEW_FALLBACK_URL;   // v426: 비워두면 홈페이지 후기 페이지 — 갈 곳 없는 리뷰 요청 문자를 보내지 않는다
+  const {link,custom}=hjReviewLink();   // v426: 비워두면 홈페이지 후기 페이지 — 갈 곳 없는 리뷰 요청 문자를 보내지 않는다
   const lines=['['+COMPANY.name+'] '+name+' 공사가 잘 마무리됐습니다.','만족하셨다면 리뷰 한 줄 부탁드립니다 🙏'];
   lines.push(link);
   hjSendSms(cust.phone,lines.join('\n'));            // 딥링크에만 번호 사용(연락처 없으면 문안 복사)
@@ -24949,7 +24949,7 @@ function reviewRequestData(){
 function reviewRequestSms(projName){
   const p=(state.projects||[]).find(x=>x.name===projName);if(!p)return;
   const cust=p.customer||{};
-  const msg=(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+projName+' 공사를 맡겨주셔서 진심으로 감사합니다. 지내시며 불편한 점은 없으신가요? 혹시 만족하셨다면 주변에 저희를 소개해 주시거나, 한 줄 후기를 남겨주시면 큰 힘이 됩니다. 언제든 편히 연락 주세요. '+COMPANY.tel;
+  const msg=(cust.name||'고객')+'님, '+COMPANY.name+'입니다. '+projName+' 공사를 맡겨주셔서 진심으로 감사합니다. 지내시며 불편한 점은 없으신가요? 혹시 만족하셨다면 주변에 저희를 소개해 주시거나, 한 줄 후기를 남겨주시면 큰 힘이 됩니다. 언제든 편히 연락 주세요. '+COMPANY.tel+'\n'+hjReviewLink().link;   // v426: 더보기·AI 큐 경로도 후기 링크 한 줄(같은 규칙)
   hjSendSms(cust.phone,msg);
   try{aiAddNote('[리뷰요청:'+projName+'] '+localDate()+' 리뷰·소개 요청 문자 발송',projName);markDirty();}catch(e){}
   return {발송:projName};
@@ -31077,7 +31077,7 @@ function msgTemplate(kind,p,extra){
     })(),
     taxreq:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n세금계산서 발행을 위해 아래 정보를 문자로 부탁드립니다.\n\n· 상호 (개인이시면 성함)\n· 사업자등록번호\n· 받으실 이메일 주소\n\n* 개인이시면 현금영수증(휴대폰 번호)으로도 처리해 드립니다.\n받는 대로 바로 발행해 드리겠습니다. 감사합니다.'+sign,
     sorry:'안녕하세요, '+COMPANY.name+' '+COMPANY.owner+'입니다.\n현장 작업 중이라 전화를 받지 못했습니다. 죄송합니다.\n용건을 문자로 남겨주시면 확인하는 대로 바로 연락드리겠습니다.\n급하신 일이면 잠시 후 다시 전화 부탁드립니다.'+sign,
-    review:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사는 만족스러우셨나요? 지내시다 불편한 점은 없으신지 궁금합니다.\n혹시 주변에 인테리어가 필요한 분이 계시면 소개해 주시면 정말 큰 힘이 됩니다. 늘 감사합니다.'+sign,
+    review:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n'+site+' 공사는 만족스러우셨나요? 지내시다 불편한 점은 없으신지 궁금합니다.\n혹시 주변에 인테리어가 필요한 분이 계시면 소개해 주시면 정말 큰 힘이 됩니다. 늘 감사합니다.\n후기 한 줄: '+hjReviewLink().link+sign,
     thanks:'안녕하세요 '+nm+', '+COMPANY.name+'입니다.\n한 해 동안 저희를 믿고 맡겨주셔서 진심으로 감사드립니다.\n하시는 일 모두 잘 되시고, 가정에 늘 건강과 행복이 가득하시길 바랍니다.'+sign
   };
   return T[kind]||'';

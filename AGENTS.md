@@ -16,7 +16,12 @@
   설정 문구 되돌림·버전 핀 불일치). 관련 8파일(board-v351·completion-links·health-board·mobile-more-tools·
   restore-parity·settings-tabs·test-stability.unit·warranty-review) 로컬 통과, 전체 회귀는 PR CI(`verify-release`).
 - 핀 3곳 `hyeonjang-v426-reviewlink`. 순서: manmool PR #223이 먼저 배포돼야 링크가 열린다 — 이 PR은 그 뒤에 병합.
-  Codex의 v428(#189)과는 파일 겹침 없이 독립이며, 그쪽이 먼저 병합되면 이 핀을 v429로 다시 올린다.
+  Codex의 v428(#189)과 기능 파일은 겹치지 않지만, 핀 3곳·AGENTS.md·offlinequeue 검사 2개의 같은 줄을 양쪽이 고친다 —
+  나중에 병합되는 쪽이 충돌을 풀고, #189가 먼저면 이 핀을 v429로 다시 올린다.
+- **같은 규칙을 입구 다섯 곳에 다 건다.** 처음엔 `hjReviewSms`(현장 상세 ⭐·준공 체크 GO)에만 붙어서, 더보기 🗣 리뷰 요청과
+  AI 운영 큐가 부르는 `reviewRequestSms`, 문자 센터 '⭐ 안부·리뷰 부탁' 문안(`msgTemplate` review)은 여전히 링크 없이 나갔다.
+  `hjReviewLink()` 하나가 설정 링크 → 없으면 홈페이지 후기 페이지를 정하고 세 경로가 전부 그것을 쓴다(링크는 한 줄).
+  `tests/warranty-review.e2e.js`가 두 경로의 빈 설정·커스텀 설정을 모두 확인한다(변이 3건 — 더보기 링크 제거·문자 센터 링크 제거·커스텀 무시 — 전부 검출).
 - **네 번째 핀이 숨어 있었다.** `tests/offlinequeue-cache-v425.unit.js`·`tests/offlinequeue-v425.e2e.js` 가 캐시 이름
   `hyeonjang-v425-offlinequeue` 를 리터럴로 들고 있어 버전을 올리자 PR CI 가 바로 떨어졌다(50개 중 1 실패, 브라우저 검사
   미시작). 둘 다 `sw.js` 의 `const C='…'` 에서 현재 이름을 읽도록 고쳤다 — 버전을 올릴 때 고칠 핀은 계속 3곳이다.
