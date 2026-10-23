@@ -6,6 +6,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const source=fs.readFileSync(process.env.HJ_OFFLINE_SW_SOURCE||path.join(__dirname,'../sw.js'),'utf8');
+// 현재 캐시 이름은 sw.js 의 핀(const C)에서 읽는다 — 버전을 올릴 때마다 이 파일의 리터럴을 고치는 네 번째 핀을 두지 않는다(핀 3곳은 version-sync.check 가 맞춘다).
+const CURRENT_CACHE=(/const C='([^']+)'/.exec(source)||[])[1];assert(CURRENT_CACHE&&/^hyeonjang-v\d+-/.test(CURRENT_CACHE),'SW_CACHE_PIN_READABLE: '+CURRENT_CACHE);assert.notEqual(CURRENT_CACHE,'hyeonjang-v424-leaksms','SYNTHETIC_OLD_CACHE_MUST_DIFFER');
 const ORIGIN='https://offline.example.test';
 const SUFFIXES=['','index.html','media-safety.js','shared-todo-backup.js','operations-review.js','privacy.html','terms.html','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png','bathroom-defaults.json','manifest.webmanifest'];
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -47,7 +49,7 @@ async function test(name,fn){await fn();passed++;console.log('PASS offlinequeue-
       const expected=SUFFIXES.map(s=>ORIGIN+prefix+s);assert.deepEqual(h.requests.map(r=>r.url),expected,'INSTALL_EXACT_EXISTING_ALLOWLIST');assert.deepEqual(h.puts,expected);assert.equal(h.current.size,expected.length);
       for(const r of h.requests){const u=new URL(r.url);assert.equal(u.origin,ORIGIN);assert.equal(u.search,'');assert.equal(r.method,'GET');assert.equal(r.mode,'same-origin');assert.equal(r.credentials,'omit');assert.equal(r.redirect,'error');assert.equal(r.cache,'reload');assert.equal(r.headers.has('Authorization'),false);assert.equal(r.body,null);assert(!/share-target|relay|upload|appState|outbox|inbox|\.json\?/.test(r.url));}
       assert.equal(h.skipped,1);assert.equal(h.claimed,0);assert.equal(h.events.at(-1),'skip');unchangedOld(h);
-      await h.activate();assert.equal(h.claimed,1);assert.deepEqual(h.deleted,['hyeonjang-v424-leaksms']);assert(h.cacheNames.has('hyeonjang-v425-offlinequeue'));
+      await h.activate();assert.equal(h.claimed,1);assert.deepEqual(h.deleted,['hyeonjang-v424-leaksms']);assert(h.cacheNames.has(CURRENT_CACHE),'ACTIVATE_KEEPS_CURRENT_CACHE '+CURRENT_CACHE);
     }
   });
   await test('skipWaiting waits for the final cache write to finish',async()=>{

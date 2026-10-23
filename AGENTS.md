@@ -17,6 +17,11 @@
   restore-parity·settings-tabs·test-stability.unit·warranty-review) 로컬 통과, 전체 회귀는 PR CI(`verify-release`).
 - 핀 3곳 `hyeonjang-v426-reviewlink`. 순서: manmool PR #223이 먼저 배포돼야 링크가 열린다 — 이 PR은 그 뒤에 병합.
   Codex의 v428(#189)과는 파일 겹침 없이 독립이며, 그쪽이 먼저 병합되면 이 핀을 v429로 다시 올린다.
+- **네 번째 핀이 숨어 있었다.** `tests/offlinequeue-cache-v425.unit.js`·`tests/offlinequeue-v425.e2e.js` 가 캐시 이름
+  `hyeonjang-v425-offlinequeue` 를 리터럴로 들고 있어 버전을 올리자 PR CI 가 바로 떨어졌다(50개 중 1 실패, 브라우저 검사
+  미시작). 둘 다 `sw.js` 의 `const C='…'` 에서 현재 이름을 읽도록 고쳤다 — 버전을 올릴 때 고칠 핀은 계속 3곳이다.
+  검사 자체는 그대로다(활성화가 옛 캐시를 지우고 현재 캐시를 남기는지, 설치된 SW 가 현재 캐시로 index 를 데우는지).
+  **버전별 검사를 새로 쓸 때 캐시 이름·APP_BUILD 를 리터럴로 박지 마라** — 다음 버전이 올라가는 순간 그 검사가 막는다.
 
 ## 2026-10-16 v425 기기 안 오프라인 대기함
 
