@@ -273,11 +273,12 @@ v1 AI비서/브리핑 → v2 사진정리·주간·수금이력 → v3 견적검
 
 ## 11. 외부 연동 — 홈페이지 상담 리드 인입 (manmool)
 
-공개 홍보·상담 사이트(`manmool`)의 상담 폼 → **`?lead=<base64url(JSON)>` 딥링크**로 현장 앱에 유입.
+공개 홍보·상담 사이트(`manmool`)의 상담 폼 → **`#lead=<base64url(JSON)>` 프래그먼트 딥링크**로 현장 앱에 유입.
+`?lead=`·`?hjreq=` **쿼리는 받지 않는다** — 값을 읽지 않고 주소에서 지운 뒤 `#lead`/`#hjreq` 형식을 쓰라는 토스트만 띄운다(`tests/sensitive-query.e2e.js`가 단언).
 
-- 진입점: 앱 부팅 시 `location.search`/`hash`의 `lead` 파라미터 감지 (`__hjLead`).
+- 진입점: 앱 부팅 시 `location.hash`의 `lead=` 프래그먼트 감지 (`__hjLead`). `location.search`는 보지 않는다(`hjLeadParse`도 hash만 읽는다).
 - 핵심 함수: `hjLeadParse`(디코드) → `hjLeadIntake`(확인 모달) → `hjLeadCreate`(등록).
-- 동작: 스냅샷(`hjSnapshot`) 후 `state.projects`에 새 현장 + `customer`(name/phone/addr) + `state.notes`에 상담 상세 메모. `markDirty→render→toast`. 처리 후 URL 파라미터 제거(새로고침 재발동 방지).
+- 동작: 스냅샷(`hjSnapshot`) 후 `state.projects`에 새 현장 + `customer`(name/phone/addr) + `state.notes`에 상담 상세 메모. `markDirty→render→toast`. 처리 후 주소에서 프래그먼트 제거(`history.replaceState`, 새로고침 재발동 방지).
 - **신규 직렬화 필드 없음** — 기존 `projects/customer/notes`만 사용하므로 §3(serialize/applyData) 변경 불필요.
 - 안전: 되돌리기 위험작업 아님(사용자가 링크를 직접 클릭). 그래도 등록 전 스냅샷 + 확인 모달로 승인 후 생성.
 - 리드 JSON 키: `name, phone, region(addr), type, area, scope, works[], budget, movein, estimateHint, memo`.

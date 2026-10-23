@@ -29743,7 +29743,7 @@ async function aiAutoOperateView(){
 
 /* ═══════════════════════════════════════════════════════════════
    🎛 더보기 UX 개선 — 카테고리 그룹핑 + 자주 쓰는 기능 바로가기
-   112개 항목을 6개 카테고리로 정리하고, 검색·즐겨찾기·최근 사용을 제공
+   126개 항목을 6개 카테고리로 정리하고, 검색·즐겨찾기·최근 사용을 제공
 ═══════════════════════════════════════════════════════════════ */
 
 // 카테고리 정의(action → 카테고리 매핑)
@@ -42420,7 +42420,8 @@ async function tryRestoreDir(){
 tryRestoreDir();
 try{hjBrandApplyUI();}catch(e){}
 /* ═══ 홈페이지 상담 리드 인입 (manmool 공개 사이트 연동) ═══
-   공개 사이트에서 ?lead=<base64url(JSON)> 로 넘어온 상담을 새 현장으로 등록.
+   공개 사이트에서 #lead=<base64url(JSON)> 프래그먼트로 넘어온 상담을 새 현장으로 등록.
+   ?lead=·?hjreq= 쿼리는 부팅 초반의 민감 쿼리 차단부가 값을 읽지 않고 주소에서 지운다 — hjLeadParse 는 location.hash 만 본다.
    되돌리기 위험작업 아님(사용자가 명시적으로 링크 클릭). 등록 전 스냅샷 + 확인 모달.
    lead.v103: leadId(노트 '리드ID:' 줄로 기록·중복 인입 차단)·selectedDesign·live·source·submittedAt·consent 지원.
    구형 링크(신규 필드 없음)도 하위호환. 신규 필드 없이 기존 projects/customer/notes만 사용 → serialize/applyData 변경 불필요. */

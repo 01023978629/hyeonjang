@@ -294,11 +294,11 @@ Calendar 범위는 긴급 접수 알림과 Watchdog 일정 생성에만 사용�
 
 | 항목 | 기본값 | 뜻 |
 |---|---|---|
-| `dueAfterDone` | 14일 | 공사 완료 후 N일 넘게 잔금 미입금 → 경보 |
-| `dueMin` | 100,000원 | 이 미만 잔액은 반올림 노이즈로 보고 무시 |
 | `warrantySoon` | 60일 | 보증 만료 D-N 이내 → 무상점검 제안(재수주 기회) |
 | `asStale` | 3일 | AS 접수 후 N일 넘게 미처리 |
 | `projStale` | 21일 | 진행 중인데 N일 넘게 사진·일정 없음 |
+
+(`dueAfterDone`·`dueMin` 행은 2026-08-13 미수금 기능 삭제로 제거 — `tests/receivable-removed.check.js`가 되살아나지 않는지 본다.)
 
 ### 알리는 방법 (`WATCH_CHANNEL`)
 
