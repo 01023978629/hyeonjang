@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v478 📄 첫 화면 '팀 보고 n건 들어옴' 줄 — 3곳 초과 [외 n곳 — 모두 보기] (개발_백로그)
+
+- `hjTeamDoneDocHtml`: `hjTeamDoneDoc()` 이 4곳 이상이면 줄 3개 뒤에 `<p data-team-done-more>` + `[data-team-done-all]` 단추 '외 n곳 — 모두 보기'(44px). 예전엔 넷째 현장부터 말없이 숨었다. #view 위임 closest 목록 + `d.teamDoneAll` → `hjTeamDoneAllView()`.
+- `hjTeamDoneAllView()`: 창 `#hjTeamDoneAll` — 줄 `[data-team-done-all-row=현장]`('✅ 완료 보고 n건 · 사진 m장 · 최근 MM/DD', hjTeamDoneDoc 순서 = 최근 작업일 순), `[data-team-done-all-open]` [완료보고서 초안](v469 처럼 closeModal → setTimeout aptReportView), `[data-team-done-all-note][data-key]` [👷 노트 보기] → `hjTeamReportNoteView(현장,key,{filter:{status:'done'}})`(칩이 없으면 전부, v477). [넘기기]는 목록에 두지 않는다(첫 화면 줄에만). 읽기만, 저장 없음.
+- 핀3곳 hyeonjang-v478-doneall(v477 위). 신규 tests/doneall-v478.e2e.js 2/2(390px), 기준선(b74ec62)·변이 no-more 실패 확인. 관련 9개(demo-v462·demotour-v467·doneview-v471·team3-v458·teamack-v465·pendingall-v477·teamnote2-v469·notefilter-v475·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v477 🔎⛔ 첫 화면 검수 요청·막힘 줄 '외 n건' → [모두 보기] (개발_백로그 '검수 요청·막힘 줄 외 n건 → 모두 보기')
 
 - `hjTeamReportPendingHtml`: 검수 요청·막힘이 각각 3건을 넘으면 '외 n건' 힌트 대신 `[data-team-pending-all=review|blocked]` 단추 '외 n건 — 모두 보기'(44px). #view 위임 `d.teamPendingAll`(closest 목록에도 추가 — 빠뜨리면 단추가 죽는다) → `hjTeamPendingAllView(status)`.
