@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v474 🧭 데모 둘러보기 카드 — PC 두 칸 (개발_백로그)
+
+- `@media(min-width:900px)` + `body:not(.mobile-mode)` 에서 `#view [data-demo-tour] ol{grid-template-columns:1fr 1fr}`, 마지막 단계(끝내기)는 `grid-column:1/-1`. 폰·모바일 모드는 한 칸 그대로. 글·단추·저장 방식은 v467·v470 그대로.
+- 핀3곳 hyeonjang-v474-tour2col(v473 위). 신규 tests/tour2col-v474.e2e.js 2/2(1280·390), 기준선(64644cd)·변이 one-col 실패 확인. 관련 6개(demotour-v467·demotour2-v470·demo-v462·pcdark-v452·settings-safety·dash-cards) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v473 📥 팀 작업 가져오기 — 반영 결과 창 [👷 노트 보기] (개발_백로그)
 
 - `hjTeamReportImportView.apply` 가 방금 반영한 보고를 `done[]{project,key,status}` 로 모아, **사진이 없을 때만** `hjWrResultView(done,{applied,dup,failed})` 를 연다(현장별 n건·상태 글, `[data-wr-note=현장][data-key=마지막 반영 보고]` [👷 노트 보기] → hjTeamReportNoteView 초점). 사진이 있으면 사진 넣기 결과 창이 마지막 화면이라 그대로(첫 화면 줄 [보기]). 반영 0건(전부 중복)이면 안 연다. 반영 로직·토스트는 그대로.
