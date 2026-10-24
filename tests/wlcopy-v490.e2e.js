@@ -1,6 +1,7 @@
 /* v490 ⏱ 작업시간 창 — [📋 보이는 n줄 글로 복사](개발_백로그). 합성 자료만, 외부 쓰기 0.
    ① 35줄이면 보이는 30줄만: 머리줄 '⏱ 작업시간 — 전체 · 30줄' + '- M/D(요일) 현장 시작~종료 (시간) 메모'(진행 중 줄은 시간 없음) + '합계 …'
       · 팀 보고만 칩 → 머리줄에 칩·그 줄만 · 현장 창은 줄에 현장 이름 없음 · [더 보기] 뒤 35줄 · 44px · 자료 불변 (COPY)
+      · v496: 전체 창 복사는 합계 뒤에 '현장별 소계' 3줄이 붙는다(두 현장) — 줄 수·합계 위치를 그에 맞춤
    ② 클립보드가 막히면 예전 방식(execCommand) · 알림 · 오류 0
    HJ_V490_BASELINE=<commit> 은 COPY 에서 실패해야 한다. HJ_V490_MUTATION=no-visible(안 보이는 줄까지 복사)도 COPY 에서 실패해야 한다. */
 'use strict';
@@ -53,7 +54,7 @@ let browser, passed = 0, page;
       ...Array.from({ length: 32 }, (_, i) => ({ id: 'TEST_B' + (i + 3), project: B, date: ago(i + 3), in: '09:00', out: '11:00', memo: '' }))];
     state.activeProject = null; state.tab = 'dashboard'; render();
     window.__copied = []; navigator.clipboard.writeText = async t => { window.__copied.push(t); };
-    return { m0: hjMdDow(today), m1: hjMdDow(ago(1)), m2: hjMdDow(ago(2)), m3: hjMdDow(ago(3)), h2: workHM(120), h3: workHM(180), h4: workHM(240), sum30: workHM(180 + 240 + 27 * 120), sum35: workHM(180 + 240 + 32 * 120), sumA: workHM(420) };
+    return { m0: hjMdDow(today), m1: hjMdDow(ago(1)), m2: hjMdDow(ago(2)), m3: hjMdDow(ago(3)), h2: workHM(120), h3: workHM(180), h4: workHM(240), sum30: workHM(180 + 240 + 27 * 120), sum35: workHM(180 + 240 + 32 * 120), sumA: workHM(420), hA2: workHM(420).trim(), hB27: workHM(27 * 120).trim(), hB32: workHM(32 * 120).trim() };
   }, { A, B });
   async function test(name, fn) { await fn(); passed++; console.log('PASS wlcopy-v490 ' + name); }
   const serialized = () => page.evaluate(() => { const d = serializeData(); d.savedAt = ''; return paidStableJson(d); });
@@ -66,12 +67,13 @@ let browser, passed = 0, page;
     assert.deepEqual(await btn(), ['📋 보이는 30줄 글로 복사', 44], 'COPY button');
     let L = await copy(1);
     assert.equal(L[0], '⏱ 작업시간 — 전체 · 30줄', 'COPY header (visible rows only) ' + L[0]);
-    assert.equal(L.length, 32, 'header + 30 lines + total');
+    assert.equal(L.length, 35, 'header + 30 lines + total + v496 site subtotal (3)');
     assert.equal(L[1], '- ' + D.m0 + ' ' + A + ' 08:30~진행 중');
     assert.equal(L[2], '- ' + D.m1 + ' ' + A + ' 09:00~12:00 (' + D.h3 + ') 바닥 철거');
     assert.equal(L[3], '- ' + D.m2 + ' ' + A + ' 13:00~17:00 (' + D.h4 + ') [팀 보고 · 김타일]');
     assert.equal(L[4], '- ' + D.m3 + ' ' + B + ' 09:00~11:00 (' + D.h2 + ')', 'plain row without memo');
-    assert.equal(L.at(-1), '합계 ' + D.sum30, 'total of visible rows');
+    assert.equal(L[31], '합계 ' + D.sum30, 'total of visible rows');
+    assert.deepEqual(L.slice(32), ['현장별 소계 (진행 중 1줄 제외)', '- ' + B + ' · 27줄 · ' + D.hB27, '- ' + A + ' · 2줄 · ' + D.hA2], 'v496 site subtotal of the visible rows');
     assert.doesNotMatch(L.join('\n'), /정테스트|010-/, 'no customer name/phone');
     await page.locator('#modalRoot [data-wl-filter="team"]').click(); await page.locator('#modalRoot [data-wl-team-sum]').waitFor();
     L = await copy(2);
@@ -85,7 +87,8 @@ let browser, passed = 0, page;
     const mb = page.locator('#modalRoot [data-wl-more-btn]'); await mb.scrollIntoViewIfNeeded(); await mb.click();
     await page.waitForFunction(() => document.querySelectorAll('#modalRoot .worklog-row').length === 35);
     assert.deepEqual(await btn(), ['📋 보이는 35줄 글로 복사', 44]);
-    L = await copy(4); assert.equal(L[0], '⏱ 작업시간 — 전체 · 35줄'); assert.equal(L.at(-1), '합계 ' + D.sum35);
+    L = await copy(4); assert.equal(L[0], '⏱ 작업시간 — 전체 · 35줄'); assert.equal(L[36], '합계 ' + D.sum35);
+    assert.deepEqual(L.slice(37), ['현장별 소계 (진행 중 1줄 제외)', '- ' + B + ' · 32줄 · ' + D.hB32, '- ' + A + ' · 2줄 · ' + D.hA2], 'v496 subtotal follows [더 보기]');
     await page.evaluate(() => closeModal(true));
     assert.equal(await serialized(), before, 'copy only — app data unchanged');
   });
