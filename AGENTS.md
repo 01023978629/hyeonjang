@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v475 👷 팀 보고 노트 창 — 상태·보고자 칩 (개발_백로그 '팀 보고 노트 창 상태 필터')
+
+- `hjTeamReportNoteChipsHtml(p,filter)`: 보고 3건 이상이거나 보고자 2명 이상일 때만 `[data-note-filter]` — 상태 칩 `[data-note-filter-status=''|review|blocked|done]`(건수 붙임, 0건 상태는 생략)과 보고자 칩 `[data-note-filter-reporter=''|이름]`(둘 이상일 때만, '👤 모두' 포함). 44px, `aria-pressed`, 눌린 칩은 blueprint 배경.
+- `hjTeamReportNoteRender(name,focusKey,filter)` 가 힌트 아래에 칩 + `[data-team-note-list]` 를 다시 그리고 `hjTeamReportNoteBind(name,focusKey,filter)` 로 묶는다 — [확인함]·[확인 취소] 뒤에도 같은 filter 로 다시 그려 칩이 유지된다. `hjTeamReportNoteHtml(p,focusKey,filter)` 는 status·reporter 둘 다 맞는 줄만, 없으면 `[data-team-note-empty]` 힌트. 화면만, 저장 없음(검사 ① serializeData 동일). hjTeamReportNoteView 는 빈 껍데기를 열고 Render 를 부른다.
+- 핀3곳 hyeonjang-v475-notefilter(v474 위). 신규 tests/notefilter-v475.e2e.js 2/2(390px), 기준선(cd8a8e7)·변이 no-filter 실패 확인. 관련 7개(teamnote-v466·teamnote2-v469·unack-v472·importnote-v473·doneview-v471·teamack-v465·demo-v462) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v474 🧭 데모 둘러보기 카드 — PC 두 칸 (개발_백로그)
 
 - `@media(min-width:900px)` + `body:not(.mobile-mode)` 에서 `#view [data-demo-tour] ol{grid-template-columns:1fr 1fr}`, 마지막 단계(끝내기)는 `grid-column:1/-1`. 폰·모바일 모드는 한 칸 그대로. 글·단추·저장 방식은 v467·v470 그대로.
