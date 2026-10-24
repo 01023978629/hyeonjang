@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v516-oqthumb';
+const APP_BUILD='hyeonjang-v517-todo44';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -46289,7 +46289,7 @@ function hjOwnerTodoCardHtml(showDone){
   const row=r=>{const it=r.item;const act=it.kind==='settings'?'<button type="button" class="ghost tiny" data-owner-todo-settings="'+escapeAttr(it.tab)+'" data-focus="'+escapeAttr(it.focus||'')+'" style="min-height:44px">설정 열기</button>':
       it.kind==='link'&&it.url?'<a class="ghost tiny" href="'+escapeAttr(it.url)+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;min-height:44px;padding:0 10px">열기 ↗</a>':'';
     return '<li data-owner-todo-item="'+escapeAttr(it.id)+'" data-open="'+(r.open?'1':'0')+'" style="list-style:none;border-bottom:1px dashed var(--line-soft);padding:6px 0">'+
-      '<label style="display:flex;gap:10px;align-items:flex-start;min-height:44px;cursor:pointer"><input type="checkbox" data-owner-todo="'+escapeAttr(it.id)+'"'+(r.open?'':' checked')+(r.auto?' disabled':'')+' style="width:22px;height:22px;margin-top:11px;flex:none">'+
+      '<label style="display:flex;gap:10px;align-items:flex-start;min-height:44px;cursor:pointer"><input type="checkbox" data-owner-todo="'+escapeAttr(it.id)+'"'+(r.open?'':' checked')+(r.auto?' disabled':'')+' style="width:44px;height:44px;margin:0;flex:none;font-size:16px;cursor:pointer">'+   // v517 체크 칸 자체도 44px(팀 업무 보드의 44px 규칙 — team-workboard 검사)
       '<span style="flex:1;min-width:0"><b style="font-size:14px">'+escapeHtml(it.ic+' '+it.title)+'</b>'+(r.auto?' <span data-owner-todo-auto style="font-size:11px;color:var(--hj-ok-fg)">자동 확인</span>':r.doneAt?' <span style="font-size:11px;color:var(--muted)">완료 '+escapeHtml(r.doneAt)+'</span>':'')+
       '<br><span style="font-size:12.5px;color:var(--muted)">'+escapeHtml(it.why)+'</span><br><span style="font-size:12.5px">'+escapeHtml(it.how)+'</span></span></label>'+(act?'<div style="margin:2px 0 0 32px">'+act+'</div>':'')+'</li>';};
   return '<section data-owner-todo-card style="border:1.5px solid var(--hj-warn-border);background:var(--hj-warn-bg);border-radius:12px;padding:12px;margin-bottom:12px">'+

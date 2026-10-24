@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v517 '📋 대표 할 일' 체크 칸 22px → 44px (전체 검사가 찾은 회귀)
+
+- 찾은 것: v457 뒤 처음 돌린 전체 검사에서 `team-workboard`(팀 업무 보드: 보드 안 모든 단추·입력칸 44px·입력 글자 16px 규칙)가 '44px controls' 로 떨어짐 — v460 대표 할 일 카드의 체크 칸이 22×22px(줄 label 은 44px 지만 input 자체가 작다). 판마다 관련 검사만 돌려서 못 잡았다. main 은 이 단계 통과(카드가 없음).
+- 한 것: 체크 칸을 `width:44px;height:44px;margin:0;font-size:16px`. ownertodo-v460 그대로 통과(줄 44px·체크·저장·자동 확인). 이 환경의 다운로드 파일 이름(headless 'download') 확인만 뺀 team-workboard 12개 시나리오 전부 통과.
+- 핀3곳 hyeonjang-v517-todo44.
+
 ## 2026-10-25 v516 검사 고침 — offlinequeue-v425 의 Drive 모의가 사진 썸네일 '원본 받기'에 던지던 것 (병합 준비)
 
 - 찾은 것: v515 로 캐시 이름 문제가 풀린 뒤 이 묶음에서 offlinequeue-v425 e2e 가 'direct Drive upload' 단계에서 `UNEXPECTED_MOCK_DRIVE_ROUTE: GET /drive/v3/files/TEST_DRIVE_3?alt=media` 로 죽었다. 사진 탭 썸네일이 lh3·drive 썸네일 둘 다 막히면 앱이 토큰으로 원본을 받아 작게 만드는 `__driveThumbRescue`(main 에도 있음)가, main 에선 오프라인 중(모의가 abort)에 끝나고 이 묶음에선 다시 온라인이 된 뒤(모의가 켜진 사이)에 와서다. main 에서 같은 검사를 돌려도 그 GET 4번이 똑같이 나간다(시점만 다름).
