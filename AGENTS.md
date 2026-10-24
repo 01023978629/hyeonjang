@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v509 👷 팀 공수 정산 창 — 달 옮기기 ◀ n월 / n월 ▶ (개발_백로그)
+
+- `hjYmShift(ym,d)`: 'YYYY-MM' 을 d 달 옮김(해 넘김 처리). 읽기만.
+- `hjTeamHoursView`: 창 맨 위 `[data-team-hours-nav]` — `[data-team-hours-prev]` '◀ n월'(언제나), `[data-team-hours-next]` 'n월 ▶'(이번 달보다 앞 달일 때만). 둘 다 44px. 누르면 같은 back(현장 이름)으로 다시 열어 [← 팀 보고 노트]가 남는다.
+- 핀3곳 hyeonjang-v509-teamhours2(v508 위). 신규 tests/teamhours2-v509.e2e.js 2/2(지난달·지지난달·되돌아오기·해 넘김), 기준선(df2db7a)·변이 no-nav 실패 확인. 관련 4개·정적 19개 통과.
+
 ## 2026-10-25 v508 👷 팀 공수 정산(월, 전체 현장) — 노트 창에서 열기 (개발_백로그)
 
 - `hjTeamHoursData(ym)`: 모든 현장(보관 포함)의 `hjTeamReportsOf` 중 작업일이 ym(YYYY-MM)인 보고를 보고자별로 {name,n,h,pj:[{name,n,h}]}(시간 많은 순·같으면 이름 순, 보고자 없으면 '보고자 없음') + 전체 n·h. 읽기만.
