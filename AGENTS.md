@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v486 📄 완료보고서 — 팀 보고 사진 묶음 썸네일 → 크게 보기 (개발_백로그)
+
+- `hjTeamReportPhotosHtml`: 묶음 줄 썸네일(썸네일 있는 사진 4장까지)을 `<button data-rp-team-photo=file.id>`(44×44, img 꽉 채움)로, 넘치면 `[data-rp-team-more]` '+n'. 줄(label)은 `flex-wrap` + 글 `flex:1 1 160px` — 390px 에선 썸네일 줄이 아래로 내려간다.
+- `aptReportView`: `[data-rp-team-photo]` onclick → preventDefault·stopPropagation 후 `openLightbox(id, 그 묶음의 썸네일 있는 사진 ids)`(보고서 창 위에 겹쳐 열림). label 안의 단추라 눌러도 체크(빼기/넣기, v463)는 안 바뀐다 — 체크 칸을 누르면 여전히 빼기/넣기. 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v486-rpphoto(v485 위). 신규 tests/rpphoto-v486.e2e.js 2/2(390px), 기준선(0503fa9)·변이 no-view 실패 확인. 관련 14개(team4-v463·teampdf-v468·demo-v462·demotour-v467·doccenter-v433·doneall-v478·doneview-v471·leakreport-v422·publicweb-v446·reportfill-v408·team3-v458·teamnote2-v469·notephotos-v479·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v485 ⏱ 작업시간 창 — 현장 고르기 (개발_백로그 '작업시간 전체 창에서 현장 고르기')
 
 - `workView`: workData 전체에서 기록이 있는 현장(이름 빈 줄 제외)을 최근 기록 날짜 순으로 모아, 둘 이상이면 맨 위 `<label data-wl-pick>` + `<select data-wl-project>`('전체 · n줄' + '현장 · m줄', 44px). 기록 없는 현장 창에서 열면 그 현장을 '· 0줄'로 맨 앞에 넣어 골라 둔다. onchange → `workView(sel.value||'')`(전체면 ''), 칩·더 보기는 새로 시작. 화면만, 저장 없음.

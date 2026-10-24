@@ -3401,7 +3401,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v485-wlpick';
+const APP_BUILD='hyeonjang-v486-rpphoto';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -39277,9 +39277,12 @@ function hjTeamReportPhotosHtml(bundles){
   const md=d=>d?d.slice(5).replace('-','/'):'날짜 없음';
   return '<div data-rp-teamphotos style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin:6px 0 2px"><b style="font-size:12.5px">👷 팀 보고 사진 묶음 '+bundles.length+'건</b>'+
     '<p class="hint" style="margin:2px 0 4px">보고 작업일의 현장 사진이 먼저 보여요. 빼면 이 보고서 사진 대장에만 안 들어가고 사진은 그대로 남아요(저장 안 됨).</p>'+
-    bundles.map(b=>'<label data-rp-team-bundle="'+escapeAttr(b.key)+'" style="display:flex;gap:8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-rp-team-include'+(b.files.length?' checked':' disabled')+' style="width:18px;height:18px;flex:none;margin:0">'+
-      '<span style="flex:1;min-width:0;overflow-wrap:anywhere">'+escapeHtml(md(b.workDate))+' '+escapeHtml(b.done||(b.status==='review'?'검수 요청':'완료'))+' <span style="color:var(--muted)">(보고 '+b.want+'장 · 이 기기 '+b.files.length+'장'+(b.files.length?'':' — 없음')+')</span></span>'+
-      '<span style="display:flex;gap:3px;flex:none">'+b.files.slice(0,4).map(f=>f.thumb?'<img src="'+escapeAttr(f.thumb)+'" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:6px">':'').join('')+'</span></label>').join('')+'</div>';
+    bundles.map(b=>{const th=b.files.filter(f=>f.thumb),more=th.length-Math.min(4,th.length);
+      return '<label data-rp-team-bundle="'+escapeAttr(b.key)+'" style="display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;min-height:44px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-rp-team-include'+(b.files.length?' checked':' disabled')+' style="width:18px;height:18px;flex:none;margin:0">'+
+      '<span style="flex:1 1 160px;min-width:0;overflow-wrap:anywhere">'+escapeHtml(md(b.workDate))+' '+escapeHtml(b.done||(b.status==='review'?'검수 요청':'완료'))+' <span style="color:var(--muted)">(보고 '+b.want+'장 · 이 기기 '+b.files.length+'장'+(b.files.length?'':' — 없음')+')</span></span>'+
+      // v486 썸네일은 단추 — 누르면 사진 크게 보기(그 묶음 사진만). 단추라 눌러도 체크(빼기/넣기)는 안 바뀐다.
+      '<span data-rp-team-thumbs style="display:flex;gap:4px;flex:none;align-items:center">'+th.slice(0,4).map((f,i)=>'<button type="button" data-rp-team-photo="'+escapeAttr(String(f.id||''))+'" aria-label="'+escapeAttr('사진 크게 보기 '+(i+1)+'/'+th.length)+'" style="padding:0;width:44px;height:44px;min-height:44px;border:1px solid var(--line-soft);border-radius:6px;overflow:hidden;background:none;cursor:zoom-in;flex:none"><img src="'+escapeAttr(f.thumb)+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block"></button>').join('')+
+      (more>0?'<span data-rp-team-more style="font-size:11px;color:var(--muted)">+'+more+'</span>':'')+'</span></label>';}).join('')+'</div>';
 }
 function aptReportView(pjName){
   const p=(state.projects||[]).find(function(x){return x.name===pjName;});
@@ -39338,6 +39341,10 @@ function aptReportView(pjName){
   document.querySelectorAll('#modalRoot [data-rp-team-bundle]').forEach(row=>{const cb=row.querySelector('[data-rp-team-include]');if(!cb)return;cb.onchange=()=>{
     __rpExcluded.clear();document.querySelectorAll('#modalRoot [data-rp-team-bundle]').forEach(r=>{const c=r.querySelector('[data-rp-team-include]'),b=bundles.find(x=>x.key===r.getAttribute('data-rp-team-bundle'));if(c&&!c.checked&&b)b.files.forEach(f=>__rpExcluded.add(f));});
     const n=document.querySelector('#modalRoot [data-rp-photo-count]');if(n)n.textContent=String(ph.filter(f=>!__rpExcluded.has(f)).length);};});
+  // v486 묶음 썸네일 → 사진 크게 보기(창 위에 겹쳐 열림, 그 묶음의 썸네일 있는 사진만 넘겨 본다). 체크는 그대로.
+  document.querySelectorAll('#modalRoot [data-rp-team-photo]').forEach(btn=>{btn.onclick=e=>{e.preventDefault();e.stopPropagation();
+    const row=btn.closest('[data-rp-team-bundle]'),b=row&&bundles.find(x=>x.key===row.getAttribute('data-rp-team-bundle')),ids=b?b.files.filter(f=>f.thumb).map(f=>f.id):[];
+    openLightbox(btn.getAttribute('data-rp-team-photo'),ids);};});
   return {사진:ph.length};
 }
 
