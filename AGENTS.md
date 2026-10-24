@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v470 🧭 데모 둘러보기 — 본 단계 ✓ (개발_백로그 '데모 둘러보기 — 단계 완료 표시')
+
+- 이 기기 localStorage `hj_demo_tour_done`(열쇠 배열: pending·report·aptdocs·ledger) — `hjDemoTourDone/MarkDone/Clear`. `hjDemoTourGo` 가 단계 단추마다 MarkDone(카드 `[data-demo-tour]` 만 outerHTML 로 다시 그림), 줄은 `data-done` + '✓' + 단추 글 '다시', 요약 `[data-demo-tour-seen]` '봤어요 n/4 · 5단계 · 2분'. 끝내기는 표식에 안 센다.
+- 지우는 때: loadDemo 들어갈 때(`state._demo=true` 바로 뒤)와 hjDemoExit·[끝내기] — 지난 데모의 ✓ 가 새 데모에 안 남는다. 앱 자료 변경 없음(검사 ① serializeData 동일).
+- 핀3곳 hyeonjang-v470-demotour2(v469 위). 신규 tests/demotour2-v470.e2e.js 2/2(390px), 기준선(480af26)·변이 no-mark 실패 확인. 관련 7개(demotour-v467·demo-v462·settings-safety·demo-banner·mobile-tap-table·aptdocs-v441·dash-cards) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v469 👷 팀 보고 노트 창의 줄 단추 — [확인함] · [완료보고서 초안] (개발_백로그 '팀 보고 노트에서 바로 [확인함]·[완료보고서]')
 
 - `hjTeamReportNoteHtml` 줄 끝에 단추(44px): 검수 요청·막힘이고 `!ack` 면 `[data-team-note-ack=key]` [확인함], 완료(done)면 `[data-team-note-report]` [완료보고서 초안](docAt 있으면 '완료보고서 다시'). 그 밖의 줄은 단추 없음 — 창은 여전히 그 두 동작 외엔 읽기만.
