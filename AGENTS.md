@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v493 ⏱ 작업시간 창 — '📅 지난달' 칩 (개발_백로그, 월초 정산용)
+
+- `workView`: `ymPrev = hjAddDays(ymNow+'-01',-1).slice(0,7)`(1월이면 지난해 12월), `isPrev`. 지난달 기록이 일부(0 < prevN < 전부)일 때만 `[data-wl-filter="prev"]` '📅 지난달 n'. `prevOnly` 는 `!monthOnly` 일 때만 — 이번 달·지난달은 하나만 켜진다(칩 클릭: month → prev 끔, prev → month 끔, team 은 둘 다 그대로, [전부] 는 셋 다 끔).
+- 줄 고르기: `view`(v488, 줄 문자열 그대로 — wlmonth-v488 변이가 그대로 문다) → `list = prevOnly ? view.filter(isPrev) : view`. 더 보기·남은 줄·합계 줄·`visible`(v490)은 `list` 기준. 합계 줄·[📋 글로 복사] 머리줄에 '📅 지난달'. 더 보기·삭제·[✏️ 수정](v487) 모두 prevOnly 를 넘긴다. 화면만.
+- 기존 검사 손질: wlmonth-v488 칩 비교를 앞 셋으로(넷째 '📅 지난달'), wleditkeep-v487 변이 문자열에 prevOnly.
+- 핀3곳 hyeonjang-v493-wlprev(v492 위). 신규 tests/wlprev-v493.e2e.js 2/2(390px, 지난달 1일·말일·지지난달 경계, localDate 를 2027-01-15 로 바꿔 1월 → 12월), 기준선(6b93f34)·변이 no-prev 실패 확인. 관련 11개 통과, wleditkeep-v487·wlmonth-v488·wlcopy-v490 변이 여전히 실패 확인, 정적 19개 통과.
+
 ## 2026-10-24 v492 👷 팀 보고 노트 창 — PC 두 칸 (개발_백로그)
 
 - CSS 만(≥900px 미디어 블록, v474 규칙 뒤): `body:not(.mobile-mode) #hjTeamNote [data-team-note-list]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}`, 줄의 인라인 margin-bottom 은 `!important` 로 0, 줄이 아닌 자식(빈 글·'보고가 없어요')은 `grid-column:1/-1`. DOM 순서 그대로라 줄 순서·초점(scrollIntoView)·칩·사진 격자(v479)는 바뀌지 않는다. 폰·PC 모바일 모드는 한 칸.
