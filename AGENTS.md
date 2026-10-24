@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v472 ↩ 팀 보고 확인 취소 (개발_백로그 '팀 보고 확인 취소')
+
+- `hjTeamReportUnack(name,key)`: review·blocked 이고 `ack` 인 보고의 `ack`·`ackAt` 키를 지운다(v465 와 같은 방식, markDirty → 저장). 노트 창(hjTeamReportNoteHtml) 줄에 `[data-team-note-unack=key]` [확인 취소](44px) — 미확인 줄의 [확인함]과 서로 바뀐다. `hjTeamReportNoteBind` 가 처리(창 안 목록 다시 그림 + render() → 첫 화면 '🔎 검수 요청' 줄이 다시 올라옴 + 토스트).
+- 핀3곳 hyeonjang-v472-unack(v471 위). 신규 tests/unack-v472.e2e.js 2/2(390px, IDB 에서 키가 지워짐·그 밖 불변), 기준선(eaec8bc)·변이 no-clear 실패 확인. 관련 6개(teamnote2-v469·teamnote-v466·teamack-v465·doneview-v471·team3-v458·demo-v462) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v471 📄 첫 화면 '팀 보고 n건 들어옴' 줄에 [보기] (개발_백로그)
 
 - `hjTeamDoneDoc()` 행에 `key`(완료보고서 안 만든 완료 보고 중 가장 최근 것) 추가(읽기만). `hjTeamDoneDocHtml` 줄 단추가 [완료보고서 초안]·**[보기]**(`[data-team-note=key][data-project]`, 기존 v466 위임 → 노트 창, 그 보고에 초점)·[넘기기] 셋(44px).
