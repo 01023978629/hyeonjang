@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v482 ⏱ 작업시간 창 — 30줄 넘으면 [더 보기] (개발_백로그)
+
+- `workView(pjName,opts)`: `opts.limit`(기본 30, 30 이상) 만큼만 그리고, 남으면 표 아래 `[data-wl-more]` + `[data-wl-more-btn]` '외 n줄 — min(30,n)줄 더 보기'(44px) → `workView(pjName,{teamOnly,limit:limit+30,keepScroll:true})`. 예전엔 31줄째부터 말없이 숨었다(v478 과 같은 문제).
+- `opts.keepScroll`: openModal 전에 `#modalRoot .modal,.mbody` 의 scrollTop 을 재고, 다시 그린 뒤(모바일 스크롤 class 를 붙인 다음) 같은 순서로 되돌린다 — [더 보기]·[🗑 삭제] 뒤 맨 위로 튀지 않는다. 삭제는 펼친 만큼(limit)·칩 유지, 칩을 바꾸거나 바깥에서 새로 열면 30줄부터. 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v482-wlmore(v481 위). 신규 tests/wlmore-v482.e2e.js 2/2(390px, 스크롤 자리 확인 포함), 기준선(6afa3c9)·변이 no-more 실패 확인. 관련 8개(wlchip-v480·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v481 🔎⛔ 검수 요청·막힘 줄 — '· n일째' (개발_백로그 '검수 요청·막힘 줄 n일째 표시')
 
 - `hjTeamReportAgeDays(workDate)`: `isRealIsoDate` 이고 `hjDaysBetween(작업일, localDate())` 가 2 이상일 때만 그 날 수, 아니면 0(오늘·어제·미래·빈·잘못된 날짜). `hjTeamReportAgeHtml(workDate,prefix)` → `<span data-team-days=n>· n일째</span>`(주황, nowrap).
