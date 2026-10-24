@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v473 📥 팀 작업 가져오기 — 반영 결과 창 [👷 노트 보기] (개발_백로그)
+
+- `hjTeamReportImportView.apply` 가 방금 반영한 보고를 `done[]{project,key,status}` 로 모아, **사진이 없을 때만** `hjWrResultView(done,{applied,dup,failed})` 를 연다(현장별 n건·상태 글, `[data-wr-note=현장][data-key=마지막 반영 보고]` [👷 노트 보기] → hjTeamReportNoteView 초점). 사진이 있으면 사진 넣기 결과 창이 마지막 화면이라 그대로(첫 화면 줄 [보기]). 반영 0건(전부 중복)이면 안 연다. 반영 로직·토스트는 그대로.
+- 핀3곳 hyeonjang-v473-importnote(v472 위). 신규 tests/importnote-v473.e2e.js 2/2(390px), 기준선(bb2b147)·변이 no-result 실패 확인. 관련 8개(teampacket-v432·team2-v444·company-team-ui·teamnote-v466·teamnote2-v469·unack-v472·team3-v458·teamack-v465) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v472 ↩ 팀 보고 확인 취소 (개발_백로그 '팀 보고 확인 취소')
 
 - `hjTeamReportUnack(name,key)`: review·blocked 이고 `ack` 인 보고의 `ack`·`ackAt` 키를 지운다(v465 와 같은 방식, markDirty → 저장). 노트 창(hjTeamReportNoteHtml) 줄에 `[data-team-note-unack=key]` [확인 취소](44px) — 미확인 줄의 [확인함]과 서로 바뀐다. `hjTeamReportNoteBind` 가 처리(창 안 목록 다시 그림 + render() → 첫 화면 '🔎 검수 요청' 줄이 다시 올라옴 + 토스트).

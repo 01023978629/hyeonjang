@@ -3398,7 +3398,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v472-unack';
+const APP_BUILD='hyeonjang-v473-importnote';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40534,12 +40534,12 @@ function hjTeamReportImportView(prefill){
     const ready=jobs.filter(j=>j.m&&!j.r.problems.length);
     if(!ready.length){issue.textContent='반영할 보고가 없어요 — 현장을 고르거나 보고 내용을 확인해 주세요';return;}
     busy=true;const controls=[...document.querySelectorAll('#modalRoot button,#modalRoot input,#modalRoot select,#modalRoot textarea')];controls.forEach(el=>el.disabled=true);
-    let applied=0,dup=0,failed=0;const photoJobs=[];
+    let applied=0,dup=0,failed=0;const photoJobs=[],done=[];   // v473 done: 방금 반영한 {project,key,status}
     try{
       // 반영 직전 스냅샷 1회(각 durableLocalMutation 이 자체 스냅샷을 또 남기지만, 가져오기 묶음의 되돌림 지점은 여기 하나다).
       if(!(await hjSnapshot('팀 작업 가져오기 전',true,true)))throw new Error('안전판 저장에 실패했어요');
       for(const j of ready){
-        try{const r=await hjWrApply(j.r,j.m);if(r&&r.skipped==='dup'){dup++;continue;}applied++;
+        try{const r=await hjWrApply(j.r,j.m);if(r&&r.skipped==='dup'){dup++;continue;}applied++;done.push({project:j.m.project,key:j.r.key,status:j.r.status});
           const names=new Set(j.r.photos.map(x=>x.file.split('/').pop())),files=s.files.filter(f=>names.has(String(f.name||'').split('/').pop()));
           if(files.length)photoJobs.push({files,report:j.r,match:j.m});}
         catch(e){failed++;issue.textContent='반영 실패: '+(e&&e.message||e);}
@@ -40548,10 +40548,24 @@ function hjTeamReportImportView(prefill){
     }finally{busy=false;controls.forEach(el=>el.disabled=false);}
     closeModal();render();
     toast('📥 보고 '+applied+'건 반영'+(dup?' · 중복 '+dup+'건 건너뜀':'')+(failed?' · 실패 '+failed+'건':'')+(photoJobs.length?' · 사진 추가 확인으로 이어집니다':''));
+    // v473 사진이 없으면 바로 결과 창(현장별 [👷 노트 보기]); 사진이 있으면 사진 넣기 결과 창이 마지막 화면이라 그대로 둔다(첫 화면 줄의 [보기]로).
+    if(done.length&&!photoJobs.length){hjWrResultView(done,{applied,dup,failed});return;}
     const next=()=>{const job=photoJobs.shift();if(!job)return;setTimeout(()=>{const opened=openPhotoIntake(job.files,{project:job.match.project,source:'team',onRecord:hjWrPhotoHook(job.report,job.match),onComplete:async()=>{next();},onCancel:async()=>{next();}});if(opened===false)next();},120);};
     next();
   };
   if(s.text)preview();
+  return true;
+}
+/* v473 가져오기 결과 창 — 방금 반영한 보고를 현장별로 묶고 [👷 노트 보기](hjTeamReportNoteView, 그 현장의 마지막 반영 보고에 초점). 읽기만. */
+function hjWrResultView(done,counts){
+  const c=counts||{},by=new Map();(Array.isArray(done)?done:[]).forEach(d=>{if(!d||!d.project)return;if(!by.has(d.project))by.set(d.project,[]);by.get(d.project).push(d);});
+  const label=st=>HJ_WR_STATUS_LABEL[st]||st||'';
+  openModal('📥 팀 작업 가져오기 — 반영 결과','<div id="hjWrResult" style="min-width:0;font-size:13px;line-height:1.6"><p class="hint" style="margin:0 0 8px">보고 '+(Number(c.applied)||0)+'건 반영'+(c.dup?' · 중복 '+c.dup+'건 건너뜀':'')+(c.failed?' · 실패 '+c.failed+'건':'')+' — 검수 요청·막힘은 첫 화면 줄에, 완료는 완료보고서 초안 줄에 올라옵니다.</p>'+
+    [...by.entries()].map(([name,rows])=>'<div data-wr-result-row="'+escapeAttr(name)+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px"><span style="flex:1;min-width:0;overflow-wrap:anywhere"><b>'+escapeHtml(name)+'</b> · '+rows.length+'건 <span style="color:var(--muted)">'+escapeHtml(rows.map(r=>label(r.status)).join(' · '))+'</span></span>'+
+      '<button type="button" class="ghost tiny" data-wr-note="'+escapeAttr(name)+'" data-key="'+escapeAttr(rows[rows.length-1].key||'')+'" style="min-height:44px;flex:none">👷 노트 보기</button></div>').join('')+'</div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  document.querySelectorAll('#hjWrResult [data-wr-note]').forEach(b=>{b.onclick=()=>hjTeamReportNoteView(b.getAttribute('data-wr-note'),b.getAttribute('data-key'));});
   return true;
 }
 /* 대시보드 — 검수 요청·막힘 보고 줄(읽기 전용). */
