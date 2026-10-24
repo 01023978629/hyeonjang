@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v487 ⏱ 작업시간 [✏️ 수정] — 돌아올 때 칩·펼친 줄 수·스크롤 그대로 (개발_백로그)
+
+- `workView` 의 [✏️ 수정] 은 떠나기 전에 `#modalRoot .modal,.mbody` scrollTop 을 재서 `workEditView(id,pjName,{teamOnly,limit,scrollTops})` 로 넘긴다. `workView` 는 `opts.scrollTops`(배열)가 있으면 그 값으로, 없고 `keepScroll` 이면 지금 값으로 되돌린다(v482).
+- `workEditView(id,pjName,back)`: 아래 단추 [← 작업시간](저장 없이 `workView(pjName,back)`) · [닫기](다 닫음). 저장은 `markDirty(); closeModal(); workView(pjName,back)`. 현장 창에서 열었으면 그 현장 창으로 돌아간다. 저장 내용은 예전 그대로(날짜·시작·종료·메모).
+- 핀3곳 hyeonjang-v487-wleditkeep(v486 위). 신규 tests/wleditkeep-v487.e2e.js 2/2(390px, 스크롤 자리 확인 포함), 기준선(add0450)·변이 no-keep 실패 확인. 관련 10개(wlchip-v480·wlmore-v482·wlpick-v485·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v486 📄 완료보고서 — 팀 보고 사진 묶음 썸네일 → 크게 보기 (개발_백로그)
 
 - `hjTeamReportPhotosHtml`: 묶음 줄 썸네일(썸네일 있는 사진 4장까지)을 `<button data-rp-team-photo=file.id>`(44×44, img 꽉 채움)로, 넘치면 `[data-rp-team-more]` '+n'. 줄(label)은 `flex-wrap` + 글 `flex:1 1 160px` — 390px 에선 썸네일 줄이 아래로 내려간다.
