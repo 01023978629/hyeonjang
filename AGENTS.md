@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v468 📄 완료보고서 PDF 사진 대장 — '팀 보고 · 한 일' 머리글 먼저 (개발_백로그 '완료보고서 팀 보고 사진 묶음 — PDF 사진 대장 머리글')
+
+- `hjReportPhotoGroups(photos, teamBundles)` 두 번째 인자(선택): v463 묶음(`{key,workDate,status,done,files}`)이 오면 그 사진은 작업일 순 `{label:'팀 보고 · '+한 일(40자), team:true, teamKey}` 그룹으로 **맨 앞**, 나머지 사진만 예전처럼 작업명(누수 태그) 그룹 + rank 정렬. 인자가 없으면 결과는 예전과 같다(hjReportDraft 는 그대로 인자 없이 → 작업 내용 줄 불변). 읽기만.
+- aptReportView 가 PDF `o` 에 `teamBundles`(빼기 `__rpExcluded` 반영, 빈 묶음 제외)를 넣고 buildAptReportPDF 가 `hjReportPhotoGroups(o.photos,o.teamBundles)` 로 머리글(`■ 팀 보고 · … — MM/DD (n장)`)을 만든다. 6장/페이지 계산·사진 수는 그대로.
+- 핀3곳 hyeonjang-v468-teampdf(v467 위). 신규 tests/teampdf-v468.e2e.js 3/3(진짜 buildAptReportPDF 본문에 `o.teamBundles` 가 있는지 확인한 뒤 그룹 결과만 기록하는 대역 — jsPDF 는 바깥 스크립트라 막힘), 기준선(ecdd7e6)·변이 no-pass 실패 확인. 관련 10개(team4-v463·team3-v458·reportfill-v408·phototags-v454·leakreport-v422·demo-v462·demotour-v467·doccenter-v433·publicweb-v446·rehearsalfix-v449) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v467 🧭 데모 둘러보기 — 데모 첫 화면 맨 위 '이렇게 보세요' 5단계 (개발_백로그 '데모 둘러보기 순서 안내')
 
 - `hjDemoTourHtml()`(데모가 아니면 '') 을 viewDashboard 맨 앞에 — `<details data-demo-tour ontoggle="hjDemoTourToggle(this)">`, 열림 기본, 접힘은 이 기기 localStorage `hj_demo_tour`('0' 접힘; `hjDemoTourOpen()`) — 앱 자료 변경 없음(검사 ① serializeData 동일). 5단계 `HJ_DEMO_TOUR`(상수: 검수 요청 줄 찾기 → 완료보고서 초안 → 아파트 서류 4종 → 월말 장부 🧾 → 데모 끝내기), 줄마다 `[data-demo-tour-go=pending|report|aptdocs|ledger|exit]`(44px). `hjDemoTourGo`: pending 은 `[data-team-report-pending]` 테두리 1.8초(없으면 토스트), report → aptReportView(HJ_DEMO_CAFE), aptdocs → hjAptDocsView(HJ_DEMO_APT), ledger → expenseLedger(이번 달), exit → hjDemoExit. 데모 현장 이름 상수 `HJ_DEMO_CAFE`·`HJ_DEMO_APT`(loadDemo 의 이름과 같아야 한다 — 바꾸면 둘 다).

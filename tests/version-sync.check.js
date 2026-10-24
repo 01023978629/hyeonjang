@@ -18,7 +18,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const fail = [];
-const TARGET_BUILD = 'hyeonjang-v467-demotour';
+const TARGET_BUILD = 'hyeonjang-v468-teampdf';
 
 const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
