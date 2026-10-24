@@ -120,6 +120,10 @@
     /* v474 데모 둘러보기 카드 — PC 에선 5단계를 두 칸으로(마지막 '끝내기'는 한 줄 가득), 폰은 한 칸 그대로 */
     body:not(.mobile-mode) #view [data-demo-tour] ol{grid-template-columns:1fr 1fr;gap:6px 18px}
     body:not(.mobile-mode) #view [data-demo-tour] ol>li:last-child{grid-column:1/-1}
+    /* v492 팀 보고 노트 창 — 넓은 화면(모바일 모드 아님)에선 줄을 두 칸으로(왼→오, 위→아래 그대로). 빈 글·사진 격자는 줄 안에서 그대로 */
+    body:not(.mobile-mode) #hjTeamNote [data-team-note-list]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+    body:not(.mobile-mode) #hjTeamNote [data-team-note-list]>[data-team-note]{margin-bottom:0!important}
+    body:not(.mobile-mode) #hjTeamNote [data-team-note-list]>:not([data-team-note]){grid-column:1/-1}
   }
   /* v452 PC 더보기 — 폰 하단 메뉴에만 있던 126개 기능 목록을 PC 탭 줄 끝 [⋯ 더보기] 로 연다(가운데 창) */
   .tab-more{margin-left:auto;padding:8px 14px;font-size:12.5px;border:1px solid var(--line-soft);border-bottom:none;border-radius:var(--r) var(--r) 0 0;background:var(--paper-2);color:var(--blueprint);font-weight:700;cursor:pointer;min-height:36px}
@@ -3401,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v491-ackall';
+const APP_BUILD='hyeonjang-v492-note2col';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,

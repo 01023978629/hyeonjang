@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v492 👷 팀 보고 노트 창 — PC 두 칸 (개발_백로그)
+
+- CSS 만(≥900px 미디어 블록, v474 규칙 뒤): `body:not(.mobile-mode) #hjTeamNote [data-team-note-list]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}`, 줄의 인라인 margin-bottom 은 `!important` 로 0, 줄이 아닌 자식(빈 글·'보고가 없어요')은 `grid-column:1/-1`. DOM 순서 그대로라 줄 순서·초점(scrollIntoView)·칩·사진 격자(v479)는 바뀌지 않는다. 폰·PC 모바일 모드는 한 칸.
+- 핀3곳 hyeonjang-v492-note2col(v491 위). 신규 tests/note2col-v492.e2e.js 2/2(1280 두 칸·390/모바일 모드 한 칸·사진 격자 칸 안), 기준선(48afc69)·변이 one-col 실패 확인. 관련 12개(teamnote-v466·notephotos-v479·notefilter-v475·ackall-v491·notecopy-v483·teamnote2-v469·unack-v472·ordername-v484·tour2col-v474·margin1280-v464·pcdark-v452·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v491 👷 팀 보고 노트 창 — [✔ 보이는 검수·막힘 n건 모두 확인함] (개발_백로그)
 
 - `hjTeamReportNoteUnacked(p,filter)` = `hjTeamReportNoteRows`(칩 반영) 중 key 있고 review·blocked 이며 !ack. `hjTeamReportNoteCopyHtml` 의 `[data-team-note-copy-row]` 가 flex 줄이 되어 [📋 글로 복사] 옆에 `[data-team-note-ackall]` '✔ 보이는 검수·막힘 n건 모두 확인함'(44px, 2건 이상일 때만 — 1건이면 줄 [확인함]).
