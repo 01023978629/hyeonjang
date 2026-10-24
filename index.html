@@ -3398,7 +3398,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v465-teamack';
+const APP_BUILD='hyeonjang-v466-teamnote';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -37593,7 +37593,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -37644,6 +37644,7 @@ function setupDelegation(){
     if(t.hasAttribute('data-owner-todo-open'))return hjTeamBoard();   // v460 대표 할 일 → 팀 업무·인수인계 보드 맨 위 카드
     if(d.teamDoneSkip!==undefined){hjTeamDoneMark(d.teamDoneSkip,'skip');render();toast('완료보고서 줄을 넘겼어요 — 📎 서류 만들기에서 언제든 만들 수 있어요');return;}
     if(d.teamAck!==undefined){const n=hjTeamReportAck(d.project||'',d.teamAck);render();toast(n?'팀 보고를 확인함으로 내렸어요 — 보고 내용은 현장 노트에 그대로 있어요':'이미 확인한 보고예요');return;}   // v465
+    if(d.teamNote!==undefined)return hjTeamReportNoteView(d.project||'',d.teamNote);   // v466 보고 전문(읽기만)
     if(d.icsToday!==undefined)return hjAlertIcsSave(localDate());   // v443 오늘 일정 → 폰 캘린더(알람)
     if(t.hasAttribute('data-leakquote'))return hjLeakQuickQuote(t.dataset.leakquote);
     if(t.id==='qmLeakTemplate')return hjLeakQuoteTemplate();
@@ -39300,6 +39301,7 @@ function docHubView(pjName){
   const ph=files.filter(function(f){return f.kind==='photo';}).length;
   const docThumbs=files.filter(function(f){return f.kind==='photo'&&hjDocThumbOk(f);}).length;
   const doneOk=!!p.doneAt,leak=p.kind==='leak',teamDone=(typeof hjTeamDoneLines==='function'?hjTeamDoneLines(p):[]).length;   // v458
+  const teamRows=(typeof hjTeamReportsOf==='function'?hjTeamReportsOf(p):[]),teamAll=teamRows.length,teamPend=teamRows.filter(function(r){return (r.status==='review'||r.status==='blocked')&&!r.ack;}).length;   // v466
   const quotes=(state.quotes||[]).filter(function(q){return q&&q.project===pjName;}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
   const est=files.filter(function(f){return f.kind==='estimate'&&!f._fromQuote&&!f._virtual;}).length,anyQuote=quotes.length+est;   // v449 앱 견적에서 만든 가상 견적 파일은 견적과 같은 것 — 두 번 세지 않는다
   const pays=(state.payLog||[]).filter(function(x){return x&&x.project===pjName&&num(x.amt)>0;});
@@ -39333,6 +39335,7 @@ function docHubView(pjName){
     item('🖼','일일 작업보고서 (사진)','최근 사진 4장으로 고객 진행 보고 이미지.','progress',ph?'사진 '+ph+'장':'사진 없음 — 보고서가 비어요',ph?'':'warn')+
     item('🚚','자재 발주서','견적 품목을 거래처별 발주서로.','order',quotes.length?'최근 견적 품목 기준':'앱 견적 없음',quotes.length?'':'warn')+
     item('📤','작업 지시서 PDF (팀 패킷)','팀 앱으로 보내는 업무 지시.','todo:wo','','')+
+    item('👷','팀 작업 보고 보기'+NEW,'팀 앱에서 들어온 보고 전문 — 한 일·이슈·체크리스트·사진 수. 읽기만.','teamnote',teamAll?('보고 '+teamAll+'건'+(teamPend?' · 검수·막힘 '+teamPend+'건':'')):'보고 없음',teamPend?'warn':'')+   // v466
     group('준공·돈')+
     item('📄','완료보고서 PDF','관리사무소·고객 제출용. 표지+사진대장+확인란까지 A4로.','aptreport',(ph?'사진 '+ph+'장':'사진 0장')+' · '+(doneOk?'준공일 '+escapeHtml(p.doneAt):'준공일 없음')+(teamDone?' · 👷 팀 보고 '+teamDone+'건':''),(ph&&doneOk)?'':'warn')+
     item('🧰','수리·작업 확인서'+NEW,'"오늘 이렇게 했습니다" 한 장 — 방문·작업·자재·전후 사진·보증, 고객 서명까지.','workcert',issued('workcert')||('사진 '+docThumbs+'장 · '+(cust.addr?'주소 있음':'주소 없음')+' · 번호 자동'),issued('workcert')?'ok':'')+
@@ -39367,6 +39370,7 @@ function docHubView(pjName){
     setTimeout(function(){
       try{
         if(a==='aptreport')aptReportView(pjName);
+        else if(a==='teamnote')hjTeamReportNoteView(pjName,null,{back:true});   // v466
         else if(a==='warranty')warrantyView(pjName);
         else if(a==='wdoc'){warrantyIssueSend(pjName);}   // 예전엔 없는 함수(warrantyIssue·warrantyDocSend)를 찾다 늘 토스트로 끝나던 죽은 길
         else if(a==='zip')exportProjectZIP(pjName);
@@ -40551,12 +40555,38 @@ function hjTeamDoneMark(name,how){
   hjWoOrders(p).forEach(w=>(Array.isArray(w.reports)?w.reports:[]).forEach(mark));(Array.isArray(p.teamReports)?p.teamReports:[]).forEach(mark);
   if(n)markDirty();return n;
 }
+/* v466 팀 보고 노트 — 현장의 팀 작업 보고 전문(한 일·이슈·체크리스트·사진 수·보고자)을 읽기 전용 창으로. 저장·변경 없음(단추는 닫기·돌아가기뿐).
+   첫 화면 검수 요청·막힘 줄의 [보기]와 📎 서류 만들기 '👷 팀 작업 보고 보기'에서 연다. focusKey 가 있으면 그 보고를 위로 올리고 테두리를 준다. */
+function hjTeamReportNoteHtml(p,focusKey){
+  const rows=hjTeamReportsOf(p).slice().reverse(),md=d=>isRealIsoDate(String(d||''))?hjMdDow(d):(d||'날짜 없음');
+  if(!rows.length)return '<div class="empty" style="padding:14px"><b>팀 작업 보고가 없어요</b>팀 앱의 [📤 작업 보고 내보내기] 파일을 더보기 › 📥 팀 작업 가져오기로 읽으면 여기에 쌓입니다.</div>';
+  return rows.map(r=>{const key=String(r.key||''),focus=!!focusKey&&key===String(focusKey);
+    const meta=[r.reporter?'👤 '+escapeHtml(hjWoText(r.reporter,20)):'',Number(r.hours)>0?Number(r.hours)+'시간':'','사진 '+(Number(r.photos)||0)+'장',r.order?'지시 '+escapeHtml(r.order):'보고만'].filter(Boolean).join(' · ');
+    const ck=Array.isArray(r.checklist)?r.checklist.filter(c=>c&&typeof c.text==='string'):[];
+    const marks=[r.ack?'확인함'+(r.ackAt?' '+md(r.ackAt):''):'',r.docAt?'완료보고서 '+md(r.docAt):'',r.docAck?'완료보고서 넘김':''].filter(Boolean).join(' · ');
+    return '<div data-team-note="'+escapeAttr(key)+'"'+(focus?' data-focus':'')+' style="border:1px solid '+(focus?'var(--clay)':'var(--line-soft)')+';border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;line-height:1.6;overflow-wrap:anywhere">'+
+      '<div style="display:flex;gap:6px 10px;flex-wrap:wrap;align-items:baseline"><b>'+escapeHtml(md(r.workDate))+' · '+escapeHtml(HJ_WR_STATUS_LABEL[r.status]||r.status||'')+'</b><span style="font-size:11.5px;color:var(--muted)">'+meta+'</span></div>'+
+      (r.done?'<div>한 일: '+escapeHtml(hjWoText(r.done,1000))+'</div>':'')+
+      (r.issue?'<div style="color:var(--hj-warn-fg,#b45309)">이슈: '+escapeHtml(hjWoText(r.issue,1000))+'</div>':'')+
+      (ck.length?'<div style="font-size:12px;color:var(--muted-2,var(--muted))">'+ck.map(c=>(c.ok?'✓ ':'○ ')+escapeHtml(hjWoText(c.text,80))).join(' · ')+'</div>':'')+
+      (marks?'<div class="hint" style="margin:2px 0 0">'+marks+'</div>':'')+'</div>';}).join('');
+}
+function hjTeamReportNoteView(name,focusKey,opts){
+  const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p){toast('현장을 찾을 수 없어요');return false;}
+  const o=opts&&typeof opts==='object'?opts:{},n=hjTeamReportsOf(p).length;
+  openModal('👷 팀 작업 보고 — '+name,'<div id="hjTeamNote" style="min-width:0"><p class="hint" style="margin:0 0 8px">팀 앱에서 들어온 보고 '+n+'건 — 최근 것부터. 읽기만 하는 창이라 아무것도 바뀌지 않아요(확인·넘기기는 첫 화면 줄에서).</p>'+hjTeamReportNoteHtml(p,focusKey)+'</div>',
+    [...(o.back?[{label:'← 서류 만들기',cls:'ghost',fn:()=>docHubView(name)}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  hjModalTapTargets();
+  const f=document.querySelector('#hjTeamNote [data-team-note][data-focus]');if(f){try{f.scrollIntoView({block:'start'});}catch(_){}}
+  return true;
+}
 function hjTeamReportPendingHtml(){
   const rows=hjTeamReportPending();if(!rows.length)return '';
   const review=rows.filter(r=>r.status==='review'),blocked=rows.filter(r=>r.status==='blocked');
   // v465 줄마다 [확인함] — 예전엔 내릴 길이 없어 검수 요청 줄이 영영 남았다. 글은 현장 · 작업일 · 한 일/이슈(짧게), 보고자 이름은 안 넣는다.
   const md=d=>d?d.slice(5).replace('-','/')+' ':'';
   const line=(r,icon,color)=>'<div data-team-report-row="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:'+color+'"><span style="flex:1;min-width:0;overflow-wrap:anywhere">'+icon+' '+escapeHtml(r.project)+' — '+escapeHtml(md(r.workDate)+hjWoText(r.status==='blocked'?(r.issue||r.done):(r.done||r.issue),60))+(r.status==='review'&&r.issue?' <span style="color:var(--muted)">· '+escapeHtml(hjWoText(r.issue,40))+'</span>':'')+'</span>'+
+    '<button type="button" class="ghost tiny" data-team-note="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="min-height:44px" aria-label="'+escapeAttr(r.project+' 팀 보고 보기')+'">보기</button>'+   // v466 보고 전문(읽기만)
     '<button type="button" class="ghost tiny" data-team-ack="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="min-height:44px" aria-label="'+escapeAttr(r.project+' '+(r.status==='blocked'?'막힘':'검수 요청')+' 보고 확인함')+'">확인함</button></div>';
   return '<div data-team-report-pending style="font-size:13px;margin:0 0 8px;line-height:1.6">'+
     (review.length?'<div style="color:var(--hj-warn-fg,#b45309);font-weight:700">🔎 검수 요청 '+review.length+'건</div>'+review.slice(0,3).map(r=>line(r,'🔎','var(--hj-warn-fg,#b45309)')).join('')+(review.length>3?'<div class="hint" style="margin:0">외 '+(review.length-3)+'건 — 확인하면 다음 줄이 올라와요</div>':''):'')+

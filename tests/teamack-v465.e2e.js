@@ -65,8 +65,8 @@ let browser, passed = 0, page;
     await page.locator('#view [data-team-report-pending]').waitFor();
     const r = await rows();
     assert.deepEqual(r.map(x => x.key), ['TEST_R2', 'TEST_R3'], 'TEAM_ACK_LINE rows ' + JSON.stringify(r));
-    assert.match(r[0].text, new RegExp('^🔎 ' + APT + ' — ' + md(D.r2) + ' 벽 타일 1차 · 줄눈 색 확인 필요 확인함$'), r[0].text);
-    assert.match(r[1].text, new RegExp('^⛔ ' + APT + ' — ' + md(D.r3) + ' 자재 미도착 — 타일 본드 확인함$'), r[1].text);
+    assert.match(r[0].text, new RegExp('^🔎 ' + APT + ' — ' + md(D.r2) + ' 벽 타일 1차 · 줄눈 색 확인 필요 (보기 )?확인함$'), r[0].text);   // v466 부터 [보기] 가 앞에 붙는다
+    assert.match(r[1].text, new RegExp('^⛔ ' + APT + ' — ' + md(D.r3) + ' 자재 미도착 — 타일 본드 (보기 )?확인함$'), r[1].text);
     assert(!r.some(x => /김타일/.test(x.text)), 'no reporter name'); assert(r.every(x => x.h >= 44), 'tap targets ' + JSON.stringify(r.map(x => x.h)));
     assert.match(await page.locator('#view [data-team-report-pending]').innerText(), /🔎 검수 요청 1건[\s\S]*⛔ 막힘 1건/);
     await page.locator('#view [data-team-ack="TEST_R2"]').click();

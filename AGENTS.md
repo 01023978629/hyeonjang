@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v466 👷 팀 보고 노트 보기 — 보고 전문 읽기 전용 창 (개발_백로그 '팀 보고 노트 보기')
+
+- `hjTeamReportNoteHtml(p,focusKey)`·`hjTeamReportNoteView(name,focusKey,{back})`: 현장의 팀 작업 보고 전부(hjTeamReportsOf, 최근 것부터) — 날짜(hjMdDow)·상태(HJ_WR_STATUS_LABEL)·👤 보고자·시간·사진 수·지시 번호(없으면 '보고만')·한 일·이슈·체크리스트(✓/○)·표식(확인함 날짜·완료보고서 날짜/넘김). 단추는 닫기(와 `back` 일 때 [← 서류 만들기])뿐 — **읽기만, 저장·변경 없음**(검사 ① serializeData 동일). `[data-team-note=key]`, focusKey 는 `data-focus` + clay 테두리 + scrollIntoView. 보고 없으면 `.empty` 안내.
+- 들어가는 길: 첫 화면 검수 요청·막힘 줄 `[data-team-note=key][data-project]` [보기](확인함 앞, 44px; #view 위임 `d.teamNote`) · 📎 서류 만들기 '시공 중' 그룹 `data-act="teamnote"`('보고 n건 · 검수·막힘 k건', 막힘·검수가 있으면 warn) → `{back:true}`. docHubView 에 teamRows/teamAll/teamPend(읽기만).
+- teamack-v465 ① 줄 글 정규식에 `(보기 )?` 허용. 핀3곳 hyeonjang-v466-teamnote(v465 위). 신규 tests/teamnote-v466.e2e.js 2/2(390px), 기준선(a04b72b)·변이 no-entry 실패 확인. 관련 13개(teamack-v465·team3-v458·team4-v463·demo-v462·doccenter-v433·pcdark-v452·teampacket-v432·team2-v444·dash-cards·evidence-v427·insurance-v442·proposal-v437·aptdocs-v441) 통과, 정적 19개 통과.
+
 ## 2026-10-23 v465 🔎 첫 화면 '검수 요청 · 막힘' 줄 — [확인함]으로 내리기 (v432 이후 내릴 길이 없던 줄)
 
 - v432 의 `hjTeamReportPending()` 은 `!r.ack` 만 걸렀는데 ack 를 적는 곳이 없어 검수 요청·막힘 줄이 영영 남았다. `hjTeamReportAck(name,key)` 가 보고 레코드(wo.reports[]·p.teamReports[]) 안에 `ack:true, ackAt`(v458 docAck 와 같은 방식 — 새 저장 키 없음, markDirty → 이 기기 저장)을 적는다. review·blocked 만, 이미 ack 면 0.
