@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v512-teamledger';
+const APP_BUILD='hyeonjang-v513-notefirst';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40876,7 +40876,10 @@ function hjTeamHoursView(ym,back){
 function hjTeamReportNoteRender(name,focusKey,filter){
   const root=document.getElementById('hjTeamNote'),p=(state.projects||[]).find(x=>x&&x.name===name);if(!root||!p)return;
   const hint=root.querySelector('p.hint');
-  root.innerHTML=(hint?hint.outerHTML:'')+hjTeamReportNoteSearchHtml(p,filter)+hjTeamReportNoteChipsHtml(p,filter)+hjTeamReportNoteCopyHtml(p,filter)+hjTeamReportNoteHoursHtml(p,filter)+'<div data-team-note-list>'+hjTeamReportNoteHtml(p,focusKey,filter)+'</div>';   // v483 복사 단추
+  // v513 폰에서 보고가 먼저 보이게 — 찾기·칩(고르는 것)은 위, 복사·엑셀·모두 확인함·보고자별 시간·공수 정산(보이는 것으로 하는 일)은 목록 아래 '🧰 복사·정산'으로
+  const tools=hjTeamReportNoteCopyHtml(p,filter)+hjTeamReportNoteHoursHtml(p,filter);
+  root.innerHTML=(hint?hint.outerHTML:'')+hjTeamReportNoteSearchHtml(p,filter)+hjTeamReportNoteChipsHtml(p,filter)+'<div data-team-note-list>'+hjTeamReportNoteHtml(p,focusKey,filter)+'</div>'+
+    (tools?'<div data-team-note-tools style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line-soft)"><div style="font-size:11.5px;font-weight:800;color:var(--muted);margin:0 0 6px">🧰 복사·정산 — 위에서 고른 보고 기준</div>'+tools+'</div>':'');   // v483 복사 단추
   hjModalTapTargets();hjTeamReportNoteBind(name,focusKey,filter);
 }
 function hjTeamReportNoteView(name,focusKey,opts){
