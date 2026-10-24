@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v471 📄 첫 화면 '팀 보고 n건 들어옴' 줄에 [보기] (개발_백로그)
+
+- `hjTeamDoneDoc()` 행에 `key`(완료보고서 안 만든 완료 보고 중 가장 최근 것) 추가(읽기만). `hjTeamDoneDocHtml` 줄 단추가 [완료보고서 초안]·**[보기]**(`[data-team-note=key][data-project]`, 기존 v466 위임 → 노트 창, 그 보고에 초점)·[넘기기] 셋(44px).
+- 핀3곳 hyeonjang-v471-doneview(v470 위). 신규 tests/doneview-v471.e2e.js 2/2(390px), 기준선(fe48d2c)·변이 no-key 실패 확인. 관련 9개(team3-v458·teamnote-v466·teamnote2-v469·teamack-v465·demo-v462·demotour-v467·dash-cards·inqpending-v386·mobile-more-sweep) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v470 🧭 데모 둘러보기 — 본 단계 ✓ (개발_백로그 '데모 둘러보기 — 단계 완료 표시')
 
 - 이 기기 localStorage `hj_demo_tour_done`(열쇠 배열: pending·report·aptdocs·ledger) — `hjDemoTourDone/MarkDone/Clear`. `hjDemoTourGo` 가 단계 단추마다 MarkDone(카드 `[data-demo-tour]` 만 outerHTML 로 다시 그림), 줄은 `data-done` + '✓' + 단추 글 '다시', 요약 `[data-demo-tour-seen]` '봤어요 n/4 · 5단계 · 2분'. 끝내기는 표식에 안 센다.
