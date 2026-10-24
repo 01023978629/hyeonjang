@@ -17,7 +17,7 @@ let html = process.env.HJ_V487_BASELINE ? execFileSync('git', ['show', process.e
 if (MUT) {
   assert.equal(MUT, 'no-keep');
   html = html || require('node:fs').readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  const needle = 'workEditView(b.dataset.id,pjName,{teamOnly:teamOnly,limit:limit,scrollTops:st});';
+  const needle = 'workEditView(b.dataset.id,pjName,{teamOnly:teamOnly,monthOnly:monthOnly,limit:limit,scrollTops:st});';   // v488 이번 달 칩도 넘긴다
   assert.equal(html.split(needle).length, 2, 'mutation needle'); html = html.replace(needle, 'workEditView(b.dataset.id,pjName);');
 }
 

@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v488 ⏱ 작업시간 창 — '📅 이번 달' 칩 (개발_백로그)
+
+- `workView`: `isMonth`(date 앞 7자 = localDate 앞 7자). 이번 달 기록이 일부(0 < monthN < 전부)일 때만 `[data-wl-filter="month"]` '📅 이번 달 n'. 칩 줄은 팀 보고 줄이 있거나 이번 달 칩이 있을 때. `opts.monthOnly` 는 칩이 보일 때만 켜진다.
+- 줄 고르기: `shown`(팀 보고만, v480 줄 문자열 그대로 — wlchip-v480 변이가 그대로 문다) → `view = monthOnly ? shown.filter(isMonth) : shown`. 더 보기·남은 줄·합계 줄은 `view` 기준. 합계 줄 '👷 팀 보고 · 📅 이번 달 n줄 · 합계 …'(켠 것만).
+- 칩 누르기: [전부] = 둘 다 끔, 팀·이번 달은 따로 켜고 끈다(다른 쪽은 그대로). 더 보기·삭제·[✏️ 수정](v487) 모두 monthOnly 를 넘긴다. 화면만, 저장 없음.
+- 기존 검사 손질: wlchip-v480 은 칩 앞 둘만 비교(셋째 '📅 이번 달'은 오늘 날짜에 따라 있음/없음), 마지막 팀 줄 삭제 뒤엔 칩 줄 대신 팀 칩이 없어지기를 기다린다. wleditkeep-v487 변이 문자열에 monthOnly 반영.
+- 핀3곳 hyeonjang-v488-wlmonth(v487 위). 신규 tests/wlmonth-v488.e2e.js 2/2(390px, 이번 달 1일·지난달 말일 경계), 기준선(9a59702)·변이 no-month 실패 확인. 관련 11개 통과, wlchip-v480·wleditkeep-v487 변이 여전히 실패 확인, 정적 19개 통과.
+
 ## 2026-10-24 v487 ⏱ 작업시간 [✏️ 수정] — 돌아올 때 칩·펼친 줄 수·스크롤 그대로 (개발_백로그)
 
 - `workView` 의 [✏️ 수정] 은 떠나기 전에 `#modalRoot .modal,.mbody` scrollTop 을 재서 `workEditView(id,pjName,{teamOnly,limit,scrollTops})` 로 넘긴다. `workView` 는 `opts.scrollTops`(배열)가 있으면 그 값으로, 없고 `keepScroll` 이면 지금 값으로 되돌린다(v482).
