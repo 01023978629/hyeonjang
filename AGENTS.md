@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v507 ⏱ 작업시간 창 — '🔍 찾기' (개발_백로그)
+
+- 찾기 글자는 모듈 변수 `__hjWlQ`(화면만). `workView` 를 opts 없이(밖에서 새로) 열면 비우고, 칩·더 보기·삭제·수정→[← 작업시간]처럼 opts 를 넘기는 안쪽 다시 그리기에선 유지 — 그래서 v487 `workEditView(...)` 변이 바늘 등 기존 줄을 건드리지 않았다. 현장 고르기(`workView(sel.value||'')`)는 새로 여는 것이라 비운다.
+- `const list=prevOnly?…` (v493 바늘) 바로 뒤 `const found=wlQ?list.filter(wlMatch):list;` — 현장·메모·날짜·팀 보고자에 글자(대소문자 무시). `rest`·`visible` 이 found 를 쓴다 → 복사(머리줄 '· 🔍 글자', flags.q)·📊 엑셀용·📊 현장별 소계도 같은 줄. 팀 칩 합계 줄(v480)은 칩 기준 그대로.
+- 줄 8개 이상(또는 찾기 중)이면 타일 아래 `[data-wl-search]`(44px, 16px 글씨) + 찾기 중이면 `[data-wl-search-sum]` '🔍 “글자” n줄 · 합계'. 입력이 250ms 멈추면 다시 그리고, openModal 이 창에 주는 포커스(setTimeout 0) 뒤 40ms 에 새 입력칸으로 포커스·커서를 돌린다. 맞는 줄이 없으면 '찾는 글자에 맞는 기록이 없어요'.
+- 검사 손질: v496~v507 새 검사 12개의 시드에 `taxCalendarEnsure(); coworkSchedEnsure();` 를 미리 불러 둔다 — 부팅 4~4.5초 뒤 도는 자료 씨앗이 병렬 실행 중 늦게 끼어들어 '자료 불변'이 흔들리던 것(v502 참고). 둘 다 이미 한 번 하면 다시 안 하는 함수.
+- 핀3곳 hyeonjang-v507-wlsearch(v506 위). 신규 tests/wlsearch-v507.e2e.js 2/2, 기준선(d4c38e8)·변이 no-wlsearch 실패 확인. 작업시간 관련 12개·새 검사 12개 병렬 4·정적 19개 통과.
+
 ## 2026-10-25 v506 👷 팀 보고 노트 창 — '🔍 찾기' (개발_백로그)
 
 - `hjTeamReportNoteMatch(p,r,q)`: 한 일·이슈·보고자·지시 이름(`hjTeamReportOrderTitle`)에 글자가 들어 있으면 참(대소문자·앞뒤 빈칸 무시). `hjTeamReportNoteRows` 첫 줄 끝(v504 이번 달 필터 뒤)에 `.filter(r=>!f.q||hjTeamReportNoteMatch(p,r,f.q))`.

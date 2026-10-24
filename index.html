@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v506-notesearch';
+const APP_BUILD='hyeonjang-v507-wlsearch';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -44308,7 +44308,7 @@ function workEditView(id,pjName,back){
    머리줄 '⏱ 작업시간 — 현장|전체 · (켠 칩) · n줄', 줄마다 '- M/D(요일) (현장) 시작~종료 (시간) 메모'(전체 창에서만 현장 이름), 끝에 '합계 …'. */
 function hjWorkCopyText(pjName,rows,flags){
   const list=Array.isArray(rows)?rows:[],f=flags||{};if(!list.length)return '';
-  const head='⏱ 작업시간 — '+(pjName||'전체')+[f.teamOnly?'👷 팀 보고':'',f.monthOnly?'📅 이번 달':'',f.prevOnly?'📅 지난달':''].filter(Boolean).map(function(x){return ' · '+x;}).join('')+' · '+list.length+'줄';
+  const head='⏱ 작업시간 — '+(pjName||'전체')+[f.teamOnly?'👷 팀 보고':'',f.monthOnly?'📅 이번 달':'',f.prevOnly?'📅 지난달':'',String(f.q||'').trim()?'🔍 '+String(f.q).trim():''].filter(Boolean).map(function(x){return ' · '+x;}).join('')+' · '+list.length+'줄';
   const lines=list.map(function(w){const m=w.out?workMinutes(w):0,memo=String(w.memo||'').replace(/\s+/g,' ').trim();
     return '- '+(isRealIsoDate(String(w.date||''))?hjMdDow(w.date):String(w.date||'날짜 없음'))+' '+(pjName?'':(w.project||'현장 미지정')+' ')+(w.in||'')+'~'+(w.out||'진행 중')+(w.out?' ('+workHM(m)+')':'')+(memo?' '+memo:'');});
   const subLines=pjName?[]:hjWorkSubtotalLines(list);   // v496 전체 창이면 합계 뒤에 현장별 소계
@@ -44346,7 +44346,10 @@ async function hjWorkCopy(pjName,rows,flags){
   const msg='📋 작업시간 '+rows.length+'줄을 글로 복사했어요 — 붙여 넣어 쓰세요';
   try{await navigator.clipboard.writeText(text);toast(msg);return true;}catch(e){coworkCopyFallback(text,()=>toast(msg));return true;}
 }
+let __hjWlQ='',__hjWlSearchT=0;   // v507 작업시간 창 '🔍 찾기' 글자(화면만) — 밖에서 새로 열면(opts 없음) 비운다
 function workView(pjName,opts){
+  if(!opts)__hjWlQ='';
+  const wlQ=String(__hjWlQ||'').trim(),wlQl=wlQ.toLowerCase();
   const all=workData().filter(function(w){return !pjName||w.project===pjName;})
     .sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
   // v480 '👷 팀 보고만' 칩 — 팀 보고 줄(v476)이 있을 때만. 화면만(저장 없음), 위 칸 합계는 전부 기준 그대로. 삭제 뒤 다시 그릴 때는 칩 유지.
@@ -44361,8 +44364,11 @@ function workView(pjName,opts){
   const ymPrev=hjAddDays(ymNow+'-01',-1).slice(0,7),isPrev=function(w){return String(w.date||'').slice(0,7)===ymPrev;};
   const prevN=all.filter(isPrev).length,prevChip=prevN>0&&prevN<all.length,prevOnly=!monthOnly&&!!(opts&&opts.prevOnly)&&prevChip;
   const list=prevOnly?view.filter(isPrev):view;
+  // v507 '🔍 찾기' — 현장·메모·날짜·팀 보고자에 글자가 든 줄만(대소문자 무시). 화면·복사·소계·표 복사가 같은 줄을 쓴다.
+  const wlMatch=function(w){const tr=w&&w.teamReport&&typeof w.teamReport==='object'?w.teamReport:null;return [w.project,w.memo,w.date,tr&&tr.reporter].some(function(v){return String(v||'').toLowerCase().includes(wlQl);});};
+  const found=wlQ?list.filter(wlMatch):list;
   // v482 30줄씩 [더 보기] — 예전엔 31줄째부터 말없이 숨었다. 화면만(저장 없음). 더 보기·삭제로 다시 그릴 땐 스크롤 자리를 지킨다.
-  const limit=Math.max(30,Math.floor(Number(opts&&opts.limit)||30)),rest=Math.max(0,list.length-limit);
+  const limit=Math.max(30,Math.floor(Number(opts&&opts.limit)||30)),rest=Math.max(0,found.length-limit);
   // v485 현장 고르기 — 기록이 있는 현장(최근 기록 순, 줄 수)이 둘 이상이면 맨 위에. 고르면 그 현장 창, '전체'면 모든 현장. 화면만(저장 없음).
   const allData=workData(),byPj=new Map();
   allData.forEach(function(w){const k=String(w.project||'');if(!k)return;const g=byPj.get(k)||{n:0,last:''};g.n++;if(String(w.date||'')>g.last)g.last=String(w.date||'');byPj.set(k,g);});
@@ -44378,7 +44384,7 @@ function workView(pjName,opts){
   const ym=localDate().slice(0,7);
   const thisM=all.filter(function(w){return String(w.date||'').slice(0,7)===ym;}).reduce(function(s,w){return s+workMinutes(w);},0);
   const tile=function(l,v,c){return '<div style="flex:1;min-width:92px;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 11px"><div style="font-size:10px;color:var(--muted)">'+l+'</div><div style="font-size:15.5px;font-weight:800;color:'+(c||'var(--ink)')+';margin-top:3px">'+v+'</div></div>';};
-  const visible=list.slice(0,limit),rows=visible.map(function(w,i){   // v490 visible = 지금 그려지는 줄(복사도 이것만)
+  const visible=found.slice(0,limit),rows=visible.map(function(w,i){   // v490 visible = 지금 그려지는 줄(복사도 이것만)
     const m=workMinutes(w);
     const label=escapeAttr((w.project||'현장 미지정')+' '+(w.date||'')+' 작업시간');
     const tr=w.teamReport&&typeof w.teamReport==='object'&&w.teamReport.key?w.teamReport:null;   // v476 팀 완료 보고가 만든 줄(v432 hjWrApply)
@@ -44396,6 +44402,8 @@ function workView(pjName,opts){
     '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
       tile('작업 일수',days+'일')+tile('누적 시간',workHM(totalM),'#1d4ed8')+tile('이번 달',workHM(thisM),'#15803d')+
     '</div>'+
+    (all.length>=8||wlQ?'<div data-wl-search-row style="margin:0 0 8px"><input type="search" data-wl-search aria-label="작업시간 찾기" placeholder="🔍 현장·메모·날짜·보고자 찾기" value="'+escapeAttr(__hjWlQ||'')+'" style="width:100%;min-height:44px;box-sizing:border-box;font-size:16px">'+
+      (wlQ?'<p class="hint" data-wl-search-sum style="margin:6px 0 0">🔍 “'+escapeHtml(wlQ)+'” '+found.length+'줄 · 합계 '+workHM(found.reduce(function(t,w){return t+workMinutes(w);},0))+'</p>':'')+'</div>':'')+   // v507
     (teamN||monthChip||prevChip?'<div data-wl-chips style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'+[['','전부 '+all.length,!teamOnly&&!monthOnly&&!prevOnly],teamN?['team','👷 팀 보고만 '+teamN,teamOnly]:null,monthChip?['month','📅 이번 달 '+monthN,monthOnly]:null,prevChip?['prev','📅 지난달 '+prevN,prevOnly]:null].filter(Boolean).map(function(c){return '<button type="button" class="ghost tiny" data-wl-filter="'+c[0]+'" aria-pressed="'+(c[2]?'true':'false')+'" style="min-height:44px;border-radius:999px'+(c[2]?';background:var(--blueprint);color:#fff;border-color:var(--blueprint)':'')+'">'+c[1]+'</button>';}).join('')+'</div>'+
       (teamOnly||monthOnly||prevOnly?'<p class="hint" data-wl-team-sum style="margin:0 0 8px">'+[teamOnly?'👷 팀 보고':'',monthOnly?'📅 이번 달':'',prevOnly?'📅 지난달':''].filter(Boolean).join(' · ')+' '+list.length+'줄 · 합계 '+workHM(list.reduce(function(s,w){return s+workMinutes(w);},0))+' — 위 칸은 전부 기준이에요</p>':''):'')+   // v480 · v488 · v493
     (visible.length?'<div data-wl-copy-row style="display:flex;justify-content:flex-end;margin:0 0 8px"><button type="button" class="ghost tiny" data-wl-copy style="min-height:44px">📋 보이는 '+visible.length+'줄 글로 복사</button><button type="button" class="ghost tiny" data-wl-copy-tsv style="min-height:44px;margin-left:6px">📊 엑셀용 복사</button></div>':'')+   // v490 · v503
@@ -44403,7 +44411,8 @@ function workView(pjName,opts){
       wlSub.groups.map(function(g){return '<div data-wl-subtotal-row style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line-soft);font-size:12.5px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(g.name)+'</span><span style="white-space:nowrap;font-weight:700">'+g.n+'줄 · '+escapeHtml(workHM(g.m).trim())+'</span></div>';}).join('')+'</details>':'')+   // v499 화면에도 현장별 소계(보이는 끝난 줄, 현장 둘 이상일 때만)
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
       '<div class="worklog-head"><div>일자</div><div>현장</div><div style="text-align:right">시간</div><div style="text-align:right">관리</div></div>'+
-      (rows||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">기록이 없어요</div>')+
+      (rows||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">'+(wlQ?'찾는 글자에 맞는 기록이 없어요 — 찾기 칸을 지워 보세요':'기록이 없어요')+'</div>')+   // v507
+
     '</div>'+
     (rest>0?'<div data-wl-more style="text-align:center;margin-top:8px"><button type="button" class="ghost tiny" data-wl-more-btn style="min-height:44px">외 '+rest+'줄 — '+Math.min(30,rest)+'줄 더 보기</button></div>':'')+   // v482
     '<p class="hint" style="margin-top:9px">현장 화면의 [⏱ 시작]/[⏱ 종료]로 찍습니다. 실제 투입 시간을 알면 다음 견적 단가가 정확해져요.</p>',
@@ -44412,9 +44421,12 @@ function workView(pjName,opts){
   if(keepScroll)[...document.querySelectorAll('#modalRoot .modal,#modalRoot .mbody')].forEach(function(e,i){if(keepScroll[i])e.scrollTop=keepScroll[i];});   // v482
   const more=document.querySelector('#modalRoot [data-wl-more-btn]');if(more)more.onclick=function(){workView(pjName,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly,limit:limit+30,keepScroll:true});};   // v482
   const sel=document.querySelector('#modalRoot [data-wl-project]');if(sel)sel.onchange=function(){workView(sel.value||'');};   // v485 현장 고르기
+  const ws=document.querySelector('#modalRoot [data-wl-search]');if(ws)ws.oninput=function(){clearTimeout(__hjWlSearchT);__hjWlSearchT=setTimeout(function(){   // v507 멈추면 다시 그리고 입력칸에 이어 쓰기
+    const v=ws.value;__hjWlQ=v;workView(pjName,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly});
+    setTimeout(function(){const n=document.querySelector('#modalRoot [data-wl-search]');if(n){n.focus();try{n.setSelectionRange(v.length,v.length);}catch(_){}}},40);},250);};   // openModal 이 창에 주는 포커스(setTimeout 0) 뒤에
   const ct=document.querySelector('#modalRoot [data-wl-copy-tsv]');if(ct)ct.onclick=function(){hjWorkCopyTsv(visible);};   // v503 엑셀용 표 복사
   const sd=document.querySelector('#modalRoot [data-wl-subtotal]');if(sd)sd.ontoggle=function(){__hjWlSubOpen=sd.open;};   // v499 펼침 기억(화면만)
-  const cp=document.querySelector('#modalRoot [data-wl-copy]');if(cp)cp.onclick=function(){hjWorkCopy(pjName,visible,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly});};   // v490 보이는 줄 글로 복사
+  const cp=document.querySelector('#modalRoot [data-wl-copy]');if(cp)cp.onclick=function(){hjWorkCopy(pjName,visible,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly,q:wlQ});};   // v490 보이는 줄 글로 복사
   document.querySelectorAll('#modalRoot .wkNote').forEach(function(b){b.onclick=function(){hjTeamReportNoteView(b.dataset.project,b.dataset.key);};});   // v476
   document.querySelectorAll('#modalRoot [data-wl-filter]').forEach(function(b){b.onclick=function(){const k=b.getAttribute('data-wl-filter');   // v480 · v488 [전부]는 둘 다 끄고, 팀·이번 달은 따로 켜고 끈다
     workView(pjName,k==='team'?{teamOnly:!teamOnly,monthOnly:monthOnly,prevOnly:prevOnly}:k==='month'?{teamOnly:teamOnly,monthOnly:!monthOnly}:k==='prev'?{teamOnly:teamOnly,prevOnly:!prevOnly}:{});};});   // v493 이번 달·지난달은 하나만
