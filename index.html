@@ -3401,7 +3401,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v483-notecopy';
+const APP_BUILD='hyeonjang-v484-ordername';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40677,6 +40677,18 @@ function hjTeamNotePhotoToggle(name,key){
   else{const files=hjTeamNotePhotoMap(p).get(key)||[];if(!files.length)return;row.insertAdjacentHTML('beforeend',hjTeamNotePhotoGridHtml(key,files));__hjNotePhotoOpen.add(key);}
   if(btn){const open=!grid;btn.setAttribute('aria-expanded',open?'true':'false');btn.textContent=open?'📷 사진 접기':'📷 사진 '+(btn.getAttribute('data-n')||'')+'장 보기';}
 }
+/* v484 노트 줄 '지시' — 꾸러미 번호(wo_…) 대신 사람이 읽는 이름. 그 지시(p.workOrders[])에 title 이 있으면 '제목(M/D)'(날짜는 지시 date, 없으면 due), 없으면 ''(번호 그대로 보인다). 읽기만. */
+function hjTeamReportOrderTitle(p,orderId){
+  const id=String(orderId||'');if(!id)return '';
+  const w=hjWoOrders(p).find(o=>o.packetId===id),t=w&&typeof w.title==='string'?hjWoText(w.title,40).trim():'';
+  if(!t)return '';
+  const d=String(w.date||w.due||'');
+  return t+(isRealIsoDate(d)?'('+Number(d.slice(5,7))+'/'+Number(d.slice(8,10))+')':'');
+}
+function hjTeamReportOrderHtml(p,orderId){
+  const id=String(orderId||''),t=hjTeamReportOrderTitle(p,id);
+  return t?'<span data-team-note-order title="'+escapeAttr(id)+'">지시: '+escapeHtml(t)+'</span>':'지시 '+escapeHtml(id);
+}
 /* v475 화면 필터(저장 없음): status·reporter 둘 다 맞는 보고, 최근 것부터. v483 [📋 글로 복사]도 이 줄을 그대로 쓴다(보이는 것 = 복사되는 것). */
 function hjTeamReportNoteRows(p,filter){
   const all=hjTeamReportsOf(p).slice().reverse(),f=filter&&typeof filter==='object'?filter:{};
@@ -40688,7 +40700,7 @@ function hjTeamReportNoteText(p,filter){
   const rows=hjTeamReportNoteRows(p,filter);if(!rows.length)return '';
   const f=filter&&typeof filter==='object'?filter:{},md=d=>isRealIsoDate(String(d||''))?hjMdDow(d):'날짜 없음';
   const head='['+p.name+'] 팀 작업 보고 '+rows.length+'건'+(f.status?' · '+(HJ_WR_STATUS_LABEL[f.status]||f.status):'')+(f.reporter?' · 👤 '+f.reporter:'');
-  return [head,...rows.map(r=>{const meta=[r.reporter?hjWoText(String(r.reporter),20):'',Number(r.hours)>0?Number(r.hours)+'시간':'',Number(r.photos)>0?'사진 '+Number(r.photos)+'장':''].filter(Boolean).join(' · ');
+  return [head,...rows.map(r=>{const ot=hjTeamReportOrderTitle(p,r.order),meta=[r.reporter?hjWoText(String(r.reporter),20):'',Number(r.hours)>0?Number(r.hours)+'시간':'',Number(r.photos)>0?'사진 '+Number(r.photos)+'장':'',ot?'지시: '+ot:''].filter(Boolean).join(' · ');   // v484 지시 이름(번호만 있으면 뺀다)
     return '- '+md(r.workDate)+' '+(HJ_WR_STATUS_LABEL[r.status]||r.status||'')+(r.done?' — '+hjWoText(r.done,200).trim():'')+(r.issue?' / 이슈: '+hjWoText(r.issue,200).trim():'')+(meta?' ('+meta+')':'')+((r.status==='review'||r.status==='blocked')&&r.ack?' [확인함]':'');})].join('\n');
 }
 function hjTeamReportNoteCopyHtml(p,filter){
@@ -40708,7 +40720,7 @@ function hjTeamReportNoteHtml(p,focusKey,filter){
   if(!rows.length)return '<div class="hint" data-team-note-empty style="padding:10px 0">고른 조건의 보고가 없어요 — 위 칩에서 [전부]를 누르세요.</div>';
   const pm=hjTeamNotePhotoMap(p);   // v479
   return rows.map(r=>{const key=String(r.key||''),focus=!!focusKey&&key===String(focusKey),pf=pm.get(key)||[],pOpen=!!pf.length&&__hjNotePhotoOpen.has(key);
-    const meta=[r.reporter?'👤 '+escapeHtml(hjWoText(r.reporter,20)):'',Number(r.hours)>0?Number(r.hours)+'시간':'','사진 '+(Number(r.photos)||0)+'장',r.order?'지시 '+escapeHtml(r.order):'보고만'].filter(Boolean).join(' · ');
+    const meta=[r.reporter?'👤 '+escapeHtml(hjWoText(r.reporter,20)):'',Number(r.hours)>0?Number(r.hours)+'시간':'','사진 '+(Number(r.photos)||0)+'장',r.order?hjTeamReportOrderHtml(p,r.order):'보고만'].filter(Boolean).join(' · ');   // v484 지시 이름
     const ck=Array.isArray(r.checklist)?r.checklist.filter(c=>c&&typeof c.text==='string'):[];
     const marks=[r.ack?'확인함'+(r.ackAt?' '+md(r.ackAt):''):'',r.docAt?'완료보고서 '+md(r.docAt):'',r.docAck?'완료보고서 넘김':''].filter(Boolean).join(' · ');
     // v469 줄 단추 — 첫 화면과 같은 동작만: 검수 요청·막힘(미확인) → [확인함], 완료 → [완료보고서 초안]. 그 밖엔 여전히 읽기만.

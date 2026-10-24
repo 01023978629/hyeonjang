@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v484 👷 팀 보고 노트 줄 — '지시 wo_…' → 사람이 읽는 지시 이름 (개발_백로그)
+
+- `hjTeamReportOrderTitle(p,orderId)`: `hjWoOrders(p)` 에서 packetId 가 같은 지시의 title(hjWoText 40자) + '(M/D)'(지시 date, 없으면 due; 진짜 날짜일 때만). title 이 없으면 ''. `hjTeamReportOrderHtml` → `<span data-team-note-order title="wo_…">지시: 제목(M/D)</span>`(escapeHtml — 제목의 <b>·& 는 글자로), 없으면 예전처럼 '지시 wo_…'. 지시 없는 보고는 '보고만' 그대로.
+- [📋 글로 복사](v483) 줄 괄호 끝에 '지시: 제목(M/D)' — 번호만 있는 지시는 복사에서 뺀다(단톡방에 번호는 쓸모없다). 읽기만, 저장 없음.
+- 핀3곳 hyeonjang-v484-ordername(v483 위). 신규 tests/ordername-v484.e2e.js 2/2(390px), 기준선(ae81de3)·변이 no-title 실패 확인. 관련 14개(teamnote-v466·teamnote2-v469·notefilter-v475·notecopy-v483·notephotos-v479·unack-v472·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·demo-v462·teampacket-v432·team3-v458) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v483 👷 팀 보고 노트 창 — [📋 보이는 보고 n건 글로 복사] (개발_백로그)
 
 - `hjTeamReportNoteRows(p,filter)`: v475 칩 필터 줄을 함수로 뺐다(그 줄 문자열은 여전히 한 곳 — notefilter-v475 변이 no-filter 가 그대로 문다). `hjTeamReportNoteHtml` 과 복사가 같은 줄을 쓴다 = 보이는 것만 복사된다.
