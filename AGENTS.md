@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v499 ⏱ 작업시간 창 — 화면에도 '📊 현장별 소계' (개발_백로그)
+
+- `hjWorkSubtotals(rows)` 로 계산을 한 곳에 모음({open, groups:[{name,n,m}]}, 끝난 줄만·분 많은 순) — `hjWorkSubtotalLines`(v496 복사)도 이것을 쓴다. v496 변이 바늘(`const subLines=pjName?[]:hjWorkSubtotalLines(list);`)은 그대로.
+- `workView`: 전체 창이고 보이는 끝난 줄의 현장이 둘 이상이면 [📋 글로 복사] 아래 `<details data-wl-subtotal>` '📊 현장별 소계 n곳 · 진행 중 n줄 제외'(summary 44px, 처음엔 접힘) → 줄마다 `[data-wl-subtotal-row]` 현장 · n줄 · 시간. 펼침은 `__hjWlSubOpen`(화면만)으로 칩·더 보기 다시 그리기에도 유지.
+- 핀3곳 hyeonjang-v499-wlsubtotal2(v498 위). 신규 tests/wlsubtotal2-v499.e2e.js 2/2(390·1280), 기준선(8b3767b)·변이 no-screen 실패 확인. 관련 10개·정적 19개 통과, v496 변이 여전히 실패.
+
 ## 2026-10-24 v498 ⏱ 작업시간 창 '현장' 칸 — 보관한 현장 '(보관)' (개발_백로그)
 
 - `workView` 현장 고르기(v485): `archSet`(state.projects 중 archived 인 이름) — 정렬 맨 앞에 `(archSet.has(a[0])?1:0)-(archSet.has(b[0])?1:0)` 을 더해 보관 현장을 맨 뒤로(보관 아닌 것끼리·보관끼리는 최근 기록 순 그대로), 보이는 글자에만 ' (보관)'. option value·창 제목·복사 글은 이름 그대로.

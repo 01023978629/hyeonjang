@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v498-wlarchived';
+const APP_BUILD='hyeonjang-v499-wlsubtotal2';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -44272,12 +44272,16 @@ function hjWorkCopyText(pjName,rows,flags){
 /* v496 [📋 글로 복사] 현장별 소계 — 전체 창(현장 안 고름)에서만 붙인다. 끝난 줄을 현장별로 묶어 '- 현장 · n줄 · 시간'(시간 많은 순).
    진행 중 줄은 시간이 없어 빼므로 소계 합 = 합계. 보이는 끝난 줄의 현장이 둘 이상일 때만(하나면 합계와 같다). 화면·클립보드만 — 저장 없음. */
 function hjWorkSubtotalLines(rows){
-  const list=Array.isArray(rows)?rows:[],done=list.filter(function(w){return w&&w.out;}),open=list.length-done.length,by=new Map();
-  done.forEach(function(w){const k=String(w.project||'')||'현장 미지정',g=by.get(k)||{n:0,m:0};g.n++;g.m+=workMinutes(w);by.set(k,g);});
-  if(by.size<2)return [];
-  return ['현장별 소계'+(open?' (진행 중 '+open+'줄 제외)':'')].concat([...by.entries()].sort(function(a,b){return b[1].m-a[1].m||a[0].localeCompare(b[0],'ko');})
-    .map(function(e){return '- '+e[0]+' · '+e[1].n+'줄 · '+workHM(e[1].m).trim();}));
+  const sub=hjWorkSubtotals(rows);if(sub.groups.length<2)return [];
+  return ['현장별 소계'+(sub.open?' (진행 중 '+sub.open+'줄 제외)':'')].concat(sub.groups.map(function(g){return '- '+g.name+' · '+g.n+'줄 · '+workHM(g.m).trim();}));
 }
+/* v499 현장별 소계 계산 한 곳(복사 v496·화면 v499 공용): 끝난 줄만 현장별로 묶어 {open:진행 중 줄 수, groups:[{name,n,m}]}(분 많은 순·같으면 이름 순). 읽기만. */
+function hjWorkSubtotals(rows){
+  const list=Array.isArray(rows)?rows:[],done=list.filter(function(w){return w&&w.out;}),by=new Map();
+  done.forEach(function(w){const k=String(w.project||'')||'현장 미지정',g=by.get(k)||{n:0,m:0};g.n++;g.m+=workMinutes(w);by.set(k,g);});
+  return {open:list.length-done.length,groups:[...by.entries()].map(function(e){return {name:e[0],n:e[1].n,m:e[1].m};}).sort(function(a,b){return b.m-a.m||a.name.localeCompare(b.name,'ko');})};
+}
+let __hjWlSubOpen=false;   // v499 화면 '📊 현장별 소계' 펼침(화면만 — 칩·더 보기로 다시 그려도 유지)
 async function hjWorkCopy(pjName,rows,flags){
   const text=hjWorkCopyText(pjName,rows,flags);if(!text){toast('복사할 줄이 없어요');return false;}
   const msg='📋 작업시간 '+rows.length+'줄을 글로 복사했어요 — 붙여 넣어 쓰세요';
@@ -44326,6 +44330,7 @@ function workView(pjName,opts){
       '<div class="worklog-actions">'+(tr?'<button class="ghost tiny wkNote" data-project="'+escapeAttr(w.project||'')+'" data-key="'+escapeAttr(String(tr.key))+'" aria-label="'+label+' 팀 보고 노트" style="padding:6px 7px">👷 노트</button>':'')+'<button class="ghost tiny wkEdit" data-id="'+escapeAttr(w.id)+'" aria-label="'+label+' 수정" style="padding:6px 7px">✏️ 수정</button><button class="ghost tiny wkDel" data-id="'+escapeAttr(w.id)+'" aria-label="'+label+' 삭제" style="padding:6px 7px">🗑 삭제</button></div>'+
     '</div>';
   }).join('');
+  const wlSubAll=pjName?null:hjWorkSubtotals(visible),wlSub=wlSubAll&&wlSubAll.groups.length>1?wlSubAll:null;   // v499 전체 창만
   const keepScroll=opts&&Array.isArray(opts.scrollTops)?opts.scrollTops:(opts&&opts.keepScroll?[...document.querySelectorAll('#modalRoot .modal,#modalRoot .mbody')].map(function(e){return e.scrollTop;}):null);   // v482 · v487 수정 창에서 돌아올 땐 떠날 때 잰 값
   openModal('⏱ 작업시간'+(pjName?' — '+pjName:''),
     pick+   // v485
@@ -44335,6 +44340,8 @@ function workView(pjName,opts){
     (teamN||monthChip||prevChip?'<div data-wl-chips style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'+[['','전부 '+all.length,!teamOnly&&!monthOnly&&!prevOnly],teamN?['team','👷 팀 보고만 '+teamN,teamOnly]:null,monthChip?['month','📅 이번 달 '+monthN,monthOnly]:null,prevChip?['prev','📅 지난달 '+prevN,prevOnly]:null].filter(Boolean).map(function(c){return '<button type="button" class="ghost tiny" data-wl-filter="'+c[0]+'" aria-pressed="'+(c[2]?'true':'false')+'" style="min-height:44px;border-radius:999px'+(c[2]?';background:var(--blueprint);color:#fff;border-color:var(--blueprint)':'')+'">'+c[1]+'</button>';}).join('')+'</div>'+
       (teamOnly||monthOnly||prevOnly?'<p class="hint" data-wl-team-sum style="margin:0 0 8px">'+[teamOnly?'👷 팀 보고':'',monthOnly?'📅 이번 달':'',prevOnly?'📅 지난달':''].filter(Boolean).join(' · ')+' '+list.length+'줄 · 합계 '+workHM(list.reduce(function(s,w){return s+workMinutes(w);},0))+' — 위 칸은 전부 기준이에요</p>':''):'')+   // v480 · v488 · v493
     (visible.length?'<div data-wl-copy-row style="display:flex;justify-content:flex-end;margin:0 0 8px"><button type="button" class="ghost tiny" data-wl-copy style="min-height:44px">📋 보이는 '+visible.length+'줄 글로 복사</button></div>':'')+   // v490
+    (wlSub?'<details data-wl-subtotal'+(__hjWlSubOpen?' open':'')+' style="margin:0 0 8px;border:1px solid var(--line-soft);border-radius:10px;padding:0 10px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:12.5px;font-weight:700">📊 현장별 소계 '+wlSub.groups.length+'곳'+(wlSub.open?' · 진행 중 '+wlSub.open+'줄 제외':'')+'</summary>'+
+      wlSub.groups.map(function(g){return '<div data-wl-subtotal-row style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line-soft);font-size:12.5px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(g.name)+'</span><span style="white-space:nowrap;font-weight:700">'+g.n+'줄 · '+escapeHtml(workHM(g.m).trim())+'</span></div>';}).join('')+'</details>':'')+   // v499 화면에도 현장별 소계(보이는 끝난 줄, 현장 둘 이상일 때만)
     '<div style="border:1px solid var(--line-soft);border-radius:12px;overflow:hidden">'+
       '<div class="worklog-head"><div>일자</div><div>현장</div><div style="text-align:right">시간</div><div style="text-align:right">관리</div></div>'+
       (rows||'<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">기록이 없어요</div>')+
@@ -44346,6 +44353,7 @@ function workView(pjName,opts){
   if(keepScroll)[...document.querySelectorAll('#modalRoot .modal,#modalRoot .mbody')].forEach(function(e,i){if(keepScroll[i])e.scrollTop=keepScroll[i];});   // v482
   const more=document.querySelector('#modalRoot [data-wl-more-btn]');if(more)more.onclick=function(){workView(pjName,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly,limit:limit+30,keepScroll:true});};   // v482
   const sel=document.querySelector('#modalRoot [data-wl-project]');if(sel)sel.onchange=function(){workView(sel.value||'');};   // v485 현장 고르기
+  const sd=document.querySelector('#modalRoot [data-wl-subtotal]');if(sd)sd.ontoggle=function(){__hjWlSubOpen=sd.open;};   // v499 펼침 기억(화면만)
   const cp=document.querySelector('#modalRoot [data-wl-copy]');if(cp)cp.onclick=function(){hjWorkCopy(pjName,visible,{teamOnly:teamOnly,monthOnly:monthOnly,prevOnly:prevOnly});};   // v490 보이는 줄 글로 복사
   document.querySelectorAll('#modalRoot .wkNote').forEach(function(b){b.onclick=function(){hjTeamReportNoteView(b.dataset.project,b.dataset.key);};});   // v476
   document.querySelectorAll('#modalRoot [data-wl-filter]').forEach(function(b){b.onclick=function(){const k=b.getAttribute('data-wl-filter');   // v480 · v488 [전부]는 둘 다 끄고, 팀·이번 달은 따로 켜고 끈다
