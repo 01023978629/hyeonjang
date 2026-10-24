@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v480 ⏱ 작업시간 창 — '👷 팀 보고만' 칩 (개발_백로그)
+
+- `workView(pjName,opts)`: 팀 보고 줄(`w.teamReport.key`, v476)이 하나라도 있으면 표 위에 `[data-wl-chips]` — `[data-wl-filter=""]` '전부 n' · `[data-wl-filter="team"]` '👷 팀 보고만 m'(44px, aria-pressed, 눌린 칩은 blueprint). 칩 → `workView(pjName,{teamOnly})` 로 다시 그림. `opts.teamOnly` 인데 팀 보고 줄이 0이면 전부로.
+- 팀 보고만일 때 `shown`(팀 보고 줄)에서 최근 30줄 — 예전 30줄 밖에 있던 팀 보고 줄도 보인다. `[data-wl-team-sum]` '👷 팀 보고 m줄 · 합계 h — 위 칸은 전부 기준이에요'. 위 칸(작업 일수·누적·이번 달)은 전부 기준 그대로. [🗑 삭제] 뒤 다시 그릴 때 칩 유지, 바깥에서 새로 열면 전부(기존 호출은 인자 하나 그대로). 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v480-wlchip(v479 위). 신규 tests/wlchip-v480.e2e.js 2/2(390px), 기준선(a6b1111)·변이 no-filter 실패 확인. 관련 9개(wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458·importnote-v473·notephotos-v479) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v479 👷 팀 보고 노트 줄 — 📷 사진 펼쳐 보기 (개발_백로그 '노트 줄 사진 n장 → 사진 펼쳐 보기')
 
 - `hjTeamNotePhotoMap(p)`: 보고 열쇠 → 이 기기 사진(썸네일 있는 photo, 동영상 제외, when 순). 완료·검수 요청은 `hjTeamReportPhotos`(v463) 결과 그대로(완료보고서와 같은 묶음), 막힘은 남은 사진에서 `_teamReport` 열쇠 → 없으면 보고 사진 수>0 일 때만 작업일 일치. 읽기만.
