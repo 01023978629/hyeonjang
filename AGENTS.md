@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v512 👷 팀 공수 정산 창 — 👷 인건비 장부와 맞춰 보기('장부에 없는 날') (개발_백로그)
+
+- `hjTeamHoursLedger(D)`: 같은 달 `hjCrewSettleData`(일정 줄의 사람별 1/½ = 👤 사람별 정산표)와 비교. 보고자마다 `{days, miss}`(보고한 날 중 장부 공수가 없는 날, ½ 도 있는 것으로) 또는 `{none}`(장부에 그 이름 없음). 장부에 이 달 사람별 공수가 하나도 없으면 `any:false`(사람마다 적지 않음). '보고자 없음'은 줄 없음. 읽기만.
+- `hjTeamHoursLedgerHtml`: 카드에 `[data-team-hours-ledger="ok|miss|none"]` — '👷 인건비 장부 공수 n — ⚠ 장부에 없는 날 n일: M/D' / '✓ 보고한 날이 장부에 다 있어요' / '👷 인건비 장부에 이 달 기록 없음'. 색은 `--hj-warn-fg`·`--hj-ok-fg`(어두운 화면 대응).
+- 합계 아래 `[data-team-hours-ledger-empty]`(장부가 빈 달) · `[data-team-hours-settle]` '👤 사람별 정산표 (인건비 장부)'(44px) → `hjCrewSettleView(m, ()=>hjTeamHoursView(m,back))` — 정산표 [← 뒤로]가 같은 달 이 창으로, 노트에서 열었으면 [← 팀 보고 노트]도 그대로.
+- 핀3곳 hyeonjang-v512-teamledger(v511 위). 신규 tests/teamledger-v512.e2e.js 2/2(없는 날·½·기록 없음·채우면 ✓·정산표 왕복·빈 장부 달), 기준선(7c59508)·변이 half-missing 실패 확인. 관련 7개(crew-v440 포함)·정적 19개 통과.
+
 ## 2026-10-25 v511 👷 팀 공수 정산 창 — 보고자별 '📅 보고한 날 n일' + 글·엑셀용 복사에 일수 (개발_백로그)
 
 - `hjTeamHoursData`: 보고자·현장마다 서로 다른 작업일 집합 → `dates`(오름차순)·`days`, 현장 `days`. 같은 날 두 현장은 하루, 막힘(0시간) 보고도 '보고한 날'. 읽기만.

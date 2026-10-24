@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v511-teamdays';
+const APP_BUILD='hyeonjang-v512-teamledger';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40834,14 +40834,33 @@ function hjTeamHoursTsv(D){if(!D||!D.list.length)return '';const cell=v=>String(
 async function hjTeamHoursCopy(D,tsv){const text=tsv?hjTeamHoursTsv(D):hjTeamHoursText(D);if(!text){toast('복사할 보고가 없어요');return false;}
   const msg=tsv?'📊 공수 정산을 표(엑셀용)로 복사했어요 — 엑셀에 붙여 넣으세요':'📋 공수 정산을 글로 복사했어요 — 붙여 넣어 쓰세요';
   try{await navigator.clipboard.writeText(text);toast(msg);return true;}catch(e){coworkCopyFallback(text,()=>toast(msg));return true;}}
+/* v512 정산 창 — 같은 달 👷 인건비 장부(일정 줄의 사람별 1/½ = 👤 사람별 정산표)와 맞춰 보기. 읽기만.
+   보고한 날 중 그 사람 장부 공수가 없는 날 = '장부에 없는 날'(½ 도 있는 것으로). 장부에 이 달 사람별 공수가 하나도 없으면 사람마다 적지 않는다(any:false). */
+function hjTeamHoursLedger(D){
+  let L;try{L=hjCrewSettleData(D.ym);}catch(_){L=null;}
+  const people=L&&Array.isArray(L.people)?L.people:[],by={};
+  if(!people.length)return {any:false,by};
+  D.list.forEach(g=>{if(g.name==='보고자 없음')return;const p=people.find(x=>x.name===g.name);
+    if(!p){by[g.name]={none:true};return;}
+    by[g.name]={days:p.days,miss:g.dates.filter(d=>!(Number(p.cells&&p.cells[d])>0))};});
+  return {any:true,by};
+}
+function hjTeamHoursLedgerHtml(lg){
+  if(!lg)return '';const bad=lg.none||lg.miss.length;
+  return '<div data-team-hours-ledger="'+(lg.none?'none':lg.miss.length?'miss':'ok')+'" style="font-size:12px;padding-top:3px;overflow-wrap:anywhere;color:var('+(bad?'--hj-warn-fg':'--hj-ok-fg')+')">'+
+    (lg.none?'👷 인건비 장부에 이 달 기록 없음':'👷 인건비 장부 공수 '+lg.days+(lg.miss.length?' — ⚠ 장부에 없는 날 '+lg.miss.length+'일: '+lg.miss.map(hjMd).join(' · '):' — ✓ 보고한 날이 장부에 다 있어요'))+'</div>';
+}
 function hjTeamHoursView(ym,back){
-  const m=/^\d{4}-\d{2}$/.test(String(ym||''))?String(ym):localDate().slice(0,7),D=hjTeamHoursData(m),hs=x=>(Math.round(x*10)/10)+'시간';
+  const m=/^\d{4}-\d{2}$/.test(String(ym||''))?String(ym):localDate().slice(0,7),D=hjTeamHoursData(m),hs=x=>(Math.round(x*10)/10)+'시간',LG=hjTeamHoursLedger(D);   // v512
   const copyRow='<div data-team-hours-copy-row style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"><button type="button" class="ghost tiny" data-team-hours-copy style="min-height:44px">📋 글로 복사</button><button type="button" class="ghost tiny" data-team-hours-tsv style="min-height:44px">📊 엑셀용 복사</button></div>';   // v510
   const body=D.list.length?copyRow+D.list.map(g=>'<div data-team-hours-reporter="'+escapeAttr(g.name)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-weight:800"><span style="min-width:0;overflow-wrap:anywhere">👤 '+escapeHtml(hjWoText(g.name,20))+'</span><span style="white-space:nowrap">'+g.n+'건 · '+hs(g.h)+'</span></div>'+
       '<div data-team-hours-days style="font-size:12px;color:var(--muted);padding-top:3px;overflow-wrap:anywhere">📅 보고한 날 '+g.days+'일 · '+g.dates.map(hjMd).join(' · ')+'</div>'+   // v511
+      hjTeamHoursLedgerHtml(LG.by[g.name])+   // v512
       g.pj.map(x=>'<div data-team-hours-site style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);padding-top:4px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(x.name)+'</span><span style="white-space:nowrap">'+x.n+'건 · '+hs(x.h)+'</span></div>').join('')+'</div>').join('')+
-      '<p class="hint" data-team-hours-total style="margin:4px 0 0">합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명 — 팀 앱 보고의 시간 기준(⏱ 작업시간 기록과 따로)</p>'
+      '<p class="hint" data-team-hours-total style="margin:4px 0 0">합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명 — 팀 앱 보고의 시간 기준(⏱ 작업시간 기록과 따로)</p>'+
+      (LG.any?'':'<p class="hint" data-team-hours-ledger-empty style="margin:6px 0 0">👷 인건비 장부에 이 달 사람별 공수(1/½)가 없어요 — 일당 정산은 장부에 적은 공수로 해요.</p>')+   // v512
+      '<div data-team-hours-settle-row style="margin:8px 0 0"><button type="button" class="ghost tiny" data-team-hours-settle style="min-height:44px">👤 사람별 정산표 (인건비 장부)</button></div>'
     :'<div class="empty" data-team-hours-empty style="padding:14px"><b>이 달 팀 보고가 없어요</b>팀 앱 보고가 들어오면 보고자별 시간이 여기에 모여요.</div>';
   const cur=localDate().slice(0,7),nav='<div data-team-hours-nav style="display:flex;justify-content:space-between;gap:8px;margin:0 0 10px">'+   // v509 달 옮기기(이번 달 뒤로는 없음)
     '<button type="button" class="ghost tiny" data-team-hours-prev style="min-height:44px">◀ '+Number(hjYmShift(m,-1).slice(5,7))+'월</button>'+
@@ -40851,6 +40870,7 @@ function hjTeamHoursView(ym,back){
   const pv=document.querySelector('#hjTeamHours [data-team-hours-prev]'),nx=document.querySelector('#hjTeamHours [data-team-hours-next]');
   const hc=document.querySelector('#hjTeamHours [data-team-hours-copy]'),ht=document.querySelector('#hjTeamHours [data-team-hours-tsv]');if(hc)hc.onclick=()=>hjTeamHoursCopy(D,false);if(ht)ht.onclick=()=>hjTeamHoursCopy(D,true);   // v510
   if(pv)pv.onclick=()=>hjTeamHoursView(hjYmShift(m,-1),back);if(nx)nx.onclick=()=>hjTeamHoursView(hjYmShift(m,1),back);   // v509 돌아가기 단추는 그대로 들고 감
+  const st=document.querySelector('#hjTeamHours [data-team-hours-settle]');if(st)st.onclick=()=>hjCrewSettleView(m,()=>hjTeamHoursView(m,back));   // v512 정산표의 [← 뒤로]가 이 창(같은 달)으로
   return D;
 }
 function hjTeamReportNoteRender(name,focusKey,filter){
