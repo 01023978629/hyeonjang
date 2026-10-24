@@ -64,7 +64,7 @@ let browser, passed = 0, page;
     const before = await serialized();
     await page.evaluate(n => hjTeamReportNoteView(n), APT); await page.locator('#modalRoot #hjTeamNote [data-note-filter]').waitFor();
     const c = await chips();
-    assert.deepEqual(c.map(x => x[0]), ['전부 5', '🔎 검수 요청 2', '⛔ 막힘 1', '✅ 완료 2', '⚠ 이슈 3', '👤 모두', '👤 김타일 3', '👤 박설비 2'], 'NOTE_FILTER chips ' + JSON.stringify(c));   // v494 부터 '⚠ 이슈' 칩
+    assert.deepEqual(c.map(x => x[0]).filter(t => !/^📅 이번 달/.test(t)), ['전부 5', '🔎 검수 요청 2', '⛔ 막힘 1', '✅ 완료 2', '⚠ 이슈 3', '👤 모두', '👤 김타일 3', '👤 박설비 2'], 'NOTE_FILTER chips ' + JSON.stringify(c));   // v494 부터 '⚠ 이슈' 칩   // v504 월초엔 '📅 이번 달' 칩이 낄 수 있어 빼고 비교
     assert.deepEqual(c.map(x => x[1]), ['true', 'false', 'false', 'false', 'false', 'true', 'false', 'false']); assert(c.every(x => x[2] >= 44), 'chips 44px');
     assert.deepEqual(await keys(), ['TEST_R5', 'TEST_R4', 'TEST_R3', 'TEST_R2', 'TEST_R1'], 'all rows, newest first');
     await page.locator('#hjTeamNote [data-note-filter-status="review"]').click();

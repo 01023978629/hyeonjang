@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v503-wltsv';
+const APP_BUILD='hyeonjang-v504-notemonth';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40706,11 +40706,13 @@ function hjTeamReportOrderHtml(p,orderId){
 }
 /* v500 노트 줄 작업일 옆 '오늘·어제·n일 전'(0~6일 전만, v497 최근 7일과 같은 창). 날짜가 없거나 이상하거나 오늘 뒤면 ''. 읽기만. */
 function hjTeamReportAgoText(workDate){const d=String(workDate||'');if(!isRealIsoDate(d))return '';const n=hjDaysBetween(d,localDate());return n===0?'오늘':n===1?'어제':n>=2&&n<=6?n+'일 전':'';}
+/* v504 노트 창 '📅 이번 달'(월 정산용) — 보고 작업일이 이번 달(localDate 의 YYYY-MM)인 것. 날짜가 이상하면 아님. 읽기만. */
+function hjTeamReportThisMonth(r){const d=String(r&&r.workDate||'');return isRealIsoDate(d)&&d.slice(0,7)===localDate().slice(0,7);}
 /* v497 '🗓 최근 7일' — 보고 작업일이 오늘 포함 7일 안(0~6일 전). 날짜가 없거나 이상하면 아님, 작업일이 오늘 뒤면 최근으로 친다. 읽기만. */
 function hjTeamReportRecent(r){const d=String(r&&r.workDate||'');return isRealIsoDate(d)&&hjDaysBetween(d,localDate())<=6;}
 /* v475 화면 필터(저장 없음): status·reporter 둘 다 맞는 보고, 최근 것부터. v483 [📋 글로 복사]도 이 줄을 그대로 쓴다(보이는 것 = 복사되는 것). */
 function hjTeamReportNoteRows(p,filter){
-  const f=filter&&typeof filter==='object'?filter:{},all=hjTeamReportsOf(p).slice().reverse().filter(r=>!f.recent||hjTeamReportRecent(r));   // v497 '🗓 최근 7일' 칩 — 상태·보고자·⚠ 이슈와 겹쳐 고름
+  const f=filter&&typeof filter==='object'?filter:{},all=hjTeamReportsOf(p).slice().reverse().filter(r=>!f.recent||hjTeamReportRecent(r)).filter(r=>!f.month||hjTeamReportThisMonth(r));   // v497 · v504 '📅 이번 달' '🗓 최근 7일' 칩 — 상태·보고자·⚠ 이슈와 겹쳐 고름
   const rows=all.filter(r=>(!f.status||r.status===f.status)&&(!f.reporter||String(r.reporter||'')===f.reporter));
   return f.issue?rows.filter(r=>String(r.issue||'').trim()):rows;   // v494 '⚠ 이슈' 칩 — 이슈 글이 있는 보고만(상태·보고자와 겹쳐 고름)
 }
@@ -40718,7 +40720,7 @@ function hjTeamReportNoteRows(p,filter){
 function hjTeamReportNoteText(p,filter){
   const rows=hjTeamReportNoteRows(p,filter);if(!rows.length)return '';
   const f=filter&&typeof filter==='object'?filter:{},md=d=>isRealIsoDate(String(d||''))?hjMdDow(d):'날짜 없음';
-  const head='['+p.name+'] 팀 작업 보고 '+rows.length+'건'+(f.status?' · '+(HJ_WR_STATUS_LABEL[f.status]||f.status):'')+(f.reporter?' · 👤 '+f.reporter:'')+(f.issue?' · ⚠ 이슈':'')+(f.recent?' · 🗓 최근 7일':'');   // v494 · v497
+  const head='['+p.name+'] 팀 작업 보고 '+rows.length+'건'+(f.status?' · '+(HJ_WR_STATUS_LABEL[f.status]||f.status):'')+(f.reporter?' · 👤 '+f.reporter:'')+(f.issue?' · ⚠ 이슈':'')+(f.recent?' · 🗓 최근 7일':'')+(f.month?' · 📅 이번 달':'');   // v494 · v497 · v504
   return [head,...rows.map(r=>{const ot=hjTeamReportOrderTitle(p,r.order),meta=[r.reporter?hjWoText(String(r.reporter),20):'',Number(r.hours)>0?Number(r.hours)+'시간':'',Number(r.photos)>0?'사진 '+Number(r.photos)+'장':'',ot?'지시: '+ot:''].filter(Boolean).join(' · ');   // v484 지시 이름(번호만 있으면 뺀다)
     return '- '+md(r.workDate)+' '+(HJ_WR_STATUS_LABEL[r.status]||r.status||'')+(r.done?' — '+hjWoText(r.done,200).trim():'')+(r.issue?' / 이슈: '+hjWoText(r.issue,200).trim():'')+(meta?' ('+meta+')':'')+((r.status==='review'||r.status==='blocked')&&r.ack?' [확인함]':'');})].join('\n');
 }
@@ -40739,7 +40741,7 @@ function hjTeamReportNoteHtml(p,focusKey,filter){
   const all=hjTeamReportsOf(p).slice().reverse(),md=d=>isRealIsoDate(String(d||''))?hjMdDow(d):(d||'날짜 없음');
   if(!all.length)return '<div class="empty" style="padding:14px"><b>팀 작업 보고가 없어요</b>팀 앱의 [📤 작업 보고 내보내기] 파일을 더보기 › 📥 팀 작업 가져오기로 읽으면 여기에 쌓입니다.</div>';
   const rows=hjTeamReportNoteRows(p,filter);   // v475 칩 필터(v483 복사와 같은 줄)
-  if(!rows.length)return '<div class="hint" data-team-note-empty style="padding:10px 0">고른 조건의 보고가 없어요 — 위 칩을 바꿔 보세요([전부]·[👤 모두], 켜 둔 ⚠ 이슈 끄기'+(filter&&filter.recent?'·🗓 최근 7일 끄기':'')+').</div>';   // v497
+  if(!rows.length)return '<div class="hint" data-team-note-empty style="padding:10px 0">고른 조건의 보고가 없어요 — 위 칩을 바꿔 보세요([전부]·[👤 모두], 켜 둔 ⚠ 이슈 끄기'+(filter&&filter.recent?'·🗓 최근 7일 끄기':'')+(filter&&filter.month?'·📅 이번 달 끄기':'')+').</div>';   // v497 · v504
   const pm=hjTeamNotePhotoMap(p);   // v479
   return rows.map(r=>{const key=String(r.key||''),focus=!!focusKey&&key===String(focusKey),pf=pm.get(key)||[],pOpen=!!pf.length&&__hjNotePhotoOpen.has(key);
     const meta=[r.reporter?'👤 '+escapeHtml(hjWoText(r.reporter,20)):'',Number(r.hours)>0?Number(r.hours)+'시간':'','사진 '+(Number(r.photos)||0)+'장',r.order?hjTeamReportOrderHtml(p,r.order):'보고만'].filter(Boolean).join(' · ');   // v484 지시 이름
@@ -40769,10 +40771,12 @@ function hjTeamReportNoteChipsHtml(p,filter){
   const issueN=all.filter(r=>String(r.issue||'').trim()).length;
   const isc=issueN>0&&issueN<all.length?chip('data-note-filter-issue','1','⚠ 이슈 '+issueN,!!f.issue):'';   // v494
   const recentN=all.filter(hjTeamReportRecent).length,rc=recentN>0&&recentN<all.length?chip('data-note-filter-recent','1','🗓 최근 7일 '+recentN,!!f.recent):'';   // v497 일부일 때만
+  const monthN=all.filter(hjTeamReportThisMonth).length,mc=monthN>0&&monthN<all.length?chip('data-note-filter-month','1','📅 이번 달 '+monthN,!!f.month):'';   // v504 일부일 때만
   const rp=reporters.length>1?'<span style="width:100%"></span>'+chip('data-note-filter-reporter','','👤 모두',!f.reporter)+reporters.map(r=>chip('data-note-filter-reporter',r,'👤 '+escapeHtml(r)+' '+all.filter(x=>String(x.reporter||'').trim()===r).length,f.reporter===r)).join(''):'';
   const act=(f.status?1:0)+(f.reporter?1:0)+(f.issue?1:0)+(f.recent?1:0);   // v501 켜 둔 조건이 둘 이상이면 [✕ 조건 모두 끄기]
-  const rs=act>=2?'<button type="button" class="ghost tiny" data-note-filter-reset style="min-height:44px;border-radius:999px">✕ 조건 모두 끄기</button>':'';
-  return '<div data-note-filter style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'+st+isc+rc+rp+rs+'</div>';
+  const act2=act+(f.month?1:0);   // v504 이번 달도 조건으로 센다
+  const rs=act2>=2?'<button type="button" class="ghost tiny" data-note-filter-reset style="min-height:44px;border-radius:999px">✕ 조건 모두 끄기</button>':'';
+  return '<div data-note-filter style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'+st+isc+rc+mc+rp+rs+'</div>';
 }
 /* v502 노트 창 '⏱ 보고자별 시간'(공수 정산용) — 지금 보이는 보고(칩 반영)를 보고자별로 묶어 건수·시간(보고의 hours) 합. 시간이 하나라도 있을 때만, 시간 많은 순. 화면만, 저장 없음. */
 function hjTeamReportNoteHoursHtml(p,filter){
@@ -40813,10 +40817,11 @@ function hjTeamReportNoteBind(name,focusKey,filter){
     try{render();}catch(_){}toast(n?'확인을 취소했어요 — 첫 화면 줄에 다시 올라와요':'확인한 보고가 아니에요');};});
   root.querySelectorAll('[data-team-note-report]').forEach(b=>{b.onclick=()=>{closeModal();setTimeout(()=>aptReportView(name),0);};});
   // v475 칩 — 상태·보고자 따로, 화면만
-  root.querySelectorAll('[data-note-filter-status]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:b.getAttribute('data-note-filter-status')||'',reporter:f.reporter||'',issue:!!f.issue,recent:!!f.recent});});
-  root.querySelectorAll('[data-note-filter-reporter]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:b.getAttribute('data-note-filter-reporter')||'',issue:!!f.issue,recent:!!f.recent});});
-  root.querySelectorAll('[data-note-filter-issue]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:f.reporter||'',issue:!f.issue,recent:!!f.recent});});   // v494
-  root.querySelectorAll('[data-note-filter-recent]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:f.reporter||'',issue:!!f.issue,recent:!f.recent});});   // v497
+  root.querySelectorAll('[data-note-filter-status]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:b.getAttribute('data-note-filter-status')||'',reporter:f.reporter||'',issue:!!f.issue,recent:!!f.recent,month:!!f.month});});
+  root.querySelectorAll('[data-note-filter-reporter]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:b.getAttribute('data-note-filter-reporter')||'',issue:!!f.issue,recent:!!f.recent,month:!!f.month});});
+  root.querySelectorAll('[data-note-filter-issue]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:f.reporter||'',issue:!f.issue,recent:!!f.recent,month:!!f.month});});   // v494
+  root.querySelectorAll('[data-note-filter-recent]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:f.reporter||'',issue:!!f.issue,recent:!f.recent,month:!!f.month});});   // v497
+  root.querySelectorAll('[data-note-filter-month]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:f.status||'',reporter:f.reporter||'',issue:!!f.issue,recent:!!f.recent,month:!f.month});});   // v504
   root.querySelectorAll('[data-note-filter-reset]').forEach(b=>{b.onclick=()=>hjTeamReportNoteRender(name,focusKey,{status:'',reporter:''});});   // v501 조건 모두 끄기(화면만)
   root.querySelectorAll('[data-team-note-copy]').forEach(b=>{b.onclick=()=>hjTeamReportNoteCopy(name,f);});   // v483 보이는 보고 글로 복사
   root.querySelectorAll('[data-team-note-ackall]').forEach(b=>{b.onclick=()=>{const p=(state.projects||[]).find(x=>x&&x.name===name);if(!p)return;   // v491
