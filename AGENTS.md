@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v469 👷 팀 보고 노트 창의 줄 단추 — [확인함] · [완료보고서 초안] (개발_백로그 '팀 보고 노트에서 바로 [확인함]·[완료보고서]')
+
+- `hjTeamReportNoteHtml` 줄 끝에 단추(44px): 검수 요청·막힘이고 `!ack` 면 `[data-team-note-ack=key]` [확인함], 완료(done)면 `[data-team-note-report]` [완료보고서 초안](docAt 있으면 '완료보고서 다시'). 그 밖의 줄은 단추 없음 — 창은 여전히 그 두 동작 외엔 읽기만.
+- `hjTeamReportNoteBind(name,focusKey)`: [확인함] → `hjTeamReportAck`(v465, 저장) → `#hjTeamNote` 안 목록만 다시 그리고(힌트 유지, 다시 bind) 뒤 화면 `render()`(첫 화면 줄도 내려감) + 토스트 · [완료보고서 초안] → closeModal 뒤 aptReportView(name). openModal 뒤 호출.
+- 핀3곳 hyeonjang-v469-teamnote2(v468 위). 신규 tests/teamnote2-v469.e2e.js 2/2(390px, IDB 저장·그 밖의 자료 불변 — 정렬된 키라 `"ack":true,` 가 객체 맨 앞), 기준선(211ad92)·변이 no-save 실패 확인. 관련 8개(teamnote-v466·teamack-v465·team3-v458·team4-v463·demo-v462·demotour-v467·teampdf-v468·doccenter-v433) 통과, 정적 19개 통과.
+- 같은 날 PC 에서 `apply-stack-v427-v468.cmd` 를 실제로 돌려 보니 `git cat-file -e %BASE%^{commit}` 의 `^` 를 cmd 가 먹어 "base commit not in repo" 로 멈췄다 → cmd 는 `git cat-file -e %BASE%` 로(CRLF). 고친 cmd 로 브랜치 `claude/stack-v427-v468` 이 올라갔다(트리 동일 확인). 이후 판의 cmd 는 고친 것을 복사한다.
+
 ## 2026-10-24 v468 📄 완료보고서 PDF 사진 대장 — '팀 보고 · 한 일' 머리글 먼저 (개발_백로그 '완료보고서 팀 보고 사진 묶음 — PDF 사진 대장 머리글')
 
 - `hjReportPhotoGroups(photos, teamBundles)` 두 번째 인자(선택): v463 묶음(`{key,workDate,status,done,files}`)이 오면 그 사진은 작업일 순 `{label:'팀 보고 · '+한 일(40자), team:true, teamKey}` 그룹으로 **맨 앞**, 나머지 사진만 예전처럼 작업명(누수 태그) 그룹 + rank 정렬. 인자가 없으면 결과는 예전과 같다(hjReportDraft 는 그대로 인자 없이 → 작업 내용 줄 불변). 읽기만.
