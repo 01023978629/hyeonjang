@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v479 👷 팀 보고 노트 줄 — 📷 사진 펼쳐 보기 (개발_백로그 '노트 줄 사진 n장 → 사진 펼쳐 보기')
+
+- `hjTeamNotePhotoMap(p)`: 보고 열쇠 → 이 기기 사진(썸네일 있는 photo, 동영상 제외, when 순). 완료·검수 요청은 `hjTeamReportPhotos`(v463) 결과 그대로(완료보고서와 같은 묶음), 막힘은 남은 사진에서 `_teamReport` 열쇠 → 없으면 보고 사진 수>0 일 때만 작업일 일치. 읽기만.
+- 노트 줄: 사진이 있으면 단추 맨 앞 `[data-team-note-photos=key][data-n]` '📷 사진 n장 보기'(aria-expanded, 44px) ↔ '📷 사진 접기'. 펼치면 줄 끝에 `[data-team-note-photo-grid=key]`(64px 칸 격자) + 썸네일 단추 `[data-team-note-photo=file.id]` → `openLightbox(id, 그 보고 사진 ids)`(창 위에 겹쳐 열림, 닫으면 창·격자 그대로). 메타 줄 '사진 n장'(보고가 적은 수)은 그대로.
+- 펼침 상태는 모듈 `__hjNotePhotoOpen`(Set) — `hjTeamReportNoteView` 가 비우고, [확인함]·칩 다시 그리기에선 유지. 토글은 그 줄만 DOM 으로(스크롤 안 튐), 썸네일 클릭은 `#hjTeamNote` root.onclick 위임(격자를 나중에 끼우므로). 화면만, 저장 없음.
+- 주의: 사진 when 은 Date 다(복원 `when:s.when?new Date(s.when):null`, fmtDate 가 getFullYear 를 부른다) — 검사에서 ISO 문자열로 심으면 사진 크게 보기가 TypeError. `#lightbox` 자체는 크기 0(안쪽 fixed)이라 Playwright 는 `#lightbox #lbClose` 를 기다린다.
+- 핀3곳 hyeonjang-v479-notephotos(v478 위). 신규 tests/notephotos-v479.e2e.js 2/2(390px), 기준선(1fc340e)·변이 no-grid 실패 확인. 관련 13개(team4-v463·teampdf-v468·teamnote-v466·teamnote2-v469·unack-v472·notefilter-v475·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·demo-v462·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v478 📄 첫 화면 '팀 보고 n건 들어옴' 줄 — 3곳 초과 [외 n곳 — 모두 보기] (개발_백로그)
 
 - `hjTeamDoneDocHtml`: `hjTeamDoneDoc()` 이 4곳 이상이면 줄 3개 뒤에 `<p data-team-done-more>` + `[data-team-done-all]` 단추 '외 n곳 — 모두 보기'(44px). 예전엔 넷째 현장부터 말없이 숨었다. #view 위임 closest 목록 + `d.teamDoneAll` → `hjTeamDoneAllView()`.
