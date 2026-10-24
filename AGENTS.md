@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v494 👷 팀 보고 노트 창 — '⚠ 이슈' 칩 (개발_백로그)
+
+- `hjTeamReportNoteChipsHtml`: 이슈 글(trim 해서 빈 것 제외)이 있는 보고가 일부(0 < n < 전부)면 상태 칩 뒤에 `[data-note-filter-issue]` '⚠ 이슈 n'(aria-pressed, 44px). filter 에 `issue`(bool) — 상태·보고자 칩을 눌러도 `issue:!!f.issue` 를 들고 다니고, 이슈 칩은 켜고 끈다.
+- `hjTeamReportNoteRows`: v475 줄 문자열은 그대로 두고 `return f.issue ? rows.filter(이슈 있음) : rows` — 화면·[📋 글로 복사](머리줄 '· ⚠ 이슈')·[✔ 모두 확인함](v491)이 같은 줄을 쓴다. 빈 글 안내를 '위 칩을 바꿔 보세요([전부]·[👤 모두], 켜 둔 ⚠ 이슈 끄기)'로.
+- 기존 검사 손질: notefilter-v475·demo3-v489 의 칩 목록에 '⚠ 이슈 n'(둘 다 이슈 있는 보고가 일부라 칩이 뜬다).
+- 핀3곳 hyeonjang-v494-noteissue(v493 위). 신규 tests/noteissue-v494.e2e.js 2/2(390px), 기준선(7d45e4a)·변이 no-issue 실패 확인. 관련 13개 통과, notefilter-v475·demo3-v489 변이 여전히 실패 확인, 정적 19개 통과.
+
 ## 2026-10-24 v493 ⏱ 작업시간 창 — '📅 지난달' 칩 (개발_백로그, 월초 정산용)
 
 - `workView`: `ymPrev = hjAddDays(ymNow+'-01',-1).slice(0,7)`(1월이면 지난해 12월), `isPrev`. 지난달 기록이 일부(0 < prevN < 전부)일 때만 `[data-wl-filter="prev"]` '📅 지난달 n'. `prevOnly` 는 `!monthOnly` 일 때만 — 이번 달·지난달은 하나만 켜진다(칩 클릭: month → prev 끔, prev → month 끔, team 은 둘 다 그대로, [전부] 는 셋 다 끔).

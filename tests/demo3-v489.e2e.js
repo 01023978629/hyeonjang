@@ -52,7 +52,7 @@ let browser, passed = 0, page;
     assert.match(await page.locator('#view [data-team-report-pending]').innerText(), /⛔ 막힘 1건/);
     await page.evaluate(n => hjTeamReportNoteView(n), CAFE); await page.locator('#modalRoot #hjTeamNote').waitFor();
     const chips = await page.evaluate(() => [...document.querySelectorAll('#modalRoot [data-note-filter] button')].map(b => b.textContent.trim()));
-    assert.deepEqual(chips, ['전부 3', '🔎 검수 요청 1', '⛔ 막힘 1', '✅ 완료 1', '👤 모두', '👤 박 반장 2', '👤 김 기사 1'], 'DEMO3 chips ' + JSON.stringify(chips));
+    assert.deepEqual(chips, ['전부 3', '🔎 검수 요청 1', '⛔ 막힘 1', '✅ 완료 1', '⚠ 이슈 2', '👤 모두', '👤 박 반장 2', '👤 김 기사 1'], 'DEMO3 chips ' + JSON.stringify(chips));   // v494 '⚠ 이슈' 칩
     await page.locator('#modalRoot [data-note-filter-status="blocked"]').click();
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#modalRoot [data-team-note]')].map(n => n.getAttribute('data-team-note'))), ['wr_demo_blocked']);
     await page.locator('#modalRoot [data-note-filter-status=""]').click();
