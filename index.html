@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v501-notereset';
+const APP_BUILD='hyeonjang-v502-notehours';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40774,10 +40774,21 @@ function hjTeamReportNoteChipsHtml(p,filter){
   const rs=act>=2?'<button type="button" class="ghost tiny" data-note-filter-reset style="min-height:44px;border-radius:999px">✕ 조건 모두 끄기</button>':'';
   return '<div data-note-filter style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'+st+isc+rc+rp+rs+'</div>';
 }
+/* v502 노트 창 '⏱ 보고자별 시간'(공수 정산용) — 지금 보이는 보고(칩 반영)를 보고자별로 묶어 건수·시간(보고의 hours) 합. 시간이 하나라도 있을 때만, 시간 많은 순. 화면만, 저장 없음. */
+function hjTeamReportNoteHoursHtml(p,filter){
+  const rows=hjTeamReportNoteRows(p,filter),by=new Map();
+  rows.forEach(r=>{const k=String(r.reporter||'').trim()||'보고자 없음',g=by.get(k)||{n:0,h:0};g.n++;g.h+=Math.max(0,Number(r.hours)||0);by.set(k,g);});
+  const total=[...by.values()].reduce((t,g)=>t+g.h,0);if(!(total>0))return '';
+  const hs=h=>(Math.round(h*10)/10)+'시간';
+  const list=[...by.entries()].sort((a,b)=>b[1].h-a[1].h||a[0].localeCompare(b[0],'ko'));
+  return '<div data-team-note-hours style="display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:10px;font-size:12.5px">'+
+    '<b style="white-space:nowrap">⏱ 보고자별 시간</b>'+list.map(([k,g])=>'<span data-team-note-hours-row style="white-space:nowrap">👤 '+escapeHtml(hjWoText(k,20))+' '+g.n+'건 · '+hs(g.h)+'</span>').join('')+
+    (list.length>1?'<span style="white-space:nowrap;color:var(--muted)">합 '+hs(total)+'</span>':'')+'</div>';
+}
 function hjTeamReportNoteRender(name,focusKey,filter){
   const root=document.getElementById('hjTeamNote'),p=(state.projects||[]).find(x=>x&&x.name===name);if(!root||!p)return;
   const hint=root.querySelector('p.hint');
-  root.innerHTML=(hint?hint.outerHTML:'')+hjTeamReportNoteChipsHtml(p,filter)+hjTeamReportNoteCopyHtml(p,filter)+'<div data-team-note-list>'+hjTeamReportNoteHtml(p,focusKey,filter)+'</div>';   // v483 복사 단추
+  root.innerHTML=(hint?hint.outerHTML:'')+hjTeamReportNoteChipsHtml(p,filter)+hjTeamReportNoteCopyHtml(p,filter)+hjTeamReportNoteHoursHtml(p,filter)+'<div data-team-note-list>'+hjTeamReportNoteHtml(p,focusKey,filter)+'</div>';   // v483 복사 단추
   hjModalTapTargets();hjTeamReportNoteBind(name,focusKey,filter);
 }
 function hjTeamReportNoteView(name,focusKey,opts){

@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v502 👷 팀 보고 노트 창 — '⏱ 보고자별 시간'(공수 정산용) (개발_백로그)
+
+- `hjTeamReportNoteHoursHtml(p,filter)`: `hjTeamReportNoteRows`(칩 반영)를 보고자별로 묶어 '👤 이름 n건 · h시간'(보고의 hours 합, 소수 한 자리, 시간 많은 순·같으면 이름 순, 보고자 없으면 '보고자 없음'), 둘 이상이면 끝에 '합 h시간'. 시간이 하나라도 있을 때만 `[data-team-note-hours]` 줄. 읽기만.
+- `hjTeamReportNoteRender`: 복사 줄 아래·목록 위에 넣음. 복사 글·모두 확인함은 그대로.
+- 참고: 병렬 4개로 돌릴 때 note7d-v497·notephotos-v479 의 '자료 불변'이 한 번 흔들림 — 부팅 뒤 늦게 도는 세금 일정 자동 추가(calendarImports 'tax:…', 10/25 가 부가세 예정 신고일)가 검사 중에 끼어든 것. 혼자 돌리면 통과. 이 판과 무관.
+- 핀3곳 hyeonjang-v502-notehours(v501 위). 신규 tests/notehours-v502.e2e.js 2/2, 기준선(052fc1c)·변이 no-hours 실패 확인. 노트 관련 18개·정적 19개 통과.
+
 ## 2026-10-25 v501 👷 팀 보고 노트 창 — [✕ 조건 모두 끄기] (개발_백로그)
 
 - `hjTeamReportNoteChipsHtml`: 켜 둔 조건 수 `act=(status)+(reporter)+(issue)+(recent)` 가 2 이상이면 칩 줄 끝에 `[data-note-filter-reset]` '✕ 조건 모두 끄기'(44px, aria-pressed 없음). 하나뿐이면 그 칩을 다시 누르면 되니 안 보인다.
