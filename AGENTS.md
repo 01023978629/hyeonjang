@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v497 👷 팀 보고 노트 창 — '🗓 최근 7일' 칩 (개발_백로그)
+
+- `hjTeamReportRecent(r)`: 작업일이 오늘 포함 7일 안(`hjDaysBetween(workDate, localDate()) <= 6`, 즉 0~6일 전). 날짜가 없거나 이상하면 아님, 작업일이 오늘 뒤면 최근으로 친다. 읽기만.
+- `hjTeamReportNoteRows`: 첫 줄을 `const f=…,all=hjTeamReportsOf(p).slice().reverse().filter(r=>!f.recent||hjTeamReportRecent(r))` 로 — v475 `const rows=…` 줄과 v494 `return f.issue?…` 줄(변이 바늘)은 그대로. 화면·[📋 글로 복사](머리줄 '· 🗓 최근 7일')·[✔ 모두 확인함]이 같은 줄을 쓴다.
+- `hjTeamReportNoteChipsHtml`: 최근 보고가 일부(0 < n < 전부)면 ⚠ 이슈 칩 뒤에 `[data-note-filter-recent]` '🗓 최근 7일 n'(aria-pressed, 44px). 칩 단추들은 `recent:!!f.recent` 를 들고 다니고, 최근 칩은 켜고 끈다. 빈 글 안내는 최근 칩이 켜져 있으면 '·🗓 최근 7일 끄기'를 덧붙인다('⚠ 이슈 끄기' 글은 그대로).
+- 기존 검사 손질: demo3-v489 칩 목록에 '🗓 최근 7일 2'(데모 완료 보고는 2025년 날짜라 빠짐). v489 변이 no-blocked 는 여전히 실패.
+- 핀3곳 hyeonjang-v497-note7d(v496 위). 신규 tests/note7d-v497.e2e.js 2/2(390px, 6·7·8일 경계), 기준선(d13de91)·변이 no-recent 실패 확인. 관련 17개·정적 19개 통과.
+
 ## 2026-10-24 v496 ⏱ 작업시간 [📋 글로 복사] — 현장별 소계 (개발_백로그)
 
 - `hjWorkCopyText(pjName,rows,flags)`: 전체 창(pjName 없음)이면 합계 줄 뒤에 `hjWorkSubtotalLines(list)` — '현장별 소계'(진행 중 줄이 있으면 ' (진행 중 n줄 제외)') + '- 현장 · n줄 · 시간'(끝난 줄만, 분 합 내림차순·같으면 이름 순, 현장 없으면 '현장 미지정', 시간은 `workHM(…).trim()`). 끝난 줄의 현장이 둘 이상일 때만 붙인다(하나면 합계와 같다). 그래서 소계 합 = 합계. 현장 창은 그대로(합계까지).
