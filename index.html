@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v509-teamhours2';
+const APP_BUILD='hyeonjang-v510-teamhours3';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40823,9 +40823,19 @@ function hjTeamHoursData(ym){
 }
 /* v509 'YYYY-MM' 을 d 달 옮김(1월 ← 지난해 12월). 읽기만. */
 function hjYmShift(ym,d){const y=Number(String(ym).slice(0,4)),m=Number(String(ym).slice(5,7))-1+Number(d||0),yy=y+Math.floor(m/12),mm=((m%12)+12)%12;return yy+'-'+String(mm+1).padStart(2,'0');}
+/* v510 정산 창 [📋 글로 복사] · [📊 엑셀용 복사] — 지금 보는 달(D)을 줄글 / 탭 표(월·보고자·현장·건수·시간)로. 고객 이름·전화 없음. 클립보드만. */
+function hjTeamHoursText(D){if(!D||!D.list.length)return '';const hs=x=>(Math.round(x*10)/10)+'시간';
+  return ['👷 팀 공수 정산 — '+Number(D.ym.slice(0,4))+'년 '+Number(D.ym.slice(5,7))+'월 (팀 앱 보고 시간 기준)',...D.list.flatMap(g=>['- '+g.name+' '+g.n+'건 · '+hs(g.h),...g.pj.map(x=>'  · '+x.name+' '+x.n+'건 · '+hs(x.h))]),
+    '합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명'].join('\n');}
+function hjTeamHoursTsv(D){if(!D||!D.list.length)return '';const cell=v=>String(v==null?'':v).replace(/[\t\r\n]+/g,' ').trim();
+  return [['월','보고자','현장','건수','시간'].join('\t'),...D.list.flatMap(g=>g.pj.map(x=>[D.ym,cell(g.name),cell(x.name),String(x.n),String(Math.round(x.h*100)/100)].join('\t')))].join('\n');}
+async function hjTeamHoursCopy(D,tsv){const text=tsv?hjTeamHoursTsv(D):hjTeamHoursText(D);if(!text){toast('복사할 보고가 없어요');return false;}
+  const msg=tsv?'📊 공수 정산을 표(엑셀용)로 복사했어요 — 엑셀에 붙여 넣으세요':'📋 공수 정산을 글로 복사했어요 — 붙여 넣어 쓰세요';
+  try{await navigator.clipboard.writeText(text);toast(msg);return true;}catch(e){coworkCopyFallback(text,()=>toast(msg));return true;}}
 function hjTeamHoursView(ym,back){
   const m=/^\d{4}-\d{2}$/.test(String(ym||''))?String(ym):localDate().slice(0,7),D=hjTeamHoursData(m),hs=x=>(Math.round(x*10)/10)+'시간';
-  const body=D.list.length?D.list.map(g=>'<div data-team-hours-reporter="'+escapeAttr(g.name)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+
+  const copyRow='<div data-team-hours-copy-row style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"><button type="button" class="ghost tiny" data-team-hours-copy style="min-height:44px">📋 글로 복사</button><button type="button" class="ghost tiny" data-team-hours-tsv style="min-height:44px">📊 엑셀용 복사</button></div>';   // v510
+  const body=D.list.length?copyRow+D.list.map(g=>'<div data-team-hours-reporter="'+escapeAttr(g.name)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-weight:800"><span style="min-width:0;overflow-wrap:anywhere">👤 '+escapeHtml(hjWoText(g.name,20))+'</span><span style="white-space:nowrap">'+g.n+'건 · '+hs(g.h)+'</span></div>'+
       g.pj.map(x=>'<div data-team-hours-site style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);padding-top:4px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(x.name)+'</span><span style="white-space:nowrap">'+x.n+'건 · '+hs(x.h)+'</span></div>').join('')+'</div>').join('')+
       '<p class="hint" data-team-hours-total style="margin:4px 0 0">합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명 — 팀 앱 보고의 시간 기준(⏱ 작업시간 기록과 따로)</p>'
@@ -40836,6 +40846,7 @@ function hjTeamHoursView(ym,back){
   openModal('👷 팀 공수 정산 — '+Number(m.slice(0,4))+'년 '+Number(m.slice(5,7))+'월','<div id="hjTeamHours" style="min-width:0">'+nav+body+'</div>',
     [...(back?[{label:'← 팀 보고 노트',cls:'ghost',fn:()=>hjTeamReportNoteView(back)}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const pv=document.querySelector('#hjTeamHours [data-team-hours-prev]'),nx=document.querySelector('#hjTeamHours [data-team-hours-next]');
+  const hc=document.querySelector('#hjTeamHours [data-team-hours-copy]'),ht=document.querySelector('#hjTeamHours [data-team-hours-tsv]');if(hc)hc.onclick=()=>hjTeamHoursCopy(D,false);if(ht)ht.onclick=()=>hjTeamHoursCopy(D,true);   // v510
   if(pv)pv.onclick=()=>hjTeamHoursView(hjYmShift(m,-1),back);if(nx)nx.onclick=()=>hjTeamHoursView(hjYmShift(m,1),back);   // v509 돌아가기 단추는 그대로 들고 감
   return D;
 }

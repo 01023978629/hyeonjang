@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v510 👷 팀 공수 정산 창 — [📋 글로 복사] · [📊 엑셀용 복사] (개발_백로그)
+
+- `hjTeamHoursText(D)`: '👷 팀 공수 정산 — YYYY년 M월 (팀 앱 보고 시간 기준)' + 보고자 줄('- 이름 n건 · h시간') + 현장 줄('  · 현장 n건 · h시간') + '합계 n건 · h시간 · 보고자 m명'. 읽기만.
+- `hjTeamHoursTsv(D)`: 머리 '월 보고자 현장 건수 시간' + 보고자×현장 줄(시간은 숫자만). 셀 안 탭·줄바꿈은 빈칸. 고객 이름·전화 없음.
+- `hjTeamHoursCopy(D,tsv)`: 클립보드 → 막히면 `coworkCopyFallback`. 알림 '📋 공수 정산을 글로 복사했어요…' / '📊 공수 정산을 표(엑셀용)로 복사했어요…'.
+- `hjTeamHoursView`: 보고가 있는 달만 body 맨 위 `[data-team-hours-copy-row]`(44px 단추 둘: `[data-team-hours-copy]`·`[data-team-hours-tsv]`). ◀/▶ 로 옮긴 달은 그 달 내용. v509 변이 바늘 `'+nav+body+'` 그대로.
+- 핀3곳 hyeonjang-v510-teamhours3(v509 위). 신규 tests/teamhours3-v510.e2e.js 2/2(글·표·지난달·빈 달·예전 방식), 기준선(8a13055)·변이 no-head 실패 확인. 관련 4개·정적 19개 통과.
+
 ## 2026-10-25 v509 👷 팀 공수 정산 창 — 달 옮기기 ◀ n월 / n월 ▶ (개발_백로그)
 
 - `hjYmShift(ym,d)`: 'YYYY-MM' 을 d 달 옮김(해 넘김 처리). 읽기만.
