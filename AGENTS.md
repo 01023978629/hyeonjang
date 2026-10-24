@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v500 👷 팀 보고 노트 줄 — 작업일 옆 '오늘·어제·n일 전' (개발_백로그)
+
+- `hjTeamReportAgoText(workDate)`: `hjDaysBetween(workDate, localDate())` 가 0 → '오늘', 1 → '어제', 2~6 → 'n일 전'(v497 최근 7일과 같은 창). 7일 넘음·작업일이 오늘 뒤·날짜 이상은 ''. 읽기만.
+- `hjTeamReportNoteHtml` 줄 머리 `<b>M/D(요일) · 상태</b>` 안 끝에 `[data-team-note-ago]` ' · 오늘'(굵기 600·muted). [📋 글로 복사](v483) 글은 그대로(날짜만).
+- 핀3곳 hyeonjang-v500-noteago(v499 위). 신규 tests/noteago-v500.e2e.js 2/2(0·1·2·6·7·9일·앞날·날짜 이상), 기준선(1c2a868)·변이 no-ago 실패 확인. 노트 관련 18개·정적 19개 통과(기존 검사 손질 없음).
+
 ## 2026-10-25 v499 ⏱ 작업시간 창 — 화면에도 '📊 현장별 소계' (개발_백로그)
 
 - `hjWorkSubtotals(rows)` 로 계산을 한 곳에 모음({open, groups:[{name,n,m}]}, 끝난 줄만·분 많은 순) — `hjWorkSubtotalLines`(v496 복사)도 이것을 쓴다. v496 변이 바늘(`const subLines=pjName?[]:hjWorkSubtotalLines(list);`)은 그대로.
