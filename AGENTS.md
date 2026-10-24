@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v490 ⏱ 작업시간 창 — [📋 보이는 n줄 글로 복사] (개발_백로그)
+
+- `workView`: `visible = view.slice(0,limit)`(지금 그려지는 줄). 표 바로 위 `[data-wl-copy-row]` + `[data-wl-copy]` '📋 보이는 n줄 글로 복사'(44px, 줄이 있을 때만) → `hjWorkCopy(pjName,visible,{teamOnly,monthOnly})`.
+- `hjWorkCopyText(pjName,rows,flags)`: 머리줄 '⏱ 작업시간 — 현장|전체( · 👷 팀 보고)( · 📅 이번 달) · n줄', 줄마다 '- M/D(요일) (현장) 시작~종료 (시간) 메모'(현장 이름은 전체 창에서만, 진행 중 줄은 '~진행 중'·시간 없음, 메모 공백 한 칸으로), 끝 '합계 …'(끝난 줄만). `hjWorkCopy` 는 clipboard → 실패 시 coworkCopyFallback(v483 과 같은 방식). 보내기·저장 없음.
+- 핀3곳 hyeonjang-v490-wlcopy(v489 위). 신규 tests/wlcopy-v490.e2e.js 2/2(390px), 기준선(a8f54ce)·변이 no-visible 실패 확인. 관련 10개(wlchip-v480·wlmore-v482·wlpick-v485·wleditkeep-v487·wlmonth-v488·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·v219-operations) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v489 🧪 데모 팀 보고 3건 — 노트 창 칩 시연 (개발_백로그)
 
 - `loadDemo`: 망원동 카페 `cafe.teamReports=[{key:'wr_demo_blocked',status:'blocked',workDate:이번 날짜-3,reporter:'김 기사',issue:'베란다 배수구 부속 미도착 — 내일 오전 입고 예정',…}]`(지시 없는 '보고만'). 보고 3건·보고자 2명이라 데모 노트 창에 칩(v475)이 뜨고, 첫 화면에 '⛔ 막힘 1건' 줄 '· 3일째'(v481). 데모는 여전히 어디에도 저장되지 않는다(_demo).
