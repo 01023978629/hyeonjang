@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v495 🧭 데모 둘러보기 6단계 — 셋째 '👷 팀 보고 노트' (개발_백로그)
+
+- `HJ_DEMO_TOUR` 에 {n:3, icon:'👷', t:'팀 보고 노트', go:'note'} — 뒤 단계는 4 아파트 서류 · 5 월말 장부 · 6 끝내기로 번호가 밀린다. `hjDemoTourGo('note')` → 표시(hj_demo_tour_done) + `hjTeamReportNoteView(HJ_DEMO_CAFE)`(v489 데모 보고 3건이라 칩·⚠ 이슈·글로 복사가 다 보인다).
+- 요약 글: '봤어요 n/'+(끝내기 뺀 단계 수) · '+HJ_DEMO_TOUR.length+'단계 · 3분' — 숫자를 세어서(예전엔 '/4'·'5단계' 글자 그대로).
+- PC 두 칸(v474): 끝 줄 가득은 `li:last-child:nth-child(odd)` 일 때만 — 6단계면 5·6(끝내기)이 나란히.
+- 기존 검사 손질: demotour-v467(6단계·단추 목록), demotour2-v470(장부 단계 번호 5·'봤어요 n/5 · 6단계'), tour2col-v474(5·6 나란히, 한 칸 반복을 단계 수만큼).
+- 핀3곳 hyeonjang-v495-tour6(v494 위). 신규 tests/tour6-v495.e2e.js 2/2(390·1280), 기준선(098d363)·변이 no-note 실패 확인. 데모 관련 11개 통과, demotour2-v470·tour2col-v474 변이 여전히 실패 확인, 정적 19개 통과.
+
 ## 2026-10-24 v494 👷 팀 보고 노트 창 — '⚠ 이슈' 칩 (개발_백로그)
 
 - `hjTeamReportNoteChipsHtml`: 이슈 글(trim 해서 빈 것 제외)이 있는 보고가 일부(0 < n < 전부)면 상태 칩 뒤에 `[data-note-filter-issue]` '⚠ 이슈 n'(aria-pressed, 44px). filter 에 `issue`(bool) — 상태·보고자 칩을 눌러도 `issue:!!f.issue` 를 들고 다니고, 이슈 칩은 켜고 끈다.

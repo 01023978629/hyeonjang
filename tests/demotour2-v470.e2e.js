@@ -50,12 +50,12 @@ let browser, passed = 0, page;
     const before = await page.evaluate(() => { const d = serializeData(); d.savedAt = ''; return paidStableJson(d); });
     await page.locator('#view [data-demo-tour-go="ledger"]').click(); await page.locator('#modalRoot .expRow').first().waitFor(); await close();
     c = await card();
-    assert.deepEqual(c.done, ['4'], 'TOUR_DONE step 4 marked ' + JSON.stringify(c)); assert.deepEqual(c.checks, [false, false, false, true, false]);
-    assert.deepEqual(c.btns[3], ['ledger', '다시']); assert.match(c.seen, /^봤어요 1\/4 · 5단계/); assert.equal(c.stored, '["ledger"]');
+    assert.deepEqual(c.done, ['5'], 'TOUR_DONE step 5 (ledger) marked ' + JSON.stringify(c)); assert.deepEqual(c.checks, [false, false, false, false, true, false]);   // v495 부터 6단계(셋째 '팀 보고 노트')
+    assert.deepEqual(c.btns[4], ['ledger', '다시']); assert.match(c.seen, /^봤어요 1\/5 · 6단계/); assert.equal(c.stored, '["ledger"]');
     await page.locator('#view [data-demo-tour-go="pending"]').click();
-    c = await card(); assert.deepEqual(c.done, ['1', '4']); assert.match(c.seen, /봤어요 2\/4/);
+    c = await card(); assert.deepEqual(c.done, ['1', '5']); assert.match(c.seen, /봤어요 2\/5/);
     await page.evaluate(() => render());
-    c = await card(); assert.deepEqual(c.done, ['1', '4'], 'kept after re-render'); assert.equal(c.stored, '["ledger","pending"]');
+    c = await card(); assert.deepEqual(c.done, ['1', '5'], 'kept after re-render'); assert.equal(c.stored, '["ledger","pending"]');
     assert.equal(await page.evaluate(() => { const d = serializeData(); d.savedAt = ''; return paidStableJson(d); }), before, 'app data unchanged');
   });
 

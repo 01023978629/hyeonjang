@@ -50,8 +50,8 @@ let browser, passed = 0, page;
     await page.evaluate(async () => { await loadDemo(); });
     const c = await card();
     assert(c, 'TOUR_CARD present in the demo'); assert.equal(c.open, true, 'open by default'); assert.equal(c.first, true, 'first thing on the dashboard');
-    assert.equal(c.steps.length, 5, JSON.stringify(c.steps)); assert.match(c.steps[0], /^1\. 🔎 "검수 요청 1건" 줄/); assert.match(c.steps[4], /^5\. 🚪 데모 끝내기/);
-    assert.deepEqual(c.btns.map(b => b[0]), ['pending', 'report', 'aptdocs', 'ledger', 'exit']); assert(c.btns.every(b => b[1] >= 44) && c.summaryH >= 44, 'tap targets ' + JSON.stringify(c.btns) + ' ' + c.summaryH);
+    assert.equal(c.steps.length, 6, JSON.stringify(c.steps)); assert.match(c.steps[0], /^1\. 🔎 "검수 요청 1건" 줄/); assert.match(c.steps[5], /^6\. 🚪 데모 끝내기/);   // v495 셋째 단계 '👷 팀 보고 노트'
+    assert.deepEqual(c.btns.map(b => b[0]), ['pending', 'report', 'note', 'aptdocs', 'ledger', 'exit']); assert(c.btns.every(b => b[1] >= 44) && c.summaryH >= 44, 'tap targets ' + JSON.stringify(c.btns) + ' ' + c.summaryH);
     const before = await page.evaluate(() => { const d = serializeData(); d.savedAt = ''; return paidStableJson(d); });
     await page.locator('#view [data-demo-tour] summary').click();
     await page.waitForFunction(() => !document.querySelector('#view [data-demo-tour]').open);

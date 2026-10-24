@@ -45,12 +45,12 @@ let browser, passed = 0;
     return { li, btns: [...d.querySelectorAll('[data-demo-tour-go]')].map(b => Math.round(b.getBoundingClientRect().height)), ov: d.scrollWidth - d.clientWidth, doc: document.documentElement.scrollWidth - innerWidth, card: Math.round(d.getBoundingClientRect().width) }; });
   async function test(name, fn) { await fn(); passed++; console.log('PASS tour2col-v474 ' + name); }
 
-  await test('① 1280 PC: 1·2단계 나란히(두 칸) · 5단계 한 줄 가득 · 44px · 넘침 없음 (TOUR_2COL)', async () => {
+  await test('① 1280 PC: 1·2단계 나란히(두 칸) · 5·6단계도 나란히(v495, 홀수일 때만 끝 줄 가득) · 44px · 넘침 없음 (TOUR_2COL)', async () => {
     const { context, page } = await open(1280, 860, false);
     const g = await geo(page);
-    assert.equal(g.li.length, 5);
+    assert.equal(g.li.length, 6);   // v495 6단계 — 5·6(끝내기)이 나란히, 홀수 단계일 때만 끝 줄 가득
     assert.equal(g.li[0].t, g.li[1].t, 'TOUR_2COL steps 1 and 2 share a row ' + JSON.stringify(g.li)); assert(g.li[1].l > g.li[0].l + 100, 'TOUR_2COL step 2 sits to the right');
-    assert.equal(g.li[2].t, g.li[3].t, 'steps 3 and 4 share a row'); assert(g.li[4].t > g.li[3].t, 'step 5 below'); assert(g.li[4].w > g.li[0].w * 1.8, 'step 5 spans both columns ' + JSON.stringify(g.li));
+    assert.equal(g.li[2].t, g.li[3].t, 'steps 3 and 4 share a row'); assert(g.li[4].t > g.li[3].t, 'step 5 below'); assert.equal(g.li[4].t, g.li[5].t, 'steps 5 and 6 share the last row ' + JSON.stringify(g.li)); assert(g.li[5].w < g.li[0].w * 1.2, 'step 6 does not span with an even count');
     assert(g.btns.every(h => h >= 44), 'tap targets ' + JSON.stringify(g.btns)); assert(g.ov <= 1 && g.doc <= 1, 'overflow ' + JSON.stringify(g));
     await context.close();
   });
@@ -58,7 +58,7 @@ let browser, passed = 0;
   await test('② 390 모바일: 한 칸(세로) 그대로 · 오류 0', async () => {
     const { context, page } = await open(390, 800, true);
     const g = await geo(page);
-    for (let i = 1; i < 5; i++) assert(g.li[i].t > g.li[i - 1].t, 'single column on the phone ' + JSON.stringify(g.li));
+    for (let i = 1; i < g.li.length; i++) assert(g.li[i].t > g.li[i - 1].t, 'single column on the phone ' + JSON.stringify(g.li));
     assert(g.btns.every(h => h >= 44)); assert(g.ov <= 1 && g.doc <= 1, 'overflow ' + JSON.stringify(g));
     await context.close();
     assert.deepEqual(errors, []); assert.equal(network.writes, 0);
