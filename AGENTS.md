@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v516 검사 고침 — offlinequeue-v425 의 Drive 모의가 사진 썸네일 '원본 받기'에 던지던 것 (병합 준비)
+
+- 찾은 것: v515 로 캐시 이름 문제가 풀린 뒤 이 묶음에서 offlinequeue-v425 e2e 가 'direct Drive upload' 단계에서 `UNEXPECTED_MOCK_DRIVE_ROUTE: GET /drive/v3/files/TEST_DRIVE_3?alt=media` 로 죽었다. 사진 탭 썸네일이 lh3·drive 썸네일 둘 다 막히면 앱이 토큰으로 원본을 받아 작게 만드는 `__driveThumbRescue`(main 에도 있음)가, main 에선 오프라인 중(모의가 abort)에 끝나고 이 묶음에선 다시 온라인이 된 뒤(모의가 켜진 사이)에 와서다. main 에서 같은 검사를 돌려도 그 GET 4번이 똑같이 나간다(시점만 다름).
+- 한 것: 검사의 Drive 모의가 `GET /drive/v3/files/<id>?alt=media` 는 404 로 조용히 돌려보내고 세지 않음(검사가 보는 올리기 경로 — 폴더 찾기 GET·만들기 POST·PATCH — 는 그대로). 앱 코드는 안 바꿈.
+- 남은 흔들림: HTTP500 재시도 단계는 부하가 있으면 main 에서도 4번 중 1번 떨어진다('automatic retry must stop at five' 등) — run-all 이 떨어진 파일을 끝에 혼자 한 번 더 돌린다.
+- 핀3곳 hyeonjang-v516-oqthumb. offlinequeue-v425 3번 중 2번 13/13(1번은 위 HTTP500 흔들림), main 4번 중 3번 13/13.
+
 ## 2026-10-25 v515 PR #189 순서 바꿈 — 오프라인 검사 고침 2개를 묶음에 넣고, #189 는 '먼저 병합하지 않기'
 
 - 찾은 것: 그동안 '#189 먼저 병합'이라 안내했는데, #189 는 오프라인 검사 고침만이 아니라 **v428 수금 발행 확인(index.html 수금 입력·손익·세무 화면)** 이다. #189 를 먼저 넣으면 이 묶음 PR 이 AGENTS.md·index.html(6곳: 핀·손익 6개월 추이·세무 화면 2곳·수금 입력·누수 수금)·sw.js·version-sync 에서 **충돌**해 GitHub 단추로 병합할 수 없다(`git merge-tree` 로 확인). 그리고 run-all 은 정적·단위 검사가 하나라도 떨어지면 브라우저 검사를 시작하지 않아서, `offlinequeue-cache-v425.unit`(v425 캐시 이름 고정) 하나 때문에 CI 가 e2e 를 통째로 건너뛴다.

@@ -55,6 +55,9 @@ async function rendererNetwork(session, offline) {
     }
     if (driveMock && url.origin === 'https://www.googleapis.com') {
       if (offline) return route.abort('internetdisconnected');
+      // (v516) 사진 탭 썸네일이 lh3·drive 썸네일 둘 다 못 받으면 앱이 토큰으로 원본을 받아 작게 만든다(__driveThumbRescue, main 에도 있음).
+      // 이 검사는 올리기 경로(폴더 찾기 GET·만들기 POST·PATCH)만 본다 — 그 '원본 받기'는 404 로 조용히 돌려보내고 세지 않는다(시점에 따라 Drive 모의가 켜진 사이에 와서 검사가 흔들렸다).
+      if (read && /^\/drive\/v3\/files\/[^/]+$/.test(url.pathname) && url.searchParams.get('alt') === 'media') return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":{"code":404}}' });
       const body = request.postDataBuffer(), json = request.method() === 'POST' ? JSON.parse(body?.toString() || '{}') : null;
       driveRequests.push({ method: request.method(), path: url.pathname, query: url.searchParams.get('q') || '', json, bytes: body ? [...body] : [] });
       if (read && url.pathname === '/drive/v3/files') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"files":[{"id":"TEST_PHOTO_FOLDER"}]}' });
