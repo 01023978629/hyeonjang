@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v506 👷 팀 보고 노트 창 — '🔍 찾기' (개발_백로그)
+
+- `hjTeamReportNoteMatch(p,r,q)`: 한 일·이슈·보고자·지시 이름(`hjTeamReportOrderTitle`)에 글자가 들어 있으면 참(대소문자·앞뒤 빈칸 무시). `hjTeamReportNoteRows` 첫 줄 끝(v504 이번 달 필터 뒤)에 `.filter(r=>!f.q||hjTeamReportNoteMatch(p,r,f.q))`.
+- `hjTeamReportNoteSearchHtml`: 보고 5건 이상(또는 찾기 글자가 있을 때) 칩 위에 `[data-note-search]`(type=search, 44px, 16px 글씨 — iOS 확대 방지). 입력이 200ms 멈추면 다시 그리고 새 입력칸에 포커스·커서를 돌려놓는다(`__hjNoteSearchT`).
+- 칩 단추 처리를 `Object.assign({},f,{바꿀 것})` 으로 바꿔 다른 조건·찾기 글자를 그대로 들고 간다(예전엔 칸마다 나열). [✕ 조건 모두 끄기]는 찾기도 비우고, `act2` 에 찾기도 센다. 복사 머리줄 '· 🔍 글자', 빈 글 안내 '·🔍 찾기 지우기'.
+- 핀3곳 hyeonjang-v506-notesearch(v505 위). 신규 tests/notesearch-v506.e2e.js 2/2, 기준선(92681b7)·변이 no-search 실패 확인. 노트 관련 21개·정적 19개 통과(기존 검사 손질 없음).
+
 ## 2026-10-25 v505 👷 팀 보고 노트 창 — [📊 엑셀용 복사] (개발_백로그)
 
 - `hjTeamReportNoteTsv(p,filter)`: 머리 '날짜·상태·보고자·시간·한 일·이슈·사진·지시·확인'(탭 구분) + `hjTeamReportNoteRows`(칩 반영) 줄. 상태는 글자만(완료·검수 요청·막힘·진행·대기), 시간·사진은 숫자(0이면 빈칸), 지시는 `hjTeamReportOrderTitle`, 확인한 검수·막힘은 '확인함'. 셀 안 탭·줄바꿈은 빈칸. 현장 이름·고객 정보 없음.
