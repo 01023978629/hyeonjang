@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v491 👷 팀 보고 노트 창 — [✔ 보이는 검수·막힘 n건 모두 확인함] (개발_백로그)
+
+- `hjTeamReportNoteUnacked(p,filter)` = `hjTeamReportNoteRows`(칩 반영) 중 key 있고 review·blocked 이며 !ack. `hjTeamReportNoteCopyHtml` 의 `[data-team-note-copy-row]` 가 flex 줄이 되어 [📋 글로 복사] 옆에 `[data-team-note-ackall]` '✔ 보이는 검수·막힘 n건 모두 확인함'(44px, 2건 이상일 때만 — 1건이면 줄 [확인함]).
+- 누르면 confirm 한 번('…n건을 모두 확인함으로 내릴까요?') → 줄마다 `hjTeamReportAck`(v465 와 같은 ack·ackAt·markDirty) → 같은 칩으로 다시 그림 + render() + 알림('잘못 눌렀으면 줄마다 [확인 취소]'). 취소면 아무것도 안 바뀐다. 보이지 않는(칩 밖) 보고와 이미 확인한 보고는 건드리지 않는다.
+- 핀3곳 hyeonjang-v491-ackall(v490 위). 신규 tests/ackall-v491.e2e.js 2/2(390px, 저장 확인 포함), 기준선(1e490a8)·변이 no-filter-ack 실패 확인. 관련 12개(teamack-v465·teamnote-v466·teamnote2-v469·unack-v472·notefilter-v475·notecopy-v483·notephotos-v479·ordername-v484·pendingall-v477·teamage-v481·demo3-v489·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v490 ⏱ 작업시간 창 — [📋 보이는 n줄 글로 복사] (개발_백로그)
 
 - `workView`: `visible = view.slice(0,limit)`(지금 그려지는 줄). 표 바로 위 `[data-wl-copy-row]` + `[data-wl-copy]` '📋 보이는 n줄 글로 복사'(44px, 줄이 있을 때만) → `hjWorkCopy(pjName,visible,{teamOnly,monthOnly})`.
