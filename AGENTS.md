@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v489 🧪 데모 팀 보고 3건 — 노트 창 칩 시연 (개발_백로그)
+
+- `loadDemo`: 망원동 카페 `cafe.teamReports=[{key:'wr_demo_blocked',status:'blocked',workDate:이번 날짜-3,reporter:'김 기사',issue:'베란다 배수구 부속 미도착 — 내일 오전 입고 예정',…}]`(지시 없는 '보고만'). 보고 3건·보고자 2명이라 데모 노트 창에 칩(v475)이 뜨고, 첫 화면에 '⛔ 막힘 1건' 줄 '· 3일째'(v481). 데모는 여전히 어디에도 저장되지 않는다(_demo).
+- 데모 알림의 팀 보고 수는 세어서(`hjTeamReportsOf` 합) — 예전엔 '팀 보고 2건' 글자 그대로였다.
+- tests/demo-v462 기대값 손질: 알림 '팀 보고 3건', 보고 목록에 ['blocked', 사흘 전, 0, '김 기사'], pending 에 막힘 1건.
+- 핀3곳 hyeonjang-v489-demo3(v488 위). 신규 tests/demo3-v489.e2e.js 2/2(390px), 기준선(75c6983)·변이 no-blocked 실패 확인. 데모를 쓰는 검사 17개(demo-v462·demotour-v467·demotour2-v470·tour2col-v474·teamage-v481·settings-safety·teamack-v465·teamnote-v466·notefilter-v475·notecopy-v483·mobile-screen-layout·action-search·amount-sign·aptdocs-v441·demo-banner·mobile-tap-table·trip-expense-overlap) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v488 ⏱ 작업시간 창 — '📅 이번 달' 칩 (개발_백로그)
 
 - `workView`: `isMonth`(date 앞 7자 = localDate 앞 7자). 이번 달 기록이 일부(0 < monthN < 전부)일 때만 `[data-wl-filter="month"]` '📅 이번 달 n'. 칩 줄은 팀 보고 줄이 있거나 이번 달 칩이 있을 때. `opts.monthOnly` 는 칩이 보일 때만 켜진다.

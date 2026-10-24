@@ -52,14 +52,14 @@ let browser, passed = 0;
   const { context, page } = await open({ width: 390, height: 800 });
   await page.evaluate(() => { window.__toasts = []; const o = window.toast; window.toast = m => { __toasts.push(String(m)); return o(m); }; });
 
-  await test('① 데모 씨앗: 팀 보고 2건(완료 1·검수 1)·첫 화면 줄 2개 · 아파트 동의서 1건 발행 + D-2 서류 할 일 유지 · 영수증 지출 2건 ↔ 파일 (DEMO_SEED)', async () => {
+  await test('① 데모 씨앗: 팀 보고 3건(완료 1·검수 1·막힘 1, v489)·첫 화면 줄 · 아파트 동의서 1건 발행 + D-2 서류 할 일 유지 · 영수증 지출 2건 ↔ 파일 (DEMO_SEED)', async () => {
     const r = await page.evaluate(async () => {
       const ok = await loadDemo();
       const cafe = state.projects.find(p => p.name === '망원동 카페'), apt = state.projects.find(p => p.name === '은행동 한빛아파트 101동 702호');
       const reports = hjTeamReportsOf(cafe), lines = hjTeamDoneLines(cafe);
       return {
         ok, demo: !!state._demo, projects: state.projects.length, toast: __toasts.at(-1) || '',
-        reports: reports.map(x => [x.status, x.workDate, x.photos, x.reporter]), ago2: hjAddDays(localDate(), -2), lines: lines.map(x => x.text), pending: hjTeamReportPending().map(x => [x.project, x.status]), doneDoc: hjTeamDoneDoc().map(x => [x.project, x.n, x.photos]),
+        reports: reports.map(x => [x.status, x.workDate, x.photos, x.reporter]), ago2: hjAddDays(localDate(), -2), ago3: hjAddDays(localDate(), -3), lines: lines.map(x => x.text), pending: hjTeamReportPending().map(x => [x.project, x.status]), doneDoc: hjTeamDoneDoc().map(x => [x.project, x.n, x.photos]),
         docs: hjDocLogs(apt).map(x => [x.type, x.no.slice(0, 3), hjIsoLocalDay(x.at) === hjAddDays(localDate(), -3)]), due: hjAptDocsDue().map(x => x.name),
         exp: (state.expenses || []).map(e => [e.src, e.vendor, e.amount, e.cat, e.method, e.project, !!hjReceiptFileOf(e)]),
         rcFiles: state.files.filter(f => f.kind === 'receipt').map(f => [f.name, f._virtual, !!f._file]),
@@ -71,10 +71,10 @@ let browser, passed = 0;
       };
     });
     assert.equal(r.ok, true); assert.equal(r.demo, true); assert.equal(r.projects, 4, 'demo project count unchanged (settings-safety contract)');
-    assert.match(r.toast, /현장 4곳 · 파일 17개 · 팀 보고 2건 · 영수증 2장/, r.toast);
-    assert.deepEqual(r.reports, [['done', '2025-03-10', 3, '박 반장'], ['review', r.ago2, 2, '박 반장']], 'DEMO_SEED team reports ' + JSON.stringify(r.reports));   // v481 검수 요청은 이틀 전(첫 화면 "· 2일째")
+    assert.match(r.toast, /현장 4곳 · 파일 17개 · 팀 보고 3건 · 영수증 2장/, r.toast);   // v489 막힘 보고 1건 더
+    assert.deepEqual(r.reports, [['done', '2025-03-10', 3, '박 반장'], ['blocked', r.ago3, 0, '김 기사'], ['review', r.ago2, 2, '박 반장']], 'DEMO_SEED team reports ' + JSON.stringify(r.reports));   // v489 막힘(김 기사, 사흘 전)   // v481 검수 요청은 이틀 전(첫 화면 "· 2일째")
     assert.deepEqual(r.lines, ['03/10 바닥·벽 철거, 폐기물 반출(마대 20장)'], 'DEMO_SEED done line');
-    assert.deepEqual(r.pending, [['망원동 카페', 'review']]); assert.deepEqual(r.doneDoc, [['망원동 카페', 1, 3]]);
+    assert.deepEqual(r.pending, [['망원동 카페', 'review'], ['망원동 카페', 'blocked']]); assert.deepEqual(r.doneDoc, [['망원동 카페', 1, 3]]);
     assert.match(r.dash.pending, /🔎 검수 요청 1건[\s\S]*망원동 카페/, 'dashboard review line: ' + r.dash.pending);   // v465 부터 줄마다 [확인함]
     assert.match(r.dash.done, /📄 팀 보고 1건 들어옴 · 사진 3장 — 망원동 카페/, 'dashboard done line: ' + r.dash.done);
     assert.deepEqual(r.docs, [['aptconsent', 'AC-', true]], 'one consent form issued 3 days ago ' + JSON.stringify(r.docs));

@@ -3401,7 +3401,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v488-wlmonth';
+const APP_BUILD='hyeonjang-v489-demo3';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5727,7 +5727,9 @@ async function loadDemo(){
     const ck=(n)=>HJ_WO_CHECKLIST.map((t,i)=>({text:t,ok:i<n}));
     cafe.workOrders=[{at:'2025-03-09T00:00:00.000Z',packetId:'wo_20250309_001',sentAt:'2025-03-09T00:00:00.000Z',via:'file',worker:'',title:'철거·방수 1차',date:'2025-03-10',assignee:'박 반장',due:'2025-03-10',priority:'normal',checklist:HJ_WO_CHECKLIST.slice(),photosWanted:['before','during','after'],items:[{kind:'sched',ref:'',text:'철거 작업 (2025-03-10 09:00 · 👷 3명)'}],
       reports:[{key:'wr_demo_20250310',status:'done',workDate:'2025-03-10',hours:8,done:'바닥·벽 철거, 폐기물 반출(마대 20장)',issue:'',reporter:'박 반장',checklist:ck(4),photos:3,at:'2025-03-10T09:40:00.000Z'},
-        {key:'wr_demo_20250312',status:'review',workDate:hjAddDays(localDate(),-2),hours:6,done:'화장실·베란다 방수 1차 도포',issue:'베란다 배수구 둘레 들뜸 — 2차 전에 확인 부탁',reporter:'박 반장',checklist:ck(2),photos:2,at:new Date(Date.now()-2*864e5).toISOString()}]}];}}   // v481 검수 요청은 이틀 전 — 첫 화면 '· 2일째' 시연(2025년 날짜면 '590일째'로 보였다)
+        {key:'wr_demo_20250312',status:'review',workDate:hjAddDays(localDate(),-2),hours:6,done:'화장실·베란다 방수 1차 도포',issue:'베란다 배수구 둘레 들뜸 — 2차 전에 확인 부탁',reporter:'박 반장',checklist:ck(2),photos:2,at:new Date(Date.now()-2*864e5).toISOString()}]}];   // v481 검수 요청은 이틀 전 — 첫 화면 '· 2일째' 시연(2025년 날짜면 '590일째'로 보였다)
+    // v489 막힘 보고 1건(다른 보고자, 사흘 전, 지시 없이 들어온 '보고만') — 데모에서도 노트 창 칩(v475)·⛔ 줄·'· 3일째'(v481)가 보이게
+    cafe.teamReports=[{key:'wr_demo_blocked',status:'blocked',workDate:hjAddDays(localDate(),-3),hours:0,done:'',issue:'베란다 배수구 부속 미도착 — 내일 오전 입고 예정',reporter:'김 기사',checklist:[],photos:0,at:new Date(Date.now()-3*864e5).toISOString()}];}}
   {const apt=state.projects.find(p=>p.name==='은행동 한빛아파트 101동 702호');if(apt){const d=hjAddDays(localDate(),-3);
     apt.docs=[{type:'aptconsent',no:'AC-'+d.replace(/-/g,'')+'-01',at:new Date(d+'T10:00:00').toISOString(),purpose:'apt',name:HJ_APT_DOC_TYPES.aptconsent}];}}
   {const svgFile=(label,c,name)=>new File([`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="520"><rect width="360" height="520" fill="${c}"/><text x="180" y="250" font-size="26" fill="#fff" text-anchor="middle" font-family="sans-serif">${label}</text><text x="180" y="300" font-size="18" fill="#fff" text-anchor="middle" font-family="sans-serif">데모 영수증</text></svg>`],name,{type:'image/svg+xml'});
@@ -5744,7 +5746,7 @@ async function loadDemo(){
   $('#btnOcrAll').disabled=true;
   hjDemoBarSync();
   render();
-  toast('데모 데이터 로드됨 — 현장 '+state.projects.length+'곳 · 파일 '+state.files.length+'개 · 팀 보고 2건 · 영수증 2장');
+  toast('데모 데이터 로드됨 — 현장 '+state.projects.length+'곳 · 파일 '+state.files.length+'개 · 팀 보고 '+state.projects.reduce((n,p)=>n+hjTeamReportsOf(p).length,0)+'건 · 영수증 2장');   // v489 팀 보고 수는 세어서
   return true;
 }
 let __walkSeen=new Map();   // 한 번의 스캔에서 본 파일(이름|크기) → 중복(원본+정리본) 1회만 인입
