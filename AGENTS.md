@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v501 👷 팀 보고 노트 창 — [✕ 조건 모두 끄기] (개발_백로그)
+
+- `hjTeamReportNoteChipsHtml`: 켜 둔 조건 수 `act=(status)+(reporter)+(issue)+(recent)` 가 2 이상이면 칩 줄 끝에 `[data-note-filter-reset]` '✕ 조건 모두 끄기'(44px, aria-pressed 없음). 하나뿐이면 그 칩을 다시 누르면 되니 안 보인다.
+- `hjTeamReportNoteBind`: 누르면 `{status:'',reporter:''}` 로 다시 그림(이슈·최근도 꺼짐) — 화면만. 복사·모두 확인함은 다시 전부 기준.
+- 핀3곳 hyeonjang-v501-notereset(v500 위). 신규 tests/notereset-v501.e2e.js 2/2, 기준선(c813d47)·변이 no-reset 실패 확인. 노트 관련 12개·정적 19개 통과(기존 검사 손질 없음 — 처음 칩 목록엔 단추가 없어서).
+
 ## 2026-10-25 v500 👷 팀 보고 노트 줄 — 작업일 옆 '오늘·어제·n일 전' (개발_백로그)
 
 - `hjTeamReportAgoText(workDate)`: `hjDaysBetween(workDate, localDate())` 가 0 → '오늘', 1 → '어제', 2~6 → 'n일 전'(v497 최근 7일과 같은 창). 7일 넘음·작업일이 오늘 뒤·날짜 이상은 ''. 읽기만.
