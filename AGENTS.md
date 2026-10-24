@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v485 ⏱ 작업시간 창 — 현장 고르기 (개발_백로그 '작업시간 전체 창에서 현장 고르기')
+
+- `workView`: workData 전체에서 기록이 있는 현장(이름 빈 줄 제외)을 최근 기록 날짜 순으로 모아, 둘 이상이면 맨 위 `<label data-wl-pick>` + `<select data-wl-project>`('전체 · n줄' + '현장 · m줄', 44px). 기록 없는 현장 창에서 열면 그 현장을 '· 0줄'로 맨 앞에 넣어 골라 둔다. onchange → `workView(sel.value||'')`(전체면 ''), 칩·더 보기는 새로 시작. 화면만, 저장 없음.
+- `.mbody > div` 첫 div 는 여전히 위 칸(작업 일수…) — 고르기 칸은 label 이라 wlchip-v480 검사의 tiles 선택자에 안 걸린다.
+- 핀3곳 hyeonjang-v485-wlpick(v484 위). 신규 tests/wlpick-v485.e2e.js 2/2(390px), 기준선(0a76b51)·변이 no-pick 실패 확인. 관련 9개(wlchip-v480·wlmore-v482·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v484 👷 팀 보고 노트 줄 — '지시 wo_…' → 사람이 읽는 지시 이름 (개발_백로그)
 
 - `hjTeamReportOrderTitle(p,orderId)`: `hjWoOrders(p)` 에서 packetId 가 같은 지시의 title(hjWoText 40자) + '(M/D)'(지시 date, 없으면 due; 진짜 날짜일 때만). title 이 없으면 ''. `hjTeamReportOrderHtml` → `<span data-team-note-order title="wo_…">지시: 제목(M/D)</span>`(escapeHtml — 제목의 <b>·& 는 글자로), 없으면 예전처럼 '지시 wo_…'. 지시 없는 보고는 '보고만' 그대로.

@@ -3401,7 +3401,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v484-ordername';
+const APP_BUILD='hyeonjang-v485-wlpick';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -44236,6 +44236,14 @@ function workView(pjName,opts){
   const shown=teamOnly?all.filter(isTeam):all;
   // v482 30줄씩 [더 보기] — 예전엔 31줄째부터 말없이 숨었다. 화면만(저장 없음). 더 보기·삭제로 다시 그릴 땐 스크롤 자리를 지킨다.
   const limit=Math.max(30,Math.floor(Number(opts&&opts.limit)||30)),rest=Math.max(0,shown.length-limit);
+  // v485 현장 고르기 — 기록이 있는 현장(최근 기록 순, 줄 수)이 둘 이상이면 맨 위에. 고르면 그 현장 창, '전체'면 모든 현장. 화면만(저장 없음).
+  const allData=workData(),byPj=new Map();
+  allData.forEach(function(w){const k=String(w.project||'');if(!k)return;const g=byPj.get(k)||{n:0,last:''};g.n++;if(String(w.date||'')>g.last)g.last=String(w.date||'');byPj.set(k,g);});
+  const pjList=[...byPj.entries()].sort(function(a,b){return b[1].last.localeCompare(a[1].last)||a[0].localeCompare(b[0]);});
+  if(pjName&&!byPj.has(pjName))pjList.unshift([pjName,{n:0,last:''}]);   // 기록 없는 현장 창에서 열었을 때도 고르기 칸이 그 현장을 가리키게
+  const pick=pjList.length>1?'<label data-wl-pick style="display:flex;gap:8px;align-items:center;margin:0 0 9px;font-size:12.5px;font-weight:700">현장<select data-wl-project aria-label="작업시간 볼 현장 고르기" style="flex:1;min-width:0;min-height:44px;font-size:13px">'+
+    '<option value=""'+(pjName?'':' selected')+'>전체 · '+allData.length+'줄</option>'+
+    pjList.map(function(e){return '<option value="'+escapeAttr(e[0])+'"'+(e[0]===pjName?' selected':'')+'>'+escapeHtml(e[0])+' · '+e[1].n+'줄</option>';}).join('')+'</select></label>':'';
   const totalM=all.reduce(function(s,w){return s+workMinutes(w);},0);
   const days=[...new Set(all.map(function(w){return w.date;}))].length;
   const ym=localDate().slice(0,7);
@@ -44254,6 +44262,7 @@ function workView(pjName,opts){
   }).join('');
   const keepScroll=opts&&opts.keepScroll?[...document.querySelectorAll('#modalRoot .modal,#modalRoot .mbody')].map(function(e){return e.scrollTop;}):null;   // v482
   openModal('⏱ 작업시간'+(pjName?' — '+pjName:''),
+    pick+   // v485
     '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px">'+
       tile('작업 일수',days+'일')+tile('누적 시간',workHM(totalM),'#1d4ed8')+tile('이번 달',workHM(thisM),'#15803d')+
     '</div>'+
@@ -44269,6 +44278,7 @@ function workView(pjName,opts){
   document.querySelector('#modalRoot .modal').classList.add('mobile-scroll-modal','worklog-modal');
   if(keepScroll)[...document.querySelectorAll('#modalRoot .modal,#modalRoot .mbody')].forEach(function(e,i){if(keepScroll[i])e.scrollTop=keepScroll[i];});   // v482
   const more=document.querySelector('#modalRoot [data-wl-more-btn]');if(more)more.onclick=function(){workView(pjName,{teamOnly:teamOnly,limit:limit+30,keepScroll:true});};   // v482
+  const sel=document.querySelector('#modalRoot [data-wl-project]');if(sel)sel.onchange=function(){workView(sel.value||'');};   // v485 현장 고르기
   document.querySelectorAll('#modalRoot .wkNote').forEach(function(b){b.onclick=function(){hjTeamReportNoteView(b.dataset.project,b.dataset.key);};});   // v476
   document.querySelectorAll('#modalRoot [data-wl-filter]').forEach(function(b){b.onclick=function(){workView(pjName,{teamOnly:b.getAttribute('data-wl-filter')==='team'});};});   // v480
   document.querySelectorAll('#modalRoot .wkEdit').forEach(function(b){b.onclick=function(){workEditView(b.dataset.id,pjName);};});
