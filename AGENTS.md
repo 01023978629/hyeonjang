@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v477 🔎⛔ 첫 화면 검수 요청·막힘 줄 '외 n건' → [모두 보기] (개발_백로그 '검수 요청·막힘 줄 외 n건 → 모두 보기')
+
+- `hjTeamReportPendingHtml`: 검수 요청·막힘이 각각 3건을 넘으면 '외 n건' 힌트 대신 `[data-team-pending-all=review|blocked]` 단추 '외 n건 — 모두 보기'(44px). #view 위임 `d.teamPendingAll`(closest 목록에도 추가 — 빠뜨리면 단추가 죽는다) → `hjTeamPendingAllView(status)`.
+- `hjTeamPendingAllView(status)`: `hjTeamReportPending()` 중 그 상태만 현장별로 묶은 창 `#hjTeamPendingAll` — 줄 `[data-team-pending-all-row=현장]`(🔎/⛔ 건수 + '최근 날짜 한 일/이슈'), 최근 보고 순. `[data-team-pending-all-note=현장][data-key=가장 최근 보고]` → `hjTeamReportNoteView(현장,key,{filter:{status}})`. 읽기만 — 확인함은 노트 창 줄(v469)에서. 저장 없음(검사 ① serializeData 동일).
+- `hjTeamReportNoteView(name,focusKey,opts)` 가 `opts.filter` 를 받는다 — 단 칩이 보일 때만(`hjTeamReportNoteChipsHtml(p,{})` 이 비면 전부). 보고 1~2건·보고자 1명 현장에서 칩 없이 줄이 숨는 일을 막는다.
+- 핀3곳 hyeonjang-v477-pendingall(v476 위). 신규 tests/pendingall-v477.e2e.js 2/2(390px), 기준선(3d9d261)·변이 no-filter 실패 확인. 관련 10개(teamack-v465·teamnote-v466·teamnote2-v469·doneview-v471·unack-v472·importnote-v473·notefilter-v475·wlteam-v476·demo-v462·mobile-screen-layout) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v476 ⏱ 작업시간 줄 — 👷 팀 보고 표시 + [👷 노트] (개발_백로그 '작업일지 줄 팀 보고 표시 + 노트 열기')
 
 - `workView` 줄: `w.teamReport`(객체, key 있음 — 📥 팀 작업 가져오기가 만든 줄)이면 `[data-wl-team=key]` 와 현장 이름 아래 초록 작은 글 '👷 팀 보고 · 보고자', 단추 맨 앞에 `.wkNote`(data-project·data-key, 44px) → `hjTeamReportNoteView(project,key)` 로 그 보고 줄에 초점. 보통 줄(teamReport 없음)은 배지·단추 없이 그대로. 읽기만 — 자료·저장 없음(검사 ① serializeData 동일).
