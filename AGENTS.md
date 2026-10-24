@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v483 👷 팀 보고 노트 창 — [📋 보이는 보고 n건 글로 복사] (개발_백로그)
+
+- `hjTeamReportNoteRows(p,filter)`: v475 칩 필터 줄을 함수로 뺐다(그 줄 문자열은 여전히 한 곳 — notefilter-v475 변이 no-filter 가 그대로 문다). `hjTeamReportNoteHtml` 과 복사가 같은 줄을 쓴다 = 보이는 것만 복사된다.
+- `hjTeamReportNoteText(p,filter)`: 머리줄 '[현장] 팀 작업 보고 n건( · 상태 칩)( · 👤 보고자)' + 줄마다 '- M/D(요일) 상태 — 한 일 / 이슈: … (보고자 · n시간 · 사진 n장)', 확인한 검수·막힘은 ' [확인함]'. 현장 이름만, 고객 이름·전화 없음.
+- `hjTeamReportNoteCopyHtml` → 칩 아래·목록 위 `[data-team-note-copy-row]` + `[data-team-note-copy]` '📋 보이는 보고 n건 글로 복사'(44px, 보이는 줄이 0이면 없음). `hjTeamReportNoteCopy(name,filter)`: navigator.clipboard.writeText, 실패하면 `coworkCopyFallback`(execCommand) — v461 관리사무소 명단 복사와 같은 방식. 알림 '보고 n건을 글로 복사했어요'. 보내기·저장 없음.
+- 핀3곳 hyeonjang-v483-notecopy(v482 위). 신규 tests/notecopy-v483.e2e.js 2/2(390px, 클립보드·대체 경로), 기준선(2424ab6)·변이 no-filter-copy 실패 확인. 관련 12개(notefilter-v475·teamnote-v466·teamnote2-v469·unack-v472·notephotos-v479·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·teamage-v481·mobile-screen-layout) 통과, notefilter-v475 변이 여전히 실패 확인, 정적 19개 통과.
+
 ## 2026-10-24 v482 ⏱ 작업시간 창 — 30줄 넘으면 [더 보기] (개발_백로그)
 
 - `workView(pjName,opts)`: `opts.limit`(기본 30, 30 이상) 만큼만 그리고, 남으면 표 아래 `[data-wl-more]` + `[data-wl-more-btn]` '외 n줄 — min(30,n)줄 더 보기'(44px) → `workView(pjName,{teamOnly,limit:limit+30,keepScroll:true})`. 예전엔 31줄째부터 말없이 숨었다(v478 과 같은 문제).
