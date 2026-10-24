@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v467 🧭 데모 둘러보기 — 데모 첫 화면 맨 위 '이렇게 보세요' 5단계 (개발_백로그 '데모 둘러보기 순서 안내')
+
+- `hjDemoTourHtml()`(데모가 아니면 '') 을 viewDashboard 맨 앞에 — `<details data-demo-tour ontoggle="hjDemoTourToggle(this)">`, 열림 기본, 접힘은 이 기기 localStorage `hj_demo_tour`('0' 접힘; `hjDemoTourOpen()`) — 앱 자료 변경 없음(검사 ① serializeData 동일). 5단계 `HJ_DEMO_TOUR`(상수: 검수 요청 줄 찾기 → 완료보고서 초안 → 아파트 서류 4종 → 월말 장부 🧾 → 데모 끝내기), 줄마다 `[data-demo-tour-go=pending|report|aptdocs|ledger|exit]`(44px). `hjDemoTourGo`: pending 은 `[data-team-report-pending]` 테두리 1.8초(없으면 토스트), report → aptReportView(HJ_DEMO_CAFE), aptdocs → hjAptDocsView(HJ_DEMO_APT), ledger → expenseLedger(이번 달), exit → hjDemoExit. 데모 현장 이름 상수 `HJ_DEMO_CAFE`·`HJ_DEMO_APT`(loadDemo 의 이름과 같아야 한다 — 바꾸면 둘 다).
+- toggle 이벤트는 다음 틱에 오므로 검사는 localStorage 값을 기다린다. 핀3곳 hyeonjang-v467-demotour(v466 위). 신규 tests/demotour-v467.e2e.js 3/3(390px, 끝내기 → reload 뒤 저장본에 데모 없음), 기준선(9675715)·변이 no-remember 실패 확인. 관련 13개(demo-v462·settings-safety·demo-banner·mobile-tap-table·action-search·amount-sign·trip-expense-overlap·aptdocs-v441·dash-cards·inqpending-v386·mobile-screen-layout·custfill-v394·teamnote-v466) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v466 👷 팀 보고 노트 보기 — 보고 전문 읽기 전용 창 (개발_백로그 '팀 보고 노트 보기')
 
 - `hjTeamReportNoteHtml(p,focusKey)`·`hjTeamReportNoteView(name,focusKey,{back})`: 현장의 팀 작업 보고 전부(hjTeamReportsOf, 최근 것부터) — 날짜(hjMdDow)·상태(HJ_WR_STATUS_LABEL)·👤 보고자·시간·사진 수·지시 번호(없으면 '보고만')·한 일·이슈·체크리스트(✓/○)·표식(확인함 날짜·완료보고서 날짜/넘김). 단추는 닫기(와 `back` 일 때 [← 서류 만들기])뿐 — **읽기만, 저장·변경 없음**(검사 ① serializeData 동일). `[data-team-note=key]`, focusKey 는 `data-focus` + clay 테두리 + scrollIntoView. 보고 없으면 `.empty` 안내.
