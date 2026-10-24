@@ -3401,7 +3401,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v480-wlchip';
+const APP_BUILD='hyeonjang-v481-teamage';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5727,7 +5727,7 @@ async function loadDemo(){
     const ck=(n)=>HJ_WO_CHECKLIST.map((t,i)=>({text:t,ok:i<n}));
     cafe.workOrders=[{at:'2025-03-09T00:00:00.000Z',packetId:'wo_20250309_001',sentAt:'2025-03-09T00:00:00.000Z',via:'file',worker:'',title:'철거·방수 1차',date:'2025-03-10',assignee:'박 반장',due:'2025-03-10',priority:'normal',checklist:HJ_WO_CHECKLIST.slice(),photosWanted:['before','during','after'],items:[{kind:'sched',ref:'',text:'철거 작업 (2025-03-10 09:00 · 👷 3명)'}],
       reports:[{key:'wr_demo_20250310',status:'done',workDate:'2025-03-10',hours:8,done:'바닥·벽 철거, 폐기물 반출(마대 20장)',issue:'',reporter:'박 반장',checklist:ck(4),photos:3,at:'2025-03-10T09:40:00.000Z'},
-        {key:'wr_demo_20250312',status:'review',workDate:'2025-03-12',hours:6,done:'화장실·베란다 방수 1차 도포',issue:'베란다 배수구 둘레 들뜸 — 2차 전에 확인 부탁',reporter:'박 반장',checklist:ck(2),photos:2,at:'2025-03-12T08:30:00.000Z'}]}];}}
+        {key:'wr_demo_20250312',status:'review',workDate:hjAddDays(localDate(),-2),hours:6,done:'화장실·베란다 방수 1차 도포',issue:'베란다 배수구 둘레 들뜸 — 2차 전에 확인 부탁',reporter:'박 반장',checklist:ck(2),photos:2,at:new Date(Date.now()-2*864e5).toISOString()}]}];}}   // v481 검수 요청은 이틀 전 — 첫 화면 '· 2일째' 시연(2025년 날짜면 '590일째'로 보였다)
   {const apt=state.projects.find(p=>p.name==='은행동 한빛아파트 101동 702호');if(apt){const d=hjAddDays(localDate(),-3);
     apt.docs=[{type:'aptconsent',no:'AC-'+d.replace(/-/g,'')+'-01',at:new Date(d+'T10:00:00').toISOString(),purpose:'apt',name:HJ_APT_DOC_TYPES.aptconsent}];}}
   {const svgFile=(label,c,name)=>new File([`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="520"><rect width="360" height="520" fill="${c}"/><text x="180" y="250" font-size="26" fill="#fff" text-anchor="middle" font-family="sans-serif">${label}</text><text x="180" y="300" font-size="18" fill="#fff" text-anchor="middle" font-family="sans-serif">데모 영수증</text></svg>`],name,{type:'image/svg+xml'});
@@ -40748,12 +40748,22 @@ function hjTeamReportNoteBind(name,focusKey,filter){
     const g=t.closest('[data-team-note-photo-grid]'),ids=g?[...g.querySelectorAll('[data-team-note-photo]')].map(x=>x.getAttribute('data-team-note-photo')):[];
     openLightbox(t.getAttribute('data-team-note-photo'),ids);};
 }
+/* v481 검수 요청·막힘이 며칠째 묵었나 — 작업일부터 오늘까지 날 수. 2일 이상만 센다(오늘·어제 보고는 표시 없음), 날짜가 없거나 잘못됐거나 미래면 0. 읽기만. */
+function hjTeamReportAgeDays(workDate){
+  const d=String(workDate||'');if(!isRealIsoDate(d))return 0;
+  const n=hjDaysBetween(d,localDate());
+  return n>=2?n:0;
+}
+function hjTeamReportAgeHtml(workDate,prefix){
+  const n=hjTeamReportAgeDays(workDate);
+  return n?' <span data-team-days="'+n+'" style="color:var(--hj-warn-fg,#b45309);font-weight:700;white-space:nowrap">· '+(prefix||'')+n+'일째</span>':'';
+}
 function hjTeamReportPendingHtml(){
   const rows=hjTeamReportPending();if(!rows.length)return '';
   const review=rows.filter(r=>r.status==='review'),blocked=rows.filter(r=>r.status==='blocked');
   // v465 줄마다 [확인함] — 예전엔 내릴 길이 없어 검수 요청 줄이 영영 남았다. 글은 현장 · 작업일 · 한 일/이슈(짧게), 보고자 이름은 안 넣는다.
   const md=d=>d?d.slice(5).replace('-','/')+' ':'';
-  const line=(r,icon,color)=>'<div data-team-report-row="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:'+color+'"><span style="flex:1;min-width:0;overflow-wrap:anywhere">'+icon+' '+escapeHtml(r.project)+' — '+escapeHtml(md(r.workDate)+hjWoText(r.status==='blocked'?(r.issue||r.done):(r.done||r.issue),60))+(r.status==='review'&&r.issue?' <span style="color:var(--muted)">· '+escapeHtml(hjWoText(r.issue,40))+'</span>':'')+'</span>'+
+  const line=(r,icon,color)=>'<div data-team-report-row="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:'+color+'"><span style="flex:1;min-width:0;overflow-wrap:anywhere">'+icon+' '+escapeHtml(r.project)+' — '+escapeHtml(md(r.workDate)+hjWoText(r.status==='blocked'?(r.issue||r.done):(r.done||r.issue),60))+(r.status==='review'&&r.issue?' <span style="color:var(--muted)">· '+escapeHtml(hjWoText(r.issue,40))+'</span>':'')+hjTeamReportAgeHtml(r.workDate)+'</span>'+   // v481
     '<button type="button" class="ghost tiny" data-team-note="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="min-height:44px" aria-label="'+escapeAttr(r.project+' 팀 보고 보기')+'">보기</button>'+   // v466 보고 전문(읽기만)
     '<button type="button" class="ghost tiny" data-team-ack="'+escapeAttr(r.key)+'" data-project="'+escapeAttr(r.project)+'" style="min-height:44px" aria-label="'+escapeAttr(r.project+' '+(r.status==='blocked'?'막힘':'검수 요청')+' 보고 확인함')+'">확인함</button></div>';
   return '<div data-team-report-pending style="font-size:13px;margin:0 0 8px;line-height:1.6">'+
@@ -40766,11 +40776,12 @@ function hjTeamPendingAllView(status){
   const st=status==='blocked'?'blocked':status==='review'?'review':'';
   const rows=hjTeamReportPending().filter(r=>!st||r.status===st);
   if(!rows.length){toast('남은 '+(st==='blocked'?'막힘':st==='review'?'검수 요청':'검수 요청·막힘')+' 보고가 없어요');return false;}
-  const by=new Map();rows.forEach(r=>{let g=by.get(r.project);if(!g){g={project:r.project,review:0,blocked:0,last:null};by.set(r.project,g);}g[r.status]++;if(!g.last||String(r.workDate||'')>=String(g.last.workDate||''))g.last=r;});
+  const by=new Map();rows.forEach(r=>{let g=by.get(r.project);if(!g){g={project:r.project,review:0,blocked:0,last:null,oldest:0};by.set(r.project,g);}g[r.status]++;if(!g.last||String(r.workDate||'')>=String(g.last.workDate||''))g.last=r;
+    const age=hjTeamReportAgeDays(r.workDate);if(age>g.oldest){g.oldest=age;g.oldestDate=r.workDate;}});   // v481 가장 오래 묵은 것
   const groups=[...by.values()].sort((a,b)=>String(b.last.workDate||'').localeCompare(String(a.last.workDate||''))||a.project.localeCompare(b.project));
   const title=st==='blocked'?'⛔ 막힘 보고 모두':st==='review'?'🔎 검수 요청 보고 모두':'🔎⛔ 검수 요청·막힘 보고 모두',md=d=>d?d.slice(5).replace('-','/')+' ':'';
   openModal(title+' — '+rows.length+'건','<div id="hjTeamPendingAll" style="min-width:0;font-size:13px;line-height:1.6"><p class="hint" style="margin:0 0 8px">현장 '+groups.length+'곳 · 아직 확인하지 않은 보고만(최근 보고 순). [👷 노트 보기]에서 보고 전문을 읽고 줄마다 [확인함]을 누르면 첫 화면 줄이 내려가요 — 이 창에서는 아무것도 바뀌지 않아요.</p>'+
-    groups.map(g=>'<div data-team-pending-all-row="'+escapeAttr(g.project)+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px"><span style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere"><b>'+escapeHtml(g.project)+'</b> · '+(g.review?'<span style="color:var(--hj-warn-fg,#b45309)">🔎 '+g.review+'건</span>':'')+(g.review&&g.blocked?' ':'')+(g.blocked?'<span style="color:var(--warn)">⛔ '+g.blocked+'건</span>':'')+'<br><span style="color:var(--muted)">최근 '+escapeHtml(md(g.last.workDate)+hjWoText(g.last.status==='blocked'?(g.last.issue||g.last.done):(g.last.done||g.last.issue),50))+'</span></span>'+
+    groups.map(g=>'<div data-team-pending-all-row="'+escapeAttr(g.project)+'" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px"><span style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere"><b>'+escapeHtml(g.project)+'</b> · '+(g.review?'<span style="color:var(--hj-warn-fg,#b45309)">🔎 '+g.review+'건</span>':'')+(g.review&&g.blocked?' ':'')+(g.blocked?'<span style="color:var(--warn)">⛔ '+g.blocked+'건</span>':'')+(g.oldest?hjTeamReportAgeHtml(g.oldestDate,'가장 오래된 것 '):'')+'<br><span style="color:var(--muted)">최근 '+escapeHtml(md(g.last.workDate)+hjWoText(g.last.status==='blocked'?(g.last.issue||g.last.done):(g.last.done||g.last.issue),50))+'</span></span>'+
       '<button type="button" class="ghost tiny" data-team-pending-all-note="'+escapeAttr(g.project)+'" data-key="'+escapeAttr(g.last.key)+'" style="min-height:44px;flex:none" aria-label="'+escapeAttr(g.project+' 팀 보고 노트 보기')+'">👷 노트 보기</button></div>').join('')+'</div>',
     [{label:'닫기',cls:'ghost',fn:closeModal}],true);
   hjModalTapTargets();

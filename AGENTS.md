@@ -3,6 +3,14 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v481 🔎⛔ 검수 요청·막힘 줄 — '· n일째' (개발_백로그 '검수 요청·막힘 줄 n일째 표시')
+
+- `hjTeamReportAgeDays(workDate)`: `isRealIsoDate` 이고 `hjDaysBetween(작업일, localDate())` 가 2 이상일 때만 그 날 수, 아니면 0(오늘·어제·미래·빈·잘못된 날짜). `hjTeamReportAgeHtml(workDate,prefix)` → `<span data-team-days=n>· n일째</span>`(주황, nowrap).
+- 첫 화면 `hjTeamReportPendingHtml` 줄 글 끝(이슈 뒤)에 붙는다. v477 목록 창은 현장마다 가장 오래 묵은 미확인 보고로 '· 가장 오래된 것 n일째'(g.oldest/g.oldestDate). 읽기만.
+- 데모(v462): 검수 요청 보고 `wr_demo_20250312` 의 workDate·at 을 이틀 전(상대 날짜)으로 — 2025-03-12 그대로면 첫 화면에 '590일째'로 보였다. 완료 보고(2025-03-10, 사진 묶음 날짜)는 그대로. tests/demo-v462 의 기대값을 `hjAddDays(localDate(),-2)` 로 바꿨다.
+- tests/teamack-v465 줄 글 정규식에 `( · \d+일째)?` 허용(2일 전 보고라 붙는다).
+- 핀3곳 hyeonjang-v481-teamage(v480 위). 신규 tests/teamage-v481.e2e.js 2/2(390px, 날짜 경계 단위 확인 포함), 기준선(d2578c3)·변이 no-age 실패 확인. 관련 12개(teamack-v465·pendingall-v477·demo-v462·demotour-v467·demotour2-v470·tour2col-v474·team3-v458·teamnote-v466·teampacket-v432·doneall-v478·mobile-screen-layout·settings-safety) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v480 ⏱ 작업시간 창 — '👷 팀 보고만' 칩 (개발_백로그)
 
 - `workView(pjName,opts)`: 팀 보고 줄(`w.teamReport.key`, v476)이 하나라도 있으면 표 위에 `[data-wl-chips]` — `[data-wl-filter=""]` '전부 n' · `[data-wl-filter="team"]` '👷 팀 보고만 m'(44px, aria-pressed, 눌린 칩은 blueprint). 칩 → `workView(pjName,{teamOnly})` 로 다시 그림. `opts.teamOnly` 인데 팀 보고 줄이 0이면 전부로.
