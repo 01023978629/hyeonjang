@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v510-teamhours3';
+const APP_BUILD='hyeonjang-v511-teamdays';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -40815,20 +40815,22 @@ function hjTeamReportNoteHoursHtml(p,filter){
 function hjTeamHoursData(ym){
   const by=new Map();let n=0,h=0;
   (state.projects||[]).forEach(p=>{if(!p)return;hjTeamReportsOf(p).forEach(r=>{const d=String(r.workDate||'');if(!isRealIsoDate(d)||d.slice(0,7)!==ym)return;
-    const k=String(r.reporter||'').trim()||'보고자 없음',hh=Math.max(0,Number(r.hours)||0),g=by.get(k)||{n:0,h:0,pj:new Map()};g.n++;g.h+=hh;
-    const pg=g.pj.get(p.name)||{n:0,h:0};pg.n++;pg.h+=hh;g.pj.set(p.name,pg);by.set(k,g);n++;h+=hh;});});
-  const list=[...by.entries()].map(([name,g])=>({name,n:g.n,h:g.h,pj:[...g.pj.entries()].map(([pn,x])=>({name:pn,n:x.n,h:x.h})).sort((a,b)=>b.h-a.h||a.name.localeCompare(b.name,'ko'))}))
+    const k=String(r.reporter||'').trim()||'보고자 없음',hh=Math.max(0,Number(r.hours)||0),g=by.get(k)||{n:0,h:0,pj:new Map(),ds:new Set()};g.n++;g.h+=hh;g.ds.add(d);   // v511 보고한 날(서로 다른 작업일)
+    const pg=g.pj.get(p.name)||{n:0,h:0,ds:new Set()};pg.n++;pg.h+=hh;pg.ds.add(d);g.pj.set(p.name,pg);by.set(k,g);n++;h+=hh;});});
+  const list=[...by.entries()].map(([name,g])=>({name,n:g.n,h:g.h,dates:[...g.ds].sort(),days:g.ds.size,pj:[...g.pj.entries()].map(([pn,x])=>({name:pn,n:x.n,h:x.h,days:x.ds.size})).sort((a,b)=>b.h-a.h||a.name.localeCompare(b.name,'ko'))}))
     .sort((a,b)=>b.h-a.h||a.name.localeCompare(b.name,'ko'));
   return {ym,n,h,list};
 }
 /* v509 'YYYY-MM' 을 d 달 옮김(1월 ← 지난해 12월). 읽기만. */
 function hjYmShift(ym,d){const y=Number(String(ym).slice(0,4)),m=Number(String(ym).slice(5,7))-1+Number(d||0),yy=y+Math.floor(m/12),mm=((m%12)+12)%12;return yy+'-'+String(mm+1).padStart(2,'0');}
 /* v510 정산 창 [📋 글로 복사] · [📊 엑셀용 복사] — 지금 보는 달(D)을 줄글 / 탭 표(월·보고자·현장·건수·시간)로. 고객 이름·전화 없음. 클립보드만. */
+/* v511 'YYYY-MM-DD' → 'M/D'(요일 없이, 날짜 줄용) */
+function hjMd(ymd){const s=String(ymd||'');return /^\d{4}-\d{2}-\d{2}$/.test(s)?Number(s.slice(5,7))+'/'+Number(s.slice(8,10)):s;}
 function hjTeamHoursText(D){if(!D||!D.list.length)return '';const hs=x=>(Math.round(x*10)/10)+'시간';
-  return ['👷 팀 공수 정산 — '+Number(D.ym.slice(0,4))+'년 '+Number(D.ym.slice(5,7))+'월 (팀 앱 보고 시간 기준)',...D.list.flatMap(g=>['- '+g.name+' '+g.n+'건 · '+hs(g.h),...g.pj.map(x=>'  · '+x.name+' '+x.n+'건 · '+hs(x.h))]),
+  return ['👷 팀 공수 정산 — '+Number(D.ym.slice(0,4))+'년 '+Number(D.ym.slice(5,7))+'월 (팀 앱 보고 시간 기준)',...D.list.flatMap(g=>['- '+g.name+' '+g.n+'건 · '+hs(g.h)+' · 보고한 날 '+g.days+'일 ('+g.dates.map(hjMd).join(' · ')+')',...g.pj.map(x=>'  · '+x.name+' '+x.n+'건 · '+hs(x.h)+' · '+x.days+'일')]),   // v511 일수
     '합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명'].join('\n');}
 function hjTeamHoursTsv(D){if(!D||!D.list.length)return '';const cell=v=>String(v==null?'':v).replace(/[\t\r\n]+/g,' ').trim();
-  return [['월','보고자','현장','건수','시간'].join('\t'),...D.list.flatMap(g=>g.pj.map(x=>[D.ym,cell(g.name),cell(x.name),String(x.n),String(Math.round(x.h*100)/100)].join('\t')))].join('\n');}
+  return [['월','보고자','현장','건수','시간','일수'].join('\t'),...D.list.flatMap(g=>g.pj.map(x=>[D.ym,cell(g.name),cell(x.name),String(x.n),String(Math.round(x.h*100)/100),String(x.days)].join('\t')))].join('\n');}   // v511 일수 열(맨 뒤)
 async function hjTeamHoursCopy(D,tsv){const text=tsv?hjTeamHoursTsv(D):hjTeamHoursText(D);if(!text){toast('복사할 보고가 없어요');return false;}
   const msg=tsv?'📊 공수 정산을 표(엑셀용)로 복사했어요 — 엑셀에 붙여 넣으세요':'📋 공수 정산을 글로 복사했어요 — 붙여 넣어 쓰세요';
   try{await navigator.clipboard.writeText(text);toast(msg);return true;}catch(e){coworkCopyFallback(text,()=>toast(msg));return true;}}
@@ -40837,6 +40839,7 @@ function hjTeamHoursView(ym,back){
   const copyRow='<div data-team-hours-copy-row style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"><button type="button" class="ghost tiny" data-team-hours-copy style="min-height:44px">📋 글로 복사</button><button type="button" class="ghost tiny" data-team-hours-tsv style="min-height:44px">📊 엑셀용 복사</button></div>';   // v510
   const body=D.list.length?copyRow+D.list.map(g=>'<div data-team-hours-reporter="'+escapeAttr(g.name)+'" style="border:1px solid var(--line-soft);border-radius:10px;padding:9px 11px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-weight:800"><span style="min-width:0;overflow-wrap:anywhere">👤 '+escapeHtml(hjWoText(g.name,20))+'</span><span style="white-space:nowrap">'+g.n+'건 · '+hs(g.h)+'</span></div>'+
+      '<div data-team-hours-days style="font-size:12px;color:var(--muted);padding-top:3px;overflow-wrap:anywhere">📅 보고한 날 '+g.days+'일 · '+g.dates.map(hjMd).join(' · ')+'</div>'+   // v511
       g.pj.map(x=>'<div data-team-hours-site style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted);padding-top:4px"><span style="min-width:0;overflow-wrap:anywhere">'+escapeHtml(x.name)+'</span><span style="white-space:nowrap">'+x.n+'건 · '+hs(x.h)+'</span></div>').join('')+'</div>').join('')+
       '<p class="hint" data-team-hours-total style="margin:4px 0 0">합계 '+D.n+'건 · '+hs(D.h)+' · 보고자 '+D.list.length+'명 — 팀 앱 보고의 시간 기준(⏱ 작업시간 기록과 따로)</p>'
     :'<div class="empty" data-team-hours-empty style="padding:14px"><b>이 달 팀 보고가 없어요</b>팀 앱 보고가 들어오면 보고자별 시간이 여기에 모여요.</div>';
