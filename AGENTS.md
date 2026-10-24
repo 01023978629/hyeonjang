@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-25 v505 👷 팀 보고 노트 창 — [📊 엑셀용 복사] (개발_백로그)
+
+- `hjTeamReportNoteTsv(p,filter)`: 머리 '날짜·상태·보고자·시간·한 일·이슈·사진·지시·확인'(탭 구분) + `hjTeamReportNoteRows`(칩 반영) 줄. 상태는 글자만(완료·검수 요청·막힘·진행·대기), 시간·사진은 숫자(0이면 빈칸), 지시는 `hjTeamReportOrderTitle`, 확인한 검수·막힘은 '확인함'. 셀 안 탭·줄바꿈은 빈칸. 현장 이름·고객 정보 없음.
+- `hjTeamReportNoteCopyTsv` + `[data-team-note-tsv]`(44px)를 [📋 글로 복사] 옆에(v483 복사 줄). 클립보드가 막히면 coworkCopyFallback.
+- 핀3곳 hyeonjang-v505-notetsv(v504 위). 신규 tests/notetsv-v505.e2e.js 2/2, 기준선(3ee026f)·변이 no-head 실패 확인. 노트 관련 15개·정적 19개 통과.
+
 ## 2026-10-25 v504 👷 팀 보고 노트 창 — '📅 이번 달' 칩(월 정산용) (개발_백로그)
 
 - `hjTeamReportThisMonth(r)`: 작업일(유효한 날짜)의 YYYY-MM 이 `localDate()` 와 같으면 참. 읽기만.
