@@ -3,6 +3,11 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-24 v476 ⏱ 작업시간 줄 — 👷 팀 보고 표시 + [👷 노트] (개발_백로그 '작업일지 줄 팀 보고 표시 + 노트 열기')
+
+- `workView` 줄: `w.teamReport`(객체, key 있음 — 📥 팀 작업 가져오기가 만든 줄)이면 `[data-wl-team=key]` 와 현장 이름 아래 초록 작은 글 '👷 팀 보고 · 보고자', 단추 맨 앞에 `.wkNote`(data-project·data-key, 44px) → `hjTeamReportNoteView(project,key)` 로 그 보고 줄에 초점. 보통 줄(teamReport 없음)은 배지·단추 없이 그대로. 읽기만 — 자료·저장 없음(검사 ① serializeData 동일).
+- 핀3곳 hyeonjang-v476-wlteam(v475 위). 신규 tests/wlteam-v476.e2e.js 2/2(390px), 기준선(494f2ed)·변이 no-note 실패 확인. 관련 8개(doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458·teamnote-v466·notefilter-v475) 통과, 정적 19개 통과.
+
 ## 2026-10-24 v475 👷 팀 보고 노트 창 — 상태·보고자 칩 (개발_백로그 '팀 보고 노트 창 상태 필터')
 
 - `hjTeamReportNoteChipsHtml(p,filter)`: 보고 3건 이상이거나 보고자 2명 이상일 때만 `[data-note-filter]` — 상태 칩 `[data-note-filter-status=''|review|blocked|done]`(건수 붙임, 0건 상태는 생략)과 보고자 칩 `[data-note-filter-reporter=''|이름]`(둘 이상일 때만, '👤 모두' 포함). 44px, `aria-pressed`, 눌린 칩은 blueprint 배경.
