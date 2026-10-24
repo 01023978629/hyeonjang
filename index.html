@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v514-wlmemo';
+const APP_BUILD='hyeonjang-v515-pr189order';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -46256,8 +46256,8 @@ function installApp(){
    auto() 가 참이면 '자동 확인'으로 끝난 것 취급(리뷰 링크가 들어갔다 등). 직원 모드에서는 줄·카드를 숨긴다. */
 const HJ_OWNER_TODO_KEY='hj_owner_todo_done';
 const HJ_OWNER_TODO=Object.freeze([
-  {id:'merge-stack',ic:'🚀',title:'앱 새 판 올리기(병합)',why:'v427 부터 쌓인 묶음이 병합돼야 폰에 새 기능이 보입니다.',how:'PC 패치\\apply-stack-v427-v4NN.cmd 더블클릭 → PR → CI 녹색 → 병합 (또는 Cowork 작업 소스에 저장소 추가)',kind:'pc',auto:()=>/github\.io$/i.test(location.hostname)},
-  {id:'pr189',ic:'🔀',title:'PR #189 먼저 병합',why:'오프라인 대기함 검사가 그 뒤에 통과합니다.',how:'GitHub › Pull requests › #189 › Merge',kind:'link',url:'https://github.com/01023978629/hyeonjang/pull/189'},
+  {id:'merge-stack',ic:'🚀',title:'앱 새 판 올리기(병합)',why:'v427 부터 쌓인 묶음이 병합돼야 폰에 새 기능이 보입니다.',how:'로그인된 브라우저에서 github.com/01023978629/hyeonjang › Pull requests › New › base main ← claude/stack-v427-v468 → [Create pull request](본문은 PC 패치\\stack-v427-vNNN-PR.md) → CI 초록 → [Merge pull request]',kind:'pc',auto:()=>/github\.io$/i.test(location.hostname)},
+  {id:'pr189',ic:'🔀',title:'PR #189 는 먼저 병합하지 않기',why:'#189(수금 발행 확인 v428)는 이 묶음과 같은 수금 입력 화면을 고쳐서, 먼저 넣으면 묶음 PR 이 충돌로 막힙니다. 오프라인 검사 고침 2개는 묶음에 이미 들어 있어요(v515). 묶음을 먼저 병합하면 Claude 가 #189 를 새 판에 맞춰 다시 올립니다.',how:'GitHub › Pull requests › #189 는 그대로 두기(병합·닫기 모두 하지 않기)',kind:'link',url:'https://github.com/01023978629/hyeonjang/pull/189'},   // v515
   {id:'review-url',ic:'⭐',title:'리뷰 링크 넣기',why:'리뷰 QR 카드·리뷰 요청 문자에 링크가 들어갑니다.',how:'네이버 지도(또는 카카오맵) 우리 업체 → 공유 → 링크 복사 → ⚙️ 설정 › ⭐ 기타 › 리뷰 링크 → 저장',kind:'settings',tab:'etc',focus:'rvUrl',auto:()=>!!String((typeof __reviewUrl!=='undefined'&&__reviewUrl)||'').trim()},
   {id:'decide-receivable',ic:'⚖️',title:"결정: 월말 마감 2단계 '미수금 정리' 둘지 뺄지",why:"8/13 '앱이 미수금을 추적·독촉하지 않는다' 결정과 어긋나 보입니다(v434 도 함께).",how:'Claude 에게 "둔다 / 뺀다" 한마디',kind:'decide'},
   {id:'decide-snapshot',ic:'⚖️',title:'결정: 고객 삭제 요청 뒤 안전판(12칸)에 남는 정리 전 정보',why:'되돌리기용이라 바로 지우면 복구가 안 됩니다.',how:'"고객 안내문에 적는다 / 안전판도 지운다"',kind:'decide'},
