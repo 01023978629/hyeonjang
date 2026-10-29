@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-29 v519 PR #192 CI 고침 — 날짜 따라 깨지던 세금 기한 검사 · CI 글꼴에서 20px 넘치던 마진 표 · 느린 CI 에서 부팅이 되돌리던 모바일 모드
+
+- 찾은 것: 묶음 PR #192 의 첫 CI(run #95)가 410개 중 407 통과, 3개 실패. ① `estimate-photo-dup-v342` 의 '세금 기한은 휴일이면 다음 영업일' — 2026-10-25 기한을 쓰는 검사라 10/26 이 지나자 앱이 지난 기한을 더 다루지 않아 날짜 따라 깨짐(운영 main 도 같은 검사). ② `margin1280-v464` — CI 글꼴(숫자 DejaVu·한글 WenQuanYi)에서 금액 칸이 107px 로 넓어져 표가 982px / 962px 로 넘침(이 환경 Noto CJK 에선 962px 딱 맞음). ③ `note2col-v492` ② — 검사가 모바일 모드를 정한 뒤 부팅의 설정 복원이 폭·터치로 모바일 모드를 다시 정해 되돌림(느린 CI 에서만).
+- 한 것: 마진 표 PC 칸 안쪽 여백 `8px 6px` → `8px 4px`(index.html, 표 한 곳). 검사: v342 세금 검사에 `page.clock.setFixedTime(2026-10-01)`, margin1280·note2col 은 푸터 `#buildTag`('build …')가 채워질 때까지 기다린 뒤 모바일 모드를 정함(dash-cards·mobile-tap-table 과 같은 방법, 15초 넘으면 그냥 진행).
+- 핀3곳 hyeonjang-v519-cifix(v518 위). CI 글꼴을 흉내 낸 fontconfig(DejaVu·Liberation·FreeFont·WenQuanYi·IPA·Loma·Unifont만) + TZ=UTC 에서 세 검사 통과, 기준선 v518 에선 margin1280 982px 실패 재현. 관련 16개(margin·margin-v429·dash-cards·pcdark·darkcards·polish·insight·numwrap 등) 통과.
+- 덤으로 본 것: 부팅의 설정 복원(다크·글꼴·모바일 모드·buildTag)이 드물게(로컬 12번 중 1번) 끝나지 않음 — 그때 앱은 저장된 화면 설정을 못 되살린다. 운영 main 도 같은 부팅 코드. 백로그로.
+
 ## 2026-10-25 v518 폰(390px)에서 금액·시간 숫자가 중간에서 끊기지 않게 (운영 화면 다듬기)
 
 - 찾은 것: 데모 자료로 폰 화면을 훑다가 💼 견적 정산 탭 위 '견적 합계 · 매출 집계 기준' 칸이 '55,500,00 / 0원' 으로, ⏱ 작업시간 통계 칸이 '60시간 30 / 분' 으로 숫자·단위 중간에서 줄이 바뀌는 것 — 돈을 잘못 읽을 수 있다(운영 main 도 같음).

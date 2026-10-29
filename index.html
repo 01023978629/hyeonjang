@@ -107,7 +107,7 @@
     body:not(.mobile-mode) #view table.dash-cards td[data-label="일자"],body:not(.mobile-mode) #view table.dash-cards td.amt b{white-space:nowrap}   /* 견적서 내역 날짜 '2026-10-/03'·합계 줄 */
     body:not(.mobile-mode) #dashboardMarginTable td.nm{min-width:150px}
     /* v464 1280 에서 옆으로 안 밀리게 — 열 제목과 마진 칸의 괄호 설명은 줄바꿈 허용(낱말은 안 쪼갬), 굵은 금액(.mg-amt)만 nowrap. 금액 칸(td.amt)은 그대로 nowrap 이라 폭은 내용이 정한다(1024 는 스크롤). */
-    body:not(.mobile-mode) #dashboardMarginTable th,body:not(.mobile-mode) #dashboardMarginTable td{padding:8px 6px}
+    body:not(.mobile-mode) #dashboardMarginTable th,body:not(.mobile-mode) #dashboardMarginTable td{padding:8px 4px}   /* v519 6→4px — 숫자가 넓은 글꼴(GitHub CI 의 DejaVu·WenQuanYi)에서 982px 로 20px 넘쳤다 */
     body:not(.mobile-mode) #dashboardMarginTable th{white-space:normal;word-break:keep-all;letter-spacing:.02em}
     body:not(.mobile-mode) #dashboardMarginTable td.mg{white-space:normal;word-break:keep-all}
     body:not(.mobile-mode) #dashboardMarginTable td.mg .mg-amt{white-space:nowrap;display:block}
@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v518-numwrap';
+const APP_BUILD='hyeonjang-v519-cifix';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,

@@ -196,6 +196,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
   });
 
   await test('세금 기한은 휴일이면 다음 영업일, 예전 자동 일정은 옮기고 id 는 유지한다', async () => {
+    // v519 이 검사는 2026-10-25 기한을 쓴다 — 그날이 지나면 앱은 지난 기한을 다루지 않아 검사가 날짜 따라 깨졌다(10/29 CI). 시계를 10/1 로 고정.
+    await page.clock.setFixedTime(new Date('2026-10-01T10:00:00+09:00'));
     const r = await page.evaluate(() => {
       const due = ['2026-10-25', '2027-01-25', '2027-04-25', '2028-01-25'].map(hjTaxDueDate);
       state.schedule = [Object.assign(newSchedule(), { id: 'tax_2026-10-25_vatpre', title: '부가세 예정고지 납부', date: '2026-10-25', time: '09:00', memo: '세금 캘린더 자동 등록', _taxAuto: true }),

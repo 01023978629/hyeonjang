@@ -37,6 +37,8 @@ async function openPage(width, height, mobile) {
   await page.addInitScript(() => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); localStorage.setItem('hj_last_backup', JSON.stringify({ at: Date.now(), kind: 'file' })); });
   await page.goto(APP, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(key => !!window[key]), BOOT);
+  // v519 설정 복원(폭·터치로 모바일 모드를 다시 정함)이 끝나면 푸터 #buildTag 가 채워진다 — 그 전에 정하면 느린 CI 에서 부팅이 되돌린다
+  await page.waitForFunction(() => /^build /.test((document.getElementById('buildTag') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});   // 드물게 설정 복원이 멈추면(그땐 되돌리지도 않음) 그냥 진행
   await page.evaluate(async ({ keys, APT, PX, mobile }) => { await Promise.all(keys.map(key => window[key])); if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
     closeModal(true); aiOpsEnsureState().enabled = false; __mobileMode = !!mobile; applyMobileMode();
     state._demo = false; state.dirHandle = null; state.dirty = false; state.editingQuote = null;

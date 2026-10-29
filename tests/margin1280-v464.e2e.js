@@ -39,6 +39,7 @@ let browser, passed = 0;
     await page.addInitScript(() => { localStorage.setItem('hj_onboard_done', '1'); localStorage.setItem('hj_gcal_auto', '0'); localStorage.setItem('hj_ver_checked_at', String(Date.now())); localStorage.setItem('hj_last_backup', JSON.stringify({ at: Date.now(), kind: 'file' })); });
     await page.goto(APP, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(key => !!window[key]), BOOT);
+    await page.waitForFunction(() => /^build /.test((document.getElementById('buildTag') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});   // 드물게 설정 복원이 멈추면(그땐 되돌리지도 않음) 그냥 진행   // v519 설정 복원 뒤에 모바일 모드를 정한다
     await page.evaluate(async ({ keys, mobile, P1, P2, P3 }) => {
       await Promise.all(keys.map(key => window[key])); if (window.__hjShareInboxBootDone) await __hjShareInboxBootDone;
       aiOpsEnsureState().enabled = false; clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
