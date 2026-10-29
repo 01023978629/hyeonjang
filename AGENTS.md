@@ -3,6 +3,676 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-29 v519 PR #192 CI 고침 — 날짜 따라 깨지던 세금 기한 검사 · CI 글꼴에서 20px 넘치던 마진 표 · 느린 CI 에서 부팅이 되돌리던 모바일 모드
+
+- 찾은 것: 묶음 PR #192 의 첫 CI(run #95)가 410개 중 407 통과, 3개 실패. ① `estimate-photo-dup-v342` 의 '세금 기한은 휴일이면 다음 영업일' — 2026-10-25 기한을 쓰는 검사라 10/26 이 지나자 앱이 지난 기한을 더 다루지 않아 날짜 따라 깨짐(운영 main 도 같은 검사). ② `margin1280-v464` — CI 글꼴(숫자 DejaVu·한글 WenQuanYi)에서 금액 칸이 107px 로 넓어져 표가 982px / 962px 로 넘침(이 환경 Noto CJK 에선 962px 딱 맞음). ③ `note2col-v492` ② — 검사가 모바일 모드를 정한 뒤 부팅의 설정 복원이 폭·터치로 모바일 모드를 다시 정해 되돌림(느린 CI 에서만).
+- 한 것: 마진 표 PC 칸 안쪽 여백 `8px 6px` → `8px 4px`(index.html, 표 한 곳). 검사: v342 세금 검사에 `page.clock.setFixedTime(2026-10-01)`, margin1280·note2col 은 푸터 `#buildTag`('build …')가 채워질 때까지 기다린 뒤 모바일 모드를 정함(dash-cards·mobile-tap-table 과 같은 방법, 15초 넘으면 그냥 진행).
+- 핀3곳 hyeonjang-v519-cifix(v518 위). CI 글꼴을 흉내 낸 fontconfig(DejaVu·Liberation·FreeFont·WenQuanYi·IPA·Loma·Unifont만) + TZ=UTC 에서 세 검사 통과, 기준선 v518 에선 margin1280 982px 실패 재현. 관련 16개(margin·margin-v429·dash-cards·pcdark·darkcards·polish·insight·numwrap 등) 통과.
+- 덤으로 본 것: 부팅의 설정 복원(다크·글꼴·모바일 모드·buildTag)이 드물게(로컬 12번 중 1번) 끝나지 않음 — 그때 앱은 저장된 화면 설정을 못 되살린다. 운영 main 도 같은 부팅 코드. 백로그로.
+- 뒤따른 검사 고침(test(v519-fix), 핀 그대로): 두 번째 CI(run #96)는 전체 410/410 통과 뒤 `document-select.mutations` 단계에서 멈춤 — `tests/document-select.e2e.js` 의 settlement 변이 기준 문자열이 v435 가 `documentRoleKind` 에 'receipt' 를 더한 뒤로 맞지 않았다(unique mutation anchor). 기준을 지금 코드로 바꿈. CI 의 변이 단계 6개(biz-select·test-stability·document-select·document-upload·photo-original-keep·photo-no-recovery)를 로컬에서 돌려 확인(document-upload 의 layout 변이는 이 환경의 다운로드 이름 검사만 빼고 돌려 잡힘 확인).
+
+## 2026-10-25 v518 폰(390px)에서 금액·시간 숫자가 중간에서 끊기지 않게 (운영 화면 다듬기)
+
+- 찾은 것: 데모 자료로 폰 화면을 훑다가 💼 견적 정산 탭 위 '견적 합계 · 매출 집계 기준' 칸이 '55,500,00 / 0원' 으로, ⏱ 작업시간 통계 칸이 '60시간 30 / 분' 으로 숫자·단위 중간에서 줄이 바뀌는 것 — 돈을 잘못 읽을 수 있다(운영 main 도 같음).
+- 한 것: `.estimate-overview b` 에 `word-break:keep-all`(띄어쓰기에서 먼저 줄바꿈, 못 들어가면 예전처럼 아무 데서나 — 넘침 위험 없음), 폰(모바일 규칙)에서 마지막 칸(금액)은 `flex-basis:100%` 로 한 줄 전체. 통계 칸을 그리는 `tile` 9곳(작업시간·손익·현금 흐름 등)의 값 글자에 `word-break:keep-all;overflow-wrap:anywhere`. 글자·숫자 내용은 그대로.
+- 핀3곳 hyeonjang-v518-numwrap(v517 위). 신규 tests/numwrap-v518.e2e.js 2/2(합계 금액 한 줄·줄 전체 폭·작은 칸 둘 나란히 · '60시간 30분' 이 단위 앞에서 안 끊김), 기준선(582ec22)·변이 no-fullrow 실패 확인. estimate-photo-dup-v342·wlmemo-v514·정적 19개 통과.
+- 이 판 무렵 운영 리허설 R1~R6(폰 390px·합성 자료) 다시 돌림: R1 12/12 · R2R3 15/15 · R4R5 12/12 · R6 8/8(보증 안부 확인 한 줄은 v451 의 '보관 현장도 안부 대상'에 맞게 대본만 고침) — 오류 0·바깥 쓰기 0. v425 데모 자료를 이 앱에 넣고 탭 10·현장·더보기 126·주요 창 5개를 열어 새 오류 0.
+
+## 2026-10-25 v517 '📋 대표 할 일' 체크 칸 22px → 44px (전체 검사가 찾은 회귀)
+
+- 찾은 것: v457 뒤 처음 돌린 전체 검사에서 `team-workboard`(팀 업무 보드: 보드 안 모든 단추·입력칸 44px·입력 글자 16px 규칙)가 '44px controls' 로 떨어짐 — v460 대표 할 일 카드의 체크 칸이 22×22px(줄 label 은 44px 지만 input 자체가 작다). 판마다 관련 검사만 돌려서 못 잡았다. main 은 이 단계 통과(카드가 없음).
+- 한 것: 체크 칸을 `width:44px;height:44px;margin:0;font-size:16px`. ownertodo-v460 그대로 통과(줄 44px·체크·저장·자동 확인). 이 환경의 다운로드 파일 이름(headless 'download') 확인만 뺀 team-workboard 12개 시나리오 전부 통과.
+- 핀3곳 hyeonjang-v517-todo44.
+
+## 2026-10-25 v516 검사 고침 — offlinequeue-v425 의 Drive 모의가 사진 썸네일 '원본 받기'에 던지던 것 (병합 준비)
+
+- 찾은 것: v515 로 캐시 이름 문제가 풀린 뒤 이 묶음에서 offlinequeue-v425 e2e 가 'direct Drive upload' 단계에서 `UNEXPECTED_MOCK_DRIVE_ROUTE: GET /drive/v3/files/TEST_DRIVE_3?alt=media` 로 죽었다. 사진 탭 썸네일이 lh3·drive 썸네일 둘 다 막히면 앱이 토큰으로 원본을 받아 작게 만드는 `__driveThumbRescue`(main 에도 있음)가, main 에선 오프라인 중(모의가 abort)에 끝나고 이 묶음에선 다시 온라인이 된 뒤(모의가 켜진 사이)에 와서다. main 에서 같은 검사를 돌려도 그 GET 4번이 똑같이 나간다(시점만 다름).
+- 한 것: 검사의 Drive 모의가 `GET /drive/v3/files/<id>?alt=media` 는 404 로 조용히 돌려보내고 세지 않음(검사가 보는 올리기 경로 — 폴더 찾기 GET·만들기 POST·PATCH — 는 그대로). 앱 코드는 안 바꿈.
+- 남은 흔들림: HTTP500 재시도 단계는 부하가 있으면 main 에서도 4번 중 1번 떨어진다('automatic retry must stop at five' 등) — run-all 이 떨어진 파일을 끝에 혼자 한 번 더 돌린다.
+- 핀3곳 hyeonjang-v516-oqthumb. offlinequeue-v425 3번 중 2번 13/13(1번은 위 HTTP500 흔들림), main 4번 중 3번 13/13.
+
+## 2026-10-25 v515 PR #189 순서 바꿈 — 오프라인 검사 고침 2개를 묶음에 넣고, #189 는 '먼저 병합하지 않기'
+
+- 찾은 것: 그동안 '#189 먼저 병합'이라 안내했는데, #189 는 오프라인 검사 고침만이 아니라 **v428 수금 발행 확인(index.html 수금 입력·손익·세무 화면)** 이다. #189 를 먼저 넣으면 이 묶음 PR 이 AGENTS.md·index.html(6곳: 핀·손익 6개월 추이·세무 화면 2곳·수금 입력·누수 수금)·sw.js·version-sync 에서 **충돌**해 GitHub 단추로 병합할 수 없다(`git merge-tree` 로 확인). 그리고 run-all 은 정적·단위 검사가 하나라도 떨어지면 브라우저 검사를 시작하지 않아서, `offlinequeue-cache-v425.unit`(v425 캐시 이름 고정) 하나 때문에 CI 가 e2e 를 통째로 건너뛴다.
+- 한 것: #189 의 검사만 고친 커밋 2개(c330e82 offlinequeue-v425 e2e·6c708ec offlinequeue-cache-v425.unit — 캐시 이름을 지금 핀에서 읽음)를 작성자 그대로 이 묶음에 넣음(코드 변경 없음). 앱 안 '📋 대표 할 일'의 `pr189` 를 '먼저 병합하지 않기'(그대로 두면 묶음 병합 뒤 Claude 가 새 판에 맞춰 다시 올림)로, `merge-stack` 의 방법을 지금 길(브랜치 → PR → CI → 병합)로 고침. id·종류(link)는 그대로라 ownertodo-v460 그대로 통과.
+- 남은 것: offlinequeue-v425 e2e 는 이 묶음에서 시점에 따라 떨어진다 — 사진 탭 썸네일 구조(`__driveThumbRescue`, main 에도 있음)가 Drive 모의 응답이 켜진 사이에 `GET /drive/v3/files/<id>?alt=media` 를 보내 모의가 '예상 못 한 경로'로 던지거나, HTTP500 재시도 단계에서 '자료가 변경되었습니다' 로 남는다. 다음 판에서 다룸.
+- 핀3곳 hyeonjang-v515-pr189order. ownertodo-v460·offlinequeue-cache-v425.unit·정적 19개 통과.
+
+## 2026-10-25 v514 ⏱ 작업시간 줄에 메모 '📝 …' (운영 기능의 빈칸, 개발_백로그)
+
+- 찾은 것: 작업시간 기록의 메모(무슨 일을 했는지)가 ✏️ 수정 창·글/엑셀 복사·찾기에만 있고 **목록 줄엔 안 보였다**(운영 main v425 의 줄도 같음). 대표가 적은 내용을 다시 보려면 줄마다 수정 창을 열어야 했다.
+- `hjWorkMemoText(w,tr)`·`hjWorkMemoHtml(w,tr)`: 현장 칸(`.worklog-project`) 안, 이름(과 팀 보고 배지) 아래 `[data-wl-memo]` '📝 메모' — 공백 정리, 60자 넘으면 59자 + '…', 전체는 `title`. 팀 보고 줄은 머리 '[팀 보고 · 이름]'을 뗌(배지와 겹침). 메모 없으면 줄 없음. 화면만.
+- 핀3곳 hyeonjang-v514-wlmemo(v513 위). 신규 tests/wlmemo-v514.e2e.js 2/2(메모·팀 머리·빈 메모·긴 메모·수정 뒤 바로·390/1280 넘침), 기준선(331a00c)·변이 keep-prefix 실패 확인. 작업시간 관련 18개(mobile-screen-layout 포함)·정적 19개 통과. (offlinequeue-v425 는 PR #189 전이라 알려진 실패)
+- 이 판부터 전체 검사(run-all)를 v513 사본(별도 폴더·8299)에서 돌리는 동안, 개발 서버는 8301(`HJ_TEST_APP=http://127.0.0.1:8301/index.html`).
+
+## 2026-10-25 v513 👷 팀 보고 노트 창 — 폰에서 보고가 먼저: 🧰 복사·정산은 목록 아래로 (개발_백로그)
+
+- 왜: 390px·보고 8건·보고자 4명에서 첫 보고가 686px(첫 화면 791px의 맨 아래) — 찾기·칩 11개·복사 3단추·보고자별 시간·공수 정산 단추를 지나야 보였다(가치 점검에서 찾음).
+- `hjTeamReportNoteRender`: 찾기·칩(고르는 것)은 위 그대로, 복사·엑셀용·모두 확인함(`hjTeamReportNoteCopyHtml`)과 보고자별 시간·공수 정산(`hjTeamReportNoteHoursHtml`)은 목록 아래 `[data-team-note-tools]`('🧰 복사·정산 — 위에서 고른 보고 기준')로. 보이는 보고가 0건이면 묶음 없음. 단추·동작·속성 이름은 그대로라 노트 창 검사 28개가 손대지 않고 통과.
+- 결과: 같은 화면에서 첫 보고 444px — 첫 화면에 보고 2건.
+- 핀3곳 hyeonjang-v513-notefirst(v512 위). 신규 tests/notefirst-v513.e2e.js 2/2(첫 화면·순서·칩·찾기 0건·PC 두 칸), 기준선(396bac6)·변이 no-tools 실패 확인. 노트 창 검사 28개·정적 19개 통과.
+
+## 2026-10-25 v512 👷 팀 공수 정산 창 — 👷 인건비 장부와 맞춰 보기('장부에 없는 날') (개발_백로그)
+
+- `hjTeamHoursLedger(D)`: 같은 달 `hjCrewSettleData`(일정 줄의 사람별 1/½ = 👤 사람별 정산표)와 비교. 보고자마다 `{days, miss}`(보고한 날 중 장부 공수가 없는 날, ½ 도 있는 것으로) 또는 `{none}`(장부에 그 이름 없음). 장부에 이 달 사람별 공수가 하나도 없으면 `any:false`(사람마다 적지 않음). '보고자 없음'은 줄 없음. 읽기만.
+- `hjTeamHoursLedgerHtml`: 카드에 `[data-team-hours-ledger="ok|miss|none"]` — '👷 인건비 장부 공수 n — ⚠ 장부에 없는 날 n일: M/D' / '✓ 보고한 날이 장부에 다 있어요' / '👷 인건비 장부에 이 달 기록 없음'. 색은 `--hj-warn-fg`·`--hj-ok-fg`(어두운 화면 대응).
+- 합계 아래 `[data-team-hours-ledger-empty]`(장부가 빈 달) · `[data-team-hours-settle]` '👤 사람별 정산표 (인건비 장부)'(44px) → `hjCrewSettleView(m, ()=>hjTeamHoursView(m,back))` — 정산표 [← 뒤로]가 같은 달 이 창으로, 노트에서 열었으면 [← 팀 보고 노트]도 그대로.
+- 핀3곳 hyeonjang-v512-teamledger(v511 위). 신규 tests/teamledger-v512.e2e.js 2/2(없는 날·½·기록 없음·채우면 ✓·정산표 왕복·빈 장부 달), 기준선(7c59508)·변이 half-missing 실패 확인. 관련 7개(crew-v440 포함)·정적 19개 통과.
+
+## 2026-10-25 v511 👷 팀 공수 정산 창 — 보고자별 '📅 보고한 날 n일' + 글·엑셀용 복사에 일수 (개발_백로그)
+
+- `hjTeamHoursData`: 보고자·현장마다 서로 다른 작업일 집합 → `dates`(오름차순)·`days`, 현장 `days`. 같은 날 두 현장은 하루, 막힘(0시간) 보고도 '보고한 날'. 읽기만.
+- `hjMd(ymd)`: 'M/D'(요일 없이). 날짜 줄용.
+- 카드 머리 아래 `[data-team-hours-days]` '📅 보고한 날 n일 · M/D · …'. 현장 줄·합계 줄은 v508 그대로(검사 고정).
+- 글 복사: '- 이름 n건 · h시간 · 보고한 날 n일 (M/D · …)' + 현장 줄 '· n일'. 엑셀용 표: 끝에 '일수' 열. teamhours3-v510 기대값 손봄(오늘이 1일이면 첫날과 같은 날이라 하루).
+- '일한 날'이 아니라 '보고한 날'이라 적은 이유: 팀 앱 보고 기준이라서(일당 지급은 👷 인건비 장부·👤 사람별 정산표가 기준).
+- 핀3곳 hyeonjang-v511-teamdays(v510 위). 신규 tests/teamdays-v511.e2e.js 2/2(같은 날 두 현장·막힘·다른 달·보관·31일 줄바꿈), 기준선(44b475a)·변이 count-reports 실패 확인. 관련 5개·정적 19개 통과.
+
+## 2026-10-25 v510 👷 팀 공수 정산 창 — [📋 글로 복사] · [📊 엑셀용 복사] (개발_백로그)
+
+- `hjTeamHoursText(D)`: '👷 팀 공수 정산 — YYYY년 M월 (팀 앱 보고 시간 기준)' + 보고자 줄('- 이름 n건 · h시간') + 현장 줄('  · 현장 n건 · h시간') + '합계 n건 · h시간 · 보고자 m명'. 읽기만.
+- `hjTeamHoursTsv(D)`: 머리 '월 보고자 현장 건수 시간' + 보고자×현장 줄(시간은 숫자만). 셀 안 탭·줄바꿈은 빈칸. 고객 이름·전화 없음.
+- `hjTeamHoursCopy(D,tsv)`: 클립보드 → 막히면 `coworkCopyFallback`. 알림 '📋 공수 정산을 글로 복사했어요…' / '📊 공수 정산을 표(엑셀용)로 복사했어요…'.
+- `hjTeamHoursView`: 보고가 있는 달만 body 맨 위 `[data-team-hours-copy-row]`(44px 단추 둘: `[data-team-hours-copy]`·`[data-team-hours-tsv]`). ◀/▶ 로 옮긴 달은 그 달 내용. v509 변이 바늘 `'+nav+body+'` 그대로.
+- 핀3곳 hyeonjang-v510-teamhours3(v509 위). 신규 tests/teamhours3-v510.e2e.js 2/2(글·표·지난달·빈 달·예전 방식), 기준선(8a13055)·변이 no-head 실패 확인. 관련 4개·정적 19개 통과.
+
+## 2026-10-25 v509 👷 팀 공수 정산 창 — 달 옮기기 ◀ n월 / n월 ▶ (개발_백로그)
+
+- `hjYmShift(ym,d)`: 'YYYY-MM' 을 d 달 옮김(해 넘김 처리). 읽기만.
+- `hjTeamHoursView`: 창 맨 위 `[data-team-hours-nav]` — `[data-team-hours-prev]` '◀ n월'(언제나), `[data-team-hours-next]` 'n월 ▶'(이번 달보다 앞 달일 때만). 둘 다 44px. 누르면 같은 back(현장 이름)으로 다시 열어 [← 팀 보고 노트]가 남는다.
+- 핀3곳 hyeonjang-v509-teamhours2(v508 위). 신규 tests/teamhours2-v509.e2e.js 2/2(지난달·지지난달·되돌아오기·해 넘김), 기준선(df2db7a)·변이 no-nav 실패 확인. 관련 4개·정적 19개 통과.
+
+## 2026-10-25 v508 👷 팀 공수 정산(월, 전체 현장) — 노트 창에서 열기 (개발_백로그)
+
+- `hjTeamHoursData(ym)`: 모든 현장(보관 포함)의 `hjTeamReportsOf` 중 작업일이 ym(YYYY-MM)인 보고를 보고자별로 {name,n,h,pj:[{name,n,h}]}(시간 많은 순·같으면 이름 순, 보고자 없으면 '보고자 없음') + 전체 n·h. 읽기만.
+- `hjTeamHoursView(ym, back)`: '👷 팀 공수 정산 — YYYY년 M월' 창 — 보고자 카드(`[data-team-hours-reporter]`, n건 · h시간) 안에 현장별 줄(`[data-team-hours-site]`), 끝에 '합계 n건 · h시간 · 보고자 m명 — 팀 앱 보고의 시간 기준(⏱ 작업시간 기록과 따로)'. 없는 달은 `[data-team-hours-empty]`. back(현장 이름)이 있으면 [← 팀 보고 노트].
+- 입구: v502 '⏱ 보고자별 시간' 줄 바로 아래 `[data-team-hours-month]` '📊 이번 달 전체 현장 공수 정산'(44px, 그 줄 div 밖이라 v502 글자 비교는 그대로).
+- 참고: 병렬 4개 중 note2col-v492('1280 에서 한 칸')가 한 번 흔들림 — 모바일 모드 전환·창 크기 바꾸기 순서 경합, 혼자 돌리면 통과. 이 판은 CSS 를 건드리지 않음.
+- 핀3곳 hyeonjang-v508-teamhours(v507 위). 신규 tests/teamhours-v508.e2e.js 2/2, 기준선(9b1b9b4)·변이 no-month-filter 실패 확인. 노트 관련 15개·정적 19개 통과.
+
+## 2026-10-25 v507 ⏱ 작업시간 창 — '🔍 찾기' (개발_백로그)
+
+- 찾기 글자는 모듈 변수 `__hjWlQ`(화면만). `workView` 를 opts 없이(밖에서 새로) 열면 비우고, 칩·더 보기·삭제·수정→[← 작업시간]처럼 opts 를 넘기는 안쪽 다시 그리기에선 유지 — 그래서 v487 `workEditView(...)` 변이 바늘 등 기존 줄을 건드리지 않았다. 현장 고르기(`workView(sel.value||'')`)는 새로 여는 것이라 비운다.
+- `const list=prevOnly?…` (v493 바늘) 바로 뒤 `const found=wlQ?list.filter(wlMatch):list;` — 현장·메모·날짜·팀 보고자에 글자(대소문자 무시). `rest`·`visible` 이 found 를 쓴다 → 복사(머리줄 '· 🔍 글자', flags.q)·📊 엑셀용·📊 현장별 소계도 같은 줄. 팀 칩 합계 줄(v480)은 칩 기준 그대로.
+- 줄 8개 이상(또는 찾기 중)이면 타일 아래 `[data-wl-search]`(44px, 16px 글씨) + 찾기 중이면 `[data-wl-search-sum]` '🔍 “글자” n줄 · 합계'. 입력이 250ms 멈추면 다시 그리고, openModal 이 창에 주는 포커스(setTimeout 0) 뒤 40ms 에 새 입력칸으로 포커스·커서를 돌린다. 맞는 줄이 없으면 '찾는 글자에 맞는 기록이 없어요'.
+- 검사 손질: v496~v507 새 검사 12개의 시드에 `taxCalendarEnsure(); coworkSchedEnsure();` 를 미리 불러 둔다 — 부팅 4~4.5초 뒤 도는 자료 씨앗이 병렬 실행 중 늦게 끼어들어 '자료 불변'이 흔들리던 것(v502 참고). 둘 다 이미 한 번 하면 다시 안 하는 함수.
+- 핀3곳 hyeonjang-v507-wlsearch(v506 위). 신규 tests/wlsearch-v507.e2e.js 2/2, 기준선(d4c38e8)·변이 no-wlsearch 실패 확인. 작업시간 관련 12개·새 검사 12개 병렬 4·정적 19개 통과.
+
+## 2026-10-25 v506 👷 팀 보고 노트 창 — '🔍 찾기' (개발_백로그)
+
+- `hjTeamReportNoteMatch(p,r,q)`: 한 일·이슈·보고자·지시 이름(`hjTeamReportOrderTitle`)에 글자가 들어 있으면 참(대소문자·앞뒤 빈칸 무시). `hjTeamReportNoteRows` 첫 줄 끝(v504 이번 달 필터 뒤)에 `.filter(r=>!f.q||hjTeamReportNoteMatch(p,r,f.q))`.
+- `hjTeamReportNoteSearchHtml`: 보고 5건 이상(또는 찾기 글자가 있을 때) 칩 위에 `[data-note-search]`(type=search, 44px, 16px 글씨 — iOS 확대 방지). 입력이 200ms 멈추면 다시 그리고 새 입력칸에 포커스·커서를 돌려놓는다(`__hjNoteSearchT`).
+- 칩 단추 처리를 `Object.assign({},f,{바꿀 것})` 으로 바꿔 다른 조건·찾기 글자를 그대로 들고 간다(예전엔 칸마다 나열). [✕ 조건 모두 끄기]는 찾기도 비우고, `act2` 에 찾기도 센다. 복사 머리줄 '· 🔍 글자', 빈 글 안내 '·🔍 찾기 지우기'.
+- 핀3곳 hyeonjang-v506-notesearch(v505 위). 신규 tests/notesearch-v506.e2e.js 2/2, 기준선(92681b7)·변이 no-search 실패 확인. 노트 관련 21개·정적 19개 통과(기존 검사 손질 없음).
+
+## 2026-10-25 v505 👷 팀 보고 노트 창 — [📊 엑셀용 복사] (개발_백로그)
+
+- `hjTeamReportNoteTsv(p,filter)`: 머리 '날짜·상태·보고자·시간·한 일·이슈·사진·지시·확인'(탭 구분) + `hjTeamReportNoteRows`(칩 반영) 줄. 상태는 글자만(완료·검수 요청·막힘·진행·대기), 시간·사진은 숫자(0이면 빈칸), 지시는 `hjTeamReportOrderTitle`, 확인한 검수·막힘은 '확인함'. 셀 안 탭·줄바꿈은 빈칸. 현장 이름·고객 정보 없음.
+- `hjTeamReportNoteCopyTsv` + `[data-team-note-tsv]`(44px)를 [📋 글로 복사] 옆에(v483 복사 줄). 클립보드가 막히면 coworkCopyFallback.
+- 핀3곳 hyeonjang-v505-notetsv(v504 위). 신규 tests/notetsv-v505.e2e.js 2/2, 기준선(3ee026f)·변이 no-head 실패 확인. 노트 관련 15개·정적 19개 통과.
+
+## 2026-10-25 v504 👷 팀 보고 노트 창 — '📅 이번 달' 칩(월 정산용) (개발_백로그)
+
+- `hjTeamReportThisMonth(r)`: 작업일(유효한 날짜)의 YYYY-MM 이 `localDate()` 와 같으면 참. 읽기만.
+- `hjTeamReportNoteRows`: v497 `.filter(r=>!f.recent||…)` 바로 뒤에 `.filter(r=>!f.month||hjTeamReportThisMonth(r))` — v475·v494·v497 변이 바늘은 그대로. 화면·복사(머리줄 '· 📅 이번 달')·모두 확인함·⏱ 보고자별 시간(v502)이 같은 줄.
+- `hjTeamReportNoteChipsHtml`: 이번 달 보고가 일부면 🗓 최근 7일 칩 뒤에 `[data-note-filter-month]` '📅 이번 달 n'. 모든 칩 단추가 `month:!!f.month` 를 들고 다님. v501 `act` 줄(변이 바늘)은 그대로 두고 `act2=act+(f.month?1:0)` 로 [✕ 조건 모두 끄기] 판단. 빈 글 안내에 '·📅 이번 달 끄기'.
+- 기존 검사 손질: notefilter-v475·demo3-v489 의 전체 칩 목록 비교에서 '📅 이번 달 n' 칩은 빼고 비교(월초 날짜엔 상대 날짜 보고가 지난달로 넘어가 칩이 끼므로). 두 검사의 변이는 여전히 실패.
+- 핀3곳 hyeonjang-v504-notemonth(v503 위). 신규 tests/notemonth-v504.e2e.js 2/2(지난달 말일·중순 / 이번 달 1일), 기준선(d95d4fa)·변이 no-month 실패 확인. 노트 관련 18개·정적 19개 통과.
+
+## 2026-10-25 v503 ⏱ 작업시간 창 — [📊 엑셀용 복사] (개발_백로그)
+
+- `hjWorkTsvText(rows)`: 머리 '날짜·현장·시작·종료·시간·메모·팀 보고'(탭 구분) + 보이는 줄(화면 순서). 시간은 시간 단위 숫자(분/60, 소수 둘째 자리까지 — 3·4·1.5), 진행 중은 종료·시간 빈칸, 셀 안 탭·줄바꿈은 빈칸, 팀 보고 줄은 보고자. 현장 없으면 '현장 미지정'. 고객 이름·전화 없음.
+- `hjWorkCopyTsv(rows)` + 버튼 `[data-wl-copy-tsv]`(44px)를 [📋 글로 복사] 옆에. 칩·현장·더 보기는 `visible` 을 그대로 따른다. 클립보드가 막히면 coworkCopyFallback.
+- 핀3곳 hyeonjang-v503-wltsv(v502 위). 신규 tests/wltsv-v503.e2e.js 2/2, 기준선(614257f)·변이 no-head 실패 확인. 작업시간 관련 11개·정적 19개 통과(기존 검사 손질 없음).
+
+## 2026-10-25 v502 👷 팀 보고 노트 창 — '⏱ 보고자별 시간'(공수 정산용) (개발_백로그)
+
+- `hjTeamReportNoteHoursHtml(p,filter)`: `hjTeamReportNoteRows`(칩 반영)를 보고자별로 묶어 '👤 이름 n건 · h시간'(보고의 hours 합, 소수 한 자리, 시간 많은 순·같으면 이름 순, 보고자 없으면 '보고자 없음'), 둘 이상이면 끝에 '합 h시간'. 시간이 하나라도 있을 때만 `[data-team-note-hours]` 줄. 읽기만.
+- `hjTeamReportNoteRender`: 복사 줄 아래·목록 위에 넣음. 복사 글·모두 확인함은 그대로.
+- 참고: 병렬 4개로 돌릴 때 note7d-v497·notephotos-v479 의 '자료 불변'이 한 번 흔들림 — 부팅 뒤 늦게 도는 세금 일정 자동 추가(calendarImports 'tax:…', 10/25 가 부가세 예정 신고일)가 검사 중에 끼어든 것. 혼자 돌리면 통과. 이 판과 무관.
+- 핀3곳 hyeonjang-v502-notehours(v501 위). 신규 tests/notehours-v502.e2e.js 2/2, 기준선(052fc1c)·변이 no-hours 실패 확인. 노트 관련 18개·정적 19개 통과.
+
+## 2026-10-25 v501 👷 팀 보고 노트 창 — [✕ 조건 모두 끄기] (개발_백로그)
+
+- `hjTeamReportNoteChipsHtml`: 켜 둔 조건 수 `act=(status)+(reporter)+(issue)+(recent)` 가 2 이상이면 칩 줄 끝에 `[data-note-filter-reset]` '✕ 조건 모두 끄기'(44px, aria-pressed 없음). 하나뿐이면 그 칩을 다시 누르면 되니 안 보인다.
+- `hjTeamReportNoteBind`: 누르면 `{status:'',reporter:''}` 로 다시 그림(이슈·최근도 꺼짐) — 화면만. 복사·모두 확인함은 다시 전부 기준.
+- 핀3곳 hyeonjang-v501-notereset(v500 위). 신규 tests/notereset-v501.e2e.js 2/2, 기준선(c813d47)·변이 no-reset 실패 확인. 노트 관련 12개·정적 19개 통과(기존 검사 손질 없음 — 처음 칩 목록엔 단추가 없어서).
+
+## 2026-10-25 v500 👷 팀 보고 노트 줄 — 작업일 옆 '오늘·어제·n일 전' (개발_백로그)
+
+- `hjTeamReportAgoText(workDate)`: `hjDaysBetween(workDate, localDate())` 가 0 → '오늘', 1 → '어제', 2~6 → 'n일 전'(v497 최근 7일과 같은 창). 7일 넘음·작업일이 오늘 뒤·날짜 이상은 ''. 읽기만.
+- `hjTeamReportNoteHtml` 줄 머리 `<b>M/D(요일) · 상태</b>` 안 끝에 `[data-team-note-ago]` ' · 오늘'(굵기 600·muted). [📋 글로 복사](v483) 글은 그대로(날짜만).
+- 핀3곳 hyeonjang-v500-noteago(v499 위). 신규 tests/noteago-v500.e2e.js 2/2(0·1·2·6·7·9일·앞날·날짜 이상), 기준선(1c2a868)·변이 no-ago 실패 확인. 노트 관련 18개·정적 19개 통과(기존 검사 손질 없음).
+
+## 2026-10-25 v499 ⏱ 작업시간 창 — 화면에도 '📊 현장별 소계' (개발_백로그)
+
+- `hjWorkSubtotals(rows)` 로 계산을 한 곳에 모음({open, groups:[{name,n,m}]}, 끝난 줄만·분 많은 순) — `hjWorkSubtotalLines`(v496 복사)도 이것을 쓴다. v496 변이 바늘(`const subLines=pjName?[]:hjWorkSubtotalLines(list);`)은 그대로.
+- `workView`: 전체 창이고 보이는 끝난 줄의 현장이 둘 이상이면 [📋 글로 복사] 아래 `<details data-wl-subtotal>` '📊 현장별 소계 n곳 · 진행 중 n줄 제외'(summary 44px, 처음엔 접힘) → 줄마다 `[data-wl-subtotal-row]` 현장 · n줄 · 시간. 펼침은 `__hjWlSubOpen`(화면만)으로 칩·더 보기 다시 그리기에도 유지.
+- 핀3곳 hyeonjang-v499-wlsubtotal2(v498 위). 신규 tests/wlsubtotal2-v499.e2e.js 2/2(390·1280), 기준선(8b3767b)·변이 no-screen 실패 확인. 관련 10개·정적 19개 통과, v496 변이 여전히 실패.
+
+## 2026-10-24 v498 ⏱ 작업시간 창 '현장' 칸 — 보관한 현장 '(보관)' (개발_백로그)
+
+- `workView` 현장 고르기(v485): `archSet`(state.projects 중 archived 인 이름) — 정렬 맨 앞에 `(archSet.has(a[0])?1:0)-(archSet.has(b[0])?1:0)` 을 더해 보관 현장을 맨 뒤로(보관 아닌 것끼리·보관끼리는 최근 기록 순 그대로), 보이는 글자에만 ' (보관)'. option value·창 제목·복사 글은 이름 그대로.
+- 기록만 있고 현장 목록에 없는 이름은 보관 아님으로 친다. 보관 현장 창에서 열어도 칸이 그 현장을 가리킨다. 화면만(저장 없음).
+- 핀3곳 hyeonjang-v498-wlarchived(v497 위). 신규 tests/wlarchived-v498.e2e.js 2/2(390px), 기준선(85de1dc)·변이 no-archived 실패 확인. 관련 9개·정적 19개 통과(기존 검사 손질 없음).
+
+## 2026-10-24 v497 👷 팀 보고 노트 창 — '🗓 최근 7일' 칩 (개발_백로그)
+
+- `hjTeamReportRecent(r)`: 작업일이 오늘 포함 7일 안(`hjDaysBetween(workDate, localDate()) <= 6`, 즉 0~6일 전). 날짜가 없거나 이상하면 아님, 작업일이 오늘 뒤면 최근으로 친다. 읽기만.
+- `hjTeamReportNoteRows`: 첫 줄을 `const f=…,all=hjTeamReportsOf(p).slice().reverse().filter(r=>!f.recent||hjTeamReportRecent(r))` 로 — v475 `const rows=…` 줄과 v494 `return f.issue?…` 줄(변이 바늘)은 그대로. 화면·[📋 글로 복사](머리줄 '· 🗓 최근 7일')·[✔ 모두 확인함]이 같은 줄을 쓴다.
+- `hjTeamReportNoteChipsHtml`: 최근 보고가 일부(0 < n < 전부)면 ⚠ 이슈 칩 뒤에 `[data-note-filter-recent]` '🗓 최근 7일 n'(aria-pressed, 44px). 칩 단추들은 `recent:!!f.recent` 를 들고 다니고, 최근 칩은 켜고 끈다. 빈 글 안내는 최근 칩이 켜져 있으면 '·🗓 최근 7일 끄기'를 덧붙인다('⚠ 이슈 끄기' 글은 그대로).
+- 기존 검사 손질: demo3-v489 칩 목록에 '🗓 최근 7일 2'(데모 완료 보고는 2025년 날짜라 빠짐). v489 변이 no-blocked 는 여전히 실패.
+- 핀3곳 hyeonjang-v497-note7d(v496 위). 신규 tests/note7d-v497.e2e.js 2/2(390px, 6·7·8일 경계), 기준선(d13de91)·변이 no-recent 실패 확인. 관련 17개·정적 19개 통과.
+
+## 2026-10-24 v496 ⏱ 작업시간 [📋 글로 복사] — 현장별 소계 (개발_백로그)
+
+- `hjWorkCopyText(pjName,rows,flags)`: 전체 창(pjName 없음)이면 합계 줄 뒤에 `hjWorkSubtotalLines(list)` — '현장별 소계'(진행 중 줄이 있으면 ' (진행 중 n줄 제외)') + '- 현장 · n줄 · 시간'(끝난 줄만, 분 합 내림차순·같으면 이름 순, 현장 없으면 '현장 미지정', 시간은 `workHM(…).trim()`). 끝난 줄의 현장이 둘 이상일 때만 붙인다(하나면 합계와 같다). 그래서 소계 합 = 합계. 현장 창은 그대로(합계까지).
+- 화면·클립보드만(저장 없음). 소계는 복사에 넘기는 `visible` 줄 기준이라 칩·[더 보기]를 따른다.
+- 기존 검사 손질: wlcopy-v490(전체 창 30·35줄 복사 — 줄 수 35, 합계 위치 L[31]/L[36], 소계 3줄 기대값). v490 변이 no-visible 은 여전히 실패.
+- 핀3곳 hyeonjang-v496-wlsubtotal(v495 위). 신규 tests/wlsubtotal-v496.e2e.js 2/2(390px), 기준선(b4a8996)·변이 no-subtotal 실패 확인. 관련 8개·정적 19개 통과.
+
+## 2026-10-24 v495 🧭 데모 둘러보기 6단계 — 셋째 '👷 팀 보고 노트' (개발_백로그)
+
+- `HJ_DEMO_TOUR` 에 {n:3, icon:'👷', t:'팀 보고 노트', go:'note'} — 뒤 단계는 4 아파트 서류 · 5 월말 장부 · 6 끝내기로 번호가 밀린다. `hjDemoTourGo('note')` → 표시(hj_demo_tour_done) + `hjTeamReportNoteView(HJ_DEMO_CAFE)`(v489 데모 보고 3건이라 칩·⚠ 이슈·글로 복사가 다 보인다).
+- 요약 글: '봤어요 n/'+(끝내기 뺀 단계 수) · '+HJ_DEMO_TOUR.length+'단계 · 3분' — 숫자를 세어서(예전엔 '/4'·'5단계' 글자 그대로).
+- PC 두 칸(v474): 끝 줄 가득은 `li:last-child:nth-child(odd)` 일 때만 — 6단계면 5·6(끝내기)이 나란히.
+- 기존 검사 손질: demotour-v467(6단계·단추 목록), demotour2-v470(장부 단계 번호 5·'봤어요 n/5 · 6단계'), tour2col-v474(5·6 나란히, 한 칸 반복을 단계 수만큼).
+- 핀3곳 hyeonjang-v495-tour6(v494 위). 신규 tests/tour6-v495.e2e.js 2/2(390·1280), 기준선(098d363)·변이 no-note 실패 확인. 데모 관련 11개 통과, demotour2-v470·tour2col-v474 변이 여전히 실패 확인, 정적 19개 통과.
+
+## 2026-10-24 v494 👷 팀 보고 노트 창 — '⚠ 이슈' 칩 (개발_백로그)
+
+- `hjTeamReportNoteChipsHtml`: 이슈 글(trim 해서 빈 것 제외)이 있는 보고가 일부(0 < n < 전부)면 상태 칩 뒤에 `[data-note-filter-issue]` '⚠ 이슈 n'(aria-pressed, 44px). filter 에 `issue`(bool) — 상태·보고자 칩을 눌러도 `issue:!!f.issue` 를 들고 다니고, 이슈 칩은 켜고 끈다.
+- `hjTeamReportNoteRows`: v475 줄 문자열은 그대로 두고 `return f.issue ? rows.filter(이슈 있음) : rows` — 화면·[📋 글로 복사](머리줄 '· ⚠ 이슈')·[✔ 모두 확인함](v491)이 같은 줄을 쓴다. 빈 글 안내를 '위 칩을 바꿔 보세요([전부]·[👤 모두], 켜 둔 ⚠ 이슈 끄기)'로.
+- 기존 검사 손질: notefilter-v475·demo3-v489 의 칩 목록에 '⚠ 이슈 n'(둘 다 이슈 있는 보고가 일부라 칩이 뜬다).
+- 핀3곳 hyeonjang-v494-noteissue(v493 위). 신규 tests/noteissue-v494.e2e.js 2/2(390px), 기준선(7d45e4a)·변이 no-issue 실패 확인. 관련 13개 통과, notefilter-v475·demo3-v489 변이 여전히 실패 확인, 정적 19개 통과.
+
+## 2026-10-24 v493 ⏱ 작업시간 창 — '📅 지난달' 칩 (개발_백로그, 월초 정산용)
+
+- `workView`: `ymPrev = hjAddDays(ymNow+'-01',-1).slice(0,7)`(1월이면 지난해 12월), `isPrev`. 지난달 기록이 일부(0 < prevN < 전부)일 때만 `[data-wl-filter="prev"]` '📅 지난달 n'. `prevOnly` 는 `!monthOnly` 일 때만 — 이번 달·지난달은 하나만 켜진다(칩 클릭: month → prev 끔, prev → month 끔, team 은 둘 다 그대로, [전부] 는 셋 다 끔).
+- 줄 고르기: `view`(v488, 줄 문자열 그대로 — wlmonth-v488 변이가 그대로 문다) → `list = prevOnly ? view.filter(isPrev) : view`. 더 보기·남은 줄·합계 줄·`visible`(v490)은 `list` 기준. 합계 줄·[📋 글로 복사] 머리줄에 '📅 지난달'. 더 보기·삭제·[✏️ 수정](v487) 모두 prevOnly 를 넘긴다. 화면만.
+- 기존 검사 손질: wlmonth-v488 칩 비교를 앞 셋으로(넷째 '📅 지난달'), wleditkeep-v487 변이 문자열에 prevOnly.
+- 핀3곳 hyeonjang-v493-wlprev(v492 위). 신규 tests/wlprev-v493.e2e.js 2/2(390px, 지난달 1일·말일·지지난달 경계, localDate 를 2027-01-15 로 바꿔 1월 → 12월), 기준선(6b93f34)·변이 no-prev 실패 확인. 관련 11개 통과, wleditkeep-v487·wlmonth-v488·wlcopy-v490 변이 여전히 실패 확인, 정적 19개 통과.
+
+## 2026-10-24 v492 👷 팀 보고 노트 창 — PC 두 칸 (개발_백로그)
+
+- CSS 만(≥900px 미디어 블록, v474 규칙 뒤): `body:not(.mobile-mode) #hjTeamNote [data-team-note-list]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}`, 줄의 인라인 margin-bottom 은 `!important` 로 0, 줄이 아닌 자식(빈 글·'보고가 없어요')은 `grid-column:1/-1`. DOM 순서 그대로라 줄 순서·초점(scrollIntoView)·칩·사진 격자(v479)는 바뀌지 않는다. 폰·PC 모바일 모드는 한 칸.
+- 핀3곳 hyeonjang-v492-note2col(v491 위). 신규 tests/note2col-v492.e2e.js 2/2(1280 두 칸·390/모바일 모드 한 칸·사진 격자 칸 안), 기준선(48afc69)·변이 one-col 실패 확인. 관련 12개(teamnote-v466·notephotos-v479·notefilter-v475·ackall-v491·notecopy-v483·teamnote2-v469·unack-v472·ordername-v484·tour2col-v474·margin1280-v464·pcdark-v452·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v491 👷 팀 보고 노트 창 — [✔ 보이는 검수·막힘 n건 모두 확인함] (개발_백로그)
+
+- `hjTeamReportNoteUnacked(p,filter)` = `hjTeamReportNoteRows`(칩 반영) 중 key 있고 review·blocked 이며 !ack. `hjTeamReportNoteCopyHtml` 의 `[data-team-note-copy-row]` 가 flex 줄이 되어 [📋 글로 복사] 옆에 `[data-team-note-ackall]` '✔ 보이는 검수·막힘 n건 모두 확인함'(44px, 2건 이상일 때만 — 1건이면 줄 [확인함]).
+- 누르면 confirm 한 번('…n건을 모두 확인함으로 내릴까요?') → 줄마다 `hjTeamReportAck`(v465 와 같은 ack·ackAt·markDirty) → 같은 칩으로 다시 그림 + render() + 알림('잘못 눌렀으면 줄마다 [확인 취소]'). 취소면 아무것도 안 바뀐다. 보이지 않는(칩 밖) 보고와 이미 확인한 보고는 건드리지 않는다.
+- 핀3곳 hyeonjang-v491-ackall(v490 위). 신규 tests/ackall-v491.e2e.js 2/2(390px, 저장 확인 포함), 기준선(1e490a8)·변이 no-filter-ack 실패 확인. 관련 12개(teamack-v465·teamnote-v466·teamnote2-v469·unack-v472·notefilter-v475·notecopy-v483·notephotos-v479·ordername-v484·pendingall-v477·teamage-v481·demo3-v489·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v490 ⏱ 작업시간 창 — [📋 보이는 n줄 글로 복사] (개발_백로그)
+
+- `workView`: `visible = view.slice(0,limit)`(지금 그려지는 줄). 표 바로 위 `[data-wl-copy-row]` + `[data-wl-copy]` '📋 보이는 n줄 글로 복사'(44px, 줄이 있을 때만) → `hjWorkCopy(pjName,visible,{teamOnly,monthOnly})`.
+- `hjWorkCopyText(pjName,rows,flags)`: 머리줄 '⏱ 작업시간 — 현장|전체( · 👷 팀 보고)( · 📅 이번 달) · n줄', 줄마다 '- M/D(요일) (현장) 시작~종료 (시간) 메모'(현장 이름은 전체 창에서만, 진행 중 줄은 '~진행 중'·시간 없음, 메모 공백 한 칸으로), 끝 '합계 …'(끝난 줄만). `hjWorkCopy` 는 clipboard → 실패 시 coworkCopyFallback(v483 과 같은 방식). 보내기·저장 없음.
+- 핀3곳 hyeonjang-v490-wlcopy(v489 위). 신규 tests/wlcopy-v490.e2e.js 2/2(390px), 기준선(a8f54ce)·변이 no-visible 실패 확인. 관련 10개(wlchip-v480·wlmore-v482·wlpick-v485·wleditkeep-v487·wlmonth-v488·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·v219-operations) 통과, 정적 19개 통과.
+
+## 2026-10-24 v489 🧪 데모 팀 보고 3건 — 노트 창 칩 시연 (개발_백로그)
+
+- `loadDemo`: 망원동 카페 `cafe.teamReports=[{key:'wr_demo_blocked',status:'blocked',workDate:이번 날짜-3,reporter:'김 기사',issue:'베란다 배수구 부속 미도착 — 내일 오전 입고 예정',…}]`(지시 없는 '보고만'). 보고 3건·보고자 2명이라 데모 노트 창에 칩(v475)이 뜨고, 첫 화면에 '⛔ 막힘 1건' 줄 '· 3일째'(v481). 데모는 여전히 어디에도 저장되지 않는다(_demo).
+- 데모 알림의 팀 보고 수는 세어서(`hjTeamReportsOf` 합) — 예전엔 '팀 보고 2건' 글자 그대로였다.
+- tests/demo-v462 기대값 손질: 알림 '팀 보고 3건', 보고 목록에 ['blocked', 사흘 전, 0, '김 기사'], pending 에 막힘 1건.
+- 핀3곳 hyeonjang-v489-demo3(v488 위). 신규 tests/demo3-v489.e2e.js 2/2(390px), 기준선(75c6983)·변이 no-blocked 실패 확인. 데모를 쓰는 검사 17개(demo-v462·demotour-v467·demotour2-v470·tour2col-v474·teamage-v481·settings-safety·teamack-v465·teamnote-v466·notefilter-v475·notecopy-v483·mobile-screen-layout·action-search·amount-sign·aptdocs-v441·demo-banner·mobile-tap-table·trip-expense-overlap) 통과, 정적 19개 통과.
+
+## 2026-10-24 v488 ⏱ 작업시간 창 — '📅 이번 달' 칩 (개발_백로그)
+
+- `workView`: `isMonth`(date 앞 7자 = localDate 앞 7자). 이번 달 기록이 일부(0 < monthN < 전부)일 때만 `[data-wl-filter="month"]` '📅 이번 달 n'. 칩 줄은 팀 보고 줄이 있거나 이번 달 칩이 있을 때. `opts.monthOnly` 는 칩이 보일 때만 켜진다.
+- 줄 고르기: `shown`(팀 보고만, v480 줄 문자열 그대로 — wlchip-v480 변이가 그대로 문다) → `view = monthOnly ? shown.filter(isMonth) : shown`. 더 보기·남은 줄·합계 줄은 `view` 기준. 합계 줄 '👷 팀 보고 · 📅 이번 달 n줄 · 합계 …'(켠 것만).
+- 칩 누르기: [전부] = 둘 다 끔, 팀·이번 달은 따로 켜고 끈다(다른 쪽은 그대로). 더 보기·삭제·[✏️ 수정](v487) 모두 monthOnly 를 넘긴다. 화면만, 저장 없음.
+- 기존 검사 손질: wlchip-v480 은 칩 앞 둘만 비교(셋째 '📅 이번 달'은 오늘 날짜에 따라 있음/없음), 마지막 팀 줄 삭제 뒤엔 칩 줄 대신 팀 칩이 없어지기를 기다린다. wleditkeep-v487 변이 문자열에 monthOnly 반영.
+- 핀3곳 hyeonjang-v488-wlmonth(v487 위). 신규 tests/wlmonth-v488.e2e.js 2/2(390px, 이번 달 1일·지난달 말일 경계), 기준선(9a59702)·변이 no-month 실패 확인. 관련 11개 통과, wlchip-v480·wleditkeep-v487 변이 여전히 실패 확인, 정적 19개 통과.
+
+## 2026-10-24 v487 ⏱ 작업시간 [✏️ 수정] — 돌아올 때 칩·펼친 줄 수·스크롤 그대로 (개발_백로그)
+
+- `workView` 의 [✏️ 수정] 은 떠나기 전에 `#modalRoot .modal,.mbody` scrollTop 을 재서 `workEditView(id,pjName,{teamOnly,limit,scrollTops})` 로 넘긴다. `workView` 는 `opts.scrollTops`(배열)가 있으면 그 값으로, 없고 `keepScroll` 이면 지금 값으로 되돌린다(v482).
+- `workEditView(id,pjName,back)`: 아래 단추 [← 작업시간](저장 없이 `workView(pjName,back)`) · [닫기](다 닫음). 저장은 `markDirty(); closeModal(); workView(pjName,back)`. 현장 창에서 열었으면 그 현장 창으로 돌아간다. 저장 내용은 예전 그대로(날짜·시작·종료·메모).
+- 핀3곳 hyeonjang-v487-wleditkeep(v486 위). 신규 tests/wleditkeep-v487.e2e.js 2/2(390px, 스크롤 자리 확인 포함), 기준선(add0450)·변이 no-keep 실패 확인. 관련 10개(wlchip-v480·wlmore-v482·wlpick-v485·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
+## 2026-10-24 v486 📄 완료보고서 — 팀 보고 사진 묶음 썸네일 → 크게 보기 (개발_백로그)
+
+- `hjTeamReportPhotosHtml`: 묶음 줄 썸네일(썸네일 있는 사진 4장까지)을 `<button data-rp-team-photo=file.id>`(44×44, img 꽉 채움)로, 넘치면 `[data-rp-team-more]` '+n'. 줄(label)은 `flex-wrap` + 글 `flex:1 1 160px` — 390px 에선 썸네일 줄이 아래로 내려간다.
+- `aptReportView`: `[data-rp-team-photo]` onclick → preventDefault·stopPropagation 후 `openLightbox(id, 그 묶음의 썸네일 있는 사진 ids)`(보고서 창 위에 겹쳐 열림). label 안의 단추라 눌러도 체크(빼기/넣기, v463)는 안 바뀐다 — 체크 칸을 누르면 여전히 빼기/넣기. 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v486-rpphoto(v485 위). 신규 tests/rpphoto-v486.e2e.js 2/2(390px), 기준선(0503fa9)·변이 no-view 실패 확인. 관련 14개(team4-v463·teampdf-v468·demo-v462·demotour-v467·doccenter-v433·doneall-v478·doneview-v471·leakreport-v422·publicweb-v446·reportfill-v408·team3-v458·teamnote2-v469·notephotos-v479·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v485 ⏱ 작업시간 창 — 현장 고르기 (개발_백로그 '작업시간 전체 창에서 현장 고르기')
+
+- `workView`: workData 전체에서 기록이 있는 현장(이름 빈 줄 제외)을 최근 기록 날짜 순으로 모아, 둘 이상이면 맨 위 `<label data-wl-pick>` + `<select data-wl-project>`('전체 · n줄' + '현장 · m줄', 44px). 기록 없는 현장 창에서 열면 그 현장을 '· 0줄'로 맨 앞에 넣어 골라 둔다. onchange → `workView(sel.value||'')`(전체면 ''), 칩·더 보기는 새로 시작. 화면만, 저장 없음.
+- `.mbody > div` 첫 div 는 여전히 위 칸(작업 일수…) — 고르기 칸은 label 이라 wlchip-v480 검사의 tiles 선택자에 안 걸린다.
+- 핀3곳 hyeonjang-v485-wlpick(v484 위). 신규 tests/wlpick-v485.e2e.js 2/2(390px), 기준선(0a76b51)·변이 no-pick 실패 확인. 관련 9개(wlchip-v480·wlmore-v482·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
+## 2026-10-24 v484 👷 팀 보고 노트 줄 — '지시 wo_…' → 사람이 읽는 지시 이름 (개발_백로그)
+
+- `hjTeamReportOrderTitle(p,orderId)`: `hjWoOrders(p)` 에서 packetId 가 같은 지시의 title(hjWoText 40자) + '(M/D)'(지시 date, 없으면 due; 진짜 날짜일 때만). title 이 없으면 ''. `hjTeamReportOrderHtml` → `<span data-team-note-order title="wo_…">지시: 제목(M/D)</span>`(escapeHtml — 제목의 <b>·& 는 글자로), 없으면 예전처럼 '지시 wo_…'. 지시 없는 보고는 '보고만' 그대로.
+- [📋 글로 복사](v483) 줄 괄호 끝에 '지시: 제목(M/D)' — 번호만 있는 지시는 복사에서 뺀다(단톡방에 번호는 쓸모없다). 읽기만, 저장 없음.
+- 핀3곳 hyeonjang-v484-ordername(v483 위). 신규 tests/ordername-v484.e2e.js 2/2(390px), 기준선(ae81de3)·변이 no-title 실패 확인. 관련 14개(teamnote-v466·teamnote2-v469·notefilter-v475·notecopy-v483·notephotos-v479·unack-v472·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·demo-v462·teampacket-v432·team3-v458) 통과, 정적 19개 통과.
+
+## 2026-10-24 v483 👷 팀 보고 노트 창 — [📋 보이는 보고 n건 글로 복사] (개발_백로그)
+
+- `hjTeamReportNoteRows(p,filter)`: v475 칩 필터 줄을 함수로 뺐다(그 줄 문자열은 여전히 한 곳 — notefilter-v475 변이 no-filter 가 그대로 문다). `hjTeamReportNoteHtml` 과 복사가 같은 줄을 쓴다 = 보이는 것만 복사된다.
+- `hjTeamReportNoteText(p,filter)`: 머리줄 '[현장] 팀 작업 보고 n건( · 상태 칩)( · 👤 보고자)' + 줄마다 '- M/D(요일) 상태 — 한 일 / 이슈: … (보고자 · n시간 · 사진 n장)', 확인한 검수·막힘은 ' [확인함]'. 현장 이름만, 고객 이름·전화 없음.
+- `hjTeamReportNoteCopyHtml` → 칩 아래·목록 위 `[data-team-note-copy-row]` + `[data-team-note-copy]` '📋 보이는 보고 n건 글로 복사'(44px, 보이는 줄이 0이면 없음). `hjTeamReportNoteCopy(name,filter)`: navigator.clipboard.writeText, 실패하면 `coworkCopyFallback`(execCommand) — v461 관리사무소 명단 복사와 같은 방식. 알림 '보고 n건을 글로 복사했어요'. 보내기·저장 없음.
+- 핀3곳 hyeonjang-v483-notecopy(v482 위). 신규 tests/notecopy-v483.e2e.js 2/2(390px, 클립보드·대체 경로), 기준선(2424ab6)·변이 no-filter-copy 실패 확인. 관련 12개(notefilter-v475·teamnote-v466·teamnote2-v469·unack-v472·notephotos-v479·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·teamage-v481·mobile-screen-layout) 통과, notefilter-v475 변이 여전히 실패 확인, 정적 19개 통과.
+
+## 2026-10-24 v482 ⏱ 작업시간 창 — 30줄 넘으면 [더 보기] (개발_백로그)
+
+- `workView(pjName,opts)`: `opts.limit`(기본 30, 30 이상) 만큼만 그리고, 남으면 표 아래 `[data-wl-more]` + `[data-wl-more-btn]` '외 n줄 — min(30,n)줄 더 보기'(44px) → `workView(pjName,{teamOnly,limit:limit+30,keepScroll:true})`. 예전엔 31줄째부터 말없이 숨었다(v478 과 같은 문제).
+- `opts.keepScroll`: openModal 전에 `#modalRoot .modal,.mbody` 의 scrollTop 을 재고, 다시 그린 뒤(모바일 스크롤 class 를 붙인 다음) 같은 순서로 되돌린다 — [더 보기]·[🗑 삭제] 뒤 맨 위로 튀지 않는다. 삭제는 펼친 만큼(limit)·칩 유지, 칩을 바꾸거나 바깥에서 새로 열면 30줄부터. 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v482-wlmore(v481 위). 신규 tests/wlmore-v482.e2e.js 2/2(390px, 스크롤 자리 확인 포함), 기준선(6afa3c9)·변이 no-more 실패 확인. 관련 8개(wlchip-v480·wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458) 통과, 정적 19개 통과.
+
+## 2026-10-24 v481 🔎⛔ 검수 요청·막힘 줄 — '· n일째' (개발_백로그 '검수 요청·막힘 줄 n일째 표시')
+
+- `hjTeamReportAgeDays(workDate)`: `isRealIsoDate` 이고 `hjDaysBetween(작업일, localDate())` 가 2 이상일 때만 그 날 수, 아니면 0(오늘·어제·미래·빈·잘못된 날짜). `hjTeamReportAgeHtml(workDate,prefix)` → `<span data-team-days=n>· n일째</span>`(주황, nowrap).
+- 첫 화면 `hjTeamReportPendingHtml` 줄 글 끝(이슈 뒤)에 붙는다. v477 목록 창은 현장마다 가장 오래 묵은 미확인 보고로 '· 가장 오래된 것 n일째'(g.oldest/g.oldestDate). 읽기만.
+- 데모(v462): 검수 요청 보고 `wr_demo_20250312` 의 workDate·at 을 이틀 전(상대 날짜)으로 — 2025-03-12 그대로면 첫 화면에 '590일째'로 보였다. 완료 보고(2025-03-10, 사진 묶음 날짜)는 그대로. tests/demo-v462 의 기대값을 `hjAddDays(localDate(),-2)` 로 바꿨다.
+- tests/teamack-v465 줄 글 정규식에 `( · \d+일째)?` 허용(2일 전 보고라 붙는다).
+- 핀3곳 hyeonjang-v481-teamage(v480 위). 신규 tests/teamage-v481.e2e.js 2/2(390px, 날짜 경계 단위 확인 포함), 기준선(d2578c3)·변이 no-age 실패 확인. 관련 12개(teamack-v465·pendingall-v477·demo-v462·demotour-v467·demotour2-v470·tour2col-v474·team3-v458·teamnote-v466·teampacket-v432·doneall-v478·mobile-screen-layout·settings-safety) 통과, 정적 19개 통과.
+
+## 2026-10-24 v480 ⏱ 작업시간 창 — '👷 팀 보고만' 칩 (개발_백로그)
+
+- `workView(pjName,opts)`: 팀 보고 줄(`w.teamReport.key`, v476)이 하나라도 있으면 표 위에 `[data-wl-chips]` — `[data-wl-filter=""]` '전부 n' · `[data-wl-filter="team"]` '👷 팀 보고만 m'(44px, aria-pressed, 눌린 칩은 blueprint). 칩 → `workView(pjName,{teamOnly})` 로 다시 그림. `opts.teamOnly` 인데 팀 보고 줄이 0이면 전부로.
+- 팀 보고만일 때 `shown`(팀 보고 줄)에서 최근 30줄 — 예전 30줄 밖에 있던 팀 보고 줄도 보인다. `[data-wl-team-sum]` '👷 팀 보고 m줄 · 합계 h — 위 칸은 전부 기준이에요'. 위 칸(작업 일수·누적·이번 달)은 전부 기준 그대로. [🗑 삭제] 뒤 다시 그릴 때 칩 유지, 바깥에서 새로 열면 전부(기존 호출은 인자 하나 그대로). 화면만, 저장 없음.
+- 핀3곳 hyeonjang-v480-wlchip(v479 위). 신규 tests/wlchip-v480.e2e.js 2/2(390px), 기준선(a6b1111)·변이 no-filter 실패 확인. 관련 9개(wlteam-v476·doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458·importnote-v473·notephotos-v479) 통과, 정적 19개 통과.
+
+## 2026-10-24 v479 👷 팀 보고 노트 줄 — 📷 사진 펼쳐 보기 (개발_백로그 '노트 줄 사진 n장 → 사진 펼쳐 보기')
+
+- `hjTeamNotePhotoMap(p)`: 보고 열쇠 → 이 기기 사진(썸네일 있는 photo, 동영상 제외, when 순). 완료·검수 요청은 `hjTeamReportPhotos`(v463) 결과 그대로(완료보고서와 같은 묶음), 막힘은 남은 사진에서 `_teamReport` 열쇠 → 없으면 보고 사진 수>0 일 때만 작업일 일치. 읽기만.
+- 노트 줄: 사진이 있으면 단추 맨 앞 `[data-team-note-photos=key][data-n]` '📷 사진 n장 보기'(aria-expanded, 44px) ↔ '📷 사진 접기'. 펼치면 줄 끝에 `[data-team-note-photo-grid=key]`(64px 칸 격자) + 썸네일 단추 `[data-team-note-photo=file.id]` → `openLightbox(id, 그 보고 사진 ids)`(창 위에 겹쳐 열림, 닫으면 창·격자 그대로). 메타 줄 '사진 n장'(보고가 적은 수)은 그대로.
+- 펼침 상태는 모듈 `__hjNotePhotoOpen`(Set) — `hjTeamReportNoteView` 가 비우고, [확인함]·칩 다시 그리기에선 유지. 토글은 그 줄만 DOM 으로(스크롤 안 튐), 썸네일 클릭은 `#hjTeamNote` root.onclick 위임(격자를 나중에 끼우므로). 화면만, 저장 없음.
+- 주의: 사진 when 은 Date 다(복원 `when:s.when?new Date(s.when):null`, fmtDate 가 getFullYear 를 부른다) — 검사에서 ISO 문자열로 심으면 사진 크게 보기가 TypeError. `#lightbox` 자체는 크기 0(안쪽 fixed)이라 Playwright 는 `#lightbox #lbClose` 를 기다린다.
+- 핀3곳 hyeonjang-v479-notephotos(v478 위). 신규 tests/notephotos-v479.e2e.js 2/2(390px), 기준선(1fc340e)·변이 no-grid 실패 확인. 관련 13개(team4-v463·teampdf-v468·teamnote-v466·teamnote2-v469·unack-v472·notefilter-v475·importnote-v473·doneview-v471·pendingall-v477·doneall-v478·wlteam-v476·demo-v462·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v478 📄 첫 화면 '팀 보고 n건 들어옴' 줄 — 3곳 초과 [외 n곳 — 모두 보기] (개발_백로그)
+
+- `hjTeamDoneDocHtml`: `hjTeamDoneDoc()` 이 4곳 이상이면 줄 3개 뒤에 `<p data-team-done-more>` + `[data-team-done-all]` 단추 '외 n곳 — 모두 보기'(44px). 예전엔 넷째 현장부터 말없이 숨었다. #view 위임 closest 목록 + `d.teamDoneAll` → `hjTeamDoneAllView()`.
+- `hjTeamDoneAllView()`: 창 `#hjTeamDoneAll` — 줄 `[data-team-done-all-row=현장]`('✅ 완료 보고 n건 · 사진 m장 · 최근 MM/DD', hjTeamDoneDoc 순서 = 최근 작업일 순), `[data-team-done-all-open]` [완료보고서 초안](v469 처럼 closeModal → setTimeout aptReportView), `[data-team-done-all-note][data-key]` [👷 노트 보기] → `hjTeamReportNoteView(현장,key,{filter:{status:'done'}})`(칩이 없으면 전부, v477). [넘기기]는 목록에 두지 않는다(첫 화면 줄에만). 읽기만, 저장 없음.
+- 핀3곳 hyeonjang-v478-doneall(v477 위). 신규 tests/doneall-v478.e2e.js 2/2(390px), 기준선(b74ec62)·변이 no-more 실패 확인. 관련 9개(demo-v462·demotour-v467·doneview-v471·team3-v458·teamack-v465·pendingall-v477·teamnote2-v469·notefilter-v475·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v477 🔎⛔ 첫 화면 검수 요청·막힘 줄 '외 n건' → [모두 보기] (개발_백로그 '검수 요청·막힘 줄 외 n건 → 모두 보기')
+
+- `hjTeamReportPendingHtml`: 검수 요청·막힘이 각각 3건을 넘으면 '외 n건' 힌트 대신 `[data-team-pending-all=review|blocked]` 단추 '외 n건 — 모두 보기'(44px). #view 위임 `d.teamPendingAll`(closest 목록에도 추가 — 빠뜨리면 단추가 죽는다) → `hjTeamPendingAllView(status)`.
+- `hjTeamPendingAllView(status)`: `hjTeamReportPending()` 중 그 상태만 현장별로 묶은 창 `#hjTeamPendingAll` — 줄 `[data-team-pending-all-row=현장]`(🔎/⛔ 건수 + '최근 날짜 한 일/이슈'), 최근 보고 순. `[data-team-pending-all-note=현장][data-key=가장 최근 보고]` → `hjTeamReportNoteView(현장,key,{filter:{status}})`. 읽기만 — 확인함은 노트 창 줄(v469)에서. 저장 없음(검사 ① serializeData 동일).
+- `hjTeamReportNoteView(name,focusKey,opts)` 가 `opts.filter` 를 받는다 — 단 칩이 보일 때만(`hjTeamReportNoteChipsHtml(p,{})` 이 비면 전부). 보고 1~2건·보고자 1명 현장에서 칩 없이 줄이 숨는 일을 막는다.
+- 핀3곳 hyeonjang-v477-pendingall(v476 위). 신규 tests/pendingall-v477.e2e.js 2/2(390px), 기준선(3d9d261)·변이 no-filter 실패 확인. 관련 10개(teamack-v465·teamnote-v466·teamnote2-v469·doneview-v471·unack-v472·importnote-v473·notefilter-v475·wlteam-v476·demo-v462·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-24 v476 ⏱ 작업시간 줄 — 👷 팀 보고 표시 + [👷 노트] (개발_백로그 '작업일지 줄 팀 보고 표시 + 노트 열기')
+
+- `workView` 줄: `w.teamReport`(객체, key 있음 — 📥 팀 작업 가져오기가 만든 줄)이면 `[data-wl-team=key]` 와 현장 이름 아래 초록 작은 글 '👷 팀 보고 · 보고자', 단추 맨 앞에 `.wkNote`(data-project·data-key, 44px) → `hjTeamReportNoteView(project,key)` 로 그 보고 줄에 초점. 보통 줄(teamReport 없음)은 배지·단추 없이 그대로. 읽기만 — 자료·저장 없음(검사 ① serializeData 동일).
+- 핀3곳 hyeonjang-v476-wlteam(v475 위). 신규 tests/wlteam-v476.e2e.js 2/2(390px), 기준선(494f2ed)·변이 no-note 실패 확인. 관련 8개(doccenter-v433·mobile-more-tools·mobile-screen-layout·teampacket-v432·v219-operations·team3-v458·teamnote-v466·notefilter-v475) 통과, 정적 19개 통과.
+
+## 2026-10-24 v475 👷 팀 보고 노트 창 — 상태·보고자 칩 (개발_백로그 '팀 보고 노트 창 상태 필터')
+
+- `hjTeamReportNoteChipsHtml(p,filter)`: 보고 3건 이상이거나 보고자 2명 이상일 때만 `[data-note-filter]` — 상태 칩 `[data-note-filter-status=''|review|blocked|done]`(건수 붙임, 0건 상태는 생략)과 보고자 칩 `[data-note-filter-reporter=''|이름]`(둘 이상일 때만, '👤 모두' 포함). 44px, `aria-pressed`, 눌린 칩은 blueprint 배경.
+- `hjTeamReportNoteRender(name,focusKey,filter)` 가 힌트 아래에 칩 + `[data-team-note-list]` 를 다시 그리고 `hjTeamReportNoteBind(name,focusKey,filter)` 로 묶는다 — [확인함]·[확인 취소] 뒤에도 같은 filter 로 다시 그려 칩이 유지된다. `hjTeamReportNoteHtml(p,focusKey,filter)` 는 status·reporter 둘 다 맞는 줄만, 없으면 `[data-team-note-empty]` 힌트. 화면만, 저장 없음(검사 ① serializeData 동일). hjTeamReportNoteView 는 빈 껍데기를 열고 Render 를 부른다.
+- 핀3곳 hyeonjang-v475-notefilter(v474 위). 신규 tests/notefilter-v475.e2e.js 2/2(390px), 기준선(cd8a8e7)·변이 no-filter 실패 확인. 관련 7개(teamnote-v466·teamnote2-v469·unack-v472·importnote-v473·doneview-v471·teamack-v465·demo-v462) 통과, 정적 19개 통과.
+
+## 2026-10-24 v474 🧭 데모 둘러보기 카드 — PC 두 칸 (개발_백로그)
+
+- `@media(min-width:900px)` + `body:not(.mobile-mode)` 에서 `#view [data-demo-tour] ol{grid-template-columns:1fr 1fr}`, 마지막 단계(끝내기)는 `grid-column:1/-1`. 폰·모바일 모드는 한 칸 그대로. 글·단추·저장 방식은 v467·v470 그대로.
+- 핀3곳 hyeonjang-v474-tour2col(v473 위). 신규 tests/tour2col-v474.e2e.js 2/2(1280·390), 기준선(64644cd)·변이 one-col 실패 확인. 관련 6개(demotour-v467·demotour2-v470·demo-v462·pcdark-v452·settings-safety·dash-cards) 통과, 정적 19개 통과.
+
+## 2026-10-24 v473 📥 팀 작업 가져오기 — 반영 결과 창 [👷 노트 보기] (개발_백로그)
+
+- `hjTeamReportImportView.apply` 가 방금 반영한 보고를 `done[]{project,key,status}` 로 모아, **사진이 없을 때만** `hjWrResultView(done,{applied,dup,failed})` 를 연다(현장별 n건·상태 글, `[data-wr-note=현장][data-key=마지막 반영 보고]` [👷 노트 보기] → hjTeamReportNoteView 초점). 사진이 있으면 사진 넣기 결과 창이 마지막 화면이라 그대로(첫 화면 줄 [보기]). 반영 0건(전부 중복)이면 안 연다. 반영 로직·토스트는 그대로.
+- 핀3곳 hyeonjang-v473-importnote(v472 위). 신규 tests/importnote-v473.e2e.js 2/2(390px), 기준선(bb2b147)·변이 no-result 실패 확인. 관련 8개(teampacket-v432·team2-v444·company-team-ui·teamnote-v466·teamnote2-v469·unack-v472·team3-v458·teamack-v465) 통과, 정적 19개 통과.
+
+## 2026-10-24 v472 ↩ 팀 보고 확인 취소 (개발_백로그 '팀 보고 확인 취소')
+
+- `hjTeamReportUnack(name,key)`: review·blocked 이고 `ack` 인 보고의 `ack`·`ackAt` 키를 지운다(v465 와 같은 방식, markDirty → 저장). 노트 창(hjTeamReportNoteHtml) 줄에 `[data-team-note-unack=key]` [확인 취소](44px) — 미확인 줄의 [확인함]과 서로 바뀐다. `hjTeamReportNoteBind` 가 처리(창 안 목록 다시 그림 + render() → 첫 화면 '🔎 검수 요청' 줄이 다시 올라옴 + 토스트).
+- 핀3곳 hyeonjang-v472-unack(v471 위). 신규 tests/unack-v472.e2e.js 2/2(390px, IDB 에서 키가 지워짐·그 밖 불변), 기준선(eaec8bc)·변이 no-clear 실패 확인. 관련 6개(teamnote2-v469·teamnote-v466·teamack-v465·doneview-v471·team3-v458·demo-v462) 통과, 정적 19개 통과.
+
+## 2026-10-24 v471 📄 첫 화면 '팀 보고 n건 들어옴' 줄에 [보기] (개발_백로그)
+
+- `hjTeamDoneDoc()` 행에 `key`(완료보고서 안 만든 완료 보고 중 가장 최근 것) 추가(읽기만). `hjTeamDoneDocHtml` 줄 단추가 [완료보고서 초안]·**[보기]**(`[data-team-note=key][data-project]`, 기존 v466 위임 → 노트 창, 그 보고에 초점)·[넘기기] 셋(44px).
+- 핀3곳 hyeonjang-v471-doneview(v470 위). 신규 tests/doneview-v471.e2e.js 2/2(390px), 기준선(fe48d2c)·변이 no-key 실패 확인. 관련 9개(team3-v458·teamnote-v466·teamnote2-v469·teamack-v465·demo-v462·demotour-v467·dash-cards·inqpending-v386·mobile-more-sweep) 통과, 정적 19개 통과.
+
+## 2026-10-24 v470 🧭 데모 둘러보기 — 본 단계 ✓ (개발_백로그 '데모 둘러보기 — 단계 완료 표시')
+
+- 이 기기 localStorage `hj_demo_tour_done`(열쇠 배열: pending·report·aptdocs·ledger) — `hjDemoTourDone/MarkDone/Clear`. `hjDemoTourGo` 가 단계 단추마다 MarkDone(카드 `[data-demo-tour]` 만 outerHTML 로 다시 그림), 줄은 `data-done` + '✓' + 단추 글 '다시', 요약 `[data-demo-tour-seen]` '봤어요 n/4 · 5단계 · 2분'. 끝내기는 표식에 안 센다.
+- 지우는 때: loadDemo 들어갈 때(`state._demo=true` 바로 뒤)와 hjDemoExit·[끝내기] — 지난 데모의 ✓ 가 새 데모에 안 남는다. 앱 자료 변경 없음(검사 ① serializeData 동일).
+- 핀3곳 hyeonjang-v470-demotour2(v469 위). 신규 tests/demotour2-v470.e2e.js 2/2(390px), 기준선(480af26)·변이 no-mark 실패 확인. 관련 7개(demotour-v467·demo-v462·settings-safety·demo-banner·mobile-tap-table·aptdocs-v441·dash-cards) 통과, 정적 19개 통과.
+
+## 2026-10-24 v469 👷 팀 보고 노트 창의 줄 단추 — [확인함] · [완료보고서 초안] (개발_백로그 '팀 보고 노트에서 바로 [확인함]·[완료보고서]')
+
+- `hjTeamReportNoteHtml` 줄 끝에 단추(44px): 검수 요청·막힘이고 `!ack` 면 `[data-team-note-ack=key]` [확인함], 완료(done)면 `[data-team-note-report]` [완료보고서 초안](docAt 있으면 '완료보고서 다시'). 그 밖의 줄은 단추 없음 — 창은 여전히 그 두 동작 외엔 읽기만.
+- `hjTeamReportNoteBind(name,focusKey)`: [확인함] → `hjTeamReportAck`(v465, 저장) → `#hjTeamNote` 안 목록만 다시 그리고(힌트 유지, 다시 bind) 뒤 화면 `render()`(첫 화면 줄도 내려감) + 토스트 · [완료보고서 초안] → closeModal 뒤 aptReportView(name). openModal 뒤 호출.
+- 핀3곳 hyeonjang-v469-teamnote2(v468 위). 신규 tests/teamnote2-v469.e2e.js 2/2(390px, IDB 저장·그 밖의 자료 불변 — 정렬된 키라 `"ack":true,` 가 객체 맨 앞), 기준선(211ad92)·변이 no-save 실패 확인. 관련 8개(teamnote-v466·teamack-v465·team3-v458·team4-v463·demo-v462·demotour-v467·teampdf-v468·doccenter-v433) 통과, 정적 19개 통과.
+- 같은 날 PC 에서 `apply-stack-v427-v468.cmd` 를 실제로 돌려 보니 `git cat-file -e %BASE%^{commit}` 의 `^` 를 cmd 가 먹어 "base commit not in repo" 로 멈췄다 → cmd 는 `git cat-file -e %BASE%` 로(CRLF). 고친 cmd 로 브랜치 `claude/stack-v427-v468` 이 올라갔다(트리 동일 확인). 이후 판의 cmd 는 고친 것을 복사한다.
+
+## 2026-10-24 v468 📄 완료보고서 PDF 사진 대장 — '팀 보고 · 한 일' 머리글 먼저 (개발_백로그 '완료보고서 팀 보고 사진 묶음 — PDF 사진 대장 머리글')
+
+- `hjReportPhotoGroups(photos, teamBundles)` 두 번째 인자(선택): v463 묶음(`{key,workDate,status,done,files}`)이 오면 그 사진은 작업일 순 `{label:'팀 보고 · '+한 일(40자), team:true, teamKey}` 그룹으로 **맨 앞**, 나머지 사진만 예전처럼 작업명(누수 태그) 그룹 + rank 정렬. 인자가 없으면 결과는 예전과 같다(hjReportDraft 는 그대로 인자 없이 → 작업 내용 줄 불변). 읽기만.
+- aptReportView 가 PDF `o` 에 `teamBundles`(빼기 `__rpExcluded` 반영, 빈 묶음 제외)를 넣고 buildAptReportPDF 가 `hjReportPhotoGroups(o.photos,o.teamBundles)` 로 머리글(`■ 팀 보고 · … — MM/DD (n장)`)을 만든다. 6장/페이지 계산·사진 수는 그대로.
+- 핀3곳 hyeonjang-v468-teampdf(v467 위). 신규 tests/teampdf-v468.e2e.js 3/3(진짜 buildAptReportPDF 본문에 `o.teamBundles` 가 있는지 확인한 뒤 그룹 결과만 기록하는 대역 — jsPDF 는 바깥 스크립트라 막힘), 기준선(ecdd7e6)·변이 no-pass 실패 확인. 관련 10개(team4-v463·team3-v458·reportfill-v408·phototags-v454·leakreport-v422·demo-v462·demotour-v467·doccenter-v433·publicweb-v446·rehearsalfix-v449) 통과, 정적 19개 통과.
+
+## 2026-10-24 v467 🧭 데모 둘러보기 — 데모 첫 화면 맨 위 '이렇게 보세요' 5단계 (개발_백로그 '데모 둘러보기 순서 안내')
+
+- `hjDemoTourHtml()`(데모가 아니면 '') 을 viewDashboard 맨 앞에 — `<details data-demo-tour ontoggle="hjDemoTourToggle(this)">`, 열림 기본, 접힘은 이 기기 localStorage `hj_demo_tour`('0' 접힘; `hjDemoTourOpen()`) — 앱 자료 변경 없음(검사 ① serializeData 동일). 5단계 `HJ_DEMO_TOUR`(상수: 검수 요청 줄 찾기 → 완료보고서 초안 → 아파트 서류 4종 → 월말 장부 🧾 → 데모 끝내기), 줄마다 `[data-demo-tour-go=pending|report|aptdocs|ledger|exit]`(44px). `hjDemoTourGo`: pending 은 `[data-team-report-pending]` 테두리 1.8초(없으면 토스트), report → aptReportView(HJ_DEMO_CAFE), aptdocs → hjAptDocsView(HJ_DEMO_APT), ledger → expenseLedger(이번 달), exit → hjDemoExit. 데모 현장 이름 상수 `HJ_DEMO_CAFE`·`HJ_DEMO_APT`(loadDemo 의 이름과 같아야 한다 — 바꾸면 둘 다).
+- toggle 이벤트는 다음 틱에 오므로 검사는 localStorage 값을 기다린다. 핀3곳 hyeonjang-v467-demotour(v466 위). 신규 tests/demotour-v467.e2e.js 3/3(390px, 끝내기 → reload 뒤 저장본에 데모 없음), 기준선(9675715)·변이 no-remember 실패 확인. 관련 13개(demo-v462·settings-safety·demo-banner·mobile-tap-table·action-search·amount-sign·trip-expense-overlap·aptdocs-v441·dash-cards·inqpending-v386·mobile-screen-layout·custfill-v394·teamnote-v466) 통과, 정적 19개 통과.
+
+## 2026-10-24 v466 👷 팀 보고 노트 보기 — 보고 전문 읽기 전용 창 (개발_백로그 '팀 보고 노트 보기')
+
+- `hjTeamReportNoteHtml(p,focusKey)`·`hjTeamReportNoteView(name,focusKey,{back})`: 현장의 팀 작업 보고 전부(hjTeamReportsOf, 최근 것부터) — 날짜(hjMdDow)·상태(HJ_WR_STATUS_LABEL)·👤 보고자·시간·사진 수·지시 번호(없으면 '보고만')·한 일·이슈·체크리스트(✓/○)·표식(확인함 날짜·완료보고서 날짜/넘김). 단추는 닫기(와 `back` 일 때 [← 서류 만들기])뿐 — **읽기만, 저장·변경 없음**(검사 ① serializeData 동일). `[data-team-note=key]`, focusKey 는 `data-focus` + clay 테두리 + scrollIntoView. 보고 없으면 `.empty` 안내.
+- 들어가는 길: 첫 화면 검수 요청·막힘 줄 `[data-team-note=key][data-project]` [보기](확인함 앞, 44px; #view 위임 `d.teamNote`) · 📎 서류 만들기 '시공 중' 그룹 `data-act="teamnote"`('보고 n건 · 검수·막힘 k건', 막힘·검수가 있으면 warn) → `{back:true}`. docHubView 에 teamRows/teamAll/teamPend(읽기만).
+- teamack-v465 ① 줄 글 정규식에 `(보기 )?` 허용. 핀3곳 hyeonjang-v466-teamnote(v465 위). 신규 tests/teamnote-v466.e2e.js 2/2(390px), 기준선(a04b72b)·변이 no-entry 실패 확인. 관련 13개(teamack-v465·team3-v458·team4-v463·demo-v462·doccenter-v433·pcdark-v452·teampacket-v432·team2-v444·dash-cards·evidence-v427·insurance-v442·proposal-v437·aptdocs-v441) 통과, 정적 19개 통과.
+
+## 2026-10-23 v465 🔎 첫 화면 '검수 요청 · 막힘' 줄 — [확인함]으로 내리기 (v432 이후 내릴 길이 없던 줄)
+
+- v432 의 `hjTeamReportPending()` 은 `!r.ack` 만 걸렀는데 ack 를 적는 곳이 없어 검수 요청·막힘 줄이 영영 남았다. `hjTeamReportAck(name,key)` 가 보고 레코드(wo.reports[]·p.teamReports[]) 안에 `ack:true, ackAt`(v458 docAck 와 같은 방식 — 새 저장 키 없음, markDirty → 이 기기 저장)을 적는다. review·blocked 만, 이미 ack 면 0.
+- `hjTeamReportPendingHtml` 은 줄마다 `[data-team-report-row=key][data-project]` — '🔎/⛔ 현장 — MM/DD 한 일/이슈(60자)' + `[data-team-ack=key][data-project]` [확인함](44px, aria-label). 보고자 이름은 안 넣는다. 3줄 넘으면 '외 n건'. `hjTeamReportPending()` 행에 `key` 추가. #view 위임 `d.teamAck` → hjTeamReportAck + render + 토스트.
+- demo-v462 ① 의 검수 줄 정규식을 `[\s\S]*` 로 느슨하게(줄이 둘로 나뉨). 핀3곳 hyeonjang-v465-teamack(v464 위). 신규 tests/teamack-v465.e2e.js 2/2(390px, IDB 저장 확인), 기준선(192a19d)·변이 no-ack 실패 확인. 관련 10개(company-team-ui·demo-v462·team2-v444·team4-v463·teampacket-v432·team3-v458·dash-cards·inqpending-v386·custfill-v394·ownertodo-v460) 통과, 정적 19개 통과.
+
+## 2026-10-23 v464 📊 첫 화면 '현장별 지출 · 마진' 표 — PC 1280 맞춤 (개발_백로그 5번)
+
+- 1280px(옆 메뉴 포함 본문 ≈962px)에서 표 자연 폭이 1379px 이라 늘 옆으로 밀렸다. 고친 것(≥900px·PC 모드만): 열 제목·마진 칸은 줄바꿈 허용(`word-break:keep-all`, 낱말은 안 쪼갬), 마진 칸은 `projectMarginCellHtml` — `.mg-wrap > b.mg-amt(금액, nowrap·PC 에선 block) + .mg-sep(' · ', PC 에선 숨김) + .mg-note('30% (입력 원가 기준)', PC 에선 아래 줄)`; 글(innerText)은 projectMarginLabel 과 같은 뜻. 칸 여백 `8px 6px`, 원가 입력칸 `input.mg-in` 84px(border-box, 12px) — 예전 인라인 `width:96px` 는 기본 규칙 `#dashboardMarginTable input.mg-in{width:96px}` 로 옮김(폰은 .dash-cards 의 `width:auto!important` 가 그대로 이김). `min-width` 1180 → 900.
+- 결과: 1280 자연 폭 949px → 안 밀림, 1024(706px)는 그대로 스크롤, 금액은 안 꺾임(pcdark-v452 ⑦ 계약 유지, 이름 칸 150px 유지). 폰 카드형은 `.mg-wrap` 한 덩어리라 예전과 같은 한 줄 글.
+- 핀3곳 hyeonjang-v464-margin1280(v463 위). 신규 tests/margin1280-v464.e2e.js 3/3(1280·1024·1440·390), 기준선(1c80132: 1379px)·변이 wide(84px 규칙 제거 → 985px) 실패 확인. 관련 16개(pcdark-v452·mobile-tap-table·dash-cards·photo-safety-ui·margin·margin-v429·darkcards-v453·polish-v456·rehearsalfix-v449·board-v351·extras-settle·insight-v445·quote-vat·ledger-roundtrip·trip-expense-overlap·mobile-screen-layout) 통과, 정적 19개 통과.
+
+## 2026-10-23 v463 👷 팀 앱 연동 4차 — 완료보고서의 '팀 보고 사진' 묶음 빼기/넣기 (개발_백로그 4번)
+
+- `hjTeamReportPhotos(p,photos)`(읽기만): 완료·검수 요청 보고마다 사진 묶음 — 이 세션에 `_teamReport===key` 가 남은 사진이 있으면 그것만(key), 없으면 보고 workDate 와 사진 한국 날짜(hjPhotoKoreanDay)가 같고 아직 다른 보고에 안 묶인 현장 사진(day; 같은 날 보고 둘이면 먼저 온 보고가 가져간다). `_teamReport` 는 직렬화되지 않아 새로 열면 day 로 떨어진다 — 그래서 묶음 줄에 '(보고 n장 · 이 기기 m장)' 을 같이 쓴다. 막힘·대기 보고, 사진 0장 + 못 찾은 보고는 줄이 없다.
+- `aptReportView` 입력칸 **위**에 `[data-rp-teamphotos]`: 줄마다 `[data-rp-team-bundle=key]`(label 44px, 체크 `[data-rp-team-include]`, 썸네일 4장까지; 이 기기에 0장이면 disabled). 체크를 풀면 그 사진이 `__rpExcluded`(창 안 변수)에 들어가 PDF `photos` 에서만 빠지고(`photos:ph.filter(f=>!__rpExcluded.has(f))`), 작업 내용 줄·저장 자료는 그대로. `[data-rp-photo-count]` 가 따라 바뀐다. 저장 키 없음, 빼기는 저장하지 않는다(창을 닫으면 원래대로).
+- 핀3곳 hyeonjang-v463-teamphotos(v462 위). 신규 tests/team4-v463.e2e.js 3/3(390px), 기준선(355625f)·변이 no-exclude 실패 확인. 관련 10개(team3-v458·demo-v462·doccenter-v433·leakreport-v422·phototags-v454·publicweb-v446·reportfill-v408·v219-operations·contract-terms·mobile-more-sweep) 통과, 정적 검사 통과.
+
+## 2026-10-23 v462 🧪 데모 자료 보강 — 팀 보고 2건 · 아파트 서류 발행 1건 · 영수증 지출 2건 (개발_백로그 3번)
+
+- loadDemo 가 기존 저장 자리만 채운다(새 키·새 현장 없음, 현장 4곳 그대로 — settings-safety 의 `projects.length === 4` 계약 유지): 망원동 카페 `p.workOrders[0]`(wo_20250309_001) `.reports` 완료 1(03/10, 사진 3)·검수 요청 1(03/12) → 첫 화면 '🔎 검수 요청 1건'·'📄 팀 보고 1건 들어옴 · 사진 3장' 줄, 📎 서류 만들기 '👷 팀 보고 1건', [완료보고서 초안] 작업 내용에 '03/10 …' 줄(v458 hjReportDraft).
+- 은행동 한빛아파트 `p.docs` 에 **이웃 동의서(AC-)만** 3일 전 발행 — 신청서(aptapply)는 일부러 안 넣는다(aptdocs-v441 ③ 의 시공 D-2 '서류 4종 만들기' 할 일이 데모의 핵심). 📎 서류 만들기엔 '발행 1/4'.
+- 영수증 지출 2건: `state.expenses=[]` 로 비운 뒤 src:'receipt' 2줄(3일 전 한밭철물 38,500 현금 @망원동 카페 · 어제 SK주유소 55,000 카드 공통) + kind:'receipt' 가상 파일 2개(이름은 hjReceiptFileName 꼴 `영수증_YYYYMMDD_상호_금액원.jpg`, `_file` 에 SVG File 을 넣어 🧾 보기(hjReceiptPreview → getFileOf)가 그림을 연다). 실제 지출은 데모 화면에서만 안 보이고 저장본은 그대로([데모 끝내기]=reload 로 복귀, demo-v462 ③).
+- 토스트·mountHint 는 세어서 쓴다('현장 4곳 · 파일 17개 · 팀 보고 2건 · 영수증 2장'). 데모 숫자를 바꾸면 demo-v462 ① 의 토스트 단언도 같이.
+- 핀3곳 hyeonjang-v462-demo(v461 위). 신규 tests/demo-v462.e2e.js 3/3(390px 씨앗·화면, 1280px 저장 안 됨), 기준선(3606800)·변이 no-reports 모두 ① 에서 실패 확인. 관련 15개(settings-safety·demo-banner·aptdocs-v441·mobile-tap-table·action-search·amount-sign·trip-expense-overlap·team3-v458·dash-cards·mobile-more-sweep·inqpending-v386·expenseocr-v435·receipt-project·ledger-roundtrip·custfill-v394) 통과. 정적 19개 통과.
+
+## 2026-10-22 v461 📇 관리사무소 명단 — 아파트 관리 탭 카드 · prompt() 대신 인라인 폼 (개발_백로그 2번)
+
+- 🏢 아파트 관리 탭 KPI 아래 `#aptOfficeList`(data-aptoff-list): state.aptOffices 전체 — 단지·담당자·📞 전화 링크·현장 수(aptMgmtGroups 단지 키 일치)·오더 수, 현장 많은 순. aptOfficeListRows/Text/Html 은 읽기만. [📋 복사](aptOfficeListCopy → clipboard, 실패 시 coworkCopyFallback) 글줄은 '단지 관리사무소 · 담당자 · 번호' — 고객 정보 없음.
+- 인라인 폼 `#aptOfficeForm`(aofId·aofComplex·aofManager·aofPhone, `[data-aptoff-save]`·`[data-aptoff-cancel]`): [+ 등록](data-aptoff-new)·줄의 [✎](data-aptoff-edit=id)·단지 카드의 [🏢 관리사무소 등록](data-aptoffadd → aptMgmtOfficeAdd 가 폼이 화면에 있으면 prompt 대신 aptOfficeFormOpen) 모두 같은 폼. 저장은 v457 hjAptOfficeUpsert(같은 단지 = 한 줄, 새 값이 덮음) + 고치기(id)일 땐 빈 값으로 지우기도 허용. #view 위임.
+- tests/apartment-manage 는 dialog 두 번 대신 폼을 채우고, 단지 카드 선택자를 `.cust-card:not(#aptOthers):not(#aptOfficeList)` 로.
+- 핀3곳 hyeonjang-v461-officelist(v460 위). 신규 tests/officelist-v461.e2e.js 3/3(390px, prompt 가 뜨면 실패로 셈), 기준선·변이 list-off(OFFICE_LIST) 실패 확인. 관련 10개 통과. 정적 19개 통과.
+
+## 2026-10-22 v460 📋 대표 할 일 — Claude 인수인계 (앱 안에서 보는 '대표가 할 일' 표)
+
+- `HJ_OWNER_TODO`(상수 9건: 묶음 병합·PR #189·리뷰 링크·결정 3건·카카오 채널 주소·원고 게시·병합 뒤 폰 확인; 판마다 갱신)와 체크 저장 `localStorage hj_owner_todo_done`({id:날짜}) — **앱 자료는 바뀌지 않는다**(새 저장 키 없음, 기기별). 항목 `auto()` 가 참이면 '자동 확인'(리뷰 링크가 들어감 / github.io 에서 실행 중 = 병합됨).
+- 팀 업무·인수인계 보드(hjTeamBoard) 맨 위 `[data-owner-todo-card]`(남은 것 n건·체크박스 44px·[설정 열기] hjOpenSettingsTab(tab,focus)·[열기 ↗] 링크·[끝난 것 n건 보기] — `filters.ownerDone` 으로 재그림) · 첫 화면 오늘 현장 업무 `[data-owner-todo-line]` "📋 대표 할 일 n건 — 첫 항목" + [보기](`data-owner-todo-open` → hjTeamBoard, #view 위임). 직원 모드(hjStaffOn/body.hj-staff)에선 둘 다 없음.
+- 핀3곳 hyeonjang-v460-ownertodo(v459 위). 신규 tests/ownertodo-v460.e2e.js 3/3(390·1280, 저장본 불변·새로고침 유지·자동 확인·설정 탭·직원 모드), 기준선(OWNER_TODO_LINE)·변이 no-persist(OWNER_TODO_PERSIST) 실패 확인. 관련 12개 통과. 정적 19개 통과. 체크박스는 바뀌면 카드를 다시 그리므로 검사에서 `check()` 대신 `click()`.
+
+## 2026-10-22 v459 어두운 화면 남은 8건 + 밝은 화면 '미연결' (리허설 R7 를 v458 판에서 다시 돌려 찾음)
+
+- R7 PC 스윕(514화면, 6.5분) v458 판: 밝은 화면 저대비 42→4(남은 4는 disabled 단추·이모지), 어두운 화면 15→8(모두 1노드). 고친 것 — v453 속성 선택자 목록에 배경 `#dbeafe`(코드 칩)·`#fef9c3`(키 배지)·`#f3f4f6`(승인 칩) 추가, 글자색 `#9a3412`→warn-fg·`#166534`→ok-fg·`#475569`→ink 추가 · `body.dark .ai-b.u{background:#1d6fe0;color:#fff}`(어두운 blueprint #6ab0ff 위 흰 글씨 2.3:1) · 💾 백업 센터 '미연결'·공개 페이지 '승인 대기' 칩 `#9ca3af`→var(--muted).
+- 남긴 것: `button:disabled{opacity:.4}` 글자(📨 전자계약 준비중·🏢 동·호수 일괄 등록) — 비활성 요소는 대비 예외. 이모지 아이콘. 'tabs-wrap'(PC 탭 줄 2줄, 511화면)은 v451 부터 같은 값 — 탭 14개가 한 줄에 안 들어가는 설계값이라 두었다.
+- 핀3곳 hyeonjang-v459-darkrest(v458 위). 신규 tests/darkrest-v459.e2e.js 3/3(1280 어두운/밝은, disabled 제외 4.5:1 샘플러), 기준선(DARK_REST_READABLE llamaSetup) 실패 확인. 관련 10개 통과. 정적 19개 통과. 리허설 결과 `리허설\r7-result.json`(v458 판, 이전 판은 r7-result-v452.json).
+
+## 2026-10-22 v458 팀 앱 연동 3차 — 팀 작업 보고 → 📄 완료보고서 · 시기 줄 0명 숨김 · 묵은 검사 2개 고침
+
+- 보고는 v432 자리(wo.reports[]·p.teamReports[]) 그대로 읽는다 — hjTeamReportsOf(p)(order 붙여 날짜순), hjTeamDoneLines(p)(done 보고의 한 일 → 'MM/DD 한 일' 줄, 보고자 이름·이슈·검수(review) 보고는 안 넣음 — 관리사무소·고객에게 가는 문서). hjReportDraft 가 공정 줄 뒤에 이 줄을 날짜순으로 붙이고(같은 글은 한 번) 기간(days)에 보고 작업일을 넣는다 · 돌려주는 값에 team·teamPhotos. aptReportView 에 `[data-rp-team]` 안내.
+- 첫 화면 `[data-team-done-doc]` "📄 팀 보고 n건 들어옴 · 사진 m장 — 현장 [완료보고서 초안][넘기기]"(hjTeamDoneDocHtml, 팀 검수 줄 바로 뒤·v386 문의 줄 계약 유지, 3현장까지). [완료보고서 초안] → aptReportView · [넘기기] → hjTeamDoneMark(name,'skip') 보고 레코드 docAck · PDF 를 만들면 hjTeamDoneMark(name,'doc') docAt=오늘 → 줄이 내려간다. 새 저장 키 없음(보고 레코드 안 표식). 📎 서류 만들기 완료보고서 줄에 '👷 팀 보고 n건'.
+- HJ_WO_PHASE_LABEL.during '작업 중' → '시공 중'(v454 단계 이름과 같게 — 보고서 묶음이 합쳐진다).
+- hjSeasonDueHtml: 보낼 수 있는 고객이 0명이면 첫 화면 줄을 띄우지 않는다(시기 내내 '0명' 줄이 남았고 custfill-v394 의 줄 순서 계약도 깼다 — 10/22 환절기 결로 시기에 드러남). 원고는 더보기 › 계절 캠페인에서.
+- 묵은 검사(전체 333개를 한 번 돌려 찾음): geocode-label ⑮ 는 String(openGdriveSetup) 을 봤는데 v444 직원 모드 감싸기 뒤로는 감싼 함수라 늘 실패 → 실제로 열어 `#setTab-keys` 의 DOM 을 본다 · pages-artifact 허용목록 기대값에 v431 의 leak.css/html/js 가 빠져 있었다 · mobile-screen-layout 큰 글자 모드는 v454 단계 칸 때문에 .mbody 가 스크롤돼 scrollIntoView 가 0.2px 걸친다 → 1px 여유(닿는지는 elementFromPoint 가 본다). crew-v440 ③ 의 44px 단언은 4병렬에서만 43.99998 로 흔들린다(혼자 돌리면 통과). 환경 전용 실패: apartment-projects·bathroom-quality-v410·document-select/upload·team-workboard(다운로드 파일 이름), offlinequeue-v425·offlinequeue-cache-v425.unit(PR #189 캐시 이름), relay·office-intake-sync 는 mock-relay(8398)를 띄우면 통과.
+- 핀3곳 hyeonjang-v458-team3(v457 위). 신규 tests/team3-v458.e2e.js 3/3(390px, PDF 스텁), 기준선·변이 team-lines(TEAM_LINES_IN_REPORT) 실패 확인. 관련 13개 통과(teampacket-v432·team2-v444·photo-report·photo-report-output·reportfill-v408·inqpending-v386·dash-cards·doccenter-v433·app-version·phototags-v454·season-v448·custfill-v394·geocode-label). 정적 19개 통과. 이번엔 전체 묶음(333개)도 한 번 돌렸다 — 아래 v457 항목의 '묵은 검사' 참고.
+
+## 2026-10-22 v457 아파트 서류 2 — 손으로 적은 기간이 남음 · 관리사무소 명단에 바로 적기 · 낡은 탭 창 닫기 경고
+
+- 🏢 아파트 서류 화면에서 고친 값은 현장 안 `p.aptDocs` 에 **자동값과 다른 것만**(complex·dong·ho·from·to·hours·noisyHours·works·elevator·route·waste, officeId, at) 남긴다 — hjAptDocsRemember(이름,s): 칸 change·단추 누름·창 닫힘(__modalOnClose) 때. 바뀐 게 없으면 저장하지 않는다(aptdocs-v441 "열고 닫기만 하면 저장본 불변" 유지). hjAptDocModel 은 저장값 위에 화면값을 얹고(`{__auto:true}` 면 자동값만), 끝이 시작보다 앞서면 시작일로. 기간을 손으로 고치면 `[data-ad-period-manual]` "📌 손으로 적은 기간 — 일정은 …" + [일정대로](저장값에서 from·to 삭제), 일정이 없으면 `[data-ad-period-empty]` 안내.
+- 첫 화면 "🏢 관리사무소 서류 4종 만들기 (시공 D-n)"(hjAptDocsDue)은 hjAptDocsStart — 손으로 적은 from 이 있으면 그것, 없으면 일정 첫날. 동·호수도 저장값을 본다.
+- 관리사무소 명단(state.aptOffices): 서류 화면 `[data-ad-office]` 줄에서 바로 — 없으면 [+ 관리사무소 등록](단지 미리 채움, 담당자·번호 → hjAptOfficeUpsert: 같은 단지 키면 그 줄, 빈 칸만 채움·새 번호는 덮음), 명단에 있는데 이름이 달라 못 찾으면 `#adOffice` <select> 로 골라 `officeId` 연결, 있는 줄은 [✎ 고치기/번호 넣기]. 번호 없이 [💬 관리사무소 문자]를 누르면 보내지 않고 칸을 연다. prompt() 창은 쓰지 않는다.
+- 낡은 탭(__tabStale): persistLocal 이 저장을 건너뛰면 `__hjLocalSavePending` 도 내린다 · beforeunload 는 `pending&&!__tabStale` 일 때만 — '새로고침하세요' 띠를 띄워 놓고 창 닫기 경고로 막던 것(settings-safety ⑤가 v450 부터 깨져 있었다).
+- tests/mobile-tap-table "PC에서 불필요한 안내": v452 부터 PC 마진 표(10열·금액 줄바꿈 금지, 자연 폭 1369px)는 1280px 에서도 일부러 옆으로 민다 → 안내는 **넘치지 않는 표에 붙은 것만** 불필요한 것으로 센다(v452 부터 깨져 있던 단언).
+- 핀3곳 hyeonjang-v457-aptdocs2(v456 위). 신규 tests/aptdocs2-v457.e2e.js 2/2(390px), 기준선·변이 no-remember(MANUAL_PERIOD_KEPT) 실패 확인. 관련 21개 통과(aptdocs-v441·rehearsalfix-v451·apartment-manage/units·apt-orders/edit·doccenter-v433·mobile-tap-table·settings-safety·multi-tab-guard·rehearsalfix-v450·demo-banner·dash-cards·polish-v456·insurance-v442·evidence-v427·action-search). 정적 19개 통과.
+
+## 2026-10-22 v456 다듬기 (R2·R7 남은 것) — 리뷰 링크 힌트 · 밝은 화면 작은 글자 · PC 영수증 확인 두 칸 · 키 없는 AI 두뇌 카드
+
+- 🎉 준공 관리 카드: `__reviewUrl` 이 비면 [⚠ 리뷰 링크 없음 — 설정](`[data-review-link-missing]`, hjOpenSettingsTab('etc','rvUrl')) — 링크 없이 리뷰 요청을 보내기 전에 보이게(R2). 링크를 넣으면 사라진다.
+- 밝은 화면 작은 글자(R7 42건): `.st-tab small`·`.st-prog` #9fb3c6→#6b7f95 · `.ph-hint` 는 뒤쪽 규칙(571행 부근)이 v453 의 앞쪽 규칙을 덮어 효과가 없었다 → 그 규칙 자체를 고침 · `.ph-chk` 배경 .4→.62 · 글자색 `#e8912d` 12곳→`var(--hj-warn-fg)`(그래프 선·점은 그대로) · 글자색 `#94a3b8`/`#9ca3af`→`var(--muted)`/#6b7280(원가 출처 '없음', 비교표 '—', 시즌 상태, 수요·등급·위험 낮음, 고객 페이지) · 비준공 준공 카드 opacity .5→.8+본문 ink(warranty-review 가 style 의 opacity 를 확인하므로 opacity 는 남김) · 문서 센터 예정 줄·시즌 비선택 줄·보존 비대상 줄은 opacity 대신 `background:var(--paper-2)`.
+- AI 두뇌 선택(.provPick)·AI 운영 모드(.opProvPick): 키 없는 카드가 `disabled`+흐림이라 '눌러서 등록'이 눌리지 않았다 → disabled 제거, 점선 테두리(`data-available`/`data-ready`), 누르면 hjOpenSettingsTab('keys')(llama 는 llamaSetup). 키 있는 카드 동작은 그대로.
+- PC(≥900px, 비모바일) 🧾 영수증 확인 `#hjRcConfirm`: grid 두 칸 — 사진 `[data-rc-photo]` 1칸 sticky(60vh), 나머지 자식은 모두 2칸(`>:not([data-rc-photo]){grid-column:2}` — 12행 span 만 주면 13번째부터 사진 아래로 흘렀다). 폰은 그대로 한 줄.
+- 핀3곳 hyeonjang-v456-polish(v455 위). 신규 tests/polish-v456.e2e.js 4/4(1280·390 두 컨텍스트, 조상 opacity 를 섞은 4.5:1 대비 샘플러), 기준선(REVIEW_LINK_HINT)·변이 rc-grid(RECEIPT_TWO_COL) 실패 확인. 관련 15개 통과. 정적 19개 통과.
+- 알아둘 것: 부팅 토스트 '📅 전우철 시험 일정 2건…'(BUILTIN_CALENDAR_IMPORTS, 9/1·9/14 — 이미 지난 날짜)은 새 기기마다 한 번 뜬다 — 지울지는 대표 결정(수험번호가 공개 소스에 있다).
+
+## 2026-10-22 v455 자재 뒷정리 (R6·R7 남은 것) — 입고 취소 뒤 재고 되돌림 · 단가 이력 중복 · 1024px 견적서 내역 표
+
+- hjMatReceive(id,false) 가 hjMatLeftFromInventory 로 📦 재고에 옮긴 남은 자재(o.items[].left·movedToInv)를 그 수량만큼 뺀다(0 아래 없음, 표식 지움) — 예전엔 입고 취소 뒤에도 재고에 남아 재입고 때 또 더해졌다.
+- hjSupPriceAdd: 같은 품목·규격·단가·날짜·출처 기록은 한 번만 — 입고 취소→재입고→원가 반영을 반복하면 '단가 6개'로 불었다.
+- PC 첫 화면 견적서 내역 표 `#dashboardQuoteTable`(.dash-margin-scroll 안, 900px 이상 min-width 900px) — 1024px 에서 이름 칸이 71px·4줄이었다. 폰 카드(dash-cards)는 그대로.
+- 핀3곳 hyeonjang-v455-material2(v454 위). 신규 tests/material2-v455.e2e.js 3/3, 기준선(LEFTOVER_REVERTED) 실패 확인. 관련 8개 통과. 정적 19개 통과.
+
+## 2026-10-22 v454 인테리어 사진 시공 전/중/후 칸 · 완료보고서 공정 줄 중복 (R2 남은 것)
+
+- 사진 추가 확인 창(openPhotoIntake) — 인테리어(누수 아님) 현장을 고르면 `#photoIntakeStageTags` 칩 [시공 전][시공 중][완료 (시공 후)](HJ_PHOTO_STAGE_LABELS, 누수 태그 단추와 같은 모양·44px). approved.stageTag → runPhotoIntake 가 새 기록의 공정 칸 `_phase`(저장 phase, 새 키 없음)에 HJ_PHOTO_STAGE_PHASE('시공 전'·'시공 중'·'완료') 를 넣는다 — PHASE_SIDE_NAME 과 같은 이름이라 전/후 갤러리(beforeAfterPairs)·하자보증서 풀(hjPhaseHit)이 그대로 읽는다. 재사용 기록·누수 현장·호출자 훅(onRecord)이 정한 공정은 건드리지 않는다. '시공 중'은 전/후 어느 쪽도 아니다(의도).
+- 완료보고서 초안(hjReportDraft) 작업 줄: 공정 줄과 사진 묶음을 **묶음 이름의 공종 낱말(HJ_PHASE_MAP)·묶음 사진의 공정 칸**으로도 맞춘다(groupKeys) — 예전엔 이름이 똑같을 때만 맞춰 '철거'와 '시공 전 — 기존 욕실 철거 (2장)'이 둘 다 들어갔다. 한 묶음은 한 번만.
+- 핀3곳 hyeonjang-v454-phototags(v453 위). 신규 tests/phototags-v454.e2e.js 4/4(실제 사진 추가 창·runPhotoIntake), 변이 report-dup(REPORT_NO_DUP_LINES)·기준선(PHOTOTAGS_API_PRESENT) 실패 확인. 관련 20개 통과(leakdetect-v420 은 4개 동시일 때 '실패한 저장은 appState 를 안 바꾼다' 단언이 800ms 자동 저장과 겹쳐 흔들림 — 혼자 10/10 두 번). 정적 19개 통과.
+
+## 2026-10-22 v453 어두운 화면 — 인라인 파스텔 카드·진한 글자색 (R7 남은 48화면)
+
+- 인라인 style 로 박힌 밝은 배경(#eff6ff·#eef6ff·#f0fdf4·#fffbeb·#fff5f5·#fef2f2·#fff7ed·#f4f7fb·#f8fafc·#fee2e2·#fecaca·#dcfce7·#f7fafd)은 `body.dark [style*="#…"]{background:var(--paper-2)!important}` 로, 진한 글자색(#0b4ea2·#1d4ed8·#2563eb → --blueprint, #b91c1c·#c2410c·#991b1b → --hj-danger-fg, #0a7f43·#15803d → --hj-ok-fg, #b45309 → --hj-warn-fg, #64748b·#94a3b8 → --muted)은 `[style^="color:#…"],[style*=";color:#…"],[style*=" color:#…"]` 로만(배경·테두리에 쓴 같은 색은 그대로 — darkcards-v453 ④ 가 지킨다). 밝은 화면은 손대지 않는다.
+- 그 밖 어두운 화면: 달력 토요일(.cal-dow.sat·.cal-cell.sat .cal-d) · .ph-hint 알약(밝은 화면도 9px 글자 #6b7f95 로) · 아바타·현장 단계 탭·탭 배지 글자 #06111c · class 없는 링크 --blueprint · 첫 화면 백업 카드(--hj-danger-bg) · ghost 단추 글자 · 모달 안 색 단추의 부제 span · 비교표 차이 줄 --hj-diff-bg 는 불투명 #3a2a20(반투명이면 대비를 잴 수 없다).
+- R7 PC 점검 다시: 어두운 화면 3:1 미만 48화면 → 15화면(남은 건 ✨ 아이콘·'26개월 남음' 알약처럼 아이콘·배지), 밝은 화면 42(9~11px 보조 글자 2.5~2.9:1 — 다음).
+- 핀3곳 hyeonjang-v453-darkcards(v452 위). 신규 tests/darkcards-v453.e2e.js 4/4(글자/배경 대비 측정), 기준선(DARK_CARDS_READABLE) 실패 확인. 관련 12개 통과(proposal-v437 은 부팅 2.5초 뒤 백업 토스트와 겹치면 '마지막 토스트' 단언이 흔들린다 — 혼자 4/4). 정적 19개 통과.
+
+## 2026-10-22 v452 PC 화면·어두운 화면 고침 (리허설 R7 — 1280·1024·다크 514화면 점검 → 찾은 것)
+
+- 점검 대본 /mnt/user-data/outputs/리허설/sweep-r7-pc.js(결과 r7-result.json): PC 1280·1024·다크 1280 에서 탭·현장·견적 편집기·설정·새 화면 35·더보기 115 를 열어 가로 넘침·가림·대비·죽은 단추를 쟀다. 넘침 0·페이지 오류 0·죽은 단추 0, 아래를 고쳤다.
+- **견적 편집기 합계 칸 잘림(1024px)**: `.qm-wrap{grid-template-columns:minmax(0,1fr) 260px}` — 1fr 은 품목표 최소 폭 아래로 못 줄어 `.qm-side` 가 `#view{overflow-x:clip}` 밖으로 나갔다(공급가·부가세·총액이 안 보임). 761~1100px PC 는 한 칸으로 쌓고 합계를 위로.
+- **PC 더보기**: 126개 기능 목록이 폰 하단 메뉴에만 있었다 → 탭 줄 끝 `#btnMorePc`(⋯ 더보기, `.tab-more`, 폰 모드는 숨김) 가 같은 openMoreSheet() 를 열고 PC 에선 가운데 창(`body:not(.mobile-mode) .more-sheet`). 검색창 바로가기(hjCmdRender)도 HJ_ACTIONS 30개 뒤에 더보기 기능(hjMoreCmdHits → moreOpenFeature)을 붙인다(같은 이름 한 번, 8개까지). `.tab` 이 아니라 탭 키보드 순환·roving 계약(uiux) 그대로.
+- **🤖 비서 창 z-index 9998 → 66**(모달 70·토스트 80 아래): 비서가 연 손익·설정 창이 폰에서는 통째로, PC 에선 닫기 단추가 비서 창 뒤에 숨었다. 키 없을 때는 hjOpenSettingsTab('keys') 로 🔑 탭을 바로 연다.
+- **officeOpsCall 주소·토큰 문**(commercialCall 과 같은 것, code 'office-setup'): 빈 주소로 postIsolated → fetch('') 가 앱 페이지 자신에게 POST 를 보냈다.
+- **어두운 화면**: `--card`(설정 탭 배경, 정의가 없어 흰색)·`--hj-soft-bg`·`--hj-diff-bg` 변수 + `body.dark` 값; 비교표 차이/합계 줄(`#hjQuoteCompare [data-qc-diff|data-qc-total]`); 단추 hover(`button:hover` 가 `--ink`=#e8eef5 바탕에 흰 글자라 글자가 사라짐) → 어두운 바탕; `.blue/.clay/.moss` 단추 글자 #06111c(#6ab0ff·#3fb89e 위 흰 글자 2.3:1); 선택된 설정 탭 글자; 계절 캠페인 '· 지금 시기'(`[data-season-now]`, 인라인 색 → CSS). 밝은 화면 선택 칩도 #bbf7d0.
+- **PC 배치**: 첫 화면 '현장별 지출·마진' 표 `#dashboardMarginTable`(td.nm 150px·금액 nowrap·min-width 1180·`.dash-margin-scroll` 가로 스크롤 — @media(min-width:900px) 안에서만, dash-cards 폰 카드 계약 유지); 인건비 장부 `#llRows`·사용설명서 `#hgBody` 의 안쪽 스크롤 상자는 PC 에서 max-height 없음(모달이 스크롤); 📎 서류 만들기는 PC 두 칸(`.mbody:has(.docHubBtn)`), '예정 · v437' 내부 표기 → '준비 중'; 문서 미리보기 `.doc-preview-frame` PC 60vh; PC 토스트도 위; `input[type=password]` 기본 상자 스타일; 백업 안내 토스트가 홈 카드와 같은 말('아직 백업한 적이 없어요').
+- 🧾 영수증 넣기(hjReceiptAdd)는 폰에서도 먼저 창을 연다(바로 고르려면 {pick:true}) — 더보기에서 바로 파일 선택창이 뜨는 건 mobile-more-sweep 의 '화면 없는 기능' 위반이었다(v435 부터 떨어져 있던 검사). 리허설 r4r5 대본도 맞춤.
+- 남은 것(다음): 다크 파스텔 인라인 배경(#eff6ff·#f0fdf4·#fffbeb·#fef2f2 27화면)·하드코딩 글자색(#0b4ea2·#b91c1c·#1d4ed8)·주 탭 11개 두 줄·외주 요청 범위 두 번(v451 에서 중복 제거함)·영수증 확인 PC 두 칸.
+- 핀3곳 hyeonjang-v452-pcdark(v451 위). 신규 tests/pcdark-v452.e2e.js 7/7(1280·1024·390 세 창), 변이 qm-grid(QM_SIDE_VISIBLE_1024)·기준선(PCDARK_API_PRESENT) 실패 확인. 관련 23개 통과(dash-cards 는 PC 표 규칙을 900px 이상으로 묶어 고침, mobile-more-sweep 126/126). 리허설 R4·R5 다시 12/12. 정적 19개 통과.
+
+## 2026-10-22 v451 리허설 R6 고침 (관리·사후·안전 — 아파트 서류·보험·보증/AS·자재·외주·데이터 안전·공개 웹 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r6.js(8단계, 390px·합성·외부 쓰기 0) 결과 r6-result.json — 8/8 되지만 11가지 문제를 찾았고 그중 돈·개인정보·흐름 9가지를 여기서 고쳤다.
+- **외주팀 일당(hjCrewRate)**: 팀원 연락처(c.dayRate)에 없으면 📇 거래처 외주(s.rate{type:'day',amount})도 본다 — 👷 인건비 장부 [1][½] 에서 외주팀 공수가 0원으로 들어가 정산표·지급 명세·현장 인건비가 줄었다. 장부 이름 토글은 사람별 공수(labor.by)가 있으면 그 이름만(띄어쓴 외주팀 이름이 낱말마다 유령 토글이 됐다).
+- **보존 정리(v447)**: hjRetContactLive — 같은 번호의 다른 현장이 아직 살아 있으면(최근 활동 3년 안·활동일 없는 진행 중) 📇 연락처는 익명화하지 않고 contactsKept 로 센다(미리보기 data-ret-contact-live, 완료 토스트 '… 연락처 n명은 남김'). hjRetScrub 은 '고객 고객' 을 '고객' 으로.
+- **백업(backupNow)**: 백업 기록(backupMarkDone)은 exportData 의 공유가 끝났을 때(then)만 — 공유 창을 닫아도 '0일 전 백업'이 되고 3·7일 경고가 꺼졌다.
+- **문자 받는 사람**: msgCenterCompose(kind,{to:{name,phone}}) — 고객이 아닌 받는 사람(외주팀·작업자)이면 현장 고르기 칸을 감추고(data-mc-to) 그 번호로만 보낸다(번호 없으면 복사). hjDocDeliverView 의 sms.to 가 넘긴다 — 지급 명세(hjCrewPayslipView)·외주 요청서 PDF(hjSubQuoteView) 의 💬 문자 초안이 현장 고객에게 가던 것. 보관(archived) 현장이 preset.project 면 목록에 넣는다(안부·AS 문자가 첫 현장 고객에게 가던 것). 아래 '편집으로' 라벨은 leakquote-v421·leakreport-v422 가 누르므로 그대로.
+- **아파트 서류(v441)**: hjAptSchedRows 가 상담·실측·견적·현장 확인·AS 방문 일정(HJ_APT_NONWORK_RE·hjIsAsVisitSched)을 뺀다 — 지난 상담 일정 때문에 D-n 줄이 안 뜨고 공사 시작일이 상담일이 됐다.
+- **한국 날짜**: hjIsoLocalDay/hjIsoLocalStamp(ISO Z → 이 기기 날짜·시각) — hjAptDocsIssue 의 '오늘 이미 발행' 비교(새벽 0~9시에 같은 서류가 -02 로 또 발행), 외주 요청 기록 날짜, 변경 기록 보기·CSV 시각. 다른 `.at.slice(0,10)` 자리(보증서 서명·세대 발행 이력·만족도·카카오 리드)는 표시용이라 두었다 — 같은 도우미로 바꾸면 된다.
+- **문서용 사진 미리보기**: hjDocThumbLater — 사진 넣기(runPhotoIntake)가 끝난 뒤 새 사진의 480px JPEG data: 를 만들어 thumb 과 thumb-local: 캐시에 둔다. 화면용 blob: 만 있어 하자보증서·피해 확인서·누수 보고서·외주 요청서의 사진 고르기(hjDocThumbOk)에 방금 찍은 사진이 안 나왔다(드라이브 재수신 사진만 됐다). thumb 은 직렬화하지 않는다(파일 화이트리스트 그대로).
+- 그 밖: 보증 만료 안부(hjWarrantyCareRows)는 📦 보관 현장도(끝낸 현장을 보관하는 게 정상 흐름) · 무상 판정 문자는 '무상 보수 대상으로 보여요 … 방문해서 확인한 뒤 확정'(방문 전 확정 약속 없음) · 첫 답장(hjInquiryNoReply)은 문의 30일 안만(HJ_FIRST_REPLY_DAYS, 시각 모르면 그대로) · 외주 요청 범위 품목 중복 제거 + 같은 날 같은 요청은 기록 1건.
+- 안 고친 것(대표 결정·다음): 삭제 요청 뒤 안전판 12칸에 정리 전 개인정보가 남음(안내문에 적을지·지울지) · 입고 취소 뒤 재고에 남은 자재 · 재입고 단가 이력 중복 · 인테리어 사진 전/중/후 칸 · 완료보고서 공정 줄 중복 · 사례 내보내기 누수 문구.
+- 핀3곳 hyeonjang-v451-rehearsal3(v450 위). 신규 tests/rehearsalfix-v451.e2e.js 7/7, 변이 crew-rate·sms-to·ret-live·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 관련 40여 개 통과(leakdetect-v420 은 4개 동시일 때 한 번 시간 차 — 혼자 10/10, offlinequeue-v425 는 #189 전 버전 문자열 문제 그대로). 정적 19개 통과.
+
+## 2026-10-17 v450 리허설 R2·R3 고침 (인테리어 하루·폰 갤러리/설치/오프라인 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r2r3.js(R2 인테리어 하루 10단계 — 욕실 상담 페이지 연결 포함, R3 폰 5단계 — 공유·촬영·오프라인·설치·알림) — 390px·합성·외부 쓰기 0.
+- **견적 안 확정이 다시 켜면 풀리던 돈 문제(v437 내 코드)**: 가상 견적 파일(_fromQuote)은 직렬화되지 않아 f.exSum 이 앱을 다시 열면 사라지고 두 안이 다 매출에 더해졌다. 이제 견적 레코드가 주인 — 고르지 않은 안 q.exSum=true + q.tierLost=<고른 안 id>, 고른 안은 둘 다 지움(hjQuoteTierApply), 가상 파일을 만드는 두 곳 — syncQuoteToProject(옛 appState 복원·견적 저장)와 paidExactQuoteRuntimeFiles(확정 저장 durableLocalMutation 직후·paid-generation 복원 — 리허설 R3 가 탄 길) — 이 다 f.exSum=!!q.exSum. 견적·정산 Σ 단추도 앱 견적이면 q 에 같이 쓰고(다시 넣으면 tierLost 도 지움), quoteCommitEditing 은 저장된 견적의 exSum·tierLost 를 지킨다(현장을 바꾸면 푼다). estFinalCandidates 는 앱 견적을 뺀다(이름 '제YYYYMMDD' 로 ★ 최종본 묶음에 걸렸다).
+- 고르지 않은 안 = quoteStatus 'lost'(사유 '다른 안 확정', hjQuoteLostReason) — 수동 '수주' 표시는 풀고 수동 '종결'은 그대로. 수주율(winRateData·funnelData·견적 이력 '결정')에서는 뺀다(hjQuoteTierAlt — 한 공사의 다른 구성). 견적 이력 줄 data-qh-tieralt, 비교표 data-qc-confirmed·확정된 안 단추 aria-pressed. 다른 안을 🎉 수주로 누르면 그 안으로 다시 확정(quoteMark).
+- 견적 번호 hjQuoteNextNo: 같은 날 두 번째부터 '제YYYYMMDD-2'… (newQuote). 💰 입금 기록 #rqMethod(계좌이체 기본·현금·카드·기타·모름) → payLog.method → 간이영수증·세무 자료(rqAmt·rqDate 그대로, 미수 자동 채움 없음 — receivable-removed 계약).
+- 💬 방문은 잡았는데 답장 안 한 문의(문의 3일 안, hjInquiryBookedNoReply) — 대시보드 #dashboardInquiryBookedNoReply [data-firstreply-booked], v386 줄 바로 위(#dashboardInquiryPending + div 계약 유지).
+- 📲 폰 첫 화면 앱 설치 줄 #dashboardInstall(beforeinstallprompt 있을 때만, ✕ = localStorage hj_install_chip_off, PC 화면은 CSS 로 숨김 — 사이드바 ⤓ 단추). 모바일 모드에선 aside 가 숨겨져 설치 안내가 아무 데도 없었다.
+- 대기함(v425): hjOutboxBackendReady()(relayReady()||__gdToken) 없으면 '☁ 대기 사진 n장 올리는 중' 안 띄움, 손으로 누르면 '서버·드라이브 연결 전이라 … 이 기기에 보관', 아래 띠 '💾 서버·드라이브 연결 전 — … 이 기기에 보관'. hjOutboxOnline 은 flush 를 quiet 로 불러 토스트 한 번만.
+- 창 닫기 경고: (state.dirty&&state.dirHandle)||__hjLocalSavePending(persistLocal 의 기기 저장이 안 끝남)||photoIntakePending() — 폴더 없는 폰은 dirty 가 풀릴 길이 없어 공유로 다시 열 때마다 '나가시겠습니까?'가 떴다.
+- 📤 견적서 보내기(sendQuote) 공유 창이 끝나면 sentAt(비어 있을 때만, 편집 사본·저장본 같이 — hjQuoteMarkSentShared). 사진 공정 [모두 추가]는 시공 순서(HJ_PHASE_SEQ 철거·설비·방수·미장·타일·넥산·처마·도장·실리콘).
+- 욕실 상담(bathroom.html/js): #priceEstimateNotice 를 editor-only + 추정 단가 있을 때만, #methodScopeNotice(전체 철거인데 철거·폐기물이 빠짐 — 견적서 '미포함'으로 나감) editor-only.
+- 안 고친 것: 리뷰 링크 없이 ⭐ 리뷰 요청(토스트 안내만 — completion-links·warranty-review 가 지금 흐름을 지킴) · 인테리어 사진 추가 창 전/중/후 칸 · 완료보고서 공정 줄 중복.
+- 핀3곳 hyeonjang-v450-rehearsal2(v449 위). 신규 tests/rehearsalfix-v450.e2e.js 10/10(다시 켜기 두 길 — legacy-appState·paid-generation), 변이 tier-persist(TIER_PERSISTS_AFTER_RELOAD)·tier-exact(TIER_PERSISTS_AFTER_EXACT_RESTORE)·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 리허설 R2·R3 다시 15/15(관찰 21→10). 관련 80여 개 통과(bathroom-quality-v410·team-workboard·document-select·document-upload 의 다운로드 파일 이름 'download' 는 v449 에서도 같은 환경 문제). 정적 19개 통과.
+
+## 2026-10-16 v449 리허설 R1·R4·R5 고침 (스택 끝에서 합성 리허설 → 찾은 것)
+
+- 리허설: /mnt/user-data/outputs/리허설/rehearsal-r1.js(누수 하루 12단계)·rehearsal-r4r5.js(월말 8 + 팀 4) — 390px·합성·외부 쓰기 0, HJ_REHEARSAL_APP 로 대상 주소. v436 끝에서 24/24 통과하며 찾은 문제를 고쳤고, v449 에서 다시 24/24.
+- 월말 마감 2단계 잔금 줄(mcData.due): 위 주석대로 진행/완료(단계≥2·준공·받은 돈 있음) 현장만 — 상담·실측 단계 견적에 '잔금 안내' 문자가 나갈 수 있었다. **'미수금 정리' 단계 자체는 그대로**(extras-settle·revenue-basis 가 지키는 기존 기능 — 2026-08-13 결정과 맞는지는 v434 결정 때 대표에게 묻는다).
+- 👷 직원 모드(v444) 구멍: 현장 고객 카드의 이름·번호·주소 입력칸(.cust-card .cust-grid)·고객 문자/페이지/전자계약/일정 안내·연락처 수정·고객 빠른 입력·일정 탭 👷 인건비(#schLabor)를 숨기고, 돈·고객 창 함수(laborLedger·expenseLedger·pnl·monthCloseView·recvQuickView·payHistoryView·hjProofView·settleDocs·hjTaxPackView·hjInsightView·hjMarginBoardView·hjCrewSettleView·hjCustQuickView·hjSeasonView)는 직원 모드면 토스트만 띄우고 false — 더보기·음성·AI 길로도 안 열린다. 통화·길찾기는 그대로. 변이 staff-cust 가 STAFF_CUSTOMER_HIDDEN 에서 잡는다.
+- 💰 마진 보드(v429): 수주 전(단계<2·준공 없음·받은 돈 없음 — hjMarginWon, 📈 분석의 '수주'와 같은 기준) 견적은 매출에서 빼고 요약에 '수주 전 견적 n곳은 뺐어요'(data-margin-pending).
+- 👷 인건비 장부: 달 목록에서 세금 자동 일정·💰 수금 일정을 빼고(내년 세금 일정 때문에 1년 뒤 빈 달이 열렸다) 기본은 이번 달, 다른 해는 'YY년 M월'. 작업자별 합계는 v440 사람별 공수·일당(labor.by)이 있으면 그 값(사람별 정산표와 같은 값). 일당 합계 칸 390px 안(min-width:0).
+- 💬 첫 답장(v436): 이 현장에 다가오는 일정이 있으면(hjFirstReplyBooked) 새 시간을 묻지 않고 '{오늘/내일 …} 방문으로 잡아 두었습니다' + 화면 data-fr-booked. 누수 문자 '접수 확인'·'출동 안내'를 보냈음 체크했으면 답장한 것(hjInquiryReplied) — 📈 분석 첫 답장 분(hjInsightReplyMin(notes,p))에도 그 시각.
+- 누수 단계 체크: 누수 현장은 STAGE_CHECK_LEAK(📋 수리 전 체크: 물 잠금·전기 차단/아랫집·관리사무소 알림/보양/원인 사진, 📋 수리 마무리 체크: 재확인/복구·청소/추가공사/잔금 청구/보증 안내/완료 문자(💬 단추)/사진 정리) — 저장 키(start/done)는 같다(hjStageCheckDef). 인테리어는 그대로.
+- 누수 문자(v424): 완료 문자는 일반 일정 완료 보고가 없고 끝난 현장이면 출동 일정 완료 보고를 수리 내용으로 쓴다. 🌙 오늘 마감 '탐지 결과 문자 안 보낸 현장'에서 완료(3단계)·완료 문자 보낸 현장은 뺀다.
+- 그 밖: coworkCopy 토스트는 Cowork 명령(라벨 없음 또는 {cowork:true})만 'Cowork에 붙여넣으세요', 나머지는 '복사됨 — 붙여 넣어 쓰세요' · 📎 서류 만들기 견적 수에서 앱 견적의 가상 파일 빼기 + 카드 글자색 var(--ink)(button:hover 의 흰 글자) · 증빙 묶음 기간 시작은 누수 접수일/문의일(hjEvidenceStartOf), 간이영수증 n건 줄 · 사진 찍는 법 leakRepair 카드 + '누수 수리' 지시 guideKey(인터페이스 문서에도) · 지시 메모 '고객 고객' 한 번으로 · 계절 캠페인 기본은 지금 시기(이미 보냈어도) · 증빙 묶음·세무 자료에서 [← 월말 마감] · 폰에서 창이 열려 있으면 토스트는 위(:has).
+- 안 고친 것(다음): 사진 넣을 때 '☁ 대기 사진 올리는 중' 토스트 두 번(v425, 서버 없어도) — offlinequeue 검사가 #189 전에는 버전 문자열 때문에 깨져 있어 그 뒤에.
+- 핀3곳 hyeonjang-v449-rehearsal(v443-fix 위). 신규 tests/rehearsalfix-v449.e2e.js 6/6, 변이 staff-cust·기준선(REHEARSALFIX_API_PRESENT) 실패 확인. 관련 29개 통과(leakdetect-v420 은 브라우저 4개 동시일 때 한 번 시간 차로 실패 — 혼자 다시 10/10, v436 끝에서도 10/10), team2-v444 는 사진 찍는 법 카드 5장으로 고침. 정적 19개 통과.
+
+## 2026-10-16 v436 💬 첫 답장 60초 — 채널별 템플릿 · 문의함 연결
+
+- 자동 발송 없음 — hjFirstReplyView(pj) 초안을 [📋 복사](navigator.clipboard → 실패 시 coworkCopyFallback)하거나 [💬 문자 앱](hjSendSms, 고객 번호가 있을 때만). 채널·유형 고르기·초안 보기는 읽기 전용(검사가 저장본 비교).
+- HJ_FIRST_REPLY: 채널 6(당근·네이버·인스타 DM·카카오 채널·문자·소개 — 기본값은 p.leadSrc 에서 HJ_FIRST_REPLY_SRC, 모르면 문자) × 유형 2(인테리어·누수, 기본은 현장 kind). 문구 = 인사(회사·대표·채널 인사) → 가능 시간 2개 → 필요한 정보(인테리어: 공사할 곳·평수 / 누수: 사진 2장 넓게·가까이 + 아랫집 연락 여부) → 마무리(회사 번호, 인스타는 'DM 으로 답 주세요'). 200자(공백 빼고) 안.
+- 가능 시간 hjFirstReplySlots(now): 오늘 시각 있는 일정(💰·세금 자동 일정 빼고, 끝 시각 없으면 hours·없으면 2시간)의 앞뒤 30분을 이동 여유로 막고, 지금부터 1시간 뒤 정시~18시의 1시간 칸 2개. 모자라면 다음 작업일(hjShiftWorkDays) 9시부터. 이름은 '오늘/내일/M/D(요일) 오전·오후 N시'.
+- 인스타 규칙 hjFirstReplyTelOk(ch) — 인스타 DM 이면 번호 줄을 빼고 혹시 남은 번호 모양도 지운다(v415). 사람이 고친 글에 번호가 들어가면 data-fr-tel 경고만(막지 않음, v415 수동 원고와 같은 태도). 변이 insta-tel 이 INSTA_NO_TEL 에서 잡는다.
+- 기록 hjFirstReplyRecord: 그 현장의 가장 최근 문의 노트(HJ_INQ_NOTE_RE)에 '[첫 답장] M/D HH:MM 채널' 한 줄 + replyAt(ISO, 처음 한 번만 — 두 번째부터 '[다시 답장]'이고 replyAt 그대로). 문의 노트가 없는 현장(카카오 리드 등)은 '[첫 답장] …' 노트를 새로(replyAt) — v445 첫 답장 시간 계산(hjInsightReplyMin)은 문의 노트만 보므로 거기엔 안 들어간다. hjInquiryReplied = 그 현장 노트 중 replyAt 이 있나.
+- 자리: 대시보드 #dashboardInquiryPending 안(v386 줄·다음 형제 div 구조 그대로) '💬 그중 답장 안 한 곳 n곳'(data-inq-noreply) + [💬 첫 답장](data-firstreply, 인라인 onclick) · 🌙 오늘 마감 영업 칸(#dcSales — 단추 목록 그대로) 밑 #dcFirstReply '오늘 들어와서 답장 안 한 문의'(inquiryAt 오늘) · 📞 새 문의 받기 다음 창 본문 #inqFirstReply(아래 단추 3개 그대로).
+- 핀3곳 hyeonjang-v436-firstreply(v435 위). 신규 tests/firstreply-v436.e2e.js 4/4, 변이 insta-tel·기준선(FIRSTREPLY_API_PRESENT) 실패 확인. 관련 9개(inqpending-v386·dcsales-v391·instanotel-v415·inquiry-v383·insight-v445·estfollow-v395·darkfix-v399·leadsrc-v379·expenseocr-v435)·정적 19개 통과.
+
+## 2026-10-16 v435 🧾 영수증 → 경비(기기 안 글자 읽기) · 월별 세무사 전달 자료
+
+- 넣는 곳: 사진 탭 도구 #btnReceiptAdd(빈 사진 탭 #btnReceiptAddEmpty) · 💳 간편 장부 #expReceipt · 월말 마감 3단계 · 더보기 [🧾 영수증 스캔](cardReceiptScan('receipt') 가 hjReceiptAdd 로 감 — 옛 Gemini 영수증 길은 안 탄다, 명함 스캔은 그대로). 폰은 바로 카메라/갤러리, PC 는 끌어놓기 칸(#rcDrop)+고르기. 여러 장이면 한 장씩.
+- 글자 읽기 hjReceiptOcrText = 기기 안 Tesseract(getWorker, kor+eng)만 — Vision·Gemini 키가 있어도 영수증 사진을 바깥으로 보내지 않는다(HEIC 는 heic2any 로 JPG 바꿔 읽음). [✍ 직접 입력]으로 기다리지 않고 넘어갈 수 있다. 풀이 hjReceiptParse(날짜 여러 형식·400일 안, 합계/결제금액 줄 우선·없으면 전화·사업자 줄 뺀 가장 큰 금액, 상호/가맹점 줄·없으면 첫 이름 줄, 카드/현금, 분류 HJ_EXP_CAT_DICT — 상호 먼저·글자는 가장 많이 걸린 분류). 실제 Tesseract(5.1, kor+eng)로 합성 영수증 3장을 읽혀 날짜·금액·상호·분류가 다 맞는 것을 확인했다(검사는 스텁).
+- 확인 화면 hjReceiptConfirmView(큰 입력칸 52px): 날짜·금액·상호·결제·분류 7종(HJ_EXP_CAT7 자재/공구/유류/식대/주차·통행/외주/기타)·현장(공통=없음)·[이 현장 원가에 넣기](기본 켬)·메모. 같은 날짜·금액(상호가 둘 다 있으면 상호까지 — hjReceiptDups, 카드 월 합계 제외) 지출이 있으면 data-rc-dup 경고 + 단추 '⚠️ 그래도 저장'(변이 dup-off 가 RECEIPT_DUP_WARNS 에서 잡는다).
+- 저장 hjReceiptSave = durableLocalMutation 한 번: 원본은 서류 길 그대로 IDB 'document_blob:<uuid>'(beforeCommit 에서 보관·확인), 파일 레코드 kind 'receipt'·documentMeta role 'receipt'(DOCUMENT_ROLES·KIND·documentRoleKind·documentMovable·서류 탭 목록에 receipt 추가)·이름 '영수증_YYYYMMDD_상호_금액원.ext'·text=읽은 글자, 지출 {src:'receipt', fileId:'k:'+fileKey, cat, category=HJ_EXP_CAT_LEDGER(공구→장비, 주차·통행→기타), ocr{raw≤800,guess}}. 새 최상위 키 없음.
+- 원가 반영 = 지출을 그 현장에 단다(projStats 유효원가가 수기 0 이면 장부 합으로 읽음: 자재→material·외주→outsource·그 밖→기타 경비). 끄면 영수증 파일만 현장에 두고 지출 project 는 ''. 수기 p.cost 는 건드리지 않는다 — 수기 자재비가 있으면 화면에 '이중 계산 방지' 안내. v439 입고 원가 반영 창의 중복 경고는 영수증 지출(같은 날짜·금액)을 본다.
+- 📤 세무사 전달 자료 hjTaxPackView(월 ‹ ›, 💳 장부 #expTaxPack · 세금 캘린더 #txPack · 월말 마감 3단계): xlsx 시트 3개 — 매출(그 달 수금·세금계산서/현금영수증 발행 상태·간이영수증 번호·이 달 준공 현장) / 지출(분류·장부 분류·상호·금액·결제·현장·영수증 파일 이름 또는 '없음'·출처) / 요약 + 영수증 사진(getFileOf, 없으면 썸네일, 그래도 없으면 00_읽어주세요.txt 에 빠진 이름) → '만물_세무자료_YYYY-MM.zip'(다운로드 또는 hjEvidenceDrive). **지시서의 ③ 미수 시트는 넣지 않았다**(2026-08-13 대표 결정·receivable-removed 검사) — 대신 요약 시트. 만든 뒤 hjTaxPackRecord: 노트 '[세무 자료] YYYY-MM 만듦'(taxPack{ym,at,exp,photos,via,again}) + 그 반기 부가세 일정(1~6월→tax_YYYY-07-25_vat1, 7~12월→tax_(Y+1)-01-25_vat2)의 taxPacks[ym] — 세금 캘린더 줄에 '✅ 세무 자료 n월 만듦'(hjTaxPackDoneHtml). 같은 달 두 번째는 '(다시 만듦)'.
+- 장부 줄에 상호·[🧾](data-rc-view → hjReceiptPreview, 기기 원본 보기 · ← 장부). v427 증빙 묶음 03_영수증 이 이 영수증을 담는다.
+- 핀3곳 hyeonjang-v435-expenseocr(v444 위). 신규 tests/expenseocr-v435.e2e.js 4/4(합성 영수증 PNG·글자 읽기/zip/xlsx 스텁), 변이 dup-off·기준선(EXPENSEOCR_API_PRESENT) 실패 확인. 관련 14개(document-select·document-upload·evidence-v427·extras-settle·mobile-friendly-ui·mobile-more-tools·mobile-photo-upload·photo-first-screen·revenue-basis·material-v439·ledger-cost-apply·amount-sign·margin-v429·team2-v444)·정적 19개 — document-select/document-upload 의 '다운로드 파일 이름' 한 칸은 main(3c7db67)에서도 똑같이 실패하는 이 컨테이너 환경 문제(통과 수 20·12 로 main 과 같음).
+
+## 2026-10-16 v444 👷 팀 앱 연동 2 — 내일 일정 한 번에 지시 · 공종별 체크리스트 · 사진 찍는 법 · 직원 모드
+
+- 서버 없이 되는 부분만(서버 API·직원 로그인·푸시는 팀 앱 서버 설계 뒤). 팀 앱 코드는 안 건드림 — work-order.json(v432 hjWoBuild/hjWoValidate) 그대로에 **선택 필드 guideKey 하나**(HJ_PHOTO_GUIDE 의 leakDetect/tile/wallpaper/finish, 없으면 통과·모르는 값이면 orders[i].guideKey 오류)를 더했고 지시서/팀앱_연동_인터페이스.md 에도 한 줄 적었다. v432 단건 보내기도 guideKey 를 싣는다.
+- [📤 내일 일정 팀에 보내기](일정 탭 #schTeamTomorrow → hjWoTomorrowView(day)): 그날 현장 일정(💰 수금·세금 자동 일정 제외)마다 지시 1개, 시간순 번호 wo_YYYYMMDD_nnn(hjWoNextId 다음부터), **이미 보낸 일정은 같은 번호로 다시 보냄**(items kind 'sched' ref 로 찾음 — 팀 앱에 같은 지시가 두 번 생기지 않게, 화면 data-wo-day-resend). 체크리스트는 공종 틀 HJ_WO_CHECKLIST_BY(철거·타일·도배·설비·누수 탐지·누수 수리 — hjWoTradeOf 가 일정 제목·메모·현장 이름으로 고름), 제목·메모는 hjRetScrub(고객 이름→'고객', 번호·메일·동호수 지움) + 돈 이야기 줄 통째로 뺌(hjWoMemoSafe). 그래도 hjWoPrivacyIssues 에 걸리면 ⛔ 표시하고 저장·복사·공유 모두 막는다. 기록은 hjWoRecordMany — 현장마다 p.workOrders(v432 와 같은 꼴 + guideKey) + '[팀 지시]' 노트, durableLocalMutation 한 번(스냅샷 '팀 지시(하루치) 기록 전' 1개).
+- 📷 사진 찍는 법 hjPhotoGuideView(사진 탭 도구 #btnPhotoGuide · 빈 사진 탭 #btnPhotoGuideEmpty): 공정 4종 카드(data-guide) + 공통 4줄(data-guide-tips) + [🖨 A4 한 장](hjDocShell → hjDocDeliverView). 읽기 전용.
+- 👷 직원 모드(설정 기타 #hjStaffOpen → hjStaffView, PIN 4자리 — localStorage hj_role='staff', hj_staff_pin=SHA-256(기기 소금 hj_staff_salt|PIN)): **기기 화면 제한이지 보안 권한이 아니다**(도움말 data-staff-help 에 그대로). 화면 글자만 가린다 — 텍스트 노드의 '…원' → (금액 숨김), 전화번호 → (번호 숨김), 숫자와 단위가 다른 조각(150<small>만원</small>)도 가림, 입력칸·글상자 값은 안 건드림(가린 글자가 저장되면 안 됨), MutationObserver 로 새로 그린 화면·모달도. 통화 단추(tel: 링크)는 그대로. CSS(#hjStaffCss)로 견적·정산·회계 탭, 삭제·대량 변경·복원·돈 화면 단추(data 속성 목록 + .kpis/.ratewrap/.amt), 글자로 고른 삭제·정리·되돌리기 단추(hjStaffHideNode → data-staff-hide)를 숨긴다. render 감싸기로 막힌 탭은 대시보드로(토스트), openGdriveSetup 감싸기로 설정 대신 직원 모드 창. 위쪽 띠 #hjStaffBar(z 65 — 머리줄 위·모달 아래, 모바일 머리줄 top 44px)·[끄기]는 PIN 맞아야.
+- 직원 모드에서 생긴 기록: workPunch 작업시간·saveReport 작업 보고에 by:'staff'(레코드 안 — 통째 직렬화), 사진은 ingestFile 감싸기(원래 promise 그대로 돌려줌 — async 로 감싸면 사진 추가 흐름 타이밍이 바뀐다)로 모아 2초 묶음마다 '[직원 사진] 현장 n장' 노트(by:'staff', 사진 참조 hjFileRef, 앱 목록에 남은 사진만). 파일 직렬화 칸은 안 늘렸다. 대표 첫 화면 '👷 직원이 남긴 기록 n건'(data-staff-records, 직원 모드에서는 안 보임) → [확인] hjStaffReviewView → [✅ 모두 확인함](노트 done · workLog.seenAt · report.seenAt).
+- 핀3곳 hyeonjang-v444-team2(v448 위). 신규 tests/team2-v444.e2e.js 5/5(① 하루치 지시·개인정보 막힘·원자 저장·같은 번호 다시 보냄 ② 작업 보고 가져오기 v432 길 ③ 직원 모드 ④ 사진 찍는 법·guideKey ⑤ 계약), 변이 mask-off(금액 가림 끔)는 STAFF_MONEY_MASKED·기준선은 TEAM2_API_PRESENT 에서 실패 확인. 관련 12개(teampacket-v432·photo-first-screen·mobile-photo-upload·settings-tabs·settings-safety·key-persist·dash-cards·dash-reports·reportfill-v408·mobile-more-tools·handoff-v374·mobilealert-v443)·정적 19개 통과. teampacket-v432 는 사진 결과창이 늦게 뜨는 경합(v448 판에서도 3번 중 1번 실패)이 있어 결과창(#photoIntakeResult)·__photoIntakeBusy 를 기다린 뒤 닫도록 검사만 고쳤다.
+
+## 2026-10-16 v448 🌦 계절 캠페인 — 장마 전 방수 점검 · 겨울 동파 · 환절기 결로 · 명절·새학기 전 도배 (대상 추출 + 원고)
+
+- 자동 발송 없음 — 명단(번호 줄바꿈)·문자 원고·인스타/당근 글을 복사해 대표가 문자 앱에서 보낸다. 기록은 연락처 안 c.mkt{consent,optOutAt,lastSentAt,sent[{c,at}]≤12}와 기존 state.adPosts(ch:'sms-season', campaign, count) 뿐 — 새 최상위 키 없음. 추출·원고는 읽기 전용(검사가 저장본 비교).
+- 광고 문자 규칙 HJ_AD_SMS_RULE(화면에 그대로): (광고) 머리 · 끝 "수신거부: 이 번호로 '거부' 회신" · 밤 9시~아침 8시 경고(hjSeasonNight — 복사할 때도 토스트) · 받는 사람은 ① 동의(c.mkt.consent) ② 거래 중 또는 거래 끝난 지 183일 안(hjSeasonRecentDeal — 그 번호의 모든 현장의 준공일·입금일, 진행 중이면 거래 중; 변이 six-month 가 SEASON_SIX_MONTH_RULE 에서 잡는다). 그 밖은 '동의 필요'로 회색·선택 불가, 수신거부 영구 제외, 90일 안 발송 제외, 한 번호 한 줄, 번호 없는 현장은 개수만.
+- 캠페인 4종 HJ_SEASON_CAMPAIGNS(시기 창·규칙·문자·SNS 문구) + 규칙 HJ_SEASON_RULES(leak13 누수 1~3년 전 · waterproof 방수/욕실/베란다/외벽 준공 · leakcomplex v445 반복 누수 단지의 관리사무소(state.aptOffices 번호) · outdoorpipe 보일러·동파·계량기·외부/베란다 수전 · leakpipe 누수 배관 원인 · condense 도배·단열·환풍기·결로·곰팡이(노트 포함) · old2y 준공 2년+ 인테리어 · partial 부분·실리콘·보수). 판정 텍스트는 현장 이름·공정·앱 견적 품목. 이름은 성+○○ 님, 관리사무소는 '단지 관리사무소'.
+- 화면 hjSeasonView(📣 광고 탭 [🌦 계절 캠페인] data-season · 첫 화면 시기 줄 hjSeasonDueHtml data-season-open — 시기 창 안이고 60일 안 발송 없을 때): 규칙 안내·밤 경고·캠페인 고르기·명단(체크, 기본은 보낼 수 있는 사람 전부)·건당 단가(localStorage hj_sms_unit_cost)·예상 비용·원고(글자 수, 70자 넘으면 장문)·복사 3종·[✅ 보냈음](확인 → lastSentAt·sent·adPosts 1건)·행마다 [🚫 거부]. 원고 복사는 hjSeasonIssue 통과해야 — 과장 표현(HJ_AD_BANNED)·(광고)/수신거부 지움·SNS 전화번호면 막는다.
+- 내 캠페인: [✏ 이 틀로 내 캠페인] → 이 기기 localStorage hj_season_custom(제목·기간·규칙·문구만, 과장 표현·개인정보 검사). 연락처 카드 [📣](data-conmkt → hjMktView): 동의 받음(오늘 — 수신거부 지움)·수신거부 처리, 카드에 상태 줄. 연락처가 없던 현장 고객·관리사무소는 보냈음/거부/동의 때 최소 연락처(이름·번호·꼬리표)를 만든다.
+- 동의 문의 한 줄(기본 꺼짐): 간이영수증 입력 #prcMktAsk → 문서 끝 □ 줄(HJ_MKT_ASK_LINE), 문자 센터 '준공 인사' #mcMktAsk → 본문 끝 질문(HJ_MKT_ASK_SMS) 넣고 빼기만. 고객이 동의하면 대표가 연락처 📣 에서 기록.
+- 성과 hjSeasonPerf(읽기): 보낸 날(adPosts) 뒤 30일 안에 그 캠페인을 받은 번호(c.mkt.sent)의 문의·수주 → v445 분석 화면 '🌦 계절 캠페인 성과' 표(엑셀 시트는 3개 그대로).
+- 핀3곳 hyeonjang-v448-season(v437 위). 신규 tests/season-v448.e2e.js 4/4(합성 30명·관리사무소 1, 캠페인별 기대 명단은 검사 쪽 손 계산), 변이 six-month·기준선 실패 확인, 관련 14개(instanotel-v415/leadsrc-v379/pay-receipt/insight-v445/contactimport-v397/contactpick-v393/dash-cards/marketing-draft/marketing-safety/inqpending-v386/doccenter-v433/publicweb-v446/proposal-v437/mobile-more-tools)·정적 통과. instanotel-v415 의 CHANNEL_TOUCH_HEIGHT_44 는 모달 열림 애니메이션 중 boundingBox 를 재서 가끔 실패한다(v437 판에서도 3번 중 1번) — 이번 변경과 무관.
+
+## 2026-10-16 v437 📊 견적 비교표 · 견적 비교 제안서 · 고객 폰으로 보내기
+
+- 안 이름 q.tier('basic'|'standard'|'premium', 없으면 칸 없음) — 견적 편집기 [안 (비교표)] 칸(#qmTier), 견적 목록 카드에 '기본안' 배지(data-qtier). 새 최상위 키 없음.
+- hjQuoteCompare(quotes): 품목 이름(공백 정리) 합집합 × 안 열, 칸 = 수량×단가(공급가, quoteCalc 계약)·같은 이름 합산·규격 표시, 차이(값 다름 또는 한쪽만) data-qc-diff(변이 no-diff 가 QC_DIFF_MARKED 에서 잡는다). 합계는 공급가·부가세 10%·부가세 포함 + '견적서 표기'(원래 포함/별도) — 표기가 섞이면 data-qc-mixed 안내.
+- hjQuoteCompareView(현장[,ids]): 폰(<560px)은 안마다 카드 세로(data-qc-card), 넓으면 표(가로 스크롤 상자). 2~3개 고르기(3개 넘으면 거절), 기본 선택은 안 이름 붙은 견적 먼저. 진입: 📎 서류 만들기의 '견적 비교표 · 제안서'(예정 줄 todo:compare → 실제 compare — doccenter-v433 예정 줄 단언 ≥4→≥3·클릭 대상 todo:prep 으로 고침) · 견적서 탭 목록 [📊 비교표](#qmCompare, 활성 현장 또는 견적 2개+ 현장 고르기).
+- [✅ 이 안으로 확정](hjQuoteTierConfirm): 비교한 안 중 고르지 않은 앱 견적의 가상 견적 파일(quote_<id>)에 exSum — 매출 Σ 에서만 빠지고(견적·정산 Σ 로 되돌림) 견적은 그대로 + 노트 '[견적 안 확정]'. 안 여러 개가 현장 매출에 다 더해져 마진·대시보드가 부풀던 문제를 막는다. 견적 저장 토스트에 '이 현장 견적 n개가 매출에 모두 더해집니다' 안내(hjQuoteTierNote).
+- 제안서(hjProposalModel/Html → 기존 hjDocDeliverView): 제목·받는 분·현장 → 고객 요청(문의 노트 본문, hjRetScrub 로 이름·번호·메일·동호수 지움) → 비교표 → 사례 사진 4장(hjProposalCasePhotos: 다른 현장 사례 묶음 중 hjCaseBlock 통과 — 동의·개인정보·과장 표현 — 같은 공종(hjInsightTrade) 먼저·최근 순, 현장마다 전·후 1장씩, 공정 이름에 개인정보·과장 있으면 그 사진 제외, 설명은 동+공정만; 변이 case-filter 가 PROPOSAL_CASE_FILTER 에서 잡는다) → 공사 기간(contractPeriodProposal)·하자 보수(기본 보증 목록)·결제(HJ_PAY_RATIO) → 연락처. [이름 가리기]면 '고객님'·동 단위 제목·현장.
+- 발행 기록 p.proposals[{id,at,quoteIds,pdfName,via}] + 노트 '[제안서] 견적 비교 n안 · 파일명' — 실제로 가져간 때(PDF·워드·HTML·이미지) 만들기 한 번에 한 줄(durableLocalMutation, 같은 id 는 dup). 검사 씨앗 사진은 _driveId 를 줘야 원자 저장 뒤에도 썸네일이 남는다(실제 사진은 핸들·드라이브 id 가 있다).
+- 고객 폰: 서버 저장 없이 되는 범위 — 보증서와 같은 파일 공유(🔗 공유 · HTML 파일 = hjWarrantyShareHtml, Web Share 파일 → 카톡·문자 첨부)와 💬 문자 초안(HJ_PROPOSAL_SMS, msgCenterCompose 'doc433' — 자동 발송 없음). 열람 링크·읽음 확인은 서버가 필요해 다음 단계(지시서대로). v413 욕실 3안은 main 에 없어 연결하지 않았다.
+- 핀3곳 hyeonjang-v437-proposal(v445 위). 신규 tests/proposal-v437.e2e.js 4/4, 변이 no-diff·case-filter·기준선 실패 확인, 관련 13개(quotewon-v390/caseweb-v385/warranty-link/doccenter-v433/quote-edit-safety/quote-flow/quote-vat/estimate-dedupe/consultquote-v384/stalequote-v392/leakquote-v421/mobile-more-tools)·정적 통과.
+
+## 2026-10-16 v445 📈 분석 — 채널별 문의→수주 전환 · 공종×동 마진·수요 · 누수 반복 단지
+
+- 진입: 💼 회계 탭 툴바 [📈 분석](data-insight 위임) · 📣 광고 탭 📞 문의 경로 상자 [📈 채널별 전환]. hjInsightView/hjInsightData — 읽기 전용(기간·공종 선택은 메모리 __hjInsight, 저장 자료 그대로 — 검사가 저장본 비교).
+- 문의 1건 = 현장 1곳. 문의 날짜 hjInsightInqDate: p.inquiryAt → [문의 접수] 노트 → [홈페이지 상담 리드] 노트 날짜 → 가장 이른 활동(일정·앱 견적·견적 파일·입금·준공). 날짜 없는 현장은 기간 밖(개수만 표시). 보관 현장도 센다(지난 실적).
+- 채널 hjInsightChannel: p.leadSrc → p.kakaoLead → '[문의 접수] 날짜 · 경로' 노트 글(HJ_LEAD_SRC 라벨) → 홈페이지 리드 → 모름. '기타'(직접 고른 etc)와 '모름'은 한 줄 '기타·모름', 그 비율 줄(hjInsightUnknownHtml, data-insight-unknown)은 늘 보인다 — 20% 이상이면 주황 + 문의 경로 채우기 안내(변이 hide-unknown 이 INSIGHT_UNKNOWN_SHOWN 에서 잡는다).
+- 단계는 누적: 상담(일정 — 💰·세금 자동·AS 방문 제외 — 또는 실측 이상·견적·수주) ⊇ 견적(앱 견적·견적 파일·수주) ⊇ 수주(시공 이상·준공·입금). 매출 = 수주 현장의 v429 hjProjectMargin 공급가, 건당 매출은 매출 있는 수주만. 첫 답장 중앙값 = 문의 노트의 replyAt(v436 이 남길 칸) − 노트 시각(at, 없으면 ko-KR 날짜 글 hjKoDateTime), 기록 없으면 '—'.
+- 공종 hjInsightTrade: 누수 현장은 탐지 원인 묶음(누수·배관/방수/외벽/기타), 인테리어는 현장 이름·공정·앱 견적 품목 낱말(HJ_INSIGHT_TRADES 순서 첫 일치, 없으면 '인테리어 기타'). 동 hjDongOf(HJ_DONG_RE): 주소 → 현장 이름의 '한글1~5자(+숫자1)동' 낱말, 숫자 동(101동)·단지 낱말·출동/이동 같은 일반 낱말(HJ_DONG_STOP) 제외. 공종×동 표: 문의·수주·수주율·평균 공사비·평균 마진율(원가 있는 수주만, Σ마진/Σ매출)·재문의율(경로 '다시 맡긴 고객' 또는 같은 고객 번호의 더 이른 문의). 규칙 요약: 마진율 상위 3 / 그 나머지 하위 3 / 문의 2+ 이고 수주율이 전체보다 낮은 동 3.
+- 누수 반복 hjInsightLeak(전체 기간): 단지명은 hjAptUnitOf 결과 중 단지 낱말(HJ_APT_COMPLEX_RE)이 든 한 낱말만(현장 이름 앞의 사람 이름이 나오지 않게), 없으면 동 단위. 2건 이상만, 원인 4묶음·같은 세대 재발 수·마지막(접수일)·[🗺](네이버 지도 검색 링크 열기만)·원인 2번 이상이면 "관리사무소에 협력 제안" → 기존 📇 사업자·명함 보내기('관리사무소 업체 등록' 문구).
+- 내보내기: 엑셀 시트 3(채널 전환·공종·동·누수 반복 단지, 기존 ensureXLSX) · 이미지(hjDocShell 문서 → 기존 hjDocHtmlToPng). 화면·엑셀·이미지 모두 고객 이름·전화·호수·현장 이름 없음(검사가 세 군데를 다 훑는다). 표는 가로 스크롤 상자 안에서만 넘친다.
+- 핀3곳 hyeonjang-v445-insight(v446 위 — 번호는 지시서 번호, 배포 순서는 패치 순서). 신규 tests/insight-v445.e2e.js 4/4(합성 40곳: 채널 5·공종 2·동 6·반복 단지 2, 기대값은 검사 쪽 계산), 변이 hide-unknown·기준선 실패 확인, 관련 10개(margin-v429/inqpending-v386/leakdetect-v420/leadsrc-v379/leakwarranty-v423/ledger-cost-apply/ledger-roundtrip/margin/mobile-more-tools/publicweb-v446)·정적 통과.
+
+## 2026-10-16 v446 공개 웹 — 리뷰 QR(앱 안 인코더) · ⭐ 리뷰 QR 카드 · 보고서·영수증 끝 QR · 사례 ZIP case.json
+
+- QR 인코더(hjQrMatrix/hjQrDraw/hjQrPngDataUrl/hjQrSvg): 외부 라이브러리 없음, 바이트 모드(UTF-8)·오류정정 M·버전 1~10(213바이트까지, 넘으면 null). 공개 참조 구현(Nayuki QR Code generator)과 표·배치·벌점(N1~N4)이 같아 같은 그림이 나온다 — 2026-10-16 버전 1~10×마스크 8×한글 275가지를 한 칸씩 대조, zxing 으로 전부 읽힘(OpenCV 고전 검출기는 일부 마스크에서 위치를 못 찾지만 Aruco 검출기·zxing 은 다 읽는다 — 인코딩 문제 아님). 문서에는 PNG(<img data-qr>, 칸 8px) — 워드(.doc)가 SVG 를 못 그려서다.
+- 리뷰 링크: 설정 ⭐ 기타의 기존 __reviewUrl(이 기기 IndexedDB review_url)만 쓴다. hjReviewLink 는 http(s) 로 시작하는 것만(앞이 빠진 'naver.me/…' 는 폰 카메라가 글자로만 읽는다). 비었거나 아니거나 너무 길면 카드 대신 "설정에서 리뷰 링크를 넣으세요" + [⚙️ 설정 열기](hjOpenSettingsTab('etc','rvUrl') — openModal 의 setTimeout 포커스 뒤에 칸으로).
+- ⭐ 리뷰 QR 카드(hjReviewQrCardView/hjReviewQrCardHtml): A6(105×148mm) 두 장이 한 쪽(@page 210×148mm, 가운데 점선), 회사명·"시공 만족하셨다면 리뷰 한 줄 부탁드립니다"·QR·대표 번호. 기존 hjDocDeliverView(PDF·워드·HTML·이미지). 진입: 설정 리뷰 링크 옆 [⭐ 리뷰 QR 카드](칸에 적고 저장 안 했으면 먼저 저장), 📎 서류 만들기 AS·보증 그룹 reviewqr. 저장 자료 변화 없음.
+- 끝 QR 토글(hjQrToggleHtml/Read, localStorage hj_qr_on {report,rcpt}, 기본 켬, 링크 없으면 칸 자체가 없다): 완료보고서(aptReportView #rpQr → buildAptReportPDF 마지막 장 확인란 아래 왼쪽 330px, window.__rptQr 에 자리 기록 — 검사가 그 JPEG 을 다시 읽는다)·간이영수증(payRcptDialog #prcQr → payRcptHTML o.qr, 맨 끝 상자 data-review-qr). 보고서는 관리사무소에도 가니 대표가 끄면 그 기기에서 계속 꺼진다.
+- 사례 ZIP: 재료 글 줄 이름을 manmool scripts/new-case-post.mjs parseMaterial 정규식 그대로(HJ_CASE_SITE_LABEL '2. 증상'·'3. 탐지 방법'·'4. 원인+전유/공용')로 — 예전 화면 이름 줄 3개를 그쪽이 못 읽어 초안이 '필수 항목 누락'으로 멈췄다(case-pack.e2e 의 옛 단언도 고침). ZIP 에 case.json(format 'manmool-case/1': title·area(동 단위, 장소 낱말 → 없으면 고객 주소의 동·읍·면)·kind 누수|인테리어·tags·summary 6·photos[{file,phase before|mid|after,caption}]·date(준공일)·consent·app). 사진 설명은 공정 이름 — 동·호수·과장 표현이 섞이거나 분류명뿐이면 '시공 전·작업 중·완료'(재료 글 사진 줄도 같은 hjCaseCaption). 긴 변은 기존 1800 그대로(사이트 assets/cases 규격 — 지시서의 1600 대신).
+- 과장 표현 HJ_AD_BANNED(최저가·무조건·100%·평생 보증·업계 1위·지어낸 만족 후기 — manmool 사례 검사 정규식과 같은 축): 6항목에 있으면 ZIP·재료 복사를 막고(hjCaseBlock) 칸 아래 경고.
+- 홈페이지 쪽은 별도 패치(manmool 저장소): scripts/import-case-zip.mjs + Import-CaseZip.ps1 — ZIP 을 풀어 case.json 을 검사(동의·개인정보·과장·JPEG/EXIF)하고 .private/case-drafts 에 비공개 초안+사진을 만든다. 게시(site.json·posts·assets/cases)는 지금처럼 사람이 확인한 뒤. 지시서 F1 의 cases/ 갤러리·F2 랜딩 통합은 사이트에 이미 사례 체계(blog·case-finder·leak.html·검사 다수)가 있어 겹치므로 미룸.
+- 핀3곳 hyeonjang-v446-publicweb(v443 위). 신규 tests/publicweb-v446.e2e.js 5/5(참조 구현 지문 6·검사 쪽 디코더 왕복 — 형식 BCH·RS 신드롬·바이트 모드), 변이 qr-format·case-labels·기준선 실패 확인, 관련 16개(case-pack/marketing-safety/photo-refs/mobile-more-tools/pay-receipt/reportfill-v408/doccenter-v433/contract-terms/settings-tabs/warranty-review/mobile-modal-tap/key-persist/settings-safety/evidence-v427/aptdocs-v441/retention-v447)·정적 통과. offlinequeue-v425 e2e·cache unit 은 main 에 캐시 이름 'hyeonjang-v425-offlinequeue' 가 박혀 있어 핀을 올린 모든 판에서 실패한다 — PR #189(v428)이 현재 빌드를 읽게 고쳤고, 그 판으로 이 브랜치에서 13/13·8/8 통과. **#189 를 먼저 병합할 것.**
+
+## 2026-10-16 v443 모바일 — 일정·출동 N분 전 알림 · 폰 캘린더 알람 · 음성 메모
+
+- 알림 ①(앱이 떠 있을 때): hjAlertDue(now) — 오늘 시각 있는 일정 중 N분(hj_alert_cfg min 10/30/60, 기본 30) 안, 출동만 옵션(s.urgent). 1분 타이머(hjAlertRun)가 hjAlertTick → 상단 빨간 띠(#hjAlertBar, [열기]로 그 현장) + 진동 + 권한 허용 시 알림(서비스워커 showNotification → 안 되면 new Notification). 한 번 울린 일정은 이 기기 localStorage hj_alerted('id|날짜 시각', 최근 200개)로 다시 안 울린다 — 지시서의 s.alerted(일정 레코드) 대신 기기 기록으로 바꿨다(알림은 기기마다 따로, 저장 자료·클라우드 저장을 매번 건드리지 않게; 변이 alert-dup 이 ALERT_ONCE 에서 잡는다). 시각을 바꾸면 다시 울린다. 자동화 브라우저(navigator.webdriver)에서는 1분 타이머를 켜지 않는다 — 검사는 hjAlertTick(시각)을 직접 부른다.
+- 알림 ②(확실한 알림): buildICS(items,{alarmMin}) 에 VALARM(TRIGGER:-PTNM, 시각 있는 일정만)·LOCATION(s.location). 옵션 없이 부르는 기존 내보내기는 그대로(알람 없음). hjAlertIcsItems(날짜): 제목 "[현장] 일정 — 주소", 설명 "준비물: …"(hjPrepFor) + 메모에서 고객 이름·전화 지움. 첫 화면 [📅 오늘 일정 n건 폰 캘린더에 넣기](data-ics-today 위임), 일정 카드 개별 .ics(exportScheduleICS)도 알람·같은 제목.
+- 설정: ⚙️ 설정 › ⭐ 기타 [🔔 일정·출동 알림] — 켜기, 분, 소리·진동, 출동만, 권한 버튼(누를 때만 Notification.requestPermission), 첫 사용 도움말 1장("앱이 꺼져 있으면 폰 캘린더 알림이 확실합니다", hj_alert_help_seen).
+- 음성: hjMicAttach(root, 칸) — 일일 작업 보고(#rDone)·내 업무 완료 보고(#mwDoneText)·누수 탐지 메모(#hjLeakNote) 옆 [🎤 누르고 말하기](pointerdown~up 동안 SpeechRecognition ko-KR, 글은 칸에만 — 저장은 원래 저장 버튼). 미지원이면 [🎙 녹음] → MediaRecorder 최대 60초·2MB → 기존 파일(기타, '음성_YYYYMMDD_HHMM.webm', 그 현장)로 넣고 칸에 [음성 MM/DD HH:MM]. 지시서의 kind 'voice' 대신 기타(서류 목록에 보이게). 탐지 메모 [🧩 말한 내용으로 칸 채우기]: hjVoiceFields 가 "방법/원인/위치" 다음 칸 이름까지를 값으로 나눠 방법 버튼·원인·위치를 제안(압력은 급수/온수/난방 말한 것만, 안 하면 급수).
+- sw.js SHELL_PATHS 그대로(테스트가 main 과 비교). 핀3곳 hyeonjang-v443-mobilealert(v441 위). 신규 tests/mobilealert-v443.e2e.js 5/5, 변이·기준선 실패 확인, 관련 12개(ics-save/leakdetect-v420/crew-v357/dash-cards/reportfill-v408/leakintake-v419/my-work/mobile-operations/dayclose-v359/handoff-v374/delay-v347/asclose-v366)·sw-cache·정적 21개 통과. 실기기(갤럭시) 알림 1건·받아쓰기 1건 손검사는 아직 — 대표님 폰 또는 에뮬레이터 확인 필요.
+
+## 2026-10-16 v441 아파트 서류 4종 (공사 신청서 · 입주민 안내문 · 현관 게시문 · 이웃 동의서)
+
+- hjAptUnitOf: 단지·동·호수는 현장 이름(aptNameParse) → 고객 주소의 "○동 ○호"(단지는 그 앞 낱말 중 아파트·파크·자이 … 가 든 것) 순, 못 찾으면 빈칸. 관리사무소는 state.aptOffices(aptComplexKey 같음), 공사 기간은 그 현장 일정(hjSchSpan 여러 날 포함) 처음~끝, 소음 작업일은 일정 제목·메모의 철거·타공·코어·할석 …, 공종은 최근 견적 품목 위 5개. 화면(hjAptDocsView)에서 모두 고칠 수 있다. 작업 시간 기본 09:00~18:00, 소음 작업 10:00~17:00.
+- 4종 HTML(hjAptApplyHtml/NoticeHtml/PostHtml/ConsentHtml, hjDocShell)은 고객 이름·전화를 싣지 않고 연락처는 회사 번호. 동의서는 세대·서명·날짜 6칸 모두 빈칸(이름 자필), 게시문은 1쪽에 2개. 발행 기록은 v433 자리 p.docs(type aptapply/aptnotice/aptpost/aptconsent, AA/AN/AP/AC-날짜-순번) — 문서 하나는 실제로 가져갈 때, [📦 4종 ZIP]은 ZIP을 만든 뒤 4건을 원자 저장(durableLocalMutation) + 노트 "[아파트 서류] MM/DD 4종 발행". 같은 날 같은 종류는 두 번 남기지 않는다. ZIP 에는 보관한 관리사무소 양식도 들어간다.
+- 관리사무소 자체 양식은 [📎 관리사무소 양식 넣기] → 기존 파일(기타, 그 현장)로 넣고 현장 안 p.aptForm{fileRef,name,at} 로만 가리킨다(p.docs 에 섞지 않음, 자동 채움 없음). [💬 관리사무소 문자]는 등록된 관리사무소 번호로 초안만.
+- 첫 화면 "오늘 현장 업무"에 아파트 현장(동·호수 앎) 시공 시작 오늘~3일 뒤 + 신청서 미발행이면 "🏢 관리사무소 서류 4종 만들기 — 현장 (시공 D-n)"(data-aptdocs-open 위임). 🏢 아파트 관리 단지 카드 현장 줄에 [📄 서류 4종]. 📎 서류 만들기의 예정 줄(todo:apt)을 실제 항목 aptdocs 로 바꿨다(doccenter-v433 예정 줄 단언 5→4).
+- 데모(loadDemo)에 '은행동 한빛아파트 101동 702호'(시공 D-2·D-3 일정) 추가 — settings-safety 의 데모 현장 수 단언 3→4.
+- 핀3곳 hyeonjang-v441-aptdocs(v438 위). 신규 tests/aptdocs-v441.e2e.js 3/3, 변이 no-unit·기준선 실패 확인, 관련 10개(doccenter-v433/apartment-manage/apartment-units/action-search/amount-sign/mobile-tap-table/settings-safety/trip-expense-overlap/evidence-v427/insurance-v442)·정적 21개 통과. apartment-projects 는 이 컨테이너에서만 실패하는 환경 문제(PC·CI 확인).
+
+## 2026-10-16 v438 보증 만료 전 안부 · AS 무상/유상 판정 도움
+
+- 보증 만료 안부(hjWarrantyCareRows): 현장 보증 항목(hjWarranty items — 기본 방수 3년·설비 2년·마감·전기 1년, 사용자 보증은 저장된 expiresAt)마다 오늘 이후 가장 이른 만료가 60일 안이면 대상, 30일 안이면 30 단계. 첫 화면 "오늘 현장 업무"(dashboardTodoHTML)에 "🛡 보증 만료 앞둔 현장 n곳"(data-wcare, [안부 문자] data-wcare-open 클릭 위임). 문자는 초안만(msgCenterCompose kind warrantycare) — "준공 후 N년이 되어 갑니다 … 보증이 MM/DD까지예요 … 점검 방문 가능 시간 ① ② "(이틀 뒤부터 평일 둘, 오전 10시·오후 2시). [✅ 보냈음] → 현장 노트 [보증 안부] + 현장 안 p.warrantyCare{at,item,stage}, 30일 숨김(29일째 숨김·30일째 다시).
+- AS 판정 도움(hjAsJudge·hjAsJudgeView, 🔧 AS 관리 기록 펼침의 [⚖ 무상·유상 판정 도움]): 5질문(보증 기간·같은 부위·과실/외부 요인·소모품·시공 범위, 예/아니요/모름) → 과실·외부 요인 → 유상, 범위 밖 → 유상, 기간 지남 → 유상, 소모품 → 현장 확인, 다른 부위 → 현장 확인, 모름 남음 → 현장 확인, 모두 맞으면 무상. 보증 기간 답은 AS 기록의 공종(hjAsWarrantyVerdict)에서 먼저 채운다. 최종 판정은 사람이 바꿀 수 있고(suggested 와 함께 저장), 저장은 AS 레코드 안 a.verdict{result,reasons,answers,suggested,at} + 노트 [AS 판정]. 고객 안내 문자 초안은 금액 없음, 기존 [💬 고객 안내 문자](hjAsCustomerMsg)도 판정이 있으면 판정 문구를 쓴다. 변이 ignore-misuse 가 AS_MISUSE_PAID 에서 잡는다.
+- 핀3곳 hyeonjang-v438-warrantycare(v447 위). 신규 tests/warrantycare-v438.e2e.js 3/3, 변이·기준선 실패 확인, 관련 10개(as-record/asclose-v366/asview-v367/asvisit-v365/inqpending-v386/stalequote-v392/warranty-v313/leakwarranty-v423/dates-warranty-office/warranty-review)·정적 21개 통과.
+
+## 2026-10-16 v447 데이터 안전 (개인정보 보존 3년·정리 · 삭제 요청 · 백업 점검·복원 리허설 · 변경 기록)
+
+- HJ_RETENTION{years 3(대표 결정), inquiryYears 1, ledgerYears 5, backupWarnDays 3, backupAlertDays 7, auditDays 90}. 기준일 = 마지막 활동일(준공 doneAt·수금 payLog.d·AS asLog date/visitAt/doneAt·노트 date — ko-KR 날짜 문자열도 hjRetYmd 가 읽는다). 정확히 3년 전 날도 대상(±1일 테스트). 기준일 없는 현장은 목록에 넣지 않고 개수만.
+- 예외(정리 안 함): 보증 남음(hjWarranty end ≥ 오늘 — 기본 보증이 36개월이라 준공 기준이면 사실상 3년 하루 뒤부터 대상), 대금 정리 전(projStats.due>0 — 숫자는 보여 주지 않는다, 2026-08-13 미수 표시 없앰 결정과 receivable-removed.check 를 지킨다; 변이 ignore-due 가 RET_EXCEPTION_DUE 에서 잡는다), 진행 중 AS, 분쟁 메모. 연락처는 tag 고객 + 같은 번호 현장에 거래(stage≥2·수금·견적)가 없을 때만 1년 규칙, 관리사무소·팀원·거래처는 제외.
+- 정리(hjRetApply)는 자동 실행 없음 — 🔒 목록에서 고르고 "정리" 를 직접 쳐야 하고, 바꾸기 전에 hjSnapshot('개인정보 정리 전',강제)을 찍고 못 찍으면 아무것도 안 바꾼다(변이 skip-snapshot 이 RET_SNAPSHOT_FIRST 에서 잡는다). 지우는 것: 고객 이름→'고객'·전화·메일·카카오, 주소는 행정동까지(hjRetAddrDong), 하자보증 서명·보관본 html·피해 확인서 서명/링크 이름, 그 현장 노트·일정·견적 제목/메모/주소·AS 글·파일(가상 견적서 이름·OCR 글자·est.customer·명함 인식)의 이름·번호·동호수, 같은 번호 연락처, 현장 이름에 든 고객 이름(hjRenameProjectRefs 로 모든 참조 함께). 남기는 것: 견적 금액·품목, 수금·지출, 발행 문서 기록, 파일. 기록 p.anon{at,by,reason retention|request}·c.anon.
+- 삭제 요청(현장 상세 [🔒 개인정보], data-retreq 위임): 그 현장만 같은 익명화(reason request) + 고객 안내 문자 초안(세법 5년 보관 설명, 금액 없음, hjSendSms 초안만). 현장 통째 삭제는 기존 deleteProject(안전판 이미 있음)에 변경 기록만 더했다.
+- 백업 점검: backupMarkDone 을 드라이브 백업 성공에도 붙였다(이전엔 파일 내보내기만). 첫 화면 hjSafetyDashHtml — 3~6일 노랑 한 줄(data-backup-nudge), 7일+ 는 기존 백업 카드를 빨강으로(data-backup-card=alert), 보존 정리 대상 월 1회 알림(hj_ret_seen 달 기준), 복원 리허설 30일 알림. 복원 리허설(hjRestoreRehearsal)은 최근 안전판을 읽어 레코드 수·최상위 키를 지금과 비교만 한다(복원 안 함).
+- 변경 기록: IndexedDB 'hyeonjang-audit'(직렬화 자료 밖) {at,kind,target,count,by,device} — 대상은 종류 이름만(' — ' 뒤 현장 이름은 잘라냄, 번호·메일 제거). 강제 안전판(hjSnapshot force=true — durableLocalMutation 포함)·현장 삭제·정리·안전판/드라이브 복원·거래처 명단 가져오기·리허설을 남긴다. 직원 모드(v444)·설정 변경 훅은 아직 없음. 🧾 변경 기록 화면: 종류·날짜 필터, 200건, CSV(BOM), 열 때 90일 지난 것 정리.
+- 진입: ⚙️ 설정 › ⭐ 기타 [🔒 데이터 안전] → 백업 상태·리허설·보존 정리·변경 기록. 더보기 126 유지. 핀3곳 hyeonjang-v447-retention(v442 위). 신규 tests/retention-v447.e2e.js 4/4, 변이 2종·기준선 실패 확인, 관련 12개(snapshot-guard/snapshot-policy/snapshot-restore-guard/snapshot-revert/delete-guard/restore-safety/settings-tabs/settings-safety/key-persist/project-rename/storage-durability/dash-reports)·정적 21개 통과. 운영 자료로 실행하지 않았다(합성 자료만).
+
+## 2026-10-16 v442 누수 보험 청구 도우미 (피해 확인서 · 보험 서류 체크리스트 · 제출 이력)
+
+- 데이터는 현장 레코드 안 p.leak.claim 한 덩어리(insurer·claimNo·dueAt·checklist{key:{done,at,skip,fileRef,fileName}}·extra[]·submitted[{at,via,keys,memo}]·memo·closedAt·tplSeen·damage{…}). 고객 쪽 서류(청구서·등본·신분증·통장 …)는 체크만 — [첨부]는 우리가 만든 6가지에만 있고, 보험증권 번호·주민번호·계좌 칸은 없다. 메모·접수번호·보완 메모·추가 서류 이름에 주민번호 꼴(6자리-7자리)이 들어오면 저장하지 않는다.
+- HJ_INS_CHECKLIST 12항목(저희 6: 소견서→v422 보고서, 견적→v421, 영수증→v433 간이영수증, 사진→v427 증빙 묶음 보험용, 경위서→v433, 피해 확인서→F1 / 고객 6)은 2026-10 인터넷 자료(비즈워치 2021-07 일배책 누수 기사·뱅크샐러드 2026-09 누수 보험 정리·보험 정리 블로그) 기준이고 화면에 "보험사마다 다름"을 적는다. 앱 기록(보고서 보험용 발행·저장된 누수 견적·간이영수증·증빙 묶음·경위서·피해 확인서 발행)이 있으면 자동으로 준비됨. [해당 없음]은 분모에서 뺀다(진행 n/12 → n/11).
+- 보험사별로 고친 목록(해당 없음·추가 서류)은 이 기기 localStorage hj_ins_tpl(보험사 이름·항목 키·서류 이름만)에 남고, 같은 보험사를 고른 다음 현장에서 배너로 "제안"만 한다 — [적용]을 눌러야 들어간다(테스트 ③). 보험사 칸을 바꾸면 배너 칸만 다시 그린다(전체를 다시 그리면 다음 칸으로 옮겨 누른 입력이 사라졌다).
+- 피해 확인서(hjInsDamageView, 📎 서류 만들기·체크리스트에서): 동·호수는 고객 주소의 ○동 ○호에서 아랫집 = 한 층 아래(접수 '윗집이 원인 추정'이면 거꾸로) 자동, 이름은 서명란 자필(빈칸), 피해 부위 체크·내용, 사진은 조치 전·"아랫집" 사진을 먼저 골라 두고 6장까지, 탐지 결과는 v420 기록 자동. 서명은 현장 서명판(claim.damage.sigs — p.warrantySigs 와 섞지 않음) 또는 링크(전자계약 서버 quickSend docKind 'leak-damage' → contract.signature, 피해 세대 휴대폰은 서버로만). 문서에 고객 이름·전화·현장 이름·금액을 싣지 않는다. 발행은 v433 엔진 p.docs type damage(DC-번호)·노트. ※ 전자계약 서버가 아직 'leak-damage' 를 모르면 BAD_REQUEST → 현장 서명으로 안내한다(서버 쪽 템플릿 추가가 남은 일).
+- 고객 안내문(문자 초안·PDF 1장): 저희 준비/고객님 준비/알아둘 것, 금액 없음 — 상태 글(견적 금액 포함)·추가 서류 이름은 hjInsNoAmount 로 금액을 지운다(변이 amount-unmask 가 INS_GUIDE_NO_AMOUNT 에서 잡는다). 대표용 자기부담금 참고(2020-04 이후 누수 50만 원이 많음)는 앱 화면에만.
+- [📤 제출했음] 날짜·방법(보험사 앱/팩스/이메일/방문/우편)·보낸 서류 → claim.submitted + 노트 [보험 제출], 행마다 보완 요청 메모. 대시보드 누수 줄(hjLeakTodayHtml)에 "🧾 보험 서류 진행 중 n곳 (미완 m)", 🌙 오늘 마감에 "오늘 보험 서류 제출 예정"(dueAt=오늘이고 오늘 제출 기록 없음). [청구 끝남]이면 집계에서 빠진다. 누수 카드에 [🧾 보험 서류](data-insclaim, 클릭 위임 등록).
+- doccenter-v433 의 예정 줄 수 단언을 6→5 로 고쳤다(피해 확인서가 실제 항목이 됨). 핀3곳 hyeonjang-v442-insurance(v440 위에 쌓은 브랜치). 신규 tests/insurance-v442.e2e.js 4/4, 변이·기준선 실패 확인, 관련 10개(leakreport-v422/doccenter-v433/warranty-link/evidence-v427/leakintake-v419/dayclose-v359/leakquote-v421/leakdetect-v420/leakwarranty-v423/leaksms-v424)·정적 21개 통과.
+
+## 2026-10-16 v440 외주팀·작업자 명단 · 일당·공수 정산표 · 외주 견적 요청서 · 지급 명세
+
+- 명단은 앱에서 직접 추가(대표 결정 10/16, 초기 파일 없음): 작업자는 👷 팀원 연락처(c.team) 안 c.trade/dayRate/halfDay(팀원 체크를 풀면 같이 지운다), 외주팀은 📇 거래처 category 외주 안 s.trade/lead/rate{type day|pyeong|job,amount}/taxInvoice. [➕ 외주팀 추가]·[📥 외주팀 명단](CSV·엑셀 이름·전화·공종·단가 4열, v439 와 같은 경로·같은 이름은 빈 칸만 보완). 삭제는 기록(발주·단가·지출·외주 견적 요청·지급)이 있으면 숨김. 👷 팀원 주간 현황에 공종·일당(data-crew-info).
+- 사람별 공수는 일정 s.labor.by={이름:{days 1|0.5,rate}} — 👷 인건비 장부 일정 줄의 이름별 [1][½][-] 토글(.llDay)과 일당 칸(.llRate, 기본은 명단 일당). 합계는 기존 s.labor.amount 에 같이 써서 laborLedgerData·laborProjectTotal·[지출 반영]이 손대지 않고 같은 값을 본다(테스트가 정산표 현장별 합계 = laborProjectTotal 을 확인). 장부 핸들러는 다시 그리기 전에 적던 칸을 먼저 저장하고 한 번만 그린다 — iOS 처럼 입력 포커스가 남은 채 버튼을 누르면 늦게 오는 change 로 겹쳐 그려 NotFoundError 가 났다(LEDGER_NO_NESTED_REDRAW).
+- 👤 사람별 정산표(hjCrewSettleView, 장부 [👤 사람별 정산표]): 사람×날짜 격자·공수·일당 합·선지급 차감(지출 장부 src crewpay 같은 달)·지급할 금액, 📥 엑셀(요약+사람별 시트)·📄 PDF 1장. 💸 지급 명세(hjCrewPayslipView): 날짜·현장·공수·금액·차감·지급액 + "입금 후 문자로 알려 드립니다. 계좌: 전화로 확인"(계좌번호는 저장하지 않는다), 문자 초안·PDF, [💸 지급했음] → state.expenses 1건(category 인건비|외주, src crewpay, who, ym, final, sourceKey crewpay|이름|월 로 두 번 안 넣음 — 변이 pay-dup 이 CREW_PAY_ONCE 에서 잡는다). 현장 배분은 기존 [지출 반영]이 맡는다(자동으로 p.cost 를 건드리지 않는다). 🌙 오늘 마감은 25일부터 "이번 달 지급 명세 안 만든 사람 n명"(data-dc-crewpay).
+- 🔧 외주 견적 요청(현장 카드 [data-subquote], 클릭 위임 등록): 외주팀·공종·견적 품목 체크·주소(동·호수까지)·희망 일정·사진 4장 → 문자 초안(hjSendSms)·요청서 PDF. 고객 이름·전화가 문구에 있으면 보내지도 기록하지도 않는다(hjSubQuotePrivacyOk — 변이 phone-unmask 가 SUBQUOTE_NO_CUSTOMER_PHONE 에서 잡는다). 기록 p.subQuotes[]{id,sup,trade,at,items,when,status asked|got|picked,amount}, 받은 금액 → 선택, hjSubQuotePicked 가 외주 원가 참고(v437 비교표가 읽을 자리). 모르는 외주팀 이름은 📇 거래처(외주)에 추가.
+- 핀3곳 hyeonjang-v440-crew(v439 위에 쌓은 브랜치). 신규 tests/crew-v440.e2e.js 4/4, 변이 2종·기준선(3c7db67 CREW_API_PRESENT)·겹쳐 그리기 탐침 실패 확인, 관련 10개(crew-v357/crewweek-v375/contactpick-v393/dayclose-v359/material-v439/schedule-safety/field-issue-more/percrew-v360/ui-feedback/settle-docs)·정적 21개 통과. 새 최상위 키 없음, 더보기 126 유지.
+
+## 2026-10-16 v439 자재상 명단 · 발주→입고→원가 · 자재 단가표 · 남은 자재
+
+- 📇 거래처: 자재 분류에 주소·영업시간·결제(현금/월말 외상/카드)·배송 칸(같은 레코드 s.addr/hours/pay/delivery), [➕ 자재상 추가]·[📥 명단 불러오기](CSV·엑셀 4열 이름·전화·주소·품목, 같은 이름은 빈 칸만 보완)·📇 주소록 번호 채우기. 삭제는 거래 기록(단가·발주·지출)이 있으면 s.hidden 숨김 → [숨긴 거래처]에서 되살림. 대표 결정대로 초기 명단 파일은 없고 데모에만 3곳.
+- 발주 품목 줄 끝 `@12,000` 이 단가(공급가, 빈 값은 0 으로 치지 않음) → o.items[].price·o.total. 발주 문자 화면에서 납품 확인에 올릴 때 견적 판매단가는 쓰지 않고 단가표 제안만. [✅ 입고 확인] 뒤 hjMatCostAsk 가 "자재비 ○○원을 원가(자재)에 더할까요"를 묻고(금액 고치기 가능) 한 번만 더한다(o.costApplied 가드 — 변이 cost-guard 가 잡는다) + 노트 `[자재비] …` + 단가표 기록(src recv). [↩ 입고 취소]는 뺀다(음수 방지). 미룬 건은 [💰 원가 반영] 버튼과 🌙 오늘 마감 줄(data-dc-matcost).
+- 단가표는 거래처 레코드 안 s.prices[]{name,spec,unit,price,at,src} 품목당 최근 5개, 더보기 항목을 늘리지 않고 📇 거래처 [📋 자재 단가표]에서 연다(최저가 표시·직접 기록). 견적 편집기 품목 위에 "자재 원가 참고" 한 줄만(견적 단가 불변). 남은 자재는 입고 건 [📦 남음] → o.items[].left → [재고로 옮기기]로 기존 state.inventory 에 수량 합산(movedToInv 로 두 번 안 옮김). state.supplierMap/state.materials 는 건드리지 않았다.
+- 핀3곳 hyeonjang-v439-material(v432 위에 쌓은 브랜치). 신규 tests/material-v439.e2e.js 4/4, 변이·기준선 실패 확인, 관련 9개(matdue-v368/matsched-v369/matissue-v372/matplan-v373/materials/order-materials/quote-materials/margin/margin-v429/demo-banner)·정적 19개 통과.
+
+## 2026-10-16 v432 팀 패킷 연동 1차 (📤 팀에 업무 보내기 / 📥 팀 작업 가져오기)
+
+- 규격은 지시서/팀앱_연동_인터페이스.md 의 work-order.json(type hj-work-order, version 1)·work-report.json(hj-work-report) 그대로(hjWoValidate 가 필드 추가·개명을 막는다). 패킷에 고객 이름·전체 전화·금액을 넣지 않는다 — hjWoPrivacyIssues 가 걸리면 저장·복사·공유 자체를 하지 않는다(변이 privacy-off 가 잡는다). 주소는 호수를 뺀 값, 동·호수는 인터페이스의 unit 칸, 연락처는 대표 번호 마스킹만.
+- 보내기(hjTeamPacketSendView — 현장 카드 [📤 팀에 업무 보내기]): 후보는 현장의 할 일(개인 todo·팀 업무)·준비물·앞으로의 일정(💰·세금 자동 제외), 담당은 팀원 연락처/팀 업무 담당 이름. id 는 `wo_YYYYMMDD_nnn`(전체 현장의 기록으로 다음 번호, 같은 화면에서 다시 보내면 같은 id·같은 기록에 sentAt·resent 만 갱신). 기록은 p.workOrders[] 기존 자리에 {packetId,sentAt,via,assignee,due,priority,checklist,items,reports} + 노트 `[팀 지시] …` 원자 저장. QR 은 인코더가 없어 뺐다(v446). "미완료 업무 JSON 초안 내보내기(v328)" 는 저장소에 없어 맞출 대상이 없었다.
+- 가져오기(hjTeamReportImportView — 팀 업무·인수인계 [📥 팀 작업 가져오기]): JSON 붙여넣기/파일 + 사진 zip(JSZip). 매칭은 orderId → 현장 이름 유일 일치 → 사람이 고름. 반영은 보고마다 durableLocalMutation(묶음 전 hjSnapshot 1회): done → 지시에 묶인 할 일·팀 업무·준비물 완료 + 작업시간(state.workLogs) 1건(09:00 + 보고 시간 기준, memo 에 보고자·내용·이슈), review/blocked → 대시보드 줄(hjTeamReportPendingHtml), 보고는 wo.reports[] 또는 지시 없는 현장은 p.teamReports[]. 같은 reportId(없으면 orderId|workDate)는 두 번 반영하지 않는다. 사진은 기존 openPhotoIntake(사진 추가 확인)로, phase 는 패킷 값 우선(누수 현장 _leaktag before/cause/after, 그 밖에 _phase).
+- 핀3곳 hyeonjang-v432-teampacket(v431 위에 쌓은 브랜치). 신규 tests/teampacket-v432.e2e.js 4/4, 변이·기준선 실패 확인, 관련(team-packet.unit/photo-intake-safety/team-connect)·정적 19개 통과. team-workboard.e2e 는 이 컨테이너에서 main 에서도 같은 자리(다운로드 파일명)에서 실패한다 — CI 가 판정.
+
+## 2026-10-16 v431 공개 누수 접수 페이지 + 앱 문의함 연결
+
+- `leak.html/leak.css/leak.js` 는 서버 없는 공개 페이지(stage-pages 등록, sw.js 셸 목록에는 넣지 않음). 증상 6항목은 앱 v419 `HJ_LEAK_INTAKE_CHOICES` 와 같은 항목·같은 값이어야 하며 검사가 두 상수를 대조한다. 페이지는 저장·업로드·외부 요청이 없고(사진은 문자 답장), 가격·과장 문구 없음, 회사 번호 010-2397-8629 표시. [📨 문자로 보내기]는 `sms:01023978629?body=[누수접수] 어디서=…;언제=…;물양=…;이웃=…;관리사무소=…;보험=…;동=…;시간=…;이름=…` 한 줄 + 사진 2장 안내. 카카오 채널 버튼은 주소가 비어 있으면 숨긴다(가짜 링크 금지, 대표가 주소를 주면 leak.js KAKAO_URL).
+- 앱: 📞 새 문의 받기 › [📋 접수 문자 붙여넣기](hjLeakWebIntakeView) → hjLeakWebParse 가 같은 값만 받아들이고 모르는 값은 메모(확인 필요)로만. 문의는 기존 hjInquiryCreate(leadSrc web, 현장명 '동네 누수 이름')로 만들고, 접수 체크리스트는 기존 누수 접수 화면을 채운 채 연다(저장·🚨 출동은 그 화면이 — 두 번 저장하지 않음). 표식이 없거나 읽지 못하면 메모만 가진 문의로 등록. 사진과 함께 공유 받은 문자(v416 수신함)에 표식이 있으면 같은 파서로 가는 버튼을 보여 준다(문자만 공유하는 것은 공유 대상이 사진을 요구해 받지 못함 — 붙여넣기로).
+- 📣 광고 탭 [🔗 누수 접수 링크]: URL·소개글(번호 없음) 복사. QR 은 v446 에서.
+- 핀3곳 hyeonjang-v431-leakintakeweb(v427 위에 쌓은 브랜치). 신규 tests/leakintakeweb-v431.e2e.js 6/6, 변이 keymap·기준선 3c7db67 실패 확인, 관련(leakintake-v419/inqpending-v386/shareinbox-v416/sharetarget-v416/bathroom-v410)·정적 19개 통과.
+
+## 2026-10-16 v427 건별 증빙 묶음 · 월말 묶음
+
+- 📎 서류 만들기 › [🗂 증빙 묶음](hjEvidenceView): 견적(파일+앱 견적 txt)·사진 전→중→후(`01_전_욕실.jpg`, 태그/공정 순·시각순)·영수증(kind 'receipt')·수리확인서/경위서 HTML(발행된 것)·거래명세서/청구서 HTML·하자보증서 HTML(준공 후)·수금·발행 기록 xlsx(세금계산서/현금영수증 상태 + 간이영수증 번호, p.docs ref 로 입금 기록과 연결)·00_목록.txt 를 기존 JSZip 으로 한 ZIP. 계획(hjEvidencePlan)은 읽기 전용이고 빠진 것은 '빠진 것' 으로 적는다.
+- 용도 3종은 v422 규칙: 세무사용 이름 가림·연락처 제외·금액 전부·내부 원가 포함 / 보험·관리사무소용 이름 가림(해제 가능)·금액 숨김 선택(명세서·청구서·xlsx 제외) / 고객용 이름 전체·내부 원가·견적 메모 제외(변이 customer-internal 이 잡는다). 누수 보고서 PDF 는 기기에 없으므로 [지금 생성]을 켠 경우에만 v422 발행 경로(모델→캔버스→PDF→발행 기록)로 만들어 담는다.
+- 묶음이 실제로 만들어진 뒤에만 p.docs 에 type 'evidence'(EV-날짜-nn) + 노트. Drive 는 기존 중계/Drive 업로드 경로(폴더 '증빙'). 월말 묶음(📆 월말 마감 1단계 [🗂 이번 달 증빙 전부])은 그 달 완료·수금 현장을 세무사용으로 현장별 폴더 + 00_요약 xlsx(현장·매출·수금·발행 — 미수 칸 없음, 2026-08-13 규칙 유지)이며 기록은 남기지 않는다.
+- 핀3곳 hyeonjang-v427-evidence(v429 위에 쌓은 브랜치). 신규 tests/evidence-v427.e2e.js 5/5, 변이·기준선 실패 확인, 관련 6개(doccenter-v433/leakreport-v422/extras-settle/case-pack/site-zip/settle-docs)·정적 19개 통과.
+
+## 2026-10-16 v429 건별 마진 · 월 마진 보드 · 누수 원가 템플릿
+
+- 건별 마진(hjProjectMargin)은 projStats 를 읽기만 한다 — 매출은 수주 견적 합계(기본 공급가, 토글로 부가세 포함), 원가는 유효원가(수기>0 우선, 아니면 장부). 원가가 비면 margin/rate 가 null 이고 '원가 미입력' 으로만 보인다 — 0 으로 계산하지 않는다(변이 zero-cost 가 이를 잡는다). 색 밴드 HJ_MARGIN_BANDS(30↑/15~30/15 미만/적자).
+- 현장 카드 💰 칸 아래 📈 건별 마진 줄 + [✏ 원가 입력](hjCostInputView — 정산 탭의 p.cost 와 같은 칸, 저장은 setCost 와 같은 뜻). 누수 현장은 탐지 원인별 HJ_LEAK_COST_TPL 로 빈 칸에만 제안 금액(일당은 일정 인건비 중앙값, 없으면 25만 상수)을 넣고 기존 값은 덮지 않는다.
+- 💼 회계 › [📊 마진 보드](hjMarginBoardView): 월 배정은 준공월 → 집계 견적의 견적일 → 마지막 수금일(없으면 '월 미정' 수만), 인테리어/누수 2그룹 합계·마진율 순 CSS 막대·원가 미입력 경고·지난 3개월 추이·규칙 요약 한 줄·엑셀(ensureXLSX, 내부용). 보드·토글·월 이동·엑셀은 저장본을 바꾸지 않는다. v428 토글 함수는 이 기준선에 없어 자체 토글을 썼다.
+- 핀3곳 hyeonjang-v429-margin(v433 위에 쌓은 브랜치). 신규 tests/margin-v429.e2e.js 4/4, 변이 zero-cost·기준선 3c7db67 실패 확인, 관련 6개(ledger-cost-apply/ledger-roundtrip/dcsales-v391/extras-settle/settle-docs/mobile-modal-tap)·정적 19개 통과. 결과는 비커밋 보고/v429.md.
+
+## 2026-10-16 v433 문서 센터 (수리·작업 확인서 · 누수 사고 경위서 · 간이영수증 바로 보내기)
+
+- 📎 서류 만들기(docHubView)를 영업·계약/시공 중/준공·돈/AS·보증/누수·보험/아파트·행정/보관 7그룹으로 재배열하고 항목마다 "자동으로 채워지는 것/비어 있는 자료" 한 줄을 붙였다. 기존 8개 진입점은 같은 함수로 그대로 열고, 예정 항목(v427·v432·v437·v438·v441·v442)은 회색 안내만 한다. 더보기 메뉴는 126 그대로.
+- 새 문서는 기존 hjDocShell/hjDocPrint/hjDocWordMhtml/hjDocDownload 세 갈래 위에 이미지(PNG, 견적서 PDF 와 같은 html2canvas 로더)와 문자 초안만 더했다. 수리·작업 확인서(WC-)는 금액 숨김·의뢰인 이름 가림이 기본이고 고객 서명은 warrantySigCapture 를 재사용한다. 누수 사고 경위서(LN-)는 접수·탐지·조치를 사실 순서로 적고 없는 기록은 '기록 없음'으로 남기며 금액을 싣지 않는다. 간이영수증(MM-)은 번호 자동, 받은 돈 저장 직후 hjPayRcptOffer 로 바로 연다.
+- 발행 기록은 현장 레코드 안 `p.docs[{type,no,at,purpose,name}]` + 현장 노트 `[문서] …` 한 줄을 durableLocalMutation 으로 원자 저장한다(번호 기준 한 번, 새 최상위 직렬화 키 없음). 모델·미리보기는 읽기 전용이며 실제로 PDF·워드·HTML·이미지를 가져간 시점에만 기록한다. 간이영수증 발행 수는 대시보드에서 세금계산서·현금영수증 미발행과 별개로 구분 표시한다.
+- 핀3곳 hyeonjang-v433-doccenter. 신규 tests/doccenter-v433.e2e.js 5/5, 변이 amount-default·unmask-default 와 기준선 3c7db67 이 의도한 단언에서 실패, 관련 12개(settle/warranty/pay-receipt/leak v421~v424/action-search/mobile-modal-tap)·정적 19개 통과. 로컬 전체 회귀 금지, 결과는 비커밋 보고/v433.md.
+
 ## 2026-10-16 v425 기기 안 오프라인 대기함
 
 - 사진 원본과 현장 기록을 기기에 보존하고 서버 동기화만 hyeonjang-share/outbox에서 순서 처리한다. 기존 공유 inbox·릴레이 대기열을 보존하며 대기 목록 제거로 사진을 지우지 않는다. 새 최상위 직렬화 키와 셸 경로를 추가하지 않는다.

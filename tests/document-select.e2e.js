@@ -16,7 +16,7 @@ function mutatedSource(){
   const replacements={
     append:["d.files.push(serializeData({...d,files:[rec]},at).files[0]);","d.files=[serializeData({...d,files:[rec]},at).files[0]];d._savedFileCount=0;"],
     storage:["if(!(blob instanceof File)||blob.name!==p.file.name||blob.size!==p.file.size)throw new Error('원본 보관을 확인하지 못했습니다. 목록에는 등록하지 않았습니다.');","/* synthetic removal of original verification */"],
-    settlement:["function documentRoleKind(role){return ['estimate','bizreg','card','drawing'].includes(role)?role:'other';}","function documentRoleKind(role){return role==='settlement'?'estimate':(['estimate','bizreg','card','drawing'].includes(role)?role:'other');}"],
+    settlement:["function documentRoleKind(role){return ['estimate','bizreg','card','drawing','receipt'].includes(role)?role:'other';}","function documentRoleKind(role){return role==='settlement'?'estimate':(['estimate','bizreg','card','drawing','receipt'].includes(role)?role:'other');}"],   // v519 v435 가 'receipt' 를 더해 기준 문자열이 바뀜
     source:["if(!strong&&!exact)return false; // 이름·크기 폴백은 수동 항목/기기 원본의 신원이 아니다.","/* synthetic removal of manual source identity guard */"],
     move:["if(item&&(f.kind==='estimate')!==(item.role==='estimate'))throw new Error('견적서는 견적 항목 안에서만 이동하세요. 정산서로 변경해 집계를 바꾸지 않습니다.');","/* synthetic removal of financial kind guard */"]
   };

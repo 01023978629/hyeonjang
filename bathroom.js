@@ -116,6 +116,7 @@
   }
   function update(){
     $('methodNotice').hidden=data.method!=='overlay';
+    {const ms=$('methodScopeNotice');if(ms)ms.hidden=!(data.method==='full'&&data.scope.some(s=>(s.id==='demolition'||s.id==='waste')&&!s.enabled));}   // v450 전체 철거인데 철거·폐기물이 빠진 경우
     hjBathPriceBadges();
     $('appHandoffBlocked').hidden=true;
     data.scope.forEach(s=>{$('scope-'+s.id).classList.toggle('selected',s.enabled);let message;try{const amount=M.hjBathScopeAmount(s);message=(s.enabled?'선택됨 · ':'선택하면 ')+(amount===null?'단가 확인 필요':'+ '+won(amount)+' (부가세 '+(data.vat==='inclusive'?'포함':'별도')+')');}catch(_){message=(s.enabled?'선택됨 · ':'선택 시 ')+'수량·단가 확인 필요';}$('price-'+s.id).textContent=message;$('breakdown-'+s.id).innerHTML=hjBathScopeBreakdown(s);$('description-'+s.id).textContent=(s.model?s.model+' · ':'')+s.note;});
@@ -127,6 +128,7 @@
       data.consumables.forEach(c=>{const hit=r.consumables.find(x=>x.id===c.id);$(c.id+'Result').textContent=hit?fmt(hit.area)+'㎡ × '+fmt(hit.usage)+'kg/㎡ = '+fmt(hit.kg)+'kg → '+hit.packs+'포장 (포장 단위 올림) · '+hit.packs+'포장 × '+won(hit.price)+' = '+won(r.rows.find(x=>x.id===c.id).amount)+' (부가세 '+(data.vat==='inclusive'?'포함':'별도')+')':'포함을 선택하면 수량과 금액이 더해집니다.';});
       $('liveSummary').innerHTML='<div class="summary-total"><small>부가세 포함 예상 합계</small><strong>'+(r.complete?won(r.total):'단가 확인 중')+'</strong><p>'+(r.complete?(data.priceStatus==='confirmed'?'등록한 판매 단가 기준':'판매 단가 확인 전'):'비어 있는 단가 '+r.missing.length+'개를 입력하면 합계가 나옵니다.')+'</p></div><dl><dt>자재비'+(!r.complete?' (입력분)':'')+'</dt><dd>'+won(r.material)+'</dd><dt>시공비'+(!r.complete?' (입력분)':'')+'</dt><dd>'+won(r.labor)+'</dd><dt>부가세</dt><dd>'+(r.complete?won(r.vat):'미확정')+'</dd><dt>선택한 추가 공사</dt><dd>'+data.scope.filter(s=>s.enabled).length+'개</dd></dl>';
       if(r.hasEstimates)$('liveSummary').insertAdjacentHTML('afterbegin','<p class="estimate-total">추정 단가 포함 · '+r.estimatedRows.length+'개 항목<br>확정 금액이 아닙니다.</p>');
+      $('priceEstimateNotice').hidden=!r.hasEstimates;   // v450 추정 단가가 들어간 때만 — 단가를 손으로 정했으면 이 내부 안내를 숨긴다(고객용 보기에서는 늘 숨김)
       $('mobileAmount').textContent=r.complete?won(r.total):'단가 확인 중';$('mobileStatus').textContent=(r.hasEstimates?'추정 단가 포함 · ':'')+(r.complete?'부가세 포함 합계':'빈 단가 '+r.missing.length+'개 · 추가 공사 '+data.scope.filter(s=>s.enabled).length+'개 선택');
       renderReport(r);
       /* v411 고객 HTML과 인쇄도 이 보고서를 복사하므로 새 상담 조건을 한 번만 그린다. */

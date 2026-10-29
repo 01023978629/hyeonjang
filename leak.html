@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#284c43"><meta name="description" content="누수 증상 여섯 가지를 체크하고 사진 두 장을 문자로 보내면, 다음 날 아침 출동 순서를 정해 연락드립니다. 만물인테리어 누수 접수."><title>누수 접수 1분 | 만물인테리어</title><link rel="icon" href="icon-192.png"><link rel="stylesheet" href="leak.css"><script src="leak.js" defer></script></head>
+<body>
+<header class="header"><a class="brand" href="./leak.html"><span class="brand-mark" aria-hidden="true">ㅁ</span><span>만물인테리어<small>대전 누수·배관·인테리어</small></span></a><a class="button outline call" href="tel:01023978629" id="callTop">📞 전화</a></header>
+<main>
+<section class="hero"><span class="eyebrow">LEAK · 1 MINUTE</span><h1>물이 새요.<br>어디서, 얼마나?</h1><p>아래 여섯 가지만 고르고 <b>사진 두 장</b>을 문자로 보내 주세요.<br>밤에 보내셔도 아침에 순서대로 연락드립니다.</p></section>
+<form id="leakForm" novalidate>
+<section class="card" id="symptoms">
+  <h2>1. 증상 체크 <small>여섯 가지</small></h2>
+  <fieldset data-key="where"><legend>어디서 새나요? <span class="req">필수 · 여러 개 가능</span></legend><div class="chips" id="whereChips"></div></fieldset>
+  <fieldset data-key="since"><legend>언제부터요? <span class="req">필수</span></legend><div class="chips" id="sinceChips"></div></fieldset>
+  <fieldset data-key="amount"><legend>물 양은요? <span class="req">필수</span></legend><div class="chips" id="amountChips"></div></fieldset>
+  <fieldset data-key="neighbor"><legend>윗집·아랫집은요?</legend><div class="chips" id="neighborChips"></div></fieldset>
+  <fieldset data-key="office"><legend>관리사무소에 말씀하셨나요?</legend><div class="chips" id="officeChips"></div></fieldset>
+  <fieldset data-key="insurance"><legend>일상생활배상책임보험이 있나요?</legend><div class="chips" id="insuranceChips"></div></fieldset>
+</section>
+<section class="card" id="contact">
+  <h2>2. 어디로, 언제 <small>상세 주소는 받지 않아요</small></h2>
+  <label>동네 (동 이름) <span class="req">필수</span><input id="dong" name="dong" list="dongList" maxlength="20" autocomplete="off" placeholder="예: 유천동"><datalist id="dongList"></datalist></label>
+  <fieldset data-key="time"><legend>연락 가능한 시간</legend><div class="chips" id="timeChips"></div></fieldset>
+  <label>성함 (선택)<input id="name" name="name" maxlength="20" autocomplete="name" placeholder="예: 김"></label>
+  <p class="help">여기 적은 내용은 저장되지 않고, 문자 한 통으로만 보내집니다. 사진도 이 페이지가 아니라 문자로 보내 주세요.</p>
+  <div id="formError" class="error" role="alert" hidden></div>
+</section>
+<section class="card actions" id="send">
+  <h2>3. 보내기</h2>
+  <a class="button primary" id="smsLink" href="sms:01023978629">📨 문자로 보내기 <span>→</span></a>
+  <a class="button outline" id="kakaoLink" href="#" rel="noopener" hidden>💬 카카오톡 채널로 보내기</a>
+  <a class="button outline" href="tel:01023978629">📞 바로 전화 (010-2397-8629)</a>
+  <details class="details"><summary>문자가 안 열리면 — 내용 복사해서 보내기</summary><textarea id="smsText" rows="6" readonly aria-label="보낼 문자 내용"></textarea><button type="button" class="button quiet" id="copyText">내용 복사</button></details>
+  <p class="help" id="photoHint">문자를 보낸 뒤 <b>사진 2장</b>을 같은 문자에 답장으로 보내 주세요 — 젖은 곳을 넓게 1장, 가까이 1장.</p>
+</section>
+</form>
+<section class="card tips" id="tips">
+  <h2>기다리는 동안</h2>
+  <ol>
+    <li><b>물 잠그기</b> — 현관 밖(또는 싱크대 아래·보일러실) 계량기 옆 밸브를 시계 방향으로 끝까지 돌리면 집 전체 물이 잠깁니다. 그래도 새면 윗집 쪽일 수 있어요.</li>
+    <li><b>사진 찍을 곳</b> — 천장·벽 얼룩은 방 전체가 보이게 한 장, 물 자국 가까이 한 장. 바닥에 고인 물도 한 장이면 좋아요.</li>
+    <li><b>아랫집이라면</b> — 윗집에 먼저 알려 주세요. 원인이 윗집에 있으면 윗집 쪽에서 수리·보상이 진행됩니다.</li>
+  </ol>
+  <p class="notice">보험 안내 — 가족·개인 <b>일상생활배상책임보험</b>에 가입돼 있으면 아랫집 피해 보상에 쓸 수 있는 경우가 있습니다. 가입 여부는 보험사·카드사에 먼저 확인해 주세요. 수리 전 사진과 저희가 드리는 보고서가 청구에 쓰입니다.</p>
+</section>
+</main>
+<footer class="footer"><strong>만물인테리어</strong><span>대전 중구 · 직접 보고, 직접 고칩니다.</span><a href="tel:01023978629">010-2397-8629</a></footer>
+<div id="status" class="toast" role="status" hidden></div>
+</body></html>

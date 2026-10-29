@@ -102,7 +102,8 @@ async function screenshot(page,spec,name){if(shots){fs.mkdirSync(shots,{recursiv
         await page.locator('#photoIntakeWork').scrollIntoViewIfNeeded();await settle(page);
         assert(await page.locator('#photoIntakeWork').evaluate(e=>{
           const r=e.getBoundingClientRect(),body=e.closest('.mbody').getBoundingClientRect();
-          return r.height>=44&&r.left>=body.left&&r.right<=body.right&&r.top>=body.top&&r.bottom<=body.bottom&&document.elementFromPoint(r.left+8,r.top+r.height/2)===e;
+          // v458: 큰 글자 모드에선 .mbody 가 스크롤돼 scrollIntoView 가 아래 가장자리에 0.2px 걸친다 — 1px 여유(실제 닿는지는 elementFromPoint 가 본다)
+          return r.height>=44&&r.left>=body.left-1&&r.right<=body.right+1&&r.top>=body.top-1&&r.bottom<=body.bottom+1&&document.elementFromPoint(r.left+8,r.top+r.height/2)===e;
         }),spec.name+' photo work field must remain reachable above footer');
         assert(await page.locator('#modalRoot .modal-close').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),spec.name+' photo close stays visible');
         await screenshot(page,spec,'photo-field');
