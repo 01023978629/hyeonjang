@@ -9,6 +9,7 @@
 - 한 것: 마진 표 PC 칸 안쪽 여백 `8px 6px` → `8px 4px`(index.html, 표 한 곳). 검사: v342 세금 검사에 `page.clock.setFixedTime(2026-10-01)`, margin1280·note2col 은 푸터 `#buildTag`('build …')가 채워질 때까지 기다린 뒤 모바일 모드를 정함(dash-cards·mobile-tap-table 과 같은 방법, 15초 넘으면 그냥 진행).
 - 핀3곳 hyeonjang-v519-cifix(v518 위). CI 글꼴을 흉내 낸 fontconfig(DejaVu·Liberation·FreeFont·WenQuanYi·IPA·Loma·Unifont만) + TZ=UTC 에서 세 검사 통과, 기준선 v518 에선 margin1280 982px 실패 재현. 관련 16개(margin·margin-v429·dash-cards·pcdark·darkcards·polish·insight·numwrap 등) 통과.
 - 덤으로 본 것: 부팅의 설정 복원(다크·글꼴·모바일 모드·buildTag)이 드물게(로컬 12번 중 1번) 끝나지 않음 — 그때 앱은 저장된 화면 설정을 못 되살린다. 운영 main 도 같은 부팅 코드. 백로그로.
+- 뒤따른 검사 고침(test(v519-fix), 핀 그대로): 두 번째 CI(run #96)는 전체 410/410 통과 뒤 `document-select.mutations` 단계에서 멈춤 — `tests/document-select.e2e.js` 의 settlement 변이 기준 문자열이 v435 가 `documentRoleKind` 에 'receipt' 를 더한 뒤로 맞지 않았다(unique mutation anchor). 기준을 지금 코드로 바꿈. CI 의 변이 단계 6개(biz-select·test-stability·document-select·document-upload·photo-original-keep·photo-no-recovery)를 로컬에서 돌려 확인(document-upload 의 layout 변이는 이 환경의 다운로드 이름 검사만 빼고 돌려 잡힘 확인).
 
 ## 2026-10-25 v518 폰(390px)에서 금액·시간 숫자가 중간에서 끊기지 않게 (운영 화면 다듬기)
 
