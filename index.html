@@ -91,6 +91,8 @@
   body.dark [style^="color:#166534"],body.dark [style*=";color:#166534"],body.dark [style*=" color:#166534"]{color:var(--hj-ok-fg)!important}   /* v459 승인·위치 확인 안내(연녹 바탕 위 진녹 글자) */
   body.dark [style^="color:#475569"],body.dark [style*=";color:#475569"],body.dark [style*=" color:#475569"]{color:var(--ink)!important}   /* v459 안내 카드 제목 */
   body.dark .cal-dow.sat,body.dark .cal-cell.sat .cal-d{color:#8fc3ff}
+  body.dark .cal-cell.today{background:#1f3550}   /* v525 어두운 화면의 '오늘' 칸은 반투명 파랑(rgba .1) 대신 단색 — 오늘이 토·일이면 요일색 글자가 흐려 보였다(10/31 토요일 CI 실측) */
+  body.dark .cal-cell.sun .cal-d{color:#ffa1a1}
   body.dark [style^="color:#64748b"],body.dark [style*=";color:#64748b"],body.dark [style*=" color:#64748b"],body.dark [style^="color:#94a3b8"],body.dark [style*=";color:#94a3b8"],body.dark [style*=" color:#94a3b8"]{color:var(--muted)!important}
   body.dark [style*="#dcfce7"],body.dark [style*="#fecaca"]{background:var(--paper-2)!important;background-image:none!important}
   body.dark .ph-hint{background:rgba(23,34,46,.92);color:var(--muted)}
