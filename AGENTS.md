@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-30 v522 중복 정리 도구 '정리본 사본' 거르기 — 원본 폴더에 남은 (1)·사본이 _정리완료 정리본과 바이트가 같으면 정리본을 남기고 사본을 뺀다 (개발_구상_20261030 §2-3)
+
+- 찾은 것: 스캔 때 `settleScannedPhotoCopies` 는 **이름·크기가 같은** 원본↔정리본 짝만 해시로 합친다 → "IMG_0001 (1).jpg" 같은 사본 이름은 남는다. [중복 사진 원본만 남기기](`verifyDuplicatePhotos`)의 자동 정리는 **현장·작업 정보(duplicateMetadata)가 같아야** 후보라서, 사본(현장 비어 있음) ↔ 정리본(현장·공정 있음) 짝은 늘 '정보 달라 자동 정리 대상 아님'(metaDiff)으로 빠졌다. [현장이 다른 같은 사진]은 둘 다 현장이 있을 때만.
+- 한 것: ① `hjOrganizedCopyCandidates(refs)` — 정리본 아닌 사진(읽을 원본 있는 것만: `_file`·handle·서버 원본; Drive 만 있는 가상 기록은 조용히 제외 — 매번 읽기 실패로 [다음 묶음 검사]를 막는다)마다 크기가 같고 촬영 시각이 같거나 `baseName`(사본 꼬리 뗀 이름)이 같은 정리본(`_정리완료/`+현장 있음)들을 keeps 로. 사본 쪽에 정리본과 다른 정보(현장·공정·작업명·동호수·누수 태그·메모/글자/견적·드라이브 연결·원본 증빙)가 있으면 `why` 를 적고 읽지 않는다(유지 목록에 이유). ② `verifyDuplicatePhotos` 끝에 두 번째 패스 — 같은 50장·128MB 예산, 사본 해시 → 정리본 해시(파일별 캐시) 같으면 `pairs.push({keep:정리본,file:사본,hash,keepMeta,fileMeta,copy:true})`, 다르면 유지 목록 + `__dupCleanSigs` 메모(두 번째 검사가 미끼를 다시 안 읽음). `stats.copyPairs`. ③ `saveVerifiedDuplicates` 의 정보 재확인은 **검증 때 적어 둔 keepMeta·fileMeta 와 같은지** 본다(옛 쌍은 keepMeta 없음 → 종전처럼 둘이 같아야 함) — 정리 직전 사본에 현장이 생기면 정리하지 않는다. 복구함·안전판·CAS·되돌리기(`restoreDuplicateBatch`)는 그대로 탄다. ④ 창: "안전 정리 가능 n장 (그중 원본 폴더에 남은 정리본 사본 m장)" `[data-dup-copy]` + 쌍마다 '정리본 사본 → 현장 / 공정'. 새 화면·새 저장 키 없음. 사진 탭 배지는 안 달았다 — 같은 크기·시각 짝은 이미 '중복 의심' 수에 들어 있다.
+- 핀3곳 hyeonjang-v522-dupcopy(v523 위). 신규 tests/photodupclean-v522.e2e.js 5/5(정리본 2↔사본 2 바이트 같음 · 미끼(바이트 다름) · 사본에만 작업명 · 사본에만 드라이브 · 가상 기록 → 쌍 2·유지 이유·두 번째 검사는 미끼 안 읽음 → 창 표시 → 정리(안전판 1·복구함 1묶음 2장·정리본 그대로) → 복구 → 정리 직전 정보 생기면 거부). 기준선 v523 실패(쌍 0, metaDiff)·변이 no-hash 는 미끼가 쌍에 들어와 실패 확인. 관련 photo-safety-ui(+변이 9)·photo-original-keep(+변이 4)·photo-no-recovery(+변이 5)·estimate-photo-dup-v342(처음엔 Drive 가상 기록을 후보로 잡아 두 번째 검사가 다시 읽어 실패 → readable 제외로 고침)·estimate-dedupe·photo-audit·photo-location·mobile-more-sweep·dash-cards·photoassign-v523·photo-suggest 통과, 정적 19개 통과.
+- 안 한 것: 사본 쪽 드라이브 연결·메모를 정리본으로 옮기고 정리하기(`plan.current()` 가 keep 변경도 막아 구조 손질이 필요) — 지금은 '유지' 로 남기고 이유를 보여 준다.
+
 ## 2026-10-30 v523 🧭 추측 배정 보기 — 현장 없는 사진 묶음을 한 창에서(추정 현장·근거·사진 3장) 체크해 배정, 안전판 1회, AI 키 없이 (개발_구상_20261030 §2-4)
 
 - 찾은 것: 구상서는 "추측이 AI 패널 안에만 있다"고 썼지만 틀렸다 — 사진 탭에 이미 묶음별 👉 추천(`photoSuggestFor`: gps·revisit·partial 확실 / sameday 참고)과 [✨ 추천대로 n묶음 배정](안전판 뒤)이 있고, 가져오기 뒤 `aiAutoOrganize` 제안 창(날짜 묶음, 일정→GPS 400m, 체크→`assign_photos`, **안전판 없음**, 사진 없음)도 있었다. 없던 것은 ① 사진 탭 쪽 추천에 '그날 일정' 단서 ② 사진을 보며 묶음 단위로 고르는 창 ③ 단서 없는 묶음의 현장 고르기.
