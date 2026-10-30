@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-30 v521 안 읽은 견적서 — 스캔 뒤 견적서(엑셀·PDF)만 배경에서 자동 읽기 + '읽지 않은 견적서 n건 → [지금 읽기]' (개발_구상_20261030 §2-2)
+
+- 찾은 것: 견적서 폴더의 xlsx·pdf 는 스캔 때 `ocr:'pending'`·`est:null` 로 들어오고 [일괄 글자 읽기(OCR)] 를 눌러야 `hjReadDocFile`(옛 runBatchOCR 안쪽) 이 금액·품목을 채운다 → 그 전엔 `salesEstimateFiles`(대시보드 매출·현장 마진·월말 결산·부가세 준비)에서 빠진다. 안 읽은 건수를 보여 주는 곳이 없었다.
+- 한 것: ① `hjReadDocFile(f)` — runBatchOCR 의 파일 하나 읽기를 그대로 뺀 것(동작 같음). 엑셀·PDF 라이브러리를 못 받으면(오프라인) `ocr` 을 'done' 으로 찍지 않고 pending 으로 둔다(`xlsxEstimate` 가 `unavailable:true` 를 돌려줌, `_readFail` 횟수) — 안 그러면 '읽지 않음'이 사라진 채 금액만 비었다. ② `hjUnreadEstimates()`(읽기 함수: pending + xlsx/xls/pdf + 서류 센터 아님 + `_edited` 아님 + 종류 견적서 또는 이름에 '견적') · `hjEstimateReadable(f)`(handle·_file·공유함만 — Drive 만 있는 기록은 이 기기에서 못 읽음). ③ `hjEstimateAutoRead({limit:20,silent})` — 엑셀 먼저, 20건, 세 번 못 읽은 파일은 자동에서 건너뜀, 끝나면 markDirty·render·토스트. 스캔 끝·파일 선택 끝 900ms 뒤 silent 로 건다. 사진 OCR(유료 한도)은 그대로 수동. ④ 견적 탭 위 `hjUnreadEstimateBarHTML()`(`[data-unread-est]`, 원본 없는 n건 안내, `[data-est-read]` 44px) · 첫 화면 점검 줄(dailyCheckData) '읽지 않은 견적서 n건'. 집계 규칙(대표 1건·exSum·purchase)은 그대로.
+- 핀3곳 hyeonjang-v521-estunread(v520 위). 신규 tests/estbackfill-v521.e2e.js 4/4(가짜 XLSX 로 격자→견적 진짜 코드 통과, PDF 글자 대역; 읽기 전 4건·_edited 제외·줄·점검 줄 → 오프라인이면 pending 유지 → [지금 읽기] 엑셀 2+PDF 1, 같은 현장 xlsx·pdf 사본은 매출 1건, 원본 없는 1건 남음, 다시 눌러도 중복 없음 → 스캔·선택 훅 소스 확인). 기준선 v520 실패(함수 없음)·변이 mark-done 은 OFFLINE 에서 실패 확인. 관련 estimate-photo-dup-v342·estimate-info·quote-vat·margin·vatproof-v349·dash-cards·mobile-more-sweep + 정적 19개 통과(document-select/upload 는 이 환경의 다운로드 이름 검사만 떨어짐 — main 도 같음).
+- 안 한 것: 타사 상호(용진인테리어 등)를 읽어 '매입·비교 견적 후보' 표시 — 격자 파서가 공급자 칸을 안 읽어 다음 판.
+
 ## 2026-10-30 v520 푸터 'build vNNN' 표시 누락 고침 — 비동기 부팅이 파서보다 먼저 끝나면 footer 가 아직 없었다
 
 - 찾은 것: 부팅 `(async()=>{…})()` 끝에서 `#buildTag` 에 `build vNNN` 을 쓰는데, 그 `<footer>` 는 본문 스크립트와 외부 스크립트 3개(media-safety·shared-todo-backup·operations-review) 뒤라 부팅이 먼저 끝나면(`document.readyState==='loading'`) 쓸 곳이 없다. PC 1280 에서 60번 중 16번 빈 채, 폰 390 은 거의 없음. IndexedDB 막힘·멈춤 아님(열기 37번 모두 정상) — v519 항목의 "설정 복원이 드물게 안 끝남"은 틀린 진단이었고 다크·글꼴·모바일 모드는 원래 끝까지 복원됐다. 설정 탭의 '앱 버전'(`#appVerNow`)은 영향 없음.
