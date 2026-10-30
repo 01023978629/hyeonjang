@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-30 v520 푸터 'build vNNN' 표시 누락 고침 — 비동기 부팅이 파서보다 먼저 끝나면 footer 가 아직 없었다
+
+- 찾은 것: 부팅 `(async()=>{…})()` 끝에서 `#buildTag` 에 `build vNNN` 을 쓰는데, 그 `<footer>` 는 본문 스크립트와 외부 스크립트 3개(media-safety·shared-todo-backup·operations-review) 뒤라 부팅이 먼저 끝나면(`document.readyState==='loading'`) 쓸 곳이 없다. PC 1280 에서 60번 중 16번 빈 채, 폰 390 은 거의 없음. IndexedDB 막힘·멈춤 아님(열기 37번 모두 정상) — v519 항목의 "설정 복원이 드물게 안 끝남"은 틀린 진단이었고 다크·글꼴·모바일 모드는 원래 끝까지 복원됐다. 설정 탭의 '앱 버전'(`#appVerNow`)은 영향 없음.
+- 한 것: `hjBuildTagApply()` — `readyState==='loading'` 이면 `DOMContentLoaded` 뒤에, 아니면 바로 쓴다. 부팅이 만지는 요소 중 스크립트 뒤에 있는 건 footer 뿐(나머지는 1100~1250행 머리글).
+- 핀3곳 hyeonjang-v520-buildtag(v519 위, main 기반). 신규 tests/bootrestore-v520.e2e.js 2/2 — ① 외부 스크립트를 1.5초 늦춰 경합을 일부러 만든 부팅(1280·390)에서 buildTag + 저장한 다크·글꼴·모바일 모드 복원 + 오류 0, ② 보통 부팅 12번 buildTag 12/12. 기준선 origin/main(v519)은 ① BUILDTAG 1280 에서 실패 확인. 관련 dash-cards·mobile-tap-table·note2col-v492·margin1280-v464 + 정적 19개 통과.
+- 2026-10-30 부터 올리기 흐름: 묶음(stack) 끝. 판마다 main 위 브랜치 `claude/vNNN-이름` 하나 → `패치\push-vNNN.cmd`(본보기 `push-vNNN-본보기.cmd`) → PR → CI → 병합.
+
 ## 2026-10-29 v519 PR #192 CI 고침 — 날짜 따라 깨지던 세금 기한 검사 · CI 글꼴에서 20px 넘치던 마진 표 · 느린 CI 에서 부팅이 되돌리던 모바일 모드
 
 - 찾은 것: 묶음 PR #192 의 첫 CI(run #95)가 410개 중 407 통과, 3개 실패. ① `estimate-photo-dup-v342` 의 '세금 기한은 휴일이면 다음 영업일' — 2026-10-25 기한을 쓰는 검사라 10/26 이 지나자 앱이 지난 기한을 더 다루지 않아 날짜 따라 깨짐(운영 main 도 같은 검사). ② `margin1280-v464` — CI 글꼴(숫자 DejaVu·한글 WenQuanYi)에서 금액 칸이 107px 로 넓어져 표가 982px / 962px 로 넘침(이 환경 Noto CJK 에선 962px 딱 맞음). ③ `note2col-v492` ② — 검사가 모바일 모드를 정한 뒤 부팅의 설정 복원이 폭·터치로 모바일 모드를 다시 정해 되돌림(느린 CI 에서만).
