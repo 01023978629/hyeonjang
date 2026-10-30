@@ -3,6 +3,13 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-30 v523 🧭 추측 배정 보기 — 현장 없는 사진 묶음을 한 창에서(추정 현장·근거·사진 3장) 체크해 배정, 안전판 1회, AI 키 없이 (개발_구상_20261030 §2-4)
+
+- 찾은 것: 구상서는 "추측이 AI 패널 안에만 있다"고 썼지만 틀렸다 — 사진 탭에 이미 묶음별 👉 추천(`photoSuggestFor`: gps·revisit·partial 확실 / sameday 참고)과 [✨ 추천대로 n묶음 배정](안전판 뒤)이 있고, 가져오기 뒤 `aiAutoOrganize` 제안 창(날짜 묶음, 일정→GPS 400m, 체크→`assign_photos`, **안전판 없음**, 사진 없음)도 있었다. 없던 것은 ① 사진 탭 쪽 추천에 '그날 일정' 단서 ② 사진을 보며 묶음 단위로 고르는 창 ③ 단서 없는 묶음의 현장 고르기.
+- 한 것: ① `photoSuggestFor` 에 `schedule` 참고 단서 — 그날 일정표(💰 제외)가 **한 현장만** 가리킬 때(두 현장이면 없음), GPS·재방문·같은 날 단서가 모두 없을 때만. `PHOTO_SUGGEST_SURE` 는 그대로(일괄 배정에 안 들어감). 라벨 '참고: 그날 일정(표에 이 현장만 있음)'. ② `hjPhotoSuggestReview()` — `clusterPhotos`+`photoSuggestFor` 를 그대로 써서 현장 없는 묶음을 최신순으로: 체크(확실=체크됨, 참고=해제) · `photoImg` 3장(+n) · 날짜·미배정 n장·위치 · 추정 현장+근거 또는 `.psrSel` 현장 고르기(고르면 체크됨). [체크한 묶음 배정] → `hjSnapshot('추측 배정 전',true,true)` 1회, 못 만들면 아무것도 안 바꿈 → 그 묶음의 현장 없는 사진만 배정(`portalAutoSync`), `__photoCache.key=null`, markDirty, 토스트. 입구: 사진 탭 요약 줄 `#btnSuggestReview`(PC '🧭 미배정 n장 추측 배정 보기', 폰은 ✨ 와 나란히면 '🧭 n' — 요약 줄 334px 에 338px 이 되어 두 줄로 접히는 걸 실측으로 피함) · 첫 화면 점검 줄 '미배정 사진 n장 — 추측 배정 보기'(전엔 aiAutoOrganize). ③ `aiAutoOrganize` 제안 창의 [선택 적용]도 안전판 뒤로. 가져오기 뒤 제안(`aiAutoOrgOffer`)·AI 비서 도구는 그대로.
+- 핀3곳 hyeonjang-v523-photoassign(v521 위). 신규 tests/photoassign-v523.e2e.js 6/6(일정·GPS·단서 없음·두 현장 일정·💰 일정만·나머지 묶음 → 창 내용 → 안전판 실패 무변경 → 참고 체크+현장 고르기 배정 4묶음 8장+안전판 1개 → 안전판 복원 → 점검 줄·폰 390 44px·넘침 없음 → 소스 훅). 기준선 v521 실패(단추 없음)·변이 no-snapshot 은 SNAPSHOT 에서 실패 확인. 관련 photo-suggest·photo-first-screen·photo-location(unit·e2e·mutations)·photo-safety-ui(+mutations)·photo-order·photo-audit·project-scan-order(+mutations)·dash-cards·mobile-more-sweep·mobile-tap-table·bootrestore-v520·estbackfill-v521 통과, 정적 19개 통과.
+- 안 한 것: 폰에서 ✨ 와 🧭 를 하나로 합치기(photo-suggest 검사의 '✨ 추천 n묶음 배정' 문구를 바꿔야 함) · 창 안에서 사진 크게 보기(사진 탭 묶음에서 보라고 안내만).
+
 ## 2026-10-30 v521 안 읽은 견적서 — 스캔 뒤 견적서(엑셀·PDF)만 배경에서 자동 읽기 + '읽지 않은 견적서 n건 → [지금 읽기]' (개발_구상_20261030 §2-2)
 
 - 찾은 것: 견적서 폴더의 xlsx·pdf 는 스캔 때 `ocr:'pending'`·`est:null` 로 들어오고 [일괄 글자 읽기(OCR)] 를 눌러야 `hjReadDocFile`(옛 runBatchOCR 안쪽) 이 금액·품목을 채운다 → 그 전엔 `salesEstimateFiles`(대시보드 매출·현장 마진·월말 결산·부가세 준비)에서 빠진다. 안 읽은 건수를 보여 주는 곳이 없었다.
