@@ -3,6 +3,12 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-30 v524 🩺 자료 건강 줄 — 첫 화면 '오늘 챙길 일' 바로 위 한 줄: 읽지 않은 견적 n · 미배정 사진 n · 중복 후보 n · 백업 n일 전 (개발_구상_20261030 §2-5)
+
+- 왜: '오늘 챙길 일' 카드는 무게순 5줄에서 잘리고 [오늘 그만]으로 하루 숨겨져 v521(안 읽은 견적)·v523(미배정 사진)·중복 정리의 입구가 사라졌다. 자료가 있는 한 늘 보이는 숫자 한 줄이 필요했다.
+- 한 것: `hjHealthData()`(읽기 전용: `hjUnreadEstimates().length` · 현장 없는 사진 수 · `hjDupSuspectCount()` · `backupDaysSince()`), `hjDupSuspectCount()` 는 사진 탭 '중복 의심'과 같은 기준(크기+촬영 2초 버킷)인데 `markDuplicates` 와 달리 `_dup` 표시를 건드리지 않는다. `hjHealthLineHTML()` → `[data-health-line="todo|clean"]` 안에 0 이 아닌 항목만 `[data-health=est|photo|dup]` 단추(44px) + 항상 `[data-health=backup]`('백업 n일 전' / '오늘 백업함' / '백업 기록 없음', 7일 넘으면 경고색). 셋 다 0 이면 '🩺 자료 깨끗'. 자료가 없으면 줄 없음. 대시보드 `…+hjHealthLineHTML()+dailyCheckCardHTML()+…`. 클릭 위임 `[data-health]` → `hjHealthOpen(k)`: est→`hjEstimateAutoRead({silent:false,auto:false})`, photo→`hjPhotoSuggestReview({from:'health'})`, dup→`trimDuplicates()`, backup→`backupNow()`. 기존 백업 경고 카드(7일)·백업 넘음 줄(v447)은 그대로(이 줄은 경고가 아니라 상태).
+- 핀3곳 hyeonjang-v524-healthline(v522 위; 한 PR 에 v523→v522→v524, 배포 핀 v524). 신규 tests/healthline-v524.e2e.js 4/4(시드 → 글자·순서·오늘 그만 뒤에도 남음 → 네 단추가 각 도구를 부름(전역 함수 바꿔치기로 확인) → 깨끗/경고색/기록 없음/자료 없음 → _dup 불변·폰 390 44px·넘침 없음·두 줄 이하). 기준선 v522 실패(줄 없음)·변이 zero-photo 실패 확인. 관련 dash-cards·health-board·mobile-tap-table·mobile-more-sweep·estbackfill-v521·photoassign-v523·bootrestore-v520·photodupclean-v522 통과, 정적 19개 통과.
+
 ## 2026-10-30 v522 중복 정리 도구 '정리본 사본' 거르기 — 원본 폴더에 남은 (1)·사본이 _정리완료 정리본과 바이트가 같으면 정리본을 남기고 사본을 뺀다 (개발_구상_20261030 §2-3)
 
 - 찾은 것: 스캔 때 `settleScannedPhotoCopies` 는 **이름·크기가 같은** 원본↔정리본 짝만 해시로 합친다 → "IMG_0001 (1).jpg" 같은 사본 이름은 남는다. [중복 사진 원본만 남기기](`verifyDuplicatePhotos`)의 자동 정리는 **현장·작업 정보(duplicateMetadata)가 같아야** 후보라서, 사본(현장 비어 있음) ↔ 정리본(현장·공정 있음) 짝은 늘 '정보 달라 자동 정리 대상 아님'(metaDiff)으로 빠졌다. [현장이 다른 같은 사진]은 둘 다 현장이 있을 때만.

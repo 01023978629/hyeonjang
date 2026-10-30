@@ -3405,7 +3405,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v522-dupcopy';
+const APP_BUILD='hyeonjang-v524-healthline';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10148,7 +10148,7 @@ function viewDashboard(){
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
   // 퀵칩: 주역 2개(브리핑·AI 비서)만 색, 나머지는 ghost — 색 위계로 시선 정리. '브리핑' 중복 칩 제거(hjMorningBrief는 아침 자동 표시로 충분)
-  let html=hjDemoTourHtml()+dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+hjSafetyDashHtml();   // v447 백업 3일·보존 정리·복원 리허설
+  let html=hjDemoTourHtml()+dashboardTodoHTML()+dashboardTodayHTML()+hjWatchCardHTML()+hjDailyBriefHTML()+`<div class="ai-dashrow"><button class="clay tiny" onclick="aiBriefing()">🌅 오늘 브리핑</button><button class="blue tiny" onclick="aiAgent()">🤖 AI 비서에게 시키기</button><button class="ghost tiny" onclick="weeklyReport()">📊 주간 리포트</button><button class="ghost tiny" onclick="monthlyClosing()">🗓 월말 결산</button><button class="ghost tiny" onclick="bizDashboard()">📊 경영 현황</button><button class="ghost tiny" onclick="customerLedger()">📈 거래처 장부</button><button class="ghost tiny" onclick="profitAnalysis()">📊 수익 분석</button><button class="ghost tiny" onclick="allProjectsMap()">🗺 지도</button><span class="hint" style="margin:0">“미배정 사진 정리해줘”처럼 말로 지시 → 승인 후 실행</span></div>`+hjHealthLineHTML()+dailyCheckCardHTML()+aiOpsCardHTML()+backupCardHTML()+hjSafetyDashHtml();   // v524 자료 건강 줄은 오늘 챙길 일 바로 위   // v447 백업 3일·보존 정리·복원 리허설
   html+=`<div class="kpis">
     <div class="kpi"><span class="kl">현장</span><span class="kv">${stats.length}<small>곳</small></span></div>
     ${totEst===0?`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 견적(매출)</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
@@ -13502,6 +13502,45 @@ function dailyCheckData(){
   return items.slice(0,5);
 }
 function dismissDailyCheck(){localStorage.setItem('hj_daily_dismiss',localDate());render();toast('오늘은 그만 보여드릴게요 — 내일 다시 점검합니다');}
+/* ═══════════ v524 🩺 자료 건강 줄 — 첫 화면 맨 위 한 줄: 읽지 않은 견적 n · 미배정 사진 n · 중복 후보 n · 백업 n일 전 (v521~v523 입구)
+   '오늘 챙길 일' 카드는 무게순 5줄에서 잘리고 '오늘 그만'으로 숨겨지지만, 이 줄은 자료가 있는 한 늘 보인다. 숫자만 세고(읽기 전용) 누르면 그 도구를 연다.
+   중복 후보는 사진 탭 '중복 의심'과 같은 기준(크기+촬영 2초)인데 markDuplicates 처럼 _dup 표시를 건드리지 않고 센다. */
+function hjDupSuspectCount(){
+  const g=new Map();let n=0;
+  (state.files||[]).forEach(f=>{if(!f||f.kind!=='photo'||isVideoRec(f)||!(Number(f.size)>0))return;const t=f.when?Math.round(new Date(f.when).getTime()/2000):'na';const k=Number(f.size)+'_'+t;g.set(k,(g.get(k)||0)+1);});
+  g.forEach(c=>{if(c>1)n+=c-1;});
+  return n;
+}
+function hjHealthData(){
+  const d={est:0,photo:0,dup:0,days:999,hasData:!!((state.projects||[]).length||(state.files||[]).length)};
+  try{d.est=hjUnreadEstimates().length;}catch(e){}
+  try{d.photo=(state.files||[]).reduce((a,f)=>a+(f&&f.kind==='photo'&&!f.project?1:0),0);}catch(e){}
+  try{d.dup=hjDupSuspectCount();}catch(e){}
+  try{d.days=backupDaysSince();}catch(e){}
+  return d;
+}
+function hjHealthLineHTML(){
+  try{
+    const d=hjHealthData();if(!d.hasData)return '';
+    const seg=(k,ic,label,n,title)=>'<button type="button" class="ghost tiny" data-health="'+k+'" title="'+escapeAttr(title)+'" style="min-height:44px;padding:6px 10px;font-size:12.5px;'+(n?'border-color:var(--clay);color:inherit':'color:var(--muted)')+'">'+ic+' '+label+' <b style="color:'+(n?'var(--clay)':'var(--muted)')+'">'+n+'</b></button>';
+    const parts=[];
+    if(d.est)parts.push(seg('est','📄','읽지 않은 견적',d.est,'엑셀·PDF 견적서를 읽어 매출에 넣습니다'));
+    if(d.photo)parts.push(seg('photo','📷','미배정 사진',d.photo,'현장 없는 사진 묶음을 사진·근거 보고 배정합니다(🧭 추측 배정 보기)'));
+    if(d.dup)parts.push(seg('dup','🧹','중복 후보',d.dup,'크기·촬영 시각이 같은 사진 — 원본을 읽어 확인한 뒤 정리합니다'));
+    const bk=d.days>=999?'백업 기록 없음':(d.days===0?'오늘 백업함':'백업 '+d.days+'일 전');
+    const bkWarn=d.days>=7;
+    parts.push('<button type="button" class="ghost tiny" data-health="backup" title="지금 백업(파일 + 연결돼 있으면 드라이브)" style="min-height:44px;padding:6px 10px;font-size:12.5px;'+(bkWarn?'border-color:var(--warn);color:var(--warn)':'color:var(--muted)')+'">💾 '+bk+'</button>');
+    const clean=!d.est&&!d.photo&&!d.dup;
+    return '<div data-health-line="'+(clean?'clean':'todo')+'" role="group" aria-label="자료 건강" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:12.5px">'+
+      '<span style="font-weight:800;color:var(--muted)">🩺 자료'+(clean?' <span style="color:var(--ok,#166534)">깨끗</span>':'')+'</span>'+parts.join('')+'</div>';
+  }catch(e){return '';}
+}
+function hjHealthOpen(k){
+  if(k==='est')return hjEstimateAutoRead({silent:false,auto:false});
+  if(k==='photo')return hjPhotoSuggestReview({from:'health'});
+  if(k==='dup')return trimDuplicates();
+  if(k==='backup')return backupNow();
+}
 function dailyCheckCardHTML(){
   try{
     if(localStorage.getItem('hj_daily_dismiss')===localDate())return '';
@@ -37831,7 +37870,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-est-read],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-est-read],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -38060,6 +38099,7 @@ function setupDelegation(){
     if(d.suggest!==undefined){e.stopPropagation();return photoSuggestApply(+d.suggest);}
     if(t.id==='btnSuggestAll'){e.stopPropagation();return photoSuggestApplyAll();}
     if(t.id==='btnSuggestReview'){e.stopPropagation();return hjPhotoSuggestReview({from:'tab'});}   // v523
+    if(d.health!==undefined){e.stopPropagation();return hjHealthOpen(d.health);}   // v524 자료 건강 줄
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.nmap!==undefined)return openNaverMapFor((window.__clusters||[])[+d.nmap]);
     if(d.bname!==undefined)return setClusterBuilding((window.__clusters||[])[+d.bname]);
