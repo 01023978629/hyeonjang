@@ -122,7 +122,7 @@ const ids = page => page.evaluate(() => state.files.map(f => f.id).sort().join('
       return { ok, snaps: window.__snapCalls, batches: j?.batches.length, recs: j?.batches[0].records.map(x => x.id).sort(), stored: (await idbGetStrict('appState')).files.map(f => f.name).sort().join(','), o1: [o1.project, o1._phase, o1._worklabel, o1.prefix] };
     });
     assert(r.ok, JSON.stringify(r));
-    assert.deepEqual(r.snaps, ['검증된 중복 사진 정리 전'], 'CLEAN one snapshot ' + JSON.stringify(r.snaps));
+    assert.deepEqual(r.snaps.filter(l => l !== '작업 중' && l !== '자동'), ['검증된 중복 사진 정리 전'], 'CLEAN one forced snapshot (routine autosaves may interleave) ' + JSON.stringify(r.snaps));
     assert.equal(await ids(page), 'D,G,O1,O2,O3,O4,O5,V,X', 'CLEAN only the two copies left the list');
     assert.equal(r.stored, 'IMG_0001.jpg,IMG_0001.jpg,IMG_0002.jpg,IMG_0003 (1).jpg,IMG_0003.jpg,IMG_0004 (1).jpg,IMG_0004.jpg,IMG_0005 (1).jpg,IMG_0005.jpg', 'persisted list matches');
     assert.equal(r.batches, 1); assert.deepEqual(r.recs, ['R1', 'R2']);

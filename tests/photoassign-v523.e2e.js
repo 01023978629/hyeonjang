@@ -130,7 +130,7 @@ const rowsInfo = page => page.evaluate(() => {
       return { toast: document.getElementById('toast').textContent, calls: window.__snapCalls, modal: !!document.querySelector('#modalRoot .modal'), disabled: [...document.querySelectorAll('#modalRoot .mfoot button')].map(x => x.disabled) };
     });
     assert.deepEqual(await proj(page), before, 'SNAPSHOT nothing changed');
-    assert.deepEqual(r.calls, ['추측 배정 전'], JSON.stringify(r));
+    assert.deepEqual(r.calls.filter(l => l !== '작업 중' && l !== '자동'), ['추측 배정 전'], 'one forced snapshot (routine 3-minute autosaves may interleave) ' + JSON.stringify(r));
     assert(/안전판을 만들지 못해 배정하지 않았습니다/.test(r.toast) && r.modal && r.disabled.every(x => !x), 'SNAPSHOT toast + modal stays + buttons enabled ' + JSON.stringify(r));
   });
 
@@ -148,13 +148,13 @@ const rowsInfo = page => page.evaluate(() => {
       await new Promise(r => setTimeout(r, 600));
       markDirty = od;
       const snaps = (await idbGet('hj_snaps')) || [];
-      return { nChecked, toast: document.getElementById('toast').textContent, modal: !!document.querySelector('#modalRoot .modal'), dirty: window.__dirtyCalls, snapN: snaps.length - before, snapLabel: (snaps[snaps.length - 1] || {}).label, btn: (document.getElementById('btnSuggestReview') || {}).textContent || '' };
+      return { nChecked, toast: document.getElementById('toast').textContent, modal: !!document.querySelector('#modalRoot .modal'), dirty: window.__dirtyCalls, added: snaps.slice(before).map(x => x.label), btn: (document.getElementById('btnSuggestReview') || {}).textContent || '' };
     });
     assert(r.nChecked, 'choosing a project checks the row');
     const after = await proj(page);
     assert.deepEqual(after, { a0: '유성현장', s1: '은행현장', s2: '은행현장', x1: '', m1: '', g1: '둔산현장', g2: '둔산현장', g3: '둔산현장', g4: '둔산현장', n1: '유성현장', p1: '둔산현장', p2: '둔산현장' }, 'APPLY projects ' + JSON.stringify(after));
     assert.match(r.toast, /4묶음 8장을 배정했습니다/, r.toast);
-    assert(!r.modal && r.dirty >= 1 && r.snapN === 1 && r.snapLabel === '추측 배정 전', 'APPLY modal closed, dirty, one snapshot ' + JSON.stringify(r));
+    assert(!r.modal && r.dirty >= 1 && r.added.filter(l => l === '추측 배정 전').length === 1, 'APPLY modal closed, dirty, one forced snapshot (routine autosaves may interleave) ' + JSON.stringify(r));
     assert.match(r.btn, /미배정 2장/, 'bar button recounts ' + r.btn);
   });
 
