@@ -3,6 +3,28 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v547 PC 첫 화면 두 칸(벤토) — ✅ 오늘 현장 업무 | 🏗 진행 현장 (대표 PDF 7번 '최종 UI 2') + v543 CI 보강
+
+- 첫 화면 맨 위(데모 길잡이 다음)를 `<div class="hj-bento" data-bento>` 로 감싸 `dashboardTodoHTML()`(그대로) + `hjBentoProgressHTML()`.
+  넓은 PC(1180px↑·모바일 모드 아님)는 1.2fr:1fr 두 칸, 좁은 PC 는 한 칸 차례대로. **폰(모바일 모드)은 진행 현장 칸을 안 그린다**(그릴 때 + CSS 둘 다 — 모드만 바꿔도 바로 숨음).
+  폰 첫 화면은 할 일 → 오늘 일정 차례(v254)이고, 단계는 현장 화면·'오늘 한 일'은 [⏱ 종료](v541)·🎙 음성 일지에 이미 있다.
+- 진행 현장(`hjBentoProjects`, 읽기만) = 보관 안 된 실측·시공(stage 1~2) 현장 최대 3곳 — 오늘 일정 있는 현장 먼저 → 최근 작업시간(state.workLogs)·사진 시각 → 단계 → 이름.
+  줄마다 현장 이름(`data-open`) · '오늘 한 일 한 줄' + [기록] · [시공 전·시공 중·완료] 칩(= 실측·시공·완료). 칩은 기존 `data-stage`+`data-proj` 위임 → `setStage` 그대로
+  (올리면 착공·준공 체크 창, 내리면 바로, 준공일 규칙 그대로) — 새 단계 쓰기 길을 만들지 않았다.
+- [기록]·Enter(한글 조합 중 Enter 는 글자 확정이라 건너뜀) = `hjBentoMemoSave(name)` → `workLogSave`(🎙 음성 일지와 같은 자리: 오늘 그 현장 일정의 작업 보고 done 에 덧붙임,
+  없으면 '작업일지' 일정). 빈칸은 안내만. 데모는 원자 저장이 데모를 거부하므로 같은 자리에 화면에서만 적고 '데모라 저장은 안 함'.
+- v543 CI 보강(같은 판에 묶음): ① CI 글꼴(DejaVu/WenQuanYi)에선 17.5cqi 로도 첫 화면 숫자 칸 '원' 이 둘째 줄로 → `hjKpiFit(root)`: render 뒤 대시보드 `.kpis>.kpi .kv` 가
+  두 줄이면 1px 씩 줄임(14px 바닥·14번 한도·이미 인라인 style 이 있는 칸은 안 건드림·`data-kv-fit` 표시로 다음 render 에 다시 맞춤).
+  ② 통합한 `hjTaxIssueReceive` 가 원자 저장이라 데모 입금 기록이 'demo mode — not saved' → 데모면 `hjPayRecordAdd` 로 메모리에서만(통합 전 v450 과 같게).
+  ③ amount-sign: 입금 저장이 비동기라 부팅 타이머(aiOps·세무 달력·협업 일정)를 미리 돌리고 5초까지 기다림 + 저장 150ms 뒤 뜨는 '🧾 입금 확인증' 창을 보고 닫음
+  (안 기다리면 늦게 뜬 그 창이 다음 검사 '영수증 확인 창'을 덮어 부하 걸린 기계에서 '정상 OCR 금액이 막힘: []'). numwrap2-v542: 숫자 칸만 고르고 글자 14px 이상, 변이는 hjKpiFit 호출도 뺀다.
+- 핀3곳 hyeonjang-v547-bentodash. 신규 tests/bentodash-v547.e2e.js 6/6(두 칸·목록·칩 눌림·44px·자료 불변 → 칩 내리기·올리기 체크 창 → 기록·빈칸·Enter 일지 일정 →
+  1024 한 칸·폰 없음·모드 전환·어두운 대비 → 데모 기록·데모 입금 → 소스·핀). 기준선 v546 과 변이 one-col 은 ① 에서 실패 확인.
+  회귀: amount-sign · numwrap2-v542 · dash-cards · demo-v462 · demo3-v489 · demotour-v467 · demotour2-v470 · tour6-v495 · ownertodo-v460 · mobile-tap-table · mobile-operations ·
+  mobile-shell-a11y · operations-review · healthline-v524 · headerui-v546 · stopmemo-v541 · inqpending-v386 · watch-card · brief-actions · case-pack · delay-v347 · extraprogress-v346 ·
+  ui-feedback · taxissue-v428 · taxmerge-v543 · payproof-v348 · vatproof-v349 · bankimport-v350 · estassign-v544 · photofill-v545 통과.
+  team-workboard 는 이 기계 Chromium 이 blob 한글 파일명을 'download' 로 떨어뜨리는 알려진 환경 문제(그 검사 주석 참고)로만 실패 — CI 에서 확인.
+
 ## 2026-11-01 v546 상단 머리 — 판 배지 · 🩺 자료 건강 캡슐 · [🧩 공정 일괄 채우기] · PC 머리 고정 (대표 PDF 6번 '최종 UI 1')
 
 - 머리(`<header>`)에 `#hjBuildBadge`(APP_BUILD 의 vNNN)와 `#hjHeadHealth` 를 더함. `hjHeadApply()` 를 render 마다(빈 화면으로 일찍 끝나는 길 앞) 부르고, 같은 HTML 이면 DOM 을 안 건드린다.

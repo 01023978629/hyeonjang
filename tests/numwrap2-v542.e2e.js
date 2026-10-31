@@ -1,6 +1,6 @@
 /* v542 폰에서 숫자가 중간에서 끊기지 않게 2차 — 대표 PDF 2번(대시보드 KPI·현장 카드 금액·마진 요약, 390px). 합성(데모) 자료만, 외부 쓰기 0.
    데모 금액을 37배로 키워(7자리 '123,580만원') 좁은 폰에서 일부러 빠듯하게 만든다.
-   ① 첫 화면 숫자 칸(.kpis): 360·390·1280 에서 숫자와 '만원' 이 한 줄 · 넘침 없음 · PC 는 26px 그대로, 폰은 칸 폭에 맞춰 조금만 줄어듦(18px 이상)
+   ① 첫 화면 숫자 칸(.kpis): 360·390·1280 에서 숫자와 '만원' 이 한 줄 · 넘침 없음 · PC 는 26px 그대로, 폰은 칸 폭에 맞춰 조금만 줄어듦(clamp 18px, 글꼴이 넓으면 v547 맞춤이 14px 까지)
       · 다른 화면의 flex 줄 .kpi(아파트 관리)는 영향 없음 (DASH_KPI)
    ② 연락처 전화번호는 '-' 에서 안 끊김(360·390) · 번호 글자는 그대로 보임(태그가 들어 있어도 글자) (PHONE)
    ③ 월말 결산 글(#mcText)의 금액이 360 에서 안 끊김 (CLOSING)
@@ -24,6 +24,9 @@ if (MUT) {
   html = html || fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const needle = '.kpis>.kpi .kv{font-size:clamp(18px,17.5cqi,26px);';
   assert.equal(html.split(needle).length, 2, 'mutation needle'); html = html.replace(needle, '.kpis>.kpi .kv{');
+  // v547 부터는 그린 뒤 맞춤(hjKpiFit)도 있다 — 변이는 둘 다 빼야 의미가 있다
+  const fit = "  if(state.tab==='dashboard')hjKpiFit(v);   // v547 숫자 칸 한 줄 맞춤\n";
+  if (html.includes(fit)) html = html.replace(fit, '');
 }
 const TABS = ['dashboard', 'estimates', 'ledger', 'schedule', 'photos', 'docs', 'contacts', 'quotemaker', 'aptmgmt'];
 const MODALS = [['월말 결산', 'monthlyClosing()'], ['월별 손익', 'pnl()'], ['매출 추이', 'revenueTrend()'], ['매출 목표', 'goalManage()'], ['매출 예측', 'salesForecast()'], ['마진 점검', 'lossAlert()'], ['현금 흐름', 'cashFlow()'], ['마진 보드', 'hjMarginBoardView()'], ['수금 이력', 'payHistoryView()'], ['작업시간', 'workView()'], ['지출 장부', 'expenseLedger(localDate().slice(0,7))']];
@@ -75,7 +78,7 @@ const SPLITS = page => page.evaluate(() => {
   }
   return out;
 });
-const kpis = page => page.evaluate(() => [...document.querySelectorAll('.kpis>.kpi .kv')].filter(e => !e.getAttribute('style')).map(e => {
+const kpis = page => page.evaluate(() => [...document.querySelectorAll('.kpis>.kpi .kv')].filter(e => e.querySelector('small') && /\d/.test(e.firstChild && e.firstChild.textContent || '') && !/font-size:\s*(13|20)px/.test(e.getAttribute('style') || '')).map(e => {   // v547 숫자 칸(맞춤이 인라인 크기를 줄 수 있다 — 글자 칸·수금 20px 칸만 뺀다)
   const r = e.getBoundingClientRect(), sm = e.querySelector('small'), fs = parseFloat(getComputedStyle(e).fontSize);
   // 한 줄이면 높이 ≈ 글자 크기(줄 높이 1), 두 줄이면 두 배 — 큰 숫자와 작은 '만원' 은 바닥선이 달라 상자 위치로 세면 안 된다
   return { t: e.textContent.trim(), fs, h: Math.round(r.height), lines: r.height > fs * 1.5 ? 2 : 1, over: e.scrollWidth > e.clientWidth + 1, unitSame: !sm || Math.abs(sm.getBoundingClientRect().bottom - r.bottom) < fs * 0.6 };
@@ -95,7 +98,7 @@ async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSyn
       for (const x of k) {
         assert.equal(x.lines, 1, w + 'px KPI on one line: ' + JSON.stringify(x));
         assert(!x.over && x.unitSame, w + 'px KPI fits with its unit: ' + JSON.stringify(x));
-        assert(x.fs >= 18 && x.fs <= 26, w + 'px KPI font ' + x.fs);
+        assert(x.fs >= 14 && x.fs <= 26, w + 'px KPI font ' + x.fs);   // v547 글꼴이 넓으면 맞춤이 14px 까지 줄인다
         if (w === 1280) assert.equal(x.fs, 26, 'PC keeps 26px');
       }
     }
