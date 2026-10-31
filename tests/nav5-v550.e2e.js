@@ -124,6 +124,8 @@ const BG = 'window.__bg=e=>{for(let n=e;n;n=n.parentElement){const c=getComputed
     assert(ratio(...badge) >= 4.5, 'badge contrast ' + JSON.stringify(badge));
     const acts = await pd.evaluate(() => [...document.querySelectorAll('#view .hj-ph-actions button')].map(b => [getComputedStyle(b).color, __bg(b)]));   // 🪜(ghost)는 투명이라 실제 바탕으로
     assert(acts.length === 3 && acts.every(c => ratio(...c) >= 4.5), 'v549 big buttons + phase toggle in dark ' + JSON.stringify(acts));
+    const cut = await pd.evaluate(() => [...document.querySelectorAll('#view .hj-ph-actions button')].map(b => [b.id, b.scrollWidth - b.clientWidth]).filter(x => x[1] > 0));
+    assert.deepEqual(cut, [], 'big text keeps the row labels whole (toggle drops to its own line) ' + JSON.stringify(cut));
     for (const tab of ['photos', 'schedule', 'estimates', 'dashboard']) {
       const over = await pd.evaluate(tab => { state.tab = tab; render(); syncMobileNav(); return document.documentElement.scrollWidth - innerWidth; }, tab);
       assert(over <= 0, tab + ' no horizontal overflow at dark+big ' + over);
