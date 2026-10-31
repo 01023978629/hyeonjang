@@ -330,10 +330,13 @@ const GRID_FT = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수
     assert(r.r4 === 1 && r.r5.n === 0 && r.r5.dup === 1 && r.hsrc === 'A#B 내역.xlsx' && r.hkey === 'A#B 내역.xlsx#평화로운아파트', 'APPLY2 # in file name ' + JSON.stringify(r));
   });
 
-  await test('⑦ 소스·핀 3곳 v526 · 오류 0 · 바깥 쓰기 0', async () => {
+  await test('⑦ 소스·핀 3곳(v526 이상·서로 같음) · 오류 0 · 바깥 쓰기 0', async () => {
     assert.match(SRC, /if\(t\.id==='qmStmt'\)return hjStmtImportPick\(\);/);
-    const pins = [/const APP_BUILD='hyeonjang-v526-stmtimport'/.test(SRC), /const C='hyeonjang-v526-stmtimport'/.test(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')), /TARGET_BUILD = 'hyeonjang-v526-stmtimport'/.test(fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8'))];
-    assert.deepEqual(pins, [true, true, true], 'pins ' + JSON.stringify(pins));
+    // 핀은 판마다 바뀐다 — v526 이상이고 세 곳이 같은지만 본다(다음 판에서 떨어지지 않게)
+    const ver = x => { const m = String(x || '').match(/hyeonjang-v(\d+)-/); return m ? +m[1] : 0; };
+    const pin = [(SRC.match(/const APP_BUILD='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const C='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8').match(/TARGET_BUILD = '([^']+)'/) || [])[1]];
+    const pins = [ver(pin[0]) >= 526, pin[0] === pin[1], pin[0] === pin[2]];
+    assert.deepEqual(pins, [true, true, true], 'pins ' + JSON.stringify(pin));
     await context.close();
     assert.deepEqual(errors, []); assert.equal(network.writes, 0);
   });
