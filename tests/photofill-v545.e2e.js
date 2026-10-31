@@ -151,7 +151,9 @@ async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSyn
     assert(btn && /공정·작업명 빈칸 \d+장/.test(btn), 'PC photo tab button ' + JSON.stringify(btn));
     // 폰은 요약 줄 한 줄 약속(v523·photo-suggest) — 단추는 줄에 안 넣고(폰 입구는 v549 의 큰 단추) 창은 같은 함수로 연다
     const { page: pm } = await open(390);
-    assert.equal(await pm.locator('#btnPhotoFill').count(), 0, 'phone summary bar unchanged');
+    // v549: 폰 입구는 요약 줄 아래 큰 단추 줄(.hj-ph-actions) — 요약 줄 안에는 여전히 없다
+    assert.equal(await pm.locator('#view .photo-bar #btnPhotoFill').count(), 0, 'phone summary bar unchanged');
+    assert.equal(await pm.locator('#view .hj-ph-actions #btnPhotoFill').count(), 1, 'v549 phone entry in the big button row');
     await pm.evaluate(() => hjPhotoFillView()); await pm.locator('#hjPhotoFill [data-pf-row]').first().waitFor();
     const ui = await pm.evaluate(() => { const m = document.querySelector('#modalRoot .modal'); return { over: m.scrollWidth - m.clientWidth, doc: document.documentElement.scrollWidth - innerWidth, small: [...document.querySelectorAll('#hjPhotoFill .hjpf-chk,#hjPhotoFill [data-pf-phase],#hjPhotoFill [data-pf-label],#modalRoot .mfoot button')].map(e => Math.round(e.getBoundingClientRect().height)).filter(h => h < 44) }; });
     assert(ui.over <= 1 && ui.doc <= 0, 'no overflow ' + JSON.stringify(ui)); assert.deepEqual(ui.small, [], '44px controls');

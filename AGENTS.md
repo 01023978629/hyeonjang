@@ -3,6 +3,27 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v549 폰 사진 탭 — 사진 2열 격자 · 📍 위치 배지 · 위쪽 큰 단추 줄 [🧭 추측 배정][🧩 공정 채우기] (대표 PDF 9번) + OfficeOps 부팅 대기
+
+- 폰(`__narrow` = 모바일 모드 또는 폭 720px 이하) 요약 줄 바로 아래 `hjPhotoTopActionsHTML(unN,fillN,sureN)` — 있던 단추 그대로 같은 id:
+  `#btnSuggestReview`(v523 🧭 추측 배정 보기) · `#btnPhotoFill`(v545 🧩 공정·작업명 빈칸 채우기). 반반 한 줄, 하나면 한 줄 가득, 할 일 없으면 줄 없음.
+  🧭 는 폰 요약 줄에서 빠졌다(줄이 66→45px) — 그래서 큰 줄(44px+여백)을 더해도 첫 사진 y≤650(photo-first-screen 실측 598→627). ✨ 추천 일괄은 요약 줄 그대로(photo-suggest).
+  PC 는 종전 그대로(요약 줄 단추, 큰 줄 없음).
+- 사진 칸 2열: `body.mobile-mode .cluster-body` 와 `@media(max-width:720px)` 에서 `repeat(2,minmax(0,1fr))` — 390 에서 칸 105→163px(현장을 알아보게).
+  PC 는 auto-fill 그대로. 현장별 보기(.phase-group)는 모바일 모드에서만 2열.
+- 📍 위치 배지: `hjPhotoGpsBadge(p)` — `hjPhotoHasGps` 인 사진만, 칸 왼쪽 아래(선택 네모 왼쪽 위·⋯ 오른쪽 위와 안 겹침), 누르는 것 없음. 사진 탭 칸(photoCell)만.
+- OfficeOps: `officeOpsCall` 이 주소·토큰이 비었을 때 `window.__hjOfficeOpsBootDone` 을 먼저 기다린 뒤 '연결이 필요합니다' 를 판단 — v547 CI 에서
+  office-ops-conversion-recovery 가 새로고침 직후(복원만 끝남) officeOpsLoad 를 불러 두 번 연속 막혔다(로컬은 통과). 부팅은 officeOpsCall 을 안 불러 서로 기다리지 않는다.
+- 바뀐 옛 검사(의도된 화면 변경): photoassign-v523 폰 단추 글자 '🧭 10' → '🧭 추측 배정 10장'(+ 큰 줄 안), photofill-v545 폰 '#btnPhotoFill 0개' → '요약 줄 안 0개 · 큰 줄 안 1개'.
+- 핀3곳 hyeonjang-v549-photogrid. 신규 tests/photogrid-v549.e2e.js 5/5(요약 줄·큰 줄 반반·2열·배지·첫 사진 → 두 창·자료 불변 → 하나·없음·600 PC 모드·어두운 대비 →
+  PC 그대로·OfficeOps 부팅 대기 → 소스·핀). 기준선 v548 과 변이 three-col 은 ① 에서 실패 확인. 현장 이름이 길면 묶음 머리 select 가 다음 줄로 가 +29px(이번 판과 무관, 종전 그대로).
+  회귀(사진·폰 51개 + OfficeOps): photo-first-screen · photo-suggest · photoassign-v523 · photofill-v545 · photo-order · photo-audit · phototags-v454 · worklabel-v405 ·
+  photo-tools-select · photo-safety-ui · photodupclean-v522 · photo-intake-safety · photo-location · photo-original-keep · photo-refresh-search · photo-report(·media·output) ·
+  photo-source-status · photo-no-recovery · mobile-friendly-ui · mobile-nav-badges · mobile-nav-scroll · mobile-todo-nav · mobile-photo-upload · mobile-screen-layout ·
+  mobile-more-sweep · mobile-more-tools · mobile-back · mobile-list · mobile-tap-table · mobile-office-connect · my-work · shared-todo · document-estimate-ui · menu-schedule ·
+  geocode-label · media-intake · media-safety · media-batch-audit · chatphoto-v528 · leakdetect-v420 · apartment-units · project-scan-order · shareinbox-v416 · team2-v444 ·
+  video-files · polish-v456 · expenseocr-v435 · field-search-recovery · office-ops-conversion-recovery · office-ops-ui · pcdark-v452 통과.
+
 ## 2026-11-01 v548 💼 이번 달 돈 흐름 보드 — 지출 · 손익(마진) · 증빙 세 칸 + 최근 6개월 수금·지출 막대 (대표 PDF 8번)
 
 - 자리: PC 첫 화면 수금률 막대(`.ratewrap`) 바로 아래, '진행 단계 분포' 위. `hjMoneyBoardHTML()` — **PC 만**(모바일 모드면 안 그림 + CSS, 폭 720px 이하는 PC 모드여도 CSS 로 숨김:

@@ -180,7 +180,7 @@ const rowsInfo = page => page.evaluate(() => {
     const r = await m.page.evaluate(async () => {
       const b = document.getElementById('btnSuggestReview');
       const bar = document.querySelector('#view .photo-bar');
-      const out = { btn: b ? b.textContent.replace(/\s+/g, ' ').trim() : '', btnH: b ? Math.round(b.getBoundingClientRect().height) : 0, barH: Math.round(bar.getBoundingClientRect().height), pageW: document.documentElement.scrollWidth };
+      const out = { btn: b ? b.textContent.replace(/\s+/g, ' ').trim() : '', btnH: b ? Math.round(b.getBoundingClientRect().height) : 0, barH: Math.round(bar.getBoundingClientRect().height), pageW: document.documentElement.scrollWidth, inRow: !!(b && b.closest('.hj-ph-actions') && !b.closest('.photo-bar')) };
       b.click(); await new Promise(r => setTimeout(r, 200));
       const root = document.getElementById('modalRoot');
       out.modal = !!root.querySelector('.modal');
@@ -193,7 +193,8 @@ const rowsInfo = page => page.evaluate(() => {
       closeModal();
       return out;
     });
-    assert.equal(r.btn, '🧭 10', 'PHONE short label next to the ✨ bulk button (one line) ' + JSON.stringify(r));
+    // v549: 폰은 🧭 가 요약 줄에서 빠져 바로 아래 큰 단추 줄(.hj-ph-actions)로 — 요약 줄은 한 줄 그대로
+    assert.equal(r.btn, '🧭 추측 배정 10장', 'PHONE big row label (v549) ' + JSON.stringify(r)); assert.equal(r.inRow, true, 'PHONE button in the big row, not the summary bar');
     assert(r.barH <= 70, 'PHONE summary bar stays one line ' + JSON.stringify(r));
     assert(r.btnH >= 44 && r.pageW <= 390 && r.modal && r.scrollW <= 390 && !r.rowOver, 'PHONE button 44px, no horizontal overflow ' + JSON.stringify(r));
     assert(r.chkH >= 44 && r.selH >= 44 && r.footH >= 44, 'PHONE 44px targets ' + JSON.stringify(r));
