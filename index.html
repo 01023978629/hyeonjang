@@ -812,6 +812,14 @@
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;box-shadow:var(--shadow);transition:.25s;z-index:80;max-width:90vw;pointer-events:none}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   body.mobile-mode #toast{bottom:calc(72px + env(safe-area-inset-bottom,0px));width:max-content;max-width:calc(100vw - 32px);overflow-wrap:anywhere}
+  /* v541 작업 종료 한 줄 메모 — PC 는 위쪽 토스트 바로 아래, 폰은 아래쪽 토스트 바로 위. 모달(70) 아래·하단 메뉴(50) 위 */
+  #hjStopMemo{position:fixed;left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top,0px));z-index:65;width:min(560px,calc(100vw - 24px));box-sizing:border-box;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:8px 10px}
+  body.mobile-mode #hjStopMemo{top:auto;bottom:calc(126px + env(safe-area-inset-bottom,0px))}
+  #hjStopMemo .hjsm-l{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:0 2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #hjStopMemo .hjsm-p{font-weight:600;color:var(--ink)}
+  #hjStopMemo .hjsm-r{display:flex;gap:6px;align-items:center}
+  #hjStopMemo input{flex:1;min-width:0;min-height:44px;box-sizing:border-box;font-size:16px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:10px}
+  #hjStopMemo button{min-height:44px;padding:8px 12px;white-space:nowrap;flex:0 0 auto}
   body.mobile-mode:has(#modalRoot .modal) #toast{bottom:auto;top:calc(10px + env(safe-area-inset-top,0px))}
   body:not(.mobile-mode) #dashboardInstall{display:none!important}   /* v450 PC 화면은 사이드바 ⤓ 앱 설치 단추(줄의 인라인 display 를 이긴다) */   /* v449 창이 열려 있으면 위에 — 아래 단추를 가리지 않게 */
   .worklog-row,.worklog-head{display:grid;grid-template-columns:58px minmax(0,1fr) 96px 150px;gap:6px;padding:10px;align-items:center}
@@ -3696,7 +3704,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v540-demomonth';
+const APP_BUILD='hyeonjang-v541-stopmemo';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -46084,7 +46092,43 @@ function workPunch(pjName){
   const mins=workMinutes(open);
   markDirty();render();
   toast('⏱ '+hm+' 종료 — 오늘 '+workHM(mins));
+  try{hjStopMemoOffer(open.id);}catch(e){}   // v541 '오늘 한 일' 한 줄
   return {상태:'종료',시각:hm,분:mins};
+}
+/* v541 📝 작업 종료 때 '오늘 한 일' 한 줄 — [⏱ 종료] 직후 토스트 옆에 작은 입력 줄(PC 는 위 토스트 아래, 폰은 아래 토스트 위).
+   [저장]·Enter 는 방금 끝낸 그 기록(id)의 메모에 넣는다 — 이미 메모가 있으면 ' · ' 로 잇는다(✏️ 수정 창과 같은 칸, v514 줄에 '📝 …' 로 보임).
+   [건너뛰기]·Esc·손대지 않고 25초는 아무것도 바꾸지 않는다. 직원 모드(by:'staff')도 같다. 한 번에 하나 — 다음 종료가 바꿔 끼운다.
+   #view 밖(body)에 붙어 render 에 지워지지 않고, 모달(z 70) 아래·폰 하단 메뉴(z 50) 위(z 65). 오래된 창(__tabStale)에서는 저장하지 않는다. */
+const HJ_STOP_MEMO_MAX=120;
+let HJ_STOP_MEMO_IDLE=25000;
+function hjStopMemoClose(){const b=document.getElementById('hjStopMemo');if(b){clearTimeout(b._t);b.remove();}}
+function hjStopMemoOffer(id){
+  hjStopMemoClose();
+  const w=workData().find(x=>x&&x.id===id);if(!w||!w.out)return null;
+  const bar=document.createElement('div');bar.id='hjStopMemo';bar.setAttribute('role','group');bar.setAttribute('aria-label','오늘 한 일 한 줄 메모');bar.dataset.stopmemo=String(id);
+  bar.innerHTML='<label for="hjStopMemoIn" class="hjsm-l">📝 오늘 한 일 한 줄 <span class="hjsm-p">'+escapeHtml(w.project||'')+'</span></label>'+
+    '<div class="hjsm-r"><input id="hjStopMemoIn" maxlength="'+HJ_STOP_MEMO_MAX+'" placeholder="예: 안방 도배 마감, 거실 몰딩" autocomplete="off" enterkeyhint="done">'+
+    '<button type="button" class="clay" data-stopmemo-save>저장</button><button type="button" class="ghost" data-stopmemo-skip>건너뛰기</button></div>';
+  document.body.appendChild(bar);
+  const inp=bar.querySelector('input');
+  const arm=()=>{clearTimeout(bar._t);bar._t=setTimeout(()=>{if(bar.isConnected&&!String(inp.value||'').trim()&&document.activeElement!==inp)hjStopMemoClose();},HJ_STOP_MEMO_IDLE);};
+  arm();inp.addEventListener('input',arm);inp.addEventListener('blur',arm);
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();hjStopMemoSave(id,inp.value);}else if(e.key==='Escape'){e.preventDefault();hjStopMemoClose();}});
+  bar.querySelector('[data-stopmemo-save]').onclick=()=>hjStopMemoSave(id,inp.value);
+  bar.querySelector('[data-stopmemo-skip]').onclick=()=>hjStopMemoClose();
+  try{if(!document.body.classList.contains('mobile-mode')&&!(window.matchMedia&&matchMedia('(pointer:coarse)').matches))inp.focus({preventScroll:true});}catch(e){}
+  return bar;
+}
+function hjStopMemoSave(id,text){
+  const t=String(text||'').replace(/\s+/g,' ').trim().slice(0,HJ_STOP_MEMO_MAX);
+  if(!t){hjStopMemoClose();return {상태:'건너뜀'};}
+  if(typeof __tabStale!=='undefined'&&__tabStale){toast('이 창은 오래된 창이라 저장하지 않았어요 — 새로고침한 뒤 다시 적어 주세요');return {오류:'오래된 창'};}
+  const w=workData().find(x=>x&&x.id===id);
+  if(!w){hjStopMemoClose();toast('작업시간 기록을 찾을 수 없어요');return {오류:'기록 없음'};}
+  const old=String(w.memo||'').trim();
+  w.memo=!old?t:(old===t?old:old+' · '+t);
+  hjStopMemoClose();markDirty();render();toast('📝 메모 저장 — '+t);
+  return {상태:'저장',메모:w.memo};
 }
 function workMinutes(w){
   if(!w||!w.in||!w.out)return 0;
