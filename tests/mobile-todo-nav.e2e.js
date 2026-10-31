@@ -1,4 +1,6 @@
-/* Mobile fifth navigation action opens existing todo, not another saved data system.
+/* Mobile today-work action opens existing todo, not another saved data system.
+   v550 (대표 PDF 10번 하단 5칸: 현장·캘린더·[카메라]·정산·설정) — [오늘 할일] 칸이 빠져 내 업무는 [설정] 바로가기 '✅ 내 업무'로 연다.
+   지금 화면 위에 열리고 닫으면 [설정] 단추로 초점이 돌아온다(예전 [오늘 할일] 칸과 같은 약속).
    HJ_TODO_NAV_MUTATION=route|quote-shortcut must fail its protected assertion.
    HJ_TODO_NAV_SHOTS=<folder> saves optional simulated screen captures. */
 'use strict';
@@ -18,10 +20,11 @@ const cases=[
   {name:'landscape',width:740,height:360,tab:'dashboard'},
   {name:'large-text',width:360,height:640,tab:'photos',big:true}
 ];
-const NAV='.mobile-nav [data-mnav="__todo"]';
+const NAV='.mobile-nav [data-mnav="__more"]';
+const MYWORK='#moreNav [data-more="__mywork"]';
 async function settle(page){await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
 async function capture(page,spec,name){if(shots){fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,spec.name+'-'+name+'.png')});}}
-async function modalClosed(page){await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet)&&document.activeElement?.dataset.mnav==='__todo');}
+async function modalClosed(page){await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet)&&document.activeElement?.dataset.mnav==='__more');}
 async function moreClosed(page){await page.waitForFunction(()=>!document.querySelector('#moreSheet')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet));}
 async function preserved(page){return page.evaluate(()=>({
   projects:JSON.stringify(state.projects),files:JSON.stringify(state.files),draft:JSON.stringify(state.editingQuote),quotes:JSON.stringify(state.quotes),schedule:JSON.stringify(state.schedule),
@@ -29,7 +32,7 @@ async function preserved(page){return page.evaluate(()=>({
 }));}
 async function openTodo(page){
   // v333 새 계약: 하단 [오늘 할일]은 '내 업무' 한 화면을 열고, 기존 이 기기 할일 화면은 그 안의 [✅ 이 기기 할일] 로 그대로 닿는다.
-  await page.locator(NAV).click();await page.locator('#modalRoot #myWork').waitFor();
+  await page.locator(NAV).click();await page.locator(MYWORK).click();await page.locator('#modalRoot #myWork').waitFor();
   await page.locator('#modalRoot #mwLocal').click();await settle(page);
   assert.equal(await page.locator('#modalRoot #todoText').count(),1,'today work navigation must still reach the existing todo view');
   await page.waitForFunction(()=>document.activeElement?.id==='todoText');
@@ -68,14 +71,14 @@ async function openTodo(page){
           window.__todoNavExternal=[];const reject=name=>()=>{__todoNavExternal.push(name);throw new Error('unexpected external '+name);};
           window.open=reject('window.open');window.showOpenFilePicker=reject('file picker');window.showDirectoryPicker=reject('directory picker');relayCall=reject('relay');geminiAsk=reject('AI');
           render();syncMobileNav();clearTimeout(__idbSaveTimer);document.getElementById('toast').classList.remove('show');
-          if(mutation==='route')document.addEventListener('click',event=>{if(event.target.closest('[data-mnav="__todo"]')){event.preventDefault();event.stopImmediatePropagation();}},true);
+          if(mutation==='route')document.addEventListener('click',event=>{if(event.target.closest('[data-more="__mywork"]')){event.preventDefault();event.stopImmediatePropagation();}},true);
           if(mutation==='quote-shortcut'){const index=MORE_NAV_SHORTCUTS.findIndex(x=>x.tab==='quotemaker');if(index>=0)MORE_NAV_SHORTCUTS.splice(index,1);}
         },{spec,mutation});
         await settle(page);await page.waitForFunction(()=>getComputedStyle(document.getElementById('toast')).opacity==='0');
         const before=await preserved(page);
-        const nav=await page.locator('.mobile-nav [data-mnav]').evaluateAll(es=>es.map(e=>({id:e.dataset.mnav,label:e.querySelector('span:last-child')?.textContent,aria:e.getAttribute('aria-label'),title:e.title})));
-        assert.deepEqual(nav.map(x=>x.id),['dashboard','photos','__camera','schedule','__todo','__more'],'six navigation positions keep today work in the fifth slot');
-        assert.equal(nav[4].label,'오늘 할일');assert.equal(nav[4].aria,'오늘 할일, 오늘 할 작업 열기');assert.equal(nav[4].title,'오늘 할 작업');
+        const nav=await page.locator('.mobile-nav [data-mnav]').evaluateAll(es=>es.map(e=>({id:e.dataset.mnav,label:e.querySelector('span:not(.mi):not(.mnav-badge)')?.textContent,aria:e.getAttribute('aria-label'),title:e.title})));
+        assert.deepEqual(nav.map(x=>x.id),['photos','schedule','__camera','estimates','__more'],'v550 five navigation positions: 현장·캘린더·카메라·정산·설정');
+        assert.deepEqual(nav.map(x=>x.label),['현장','캘린더','카메라','정산','설정']);assert.equal(nav[4].aria,'설정, 더보기');
         assert(await page.locator(NAV).evaluate(e=>{const r=e.getBoundingClientRect(),h=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight+1&&!!h&&(h===e||e.contains(h));}),spec.name+' fifth navigation target is visible and touchable');
         await capture(page,spec,'bottom-navigation');
         for(const closing of ['button','escape','back']){
@@ -115,10 +118,11 @@ async function openTodo(page){
         await page.locator('[data-mnav="__more"]').click();await page.locator('#moreSearch').waitFor();
         assert.equal(await page.locator('#moreNav [data-more="quotemaker"]').count(),1,'quote writing shortcut must remain accessible in More');
         // 폰에서는 상단 탭이 숨으므로(.mobile-mode .tabs{display:none}) 더보기가 유일한 진입로다.
-        // v299 에서 아파트 관리가 들어와 5개 → 6개가 됐다. 숫자만 맞추지 말고 무엇이 있어야 하는지도 적는다.
-        assert.equal(await page.locator('#moreNav [data-more]').count(),6,'More contains six navigation shortcuts');
+        // v299 에서 아파트 관리가 들어와 5개 → 6개, v550 에서 하단에서 빠진 대시보드·내 업무가 맨 앞에 들어와 8개. 숫자만 맞추지 말고 무엇이 있어야 하는지도 적는다.
+        assert.equal(await page.locator('#moreNav [data-more]').count(),8,'More contains eight navigation shortcuts');
+        assert.deepEqual(await page.locator('#moreNav [data-more]').evaluateAll(es=>es.slice(0,2).map(e=>e.dataset.more)),['dashboard','__mywork'],'dashboard and today work lead the shortcuts');
         assert.equal(await page.locator('#moreNav [data-more="aptmgmt"]').count(),1,'아파트 관리는 폰에서 더보기로만 닿는다');
-        assert.match(await page.locator('#moreResultCount').innerText(),/바로가기 6개/);
+        assert.match(await page.locator('#moreResultCount').innerText(),/바로가기 8개/);
         await page.locator('#moreNav [data-more="quotemaker"]').click();await moreClosed(page);
         assert.equal(await page.evaluate(()=>state.tab),'quotemaker');assert.equal(await page.locator('#qmTitle').inputValue(),'모의 작성 중 견적 유지');
         assert.deepEqual(await preserved(page),before,'direct quote shortcut preserves the unsaved draft');
