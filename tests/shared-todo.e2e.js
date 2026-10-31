@@ -102,6 +102,8 @@ async function mobileBounds(page){
         // Isolate this feature from unrelated delayed startup seeders and online-event inbox sync.
         // Their own regression files cover them; they would otherwise change the baseline at 4s.
         taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;backupBootCheck=()=>{};kakaoCheckNew=()=>{};
+        // v530 '다시 볼 때 서버 최신 확인'은 legacy relay health 를 부른다 — 이 검사의 가짜 시계가 1분을 넘기면 visibilitychange 에서 돈다(relaysync-v530 이 따로 본다).
+        if(typeof relayResumeCheck==='function')relayResumeCheck=async()=>'';
         officeIntakeSync=async()=>false;
         window.__sharedTodoUnexpected=[];
         const reject=name=>()=>{__sharedTodoUnexpected.push(name);throw new Error('Unexpected unrelated action: '+name);};
