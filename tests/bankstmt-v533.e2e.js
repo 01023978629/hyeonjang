@@ -108,7 +108,8 @@ async function openPage() {
     assert(r.part[0] === '' && r.part[2] === true && /시험누수 작업내역서 10\/30\(남음 150,000원\) · 시험누수 작업내역서 10\/13\(남음 1,490,001원\)의 일부 입금일 수 있어요/.test(r.part[4]), 'partial = hint only ' + JSON.stringify(r.part));
     assert(r.amtOnly[0] === '' && r.amtOnly[2] === false && /📑 시험방수 작업내역서 10\/20 남은 돈과 같은 금액 — 입금자가 그 거래처면/.test(r.amtOnly[4]), 'amount only = hint only ' + JSON.stringify(r.amtOnly));
     assert(r.short[0] === '' && r.short[2] === false, 'one-letter payer never matches a partner ' + JSON.stringify(r.short));
-    assert(r.sum[0] === '' && /시험누수 내역서 2장 남은 돈 합계와 같아요/.test(r.sum[4]), 'several statements at once = hint ' + JSON.stringify(r.sum));
+    // v538 부터는 거래처가 맞고 오래된 순 합계가 딱 맞으면 '여러 장 한 번에' 제안(고르는 건 화면 체크 — tests/bankmulti-v538.e2e.js)
+    assert(r.sum[0] === '' && /오래된 내역서 2장 남은 돈 합계와 같은 금액/.test(r.sum[3]) && r.sum[4] === '', 'several statements at once = combo suggestion (v538) ' + JSON.stringify(r.sum));
     assert.deepEqual(r.over, ['', false, true, '', ''], 'more than any statement = nothing');
     assert.deepEqual(r.none, ['', false, false, '', '']);
     assert(r.tie[0] === '' && /남은 돈이 같은 내역서 2장/.test(r.tie[4]), 'two statements with the same remaining amount = no pick ' + JSON.stringify(r.tie));
