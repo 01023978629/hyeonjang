@@ -1814,6 +1814,7 @@ async function scanDir(){
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
   window.__organizedRecovered=0;window.__organizedSkipped=new Map();
+  try{window.__hjPreScanData=hjDataHasContent(state)?serializeData():null;}catch(e){window.__hjPreScanData=null;}   // v532 loadProject 가 폴더 저장본과 비교할 '지금 이 기기 자료'(읽기 전)
   clearFileList();__walkSeen=new Map();__scanPhotoNames=new Set();__scanPhotoFiles=new Map();__scanPhotoPending=new Map();__scanTick=0;toast('현장사진부터 폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
@@ -2443,6 +2444,11 @@ async function saveProject(silent){
   if(__saving){__saveQueued=silent;return;}
   __saving=true;
   try{
+    // v532 오래된 탭(다른 탭이 더 최근에 저장)은 폴더 _현장.json 도 덮지 않는다 — 기기 저장본(IndexedDB)과 같은 문지기를 먼저 통과해야 쓴다.
+    //  10/31 아침에 열어 둔 탭이 오후에 옛 자료(현장 56·견적 0)로 폴더 파일을 다시 썼고, 그 파일은 저장 시각이 더 나중이라 다음 폴더 연결 때 '더 새 자료'로 보였다.
+    let fresh=false;
+    if(!(typeof __tabStale!=='undefined'&&__tabStale)){try{fresh=await guardedPersistCurrentState();}catch(e){fresh=false;}}
+    if(!fresh){__tabStale=true;__hjLocalSavePending=false;multiTabStaleWarn();if(!silent)toast('다른 탭이 더 최근에 저장해서 폴더 파일을 덮지 않았어요 — 새로고침으로 최신 자료를 불러오세요');return;}
     const data=serializeData();
     const fh=await state.dirHandle.getFileHandle('_현장.json',{create:true});
     const w=await fh.createWritable();await w.write(JSON.stringify(data,null,1));await w.close();
@@ -2457,16 +2463,35 @@ async function loadProject(){
   try{
     const fh=await state.dirHandle.getFileHandle('_현장.json');
     const file=await fh.getFile();const data=JSON.parse(await file.text());
+    const ref=window.__hjPreScanData||((__dataAt&&__lastData)?__lastData:null);window.__hjPreScanData=null;   // v532 비교 기준 = 폴더를 읽기 직전의 이 기기 자료
     if(__dataAt && data.savedAt && data.savedAt < __dataAt && __lastData){
       // 이 PC 로컬 저장본이 드라이브 최신본보다 오래됨 → 데이터는 드라이브 유지, 파일만 재매칭
       applyData(__lastData);
       toast('드라이브 최신 데이터 유지(로컬 저장본이 더 오래됨) — 파일만 연결');
+    } else if(ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){
+      // v532 폴더 저장본이 시각은 더 나중인데 내용이 이 기기 자료와 다르다 — 오래된 탭·옛 현장.html 이 옛 자료로 다시 쓴 경우가 있다(10/31 실측).
+      // 자동으로 덮지 않는다: 이 기기 자료를 유지하고(파일만 재매칭) 사람에게 고르게 한다.
+      applyData(ref);
+      toast('📂 폴더 저장본이 이 기기 자료와 달라 자동으로 불러오지 않았어요 — 확인 창에서 고르세요');
+      setTimeout(()=>{try{hjFolderNewerChoice(data);}catch(e){}},400);
     } else {
       const n=applyData(data);
       toast('저장된 작업 복원됨 — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
     }
     render();   // 로컬 불러오기 후에도 화면 갱신(드라이브 불러오기와 동작 일치)
   }catch(e){/* 저장 파일 없음 = 첫 사용 */}
+}
+/* v532 폴더 저장본 비교 — 현장 이름·견적 id·파일 수·서버 사본 수·배정 수가 같으면 같은 자료로 본다(저장 시각·AI 점검 기록 같은 잔변화는 무시). */
+function hjDataHasContent(d){return !!(d&&((d.projects||[]).length||(d.files||[]).length||(d.quotes||[]).length));}
+function hjDataSig(d){try{const fs=(d&&d.files)||[];return JSON.stringify([((d&&d.projects)||[]).map(p=>p&&p.name).sort(),((d&&d.quotes)||[]).map(q=>q&&q.id).sort(),fs.length,fs.filter(f=>f&&(f.driveId||f._driveId)).length,fs.filter(f=>f&&f.project).length]);}catch(e){return 'x'+Math.random();}}
+function hjDataBrief(d){let at='';try{at=d.savedAt?new Date(d.savedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';}catch(e){}return '현장 '+((d.projects||[]).length)+' · 견적 '+((d.quotes||[]).length)+' · 파일 '+((d.files||[]).length)+(at?' · 저장 '+at:'');}
+function hjFolderNewerChoice(data){
+  let mine='';try{mine=hjDataBrief(Object.assign(serializeData(),{savedAt:__dataAt}));}catch(e){}
+  openModal('📂 폴더 저장본이 이 기기 자료와 다릅니다','<div data-folder-choice style="font-size:13px;line-height:1.7">폴더의 <b>_현장.json</b> 은 저장 시각이 더 나중인데 내용이 이 기기 자료와 다릅니다. 다른 탭(또는 예전에 열어 둔 현장.html)이 옛 자료로 폴더 파일을 다시 썼을 수 있어서 <b>자동으로 불러오지 않았습니다.</b>'+
+    '<table style="width:100%;margin:10px 0;border-collapse:collapse;font-size:12.5px"><tr><th style="text-align:left;padding:4px 6px;white-space:nowrap">이 기기(지금)</th><td data-folder-mine style="padding:4px 6px">'+escapeHtml(mine)+'</td></tr><tr><th style="text-align:left;padding:4px 6px;white-space:nowrap">폴더 _현장.json</th><td data-folder-file style="padding:4px 6px">'+escapeHtml(hjDataBrief(data))+'</td></tr></table>'+
+    '<p style="margin:0;color:var(--muted-2)">보통은 <b>이 기기 자료 유지</b>를 누르세요 — 폴더 파일을 지금 자료로 다시 씁니다. 다른 PC 에서 한 작업이 폴더로 들어온 것이 확실할 때만 폴더 저장본을 불러오세요(지금 자료는 🛡 안전판에 남깁니다).</p></div>',
+    [{label:'이 기기 자료 유지 (권장)',cls:'blue',fn:async()=>{closeModal();markDirty();await saveProject(true);toast('이 기기 자료를 유지하고 폴더 파일을 지금 자료로 다시 썼습니다');}},
+     {label:'폴더 저장본 불러오기',cls:'ghost',fn:async()=>{closeModal();try{await hjSnapshot('폴더 저장본 불러오기 전',true);}catch(e){}const n=applyData(data);markDirty();render();toast('폴더 저장본을 불러왔습니다 — 현장 '+state.projects.length+'개 · 파일 '+n+'개 (이전 자료는 🛡 안전판)');}}],true);
 }
 /* 데이터 내보내기: 어디서나(폰 포함) 다운로드되는 파일 1개 */
 function exportData(){
@@ -3623,7 +3648,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v531-pcupload';
+const APP_BUILD='hyeonjang-v532-folderguard';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
