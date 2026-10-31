@@ -30,7 +30,7 @@ if (MUT) {
 let browser, passed = 0, page;
 const errors = [], network = { writes: 0 };
 async function test(name, fn) { await fn(); passed++; console.log('PASS taxmerge-v543 ' + name); }
-async function shot(name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
+async function shot(name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
 const footer = text => page.locator('#modalRoot .mfoot button', { hasText: text });
 const lastPay = () => page.evaluate(() => { const x = state.payLog[state.payLog.length - 1]; return { amt: x.amt, hasMethod: 'method' in x, method: x.method, proof: x.proof || '', issue: x.issue || null }; });
 

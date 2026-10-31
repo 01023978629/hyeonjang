@@ -89,7 +89,7 @@ const data = page => page.evaluate(() => { const d = serializeData(); d.savedAt 
 const files = page => page.evaluate(() => Object.fromEntries(Object.entries(window.__ids).map(([k, id]) => { const f = state.files.find(x => x.id === id) || {}; return [k, { project: f.project || '', purchase: !!(f.est && f.est.purchase), exSum: !!f.exSum }]; })));
 const snapCount = page => page.evaluate(async () => ((await idbGet('hj_snaps')) || []).filter(s => /견적 빠른 배정 전/.test(s.label || '')).length);
 async function test(name, fn) { await fn(); passed++; console.log('PASS estassign-v544 ' + name); }
-async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
+async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });

@@ -68,7 +68,7 @@ const nav = page => page.evaluate(() => [...document.querySelectorAll('#mobileNa
 }));
 const modalOpen = page => page.evaluate(() => !!document.querySelector('#modalRoot #myWork'));
 async function test(name, fn) { await fn(); passed++; console.log('PASS nav5-v550 ' + name); }
-async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
+async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
 const lum = c => { const m = String(c).match(/[\d.]+/g).map(Number); const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
 const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 // 글자 뒤의 실제 바탕색(투명이면 부모로 올라가며 찾는다)
@@ -96,6 +96,7 @@ const BG = 'window.__bg=e=>{for(let n=e;n;n=n.parentElement){const c=getComputed
     await page.locator('#mobileNav [data-mnav="__more"]').click(); await page.locator('#moreSearch').waitFor();
     const lead = await page.locator('#moreNav [data-more]').evaluateAll(es => es.slice(0, 2).map(e => [e.dataset.more, e.textContent.replace(/\s+/g, ' ').trim()]));
     assert.deepEqual(lead.map(x => x[0]), ['dashboard', '__mywork'], 'shortcuts lead with dashboard and today work'); assert(/대시보드/.test(lead[0][1]) && /내 업무/.test(lead[1][1]), JSON.stringify(lead));
+    await shot(page, 'v550-phone-settings');
     await page.locator('#moreNav [data-more="__mywork"]').click(); await page.locator('#modalRoot #myWork').waitFor();
     assert.equal(await page.evaluate(() => state.tab), 'photos', 'today work opens over the current tab');
     await page.keyboard.press('Escape');

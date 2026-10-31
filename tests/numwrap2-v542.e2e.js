@@ -84,7 +84,7 @@ const kpis = page => page.evaluate(() => [...document.querySelectorAll('.kpis>.k
   return { t: e.textContent.trim(), fs, h: Math.round(r.height), lines: r.height > fs * 1.5 ? 2 : 1, over: e.scrollWidth > e.clientWidth + 1, unitSame: !sm || Math.abs(sm.getBoundingClientRect().bottom - r.bottom) < fs * 0.6 };
 }));
 async function test(name, fn) { await fn(); passed++; console.log('PASS numwrap2-v542 ' + name); }
-async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
+async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
