@@ -3369,8 +3369,12 @@ async function pcupSave(run,final){
 async function pcupRun(onTick){
   if(__pcup&&__pcup.running)return __pcup;
   const skip=(__pcup&&__pcup.skip)||new Set();
-  const run=__pcup={running:true,stop:false,startedAt:Date.now(),total:0,done:0,ok:0,failed:0,queued:0,batches:0,saves:0,skip,failedNames:[],reason:''};
+  const run=__pcup={running:true,stop:false,startedAt:Date.now(),total:0,done:0,ok:0,failed:0,queued:0,batches:0,saves:0,relinked:0,skip,failedNames:[],reason:''};
   run.total=pcupTargets().length;
+  // 올린 사진의 서버 사본 표시(fileKey → id). 업로드 사이에 사진 기록이 새 객체로 바뀌어도(사진 정리·다시 읽기·자료 적용)
+  // 표시를 잃지 않게 지금 기록에 다시 붙인다 — 10/31 업로드 뒤 폴더 저장본에 새 사본 표시가 하나도 없던 일의 방어선.
+  const uploaded=(__pcup&&__pcup.uploaded)||new Map();run.uploaded=uploaded;
+  const pcupRelink=()=>{let n=0;(state.files||[]).forEach(r=>{if(r&&!r._driveId){const u=uploaded.get(fileKey(r));if(u){r._driveId=u.id;r._driveMimeType=u.mime;r._driveSize=u.size;n++;}}});if(n){run.relinked+=n;markDirty();}return n;};
   let wake=null;try{if(navigator.wakeLock&&document.visibilityState==='visible')wake=await navigator.wakeLock.request('screen');}catch(e){}   // 긴 업로드 중 PC 화면 꺼짐 방지
   let bad=0;pcupMark(run);
   try{
@@ -3390,7 +3394,8 @@ async function pcupRun(onTick){
       run.batches++;
       const ok=Number(rep.ok)||0,q=Number(rep.queued)||0;
       run.ok+=ok;run.queued+=q;run.failed+=Math.max(0,files.length-ok-q);run.done+=files.length;
-      targets.forEach(f=>{if(!f._driveId)skip.add(fileKey(f));});   // 못 올린 것(실패·대기열)은 이번 실행에서 다시 고르지 않는다 — 대기열은 연결되면 앱이 따로 보낸다
+      targets.forEach(f=>{if(f._driveId)uploaded.set(fileKey(f),{id:f._driveId,mime:f._driveMimeType||'',size:f._driveSize||0});skip.add(fileKey(f));});   // 이번 실행에서 다시 고르지 않는다(못 올린 대기열은 연결되면 앱이 따로 보낸다)
+      pcupRelink();
       (rep.failedFiles||[]).forEach(n=>{if(run.failedNames.length<30)run.failedNames.push(n+' — 업로드 실패');});
       if(ok){bad=0;await pcupSave(run);}else if(files.length)bad++;   // 원본을 못 읽은 묶음은 건너뛴 것뿐 — 연결 문제로 세지 않는다
       pcupMark(run);
@@ -3400,7 +3405,7 @@ async function pcupRun(onTick){
     }
     if(run.stop&&!run.reason)run.reason='stopped';
   }finally{
-    try{await pcupSave(run,true);}catch(e){}
+    try{pcupRelink();await pcupSave(run,true);}catch(e){}
     run.running=false;run.finishedAt=Date.now();
     try{if(wake)await wake.release();}catch(e){}
     pcupMark(run);

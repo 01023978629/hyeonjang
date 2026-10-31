@@ -17,10 +17,13 @@
   ② `pcupRun` 10장씩 `relayUploadFiles`(기존 경로 그대로 — `_driveId` 주입) → 묶음마다 `guardedPersistCurrentState` + `relaySaveNow`, 5묶음마다·끝에 폴더 저장.
      멈춤: [멈추기]·`__tabStale`·relay 없음·인증 실패·대기열로 간 것(연결 끊김)·업로드 3묶음 연속 0장. 못 읽은 원본은 그 실행(세션)에서만 건너뛴다.
      진행은 localStorage `hj_pcup` — 탭이 죽으면 running:true 로 남아 다음 창이 '지난번에 n/m장까지 올리다 멈췄어요'를 보여 준다. 화면 꺼짐 방지(wakeLock).
+     올린 사진은 실행 안에서 fileKey → 서버 id 로 기억하고(`run.uploaded`), 묶음마다·끝에 지금 `state.files` 에서 표시 없는 같은 기록에 다시 붙인다(`pcupRelink`).
+     10/31 탭 업로드 뒤 15:14 폴더 저장본에 새 사본 표시가 하나도 없었다 — 업로드 사이 사진 기록이 옛 사본으로 바뀌는 경로가 있으면 표시를 잃고 다음에 또 올리게 된다. 그 방어선.
   ③ 입구: 🩺 건강 줄 '📤 폰에 안 보이는 사진 N'(폴더+서버가 연결된 PC 에서만, 0 이면 숨김) · 🔄 PC↔폰 동기화 창의 단추. 더보기 항목은 늘리지 않았다(126개 핀 검사 12곳).
   ④ `scheduleFolderAutoSave()` — 이미 예약돼 있으면 미루지 않는다(최대 대기 3분). `saveProject` 성공 때 예약을 비운다. markDirty·자동저장 켜기·웹 업무 연결 세 곳이 같이 쓴다.
-- 핀3곳 hyeonjang-v531-pcupload. 신규 tests/pcupload-v531.e2e.js 5/5(mock relay + 가짜 폴더: 건강 줄→창→올리기·건너뛰기·HEIC·서버/기기/폴더 저장 →
-  멈추기·이어서(중복 0) → 새로고침 뒤 남은 수·지난번 안내 → 자동저장 예약 → 폰엔 항목 없음·핀). 기준선 v530 과 변이 no-done 은 ①, 변이 debounce 는 ④에서 실패 확인.
+- 핀3곳 hyeonjang-v531-pcupload. 신규 tests/pcupload-v531.e2e.js 6/6(mock relay + 가짜 폴더: 건강 줄→창→올리기·건너뛰기·HEIC·서버/기기/폴더 저장 →
+  멈추기·이어서(중복 0) → 새로고침 뒤 남은 수·지난번 안내 → 자동저장 예약 → 업로드 사이 기록이 옛 사본으로 바뀌어도 다시 붙임 → 폰엔 항목 없음·핀).
+  기준선 v530 과 변이 no-done 은 ①, 변이 debounce 는 ④, 변이 no-relink 는 ⑤에서 실패 확인.
   관련 healthline-v524·casefolder-v525·relaysync-v530·photo-intake-safety·project-scan-order·shared-todo·office-intake(-auto)-sync·mobile-more-tools·settings-safety·board-v351·v526~v529 통과, 정적·단위 전부 통과.
 - 안 한 것: 폰에서 'PC 에서 올려야 보이는 사진 N장' 안내, 같은 원본을 가리키는 기록 두 개를 한 번만 올리기, 크롬 메모리 절약 예외 등록(브라우저 설정 — 대표가 직접).
 

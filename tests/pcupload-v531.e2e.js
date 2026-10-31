@@ -8,9 +8,10 @@
    ② [멈추기] → 그 묶음까지만 올리고 서버에 저장돼 있다 → [이어서] → 나머지만(같은 사진 두 번 업로드 0) (RESUME)
    ③ 새로고침(탭이 닫힌 셈) 뒤에도 올린 사진은 남고 남은 수만 다시 센다 · 지난번 멈춤 안내 (RELOAD)
    ④ 폴더 자동 저장 예약은 첫 변경 뒤 한 번 — 계속 손대도 미루지 않는다 · 저장하면 예약을 비운다 (AUTOSAVE)
-   ⑤ 폴더·서버가 없는 기기(폰 화면)에는 항목이 없다 · 소스·핀 3곳(v531 이상·서로 같음) (MISC)
+   ⑤ 업로드 사이에 사진 기록이 옛 사본(서버 표시 없음)으로 바뀌어도 올린 사진의 표시를 다시 붙이고, 다시 올리지 않는다 (RELINK)
+   ⑥ 폴더·서버가 없는 기기(폰 화면)에는 항목이 없다 · 소스·핀 3곳(v531 이상·서로 같음) (MISC)
    HJ_V531_BASELINE=<commit>(v530) 과 HJ_V531_MUTATION=no-done(서버 사본 있는 사진도 고름) 은 ① 에서,
-   HJ_V531_MUTATION=debounce(예약을 매번 미룸) 는 ④ 에서 실패해야 한다(10/31 셋 다 확인). */
+   HJ_V531_MUTATION=debounce(예약을 매번 미룸) 는 ④ 에서, no-relink(다시 붙이기 끔) 는 ⑤ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -34,6 +35,11 @@ if (MUT === 'debounce') {
   const from = '  if(__autosaveTimer)return;   // 이미 예약돼 있으면 미루지 않는다';
   assert(SRC.includes(from), 'mutation anchor debounce');
   html = SRC.replace(from, '  clearTimeout(__autosaveTimer);__autosaveTimer=null;');
+}
+if (MUT === 'no-relink') {
+  const from = 'const pcupRelink=()=>{let n=0;';
+  assert(SRC.includes(from), 'mutation anchor no-relink');
+  html = SRC.replace(from, 'const pcupRelink=()=>{return 0;let n=0;');
 }
 // 기준선·변이 index.html 은 따로 띄운 로컬 서버가 준다 — route.fulfill 로 준 문서는 localhost(mock relay) 요청이 막힌다(v530 과 같은 이유).
 let altServer = null;
@@ -240,7 +246,31 @@ const lastFolderJson = page => page.evaluate(() => { const s = (window.__folderW
     assert.deepEqual(r, { t1: true, same: true, afterSave: null, wrote: 1 }, 'max-wait autosave ' + JSON.stringify(r));
   });
 
-  await test('⑤ 폴더·서버 없는 기기에는 항목 없음 · 소스·핀 3곳 (MISC)', async () => {
+  await test('⑤ 업로드 사이 기록이 옛 사본으로 바뀌어도 표시를 다시 붙이고 다시 올리지 않음 (RELINK)', async () => {
+    const before = (await mockState()).uploads.length;
+    const r = await page.evaluate(async () => {
+      const sub = await state.dirHandle.getDirectoryHandle('현장사진');
+      const bytes = new Uint8Array(await (await (await sub.getFileHandle('p01.jpg')).getFile()).arrayBuffer());
+      const extra = Array.from({ length: 12 }, (_, i) => 'r' + String(i + 1).padStart(2, '0') + '.jpg');
+      const orig = sub.getFileHandle.bind(sub);
+      sub.getFileHandle = async (n, o) => extra.includes(n) ? { kind: 'file', name: n, getFile: async () => new File([bytes], n, { type: 'image/jpeg' }) } : orig(n, o);
+      extra.forEach(n => state.files.push({ id: uid(), name: n, handle: null, prefix: '현장사진/', ext: 'jpg', size: bytes.length, kind: 'photo', project: null, thumb: null, text: '', ocr: 'na', est: null, contact: null, _file: null, when: new Date() }));
+      __pcup = null;   // 새 세션처럼
+      const stale = state.files.map(f => Object.assign({}, f));   // 업로드 전 사본 — 서버 표시 없음
+      let swapped = false, okAtSwap = 0;
+      const run = await pcupRun(x => { if (!swapped && x.batches === 1) { swapped = true; okAtSwap = x.ok; state.files = stale; } });
+      const rs = state.files.filter(f => /^r\d\d\.jpg$/.test(f.name));
+      const saved = ((await idbGet('appState')).files || []).filter(f => /^r\d\d\.jpg$/.test(f.name) && /^mockfile_/.test(f.driveId || '')).length;
+      return { ok: run.ok, reason: run.reason, relinked: run.relinked, okAtSwap, swapped, linked: rs.filter(f => f._driveId).length, records: rs.length, left: pcupTargets().filter(f => /^r\d\d/.test(f.name)).length, saved };
+    });
+    const st = await mockState();
+    assert.deepEqual({ ok: r.ok, reason: r.reason, swapped: r.swapped, linked: r.linked, records: r.records, left: r.left, saved: r.saved, uploads: st.uploads.length - before },
+      { ok: 12, reason: 'done', swapped: true, linked: 12, records: 12, left: 0, saved: 12, uploads: 12 }, 'RELINK ' + JSON.stringify(r));
+    assert(r.okAtSwap > 0 && r.relinked === r.okAtSwap, 'every photo uploaded before the swap got its server id back on the stale copy ' + JSON.stringify(r));
+    assert.equal(driveIdsOnServer(st).filter(n => /^r\d\d\.jpg$/.test(n)).length, 12, 'server data has all 12');
+  });
+
+  await test('⑥ 폴더·서버 없는 기기에는 항목 없음 · 소스·핀 3곳 (MISC)', async () => {
     const phone = await device(true);
     const pr = await phone.page.evaluate(() => { state.files = [{ id: uid(), name: 'x.jpg', handle: null, prefix: '현장사진/', ext: 'jpg', size: 10, kind: 'photo', thumb: null, text: '', ocr: 'na' }]; render(); return { available: pcupAvailable(), seg: hjHealthLineHTML().includes('data-health="pcup"') }; });
     assert.deepEqual(pr, { available: false, seg: false });
@@ -254,10 +284,10 @@ const lastFolderJson = page => page.evaluate(() => { const s = (window.__folderW
     assert.deepEqual(errors, [], 'no page errors');
   });
 
-  console.log('pcupload-v531: ' + passed + '/5 passed');
+  console.log('pcupload-v531: ' + passed + '/6 passed');
   await browser.close();
   if (altServer) altServer.close();
-  process.exit(passed === 5 ? 0 : 1);
+  process.exit(passed === 6 ? 0 : 1);
 })().catch(async e => {
   console.error('FAIL pcupload-v531', e && e.stack || e);
   try { await browser.close(); } catch (_) {}
