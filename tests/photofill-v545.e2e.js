@@ -73,7 +73,8 @@ const data = page => page.evaluate(() => { const d = serializeData(); d.savedAt 
 const tags = page => page.evaluate(() => Object.fromEntries(state.files.filter(f => /^v545_/.test(f.id)).map(f => [f.id.slice(5), [f._phase || '', f._worklabel || '']])));
 const snapCount = page => page.evaluate(async () => ((await idbGet('hj_snaps')) || []).filter(s => /공정·작업명 채우기 전/.test(s.label || '')).length);
 async function test(name, fn) { await fn(); passed++; console.log('PASS photofill-v545 ' + name); }
-async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
+// 화면 모음(HJ_SHOTS)엔 안내 토스트를 빼고 찍는다
+async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });

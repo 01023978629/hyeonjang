@@ -74,7 +74,8 @@ const look = page => page.evaluate(() => {
 });
 const data = page => page.evaluate(() => JSON.stringify(state.files.map(f => [f.id, f.project, f._phase, f._worklabel])));
 async function test(name, fn) { await fn(); passed++; console.log('PASS photogrid-v549 ' + name); }
-async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' });   // 화면 모음엔 안내 토스트를 빼고 }
+// 화면 모음(HJ_SHOTS)엔 안내 토스트를 빼고 찍는다
+async function shot(page, name) { if (!process.env.HJ_SHOTS) return; fs.mkdirSync(process.env.HJ_SHOTS, { recursive: true }); await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.classList.remove('show'); }); await page.screenshot({ path: path.join(process.env.HJ_SHOTS, name + '.png'), animations: 'disabled' }); }
 const lum = c => { const m = String(c).match(/[\d.]+/g).map(Number); const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]); };
 const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 
@@ -86,9 +87,11 @@ const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) +
     const r = await look(page);
     assert(r.row && r.rowAfterBar, 'big button row right under the summary bar ' + JSON.stringify(r.row));
     assert(r.bar.h <= 70 && !r.barBtns.includes('btnSuggestReview'), 'summary bar stays one line, 🧭 moved out ' + JSON.stringify([r.bar, r.barBtns]));
-    assert.deepEqual(r.btns.map(b => [b.id, b.text]), [['btnSuggestReview', '🧭 추측 배정 2장'], ['btnPhotoFill', '🧩 공정 채우기 3장']]);
-    const [a, b] = r.btns;
-    assert(a.h >= 44 && b.h >= 44 && a.top === b.top && Math.abs(a.w - b.w) <= 1 && a.left - r.row.left <= 1 && r.row.right - b.right <= 1, 'two equal halves on one line ' + JSON.stringify(r.btns));
+    // v550: 접힌 🪜 공정 관리 단추도 이 줄 끝에(따로 서던 접힌 공정 줄이 빠져 첫 사진이 위로)
+    assert.deepEqual(r.btns.map(b => [b.id, b.text]), [['btnSuggestReview', '🧭 추측 배정 2장'], ['btnPhotoFill', '🧩 공정 채우기 3장'], ['btnPhaseBarToggle', '🪜 공정 ▾']]);
+    const [a, b, tg] = r.btns;
+    assert(a.h >= 44 && b.h >= 44 && tg.h >= 44 && a.top === b.top && b.top === tg.top && Math.abs(a.w - b.w) <= 1 && a.left - r.row.left <= 1 && r.row.right - tg.right <= 1 && tg.w < a.w, 'two equal big buttons + compact phase toggle on one line ' + JSON.stringify(r.btns));
+    assert.equal(await page.locator('#view .phasebar').count(), 0, 'no separate collapsed phase bar while the toggle sits in the row');
     assert(Math.abs(r.row.left - r.bar.left) <= 1 && Math.abs(r.row.right - r.bar.right) <= 1, 'full width like the summary bar');
     assert.equal(r.cols, 2, 'two photo columns on the phone'); assert(r.cellW >= 150, 'big cells ' + r.cellW);
     assert.deepEqual([r.gps.a1 && r.gps.a1.text, r.gps.a2, r.gps.u1], ['📍 위치', null, null], 'badge only on photos with GPS');
@@ -110,14 +113,19 @@ const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) +
   await test('③ 하나면 한 줄 가득 · 없으면 줄 없음 · 600 PC 모드도 폰 화면 · 어두운 화면 대비 (STATES)', async () => {
     const { page: p1 } = await open({ width: 390, mobile: true, seed: 'unassigned' });
     let r = await look(p1);
-    assert.equal(r.btns.length, 1); assert(Math.abs(r.btns[0].w - r.row.w) <= 1, 'single button spans the row ' + JSON.stringify(r));
+    assert.deepEqual(r.btns.map(b => b.id), ['btnSuggestReview', 'btnPhaseBarToggle']); assert(Math.abs(r.btns[0].w + 8 + r.btns[1].w - r.row.w) <= 2, 'single big button fills the row beside the toggle ' + JSON.stringify(r));
     const { page: p0 } = await open({ width: 390, mobile: true, seed: 'clean' });
     r = await look(p0); assert.equal(r.row, null, 'nothing to do → no row'); assert.equal(r.cols, 2);
     const { page: p6 } = await open({ width: 600 });
-    r = await look(p6); assert(r.row && r.btns.length === 2 && r.cols === 2, 'narrow PC window gets the phone layout ' + JSON.stringify([r.btns.length, r.cols])); assert(r.over <= 0);
+    r = await look(p6); assert(r.row && r.btns.length === 3 && r.cols === 2, 'narrow PC window gets the phone layout ' + JSON.stringify([r.btns.length, r.cols])); assert(r.over <= 0);
+    // 🪜 를 누르면 공정 줄이 펼쳐지고(종전 펼친 모양) 큰 줄에서는 빠진다 — id 는 하나만
+    await page.evaluate(() => { __phaseBarOpen = false; render(); });
+    await page.locator('#view .hj-ph-actions #btnPhaseBarToggle').click(); await page.locator('#phaseProjAdd').waitFor();
+    assert.deepEqual(await page.evaluate(() => [document.querySelectorAll('#btnPhaseBarToggle').length, !!document.querySelector('#view .hj-ph-actions #btnPhaseBarToggle'), __phaseBarOpen]), [1, false, true]);
+    await page.locator('#btnPhaseBarToggle').click(); await page.waitForFunction(() => !__phaseBarOpen && !!document.querySelector('#view .hj-ph-actions #btnPhaseBarToggle'));
     await page.evaluate(() => { document.body.classList.add('dark'); render(); });
     await page.waitForTimeout(700);
-    const c = await page.evaluate(() => [...document.querySelectorAll('#view .hj-ph-actions button')].map(b => [getComputedStyle(b).color, getComputedStyle(b).backgroundColor]));
+    const c = await page.evaluate(() => [...document.querySelectorAll('#view .hj-ph-actions #btnSuggestReview,#view .hj-ph-actions #btnPhotoFill')].map(b => [getComputedStyle(b).color, getComputedStyle(b).backgroundColor]));   // 칠한 두 단추(🪜 는 늘 쓰는 ghost 단추)
     assert(c.length === 2 && c.every(([f, bg]) => ratio(f, bg) >= 4.5), 'dark contrast ' + JSON.stringify(c));
     await shot(page, 'v549-phone-dark');
     await page.evaluate(() => { document.body.classList.remove('dark'); render(); });
@@ -142,7 +150,7 @@ const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) +
 
   await test('⑤ 소스·핀 3곳(v549 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0', async () => {
     const src = html || fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-    assert(src.includes('if(__narrow)html+=hjPhotoTopActionsHTML(__unAllN,__pfN,__sureN);'), 'phone row wired');
+    assert(src.includes('if(__narrow)html+=hjPhotoTopActionsHTML(__unAllN,__pfN,__sureN') , 'phone row wired');
     assert(src.includes('${hjPhotoGpsBadge(p)}'), 'badge in the photo cell');
     const pins = [(src.match(/const APP_BUILD='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const C='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'tests/version-sync.check.js'), 'utf8').match(/const TARGET_BUILD = '([^']+)'/) || [])[1]];
     assert(pins.every(p => p === pins[0]) && +((pins[0] || '').match(/-v(\d+)-/) || [])[1] >= 549, 'pins ' + JSON.stringify(pins));

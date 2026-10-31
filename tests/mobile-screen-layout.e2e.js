@@ -57,8 +57,9 @@ async function screenshot(page,spec,name){if(shots){fs.mkdirSync(shots,{recursiv
           }
         },{big:spec.big,mutation});
         // Real tap navigation, modal scrolling, and close targets across five screen sizes.
-        for(const tab of ['dashboard','photos','schedule']){
-          await page.locator('[data-mnav="'+tab+'"]').click();await settle(page);
+        // v550 하단 5칸: 대시보드는 머리 '현장.' 글자로, 나머지는 하단 칸(정산 = 견적·정산 포함)
+        for(const tab of ['dashboard','photos','schedule','estimates']){
+          await page.locator(tab==='dashboard'?'#hjLogoHome':'[data-mnav="'+tab+'"]').click();await settle(page);
           assert(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),spec.name+' '+tab+' page overflow');
         }
         // Estimate creation remains reachable from More after its bottom slot becomes Today.

@@ -640,6 +640,10 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .hj-ph-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:-4px 0 12px}
   .hj-ph-actions>button{min-height:48px;padding:8px 10px;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .hj-ph-actions>button:only-child{grid-column:1/-1}
+  .hj-ph-actions[data-ph-toggle]{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
+  .hj-ph-actions[data-ph-actions="1"][data-ph-toggle]{grid-template-columns:minmax(0,1fr) auto}
+  .hj-ph-actions>button{font-size:13.5px;padding:6px 8px}
+  .hj-ph-actions>#btnPhaseBarToggle{font-size:13px;font-weight:600}
   .ph-chk{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:5px;border:1.5px solid #fff;background:rgba(15,36,56,.62);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
   .ph-chk input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;margin:0}
   .ph-chk span{color:#fff;font-size:12px;opacity:0;font-weight:800}
@@ -31353,8 +31357,8 @@ const MORE_HELP={
 };
 const MORE_NAV_SHORTCUTS=[
   // v550 하단 메뉴에서 빠진 두 곳 — 대시보드(첫 화면)와 내 업무(예전 하단 [오늘 할일]). '__mywork' 는 탭이 아니라 내 업무 창(지금 화면 위)을 연다
-  {id:'nav:dashboard',tab:'dashboard',ic:'📊',label:'대시보드',description:'첫 화면 — 오늘 현장 업무·진행 현장·숫자 요약'},
-  {id:'nav:mywork',tab:'__mywork',ic:'✅',label:'내 업무',description:'오늘 할 일 — 일정 시작·완료 보고·이 기기 할일·팀 할일(예전 하단 오늘 할일)'},
+  {id:'nav:dashboard',tab:'dashboard',ic:'📊',label:'대시보드',description:'첫 화면 — 오늘 현장 업무'},
+  {id:'nav:mywork',tab:'__mywork',ic:'✅',label:'내 업무',description:'오늘 일정·할 일(예전 오늘 할일)'},
   {id:'nav:docs',tab:'docs',ic:'📁',label:'서류',description:'프로젝트별 문서와 파일 목록'},
   {id:'nav:estimates',tab:'estimates',ic:'🧾',label:'견적·정산',description:'견적서 검색과 프로젝트별 정산'},
   {id:'nav:quotemaker',tab:'quotemaker',ic:'✍️',label:'견적 작성',description:'새 견적서 작성과 작성 중인 견적 이어 보기'},
@@ -35686,11 +35690,14 @@ function showBundleSender(bundles,label,size,info){
 /* v549 폰 사진 탭 위 큰 단추 줄(대표 PDF 9번 '상단 풀와이드 [사진 추측 배정 · 공정 일괄 채우기]').
    단추는 있던 것 그대로 — #btnSuggestReview(v523 🧭 추측 배정 보기) · #btnPhotoFill(v545 🧩 공정·작업명 빈칸 채우기), 같은 id 라 위임·안전판·창이 같다.
    PC 는 요약 줄 단추 그대로(이 줄 없음). 할 일이 없으면 줄도 없다. 하나만 있으면 한 줄 가득. */
-function hjPhotoTopActionsHTML(unN,fillN,sureN){
+function hjPhotoTopActionsHTML(unN,fillN,sureN,phaseToggle){
   const b=[];
   if(unN)b.push('<button type="button" class="'+(sureN?'ghost':'clay')+'" id="btnSuggestReview" aria-label="현장 없는 사진 '+unN+'장 추측 배정 보기" title="현장 없는 사진 묶음마다 추정 현장·근거·사진 3장을 한 창에서 보고 체크한 것만 배정합니다. 배정 전 안전판을 만듭니다.">🧭 추측 배정 '+unN+'장</button>');
   if(fillN)b.push('<button type="button" class="moss" id="btnPhotoFill" aria-label="공정·작업명 빈칸 사진 '+fillN+'장 채우기" title="현장이 정해진 사진 중 공정·작업명이 빈 것을 현장·날짜 묶음마다 채웁니다. 빈칸만 채우고 채우기 전에 안전판을 만듭니다.">🧩 공정 채우기 '+fillN+'장</button>');
-  return b.length?'<div class="hj-ph-actions" data-ph-actions="'+b.length+'">'+b.join('')+'</div>':'';
+  if(!b.length)return '';
+  // v550 접힌 🪜 공정 관리 단추도 이 줄 끝에(같은 id·같은 위임) — 따로 서던 접힌 공정 줄(64px+여백)이 빠져 첫 사진이 77px 위로(CI 글꼴에서 y 661→650 안)
+  const t=phaseToggle?'<button type="button" class="ghost" id="btnPhaseBarToggle" aria-expanded="false" aria-label="공정 관리 펼치기" title="현장의 공정(폴더) 추가·삭제">🪜 공정 ▾</button>':'';
+  return '<div class="hj-ph-actions" data-ph-actions="'+b.length+'"'+(t?' data-ph-toggle="1"':'')+'>'+b.join('')+t+'</div>';
 }
 /* v549 사진 칸 📍 배지 — GPS 가 있는 사진만(hjPhotoHasGps). 위치는 사진 왼쪽 아래(선택 네모는 왼쪽 위, ⋯/도구는 오른쪽 위). 누르는 것 없음. */
 function hjPhotoGpsBadge(p){return hjPhotoHasGps(p)?'<span class="ph-gps" title="촬영 위치(GPS)가 있는 사진">📍 위치</span>':'';}
@@ -35739,7 +35746,8 @@ function viewPhotos(){
     ${(__unAllN&&!__narrow)?`<button class="${__sureN?'ghost':'clay'} tiny" id="btnSuggestReview" aria-label="현장 없는 사진 ${__unAllN}장 추측 배정 보기" title="현장 없는 사진 묶음마다 추정 현장·근거·사진 3장을 한 창에서 보고 체크한 것만 배정합니다. 배정 전 안전판을 만듭니다.">🧭 미배정 ${__unAllN}장 추측 배정 보기</button>`:''}
   </div>`;
   // v549 폰 '상단 풀와이드' 두 단추 — [🧭 추측 배정] [🧩 공정 채우기](대표 PDF 9번). 요약 줄은 한 줄 그대로(🧭 는 여기로 옮김), 첫 사진 y≤650 약속 안에서
-  if(__narrow)html+=hjPhotoTopActionsHTML(__unAllN,__pfN,__sureN);
+  const __phaseInRow=!!(state.projects.length&&__narrow&&!__phaseBarOpen&&(__unAllN||__pfN));
+  if(__narrow)html+=hjPhotoTopActionsHTML(__unAllN,__pfN,__sureN,__phaseInRow);
   if(!__narrow&&__sureN)html+=`<p class="hint" style="margin:0 0 8px">✨ <b>추천대로 ${__sureN}묶음 배정</b>은 현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.</p>`;
   if(!__narrow)html+=`<p class="hint" style="margin:0 0 12px"><b>현장을 아직 안 정한 묶음이 맨 위</b>, 그다음은 최근 날짜순이며 같은 날에는 같은 현장이 이어집니다. 촬영 간격 6시간으로 방문을 묶고, GPS가 있으면 같은 장소 재방문을 회차로 표시합니다. 컴퓨터에서 사진을 끌어다 놓아 추가할 수 있고, 아래에서 현장의 공정(폴더)을 바로 만들 수 있습니다.</p>`;
   // 사진 올리기는 구글드라이브로(폰), 컴퓨터는 드래그
@@ -35769,7 +35777,7 @@ function viewPhotos(){
   if(!__mobileMode)html+=`<div class="drop photo-drop" id="dropPhoto"><b>📁 여기에 사진을 끌어다 놓으세요</b> · 컴퓨터에서 직접 드래그해 추가</div>`;
   // 현장 선택 + 공정 추가 (방식 B)
   if(state.projects.length&&__narrow&&!__phaseBarOpen){
-    html+=`<div class="phasebar" style="padding:9px 12px"><button class="ghost tiny" id="btnPhaseBarToggle" style="align-self:flex-start">🪜 공정 관리 ▾</button></div>`;
+    if(!__phaseInRow)html+=`<div class="phasebar" style="padding:9px 12px"><button class="ghost tiny" id="btnPhaseBarToggle" style="align-self:flex-start">🪜 공정 관리 ▾</button></div>`;
   }else if(state.projects.length){
     let popt=selectableProjects(__phaseProj).map(p=>`<option value="${escapeAttr(p.name)}"${p.name===__phaseProj?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
     const selProj=selectableProjects(__phaseProj).find(p=>p.name===__phaseProj)?.name||selectableProjects(__phaseProj)[0]?.name||'';
@@ -35835,6 +35843,10 @@ function viewPhotos(){
   window.__clusterSuggest=__sug;
   // 초대형 목록 최적화: 클러스터를 한꺼번에 다 그리지 않고 12개씩 점진 표시(1,000장+에서도 가볍게)
   const CHUNK=12;
+  // v550 폰 2열 묶음의 화면 밖 자리 높이 짐작(content-visibility) — 머리(+GPS·추천 줄)·작업명 줄·사진 줄 수로. 넉넉히 잡아 다음 묶음과 겹쳐 재지지 않게
+  //   (전역 420px 그대로면 2열로 커진 묶음이 다음 묶음 머리와 겹쳐 재지고 — CI mobile-tap-table '버튼 겹침' — 스크롤 때 자리가 크게 튄다)
+  const __clCellW=(()=>{try{const v=document.getElementById('view');const w=v&&v.clientWidth?v.clientWidth:(typeof innerWidth==='number'?innerWidth-28:362);return Math.max(110,(w-34)/2);}catch(e){return 164;}})();
+  const __clEst=(c,n,sg)=>{const rows=Math.max(1,Math.ceil(n/2));return Math.round(140+(hjPhotoHasGps(c)?60:0)+(sg?50:0)+66+rows*(__clCellW+72)+(rows-1)*10+40);};
   if(typeof __clusterShowN!=='number'||__clusterShowKey!==state.activeProject+'|'+state.search){__clusterShowN=CHUNK;__clusterShowKey=state.activeProject+'|'+state.search;}
   const showN=Math.min(__clusterShowN, ordered.length);
   const hiddenN=ordered.length-showN;
@@ -35864,7 +35876,7 @@ function viewPhotos(){
     // "날짜 + 위치(짧게) + 작업명" 한 줄 요약(작업명이 있을 때)
     const placeShort=hjPhotoHasGps(c)?(c.address?hjPlaceShort(c.address):(c.place||'')):'위치 미확인';
     const autoName=[fmtDay(when), placeShort, worklabel].filter(Boolean).join(' · ');
-    html+=`<div class="cluster"><div class="cluster-h">
+    html+=`<div class="cluster"${__narrow?` style="contain-intrinsic-size:auto ${__clEst(c,visible.length,sg)}px"`:''}><div class="cluster-h">
       <span class="when">${hjPhotoHasGps(c)?'현장 방문':'사진 묶음'} ${i+1} · ${fmtDay(when)}</span>
       ${unBadge}
       ${revisit}

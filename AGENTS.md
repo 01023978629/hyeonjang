@@ -19,7 +19,19 @@
   mobile-todo-nav 변이 route·quote-shortcut 은 여전히 실패 확인.
 - 핀3곳 hyeonjang-v550-nav5. 신규 tests/nav5-v550.e2e.js 5/5(다섯 칸·44px·가운데 카메라·배지·정산 → 대시보드·내 업무 길·머리 글자 → 폰 어두운+큰 글씨 →
   PC 어두운+큰 글씨 → 소스·핀). 기준선 v549 와 변이 no-settle(정산 칸 삭제)은 ① 에서 실패 확인.
-  회귀: REG550
+- 마감 중 고친 것(같은 판): ① 폰 사진 탭 첫 화면 — CI 글꼴에서 첫 사진 y=661(>650). 접힌 🪜 공정 관리 단추를 v549 큰 단추 줄 끝으로 옮겨(`hjPhotoTopActionsHTML(...,phaseToggle)`,
+  같은 `#btnPhaseBarToggle`·같은 위임, 큰 줄이 없을 때만 종전 접힌 공정 줄) 첫 사진 77px 위로. 펼치면 종전 펼친 공정 줄(큰 줄에서는 빠짐, id 하나).
+  ② 폰 2열 묶음 자리 짐작 — `.cluster{content-visibility:auto;contain-intrinsic-size:auto 420px}` 그대로면 2열로 커진 화면 밖 묶음이 다음 묶음 머리와 겹쳐 재지고
+  (CI mobile-tap-table '버튼 겹침 1건': 공정 ▾ ↔ 주소 조회) 스크롤 때 자리가 튄다 → 폰은 묶음마다 `__clEst`(머리·GPS·추천 줄·사진 줄 수)로 넉넉히 인라인 지정.
+  ③ 설정 바로가기 두 칸 설명을 짧게(칸 높이 84px 로 다른 칸과 같게). ④ 신규 검사 10개 shot() 끝 `//` 주석이 한 줄 함수의 `}` 를 먹어 문법 오류 —
+  66262e5 CI 에서 10개가 0.0초 실패, 다음 커밋에서 고침(검사 판정과 무관한 사진 찍기 줄).
+- 옛 검사 더 고친 것: mobile-field-flow(더보기 첫 높이 기준 1000 → 1150 — 바로가기 한 줄 늘어 약 1,050px, 다 펼치면 수천 px), mobile-screen-layout(대시보드는 머리 글자, 정산 칸도 훑음),
+  recv-entry(일부 입금 저장 150ms 뒤 뜨는 '🧾 입금 확인증' 창을 보고 닫고 넘어감 — v543 원자 저장이 비동기라 ⑧ 의 입금 창을 늦게 덮었다. amount-sign 과 같은 원인).
+- CI 글꼴 흉내: `fontconfig` 를 DejaVu·Liberation·FreeFont·WenQuanYi·Noto Color Emoji·IPA·TLWG·Unifont 만(+ /etc/fonts/conf.d)으로 — Playwright `--with-deps` 와 같은 묶음.
+  이걸로 CI 만의 실패(photo-first-screen y 661, mobile-tap-table 겹침)를 로컬에서 그대로 재현했다. 앞으로 폰 화면 높이·겹침 검사는 이 설정으로도 돌려 볼 것.
+  회귀: 전체 run-all(로컬 3동시) — 환경 문제 6개(apartment-projects·bathroom-quality-v410·document-select·document-upload·leakintakeweb-v431·team-workboard: 다운로드 한글 파일 이름·글꼴 폭, CI 는 통과)
+  밖에서 이번 판 때문에 바뀐 3개(mobile-field-flow·mobile-screen-layout·recv-entry)를 고친 뒤 통과. CI 글꼴 흉내로 photo-first-screen·mobile-tap-table·photo-suggest·photoassign-v523·
+  photofill-v545·photogrid-v549·mobile-friendly-ui·mobile-field-flow·nav5-v550·mobile-screen-layout·mobile-todo-nav·recv-entry·numwrap2-v542·bentodash-v547·moneyboard-v548 통과.
 
 ## 2026-11-01 v549 폰 사진 탭 — 사진 2열 격자 · 📍 위치 배지 · 위쪽 큰 단추 줄 [🧭 추측 배정][🧩 공정 채우기] (대표 PDF 9번) + OfficeOps 부팅 대기
 
