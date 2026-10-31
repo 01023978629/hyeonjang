@@ -3,6 +3,20 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v543 PR #189(v428 수금 발행 확인) 통합 — 대표 PDF 3번
+
+- 무엇: #189(`codex/money-v428`, v425 기준 5커밋 · index.html +313 −47)의 '입금 기록에 결제 방법·발행 종류·상태·번호·발행일, 미발행 목록·5일 알림, 손익·세무 화면의
+  발행/업종 구분, 세금 캘린더 발행 마감(매월 10일) 제안, 엑셀 발행 열'을 지금 코드에 다시 얹었다(`git diff 3c7db67 origin/codex/money-v428` 를 3-way 로 — 31조각 중 25조각 그대로).
+- 충돌 6곳 정리: ① 핀=우리 ② 손익 6개월 추이 — 지출 색은 v452 `var(--hj-warn-fg)`, 본문은 #189 의 발행 구분 줄 ③④ 세금 캘린더 — #189 발행 마감 제안 카드 + v435 [📤 세무사 전달 자료] 둘 다
+  ⑤ 💰 입금 저장 — #189 의 `hjTaxIssueReceive`(durableLocalMutation) ⑥ 누수 받은 돈 — #189 의 `sync();toLegacy()` + v433 간이영수증 제안(`hjPayRcptOffer`) 유지.
+- 합친 뒤 고친 것(검사가 찾음): 결제 방법 칸이 v450 `#rqMethod` 와 #189 `#rqTaxMethod` 둘 → `hjTaxIssueFields(…,{noMethod:true})` + `hjTaxIssueBind/Input/LegacySelect(…,'rqMethod')` 하나로.
+  `hjTaxIssueApply` 가 '모름'(빈 값)이면 method 키를 지움(v450 약속 — rehearsalfix-v450 ④). 누수 받은 돈 창이 열자마자 `toLegacy()` 로 견적의 '세금계산서'를 '없음'으로 덮어
+  미발행 알림이 사라지던 것 — 발행 정보 없는 예전 기록이면 견적의 영수증 종류에서 시작(`fromLegacy`, doccenter-v433 이 찾음). 앱 안 📋 대표 할 일 'pr189' 문구 → '#198 병합 뒤 #189 닫기(병합 말고)'.
+- 검사: #189 의 tests/taxissue-v428.e2e.js 그대로 들임(`#rqTaxMethod`→`#rqMethod`) 11/11, payproof-v348·vatproof-v349 의 #189 변경 들임. bankimport-v350 ④ 는 증빙 고르기를 change 로 보내고
+  (지름길이 됐다) 저장 뒤 현장을 다시 찾는다(사본에 쓰고 통째로 바꿈). 신규 tests/taxmerge-v543.e2e.js 5/5(입금 창 칸 하나·지름길·모름·카드 → 손익 → 세금 캘린더 → 누수 예전 기록 → 할 일·핀).
+  기준선 v542 와 변이 dup-method 는 ① 에서 실패 확인. 돈 관련 67개(run-all 필터) — 이 환경에서만 떨어지는 document-select·document-upload·leakintakeweb-v431 빼고 통과, 정적·단위 50개 통과.
+- 핀3곳 hyeonjang-v543-taxissue. **#198 을 병합하면 #189 는 병합하지 말고 닫는다.**
+
 ## 2026-11-01 v542 폰에서 숫자가 중간에서 끊기지 않게 2차 (대표 PDF 2번 — 대시보드 KPI·현장 카드 금액·마진 요약)
 
 - 전수 진단(데모 자료 금액 37배, 360·390, 탭 9·현장 4·돈 창 11 — 글자 범위의 줄 상자로 숫자 덩어리 끊김 측정): 현장 카드·마진 요약·돈 창은 v518 까지로 이미 안 끊겼다.

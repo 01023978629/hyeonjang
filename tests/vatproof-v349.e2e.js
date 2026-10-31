@@ -90,7 +90,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { names: wb.sheets.map(x => x[0]), rows: sh ? sh[1] : null, res };
     });
     assert(JSON.stringify(r.names) === JSON.stringify(['요약', '매출', '매입', '입금증빙']) && r.res && r.res.시트 === 4, '시트: ' + JSON.stringify(r.names));
-    assert(r.rows && r.rows.length === 5 && JSON.stringify(r.rows[0]) === JSON.stringify(['입금일', '현장', '금액', '증빙', '기록일']), '머리·행 수: ' + JSON.stringify(r.rows && r.rows.slice(0, 2)));
+    assert(r.rows && r.rows.length === 5 && JSON.stringify(r.rows[0]) === JSON.stringify(['입금일', '현장', '금액', '증빙', '기록일', '결제 방법', '발행 상태', '승인·발행번호', '공사 구분']), '머리·행 수: ' + JSON.stringify(r.rows && r.rows.slice(0, 2)));
+    assert(JSON.stringify(r.rows.slice(1).map(row => row[5])) === JSON.stringify(['미확인', '미확인', '카드', '미확인']) && r.rows.slice(1).every(row => row[8] === '미분류'), 'v428 카드 증빙만 방법을 읽고 나머지 방법·공사 구분은 추정하지 않음');
     assert(r.rows[1][3] === '현금영수증' && r.rows[2][3] === '세금계산서' && r.rows[3][3] === '카드결제' && r.rows[4][3] === '미기록' && r.rows[4][2] === 500000 && !r.rows.some(x => x[2] === 900000), '행 내용: ' + JSON.stringify(r.rows));
   });
 
