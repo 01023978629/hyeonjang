@@ -3,6 +3,18 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v546 상단 머리 — 판 배지 · 🩺 자료 건강 캡슐 · [🧩 공정 일괄 채우기] · PC 머리 고정 (대표 PDF 6번 '최종 UI 1')
+
+- 머리(`<header>`)에 `#hjBuildBadge`(APP_BUILD 의 vNNN)와 `#hjHeadHealth` 를 더함. `hjHeadApply()` 를 render 마다(빈 화면으로 일찍 끝나는 길 앞) 부르고, 같은 HTML 이면 DOM 을 안 건드린다.
+  캡슐 `hjHeadHealthHTML()` = v524 `hjHealthData` 숫자(미배정 사진·안 읽은 견적·(있으면)중복 후보·백업) + 공정 빈칸이 있으면 `[🧩 공정 일괄 채우기 n]`(v545). 상태색 ok/todo/bad(백업 7일↑).
+  누르면 v524 `hjHealthOpen(k)` 그대로 / 채우기는 `hjPhotoFillView()`. 머리는 #view 밖이라 위임이 안 닿아 상자에 직접 한 번 붙인다(`__hjBound`).
+- **PC 만** 캡슐 — 폰 머리는 검색·현장 칩으로 꽉 차고 첫 화면 🩺 줄(v524)이 같은 숫자. 캡슐이 보이면 PC 꾸밈 글(.tagline 글자)만 접어 머리 한 줄(1280 에서 138→76px).
+  `warn` 클래스는 전역 빨간 단추라 캡슐 강조는 `is-warn`. 어두운 화면은 캡슐·글자색 따로(단추 color transition 이 있어 대비는 전환 뒤에 잰다).
+- PC 머리 고정: `body:not(.mobile-mode) header{position:sticky;top:0}` — 그런데 `html,body{height:100%}` 라 body 상자(화면 한 장) 끝에서 머리가 밀려 올라갔다 →
+  PC body 만 `height:auto;min-height:100%`, 왼쪽 열 높이는 `.wrap{min-height:calc(100vh - 76px)}`. 직원 모드 PC 는 `top:44px`(직원 줄 아래).
+- 핀3곳 hyeonjang-v546-headerui. 신규 tests/headerui-v546.e2e.js 5/5(배지·캡슐·한 줄·고정 → 누르면 → 숫자 갱신·DOM 그대로·상태색 → 폰 없음·직원·어두운 대비·1024 → 소스·핀).
+  기준선 v545 와 변이 no-collapse 는 ① 에서 실패 확인.
+
 ## 2026-11-01 v545 🧩 사진 공정·작업명 빈칸 묶음 채우기 (대표 PDF 5번)
 
 - 있던 것: 🏷 작업명 빈 사진 채우기(`hjLabelGaps` — 같은 날 작업명이 있는 묶음의 빈 작업명만). 없던 것: 공정 빈칸, 같은 날 작업명이 하나도 없는 묶음.

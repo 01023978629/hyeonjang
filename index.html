@@ -407,6 +407,32 @@
   .logo .dot{color:var(--clay)}
   .tagline{font-size:12px;letter-spacing:.34em;text-transform:uppercase;color:var(--blueprint);border-left:1px solid var(--line-soft);padding-left:14px}
   .hsearch{display:flex;gap:6px;align-items:center}
+/* v546 상단 머리(대표 PDF 6번 '최종 UI 1') — 판 배지 · 🩺 자료 건강 캡슐 · [🧩 공정 일괄 채우기]. PC 는 머리를 위에 붙인다(폰은 원래 붙어 있음) */
+body:not(.mobile-mode) header{position:sticky;top:0;z-index:40}
+/* 머리가 끝까지 붙어 있게: html,body{height:100%} 면 body 상자(화면 한 장) 끝에서 머리가 같이 밀려 올라간다 → PC body 는 내용만큼, 왼쪽 열 높이는 vh 로 */
+body:not(.mobile-mode){height:auto;min-height:100%}
+body:not(.mobile-mode) .wrap{min-height:calc(100vh - 76px)}
+body.hj-staff:not(.mobile-mode) header{top:44px}
+.hj-build-badge{font-size:11px;font-weight:800;letter-spacing:.02em;color:var(--blueprint);background:rgba(11,78,162,.08);border:1px solid rgba(11,78,162,.25);border-radius:999px;padding:2px 8px;align-self:center;font-variant-numeric:tabular-nums}
+.hj-build-badge:empty{display:none}
+.hj-head-health{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+.hj-head-health[hidden]{display:none}
+.hj-cap{display:inline-flex;align-items:center;gap:0;border-radius:999px;padding:2px 4px 2px 12px;font-size:12px;border:1px solid var(--line-soft);background:var(--paper);white-space:nowrap}
+.hj-cap.ok{background:#e9f6ef;border-color:#bfe6d6}.hj-cap.todo{background:#fff6e6;border-color:#f2d6a6}.hj-cap.bad{background:#fdecec;border-color:#f3c3c3}
+.hj-cap-k{font-weight:800;color:var(--ink);margin-right:2px}
+.hj-cap i{font-style:normal;color:var(--muted)}
+.hj-cap-seg{background:none;border:none;box-shadow:none;padding:6px 7px;min-height:36px;font-size:12px;color:var(--ink);cursor:pointer;border-radius:999px;font-variant-numeric:tabular-nums}
+.hj-cap-seg.is-warn b{color:var(--warn)}   /* 'warn' 은 빨간 단추 클래스라 쓰지 않는다 */
+body.dark .hj-cap .hj-cap-seg{color:#e8eef5}
+body.dark .hj-cap-seg.is-warn b{color:#ffb99c}
+.hj-cap-seg:hover{background:rgba(0,0,0,.06)}
+.hj-head-fill{min-height:36px;white-space:nowrap}
+body.mobile-mode .hj-head-health{display:none}
+/* 캡슐이 보이면 PC 머리 한 줄을 지키려고 꾸밈 글(인테리어 · 1인 운영 파일 정리)만 접는다 — PC·편집 배지는 그대로 */
+body:not(.mobile-mode) header:has(#hjHeadHealth:not([hidden])) .tagline{font-size:0;letter-spacing:0;border-left:none;padding-left:0}
+body:not(.mobile-mode) header:has(#hjHeadHealth:not([hidden])) .tagline .mode-badge{font-size:11px;letter-spacing:normal}
+body.dark .hj-cap.ok{background:#173326;border-color:#2c5a43}body.dark .hj-cap.todo{background:#33280f;border-color:#6b5320}body.dark .hj-cap.bad{background:#3a1c1c;border-color:#6d3434}
+body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-color:rgba(143,195,255,.3)}
   .hsearch input{width:230px}
   .wrap{display:grid;grid-template-columns:262px 1fr;min-height:calc(100% - 76px)}
   aside{border-right:1px solid var(--line-soft);padding:20px 16px;background:var(--paper-2)}
@@ -1129,8 +1155,10 @@ body.mobile-mode .apo-tools select.apoStat{font-size:16px!important;min-height:4
 <header>
   <div class="brand">
     <div class="logo">현장<span class="dot">.</span></div>
+    <span id="hjBuildBadge" class="hj-build-badge" title="지금 쓰는 앱 판"></span>
     <div class="tagline">인테리어 · 1인 운영 파일 정리<span id="modeBadge" class="mode-badge pc">💻 PC · 편집</span></div>
   </div>
+  <div id="hjHeadHealth" class="hj-head-health" role="group" aria-label="자료 건강" hidden></div>
   <div class="hsearch">
     <button class="proj-chip mobile-only-chip" id="projChip" title="현장 선택">🏗 전체 보기 ▾</button>
     <input type="text" id="globalSearch" placeholder="🔍 파일·현장·작업명·공정 검색" aria-label="파일, 현장, 사진 작업명과 공정 검색">
@@ -3709,7 +3737,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v545-photofill';
+const APP_BUILD='hyeonjang-v546-headerui';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -9393,6 +9421,7 @@ function render(){
   $('#mainTitle').firstChild.textContent=_tt[0];$('#mainCount').textContent=_tt[1];
   const v=$('#view');
   if(typeof syncMobileNav==='function')syncMobileNav();
+  try{hjHeadApply();}catch(e){}   // v546 상단 머리 캡슐
   if(!state.files.length&&!['dashboard','docs','quotemaker','schedule','contacts','estimates','ads','project','aptmgmt'].includes(state.tab)){v.innerHTML=emptyState(state.tab);bindDrop();hjShareCaptureMount();return;}
   const map={dashboard:viewDashboard,docs:viewDocs,photos:viewPhotos,estimates:viewEstimates,quotemaker:viewQuoteMaker,schedule:viewSchedule,contacts:viewContacts,project:viewProject,ledger:viewLedger,aptmgmt:viewAptMgmt,ads:viewAds};
   v.innerHTML=map[state.tab]();
@@ -13979,6 +14008,31 @@ function hjPcOnlyView(){
       (rows?'<div style="font-size:12.5px;margin-top:6px"><div style="color:var(--muted);margin-bottom:2px">현장별</div>'+rows+(top.length>8?'<div style="color:var(--muted);font-size:11.5px;padding-top:4px">…외 '+(top.length-8)+'곳</div>':'')+'</div>':'')+'</div>',
     [{label:'닫기',cls:'ghost',fn:closeModal},
      {label:'☁️ 최신 자료 확인',cls:'blue',fn:async function(){closeModal();try{__relayResumeAt=0;}catch(e){}let r='';try{r=await relayResumeCheck();}catch(e){r='';}if(r==='same')toast('이미 서버의 최신 자료예요 — PC에서 올리기가 끝났는지 확인해 주세요');}}],true);
+}
+/* v546 상단 머리 — 판 배지(APP_BUILD 의 vNNN) + 🩺 자료 건강 캡슐 + [🧩 공정 일괄 채우기](v545). 숫자·동작은 v524 hjHealthData·hjHealthOpen 그대로(새 저장 없음).
+   PC(모바일 모드 아님)에서만 캡슐을 보인다 — 폰 머리는 검색·현장 칩으로 꽉 차고 첫 화면 🩺 줄(v524)이 같은 숫자를 보여 준다. render 마다 갱신(같으면 안 건드림). */
+function hjHeadHealthHTML(){
+  const d=hjHealthData();if(!d.hasData)return '';
+  let pf=0;try{pf=hjPhotoFillCount();}catch(e){}
+  const seg=(k,label,n,title)=>'<button type="button" class="hj-cap-seg'+(n?' is-warn':'')+'" data-head-health="'+k+'" title="'+escapeAttr(title)+'">'+label+' <b>'+n+'</b></button>';
+  const bkWarn=d.days>=7,bk=d.days>=999?'백업 기록 없음':(d.days===0?'백업 완료':'백업 '+d.days+'일 전');
+  const clean=!d.est&&!d.photo&&!d.dup,state=bkWarn?'bad':clean?'ok':'todo';
+  return '<span class="hj-cap '+state+'" data-head-cap="'+state+'"><span class="hj-cap-k">자료 건강</span>'+
+    seg('photo','미배정 사진',d.photo,'현장 없는 사진 묶음을 사진·근거 보고 배정합니다(🧭 추측 배정 보기)')+'<i>·</i>'+
+    seg('est','안 읽은 견적',d.est,'엑셀·PDF 견적서를 읽어 매출에 넣습니다')+
+    (d.dup?'<i>·</i>'+seg('dup','중복 후보',d.dup,'크기·촬영 시각이 같은 사진 — 원본을 읽어 확인한 뒤 정리합니다'):'')+'<i>·</i>'+
+    '<button type="button" class="hj-cap-seg'+(bkWarn?' is-warn':'')+'" data-head-health="backup" title="지금 백업(파일 + 연결돼 있으면 드라이브)">'+(bkWarn?'<b>'+bk+'</b>':bk)+'</button></span>'+
+    (pf?'<button type="button" class="blue tiny hj-head-fill" data-head-fill title="현장이 정해진 사진 중 공정·작업명 빈칸을 현장·날짜 묶음마다 채웁니다(빈칸만 · 안전판 뒤)">🧩 공정 일괄 채우기 <b>'+pf+'</b></button>':'');
+}
+function hjHeadApply(){
+  try{
+    const b=document.getElementById('hjBuildBadge');if(b){const v=(String(APP_BUILD).match(/-(v\d+)-/)||[])[1]||'';if(b.textContent!==v)b.textContent=v;}
+    const box=document.getElementById('hjHeadHealth');if(!box)return;
+    if(!box.__hjBound){box.__hjBound=true;box.addEventListener('click',e=>{const s=e.target.closest('[data-head-health]');if(s){e.preventDefault();return hjHealthOpen(s.dataset.headHealth);}if(e.target.closest('[data-head-fill]')){e.preventDefault();return hjPhotoFillView();}});}
+    const html=document.body.classList.contains('mobile-mode')?'':hjHeadHealthHTML();
+    if(box.__html!==html){box.innerHTML=html;box.__html=html;}
+    box.hidden=!html;
+  }catch(e){}
 }
 function hjHealthOpen(k){
   if(k==='est')return hjEstimateAutoRead({silent:false,auto:false});
