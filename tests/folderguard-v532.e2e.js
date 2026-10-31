@@ -84,6 +84,9 @@ const names = page => page.evaluate(() => (state.projects || []).map(p => p.name
   // 아침 탭(A): 현장 둘로 시작해 저장
   const a = await openPage(context, 'A');
   await a.evaluate(async ({ ps }) => { state.projects = ps; markDirty(); await guardedPersistCurrentState(); }, { ps: [P('가온아파트'), P('나래아파트')] });
+  // A 의 0.8초 뒤 기기 저장(persistLocal)이 B 가 연 뒤에 끝나면 B 가 '뒤처진 탭'이 된다 — A 가 조용해진 뒤 B 를 연다
+  await a.waitForFunction(() => !__hjLocalSavePending, null, { timeout: 10000 });
+  await a.waitForTimeout(300);
   // 오후 탭(B): 같은 기기 저장본을 열어 작업을 더하고 저장 — 방송(BroadcastChannel)은 끄고 저장본 문지기만으로 막히는지 본다
   const b = await openPage(context, 'B');
   await b.evaluate(async ({ p }) => { try { __tabBC && __tabBC.close(); } catch (_) {} __tabBC = null; state.projects.push(p); markDirty(); await guardedPersistCurrentState(); }, { p: P('다솜아파트') });

@@ -3386,7 +3386,8 @@ async function pcupFile(f){
   return file;
 }
 async function pcupSave(run,final){
-  try{await guardedPersistCurrentState();}catch(e){}   // 이 기기 저장본(다른 탭이 더 최근이면 막힌다 — 아래 루프가 멈춘다)
+  let fresh=false;try{fresh=await guardedPersistCurrentState();}catch(e){fresh=false;}   // 이 기기 저장본
+  if(!fresh){try{__tabStale=true;multiTabStaleWarn();}catch(e){}return;}   // 다른 탭이 더 최근에 저장 — 서버·폴더에도 쓰지 않고 멈춘다(루프가 stale 로 끝남)
   for(let i=0;i<300&&__relaySaving;i++)await new Promise(r=>setTimeout(r,200));   // 자동 올리기와 겹치면 끝날 때까지
   try{if(await relaySaveNow(false))run.saves++;}catch(e){}
   if(final||run.batches%5===0){try{if(state.dirty&&state.dirHandle&&FS_OK&&!directOrganizedRoot())await saveProject(true);}catch(e){}}   // 폴더 _현장.json 도 가끔(마지막엔 꼭)
