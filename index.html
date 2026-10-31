@@ -1814,6 +1814,7 @@ async function scanDir(){
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
   window.__organizedRecovered=0;window.__organizedSkipped=new Map();
+  try{window.__hjPreScanData=hjDataHasContent(state)?serializeData():null;}catch(e){window.__hjPreScanData=null;}   // v532 loadProject 가 폴더 저장본과 비교할 '지금 이 기기 자료'(읽기 전)
   clearFileList();__walkSeen=new Map();__scanPhotoNames=new Set();__scanPhotoFiles=new Map();__scanPhotoPending=new Map();__scanTick=0;toast('현장사진부터 폴더 읽는 중…');
   render();   // 빈 목록을 먼저 보여주고, 아래 walk가 처리되는 대로 채운다
   // [v101] 폴더 확인 결과를 정확히 수집(정리 판정의 근거)
@@ -1875,9 +1876,16 @@ let __autoSaveOn=true; // 자동 저장 on/off (기본 on)
 const AUTOSAVE_MS=180000; // 3분
 let __photoCache={key:null,clusters:null,dupSets:null};
 let __clusterShowN=12, __clusterShowKey='';   // 사진 클러스터 점진 표시(더보기) 상태
+/* v531 폴더 자동 저장은 '첫 변경 뒤 3분'(최대 대기). 예전에는 변경마다 3분을 다시 미뤄서, 3분 안쪽 간격으로 계속 손대면
+   (사진 일괄 업로드가 2분마다 저장하는 식) 폴더의 _현장.json 이 몇 시간이고 안 써졌다 — 10/31 업로드 중 실측. */
+function scheduleFolderAutoSave(){
+  if(!(__autoSaveOn&&state.dirHandle&&FS_OK&&!directOrganizedRoot()))return;
+  if(__autosaveTimer)return;   // 이미 예약돼 있으면 미루지 않는다
+  __autosaveTimer=setTimeout(()=>{__autosaveTimer=null;if(state.dirty)saveProject(true);},AUTOSAVE_MS);
+}
 function markDirty(){state.dirty=true;__photoCache.key=null;try{hjSnapshot('작업 중');}catch(e){}const b=$('#btnSave');if(b){b.classList.add('clay');b.textContent='● 저장하기';}
-  // 자동 저장: 자동 모드 + 연결 폴더일 때만, 3분 간격
-  if(__autoSaveOn&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
+  // 자동 저장: 자동 모드 + 연결 폴더일 때만, 첫 변경 뒤 3분(v531 최대 대기)
+  scheduleFolderAutoSave();
   persistLocal(); // 로컬(IndexedDB) 자동저장 — 폰·PC 어디서나 새로고침해도 현장·연락처·견적·일정 유지
   try{backupDriveAuto();}catch(e){}
   if(typeof cloudAutoSave==='function')cloudAutoSave(); // 클라우드(Supabase) 연결 시 자동 올리기
@@ -1895,7 +1903,7 @@ let __hjLocalSavePending=false,__hjLocalSaveSeq=0;   // v450 기기(IndexedDB) �
 /* 경고는 토스트가 아니라 전용 배너로 띄운다 — 토스트는 한 칸뿐이라 ?lead 차단
    안내 같은 다른 메시지와 서로 덮는다(v240 배포 게이트에서 실측). 배너는
    지속 표시 + 닫기 버튼이라 2.4초 토스트보다 경고 성격에도 맞다. */
-function __tabBanner(msg){try{
+function __tabBanner(msg,act){try{
   let b=document.getElementById('hjTabWarn');
   if(!b){
     b=document.createElement('div');b.id='hjTabWarn';b.setAttribute('role','status');
@@ -1907,11 +1915,31 @@ function __tabBanner(msg){try{
     b.appendChild(s);b.appendChild(x);document.body.appendChild(b);
   }
   const s=document.getElementById('hjTabWarnMsg');if(s)s.textContent=msg;
+  // v534 행동 단추(오래된 창의 [🔄 새로고침]) — 단추 없는 경고로 바뀌면 뗀다
+  let a=document.getElementById('hjTabWarnAct');
+  if(act&&act.label){
+    if(!a){a=document.createElement('button');a.type='button';a.id='hjTabWarnAct';
+      a.style.cssText='display:block;margin:6px 0 0 0;background:#fff;color:#7a4e00;border:0;border-radius:9px;padding:0 14px;min-height:40px;font-size:13px;font-weight:800;cursor:pointer';
+      b.insertBefore(a,b.lastChild);}
+    a.textContent=act.label;a.onclick=act.fn;
+  }else if(a)a.remove();
   hjDemoBarSync();
 }catch(e){}}
-function __tabWarnOnce(k,msg){if(__tabWarned[k])return;__tabWarned[k]=true;__tabBanner(msg);}
-function multiTabOpenWarn(){__tabWarnOnce('open','⚠️ 현장 앱이 다른 탭/창에도 열려 있습니다 — 한 곳에서만 작업하세요');}
-function multiTabStaleWarn(){__tabWarnOnce('stale','⚠️ 다른 탭이 더 최근에 저장했습니다 — 이 탭의 자동저장을 멈췄어요. 새로고침으로 최신 자료를 불러오세요');}
+function __tabWarnOnce(k,msg,act){if(__tabWarned[k])return;__tabWarned[k]=true;__tabBanner(msg,act);}
+function multiTabOpenWarn(){if(__tabStale&&__tabWarned.stale)return;__tabWarnOnce('open','⚠️ 현장 앱이 다른 탭/창에도 열려 있습니다 — 한 곳에서만 작업하세요');}   // v534 오래된 창 경고(새로고침 단추)를 덮지 않는다
+function multiTabStaleWarn(){__tabWarnOnce('stale','⚠️ 다른 탭이 더 최근에 저장했습니다 — 이 탭의 자동저장을 멈췄어요(서버 저장 포함). 새로고침으로 최신 자료를 불러오세요',{label:'🔄 안전판 보관하고 새로고침',fn:()=>{hjStaleReload();}});}
+/* v534 🔒 오래된 창 — 다른 창이 더 최근에 저장한 창(__tabStale)은 기기(v457)·폴더(v532)·서버(v534) 어디에도 쓰지 않는다.
+   10/31 실측: 아침부터 열려 있던 창이 몇 시간 뒤 서버 충돌 창을 띄웠고, 거기서 ② '내 기기 데이터로 덮어쓰기'를 누르면 그날 작업이 옛 자료로 서버까지 덮일 수 있었다.
+   새로고침 단추는 이 창 자료(저장 못 한 변경 포함)를 🛡 안전판에 먼저 보관한 뒤 다시 연다 — 다시 열면 기기의 최신 자료로 뜬다. */
+async function hjStaleReload(){
+  if(window.__hjStaleReloading)return false;window.__hjStaleReloading=true;
+  let ok=false;try{ok=await hjSnapshot('오래된 창 자료(새로고침 전)',true);}catch(e){ok=false;}
+  const has=((state.projects||[]).length||(state.files||[]).length||(state.quotes||[]).length||(state.notes||[]).length)>0;
+  if(!ok&&has&&!confirm('🛡 이 창 자료를 안전판에 보관하지 못했어요.\n그래도 새로고침할까요? 이 창에서 저장 못 한 변경은 사라질 수 있어요.')){window.__hjStaleReloading=false;return false;}
+  window.__hjStaleReload=true;   // 창 닫기 경고(beforeunload)를 건너뛴다 — 이 창의 변경은 어차피 저장되지 않는다
+  try{location.reload();}catch(e){window.__hjStaleReloading=false;window.__hjStaleReload=false;return false;}
+  return true;
+}
 function persistLocal(){
   if(state._demo)return;
   clearTimeout(__idbSaveTimer);
@@ -1938,8 +1966,8 @@ try{
 function clearDirty(){state.dirty=false;const b=$('#btnSave');if(b){b.classList.remove('clay');b.textContent='저장됨';setTimeout(()=>{if(!state.dirty&&$('#btnSave'))$('#btnSave').textContent='저장하기';},1500);}}
 function toggleAutoSave(){
   __autoSaveOn=!__autoSaveOn;
-  if(!__autoSaveOn)clearTimeout(__autosaveTimer);
-  else if(state.dirty&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}
+  if(!__autoSaveOn){clearTimeout(__autosaveTimer);__autosaveTimer=null;}
+  else if(state.dirty)scheduleFolderAutoSave();
   const b=$('#btnAutoSave');if(b){b.textContent=__autoSaveOn?'⏱ 자동저장 ON':'⏸ 수동저장';b.classList.toggle('blue',__autoSaveOn);b.classList.toggle('ghost',!__autoSaveOn);}
   try{idbSet('pref_autosave',__autoSaveOn);}catch(e){}
   toast(__autoSaveOn?'자동 저장 켜짐 (3분 간격)':'수동 저장 모드 — 직접 저장하세요');
@@ -1947,11 +1975,11 @@ function toggleAutoSave(){
 // 창 닫기 전 경고
 // v450 폰처럼 폴더를 연결하지 않은 기기는 state.dirty 가 풀릴 길이 없어(폴더 저장·파일 내보내기만 푼다) 자료가 이미 기기에 저장됐는데도
 // 앱을 다시 열거나 공유로 들어올 때마다 '사이트에서 나가시겠습니까?'가 떴다(리허설 R3) — 폴더 저장 전·기기 저장 전·사진 넣는 중일 때만 묻는다.
-window.addEventListener('beforeunload',e=>{if((state.dirty&&state.dirHandle)||(__hjLocalSavePending&&!__tabStale)||photoIntakePending()){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(window.__hjStaleReload)return;if((state.dirty&&state.dirHandle)||(__hjLocalSavePending&&!__tabStale)||photoIntakePending()){e.preventDefault();e.returnValue='';}});
 window.addEventListener('unload',()=>{try{(state.files||[]).forEach(revokeThumbUrl);}catch(e){}});
 // 탭 닫힘/백그라운드 전환 시 로컬 저장 플러시(특히 폰 — iOS가 탭을 끄기 전에 보존)
 window.addEventListener('pagehide',()=>{try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}});   // 뒤처진 탭은 닫힐 때도 안 덮는다
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}}else if(document.visibilityState==='visible'){try{setTimeout(()=>{try{aiOpsVisibilityCheck();}catch(e){}},800);}catch(e){}try{officeIntakeAutoTrigger('visible');}catch(e){}}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{if(!state._demo&&!__tabStale)guardedPersistCurrentState();}catch(e){}}else if(document.visibilityState==='visible'){try{if(__tabStale)multiTabStaleWarn();}catch(e){}try{setTimeout(()=>{try{aiOpsVisibilityCheck();}catch(e){}},800);}catch(e){}try{officeIntakeAutoTrigger('visible');}catch(e){}try{relayResumeCheck().catch(()=>{});}catch(e){}}});   // v530 다른 기기 최신 자료
 try{setInterval(()=>{try{aiOpsIntervalCheck();}catch(e){}},60*60*1000);}catch(e){}
 function fileKey(f){return (f.prefix||'')+f.name+'|'+(f.size||0);}
 // 공동현관·도어락 비밀번호 같은 출입정보는 앱 백업/동기화 대상에서 제외한다.
@@ -2436,10 +2464,15 @@ async function saveProject(silent){
   if(__saving){__saveQueued=silent;return;}
   __saving=true;
   try{
+    // v532 오래된 탭(다른 탭이 더 최근에 저장)은 폴더 _현장.json 도 덮지 않는다 — 기기 저장본(IndexedDB)과 같은 문지기를 먼저 통과해야 쓴다.
+    //  10/31 아침에 열어 둔 탭이 오후에 옛 자료(현장 56·견적 0)로 폴더 파일을 다시 썼고, 그 파일은 저장 시각이 더 나중이라 다음 폴더 연결 때 '더 새 자료'로 보였다.
+    let fresh=false;
+    if(!(typeof __tabStale!=='undefined'&&__tabStale)){try{fresh=await guardedPersistCurrentState();}catch(e){fresh=false;}}
+    if(!fresh){__tabStale=true;__hjLocalSavePending=false;multiTabStaleWarn();if(!silent)toast('다른 탭이 더 최근에 저장해서 폴더 파일을 덮지 않았어요 — 새로고침으로 최신 자료를 불러오세요');return;}
     const data=serializeData();
     const fh=await state.dirHandle.getFileHandle('_현장.json',{create:true});
     const w=await fh.createWritable();await w.write(JSON.stringify(data,null,1));await w.close();
-    clearDirty();toast(silent?'자동 저장됨':'작업 내용을 _현장.json에 저장했습니다');
+    clearDirty();clearTimeout(__autosaveTimer);__autosaveTimer=null;toast(silent?'자동 저장됨':'작업 내용을 _현장.json에 저장했습니다');   // v531 다음 변경부터 새로 3분
     try{hjSnapshot(silent?'자동 저장':'수동 저장');}catch(e){}
   }catch(e){if(!silent)toast('저장 오류: '+e.message);}
   finally{__saving=false;if(__saveQueued!==null){const s=__saveQueued;__saveQueued=null;setTimeout(()=>saveProject(s),0);}}
@@ -2450,16 +2483,35 @@ async function loadProject(){
   try{
     const fh=await state.dirHandle.getFileHandle('_현장.json');
     const file=await fh.getFile();const data=JSON.parse(await file.text());
+    const ref=window.__hjPreScanData||((__dataAt&&__lastData)?__lastData:null);window.__hjPreScanData=null;   // v532 비교 기준 = 폴더를 읽기 직전의 이 기기 자료
     if(__dataAt && data.savedAt && data.savedAt < __dataAt && __lastData){
       // 이 PC 로컬 저장본이 드라이브 최신본보다 오래됨 → 데이터는 드라이브 유지, 파일만 재매칭
       applyData(__lastData);
       toast('드라이브 최신 데이터 유지(로컬 저장본이 더 오래됨) — 파일만 연결');
+    } else if(__dataAt && ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){   // 이 기기에 저장 자료를 적용한 적이 있을 때만(첫 연결·세션 중 만든 자료뿐이면 예전처럼 폴더 적용)
+      // v532 폴더 저장본이 시각은 더 나중인데 내용이 이 기기 자료와 다르다 — 오래된 탭·옛 현장.html 이 옛 자료로 다시 쓴 경우가 있다(10/31 실측).
+      // 자동으로 덮지 않는다: 이 기기 자료를 유지하고(파일만 재매칭) 사람에게 고르게 한다.
+      applyData(ref);
+      toast('📂 폴더 저장본이 이 기기 자료와 달라 자동으로 불러오지 않았어요 — 확인 창에서 고르세요');
+      setTimeout(()=>{try{hjFolderNewerChoice(data);}catch(e){}},400);
     } else {
       const n=applyData(data);
       toast('저장된 작업 복원됨 — 현장 '+state.projects.length+'개 · 파일 '+n+'개');
     }
     render();   // 로컬 불러오기 후에도 화면 갱신(드라이브 불러오기와 동작 일치)
   }catch(e){/* 저장 파일 없음 = 첫 사용 */}
+}
+/* v532 폴더 저장본 비교 — 현장 이름·견적 id·파일 수·서버 사본 수·배정 수가 같으면 같은 자료로 본다(저장 시각·AI 점검 기록 같은 잔변화는 무시). */
+function hjDataHasContent(d){return !!(d&&((d.projects||[]).length||(d.files||[]).length||(d.quotes||[]).length));}
+function hjDataSig(d){try{const fs=(d&&d.files)||[];return JSON.stringify([((d&&d.projects)||[]).map(p=>p&&p.name).sort(),((d&&d.quotes)||[]).map(q=>q&&q.id).sort(),fs.length,fs.filter(f=>f&&(f.driveId||f._driveId)).length,fs.filter(f=>f&&f.project).length]);}catch(e){return 'x'+Math.random();}}
+function hjDataBrief(d){let at='';try{at=d.savedAt?new Date(d.savedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';}catch(e){}return '현장 '+((d.projects||[]).length)+' · 견적 '+((d.quotes||[]).length)+' · 파일 '+((d.files||[]).length)+(at?' · 저장 '+at:'');}
+function hjFolderNewerChoice(data){
+  let mine='';try{mine=hjDataBrief(Object.assign(serializeData(),{savedAt:__dataAt}));}catch(e){}
+  openModal('📂 폴더 저장본이 이 기기 자료와 다릅니다','<div data-folder-choice style="font-size:13px;line-height:1.7">폴더의 <b>_현장.json</b> 은 저장 시각이 더 나중인데 내용이 이 기기 자료와 다릅니다. 다른 탭(또는 예전에 열어 둔 현장.html)이 옛 자료로 폴더 파일을 다시 썼을 수 있어서 <b>자동으로 불러오지 않았습니다.</b>'+
+    '<table style="width:100%;margin:10px 0;border-collapse:collapse;font-size:12.5px"><tr><th style="text-align:left;padding:4px 6px;white-space:nowrap">이 기기(지금)</th><td data-folder-mine style="padding:4px 6px">'+escapeHtml(mine)+'</td></tr><tr><th style="text-align:left;padding:4px 6px;white-space:nowrap">폴더 _현장.json</th><td data-folder-file style="padding:4px 6px">'+escapeHtml(hjDataBrief(data))+'</td></tr></table>'+
+    '<p style="margin:0;color:var(--muted-2)">보통은 <b>이 기기 자료 유지</b>를 누르세요 — 폴더 파일을 지금 자료로 다시 씁니다. 다른 PC 에서 한 작업이 폴더로 들어온 것이 확실할 때만 폴더 저장본을 불러오세요(지금 자료는 🛡 안전판에 남깁니다).</p></div>',
+    [{label:'이 기기 자료 유지 (권장)',cls:'blue',fn:async()=>{closeModal();markDirty();await saveProject(true);toast('이 기기 자료를 유지하고 폴더 파일을 지금 자료로 다시 썼습니다');}},
+     {label:'폴더 저장본 불러오기',cls:'ghost',fn:async()=>{closeModal();try{await hjSnapshot('폴더 저장본 불러오기 전',true);}catch(e){}const n=applyData(data);markDirty();render();toast('폴더 저장본을 불러왔습니다 — 현장 '+state.projects.length+'개 · 파일 '+n+'개 (이전 자료는 🛡 안전판)');}}],true);
 }
 /* 데이터 내보내기: 어디서나(폰 포함) 다운로드되는 파일 1개 */
 function exportData(){
@@ -2525,6 +2577,50 @@ let __relayState='';            // 저장 상태 코드(local/saving/saved/offli
 let __relayQn=0;                // 전송 대기열 건수(표시용)
 let __relayAuthToasted=false;   // 인증 오류 토스트는 1회만(도배 금지)
 let __relaySaving=false,__relayPend=false,__relayFlushing=false;
+/* v530 📱 다른 기기 최신 자료 자동 반영 — 10/31 대표 "모바일로 접속했을 때 최신 자료로 보여지는지 확인".
+   그날 서버(relay)에는 PC 작업이 다 올라가 있었지만(rev 919), 폰은 열 때 '☁️ 서버에 더 최신 자료' 배너의 [불러오기]를 눌러야만 바뀌었다 —
+   배너를 놓치거나 [나중에]를 누르면 옛 자료 그대로였고, 앱을 백그라운드에서 다시 볼 때는 확인조차 안 했다.
+   · 이 기기에 서버로 아직 안 올린 변경이 없으면(relay_unsynced 0 · 이번 세션 변경 없음 · 전송 대기열·사진 대기함 비어 있음 ·
+     창이 떠 있거나 입력 중이 아님) 서버 최신본을 자동으로 받는다 — 안전판 먼저(relayLoadApply 그대로), 받는 사이 손대면 멈춘다.
+     하나라도 걸리면 예전처럼 배너(자동 덮어쓰기 금지 원칙은 그대로 — 내 변경이 있는 기기는 사람이 고른다).
+   · 부팅 때와, 앱을 다시 볼 때(1분에 한 번) 확인한다.
+   · 지난번에 3초 안에 앱을 닫아 서버에 못 올린 변경이 남아 있고 서버가 그대로면 부팅 때 바로 올린다.
+   · hj_relay_unsynced(localStorage — 동기 쓰기, IDB 쓰기를 가로채는 검사·저장 경로와 섞이지 않게): 값이 없으면(이 판을 처음 연 기기)
+     '모름' → 자동 반영 안 함. 저장·불러오기가 한 번 성공하면 0. */
+let __relayEditSeq=0,__relayUnsynced=null,__relayResumeAt=0;
+const HJ_RELAY_UNSYNCED_KEY='hj_relay_unsynced';
+function relayMarkUnsynced(){__relayEditSeq++;const first=!(__relayUnsynced>0);__relayUnsynced=first?Date.now():__relayUnsynced;if(first){try{localStorage.setItem(HJ_RELAY_UNSYNCED_KEY,String(__relayUnsynced));}catch(e){}}}
+function relayMarkSynced(seq){if(seq!==__relayEditSeq)return false;__relayUnsynced=0;try{localStorage.setItem(HJ_RELAY_UNSYNCED_KEY,'0');}catch(e){}return true;}
+async function relayUnsyncedLoad(){try{const v=localStorage.getItem(HJ_RELAY_UNSYNCED_KEY);__relayUnsynced=(v===null||v==='')?null:(Number(v)||0);}catch(e){__relayUnsynced=null;}return __relayUnsynced;}
+// 지금 손대는 중인가 — 창(모달)·견적 편집·입력 칸
+function relayEditingNow(){
+  try{
+    if(document.querySelector('#modalRoot .modal'))return true;
+    if(state.editingQuote)return true;
+    const a=document.activeElement;
+    if(a&&(a.isContentEditable||a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))return true;
+  }catch(e){return true;}
+  return false;
+}
+// 자동으로 받으면 안 되는 이유(없으면 '') — 동기 검사(받기 직전에 한 번 더 본다)
+function relayFastForwardBlockSync(seq){
+  if(state._demo)return 'demo';
+  if(typeof __tabStale!=='undefined'&&__tabStale)return 'stale';
+  if(!relayReady())return 'norelay';
+  if(__relayUnsynced===null)return 'unknown';
+  if(__relayUnsynced>0)return 'unsynced';
+  if(seq!==__relayEditSeq)return 'edited';
+  if(__relaySaving||__relayFlushing)return 'saving';
+  try{if(photoIntakePending())return 'photo';}catch(e){return 'photo';}
+  if(relayEditingNow())return 'editing';
+  return '';
+}
+async function relayFastForwardBlock(seq){
+  const b=relayFastForwardBlockSync(seq);if(b)return b;
+  const q=await relayQueueGet();if(q===null)return 'queue?';if(q.length)return 'queue';
+  try{const ob=await hjOutboxRead();if(ob&&ob.length)return 'outbox';}catch(e){return 'outbox?';}
+  return relayFastForwardBlockSync(seq);
+}
 function relayReady(){return !!(__relay.url&&__relay.token);}
 /* 전자계약 서버 연결 — relay와 같은 idb 전용 비밀(serialize/applyData에 절대 넣지 않음). 부팅 때 relayBoot에서 복원 */
 let __contract={url:'',token:'',selfTestOk:false,selfTestAt:''};
@@ -2691,13 +2787,14 @@ function relayStatText(code){
   if(code==='conflict')return '⚠️ 저장 충돌 발생 — 선택 필요';
   if(code==='auth')return '🔑 인증키 오류 — ☁️ 설정 확인';
   if(code==='qfail')return '⚠️ 대기열 읽기/저장 실패 — 저장공간 확인';
+  if(code==='stale')return '🔒 오래된 창 — 서버 저장 멈춤(새로고침)';
   if(code==='ready')return '☁️ 서버 연결됨';
   return '💾 기기에만 저장됨';
 }
 function relaySetStatus(code){
   __relayState=code;
   const txt=relayStatText(code);
-  const warn=(code==='offline'||code==='netfail'||code==='conflict'||code==='auth'||code==='qfail');
+  const warn=(code==='offline'||code==='netfail'||code==='conflict'||code==='auth'||code==='qfail'||code==='stale');
   let el=document.getElementById('relayStat');
   if(!el){const b=document.getElementById('btnSave');if(b&&b.parentNode){el=document.createElement('small');el.id='relayStat';el.style.cssText='display:block;text-align:center;font-size:11px;line-height:1.4;color:var(--muted)';b.parentNode.insertBefore(el,b.nextSibling);}}
   if(el){el.textContent=txt;el.style.color=warn?'var(--warn)':'var(--muted)';}
@@ -2780,14 +2877,16 @@ async function cloudFlushQueue(manual){
   if(state._demo)return;   // 대기열의 save 는 보내는 순간의 serializeData() 로 채워진다 — 데모 중에 보내면 데모가 서버에 올라간다
   if(__relayFlushing||!relayReady())return;   // 재진입 가드(진행 중 플래그)
   __relayFlushing=true;
+  const seq0=typeof __relayEditSeq==='number'?__relayEditSeq:0;   // v530
   try{
     const q=await relayQueueReadStrict();
     if(!q.length){await relayUpdateQueueBadge();return;}
-    const doneIds={},retryUpd={},toLink={};let sent=0,savedOk=false,linkedUp=0;
+    const doneIds={},retryUpd={},toLink={};let sent=0,savedOk=false,linkedUp=0,staleSave=false;
     for(let i=0;i<q.length;i++){
       const it=q[i];
       if(it.action==='link'){const r=relayLinkItemRetry(it);if(r==='linked'){linkedUp++;doneIds[it.id]=1;}else if(r==='done')doneIds[it.id]=1;continue;}   // v331 서버로 보내지 않는다
       if(!manual&&(it.retryCount||0)>=5)continue;   // 5회 이상 실패 → 자동 재시도 중단(설정의 '다시 보내기'로만)
+      if(it.action==='save'&&typeof __tabStale!=='undefined'&&__tabStale){staleSave=true;continue;}   // v534 오래된 창은 save 를 보내지 않는다(보내는 순간의 serializeData() = 옛 자료) — 남겨 두면 최신 창이 보낸다. 사진 업로드는 v331 대로 보내고 기록 연결 대기로
       try{
         let res;
         if(it.action==='save')res=await relayCall('save',{data:serializeData(),baseRevision:__relay.rev||0});   // ts·데이터·rev 전부 전송 시점 기준(서버 ±10분 검사)
@@ -2805,8 +2904,9 @@ async function cloudFlushQueue(manual){
     {const LINK_MAX=50,links=keep.filter(it=>it.action==='link');if(links.length>LINK_MAX){const drop=new Set(links.sort((a,b)=>(+a.linkAt||0)-(+b.linkAt||0)).slice(0,links.length-LINK_MAX).map(it=>it.id));keep=keep.filter(it=>!drop.has(it.id));}}   // 연결 대기는 작지만 끝없이 쌓이지 않게 — 오래된 것부터 놓아준다
     if(linkedUp){markDirty();try{await guardedPersistCurrentState();}catch(e){}try{if(typeof __photoCache!=='undefined')__photoCache.key=null;scheduleRender();}catch(e){}}   // 붙인 Drive ID 저장
     if(await relayQueueSet(keep)!==true){if(manual)toast('전송 결과의 대기열 저장 실패 — 전송 완료로 확인할 수 없습니다');return;}
-    if(savedOk){relayDailyBackup();try{await officeIntakeFlush();}catch(e){}}   // 큐 경유 저장 성공에도 하루 1회 백업
-    if(!relayQueueSendCount(keep)){if(sent)relaySetStatus('saved');}
+    if(savedOk){if(typeof relayMarkSynced==='function')relayMarkSynced(seq0);relayDailyBackup();try{await officeIntakeFlush();}catch(e){}}   // 큐 경유 저장 성공에도 하루 1회 백업(v530 '다 올림')
+    if(staleSave)relaySetStatus('stale');   // v534
+    else if(!relayQueueSendCount(keep)){if(sent)relaySetStatus('saved');}
     else if(__relayState!=='auth'&&__relayState!=='conflict')relaySetStatus(navigator.onLine===false?'offline':'netfail');
   }catch(e){relaySetStatus('qfail');if(manual)toast('대기열 읽기 실패 — 전송 상태를 확인하지 못했습니다. 기존 기록은 유지합니다');}
   finally{__relayFlushing=false;if(typeof hjOutboxFlush==='function')setTimeout(()=>hjOutboxFlush().catch(()=>{}),0);}
@@ -2816,14 +2916,18 @@ window.addEventListener('online',function(){try{cloudFlushQueue();}catch(e){}try
 async function relaySaveNow(manual){
   if(state._demo)return false;
   if(!relayReady())return false;
+  // v534 오래된 창은 서버에 쓰지 않는다(충돌 창 ②·자동 저장·첫 연결 올리기 모두 이 길) — 기기·폴더와 같은 규칙
+  if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}if(manual)toast('🔒 이 창은 다른 창보다 오래된 자료라 서버에 올리지 않았어요 — 위 띠의 [🔄 새로고침]을 누르세요');return false;}
   if(__relaySaving){__relayPend=true;return false;}   // 진행 중이면 끝난 뒤 한 번 더(유실 방지)
   __relaySaving=true;relaySetStatus('saving');
   let ok=false;
+  const seq=typeof __relayEditSeq==='number'?__relayEditSeq:0;   // v530 보내는 순간까지의 변경(typeof — 함수만 떼어 돌리는 단위 검사에서도 안전)
   try{
     const res=await cloudApiSave(__relay.rev||0);
     if(res&&res.ok){
       __relay.rev=(typeof res.revision==='number')?res.revision:(__relay.rev||0);__relay.syncAt=res.savedAt||new Date().toISOString();   // revision 누락이어도 rev 리셋 금지
       try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
+      if(typeof relayMarkSynced==='function')relayMarkSynced(seq);   // v530 보내는 사이 또 손댔으면 다음 저장이 맡는다
       relaySetStatus('saved');ok=true;
       relayDailyBackup();   // 하루 1회 서버 날짜별 백업(기존 gdBackup 패턴)
       try{await officeIntakeFlush();}catch(e){}   // 정상 저장 확인 뒤에만 관리사무소 상태 발행
@@ -2871,7 +2975,9 @@ async function relayGuardSnapshot(label){
   return ok;
 }
 /* ── 서버에서 불러와 적용 — 적용 전 스냅샷 성공 확인(실패 시 적용 중단, 로컬 자료 보존) ── */
-async function relayLoadApply(silent,snapLabel){
+async function relayLoadApply(silent,snapLabel,guard){
+  // v534 오래된 창 — 서버 자료를 여기 적용해도 기기에 저장되지 않고(문지기) 기준 revision(relay_rev)만 기기에 남아, 새로고침 뒤 다음 저장이 충돌 없이 서버를 덮을 수 있다
+  if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}if(!silent)toast('🔒 이 창은 오래된 자료라 서버 자료를 여기에 적용하지 않았어요 — 위 띠의 [🔄 새로고침]으로 다시 여세요');return false;}
   try{
     const res=await cloudApiLoad();
     if(!(res&&res.ok)){
@@ -2880,10 +2986,16 @@ async function relayLoadApply(silent,snapLabel){
       return false;
     }
     if(!res.exists||!res.data){if(!silent)toast('서버에 저장된 자료가 아직 없습니다 — [☁️ 서버에 저장하기]로 이 기기 자료를 올리세요');return false;}
+    if(typeof guard==='function'&&!guard())return 'blocked';   // v530 자동 반영 — 받는 사이 손댔으면 적용하지 않는다(호출자가 배너로)
     if(!(await relayGuardSnapshot(snapLabel||'서버자료 적용 전')))return false;   // 스냅샷 실패 → 적용 중단
+    if(typeof guard==='function'&&!guard())return 'blocked';
+    const seq=__relayEditSeq;
     applyData(res.data);render();
     __relay.rev=(typeof res.revision==='number')?res.revision:(__relay.rev||0);__relay.syncAt=res.modifiedAt||new Date().toISOString();   // revision 누락 응답이어도 rev 리셋 금지
     try{idbSet('relay_rev',__relay.rev);idbSet('relay_syncAt',__relay.syncAt);}catch(e){}
+    relayMarkSynced(seq);   // v530 받은 자료 = 서버 자료
+    try{const nb=document.getElementById('relayNewBar');if(nb)nb.remove();}catch(e){}   // v530 이미 받았으니 '더 최신 자료' 배너는 내린다(충돌 창 ①로 받은 뒤에도 남아 있었다)
+    try{await guardedPersistCurrentState();}catch(e){}   // v530 받은 자료를 이 기기에도 바로 저장 — 앱을 그냥 닫아도 다음에 옛 자료가 뜨지 않게(revision 만 새것으로 남던 틈)
     relaySetStatus('saved');
     await relayLoadDriveFiles(true);   // 서버 JSON 적용 직후 Drive 사진 누락분도 함께 복구
     if(!silent)toast('☁️ 서버에서 불러옴 — 현장 '+state.projects.length+'곳 (이전 자료는 🛡 스냅샷에 보관)');
@@ -2941,6 +3053,23 @@ async function relayConflictCompare(box){
 function relayConflictModal(res){
   if(document.getElementById('ryConflictBox'))return;   // 이미 떠 있음(도배 방지)
   const sAt=res&&res.serverModifiedAt?new Date(res.serverModifiedAt).toLocaleString('ko-KR'):'?';
+  // v534 오래된 창 — ② 덮어쓰기를 내놓지 않는다(이 창보다 나중에 저장한 작업이 서버에서 사라진다). ①·③도 이 창에서는 기기에 저장이 안 되므로 새로고침이 답.
+  if(typeof __tabStale!=='undefined'&&__tabStale){
+    openModal('⚠️ 저장 충돌 — 이 창은 오래된 자료예요',
+      `<div id="ryConflictBox" data-stale-conflict style="font-size:13px;line-height:1.7">
+        <p style="margin:0 0 8px">서버: revision <b>${(res&&res.serverRevision)||'?'}</b> · ${escapeHtml(sAt)}${res&&res.serverSavedBy?(' · '+escapeHtml(res.serverSavedBy)):''}<br>이 창 기준 revision: <b>${__relay.rev||0}</b></p>
+        <p style="margin:0 0 8px"><b>다른 창(탭)이 이 창보다 나중에 저장했습니다.</b> 이 창 자료로 서버를 덮으면 그 뒤의 작업이 사라질 수 있어 <b>'내 기기 데이터로 덮어쓰기'는 막았어요.</b></p>
+        <p style="margin:0;font-size:12px;color:var(--muted-2)">[🔄 새로고침]은 이 창 자료를 🛡 안전판에 먼저 보관하고 최신 자료로 다시 엽니다. 다른 창이 열려 있으면 그 창에서 계속 작업하세요.</p>
+        <button type="button" class="ghost" id="ryConflictCompare" style="margin-top:12px">서버·내 기기 차이 먼저 확인</button>
+        <div id="ryConflictPreview" role="status" aria-live="polite" style="margin-top:10px;overflow-wrap:anywhere"></div>
+      </div>`,[
+      {label:'닫기',cls:'ghost',fn:closeModal},
+      {label:'🔄 안전판 보관하고 새로고침',cls:'blue',fn:function(){hjStaleReload();}}
+    ]);
+    const sbox=document.getElementById('ryConflictBox');
+    if(sbox)sbox.querySelector('#ryConflictCompare').onclick=()=>relayConflictCompare(sbox);
+    return;
+  }
   openModal('⚠️ 저장 충돌 — 다른 기기가 먼저 저장했어요',
     `<div id="ryConflictBox" style="font-size:13px;line-height:1.7">
       <p style="margin:0 0 8px">서버: revision <b>${(res&&res.serverRevision)||'?'}</b> · ${escapeHtml(sAt)}${res&&res.serverSavedBy?(' · '+escapeHtml(res.serverSavedBy)):''}<br>이 기기 기준 revision: <b>${__relay.rev||0}</b></p>
@@ -2949,7 +3078,9 @@ function relayConflictModal(res){
       <div id="ryConflictPreview" role="status" aria-live="polite" style="margin-top:10px;overflow-wrap:anywhere"></div>
     </div>`,[
     {label:'① 서버 데이터 사용',cls:'blue',fn:async function(){closeModal();await relayLoadApply(false,'충돌-서버적용 전');}},
-    {label:'② 내 기기 데이터로 덮어쓰기',cls:'clay',fn:async function(){closeModal();__relay.rev=Number(res&&res.serverRevision)||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 내 기기 자료로 서버를 덮어썼습니다');}},
+    {label:'② 내 기기 데이터로 덮어쓰기',cls:'clay',fn:async function(){closeModal();
+      if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}toast('🔒 창이 열려 있는 사이 다른 창이 더 최근에 저장해서 덮어쓰지 않았어요 — 새로고침하세요');return;}   // v534 기준 revision 도 바꾸지 않는다(바꾸면 다음 저장이 충돌 없이 서버를 덮는다)
+      __relay.rev=Number(res&&res.serverRevision)||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 내 기기 자료로 서버를 덮어썼습니다');}},
     {label:'③ 내 기기 자료를 이 기기 안전판(🛡 스냅샷)에 백업한 뒤 서버 자료 적용',cls:'moss',fn:async function(){
       closeModal();
       // 라벨 그대로: '내 데이터 백업'=이 기기 스냅샷. 스냅샷 성공을 먼저 확인하고 나서만 서버 자료를 적용.
@@ -2981,6 +3112,7 @@ async function relayFirstConnectFlow(h){
     {label:'서버 자료 사용',cls:'blue',fn:async function(){closeModal();await relayLoadApply(false,'서버 첫연결 전');}},
     {label:'이 기기 자료를 서버에 올리기',cls:'clay',fn:async function(){
       closeModal();
+      if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}toast('🔒 이 창은 다른 창보다 오래된 자료라 서버에 올리지 않았어요 — 새로고침하세요');return;}   // v534
       let bok=false;try{const b=await cloudApiBackup();bok=!!(b&&b.ok);}catch(e){bok=false;}   // 덮어쓰기 전 서버본 백업
       const doUp=async function(){__relay.rev=h.revision||0;try{await idbSet('relay_rev',__relay.rev);}catch(e){}const ok=await relaySaveNow(true);if(ok)toast('☁️ 이 기기 자료로 서버를 시작했습니다'+(bok?' (직전 서버본은 날짜 백업에 보관)':''));};
       if(bok){await doUp();return;}
@@ -3274,6 +3406,125 @@ async function repairAllPhotoPreviews(){
   ],true);
   if(linked)render();
 }
+/* ═══════════ v531 📤 PC 사진을 다른 기기에서도 — 서버 사본이 없는 사진을 한 번에 올리기(이어하기)
+   10/31: PC 에만 있는 사진(서버 사본 _driveId 없음) 600여 장이 폰에서 빈칸이었다. 클로드가 탭에서 일괄 업로드를 돌리다
+   크롬이 뒤에 있던 탭을 닫아 중간에 멈췄다 — 그래서 앱 기능으로 만든다.
+   · 대상: 사진(동영상 제외)·서버 사본 없음·이 PC 폴더에서 원본을 읽을 수 있음. 10장씩 relayUploadFiles(기존 업로드 경로 그대로)
+     → 이 기기 저장본 → 서버 저장. 묶음마다 저장하므로 탭이 닫혀도 올린 사진은 남고, 다시 누르면 남은 것만 올린다.
+   · 원본을 못 읽음·크기 다름·형식 오류는 이번 실행에서 건너뛰고 끝에 이름을 보여 준다(다음 실행 때 다시 시도).
+   · 멈춤: [멈추기] · 다른 탭이 더 최근에 저장 · 서버 인증 실패 · 연결 끊김(대기열로 감) · 3묶음 연속 실패. */
+const PCUP_BATCH=10,PCUP_KEY='hj_pcup';
+let __pcup=null;
+function pcupEligible(f){return !!f&&f.kind==='photo'&&!isVideoRec(f)&&!f._driveId;}   // _virtual(이번 세션에 폴더와 아직 안 맞춘 저장 기록)도 대상 — 원본은 pcupFile 이 저장 경로로 찾는다
+function pcupTargets(){const skip=(__pcup&&__pcup.skip)||null;return (state.files||[]).filter(f=>pcupEligible(f)&&!(skip&&skip.has(fileKey(f))));}
+function pcupAvailable(){return !!(FS_OK&&state.dirHandle&&!directOrganizedRoot()&&relayReady()&&!state._demo);}
+function pcupLast(){try{const v=JSON.parse(localStorage.getItem(PCUP_KEY)||'null');return v&&typeof v==='object'?v:null;}catch(e){return null;}}
+function pcupMark(run){try{localStorage.setItem(PCUP_KEY,JSON.stringify({at:Date.now(),running:!!run.running,total:run.total,done:run.done,ok:run.ok,failed:run.failed,reason:run.reason||''}));}catch(e){}}
+const PCUP_TYPES={heic:'image/heic',heif:'image/heif',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',bmp:'image/bmp'};
+async function pcupFile(f){
+  let file=null;
+  try{file=await getFileOf(f);}catch(e){file=null;}
+  if(!file&&state.dirHandle){   // 이번 세션에 폴더를 다시 읽지 않은 기록 — 저장된 경로로 찾아간다
+    try{let dir=state.dirHandle;for(const seg of String(f.prefix||'').split('/').filter(Boolean))dir=await dir.getDirectoryHandle(seg);const h=await dir.getFileHandle(f.name);file=await h.getFile();f.handle=h;}catch(e){file=null;}
+  }
+  if(!file)throw new Error('이 PC 폴더에서 원본을 찾지 못함');
+  if(Number(f.size)>0&&Number(file.size)!==Number(f.size))throw new Error('원본 크기가 기록과 다름(바뀐 파일)');
+  if(!file.type){const t=PCUP_TYPES[String(f.name||'').split('.').pop().toLowerCase()];if(t)file=new File([file],file.name||f.name,{type:t,lastModified:file.lastModified||Date.now()});}   // HEIC 등 브라우저가 형식을 모르는 사진 — 서버가 받는 이미지 형식으로 알려 준다
+  return file;
+}
+async function pcupSave(run,final){
+  let fresh=false;try{fresh=await guardedPersistCurrentState();}catch(e){fresh=false;}   // 이 기기 저장본
+  if(!fresh){try{__tabStale=true;multiTabStaleWarn();}catch(e){}return;}   // 다른 탭이 더 최근에 저장 — 서버·폴더에도 쓰지 않고 멈춘다(루프가 stale 로 끝남)
+  for(let i=0;i<300&&__relaySaving;i++)await new Promise(r=>setTimeout(r,200));   // 자동 올리기와 겹치면 끝날 때까지
+  try{if(await relaySaveNow(false))run.saves++;}catch(e){}
+  if(final||run.batches%5===0){try{if(state.dirty&&state.dirHandle&&FS_OK&&!directOrganizedRoot())await saveProject(true);}catch(e){}}   // 폴더 _현장.json 도 가끔(마지막엔 꼭)
+}
+async function pcupRun(onTick){
+  if(__pcup&&__pcup.running)return __pcup;
+  const skip=(__pcup&&__pcup.skip)||new Set();
+  const run=__pcup={running:true,stop:false,startedAt:Date.now(),total:0,done:0,ok:0,failed:0,queued:0,batches:0,saves:0,relinked:0,skip,failedNames:[],reason:''};
+  run.total=pcupTargets().length;
+  // 올린 사진의 서버 사본 표시(fileKey → id). 업로드 사이에 사진 기록이 새 객체로 바뀌어도(사진 정리·다시 읽기·자료 적용)
+  // 표시를 잃지 않게 지금 기록에 다시 붙인다 — 10/31 업로드 뒤 폴더 저장본에 새 사본 표시가 하나도 없던 일의 방어선.
+  const uploaded=(__pcup&&__pcup.uploaded)||new Map();run.uploaded=uploaded;
+  const pcupRelink=()=>{let n=0;(state.files||[]).forEach(r=>{if(r&&!r._driveId){const u=uploaded.get(fileKey(r));if(u){r._driveId=u.id;r._driveMimeType=u.mime;r._driveSize=u.size;n++;}}});if(n){run.relinked+=n;markDirty();}return n;};
+  let wake=null;try{if(navigator.wakeLock&&document.visibilityState==='visible')wake=await navigator.wakeLock.request('screen');}catch(e){}   // 긴 업로드 중 PC 화면 꺼짐 방지
+  let bad=0;pcupMark(run);
+  try{
+    while(!run.stop){
+      if(typeof __tabStale!=='undefined'&&__tabStale){run.reason='stale';break;}
+      if(!relayReady()){run.reason='relay';break;}
+      if(typeof __relayState!=='undefined'&&__relayState==='auth'){run.reason='auth';break;}
+      const batch=pcupTargets().slice(0,PCUP_BATCH);
+      if(!batch.length){run.reason='done';break;}
+      const files=[],targets=[];
+      for(const f of batch){
+        try{files.push(await pcupFile(f));targets.push(f);}
+        catch(e){run.failed++;run.done++;skip.add(fileKey(f));if(run.failedNames.length<30)run.failedNames.push((f.name||'사진')+' — '+((e&&e.message)||e));}
+      }
+      const rep={};
+      if(files.length)await relayUploadFiles(files,'photo',targets,rep);
+      run.batches++;
+      const ok=Number(rep.ok)||0,q=Number(rep.queued)||0;
+      run.ok+=ok;run.queued+=q;run.failed+=Math.max(0,files.length-ok-q);run.done+=files.length;
+      targets.forEach(f=>{if(f._driveId)uploaded.set(fileKey(f),{id:f._driveId,mime:f._driveMimeType||'',size:f._driveSize||0});skip.add(fileKey(f));});   // 이번 실행에서 다시 고르지 않는다(못 올린 대기열은 연결되면 앱이 따로 보낸다)
+      pcupRelink();
+      (rep.failedFiles||[]).forEach(n=>{if(run.failedNames.length<30)run.failedNames.push(n+' — 업로드 실패');});
+      if(ok){bad=0;await pcupSave(run);}else if(files.length)bad++;   // 원본을 못 읽은 묶음은 건너뛴 것뿐 — 연결 문제로 세지 않는다
+      pcupMark(run);
+      try{if(onTick)onTick(run);}catch(e){}
+      if(q){run.reason='offline';break;}
+      if(bad>=3){run.reason='fail';break;}
+    }
+    if(run.stop&&!run.reason)run.reason='stopped';
+  }finally{
+    try{pcupRelink();await pcupSave(run,true);}catch(e){}
+    run.running=false;run.finishedAt=Date.now();
+    try{if(wake)await wake.release();}catch(e){}
+    pcupMark(run);
+    try{if(onTick)onTick(run);}catch(e){}
+    try{render();}catch(e){}
+  }
+  return run;
+}
+const PCUP_REASON={done:'다 올렸습니다',stopped:'멈췄습니다 — 다시 누르면 남은 사진만 이어서 올립니다',stale:'다른 탭이 더 최근에 저장해 멈췄습니다 — 새로고침 뒤 다시 누르세요',relay:'서버 연결이 없어 멈췄습니다',auth:'서버 인증이 거절돼 멈췄습니다 — 서버 연결 설정을 확인하세요',offline:'연결이 끊겨 멈췄습니다 — 못 보낸 사진은 대기열에 있고 연결되면 자동으로 갑니다',fail:'3묶음 연속 실패로 멈췄습니다 — 연결을 확인한 뒤 다시 누르세요'};
+function pcupProgressHTML(run){
+  const pct=run.total?Math.min(100,Math.round(run.done/run.total*100)):100;
+  const left=Math.max(0,run.total-run.done),sec=run.done&&run.running?(Date.now()-run.startedAt)/run.done:0;
+  const eta=sec&&left?' · 남은 시간 약 '+Math.max(1,Math.round(sec*left/60))+'분':'';
+  return '<div style="height:10px;border-radius:6px;background:var(--line-soft);overflow:hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><div style="height:100%;width:'+pct+'%;background:var(--clay)"></div></div>'+
+    '<p data-pcup-count style="margin:8px 0 0;font-weight:700">'+run.done+' / '+run.total+'장 · 올림 '+run.ok+(run.failed?' · 건너뜀 '+run.failed:'')+(run.queued?' · 대기열 '+run.queued:'')+eta+'</p>'+
+    (run.running?'':'<p data-pcup-result style="margin:6px 0 0">'+escapeHtml(PCUP_REASON[run.reason]||'멈췄습니다')+'</p>')+
+    (!run.running&&run.failedNames.length?'<details style="margin-top:8px"><summary style="min-height:44px;display:flex;align-items:center;cursor:pointer">건너뛴 사진 '+run.failedNames.length+'장 보기</summary><div style="font-size:12px;color:var(--muted-2);line-height:1.6;max-height:180px;overflow:auto">'+run.failedNames.map(escapeHtml).join('<br>')+'</div></details>':'');
+}
+function pcupShow(){
+  const run=__pcup;if(!run)return pcupOpen();
+  openModal('📤 PC 사진을 서버로 올리기','<div style="font-size:13px;line-height:1.65"><div id="pcupProg">'+pcupProgressHTML(run)+'</div><p style="margin:10px 0 0;color:var(--muted-2)">이 탭을 앞에 둔 채로 두세요. 크롬이 뒤에 있는 탭을 닫으면 멈추지만, 올린 사진은 저장돼 있고 다시 누르면 남은 것만 올립니다. 창을 닫아도 올리기는 계속됩니다.</p></div>',
+    run.running?[{label:'창 닫기',cls:'ghost',fn:closeModal},{label:'멈추기',cls:'warn',fn:()=>{run.stop=true;const b=document.querySelector('#modalRoot .mfoot button.warn');if(b){b.disabled=true;b.textContent='이번 묶음 끝나면 멈춤';}}}]
+      :[{label:'닫기',cls:'ghost',fn:closeModal}].concat(pcupTargets().length&&run.reason!=='stale'?[{label:'남은 '+pcupTargets().length+'장 이어서',cls:'blue',fn:()=>pcupStart()}]:[]),true);
+}
+function pcupTick(run){const el=document.getElementById('pcupProg');if(el)el.innerHTML=pcupProgressHTML(run);if(!run.running&&el)pcupShow();}
+async function pcupStart(){
+  if(!pcupAvailable()){pcupOpen();return;}
+  try{const p=await state.dirHandle.queryPermission({mode:'read'});if(p!=='granted'&&(await state.dirHandle.requestPermission({mode:'read'}))!=='granted'){toast('폴더 읽기 권한이 없어 올릴 수 없습니다 — 폴더를 다시 연결해 주세요');return;}}catch(e){}
+  const p=pcupRun(pcupTick);pcupShow();await p;
+  toast('📤 PC 사진 '+(__pcup?__pcup.ok:0)+'장을 서버에 올렸습니다'+(__pcup&&__pcup.failed?' · 건너뜀 '+__pcup.failed:''));
+}
+function pcupOpen(){
+  if(__pcup&&__pcup.running)return pcupShow();
+  if(state._demo){toast('🧪 데모 중에는 올리지 않습니다');return;}
+  if(!FS_OK||!state.dirHandle||directOrganizedRoot()){toast('PC 에서 만물 폴더를 연결한 뒤에 올릴 수 있어요');return;}
+  if(!relayReady()){toast('서버(드라이브 중계) 연결이 있어야 올릴 수 있어요 — ☁️ 설정에서 연결하세요');return;}
+  const n=pcupTargets().length,last=pcupLast(),cut=last&&last.running&&last.done<last.total;
+  const min=Math.max(1,Math.round(n*8/60));
+  openModal('📤 PC 사진을 서버로 올리기','<div style="font-size:13px;line-height:1.7">'+
+    (cut?'<p style="margin:0 0 8px;padding:8px 10px;border-radius:9px;background:#fff7ed;color:#9a3412">지난번에 '+last.done+'/'+last.total+'장까지 올리다 멈췄어요. 올린 사진은 저장돼 있으니 남은 것만 이어서 올립니다.</p>':'')+
+    (n?'<b>이 PC 에만 있는 사진 '+n+'장</b>이 휴대폰·다른 기기에서는 빈칸으로 보입니다. 서버에 올리면 어디서나 보여요.'+
+      '<ul style="margin:8px 0 0;padding-left:18px;color:var(--muted-2)"><li>10장씩 올리고 그때마다 이 기기와 서버에 저장합니다 — 중간에 멈춰도 다시 누르면 남은 것만 올립니다.</li><li>예상 시간 약 '+min+'분(사진 1장에 7~9초). 동영상은 올리지 않습니다.</li><li>올리는 동안 이 탭을 앞에 두세요. 폰에서는 끝난 뒤에 앱을 다시 열면 보입니다.</li></ul>'
+      :'서버에 올릴 사진이 없습니다 — 이 PC 의 사진은 모두 다른 기기에서도 보입니다.')+
+    '</div>',[{label:'닫기',cls:'ghost',fn:closeModal}].concat(n?[{label:'올리기 시작 ('+n+'장)',cls:'blue',fn:()=>pcupStart()}]:[]),true);
+  return {대상:n};
+}
 /* ── relay 부팅(gdBootSync와 별개, 기존 로직 무변경) — 설정 복원 + 대기열 전송 + 서버 최신 안내(자동 적용 금지) ── */
 let __hjRelayConfigResolve;
 window.__hjRelayConfigDone = new Promise(resolve => {
@@ -3335,30 +3586,61 @@ async function relayBoot(){
     try{aiRelayProbe(false).catch(()=>{});}catch(e){}
     await relayUpdateQueueBadge();
     if(!relayReady())return;
+    if(typeof relayUnsyncedLoad==='function')await relayUnsyncedLoad();   // v530 지난번까지 서버로 못 올린 변경이 있었나(서버를 쓰는 기기만)
     relaySetStatus(__relay.syncAt?'saved':'ready');
     try{await cloudFlushQueue();}catch(e){}
-    // 서버가 더 최신이면 배너로 안내만(자동 적용 금지 — 사용자가 누르면 스냅샷 후 적용)
+    // 서버가 더 최신이면: 이 기기에 안 올린 변경이 없을 때만 자동으로 받고(v530), 아니면 배너로 안내만(사용자가 누르면 스냅샷 후 적용)
     try{
       const h=await cloudApiHealth();
       if(h&&(h.error==='unauthorized'||h.error==='not-configured')){relayAuthFail(h);return;}
       if(h&&h.ok&&h.dataFileExists&&(h.revision||0)>(__relay.rev||0)){
-        const res=await cloudApiLoad();
-        if(res&&res.ok&&res.exists&&res.data){
-          const sAt=res.data.savedAt||res.modifiedAt||'';
-          if(!__dataAt||(sAt&&sAt>__dataAt))relayNewerBanner(res);
-        }
+        await relayServerNewer('boot');
       }else if(h&&h.ok&&(!h.dataFileExists||(h.revision||0)===(__relay.rev||0))){
+        // v530 서버는 그대로인데 지난번에 못 올린 변경이 남아 있으면 지금 올린다(서버 revision 검사가 그대로 지킨다)
+        if(h.dataFileExists&&typeof __relayUnsynced==='number'&&__relayUnsynced>0&&!state._demo&&!(typeof __tabStale!=='undefined'&&__tabStale)){try{await relaySaveNow();}catch(e){}}
         await relayLoadDriveFiles(true);   // 서버/기기 자료가 같은 때만 누락 사진을 안전하게 합침
       }
     }catch(e){}   // 오프라인 등은 정상 시나리오 — 조용히(상태 표시만 유지)
   }catch(e){}
-  finally{ relayBootComplete(); }   // 이른 return(relayReady 아님)에도 반드시 알린다
+  finally{ try{__relayResumeAt=Date.now();}catch(e){} relayBootComplete(); }   // 이른 return(relayReady 아님)에도 반드시 알린다
+}
+// v530 서버가 더 최신일 때 — 자동 반영('applied') 또는 예전 배너('banner')
+async function relayServerNewer(why){
+  const seq=__relayEditSeq;
+  let block='';
+  try{block=await relayFastForwardBlock(seq);}catch(e){block='error';}
+  if(!block){
+    const r=await relayLoadApply(true,'다른 기기 자료 자동 반영 전',()=>!relayFastForwardBlockSync(seq));
+    if(r===true){
+      toast('☁️ 다른 기기에서 저장한 최신 자료로 바꿨어요 — 현장 '+(state.projects||[]).length+'곳 (이전 자료는 🛡 안전판에)');
+      return 'applied';
+    }
+    if(r!=='blocked')return 'failed';   // 불러오기 실패(오프라인 등) — 조용히, 다음 확인 때 다시
+  }
+  // 예전 그대로: 서버 자료가 이 기기 자료보다 나중에 저장된 것이면 배너(내 변경이 있는 기기는 사람이 고른다)
+  const res=await cloudApiLoad();
+  if(res&&res.ok&&res.exists&&res.data){
+    const sAt=res.data.savedAt||res.modifiedAt||'';
+    if(!__dataAt||(sAt&&sAt>__dataAt))relayNewerBanner(res);
+  }
+  return 'banner';
+}
+// v530 앱을 다시 볼 때(백그라운드 → 화면) — 1분에 한 번만 서버를 본다
+async function relayResumeCheck(){
+  if(state._demo||!relayReady()||(typeof __tabStale!=='undefined'&&__tabStale))return '';
+  const now=Date.now();if(now-__relayResumeAt<60000)return '';
+  __relayResumeAt=now;
+  try{await window.__hjRelayBootDone;}catch(e){}
+  if(document.getElementById('relayNewBar'))return '';   // 이미 안내 중
+  let h=null;try{h=await cloudApiHealth();}catch(e){return '';}
+  if(!(h&&h.ok&&h.dataFileExists&&(h.revision||0)>(__relay.rev||0)))return 'same';
+  return await relayServerNewer('resume');
 }
 function relayNewerBanner(res){
   if(document.getElementById('relayNewBar'))return;
   const d=document.createElement('div');d.id='relayNewBar';
   d.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9990;background:#233043;color:#fff;padding:10px 14px;border-radius:12px;font-size:13px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 18px rgba(0,0,0,.28);max-width:92vw;flex-wrap:wrap';
-  d.innerHTML='<span>☁️ 서버에 더 최신 자료가 있습니다</span><button id="relayNewGo" class="blue tiny" style="padding:6px 12px">불러오기</button><button id="relayNewX" class="ghost tiny" style="padding:6px 10px;color:#fff">나중에</button>';
+  d.innerHTML='<span>☁️ 서버에 더 최신 자료가 있습니다</span><button id="relayNewGo" class="blue tiny" style="padding:6px 14px;min-height:44px">불러오기</button><button id="relayNewX" class="ghost tiny" style="padding:6px 12px;color:#fff;min-height:44px">나중에</button>';   // v530 폰에서 누르기 쉽게 44px
   document.body.appendChild(d);
   d.querySelector('#relayNewGo').onclick=async function(){
     d.remove();
@@ -3414,7 +3696,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v525-casefolder';
+const APP_BUILD='hyeonjang-v540-demomonth';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -5005,7 +5287,9 @@ async function exportToSheet(){
 // 변경 시 자동 올리기(디바운스) — ①서버 중계(relay, 모바일 OK) 우선 ②비상용: 기존 구글 직접(gdSave) ③둘 다 없으면 '기기에만 저장됨' 표시
 function cloudAutoSave(){
   if(state._demo)return;
+  if(typeof __tabStale!=='undefined'&&__tabStale){try{if(typeof relayReady==='function'&&relayReady())relaySetStatus('stale');}catch(e){}return;}   // v534 오래된 창 — '안 올린 변경' 표시(다른 창과 같이 쓰는 localStorage)도 남기지 않는다
   if(typeof relayReady==='function'&&relayReady()){
+    try{relayMarkUnsynced();}catch(e){}   // v530 서버로 올릴 때까지 '안 올린 변경 있음'
     clearTimeout(__gdAutoTimer);
     __gdAutoTimer=setTimeout(()=>{relaySaveNow();},3000);
     return;
@@ -5753,8 +6037,10 @@ async function loadDemo(){
       state.files.push(f);
       state.expenses.push({id:uid(),date,amount,category:HJ_EXP_CAT_LEDGER[cat]||'기타',method,memo,project:project||'',vendor,src:'receipt',fileId:'k:'+fileKey(f),cat,ocr:{raw:vendor+' '+amount+'원',guess:null}});};
     state.expenses=[];   // 데모 화면에는 데모 지출만 — 실제 지출은 [데모 끝내기] 뒤 그대로(데모는 저장되지 않는다)
-    rc(hjAddDays(localDate(),-3),'한밭철물',38500,'자재','현금','망원동 카페','실리콘·배관 부속','#7a6a4a');
-    rc(hjAddDays(localDate(),-1),'SK주유소',55000,'유류','카드','','현장 이동 주유','#4a6a7a');}
+    // v540 데모 영수증 날짜는 늘 '이번 달' 안 — 매달 1~3일엔 사흘 전·하루 전이 지난달로 넘어가 둘러보기 5단계 [월말 장부](이번 달)가 비어 있었다
+    const inMonth=n=>{const t=localDate(),x=hjAddDays(t,n);return x.slice(0,7)===t.slice(0,7)?x:t.slice(0,8)+'01';};
+    rc(inMonth(-3),'한밭철물',38500,'자재','현금','망원동 카페','실리콘·배관 부속','#7a6a4a');
+    rc(inMonth(-1),'SK주유소',55000,'유류','카드','','현장 이동 주유','#4a6a7a');}
   state._demo=true;state.activeProject=null;state.tab='dashboard';markDirty();
   $('#mountName').textContent='🧪 데모 데이터';
   $('#mountHint').textContent='테스트용 가상 현장 '+state.projects.length+'곳입니다. 각 탭을 눌러 확인하세요. 데모 중에는 아무것도 저장되지 않습니다 — 끝내려면 위 [데모 끝내기].';
@@ -7624,11 +7910,13 @@ function hjPhotoSuggestReview(opts){
   const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}.psr-th img{width:100%;height:100%;object-fit:cover;display:block}.psr-th div{font-size:10px}.psr-txt{flex:1;min-width:0;font-size:13px;line-height:1.5;overflow-wrap:anywhere}.psr-target{margin-top:2px}@media (max-width:480px){.psr-th{width:40px;height:40px}.psr-row{gap:6px}}</style>'+
     '<div class="hint" style="margin:0 0 6px">현장 없는 사진 <b>'+unN+'장</b> · '+rows.length+'묶음. 확실한 추천 '+sureN+'묶음은 체크돼 있고, 참고(같은 날·그날 일정)는 체크를 풀어 두었습니다'+(noneN?'. 단서 없는 '+noneN+'묶음은 현장을 고르면 함께 배정됩니다':'')+'. 배정 전 안전판을 한 번 만듭니다.</div>'+
     '<div id="psrList" style="max-height:56vh;overflow:auto">'+list+'</div>'+
-    '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 눌러 확인하려면 사진 탭의 묶음에서 보세요.</div>';
+    '<div class="hint" style="margin:8px 0 0">되돌리기: 더보기 → 🛡 안전판(스냅샷) → "추측 배정 전". 사진을 눌러 확인하려면 사진 탭의 묶음에서 보세요.</div>'+
+    '<div class="hint" style="margin:6px 0 0"><button type="button" class="ghost tiny" id="psrChat" style="min-height:44px">💬 카톡 대화 파일로 찾기</button> 협력사 톡방에 보낸 \'사진 N장 + 현장 이름\' 보고로 현장을 찾습니다(v528).</div>';
   openModal('🧭 추측 배정 보기 — 현장 없는 사진 '+unN+'장',body,
     [{label:'체크한 묶음 배정',cls:'clay',fn:()=>hjPhotoSuggestReviewApply(rows)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const root=document.getElementById('modalRoot');
   if(root)root.querySelectorAll('.psrSel').forEach(sel=>sel.onchange=()=>{const chk=root.querySelector('.psrChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;});
+  {const cb=root&&root.querySelector('#psrChat');if(cb)cb.onclick=()=>hjChatPick();}   // v528
   return rows.length;
 }
 async function hjPhotoSuggestReviewApply(rows){
@@ -9234,6 +9522,7 @@ function photoToolsView(){
     '<div style="font-size:11px;font-weight:800;color:var(--muted);margin:12px 0 6px">점검</div>'+
     (labelGapN?it('🏷','작업명 빈 사진 채우기 '+labelGapN+'장','같은 날 같은 현장의 작업명으로 빈 사진만 채웁니다.','hjLabelGapView'):'')+
     it('📍','사진 배정 점검','GPS 로 현장과 맞지 않는 사진을 찾아 다시 배정하고, 중복 사진을 정리합니다.','photoAssignmentAudit')+
+    it('💬','카톡 보고 대조·사진 배정','협력사 톡방 대화 내보내기(.txt)를 읽어, 보고했는데 앱에 없는 사진(누락 의심)을 찾고 현장 없는 사진의 현장을 제안합니다. 대화 파일은 저장하지 않습니다.','hjChatPick')+
     it('🗂','사진 보관 상태 확인','서버 연결·이 화면의 파일·PC 연결·미리보기 기록을 구분합니다. 사진을 변경하지 않습니다.','photoSourceView')+
     it('🔎','중복 사진 원본만 남기기','파일 내용과 현장·작업 정보가 같은 사진만 정리합니다.','trimDuplicates')+
     it('↩️','중복 정리 복구함','이 기기에서 안전 정리한 사진 기록을 되돌립니다.','photoRecoveryView')+
@@ -9473,6 +9762,7 @@ function hjEstBill(name,groups){
       supply=Math.round(items.reduce((a,it)=>a+it.qty*it.price,0));   // = quoteCalc(q).supply
       nv=Math.round(hjNoVatSum(items));
       vat=Math.round((supply-nv)*0.1);
+      {const g=hjStmtGross(q,supply);if(g)vat=g-supply;}   // v526 작업내역서 견적은 내역서 합계가 정본(quoteCalc 와 같은 1원 보정) — 잔금이 1원 남지 않게
       if(!q.vatIncluded)add=vat;   // 부가세 별도 견적 — est 는 공급가뿐이라 이 세액이 청구 때 더해진다
       out.quotes.push(q);
     }else{
@@ -10329,7 +10619,7 @@ function hjDailyBrief(){
     if(noPhone.length)checks.push({ic:'📇',t:'고객 연락처 없는 견적 현장 '+noPhone.length+'곳: '+noPhone.slice(0,3).join(', ')+(noPhone.length>3?' 외':''),acts:noPhone.slice(0,4).map(n=>({k:'cust',p:n}))});
     // v343 다른 업체 이름 견적(용진인테리어 등)이 매출로 잡혀 있으면 외주(매입)인지 확인하게
     const vend=(state.files||[]).filter(f=>f&&f.kind==='estimate'&&!f._fromQuote&&!f.exSum&&!(f.est&&f.est.purchase)&&(Number(f.est&&f.est.amount)||0)>0&&!hjEstAmtSuspect(f)&&hjEstVendorName(f));
-    if(vend.length)checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)]'});
+    if(vend.length)checks.push({ic:'🏢',t:'다른 업체 이름 견적 '+vend.length+'건이 매출에 잡혀 있어요 — 외주(매입)이면 견적 탭 [상세 입력 → 🏢 외주(매입)], 비교 견적(들러리)이면 [Σ 집계 제외]'});
     // v345 준공 점검표에 '보수 필요'가 남은 현장 · 오늘 사진이 올라온 진행 현장(고객 진행 보고 제안 — Houzz·Buildertrend 의 일일 고객 업데이트)
     const punchOpen=acts.filter(p=>hjPunchOpen(p)>0).map(p=>p.name);
     if(punchOpen.length)checks.push({ic:'🧾',t:'준공 점검표에 보수 필요가 남은 현장 '+punchOpen.length+'곳: '+punchOpen.slice(0,3).join(', ')+(punchOpen.length>3?' 외':''),acts:punchOpen.slice(0,4).map(n=>({k:'punch',p:n}))});
@@ -11560,7 +11850,7 @@ const AI_TOOLS = [
  {name:'quote_contract',description:'현장에 배정된 견적으로 공사 계약서 초안을 만든다(계약금액·계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+'·공종별 하자보수·계좌 자동 채움, 복사용). "계약서 만들어줘/계약서 초안/수주 확정"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'bulk_assign',description:'견적 일괄 배정 센터를 연다(파일명에서 현장 자동 매칭 배정 + 목록 붙여넣기 일괄 적용·복구). "일괄 배정/자동 배정/견적 정리/배정 복구"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'backup_center',description:'데이터 백업 센터를 연다(마지막 백업 시점·클라우드 연결 상태·지금 백업·드라이브 연결·복원). "백업/백업하기/데이터 안전/드라이브 백업/자료 지키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
- {name:'cowork_tasks',description:'PC의 Claude Cowork에게 시킬 명령서를 보관·복사·수정하는 Cowork 작업 지휘부를 연다(카드내역 정리·세금계산서 대조·사진 담당자 전송·월간 종합). "코워크/cowork/명령서/작업 지휘부/홈택스 정리/카드 정리 시키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
+ {name:'cowork_tasks',description:'클로드에게 붙여 넣을 명령을 보관·복사·수정하는 🧰 클로드 명령어 모음(옛 Cowork 작업 지휘부)을 연다(받은 사진 정리·카톡 대조·작업내역서 반영·협력사 입금·카드내역·세금계산서·월간 종합·현장웹 저장 확인·앱 개발). "클로드 명령어/명령어 모음/코워크/cowork/명령서/작업 지휘부/홈택스 정리/카드 정리 시키기"면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'auto_operate',description:'AI 완전 자율 운영: 사업을 점검하고 안전한 조회·리포트 작업은 자동 처리한 뒤, 문자·수금 등 승인 필요한 것만 모아 보여준다. "자율 운영/알아서 다 해줘/자동으로 처리해/오토파일럿"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_brain',description:'AI가 사업 상태 전체를 분석해 오늘 가장 중요한 3가지를 추론한다(규칙이 아닌 AI 판단). "AI 브레인/뭐부터 해야 해/우선순위 정해줘/오늘 조언"이면 호출.',parameters:{type:'OBJECT',properties:{}}},
  {name:'ops_loop_status',description:'운영 루프 성숙도를 자가진단한다(점수·등급·진단 항목·누적 성과). "루프 상태/자율 점수/얼마나 자동화/성숙도"면 호출.',parameters:{type:'OBJECT',properties:{}}},
@@ -12038,7 +12328,7 @@ case 'ops_loop_run':{const r=aiRunManualCheck('ai_tool');aiOpsCenter();return Ob
     case 'quote_contract':{const r=contractDraftView();return Object.assign({결과:'계약서 초안 화면을 열었습니다'},r);}
     case 'bulk_assign':{const r=bulkAssignCenter();return Object.assign({결과:'일괄 배정 센터를 열었습니다'},r);}
     case 'backup_center':{const r=backupCenter();return Object.assign({결과:'백업 센터를 열었습니다'},r);}
-    case 'cowork_tasks':{const r=coworkTasksManage();return Object.assign({결과:'Cowork 작업 지휘부를 열었습니다'},r);}
+    case 'cowork_tasks':{const r=coworkTasksManage();return Object.assign({결과:'클로드 명령어 모음을 열었습니다'},r);}
     case 'auto_operate':{const r=await aiAutoOperateView();return Object.assign({결과:'자율 운영 완료'},r);}
     case 'ops_loop_brain':{const r=await aiOpsBrain();return Object.assign({결과:'AI 운영 브레인 분석'},r);}
     case 'ops_loop_status':{const r=aiOpsLoopStatus();return Object.assign({결과:'루프 성숙도 진단'},r);}
@@ -12216,7 +12506,7 @@ case 'ops_loop_run':return '운영 점검';
     case 'quote_contract':return '계약서 초안';
     case 'bulk_assign':return '견적 일괄 배정';
     case 'backup_center':return '백업 센터';
-    case 'cowork_tasks':return 'Cowork 작업 지휘부';
+    case 'cowork_tasks':return '클로드 명령어 모음';
     case 'auto_operate':return 'AI 자율 운영';
     case 'ops_loop_brain':return 'AI 운영 브레인';
     case 'ops_loop_status':return '루프 성숙도';
@@ -13500,6 +13790,7 @@ function dailyCheckData(){
   if(todaySch.length){const f=todaySch[0];items.push({ic:'🗓',t:'오늘 일정 '+todaySch.length+'건 — '+(f.time?f.time+' ':'')+hjCut(f.title,14)+(f.project?' @'+hjCut(f.project,8):''),act:"state.tab='schedule';render()",w:2});}
   const asN=asOpenList().length;
   if(asN)items.push({ic:'🔧',t:'미처리 AS '+asN+'건 — 하자 연락 확인',act:"asManage()",w:2.5});
+  try{const old=hjStmtLedger().filter(s=>s.left>0&&hjStmtAgeDays(s,today)>=30);if(old.length)items.push({ic:'📑',t:'30일 넘은 협력사 미수 '+old.length+'장 · '+won(old.reduce((a,s)=>a+s.left,0))+' — 📑 장부에서 미수 안내 글',act:"state.tab='quotemaker';state.editingQuote=null;render()",w:2.8});}catch(e){}   // v536
   const noRep=(state.schedule||[]).filter(s=>{const wk=new Date();wk.setDate(wk.getDate()-7);return s.date<today&&s.date>=localDate(wk)&&s.project&&num(s.hours)>0&&!s.report&&!/^💰/.test(s.title||'');}).length;
   if(noRep)items.push({ic:'📋',t:'최근 작업일지 미작성 '+noRep+'건',act:"state.tab='schedule';render()",w:3});
   const un=state.files.filter(f=>f.kind==='photo'&&!f.project).length;
@@ -13528,6 +13819,8 @@ function hjHealthData(){
   try{d.photo=(state.files||[]).reduce((a,f)=>a+(f&&f.kind==='photo'&&!f.project?1:0),0);}catch(e){}
   try{d.dup=hjDupSuspectCount();}catch(e){}
   try{d.days=backupDaysSince();}catch(e){}
+  d.pcup=0;try{if(typeof pcupAvailable==='function'&&pcupAvailable())d.pcup=pcupTargets().length;}catch(e){}   // v531 폴더+서버가 연결된 PC 에서만
+  d.pconly=0;try{if(!d.pcup)d.pconly=hjPcOnlyCount();}catch(e){}   // v536 폴더 없는 기기(폰) — 그 PC 에서 올려야 보이는 사진
   return d;
 }
 function hjHealthLineHTML(){
@@ -13538,18 +13831,41 @@ function hjHealthLineHTML(){
     if(d.est)parts.push(seg('est','📄','읽지 않은 견적',d.est,'엑셀·PDF 견적서를 읽어 매출에 넣습니다'));
     if(d.photo)parts.push(seg('photo','📷','미배정 사진',d.photo,'현장 없는 사진 묶음을 사진·근거 보고 배정합니다(🧭 추측 배정 보기)'));
     if(d.dup)parts.push(seg('dup','🧹','중복 후보',d.dup,'크기·촬영 시각이 같은 사진 — 원본을 읽어 확인한 뒤 정리합니다'));
+    if(d.pcup)parts.push(seg('pcup','📤','폰에 안 보이는 사진',d.pcup,'이 PC 에만 있는 사진 — 서버에 올리면 휴대폰·다른 기기에서도 보입니다(이어서 올리기 가능)'));   // v531
+    if(d.pconly)parts.push(seg('pconly','📵','이 기기에 안 보이는 사진',d.pconly,'원본이 PC(또는 다른 기기)에만 있고 서버에 안 올라간 사진 — 그 PC 에서 📤 로 올리면 여기서도 보입니다'));   // v536
     const bk=d.days>=999?'백업 기록 없음':(d.days===0?'오늘 백업함':'백업 '+d.days+'일 전');
     const bkWarn=d.days>=7;
     parts.push('<button type="button" class="ghost tiny" data-health="backup" title="지금 백업(파일 + 연결돼 있으면 드라이브)" style="min-height:44px;padding:6px 10px;font-size:12.5px;'+(bkWarn?'border-color:var(--warn);color:var(--warn)':'color:var(--muted)')+'">💾 '+bk+'</button>');
-    const clean=!d.est&&!d.photo&&!d.dup;
+    const clean=!d.est&&!d.photo&&!d.dup&&!d.pcup&&!d.pconly;
     return '<div data-health-line="'+(clean?'clean':'todo')+'" role="group" aria-label="자료 건강" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:12.5px">'+
       '<span style="font-weight:800;color:var(--muted)">🩺 자료'+(clean?' <span style="color:var(--ok,#166534)">깨끗</span>':'')+'</span>'+parts.join('')+'</div>';
   }catch(e){return '';}
+}
+/* v536 📵 이 기기에 안 보이는 사진 — 폴더 없는 기기(폰)에서 빈 칸으로 보이는 사진: 서버 사본(_driveId)도, 이 기기 원본(공유함·핸들·파일)도 없는 사진.
+   10/31 검토: 사진 기록 1,272장 중 610장이 PC 폴더에만 있어 폰에서 빈칸이었다. v531 📤 은 그 PC(폴더+서버)에서만 보이므로, 폰에서는 '사라진 게 아니고
+   어디서 무엇을 누르면 되는지'와 현장별 수만 보여 준다(읽기 전용 — 이 기기에서 바꾸는 것 없음). 서버를 안 쓰는 기기·폴더를 연 PC 에서는 0. */
+function hjPcOnlyFiles(){return (state.files||[]).filter(f=>f&&f.kind==='photo'&&!isVideoRec(f)&&!f._driveId&&!f._shareInboxId&&!f.shareInboxId&&!f.handle&&!f._file);}
+function hjPcOnlyCount(){
+  try{if(state._demo||typeof relayReady!=='function'||!relayReady())return 0;if(FS_OK&&state.dirHandle)return 0;return hjPcOnlyFiles().length;}catch(e){return 0;}
+}
+function hjPcOnlyView(){
+  const list=hjPcOnlyFiles(),by=new Map();
+  list.forEach(f=>{const k=f.project||'(현장 없음)';by.set(k,(by.get(k)||0)+1);});
+  const top=[...by.entries()].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]),'ko'));
+  const rows=top.slice(0,8).map(([k,n])=>'<div data-pconly-row style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line-soft)"><span>'+escapeHtml(k)+'</span><b>'+n+'장</b></div>').join('');
+  openModal('📵 이 기기에 안 보이는 사진 '+list.length+'장',
+    '<div style="font-size:13px;line-height:1.7">원본이 <b>PC 폴더(또는 다른 기기)에만</b> 있고 서버에 올라가지 않은 사진이라 이 기기에서는 빈 칸으로 보여요. <b>사진이 사라진 것은 아닙니다.</b>'+
+      '<ol style="margin:8px 0 8px 18px;padding:0"><li>만물 폴더가 있는 <b>PC</b>에서 현장 앱을 열고 폴더를 연결</li><li>첫 화면 🩺 줄의 <b>📤 폰에 안 보이는 사진</b> → [올리기 시작]</li><li>다 올라가면 여기서 [☁️ 최신 자료 확인]</li></ol>'+
+      (rows?'<div style="font-size:12.5px;margin-top:6px"><div style="color:var(--muted);margin-bottom:2px">현장별</div>'+rows+(top.length>8?'<div style="color:var(--muted);font-size:11.5px;padding-top:4px">…외 '+(top.length-8)+'곳</div>':'')+'</div>':'')+'</div>',
+    [{label:'닫기',cls:'ghost',fn:closeModal},
+     {label:'☁️ 최신 자료 확인',cls:'blue',fn:async function(){closeModal();try{__relayResumeAt=0;}catch(e){}let r='';try{r=await relayResumeCheck();}catch(e){r='';}if(r==='same')toast('이미 서버의 최신 자료예요 — PC에서 올리기가 끝났는지 확인해 주세요');}}],true);
 }
 function hjHealthOpen(k){
   if(k==='est')return hjEstimateAutoRead({silent:false,auto:false});
   if(k==='photo')return hjPhotoSuggestReview({from:'health'});
   if(k==='dup')return trimDuplicates();
+  if(k==='pcup')return pcupOpen();   // v531
+  if(k==='pconly')return hjPcOnlyView();   // v536
   if(k==='backup')return backupNow();
 }
 function dailyCheckCardHTML(){
@@ -16376,11 +16692,13 @@ function aptUnitProjectCard(p){
   // 등록 화면에 숫자를 미리 채워 열어 주므로 사장님은 [저장] 한 번만 누르면 된다.
   const parsed=aptNameParse(p.name),units=aptUnitList(p);
   const pending=parsed&&!units.some(u=>aptUnitLabelKey(aptUnitLabel(u))===aptUnitKeyOf(parsed.dong,parsed.ho));
+  let stmtN=0;try{stmtN=hjStmtUnitPlan(p.name).length;}catch(e){}   // v537 내역서에 나온 이 현장 동·호수
   return `<div class="cust-card" style="margin:0 0 10px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
     <b>동·호수 / 공용부</b><span>· ${units.length}곳</span>
     <button class="clay" data-aptadd="${escapeAttr(p.name)}" style="min-height:44px">＋ 동·호수 추가</button>
     <button class="blue" data-aptunits="${escapeAttr(p.name)}" style="min-height:44px">동·호수 관리</button>
-    ${parsed?`<button class="ghost" data-aptbulk="project" data-aptsource="${escapeAttr(p.name)}" style="min-height:44px">아파트명 안으로 사진 정리</button>`:''}</div>
+    ${parsed?`<button class="ghost" data-aptbulk="project" data-aptsource="${escapeAttr(p.name)}" style="min-height:44px">아파트명 안으로 사진 정리</button>`:''}
+    ${stmtN?`<button class="ghost" data-stmtunit="${escapeAttr(p.name)}" style="min-height:44px">📑 내역서 동·호수 ${stmtN}곳 등록</button>`:''}</div>
     <p class="hint" style="margin-bottom:0">${pending
       ? '현장 이름에서 <b>'+escapeHtml(parsed.dong)+'동 '+escapeHtml(parsed.ho)+'호</b>를 읽었습니다 — [＋ 동·호수 추가]를 누르면 채워진 채로 열립니다.'
       : '아파트 프로젝트 하나에서 세대별 사진과 작업 메모를 관리합니다.'}</p></div>`;
@@ -18469,7 +18787,7 @@ const HJ_HELP=[
   {k:'계약서 초안',d:'더보기 [📝 계약서 초안] — 현장에 배정된 견적을 고르면 계약금액·지급조건(계약금'+hjPayPct('down')+'/중도금'+hjPayPct('mid')+'/잔금'+hjPayPct('bal')+')·계좌·공종별 하자보수가 채워진 공사 계약서 초안이 만들어져요. 복사해서 공사기간·특약만 채우면 됩니다.',say:'계약서 초안 만들어줘'},
   {k:'견적 일괄 배정',d:'더보기 [🎯 견적 일괄 배정] — 파일명에 현장 이름이 들어 있으면 자동으로 찾아 한 번에 배정합니다(폴더 스캔 후 자동 제안). 또 \'파일명 | 현장 | 금액\' 형식의 목록을 붙여넣어 일괄 적용할 수 있어요(복구·Cowork 정리분 반영용). 배정한 현장이 없으면 자동 생성됩니다.',say:'견적 일괄 배정 열어줘'},
   {k:'백업 센터',d:'더보기 [💾 백업 센터] — 마지막 백업 시점과 클라우드 연결 상태를 보고, 한 번에 백업하거나 구글 드라이브를 연결합니다. 일주일 이상 백업 안 하면 홈에 알림이 뜨고, 드라이브를 연결하면 자료 저장 시 자동으로 클라우드에 백업돼 폰이 고장나도 안전해요.',say:'백업 센터 열어줘'},
-  {k:'Cowork 작업 지휘부',d:'더보기 [🖥 Cowork 지휘부] — PC의 Claude Cowork에게 시킬 명령서를 보관합니다. 카드내역 정리·세금계산서 대조·사진 담당자별 전송·월간 종합 4개 기본 명령이 있고, 복사해서 Cowork에 붙여넣으면 됩니다. 작업을 수정하거나 새로 추가할 수 있어요.',say:'Cowork 작업 지휘부 열어줘'},
+  {k:'클로드 명령어 모음',d:'더보기 [🧰 클로드 명령어] — 클로드에게 붙여 넣을 명령을 사진·견적·정산·현장웹 관리로 나눠 모아 둡니다. 받은 사진 정리·카톡 보고 대조·작업내역서 반영·협력사 입금·저장 확인·앱 개발 등 15개 기본 명령이 있고, [📋 명령 복사]해서 클로드에 붙여 넣으면 됩니다. 명령을 고치거나 새로 추가할 수 있어요.',say:'클로드 명령어 모음 열어줘'},
   {k:'AI 자율 운영(오토파일럿)',d:'더보기 [🤖 AI 자율 운영] — 한 번 누르면 사업을 점검하고 안전한 조회·리포트는 AI가 자동 처리한 뒤, 문자·수금처럼 승인이 필요한 것만 모아 보여줍니다. 되돌리기 어려운 일은 항상 사장님 승인을 거쳐요.',say:'자율 운영 실행해줘'},
   {k:'AI 운영 브레인',d:'더보기 [🧠 AI 브레인] — 규칙 점검과 달리, AI가 진행 현장·일정·큐를 종합해 오늘 먼저 할 일 3가지를 이유와 함께 추론해 줍니다.',say:'AI 브레인 열어줘'},
   {k:'루프 성숙도 진단',d:'더보기 [🔁 루프 성숙도] — 운영 루프가 얼마나 잘 돌고 있는지 점수(0~100)로 자가진단합니다. 활성·성공률·큐관리·후속연결 4가지를 보고 등급을 매겨요.',say:'루프 성숙도 보여줘'},
@@ -20747,9 +21065,9 @@ function taxInvoiceData(name){
   const p=state.projects.find(x=>x.name===name);if(!p)return null;
   const s=projStats(name);const cust=p.customer||{};
   // 공급가/세액: 견적 기준
-  let supply=0;const q=(state.quotes||[]).filter(x=>x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
-  if(q){const c=quoteCalc(q);supply=c.supply;}else{supply=Math.round(s.est/1.1);}
-  const vat=Math.round(supply*0.1);
+  let supply=0,qVat=null;const q=(state.quotes||[]).filter(x=>x.project===name).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  if(q){const c=quoteCalc(q);supply=c.supply;qVat=c.vat;}else{supply=Math.round(s.est/1.1);}
+  const vat=qVat!=null?qVat:Math.round(supply*0.1);   // v526 견적의 세액(quoteCalc) 그대로 — 작업내역서 견적은 합계가 정본이라 공급가×10% 와 1원 다를 수 있다
   return {p,s,cust,supply,vat,total:supply+vat,doneAt:p.doneAt||localDate(),bizno:cust.bizno||''};
 }
 function taxInvoiceInfo(name){
@@ -23028,8 +23346,10 @@ function syncGuide(){
       '<div style="font-size:12px;color:var(--muted);line-height:1.7">① 같은 구글 계정으로 <b>구글 로그인 & 연결</b><br>② <b>☁️ 전체 불러오기</b>로 PC 작업 내용 가져오기<br>③ 현장에서 사진 찍고 폰에서도 <b>올리기</b></div>'+
     '</div>'+
     '<div style="background:#fffbeb;border-radius:10px;padding:11px;font-size:11.5px;line-height:1.6;margin-bottom:12px">💡 <b>팁</b>: PC에서 [📁 로컬 폴더 연결]을 해두면 작업할 때마다 자동 저장돼요(3분 간격). 폰은 드라이브 <b>올리기/불러오기</b>로 수동 동기화합니다. 같은 자료를 양쪽에서 동시에 고치면 나중에 올린 게 덮어쓰니, 한 번에 한 기기에서 작업하는 걸 권합니다.</div>'+
+    (typeof pcupAvailable==='function'&&pcupAvailable()&&pcupTargets().length?'<button class="blue" id="syncPcup" style="width:100%;padding:13px;margin-bottom:8px">📤 이 PC 에만 있는 사진 '+pcupTargets().length+'장 서버로 올리기</button>':'')+   // v531
     '<button class="clay" id="syncOpen" style="width:100%;padding:13px">☁️ 지금 드라이브 연결/동기화</button>';
   openModal('🔄 PC ↔ 폰 동기화',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const pcb=document.getElementById('syncPcup');if(pcb)pcb.onclick=()=>{closeModal();pcupOpen();};
   const btn=document.getElementById('syncOpen');
   if(btn)btn.onclick=()=>{closeModal();try{openGdriveSetup();}catch(e){toast('설정을 열 수 없습니다');}};
   return {열림:'동기화 안내'};
@@ -30366,7 +30686,7 @@ async function aiAutoOperateView(){
 // 카테고리 정의(action → 카테고리 매핑)
 const MORE_CATS=[
   {id:'ai',name:'AI·자율운영',ic:'🤖',items:[
-    ['voicein','🎙','말로 기록'],['cwsched','⏰','Cowork 예약'],['cowork','🖥','Cowork 지휘부'],['autopilot','🤖','AI 자율 운영'],['aiops','🎛','AI 운영 센터'],['aibrain','🧠','AI 브레인'],['loopstatus','🔁','루프 성숙도'],
+    ['voicein','🎙','말로 기록'],['cwsched','⏰','Cowork 예약'],['cowork','🧰','클로드 명령어'],['autopilot','🤖','AI 자율 운영'],['aiops','🎛','AI 운영 센터'],['aibrain','🧠','AI 브레인'],['loopstatus','🔁','루프 성숙도'],
     ['ai','💬','AI 도우미'],['activebrief','🌅','오늘 브리핑'],['weekbrief','📆','주간 브리핑'],['automode','⚙️','AI 운영 모드'],
     ['aiquote','💸','AI 견적작성'],['analysis','📈','AI 경영 분석'],['aiprovider','🔑','AI 두뇌 선택'],['llama','🦙','Llama 등록'],['aiusage','📊','AI 사용량']
   ]},
@@ -30402,7 +30722,7 @@ const MORE_CATS=[
 // 최근 사용 기능 추적
 // 설명은 기능의 용도이며 외부 서비스 연결/실행 성공을 보장하지 않는다.
 const MORE_HELP={
-  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'PC에 전달할 작업 지시 관리',
+  delaycheck:'일정이 지났는데 사진·완료 보고가 없는 공정 찾기(시공 현장)',schshare:'오늘·이번 주 일정을 팀원에게 카톡·문자·캘린더 파일로 공유(담당별)',inquiry:'전화·방문 문의를 고객·연락처·지역·내용·문의 경로로 한 번에 등록하고 상담·실측 일정까지',crewweek:'이번 주·다음 주를 팀원 한 사람씩 — 일한 날·현장·빈 날·담당 겹침, 그 사람 일정 보내기',matdue:'발주한 자재가 언제 들어오는지·들어왔는지 — 오늘·지난 납품 입고 확인(현장별)',voicein:'음성으로 현장 기록 초안 만들기',cwsched:'PC Cowork 작업 예약 관리',cowork:'클로드에게 붙여 넣을 명령어 모음 — 사진 정리·카톡 대조·작업내역서 반영·입금·저장 확인·앱 개발',
   autopilot:'AI 작업 큐 점검과 안전 작업 실행',aiops:'AI 운영 현황과 승인 작업 확인',aibrain:'업무 요약을 AI로 분석',
   loopstatus:'자동화 진행 단계와 운영 상태 확인',ai:'기록에 관해 AI와 상담',activebrief:'오늘 할 일과 현장 요약',
   weekbrief:'이번 주 현장과 업무 요약',automode:'AI 자동 운영 범위 설정',aiquote:'공사 내용으로 견적 초안 작성',
@@ -30581,10 +30901,178 @@ async function moreDispatch(a){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   🖥 Cowork 작업 지휘부 — PC의 Claude Cowork에게 시킬 명령서 보관·관리
+   🖥 Cowork 작업 지휘부(v529 부터 🧰 클로드 명령어 모음) — 클로드에게 붙여 넣을 명령서 보관·관리
    각 작업을 붙여넣기용 텍스트로 만들고, 복사·수정·추가 가능
    state.coworkTasks = [{id,title,icon,prompt,builtin}]
 ═══════════════════════════════════════════════════════════════ */
+
+/* v529 🧰 클로드 명령어 모음 — 10/31 대표 "이렇게 클로드가 개입할 수 있도록 명령어 모음집을 추가해줘".
+   10/31 하루 동안 클로드가 손으로 한 일(받은 사진 정리·카톡 대조·미배정 배정·중복 정리·작업내역서 반영·매출 점검·협력사 입금·
+   청구 누락 찾기·현장웹 두 창 저장 확인·앱 개발)을 붙여넣기용 명령으로. 저장 모양은 그대로({id,title,icon,prompt,builtin}) —
+   분류·준비물은 id 로 정한다(CW_META). 명령 안의 {오늘} 은 복사할 때 오늘 날짜(YYYYMMDD)로 바뀐다(cwFill). */
+const CW_SAFE=`[지킬 것]
+- 지우지 않는다 — 버릴 것은 만물 폴더의 _중복정리_보관_{오늘} 폴더로 옮긴다.
+- _현장.json 을 고치기 전에 _현장_백업_클로드_{오늘}_시각.json 으로 백업한다.
+- 앱 파일(현장*.html·sw.js·*.md·_현장*.json·현장_백업*·_백업·데이터·_정리완료)은 옮기거나 고치지 않는다.
+- 현장웹이 두 창 이상 열려 있으면 먼저 알려 주고, 최신 자료가 있는 창 하나로 저장한다.
+- 애매한 것은 표로 보여 주고 멈춰서 묻는다.`;
+function cwDefaultsV529(){
+  const N=COMPANY.name;
+  return [
+    {id:'cw_photoin',icon:'📥',title:'받은 사진 현장사진으로 정리·배정',builtin:true,prompt:
+`너는 ${N}의 현장 사진 정리 비서다(만물 현장앱 운영 규칙을 따른다).
+다운로드 폴더에 받아 둔 사진·동영상(톡클라우드·카톡에서 받은 것)을 만물 폴더의 현장사진으로 옮기고 현장웹에 배정해줘.
+
+[할 일]
+1. 다운로드 폴더의 사진·동영상을 만물 폴더 현장사진/ 으로 옮긴다. 같은 이름이 이미 있으면 내용을 비교한다.
+2. 내용이 똑같은 사진(해시 같음)은 하나만 남기고 나머지는 보관 폴더로 옮긴다.
+3. 촬영 시각·GPS·같은 날 일정·카톡 보고로 현장을 정해 현장웹에 배정한다. 앱에 없는 현장은 새로 등록한다.
+4. 현장을 못 정한 사진은 날짜·장수·근거를 표로 보여 주고 내 답을 기다린다.
+5. 끝나면 옮긴 수·배정한 수·남은 수를 알려 준다.
+
+${CW_SAFE}`},
+    {id:'cw_chatphoto',icon:'💬',title:'카톡 대화로 누락 사진 찾기',builtin:true,prompt:
+`너는 ${N}의 현장 기록 점검 비서다.
+다운로드 폴더의 카톡 대화 내보내기 파일(KakaoTalk_….txt)을 읽어 협력사 톡방 보고와 현장웹 사진을 대조해줘.
+
+[할 일]
+1. '사진 N장' 바로 앞뒤에 적은 현장 이름(아파트·동·호수)으로 보고 목록을 만든다.
+2. 보고마다 그 현장 사진이 현장웹에 몇 장 있는지 비교해 '누락 의심' 표(날짜·톡방·현장·톡 장수/앱 장수)를 만든다.
+3. 현장 없는 사진은 보고 시각으로 현장을 제안하고, 장수·시간이 맞는 것만 배정한다(배정 전 안전판).
+
+[주의]
+- 대화 내용은 현장웹에 저장하지 않는다.
+- 톡클라우드 로그인은 하지 않는다 — 받아야 할 사진의 날짜·톡방만 알려 주면 내가 받는다.
+${CW_SAFE}`},
+    {id:'cw_photoassign',icon:'🧭',title:'현장 없는 사진 배정',builtin:true,prompt:
+`너는 ${N}의 현장 사진 정리 비서다.
+현장웹에서 현장이 없는(미배정) 사진을 정리해줘.
+
+[할 일]
+1. 미배정 사진을 날짜·폴더별로 묶는다.
+2. 촬영 시각·GPS·같은 날 일정·같은 날 다른 현장 사진·카톡 보고를 근거로 현장을 정한다.
+3. 근거가 확실한 묶음만 배정하고(배정 전 안전판), 나머지는 근거와 함께 표로 보여 준다.
+4. 현장 사진이 아닌 것(화면 캡처·서류 사진·홍보 이미지)은 따로 표시만 한다.
+
+${CW_SAFE}`},
+    {id:'cw_dupe',icon:'🔎',title:'중복 사진·파일 정리',builtin:true,prompt:
+`너는 ${N}의 자료 정리 비서다.
+만물 폴더와 현장웹에서 중복 사진·서류를 정리해줘.
+
+[할 일]
+1. 내용이 똑같은 파일(해시 같음)을 찾는다 — 이름만 같고 내용이 다르면 중복이 아니다.
+2. 원본 하나(현장 폴더에 있거나 먼저 받은 것)만 남기고 나머지는 보관 폴더로 옮긴다.
+3. 현장웹 기록도 원본 하나로 맞추고, 사본에 붙어 있던 현장·작업명은 원본에 옮긴다.
+4. 옮긴 목록(원래 위치 → 보관 위치)을 표로 남긴다.
+
+${CW_SAFE}`},
+    {id:'cw_stmt',icon:'📑',title:'작업내역서·견적서 현장웹 반영',builtin:true,prompt:
+`너는 ${N}의 매출 정리 비서다.
+다운로드 폴더(카톡 서랍에서 받은 파일)의 작업내역서·견적서를 현장웹 매출에 반영해줘.
+
+[할 일]
+1. 작업내역서(작업 날짜 | 위치 | 작업명 | 작업비용)는 위치마다 현장을 맞춰 현장별 견적(수주)으로 넣는다. 앱에 없는 현장은 새로 등록한다.
+   (현장웹 견적 작성 탭 [📑 작업내역서 반영]과 같은 규칙 — 이미 넣은 줄은 다시 넣지 않는다)
+2. 견적서는 현장에 연결하고, 같은 공사의 입찰본·다른 업체 이름의 비교 견적(들러리)은 매출 집계에서 뺀다(Σ 제외).
+3. 합계를 원본 파일과 맞춰 보고, 반영 견적·집계 제외·확인필요를 엑셀 보고서로 만든다.
+
+[주의]
+- 금액은 원본 파일 기준 — 추측하지 않는다. 부가세 포함/별도가 애매하면 묻는다.
+- 입금 계좌는 비워 둔다(대표가 고른다).
+${CW_SAFE}`},
+    {id:'cw_salescheck',icon:'🧮',title:'매출 점검(중복·들러리·미배정)',builtin:true,prompt:
+`너는 ${N}의 매출 점검 비서다.
+현장웹 매출(견적 합계)이 실제와 맞는지 점검해줘. 바꾸기 전에 표로 보여 주고 내 승인을 받는다.
+
+[점검]
+1. 같은 견적의 사본(xlsx·pdf)·수정본이 두 번 잡혔는지
+2. 입찰본·다른 업체 견적(들러리)이 매출에 들어갔는지
+3. 작업내역서 견적과 같은 공사의 견적이 겹치는지
+4. 현장이 없는 견적, 금액이 지나치게 크거나 0원인 견적
+5. 바꾸면 현장별·월별 매출이 얼마나 달라지는지
+
+[주의]
+- 집계 제외(Σ)만 쓰고 파일은 지우지 않는다. 금액은 원본 기준.
+- _현장.json 을 고치기 전에 _현장_백업_클로드_{오늘}_시각.json 으로 백업한다.`},
+    {id:'cw_pay',icon:'💰',title:'협력사 입금 기록',builtin:true,prompt:
+`너는 ${N}의 수금 기록 비서다.
+아래 협력사 입금을 현장웹에 기록해줘.
+
+[입금]  ← 적어서 보내기
+- 거래처:
+- 입금일:
+- 금액:          원
+- 어느 작업내역서인지(알면):
+
+[할 일]
+1. 현장웹 견적 작성 탭의 '📑 작업내역서 — 협력사에서 받을 돈' 장부에서 그 내역서를 찾는다.
+2. [💰 입금]처럼 남은 돈 비율로 현장마다 나눠(원 단위) 수금 기록을 남긴다. 결제 방법·증빙(세금계산서 등)도 적는다.
+3. 기록한 뒤 그 내역서의 받음·남음과 현장별 금액을 보여 준다.
+
+[주의]
+- 남은 돈보다 많거나 어느 내역서인지 애매하면 기록하지 말고 묻는다.
+- 은행·홈택스 로그인은 하지 않는다 — 내가 적은 금액만 쓴다.`},
+    {id:'cw_unbilled',icon:'🔍',title:'청구 안 된 작업 찾기',builtin:true,prompt:
+`너는 ${N}의 청구 점검 비서다.
+톡방 보고·현장 사진·일정에는 있는데 견적·작업내역서·세금계산서에 없는 작업을 찾아줘.
+
+[할 일]
+1. 다운로드 폴더의 카톡 대화 내보내기(.txt)와 현장웹 사진·일정에서 작업한 날·현장·작업명을 모은다.
+2. 견적·작업내역서·세금계산서에 같은 현장·같은 때의 작업이 있는지 대조한다.
+3. 빠진 작업을 현장·날짜·근거(톡 메시지·사진 장수) 표로 만들고, 다음 내역서에 넣을 줄(작업 날짜 | 위치 | 작업명)로도 적는다.
+
+[주의]
+- 금액은 추측하지 않는다(빈칸). 현장웹 자료는 바꾸지 않는다.`},
+    {id:'cw_save',icon:'💾',title:'현장웹 저장·백업 확인',builtin:true,prompt:
+`너는 ${N}의 현장웹 관리 비서다.
+브라우저에 열린 현장웹(https://01023978629.github.io/hyeonjang/)이 빠짐없이 저장됐는지 확인해줘.
+
+[할 일]
+1. 현장웹 탭이 둘 이상이면 어느 창에 최신 자료가 있는지 비교한다(현장·사진·견적·일정 수, 마지막 저장 시각).
+2. 자료가 빠지지 않게 하나로 저장하고, 나머지 창은 닫아도 되는지 알려 준다.
+3. 기기 저장과 만물 폴더 _현장.json 이 같은지, 백업 파일 날짜를 확인한다.
+4. 고치기 전에 _현장_백업_클로드_{오늘}_시각.json 으로 백업한다.
+
+[주의]
+- 어느 쪽이 맞는지 애매하면 덮어쓰지 말고 차이를 표로 보여 주고 묻는다.`},
+    {id:'cw_dev',icon:'🛠',title:'현장웹 기능 개발·오류 고치기',builtin:true,prompt:
+`너는 ${N} 현장웹(GitHub 01023978629/hyeonjang)의 개발자다.
+아래를 고치거나 만들어줘.
+
+[고칠 것·만들 것]  ← 적어서 보내기
+- 화면:
+- 한 일(순서):
+- 기대한 것 / 실제로 된 것:
+
+[규칙]
+1. 새 브랜치(claude/vNNN-…)에서 고치고 버전 핀 3곳(index.html·sw.js·tests/version-sync.check.js)·새 테스트·AGENTS.md 맨 위 기록을 함께 올린다.
+2. 테스트가 결함을 실제로 잡는지(고치기 전 코드·일부러 망친 코드에서 실패) 확인한다.
+3. PR 로 올리고 병합은 하지 않는다 — 내가 확인하고 병합한다.
+4. 공개 저장소다 — 테스트·주석·커밋에 실제 고객 주소·이름·금액을 쓰지 않는다.
+5. 실제 자료(_현장.json·사진)는 바꾸지 않는다. 실자료 확인은 읽기만.`}
+  ];
+}
+const CW_CATS=[{id:'photo',ic:'📸',name:'사진'},{id:'money',ic:'📑',name:'견적·매출·입금'},{id:'tax',ic:'🧾',name:'정산·세무'},{id:'app',ic:'🛠',name:'현장웹 저장·개발'},{id:'mine',ic:'✏️',name:'내 명령'}];
+const CW_META={
+  cw_photoin:{cat:'photo',o:1,prep:'사진을 PC 다운로드 폴더에 받아 두기(톡클라우드·카톡)'},
+  cw_chatphoto:{cat:'photo',o:2,prep:'톡방 메뉴 → 대화 내보내기(텍스트) .txt 를 다운로드 폴더에 — 사진 도구의 💬 카톡 보고 대조로도 됩니다'},
+  cw_photoassign:{cat:'photo',o:3,prep:'현장웹 탭 열어 두기'},
+  cw_dupe:{cat:'photo',o:4,prep:'PC 클로드 앱에 만물 폴더 연결'},
+  cw_photo:{cat:'photo',o:5,prep:'명령의 담당자 명단 칸 채우기'},
+  cw_stmt:{cat:'money',o:1,prep:'카톡 서랍의 작업내역서·견적서를 다운로드 폴더에'},
+  cw_salescheck:{cat:'money',o:2,prep:'현장웹 탭 열어 두기'},
+  cw_pay:{cat:'money',o:3,prep:'명령의 [입금] 칸에 거래처·날짜·금액 적기'},
+  cw_unbilled:{cat:'money',o:4,prep:'카톡 대화 내보내기 .txt 를 다운로드 폴더에'},
+  cw_card:{cat:'tax',o:1,prep:'카드사에서 받은 이용내역 파일을 폴더에'},
+  cw_tax:{cat:'tax',o:2,prep:'홈택스 매출·매입 세금계산서와 통장 내역 파일을 폴더에'},
+  cw_month:{cat:'tax',o:3,prep:'이번 달 카드·세금계산서·통장 파일을 폴더에'},
+  cw_save:{cat:'app',o:1,prep:'현장웹 탭을 모두 열어 둔 채로'},
+  cw_dev:{cat:'app',o:2,prep:'명령의 [고칠 것] 칸 적기 · 화면 캡처가 있으면 함께'},
+  cw_bugtest:{cat:'app',o:3,prep:'현장웹 주소만 있으면 됨'}
+};
+function cwCatOf(t){const m=t&&CW_META[t.id];return m?m.cat:(t&&t.builtin?'app':'mine');}
+// 명령 안의 {오늘} → 복사하는 날(YYYYMMDD). 저장된 명령은 그대로 두고 복사할 때만 바꾼다.
+function cwFill(text){const d=new Date();return String(text||'').replace(/\{오늘\}/g,d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate()));}
 
 // 기본 작업 템플릿(회사 정보 자동 반영)
 function coworkDefaults(){
@@ -30597,6 +31085,7 @@ function coworkDefaults(){
     if(active.length)siteList=active.map(function(nm){return '- '+nm+' → 담당자: ';}).join('\n');
   }catch(e){}
   return [
+    ...cwDefaultsV529(),
     {id:'cw_card',icon:'💳',title:'카드 내역 정리',builtin:true,prompt:
 `너는 ${COMPANY.name}(대전, 인테리어 시공업)의 경리 비서다.
 이 폴더에 있는 카드 이용내역 파일(엑셀/CSV/PDF)을 읽어서 처리해줘.
@@ -30695,7 +31184,7 @@ function coworkTasksEnsure(){
 function coworkCopy(text,label,opts){
   // v449 Cowork 명령만 'Cowork에 붙여넣으세요' — 고객·팀 문자, 링크, 원고 복사에 Cowork 안내가 떠서 헷갈렸다.
   const cw=!label||!!(opts&&opts.cowork);
-  const done=()=>toast('📋 '+(label||'명령')+' 복사됨'+(cw?' — Cowork에 붙여넣으세요':' — 붙여 넣어 쓰세요'));
+  const done=()=>toast('📋 '+(label||'명령')+' 복사됨'+(cw?' — 클로드에 붙여넣으세요':' — 붙여 넣어 쓰세요'));
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>coworkCopyFallback(text,done));}
     else coworkCopyFallback(text,done);
@@ -30706,34 +31195,53 @@ function coworkCopyFallback(text,done){
   catch(e){toast('복사가 안 돼요. 길게 눌러 직접 복사하세요.');}
 }
 
-// 목록 화면
+// 목록 화면 — v529 🧰 클로드 명령어 모음: 분류(CW_CATS)·준비물·찾기. 내가 만든 명령은 '✏️ 내 명령'.
 function coworkTasksManage(){
   const tasks=coworkTasksEnsure();const [c1,c2]=hjBrandGrad('#7c3aed','#0b4ea2');
-  const rows=tasks.length?tasks.map(t=>
-    '<div style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
-      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span style="font-size:20px">'+t.icon+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b>'+(t.builtin?'':'<span style="font-size:9.5px;background:#e0e7ff;color:#4338ca;padding:1px 7px;border-radius:8px;font-weight:700">내 작업</span>')+'</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:9px;line-height:1.5;max-height:42px;overflow:hidden">'+escapeHtml(t.prompt.slice(0,90))+'…</div>'+
+  const row=t=>{
+    const m=CW_META[t.id]||{},id=escapeAttr(t.id),q=escapeAttr([t.title,m.prep||''].join(' ').toLowerCase());   // 찾기는 이름·준비물만(분류 이름까지 넣으면 '입금'에 그 분류 전체가 걸린다)
+    return '<div class="cw-row" data-cw-row="'+id+'" data-cw-q="'+q+'" style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;margin-bottom:8px;background:var(--paper)">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:20px" aria-hidden="true">'+escapeHtml(t.icon||'🖥')+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(t.title)+'</b>'+(t.builtin?'':'<span style="font-size:10.5px;background:#e0e7ff;color:#3730a3;padding:1px 7px;border-radius:8px;font-weight:700">내 명령</span>')+'</div>'+
+      (m.prep?'<div class="cw-prep" style="font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5">준비: '+escapeHtml(m.prep)+'</div>'
+        :'<div class="cw-prep" style="font-size:11.5px;color:var(--muted);margin:0 0 8px;line-height:1.5;max-height:36px;overflow:hidden">'+escapeHtml(String(t.prompt||'').slice(0,90))+'…</div>')+
       '<div style="display:flex;gap:6px">'+
-        '<button class="cwCopy clay tiny" data-id="'+t.id+'" style="flex:1;padding:8px;font-size:12.5px">📋 명령 복사</button>'+
-        '<button class="cwView ghost tiny" data-id="'+t.id+'" style="padding:8px 11px;font-size:12px">전체</button>'+
-        '<button class="cwEdit ghost tiny" data-id="'+t.id+'" style="padding:8px 11px;font-size:12px">✏️</button>'+
+        '<button class="cwCopy clay tiny" data-id="'+id+'" style="flex:1;padding:8px;font-size:12.5px;min-height:44px">📋 명령 복사</button>'+
+        '<button class="cwView ghost tiny" data-id="'+id+'" aria-label="'+escapeAttr(t.title)+' 전체 보기" style="padding:8px 11px;font-size:12px;min-height:44px">전체</button>'+
+        '<button class="cwEdit ghost tiny" data-id="'+id+'" aria-label="'+escapeAttr(t.title)+' 수정" style="padding:8px 11px;font-size:12px;min-height:44px">✏️</button>'+
       '</div>'+
-    '</div>').join(''):'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">작업이 없어요.<br>[+ 작업 추가]로 만들거나 [기본값 복원]을 누르세요.</div>';
+    '</div>';
+  };
+  const groups=CW_CATS.map(c=>{
+    const list=tasks.map((t,i)=>({t,i})).filter(x=>cwCatOf(x.t)===c.id).sort((a,b)=>(((CW_META[a.t.id]||{}).o||99)-((CW_META[b.t.id]||{}).o||99))||a.i-b.i).map(x=>x.t);
+    if(!list.length)return '';
+    return '<div class="cw-cat" data-cw-cat="'+c.id+'"><h4 style="margin:14px 0 6px;font-size:13.5px">'+c.ic+' '+escapeHtml(c.name)+' <small style="color:var(--muted);font-weight:400">'+list.length+'</small></h4>'+list.map(row).join('')+'</div>';
+  }).join('');
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">PC의 Claude Cowork에게 시킬 명령</div><div style="font-size:18px;font-weight:800">🖥 Cowork 작업 지휘부</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+tasks.length+'개 작업 · 복사해서 붙여넣기</div></div>'+
-    '<div style="font-size:11.5px;color:var(--muted);background:#eff6ff;border-radius:9px;padding:10px;margin-bottom:12px;line-height:1.5">💡 PC에서 Claude Desktop → <b>Cowork 모드</b>로 전환하고, 자료 폴더를 연 뒤 아래 명령을 <b>복사해 붙여넣으면</b> 됩니다. 홈택스·카드 파일은 미리 폴더에 받아두세요.</div>'+
-    rows+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 12px;padding:15px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드에게 붙여 넣을 명령</div><div style="font-size:18px;font-weight:800">🧰 클로드 명령어 모음</div><div style="font-size:11.5px;opacity:.9;margin-top:2px">'+tasks.length+'개 · 복사해서 붙여넣기</div></div>'+
+    '<div class="hint" id="cwHow" style="margin:0 0 10px;line-height:1.55">💡 [📋 명령 복사] → 클로드 대화창(PC의 클로드 앱 또는 claude.ai)에 붙여 넣으면 클로드가 만물 폴더·현장웹을 직접 다룹니다. PC 폴더 일은 PC의 클로드 앱이 켜져 있고 만물 폴더가 연결돼 있어야 해요. 홈택스·은행·톡클라우드 로그인은 직접 하고, 받은 파일만 맡기세요.</div>'+
+    '<input id="cwFilter" type="search" placeholder="🔍 명령 찾기 (예: 사진, 입금, 저장)" aria-label="명령 찾기" autocomplete="off" style="width:100%;min-height:44px;padding:10px 12px;font-size:16px;margin:0 0 2px">'+
+    (groups||'<div style="text-align:center;color:var(--muted);padding:18px;font-size:12.5px">명령이 없어요.<br>[+ 명령 추가]로 만들거나 [기본값 복원]을 누르세요.</div>')+
+    '<div id="cwNone" hidden style="text-align:center;color:var(--muted);padding:14px;font-size:12.5px">찾는 명령이 없어요. 다른 말로 찾아보세요.</div>'+
     '<div style="display:flex;gap:7px;margin-top:10px">'+
-      '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 작업 추가</button>'+
+      '<button class="clay" id="cwAdd" style="flex:1;padding:12px;font-size:13.5px">+ 명령 추가</button>'+
       '<button class="ghost" id="cwReset" style="padding:12px 14px;font-size:12px">기본값 복원</button>'+
     '</div>';
-  openModal('🖥 Cowork 작업 지휘부',body,[{label:'🧰 스킬 명령문',cls:'ghost',fn:function(){coworkCopy(coworkSkillCatalogText(),'스킬 명령문 카탈로그');}},{label:'⏰ 예약',cls:'moss',fn:function(){coworkSchedView();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  openModal('🧰 클로드 명령어 모음',body,[{label:'🧰 스킬 명령문',cls:'ghost',fn:function(){coworkCopy(coworkSkillCatalogText(),'스킬 명령문 카탈로그');}},{label:'⏰ 예약',cls:'moss',fn:function(){coworkSchedView();}},{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const rebind=()=>coworkTasksManage();
-  document.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(cwWithSkill(t),t.title,{cowork:true});});
-  document.querySelectorAll('.cwView').forEach(b=>b.onclick=()=>coworkTaskView(b.dataset.id));
-  document.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
-  const addBtn=document.getElementById('cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
-  const resetBtn=document.getElementById('cwReset');if(resetBtn)resetBtn.onclick=()=>{if(confirm('기본 작업 4개를 다시 불러올까요? (내가 추가한 작업은 유지됩니다)')){const custom=(state.coworkTasks||[]).filter(t=>!t.builtin);state.coworkTasks=coworkDefaults().concat(custom);markDirty();toast('기본값을 복원했어요');rebind();}};
+  const root=document.getElementById('modalRoot');
+  if(!root)return {작업:tasks.length};
+  root.querySelectorAll('.cwCopy').forEach(b=>b.onclick=()=>{const t=tasks.find(x=>x.id===b.dataset.id);if(t)coworkCopy(cwWithSkill(t),t.title,{cowork:true});});
+  root.querySelectorAll('.cwView').forEach(b=>b.onclick=()=>coworkTaskView(b.dataset.id));
+  root.querySelectorAll('.cwEdit').forEach(b=>b.onclick=()=>coworkTaskEdit(b.dataset.id));
+  const fi=root.querySelector('#cwFilter');
+  if(fi)fi.oninput=()=>{
+    const words=fi.value.trim().toLowerCase().split(/\s+/).filter(Boolean);let shown=0;
+    root.querySelectorAll('.cw-row').forEach(r=>{const ok=words.every(w=>String(r.dataset.cwQ||'').indexOf(w)>=0);r.hidden=!ok;if(ok)shown++;});
+    root.querySelectorAll('.cw-cat').forEach(c=>{c.hidden=!c.querySelector('.cw-row:not([hidden])');});
+    const none=root.querySelector('#cwNone');if(none)none.hidden=shown>0||!tasks.length;
+  };
+  const addBtn=root.querySelector('#cwAdd');if(addBtn)addBtn.onclick=()=>coworkTaskEdit(null);
+  const resetBtn=root.querySelector('#cwReset');if(resetBtn)resetBtn.onclick=()=>{if(confirm('기본 명령 '+coworkDefaults().length+'개를 다시 불러올까요? (내가 추가한 명령은 유지됩니다)')){const custom=(state.coworkTasks||[]).filter(t=>!t.builtin);state.coworkTasks=coworkDefaults().concat(custom);markDirty();toast('기본값을 복원했어요');rebind();}};
   return {작업:tasks.length};
 }
 
@@ -30742,10 +31250,11 @@ function coworkTaskView(id){
   const tasks=coworkTasksEnsure();const t=tasks.find(x=>x.id===id);if(!t){toast('작업을 찾을 수 없어요');return;}
   const [c1,c2]=hjBrandGrad('#0b4ea2','#7c3aed');
   const body=
-    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">Cowork 명령</div><div style="font-size:17px;font-weight:800">'+t.icon+' '+escapeHtml(t.title)+'</div></div>'+
+    '<div style="background:linear-gradient(120deg,'+c1+','+c2+');margin:-16px -16px 14px;padding:14px 16px;color:#fff"><div style="font-size:12px;opacity:.9">클로드 명령</div><div style="font-size:17px;font-weight:800">'+escapeHtml(t.icon||'🖥')+' '+escapeHtml(t.title)+'</div></div>'+
+    ((CW_META[t.id]||{}).prep?'<div class="hint" id="cwvPrep" style="margin:0 0 10px">준비: '+escapeHtml(CW_META[t.id].prep)+'</div>':'')+
     '<div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;background:var(--paper-2);border-radius:11px;padding:14px;border:1px solid var(--line-soft);max-height:340px;overflow:auto">'+escapeHtml(cwWithSkill(t))+'</div>'+
     '<button class="clay" id="cwvCopy" style="width:100%;padding:13px;font-size:14px;margin-top:12px">📋 이 명령 복사</button>'+
-    '<div style="font-size:11px;color:var(--muted);margin-top:8px;background:#eff6ff;border-radius:9px;padding:9px;line-height:1.5">💡 복사한 뒤 PC의 Cowork 입력창에 붙여넣고, 자료 폴더가 열려 있는지 확인하세요.</div>';
+    '<div class="hint" style="margin-top:8px;line-height:1.5">💡 복사한 뒤 클로드 대화창에 붙여 넣으세요. PC 폴더 일은 PC의 클로드 앱에 만물 폴더가 연결돼 있어야 해요. [ ] 칸이 있으면 채워서 보내세요.</div>';
   openModal('📋 '+t.title,body,[{label:'✏️ 수정',cls:'ghost',fn:()=>coworkTaskEdit(id)},{label:'‹ 목록',cls:'ghost',fn:()=>coworkTasksManage()}],true);
   const cb=document.getElementById('cwvCopy');if(cb)cb.onclick=()=>coworkCopy(cwWithSkill(t),t.title,{cowork:true});
   return {작업:t.title};
@@ -30757,22 +31266,22 @@ function coworkTaskEdit(id){
   const t=id?tasks.find(x=>x.id===id):null;
   const isNew=!t;
   const body=
-    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">작업 이름</label>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">명령 이름</label>'+
     '<div style="display:flex;gap:8px;margin-bottom:12px"><input id="cwTitle" value="'+(t?escapeAttr(t.title):'')+'" placeholder="예: 통장 내역 정리" style="flex:1;padding:10px;font-size:14px"><input id="cwIcon" value="'+(t?escapeAttr(t.icon):'🖥')+'" maxlength="2" style="width:52px;padding:10px;font-size:18px;text-align:center"></div>'+
-    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">Cowork에게 시킬 명령 (붙여넣기용)</label>'+
+    '<label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:4px">클로드에게 시킬 명령 (붙여넣기용)</label>'+
     '<textarea id="cwPrompt" placeholder="너는 만물인테리어의 ○○ 비서다. 이 폴더의 ○○ 파일을 읽어서…" style="width:100%;padding:11px;font-size:13px;min-height:220px;line-height:1.6;font-family:inherit">'+(t?escapeHtml(t.prompt):'')+'</textarea>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">💡 명령은 구체적일수록 좋아요: ①누구인지(역할) ②어떤 파일을 ③무엇을 해서 ④어떻게 저장할지 ⑤하지 말 것. 회사명·현장명·담당자를 넣으면 더 정확합니다.</div>';
-  openModal(isNew?'+ Cowork 작업 추가':'✏️ 작업 수정',body,[
+  openModal(isNew?'+ 클로드 명령 추가':'✏️ 명령 수정',body,[
     {label:'저장',cls:'clay',fn:()=>{
       const title=document.getElementById('cwTitle').value.trim();
       const prompt=document.getElementById('cwPrompt').value.trim();
       const icon=document.getElementById('cwIcon').value.trim()||'🖥';
-      if(!title||!prompt){toast('작업 이름과 명령을 모두 입력하세요');return;}
-      if(isNew){coworkTasksEnsure().push({id:'cw_'+uid(),icon,title,prompt,builtin:false});toast('작업을 추가했어요');}
-      else{t.title=title;t.prompt=prompt;t.icon=icon;toast('작업을 수정했어요');}
+      if(!title||!prompt){toast('명령 이름과 내용을 모두 입력하세요');return;}
+      if(isNew){coworkTasksEnsure().push({id:'cw_'+uid(),icon,title,prompt,builtin:false});toast('명령을 추가했어요');}
+      else{t.title=title;t.prompt=prompt;t.icon=icon;toast('명령을 수정했어요');}
       markDirty();coworkTasksManage();
     }},
-    (t&&!t.builtin?{label:'🗑 삭제',cls:'ghost',fn:()=>{if(confirm('이 작업을 삭제할까요?')){state.coworkTasks=tasks.filter(x=>x.id!==id);markDirty();coworkTasksManage();}}}:{label:'취소',cls:'ghost',fn:()=>coworkTasksManage()})
+    (t&&!t.builtin?{label:'🗑 삭제',cls:'ghost',fn:()=>{if(confirm('이 명령을 삭제할까요?')){state.coworkTasks=tasks.filter(x=>x.id!==id);markDirty();coworkTasksManage();}}}:{label:'취소',cls:'ghost',fn:()=>coworkTasksManage()})
   ]);
 }
 
@@ -31189,7 +31698,7 @@ function hjEstIssues(f,shadows){
       out.push({warn:true,t:'⚠ 파일명 금액 '+won(na)+'과 읽은 금액이 달라요 — 원본 확인'});
   }
   if(e.purchase)out.push({warn:false,t:'🏢 외주(매입) 견적 · 매출에서 제외'});
-  else{const v=hjEstVendorName(f);if(v)out.push({warn:false,t:'🏢 다른 업체 이름('+v+') — 우리 매출이 아니면 [상세 입력 → 외주(매입)]'});}
+  else{const v=hjEstVendorName(f);if(v)out.push({warn:false,t:'🏢 다른 업체 이름('+v+') — 우리 매출이 아니면 [상세 입력 → 외주(매입)] · 비교 견적(들러리)이면 [Σ 집계 제외]'});}
   return out;
 }
 // 파일명 속 다른 인테리어 업체 이름('태산그린 넥산 작업-용진인테리어' → 용진인테리어). 우리 상호면 ''.
@@ -31309,7 +31818,12 @@ function estimateGroups(estFiles){
     const editedOf=function(g){const r=g.rep;return r&&r._fromQuote&&r._editedFrom?r._editedFrom:null;};
     const isSrcOf=function(g,srcId){const src=byId[srcId];
       return [g.rep].concat(g.dups||[]).some(function(m){return m&&!m._fromQuote&&(m.id===srcId||(!!src&&key1(m)===key1(src)));});};
-    const pairOK=function(c,g){const ec=editedOf(c),eg=editedOf(g);
+    const hasStmt=function(g){return !!(g&&((g.rep&&g.rep._stmt)||(g.dups||[]).some(function(m){return m&&m._stmt;})));};
+    const pairOK=function(c,g){
+      // v526 작업내역서 견적(가상 파일 _stmt)은 다른 견적과 사본으로 묶지 않는다 — 같은 현장·같은 금액(우수관 220,000)이 흔하고,
+      //   묶이면 매출이 조용히 사라진다(두 달 치가 하나로, 또는 관계없는 같은 금액 견적 파일의 'PDF 사본'으로). 같은 공사의 견적 파일은 반영 확인 창에서 사람이 집계 제외한다.
+      if(hasStmt(c)||hasStmt(g))return false;
+      const ec=editedOf(c),eg=editedOf(g);
       if(!ec&&!eg)return true;
       if(ec&&eg)return false;                          // 편집한 앱 견적 둘은 서로 다른 견적
       return ec?isSrcOf(g,ec):isSrcOf(c,eg);};
@@ -33059,7 +33573,18 @@ const CW_SKILL_MAP={
   cw_tax:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §2 세금계산서 대조(앱 💼 회계 탭 집계와 교차 확인)'},
   cw_photo:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §3 현장 사진 정리(파일 규약 준수)'},
   cw_month:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §4 월간 경영 정리'},
-  cw_bugtest:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §5 QA(P0→P1→P2 순서)'}
+  cw_bugtest:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 레시피 §5 QA(P0→P1→P2 순서)'},
+  // v529 클로드 명령어 모음
+  cw_photoin:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 현장 사진 정리(보관 폴더·백업 먼저)'},
+  cw_chatphoto:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 카톡 보고 대조(앱 💬 카톡 보고 대조와 같은 규칙)'},
+  cw_photoassign:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 미배정 사진 배정(🧭 추측 배정 규칙·안전판)'},
+  cw_dupe:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 중복 정리(삭제 금지·보관 폴더)'},
+  cw_stmt:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 작업내역서 반영(📑 규칙·Σ 집계 제외)'},
+  cw_salescheck:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 견적 정리·매출 점검'},
+  cw_pay:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 협력사 입금(📑 장부 💰 입금 규칙)'},
+  cw_unbilled:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 청구 누락 점검'},
+  cw_save:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 데이터 파일 안전수칙(백업 먼저)'},
+  cw_dev:{skill:'manmul-hyeonjang',note:'앱 운영 스킬 · 웹앱 개발(PR·핀 3곳·테스트)'}
 };
 function cwSkillLine(t){
   const m=CW_SKILL_MAP[t.id];
@@ -33068,16 +33593,22 @@ function cwSkillLine(t){
   return '🧰 스킬 안내: 작업 성격에 맞는 만물 스킬이 있으면 함께 쓰세요 — 견적서=manmul-estimate · 확인서/합의서=manmul-docs · 홍보 글=manmul-marketing · 고객 답장=manmul-customer · 상담/실측=manmul-consult · 아파트 서류=manmul-apt · 인력/정산=manmul-crew';
 }
 function cwWithSkill(t){
-  return cwSkillLine(t)+'\n\n'+t.prompt;
+  return cwSkillLine(t)+'\n\n'+cwFill(t.prompt);
 }
 function coworkSkillCatalogText(){
   return [
-    '# 만물인테리어 — Cowork 스킬 명령문 카탈로그',
+    '# 만물인테리어 — 클로드 스킬 명령문 카탈로그',
     '',
-    '아래 문장을 Cowork에 그대로 말하면 해당 스킬이 일합니다.',
+    '아래 문장을 클로드에 그대로 말하면 해당 스킬이 일합니다. 자세한 명령은 현장웹 더보기 → 🧰 클로드 명령어.',
     '',
-    '| 이럴 때 | Cowork에 이렇게 | 스킬 |',
+    '| 이럴 때 | 클로드에 이렇게 | 스킬 |',
     '|---|---|---|',
+    '| 받은 사진 정리·배정 | "다운로드 사진 현장사진으로 정리해줘" | manmul-hyeonjang |',
+    '| 카톡 보고 대조·누락 사진 | "카톡 대화로 누락 사진 찾아줘" | manmul-hyeonjang |',
+    '| 작업내역서·견적서 매출 반영 | "카톡 서랍 작업내역서 현장웹에 반영해줘" | manmul-hyeonjang |',
+    '| 협력사 입금 | "협력사 ○월 ○일 입금 ○○원 기록해줘" | manmul-hyeonjang |',
+    '| 현장웹 저장·백업 확인 | "현장웹 두 창 저장 확인해줘" | manmul-hyeonjang |',
+    '| 현장웹 고치기·개발 | "현장앱 ○○ 오류 고쳐줘" / "현장앱 개발 계속 진행" | manmul-hyeonjang |',
     '| 폴더·앱 데이터 정리, 예약된 오늘 업무 | "만물 폴더 오늘 업무 해줘" / "만물 폴더 정리해줘" | manmul-hyeonjang |',
     '| 실측 메모로 견적서 | "이 실측 메모로 견적 뽑아줘" | manmul-estimate |',
     '| 시공 사진으로 홍보 글 | "이 사진으로 블로그(또는 스레드) 글 써줘" | manmul-marketing |',
@@ -33086,8 +33617,11 @@ function coworkSkillCatalogText(){
     '| 첫 상담·실측 준비 | "내일 실측인데 체크리스트 준비해줘" | manmul-consult |',
     '| 아파트 관리소·이웃 서류 | "관리사무소 공사 신고서랑 안내문 만들어줘" | manmul-apt |',
     '| 인력 구인·외주·노임 정산 | "화요일 보조 1명 구인 글" / "이번달 노임 정산표" | manmul-crew |',
+    '| AS·하자 접수 | "AS 들어왔어, 무상인지 봐줘" | manmul-as |',
+    '| 도급계약서 | "이 견적으로 도급계약서 만들어줘" | manmul-contract |',
+    '| 부가세·세무 자료 | "부가세 신고 준비해줘" | manmul-tax |',
     '',
-    '💡 스킬 파일(.skill)은 Cowork 설정에서 [Save skill]로 설치돼 있어야 합니다.'
+    '💡 만물 스킬(manmul-…)이 클로드에 설치돼 있어야 해당 스킬이 일합니다.'
   ].join('\n');
 }
 
@@ -35489,9 +36023,17 @@ function quoteCalc(q){
   // 수량·단가에 소수가 들어와도(예: 1.5롤) 금액은 원 단위로 반올림 — 견적서에 소수점이 남지 않도록.
   const sub=Math.round(q.items.reduce((a,it)=>a+(num(it.qty)*num(it.price)),0));
   const supply=sub;
-  const vat=Math.round(sub*0.1);
-  const total=q.vatIncluded?(supply+vat):supply;
+  let vat=Math.round(sub*0.1);
+  let total=q.vatIncluded?(supply+vat):supply;
+  // v526 작업내역서 견적(q.stmt): 내역서 합계(부가세 포함)가 정본. 단가를 공급가로 역산하면 11개 금액에 1개꼴로 합계가 1원 어긋난다
+  //   (270,000 → 공급가 245,455 + 세액 24,546 = 270,001). 1원 차이까지만 세액에서 맞추고, 품목을 고쳐 2원 이상 달라지면 품목 합이 기준이다.
+  const g=hjStmtGross(q,sub);if(g){vat=g-supply;total=g;}
   return {sub,supply,vat,total};
+}
+function hjStmtGross(q,sub){
+  const s=q&&q.stmt;if(!s||s.vat!=='included'||!q.vatIncluded)return 0;
+  const t=Math.round(num(s.total));if(!(t>0))return 0;
+  return Math.abs(sub+Math.round(sub*0.1)-t)<=1?t:0;
 }
 // 한글 금액
 function won2kor(n){
@@ -36320,8 +36862,9 @@ function viewQuoteMaker(){
   const hjBathLink='<button type="button" class="ghost tiny" id="qmBathroom" style="min-height:44px">🛁 욕실 상담·견적</button>';
   if(!state.editingQuote){
     let html=`<div class="panel-head" style="margin-bottom:12px;justify-content:flex-start;gap:6px;flex-wrap:wrap">
-      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
+      <button class="clay tiny" id="qmNew">+ 새 견적서</button> <button class="ghost tiny" id="qmImport">⬆ 엑셀 견적서 불러오기</button> <button class="ghost tiny" id="qmStmt" style="min-height:44px" title="협력사에 보낸 작업내역서(작업 날짜·위치·작업명·작업비용) 엑셀을 읽어 현장마다 견적(수주) 1건으로 넣습니다">📑 작업내역서 반영</button> <button class="blue tiny" data-qhist="1">📄 견적 이력</button> <button class="ghost tiny" id="qmCompare" style="min-height:44px">📊 비교표</button>${hjBathLink}</div>`;
     html+=`<p class="hint" style="margin:0 0 14px">만물인테리어 양식으로 견적서를 작성합니다. 부가세 포함/별도와 계좌를 고르고, 품목을 추가하세요. 작성한 견적서는 현장에 연결해 매출에 반영하고 PDF로 출력할 수 있습니다.</p>`;
+    html+=hjStmtLedgerHTML();   // v527 📑 작업내역서 장부(협력사에서 받을 돈 · 💰 입금 · 폴더의 내역서 바로 반영)
     if(!state.quotes.length){
       html+=`<div class="empty"><b>작성한 견적서가 없습니다</b>‘+ 새 견적서’로 시작하거나, 견적·정산 탭에서 기존 견적서를 ‘편집기로 열기’ 할 수 있습니다.</div>`;
       return html;
@@ -36331,7 +36874,7 @@ function viewQuoteMaker(){
       const c=quoteCalc(q);
       html+=`<div class="card" style="cursor:default">
         <div class="meta" style="padding:14px">
-          <div class="nm" style="font-size:14px">${hjQuoteTierLabel(q)?'<span data-qtier style="font-size:11px;font-weight:800;color:#fff;background:#0b4ea2;border-radius:999px;padding:1px 7px;margin-right:4px">'+hjQuoteTierLabel(q)+'안</span>':''}${escapeHtml(q.title||'(제목 없음)')}</div>
+          <div class="nm" style="font-size:14px">${hjQuoteTierLabel(q)?'<span data-qtier style="font-size:11px;font-weight:800;color:#fff;background:#0b4ea2;border-radius:999px;padding:1px 7px;margin-right:4px">'+hjQuoteTierLabel(q)+'안</span>':''}${q.stmt?'<span data-qstmt style="font-size:11px;font-weight:800;color:#065f46;background:#d1fae5;border-radius:999px;padding:1px 7px;margin-right:4px" title="'+escapeAttr('📑 '+(q.stmt.doc||'작업내역서')+' '+(q.stmt.date||'')+' · '+(q.stmt.file||''))+'">📑 내역서</span>':''}${escapeHtml(q.title||'(제목 없음)')}</div>
           <div class="sub">${escapeHtml(q.no||'')} · ${escapeHtml(estimateDateSummary(null,q))}</div>
           <div class="ext-info" style="font-size:15px;color:var(--clay);font-weight:700">${won(c.total)}</div>
           <div class="sub">${q.vatIncluded?'부가세 포함':'부가세 별도'} · ${q.project?('🏗️ '+escapeHtml(q.project)):'현장 미연결'}</div>
@@ -36545,6 +37088,961 @@ function syncQuoteToProject(q){
   f.est={amount:c.total,supply:c.supply,vat:c.vat,customer:q.title||'',date:q.date,bizno:COMPANY.bizno,_edited:true};
   f.exSum=!!q.exSum;   // v450 가상 파일은 저장되지 않는다 — Σ 제외는 견적 레코드(q.exSum)가 주인(안 확정·Σ 단추가 같이 쓴다)
   if(q.fromFileId)f._editedFrom=q.fromFileId;else delete f._editedFrom;   // estimateGroups 2차 병합에서 빠진다(quoteCommitEditing v331)
+  if(q.stmt&&q.stmt.key)f._stmt=String(q.stmt.key);else delete f._stmt;   // v526 작업내역서 견적끼리는 같은 금액이어도 사본으로 묶지 않는다(estimateGroups)
+}
+/* ═══════════ v526 📑 작업내역서 반영 — 협력사(누수나라·더케이 등)에 보낸 작업내역서 엑셀을 현장별 견적(매출)으로 ═══════════
+   10/31 대표 요청("내역에 있어 해줘"): 협력사 일감은 견적서 없이 작업내역서(작업 날짜 | 위치 | 작업명 | 작업비용)로 청구한다.
+   손으로 옮기면 한 장에 현장 8곳 — 앱이 엑셀을 읽어 위치 → 현장(동·호수 일치까지 점수)으로 맞추고, 사람이 고른 뒤 현장마다 견적 1건(수주)을 만든다.
+   · 금액: 작업비용 = 부가세 포함 합계(기본 — 내역서 합계가 곧 매출) / 공급가(부가세 10% 따로 받음) 중 사람이 고른다.
+     포함이면 단가는 공급가로 역산하고, 반올림으로 합계가 1원 어긋나는 금액(270,000·1,150,000 등 11개에 1개꼴)은 stmt.total 이 정본(quoteCalc·hjEstBill).
+   · 같은 내역서를 다시 넣어도 두 번 잡히지 않는다 — 이미 들어간 줄(날짜·위치·작업명·금액, 어느 파일이든 — 이름을 바꿔 저장한 사본 '(1).xlsx' 도)은 건너뛰고,
+     같은 파일을 고쳐 줄이 늘었으면 그 현장 견적에 새 줄만 붙인다(이미 있는 품목은 그대로).
+   · 내역서 견적은 다른 견적과 사본으로 묶지 않는다(estimateGroups pairOK · 가상 파일 _stmt) — 같은 현장·같은 금액(우수관 220,000)이 흔해 묶이면 매출이 조용히 사라진다.
+   · 그 현장에 이미 매출로 잡힌 견적(입찰본·비교 견적 등)은 사람이 체크한 것만, 이번에 견적이 생기거나 줄이 붙은 현장에서만 집계 제외 —
+     확인 창이 보여 준 묶음 그대로(엑셀·PDF 사본, 앱 견적은 견적 레코드 exSum). 기본은 손대지 않는다.
+   · 새 현장은 사람이 '＋ 새 현장'을 고른 것만 만든다. 계좌(accountIdx)는 비워 둔다(건별로 사장님이 고른다). */
+const HJ_STMT_CITY_RE=/대전광역시|대전시|대전|세종특별자치시|세종시|세종|청주시|청주|논산시|논산|공주시|공주/g;
+const HJ_STMT_UNIT_STRIP_RE=/\d+\s*동\s*\d+\s*호|\d+\s*호\s*\d+\s*호|\d+\s*-\s*\d+|\d+\s*동(?![가-힣])|\d+\s*호/g;
+const HJ_STMT_UNIT_RES=[/(\d{1,4})\s*동\s*(\d{1,5})\s*호/,/(\d{1,4})\s*호\s*(\d{1,5})\s*호/,/(\d{1,4})\s*-\s*(\d{1,5})(?!\d)/];
+function hjStmtCell(v){return v==null?'':String(v).normalize('NFC').replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim();}
+function hjStmtKey(v){return hjStmtCell(v).replace(/\s+/g,'');}
+// 금액 칸: 숫자·'1,000,000'·'1,000,000원'·'₩300,000'·'30만원'·'300,000원(VAT포함)' → 원, '서비스'·'무상' → 0, 그 밖(빈칸·글자) → null
+function hjStmtAmt(v){
+  if(typeof v==='number')return isFinite(v)?Math.round(v):null;
+  let s=hjStmtCell(v);if(!s)return null;
+  if(/서비스|무상|무료/.test(s))return 0;
+  s=s.replace(/\([^)]*\)/g,'').replace(/[₩\\,\s]/g,'').replace(/(vat|부가세)(포함|별도)?/ig,'');
+  if(/^-?\d{1,3}(\.\d{3})+원?$/.test(s))s=s.replace(/\./g,'');   // '1.300.000' — 점을 천 단위 구분으로 쓴 금액
+  const m=s.match(/^(-?\d+(?:\.\d+)?)만원?$/);if(m)return Math.round(+m[1]*10000);
+  s=s.replace(/원$/,'');
+  return /^-?\d+(\.\d+)?$/.test(s)?Math.round(+s):null;
+}
+// 날짜 칸: 엑셀 일련번호·Date·'2026-10-13'·'2026.10.13'·'10/13'·'9월 7일' → 'YYYY-MM-DD' ('미기재' 등은 '')
+function hjStmtDate(v,year){
+  if(v==null||v==='')return '';
+  if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*86400000));return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());}
+  if(v instanceof Date&&!isNaN(v))return localDate(new Date(v.getTime()+12*3600000));
+  const s=hjStmtCell(v);let m;
+  if((m=s.match(/(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/)))return m[1]+'-'+pad(+m[2])+'-'+pad(+m[3]);
+  if(year&&(m=s.match(/^(\d{1,2})\s*[/.월]\s*(\d{1,2})\s*일?/))&&+m[1]>=1&&+m[1]<=12&&+m[2]>=1&&+m[2]<=31)return year+'-'+pad(+m[1])+'-'+pad(+m[2]);
+  return '';
+}
+function hjStmtUnit(loc){
+  const s=hjStmtCell(loc);
+  for(const re of HJ_STMT_UNIT_RES){const m=s.match(re);if(m)return {dong:String(+m[1]),ho:String(+m[2])};}
+  const d=s.match(/(\d{1,4})\s*동(?![가-힣])/);
+  return d?{dong:String(+d[1]),ho:''}:null;
+}
+function hjStmtNormName(s){
+  return hjStmtCell(s).toLowerCase().replace(/\([^)]*\)/g,' ').replace(HJ_STMT_UNIT_STRIP_RE,' ').replace(HJ_STMT_CITY_RE,' ')
+    .replace(/아파트|apt/g,' ').replace(/[^가-힣a-z0-9]/g,'');
+}
+function hjStmtCore(loc){const m=hjStmtCell(loc).match(/([가-힣A-Za-z0-9]{2,})\s*아파트/);return m?hjStmtNormName(m[1]):'';}
+function hjStmtSim(a,b){
+  if(!a||!b)return 0;
+  if(a===b)return 1;
+  const short=a.length<b.length?a:b,long=a.length<b.length?b:a;
+  if(short.length>=2&&long.indexOf(short)>=0)return 0.75+0.25*short.length/long.length;
+  const bi=s=>{const o=[];for(let i=0;i+1<s.length;i++)o.push(s.substr(i,2));return o;};
+  const A=bi(a),pool=bi(b),n=A.length+pool.length;if(!A.length||!pool.length)return 0;
+  let hit=0;A.forEach(x=>{const i=pool.indexOf(x);if(i>=0){hit++;pool.splice(i,1);}});
+  return 2*hit/n;
+}
+// 새 현장 이름 제안: 동·호수·도시·앞쪽 동네 이름(○○동)을 빼고 아파트 이름만 — '새벽동 모란아파트 303-704' → '모란아파트'
+function hjStmtNewName(loc){
+  const s=hjStmtCell(loc).replace(/\([^)]*\)/g,' ').replace(HJ_STMT_UNIT_STRIP_RE,' ').replace(HJ_STMT_CITY_RE,' ');
+  return s.split(/\s+/).filter(Boolean).filter(t=>!/^[가-힣]{1,4}동$/.test(t)).join(' ').trim().slice(0,40);
+}
+// 위치 한 줄 → 현장 후보 [{name,score,why}] (점수순). 동·호수가 그 현장에 등록돼 있으면 +0.35, 같은 점수면 자료가 많은 현장 먼저.
+//   사진·견적이 하나도 없는 현장은 −0.2 — 10/31 실자료에 동네 이름이나 호수가 붙은 빈 중복 현장('솔동보람아파트'·'보람아파트 101호' 꼴)이 있고
+//   실제 사진·견적은 원래 현장('보람아파트')에 있다(이름이 더 똑같아도 빈 현장으로 보내지 않는다 — 고르는 건 사람).
+function hjStmtMatch(loc){
+  const locN=hjStmtNormName(loc),core=hjStmtCore(loc),unit=hjStmtUnit(loc);
+  const cnt={};(state.files||[]).forEach(f=>{if(f&&f.project)cnt[f.project]=(cnt[f.project]||0)+1;});
+  (state.quotes||[]).forEach(q=>{if(q&&q.project)cnt[q.project]=(cnt[q.project]||0)+1;});
+  const out=[];
+  (state.projects||[]).forEach(p=>{
+    if(!p||!p.name||p.archived)return;
+    const pN=hjStmtNormName(p.name);if(pN.length<2)return;
+    let score=hjStmtSim(locN,pN);const why=[];
+    if(core.length>=2&&pN.indexOf(core)===0&&score<0.6)score=0.6;
+    if(score<0.34)return;
+    if(unit&&unit.ho){
+      let hit=false;try{hit=aptUnitList(p).some(u=>u&&u.type==='unit'&&String(+u.dong)===unit.dong&&String(+u.ho)===unit.ho);}catch(e){}
+      if(!hit){const ap=aptNameParse(p.name);hit=!!(ap&&ap.dong===unit.dong&&ap.ho===unit.ho);}
+      if(hit){score+=0.35;why.push('세대 '+unit.dong+'동 '+unit.ho+'호 있음');}
+    }
+    if(!cnt[p.name]){score-=0.2;why.push('사진·견적 없는 현장');}
+    score+=Math.min(cnt[p.name]||0,999)/1e6;
+    out.push({name:p.name,score,why:why.join(' · ')});
+  });
+  out.sort((a,b)=>b.score-a.score||String(a.name).localeCompare(String(b.name)));
+  return out;
+}
+/* 시트 여러 장 → 내역서 한 벌. 반환 {file,to,date,lines:[{d,loc,work,amt,sheet}],stated,sum,sheets,skippedSheets,warn,vatHint}.
+   · 머리글 줄(위치·작업명·날짜 중 둘 + 작업비용/금액)을 찾아 그 칸만 읽는다 — 병합 셀 양식(값이 0·3·6·9 칸)도 같다. 후보 줄에서 작업 줄이 안 나오면 다음 후보.
+     금액 칸은 '작업비용' > 청구·공사금액 > '금액' > '공급가액' > …비/비용 순('자재비용 | 작업비용' 이면 작업비용). '합계금액'처럼 합계 이름은 머리글 금액이 아니다.
+   · 날짜·위치가 빈 줄은 위 줄을 잇는다(같은 세대의 두 번째 작업). 금액이 빈 줄은 위 줄 작업명에 붙인다('화장실 방수 (2차)').
+   · 소계 줄은 건너뛴다. 합계·총계·총액·계·청구금액 줄은 내역서 합계(stated, 마지막 것)로 두고 계속 읽는다(구역별 합계 + 총계 양식).
+     이름 없이 금액만 있는 줄이 지금까지 합(또는 이 구역 합)과 같으면 합계·소계로 본다. 공급가액·부가세 줄은 건너뛴다. '비고'에서 멈춘다.
+   · 시트가 여럿이면 다른 시트와 같은 줄은 한 번만 센다(개별 시트 + 통합본 — 이름이 '전체'여도). 다른 시트 줄을 모두 담은 시트가 있으면 그 시트가 먼저다. */
+const HJ_STMT_TOTAL_RE=/^(합계|총계|총합계|총액|총금액|총공사금액|청구금액|청구액|합계금액|total|grandtotal)/i;
+const HJ_STMT_SUMROW_RE=/^(공급가액|공급가|부가세|부가가치세|세액|vat)/i;
+const HJ_STMT_AMT_KEYS=[/^작업비용$/,/^(청구금액|공사금액|작업금액)$/,/^금액$/,/^공급가액$/,/(작업비|공사비|시공비)$/,/(금액|비용)$/];
+function hjStmtHeaderAt(row){
+  const c={},keys=(row||[]).map(hjStmtKey);
+  keys.forEach((k,i)=>{if(!k)return;
+    if(c.loc==null&&/(위치|현장명|현장|주소|장소)$/.test(k))c.loc=i;
+    else if(c.work==null&&/(작업명|작업내용|공사내용|품목|내용|항목)$/.test(k))c.work=i;
+    else if(c.date==null&&/(작업날짜|날짜|일자|작업일|시공일)$/.test(k))c.date=i;
+    else if(c.price==null&&/단가$/.test(k))c.price=i;
+    else if(/^(세액|부가세)$/.test(k))c.tax=i;
+    else if(k==='월')c.mon=i;else if(k==='일')c.day=i;});
+  for(const re of HJ_STMT_AMT_KEYS){
+    const i=keys.findIndex((k,j)=>k&&re.test(k)&&!HJ_STMT_TOTAL_RE.test(k)&&j!==c.loc&&j!==c.work&&j!==c.date&&j!==c.price);
+    if(i>=0){c.amt=i;c.amtKey=keys[i];break;}
+  }
+  if(c.amt==null&&c.price!=null){c.amt=c.price;c.amtKey='단가';}
+  return c.amt!=null&&(c.work!=null||c.date!=null)&&(c.loc!=null||c.work!=null)?c:null;
+}
+function hjStmtReadRows(grid,hr,col,name,fallbackYear){
+  const out={name,lines:[],stated:null,to:'',date:'',site:'',workDate:'',vatHint:'',badAmt:[]};
+  // 머리글 위: 받는 분 · 작성일 · (위치 칸이 없을 때) 현장명 · 공사일자
+  const after=(row,i)=>{for(let j=i+1;j<row.length;j++){if(hjStmtCell(row[j])!==''||typeof row[j]==='number')return row[j];}return '';};
+  for(let r=0;r<(hr<0?Math.min(grid.length,15):hr);r++){
+    const row=grid[r]||[];
+    row.forEach((v,i)=>{const k=hjStmtKey(v);
+      if(!out.to&&/^(받는분|수신|수신처|거래처)$/.test(k))out.to=hjStmtCell(after(row,i)).replace(/^귀하$/,'');
+      if(!out.date&&/^(작성일|작성일자|청구일)$/.test(k))out.date=hjStmtDate(after(row,i),fallbackYear);
+      if(!out.site&&/^(현장명|공사명|현장)$/.test(k))out.site=hjStmtCell(after(row,i));
+      if(!out.workDate&&/^(공사일자|작업일자|시공일|공사기간)$/.test(k))out.workDate=hjStmtDate(after(row,i),fallbackYear);});
+  }
+  if(hr<0||!col)return out;
+  const year=(out.date||out.workDate||'').slice(0,4)||fallbackYear;
+  let prev=null,run=0,sec=0,sawTotal=false,taxSum=0;
+  for(let r=hr+1;r<grid.length;r++){
+    const row=grid[r]||[],keys=row.map(hjStmtKey),first=keys.find(k=>k)||'';
+    if(!first)continue;
+    if(/^비고/.test(first))break;
+    if(keys.some(k=>/소계/.test(k))){sec=0;prev=null;continue;}
+    const amt=hjStmtAmt(row[col.amt]);
+    if(HJ_STMT_TOTAL_RE.test(first)||first==='계'){
+      let a=amt;if(a==null)for(let j=row.length-1;j>=0&&a==null;j--){const x=hjStmtAmt(row[j]);if(x)a=x;}
+      if(a!=null)out.stated=a;sawTotal=true;sec=0;prev=null;continue;
+    }
+    if(HJ_STMT_SUMROW_RE.test(first))continue;
+    const dRaw=col.date!=null?row[col.date]:'',dTxt=hjStmtCell(dRaw),work=col.work!=null?hjStmtCell(row[col.work]):'';
+    const locCell=col.loc!=null?hjStmtCell(row[col.loc]):'',amtRaw=hjStmtCell(row[col.amt]);
+    if(col.tax!=null){const t=hjStmtAmt(row[col.tax]);if(t>0)taxSum+=t;}
+    // 이름 없이 금액만 있는 줄 = 지금까지 합(합계) 또는 이 구역 합(소계)
+    if(amt!=null&&amt>0&&!work&&!locCell&&!dTxt&&out.lines.length&&(amt===run||amt===sec)){if(amt===run){out.stated=amt;sawTotal=true;}sec=0;prev=null;continue;}
+    if(amt==null){
+      if(amtRaw)out.badAmt.push(amtRaw);   // 글자는 있는데 금액으로 못 읽은 칸 — 확인 창에 알린다(조용히 사라지지 않게)
+      if(!sawTotal&&work&&prev&&(col.loc==null||!locCell||locCell===prev.loc))prev.work=(prev.work?prev.work+' · ':'')+work;
+      continue;
+    }
+    const mo=col.mon!=null?+hjStmtCell(row[col.mon]):0,dy=col.day!=null?+hjStmtCell(row[col.day]):0;   // 세금계산서 품목표: 월 | 일 칸
+    const d=col.date==null?(mo>=1&&mo<=12&&dy>=1&&dy<=31?year+'-'+pad(mo)+'-'+pad(dy):(col.mon!=null&&prev?prev.d:(out.workDate||''))):(dTxt||typeof dRaw==='number'?hjStmtDate(dRaw,year):(prev?prev.d:''));
+    // 위치: 칸 값 → 위 줄 → (위치 칸이 없으면) 머리글 위 현장명 → 품목 글자 그대로(세금계산서 품목에 '아파트 동·호'가 들어 있다)
+    const loc=col.loc!=null?(locCell||(prev?prev.loc:'')):(out.site||work);
+    const line={d,loc,work:work+(amt===0&&/서비스|무상|무료/.test(amtRaw)&&!/서비스/.test(work)?'(서비스)':''),amt,sheet:name};
+    out.lines.push(line);prev=line;run+=amt;sec+=amt;
+  }
+  // 금액 칸이 '공급가액'이거나 세액 칸에 금액이 있으면 공급가(부가세 별도) 양식 — 확인 창의 기본값만 바꾼다
+  if(col.amtKey==='공급가액'||taxSum>0)out.vatHint='separate';
+  return out;
+}
+function hjStmtParseSheet(grid,name,fallbackYear){
+  grid=Array.isArray(grid)?grid:[];
+  let first=null;
+  for(let r=0;r<Math.min(grid.length,40);r++){
+    const col=hjStmtHeaderAt(grid[r]);if(!col)continue;
+    const res=hjStmtReadRows(grid,r,col,name,fallbackYear);
+    if(res.lines.length)return res;
+    if(!first)first=res;
+  }
+  return first||hjStmtReadRows(grid,-1,null,name,fallbackYear);
+}
+function hjStmtParse(sheets,fileName){
+  const fn=hjStmtCell(fileName);
+  const fm=fn.match(/(20\d{2})(\d{2})(\d{2})/);
+  const fileYear=fm?fm[1]:String(new Date().getFullYear());
+  const parsed=(sheets||[]).map(s=>hjStmtParseSheet(s.grid,s.name,fileYear)).filter(s=>s.lines.length);
+  const warn=[];
+  const covers=(a,b)=>{const m=new Map();a.lines.forEach(l=>{const k=hjStmtLineId(l);m.set(k,(m.get(k)||0)+1);});return b.lines.every(l=>{const k=hjStmtLineId(l),n=m.get(k)||0;if(!n)return false;m.set(k,n-1);return true;});};
+  const sup=parsed.length>1?parsed.find(a=>parsed.every(b=>b===a||covers(a,b))):null;
+  const order=sup?[sup].concat(parsed.filter(s=>s!==sup)):parsed;
+  const seen=new Map(),used=[],skipped=[];let lines=[],statedSum=0,statedOK=true;
+  order.forEach(s=>{
+    const mine=new Map(),kept=[];let dropped=0;
+    s.lines.forEach(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);dropped++;return;}kept.push(l);mine.set(k,(mine.get(k)||0)+1);});
+    mine.forEach((n,k)=>seen.set(k,(seen.get(k)||0)+n));
+    if(!kept.length){skipped.push(s.name);return;}
+    used.push(s.name);lines=lines.concat(kept);
+    if(dropped){statedOK=false;warn.push('시트 ‘'+s.name+'’의 줄 '+dropped+'개는 다른 시트와 같아 한 번만 셌습니다.');}
+    else if(s.stated==null)statedOK=false;else statedSum+=s.stated;
+  });
+  if(skipped.length)warn.push('시트 '+skipped.map(n=>'‘'+n+'’').join(', ')+'는 다른 시트와 같은 줄이라 건너뛰었습니다.');
+  const stated=used.length&&statedOK?statedSum:(used.length===1?(order.find(s=>s.name===used[0])||{}).stated:null);
+  const head=order.find(s=>used.includes(s.name)&&(s.to||s.date))||order.find(s=>s.to||s.date)||{};
+  const toFromName=(fn.replace(/\.[^.]+$/,'').match(/20\d{6}_([^_]+)$/)||[])[1]||'';   // '작업내역서20261030_시험누수.xlsx' → 시험누수
+  const date=head.date||(fm?fm[1]+'-'+fm[2]+'-'+fm[3]:localDate());
+  const to=(head.to&&!/^(미기재|현장별)/.test(head.to)?head.to:'')||(/내역|견적|계산서|명세|사진/.test(toFromName)?'':toFromName);   // '20261021_공사내역서' 는 거래처가 아니다
+  const sum=lines.reduce((a,l)=>a+l.amt,0);
+  if(stated!=null&&stated!==sum)warn.push('내역서 합계 '+hjNum(stated)+'원과 줄 금액 합 '+hjNum(sum)+'원이 다릅니다 — 원본을 확인하세요.');
+  if(lines.some(l=>!l.loc))warn.push('위치가 빈 줄이 있습니다 — 그 줄은 현장을 직접 고르세요.');
+  const bad=[].concat(...order.filter(s=>used.includes(s.name)).map(s=>s.badAmt||[]));
+  if(bad.length)warn.push('금액으로 읽지 못한 칸 '+bad.length+'개('+bad.slice(0,3).map(x=>'‘'+x+'’').join(', ')+') — 그 줄은 빠졌습니다. 원본을 고쳐 다시 넣으세요.');
+  const vatHint=order.some(s=>used.includes(s.name)&&s.vatHint==='separate')?'separate':'included';
+  if(vatHint==='separate')warn.push('금액 칸이 공급가액(세액 따로)인 양식입니다 — 부가세를 \'공급가\'로 골라 두었습니다.');
+  return {file:fn,to,date,lines,stated,sum,sheets:used,skippedSheets:skipped,warn,vatHint};
+}
+// 위치별 묶음 + 현장 후보·기본 선택. done = 이미 반영된 '파일#현장'
+function hjStmtGroups(r){
+  const by=new Map();
+  (r.lines||[]).forEach(l=>{const k=l.loc||'(위치 없음)';if(!by.has(k))by.set(k,{loc:l.loc,lines:[]});by.get(k).lines.push(l);});
+  return [...by.values()].map(g=>{
+    const cands=hjStmtMatch(g.loc).slice(0,6);
+    const suggest=g.loc?hjStmtNewName(g.loc):'';
+    const best=cands[0];
+    let choice='';
+    if(best&&best.score>=0.5)choice=best.name;
+    else if(suggest&&suggest.length>=2&&!(state.projects||[]).some(p=>p.name===suggest))choice='__new__:'+suggest;
+    else if(best)choice=best.name;
+    return {loc:g.loc,lines:g.lines,cands,suggest,choice,unit:hjStmtUnit(g.loc)};
+  });
+}
+function hjStmtLineId(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work),Math.round(num(l&&l.amt))].join('|');}
+// 내역서 견적의 원본 파일 이름 — stmt.src(v526), 없으면 key 의 마지막 '#' 앞(파일 이름에 '#'이 있어도)
+function hjStmtSrcOf(q){const s=q&&q.stmt;if(!s)return '';if(s.src)return String(s.src);const k=String(s.key||''),i=k.lastIndexOf('#');return i>0?k.slice(0,i):k;}
+function hjStmtPrices(amts,vat){
+  if(vat==='separate')return amts.slice();
+  const A=amts.reduce((a,b)=>a+b,0);
+  const sub=quoteSupplyForTotal(A),target=sub!=null?sub:Math.round(A/1.1);
+  const p=amts.map(a=>Math.round(a/1.1));
+  let mi=0;amts.forEach((a,i)=>{if(Math.abs(a)>Math.abs(amts[mi]))mi=i;});
+  if(p.length)p[mi]+=target-p.reduce((a,b)=>a+b,0);
+  return p;
+}
+function hjStmtMd(d){const m=String(d||'').match(/^\d{4}-(\d{2})-(\d{2})/);return m?(+m[1])+'/'+(+m[2]):'';}
+// 현장 1곳의 내역 줄 → 앱 견적 1건(수주). o={src,file,doc,to,date,vat,project,lines,flag}
+function hjStmtBuildQuote(o){
+  const lines=o.lines||[],amts=lines.map(l=>Math.round(num(l.amt))),A=amts.reduce((a,b)=>a+b,0);
+  const prices=hjStmtPrices(amts,o.vat);
+  const locs=[...new Set(lines.map(l=>hjStmtCell(l.loc)).filter(Boolean))];
+  const doc=o.doc||'작업내역서',to=hjStmtCell(o.to);
+  const memo=[doc+' '+o.date+(to?' · '+to:'')+' — 📑 작업내역서 반영','원본: '+(o.file||o.src),
+    o.vat==='separate'?'작업비용 = 공급가(부가세 10% 따로 받음) → 견적 합계 = 공급가 + 부가세':'작업비용 = 부가세 포함 합계(내역서 합계 그대로 매출)',
+    ...(o.flag?['확인: '+o.flag]:[])].join('\n');
+  return {id:uid(),title:(doc+' '+to+' '+hjStmtMd(o.date)+' · '+o.project).replace(/\s+/g,' ').trim(),no:hjQuoteNextNo(o.date),date:o.date,place:locs.join(' / '),
+    vatIncluded:true,accountIdx:null,memo,project:o.project,
+    items:lines.map((l,i)=>({name:hjStmtCell(l.work)||hjStmtCell(l.loc)||'작업',spec:((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(hjStmtCell(l.loc)!==hjStmtCell(l.work)?hjStmtCell(l.loc):'')).trim(),qty:1,price:prices[i]})),
+    createdAt:new Date().toISOString(),result:'won',
+    stmt:{v:1,doc,to,date:o.date,file:o.file||o.src,src:o.src,key:o.src+'#'+o.project,vat:o.vat==='separate'?'separate':'included',
+      total:o.vat==='separate'?A+Math.round(A*0.1):A,lines:lines.map(l=>({d:l.d||'',loc:hjStmtCell(l.loc),work:hjStmtCell(l.work),amt:Math.round(num(l.amt))})),...(o.flag?{check:o.flag}:{})}};
+}
+// 견적 파일 f 가 든 매출 묶음(estimateGroups — 앱 견적 가상 파일 포함, 확인 창과 같은 묶음)의 구성원
+function hjStmtEstGroupOf(f){
+  try{
+    const files=(state.files||[]).filter(x=>x&&x.kind==='estimate'&&(x.project||'')===(f.project||''));
+    const g=estimateGroups(files).find(g=>g.rep===f||(g.dups||[]).includes(f));
+    return g?[g.rep].concat(g.dups||[]):[f];
+  }catch(e){return [f];}
+}
+// 그 현장에서 지금 매출로 잡힌 견적 묶음(작업내역서 견적 제외) — 체크하면 사본까지 집계 제외
+function hjStmtExistingEst(project){
+  try{
+    const files=(state.files||[]).filter(f=>f&&f.kind==='estimate'&&f.project===project);
+    return estimateGroups(files).filter(g=>g.rep&&!g.rep._stmt).map(g=>({id:g.rep.id,name:g.rep._fromQuote?String(g.rep.name||'').replace(/^\[견적서\]\s*/,'').replace(/\.pdf$/,'')+' (앱 견적)':g.rep.name,amount:num(g.rep.est&&g.rep.est.amount),members:[g.rep].concat(g.dups||[]),quote:!!g.rep._fromQuote}));
+  }catch(e){return [];}
+}
+// 같은 '파일#현장' 견적에 새 줄만 붙인다(내역서를 고쳐 줄이 늘었을 때) — 이미 있는 품목은 손대지 않고, 부가세 포함이면 새로 붙인 마지막 품목만 1원 단위로 맞춘다
+function hjStmtAppend(q,lines){
+  const st=q.stmt,vat=st.vat==='separate'?'separate':'included';
+  const amts=lines.map(l=>Math.round(num(l.amt))),prices=hjStmtPrices(amts,vat);
+  lines.forEach((l,i)=>q.items.push({name:hjStmtCell(l.work)||hjStmtCell(l.loc)||'작업',spec:((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(hjStmtCell(l.loc)!==hjStmtCell(l.work)?hjStmtCell(l.loc):'')).trim(),qty:1,price:prices[i]}));
+  st.lines=(st.lines||[]).concat(lines.map(l=>({d:l.d||'',loc:hjStmtCell(l.loc),work:hjStmtCell(l.work),amt:Math.round(num(l.amt))})));
+  const tot=st.lines.reduce((a,l)=>a+Math.round(num(l.amt)),0);
+  st.total=vat==='separate'?tot+Math.round(tot*0.1):tot;
+  if(vat==='included'&&lines.length){
+    const sub=Math.round(q.items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
+    const want=quoteSupplyForTotal(st.total),target=want!=null?want:Math.round(st.total/1.1);
+    if(Math.abs(target-sub)<=lines.length+1)q.items[q.items.length-1].price+=target-sub;   // 손으로 고친 견적이면(차이가 크면) 그대로 둔다
+  }
+  st.updatedAt=new Date().toISOString();
+  const have=String(q.place||'').split(' / ').filter(Boolean);
+  lines.forEach(l=>{const c=hjStmtCell(l.loc);if(c&&!have.includes(c))have.push(c);});
+  q.place=have.join(' / ');
+}
+/* 반영 — plan={src,file,doc,to,date,vat,groups:[{loc,lines,choice}],exclude:[견적 파일 id(앱 견적은 'quote_<id>')]}.
+   반환 {quotes,appended,newProjects,skipped:[{project,why}],dupLines,excluded,total} · 화면을 다시 그리고 저장 표시만 한다(파일 쓰기는 평소 자동 저장).
+   · 이미 들어간 줄(어느 내역서 견적이든 같은 날짜·위치·작업명·금액)은 건너뛴다 — 파일 이름이 달라도.
+   · 같은 '파일#현장' 견적이 있으면 새 줄만 그 견적에 붙인다. 새 현장은 실제로 견적이 생길 때만 만든다.
+   · 체크한 기존 견적은 이번에 견적이 생기거나 줄이 붙은 현장의 것만, 확인 창의 묶음 그대로(사본·앱 견적 포함) 집계 제외. 내역서 견적은 건드리지 않는다. */
+function hjStmtApply(plan){
+  const src=hjStmtCell(plan.src||plan.file);if(!src)throw new Error('파일 이름이 없습니다');
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(String(plan.date||''))?plan.date:localDate();
+  const vat=plan.vat==='separate'?'separate':'included';
+  const res={quotes:[],appended:[],newProjects:[],skipped:[],dupLines:0,excluded:0,total:0};
+  const stmtQs=(state.quotes||[]).filter(q=>q&&q.stmt);
+  const seen=new Map();stmtQs.forEach(q=>(q.stmt.lines||[]).forEach(l=>{const k=hjStmtLineId(l);seen.set(k,(seen.get(k)||0)+1);}));
+  const byP=new Map();
+  (plan.groups||[]).forEach(g=>{
+    let p=String(g.choice||''),isNew=false;if(!p)return;
+    if(p.indexOf('__new__:')===0){p=hjStmtCell(p.slice(8)).slice(0,60);if(!p)return;isNew=!(state.projects||[]).some(x=>x.name===p);}
+    else if(!(state.projects||[]).some(x=>x.name===p))return;
+    if(!byP.has(p))byP.set(p,{lines:[],isNew});
+    byP.get(p).lines.push(...(g.lines||[]));
+  });
+  const got=new Set();
+  byP.forEach((o,project)=>{
+    const left=o.lines.filter(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);res.dupLines++;return false;}return true;});
+    if(!left.length){res.skipped.push({project,why:'이미 반영된 줄'});return;}
+    if(o.isNew&&ensureProjectExists(project))res.newProjects.push(project);
+    const ex=stmtQs.find(q=>q.project===project&&hjStmtSrcOf(q)===src);
+    if(ex){const before=quoteCalc(ex).total;hjStmtAppend(ex,left);syncQuoteToProject(ex);res.appended.push(ex);res.total+=quoteCalc(ex).total-before;got.add(project);return;}
+    const q=hjStmtBuildQuote({src,file:plan.file||src,doc:plan.doc,to:plan.to,date,vat,project,lines:left,flag:(plan.flags&&plan.flags[project])||''});
+    state.quotes.push(q);syncQuoteToProject(q);
+    res.quotes.push(q);res.total+=quoteCalc(q).total;got.add(project);
+  });
+  (plan.exclude||[]).forEach(id=>{
+    const f=(state.files||[]).find(x=>x&&x.id===id&&x.kind==='estimate');
+    if(!f||f._stmt||!got.has(f.project||''))return;
+    let n=0;
+    hjStmtEstGroupOf(f).forEach(m=>{
+      if(!m||m._stmt)return;
+      if(m._fromQuote){const q=(state.quotes||[]).find(x=>x&&'quote_'+x.id===m.id);if(q&&!q.exSum&&!q.stmt){q.exSum=true;syncQuoteToProject(q);n++;}}
+      else if(!m.exSum){m.exSum=true;n++;}
+    });
+    if(n)res.excluded++;
+  });
+  if(res.quotes.length||res.appended.length||res.excluded||res.newProjects.length)markDirty();
+  return res;
+}
+async function hjStmtReadFile(file){
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+  const sheets=(wb.SheetNames||[]).map(n=>({name:n,grid:XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,blankrows:false,defval:'',raw:true})}));
+  return hjStmtParse(sheets,file.name);
+}
+async function hjStmtImportPick(){
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return;}
+  const inp=document.createElement('input');inp.type='file';inp.accept='.xlsx,.xls';
+  inp.onchange=async()=>{
+    const file=inp.files&&inp.files[0];if(!file)return;
+    let r;try{r=await hjStmtReadFile(file);}catch(e){toast('작업내역서를 읽지 못했습니다: '+((e&&e.message)||e));return;}
+    hjStmtReview(r);
+  };
+  inp.click();
+}
+function hjStmtReview(r){
+  if(!r||!r.lines||!r.lines.length){
+    openModal('📑 작업내역서 반영','<p style="font-size:13px;line-height:1.6">‘'+escapeHtml((r&&r.file)||'파일')+'’에서 작업 줄을 찾지 못했습니다.</p><p class="hint" style="font-size:12px;line-height:1.6">머리글 줄에 <b>위치</b>와 <b>작업비용</b>(또는 금액), 그리고 <b>작업명</b>이나 <b>작업 날짜</b> 칸이 있어야 합니다 — 작업내역서 양식(작업 날짜 | 위치 | 작업명 | 작업비용) 그대로면 됩니다.</p>');
+    return;
+  }
+  const groups=hjStmtGroups(r);
+  const cur={r,groups,exclude:new Set()};window.__hjStmtCur=cur;
+  const projOpts=(g)=>{
+    const names=new Set(),o=[];
+    g.cands.forEach(c=>{names.add(c.name);o.push(`<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}${c.why?' · '+escapeHtml(c.why):''}</option>`);});
+    if(g.suggest&&g.suggest.length>=2&&!(state.projects||[]).some(p=>p.name===g.suggest))o.push(`<option value="${escapeAttr('__new__:'+g.suggest)}">＋ 새 현장: ${escapeHtml(g.suggest)}</option>`);
+    o.push('<option value="">— 반영 안 함</option>');
+    const rest=(state.projects||[]).filter(p=>p&&p.name&&!p.archived&&!names.has(p.name)).map(p=>p.name).sort((a,b)=>a.localeCompare(b,'ko'));
+    if(rest.length)o.push('<optgroup label="다른 현장">'+rest.map(n=>`<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('')+'</optgroup>');
+    return o.join('');
+  };
+  const gHtml=groups.map((g,i)=>{
+    const sum=g.lines.reduce((a,l)=>a+l.amt,0);
+    return `<div class="stmt-group" data-stmt-g="${i}" style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin:0 0 8px">
+      <div style="font-weight:700;font-size:13px">📍 ${escapeHtml(g.loc||'(위치 없음)')} <span style="float:right">${won(sum)}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 6px;line-height:1.5">${g.lines.map(l=>escapeHtml((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(l.work||'작업')+' '+hjNum(l.amt))).join('<br>')}</div>
+      <select data-stmt-proj="${i}" aria-label="${escapeAttr((g.loc||'위치 없음')+' 현장 선택')}" style="width:100%;min-height:44px;font-size:16px">${projOpts(g)}</select>
+      <div class="hint" data-stmt-note="${i}" style="font-size:11.5px;margin-top:4px"></div>
+    </div>`;
+  }).join('');
+  const body=`<div class="stmt-review">
+    <p style="font-size:13px;line-height:1.6;margin:0 0 8px">‘${escapeHtml(r.file)}’ · 줄 ${r.lines.length}개 · 줄 합 <b>${won(r.sum)}</b>${r.stated!=null?' · 내역서 합계 '+won(r.stated):''}${r.sheets.length>1||(r.skippedSheets||[]).length?' · 읽은 시트 '+escapeHtml(r.sheets.join(', ')):''}</p>
+    ${r.warn.map(w=>`<p class="hint" style="font-size:12px;color:#b45309;margin:0 0 6px">⚠ ${escapeHtml(w)}</p>`).join('')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px">
+      <label style="font-size:12px;display:flex;flex-direction:column;gap:2px;flex:1 1 140px">받는 분<input id="stmtTo" value="${escapeAttr(r.to||'')}" style="min-height:44px;font-size:16px"></label>
+      <label style="font-size:12px;display:flex;flex-direction:column;gap:2px;flex:1 1 140px">작성일(매출 월)<input id="stmtDate" type="date" value="${escapeAttr(r.date||'')}" style="min-height:44px;font-size:16px"></label>
+    </div>
+    <fieldset style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin:0 0 10px"><legend style="font-size:12px">작업비용의 부가세</legend>
+      <label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:13px"><input type="radio" name="stmtVat" value="included"${r.vatHint==='separate'?'':' checked'}> 부가세 포함 합계 — 내역서 합계가 곧 매출</label>
+      <label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:13px"><input type="radio" name="stmtVat" value="separate"${r.vatHint==='separate'?' checked':''}> 공급가 — 부가세 10%를 따로 받음(세금계산서)</label>
+    </fieldset>
+    ${gHtml}
+    <div id="stmtExisting"></div>
+    <p class="hint" id="stmtSummary" style="font-size:12.5px;margin:8px 0 0"></p>
+  </div>`;
+  openModal('📑 작업내역서 반영',body,[
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'반영',cls:'blue',fn:()=>{
+      const root=$('#modalRoot');
+      const plan={src:r.file,file:r.file,doc:'작업내역서',to:hjStmtCell((root.querySelector('#stmtTo')||{}).value||''),date:(root.querySelector('#stmtDate')||{}).value||r.date,
+        vat:((root.querySelector('input[name="stmtVat"]:checked')||{}).value)==='separate'?'separate':'included',
+        groups:cur.groups.map(g=>({loc:g.loc,lines:g.lines,choice:g.choice})),exclude:[...cur.exclude]};
+      let res;try{res=hjStmtApply(plan);}catch(e){toast('반영하지 못했습니다: '+((e&&e.message)||e));return;}
+      closeModal();render();
+      toast('📑 작업내역서 반영: 새 견적 '+res.quotes.length+'건'+(res.appended.length?' · 기존 견적에 줄 추가 '+res.appended.length+'건':'')+' · '+won(res.total)+(res.newProjects.length?' · 새 현장 '+res.newProjects.length:'')+(res.excluded?' · 기존 견적 '+res.excluded+'건 집계 제외':'')+(res.dupLines?' · 이미 반영된 줄 '+res.dupLines+'개 건너뜀':''));
+    }}],true);
+  const root=$('#modalRoot');
+  const refresh=()=>{
+    const src=hjStmtCell(r.file);
+    // 이미 들어간 줄(어느 내역서 견적이든) — 반영(hjStmtApply)과 같은 기준으로 미리 보여 준다
+    const seen=new Map();(state.quotes||[]).forEach(q=>{if(q&&q.stmt)(q.stmt.lines||[]).forEach(l=>{const k=hjStmtLineId(l);seen.set(k,(seen.get(k)||0)+1);});});
+    const pOf=g=>g.choice.indexOf('__new__:')===0?hjStmtCell(g.choice.slice(8)):g.choice;
+    const newBy={},lineN={};
+    cur.groups.forEach((g,i)=>{
+      let dup=0,fresh=0,amt=0;
+      if(g.choice)g.lines.forEach(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);dup++;}else{fresh++;amt+=l.amt;}});
+      lineN[i]={dup,fresh};
+      if(g.choice&&fresh){const p=pOf(g);newBy[p]=(newBy[p]||0)+amt;}
+    });
+    cur.groups.forEach((g,i)=>{const n=root.querySelector('[data-stmt-note="'+i+'"]');if(!n)return;
+      const p=pOf(g),ln=lineN[i],app=(state.quotes||[]).some(q=>q&&q.stmt&&q.project===p&&hjStmtSrcOf(q)===src);
+      n.textContent=!g.choice?'반영하지 않습니다'
+        :!ln.fresh?'✓ 이미 반영된 줄입니다 — 다시 넣지 않습니다'
+        :(ln.dup?'줄 '+ln.dup+'개는 이미 반영돼 건너뜁니다 · ':'')+(app?'같은 내역서 견적에 새 줄을 붙입니다':g.choice.indexOf('__new__:')===0?'새 현장을 만들어 넣습니다':(g.cands[0]&&g.cands[0].name===g.choice&&g.cands[0].score<0.5?'⚠ 이름이 많이 다릅니다 — 맞는 현장인지 확인':''));});
+    // 기존 견적 집계 제외는 이번에 새 줄이 들어가는 기존 현장만 — 다른 현장으로 바꾸거나 '반영 안 함'이면 체크도 사라진다
+    const chosen=Object.keys(newBy).filter(p=>(state.projects||[]).some(x=>x.name===p));
+    const ex=chosen.map(p=>({p,list:hjStmtExistingEst(p)})).filter(x=>x.list.length);
+    const shown=new Set();ex.forEach(x=>x.list.forEach(e=>shown.add(e.id)));
+    [...cur.exclude].forEach(id=>{if(!shown.has(id))cur.exclude.delete(id);});
+    const box=root.querySelector('#stmtExisting');
+    if(box)box.innerHTML=ex.length?`<div style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:4px 0"><div style="font-size:12.5px;font-weight:700;margin-bottom:4px">이 현장들에 이미 매출로 잡힌 견적 — 내역서로 대신하면 체크(집계 제외 · 지우지 않음)</div>${ex.map(x=>x.list.map(e=>`<label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:12.5px"><input type="checkbox" data-stmt-ex="${escapeAttr(e.id)}"${cur.exclude.has(e.id)?' checked':''}> ${escapeHtml(x.p)} · ${escapeHtml(e.name)} · ${won(e.amount)}${e.members.length>1?' (사본 '+(e.members.length-1)+'건 포함)':''}</label>`).join('')).join('')}</div>`:'';
+    if(box)box.querySelectorAll('[data-stmt-ex]').forEach(cb=>cb.onchange=()=>{if(cb.checked)cur.exclude.add(cb.dataset.stmtEx);else cur.exclude.delete(cb.dataset.stmtEx);});
+    const sm=root.querySelector('#stmtSummary');
+    const np=Object.keys(newBy).length;
+    if(sm)sm.textContent=np?'반영하면: 현장 '+np+'곳 · 작업비용 '+won(Object.values(newBy).reduce((a,b)=>a+b,0))+' — 같은 현장의 여러 위치는 견적 1건으로 묶습니다.':'새로 넣을 줄이 없습니다.';
+  };
+  root.querySelectorAll('[data-stmt-proj]').forEach(sel=>{
+    const g=cur.groups[+sel.dataset.stmtProj];sel.value=g.choice;if(sel.value!==g.choice)g.choice=sel.value;
+    sel.onchange=()=>{g.choice=sel.value;refresh();};
+  });
+  refresh();
+}
+/* ═══════════ v527 📑 작업내역서 장부 · 💰 내역서 입금 · 📂 폴더의 내역서 바로 반영 ═══════════
+   v526 으로 내역서를 현장별 견적(수주)으로 넣으면 협력사가 돈을 줄 때까지 그 현장들이 모두 미수로 잡힌다(10/31 실자료: 현장 32곳).
+   협력사는 내역서 한 장 단위로 입금한다 — 현장마다 💰 입금 기록을 32번 넣을 수는 없다.
+   · 장부(hjStmtLedger): 내역서(stmt.src)별 거래처·작성일·현장 수·합계(그 내역서 견적 합계, 집계 제외 견적은 빼고)·받은 돈(payLog.stmt)·남은 돈.
+   · 💰 입금(hjStmtPayApply): 받은 금액을 그 내역서의 현장들에 남은 돈 비율로 나눠(원 단위, 큰 나머지 순) 현장마다 입금 기록 —
+     입금 기록 한 곳(hjPayRecordAdd: 받은 돈 누계·수금 이력·미수 독촉 작업 닫기)을 그대로 쓴다. 남은 돈보다 많거나 미래 날짜면 막는다.
+     결제 방법·증빙(세금계산서 등)도 같이 적는다 — 안 적으면 이틀 뒤 '증빙 기록 없는 입금'으로 다시 묻는다(v348).
+   · 📂 앱이 색인한 작업내역서 엑셀(작업내역서/ 폴더 · 이름에 작업내역서·공사내역서, 양식 제외)을 파일 고르기 없이 바로 반영하고, 반영 여부를 보여 준다. */
+function hjStmtLedger(){
+  const by=new Map();
+  (state.quotes||[]).forEach(q=>{
+    if(!q||!q.stmt||q.exSum||!q.project)return;
+    const src=hjStmtSrcOf(q);if(!src)return;
+    if(!by.has(src))by.set(src,{src,doc:q.stmt.doc||'작업내역서',to:q.stmt.to||'',date:q.stmt.date||q.date||'',file:q.stmt.file||src,quotes:[],total:0,paid:0});
+    const s=by.get(src);s.quotes.push(q);s.total+=quoteCalc(q).total;
+    if(!s.to&&q.stmt.to)s.to=q.stmt.to;
+  });
+  (state.payLog||[]).forEach(x=>{if(x&&x.stmt&&by.has(x.stmt))by.get(x.stmt).paid+=Math.round(num(x.amt));});
+  return [...by.values()].map(s=>Object.assign(s,{left:Math.max(0,s.total-s.paid)})).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(a.src).localeCompare(String(b.src)));
+}
+// 받은 금액을 그 내역서 현장들에 남은 돈 비율로 — [{project,total,left,amt}] (합 = amt). 남은 돈보다 많거나 0 이하면 null
+function hjStmtPayPlan(s,amt){
+  amt=Math.round(num(amt));
+  const paid={};(state.payLog||[]).forEach(x=>{if(x&&x.stmt===s.src)paid[x.project]=(paid[x.project]||0)+Math.round(num(x.amt));});
+  const tot={};s.quotes.forEach(q=>{tot[q.project]=(tot[q.project]||0)+quoteCalc(q).total;});
+  const rows=Object.keys(tot).map(p=>({project:p,total:tot[p],left:Math.max(0,tot[p]-(paid[p]||0))})).filter(r=>r.left>0);
+  const left=rows.reduce((a,r)=>a+r.left,0);
+  if(!(amt>0)||amt>left)return null;
+  rows.forEach(r=>{r.exact=amt*r.left/left;r.amt=Math.floor(r.exact);});
+  let rest=amt-rows.reduce((a,r)=>a+r.amt,0);
+  rows.slice().sort((a,b)=>(b.exact-b.amt)-(a.exact-a.amt)||b.left-a.left).forEach(r=>{if(rest>0&&r.amt<r.left){r.amt++;rest--;}});
+  return rows.filter(r=>r.amt>0).map(r=>({project:r.project,total:r.total,left:r.left,amt:r.amt}));
+}
+// o={amt,d,method,proof,payer} → {n,total,rows}. 현장이 지워졌으면 아무것도 적지 않고 멈춘다(나눈 금액이 어긋나지 않게).
+// v533 한 번에 나눠 적은 기록은 같은 stmtPay(묶음 id)를 갖는다 — 통장 파일을 다시 넣었을 때 '이미 기록됨'을 묶음 합계로 찾는다(hjBankStmtDup).
+function hjStmtPayApply(src,o){
+  const s=hjStmtLedger().find(x=>x.src===src);if(!s)throw new Error('반영한 내역서를 찾지 못했습니다');
+  const today=localDate(),d=String(o&&o.d||today);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw new Error('입금일을 확인하세요');
+  if(d>today)throw new Error('입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요');
+  const rows=hjStmtPayPlan(s,o&&o.amt);
+  if(!rows)throw new Error(Math.round(num(o&&o.amt))>s.left?'남은 돈('+won(s.left)+')보다 많아요 — 금액을 확인하세요':'입금액을 입력하세요');
+  const ps=rows.map(r=>(state.projects||[]).find(p=>p&&p.name===r.project));
+  if(ps.some(p=>!p))throw new Error('지워진 현장이 있어 나눠 적을 수 없어요: '+rows.filter((r,i)=>!ps[i]).map(r=>r.project).join(', '));
+  const method=['현금','계좌이체','카드','기타'].includes(o&&o.method)?o.method:'';
+  const proof=HJ_PROOF[o&&o.proof]?o.proof:'';
+  const payer=String(o&&o.payer||'').trim().slice(0,30),grp=/^sp[a-z0-9]{3,40}$/.test(String(o&&o.grp||''))?String(o.grp):'sp'+uid();   // v538 여러 장을 한 번에 받으면 같은 묶음 id
+  rows.forEach((r,i)=>{
+    const rec={d,project:r.project,amt:r.amt,stmt:src,stmtPay:grp,memo:'📑 '+((s.to?s.to+' ':'')+s.doc+' '+s.date).trim()};
+    if(method)rec.method=method;
+    if(payer)rec.payer=payer;
+    if(proof){rec.proof=proof;rec.proofAt=today;}
+    hjPayRecordAdd(ps[i],rec);
+  });
+  markDirty();
+  rows.forEach(r=>{try{portalAutoSync(r.project);}catch(e){}});
+  return {n:rows.length,total:rows.reduce((a,r)=>a+r.amt,0),rows};
+}
+// v538 쓰지 않고 hjStmtPayApply 와 같은 확인만 — '' 이면 적을 수 있음. 내역서 여러 장을 한 번에 적기 전에 한 장이라도 막히면 아무것도 안 적으려고.
+function hjStmtPayCheck(src,amt,d){
+  const s=hjStmtLedger().find(x=>x.src===src);if(!s)return '반영한 내역서를 찾지 못했습니다';
+  const today=localDate();d=String(d||today);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return '입금일을 확인하세요';
+  if(d>today)return '입금일이 미래예요 — 실제로 들어온 날짜를 넣어주세요';
+  const rows=hjStmtPayPlan(s,amt);if(!rows)return Math.round(num(amt))>s.left?'남은 돈('+won(s.left)+')보다 많아요 — 금액을 확인하세요':'입금액을 입력하세요';
+  const miss=rows.filter(r=>!(state.projects||[]).some(p=>p&&p.name===r.project));
+  return miss.length?'지워진 현장이 있어 나눠 적을 수 없어요: '+miss.map(r=>r.project).join(', '):'';
+}
+function hjStmtPayView(src){
+  const s=hjStmtLedger().find(x=>x.src===src);if(!s){toast('반영한 내역서를 찾지 못했습니다');return;}
+  const today=localDate();
+  const body=`<div style="font-size:13px;line-height:1.7">
+    <div style="background:var(--paper-2);border-radius:11px;padding:10px 12px;margin-bottom:10px">${escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+s.date)} · 현장 ${s.quotes.length}곳<br>합계 <b>${won(s.total)}</b> · 받음 <b style="color:var(--ok)">${won(s.paid)}</b> · 남음 <b>${won(s.left)}</b></div>
+    <label for="spAmt" style="font-size:11.5px;color:var(--muted)">입금액 (내역서 한 장에 들어온 돈)</label>
+    <input id="spAmt" type="text" inputmode="numeric" value="${s.left}" style="width:100%;padding:12px;font-size:16px;font-weight:800;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 10px">
+    <label for="spDate" style="font-size:11.5px;color:var(--muted)">입금일 (오늘까지)</label>
+    <input id="spDate" type="date" value="${today}" max="${today}" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px">
+    <label for="spMethod" style="font-size:11.5px;color:var(--muted)">결제 방법</label>
+    <select id="spMethod" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px">${[['계좌이체','계좌이체'],['현금','현금'],['카드','카드'],['기타','기타'],['','모름 (비워 두기)']].map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('')}</select>
+    <label for="spProof" style="font-size:11.5px;color:var(--muted)">증빙 — 세금계산서를 발행했으면 골라 두세요</label>
+    <select id="spProof" style="width:100%;padding:10px;border-radius:11px;border:1px solid var(--line-soft);margin:4px 0 6px;font-size:16px;min-height:44px"><option value="">아직 (나중에 기록)</option>${Object.keys(HJ_PROOF).map(k=>`<option value="${k}">${escapeHtml(HJ_PROOF[k])}</option>`).join('')}</select>
+    <div id="spPlan" style="margin-top:10px;border:1px solid var(--line-soft);border-radius:11px;padding:8px 10px;font-size:12px"></div>
+  </div>`;
+  openModal('💰 내역서 입금',body,[
+    {label:'취소',cls:'ghost',fn:closeModal},
+    {label:'입금 저장',cls:'clay',fn:()=>{
+      const root=$('#modalRoot');
+      const raw=(root.querySelector('#spAmt')||{}).value||'';
+      if(hjIsNegativeAmount(raw)){toast('마이너스 금액은 넣을 수 없어요');return;}
+      let r;try{r=hjStmtPayApply(src,{amt:won2num(raw),d:(root.querySelector('#spDate')||{}).value||today,method:(root.querySelector('#spMethod')||{}).value||'',proof:(root.querySelector('#spProof')||{}).value||''});}
+      catch(e){toast((e&&e.message)||'입금을 저장하지 못했습니다');return;}
+      closeModal();render();
+      toast('💰 '+((s.to?s.to+' ':'')+won(r.total))+' 입금 — 현장 '+r.n+'곳에 나눠 기록');
+    }}]);
+  const root=$('#modalRoot');
+  const draw=()=>{
+    const box=root.querySelector('#spPlan');if(!box)return;
+    const amt=won2num((root.querySelector('#spAmt')||{}).value||'');
+    const rows=hjStmtPayPlan(s,amt);
+    box.innerHTML=rows?'<div style="color:var(--muted);margin-bottom:4px">현장별로 이렇게 나눠 적습니다(남은 돈 비율)</div>'+rows.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0"><span>${escapeHtml(r.project)}</span><b>${won(r.amt)}</b></div>`).join('')
+      :`<div style="color:#b45309">${amt>s.left?'남은 돈('+won(s.left)+')보다 많아요':'입금액을 넣으세요'}</div>`;
+  };
+  const inp=root.querySelector('#spAmt');if(inp)inp.addEventListener('input',draw);
+  draw();
+}
+// 앱이 색인한 작업내역서 엑셀 — [{f,applied}] (작업내역서/ 폴더 또는 이름에 작업내역서·공사내역서, 양식 제외)
+function hjStmtFiles(){
+  const used=new Set((state.quotes||[]).filter(q=>q&&q.stmt).map(hjStmtSrcOf));
+  return (state.files||[]).filter(f=>f&&!f._fromQuote&&/\.xlsx?$/i.test(String(f.name||''))&&!/양식|서식|템플릿/.test(String(f.name||''))&&
+      (/^작업내역서\//.test(String(f.prefix||'').normalize('NFC'))||/작업내역서|공사내역서/.test(String(f.name||'').normalize('NFC'))))
+    .map(f=>({f,applied:used.has(hjStmtCell(f.name))}))
+    .sort((a,b)=>(a.applied-b.applied)||String(b.f.name).localeCompare(String(a.f.name)));
+}
+async function hjStmtImportFromFile(id){
+  const f=(state.files||[]).find(x=>x&&x.id===id);if(!f){toast('파일을 찾지 못했습니다');return;}
+  try{await ensureXLSX();}catch(e){toast('엑셀 모듈 로드 실패(인터넷 확인).');return;}
+  let blob=null;try{blob=await getFileOf(f);}catch(e){toast((e&&e.message)||'파일을 열지 못했습니다');return;}
+  if(!blob){toast('이 기기에서 원본을 열 수 없어요 — 만물 폴더를 연 PC에서 하거나 [📑 작업내역서 반영]으로 파일을 고르세요');return;}
+  let r;try{r=await hjStmtReadFile(blob instanceof File&&blob.name===f.name?blob:new File([blob],f.name));}catch(e){toast('작업내역서를 읽지 못했습니다: '+((e&&e.message)||e));return;}
+  hjStmtReview(r);
+}
+function hjStmtLedgerHTML(){
+  let led=[],files=[];try{led=hjStmtLedger();files=hjStmtFiles();}catch(e){return '';}
+  const todo=files.filter(x=>!x.applied);
+  if(!led.length&&!todo.length)return '';
+  const left=led.reduce((a,s)=>a+s.left,0),today=localDate();
+  // v535 협력사별 미수 — 거래처마다 남은 돈·장 수·가장 오래된 경과일 + [📋 미수 안내 글]
+  const dun=hjStmtDunGroups(led).map(g=>`<div data-stmt-dun="${escapeAttr(g.to)}" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)">
+      <div style="flex:1 1 200px;min-width:0;font-size:12.5px"><b>${escapeHtml(g.to)}</b> · 내역서 ${g.list.length}장 · 남은 돈 <b>${won(g.left)}</b> · 가장 오래된 것 ${hjStmtAgeChip(g.list[0],today,true)}</div>
+      <button class="mini-btn" data-stmtdun="${escapeAttr(g.to)}" style="min-height:44px" title="이 협력사에 보낼 미수 안내 글(내역서별 금액·경과일) — 복사·공유만, 자동으로 보내지 않음">📋 미수 안내 글</button></div>`).join('');
+  const rows=led.map(s=>`<div data-stmt-row style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-top:1px solid var(--line-soft)">
+      <div style="flex:1 1 220px;min-width:0"><b style="font-size:13px">${escapeHtml((s.to?s.to+' · ':'')+s.doc+' '+hjStmtMd(s.date))}</b> <span style="font-size:11.5px;color:var(--muted)">현장 ${s.quotes.length}곳</span><br>
+        <span style="font-size:12px">합계 ${won(s.total)} · 받음 <b style="color:var(--ok)">${won(s.paid)}</b> · ${s.left?'남음 <b>'+won(s.left)+'</b>'+hjStmtAgeChip(s,today):'<b style="color:var(--ok)">✓ 다 받음</b>'}</span><br>
+        <span style="font-size:11px;color:var(--muted);word-break:break-all">${escapeHtml(s.src)}</span></div>
+      ${s.left?`<button class="mini-btn" data-stmtpay="${escapeAttr(s.src)}" style="min-height:44px" title="협력사가 이 내역서 금액을 입금했으면 — 현장마다 나눠 입금 기록">💰 입금</button>`:''}
+    </div>`).join('');
+  const frows=todo.slice(0,8).map(x=>`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)">
+      <div style="flex:1 1 220px;min-width:0;font-size:12.5px">📄 ${escapeHtml(x.f.name)} <span style="font-size:11px;color:var(--muted)">아직 안 넣음</span></div>
+      <button class="mini-btn" data-stmtfile="${escapeAttr(x.f.id)}" style="min-height:44px">📑 반영</button></div>`).join('');
+  return `<section data-stmt-ledger class="card" style="cursor:default;padding:12px 14px;margin:0 0 14px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:14px">📑 작업내역서 — 협력사에서 받을 돈</b>${led.length?`<span style="font-size:12.5px">남은 돈 합계 <b>${won(left)}</b></span>`:''}</div>
+    ${left>0?`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 0 2px"><button class="mini-btn" data-stmtbank style="min-height:44px" title="은행 거래내역 파일(xlsx·csv)에서 협력사 입금을 찾아 내역서에 맞춰 현장마다 나눠 적기">🏦 통장 파일로 맞추기</button><span style="flex:1 1 180px;font-size:11.5px;color:var(--muted)">입금자=거래처이고 금액이 남은 돈과 같은 줄을 찾아 줘요</span></div>`:''}
+    ${(()=>{let n=0;try{n=hjStmtUnitPlan().filter(x=>x.check).length;}catch(e){}return n?`<div data-stmt-unitline style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:6px 0;border-top:1px dashed var(--line-soft)"><div style="flex:1 1 200px;min-width:0;font-size:12.5px">🏢 내역서에 분명하게 적힌 동·호수 <b>${n}곳</b>이 아직 그 현장 세대로 등록되지 않았어요</div><button class="mini-btn" data-stmtunit="" style="min-height:44px" title="내역서 위치의 동·호수를 확인하고 세대로 등록 — 사진·견적·입금은 그대로">🏢 세대 등록</button></div>`:'';})()}
+    ${dun}${rows}${frows}${todo.length>8?`<div style="font-size:11.5px;color:var(--muted);padding-top:4px">…외 ${todo.length-8}개</div>`:''}
+  </section>`;
+}
+/* v535 📑 내역서 미수 경과일 · 협력사 미수 안내 글 — 10/31 대표 "계속 진행".
+   장부는 남은 돈만 보여 얼마나 오래됐는지, 협력사마다 얼마를 요청할지 손으로 세야 했다.
+   · 경과일 hjStmtAgeDays: 내역서 작성일부터 오늘까지. 30일 이상 주황, 60일 이상 빨강(hjStmtAgeChip).
+   · 협력사별 묶음 hjStmtDunGroups: 남은 돈 있는 내역서를 거래처별로(오래된 순), 남은 돈 큰 거래처부터.
+   · 안내 글 hjStmtDunText: 내역서마다 날짜·현장 수·(일부 받았으면 합계·받은 돈)·남은 돈·경과일, 합계.
+     계좌는 대표가 고른다(장부의 계좌 목록 그대로 · '계좌 없이' 가능) — 자동으로 넣지 않는다. 보내기는 공유·복사만(자동 발송 없음). */
+function hjStmtAgeDays(s,today){return Math.max(0,hjDaysBetween(String(s&&s.date||''),today||localDate()));}
+function hjStmtAgeChip(s,today,plain){
+  const d=hjStmtAgeDays(s,today),c=d>=60?'#b91c1c':d>=30?'#b45309':'var(--muted)';
+  return (plain?'':' · ')+'<span data-stmt-age="'+d+'" style="white-space:nowrap;color:'+c+';font-weight:'+(d>=30?'800':'400')+'">'+d+'일 지남</span>';
+}
+function hjStmtDunGroups(led){
+  const by=new Map();
+  (Array.isArray(led)?led:hjStmtLedger()).filter(s=>s&&s.left>0).forEach(s=>{const k=hjStmtCell(s.to)||'거래처 미기재';if(!by.has(k))by.set(k,{to:k,list:[],left:0});const g=by.get(k);g.list.push(s);g.left+=s.left;});
+  return [...by.values()].map(g=>Object.assign(g,{list:g.list.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.src).localeCompare(String(b.src)))})).sort((a,b)=>b.left-a.left||a.to.localeCompare(b.to,'ko'));
+}
+function hjStmtDunText(to,accs,today){
+  const g=hjStmtDunGroups().find(x=>x.to===to);if(!g)return '';
+  const t=today||localDate();
+  const lines=['['+COMPANY.name+'] 작업내역서 미수 안내',(g.to==='거래처 미기재'?'':g.to+' ')+'담당자님, 아래 작업내역서 금액이 아직 입금 전으로 확인되어 안내드립니다.',''];
+  g.list.forEach((s,i)=>lines.push((i+1)+'. '+hjStmtMd(s.date)+' '+s.doc+' · 현장 '+s.quotes.length+'곳 · '+(s.paid?'합계 '+won(s.total)+' 중 받은 돈 '+won(s.paid)+' · ':'')+'남은 돈 '+won(s.left)+' ('+hjStmtAgeDays(s,t)+'일 지남)'));
+  lines.push('','남은 돈 합계: '+won(g.left)+(g.list.length>1?' (내역서 '+g.list.length+'장)':''));
+  const A=(Array.isArray(accs)?accs:[]).filter(a=>a&&a.no);
+  A.forEach((a,i)=>lines.push('입금계좌'+(A.length>1?(i===0?' ①':' ②'):'')+': '+a.bank+' '+a.no+' (예금주 '+a.holder+')'));
+  lines.push('','이미 보내셨다면 이 글은 넘겨 주세요. 확인되는 대로 다시 연락드리겠습니다.','문의: '+COMPANY.owner+' '+COMPANY.tel);
+  return lines.join('\n');
+}
+async function hjStmtDunSend(to,accs){
+  const text=hjStmtDunText(to,accs);if(!text){toast('남은 돈 있는 내역서가 없어요');return false;}
+  try{if(navigator.share){await navigator.share({title:'작업내역서 미수 안내',text});return true;}}catch(e){if(e&&e.name==='AbortError')return false;}
+  try{await navigator.clipboard.writeText(text);toast('📋 미수 안내 글을 복사했어요 — 카톡·문자에 붙여넣으세요');return true;}catch(e){toast('복사 실패 — 다시 시도해 주세요');return false;}
+}
+// 계좌는 대표가 고른다 — 장부(COMPANY.accounts)에 있는 계좌를 그대로 단추로, '계좌 없이 글만'도. 미리 고른 계좌 없음.
+function hjStmtDunView(to){
+  const g=hjStmtDunGroups().find(x=>x.to===to);if(!g){toast('남은 돈 있는 내역서가 없어요');return;}
+  const A=(Array.isArray(COMPANY.accounts)?COMPANY.accounts:[]).filter(a=>a&&a.no);
+  const preview=hjStmtDunText(to,[]);
+  openModal('📋 '+g.to+' 미수 안내 글',
+    '<div style="font-size:12.5px;line-height:1.6;margin-bottom:8px">내역서 '+g.list.length+'장 · 남은 돈 <b>'+won(g.left)+'</b><br><span style="color:var(--muted)">어느 계좌를 적을지 골라 주세요 — 세금계산서를 발행한 내역서면 사업자 계좌를 적으세요. 보내기는 공유·복사만 합니다.</span></div>'+
+    '<pre data-stmt-dun-preview style="white-space:pre-wrap;font-family:inherit;font-size:12.5px;line-height:1.6;background:var(--paper-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;margin:0;max-height:40vh;overflow:auto">'+escapeHtml(preview)+'</pre>',
+    A.map((a,i)=>({label:(i===0?'① ':i===1?'② ':(i+1)+'. ')+(a.label||a.bank+' '+a.no)+' 적기',cls:'ghost',fn:()=>{closeModal();hjStmtDunSend(to,[a]);}}))   // 어느 계좌도 앞세우지 않는다
+      .concat([{label:'계좌 없이 글만',cls:'ghost',fn:()=>{closeModal();hjStmtDunSend(to,[]);}},{label:'닫기',cls:'ghost',fn:closeModal}]),true);
+}
+/* v537 🏢 내역서 동·호수 → 세대 등록(확인 뒤) — 10/31 대표 "최고의 개발자로 개발 진행".
+   v331 규칙: 아파트 이름은 현장, 동·호수는 그 현장의 세대(aptUnits). v526 내역서 반영은 위치('○○아파트 101동 1001호 …')에서 동·호수를 떼어
+   아파트 현장으로 넣지만 세대로 등록하지는 않아, 세대별 사진·오더·AS 이력과 내역서 매칭 가점(hjStmtMatch '세대 … 있음')이 비어 있었다.
+   읽은 값은 제안까지만(자동 추정·배정 금지) — 미리보기에서 사람이 체크하고 [등록]을 눌러야 들어간다. 사진·견적·입금은 건드리지 않는다.
+   · hjStmtUnitOf(loc): '101동 1001호' 꼴은 확실(sure), '101-1001'·'101호 1001호' 꼴은 확인 필요.
+   · hjStmtUnitPlan(only): 내역서 견적 줄마다, 이름이 하나뿐이고 보관 안 한 현장에 아직 없는 세대 — 같은 세대는 한 줄(줄 수·작업 요약).
+     세대 정보가 손상된 현장은 빼고, 500곳 한도를 넘지 않게 자른다. 기본 체크 = 확실 + 아파트 이름(aptIsComplexName).
+   · hjStmtUnitApply(sel,seen0): aptBulkApply 와 같은 한 번의 안전판 거래('내역서 동·호수 등록 전') — 미리보기를 연 뒤 그 현장 세대가 바뀌었으면
+     등록하지 않고 '다시 열어 주세요'(옛 미리보기로 쓰지 않음), 손상·중복·500 을 다시 본다. */
+/* v539 실자료(10/31 협력사 내역서 3장) 검토 + 자료 무결성 검토 반영:
+   · 실제 내역서 세대는 대부분 '○○아파트 303-603' 꼴 — 아파트 이름 바로 뒤 '동-호'(호 3~4자리, 앞뒤에 숫자·'-' 없음 — 전화·날짜·지번 아님)는 확실로 본다.
+   · '동 호' 꼴도 '…호라인'·'…호기' 처럼 뒤에 붙은 글자, '○○2동 1001호' 처럼 동 숫자 앞에 붙은 한글(동네 이름)은 확인 필요.
+   · 짧은 호수('301-21')·'101호 903호'(동을 호로 씀) 는 확인 필요. why = 확인 필요 까닭. */
+const HJ_STMT_UNIT_DONGHO_RE=/(^|[^가-힣\d])(\d{1,4})\s*동\s*(\d{1,5})\s*호(?!\s*라인|기)/,HJ_STMT_UNIT_HYPHEN_RE=/(^|[^\d\-])(\d{1,4})-(\d{3,4})(?![\d\-])/;
+function hjStmtUnitOf(loc){
+  const s=hjStmtCell(loc);let m=s.match(HJ_STMT_UNIT_DONGHO_RE);
+  if(m)return {dong:String(+m[2]),ho:String(+m[3]),sure:true,why:''};
+  m=s.match(HJ_STMT_UNIT_HYPHEN_RE);
+  if(m&&!/^0/.test(m[2])){const before=s.slice(0,m.index+m[1].length).trim();if(APT_WORDS.some(w=>aptComplexKey(before).endsWith(aptComplexKey(w))))return {dong:String(+m[2]),ho:String(+m[3]),sure:true,why:''};}
+  for(let i=0;i<HJ_STMT_UNIT_RES.length;i++){const k=s.match(HJ_STMT_UNIT_RES[i]);if(k)return {dong:String(+k[1]),ho:String(+k[2]),sure:false,why:i===0?'번호 앞뒤에 다른 글자가 붙어 있어요':i===1?'‘101호 903호’처럼 동이 호로 적혀 있어요':'‘동-호’ 꼴이 분명하지 않아요(짧은 호수·전화·날짜일 수 있음)'};}
+  return null;
+}
+function hjStmtUnitPlan(only){
+  const dupes=aptDupeNames(),by=new Map();
+  (state.quotes||[]).forEach(q=>{
+    if(!q||!q.stmt||!q.project||(only&&q.project!==only)||!Array.isArray(q.stmt.lines)||dupes.get(q.project)!==1||q.result==='lost')return;
+    const p=aptUnitProject(q.project);if(!p||p.archived)return;
+    q.stmt.lines.forEach(l=>{
+      const u=hjStmtUnitOf(l&&l.loc);if(!u)return;
+      let n;try{n=aptUnitNormalize({type:'unit',dong:u.dong,ho:u.ho});}catch(e){return;}
+      const key=p.name+'\u0001'+aptUnitKeyOf(n.dong,n.ho);
+      if(!by.has(key))by.set(key,{project:p.name,dong:n.dong,ho:n.ho,sure:false,why:u.why,lines:0,works:[],locs:[],cores:new Set()});
+      const c=by.get(key);c.lines++;if(u.sure){c.sure=true;c.why='';}
+      const w=hjStmtCell(l&&l.work).slice(0,30);if(w&&c.works.length<2&&!c.works.includes(w))c.works.push(w);
+      const lc=hjStmtCell(l&&l.loc).slice(0,60);if(lc&&c.locs.length<2&&!c.locs.includes(lc))c.locs.push(lc);   // v539 미리보기에 위치 원문
+      const core=hjStmtCore(l&&l.loc);if(core)c.cores.add(core);
+    });
+  });
+  const plan=[],room=new Map();
+  [...by.values()].sort((a,b)=>String(a.project).localeCompare(String(b.project),'ko')||(+a.dong-+b.dong)||(+a.ho-+b.ho)).forEach(c=>{
+    const p=aptUnitProject(c.project);if(!p)return;
+    const units=aptUnitList(p);
+    if(aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||units.length!==p.aptUnits.length))return;   // 손상된 현장은 건드리지 않는다
+    if(units.some(x=>aptUnitLabelKey(aptUnitLabel(x))===aptUnitKeyOf(c.dong,c.ho)))return;
+    if(!room.has(p.name))room.set(p.name,500-units.length);
+    if(room.get(p.name)<=0)return;
+    room.set(p.name,room.get(p.name)-1);
+    const apt=aptIsComplexName(p.name,p);
+    // v539 이름이 이미 한 세대인 현장('○○아파트 1동 907호')에 다른 세대를 넣지 않게 · 위치의 단지 이름이 현장 이름과 다르면('○○아파트' ↔ '○○로운아파트') 확인
+    const own=aptNameParse(p.name),ownOther=!!(own&&aptUnitKeyOf(own.dong,own.ho)!==aptUnitKeyOf(c.dong,c.ho));
+    const pcore=hjStmtCore(p.name)||hjStmtNormName(p.name),otherCore=[...c.cores].find(k=>k&&pcore&&k!==pcore&&!(hjStmtCore(p.name)===''&&pcore.indexOf(k)===0))||'';
+    const warn=ownOther?'현장 이름의 세대('+own.dong+'동 '+own.ho+'호)와 달라요 — 그 세대 현장이 맞는지 확인':otherCore?'위치의 단지('+otherCore+'아파트)와 현장 이름이 달라요 — 확인':!c.sure?(c.why||'확인'):!apt?'현장 이름이 아파트로 보이지 않아요 — 확인':'';
+    delete c.cores;
+    plan.push(Object.assign(c,{apt,warn,check:c.sure&&apt&&!ownOther&&!otherCore}));
+  });
+  return plan;
+}
+// seen0 = 미리보기를 연 때의 현장별 세대 목록(hjStmtUnitStamp) — 그 뒤 다른 곳에서 바뀌었으면 옛 미리보기로 쓰지 않는다
+function hjStmtUnitStamp(plan){const o={};(plan||[]).forEach(x=>{if(x&&!Object.prototype.hasOwnProperty.call(o,x.project)){const p=aptUnitProject(x.project);o[x.project]=p?JSON.stringify(p.aptUnits||null):null;}});return o;}
+async function hjStmtUnitApply(sel,seen0){
+  const list=(Array.isArray(sel)?sel:[]).filter(x=>x&&x.project&&x.dong&&x.ho);
+  if(!list.length)throw new Error('등록할 세대를 체크하세요.');
+  const now=hjStmtUnitStamp(list),before=Object.assign({},now,seen0&&typeof seen0==='object'?seen0:{});
+  // v539 안전판을 찍기 전에 먼저 본다 — 옛 미리보기로 누를 때마다 안전판이 쌓여 예전 안전판을 밀어내지 않게
+  for(const k of Object.keys(now)){if(now[k]!==before[k])throw new Error('현장 "'+k+'"의 동·호수가 그사이 바뀌었습니다. 화면을 다시 열어 주세요.');}
+  return aptUnitMutation({snapshotLabel:'내역서 동·호수 등록 전',mutateDraft:draft=>{
+    let added=0;const seen=new Set();
+    list.forEach(x=>{
+      const p=aptUnitProject(x.project,draft);
+      if(!p)throw new Error('현장 "'+x.project+'"을(를) 찾지 못했습니다. 화면을 다시 열어 주세요.');
+      if(p.archived)throw new Error('현장 "'+x.project+'"은(는) 보관한 현장입니다. 화면을 다시 열어 주세요.');   // v539
+      if(!seen.has(x.project)){if(JSON.stringify(p.aptUnits||null)!==before[x.project])throw new Error('현장 "'+x.project+'"의 동·호수가 그사이 바뀌었습니다. 화면을 다시 열어 주세요.');seen.add(x.project);}
+      const units=aptUnitList(p);
+      if(aptUnitManaged(p)&&(!Array.isArray(p.aptUnits)||units.length!==p.aptUnits.length))throw new Error('현장 "'+x.project+'"의 동·호수 정보에 오류가 있습니다. 그 현장을 먼저 확인해 주세요.');
+      if(units.length>=500)return;
+      const normalized=aptUnitNormalize({type:'unit',dong:x.dong,ho:x.ho}),key=aptUnitLabelKey(aptUnitLabel(normalized));
+      if(units.some(u=>aptUnitLabelKey(aptUnitLabel(u))===key))return;
+      let id='unit_'+uid(),tries=0;   // v539 같은 묶음 안에서 id 가 겹치면 그 현장 세대 정보가 '확인 필요'로 굳는다 — 겹치지 않는 id 를 찾고, 못 찾으면 통째로 멈춘다
+      while(units.some(u=>u.id===id)){if(++tries>20)throw new Error('세대 번호를 만들지 못했습니다. 다시 시도해 주세요.');id='unit_'+uid();}
+      p.aptUnits=units.concat({id,...normalized});
+      added++;
+    });
+    if(!added)throw new Error('등록할 동·호수가 없습니다. 화면을 다시 열어 주세요.');
+    return added;
+  }});
+}
+function hjStmtUnitView(only){
+  const plan=hjStmtUnitPlan(only||'');
+  if(!plan.length){toast('등록할 동·호수가 없어요');return;}
+  const shown=plan.slice(0,300),nCheck=shown.filter(x=>x.check).length,seen0=hjStmtUnitStamp(shown);
+  const rows=shown.map((x,i)=>'<label class="apt-unit-row" data-stmtunit-row style="display:flex;gap:9px;align-items:center;min-height:44px;cursor:pointer"><input type="checkbox" class="suChk" data-i="'+i+'"'+(x.check?' checked':'')+' style="width:22px;height:22px;flex-shrink:0">'+
+    '<span style="flex:1;min-width:0"><b>'+escapeHtml(x.project)+'</b> · <b>'+escapeHtml(x.dong)+'동 '+escapeHtml(x.ho)+'호</b><br><small>'+escapeHtml('내역서 '+x.lines+'줄'+(x.works.length?' · '+x.works.join(', '):''))+
+    (x.locs&&x.locs.length?'<br><span data-stmtunit-loc style="color:var(--muted)">위치: '+escapeHtml(x.locs.join(' / '))+'</span>':'')+
+    (x.warn?'<br><span style="color:#b45309">'+escapeHtml(x.warn)+'</span>':'')+'</small></span></label>').join('');
+  openModal('🏢 내역서 동·호수 → 세대 등록 — 미리보기',
+    '<div class="apt-unit-panel" id="stmtUnitPanel"><p><b>'+plan.length+'곳</b>이 작업내역서에는 있는데 그 현장 세대로 등록돼 있지 않아요. <b>체크한 것만</b> 등록합니다.</p>'+
+    '<p class="hint">\'101동 1001호\'·\'○○아파트 303-603\'처럼 분명한 아파트 세대만 미리 체크했어요('+nCheck+'곳). 위치 원문을 보고 확인하세요. 사진·견적·입금은 그대로이고, 등록 직전 🛡 안전판을 만듭니다. 사진 연결은 각 현장 [동·호수 관리]에서 직접 고르세요.</p>'+
+    '<div>'+rows+'</div>'+(plan.length>shown.length?'<p class="hint">…외 '+(plan.length-shown.length)+'곳 — 등록한 뒤 다시 열면 이어서 보여 줘요</p>':'')+
+    '<p id="aptUnitIssue" role="alert" style="color:var(--warn)"></p></div>',
+    [{label:'취소',cls:'ghost',fn:closeModal},
+     {label:'🏢 체크한 세대 등록',cls:'clay',fn:()=>{
+       const sel=[...document.querySelectorAll('#stmtUnitPanel .suChk')].filter(c=>c.checked).map(c=>shown[+c.dataset.i]).filter(Boolean);
+       if(!sel.length){const is=document.getElementById('aptUnitIssue');if(is)is.textContent='등록할 세대를 체크하세요.';toast('등록할 세대를 체크하세요.');return;}
+       aptUnitUiWrite(()=>hjStmtUnitApply(sel,seen0),n=>{closeModal();render();toast('🏢 '+n+'곳의 동·호수를 세대로 등록했어요');});
+     }}]);
+  aptUnitModalStyle();
+}
+/* ═══════════ v528 💬 카톡 보고 대조·사진 배정 — 협력사 톡방에 보낸 '사진 N장 + 현장 이름' 보고로 ① 앱에 없는 사진(누락 의심)을 찾고 ② 현장 없는 사진의 현장을 제안 ═══════════
+   10/31 실자료: 현장 없는 사진 107장(드라이브, 6~10월). 같은 날 협력사 톡방에는 '사진 7장' 바로 뒤 '○○로 12 △△아파트 1동 101호'처럼
+   현장을 적은 보고가 남아 있다 — 10/31 에 협력사 톡방 대화 내보내기(.txt)와 사진 시각을 손으로 맞춰 배정했던 일을 앱이 제안한다.
+   · 읽기(hjChatParse): PC 내보내기('----- 2026년 8월 4일 화요일 -----' + '[이름] [오후 4:12] 내용', 다음 줄로 이어지는 글 포함)와
+     폰 내보내기('2026년 8월 4일 오후 4:12, 이름 : 내용' · '2026. 8. 4. 오후 4:12, 이름 : 내용').
+   · 보고(hjChatReports): '사진 N장'·'동영상' 메시지마다, 같은 사람이 10분 전 ~ 30분 뒤에 쓴 글 가운데 현장 후보(hjStmtMatch 0.5 이상)가 있는
+     가장 가까운 줄. 현장을 못 찾은 사진 메시지도 경계로 남긴다(그 앞 사진이 다음 보고로 넘어가지 않게).
+   · 제안(hjChatPhotoPlan): 현장 없는 사진을 촬영 뒤 첫 보고(72시간 안)로 묶는다. 보고는 '나'(사진 메시지를 가장 많이 보낸 사람)의 것만 —
+     상대가 보낸 사진·동영상(문제 확인 요청 등) 앞에 찍은 내 사진이 그 현장으로 가지 않게. 카톡에서 저장한 사진(KakaoTalk_…)은 이름의 시각이
+     촬영 시각이 아니라 저장 시각이라 빼 둔다. 보낸 장수보다 사진이 훨씬 많으면(장수×1.5+3 초과) '확인' 표시.
+   · 대조(hjChatAudit, 읽기 전용): 내 보고마다(연달아 보낸 사진 메시지 — 카톡 30장 묶음 — 는 한 보고로) 그 현장 사진이 보고 전 72시간 안에 앱에 몇 장 있는지 —
+     보낸 장수보다 적으면 '누락 의심'(10/31 대표 요청 '현장 웹에 사진 누락 된 부분 날짜 확인'을 손으로 하던 일).
+     견적서·내역서를 찍어 보낸 것은 '서류 사진'(사진 보고와 합치지 않는다), 14일 안에 같은 현장 사진을 다시 보낸 것은 '앞서 보낸 사진',
+     글에 작업 날짜('9월 23일 …')가 있으면 그날 밤을 기준으로 센다.
+   · 확인 창: 누락 의심 목록 + 현장 없는 사진 묶음마다 사진 3장·보고 글·현장 고르기 → 체크한 것만 배정, 배정 전 안전판 1회(🧭 추측 배정과 같은 규칙).
+     기본 체크는 '현장을 찾았고, 보낸 장수와 앱 사진 수가 같고, 보고 12시간 안에 찍은' 묶음만 — 나머지는 참고(체크 해제). 동·호수 연결은 기존 화면에서.
+   · 대화 파일은 저장하지 않는다(읽고 버린다). */
+const HJ_CHAT_PC_DATE_RE=/^-{3,}\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/;
+const HJ_CHAT_PC_MSG_RE=/^\[([^\]]+)\]\s*\[(오전|오후)\s*(\d{1,2}):(\d{2})\]\s?([\s\S]*)$/;
+const HJ_CHAT_MOBILE_RE=/^(\d{4})(?:년|\.)\s*(\d{1,2})(?:월|\.)\s*(\d{1,2})(?:일|\.)?\s*(오전|오후)\s*(\d{1,2}):(\d{2}),\s*(.+?)\s:\s([\s\S]*)$/;
+const HJ_CHAT_MOBILE_DATE_RE=/^(\d{4})(?:년|\.)\s*(\d{1,2})(?:월|\.)\s*(\d{1,2})(?:일|\.)?\s*(?:[월화수목금토일]요일)?\s*$/;
+const HJ_CHAT_PHOTO_RE=/^(사진|동영상)(\s*(\d+)\s*(장|개))?$/;
+function hjChatHour(ap,h){h=+h%12;return ap==='오후'?h+12:h;}
+function hjChatParse(text,fileName){
+  const lines=String(text||'').replace(/\r/g,'').split('\n');
+  const head=(lines[0]||'').trim().match(/^(.+?)\s*님과\s*카카오톡\s*대화/);
+  const room=head?head[1]:String(fileName||'').replace(/\.txt$/i,'').replace(/^KakaoTalk_[\d_]+/,'').replace(/^[_\s]+/,'')||'대화';
+  const msgs=[];let day=null,last=null;
+  lines.forEach(raw=>{
+    const line=raw.normalize('NFC');
+    let m;
+    if((m=line.match(HJ_CHAT_PC_DATE_RE))){day=[+m[1],+m[2],+m[3]];last=null;return;}
+    if(day&&(m=line.match(HJ_CHAT_PC_MSG_RE))){last={t:new Date(day[0],day[1]-1,day[2],hjChatHour(m[2],m[3]),+m[4]),who:m[1].trim(),text:m[5]};msgs.push(last);return;}
+    if((m=line.match(HJ_CHAT_MOBILE_RE))){last={t:new Date(+m[1],+m[2]-1,+m[3],hjChatHour(m[4],m[5]),+m[6]),who:m[7].trim(),text:m[8]};msgs.push(last);return;}
+    if(HJ_CHAT_MOBILE_DATE_RE.test(line.trim())){last=null;return;}
+    if(last&&line.trim())last.text+='\n'+line;   // 여러 줄 글의 다음 줄
+  });
+  return {room,msgs};
+}
+// 사진 메시지마다 현장 보고 — [{t,n,room,who,text,project,why}] (시각순)
+function hjChatReports(chats){
+  const out=[];
+  (chats||[]).forEach(c=>{
+    const msgs=c.msgs||[];
+    msgs.forEach((m,i)=>{
+      const pm=String(m.text||'').trim().match(HJ_CHAT_PHOTO_RE);if(!pm)return;
+      const n=pm[3]?+pm[3]:1;
+      let best=null;
+      // 대화는 시각순 — 앞뒤로 시간 창(10분 전 ~ 30분 뒤)까지만 본다(긴 단톡방도 사진마다 전체를 훑지 않게: 2만 줄 3.6초 → 0.04초)
+      const near=[];
+      for(let j=i-1;j>=0&&(msgs[j].t-m.t)/60000>=-10;j--)near.push(j);
+      for(let j=i+1;j<msgs.length&&(msgs[j].t-m.t)/60000<=30;j++)near.push(j);
+      near.sort((a,b)=>a-b).forEach(j=>{
+        const x=msgs[j];
+        if(x.who!==m.who||HJ_CHAT_PHOTO_RE.test(String(x.text||'').trim()))return;
+        const dt=(x.t-m.t)/60000;
+        String(x.text||'').split('\n').map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=80).forEach(line=>{
+          const c0=hjStmtMatch(line)[0];if(!c0||c0.score<0.5)return;
+          const dist=Math.abs(dt)+(dt<0?5:0);   // 뒤에 쓴 글을 조금 더 믿는다(사진 → 현장 이름이 보통 순서)
+          if(!best||dist<best.dist||(dist===best.dist&&c0.score>best.score))best={dist,score:c0.score,project:c0.name,why:c0.why,text:line};
+        });
+      });
+      out.push({t:m.t,n,room:c.room,who:m.who,text:best?best.text:String(m.text||'').trim(),project:best?best.project:'',why:best?best.why:''});
+    });
+  });
+  // 같은 보고를 두 톡방에 보냈거나 사진 메시지가 연달아 있으면(사진 30장 · 사진 22장 → 현장 글 하나) 시각순으로 둔다
+  return out.sort((a,b)=>a.t-b.t);
+}
+const HJ_CHAT_KAKAO_NAME_RE=/^KakaoTalk_\d{8}_\d{6}/,HJ_CHAT_SHOT_RE=/clipboard|screenshot|screen_?shot|스크린샷|캡처|capture/i;   // 화면 캡처는 현장 사진이 아니다
+// 사진 메시지를 가장 많이 보낸 사람 = 현장에서 사진을 찍어 보고하는 '나'(동점이면 '' — 모두 쓴다)
+function hjChatMe(reports){
+  const c={};(reports||[]).forEach(r=>{c[r.who]=(c[r.who]||0)+1;});
+  const ks=Object.keys(c).sort((a,b)=>c[b]-c[a]);
+  return ks.length&&(ks.length===1||c[ks[0]]>c[ks[1]])?ks[0]:'';
+}
+// 사진의 찍은 시각 — 폰 카메라 이름(20260702_104320.jpg)이 있으면 그 시각이 먼저다. 드라이브 사진은 기록 시각(when)이 올린 날일 때가 있다
+//   (10/31 실자료: '20260702_…' 사진의 when 이 10월). 이름에 시각이 없으면 when.
+function hjChatPhotoTime(p){
+  const m=String(p&&p.name||'').match(/^(20\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if(m){const d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);if(!isNaN(d))return d.getTime();}
+  const w=p&&p.when?new Date(p.when).getTime():NaN;return isFinite(w)?w:NaN;
+}
+// 서류 사진(견적서·내역서·계약서를 찍거나 캡처해 보낸 것)은 현장 사진 보고가 아니다
+const HJ_CHAT_DOC_RE=/견적서|내역서|계약서|명세서|계산서|송부/;
+// 보고 글에 적힌 작업 날짜('9월 23일 가람센트럴', '10월 5일 월요일 오전 작업') — 보고 시각보다 앞이고 30일 안이면 그날 밤을 기준 시각으로
+function hjChatAnchor(ev){
+  const m=String(ev.text||'').match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if(!m)return ev.t.getTime();
+  const y=ev.t.getFullYear();let d=new Date(y,+m[1]-1,+m[2],23,59);
+  if(d>ev.t)d=new Date(y-1,+m[1]-1,+m[2],23,59);
+  return ev.t-d<=30*86400000&&ev.t-d>=0?d.getTime():ev.t.getTime();
+}
+// 연달아 보낸 사진 메시지(사진 30장 · 사진 22장 → 현장 글 하나)는 한 보고로 — 같은 사람·같은 톡방·같은 현장, 30분 안.
+//   카톡은 한 번에 30장씩 묶어 보내 52장이 '사진 30장'·'사진 22장' 두 메시지가 된다 — 현장 글을 못 찾은 것끼리도 같은 한 번의 보고로 합친다.
+function hjChatMerge(evs){
+  const out=[];
+  (evs||[]).slice().sort((a,b)=>a.t-b.t).forEach(e=>{
+    const l=out[out.length-1];
+    if(l&&l.who===e.who&&l.room===e.room&&l.project===e.project&&e.t-l.t<=30*60000){l.n+=e.n;l.t=e.t;return;}
+    out.push(Object.assign({},e));
+  });
+  return out;
+}
+// 내 보고마다 앱 사진 수 — [{ev,m,status:'ok'|'missing'|'nosite'|'resent'|'doc',prev}] (읽기 전용)
+//   그 현장 사진 중 기준 시각(보고 시각, 글에 날짜가 있으면 그날 밤) 전 72시간 + 뒤 1시간 안에 찍은 것을 센다.
+//   모자라도 14일 안의 앞선 보고(어느 톡방이든)가 같은 현장·비슷한 장수(80% 이상)로 앱에 다 있으면 '앞서 보낸 사진'(resent)으로 본다.
+function hjChatAudit(reports){
+  const me=hjChatMe(reports);
+  const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&f.project).map(f=>({p:f.project,w:hjChatPhotoTime(f)})).filter(x=>isFinite(x.w));
+  const isDoc=e=>HJ_CHAT_DOC_RE.test(String(e.text||''));
+  const mine=(reports||[]).filter(e=>!me||e.who===me);
+  // 서류 사진은 합치지 않는다 — 같은 현장 사진 보고에 붙으면 보낸 장수가 부풀어 '누락 의심'으로 잘못 잡힌다
+  const evs=hjChatMerge(mine.filter(e=>!isDoc(e))).concat(mine.filter(isDoc).map(e=>Object.assign({},e))).sort((a,b)=>a.t-b.t);
+  const out=[];
+  evs.forEach(ev=>{
+    if(isDoc(ev))return out.push({ev,m:0,status:'doc'});
+    if(!ev.project)return out.push({ev,m:0,status:'nosite'});
+    const t=hjChatAnchor(ev);
+    const m=photos.filter(x=>x.p===ev.project&&x.w<=t+3600000&&x.w>=t-72*3600000).length;
+    if(m>=ev.n)return out.push({ev,m,status:'ok'});
+    const prev=out.slice().reverse().find(a=>a.status==='ok'&&a.ev.project===ev.project&&ev.t-a.ev.t<=14*86400000&&a.ev.n>=ev.n*0.8);
+    out.push(prev?{ev,m,status:'resent',prev:prev.ev}:{ev,m,status:'missing'});
+  });
+  return out;
+}
+// 현장 없는 사진 → 보고 묶음 [{ev,photos,plausible,sure}] (보고 시각순)
+function hjChatPhotoPlan(reports,photos){
+  const me=hjChatMe(reports);
+  const evs=hjChatMerge((reports||[]).filter(e=>(!me||e.who===me)&&!HJ_CHAT_DOC_RE.test(String(e.text||''))));
+  const groups=new Map();
+  (photos||[]).forEach(p=>{
+    if(!p||p.project||HJ_CHAT_KAKAO_NAME_RE.test(String(p.name||''))||HJ_CHAT_SHOT_RE.test(String(p.name||'')))return;
+    const w=hjChatPhotoTime(p);if(!isFinite(w))return;
+    const ev=evs.find(e=>e.t>=w&&e.t-w<=72*3600000)||null;
+    if(!ev)return;
+    if(!groups.has(ev))groups.set(ev,[]);
+    groups.get(ev).push(p);
+  });
+  return [...groups.entries()].map(([ev,ps])=>{
+    ps.sort((a,b)=>hjChatPhotoTime(a)-hjChatPhotoTime(b));
+    const first=hjChatPhotoTime(ps[0]);
+    return {ev,photos:ps,plausible:ps.length<=ev.n*1.5+3,sure:!!ev.project&&ps.length===ev.n&&ev.t-first<=12*3600000};
+  }).sort((a,b)=>a.ev.t-b.ev.t);
+}
+async function hjChatReadFiles(files){
+  const chats=[];
+  for(const f of [...(files||[])]){
+    let text='';
+    try{const buf=await f.arrayBuffer();text=new TextDecoder('utf-8').decode(buf);if(text.indexOf('\uFFFD')>=0){try{text=new TextDecoder('euc-kr').decode(buf);}catch(e){}}}catch(e){continue;}
+    const c=hjChatParse(text,f.name);if(c.msgs.length)chats.push(c);
+  }
+  return chats;
+}
+function hjChatPick(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.txt,text/plain';inp.multiple=true;
+  inp.onchange=async()=>{const fs=inp.files;if(!fs||!fs.length)return;const chats=await hjChatReadFiles(fs);hjChatReview(chats);};
+  inp.click();
+}
+function hjChatReview(chats){
+  const photos=(state.files||[]).filter(f=>f&&f.kind==='photo'&&!f.project&&!f._fromQuote);
+  const reports=hjChatReports(chats);
+  const plan=hjChatPhotoPlan(reports,photos);
+  const audit=hjChatAudit(reports);
+  const miss=audit.filter(a=>a.status==='missing'),nosite=audit.filter(a=>a.status==='nosite'||a.status==='doc');
+  const nMsg=(chats||[]).reduce((a,c)=>a+c.msgs.length,0);
+  if(!(chats||[]).length||!audit.length){
+    openModal('💬 카톡 보고 대조·사진 배정','<p style="font-size:13px;line-height:1.6">'+(!(chats||[]).length?'카카오톡 대화 내보내기(.txt) 파일을 읽지 못했습니다.':'대화 '+chats.length+'개 · 메시지 '+nMsg+'개에서 사진 보고(\'사진 N장\')를 찾지 못했습니다.')+'</p><p class="hint" style="font-size:12px">카톡 대화방 → 메뉴 → 대화 내보내기(텍스트)로 받은 .txt 파일을 고르세요. 여러 개를 한 번에 골라도 됩니다.</p>');
+    return 0;
+  }
+  const hm=d=>{const h=d.getHours();return (h<12?'오전 ':'오후 ')+((h%12)||12)+':'+pad(d.getMinutes());};
+  const when=e=>escapeHtml(fmtDay(e.t)+' '+hm(e.t));
+  const aRow=a=>`<div data-chat-audit="${a.status}" style="padding:6px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px;line-height:1.5"><b>${when(a.ev)}</b> · ${escapeHtml(a.ev.room)} · ${a.ev.project?'<b>'+escapeHtml(a.ev.project)+'</b>':'<span style="color:var(--muted)">현장 못 찾음</span>'} — 톡 ${a.ev.n}장 / 앱 ${a.status==='nosite'||a.status==='doc'?'-':a.m+'장'}${a.status==='missing'?' <b style="color:#b45309">⚠ 누락 의심</b>':a.status==='ok'?' ✓':a.status==='resent'?' ✓ 앞서 보낸 사진('+escapeHtml(fmtDay(a.prev.t))+')':a.status==='doc'?' · 서류 사진':''}<div style="font-size:11.5px;color:var(--muted)">“${escapeHtml(String(a.ev.text).slice(0,60))}”</div></div>`;
+  const popt=selectableProjects('').map(p=>`<option value="${escapeAttr(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+  const rows=plan.map((g,i)=>{
+    const e=g.ev;
+    const thumbs='<span class="psr-thumbs">'+g.photos.slice(0,3).map(p=>'<span class="psr-th">'+photoImg(p,160)+'</span>').join('')+(g.photos.length>3?'<span class="psr-th psr-more">+'+(g.photos.length-3)+'</span>':'')+'</span>';
+    const head=`<b>${when(e)}</b> · ${escapeHtml(e.room)} · 보낸 ${e.n}장 / 현장 없는 사진 <b>${g.photos.length}장</b>${g.plausible?'':' <span style="color:#b45309">— 보낸 것보다 많아요, 확인</span>'}`;
+    const said=`<div style="font-size:12px;color:var(--muted);margin:2px 0 4px">“${escapeHtml(String(e.text).slice(0,60))}”${e.why?' · '+escapeHtml(e.why):''}${g.sure?'':' · 참고'}</div>`;
+    const sel=`<select class="chatSel" data-i="${i}" aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t)+' 보고 현장')}" style="min-height:44px;max-width:100%;font-size:16px"><option value="">현장 고르기${e.project?'':' — 보고 글에서 못 찾음'}</option>${popt}</select>`;
+    return `<div class="psr-row" data-chat-row="${i}"><label class="psr-chk"><input type="checkbox" class="chatChk" data-i="${i}"${g.sure?' checked':''} aria-label="${escapeAttr(fmtDay(e.t)+' '+hm(e.t))} 보고 묶음 배정"></label>${thumbs}<div class="psr-txt">${head}${said}<div class="psr-target">${sel}</div></div></div>`;
+  }).join('');
+  const nPh=plan.reduce((a,g)=>a+g.photos.length,0);
+  const body='<style>.psr-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line-soft)}.psr-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}.psr-chk input{width:20px;height:20px;margin:0}.psr-thumbs{display:flex;gap:3px;flex:0 0 auto}.psr-th{width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:12px}.psr-th img{width:100%;height:100%;object-fit:cover}.psr-txt{flex:1;min-width:0;font-size:13px;line-height:1.5}.psr-target{margin-top:3px}</style>'+
+    `<div class="hint" id="chatSummary" style="margin:0 0 8px">대화 ${chats.length}개 · 내 사진 보고 <b>${audit.length}건</b>(현장 찾음 ${audit.length-nosite.length}건) · 앱 사진이 모자란 보고 <b>${miss.length}건</b> · 현장 없는 사진 제안 <b>${nPh}장</b>. 대화 파일은 저장하지 않습니다.</div>`+
+    `<div style="max-height:60vh;overflow:auto">`+
+    (miss.length?`<h4 style="margin:4px 0;font-size:13.5px">⚠ 보고했는데 앱 사진이 모자란 곳 ${miss.length}건</h4><div class="hint" style="margin:0 0 4px;font-size:11.5px">보고 전 72시간 안에 찍은 그 현장 사진이 보낸 장수보다 적어요 — 톡방(톡클라우드)에서 그날 사진을 받아 넣으세요.</div>${miss.slice(0,40).map(aRow).join('')}${miss.length>40?'<div class="hint">…외 '+(miss.length-40)+'건</div>':''}`:'<div class="hint" style="margin:4px 0 8px">✓ 현장을 찾은 보고는 모두 앱에 사진이 있어요.</div>')+
+    (plan.length?`<h4 style="margin:12px 0 4px;font-size:13.5px">🧭 현장 없는 사진 — 보고로 찾은 현장 ${nPh}장</h4><div class="hint" style="margin:0 0 4px;font-size:11.5px">촬영 뒤 첫 보고(72시간 안)로 묶었습니다. 현장을 찾았고 장수가 같고 보고 12시간 안에 찍은 묶음만 체크돼 있어요 — 나머지는 참고. 배정 전 안전판을 한 번 만듭니다.</div><div id="chatList">${rows}</div>`:'')+
+    `<details style="margin-top:10px"><summary style="font-size:12.5px;min-height:44px">모든 보고 보기 (${audit.length}건)</summary>${audit.slice().reverse().map(aRow).join('')}</details>`+
+    `</div>`;
+  openModal('💬 카톡 보고 대조·사진 배정',body,[
+    ...(plan.length?[{label:'체크한 묶음 배정',cls:'clay',fn:()=>hjChatApply(plan)}]:[]),
+    {label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('modalRoot');
+  if(root)root.querySelectorAll('.chatSel').forEach(sel=>{
+    const g=plan[+sel.dataset.i];if(g&&g.ev.project)sel.value=g.ev.project;
+    sel.onchange=()=>{const chk=root.querySelector('.chatChk[data-i="'+sel.dataset.i+'"]');if(chk)chk.checked=!!sel.value;};
+  });
+  return audit.length;
+}
+async function hjChatApply(plan){
+  const root=document.getElementById('modalRoot');if(!root)return 0;
+  const picks=[];let noTarget=0;
+  root.querySelectorAll('.chatChk:checked').forEach(el=>{
+    const g=plan[+el.dataset.i];if(!g)return;
+    const to=String((root.querySelector('.chatSel[data-i="'+el.dataset.i+'"]')||{}).value||'');
+    if(!to){noTarget++;return;}
+    picks.push({g,to});
+  });
+  if(!picks.length){toast(noTarget?'체크한 묶음의 현장을 먼저 골라 주세요':'배정할 묶음을 체크하세요');return 0;}
+  const btns=[...root.querySelectorAll('.mfoot button')];btns.forEach(b=>b.disabled=true);
+  let snapped=false;
+  try{snapped=await hjSnapshot('카톡 보고 배정 전',true,true);}catch(e){snapped=false;}
+  if(!snapped){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('안전판을 만들지 못해 배정하지 않았습니다. 잠시 후 다시 시도하세요.');return 0;}
+  const names=new Set((state.projects||[]).filter(p=>p&&!p.archived).map(p=>p.name));
+  let n=0,g=0;
+  picks.forEach(({g:grp,to})=>{
+    if(!names.has(to))return;
+    let k=0;grp.photos.forEach(p=>{if(p.project||!state.files.includes(p))return;p.project=to;k++;});
+    if(k){n+=k;g++;try{portalAutoSync(to);}catch(e){}}
+  });
+  if(!n){btns.forEach(b=>{if(b.isConnected)b.disabled=false;});toast('배정할 사진이 없습니다(이미 배정됨)');return 0;}
+  try{__photoCache.key=null;}catch(e){}
+  markDirty();closeModal();render();
+  toast('💬 '+g+'묶음 '+n+'장을 배정했습니다'+(noTarget?' · 현장 안 고른 '+noTarget+'묶음은 그대로':'')+' — 되돌리려면 🛡 안전판("카톡 보고 배정 전")');
+  return n;
 }
 function setQuoteField(field,val){const q=state.editingQuote;if(!q)return;
   if(field==='vatIncluded')q.vatIncluded=(val==='1');
@@ -37881,7 +39379,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-est-read],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('[data-est-read],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.leakdetect!==undefined)return hjLeakDetectView(d.leakdetect);
@@ -38046,6 +39544,12 @@ function setupDelegation(){
     if(t.id==='qmMeasure')return quoteFromMeasure();
     if(t.id==='qmOrder')return materialOrder(state.editingQuote&&state.editingQuote.id);
     if(t.id==='qmImport')return importQuoteXlsx();
+    if(t.id==='qmStmt')return hjStmtImportPick();
+    if(d.stmtpay!==undefined)return hjStmtPayView(d.stmtpay);   // v527
+    if(d.stmtbank!==undefined)return hjBankImportView();   // v533 🏦 통장 파일로 내역서 입금 맞추기
+    if(d.stmtdun!==undefined)return hjStmtDunView(d.stmtdun);   // v535 📋 협력사 미수 안내 글
+    if(d.stmtunit!==undefined)return hjStmtUnitView(d.stmtunit);   // v537 🏢 내역서 동·호수 → 세대 등록
+    if(d.stmtfile!==undefined)return hjStmtImportFromFile(d.stmtfile);
     if(t.id==='qmXlsx')return exportQuoteXlsx();
     if(d.qadd!==undefined)return addQuoteItemNamed(d.qadd);
     if(d.qedit!==undefined)return editQuote(d.qedit);
@@ -45463,7 +46967,8 @@ async function hjBankReadFile(file){
    보이고 고르지 않는다(같은 금액 잔금이 둘이면 틀린다). 후보가 같은 점수로 둘이면 고르지 않고 사람에게 넘긴다. */
 function hjBankMatch(row,projects,statsOf,payLog){
   const payer=hjBankNorm(row.payer);const cands=[];
-  const prev=new Map();(payLog||[]).forEach(x=>{if(x&&x.payer&&x.project){const k=hjBankNorm(x.payer);if(k.length>=2)prev.set(k,x.project);}});
+  // v533 내역서 입금(x.stmt)은 협력사 한 번 입금을 현장 여러 곳에 같은 입금자로 나눠 적은 것 — '전에 같은 입금자' 단서가 아니다
+  const prev=new Map();(payLog||[]).forEach(x=>{if(x&&x.payer&&x.project&&!x.stmt){const k=hjBankNorm(x.payer);if(k.length>=2)prev.set(k,x.project);}});
   projects.forEach(p=>{
     let score=0;const why=[];
     const cust=hjBankNorm(p.customer&&p.customer.name),pn=hjBankNorm(p.name);
@@ -45486,12 +46991,88 @@ function hjBankMatch(row,projects,statsOf,payLog){
   return {project:top.p.name,why:top.why.join(' · '),hint:''};
 }
 function hjBankDup(row,project){
-  return (state.payLog||[]).some(x=>x&&String(x.d)===row.date&&Math.round(num(x.amt))===row.amt&&(!project||x.project===project));
+  // v538 현장을 정하지 않고 볼 때는 내역서 나눔 기록(x.stmt — 현장마다 나눈 일부 금액)을 빼고 본다: 다른 통장 줄과 금액이 우연히 같을 수 있고,
+  //      내역서 입금의 '이미 기록됨'은 hjBankStmtDup·hjBankStmtComboDup 이 내역서 단위로 본다. 현장을 고르면 예전처럼 그 현장 기록 전부.
+  return (state.payLog||[]).some(x=>x&&String(x.d)===row.date&&Math.round(num(x.amt))===row.amt&&(project?x.project===project:!x.stmt));
+}
+/* v533 🏦↔📑 통장 입금 ↔ 작업내역서 — 협력사는 내역서 한 장 단위로 입금한다(v527 장부). 통장 줄의 입금자가 내역서 거래처(stmt.to)와 맞고
+   금액이 그 내역서 남은 돈과 '같을 때만' 그 내역서를 제안(체크)한다. 거래처만 맞고 금액이 적으면(일부 입금)·금액만 맞으면(입금자 다름)·
+   같은 금액 내역서가 둘이면 힌트만 — 고르지 않는다. 저장은 v527 hjStmtPayApply(남은 돈 비율로 현장마다 나눠 적기). */
+function hjBankStmtLabel(s){return ((s&&s.to?s.to+' ':'')+(s&&s.doc||'작업내역서')+' '+hjStmtMd(s&&s.date)).trim();}
+function hjBankStmtNameHit(row,s){
+  const to=hjBankNorm(s&&s.to);if(to.length<2)return false;
+  const payer=hjBankNorm(row&&row.payer),memo=hjBankNorm(row&&row.memo);
+  return (payer.length>=2&&(payer===to||payer.includes(to)||to.includes(payer)))||(memo.length>=2&&memo.includes(to));
+}
+// 이미 적은 내역서 입금인가 — 같은 내역서·같은 날에 한 번에 나눠 적은 묶음(stmtPay · v533 전 기록은 그날 것 전부)의 합이 이 줄 금액과 같다.
+// idx(hjBankStmtDupIndex)를 넘기면 수금 이력을 줄마다 다시 훑지 않는다(통장 줄 수백 × 내역서 수십).
+function hjBankStmtDupIndex(){
+  const g=new Map(),idx=new Map(),grp=new Map(),combo=new Map();
+  (state.payLog||[]).forEach(x=>{if(!x||!x.stmt)return;const gid=x.stmtPay||'',a=Math.round(num(x.amt));const k=x.stmt+'\u0001'+String(x.d)+'\u0001'+gid;g.set(k,(g.get(k)||0)+a);
+    if(gid){if(!grp.has(gid))grp.set(gid,{d:String(x.d),srcs:new Set(),total:0});const G=grp.get(gid);G.srcs.add(x.stmt);G.total+=a;}});
+  g.forEach((v,k)=>{const gid=k.slice(k.lastIndexOf('\u0001')+1);if(gid&&grp.has(gid)&&grp.get(gid).srcs.size>1)return;   // v538 여러 장 묶음은 장별 '이미 기록됨'에 넣지 않는다(다른 통장 줄과 금액이 우연히 같을 수 있다)
+    const kk=k.slice(0,k.lastIndexOf('\u0001'));if(!idx.has(kk))idx.set(kk,new Set());idx.get(kk).add(v);});
+  grp.forEach(G=>{if(G.srcs.size<2)return;const k=G.d+'\u0001'+G.total;if(!combo.has(k))combo.set(k,[]);combo.get(k).push([...G.srcs]);});
+  idx.combo=combo;   // v538 날짜·합계 → [내역서 src 목록] (Map 에 붙여 예전 호출 모양 유지)
+  return idx;
+}
+// v538 이 줄이 이미 '내역서 여러 장 한 번에'로 적힌 입금인가 — 같은 날·같은 합계·같은 내역서 묶음
+function hjBankStmtComboDup(row,srcs,idx){
+  if(!row||!Array.isArray(srcs)||srcs.length<2)return false;
+  const list=((idx||hjBankStmtDupIndex()).combo||new Map()).get(row.date+'\u0001'+row.amt)||[];
+  return list.some(g=>g.length===srcs.length&&srcs.every(s=>g.includes(s)));
+}
+// v538 묶음이 지금도 이 줄 금액과 딱 맞는가 — 아니면 이유 글
+function hjBankStmtComboBad(row,srcs,led){
+  const parts=(srcs||[]).map(src=>(led||[]).find(z=>z&&z.src===src));
+  if(parts.some(p=>!p))return '📑 내역서를 찾지 못했어요 — 창을 닫고 다시 열어 주세요';
+  if(parts.some(p=>!(p.left>0))||parts.reduce((a,p)=>a+p.left,0)!==row.amt)return '📑 묶은 내역서의 남은 돈이 이 줄 금액과 달라졌어요 — 창을 닫고 다시 열어 주세요';
+  return '';
+}
+function hjBankStmtComboLabel(srcs,led){
+  const parts=(srcs||[]).map(src=>(led||[]).find(z=>z&&z.src===src)).filter(Boolean);
+  return '📑 '+((parts[0]&&parts[0].to)||'거래처')+' 내역서 '+(srcs||[]).length+'장('+parts.map(p=>hjStmtMd(p.date)).join('·')+')';
+}
+function hjBankStmtDup(row,src,idx){
+  if(!row||!src)return false;
+  const hit=(idx||hjBankStmtDupIndex()).get(src+'\u0001'+row.date);
+  return !!(hit&&hit.has(row.amt));
+}
+// led = hjStmtLedger()(다 받은 내역서 포함 — 다시 넣은 파일의 '이미 기록됨'을 찾으려고) → {src,dup,named,why,hint}
+function hjBankStmtMatch(row,led,idx){
+  const L=(Array.isArray(led)?led:[]).filter(s=>s&&s.src),I=idx||hjBankStmtDupIndex();
+  const hit=L.filter(s=>hjBankStmtNameHit(row,s));
+  const dupS=L.filter(s=>hjBankStmtDup(row,s.src,I));
+  const dup=dupS.find(s=>hit.includes(s))||(dupS.length===1?dupS[0]:null);
+  if(dup)return {src:dup.src,dup:true,named:hit.includes(dup),why:'',hint:''};
+  // v538 내역서 여러 장을 한 번에 적은 입금 — 같은 날·같은 합계 묶음(거래처가 맞는 묶음 먼저, 아니면 하나뿐일 때)
+  const cg=((I&&I.combo&&I.combo.get(row.date+'\u0001'+row.amt))||[]),cgNamed=cg.find(g=>g.some(src=>hit.some(s=>s.src===src)));
+  if(cgNamed||cg.length===1)return {src:'',combo:(cgNamed||cg[0]).slice(),dup:true,named:!!cgNamed,why:'',hint:''};
+  const open=L.filter(s=>s.left>0),mine=open.filter(s=>hit.includes(s));
+  const exact=mine.filter(s=>s.left===row.amt);
+  if(exact.length===1)return {src:exact[0].src,dup:false,named:true,why:'입금자=거래처 · 남은 돈과 같은 금액 → 현장 '+exact[0].quotes.length+'곳에 나눠 적어요',hint:''};
+  if(exact.length>1)return {src:'',dup:false,named:true,why:'',hint:'📑 남은 돈이 같은 내역서 '+exact.length+'장('+exact.slice(0,3).map(hjBankStmtLabel).join(' · ')+') — 직접 고르세요'};
+  // v538 협력사가 내역서 여러 장을 한 번에 — 거래처가 하나로 맞고, 그 거래처 내역서를 오래된 순으로 더해 이 줄 금액과 딱 맞는 첫 묶음(2장 이상)
+  const tos=new Set(mine.map(s=>hjBankNorm(s.to)));
+  if(mine.length>1&&tos.size===1){
+    const asc=mine.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.src).localeCompare(String(b.src)));
+    let acc=0,k=-1;for(let i=0;i<asc.length;i++){acc+=asc[i].left;if(acc===row.amt){k=i;break;}if(acc>row.amt)break;}
+    if(k>=1)return {src:'',combo:asc.slice(0,k+1).map(s=>s.src),dup:false,named:true,why:'입금자=거래처 · 오래된 내역서 '+(k+1)+'장 남은 돈 합계와 같은 금액 → 장마다 다 받음으로 나눠 적어요',hint:''};
+  }
+  const part=mine.filter(s=>row.amt<s.left);
+  if(part.length)return {src:'',dup:false,named:true,why:'',hint:'📑 '+part.slice(0,2).map(s=>hjBankStmtLabel(s)+'(남음 '+won(s.left)+')').join(' · ')+'의 일부 입금일 수 있어요 — 맞으면 골라 주세요(남은 돈 비율로 나눠 적어요)'};
+  const same=open.filter(s=>s.left===row.amt);
+  if(same.length===1)return {src:'',dup:false,named:false,why:'',hint:'📑 '+hjBankStmtLabel(same[0])+' 남은 돈과 같은 금액 — 입금자가 그 거래처면 골라 주세요'};
+  return {src:'',dup:false,named:hit.length>0,why:'',hint:''};
+}
+function hjBankStmtOf(v,led){
+  const t=String(v||'');if(t.indexOf('stmt:')!==0)return null;
+  return (Array.isArray(led)?led:[]).find(s=>s&&s.src===t.slice(5))||null;
 }
 function hjBankImportView(back){
   const body=
     '<div style="font-size:12.5px;line-height:1.65;color:var(--muted);margin-bottom:10px">은행 앱·인터넷뱅킹에서 받은 <b>거래내역 파일(xlsx·csv)</b>을 고르면 <b>입금 줄만</b> 뽑아 현장을 제안합니다. '+
-      '제안은 입금자명이 고객명·현장명과 맞을 때만 — 틀릴 수 있으니 줄마다 확인하고 체크한 것만 저장됩니다. 파일은 저장하지 않고 고른 줄의 날짜·금액·입금자명만 입금 기록에 남아요.</div>'+
+      '제안은 입금자명이 고객명·현장명과 맞을 때만, 협력사 입금은 입금자=내역서 거래처이고 금액이 그 📑 작업내역서 남은 돈과 같을 때만 — 틀릴 수 있으니 줄마다 확인하고 체크한 것만 저장됩니다. 파일은 저장하지 않고 고른 줄의 날짜·금액·입금자명만 입금 기록에 남아요.</div>'+
     '<label for="bkFile" style="display:block;font-size:12px;font-weight:700;margin:2px 0 5px">거래내역 파일</label>'+
     '<input type="file" id="bkFile" accept=".xlsx,.xls,.csv,.txt,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="width:100%;min-height:44px;font-size:14px">'+
     '<div id="bkOut" style="margin-top:10px"></div>';
@@ -45513,44 +47094,95 @@ function hjBankImportRender(res,fileName){
   if(!rows.length){out.innerHTML='<div class="empty" style="padding:14px"><b>가져올 입금이 없어요</b>'+escapeHtml((res&&res.reason)||'')+'</div>';return;}
   const projects=(state.projects||[]).filter(p=>p&&!p.archived).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko'));
   const statsCache=new Map();const statsOf=n=>{if(!statsCache.has(n)){let st={};try{st=projStats(n);}catch(e){}statsCache.set(n,st);}return statsCache.get(n);};
-  const items=rows.map(r=>{const m=hjBankMatch(r,projects,statsOf,state.payLog);const dup=hjBankDup(r,m.project);return Object.assign({},r,m,{dup});});
+  // v533 📑 작업내역서(협력사 입금) — 1) 이미 나눠 적은 입금 2) 입금자=거래처·남은 돈과 같은 금액 3) 현장 제안(v350) 4) 힌트
+  let led=[],dupIdx=new Map();try{led=hjStmtLedger();dupIdx=hjBankStmtDupIndex();}catch(e){led=[];}
+  const items=rows.map(r=>{
+    const m=hjBankMatch(r,projects,statsOf,state.payLog),sm=hjBankStmtMatch(r,led,dupIdx);
+    if(sm.dup&&(sm.named||!m.project))return Object.assign({},r,{project:'',why:'',hint:'',stmt:sm.src||'',combo:sm.combo||null,useCombo:!!sm.combo,dup:true});
+    if(sm.src||sm.combo)return Object.assign({},r,{project:'',why:sm.why,hint:'',stmt:sm.src||'',combo:sm.combo||null,useCombo:!!sm.combo,dup:false});   // v538 combo = 내역서 여러 장
+    const dup=hjBankDup(r,m.project);
+    // 내역서 힌트가 있으면 그것을 — 내역서 현장의 잔금은 내역서에서 온 것이라 현장으로 바로 적으면 📑 장부에 받은 돈으로 안 잡힌다
+    return Object.assign({},r,m,{stmt:'',combo:null,useCombo:false,dup,hint:m.project?'':(sm.hint||m.hint)});
+  });
   const dates=items.map(x=>x.date).sort();
-  const nSug=items.filter(x=>x.project&&!x.dup).length,nDup=items.filter(x=>x.dup).length;
-  const opts=sel=>'<option value="">— 현장 고르기 —</option>'+projects.map(p=>'<option value="'+escapeAttr(p.name)+'"'+(p.name===sel?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join('');
+  const nSug=items.filter(x=>x.project&&!x.dup).length,nStmt=items.filter(x=>(x.stmt||x.useCombo)&&!x.dup).length,nDup=items.filter(x=>x.dup).length;
+  const stmtLabel=src=>{const s=led.find(z=>z.src===src);return s?hjBankStmtLabel(s):src;};
+  const comboLabel=srcs=>hjBankStmtComboLabel(srcs,led);
+  const comboOpt=(x,i)=>x&&x.combo?'<option value="combo:'+i+'"'+(x.useCombo?' selected':'')+'>'+escapeHtml(comboLabel(x.combo)+' 합계 · '+won(x.amt))+'</option>':'';   // v538 이 줄에만
+  const stmtOpts=(sel,x,i)=>{
+    const list=led.filter(z=>z.left>0),cur=hjBankStmtOf(sel,led),co=comboOpt(x,i);if(cur&&!list.includes(cur))list.unshift(cur);
+    return (list.length||co)?'<optgroup label="📑 작업내역서 — 현장 여러 곳에 나눠 적기">'+co+list.map(z=>'<option value="'+escapeAttr('stmt:'+z.src)+'"'+('stmt:'+z.src===sel?' selected':'')+'>'+
+      escapeHtml('📑 '+((z.to||z.doc||'작업내역서')+' '+hjStmtMd(z.date)).trim()+' · '+(z.left?'남음 '+won(z.left):'다 받음'))+'</option>').join('')+'</optgroup>':'';   // 폰 폭에서 금액이 잘리지 않게 짧게
+  };
+  const opts=(sel,x,i)=>'<option value="">— 현장 고르기 —</option>'+projects.map(p=>'<option value="'+escapeAttr(p.name)+'"'+(p.name===sel?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join('')+stmtOpts(sel,x,i);
+  const whyOf=x=>x.dup&&x.useCombo?'이미 기록됨 — '+comboLabel(x.combo)+'에 같은 날·같은 금액으로 나눠 적은 입금이 있어요'
+    :!x.dup&&x.useCombo?'제안: '+comboLabel(x.combo)+' — '+x.why
+    :x.dup?(x.stmt?'이미 기록됨 — 📑 '+stmtLabel(x.stmt)+'에 같은 날·같은 금액으로 나눠 적은 입금이 있어요':'이미 기록됨 — 같은 날·같은 금액'+(x.project?'·같은 현장':'')+'의 입금이 수금 이력에 있어요')
+    :x.stmt?'제안: 📑 '+stmtLabel(x.stmt)+' — '+x.why:x.project?'제안: '+x.why:(x.hint||'맞는 현장을 모르겠어요 — 직접 고르거나 체크를 비워 두세요');
   out.innerHTML=
     '<div id="bkSum" role="status" style="font-size:12.5px;line-height:1.6;padding:8px 10px;border:1px solid var(--line-soft);border-radius:11px;background:var(--paper-2)">'+
-      '<b>'+escapeHtml(fileName||'파일')+'</b> · 입금 <b>'+items.length+'건</b> ('+escapeHtml(dates[0])+' ~ '+escapeHtml(dates[dates.length-1])+') · 현장 제안 '+nSug+'건'+(nDup?' · 이미 기록됨 '+nDup+'건':'')+
+      '<b>'+escapeHtml(fileName||'파일')+'</b> · 입금 <b>'+items.length+'건</b> ('+escapeHtml(dates[0])+' ~ '+escapeHtml(dates[dates.length-1])+') · 현장 제안 '+nSug+'건'+(nStmt?' · 📑 내역서 제안 '+nStmt+'건':'')+(nDup?' · 이미 기록됨 '+nDup+'건':'')+
       '<br><span style="color:var(--muted)">체크된 줄만 저장돼요. 현장이 비어 있으면 저장되지 않습니다.</span></div>'+
-    items.map((x,i)=>'<div class="bkRow" data-i="'+i+'" style="border:1px solid '+(x.dup?'var(--line-soft)':x.project?'var(--moss)':'var(--line-soft)')+';border-radius:11px;padding:8px 10px;margin-top:8px'+(x.dup?';opacity:.72':'')+'">'+
-      '<label style="display:flex;gap:9px;align-items:center;min-height:44px;cursor:pointer"><input type="checkbox" class="bkChk" data-i="'+i+'"'+(x.project&&!x.dup?' checked':'')+' style="width:22px;height:22px;flex-shrink:0">'+
+    items.map((x,i)=>'<div class="bkRow" data-i="'+i+'" style="border:1px solid '+(x.dup?'var(--line-soft)':(x.project||x.stmt||x.useCombo)?'var(--moss)':'var(--line-soft)')+';border-radius:11px;padding:8px 10px;margin-top:8px'+(x.dup?';opacity:.72':'')+'">'+
+      '<label style="display:flex;gap:9px;align-items:center;min-height:44px;cursor:pointer"><input type="checkbox" class="bkChk" data-i="'+i+'"'+((x.project||x.stmt||x.useCombo)&&!x.dup?' checked':'')+' style="width:22px;height:22px;flex-shrink:0">'+
         '<span style="flex:1;min-width:0;font-size:13px"><b style="color:#15803d">+'+won(x.amt)+'</b> <span style="color:var(--muted)">'+escapeHtml(x.date)+'</span>'+(x.payer?' · '+escapeHtml(x.payer):'')+
         (x.memo?'<br><span style="font-size:11.5px;color:var(--muted-2)">'+escapeHtml(x.memo)+'</span>':'')+'</span></label>'+
-      '<select class="bkPj" data-i="'+i+'" aria-label="입금 현장" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box">'+opts(x.project)+'</select>'+
-      '<div class="bkWhy" style="font-size:11.5px;margin-top:4px;color:'+(x.dup?'#b45309':x.project?'var(--moss)':'var(--muted-2)')+'">'+
-        escapeHtml(x.dup?'이미 기록됨 — 같은 날·같은 금액'+(x.project?'·같은 현장':'')+'의 입금이 수금 이력에 있어요':x.project?'제안: '+x.why:(x.hint||'맞는 현장을 모르겠어요 — 직접 고르거나 체크를 비워 두세요'))+'</div>'+
+      '<select class="bkPj" data-i="'+i+'" aria-label="입금 현장" style="width:100%;padding:9px;font-size:16px;min-height:44px;box-sizing:border-box">'+opts(x.useCombo?'combo:'+i:(x.stmt?'stmt:'+x.stmt:x.project),x,i)+'</select>'+
+      '<div class="bkWhy" style="font-size:11.5px;margin-top:4px;color:'+(x.dup?'#b45309':(x.project||x.stmt||x.useCombo)?'var(--moss)':'var(--muted-2)')+'">'+
+        escapeHtml(whyOf(x))+'</div>'+
     '</div>').join('')+
     '<button type="button" class="clay" id="bkSave" style="width:100%;margin-top:10px;padding:11px;min-height:48px">✅ 체크한 입금 저장</button>'+
     '<p class="hint" style="margin:8px 0 0">저장하면 그 현장의 받은 돈·잔금·미수 알림이 함께 바뀝니다. 증빙(현금영수증·세금계산서)은 저장 뒤 [🧾 입금 증빙 기록]에서 적어 두세요.</p>';
   const root=out;
-  root.querySelectorAll('.bkPj').forEach(sel=>sel.onchange=()=>{const i=+sel.dataset.i,x=items[i];x.project=sel.value;x.dup=hjBankDup(x,x.project);
-    const chk=root.querySelector('.bkChk[data-i="'+i+'"]');if(chk)chk.checked=!!x.project&&!x.dup;
-    const why=root.querySelector('.bkRow[data-i="'+i+'"] .bkWhy');if(why)why.textContent=x.dup?'이미 기록됨 — 같은 날·같은 금액·같은 현장의 입금이 수금 이력에 있어요':(x.project?'직접 고름: '+x.project:'현장을 고르면 저장할 수 있어요');});
+  root.querySelectorAll('.bkPj').forEach(sel=>sel.onchange=()=>{const i=+sel.dataset.i,x=items[i];
+    if(String(sel.value).indexOf('combo:')===0&&x.combo){   // v538 내역서 여러 장 한 번에
+      x.project='';x.stmt='';x.useCombo=true;x.dup=hjBankStmtComboDup(x,x.combo);const bad=x.dup?'':hjBankStmtComboBad(x,x.combo,led);
+      const c0=root.querySelector('.bkChk[data-i="'+i+'"]');if(c0)c0.checked=!x.dup&&!bad;
+      const w0=root.querySelector('.bkRow[data-i="'+i+'"] .bkWhy');if(w0)w0.textContent=x.dup?'이미 기록됨 — '+comboLabel(x.combo)+'에 같은 날·같은 금액으로 나눠 적은 입금이 있어요':(bad||'직접 고름: '+comboLabel(x.combo)+' → 장마다 다 받음으로 나눠 적어요');
+      return;
+    }
+    x.useCombo=false;const s=hjBankStmtOf(sel.value,led);
+    if(s){x.project='';x.stmt=s.src;x.dup=hjBankStmtDup(x,s.src);}else{x.stmt='';x.project=sel.value;x.dup=hjBankDup(x,x.project);}
+    const over=!!s&&!x.dup&&x.amt>s.left;
+    const chk=root.querySelector('.bkChk[data-i="'+i+'"]');if(chk)chk.checked=(!!x.project||!!s)&&!x.dup&&!over;
+    const why=root.querySelector('.bkRow[data-i="'+i+'"] .bkWhy');if(why)why.textContent=s?(x.dup?'이미 기록됨 — 📑 '+hjBankStmtLabel(s)+'에 같은 날·같은 금액으로 나눠 적은 입금이 있어요'
+        :over?'📑 '+hjBankStmtLabel(s)+' 남은 돈('+won(s.left)+')보다 많아요 — 다른 내역서를 고르세요':'직접 고름: 📑 '+hjBankStmtLabel(s)+' → 현장 '+s.quotes.length+'곳에 남은 돈 비율로 나눠 적어요')
+      :x.dup?'이미 기록됨 — 같은 날·같은 금액·같은 현장의 입금이 수금 이력에 있어요':(x.project?'직접 고름: '+x.project+((z=>z?' — 이 현장은 📑 '+hjBankStmtLabel(z)+'에 들어 있어요. 협력사 입금이면 그 내역서를 고르세요(현장으로 바로 적으면 장부에 받은 돈으로 안 잡혀요)':'')(led.find(z=>z.left>0&&z.quotes.some(q=>q&&q.project===x.project)))):'현장을 고르면 저장할 수 있어요');});
   const save=root.querySelector('#bkSave');if(save)save.onclick=()=>{
     const picked=[];let noPj=0,dups=0;
     root.querySelectorAll('.bkChk').forEach(c=>{if(!c.checked)return;const i=+c.dataset.i,x=items[i];const pj=(root.querySelector('.bkPj[data-i="'+i+'"]')||{}).value||'';
-      if(!pj){noPj++;return;}if(hjBankDup(x,pj)){dups++;return;}picked.push({x,pj});});
+      if(!pj){noPj++;return;}
+      if(pj.indexOf('combo:')===0&&x.combo){if(hjBankStmtComboDup(x,x.combo)){dups++;return;}picked.push({x,pj:'',combo:x.combo.slice()});return;}   // v538
+      const s=hjBankStmtOf(pj,led);if(s){if(hjBankStmtDup(x,s.src)){dups++;return;}picked.push({x,pj:'',src:s.src});return;}
+      if(hjBankDup(x,pj)){dups++;return;}picked.push({x,pj});});
     if(!picked.length){toast(noPj?'체크한 줄에 현장이 비어 있어요 — 현장을 고르세요':(dups?'체크한 줄은 이미 기록된 입금이에요':'저장할 줄을 체크하세요'));return;}
     const today=localDate();
     if(picked.some(({x})=>x.date>today)){toast('입금일이 미래인 줄이 있어요 — 파일 날짜를 확인하세요');return;}
-    const sumAmt=picked.reduce((a,{x})=>a+x.amt,0);
-    if(!confirm('입금 '+picked.length+'건 · '+won(sumAmt)+'을 수금 이력에 저장할까요?\n현장이 맞는지 다시 확인하세요 — 틀리면 그 현장 잔금이 잘못 줄어듭니다.'))return;
-    let n=0;const touched=new Set(),saved=[];
-    picked.forEach(({x,pj})=>{const p=(state.projects||[]).find(q=>q&&q.name===pj);if(!p)return;
+    // 📑 한 내역서에 고른 줄 합계가 지금 남은 돈보다 많으면 아무것도 적지 않는다(나눈 금액이 어긋나지 않게)
+    const need=new Map();picked.forEach(({x,src})=>{if(src)need.set(src,(need.get(src)||0)+x.amt);});
+    // v538 여러 장 묶음: 지금도 합이 딱 맞는지·장마다 적을 수 있는지(지워진 현장 등) 먼저 — 한 장이라도 막히면 아무것도 적지 않는다
+    if(picked.some(p=>p.combo)){const fresh0=hjStmtLedger();
+      for(const pc of picked.filter(p=>p.combo)){const bad=hjBankStmtComboBad(pc.x,pc.combo,fresh0);if(bad){toast(bad);return;}
+        const parts=pc.combo.map(src=>fresh0.find(z=>z.src===src));
+        for(const pt of parts){const why=hjStmtPayCheck(pt.src,pt.left,pc.x.date);if(why){toast('📑 '+hjBankStmtLabel(pt)+': '+why);return;}need.set(pt.src,(need.get(pt.src)||0)+pt.left);}}}
+    if(need.size){const fresh=hjStmtLedger();for(const [src,amt] of need){const s=fresh.find(z=>z.src===src);
+      if(!s){toast('📑 내역서를 찾지 못했어요 — 창을 닫고 다시 열어 주세요');return;}
+      if(amt>s.left){toast('📑 '+hjBankStmtLabel(s)+' 남은 돈('+won(s.left)+')보다 많은 입금을 골랐어요 — 금액·내역서를 확인하세요');return;}}}
+    const sumAmt=picked.reduce((a,{x})=>a+x.amt,0),nS=picked.filter(p=>p.src||p.combo).length,nC=picked.filter(p=>p.combo).length;
+    if(!confirm('입금 '+picked.length+'건 · '+won(sumAmt)+'을 수금 이력에 저장할까요?\n'+(nS?'📑 작업내역서 입금 '+nS+'건은 그 내역서 현장들에 남은 돈 비율로 나눠 적어요'+(nC?'(내역서 여러 장을 한 번에 받은 '+nC+'건은 장마다 다 받음으로)':'')+'.\n':'')+'현장이 맞는지 다시 확인하세요 — 틀리면 그 현장 잔금이 잘못 줄어듭니다.'))return;
+    let n=0;const touched=new Set(),saved=[],sDone=[],sErr=[];
+    picked.forEach(({x,pj,src,combo})=>{
+      if(combo){const grp='sp'+uid();let k=0,nn=0;   // v538 같은 묶음 id — 다시 넣으면 '이미 기록됨'
+        try{combo.forEach(cs=>{const s0=hjStmtLedger().find(z=>z.src===cs);const r=hjStmtPayApply(cs,{amt:s0?s0.left:0,d:x.date,method:'계좌이체',payer:x.payer,grp});k++;nn+=r.n;});n++;sDone.push({n:nn});}
+        catch(e){if(k){n++;sDone.push({n:nn});}sErr.push((k?'내역서 '+combo.length+'장 중 '+k+'장만 적었어요 — 📑 장부를 확인하세요: ':'')+((e&&e.message)||'못 적음'));}
+        return;}
+      if(src){try{const r=hjStmtPayApply(src,{amt:x.amt,d:x.date,method:'계좌이체',payer:x.payer});n++;sDone.push(r);}catch(e){sErr.push((e&&e.message)||'못 적음');}return;}
+      const p=(state.projects||[]).find(q=>q&&q.name===pj);if(!p)return;
       const rec={d:x.date,project:pj,amt:x.amt};if(x.payer)rec.payer=String(x.payer).slice(0,30);
       if(hjPayRecordAdd(p,rec)){n++;touched.add(pj);saved.push({pj,d:x.date,amt:x.amt});}});
-    if(!n){toast('저장된 입금이 없어요');return;}
+    if(!n){toast(sErr.length?'📑 저장하지 못했어요: '+sErr[0]:'저장된 입금이 없어요');return;}
     markDirty();touched.forEach(pj=>{try{portalAutoSync(pj);}catch(e){}});
-    toast('🏦 입금 '+n+'건 저장 — 수금 이력에 반영'+(noPj?' · 현장 없는 '+noPj+'줄 건너뜀':'')+(dups?' · 이미 기록 '+dups+'줄 건너뜀':''));
+    toast('🏦 입금 '+n+'건 저장 — 수금 이력에 반영'+(sDone.length?' · 📑 내역서 '+sDone.length+'건은 현장 '+sDone.reduce((a,r)=>a+r.n,0)+'곳에 나눠 기록':'')+(sErr.length?' · 📑 못 적은 '+sErr.length+'줄: '+sErr[0]:'')+(noPj?' · 현장 없는 '+noPj+'줄 건너뜀':'')+(dups?' · 이미 기록 '+dups+'줄 건너뜀':''));
     try{render();}catch(e){}
     closeModal();hjBankAfterSave(saved);
   };
@@ -48073,7 +49705,7 @@ function webWorkNote(draft,projectName){
 function webWorkMarkDirtyAfterPersist(){
   state.dirty=true;__photoCache.key=null;
   try{const button=$('#btnSave');if(button){button.classList.add('clay');button.textContent='● 저장하기';}}catch(e){}
-  try{if(__autoSaveOn&&state.dirHandle&&FS_OK&&!directOrganizedRoot()){clearTimeout(__autosaveTimer);__autosaveTimer=setTimeout(()=>{if(state.dirty)saveProject(true);},AUTOSAVE_MS);}}catch(e){}
+  try{scheduleFolderAutoSave();}catch(e){}   // v531 최대 대기
   try{backupDriveAuto();}catch(e){}
   try{if(typeof cloudAutoSave==='function')cloudAutoSave();}catch(e){}
 }
