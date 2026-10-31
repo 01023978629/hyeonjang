@@ -73,6 +73,9 @@ async function device(phone) {
 async function booted(page) {
   await page.waitForFunction(keys => typeof serializeData === 'function' && keys.every(key => !!window[key]), BOOT);
   await page.evaluate(async keys => { await Promise.all(keys.map(key => window[key])); }, BOOT);
+  // 부팅 4초 뒤 도는 세금 일정·코워크 씨앗(taxCalendarEnsure·coworkSchedEnsure)이 막 받은 자료에 일정을 더하면 폰이 '안 올린 변경'이 되어
+  // 다음 부팅의 자동 반영이 배너로 바뀐다 — 느린 CI 에서만 나던 경합(v539·v540 CI). 부팅 직후 미리 돌려 두면 뒤의 타이머는 바꿀 게 없다.
+  await page.evaluate(() => { try { taxCalendarEnsure(); coworkSchedEnsure(); } catch (e) {} });
 }
 const P = name => ({ name, stage: 1, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' } });
 const addProject = (page, name) => page.evaluate(({ p }) => { state.projects.push(p); markDirty(); }, { p: P(name) });
