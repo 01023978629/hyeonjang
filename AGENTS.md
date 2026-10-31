@@ -3,6 +3,36 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-10-31 v534 🔒 오래된 창 잠금 — 서버 저장·대기열·충돌 창 ②·서버 불러오기 적용을 막고 띠에 [🔄 새로고침]
+
+- 왜(10/31 실측): 아침부터 열려 있던 창이 몇 시간 뒤 서버 충돌 창(서버 rev 899 · 이 창 892)을 띄웠다. 다른 창이 더 최근에 저장한 창(`__tabStale`)은
+  기기 저장(v457)·폴더 저장(v532)·대기함(`hjOutboxGuard`)은 막혔지만 **서버 쪽은 열려 있었다**: `relaySaveNow`(자동·수동)·`cloudFlushQueue`(대기열 save 는 보내는 순간의
+  `serializeData()`)·충돌 창 ② '내 기기 데이터로 덮어쓰기'. ② 를 누르면 그날 작업이 옛 자료로 서버까지 덮일 수 있었다(대표에게는 ③ 을 누르라고만 안내했었다).
+  또 오래된 창에서 ①·③·[⬇️ 서버에서 불러오기]로 서버 자료를 적용하면 기기 저장은 문지기에 막히고 **기준 revision(`relay_rev`)만 기기에 남아**,
+  새로고침 뒤 다음 저장이 충돌 없이 서버를 덮을 수 있었다.
+- 한 것:
+  ① `relaySaveNow`: 오래된 창이면 보내지 않고 상태 `stale`('🔒 오래된 창 — 서버 저장 멈춤(새로고침)'). `cloudFlushQueue` 는 **save 항목만** 건너뛰고 남겨 둔다(최신 창이 보낸다).
+     사진 업로드 항목은 예전(v331) 그대로 보내고 기록 연결 대기(link)로 남긴다 — 처음엔 대기열 전체를 멈췄다가 photo-intake-safety ③-2 가 잡아 고쳤다.
+     `cloudAutoSave` 도 멈춘다 — 다른 창과 같이 쓰는 '안 올린 변경' 표시(localStorage `hj_relay_unsynced`)를 남기지 않는다.
+  ② `relayConflictModal`: 오래된 창이면 ② 없는 창(`[data-stale-conflict]` — 차이 확인 + [닫기]·[🔄 안전판 보관하고 새로고침]).
+     창이 떠 있는 사이 오래돼도 ② 와 첫 연결 '이 기기 자료를 서버에 올리기'는 기준 revision 을 바꾸기 전에 멈춘다.
+  ③ `relayLoadApply`: 오래된 창이면 적용하지 않는다(서버 불러오기도 안 함).
+  ④ 오래된 창 경고 띠(`multiTabStaleWarn`)에 단추 `#hjTabWarnAct` [🔄 안전판 보관하고 새로고침] → `hjStaleReload()`: 이 창 자료를 🛡 안전판('오래된 창 자료(새로고침 전)')에
+     먼저 넣고(실패하면 확인) `window.__hjStaleReload` 를 세워 창 닫기 경고 없이 새로고침. `__tabBanner(msg, act)` 가 단추를 붙이고, 단추 없는 경고로 바뀌면 뗀다.
+     '다른 탭에도 열려 있음' 경고가 오래된 창 경고를 덮지 않게 했다. 문구는 '자동저장을 멈췄어요(서버 저장 포함)' — multi-tab-guard 가 '자동저장을 멈췄' 을 본다.
+     방송만 받은 오래된 창(아직 저장 시도 전이라 띠 없음)을 **다시 볼 때(visibilitychange visible)** 띠를 바로 띄운다 — 방송 수신 순간에는 여전히 띄우지 않는다(v240 규칙·multi-tab-guard ③).
+- 검사 수정: `relay.e2e.js` 11-2 는 정리 단계에서 저장본(appState)을 직접 되돌리면서 탭의 `__tabStamp` 는 그대로 둬 그 탭이 '오래된 창'이 됐다(그 뒤 v457 문지기가 기기 저장을 막음).
+  v534 부터는 서버 저장도 멈추므로 19~21 이 서버 저장을 못 기다렸다 → 정리 때 `__tabStamp` 도 되돌린 저장본에 맞춘다(앱 코드는 appState 를 문지기 거래로만 쓰고 그때 stamp 를 맞춘다).
+- 핀3곳 hyeonjang-v534-stalelock. 신규 tests/stalelock-v534.e2e.js 4/4(mock relay · 같은 브라우저 두 창 · 390px):
+  ① 오래된 창 수정 → 서버 저장 0·자료가 서버에 안 감·🔒 상태·띠 단추·'안 올린 변경' 안 남김·수동 저장·대기열 보내기 0 → 최신 창이 대기열을 보냄
+  ② 다시 보면 띠가 바로 · 오래된 창 충돌 창(② 없음) · 최신 창 ①②③ · 떠 있는 사이 오래되면 ② 가 서버·기준 rev 그대로 · 불러오기 적용 안 함
+  ③ 띠 단추 → 안전판(그 창 자료·늦은 수정) → '나가시겠습니까?' 없이 새로고침 → 최신 자료·잠금 풀림 ④ 소스·핀.
+  기준선 v533 과 변이 no-relay-guard 는 ①, two-in-stale 은 ②, no-bypass 는 ③ 에서 실패 확인.
+  회귀: relay 30/30 · relaysync-v530 · multi-tab-guard 6 · demo-banner · sync-conflict-preview 8/8 · relay-queue-preservation · test-stability · delay-v347 · office-intake(-auto)-sync ·
+  pages-artifact · backup-visible · settings-safety · office-ops-conversion · folderguard-v532 · pcupload-v531 · photo-intake-safety 20 · paid-work-gate · legacy-commercial-gate ·
+  shared-todo 15/15 · version-banner · shareinbox-v416 · bathlink-v411 · mobile-photo-upload · media-intake 통과. 가짜 relay 를 쓰는 검사 묶음 37개: 33 통과,
+  실패 4 = 이 컨테이너 환경 실패(document-select·document-upload·team-workboard — main 에서도 같음) + photo-intake-safety(위에서 고친 뒤 통과).
+
 ## 2026-10-31 v533 🏦↔📑 통장 입금 ↔ 작업내역서 자동 맞추기 (대표 "다른거 개발" → "이어서 진행")
 
 - 왜: v527 로 협력사 작업내역서(현장 여러 곳)의 받을 돈을 📑 장부로 보게 됐지만, 협력사는 **내역서 한 장 단위로** 입금한다. 통장 가져오기(v350)는
