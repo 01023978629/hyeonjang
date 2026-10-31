@@ -3709,7 +3709,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v544-estassign';
+const APP_BUILD='hyeonjang-v545-photofill';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -7659,6 +7659,113 @@ function hjPhotoHasGps(p){
 }
 function hjPhotoGpsNear(a,b){
   return hjPhotoHasGps(a)&&hjPhotoHasGps(b)&&Math.abs(Number(a.lat)-Number(b.lat))<0.004&&Math.abs(Number(a.lng)-Number(b.lng))<0.004;
+}
+/* v545 🧩 사진 공정·작업명 빈칸 묶음 채우기 — 현장이 정해진 사진 중 공정 없음·작업명 없음을 현장·날짜 묶음마다 한 창에서(대표 PDF 5번).
+   · 묶음(hjPhotoFillGroups, 읽기만): 보관 안 된 현장의 사진을 '현장 + 촬영일(한국 시각)' 로. 빈칸이 있는 묶음만, 최근 날짜 먼저.
+   · 제안: 작업명 = 같은 묶음에서 가장 많은 작업명(🏷 hjLabelGaps 와 같은 기준). 공정 = 같은 묶음에서 가장 많은 공정 → 없으면 제안 작업명을 HJ_PHASE_MAP 으로
+     → 없으면 그날 그 현장 일정 제목을 HJ_PHASE_MAP 으로. 미리 체크는 빈칸 쪽 제안이 모두 '같은 묶음의 사진'에서 나왔을 때만.
+   · 줄마다 사진 3장 · 공정 칩(현장 공정표 + 제안 — 공정표가 비면 기본 순서 HJ_PHASE_SEQ, 다시 누르면 해제) · 한 줄 작업명(자주 쓰는 목록). 칩·작업명을 만지면 그 줄이 체크된다.
+   · [체크한 묶음 채우기] → 열 때 본 빈칸과 지금이 다르면 통째로 거부 → 안전판 1회(실패면 무변경) → **빈칸만** 채운다(이미 있는 공정·작업명은 그대로).
+     공정은 표시(태그)만 — 즉시 이동 모드여도 폴더로 옮기지 않는다(수백 장을 한 번에 옮기지 않게). 현장 공정표에 없던 공정은 공정표 끝에 더한다. */
+function hjPhotoFillGroups(){
+  const live=new Set((state.projects||[]).filter(p=>p&&p.name&&!p.archived).map(p=>p.name)),groups=new Map();
+  (state.files||[]).forEach(f=>{
+    if(!f||f.kind!=='photo'||!f.project||!live.has(f.project)||!f.id)return;
+    const date=hjPhotoKoreanDay(f);if(!date)return;
+    const key=f.project+'\u0001'+date;let g=groups.get(key);
+    if(!g){g={project:f.project,date,files:[],noPhase:[],noLabel:[],phases:new Map(),labels:new Map()};groups.set(key,g);}
+    g.files.push(f);
+    const ph=String(f._phase||'').trim(),lb=hjWorkLabelClean(f._worklabel);
+    if(ph)g.phases.set(ph,(g.phases.get(ph)||0)+1);else g.noPhase.push(f.id);
+    if(lb)g.labels.set(lb,(g.labels.get(lb)||0)+1);else g.noLabel.push(f.id);
+  });
+  const top=m=>[...m].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])))[0];
+  const mapPhase=t=>{const hit=HJ_PHASE_MAP.find(([re])=>re.test(String(t||'')));return hit?hit[1]:'';};
+  return [...groups.values()].filter(g=>g.noPhase.length||g.noLabel.length).map(g=>{
+    const tl=top(g.labels),tp=top(g.phases);
+    const label=tl?tl[0]:'',labelWhy=tl?'같은 날 사진 '+tl[1]+'장의 작업명':'';
+    let phase=tp?tp[0]:'',phaseWhy=tp?'같은 날 사진 '+tp[1]+'장의 공정':'';
+    if(!phase&&label&&!HJ_PHASE_SKIP_RE.test(label)){phase=mapPhase(label);if(phase)phaseWhy='작업명 "'+label+'"에서';}
+    if(!phase){const s=(state.schedule||[]).find(s=>s&&s.project===g.project&&s.date===g.date&&mapPhase(s.title));if(s){phase=mapPhase(s.title);phaseWhy='그날 일정 "'+String(s.title).slice(0,20)+'"에서';}}
+    const sure=(!g.noPhase.length||!!tp)&&(!g.noLabel.length||!!tl);
+    return {key:g.project+'\u0001'+g.date,project:g.project,date:g.date,n:g.files.length,noPhase:g.noPhase.slice(),noLabel:g.noLabel.slice(),phase,label,phaseWhy,labelWhy,sure,
+      thumbs:g.files.filter(f=>!String(f._phase||'').trim()||!hjWorkLabelClean(f._worklabel)).slice(0,3)};
+  }).sort((a,b)=>b.date.localeCompare(a.date)||a.project.localeCompare(b.project));
+}
+function hjPhotoFillCount(){const s=new Set();hjPhotoFillGroups().forEach(g=>{g.noPhase.forEach(id=>s.add(id));g.noLabel.forEach(id=>s.add(id));});return s.size;}
+function hjPhotoFillSig(g){return JSON.stringify([g.noPhase,g.noLabel]);}
+function hjPhotoFillChips(g){
+  const p=(state.projects||[]).find(x=>x&&x.name===g.project);
+  const base=(p&&Array.isArray(p.phases)&&p.phases.length?p.phases:HJ_PHASE_SEQ).map(x=>String(x||'').trim()).filter(Boolean);
+  const out=[...new Set(base)];if(g.phase&&!out.includes(g.phase))out.push(g.phase);return out;
+}
+function hjPhotoFillView(){
+  const groups=hjPhotoFillGroups();
+  if(!groups.length){toast('공정·작업명 빈칸이 있는 사진이 없습니다 👏');return 0;}
+  const seen0=groups.reduce((o,g)=>{o[g.key]=hjPhotoFillSig(g);return o;},{});
+  const phN=groups.reduce((a,g)=>a+g.noPhase.length,0),lbN=groups.reduce((a,g)=>a+g.noLabel.length,0),sureN=groups.filter(g=>g.sure).length;
+  const rows=groups.map((g,i)=>'<div class="hjpf-row" data-pf-row="'+i+'">'+
+    '<label class="hjpf-chk"><input type="checkbox" data-pf-check'+(g.sure?' checked':'')+' aria-label="'+escapeAttr(g.project+' '+g.date)+' 묶음 채우기"></label>'+
+    '<div class="hjpf-body"><div class="hjpf-head"><b>'+escapeHtml(g.project)+'</b> · '+escapeHtml(g.date)+' · '+g.n+'장 — '+
+      [g.noPhase.length?'공정 없음 <b>'+g.noPhase.length+'</b>':'',g.noLabel.length?'작업명 없음 <b>'+g.noLabel.length+'</b>':''].filter(Boolean).join(' · ')+'</div>'+
+    '<div class="hjpf-thumbs">'+g.thumbs.map(f=>'<span class="hjpf-th">'+photoImg(f,160)+'</span>').join('')+'</div>'+
+    (g.noPhase.length?'<div class="hjpf-chips" role="group" aria-label="공정">'+hjPhotoFillChips(g).map(ph=>'<button type="button" class="hjpf-chip" data-pf-phase="'+escapeAttr(ph)+'" aria-pressed="'+(ph===g.phase?'true':'false')+'">'+escapeHtml(ph)+'</button>').join('')+'</div>':'')+
+    (g.noLabel.length?'<input class="hjpf-label" data-pf-label list="hjPfWork" maxlength="40" value="'+escapeAttr(g.label)+'" placeholder="한 줄 작업명 (예: 욕실 방수)" aria-label="'+escapeAttr(g.project+' '+g.date)+' 작업명">':'')+
+    '<div class="hjpf-why">'+escapeHtml([g.noPhase.length&&g.phaseWhy?'공정: '+g.phaseWhy:'',g.noLabel.length&&g.labelWhy?'작업명: '+g.labelWhy:''].filter(Boolean).join(' · ')||'제안 없음 — 칩을 누르거나 작업명을 적으면 체크됩니다')+'</div>'+
+    '</div></div>').join('');
+  const css='<style>#hjPhotoFill .hjpf-row{display:flex;gap:8px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line-soft);min-width:0}'+
+    '#hjPhotoFill .hjpf-chk{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;flex:0 0 auto}#hjPhotoFill .hjpf-chk input{width:22px;height:22px;margin:0}'+
+    '#hjPhotoFill .hjpf-body{flex:1;min-width:0}#hjPhotoFill .hjpf-head{font-size:13px;overflow-wrap:anywhere}'+
+    '#hjPhotoFill .hjpf-thumbs{display:flex;gap:4px;margin:6px 0}#hjPhotoFill .hjpf-th{width:64px;height:64px;border-radius:8px;overflow:hidden;flex:0 0 auto;background:var(--paper-2)}#hjPhotoFill .hjpf-th img{width:100%;height:100%;object-fit:cover}'+
+    '#hjPhotoFill .hjpf-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}#hjPhotoFill .hjpf-chip{min-height:44px;padding:6px 12px;border-radius:22px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-size:14px}'+
+    '#hjPhotoFill .hjpf-chip[aria-pressed="true"]{background:var(--blueprint);border-color:var(--blueprint);color:#fff;font-weight:700}'+
+    '#hjPhotoFill .hjpf-label{width:100%;box-sizing:border-box;min-height:44px;font-size:16px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:10px;margin:4px 0}'+
+    '#hjPhotoFill .hjpf-why{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}</style>';
+  const body=css+'<div id="hjPhotoFill" style="min-width:0"><div class="hint" style="margin:0 0 6px">현장이 정해진 사진 중 <b>공정 없음 '+phN+'장 · 작업명 없음 '+lbN+'장</b>(묶음 '+groups.length+'). '+
+    '같은 날 사진에서 나온 제안 '+sureN+'묶음은 체크돼 있습니다. <b>빈칸만</b> 채우고 이미 적힌 것은 바꾸지 않아요 · 공정은 표시만(폴더 이동 없음) · 채우기 전에 안전판 1개.</div>'+
+    '<datalist id="hjPfWork">'+hjWorkOptionsHtml('')+'</datalist><div id="hjPfList" style="max-height:58vh;overflow:auto">'+rows+'</div></div>';
+  openModal('🧩 공정·작업명 빈칸 채우기',body,[{label:'체크한 묶음 채우기',cls:'clay',fn:()=>hjPhotoFillApply(hjPhotoFillRead(groups),seen0)},{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('hjPhotoFill');
+  if(root){
+    // 제안으로 눌려 있는 칩을 (체크 안 된 줄에서) 누르면 '이걸로'라는 뜻 — 끄지 말고 줄만 체크한다. 그 밖엔 하나만 켜지고, 켠 칩을 다시 누르면 끈다.
+    root.querySelectorAll('[data-pf-phase]').forEach(b=>b.addEventListener('click',()=>{const row=b.closest('[data-pf-row]'),chk=row.querySelector('[data-pf-check]'),pressed=b.getAttribute('aria-pressed')==='true';
+      if(pressed&&!chk.checked){chk.checked=true;return;}
+      row.querySelectorAll('[data-pf-phase]').forEach(x=>x.setAttribute('aria-pressed','false'));if(!pressed){b.setAttribute('aria-pressed','true');chk.checked=true;}}));
+    root.querySelectorAll('[data-pf-label]').forEach(inp=>inp.addEventListener('input',()=>{inp.closest('[data-pf-row]').querySelector('[data-pf-check]').checked=!!inp.value.trim();}));
+  }
+  document.querySelectorAll('#modalRoot .mfoot button').forEach(b=>{b.style.minHeight='44px';});
+  return groups.length;
+}
+function hjPhotoFillRead(groups){
+  return [...document.querySelectorAll('#hjPhotoFill [data-pf-row]')].filter(r=>r.querySelector('[data-pf-check]').checked).map(r=>{
+    const g=groups[+r.dataset.pfRow],chip=r.querySelector('[data-pf-phase][aria-pressed="true"]'),lb=r.querySelector('[data-pf-label]');
+    return {project:g.project,date:g.date,phase:chip?chip.dataset.pfPhase:'',label:lb?lb.value:''};
+  });
+}
+async function hjPhotoFillApply(sel,seen0){
+  sel=(Array.isArray(sel)?sel:[]).filter(s=>s&&(String(s.phase||'').trim()||hjWorkLabelClean(s.label)));
+  if(!sel.length){toast('채울 공정이나 작업명을 고른 묶음이 없습니다');return {채움:0};}
+  if(typeof __tabStale!=='undefined'&&__tabStale){toast('이 창은 오래된 창이라 바꾸지 않았어요 — 새로고침한 뒤 다시 해 주세요');return {오류:'오래된 창'};}
+  const now=new Map(hjPhotoFillGroups().map(g=>[g.key,g]));
+  for(const s of sel){const k=s.project+'\u0001'+s.date,g=now.get(k);if(!g||!seen0||seen0[k]!==hjPhotoFillSig(g)){toast('그사이 사진 자료가 바뀌었습니다 — 창을 다시 열어 주세요');return {오류:'바뀜'};}}
+  let ok=false;try{ok=await hjSnapshot('공정·작업명 채우기 전',true,true);}catch(e){ok=false;}
+  if(!ok){toast('안전판을 만들지 못해 바꾸지 않았습니다');return {오류:'안전판'};}
+  const byId=new Map((state.files||[]).map(f=>[f.id,f])),touched=new Set();let nP=0,nL=0,added=0;
+  sel.forEach(s=>{
+    const g=now.get(s.project+'\u0001'+s.date),phase=String(s.phase||'').trim().slice(0,30),label=hjWorkLabelClean(s.label).slice(0,40);
+    if(phase&&g.noPhase.length){
+      const p=(state.projects||[]).find(x=>x&&x.name===s.project&&!x.archived);
+      if(p){p.phases=Array.isArray(p.phases)?p.phases:[];if(!p.phases.includes(phase)){p.phases.push(phase);added++;}}
+      g.noPhase.forEach(id=>{const f=byId.get(id);if(f&&!String(f._phase||'').trim()){f._phase=phase;nP++;touched.add(s.project);}});
+    }
+    if(label)g.noLabel.forEach(id=>{const f=byId.get(id);if(f&&!hjWorkLabelClean(f._worklabel)){f._worklabel=label;nL++;touched.add(s.project);}});
+  });
+  try{__photoCache.key=null;}catch(e){}
+  try{phasesTableBuild();}catch(e){}
+  markDirty();touched.forEach(n=>{try{portalAutoSync(n);}catch(e){}});
+  closeModal();render();
+  toast('🧩 공정 '+nP+'장 · 작업명 '+nL+'장 채움'+(added?' · 공정표에 '+added+'개 더함':'')+' — 되돌리려면 🛡 안전판');
+  return {공정:nP,작업명:nL,공정추가:added,묶음:sel.length};
 }
 function clusterPhotos(photos){
   const sorted=[...photos].sort((a,b)=>(a.when?.getTime()||0)-(b.when?.getTime()||0));
@@ -35346,6 +35453,7 @@ function viewPhotos(){
   // v523 현장 없는 사진 수(검색·누수 거름 전 전체) — [🧭 추측 배정 보기] 입구. 배정 뒤 0 이 되면 버튼도 사라진다.
   // 폰에서 ✨ 일괄 단추와 나란히 설 때는 '🧭 n' 만 적는다 — '🧭 미배정 n'(81px)까지 넣으면 요약 줄 334px 에 338px 이 되어 두 줄로 접히고 첫 사진이 58px 밀린다(실측)
   const __unAllN=state.files.reduce((a,f)=>a+(f&&f.kind==='photo'&&!f.project?1:0),0);
+  const __pfN=hjPhotoFillCount();   // v545 공정·작업명 빈칸
 
   // 좁은 화면(폰) 판정 — 첫 화면에 사진이 보이는지가 이 화면의 존재 이유다
   const __narrow=__mobileMode||(typeof innerWidth==='number'&&innerWidth<=720);
@@ -35357,6 +35465,7 @@ function viewPhotos(){
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'전체 사진 보기':'의심 사진 보기'}</button>`:''}
     ${__narrow?'':'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>'}
     ${__sureN?`<button class="clay tiny" id="btnSuggestAll" title="현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.">✨ ${__narrow?'추천':'추천대로'} ${__sureN}묶음 배정</button>`:''}
+    ${(__pfN&&!__narrow)?`<button class="ghost tiny" id="btnPhotoFill" aria-label="공정·작업명 빈칸 사진 ${__pfN}장 채우기" title="현장이 정해진 사진 중 공정·작업명이 빈 것을 현장·날짜 묶음마다 채웁니다. 빈칸만 채우고 채우기 전에 안전판을 만듭니다.">🧩 공정·작업명 빈칸 ${__pfN}장</button>`:''}
     ${__unAllN?`<button class="${__sureN?'ghost':'clay'} tiny" id="btnSuggestReview" aria-label="현장 없는 사진 ${__unAllN}장 추측 배정 보기" title="현장 없는 사진 묶음마다 추정 현장·근거·사진 3장을 한 창에서 보고 체크한 것만 배정합니다. 배정 전 안전판을 만듭니다.">🧭 ${__narrow?(__sureN?__unAllN:'미배정 '+__unAllN):'미배정 '+__unAllN+'장 추측 배정 보기'}</button>`:''}
   </div>`;
   if(!__narrow&&__sureN)html+=`<p class="hint" style="margin:0 0 8px">✨ <b>추천대로 ${__sureN}묶음 배정</b>은 현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.</p>`;
@@ -39776,7 +39885,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -40012,6 +40121,7 @@ function setupDelegation(){
     if(d.suggest!==undefined){e.stopPropagation();return photoSuggestApply(+d.suggest);}
     if(t.id==='btnSuggestAll'){e.stopPropagation();return photoSuggestApplyAll();}
     if(t.id==='btnSuggestReview'){e.stopPropagation();return hjPhotoSuggestReview({from:'tab'});}   // v523
+    if(t.id==='btnPhotoFill'){e.stopPropagation();return hjPhotoFillView();}   // v545
     if(d.health!==undefined){e.stopPropagation();return hjHealthOpen(d.health);}   // v524 자료 건강 줄
     if(d.geo!==undefined)return geocodeCluster(window.__clusters[+d.geo],t);
     if(d.nmap!==undefined)return openNaverMapFor((window.__clusters||[])[+d.nmap]);

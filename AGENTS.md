@@ -3,6 +3,20 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v545 🧩 사진 공정·작업명 빈칸 묶음 채우기 (대표 PDF 5번)
+
+- 있던 것: 🏷 작업명 빈 사진 채우기(`hjLabelGaps` — 같은 날 작업명이 있는 묶음의 빈 작업명만). 없던 것: 공정 빈칸, 같은 날 작업명이 하나도 없는 묶음.
+- 한 것: `hjPhotoFillGroups()`(읽기만) — 보관 안 된 현장 사진을 '현장 + 촬영일(한국 시각)' 묶음으로, 공정·작업명 빈칸이 있는 것만, 최근 날짜 먼저.
+  제안 작업명 = 같은 묶음 최빈(🏷 와 같은 기준), 제안 공정 = 같은 묶음 최빈 공정 → 없으면 제안 작업명을 `HJ_PHASE_MAP`(v406) → 없으면 그날 그 현장 일정 제목을 `HJ_PHASE_MAP`.
+  미리 체크(`sure`)는 빈칸 쪽 제안이 모두 같은 묶음 사진에서 나왔을 때만. `hjPhotoFillView()` — 줄마다 사진 3장·공정 칩(현장 공정표, 비면 `HJ_PHASE_SEQ`, 제안 덧붙임)·
+  한 줄 작업명(datalist `hjWorkOptionsHtml('')`). 제안으로 눌린 칩을 누르면 끄지 않고 줄만 체크, 다른 칩은 하나만, 켠 칩 다시 누르면 끔. 작업명을 적으면 체크.
+- 채우기(`hjPhotoFillApply(sel, seen0)`): 오래된 창 거부 → 열 때 본 빈칸(id 목록)과 지금이 다르면 통째로 거부 → `hjSnapshot('공정·작업명 채우기 전')` 1회(실패면 무변경)
+  → **빈칸만** 채움(적힌 공정·작업명 그대로) → 현장 공정표에 없던 공정은 끝에 더함 → 공정은 표시(태그)만, `__moveMode==='instant'` 여도 `ensurePhaseDir` 안 부름(수백 장을 한 번에 옮기지 않게).
+- 입구: PC 사진 탭 요약 줄 `#btnPhotoFill` '🧩 공정·작업명 빈칸 n장'. **폰 요약 줄은 한 줄 약속(v523·photo-suggest — 단추 하나 더 넣으면 66→124px)이라 넣지 않았다** — 폰 입구는 v549 의 큰 단추.
+- 핀3곳 hyeonjang-v545-photofill. 신규 tests/photofill-v545.e2e.js 5/5(묶음·제안 → 칩·작업명·안전판·빈칸만·공정표·폴더 이동 0 → 안전판 실패·바뀜·고른 것 없음 → PC 단추·폰 창 44px → 소스·핀).
+  기준선 v544 는 ①, 변이 no-snapshot 은 ② 에서 실패 확인. 회귀: phototags-v454 · photoassign-v523 · photo-first-screen · photo-suggest · photo-order · photo-audit · worklabel-v405 ·
+  dash-cards · mobile-tap-table · healthline-v524 · apt-photos · geocode-label 통과.
+
 ## 2026-11-01 v544 📄 견적 빠른 배정 — 현장 없는 견적서 · 다른 업체 견적(매입·비교 후보)을 견적 탭 위 한 창에서 (대표 PDF 4번, v521 '안 한 것')
 
 - 대상(`hjEstAssignTargets`, 읽기만): 견적 파일(앱 견적 가상 파일·서류 센터 기록·이미 매입·집계 제외 빼고) 중 현장 없음 또는 파일 이름에 다른 인테리어 업체(`hjEstVendorName`, v343).
