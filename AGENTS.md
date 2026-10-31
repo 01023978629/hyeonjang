@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v542 폰에서 숫자가 중간에서 끊기지 않게 2차 (대표 PDF 2번 — 대시보드 KPI·현장 카드 금액·마진 요약)
+
+- 전수 진단(데모 자료 금액 37배, 360·390, 탭 9·현장 4·돈 창 11 — 글자 범위의 줄 상자로 숫자 덩어리 끊김 측정): 현장 카드·마진 요약·돈 창은 v518 까지로 이미 안 끊겼다.
+  남은 것 셋 — ① 첫 화면 숫자 칸(.kpis, 26px)이 360px 에서 '123,580' / '만원' 두 줄(칸 안 글자 폭 122px, 필요 123px — 안드로이드 기본 Noto CJK 기준)
+  ② 연락처 전화번호가 '-' 에서 끊김('02-' / '555-7777', 390) ③ 월말 결산 글(#mcText)의 '6,895만원' 이 360 에서 끊김.
+- 한 것: ① `.kpis>.kpi{container-type:inline-size}` + `.kpis>.kpi .kv{font-size:clamp(18px,17.5cqi,26px);word-break:keep-all;overflow-wrap:anywhere}` —
+  칸 폭에 맞춰 글자만 조금 줄인다(PC 26px 그대로, 390 은 24px, 360 은 21px). 글자로 된 칸(인라인 13px·20px)은 인라인 크기가 이긴다.
+  **flex 줄에 쓰인 .kpi(아파트 관리 화면)는 건드리지 않게 `.kpis` 격자 안만** — inline-size 컨테이너는 내용 폭을 0 으로 쳐서 flex 칸이 쪼그라든다.
+  ② `.hj-nw{white-space:nowrap}` 로 전화번호 하나하나를 감쌈 + **명함 연락처 줄의 번호가 이스케이프 없이 HTML 로 들어가던 것**도 `escapeHtml` 로 고침.
+  ③ #mcText 에 `word-break:keep-all;overflow-wrap:anywhere`.
+- CI 글꼴(DejaVu·WenQuanYi)은 숫자가 더 좁아 로컬(Noto CJK)이 더 빠듯하다 — 두 글꼴 모두 통과 확인(FONTCONFIG_FILE 로 CI 글꼴만 보이게).
+- 핀3곳 hyeonjang-v542-numwrap2. 신규 tests/numwrap2-v542.e2e.js 5/5(숫자 칸 360·390·1280 + flex .kpi 그대로 → 전화번호·이스케이프 → 결산 글 → 전수 360·390 → 소스·핀).
+  기준선 v541 과 변이 no-scale 은 ① 에서 실패 확인. 회귀: numwrap-v518 · dash-cards · margin1280-v464 · mobile-tap-table · contactimport-v397 · contactpick-v393 ·
+  health-board · darkcards-v453 · pcdark-v452 · margin · paylog-correction · revenue-basis · sales-basis 통과.
+
 ## 2026-11-01 v541 📝 작업 종료 때 '오늘 한 일' 한 줄 (대표 PDF '최종 UI 시안 · 자동 개발' 1번 — PDF 의 v526~v535 는 이 PR 의 v541~v550 으로 이어서)
 
 - 대표가 11/1 보낸 PDF(최종 UI 시안 + 10판 계획)는 main(v525) 기준 번호라 이 PR(v526~v540)과 겹친다 → 대표 결정 "PR #198 에 이어서": PDF 의 1~10번을 v541~v550 으로.
