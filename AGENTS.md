@@ -3,6 +3,20 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v544 📄 견적 빠른 배정 — 현장 없는 견적서 · 다른 업체 견적(매입·비교 후보)을 견적 탭 위 한 창에서 (대표 PDF 4번, v521 '안 한 것')
+
+- 대상(`hjEstAssignTargets`, 읽기만): 견적 파일(앱 견적 가상 파일·서류 센터 기록·이미 매입·집계 제외 빼고) 중 현장 없음 또는 파일 이름에 다른 인테리어 업체(`hjEstVendorName`, v343).
+  `estimateGroups` 묶음 하나가 한 줄(엑셀·PDF 사본 'n건 함께') — 사본은 같은 현장으로 함께 옮긴다(대표만 옮기면 사본이 미배정에 남는다).
+- 추정(`hjEstAssignGuess`): 현장 이름 전체(정규화 `hjStmtNormName`)가 폴더+파일 이름에 3점 > 아파트 단지(`hjStmtCore`) 2점 > 이름 낱말(흔한 말 빼고) 1점, 같은 점수 두 현장이면 추정 안 함.
+  미리 체크는 '업체 이름 없음 + 현장 없음 + 2점 이상'만 — 업체 이름이 있으면 매입인지 비교인지 사람이 고른다. 현장·종류를 바꾸면 그 줄이 체크된다.
+- 적용(`hjEstAssignApply(sel, seen0)`): 오래된 창 거부 → 열 때 본 묶음(id·현장·매입·제외)과 지금이 다르면 통째로 거부 → 바꿀 게 없으면 안전판도 안 만듦 → `hjSnapshot('견적 빠른 배정 전')` 1회(실패면 무변경)
+  → 현장 연결(사본까지) → 매입: v343 과 같은 규칙(사본까지 est.purchase·purchaseKey, 현장·금액 있으면 외주 지출 sourceKey 로 한 번) / 비교·참고: exSum(매출·원가 둘 다 아님) / 매출: 현장만.
+- 입구: 견적 탭 `hjUnreadEstimateBarHTML()` 옆 `hjEstAssignBarHTML()` '현장 없는 견적서 n건 · 다른 업체 견적 후보 m건 [빠른 배정]'(`[data-est-assign]` 위임).
+- 핀3곳 hyeonjang-v544-estassign. 신규 tests/estassign-v544.e2e.js 5/5(대상·추정 7줄 → 적용·안전판·사본·매입 지출 1번·비교 → 안전판 실패·바뀜 거부·바꿀 것 없음 → 탭 줄·폰 390 → 소스·핀).
+  기준선 v543 은 ①, 변이 rep-only 는 ② 에서 실패 확인. 회귀: estbackfill-v521 · estimate-info · estimate-dedupe · estimate-photo-dup-v342 · document-estimate-ui · quote-vat · margin ·
+  sales-basis · revenue-basis · dash-cards · healthline-v524 통과.
+- 안 한 것: 격자 파서가 견적서 안 '공급자' 칸을 읽어 업체를 찾기(지금은 파일 이름만) · 자료 건강 줄에 숫자 넣기(v546 헤더 캡슐에서).
+
 ## 2026-11-01 v543 PR #189(v428 수금 발행 확인) 통합 — 대표 PDF 3번
 
 - 무엇: #189(`codex/money-v428`, v425 기준 5커밋 · index.html +313 −47)의 '입금 기록에 결제 방법·발행 종류·상태·번호·발행일, 미발행 목록·5일 알림, 손익·세무 화면의
