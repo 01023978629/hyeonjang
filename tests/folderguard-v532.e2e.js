@@ -29,7 +29,7 @@ if (MUT === 'no-guard') {
   html = SRC.replace(from, "    if(false){__tabStale=true;__hjLocalSavePending=false;multiTabStaleWarn();");
 }
 if (MUT === 'no-choice') {
-  const from = "    } else if(ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){";
+  const from = "    } else if(__dataAt && ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){";
   assert(SRC.includes(from), 'mutation anchor no-choice');
   html = SRC.replace(from, "    } else if(false){");
 }

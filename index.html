@@ -2468,7 +2468,7 @@ async function loadProject(){
       // 이 PC 로컬 저장본이 드라이브 최신본보다 오래됨 → 데이터는 드라이브 유지, 파일만 재매칭
       applyData(__lastData);
       toast('드라이브 최신 데이터 유지(로컬 저장본이 더 오래됨) — 파일만 연결');
-    } else if(ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){
+    } else if(__dataAt && ref && hjDataHasContent(ref) && hjDataSig(data)!==hjDataSig(ref)){   // 이 기기에 저장 자료를 적용한 적이 있을 때만(첫 연결·세션 중 만든 자료뿐이면 예전처럼 폴더 적용)
       // v532 폴더 저장본이 시각은 더 나중인데 내용이 이 기기 자료와 다르다 — 오래된 탭·옛 현장.html 이 옛 자료로 다시 쓴 경우가 있다(10/31 실측).
       // 자동으로 덮지 않는다: 이 기기 자료를 유지하고(파일만 재매칭) 사람에게 고르게 한다.
       applyData(ref);
