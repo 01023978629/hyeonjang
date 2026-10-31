@@ -31310,9 +31310,11 @@ function estimateGroups(estFiles){
     const editedOf=function(g){const r=g.rep;return r&&r._fromQuote&&r._editedFrom?r._editedFrom:null;};
     const isSrcOf=function(g,srcId){const src=byId[srcId];
       return [g.rep].concat(g.dups||[]).some(function(m){return m&&!m._fromQuote&&(m.id===srcId||(!!src&&key1(m)===key1(src)));});};
+    const hasStmt=function(g){return !!(g&&((g.rep&&g.rep._stmt)||(g.dups||[]).some(function(m){return m&&m._stmt;})));};
     const pairOK=function(c,g){
-      // v526 서로 다른 작업내역서 견적(가상 파일 _stmt)은 같은 현장·같은 금액이어도 다른 공사 — 같은 아파트 우수관 220,000 두 달 치가 하나로 사라졌다
-      if(c.rep&&g.rep&&c.rep._stmt&&g.rep._stmt&&c.rep._stmt!==g.rep._stmt)return false;
+      // v526 작업내역서 견적(가상 파일 _stmt)은 다른 견적과 사본으로 묶지 않는다 — 같은 현장·같은 금액(우수관 220,000)이 흔하고,
+      //   묶이면 매출이 조용히 사라진다(두 달 치가 하나로, 또는 관계없는 같은 금액 견적 파일의 'PDF 사본'으로). 같은 공사의 견적 파일은 반영 확인 창에서 사람이 집계 제외한다.
+      if(hasStmt(c)||hasStmt(g))return false;
       const ec=editedOf(c),eg=editedOf(g);
       if(!ec&&!eg)return true;
       if(ec&&eg)return false;                          // 편집한 앱 견적 둘은 서로 다른 견적
@@ -36564,22 +36566,27 @@ function syncQuoteToProject(q){
    손으로 옮기면 한 장에 현장 8곳 — 앱이 엑셀을 읽어 위치 → 현장(동·호수 일치까지 점수)으로 맞추고, 사람이 고른 뒤 현장마다 견적 1건(수주)을 만든다.
    · 금액: 작업비용 = 부가세 포함 합계(기본 — 내역서 합계가 곧 매출) / 공급가(부가세 10% 따로 받음) 중 사람이 고른다.
      포함이면 단가는 공급가로 역산하고, 반올림으로 합계가 1원 어긋나는 금액(270,000·1,150,000 등 11개에 1개꼴)은 stmt.total 이 정본(quoteCalc·hjEstBill).
-   · 같은 내역서를 다시 넣어도 두 번 잡히지 않는다 — '파일#현장' 키가 있으면 그 현장은 건너뛰고, 같은 파일의 같은 줄(날짜·위치·작업명·금액)도 건너뛴다.
-   · 내역서 견적끼리는 금액이 같아도 사본으로 묶지 않는다(estimateGroups pairOK · 가상 파일 _stmt).
-   · 그 현장에 이미 매출로 잡힌 견적(입찰본·비교 견적 등)은 사람이 체크한 것만 집계 제외(exSum, 엑셀·PDF 사본까지) — 기본은 손대지 않는다.
+   · 같은 내역서를 다시 넣어도 두 번 잡히지 않는다 — 이미 들어간 줄(날짜·위치·작업명·금액, 어느 파일이든 — 이름을 바꿔 저장한 사본 '(1).xlsx' 도)은 건너뛰고,
+     같은 파일을 고쳐 줄이 늘었으면 그 현장 견적에 새 줄만 붙인다(이미 있는 품목은 그대로).
+   · 내역서 견적은 다른 견적과 사본으로 묶지 않는다(estimateGroups pairOK · 가상 파일 _stmt) — 같은 현장·같은 금액(우수관 220,000)이 흔해 묶이면 매출이 조용히 사라진다.
+   · 그 현장에 이미 매출로 잡힌 견적(입찰본·비교 견적 등)은 사람이 체크한 것만, 이번에 견적이 생기거나 줄이 붙은 현장에서만 집계 제외 —
+     확인 창이 보여 준 묶음 그대로(엑셀·PDF 사본, 앱 견적은 견적 레코드 exSum). 기본은 손대지 않는다.
    · 새 현장은 사람이 '＋ 새 현장'을 고른 것만 만든다. 계좌(accountIdx)는 비워 둔다(건별로 사장님이 고른다). */
 const HJ_STMT_CITY_RE=/대전광역시|대전시|대전|세종특별자치시|세종시|세종|청주시|청주|논산시|논산|공주시|공주/g;
 const HJ_STMT_UNIT_STRIP_RE=/\d+\s*동\s*\d+\s*호|\d+\s*호\s*\d+\s*호|\d+\s*-\s*\d+|\d+\s*동(?![가-힣])|\d+\s*호/g;
 const HJ_STMT_UNIT_RES=[/(\d{1,4})\s*동\s*(\d{1,5})\s*호/,/(\d{1,4})\s*호\s*(\d{1,5})\s*호/,/(\d{1,4})\s*-\s*(\d{1,5})(?!\d)/];
 function hjStmtCell(v){return v==null?'':String(v).normalize('NFC').replace(/\r?\n/g,' ').replace(/\s+/g,' ').trim();}
 function hjStmtKey(v){return hjStmtCell(v).replace(/\s+/g,'');}
-// 금액 칸: 숫자·'1,000,000'·'1,000,000원' → 원, '서비스'·'무상' → 0, 그 밖(빈칸·글자) → null
+// 금액 칸: 숫자·'1,000,000'·'1,000,000원'·'₩300,000'·'30만원'·'300,000원(VAT포함)' → 원, '서비스'·'무상' → 0, 그 밖(빈칸·글자) → null
 function hjStmtAmt(v){
   if(typeof v==='number')return isFinite(v)?Math.round(v):null;
-  const s=hjStmtCell(v);if(!s)return null;
+  let s=hjStmtCell(v);if(!s)return null;
   if(/서비스|무상|무료/.test(s))return 0;
-  const t=s.replace(/[,원\s]/g,'');
-  return /^-?\d+(\.\d+)?$/.test(t)?Math.round(+t):null;
+  s=s.replace(/\([^)]*\)/g,'').replace(/[₩\\,\s]/g,'').replace(/(vat|부가세)(포함|별도)?/ig,'');
+  if(/^-?\d{1,3}(\.\d{3})+원?$/.test(s))s=s.replace(/\./g,'');   // '1.300.000' — 점을 천 단위 구분으로 쓴 금액
+  const m=s.match(/^(-?\d+(?:\.\d+)?)만원?$/);if(m)return Math.round(+m[1]*10000);
+  s=s.replace(/원$/,'');
+  return /^-?\d+(\.\d+)?$/.test(s)?Math.round(+s):null;
 }
 // 날짜 칸: 엑셀 일련번호·Date·'2026-10-13'·'2026.10.13'·'10/13'·'9월 7일' → 'YYYY-MM-DD' ('미기재' 등은 '')
 function hjStmtDate(v,year){
@@ -36643,29 +36650,34 @@ function hjStmtMatch(loc){
   out.sort((a,b)=>b.score-a.score||String(a.name).localeCompare(String(b.name)));
   return out;
 }
-/* 시트 여러 장 → 내역서 한 벌. 반환 {file,to,date,lines:[{d,loc,work,amt,sheet}],stated,sheets,warn}.
-   · 머리글 줄(위치 + 작업비용/금액 + 작업명/날짜)을 찾아 그 칸만 읽는다 — 병합 셀 양식(값이 0·3·6·9 칸)도 같다.
+/* 시트 여러 장 → 내역서 한 벌. 반환 {file,to,date,lines:[{d,loc,work,amt,sheet}],stated,sum,sheets,skippedSheets,warn,vatHint}.
+   · 머리글 줄(위치·작업명·날짜 중 둘 + 작업비용/금액)을 찾아 그 칸만 읽는다 — 병합 셀 양식(값이 0·3·6·9 칸)도 같다. 후보 줄에서 작업 줄이 안 나오면 다음 후보.
+     금액 칸은 '작업비용' > 청구·공사금액 > '금액' > '공급가액' > …비/비용 순('자재비용 | 작업비용' 이면 작업비용). '합계금액'처럼 합계 이름은 머리글 금액이 아니다.
    · 날짜·위치가 빈 줄은 위 줄을 잇는다(같은 세대의 두 번째 작업). 금액이 빈 줄은 위 줄 작업명에 붙인다('화장실 방수 (2차)').
-   · '소계' 줄은 건너뛰고, '합계' 줄 금액은 내역서 합계(stated)로 대조한다.
-   · 시트가 여럿이면: 이름에 '통합'이 든 시트가 있으면 그것만(개별 시트 + 통합본 → 두 번 잡히지 않게), 없으면 전부. */
-function hjStmtParseSheet(grid,name,fallbackYear){
-  grid=Array.isArray(grid)?grid:[];
-  let hr=-1,col=null;
-  for(let r=0;r<Math.min(grid.length,40)&&hr<0;r++){
-    const row=grid[r]||[],c={};
-    row.forEach((v,i)=>{const k=hjStmtKey(v);if(!k)return;
-      if(c.loc==null&&/^(위치|현장|현장명|주소|장소)$/.test(k))c.loc=i;
-      else if(c.amt==null&&/(작업비용|금액|공급가액|비용)$/.test(k)){c.amt=i;c.amtKey=k;}
-      else if(c.price==null&&/단가$/.test(k))c.price=i;
-      else if(c.work==null&&/(작업명|작업내용|품목|내용|항목)$/.test(k))c.work=i;
-      else if(c.date==null&&/(작업날짜|날짜|일자|작업일)$/.test(k))c.date=i;
-      else if(/^(세액|부가세)$/.test(k))c.tax=i;
-      else if(k==='월')c.mon=i;else if(k==='일')c.day=i;});
-    if(c.amt==null&&c.price!=null){c.amt=c.price;c.amtKey='단가';}
-    // 위치 칸이 없는 양식(공사내역서: 현장명은 머리글 위 · 세금계산서 품목: '열매마을 815동 1201호')도 작업명 칸이 있으면 받는다
-    if(c.amt!=null&&(c.work!=null||c.date!=null)&&(c.loc!=null||c.work!=null)){hr=r;col=c;}
+   · 소계 줄은 건너뛴다. 합계·총계·총액·계·청구금액 줄은 내역서 합계(stated, 마지막 것)로 두고 계속 읽는다(구역별 합계 + 총계 양식).
+     이름 없이 금액만 있는 줄이 지금까지 합(또는 이 구역 합)과 같으면 합계·소계로 본다. 공급가액·부가세 줄은 건너뛴다. '비고'에서 멈춘다.
+   · 시트가 여럿이면 다른 시트와 같은 줄은 한 번만 센다(개별 시트 + 통합본 — 이름이 '전체'여도). 다른 시트 줄을 모두 담은 시트가 있으면 그 시트가 먼저다. */
+const HJ_STMT_TOTAL_RE=/^(합계|총계|총합계|총액|총금액|총공사금액|청구금액|청구액|합계금액|total|grandtotal)/i;
+const HJ_STMT_SUMROW_RE=/^(공급가액|공급가|부가세|부가가치세|세액|vat)/i;
+const HJ_STMT_AMT_KEYS=[/^작업비용$/,/^(청구금액|공사금액|작업금액)$/,/^금액$/,/^공급가액$/,/(작업비|공사비|시공비)$/,/(금액|비용)$/];
+function hjStmtHeaderAt(row){
+  const c={},keys=(row||[]).map(hjStmtKey);
+  keys.forEach((k,i)=>{if(!k)return;
+    if(c.loc==null&&/(위치|현장명|현장|주소|장소)$/.test(k))c.loc=i;
+    else if(c.work==null&&/(작업명|작업내용|공사내용|품목|내용|항목)$/.test(k))c.work=i;
+    else if(c.date==null&&/(작업날짜|날짜|일자|작업일|시공일)$/.test(k))c.date=i;
+    else if(c.price==null&&/단가$/.test(k))c.price=i;
+    else if(/^(세액|부가세)$/.test(k))c.tax=i;
+    else if(k==='월')c.mon=i;else if(k==='일')c.day=i;});
+  for(const re of HJ_STMT_AMT_KEYS){
+    const i=keys.findIndex((k,j)=>k&&re.test(k)&&!HJ_STMT_TOTAL_RE.test(k)&&j!==c.loc&&j!==c.work&&j!==c.date&&j!==c.price);
+    if(i>=0){c.amt=i;c.amtKey=keys[i];break;}
   }
-  const out={name,lines:[],stated:null,to:'',date:'',site:'',workDate:'',vatHint:''};
+  if(c.amt==null&&c.price!=null){c.amt=c.price;c.amtKey='단가';}
+  return c.amt!=null&&(c.work!=null||c.date!=null)&&(c.loc!=null||c.work!=null)?c:null;
+}
+function hjStmtReadRows(grid,hr,col,name,fallbackYear){
+  const out={name,lines:[],stated:null,to:'',date:'',site:'',workDate:'',vatHint:'',badAmt:[]};
   // 머리글 위: 받는 분 · 작성일 · (위치 칸이 없을 때) 현장명 · 공사일자
   const after=(row,i)=>{for(let j=i+1;j<row.length;j++){if(hjStmtCell(row[j])!==''||typeof row[j]==='number')return row[j];}return '';};
   for(let r=0;r<(hr<0?Math.min(grid.length,15):hr);r++){
@@ -36676,55 +36688,85 @@ function hjStmtParseSheet(grid,name,fallbackYear){
       if(!out.site&&/^(현장명|공사명|현장)$/.test(k))out.site=hjStmtCell(after(row,i));
       if(!out.workDate&&/^(공사일자|작업일자|시공일|공사기간)$/.test(k))out.workDate=hjStmtDate(after(row,i),fallbackYear);});
   }
-  if(hr<0)return out;
-  // 금액 칸이 '공급가액'이거나 '세액' 칸이 있으면 공급가(부가세 별도) 양식 — 확인 창의 기본값만 바꾼다
-  if(col.amtKey==='공급가액'||col.tax!=null)out.vatHint='separate';
+  if(hr<0||!col)return out;
   const year=(out.date||out.workDate||'').slice(0,4)||fallbackYear;
-  let prev=null;
+  let prev=null,run=0,sec=0,sawTotal=false,taxSum=0;
   for(let r=hr+1;r<grid.length;r++){
-    const row=grid[r]||[];
-    const first=hjStmtKey(row.find(v=>hjStmtCell(v)!=='')||'');
-    if(/^(합계|총계|총합계|합계금액)/.test(first)){const a=hjStmtAmt(row[col.amt]);if(a!=null)out.stated=a;else{const n=[...row].reverse().map(hjStmtAmt).find(x=>x!=null);if(n!=null)out.stated=n;}break;}
+    const row=grid[r]||[],keys=row.map(hjStmtKey),first=keys.find(k=>k)||'';
+    if(!first)continue;
     if(/^비고/.test(first))break;
-    if(row.some(v=>/소계/.test(hjStmtCell(v))))continue;
-    const dRaw=col.date!=null?row[col.date]:'',work=col.work!=null?hjStmtCell(row[col.work]):'';
-    const locRaw=col.loc!=null?hjStmtCell(row[col.loc]):(out.site||'');
-    const amt=hjStmtAmt(row[col.amt]),amtRaw=hjStmtCell(row[col.amt]);
-    if(!hjStmtCell(dRaw)&&!(col.loc!=null&&locRaw)&&!work&&!amtRaw)continue;
-    const dTxt=hjStmtCell(dRaw);
-    const mo=col.mon!=null?+hjStmtCell(row[col.mon]):0,dy=col.day!=null?+hjStmtCell(row[col.day]):0;   // 세금계산서 품목표: 월 | 일 칸
-    const d=col.date==null?(mo>=1&&mo<=12&&dy>=1&&dy<=31?year+'-'+pad(mo)+'-'+pad(dy):(col.mon!=null&&prev?prev.d:(out.workDate||''))):(dTxt||typeof dRaw==='number'?hjStmtDate(dRaw,year):(prev?prev.d:''));
-    // 위치: 칸 값 → 위 줄 → (위치 칸·현장명 둘 다 없으면) 품목 글자 그대로(세금계산서 품목에 '아파트 동·호'가 들어 있다)
-    const loc=locRaw||(col.loc!=null&&prev?prev.loc:'')||(col.loc==null&&!out.site?work:'');
+    if(keys.some(k=>/소계/.test(k))){sec=0;prev=null;continue;}
+    const amt=hjStmtAmt(row[col.amt]);
+    if(HJ_STMT_TOTAL_RE.test(first)||first==='계'){
+      let a=amt;if(a==null)for(let j=row.length-1;j>=0&&a==null;j--){const x=hjStmtAmt(row[j]);if(x)a=x;}
+      if(a!=null)out.stated=a;sawTotal=true;sec=0;prev=null;continue;
+    }
+    if(HJ_STMT_SUMROW_RE.test(first))continue;
+    const dRaw=col.date!=null?row[col.date]:'',dTxt=hjStmtCell(dRaw),work=col.work!=null?hjStmtCell(row[col.work]):'';
+    const locCell=col.loc!=null?hjStmtCell(row[col.loc]):'',amtRaw=hjStmtCell(row[col.amt]);
+    if(col.tax!=null){const t=hjStmtAmt(row[col.tax]);if(t>0)taxSum+=t;}
+    // 이름 없이 금액만 있는 줄 = 지금까지 합(합계) 또는 이 구역 합(소계)
+    if(amt!=null&&amt>0&&!work&&!locCell&&!dTxt&&out.lines.length&&(amt===run||amt===sec)){if(amt===run){out.stated=amt;sawTotal=true;}sec=0;prev=null;continue;}
     if(amt==null){
-      if(work&&prev&&(col.loc==null||!locRaw||locRaw===prev.loc))prev.work=(prev.work?prev.work+' · ':'')+work;
+      if(amtRaw)out.badAmt.push(amtRaw);   // 글자는 있는데 금액으로 못 읽은 칸 — 확인 창에 알린다(조용히 사라지지 않게)
+      if(!sawTotal&&work&&prev&&(col.loc==null||!locCell||locCell===prev.loc))prev.work=(prev.work?prev.work+' · ':'')+work;
       continue;
     }
+    const mo=col.mon!=null?+hjStmtCell(row[col.mon]):0,dy=col.day!=null?+hjStmtCell(row[col.day]):0;   // 세금계산서 품목표: 월 | 일 칸
+    const d=col.date==null?(mo>=1&&mo<=12&&dy>=1&&dy<=31?year+'-'+pad(mo)+'-'+pad(dy):(col.mon!=null&&prev?prev.d:(out.workDate||''))):(dTxt||typeof dRaw==='number'?hjStmtDate(dRaw,year):(prev?prev.d:''));
+    // 위치: 칸 값 → 위 줄 → (위치 칸이 없으면) 머리글 위 현장명 → 품목 글자 그대로(세금계산서 품목에 '아파트 동·호'가 들어 있다)
+    const loc=col.loc!=null?(locCell||(prev?prev.loc:'')):(out.site||work);
     const line={d,loc,work:work+(amt===0&&/서비스|무상|무료/.test(amtRaw)&&!/서비스/.test(work)?'(서비스)':''),amt,sheet:name};
-    out.lines.push(line);prev=line;
+    out.lines.push(line);prev=line;run+=amt;sec+=amt;
   }
+  // 금액 칸이 '공급가액'이거나 세액 칸에 금액이 있으면 공급가(부가세 별도) 양식 — 확인 창의 기본값만 바꾼다
+  if(col.amtKey==='공급가액'||taxSum>0)out.vatHint='separate';
   return out;
 }
+function hjStmtParseSheet(grid,name,fallbackYear){
+  grid=Array.isArray(grid)?grid:[];
+  let first=null;
+  for(let r=0;r<Math.min(grid.length,40);r++){
+    const col=hjStmtHeaderAt(grid[r]);if(!col)continue;
+    const res=hjStmtReadRows(grid,r,col,name,fallbackYear);
+    if(res.lines.length)return res;
+    if(!first)first=res;
+  }
+  return first||hjStmtReadRows(grid,-1,null,name,fallbackYear);
+}
 function hjStmtParse(sheets,fileName){
-  const fn=String(fileName||'').normalize('NFC');
+  const fn=hjStmtCell(fileName);
   const fm=fn.match(/(20\d{2})(\d{2})(\d{2})/);
   const fileYear=fm?fm[1]:String(new Date().getFullYear());
   const parsed=(sheets||[]).map(s=>hjStmtParseSheet(s.grid,s.name,fileYear)).filter(s=>s.lines.length);
-  const merged=parsed.filter(s=>/통합|합본/.test(String(s.name||'')));
-  const use=merged.length?[merged[0]]:parsed;
-  const lines=[].concat(...use.map(s=>s.lines));
-  const stated=use.length===1?use[0].stated:(use.every(s=>s.stated!=null)?use.reduce((a,s)=>a+s.stated,0):null);
-  const head=use.find(s=>s.to||s.date)||parsed.find(s=>s.to||s.date)||{};
+  const warn=[];
+  const covers=(a,b)=>{const m=new Map();a.lines.forEach(l=>{const k=hjStmtLineId(l);m.set(k,(m.get(k)||0)+1);});return b.lines.every(l=>{const k=hjStmtLineId(l),n=m.get(k)||0;if(!n)return false;m.set(k,n-1);return true;});};
+  const sup=parsed.length>1?parsed.find(a=>parsed.every(b=>b===a||covers(a,b))):null;
+  const order=sup?[sup].concat(parsed.filter(s=>s!==sup)):parsed;
+  const seen=new Map(),used=[],skipped=[];let lines=[],statedSum=0,statedOK=true;
+  order.forEach(s=>{
+    const mine=new Map(),kept=[];let dropped=0;
+    s.lines.forEach(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);dropped++;return;}kept.push(l);mine.set(k,(mine.get(k)||0)+1);});
+    mine.forEach((n,k)=>seen.set(k,(seen.get(k)||0)+n));
+    if(!kept.length){skipped.push(s.name);return;}
+    used.push(s.name);lines=lines.concat(kept);
+    if(dropped){statedOK=false;warn.push('시트 ‘'+s.name+'’의 줄 '+dropped+'개는 다른 시트와 같아 한 번만 셌습니다.');}
+    else if(s.stated==null)statedOK=false;else statedSum+=s.stated;
+  });
+  if(skipped.length)warn.push('시트 '+skipped.map(n=>'‘'+n+'’').join(', ')+'는 다른 시트와 같은 줄이라 건너뛰었습니다.');
+  const stated=used.length&&statedOK?statedSum:(used.length===1?(order.find(s=>s.name===used[0])||{}).stated:null);
+  const head=order.find(s=>used.includes(s.name)&&(s.to||s.date))||order.find(s=>s.to||s.date)||{};
   const toFromName=(fn.replace(/\.[^.]+$/,'').match(/20\d{6}_([^_]+)$/)||[])[1]||'';   // '작업내역서20261030_누수나라.xlsx' → 누수나라
   const date=head.date||(fm?fm[1]+'-'+fm[2]+'-'+fm[3]:localDate());
   const to=(head.to&&!/^(미기재|현장별)/.test(head.to)?head.to:'')||(/내역|견적|계산서|명세|사진/.test(toFromName)?'':toFromName);   // '20261021_공사내역서' 는 거래처가 아니다
   const sum=lines.reduce((a,l)=>a+l.amt,0);
-  const warn=[];
   if(stated!=null&&stated!==sum)warn.push('내역서 합계 '+hjNum(stated)+'원과 줄 금액 합 '+hjNum(sum)+'원이 다릅니다 — 원본을 확인하세요.');
   if(lines.some(l=>!l.loc))warn.push('위치가 빈 줄이 있습니다 — 그 줄은 현장을 직접 고르세요.');
-  const vatHint=use.some(s=>s.vatHint==='separate')?'separate':'included';
+  const bad=[].concat(...order.filter(s=>used.includes(s.name)).map(s=>s.badAmt||[]));
+  if(bad.length)warn.push('금액으로 읽지 못한 칸 '+bad.length+'개('+bad.slice(0,3).map(x=>'‘'+x+'’').join(', ')+') — 그 줄은 빠졌습니다. 원본을 고쳐 다시 넣으세요.');
+  const vatHint=order.some(s=>used.includes(s.name)&&s.vatHint==='separate')?'separate':'included';
   if(vatHint==='separate')warn.push('금액 칸이 공급가액(세액 따로)인 양식입니다 — 부가세를 \'공급가\'로 골라 두었습니다.');
-  return {file:fn,to,date,lines,stated,sum,sheets:use.map(s=>s.name),warn,vatHint};
+  return {file:fn,to,date,lines,stated,sum,sheets:used,skippedSheets:skipped,warn,vatHint};
 }
 // 위치별 묶음 + 현장 후보·기본 선택. done = 이미 반영된 '파일#현장'
 function hjStmtGroups(r){
@@ -36741,7 +36783,9 @@ function hjStmtGroups(r){
     return {loc:g.loc,lines:g.lines,cands,suggest,choice,unit:hjStmtUnit(g.loc)};
   });
 }
-function hjStmtLineId(l){return [l.d||'',hjStmtCell(l.loc),hjStmtCell(l.work),Math.round(num(l.amt))].join('|');}
+function hjStmtLineId(l){return [l&&l.d||'',hjStmtKey(l&&l.loc),hjStmtKey(l&&l.work),Math.round(num(l&&l.amt))].join('|');}
+// 내역서 견적의 원본 파일 이름 — stmt.src(v526), 없으면 key 의 마지막 '#' 앞(파일 이름에 '#'이 있어도)
+function hjStmtSrcOf(q){const s=q&&q.stmt;if(!s)return '';if(s.src)return String(s.src);const k=String(s.key||''),i=k.lastIndexOf('#');return i>0?k.slice(0,i):k;}
 function hjStmtPrices(amts,vat){
   if(vat==='separate')return amts.slice();
   const A=amts.reduce((a,b)=>a+b,0);
@@ -36765,8 +36809,16 @@ function hjStmtBuildQuote(o){
     vatIncluded:true,accountIdx:null,memo,project:o.project,
     items:lines.map((l,i)=>({name:hjStmtCell(l.work)||hjStmtCell(l.loc)||'작업',spec:((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(hjStmtCell(l.loc)!==hjStmtCell(l.work)?hjStmtCell(l.loc):'')).trim(),qty:1,price:prices[i]})),
     createdAt:new Date().toISOString(),result:'won',
-    stmt:{v:1,doc,to,date:o.date,file:o.file||o.src,key:o.src+'#'+o.project,vat:o.vat==='separate'?'separate':'included',
+    stmt:{v:1,doc,to,date:o.date,file:o.file||o.src,src:o.src,key:o.src+'#'+o.project,vat:o.vat==='separate'?'separate':'included',
       total:o.vat==='separate'?A+Math.round(A*0.1):A,lines:lines.map(l=>({d:l.d||'',loc:hjStmtCell(l.loc),work:hjStmtCell(l.work),amt:Math.round(num(l.amt))})),...(o.flag?{check:o.flag}:{})}};
+}
+// 견적 파일 f 가 든 매출 묶음(estimateGroups — 앱 견적 가상 파일 포함, 확인 창과 같은 묶음)의 구성원
+function hjStmtEstGroupOf(f){
+  try{
+    const files=(state.files||[]).filter(x=>x&&x.kind==='estimate'&&(x.project||'')===(f.project||''));
+    const g=estimateGroups(files).find(g=>g.rep===f||(g.dups||[]).includes(f));
+    return g?[g.rep].concat(g.dups||[]):[f];
+  }catch(e){return [f];}
 }
 // 그 현장에서 지금 매출로 잡힌 견적 묶음(작업내역서 견적 제외) — 체크하면 사본까지 집계 제외
 function hjStmtExistingEst(project){
@@ -36775,41 +36827,67 @@ function hjStmtExistingEst(project){
     return estimateGroups(files).filter(g=>g.rep&&!g.rep._stmt).map(g=>({id:g.rep.id,name:g.rep._fromQuote?String(g.rep.name||'').replace(/^\[견적서\]\s*/,'').replace(/\.pdf$/,'')+' (앱 견적)':g.rep.name,amount:num(g.rep.est&&g.rep.est.amount),members:[g.rep].concat(g.dups||[]),quote:!!g.rep._fromQuote}));
   }catch(e){return [];}
 }
-/* 반영 — plan={src,file,doc,to,date,vat,groups:[{loc,lines,choice}],exclude:[fileId|'quote_<id>']}.
-   반환 {quotes,newProjects,skipped:[{project,why}],excluded,total} · 화면을 다시 그리고 저장 표시만 한다(파일 쓰기는 평소 자동 저장). */
+// 같은 '파일#현장' 견적에 새 줄만 붙인다(내역서를 고쳐 줄이 늘었을 때) — 이미 있는 품목은 손대지 않고, 부가세 포함이면 새로 붙인 마지막 품목만 1원 단위로 맞춘다
+function hjStmtAppend(q,lines){
+  const st=q.stmt,vat=st.vat==='separate'?'separate':'included';
+  const amts=lines.map(l=>Math.round(num(l.amt))),prices=hjStmtPrices(amts,vat);
+  lines.forEach((l,i)=>q.items.push({name:hjStmtCell(l.work)||hjStmtCell(l.loc)||'작업',spec:((hjStmtMd(l.d)?hjStmtMd(l.d)+' ':'')+(hjStmtCell(l.loc)!==hjStmtCell(l.work)?hjStmtCell(l.loc):'')).trim(),qty:1,price:prices[i]}));
+  st.lines=(st.lines||[]).concat(lines.map(l=>({d:l.d||'',loc:hjStmtCell(l.loc),work:hjStmtCell(l.work),amt:Math.round(num(l.amt))})));
+  const tot=st.lines.reduce((a,l)=>a+Math.round(num(l.amt)),0);
+  st.total=vat==='separate'?tot+Math.round(tot*0.1):tot;
+  if(vat==='included'&&lines.length){
+    const sub=Math.round(q.items.reduce((a,it)=>a+num(it.qty)*num(it.price),0));
+    const want=quoteSupplyForTotal(st.total),target=want!=null?want:Math.round(st.total/1.1);
+    if(Math.abs(target-sub)<=lines.length+1)q.items[q.items.length-1].price+=target-sub;   // 손으로 고친 견적이면(차이가 크면) 그대로 둔다
+  }
+  st.updatedAt=new Date().toISOString();
+  const have=String(q.place||'').split(' / ').filter(Boolean);
+  lines.forEach(l=>{const c=hjStmtCell(l.loc);if(c&&!have.includes(c))have.push(c);});
+  q.place=have.join(' / ');
+}
+/* 반영 — plan={src,file,doc,to,date,vat,groups:[{loc,lines,choice}],exclude:[견적 파일 id(앱 견적은 'quote_<id>')]}.
+   반환 {quotes,appended,newProjects,skipped:[{project,why}],dupLines,excluded,total} · 화면을 다시 그리고 저장 표시만 한다(파일 쓰기는 평소 자동 저장).
+   · 이미 들어간 줄(어느 내역서 견적이든 같은 날짜·위치·작업명·금액)은 건너뛴다 — 파일 이름이 달라도.
+   · 같은 '파일#현장' 견적이 있으면 새 줄만 그 견적에 붙인다. 새 현장은 실제로 견적이 생길 때만 만든다.
+   · 체크한 기존 견적은 이번에 견적이 생기거나 줄이 붙은 현장의 것만, 확인 창의 묶음 그대로(사본·앱 견적 포함) 집계 제외. 내역서 견적은 건드리지 않는다. */
 function hjStmtApply(plan){
   const src=hjStmtCell(plan.src||plan.file);if(!src)throw new Error('파일 이름이 없습니다');
   const date=/^\d{4}-\d{2}-\d{2}$/.test(String(plan.date||''))?plan.date:localDate();
   const vat=plan.vat==='separate'?'separate':'included';
-  const res={quotes:[],newProjects:[],skipped:[],excluded:0,total:0};
-  const mine=(state.quotes||[]).filter(q=>q&&q.stmt&&String(q.stmt.key||'').split('#')[0]===src);
-  const keys=new Set(mine.map(q=>q.stmt.key));
-  const seen=new Map();mine.forEach(q=>(q.stmt.lines||[]).forEach(l=>{const k=hjStmtLineId(l);seen.set(k,(seen.get(k)||0)+1);}));
+  const res={quotes:[],appended:[],newProjects:[],skipped:[],dupLines:0,excluded:0,total:0};
+  const stmtQs=(state.quotes||[]).filter(q=>q&&q.stmt);
+  const seen=new Map();stmtQs.forEach(q=>(q.stmt.lines||[]).forEach(l=>{const k=hjStmtLineId(l);seen.set(k,(seen.get(k)||0)+1);}));
   const byP=new Map();
   (plan.groups||[]).forEach(g=>{
-    let p=String(g.choice||'');if(!p)return;
-    if(p.indexOf('__new__:')===0){p=hjStmtCell(p.slice(8)).slice(0,60);if(!p)return;if(ensureProjectExists(p))res.newProjects.push(p);}
+    let p=String(g.choice||''),isNew=false;if(!p)return;
+    if(p.indexOf('__new__:')===0){p=hjStmtCell(p.slice(8)).slice(0,60);if(!p)return;isNew=!(state.projects||[]).some(x=>x.name===p);}
     else if(!(state.projects||[]).some(x=>x.name===p))return;
-    if(!byP.has(p))byP.set(p,[]);
-    byP.get(p).push(...(g.lines||[]));
+    if(!byP.has(p))byP.set(p,{lines:[],isNew});
+    byP.get(p).lines.push(...(g.lines||[]));
   });
-  byP.forEach((lines,project)=>{
-    if(keys.has(src+'#'+project)){res.skipped.push({project,why:'이미 반영됨'});return;}
-    const left=lines.filter(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);return false;}return true;});
-    if(!left.length){res.skipped.push({project,why:'같은 줄이 이미 반영됨'});return;}
-    const flag=(plan.flags&&plan.flags[project])||'';
-    const q=hjStmtBuildQuote({src,file:plan.file||src,doc:plan.doc,to:plan.to,date,vat,project,lines:left,flag});
+  const got=new Set();
+  byP.forEach((o,project)=>{
+    const left=o.lines.filter(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);res.dupLines++;return false;}return true;});
+    if(!left.length){res.skipped.push({project,why:'이미 반영된 줄'});return;}
+    if(o.isNew&&ensureProjectExists(project))res.newProjects.push(project);
+    const ex=stmtQs.find(q=>q.project===project&&hjStmtSrcOf(q)===src);
+    if(ex){const before=quoteCalc(ex).total;hjStmtAppend(ex,left);syncQuoteToProject(ex);res.appended.push(ex);res.total+=quoteCalc(ex).total-before;got.add(project);return;}
+    const q=hjStmtBuildQuote({src,file:plan.file||src,doc:plan.doc,to:plan.to,date,vat,project,lines:left,flag:(plan.flags&&plan.flags[project])||''});
     state.quotes.push(q);syncQuoteToProject(q);
-    res.quotes.push(q);res.total+=quoteCalc(q).total;
+    res.quotes.push(q);res.total+=quoteCalc(q).total;got.add(project);
   });
   (plan.exclude||[]).forEach(id=>{
-    if(String(id).indexOf('quote_')===0){const q=(state.quotes||[]).find(x=>x&&'quote_'+x.id===id);if(q&&!q.exSum&&!q.stmt){q.exSum=true;syncQuoteToProject(q);res.excluded++;}return;}
-    const f=(state.files||[]).find(x=>x&&x.id===id&&x.kind==='estimate'&&!x._fromQuote);if(!f||f.exSum)return;
-    let members=[f];
-    try{const g=estimateGroups((state.files||[]).filter(x=>x&&x.kind==='estimate'&&!x._fromQuote&&(x.project||'')===(f.project||''))).find(g=>g.rep===f||(g.dups||[]).includes(f));if(g)members=[g.rep].concat(g.dups||[]);}catch(e){}
-    members.forEach(x=>{x.exSum=true;});res.excluded++;
+    const f=(state.files||[]).find(x=>x&&x.id===id&&x.kind==='estimate');
+    if(!f||f._stmt||!got.has(f.project||''))return;
+    let n=0;
+    hjStmtEstGroupOf(f).forEach(m=>{
+      if(!m||m._stmt)return;
+      if(m._fromQuote){const q=(state.quotes||[]).find(x=>x&&'quote_'+x.id===m.id);if(q&&!q.exSum&&!q.stmt){q.exSum=true;syncQuoteToProject(q);n++;}}
+      else if(!m.exSum){m.exSum=true;n++;}
+    });
+    if(n)res.excluded++;
   });
-  if(res.quotes.length||res.excluded||res.newProjects.length)markDirty();
+  if(res.quotes.length||res.appended.length||res.excluded||res.newProjects.length)markDirty();
   return res;
 }
 async function hjStmtReadFile(file){
@@ -36854,7 +36932,7 @@ function hjStmtReview(r){
     </div>`;
   }).join('');
   const body=`<div class="stmt-review">
-    <p style="font-size:13px;line-height:1.6;margin:0 0 8px">‘${escapeHtml(r.file)}’ · 줄 ${r.lines.length}개 · 줄 합 <b>${won(r.sum)}</b>${r.stated!=null?' · 내역서 합계 '+won(r.stated):''}${r.sheets.length>1||/통합|합본/.test(r.sheets.join(''))?' · 시트 '+escapeHtml(r.sheets.join(', ')):''}</p>
+    <p style="font-size:13px;line-height:1.6;margin:0 0 8px">‘${escapeHtml(r.file)}’ · 줄 ${r.lines.length}개 · 줄 합 <b>${won(r.sum)}</b>${r.stated!=null?' · 내역서 합계 '+won(r.stated):''}${r.sheets.length>1||(r.skippedSheets||[]).length?' · 읽은 시트 '+escapeHtml(r.sheets.join(', ')):''}</p>
     ${r.warn.map(w=>`<p class="hint" style="font-size:12px;color:#b45309;margin:0 0 6px">⚠ ${escapeHtml(w)}</p>`).join('')}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px">
       <label style="font-size:12px;display:flex;flex-direction:column;gap:2px;flex:1 1 140px">받는 분<input id="stmtTo" value="${escapeAttr(r.to||'')}" style="min-height:44px;font-size:16px"></label>
@@ -36877,23 +36955,37 @@ function hjStmtReview(r){
         groups:cur.groups.map(g=>({loc:g.loc,lines:g.lines,choice:g.choice})),exclude:[...cur.exclude]};
       let res;try{res=hjStmtApply(plan);}catch(e){toast('반영하지 못했습니다: '+((e&&e.message)||e));return;}
       closeModal();render();
-      toast('📑 작업내역서 반영: 현장 '+res.quotes.length+'곳 · '+won(res.total)+(res.newProjects.length?' · 새 현장 '+res.newProjects.length:'')+(res.excluded?' · 기존 견적 '+res.excluded+'건 집계 제외':'')+(res.skipped.length?' · 건너뜀 '+res.skipped.length+'(이미 반영)':''));
+      toast('📑 작업내역서 반영: 새 견적 '+res.quotes.length+'건'+(res.appended.length?' · 기존 견적에 줄 추가 '+res.appended.length+'건':'')+' · '+won(res.total)+(res.newProjects.length?' · 새 현장 '+res.newProjects.length:'')+(res.excluded?' · 기존 견적 '+res.excluded+'건 집계 제외':'')+(res.dupLines?' · 이미 반영된 줄 '+res.dupLines+'개 건너뜀':''));
     }}],true);
   const root=$('#modalRoot');
   const refresh=()=>{
-    const src=r.file;
-    const keys=new Set((state.quotes||[]).filter(q=>q&&q.stmt).map(q=>q.stmt.key));
-    const chosen=[...new Set(cur.groups.map(g=>g.choice).filter(c=>c&&c.indexOf('__new__:')!==0))];
+    const src=hjStmtCell(r.file);
+    // 이미 들어간 줄(어느 내역서 견적이든) — 반영(hjStmtApply)과 같은 기준으로 미리 보여 준다
+    const seen=new Map();(state.quotes||[]).forEach(q=>{if(q&&q.stmt)(q.stmt.lines||[]).forEach(l=>{const k=hjStmtLineId(l);seen.set(k,(seen.get(k)||0)+1);});});
+    const pOf=g=>g.choice.indexOf('__new__:')===0?hjStmtCell(g.choice.slice(8)):g.choice;
+    const newBy={},lineN={};
+    cur.groups.forEach((g,i)=>{
+      let dup=0,fresh=0,amt=0;
+      if(g.choice)g.lines.forEach(l=>{const k=hjStmtLineId(l),n=seen.get(k)||0;if(n>0){seen.set(k,n-1);dup++;}else{fresh++;amt+=l.amt;}});
+      lineN[i]={dup,fresh};
+      if(g.choice&&fresh){const p=pOf(g);newBy[p]=(newBy[p]||0)+amt;}
+    });
     cur.groups.forEach((g,i)=>{const n=root.querySelector('[data-stmt-note="'+i+'"]');if(!n)return;
-      const p=g.choice.indexOf('__new__:')===0?g.choice.slice(8):g.choice;
-      n.textContent=!g.choice?'반영하지 않습니다':keys.has(src+'#'+p)?'✓ 이미 반영된 현장 — 다시 넣지 않습니다':g.choice.indexOf('__new__:')===0?'새 현장을 만들어 넣습니다':(g.cands[0]&&g.cands[0].name===g.choice&&g.cands[0].score<0.5?'⚠ 이름이 많이 다릅니다 — 맞는 현장인지 확인':'');});
+      const p=pOf(g),ln=lineN[i],app=(state.quotes||[]).some(q=>q&&q.stmt&&q.project===p&&hjStmtSrcOf(q)===src);
+      n.textContent=!g.choice?'반영하지 않습니다'
+        :!ln.fresh?'✓ 이미 반영된 줄입니다 — 다시 넣지 않습니다'
+        :(ln.dup?'줄 '+ln.dup+'개는 이미 반영돼 건너뜁니다 · ':'')+(app?'같은 내역서 견적에 새 줄을 붙입니다':g.choice.indexOf('__new__:')===0?'새 현장을 만들어 넣습니다':(g.cands[0]&&g.cands[0].name===g.choice&&g.cands[0].score<0.5?'⚠ 이름이 많이 다릅니다 — 맞는 현장인지 확인':''));});
+    // 기존 견적 집계 제외는 이번에 새 줄이 들어가는 기존 현장만 — 다른 현장으로 바꾸거나 '반영 안 함'이면 체크도 사라진다
+    const chosen=Object.keys(newBy).filter(p=>(state.projects||[]).some(x=>x.name===p));
     const ex=chosen.map(p=>({p,list:hjStmtExistingEst(p)})).filter(x=>x.list.length);
+    const shown=new Set();ex.forEach(x=>x.list.forEach(e=>shown.add(e.id)));
+    [...cur.exclude].forEach(id=>{if(!shown.has(id))cur.exclude.delete(id);});
     const box=root.querySelector('#stmtExisting');
-    if(box)box.innerHTML=ex.length?`<div style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:4px 0"><div style="font-size:12.5px;font-weight:700;margin-bottom:4px">이 현장들에 이미 매출로 잡힌 견적 — 내역서로 대신하면 체크(집계 제외 · 지우지 않음)</div>${ex.map(x=>x.list.map(e=>`<label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:12.5px"><input type="checkbox" data-stmt-ex="${escapeAttr(e.id)}"${cur.exclude.has(e.id)?' checked':''}> ${escapeHtml(x.p)} · ${escapeHtml(e.name)} · ${won(e.amount)}</label>`).join('')).join('')}</div>`:'';
+    if(box)box.innerHTML=ex.length?`<div style="border:1px dashed var(--line-soft);border-radius:10px;padding:8px 10px;margin:4px 0"><div style="font-size:12.5px;font-weight:700;margin-bottom:4px">이 현장들에 이미 매출로 잡힌 견적 — 내역서로 대신하면 체크(집계 제외 · 지우지 않음)</div>${ex.map(x=>x.list.map(e=>`<label style="display:flex;gap:6px;align-items:center;min-height:40px;font-size:12.5px"><input type="checkbox" data-stmt-ex="${escapeAttr(e.id)}"${cur.exclude.has(e.id)?' checked':''}> ${escapeHtml(x.p)} · ${escapeHtml(e.name)} · ${won(e.amount)}${e.members.length>1?' (사본 '+(e.members.length-1)+'건 포함)':''}</label>`).join('')).join('')}</div>`:'';
     if(box)box.querySelectorAll('[data-stmt-ex]').forEach(cb=>cb.onchange=()=>{if(cb.checked)cur.exclude.add(cb.dataset.stmtEx);else cur.exclude.delete(cb.dataset.stmtEx);});
-    const by={};cur.groups.forEach(g=>{if(!g.choice)return;const p=g.choice.indexOf('__new__:')===0?g.choice.slice(8):g.choice;if(keys.has(src+'#'+p))return;by[p]=(by[p]||0)+g.lines.reduce((a,l)=>a+l.amt,0);});
     const sm=root.querySelector('#stmtSummary');
-    if(sm)sm.textContent='반영하면: 현장 '+Object.keys(by).length+'곳에 견적 '+Object.keys(by).length+'건(수주) · 작업비용 '+won(Object.values(by).reduce((a,b)=>a+b,0))+' — 같은 현장의 여러 위치는 견적 1건으로 묶습니다.';
+    const np=Object.keys(newBy).length;
+    if(sm)sm.textContent=np?'반영하면: 현장 '+np+'곳 · 작업비용 '+won(Object.values(newBy).reduce((a,b)=>a+b,0))+' — 같은 현장의 여러 위치는 견적 1건으로 묶습니다.':'새로 넣을 줄이 없습니다.';
   };
   root.querySelectorAll('[data-stmt-proj]').forEach(sel=>{
     const g=cur.groups[+sel.dataset.stmtProj];sel.value=g.choice;if(sel.value!==g.choice)g.choice=sel.value;

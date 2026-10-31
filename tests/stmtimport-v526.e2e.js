@@ -10,6 +10,9 @@
    ⑤ 반영: 위치 2곳 → 같은 현장이면 견적 1건 · 새 현장 생성 · 체크한 기존 견적(엑셀+PDF 사본)만 집계 제외 · 다시 반영하면 0건(이미 반영됨) · 계좌 비움 (APPLY)
    ⑥ 화면: 견적 작성 탭 [📑 작업내역서 반영] · 확인 창(기본 선택·새 현장·기존 견적 체크) → [반영] → 목록에 📑 내역서 배지 · 줄 없는 파일 안내 (UI)
    ⑦ 소스·핀 3곳 v526 · 오류 0 · 바깥 쓰기 0
+   ⑧ 읽기 함정(검토 v526): 머리글 같은 정보 줄·'작업 위치'·'자재비용 | 작업비용'·₩/만원/(VAT포함) 금액·'소 계'·구역 합계 + '총액'·'전체' 통합 시트 (PARSE2)
+   ⑨ 반영 함정(검토 v526): 관계없는 같은 금액 견적과 안 묶임 · 체크했다가 '반영 안 함'으로 바꾼 현장은 제외 안 함 · 앱 견적 + PDF 사본 묶음은 둘 다 제외 ·
+      이름만 바꾼 사본 '(1).xlsx' 는 0건 · 같은 파일에 줄이 늘면 그 견적에 붙임 · 파일 이름의 '#' (APPLY2)
    HJ_V526_BASELINE=<commit> 은 ① 에서, HJ_V526_MUTATION=no-gross 는 ③ 에서, no-pair 는 ④ 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -25,7 +28,7 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 let html = process.env.HJ_V526_BASELINE ? execFileSync('git', ['show', process.env.HJ_V526_BASELINE + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }) : null;
 const MUT = {
   'no-gross': ['  const g=hjStmtGross(q,sub);if(g){vat=g-supply;total=g;}\n', ''],
-  'no-pair': ['      if(c.rep&&g.rep&&c.rep._stmt&&g.rep._stmt&&c.rep._stmt!==g.rep._stmt)return false;\n', ''],
+  'no-pair': ['      if(hasStmt(c)||hasStmt(g))return false;\n', ''],
 }[process.env.HJ_V526_MUTATION || ''];
 if (MUT) { assert(SRC.includes(MUT[0]), 'mutation anchor'); html = SRC.replace(MUT[0], MUT[1]); }
 
@@ -87,6 +90,18 @@ const GRID_C = () => [['공 사 내 역 서'], ['수 신', '', '귀하', '', '',
 // 세금계산서 품목표 양식 — 월 | 일 | 품목('아파트 동·호' 포함) | … | 공급가액 | 세액
 const GRID_D = () => [['작성일자', '2026-09-01', '비고', ''], ['합계금액', 880000, '공급가액', 800000, '세액', 80000], ['월', '일', '품목', '규격', '수량', '단가', '공급가액', '세액', '비고'],
   ['09', '01', '시험마을 815동 1201호', '건', 1, 500000, 500000, 50000, ''], ['09', '01', '오류동 삼성아파트 3동 505호 생활관', '건', 1, 300000, 300000, 30000, '']];
+
+// 읽기 함정 — 머리글처럼 보이는 정보 줄, '작업 위치', '자재비용 | 작업비용', ₩·만원·(VAT포함), '소 계', 구역 합계 뒤 다음 구역, 마지막 '총액'
+const GRID_E = () => [['현장명', '시험', '작성일자', '2026-10-30', '합계금액', 999], ['받는 분', '시험누수'],
+  ['작업 날짜', '작업 위치', '작업명', '자재비용', '작업비용'],
+  [SER('2026-10-01'), '가온아파트 101동 101호', '우수관', 10000, '₩300,000'], ['', '', '육가', '', '30만원'], ['소 계', '', '', '', 600000],
+  [SER('2026-10-02'), '나래아파트 2-202', '변기', '', '300,000원(VAT포함)'], ['합 계', '', '', '', 300000],
+  [SER('2026-10-03'), '다솜아파트 3-303', '수전', '', 220000], ['', '', '', '', 1120000], ['총액', '', '', '', 1120000]];
+// 통합 시트 이름이 '전체' — 개별 시트(A동·B동)와 같은 줄은 한 번만
+const HDR = ['작업 날짜', '위치', '작업명', '작업비용'];
+const GRID_FA = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수관', 220000], [SER('2026-10-05'), '가온아파트 1-102', '우수관', 220000]];
+const GRID_FB = () => [HDR, [SER('2026-10-06'), '나래아파트 2-201', '변기', 80000]];
+const GRID_FT = () => [HDR, [SER('2026-10-05'), '가온아파트 1-101', '우수관', 220000], [SER('2026-10-05'), '가온아파트 1-102', '우수관', 220000], [SER('2026-10-06'), '나래아파트 2-201', '변기', 80000], ['합계', '', '', 520000]];
 
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE || process.env.PLAYWRIGHT_EXECUTABLE_PATH || (process.platform === 'win32' ? undefined : '/opt/pw-browsers/chromium') });
@@ -214,7 +229,7 @@ const GRID_D = () => [['작성일자', '2026-09-01', '비고', ''], ['합계금�
       const r2 = hjStmtApply(plan);
       const sj = state.quotes.find(q => q.project === '수정타운아파트');
       return { choices: groups.map(g => [g.loc, g.choice]), existing, r1: { n: r1.quotes.length, total: r1.total, newP: r1.newProjects, excluded: r1.excluded, skipped: r1.skipped }, after1,
-        r2: { n: r2.quotes.length, skipped: r2.skipped.map(x => x.why) }, quotesAfter2: state.quotes.length,
+        r2: { n: r2.quotes.length, skipped: r2.skipped.map(x => x.why), dup: r2.dupLines, appended: r2.appended.length }, quotesAfter2: state.quotes.length,
         sj: { items: sj.items.length, place: sj.place, total: quoteCalc(sj).total, acct: sj.accountIdx, lines: sj.stmt.lines.length }, samhoSales: projStats('삼호아파트').est };
     }, GRID_A());
     assert.deepEqual(r.choices, [['신탄진 평화아파트 101동 1302호', '평화로운아파트'], ['법동 삼호 3동 907호', '삼호아파트'], ['용전동 신동아아파트 6-501', '용전신동아파트'], ['복수동 목화아파트 303-703', '__new__:목화아파트'], ['수정아파트 10-606', '수정타운아파트'], ['수정아파트 15-606', '수정타운아파트']], 'APPLY default choices ' + JSON.stringify(r.choices));
@@ -223,7 +238,7 @@ const GRID_D = () => [['작성일자', '2026-09-01', '비고', ''], ['합계금�
     assert.deepEqual(r.r1.newP, ['목화아파트']);
     assert.deepEqual(r.after1.ex, ['E1', 'E1P'], 'APPLY only checked estimate (and its copy) excluded ' + JSON.stringify(r.after1));
     assert(r.after1.sales === 3610000 + 300000 && r.after1.dirty === true, 'APPLY sales = statement + untouched 삼호 견적 ' + JSON.stringify(r.after1));
-    assert(r.r2.n === 0 && r.quotesAfter2 === 5 && r.r2.skipped.every(w => w === '이미 반영됨'), 'APPLY re-run adds nothing ' + JSON.stringify(r.r2));
+    assert(r.r2.n === 0 && r.r2.appended === 0 && r.r2.dup === 7 && r.quotesAfter2 === 5 && r.r2.skipped.every(w => w === '이미 반영된 줄'), 'APPLY re-run adds nothing ' + JSON.stringify(r.r2));
     assert(r.sj.items === 2 && r.sj.place === '수정아파트 10-606 / 수정아파트 15-606' && r.sj.total === 440000 && r.sj.acct === null && r.sj.lines === 2, 'APPLY two locations → one quote ' + JSON.stringify(r.sj));
     assert.equal(r.samhoSales, 270000 + 300000, 'APPLY 삼호 270,000 exact + 기존 견적 유지');
   });
@@ -252,10 +267,67 @@ const GRID_D = () => [['작성일자', '2026-09-01', '비고', ''], ['합계금�
     const done = await page.evaluate(() => ({ n: state.quotes.length, peace: state.quotes.some(q => q.project === '평화로운아파트'), samho: quoteCalc(state.quotes.find(q => q.project === '삼호아파트')).total,
       badges: document.querySelectorAll('[data-qstmt]').length, toast: document.getElementById('toast').textContent }));
     assert(done.n === 4 && !done.peace && done.samho === 297000, 'UI applied (separate VAT, one group skipped) ' + JSON.stringify(done));
-    assert(done.badges === 4 && /작업내역서 반영: 현장 4곳/.test(done.toast), 'UI badges + toast ' + JSON.stringify(done));
+    assert(done.badges === 4 && /작업내역서 반영: 새 견적 4건/.test(done.toast), 'UI badges + toast ' + JSON.stringify(done));
     await page.evaluate(() => hjStmtReview(hjStmtParse([{ name: 'S', grid: [['표'], ['a', 'b']] }], 'empty.xlsx')));
     await page.waitForFunction(() => /작업 줄을 찾지 못했습니다/.test(document.querySelector('#modalRoot').textContent));
     await page.evaluate(() => closeModal());
+  });
+
+  await test('⑧ 읽기 함정 — 정보 줄·작업 위치·자재비용|작업비용·₩/만원/(VAT포함)·소 계·구역 합계·총액·전체 시트 (PARSE2)', async () => {
+    const r = await page.evaluate(({ e, fa, fb, ft, HDR, s7 }) => {
+      const SER = () => s7;
+      const E = hjStmtParse([{ name: 'S', grid: e }], '작업내역서20261030_시험누수.xlsx');
+      const F = hjStmtParse([{ name: 'A동', grid: fa }, { name: '전체', grid: ft }, { name: 'B동', grid: fb }], 'x.xlsx');
+      const amts = ['₩300,000', '30만원', '300,000원(VAT포함)', '1.5만', '서비스', '-', '2동', '1.300.000'].map(hjStmtAmt);
+      const B = hjStmtParse([{ name: 'S', grid: [HDR, [SER('2026-10-07'), '가온아파트 1-101', '우수관', 220000], ['', '', '줄눈 보수', '약 5만']] }], 'b.xlsx');
+      return { E: { to: E.to, date: E.date, stated: E.stated, sum: E.sum, warn: E.warn, lines: E.lines.map(l => [l.d, l.loc, l.work, l.amt]) },
+        F: { sheets: F.sheets, skipped: F.skippedSheets, n: F.lines.length, sum: F.sum, stated: F.stated, warn: F.warn.length }, amts, bad: B.warn.filter(w => /금액으로 읽지 못한 칸 1개\(‘약 5만’\)/.test(w)).length };
+    }, { e: GRID_E(), fa: GRID_FA(), fb: GRID_FB(), ft: GRID_FT(), HDR, s7: SER('2026-10-07') });
+    assert.deepEqual(r.E.lines, [['2026-10-01', '가온아파트 101동 101호', '우수관', 300000], ['2026-10-01', '가온아파트 101동 101호', '육가', 300000],
+      ['2026-10-02', '나래아파트 2-202', '변기', 300000], ['2026-10-03', '다솜아파트 3-303', '수전', 220000]], 'PARSE2 lines ' + JSON.stringify(r.E));
+    assert(r.E.to === '시험누수' && r.E.date === '2026-10-30' && r.E.sum === 1120000 && r.E.stated === 1120000 && r.E.warn.length === 0, 'PARSE2 head/total ' + JSON.stringify(r.E));
+    assert.deepEqual(r.F.sheets, ['전체']); assert.deepEqual(r.F.skipped, ['A동', 'B동']);
+    assert(r.F.n === 3 && r.F.sum === 520000 && r.F.stated === 520000, 'PARSE2 combined sheet counted once ' + JSON.stringify(r.F));
+    assert.deepEqual(r.amts, [300000, 300000, 300000, 15000, 0, null, null, 1300000], 'PARSE2 amounts ' + JSON.stringify(r.amts));
+    assert.equal(r.bad, 1, 'PARSE2 unreadable amount is reported, not silently folded');
+  });
+
+  await test('⑨ 반영 함정 — 같은 금액 다른 견적·체크 후 해제한 현장·앱 견적+PDF 묶음·(1) 사본·줄 추가·# 파일 이름 (APPLY2)', async () => {
+    await SEED();
+    const r = await page.evaluate((a) => {
+      // 수정타운: 앱 견적 550,000 + 그 PDF 사본 550,000 · 삼호: 관계없는 같은 금액 견적 270,000
+      const q0 = { id: 'Q0', title: '수정타운 욕실', no: '제20260901', date: '2026-09-01', place: '', vatIncluded: true, accountIdx: null, memo: '', project: '수정타운아파트', items: [{ name: '욕실', spec: '', qty: 1, price: 500000 }], result: 'won' };
+      state.quotes.push(q0); syncQuoteToProject(q0);
+      state.files.push({ id: 'Q0P', name: '수정타운 욕실 견적서.pdf', ext: 'pdf', kind: 'estimate', project: '수정타운아파트', est: { amount: 550000 }, when: new Date('2026-09-01T02:00:00Z'), _virtual: true });
+      state.files.push({ id: 'S1', name: '20260801 삼호 욕실 견적.xlsx', ext: 'xlsx', kind: 'estimate', project: '삼호아파트', est: { amount: 270000 }, when: new Date('2026-08-01T01:00:00Z'), _virtual: true });
+      const p = hjStmtParse([{ name: '작업 내역서', grid: a }], '작업내역서20260917_시험누수.xlsx');
+      const groups = hjStmtGroups(p).map(g => ({ loc: g.loc, lines: g.lines, choice: g.loc === '법동 삼호 3동 907호' ? '' : g.choice }));
+      const sjGroup = hjStmtExistingEst('수정타운아파트');
+      const base = { src: p.file, file: p.file, doc: '작업내역서', to: p.to, date: p.date, vat: 'included' };
+      // ① 삼호는 '반영 안 함'인데 S1 체크가 남아 있음 · 수정타운 앱 견적 묶음 체크
+      const r1 = hjStmtApply({ ...base, groups, exclude: ['S1', sjGroup[0].id] });
+      const after1 = { s1: !!state.files.find(f => f.id === 'S1').exSum, q0: !!q0.exSum, q0p: state.files.find(f => f.id === 'Q0P').exSum, sj: projStats('수정타운아파트').est, samho: projStats('삼호아파트').est, n: r1.quotes.length, ex: r1.excluded };
+      // ② 이름만 바꾼 사본 '(1).xlsx' — 삼호를 이번엔 고름: 삼호 줄만 새로, 나머지는 이미 반영된 줄
+      const groups2 = hjStmtGroups(p).map(g => ({ loc: g.loc, lines: g.lines, choice: g.choice }));
+      const r2 = hjStmtApply({ ...base, src: '작업내역서20260917_시험누수 (1).xlsx', file: '작업내역서20260917_시험누수 (1).xlsx', groups: groups2, exclude: [] });
+      const after2 = { n: r2.quotes.length, dup: r2.dupLines, samho: projStats('삼호아파트').est, samhoSales: hjSalesEntries().filter(e => e.project === '삼호아파트').length };
+      // ③ 같은 파일 이름에 줄이 하나 늘었다(수정타운 15-606 육가 100,000) — 그 견적에 붙인다
+      const extra = { d: '2026-09-14', loc: '수정아파트 15-606', work: '육가 교체', amt: 100000, sheet: 'S' };
+      const r3 = hjStmtApply({ ...base, groups: [{ loc: extra.loc, lines: [extra], choice: '수정타운아파트' }], exclude: [] });
+      const sq = state.quotes.find(q => q.stmt && q.project === '수정타운아파트' && hjStmtSrcOf(q) === p.file);
+      const after3 = { n: r3.quotes.length, appended: r3.appended.length, total: r3.total, items: sq.items.length, lines: sq.stmt.lines.length, qt: quoteCalc(sq).total, place: sq.place };
+      // ④ 파일 이름에 '#'
+      const one = { d: '2026-10-20', loc: '신탄진 평화아파트 101동 1302호', work: '배관 보수', amt: 150000, sheet: 'S' };
+      const r4 = hjStmtApply({ ...base, src: 'A#B 내역.xlsx', file: 'A#B 내역.xlsx', groups: [{ loc: one.loc, lines: [one], choice: '평화로운아파트' }], exclude: [] });
+      const r5 = hjStmtApply({ ...base, src: 'A#B 내역.xlsx', file: 'A#B 내역.xlsx', groups: [{ loc: one.loc, lines: [one], choice: '평화로운아파트' }], exclude: [] });
+      const hq = state.quotes.find(q => q.stmt && hjStmtSrcOf(q) === 'A#B 내역.xlsx');
+      return { after1, after2, after3, r4: r4.quotes.length, r5: { n: r5.quotes.length, dup: r5.dupLines }, hsrc: hq && hq.stmt.src, hkey: hq && hq.stmt.key };
+    }, GRID_A());
+    assert(r.after1.s1 === false && r.after1.samho === 270000, 'APPLY2 deselected project keeps its estimate ' + JSON.stringify(r.after1));
+    assert(r.after1.q0 === true && r.after1.q0p === true && r.after1.ex === 1 && r.after1.sj === 440000, 'APPLY2 app quote + pdf copy both excluded ' + JSON.stringify(r.after1));
+    assert(r.after2.n === 1 && r.after2.dup === 5 && r.after2.samho === 540000 && r.after2.samhoSales === 2, 'APPLY2 renamed copy adds only new lines; 삼호 not merged with same-amount estimate ' + JSON.stringify(r.after2));
+    assert(r.after3.n === 0 && r.after3.appended === 1 && r.after3.total === 100000 && r.after3.items === 3 && r.after3.lines === 3 && r.after3.qt === 540000, 'APPLY2 revised file appends ' + JSON.stringify(r.after3));
+    assert(r.r4 === 1 && r.r5.n === 0 && r.r5.dup === 1 && r.hsrc === 'A#B 내역.xlsx' && r.hkey === 'A#B 내역.xlsx#평화로운아파트', 'APPLY2 # in file name ' + JSON.stringify(r));
   });
 
   await test('⑦ 소스·핀 3곳 v526 · 오류 0 · 바깥 쓰기 0', async () => {
