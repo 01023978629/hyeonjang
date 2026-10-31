@@ -6,7 +6,7 @@
    ③ 입금: 현장마다 입금 기록(stmt·결제 방법·증빙) · 받은 돈 누계·잔금 · 미수 독촉 작업 닫힘 · 미래 날짜·초과·지워진 현장 막음 (APPLY)
    ④ 화면: 견적 작성 탭 장부 · [💰 입금] → 나눔 미리보기 → 저장 → '✓ 다 받음' (UI)
    ⑤ 폴더 파일: 앱이 색인한 작업내역서 엑셀(양식 제외) 목록 · [📑 반영] → 확인 창 → 반영 뒤 목록에서 빠짐 (FILES)
-   ⑥ 소스·핀 3곳 v527 · 오류 0 · 바깥 쓰기 0
+   ⑥ 소스·핀 3곳(v527 이상·서로 같음) · 오류 0 · 바깥 쓰기 0
    HJ_V527_BASELINE=<commit> 은 ① 에서, HJ_V527_MUTATION=no-split 는 ② 에서 실패해야 한다. */
 'use strict';
 const assert = require('node:assert/strict');
@@ -162,11 +162,13 @@ const SER = d => Math.round((Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.sli
     assert(done.q === 1 && done.btn === 0 && done.rows === 3, 'FILES applied, list updated ' + JSON.stringify(done));
   });
 
-  await test('⑥ 소스·핀 3곳 v527 · 오류 0 · 바깥 쓰기 0', async () => {
+  await test('⑥ 소스·핀 3곳(v527 이상·서로 같음) · 오류 0 · 바깥 쓰기 0', async () => {
     assert.match(SRC, /if\(d\.stmtpay!==undefined\)return hjStmtPayView\(d\.stmtpay\);/);
     assert.match(SRC, /#qmStmt,\[data-stmtpay\],\[data-stmtfile\]/);
-    const pins = [/const APP_BUILD='hyeonjang-v527-stmtpay'/.test(SRC), /const C='hyeonjang-v527-stmtpay'/.test(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')), /TARGET_BUILD = 'hyeonjang-v527-stmtpay'/.test(fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8'))];
-    assert.deepEqual(pins, [true, true, true], 'pins ' + JSON.stringify(pins));
+    // 핀은 판마다 바뀐다 — v527 이상이고 세 곳이 같은지만 본다(다음 판에서 떨어지지 않게)
+    const ver = x => { const m = String(x || '').match(/hyeonjang-v(\d+)-/); return m ? +m[1] : 0; };
+    const pin = [(SRC.match(/const APP_BUILD='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const C='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8').match(/TARGET_BUILD = '([^']+)'/) || [])[1]];
+    assert.deepEqual([ver(pin[0]) >= 527, pin[0] === pin[1], pin[0] === pin[2]], [true, true, true], 'pins ' + JSON.stringify(pin));
     await context.close();
     assert.deepEqual(errors, []); assert.equal(network.writes, 0);
   });
