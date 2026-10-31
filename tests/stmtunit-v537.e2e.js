@@ -64,7 +64,7 @@ async function openPage() {
     state.quotes = []; state.expenses = []; state.payLog = []; state.aptOrders = []; state.aptOffices = [];
     const L = (loc, work, amt, d) => ({ d: d || '2026-10-20', loc, work, amt });
     const mk = (src, project, lines) => { const q = hjStmtBuildQuote({ src, file: src, doc: '작업내역서', to: '시험누수', date: '2026-10-20', vat: 'included', project, lines }); state.quotes.push(q); syncQuoteToProject(q); };
-    mk('A.xlsx', '가온아파트', [L('가온아파트 101동 1001호', '욕실 누수', 100000), L('가온아파트 101동 1001호', '배관 교체', 50000, '2026-10-21'), L('가온아파트 102동 503호', '배관 교체', 70000), L('가온아파트 103-704', '실리콘', 30000), L('가온아파트 관리동 지하', '점검', 20000)]);
+    mk('A.xlsx', '가온아파트', [L('가온아파트 101동 1001호', '욕실 누수', 100000), L('가온아파트 101동 1001호', '배관 교체', 50000, '2026-10-21'), L('가온아파트 102동 503호', '배관 교체', 70000), L('가온아파트 103-74', '실리콘', 30000), L('가온아파트 관리동 지하', '점검', 20000)]);
     mk('A.xlsx', '나래빌딩', [L('나래빌딩 1동 201호', '방수', 90000)]);
     mk('A.xlsx', '다솜아파트', [L('다솜아파트 101동 1001호', '누수 탐지', 80000), L('다솜아파트 101동 1002호', '누수 탐지', 80000)]);
     mk('A.xlsx', '라온아파트', [L('라온아파트 1동 1호', '점검', 10000)]);
@@ -78,16 +78,16 @@ async function openPage() {
     await SEED();
     const before = await fp();
     const r = await page.evaluate(() => ({
-      of: ['가온아파트 101동 1001호', '가온아파트 103-704', '가온아파트 101호 1001호', '가온아파트 관리동 지하', ''].map(x => { const u = hjStmtUnitOf(x); return u && [u.dong, u.ho, u.sure]; }),
+      of: ['가온아파트 101동 1001호', '가온아파트 103-74', '가온아파트 101호 1001호', '가온아파트 관리동 지하', ''].map(x => { const u = hjStmtUnitOf(x); return u && [u.dong, u.ho, u.sure]; }),
       plan: hjStmtUnitPlan().map(x => [x.project, x.dong, x.ho, x.sure, x.apt, x.check, x.lines, x.works.join('|')]),
       only: hjStmtUnitPlan('다솜아파트').map(x => [x.project, x.dong, x.ho]),
       units: aptUnitList(aptUnitProject('가온아파트')).length
     }));
-    assert.deepEqual(r.of, [['101', '1001', true], ['103', '704', false], ['101', '1001', false], null, null], 'unit reading ' + JSON.stringify(r.of));
+    assert.deepEqual(r.of, [['101', '1001', true], ['103', '74', false], ['101', '1001', false], null, null], 'unit reading ' + JSON.stringify(r.of));   // v539: 아파트 이름 뒤 '동-호'(호 3~4자리)는 확실 — 짧은 호수는 확인
     assert.deepEqual(r.plan, [
       ['가온아파트', '101', '1001', true, true, true, 2, '욕실 누수|배관 교체'],
       ['가온아파트', '102', '503', true, true, true, 1, '배관 교체'],
-      ['가온아파트', '103', '704', false, true, false, 1, '실리콘'],
+      ['가온아파트', '103', '74', false, true, false, 1, '실리콘'],
       ['나래빌딩', '1', '201', true, false, false, 1, '방수'],
       ['다솜아파트', '101', '1002', true, true, true, 1, '누수 탐지']], 'plan ' + JSON.stringify(r.plan));
     assert.deepEqual(r.only, [['다솜아파트', '101', '1002']]);
@@ -100,7 +100,7 @@ async function openPage() {
     await page.evaluate(() => { state.tab = 'quotemaker'; state.editingQuote = null; render(); });
     await page.waitForSelector('[data-stmt-unitline]');
     const line = await page.evaluate(() => { const el = document.querySelector('[data-stmt-unitline]'); return { t: el.textContent.replace(/\s+/g, ' ').trim(), h: Math.round(el.querySelector('[data-stmtunit]').getBoundingClientRect().height) }; });
-    assert(/🏢 내역서에 나온 동·호수 5곳이 아직 그 현장 세대로 등록되지 않았어요/.test(line.t) && line.h >= 44, 'ledger line ' + JSON.stringify(line));
+    assert(/🏢 내역서에 분명하게 적힌 동·호수 3곳이 아직 그 현장 세대로 등록되지 않았어요/.test(line.t) && line.h >= 44, 'ledger line counts only the clear ones (v539) ' + JSON.stringify(line));
     await page.click('[data-stmt-unitline] [data-stmtunit]');
     await page.waitForSelector('#stmtUnitPanel');
     const m = await page.evaluate(() => ({
@@ -109,7 +109,7 @@ async function openPage() {
       wide: document.documentElement.scrollWidth - document.documentElement.clientWidth, btns: [...document.querySelectorAll('#modalRoot .mfoot button')].map(b => b.textContent.trim())
     }));
     assert.deepEqual(m.rows.map(x => x[0]), [true, true, false, false, true], 'default checks ' + JSON.stringify(m.rows));
-    assert(/‘101-1001’ 꼴로 적힌 위치 — 확인/.test(m.rows[2][1]) && /현장 이름이 아파트로 보이지 않아요 — 확인/.test(m.rows[3][1]) && /내역서 2줄 · 욕실 누수, 배관 교체/.test(m.rows[0][1]), 'row texts ' + JSON.stringify(m.rows));
+    assert(/‘동-호’ 꼴이 분명하지 않아요/.test(m.rows[2][1]) && /현장 이름이 아파트로 보이지 않아요 — 확인/.test(m.rows[3][1]) && /내역서 2줄 · 욕실 누수, 배관 교체/.test(m.rows[0][1]) && /위치: 가온아파트 101동 1001호/.test(m.rows[0][1]), 'row texts ' + JSON.stringify(m.rows));
     assert(m.h >= 44 && m.wide <= 0, '44px rows · no overflow ' + JSON.stringify([m.h, m.wide]));
     assert.deepEqual(m.btns, ['취소', '🏢 체크한 세대 등록']);
     await page.click('#modalRoot .mfoot button:nth-child(2)');
@@ -123,7 +123,7 @@ async function openPage() {
     assert.deepEqual(after.ga, ['101-1001', '102-503']); assert.deepEqual(after.da, ['101-1001', '101-1002']); assert.equal(after.na, 0);
     assert(/🏢 3곳의 동·호수를 세대로 등록했어요/.test(after.toast) && after.snap, 'toast & snapshot ' + JSON.stringify([after.toast, after.snap]));
     assert(Array.isArray(after.stored) && after.stored.find(p => p.name === '가온아파트').aptUnits.length === 2, 'committed to the device store');
-    assert(/동·호수 2곳이/.test(after.line.replace(/\s+/g, ' ')), 'two left (unchecked ones) ' + after.line);
+    assert.equal(after.line, '', 'only unchecked ones left — the ledger stops nagging (v539) ' + after.line);
     assert.equal(await fp(), before, 'photos, quotes and payments untouched');
   });
 
@@ -133,7 +133,7 @@ async function openPage() {
     await page.click('#t537card [data-stmtunit]');
     await page.waitForSelector('#stmtUnitPanel');
     const rows = await page.evaluate(() => [...document.querySelectorAll('[data-stmtunit-row]')].map(r => [r.querySelector('.suChk').checked, r.textContent.replace(/\s+/g, ' ').trim().slice(0, 30)]));
-    assert(rows.length === 1 && rows[0][0] === false && /가온아파트 · 103동 704호/.test(rows[0][1]), 'only this site, unchecked hyphen form ' + JSON.stringify(rows));
+    assert(rows.length === 1 && rows[0][0] === false && /가온아파트 · 103동 74호/.test(rows[0][1]), 'only this site, unchecked short hyphen form ' + JSON.stringify(rows));
     // 창이 떠 있는 사이 다른 곳(다른 창·관리 화면)에서 이 현장 세대가 바뀌었다 — 옛 미리보기로 쓰지 않는다
     await page.evaluate(async () => { await aptUnitSave('가온아파트', { type: 'unit', dong: '109', ho: '909' }); document.querySelector('#stmtUnitPanel .suChk').checked = true; });
     await page.click('#modalRoot .mfoot button:nth-child(2)');
@@ -146,7 +146,7 @@ async function openPage() {
     await page.evaluate(() => { document.querySelector('#stmtUnitPanel .suChk').checked = true; });
     await page.click('#modalRoot .mfoot button:nth-child(2)');
     await page.waitForFunction(() => !document.getElementById('stmtUnitPanel'));
-    assert.deepEqual(await page.evaluate(() => aptUnitList(aptUnitProject('가온아파트')).map(u => u.dong + '-' + u.ho).sort()), ['101-1001', '102-503', '103-704', '109-909']);
+    assert.deepEqual(await page.evaluate(() => aptUnitList(aptUnitProject('가온아파트')).map(u => u.dong + '-' + u.ho).sort()), ['101-1001', '102-503', '103-74', '109-909']);
     assert.equal(await card(), '', 'card button gone once every statement unit is registered');
   });
 
