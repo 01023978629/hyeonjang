@@ -3,6 +3,26 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-01 v548 💼 이번 달 돈 흐름 보드 — 지출 · 손익(마진) · 증빙 세 칸 + 최근 6개월 수금·지출 막대 (대표 PDF 8번)
+
+- 자리: PC 첫 화면 수금률 막대(`.ratewrap`) 바로 아래, '진행 단계 분포' 위. `hjMoneyBoardHTML()` — **PC 만**(모바일 모드면 안 그림 + CSS, 폭 720px 이하는 PC 모드여도 CSS 로 숨김:
+  막대 글자가 7px 로 작아져 못 읽고 dash-cards ④ 360 가로 넘침 0 약속). 넓은 PC(1180px↑)는 왼쪽 세 칸 | 오른쪽 막대, 좁은 PC 는 세 칸 한 줄 + 아래 막대(높이 250px 까지).
+- **새 기준을 만들지 않았다** — 있던 계산을 읽기만: 지출·손익·이익률 = `pnlData(이번 달)`(💰 월별 손익 창과 같음: 수금 = 실제 입금 payLog, 지출 = 지출 장부),
+  6개월 = `pnlTrend(6)`, 발행 확인 = `hjTaxIssuePending()`(🧾 발행 확인 창과 같은 건수, 기간 제한 없음), 영수증 없는 지출 = `hjMoneyNoProof(ym)` —
+  이번 달 세무 자료(`hjTaxPackData`)와 같은 규칙(영수증 사진이 이어진 지출·카드 월 합계 줄 `_fromLedger` 는 뺀다). 그리기만으로 자료 불변.
+- 누르면 있던 창만: 지출 → `expenseLedger(ym)` · 손익 → `pnl(ym)` · 발행 확인 → `hjTaxIssueView({})` · 영수증 없는 지출 → `hjTaxPackView(ym)` (`[data-money]` 위임 → `hjMoneyOpen`).
+- 막대(`hjMoneyChartSVG`): dataviz 규격 — 한 축(원), 수금 파랑 #2a78d6 · 지출 주황 #eb6834(어두운 화면 #3987e5 · #d95926, 검증 스크립트로 밝음·어두움 둘 다 통과),
+  막대 24px 이하·끝만 4px 둥글게·두 막대 사이 2px, 눈금 1·2·5×10ⁿ 로 3~4칸(0/100만/200만…), 범례 늘, 달마다 투명 칸 전체에 모든 값이 든 풍선말(title),
+  숫자는 막대에 안 적고 '표로 보기'(details — 펼침은 메모리 `__hjMoneyTableOpen`, toggle 이벤트는 클릭 뒤 따로 온다) 와 aria-label 로. 기록이 없으면 빈 안내.
+- 핀3곳 hyeonjang-v548-moneyboard. 신규 tests/moneyboard-v548.e2e.js 5/5(시계 2026-11-15 고정 — 자리·두 칸·숫자·막대 비례·눈금·자료 불변 → 네 창 숫자 일치 →
+  표·풍선말·굵기 → 1024·폰·폰 폭 PC 모드·모드 전환·빈 안내·어두운 색·대비 → 소스·핀). 기준선 v547 과 변이 ledger-proof(카드 월 합계 줄을 영수증 없음으로 셈)는 ① 에서 실패 확인.
+  회귀: dash-cards(처음엔 ④ 폭 360 PC 모드 #view 가로 46px 넘침 → 720px 이하 숨김으로 고침) · margin1280-v464 · pcdark-v452 · darkcards-v453 · polish-v456 · numwrap2-v542 ·
+  bentodash-v547 · headerui-v546 · demo-v462 · demo3-v489 · demotour-v467 · demotour2-v470 · tour6-v495 · expenseocr-v435 · rehearsalfix-v449 · trip-expense-overlap ·
+  evidence-v427 · extras-settle · revenue-basis · health-board · marketing-draft · office-ops-conversion · v219-operations · taxissue-v428 · taxmerge-v543 · payproof-v348 ·
+  vatproof-v349 · receipt-project · amount-sign · bankimport-v350 · brief-actions · case-pack · delay-v347 · estassign-v544 · extraprogress-v346 · healthline-v524 ·
+  inqpending-v386 · mobile-operations · mobile-shell-a11y · mobile-more-tools · mobile-tap-table · operations-review · ownertodo-v460 · photofill-v545 · stopmemo-v541 ·
+  ui-feedback · watch-card 통과.
+
 ## 2026-11-01 v547 PC 첫 화면 두 칸(벤토) — ✅ 오늘 현장 업무 | 🏗 진행 현장 (대표 PDF 7번 '최종 UI 2') + v543 CI 보강
 
 - 첫 화면 맨 위(데모 길잡이 다음)를 `<div class="hj-bento" data-bento>` 로 감싸 `dashboardTodoHTML()`(그대로) + `hjBentoProgressHTML()`.
