@@ -13,11 +13,13 @@ try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 catch (_) { ({ chromium } = require('playwright')); }
 const {createSharedTodoMock,URL:MOCK,TOKEN}=require('./shared-todo-mock');
 const ORIGIN='http://127.0.0.1:8299';
-const NAV='.mobile-nav [data-mnav="__todo"]';
+// v550 하단 5칸에서 [오늘 할일] 칸이 빠졌다 — 내 업무는 [설정] 바로가기 '✅ 내 업무'(지금 화면 위에 열림)로 연다(캘린더 위 단추도 같은 창)
+const NAV='.mobile-nav [data-mnav="__more"]';
+async function openMyWork(page){await page.locator(NAV).click();await page.locator('#moreNav [data-more="__mywork"]').click();}
 const P1='가상 내업무 아파트 101동',P2='가상 내업무 빌라';
 const PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64');
 async function settle(page){await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));}
-async function closed(page){await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet)&&document.activeElement?.dataset.mnav==='__todo');}
+async function closed(page){await page.waitForFunction(()=>!document.querySelector('#modalRoot .modal')&&!window.__mobileSheetHistoryRetire&&!(history.state&&history.state.__hjMobileSheet)&&document.activeElement?.dataset.mnav==='__more');}   // v550 내 업무는 [설정] 바로가기에서 — 닫으면 [설정]으로
 
 (async()=>{
   const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_EXECUTABLE||(process.platform!=='win32'?'/opt/pw-browsers/chromium':undefined)});
@@ -73,7 +75,7 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
   try{
     // ── 연결된 기기: 세 출처·직원 작업실 설정됨
     const {context,page}=await boot({teamConfigured:true,relay:true});
-    await page.locator(NAV).click();
+    await openMyWork(page);
     await page.locator('#myWork').waitFor();
     await page.waitForFunction(()=>/확인 \d\d:\d\d/.test(document.getElementById('mwSharedState')?.textContent||''));
     await page.waitForFunction(()=>!!document.getElementById('mwTeamOpen'));
@@ -118,7 +120,7 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
     assert.equal(await page.evaluate(()=>state.files.length),0,'④ 취소하면 아무것도 안 들어간다');
 
     // ⑤ 완료 보고 — 사진 0장: 아니오면 저장 안 함
-    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    await openMyWork(page);await page.locator('#myWork').waitFor();
     await page.locator('[data-mw-done="s-tile"]').click();await page.locator('#mwDoneText').waitFor();
     assert.match(await page.locator('#mwPhotoCount').innerText(),/0장/);
     await page.locator('#modalRoot .mfoot button').filter({hasText:'완료 보고 저장'}).click();
@@ -168,10 +170,10 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
 
     // ⑨ Esc·뒤로가기로 닫으면 하단 버튼으로
     await page.keyboard.press('Escape');await closed(page);
-    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    await openMyWork(page);await page.locator('#myWork').waitFor();
     await page.evaluate(()=>history.back());await closed(page);
     // 기존 화면으로 가는 길
-    await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+    await openMyWork(page);await page.locator('#myWork').waitFor();
     await page.locator('#mwLocal').click();await page.locator('#todoText').waitFor();
     await page.keyboard.press('Escape');await closed(page);
     assert.deepEqual(await page.evaluate(()=>__mwUnexpected),[]);
@@ -180,14 +182,14 @@ async function closed(page){await page.waitForFunction(()=>!document.querySelect
     // ── 연결 안 된 기기·직원 작업실 미설정: 링크 없음, 공유 버튼 없음
     {const {context,page}=await boot({teamConfigured:false,relay:false});
       const calls=mock.calls.length;
-      await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+      await openMyWork(page);await page.locator('#myWork').waitFor();
       await page.waitForFunction(()=>/설정 전/.test(document.getElementById('mwTeam')?.textContent||''));
       assert.equal(await page.locator('#mwTeamOpen').count(),0,'⑦ 직원 작업실 미설정이면 링크 없음');
       assert.equal(await page.locator('#mwShared').count(),0);assert.equal(mock.calls.length,calls,'연결 안 되면 서버 호출 없음');
       // ⑧ 빈 화면 + 내일 미리보기
       await page.keyboard.press('Escape');await closed(page);
       await page.evaluate(()=>{state.schedule=state.schedule.filter(s=>s.date!==__mw.today);state.notes=state.notes.filter(n=>!n.todo);});
-      await page.locator(NAV).click();await page.locator('#myWork').waitFor();
+      await openMyWork(page);await page.locator('#myWork').waitFor();
       const empty=await page.locator('#mwEmpty').innerText();
       assert.match(empty,/오늘은 할 일이 없습니다/);assert.match(empty,/내일 도배/,'⑧ 내일 일정 미리보기');
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));

@@ -116,8 +116,11 @@ const SAVED = () => ({
 
   await test('⑤ 소스: 스캔 뒤 자가치유 필터 유지 · 핀 3곳 v525 · 오류 0 · 바깥 쓰기 0', async () => {
     assert.match(SRC, /state\.files=\(state\.files\|\|\[\]\)\.filter\(function\(f\)\{return !isAppOwnFile\(f\.name,f\.prefix\);\}\);/, 'post-scan self-heal filter still removes app-own records');
-    const pins = [/const APP_BUILD='hyeonjang-v525-casefolder'/.test(SRC), /const C='hyeonjang-v525-casefolder'/.test(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')), /TARGET_BUILD = 'hyeonjang-v525-casefolder'/.test(fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8'))];
-    assert.deepEqual(pins, [true, true, true], 'pins ' + JSON.stringify(pins));
+    // v526 부터: 핀은 판마다 바뀐다 — v525 이상이고 세 곳이 같은지만 본다(이 검사가 다음 판에서 떨어지지 않게)
+    const ver = s => { const m = String(s || '').match(/hyeonjang-v(\d+)-/); return m ? +m[1] : 0; };
+    const pin = [(SRC.match(/const APP_BUILD='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const C='([^']+)'/) || [])[1], (fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8').match(/TARGET_BUILD = '([^']+)'/) || [])[1]];
+    const pins = [ver(pin[0]) >= 525, pin[0] === pin[1], pin[0] === pin[2]];
+    assert.deepEqual(pins, [true, true, true], 'pins ' + JSON.stringify(pin));
     await context.close();
     assert.deepEqual(errors, []); assert.equal(network.writes, 0);
   });

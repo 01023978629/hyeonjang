@@ -161,7 +161,7 @@ let browser, passed = 0, page;
     await page.evaluate(() => { __v449.toasts = []; coworkCopy('t1', '고객 일정 안내 글'); coworkCopy('t2'); coworkCopy('t3', '세금 정리', { cowork: true }); });
     await page.waitForFunction(() => __v449.toasts.length >= 3);
     const t = await page.evaluate(() => __v449.toasts.slice(0, 3));
-    assert.equal(t[0], '📋 고객 일정 안내 글 복사됨 — 붙여 넣어 쓰세요'); assert.match(t[1], /Cowork에 붙여넣으세요/); assert.match(t[2], /Cowork에 붙여넣으세요/);
+    assert.equal(t[0], '📋 고객 일정 안내 글 복사됨 — 붙여 넣어 쓰세요'); assert.match(t[1], /클로드에 붙여넣으세요/); assert.match(t[2], /클로드에 붙여넣으세요/);
     await page.evaluate(WON => docHubView(WON), WON); await page.locator('#modalRoot .docHubBtn').first().waitFor();
     assert.match(await page.locator('#modalRoot .modal').innerText(), /견적 1건/);
     assert(await page.locator('#modalRoot .docHubBtn').first().evaluate(n => n.style.color === 'var(--ink)'), 'card text colour survives button:hover');

@@ -122,6 +122,9 @@ let browser;
     let msg = ''; const rt = window.toast; window.toast = m => { msg = m; rt(m); };
     document.querySelectorAll('#modalRoot button, .modal button').forEach(b => { if (/입금 저장/.test(b.textContent || '')) b.click(); });
     await new Promise(r => setTimeout(r, 250));
+    // v550: 입금 저장(v543 원자 저장)은 비동기 — 저장 150ms 뒤 뜨는 '🧾 입금 확인증' 제안 창을 보고 닫아야 ⑧ 의 입금 창을 늦게 덮지 않는다
+    for (let i = 0; i < 30 && !/입금 확인증/.test((document.getElementById('modalRoot') || {}).innerText || ''); i++) await new Promise(r => setTimeout(r, 100));
+    try { closeModal(); } catch (e) {}
     window.toast = rt;
     const p = state.projects.find(x => x.name === '늦은빌라 302호');
     const last = (state.payLog || [])[state.payLog.length - 1];

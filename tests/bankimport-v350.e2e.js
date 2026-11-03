@@ -192,11 +192,14 @@ const EUCKR_CSV_HEX = 'b0c5b7a1c0cfc0da2cc3e2b1ddb1ddbed72cc0d4b1ddb1ddbed72cb0c
       // 💰 입금 기록 창 → 저장 → received·payLog·증빙까지 예전과 같은 결과
       const p = state.projects.find(x => x.name === '둔산'); const n0 = state.payLog.length, r0 = p.received || 0;
       recvQuickView('둔산'); await new Promise(r => setTimeout(r, 60));
-      document.getElementById('rqAmt').value = '2,000,000'; document.getElementById('rqDate').value = '2026-10-01'; document.getElementById('rqProof').value = 'cash';
+      document.getElementById('rqAmt').value = '2,000,000'; document.getElementById('rqDate').value = '2026-10-01';
+      // v543(v428 통합): 증빙 고르기는 발행 기록 칸을 채우는 지름길 — 사람이 고를 때처럼 change 를 보낸다
+      const proofSel = document.getElementById('rqProof'); proofSel.value = 'cash'; proofSel.dispatchEvent(new Event('change', { bubbles: true }));
       [...document.querySelectorAll('#modalRoot .mfoot button')].find(b => /입금 저장/.test(b.textContent)).click();
       await new Promise(r => setTimeout(r, 250));
       const rec = state.payLog[state.payLog.length - 1]; closeModal();
-      return { same, n: state.payLog.length - n0, recv: p.received - r0, rec: { d: rec.d, project: rec.project, amt: rec.amt, proof: rec.proof, hasProofAt: !!rec.proofAt } };
+      return { same, n: state.payLog.length - n0, recv: state.projects.find(x => x.name === '둔산').received - r0,   // v543 저장은 사본에 쓰고 통째로 바꾼다(durableLocalMutation) — 예전 객체가 아니라 지금 현장을 본다
+         rec: { d: rec.d, project: rec.project, amt: rec.amt, proof: rec.proof, hasProofAt: !!rec.proofAt } };
     });
     assert(r.same, '그리기만 했는데 저장본이 바뀌었다');
     assert(r.n === 1 && r.recv === 2000000 && r.rec.d === '2026-10-01' && r.rec.project === '둔산' && r.rec.amt === 2000000 && r.rec.proof === 'cash' && r.rec.hasProofAt, '💰 입금 기록 창: ' + JSON.stringify(r));

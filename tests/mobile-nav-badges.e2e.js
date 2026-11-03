@@ -1,5 +1,5 @@
 /* mobile-nav-badges.e2e.js — 모바일 하단 메뉴의 실시간 업무 배지 회귀
-   ① 현장사진: 미배정 사진만 센다(배정 사진·서류 제외)
+   ① 현장사진: 미배정 사진만 센다(배정 사진·서류 제외) — v550 하단 5칸에서 글자는 '현장'·'캘린더'(접근성 이름 '현장사진'·'캘린더')
    ② 일정표: 오늘 일정만 센다
    ③ 0건은 숨기고 100건 이상은 99+로 제한한다
    ④ 보조기기 라벨·44px 터치·기존 탭 이동을 보존한다
@@ -66,7 +66,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.photoText === '2' && r.photoHidden === false, '미배정 사진 배지 2가 보여야 함: ' + JSON.stringify(r));
     assert(r.scheduleText === '2' && r.scheduleHidden === false, '오늘 일정 배지 2가 보여야 함: ' + JSON.stringify(r));
     assert(r.photoLabel === '현장사진, 미배정 2장', '사진 접근성 라벨: ' + r.photoLabel);
-    assert(r.scheduleLabel === '일정표, 오늘 일정 2건', '일정 접근성 라벨: ' + r.scheduleLabel);
+    assert(r.scheduleLabel === '캘린더, 오늘 일정 2건', '일정 접근성 라벨: ' + r.scheduleLabel);
   });
 
   await test('② 배지는 클릭을 막지 않고 기존 44px 탭 이동을 보존한다', async () => {
@@ -110,7 +110,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       };
     });
     assert(r.photoHidden === true && r.scheduleHidden === true, '0건 배지는 숨겨야 함: ' + JSON.stringify(r));
-    assert(r.photoLabel === '현장사진' && r.scheduleLabel === '일정표', '0건 기본 라벨: ' + JSON.stringify(r));
+    assert(r.photoLabel === '현장사진' && r.scheduleLabel === '캘린더', '0건 기본 라벨: ' + JSON.stringify(r));
   });
 
   await test('④ 100건 이상은 99+로 표시한다', async () => {
@@ -187,7 +187,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       });
       assert(r.local === '2026-08-25', '고정 시각의 KST 날짜는 2026-08-25여야 함: ' + JSON.stringify(r));
       assert(r.text === '2' && r.hidden === false, 'KST 오늘 일정 2건만 세야 함: ' + JSON.stringify(r));
-      assert(r.label === '일정표, 오늘 일정 2건', 'KST 일정 접근성 라벨: ' + r.label);
+      assert(r.label === '캘린더, 오늘 일정 2건', 'KST 일정 접근성 라벨: ' + r.label);
     } finally {
       await boundaryCtx.close();
     }

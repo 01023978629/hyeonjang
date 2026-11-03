@@ -283,7 +283,9 @@ async function pollMock(pred, ms, label) {
       const recovered = state.files.filter(f => /^mockfile_/.test(f._driveId || ''));
       const added = state.files.length - countBefore;
       const duplicateA = state.files.filter(f => f.name === '현장A.jpg').length;
-      window.markDirty = origDirty; state.files = before; await idbSet('appState', beforeStored);
+      // v534 저장본을 직접 되돌리면 이 탭의 __tabStamp 도 그 저장본에 맞춰야 한다 — 안 맞으면 다음 저장 때 '다른 탭이 더 최근에 저장'으로 보여
+      // (v457 문지기) 이 탭이 오래된 창이 되고, v534 부터는 서버 저장도 멈춘다(그 뒤 19~21 이 서버 저장을 기다린다).
+      window.markDirty = origDirty; state.files = before; await idbSet('appState', beforeStored); if (beforeStored && beforeStored.savedAt) __tabStamp = beforeStored.savedAt;
       return { n, count: recovered.length, added,
         linked: recovered.filter(f => /^old-mobile-/.test(f.id)).length,
         duplicateA,

@@ -15,7 +15,9 @@ assert(['','revision','retry-id'].includes(mutation));
 const shots=process.env.HJ_SHARED_TODO_SHOTS;
 const PROJECT='모의 공동주택 오늘 작업 101동';
 const OTHER='모의 다른 아파트 102동';
-const NAV='[data-mnav="__todo"]';
+// v550 하단 5칸에서 [오늘 할일] 칸이 빠졌다 — 내 업무는 [설정] 바로가기 '✅ 내 업무'(지금 화면 위에 열림)로 연다(캘린더 위 단추도 같은 창)
+const NAV='.mobile-nav [data-mnav="__more"]';
+async function openMyWork(page){await page.locator(NAV).click();await page.locator('#moreNav [data-more="__mywork"]').click();}
 const row=(page,id)=>page.locator('#stList [data-st-id="'+id+'"]');
 async function waitUntil(fn,label){const started=Date.now();while(Date.now()-started<9000){if(await fn())return;await new Promise(resolve=>setTimeout(resolve,30));}throw new Error('Timed out: '+label);}
 async function status(page,value){await page.waitForFunction(value=>document.getElementById('stStatus')?.dataset.state===value,value);}
@@ -45,7 +47,7 @@ function sameSnapshot(actual,baseline,label){
   assert.deepEqual(Object.keys(actual).sort(),Object.keys(baseline).sort(),label+' — snapshot shape changed');
 }
 // v333 새 계약: 하단 [오늘 할일]은 '내 업무'를 열고, 연결된 기기의 팀 공유 할일은 그 안의 [☁ 팀 공유 할일]로 연다.
-async function openShared(page){await page.locator(NAV).click();await page.locator('#myWork #mwShared').click();}
+async function openShared(page){await openMyWork(page);await page.locator('#myWork #mwShared').click();}
 async function refresh(page){await page.locator('#stRefresh').click();await status(page,'ready');}
 async function add(page,mock,project,text){
   await page.locator('#stFilter').selectOption('');
@@ -102,6 +104,8 @@ async function mobileBounds(page){
         // Isolate this feature from unrelated delayed startup seeders and online-event inbox sync.
         // Their own regression files cover them; they would otherwise change the baseline at 4s.
         taxCalendarEnsure=()=>0;coworkSchedEnsure=()=>false;backupBootCheck=()=>{};kakaoCheckNew=()=>{};
+        // v530 '다시 볼 때 서버 최신 확인'은 legacy relay health 를 부른다 — 이 검사의 가짜 시계가 1분을 넘기면 visibilitychange 에서 돈다(relaysync-v530 이 따로 본다).
+        if(typeof relayResumeCheck==='function')relayResumeCheck=async()=>'';
         officeIntakeSync=async()=>false;
         window.__sharedTodoUnexpected=[];
         const reject=name=>()=>{__sharedTodoUnexpected.push(name);throw new Error('Unexpected unrelated action: '+name);};
@@ -224,14 +228,14 @@ async function mobileBounds(page){
     console.log('PASS shared todo 6: auth, invalid response and offline are explicit failures, not empty success');
 
     await a.keyboard.press('Escape');await closed(a);
-    assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__todo','closing restores bottom action focus');
+    assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__more','closing restores bottom action focus');
     await openShared(a);await status(a,'ready');
     mock.inject('test-a','sharedTodoList','hold');await a.evaluate(()=>{hjSharedTodoRefresh();});
     await waitUntil(()=>mock.holds.some(x=>x.device==='test-a'&&!x.done),'late response held');
     await a.keyboard.press('Escape');await closed(a);mock.releaseAll();
     await waitUntil(()=>mock.holds.every(x=>x.done),'closed modal response settled');
     assert.equal(await a.locator('#sharedTodoView').count(),0,'late response cannot reopen a dismissed screen');
-    assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__todo','late response cannot steal restored focus');
+    assert.equal(await a.evaluate(()=>document.activeElement?.dataset.mnav),'__more','late response cannot steal restored focus');
     await openShared(a);await status(a,'ready');
     const changed=mock.create(PROJECT,'TEST old connection late result must be ignored');
     mock.inject('test-a','sharedTodoList','hold');await a.evaluate(()=>{hjSharedTodoRefresh();});

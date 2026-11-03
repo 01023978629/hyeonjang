@@ -85,6 +85,8 @@ async function test(name, fn) { try { await fn(); console.log('  ✓ ' + name); 
 
   await test('입금 기록 창: 마이너스 입력은 저장되지 않는다', async () => {
     const r = await page.evaluate(async () => {
+      // v543(v428 통합): 입금 저장은 안전판·원자 저장(durableLocalMutation)이라 비동기 — 부팅 타이머가 그사이 상태를 바꾸지 않게 미리 돌려 두고, 결과는 기다려 본다
+      try { aiOpsEnsureState(); taxCalendarEnsure(); coworkSchedEnsure(); } catch (e) {}
       state.projects = [{ name: '부호검증2', stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: {} }];
       state.payLog = [];
       recvQuickView('부호검증2');
@@ -98,7 +100,9 @@ async function test(name, fn) { try { await fn(); console.log('  ✓ ' + name); 
       const blocked = { received: state.projects[0].received, logs: (state.payLog || []).length };
       const el2 = document.getElementById('rqAmt');
       if (el2) { el2.value = '500,000'; const b2 = [...document.querySelectorAll('#modalRoot button')].find(b => b.textContent.includes('입금 저장')); if (b2) b2.click(); }
-      await new Promise(x => setTimeout(x, 300));
+      for (let i = 0; i < 50 && !((state.payLog || []).length && state.projects[0].received); i++) await new Promise(x => setTimeout(x, 100));
+      // 저장 150ms 뒤 '🧾 입금 확인증' 제안 창이 뜬다(v205) — 떠서 닫힌 걸 보고 끝내야 다음 검사(영수증 확인 창)를 늦게 덮지 않는다
+      for (let i = 0; i < 30 && !/입금 확인증/.test((document.getElementById('modalRoot') || {}).innerText || ''); i++) await new Promise(x => setTimeout(x, 100));
       try { closeModal(); } catch (e) {}
       return { blocked, okReceived: state.projects[0].received, okLogs: (state.payLog || []).length };
     });

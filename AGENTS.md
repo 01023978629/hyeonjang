@@ -3,6 +3,569 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-03 v552 📅 작업자 캘린더로 보내기 — 한 달 일정을 골라서·전체로 .ics (현장 요청 11/3) + notefilter 날짜 흔들림 고침
+
+- 요청: "이번 달 일정을 선택해서 보내기·전체 보내기로 작업자 삼성·아이폰 캘린더에 공유 — 카톡으로 보낼 것". 📤 일정 공유(v356)는 오늘·이번 주 같은 범위를 통째로만 .ics 로 보냈다.
+- 들어가는 곳: 일정표 달력 아래 [📤 N월 일정 작업자 캘린더로](`#schCalSend`, 보고 있는 달) · 📤 일정 공유 창 [📅 한 달 일정 골라서 작업자 캘린더로](`#shMonth`, 그 범위의 달 — ‹ 뒤로 = 공유 창).
+- 창(`hjSchCalSendView`): ‹ › 달 옮기기 · 그달에 걸친 팀 일정(`hjSchMonthRows` — 💰·세금 자동·앱이 넣은 개인 일정 `sourceUid` 제외, 지난달에서 이어지는 여러 날 공정 포함)을
+  날짜·시각 순 체크 목록으로(처음엔 전부 체크) · [👤 담당] 칩(그 사람 담당만 체크) · 모두 선택/해제 · [📅 선택한 N건 보내기](0건이면 잠김) · [📅 전체 M건 보내기](체크와 무관) ·
+  [💬 받는 법 안내 글](삼성·아이폰 넣는 순서·달·건수·문의 — `kakaoShareText`, 안 되면 복사). 저장하는 것 없음, 자동 발송 없음.
+- 파일(`hjSchCalSendItems`): 📤 일정 공유와 같은 꼴(여러 날 공정은 날마다 하나 `id-dN`, 고객 이름·전화·작업 보고 없음, 주소·메모 있음). 메모는 줄·' / '·' · ' 토막으로 나눠
+  출입 번호처럼 보이는 토막(`hjLooksLikeAccessCode`)을 빼고 ' · ' 로 잇는다(`hjAccessScrub`) — 출입정보는 다른 기기로 퍼지지 않게(앱 원칙). 뺀 곳이 있으면 알림.
+  예전 공유 길(📤 일정 공유 글·.ics)은 그대로라 거기 메모는 아직 거르지 않는다(후속 후보). 파일 이름 `만물인테리어_YYYY년M월_작업일정_N건.ics`.
+- 보내기 = `saveICSToPhone`: 파일 공유가 되면 공유 시트(→ 카카오톡), 안 되면 내려받기(→ 카톡 대화방에 파일로). PC·안드로이드 크롬은 .ics 를 공유 시트로 못 넘겨 내려받기가 된다.
+  알림 글만 `opts.shareMsg`·`opts.saveMsg` 로 작업자용으로 바꿨다(안 주면 예전 '내 폰 캘린더' 글 그대로).
+- 받는 쪽(삼성 캘린더·아이폰 캘린더)에서 파일을 넣는 실제 순서는 실기기로 확인하지 못했다 — 안내 글은 일반적인 순서. 같은 파일을 두 번 넣으면 폰 캘린더에 겹칠 수 있다.
+- 같이 고친 것: tests/notefilter-v475 — v504 '📅 이번 달' 칩은 보고 일부만 이번 달일 때만 생겨, 매달 1~5일에는 5~1일 전 합성 보고가 두 달로 갈려 칩이 하나 늘었다
+  (aria-pressed 9개 ≠ 8개, ②의 '칩 없음'도 1~2일에 깨짐). v551 CI(11/3)가 이것 하나로 떨어졌다. 시험 안의 오늘을 2026-10-20 으로 고정(localDate 가로챔) — 앱 코드는 그대로, 변이 no-filter 는 여전히 실패.
+- 핀3곳 hyeonjang-v552-calsend. 신규 tests/calsend-v552.e2e.js 7/7(일정표 단추 → 창 → 고르기 → 선택 보내기(내려받기·공유 두 길, 출입 번호 토막·고객 정보 없음) →
+  전체·달 옮기기·안내 글 → 공유 창에서 → 폰 390 → 핀). 기준선 v551 은 ① 에서, 변이 no-scrub(토막 빼기 삭제)은 ③ 에서 실패 확인.
+  옛 검사는 고치지 않았다(notefilter 제외): schshare-v356·ics-save·ics-import·team2-v444·crew-v357·uiux·mobile-tap-table·mobile-more-sweep·mobile-screen-layout·mobile-field-flow 등 로컬 통과.
+
+## 2026-11-03 v551 달력 칸에 그날 일정 제목 — 날짜별로 보이는 일정표 (현장 요청 11/3)
+
+- 문제: 일정표(폰 '캘린더') 달력 칸에 점(●·숫자)만 있어 무슨 일인지 날짜를 하나씩 눌러 봐야 했다. PC 는 131px 정사각 칸이 거의 비어 달력만 760px.
+  거래처가 보내는 월간 일정표(날짜 칸에 '철거·방수·타일' 이 적힌 표)처럼 칸만 봐도 보이게 해 달라는 요청.
+- 바꾼 것(`calendarHTML` + `hjCalEvItems`·`hjCalEvHTML`·`hjCalEvNames`·`hjCalEvLabel`·`hjCalNarrow`, 읽기 전용):
+  · 칸마다 그날 시작하는 일정 제목 — 시각 순(종일 먼저, 아래 목록과 같은 순서). PC 는 앞에 시각(`<b>`), 폰은 시각 없이. 공정표 꼬리 '(N일차 시작)' 은 뗀다.
+  · 여러 날 공정의 이어지는 날(v354 `hjSchContDates`, 일요일 제외)은 맨 위에 '↳ 제목' 점선 칸 — 예전 옅은 막대(`.cal-cont`)를 이 칸이 이어받았다(클래스 이름 그대로).
+  · 줄 수: PC 3줄 · 폰(모바일 모드 또는 ≤720px) 2줄. 넘치면 마지막 줄이 '+N건'. 남는 줄은 첫 일정이 써서 하루 한 건이면 제목이 PC 3줄·폰 2줄로 접힌다
+    (`-webkit-line-clamp` 인라인, `.cal-ev.ml`). PC 는 낱말 단위(keep-all), 폰은 글자 단위 줄바꿈(keep-all 이면 칸 폭 네 글자에 첫 낱말 하나만 쓰고 끝났다).
+  · 완료 보고 `.rep`(초록 바탕)·긴급 `.urgent`(빨강 바탕)·고른 칸은 흰 칸에 어두운 글자. 어두운 화면 색 따로(대비 4.5↑ 검사).
+  · 칸 높이: 정사각(aspect-ratio:1) → PC min-height 88px(달력 약 760 → 600px), 폰 52px(약 356 → 390px).
+  · 화면읽기: 칸 aria-label = 종전 '…일 일정 N건 이어지는 공정 N건' 뒤에 ': 제목 3개(24자 자름) 외 N건'. 제목 칸(`.cal-evs`)은 aria-hidden, 제목 칸마다 `title`(마우스를 올리면 전체 제목).
+  · 날짜 누르기(그날만 아래 목록)·아래 목록(날짜별 묶음)은 그대로. 점(`.cal-dot`) 마크업·CSS 는 지웠다.
+- 같이 고친 옛 결함: 고른 칸에 마우스가 머물면 `.cal-cell:not(.empty):hover` 흰 바탕이 이겨 흰 날짜 숫자가 안 보였다 → `.cal-cell.sel:not(.empty):hover` 도 파랑.
+  어두운 화면 고른 칸(#3a8bf0)의 흰 숫자 대비 3.5 → 고른 칸만 #1d6fe0(4.8).
+- 핀3곳 hyeonjang-v551-calnames. 신규 tests/calnames-v551.e2e.js 5/5(PC 칸 제목·3줄·+N·↳·완료·긴급·aria·안 잘림·높이 → 날짜 누르기·고른 칸 대비(마우스 올린 채) →
+  폰 → 어두운+큰 글씨 2단계 폰·PC → 꺾쇠·따옴표는 글자·핀·오류·외부 쓰기). 기준선 v550 과 변이 dots(칸 제목 그리기 삭제)는 ① 에서 실패 확인.
+- 옛 검사는 고치지 않았다(multiday-v354 의 '이어지는 날 .cal-cont 있음/없음' 은 이어지는 칸이 같은 클래스라 그대로 통과). 로컬 통과: multiday-v354·darkcards-v453·uiux·
+  leakintake-v419·nav5-v550·menu-schedule·mobile-nav-badges·mobile-nav-scroll·schedule-add-prefill·schedule-safety·schshare-v356·ics-import·ics-save·crew-v357·prep-check·
+  rehearsalfix-v449·team2-v444·mobile-screen-layout·mobile-field-flow·mobile-tap-table(새 검사·multiday·tap-table·screen-layout·nav5 는 CI 글꼴 흉내로도).
+
+## 2026-11-01 v550 폰 하단 5칸 — 현장 · 캘린더 · [카메라] · 정산 · 설정 + 어두운 화면·큰 글씨 대비 마감 (대표 PDF 10번)
+
+- 하단 메뉴(#mobileNav) 6칸 → 5칸. **옛 칸을 이름만 바꿔 이었다**(새 화면 없음): 현장 = `photos`(현장사진, 미배정 배지 그대로·접근성 이름 '현장사진') ·
+  캘린더 = `schedule`(일정표, 오늘 일정 배지, 접근성 이름 '캘린더') · 카메라 = `__camera`(가운데 동그라미) · 정산 = `estimates`(견적·정산 탭, 새 칸) · 설정 = `__more`(더보기 시트 그대로).
+- **빠진 두 칸의 길**(대표 PDF 에 자리가 없어 이렇게 정함 — 대표 확인 필요):
+  · 대시보드(첫 화면): 머리 '현장.' 글자(`#hjLogoHome`, role=button·Enter/Space)와 설정 바로가기 맨 앞 [📊 대시보드]. 앱을 열면 처음 화면은 종전대로 대시보드.
+  · 내 업무(예전 [오늘 할일] = `myWorkView`, 다른 입구가 없던 창): 설정 바로가기 둘째 [✅ 내 업무](`tab:'__mywork'` — 탭이 아니라 지금 화면 위에 창, 닫으면 [설정]으로 초점)
+    + 폰 캘린더 위 [✅ 내 업무](`#schMyWork`). 한 번 누르던 것이 두 번이 됐다.
+  · 되돌리려면 #mobileNav 마크업만 바꾸면 된다(`__todo`·`dashboard` 처리 코드는 그대로 남겨 둠).
+- 다크·큰 글씨 마감: 폰 어두운 화면 + 큰 글씨 2단계에서 하단 글자 대비·안 잘림·배지·v549 큰 단추, 네 탭(현장·캘린더·정산·대시보드) 가로 넘침 0,
+  PC 어두운 화면 + 큰 글씨 2단계에서 v546 캡슐·v547 칩·메모·v548 칸·눈금 대비 4.5↑ 를 신규 검사로 고정 — 이번에 고칠 곳은 나오지 않았다.
+- 바뀐 옛 검사(의도된 메뉴 변경): mobile-todo-nav(6칸 → 5칸 순서·글자, 내 업무는 설정 바로가기로, 바로가기 6 → 8, 변이 route 는 새 길을 막게),
+  my-work·shared-todo(내 업무 여는 길 = 설정 → 내 업무, 닫으면 초점 [설정]), mobile-nav-badges(일정 접근성 이름 '일정표' → '캘린더'), leakintake-v419(대시보드 = 머리 글자).
+  mobile-todo-nav 변이 route·quote-shortcut 은 여전히 실패 확인.
+- 핀3곳 hyeonjang-v550-nav5. 신규 tests/nav5-v550.e2e.js 5/5(다섯 칸·44px·가운데 카메라·배지·정산 → 대시보드·내 업무 길·머리 글자 → 폰 어두운+큰 글씨 →
+  PC 어두운+큰 글씨 → 소스·핀). 기준선 v549 와 변이 no-settle(정산 칸 삭제)은 ① 에서 실패 확인.
+- 마감 중 고친 것(같은 판): ① 폰 사진 탭 첫 화면 — CI 글꼴에서 첫 사진 y=661(>650). 접힌 🪜 공정 관리 단추를 v549 큰 단추 줄 끝으로 옮겨(`hjPhotoTopActionsHTML(...,phaseToggle)`,
+  같은 `#btnPhaseBarToggle`·같은 위임, 큰 줄이 없을 때만 종전 접힌 공정 줄) 첫 사진 77px 위로. 펼치면 종전 펼친 공정 줄(큰 줄에서는 빠짐, id 하나).
+  ② 폰 2열 묶음 자리 짐작 — `.cluster{content-visibility:auto;contain-intrinsic-size:auto 420px}` 그대로면 2열로 커진 화면 밖 묶음이 다음 묶음 머리와 겹쳐 재지고
+  (CI mobile-tap-table '버튼 겹침 1건': 공정 ▾ ↔ 주소 조회) 스크롤 때 자리가 튄다 → 폰은 묶음마다 `__clEst`(머리·GPS·추천 줄·사진 줄 수)로 넉넉히 인라인 지정.
+  ③ 설정 바로가기 두 칸 설명을 짧게(칸 높이 84px 로 다른 칸과 같게). ⑤ 큰 글씨 1·2단계에서는 큰 단추 둘 반반 + 🪜 아랫줄 가득, 글자는 줄바꿈(잘림 0 — nav5 ③ 이 잰다). ④ 신규 검사 10개 shot() 끝 `//` 주석이 한 줄 함수의 `}` 를 먹어 문법 오류 —
+  66262e5 CI 에서 10개가 0.0초 실패, 다음 커밋에서 고침(검사 판정과 무관한 사진 찍기 줄).
+- 옛 검사 더 고친 것: mobile-field-flow(더보기 첫 높이 기준 1000 → 1150 — 바로가기 한 줄 늘어 약 1,050px, 다 펼치면 수천 px), mobile-screen-layout(대시보드는 머리 글자, 정산 칸도 훑음),
+  recv-entry(일부 입금 저장 150ms 뒤 뜨는 '🧾 입금 확인증' 창을 보고 닫고 넘어감 — v543 원자 저장이 비동기라 ⑧ 의 입금 창을 늦게 덮었다. amount-sign 과 같은 원인).
+- CI 글꼴 흉내: `fontconfig` 를 DejaVu·Liberation·FreeFont·WenQuanYi·Noto Color Emoji·IPA·TLWG·Unifont 만(+ /etc/fonts/conf.d)으로 — Playwright `--with-deps` 와 같은 묶음.
+  이걸로 CI 만의 실패(photo-first-screen y 661, mobile-tap-table 겹침)를 로컬에서 그대로 재현했다. 앞으로 폰 화면 높이·겹침 검사는 이 설정으로도 돌려 볼 것.
+  회귀: 전체 run-all(로컬 3동시) — 환경 문제 6개(apartment-projects·bathroom-quality-v410·document-select·document-upload·leakintakeweb-v431·team-workboard: 다운로드 한글 파일 이름·글꼴 폭, CI 는 통과)
+  밖에서 이번 판 때문에 바뀐 3개(mobile-field-flow·mobile-screen-layout·recv-entry)를 고친 뒤 통과. CI 글꼴 흉내로 photo-first-screen·mobile-tap-table·photo-suggest·photoassign-v523·
+  photofill-v545·photogrid-v549·mobile-friendly-ui·mobile-field-flow·nav5-v550·mobile-screen-layout·mobile-todo-nav·recv-entry·numwrap2-v542·bentodash-v547·moneyboard-v548 통과.
+
+## 2026-11-01 v549 폰 사진 탭 — 사진 2열 격자 · 📍 위치 배지 · 위쪽 큰 단추 줄 [🧭 추측 배정][🧩 공정 채우기] (대표 PDF 9번) + OfficeOps 부팅 대기
+
+- 폰(`__narrow` = 모바일 모드 또는 폭 720px 이하) 요약 줄 바로 아래 `hjPhotoTopActionsHTML(unN,fillN,sureN)` — 있던 단추 그대로 같은 id:
+  `#btnSuggestReview`(v523 🧭 추측 배정 보기) · `#btnPhotoFill`(v545 🧩 공정·작업명 빈칸 채우기). 반반 한 줄, 하나면 한 줄 가득, 할 일 없으면 줄 없음.
+  🧭 는 폰 요약 줄에서 빠졌다(줄이 66→45px) — 그래서 큰 줄(44px+여백)을 더해도 첫 사진 y≤650(photo-first-screen 실측 598→627). ✨ 추천 일괄은 요약 줄 그대로(photo-suggest).
+  PC 는 종전 그대로(요약 줄 단추, 큰 줄 없음).
+- 사진 칸 2열: `body.mobile-mode .cluster-body` 와 `@media(max-width:720px)` 에서 `repeat(2,minmax(0,1fr))` — 390 에서 칸 105→163px(현장을 알아보게).
+  PC 는 auto-fill 그대로. 현장별 보기(.phase-group)는 모바일 모드에서만 2열.
+- 📍 위치 배지: `hjPhotoGpsBadge(p)` — `hjPhotoHasGps` 인 사진만, 칸 왼쪽 아래(선택 네모 왼쪽 위·⋯ 오른쪽 위와 안 겹침), 누르는 것 없음. 사진 탭 칸(photoCell)만.
+- OfficeOps: `officeOpsCall` 이 주소·토큰이 비었을 때 `window.__hjOfficeOpsBootDone` 을 먼저 기다린 뒤 '연결이 필요합니다' 를 판단 — v547 CI 에서
+  office-ops-conversion-recovery 가 새로고침 직후(복원만 끝남) officeOpsLoad 를 불러 두 번 연속 막혔다(로컬은 통과). 부팅은 officeOpsCall 을 안 불러 서로 기다리지 않는다.
+- 바뀐 옛 검사(의도된 화면 변경): photoassign-v523 폰 단추 글자 '🧭 10' → '🧭 추측 배정 10장'(+ 큰 줄 안), photofill-v545 폰 '#btnPhotoFill 0개' → '요약 줄 안 0개 · 큰 줄 안 1개'.
+- 핀3곳 hyeonjang-v549-photogrid. 신규 tests/photogrid-v549.e2e.js 5/5(요약 줄·큰 줄 반반·2열·배지·첫 사진 → 두 창·자료 불변 → 하나·없음·600 PC 모드·어두운 대비 →
+  PC 그대로·OfficeOps 부팅 대기 → 소스·핀). 기준선 v548 과 변이 three-col 은 ① 에서 실패 확인. 현장 이름이 길면 묶음 머리 select 가 다음 줄로 가 +29px(이번 판과 무관, 종전 그대로).
+  회귀(사진·폰 51개 + OfficeOps): photo-first-screen · photo-suggest · photoassign-v523 · photofill-v545 · photo-order · photo-audit · phototags-v454 · worklabel-v405 ·
+  photo-tools-select · photo-safety-ui · photodupclean-v522 · photo-intake-safety · photo-location · photo-original-keep · photo-refresh-search · photo-report(·media·output) ·
+  photo-source-status · photo-no-recovery · mobile-friendly-ui · mobile-nav-badges · mobile-nav-scroll · mobile-todo-nav · mobile-photo-upload · mobile-screen-layout ·
+  mobile-more-sweep · mobile-more-tools · mobile-back · mobile-list · mobile-tap-table · mobile-office-connect · my-work · shared-todo · document-estimate-ui · menu-schedule ·
+  geocode-label · media-intake · media-safety · media-batch-audit · chatphoto-v528 · leakdetect-v420 · apartment-units · project-scan-order · shareinbox-v416 · team2-v444 ·
+  video-files · polish-v456 · expenseocr-v435 · field-search-recovery · office-ops-conversion-recovery · office-ops-ui · pcdark-v452 통과.
+
+## 2026-11-01 v548 💼 이번 달 돈 흐름 보드 — 지출 · 손익(마진) · 증빙 세 칸 + 최근 6개월 수금·지출 막대 (대표 PDF 8번)
+
+- 자리: PC 첫 화면 수금률 막대(`.ratewrap`) 바로 아래, '진행 단계 분포' 위. `hjMoneyBoardHTML()` — **PC 만**(모바일 모드면 안 그림 + CSS, 폭 720px 이하는 PC 모드여도 CSS 로 숨김:
+  막대 글자가 7px 로 작아져 못 읽고 dash-cards ④ 360 가로 넘침 0 약속). 넓은 PC(1180px↑)는 왼쪽 세 칸 | 오른쪽 막대, 좁은 PC 는 세 칸 한 줄 + 아래 막대(높이 250px 까지).
+- **새 기준을 만들지 않았다** — 있던 계산을 읽기만: 지출·손익·이익률 = `pnlData(이번 달)`(💰 월별 손익 창과 같음: 수금 = 실제 입금 payLog, 지출 = 지출 장부),
+  6개월 = `pnlTrend(6)`, 발행 확인 = `hjTaxIssuePending()`(🧾 발행 확인 창과 같은 건수, 기간 제한 없음), 영수증 없는 지출 = `hjMoneyNoProof(ym)` —
+  이번 달 세무 자료(`hjTaxPackData`)와 같은 규칙(영수증 사진이 이어진 지출·카드 월 합계 줄 `_fromLedger` 는 뺀다). 그리기만으로 자료 불변.
+- 누르면 있던 창만: 지출 → `expenseLedger(ym)` · 손익 → `pnl(ym)` · 발행 확인 → `hjTaxIssueView({})` · 영수증 없는 지출 → `hjTaxPackView(ym)` (`[data-money]` 위임 → `hjMoneyOpen`).
+- 막대(`hjMoneyChartSVG`): dataviz 규격 — 한 축(원), 수금 파랑 #2a78d6 · 지출 주황 #eb6834(어두운 화면 #3987e5 · #d95926, 검증 스크립트로 밝음·어두움 둘 다 통과),
+  막대 24px 이하·끝만 4px 둥글게·두 막대 사이 2px, 눈금 1·2·5×10ⁿ 로 3~4칸(0/100만/200만…), 범례 늘, 달마다 투명 칸 전체에 모든 값이 든 풍선말(title),
+  숫자는 막대에 안 적고 '표로 보기'(details — 펼침은 메모리 `__hjMoneyTableOpen`, toggle 이벤트는 클릭 뒤 따로 온다) 와 aria-label 로. 기록이 없으면 빈 안내.
+- 핀3곳 hyeonjang-v548-moneyboard. 신규 tests/moneyboard-v548.e2e.js 5/5(시계 2026-11-15 고정 — 자리·두 칸·숫자·막대 비례·눈금·자료 불변 → 네 창 숫자 일치 →
+  표·풍선말·굵기 → 1024·폰·폰 폭 PC 모드·모드 전환·빈 안내·어두운 색·대비 → 소스·핀). 기준선 v547 과 변이 ledger-proof(카드 월 합계 줄을 영수증 없음으로 셈)는 ① 에서 실패 확인.
+  회귀: dash-cards(처음엔 ④ 폭 360 PC 모드 #view 가로 46px 넘침 → 720px 이하 숨김으로 고침) · margin1280-v464 · pcdark-v452 · darkcards-v453 · polish-v456 · numwrap2-v542 ·
+  bentodash-v547 · headerui-v546 · demo-v462 · demo3-v489 · demotour-v467 · demotour2-v470 · tour6-v495 · expenseocr-v435 · rehearsalfix-v449 · trip-expense-overlap ·
+  evidence-v427 · extras-settle · revenue-basis · health-board · marketing-draft · office-ops-conversion · v219-operations · taxissue-v428 · taxmerge-v543 · payproof-v348 ·
+  vatproof-v349 · receipt-project · amount-sign · bankimport-v350 · brief-actions · case-pack · delay-v347 · estassign-v544 · extraprogress-v346 · healthline-v524 ·
+  inqpending-v386 · mobile-operations · mobile-shell-a11y · mobile-more-tools · mobile-tap-table · operations-review · ownertodo-v460 · photofill-v545 · stopmemo-v541 ·
+  ui-feedback · watch-card 통과.
+
+## 2026-11-01 v547 PC 첫 화면 두 칸(벤토) — ✅ 오늘 현장 업무 | 🏗 진행 현장 (대표 PDF 7번 '최종 UI 2') + v543 CI 보강
+
+- 첫 화면 맨 위(데모 길잡이 다음)를 `<div class="hj-bento" data-bento>` 로 감싸 `dashboardTodoHTML()`(그대로) + `hjBentoProgressHTML()`.
+  넓은 PC(1180px↑·모바일 모드 아님)는 1.2fr:1fr 두 칸, 좁은 PC 는 한 칸 차례대로. **폰(모바일 모드)은 진행 현장 칸을 안 그린다**(그릴 때 + CSS 둘 다 — 모드만 바꿔도 바로 숨음).
+  폰 첫 화면은 할 일 → 오늘 일정 차례(v254)이고, 단계는 현장 화면·'오늘 한 일'은 [⏱ 종료](v541)·🎙 음성 일지에 이미 있다.
+- 진행 현장(`hjBentoProjects`, 읽기만) = 보관 안 된 실측·시공(stage 1~2) 현장 최대 3곳 — 오늘 일정 있는 현장 먼저 → 최근 작업시간(state.workLogs)·사진 시각 → 단계 → 이름.
+  줄마다 현장 이름(`data-open`) · '오늘 한 일 한 줄' + [기록] · [시공 전·시공 중·완료] 칩(= 실측·시공·완료). 칩은 기존 `data-stage`+`data-proj` 위임 → `setStage` 그대로
+  (올리면 착공·준공 체크 창, 내리면 바로, 준공일 규칙 그대로) — 새 단계 쓰기 길을 만들지 않았다.
+- [기록]·Enter(한글 조합 중 Enter 는 글자 확정이라 건너뜀) = `hjBentoMemoSave(name)` → `workLogSave`(🎙 음성 일지와 같은 자리: 오늘 그 현장 일정의 작업 보고 done 에 덧붙임,
+  없으면 '작업일지' 일정). 빈칸은 안내만. 데모는 원자 저장이 데모를 거부하므로 같은 자리에 화면에서만 적고 '데모라 저장은 안 함'.
+- v543 CI 보강(같은 판에 묶음): ① CI 글꼴(DejaVu/WenQuanYi)에선 17.5cqi 로도 첫 화면 숫자 칸 '원' 이 둘째 줄로 → `hjKpiFit(root)`: render 뒤 대시보드 `.kpis>.kpi .kv` 가
+  두 줄이면 1px 씩 줄임(14px 바닥·14번 한도·이미 인라인 style 이 있는 칸은 안 건드림·`data-kv-fit` 표시로 다음 render 에 다시 맞춤).
+  ② 통합한 `hjTaxIssueReceive` 가 원자 저장이라 데모 입금 기록이 'demo mode — not saved' → 데모면 `hjPayRecordAdd` 로 메모리에서만(통합 전 v450 과 같게).
+  ③ amount-sign: 입금 저장이 비동기라 부팅 타이머(aiOps·세무 달력·협업 일정)를 미리 돌리고 5초까지 기다림 + 저장 150ms 뒤 뜨는 '🧾 입금 확인증' 창을 보고 닫음
+  (안 기다리면 늦게 뜬 그 창이 다음 검사 '영수증 확인 창'을 덮어 부하 걸린 기계에서 '정상 OCR 금액이 막힘: []'). numwrap2-v542: 숫자 칸만 고르고 글자 14px 이상, 변이는 hjKpiFit 호출도 뺀다.
+- 핀3곳 hyeonjang-v547-bentodash. 신규 tests/bentodash-v547.e2e.js 6/6(두 칸·목록·칩 눌림·44px·자료 불변 → 칩 내리기·올리기 체크 창 → 기록·빈칸·Enter 일지 일정 →
+  1024 한 칸·폰 없음·모드 전환·어두운 대비 → 데모 기록·데모 입금 → 소스·핀). 기준선 v546 과 변이 one-col 은 ① 에서 실패 확인.
+  회귀: amount-sign · numwrap2-v542 · dash-cards · demo-v462 · demo3-v489 · demotour-v467 · demotour2-v470 · tour6-v495 · ownertodo-v460 · mobile-tap-table · mobile-operations ·
+  mobile-shell-a11y · operations-review · healthline-v524 · headerui-v546 · stopmemo-v541 · inqpending-v386 · watch-card · brief-actions · case-pack · delay-v347 · extraprogress-v346 ·
+  ui-feedback · taxissue-v428 · taxmerge-v543 · payproof-v348 · vatproof-v349 · bankimport-v350 · estassign-v544 · photofill-v545 통과.
+  team-workboard 는 이 기계 Chromium 이 blob 한글 파일명을 'download' 로 떨어뜨리는 알려진 환경 문제(그 검사 주석 참고)로만 실패 — CI 에서 확인.
+
+## 2026-11-01 v546 상단 머리 — 판 배지 · 🩺 자료 건강 캡슐 · [🧩 공정 일괄 채우기] · PC 머리 고정 (대표 PDF 6번 '최종 UI 1')
+
+- 머리(`<header>`)에 `#hjBuildBadge`(APP_BUILD 의 vNNN)와 `#hjHeadHealth` 를 더함. `hjHeadApply()` 를 render 마다(빈 화면으로 일찍 끝나는 길 앞) 부르고, 같은 HTML 이면 DOM 을 안 건드린다.
+  캡슐 `hjHeadHealthHTML()` = v524 `hjHealthData` 숫자(미배정 사진·안 읽은 견적·(있으면)중복 후보·백업) + 공정 빈칸이 있으면 `[🧩 공정 일괄 채우기 n]`(v545). 상태색 ok/todo/bad(백업 7일↑).
+  누르면 v524 `hjHealthOpen(k)` 그대로 / 채우기는 `hjPhotoFillView()`. 머리는 #view 밖이라 위임이 안 닿아 상자에 직접 한 번 붙인다(`__hjBound`).
+- **PC 만** 캡슐 — 폰 머리는 검색·현장 칩으로 꽉 차고 첫 화면 🩺 줄(v524)이 같은 숫자. 캡슐이 보이면 PC 꾸밈 글(.tagline 글자)만 접어 머리 한 줄(1280 에서 138→76px).
+  `warn` 클래스는 전역 빨간 단추라 캡슐 강조는 `is-warn`. 어두운 화면은 캡슐·글자색 따로(단추 color transition 이 있어 대비는 전환 뒤에 잰다).
+- PC 머리 고정: `body:not(.mobile-mode) header{position:sticky;top:0}` — 그런데 `html,body{height:100%}` 라 body 상자(화면 한 장) 끝에서 머리가 밀려 올라갔다 →
+  PC body 만 `height:auto;min-height:100%`, 왼쪽 열 높이는 `.wrap{min-height:calc(100vh - 76px)}`. 직원 모드 PC 는 `top:44px`(직원 줄 아래).
+- 핀3곳 hyeonjang-v546-headerui. 신규 tests/headerui-v546.e2e.js 5/5(배지·캡슐·한 줄·고정 → 누르면 → 숫자 갱신·DOM 그대로·상태색 → 폰 없음·직원·어두운 대비·1024 → 소스·핀).
+  기준선 v545 와 변이 no-collapse 는 ① 에서 실패 확인.
+
+## 2026-11-01 v545 🧩 사진 공정·작업명 빈칸 묶음 채우기 (대표 PDF 5번)
+
+- 있던 것: 🏷 작업명 빈 사진 채우기(`hjLabelGaps` — 같은 날 작업명이 있는 묶음의 빈 작업명만). 없던 것: 공정 빈칸, 같은 날 작업명이 하나도 없는 묶음.
+- 한 것: `hjPhotoFillGroups()`(읽기만) — 보관 안 된 현장 사진을 '현장 + 촬영일(한국 시각)' 묶음으로, 공정·작업명 빈칸이 있는 것만, 최근 날짜 먼저.
+  제안 작업명 = 같은 묶음 최빈(🏷 와 같은 기준), 제안 공정 = 같은 묶음 최빈 공정 → 없으면 제안 작업명을 `HJ_PHASE_MAP`(v406) → 없으면 그날 그 현장 일정 제목을 `HJ_PHASE_MAP`.
+  미리 체크(`sure`)는 빈칸 쪽 제안이 모두 같은 묶음 사진에서 나왔을 때만. `hjPhotoFillView()` — 줄마다 사진 3장·공정 칩(현장 공정표, 비면 `HJ_PHASE_SEQ`, 제안 덧붙임)·
+  한 줄 작업명(datalist `hjWorkOptionsHtml('')`). 제안으로 눌린 칩을 누르면 끄지 않고 줄만 체크, 다른 칩은 하나만, 켠 칩 다시 누르면 끔. 작업명을 적으면 체크.
+- 채우기(`hjPhotoFillApply(sel, seen0)`): 오래된 창 거부 → 열 때 본 빈칸(id 목록)과 지금이 다르면 통째로 거부 → `hjSnapshot('공정·작업명 채우기 전')` 1회(실패면 무변경)
+  → **빈칸만** 채움(적힌 공정·작업명 그대로) → 현장 공정표에 없던 공정은 끝에 더함 → 공정은 표시(태그)만, `__moveMode==='instant'` 여도 `ensurePhaseDir` 안 부름(수백 장을 한 번에 옮기지 않게).
+- 입구: PC 사진 탭 요약 줄 `#btnPhotoFill` '🧩 공정·작업명 빈칸 n장'. **폰 요약 줄은 한 줄 약속(v523·photo-suggest — 단추 하나 더 넣으면 66→124px)이라 넣지 않았다** — 폰 입구는 v549 의 큰 단추.
+- 핀3곳 hyeonjang-v545-photofill. 신규 tests/photofill-v545.e2e.js 5/5(묶음·제안 → 칩·작업명·안전판·빈칸만·공정표·폴더 이동 0 → 안전판 실패·바뀜·고른 것 없음 → PC 단추·폰 창 44px → 소스·핀).
+  기준선 v544 는 ①, 변이 no-snapshot 은 ② 에서 실패 확인. 회귀: phototags-v454 · photoassign-v523 · photo-first-screen · photo-suggest · photo-order · photo-audit · worklabel-v405 ·
+  dash-cards · mobile-tap-table · healthline-v524 · apt-photos · geocode-label 통과.
+
+## 2026-11-01 v544 📄 견적 빠른 배정 — 현장 없는 견적서 · 다른 업체 견적(매입·비교 후보)을 견적 탭 위 한 창에서 (대표 PDF 4번, v521 '안 한 것')
+
+- 대상(`hjEstAssignTargets`, 읽기만): 견적 파일(앱 견적 가상 파일·서류 센터 기록·이미 매입·집계 제외 빼고) 중 현장 없음 또는 파일 이름에 다른 인테리어 업체(`hjEstVendorName`, v343).
+  `estimateGroups` 묶음 하나가 한 줄(엑셀·PDF 사본 'n건 함께') — 사본은 같은 현장으로 함께 옮긴다(대표만 옮기면 사본이 미배정에 남는다).
+- 추정(`hjEstAssignGuess`): 현장 이름 전체(정규화 `hjStmtNormName`)가 폴더+파일 이름에 3점 > 아파트 단지(`hjStmtCore`) 2점 > 이름 낱말(흔한 말 빼고) 1점, 같은 점수 두 현장이면 추정 안 함.
+  미리 체크는 '업체 이름 없음 + 현장 없음 + 2점 이상'만 — 업체 이름이 있으면 매입인지 비교인지 사람이 고른다. 현장·종류를 바꾸면 그 줄이 체크된다.
+- 적용(`hjEstAssignApply(sel, seen0)`): 오래된 창 거부 → 열 때 본 묶음(id·현장·매입·제외)과 지금이 다르면 통째로 거부 → 바꿀 게 없으면 안전판도 안 만듦 → `hjSnapshot('견적 빠른 배정 전')` 1회(실패면 무변경)
+  → 현장 연결(사본까지) → 매입: v343 과 같은 규칙(사본까지 est.purchase·purchaseKey, 현장·금액 있으면 외주 지출 sourceKey 로 한 번) / 비교·참고: exSum(매출·원가 둘 다 아님) / 매출: 현장만.
+- 입구: 견적 탭 `hjUnreadEstimateBarHTML()` 옆 `hjEstAssignBarHTML()` '현장 없는 견적서 n건 · 다른 업체 견적 후보 m건 [빠른 배정]'(`[data-est-assign]` 위임).
+- 핀3곳 hyeonjang-v544-estassign. 신규 tests/estassign-v544.e2e.js 5/5(대상·추정 7줄 → 적용·안전판·사본·매입 지출 1번·비교 → 안전판 실패·바뀜 거부·바꿀 것 없음 → 탭 줄·폰 390 → 소스·핀).
+  기준선 v543 은 ①, 변이 rep-only 는 ② 에서 실패 확인. 회귀: estbackfill-v521 · estimate-info · estimate-dedupe · estimate-photo-dup-v342 · document-estimate-ui · quote-vat · margin ·
+  sales-basis · revenue-basis · dash-cards · healthline-v524 통과.
+- 안 한 것: 격자 파서가 견적서 안 '공급자' 칸을 읽어 업체를 찾기(지금은 파일 이름만) · 자료 건강 줄에 숫자 넣기(v546 헤더 캡슐에서).
+
+## 2026-11-01 v543 PR #189(v428 수금 발행 확인) 통합 — 대표 PDF 3번
+
+- 무엇: #189(`codex/money-v428`, v425 기준 5커밋 · index.html +313 −47)의 '입금 기록에 결제 방법·발행 종류·상태·번호·발행일, 미발행 목록·5일 알림, 손익·세무 화면의
+  발행/업종 구분, 세금 캘린더 발행 마감(매월 10일) 제안, 엑셀 발행 열'을 지금 코드에 다시 얹었다(`git diff 3c7db67 origin/codex/money-v428` 를 3-way 로 — 31조각 중 25조각 그대로).
+- 충돌 6곳 정리: ① 핀=우리 ② 손익 6개월 추이 — 지출 색은 v452 `var(--hj-warn-fg)`, 본문은 #189 의 발행 구분 줄 ③④ 세금 캘린더 — #189 발행 마감 제안 카드 + v435 [📤 세무사 전달 자료] 둘 다
+  ⑤ 💰 입금 저장 — #189 의 `hjTaxIssueReceive`(durableLocalMutation) ⑥ 누수 받은 돈 — #189 의 `sync();toLegacy()` + v433 간이영수증 제안(`hjPayRcptOffer`) 유지.
+- 합친 뒤 고친 것(검사가 찾음): 결제 방법 칸이 v450 `#rqMethod` 와 #189 `#rqTaxMethod` 둘 → `hjTaxIssueFields(…,{noMethod:true})` + `hjTaxIssueBind/Input/LegacySelect(…,'rqMethod')` 하나로.
+  `hjTaxIssueApply` 가 '모름'(빈 값)이면 method 키를 지움(v450 약속 — rehearsalfix-v450 ④). 누수 받은 돈 창이 열자마자 `toLegacy()` 로 견적의 '세금계산서'를 '없음'으로 덮어
+  미발행 알림이 사라지던 것 — 발행 정보 없는 예전 기록이면 견적의 영수증 종류에서 시작(`fromLegacy`, doccenter-v433 이 찾음). 앱 안 📋 대표 할 일 'pr189' 문구 → '#198 병합 뒤 #189 닫기(병합 말고)'.
+- 검사: #189 의 tests/taxissue-v428.e2e.js 그대로 들임(`#rqTaxMethod`→`#rqMethod`) 11/11, payproof-v348·vatproof-v349 의 #189 변경 들임. bankimport-v350 ④ 는 증빙 고르기를 change 로 보내고
+  (지름길이 됐다) 저장 뒤 현장을 다시 찾는다(사본에 쓰고 통째로 바꿈). 신규 tests/taxmerge-v543.e2e.js 5/5(입금 창 칸 하나·지름길·모름·카드 → 손익 → 세금 캘린더 → 누수 예전 기록 → 할 일·핀).
+  기준선 v542 와 변이 dup-method 는 ① 에서 실패 확인. 돈 관련 67개(run-all 필터) — 이 환경에서만 떨어지는 document-select·document-upload·leakintakeweb-v431 빼고 통과, 정적·단위 50개 통과.
+- 핀3곳 hyeonjang-v543-taxissue. **#198 을 병합하면 #189 는 병합하지 말고 닫는다.**
+
+## 2026-11-01 v542 폰에서 숫자가 중간에서 끊기지 않게 2차 (대표 PDF 2번 — 대시보드 KPI·현장 카드 금액·마진 요약)
+
+- 전수 진단(데모 자료 금액 37배, 360·390, 탭 9·현장 4·돈 창 11 — 글자 범위의 줄 상자로 숫자 덩어리 끊김 측정): 현장 카드·마진 요약·돈 창은 v518 까지로 이미 안 끊겼다.
+  남은 것 셋 — ① 첫 화면 숫자 칸(.kpis, 26px)이 360px 에서 '123,580' / '만원' 두 줄(칸 안 글자 폭 122px, 필요 123px — 안드로이드 기본 Noto CJK 기준)
+  ② 연락처 전화번호가 '-' 에서 끊김('02-' / '555-7777', 390) ③ 월말 결산 글(#mcText)의 '6,895만원' 이 360 에서 끊김.
+- 한 것: ① `.kpis>.kpi{container-type:inline-size}` + `.kpis>.kpi .kv{font-size:clamp(18px,17.5cqi,26px);word-break:keep-all;overflow-wrap:anywhere}` —
+  칸 폭에 맞춰 글자만 조금 줄인다(PC 26px 그대로, 390 은 24px, 360 은 21px). 글자로 된 칸(인라인 13px·20px)은 인라인 크기가 이긴다.
+  **flex 줄에 쓰인 .kpi(아파트 관리 화면)는 건드리지 않게 `.kpis` 격자 안만** — inline-size 컨테이너는 내용 폭을 0 으로 쳐서 flex 칸이 쪼그라든다.
+  ② `.hj-nw{white-space:nowrap}` 로 전화번호 하나하나를 감쌈 + **명함 연락처 줄의 번호가 이스케이프 없이 HTML 로 들어가던 것**도 `escapeHtml` 로 고침.
+  ③ #mcText 에 `word-break:keep-all;overflow-wrap:anywhere`.
+- CI 글꼴(DejaVu·WenQuanYi)은 숫자가 더 좁아 로컬(Noto CJK)이 더 빠듯하다 — 두 글꼴 모두 통과 확인(FONTCONFIG_FILE 로 CI 글꼴만 보이게).
+- 핀3곳 hyeonjang-v542-numwrap2. 신규 tests/numwrap2-v542.e2e.js 5/5(숫자 칸 360·390·1280 + flex .kpi 그대로 → 전화번호·이스케이프 → 결산 글 → 전수 360·390 → 소스·핀).
+  기준선 v541 과 변이 no-scale 은 ① 에서 실패 확인. 회귀: numwrap-v518 · dash-cards · margin1280-v464 · mobile-tap-table · contactimport-v397 · contactpick-v393 ·
+  health-board · darkcards-v453 · pcdark-v452 · margin · paylog-correction · revenue-basis · sales-basis 통과.
+
+## 2026-11-01 v541 📝 작업 종료 때 '오늘 한 일' 한 줄 (대표 PDF '최종 UI 시안 · 자동 개발' 1번 — PDF 의 v526~v535 는 이 PR 의 v541~v550 으로 이어서)
+
+- 대표가 11/1 보낸 PDF(최종 UI 시안 + 10판 계획)는 main(v525) 기준 번호라 이 PR(v526~v540)과 겹친다 → 대표 결정 "PR #198 에 이어서": PDF 의 1~10번을 v541~v550 으로.
+- 한 것: `workPunch` 가 [⏱ 종료] 직후 `hjStopMemoOffer(id)` — body 에 붙는 작은 줄 `#hjStopMemo`(현장 이름 · 입력 16px · [저장]·[건너뛰기] 44px).
+  PC 는 위쪽 토스트 바로 아래(입력에 바로 커서), 폰은 아래쪽 토스트 위(키보드를 억지로 띄우지 않음). z 65 = 모달(70) 아래 · 하단 메뉴(50) 위.
+  [저장]·Enter(한글 조합 중 Enter 제외) → `hjStopMemoSave(id,text)`: 방금 끝낸 **그 기록**(id)의 메모에 — 이미 있으면 ' · ' 로 잇고 같은 글이면 그대로, 120자.
+  [건너뛰기]·Esc·손대지 않고 25초(`HJ_STOP_MEMO_IDLE`)는 아무것도 안 바꾼다. 직원 모드(by:'staff')도 같다. 오래된 창(`__tabStale`)이면 저장하지 않고 줄을 남긴다(적은 글 보존).
+  메모는 ✏️ 수정 창과 같은 칸 — v514 작업시간 줄 '📝 …' 에 바로 보인다.
+- 핀3곳 hyeonjang-v541-stopmemo. 신규 tests/stopmemo-v541.e2e.js 5/5(PC 줄·토스트와 안 겹침·Enter 저장·작업시간 줄 → 건너뛰기·Esc 자료 불변 → 폰 390 직원 모드 위치·by:staff·저절로 닫힘
+  → 잇기·같은 글·오래된 창 → 소스·핀). 기준선 v540 은 ①, 변이 skip-saves 는 ② 에서 실패 확인. `HJ_SHOTS=<폴더>` 면 화면을 남긴다(화면 모음용).
+  회귀: wlmemo-v514 · wleditkeep-v487 · team2-v444 · punchlist-v345 · mobile-tap-table · dash-cards 통과.
+
+## 2026-11-01 v540 🧪 데모 영수증은 늘 '이번 달' 안 — 매달 1~3일 둘러보기 [월말 장부]가 비던 것 + 날짜 경계 검사 보강
+
+- 드러난 경위: v539 CI 가 마침 11/1 00:15(한국 시각)에 돌아 5개가 떨어졌다. demo-v462·demotour-v467·demotour2-v470 은 데모 영수증 2건(사흘 전·하루 전)이
+  지난달로 넘어가 이번 달 장부(`expenseLedger(localDate().slice(0,7))`)가 비어서, expenseocr-v435 는 '1일' 식대와 오늘 영수증이 같은 날이라 줄 순서가 바뀌어서.
+  v536 기준선(10/31 초록불)도 그 시각엔 똑같이 떨어진다 — v537~v539 탓이 아니라 날짜 경계.
+- 뒤따른 검사 고침(test(v540-fix), 핀 그대로): relaysync-v530 ② BOOT 는 v540 CI 에서도 떨어졌다(로컬 8번은 통과). CPU 를 6배 느리게 한 진단으로 재현 —
+  부팅 4초 뒤 타이머 `taxCalendarEnsure`(세금 일정)가 막 받은 PC 자료에 일정을 더해 markDirty → `cloudAutoSave` → `relayMarkUnsynced` 로 폰이 '안 올린 변경'이 되고,
+  다음 부팅의 자동 반영이 배너로 바뀌었다(PC 의 rev 1 이 자기 타이머보다 먼저 저장돼 세금 표식이 없었기 때문 — 오래 쓴 실제 자료엔 표식이 있어 거의 안 남).
+  검사의 `booted()` 가 부팅 직후 `taxCalendarEnsure(); coworkSchedEnsure();` 를 미리 돌린다(apartment-units 와 같은 방법). 6배 느리게 2/2·보통 2/2 통과, 변이 no-ff 는 ② 에서 그대로 실패.
+- 앱: 데모 씨앗의 영수증 날짜를 `inMonth(n)` 으로 — 사흘 전·하루 전이 지난달이면 이번 달 1일로 당긴다(보통 날은 그대로). 둘러보기 5단계가 매달 1~3일에도 🧾 두 줄.
+- 검사: expenseocr-v435 ③ 은 지출 줄을 '날짜순'과 '줄 내용(순서 무관)'으로 나눠 본다(같은 날이면 넣은 순서라 1일엔 식대가 맨 뒤).
+- 날짜가 들어가는 새 검사는 `page.clock.setFixedTime(...)` 으로 시계를 박아 두고 1일·월말·해 바뀜을 따로 돌려라 — CI 가 자정 근처에 돌면 '오늘' 기준 검사가 갈린다.
+- 핀3곳 hyeonjang-v540-demomonth. 신규 tests/demomonth-v540.e2e.js 3/3(합성, 시계 고정): ① 1·2·3·20일·해 바뀐 2일의 영수증 날짜·파일 이름 ② 1일 폰 둘러보기 [월말 장부] 두 줄
+  ③ 소스·핀. 기준선 v539 와 변이 no-clamp 는 ① 에서 실패 확인. 회귀: demo-v462 3/3 · demotour-v467 3/3 · demotour2-v470 2/2 · expenseocr-v435 4/4 (11/1 에 통과).
+
+## 2026-11-01 v539 🏢 내역서 동·호수 등록 다듬기 — PC 실자료 검토 + 자료 무결성 검토 반영 (대표 "PC를 사용하여 검토하고 개발")
+
+- PC 실자료 검토(읽기만 · 컨테이너 안에서만 · 실자료는 커밋하지 않음): PC 폴더의 10/31 11:58 저장본(내역서 반영 전)에 실제 작업내역서 3장(협력사 1곳, 줄 28개)을
+  v538 빌드로 다시 반영해 새 기능을 돌려 봤다. 장부·경과일·미수 안내 글·오늘 챙길 일('30일 넘은 협력사 미수 1장')은 기대대로. 세대 후보 11곳 중 9곳이
+  '○○아파트 303-603' 꼴이라 v537 은 2곳만 미리 체크했고, 위치 단지 이름이 현장 이름과 다른 줄(예: '○○아파트' 줄이 '○○로운아파트' 현장으로)도 체크했다.
+  같은 날 확인: 폴더 `_현장.json` 이 23:13 에 또 아침 자료(현장 56·견적 0)로 다시 써졌다 — v525 로 열린 옛 창이 아직 있다(v532·v534 배포 전).
+- 자료 무결성 검토(별도 에이전트, 읽기 전용) 지적 M1~M3·L1~L6 를 반영:
+  ① 읽기(`hjStmtUnitOf` → `{dong,ho,sure,why}`): '동 호' 꼴은 `HJ_STMT_UNIT_DONGHO_RE` — 동 숫자 앞에 한글이 붙으면('○○2동') 안 되고 '…호라인'·'…호기' 는 제외.
+     **아파트 이름(APT_WORDS) 바로 뒤 '동-호'(호 3~4자리, 앞뒤 숫자·'-' 없음, 0 으로 시작 안 함)도 확실**(`HJ_STMT_UNIT_HYPHEN_RE`).
+     나머지(`HJ_STMT_UNIT_RES` — 짧은 호수·전화·날짜·'B1-101'·'101호 903호')는 확인 필요 + 까닭.
+  ② 후보: 위치 원문(`locs`, 2개까지)을 미리보기에 보인다. 이름이 이미 한 세대인 현장(`aptNameParse`)에 다른 세대, 위치 단지 이름(`hjStmtCore`)이 현장 이름과 다른 줄은
+     체크 안 함 + 까닭(`warn`). 종결(lost) 견적은 뺀다. 📑 장부 줄은 **미리 체크될 것만** 센다(확인 필요만 남으면 줄이 사라진다).
+  ③ 저장: 옛 미리보기는 **안전판을 찍기 전에** 거부(누를 때마다 안전판이 쌓여 예전 안전판을 밀어내던 것), 호출자 seen0 를 바꾸지 않음, 보관 현장 거부,
+     같은 묶음 id 겹침 방지(20번 넘게 겹치면 통째로 멈춤 — 겹친 id 저장 0). 빈 미리보기 문구는 '등록할 동·호수가 없어요'.
+- stmtunit-v537 의 픽스처 '103-704' → '103-74'(이제 '아파트 뒤 동-호'는 확실이라 확인 필요 사례로 짧은 호수를 씀)·문구·장부 줄 기대를 새 동작으로 고침.
+- 핀3곳 hyeonjang-v539-unitreview. 신규 tests/unitreview-v539.e2e.js 4/4(합성): ① 읽기 12가지 ② 후보 6줄(체크·까닭·위치) + 장부 줄 2곳 + 미리보기 위치 원문
+  ③ 옛 미리보기 두 번 눌러도 안전판 그대로 · 보관 거부 · 난수 고장 시 통째로 멈춤 ④ 소스·핀. 기준선 v538 은 ①, 변이 no-own 은 ②, snap-first 는 ③ 에서 실패 확인.
+  회귀: stmtunit-v537 4/4 · apartment-units 12 · apartment-manage 6 · apt-unit-assign 7/7 · stmtimport-v526 · stmtpay-v527 · bankstmt-v533 · bankmulti-v538 · stmtdun-v535 통과.
+
+## 2026-10-31 v538 🏦 통장 한 줄 = 작업내역서 여러 장 (대표 "문제 없어 일단 더 개발 진행")
+
+- 왜: 협력사는 한 달 치 내역서를 한 번에 보내기도 한다. v533 은 그런 줄을 '합계와 같아요 — 장부에서 장마다 [💰 입금]' 힌트로만 보여 손으로 나눠 적어야 했다.
+- 한 것:
+  ① `hjBankStmtMatch`: 단일 내역서가 딱 맞으면 예전 그대로 먼저. 아니면 입금자가 **거래처 하나**와 맞고(이름이 둘 이상 거래처에 걸리면 안 함), 그 거래처의 남은 돈 있는
+     내역서를 **오래된 순**으로 더해 줄 금액과 딱 맞는 첫 묶음(2장 이상)이면 `combo:[src…]` 제안(체크). 중간을 건너뛴 조합은 제안하지 않는다(예전 '합계' 힌트는 이것으로 바뀜 —
+     bankstmt-v533 ① 의 'sum' 단정을 새 동작으로 고침).
+  ② 화면: 그 줄 목록에만 '📑 거래처 내역서 n장(날짜·날짜) 합계 · 금액'(`combo:i`). 고르면 지금도 합이 맞는지(`hjBankStmtComboBad`)·이미 기록됐는지 다시 본다.
+  ③ 저장: 묶음은 먼저 장마다 `hjStmtPayCheck`(새 — `hjStmtPayApply` 와 같은 확인을 쓰지 않고)로 한 장이라도 막히면(지워진 현장·미래 날짜) **아무 장도 적지 않는다**.
+     다른 줄과 같은 내역서를 겹쳐 고르면 기존 '남은 돈보다 많은 입금' 막음이 그대로 잡는다. 적을 때는 장마다 남은 돈 전부(현장마다 남은 돈 비율)를 **한 묶음 id**
+     (`hjStmtPayApply` 가 `o.grp` 를 받음)로.
+  ④ '이미 기록됨': `hjBankStmtDupIndex()` 가 묶음 id 하나가 내역서 2장 이상에 걸친 것은 장별 집합에서 빼고 `idx.combo`(날짜·합계 → [src…])로 따로 둔다 —
+     묶음 안 한 장의 금액이 다른 통장 줄과 우연히 같아도 '이미 기록됨'으로 잡지 않게. `hjBankStmtComboDup` 은 같은 날·같은 합계·같은 내역서 묶음.
+     `hjBankDup(row,'')`(현장을 안 정하고 볼 때)도 내역서 나눔 기록(`x.stmt`)은 뺀다 — 현장을 고르면 예전처럼 그 현장 기록 전부.
+- 핀3곳 hyeonjang-v538-bankmulti. 신규 tests/bankmulti-v538.e2e.js 5/5(정적 서버만 · 합성 · 390px): ① 규칙(2장·3장·한 장 우선·건너뛴 조합·입금자 다름·거래처 둘·초과)
+  ② 묶음 줄 체크 → 같은 내역서 겹치면 아무것도 안 적음 → 빼고 저장 → 장마다 다 받음·한 묶음 id ③ 다시 넣기(묶음 이미 기록됨·억지 체크 거부·묶음 한 장과 금액만 같은 줄 오판 없음)
+  ④ 묶음 둘째 장 현장이 지워졌으면 첫 장도 안 적음 ⑤ 소스·핀. 기준선 v537 은 ①, 변이 no-combo-dup 은 ③, no-precheck 는 ④ 에서 실패 확인.
+  회귀: bankstmt-v533 5/5 · bankimport-v350 4/4 · stmtpay-v527 · stmtdun-v535 · pconly-v536 · stmtunit-v537 · stmtimport-v526 · payproof-v348 · pay-receipt 14 · paylog-correction 5/5 · recv-entry 11 통과.
+
+## 2026-10-31 v537 🏢 내역서 동·호수 → 세대 등록(확인 뒤) (대표 "최고의 개발자로 개발 진행")
+
+- 왜: v331 규칙(아파트 이름 = 현장, 동·호수 = 그 현장 세대 `aptUnits`). v526 내역서 반영은 위치('○○아파트 101동 1001호 …')에서 동·호수를 떼어
+  아파트 현장으로 넣지만 세대로 등록하지는 않아, 세대별 사진·오더·AS 이력과 내역서 매칭 가점(`hjStmtMatch` '세대 … 있음')이 비어 있었다.
+  읽은 값은 **제안까지만**(자동 추정·배정 금지) — 미리보기에서 사람이 체크하고 [등록]을 눌러야 들어간다. 사진·견적·입금은 건드리지 않는다.
+- 한 것:
+  ① `hjStmtUnitOf(loc)`: `HJ_STMT_UNIT_RES` 순서대로 — '101동 1001호' 꼴만 확실(sure), '101-1001'·'101호 1001호' 꼴은 확인 필요. 동만 있는 위치는 후보 아님.
+  ② `hjStmtUnitPlan(only)`: 내역서 견적 줄마다, 이름이 하나뿐이고 보관 안 한 현장에 아직 없는 세대 — 같은 세대는 한 줄(줄 수·작업 2개).
+     세대 정보가 손상된 현장은 빼고, 현장마다 500곳 한도를 넘지 않게 자른다. 기본 체크 = 확실 + 아파트 이름(`aptIsComplexName`).
+  ③ `hjStmtUnitView(only)`: 미리보기(300줄까지) — 체크 안 된 줄은 이유('‘101-1001’ 꼴…확인' / '현장 이름이 아파트로 보이지 않아요'). 연 순간의 현장별 세대 목록을
+     `hjStmtUnitStamp` 로 잡아 두고, `hjStmtUnitApply(sel, seen0)` 는 `aptBulkApply` 와 같은 한 번의 안전판 거래(`aptUnitMutation` — 🛡 '내역서 동·호수 등록 전')에서
+     **미리보기를 연 뒤 그 현장 세대가 바뀌었으면 등록하지 않고 '다시 열어 주세요'**, 손상·중복·500 을 다시 본다. 오류는 `#aptUnitIssue`(aptUnitUiWrite).
+  ④ 입구: 📑 장부 '🏢 내역서에 나온 동·호수 n곳이 아직 그 현장 세대로 등록되지 않았어요 [🏢 세대 등록]'(`data-stmtunit=""`),
+     현장 동·호수 카드 `aptUnitProjectCard` 의 '📑 내역서 동·호수 n곳 등록'(`data-stmtunit="현장"` — 그 현장만).
+- 핀3곳 hyeonjang-v537-stmtunit. 신규 tests/stmtunit-v537.e2e.js 4/4(정적 서버만 · 합성 · 390px): ① 읽기·후보(확실/확인·한 줄로·제외 3종·기본 체크·한 현장·읽기만 불변)
+  ② 장부 → 미리보기(체크 3·확인 2) → 3곳 등록·안전판·기기 저장본·사진·견적·입금 불변·남은 2곳 ③ 카드 → 그 현장만 · 연 뒤 다른 곳에서 세대가 바뀌면 거부 → 다시 열어 등록 → 단추 사라짐 ④ 소스·핀.
+  기준선 v536 과 변이 check-all 은 ①, no-before 는 ③ 에서 실패 확인. 회귀: apartment-units 12 · apartment-manage 6 · apt-unit-assign 7/7 · apt-commercial-ui ·
+  stmtimport-v526 · stmtpay-v527 · bankstmt-v533 · stmtdun-v535 · pconly-v536 통과.
+
+## 2026-10-31 v536 📵 이 기기에 안 보이는 사진(폴더 없는 기기) · 📑 30일 넘은 협력사 미수(오늘 챙길 일) (대표 "계속 진행")
+
+- 왜: 10/31 검토에서 사진 기록 1,272장 중 610장이 PC 폴더에만 있어 폰에서 빈 칸이었다. v531 📤(올리기)은 폴더+서버가 연결된 PC 에서만 보여, 폰에서는
+  사진이 사라진 것처럼 보이고 무엇을 해야 하는지 알 길이 없었다. v535 로 내역서 경과일을 보게 됐지만 첫 화면에서 오래된 미수를 알려 주지는 않았다.
+- 한 것:
+  ① `hjPcOnlyFiles()` = 사진(동영상 아님) 중 서버 사본(`_driveId`)도, 이 기기 원본(`_shareInboxId`·`shareInboxId` 공유함·`handle`·`_file`)도 없는 것.
+     `hjPcOnlyCount()` 는 서버를 쓰는 기기(`relayReady`)에서만, 폴더를 연 PC(`FS_OK&&state.dirHandle`)·데모는 0. 🩺 줄 `hjHealthData().pconly`(📤 pcup 이 있으면 계산 안 함)
+     → 세그먼트 '📵 이 기기에 안 보이는 사진 n'(clean 조건에 포함) → `hjPcOnlyView()`: '사진이 사라진 것은 아닙니다' + PC 에서 할 일 3단계 + 현장별 수(8곳까지)
+     + [☁️ 최신 자료 확인](`__relayResumeAt=0` 으로 1분 제한을 풀고 v530 `relayResumeCheck`). 읽기 전용 — 이 기기에서 바꾸는 것 없음.
+  ② `dailyCheckData` 에 '📑 30일 넘은 협력사 미수 n장 · 금액 — 📑 장부에서 미수 안내 글'(w 2.8, 남은 돈 있고 `hjStmtAgeDays`≥30 인 내역서만) → 견적 작성 탭(장부).
+- 핀3곳 hyeonjang-v536-pconly. 신규 tests/pconly-v536.e2e.js 4/4(정적 서버만 · 합성 · 390px): ① 세기(공유함·서버 사본·핸들·동영상·문서 제외, 서버 없음·폴더 PC·데모 0, 자료 불변)
+  ② 🩺 줄 → 창(현장별·할 일) → 최신 자료 확인이 1분 제한을 풂 ③ 오늘 챙길 일(다 받은·10일 된 내역서 제외) → 장부 ④ 소스·핀.
+  기준선 v535 와 변이 count-inbox 는 ①, no-daily 는 ③ 에서 실패 확인. 회귀: healthline-v524 · casefolder-v525 · dash-reports · estbackfill-v521 · photoassign-v523 ·
+  worklabel-v405 · pcupload-v531 · stmtdun-v535 · stmtpay-v527 통과.
+
+## 2026-10-31 v535 📑 내역서 미수 경과일 · 협력사 미수 안내 글 (대표 "계속 진행")
+
+- 왜: v527 📑 장부는 내역서마다 남은 돈만 보여, 얼마나 오래됐는지·협력사마다 얼마를 요청할지 손으로 세야 했다(협력사는 내역서 한 장 단위로 입금).
+- 한 것(견적 작성 탭 📑 장부):
+  ① 남은 돈 있는 내역서 줄마다 'n일 지남'(`hjStmtAgeDays` — 작성일부터 오늘까지, 미래·빈 날짜는 0). 30일 이상 주황·굵게, 60일 이상 빨강(`hjStmtAgeChip`, 줄바꿈 안 함).
+  ② 장부 위에 협력사별 미수 줄(`hjStmtDunGroups` — 남은 돈 있는 내역서만 거래처별·오래된 순, 남은 돈 큰 거래처부터): '거래처 · 내역서 n장 · 남은 돈 · 가장 오래된 것 n일 지남' + [📋 미수 안내 글](`data-stmtdun`).
+  ③ 안내 글(`hjStmtDunText`): 내역서마다 날짜·현장 수·(일부 받았으면 합계·받은 돈)·남은 돈·경과일, 남은 돈 합계, 문의처. **현장 이름은 넣지 않는다.**
+     계좌는 대표가 고른다 — 창(`hjStmtDunView`)에 미리보기와 장부의 계좌(COMPANY.accounts) 그대로의 단추·'계좌 없이 글만'. **어느 계좌도 앞세우지 않는다**(대표 규칙: 계좌는 건마다 대표가 고름).
+     보내기는 공유(navigator.share) 또는 복사만 — 자동 발송 없음, 자료를 바꾸지 않음.
+- 핀3곳 hyeonjang-v535-stmtdun. 신규 tests/stmtdun-v535.e2e.js 4/4(정적 서버만 · 합성 자료 · 계좌는 검사 안에서 가짜로 바꿔 끼움 · 390px):
+  ① 묶음·경과일·색 ② 글(일부 입금·합계·계좌는 넘긴 것만·둘이면 ①②·현장 이름 없음) ③ 화면(협력사 줄·경과일·단추 44px·창 미리보기·계좌 단추 중 기본 없음·고른 계좌만 복사·'계좌 없이 글만') ④ 소스·핀.
+  기준선 v534 와 변이 no-age 는 ①, auto-account(묻지 않고 첫 계좌) 는 ③ 에서 실패 확인. 회귀: stmtpay-v527 · bankstmt-v533 · stmtimport-v526 · bankimport-v350 · claudecmds-v529 통과.
+
+## 2026-10-31 v534 🔒 오래된 창 잠금 — 서버 저장·대기열·충돌 창 ②·서버 불러오기 적용을 막고 띠에 [🔄 새로고침]
+
+- 왜(10/31 실측): 아침부터 열려 있던 창이 몇 시간 뒤 서버 충돌 창(서버 rev 899 · 이 창 892)을 띄웠다. 다른 창이 더 최근에 저장한 창(`__tabStale`)은
+  기기 저장(v457)·폴더 저장(v532)·대기함(`hjOutboxGuard`)은 막혔지만 **서버 쪽은 열려 있었다**: `relaySaveNow`(자동·수동)·`cloudFlushQueue`(대기열 save 는 보내는 순간의
+  `serializeData()`)·충돌 창 ② '내 기기 데이터로 덮어쓰기'. ② 를 누르면 그날 작업이 옛 자료로 서버까지 덮일 수 있었다(대표에게는 ③ 을 누르라고만 안내했었다).
+  또 오래된 창에서 ①·③·[⬇️ 서버에서 불러오기]로 서버 자료를 적용하면 기기 저장은 문지기에 막히고 **기준 revision(`relay_rev`)만 기기에 남아**,
+  새로고침 뒤 다음 저장이 충돌 없이 서버를 덮을 수 있었다.
+- 한 것:
+  ① `relaySaveNow`: 오래된 창이면 보내지 않고 상태 `stale`('🔒 오래된 창 — 서버 저장 멈춤(새로고침)'). `cloudFlushQueue` 는 **save 항목만** 건너뛰고 남겨 둔다(최신 창이 보낸다).
+     사진 업로드 항목은 예전(v331) 그대로 보내고 기록 연결 대기(link)로 남긴다 — 처음엔 대기열 전체를 멈췄다가 photo-intake-safety ③-2 가 잡아 고쳤다.
+     `cloudAutoSave` 도 멈춘다 — 다른 창과 같이 쓰는 '안 올린 변경' 표시(localStorage `hj_relay_unsynced`)를 남기지 않는다.
+  ② `relayConflictModal`: 오래된 창이면 ② 없는 창(`[data-stale-conflict]` — 차이 확인 + [닫기]·[🔄 안전판 보관하고 새로고침]).
+     창이 떠 있는 사이 오래돼도 ② 와 첫 연결 '이 기기 자료를 서버에 올리기'는 기준 revision 을 바꾸기 전에 멈춘다.
+  ③ `relayLoadApply`: 오래된 창이면 적용하지 않는다(서버 불러오기도 안 함).
+  ④ 오래된 창 경고 띠(`multiTabStaleWarn`)에 단추 `#hjTabWarnAct` [🔄 안전판 보관하고 새로고침] → `hjStaleReload()`: 이 창 자료를 🛡 안전판('오래된 창 자료(새로고침 전)')에
+     먼저 넣고(실패하면 확인) `window.__hjStaleReload` 를 세워 창 닫기 경고 없이 새로고침. `__tabBanner(msg, act)` 가 단추를 붙이고, 단추 없는 경고로 바뀌면 뗀다.
+     '다른 탭에도 열려 있음' 경고가 오래된 창 경고를 덮지 않게 했다. 문구는 '자동저장을 멈췄어요(서버 저장 포함)' — multi-tab-guard 가 '자동저장을 멈췄' 을 본다.
+     방송만 받은 오래된 창(아직 저장 시도 전이라 띠 없음)을 **다시 볼 때(visibilitychange visible)** 띠를 바로 띄운다 — 방송 수신 순간에는 여전히 띄우지 않는다(v240 규칙·multi-tab-guard ③).
+- 검사 수정: `relay.e2e.js` 11-2 는 정리 단계에서 저장본(appState)을 직접 되돌리면서 탭의 `__tabStamp` 는 그대로 둬 그 탭이 '오래된 창'이 됐다(그 뒤 v457 문지기가 기기 저장을 막음).
+  v534 부터는 서버 저장도 멈추므로 19~21 이 서버 저장을 못 기다렸다 → 정리 때 `__tabStamp` 도 되돌린 저장본에 맞춘다(앱 코드는 appState 를 문지기 거래로만 쓰고 그때 stamp 를 맞춘다).
+- 핀3곳 hyeonjang-v534-stalelock. 신규 tests/stalelock-v534.e2e.js 4/4(mock relay · 같은 브라우저 두 창 · 390px):
+  ① 오래된 창 수정 → 서버 저장 0·자료가 서버에 안 감·🔒 상태·띠 단추·'안 올린 변경' 안 남김·수동 저장·대기열 보내기 0 → 최신 창이 대기열을 보냄
+  ② 다시 보면 띠가 바로 · 오래된 창 충돌 창(② 없음) · 최신 창 ①②③ · 떠 있는 사이 오래되면 ② 가 서버·기준 rev 그대로 · 불러오기 적용 안 함
+  ③ 띠 단추 → 안전판(그 창 자료·늦은 수정) → '나가시겠습니까?' 없이 새로고침 → 최신 자료·잠금 풀림 ④ 소스·핀.
+  기준선 v533 과 변이 no-relay-guard 는 ①, two-in-stale 은 ②, no-bypass 는 ③ 에서 실패 확인.
+  회귀: relay 30/30 · relaysync-v530 · multi-tab-guard 6 · demo-banner · sync-conflict-preview 8/8 · relay-queue-preservation · test-stability · delay-v347 · office-intake(-auto)-sync ·
+  pages-artifact · backup-visible · settings-safety · office-ops-conversion · folderguard-v532 · pcupload-v531 · photo-intake-safety 20 · paid-work-gate · legacy-commercial-gate ·
+  shared-todo 15/15 · version-banner · shareinbox-v416 · bathlink-v411 · mobile-photo-upload · media-intake 통과. 가짜 relay 를 쓰는 검사 묶음 37개: 33 통과,
+  실패 4 = 이 컨테이너 환경 실패(document-select·document-upload·team-workboard — main 에서도 같음) + photo-intake-safety(위에서 고친 뒤 통과).
+
+## 2026-10-31 v533 🏦↔📑 통장 입금 ↔ 작업내역서 자동 맞추기 (대표 "다른거 개발" → "이어서 진행")
+
+- 왜: v527 로 협력사 작업내역서(현장 여러 곳)의 받을 돈을 📑 장부로 보게 됐지만, 협력사는 **내역서 한 장 단위로** 입금한다. 통장 가져오기(v350)는
+  입금자가 고객명·현장명과 맞을 때만 현장을 제안해서 협력사 입금 줄은 '맞는 현장을 모르겠어요'로 남았고, 장부에서 한 장씩 [💰 입금]으로 다시 적어야 했다.
+  게다가 내역서 입금을 현장마다 같은 입금자로 나눠 적으면, 다음 가져오기에서 v350 의 '전에 같은 입금자' 단서가 그 협력사 입금을 엉뚱한 현장 하나로 제안할 수 있었다.
+- 한 것:
+  ① `hjBankStmtMatch(row, hjStmtLedger())` — 입금자(또는 메모 열)가 내역서 거래처(`stmt.to`, 정규화 `hjBankNorm` · 은행이 잘라 보인 이름 포함)와 맞고
+     **금액이 그 내역서 남은 돈과 같을 때만** 그 내역서를 제안(체크). 같은 금액 내역서가 둘·같은 거래처 여러 장 합계와 같음·일부 입금(남은 돈보다 적음)·
+     금액만 같음(입금자 다름)은 **힌트만**(체크 안 함). 1글자 이름은 맞추지 않는다. 우선순위: 이미 나눠 적은 입금 → 내역서 제안 → 현장 제안(v350 그대로) → 힌트(내역서 힌트 먼저).
+  ② 가져오기 화면: 현장 고르기 목록 끝에 `<optgroup>📑 작업내역서</optgroup>`(남은 돈 있는 것 + 지금 고른 것), 값은 `stmt:<src>`. 요약 줄에 '📑 내역서 제안 n건'.
+     직접 고르면 '→ 현장 n곳에 남은 돈 비율로 나눠 적어요', 남은 돈보다 많으면 체크를 풀고 알림. 내역서에 든 현장을 현장으로 바로 고르면 '협력사 입금이면 그 내역서를 고르세요'
+     (현장으로 바로 적으면 장부에 받은 돈으로 안 잡힌다 — 기존부터 있던 어긋남을 화면에서 막는다).
+  ③ 저장: 내역서 줄은 v527 `hjStmtPayApply(src,{amt,d,method:'계좌이체',payer})`. 한 내역서에 고른 줄 합계가 지금 남은 돈보다 많으면 **아무것도 적지 않고** 멈춤.
+     확인 창 문구에 '📑 작업내역서 입금 n건은 … 나눠 적어요' 한 줄. 저장 뒤 '다음 할 일'(입금 확인 문자·증빙)은 **현장 줄만** — 협력사 입금을 그 현장 고객에게 확인 문자로 보내지 않게.
+  ④ `hjStmtPayApply` 가 `o.payer` 를 받고, 한 번에 나눠 적은 기록에 같은 `stmtPay`(묶음 id)를 붙인다. `hjBankStmtDup` = 같은 내역서·같은 날 묶음 합계가 그 줄 금액과 같으면 '이미 기록됨'
+     (묶음 id 없는 v527 기록은 그날 합계). 같은 날 두 번 받은 것은 묶음마다 본다. 색인 `hjBankStmtDupIndex()` 는 화면마다 한 번.
+  ⑤ `hjBankMatch` 의 '전에 같은 입금자' 단서에서 내역서 입금 기록(`x.stmt`)을 뺀다. 📑 장부에 [🏦 통장 파일로 맞추기](`data-stmtbank` → `hjBankImportView()`, 남은 돈 있을 때만).
+- payLog 기록에 `stmtPay` 필드가 늘었을 뿐 최상위 키 수(41)·직렬화 경로는 그대로.
+- 핀3곳 hyeonjang-v533-bankstmt. 신규 tests/bankstmt-v533.e2e.js 5/5(정적 서버만 · 합성 자료 · 바깥 요청 0):
+  ① 규칙 12가지 ② 묶음·예전 기록·같은 날 두 번·'전에 같은 입금자' 제외 ③ 390px 장부 단추 → csv → 내역서 2줄 체크·힌트 2줄·현장 1줄 → 저장(현장 4곳 나눔·다음 할 일 1줄)
+  ④ 같은 파일 다시(이미 기록됨·억지 체크도 안 적음)·직접 고르기·내역서 현장 직접 고름 알림·남은 돈 초과 막음 ⑤ 소스·핀.
+  기준선 c35148f(v532) 는 ①, 변이 no-stmt 는 ③, no-dup·prev-stmt 는 ②에서 실패 확인.
+  회귀: bankimport-v350 4/4 · stmtpay-v527 6/6 · stmtimport-v526 9/9 · pay-receipt 14 · paylog-correction 5/5 · payproof-v348 3/3 · receipt-project · recv-entry 11 · vatproof-v349 4/4 통과.
+- 안 한 것: 한 줄을 여러 내역서에 나눠 적기(합계가 같으면 힌트로 장부 [💰 입금]을 안내), 협력사 입금 증빙(세금계산서) 일괄 기록, 은행 xlsx 의 실제 열 이름 추가 확인(v350 규칙 그대로).
+
+## 2026-10-31 v532 🛡 오래된 탭이 폴더 _현장.json 을 덮지 않게 + 폴더 저장본이 '더 새것'처럼 보여도 내용이 다르면 자동으로 덮지 않기
+
+- 왜(10/31 실측, PC 폴더 파일을 읽기만 해서 확인): 15:14 에 폴더 `_현장.json` 이 그날 아침 자료(현장 56·견적 0 — 그날 반영한 견적·내역서가 없음)로 다시 써졌다.
+  11:14 백업과 aiOps 만 다르고 같았다 — 아침부터 열려 있던 다른 앱 창이 몇 시간마다 AI 점검(aiOps)으로 markDirty → 3분 뒤 폴더 자동 저장을 한 것.
+  그 창의 기기 저장(IndexedDB)은 다중 탭 문지기(`guardedPersistCurrentState` — 저장본 savedAt 대조)가 막았지만, **폴더 쓰기(`saveProject`)에는 문지기가 없었다.**
+  그 파일은 저장 시각이 더 나중이라 다음 폴더 연결 때 `loadProject` 가 '로컬 저장본이 더 새것'으로 보고 오늘 작업을 옛 자료로 바꿀 수 있었다(그 뒤 서버까지).
+- 한 것:
+  ① `saveProject` 는 먼저 `guardedPersistCurrentState()` 를 통과해야 폴더에 쓴다 — 다른 탭이 더 최근에 저장했으면(방송이 없어도) false/throw → 쓰지 않고 `__tabStale`·경고 띠.
+     최신 탭은 기기 저장본과 폴더 파일이 같은 내용이 된다(폴더가 더 나중 시각이어도 내용이 같아 다음 연결 때 조용히 적용).
+  ② `scanDir` 이 폴더를 읽기 직전의 이 기기 자료를 `window.__hjPreScanData` 로 잡아 두고, `loadProject` 는 폴더 저장본이 더 오래됐으면 예전 그대로(이 기기 유지),
+     그렇지 않은데 이 기기에 저장 자료를 적용한 적이 있고(`__dataAt` — 기존 '로컬이 더 새것' 분기와 같은 전제. 없으면 첫 연결로 보고 예전처럼 폴더 적용 —
+     project-scan-order 의 첫 연결 경로가 이것을 지킨다) 내용 서명(`hjDataSig` — 현장 이름·견적 id·파일 수·서버 사본 수·배정 수)이 다르면 **자동으로 덮지 않고** 이 기기 자료를 유지한 뒤
+     확인 창(`hjFolderNewerChoice` — 두 자료 요약): [이 기기 자료 유지(권장)] = 폴더 파일을 지금 자료로 다시 씀 / [폴더 저장본 불러오기] = 🛡 안전판 먼저.
+     이 기기 자료가 없으면(첫 연결) 예전처럼 폴더를 적용한다.
+- 핀3곳 hyeonjang-v532-folderguard. 신규 tests/folderguard-v532.e2e.js 5/5(같은 브라우저 두 탭 — 방송 끈 채 저장본 문지기만으로 막힘 · 더 나중·다른 내용 → 유지+창 → 유지가 다시 씀 · 불러오기는 안전판 먼저 · 같은 내용/더 오래됨/첫 연결).
+  기준선 v531 과 변이 no-guard 는 ①, 변이 no-choice 는 ②에서 실패 확인. `pcupSave` 도 기기 저장본 문지기가 false 면 서버·폴더에 쓰지 않고 멈춘다.
+  폴더 저장·불러오기·스캔·다중 탭을 건드리는 회귀 81개: 75 통과, 실패 6 = 이 컨테이너 환경 실패 5(main 에서도 같음 — apartment-projects·document-select·
+  document-upload·leakintakeweb-v431·team-workboard) + project-scan-order(첫 연결 회귀 — __dataAt 전제를 둬 고친 뒤 통과).
+- 사람이 할 일(10/31 대표에게 알림): 아침부터 열려 있던 앱 창·폴더의 옛 `현장.html` 창을 닫기. PC 의 그 폴더 파일은 백업(`_현장_백업_클로드_20261031_1625_오래된탭저장본.json`)만 해 두었다 —
+  `_현장.json` 을 고쳐 쓰는 것은 자동 승인에서 막혀 대표 확인을 기다린다. v532 가 배포되면 그 파일이 남아 있어도 확인 창이 막는다.
+
+## 2026-10-31 v531 📤 PC 사진을 다른 기기에서도 — 서버 사본이 없는 사진 일괄 올리기(이어하기) + 폴더 자동 저장 최대 대기 (대표 "네 올려주고" → "개발 진행")
+
+- 왜: PC 에만 있는 사진(서버 사본 `_driveId` 없음) 600여 장이 폰에서 빈칸이었다. 클로드가 PC 탭에 스크립트를 넣어 10장씩 올리다가
+  크롬이 뒤에 있던 탭을 닫아(메모리 절약으로 보임) 135장쯤 뒤에 멈췄고, 새로 뜬 탭은 확장 프로그램 접근도 막혀 이어 갈 수 없었다.
+  탭에 넣는 일회용 스크립트 대신 앱 기능으로 만든다 — 대표가 단추 하나로 이어서 올릴 수 있게.
+- 같은 날 확인한 결함: 폴더 자동 저장(`_현장.json`)은 '마지막 변경 뒤 3분'이라, 3분 안쪽 간격으로 계속 손대면(업로드가 2분마다 저장) 몇 시간이고 안 써졌다.
+  업로드 중 폴더 파일의 savedAt 이 업로드 전 그대로였다.
+- 한 것:
+  ① `pcupTargets()` = 사진·동영상 아님·`_driveId` 없음(저장본에서 되살린 `_virtual` 기록 포함 — 새로고침 직후 PC 기록은 전부 _virtual 이다).
+     `pcupFile` 은 `getFileOf`(핸들·_file) → 없으면 저장 경로(prefix/name)로 폴더에서 찾는다. 크기가 기록과 다르면 건너뜀. 형식을 모르는 HEIC 등은 확장자로 image/heic 를 붙여
+     해석 못 해도 원본을 올리게 한다(서버 허용 형식).
+  ② `pcupRun` 10장씩 `relayUploadFiles`(기존 경로 그대로 — `_driveId` 주입) → 묶음마다 `guardedPersistCurrentState` + `relaySaveNow`, 5묶음마다·끝에 폴더 저장.
+     멈춤: [멈추기]·`__tabStale`·relay 없음·인증 실패·대기열로 간 것(연결 끊김)·업로드 3묶음 연속 0장. 못 읽은 원본은 그 실행(세션)에서만 건너뛴다.
+     진행은 localStorage `hj_pcup` — 탭이 죽으면 running:true 로 남아 다음 창이 '지난번에 n/m장까지 올리다 멈췄어요'를 보여 준다. 화면 꺼짐 방지(wakeLock).
+     올린 사진은 실행 안에서 fileKey → 서버 id 로 기억하고(`run.uploaded`), 묶음마다·끝에 지금 `state.files` 에서 표시 없는 같은 기록에 다시 붙인다(`pcupRelink`).
+     10/31 탭 업로드 뒤 15:14 폴더 저장본에 새 사본 표시가 하나도 없었다 — 업로드 사이 사진 기록이 옛 사본으로 바뀌는 경로가 있으면 표시를 잃고 다음에 또 올리게 된다. 그 방어선.
+  ③ 입구: 🩺 건강 줄 '📤 폰에 안 보이는 사진 N'(폴더+서버가 연결된 PC 에서만, 0 이면 숨김) · 🔄 PC↔폰 동기화 창의 단추. 더보기 항목은 늘리지 않았다(126개 핀 검사 12곳).
+  ④ `scheduleFolderAutoSave()` — 이미 예약돼 있으면 미루지 않는다(최대 대기 3분). `saveProject` 성공 때 예약을 비운다. markDirty·자동저장 켜기·웹 업무 연결 세 곳이 같이 쓴다.
+- 핀3곳 hyeonjang-v531-pcupload. 신규 tests/pcupload-v531.e2e.js 6/6(mock relay + 가짜 폴더: 건강 줄→창→올리기·건너뛰기·HEIC·서버/기기/폴더 저장 →
+  멈추기·이어서(중복 0) → 새로고침 뒤 남은 수·지난번 안내 → 자동저장 예약 → 업로드 사이 기록이 옛 사본으로 바뀌어도 다시 붙임 → 폰엔 항목 없음·핀).
+  기준선 v530 과 변이 no-done 은 ①, 변이 debounce 는 ④, 변이 no-relink 는 ⑤에서 실패 확인.
+  관련 healthline-v524·casefolder-v525·relaysync-v530·photo-intake-safety·project-scan-order·shared-todo·office-intake(-auto)-sync·mobile-more-tools·settings-safety·board-v351·v526~v529 통과, 정적·단위 전부 통과.
+- 안 한 것: 폰에서 'PC 에서 올려야 보이는 사진 N장' 안내, 같은 원본을 가리키는 기록 두 개를 한 번만 올리기, 크롬 메모리 절약 예외 등록(브라우저 설정 — 대표가 직접).
+
+## 2026-10-31 v530 📱 다른 기기 최신 자료 자동 반영 — 이 기기에 안 올린 변경이 없으면 열 때·다시 볼 때 서버 최신본을 자동으로 (대표 "모바일로 접속했을 때 최신 자료로 보여지는지 확인하고 검토진행해줘")
+
+- 확인(10/31 14:18, PC 탭에서 읽기만): PC 의 그날 작업은 서버(relay)에 다 올라가 있었다 — revision 919, 현장 61·견적 32·파일 1,378·미배정 사진 107 이 PC 와 같았다.
+  그런데 폰은 열 때 '☁️ 서버에 더 최신 자료가 있습니다' 배너의 [불러오기]를 눌러야만 바뀌었고(v105 설계 — 자동 적용 금지), 배너를 놓치거나 [나중에]를 누르면 옛 자료 그대로였다.
+  앱을 백그라운드에서 다시 볼 때는(완전히 다시 열지 않으면) 확인조차 하지 않았다.
+- 한 것:
+  ① '안 올린 변경' 표시 `hj_relay_unsynced`(localStorage — 동기 쓰기, `idbSet` 을 가로채는 검사·저장 경로와 섞이지 않게) + 이번 세션 변경 번호 `__relayEditSeq`: 서버로 자동 올리기(`cloudAutoSave`)를 예약할 때 켜고, 저장(`relaySaveNow`·대기열 `cloudFlushQueue`)이나 불러오기(`relayLoadApply`)가 성공하면 끈다 — 보내는 사이 또 손댔으면 끄지 않는다.
+     값이 없는 기기(이 판을 처음 연 기기)는 '모름' → 자동 반영 안 함. 한 번 저장·불러오기가 성공하면 0.
+  ② 서버가 더 최신(revision)이면 `relayServerNewer`: 이 기기에 안 올린 변경이 없고, 이번 세션 변경 없음·전송 대기열·사진 대기함(outbox) 비어 있음·사진 넣는 중 아님·창(모달)·견적 편집·입력 칸에 있지 않으면 자동으로 받는다(`relayLoadApply` 그대로 — 🛡 안전판 '다른 기기 자료 자동 반영 전' 먼저, 받는 사이 손대면 'blocked' 로 멈춤).
+     하나라도 걸리면 예전 그대로 배너(서버 자료가 이 기기 자료보다 나중에 저장된 것일 때). 내 변경이 있는 기기는 충돌 창에서 사람이 고른다(자동 덮어쓰기 금지 원칙 유지).
+  ③ 부팅 때와 앱을 다시 볼 때(`visibilitychange` → `relayResumeCheck`, 1분에 한 번) 확인한다.
+  ④ 지난번에 3초 안에 앱을 닫아 서버에 못 올린 변경이 남아 있고 서버가 그대로면 부팅 때 바로 올린다(서버 revision 검사가 그대로 지킨다).
+  ⑤ 불러오기로 받은 자료를 이 기기 저장본에도 바로 쓴다(`guardedPersistCurrentState`) — 예전에는 revision 만 새것으로 남고 저장본은 화면을 떠날 때에야 바뀌어, 앱이 그냥 꺼지면 다음에 옛 자료가 뜰 수 있었다.
+     받은 뒤에는 '더 최신 자료' 배너를 내린다(충돌 창 ①로 받은 뒤에도 남아 있었다). 배너 단추 44px.
+  - 함수만 떼어 돌리는 단위 검사(relay-queue-preservation·test-stability)를 위해 새 전역·함수는 `typeof` 로 확인하고 쓴다.
+- 핀3곳 hyeonjang-v530-latestsync.
+  - 신규 tests/relaysync-v530.e2e.js 6/6(mock relay, PC + 폰 390): 처음 쓰는 폰은 배너 · 다시 열면 자동 · 안 올린 변경이 있으면 충돌 창 · 다시 볼 때 자동/창이 떠 있으면 배너 · 남은 변경 올리기 · 핀.
+  - 실패해야 할 때 실패하는 것도 확인했다: 기준선 v529 는 ①에서, 변이 no-ff(자동 반영 끔)는 ②에서 떨어진다.
+  - 기준선·변이 index.html 은 테스트가 따로 띄운 로컬 서버(8301)로 준다 — route.fulfill 로 준 문서는 크롬이 주소를 'unknown' 으로 보고 localhost(mock relay) 요청을 로컬 네트워크 접근 규칙으로 막아, 앱과 다른 이유로 떨어졌다.
+- 검토에서 같이 찾은 것(코드 변경 없음): 사진 기록 1,272장 중 610장은 원본이 PC 폴더에만 있고 서버(드라이브)에 없다(`_driveId` 없음) — 폰에서는 '빈 사진'으로 보인다(`needsPreviewRepair`).
+  대부분 예전 `_정리완료/` 사진이고, 10/31 정리한 `현장사진/` 일부도 있다. 서버로 올리는 일괄 도구는 아직 없다(다음 판 후보 — 올리기는 대표 확인 뒤).
+- 안 한 것:
+  - 폰 화면에 '마지막으로 받은 시각' 상시 표시.
+  - 부팅 때 자동 시드(세금 달력·Cowork 예약 등)가 서버 확인보다 먼저 끝나 '이번 세션 변경'으로 잡히면 그 부팅은 예전처럼 배너(안전 쪽).
+
+## 2026-10-31 v529 🧰 클로드 명령어 모음 — 옛 🖥 Cowork 작업 지휘부를 분류·준비물·찾기가 있는 명령어 모음으로, 10/31 클로드가 손으로 한 일 10가지를 기본 명령으로 (대표 "이렇게 클로드가 개입할 수 있도록 명령어 모음집을 추가해줘")
+
+- 왜: 10/31 하루 동안 클로드가 대표 말을 받아 손으로 한 일(톡클라우드에서 받은 사진 정리·카톡 대조·미배정 배정·중복 정리·작업내역서 반영·매출 점검·청구 누락 찾기·현장웹 두 창 저장·앱 개발)을 다음에는 대표가 명령 한 번 붙여 넣어 시킬 수 있게. 앱에는 이미 'Cowork 작업 지휘부'(명령 5개, 복사·수정·추가)가 있었으나 분류·준비물 안내가 없고 이름도 'Cowork'였다(지금은 클로드).
+- 한 것:
+  ① 기본 명령 10개 추가(`cwDefaultsV529`): 📥 받은 사진 정리·배정 · 💬 카톡 대화로 누락 사진 찾기 · 🧭 현장 없는 사진 배정 · 🔎 중복 사진·파일 정리 · 📑 작업내역서·견적서 반영 · 🧮 매출 점검 · 💰 협력사 입금 기록 · 🔍 청구 안 된 작업 찾기 · 💾 현장웹 저장·백업 확인 · 🛠 현장웹 기능 개발·오류 고치기.
+     - 자료를 만지는 명령에는 지킬 것(`CW_SAFE`: 삭제 금지·_중복정리_보관_{오늘}·_현장.json 백업 먼저·앱 파일 손대지 않기·현장웹 두 창이면 먼저 알리기·애매하면 멈춤)이 붙는다. 입금은 '애매하면 기록하지 말고 묻기·로그인 안 함', 내역서는 '계좌 비움', 개발은 'PR 만, 병합 안 함·공개 저장소라 실제 고객 정보 금지'.
+     - 이미 쓰던 목록에는 빠진 기본 명령만 뒤에 붙는다(기존 `coworkTasksEnsure` 규칙) — 대표가 고친 명령·내 명령은 그대로. 저장 모양 {id,title,icon,prompt,builtin} 은 바꾸지 않았다(분류·준비물은 id 로 `CW_META`).
+  ② 화면(`coworkTasksManage`): 제목 '🧰 클로드 명령어 모음', 분류 📸 사진 · 📑 견적·매출·입금 · 🧾 정산·세무 · 🛠 현장웹 저장·개발 · ✏️ 내 명령. 분류 안은 정해진 순서(옛 명령이 앞에 저장돼 있어도). 명령마다 '준비:' 한 줄(무엇을 받아 두고 무엇을 채울지).
+     - 🔍 찾기(이름·준비물, 여러 낱말은 모두 들어간 것). 내가 쓴 이름·아이콘은 글자로만 그린다(옛 코드는 아이콘을 그대로 넣었다).
+  ③ 복사: 스킬 줄 + 명령, 명령 안의 {오늘} 은 복사할 때 오늘 날짜(YYYYMMDD)로(`cwFill`, 저장된 명령은 그대로). 안내 '— 클로드에 붙여넣으세요'(옛 'Cowork에').
+  ④ 이름: 더보기 '🖥 Cowork 지휘부' → '🧰 클로드 명령어'(id `cowork` 그대로 — 즐겨찾기·최근 사용 유지), 도움말·AI 도우미 도구(`cowork_tasks`)·사용 안내·스킬 명령문 카탈로그도 '클로드'로. 카탈로그에 새 명령 6줄과 manmul-as·manmul-contract·manmul-tax 를 더했다. ⏰ Cowork 예약은 그대로 뒀다.
+- 핀3곳 hyeonjang-v529-claudecmds.
+  - 신규 tests/claudecmds-v529.e2e.js 7/7: 기본 명령·화면·복사·찾기·카탈로그·폰 390·핀.
+  - 실패해야 할 때 실패하는 것도 확인했다: 기준선 v528 은 ①에서, 변이 no-fill({오늘} 안 바꿈)은 ③에서 떨어진다.
+  - rehearsalfix-v449 의 복사 안내 단언을 '클로드에 붙여넣으세요'로 바꿨다(의도한 문구 변경).
+- 안 한 것:
+  - 지금 보는 현장 이름을 명령에 자동으로 넣기. 명령의 [ ] 칸은 사람이 채운다.
+  - 기본 명령 문구를 고쳐도 이미 저장된 기본 명령은 바뀌지 않는다(옛 규칙 — [기본값 복원]을 눌러야 새 문구).
+
+## 2026-10-31 v528 💬 카톡 보고 대조·사진 배정 — 협력사 톡방의 '사진 N장 + 현장 이름' 보고로 앱에 없는 사진(누락 의심)을 찾고 현장 없는 사진의 현장을 제안 (대표 "개발 계속 진행")
+
+- 왜: 10/31 실자료에 현장 없는 사진 107장(드라이브, 6~10월)이 있었다. 협력사 톡방에는 사진을 보낸 바로 뒤 현장(아파트·동·호수)을 적은 보고가 남아 있다. 10/31 에 클로드가 대화 내보내기(.txt)와 사진 시각을 손으로 맞춰 배정했고, '현장 웹에 누락된 사진' 날짜 확인도 손으로 했다. 이 일을 앱이 한다.
+- 한 것:
+  ① 입구: 사진 탭 ⋯ 사진 도구 → '💬 카톡 보고 대조·사진 배정', 🧭 추측 배정 창 아래 [💬 카톡 대화 파일로 찾기]. .txt 여러 개를 한 번에 고른다(utf-8, 깨지면 euc-kr). 대화 파일은 저장하지 않는다.
+  ② 읽기(`hjChatParse`): PC 내보내기(날짜 줄 + '[이름] [오후 h:mm] 내용', 다음 줄로 이어지는 글)와 폰 내보내기('2026년 8월 4일 오후 4:12, 이름 : 내용' · '2026. 8. 4. 오후 4:12, 이름 : 내용'). 오전 12시는 0시.
+  ③ 보고(`hjChatReports`): '사진 N장'·'동영상' 메시지마다 같은 사람이 10분 전 ~ 30분 뒤에 쓴 글에서 현장 후보(v526 `hjStmtMatch` 0.5 이상)가 있는 가장 가까운 줄.
+     - 연달아 보낸 사진 메시지는 한 보고(`hjChatMerge` — 카톡은 30장씩 묶어 보내 52장이 '사진 30장'·'사진 22장' 두 메시지가 된다).
+     - '나' = 사진 메시지를 가장 많이 보낸 사람(`hjChatMe`). 상대가 보낸 사진(확인 요청 등)은 쓰지 않는다.
+     - 사진 메시지마다 앞뒤 시간 창만 훑는다(대화는 시각순) — 합성 2만 줄 단톡방에서 3.6초 → 0.04초(전체를 훑으면 화면이 멈춘다).
+  ④ 대조(`hjChatAudit`, 읽기 전용): 내 보고마다 그 현장 사진이 보고 전 72시간 ~ 뒤 1시간 안에 앱에 몇 장 있는지. 모자라면 ⚠ 누락 의심.
+     - 서류 사진(견적서·내역서 송부)은 '서류 사진'으로 따로 — 사진 보고와 합치면 장수가 부풀어 누락으로 잘못 잡힌다.
+     - 14일 안에 같은 현장 사진을 다시 보낸 것(앞선 보고가 ✓, 장수 80% 이상)은 '앞서 보낸 사진'. 글에 작업 날짜('9월 23일 …')가 있으면 그날 밤 기준.
+     - 사진 시각은 폰 카메라 이름(20260702_104320)이 먼저(`hjChatPhotoTime`) — 드라이브 기록 시각(when)이 올린 날인 사진이 있다.
+  ⑤ 제안(`hjChatPhotoPlan`): 현장 없는 사진을 촬영 뒤 첫 내 보고(72시간 안)로 묶는다. 카톡에서 저장한 사진(KakaoTalk_…, 이름 시각이 저장 시각)·화면 캡처는 뺀다.
+     - 기본 체크는 '현장 찾음 + 보낸 장수와 같음 + 보고 12시간 안에 찍음'만, 나머지는 참고(체크 해제, 현장은 미리 골라 둠). 보낸 것보다 훨씬 많으면 '확인' 표시.
+     - [체크한 묶음 배정] 전 안전판 '카톡 보고 배정 전' 1회 — 못 만들면 아무것도 바꾸지 않는다(🧭 추측 배정과 같은 규칙). 배정은 현장까지만(세대 연결은 기존 화면).
+- 핀3곳 hyeonjang-v528-chatphoto.
+  - 신규 tests/chatphoto-v528.e2e.js 6/6: 읽기·보고·대조·제안·화면·핀. 합성 대화·사진만.
+  - 실패해야 할 때 실패하는 것도 확인했다: 기준선 v527 은 ①에서, 변이 no-me(상대 보고도 씀)는 ④에서, merge-doc(서류 사진을 사진 보고와 합침)은 ③에서 떨어진다.
+  - stmtpay-v527 의 핀 검사는 'v527 이상 + 세 곳 같음'으로 바꿨다.
+- 실제 자료(읽기만, 바꾸지 않음): 10/31 협력사 톡방 6개 대화로 미리 돌려 보니 내 보고 64건 중 ✓ 32 · ⚠ 누락 의심 13(6~10월) · 현장 못 찾음 15 · 서류 사진 3 · 앞서 보낸 사진 1. 현장 없는 사진 제안은 3묶음, 모두 참고(장수가 다르거나 보고와 12시간 넘게 떨어짐).
+- ⚠ 개인정보: 이 저장소는 공개다. v526 테스트·주석과 이 문서에 실제 고객 주소(아파트·동·호수)와 매출 금액이 들어가 있던 것을 합성 이름·호수로 바꿨다(최종 코드 기준). PR #198 의 앞 커밋 3개(v526·v526 검토·v527)에는 아직 남아 있으니 병합은 'Squash and merge' 로(main 기록에 안 남게) — 앞 커밋까지 지우는 강제 푸시는 대표 승인 뒤. 테스트·주석·이 문서·커밋 메시지에 실제 고객 주소·사람 이름·매출 금액을 쓰지 말 것 — 실자료 확인은 저장소 밖(스크래치)에서.
+- 안 한 것:
+  - 누락 의심 사진을 톡클라우드에서 받아 오기(로그인 필요 — 사람이 받아 넣는다).
+  - 사진 메시지 없이 글만 있는 보고, 상대가 보낸 사진의 현장 제안.
+
+## 2026-10-31 v527 📑 작업내역서 장부 · 💰 내역서 입금 · 📂 폴더의 내역서 바로 반영 (대표 "개발 계속 진행")
+
+- 왜: v526 으로 내역서를 현장별 견적(수주)으로 넣으면 협력사가 돈을 줄 때까지 그 현장들이 모두 미수로 잡힌다(10/31 실자료: 현장 32곳). 협력사는 내역서 한 장 단위로 입금한다 — 현장마다 💰 입금 기록을 32번 넣을 수는 없다. 또 앱이 이미 색인한 `작업내역서/` 폴더의 엑셀을 반영하려면 파일을 다시 골라야 했다.
+- 한 것:
+  ① 견적 작성 탭 맨 위에 '📑 작업내역서 — 협력사에서 받을 돈' 장부(`hjStmtLedger`/`hjStmtLedgerHTML`). 내역서(stmt.src)별로 거래처·작성일·현장 수·합계·받음·남음을 보여 준다.
+     - 합계는 그 내역서 견적의 합계다(집계 제외 견적은 뺀다). 받은 돈은 수금 이력 중 `stmt` 가 그 내역서인 기록의 합이다. 맨 위에 남은 돈 합계.
+  ② [💰 입금](`hjStmtPayView` → `hjStmtPayApply`): 받은 금액을 그 내역서 현장들에 남은 돈 비율로 나눠(원 단위, 큰 나머지 순 — 합이 정확) 현장마다 입금 기록을 남긴다.
+     - 입금 기록은 기존 한 곳(`hjPayRecordAdd`)을 그대로 쓴다: 받은 돈 누계·수금 이력·미수 독촉 작업 닫기.
+     - 기록에 `stmt`(내역서)·`memo`·결제 방법·증빙(세금계산서 등)이 붙는다.
+     - 막는 것: 남은 돈보다 많은 금액, 미래 날짜, 지워진 현장(나눈 금액이 어긋나지 않게 아무것도 안 적음). 창에서 나눔 미리보기가 금액을 고칠 때마다 바뀐다.
+  ③ 📂 앱이 색인한 작업내역서 엑셀(`작업내역서/` 폴더, 또는 이름에 작업내역서·공사내역서 — 양식·서식 제외)을 장부 아래에 '아직 안 넣음'으로 보여 준다.
+     - [📑 반영]은 파일 고르기 없이 원본(`getFileOf`)을 읽어 v526 확인 창을 연다. 반영한 파일은 목록에서 빠진다(stmt.src = 파일 이름).
+- 핀3곳 hyeonjang-v527-stmtpay.
+  - 신규 tests/stmtpay-v527.e2e.js 6/6: 장부·나누기·입금·화면·폴더 파일·핀.
+  - 실패해야 할 때 실패하는 것도 확인했다: 기준선 v526 은 ①에서, 변이 no-split(큰 나머지 나눔 제거)은 ②에서 떨어진다.
+  - stmtimport-v526 의 핀 검사는 'v526 이상 + 세 곳 같음'으로 바꿨다.
+- 실제 자료: 이 판은 자료를 바꾸지 않는다. 배포되면 장부에 내역서 7장과 남은 돈 합계(v526 의 1원 보정이 들어간 값)가 보인다. 협력사 입금이 들어오는 대로 [💰 입금]으로 적으면 된다.
+- 안 한 것:
+  - 통장 거래내역 가져오기(🏦)에서 협력사 입금을 내역서에 자동으로 맞추기. 지금은 금액이 같아도 사람이 [💰 입금]을 누른다.
+  - 내역서별 받을 돈의 기간(에이징) 표시.
+
+## 2026-10-31 v526 📑 작업내역서 반영 — 협력사에 보낸 작업내역서 엑셀(작업 날짜 | 위치 | 작업명 | 작업비용)을 현장마다 견적 1건(수주)으로 (대표 요청 10/31 "내역에 있어 해줘")
+
+- 왜: 누수나라·더케이 같은 협력사 일감은 견적서 없이 작업내역서로 청구한다. 10/31 실자료에는 작업내역서 7장(공사내역서·세금계산서 품목표 포함), 현장 32곳이 있었다. 이 금액은 앱 매출에 하나도 없었다. 대신 같은 현장의 입찰본과 다른 업체 이름의 비교견적이 매출로 잡혀 있었다(실제의 약 2.7배). 손으로 옮기면 내역서 한 장에 현장이 8곳이다.
+- 한 것:
+  ① 견적 작성 탭에 [📑 작업내역서 반영] 단추를 넣었다. 엑셀은 `hjStmtParse` 가 읽는다.
+     - 머리글 줄(위치 + 작업비용/금액 + 작업명/날짜)을 찾아 그 칸만 읽는다. 병합 셀 양식(0·3·6·9 칸)도 같다.
+     - 날짜·위치가 빈 줄은 위 줄을 잇는다. 금액이 빈 줄은 위 줄 작업명에 붙인다.
+     - '소계' 줄은 건너뛰고, '합계' 줄은 줄 합과 대조한다. '서비스'는 0원이다.
+     - 시트가 여럿이면 이름에 '통합'이 든 시트만 읽는다.
+     - 받는 분·작성일은 엑셀에서 읽고, 없으면 파일 이름 `…YYYYMMDD_거래처` 에서 가져온다.
+     - 위치 칸이 없는 양식도 읽는다: 공사내역서(머리글 위 '현장명'·'공사일자', 항목·단가·금액 칸), 세금계산서 품목표(월 | 일 | 품목 | … | 공급가액 | 세액 — 품목 글자를 위치로 쓰고 부가세 기본값을 '공급가'로).
+  ② 위치를 현장 후보로 바꾸는 건 `hjStmtMatch` 다.
+     - 이름은 동·호수·도시·'아파트'를 뺀 뒤, 포함 관계와 2글자 조각 유사도로 비교한다.
+     - 앞 글자가 같으면 후보다(신탄진 '평화'아파트 → 평화로운아파트).
+     - 그 현장에 등록된 동·호수와 같으면 +0.35.
+     - 사진·견적이 없는 빈 현장은 −0.2. 실자료에 동네 이름이나 호수가 붙은 빈 중복 현장('솔동보람아파트'·'보람아파트 101호' 꼴)이 있었다.
+     - 동점이면 자료가 많은 현장이 먼저다. 도시 이름 현장('대전')에는 붙지 않는다.
+     - 0.5 미만인데 앱에 없는 아파트면 '＋ 새 현장'을 기본으로 고른다(새벽동 모란아파트 303-704 → 모란아파트).
+  ③ 확인 창에서 사람이 고른다.
+     - 위치마다 현장을 고른다. 받는 분과 작성일(= 매출 월)을 고칠 수 있다.
+     - 부가세: '부가세 포함 합계'가 기본이다. '공급가'를 고르면 +10%.
+     - 그 현장에 이미 매출로 잡힌 견적은 목록으로 보여 준다. 체크한 것만, 이번에 새 줄이 들어가는 현장에서만 집계에서 뺀다 — 확인 창의 묶음 그대로(엑셀·PDF 사본, 앱 견적은 견적 레코드 exSum). 현장을 바꾸거나 '반영 안 함'으로 돌리면 체크도 사라진다. 기본은 해제.
+  ④ [반영]은 `hjStmtApply` 가 한다.
+     - 현장마다 견적 1건(result 'won')을 만든다. 같은 현장의 여러 위치는 한 건으로 묶는다.
+     - 계좌(accountIdx)는 null 로 비운다. 계좌는 건별로 대표가 고른다.
+     - 견적에 `q.stmt={v,doc,to,date,file,key:'파일#현장',vat,total,lines}` 를 단다.
+     - 이미 들어간 줄(날짜·위치·작업명·금액이 같은 줄 — 어느 내역서 견적이든, 이름만 바꾼 사본 '(1).xlsx' 도)은 건너뛴다. 그래서 같은 내역서를 다시 넣으면 0건이다.
+     - 같은 파일(이름)을 고쳐 줄이 늘었으면 그 현장의 기존 내역서 견적에 새 줄만 붙인다(이미 있는 품목은 그대로, 새 마지막 품목만 1원 단위로 맞춤). 원본 파일 이름은 `stmt.src` 에 따로 둔다(이름에 '#'이 있어도).
+     - 새 현장은 실제로 견적이 생길 때만 만든다.
+  ⑤ 견적 목록에 📑 내역서 배지를 단다.
+- 금액 규칙(`hjStmtGross` — quoteCalc·hjEstBill·taxInvoiceData):
+  - 부가세 포함 작업비용은 단가를 공급가로 역산한다. 그런데 앱 견적의 세액은 round(공급가×10%)다. 그래서 합계를 정확히 만들 수 없는 금액이 11개에 1개꼴로 생긴다(270,000·1,150,000·50,000·600,000…). 예: 270,000 → 270,001.
+  - 작업내역서 견적(stmt.vat 'included')은 계산 합계가 stmt.total 과 1원 이내로 다르면 stmt.total 을 합계로 쓴다. 세액은 합계 − 공급가다.
+  - 품목을 고쳐 차이가 2원 이상이 되면 이 보정은 꺼진다. 보통 견적은 그대로다(245,455 → 270,001).
+- 같이 고친 것:
+  - 잠복 결함: estimateGroups 2차 병합은 같은 현장·같은 금액이면 이름에 글자가 없는 가상 파일('[견적서] …')을 사본으로 묶었다. 그래서 앱 견적 2건의 금액이 같으면 하나가 매출에서 사라졌다. 예: 같은 아파트 우수관 220,000 두 달 치가 220,000 하나로 잡혔다.
+    - 이제 작업내역서 견적(가상 파일 `_stmt` = stmt.key)은 다른 어떤 견적과도 사본으로 묶지 않는다 — 같은 현장의 관계없는 같은 금액 견적 파일의 'PDF 사본'으로 묶여 사라지던 것까지. 같은 공사의 견적 파일이 따로 있으면 반영 확인 창에서 체크해 집계 제외한다.
+    - 보통 앱 견적끼리의 규칙은 그대로 뒀다. 복제 견적이 이중 계상될 위험이 있어 대표 확인 뒤 다음 판에 다룬다.
+  - 다른 업체 이름 견적 안내(대시보드 점검·견적 배지)에 '비교 견적(들러리)이면 [Σ 집계 제외]'를 더했다. 외주(매입)로 바꾸면 외주비 지출까지 생겨 마진이 틀어진다.
+- 실제 자료(10/31): 클로드가 이 판 이전 코드에서 브라우저로 직접 반영했다.
+  - 내역서 7장 → 견적 32건. stmt 키가 이 판과 같은 형식이라 같은 엑셀을 다시 넣어도 건너뛴다.
+  - 집계에서 뺀 것: 다른 업체 이름의 비교견적, 입찰본, 내역서와 겹치는 견적 — exSum 52건(사본 포함).
+  - 새 현장 4곳.
+  - 매출이 내역서 기준으로 바뀌었다. 이 판이 배포되면 1원 보정 2건(부가세 포함 합계를 역산하면 1원 어긋나던 것)이 들어간다.
+- 핀3곳 hyeonjang-v526-stmtimport.
+  - 신규 tests/stmtimport-v526.e2e.js 9/9: 읽기·현장 맞추기·금액·병합·반영·화면·읽기 함정·반영 함정·핀.
+  - 독립 검토(별도 에이전트)가 찾은 결함을 고쳤다: ① 내역서 견적이 관계없는 같은 금액 견적과 사본으로 묶여 매출이 사라짐 ② 체크한 뒤 현장을 바꾸거나 '반영 안 함'으로 돌려도 기존 견적이 제외됨 ③ 앱 견적 + PDF 사본 묶음은 반만 제외됨 ④ '총액·계·청구금액' 합계 줄과 '소 계'(띄어 쓴 소계)가 작업 줄로 읽힘 ⑤ 통합 시트 이름이 '전체'면 줄이 두 번 셈 ⑥ 첫 '합계'에서 읽기를 멈춰 다음 구역이 빠짐 ⑦ 같은 내용의 '(1).xlsx' 는 두 번 들어가고, 줄이 는 같은 이름 파일은 통째로 건너뜀, 파일 이름 '#' 에서 깨짐. 덤으로 '작업 위치' 머리글, '자재비용 | 작업비용'(작업비용을 고름), ₩·만원·(VAT포함)·'1.300.000' 금액(못 읽은 금액 칸은 확인 창에 알림), '현장명 | 작성일자 | 합계금액' 같은 정보 줄을 머리글로 잡지 않기, 세액 칸에 금액이 있을 때만 공급가 기본값.
+  - 실패해야 할 때 실패하는 것도 확인했다: 기준선 main 은 ①에서, 변이 no-gross 는 ③에서, no-pair 는 ④에서 떨어진다.
+  - casefolder-v525 의 핀 검사는 'v525 이상 + 세 곳이 같음'으로 바꿨다. 판이 바뀔 때마다 떨어지지 않게.
+  - 견적·매출 관련 테스트 59개(quote-*·estimate-*·revenue-basis·dash-reports·extras-settle·ledger-roundtrip·margin·leakquote 등, 정적 검사 포함)가 마지막 코드로 통과했다. 전체 417개 중 411 통과 — 떨어진 6개(apartment-projects·bathroom-quality-v410·document-upload·document-select·leakintakeweb-v431·team-workboard)는 main(v525)에서도 같은 단언으로 떨어지는 이 컨테이너 환경 문제(다운로드 파일 이름·글꼴 너비)다.
+  - 실제 내역서 엑셀 4개(누수나라 9/17·10/13·10/30, 더케이 통합본)를 10/31 실자료 현장 목록으로 읽어 보니, 줄 35개·합계가 모두 맞았고 위치 26곳이 손으로 맞춘 현장과 모두 같았다.
+- 안 한 것:
+  - 사진으로 보낸 공사내역서·세금계산서 읽기. 글자 읽기 정확도가 금액에 쓰기엔 낮다.
+  - 앱에 색인된 작업내역서 파일(작업내역서/ 폴더)에서 바로 반영. 지금은 파일을 직접 고른다.
+  - 동·호수 세대 자동 등록.
+  - 협력사 입금 기록. 지금은 반영한 견적이 미수로 잡힌다.
+
 ## 2026-10-30 v525 '사례 작성' 폴더 제외 — 홍보 글용 사진·파일 모음은 현장 배정 대상이 아니다 (대표 결정 10/30 "빼")
 
 - 왜: 10/30 자료 점검(읽기 전용)에서 미배정 사진 52장 중 30장이 `사례 작성/`(화·목 홍보 원고 작업이 만드는 사례 폴더, GPS 없음)였다. 기타 파일 18건까지 56건이 색인에 들어 미배정 수·🧭 추측 배정·🩺 건강 줄·AI 제안을 흐렸다. 대표가 "빼"라고 결정.

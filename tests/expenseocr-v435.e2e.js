@@ -208,8 +208,11 @@ let browser, passed = 0, page;
     assert.deepEqual(z.keys.filter(k => k.startsWith('영수증/')).length, 3); assert.deepEqual(z.keys.filter(k => !k.startsWith('영수증/')), ['00_읽어주세요.txt', '만물_세무자료_' + D.month + '.xlsx']);
     assert(!JSON.stringify([z.sales[0], z.spend[0], z.summary]).includes('미수'), 'no receivable column');
     assert.deepEqual(z.sales.slice(1, 3).map(r => [r[1], r[2], r[4]]), [[TILE, 1500000, '세금계산서 발행'], ['', 1500000, '']]);
-    assert.deepEqual(z.spend.slice(1, -1).map(r => [r[1], r[3], r[4], r[7] === '없음' ? '없음' : '사진']), [['식대', '', 30000, '없음'], ['자재', '한솔자재 (주)', 55000, '사진'], ['유류', 'GS칼텍스 대흥주유소', 80000, '사진'], ['주차·통행', '대흥 공영주차장', 12000, '사진']]);
-    assert.deepEqual(z.spend[z.spend.length - 1].slice(0, 5), ['합계', '', '', '', 177000]);
+    // 지출 줄은 날짜순 — 같은 날이면 넣은 순서다. 매달 1일엔 '1일' 식대와 오늘 넣은 영수증이 같은 날이라 식대가 맨 뒤로 가므로(v540: 11/1 CI 에서 떨어짐)
+    // '날짜순'과 '줄 내용'을 따로 본다.
+    const spendRows = z.spend.slice(1, -1), rowKey = r => JSON.stringify(r);
+    assert(spendRows.every((r, i) => i === 0 || String(spendRows[i - 1][0]) <= String(r[0])), 'spend rows sorted by date ' + JSON.stringify(spendRows.map(r => r[0])));
+    assert.deepEqual(spendRows.map(r => [r[1], r[3], r[4], r[7] === '없음' ? '없음' : '사진']).map(rowKey).sort(), [['식대', '', 30000, '없음'], ['자재', '한솔자재 (주)', 55000, '사진'], ['유류', 'GS칼텍스 대흥주유소', 80000, '사진'], ['주차·통행', '대흥 공영주차장', 12000, '사진']].map(rowKey).sort());    assert.deepEqual(z.spend[z.spend.length - 1].slice(0, 5), ['합계', '', '', '', 177000]);
     assert(z.summary.some(r => r[0] === '영수증 없는 지출' && r[1] === '1건')); assert(z.summary.some(r => r[0] === '  주차·통행' && r[1] === 12000));
     assert.match(z.readme, /영수증 사진 3장/);
     assert.deepEqual(z.note, ['[세무 자료] ' + D.month + ' 만듦 · 지출 4건 · 영수증 사진 3장']); assert(z.pack && z.pack[D.month], 'tax calendar item checked');
