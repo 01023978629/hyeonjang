@@ -3823,7 +3823,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v551-calnames';
+const APP_BUILD='hyeonjang-v552-calsend';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -15115,6 +15115,7 @@ function hjSchShareView(opts){
       '<button type="button" class="clay" id="shKakao" style="flex:1 1 140px;min-height:48px">💬 카톡으로 공유</button>'+
       '<button type="button" class="ghost" id="shCal" style="flex:1 1 140px;min-height:48px">📅 캘린더 파일(.ics)</button>'+
       '<button type="button" class="ghost" id="shCopy" style="flex:1 1 100px;min-height:48px">📋 복사</button></div>'+
+    (one?'':'<button type="button" class="ghost" id="shMonth" style="width:100%;min-height:44px;margin-top:6px">📅 한 달 일정 골라서 작업자 캘린더로</button>')+   // v552
     '<label for="shPhone" style="display:block;font-size:13px;font-weight:700;margin-top:12px">✉️ 문자로 보내기 <span style="font-weight:400;color:var(--muted);font-size:12px">받는 번호 — 여러 명은 쉼표(,)로</span></label>'+
     '<div style="display:flex;gap:6px;margin-top:4px"><input type="tel" id="shPhone" list="shContacts" autocomplete="off" value="'+escapeAttr(phonePre)+'" placeholder="010-0000-0000, 010-…" style="flex:1;min-width:0;min-height:44px;font-size:16px;padding:8px">'+
       '<button type="button" class="blue" id="shSms" style="min-height:44px;padding:0 14px">문자 열기</button></div>'+
@@ -15142,7 +15143,105 @@ function hjSchShareView(opts){
   const shc=root.querySelector('#shCust');if(shc)shc.onclick=()=>hjCustSchedView(project,()=>again({}));   // v363
   root.querySelectorAll('.shPcSms').forEach(b=>b.onclick=()=>{const x=perCrew[+b.dataset.i];if(!x)return;const url=hjSmsUrl([x.phone],x.text);if(url)hjSmsGo(url);});
   root.querySelectorAll('.shPcKakao').forEach(b=>b.onclick=()=>{const x=perCrew[+b.dataset.i];if(x)kakaoShareText(x.text,COMPANY.name+' 작업 일정 — '+x.name);});
+  const shm=root.querySelector('#shMonth');if(shm)shm.onclick=()=>hjSchCalSendView({ym:rg?rg.from.slice(0,7):calMonth(),back:()=>again({})});   // v552
   return {건수:n,범위:label,팀원별:perCrew.length};
+}
+/* ═══════════ 📅 작업자 캘린더로 보내기 (v552) — 한 달 일정을 골라서 또는 전체를 .ics 파일 하나로 ═══════════
+   현장 요청(11/3): "이번 달 일정을 선택해서 보내기·전체 보내기로 작업자 삼성·아이폰 캘린더에 공유 — 카톡으로 보낼 것".
+   📤 일정 공유(v356)는 오늘·이번 주 같은 범위를 통째로만 .ics 로 보냈다 — 한 달치를 골라(사람마다 다르게) 보낼 길이 없었다.
+   · 달: 일정표 달력에서 보고 있던 달(‹ › 로 옮김). 그달에 걸친 팀 일정 — 💰 수금·세금 자동·앱이 넣은 개인 시험 일정(sourceUid)은 뺀다.
+   · 처음엔 전부 체크. [👤 담당] 칩은 그 사람 담당 일정만 체크. [📅 선택한 N건 보내기] / [📅 전체 M건 보내기](체크와 무관하게 전부).
+   · 파일 꼴은 📤 일정 공유와 같다(여러 날 공정은 날마다 하나, 고객 이름·전화·작업 보고 없음, 주소·메모는 넣음). 다만 메모에서 출입 번호처럼 보이는 토막
+     (현관·도어락·비번 바로 뒤 숫자 — hjLooksLikeAccessCode)은 뺀다: 출입정보는 다른 기기로 퍼지지 않게(앱 원칙). 예전 공유 길은 그대로 둔다.
+   · 보내기 = saveICSToPhone: 파일 공유가 되는 폰(아이폰 등)은 공유 목록 → 카카오톡, 안 되면(PC·안드로이드 크롬은 .ics 공유가 막혀 있다) 내려받기 → 카톡 대화방에 파일로.
+   · [💬 받는 법 안내 글]: 삼성·아이폰에서 파일을 캘린더에 넣는 법 — 파일과 같이 보내라고(공유 시트, 안 되면 복사). 자동 발송 없음, 저장하는 것 없음. */
+function hjMonthRange(ym){
+  const m=String(ym||'').match(/^(\d{4})-(\d{2})$/),t=localDate(),y=m?+m[1]:+t.slice(0,4),mo=m?+m[2]:+t.slice(5,7);
+  const k=y+'-'+pad2(mo);
+  return {ym:k,from:k+'-01',to:k+'-'+pad2(new Date(y,mo,0).getDate()),label:mo+'월',year:y,month:mo};
+}
+function hjMonthShift(ym,n){const r=hjMonthRange(ym),d=new Date(r.year,r.month-1+n,1);return d.getFullYear()+'-'+pad2(d.getMonth()+1);}
+function hjSchCalSendOk(s){return !!s&&HJ_YMD_RE.test(String(s.date||''))&&hjPrepOtherOk(s)&&!s.sourceUid;}
+function hjSchMonthRows(ym){
+  const r=hjMonthRange(ym);
+  return (state.schedule||[]).filter(s=>hjSchCalSendOk(s)&&s.date<=r.to&&hjSchSpan(s).to>=r.from)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.time||'').localeCompare(String(b.time||'')));
+}
+// 출입 번호처럼 보이는 메모 토막(줄 · ' / ' · ' · ' 로 나눈 조각)을 뺀다 — 뺀 조각 수도 돌려준다
+function hjAccessScrub(t){
+  const parts=String(t||'').split(/\n|\s+\/\s+|\s+·\s+/).map(x=>x.trim()).filter(Boolean),keep=parts.filter(p=>!hjLooksLikeAccessCode(p));
+  return {parts:keep,cut:parts.length-keep.length};
+}
+function hjSchCalSendItems(ids){
+  let cut=0;const items=[];
+  hjSchShareDays(null,null,'',ids).forEach(day=>day.rows.forEach(({s,c})=>{
+    const sc=hjAccessScrub(s.memo);if(!c)cut+=sc.cut;
+    // 남은 토막은 ' · ' 로 잇는다(줄바꿈을 빈칸으로 뭉개면 '거실 욕실 자재는…' 처럼 붙는다). 첫 토막의 공정표 기간 '시작~끝 (N일)' 은 뗀다(제목에 있다).
+    const memo=sc.parts.map((x,i)=>(i?x:x.replace(HJ_RANGE_MEMO_RE,'').replace(HJ_RANGE_TAIL_RE,'')).replace(/\s+/g,' ').trim()).filter(Boolean).join(' · '),addr=hjSchShareAddr(s);
+    items.push({id:String(s.id)+(c?'-d'+c.day:''),date:day.date,time:s.time||'',hours:num(s.hours)>0?num(s.hours):8,title:hjSchShareTitle(s,c),
+      project:s.project||'',workers:s.workers||'',crew:s.crew||'',memo:[addr?'주소: '+addr:'',memo].filter(Boolean).join(' / ')});}));
+  return {items,cut};
+}
+function hjSchCalSendGuide(r,n){
+  return ['['+COMPANY.name+'] '+r.year+'년 '+r.label+' 작업 일정 '+n+'건 — 캘린더 파일','',
+    '같이 보낸 파일(.ics)을 누르면 내 폰 캘린더에 들어가요.',
+    '· 삼성(갤럭시): 파일 받기 → 열기 → [캘린더] 앱 → 저장',
+    '· 아이폰: 파일 누르기 → 오른쪽 위 공유(↑) → [캘린더] → 모두 추가',
+    '  (캘린더가 안 보이면 [파일에 저장] 뒤 파일 앱에서 눌러 열기)',
+    '','문의 '+COMPANY.owner+' '+COMPANY.tel].join('\n');
+}
+function hjSchCalSendView(opts){
+  opts=opts||{};
+  const r=hjMonthRange(opts.ym||calMonth()),rows=hjSchMonthRows(r.ym);
+  const crews=[...new Set(rows.flatMap(s=>hjCrewList(s.crew)))];
+  const plain=s=>String(s.title||'작업').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'작업';
+  const row=s=>{const sp=hjSchSpan(s),crew=hjCrewText(s.crew);
+    return '<label class="csRow" data-id="'+escapeAttr(s.id)+'" style="display:flex;gap:10px;align-items:flex-start;min-height:44px;box-sizing:border-box;padding:9px 10px;border-bottom:1px solid var(--line-soft);cursor:pointer">'+
+      '<input type="checkbox" class="csChk" value="'+escapeAttr(s.id)+'" checked style="width:22px;height:22px;margin:1px 0 0;flex:0 0 auto">'+
+      '<span style="min-width:0;flex:1;font-size:13.5px;line-height:1.45;overflow-wrap:anywhere"><b>'+escapeHtml(hjMdDow(s.date))+'</b> '+escapeHtml(s.time||'종일')+
+        (sp.days>1?' <span style="color:var(--muted)">~'+escapeHtml(hjMdDow(sp.to))+' · '+sp.days+'일</span>':'')+'<br>'+escapeHtml(plain(s))+
+        (s.project?' <span style="color:var(--muted)">· 🏗 '+escapeHtml(s.project)+'</span>':'')+(crew?' <span style="color:var(--muted)">· 👤 '+escapeHtml(crew)+'</span>':'')+'</span></label>';};
+  const body='<div id="calSend" style="min-width:0;overflow-wrap:anywhere">'+
+    '<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:8px">고른 일정을 캘린더 파일 하나로 만들어 카톡으로 보내요. 받는 사람이 파일을 누르면 삼성·아이폰 캘린더에 들어가요.</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><button type="button" class="ghost" id="csPrev" aria-label="이전 달" style="min-width:44px;min-height:44px;padding:0">‹</button>'+
+      '<b id="csMonth" style="font-size:15px">'+r.year+'년 '+r.label+'</b><button type="button" class="ghost" id="csNext" aria-label="다음 달" style="min-width:44px;min-height:44px;padding:0">›</button></div>'+
+    (rows.length?
+      (crews.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px"><span style="font-size:12.5px;color:var(--muted)">담당으로 고르기</span>'+
+        crews.map(nm=>'<button type="button" class="ghost csCrew" data-name="'+escapeAttr(nm)+'" style="min-height:44px;padding:0 12px;border-radius:999px;font-size:12.5px">👤 '+escapeHtml(nm)+'</button>').join('')+'</div>':'')+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px"><button type="button" class="ghost" id="csAll" style="min-height:44px;padding:0 12px;font-size:12.5px">모두 선택</button>'+
+        '<button type="button" class="ghost" id="csNone" style="min-height:44px;padding:0 12px;font-size:12.5px">모두 해제</button><span id="csCount" role="status" style="margin-left:auto;font-size:13px"></span></div>'+
+      '<div id="csList" style="max-height:46vh;overflow:auto;border:1px solid var(--line-soft);border-radius:10px">'+rows.map(row).join('')+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><button type="button" class="clay" id="csSendSel" style="flex:1 1 150px;min-height:48px"></button>'+
+        '<button type="button" class="blue" id="csSendAll" style="flex:1 1 150px;min-height:48px">📅 전체 '+rows.length+'건 보내기</button></div>'+
+      '<button type="button" class="ghost" id="csGuide" style="width:100%;min-height:44px;margin-top:6px">💬 받는 법 안내 글 (파일과 같이 보내기)</button>'
+    :'<div class="empty" style="padding:16px"><b>'+escapeHtml(r.label)+'에 보낼 일정이 없어요</b>‹ › 로 다른 달을 보거나 일정표에 일정을 넣어 주세요.</div>')+
+    '<div class="hint" style="margin-top:8px;line-height:1.6">아이폰은 공유 목록에서 <b>카카오톡</b>을 고르세요. PC·안드로이드는 파일이 내려받아지니 카톡 대화방에 파일로 올리세요. '+
+      '여러 날 공정은 날마다 하나씩 들어가요. 고객 이름·전화와 출입 번호처럼 보이는 메모는 넣지 않아요.</div></div>';
+  openModal('📅 작업자 캘린더로 보내기',body,[...(opts.back?[{label:'‹ 뒤로',cls:'ghost',fn:opts.back}]:[]),{label:'닫기',cls:'ghost',fn:closeModal}],true);
+  const root=document.getElementById('calSend');if(!root)return {오류:'창 없음'};
+  const again=n=>hjSchCalSendView({ym:hjMonthShift(r.ym,n),back:opts.back});
+  root.querySelector('#csPrev').onclick=()=>again(-1);root.querySelector('#csNext').onclick=()=>again(1);
+  const chks=()=>[...root.querySelectorAll('.csChk')],picked=()=>chks().filter(c=>c.checked).map(c=>c.value);
+  const sync=()=>{const n=picked().length,b=root.querySelector('#csSendSel'),c=root.querySelector('#csCount');
+    if(b){b.textContent='📅 선택한 '+n+'건 보내기';b.disabled=!n;}if(c)c.textContent=n+' / '+rows.length+'건 선택';};
+  chks().forEach(c=>c.onchange=sync);
+  const setAll=f=>{chks().forEach(c=>{c.checked=f(c.value);});sync();};
+  const ca=root.querySelector('#csAll');if(ca)ca.onclick=()=>setAll(()=>true);
+  const cn=root.querySelector('#csNone');if(cn)cn.onclick=()=>setAll(()=>false);
+  root.querySelectorAll('.csCrew').forEach(b=>b.onclick=()=>setAll(id=>{const s=rows.find(x=>x.id===id);return !!s&&hjCrewList(s.crew).includes(b.dataset.name);}));
+  const send=async ids=>{
+    if(!ids.length){toast('보낼 일정을 골라 주세요');return null;}
+    const {items,cut}=hjSchCalSendItems(ids);
+    const name=safeName(COMPANY.name+'_'+r.year+'년'+r.label+'_작업일정_'+ids.length+'건')+'.ics';
+    const res=await saveICSToPhone(items,name,{shareMsg:'📤 공유 목록에서 카카오톡을 골라 보내세요',saveMsg:'📥 '+name+' 내려받음 — 카톡 대화방에 파일로 올리세요'});
+    if(cut&&res&&!res.취소)setTimeout(()=>toast('출입 번호처럼 보이는 메모 '+cut+'곳은 빼고 만들었어요'),2600);
+    return res;
+  };
+  const ss=root.querySelector('#csSendSel');if(ss)ss.onclick=()=>send(picked());
+  const sa=root.querySelector('#csSendAll');if(sa)sa.onclick=()=>send(rows.map(s=>s.id));
+  const sg=root.querySelector('#csGuide');if(sg)sg.onclick=()=>kakaoShareText(hjSchCalSendGuide(r,picked().length||rows.length),COMPANY.name+' 캘린더 받는 법');
+  sync();
+  return {달:r.ym,건수:rows.length};
 }
 /* ═══════════ 🗓 고객 공사 일정 안내 (v363) ═══════════
    고객이 가장 자주 묻는 것이 "다음엔 뭐 해요, 언제 와요?" 다. 📤 일정 공유(v356)는 팀원용이라 고객 이름을 빼고 담당·주소·내부 메모가 들어간다.
@@ -38987,7 +39086,7 @@ function viewSchedule(){
   html+=`<p class="hint" style="margin:12px 0 14px">날짜를 누르면 그날 일정만 봅니다. 일정의 📋로 작업 보고를 쓰면 그날 현장 사진이 자동으로 함께 표시됩니다. ‘📲 폰 캘린더에 추가’로 구글/아이폰 캘린더에 등록(.ics).</p>`;
   const sch=(state.schedule||[]).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(sch.length){
-    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
+    html+=`<div class="toolbar" style="margin-bottom:10px"><button class="blue tiny" id="schCalSend" title="보고 있는 달의 일정을 골라서 또는 전체를 캘린더 파일로 — 카톡으로 작업자에게 보내 삼성·아이폰 캘린더에 넣게 합니다">📤 ${+calMonth().slice(5)}월 일정 작업자 캘린더로</button> <button class="moss tiny" id="schExportAll" title="일정 전체를 폰 기본 캘린더에 저장합니다">📲 폰 기본 캘린더에 저장</button> <button class="ghost tiny" id="schIcsIn" title="시험·교육 등 밖에서 받은 캘린더 파일(.ics)을 일정표로 가져옵니다">📥 캘린더 파일 가져오기</button>${__calSelDate?`<button class="ghost tiny" id="schShowAll">전체 일정 보기</button>`:''}</div>`;
   }
   if(!sch.length){
     html+=`<div class="empty"><b>등록된 일정이 없습니다</b>‘+ 일정 추가’로 작업 일정을 만드세요. 현장·인원·메모를 함께 적을 수 있습니다.</div>`;
@@ -39547,7 +39646,7 @@ function downloadICS(items,filename,opts){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download=filename||'일정.ics';document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1500);
-  toast('캘린더 파일(.ics) 생성 — 열어서 ‘추가’하면 폰 캘린더에 등록됩니다.');
+  toast(opts&&opts.saveMsg||'캘린더 파일(.ics) 생성 — 열어서 ‘추가’하면 폰 캘린더에 등록됩니다.');   // v552 작업자에게 보낼 때는 다른 안내
 }
 /* 폰 기본 캘린더에 저장 — 예전에는 .ics 를 '다운로드'만 했다. 폰에서는 그 파일이
    다운로드 폴더에 떨어질 뿐 캘린더로 넘어가지 않아, 사장님이 파일을 직접 찾아 열어야 했다.
@@ -39561,7 +39660,7 @@ async function saveICSToPhone(items,filename,opts){
     const file=new File([ics],name,{type:'text/calendar'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
       await navigator.share({files:[file],title:'만물인테리어 일정'});
-      toast('📅 공유 목록에서 캘린더를 고르면 저장됩니다');
+      toast(opts&&opts.shareMsg||'📅 공유 목록에서 캘린더를 고르면 저장됩니다');
       return {완료:'공유',건수:items.length};
     }
   }catch(e){
@@ -40221,7 +40320,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -40293,6 +40392,7 @@ function setupDelegation(){
     if(t.id==='schGcal')return toggleGcalAuto();
     if(t.id==='schExportAll')return exportAllICS();
     if(t.id==='schIcsIn')return pickICSFile();
+    if(t.id==='schCalSend')return hjSchCalSendView({ym:calMonth()});   // v552 작업자 캘린더로 보내기
     if(t.id==='schShowAll'){__calSelDate=null;return render();}
     if(d.calday!==undefined)return calSelectDay(d.calday);
     if(d.calnav!==undefined)return calNav(d.calnav);

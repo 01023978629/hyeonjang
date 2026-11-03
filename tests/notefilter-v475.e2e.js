@@ -41,6 +41,9 @@ let browser, passed = 0, page;
   await page.evaluate(async ({ APT, SMALL }) => {
     closeModal(true); aiOpsEnsureState().enabled = false; clearTimeout(__idbSaveTimer); await __appStateWriteQueue;
     __mobileMode = true; applyMobileMode();
+    // v552 오늘을 달 가운데로 고정 — v504 '📅 이번 달' 칩은 보고 일부만 이번 달일 때만 생겨서, 매달 1~5일에는 5~1일 전 보고가 지난달·이번 달로 갈려
+    // 칩이 하나 더 생기고(aria-pressed 9개 ≠ 8개) ②의 '칩 없음'도 깨졌다(11/3 CI 실측). 보고 날짜는 모두 이 날 기준이다.
+    const realLocalDate = window.localDate; window.localDate = d => d ? realLocalDate(d) : '2026-10-20';
     state._demo = false; state.dirHandle = null; state.dirty = false; state.editingQuote = null;
     state.files = []; state.notes = []; state.quotes = []; state.payLog = []; state.contacts = []; state.expenses = []; state.workLogs = [];
     const today = localDate(), ago = n => hjAddDays(today, -n), at = new Date().toISOString();
