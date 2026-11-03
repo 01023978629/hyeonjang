@@ -3,6 +3,27 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-03 v551 달력 칸에 그날 일정 제목 — 날짜별로 보이는 일정표 (현장 요청 11/3)
+
+- 문제: 일정표(폰 '캘린더') 달력 칸에 점(●·숫자)만 있어 무슨 일인지 날짜를 하나씩 눌러 봐야 했다. PC 는 131px 정사각 칸이 거의 비어 달력만 760px.
+  거래처가 보내는 월간 일정표(날짜 칸에 '철거·방수·타일' 이 적힌 표)처럼 칸만 봐도 보이게 해 달라는 요청.
+- 바꾼 것(`calendarHTML` + `hjCalEvItems`·`hjCalEvHTML`·`hjCalEvNames`·`hjCalEvLabel`·`hjCalNarrow`, 읽기 전용):
+  · 칸마다 그날 시작하는 일정 제목 — 시각 순(종일 먼저, 아래 목록과 같은 순서). PC 는 앞에 시각(`<b>`), 폰은 시각 없이. 공정표 꼬리 '(N일차 시작)' 은 뗀다.
+  · 여러 날 공정의 이어지는 날(v354 `hjSchContDates`, 일요일 제외)은 맨 위에 '↳ 제목' 점선 칸 — 예전 옅은 막대(`.cal-cont`)를 이 칸이 이어받았다(클래스 이름 그대로).
+  · 줄 수: PC 3줄 · 폰(모바일 모드 또는 ≤720px) 2줄. 넘치면 마지막 줄이 '+N건'. 남는 줄은 첫 일정이 써서 하루 한 건이면 제목이 PC 3줄·폰 2줄로 접힌다
+    (`-webkit-line-clamp` 인라인, `.cal-ev.ml`). PC 는 낱말 단위(keep-all), 폰은 글자 단위 줄바꿈(keep-all 이면 칸 폭 네 글자에 첫 낱말 하나만 쓰고 끝났다).
+  · 완료 보고 `.rep`(초록 바탕)·긴급 `.urgent`(빨강 바탕)·고른 칸은 흰 칸에 어두운 글자. 어두운 화면 색 따로(대비 4.5↑ 검사).
+  · 칸 높이: 정사각(aspect-ratio:1) → PC min-height 88px(달력 약 760 → 600px), 폰 52px(약 356 → 390px).
+  · 화면읽기: 칸 aria-label = 종전 '…일 일정 N건 이어지는 공정 N건' 뒤에 ': 제목 3개(24자 자름) 외 N건'. 제목 칸(`.cal-evs`)은 aria-hidden, 제목 칸마다 `title`(마우스를 올리면 전체 제목).
+  · 날짜 누르기(그날만 아래 목록)·아래 목록(날짜별 묶음)은 그대로. 점(`.cal-dot`) 마크업·CSS 는 지웠다.
+- 같이 고친 옛 결함: 고른 칸에 마우스가 머물면 `.cal-cell:not(.empty):hover` 흰 바탕이 이겨 흰 날짜 숫자가 안 보였다 → `.cal-cell.sel:not(.empty):hover` 도 파랑.
+  어두운 화면 고른 칸(#3a8bf0)의 흰 숫자 대비 3.5 → 고른 칸만 #1d6fe0(4.8).
+- 핀3곳 hyeonjang-v551-calnames. 신규 tests/calnames-v551.e2e.js 5/5(PC 칸 제목·3줄·+N·↳·완료·긴급·aria·안 잘림·높이 → 날짜 누르기·고른 칸 대비(마우스 올린 채) →
+  폰 → 어두운+큰 글씨 2단계 폰·PC → 꺾쇠·따옴표는 글자·핀·오류·외부 쓰기). 기준선 v550 과 변이 dots(칸 제목 그리기 삭제)는 ① 에서 실패 확인.
+- 옛 검사는 고치지 않았다(multiday-v354 의 '이어지는 날 .cal-cont 있음/없음' 은 이어지는 칸이 같은 클래스라 그대로 통과). 로컬 통과: multiday-v354·darkcards-v453·uiux·
+  leakintake-v419·nav5-v550·menu-schedule·mobile-nav-badges·mobile-nav-scroll·schedule-add-prefill·schedule-safety·schshare-v356·ics-import·ics-save·crew-v357·prep-check·
+  rehearsalfix-v449·team2-v444·mobile-screen-layout·mobile-field-flow·mobile-tap-table(새 검사·multiday·tap-table·screen-layout·nav5 는 CI 글꼴 흉내로도).
+
 ## 2026-11-01 v550 폰 하단 5칸 — 현장 · 캘린더 · [카메라] · 정산 · 설정 + 어두운 화면·큰 글씨 대비 마감 (대표 PDF 10번)
 
 - 하단 메뉴(#mobileNav) 6칸 → 5칸. **옛 칸을 이름만 바꿔 이었다**(새 화면 없음): 현장 = `photos`(현장사진, 미배정 배지 그대로·접근성 이름 '현장사진') ·

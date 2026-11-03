@@ -93,6 +93,8 @@
   body.dark .cal-dow.sat,body.dark .cal-cell.sat .cal-d{color:#8fc3ff}
   body.dark .cal-cell.today{background:#1f3550}   /* v525 어두운 화면의 '오늘' 칸은 반투명 파랑(rgba .1) 대신 단색 — 오늘이 토·일이면 요일색 글자가 흐려 보였다(10/31 토요일 CI 실측) */
   body.dark .cal-cell.sun .cal-d{color:#ffa1a1}
+  body.dark .cal-cell.sel,body.dark .cal-cell.sel:not(.empty):hover{background:#1d6fe0;border-color:#1d6fe0}   /* v551 어두운 화면 고른 칸 — 밝은 파랑(#3a8bf0)에 흰 숫자는 대비 3.5 */
+  body.dark .cal-ev{background:rgba(58,139,240,.24)}body.dark .cal-ev.rep{background:rgba(63,184,158,.22)}body.dark .cal-ev.urgent{background:rgba(255,120,120,.22)}body.dark .cal-ev.cal-cont{background:transparent;border-color:rgba(106,176,255,.6)}   /* v551 달력 칸 제목 */
   body.dark [style^="color:#64748b"],body.dark [style*=";color:#64748b"],body.dark [style*=" color:#64748b"],body.dark [style^="color:#94a3b8"],body.dark [style*=";color:#94a3b8"],body.dark [style*=" color:#94a3b8"]{color:var(--muted)!important}
   body.dark [style*="#dcfce7"],body.dark [style*="#fecaca"]{background:var(--paper-2)!important;background-image:none!important}
   body.dark .ph-hint{background:rgba(23,34,46,.92);color:var(--muted)}
@@ -829,7 +831,7 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;width:100%}
   .cal-dow{text-align:center;font-size:11px;color:var(--muted);font-weight:600;padding:4px 0}
   .cal-dow.sun{color:#d04545}.cal-dow.sat{color:#3060c0}
-  .cal-cell{aspect-ratio:1;min-width:0;overflow:hidden;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;cursor:pointer;position:relative;border:1px solid transparent;min-height:34px}
+  .cal-cell{min-width:0;overflow:hidden;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;cursor:pointer;position:relative;border:1px solid transparent;min-height:88px}   /* v551 정사각(aspect-ratio:1) → 제목 3줄 높이: PC 달력 약 760 → 600px */
   .calendar{max-width:100%}
   .cal-cell:not(.empty):hover{background:var(--paper);border-color:var(--line-soft)}
   .cal-cell.empty{cursor:default}
@@ -838,12 +840,23 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .cal-cell.today{background:rgba(29,111,224,.1)}
   .cal-cell.today .cal-d{font-weight:800;color:var(--clay)}
   .cal-cell.sel{background:var(--clay);border-color:var(--clay)}
+  .cal-cell.sel:not(.empty):hover{background:var(--clay);border-color:var(--clay)}   /* v551 고른 칸에 마우스가 머물면 :hover 흰 바탕이 이겨 흰 날짜 숫자가 사라졌다 */
   .cal-cell.sel .cal-d{color:#fff;font-weight:700}
-  .cal-dot{font-size:9px;color:var(--clay);font-weight:700;margin-top:1px;line-height:1}
-  .cal-dot.rep{color:var(--moss)}
-  .cal-cell.sel .cal-dot{color:#fff}
-  .cal-cont{display:block;width:56%;height:3px;border-radius:2px;background:var(--clay);opacity:.45;margin:2px auto 0}
-  .cal-cell.sel .cal-cont{background:#fff;opacity:.8}
+  /* v551 칸 안 일정 제목(점·막대 대신) — 한 줄씩, 넘치면 … · 고른 칸(파랑)은 흰 칸에 어두운 글자 */
+  .cal-evs{display:flex;flex-direction:column;gap:2px;align-self:stretch;min-width:0;padding:3px 4px 2px;text-align:left}
+  .cal-ev{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11.5px;line-height:1.4;padding:0 5px;border-radius:5px;background:rgba(29,111,224,.12);color:var(--ink)}
+  .cal-ev.ml{display:-webkit-box;-webkit-box-orient:vertical;white-space:normal;text-overflow:clip;word-break:keep-all;overflow-wrap:anywhere}
+  .cal-ev b{font-weight:700;color:var(--blueprint)}
+  .cal-ev.rep{background:rgba(14,122,107,.15)}
+  .cal-ev.urgent{background:rgba(208,69,69,.16)}
+  .cal-ev.cal-cont{background:transparent;border:1px dashed rgba(29,111,224,.55);padding:0 4px}
+  .cal-more{font-size:11px;font-weight:700;color:var(--ink);padding:0 5px;line-height:1.4}
+  .calendar .cal-cell.sel .cal-ev,.calendar .cal-cell.sel .cal-more{background:#fff;color:#0f2438;border-color:#0b4ea2;border-radius:5px}
+  .calendar .cal-cell.sel .cal-ev b{color:#0b4ea2}
+  /* 폰(좁은 칸 약 45px): 10px 한 줄 네 글자 — 두 줄 제목은 낱말이 아니라 글자에서 꺾어(keep-all 이면 첫 낱말 하나만 쓰고 끝났다) 현장 이름이 더 보이게 */
+  @media(max-width:720px){.cal-cell{min-height:52px;padding-top:4px}.cal-evs{padding:2px 1px 1px;gap:1px}.cal-ev{font-size:10px;padding:0 1px;border-radius:3px;letter-spacing:-.2px}.cal-ev.ml{word-break:normal}.cal-ev.cal-cont{padding:0}.cal-more{font-size:10px;padding:0 2px}}
+  body.mobile-mode .cal-cell{min-height:52px;padding-top:4px}body.mobile-mode .cal-evs{padding:2px 1px 1px;gap:1px}body.mobile-mode .cal-ev{font-size:10px;padding:0 1px;border-radius:3px;letter-spacing:-.2px}body.mobile-mode .cal-ev.ml{word-break:normal}body.mobile-mode .cal-ev.cal-cont{padding:0}body.mobile-mode .cal-more{font-size:10px;padding:0 2px}
+  @media(min-width:721px){body.a11y-big1:not(.mobile-mode) .cal-ev{font-size:12.5px}body.a11y-big2:not(.mobile-mode) .cal-ev{font-size:13.5px}}
   /* 보고서 사진 */
   .sr-photos{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center}
   .sr-photos img{width:52px;height:52px;border-radius:6px;object-fit:cover;border:1px solid var(--line-soft);cursor:zoom-in}
@@ -3810,7 +3823,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v550-nav5';
+const APP_BUILD='hyeonjang-v551-calnames';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -39051,6 +39064,36 @@ function reportPhotos(s){
   });
 }
 // 월 달력 HTML
+/* v551 달력 칸에 그날 일정 제목 — 거래처가 보내는 월간 일정표처럼 날짜 칸만 봐도 무슨 일인지 보이게.
+   예전엔 칸에 점(●·숫자)만 찍혀 날짜를 하나씩 눌러 봐야 했고, PC 는 131px 정사각 칸이 거의 비어 달력 높이만 760px 였다.
+   · 그날 시작하는 일정은 시각 순(종일 먼저 — 아래 목록과 같은 순서), PC 는 앞에 시각. 여러 날 공정의 이어지는 날(v354)은
+     '↳ 제목' 점선 칸(.cal-cont — 예전 옅은 막대 자리)으로 맨 위에(주 안에서 줄이 맞게).
+   · 칸에 다 안 들어가면 PC 3줄·폰 2줄까지, 마지막 줄을 '+N건' 으로 접는다. 날짜를 누르면 종전대로 그날 일정만 아래 목록에.
+   · 화면읽기: 칸 이름(aria-label)은 종전 '일정 N건 이어지는 공정 N건' 뒤에 제목 3개까지 — 제목 칸 자체는 aria-hidden. 읽기 전용. */
+const HJ_CAL_EV_MAX_PC=3,HJ_CAL_EV_MAX_NARROW=2;
+function hjCalNarrow(){return !!(typeof __mobileMode!=='undefined'&&__mobileMode)||(typeof innerWidth==='number'&&innerWidth<=720);}
+function hjCalEvLabel(s){return String((s&&s.title)||'').replace(HJ_PLAN_SUFFIX_RE,'').trim()||'(제목 없음)';}
+function hjCalEvItems(ev){
+  if(!ev)return [];
+  const tm=s=>String((s&&s.time)||'');
+  return ev.ct.map(s=>({s,cont:true})).concat(ev.st.slice().sort((a,b)=>tm(a).localeCompare(tm(b))).map(s=>({s,cont:false})));
+}
+function hjCalEvHTML(items,narrow){
+  if(!items.length)return '';
+  const max=narrow?HJ_CAL_EV_MAX_NARROW:HJ_CAL_EV_MAX_PC;
+  const shown=items.length>max?items.slice(0,max-1):items,more=items.length-shown.length;
+  // 남는 줄은 첫 일정이 쓴다 — 하루 한 건이면 제목이 PC 3줄·폰 2줄까지 접혀 '현장 + 무슨 일'이 다 보인다(… 로 잘리기 전에)
+  const spare=max-shown.length-(more>0?1:0);
+  return '<span class="cal-evs" aria-hidden="true">'+shown.map(({s,cont},i)=>{
+    const label=hjCalEvLabel(s),lines=1+(i===0?spare:0);
+    const cls='cal-ev'+(lines>1?' ml':'')+(cont?' cal-cont':'')+(!cont&&s.report?' rep':'')+(s.urgent===true?' urgent':'');
+    return '<span class="'+cls+'"'+(lines>1?' style="-webkit-line-clamp:'+lines+'"':'')+' title="'+escapeAttr(label)+'">'+(cont?'↳ ':'')+(!cont&&!narrow&&s.time?'<b>'+escapeHtml(String(s.time))+'</b> ':'')+escapeHtml(label)+'</span>';
+  }).join('')+(more>0?'<span class="cal-more">+'+more+'건</span>':'')+'</span>';
+}
+function hjCalEvNames(items){
+  if(!items.length)return '';
+  return ': '+items.slice(0,3).map(x=>(x.cont?'↳ ':'')+hjCut(hjCalEvLabel(x.s),24)).join(', ')+(items.length>3?' 외 '+(items.length-3)+'건':'');
+}
 function calendarHTML(){
   const ym=calMonth();
   const [y,m]=ym.split('-').map(Number);
@@ -39058,12 +39101,13 @@ function calendarHTML(){
   const startDow=first.getDay(); // 0=일
   const daysInMonth=new Date(y,m,0).getDate();
   const today=localDate();
-  // 날짜별 일정 수 + 보고 여부
-  const dayInfo={};
-  (state.schedule||[]).forEach(s=>{if(s.date.startsWith(ym)){const d=+s.date.split('-')[2];if(!dayInfo[d])dayInfo[d]={cnt:0,rep:false};dayInfo[d].cnt++;if(s.report)dayInfo[d].rep=true;if(s.urgent===true)dayInfo[d].urgent=true;}});
-  // v354 여러 날 공정이 이어지는 날(둘째 날~끝, 일요일 빼고)에 옅은 막대 — 시작일 점과 구분한다
+  // 날짜별 일정 수 + 보고 여부 (+ v551 그날 칸에 쓸 일정)
+  const dayInfo={},dayEv={},evOf=d=>dayEv[d]||(dayEv[d]={st:[],ct:[]});
+  (state.schedule||[]).forEach(s=>{if(s&&String(s.date||'').startsWith(ym)){const d=+s.date.split('-')[2];if(!dayInfo[d])dayInfo[d]={cnt:0,rep:false};dayInfo[d].cnt++;if(s.report)dayInfo[d].rep=true;if(s.urgent===true)dayInfo[d].urgent=true;evOf(d).st.push(s);}});
+  // v354 여러 날 공정이 이어지는 날(둘째 날~끝, 일요일 빼고) — v551 부터 막대 대신 '↳ 제목' 칸
   (state.schedule||[]).forEach(s=>hjSchContDates(s).forEach(ds=>{if(!ds.startsWith(ym+'-'))return;
-    const dn=+ds.slice(8);if(!dayInfo[dn])dayInfo[dn]={cnt:0,rep:false};dayInfo[dn].cont=(dayInfo[dn].cont||0)+1;}));
+    const dn=+ds.slice(8);if(!dayInfo[dn])dayInfo[dn]={cnt:0,rep:false};dayInfo[dn].cont=(dayInfo[dn].cont||0)+1;evOf(dn).ct.push(s);}));
+  const narrow=hjCalNarrow();
   let cells='';
   // 빈 칸 (월 시작 전)
   for(let i=0;i<startDow;i++)cells+=`<div class="cal-cell empty"></div>`;
@@ -39073,9 +39117,10 @@ function calendarHTML(){
     const info=dayInfo[day];
     const isToday=ds===today;
     const isSel=ds===__calSelDate;
-    cells+=`<div class="cal-cell${hjScheduleUrgentAttrs(info)}${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" role="button" tabindex="0" aria-pressed="${isSel?'true':'false'}" aria-label="${y}년 ${m}월 ${day}일${info?(info.cnt?' 일정 '+info.cnt+'건':'')+(info.cont?' 이어지는 공정 '+info.cont+'건':''):' 일정 없음'}" data-calday="${ds}">
+    const items=hjCalEvItems(dayEv[day]);
+    cells+=`<div class="cal-cell${hjScheduleUrgentAttrs(info)}${isToday?' today':''}${isSel?' sel':''}${dow===0?' sun':''}${dow===6?' sat':''}" role="button" tabindex="0" aria-pressed="${isSel?'true':'false'}" aria-label="${y}년 ${m}월 ${day}일${info?(info.cnt?' 일정 '+info.cnt+'건':'')+(info.cont?' 이어지는 공정 '+info.cont+'건':''):' 일정 없음'}${escapeAttr(hjCalEvNames(items))}" data-calday="${ds}">
       <span class="cal-d">${day}${info&&info.urgent?' 🚨':''}</span>
-      ${info&&info.cnt?`<span class="cal-dot${info.rep?' rep':''}">${info.cnt>1?info.cnt:'●'}</span>`:''}${info&&info.cont?'<span class="cal-cont" aria-hidden="true"></span>':''}
+      ${hjCalEvHTML(items,narrow)}
     </div>`;
   }
   const ymLabel=`${y}년 ${m}월`;
