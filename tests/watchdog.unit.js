@@ -190,12 +190,14 @@ test('알림 문구(텍스트) — 캘린더·시트용, 금액·경과일·연�
   assert(t.indexOf('<') === -1, 'HTML 태그가 섞이면 안 됨(캘린더 설명은 순수 텍스트)');
   assert(!/못 받은 돈|미수금/.test(t), '미수금 절은 없어야 한다: ' + t.slice(0, 200));
   assert(/밀린 AS/.test(t), 'AS 섹션');
-  assert(/보증 만료 임박/.test(t), '보증 섹션');
+  // watch-v4: 기본(WATCH_SECTIONS 없음 = 'work')은 작업 일정 + AS 만 — 보증·방치는 'all' 일 때만
+  assert(!/보증 만료 임박/.test(t), '기본에는 보증 섹션이 없다');
+  withProps({ WATCH_SECTIONS: 'all' }, () => assert(/보증 만료 임박/.test(sandbox.watchText_(r)), "'all' 이면 보증 섹션"));
 });
 
-test('알림 문구 — 조용한 날은 "챙길 게 없습니다"', () => {
+test('알림 문구 — 조용한 날은 오늘·내일 "잡힌 작업 없음"', () => {
   const t = sandbox.watchText_(sandbox.watchScan_({ projects: [], files: [] }));
-  assert(/챙길 게 없습니다/.test(t), '이상 없음 문구: ' + t.slice(0, 120));
+  assert(/■ 오늘 작업 — [\s\S]*잡힌 작업 없음[\s\S]*■ 내일 작업 — [\s\S]*잡힌 작업 없음/.test(t), '오늘·내일 작업 없음 문구: ' + t.slice(0, 160));
 });
 
 test('알림 경로 — 기본은 캘린더(메일 아님), 설정에 따라 분기', () => {
@@ -264,27 +266,94 @@ test('메일 HTML 생성 — XSS 차단(현장명에 태그 넣어도 이스케�
   assert(html.indexOf('&lt;img') !== -1, '이스케이프되어 들어감');
 });
 
-test('제목 — 경보 있으면 금액·건수, 없으면 이상 없음', () => {
+test('제목 — 작업·AS 건수, 없으면 잡힌 작업 없음', () => {
   const none = sandbox.watchScan_({ projects: [], files: [] });
-  assert(/챙길 것 없음/.test(sandbox.watchSubject_(none)), '조용한 날 제목');
+  assert(/잡힌 작업 없음/.test(sandbox.watchSubject_(none)), '조용한 날 제목: ' + sandbox.watchSubject_(none));
   const some = sandbox.watchScan_({
     projects: [{ name: 'A', received: 0, doneAt: ago(30) }],
     asLog: [{ project: 'A', date: ago(20), text: '누수', status: 'open' }],
   });
   const s = sandbox.watchSubject_(some);
-  assert(/AS 1/.test(s), '경보 제목에 건수: ' + s);
+  assert(/🔧 AS 1/.test(s), '경보 제목에 건수: ' + s);
   assert(!/미수금|못 받은 돈/.test(s), '제목에 미수금이 남으면 안 된다: ' + s);
 });
 
-const passed = results.filter(r => r.ok).length;
-const failed = results.filter(r => !r.ok);
-console.log('\n== watchdog.unit: ' + passed + '/' + results.length + ' passed ==');
-if (failed.length) failed.forEach(f => console.log('  FAIL ' + f.name + '\n    ' + f.err));
-process.exit(failed.length ? 1 : 0);
+
+// ── watch-v4 (2026-11-03) — 구글 캘린더에는 작업 일정만: 💰 수금·입금·세금·개인 일정과 금액은 넣지 않는다 ──
+function withProps(props, fn) {
+  const keep = sandbox.PropertiesService;
+  sandbox.PropertiesService = { getScriptProperties: () => ({ getProperty: k => (k in props ? props[k] : null) }) };
+  try { return fn(); } finally { sandbox.PropertiesService = keep; }
+}
+const MONEY_SCHED = [
+  { date: ago(0), time: '09:00', title: '💰 잔금 수금 3,000만', project: '괴산현장' },
+  { date: ago(0), time: '', title: '💰 수금: 둔산동', project: '둔산동' },
+  { date: ahead(1), time: '', title: '중도금 입금 확인', project: '괴산현장' },
+  { date: ahead(1), time: '09:00', title: '부가세 예정고지 납부', _taxAuto: true },
+  { date: ahead(3), time: '', title: '개인 시험', sourceUid: 'x@test' },
+  { date: ahead(4), time: '', title: '계약금 받기', project: 'X' },
+];
+
+test('v4 💰 수금·입금·잔금·세금 자동·개인 일정은 오늘·내일·다가오는 작업 어디에도 없다', () => {
+  const r = sandbox.watchScan_({ projects: [], files: [], schedule: MONEY_SCHED.concat([
+    { date: ago(0), time: '08:00', title: '철거', project: '괴산현장', crew: '김철거' },
+    { date: ahead(2), time: '', title: '욕조방수', project: '가상빌라' }]) });
+  eq(r.today.map(x => x.title).join('|'), '철거', '오늘·내일은 작업만');
+  eq(r.ahead.map(x => x.title).join('|'), '욕조방수', '다가오는 작업도 작업만');
+  const t = sandbox.watchText_(r), subj = sandbox.watchSubject_(r);
+  assert(!/💰|수금|입금|잔금|계약금|중도금|부가세|개인 시험|3,000만|원\b/.test(t.replace(/💰 수금·세금 일정과 금액은 넣지 않음/, '')), '본문에 돈 이야기가 없다: ' + t);
+  assert(!/💰|수금|입금/.test(subj), '제목에도 없다: ' + subj);
+  assert(/08:00 철거 \/ 괴산현장 \/ 👤 김철거/.test(t), '작업 줄 = 시각·작업·현장·담당: ' + t);
+  assert(/■ 다가오는 작업 \(7일 안\)\n  · \d+\/\d+\([일월화수목금토]\) 종일 욕조방수 \/ 가상빌라/.test(t), '다가오는 작업 줄: ' + t);
+});
+
+test('v4 여러 날 공정 — 이어지는 날 N/M일째(일요일 빼고), 완료 보고면 끝, 공정표 꼬리 뗌', () => {
+  // 어제 시작한 3일짜리(어제·오늘·내일 — 사이에 일요일이 끼면 하루 밀린다)
+  const start = ago(1), span = [start];
+  { const d = new Date(start + 'T00:00:00'); while (span.length < 3) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) span.push(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2)); } }
+  const memo = start + '~' + span[2] + ' (3일)';
+  const r = sandbox.watchScan_({ projects: [], files: [], schedule: [
+    { date: start, time: '09:00', title: '도배 (3일차 시작)', project: '가상빌라', memo },
+    { date: start, time: '09:00', title: '타일 (3일차 시작)', project: '가상빌라', memo, report: { progress: '완료' } }] });
+  const isSun = new Date(ago(0) + 'T00:00:00').getDay() === 0;
+  const todayDoba = r.today.filter(x => x.when === '오늘' && x.title === '도배');
+  if (isSun) eq(todayDoba.length, 0, '일요일은 이어지는 날이 아니다');
+  else { eq(todayDoba.length, 1, '오늘은 이어지는 날'); eq(todayDoba[0].cont.day + '/' + todayDoba[0].cont.days, '2/3', 'N/M일째'); }
+  assert(!r.today.some(x => x.title === '타일'), '완료 보고한 공정은 이어지지 않는다');
+  assert(!r.today.some(x => /일차 시작/.test(x.title)), '공정표 꼬리는 뗀다');
+  if (!isSun) assert(/도배 \(2\/3일째\) \/ 가상빌라/.test(sandbox.watchText_(r)), '본문 줄: ' + sandbox.watchText_(r));
+});
+
+test("v4 기본(work)은 보증·방치를 캘린더에서 빼고(계산은 그대로 — 시트 칸), 'all' 이면 예전처럼", () => {
+  const data = {
+    projects: [{ name: '멈춤', received: 0 }, { name: '보증임박', received: 0, doneAt: ago(365 - 20) }],
+    files: [{ kind: 'photo', project: '멈춤', name: 'a.jpg', when: ago(40) + 'T09:00:00.000Z' }], schedule: [] };
+  const r = sandbox.watchScan_(data);
+  eq(r.stale.length, 1, '방치 계산은 그대로'); eq(r.warranty.length, 1, '보증 계산은 그대로');
+  assert(!/방치|보증/.test(sandbox.watchSubject_(r)) && !/멈춰 있는 현장|보증 만료/.test(sandbox.watchText_(r)), '기본 캘린더에는 없다');
+  eq(sandbox.watchQuiet_(r), true, '작업·AS 가 없으면 조용한 날(방치만으로는 매일 알리지 않는다)');
+  withProps({ WATCH_SECTIONS: 'all' }, () => {
+    assert(/보증만료 1/.test(sandbox.watchSubject_(r)) && /방치 1/.test(sandbox.watchSubject_(r)), "'all' 제목");
+    assert(/멈춰 있는 현장/.test(sandbox.watchText_(r)) && /보증 만료 임박/.test(sandbox.watchText_(r)), "'all' 본문");
+    eq(sandbox.watchQuiet_(r), false, "'all' 이면 경보로 알린다");
+  });
+});
+
+test('v4 제목 — 오늘·내일 작업 수, 없으면 다음 작업 날짜, AS 는 따로', () => {
+  const r1 = sandbox.watchScan_({ projects: [], files: [], schedule: [
+    { date: ago(0), time: '09:00', title: '철거', project: 'A' }, { date: ahead(1), time: '', title: '방수', project: 'A' }, { date: ahead(1), time: '', title: '설비', project: 'B' }] });
+  eq(sandbox.watchSubject_(r1), '📅 오늘 작업 1 · 내일 2', '오늘·내일');
+  const r2 = sandbox.watchScan_({ projects: [], files: [], schedule: [{ date: ahead(5), time: '', title: '욕조방수', project: 'A' }] });
+  assert(/^📅 다음 작업 \d+\/\d+\([일월화수목금토]\)$/.test(sandbox.watchSubject_(r2)), '다음 작업: ' + sandbox.watchSubject_(r2));
+  eq(sandbox.watchQuiet_(r2), true, '모레 이후만 있으면 매일 알리지 않는다(월요일 확인 때 보인다)');
+  const r3 = sandbox.watchScan_({ projects: [{ name: 'A', received: 0 }], files: [], schedule: [],
+    asLog: [{ project: 'A', date: ago(9), text: '누수', status: 'open' }] });
+  eq(sandbox.watchSubject_(r3), '🔧 AS 1', 'AS 만');
+});
 
 test('미수금 경보는 되살아나지 않는다', () => {
   // 지우기만 하면 언젠가 조용히 돌아온다. 결과 스키마와 본문 양쪽을 못박는다.
-  const r = sandbox.watchScan_(seed({
+  const r = sandbox.watchScan_(({
     projects: [{ name: '완료현장', received: 0, doneAt: ago(90), dueDate: ago(90) }],
     files: [{ project: '완료현장', kind: 'estimate', est: { amount: 11000000 } }]
   }));
@@ -296,3 +365,9 @@ test('미수금 경보는 되살아나지 않는다', () => {
   const html = sandbox.watchHtml_ ? sandbox.watchHtml_(r) : '';
   assert(!/못 받은 돈|입금 확인 필요/.test(html), 'HTML 에 미수금 절이 남아 있다');
 });
+
+const passed = results.filter(r => r.ok).length;
+const failed = results.filter(r => !r.ok);
+console.log('\n== watchdog.unit: ' + passed + '/' + results.length + ' passed ==');
+if (failed.length) failed.forEach(f => console.log('  FAIL ' + f.name + '\n    ' + f.err));
+process.exit(failed.length ? 1 : 0);
