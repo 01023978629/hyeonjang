@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-03 v553 운영 대시보드 맨 위에 달력 (현장 요청 11/3) + 달력 날짜 숫자 대비
+
+- 요청: 폰 첫 화면(운영 대시보드) 사진과 함께 "운영 대시보드 맨 위를 캘린더를 위로 올려줘". 종전 맨 위는 📅 오늘 일정 → ✅ 오늘 현장 업무(벤토) 순.
+- `hjDashCalendarHTML()` = 캘린더 탭과 같은 `calendarHTML()`(v551 칸마다 일정 제목)을 `#hjDashCal`(data-dash-cal)로 감싸 `viewDashboard` 맨 앞(`hjDemoTourHtml()` 다음)에.
+  순서: 달력 → 📅 오늘 일정 → 벤토 → 나머지 종전 그대로. 날짜 있는 일정이 하나도 없으면 안 그린다(빈 달력이 첫 화면을 차지하지 않게).
+  현장 0곳 첫 화면(드라이브 불러오기 안내, 일찍 return 하는 갈래)은 손대지 않았다.
+- 누르기: 대시보드 달력의 날짜(마우스·Enter) = `__calSelDate`·`__calYM` 를 그날로 두고 `hjGoTab('schedule')` — 캘린더 탭에서 그날 일정만 목록(위임 처리기의 `d.calday` 갈래, 대시보드일 때만).
+  ‹ › 오늘 은 종전 `calNav` 그대로라 대시보드에 머문 채 달만 넘기고, 캘린더 탭과 같은 달을 쓴다.
+- 대비(첫 화면이 되니 같이 고침, CSS 만): 밝은 화면 오늘 숫자 var(--clay) → #0b4ea2(연파랑 오늘 칸 위 3.9 → 6.5), 일요일 숫자·요일 #d04545 → #c03838(4.2 → 5.1);
+  어두운 화면 오늘 숫자 #9cc8ff(3.6 → 7.2)·오늘 칸 칩 시각 #9cc8ff(4.0 → 5.2), 고른 칸이 토·일이어도 흰 숫자(요일색이 이기던 것).
+- 핀3곳 hyeonjang-v553-dashcal. 신규 tests/dashcal-v553.e2e.js 5/5(폰 순서·첫 화면 안·칸 제목 → PC·어두운+큰 글씨 대비 → 날짜 누르기/Enter → 캘린더 탭 그날·‹ ›·오늘
+  → 일정 0건·날짜 없는 일정만·현장 0곳 → 핀). 기준선 v552(8ed1845)는 ① 에서, 변이 stay(날짜 누르면 대시보드에 머묾)는 ③ 에서 실패 확인.
+  대시보드 위치에 민감한 기존 검사(bentodash-v547·dash-cards·watch-card·mobile-screen-layout·mobile-field-flow·mobile-tap-table·healthline-v524·headerui-v546·
+  moneyboard-v548·demotour-v467·nav5-v550·leakintake-v419·darkcards-v453·numwrap2-v542·uiux)와 달력 검사(calnames-v551·calsend-v552·multiday-v354·menu-schedule·schedule-safety·ics-save) 모두 통과.
+
 ## 2026-11-03 파수꾼 watch-v4 — 구글 캘린더에는 작업 일정만 (💰 수금·금액 제외) · 앱 판 그대로(v552)
 
 - 요청(현장, 11/3): 매일 아침 구글 캘린더에 꽂히는 `[파수꾼]` 일정에 "금액·수금 내용은 안 오게, 작업 일정 관련으로". 받은 화면은 '🔔 방치 26' — 21일 넘게 조용한 현장 26곳 목록이 전부였다.
