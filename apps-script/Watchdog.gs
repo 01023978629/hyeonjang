@@ -1,9 +1,22 @@
 /** ============================================================
- * 만물인테리어 — 파수꾼(Watchdog) watch-v4
+ * 만물인테리어 — 파수꾼(Watchdog) watch-v5 · 구글 캘린더 일정 맞추기
  * ------------------------------------------------------------
- * 목적: 사장님이 앱을 열지 않아도 **매일 스스로 깨어나** 현장데이터를 훑고
- *       오늘·내일 할 작업을 구글 캘린더로 알려준다.
+ * 목적: 사장님이 앱을 열지 않아도 **스스로 깨어나** 현장데이터를 훑고
+ *       앱 일정표의 실제 작업 일정을 구글 캘린더에 일정 하나씩 그대로 넣는다.
  *       구글 서버에서 도므로 폰·PC가 꺼져 있어도 동작한다.
+ *
+ * watch-v5 (2026-11-04 현장 요청 "파수꾼을 보내지 말고 실제 일정만 구글 캘린더에 보내게"):
+ *   · 매일 아침 꽂던 '[파수꾼] 📅 오늘 작업 …' 요약 일정은 더 만들지 않는다.
+ *     (예전 요약이 다시 필요하면 스크립트 속성 WATCH_SUMMARY=1 — 하루 한 번 WATCH_HOUR 시에만)
+ *   · 대신 앱 일정 하나 = 캘린더 일정 하나. 시각이 있으면 그 시각(앱 '작업 시간', 없으면 8시간), 없으면 종일.
+ *     여러 날 공정은 날마다 하나(앱 📤 작업자 캘린더 .ics 와 같은 꼴 — 일요일·완료 보고 뒤는 없음).
+ *     앱에서 일정을 고치면 그 일정을 고치고, 지우면 지운다(매시간 맞춘다).
+ *   · 넣지 않는 것(watch-v4 와 같다): 💰 수금·입금·잔금 일정, 세금 자동, 앱이 넣은 개인 일정(sourceUid).
+ *     금액·고객 이름·전화 칸은 쓰지 않고, 메모는 출입 번호처럼 보이는 토막과 금액 토막을 뺀다.
+ *   · 이 스크립트가 만든 일정(일정 태그 hjKey)만 고치고 지운다. 사장님이 직접 넣은 일정·예전 [파수꾼] 일정은 건드리지 않고,
+ *     같은 날 같은 작업을 사장님이 이미 넣어 두었으면 하나 더 만들지 않는다.
+ *   · 맞추는 범위: 오늘 기준 31일 전 ~ 180일 뒤. 그보다 지난 일정은 기록으로 그대로 둔다.
+ *     원하는 일정이 하나도 없는데 지울 것이 넷 이상이면(자료가 비어 읽힌 경우 등) 지우지 않고 기다린다.
  *
  * watch-v4 (2026-11-03 현장 요청 "구글 캘린더에 금액·수금 내용은 안 오게, 작업 일정 관련으로"):
  *   · 캘린더 내용 = 작업 일정 — 오늘·내일 작업(여러 날 공정은 'N/M일째'), 다가오는 7일 작업, 밀린 AS.
@@ -14,30 +27,35 @@
  *   쓰기(setContent/createFile/setTrashed)를 절대 하지 않는다.
  *   사장님 데이터를 건드리지 않으므로 파수꾼 때문에 자료가 상할 일이 없다.
  *
- * 알리는 방법(WATCH_CHANNEL) — 메일·카톡을 쓰지 않는 것이 기본이다.
- *   'calendar' (기본) 구글 캘린더에 일정으로 꽂는다. 폰 기본 캘린더 알림이 울리므로
- *                     메일함을 열 필요도, 앱을 켤 필요도 없다.
- *   'sheet'           구글 시트 '파수꾼 현황판'에 날짜별로 쌓는다. 링크만 즐겨찾기 해두면 됨.
+ * 예전 요약 알림(WATCH_SUMMARY=1 일 때만)의 전달 방법(WATCH_CHANNEL):
+ *   'calendar' (기본) 구글 캘린더에 '[파수꾼] …' 일정으로 꽂는다.
+ *   'sheet'           구글 시트 '파수꾼 현황판'에 날짜별로 쌓는다.
  *   'both'            캘린더 + 시트 둘 다
  *   'mail'            메일(옛 방식). 원할 때만 명시적으로 선택.
  *
  * 설치(딱 한 번):
  *   1) 편집기에서 함수 선택 → installDailyWatch → 실행 → 권한 승인
- *   2) 끝. 이후 매일 아침 자동 실행된다.
- *   미리 보려면 testWatchNow 를 실행하면 지금 즉시 반영된다.
+ *   2) 끝. 이후 매시간 앱 일정과 캘린더를 맞춘다(예전 매일 트리거가 남아 있어도 그 시각에 맞춘다).
+ *   지금 바로 맞추려면 testWatchNow 를 실행한다.
  *
  * 설정(선택 · 프로젝트 설정 ▸ 스크립트 속성):
- *   WATCH_CHANNEL 'calendar'(기본) | 'sheet' | 'both' | 'mail'
- *   WATCH_HOUR    실행 시각(0~23). 기본 7 (오전 7시)
- *   WATCH_OFF     '1' 이면 알림 중단(트리거는 그대로)
+ *   WATCH_OFF     '1' 이면 멈춤(트리거는 그대로)
+ *   WATCH_CAL_ID  일정을 넣을 캘린더 ID. 미설정 시 이 계정의 기본 캘린더
+ *   WATCH_SUMMARY '1' 이면 예전 '[파수꾼]' 요약도 하루 한 번 보낸다(기본 끔)
+ *   WATCH_CHANNEL 요약을 보낼 곳 'calendar'(기본) | 'sheet' | 'both' | 'mail'
+ *   WATCH_HOUR    요약을 보낼 시각(0~23). 기본 7 (오전 7시)
  *   WATCH_EMAIL   'mail' 일 때 받는 사람. 미설정 시 이 스크립트 소유자 계정
  *   WATCH_SECTIONS 'work'(기본: 작업 일정 + 밀린 AS) | 'all'(+ 보증 만료·방치 현장)
  * ============================================================ */
 
-var WATCH_VERSION = 'watch-v4';
+var WATCH_VERSION = 'watch-v5';
 var WATCH_FN = 'dailyWatch';
 var WATCH_SHEET_NAME = '파수꾼 현황판';
-var WATCH_TAG = '[파수꾼]';        // 캘린더 일정 제목 접두 — 중복 정리에 사용
+var WATCH_TAG = '[파수꾼]';        // 예전 요약 일정 제목 접두 — 중복 정리에 사용
+// watch-v5 캘린더 일정 맞추기 — 이 스크립트가 만든 일정에 붙이는 태그(사장님 일정과 구분)
+var WATCH_KEY_TAG = 'hjKey';       // 앱 일정 id(여러 날 공정의 이어지는 날은 id-dN)
+var WATCH_SIG_TAG = 'hjSig';       // 넣은 내용의 지문 — 앱에서 바뀐 일정만 고친다
+var WATCH_SYNC = { backDays: 31, aheadDays: 180, defaultHours: 8, maxHours: 24, holdDeletes: 3 };
 
 // 판단 기준 — 1인 시공사 기준으로 잡은 값. 필요하면 여기 숫자만 바꾸면 된다.
 var W = {
@@ -57,17 +75,13 @@ function watchSections_() { return String(cfgW_('WATCH_SECTIONS', 'work')).toLow
 
 /* ---------- 설치 / 제거 ---------- */
 
+// watch-v5: 매시간 돈다 — 앱에서 넣은 일정이 늦어도 한 시간 안에 캘린더에 뜬다(예전 매일 트리거는 지우고 다시 만든다).
 function installDailyWatch() {
   removeDailyWatch();
-  var hour = parseInt(cfgW_('WATCH_HOUR', '7'), 10);
-  if (isNaN(hour) || hour < 0 || hour > 23) hour = 7;
-  ScriptApp.newTrigger(WATCH_FN).timeBased().atHour(hour).everyDays(1).create();
-  var ch = String(cfgW_('WATCH_CHANNEL', 'calendar')).toLowerCase();
-  var how = { calendar: '구글 캘린더 일정(폰 알림)', sheet: '구글 시트 현황판',
-              both: '캘린더 + 시트', mail: '메일' }[ch] || ch;
-  var extra = (ch === 'mail') ? (' → ' + watchRecipient_()) : '';
-  Logger.log('파수꾼 설치 완료 — 매일 ' + hour + '시경, 알림 방법: ' + how + extra);
-  return '설치 완료: 매일 ' + hour + '시경 · ' + how + extra;
+  ScriptApp.newTrigger(WATCH_FN).timeBased().everyHours(1).create();
+  var extra = watchSummaryOn_() ? ' · 예전 요약도 매일 ' + watchSummaryHour_() + '시경' : '';
+  Logger.log('파수꾼 설치 완료 — 매시간 앱 작업 일정을 구글 캘린더에 맞춤' + extra);
+  return '설치 완료: 매시간 · 구글 캘린더 일정 맞추기' + extra;
 }
 
 function removeDailyWatch() {
@@ -79,10 +93,10 @@ function removeDailyWatch() {
   return n;
 }
 
-// 지금 즉시 한 번 돌려 메일을 받아본다(설치 확인용). 조용한 날에도 강제 발송.
+// 지금 즉시 한 번 돌려 캘린더를 맞춘다(설치 확인용). 요약을 켰으면(WATCH_SUMMARY=1) 요약도 시각과 무관하게 보낸다.
 function testWatchNow() { return dailyWatch(true); }
 
-/* ---------- 매일 실행되는 본체 ---------- */
+/* ---------- 매시간 실행되는 본체 ---------- */
 
 function dailyWatch(force) {
   if (!force && cfgW_('WATCH_OFF', '') === '1') { Logger.log('WATCH_OFF=1 — 건너뜀'); return 'off'; }
@@ -90,9 +104,12 @@ function dailyWatch(force) {
   var data;
   try { data = watchLoadData_(); }
   catch (err) {
-    watchDeliver_('⚠️ 파수꾼: 현장자료를 읽지 못했습니다',
-      '오늘 현장데이터를 읽지 못했습니다.\n중계서버 설정(DRIVE_FOLDER_ID·파일명)을 확인해 주세요.\n\n사유: ' +
-      String(err && err.message || err).slice(0, 200), null);
+    var why = String(err && err.message || err).slice(0, 200);
+    Logger.log('⚠️ 현장자료를 읽지 못했습니다 — 캘린더는 그대로 둡니다: ' + why);
+    if (watchSummaryOn_()) {
+      watchDeliver_('⚠️ 파수꾼: 현장자료를 읽지 못했습니다',
+        '오늘 현장데이터를 읽지 못했습니다.\n중계서버 설정(DRIVE_FOLDER_ID·파일명)을 확인해 주세요.\n\n사유: ' + why, null);
+    }
     return 'load-failed';
   }
   if (!data) {
@@ -100,15 +117,35 @@ function dailyWatch(force) {
     return 'no-data';
   }
 
+  var out = [];
+  try {
+    var s = watchCalSync_(data, watchCalendar_(), new Date());
+    out.push('sync +' + s.created + ' ~' + s.updated + ' -' + s.deleted + ' =' + s.kept +
+             (s.skipped ? ' 이미있음 ' + s.skipped : '') + (s.held ? ' 지우기보류 ' + s.held : ''));
+  } catch (e) {
+    Logger.log('⚠️ 캘린더 일정 맞추기 실패: ' + e);
+    out.push('sync-failed');
+  }
+  if (watchSummaryOn_()) out.push(watchSummaryRun_(data, force));
+  Logger.log('파수꾼 ' + WATCH_VERSION + ' — ' + out.join(' · '));
+  return out.join(' · ');
+}
+
+// 예전 '[파수꾼]' 요약 — 기본 끔(2026-11-04 요청). WATCH_SUMMARY=1 일 때만, 매시간 돌아도 하루 한 번 WATCH_HOUR 시에만 보낸다.
+function watchSummaryOn_() { return cfgW_('WATCH_SUMMARY', '') === '1'; }
+function watchSummaryHour_() {
+  var hour = parseInt(cfgW_('WATCH_HOUR', '7'), 10);
+  return (isNaN(hour) || hour < 0 || hour > 23) ? 7 : hour;
+}
+function watchSummaryRun_(data, force) {
+  var now = new Date();
+  if (!force && now.getHours() !== watchSummaryHour_()) return 'summary-later';
   var r = watchScan_(data);
   // 오늘·내일 작업이나 밀린 AS 가 있으면 보낸다('all' 이면 보증·방치 경보도 센다).
-  // (일정은 r.total 에 안 들어가므로, total 만 보면 조용한 주에 일정 알림이 통째로 사라진다)
-  var quiet = watchQuiet_(r);
   // 조용한 날은 매일 알리지 않는다(알림 피로 방지). 월요일에만 "이상 없음" 확인.
-  if (quiet && !force && new Date().getDay() !== 1) { Logger.log('이상 없음 — 알림 생략'); return 'quiet'; }
-
+  if (watchQuiet_(r) && !force && now.getDay() !== 1) { Logger.log('이상 없음 — 요약 생략'); return 'summary-quiet'; }
   watchDeliver_(watchSubject_(r), watchText_(r), r);
-  return 'sent:' + r.total;
+  return 'summary-sent:' + r.total;
 }
 
 /* ---------- 알리는 방법 — 메일·카톡을 쓰지 않는 것이 기본 ---------- */
@@ -439,6 +476,213 @@ function watchWarranty_(p, today) {
   return { end: watchYmd_(e), dday: Math.ceil((e - today) / 86400000) };
 }
 
+/* ---------- 구글 캘린더 일정 맞추기 (watch-v5) ---------- */
+
+// 일정을 넣을 캘린더 — WATCH_CAL_ID 가 있으면 그 캘린더, 없으면 이 계정의 기본 캘린더(예전 [파수꾼] 일정이 뜨던 곳)
+function watchCalendar_() {
+  var id = cfgW_('WATCH_CAL_ID', '');
+  var cal = id ? CalendarApp.getCalendarById(id) : CalendarApp.getDefaultCalendar();
+  if (!cal) throw new Error('캘린더를 찾지 못했습니다' + (id ? ' — WATCH_CAL_ID 를 확인하세요' : ''));
+  return cal;
+}
+
+// 앱 일정 → 캘린더. 이 스크립트가 만든 일정(태그 hjKey)만 만들고·고치고·지운다. 사장님 일정은 읽기만 한다(같은 일정이 있나 볼 때).
+function watchCalSync_(data, cal, now) {
+  if (!data || Object.prototype.toString.call(data.schedule) !== '[object Array]') {
+    throw new Error('일정표가 없는 자료 — 캘린더를 그대로 둡니다');
+  }
+  var today = new Date(now.getTime()); today.setHours(0, 0, 0, 0);
+  var want = watchCalItems_(data, today);
+  var events = cal.getEvents(watchDate_(want.from), watchDate_(watchYmdAdd_(want.to, 1)));
+  var mine = {}, others = [];
+  for (var i = 0; i < events.length; i++) {
+    var key = null;
+    try { key = events[i].getTag(WATCH_KEY_TAG); } catch (_) { key = null; }
+    if (key) (mine[key] = mine[key] || []).push(events[i]);
+    else others.push(events[i]);
+  }
+  var r = { created: 0, updated: 0, deleted: 0, kept: 0, skipped: 0, held: 0, wanted: want.items.length };
+  var wanted = {};
+  for (var j = 0; j < want.items.length; j++) {
+    var it = want.items[j], sig = watchSig_(it), have = mine[it.key] || [];
+    wanted[it.key] = true;
+    for (var x = 1; x < have.length; x++) { if (watchDel_(have[x])) r.deleted++; }   // 같은 일정이 둘 이상이면 하나만 남긴다
+    if (have.length) {
+      var cur = null;
+      try { cur = have[0].getTag(WATCH_SIG_TAG); } catch (_) { cur = null; }
+      if (cur === sig) { r.kept++; continue; }
+      watchCalApply_(have[0], it);
+      have[0].setTag(WATCH_SIG_TAG, sig);
+      r.updated++;
+      continue;
+    }
+    if (watchCalHasManual_(others, it)) { r.skipped++; continue; }   // 사장님이 이미 넣어 둔 같은 일정 — 하나 더 만들지 않는다
+    var ev = watchCalCreate_(cal, it);
+    ev.setTag(WATCH_KEY_TAG, it.key);
+    ev.setTag(WATCH_SIG_TAG, sig);
+    r.created++;
+  }
+  // 앱에서 지워졌거나 💰·범위 밖으로 바뀐 일정 — 이 스크립트가 만든 것만 지운다.
+  var stale = [];
+  for (var k in mine) { if (mine.hasOwnProperty(k) && !wanted[k]) stale = stale.concat(mine[k]); }
+  if (!want.items.length && stale.length > WATCH_SYNC.holdDeletes) {
+    r.held = stale.length;   // 자료가 비어 읽혔을 수 있다 — 한꺼번에 지우지 않고 기다린다
+    Logger.log('⚠️ 넣을 일정이 하나도 없는데 지울 일정이 ' + stale.length + '개 — 자료를 확인할 때까지 지우지 않습니다');
+  } else {
+    for (var s = 0; s < stale.length; s++) { if (watchDel_(stale[s])) r.deleted++; }
+  }
+  return r;
+}
+
+function watchCalCreate_(cal, it) {
+  var opt = { description: it.desc };
+  if (it.loc) opt.location = it.loc;
+  if (it.time) {
+    var st = watchDateTime_(it.date, it.time);
+    return cal.createEvent(it.title, st, new Date(st.getTime() + it.hours * 3600000), opt);
+  }
+  return cal.createAllDayEvent(it.title, watchDate_(it.date), opt);
+}
+function watchCalApply_(ev, it) {
+  ev.setTitle(it.title);
+  ev.setDescription(it.desc);
+  ev.setLocation(it.loc || '');
+  if (it.time) {
+    var st = watchDateTime_(it.date, it.time);
+    ev.setTime(st, new Date(st.getTime() + it.hours * 3600000));   // 종일 일정이었으면 시각 일정으로 바뀐다
+  } else {
+    ev.setAllDayDate(watchDate_(it.date));                          // 시각 일정이었으면 종일로 바뀐다
+  }
+}
+function watchDel_(ev) {
+  try { ev.deleteEvent(); return true; }
+  catch (e) { Logger.log('캘린더 일정 지우기 실패: ' + e); return false; }
+}
+// 사장님이 직접(또는 앱 '📅 구글 캘린더에 추가'로) 넣어 둔 같은 일정 — 같은 날이고 제목에 작업 이름과 현장 이름이 다 들어 있으면 같은 일정으로 본다.
+function watchCalHasManual_(others, it) {
+  var base = watchNorm_(it.base), proj = watchNorm_(it.project);
+  if (base.length < 2 || (!proj && base.length < 4)) return false;
+  for (var i = 0; i < others.length; i++) {
+    var t, day;
+    try {
+      t = String(others[i].getTitle() || '');
+      day = watchYmd_(others[i].isAllDayEvent() ? others[i].getAllDayStartDate() : others[i].getStartTime());
+    } catch (_) { continue; }
+    if (t.indexOf(WATCH_TAG) === 0 || day !== it.date) continue;   // 예전 [파수꾼] 요약은 같은 일정이 아니다
+    var nt = watchNorm_(t);
+    if (nt.indexOf(base) >= 0 && (!proj || nt.indexOf(proj) >= 0)) return true;
+  }
+  return false;
+}
+
+// 맞출 범위 안의 앱 작업 일정 → 캘린더에 넣을 일정 목록(순수 계산 — GAS API 없음)
+function watchCalItems_(data, today) {
+  var t0 = watchYmd_(today);
+  var from = watchYmdAdd_(t0, -WATCH_SYNC.backDays), to = watchYmdAdd_(t0, WATCH_SYNC.aheadDays);
+  var projects = watchArr_(data && data.projects), schedule = watchArr_(data && data.schedule), byName = {};
+  for (var i = 0; i < projects.length; i++) { if (projects[i] && projects[i].name) byName[String(projects[i].name)] = projects[i]; }
+  var items = [], seen = {};
+  for (var s = 0; s < schedule.length; s++) {
+    var sc = schedule[s];
+    if (!watchWorkOk_(sc)) continue;
+    var sp = watchSpan_(sc), id = watchSchId_(sc), p = byName[String(sc.project || '')] || null;
+    var days = [[String(sc.date), null]], more = watchContDates_(sc);
+    for (var m = 0; m < more.length; m++) days.push([more[m], watchContOn_(sc, more[m])]);
+    for (var d = 0; d < days.length; d++) {
+      var ymd = days[d][0], c = days[d][1];
+      if (ymd < from || ymd > to || (d > 0 && !c)) continue;
+      var key = id + (c ? '-d' + c.day : '');
+      if (seen[key]) continue;   // id 가 겹친 일정은 처음 것만
+      seen[key] = true;
+      items.push(watchCalItem_(sc, ymd, c, sp, p, key));
+    }
+  }
+  items.sort(function (a, b) {
+    var x = a.date + (a.time || '99:99') + a.key, y = b.date + (b.time || '99:99') + b.key;
+    return x < y ? -1 : (x > y ? 1 : 0);
+  });
+  return { from: from, to: to, items: items };
+}
+// 그 일정이 이어지는 날(시작일 다음 날 ~ 끝, 일요일 제외, 완료 보고면 없음) — 앱 hjSchContDates 와 같은 셈
+function watchContDates_(sc) {
+  if (!sc || !sc.date || watchReported_(sc)) return [];
+  var sp = watchSpan_(sc);
+  if (sp.days < 2) return [];
+  var dt = new Date(String(sp.from) + 'T00:00:00');
+  if (isNaN(dt.getTime())) return [];
+  var out = [];
+  for (var i = 0; i < 62; i++) {
+    dt.setDate(dt.getDate() + 1);
+    var ds = watchYmd_(dt);
+    if (ds > sp.to) break;
+    if (dt.getDay() !== 0) out.push(ds);
+  }
+  return out;
+}
+function watchSchId_(sc) {
+  var id = String((sc && sc.id) || '').trim();
+  return id ? id.slice(0, 120) : 'n' + watchHash_([sc.date, sc.time, sc.title, sc.project].join('|'));
+}
+// 일정 하나 — 제목 '[현장] 작업'(작업 이름에 현장이 이미 있으면 그대로), 시각 있으면 그 시각부터 작업 시간(없으면 8시간), 없으면 종일.
+// 설명은 현장·담당·인원·주소·메모(출입 번호·금액 토막 뺌)만. 금액·고객 이름·전화 칸은 쓰지 않는다.
+function watchCalItem_(sc, ymd, c, sp, p, key) {
+  var base = String(sc.title || '작업').replace(WATCH_PLAN_SUFFIX_RE, '').trim() || '작업';
+  var project = String(sc.project || '').trim();
+  var title = c ? base + ' (' + c.day + '/' + c.days + '일째)'
+                : (sp.days > 1 ? base + ' (' + sp.days + '일 · ~' + watchMdDow_(sp.to) + ')' : base);
+  if (project && watchNorm_(base).indexOf(watchNorm_(project)) < 0) title = '[' + project + '] ' + title;
+  var time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(sc.time || '')) ? String(sc.time) : '';
+  var hours = Number(sc.hours);
+  if (!(hours > 0)) hours = WATCH_SYNC.defaultHours;
+  if (hours > WATCH_SYNC.maxHours) hours = WATCH_SYNC.maxHours;
+  var addr = p && p.customer ? String(p.customer.addr || '').replace(/\s+/g, ' ').trim() : '';
+  if (watchLooksLikeAccess_(addr)) addr = '';
+  var crew = String(sc.crew || '').replace(/\s+/g, ' ').trim();
+  var workers = String(sc.workers == null ? '' : sc.workers).trim();
+  var memo = watchMemoSafe_(sc.memo), L = [];
+  if (project) L.push('현장: ' + project);
+  if (crew) L.push('담당: ' + crew);
+  if (/^\d+(\.\d+)?$/.test(workers) && Number(workers) > 0) L.push('예정 인원 ' + workers + '명');
+  if (addr) L.push('주소: ' + addr);
+  if (memo) L.push('메모: ' + memo);
+  L.push('— 만물인테리어 현장 앱 일정(자동). 앱에서 고치거나 지우면 한 시간 안에 여기도 바뀝니다.');
+  return { key: key, date: ymd, time: time, hours: time ? hours : 0, title: title, base: base, project: project,
+           desc: L.join('\n'), loc: addr };
+}
+// 출입 번호처럼 보이는 것(앱 hjLooksLikeAccessCode 와 같은 규칙) — 캘린더로 퍼지지 않게
+var WATCH_ACCESS_UNIT = 'mm|cm|kg|㎡|m|평|원|층|호|동|년|월|일|대|명|개|건|칸|번|시|분|%|만|천';
+var WATCH_ACCESS_CODE_RE = new RegExp('(비밀\\s*번호|비번|도어\\s*락|도어\\s*록|도어키|번호키|마스터\\s*키|공동\\s*현관|현관|출입)' +
+  '[^0-9\\n]{0,4}\\d{1,8}(?![0-9])(?!\\s*(?:' + WATCH_ACCESS_UNIT + '))');
+var WATCH_ONLY_CODE_RE = /^[\s#*]*\d[\d\s#*]*$/;
+// 금액 토막 — 메모에 적힌 '잔금 300만'·'150,000원' 같은 것도 캘린더에는 넣지 않는다(11/3 요청 '금액은 안 오게')
+var WATCH_MONEY_FRAG_RE = /수금|입금|잔금|계약금|중도금|미수|금액|견적가|₩|\d[\d,.]*\s*(?:만\s*)?원|\d[\d,.]*\s*만(?![가-힣])/;
+function watchLooksLikeAccess_(v) {
+  var t = String(v == null ? '' : v);
+  if (!t.trim()) return false;
+  return WATCH_ONLY_CODE_RE.test(t) || WATCH_ACCESS_CODE_RE.test(t);
+}
+// 메모를 줄·' / '·' · ' 토막으로 나눠 출입 번호·금액 토막을 빼고 ' · ' 로 잇는다(첫 토막의 공정표 기간 '시작~끝 (N일)' 은 뗀다)
+function watchMemoSafe_(memo) {
+  var parts = String(memo || '').split(/\n|\s+\/\s+|\s+·\s+/), keep = [];
+  for (var i = 0; i < parts.length; i++) {
+    var x = String(parts[i] || '').trim();
+    if (i === 0) x = x.replace(WATCH_RANGE_MEMO_RE, '').replace(/^\s*\(\d+일\)\s*/, '');
+    x = x.replace(/\s+/g, ' ').trim();
+    if (!x || watchLooksLikeAccess_(x) || WATCH_MONEY_FRAG_RE.test(x)) continue;
+    keep.push(x);
+  }
+  var out = keep.join(' · ');
+  return out.length > 600 ? out.slice(0, 600) + '…' : out;
+}
+// 넣은 내용의 지문 — 바뀐 일정만 고친다(보안용이 아니라 '바뀌었나' 확인용, FNV-1a 32비트 + 길이)
+function watchSig_(it) { return watchHash_([it.title, it.date, it.time, it.hours, it.desc, it.loc].join('\u0001')); }
+function watchHash_(s) {
+  var str = String(s), h = 0x811c9dc5;
+  for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return ('0000000' + h.toString(16)).slice(-8) + str.length.toString(36);
+}
+function watchNorm_(s) { return String(s || '').toLowerCase().replace(/[\s\[\]()@·,.\-_\/#:~—–]+/g, ''); }
+
 /* ---------- 메일 만들기 ---------- */
 
 function watchSubject_(r) {
@@ -603,6 +847,10 @@ function watchToday0_() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; 
 function watchYmd_(d) {
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
+// 'YYYY-MM-DD' → 그날 0시(스크립트 시간대 — appsscript.json Asia/Seoul), 'HH:MM' 이 있으면 그 시각
+function watchDate_(ymd) { return new Date(String(ymd) + 'T00:00:00'); }
+function watchDateTime_(ymd, hm) { return new Date(String(ymd) + 'T' + String(hm) + ':00'); }
+function watchYmdAdd_(ymd, n) { var d = watchDate_(ymd); d.setDate(d.getDate() + n); return watchYmd_(d); }
 function watchDaysSince_(ymd, today) {
   var d = new Date(String(ymd).slice(0, 10) + 'T00:00:00');
   if (isNaN(d.getTime())) return null;

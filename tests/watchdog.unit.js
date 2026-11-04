@@ -366,6 +366,195 @@ test('미수금 경보는 되살아나지 않는다', () => {
   assert(!/못 받은 돈|입금 확인 필요/.test(html), 'HTML 에 미수금 절이 남아 있다');
 });
 
+// ── watch-v5 (2026-11-04) — '[파수꾼]' 요약 대신 앱의 실제 작업 일정을 구글 캘린더 일정으로 하나씩 맞춘다 ──
+function localYmd(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+// 가짜 캘린더 — CalendarApp 일정이 쓰는 메서드만. 지운 일정은 deleted 로 남겨 무엇을 지웠는지 본다.
+function fakeCal() {
+  const evs = [];
+  let seq = 0;
+  const mk = (title, start, end, allDay, opt) => {
+    const e = { id: ++seq, title, start, end, allDay, desc: (opt && opt.description) || '', loc: (opt && opt.location) || '', tags: {}, deleted: false, edits: [] };
+    const api = {
+      _e: e,
+      getTitle: () => e.title,
+      setTitle: t => { e.title = t; e.edits.push('title'); return api; },
+      setDescription: d => { e.desc = d; e.edits.push('desc'); return api; },
+      setLocation: l => { e.loc = l; e.edits.push('loc'); return api; },
+      setTime: (s, en) => { e.start = s; e.end = en; e.allDay = false; e.edits.push('time'); return api; },
+      setAllDayDate: d => { e.start = d; e.end = new Date(d.getTime() + 86400000); e.allDay = true; e.edits.push('allday'); return api; },
+      isAllDayEvent: () => e.allDay,
+      getAllDayStartDate: () => e.start,
+      getStartTime: () => e.start,
+      getTag: k => (Object.prototype.hasOwnProperty.call(e.tags, k) ? e.tags[k] : null),
+      setTag: (k, v) => { e.tags[k] = v; return api; },
+      deleteEvent: () => { e.deleted = true; }
+    };
+    evs.push(api);
+    return api;
+  };
+  return {
+    evs,
+    created: () => evs.length,
+    createEvent: (t, s, en, opt) => mk(t, s, en, false, opt),
+    createAllDayEvent: (t, d, opt) => mk(t, d, new Date(d.getTime() + 86400000), true, opt),
+    getEvents: (s, en) => evs.filter(a => !a._e.deleted && a._e.start < en && a._e.end > s),
+    live: () => evs.filter(a => !a._e.deleted),
+    mine: () => evs.filter(a => !a._e.deleted && a._e.tags.hjKey),
+    byKey: k => evs.filter(a => !a._e.deleted && a._e.tags.hjKey === k)
+  };
+}
+const V5_DATA = () => ({
+  projects: [{ name: '열매마을', customer: { name: '홍길동', phone: '010-1111-2222', addr: '세종 아름동 열매마을 9단지' } }, { name: '목동' }],
+  schedule: [
+    { id: 'yeol', date: ahead(9), time: '', title: '열매마을 908-903 욕조방수', project: '열매마을', memo: '공동현관 #0908 / 현관 0139* / 거실 욕조자리만 · 잔금 300만' },
+    { id: 'mok', date: ahead(2), time: '09:00', hours: 4, title: '철거 (1일차 시작)', project: '목동', crew: '우철', workers: '2', memo: ahead(2) + '~' + ahead(6) + ' (4일) · 자재 반입 150,000원' },
+    { id: 'pay', date: ahead(1), time: '', title: '💰 잔금 수금 3,000만', project: '목동' },
+    { id: 'mid', date: ahead(3), time: '', title: '중도금 입금 확인', project: '목동' },
+    { id: 'tax', date: ahead(1), time: '09:00', title: '부가세 예정고지 납부', _taxAuto: true },
+    { id: 'me', date: ahead(5), time: '', title: '개인 시험', sourceUid: 'x@test' }
+  ]
+});
+
+test('v5 캘린더에 넣을 일정 — 작업만, 시각/종일, 여러 날 공정은 날마다(일요일 빼고), 금액·출입 번호·고객 연락처 없음', () => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const r = sandbox.watchCalItems_(V5_DATA(), today);
+  const keys = r.items.map(i => i.key);
+  assert(keys.indexOf('pay') < 0 && keys.indexOf('mid') < 0 && keys.indexOf('tax') < 0 && keys.indexOf('me') < 0, '💰·수금·세금·개인 일정 제외: ' + keys);
+  const mokDays = r.items.filter(i => i.key === 'mok' || i.key.indexOf('mok-d') === 0);
+  const span = []; for (let n = 2; n <= 6; n++) { const d = new Date(today); d.setDate(d.getDate() + n); if (d.getDay() !== 0) span.push(localYmd(d)); }
+  eq(mokDays.map(i => i.date).join(','), span.slice(0, mokDays.length).join(','), '여러 날 공정 날짜 — 일요일 제외');
+  assert(mokDays.length >= 4 && mokDays.length <= 5, '4일 공정이면 날마다 하나: ' + mokDays.length);
+  eq(mokDays[0].title, '[목동] 철거 (4일 · ~' + sandbox.watchMdDow_(ahead(6)) + ')', '첫날 제목');
+  eq(mokDays[1].title, '[목동] 철거 (2/4일째)', '이어지는 날 제목');
+  eq(mokDays[0].time + '/' + mokDays[0].hours, '09:00/4', '시각 일정 — 작업 시간 4시간');
+  const y = r.items.find(i => i.key === 'yeol');
+  eq(y.title, '열매마을 908-903 욕조방수', '제목에 현장 이름이 이미 있으면 [현장] 을 또 붙이지 않는다');
+  eq(y.time + '/' + y.hours, '/0', '시각 없으면 종일');
+  eq(y.loc, '세종 아름동 열매마을 9단지', '주소는 장소로');
+  const all = r.items.map(i => i.title + '\n' + i.desc + '\n' + i.loc).join('\n');
+  assert(!/0908|0139|300만|150,000|원\b|홍길동|010-1111/.test(all), '출입 번호·금액·고객 이름·전화가 없어야: ' + all);
+  assert(/메모: 거실 욕조자리만/.test(y.desc) && /메모: 자재 반입|현장: 목동/.test(mokDays[0].desc), '나머지 메모는 남는다: ' + y.desc);
+  assert(/담당: 우철/.test(mokDays[0].desc) && /예정 인원 2명/.test(mokDays[0].desc), '담당·인원');
+  assert(!/~/.test(mokDays[0].desc.split('\n').filter(l => /^메모/.test(l)).join('')), '공정표 기간은 메모에서 뗀다');
+});
+
+test('v5 완료 보고된 여러 날 공정은 첫날만, 범위(31일 전~180일 뒤) 밖은 넣지 않는다', () => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const r = sandbox.watchCalItems_({ projects: [], schedule: [
+    { id: 'done', date: ahead(1), title: '방수', project: 'A', memo: ahead(1) + '~' + ahead(5) + ' (5일)', report: { progress: '완료' } },
+    { id: 'old', date: ago(40), title: '철거', project: 'A' },
+    { id: 'far', date: ahead(200), title: '도배', project: 'A' },
+    { id: 'edge', date: ago(31), title: '타일', project: 'A' }
+  ] }, today);
+  eq(r.items.map(i => i.key).join(','), 'edge,done', '완료 보고면 첫날만 · 40일 전·200일 뒤는 제외 · 31일 전은 포함');
+});
+
+test('v5 맞추기 — 처음엔 만들고(태그), 다시 돌면 그대로, 앱에서 바꾸면 그 일정을 고치고, 지우면 지운다', () => {
+  const cal = fakeCal(), now = new Date();
+  const mine0 = cal.createAllDayEvent('사장님 개인 일정', sandbox.watchDate_(ahead(9)), {});   // 태그 없는 사장님 일정
+  const d = V5_DATA();
+  const r1 = sandbox.watchCalSync_(d, cal, now);
+  assert(r1.created >= 5 && r1.updated === 0 && r1.deleted === 0, '처음엔 만들기만: ' + JSON.stringify(r1));
+  eq(cal.mine().length, r1.created, '만든 일정에는 모두 hjKey 태그');
+  const y = cal.byKey('yeol')[0];
+  assert(y._e.allDay && y._e.title === '열매마을 908-903 욕조방수', '종일 일정으로 만든다');
+  const m = cal.byKey('mok')[0];
+  assert(!m._e.allDay && m._e.start.getHours() === 9 && (m._e.end - m._e.start) === 4 * 3600000, '09:00 부터 4시간');
+  const r2 = sandbox.watchCalSync_(d, cal, now);
+  eq(JSON.stringify([r2.created, r2.updated, r2.deleted]), '[0,0,0]', '다시 돌면 바꿀 것 없음: ' + JSON.stringify(r2));
+  eq(r2.kept, r1.created, '모두 그대로');
+  // 앱에서 시각·제목을 바꾸고, 열매마을 일정을 지움
+  d.schedule[1].time = '13:00'; d.schedule[1].title = '철거·폐기물 (1일차 시작)';
+  d.schedule.splice(0, 1);
+  const r3 = sandbox.watchCalSync_(d, cal, now);
+  assert(r3.updated >= 1 && r3.deleted === 1 && r3.created === 0, '고치기·지우기: ' + JSON.stringify(r3));
+  eq(cal.byKey('mok')[0], m, '같은 캘린더 일정을 고친다(지우고 새로 만들지 않음)');
+  assert(m._e.start.getHours() === 13 && /철거·폐기물/.test(m._e.title), '시각·제목 반영: ' + m._e.title);
+  eq(cal.byKey('yeol').length, 0, '앱에서 지운 일정은 캘린더에서도 지운다');
+  assert(!mine0._e.deleted && mine0._e.edits.length === 0, '태그 없는 사장님 일정은 건드리지 않는다');
+});
+
+test('v5 사장님이 이미 넣어 둔 같은 일정(같은 날·같은 작업·현장)은 하나 더 만들지 않는다 — 예전 [파수꾼] 요약은 같은 일정이 아니다', () => {
+  const cal = fakeCal(), now = new Date();
+  cal.createAllDayEvent('열매마을 908-903 욕조방수 @열매마을', sandbox.watchDate_(ahead(9)), {});
+  cal.createEvent('[파수꾼] 📅 오늘 작업 1 — 철거 / 목동', sandbox.watchDateTime_(ahead(2), '07:00'), sandbox.watchDateTime_(ahead(2), '07:30'), {});
+  const r = sandbox.watchCalSync_(V5_DATA(), cal, now);
+  eq(r.skipped, 1, '열매마을은 이미 있음');
+  eq(cal.byKey('yeol').length, 0, '같은 일정을 또 만들지 않는다');
+  assert(cal.byKey('mok').length === 1, '[파수꾼] 요약이 있어도 목동 철거는 만든다');
+});
+
+test('v5 안전판 — 넣을 일정이 없는데 지울 것이 많으면 지우지 않고, 일정표가 없는 자료면 아무것도 바꾸지 않는다', () => {
+  const cal = fakeCal(), now = new Date();
+  const d = { projects: [], schedule: [1, 2, 3, 4, 5].map(n => ({ id: 's' + n, date: ahead(n), title: '작업' + n, project: 'A' })) };
+  sandbox.watchCalSync_(d, cal, now);
+  eq(cal.mine().length, 5, '5개 만듦');
+  const r = sandbox.watchCalSync_({ projects: [], schedule: [] }, cal, now);
+  eq(r.held, 5, '지우기 보류');
+  eq(cal.mine().length, 5, '하나도 지우지 않음');
+  let threw = false;
+  try { sandbox.watchCalSync_({ projects: [] }, cal, now); } catch (e) { threw = true; }
+  assert(threw && cal.mine().length === 5, '일정표(schedule)가 없는 자료는 던지고 그대로 둔다');
+  // 겹친 태그 일정은 하나만 남긴다
+  const dup = cal.createAllDayEvent('작업1', sandbox.watchDate_(ahead(1)), {}); dup.setTag('hjKey', 's1'); dup.setTag('hjSig', 'x');
+  const r2 = sandbox.watchCalSync_(d, cal, now);
+  eq(cal.byKey('s1').length, 1, '같은 키는 하나만: ' + JSON.stringify(r2));
+});
+
+test('v5 범위 밖(31일보다 지난) 태그 일정은 기록으로 두고 지우지 않는다', () => {
+  const cal = fakeCal(), now = new Date();
+  const old = cal.createAllDayEvent('[A] 옛 작업', sandbox.watchDate_(ago(45)), {}); old.setTag('hjKey', 'gone'); old.setTag('hjSig', 'x');
+  sandbox.watchCalSync_({ projects: [], schedule: [{ id: 'n1', date: ahead(1), title: '새 작업', project: 'A' }] }, cal, now);
+  assert(!old._e.deleted, '45일 전 일정은 지우지 않는다');
+});
+
+test("v5 dailyWatch — 기본은 '[파수꾼]' 요약을 만들지 않고 캘린더 일정만 맞춘다 · WATCH_SUMMARY=1 이면 요약도 · 자료를 못 읽으면 캘린더를 건드리지 않는다", () => {
+  const withToday = () => { const d = V5_DATA(); d.schedule.push({ id: 'now', date: ago(0), time: '', title: '설비 점검', project: '목동' }); return d; };
+  const run = (props, loadErr) => {
+    const b = {};
+    vm.createContext(b); vm.runInContext(src, b);
+    const cal = fakeCal();
+    b.PropertiesService = { getScriptProperties: () => ({ getProperty: k => (k in props ? props[k] : null) }) };
+    b.CalendarApp = { getDefaultCalendar: () => cal, getCalendarById: () => cal };
+    b.Logger = { log() {} };
+    b.watchLoadData_ = () => { if (loadErr) throw new Error('읽기 실패'); return withToday(); };
+    const out = b.dailyWatch(false);
+    return { cal, out };
+  };
+  const a = run({});
+  assert(/^sync \+\d+/.test(a.out), '기본 결과: ' + a.out);
+  assert(a.cal.live().every(e => e._e.title.indexOf('[파수꾼]') !== 0), '기본은 [파수꾼] 요약 일정을 만들지 않는다');
+  assert(a.cal.mine().length >= 5, '실제 일정은 넣는다');
+  const b2 = run({ WATCH_SUMMARY: '1', WATCH_HOUR: String(new Date().getHours()) });
+  assert(b2.cal.live().some(e => e._e.title.indexOf('[파수꾼]') === 0), 'WATCH_SUMMARY=1 이고 그 시각이면 요약도: ' + b2.out);
+  const c = run({ WATCH_SUMMARY: '1', WATCH_HOUR: String((new Date().getHours() + 3) % 24) });
+  assert(c.cal.live().every(e => e._e.title.indexOf('[파수꾼]') !== 0) && /summary-later/.test(c.out), '요약은 하루 한 번 그 시각에만: ' + c.out);
+  const e = run({}, true);
+  eq(e.out, 'load-failed', '자료를 못 읽으면');
+  eq(e.cal.live().length, 0, '캘린더에 경고 요약도 만들지 않는다(요약 끔)');
+  const f = run({ WATCH_OFF: '1' });
+  eq(f.out, 'off', 'WATCH_OFF=1 이면 멈춘다');
+});
+
+test('v5 설치 — 예전 매일 트리거를 지우고 매시간 트리거 하나', () => {
+  const b = {};
+  vm.createContext(b); vm.runInContext(src, b);
+  const made = [], removed = [];
+  const old = { getHandlerFunction: () => 'dailyWatch' }, other = { getHandlerFunction: () => 'doSomethingElse' };
+  b.ScriptApp = {
+    getProjectTriggers: () => [old, other],
+    deleteTrigger: t => removed.push(t),
+    newTrigger: fn => ({ timeBased: () => ({ everyHours: n => ({ create: () => made.push(fn + '@' + n + 'h') }), atHour: () => { throw new Error('매일 트리거는 쓰지 않는다'); } }) })
+  };
+  b.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+  b.Logger = { log() {} };
+  const msg = b.installDailyWatch();
+  eq(made.join(','), 'dailyWatch@1h', '매시간 트리거 하나');
+  eq(removed.length, 1, '예전 dailyWatch 트리거만 지운다');
+  eq(removed[0], old, '다른 트리거는 그대로');
+  assert(/매시간/.test(msg), '안내: ' + msg);
+});
+
 const passed = results.filter(r => r.ok).length;
 const failed = results.filter(r => !r.ok);
 console.log('\n== watchdog.unit: ' + passed + '/' + results.length + ' passed ==');
