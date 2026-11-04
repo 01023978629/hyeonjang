@@ -1,9 +1,14 @@
 /** ============================================================
- * 만물인테리어 — 파수꾼(Watchdog) watch-v3
+ * 만물인테리어 — 파수꾼(Watchdog) watch-v4
  * ------------------------------------------------------------
  * 목적: 사장님이 앱을 열지 않아도 **매일 스스로 깨어나** 현장데이터를 훑고
- *       돈이 새거나 기회를 놓치는 것을 찾아 알려준다.
+ *       오늘·내일 할 작업을 구글 캘린더로 알려준다.
  *       구글 서버에서 도므로 폰·PC가 꺼져 있어도 동작한다.
+ *
+ * watch-v4 (2026-11-03 현장 요청 "구글 캘린더에 금액·수금 내용은 안 오게, 작업 일정 관련으로"):
+ *   · 캘린더 내용 = 작업 일정 — 오늘·내일 작업(여러 날 공정은 'N/M일째'), 다가오는 7일 작업, 밀린 AS.
+ *   · 💰 수금·입금·잔금 일정, 세금 자동 일정, 앱이 넣은 개인 일정(sourceUid)은 어디에도 넣지 않는다. 금액도 쓰지 않는다.
+ *   · 보증 만료·방치 현장 알림은 기본에서 뺐다(방치 목록이 길어 작업 일정이 묻혔다) — WATCH_SECTIONS='all' 이면 예전처럼 붙는다.
  *
  * ★ 절대 규칙 — 이 파일은 현장데이터.json을 **읽기만** 한다.
  *   쓰기(setContent/createFile/setTrashed)를 절대 하지 않는다.
@@ -26,9 +31,10 @@
  *   WATCH_HOUR    실행 시각(0~23). 기본 7 (오전 7시)
  *   WATCH_OFF     '1' 이면 알림 중단(트리거는 그대로)
  *   WATCH_EMAIL   'mail' 일 때 받는 사람. 미설정 시 이 스크립트 소유자 계정
+ *   WATCH_SECTIONS 'work'(기본: 작업 일정 + 밀린 AS) | 'all'(+ 보증 만료·방치 현장)
  * ============================================================ */
 
-var WATCH_VERSION = 'watch-v3';
+var WATCH_VERSION = 'watch-v4';
 var WATCH_FN = 'dailyWatch';
 var WATCH_SHEET_NAME = '파수꾼 현황판';
 var WATCH_TAG = '[파수꾼]';        // 캘린더 일정 제목 접두 — 중복 정리에 사용
@@ -37,8 +43,14 @@ var WATCH_TAG = '[파수꾼]';        // 캘린더 일정 제목 접두 — 중�
 var W = {
   warrantySoon: 60,     // 보증 만료 D-N 이내 → 무상점검 제안 = 재수주 기회
   asStale: 3,           // AS 접수 후 N일 넘게 미처리
-  projStale: 21         // 진행 중인데 N일 넘게 아무 움직임 없음
+  projStale: 21,        // 진행 중인데 N일 넘게 아무 움직임 없음
+  aheadDays: 7          // '다가오는 작업' — 모레부터 N일 안
 };
+// 작업 일정이 아닌 것 — 💰 수금·입금·잔금 일정(앱이 만든 것은 모두 💰 로 시작). 세금 자동(_taxAuto)·앱이 넣은 개인 일정(sourceUid)도 뺀다.
+var WATCH_MONEY_RE = /^\s*💰|수금|입금|잔금|계약금|중도금|미수/;
+var WATCH_PLAN_SUFFIX_RE = /\s*\(\d+일차 시작\)\s*$/;   // 앱 🗓 공정표가 붙이는 꼬리
+var WATCH_RANGE_MEMO_RE = /^(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})/;   // 공정표 메모 '시작~끝 (N일)'
+function watchSections_() { return String(cfgW_('WATCH_SECTIONS', 'work')).toLowerCase() === 'all' ? 'all' : 'work'; }
 // ※ '견적 무응답' 감시는 아직 없다. 현장데이터의 quotes 를 읽어야 하는데 watchScan_ 은
 //   projects·files·asLog·schedule 만 본다. 넣을 때 이 주석을 지울 것.
 //   (기준값만 선언해 두면 '되고 있다'는 오해를 부르므로 선언하지 않는다)
@@ -89,9 +101,9 @@ function dailyWatch(force) {
   }
 
   var r = watchScan_(data);
-  // 경보가 없어도 오늘·내일 일정이 있으면 보낸다.
+  // 오늘·내일 작업이나 밀린 AS 가 있으면 보낸다('all' 이면 보증·방치 경보도 센다).
   // (일정은 r.total 에 안 들어가므로, total 만 보면 조용한 주에 일정 알림이 통째로 사라진다)
-  var quiet = (r.total === 0 && r.today.length === 0);
+  var quiet = watchQuiet_(r);
   // 조용한 날은 매일 알리지 않는다(알림 피로 방지). 월요일에만 "이상 없음" 확인.
   if (quiet && !force && new Date().getDay() !== 1) { Logger.log('이상 없음 — 알림 생략'); return 'quiet'; }
 
@@ -253,24 +265,29 @@ function watchScan_(data) {
     if (m2.days === null || m2.days >= W.asStale) r.as.push(m2);
   }
 
-  // ⑤ 오늘·내일 일정 — 오늘 뭐 하는지 아침에 알려준다
+  // ⑤ 오늘·내일 작업 — 오늘 뭐 하는지 아침에 알려준다(watch-v4: 작업 일정만 — 💰·세금·개인 일정 제외).
+  //    여러 날 공정은 이어지는 날에도 'N/M일째' 로 넣는다(앱 v354 와 같은 셈: 일요일 제외, 완료 보고면 끝).
   var todayStr = watchYmd_(today);
   var tmr = new Date(today.getTime() + 86400000), tmrStr = watchYmd_(tmr);
+  var aheadEnd = watchYmd_(new Date(today.getTime() + W.aheadDays * 86400000));
+  r.ahead = [];
   for (var s = 0; s < schedule.length; s++) {
     var sc = schedule[s];
-    if (!sc || !sc.date) continue;
-    var ds = String(sc.date);
-    if (ds === todayStr || ds === tmrStr) {
-      r.today.push({ when: ds === todayStr ? '오늘' : '내일', date: ds,
-                     time: String(sc.time || ''), title: String(sc.title || ''),
-                     project: String(sc.project || '') });
+    if (!watchWorkOk_(sc)) continue;
+    var ds = String(sc.date), sp = watchSpan_(sc);
+    var days = [[todayStr, '오늘'], [tmrStr, '내일']];
+    for (var q = 0; q < days.length; q++) {
+      var ymd = days[q][0], cont = ymd === ds ? null : watchContOn_(sc, ymd);
+      if (ymd === ds || cont) r.today.push(watchWorkItem_(sc, days[q][1], ymd, cont, sp));
     }
+    if (ds > tmrStr && ds <= aheadEnd) r.ahead.push(watchWorkItem_(sc, '', ds, null, sp));
   }
 
   r.warranty.sort(function (x, y) { return x.dday - y.dday; });
   r.as.sort(function (x, y) { return (y.days || 0) - (x.days || 0); });
   r.stale.sort(function (x, y) { return y.days - x.days; });
   r.today.sort(function (x, y) { return (x.date + x.time) < (y.date + y.time) ? -1 : 1; });
+  r.ahead.sort(function (x, y) { return (x.date + x.time) < (y.date + y.time) ? -1 : 1; });
 
   // '오늘 일정'은 경보가 아니라 안내 — total(경보 수)에 넣지 않는다
   r.total = r.warranty.length + r.as.length + r.stale.length;
@@ -317,6 +334,70 @@ function watchDedupeSum_(list) {
   return sum;
 }
 
+/* ---------- 작업 일정 (watch-v4) — 순수 계산 ---------- */
+
+// 작업 일정인가 — 💰 수금·입금 일정, 세금 자동, 앱이 넣은 개인 일정은 아니다
+function watchWorkOk_(sc) {
+  if (!sc || !sc.date || !/^\d{4}-\d{2}-\d{2}$/.test(String(sc.date))) return false;
+  if (sc._taxAuto || sc.sourceUid) return false;
+  return !WATCH_MONEY_RE.test(String(sc.title || ''));
+}
+// 앱 hjSchSpan 과 같은 셈 — 기간은 공정표 메모 '시작~끝' 에서만(첫 날이 그 일정 날짜일 때, 60일 이하)
+function watchSpan_(sc) {
+  var from = String((sc && sc.date) || ''), m = String((sc && sc.memo) || '').match(WATCH_RANGE_MEMO_RE);
+  if (!m || m[1] !== from || !(m[2] > m[1]) || watchDaysBetween_(m[1], m[2]) > 60) return { from: from, to: from, days: 1 };
+  return { from: from, to: m[2], days: watchWorkDays_(m[1], m[2]) + 1 };
+}
+function watchReported_(sc) {
+  var rp = sc && sc.report;
+  return !!(rp && (rp.progress === '완료' || String(rp.done || '').replace(/\s+/g, '')));
+}
+// 그날이 그 일정의 '이어지는 날'이면 {day, days, to} — 일요일·완료 보고·기간 밖은 null
+function watchContOn_(sc, ymd) {
+  if (!sc || !sc.date || !(ymd > String(sc.date)) || watchReported_(sc)) return null;
+  var sp = watchSpan_(sc);
+  if (sp.days < 2 || ymd > sp.to) return null;
+  var d = new Date(ymd + 'T00:00:00');
+  if (isNaN(d.getTime()) || d.getDay() === 0) return null;
+  return { day: watchWorkDays_(sp.from, ymd) + 1, days: sp.days, to: sp.to };
+}
+function watchDaysBetween_(a, b) {
+  var x = new Date(String(a) + 'T00:00:00'), y = new Date(String(b) + 'T00:00:00');
+  if (isNaN(x.getTime()) || isNaN(y.getTime())) return 0;
+  return Math.round((y - x) / 86400000);
+}
+// from 다음 날부터 to 까지 일요일을 뺀 날 수(앱 hjWorkDaysBetween 의 앞 방향)
+function watchWorkDays_(from, to) {
+  var a = new Date(String(from) + 'T00:00:00'), b = new Date(String(to) + 'T00:00:00');
+  if (isNaN(a.getTime()) || isNaN(b.getTime()) || b < a || (b - a) > 3660 * 86400000) return 0;
+  var end = watchYmd_(b), d = new Date(a.getTime()), n = 0, guard = 0;
+  while (watchYmd_(d) !== end && guard++ < 4000) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0) n++; }
+  return n;
+}
+function watchWorkItem_(sc, when, ymd, cont, sp) {
+  return { when: when, date: ymd, time: String(sc.time || ''),
+           title: String(sc.title || '작업').replace(WATCH_PLAN_SUFFIX_RE, '') || '작업',
+           project: String(sc.project || ''), crew: String(sc.crew || '').replace(/\s+/g, ' ').trim(),
+           cont: cont || null, days: sp ? sp.days : 1, to: sp ? sp.to : ymd };
+}
+// 한 줄 — 시각(없으면 종일) · 작업 · 여러 날이면 'N/M일째' 또는 'N일 · ~M/D' · 현장 · 담당. 금액은 쓰지 않는다.
+function watchWorkLine_(it, withDate) {
+  return (withDate ? watchMdDow_(it.date) + ' ' : '') + (it.time || '종일') + ' ' + it.title +
+    (it.cont ? ' (' + it.cont.day + '/' + it.cont.days + '일째)' : (it.days > 1 ? ' (' + it.days + '일 · ~' + watchMdDow_(it.to) + ')' : '')) +
+    (it.project ? ' / ' + it.project : '') + (it.crew ? ' / 👤 ' + it.crew : '');
+}
+function watchMdDow_(ymd) {
+  var d = new Date(String(ymd) + 'T00:00:00');
+  if (isNaN(d.getTime())) return String(ymd || '');
+  return (d.getMonth() + 1) + '/' + d.getDate() + '(' + ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] + ')';
+}
+function watchOfDay_(r, when) { var out = []; for (var i = 0; i < r.today.length; i++) if (r.today[i].when === when) out.push(r.today[i]); return out; }
+// 조용한 날 — 오늘·내일 작업도, 밀린 AS 도 없다('all' 이면 보증·방치 경보까지 없을 때)
+function watchQuiet_(r) {
+  if (r.today.length || r.as.length) return false;
+  return watchSections_() === 'all' ? r.total === 0 : true;
+}
+
 /* 현장별 마지막 손댄 날 — '방치 현장' 판정 근거 */
 function watchLastTouch_(files, schedule) {
   var out = {};
@@ -361,23 +442,38 @@ function watchWarranty_(p, today) {
 /* ---------- 메일 만들기 ---------- */
 
 function watchSubject_(r) {
-  if (r.total === 0) return '✅ 만물인테리어 — 오늘 챙길 것 없음';
-  var bits = [];
-  if (r.as.length) bits.push('AS ' + r.as.length);
-  if (r.warranty.length) bits.push('보증만료 ' + r.warranty.length);
-  if (r.stale.length) bits.push('방치 ' + r.stale.length);
-  return '🔔 ' + bits.join(' · ');
+  var all = watchSections_() === 'all', ahead = r.ahead || [];
+  var nT = watchOfDay_(r, '오늘').length, nM = watchOfDay_(r, '내일').length, bits = [];
+  if (nT || nM) bits.push('📅 오늘 작업 ' + nT + (nM ? ' · 내일 ' + nM : ''));
+  else if (ahead.length) bits.push('📅 다음 작업 ' + watchMdDow_(ahead[0].date));
+  if (r.as.length) bits.push('🔧 AS ' + r.as.length);
+  if (all && r.warranty.length) bits.push('보증만료 ' + r.warranty.length);
+  if (all && r.stale.length) bits.push('방치 ' + r.stale.length);
+  return bits.length ? bits.join(' · ') : '✅ 만물인테리어 — 잡힌 작업 없음';
 }
 
 /* 캘린더 설명·시트용 순수 텍스트 — HTML 태그 없이 폰에서 바로 읽힌다 */
 function watchText_(r) {
   if (!r) return '';
   var L = [];
-  L.push(watchYmd_(new Date()) + ' 아침 · 파수꾼이 자동으로 살펴봤습니다');
+  var all = watchSections_() === 'all', ahead = r.ahead || [];
+  var tday = watchToday0_(), tmr = new Date(tday.getTime() + 86400000);
+  L.push(watchYmd_(new Date()) + ' 아침 · 파수꾼이 작업 일정을 살펴봤습니다');
   L.push('');
 
-  if (r.total === 0) {
-    L.push('챙길 게 없습니다. AS·보증만료·방치 현장 모두 이상 없습니다.');
+  var todays = [['오늘', tday], ['내일', tmr]];
+  for (var w = 0; w < todays.length; w++) {
+    var list = watchOfDay_(r, todays[w][0]);
+    L.push('■ ' + todays[w][0] + ' 작업 — ' + watchMdDow_(watchYmd_(todays[w][1])));
+    if (!list.length) L.push('  · 잡힌 작업 없음');
+    for (var x = 0; x < list.length; x++) L.push('  · ' + watchWorkLine_(list[x], false));
+    L.push('');
+  }
+  if (ahead.length) {
+    L.push('■ 다가오는 작업 (' + W.aheadDays + '일 안)');
+    for (var y = 0; y < ahead.length && y < 12; y++) L.push('  · ' + watchWorkLine_(ahead[y], true));
+    if (ahead.length > 12) L.push('  · 외 ' + (ahead.length - 12) + '건');
+    L.push('');
   }
 
   if (r.as.length) {
@@ -392,7 +488,7 @@ function watchText_(r) {
     L.push('');
   }
 
-  if (r.warranty.length) {
+  if (all && r.warranty.length) {
     L.push('■ 보증 만료 임박 — 무상점검 제안 = 재수주 기회');
     for (var k = 0; k < r.warranty.length; k++) {
       var v = r.warranty[k];
@@ -401,7 +497,7 @@ function watchText_(r) {
     L.push('');
   }
 
-  if (r.stale.length) {
+  if (all && r.stale.length) {
     L.push('■ 멈춰 있는 현장 — ' + W.projStale + '일 넘게 사진도 일정도 없음');
     for (var s = 0; s < r.stale.length; s++) {
       L.push('  · ' + r.stale[s].name + ' : ' + r.stale[s].days + '일째 조용' +
@@ -410,16 +506,7 @@ function watchText_(r) {
     L.push('');
   }
 
-  if (r.today.length) {
-    L.push('■ 오늘·내일 일정');
-    for (var t = 0; t < r.today.length; t++) {
-      var tt = r.today[t];
-      L.push('  · ' + tt.when + ' ' + tt.time + ' ' + tt.title + (tt.project ? ' / ' + tt.project : ''));
-    }
-    L.push('');
-  }
-
-  L.push('— 파수꾼 ' + WATCH_VERSION + ' · 현장자료를 읽기만 하며 고치지 않습니다');
+  L.push('— 파수꾼 ' + WATCH_VERSION + ' · 작업 일정만 알립니다(💰 수금·세금 일정과 금액은 넣지 않음) · 현장자료는 읽기만 합니다');
   return L.join('\n');
 }
 
@@ -431,8 +518,8 @@ function watchHtml_(r, data) {
        '<div style="font-size:12px;opacity:.85;margin-top:2px">' + watchYmd_(new Date()) + ' 아침 · 파수꾼이 자동으로 살펴봤습니다</div></div>';
   h += '<div style="border:1px solid #e5e5e5;border-top:none;border-radius:0 0 12px 12px;padding:16px 18px">';
 
-  if (r.total === 0) {
-    h += '<p style="font-size:15px"><b>챙길 게 없습니다.</b> AS·보증만료·방치 현장 모두 이상 없습니다. 👍</p>';
+  if (watchQuiet_(r)) {
+    h += '<p style="font-size:15px"><b>오늘·내일 잡힌 작업이 없습니다.</b></p>';
   }
 
   if (r.as.length) {
@@ -447,7 +534,7 @@ function watchHtml_(r, data) {
     h += '</ul>';
   }
 
-  if (r.warranty.length) {
+  if (watchSections_() === 'all' && r.warranty.length) {
     h += watchSec_('🛡 보증 만료 임박 = 재수주 기회', '만료 전에 "무상 점검 가겠습니다" 연락하면 재공사로 이어지는 자리입니다');
     h += '<ul style="margin:0;padding-left:18px;font-size:13px">';
     for (var w2 = 0; w2 < r.warranty.length; w2++) {
@@ -458,7 +545,7 @@ function watchHtml_(r, data) {
     h += '</ul>';
   }
 
-  if (r.stale.length) {
+  if (watchSections_() === 'all' && r.stale.length) {
     h += watchSec_('💤 멈춰 있는 현장', W.projStale + '일 넘게 사진도 일정도 없습니다. 잊고 있는 건 아닌지 확인하세요');
     h += '<ul style="margin:0;padding-left:18px;font-size:13px">';
     for (var s2 = 0; s2 < r.stale.length; s2++) {
@@ -470,18 +557,23 @@ function watchHtml_(r, data) {
   }
 
   if (r.today.length) {
-    h += watchSec_('📅 오늘·내일 일정', '');
+    h += watchSec_('📅 오늘·내일 작업', '');
     h += '<ul style="margin:0;padding-left:18px;font-size:13px">';
     for (var t = 0; t < r.today.length; t++) {
       var tt = r.today[t];
-      h += '<li style="margin-bottom:3px"><b>' + watchEsc_(tt.when) + '</b> ' + watchEsc_(tt.time) + ' ' +
-           watchEsc_(tt.title) + (tt.project ? ' <span style="color:#888">· ' + watchEsc_(tt.project) + '</span>' : '') + '</li>';
+      h += '<li style="margin-bottom:3px"><b>' + watchEsc_(tt.when) + '</b> ' + watchEsc_(watchWorkLine_(tt, false)) + '</li>';
     }
+    h += '</ul>';
+  }
+  if (r.ahead && r.ahead.length) {
+    h += watchSec_('🗓 다가오는 작업 (' + W.aheadDays + '일 안)', '');
+    h += '<ul style="margin:0;padding-left:18px;font-size:13px">';
+    for (var u = 0; u < r.ahead.length && u < 12; u++) h += '<li style="margin-bottom:3px">' + watchEsc_(watchWorkLine_(r.ahead[u], true)) + '</li>';
     h += '</ul>';
   }
 
   h += '<p style="margin:18px 0 0;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#999">' +
-       '파수꾼 ' + WATCH_VERSION + ' · 현장자료를 읽기만 하며 절대 고치지 않습니다.<br>' +
+       '파수꾼 ' + WATCH_VERSION + ' · 작업 일정만 알립니다(💰 수금·세금 일정과 금액 제외) · 현장자료를 읽기만 하며 절대 고치지 않습니다.<br>' +
        '기준: AS ' + W.asStale + '일 · 보증 D-' + W.warrantySoon + ' · 방치 ' + W.projStale + '일<br>' +
        '그만 받으시려면 스크립트 속성에 WATCH_OFF=1 을 넣으세요.</p>';
   h += '</div></div>';

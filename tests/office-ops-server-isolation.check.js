@@ -444,6 +444,11 @@ const mediaDispatch = "    if (typeof mediaRelayIsAction_ === 'function' && type
 const sharedTodoDispatch = "    if (typeof sharedTodoIsAction_ === 'function' && typeof sharedTodoHandle_ === 'function' && sharedTodoIsAction_(action)) return out_(sharedTodoHandle_(action, req));\n";
 const relayAuthAnchor = "    var tk = checkToken_(req.token);\n    if (tk) return fail_(tk, tk === 'not-configured' ? '서버에 APP_TOKEN이 설정되지 않았습니다' : '인증키가 일치하지 않습니다');\n";
 const normalizeCheckoutLines = value => value.replace(/\r\n/g, '\n');
+// 2026-11-03 사용자 요청·승인: 파수꾼 watch-v4 — 구글 캘린더에는 작업 일정만(💰 수금·입금·세금 자동·개인 일정과 금액 제외),
+// 보증 만료·방치 현장은 WATCH_SECTIONS='all' 일 때만. 이 정확한 본문(SHA-256)만 허용한다 — 다른 Watchdog 변경은 그대로 막힌다.
+// 운영 Apps Script 배포 권한은 포함하지 않는다(운영 Watchdog 는 로컬과 다르다 — 원본 보존·최소 변경으로 따로).
+const approvedWatchdogV4Sha256 = '5bdada823ec1d3ac2ab6f7151bed69c99a83e24470ae7aaf915f9464e198c2ab';
+const sha256Text = value => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 function protectedGit(args) {
   return childProcess.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
@@ -482,6 +487,9 @@ function assertProtectedSnapshot(entries, label) {
     if (original.path === 'apps-script/Code.gs') {
       assert.equal(current.text === original.text || current.text === approvedRelayText || current.text === approvedMediaRelayText, true,
         label + ': relay must equal Task 1 plus only the exact single post-auth shared-todo dispatch');
+    } else if (original.path === 'apps-script/Watchdog.gs') {
+      assert.equal(current.text === original.text || sha256Text(current.text) === approvedWatchdogV4Sha256, true,
+        label + ': Watchdog must equal the fixed baseline or the exact approved watch-v4');
     } else if (original.path === 'apps-script/appsscript.json') {
       assert.equal(current.text === original.text || current.text === approvedMediaManifestText, true,
         label + ': manifest must equal fixed baseline plus the exact external_request scope');
@@ -511,6 +519,14 @@ for (const [name, alteredRelay] of [
 ]) {
   assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Code.gs' ? { ...entry, text: alteredRelay } : entry), name),
     /exact single post-auth/, 'scope mutation must reject ' + name);
+}
+{
+  const approvedWatchdog = normalizeCheckoutLines(fs.readFileSync(path.join(ROOT, 'apps-script', 'Watchdog.gs'), 'utf8'));
+  if (sha256Text(approvedWatchdog) === approvedWatchdogV4Sha256) {
+    assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog } : entry), 'approved watch-v4');
+    assert.throws(() => assertProtectedSnapshot(approvedSnapshot.map(entry => entry.path === 'apps-script/Watchdog.gs' ? { ...entry, text: approvedWatchdog + '\nvar TEST_UNAPPROVED_WATCH = 1;\n' } : entry), 'watchdog mutation'),
+      /exact approved watch-v4/, 'scope mutation rejects any other Watchdog change');
+  }
 }
 assert.throws(() => assertProtectedSnapshot(approvedSnapshot.filter(entry => entry.path !== 'apps-script/Watchdog.gs'), 'deleted baseline'),
   /must not be deleted/, 'scope mutation rejects a protected file deletion');
