@@ -3,6 +3,40 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-05 v555 🗂 증빙 묶음 — 발행한 간이영수증을 문서로 담기 · [지금 생성] 새 번호 안내 (리허설 r1-11 관찰 2건)
+
+- 배경: 11/5 리허설 r1(누수 하루) 11단계. ① 앱이 발행한 간이영수증(MM-…)이 보험용 증빙 ZIP 에 번호만(06_수금발행기록.xlsx) 들어가고 문서는 "서류 만들기에서 다시 뽑으세요"였다.
+  ② 6단계에서 LR-…-01 을 발행했는데 ZIP 의 [지금 생성]이 같은 날 LR-…-02 를 하나 더 발행해 둘 다 담겼다(보험사가 두 번호를 받는다).
+- ① `hjEvidencePayRcptHtml(p,r)`: 발행 기록(p.docs payrcpt — no·purpose·name·ref=입금 줄 id)과 그 입금 줄(날짜·금액·방법)로 `payRcptHTML` 을 그대로 불러 `03_영수증/간이영수증_<번호>.html` 로 담는다(금액 숨김이면 종전대로 안 담음).
+  입금 줄이 없으면 기록 이름의 '…원' 금액으로, 그것도 없으면 안 만들고 빠진 것에 번호(만들어 내지 않는다). 품목·입금자명·QR·안내 문자 동의 줄은 기록에 없어 빈칸·없음 — 00_목록 `[참고]`(새 칸 plan.infos) 와 화면 '참고:' 줄에 적는다.
+  문서 안의 고객명·연락처는 명세서·청구서·보증서와 같은 규칙(문서 원문 그대로, 00_목록만 가림). 저장 모양 변화 없음(계획은 읽기 전용, 묶음 기록 'evidence' 종전 그대로).
+- ② [지금 생성]은 설계대로 늘 새 번호다(PDF 는 기기에 남지 않는다 — v422; 발행 때 적은 조치·소견 글도 기록에 없어 같은 번호로 똑같이 다시 만들 수 없다). 대신 누르기 전에 알 수 있게:
+  체크 옆 `hjEvidenceLeakNoHint` — '새 번호 LR-…-02 로 발행됩니다(이미 발행한 LR-…-01 과 다른 번호)', 계획 경로 `04_보고서/누수보고서_<새 번호>_(지금 생성).pdf`, 참고 줄 '내용이 같다면 보험사에는 하나만 보내세요',
+  끄면 빠진 것 줄에 발행 번호와 '보낸 PDF 를 그대로 쓰려면 받은 파일을 함께 보내세요'. 같은 번호로 다시 받기(발행 입력 보관)는 저장 모양이 바뀌는 일이라 백로그 [결정 필요]로.
+- 바뀐 옛 검사(의도된 변경): evidence-v427 — 세무사용 묶음 파일 14 → 15(간이영수증 html), 03_ 목록·ZIP 키·화면 '파일 N개'. 보험용 금액 숨김(11개)은 그대로.
+- 핀3곳 hyeonjang-v555-evidencefix. 신규 tests/evidencefix-v555.e2e.js 4/4(① 세무사용 계획·html 내용·참고·00_목록·읽기 전용 → ② 입금 줄 없는 기록·빈 기록·금액 숨김·ZIP 실제 포함·묶음 기록 → ③ 발행 LR 있을 때/없을 때 안내 3곳 → ④ 핀).
+  기준선 v554(f3d1ae3)와 변이 no-rcpt(담기 삭제)는 ① 에서 실패 확인. 관련 옛 검사(evidence-v427·doccenter-v433·expenseocr-v435·insurance-v442·leakreport-v422·leakwarranty-v423·leakquote-v421·leaksms-v424·pay-receipt·payproof-v348·
+  receipt-project·rehearsalfix-v449~451·retention-v447·taxissue-v428·warrantycare-v438) 통과. 전체 run-all(이 컨테이너, 동시 2): 결과는 보고\작업일지_20261105_v554-v555.md.
+- 검사 시드 주의: 견적을 심을 때 `syncQuoteToProject` 를 **files 를 다 채운 뒤** 불러야 한다 — 저장본 복원이 견적마다 가상 견적 파일을 기대해, 없으면 발행 기록 저장(durableLocalMutation)이 'paid exact saved file count conflict' 로 조용히 실패한다(토스트만).
+
+## 2026-11-05 v554 데모 고침 4건 + leak.html 칩 44px — 수요일 품질 점검(보고\웹앱_테스트_20261104.md)이 찾은 P2
+
+- 배경: 11/4~5 수요일 품질 작업(운영 v553 폰·PC 점검 + 전체 검사 + 리허설 r1)이 찾은 고칠 것 중 앱 쪽 5건을 한 판에. 기능 추가 없음, 저장 모양 변화 없음(데모 자료는 저장되지 않는다).
+- ① **데모에 들어가면 '⚠️ 다른 탭이 더 최근에 저장했습니다' 가짜 띠**: 자료 없는 새 기기에서 부팅 4~5초 안에 [예시 넣기]를 누르면 났다. 원인 — 부팅 시더(`taxCalendarEnsure` 4.0s·`coworkSchedEnsure` 4.5s)가
+  `markDirty` → `persistLocal` 800ms 타이머를 걸고, 타이머가 데모 진입 **뒤**에 실행되면 `guardedPersistCurrentState()` 가 `state._demo` 라 `false` 를 돌려주는데 `persistLocal` 은 그 `false` 를 '다른 탭 충돌'로 읽어
+  `__tabStale=true` + 띠. `loadDemo` 는 실제 자료가 있는 분기에서만 `clearTimeout(__idbSaveTimer)` 를 했다. 고침 — 타이머 안에서 `state._demo` 면 조용히 끝(`__hjLocalSavePending=false`), 그리고 `state._demo=true` 직전에
+  분기와 무관하게 `clearTimeout(__idbSaveTimer);__hjLocalSavePending=false`(데모 끝내기 새로고침 때 창 닫기 경고도 안 뜨게). 데모 중 자료 손상은 원래 없었다(hjSnapshot·persist 모두 데모 거부).
+- ② **데모 띠(#hjDemoBar, fixed top)가 머리를 덮음**: PC 1280 에서 로고·[전체 보기]·검색칸·🌙 윗부분, 폰에서는 경고 띠와 겹쳐 머리 전체. `hjTopBarsSync()` 가 띠 아래 y 를 `--hj-topbars` 로 두고
+  `header{margin-top:var(--hj-topbars,0px)}` + sticky `top:var(--hj-topbars,0px)`(폰·PC 규칙 둘 다). 데모 띠가 있을 때만 잰다 — 경고 띠(#hjTabWarn) 혼자일 때의 화면은 종전 그대로(옛 검사 좌표 보존). 띠 위치는 hjDemoBarPosition(경고 띠 아래) 그대로.
+- ③ 확인창 문구 '가상 현장 3곳' ↔ 실제 4곳 → `HJ_DEMO_PROJECT_COUNT`(=4, loadDemo 위) 로. 시드와 어긋나면 demofix-v554 ③ 이 잡는다.
+- ④ 데모 '견적 작성'(state.quotes) 0건이라 견적 협상·유사 견적·계약 검토·공정표 생성이 데모에서 토스트만 띄웠다 → 데모 시드에 quotemaker 모양(newQuote) 견적 2건: 성수동 사무실(상담 단계, PDF 견적서와 같은 8,500,000 — 부가세 별도)·
+  은행동 한빛아파트(견적서 파일 없는 현장). `syncQuoteToProject` 는 부르지 않는다(가상 견적 파일이 생기면 파일 17·견적·정산 합계가 바뀐다 — demo-v462 토스트 검사). 토스트 끝에 '· 견적 작성 2건'. 데모는 저장되지 않으므로 실제 quotes 는 [데모 끝내기] 새로고침으로 돌아온다(settings-safety).
+- ⑤ leak.html 한 글자 칩('벽') 42.9px < 44px — `.chip` 에 `min-width:44px`(leak.css). leakintakeweb-v431 이 로컬에서 떨어지던 원인(CI 글꼴에서는 통과했었다).
+- 핀3곳 hyeonjang-v554-demofix. 신규 tests/demofix-v554.e2e.js 6/6(① 타이머가 데모 안에서 실행·loadDemo 실제 길 → ② 폰·PC 머리가 띠 아래·검색칸 눌림·스크롤 뒤 sticky → ③ 확인창 N → ④ 견적 2건·4개 창·파일 17·토스트 → ⑤ 칩 44 → ⑥ 핀).
+  기준선 v553(f911fe1)과 변이 timer(타이머 데모 가드 삭제)는 ① 에서 실패 확인. 관련 옛 검사(app-version·demo-banner·demo-v462·demo3·demomonth·demotour·demotour2·tour2col·tour6·headerui-v546·leakintakeweb-v431·leakintake-v419·
+  mobile-screen-layout·mobile-more-tools·mobile-todo-nav·multi-tab-guard·nav5-v550·ownertodo-v460·settings-safety·stalelock-v534) 통과 — 아래 v555 절의 전체 검사 결과도 함께.
+- 리허설 대본(`리허설\rehearsal-r1.js`, PC)이 v550 하단 5칸 개편 전 버튼(`[data-mnav="dashboard"]`·`[data-mnav="__todo"]`)을 눌러 12/12 첫 클릭에서 멈추던 것은 대본 쪽을 고쳤다(저장소 밖) — 대시보드 = `#hjLogoHome`, 할 일 = `myWorkView()`.
+
 ## 2026-11-03 v553 운영 대시보드 맨 위에 달력 (현장 요청 11/3) + 달력 날짜 숫자 대비
 
 - 요청: 폰 첫 화면(운영 대시보드) 사진과 함께 "운영 대시보드 맨 위를 캘린더를 위로 올려줘". 종전 맨 위는 📅 오늘 일정 → ✅ 오늘 현장 업무(벤토) 순.
