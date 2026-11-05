@@ -26,6 +26,8 @@
   ① 멈춤·0바이트 안내·깨진 JPEG·EXIF 날짜/GPS → ② 스캔 도중 저장·서버 받기/올리기 0 → ③ 뺀 사본 4가지·남긴 기록·같은 Drive ID 0·현장별 장수 → ④ 옮긴 파일·같은 경로 남긴 기록·표시 없는 압축본 → ⑤ 두 번 → ⑥ 핀.
   기준선 v556(dec599a)·v555(049ea3c)는 ① 에서 HANG(실제 PC 와 같음), 멈춤 파일을 빼면 ② 에서 실패. 변이 no-path 는 ③, no-gate 는 ④ 에서 실패 확인.
   바뀐 옛 검사: photodupsync-v556 변이 기준 문장(거르기 위치 이동)·핀 검사를 'v556 이상·서로 같음'으로.
+  전체 run-all(이 컨테이너, 동시 3): 449개 중 444 통과 — 실패 5개(apartment-projects·bathroom-quality-v410·document-select·document-upload·team-workboard)는 기준선 v555 에서도 같다.
+  스캔 확인 함수는 `typeof hjScanDefer==='function'&&…` 로 부른다 — 함수 하나만 떼어 도는 단위 검사(relay-queue-preservation).
 
 ## 2026-11-06 v556 🪦 정리한 사진 표시(photoTombs) — 중복 정리·삭제한 사진이 다른 기기·옛 저장본 병합으로 되살아나지 않게
 

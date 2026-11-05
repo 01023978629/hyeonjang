@@ -1973,7 +1973,7 @@ async function scanDir(){
 async function hjScanDirRun(){
   try{window.__scanDiskPaths=await hjScanListPaths(state.dirHandle,scanRootPrefix(),new Set());}catch(e){window.__scanDiskPaths=null;}
   if(state._demo){toast('🧪 데모에 들어가 폴더 읽기를 멈췄습니다 — [데모 끝내기] 뒤 다시 읽어 주세요');return;}   // v557 경로를 훑는 사이 데모에 들어갔으면 목록을 비우기 전에 멈춘다
-  window.__scanEmptySkipped=0;
+  window.__scanEmptySkipped=0;window.__photoTombSkipped=0;   // v557 이번 스캔의 숫자만 안내한다(부팅·서버 병합 때 값이 남지 않게)
   const _preSaved=(()=>{try{return serializeData().files;}catch(e){return [];}})();   // v557 정리 표시를 거를 때 '살아 있는 기록' 기준
   const _kept=backupUserEdits();   // P0: 사용자 편집 백업 후 재스캔
   const _carry=directRootCarry(state.files); // 상위 폴더가 막힌 PC에서도 서버전용·미정리 기록은 유지
