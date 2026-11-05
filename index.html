@@ -2048,11 +2048,11 @@ let __clusterShowN=12, __clusterShowKey='';   // 사진 클러스터 점진 표�
    (사진 일괄 업로드가 2분마다 저장하는 식) 폴더의 _현장.json 이 몇 시간이고 안 써졌다 — 10/31 업로드 중 실측. */
 function scheduleFolderAutoSave(){
   if(!(__autoSaveOn&&state.dirHandle&&FS_OK&&!directOrganizedRoot()))return;
-  if(hjScanDefer())return;   // v557
+  if((typeof hjScanDefer==='function'&&hjScanDefer()))return;   // v557
   if(__autosaveTimer)return;   // 이미 예약돼 있으면 미루지 않는다
   __autosaveTimer=setTimeout(()=>{__autosaveTimer=null;if(state.dirty)saveProject(true);},AUTOSAVE_MS);
 }
-function markDirty(){state.dirty=true;__photoCache.key=null;if(hjScanDefer()){const b0=$('#btnSave');if(b0){b0.classList.add('clay');b0.textContent='● 저장하기';}return;}   // v557 스캔 중에는 저장·안전판을 미룬다
+function markDirty(){state.dirty=true;__photoCache.key=null;if((typeof hjScanDefer==='function'&&hjScanDefer())){const b0=$('#btnSave');if(b0){b0.classList.add('clay');b0.textContent='● 저장하기';}return;}   // v557 스캔 중에는 저장·안전판을 미룬다
   try{hjSnapshot('작업 중');}catch(e){}const b=$('#btnSave');if(b){b.classList.add('clay');b.textContent='● 저장하기';}
   // 자동 저장: 자동 모드 + 연결 폴더일 때만, 첫 변경 뒤 3분(v531 최대 대기)
   scheduleFolderAutoSave();
@@ -2115,7 +2115,7 @@ function persistLocal(){
   clearTimeout(__idbSaveTimer);
   const seq=++__hjLocalSaveSeq;__hjLocalSavePending=true;
   __idbSaveTimer=setTimeout(async()=>{try{
-    if(hjScanDefer())return;   // v557 스캔 중 — 반쪽 목록을 기기에 저장하지 않는다(끝나면 다시 저장, 그 사이 창 닫기 경고는 유지)
+    if((typeof hjScanDefer==='function'&&hjScanDefer()))return;   // v557 스캔 중 — 반쪽 목록을 기기에 저장하지 않는다(끝나면 다시 저장, 그 사이 창 닫기 경고는 유지)
     if(state._demo){__hjLocalSavePending=false;return;}   // v554 데모 들어가기 직전에 예약된 저장(부팅 시더 4.0·4.5초 → markDirty) — 데모 화면은 저장하지 않고, guardedPersist 의 데모 false 를 '다른 탭 충돌'로 보지 않는다
     if(__tabStale){__hjLocalSavePending=false;multiTabStaleWarn();return;}   // v457 낡은 탭은 저장하지 않는다 — '새로고침하세요' 띠를 띄우고 나서 창 닫기 경고로 막으면 안 된다
     if(!(await guardedPersistCurrentState())){__tabStale=true;__hjLocalSavePending=false;multiTabStaleWarn();}
@@ -2691,7 +2691,7 @@ async function saveProject(silent){
   if(state._demo){if(!silent)toast('🧪 데모 중에는 저장하지 않습니다 — 위 [데모 끝내기]를 누르면 내 자료로 돌아갑니다');return;}
   if(!state.dirHandle||!FS_OK){if(!silent)toast('폴더 연결 시 폴더에 저장됩니다. 폰에서는 ‘데이터 내보내기’를 쓰세요.');return;}
   if(directOrganizedRoot()){if(!silent)toast('_정리완료는 사진 연결 전용입니다. 저장자료는 상위 만물 폴더의 _현장.json을 그대로 사용합니다.');return;}
-  if(hjScanDefer()){if(!silent)toast('폴더를 읽는 중입니다 — 끝나면 저장합니다');return;}   // v557
+  if((typeof hjScanDefer==='function'&&hjScanDefer())){if(!silent)toast('폴더를 읽는 중입니다 — 끝나면 저장합니다');return;}   // v557
   if(__saving){__saveQueued=silent;return;}
   __saving=true;
   try{
@@ -3147,7 +3147,7 @@ window.addEventListener('online',function(){try{cloudFlushQueue();}catch(e){}try
 async function relaySaveNow(manual){
   if(state._demo)return false;
   if(!relayReady())return false;
-  if(hjScanDefer()){if(manual)toast('폴더를 읽는 중입니다 — 끝나면 서버에 올립니다');return false;}   // v557
+  if((typeof hjScanDefer==='function'&&hjScanDefer())){if(manual)toast('폴더를 읽는 중입니다 — 끝나면 서버에 올립니다');return false;}   // v557
   // v534 오래된 창은 서버에 쓰지 않는다(충돌 창 ②·자동 저장·첫 연결 올리기 모두 이 길) — 기기·폴더와 같은 규칙
   if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}if(manual)toast('🔒 이 창은 다른 창보다 오래된 자료라 서버에 올리지 않았어요 — 위 띠의 [🔄 새로고침]을 누르세요');return false;}
   if(__relaySaving){__relayPend=true;return false;}   // 진행 중이면 끝난 뒤 한 번 더(유실 방지)
@@ -3208,7 +3208,7 @@ async function relayGuardSnapshot(label){
 }
 /* ── 서버에서 불러와 적용 — 적용 전 스냅샷 성공 확인(실패 시 적용 중단, 로컬 자료 보존) ── */
 async function relayLoadApply(silent,snapLabel,guard){
-  if(hjScanBusy()){if(!silent)toast('폴더를 읽는 중입니다 — 끝난 뒤 다시 받아 주세요');return false;}   // v557 스캔 중 서버 자료를 합치지 않는다
+  if((typeof hjScanBusy==='function'&&hjScanBusy())){if(!silent)toast('폴더를 읽는 중입니다 — 끝난 뒤 다시 받아 주세요');return false;}   // v557 스캔 중 서버 자료를 합치지 않는다
   // v534 오래된 창 — 서버 자료를 여기 적용해도 기기에 저장되지 않고(문지기) 기준 revision(relay_rev)만 기기에 남아, 새로고침 뒤 다음 저장이 충돌 없이 서버를 덮을 수 있다
   if(typeof __tabStale!=='undefined'&&__tabStale){relaySetStatus('stale');try{multiTabStaleWarn();}catch(e){}if(!silent)toast('🔒 이 창은 오래된 자료라 서버 자료를 여기에 적용하지 않았어요 — 위 띠의 [🔄 새로고침]으로 다시 여세요');return false;}
   try{
@@ -3449,7 +3449,7 @@ async function hjOutboxPhotoHolds(){
 }
 // relay로 과거에 올렸지만 JSON에 Drive ID가 남지 않은 사진을 앱 목록으로 복구한다.
 async function relayLoadDriveFiles(silent){
-  if(hjScanBusy())return 0;   // v557 스캔 중(목록이 비어 있다) — '없는' 사진을 미배정으로 새로 들이지 않는다(11/6 실측 386장)
+  if((typeof hjScanBusy==='function'&&hjScanBusy()))return 0;   // v557 스캔 중(목록이 비어 있다) — '없는' 사진을 미배정으로 새로 들이지 않는다(11/6 실측 386장)
   if(__relayFilesInflight)return __relayFilesInflight;
   __relayFilesInflight=(async function(){
     try{
@@ -4291,7 +4291,7 @@ async function gdFindFile(retried,options){
   return id;
 }
 async function gdSave(silent,retried,options){
-  if(hjScanDefer())return false;   // v557 스캔 중에는 드라이브에 올리지 않는다
+  if((typeof hjScanDefer==='function'&&hjScanDefer()))return false;   // v557 스캔 중에는 드라이브에 올리지 않는다
   options=options||{};
   if(state._demo)return false;
   if(!__gdCfg||!__gdCfg.clientId){if(!silent)toast('먼저 ☁️ 구글드라이브 연동을 설정하세요.');return false;}
@@ -4352,7 +4352,7 @@ async function gdLoad(silent,retried,force){
 }
 /* ----- 날짜별 백업 + 복원 (만물인테리어 폴더 안, 데이터 안전) ----- */
 async function gdBackup(){
-  if(hjScanDefer())return false;   // v557 스캔 중에는 드라이브에 올리지 않는다
+  if((typeof hjScanDefer==='function'&&hjScanDefer()))return false;   // v557 스캔 중에는 드라이브에 올리지 않는다
   if(state._demo)return;
   try{
     if(!__gdToken||!__gdFolderId)return;
@@ -5154,7 +5154,7 @@ async function hydrateThumbs(){
 // 썸네일이 없는 사진들("탭하면 보기")을 묶어서 드라이브에서 받아 썸네일 생성·캐시
 // 드라이브 파일 1개를 앱에 반영. 실제 바이트 보유분은 건너뜀, 가상이면 다운로드해 교체(중복방지+썸네일확보). bootSkip=true면 이미 가상으로 있는 건 재다운로드 안 함(부팅 빠르게, 썸네일은 캐시로). 반환 1=반영,0=건너뜀
 async function __gdIngestOne(id,name,mime,tok,bootSkip,forceKind,driveSize,photoHolds){
-  if(hjScanBusy())return 0;   // v557
+  if((typeof hjScanBusy==='function'&&hjScanBusy()))return 0;   // v557
   if(__removedIds.has(id))return 0;                    // 사용자가 '제거'한 중복 → 다시 안 불러옴
   if(photoHolds)photoHolds=await hjOutboxPhotoHolds();
   const existing=state.files.find(x=>x._driveId===id);
