@@ -1,6 +1,6 @@
 /* payproof-v348.e2e.js — v348 입금 증빙(현금영수증·세금계산서) 기록 회귀 (Playwright)
    전제: tests/static-server.js(8299) 실행 중. serviceWorkers:'block'. 실발신·네트워크 없음.
-   · 입금 기록(payLog 항목) 안에 proof·proofAt 만 더한다 — 최상위 저장 키 41개 그대로, 옛 기록은 '아직'.
+   · 입금 기록(payLog 항목) 안에 proof·proofAt 만 더한다 — 최상위 저장 키 42개 그대로, 옛 기록은 '아직'.
    · 알림은 10만원 이상·이틀 지난 빈 기록만. 증빙을 적으면 알림에서 빠지고, 다시 누르면 지워진다(사람이 적는다 — 발행을 대신하지 않는다).
    · 입금 기록 창에서 바로 고를 수 있고, 더보기(경영·돈)에서도 열린다. 읽기 경로는 저장본을 바꾸지 않는다. */
 'use strict';
@@ -46,7 +46,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     render();
   });
 
-  await test('알림 대상은 10만원 이상·이틀 지난 빈 기록만, 증빙을 적으면 빠지고 다시 누르면 지워진다 (저장 키 41개)', async () => {
+  await test('알림 대상은 10만원 이상·이틀 지난 빈 기록만, 증빙을 적으면 빠지고 다시 누르면 지워진다 (저장 키 42개)', async () => {
     const r = await page.evaluate(async () => {
       const pend0 = hjProofPending().map(x => [x.project, x.amt, x.days]);
       state.tab = 'dashboard'; render(); await new Promise(r => setTimeout(r, 150));
@@ -75,7 +75,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(/입금 증빙 기록 — 대전/.test(r.title) && r.rows === 3 && r.warn === 1, '창: ' + r.title + ' ' + r.rows + '/' + r.warn);
     assert(r.rec.proof === 'cash' && /^\d{4}-\d{2}-\d{2}$/.test(r.rec.proofAt) && r.saved.proof === 'cash' && r.after === 0, '현금영수증 기록·저장: ' + JSON.stringify(r));
     assert(r.cleared === false, '다시 누르면 표시가 지워져야 한다');
-    assert(r.keys === 41 && r.wide <= 0, '저장 키 41개·390px: ' + r.keys + '/' + r.wide);
+    assert(r.keys === 42 && r.wide <= 0, '저장 키 42개·390px: ' + r.keys + '/' + r.wide);
   });
 
   await test('입금 기록 창에서 증빙을 고르면 그 기록에 남고, 안 고르면 빈 값이다; 더보기 경영·돈에서 열린다', async () => {

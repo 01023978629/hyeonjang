@@ -20,7 +20,9 @@
   removed_ids(Drive 불러오기 막기)는 그대로 이 기기 전용 — 이번에 공유하지 않았다(남는 기록이 같은 Drive 파일을 쓰는 중복이 많아 Drive ID 단위로 막을 수 없음).
 - 핀3곳 hyeonjang-v556-phototombs. 신규 tests/photodupsync-v556.e2e.js 7/7(① 정리 뒤 옛 저장본 병합 → 안 돌아옴 → ② 옛 자료 기기가 새 저장본 병합 → 그 기기 사본도 빠지고 표시 실림
   → ③ 복구함 되살림 → ④ 안전판 되돌리기 → ⑤ 합치기 규칙·남는 기록 보호·상한 → ⑥ v555 저장본에서 올라오기 → ⑦ 핀). 기준선 v555(049ea3c)와 변이 no-skip(병합 거르기 삭제)은 ① 에서 실패 확인.
-  바뀐 옛 검사(의도된 변경): health-board·marketing-draft 허용목록에 photoTombs. 관련 옛 검사(photodupclean-v522·estimate-photo-dup-v342·dup-functions·photo-delete·photo-delete-access·
+  바뀐 옛 검사(의도된 변경): health-board·marketing-draft 허용목록에 photoTombs, 최상위 키 41 → 42(as-record·bankimport-v350·bankstmt-v533·completion-links·crew-v357·delay-v347·
+  extraprogress-v346·extras-settle·payproof-v348·photo-refs·schedule-safety·vatproof-v349). 전체 run-all(이 컨테이너, 동시 3): 448개 중 실패 5 = apartment-projects·bathroom-quality-v410·
+  document-select·document-upload·team-workboard — 기준선 v555(049ea3c)에서도 같은 5개가 실패(이 판과 무관). 관련 옛 검사(photodupclean-v522·estimate-photo-dup-v342·dup-functions·photo-delete·photo-delete-access·
   photo-no-recovery·delete-guard·apo-delete-guard·mobile-docdelete·restore-parity·restore-safety·restore-select·restore-delete-safety·bootrestore-v520·snapshot-guard·snapshot-policy·
   snapshot-restore-guard·snapshot-revert·sync-conflict-preview·relay·relaysync-v530·multi-tab-guard·settings-safety·paid-work-gate·office-ops-conversion(+recovery)·serialized-keys·version-sync·syntax) 통과.
 - 배포 뒤 할 일: 11/5 정리분(373장)은 v556 전에 뺐으므로 표시가 없다 — 운영 앱에서 위 두 안전판과 현재 목록의 차이로 표시를 한 번 채운다(같은 `hjTombUpdate`, 안전판 먼저).

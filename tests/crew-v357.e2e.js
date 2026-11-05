@@ -76,7 +76,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.before === false && r.k3.team === true && r.k3.tag === '고객' && r.k3.email === 'lee@example.invalid' && r.k3.memo === '[카카오] 욕실', '팀원 표시·다른 칸 보존: ' + JSON.stringify(r.k3));
     assert(JSON.stringify(r.badges) === JSON.stringify(['김타일', '박도배', '이고객']), '팀원 배지: ' + JSON.stringify(r.badges));
     assert(!('team' in r.k3b) && r.k3b.tag === '고객', '해제: ' + JSON.stringify(r.k3b));
-    assert(r.fresh === true && r.n === 4 && r.keys === 41, '새 연락처·저장 키: ' + JSON.stringify(r));
+    assert(r.fresh === true && r.n === 4 && r.keys === 42, '새 연락처·저장 키: ' + JSON.stringify(r));
   });
 
   await test('② 일정 창 담당 팀원 — 칩으로 넣고 빼고, 직접 적은 이름도 저장(팀원 아닌 연락처는 칩 없음)', async () => {

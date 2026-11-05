@@ -256,7 +256,7 @@ const DIR = '가상/현장사진/';
     const a = state.asLog.find(x => x.id === 'as-new');
     return { before, after: Object.keys(serializeData()).length, a: JSON.parse(JSON.stringify(a)) };
   });
-  assert(rt.before === 41 && rt.after === 41, '⑨ 최상위 키 41개 그대로: ' + JSON.stringify(rt));
+  assert(rt.before === 42 && rt.after === 42, '⑨ 최상위 키 42개 그대로: ' + JSON.stringify(rt));
   assert(rt.a.fix === '욕실 방수층 보수' && rt.a.fee === 120000 && rt.a.visitAt === '2026-10-02' && rt.a.warrantyItem === '마감(도배·바닥·타일)' && rt.a.visitSchedId, '⑨ 저장 왕복 뒤 필드 유지: ' + JSON.stringify(rt.a));
 
   assert(!errors.length, 'pageerror 0: ' + errors.join(' | '));

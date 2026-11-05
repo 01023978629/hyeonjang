@@ -416,7 +416,7 @@ const DUE = EST + EXTRA - RECV; // 8,720,000
     return { before, keys: Object.keys(serializeData()), due: s.due, extra: s.extra,
       ids: ((state.quotes.find(q => q.id === 'qx1') || {}).items || []).map(it => it.extraId || '') };
   }, { PJ });
-  assert(round.before === 41 && round.keys.length === 41 && !round.keys.some(k => /extra/i.test(k)), '⑪ 최상위 키 41개 그대로: ' + round.keys.length);
+  assert(round.before === 42 && round.keys.length === 42 && !round.keys.some(k => /extra/i.test(k)), '⑪ 최상위 키 42개 그대로: ' + round.keys.length);
   assert(round.due === EST2 - RECV && round.extra === 0 && round.ids.filter(Boolean).length === 4, '⑪ 왕복 뒤에도 같다: ' + JSON.stringify(round));
   assert(errors.length === 0, '⑪ pageerror: ' + errors.join(' | '));
 

@@ -102,7 +102,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       hjProofSummary(y + '-01', y + '-06'); vatReport(y + '-1'); await new Promise(r => setTimeout(r, 80)); closeModal();
       return { same: before === snap(), keys: Object.keys(serializeData()).length };
     });
-    assert(r.same && r.keys === 41, '저장본 불변·키 41: ' + JSON.stringify(r));
+    assert(r.same && r.keys === 42, '저장본 불변·키 42: ' + JSON.stringify(r));
   });
 
   await test('공정 진행률은 시공 현장에만 보이고(상담·완료 현장의 옛 사진 공정 ×), 긴 공정 이름은 24자에서 자른다 — 실데이터 확인 후속', async () => {

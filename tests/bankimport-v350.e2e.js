@@ -3,7 +3,7 @@
    실데이터(2026-10-08) 견적 72곳·입금 기록 0건 — 통장 거래내역(xlsx·csv)에서 입금 줄만 뽑아 현장을 제안하고, 사람이 체크한 것만 저장한다.
    · 머리글 찾기(농협식 입금금액 열 / 카카오식 구분+거래금액), 날짜 꼴(2026/10/02 14:22, 엑셀 일련번호, 2026.10.03, 20261004), 합계 줄 제외
    · 제안은 이름이 맞을 때만(고객명·예전 입금자·현장명). 금액만 맞으면 힌트. 후보 동점이면 비움. 같은 날·금액·현장은 '이미 기록됨'
-   · 저장은 hjPayRecordAdd 한 곳(💰 입금 기록 창과 같다) — received·payLog·독촉 작업 닫기. 최상위 키 41개. 그리기만으로 저장본 불변. */
+   · 저장은 hjPayRecordAdd 한 곳(💰 입금 기록 창과 같다) — received·payLog·독촉 작업 닫기. 최상위 키 42개. 그리기만으로 저장본 불변. */
 'use strict';
 let chromium;
 try { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
@@ -151,7 +151,7 @@ const EUCKR_CSV_HEX = 'b0c5b7a1c0cfc0da2cc3e2b1ddb1ddbed72cc0d4b1ddb1ddbed72cb0c
     });
     assert(after.n === before.n + 1 && after.recv === before.recv + 1500000, '저장: ' + JSON.stringify([before, after]));
     assert(after.rec.d === '2026-10-02' && after.rec.project === '대전' && after.rec.amt === 1500000 && after.rec.payer === '김고객' && !after.rec.proof, '저장본 입금 기록: ' + JSON.stringify(after.rec));
-    assert(after.keys === 41 && before.keys === 41 && after.dirty === true, '최상위 키 41·dirty: ' + JSON.stringify([before.keys, after.keys, after.dirty]));
+    assert(after.keys === 42 && before.keys === 42 && after.dirty === true, '최상위 키 42·dirty: ' + JSON.stringify([before.keys, after.keys, after.dirty]));
     assert(/입금 1건 저장됨 — 다음 할 일/.test(after.title), '저장 뒤 다음 할 일 창(v352): ' + after.title);
     const follow = await page.evaluate(async () => {
       const calls = []; const oR = window.sendPaymentReceipt; window.sendPaymentReceipt = (...a) => { calls.push(a); };

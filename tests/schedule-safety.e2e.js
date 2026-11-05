@@ -126,7 +126,7 @@ let browser;
   });
   assert(t2c.dup === 1 && t2c.a === t2c.items - 1 && t2c.marks === t2c.items, '② 옛 세금 일정과 겹치지 않는다: ' + JSON.stringify(t2c));
   const keys = await page.evaluate(() => Object.keys(serializeData()).length);
-  assert(keys === 41, '② serializeData 최상위 키 41개 그대로: ' + keys);
+  assert(keys === 42, '② serializeData 최상위 키 42개 그대로: ' + keys);
 
   // ── ③ 기타 목록 ──
   await page.evaluate(() => {

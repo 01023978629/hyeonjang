@@ -203,7 +203,7 @@ async function openPage() {
     assert.deepEqual(after.recv, { 가온아파트: 370000, 나래아파트: 270000, 다솜아파트: 1000001, 마루아파트: 0, 라온빌라: 500000 }, 'received ' + JSON.stringify(after.recv));
     assert.match(after.toast, /🏦 입금 3건 저장 — 수금 이력에 반영 · 📑 내역서 2건은 현장 4곳에 나눠 기록/);
     assert(/입금 1건 저장됨 — 다음 할 일/.test(after.title) && after.next.length === 1 && /라온빌라/.test(after.next[0]), 'next-steps list = ordinary project rows only (no receipt text to a partner) ' + JSON.stringify([after.title, after.next]));
-    assert(after.dirty === true && after.keys === 41, 'dirty · top-level keys unchanged ' + JSON.stringify([after.dirty, after.keys]));
+    assert(after.dirty === true && after.keys === 42, 'dirty · top-level keys unchanged ' + JSON.stringify([after.dirty, after.keys]));
   });
 
   await test('④ 같은 파일 다시 — 이미 기록됨 · 억지 체크도 안 적음 · 직접 고르기 · 남은 돈 초과 막음 · 내역서만 저장 → 수금 이력 (AGAIN)', async () => {

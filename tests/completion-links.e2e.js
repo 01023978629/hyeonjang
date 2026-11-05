@@ -125,7 +125,7 @@ const PLAIN = '규칙없는가짜현장';
     return { dep: p.checklists && p.checklists.done && p.checklists.done.deposit, stage: p.stage, keys: Object.keys(snap).length };
   }, NAME);
   assert(rt.dep === true && rt.stage === 3, '② 예치금 체크가 저장·백업 왕복에서 남는다: ' + JSON.stringify(rt));
-  assert(rt.keys === 41, '② 직렬화 최상위 키는 그대로(41개): ' + rt.keys);
+  assert(rt.keys === 42, '② 직렬화 최상위 키는 그대로(42개): ' + rt.keys);
   await page.evaluate(nm => stageChecklistView(nm, 3), NAME);
   assert(await page.evaluate(() => document.querySelector('#modalRoot .clChk[data-k="deposit"]').checked), '② 다시 열어도 체크돼 있다');
   // 예치금이 없는 현장 · 착공 전 체크에는 없다
