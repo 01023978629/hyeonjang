@@ -3,6 +3,28 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-06 v556 🪦 정리한 사진 표시(photoTombs) — 중복 정리·삭제한 사진이 다른 기기·옛 저장본 병합으로 되살아나지 않게
+
+- 배경(현장 11/5 실측): 중복 정리로 뺀 사진 기록이 다음에 보면 다시 들어와 있었다(1,514 → 2,111장, 이미 '다시 불러오지 않기'에 오른 Drive 사본 37/44 포함).
+  `__removedIds`(idb removed_ids)는 이 브라우저에만 있고 Drive 불러오기 길만 막는다. 빼기 전 자료를 가진 폰·옛 저장본이 `applyData` 병합(기본 = 합치기)으로
+  기록을 다시 넣고 저장하면 서버에 실리고, PC 가 그걸 병합해 되살아났다. 같은 날 현장 합치기(가온마을·세종 가온마을 → 세종 가온마을아파트, 케이투커피 → 망월카페)가
+  두 폴더의 같은 사진을 한 현장에 모아 '중복으로 보이는' 증상이 커졌다(자료는 대표 요청으로 Claude 가 정리 — 안전판 'Claude 중복 사진 346개 정리 전'·'원본·압축본 중복 27개 정리 전').
+- 새 최상위 저장 키 `photoTombs`(여섯 곳 — serializeData·applyData·PAID_SERIALIZED_STATE_KEYS·배열 목록·검사 허용목록 2곳): `[{k,t?,r?}]`, k = `hjTombKey`([경로, 이름, 크기, Drive ID]) JSON,
+  t = 뺀 시각, r = 되살린 시각. 유효 = t>r(`hjTombActiveKeys`). 합치기(`hjPhotoTombsSafe`)는 같은 k 의 t·r 을 각각 큰 쪽 — 순서 무관·멱등, 키 순 정렬(유상 왕복 대조), 상한 6000(오래된 것부터).
+- 쓰기: `guardedPersistMediaFiles(files,stillCurrent,removedIds,photoJournal,tombOpts)` 5번째 인자 — `{tomb:true}` 면 빠진 기록을 표시, `{revive:true}` 면 다시 넣은 기록의 표시를 끈다.
+  표시는 같은 원자 저장에 실리고 성공 뒤에만 `state.photoTombs` 를 바꾼다(실패하면 표시도 없음). 남는 기록과 신원이 같으면 표시하지 않는다(`hjTombUpdate` — 그 사진까지 빠지면 안 됨).
+  tomb: saveVerifiedDuplicates(현장이 다른 같은 사진 hjCrossDupMerge 포함)·hjRemoveDriveGhosts·deletePhotoRecordsSafely, 파일 한 개 삭제 창(직접 state.files). revive: restoreDuplicateBatch.
+- 읽기: `applyData` 병합 — 들어온 표시를 합치고, 유효 표시 신원의 저장 기록은 들여오지 않고(`window.__photoTombSkipped`), 이 기기에 남은 같은 신원 기록(PC 스캔 (1) 사본 포함)은 뺀다.
+  되돌리기(revert, 안전판·드라이브 되돌리기)는 거르지 않고 되살아난 기록마다 r 을 찍는다 — 그 뒤 옛 표시를 든 저장본을 병합해도 유지.
+- 옛 판 호환: v555 저장본(키 없음)으로 부팅 → 정상·자료 그대로·저장 성공(⑥). 옛 판 기기는 키를 모르고 저장 때 떨어뜨리지만, 새 판 기기가 자기 표시를 다시 합쳐 싣는다.
+  removed_ids(Drive 불러오기 막기)는 그대로 이 기기 전용 — 이번에 공유하지 않았다(남는 기록이 같은 Drive 파일을 쓰는 중복이 많아 Drive ID 단위로 막을 수 없음).
+- 핀3곳 hyeonjang-v556-phototombs. 신규 tests/photodupsync-v556.e2e.js 7/7(① 정리 뒤 옛 저장본 병합 → 안 돌아옴 → ② 옛 자료 기기가 새 저장본 병합 → 그 기기 사본도 빠지고 표시 실림
+  → ③ 복구함 되살림 → ④ 안전판 되돌리기 → ⑤ 합치기 규칙·남는 기록 보호·상한 → ⑥ v555 저장본에서 올라오기 → ⑦ 핀). 기준선 v555(049ea3c)와 변이 no-skip(병합 거르기 삭제)은 ① 에서 실패 확인.
+  바뀐 옛 검사(의도된 변경): health-board·marketing-draft 허용목록에 photoTombs. 관련 옛 검사(photodupclean-v522·estimate-photo-dup-v342·dup-functions·photo-delete·photo-delete-access·
+  photo-no-recovery·delete-guard·apo-delete-guard·mobile-docdelete·restore-parity·restore-safety·restore-select·restore-delete-safety·bootrestore-v520·snapshot-guard·snapshot-policy·
+  snapshot-restore-guard·snapshot-revert·sync-conflict-preview·relay·relaysync-v530·multi-tab-guard·settings-safety·paid-work-gate·office-ops-conversion(+recovery)·serialized-keys·version-sync·syntax) 통과.
+- 배포 뒤 할 일: 11/5 정리분(373장)은 v556 전에 뺐으므로 표시가 없다 — 운영 앱에서 위 두 안전판과 현재 목록의 차이로 표시를 한 번 채운다(같은 `hjTombUpdate`, 안전판 먼저).
+
 ## 2026-11-05 v555 🗂 증빙 묶음 — 발행한 간이영수증을 문서로 담기 · [지금 생성] 새 번호 안내 (리허설 r1-11 관찰 2건)
 
 - 배경: 11/5 리허설 r1(누수 하루) 11단계. ① 앱이 발행한 간이영수증(MM-…)이 보험용 증빙 ZIP 에 번호만(06_수금발행기록.xlsx) 들어가고 문서는 "서류 만들기에서 다시 뽑으세요"였다.
