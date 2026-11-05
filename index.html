@@ -603,6 +603,9 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .ph-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
   .ph-cap{font-size:10.5px;font-weight:700;line-height:1.3;word-break:break-word;white-space:normal}
   .ph-twin{display:inline-block;font-size:10.5px;color:var(--muted);margin-left:4px;white-space:nowrap}   /* v556 접힌 같은 사진 표시 */
+  .ph-twin.warn{color:#b45309;font-weight:700;white-space:normal}   /* v556 다른 현장에도 있는 같은 사진 */
+  .ph-twin-ov{position:absolute;right:4px;bottom:var(--twin-b,4px);z-index:1;margin:0;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.94);font-size:10px;line-height:1.5;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:auto}
+  body.dark .ph-twin-ov{background:rgba(20,28,38,.94)}
   .ph-cap.phase{color:var(--blueprint)} .ph-cap.work{color:var(--moss)}
   /* 아래로 내려온 공정 선택칸은 오버레이 해제(정적 배치) */
   .ph-meta .ph-phase,.ph-meta .ph-hint{position:static;width:100%;left:auto;right:auto;bottom:auto}
@@ -11879,20 +11882,39 @@ let __photoTwinsOpen=false;   // v556 같은 사진 쌍을 펼쳐 둘 다 보기
 /* v556 같은 사진 쌍 접기(화면만) — markDuplicates 의 의심 묶음(같은 크기 + 2초 안 촬영시각)마다 대표 한 장만 사진 탭에 그린다.
    11/5 대표 폰(서버 자료): 정리된 기록(현장 있음)과 원본 폴더에 남은 기록(미배정)이 한 사진에 둘 있어 모든 사진이 두 장씩 보였다(v522 '정리본 사본' 쌍).
    자료는 건드리지 않는다 — 접힌 기록도 state.files 에 그대로 있고 미배정 수·🧭 추측 배정·중복 정리 도구는 종전처럼 전부 본다. 크기 0 이거나 촬영시각이 없는 묶음은 접지 않는다
-   (날짜 없는 Drive 가상 기록이 크기 0 으로 한 묶음이 되는 것을 막는다). 대표 = 현장 있음 > _정리완료/ > 작업명·공정 있음 > Drive 연결 > 비교 기준(첫 장). */
+   (날짜 없는 Drive 가상 기록이 크기 0 으로 한 묶음이 되는 것을 막는다). 대표 = 현장 있음 > _정리완료/ > 그 현장 이름 폴더 > 작업명·공정 있음 > Drive 연결 > 비교 기준(첫 장). 서로 다른 현장 두 곳의 쌍은 접지 않고 ⚠. */
 function hjPhotoTwinPick(g){
-  const score=f=>(f.project?8:0)+(String(f.prefix||'').startsWith('_정리완료/')?4:0)+((f._worklabel||f._phase)?2:0)+(f._driveId?1:0);
+  // +3: 현장 이름과 같은 정리 폴더(_정리완료/<현장>/…) — 현장 이름을 바꾼 뒤 옛 이름 폴더에 남은 사본보다 지금 이름 폴더의 것을 남긴다(11/5 PC 가온마을 ↔ 세종 가온마을 31쌍)
+  const score=f=>(f.project?8:0)+(String(f.prefix||'').startsWith('_정리완료/')?4:0)+(f.project&&String(f.prefix||'').startsWith('_정리완료/'+f.project+'/')?3:0)+((f._worklabel||f._phase)?2:0)+(f._driveId?1:0);
   let best=g[0],bs=score(g[0]);for(let i=1;i<g.length;i++){const sc=score(g[i]);if(sc>bs){best=g[i];bs=sc;}}return best;
 }
 function hjPhotoTwinFold(dupSets){
-  const hidden=new Set(),byRep=new Map();
+  const hidden=new Set(),byRep=new Map(),cross=new Map();
   (dupSets||[]).forEach(g=>{
     if(!Array.isArray(g)||g.length<2)return;
     if(!(Number(g[0].size)>0)||!g[0].when)return;
+    // v556(11/5 저녁, PC 자료 101쌍 중 16쌍) 서로 다른 현장 두 곳에 배정된 같은 사진은 접지 않는다 — 어느 현장 사진인지 대표가 골라야 하는 배정 오류라
+    //      둘 다 보이게 두고 카드마다 '⚠ 다른 현장에도: X' 를 붙인다(cross). 한쪽만 현장이 있거나 같은 현장이면 접는다.
+    const projs=[...new Set(g.map(x=>x.project).filter(Boolean))];
+    if(projs.length>1){g.forEach(x=>cross.set(x.id,projs.filter(n=>n!==x.project)));return;}
     const rep=hjPhotoTwinPick(g),rest=g.filter(x=>x!==rep);
     rest.forEach(x=>hidden.add(x.id));byRep.set(rep.id,rest);
   });
-  return {hidden,byRep,n:hidden.size};
+  return {hidden,byRep,cross,n:hidden.size};
+}
+/* v556 순수 묶음(표시 플래그를 건드리지 않는다) — markDuplicates 와 같은 열쇠(크기 + 2초 버킷), 크기 0·촬영시각 없음은 빼고. 현장별 보기가 쓴다. */
+function hjPhotoTwinGroups(photos){
+  const m=new Map();
+  (photos||[]).forEach(p=>{if(!p||!(Number(p.size)>0)||!p.when)return;const t=new Date(p.when).getTime();if(!Number.isFinite(t))return;const k=Number(p.size)+'_'+Math.round(t/2000);if(!m.has(k))m.set(k,[]);m.get(k).push(p);});
+  return [...m.values()].filter(g=>g.length>1);
+}
+/* v556 카드 배지 — 접힌 사본(📎 사본 n)과 다른 현장 같은 사진(⚠). photoCell(사진 탭)·photoCellProj(현장별 보기)가 같이 쓴다. */
+function hjPhotoTwinBadge(p,overlay){
+  const tws=window.__photoTwinByRep&&window.__photoTwinByRep.get(p.id),cx=window.__photoTwinCross&&window.__photoTwinCross.get(p.id);
+  const cls=overlay?' ph-twin-ov':'';let out='';
+  if(tws&&tws.length)out+=`<span class="ph-twin${cls}" data-twin-of="${escapeAttr(p.id)}" title="${escapeAttr('같은 크기·촬영시각 사진 '+tws.length+'장이 접혀 있습니다 — '+tws.map(x=>(x.project||'현장 없음')+(hjPhotoLabel(x)?' · '+hjPhotoLabel(x):'')+(x.prefix?' · '+x.prefix:'')).join(' / ')+' ([📎 같은 사진 펼치기]로 둘 다 보기)')}">📎 사본 ${tws.length}</span>`;
+  if(cx&&cx.length)out+=`<span class="ph-twin warn${cls}" data-twin-cross="${escapeAttr(p.id)}" title="${escapeAttr('같은 크기·촬영시각 사진이 다른 현장에도 배정돼 있습니다: '+cx.join(', ')+' — 어느 현장 사진인지 확인해 한쪽을 고쳐 주세요')}">⚠ 다른 현장에도: ${escapeHtml(cx.join(', ').slice(0,24))}</span>`;
+  return out;
 }
 let __phaseProj=null;
 /* 폰 화면 압축 — 사진 탭의 주업무는 '새 사진을 현장에 배정'인데, 안내문+도구
@@ -35886,7 +35908,7 @@ function viewPhotos(){
   const dupSets=markDuplicates(photos);
   const __tw=hjPhotoTwinFold(dupSets);
   const __twOn=!__photoTwinsOpen&&!__showDup&&__tw.n>0;
-  window.__photoTwinByRep=__twOn?__tw.byRep:null;
+  window.__photoTwinByRep=__twOn?__tw.byRep:null;window.__photoTwinCross=__tw.cross;
   const shownPhotos=__twOn?photos.filter(p=>!__tw.hidden.has(p.id)):photos;
   const fp=photoFingerprint(shownPhotos)+(__twOn?'|twins':'');
   let clusters;
@@ -36713,9 +36735,8 @@ function photoCell(p){
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
-  // v556 접힌 같은 사진 — 대표 장에 📎 사본 n (접힌 기록의 현장·작업명을 title 에)
-  const __tws=window.__photoTwinByRep&&window.__photoTwinByRep.get(p.id);
-  const twinHtml=__tws&&__tws.length?`<span class="ph-twin" data-twin-of="${escapeAttr(p.id)}" title="${escapeAttr('같은 크기·촬영시각 사진 '+__tws.length+'장이 접혀 있습니다 — '+__tws.map(x=>(x.project||'현장 없음')+(hjPhotoLabel(x)?' · '+hjPhotoLabel(x):'')+(x.prefix?' · '+x.prefix:'')).join(' / ')+' (사진 탭 [📎 같은 사진 펼치기]로 둘 다 보기)')}">📎 사본 ${__tws.length}</span>`:'';
+  // v556 접힌 같은 사진 — 대표 장에 📎 사본 n · 다른 현장에도 있는 같은 사진은 ⚠ (hjPhotoTwinBadge)
+  const twinHtml=hjPhotoTwinBadge(p,false);
   // 공정/작업명·선택칸을 사진 위 오버레이가 아니라 '사진 아래'에 배치 → 긴 글자도 잘리지 않고 전체 표시.
   return `<div class="ph-cell">
     <div class="ph${__sel.has(p.id)?' sel':''}">
@@ -40249,7 +40270,14 @@ function viewProject(){
     html+=`<div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">${KIND[k].label} · ${sub.length}${dl}</div><div class="grid">${sub.map(cardHtml).join('')}</div>`;
   }
   // 사진 (시공)
-  const photos=showSec(2)?list.filter(f=>f.kind==='photo'):[];
+  // v556 같은 사진 쌍 접기 — 사진 탭과 같은 규칙(전체 사진에서 묶어 대표를 고르므로 미배정 사본은 이 현장 대표 장의 📎 로, 다른 현장 쌍은 ⚠ 로)
+  const __projPhotosAll=showSec(2)?list.filter(f=>f.kind==='photo'):[];
+  const __ptw=__projPhotosAll.length?hjPhotoTwinFold(hjPhotoTwinGroups((state.files||[]).filter(f=>f&&f.kind==='photo'))):{hidden:new Set(),byRep:new Map(),cross:new Map(),n:0};
+  const __ptwHere=__projPhotosAll.filter(f=>__ptw.hidden.has(f.id)).length;
+  const __ptwOn=!__photoTwinsOpen&&__ptwHere>0;
+  window.__photoTwinByRep=__ptwOn?__ptw.byRep:null;window.__photoTwinCross=__ptw.cross;
+  const photos=__ptwOn?__projPhotosAll.filter(f=>!__ptw.hidden.has(f.id)):__projPhotosAll;
+  const __ptwBtn=__ptwHere?`<button class="ghost tiny" id="btnTwinToggle" aria-pressed="${__ptwOn?'true':'false'}" title="같은 크기·촬영시각 사진은 한 장만 보이고 📎 사본 표시가 붙습니다. 자료는 바뀌지 않습니다.">📎 같은 사진 ${__ptwHere}장 ${__ptwOn?'접음 · 펼치기':'펼침 · 접기'}</button>`:'';
   const __selOpen=__projPhotoOpen.has(p.name); // 사진 접힘(기본)/펼침 — 목록 화면과 상태 공유
   if(photos.length&&!__selOpen){
     const recent=photos.slice().sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)).slice(0,3);
@@ -40266,6 +40294,7 @@ function viewProject(){
       <button class="blue tiny" data-map="${escapeAttr(p.name)}">🗺️ 전체 위치 보기</button>
       <button class="moss tiny" data-organize="${escapeAttr(p.name)}">📁 공정대로 폴더 정리</button>
       <span class="hint" style="margin:0">GPS ${gpsN}/${photos.length}장</span>
+      ${__ptwBtn}
     </div>`;
     html+='<div id="bulkBarSlot" data-scope="'+escapeAttr(p.name)+'">'+bulkBar(p.name)+'</div>';
     // 공정 관리 바
@@ -40322,6 +40351,7 @@ function photoCellProj(f,phases){
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
     ${sel}
+    ${(()=>{const b=hjPhotoTwinBadge(f,true);return b?`<span style="--twin-b:${phases.length?'30px':'4px'}">${b}</span>`:'';})()}
   </div>`;
 }
 // 현장별 보기 내용 필터 (null=전체, 0~3=단계별)

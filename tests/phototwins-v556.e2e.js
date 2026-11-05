@@ -1,8 +1,9 @@
 /* v556 사진 탭 같은 사진 쌍 접기 — 11/5 대표 폰(서버 자료): 한 사진에 기록이 둘(정리된 기록 + 원본 폴더에 남은 미배정 기록)이라 모든 사진이 두 장씩 보였다. 합성 자료만, 외부 쓰기 0.
    ① 폰 390: 같은 크기·촬영시각 쌍은 대표 한 장(현장 있는 정리본)만 그려지고 그 장에 '📎 사본 1'(title 에 접힌 기록의 현장·작업명) · 다른 사진은 그대로 · 중복 의심 수는 종전처럼 전체에서 셈 · 자료 불변 (FOLD)
    ② 폰: 도구 더보기 안 [📎 같은 사진 n장 접음 · 펼치기] → 둘 다 보이고 배지 없음 → 다시 접기. '의심 사진 보기'는 종전 그대로 둘 다 (TOGGLE)
-   ③ 크기 0 이거나 촬영시각 없는 묶음은 접지 않음 · 대표 고르기(현장 > _정리완료/ > 작업명 > Drive 연결 > 첫 장) (RULES)
+   ③ 크기 0 이거나 촬영시각 없는 묶음은 접지 않음 · 대표 고르기(현장 > _정리완료/ > 그 현장 이름 폴더 > 작업명 > Drive 연결 > 첫 장) (RULES)
    ④ PC 1280: 요약 줄에 토글, 접힘 동작 같음 · 선택 모드에서 접힌 기록은 선택칸이 없음(펼치면 생김) (PC)
+   ⑥ (11/5 저녁 PC 자료 101쌍: 같은 현장 78·한쪽 미배정 7·다른 현장 16) 다른 현장 두 곳의 같은 사진은 접지 않고 둘 다 ⚠ · 현장별 보기도 같은 현장 쌍을 접고 📎, 토글로 펼침 (CROSS)
    ⑤ 소스·핀 3곳(v556 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
    HJ_V556_BASELINE=<commit> 은 ① 에서, HJ_V556_MUTATION=nofold(접기 끔)는 ① 에서 실패해야 한다. */
 'use strict';
@@ -132,10 +133,11 @@ const cellIds = page => page.evaluate(() => [...document.querySelectorAll('#view
         organized: pick([P({ id: 'a', _worklabel: '라벨' }), P({ id: 'b', prefix: '_정리완료/x/' })]),
         label: pick([P({ id: 'a' }), P({ id: 'b', _phase: '타일' })]),
         drive: pick([P({ id: 'a' }), P({ id: 'b', _driveId: 'd1' })]),
+        ownFolder: pick([P({ id: 'a', project: '가온마을', prefix: '_정리완료/세종 가온마을/2차 방수/' }), P({ id: 'b', project: '가온마을', prefix: '_정리완료/가온마을/현장사진/' })]),
         first: pick([P({ id: 'a' }), P({ id: 'b' })])
       };
     });
-    assert.deepEqual(r, { zero: 0, undated: 0, single: 0, project: 'b', organized: 'b', label: 'b', drive: 'b', first: 'a' }, JSON.stringify(r));
+    assert.deepEqual(r, { zero: 0, undated: 0, single: 0, project: 'b', organized: 'b', label: 'b', drive: 'b', ownFolder: 'b', first: 'a' }, JSON.stringify(r));
   });
 
   await test('④ PC 1280: 요약 줄 토글 · 접힘 같음 · 선택 모드에서 접힌 기록은 선택칸 없음, 펼치면 생김 (PC)', async () => {
@@ -152,6 +154,40 @@ const cellIds = page => page.evaluate(() => [...document.querySelectorAll('#view
     r = await look(pc); assert.equal(r.cells, 7, 'PC unfolded'); assert.equal(r.state, pcBefore, 'state unchanged (PC)');
   });
 
+  await test('⑥ 다른 현장 쌍은 접지 않고 ⚠ · 현장별 보기도 같은 현장 쌍 접힘·토글 (CROSS)', async () => {
+    const { page: pp } = await open({ width: 1280, mobile: false });
+    const OTHER = 'T556 다른 현장';
+    await pp.evaluate(({ ga, other }) => {
+      state.projects.push({ name: other, stage: 2, received: 0, phases: [], cost: { material: 0, labor: 0, outsource: 0 }, customer: { name: '', phone: '', addr: '' } });
+      const base = state.files.find(f => f.id === 'org1');
+      const mk = (id, project, prefix, size, when) => Object.assign({}, base, { id, name: id + '.jpg', project, prefix, size, when: new Date(when), _worklabel: '' });
+      state.files.push(mk('x1', ga, '_정리완료/' + ga + '/', 888001, '2026-10-22T10:00:00+09:00'), mk('x2', other, '_정리완료/' + other + '/', 888001, '2026-10-22T10:00:00+09:00'),
+        mk('p1', ga, '_정리완료/' + ga + '/A/', 888002, '2026-10-22T11:00:00+09:00'), mk('p2', ga, '_정리완료/세종 ' + ga + '/B/', 888002, '2026-10-22T11:00:00+09:00'));
+      __photoCache.key = null; __photoTwinsOpen = false; state.tab = 'photos'; render();
+    }, { ga: GA, other: OTHER });
+    let ids = await cellIds(pp);
+    assert.equal(ids.length, 8, '11 records → 8 cards (pair1·pair2·p-pair folded, cross pair kept): ' + ids.join(','));
+    assert(ids.includes('x1') && ids.includes('x2') && ids.includes('p1') && !ids.includes('p2'), ids.join(','));
+    let cross = await pp.evaluate(() => [...document.querySelectorAll('#view [data-twin-cross]')].map(b => [b.dataset.twinCross, b.textContent.trim()]));
+    assert.deepEqual(cross.sort(), [['x1', '⚠ 다른 현장에도: T556 다른 현장'], ['x2', '⚠ 다른 현장에도: T556 탄방동 빌라']], JSON.stringify(cross));
+    // 현장별 보기 — 이 현장 사진: org1(미배정 사본은 다른 곳) · x1(⚠) · p1/p2(같은 현장 쌍 → 하나)
+    await pp.evaluate(ga => { state.tab = 'project'; state.activeProject = ga; __projView = null; __projPhotoOpen.add(ga); render(); }, GA);
+    const pv = () => pp.evaluate(() => ({ ids: [...document.querySelectorAll('#view .phase-group .cluster-body .ph')].map(c => (c.querySelector('input[data-sel]') || {}).dataset?.sel || '?'),
+      twins: [...document.querySelectorAll('#view .phase-group [data-twin-of]')].map(b => b.dataset.twinOf).sort(), cross: [...document.querySelectorAll('#view .phase-group [data-twin-cross]')].map(b => b.dataset.twinCross),
+      btn: (document.getElementById('btnTwinToggle') || {}).textContent || '', head: ([...document.querySelectorAll('#view span')].find(e => /현장 사진 · \d+ · 날짜별/.test(e.textContent)) || {}).textContent || '',
+      over: [...document.querySelectorAll('#view .phase-group .ph')].some(c => { const r = c.getBoundingClientRect(); return [...c.querySelectorAll('.ph-twin-ov')].some(b => { const q = b.getBoundingClientRect(); return q.right > r.right + 1 || q.left < r.left - 1; }); }) }));
+    let r = await pv();
+    assert.deepEqual(r.ids.slice().sort(), ['org1', 'p1', 'x1'], 'project view folded: ' + r.ids.join(','));
+    assert.deepEqual([r.twins, r.cross], [['org1', 'p1'], ['x1']], JSON.stringify(r));
+    assert(/📎 같은 사진 1장 접음 · 펼치기/.test(r.btn) && /현장 사진 · 3 · 날짜별/.test(r.head) && !r.over, JSON.stringify(r));
+    await pp.locator('#btnTwinToggle').click();
+    r = await pv();
+    assert.deepEqual(r.ids.slice().sort(), ['org1', 'p1', 'p2', 'x1'], 'project view unfolded: ' + r.ids.join(','));
+    assert.deepEqual(r.twins, [], 'no 📎 while unfolded'); assert.deepEqual(r.cross, ['x1'], '⚠ stays while unfolded');
+    await pp.locator('#btnTwinToggle').click();
+    assert.equal((await pv()).ids.length, 3, 'folded again');
+  });
+
   await test('⑤ 소스·핀 3곳(v556 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0', async () => {
     const src = html || fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     assert(src.includes('function hjPhotoTwinFold(dupSets){') && src.includes('function hjPhotoTwinPick(g){') && src.includes("id==='btnTwinToggle'"), 'v556 source markers');
@@ -160,6 +196,6 @@ const cellIds = page => page.evaluate(() => [...document.querySelectorAll('#view
     assert.deepEqual(errors, [], 'page errors'); assert.equal(network.writes, 0, 'no external writes');
   });
 
-  console.log('phototwins-v556: ' + passed + '/5 PASS; synthetic data; external writes=0');
+  console.log('phototwins-v556: ' + passed + '/6 PASS; synthetic data; external writes=0');
   await browser.close();
 })().catch(async error => { console.error('FAIL phototwins-v556', error && error.stack || error); try { await browser.close(); } catch (_) {} process.exit(1); });
