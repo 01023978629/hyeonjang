@@ -3,6 +3,24 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-05 v554 데모 고침 4건 + leak.html 칩 44px — 수요일 품질 점검(보고\웹앱_테스트_20261104.md)이 찾은 P2
+
+- 배경: 11/4~5 수요일 품질 작업(운영 v553 폰·PC 점검 + 전체 검사 + 리허설 r1)이 찾은 고칠 것 중 앱 쪽 5건을 한 판에. 기능 추가 없음, 저장 모양 변화 없음(데모 자료는 저장되지 않는다).
+- ① **데모에 들어가면 '⚠️ 다른 탭이 더 최근에 저장했습니다' 가짜 띠**: 자료 없는 새 기기에서 부팅 4~5초 안에 [예시 넣기]를 누르면 났다. 원인 — 부팅 시더(`taxCalendarEnsure` 4.0s·`coworkSchedEnsure` 4.5s)가
+  `markDirty` → `persistLocal` 800ms 타이머를 걸고, 타이머가 데모 진입 **뒤**에 실행되면 `guardedPersistCurrentState()` 가 `state._demo` 라 `false` 를 돌려주는데 `persistLocal` 은 그 `false` 를 '다른 탭 충돌'로 읽어
+  `__tabStale=true` + 띠. `loadDemo` 는 실제 자료가 있는 분기에서만 `clearTimeout(__idbSaveTimer)` 를 했다. 고침 — 타이머 안에서 `state._demo` 면 조용히 끝(`__hjLocalSavePending=false`), 그리고 `state._demo=true` 직전에
+  분기와 무관하게 `clearTimeout(__idbSaveTimer);__hjLocalSavePending=false`(데모 끝내기 새로고침 때 창 닫기 경고도 안 뜨게). 데모 중 자료 손상은 원래 없었다(hjSnapshot·persist 모두 데모 거부).
+- ② **데모 띠(#hjDemoBar, fixed top)가 머리를 덮음**: PC 1280 에서 로고·[전체 보기]·검색칸·🌙 윗부분, 폰에서는 경고 띠와 겹쳐 머리 전체. `hjTopBarsSync()` 가 띠 아래 y 를 `--hj-topbars` 로 두고
+  `header{margin-top:var(--hj-topbars,0px)}` + sticky `top:var(--hj-topbars,0px)`(폰·PC 규칙 둘 다). 데모 띠가 있을 때만 잰다 — 경고 띠(#hjTabWarn) 혼자일 때의 화면은 종전 그대로(옛 검사 좌표 보존). 띠 위치는 hjDemoBarPosition(경고 띠 아래) 그대로.
+- ③ 확인창 문구 '가상 현장 3곳' ↔ 실제 4곳 → `HJ_DEMO_PROJECT_COUNT`(=4, loadDemo 위) 로. 시드와 어긋나면 demofix-v554 ③ 이 잡는다.
+- ④ 데모 '견적 작성'(state.quotes) 0건이라 견적 협상·유사 견적·계약 검토·공정표 생성이 데모에서 토스트만 띄웠다 → 데모 시드에 quotemaker 모양(newQuote) 견적 2건: 성수동 사무실(상담 단계, PDF 견적서와 같은 8,500,000 — 부가세 별도)·
+  은행동 한빛아파트(견적서 파일 없는 현장). `syncQuoteToProject` 는 부르지 않는다(가상 견적 파일이 생기면 파일 17·견적·정산 합계가 바뀐다 — demo-v462 토스트 검사). 토스트 끝에 '· 견적 작성 2건'. 데모는 저장되지 않으므로 실제 quotes 는 [데모 끝내기] 새로고침으로 돌아온다(settings-safety).
+- ⑤ leak.html 한 글자 칩('벽') 42.9px < 44px — `.chip` 에 `min-width:44px`(leak.css). leakintakeweb-v431 이 로컬에서 떨어지던 원인(CI 글꼴에서는 통과했었다).
+- 핀3곳 hyeonjang-v554-demofix. 신규 tests/demofix-v554.e2e.js 6/6(① 타이머가 데모 안에서 실행·loadDemo 실제 길 → ② 폰·PC 머리가 띠 아래·검색칸 눌림·스크롤 뒤 sticky → ③ 확인창 N → ④ 견적 2건·4개 창·파일 17·토스트 → ⑤ 칩 44 → ⑥ 핀).
+  기준선 v553(f911fe1)과 변이 timer(타이머 데모 가드 삭제)는 ① 에서 실패 확인. 관련 옛 검사(app-version·demo-banner·demo-v462·demo3·demomonth·demotour·demotour2·tour2col·tour6·headerui-v546·leakintakeweb-v431·leakintake-v419·
+  mobile-screen-layout·mobile-more-tools·mobile-todo-nav·multi-tab-guard·nav5-v550·ownertodo-v460·settings-safety·stalelock-v534) 통과 — 아래 v555 절의 전체 검사 결과도 함께.
+- 리허설 대본(`리허설\rehearsal-r1.js`, PC)이 v550 하단 5칸 개편 전 버튼(`[data-mnav="dashboard"]`·`[data-mnav="__todo"]`)을 눌러 12/12 첫 클릭에서 멈추던 것은 대본 쪽을 고쳤다(저장소 밖) — 대시보드 = `#hjLogoHome`, 할 일 = `myWorkView()`.
+
 ## 2026-11-03 v553 운영 대시보드 맨 위에 달력 (현장 요청 11/3) + 달력 날짜 숫자 대비
 
 - 요청: 폰 첫 화면(운영 대시보드) 사진과 함께 "운영 대시보드 맨 위를 캘린더를 위로 올려줘". 종전 맨 위는 📅 오늘 일정 → ✅ 오늘 현장 업무(벤토) 순.

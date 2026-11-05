@@ -13,7 +13,7 @@ main{max-width:720px;margin:auto;padding:0 16px 24px}
 .card h2{font-size:19px;letter-spacing:-.6px;line-height:1.4;margin-bottom:6px}.card h2 small{font-size:11px;color:var(--muted);font-weight:500;margin-left:6px}
 legend{display:block;font-size:13px;font-weight:700;color:#4c6157;margin:14px 0 8px;width:100%}.req{font-size:11px;font-weight:500;color:var(--gold);margin-left:6px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{min-height:44px;padding:10px 14px;border-radius:22px;border:1px solid #cfd7cd;background:#fff;font-size:14px;color:var(--ink);cursor:pointer}
+.chip{min-height:44px;min-width:44px;padding:10px 14px;border-radius:22px;border:1px solid #cfd7cd;background:#fff;font-size:14px;color:var(--ink);cursor:pointer}
 .chip[aria-pressed=true],.chip[aria-checked=true]{background:var(--green);color:#fff;border-color:var(--green)}
 fieldset.invalid legend{color:var(--danger)}fieldset.invalid .chip{border-color:#d6aaa1}
 label{display:block;font-size:13px;font-weight:700;color:#4c6157;margin-top:14px}
