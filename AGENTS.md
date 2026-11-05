@@ -3,6 +3,30 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-06 v557 🔁 [다시 스캔] 고침 — 0바이트 사진 멈춤 · 스캔 도중 저장 · 정리한 사본 되살아남 · 이름만 같은 사본의 엉뚱한 연결
+
+- 배경(현장 11/6 실측, PC 폴더 1,764개): ① `_정리완료/용전신동아파트/현장사진/…공사_06.jpg` 가 0바이트라 EXIF.js 가 FileReader 콜백 안에서 RangeError → 콜백이 영영 안 와서
+  스캔이 910번째 파일에서 멈췄다. 그 사이 자동 저장(기기·서버·폴더)이 반쯤 읽은 목록을 저장했고(사진 1,738 → 848), 서버 Drive 사진 불러오기가 '목록에 없는' 사진 386장을
+  미배정으로 새로 들였다. ② 0바이트 파일을 옮긴 뒤 스캔은 끝까지 돌았지만 사진 1,704 → 2,230: 목록에서 뺀 중복((1) 사본·폰 압축본·다른 폴더 사본)의 실제 파일이 PC 에 남아
+  스캔이 기록을 다시 만들었고, 같은 Drive ID 기록 387쌍. ③ 이름만 같은 압축본이 `restoreUserEdits` 이름 복구(v101 BUG-5)로 원본의 Drive ID·현장을 물려받았다.
+- 스캔 안전장치(`scanDir` → `hjScanDirRun`): `window.__hjScanBusy`(15분 넘으면 풀린 것으로 봄, `hjScanBusy()`·`hjScanDefer()`). 스캔 중에는 markDirty(안전판·자동 저장 포함)·persistLocal 타이머·
+  scheduleFolderAutoSave·saveProject·relaySaveNow·gdSave·gdBackup 을 미루고(`__hjScanDirtyDeferred`), relayLoadApply·relayLoadDriveFiles·__gdIngestOne 은 하지 않는다.
+  정상으로 끝나면(마지막 `return true`) markDirty 한 번, 오류·중단이면 저장하지 않는다(화면에는 남음). 스캔 중 다시 누르면 안내만.
+- 멈춤: walk 가 0바이트 사진·동영상을 건너뛴다(`__scanEmptySkipped`, 토스트 '내용 없는 0바이트 사진 N개 건너뜀'). extractImage 는 `EXIF.getData` 대신 같은 판독기
+  `EXIF.readFromBinaryFile(await file.arrayBuffer())` 를 try 안에서 — 깨진 JPEG 는 촬영 정보 없이 넘어간다. 4초 안전 시한. 날짜·GPS 판독 결과는 같다(검사 ①이 조립한 EXIF 로 확인).
+- 되살림: 정리 표시(v556 photoTombs)를 PC 원본이 있는 기록(handle·파일)에 한해 [경로, 이름, 크기]로도 대조(`hjTombPath*`·`hjTombHide`). 살아 있는 저장 기록이 같은 [경로, 이름, 크기]면 숨기지 않음.
+  applyData 는 거르기를 **맞추기 전에** — v556 은 맞춘 뒤 걸러서, 표시된 PC 사본이 남긴 기록(Drive 경로, PC 에 없음)을 먼저 '가져간' 뒤 통째로 빠져 남긴 사진까지 사라졌다(미배포 판에서 발견).
+  표시된 저장 기록은 맞추기에서도 뺀다. 스캔 끝(loadProject 뒤)에도 `hjTombHide(state.files, 스캔 전 저장 목록, photoTombs)` 한 번 — _현장.json 이 없어 applyData 를 안 거쳐도.
+  토스트 '정리한 사진 N장은 다시 넣지 않음'.
+- 엉뚱한 연결: 스캔 전에 폴더 경로만 훑고(`hjScanListPaths` → `window.__scanDiskPaths`, walk 와 같은 건너뛰기, 내용은 안 읽음) 이름 복구 후보의 원래 경로(`_rec.__path`)가 아직 폴더에 있으면
+  '옮긴 파일'이 아니라 '사본'이라 물려주지 않는다. 옮긴 파일(원래 경로가 없음)은 종전대로 복구. 경로를 훑는 사이 데모에 들어가면 목록을 비우기 전에 멈춘다(settings-safety A⑩).
+- 운영 자료: v556 전에 정리한 사진(11/4 637장·11/5 373장)은 표시가 없다 — 배포 뒤 운영 앱에서 안전판 '복구 직전'(11/6 00:52 스캔 결과 2,400건)과 지금 목록의 차이로 표시를 채운다(안전판 먼저).
+  그 전에는 [다시 스캔] 하면 표시 없는 사본이 미배정으로 다시 보일 수 있다(Drive ID·현장은 더 이상 물려받지 않음).
+- 핀3곳 hyeonjang-v557-scanfix. 신규 tests/scandup-v557.e2e.js 6/6 — 합성 폴더(실제 폴더 모양) + 검사용 exif-js 2.3.0(tests/fixtures/vendor, MIT, 앱과 같은 판; 없으면 멈춤이 재현 안 됨).
+  ① 멈춤·0바이트 안내·깨진 JPEG·EXIF 날짜/GPS → ② 스캔 도중 저장·서버 받기/올리기 0 → ③ 뺀 사본 4가지·남긴 기록·같은 Drive ID 0·현장별 장수 → ④ 옮긴 파일·같은 경로 남긴 기록·표시 없는 압축본 → ⑤ 두 번 → ⑥ 핀.
+  기준선 v556(dec599a)·v555(049ea3c)는 ① 에서 HANG(실제 PC 와 같음), 멈춤 파일을 빼면 ② 에서 실패. 변이 no-path 는 ③, no-gate 는 ④ 에서 실패 확인.
+  바뀐 옛 검사: photodupsync-v556 변이 기준 문장(거르기 위치 이동)·핀 검사를 'v556 이상·서로 같음'으로.
+
 ## 2026-11-06 v556 🪦 정리한 사진 표시(photoTombs) — 중복 정리·삭제한 사진이 다른 기기·옛 저장본 병합으로 되살아나지 않게
 
 - 배경(현장 11/5 실측): 중복 정리로 뺀 사진 기록이 다음에 보면 다시 들어와 있었다(1,514 → 2,111장, 이미 '다시 불러오지 않기'에 오른 Drive 사본 37/44 포함).

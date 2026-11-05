@@ -24,10 +24,14 @@ const SRC = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const gitShow = rev => execFileSync('git', ['show', rev + ':index.html'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
 let html = process.env.HJ_V556_BASELINE ? gitShow(process.env.HJ_V556_BASELINE) : null;
 if (process.env.HJ_V556_MUTATION === 'no-skip') {
-  const from = 'if(__tombAct.size&&__tombAct.has(hjTombKeyOfSaved(s))){__tombSkipped++;return;}';
-  const from2 = 'if(__tombAct.size){const n0=state.files.length;';
-  assert(SRC.includes(from) && SRC.includes(from2), 'mutation anchor');
-  html = SRC.replace(from, '').replace(from2, 'if(false){const n0=state.files.length;');
+  // 병합 거르기 삭제 — 들어온 표시 기록·이 기기의 표시 기록을 거르지 않는다(v557 에서 거르기가 맞추기 앞으로 옮겨짐)
+  const cuts = [
+    ['__savedLive=data.files.filter(s=>!__tombAct.has(hjTombKeyOfSaved(s)));', '__savedLive=data.files;'],
+    ['const h=hjTombHide(state.files,__savedLive,state.photoTombs);state.files=h.files;__tombSkipped+=h.hidden;', ''],
+    ['if(__tombAct.size&&__tombAct.has(hjTombKeyOfSaved(s)))return;', ''],
+  ];
+  html = SRC;
+  for (const [from, to] of cuts) { assert(html.includes(from), 'mutation anchor ' + from.slice(0, 40)); html = html.replace(from, to); }
 }
 // ⑥ 올라오기 전 판(v555) — 기준선 지정이 있으면 그것을, 없으면 이 판의 바로 앞 판.
 let oldHtml = null;
@@ -191,9 +195,11 @@ const CLEAN = async () => { const plan = await verifyDuplicatePhotos(); return {
     await ctx.close();
   });
 
-  await test('⑦ 핀 3곳', async () => {
+  await test('⑦ 핀 3곳(v556 이상·서로 같음)', async () => {
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), vs = fs.readFileSync(path.join(ROOT, 'tests', 'version-sync.check.js'), 'utf8');
-    for (const [name, text] of [['index.html', SRC], ['sw.js', sw], ['version-sync', vs]]) assert(text.includes('hyeonjang-v556-phototombs'), name);
+    const pins = [(SRC.match(/const APP_BUILD='([^']+)'/) || [])[1], (sw.match(/const C='([^']+)'/) || [])[1], (vs.match(/const TARGET_BUILD = '([^']+)'/) || [])[1]];
+    assert(pins.every(p => p && p === pins[0]), 'pins equal ' + JSON.stringify(pins));
+    assert(Number((pins[0].match(/-v(\d+)-/) || [])[1]) >= 556, 'pin v556+ ' + pins[0]);
     assert.deepEqual(errors, []); assert.equal(network.writes, 0);
   });
 
