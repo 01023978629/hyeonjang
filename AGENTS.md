@@ -17,6 +17,9 @@
   관련 19개 통과: mobile-screen-layout · nav5-v550 · demofix-v554 · headerui-v546 · dashcal-v553 · leakintake-v419 · bentodash-v547 · healthline-v524 · mobile-tap-table · mobile-field-flow · demo-banner ·
   multi-tab-guard · stalelock-v534 · app-version · uiux · mobile-more-tools · stopmemo-v541 · numwrap2-v542 · scandup-v557. tests/*.check.js 19/19. 전체 run-all 은 이 판에서 안 돌림(병합 전에 한 번).
 - 기반 claude/v557-scanfix(df9285c, v556-phototombs 위). v556-phototwins(PR #202)와는 갈라져 있다 — 병합 순서는 보고\인수인계_20261022.md §6.
+- (뒤 커밋, CI 고침) #203(v556-phototombs)·#204(v557) CI 가 '449개 중 447 통과' 로 빨간불이었다 — tests/document-select·document-upload 가 저장본 최상위 키를 41 로 기대했는데
+  v556 photoTombs 로 42 가 됐다(v556 이 고친 목록에서 빠진 두 곳). 두 검사의 41 → 42(의도된 변경). 이 컨테이너에서는 두 검사가 main(v555)에서도 '내려받기 이름 download'
+  한 건으로 떨어진다(헤드리스 다운로드 환경 — CI 에서는 통과) — 그래서 v557 이 '기준선에서도 같다'고 본 것. 키 수는 PR #205 의 CI 로 확인한다.
 
 ## 2026-11-06 v557 🔁 [다시 스캔] 고침 — 0바이트 사진 멈춤 · 스캔 도중 저장 · 정리한 사본 되살아남 · 이름만 같은 사본의 엉뚱한 연결
 

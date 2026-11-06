@@ -46,7 +46,7 @@ async function routes(context,s){
         assert.equal(p.kind,'doc');const list=[...s.files.values()].map(({bytes,...m})=>m);
         response={ok:true,files:s.mode==='duplicate'?[...list,...list]:s.mode==='missing'?[]:list,truncated:s.mode==='truncated'};
       }else if(req.action==='save'){
-        assert.equal(Object.keys(p.data).length,41);assert.equal(JSON.stringify(p.data).includes(req.token),false,'no serialized secret');s.saves++;
+        assert.equal(Object.keys(p.data).length,42);assert.equal(JSON.stringify(p.data).includes(req.token),false,'no serialized secret');s.saves++;
         if(s.mode==='save-loss'){await route.abort();return;}
         response=s.mode==='conflict'?{ok:false,error:'conflict',serverRevision:99}:{ok:true,revision:s.saves,savedAt:'2026-10-05T01:00:00Z'};
       }else throw new Error('unexpected action '+req.action);
