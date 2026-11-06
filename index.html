@@ -1029,6 +1029,9 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
     .hsearch .proj-chip{max-width:145px}
     body.mobile-mode header{padding:8px 14px;gap:8px;align-items:center}
     body.mobile-mode .brand{display:flex;align-items:center;width:100%;gap:8px}
+    /* v558 폰 머리 '현장.'(첫 화면으로 가는 유일한 단추, v550) 누르는 곳 55x23 → 44 높이. 위아래 -8px 는 머리 위 여백·검색 줄과의 간격(8px)을 쓴다 —
+       로고 상자 = 머리 위 끝 ~ 검색 줄 위 끝(겹침 0), 머리는 3px 만 커진다. 글자 크기·위치는 그대로(가운데 맞춤으로 1px 남짓). PC 는 손대지 않음. */
+    body.mobile-mode #hjLogoHome{line-height:44px;min-height:44px;min-width:44px;margin:-8px 0}
     body.mobile-mode .tagline{margin-left:auto}
     body.mobile-mode .hsearch{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr) 44px;gap:6px;width:100%}
     body.mobile-mode .hsearch input{width:100%;min-width:0}
@@ -3930,7 +3933,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v557-scanfix';
+const APP_BUILD='hyeonjang-v558-logotap';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,

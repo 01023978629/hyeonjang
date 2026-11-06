@@ -3,6 +3,21 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-06 v558 📱 폰 머리 '현장.' 누르는 곳 44px — 첫 화면으로 가는 단추가 55x23 이었다 (11/6 금요일 점검: 최신 판 v557)
+
+- 배경: 11/6 금요일 예약 개발 — 백로그 일감의 남은 [ ] 두 줄(⏱ 종료 '오늘 한 일' · 숫자 점검 2차)은 이미 v541·v542 로 main 에 있었고(v557 에서 stopmemo-v541 5/5 · numwrap2-v542 5/5 재확인),
+  나머지는 모두 결정 대기 → 대표 답 "최신 판 점검 + 고칠 것 1건". v557 데모 자료로 탭 11개 × 폰 390·360 · PC 1280 훑기(가로 넘침 · 44px · 페이지 오류): 넘침 0 · 오류 0,
+  44px 미달은 ① 머리 '현장.'(#hjLogoHome) 55x23 — 모든 탭 ② 바닥 글자 링크 3개(개인정보처리방침 · 서비스 이용약관 · 문의, 높이 15) ③ 360 폭에서 달력 날짜 칸 폭 41(대시보드 · 캘린더 탭).
+  ①만 고침 — v550 부터 폰 하단 5칸에 대시보드가 없어 첫 화면으로 가는 길이 이 로고 하나인데, 9px 아래가 [🏗 전체 보기] 칩이라 조금 빗나가면 현장 고르기가 열리고 사이 틈은 반응이 없었다. ②③은 백로그 수요일 후보로 적음.
+- 한 것(CSS 한 줄, `@media(max-width:640px)` 폰 머리 규칙 옆): `body.mobile-mode #hjLogoHome{line-height:44px;min-height:44px;min-width:44px;margin:-8px 0}`.
+  위아래 -8px 가 머리 위 여백(8)과 검색 줄 간격(8)을 쓴다 → 로고 상자 = 머리 위 끝 ~ 검색 줄 위 끝(겹침 0), 머리 95 → 98px(+3), 글자 크기 그대로(가운데 맞춤으로 1px 남짓 내려감).
+  PC(모바일 모드 아님)는 안 건드림(73x31 그대로). 함수 · 저장 모양 변화 없음. 데모 띠(--hj-topbars) · 직원 모드 띠 아래에서도 머리 위 끝부터.
+- 핀3곳 hyeonjang-v558-logotap. 신규 tests/logotap-v558.e2e.js 4/4(① 390: 상자 44x44 · 위 끝 = 머리 위 끝 · 아래 끝 = 검색 줄 위 끝 · 머리 맨 위 2px · 검색 줄 바로 위 3px 탭 → 첫 화면 · 칩 가운데는 칩
+  → ② 360 · 큰 글씨(a11y-big2) · 데모 띠 아래 → ③ PC 규칙 안 걸림 · 클릭 → 첫 화면 → ④ 핀). 기준선 v557(df9285c)과 변이 no-rule(규칙 삭제)은 ① 상자 크기에서, no-margin(머리가 19px 커지는 쉬운 길)은 ① 위 끝에서 실패 확인.
+  관련 19개 통과: mobile-screen-layout · nav5-v550 · demofix-v554 · headerui-v546 · dashcal-v553 · leakintake-v419 · bentodash-v547 · healthline-v524 · mobile-tap-table · mobile-field-flow · demo-banner ·
+  multi-tab-guard · stalelock-v534 · app-version · uiux · mobile-more-tools · stopmemo-v541 · numwrap2-v542 · scandup-v557. tests/*.check.js 19/19. 전체 run-all 은 이 판에서 안 돌림(병합 전에 한 번).
+- 기반 claude/v557-scanfix(df9285c, v556-phototombs 위). v556-phototwins(PR #202)와는 갈라져 있다 — 병합 순서는 보고\인수인계_20261022.md §6.
+
 ## 2026-11-06 v557 🔁 [다시 스캔] 고침 — 0바이트 사진 멈춤 · 스캔 도중 저장 · 정리한 사본 되살아남 · 이름만 같은 사본의 엉뚱한 연결
 
 - 배경(현장 11/6 실측, PC 폴더 1,764개): ① `_정리완료/용전신동아파트/현장사진/…공사_06.jpg` 가 0바이트라 EXIF.js 가 FileReader 콜백 안에서 RangeError → 콜백이 영영 안 와서
