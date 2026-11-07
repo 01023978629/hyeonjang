@@ -3,6 +3,25 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-07 v560 🪦 서버 Drive 사진 목록이 정리 표시를 지킨다 — 다른 기기에서 뺀 사본이 '미배정'으로 되살아나지 않게
+
+- 실측(11/7 PC 실자료, 자료 맞추기 뒤): 정리로 뺀 '현장사진/' 압축본 2장(정리 표시 있음)이 PC 부팅 뒤 미배정 사진으로 다시 들어와 있었다.
+  들인 곳은 `relayLoadDriveFiles` — 서버 Drive 사진 목록에서 기록에 안 이어진 사진을 '현장사진/' 미배정 가상 기록으로 새로 만든다. 거르는 것은
+  `__removedIds`('다시 불러오지 않기', **정리한 그 기기 IDB 에만**)뿐이라, 정리를 안 한 기기(폰)는 정리 표시만 있고 removed_ids 가 없는 Drive 사진을
+  그대로 들인다(그날 서버 목록 1,363장 중 기록에 안 이어진 113장이 모두 이 경우 — PC 는 removed_ids 295개라 2장만 샜다). v556 정리 표시는
+  저장·병합(applyData)과 스캔만 지켰고 이 길은 몰랐다. 폰이 들인 사본은 다음 저장으로 서버에 올라가 다른 기기와 핑퐁이 된다.
+- 고침: `hjTombDriveIds(list)` — 살아 있는 정리 표시(t>r)의 Drive ID 모음. `relayLoadDriveFiles` 가 **새 기록을 만들기 직전**(recoverOnly 다음 줄)에만
+  대조해 건너뛴다. 이미 있는 기록에 잇는 길(같은 Drive ID · 이름·크기 연결 takeRecord)은 그대로 — 다시 스캔으로 Drive ID 를 잃은 남긴 기록이 같은 Drive 파일에
+  다시 이어져야 하기 때문. 복구함·안전판으로 되살린 표시(r>t)는 빠지므로 되살린 사진은 다시 들어온다. 손으로 [서버 사진 불러오기] 하면
+  '· 정리한 사진 N장은 다시 넣지 않음' 을 붙여 알린다. OAuth 직접 길(`__gdIngestOne`)은 중계가 켜져 있으면 안 쓰여(5084행) 이번에 손대지 않음 — 백로그.
+- 핀3곳 hyeonjang-v560-drivetomb. 신규 tests/drivetomb-v560.e2e.js 5/5(① 새 기기(removed_ids 비어 있음)에서 불러오기 → 표시된 D_GONE·D_DEL 안 들어옴 ·
+  D_NEW·되살린 D_BACK 들어옴 · O1 그대로 ② Drive ID 잃은 K1 은 표시된 D_LINK 에 이어짐 · 새 기록 0 ③ 손 불러오기 안내 · 두 번째는 0(멱등)
+  ④ hjTombUpdate 로 되살리면 다시 들어옴 ⑤ 핀·오류 0·외부 쓰기 0). 기준선 main(995a8be, v559)과 변이 no-skip(대조 한 줄 삭제)은 ① 에서 실패 확인.
+  같이 돌림: relay · relaysync-v530 · stalelock-v534 · pcupload-v531(mock-relay 8398 필요) · photo-intake-safety · scandup-v557 · photodupsync-v556 ·
+  phototwins-v556 · gd-reingest · photo-no-recovery · photo-delete(-access) · photo-safety-ui · restore-* · snapshot-revert 등 e2e 32개 통과, tests/*.check.js 19/19.
+- 운영 자료(11/7 15:00 기준 서버 rev 28): 정리 표시 1,986 · 기록에 안 이어진 Drive 사진 113장 모두 표시됨. 이 판이 폰에 깔리기 전에 폰이 부팅하면
+  그 사진들이 폰에 미배정으로 보일 수 있다(PC 는 다음 불러오기 때 정리 표시로 숨김). 이 판 배포 뒤에는 새로 안 생긴다.
+
 ## 2026-11-07 v559 📎 #202(v556 사진 쌍 접기)를 v558 위에 다시 얹음 — 판 번호만 v559
 
 - 배경: 11/7 아침 대표 지시로 #205(v558 — #203 v556 photoTombs · #204 v557 scanfix 포함)를 먼저 병합(8240a07, 운영 v558). 그래서 #202(`claude/v556-phototwins`, 11/5 CI 초록·병합 대기)가
