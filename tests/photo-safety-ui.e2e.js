@@ -58,8 +58,8 @@ let browser;
   async function seed(mode='same'){await page.evaluate(mode=>__seedSafety(mode),mode);}
   for(const mode of ['different','metadata','unit','missing','proof','mediaProof','permission']){
     await seed(mode);
-    const result=await page.evaluate(async()=>{const before=JSON.stringify({...serializeData(),savedAt:''});const plan=await verifyDuplicatePhotos();return {pairs:plan.pairs.length,unchanged:before===JSON.stringify({...serializeData(),savedAt:''}),cells:document.querySelectorAll('.cluster-body .ph').length};});
-    assert.equal(result.pairs,0,'unverified/different originals or metadata must not be cleaned: '+mode);assert(result.unchanged);assert.equal(result.cells,3,'suspected duplicates remain visible');
+    const result=await page.evaluate(async()=>{const before=JSON.stringify({...serializeData(),savedAt:''});const plan=await verifyDuplicatePhotos();return {pairs:plan.pairs.length,unchanged:before===JSON.stringify({...serializeData(),savedAt:''}),cells:document.querySelectorAll('.cluster-body .ph').length,twins:document.querySelectorAll('.cluster-body .ph-twin').length,files:state.files.length};});
+    assert.equal(result.pairs,0,'unverified/different originals or metadata must not be cleaned: '+mode);assert(result.unchanged);assert.deepEqual([result.cells,result.twins,result.files],[2,1,3],'v556: suspected pair stays in data (3 records) and reachable — folded into one card with a 📎 사본 badge: '+mode);
   }
   console.log('PASS bytes/metadata/unit/missing originals: preserve every photo and all data');
   await seed();
