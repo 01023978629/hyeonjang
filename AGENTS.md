@@ -3,6 +3,29 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-08 v563 ☀️ 오늘의 브리핑 정돈 + 날씨
+
+- 대표 지시(11/8): "오늘의 브리핑을 정돈해줘 날씨도 추가해주고".
+- 날씨: 🌤 날씨 공정과 같은 공개 예보(`weatherFetch` — Open-Meteo, 키 없음, `HJ_WEATHER_CITY` 대전)를 받아 브리핑 카드 머리 바로 아래
+  `[data-brief-weather]`(ok·none·error)에 오늘·내일 한 줄. 비 50%↑·습도 80%↑ 인 날의 날씨 민감 공정(`WEATHER_SENSITIVE`, `weatherRisksForDate`)은
+  일정 줄 옆에 `[data-brief-wx]` '☔ 비 80% · 방수 주의'/'💧 습도 85% · 도배 주의'(`hjBriefWxBadge`), 날씨 줄 아래 ⚠️ 모음. 일정 줄은 `data-brief-sch=<id>`.
+  예보는 이 기기 localStorage `hj_brief_weather` 에 3시간(`hjBriefWeatherCached`) — 저장본에 안 실린다. 읽기(`hjBriefWeatherNow`)는 캐시만 보고,
+  받기(`hjBriefWeatherLoad`)는 한 번에 하나·실패하면 10분 동안 저절로 다시 안 부른다(`[다시]` 는 force). 받으면 **브리핑 카드만** 새로 그리고
+  (대시보드 전체를 다시 그리지 않는다 — 누르던 단추·입력이 끊기지 않게), 못 받으면 날씨 칸만 '못 불러왔어요 [다시]'.
+  검사 환경은 바깥 요청을 막으므로 대시보드를 그리는 검사는 날씨 칸이 error 로 남는 것이 정상이다(가짜 예보는 `weatherFetch` 를 바꿔 끼운다).
+- 정돈: 펼친 칸 순서 일정 → ✅ 오늘의 체크(맨 끝에서 올림) → 🏥 현장 보드(펼쳤을 때만 이 자리, 접으면 예전처럼 칩 아래) → 진행 현장 → 연락 → 견적 팔로업 → 대금.
+  날씨 위험 모음은 한 일정을 한 번만(낱말이 여럿 맞으면 '방수·외부 작업'처럼 잇는다). 체크·진행 현장 5, 연락(리드 3·후속 5)이
+  넘으면 `[data-briefmore]` '외 N건 더 보기 ▼'/'접기 ▲'(`__briefMore`, 메모리). 내일 일정도 줄마다(6건까지). 체크 문구 '받은 돈을 입력해야
+  미수·독촉이 작동해요'(2026-08-13 결정과 어긋남) → '받은 돈을 입력해 두면 장부·세무 자료가 맞아요'. 매출 기준이 작업내역서면 '다른 업체 이름
+  견적이 매출에 잡혀 있어요' 체크는 안 띄운다. 복사 글(`hjDailyBriefText`)도 같은 순서 + 둘째 줄 날씨.
+- 🌅 오늘 브리핑(aiBriefing): 내일 일정이 늘 비어 있었다 — `nextDayYmd` 는 구글 캘린더용 'YYYYMMDD' 를 돌려줘 일정 날짜('YYYY-MM-DD')와
+  안 맞았다. `hjBriefTomorrow` 로 고침. 날씨를 2.5초까지 기다려 맨 위에 넣는다(AI JSON 에도 '날씨').
+- 핀3곳 hyeonjang-v563-briefweather. 신규 tests/briefweather-v563.e2e.js 7/7(① 날씨 줄·위험 모음 ② 일정 옆 표시·복사 글 ③ 칸 순서·더 보기·옛 문구·
+  작업내역서 기준 ④ 실패 → [다시] · 캐시 3시간 · 저장본에 없음 ⑤ 🌅 브리핑 날씨·내일 일정 ⑥ 390px 넘침 없음·44px ⑦ 핀·오류 0·외부 쓰기 0).
+  기준선 v562(af14a6d)는 ① 에서, 변이 no-badge 는 ② 에서 실패 확인. 같이 돌림: brief-actions · health-board · watch-card · delay-v347 ·
+  extraprogress-v346 · payproof-v348 · vatproof-v349 · bankimport-v350 · dash-cards · dash-reports · mobile-more-tools · quickinput-v344 ·
+  salesbasis-v561 · marginstmt-v562 통과, tests/*.check.js 19/19. 전체 검사(run-all) 결과는 작업일지에.
+
 ## 2026-11-08 v562 📈 마진 = 작업내역서 기준 · 퍼센트 먼저 (v561 매출 기준을 켰을 때)
 
 - 대표 지시(11/8): "마진은 퍼센트로 작업내역서 기준으로 진행". v561 은 매출만 작업내역서로 바꾸고 마진(견적 − 지출)은 그대로 뒀다.
