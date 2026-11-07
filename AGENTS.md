@@ -3,6 +3,74 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-06 v558 📱 폰 머리 '현장.' 누르는 곳 44px — 첫 화면으로 가는 단추가 55x23 이었다 (11/6 금요일 점검: 최신 판 v557)
+
+- 배경: 11/6 금요일 예약 개발 — 백로그 일감의 남은 [ ] 두 줄(⏱ 종료 '오늘 한 일' · 숫자 점검 2차)은 이미 v541·v542 로 main 에 있었고(v557 에서 stopmemo-v541 5/5 · numwrap2-v542 5/5 재확인),
+  나머지는 모두 결정 대기 → 대표 답 "최신 판 점검 + 고칠 것 1건". v557 데모 자료로 탭 11개 × 폰 390·360 · PC 1280 훑기(가로 넘침 · 44px · 페이지 오류): 넘침 0 · 오류 0,
+  44px 미달은 ① 머리 '현장.'(#hjLogoHome) 55x23 — 모든 탭 ② 바닥 글자 링크 3개(개인정보처리방침 · 서비스 이용약관 · 문의, 높이 15) ③ 360 폭에서 달력 날짜 칸 폭 41(대시보드 · 캘린더 탭).
+  ①만 고침 — v550 부터 폰 하단 5칸에 대시보드가 없어 첫 화면으로 가는 길이 이 로고 하나인데, 9px 아래가 [🏗 전체 보기] 칩이라 조금 빗나가면 현장 고르기가 열리고 사이 틈은 반응이 없었다. ②③은 백로그 수요일 후보로 적음.
+- 한 것(CSS 한 줄, `@media(max-width:640px)` 폰 머리 규칙 옆): `body.mobile-mode #hjLogoHome{line-height:44px;min-height:44px;min-width:44px;margin:-8px 0}`.
+  위아래 -8px 가 머리 위 여백(8)과 검색 줄 간격(8)을 쓴다 → 로고 상자 = 머리 위 끝 ~ 검색 줄 위 끝(겹침 0), 머리 95 → 98px(+3), 글자 크기 그대로(가운데 맞춤으로 1px 남짓 내려감).
+  PC(모바일 모드 아님)는 안 건드림(73x31 그대로). 함수 · 저장 모양 변화 없음. 데모 띠(--hj-topbars) · 직원 모드 띠 아래에서도 머리 위 끝부터.
+- 핀3곳 hyeonjang-v558-logotap. 신규 tests/logotap-v558.e2e.js 4/4(① 390: 상자 44x44 · 위 끝 = 머리 위 끝 · 아래 끝 = 검색 줄 위 끝 · 머리 맨 위 2px · 검색 줄 바로 위 3px 탭 → 첫 화면 · 칩 가운데는 칩
+  → ② 360 · 큰 글씨(a11y-big2) · 데모 띠 아래 → ③ PC 규칙 안 걸림 · 클릭 → 첫 화면 → ④ 핀). 기준선 v557(df9285c)과 변이 no-rule(규칙 삭제)은 ① 상자 크기에서, no-margin(머리가 19px 커지는 쉬운 길)은 ① 위 끝에서 실패 확인.
+  관련 19개 통과: mobile-screen-layout · nav5-v550 · demofix-v554 · headerui-v546 · dashcal-v553 · leakintake-v419 · bentodash-v547 · healthline-v524 · mobile-tap-table · mobile-field-flow · demo-banner ·
+  multi-tab-guard · stalelock-v534 · app-version · uiux · mobile-more-tools · stopmemo-v541 · numwrap2-v542 · scandup-v557. tests/*.check.js 19/19. 전체 run-all 은 이 판에서 안 돌림(병합 전에 한 번).
+- 기반 claude/v557-scanfix(df9285c, v556-phototombs 위). v556-phototwins(PR #202)와는 갈라져 있다 — 병합 순서는 보고\인수인계_20261022.md §6.
+- (뒤 커밋, CI 고침) #203(v556-phototombs)·#204(v557) CI 가 '449개 중 447 통과' 로 빨간불이었다 — tests/document-select·document-upload 가 저장본 최상위 키를 41 로 기대했는데
+  v556 photoTombs 로 42 가 됐다(v556 이 고친 목록에서 빠진 두 곳). 두 검사의 41 → 42(의도된 변경). 이 컨테이너에서는 두 검사가 main(v555)에서도 '내려받기 이름 download'
+  한 건으로 떨어진다(헤드리스 다운로드 환경 — CI 에서는 통과) — 그래서 v557 이 '기준선에서도 같다'고 본 것. 키 수는 PR #205 의 CI 로 확인한다.
+
+## 2026-11-06 v557 🔁 [다시 스캔] 고침 — 0바이트 사진 멈춤 · 스캔 도중 저장 · 정리한 사본 되살아남 · 이름만 같은 사본의 엉뚱한 연결
+
+- 배경(현장 11/6 실측, PC 폴더 1,764개): ① `_정리완료/용전신동아파트/현장사진/…공사_06.jpg` 가 0바이트라 EXIF.js 가 FileReader 콜백 안에서 RangeError → 콜백이 영영 안 와서
+  스캔이 910번째 파일에서 멈췄다. 그 사이 자동 저장(기기·서버·폴더)이 반쯤 읽은 목록을 저장했고(사진 1,738 → 848), 서버 Drive 사진 불러오기가 '목록에 없는' 사진 386장을
+  미배정으로 새로 들였다. ② 0바이트 파일을 옮긴 뒤 스캔은 끝까지 돌았지만 사진 1,704 → 2,230: 목록에서 뺀 중복((1) 사본·폰 압축본·다른 폴더 사본)의 실제 파일이 PC 에 남아
+  스캔이 기록을 다시 만들었고, 같은 Drive ID 기록 387쌍. ③ 이름만 같은 압축본이 `restoreUserEdits` 이름 복구(v101 BUG-5)로 원본의 Drive ID·현장을 물려받았다.
+- 스캔 안전장치(`scanDir` → `hjScanDirRun`): `window.__hjScanBusy`(15분 넘으면 풀린 것으로 봄, `hjScanBusy()`·`hjScanDefer()`). 스캔 중에는 markDirty(안전판·자동 저장 포함)·persistLocal 타이머·
+  scheduleFolderAutoSave·saveProject·relaySaveNow·gdSave·gdBackup 을 미루고(`__hjScanDirtyDeferred`), relayLoadApply·relayLoadDriveFiles·__gdIngestOne 은 하지 않는다.
+  정상으로 끝나면(마지막 `return true`) markDirty 한 번, 오류·중단이면 저장하지 않는다(화면에는 남음). 스캔 중 다시 누르면 안내만.
+- 멈춤: walk 가 0바이트 사진·동영상을 건너뛴다(`__scanEmptySkipped`, 토스트 '내용 없는 0바이트 사진 N개 건너뜀'). extractImage 는 `EXIF.getData` 대신 같은 판독기
+  `EXIF.readFromBinaryFile(await file.arrayBuffer())` 를 try 안에서 — 깨진 JPEG 는 촬영 정보 없이 넘어간다. 4초 안전 시한. 날짜·GPS 판독 결과는 같다(검사 ①이 조립한 EXIF 로 확인).
+- 되살림: 정리 표시(v556 photoTombs)를 PC 원본이 있는 기록(handle·파일)에 한해 [경로, 이름, 크기]로도 대조(`hjTombPath*`·`hjTombHide`). 살아 있는 저장 기록이 같은 [경로, 이름, 크기]면 숨기지 않음.
+  applyData 는 거르기를 **맞추기 전에** — v556 은 맞춘 뒤 걸러서, 표시된 PC 사본이 남긴 기록(Drive 경로, PC 에 없음)을 먼저 '가져간' 뒤 통째로 빠져 남긴 사진까지 사라졌다(미배포 판에서 발견).
+  표시된 저장 기록은 맞추기에서도 뺀다. 스캔 끝(loadProject 뒤)에도 `hjTombHide(state.files, 스캔 전 저장 목록, photoTombs)` 한 번 — _현장.json 이 없어 applyData 를 안 거쳐도.
+  토스트 '정리한 사진 N장은 다시 넣지 않음'.
+- 엉뚱한 연결: 스캔 전에 폴더 경로만 훑고(`hjScanListPaths` → `window.__scanDiskPaths`, walk 와 같은 건너뛰기, 내용은 안 읽음) 이름 복구 후보의 원래 경로(`_rec.__path`)가 아직 폴더에 있으면
+  '옮긴 파일'이 아니라 '사본'이라 물려주지 않는다. 옮긴 파일(원래 경로가 없음)은 종전대로 복구. 경로를 훑는 사이 데모에 들어가면 목록을 비우기 전에 멈춘다(settings-safety A⑩).
+- 운영 자료: v556 전에 정리한 사진(11/4 637장·11/5 373장)은 표시가 없다 — 배포 뒤 운영 앱에서 안전판 '복구 직전'(11/6 00:52 스캔 결과 2,400건)과 지금 목록의 차이로 표시를 채운다(안전판 먼저).
+  그 전에는 [다시 스캔] 하면 표시 없는 사본이 미배정으로 다시 보일 수 있다(Drive ID·현장은 더 이상 물려받지 않음).
+- 핀3곳 hyeonjang-v557-scanfix. 신규 tests/scandup-v557.e2e.js 6/6 — 합성 폴더(실제 폴더 모양) + 검사용 exif-js 2.3.0(tests/fixtures/vendor, MIT, 앱과 같은 판; 없으면 멈춤이 재현 안 됨).
+  ① 멈춤·0바이트 안내·깨진 JPEG·EXIF 날짜/GPS → ② 스캔 도중 저장·서버 받기/올리기 0 → ③ 뺀 사본 4가지·남긴 기록·같은 Drive ID 0·현장별 장수 → ④ 옮긴 파일·같은 경로 남긴 기록·표시 없는 압축본 → ⑤ 두 번 → ⑥ 핀.
+  기준선 v556(dec599a)·v555(049ea3c)는 ① 에서 HANG(실제 PC 와 같음), 멈춤 파일을 빼면 ② 에서 실패. 변이 no-path 는 ③, no-gate 는 ④ 에서 실패 확인.
+  바뀐 옛 검사: photodupsync-v556 변이 기준 문장(거르기 위치 이동)·핀 검사를 'v556 이상·서로 같음'으로.
+  전체 run-all(이 컨테이너, 동시 3): 449개 중 444 통과 — 실패 5개(apartment-projects·bathroom-quality-v410·document-select·document-upload·team-workboard)는 기준선 v555 에서도 같다.
+  스캔 확인 함수는 `typeof hjScanDefer==='function'&&…` 로 부른다 — 함수 하나만 떼어 도는 단위 검사(relay-queue-preservation).
+
+## 2026-11-06 v556 🪦 정리한 사진 표시(photoTombs) — 중복 정리·삭제한 사진이 다른 기기·옛 저장본 병합으로 되살아나지 않게
+
+- 배경(현장 11/5 실측): 중복 정리로 뺀 사진 기록이 다음에 보면 다시 들어와 있었다(1,514 → 2,111장, 이미 '다시 불러오지 않기'에 오른 Drive 사본 37/44 포함).
+  `__removedIds`(idb removed_ids)는 이 브라우저에만 있고 Drive 불러오기 길만 막는다. 빼기 전 자료를 가진 폰·옛 저장본이 `applyData` 병합(기본 = 합치기)으로
+  기록을 다시 넣고 저장하면 서버에 실리고, PC 가 그걸 병합해 되살아났다. 같은 날 현장 합치기(가온마을·세종 가온마을 → 세종 가온마을아파트, 케이투커피 → 망월카페)가
+  두 폴더의 같은 사진을 한 현장에 모아 '중복으로 보이는' 증상이 커졌다(자료는 대표 요청으로 Claude 가 정리 — 안전판 'Claude 중복 사진 346개 정리 전'·'원본·압축본 중복 27개 정리 전').
+- 새 최상위 저장 키 `photoTombs`(여섯 곳 — serializeData·applyData·PAID_SERIALIZED_STATE_KEYS·배열 목록·검사 허용목록 2곳): `[{k,t?,r?}]`, k = `hjTombKey`([경로, 이름, 크기, Drive ID]) JSON,
+  t = 뺀 시각, r = 되살린 시각. 유효 = t>r(`hjTombActiveKeys`). 합치기(`hjPhotoTombsSafe`)는 같은 k 의 t·r 을 각각 큰 쪽 — 순서 무관·멱등, 키 순 정렬(유상 왕복 대조), 상한 6000(오래된 것부터).
+- 쓰기: `guardedPersistMediaFiles(files,stillCurrent,removedIds,photoJournal,tombOpts)` 5번째 인자 — `{tomb:true}` 면 빠진 기록을 표시, `{revive:true}` 면 다시 넣은 기록의 표시를 끈다.
+  표시는 같은 원자 저장에 실리고 성공 뒤에만 `state.photoTombs` 를 바꾼다(실패하면 표시도 없음). 남는 기록과 신원이 같으면 표시하지 않는다(`hjTombUpdate` — 그 사진까지 빠지면 안 됨).
+  tomb: saveVerifiedDuplicates(현장이 다른 같은 사진 hjCrossDupMerge 포함)·hjRemoveDriveGhosts·deletePhotoRecordsSafely, 파일 한 개 삭제 창(직접 state.files). revive: restoreDuplicateBatch.
+- 읽기: `applyData` 병합 — 들어온 표시를 합치고, 유효 표시 신원의 저장 기록은 들여오지 않고(`window.__photoTombSkipped`), 이 기기에 남은 같은 신원 기록(PC 스캔 (1) 사본 포함)은 뺀다.
+  되돌리기(revert, 안전판·드라이브 되돌리기)는 거르지 않고 되살아난 기록마다 r 을 찍는다 — 그 뒤 옛 표시를 든 저장본을 병합해도 유지.
+- 옛 판 호환: v555 저장본(키 없음)으로 부팅 → 정상·자료 그대로·저장 성공(⑥). 옛 판 기기는 키를 모르고 저장 때 떨어뜨리지만, 새 판 기기가 자기 표시를 다시 합쳐 싣는다.
+  removed_ids(Drive 불러오기 막기)는 그대로 이 기기 전용 — 이번에 공유하지 않았다(남는 기록이 같은 Drive 파일을 쓰는 중복이 많아 Drive ID 단위로 막을 수 없음).
+- 핀3곳 hyeonjang-v556-phototombs. 신규 tests/photodupsync-v556.e2e.js 7/7(① 정리 뒤 옛 저장본 병합 → 안 돌아옴 → ② 옛 자료 기기가 새 저장본 병합 → 그 기기 사본도 빠지고 표시 실림
+  → ③ 복구함 되살림 → ④ 안전판 되돌리기 → ⑤ 합치기 규칙·남는 기록 보호·상한 → ⑥ v555 저장본에서 올라오기 → ⑦ 핀). 기준선 v555(049ea3c)와 변이 no-skip(병합 거르기 삭제)은 ① 에서 실패 확인.
+  바뀐 옛 검사(의도된 변경): health-board·marketing-draft 허용목록에 photoTombs, 최상위 키 41 → 42(as-record·bankimport-v350·bankstmt-v533·completion-links·crew-v357·delay-v347·
+  extraprogress-v346·extras-settle·payproof-v348·photo-refs·schedule-safety·vatproof-v349). 전체 run-all(이 컨테이너, 동시 3): 448개 중 실패 5 = apartment-projects·bathroom-quality-v410·
+  document-select·document-upload·team-workboard — 기준선 v555(049ea3c)에서도 같은 5개가 실패(이 판과 무관). 관련 옛 검사(photodupclean-v522·estimate-photo-dup-v342·dup-functions·photo-delete·photo-delete-access·
+  photo-no-recovery·delete-guard·apo-delete-guard·mobile-docdelete·restore-parity·restore-safety·restore-select·restore-delete-safety·bootrestore-v520·snapshot-guard·snapshot-policy·
+  snapshot-restore-guard·snapshot-revert·sync-conflict-preview·relay·relaysync-v530·multi-tab-guard·settings-safety·paid-work-gate·office-ops-conversion(+recovery)·serialized-keys·version-sync·syntax) 통과.
+- 배포 뒤 할 일: 11/5 정리분(373장)은 v556 전에 뺐으므로 표시가 없다 — 운영 앱에서 위 두 안전판과 현재 목록의 차이로 표시를 한 번 채운다(같은 `hjTombUpdate`, 안전판 먼저).
+
 ## 2026-11-05 v555 🗂 증빙 묶음 — 발행한 간이영수증을 문서로 담기 · [지금 생성] 새 번호 안내 (리허설 r1-11 관찰 2건)
 
 - 배경: 11/5 리허설 r1(누수 하루) 11단계. ① 앱이 발행한 간이영수증(MM-…)이 보험용 증빙 ZIP 에 번호만(06_수금발행기록.xlsx) 들어가고 문서는 "서류 만들기에서 다시 뽑으세요"였다.

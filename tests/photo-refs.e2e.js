@@ -314,7 +314,7 @@ let browser;
 
   // ⑥ 최상위 키는 그대로(참조는 현장 객체 안 필드), pageerror 0
   const keys = await page.evaluate(() => Object.keys(serializeData()).length);
-  assert(keys === 41, '⑥ serializeData 최상위 키 41개 그대로: ' + keys);
+  assert(keys === 42, '⑥ serializeData 최상위 키 42개 그대로: ' + keys);
   assert(errors.length === 0, 'pageerror: ' + errors.join(' | '));
   console.log('photo-refs.e2e OK (① 옛 id 이전·뒤처진 탭 ② 안정 참조로 적기 ③ 새 id 가상 레코드 뒤 같은 사진·이름 변경 ④ 찾을 수 없음 N장·빼기·같은 사본 아님 ⑤ 풀이 규칙 ⑥ 키·오류)');
   await browser.close();

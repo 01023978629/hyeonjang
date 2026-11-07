@@ -97,7 +97,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     assert(r.wide <= 0, '390px 가로 넘침: ' + r.wide);
   });
 
-  await test('화면을 그리고 창을 열어도 저장본이 바뀌지 않는다(최상위 키 41개)', async () => {
+  await test('화면을 그리고 창을 열어도 저장본이 바뀌지 않는다(최상위 키 42개)', async () => {
     const r = await page.evaluate(async () => {
       const snap = () => { const d = serializeData(); d.savedAt = ''; return paidStableJson(d); };
       const before = snap();
@@ -108,7 +108,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { same: before === snap(), keys: Object.keys(serializeData()).length, emptyTxt };
     });
     assert(r.same, '읽기 경로가 저장본을 바꿨다');
-    assert(r.keys === 41, '최상위 키: ' + r.keys);
+    assert(r.keys === 42, '최상위 키: ' + r.keys);
     assert(/지연 의심 공정이 없습니다/.test(r.emptyTxt), '빈 화면 문구: ' + r.emptyTxt.slice(0, 120));
   });
 
