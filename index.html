@@ -3944,7 +3944,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v561-salesbasis';
+const APP_BUILD='hyeonjang-v562-marginstmt';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -10110,6 +10110,11 @@ function hjSalesQuoteOk(q){return hjSalesBasis()!=='stmt'||!!(q&&q.stmt&&q.stmt.
 function hjEstLabel(){return hjSalesBasis()==='stmt'?'견적':'견적(매출)';}   // 견적 합계(projStats.est)에 붙이는 이름
 function hjEstWord(){return hjSalesBasis()==='stmt'?'견적':'매출';}   // 견적 합계를 '매출'이라 부르던 곳(수익 분석·거래처 장부·완료 현장 줄)
 function hjSalesLabel(){return hjSalesBasis()==='stmt'?'매출(내역서)':'견적(매출)';}   // 매출 한 벌(hjSalesEntries) 숫자에 붙이는 이름
+/* v562 마진 기준 — 대표 지시(11/8) "마진은 퍼센트로 작업내역서 기준으로 진행". 매출 기준이 작업내역서면 마진 = 작업내역서 매출(sales) − 지출이고
+   화면은 마진율(%)을 먼저 보인다. 작업내역서가 없는 현장은 마진을 셀 수 없어 '내역서 없음'(projStats.marginNA — 마진 0, 합계·순위·경보에서 뺀다).
+   설정이 없으면 예전 그대로(견적 − 지출, 금액 먼저). 청구·고객 숫자(est·bill·due)는 이 판에서도 그대로. */
+function hjMarginWord(){return hjSalesBasis()==='stmt'?'매출(내역서)':'매출';}   // 마진의 바탕 매출 이름(수익 분석·월말 결산 완료 현장·수익성 순위)
+function hjMarginShort(s){if(hjSalesBasis()!=='stmt')return hjMan(s.marginEff);return s.marginNA?'내역서 없음':s.marginRateEff+'% · '+hjMan(s.marginEff);}
 function hjSalesBasisSet(on){
   state.goals=(state.goals&&typeof state.goals==='object')?state.goals:{};
   if(on)state.goals.salesBasis='stmt';else delete state.goals.salesBasis;
@@ -10220,8 +10225,10 @@ function projStats(name){
   // ⚠️ 레거시(수기 p.cost 전용 · 장부·기타경비 미반영) — 표시·경보에 쓰지 말 것.
   //    마진은 marginEff/costEffective, 예산·지출은 costTotal 을 사용한다(교차화면 무음누락 방지).
   const cost=(c.material||0)+(c.labor||0)+(c.outsource||0);
-  const margin=est-cost;
-  const marginRate=est?Math.round(margin/est*100):0;
+  // v562 마진의 바탕 — 작업내역서 기준이면 sales(내역서 묶음), 아니면 est. 내역서 없는 현장은 marginNA(마진 0).
+  const mStmt=hjSalesBasis()==='stmt',marginBase=mStmt?sales:est,marginBaseSupply=mStmt?salesSupply:supply,marginNA=mStmt&&!(sales>0);
+  const margin=marginNA?0:marginBase-cost;
+  const marginRate=marginBase?Math.round(margin/marginBase*100):0;
   // ── 유효원가(택일 규칙, 이중계상 방지) — 읽기 전용 파생 ──
   // 현장 태깅 지출장부를 category별 합산(원본 state.expenses 변형 안 함)
   // 매칭은 접두(startsWith): '자재'로 시작→material, '인건'→labor, '외주'→outsource. '자재비' 같은 비정규 문자열도 포함.
@@ -10261,11 +10268,11 @@ function projStats(name){
   const materialSupply=Math.round(matEff/1.1);
   const outsourceSupply=Math.round(outEff/1.1);
   const costSupply=materialSupply+outsourceSupply+labEff; // 공급가(부가세 제외) 기준 원가
-  const marginNet = supply-costSupply;                    // 순마진 = 공급가매출 − 공급가원가
-  const marginRateNet = supply?Math.round(marginNet/supply*100):0;
+  const marginNet = marginNA?0:marginBaseSupply-costSupply;   // 순마진 = 공급가매출 − 공급가원가(v562 작업내역서 기준이면 내역서 공급가)
+  const marginRateNet = marginBaseSupply?Math.round(marginNet/marginBaseSupply*100):0;
   // 유효원가 기준 마진(부가세 포함 기준) — 화면에 보이는 원가(costEffective)와 반드시 일치
-  const marginEff = est-costEffective;
-  const marginRateEff = est?Math.round(marginEff/est*100):0;
+  const marginEff = marginNA?0:marginBase-costEffective;
+  const marginRateEff = marginBase?Math.round(marginEff/marginBase*100):0;
   // 확인받은 추가공사(견적 밖) — 받을 돈(due)에만 더한다. est(매출)에 섞지 않는다: est 는 견적서 금액이고
   // 부가세 신고·마진·연간 결산·세무 엑셀이 그 위에 서 있다(공급가 ÷1.1 환산 등). 정본은 hjExtrasBill 한 곳.
   // due 를 읽는 곳(정산 문서 요약·영수증 잔금·고객 페이지 남은 금액·자금 흐름·수금 작업)이 같이 맞는다.
@@ -10276,38 +10283,43 @@ function projStats(name){
   // 세는 틈이 '부가세'라는 이름으로 잔금·고객 문구에 새지 않게(v330 검토). 보통은 둘이 같다(검사 revenue-basis).
   const billVat=hjEstBill(name,estGroups).addVat,bill=est+billVat;
   return {files:files.length,est,bill,billVat,recv,extra,due:Math.max(bill+extra-recv,0),stage:p?.stage||0,cost,margin,marginRate,c,doneAt:p?.doneAt||null,dueDate:p?.dueDate||null,
-    supply,sales,salesSupply,costEffective,costSupply,costEtc,costTotal,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
+    supply,sales,salesSupply,marginBase,marginBaseSupply,marginNA,costEffective,costSupply,costEtc,costTotal,costSource,marginNet,marginRateNet,marginEff,marginRateEff,
     material:matEff,labor:labEff,outsource:outEff,matSrc,outSrc,labSrc,
     expAgg:{material:expAgg.material,labor:expAgg.labor,outsource:expAgg.outsource,etc:expAgg.etc}};
 }
 // Display-only: missing costs are not evidence of 100% profit. Financial calculations stay unchanged.
 function projectMarginLabel(s,net=false){
-  if(!s.est)return '견적 입력 필요';
+  const stmt=hjSalesBasis()==='stmt',base=s.marginBase!=null?s.marginBase:s.est;   // v562 작업내역서 기준이면 내역서 매출이 바탕
+  if(!base)return stmt?'작업내역서 없음':'견적 입력 필요';
   if(!(s.costEffective>0))return '원가 입력 필요 · 마진 미확정';
-  return won(net?s.marginNet:s.marginEff)+' · '+(net?s.marginRateNet:s.marginRateEff)+'% (입력 원가 기준)';
+  const amt=won(net?s.marginNet:s.marginEff),pct=(net?s.marginRateNet:s.marginRateEff)+'%';
+  return stmt?pct+' · '+amt+' (작업내역서 기준)':amt+' · '+pct+' (입력 원가 기준)';   // v562 작업내역서 기준이면 퍼센트 먼저
 }
 /* v464 첫 화면 마진 칸 — 글은 projectMarginLabel 과 같고(textContent 동일), 굵은 금액·비율만 .mg-amt(nowrap), 괄호 설명은 .mg-note(줄바꿈 허용). */
 function projectMarginCellHtml(s,net=false){
   // 폰 카드형(.dash-cards td 가 flex)에서는 한 덩어리(.mg-wrap)로 있어야 예전처럼 한 줄 글로 보인다.
-  if(!s.est||!(s.costEffective>0))return '<span class="mg-wrap"><span class="mg-note">'+escapeHtml(projectMarginLabel(s,net))+'</span></span>';
-  return '<span class="mg-wrap"><b class="mg-amt">'+escapeHtml(won(net?s.marginNet:s.marginEff))+'</b><span class="mg-sep"> · </span><span class="mg-note">'+escapeHtml((net?s.marginRateNet:s.marginRateEff)+'% (입력 원가 기준)')+'</span></span>';
+  const base=s.marginBase!=null?s.marginBase:s.est;
+  if(!base||!(s.costEffective>0))return '<span class="mg-wrap"><span class="mg-note">'+escapeHtml(projectMarginLabel(s,net))+'</span></span>';
+  const amt=won(net?s.marginNet:s.marginEff),pct=(net?s.marginRateNet:s.marginRateEff)+'%';
+  if(hjSalesBasis()==='stmt')return '<span class="mg-wrap"><b class="mg-amt">'+escapeHtml(pct)+'</b><span class="mg-sep"> · </span><span class="mg-note">'+escapeHtml(amt+' (작업내역서 기준)')+'</span></span>';
+  return '<span class="mg-wrap"><b class="mg-amt">'+escapeHtml(amt)+'</b><span class="mg-sep"> · </span><span class="mg-note">'+escapeHtml(pct+' (입력 원가 기준)')+'</span></span>';
 }
 /* 현장별 순마진(부가세 제외) 집계 — 순수/읽기전용. state 미변형. 새 엔진/새 탭 없이 projStats 재사용. */
 function projMarginSummary(opts){
   opts=opts||{};
   const rows=[];
-  const total={est:0,supply:0,costEffective:0,costSupply:0,costEtc:0,marginEff:0,marginRateEff:0,marginNet:0,marginRateNet:0};
+  const total={est:0,supply:0,marginBase:0,marginBaseSupply:0,costEffective:0,costSupply:0,costEtc:0,marginEff:0,marginRateEff:0,marginNet:0,marginRateNet:0};
   (state.projects||[]).filter(function(p){return p&&!p.archived;}).forEach(function(p){
     const s=projStats(p.name);
     rows.push({name:p.name,est:s.est,supply:s.supply,material:s.material,labor:s.labor,outsource:s.outsource,
       matSrc:s.matSrc,outSrc:s.outSrc,labSrc:s.labSrc,
       costEffective:s.costEffective,costSupply:s.costSupply,costEtc:s.costEtc,
-      marginEff:s.marginEff,marginRateEff:s.marginRateEff,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource});
-    total.est+=s.est;total.supply+=s.supply;total.costEffective+=s.costEffective;total.costSupply+=s.costSupply;
+      marginEff:s.marginEff,marginRateEff:s.marginRateEff,marginNet:s.marginNet,marginRateNet:s.marginRateNet,costSource:s.costSource,marginBase:s.marginBase,marginNA:s.marginNA});
+    total.est+=s.est;total.supply+=s.supply;total.marginBase+=s.marginBase;total.marginBaseSupply+=s.marginBaseSupply;total.costEffective+=s.costEffective;total.costSupply+=s.costSupply;
     total.costEtc+=(s.costEtc||0);total.marginEff+=s.marginEff;total.marginNet+=s.marginNet;
   });
-  total.marginRateEff=total.est?Math.round(total.marginEff/total.est*100):0;
-  total.marginRateNet=total.supply?Math.round(total.marginNet/total.supply*100):0;
+  total.marginRateEff=total.marginBase?Math.round(total.marginEff/total.marginBase*100):0;   // v562 바탕 = marginBase(기본은 est 와 같다)
+  total.marginRateNet=total.marginBaseSupply?Math.round(total.marginNet/total.marginBaseSupply*100):0;
   return {rows,total};
 }
 /* 📒 장부에서 원가 불러오기 — 현장 태깅 지출을 category별 합산해 '0인 항목만' 제안(읽기전용 미리보기).
@@ -10856,11 +10868,12 @@ function viewDashboard(){
   const __arc=state.projects.filter(p=>p.archived);const stats=state.projects.filter(p=>!p.archived).map(p=>({name:p.name,...projStats(p.name)}));
   const totEst=stats.reduce((a,s)=>a+s.est,0);
   const totSales=stats.reduce((a,s)=>a+(s.sales||0),0);   // v561 매출(작업내역서 기준일 때만 따로 보인다)
-  const marginIncomplete=stats.some(s=>s.est>0&&!(s.costEffective>0));
+  const marginIncomplete=stats.some(s=>(s.marginBase!=null?s.marginBase:s.est)>0&&!(s.costEffective>0));   // v562 작업내역서 기준이면 내역서 있는 현장만 본다
   const totRecv=stats.reduce((a,s)=>a+s.recv,0);
   const totCost=stats.reduce((a,s)=>a+s.costEffective,0); // 유효원가 원문합(수기>0 우선, 아니면 장부) — 표 지출합계와 동일 베이스
-  const totMargin=totEst-totCost;                          // 마진(부가세 포함 기준) = 견적총액 − 유효원가
-  const totMarginRate=totEst?Math.round(totMargin/totEst*100):0;
+  const __mStmt=hjSalesBasis()==='stmt',totBase=stats.reduce((a,s)=>a+(s.marginBase||0),0);   // v562 마진 바탕(작업내역서 기준이면 내역서 매출 합)
+  const totMargin=__mStmt?stats.reduce((a,s)=>a+(s.marginEff||0),0):totEst-totCost;   // 마진(부가세 포함 기준) = 견적총액 − 유효원가 · 작업내역서 기준이면 내역서 있는 현장의 (내역서 − 지출) 합
+  const totMarginRate=(__mStmt?totBase:totEst)?Math.round(totMargin/(__mStmt?totBase:totEst)*100):0;
   const totEtc=stats.reduce((a,s)=>a+(s.costEtc||0),0);    // 기타경비(순마진 제외) 합계
   const stageCount=[0,0,0,0];state.projects.filter(p=>!p.archived).forEach(p=>stageCount[p.stage||0]++);
   // 맨 위 '오늘 일정'(현장 가는 1인 사장님 아침 화면) → 그 다음 요약 카드
@@ -10871,7 +10884,7 @@ function viewDashboard(){
     ${totEst===0?`<div class="kpi"><span class="kl">총 ${hjEstLabel()}</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi"><span class="kl">총 ${hjEstLabel()}</span><span class="kv">${(totEst/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`}
     ${hjSalesBasis()==='stmt'?`<div class="kpi" data-sales-kpi><span class="kl">매출(내역서)</span><span class="kv">${(totSales/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>`:''}
     <div class="kpi due"><span class="kl">총 지출</span><span class="kv">${(totCost/10000).toLocaleString('ko-KR')}<small>만원</small></span></div>
-    ${(totCost===0||marginIncomplete)?`<div class="kpi"><span class="kl">총 마진</span><span class="kv" style="font-size:13px;color:var(--muted)">지출 미입력 · 마진 미확정</span></div>`:(totEst===0?`<div class="kpi"><span class="kl">총 마진</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi ${totMargin>=0?'ok':'due'}"><span class="kl">총 마진</span><span class="kv">${(totMargin/10000).toLocaleString('ko-KR')}<small>만원 · ${totMarginRate}%</small></span></div>`)}
+    ${(totCost===0||marginIncomplete)?`<div class="kpi"><span class="kl">총 마진</span><span class="kv" style="font-size:13px;color:var(--muted)">지출 미입력 · 마진 미확정</span></div>`:(__mStmt?(totBase===0?`<div class="kpi" data-margin-kpi><span class="kl">총 마진(내역서)</span><span class="kv" style="font-size:13px;color:var(--muted)">작업내역서 없음</span></div>`:`<div class="kpi ${totMargin>=0?'ok':'due'}" data-margin-kpi><span class="kl">총 마진(내역서)</span><span class="kv">${totMarginRate}<small>% · ${(totMargin/10000).toLocaleString('ko-KR')}만원</small></span></div>`):(totEst===0?`<div class="kpi"><span class="kl">총 마진</span><span class="kv" style="font-size:13px;color:var(--muted)">견적서 연결 전</span></div>`:`<div class="kpi ${totMargin>=0?'ok':'due'}"><span class="kl">총 마진</span><span class="kv">${(totMargin/10000).toLocaleString('ko-KR')}<small>만원 · ${totMarginRate}%</small></span></div>`))}
   </div>`;
   // 수금 보조 카드 (미수금 칸은 없앴다 — 2026-08-13 대표 결정)
   html+=`<div class="kpis" style="margin-top:-6px">
@@ -10921,8 +10934,8 @@ function viewDashboard(){
       <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 인건비" data-cost="labor" data-proj="${escapeAttr(s.name)}" value="${(s.labor||0).toLocaleString('ko-KR')}" class="mg-in" style="text-align:right">${fieldBadge(s.labSrc)}</td>
       <td class="amt"><input type="text" inputmode="numeric" aria-label="${escapeAttr(s.name)} 외주비" data-cost="outsource" data-proj="${escapeAttr(s.name)}" value="${(s.outsource||0).toLocaleString('ko-KR')}" class="mg-in" style="text-align:right">${fieldBadge(s.outSrc)}</td>
       <td class="amt">${won(s.costEffective)}</td>
-      <td class="amt mg" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s)}</td>
-      <td class="amt mg" style="color:${!(s.costEffective>0)?'var(--muted)':s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s,true)}</td>
+      <td class="amt mg" style="color:${!(s.costEffective>0)||s.marginNA?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s)}</td>
+      <td class="amt mg" style="color:${!(s.costEffective>0)||s.marginNA?'var(--muted)':s.marginNet>=0?'var(--ok)':'var(--warn)'};font-weight:700">${projectMarginCellHtml(s,true)}</td>
       <td class="amt" style="color:var(--muted)">${s.costEtc>0?won(s.costEtc):'-'}</td>
       <td>${srcBadge(s.costSource)}</td>
     </tr>`;
@@ -14054,7 +14067,8 @@ function monthlyClosingData(ym){
   const payTop=Object.keys(payByPj).map(k=>({pj:k,amt:payByPj[k]})).filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt).slice(0,4);
   // 이 달 완료 현장 + 지출/마진(완료일 기준)
   const doneP=state.projects.filter(p=>String(p.doneAt||'').slice(0,7)===ym);
-  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);doneEst+=s.est;doneCost+=s.costEffective;return {pj:p.name,est:s.est,cost:s.costEffective,margin:s.marginEff};});
+  // v562 작업내역서 기준이면 바탕은 내역서 매출(marginBase) — 내역서 없는 현장(na)은 마진·합계에서 뺀다(지출도).
+  let doneEst=0,doneCost=0;const doneRows=doneP.map(p=>{const s=projStats(p.name);if(!s.marginNA){doneEst+=s.marginBase;doneCost+=s.costEffective;}return {pj:p.name,est:s.marginBase,cost:s.costEffective,margin:s.marginEff,rate:s.marginRateEff,na:!!s.marginNA};});
   // 견적 소스 구성
   const srcMix=[...new Set((m.items||[]).map(i=>i.src))].join('+')||'-';
   // 전월 대비
@@ -14070,8 +14084,9 @@ function monthlyClosingText(d){
   L.push('   └ 공급가 '+hjMan(d.supply)+' · 부가세 '+hjMan(d.vat));
   L.push('💰 이 달 수금 '+hjMan(d.paySum)+(d.payTop.length?' — '+d.payTop.map(x=>x.pj+' '+hjMan(x.amt)).join(' · '):(d.hasLog?'':' (수금 기록은 자동 누적 중)')));
   if(d.doneRows.length){
-    L.push('✅ 완료 현장 '+d.doneRows.length+'곳 · '+hjEstWord()+' '+hjMan(d.doneEst)+' · 지출 '+hjMan(d.doneCost)+' · 마진 '+hjMan(d.doneMargin));
-    d.doneRows.slice(0,4).forEach(r=>L.push('   · '+r.pj+' 마진 '+hjMan(r.margin)));
+    const __st=hjSalesBasis()==='stmt',__dr=d.doneEst?Math.round(d.doneMargin/d.doneEst*100):null;   // v562 작업내역서 기준이면 마진율 먼저
+    L.push('✅ 완료 현장 '+d.doneRows.length+'곳 · '+hjMarginWord()+' '+hjMan(d.doneEst)+' · 지출 '+hjMan(d.doneCost)+' · 마진 '+(__st?(__dr==null?'내역서 없음':__dr+'% · '+hjMan(d.doneMargin)):hjMan(d.doneMargin)));
+    d.doneRows.slice(0,4).forEach(r=>L.push('   · '+r.pj+' 마진 '+(__st?(r.na?'내역서 없음':r.rate+'% · '+hjMan(r.margin)):hjMan(r.margin))));
   }
   L.push('— 부가세 신고용 상세는 앱 [세무 정산 엑셀]로 내보내세요.');
   L.push('— '+COMPANY.name+' '+COMPANY.owner+' · '+COMPANY.tel);
@@ -14106,8 +14121,8 @@ async function monthlyClosingImageBlob(d,aiNote){
   x.font='500 29px '+F;
   if(d.doneRows.length)d.doneRows.slice(0,5).forEach(r=>{
     x.fillStyle='#172433';x.fillText(cut(r.pj,16),72,y);
-    x.fillStyle='#66788f';x.font='500 25px '+F;x.fillText(hjEstWord()+' '+hjMan(r.est)+' · 지출 '+hjMan(r.cost),400,y);
-    x.font='700 27px '+F;x.fillStyle=r.margin>=0?'#0a7f43':'#c2410c';x.fillText('마진 '+hjMan(r.margin),820,y);
+    x.fillStyle='#66788f';x.font='500 25px '+F;x.fillText(hjMarginWord()+' '+hjMan(r.est)+' · 지출 '+hjMan(r.cost),400,y);
+    x.font='700 27px '+F;x.fillStyle=r.na?'#66788f':r.margin>=0?'#0a7f43':'#c2410c';x.fillText('마진 '+(hjSalesBasis()==='stmt'?(r.na?'내역서 없음':r.rate+'%'):hjMan(r.margin)),820,y);
     x.font='500 29px '+F;y+=52;});
   else{x.fillStyle='#66788f';x.fillText('이 달 완료로 표시된 현장 없음',72,y);y+=52;}
   // AI 코멘트
@@ -14321,7 +14336,7 @@ function projectHistoryData(name){
 }
 function projectHistoryText(d){
   const L=['['+d.name+' 파일철] '+STAGES[d.p.stage||0]+(d.cust.name?' · 고객 '+d.cust.name+(d.cust.phone?' '+d.cust.phone:''):'')];
-  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 마진 '+hjMan(d.s.marginEff));
+  L.push('견적 '+hjMan(d.s.est)+' · 수금 '+hjMan(d.s.recv)+' · 마진 '+hjMarginShort(d.s));
   L.push('사진 '+d.photos+'장'+(Object.keys(d.byPhase).length?' ('+Object.keys(d.byPhase).map(k=>k+' '+d.byPhase[k]).join(', ')+')':'')+' · 일정 '+d.schedN+'건');
   L.push('── 타임라인 ──');
   d.timeline.forEach(e=>{const dd=e.d?(+e.d.slice(5,7))+'/'+(+e.d.slice(8,10)):'';L.push(dd+' '+e.ic+' '+e.t);});
@@ -14339,7 +14354,7 @@ function projectHistory(name){
       (tel?'<div style="display:flex;gap:6px"><button class="ghost tiny" onclick="location.href=\'tel:'+tel+'\'">📞</button><button class="ghost tiny" onclick="location.href=\'sms:'+tel+'\'">✉️</button></div>':'')+
     '</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['마진',hjMan(d.s.marginEff),d.s.marginEff>=0?'#0a7f43':'#c2410c']]
+      [['견적',hjMan(d.s.est),'#1d4ed8'],['수금',hjMan(d.s.recv),'#0a7f43'],['마진',hjMarginShort(d.s),d.s.marginNA?'var(--muted)':d.s.marginEff>=0?'#0a7f43':'#c2410c']]
       .map(x=>'<div style="flex:1;min-width:74px;background:var(--paper-2);border-radius:9px;padding:7px 9px"><div style="font-size:10.5px;color:var(--muted)">'+x[0]+'</div><div style="font-size:14.5px;font-weight:800;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
     '</div>';
   const rows=d.timeline.length?d.timeline.map(e=>{
@@ -15850,11 +15865,12 @@ function profitAnalysisData(){
   all.forEach(p=>{
     const s=projStats(p.name);
     // 유효원가(ledger-aware) 기준으로 통일 — 대시보드·수익랭킹과 동일 베이스. 원가믹스도 유효 항목값 사용(비율 정합).
-    tEst+=s.est;tCost+=s.costEffective;tMat+=(s.material||0);tLab+=(s.labor||0);tOut+=(s.outsource||0);
-    if(s.est>0&&s.marginEff<0)lossers.push({pj:p.name,margin:s.marginEff});
+    if(s.marginNA)return;   // v562 작업내역서 기준이면 내역서 없는 현장은 수익 분석에서 뺀다(매출을 셀 수 없음 — 지출도 같이)
+    tEst+=s.marginBase;tCost+=s.costEffective;tMat+=(s.material||0);tLab+=(s.labor||0);tOut+=(s.outsource||0);
+    if(s.marginBase>0&&s.marginEff<0)lossers.push({pj:p.name,margin:s.marginEff});
     const ty=hjProjType(p.name);
     const m=types[ty]=types[ty]||{n:0,est:0,cost:0,margin:0};
-    m.n++;m.est+=s.est;m.cost+=s.costEffective;m.margin+=s.marginEff;
+    m.n++;m.est+=s.marginBase;m.cost+=s.costEffective;m.margin+=s.marginEff;
   });
   const typeRows=Object.keys(types).map(k=>{const m=types[k];return {type:k,n:m.n,est:m.est,margin:m.margin,rate:m.est?Math.round(m.margin/m.est*100):0};})
     .filter(r=>r.est>0).sort((a,b)=>b.rate-a.rate);
@@ -15882,18 +15898,18 @@ function profitAnalysisData(){
 }
 function profitAnalysisText(d){
   const L=['['+COMPANY.name+' 수익 분석]'];
-  L.push('총'+hjEstWord()+' '+hjMan(d.tEst)+' · 지출 '+hjMan(d.tCost)+' · 마진 '+hjMan(d.tMargin)+' ('+d.rate+'%)');
+  L.push('총'+hjMarginWord()+' '+hjMan(d.tEst)+' · 지출 '+hjMan(d.tCost)+' · 마진 '+hjMan(d.tMargin)+' ('+d.rate+'%)');
   L.push('· 유형별 마진율');
-  d.typeRows.forEach(r=>L.push('  - '+r.type+' '+r.n+'곳: '+r.rate+'% ('+hjEstWord()+' '+hjMan(r.est)+')'));
+  d.typeRows.forEach(r=>L.push('  - '+r.type+' '+r.n+'곳: '+r.rate+'% ('+hjMarginWord()+' '+hjMan(r.est)+')'));
   if(d.itemRows.length){L.push('· 품목 TOP');d.itemRows.slice(0,5).forEach(r=>L.push('  - '+r.name+': 평균 '+hjMan(r.avg)+' × '+r.n+'회 = '+hjMan(r.total)));}
   L.push('· 제안');d.sug.forEach(s=>L.push('  '+s));
   return L.join('\n');
 }
 function profitAnalysis(){
   const d=profitAnalysisData();
-  if(!d.tEst){openModal('📊 수익 분석','<div class="empty" style="padding:18px"><b>분석할 매출 데이터가 없습니다</b>견적서를 현장에 연결하면 유형별·품목별 수익이 집계됩니다.</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);return {매출원:0};}
+  if(!d.tEst){openModal('📊 수익 분석','<div class="empty" style="padding:18px"><b>분석할 매출 데이터가 없습니다</b>'+(hjSalesBasis()==='stmt'?'작업내역서를 📑 반영하면 유형별·품목별 수익이 집계됩니다.':'견적서를 현장에 연결하면 유형별·품목별 수익이 집계됩니다.')+'</div>',[{label:'닫기',cls:'ghost',fn:closeModal}]);return {매출원:0};}
   const tile=(l,v,c)=>'<div style="flex:1;min-width:86px;background:var(--paper-2);border-radius:9px;padding:8px 9px"><div style="font-size:10.5px;color:var(--muted)">'+l+'</div><div style="font-size:15px;font-weight:800;word-break:keep-all;overflow-wrap:anywhere;color:'+c+'">'+v+'</div></div>';
-  const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+tile('총'+hjEstWord(),hjMan(d.tEst),'#1d4ed8')+tile('지출',hjMan(d.tCost),'#b45309')+tile('마진',hjMan(d.tMargin),d.tMargin>=0?'#0a7f43':'#c2410c')+tile('마진율',d.rate+'%',d.rate>=30?'#0a7f43':'#c2410c')+'</div>';
+  const head='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+tile('총'+hjMarginWord(),hjMan(d.tEst),'#1d4ed8')+tile('지출',hjMan(d.tCost),'#b45309')+tile('마진',hjMan(d.tMargin),d.tMargin>=0?'#0a7f43':'#c2410c')+tile('마진율',d.rate+'%',d.rate>=30?'#0a7f43':'#c2410c')+'</div>';
   const typeRows=d.typeRows.map(r=>{
     const w=Math.max(4,Math.min(100,r.rate));
     return '<div style="padding:7px 2px;border-bottom:1px dashed var(--line-soft)">'+
@@ -19841,7 +19857,7 @@ async function exportFullXlsx(){
   const s1=[['현장','단계','고객','연락처','주소','견적합계','수금','자재비','인건비','외주비','마진','마진율%','완료일','무상만료','부가세(별도 견적)']];
   state.projects.forEach(p=>{
     const s=projStats(p.name),c=p.customer||{},w=hjWarranty(p);
-    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,(s.material||0),(s.labor||0),(s.outsource||0),s.marginEff,s.marginRateEff,p.doneAt||'',w?w.end:'',num(s.billVat)>0?s.billVat:0]);
+    s1.push([p.name,STAGES[p.stage||0]+(p.archived?'(보관)':''),c.name||'',c.phone||'',c.addr||'',s.est,s.recv,(s.material||0),(s.labor||0),(s.outsource||0),s.marginNA?'':s.marginEff,s.marginNA?'':s.marginRateEff,p.doneAt||'',w?w.end:'',num(s.billVat)>0?s.billVat:0]);
   });
   add('현장',s1);counts['현장']=s1.length-1;
   // ② 앱 견적
@@ -23215,7 +23231,7 @@ function bizAnalysisData(){
   const exp=(typeof expenseData==='function')?expenseData(ym):{byCat:{},total:0};
   // 완료 현장 평균 마진
   const doneP=state.projects.filter(p=>!p.archived&&p.doneAt);
-  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.est>0){marginSum+=s.marginRateEff;marginCnt++;}});
+  let marginSum=0,marginCnt=0;doneP.forEach(p=>{const s=projStats(p.name);if(s.marginBase>0&&!s.marginNA){marginSum+=s.marginRateEff;marginCnt++;}});
   const avgMargin=marginCnt?Math.round(marginSum/marginCnt):null;
   return {trend:withMargin,recent,prev,expByCat:exp.byCat,expTotal:exp.total,avgMargin,doneCount:doneP.length};
 }
@@ -26245,14 +26261,14 @@ function lossAlertData(){
   (state.projects||[]).forEach(p=>{
     if(p.archived)return;
     let s;try{s=projStats(p.name);}catch(e){return;}
-    if(!s.est||s.est<=0)return;  // 견적 없으면 판단 불가
+    if(!(s.marginBase>0)||s.marginNA)return;  // 견적 없으면 판단 불가(v562 작업내역서 기준이면 내역서 없는 현장도)
     // 유효원가(ledger-aware) 기준 — 실제 원가 반영으로 경보 정확도↑(수기 미입력·장부지출 현장 교정)
     const cost=s.costEffective||0;
     const margin=s.marginEff;
     const marginRate=s.marginRateEff;
     // 저마진(15% 미만) 또는 적자
     if(marginRate<15){
-      rows.push({name:p.name,est:s.est,cost,margin,marginRate,stage:s.stage,loss:margin<0,recv:s.recv});
+      rows.push({name:p.name,est:s.marginBase,cost,margin,marginRate,stage:s.stage,loss:margin<0,recv:s.recv});
     }
   });
   return rows.sort((a,b)=>a.marginRate-b.marginRate);
@@ -26269,7 +26285,7 @@ async function lossAlert(){
     const color=r.loss?'#c2410c':r.marginRate<8?'#e8912d':'#b45309';
     return '<div style="padding:12px;border:1px solid '+(r.loss?'#fca5a5':'#fcd34d')+';border-radius:11px;margin-bottom:8px;background:'+(r.loss?'#fff5f5':'#fffbeb')+'">'+
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><b style="font-size:13.5px;flex:1">'+escapeHtml(r.name)+'</b>'+(r.loss?'<span style="font-size:11px;background:#fee2e2;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700">적자</span>':'<span style="font-size:11px;background:#fef9c3;color:#b45309;padding:2px 8px;border-radius:10px;font-weight:700">저마진</span>')+'</div>'+
-      '<div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">'+(STAGES_KO[r.stage]||'진행')+' · 견적 '+hjMan(r.est)+' · 지출 '+hjMan(r.cost)+'</div>'+
+      '<div style="font-size:11.5px;color:var(--muted);margin-bottom:4px">'+(STAGES_KO[r.stage]||'진행')+' · '+(hjSalesBasis()==='stmt'?'매출(내역서)':'견적')+' '+hjMan(r.est)+' · 지출 '+hjMan(r.cost)+'</div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px">예상 마진</span><b style="font-size:15px;color:'+color+'">'+hjMan(r.margin)+' ('+r.marginRate+'%)</b></div>'+
     '</div>';
   }).join('');
@@ -26279,7 +26295,7 @@ async function lossAlert(){
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">지출이 견적 대비 커지면 마진이 얇아져요. 끝나기 전에 점검하세요.</div>'+
     items+
     (hasKey?'<button class="clay" id="lossAI" style="width:100%;padding:12px;margin-top:8px">🤖 AI 개선 조언</button><div id="lossAiBox" style="display:none;white-space:pre-wrap;font-size:13px;line-height:1.7;background:var(--paper-2);border-radius:10px;padding:12px;margin-top:8px"></div>':'')+
-    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 마진율 = (견적 − 지출) ÷ 견적. 추가 비용은 고객과 협의해 별도 정산하고, 자재·외주 단가를 재점검하세요.</div>';
+    '<div style="font-size:11px;color:var(--muted);margin-top:10px;background:var(--paper-2);border-radius:9px;padding:10px;line-height:1.5">💡 마진율 = '+(hjSalesBasis()==='stmt'?'(작업내역서 − 지출) ÷ 작업내역서':'(견적 − 지출) ÷ 견적')+'. 추가 비용은 고객과 협의해 별도 정산하고, 자재·외주 단가를 재점검하세요.</div>';
   openModal('📉 적자 위험 경보',body,[{label:'닫기',cls:'ghost',fn:closeModal}],true);
   const ab=document.getElementById('lossAI');
   if(ab)ab.onclick=async()=>{
@@ -30931,7 +30947,8 @@ function profitRankData(){
     let s;try{s=projStats(p.name);}catch(e){return;}
     if(!s)return;
     // 매출(견적 or 수금 중 큰 값), 원가, 이익
-    const revenue=Math.max(s.est||0,s.recv||0);
+    if(s.marginNA)return;   // v562 작업내역서 기준 — 내역서 없는 현장은 순위에서 뺀다
+    const revenue=hjSalesBasis()==='stmt'?(s.sales||0):Math.max(s.est||0,s.recv||0);   // 작업내역서 기준이면 내역서 매출
     if(revenue<=0&&s.costEffective<=0)return;  // 데이터 없는 현장 제외
     const profit=revenue-(s.costEffective||0);  // 유효원가(ledger-aware) — 대시보드와 동일 베이스
     const rate=revenue>0?Math.round(profit/revenue*100):0;
@@ -30954,7 +30971,7 @@ function profitRank(){
     const barW=Math.max(3,Math.min(100,r.rate));
     return '<div style="padding:12px;border:1px solid var(--line-soft);border-radius:11px;margin-bottom:8px">'+
       '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="font-size:18px;width:26px">'+(i<3?medals[i]:'<span style="font-size:12px;color:var(--muted)">'+(i+1)+'</span>')+'</span><b style="font-size:13.5px;flex:1;min-width:0">'+escapeHtml(r.name)+'</b><span style="font-size:11px;color:var(--muted)">'+(r.done?'완료':(STAGES[r.stage]||'진행'))+'</span></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px"><span>매출 '+hjMan(r.revenue)+' · 원가 '+hjMan(r.cost)+'</span><b style="color:'+rateColor+';font-size:13px">이익 '+hjMan(r.profit)+' ('+r.rate+'%)</b></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px"><span>'+hjMarginWord()+' '+hjMan(r.revenue)+' · 원가 '+hjMan(r.cost)+'</span><b style="color:'+rateColor+';font-size:13px">이익 '+(hjSalesBasis()==='stmt'?r.rate+'% · '+hjMan(r.profit):hjMan(r.profit)+' ('+r.rate+'%)')+'</b></div>'+
       '<div style="height:6px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+rateColor+'"></div></div>'+
     '</div>';
   }).join('');
@@ -40486,7 +40503,7 @@ function viewProject(){
       <div class="mc-row"><span>수금</span><b style="color:var(--ok)">${won(s.recv)}</b></div>
 
       <div class="mc-row"><span>지출 합계</span><b>${won(s.costEffective)}</b></div>
-      <div class="mc-row total"><span>마진</span><b style="color:${!(s.costEffective>0)?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'}">${escapeHtml(projectMarginLabel(s))}</b></div>
+      <div class="mc-row total"><span>마진</span><b style="color:${!(s.costEffective>0)||s.marginNA?'var(--muted)':s.marginEff>=0?'var(--ok)':'var(--warn)'}">${escapeHtml(projectMarginLabel(s))}</b></div>
     </div>`;
     html+=`<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap"><button class="moss tiny" data-portfolio="${escapeAttr(p.name)}">📖 포트폴리오 PDF 만들기</button><span class="hint" style="margin:0;align-self:center">공정별 사진 + 내부 정산 포함</span></div>`;
   }
@@ -42749,7 +42766,7 @@ function hjMarginBand(rate){if(!Number.isFinite(rate))return null;return HJ_MARG
 function hjProjectMargin(name,gross){
   let s;try{s=projStats(name);}catch(e){return null;}
   if(!s)return null;
-  const revenue=gross?num(s.est):num(s.supply),hasCost=num(s.costEffective)>0,cost=gross?num(s.costEffective):num(s.costSupply);
+  const revenue=gross?num(s.marginBase!=null?s.marginBase:s.est):num(s.marginBaseSupply!=null?s.marginBaseSupply:s.supply),hasCost=num(s.costEffective)>0,cost=gross?num(s.costEffective):num(s.costSupply);   // v562 작업내역서 기준이면 내역서 매출
   const margin=(revenue>0&&hasCost)?revenue-cost:null,rate=margin!=null?Math.round(margin/revenue*100):null;
   const empty=['material','labor','outsource'].filter(k=>!(num(s[k])>0));
   return {name,gross:!!gross,revenue,cost:hasCost?cost:null,margin,rate,band:hjMarginBand(rate),missing:!hasCost,partial:hasCost&&empty.length>0,empty,noRevenue:!(revenue>0),
@@ -42757,9 +42774,9 @@ function hjProjectMargin(name,gross){
 }
 function hjMarginText(m){
   if(!m)return '';
-  if(m.noRevenue)return '견적 없음';
+  if(m.noRevenue)return hjSalesBasis()==='stmt'?'작업내역서 없음':'견적 없음';
   if(m.missing)return '원가 미입력';
-  return won(m.margin)+' ('+m.rate+'%)'+(m.partial?' · 일부 미입력':'');
+  return (hjSalesBasis()==='stmt'?m.rate+'% ('+won(m.margin)+')':won(m.margin)+' ('+m.rate+'%)')+(m.partial?' · 일부 미입력':'');
 }
 /* 현장 카드 💰 칸 — 한 줄 마진 + 원가 입력 단추. 읽기만 한다. */
 function hjProjectMarginHtml(name){
@@ -42769,9 +42786,9 @@ function hjProjectMarginHtml(name){
   return '<div class="cust-card" data-margin-card="'+escapeAttr(name)+'" style="margin-top:10px"><div class="cust-h" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">📈 건별 마진 '+
     '<button type="button" class="ghost tiny" data-margintoggle="'+escapeAttr(name)+'" style="min-height:44px;padding:8px 10px;font-size:11px">'+(m.gross?'부가세 포함 기준':'공급가 기준')+' ⇄</button></div>'+
     '<div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:12.5px">'+
-      '<span>매출 <b>'+escapeHtml(won(m.revenue))+'</b></span>'+
+      '<span>'+hjMarginWord()+' <b>'+escapeHtml(won(m.revenue))+'</b></span>'+
       '<span>원가 '+(m.missing?'<span data-margin-missing style="color:var(--muted);font-weight:700">원가 미입력</span>':'<b>'+escapeHtml(won(m.cost))+'</b>')+'</span>'+
-      '<span>마진 <b data-margin-value style="color:'+color+'">'+(m.missing?'—':escapeHtml(won(m.margin))+' · '+m.rate+'%')+'</b>'+(m.band&&!m.missing?' <span style="font-size:10.5px;color:'+color+'">'+escapeHtml(m.band.label)+'</span>':'')+(m.partial?' <span style="font-size:10.5px;color:#b45309">일부 원가 미입력('+m.empty.map(k=>({material:'자재',labor:'인건',outsource:'외주'})[k]).join('·')+')</span>':'')+'</span>'+
+      '<span>마진 <b data-margin-value style="color:'+color+'">'+(m.missing?'—':(hjSalesBasis()==='stmt'?m.rate+'% · '+escapeHtml(won(m.margin)):escapeHtml(won(m.margin))+' · '+m.rate+'%'))+'</b>'+(m.band&&!m.missing?' <span style="font-size:10.5px;color:'+color+'">'+escapeHtml(m.band.label)+'</span>':'')+(m.partial?' <span style="font-size:10.5px;color:#b45309">일부 원가 미입력('+m.empty.map(k=>({material:'자재',labor:'인건',outsource:'외주'})[k]).join('·')+')</span>':'')+'</span>'+
       '<button type="button" class="moss tiny" data-costedit="'+escapeAttr(name)+'" style="min-height:44px;padding:8px 12px">✏ 원가 입력</button>'+
     '</div>'+(m.etc>0?'<div style="font-size:11px;color:var(--muted);margin-top:4px">기타경비(장비·유류·식대) '+escapeHtml(won(m.etc))+' 은 마진에서 뺐습니다</div>':'')+'</div>';
 }
