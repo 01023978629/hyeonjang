@@ -602,6 +602,10 @@ body.dark .hj-build-badge{color:#8fc3ff;background:rgba(143,195,255,.1);border-c
   .ph-cell .ph{width:100%}
   .ph-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
   .ph-cap{font-size:10.5px;font-weight:700;line-height:1.3;word-break:break-word;white-space:normal}
+  .ph-twin{display:inline-block;font-size:10.5px;color:var(--muted);margin-left:4px;white-space:nowrap}   /* v556 접힌 같은 사진 표시 */
+  .ph-twin.warn{color:#b45309;font-weight:700;white-space:normal}   /* v556 다른 현장에도 있는 같은 사진 */
+  .ph-twin-ov{position:absolute;right:4px;bottom:var(--twin-b,4px);z-index:1;margin:0;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.94);font-size:10px;line-height:1.5;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:auto}
+  body.dark .ph-twin-ov{background:rgba(20,28,38,.94)}
   .ph-cap.phase{color:var(--blueprint)} .ph-cap.work{color:var(--moss)}
   /* 아래로 내려온 공정 선택칸은 오버레이 해제(정적 배치) */
   .ph-meta .ph-phase,.ph-meta .ph-hint{position:static;width:100%;left:auto;right:auto;bottom:auto}
@@ -3933,7 +3937,7 @@ function openBrowserGuide(){
    화면에 '2026-07-30' 을 띄우고 있었다. 번호가 틀리면 "지금 몇 번이세요?"
    로 시작하는 원격 확인이 통째로 무너진다(틀린 답을 믿고 엉뚱한 데를 판다).
    tests/version-sync.check.js 가 두 값을 대조해 어긋나면 실패시킨다. */
-const APP_BUILD='hyeonjang-v558-logotap';
+const APP_BUILD='hyeonjang-v559-phototwins';
 const APP_VER_SHORT=APP_BUILD.replace(/^hyeonjang-/,'');
 
 /* 폰이 지금 무엇을 들고 있는지 세 군데를 따로 본다 — 셋이 갈릴 수 있고,
@@ -11993,6 +11997,44 @@ function viewDocs(){
   if(!any)html+=state.search||__documentItemFilter!=='all'?`<div class="empty" role="status"><b>선택 조건에 맞는 서류가 없습니다</b><p><button class="clay" id="btnClearDocSearch">검색 지우고 서류 보기</button><button class="ghost" data-document-filter="all">모든 항목 보기</button></p></div>`:`<div class="empty"><b>서류가 없습니다</b>필요 항목을 만들고 서류·견적서·정산서 파일을 선택해 등록하세요.</div>`;return html+'</section>';
 }
 let __showDup=false;
+let __photoTwinsOpen=false;   // v556 같은 사진 쌍을 펼쳐 둘 다 보기(세션 동안만) — 기본은 접음
+/* v556 같은 사진 쌍 접기(화면만) — markDuplicates 의 의심 묶음(같은 크기 + 2초 안 촬영시각)마다 대표 한 장만 사진 탭에 그린다.
+   11/5 대표 폰(서버 자료): 정리된 기록(현장 있음)과 원본 폴더에 남은 기록(미배정)이 한 사진에 둘 있어 모든 사진이 두 장씩 보였다(v522 '정리본 사본' 쌍).
+   자료는 건드리지 않는다 — 접힌 기록도 state.files 에 그대로 있고 미배정 수·🧭 추측 배정·중복 정리 도구는 종전처럼 전부 본다. 크기 0 이거나 촬영시각이 없는 묶음은 접지 않는다
+   (날짜 없는 Drive 가상 기록이 크기 0 으로 한 묶음이 되는 것을 막는다). 대표 = 현장 있음 > _정리완료/ > 그 현장 이름 폴더 > 작업명·공정 있음 > Drive 연결 > 비교 기준(첫 장). 서로 다른 현장 두 곳의 쌍은 접지 않고 ⚠. */
+function hjPhotoTwinPick(g){
+  // +3: 현장 이름과 같은 정리 폴더(_정리완료/<현장>/…) — 현장 이름을 바꾼 뒤 옛 이름 폴더에 남은 사본보다 지금 이름 폴더의 것을 남긴다(11/5 PC 가온마을 ↔ 세종 가온마을 31쌍)
+  const score=f=>(f.project?8:0)+(String(f.prefix||'').startsWith('_정리완료/')?4:0)+(f.project&&String(f.prefix||'').startsWith('_정리완료/'+f.project+'/')?3:0)+((f._worklabel||f._phase)?2:0)+(f._driveId?1:0);
+  let best=g[0],bs=score(g[0]);for(let i=1;i<g.length;i++){const sc=score(g[i]);if(sc>bs){best=g[i];bs=sc;}}return best;
+}
+function hjPhotoTwinFold(dupSets){
+  const hidden=new Set(),byRep=new Map(),cross=new Map();
+  (dupSets||[]).forEach(g=>{
+    if(!Array.isArray(g)||g.length<2)return;
+    if(!(Number(g[0].size)>0)||!g[0].when)return;
+    // v556(11/5 저녁, PC 자료 101쌍 중 16쌍) 서로 다른 현장 두 곳에 배정된 같은 사진은 접지 않는다 — 어느 현장 사진인지 대표가 골라야 하는 배정 오류라
+    //      둘 다 보이게 두고 카드마다 '⚠ 다른 현장에도: X' 를 붙인다(cross). 한쪽만 현장이 있거나 같은 현장이면 접는다.
+    const projs=[...new Set(g.map(x=>x.project).filter(Boolean))];
+    if(projs.length>1){g.forEach(x=>cross.set(x.id,projs.filter(n=>n!==x.project)));return;}
+    const rep=hjPhotoTwinPick(g),rest=g.filter(x=>x!==rep);
+    rest.forEach(x=>hidden.add(x.id));byRep.set(rep.id,rest);
+  });
+  return {hidden,byRep,cross,n:hidden.size};
+}
+/* v556 순수 묶음(표시 플래그를 건드리지 않는다) — markDuplicates 와 같은 열쇠(크기 + 2초 버킷), 크기 0·촬영시각 없음은 빼고. 현장별 보기가 쓴다. */
+function hjPhotoTwinGroups(photos){
+  const m=new Map();
+  (photos||[]).forEach(p=>{if(!p||!(Number(p.size)>0)||!p.when)return;const t=new Date(p.when).getTime();if(!Number.isFinite(t))return;const k=Number(p.size)+'_'+Math.round(t/2000);if(!m.has(k))m.set(k,[]);m.get(k).push(p);});
+  return [...m.values()].filter(g=>g.length>1);
+}
+/* v556 카드 배지 — 접힌 사본(📎 사본 n)과 다른 현장 같은 사진(⚠). photoCell(사진 탭)·photoCellProj(현장별 보기)가 같이 쓴다. */
+function hjPhotoTwinBadge(p,overlay){
+  const tws=window.__photoTwinByRep&&window.__photoTwinByRep.get(p.id),cx=window.__photoTwinCross&&window.__photoTwinCross.get(p.id);
+  const cls=overlay?' ph-twin-ov':'';let out='';
+  if(tws&&tws.length)out+=`<span class="ph-twin${cls}" data-twin-of="${escapeAttr(p.id)}" title="${escapeAttr('같은 크기·촬영시각 사진 '+tws.length+'장이 접혀 있습니다 — '+tws.map(x=>(x.project||'현장 없음')+(hjPhotoLabel(x)?' · '+hjPhotoLabel(x):'')+(x.prefix?' · '+x.prefix:'')).join(' / ')+' ([📎 같은 사진 펼치기]로 둘 다 보기)')}">📎 사본 ${tws.length}</span>`;
+  if(cx&&cx.length)out+=`<span class="ph-twin warn${cls}" data-twin-cross="${escapeAttr(p.id)}" title="${escapeAttr('같은 크기·촬영시각 사진이 다른 현장에도 배정돼 있습니다: '+cx.join(', ')+' — 어느 현장 사진인지 확인해 한쪽을 고쳐 주세요')}">⚠ 다른 현장에도: ${escapeHtml(cx.join(', ').slice(0,24))}</span>`;
+  return out;
+}
 let __phaseProj=null;
 /* 폰 화면 압축 — 사진 탭의 주업무는 '새 사진을 현장에 배정'인데, 안내문+도구
    두 줄+공정바가 첫 화면(844px)을 다 차지해 사진이 한 장도 안 보였다(실측
@@ -35981,16 +36023,22 @@ function viewPhotos(){
   }
   if(!photos.length)return `<div class="empty"><b>현장 사진 정리</b><div style="margin:8px 0 14px;color:var(--muted)">휴대폰·PC에서 사진을 선택한 뒤 현장과 작업 내용을 확인해 추가하세요.<br>기존 드라이브 사진도 아래에서 불러올 수 있습니다.</div><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="clay" id="btnGdPhotos" style="font-size:15px;padding:13px 22px;width:auto;min-height:44px">📷 사진 선택해서 올리기</button><button class="moss mobile-only-action" id="gdPickFolder" style="font-size:15px;padding:13px 22px;width:auto">📁 폴더 한번에 선택(자동)</button><button class="blue mobile-only-action" id="gdImportAll" style="font-size:15px;padding:13px 22px;width:auto">📂 내 드라이브 전체 통합</button><button class="clay mobile-only-action" id="dashGdPull" style="font-size:14px;padding:13px 18px;width:auto">☁️ 앱폴더</button><button class="ghost" id="btnPhotoGuideEmpty" onclick="hjPhotoGuideView()" style="font-size:14px;padding:13px 18px;width:auto;min-height:44px">📷 사진 찍는 법</button></div></div>`;
   // 캐싱: 사진 구성이 그대로면 재계산 생략 (대용량 시 속도 향상)
-  const fp=photoFingerprint(photos);
-  let dupSets, clusters;
-  if(__photoCache.key===fp){dupSets=__photoCache.dupSets;clusters=__photoCache.clusters;}
+  // v556 중복 의심은 늘 전체에서 세고(_dup 표시), 묶음은 같은 사진 쌍을 접은 목록으로 만든다 — 접기 여부가 캐시 열쇠에 들어간다
+  const dupSets=markDuplicates(photos);
+  const __tw=hjPhotoTwinFold(dupSets);
+  const __twOn=!__photoTwinsOpen&&!__showDup&&__tw.n>0;
+  window.__photoTwinByRep=__twOn?__tw.byRep:null;window.__photoTwinCross=__tw.cross;
+  const shownPhotos=__twOn?photos.filter(p=>!__tw.hidden.has(p.id)):photos;
+  const fp=photoFingerprint(shownPhotos)+(__twOn?'|twins':'');
+  let clusters;
+  if(__photoCache.key===fp){clusters=__photoCache.clusters;}
   else{
-    dupSets=markDuplicates(photos);
-    clusters=clusterPhotos(photos);
+    clusters=clusterPhotos(shownPhotos);
     groupRevisits(clusters);
     __photoCache={key:fp,clusters,dupSets};
   }
   const dupCount=dupSets.reduce((a,g)=>a+g.length-1,0);
+  const __twinBtn=__tw.n?`<button class="ghost tiny" id="btnTwinToggle" aria-pressed="${__twOn?'true':'false'}" title="같은 크기·촬영시각 사진은 한 장만 보이고 대표 장에 📎 사본 표시가 붙습니다. 펼치면 둘 다 보여 각각 고르거나 배정할 수 있습니다. 자료는 바뀌지 않습니다.">📎 같은 사진 ${__tw.n}장 ${__twOn?'접음 · 펼치기':'펼침 · 접기'}</button>`:'';
   window.__clusters=clusters;
   // 추천 배정(v253): 묶음별 제안. 순서와 무관하므로 여기서 한 번 계산해 위 요약 줄의 버튼과 묶음 헤더 버튼이 같이 쓴다
   const __sugCtx=photoSuggestContext();
@@ -36010,6 +36058,7 @@ function viewPhotos(){
     ${(__narrow&&!dupCount)?'':`<span class="pb-stat ${dupCount?'warn':''}">중복 의심 <b>${dupCount}</b></span>`}
     ${dupCount?`<button class="ghost tiny" id="btnToggleDup">${__showDup?'전체 사진 보기':'의심 사진 보기'}</button>`:''}
     ${__narrow?'':'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>'}
+    ${__narrow?'':__twinBtn}
     ${__sureN?`<button class="clay tiny" id="btnSuggestAll" title="현장 500m 안·같은 자리 재방문·절반 배정된 묶음의 나머지만, 선택 모드와 무관하게 묶음 단위로 배정합니다. 배정 전 안전판을 만듭니다.">✨ ${__narrow?'추천':'추천대로'} ${__sureN}묶음 배정</button>`:''}
     ${(__pfN&&!__narrow)?`<button class="ghost tiny" id="btnPhotoFill" aria-label="공정·작업명 빈칸 사진 ${__pfN}장 채우기" title="현장이 정해진 사진 중 공정·작업명이 빈 것을 현장·날짜 묶음마다 채웁니다. 빈칸만 채우고 채우기 전에 안전판을 만듭니다.">🧩 공정·작업명 빈칸 ${__pfN}장</button>`:''}
     ${(__unAllN&&!__narrow)?`<button class="${__sureN?'ghost':'clay'} tiny" id="btnSuggestReview" aria-label="현장 없는 사진 ${__unAllN}장 추측 배정 보기" title="현장 없는 사진 묶음마다 추정 현장·근거·사진 3장을 한 창에서 보고 체크한 것만 배정합니다. 배정 전 안전판을 만듭니다.">🧭 미배정 ${__unAllN}장 추측 배정 보기</button>`:''}
@@ -36023,6 +36072,7 @@ function viewPhotos(){
   const __selBtn=`<button class="${__selMode?'clay':'ghost'} tiny" id="btnSelMode" aria-pressed="${__selMode?'true':'false'}" title="${__selMode?'선택 모드를 종료합니다':'사진을 눌러 여러 장을 선택하는 모드입니다'}" style="font-size:12.5px;padding:8px 12px">${__selMode?'✓ 선택 종료':'✓ 사진 선택'}</button>`;
   const __moreBtns=`<button class="ghost tiny" id="btnPhotoTools" style="font-size:12.5px;padding:8px 12px">⋯ 사진 도구</button>
     ${__narrow?'<button class="warn tiny" id="btnTrimDup">중복 사진 원본만 남기기</button>':''}
+    ${__narrow?__twinBtn:''}
     <button class="blue tiny" data-aptbulk="project" style="min-height:44px">🏢 아파트 · 동·호수</button>
     <button class="ghost tiny" id="btnMediaOriginal" onclick="hjMediaView()" style="font-size:12.5px;padding:8px 12px;min-height:44px">🎬 원본·영상 관리</button>
     <button class="ghost tiny" id="btnPhotoGuide" onclick="hjPhotoGuideView()" style="font-size:12.5px;padding:8px 12px;min-height:44px">📷 찍는 법</button>
@@ -36804,6 +36854,8 @@ function photoCell(p){
   // 작업명(_worklabel)이 있으면 우선 표시, 없으면 공정 표시
   const tagText=p._worklabel||cur;
   const tagCls=p._worklabel?'work':'phase';
+  // v556 접힌 같은 사진 — 대표 장에 📎 사본 n · 다른 현장에도 있는 같은 사진은 ⚠ (hjPhotoTwinBadge)
+  const twinHtml=hjPhotoTwinBadge(p,false);
   // 공정/작업명·선택칸을 사진 위 오버레이가 아니라 '사진 아래'에 배치 → 긴 글자도 잘리지 않고 전체 표시.
   return `<div class="ph-cell">
     <div class="ph${__sel.has(p.id)?' sel':''}">
@@ -36814,7 +36866,7 @@ function photoCell(p){
     </div>
     <div class="ph-meta">
       ${tagText?`<div class="ph-cap ${tagCls}">${escapeHtml(tagText)}</div>`:''}
-      ${sel}
+      ${sel}${twinHtml}
     </div>
   </div>`;
 }
@@ -40337,7 +40389,14 @@ function viewProject(){
     html+=`<div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">${KIND[k].label} · ${sub.length}${dl}</div><div class="grid">${sub.map(cardHtml).join('')}</div>`;
   }
   // 사진 (시공)
-  const photos=showSec(2)?list.filter(f=>f.kind==='photo'):[];
+  // v556 같은 사진 쌍 접기 — 사진 탭과 같은 규칙(전체 사진에서 묶어 대표를 고르므로 미배정 사본은 이 현장 대표 장의 📎 로, 다른 현장 쌍은 ⚠ 로)
+  const __projPhotosAll=showSec(2)?list.filter(f=>f.kind==='photo'):[];
+  const __ptw=__projPhotosAll.length?hjPhotoTwinFold(hjPhotoTwinGroups((state.files||[]).filter(f=>f&&f.kind==='photo'))):{hidden:new Set(),byRep:new Map(),cross:new Map(),n:0};
+  const __ptwHere=__projPhotosAll.filter(f=>__ptw.hidden.has(f.id)).length;
+  const __ptwOn=!__photoTwinsOpen&&__ptwHere>0;
+  window.__photoTwinByRep=__ptwOn?__ptw.byRep:null;window.__photoTwinCross=__ptw.cross;
+  const photos=__ptwOn?__projPhotosAll.filter(f=>!__ptw.hidden.has(f.id)):__projPhotosAll;
+  const __ptwBtn=__ptwHere?`<button class="ghost tiny" id="btnTwinToggle" aria-pressed="${__ptwOn?'true':'false'}" title="같은 크기·촬영시각 사진은 한 장만 보이고 📎 사본 표시가 붙습니다. 자료는 바뀌지 않습니다.">📎 같은 사진 ${__ptwHere}장 ${__ptwOn?'접음 · 펼치기':'펼침 · 접기'}</button>`:'';
   const __selOpen=__projPhotoOpen.has(p.name); // 사진 접힘(기본)/펼침 — 목록 화면과 상태 공유
   if(photos.length&&!__selOpen){
     const recent=photos.slice().sort((a,b)=>new Date(b.when||0)-new Date(a.when||0)).slice(0,3);
@@ -40354,6 +40413,7 @@ function viewProject(){
       <button class="blue tiny" data-map="${escapeAttr(p.name)}">🗺️ 전체 위치 보기</button>
       <button class="moss tiny" data-organize="${escapeAttr(p.name)}">📁 공정대로 폴더 정리</button>
       <span class="hint" style="margin:0">GPS ${gpsN}/${photos.length}장</span>
+      ${__ptwBtn}
     </div>`;
     html+='<div id="bulkBarSlot" data-scope="'+escapeAttr(p.name)+'">'+bulkBar(p.name)+'</div>';
     // 공정 관리 바
@@ -40410,6 +40470,7 @@ function photoCellProj(f,phases){
     ${cur?`<span class="ph-tag phase">${escapeHtml(cur)}</span>`:''}
     ${tools}
     ${sel}
+    ${(()=>{const b=hjPhotoTwinBadge(f,true);return b?`<span style="--twin-b:${phases.length?'30px':'4px'}">${b}</span>`:'';})()}
   </div>`;
 }
 // 현장별 보기 내용 필터 (null=전체, 0~3=단계별)
@@ -40472,7 +40533,7 @@ function setupDelegation(){
       return;
     }
     const leakSmsTarget=e.target.closest('[data-leaksms]');if(leakSmsTarget)return hjLeakSmsView(leakSmsTarget.dataset.leaksms);
-    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
+    const t=e.target.closest('#schMyWork,[data-money],[data-bento-save],#btnPhotoFill,[data-est-read],[data-est-assign],[data-leakreport],[data-insclaim],[data-ret-open],[data-safety-open],[data-retreq],[data-wcare-open],[data-aptdocs-open],[data-team-done-open],[data-team-done-skip],[data-team-ack],[data-team-note],[data-team-pending-all],[data-team-done-all],[data-demo-tour-go],[data-owner-todo-open],[data-aptoff-new],[data-aptoff-edit],[data-aptoff-copy],[data-aptoff-save],[data-aptoff-cancel],[data-ics-today],[data-leakquote],#qmLeakTemplate,#qmLeakPaid,[data-leakdetect],[data-leakintake],[data-leakdispatch],[data-leakfilter],[data-watchtoggle],[data-brieftoggle],[data-briefcopy],[data-qfollow],[data-briefleadcall],[data-briefleadsms],[data-boardtoggle],[data-boardfilter],[data-boardreason],[data-boardarg],[data-boardproj],[data-navi],[data-callcust],[data-smscust],[data-custsched],[data-schcopy],[data-pjschadd],[data-pjshare],[data-contractsend],[data-kkprog],[data-kkstory],[data-kkwarr],[data-kkwarrview],[data-wlpull],[data-ctrefresh],[data-workorder],[data-workorderp],[data-gosch],[data-dayclose],[data-save],[data-pdf],[data-zip],[data-portfolio],[data-health],[data-geo],[data-suggest],#btnSuggestAll,#btnSuggestReview,#schPastToggle,[data-nmap],[data-bname],[data-addphase],[data-phasehint],[data-phasehintall],[data-delphase],[data-aptunits],[data-aptadd],[data-aptbulk],[data-aptoffadd],[data-aptgo],[data-aptorders],[data-aptreport],[data-payhist],[data-qhist],[data-mclose],[data-warranty],[data-punch],[data-worklog],[data-trip],[data-dochub],[data-schmore],[data-light],[data-repair],[data-repaircluster],[data-stage],[data-learn],[data-open],[data-preview],[data-rename],[data-fcopy],[data-fdel],[data-fsend],[data-punchquick],[data-progressquick],[data-extraquick],[data-delayquick],[data-proofquick],[data-custquick],[data-aptlegacy],[data-estpurchase],[data-exsum],[data-finalize],[data-recvquick],[data-margintoggle],[data-costedit],[data-marginboard],[data-insight],[data-season],[data-season-open],[data-conmkt],[data-leakwebcopy],[data-teamsend],[data-subquote],[data-portal],[data-ptopen],[data-ptcopy],[data-ptsync],[data-vatc],[data-lgexport],[data-lgtoexp],[data-lgparse],[data-adch],[data-adadd],[data-addel],[data-addraft],[data-adcase],[data-inqsched],[data-custfill],[data-qwait],[data-adperf],[data-routinego],[data-cwtax],[data-movephoto],[data-phmore],[data-delphoto],[data-map],[data-organize],[data-pview],[data-dayselect],[data-qedit],[data-qpdf],[data-qpay],[data-qdel],[data-qidel],[data-toedit],[data-projphoto],[data-qadd],[data-phasebtn],[data-history],[data-renproj],[data-delproj],[data-schics],[data-schedit],[data-schdel],[data-schprep],[data-schreport],[data-calday],[data-calnav],[data-convcf],[data-convcfcard],[data-cardedit],[data-conedit],[data-condel],[data-asdel],[data-asedit],[data-asvisit],[data-matrecv],[data-matadd],[data-matview],[data-matask],[data-matfix],[data-reviewreqp],[data-warrantystart],[data-qdoc],[data-report],[data-dun],[data-ckdel],[data-archive],[data-unarchive],#asAdd,#dueSave,#dueClear,#ckAdd,#ckPresetBtn,#btnLoadCostLedger,#btnXlsx,#btnXlsxDash,#btnXlsxTax,#btnDiag,#btnToggleDup,#btnTwinToggle,#btnTrimDup,#btnCsv,#custLoad,#qmNew,#qmCompare,#qmImport,#qmStmt,[data-stmtpay],[data-stmtfile],[data-stmtbank],[data-stmtdun],[data-stmtunit],#qmBathroom,#qmXlsx,#qmClose,#qmSave,#qmPdf,#qmAddItem,#qmAi,#qmReview,#qmBook,#qmMat,#qmSet,#qmCalc,#qmOrder,#phaseProjAdd,#schAdd,#schRoutine,#schNotify,#schShare,#schLabor,#schGcal,#schExportAll,#schIcsIn,#schCalSend,#schShowAll,#conAdd,#conVcfAll,#conImportPhone,#btnAddCard,#btnGotoDrive,#btnGdrive,#qmSend,#qmDriveSave,#btnGdPhotos,#btnPhotoTools,#btnPhotoBundle,#btnGeoAll,#btnGeoUpgrade,[data-gcal],#btnGdLoad,#btnRepairPhotos,#btnGdPin,#btnGdPick,#btnSelMode,#btnPhotoMore,#btnPhaseBarToggle,#btnMoreClusters,#btnOrganizeAll,#dashGdPull,#gdImportAll,#gdPickFolder,[data-pjsite],[data-pjextra],[data-pjmeasure],#qmMeasure');
     if(!t)return;
     const d=t.dataset;
     if(d.estAssign!==undefined)return hjEstAssignView();   // v544 견적 빠른 배정
@@ -40509,6 +40570,7 @@ function setupDelegation(){
     if(t.id==='btnXlsxTax')return exportTaxXlsx();
     if(t.id==='btnDiag')return runDiagnostics();
     if(t.id==='btnToggleDup'){__showDup=!__showDup;return render();}
+    if(t.id==='btnTwinToggle'){__photoTwinsOpen=!__photoTwinsOpen;if(typeof __photoCache!=='undefined')__photoCache.key=null;return render();}   // v556
     if(t.id==='btnTrimDup')return trimDuplicates();
     if(t.id==='btnCsv')return exportContactsCSV();
     if(t.id==='phaseProjAdd'){const sel=view.querySelector('#phaseProjSel'),inp=view.querySelector('#phaseProjInput');if(sel&&inp){__phaseProj=sel.value;addPhase(sel.value,inp.value);}return;}

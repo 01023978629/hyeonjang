@@ -57,9 +57,10 @@ let browser;
       const record = (id, extra) => ({ id, name: id + '.png', kind: 'photo', ext: 'png', size: 70, project,
         when: new Date('2026-09-01T00:00:00Z'), thumb: png, _virtual: true, ...extra });
       state.projects = [{ name: project, stage: 2, phases: [], customer: {}, archived: false, received: 0, cost: { material: 0, labor: 0, outsource: 0 } }];
-      state.files = [record('TEST_DRIVE', { _driveId: 'TEST_DRIVE_ID' }),
-        record('TEST_RESTORED', { thumb: null, project: view === 'photos' ? null : project }),
-        record('TEST_LOCAL', { _virtual: false })];
+      // v556: 같은 크기·촬영시각 사진은 사진 탭에서 한 장으로 접히므로(📎 사본) 세 기록의 크기를 다르게 둔다 — 이 검사는 삭제 단추 접근이 주제다
+      state.files = [record('TEST_DRIVE', { _driveId: 'TEST_DRIVE_ID', size: 70 }),
+        record('TEST_RESTORED', { thumb: null, project: view === 'photos' ? null : project, size: 71 }),
+        record('TEST_LOCAL', { _virtual: false, size: 72 })];
       state.activeProject = view === 'project' ? project : null; state.tab = view; state.search = '';
       state.dirHandle = null; state._demo = false; state.dirty = false;
       __photoCache.key = null; __sel.clear(); __selMode = false; __tabStale = false; __removedIds.clear();
