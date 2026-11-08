@@ -104,7 +104,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const b = hjDailyBrief();
       const chk = b.checks.find(c => c.ic === '🖊');
       const btns = [...document.querySelectorAll('[data-extraquick]')].map(x => ({ t: x.textContent, h: x.getBoundingClientRect().height, p: x.dataset.extraquick }));
-      const el = document.querySelector('[data-extraquick="둔산"]'); el.click(); await new Promise(r => setTimeout(r, 100));
+      // v564(2026-11-08) 대표 지시로 '오늘의 체크' 칸이 브리핑에서 빠져 현장 단추는 화면에 없다 — 체크 자료(hjDailyBrief().checks)와 창 함수는 그대로라 함수로 연다
+      extraWork('둔산'); await new Promise(r => setTimeout(r, 100));
       const title = document.querySelector('#modalRoot .modal h3').textContent;
       const sel = (document.getElementById('exProj') || {}).value;
       closeModal();
@@ -117,7 +118,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { chk, btns, title, sel, row, order, none, go, wide };
     });
     assert(r.chk && /추가공사 2건이 남은 현장 2곳/.test(r.chk.t) && /대전/.test(r.chk.t) && /둔산/.test(r.chk.t) && !/한신교회/.test(r.chk.t), '알림 글: ' + JSON.stringify(r.chk));
-    assert(r.btns.length === 2 && r.btns.every(x => x.h >= 44) && r.btns.map(x => x.p).join() === '대전,둔산', '버튼: ' + JSON.stringify(r.btns));
+    assert(r.btns.length === 0, '브리핑 체크 단추는 v564 에 빠짐: ' + JSON.stringify(r.btns));
+    assert((r.chk.acts || []).filter(a => a.k === 'extra').map(a => a.p).join() === '대전,둔산', '체크 자료의 현장 단추 정보: ' + JSON.stringify(r.chk.acts));
     assert(/추가공사 확인 — 둔산/.test(r.title) && r.sel === '둔산', '열린 창: ' + r.title + ' / ' + r.sel);
     assert(r.row && /확인받음 1건 300,000원 청구서에 더해짐/.test(r.row[2]) && /금액 협의 1건/.test(r.row[2]), '준공 전 체크 줄: ' + JSON.stringify(r.row));
     assert(JSON.stringify(r.order) === JSON.stringify(['punch', 'extra', 'balance']), '줄 순서(점검표 → 추가공사 → 잔금 청구): ' + JSON.stringify(r.order));

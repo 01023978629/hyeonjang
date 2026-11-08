@@ -243,25 +243,25 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
   });
 
   // 8) UI — 브리핑 카드에 보드 섹션 렌더 + 전화 원문 미노출 + 배지 클릭 딥링크
-  await test('UI — 브리핑 카드 보드 섹션 렌더·전화 원문 미노출·배지 클릭 → 기존 모달', async () => {
+  // v564(2026-11-08) 대표 지시로 🏥 현장 보드는 '오늘의 브리핑'에서 뺐다 — 브리핑에 없는 것을 보고, 보드 화면 조각(hjHealthBoardHTML)은
+  // #view 에 직접 붙여 그 동작(전화 원문 미노출·배지 클릭 화이트리스트·현장명 딥링크)을 계속 지킨다(다시 화면에 넣을 때 그대로 쓰도록).
+  const mountBoard = () => page.evaluate(() => { document.getElementById('hbBox')?.remove(); const box = document.createElement('div'); box.id = 'hbBox'; box.innerHTML = hjHealthBoardHTML(t => '<div>' + t + '</div>'); document.querySelector('#view').appendChild(box); });
+  await test('UI — 브리핑에는 보드가 없다(v564) · 보드 조각 렌더·전화 원문 미노출·배지 클릭 → 기존 모달', async () => {
     await seed();
-    // 전화 원문(리뷰현장G) 화면 노출 금지 확인
-    const dom = await page.evaluate(() => {
-      const card = document.querySelector('.brief-card');
-      return { hasBoard: /🏥 현장 보드/.test(card ? card.innerHTML : ''),
-        hasToggle: !!document.querySelector('[data-boardtoggle]'),
-        rawPhone: (card ? card.innerHTML : '').indexOf('01000000000') };
-    });
-    assert(dom.hasBoard, '브리핑 카드에 🏥 현장 보드 섹션 존재');
-    assert(dom.hasToggle, '전체 토글(data-boardtoggle) 존재(>3현장)');
-    assert(dom.rawPhone === -1, '전화 원문 화면 미노출');
+    const inBrief = await page.evaluate(() => { const card = document.querySelector('.brief-card'); return /🏥 현장 보드/.test(card ? card.innerHTML : ''); });
+    assert(!inBrief, '브리핑 카드에 🏥 현장 보드가 남음(v564 대표 결정으로 뺌)');
     // 배지 클릭 → 해당 모달 함수 호출(후킹으로 캡처, 실제 모달 미오픈)
     await page.evaluate(() => {
       window.__opened = [];
       KNOWN().forEach(fn => { window[fn] = function () { window.__opened.push(fn); }; });
       function KNOWN() { return ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingView', 'staleProjects', 'reviewRequest']; }
-      render();
     });
+    await mountBoard();
+    // 전화 원문(리뷰현장G) 화면 노출 금지 확인
+    const dom = await page.evaluate(() => { const box = document.getElementById('hbBox'); return { hasBoard: /🏥 현장 보드/.test(box.innerHTML), hasToggle: !!box.querySelector('[data-boardtoggle]'), rawPhone: box.innerHTML.indexOf('01000000000') }; });
+    assert(dom.hasBoard, '보드 조각에 🏥 현장 보드 머리');
+    assert(dom.hasToggle, '전체 토글(data-boardtoggle) 존재(>3현장)');
+    assert(dom.rawPhone === -1, '전화 원문 화면 미노출');
     await page.waitForTimeout(150);
     const badge = await page.$('[data-boardreason]');
     assert(badge, '이유 배지(data-boardreason) 존재');
@@ -278,6 +278,7 @@ const KNOWN_ACTIONS = ['lossAlert', 'budgetAlert', 'warrantyManage', 'dueAgingVi
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200);
     await seed();
+    await mountBoard();   // v564 브리핑에서 빠진 보드 조각을 직접 붙여 현장명 딥링크를 본다
     const proj = await page.$('[data-boardproj]');
     assert(proj, '현장명(data-boardproj) 존재');
     const name = await page.evaluate(el => el.getAttribute('data-boardproj'), proj);

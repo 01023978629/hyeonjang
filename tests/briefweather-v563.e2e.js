@@ -7,10 +7,11 @@
    합성 자료·가짜 예보만, 바깥 쓰기 0.
    ① 날씨 줄 — 오늘 🌧 비 80% · 내일 ⛅ 습도 85% · ⚠️ 위험 공정 모음 (WEATHER)
    ② 일정 옆 표시 — 오늘 '옥상 방수' ☔ 비 80% · 방수 주의 · 내일 '도배' 💧 습도 85% · 도배 주의 · '철거' 는 없음 · 복사 글에도 (BADGE)
-   ③ 정돈 — 칸 순서 · 진행 현장 8곳 → 5곳 + [외 3건 더 보기] → 펼침·접기 · 옛 문구 없음 · 작업내역서 기준이면 다른 업체 견적 체크 없음 (TIDY)
+   ③ 정돈 — 체크 자료의 옛 문구 없음 · 작업내역서 기준이면 다른 업체 견적 체크 없음 (TIDY)
+      (v564 대표 지시로 체크·현장 보드·진행 현장·연락·팔로업 칸이 브리핑에서 빠져 칸 순서·[더 보기]는 briefslim-v564 가 본다)
    ④ 못 받으면 '날씨를 못 불러왔어요 [다시]' → [다시] 로 받아짐 · 캐시 3시간 · 저장본(serializeData)에 날씨 없음 (FAIL)
    ⑤ 🌅 오늘 브리핑 — 날씨 줄 · 내일 일정 2건 (MODAL)
-   ⑥ 390px — 카드 넘침 없음 · [다시]·[더 보기] 44px (MOBILE)
+   ⑥ 390px — 카드 넘침 없음 · [다시] 44px (MOBILE)
    ⑦ 소스·핀 3곳(v563 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0
    HJ_V563_BASELINE=<commit> 은 ① 에서, HJ_V563_MUTATION=no-badge(일정 옆 표시를 빈 글로) 는 ② 에서 실패해야 한다. */
 'use strict';
@@ -104,30 +105,16 @@ const SEED = () => {
       assert.ok(r.text.split('\n')[1].startsWith('🌤 대전 오늘 🌧 비 7~14℃ 비 80% · 내일 ⛅ 구름 2~11℃ 비 20%'), '복사 글 둘째 줄 = 날씨 — ' + r.text.split('\n')[1]);
       assert.ok(r.text.includes('옥상 방수 @가온 (2명) [☔ 비 80% · 방수 주의]') && r.text.includes('10:00 도배 [💧 습도 85% · 도배 주의]'), '복사 글 일정 표시');
     });
-    await test('③ 정돈 — 칸 순서 · 진행 현장 8곳 → 5 + [외 3건 더 보기] · 펼침·접기 · 옛 문구 · 작업내역서 기준 (TIDY)', async () => {
+    await test('③ 정돈 — 체크 자료의 옛 문구 없음 · 작업내역서 기준이면 다른 업체 견적 체크 없음 (TIDY)', async () => {
       const r = await page.evaluate(async () => {
-        const card = () => document.querySelector('.brief-card');
-        const order = ['📅 오늘·내일 일정', '✅ 오늘의 체크', '🔥 진행 중 현장', '📞 챙길 연락', '💰 대금 현황(힌트)'].map(t => card().innerHTML.indexOf('>' + t + '</div>'));   // 칸 머리만(위 요약 칩 글과 구분)
-        const board = card().innerHTML.indexOf('🏥 현장 보드');
-        const doing = () => card().querySelectorAll('[data-workorderp]').length;
-        const n1 = doing(), btn1 = (card().querySelector('[data-briefmore="doing"]') || {}).textContent || '';
-        card().querySelector('[data-briefmore="doing"]').click(); await new Promise(r => setTimeout(r, 60));
-        const n2 = doing(), btn2 = (card().querySelector('[data-briefmore="doing"]') || {}).textContent || '';
-        card().querySelector('[data-briefmore="doing"]').click(); await new Promise(r => setTimeout(r, 60));
-        const n3 = doing();
-        // 옛 문구 · 작업내역서 기준이면 다른 업체 견적 체크 없음
         state.files = [{ id: 'V1', kind: 'estimate', project: '가온', name: '용진인테리어 견적서.xlsx', ext: 'xlsx', est: { amount: 1100000, customer: '용진인테리어' }, when: new Date() }];
         state.payLog = [];
         const ck0 = hjDailyBrief().checks.map(c => c.t);
         hjSalesBasisSet(true); const ck1 = hjDailyBrief().checks.map(c => c.t); hjSalesBasisSet(false);
         state.files = [];
         render();
-        return { order, board, n1, btn1, n2, btn2, n3, ck0, ck1 };
+        return { ck0, ck1 };
       });
-      assert.ok(r.order.every(i => i > 0) && r.order.every((v, i, a) => i === 0 || a[i - 1] < v), '칸 순서 일정 → 체크 → 진행 → 연락 → 대금 — ' + r.order);
-      assert.ok(r.board > r.order[1] && r.board < r.order[2], '🏥 현장 보드는 체크 다음·진행 현장 앞 — ' + [r.order[1], r.board, r.order[2]]);
-      assert.deepEqual([r.n1, r.n2, r.n3], [5, 8, 5], '진행 현장 5 → 펼치면 8 → 접으면 5');
-      assert.ok(r.btn1.includes('외 3건 더 보기') && r.btn2.includes('접기'), '더 보기/접기 — ' + r.btn1 + ' / ' + r.btn2);
       assert.ok(r.ck0.some(t => t.includes('수금 기록이 없는 현장') && t.includes('장부·세무 자료가 맞아요')) && !r.ck0.some(t => t.includes('미수·독촉')), '옛 미수·독촉 문구 정리 — ' + JSON.stringify(r.ck0));
       const vend = ck => ck.some(t => t.includes('다른 업체 이름 견적'));
       assert.deepEqual([vend(r.ck0), vend(r.ck1)], [true, false], '작업내역서 기준이면 다른 업체 견적 체크 없음');
@@ -165,7 +152,7 @@ const SEED = () => {
       assert.ok(r.box.startsWith('🌤 대전 오늘 🌧 비') && r.box.includes('내일: 10:00 도배, 13:00 철거'), '🌅 브리핑 글 — ' + r.box.slice(0, 160));
     });
     await context.close();
-    await test('⑥ 390px — 카드 넘침 없음 · [다시]·[더 보기] 44px (MOBILE)', async () => {
+    await test('⑥ 390px — 카드 넘침 없음 · [다시] 44px (MOBILE)', async () => {
       const m = await open(390);
       await m.page.evaluate(SEED);
       await m.page.evaluate(() => { window.__wxFail = true; __hjBriefWxErrAt = 0; localStorage.removeItem('hj_brief_weather'); render(); });
@@ -173,10 +160,10 @@ const SEED = () => {
       const r = await m.page.evaluate(() => {
         const card = document.querySelector('.brief-card'), cr = card.getBoundingClientRect();
         const h = s => { const el = card.querySelector(s); return el ? Math.round(el.getBoundingClientRect().height) : 0; };
-        return { over: card.scrollWidth - card.clientWidth, right: Math.round(cr.right), vw: innerWidth, retry: h('[data-briefweather="retry"]'), more: h('[data-briefmore="doing"]'), doc: document.documentElement.scrollWidth - innerWidth };
+        return { over: card.scrollWidth - card.clientWidth, right: Math.round(cr.right), vw: innerWidth, retry: h('[data-briefweather="retry"]'), doc: document.documentElement.scrollWidth - innerWidth };
       });
       assert.ok(r.over <= 1 && r.right <= r.vw && r.doc <= 1, '넘침 없음 — ' + JSON.stringify(r));
-      assert.ok(r.retry >= 44 && r.more >= 44, '[다시]·[더 보기] 44px — ' + JSON.stringify(r));
+      assert.ok(r.retry >= 44, '[다시] 44px — ' + JSON.stringify(r));
       await m.context.close();
     });
     await test('⑦ 소스·핀 3곳(v563 이상·서로 같음) · 페이지 오류 0 · 외부 쓰기 0', async () => {
