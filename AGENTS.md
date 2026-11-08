@@ -3,6 +3,29 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-08 v561 📑 매출 기준 = 작업내역서 — 켜면 견적은 '견적', 매출은 작업내역서만
+
+- 대표 결정(11/7): "견적은 매출로 세지마 매출은 내역서로 변경 할 거야". 지금까지 매출 한 벌(`hjSalesEntries` — 월말 결산·부가세 준비·세무 엑셀·
+  매출 추이·경영 현황 이 달 숫자·세금계산서 발행 대조 '수주 기준')과 대시보드 '총 견적(매출)'은 현장의 견적 묶음(견적서 파일 + 앱 견적의 가상 파일)을 다 셌다.
+- 고침: 저장본 `goals.salesBasis==='stmt'` 이면(📊 매출 목표 화면의 '📑 매출은 작업내역서만 셉니다' 켜기, `hjSalesBasisSet(on)`) 매출 한 벌은
+  작업내역서 가상 파일(`_stmt`, v526 📑 반영)과 현장 없는 '수주' 앱 견적 중 `q.stmt.key` 가 있는 것만 센다(`hjSalesFileOk`·`hjSalesQuoteOk`).
+  `projStats` 에 `sales`·`salesSupply`(내역서 묶음만, 설정 없으면 est 와 같음)를 더했다. **est·bill·due(청구서·거래명세서·고객 페이지·입금 문자)와 마진은
+  이 판에서 그대로** — 고객에게 나가는 숫자라 다음 판에서 따로 정한다. 설정이 없으면 예전과 한 글자도 같다.
+- 이름: `hjEstLabel()`(견적 합계 — stmt 면 '견적', 아니면 '견적(매출)') · `hjEstWord()`(견적 합계를 '매출'이라 부르던 수익 분석·거래처 장부·월말 결산의
+  완료 현장 줄 — stmt 면 '견적') · `hjSalesLabel()`(매출 한 벌 숫자 — stmt 면 '매출(내역서)'). 대시보드는 stmt 일 때 '매출(내역서)' 칸(`data-sales-kpi`)이,
+  완료 현장 정산 카드·증빙 묶음·현장 ZIP 요약은 '매출(내역서)' 줄이 더 붙는다. 견적 정산 엑셀 시트1 헤더 '견적(매출)'은 receivable-removed.check 가 지키는
+  글자라 그대로 두고, 시트2 '집계' 칸이 '견적만 — 매출 아님(작업내역서 기준)'을 적는다. 세무 엑셀 상세 시트는 stmt 면 '매출상세(내역서)'.
+- 설정은 goals 안의 값이라 새 최상위 저장 키가 없다(serialized-keys 42개 그대로). applyData 는 받은 goals 를 통째로 쓰므로 저장본을 따라 기기끼리 같은 기준을 쓴다.
+  현장별 수익성 랭킹의 '매출'(견적·수금 중 큰 값)·연간/월간 보고서의 '연 매출'(수금 기준)은 이번에 손대지 않음 — 마진 기준과 함께 다음 판.
+- 핀3곳 hyeonjang-v561-salesbasis. 신규 tests/salesbasis-v561.e2e.js 6/6(① 설정 없음 = 예전 10,890,000 · 글자 그대로 ② 켜면 매출 한 벌 220,000 —
+  월말 결산·부가세 준비·매출 추이·발행 대조 같은 값 ③ est·bill·due 그대로 · sales 만 내역서 ④ 대시보드·표 머리·월말 결산 문구·경영 현황·증빙 줄 글자
+  ⑤ 목표 화면 켜기 44px·끄기 · serializeData→applyData 로 따라감 · 월·연 목표 그대로 ⑥ 핀·오류 0·외부 쓰기 0). 기준선 main(80a13cb, v560)과
+  변이 no-filter(견적 파일 거르기 한 조각 삭제)는 ② 에서 실패 확인. 같이 돌림: revenue-basis · sales-basis · dash-cards · dash-reports · stmtimport-v526 ·
+  stmtpay-v527 · stmtdun-v535 · stmtunit-v537 · margin(-v429·1280-v464) · vatproof-v349 · quote-vat · taxissue-v428 · evidence-v427 · evidencefix-v555 ·
+  settle-docs · portal-key · extras-settle · relay · relaysync-v530 · drivetomb-v560 등 e2e 35개 통과, tests/*.check.js 19/19.
+  (relay 와 relaysync-v530 은 같은 mock-relay(8398)를 써서 동시에 돌리면 서로 방해해 relaysync 가 떨어진다 — 따로 돌리면 통과.)
+- 운영 자료에 켜는 것은 대표 승인 뒤(배포 뒤 📊 매출 목표 화면에서 켜거나 Claude 가 켬). 11/7 자료로 미리 센 작업내역서 매출 합계는 14,414,000원.
+
 ## 2026-11-07 v560 🪦 서버 Drive 사진 목록이 정리 표시를 지킨다 — 다른 기기에서 뺀 사본이 '미배정'으로 되살아나지 않게
 
 - 실측(11/7 PC 실자료, 자료 맞추기 뒤): 정리로 뺀 '현장사진/' 압축본 2장(정리 표시 있음)이 PC 부팅 뒤 미배정 사진으로 다시 들어와 있었다.
