@@ -3,6 +3,24 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-08 v562 📈 마진 = 작업내역서 기준 · 퍼센트 먼저 (v561 매출 기준을 켰을 때)
+
+- 대표 지시(11/8): "마진은 퍼센트로 작업내역서 기준으로 진행". v561 은 매출만 작업내역서로 바꾸고 마진(견적 − 지출)은 그대로 뒀다.
+- 고침: `projStats` 에 `marginBase`·`marginBaseSupply`·`marginNA` — 매출 기준이 작업내역서(`hjSalesBasis()==='stmt'`)면 바탕은 sales(내역서 묶음),
+  아니면 est·supply(예전과 한 글자도 같음). margin·marginNet·marginEff 와 율은 이 바탕에서 센다. **작업내역서가 없는 현장은 marginNA**(마진 0) —
+  인테리어처럼 내역서 없는 현장의 지출이 마진을 '−지출'로 끌어내리지 않게 대시보드 총 마진·마진 요약(projMarginSummary)·수익 분석·수익성 순위·
+  적자 경보(lossAlertData)·월말 결산 완료 현장 합계에서 뺀다(지출 칸 '총 지출'은 그대로 전부). est·bill·due(청구·고객 숫자)는 이 판에서도 그대로.
+- 퍼센트 먼저: `projectMarginLabel`/`projectMarginCellHtml`('77% · 170,000원 (작업내역서 기준)', 바탕 없으면 '작업내역서 없음') · 대시보드
+  '총 마진(내역서) 65% · 92만원'(`data-margin-kpi`) · 파일철 `hjMarginShort` · 건별 마진(`hjProjectMargin` 바탕도 marginBase, `hjMarginText`) ·
+  수익성 순위 '이익 73% · 80만원' · 월말 결산 완료 줄. 바탕 매출 이름은 `hjMarginWord()`(stmt 면 '매출(내역서)', 아니면 '매출') — v561 이
+  수익 분석·월말 결산 완료 줄에 붙인 `hjEstWord()`('견적')는 이 판에서 바탕이 내역서로 바뀌어 `hjMarginWord()` 로 바꿨다(거래처 장부는 견적 합이라 그대로).
+  전체 장부 엑셀 ① 현장의 마진·마진율 칸은 marginNA 면 빈칸.
+- 핀3곳 hyeonjang-v562-marginstmt. 신규 tests/marginstmt-v562.e2e.js 5/5(① 설정 없음 = 예전 마진·경보·수익 분석 ② 켜면 마진 = 내역서 − 지출 · 나래 marginNA ·
+  est·bill·due 그대로 ③ 화면 글(퍼센트 먼저·작업내역서 없음) ④ 합계·분석에서 내역서 없는 현장 빠짐 ⑤ 핀·오류 0·외부 쓰기 0). 기준선 v561(5195b38)과
+  변이 no-base(마진 바탕을 est 로)는 ② 에서 실패 확인. 같이 돌림: margin · margin-v429 · margin1280-v464 · insight-v445 · dash-cards · dash-reports ·
+  revenue-basis · sales-basis · salesbasis-v561 · stmtimport-v526 · stmtpay-v527 · season-v448 · rehearsalfix-v449 · health-board · board-v351 ·
+  settle-docs · portal-key · extras-settle 등 e2e 35개 통과, tests/*.check.js 19/19. (margin1280 류는 PC 폭에서 ' · ' 가 숨으므로 칸 글은 textContent 로 본다.)
+
 ## 2026-11-08 v561 📑 매출 기준 = 작업내역서 — 켜면 견적은 '견적', 매출은 작업내역서만
 
 - 대표 결정(11/7): "견적은 매출로 세지마 매출은 내역서로 변경 할 거야". 지금까지 매출 한 벌(`hjSalesEntries` — 월말 결산·부가세 준비·세무 엑셀·
