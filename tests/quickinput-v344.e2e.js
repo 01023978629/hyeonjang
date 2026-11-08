@@ -37,17 +37,20 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     state.tab = 'dashboard'; render();
   });
 
-  await test("'오늘의 체크' 현장 버튼이 입금 기록·고객 정보 창을 연다", async () => {
+  await test("'오늘의 체크' 현장 단추 정보(입금 기록·고객 정보)와 창 — v564 에 브리핑 칸은 빠졌어도 자료·창은 그대로", async () => {
     await seed();
     const r = await page.evaluate(async () => {
-      const btns = [...document.querySelectorAll('[data-recvquick],[data-custquick]')].map(b => (b.dataset.recvquick !== undefined ? 'recv:' : 'cust:') + (b.dataset.recvquick || b.dataset.custquick));
-      document.querySelector('[data-recvquick="대전"]').click(); await new Promise(r => setTimeout(r, 80));
+      // v564(2026-11-08) 대표 지시로 '오늘의 체크' 칸이 브리핑에서 빠져 현장 단추는 화면에 없다 — 체크 자료와 창 함수는 그대로라 함수로 연다
+      const btns = hjDailyBrief().checks.flatMap(c => (c.acts || []).filter(a => a.k === 'recv' || a.k === 'cust').map(a => a.k + ':' + a.p));
+      const onCard = document.querySelectorAll('.brief-card [data-recvquick],.brief-card [data-custquick]').length;
+      recvQuickView('대전'); await new Promise(r => setTimeout(r, 80));
       const recv = document.querySelector('#modalRoot .modal h3').textContent; closeModal();
-      document.querySelector('[data-custquick="대전"]').click(); await new Promise(r => setTimeout(r, 80));
+      hjCustQuickView('대전'); await new Promise(r => setTimeout(r, 80));
       const cust = document.querySelector('#modalRoot .modal h3').textContent;
-      return { btns, recv, cust };
+      return { btns, onCard, recv, cust };
     });
-    assert(r.btns.includes('recv:대전') && r.btns.includes('cust:태산그린아파트'), '버튼: ' + JSON.stringify(r.btns));
+    assert(r.btns.includes('recv:대전') && r.btns.includes('cust:태산그린아파트'), '체크 자료의 단추 정보: ' + JSON.stringify(r.btns));
+    assert(r.onCard === 0, '브리핑에 체크 단추가 남음(v564 대표 결정으로 뺌): ' + r.onCard);
     assert(r.recv.includes('입금 기록') && r.recv.includes('대전'), '입금 창: ' + r.recv);
     assert(r.cust.includes('고객 정보') && r.cust.includes('대전'), '고객 창: ' + r.cust);
   });
@@ -60,7 +63,7 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       document.getElementById('cqName').value = '김대전'; document.getElementById('cqPhone').value = '010-1234-5678'; save(); await new Promise(r => setTimeout(r, 80));
       const p = state.projects.find(x => x.name === '대전');
       const t = document.body.innerText;
-      return { emptyBlocked, shortBlocked, cust: p.customer, saved: JSON.stringify(serializeData().projects.find(x => x.name === '대전').customer), stillAsked: !![...document.querySelectorAll('[data-custquick="대전"]')].length };
+      return { emptyBlocked, shortBlocked, cust: p.customer, saved: JSON.stringify(serializeData().projects.find(x => x.name === '대전').customer), stillAsked: hjDailyBrief().checks.some(c => (c.acts || []).some(a => a.k === 'cust' && a.p === '대전')) };   // v564 브리핑 단추 대신 체크 자료로 본다
     });
     assert(r.emptyBlocked && r.shortBlocked, '빈 입력·짧은 번호를 막아야 한다: ' + JSON.stringify(r));
     assert(r.cust.name === '김대전' && r.cust.phone === '010-1234-5678', '저장 값: ' + JSON.stringify(r.cust));

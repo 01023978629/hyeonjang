@@ -52,7 +52,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       state.tab = 'dashboard'; render(); await new Promise(r => setTimeout(r, 150));
       const chk = hjDailyBrief().checks.find(c => c.ic === '🧾' && /증빙|현금영수증/.test(c.t));
       const btns = [...document.querySelectorAll('[data-proofquick]')].map(x => ({ t: x.textContent, h: x.getBoundingClientRect().height }));
-      document.querySelector('[data-proofquick="대전"]').click(); await new Promise(r => setTimeout(r, 100));
+      // v564(2026-11-08) 대표 지시로 '오늘의 체크' 칸이 브리핑에서 빠져 현장 단추는 화면에 없다 — 체크 자료(hjDailyBrief().checks)와 창 함수는 그대로라 함수로 연다
+      hjProofView('대전'); await new Promise(r => setTimeout(r, 100));
       const root = document.getElementById('modalRoot');
       const title = root.querySelector('.modal h3').textContent, rows = root.querySelectorAll('.prRow').length, warn = root.querySelectorAll('.prRow').length ? [...root.querySelectorAll('.prRow')].filter(x => /증빙 기록 없음/.test(x.textContent)).length : 0;
       // 50만원 줄(현장 대전·가장 오래된 것이 위) 에 현금영수증
@@ -71,7 +72,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
     });
     assert(JSON.stringify(r.pend0) === JSON.stringify([['대전', 500000, 5]]), '알림 대상: ' + JSON.stringify(r.pend0));
     assert(r.chk && /입금 1건\(10만원 이상·2일 지남\) 합계 500,000원/.test(r.chk.t) && /대전/.test(r.chk.t), '알림 글: ' + JSON.stringify(r.chk));
-    assert(r.btns.length === 1 && r.btns[0].t === '🧾 대전' && r.btns[0].h >= 44, '버튼: ' + JSON.stringify(r.btns));
+    assert(r.btns.length === 0, '브리핑 체크 단추는 v564 에 빠짐: ' + JSON.stringify(r.btns));
+    assert(r.chk && (r.chk.acts || []).some(a => a.k === 'proof' && a.p === '대전'), '체크 자료의 대전 단추 정보: ' + JSON.stringify(r.chk));
     assert(/입금 증빙 기록 — 대전/.test(r.title) && r.rows === 3 && r.warn === 1, '창: ' + r.title + ' ' + r.rows + '/' + r.warn);
     assert(r.rec.proof === 'cash' && /^\d{4}-\d{2}-\d{2}$/.test(r.rec.proofAt) && r.saved.proof === 'cash' && r.after === 0, '현금영수증 기록·저장: ' + JSON.stringify(r));
     assert(r.cleared === false, '다시 누르면 표시가 지워져야 한다');

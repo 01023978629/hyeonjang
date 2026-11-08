@@ -86,7 +86,8 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(
   await test('배지를 누르면 그 현장 화면이 열린다(data-boardarg) — 네 함수 모두 현장 이름을 받고, 모르는 동작은 무시', async () => {
     const r = await page.evaluate(async () => {
       state.tab = 'dashboard'; render(); await new Promise(r => setTimeout(r, 150));
-      const tg = document.querySelector('[data-boardtoggle]'); if (tg) { tg.click(); await new Promise(r => setTimeout(r, 150)); }   // 접힌 보드는 상위 3곳만 — 전체 펼치기
+      // v564 대표 지시로 보드는 '오늘의 브리핑'에서 빠졌다 — 보드 조각을 펼친 채로(#view 안에) 직접 붙여 배지 동작을 지킨다
+      __boardOpen = true; document.getElementById('b351Box')?.remove(); const box = document.createElement('div'); box.id = 'b351Box'; box.innerHTML = hjHealthBoardHTML(t => '<div>' + t + '</div>'); document.querySelector('#view').appendChild(box);
       const calls = [];
       const stub = {};['hjDelayPick', 'extraWork', 'hjProofView', 'punchListView'].forEach(fn => { stub[fn] = window[fn]; window[fn] = (...a) => calls.push([fn, ...a]); });
       const btns = [...document.querySelectorAll('[data-boardreason][data-boardarg]')].map(b => ({ act: b.dataset.boardreason, arg: b.dataset.boardarg, h: b.getBoundingClientRect().height }));

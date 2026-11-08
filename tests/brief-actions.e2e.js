@@ -69,38 +69,31 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     assert(ok, '후속 현장 전화 미해석');
   });
 
-  await test('1. 브리핑 카드 렌더 + 세 섹션 원탭 버튼 존재', async () => {
+  await test('1. 브리핑 카드 렌더 — v564 대표 결정으로 뺀 칸(진행 현장·연락·견적 팔로업·체크·현장 보드)은 없음', async () => {
+    // 2026-11-08 대표 지시 "2,3,4,5,6은 브리핑에서 빼고 7번은 내역서로 월 매출로" — 브리핑은 날씨·일정·이번 달 매출(작업내역서)·복사만.
     assert(await page.$('.brief-card'), '브리핑 카드 없음');
-    assert(await page.$('.brief-card [data-workorderp="행복빌라 201호"]'), '진행 현장 [작업지시] 버튼 없음');
-    // [청구] 버튼은 미수금 기능과 함께 없앴다(2026-08-13) — 되살아나면 잡는다.
-    assert(!(await page.$('.brief-card [data-briefbill]')), '[청구] 버튼이 되살아났다');
-    assert(await page.$('.brief-card [data-callcust="샛별상가 1층"]'), '후속 [전화] 버튼 없음');
-    assert(await page.$('.brief-card [data-smscust="샛별상가 1층"]'), '후속 [문자] 버튼 없음');
-    assert(await page.$('.brief-card [data-briefleadcall="leadA"]'), '리드 [전화] 버튼 없음(텍스트 전화 파싱 실패)');
-    assert(await page.$('.brief-card [data-briefleadsms="leadA"]'), '리드 [문자] 버튼 없음');
+    for (const sel of ['[data-workorderp]', '[data-callcust]', '[data-smscust]', '[data-briefleadcall]', '[data-briefleadsms]', '[data-qfollow]', '[data-boardtoggle]', '[data-briefbill]'])
+      assert(!(await page.$('.brief-card ' + sel)), '브리핑에 뺀 칸이 남음: ' + sel);
+    const txt = await page.evaluate(() => document.querySelector('.brief-card').innerText);
+    assert(!/🔥 진행 중 현장|📞 챙길 연락|⏰ 견적 팔로업|✅ 오늘의 체크|🏥 현장 보드|대금 현황/.test(txt), '뺀 칸 제목이 남음: ' + txt.slice(0, 200));
+    assert(/💰 \d+월 매출\(작업내역서\)/.test(txt), '💰 이번 달 매출(작업내역서) 칸');
   });
 
-  await test('2. [📋 작업지시] 클릭 → openWorkOrder 모달(현장 프리필)', async () => {
-    await page.click('.brief-card [data-workorderp="행복빌라 201호"]');
+  await test('2. [📋 작업지시] — 브리핑에서 빠졌어도 openWorkOrder 는 현장 프리필로 열린다', async () => {
+    await page.evaluate(() => openWorkOrder({ proj: '행복빌라 201호' }));
     await page.waitForSelector('#woSite', { timeout: 5000 });
     const site = await page.$eval('#woSite', el => el.value);
     assert(site === '행복빌라 201호', '현장 프리필 불일치: ' + site);
     await page.evaluate(() => closeModal());
   });
 
-  await test('4. 챙길 연락 — 리드 [📞][💬] 텍스트 전화 파싱 딥링크 + 후속 버튼 동작', async () => {
+  await test('4. 리드 연락 — 텍스트 전화 파싱 딥링크(hjBriefLeadPhone)는 그대로(브리핑 칸은 v564 에 빠짐)', async () => {
     // 리드: 노트 텍스트 내 전화를 파싱해 tel:/sms: 딥링크 생성(원본 hjBriefLeadPhone 경로)
-    await page.evaluate(() => { window.__leadNav.length = 0; });
-    await page.click('.brief-card [data-briefleadcall="leadA"]');
-    await page.click('.brief-card [data-briefleadsms="leadA"]');
+    await page.evaluate(() => { window.__leadNav.length = 0; hjBriefLeadContact('leadA', 'call'); hjBriefLeadContact('leadA', 'sms'); });
     await page.waitForTimeout(150);
     const nav = await page.evaluate(() => window.__leadNav.slice());
     assert(nav.some(x => x.mode === 'call' && x.href === 'tel:' + RAW_LEAD), '리드 tel 딥링크(텍스트 파싱) 없음: ' + JSON.stringify(nav));
     assert(nav.some(x => x.mode === 'sms' && x.href === 'sms:' + RAW_LEAD), '리드 sms 딥링크 없음');
-    // 후속: 기존 data-callcust/data-smscust 재사용 — 클릭이 pageerror 없이 처리(전화 해석됨)
-    await page.click('.brief-card [data-callcust="샛별상가 1층"]');
-    await page.click('.brief-card [data-smscust="샛별상가 1층"]');
-    await page.waitForTimeout(100);
   });
 
   await test('5. 화면 전화 원문 노출 없음(마스킹만)', async () => {
@@ -108,8 +101,7 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     assert(bodyTxt.indexOf(RAW_CUST) < 0, '진행/미수 고객 원문 노출');
     assert(bodyTxt.indexOf(RAW_FOLLOW) < 0, '후속 고객 원문 노출');
     assert(bodyTxt.indexOf(RAW_LEAD) < 0, '리드 전화 원문 노출');
-    // 후속 마스킹(뒷 4자리 ···7777)만 노출 허용
-    assert(bodyTxt.indexOf('7777') >= 0, '후속 마스킹(뒷4자리) 표시 확인');
+    // v564 연락 칸이 빠져 후속 마스킹 번호(···7777)도 브리핑에 없다 — 원문이 안 보이는 것만 본다
   });
 
   await test('8. 목표 페이스 경보 — 앞서갈 때 오발화 없음(%↔원 단위 불일치 회귀)', async () => {
@@ -136,7 +128,7 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
     else assert(!r.nagB, '10일 이전에는 페이스 경보 없음(day=' + r.day + ')');
   });
 
-  await test('9. 견적 팔로업 — 미수주 무응답 견적이 브리핑에 표면화(전화 원문 없음)', async () => {
+  await test('9. 견적 팔로업 — 자료(hjDailyBrief)는 그대로 세지만 v564 부터 브리핑 화면·복사 글에는 안 나온다(전화 원문 없음)', async () => {
     const r = await page.evaluate(() => {
       const DAY = 86400000;
       const d = (back) => localDate(new Date(Date.now() - back * DAY));
@@ -157,10 +149,10 @@ const RAW_LEAD = '01098765432';     // 리드 노트 텍스트 내 전화
       };
     });
     assert(r.qf === 1, 'quoteFollow 1건: ' + r.qf);
-    assert(r.hasSection && r.hasTitle, '브리핑에 견적 팔로업 섹션+제목');
-    assert(r.hasBtn, '팔로업 버튼(data-qfollow) 존재');
-    assert(r.chip, '요약 칩에 견적 팔로업 카운트');
-    assert(r.inText, 'AI 복사 텍스트에 견적 팔로업 포함');
+    assert(!r.hasSection && !r.hasTitle, '브리핑에 견적 팔로업 칸이 남음(v564 대표 결정으로 뺌)');
+    assert(!r.hasBtn, '팔로업 버튼(data-qfollow)이 브리핑에 남음');
+    assert(!r.chip, '요약 칩에 견적 팔로업이 남음');
+    assert(!r.inText, '복사 글에 견적 팔로업이 남음');
     assert(r.noRawPhone, 'quoteFollow 데이터에 전화 원문 없음');
   });
 

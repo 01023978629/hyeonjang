@@ -77,7 +77,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       window.hjSendSms = (tel, text) => { __calls.push(['sms', tel, text]); };
       // 앱 서버(릴레이·고객 페이지·전자계약) 요청만 센다 — 병렬 실행에서는 부팅이 늦게 쏘는 글꼴·GIS 미리읽기가 섞여 거짓 실패가 난다(v346 검사에서 1회 관찰)
       let fetches = 0; const of = window.fetch; window.fetch = (...a) => { if (/script\.google|workers\.dev|\/portal\/|\/relay|127\.0\.0\.1:8398/.test(String(a[0]))) fetches++; return of(...a); };
-      document.querySelector('[data-delayquick="대전"]').click(); await new Promise(r => setTimeout(r, 100));
+      // v564(2026-11-08) 대표 지시로 '오늘의 체크' 칸이 브리핑에서 빠져 현장 단추는 화면에 없다 — 체크 자료(hjDailyBrief().checks)와 창 함수는 그대로라 함수로 연다
+      hjDelayView('대전'); await new Promise(r => setTimeout(r, 100));
       const root = document.getElementById('modalRoot');
       const title = root.querySelector('.modal h3').textContent, rows = [...root.querySelectorAll('.dlReport')].length;
       root.querySelector('.dlReport').click(); root.querySelector('.dlMove').click();
@@ -88,7 +89,8 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       return { chk, btns, title, rows, calls: __calls, fetches, wide, dobId: String(dob.id) };
     });
     assert(r.chk && /공정 1개/.test(r.chk.t) && /대전\(도배 3일\)/.test(r.chk.t), '알림 글: ' + JSON.stringify(r.chk));
-    assert(r.btns.length === 1 && r.btns[0].t === '🕒 대전' && r.btns[0].h >= 44, '버튼: ' + JSON.stringify(r.btns));
+    assert(r.btns.length === 0, '브리핑 체크 단추는 v564 에 빠짐: ' + JSON.stringify(r.btns));
+    assert(r.chk && (r.chk.acts || []).some(a => a.k === 'delay' && a.p === '대전'), '체크 자료의 대전 단추 정보: ' + JSON.stringify(r.chk));
     assert(/공정 지연 점검 — 대전/.test(r.title) && r.rows === 1, '창: ' + r.title + ' / ' + r.rows);
     assert(JSON.stringify(r.calls.slice(0, 2)) === JSON.stringify([['report', r.dobId], ['edit', r.dobId]]), '기존 함수로 잇는다: ' + JSON.stringify(r.calls));
     const sms = r.calls[2];

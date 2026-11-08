@@ -67,16 +67,19 @@ function assert(cond, msg) { if (!cond) throw new Error('assert: ' + msg); }
       const row = stageChecklistItems(p, 3).find(it => it[1] === 'punch');
       const go = STAGE_CHECK_GO.punch ? STAGE_CHECK_GO.punch.l : '';
       state.tab = 'dashboard'; render(); await new Promise(r => setTimeout(r, 150));
-      const btns = [...document.querySelectorAll('[data-punchquick],[data-progressquick]')].map(b => b.textContent);
-      document.querySelector('[data-punchquick="대전"]').click(); await new Promise(r => setTimeout(r, 80));
+      // v564(2026-11-08) 대표 지시로 '오늘의 체크' 칸이 브리핑에서 빠져 현장 단추는 화면에 없다 — 체크 자료와 창 함수(punchListView·customerProgress)는 그대로라 함수로 연다
+      const btns = hjDailyBrief().checks.flatMap(c => (c.acts || []).filter(a => a.k === 'punch' || a.k === 'progress').map(a => a.k + ':' + a.p));
+      const onCard = document.querySelectorAll('.brief-card [data-punchquick],.brief-card [data-progressquick]').length;
+      punchListView('대전'); await new Promise(r => setTimeout(r, 80));
       const t1 = document.querySelector('#modalRoot .modal h3').textContent; closeModal();
-      document.querySelector('[data-progressquick="대전"]').click(); await new Promise(r => setTimeout(r, 80));
+      customerProgress('대전'); await new Promise(r => setTimeout(r, 80));
       const t2 = document.querySelector('#modalRoot .modal h3').textContent; closeModal();
-      return { row, go, btns, t1, t2 };
+      return { row, go, btns, onCard, t1, t2 };
     });
     assert(r.row && /보수 필요 1곳 남음/.test(r.row[2]), '준공 전 체크 줄: ' + JSON.stringify(r.row));
     assert(r.go === '🧾 점검표', 'GO 버튼: ' + r.go);
-    assert(r.btns.includes('🧾 대전') && r.btns.includes('📨 대전'), '대시보드 버튼: ' + JSON.stringify(r.btns));
+    assert(r.btns.includes('punch:대전') && r.btns.includes('progress:대전'), '체크 자료의 단추 정보: ' + JSON.stringify(r.btns));
+    assert(r.onCard === 0, '브리핑에 체크 단추가 남음(v564 대표 결정으로 뺌)');
     assert(/하자점검표/.test(r.t1) && /진행 보고/.test(r.t2), '열린 창: ' + r.t1 + ' / ' + r.t2);
   });
 

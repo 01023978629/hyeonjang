@@ -3,6 +3,27 @@
 > 이 저장소에서 작업하는 모든 AI 에이전트(Codex·Claude)가 시작 전에 읽는 문서.
 > 2026-09-07 기준. 낡은 내용을 발견하면 **이 문서부터 고쳐라.**
 
+## 2026-11-08 v564 ☀️ 오늘의 브리핑 줄이기 — 날씨·일정·💰 이번 달 매출(작업내역서)만
+
+- 대표 지시(11/8, v563 브리핑 목록을 보고): "2,3,4,5,6은 브리핑에서 빼고 7번은 내역서로 월 매출로 표시해줘".
+  뺀 것: ✅ 오늘의 체크 · 🏥 현장 보드 · 🔥 진행 중 현장 · 📞 챙길 연락 · ⏰ 견적 팔로업 · 💰 대금 현황(수금·견적). 남은 것: 🌤 날씨 · 📅 오늘·내일 일정 ·
+  💰 이번 달 매출(작업내역서) · 📋 복사. 요약 칩도 '📅 오늘 일정 N' · '💰 N월 매출(내역서) X만원'(`data-brief-sales-chip`) 둘만.
+- 💰 칸(`data-brief-sales`): `hjStmtMonthSales(ym)` — 매출 한 벌(hjSalesEntries, 사본·집계 제외 규칙 그대로)에서 작업내역서 가상 파일(_stmt)·내역서 견적(q.stmt)만
+  골라 그 달을 더한다. **매출 기준 설정(goals.salesBasis)과 상관없이 내역서만**(대표가 '내역서로'라고 함). 지난달 금액을 옆에 작게. 이번 달 내역서가 없으면
+  '✍️ 견적 작성의 [📑 작업내역서 반영]' 안내. 영수증 미발행 안내(hjLeakReceiptPendingHtml — leakquote-v421 이 대시보드에서 본다)는 💰 칸 아래 남겼다.
+- 복사 글(hjDailyBriefText)·🌅 오늘 브리핑(aiBriefData·aiBriefRuleText·AI 지시문)도 같은 구성 — AI 자료에서 시공중현장·미배정사진을 빼고 `이번달매출_작업내역서`.
+- **자료는 그대로**: `hjDailyBrief()` 는 checks·doing·leadNotes·followups·quoteFollow·pay 를 계속 센다(다른 카드·검사가 쓴다). 화면 단추만 없어졌다 —
+  체크의 현장 단추(data-recvquick·custquick·punchquick·progressquick·extraquick·delayquick·proofquick)는 이제 첫 화면에 안 나오고(입금 기록은 현장 화면에 있음),
+  🏥 현장 보드(hjHealthBoardHTML)는 그리는 곳이 없다(함수는 남김). 다시 넣을 때 쓰도록 검사는 함수 호출·보드 조각을 #view 에 붙여 지킨다.
+  v563 의 [더 보기](`__briefMore`·`hjBriefMoreBtn`·`data-briefmore`)는 칸이 없어져 지웠다.
+- 고친 검사(대표 결정으로 기대값이 바뀜): brief-actions(뺀 칸·단추 없음, 작업지시·리드 딥링크는 함수로) · health-board·board-v351(보드 조각을 #view 에 붙여 배지·현장명 확인) ·
+  delay-v347·extraprogress-v346·payproof-v348·quickinput-v344·punchlist-v345(체크 단추 대신 체크 자료의 acts + 창 함수 직접) · briefweather-v563(칸 순서·더 보기 부분 정리).
+- 핀3곳 hyeonjang-v564-briefslim. 신규 tests/briefslim-v564.e2e.js 5/5(① 펼침: 일정 → 💰 두 칸, 뺀 칸·단추 없음 / 접힘: 날씨·칩만 ② 💰 = 이번 달 내역서만 1,320,000·2건
+  — 견적서·수주 앱 견적·집계 제외·지난달 빠짐, 매출 기준을 켜도 같음 ③ 복사 글·🌅 브리핑 같은 구성 ④ 영수증 미발행 안내 남음·내역서 없을 때 안내·390px
+  ⑤ 핀·오류 0·외부 쓰기 0). 기준선 v563(facfa8e)은 ① 에서, 변이 no-stmt-filter 는 ① 요약 칩 금액에서 실패 확인.
+  전체 검사(run-all): 456개 중 450 통과. 실패 6 = 내려받기 이름 환경 문제 5개(main 에서도 실패) + warrantycare-v438 1개 —
+  이 하나는 그 회차에서만 두 번(병렬·단독 재시도) 떨어지고 그 뒤 단독 3번·부하 아래 1번·run-all 단독 1번 모두 통과(재현 안 됨, 브리핑과 무관한 AS 판정 화면).
+
 ## 2026-11-08 v563 ☀️ 오늘의 브리핑 정돈 + 날씨
 
 - 대표 지시(11/8): "오늘의 브리핑을 정돈해줘 날씨도 추가해주고".
